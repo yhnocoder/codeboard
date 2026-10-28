@@ -6,7 +6,7 @@ import { grammarOfFile, type Grammar } from "@codeboard/analysis/langs";
 import type { Sym } from "@codeboard/analysis";
 import { symbolsOf, whenAnalysisReady } from "./analysis";
 import { resetScope } from "./scope";
-import { resetOpTables, warmOps } from "./torchops";
+import { opsFileChanged, opsPathRemoved, resetOpTables, warmOps } from "./torchops";
 import { log } from "./log";
 import { CODE_EXCLUDE, CODE_GLOB, langOf, readText, workspace } from "./ws";
 
@@ -205,6 +205,7 @@ export async function entriesOf(abs: string): Promise<IndexEntry[]> {
 
 /** 文件改了（保存、新建、在外面改了）：重新排进待分析 */
 export function changedFile(abs: string) {
+  opsFileChanged(abs);
   if (!isCode(abs) || !listing) return; // 还没列过：列的时候自然会读到
   drop(abs);
   sigs.delete(abs);
@@ -214,6 +215,7 @@ export function changedFile(abs: string) {
 }
 
 export function removedPath(p: string) {
+  opsPathRemoved(p);
   for (const abs of [...order.keys()]) if (abs === p || abs.startsWith(p + path.sep)) { drop(abs); todo.delete(abs); sigs.delete(abs); order.delete(abs); stamps.set(abs, (stamps.get(abs) ?? 0) + 1); }
 }
 
@@ -240,6 +242,8 @@ export function watchNameIndex() {
     files.onDidChangeRoots(() => resetIndex()),
     // VS Code 外面的改动（git checkout、别的编辑器）：每个根一个监听
     ...files.roots().map((r) => files.watch(r, CODE_GLOB, (abs) => changedFile(abs))),
+    // PyTorch's op table (not a code file)
+    ...files.roots().map((r) => files.watch(r, "**/native_functions.yaml", (abs) => opsFileChanged(abs))),
   ];
   return { dispose: () => { for (const d of subs) d.dispose(); } };
 }

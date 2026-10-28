@@ -1,35 +1,36 @@
-// PyTorch 的算子路由：工作区里有 aten/src/ATen/native/native_functions.yaml 时（PyTorch 源码、fork、vendored 的副本），
-// Python / C++ 的算子入口 → yaml 里这个算子的 dispatch 表 → 各个设备的 C++ / CUDA kernel 符号。
-// yaml 在打开白板时（或第一次用到时）找、解析（按文本缓存，改了重新解析）；算子要的文件在后台先分析，点击时只查表、不扫工作区。
+// PyTorch op routing: when the workspace holds aten/src/ATen/native/native_functions.yaml (PyTorch itself, a fork, a vendored copy),
+// a Python / C++ op entry → the op's dispatch table in the yaml → the C++ / CUDA kernel of each device.
+// Language servers stop at .pyi stubs (Python) or loop through the dispatcher (C++), so the yaml is the only way to the kernels.
+// The files the routing needs are scanned once in the background; a click only looks up tables, and file events keep them current.
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { parse } from "yaml";
 import { grammarOfFile } from "@codeboard/analysis/langs";
 import { dispatchAll, pybindAll, pyMethodAll, type CallSite, type FileAnalysis, type Sym } from "@codeboard/analysis";
 import { analysisOf, symbolsOf, whenAnalysisReady } from "./analysis";
-import { entriesOf, indexedFiles, type IndexEntry } from "./nameindex";
+import { entriesOf, indexedFiles, isCode, knownEntries, type IndexEntry } from "./nameindex";
 import { exists, langOf, readText } from "./ws";
+import { log } from "./log";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-import { log } from "./log";
 
 export const OPS_YAML = "aten/src/ATen/native/native_functions.yaml";
 
-/** yaml 里的一条 func：add.out → name add、overload out；dispatch 的键已经按逗号拆开（CPU, CUDA: f → 两条） */
+/** One func of the yaml: add.out → name add, overload out; comma keys are split (CPU, CUDA: f → two entries) */
 export type OpDecl = {
   name: string; overload: string; line: number; dispatch: [string, string][]; structured: boolean; delegate?: string; ufunc: boolean;
   variants: string[]; out: boolean;
 };
 export type OpTable = { root: string; yaml: string; decls: OpDecl[]; byName: Map<string, OpDecl[]>; byFull: Map<string, OpDecl> };
 /**
- * 一个 kernel：哪个 dispatch key、C++ 名字、写在哪条 func 上（via = 经 structured_delegate 到的那条）；
- * inner = ufunc_inner_loop 的算子：kernel 是生成的 ufunc_add_CUDA（build/ 里有才找得到），没有就退到手写的 ufunc::add
+ * A kernel: dispatch key, C++ name, the func it is written on (via = the func reached through structured_delegate);
+ * inner = an op with ufunc_inner_loop: the kernel is the generated ufunc_add_CUDA (found only with a build), else the hand-written ufunc::add
  */
 export type Kernel = { key: string; kernel: string; decl: string; via?: string; inner?: string };
 
 const fullName = (d: Pick<OpDecl, "name" | "overload">) => (d.overload ? `${d.name}.${d.overload}` : d.name);
 
-/** native_functions.yaml 的文本 → 每条 func */
+/** native_functions.yaml text → every func */
 export function parseOps(text: string): OpDecl[] {
   const raw = parse(text) as Record<string, unknown>[] | null;
   const lines: number[] = [];
@@ -44,7 +45,7 @@ export function parseOps(text: string): OpDecl[] {
       name: m[1], overload: m[2] ?? "", line: lines[i] ?? 0, dispatch, structured: e.structured === true,
       delegate: typeof e.structured_delegate === "string" ? e.structured_delegate : undefined,
       ufunc: !!e.ufunc_inner_loop, variants: String(e.variants ?? "function").split(",").map((v) => v.trim()),
-      out: /\*[^]*Tensor\(\w!\)/.test(m[3]), // 关键字参数里有可写的 Tensor：out 变体
+      out: /\*[^]*Tensor\(\w!\)/.test(m[3]), // a writable Tensor among the keyword arguments: an out variant
     });
   });
   return out;
@@ -56,10 +57,10 @@ export function opTable(root: string, yaml: string, decls: OpDecl[]): OpTable {
   return { root, yaml, decls, byName, byFull };
 }
 
-/** torchgen 的 cpp.name：add_ → add_；out 变体加 _out（没有 dispatch 时 CompositeImplicitAutograd 的 kernel 名） */
+/** torchgen's cpp.name: add_ → add_, out variants get _out (the CompositeImplicitAutograd kernel name of a func without dispatch) */
 const cppName = (d: OpDecl) => d.name + (d.out ? "_out" : "");
 
-/** 一条 func 的全部 kernel：自己写的 dispatch；structured_delegate 指向的那条的（自己没写的键）；ufunc 的 CPU / CUDA；都没有 = CompositeImplicitAutograd */
+/** All kernels of a func: its own dispatch; the keys it lacks from its structured_delegate; ufunc CPU / CUDA; none = CompositeImplicitAutograd */
 export function declKernels(t: OpTable, d: OpDecl): Kernel[] {
   const own: Kernel[] = d.dispatch.map(([key, kernel]) => ({ key, kernel, decl: fullName(d) }));
   const has = (key: string, xs: Kernel[]) => xs.some((k) => k.key === key);
@@ -71,15 +72,15 @@ export function declKernels(t: OpTable, d: OpDecl): Kernel[] {
   return out;
 }
 
-/** 0 = CUDA，1 = CPU，2 = Composite*，3 = 其余（MPS、XPU、Sparse、Nested、Meta…） */
+/** 0 = CUDA, 1 = CPU, 2 = Composite*, 3 = the rest (MPS, XPU, Sparse, Nested, Meta…) */
 export const keyRank = (key: string) => (key === "CUDA" ? 0 : key === "CPU" ? 1 : /^Composite/.test(key) ? 2 : 3);
 
 /**
- * 算子 name（可带 overload）的 kernel：CUDA 在前，然后 CPU、Composite；有这三类时其余的键（MPS、Sparse…）不列。
- * 同一个 C++ 名字的几个键并成一条（键用逗号连起来）
+ * The kernels of op name (overload optional): CUDA first, then CPU, Composite; the other keys only when none of these exists.
+ * Keys sharing one C++ name become one entry (keys joined with commas)
  */
 export function kernelsOf(t: OpTable, name: string, overload?: string): Kernel[] {
-  // 没给 overload：默认的那个在前，然后别的非 out 变体，out 变体最后（边界写的是最像调用处的那条）
+  // no overload given: the default func first, then other non-out ones, out variants last (the boundary names the one most like the call)
   const rank = (d: OpDecl) => (!d.overload ? 0 : d.out ? 2 : 1);
   const decls = overload !== undefined ? [t.byFull.get(overload ? `${name}.${overload}` : name)].filter((d): d is OpDecl => !!d)
     : [...(t.byName.get(name) ?? [])].sort((a, b) => rank(a) - rank(b));
@@ -96,106 +97,190 @@ export function kernelsOf(t: OpTable, name: string, overload?: string): Kernel[]
 
 const isCudaFile = (abs: string) => /\.(cu|cuh)$/.test(abs) || /[\\/](cuda|cudnn|miopen)[\\/]/.test(abs);
 
-// 算子要的文件：yaml 往上两层（aten/src/ATen）和 torch/csrc 下的代码文件在后台读一遍文本（点击时不扫工作区），
-// 顺便记下 DispatchStub 的注册、注册给 Python 的名字、宏生成的 kernel；构建目录里生成的 Ufunc*.cpp / .cu（名字索引不看 build/）单独读
+// The scan: code files under aten/src/ATen (two levels above the yaml) and torch/csrc, plus the generated Ufunc*.cpp / .cu of the build
+// (the name index skips build/). It keeps definition sites and registrations, never file texts: per file what it registers and which
+// of the wanted names (kernels, registration targets) it mentions, and the tree-sitter symbols of the few generated files.
 
-/** 一处注册：在哪个文件哪一行，注册的目标（qual）；macro = REGISTER_*DISPATCH；how = pybind 的 .def / m.def、PyMethodDef */
+/** A registration: file and line, the registered target (qual); how = REGISTER_*DISPATCH, pybind .def / m.def, PyMethodDef */
 export type Reg = { abs: string; line: number; target?: string; lambda?: true; how: string };
+/** A kernel defined by a macro call (CREATE_UNARY_TORCH_IMPL_FUNC(acos_out, acos_stub)) */
+type MacroSite = { abs: string; line: number; macro: string; sig: string };
+/** What one file adds to the scan's tables */
+type FileRec = { regs: [string, Reg][]; pyRegs: [string, Reg][]; macros: [string, MacroSite][]; words: string[]; gen: IndexEntry[] };
 type Scan = {
-  ready: Promise<void>; regs: Map<string, Reg[]>; pyRegs: Map<string, Reg[]>; macros: Map<string, { abs: string; line: number; macro: string; sig: string }[]>;
-  gen: Map<string, IndexEntry[]>; genDir: string; ms?: number; files?: number;
-  /** 要找的名字（kernel、注册的目标）出现在哪些文件里 */
+  t: OpTable; aten: string; csrc: string; genDir: string;
+  /** Names to find in files: kernels and ufunc inner loops from the yaml, then registration targets; values are flat copies */
+  wanted: Map<string, string>;
+  files: Map<string, FileRec>;
+  regs: Map<string, Reg[]>; pyRegs: Map<string, Reg[]>; macros: Map<string, MacroSite[]>; gen: Map<string, IndexEntry[]>;
+  /** Wanted name → files that mention it */
   where: Map<string, Set<string>>;
-  /** 用时（ms）：注册、名字出现在哪、生成的文件 */
-  phases?: number[];
+  ready: Promise<void>;
+  /** File updates run one after another, after the scan */
+  queue: Promise<void>;
+  dead?: true;
+  ms?: number;
 };
 const scans = new Map<string, Scan>();
 
 const push = <V>(m: Map<string, V[]>, k: string, v: V) => (m.get(k) ?? m.set(k, []).get(k)!).push(v);
 const MACRO_CALL = /^[ \t]*([A-Z][A-Z0-9_]*)\s*\(([^()]*)\)/gm;
+const UFUNC_FILE = /^Ufunc\w*\.(cpp|cu)$/;
+// Substrings of a file text keep the whole text alive (V8 sliced strings): every string the scan keeps is copied out
+const own = (s: string) => Buffer.from(s, "utf8").toString("utf8");
 
-function regsOf(x: Scan, kernels: Set<string>, abs: string, text: string, aten: boolean, csrc: boolean) {
+const inScan = (x: Scan, abs: string) => (path.dirname(abs) === x.genDir ? UFUNC_FILE.test(path.basename(abs)) : isCode(abs) && (abs.startsWith(x.aten) || abs.startsWith(x.csrc)));
+const isGen = (x: Scan, abs: string) => path.dirname(abs) === x.genDir;
+
+/** What a file registers, the kernels its macro calls define, and the wanted names it mentions */
+function scanText(x: Scan, abs: string, text: string): FileRec {
+  const rec: FileRec = { regs: [], pyRegs: [], macros: [], words: [], gen: [] };
+  const aten = isGen(x, abs) || abs.startsWith(x.aten), csrc = abs.startsWith(x.csrc);
   if (aten) {
-    for (const r of dispatchAll(text)) push(x.regs, r.name, { abs, line: r.line, target: r.target, how: r.macro });
-    let starts: number[] | undefined, n = 0; // 宏调用按顺序出现：行号接着往下数
+    for (const r of dispatchAll(text)) rec.regs.push([own(r.name), { abs, line: r.line, target: r.target && own(r.target), how: own(r.macro) }]);
+    let starts: number[] | undefined, n = 0; // macro calls come in order: keep counting lines from the last one
     const lineAt = (i: number) => { starts ??= [...text.matchAll(/\n/g)].map((m) => m.index); while (n < starts.length && starts[n] < i) n++; return n + 1; };
     for (const m of text.matchAll(MACRO_CALL)) for (const id of m[2].match(/\b[A-Za-z_]\w*\b/g) ?? []) {
-      if (kernels.has(id)) push(x.macros, id, { abs, line: lineAt(m.index), macro: m[1], sig: m[0].trim() });
+      const k = x.wanted.get(id);
+      if (k) rec.macros.push([k, { abs, line: lineAt(m.index), macro: own(m[1]), sig: own(m[0].trim()) }]);
     }
   }
   if (csrc) {
-    for (const r of pybindAll(text)) push(x.pyRegs, r.name, { abs, line: r.line, target: r.target, lambda: r.lambda, how: `pybind · ${path.basename(abs)} ${r.how}` });
-    for (const r of pyMethodAll(text)) push(x.pyRegs, r.name, { abs, line: r.line, target: r.target, how: `PyMethodDef · ${path.basename(abs)}` });
+    for (const r of pybindAll(text)) rec.pyRegs.push([own(r.name), { abs, line: r.line, target: r.target && own(r.target), lambda: r.lambda, how: `pybind · ${path.basename(abs)} ${r.how}` }]);
+    for (const r of pyMethodAll(text)) rec.pyRegs.push([own(r.name), { abs, line: r.line, target: r.target && own(r.target), how: `PyMethodDef · ${path.basename(abs)}` }]);
   }
+  if (isGen(x, abs)) {
+    for (const s of symbolsOf(langOf(abs), text)) if (s.kind === "def") rec.gen.push({ name: own(s.name), qual: own(s.qual), kind: s.kind, abs, start: s.start, end: s.end, defLine: s.defLine, sig: own(s.sig) });
+  } else rec.words = wordsIn(x, text);
+  return rec;
 }
 
-async function scan(t: OpTable, x: Scan) {
+function wordsIn(x: Scan, text: string): string[] {
+  const seen = new Set<string>();
+  for (const m of text.matchAll(/\b[A-Za-z_]\w*/g)) { const k = x.wanted.get(m[0]); if (k) seen.add(k); }
+  return [...seen];
+}
+
+function addRec(x: Scan, abs: string, rec: FileRec) {
+  x.files.set(abs, rec);
+  for (const [k, r] of rec.regs) push(x.regs, k, r);
+  for (const [k, r] of rec.pyRegs) push(x.pyRegs, k, r);
+  for (const [k, m] of rec.macros) push(x.macros, k, m);
+  for (const e of rec.gen) push(x.gen, e.name, e);
+  for (const w of rec.words) (x.where.get(w) ?? x.where.set(w, new Set()).get(w)!).add(abs);
+}
+
+function dropRec(x: Scan, abs: string) {
+  const rec = x.files.get(abs);
+  if (!rec) return;
+  x.files.delete(abs);
+  const drop = <V extends { abs: string }>(m: Map<string, V[]>, keys: Iterable<string>) => {
+    for (const k of keys) { const rest = (m.get(k) ?? []).filter((v) => v.abs !== abs); if (rest.length) m.set(k, rest); else m.delete(k); }
+  };
+  drop(x.regs, rec.regs.map(([k]) => k));
+  drop(x.pyRegs, rec.pyRegs.map(([k]) => k));
+  drop(x.macros, rec.macros.map(([k]) => k));
+  drop(x.gen, rec.gen.map((e) => e.name));
+  for (const w of rec.words) { const s = x.where.get(w); s?.delete(abs); if (s && !s.size) x.where.delete(w); }
+}
+
+/** Registration targets become wanted names (their definitions are looked up like kernels) */
+function wantTargets(x: Scan, rec: FileRec) {
+  for (const [, r] of [...rec.regs, ...rec.pyRegs]) if (r.target) { const n = r.target.split("::").pop()!; if (!x.wanted.has(n)) x.wanted.set(n, own(n)); }
+}
+
+async function scan(x: Scan) {
   const t0 = performance.now();
-  const aten = path.dirname(path.dirname(t.yaml)) + path.sep, csrc = path.join(t.root, "torch", "csrc") + path.sep;
-  const kernels = new Set(t.decls.flatMap((d) => d.dispatch.map(([, k]) => k)).concat(t.decls.filter((d) => !d.dispatch.length && !d.delegate).map(cppName)));
-  const files = (await indexedFiles()).map((f) => f.abs).filter((a) => a.startsWith(aten) || a.startsWith(csrc));
+  const files = (await indexedFiles()).map((f) => f.abs).filter((a) => inScan(x, a));
+  let gen: string[] = [];
+  try { gen = (await fs.readdir(x.genDir)).filter((f) => UFUNC_FILE.test(f)).map((f) => path.join(x.genDir, f)); } catch { /* never built */ }
+  // Two passes: the first finds the registrations (and the kernels' files), whose targets the second looks for.
+  // Files are read twice rather than kept: 4k files of text are ~80 MB of heap
   let n = 0;
-  // 只读文本、不做语法分析（几千个文件几秒）：第一遍记注册，第二遍记要找的名字（kernel、注册的目标）出现在哪些文件里，
-  // 点击时只分析那几个文件
-  for (const abs of files) {
+  for (const abs of [...gen, ...files]) {
+    if (x.dead) return;
     const text = await readText(abs, false);
-    if (text === null) continue;
-    regsOf(x, kernels, abs, text, abs.startsWith(aten), abs.startsWith(csrc));
+    if (text !== null) { const rec = scanText(x, abs, text); addRec(x, abs, rec); wantTargets(x, rec); }
     if (++n % 64 === 0) await sleep(0);
   }
-  const t1 = performance.now();
-  const wanted = new Set(kernels);
-  for (const m of [x.regs, x.pyRegs]) for (const rs of m.values()) for (const r of rs) if (r.target) wanted.add(r.target.split("::").pop()!);
-  for (const d of t.decls) for (const k of declKernels(t, d)) { wanted.add(k.kernel); if (k.inner) wanted.add(k.inner); }
-  let k = 0;
   for (const abs of files) {
-    const text = await readText(abs, false);
-    if (text === null) continue;
-    for (const m of text.matchAll(/\b[A-Za-z_]\w*/g)) if (wanted.has(m[0])) { const fs2 = x.where.get(m[0]) ?? x.where.set(m[0], new Set()).get(m[0])!; fs2.add(abs); }
-    if (++k % 64 === 0) await sleep(0);
+    if (x.dead) return;
+    const rec = x.files.get(abs);
+    const text = rec && (await readText(abs, false));
+    if (!rec || !text) continue;
+    const had = new Set(rec.words), words = wordsIn(x, text).filter((w) => !had.has(w));
+    rec.words.push(...words);
+    for (const w of words) (x.where.get(w) ?? x.where.set(w, new Set()).get(w)!).add(abs);
+    if (++n % 64 === 0) await sleep(0);
   }
-  const t2 = performance.now();
-  // 生成的 ufunc kernel 和它们的 DispatchStub 注册（build/aten/src/ATen/Ufunc*）
-  let gen: string[] = [];
-  try { gen = (await fs.readdir(x.genDir)).filter((f) => /^Ufunc\w*\.(cpp|cu)$/.test(f)).map((f) => path.join(x.genDir, f)); } catch { /* 没构建过 */ }
-  for (const abs of gen) {
-    const text = await readText(abs, false);
-    if (text === null) continue;
-    for (const s of symbolsOf(langOf(abs), text)) if (s.kind === "def") push(x.gen, s.name, { name: s.name, qual: s.qual, kind: s.kind, abs, start: s.start, end: s.end, defLine: s.defLine, sig: s.sig });
-    regsOf(x, kernels, abs, text, true, false);
-    await sleep(0);
-  }
-  x.ms = Math.round(performance.now() - t0); x.files = n + gen.length;
-  x.phases = [t1 - t0, t2 - t1, performance.now() - t2].map(Math.round);
-  log("info", `op index: ${x.files} files of ${t.root} read, ${x.regs.size} dispatch stubs, ${x.pyRegs.size} Python names, ${x.ms} ms`);
+  x.ms = Math.round(performance.now() - t0);
+  log("info", `op index: ${x.files.size} files of ${x.t.root} read, ${x.regs.size} dispatch stubs, ${x.pyRegs.size} Python names, ${x.ms} ms`);
 }
 
-/** 这份 PyTorch 的扫描（第一次要的时候开始；点击等它扫完，之后都是查表） */
+/** A file in the scan changed (saved, created, changed outside, deleted): redo just that file once the scan is done */
+function rescanFile(x: Scan, abs: string) {
+  x.queue = x.queue.then(async () => {
+    await x.ready;
+    if (x.dead) return;
+    const text = await readText(abs, false);
+    dropRec(x, abs);
+    if (text === null) return;
+    const rec = scanText(x, abs, text);
+    addRec(x, abs, rec);
+    // New registration targets: look for them in this file now; elsewhere they resolve through the name index (regTarget)
+    const before = x.wanted.size;
+    wantTargets(x, rec);
+    if (x.wanted.size !== before) { dropRec(x, abs); addRec(x, abs, scanText(x, abs, text)); }
+  }).catch((e) => log("warn", `op index: cannot update ${abs}: ${e instanceof Error ? e.message : e}`));
+}
+
+/** The scan and the file updates queued so far are done */
+const settled = (x: Scan) => x.ready.then(() => x.queue);
+
+/** This PyTorch's scan (starts the first time it is asked for; clicks wait for it, then only look up tables) */
 export function scanOf(t: OpTable): Scan {
   let x = scans.get(t.root);
   if (!x) {
-    x = { ready: Promise.resolve(), regs: new Map(), pyRegs: new Map(), macros: new Map(), gen: new Map(), where: new Map(), genDir: path.join(t.root, "build", "aten", "src", "ATen") };
-    x.ready = whenAnalysisReady().then(() => scan(t, x!)).catch((e) => log("warn", `op index: scan failed: ${e instanceof Error ? e.message : e}`));
-    scans.set(t.root, x);
+    const wanted = new Map<string, string>();
+    for (const d of t.decls) for (const k of declKernels(t, d)) for (const n of [k.kernel, k.inner]) if (n && !wanted.has(n)) wanted.set(n, own(n));
+    const s: Scan = {
+      t, aten: path.dirname(path.dirname(t.yaml)) + path.sep, csrc: path.join(t.root, "torch", "csrc") + path.sep, genDir: path.join(t.root, "build", "aten", "src", "ATen"),
+      wanted, files: new Map(), regs: new Map(), pyRegs: new Map(), macros: new Map(), gen: new Map(), where: new Map(), ready: Promise.resolve(), queue: Promise.resolve(),
+    };
+    s.ready = whenAnalysisReady().then(() => scan(s)).catch((e) => log("warn", `op index: scan failed: ${e instanceof Error ? e.message : e}`));
+    scans.set(t.root, (x = s));
   }
   return x;
 }
-/** 打开白板时：找 yaml、开始扫，等扫完 */
+/** When a board opens: find the yaml, start the scan, wait for it */
 export async function warmOps() { await Promise.all((await opTables()).map((t) => scanOf(t).ready)); }
 
-/** name 的定义：文本里出现过它的那几个文件（分析进名字索引，已经分析过的不重做）+ 生成的文件 */
+/** The registrations of a DispatchStub */
+export async function stubRegs(t: OpTable, stub: string): Promise<Reg[]> {
+  const x = scanOf(t);
+  await settled(x);
+  return x.regs.get(stub) ?? [];
+}
+/** The pybind / PyMethodDef registrations of a Python name */
+export async function pyRegs(t: OpTable, name: string): Promise<Reg[]> {
+  const x = scanOf(t);
+  await settled(x);
+  return x.pyRegs.get(name) ?? [];
+}
+
+/** Definitions of name: in the files that mention it (analyzed into the name index, once) and in the generated files */
 export async function defsOf(t: OpTable, name: string): Promise<IndexEntry[]> {
   const x = scanOf(t);
-  await x.ready;
+  await settled(x);
   const out: IndexEntry[] = [];
   for (const abs of x.where.get(name) ?? []) for (const e of await entriesOf(abs)) if (e.name === name) out.push(e);
   return [...out, ...(x.gen.get(name) ?? [])];
 }
 
-/** kernel 的 C++ 定义：at::native::name 优先，CUDA 的键优先 .cu / cuda/ 里的，其余优先不在里面的；ufunc 先找生成的 ufunc_add_CUDA，没有就是 ufunc::add */
+/** A kernel's C++ definition: at::native::name first; for CUDA keys the ones in .cu / cuda/, else the others; ufunc: the generated ufunc_add_CUDA, else ufunc::add */
 export async function kernelEntry(t: OpTable, k: Kernel): Promise<IndexEntry | undefined> {
-  const aten = path.dirname(path.dirname(t.yaml)) + path.sep, gen = scanOf(t).genDir + path.sep;
-  const ok = (e: IndexEntry) => e.kind === "def" && (e.abs.startsWith(aten) || e.abs.startsWith(gen)) && grammarOfFile(e.abs) === "cpp";
+  const x = scanOf(t);
+  const ok = (e: IndexEntry) => e.kind === "def" && (e.abs.startsWith(x.aten) || isGen(x, e.abs)) && grammarOfFile(e.abs) === "cpp";
   let ents = (await defsOf(t, k.kernel)).filter(ok);
   if (!ents.length && k.inner) ents = (await defsOf(t, k.inner)).filter((e) => ok(e) && /(^|::)ufunc::/.test(e.qual));
   const cuda = k.key.split(", ")[0] === "CUDA";
@@ -204,18 +289,18 @@ export async function kernelEntry(t: OpTable, k: Kernel): Promise<IndexEntry | u
 }
 
 /**
- * 宏生成的 kernel：名字只出现在顶层一个全大写宏调用的实参里（CREATE_UNARY_TORCH_IMPL_FUNC(acos_out, acos_stub)）。
- * 目标是那一行（从那里再点 acos_stub）；## 拼出来的名字（FOREACH_BINARY_OP_SCALAR(add)）找不到
+ * A kernel made by a macro: its name is an argument of a top-level all-caps macro call (CREATE_UNARY_TORCH_IMPL_FUNC(acos_out, acos_stub)).
+ * The target is that line (click acos_stub from there)
  */
 export async function macroKernel(t: OpTable, k: Kernel): Promise<{ abs: string; sym: Sym } | null> {
   const x = scanOf(t);
-  await x.ready;
+  await settled(x);
   const cuda = k.key.split(", ")[0] === "CUDA";
   const m = [...(x.macros.get(k.kernel) ?? [])].sort((a, b) => (isCudaFile(a.abs) === cuda ? 0 : 1) - (isCudaFile(b.abs) === cuda ? 0 : 1))[0];
   return m ? { abs: m.abs, sym: { name: k.kernel, qual: `${m.macro}(${k.kernel})`, kind: "def", start: m.line, defLine: m.line, end: m.line, sig: m.sig, params: [] } } : null;
 }
 
-/** 名字索引的条目 → 带完整分析（参数）的符号 */
+/** A name index entry → the symbol with its full analysis (parameters) */
 export async function entrySym(e: IndexEntry): Promise<{ abs: string; sym: Sym } | null> {
   const text = await readText(e.abs);
   if (text === null) return null;
@@ -224,27 +309,45 @@ export async function entrySym(e: IndexEntry): Promise<{ abs: string; sym: Sym }
   return { abs: e.abs, sym };
 }
 
-/** kernel 的符号；索引里没有时找生成它的宏调用 */
+/** The kernel's symbol; without one in the index, the macro call that makes it */
 export async function kernelTarget(t: OpTable, k: Kernel): Promise<{ abs: string; sym: Sym } | null> {
   const best = await kernelEntry(t, k);
   return best ? entrySym(best) : macroKernel(t, k);
 }
 
-/** 注册的目标（qual）→ 定义：qual 的后缀对上，同一个文件里的优先 */
+/** A registration's target (qual) → its definition: the qual's tail matches, the registering file first */
 export async function regTarget(t: OpTable, r: Reg): Promise<IndexEntry | undefined> {
   const parts = r.target!.split("::");
-  const ents = (await defsOf(t, parts[parts.length - 1])).filter((e) => e.kind === "def" && grammarOfFile(e.abs) === "cpp" && e.qual.split("::").slice(-parts.length).join("::") === parts.join("::"));
+  const name = parts[parts.length - 1];
+  const fit = (e: IndexEntry) => e.kind === "def" && grammarOfFile(e.abs) === "cpp" && e.qual.split("::").slice(-parts.length).join("::") === parts.join("::");
+  const ents = (await defsOf(t, name)).filter(fit);
+  // a target added by an edit after the scan is only known in its own file and to the name index
+  if (!ents.length) ents.push(...(await entriesOf(r.abs)).filter((e) => e.name === name && fit(e)), ...knownEntries(name).filter(fit));
   return ents.find((e) => e.abs === r.abs) ?? ents[0];
 }
 
-// 找 yaml、解析（按文本缓存）
+// Finding and parsing the yaml (once per text; file events drop it)
 
 let found: Promise<string[]> | undefined;
-const parsed = new Map<string, { text: string; t: OpTable }>();
+const tables = new Map<string, Promise<OpTable | null>>();
 
-/** 工作区里的每一份 native_functions.yaml 一张表（没有就是空的：这个工作区不是 PyTorch） */
+async function loadTable(yaml: string): Promise<OpTable | null> {
+  const text = await readText(yaml, false);
+  if (text === null) return null;
+  const t0 = performance.now();
+  try {
+    const t = opTable(yaml.slice(0, yaml.length - OPS_YAML.length - 1), yaml, parseOps(text));
+    log("info", `op index: ${t.decls.length} ops from ${yaml}, ${Math.round(performance.now() - t0)} ms`);
+    return t;
+  } catch (e) {
+    log("warn", `op index: cannot parse ${yaml}: ${e instanceof Error ? e.message : e}`);
+    return null;
+  }
+}
+
+/** One table per native_functions.yaml in the workspace (none: this workspace is not PyTorch) */
 export async function opTables(): Promise<OpTable[]> {
-  // 不另外搜工作区：名字索引列出的代码文件里有 …/aten/src/ATen/native/ 的，看那一份有没有 yaml（fork、vendored 的副本也算）
+  // no separate workspace search: code files the name index lists under …/aten/src/ATen/native/ tell where to look (forks, vendored copies)
   found ??= (async () => {
     const native = `${path.sep}${path.dirname(OPS_YAML).split("/").join(path.sep)}${path.sep}`;
     const roots = new Set<string>();
@@ -255,32 +358,46 @@ export async function opTables(): Promise<OpTable[]> {
   })().catch(() => []);
   const out: OpTable[] = [];
   for (const yaml of await found) {
-    const text = await readText(yaml, false);
-    if (text === null) continue;
-    let c = parsed.get(yaml);
-    if (c?.text !== text) {
-      const t0 = performance.now();
-      try { c = { text, t: opTable(yaml.slice(0, yaml.length - OPS_YAML.length - 1), yaml, parseOps(text)) }; }
-      catch (e) { log("warn", `op index: cannot parse ${yaml}: ${e instanceof Error ? e.message : e}`); continue; }
-      parsed.set(yaml, c);
-      log("info", `op index: ${c.t.decls.length} ops from ${yaml}, ${Math.round(performance.now() - t0)} ms`);
-    }
-    out.push(c.t);
+    let p = tables.get(yaml);
+    if (!p) tables.set(yaml, (p = loadTable(yaml)));
+    const t = await p;
+    if (t) out.push(t);
   }
   return out;
 }
-/** 点击所在的文件属于哪一份 PyTorch（不在任何一份里就用第一份） */
+/** The PyTorch a clicked file belongs to (the first one when it is in none) */
 export async function opTableFor(abs?: string): Promise<OpTable | undefined> {
   const ts = await opTables();
   return ts.find((t) => abs?.startsWith(t.root + path.sep)) ?? ts[0];
 }
-export function resetOpTables() { found = undefined; parsed.clear(); scans.clear(); }
 
-// 入口：调用处 → 算子名
+function dropScan(root: string) {
+  const x = scans.get(root);
+  if (x) { x.dead = true; scans.delete(root); }
+}
+export function resetOpTables() { found = undefined; tables.clear(); for (const r of [...scans.keys()]) dropScan(r); }
+
+/** A file was saved, created, changed outside the editor or deleted: the yaml drops its table and scan, a scanned file is redone */
+export function opsFileChanged(abs: string) {
+  if (abs.endsWith(path.sep + OPS_YAML.split("/").join(path.sep))) {
+    if (!tables.has(abs)) { found = undefined; return; } // a new PyTorch in the workspace
+    tables.delete(abs);
+    dropScan(abs.slice(0, abs.length - OPS_YAML.length - 1));
+    return;
+  }
+  for (const x of scans.values()) if (inScan(x, abs)) rescanFile(x, abs);
+}
+/** A file or folder was deleted */
+export function opsPathRemoved(p: string) {
+  for (const yaml of [...tables.keys()]) if (yaml === p || yaml.startsWith(p + path.sep)) opsFileChanged(yaml);
+  for (const x of scans.values()) for (const abs of [...x.files.keys()]) if (abs === p || abs.startsWith(p + path.sep)) rescanFile(x, abs);
+}
+
+// Entries: call site → op name
 
 export type OpEntry = { op: string; overload?: string; how: "explicit" | "torch" | "functional" | "method" | "at" };
 
-/** recv 的第一段按 import 换成模块全名：F.x → torch.nn.functional；from torch import _C → torch._C */
+/** The recv's first part through the imports, as a full module name: F.x → torch.nn.functional; from torch import _C → torch._C */
 export function resolveRecv(recv: string, imports: FileAnalysis["imports"]): string {
   const [head, ...rest] = recv.split(".");
   const im = imports.find((i) => i.name === head);
@@ -291,15 +408,15 @@ export function resolveRecv(recv: string, imports: FileAnalysis["imports"]): str
 const C_NS = /^torch\.(_C\._(VariableFunctions|nn|linalg|fft|special|nested|sparse)|_VF)$/;
 
 /**
- * Python 调用处 → 算子：torch.ops.aten.X(.overload)、torch._C._nn.X、torch._VF.X、torch.linalg.X 等（explicit）；torch.X；torch.nn.functional.X；
- * 其余的 recv.X（Tensor 方法，静态看不出 recv 是不是 Tensor，只当候选）。self / cls、import 进来的别的模块不算
+ * Python call site → op: torch.ops.aten.X(.overload), torch._C._nn.X, torch._VF.X, torch.linalg.X… (explicit); torch.X; torch.nn.functional.X;
+ * any other recv.X (a Tensor method: whether recv is a Tensor is not known statically, so only a candidate). self / cls and other imported modules are not
  */
 export function pyOpEntry(t: OpTable, site: Pick<CallSite, "name" | "recv">, imports: FileAnalysis["imports"]): OpEntry | null {
   if (!site.recv) return null;
   const full = resolveRecv(site.recv, imports);
   const ops = /^torch\.ops\.aten\.(\w+)(?:\.(\w+))?$/.exec(`${full}.${site.name}`);
   if (ops) return t.byName.has(ops[1]) ? { op: ops[1], overload: ops[2] === "default" ? "" : ops[2], how: "explicit" } : null;
-  // torch.linalg.norm → linalg_norm（torch/linalg 里是 _add_docstr(_linalg.linalg_norm, …)）
+  // torch.linalg.norm → linalg_norm (torch/linalg has _add_docstr(_linalg.linalg_norm, …))
   const sub = /^torch\.(linalg|fft|special)$/.exec(full);
   if (sub && t.byName.has(`${sub[1]}_${site.name}`)) return { op: `${sub[1]}_${site.name}`, how: "explicit" };
   if (!t.byName.has(site.name)) return null;
@@ -312,22 +429,22 @@ export function pyOpEntry(t: OpTable, site: Pick<CallSite, "name" | "recv">, imp
   return decls.some((d) => d.variants.includes("method")) ? { op: site.name, how: "method" } : null;
 }
 
-/** C++ 调用处 → 算子：at::X（生成的 Functions.h，进 dispatcher）、at::native::X（名字索引里没有这个函数时）、at::_ops::add_Tensor::call（生成的 Operators.h） */
+/** C++ call site → op: at::X (the generated Functions.h, into the dispatcher), at::native::X (when the index has no such function), at::_ops::add_Tensor::call */
 export function cppOpEntry(t: OpTable, site: Pick<CallSite, "name" | "recv">): OpEntry | null {
   const r = site.recv?.replace(/^::/, "");
   if ((r === "at" || r === "at::native") && t.byName.has(site.name)) return { op: site.name, how: "at" };
   const ops = /^at::_ops::(\w+)$/.exec(r ?? "")?.[1];
   if (ops && /^(call|redispatch)$/.test(site.name)) {
     if (t.byName.has(ops)) return { op: ops, overload: "", how: "at" };
-    // add_Tensor → add.Tensor：从右往左找第一个 _ 拆开对得上的
+    // add_Tensor → add.Tensor: the first _ from the right that splits into a known func
     for (let i = ops.lastIndexOf("_"); i > 0; i = ops.lastIndexOf("_", i - 1)) if (t.byFull.has(`${ops.slice(0, i)}.${ops.slice(i + 1)}`)) return { op: ops.slice(0, i), overload: ops.slice(i + 1), how: "at" };
   }
   return null;
 }
 
 /**
- * torch.X / torch.nn.functional.X 在 Python 里有自己的定义（torch/functional.py、torch/__init__.py、torch/nn/functional.py 的顶层 def）：
- * 那就照常去 Python 的定义（F.softmax 的 def 里再点 input.softmax）。路径相对 yaml 所在的那份 PyTorch
+ * torch.X / torch.nn.functional.X with a Python definition (a top-level def in torch/functional.py, torch/__init__.py, torch/nn/functional.py)
+ * goes to the Python as usual (in F.softmax's def, click input.softmax next). Paths are relative to the yaml's PyTorch
  */
 export async function pyDefinedInTorch(t: OpTable, name: string, how: OpEntry["how"]): Promise<boolean> {
   for (const f of how === "functional" ? ["torch/nn/functional.py"] : ["torch/functional.py", "torch/__init__.py"]) {
@@ -338,5 +455,5 @@ export async function pyDefinedInTorch(t: OpTable, name: string, how: OpEntry["h
   return false;
 }
 
-/** DispatchStub 的调用：第一个实参是设备（iter.device_type()、self.device().type()、kCPU、DeviceType::CUDA） */
+/** A DispatchStub call: the first argument is a device (iter.device_type(), self.device().type(), kCPU, DeviceType::CUDA) */
 export const isStubCall = (site: Pick<CallSite, "args">) => /device|DeviceType|^(at::|c10::)?k[A-Z][A-Za-z]+$/.test(site.args[0]?.text.trim() ?? "");

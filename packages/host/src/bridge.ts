@@ -12,7 +12,7 @@ import {
 import { analysisOf } from "./analysis";
 import { grepWord, lookupName, type IndexEntry } from "./nameindex";
 import { libOf } from "./scope";
-import { cppOpEntry, defsOf, entrySym, isStubCall, kernelsOf, kernelTarget, opTableFor, pyDefinedInTorch, pyOpEntry, regTarget, scanOf, type OpTable } from "./torchops";
+import { cppOpEntry, defsOf, entrySym, isStubCall, kernelsOf, kernelTarget, opTableFor, pyDefinedInTorch, pyOpEntry, pyRegs, regTarget, stubRegs, type OpTable } from "./torchops";
 import { hostPath, langOf, readText, splitLines } from "./ws";
 import { log } from "./log";
 
@@ -62,9 +62,7 @@ export async function viaRegistry(name: string, here?: string): Promise<Crossed[
   const out: Crossed[] = [];
   const ops = await opTableFor(here);
   if (ops) {
-    const x = scanOf(ops);
-    await x.ready;
-    for (const r of x.pyRegs.get(name) ?? []) {
+    for (const r of await pyRegs(ops, name)) {
       const e = r.lambda ? null : await regTarget(ops, r);
       const t = r.lambda ? await lambdaTarget(r.abs, r.line) : e ? await entrySym(e) : null;
       if (t) out.push({ t, mark: { bound: r.how } });
@@ -127,9 +125,7 @@ export async function viaOps(t: OpTable, op: string, overload?: string): Promise
 export async function viaStub(stub: string, t: OpTable): Promise<Crossed[]> {
   const out: Crossed[] = [];
   const order = (k: string) => (k === "CUDA" ? 0 : k === "CPU" ? 1 : 2);
-  const x = scanOf(t);
-  await x.ready;
-  for (const r of x.regs.get(stub) ?? []) {
+  for (const r of await stubRegs(t, stub)) {
     const key = stubDevice(r.how, r.abs);
     const e = await regTarget(t, r);
     const tg = e && (await entrySym(e));
