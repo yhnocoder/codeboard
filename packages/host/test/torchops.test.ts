@@ -8,7 +8,7 @@ import { dispatchOf, expand } from "../src/resolve";
 import { nameIndexReady, resetIndex, startNameIndex } from "../src/nameindex";
 import { forgetDefs } from "../src/defcache";
 import { useWorkspace } from "../src/ws";
-import { genDirOf, kernelsOf, opTable, opTables, parseOps, ufuncDir } from "../src/torchops";
+import { cppOpEntry, genDirOf, kernelsOf, opTable, opTables, parseOps, ufuncDir } from "../src/torchops";
 import { nodeWorkspace } from "./node-workspace";
 import { at, card, startTreeSitter } from "./helpers";
 
@@ -51,6 +51,14 @@ describe("native_functions.yaml", () => {
   it("ufunc ops: CPU / CUDA are the generated ufunc_add_CUDA / _CPU; keys sharing a kernel are joined", () => {
     expect(ks("add", "Tensor")).toEqual(["CUDA: ufunc:ufunc_add_CUDA (via add.out)", "CPU: ufunc:ufunc_add_CPU (via add.out)", "SparseCPU, SparseCUDA: add_sparse", "Meta: add_Tensor_meta"]);
     expect(ks("scatter_add")).toEqual(["CUDA, CPU, MPS: scatter_add (via scatter_add.out)"]);
+  });
+  it("follows structured_delegate over several levels to the func the kernels are written on", () => {
+    const m = opTable("/x", "/x/y", parseOps([
+      "- func: g(Tensor self) -> Tensor", "  structured_delegate: g.mid", "",
+      "- func: g.mid(Tensor self, int k) -> Tensor", "  structured_delegate: g.out", "",
+      "- func: g.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)", "  structured: True", "  dispatch:", "    CPU: g_cpu", "    CUDA: g_cuda", "",
+    ].join("\n")));
+    expect(kernelsOf(m, "g", "").map((k) => `${k.key}: ${k.kernel} ${k.decl} via ${k.via}`)).toEqual(["CUDA: g_cuda g via g.out", "CPU: g_cpu g via g.out"]);
   });
   it("finds the yaml in the workspace", async () => {
     expect((await opTables()).map((x) => x.root)).toEqual([FIX]);

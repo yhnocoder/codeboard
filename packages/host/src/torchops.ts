@@ -97,7 +97,8 @@ export function declKernels(t: OpTable, d: OpDecl): Kernel[] {
   const has = (key: string, xs: Kernel[]) => xs.some((k) => k.key === key);
   const out = [...own];
   const target = d.delegate ? t.byFull.get(d.delegate) : d.structured ? d : undefined;
-  if (target && target !== d) for (const k of declKernels(t, target)) if (!has(k.key, out)) out.push({ ...k, decl: fullName(d), via: k.decl });
+  // via = 写着 kernel 的那个 func（几层 structured_delegate 时是最后一层）
+  if (target && target !== d) for (const k of declKernels(t, target)) if (!has(k.key, out)) out.push({ ...k, decl: fullName(d), via: k.via ?? k.decl });
   if (target === d && d.ufunc) for (const key of ["CUDA", "CPU"]) if (!has(key, out)) out.push({ key, kernel: `ufunc_${d.name}_${key}`, decl: fullName(d), inner: d.name });
   if (!d.dispatch.length && !d.delegate) out.push({ key: "CompositeImplicitAutograd", kernel: cppName(d), decl: fullName(d) });
   return out;
