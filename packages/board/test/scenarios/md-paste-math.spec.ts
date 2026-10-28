@@ -1,7 +1,7 @@
 import * as path from "node:path";
 import { OUT, put, type Host } from "../harness";
 import { emptyBoard, type NoteCard } from "@codeboard/core";
-import { test, open, check, until, idle } from "../fixtures";
+import { test, open, check, until, idle, focusSettled, pmHasSelection } from "../fixtures";
 
 // A Markdown answer copied from a chat app (usage feedback #19): inline formulas right next to CJK text and punctuation,
 // with \text{…} and dots, single letters, "(1,2)" between two formulas, a display block, code spans and a rule
@@ -29,6 +29,14 @@ const INLINE = [
   "M", "N", "\\text{row} = \\text{blockIdx.y} \\times \\text{blockDim.y} + \\text{threadIdx.y}", "\\text{col} = \\text{blockIdx.x} \\times \\text{blockDim.x} + \\text{threadIdx.x}",
 ];
 const DISPLAY = PASTED.split("\n")[9];
+const HEAD = PASTED.split("\n")[0];
+/** One-line pastes over the word PH in LINE_NOTE: [card, pasted text/plain, saved Markdown] */
+const LINE_NOTE = "前面 PH 后面";
+const LINES: [string, string, string][] = [
+  ["lineMd", "单行 $x$ **粗**", "前面 单行 $x$ **粗** 后面"],
+  ["lineMarks", "价格 $5 与 x>1", "前面 价格 $5 与 x>1 后面"],
+  ["lineText", "普通的一行", "前面 普通的一行 后面"],
+];
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 /** A rendered display formula the way KaTeX puts it in a page: MathML with the TeX as an annotation, plus the drawn HTML */
@@ -48,6 +56,11 @@ function chatHtml(display: "literal" | "katex"): string {
 }
 
 const card = (id: string) => `.card[data-id="${id}"]`;
+/** The text of the editor's own selection (its state, not the DOM's) */
+const pmSelected = (h: Host) => h.page.evaluate(() => {
+  const s = (document.querySelector(".md-pm") as any).editor.state;
+  return s.doc.textBetween(s.selection.from, s.selection.to) as string;
+});
 const md = (h: Host, id: string) => (h.board().cards.find((c) => c.id === id) as NoteCard).md;
 /** Inline formulas (TeX in order), display blocks and the text outside formulas and code, in a card's editor or static body */
 const look = (h: Host, root: string) => h.page.evaluate((root) => {
@@ -64,11 +77,13 @@ const look = (h: Host, root: string) => h.page.evaluate((root) => {
 
 /** Pasting a chat app's Markdown answer into a Note turns every $…$ and $$…$$ into a formula, as typing them would: next to
  *  CJK text and punctuation, with \text{…} and dots, single letters; "(1,2)" between two formulas stays text; no literal $ is
- *  left, in the editor or after saving. Pasted as text/plain (Markdown) and as text/html (rendered, with the $ left as text) */
+ *  left, in the editor or after saving. Pasted as text/plain (Markdown) and as text/html (rendered, with the $ left as text).
+ *  The paste replaces the selected text (a whole paragraph's, or a word in one) as any editor's paste does */
 test("notePasteMarkdownWithMath", async () => {
   const b = emptyBoard("b1", "paste math");
   const ids = ["plain", "html", "katex"];
   ids.forEach((id, i) => put(b, { id, kind: "note", md: id, bg: true } as NoteCard, 40 + i * 480, 40, 440));
+  LINES.forEach(([id], i) => put(b, { id, kind: "note", md: LINE_NOTE, bg: true } as NoteCard, 1480, 40 + i * 320, 440));
   b.cam = { x: 0, y: 0, z: 0.75 };
   const h = await open({ board: b, light: true, w: 1500, h: 1500, settings: { theme: "warm-ink" } as any });
   const pg = h.page;
@@ -83,12 +98,35 @@ test("notePasteMarkdownWithMath", async () => {
     for (const [k, v] of Object.entries(d)) dt.setData(k, v);
     document.activeElement!.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true }));
   }, data);
+  // one line pasted over a word inside a paragraph replaces just that word: Markdown with a formula (parsed and inserted inline),
+  // text with a lone $ and a > (re-read as Markdown in place), plain text (ProseMirror's own paste)
+  for (const [id, text, want] of LINES) {
+    await pg.locator(`${card(id)} .nbody`).dblclick();
+    await pg.waitForSelector(`${card(id)} .md-pm`, { timeout: 5000 });
+    await focusSettled(pg);
+    await pg.keyboard.press("ControlOrMeta+End");
+    for (let i = 0; i < 3; i++) await pg.keyboard.press("ArrowLeft");
+    for (let i = 0; i < 2; i++) await pg.keyboard.press("Shift+ArrowLeft");
+    await pmHasSelection(pg);
+    check(`notePasteMarkdownWithMath ${id} word selected`, await pmSelected(h) === "PH", await pmSelected(h));
+    await paste({ "text/plain": text });
+    await pg.keyboard.press("Escape");
+    await until(h, "Esc saves the Note", () => md(h, id) !== LINE_NOTE);
+    check(`notePasteMarkdownWithMath ${id} replaces the selected word`, md(h, id) === want, md(h, id));
+  }
+  // editing zoomed the camera onto those Notes: fit the board again so the others are on screen
+  await pg.keyboard.press("Shift+!");
+  await idle(h);
   for (const id of ids) {
     await pg.locator(`${card(id)} .nbody`).dblclick();
     await pg.waitForSelector(`${card(id)} .md-pm`, { timeout: 5000 });
-    // the paste replaces the placeholder word
+    // the paste replaces the placeholder word. A real ⌘V's keydown makes ProseMirror read the DOM selection first; the synthetic
+    // paste has none, so wait until the editor has read the selection the keys made
+    await focusSettled(pg);
     await pg.keyboard.press("ControlOrMeta+End");
     await pg.keyboard.press("Shift+Home");
+    await pmHasSelection(pg);
+    check(`notePasteMarkdownWithMath ${id} placeholder selected`, await pmSelected(h) === id, await pmSelected(h));
     await paste(clip[id]);
     const ed = await look(h, `${card(id)} .md-pm`);
     check(`notePasteMarkdownWithMath ${id} formulas in the editor`, JSON.stringify(ed.tex) === JSON.stringify(INLINE) && ed.blocks === 1, { tex: ed.tex, blocks: ed.blocks });
@@ -98,6 +136,7 @@ test("notePasteMarkdownWithMath", async () => {
     await idle(h);
     await pg.waitForSelector(`${card(id)} .md-pm`, { state: "detached", timeout: 5000 });
     const saved = md(h, id), shown = await look(h, `${card(id)} .nbody`);
+    check(`notePasteMarkdownWithMath ${id} the paste replaces the placeholder`, saved.startsWith(`${HEAD}\n\n理想情况下`) && !saved.includes(id), saved.slice(0, 120));
     check(`notePasteMarkdownWithMath ${id} saved as $…$`, INLINE.every((t) => saved.includes(`$${t}$`)) && !saved.includes("\\$") && saved.includes(`$$\n${DISPLAY}\n$$`), saved);
     check(`notePasteMarkdownWithMath ${id} formulas after saving`, shown.tex.length === INLINE.length && shown.blocks === 1 && !shown.text.includes("$") && shown.text.includes("元素 (1,2) 的偏移是 "),
       { n: shown.tex.length, blocks: shown.blocks, text: shown.text.slice(0, 400) });
