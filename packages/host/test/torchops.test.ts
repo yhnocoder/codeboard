@@ -8,7 +8,7 @@ import { dispatchOf, expand } from "../src/resolve";
 import { nameIndexReady, resetIndex, startNameIndex } from "../src/nameindex";
 import { forgetDefs } from "../src/defcache";
 import { useWorkspace } from "../src/ws";
-import { cppOpEntry, genDirOf, kernelsOf, opTable, opTables, parseOps, ufuncDir } from "../src/torchops";
+import { cppOpEntry, genDirOf, kernelEntry, kernelsOf, opTable, opTables, parseOps, ufuncDir } from "../src/torchops";
 import { nodeWorkspace } from "./node-workspace";
 import { at, card, startTreeSitter } from "./helpers";
 
@@ -17,6 +17,10 @@ fs.cpSync(path.join(__dirname, "fixtures/torchops"), FIX, { recursive: true });
 // a Python name PyTorch does not register, but a test of a third-party library inside the checkout does
 fs.writeFileSync(path.join(FIX, "torch/cache.py"), "def lookup(c):\n    return c.fetch(1)\n");
 fs.mkdirSync(path.join(FIX, "third_party/pybind11/tests"), { recursive: true });
+// a sparse CUDA kernel with a CPU-build fallback of the same name in a .cpp file
+fs.mkdirSync(path.join(FIX, "aten/src/ATen/native/sparse/cuda"), { recursive: true });
+fs.writeFileSync(path.join(FIX, "aten/src/ATen/native/sparse/SparseTensorMath.cpp"), "namespace at::native {\n\nTensor& add_out_sparse_cuda(const Tensor& t, Tensor& r) {\n  TORCH_CHECK(false, \"not compiled with CUDA\");\n}\n\n}\n");
+fs.writeFileSync(path.join(FIX, "aten/src/ATen/native/sparse/cuda/SparseCUDATensorMath.cu"), "namespace at::native {\n\nTensor& add_out_sparse_cuda(const Tensor& t, Tensor& r) {\n  return r;\n}\n\n}\n");
 fs.writeFileSync(path.join(FIX, "third_party/pybind11/tests/t.cpp"), "struct Foo {};\n\nPYBIND11_MODULE(t, m) {\n  py::class_<Foo>(m, \"Foo\").def(\"fetch\", [](Foo& f, int k) { return k; });\n}\n");
 const YAML = "aten/src/ATen/native/native_functions.yaml";
 const seg = async (rel: string, qual: string) => (await card(path.join(FIX, rel), qual)).seg;
@@ -143,6 +147,11 @@ describe("clicks into PyTorch ops", () => {
     const a = await click(await seg("model.py", "run"), /_mtia_is_available/, "_mtia_is_available");
     expect(qualOf(a)).toBe("torch::mtia::is_available");
     expect(markOf(a)?.bound).toBe("pybind · Module.cpp m.def");
+  });
+  it("a kernel of a CUDA layout key (SparseCUDA) is the one in the .cu file", async () => {
+    const [t] = await opTables();
+    const e = await kernelEntry(t, { key: "SparseCUDA", kernel: "add_out_sparse_cuda", decl: "add.out" });
+    expect(e && path.relative(FIX, e.abs)).toBe("aten/src/ATen/native/sparse/cuda/SparseCUDATensorMath.cu");
   });
   it("a name PyTorch does not register is not looked for in the registrations of the rest of the workspace", async () => {
     const r = await click(await seg("torch/cache.py", "lookup"), /c\.fetch/, "fetch");

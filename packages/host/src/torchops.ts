@@ -132,10 +132,13 @@ export function kernelsOf(t: OpTable, name: string, overload?: string): Kernel[]
   return out;
 }
 
-/** 一个 kernel 的第一个 key 在不在这个文件的设备上（文件的设备和 REGISTER_DISPATCH 认的一样：.cu、cuda/ → CUDA，.mm、mps/ → MPS，其余 CPU） */
+/**
+ * 一个 kernel 的第一个 key 在不在这个文件的设备上（文件的设备和 REGISTER_DISPATCH 认的一样：.cu、cuda/ → CUDA，.mm、mps/ → MPS，其余 CPU）。
+ * 布局的 key 看后缀：SparseCUDA、NestedTensorCUDA 的在 CUDA 文件里
+ */
 const onDevice = (abs: string, key: string) => {
   const dev = stubDevice("REGISTER_DISPATCH", abs), k = key.split(", ")[0];
-  return dev === (k === "CUDA" || k === "MPS" ? k : "CPU");
+  return dev === (/CUDA$/.test(k) ? "CUDA" : /MPS$/.test(k) ? "MPS" : "CPU");
 };
 
 // 扫描：aten/src/ATen（yaml 往上两层）和 torch/csrc 下的代码文件，加上构建生成的 Ufunc*.cpp / .cu（名字索引跳过 build/）。
