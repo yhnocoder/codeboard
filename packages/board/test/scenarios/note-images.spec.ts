@@ -255,3 +255,38 @@ test("noteImageResize", async () => {
   check("noteImageResize double-click resets", widthIn(md(h, "n0")) === null && /!\[\]\(assets\/[^)]+\)$/.test(md(h, "n0")) && (await imgFrac(h, "n0", ".nbody")).frac > 0.99, { md: md(h, "n0") });
   await done();
 });
+
+/** A picture with a white background (a screenshot of a page): a frame or shadow around it would show against the Note */
+const PAGE_SRC = `data:image/png;base64,${screenshot(320, 180).toString("base64")}`;
+/** The image's own box and the wrapper the editor puts around it: everything that could draw a frame, padding or shadow */
+const frameOf = (h: Host, id: string, sel: string) => h.page.locator(`.card[data-id="${id}"] ${sel} img:not(.ProseMirror-separator)`).first().evaluate((el) => {
+  const look = (e: Element) => { const cs = getComputedStyle(e); return { shadow: cs.boxShadow, border: cs.borderTopWidth + cs.borderRightWidth + cs.borderBottomWidth + cs.borderLeftWidth, padding: cs.padding, bg: cs.backgroundColor, filter: cs.filter, outline: cs.outlineStyle }; };
+  const r = el.getBoundingClientRect();
+  return { img: look(el), wrap: el.parentElement!.classList.contains("md-img") ? look(el.parentElement!) : null, box: { x: Math.round(r.x * 10) / 10, y: Math.round(r.y * 10) / 10, w: Math.round(r.width * 10) / 10, h: Math.round(r.height * 10) / 10 } };
+});
+type Look = { shadow: string; border: string; padding: string; bg: string; filter: string; outline: string };
+const bare = (l: Look | null) => !l || (l.shadow === "none" && l.border === "0px0px0px0px" && l.padding === "0px" && l.bg === "rgba(0, 0, 0, 0)" && l.filter === "none");
+
+/** #22: an image in a Note is drawn bare, with no hairline frame, shadow, padding or background around it, the same in the
+ *  static view and in the editor; the editor still outlines the image while it is selected */
+test("noteImageNoFrame", async () => {
+  const { h, done } = await imageHost([`Pages the scheduler hands out:\n\n![](${PAGE_SRC})\n\nOne block per sequence.`]);
+  const pg = h.page;
+  await idle(h);
+  await imgBox(h, "n0", ".nbody");
+  const disp = await frameOf(h, "n0", ".nbody");
+  const r = (await pg.locator('.card[data-id="n0"]').boundingBox())!;
+  await pg.screenshot({ path: path.join(OUT, "22-note-image-frame.png"), clip: { x: r.x - 20, y: r.y - 20, width: r.width + 40, height: r.height + 40 } });
+  await editNote(h, "n0");
+  await imgBox(h, "n0", ".md-pm");
+  const edit = await frameOf(h, "n0", ".md-pm");
+  check("noteImageNoFrame static view", bare(disp.img), disp);
+  check("noteImageNoFrame editor", bare(edit.img) && bare(edit.wrap), edit);
+  check("noteImageNoFrame same in both", JSON.stringify(disp.box) === JSON.stringify(edit.box), { disp: disp.box, edit: edit.box });
+  await h.page.locator('.card[data-id="n0"] .md-pm img:not(.ProseMirror-separator)').first().click();
+  await pg.locator('.card[data-id="n0"] .md-pm .md-img.ProseMirror-selectednode').waitFor();
+  const picked = await frameOf(h, "n0", ".md-pm");
+  check("noteImageNoFrame selection outline kept", picked.wrap?.outline === "solid" && picked.wrap.shadow === "none", picked.wrap);
+  await exitEdit(h);
+  await done();
+});

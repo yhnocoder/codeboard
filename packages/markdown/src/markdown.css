@@ -63,7 +63,7 @@ math { font-size: 1.05em; }
 .md .md-annot[data-below]::after { top: auto; bottom: 1.3em; transform: scaleY(-1); }
 .md pre code { background: none; padding: 0; font: inherit; }
 .md pre.md-code { position: relative; color: var(--ink); }
-.md img { display: inline-block; vertical-align: middle; max-width: 100%; height: auto; margin: 4px 0; border-radius: 5px; box-shadow: 0 0 0 .5px var(--hair); }
+.md img { display: inline-block; vertical-align: middle; max-width: 100%; height: auto; margin: 4px 0; border-radius: 5px; }
 /* 缩小了的图（![a](u){width=40%}）在那一行居中：图是行内的，居中的是它所在的那一段（静态显示是 img.sized，编辑器是 .md-img.sized；
    列表项、表格格子里这一段的 <p> 静态显示也留着，见 render.ts）。图一般单独一段，和字在同一段时那一段的字也居中。
    :has() 里只写有类名的后代，不写 > * 这样的任意一层：那样 Chrome 会在白板上任何类名变化时（拖卡、悬停）重算所有卡的样式 */
