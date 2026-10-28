@@ -14,7 +14,7 @@ import CodeMark from "@tiptap/extension-code";
 import Document from "@tiptap/extension-document";
 import Paragraph from "@tiptap/extension-paragraph";
 import { MarkdownManager } from "@tiptap/markdown";
-import { Marked } from "marked";
+import { Marked, Tokenizer } from "marked";
 import { TaskList, TaskItem, ListItem, OrderedList } from "@tiptap/extension-list";
 import Image from "@tiptap/extension-image";
 import { Details, DetailsSummary, DetailsContent } from "@tiptap/extension-details";
@@ -314,8 +314,26 @@ const FnList = Footnotes.extend({ markdownTokenName: "footnotes", markdownTokeni
 // （停住以后打字、回车照样新起一段：它们找的是最近的文字块）
 const Doc = Document.extend({ content: "block+ footnotes?", allowGapCursor: true });
 
-// 图片是行内的：和字混在一段里照原样放（单独一段的图就是一段里只有它）
-const Img = Image.configure({ inline: true, allowBase64: true });
+// 图片是行内的：和字混在一段里照原样放（单独一段的图就是一段里只有它）。
+// 缩小了的图写成 ![a](u){width=40%}（Pandoc 的写法）：宽度是正文宽的百分之几，卡片变宽变窄时图跟着缩放；没写的占满（最宽就是正文宽）
+const IMG_WIDTH = /^\{width=(\d{1,3}(?:\.\d+)?)%\}/;
+/** s 开头是图片的宽度写法时给它（0 < 宽度 ≤ 100，别的数不认，照字留着） */
+function imageWidthAt(s: string): { width: number; raw: string } | undefined {
+  const m = IMG_WIDTH.exec(s), w = m ? Number(m[1]) : 0;
+  return m && w > 0 && w <= 100 ? { width: w, raw: m[0] } : undefined;
+}
+const pct = (v: string) => { const m = /^(\d+(?:\.\d+)?)%$/.exec(v.trim()); const w = m ? Number(m[1]) : 0; return w > 0 && w <= 100 ? w : null; };
+const Img = Image.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      // TipTap 自带的 width 是像素，这里是百分比（null = 占满）；HTML 里是 style 的 width（复制粘贴时跟着走）
+      width: { default: null, parseHTML: (e) => pct(e.style.width), renderHTML: (a) => (a.width ? { style: `width: ${a.width}%` } : {}) },
+    };
+  },
+  parseMarkdown: (t, h) => h.createNode("image", { src: t.href, title: t.title, alt: t.text, width: t.width ?? null }),
+  renderMarkdown(n, h, cx) { const md = this.parent!(n, h, cx); return n.attrs?.width ? `${md}{width=${n.attrs.width}%}` : md; },
+}).configure({ inline: true, allowBase64: true });
 // TipTap 的段落把只有一张图的一段解析成块级的图：这里图片是行内的，照样是一段
 const Para = Paragraph.extend({
   parseMarkdown(t, h) { return t.tokens?.length === 1 && t.tokens[0].type === "image" ? h.createNode("paragraph", undefined, h.parseInline(t.tokens)) : this.parent?.(t, h) ?? []; },
@@ -586,7 +604,14 @@ const mm = new MarkdownManager({
   marked: (() => {
     const m = new Marked();
     // _ 不当强调：__init__、block_manager 都是代码里的名字
-    m.use({ tokenizer: { emStrong(src: string) { return src[0] === "_" ? undefined : false; } } as any });
+    m.use({ tokenizer: {
+      emStrong(src: string) { return src[0] === "_" ? undefined : false; },
+      // 图片后面紧跟的 {width=…%} 是它的宽度（见 Img），连同图片一起读掉
+      link(this: Tokenizer, src: string) {
+        const t = Tokenizer.prototype.link.call(this, src), w = t?.type === "image" ? imageWidthAt(src.slice(t.raw.length)) : undefined;
+        return w ? { ...t!, raw: t!.raw + w.raw, width: w.width } : t ?? false;
+      },
+    } as any });
     return m as any;
   })(),
   extensions: baseExtensions,
@@ -612,11 +637,12 @@ const unshield = (s: string) => s.replace(/[-]/g, (c) => String.fromCharCo
 /** 文档内容 → Markdown。raw：字原样写出（不转义），把一段当 Markdown 源码重新解析时用（见 blockSource） */
 function toMd(content: JSONContent[], raw: boolean): string {
   const { nodes, marks } = mdSchema();
-  const prep = (ns: JSONContent[], code: boolean): JSONContent[] => ns.map((n) => {
+  const prep = (ns: JSONContent[], code: boolean): JSONContent[] => ns.map((n, i) => {
     if (n.type === "text") {
       if (code || n.marks?.some((m) => marks[m.type]?.spec.code)) return n;
-      // 标注里的字：{ } | 也要转义（它们会断开标注的写法）
-      const t = raw ? n.text! : escText(n.text!);
+      // 标注里的字：{ } | 也要转义（它们会断开标注的写法）；紧跟在图片后面、会被读成它的宽度的 {width=…%} 也转义
+      let t = raw ? n.text! : escText(n.text!);
+      if (!raw && ns[i - 1]?.type === "image" && imageWidthAt(t)) t = `\\${t}`;
       return { ...n, text: shield(n.marks?.some((m) => m.type === "annot") && !raw ? t.replace(/(?<!\\)[{}|]/g, "\\$&") : t) };
     }
     // 带格式的行内原子节点：先写成它自己的 Markdown，当作带同样格式的字（不转义），格式的记号就包在它外面

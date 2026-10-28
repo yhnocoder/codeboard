@@ -31,7 +31,7 @@ export function setAssetBase(b: string) {
 }
 
 /** 一张图的 <img> 属性（值为 null 的不写） */
-export function imageAttrs(a: { src?: string | null; alt?: string | null; title?: string | null }): Record<string, string | null> {
+export function imageAttrs(a: { src?: string | null; alt?: string | null; title?: string | null; width?: number | null }): Record<string, string | null> {
   const raw = a.src ?? "";
   const r = (raw && resolver?.(raw)) || { src: raw };
   let w = r.width, h = r.height;
@@ -43,6 +43,8 @@ export function imageAttrs(a: { src?: string | null; alt?: string | null; title?
   return {
     src: r.src, alt: a.alt ?? "", title: a.title || null,
     width: w && h ? String(w) : null, height: w && h ? String(h) : null,
+    // 缩小了的图：正文宽的百分之几，居中（.sized，见 markdown.css；编辑器里这个宽度在包着图的那一层上，见 editor/image.ts）
+    style: a.width ? `width: ${a.width}%` : null, class: a.width ? "sized" : null,
     loading: "lazy", decoding: "async",
   };
 }

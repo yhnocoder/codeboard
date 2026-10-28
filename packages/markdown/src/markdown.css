@@ -64,6 +64,9 @@ math { font-size: 1.05em; }
 .md pre code { background: none; padding: 0; font: inherit; }
 .md pre.md-code { position: relative; color: var(--ink); }
 .md img { display: inline-block; vertical-align: middle; max-width: 100%; height: auto; margin: 4px 0; border-radius: 5px; box-shadow: 0 0 0 .5px var(--hair); }
+/* 缩小了的图（![a](u){width=40%}）在那一行居中：图是行内的，居中的是它所在的那一块（静态显示是 img.sized，编辑器是 .md-img.sized；
+   列表项、表格格子在静态显示里不画那层 <p>）。图一般单独一段，和字在同一段时那一段的字也居中 */
+.md :is(p, li, td, th):has(> img.sized, > * > img.sized), .md-pm :is(p, li, td, th):has(> .md-img.sized, > * > .md-img.sized) { text-align: center; }
 .md kbd { font: .85em var(--mono); padding: 0 4px; border-radius: 4px; box-shadow: 0 0 0 .5px var(--hair), 0 1px 0 var(--hair); }
 .md :is(.math, [data-type="block-math"]) .katex-display { margin: 2px 0; }
 /* Note 里的调用点不能点，不画成链接 */
@@ -156,7 +159,17 @@ math { font-size: 1.05em; }
 .md-pm ol.footnotes li::marker { color: var(--ink-3); }
 .md-pm a { color: var(--k-fn); text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--k-fn) 40%, transparent); text-underline-offset: 2px; }
 .md-pm img { cursor: default; }
-.md-pm img.ProseMirror-selectednode { outline-offset: 2px; }
+/* 编辑器里的图包在 .md-img 里（editor/image.ts）：这一层照静态显示里 <img> 的样子排（行内块、居中对齐、上下边距、最宽占满），
+   图在里面占满它，所以和静态显示一样宽一样高、位置一样；缩小了的宽度（正文宽的百分比）写在这一层上 */
+.md-pm .md-img { display: inline-block; position: relative; vertical-align: middle; max-width: 100%; margin: 4px 0; border-radius: 5px; }
+.md-pm .md-img > img { display: block; margin: 0; }
+.md-pm .md-img.sized > img { width: 100%; }
+.md-pm .md-img.ProseMirror-selectednode { outline-offset: 2px; }
+/* 改宽度的把手：选中图时在它左右两个下角（和白板上贴纸、标记卡的改大小把手一个样子） */
+.md-pm .md-imgrip { display: none; position: absolute; bottom: -6px; width: 10px; height: 10px; border-radius: 3px; background: var(--surface); box-shadow: 0 0 0 1.5px var(--accent); touch-action: none; }
+.md-pm .md-imgrip.l { left: -6px; cursor: nesw-resize; }
+.md-pm .md-imgrip.r { right: -6px; cursor: nwse-resize; }
+.md-pm .md-img.ProseMirror-selectednode > .md-imgrip, .md-pm .md-img.resizing > .md-imgrip { display: block; }
 .md-ghost { color: var(--ink-3); opacity: .85; pointer-events: none; user-select: none; -webkit-user-select: none; }
 /* 光标所在处显示的 Markdown 记号（editor/typora.ts） */
 .md-pm .md-mk, .md-pm .md-mka::before, .md-pm .md-mkb::after { color: var(--ink-3); opacity: .75; font-family: var(--mono); font-size: .85em; font-weight: 400; font-style: normal; text-decoration: none; user-select: none; -webkit-user-select: none; }

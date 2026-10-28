@@ -27,6 +27,42 @@ describe("image Markdown round trip", () => {
   });
 });
 
+describe("image width", () => {
+  const img = (s: string) => parseMd(s).content![0].content!.find((n) => n.type === "image")!;
+  it("reads {width=N%} after an image as its width and writes it back the same", () => {
+    for (const s of ["![a](assets/a.png){width=40%}", "see ![a](assets/a.png){width=33.5%} here", "![x](https://a.b/c.png \"Title\"){width=100%}", "[![a](assets/a.png){width=20%}](https://l.test)", "**![a](assets/a.png){width=20%}** b"]) {
+      expect(rt(s)).toBe(s);
+    }
+    expect(img("![a](assets/a.png){width=40%}").attrs).toMatchObject({ src: "assets/a.png", alt: "a", width: 40 });
+    expect(img("![a](assets/a.png)").attrs!.width).toBeNull();
+  });
+  it("writes an image's width (what a resize sets) and nothing for a full-width one", () => {
+    const doc = (width: number | null) => ({ type: "doc", content: [{ type: "paragraph", content: [{ type: "image", attrs: { src: "assets/a.png", alt: "", width } }] }] });
+    expect(serializeMd(doc(25))).toBe("![](assets/a.png){width=25%}");
+    expect(serializeMd(doc(null))).toBe("![](assets/a.png)");
+    expect(img(serializeMd(doc(25))).attrs!.width).toBe(25);
+  });
+  it("leaves other braces as text: out of range, not right after the image, or escaped", () => {
+    for (const s of ["![a](assets/a.png){width=150%}", "![a](assets/a.png){width=0%}", "![a](assets/a.png) {width=40%}", "![a](assets/a.png){height=40%}"]) {
+      expect(rt(s)).toBe(s);
+      expect(img(s).attrs!.width).toBeNull();
+    }
+    expect(img("![a](assets/a.png)\\{width=40%}").attrs!.width).toBeNull();
+  });
+  it("escapes text that would read back as the width of the image before it", () => {
+    const doc = { type: "doc", content: [{ type: "paragraph", content: [{ type: "image", attrs: { src: "assets/a.png", alt: "" } }, { type: "text", text: "{width=40%} literal" }] }] };
+    const md = serializeMd(doc);
+    expect(md).toBe("![](assets/a.png)\\{width=40%} literal");
+    expect(parseMd(md).content![0].content).toMatchObject([{ type: "image", attrs: { width: null } }, { type: "text", text: "{width=40%} literal" }]);
+  });
+  it("renders the width as a percentage of the body, centered", () => {
+    const im = imgOf(renderMd("![](assets/w.png){width=40%}"));
+    expect(im.style.width).toBe("40%");
+    expect(im.classList.contains("sized")).toBe(true); // centered (markdown.css)
+    expect(imgOf(renderMd("![](assets/w.png)")).hasAttribute("style")).toBe(false);
+  });
+});
+
 describe("image render", () => {
   it("leaves the address alone without a resolver, and decodes lazily", () => {
     const im = imgOf(renderMd("![cat](assets/c.png)"));
