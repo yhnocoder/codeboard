@@ -112,6 +112,26 @@ describe("op index updates", () => {
     W.fire.delete.fire([b.p]);
     await drained();
   });
+  it("opens a registration or a macro-defined kernel at its new line when clicked right after its file was saved, while earlier updates wait", async () => {
+    const b = await blockingFile("UfuncCPU_blocked3.cpp");
+    fs.writeFileSync(abs("use_mtia.py"), "import torch\n\n\ndef built():\n    return torch._C._mtia_isBuilt()\n");
+    edit("torch/csrc/mtia/Module.cpp", /^/, "// moved down\n".repeat(8));
+    W.fire.save.fire(abs("torch/csrc/mtia/Module.cpp"));
+    edit("aten/src/ATen/native/UnaryOps.cpp", /^/, "// moved down\n".repeat(8));
+    W.fire.save.fire(abs("aten/src/ATen/native/UnaryOps.cpp"));
+    try {
+      const r = await click(await seg("use_mtia.py", "built"), /_mtia_isBuilt/, "_mtia_isBuilt");
+      expect(target(r)).toBe("torch/csrc/mtia/Module.cpp torch::mtia::initModule · lambda");
+      expect("card" in r && r.card.segments[0].start).toBe(19);
+      // a kernel defined by a macro call
+      const a = await click(await seg("model.py", "run"), /torch\.acos/, "acos");
+      expect("card" in a && a.card.segments[0]).toMatchObject({ start: 16, text: ["CREATE_UNARY_TORCH_IMPL_FUNC(acos_out, acos_stub)"] });
+    } finally { b.release(""); }
+    await drained();
+    fs.rmSync(b.p);
+    W.fire.delete.fire([b.p]);
+    await drained();
+  });
   it("redoes the second pass once for several pasting macros changed while updates were queued", async () => {
     const b = await blockingFile("UfuncCPU_blocked2.cpp");
     const other = abs("aten/src/ATen/native/UnaryOps.cpp"), before = reads.get(other) ?? 0;

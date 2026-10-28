@@ -161,6 +161,8 @@ type Scan = {
   queue: Promise<void>;
   /** 排着、还没开始的文件更新（同一个文件再变只排一次：git checkout 一下来几千个事件，保存还会从 onDidSave 和监听各来一次） */
   pending: Set<string>;
+  /** 正在做的文件更新 */
+  updating: Map<string, Promise<void>>;
   /** 排着、还没开始的第 2 遍重做 / 构建目录重找（一次就够） */
   retarget?: true; rebuild?: true;
   dead?: true;
@@ -374,8 +376,20 @@ function rescanFile(x: Scan, abs: string) {
   if (x.pending.has(abs)) return;
   x.pending.add(abs);
   x.queue = x.queue.then(async () => {
-    x.pending.delete(abs); // 从这里开始的改动要再排一次：这次读到的可能是改之前的
     await x.ready;
+    await updateNow(x, abs);
+  });
+}
+
+/**
+ * 排着的这个文件的更新现在就做（点击要用它的行号：保存之后马上点，或者 checkout 之后排着几千个更新时），正在做的等它做完。
+ * 队列轮到它时已经做过了就跳过
+ */
+function updateNow(x: Scan, abs: string): Promise<void> {
+  const busy = x.updating.get(abs);
+  if (!x.pending.delete(abs)) return busy ?? Promise.resolve(); // 从这里开始的改动要再排一次：这次读到的可能是改之前的
+  const p = (async () => {
+    await busy;
     if (x.dead) return;
     const text = await readText(abs, false);
     const rec = text === null ? null : await scanText(x, abs, text);
@@ -391,8 +405,14 @@ function rescanFile(x: Scan, abs: string) {
     }
     // 这里加、删、改了拼名字的宏，别的文件里的调用拼出来的东西也变了：重做第 2 遍
     if (!x.dead && mine() !== before) retarget(x);
-  }).catch((e) => log("warn", `op index: cannot update ${abs}: ${e instanceof Error ? e.message : e}`));
+  })().catch((e) => log("warn", `op index: cannot update ${abs}: ${e instanceof Error ? e.message : e}`))
+    .finally(() => { if (x.updating.get(abs) === p) x.updating.delete(abs); });
+  x.updating.set(abs, p);
+  return p;
 }
+
+/** 点击要用这些文件里记下的行号：它们排着的更新先做完 */
+const fresh = (x: Scan, files: Iterable<string>) => Promise.all([...new Set(files)].map((abs) => updateNow(x, abs)));
 
 function retarget(x: Scan) {
   if (x.retarget) return;
@@ -407,7 +427,8 @@ function retarget(x: Scan) {
 
 /**
  * 点击只等扫描（head = 只等第 1 遍，白板刚打开时点击等 ~2 s 而不是 ~5 s），不等排着的文件更新：
- * 每个文件的更新是同步地换掉它那一份（dropRec / addRec），表任何时候都是一致的；git checkout 之后排着的几千个更新不挡点击
+ * 每个文件的更新是同步地换掉它那一份（dropRec / addRec），表任何时候都是一致的；git checkout 之后排着的几千个更新不挡点击。
+ * 只有点击要用行号的那几个文件插队先更新（fresh）
  */
 const settled = (x: Scan, head?: "head") => (head ? x.head : x.ready);
 
@@ -422,7 +443,7 @@ export function scanOf(t: OpTable): Scan {
     const s: Scan = {
       t, aten: path.dirname(path.dirname(t.yaml)) + path.sep, csrc: path.join(t.root, "torch", "csrc") + path.sep,
       wanted, yamlNames: new Set(wanted.keys()), files: new Map(), regs: new Map(), pyRegs: new Map(), macros: new Map(), gen: new Map(), pasters: new Map(), where: new Map(),
-      head: Promise.resolve(), ready: Promise.resolve(), queue: Promise.resolve(), pending: new Set(),
+      head: Promise.resolve(), ready: Promise.resolve(), queue: Promise.resolve(), pending: new Set(), updating: new Map(),
     };
     const fail = (e: unknown) => log("warn", `op index: scan failed: ${e instanceof Error ? e.message : e}`);
     const first = whenAnalysisReady().then(() => scanHead(s));
@@ -442,12 +463,14 @@ export async function warmOps() { await Promise.all((await opTables()).map((t) =
 export async function stubRegs(t: OpTable, stub: string): Promise<Reg[]> {
   const x = scanOf(t);
   await settled(x, "head");
+  await fresh(x, (x.regs.get(stub) ?? []).map((r) => r.abs));
   return x.regs.get(stub) ?? [];
 }
 /** 一个 Python 名字的 pybind / PyMethodDef 注册 */
 export async function pyRegs(t: OpTable, name: string): Promise<Reg[]> {
   const x = scanOf(t);
   await settled(x, "head");
+  await fresh(x, (x.pyRegs.get(name) ?? []).map((r) => r.abs));
   return x.pyRegs.get(name) ?? [];
 }
 
@@ -478,6 +501,7 @@ export async function macroKernel(t: OpTable, k: Kernel): Promise<{ abs: string;
   const x = scanOf(t);
   await settled(x, "head");
   if (!x.macros.has(k.kernel)) await settled(x); // 拼名字的宏拼出来的：第 2 遍之后才知道
+  await fresh(x, (x.macros.get(k.kernel) ?? []).map((m) => m.abs));
   const m = [...(x.macros.get(k.kernel) ?? [])].sort((a, b) => (onDevice(a.abs, k.key) ? 0 : 1) - (onDevice(b.abs, k.key) ? 0 : 1))[0];
   return m ? { abs: m.abs, sym: { name: k.kernel, qual: `${m.macro}(${k.kernel})`, kind: "def", start: m.line, defLine: m.line, end: m.line, sig: m.sig, params: [] } } : null;
 }
