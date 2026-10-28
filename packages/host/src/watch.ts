@@ -3,7 +3,7 @@
 // 只在有它的白板上（打字时每停一下都会触发：不重读、不重新分析别的文件）。
 import * as path from "node:path";
 import type { Disposable } from "@codeboard/core";
-import { gitDirOf, headOf, repoRootOf } from "./git";
+import { forgetIgnored, gitDirOf, headOf, repoRootOf } from "./git";
 import type { BoardHost } from "./boards";
 import { absOf, hasLocalFile } from "./source";
 import type { Storage } from "./storage";
@@ -63,6 +63,7 @@ export function watchVersions(panels: BoardHost, store: Storage): Disposable & {
     }
     if (!changed) return;
     forgetDefs(); // checkout 之类：文件可能整批换了
+    forgetIgnored();
     await panels.refreshStale();
     await countClosed();
   }, GIT_PAUSE);
@@ -79,7 +80,7 @@ export function watchVersions(panels: BoardHost, store: Storage): Disposable & {
   const changed = new Set<string>();
   const flush = debounce(() => { const paths = new Set(changed); changed.clear(); void panels.refreshStale(paths); }, RECHECK_PAUSE);
   const recheck = (abs: string) => { changed.add(abs); flush(); };
-  subs.push(files.onDidSave((abs) => { if (abs) recheck(abs); }));
+  subs.push(files.onDidSave((abs) => { if (!abs) return; if (/(^|[\\/])\.gitignore$/.test(abs)) forgetIgnored(); recheck(abs); }));
   // 在 VS Code 外面改了卡片用到的文件（git checkout -- f、别的编辑器）：也重算。每个文件一个监听。
   // Variant 的文件也算（另一个 worktree、复制出来的文件：在别处保存后卡上跟着刷新）
   const watchedFiles = new Set<string>();

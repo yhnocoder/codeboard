@@ -3,6 +3,7 @@ import * as path from "node:path";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import type { CodeCard } from "@codeboard/core";
 import { staleFor, staleSegments } from "../src/versions";
+import { forgetIgnored, isIgnored } from "../src/git";
 import { useWorkspace } from "../src/ws";
 import { nodeWorkspace } from "./node-workspace";
 import { card, git, startTreeSitter, tempRepo } from "./helpers";
@@ -42,6 +43,15 @@ describe("new version check", () => {
     const untracked = path.join(R, "new.py");
     fs.writeFileSync(untracked, "def g():\n    return 2\n");
     expect((await card(untracked, "g")).seg.version).toMatchObject({ kind: "git", uncommitted: true });
+  });
+
+  it("asks git whether a file is ignored once, until the ignore rules may have changed", async () => {
+    R = tempRepo("ignore-cache", { ".gitignore": "build/\n" });
+    expect(await isIgnored(R, "build/gen.py")).toBe(true);
+    fs.writeFileSync(path.join(R, ".gitignore"), "");
+    expect(await isIgnored(R, "build/gen.py")).toBe(true);
+    forgetIgnored();
+    expect(await isIgnored(R, "build/gen.py")).toBe(false);
   });
 
   it("moves the card to the new lines with the new commit as its pin when a commit only moves the code", async () => {
