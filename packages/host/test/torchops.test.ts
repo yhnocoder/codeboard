@@ -70,7 +70,7 @@ describe("clicks into PyTorch ops", () => {
     const m = await click(await seg("torch/nn/functional.py", "softmax"), /input\.softmax/, "softmax");
     expect(qualOf(m)).toBe("at::native::softmax");
     expect(key(m)).toBe("CompositeImplicitAutograd");
-    // Python methods of the same name are alternatives only from already-analyzed files (no workspace scan on click): none yet here
+    // the yaml's kernels, not the generated PyMethodDef binding (THPVariable_softmax), even before the name index has a Python softmax
     expect(alts(m)).toEqual(["CompositeExplicitAutograd · at::native::softmax_out"]);
     const s = await click(await seg("aten/src/ATen/native/SoftMax.cpp", "at::native::softmax"), /at::_softmax/, "_softmax");
     expect(qualOf(s)).toBe("at::native::softmax_cuda_out");

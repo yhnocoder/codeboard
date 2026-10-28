@@ -133,10 +133,11 @@ async function expandNow(m: ExpandReq): Promise<ExpandResult> {
     // Python 调到 C / C++ / Rust 扩展：语言服务找不到定义，先看 pybind / PyO3 的注册（再退到名字索引）
     // 名字索引里有同名的 Python 定义就不算（self.model.forward 不去找 C++ 的 .def("forward")）；.pyi 存根不算定义
     // PyTorch（有算子索引）：只看已经分析过的文件，不为这个判断扫工作区
+    // PyTorch 的 x.X(…)：静态看不出 x 是不是 Tensor。X 是算子、又没有真的定义时，yaml 的 kernel 也是候选。
+    // 排在注册之前：Tensor 方法都有生成的 PyMethodDef 绑定（THPVariable_softmax），那只是胶水；而且先查注册时结果要看名字索引建到哪了
+    if (!crossed.length && !targets.length && !lspN && seg.lang === "python" && site && here) crossed = await tensorMethod(site, here);
     const torch = seg.lang === "python" && !!(await opTableFor(here?.abs));
     if (!crossed.length && !targets.length && !lspN && seg.lang === "python" && !(torch ? knownEntries(m.name) : await lookupName(m.name)).some((e) => /\.py$/.test(e.abs))) crossed = await viaRegistry(m.name, here?.abs);
-    // PyTorch 的 x.X(…)：静态看不出 x 是不是 Tensor。X 是算子、又没有真的定义时，yaml 的 kernel 也是候选
-    if (!crossed.length && !targets.length && !lspN && seg.lang === "python" && site && here) crossed = await tensorMethod(site, here);
     for (const d of targets.length ? [] : stubs) {
       const t = await symAtDef(d, m.name);
       if (!t) continue;
