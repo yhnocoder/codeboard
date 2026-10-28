@@ -5,7 +5,7 @@ import { test, open, check, until, idle, frames } from "../fixtures";
 /** 7 Notes scattered around: a → b, a → c, c → d have arrows; e, f, g have none */
 function scattered(): Board {
   const b = emptyBoard("b1", "nano-vllm · tidy");
-  const note = (id: string, md: string, x: number, y: number, w = 240) => put(b, { id, kind: "note", bg: true, md } as NoteCard, x, y, w);
+  const note = (id: string, md: string, x: number, y: number, w = 240) => put(b, { id, kind: "note", look: "note", md } as NoteCard, x, y, w);
   note("a", "# generate\n\nTakes the prompts and runs steps until every sequence is done.", 520, 160);
   note("b", "# add_request\n\nTokenizes and queues.", 140, 520, 220);
   note("c", "# step\n\nOne scheduler pass, then one model run.", 900, 420);
@@ -109,8 +109,8 @@ test("selectionToolbarAtEdge", async () => {
   const W = 1400, H = 900, PAD = 8, CHROME_Y = 56;
   const b = emptyBoard("b1", "nano-vllm · edge");
   const long = Array.from({ length: 70 }, (_, i) => `Line ${i + 1} of the scheduler notes.`).join("\n\n");
-  put(b, { id: "a", kind: "note", bg: true, md: `# Scheduler\n\n${long}` } as NoteCard, 0, 0, 240);
-  put(b, { id: "b", kind: "note", bg: true, md: "# Sampler\n\nTemperature only." } as NoteCard, 300, 0, 240);
+  put(b, { id: "a", kind: "note", look: "note", md: `# Scheduler\n\n${long}` } as NoteCard, 0, 0, 240);
+  put(b, { id: "b", kind: "note", look: "note", md: "# Sampler\n\nTemperature only." } as NoteCard, 300, 0, 240);
   const h = await open({ board: b, light: true, w: W, h: H, settings: { theme: "warm-ink" } as never });
   const { page } = h;
   await page.keyboard.press("Meta+a");

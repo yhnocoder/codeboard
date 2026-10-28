@@ -155,7 +155,7 @@ test("compareWordDiffMark", async () => {
   const cr = symCard(findSym("BlockManager.allocate").f, findSym("BlockManager.allocate").s);
   b.cards.push(cl, cr, { id: "k", kind: "compare", cols: [cl.id, cr.id] });
   b.place.k = { x: 80, y: 80, w: 900 };
-  put(b, { id: "n1", kind: "note", md: "Some ==highlighted words== here", bg: true } as any, 80, 700, 400);
+  put(b, { id: "n1", kind: "note", md: "Some ==highlighted words== here", look: "note" } as any, 80, 700, 400);
   const h = await open({ board: b, light });
   await h.page.keyboard.press("Shift+!"); await idle(h);
   await h.page.locator(".card.cmp mark").first().waitFor();
@@ -625,8 +625,8 @@ test("themes", async () => {
   kids.forEach((id, i) => { b.place[id] = { x: 760, y: 60 + i * 420, w: 470, h: i ? 264 : 324 }; }); // code area height: 300 / 360 tall in Warm Ink
   const vars = [[{ a: "seqs" }, { a: "is_prefill" }], [{ a: "token_ids", ret: true }]];
   b.links.filter((l) => l.call).forEach((l, i) => { l.call!.vars = vars[i] ?? []; });
-  const note = { id: "n1", kind: "note" as const, md: "# Why chunked prefill\nKeeps memory **bounded**: prefill admits waiting seqs until the `max_num_batched_tokens` budget runs out.", bg: true };
-  const title = { id: "t1", kind: "note" as const, md: "Engine loop", bg: false, size: "title" as const };
+  const note = { id: "n1", kind: "note" as const, md: "# Why chunked prefill\nKeeps memory **bounded**: prefill admits waiting seqs until the `max_num_batched_tokens` budget runs out.", look: "note" };
+  const title = { id: "t1", kind: "note" as const, md: "Engine loop", look: "text", size: "title" as const };
   b.cards.push(note, title);
   b.place[note.id] = { x: 110, y: 520, w: 360, section: "sec1" }; b.place[title.id] = { x: 70, y: 70, w: 300 };
   b.sections.push({ id: "sec1", title: "Engine", x: 50, y: 160, w: 600, h: 560, color: "sand" });

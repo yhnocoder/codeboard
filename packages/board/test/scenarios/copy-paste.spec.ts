@@ -90,8 +90,8 @@ const shotTo = async (h: Host, name: string, clip?: { x: number; y: number; widt
 
 test("copiedCardsGiveOtherAppsTheirContent", async () => {
   const b = emptyBoard("b1", "copy");
-  const note = { id: "n1", kind: "note", md: "## Prefill first\n\nThe scheduler fills the batch with **waiting** sequences.", bg: true } as NoteCard;
-  const text = { id: "t1", kind: "note", md: "then *decode*", bg: false } as NoteCard;
+  const note = { id: "n1", kind: "note", md: "## Prefill first\n\nThe scheduler fills the batch with **waiting** sequences.", look: "note" } as NoteCard;
+  const text = { id: "t1", kind: "note", md: "then *decode*", look: "text" } as NoteCard;
   const sched = findSym("Scheduler.schedule"), code = symCard(sched.f, sched.s);
   put(b, note, 60, 80, 360); put(b, text, 60, 330, 220); put(b, code, 480, 80, 620);
   put(b, { id: "i1", kind: "image", src: "card.png" } as Card, 60, 440, 240);
@@ -130,9 +130,9 @@ test("copiedCardsGiveOtherAppsTheirContent", async () => {
 test("pastedCardsKeepTheirSize", async () => {
   const b = emptyBoard("b1", "sizes");
   const sched = findSym("Scheduler.schedule"), code = symCard(sched.f, sched.s);
-  put(b, { id: "n1", kind: "note", md: "## Batch\n\nPrefill sequences are taken first, then decode.", bg: true } as NoteCard, 60, 60, 430);
+  put(b, { id: "n1", kind: "note", md: "## Batch\n\nPrefill sequences are taken first, then decode.", look: "note" } as NoteCard, 60, 60, 430);
   b.place.n1.h = 180;
-  put(b, { id: "t1", kind: "note", md: "a short Text card", bg: false } as NoteCard, 60, 300, 210);
+  put(b, { id: "t1", kind: "note", md: "a short Text card", look: "text" } as NoteCard, 60, 300, 210);
   put(b, code, 560, 60, 640);
   b.place[code.id].h = 200;
   put(b, { id: "i1", kind: "image", src: "card.png" } as Card, 60, 380, 300);
@@ -153,7 +153,7 @@ test("pastedCardsKeepTheirSize", async () => {
   await until(h, "the paste is saved", () => h.board().cards.length > orig.length); await idle(h);
   const bd = h.board();
   const added = bd.cards.filter((c) => !orig.includes(c.id));
-  const kindOf = (c: Card) => (c.kind === "note" ? (c.bg ? "note" : "text") : c.kind);
+  const kindOf = (c: Card) => (c.kind === "note" ? c.look : c.kind);
   const pairs = orig.map((id) => {
     const o = bd.cards.find((c) => c.id === id)!, n = added.find((c) => kindOf(c) === kindOf(o));
     return { kind: kindOf(o), id: n?.id, was: { w: bd.place[id].w, h: bd.place[id].h }, now: n && { w: bd.place[n.id]?.w, h: bd.place[n.id]?.h } };
@@ -169,7 +169,7 @@ test("pastedCardsKeepTheirSize", async () => {
 test("imageCardDropsIntoNote", async () => {
   const b = emptyBoard("b1", "drop");
   const md0 = "## Prefill first\n\nThe scheduler fills the batch with waiting sequences, then decodes.";
-  put(b, { id: "n1", kind: "note", md: md0, bg: true } as NoteCard, 80, 80, 420);
+  put(b, { id: "n1", kind: "note", md: md0, look: "note" } as NoteCard, 80, 80, 420);
   put(b, { id: "i1", kind: "image", src: "card.png", desc: "Batch layout" } as Card, 640, 140, 240);
   b.cam = { x: 0, y: 0, z: 1 };
   const { h, assets, done } = await boardWith(b);
@@ -213,7 +213,7 @@ test("imageCardDropsIntoNote", async () => {
 test("imageCardDropsAtPointerInNote", async () => {
   const b = emptyBoard("b1", "drop");
   const md0 = "## Prefill first\n\nThe scheduler fills the batch with waiting sequences.\n\nThen it decodes one token per sequence.\n\nUntil every sequence is done.";
-  put(b, { id: "n1", kind: "note", md: md0, bg: true } as NoteCard, 80, 80, 420);
+  put(b, { id: "n1", kind: "note", md: md0, look: "note" } as NoteCard, 80, 80, 420);
   put(b, { id: "i1", kind: "image", src: "card.png" } as Card, 640, 140, 240);
   b.cam = { x: 0, y: 0, z: 1 };
   const { h, assets, done } = await boardWith(b);
@@ -268,7 +268,7 @@ test("imageCardDropsAtPointerInNote", async () => {
 test("pasteIntoEditorMakesNoCard", async () => {
   const b = emptyBoard("b1", "paste");
   const code = "vecAddKernel<<<ceil(n/128), 128>>>(...);";
-  put(b, { id: "n1", kind: "note", md: `Blocks\n\n\`\`\`cuda\n${code}\n\`\`\`\n\nalso`, bg: true } as NoteCard, 60, 60, 640);
+  put(b, { id: "n1", kind: "note", md: `Blocks\n\n\`\`\`cuda\n${code}\n\`\`\`\n\nalso`, look: "note" } as NoteCard, 60, 60, 640);
   b.cam = { x: 0, y: 0, z: 1 };
   const h = await open({ board: b, light: true, w: 1100, h: 700 });
   const pg = h.page;

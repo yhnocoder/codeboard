@@ -75,7 +75,7 @@ test("walkthroughOrder", async () => {
   const b = emptyBoard("b1", "walk");
   const step = card("LLMEngine.step"), sch = card("Scheduler.schedule"), alloc = card("BlockManager.allocate");
   put(b, step, 80, 80, 600); put(b, sch, 780, 60, 560); put(b, alloc, 1420, 60, 520);
-  b.cards.push({ id: "note", kind: "note", md: "Why batches", bg: true }); b.place.note = { x: 140, y: 620, w: 280 };
+  b.cards.push({ id: "note", kind: "note", md: "Why batches", look: "note" }); b.place.note = { x: 140, y: 620, w: 280 };
   const s0 = step.segments[0];
   b.links.push({ id: "P", from: { card: step.id, seg: s0.id, line: s0.start + 1 }, to: { card: "note" } });
   b.links.push({ id: "C1", from: { card: step.id, seg: s0.id, line: lineOf(step, /scheduler\.schedule\(/) }, to: { card: sch.id }, call: { name: "schedule", col: 0 } });
@@ -449,9 +449,9 @@ test("headPortHidden", async () => {
 /** Zoomed out, a card's edge port keeps its 100% size on screen, drawn and to hit (feedback #14: at 30% it was a 3 px target) */
 test("portSizeWhenZoomedOut", async () => {
   const b = emptyBoard("b1", "portsize");
-  b.cards.push({ id: "n0", kind: "note", md: "A note to drag an arrow out of", bg: true } as NoteCard);
+  b.cards.push({ id: "n0", kind: "note", md: "A note to drag an arrow out of", look: "note" } as NoteCard);
   b.place.n0 = { x: 300, y: 200, w: 320, h: 160 };
-  b.cards.push({ id: "n1", kind: "note", md: "Another note", bg: true } as NoteCard);
+  b.cards.push({ id: "n1", kind: "note", md: "Another note", look: "note" } as NoteCard);
   b.place.n1 = { x: 700, y: 200, w: 200, h: 100 };
   b.cam = { x: 0, y: 0, z: 1 };
   const h = await open({ board: b, light: true, w: 1300, h: 800 });

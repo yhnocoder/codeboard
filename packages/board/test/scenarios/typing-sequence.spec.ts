@@ -25,7 +25,7 @@ const SEQS: Record<string, string> = {
 
 function board(n: number): Board {
   const b = emptyBoard("b1", "typeseq");
-  for (let i = 0; i < n; i++) put(b, { id: `n${i}`, kind: "note", md: "", bg: true } as NoteCard, 60 + (i % 4) * 560, 60 + Math.floor(i / 4) * 360, 520);
+  for (let i = 0; i < n; i++) put(b, { id: `n${i}`, kind: "note", md: "", look: "note" } as NoteCard, 60 + (i % 4) * 560, 60 + Math.floor(i / 4) * 360, 520);
   b.cam = { x: 0, y: 0, z: 1 };
   return b;
 }

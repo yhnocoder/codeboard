@@ -236,7 +236,7 @@ async function lineMenu(res: Record<string, unknown>) {
 async function readableNote(res: Record<string, unknown>) {
   const b = emptyBoard("bR", "read");
   const step = nv("LLMEngine.step"); put(b, step, 80, 80, 560);
-  b.cards.push({ id: "t1", kind: "note", md: "far away text", bg: false, size: "body" }); b.place.t1 = { x: 1400, y: 900, w: 320 };
+  b.cards.push({ id: "t1", kind: "note", md: "far away text", look: "text", size: "body" }); b.place.t1 = { x: 1400, y: 900, w: 320 };
   b.cam = { x: 40, y: 40, z: 0.48 };
   const h = await open({ board: b, w: 1200, h: 800 }), page = h.page;
   await idle(h);
@@ -280,7 +280,7 @@ async function turnName(res: Record<string, unknown>) {
   const b = emptyBoard("bT", "turn");
   const sch = nv("Scheduler.schedule"), can = nv("BlockManager.can_allocate"), note = "nT";
   put(b, can, 80, 60, 480); put(b, sch, 700, 300, 560);
-  b.cards.push({ id: note, kind: "note", md: "aside", bg: true, size: "body" }); b.place[note] = { x: 700, y: 10, w: 200 };
+  b.cards.push({ id: note, kind: "note", md: "aside", look: "note", size: "body" }); b.place[note] = { x: 700, y: 10, w: 200 };
   b.links.push({ id: "lT", from: { card: sch.id, seg: sch.segments[0].id, line: sch.segments[0].start + sch.segments[0].text.findIndex((t) => /can_allocate\(/.test(t)) }, to: { card: can.id }, call: { name: "can_allocate", col: 0 } });
   const h = await open({ board: b }), page = h.page;
   await page.keyboard.press("Shift+Digit1"); await idle(h);

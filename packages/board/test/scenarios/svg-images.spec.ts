@@ -79,7 +79,7 @@ async function svgHost(b: Board, seed: Record<string, string> = {}) {
 }
 
 const emptyAt = () => { const b = emptyBoard("b1", "svg"); b.cam = { x: 0, y: 0, z: 1 }; return b; };
-const withNote = (md: string) => { const b = emptyAt(); put(b, { id: "n1", kind: "note", md, bg: true } as NoteCard, 80, 80, 460); return b; };
+const withNote = (md: string) => { const b = emptyAt(); put(b, { id: "n1", kind: "note", md, look: "note" } as NoteCard, 80, 80, 460); return b; };
 const images = (h: Host) => h.board().cards.filter((c): c is ImageCard => c.kind === "image");
 const noteMd = (h: Host) => ((h.board().cards.find((c) => c.id === "n1") as NoteCard | undefined)?.md ?? "").trim();
 

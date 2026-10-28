@@ -27,7 +27,7 @@ const PNG = screenshot(800, 450);
 
 function board(md: string[]): Board {
   const b = emptyBoard("b1", "note images");
-  md.forEach((m, i) => put(b, { id: `n${i}`, kind: "note", md: m, bg: true } as NoteCard, 60 + i * 600, 60, 520));
+  md.forEach((m, i) => put(b, { id: `n${i}`, kind: "note", md: m, look: "note" } as NoteCard, 60 + i * 600, 60, 520));
   b.cam = { x: 0, y: 0, z: 1 };
   return b;
 }

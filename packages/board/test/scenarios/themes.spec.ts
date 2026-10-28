@@ -129,7 +129,7 @@ test("themeLooks", async () => {
  *  Screenshots: the board with a Section, a Note and a menu, and card corners close up (squircle-*) */
 test("squircleCorners", async () => {
   const b = board();
-  b.cards.push({ id: "n1", kind: "note", bg: true, md: "# Corners\n\nSmooth, continuous curvature." } as any);
+  b.cards.push({ id: "n1", kind: "note", look: "note", md: "# Corners\n\nSmooth, continuous curvature." } as any);
   b.place.n1 = { x: 80, y: 600, w: 320 };
   b.sections.push({ id: "S1", title: "Engine", x: 50, y: 70, w: 620, h: 470 });
   b.place[b.cards[0].id].section = "S1";
@@ -342,7 +342,7 @@ test("vscodeBackgroundSetting", async () => {
  *  Also: Soft Light's header icons (···) use the header's text colour */
 test("resizeGripInsideCardCorner", async () => {
   const b = board();
-  b.cards.push({ id: "n1", kind: "note", bg: true, md: "# Corner\n\nThe resize grip follows the card's corner." } as any);
+  b.cards.push({ id: "n1", kind: "note", look: "note", md: "# Corner\n\nThe resize grip follows the card's corner." } as any);
   b.place.n1 = { x: 80, y: 560, w: 360 };
   const h = await open({ board: b, light: true, w: 1300, h: 820, settings: { theme: "warm-ink" } as never });
   const pg = h.page;
@@ -390,7 +390,7 @@ test("resizeGripInsideCardCorner", async () => {
 test("editingKeepsCardCorners", async () => {
   for (const theme of ["soft-light", "warm-ink"]) {
     const b = emptyBoard("b1", "corners");
-    b.cards.push({ id: "n1", kind: "note", bg: true, md: "# Corners\n\nThe card keeps its rounded corners while editing." } as any);
+    b.cards.push({ id: "n1", kind: "note", look: "note", md: "# Corners\n\nThe card keeps its rounded corners while editing." } as any);
     b.place.n1 = { x: 80, y: 80, w: 360 };
     b.cam = { x: 0, y: 0, z: 1 };
     const h = await open({ board: b, light: true, w: 900, h: 600, settings: { theme } as never });

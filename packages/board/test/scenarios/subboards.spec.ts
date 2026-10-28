@@ -122,7 +122,7 @@ test("walkHopWaitsForMeasure", async () => {
   const pg = h.page;
   const C = emptyBoard("bWC", "Child");
   const md = Array.from({ length: 18 }, (_, i) => `Line ${i + 1} of a tall Note whose height was never saved`).join("\n\n");
-  C.cards.push({ id: "nTall", kind: "note", md, bg: true });
+  C.cards.push({ id: "nTall", kind: "note", md, look: "note" });
   C.place.nTall = { x: 2600, y: 1800, w: 420 };
   C.cam = { x: 0, y: 0, z: 1 };
   // counts the board's frames from the init to the first camera move after it
@@ -165,9 +165,9 @@ test("walkHopSkipsUnmeasuredCard", async () => {
     ResizeObserver.prototype.observe = function (el, o) { queueMicrotask(() => { if (!el.matches('[data-id="nZero"]')) observe.call(this, el, o); }); };
   });
   const C = emptyBoard("bZC", "Child");
-  C.cards.push({ id: "nStart", kind: "note", md: "# Start\n\nThe walk starts here.", bg: true });
+  C.cards.push({ id: "nStart", kind: "note", md: "# Start\n\nThe walk starts here.", look: "note" });
   C.place.nStart = { x: 2600, y: 1800, w: 420 };
-  C.cards.push({ id: "nZero", kind: "note", md: "Never laid out", bg: true });
+  C.cards.push({ id: "nZero", kind: "note", md: "Never laid out", look: "note" });
   C.place.nZero = { x: 200, y: 200, w: 300 };
   C.cam = { x: 0, y: 0, z: 1 };
   const world = () => pg.evaluate(() => (document.querySelector(".world") as HTMLElement).style.transform);
@@ -208,7 +208,7 @@ async function run(res: Record<string, unknown>) {
     put(O, disp, 60, 60);
     for (let i = 0; i < 7; i++) {
       const id = `op${i}`;
-      O.cards.push({ id, kind: "note", md: `handler_${i}`, bg: true }); O.place[id] = { x: 760, y: 40 + i * 190, w: 260 };
+      O.cards.push({ id, kind: "note", md: `handler_${i}`, look: "note" }); O.place[id] = { x: 760, y: 40 + i * 190, w: 260 };
       O.links.push({ id: `ol${i}`, from: { card: disp.id, seg: disp.segments[0].id, line: lineOf(disp, /schedule\(\)/) }, to: { card: id }, call: { name: "schedule", col: 0 } });
     }
     const t = await subHost(E, [O]);

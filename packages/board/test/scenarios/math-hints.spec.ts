@@ -9,7 +9,7 @@ const PRE = "\\newcommand{\\tid}{\\text{threadIdx.x}}\n\\newcommand{\\bid}{\\tex
 
 function board(notes: string[]): Board {
   const b = emptyBoard("b1", "math hints");
-  notes.forEach((md, i) => put(b, { id: `n${i}`, kind: "note", md, bg: true } as NoteCard, 60 + i * 600, 60, 540));
+  notes.forEach((md, i) => put(b, { id: `n${i}`, kind: "note", md, look: "note" } as NoteCard, 60 + i * 600, 60, 540));
   b.cam = { x: 0, y: 0, z: 1 };
   return b;
 }
