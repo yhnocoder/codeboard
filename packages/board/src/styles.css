@@ -85,6 +85,8 @@ body { background: var(--canvas); color: var(--ink); font: 13px/1.5 var(--sys); 
 :where(button) { cursor: default; } /* before the regions, so a button inside code or a peek takes the region's cursor */
 :where(.chrome, .chrome *) { user-select: none; -webkit-user-select: none; cursor: default; -webkit-user-drag: none; -webkit-tap-highlight-color: transparent; }
 :where(.chrome .src, .chrome .src *) { user-select: text; -webkit-user-select: text; cursor: text; }
+/* 代码只在这张卡单独选中时按下去是选字，别的时候按下去拖卡（interact.ts cardPointerDown） */
+:where(.chrome .card:not(.sel.solo) .src, .chrome .card:not(.sel.solo) .src *) { cursor: default; }
 :where(.chrome .pcode, .chrome .pcode *) { user-select: text; -webkit-user-select: text; cursor: text; }
 :where(.chrome .nbody, .chrome .nbody *, .chrome .cdesc, .chrome .cdesc *, .chrome .tx, .chrome .tx *, .chrome .inote, .chrome .inote *, .chrome .sn-text, .chrome .sn-text *, .chrome .fld, .chrome .pin) { user-select: text; -webkit-user-select: text; }
 :where(.chrome .nbody, .chrome .cdesc, .chrome .tx) { cursor: default; }

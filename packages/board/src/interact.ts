@@ -112,12 +112,14 @@ export function cardPointerDown(e: PointerEvent, id: string) {
   const c = f.card;
   const isText = c.kind === "note" && !c.bg;
   const inHead = !!t.closest("[data-drag]");
-  if (!isText && !inHead) {
-    // 卡片内容：只选中，保留原生文本选择
-    if (e.shiftKey || e.metaKey || e.ctrlKey) A.selectCard(f.host.id, true);
-    else if (!isSel(f.host.id) || sel.cards.length > 1) A.selectCard(f.host.id);
+  const inBody = !isText && !inHead;
+  // 只选着这一张时，按在内容上是选字（原生文本选择）；没选中或选着好几张时，按在内容上和按卡头一样拖卡，
+  // 不动就松手：没选中的选中它，选着好几张的只留这一张（之后再按就能选字）
+  const multiBody = inBody && isSel(f.host.id) && sel.cards.length > 1;
+  if (inBody) {
     if (!t.closest(".src, .nbody, .cdesc, .tx")) { setLineSel(null); }
-    return;
+    if (e.shiftKey || e.metaKey || e.ctrlKey) return A.selectCard(f.host.id, true);
+    if (isSel(f.host.id) && sel.cards.length === 1) return;
   }
   e.preventDefault();
   // 拖的正是在编辑内容的这张卡（Note、手写代码）：接着编辑，焦点、光标都不动。拖动不算写完：
@@ -134,7 +136,7 @@ export function cardPointerDown(e: PointerEvent, id: string) {
   const freeHead = !!tc && isCode(tc) && tc.segments[0]?.src.kind === "free" && !tc.title;
   if (inHead && (t.closest(".ctitle") || freeHead) && isDbl(`t${target}`, e)) return setEditing({ kind: "title", id: target });
   // 调用图标记：点 = 改标记（字母 / 图标），拖 = 连同它往下调用的卡一起走
-  if (t.closest(".step")) {
+  if (inHead && t.closest(".step")) {
     const el = t.closest(".step")!;
     const was = [...sel.cards];
     A.selectSubtree(target, e.shiftKey); closeAllPops();
@@ -144,7 +146,7 @@ export function cardPointerDown(e: PointerEvent, id: string) {
   if (e.shiftKey || e.metaKey || e.ctrlKey) { toggleSel("cards", f.host.id); return; }
   if (!isSel(f.host.id)) A.selectCard(f.host.id);
   closeAllPops();
-  startCardDrag(e, f.host.id);
+  startCardDrag(e, f.host.id, multiBody ? () => A.selectCard(f.host.id) : undefined);
 }
 
 const hostPlace = (b: Board, id: string) => { const h = findCard(b, id)?.host; return h ? b.place[h.id] : undefined; };
