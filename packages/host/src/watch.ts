@@ -12,7 +12,11 @@ import { debounce, workspace, wsRoots } from "./ws";
 import { forgetDefs } from "./defcache";
 import { log } from "./log";
 
-export function watchVersions(panels: BoardHost, store: Storage): Disposable {
+/** 攒多久的 git 事件再查 HEAD、攒多久的文件改动再重查（ms） */
+export const GIT_PAUSE = 600, RECHECK_PAUSE = 500;
+
+/** ready：开始时的监听都挂好、关着的白板数过一遍之后（测试等它，不靠等一段时间） */
+export function watchVersions(panels: BoardHost, store: Storage): Disposable & { ready: Promise<void> } {
   const files = workspace().files;
   const subs: Disposable[] = [];
   const watched = new Set<string>();
@@ -61,7 +65,7 @@ export function watchVersions(panels: BoardHost, store: Storage): Disposable {
     forgetDefs(); // checkout 之类：文件可能整批换了
     await panels.refreshStale();
     await countClosed();
-  }, 600);
+  }, GIT_PAUSE);
 
   subs.push(files.onDidChangeGit(() => onGit()));
 
@@ -69,11 +73,11 @@ export function watchVersions(panels: BoardHost, store: Storage): Disposable {
     for (const r of await roots()) await watchRoot(r);
     await countClosed();
   };
-  void start();
+  const started = start();
 
   // 保存、改了文件：只影响这个文件里的段（uncommitted、仓库外文件），攒一会儿一起重查
   const changed = new Set<string>();
-  const flush = debounce(() => { const paths = new Set(changed); changed.clear(); void panels.refreshStale(paths); }, 500);
+  const flush = debounce(() => { const paths = new Set(changed); changed.clear(); void panels.refreshStale(paths); }, RECHECK_PAUSE);
   const recheck = (abs: string) => { changed.add(abs); flush(); };
   subs.push(files.onDidSave((abs) => { if (abs) recheck(abs); }));
   // 在 VS Code 外面改了卡片用到的文件（git checkout -- f、别的编辑器）：也重算。每个文件一个监听。
@@ -88,8 +92,8 @@ export function watchVersions(panels: BoardHost, store: Storage): Disposable {
       subs.push(files.watch(path.dirname(a), path.basename(a), () => recheck(a)));
     }
   };
-  void watchFiles();
+  const filesWatched = watchFiles();
   subs.push(files.onDidEdit((abs) => { if (abs && watchedFiles.has(abs)) recheck(abs); }));
   subs.push(store.onDidSave(() => void (async () => { for (const r of await roots()) await watchRoot(r); await watchFiles(); })()));
-  return { dispose: () => { for (const d of subs) d.dispose(); } };
+  return { dispose: () => { for (const d of subs) d.dispose(); }, ready: Promise.all([started, filesWatched]).then(() => undefined) };
 }

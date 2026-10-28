@@ -561,3 +561,4 @@ export * from "./select";
 export * from "./entry";
 export * from "./peek";
 export * from "./bridge";
+export * from "./highlight";

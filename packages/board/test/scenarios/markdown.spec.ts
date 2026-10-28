@@ -66,9 +66,13 @@ async function saveShot(h: Host, name: string) {
   try { fs.mkdirSync(SHOTS, { recursive: true }); await h.page.screenshot({ path: `${SHOTS}/${name}.png` }); } catch { /* no project files here */ }
 }
 
-/** Static render: math, code colours, tasks, table, chips, footnote, details; links go to the host, chips jump to the card */
-test("markdownRender", async () => {
-  for (const theme of ["warm-ink", "ink-wash", "city"]) {
+/** Static render: math, code colours, tasks, table, chips, footnote, details; links go to the host, chips jump to the card.
+ *  The default theme here (a smoke scenario), the other two in markdownRenderThemes */
+test("markdownRender", () => renderIn(["warm-ink"]));
+test("markdownRenderThemes", () => renderIn(["ink-wash", "city"]));
+
+async function renderIn(themes: string[]) {
+  for (const theme of themes) {
     const { b } = mdBoard();
     // 视野外很远的一张：先放纯文字，空闲时补渲染
     put(b, { id: "far", kind: "note", md: "far **away** $y^2$", bg: true } as NoteCard, 9000, 6000, 300);
@@ -108,7 +112,7 @@ test("markdownRender", async () => {
     check(`markdownRender-click ${theme}`, opened && selId.length === 1 && selId[0] !== "n1" && md.includes("- [x] check"), { opened, selId, task: md.split("\n")[4] });
     await close(h);
   }
-});
+}
 
 /** WYSIWYG editing: lazy chunk loads, typing with input rules, / menu, [[ picker, bubble toolbar, raw mode, ⌘Z stays in the editor, Esc saves */
 test("markdownEdit", async () => {

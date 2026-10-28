@@ -78,7 +78,7 @@ describe("name index", () => {
     const during = await pausingIndex(async () => {
       const first = await done();
       // as many file reads as the build would need to analyze several files
-      for (let i = 0; i < 30; i++) { await fs.promises.readFile(probe.replace("zz_index_probe.py", "llm.py")); await new Promise((r) => setTimeout(r)); }
+      for (let i = 0; i < 30; i++) { await fs.promises.readFile(probe.replace("zz_index_probe.py", "llm.py")); await new Promise((r) => setImmediate(r)); }
       return [first, await done()];
     });
     expect(during[1] - during[0]).toBeLessThanOrEqual(1); // the file being parsed when the click came

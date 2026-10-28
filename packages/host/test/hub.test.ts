@@ -1,6 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { emptyBoard, type Board } from "@codeboard/core";
 import { Storage } from "@codeboard/core/storage";
 import { nodeFs } from "../src/nodefs";
@@ -48,8 +48,10 @@ describe("BoardHub", () => {
     expect(hub.target).toBe("bB");
   });
   it("keeps when each board was last opened in the cross-workspace state", () => {
+    const before = Date.now();
     hub.opened("bA");
-    expect(hub.lastOpened("bA")).toBeGreaterThan(Date.now() - 1000);
+    expect(hub.lastOpened("bA")).toBeGreaterThanOrEqual(before);
+    expect(hub.lastOpened("bA")).toBeLessThanOrEqual(Date.now());
     expect(Object.keys(globalState.get("codeboard.opened") as object)).toEqual(["bA"]);
   });
   it("forgets a closed view and restores an open board that has no view yet after a reload", async () => {
@@ -67,9 +69,8 @@ describe("BoardHub", () => {
     const p = hub.get("bA")!;
     p.ready = true;
     views[0].message.fire({ type: "skeletons", req: 7, ids: [] });
-    await new Promise((r) => setTimeout(r, 10));
+    await vi.waitFor(() => expect(views[0].posted.find((m) => m.type === "reply")).toEqual({ type: "reply", req: 7, data: { ok: 1 } }), { timeout: 10000, interval: 1 });
     expect(seen).toEqual(["skeletons"]);
-    expect(views[0].posted.find((m) => m.type === "reply")).toEqual({ type: "reply", req: 7, data: { ok: 1 } });
   });
 });
 

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanCompletion, spaceChatReply, COMPLETE_SYSTEM } from "@codeboard/core";
 import { deepseekChatRequest, deepseekComplete, deepseekFimRequest, resetDeepseekFim } from "../src/deepseek";
 
@@ -97,10 +97,17 @@ describe("DeepSeek completion", () => {
     ac.abort();
     expect(await p).toBeUndefined();
     expect(a.calls.length).toBe(1);
+    // the timeout on a fake clock: still waiting a moment before it, given up at it
     const b = fakeFetch([hang, hang]);
-    const t0 = Date.now();
-    expect(await deepseekComplete({ key: KEY, fetch: b.f, timeoutMs: 50 }, "a", "b")).toBeUndefined();
-    expect(Date.now() - t0).toBeLessThan(1000);
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      let done = false;
+      const q = deepseekComplete({ key: KEY, fetch: b.f, timeoutMs: 50 }, "a", "b").finally(() => { done = true; });
+      await vi.advanceTimersByTimeAsync(49);
+      expect(done).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(await q).toBeUndefined();
+    } finally { vi.useRealTimers(); }
     expect(b.calls.length).toBe(1);
   });
 });
