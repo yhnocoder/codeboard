@@ -156,6 +156,22 @@ describe("op index updates", () => {
   });
 });
 
+describe("op index's files for a name", () => {
+  it("are the files that may define it, not every file that mentions it", async () => {
+    const files = async (name: string) => [...(scanOf((await opTables())[0]).where.get(name) ?? [])].map((f) => path.relative(FIX, f)).filter((f) => /Caller|Defs/.test(f)).sort();
+    fs.writeFileSync(abs("aten/src/ATen/native/Caller.cpp"), "// softmax_cpu_out(x) is the CPU kernel\nnamespace at::native {\nTensor f(const Tensor& x) {\n  auto y = softmax_cpu_out(x);\n  if (softmax_cpu_out(y)) {}\n  return softmax_cpu_out(y);\n}\n}\n");
+    fs.writeFileSync(abs("aten/src/ATen/native/Defs.cpp"), "namespace at::native {\nstatic inline Tensor&\nsoftmax_cpu_out(const Tensor& x) {\n}\ntemplate <> std::tuple<Tensor, Tensor> at::native::fractional_max_pool2d_out_cuda<float>(const Tensor& x) {\n}\nTORCH_IMPL_FUNC(acos_out) (const Tensor& self) {\n}\n}\n");
+    W.fire.create.fire([abs("aten/src/ATen/native/Caller.cpp"), abs("aten/src/ATen/native/Defs.cpp")]);
+    await drained();
+    expect(await files("softmax_cpu_out")).toEqual(["aten/src/ATen/native/Defs.cpp"]);
+    expect(await files("fractional_max_pool2d_out_cuda")).toEqual(["aten/src/ATen/native/Defs.cpp"]);
+    expect(await files("acos_out")).toEqual(["aten/src/ATen/native/Defs.cpp"]);
+    for (const f of ["Caller.cpp", "Defs.cpp"]) fs.rmSync(abs(`aten/src/ATen/native/${f}`));
+    W.fire.delete.fire([abs("aten/src/ATen/native/Caller.cpp"), abs("aten/src/ATen/native/Defs.cpp")]);
+    await drained();
+  });
+});
+
 describe("op index and a yaml saved while it is parsed", () => {
   it("uses the table of the saved yaml and scans for its kernels", async () => {
     const yaml = abs("aten/src/ATen/native/native_functions.yaml"), old = fs.readFileSync(yaml, "utf8");

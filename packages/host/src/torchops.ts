@@ -251,7 +251,7 @@ const EVERY = 256;
 // 定义可能在这里的名字：名字后面是 (（或者模板实参再 (），而行首到名字只有类型、限定符、修饰（Tensor& at::native::add_out(、
 // template <> void f<float>(、static PyObject * THPVariable_add(）；或者名字是行首一个宏的唯一参数（TORCH_IMPL_FUNC(softmax_out)）。
 // 只提到名字的文件（调用、注释）不算：add、sum、clone 这样的名字几百个文件里都有，点击时每个都要分析一遍
-const NAME_PAREN = /\b([A-Za-z_]\w*)\s*(?:<[^;(){}\n]*>\s*)?([()])/g;
+const NAME_PAREN = /\b([A-Za-z_]\w*)\s*(?:<[^;(){}<>\n]*>\s*)?([()])/g;
 const DECL_PREFIX = /^[\w:\s*&<>,[\]]*$/;
 const NOT_DECL = /^\s*(?:return|else|case|throw|new|delete|co_return|co_yield|goto|sizeof|if|while|for|switch|do)\b/;
 const MACRO_ARG = /^[ \t]*[A-Z][A-Z0-9_]*\s*\(\s*$/;
