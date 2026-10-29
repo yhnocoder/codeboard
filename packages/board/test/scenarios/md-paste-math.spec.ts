@@ -198,3 +198,65 @@ test("pasteDoubledFormulas", async () => {
   await idle(h);
   await pg.screenshot({ path: path.join(OUT, "md-paste-doubled-warm-ink.png") });
 });
+
+// From usage feedback #54: display formulas written as LaTeX's \[ … \] on their own lines with spaces, plus an inline \( … \) and one in code
+const BRACKETS = [
+  "个线程。此时 occupancy 为", "", "\\[", " 1024/2048 = 50\\% ", "\\]", "",
+  "因此，要充分利用线程槽位并达到最大 occupancy，每个 thread block 至少需要 64 个线程。", "",
+  "假设一个 kernel 每线程使用 31 个寄存器，并配置为每 block 512 个线程。SM 同时运行", "", "\\[", " 2048/512 = 4 ", "\\]", "",
+  "个 block，共使用", "", "\\[", " 2048 \\times 31 = 63,488 ", "\\]", "", "个寄存器。其中 \\(B\\) 是每 block 的线程数，代码里写成 `\\(B\\)`。",
+].join("\n");
+const BRACKET_BLOCKS = ["1024/2048 = 50\\%", "2048/512 = 4", "2048 \\times 31 = 63,488"];
+/** The same text as a page puts it on the clipboard: soft line breaks inside one <p>, the code span as <code> */
+const bracketHtml = () => `<meta charset="utf-8">${BRACKETS.split("\n\n").map((b) => `<p>${esc(b).replace(/`([^`]+)`/g, "<code>$1</code>")}</p>`).join("\n")}`;
+
+/** Pasting it makes \[ … \] formula blocks and \( … \) an inline formula, the one in code stays code: as text/plain and as text/html
+ *  into a Note being edited, and with ⌘V on the board (a new Note) */
+test("pasteBracketFormulas", async () => {
+  const b = emptyBoard("b1", "bracket formulas");
+  put(b, { id: "plain", kind: "note", md: "plain", look: "note" } as NoteCard, 40, 40, 440);
+  put(b, { id: "html", kind: "note", md: "html", look: "note" } as NoteCard, 520, 40, 440);
+  const h = await open({ board: b, light: true, w: 1600, h: 1000, settings: { theme: "warm-ink" } as any });
+  const pg = h.page;
+  await idle(h);
+  const clip: Record<string, Record<string, string>> = { plain: { "text/plain": BRACKETS }, html: { "text/html": bracketHtml(), "text/plain": BRACKETS } };
+  const ok = (saved: string) => BRACKET_BLOCKS.every((t) => saved.includes(`$$\n${t}\n$$`)) && saved.includes("其中 $B$ 是") && saved.includes("`\\(B\\)`") && !/\\\[|\\\]/.test(saved);
+  for (const id of ["plain", "html"]) {
+    await pg.locator(`${card(id)} .nbody`).dblclick();
+    await pg.waitForSelector(`${card(id)} .md-pm`, { timeout: 5000 });
+    await focusSettled(pg);
+    await pg.keyboard.press("ControlOrMeta+End");
+    await pg.keyboard.press("Shift+Home");
+    await pmHasSelection(pg);
+    await pg.evaluate((d) => {
+      const dt = new DataTransfer();
+      for (const [k, v] of Object.entries(d)) dt.setData(k, v);
+      document.activeElement!.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true }));
+    }, clip[id]);
+    const ed = await look(h, `${card(id)} .md-pm`);
+    check(`pasteBracketFormulas ${id} formulas in the editor`, ed.blocks === 3 && JSON.stringify(ed.tex) === '["B"]' && !/\\\[|\\\]|\\\(/.test(ed.text), ed);
+    await pg.keyboard.press("Escape");
+    await until(h, "Esc saves the Note", () => md(h, id) !== id);
+    check(`pasteBracketFormulas ${id} saved as $$…$$ and $…$, code kept`, ok(md(h, id)), md(h, id));
+    await pg.waitForSelector(`${card(id)} .md-pm`, { state: "detached", timeout: 5000 });
+  }
+  await idle(h);
+  await pg.mouse.move(1040, 120);
+  await pg.evaluate((t) => {
+    const dt = new DataTransfer();
+    dt.setData("text/plain", t);
+    window.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true }));
+  }, BRACKETS);
+  const made = await until(h, "⌘V on the board adds a card", () => h.board().cards.find((c) => c.id !== "plain" && c.id !== "html")).catch(() => undefined);
+  const mdOf = made?.kind === "note" ? (made as NoteCard).md : "";
+  check("pasteBracketFormulas ⌘V on the board makes a Note with formulas", BRACKET_BLOCKS.every((t) => mdOf.includes(`$$\n ${t} \n$$`)) && mdOf.includes("其中 $B$ 是") && mdOf.includes("`\\(B\\)`"), made);
+  await idle(h);
+  await pg.mouse.move(2, 2);
+  await idle(h);
+  if (made) {
+    const shown = await look(h, `${card(made.id)} .nbody`);
+    check("pasteBracketFormulas the new Note shows the formulas", shown.blocks === 3 && shown.tex.length === 1 && !/\\\[|\\\]/.test(shown.text), shown);
+    const r = (await pg.locator(card(made.id)).boundingBox())!;
+    await pg.screenshot({ path: path.join(OUT, "md-paste-brackets-warm-ink.png"), clip: { x: Math.max(0, r.x - 20), y: Math.max(0, r.y - 20), width: r.width + 40, height: r.height + 40 } });
+  }
+});

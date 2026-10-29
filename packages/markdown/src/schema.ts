@@ -23,6 +23,7 @@ import { Footnotes, Footnote, FootnoteReference } from "tiptap-footnotes";
 import DOMPurify from "dompurify";
 import katex from "katex";
 import { EMOJI } from "./emoji";
+import { bracketDelims, dollarBrackets } from "./brackets";
 
 // 行内 $…$：$ 后紧跟非空白，结尾 $ 前是非空白、后面不是数字，所以 "$5 and $10" 不算公式；紧跟在 \ 或 $ 后面的 $ 不开头。
 // 行内的 $$…$$ 是行内的大号公式
@@ -718,7 +719,7 @@ export function mdBlockStarts(src: string): number[] | null {
  * 缩进出来的代码块（排版里的缩进）。有别的格式时整段照 Markdown 读，它们也跟着变
  */
 export function pastedMd(text: string): JSONContent | null {
-  const doc = parseMd(text);
+  const doc = parseMd(texBrackets(text));
   let md = false, indented = false;
   const plainMark = (m: { type: string; attrs?: Record<string, any> }, n: JSONContent) =>
     m.type === "subscript" || m.type === "superscript" || (m.type === "link" && !!n.text && String(m.attrs?.href ?? "").endsWith(n.text));
@@ -733,6 +734,30 @@ export function pastedMd(text: string): JSONContent | null {
   }
   return md ? doc : null;
 }
+/**
+ * 粘贴的 Markdown 里的 \( … \)、\[ … \] 写成 $…$、$$…$$（见 brackets.ts）；其余原样。哪个记号在代码、公式里由解析器定：
+ * 记号先换成一个占位字再分词，按顺序数每个词里有几个，代码、行内代码、HTML、公式里的不算。数不齐（比如在链接地址里）就整段不动
+ */
+export function texBrackets(src: string): string {
+  const ds = bracketDelims(src);
+  if (!ds.length) return src;
+  type Tok = { type?: string; raw?: string; tokens?: Tok[]; items?: Tok[]; header?: Tok[]; rows?: Tok[][] };
+  let hidden = "", last = 0;
+  for (const d of ds) { hidden += src.slice(last, d.at) + BRACKET; last = d.at + 2; }
+  hidden += src.slice(last);
+  const usable: boolean[] = [];
+  const visit = (ts: Tok[] | undefined) => {
+    for (const t of ts ?? []) {
+      const kids = [...(t.tokens ?? []), ...(t.items ?? []), ...(t.header ?? []), ...(t.rows ?? []).flat()];
+      const lit = /^(code|codespan|html|inlineMath|blockMath)$/.test(t.type ?? "");
+      if (kids.length && !lit) { visit(kids); continue; }
+      for (const c of t.raw ?? "") if (c === BRACKET) usable.push(!lit);
+    }
+  };
+  visit((mm as unknown as { createLexer(): { lex(s: string): Tok[] } }).createLexer().lex(hidden));
+  return usable.length === ds.length ? dollarBrackets(src, (k) => usable[k]) : src;
+}
+const BRACKET = "";
 function walk(ns: JSONContent[] | undefined, f: (n: JSONContent) => void) {
   for (const n of ns ?? []) { f(n); walk(n.content, f); }
 }

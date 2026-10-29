@@ -109,7 +109,7 @@
     "math": {
       "about": "formulas: KaTeX rendering, the preamble, math blocks, math hints, pasted formulas",
       "files": [
-        "packages/markdown/src/{math,doubled}.ts", "packages/markdown/src/katex.css",
+        "packages/markdown/src/{math,doubled,brackets}.ts", "packages/markdown/src/katex.css",
         "packages/markdown/src/editor/{mathblock,mathhints,pastemath}.ts", "packages/board/src/md/math.ts",
         "packages/board/test/scenarios/{math-hints,md-paste-math}.spec.ts"
       ],
