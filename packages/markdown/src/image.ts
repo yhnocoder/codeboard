@@ -30,6 +30,9 @@ export function setAssetBase(b: string) {
   setImageResolver(b ? (src) => (src.startsWith("assets/") ? { src: `${b}/${src.slice(7)}` } : undefined) : null);
 }
 
+/** 图注：Markdown 里图的 title（![a](u "图注")），空白的不算 */
+export const captionOf = (title: unknown): string => (typeof title === "string" ? title.trim() : "");
+
 /** 一张图的 <img> 属性（值为 null 的不写） */
 export function imageAttrs(a: { src?: string | null; alt?: string | null; title?: string | null; width?: number | null }): Record<string, string | null> {
   const raw = a.src ?? "";
@@ -41,7 +44,8 @@ export function imageAttrs(a: { src?: string | null; alt?: string | null; title?
     else if (r.src) { watchLoads(); if (rawOf.size > 4000) rawOf.clear(); rawOf.set(r.src, raw); }
   }
   return {
-    src: r.src, alt: a.alt ?? "", title: a.title || null,
+    // title 是图注，画在图下面（render.ts、editor/image.ts），不再当悬停提示
+    src: r.src, alt: a.alt ?? "",
     width: w && h ? String(w) : null, height: w && h ? String(h) : null,
     // 缩小了的图：正文宽的百分之几，居中（.sized，见 markdown.css；编辑器里这个宽度在包着图的那一层上，见 editor/image.ts）
     style: a.width ? `width: ${a.width}%` : null, class: a.width ? "sized" : null,

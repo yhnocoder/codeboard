@@ -88,8 +88,14 @@ function segMd(s: Segment, link?: string): string[] {
   return out;
 }
 
-/** Note 里存储目录 assets/ 下的图（粘贴的截图）：导出的 .md 放在别处，地址对不上，和 Image 卡一样写成 *Image: alt* */
-const localImages = (md: string) => md.replace(/!\[([^\]\n]*)\]\(<?assets\/[^)\s>]+>?(?:\s+"[^"\n]*")?\)/g, (_m, alt: string) => `*Image${alt ? `: ${alt}` : ""}*`);
+/**
+ * Note 里存储目录 assets/ 下的图（粘贴的截图）：导出的 .md 放在别处，地址对不上，和 Image 卡一样写成 *Image: alt*；
+ * 有图注（title）的接在后面（*Image: alt — 图注*），缩小的宽度 {width=…%} 一起去掉
+ */
+const localImages = (md: string) => md.replace(/!\[([^\]\n]*)\]\(<?assets\/[^)\s>]+>?(?:\s+"((?:\\.|[^"\\\n])*)")?\)(?:\{width=[\d.]+%\})?/g, (_m, alt: string, title?: string) => {
+  const cap = title?.replace(/\\(.)/g, "$1").trim();
+  return `*Image${[alt, cap].some(Boolean) ? `: ${[alt, cap].filter(Boolean).join(" — ")}` : ""}*`;
+});
 const quote = (s: string) => s.split("\n").map((l) => (l ? `> ${l}` : ">")).join("\n");
 
 function noteMd(b: Board, n: Sidenote, links?: Record<string, string>): string {

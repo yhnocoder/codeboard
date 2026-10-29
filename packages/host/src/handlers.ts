@@ -30,7 +30,7 @@ import { addVariant, variantSources } from "./variants";
 import { highlight, segView, viewsFor } from "./views";
 import { fromHostPath, hostPath, langOf, readText, splitLines, workspace, ws0 } from "./ws";
 import { lookupName } from "./nameindex";
-import { imageAiJob } from "./imageai";
+import { aiInfo, imageAiJob } from "./imageai";
 
 const SAFE_BOARD_ID = /^[\w-]{1,80}$/;
 
@@ -135,6 +135,13 @@ export function makeHandler(panels: BoardHost): Handler {
     imageAi: (p, m) => imageAiJob(jobsOf(p), m.job, m.op),
     imageAiCancel: (p, m) => { jobsOf(p).get(m.job)?.abort(); },
     setDeepseekKey: async () => { await workspace().ai?.setDeepseekKey?.(); },
+    aiInfo: () => aiInfo(),
+    aiKey: async (_p, m) => {
+      const ai = workspace().ai;
+      if (m.action === "set") await ai?.setDeepseekKey?.();
+      else await ai?.clearDeepseekKey?.();
+      return aiInfo();
+    },
     variantSources: (_p, m) => variantSources(m.seg),
     addVariant: (_p, m) => addVariant(m.segs, m.from),
     skeletons: async (_p, m) => {

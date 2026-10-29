@@ -4,6 +4,8 @@
 import { mapLines } from "./diff";
 import { activeOf, clone, copyTwinContent, twinContent, cornerAt, findCard, mdHeading, sameVersion, UPSTREAM, withCols, sortSegments, mergeOverlapping, uid, type Board, type Card, type CodeCard, type End, type Link, type Place, type Segment, type Sidenote, type Sticker, type StickerAt } from "./model";
 import { escapeRegExp, type BoundVal, type CallAlt } from "@codeboard/analysis/basics";
+import { estSize, type Rect } from "./layout";
+import { headingTree, splitHeadings } from "./split";
 
 /** 删掉这些卡（Compare 连同两栏）和它们的摆放，以及连着它们的 Link、挂在它们上面或指向它们的 Sidenote、贴在它们上面的 Sticker */
 export function removeCards(b: Board, ids: Iterable<string>): void {
@@ -816,4 +818,30 @@ export function renameTitleRefs(b: Board, from: string, to: string): void {
     if (k.desc) { const d = fix(k.desc); if (d !== k.desc) k.desc = d; }
   }
   for (const n of b.sidenotes) if (n.kind === "text") { const m = fix(n.md); if (m !== n.md) n.md = m; }
+}
+
+/**
+ * Split by Headings：Note 按标题拆成几张 Note（规则见 split.ts 的 splitHeadings），一步改动。原卡留着第一个标题前的字
+ * （前面没有字时留着第一段），每段一张新 Note，标题行留在它的 Markdown 开头（Note 的卡头就是开头的标题）；
+ * 从每张卡连实线箭头到它下一级的卡，原卡连到最上一级的卡。新卡和原卡一样宽、在同一个 Section 里，摆成向下的树（headingTree）。
+ * heights：原卡拆完以后的高、每段新卡的高（白板量出来的；不给按估计）；others：别的卡的矩形（新卡尽量不压着它们）。
+ * 不是 Note、没有可拆的标题时什么都不改，返回 null；否则返回新卡的 id（按原文的先后）
+ */
+export function splitNoteByHeadings(b: Board, id: string, o: { heights?: { root: number; parts: number[] }; others?: Rect[]; ids?: string[] } = {}): string[] | null {
+  const n = b.cards.find((c) => c.id === id);
+  const sp = n?.kind === "note" ? splitHeadings(n.md) : null;
+  if (n?.kind !== "note" || !sp) return null;
+  const p = b.place[id] ?? { x: 0, y: 0, w: estSize(n).w };
+  const est = (md: string) => 60 + md.split("\n").length * 21;
+  const hs = sp.parts.map((q, i) => o.heights?.parts[i] ?? est(q.md));
+  const at = headingTree({ x: p.x, y: p.y, w: p.w, h: o.heights?.root ?? est(sp.pre) }, sp.parts.map((q, i) => ({ h: hs[i], parent: q.parent })), o.others);
+  const ids = sp.parts.map((_, i) => o.ids?.[i] ?? uid("n"));
+  n.md = sp.pre;
+  delete p.h; // 内容变少了：高度跟着内容
+  sp.parts.forEach((q, i) => {
+    b.cards.push({ id: ids[i], kind: "note", md: q.md, look: "note" });
+    b.place[ids[i]] = { x: at[i].x, y: at[i].y, w: p.w, ...(p.section ? { section: p.section } : {}) };
+    b.links.push({ id: uid("l"), from: { card: q.parent < 0 ? id : ids[q.parent] }, to: { card: ids[i] } });
+  });
+  return ids;
 }

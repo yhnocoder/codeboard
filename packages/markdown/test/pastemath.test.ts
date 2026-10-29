@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { DOMParser as PMParser, type Node as PMNode } from "@tiptap/pm/model";
 import type { JSONContent } from "@tiptap/core";
-import { mdSchema, parseMd, serializeMd } from "../src/schema";
+import { mdSchema, parseMd, pastedMd, serializeMd, texBrackets } from "../src/schema";
 import { mathInSlice } from "../src/editor/pastemath";
 
 // From usage feedback #19: a chat app's answer with formulas next to CJK text and punctuation, \text{…} with dots,
@@ -86,5 +86,41 @@ describe("pasting HTML with formulas", () => {
     expect(all.filter((n) => n.type.name === "inlineMath").map((n) => n.attrs.latex)).toEqual(["1 \\times 4", "M"]);
     expect(all.filter((n) => n.type.name === "blockMath").map((n) => n.attrs.latex)).toEqual(["\\sum_i x_i", "a+b"]);
     expect(doc.textContent).not.toContain("drawn");
+  });
+});
+
+// From usage feedback #54: an H100 occupancy explanation whose display formulas are LaTeX's \[ … \] on their own lines, with spaces
+const OCCUPANCY = [
+  "个线程。此时 occupancy 为", "", "\\[", " 1024/2048 = 50\\% ", "\\]", "",
+  "因此，要充分利用线程槽位并达到最大 occupancy，每个 thread block 至少需要 64 个线程。", "",
+  "假设一个 kernel 每线程使用 31 个寄存器，并配置为每 block 512 个线程。SM 同时运行", "", "\\[", " 2048/512 = 4 ", "\\]", "",
+  "个 block，共使用", "", "\\[", " 2048 \\times 31 = 63,488 ", "\\]", "", "个寄存器。",
+].join("\n");
+const OCC_TEX = ["1024/2048 = 50\\%", "2048/512 = 4", "2048 \\times 31 = 63,488"];
+
+describe("LaTeX \\( … \\) and \\[ … \\] in pasted text", () => {
+  it("reads \\[ … \\] on their own lines as formula blocks and \\( … \\) next to CJK text as inline formulas", () => {
+    const doc = pastedMd(OCCUPANCY)!;
+    expect(doc.content!.filter((n) => n.type === "blockMath").map((n) => n.attrs!.latex)).toEqual(OCC_TEX);
+    expect(textOf(doc)).not.toContain("\\[");
+    expect(serializeMd(doc)).toContain("$$\n2048 \\times 31 = 63,488\n$$");
+    const inl = pastedMd("偏移为\\(\\text{row} \\times N\\)，元素 \\( x_1 \\) 和 \\[a+b\\] 在行内")!;
+    expect(flat(inl.content).filter((n) => n.type === "inlineMath").map((n) => [n.attrs!.latex, n.attrs!.display])).toEqual([["\\text{row} \\times N", false], ["x_1", false], ["a+b", true]]);
+    expect(textOf(inl)).toBe("偏移为，元素  和  在行内");
+  });
+
+  it("leaves them alone in code, existing formulas, link addresses and escaped backslashes, and when unpaired", () => {
+    const md = "`\\(a\\)` 和\n\n```\n\\[b\\]\n```\n\n$x \\(c\\) y$ 与 [l](u\\(d\\)) 和 \\\\(e\\) 和 \\(f 没配上";
+    expect(texBrackets(md)).toBe(md);
+    expect(texBrackets("- 列表 \\(a\\)\n> 引用 \\[b\\]")).toBe("- 列表 $a$\n> 引用 $$b$$");
+    expect(texBrackets("不跨段 \\(a\n\nb\\)")).toBe("不跨段 \\(a\n\nb\\)");
+  });
+
+  it("turns them into formulas in pasted HTML too, but not inside <code>", () => {
+    const doc = pasteHtml(`<p>此时 occupancy 为</p><p>\\[<br> 1024/2048 = 50\\% <br>\\]</p><p>\\[ 2048/512 = 4 \\]</p><p>偏移 \\(x_1\\)，代码 <code>\\(y\\)</code></p>`);
+    const all = nodes(doc);
+    expect(all.filter((n) => n.type.name === "blockMath").map((n) => n.attrs.latex)).toEqual(OCC_TEX.slice(0, 2));
+    expect(all.filter((n) => n.type.name === "inlineMath").map((n) => n.attrs.latex)).toEqual(["x_1"]);
+    expect(all.filter((n) => n.marks.some((m) => m.type.name === "code")).map((n) => n.text)).toEqual(["\\(y\\)"]);
   });
 });

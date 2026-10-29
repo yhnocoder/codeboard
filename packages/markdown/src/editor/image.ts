@@ -4,7 +4,7 @@ import { closeHistory } from "@tiptap/pm/history";
 import { Mapping } from "@tiptap/pm/transform";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import type { EditorView } from "@tiptap/pm/view";
-import { imageAttrs } from "../image";
+import { captionOf, imageAttrs } from "../image";
 import { holdGhosts } from "../ui/ghost";
 
 /** 存一张图（data: URL、文件名）→ 写进 Markdown 的地址；null = 不插（存不了时用的一方自己提示） */
@@ -61,6 +61,7 @@ const MIN_W = 24; // 最窄（像素）
 class ImageView {
   dom: HTMLElement;
   private img: HTMLImageElement;
+  private cap: HTMLElement;
   private grips: HTMLElement[];
   constructor(private node: PMNode, private view: EditorView, private getPos: () => number | undefined) {
     this.dom = document.createElement("span");
@@ -77,7 +78,11 @@ class ImageView {
       return g;
     });
     this.grips = grips;
-    this.dom.append(this.img, ...grips);
+    // 图注（title）：和静态显示一样画在图下面，只是显示（改图注走用的一方的菜单）
+    this.cap = document.createElement("span");
+    this.cap.className = "md-cap";
+    this.cap.contentEditable = "false";
+    this.dom.append(this.img, this.cap, ...grips);
     this.set(node);
   }
   private set(n: PMNode) {
@@ -85,6 +90,9 @@ class ImageView {
       if (k === "style" || k === "class") continue;
       if (v == null) this.img.removeAttribute(k); else if (this.img.getAttribute(k) !== v) this.img.setAttribute(k, v);
     }
+    const cap = captionOf(n.attrs.title);
+    if (this.cap.textContent !== cap) this.cap.textContent = cap;
+    this.cap.hidden = !cap;
     this.show(n.attrs.width);
   }
   private show(w: number | null) {

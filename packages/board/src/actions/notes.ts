@@ -1,14 +1,18 @@
 import { unwrap } from "solid-js/store";
-import { uid, findCard, isCode, cardTitle, segOf, cardIntoSidenote, imageIntoNote, removeSidenotes, sidenoteCard, sidenoteToCard, turnNoteInto, NEW_CARD_W, type Sidenote, type SegView, type Anchor, type BoxFill, type HandColor } from "@codeboard/core";
-import { state, setState, mutate, sel, select, clearSel, lineSel, cardById, hostOf, toast } from "../state/store";
+import { uid, findCard, isCode, cardTitle, segOf, cardIntoSidenote, imageIntoNote, removeSidenotes, sidenoteCard, sidenoteToCard, splitHeadings, splitNoteByHeadings, turnNoteInto, NEW_CARD_W, type Sidenote, type SegView, type Anchor, type BoxFill, type HandColor } from "@codeboard/core";
+import { state, setState, mutate, sel, select, clearSel, lineSel, cardById, hostOf, toast, rectOf, placeOf } from "../state/store";
+import { editing, setEditing } from "../state/ui";
+import { cardsMeasured } from "../state/measure";
 import { noteImageOf } from "./imagedata";
 import { quietHover } from "../state/camera";
-import { choose } from "../ui/Menu";
+import { choose, promptText, type Item } from "../ui/Menu";
+import { imageCaption, setImageCaption } from "@yhnocoder/markdown";
+import { noteImageAt, type ImgRef } from "./imageai";
 import { openPop, closePop, pops, updatePop, pinPop } from "../state/pop";
 import { ask } from "../host";
 import { addCards, requestViews } from "./create";
 import { tune } from "../state/tune";
-import { hostRect, revealCard } from "./common";
+import { hostRect, popCard, revealCard } from "./common";
 import { lastPointer } from "../state/measure";
 
 let hoverT: number | undefined, leaveT: number | undefined;
@@ -152,4 +156,87 @@ export function setBoxFill(id: string, fill: BoxFill) {
 
 export function turnNote(id: string, look: "note" | "text") {
   mutate((b) => turnNoteInto(b, id, look));
+}
+
+/** Split by Headings 能拆成几张卡（0 = 没有可拆的标题，菜单项灰掉） */
+export function headingSplitCount(id: string): number {
+  const c = cardById(id)?.card;
+  return c?.kind === "note" && c.look === "note" ? splitHeadings(c.md)?.parts.length ?? 0 : 0;
+}
+
+/** 卡里的元素到卡左上角的距离（布局像素，不受画布缩放、斜贴影响） */
+function topIn(el: HTMLElement, card: HTMLElement): number {
+  let y = 0;
+  for (let e: HTMLElement | null = el; e && e !== card; e = e.offsetParent as HTMLElement | null) y += e.offsetTop;
+  return y;
+}
+
+/**
+ * 按显示着的这张 Note 量：每个要拆的标题在卡里的位置（新卡从那里飞出去）、拆完原卡和每张新卡大概多高
+ * （新卡的标题进了卡头，正文少了标题那一块）。量不到（不在画面上、标题对不上）回 null，按估计摆
+ */
+function measureSplit(id: string, cut: number, n: number): { tops: number[]; root: number; parts: number[] } | null {
+  const card = document.querySelector<HTMLElement>(`.card[data-id="${CSS.escape(id)}"]`);
+  const body = card?.querySelector<HTMLElement>(".nbody.md:not(.editing)");
+  if (!card || !body) return null;
+  const hs = [...body.children].filter((e): e is HTMLElement => /^H[1-6]$/.test(e.tagName) && +e.tagName[1] <= cut);
+  const end = topIn(body, card) + body.offsetHeight - parseFloat(getComputedStyle(body).paddingBottom);
+  const chrome = card.offsetHeight - (end - topIn(body, card)) + parseFloat(getComputedStyle(body).paddingTop);
+  // 开头的标题就是卡头时它在正文里藏着（不占位置）：拆的时候原卡留着它那一段，只量后面的
+  const shown = hs.filter((h) => h.offsetParent);
+  if (shown.length < n) return null;
+  const use = shown.slice(shown.length - n);
+  const tops = use.map((h) => topIn(h, card));
+  const bodyTop = topIn(body, card) + parseFloat(getComputedStyle(body).paddingTop);
+  return {
+    tops,
+    root: Math.round(chrome + tops[0] - bodyTop),
+    parts: use.map((h, i) => Math.round(chrome + (tops[i + 1] ?? end) - (tops[i] + h.offsetHeight))),
+  };
+}
+
+/** Note 右键 Split by Headings：一步改动（⌘Z 一下撤回），新卡从原卡里各自那一段的位置弹出来 */
+export async function splitByHeadings(id: string) {
+  const c = cardById(id)?.card;
+  const sp = c?.kind === "note" ? splitHeadings(c.md) : null;
+  if (!sp) return;
+  // 正在编辑：先存下编辑器里的字，等静态显示画出来再量
+  if (editing()?.id === id) { setEditing(null); await cardsMeasured(); return splitByHeadings(id); }
+  const m = measureSplit(id, sp.cut, sp.parts.length);
+  const p0 = { ...placeOf(id) };
+  const others = state.board.cards.filter((k) => k.id !== id && state.board.place[k.id]).map((k) => rectOf(k));
+  let ids: string[] | null = null;
+  if (!mutate((b) => { ids = splitNoteByHeadings(b, id, { heights: m ? { root: m.root, parts: m.parts } : undefined, others }); }) || !ids) return;
+  const made: string[] = ids;
+  select({ cards: [id, ...made] });
+  made.forEach((k, i) => popCard(k, { x: p0.x, y: p0.y + (m?.tops[i] ?? 40) }));
+  toast(`Split into ${made.length} card${made.length > 1 ? "s" : ""}. ${state.host.isMac ? "⌘Z" : "Ctrl+Z"} undoes it`);
+}
+
+/** 右键的这张图是 Note 里同一个地址的图里的第几张（按显示的先后，和 Markdown 里的先后一样） */
+function imageIndex(el: Element, ref: ImgRef): number {
+  const face = el.closest(".cface");
+  const same = [...(face?.querySelectorAll("img") ?? [])].filter((i) => noteImageAt(i, ref.card)?.note === ref.note);
+  return Math.max(0, same.indexOf(el as HTMLImageElement));
+}
+
+/** Note 里一张图的图注（Markdown 里图的 title）：Add Caption… / Edit Caption…、Remove Caption。el = 右键点的那张图 */
+export function captionItems(ref: ImgRef, el: Element | null): Item[] {
+  const c = cardById(ref.card)?.card;
+  if (c?.kind !== "note" || ref.note === undefined || !el) return [];
+  const nth = imageIndex(el, ref), src = ref.note, cap = imageCaption(c.md, src, nth);
+  if (cap === null) return [];
+  return [
+    { label: cap ? "Edit Caption…" : "Add Caption…", run: () => void editCaption(ref.card, src, nth, cap) },
+    ...(cap ? [{ label: "Remove Caption", run: () => setCaption(ref.card, src, nth, "") } as Item] : []),
+  ];
+}
+async function editCaption(card: string, src: string, nth: number, cap: string) {
+  const v = await promptText(cap ? "Edit Caption" : "Add Caption", cap, "Figure 1: …", cap ? "Save" : "Add", { text: "Shown under the image, like a figure caption" });
+  if (v !== null && v !== cap) setCaption(card, src, nth, v);
+}
+function setCaption(card: string, src: string, nth: number, cap: string) {
+  // 正在编辑这张 Note：先存下编辑器里的字，再改图注（编辑器里的文档不跟着外面的改动走）
+  if (editing()?.kind === "note" && editing()?.id === card) setEditing(null);
+  mutate((b) => { const n = findCard(b, card)?.card; if (n?.kind === "note") n.md = setImageCaption(n.md, src, nth, cap); });
 }

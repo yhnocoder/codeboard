@@ -67,7 +67,14 @@ math { font-size: 1.05em; }
 /* 缩小了的图（![a](u){width=40%}）在那一行居中：图是行内的，居中的是它所在的那一段（静态显示是 img.sized，编辑器是 .md-img.sized；
    列表项、表格格子里这一段的 <p> 静态显示也留着，见 render.ts）。图一般单独一段，和字在同一段时那一段的字也居中。
    :has() 里只写有类名的后代，不写 > * 这样的任意一层：那样 Chrome 会在白板上任何类名变化时（拖卡、悬停）重算所有卡的样式 */
-.md p:has(img.sized), .md-pm p:has(.md-img.sized) { text-align: center; }
+.md p:has(img.sized), .md p:has(.md-fig.sized), .md-pm p:has(.md-img.sized) { text-align: center; }
+/* 图注（![a](u "图注")）：图正下方居中的小字，像论文的图注。静态显示里带图注的图包在 .md-fig 里（和编辑器的 .md-img 一样排），
+   图注不撑宽这一层（contain: inline-size）：宽度是图的宽，长的图注在图的宽度里折行 */
+.md .md-fig { display: inline-block; vertical-align: middle; max-width: 100%; margin: 4px 0; }
+.md .md-fig > img { display: block; margin: 0; }
+.md .md-fig.sized > img { width: 100%; }
+.md .md-cap { display: block; contain: inline-size; margin: 5px 0 2px; text-align: center; font-size: .82em; line-height: 1.45; color: var(--ink-2); white-space: normal; }
+.md .md-cap[hidden] { display: none; }
 .md kbd { font: .85em var(--mono); padding: 0 4px; border-radius: 4px; box-shadow: 0 0 0 .5px var(--hair), 0 1px 0 var(--hair); }
 .md :is(.math, [data-type="block-math"]) .katex-display { margin: 2px 0; }
 /* Note 里的调用点不能点，不画成链接 */

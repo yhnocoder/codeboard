@@ -1,9 +1,9 @@
 // 快捷键清单和 ? 浮层都从 keymap.ts 的表生成。
 import { For, Show, createEffect, createSignal, onMount } from "solid-js";
-import { THEMES, EXPERIMENTAL_THEMES, NOTE_FONT_LEVELS, NOTE_FONT_RANGE, type HideFlags, type NoteFontLevel, type Settings as S } from "@codeboard/core";
+import { THEMES, EXPERIMENTAL_THEMES, NOTE_FONT_LEVELS, NOTE_FONT_RANGE, type AiInfo, type HideFlags, type NoteFontLevel, type Settings as S } from "@codeboard/core";
 import { state } from "../state/store";
 import { settingsOpen } from "../state/ui";
-import { send } from "../host";
+import { ask, send } from "../host";
 import * as A from "../actions";
 import { Icon } from "./icons";
 import { promptText } from "./Menu";
@@ -71,6 +71,9 @@ function SettingsPage(p: { section?: string }) {
         </Sec>
         <Sec id="math" title="Math preamble" hint={"\\newcommand and \\def lines that every formula on this project's boards can use. Saved in this project (.vscode/settings.json), not in your user settings. Typing \\ in a formula suggests them too."}>
           <Preamble />
+        </Sec>
+        <Sec id="ai" title="AI" hint="DeepSeek or a VS Code language model such as GitHub Copilot. Auto uses DeepSeek when its API key is set, otherwise a VS Code model (VS Code asks once before CodeBoard may use it). The key stays in VS Code's secret storage and never reaches the board.">
+          <AiSettings />
         </Sec>
         <Sec id="hide" title="New cards hide" hint="What new code cards start with hidden. Each card can still toggle them.">
           <div class="st-checks">
@@ -255,6 +258,71 @@ function Preamble() {
         placeholder={"\\newcommand{\\R}{\\mathbb{R}}\n\\newcommand{\\norm}[1]{\\lVert #1 \\rVert}"}
         onChange={(e) => commit(e.currentTarget.value)} onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) e.currentTarget.blur(); }} />
       <For each={errs()}>{(m) => <div class="st-warn">{m}</div>}</For>
+    </>
+  );
+}
+
+/** 每项 AI 功能用哪个模型：Auto、DeepSeek、或某个 VS Code 语言模型（看图的功能只列收图的） */
+const AI_FEATURES = [
+  ["aiText", "Extract Text, Paste Image Text", true],
+  ["aiSvg", "Convert to SVG, Modify SVG", true],
+  ["aiFocus", "Auto Focus", false],
+] as const;
+
+/** AI：DeepSeek 密钥（只显示设没设）、模型名、灰字补全用谁、各功能的模型、Convert to SVG 的默认项。模型清单和密钥状态问宿主 */
+function AiSettings() {
+  const [info, setInfo] = createSignal<AiInfo>({ key: false, models: [] });
+  const [busy, setBusy] = createSignal(false);
+  onMount(() => void ask("aiInfo", {}).then((r) => r && setInfo(r)).catch(() => undefined));
+  const keyAction = async (action: "set" | "clear") => {
+    setBusy(true);
+    try { const r = await ask("aiKey", { action }); if (r) setInfo(r); } catch { /* 宿主没回：状态照旧 */ } finally { setBusy(false); }
+  };
+  const commitModel = (v: string) => { v = v.trim(); if (v !== cur().deepseekModel) A.setSetting("deepseekModel", v); };
+  return (
+    <>
+      <div class="st-sub">DeepSeek API key</div>
+      <div class="st-row st-key">
+        <span class="st-ks" classList={{ on: info().key }}>{info().key ? "Set" : "Not set"}</span>
+        <button class="btn" disabled={busy()} onClick={() => void keyAction("set")}>Set Key…</button>
+        <button class="btn" disabled={busy() || !info().key} onClick={() => void keyAction("clear")}>Clear</button>
+      </div>
+      <div class="st-sub">DeepSeek model</div>
+      <input class="fld mono st-path st-dsm" type="text" spellcheck={false} value={cur().deepseekModel} placeholder="deepseek-flash" aria-label="DeepSeek model"
+        onChange={(e) => commitModel(e.currentTarget.value)} onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }} />
+      <div class="st-sub">Inline completions in Notes</div>
+      <div class="st-chips">
+        <For each={[["auto", "Auto"], ["copilot", "VS Code Model"], ["deepseek", "DeepSeek"], ["off", "Off"]] as const}>{([v, lb]) => (
+          <button class="st-chip pick" classList={{ on: cur().aiProvider === v }} onClick={() => A.setSetting("aiProvider", v)}>{lb}</button>
+        )}</For>
+      </div>
+      <div class="st-sub">Model for each tool</div>
+      <div class="st-models">
+        <For each={AI_FEATURES}>{([k, label, vision]) => {
+          const auto = () => (info().key ? "DeepSeek" : info().models.some((m) => !vision || m.vision) ? "a VS Code model" : "no model available");
+          const known = () => cur()[k] === "auto" || cur()[k] === "deepseek" || info().models.some((m) => m.id === cur()[k]);
+          return (
+            <label class="st-mr">
+              <span class="st-fl">{label}</span>
+              <select class="fld sm" data-ai={k} value={cur()[k]} onChange={(e) => A.setSetting(k, e.currentTarget.value)}>
+                <option value="auto">Auto ({auto()})</option>
+                <option value="deepseek">DeepSeek{info().key ? "" : " (no key set)"}</option>
+                <Show when={info().models.length}>
+                  <optgroup label="VS Code language models">
+                    <For each={info().models}>{(m) => <option value={m.id} disabled={vision && !m.vision}>{m.name} · {m.vendor}{vision && !m.vision ? " (no image input)" : ""}</option>}</For>
+                  </optgroup>
+                </Show>
+                <Show when={!known()}><option value={cur()[k]}>{cur()[k]} (not available)</option></Show>
+              </select>
+            </label>
+          );
+        }}</For>
+      </div>
+      <div class="st-sub">Convert to SVG</div>
+      <div class="st-checks">
+        <label class="st-check"><input type="checkbox" checked={cur().svgNoBg} onChange={(e) => A.setSetting("svgNoBg", e.currentTarget.checked)} />Remove Background</label>
+        <label class="st-check" data-tip="Several times slower, with a more accurate layout. DeepSeek only"><input type="checkbox" checked={cur().svgThink} onChange={(e) => A.setSetting("svgThink", e.currentTarget.checked)} />Think First (slower)</label>
+      </div>
     </>
   );
 }

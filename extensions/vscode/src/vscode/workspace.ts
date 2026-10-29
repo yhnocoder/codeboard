@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import * as path from "node:path";
 import { vscodeScratch, isScratch } from "./scratch";
-import { COMPLETE_SYSTEM, Emitter, completePrompt, type Workspace } from "@codeboard/core";
+import { COMPLETE_SYSTEM, Emitter, completePrompt, type AiChatRequest, type AiChatResult, type AiModel, type Workspace } from "@codeboard/core";
 import { deepseekComplete } from "@codeboard/host/deepseek";
 
 const EXT_ID = "yhnocoder.codeboard-vscode";
@@ -81,6 +81,61 @@ async function copilotAsk(system: string, prompt: string, o?: { signal?: AbortSi
     for await (const t of r.text) { out += t; if (o?.maxChars && out.length > o.maxChars) { cts.cancel(); break; } }
     return out;
   } catch { return undefined; }
+}
+
+type LmModel = vscode.LanguageModelChat & { capabilities?: { supportsImageToText?: boolean } };
+const lmApi = () => (vscode as any).lm as typeof vscode.lm | undefined;
+// 1.143 的模型有 capabilities.supportsImageToText（@types/vscode 1.90 里还没有）
+const aiModel = (m: LmModel): AiModel => ({ id: m.id, name: m.name || m.family || m.id, vendor: m.vendor, vision: !!m.capabilities?.supportsImageToText });
+
+async function lmModels(): Promise<AiModel[]> {
+  try { return ((await lmApi()?.selectChatModels()) ?? []).map((m) => aiModel(m as LmModel)); } catch { return []; }
+}
+
+/**
+ * AI 功能问 VS Code 的语言模型（Copilot…）。model 不给 = 自动挑：有图时只挑收图的，fast 时先挑小模型。
+ * 没有 system 角色：system 并进那条 User。图用 LanguageModelDataPart（1.143 有，@types/vscode 1.90 里没有，按运行时的取）
+ */
+async function lmChat(model: string | undefined, req: AiChatRequest, o: { signal: AbortSignal; justification: string }): Promise<AiChatResult> {
+  const lm = lmApi(), V = vscode as any;
+  if (!lm?.selectChatModels) return { fail: "nomodel", message: "This version of VS Code has no language model API" };
+  let all: LmModel[];
+  try { all = (await lm.selectChatModels()) as LmModel[]; } catch (e) { return { fail: "nomodel", message: (e as Error)?.message }; }
+  let m: LmModel | undefined;
+  if (model) {
+    m = all.find((x) => x.id === model);
+    if (!m) return { fail: "nomodel", message: `The language model “${model}” isn't available. Pick another one in CodeBoard Settings › AI` };
+    if (req.image && !m.capabilities?.supportsImageToText) return { fail: "nomodel", message: `${aiModel(m).name} can't read images. Pick another model in CodeBoard Settings › AI`, via: aiModel(m).name };
+  } else {
+    const ok = all.filter((x) => !req.image || x.capabilities?.supportsImageToText);
+    const fast = /mini|haiku|flash|nano|small|fast/i;
+    m = (req.fast ? ok.find((x) => fast.test(x.family) || fast.test(x.id)) : ok.find((x) => !fast.test(x.family) && !fast.test(x.id))) ?? ok[0];
+    if (!m) return { fail: "nomodel", message: all.length ? "No VS Code language model here reads images" : undefined };
+  }
+  const via = aiModel(m).name;
+  if (req.image && !(V.LanguageModelDataPart?.image && V.LanguageModelTextPart)) return { fail: "nomodel", message: "This version of VS Code can't send images to language models", via };
+  const text = `${req.system}\n\n${req.user}`;
+  // @types/vscode 1.90 的 User() 只写了 string；运行时（1.143）收 TextPart / DataPart 的数组
+  const content: string = req.image ? [new V.LanguageModelTextPart(text), V.LanguageModelDataPart.image(req.image.data, req.image.mime)] as any : text;
+  const cts = new vscode.CancellationTokenSource();
+  const stop = () => cts.cancel();
+  o.signal.addEventListener("abort", stop);
+  try {
+    if (o.signal.aborted) return { fail: "canceled" };
+    const r = await m.sendRequest([vscode.LanguageModelChatMessage.User(content)], { justification: o.justification }, cts.token);
+    let out = "";
+    for await (const t of r.text) out += t;
+    return { text: out, via };
+  } catch (e) {
+    if (o.signal.aborted) return { fail: "canceled" };
+    const code = (e as { code?: string })?.code, msg = (e as Error)?.message;
+    if (e instanceof vscode.LanguageModelError && code === vscode.LanguageModelError.NoPermissions.name) return { fail: "noconsent", message: msg, via };
+    if (e instanceof vscode.LanguageModelError && code === vscode.LanguageModelError.NotFound.name) return { fail: "nomodel", message: msg, via };
+    return { fail: "http", message: msg || String(e), via };
+  } finally {
+    o.signal.removeEventListener("abort", stop);
+    cts.dispose();
+  }
 }
 
 export function vscodeWorkspace(ctx: vscode.ExtensionContext): Workspace {
@@ -217,6 +272,9 @@ export function vscodeWorkspace(ctx: vscode.ExtensionContext): Workspace {
         await vscode.commands.executeCommand("codeboard.setDeepseekKey");
         return !!(await ctx.secrets.get(DEEPSEEK_SECRET));
       },
+      clearDeepseekKey: async () => { await ctx.secrets.delete(DEEPSEEK_SECRET); },
+      models: lmModels,
+      chat: lmChat,
     },
     // CODEBOARD_GITHUB_TOKEN（CI、无界面环境）优先于 VS Code 的 GitHub 登录
     githubToken: async (ask) => process.env.CODEBOARD_GITHUB_TOKEN || (await vscode.authentication.getSession("github", ["repo"], ask ? { createIfNone: true } : { silent: true }))?.accessToken,

@@ -84,7 +84,7 @@ describe("image tools: answers", () => {
   it("refuses a cut-off SVG, and never caches SVG work", async () => {
     const { f, calls } = fakeFetch([answer("<svg viewBox='0 0 1 1'><rect", "length"), answer("<svg/>"), answer("<svg/>")]);
     const op = { kind: "svg", image: PNG, size: { w: 1, h: 1 }, noBg: true, think: false } as const;
-    expect(await runImageAi({ key: KEY, fetch: f }, op)).toEqual({ fail: "cut" });
+    expect(await runImageAi({ key: KEY, fetch: f }, op)).toEqual({ fail: "cut", via: "DeepSeek" });
     expect(await runImageAi({ key: KEY, fetch: f }, op)).toEqual({ text: "<svg/>" });
     expect(await runImageAi({ key: KEY, fetch: f }, op)).toEqual({ text: "<svg/>" });
     expect(calls.length).toBe(3);
@@ -99,10 +99,10 @@ describe("image tools: answers", () => {
       async () => { throw new TypeError("fetch failed"); },
       answer(""),
     ]);
-    expect(await runImageAi({ key: KEY, fetch: f }, op)).toEqual({ fail: "badkey", message: "Authentication Fails" });
-    expect(await runImageAi({ key: KEY, fetch: f }, op)).toEqual({ fail: "balance", message: "Insufficient Balance" });
-    expect(await runImageAi({ key: KEY, fetch: f }, op)).toEqual({ fail: "http", message: "image too large" });
-    expect(await runImageAi({ key: KEY, fetch: f }, op)).toEqual({ fail: "network", message: "fetch failed" });
+    expect(await runImageAi({ key: KEY, fetch: f }, op)).toEqual({ fail: "badkey", message: "Authentication Fails", via: "DeepSeek" });
+    expect(await runImageAi({ key: KEY, fetch: f }, op)).toEqual({ fail: "balance", message: "Insufficient Balance", via: "DeepSeek" });
+    expect(await runImageAi({ key: KEY, fetch: f }, op)).toEqual({ fail: "http", message: "image too large", via: "DeepSeek" });
+    expect(await runImageAi({ key: KEY, fetch: f }, op)).toEqual({ fail: "network", message: "fetch failed", via: "DeepSeek" });
     expect((await runImageAi({ key: KEY, fetch: f }, op) as { fail: string }).fail).toBe("http");
   });
 
@@ -137,7 +137,7 @@ describe("image tools: the host's job", () => {
   it("says there is no key without calling the network", async () => {
     key = undefined;
     const { f, calls } = fakeFetch([]);
-    expect(await imageAiJob(new Map(), 1, { kind: "extract", image: PNG }, f)).toEqual({ fail: "nokey" });
+    expect(await imageAiJob(new Map(), 1, { kind: "extract", image: PNG }, f)).toMatchObject({ fail: "nokey" });
     expect(calls.length).toBe(0);
   });
 
