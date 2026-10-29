@@ -204,9 +204,31 @@ async function variantsStep(page) {
   check(!!c, "the variant is saved with the card", boardJson()?.cards.find((k) => k.kind === "code" && k.variants)?.variants);
   await shot(page, "15-variant-worktree");
   // 在 worktree 里再改一下（VS Code 外面）：卡跟着刷新
+  const wroteAt = new Date().toISOString();
   fs.writeFileSync(file, fs.readFileSync(file, "utf8").replace("        num_batched_tokens = 0\n", "        num_batched_tokens = 0  # tuned\n"));
   const live = await soon(async () => { f = await boardFrame(page); return /# tuned/.test(await text(card(f, "Scheduler.schedule").last().locator(".src"))); }, Boolean, 15000);
   check(live, "editing the worktree file refreshes the variant on the card");
+  // CI has seen no refresh here while a local run refreshes: record which paths the host watches, which events reached it, whether it
+  // re-checked, and how this git lays out the worktree (variants-diag.txt next to the screenshots)
+  if (!live) {
+    const sh = (c) => { try { return execSync(c, { encoding: "utf8", maxBuffer: 64 << 20, stdio: ["ignore", "pipe", "pipe"] }).trim(); } catch (e) { return `(${c}: ${String(e.stderr || e.message).trim()})`; } };
+    const gd = sh(`git -C "${WT}" rev-parse --absolute-git-dir`);
+    const host = sh(`find "${UD}/logs" -name CodeBoard.log -exec grep -h "diag \\|warn\\|error" {} +`);
+    const vscode = sh(`grep -rh "ws-exp" "${UD}/logs" --include=fileWatcher.log --include=exthost.log --include=main.log --include=sharedprocess.log`);
+    const diag = [
+      `git: ${sh("git --version")}`,
+      `${WT}/.git: ${sh(`cat "${WT}/.git"`)}`,
+      `gitdir ${gd}: ${sh(`ls -la "${gd}"`)}`,
+      `backlink: ${sh(`cat "${gd}/gitdir"`)}`,
+      `worktree list:\n${sh(`git -C "${WS}" worktree list --porcelain`)}`,
+      `toplevel from the worktree: ${sh(`git -C "${path.dirname(file)}" rev-parse --show-toplevel`)}`,
+      `written at ${wroteAt}, now has "# tuned": ${/# tuned/.test(fs.readFileSync(file, "utf8"))}`,
+      `--- host log\n${host}`,
+      `--- VS Code logs\n${vscode.split("\n").slice(-200).join("\n")}`,
+    ].join("\n");
+    fs.writeFileSync(path.join(OUT, "variants-diag.txt"), diag);
+    console.log(diag.split("\n").slice(0, 80).map((l) => "  · " + l.slice(0, 300)).join("\n"));
+  }
   // 切回上游：代码换回来、MINE 没了
   await card(f, "Scheduler.schedule").last().locator(".vtab.up").click();
   const up = await soon(async () => await card(f, "Scheduler.schedule").last().locator(".chead .mine").count() === 0 && !/keep order/.test(await text(card(f, "Scheduler.schedule").last().locator(".src"))), Boolean);
