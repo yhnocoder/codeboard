@@ -5,7 +5,7 @@ const fs = require("fs");
 const path = require("path");
 const { execSync } = require("child_process");
 const { until, soon, hold, idle, track, fromSource } = require("./wait.cjs");
-const { command, watchKeyboard, boardDialog, boardDialogClosed, inputBox, qiClosed, openFile, goToLine, statusSel, text, typingIn, pmHasSelection, focusSettled, boardFrame, boardFrames, card, fit, boardHasKeyboard, boardKeys, ctrlK } = require("./ui.cjs");
+const { command, openBoard, watchKeyboard, boardDialog, boardDialogClosed, inputBox, qiClosed, openFile, goToLine, statusSel, text, typingIn, pmHasSelection, focusSettled, boardFrame, boardFrames, card, fit, boardHasKeyboard, boardKeys, ctrlK } = require("./ui.cjs");
 const [OUT, WS, UD] = process.argv.slice(2);
 /** The board file format the extension writes (core's model.ts), so the autosave check follows a format bump */
 const { BOARD_VERSION } = fromSource("packages/core/src/model.ts");
@@ -85,7 +85,7 @@ async function captureStep(page) {
   ].join("\n"));
   await openFile(page, path.join(WS, "e2e_capture.py"), 8);
   await page.keyboard.press("Alt+b");
-  await command(page, "CodeBoard: Open Board");
+  await openBoard(page);
   let f = await boardFrame(page);
   check(await soon(() => card(f, "mid").count(), (n) => n === 1, 20000) === 1, "Alt+B puts mid on the board");
   // Run from the palette over the board: it asks on the board
@@ -119,7 +119,7 @@ async function captureStep(page) {
 async function exportStep(page) {
   await openFile(page, SCHED, 26);
   await page.keyboard.press("Alt+b");
-  await command(page, "CodeBoard: Open Board");
+  await openBoard(page);
   let f = await boardFrame(page);
   check(await soon(() => f.locator(".card").count(), (n) => n >= 1, 20000) >= 1, "Alt+B puts a card on the board");
   await command(page, "Notifications: Clear All Notifications");
@@ -181,7 +181,7 @@ async function variantsStep(page) {
   let had = 0;
   for (const f0 of await boardFrames(page, { visible: false })) had = await card(f0, "Scheduler.schedule").count();
   await page.keyboard.press("Alt+b");
-  await command(page, "CodeBoard: Open Board");
+  await openBoard(page);
   let f = await boardFrame(page);
   const sch = card(f, "Scheduler.schedule").last();
   check(await soon(() => card(f, "Scheduler.schedule").count(), (n) => n === had + 1, 20000) === had + 1, "Alt+B puts Scheduler.schedule on the board", { had });
@@ -204,9 +204,23 @@ async function variantsStep(page) {
   check(!!c, "the variant is saved with the card", boardJson()?.cards.find((k) => k.kind === "code" && k.variants)?.variants);
   await shot(page, "15-variant-worktree");
   // 在 worktree 里再改一下（VS Code 外面）：卡跟着刷新
+  const wroteAt = new Date().toISOString();
   fs.writeFileSync(file, fs.readFileSync(file, "utf8").replace("        num_batched_tokens = 0\n", "        num_batched_tokens = 0  # tuned\n"));
   const live = await soon(async () => { f = await boardFrame(page); return /# tuned/.test(await text(card(f, "Scheduler.schedule").last().locator(".src"))); }, Boolean, 15000);
   check(live, "editing the worktree file refreshes the variant on the card");
+  // A miss here passed locally and failed on CI: record when the edit was made and whether it is on disk, how this git lays out the
+  // worktree, and the host log's tail (variants-diag.txt next to the screenshots)
+  if (!live) {
+    const sh = (c) => { try { return execSync(c, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim(); } catch (e) { return `(${c}: ${String(e.stderr || e.message).trim()})`; } };
+    const gd = sh(`git -C "${WT}" rev-parse --absolute-git-dir`);
+    const diag = [
+      `written at ${wroteAt}, on disk: ${/# tuned/.test(fs.readFileSync(file, "utf8"))}`,
+      `${sh("git --version")}; ${WT}/.git: ${sh(`cat "${WT}/.git"`)}; ${gd}: ${sh(`ls "${gd}"`).split("\n").join(" ")}`,
+      `--- host log`, ...sh(`find "${UD}/logs" -name CodeBoard.log -exec cat {} +`).split("\n").slice(-60),
+    ].join("\n");
+    fs.writeFileSync(path.join(OUT, "variants-diag.txt"), diag);
+    console.log(diag.split("\n").slice(0, 2).map((l) => "  · " + l).join("\n"));
+  }
   // 切回上游：代码换回来、MINE 没了
   await card(f, "Scheduler.schedule").last().locator(".vtab.up").click();
   const up = await soon(async () => await card(f, "Scheduler.schedule").last().locator(".chead .mine").count() === 0 && !/keep order/.test(await text(card(f, "Scheduler.schedule").last().locator(".src"))), Boolean);
@@ -215,7 +229,7 @@ async function variantsStep(page) {
 // ⌥B 选中跨几个定义的代码（context.py 5–27：dataclass、_CONTEXT = Context()、三个函数）：默认一张多段卡，一行不丢；
 // 焦点留在编辑器，紧接着 ⌘Z / Ctrl+Z 撤销这次添加（编辑器里没改过字时）；⇧⌥B 一个定义一张卡。E2E_ONLY=addsel 只跑这一步
 async function addselStep(page) {
-  await command(page, "CodeBoard: Open Board");
+  await openBoard(page);
   let f = await boardFrame(page); await idle(f);
   const n0 = await f.locator(".card").count();
   await openFile(page, CONTEXT, 5);
@@ -261,7 +275,7 @@ async function addselStep(page) {
 async function closeStep(page) {
   if (process.env.E2E_ONLY === "close") { await openFile(page, ENGINE, 51); await altB(page, "LLMEngine.step"); }
   const closeTab = (name) => page.locator(".tabs-container .tab", { hasText: name }).first().click({ button: "middle", force: true });
-  await command(page, "CodeBoard: Open Board");
+  await openBoard(page);
   let f = await boardFrame(page); await idle(f);
   const name = (await page.locator(".editor-group-container.active .tab.active").first().textContent()).trim();
   // a code card that is drawn (not hidden in a collapsed call tree) and on screen
@@ -271,19 +285,55 @@ async function closeStep(page) {
   if (!code) return;
   const el = f.locator(`.card[data-id="${code.id}"]`);
   // CI has seen this click leave the board as it was (no selection, no keyboard) while Playwright reported it done, which it does
-  // when no mouse event reaches the frame: record which document the press reached, to tell that apart from a lost hand-back
-  const pressed = (kind) => { window.__e2ePress = null; document.addEventListener(kind, (e) => { window.__e2ePress = `${e.target.tagName}.${String(e.target.className).slice(0, 40)}`; }, { capture: true, once: true }); };
+  // when no mouse event reaches the frame. In both hits so far the press reached only the workbench, on the webview's <iframe>
+  // element, about 25 ms after the click began, with VS Code's box around the webview not scrolled. That is where Chromium's browser
+  // process sent the event (its input routing chose the workbench, not the webview's renderer), so record what decides that: the
+  // browser's input routing trace (saved as close-trace.json), which documents got the moves and the press, and the <iframe>'s
+  // state as the workbench saw it at the press and before the click
+  const pressed = (kind) => {
+    const r = window.__e2eClick = { press: null, moves: 0, lastMove: null };
+    window.__e2ePress = null;
+    const T = () => Date.now() % 100000;
+    const iframeState = () => [...document.querySelectorAll("iframe.webview")].filter((x) => x.isConnected && x.checkVisibility()).map((x) => {
+      const b = x.getBoundingClientRect(), cs = getComputedStyle(x), box = x.closest(".webview-overlay-content");
+      return `${Math.round(b.x)},${Math.round(b.y)} ${Math.round(b.width)}x${Math.round(b.height)} pointer-events ${cs.pointerEvents} visibility ${cs.visibility}${x.closest("[inert]") ? " inert" : ""} box scrollTop ${box?.scrollTop}`;
+    });
+    r.before = iframeState();
+    const move = (e) => { r.moves++; r.lastMove = `${e.target.tagName}.${String(e.target.className).slice(0, 30)} at ${T()}`; };
+    document.addEventListener(kind === "mousedown" ? "mousemove" : "pointermove", move, true);
+    document.addEventListener(kind, (e) => {
+      window.__e2ePress = r.press = `${e.target.tagName}.${String(e.target.className).slice(0, 40)} at ${T()}`;
+      if (kind === "mousedown") r.atPress = iframeState();
+      document.removeEventListener(kind === "mousedown" ? "mousemove" : "pointermove", move, true);
+    }, { capture: true, once: true });
+  };
   await f.evaluate(pressed, "pointerdown");
   await page.evaluate(pressed, "mousedown");
+  const focusNow = async () => ({
+    board: await f.evaluate(() => document.hasFocus()).catch(() => "?"), host: await f.parentFrame().evaluate(() => document.hasFocus()).catch(() => "?"),
+    workbench: await page.evaluate(() => `${document.hasFocus()} ${document.activeElement?.tagName}.${String(document.activeElement?.className).slice(0, 30)}`),
+  });
+  const focusBefore = await focusNow();
+  const tracer = await page.context().browser().newBrowserCDPSession();
+  const traced = [];
+  tracer.on("Tracing.dataCollected", (d) => traced.push(...d.value));
+  const traceDone = new Promise((r) => tracer.once("Tracing.tracingComplete", r));
+  await tracer.send("Tracing.start", { transferMode: "ReportEvents", traceConfig: { includedCategories: ["input", "viz", "benchmark", "blink", "disabled-by-default-viz.hit_testing_flow"] } });
+  const stopTrace = async (keep) => {
+    await tracer.send("Tracing.end"); await traceDone; await tracer.detach();
+    if (keep) fs.writeFileSync(path.join(OUT, "close-trace.json"), JSON.stringify({ traceEvents: traced }));
+  };
+  const clickAt = Date.now() % 100000;
   // select it by its title: the file path next to it opens the code in the editor (and the keys would go there)
   await el.locator(".chead .ctitle").first().click();
   await until("the code card is selected and the board has the keyboard", async () => /\bsel\b/.test(await el.getAttribute("class")) && await boardHasKeyboard(f))
-    .catch(async (e) => {
-      const board = await f.evaluate(() => ({ focus: document.hasFocus(), active: `${document.activeElement?.tagName}.${document.activeElement?.className}`, press: window.__e2ePress }));
+    .then(() => stopTrace(false), async (e) => {
+      await stopTrace(true);
+      const board = await f.evaluate(() => ({ focus: document.hasFocus(), active: `${document.activeElement?.tagName}.${document.activeElement?.className}`, click: window.__e2eClick }));
       const host = await f.parentFrame().evaluate(() => ({ focus: document.hasFocus(), active: `${document.activeElement?.tagName}#${document.activeElement?.id}` }));
-      const workbench = await page.evaluate(() => ({ focus: document.hasFocus(), active: `${document.activeElement?.tagName}.${String(document.activeElement?.className).slice(0, 40)}`, press: window.__e2ePress }));
+      const workbench = await page.evaluate(() => ({ focus: document.hasFocus(), active: `${document.activeElement?.tagName}.${String(document.activeElement?.className).slice(0, 40)}`, click: window.__e2eClick }));
       await page.screenshot({ path: path.join(OUT, "close-click.png") });
-      throw new Error(`${e.message}: ${JSON.stringify({ card: await el.getAttribute("class"), board, host, workbench })}`);
+      throw new Error(`${e.message}: ${JSON.stringify({ clickAt, card: await el.getAttribute("class"), focusBefore, board, host, workbench })}`);
     });
   await page.keyboard.press("Alt+z");
   // close the tab as soon as the card shows the change: the board has sent it, the host has not necessarily written it yet
@@ -291,7 +341,7 @@ async function closeStep(page) {
   await closeTab(name);
   const wrapped = (await soon(() => boardNamed(name)?.cards.find((c) => c.id === code.id), (c) => c && !!c.wrap !== !!code.wrap))?.wrap;
   check(!!wrapped !== !!code.wrap, "closing the board tab right after Wrap Lines keeps the change", { before: !!code.wrap, after: !!wrapped });
-  await command(page, "CodeBoard: Open Board");
+  await openBoard(page);
   f = await boardFrame(page); await idle(f);
   await clickBoard(f);
   // t: a new Text card in edit mode; type only once its editor is there and has the keyboard focus
@@ -308,7 +358,7 @@ async function closeStep(page) {
   await closeTab(name);
   const notes = (await soon(() => (boardNamed(name)?.cards ?? []).filter((c) => c.kind === "note").map((c) => c.md), (n) => n.includes("typed then closed"))) ?? [];
   check(notes.includes("typed then closed"), "closing the board tab right after typing a Text card keeps the text", { notes, closeAfterMs: closeAfter });
-  await command(page, "CodeBoard: Open Board");
+  await openBoard(page);
   await idle(await boardFrame(page));
 }
 
@@ -318,7 +368,7 @@ async function closeStep(page) {
 async function keyscopeStep(page) {
   await openFile(page, SCHED, 26);
   await page.keyboard.press("Alt+b");
-  await command(page, "CodeBoard: Open Board");
+  await openBoard(page);
   const f = await boardFrame(page);
   check(await soon(() => f.locator(".card").count(), (n) => n >= 1, 20000) >= 1, "keyscope: Alt+B puts a card on the board");
   await idle(f);
@@ -349,7 +399,7 @@ async function keyscopeStep(page) {
 async function cardfocusStep(page) {
   // context.py on the left, the board on the right (run alone, the board opens in the file's group: move it)
   await openFile(page, CONTEXT, 18);
-  await command(page, "CodeBoard: Open Board");
+  await openBoard(page);
   let f = await boardFrame(page);
   if (await page.locator(".editor-group-container").count() < 2) { await command(page, "View: Move Editor into Right Group"); f = await boardFrame(page); }
   await idle(f);
@@ -426,7 +476,7 @@ async function cardfocusStep(page) {
 async function codeeditStep(page) {
   await openFile(page, ENGINE, 51);
   await page.keyboard.press("Alt+b");
-  await command(page, "CodeBoard: Open Board");
+  await openBoard(page);
   let f = await boardFrame(page);
   await until("Alt+B puts LLMEngine.step on the board", () => card(f, "LLMEngine.step").count(), 20000);
   await idle(f);
@@ -727,7 +777,7 @@ const finish = async (browser, errors) => {
   // E2E_FLOW=<file.cjs> runs a flow of your own after the E2E_ONLY steps (or alone): the file exports async (page, t) => { … }, t holds
   // this driver's helpers. For reproducing a problem in the real VS Code without editing this file
   const flow = process.env.E2E_FLOW && path.resolve(process.env.INIT_CWD || process.cwd(), process.env.E2E_FLOW);
-  if (flow) STEPS.flow = (page) => require(flow)(page, { check, until, soon, hold, idle, shot, newBoard, newNote, emptySpot, clickBoard, altB, sidenote, clipboard, boardJson, boardNamed, editorFocused, setUserSetting, command, inputBox, qiClosed, openFile, goToLine, statusSel, text, typingIn, pmHasSelection, focusSettled, boardFrame, boardFrames, card, fit, W, OUT, WS, UD });
+  if (flow) STEPS.flow = (page) => require(flow)(page, { check, until, soon, hold, idle, shot, newBoard, newNote, emptySpot, clickBoard, altB, sidenote, clipboard, boardJson, boardNamed, editorFocused, setUserSetting, command, openBoard, inputBox, qiClosed, openFile, goToLine, statusSel, text, typingIn, pmHasSelection, focusSettled, boardFrame, boardFrames, card, fit, W, OUT, WS, UD });
   const only = [process.env.E2E_ONLY || PARTS[process.env.E2E_PART], flow && "flow"].filter(Boolean).join(",");
   if (only) {
     // a step may begin with a command: wait until VS Code has loaded the extension's contributions (on a fresh window the command

@@ -23,12 +23,14 @@ import { prefetchCall } from "./prefetch";
 import { applyFlow, captureFlow } from "./runs";
 import { prompts } from "./prompts";
 import { allQuestions, exportFile, permalinks } from "./exports";
+import { exportFlow } from "./bundle";
 import { absOf, currentVersion, currentVersionLabel, locOfFile, mapRepo, present, srcKey, srcLabel, versionText, hasLocalFile } from "./source";
 import { boardSegments, makeSegment, workingPlace } from "./versions";
 import { addVariant, variantSources } from "./variants";
 import { highlight, segView, viewsFor } from "./views";
 import { fromHostPath, hostPath, langOf, readText, splitLines, workspace, ws0 } from "./ws";
 import { lookupName } from "./nameindex";
+import { aiInfo, imageAiJob } from "./imageai";
 
 const SAFE_BOARD_ID = /^[\w-]{1,80}$/;
 
@@ -124,11 +126,22 @@ export function makeHandler(panels: BoardHost): Handler {
     lspHover: (_p, m) => lspHover(m.id, m.text, m.line, m.col),
     lspSignature: (_p, m) => lspSignature(m.id, m.text, m.line, m.col, m.trigger),
     captureRun: (p) => void captureFlow(store.dir(), p, prompts(p)),
+    exportBoards: (p) => void exportFlow(store, [p.id], p.board?.name ?? "Board"),
     applyRun: (p) => void applyFlow(store.dir(), p, prompts(p)),
     questions: () => allQuestions(store),
     permalinks: (_p, m) => permalinks(m.segs),
     exportFile: (_p, m) => exportFile(store, m.kind, m.name, m.text),
     copyText: (_p, m) => workspace().ui.copy(m.text),
+    imageAi: (p, m) => imageAiJob(jobsOf(p), m.job, m.op),
+    imageAiCancel: (p, m) => { jobsOf(p).get(m.job)?.abort(); },
+    setDeepseekKey: async () => { await workspace().ai?.setDeepseekKey?.(); },
+    aiInfo: () => aiInfo(),
+    aiKey: async (_p, m) => {
+      const ai = workspace().ai;
+      if (m.action === "set") await ai?.setDeepseekKey?.();
+      else await ai?.clearDeepseekKey?.();
+      return aiInfo();
+    },
     variantSources: (_p, m) => variantSources(m.seg),
     addVariant: (_p, m) => addVariant(m.segs, m.from),
     skeletons: async (_p, m) => {
@@ -439,6 +452,10 @@ async function locateRepo(p: BoardPanel) {
 }
 
 
+
+/** 图片的 AI 操作：每块面板还在等的请求（白板给的 job 号 → 取消用的） */
+const imageJobs = new WeakMap<BoardPanel, Map<number, AbortController>>();
+const jobsOf = (p: BoardPanel) => { let m = imageJobs.get(p); if (!m) imageJobs.set(p, (m = new Map())); return m; };
 
 /** Note 的灰字补全：同一块面板新的请求来了就取消旧的；没有模型回 null */
 const inflight = new WeakMap<BoardPanel, AbortController>();

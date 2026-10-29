@@ -19,7 +19,7 @@ import { overNote, leaveNote, noteDropAt } from "./notedrop";
 import { boardPoint, worldAt, lastPointer, trackPointer, naturalSize, chromeOf } from "./state/measure";
 import { installOverlays, modalOpen, typing } from "./ui/overlay";
 import { NODRAG, CARD_CONTROL, OWNS_POINTER, BOARD_CHROME, holdPointer } from "./ui/guard";
-import { dispatch } from "./keymap";
+import { dispatch, matches } from "./keymap";
 import { holdGhosts } from "@yhnocoder/markdown/ui";
 import * as A from "./actions";
 import { onBoardSwitch } from "./state/root";
@@ -323,6 +323,9 @@ export function cardContextMenu(e: MouseEvent, id: string) {
   e.preventDefault();
   e.stopPropagation();
   const t = e.target as HTMLElement;
+  // Note 里的一张图（显示着或编辑中）：图的菜单
+  const img = A.noteImageAt(t, id);
+  if (img) return A.noteImageMenu(img, e.clientX, e.clientY);
   if (t.closest("[contenteditable], input, textarea")) return;
   const colEl = t.closest("[data-col]") as HTMLElement | null;
   A.cardMenu(colEl?.dataset.col ?? id, e.clientX, e.clientY);
@@ -681,6 +684,13 @@ export function installKeys() {
     if (placing() && e.button === 0 && t.closest?.("#board") && !t.closest(BOARD_CHROME)) return void A.placeStickerAt(e);
     if (selSticker() && !t.closest?.("[data-sticker], .ctx")) setSelSticker(null);
   }, true);
+  // 编辑 Note、Free code 卡时 ⌥F 也是 Fit Content（Mac 上不然打出 ƒ），光标不动、接着编辑。捕获阶段先拿：代码编辑器不往外冒按键
+  window.addEventListener("keydown", (e) => {
+    const ed = editing();
+    if (e.isComposing || !typing() || (ed?.kind !== "note" && ed?.kind !== "free") || !matches(e, "fitContent")) return;
+    e.preventDefault(); e.stopPropagation();
+    A.fitContent([ed.id]);
+  }, true);
   window.addEventListener("keydown", (e) => {
     // 按下 ⌘：正在显示的弹窗固定下来。按住不放时系统会一直重发 keydown（repeat），那些不算，不然按住 ⌘ 扫过的每个弹窗都会被固定
     if ((e.key === "Meta" || e.key === "Control") && !e.repeat) for (const p of pops()) if (!p.pinned && (p.pop.kind === "peek" || p.pop.kind === "notes")) pinPop(p.id);
@@ -702,7 +712,9 @@ export function installKeys() {
     const w = worldAt(lastPointer());
     if (!file && !text && !svg) return;
     e.preventDefault();
-    const image = (f: File) => { const rd = new FileReader(); rd.onload = () => A.addImage(String(rd.result), f.name || "pasted.png", w); rd.readAsDataURL(f); };
+    // PNG 里没记分辨率时：网页上复制的图（剪贴板里带着 HTML）按 1 倍；截图按这个窗口的倍数（Retina 上是 2），看到的大小和截的时候一样
+    const scale = e.clipboardData?.types.includes("text/html") ? 1 : window.devicePixelRatio || 1;
+    const image = (f: File) => { const rd = new FileReader(); rd.onload = () => A.addImage(String(rd.result), f.name || "pasted.png", w, { scale }); rd.readAsDataURL(f); };
     if (!text && svg) return void A.pasteText(svg, w);
     if (!text) return image(file!);
     // 先看是不是白板上复制的卡（这块白板的，或者问宿主：别的白板上的就贴卡），否则照旧按图 / 文字粘贴

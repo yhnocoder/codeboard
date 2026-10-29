@@ -3,7 +3,7 @@
 //   svgFileDropMakesImageCard            dropping a .svg file on the board gives an image card showing it, stored as .svg
 //   svgFilePasteMakesImageCard           ⌘V of a copied .svg file: the same
 //   svgMarkupPasteMakesImageCard         ⌘V of SVG markup (Figma "Copy as SVG", a code editor) or of image/svg+xml data: an image card
-//   svgAddImageButtonMakesImageCard      the toolbar's Image button with an .svg picked (the host answers its data: URL): the same,
+//   svgAddImageButtonMakesImageCard      the toolbar's Image ▾ New Image with an .svg picked (the host answers its data: URL): the same,
 //                                        for an SVG with only a viewBox too (stored with the size the viewBox gives)
 //   svgPasteIntoNote                     ⌘V of a .svg file while editing a Note: assets/<sha1>-<w>x<h>.svg in the Markdown, shown sized
 //   svgDropIntoNote                      dropping a .svg file (one with only a viewBox) into a Note being edited: the same
@@ -154,6 +154,7 @@ test("svgMarkupPasteMakesImageCard", async () => {
 test("svgAddImageButtonMakesImageCard", async () => {
   const { h, assets, asset, done } = await svgHost(emptyAt());
   await h.page.locator('.tbtn[aria-label="Image"]').click();
+  await h.page.locator(".ctx.open button", { hasText: "New Image" }).click();
   await expectSvgCard(h, assets, asset, "svgAddImageButtonMakesImageCard");
   await idle(h);
   await shot(h, "18-svg-add-image-button");
@@ -264,6 +265,7 @@ test("svgImagesInHtmlExport", async () => {
   const { h, exported, done } = await svgHost(withNote(md0));
   const pg = h.page;
   await pg.locator('.tbtn[aria-label="Image"]').click();
+  await pg.locator(".ctx.open button", { hasText: "New Image" }).click();
   await until(h, "the image card is added", () => images(h)[0]);
   await editNote(h);
   await pg.evaluate((svg) => {
@@ -299,6 +301,7 @@ test("svgImageInPngExport", async () => {
   const { h, done } = await svgHost(emptyAt());
   const pg = h.page;
   await pg.locator('.tbtn[aria-label="Image"]').click();
+  await pg.locator(".ctx.open button", { hasText: "New Image" }).click();
   await until(h, "the image card is added", () => images(h)[0]);
   await idle(h);
   await pg.locator('.bbar [aria-label="More"]').click();

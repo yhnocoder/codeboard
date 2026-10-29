@@ -105,19 +105,21 @@ export function notesBoard(n: number): Board {
   return b;
 }
 
-type M = { wall: number[]; busy: number; parts?: Record<string, number>; tasks?: number[] };
+type M = { wall: number[]; busy: number; parts?: Record<string, number>; tasks?: number[]; frames?: number[] };
 const PARTS = ["ScriptDuration", "RecalcStyleDuration", "LayoutDuration"];
 async function metrics(cdp: CDPSession) {
   const { metrics } = await cdp.send("Performance.getMetrics");
   return Object.fromEntries(metrics.map((m) => [m.name, m.value]));
 }
+/** Trace marker at the start of each step (console.timeStamp) */
+const STEP_MARK = "perf-step";
 const raf = (h: Host) => h.page.evaluate(() => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r()))));
 async function busy(cdp: CDPSession) {
   const { metrics } = await cdp.send("Performance.getMetrics");
   return (metrics.find((m) => m.name === "TaskDuration")?.value ?? 0) * 1000;
 }
-/** Run n steps, each one action followed by waiting for it to paint */
-async function steps(h: Host, cdp: CDPSession, n: number, step: (i: number) => Promise<void>, name = ""): Promise<M> {
+/** Run n steps, each one action followed by waiting for it to paint; perStep: also each step's frame (sum's frameP95 is then over the steps) */
+async function steps(h: Host, cdp: CDPSession, n: number, step: (i: number) => Promise<void>, name = "", perStep = false): Promise<M> {
   const wall: number[] = [];
   const prof = name && name === PROFILE;
   const tr = name && name === arg("trace", "");
@@ -136,6 +138,7 @@ async function steps(h: Host, cdp: CDPSession, n: number, step: (i: number) => P
   const m0 = await metrics(cdp);
   let bPrev = b0;
   for (let i = 0; i < n; i++) {
+    if (perStep) await h.page.evaluate((m) => console.timeStamp(m), STEP_MARK);
     const t = performance.now();
     await step(i);
     await raf(h);
@@ -152,7 +155,12 @@ async function steps(h: Host, cdp: CDPSession, n: number, step: (i: number) => P
   await cdp.send("Tracing.end"); await done;
   cdp.off("Tracing.dataCollected", onData);
   const main = events.find((e) => e.name === "thread_name" && e.args?.name === "CrRendererMain");
-  const tasks = events.filter((e) => e.ph === "X" && e.name === "RunTask" && main && e.pid === main.pid && e.tid === main.tid && e.dur > 1000).map((e) => e.dur / 1000);
+  const onMain = (e: any) => !!main && e.pid === main.pid && e.tid === main.tid;
+  const runTasks = events.filter((e) => e.ph === "X" && e.name === "RunTask" && onMain(e) && e.dur > 1000);
+  const tasks = runTasks.map((e) => e.dur / 1000);
+  // Each step's frame: its longest main-thread task, from its mark to the next step's
+  const marks = events.filter((e) => e.name === "TimeStamp" && e.args?.data?.message === STEP_MARK && onMain(e)).map((e) => e.ts as number).sort((a, b) => a - b);
+  const frames = perStep && marks.length === n ? marks.map((ts, i) => Math.max(0, ...runTasks.filter((e) => e.ts >= ts && e.ts < (marks[i + 1] ?? Infinity)).map((e) => e.dur / 1000))) : undefined;
   if (name && name === arg("long", "")) {
     // What each dropped frame spent its time on (events inside the task, >1.5 ms)
     for (const t of events.filter((e) => e.ph === "X" && e.name === "RunTask" && main && e.pid === main.pid && e.tid === main.tid && e.dur > 16700))
@@ -187,7 +195,7 @@ async function steps(h: Host, cdp: CDPSession, n: number, step: (i: number) => P
     console.log("-- trace (main thread, inclusive ms)");
     for (const [k, v] of [...by].sort((a, b) => b[1] - a[1]).slice(0, 25)) console.log(`${v.toFixed(0).padStart(8)}  ${k}`);
   }
-  return { wall, busy: bz, parts, tasks };
+  return { wall, busy: bz, parts, tasks, frames };
 }
 /** Profile results: top 30 functions by self time and total time */
 function top(p: { nodes: { id: number; callFrame: { functionName: string; url: string; lineNumber: number }; children?: number[] }[]; samples: number[]; timeDeltas: number[] }) {
@@ -209,9 +217,15 @@ function top(p: { nodes: { id: number; callFrame: { functionName: string; url: s
 }
 const med = (a: number[]) => { const s = [...a].sort((x, y) => x - y); return s[Math.floor(s.length / 2)]; };
 const p95 = (a: number[]) => { const s = [...a].sort((x, y) => x - y); return s[Math.min(s.length - 1, Math.floor(s.length * 0.95))]; };
+/**
+ * Frames: main-thread task durations (>1 ms); frameMax over 16.7 means a dropped frame, over16 counts such tasks. frameP95 is the 95th
+ * percentile of all the tasks, or after steps(..., perStep) (frameOf "step") of each step's frame, its longest task: for steps that wait, where
+ * the waits' own frames outnumber the steps' (hover: 12 steps that wait 250–500 ms each for the cross-fades, ~125 tasks of which the
+ * 6 lifts are 5%, so p95 fell on either side of them by how many fade frames the runner drew: 12.7 → 19.6 ms, same code)
+ */
 const sum = (m: M) => ({ median: +med(m.wall).toFixed(1), p95: +p95(m.wall).toFixed(1), busyPerStep: +(m.busy / m.wall.length).toFixed(2), ...m.parts,
-  // Frames: duration of each main-thread task (>1 ms). frameMax over 16.7 means a dropped frame; over16 counts such tasks
-  frameP95: +p95(m.tasks?.length ? m.tasks : [0]).toFixed(1), frameMax: +Math.max(0, ...(m.tasks ?? [])).toFixed(1), over16: (m.tasks ?? []).filter((t) => t > 16.7).length });
+  ...(m.frames ? { frameOf: "step" } : {}),
+  frameP95: +p95(m.frames ?? (m.tasks?.length ? m.tasks : [0])).toFixed(1), frameMax: +Math.max(0, ...(m.tasks ?? [])).toFixed(1), over16: (m.tasks ?? []).filter((t) => t > 16.7).length });
 
 async function profiled<T>(cdp: CDPSession, name: string, fn: () => Promise<T>): Promise<T> {
   if (name !== PROFILE) return fn();
@@ -389,7 +403,7 @@ async function once() {
     res.hover = sum(await steps(h, cdp, 12, async (i) => {
       if (i % 2) await h.page.mouse.move(off.x, off.y); else await h.page.mouse.move(on.x, on.y);
       await h.page.waitForTimeout(i % 2 ? 500 : 250);
-    }, "hover"));
+    }, "hover", true));
   }
 
   // Sticker drag: the sticker bound to the hub, dragged across the cards around it (every card checks whether it lights up)
@@ -532,6 +546,11 @@ async function focusCard(h: Host, id: string) {
   // Host Reveal on Board: camera moves to the card and selects it
   await h.post({ type: "reveal", card: id });
   await h.page.waitForTimeout(1200);
+  // The flight can take longer than that: the camera spring steps at most 32 ms per frame, and frames at this zoom take 70–90 ms
+  // on the runner, so it flies 2–3x slower than its own time. Measuring while it still moves measures the flight too, from
+  // wherever it happened to be (the drag then grabbed a card half off screen: drag work 21 → 39 ms with nothing else changed)
+  await h.page.waitForFunction(() => !document.querySelector(".world")?.classList.contains("moving"), null, { timeout: 30000 });
+  await raf(h);
 }
 
 void (async () => {

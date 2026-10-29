@@ -23,6 +23,7 @@ import { Footnotes, Footnote, FootnoteReference } from "tiptap-footnotes";
 import DOMPurify from "dompurify";
 import katex from "katex";
 import { EMOJI } from "./emoji";
+import { bracketDelims, dollarBrackets } from "./brackets";
 
 // 行内 $…$：$ 后紧跟非空白，结尾 $ 前是非空白、后面不是数字，所以 "$5 and $10" 不算公式；紧跟在 \ 或 $ 后面的 $ 不开头。
 // 行内的 $$…$$ 是行内的大号公式
@@ -346,7 +347,11 @@ const Img = Image.extend({
     };
   },
   parseMarkdown: (t, h) => h.createNode("image", { src: t.href, title: t.title, alt: t.text, width: t.width ?? null }),
-  renderMarkdown(n, h, cx) { const md = this.parent!(n, h, cx); return n.attrs?.width ? `${md}{width=${n.attrs.width}%}` : md; },
+  // title 是图注（显示在图下面）：TipTap 自己写的 "title" 不转义引号，这里转义 \ 和 "，换行并成空格（标题只能一行）
+  renderMarkdown(n) {
+    const a = n.attrs ?? {}, t = String(a.title ?? "").replace(/\s*\n\s*/g, " ").trim();
+    return `![${a.alt ?? ""}](${a.src ?? ""}${t ? ` "${t.replace(/[\\"]/g, "\\$&")}"` : ""})${a.width ? `{width=${a.width}%}` : ""}`;
+  },
 }).configure({ inline: true, allowBase64: true });
 // TipTap 的段落把只有一张图的一段解析成块级的图：这里图片是行内的，照样是一段
 const Para = Paragraph.extend({
@@ -470,7 +475,8 @@ const Annot = Mark.create({
       below: { default: false, parseHTML: (e) => e.hasAttribute("data-below"), renderHTML: (a) => (a.below ? { "data-below": "" } : {}) },
     };
   },
-  parseHTML: () => [{ tag: "span.md-annot" }],
+  // 显示出来的标签（.md-annot-n）是批注属性画的，复制回来时不是字
+  parseHTML: () => [{ tag: "span.md-annot-n", ignore: true }, { tag: "span.md-annot" }],
   renderHTML: ({ HTMLAttributes }) => ["span", mergeAttributes(HTMLAttributes, { class: "md-annot" }), 0],
   markdownTokenName: "x_annot",
   parseMarkdown: (t: any, h: any) => h.applyMark("annot", h.parseInline(t.tokens ?? []), { note: t.note, color: t.color, below: t.below }),
@@ -711,6 +717,51 @@ export function mdBlockStarts(src: string): number[] | null {
   const blocks = mgr.parse(src).content ?? [];
   return blocks.length === starts.length && blocks.every((b) => b.type !== "footnote") ? starts : null;
 }
+/**
+ * 粘贴的纯文字当不当 Markdown：交给解析器读一遍，读出了格式、块才算（给出读出来的文档），只是字给 null（照纯文字粘贴）。
+ * 不算数的：光秃秃的网址（链接扩展自己处理，选着字粘贴网址是给字加链接）、上下标（中文里 3~5、7~9 这样的范围读出来就是下标）、
+ * 缩进出来的代码块（排版里的缩进）。有别的格式时整段照 Markdown 读，它们也跟着变
+ */
+export function pastedMd(text: string): JSONContent | null {
+  const doc = parseMd(texBrackets(text));
+  let md = false, indented = false;
+  const plainMark = (m: { type: string; attrs?: Record<string, any> }, n: JSONContent) =>
+    m.type === "subscript" || m.type === "superscript" || (m.type === "link" && !!n.text && String(m.attrs?.href ?? "").endsWith(n.text));
+  walk(doc.content, (n) => {
+    if (n.type === "codeBlock") indented = true;
+    else if (!/^(paragraph|text|hardBreak)$/.test(n.type ?? "") || n.marks?.some((m) => !plainMark(m, n))) md = true;
+  });
+  if (!md && indented) {
+    type Tok = { type: string; codeBlockStyle?: string; tokens?: Tok[]; items?: Tok[] };
+    const fenced = (ts: Tok[]): boolean => ts.some((t) => (t.type === "code" && t.codeBlockStyle !== "indented") || fenced(t.tokens ?? []) || fenced(t.items ?? []));
+    md = fenced((mm as unknown as { createLexer(): { lex(s: string): Tok[] } }).createLexer().lex(text.replace(/\r\n?/g, "\n")));
+  }
+  return md ? doc : null;
+}
+/**
+ * 粘贴的 Markdown 里的 \( … \)、\[ … \] 写成 $…$、$$…$$（见 brackets.ts）；其余原样。哪个记号在代码、公式里由解析器定：
+ * 记号先换成一个占位字再分词，按顺序数每个词里有几个，代码、行内代码、HTML、公式里的不算。数不齐（比如在链接地址里）就整段不动
+ */
+export function texBrackets(src: string): string {
+  const ds = bracketDelims(src);
+  if (!ds.length) return src;
+  type Tok = { type?: string; raw?: string; tokens?: Tok[]; items?: Tok[]; header?: Tok[]; rows?: Tok[][] };
+  let hidden = "", last = 0;
+  for (const d of ds) { hidden += src.slice(last, d.at) + BRACKET; last = d.at + 2; }
+  hidden += src.slice(last);
+  const usable: boolean[] = [];
+  const visit = (ts: Tok[] | undefined) => {
+    for (const t of ts ?? []) {
+      const kids = [...(t.tokens ?? []), ...(t.items ?? []), ...(t.header ?? []), ...(t.rows ?? []).flat()];
+      const lit = /^(code|codespan|html|inlineMath|blockMath)$/.test(t.type ?? "");
+      if (kids.length && !lit) { visit(kids); continue; }
+      for (const c of t.raw ?? "") if (c === BRACKET) usable.push(!lit);
+    }
+  };
+  visit((mm as unknown as { createLexer(): { lex(s: string): Tok[] } }).createLexer().lex(hidden));
+  return usable.length === ds.length ? dollarBrackets(src, (k) => usable[k]) : src;
+}
+const BRACKET = "";
 function walk(ns: JSONContent[] | undefined, f: (n: JSONContent) => void) {
   for (const n of ns ?? []) { f(n); walk(n.content, f); }
 }

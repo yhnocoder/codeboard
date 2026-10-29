@@ -1,10 +1,10 @@
 // Markdown → 文档 → HTML 字符串，不建编辑器、不建 DOM。每个节点、格式的 HTML 就是它的 renderHTML（和编辑器的 getHTML 一样），
 // 显示时要不一样的只有 DISPLAY / DISPLAY_MARKS 里的几种
-import type { DOMOutputSpec, Fragment, Mark, Node as PMNode } from "@tiptap/pm/model";
+import { Fragment, type DOMOutputSpec, type Mark, type Node as PMNode } from "@tiptap/pm/model";
 import katex from "katex";
 import DOMPurify from "dompurify";
 import { isHtmlComment, mathTex, mdSchema, parseMd, tocEntries, tocHtml } from "./schema";
-import { imageAttrs, onImagesChanged } from "./image";
+import { captionOf, imageAttrs, onImagesChanged } from "./image";
 import { mathMacros } from "./math";
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -55,7 +55,11 @@ const DISPLAY: Record<string, (n: PMNode, cx: Cx) => string | undefined> = {
   codeBlock: (n, cx) => (n.attrs.language === "mermaid" ? trust(cx, `<div class="mmd" data-src="${escA(n.textContent)}"><pre class="md-code"><code>${esc(n.textContent)}</code></pre></div>`) : undefined),
   toc: (_n, cx) => `<nav data-type="toc" class="md-toc">${tocHtml(tocEntries(cx.doc))}</nav>`,
   // 不让浏览器拖图（拖的是卡片）
-  image: (n) => specHtml(["img", { ...imageAttrs(n.attrs), draggable: "false" }], ""),
+  // 有图注（title）的图包一层 .md-fig，图注在图下面；缩小了的宽度写在这一层上（和编辑器里的 .md-img 一样）
+  image: (n) => {
+    const a: Record<string, string | null> = { ...imageAttrs(n.attrs), draggable: "false" }, cap = captionOf(n.attrs.title);
+    return cap ? specHtml(["span", { class: `md-fig${a.class ? " sized" : ""}`, style: a.style }, ["img", { ...a, class: null, style: null }], ["span", { class: "md-cap" }, cap]], "") : specHtml(["img", a], "");
+  },
   // 一条定义都还没写（只有正文里的 [^1]）：不画空的脚注列表
   footnotes: (n) => (n.content.content.some((f) => f.childCount > 1 || f.firstChild!.content.size > 0) ? undefined : ""),
   htmlInline: (n) => userHtml(n.attrs.raw),
@@ -82,12 +86,44 @@ function inlineHtml(f: Fragment, cx: Cx | null): string {
     let keep = 0;
     while (keep < open.length && keep < n.marks.length && open[keep].m.eq(n.marks[keep])) keep++;
     while (open.length > keep) out += open.pop()!.close;
-    for (const m of n.marks.slice(keep)) { const [a, b] = markParts(m, !!cx); out += a; open.push({ m, close: b }); }
+    for (const m of n.marks.slice(keep)) {
+      const [a, b] = markParts(m, !!cx);
+      out += a;
+      if (cx && m.type.name === "annot") out += `<span class="md-annot-n">${noteInline(m.attrs.note ?? "", cx.trusted)}</span>`;
+      open.push({ m, close: b });
+    }
     out += nodeHtml(n, cx);
   });
   while (open.length) out += open.pop()!.close;
   return out;
 }
+/**
+ * {字|批注} 的批注：当一段行内 Markdown 画（$公式$、粗体、代码…）。读出来不是一段的（"- x" 读成了列表、"# x" 读成了标题）照原文显示；
+ * 批注里再写的 {字|批注} 只留字，不再画标签
+ */
+function noteInline(note: string, trusted: string[]): string {
+  try {
+    const doc = mdSchema().nodeFromJSON(parseMd(note)), p = doc.childCount === 1 ? doc.firstChild! : null;
+    if (p?.type.name !== "paragraph") return esc(note);
+    const kids: PMNode[] = [];
+    p.content.forEach((k) => { kids.push(k.mark(k.marks.filter((m) => m.type.name !== "annot"))); });
+    return inlineHtml(Fragment.from(kids), { doc, trusted });
+  } catch {
+    return esc(note);
+  }
+}
+const notes = new Map<string, string>();
+/** 编辑器里批注标签的 HTML（和静态显示画的一样） */
+export function annotNoteHtml(note: string): string {
+  let h = notes.get(note);
+  if (h !== undefined) return h;
+  const trusted: string[] = [];
+  h = untrust(purify(noteInline(note, trusted)), trusted);
+  if (notes.size >= MAX) notes.delete(notes.keys().next().value!);
+  notes.set(note, h);
+  return h;
+}
+
 function nodeHtml(n: PMNode, cx: Cx | null): string {
   if (n.isText) return esc(n.text!);
   const d = cx && DISPLAY[n.type.name]?.(n, cx);
@@ -115,7 +151,7 @@ export function renderMd(src: string): string {
   cache.set(src, h);
   return h;
 }
-export const clearMdCache = () => cache.clear();
+export const clearMdCache = () => { cache.clear(); notes.clear(); };
 export const mdCached = (src: string) => cache.has(src);
 
 function render(src: string): string {

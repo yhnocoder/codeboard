@@ -203,7 +203,7 @@ describe("danglingRefs", () => {
 
 describe("migrateBoard", () => {
   it("refuses a board written by a newer CodeBoard instead of wiping it", () => {
-    expect(() => migrateBoard({ version: 9, id: "b", name: "B", cards: [{ id: "a", kind: "code", segments: [] }] })).toThrow(/newer/);
+    expect(() => migrateBoard({ version: 10, id: "b", name: "B", cards: [{ id: "a", kind: "code", segments: [] }] })).toThrow(/newer/);
   });
   it("v7 → v8: a note's background and handwriting become one of Note / Text / Mark, code's nobg becomes bg: false", () => {
     const old = (o: object) => ({ id: "x", kind: "note", md: "x", ...o });
@@ -229,7 +229,7 @@ describe("migrateBoard", () => {
   });
   it("v7 → v8 upgrades shared card files too", () => {
     expect(loadSharedCard({ version: 7, card: { id: "s", kind: "note", md: "x", bg: false, hand: "green" }, sidenotes: [] }))
-      .toEqual({ version: 8, card: { id: "s", kind: "note", md: "x", look: "mark", hand: "green" }, sidenotes: [] });
+      .toEqual({ version: 9, card: { id: "s", kind: "note", md: "x", look: "mark", hand: "green" }, sidenotes: [] });
     expect(loadSharedCard({ version: 6, card: { ...code("s"), nobg: true }, sidenotes: [] }).card).toMatchObject({ bg: false });
   });
 });

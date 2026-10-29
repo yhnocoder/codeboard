@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  applyPatch, deflate, emptyBoard, mergeById, inflate, loadBoard, loadBoardFile, loadSharedCard, putShared, renameCard, sharedOf, travels, applySharedUpdate, followShared,
+  applyPatch, deflate, emptyBoard, homeCam, mergeById, inflate, loadBoard, loadBoardFile, loadSharedCard, putShared, renameCard, sharedOf, travels, applySharedUpdate, followShared,
   type Board, type Card, type Sidenote,
 } from "../src";
 
@@ -44,7 +44,7 @@ describe("applyPatch", () => {
     expect(b.name).toBe("New");
     expect(b.hideNumbers).toBeUndefined();
     expect(b.id).toBe("b");
-    expect(b.version).toBe(8);
+    expect(b.version).toBe(9);
     expect(b.cam).toEqual({ x: 1, y: 2, z: 3 });
     expect(b.cards.length).toBe(3);
   });
@@ -69,7 +69,7 @@ describe("shared cards: inflate / deflate / putShared", () => {
     expect(shared).toEqual([{ card: b.cards[1], sidenotes: [b.sidenotes[1]] }]);
     expect(() => loadBoard(structuredClone(file))).toThrow(); // a board with refs is not a full board
     const f = loadBoardFile(JSON.parse(JSON.stringify(file)));
-    const r = inflate(f, (id) => (id === "b" ? structuredClone(shared[0]) : undefined));
+    const r = inflate(f, b.cam, (id) => (id === "b" ? structuredClone(shared[0]) : undefined));
     expect(r.refs).toEqual(["b"]);
     expect(r.board.cards).toEqual(b.cards);
     expect(new Set(r.board.sidenotes.map((n) => n.id))).toEqual(new Set(["n1", "n2", "n3", "n4"]));
@@ -77,7 +77,7 @@ describe("shared cards: inflate / deflate / putShared", () => {
 
   it("a missing shared card becomes a placeholder note so links and places do not dangle", () => {
     const { file } = deflate(board(), new Set(["a"]));
-    const r = inflate(file, () => undefined);
+    const r = inflate(file, homeCam(), () => undefined);
     expect(r.missing).toEqual(["a"]);
     expect(r.refs).toEqual([]);
     expect(r.board.cards[0]).toMatchObject({ id: "a", kind: "note" });
@@ -145,7 +145,7 @@ describe("board format v6 and v7", () => {
   };
   it("v6 → v7: an old board's \\$a\\$ becomes math once; code, half-escaped and unsure text stay as written", () => {
     const b = loadBoard(oldMath(6));
-    expect(b.version).toBe(8);
+    expect(b.version).toBe(9);
     expect((b.cards[0] as any).md).toBe("a $x^2$ b, $\\frac{a}{b}$ and ${n}$");
     expect(b.cards[1].desc).toBe("cost $O(n)$");
     expect((b.cards[3] as any).mergedFrom[0].card.desc).toBe("$y$");
@@ -170,11 +170,11 @@ describe("board format v6 and v7", () => {
   });
   it("v6 → v8 upgrades shared card files (the card and its travelling sidenotes) once, and refuses newer ones", () => {
     const sc = loadSharedCard({ version: 6, card: { ...note("s", "\\$a\\$"), desc: "\\$d\\$" }, sidenotes: [text("n", "s", { md: "\\$t\\$" } as any)] });
-    expect(sc.version).toBe(8);
+    expect(sc.version).toBe(9);
     expect(sc.card).toMatchObject({ md: "$a$", desc: "$d$" });
     expect((sc.sidenotes[0] as any).md).toBe("$t$");
     expect((loadSharedCard({ version: 8, card: note("s", "\\$a\\$"), sidenotes: [] }).card as any).md).toBe("\\$a\\$");
-    expect(() => loadSharedCard({ version: 9, card: note("s"), sidenotes: [] })).toThrow(/newer/);
+    expect(() => loadSharedCard({ version: 10, card: note("s"), sidenotes: [] })).toThrow(/newer/);
   });
 });
 

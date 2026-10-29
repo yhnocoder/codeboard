@@ -90,10 +90,17 @@ describe("export", () => {
     expect(boardMarkdown(b, { order: ["Scheduler.schedule"], boardOnly: true })).toContain("private");
   });
 
+  it("keeps a Note image's caption in the placeholder and drops its width", () => {
+    const b = board("b", "imgs", [note("n", "x\n\n![warp](assets/a-1x1.png \"Fig. 1: \\\"if\\\" paths\"){width=40%}\n\n![](assets/b-1x1.png)")]);
+    const md = boardMarkdown(b, { order: ["n"] });
+    expect(md).toContain('*Image: warp — Fig. 1: "if" paths*');
+    expect(md).not.toContain("width=");
+    expect(md).toContain("\n*Image*");
+  });
   it("writes a Note's pasted images (stored in assets/) as placeholders, like Image cards; web images stay", () => {
     const b = board("b", "imgs", [note("n", "shot ![screen](assets/0123456789abcdef-640x480.png) and ![](assets/a-1x1.gif \"t\")\n\n![w](https://a.b/c.png)")]);
     const md = boardMarkdown(b, { order: ["n"] });
-    expect(md).toContain("shot *Image: screen* and *Image*");
+    expect(md).toContain("shot *Image: screen* and *Image: t*"); // the title is the image's caption
     expect(md).toContain("![w](https://a.b/c.png)");
     expect(md).not.toContain("assets/");
     expect(md).toContain("## shot screen and");

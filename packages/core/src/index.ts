@@ -10,6 +10,7 @@ export * from "./patch";
 export * from "./shared";
 export * from "./subboard";
 export * from "./layout";
+export * from "./split";
 export * from "./paste";
 export * from "./web";
 export * from "./lines";

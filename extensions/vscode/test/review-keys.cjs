@@ -5,7 +5,7 @@ const { chromium } = require("playwright-core");
 const fs = require("fs");
 const path = require("path");
 const { until, idle, track } = require("./wait.cjs");
-const { command, openFile, boardFrames, boardFrame, card, typingIn, pmHasSelection } = require("./ui.cjs");
+const { command, openBoard, openFile, boardFrames, boardFrame, card, typingIn, pmHasSelection } = require("./ui.cjs");
 const [OUT, WS] = process.argv.slice(2);
 const res = {};
 (async () => {
@@ -16,7 +16,7 @@ const res = {};
   await openFile(page, path.join(WS, "nanovllm/engine/llm_engine.py"), 51);
   await page.keyboard.press("Alt+b");
   await until("Alt+B puts LLMEngine.step on the board", async () => { const [b] = await boardFrames(page); return b && card(b, "LLMEngine.step").count(); }, 30000, 100);
-  await command(page, "CodeBoard: Open Board");
+  await openBoard(page);
   const f = await boardFrame(page); await idle(f);
   const pm = () => f.locator(".md-pm");
   // Read at once (Playwright's innerText() / innerHTML() would wait out their timeout for an editor that has closed)

@@ -1,6 +1,7 @@
 // 宿主功能访问编辑器 / 工作区的唯一入口。只按 VS Code 插件现在真正用到的调用点抽出来，不为以后预设能力。
 // 行号从 1 开始，列号从 0 开始。
 import type { Disposable, Event } from "./emitter";
+import type { AiModel } from "./protocol";
 
 export type LogLevel = "info" | "warn" | "error";
 
@@ -140,7 +141,23 @@ export interface WorkspaceAi {
   ask(system: string, prompt: string, opts?: { signal?: AbortSignal; maxChars?: number }): Promise<string | undefined>;
   /** 灰字补全：光标前后的文字 → 模型的原话（清理交给 cleanCompletion）。宿主按设置选模型（Copilot、DeepSeek…）；不给时用 ask */
   complete?(before: string, after: string, opts?: { signal?: AbortSignal }): Promise<string | undefined>;
+  /** DeepSeek 的 API 密钥（编辑器的密钥存储里，不进设置、白板文件、日志）；没设回 undefined */
+  deepseekKey?(): Promise<string | undefined>;
+  /** 请用户设 DeepSeek 的密钥（和命令 Set DeepSeek API Key 一样）；回设好了没有 */
+  setDeepseekKey?(): Promise<boolean>;
+  /** 删掉 DeepSeek 的密钥 */
+  clearDeepseekKey?(): Promise<void>;
+  /** 编辑器提供的语言模型（VS Code：Copilot 等扩展给的） */
+  models?(): Promise<AiModel[]>;
+  /**
+   * 问一个编辑器提供的语言模型（AI 功能不用 DeepSeek 时）。model = AiModel 的 id，不给 = 自动挑一个（有图时只挑收图的）；
+   * image = 附上的一张图。不抛出：没有模型、用户没同意、取消都折成 fail（ImageAiResult 的那几种）
+   */
+  chat?(model: string | undefined, req: AiChatRequest, opts: { signal: AbortSignal; justification: string }): Promise<AiChatResult>;
 }
+/** 发给编辑器的语言模型的一次请求：system 和 user 两段字，可带一张图（编辑器的接口没有 system 角色时并进第一条） */
+export type AiChatRequest = { system: string; user: string; image?: { mime: string; data: Uint8Array }; fast?: boolean };
+export type AiChatResult = { text: string; via: string } | { fail: "nomodel" | "noconsent" | "canceled" | "http"; message?: string; via?: string };
 
 export interface Workspace {
   files: WorkspaceFiles;

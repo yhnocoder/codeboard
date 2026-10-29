@@ -23,11 +23,12 @@ const qiClosed = (page, what = "the quick input") => qi(page).waitFor({ state: "
 // The host page then takes the keyboard, and gives it to the board's frame when that frame's content has loaded. So a webview still
 // loading when a delayer ran counts as a hand-back until it is ready (the queued "focus" is then numbered like any other), and so does a
 // host page that is still loading its frame.
-// The recorder also logs the quick input showing, hiding, and losing the keyboard while it shows.
+// The recorder also logs the quick input showing, hiding, and losing the keyboard while it shows (and to what), and counts the webview
+// focuses that come from opening an editor (boardOpening).
 const QI_RECORDER = () => {
   if (!/\/workbench[^/]*\.html$/.test(location.pathname)) return 0; // also an init script, which runs in every frame
   if (window.__e2eQi) return window.__e2eQi.ev.length;
-  const rec = window.__e2eQi = { ev: [], seq: 0, focus: new Map(), delayers: new Set(), loading: new Set() };
+  const rec = window.__e2eQi = { ev: [], seq: 0, focus: new Map(), delayers: new Set(), loading: new Set(), opened: 0, lostTo: "" };
   const widget = () => document.querySelector(".quick-input-widget");
   const shown = (w) => !!w && getComputedStyle(w).display !== "none";
   let was = false;
@@ -40,11 +41,17 @@ const QI_RECORDER = () => {
   // An accepted or cancelled quick input hides (or turns inert) before the keyboard moves on: losing it while shown means taken away
   window.addEventListener("focusout", (e) => {
     const w = widget();
-    if (w && w.contains(e.target) && !(e.relatedTarget && w.contains(e.relatedTarget)) && shown(w) && !w.inert) rec.ev.push("lost");
+    if (w && w.contains(e.target) && !(e.relatedTarget && w.contains(e.relatedTarget)) && shown(w) && !w.inert) {
+      rec.ev.push("lost");
+      // a frame's content taking the keyboard leaves relatedTarget null: the window's active element is then its iframe
+      queueMicrotask(() => { const a = e.relatedTarget ?? document.activeElement; rec.lostTo = a?.matches?.("iframe.webview") ? `webview ${a.name}` : `${a?.tagName}.${a?.className}`; });
+    }
   }, true);
   const setT = window.setTimeout, clearT = window.clearTimeout;
   window.setTimeout = function (fn, ...rest) {
-    if (typeof fn !== "function" || !/\._doFocus\b/.test(new Error().stack)) return setT.call(this, fn, ...rest);
+    const stack = typeof fn === "function" ? new Error().stack : "";
+    if (!/\._doFocus\b/.test(stack)) return setT.call(this, fn, ...rest);
+    if (/\.doOpenEditor\b/.test(stack)) rec.opened++;
     const h = setT.call(this, function (...a) {
       rec.delayers.delete(h);
       for (const f of document.querySelectorAll("iframe.webview:not(.ready)")) rec.loading.add(f);
@@ -113,11 +120,15 @@ async function keyboardSettled(page) {
 async function openQuick(page, key, what) {
   await keyboardSettled(page);
   const mark = await qiMark(page);
+  const at = await page.evaluate(() => window.__e2eQi.opened);
   await page.keyboard.press(key);
   await until(`${key} opens ${what}`, async () => (await qiSince(page, mark)).includes("show"), 5000)
     .catch(async (e) => { throw new Error(`${key} does not open ${what} (${e.message}; ${await handBack(page) ?? "no hand-back under way"})`); });
   await keyboardSettled(page);
-  if (!(await qiOpen(page))) throw new Error(`${what} did not keep the keyboard: ${(await qiSince(page, mark)).join(", ")}`);
+  if (!(await qiOpen(page))) {
+    const [lostTo, opened] = await page.evaluate((n) => [window.__e2eQi.lostTo, window.__e2eQi.opened - n], at);
+    throw new Error(`${what} did not keep the keyboard: ${(await qiSince(page, mark)).join(", ")} (lost to ${lostTo || "?"}; ${opened} webview editor(s) opened and focused since ${key})`);
+  }
 }
 
 /** Type into an open quick pick, then accept the row whose label (before any ", <keybinding>") is `label` (default: the text typed), or
@@ -154,6 +165,32 @@ async function command(page, text, prompt) {
   await until(`the input box of "${text}"`, async () => (await qiSince(page, mark)).includes("lost") || await inputBoxShows(page, prompt), 10000);
   await keyboardSettled(page);
   if ((await qiSince(page, mark)).includes("lost") || !(await qiOpen(page))) throw new Error(`the input box "${prompt}" of "${text}" lost the keyboard: ${(await qiSince(page, mark)).join(", ")}`);
+}
+/** VS Code shows a board some time after the command or tab click that asks for it: the extension's panel.reveal and
+ *  createWebviewPanel reach the workbench through the extension host after the palette has closed, and a tab click opens its editor
+ *  once the click is handled. The workbench then opens the board's editor and focuses its webview (editorService.openEditor without
+ *  preserveFocus, even for a board already in front, and with the keyboard already on it). A quick input opened before that loses the
+ *  keyboard to the board, which then gets the keys typed into it. Call this before the command or click: the function it returns waits
+ *  until a webview editor has been opened and focused since (the recorder counts these focuses), and the keyboard hand-back has landed */
+async function boardOpening(page, what) {
+  await qiMark(page);
+  const at = await page.evaluate(() => window.__e2eQi.opened);
+  return async () => {
+    await until(what, () => page.evaluate((n) => window.__e2eQi.opened > n, at), 10000);
+    await keyboardSettled(page);
+  };
+}
+/** Run a command that shows a board ("CodeBoard: Open Board" and the like); returns once the board is in front with the keyboard */
+async function openBoard(page, text = "CodeBoard: Open Board") {
+  const opened = await boardOpening(page, `"${text}" opens a board's editor and focuses it`);
+  await command(page, text);
+  await opened();
+}
+/** Click a board's editor tab (a locator); returns once VS Code has opened its editor and the keyboard is on the board */
+async function clickBoardTab(page, tab) {
+  const opened = await boardOpening(page, "clicking the board's tab opens its editor and focuses it");
+  await tab.click();
+  await opened();
 }
 /** CodeBoard asks on the board a command runs on (packages/host/src/prompts.ts): wait until its dialog (title) is up on board f and its
  *  field has the keyboard, with no hand-back to a webview left to move it, and the text in it all selected (what is typed replaces it) */
@@ -277,4 +314,4 @@ async function fit(f) {
   await btn.click({ timeout: 5000 }); // when something else covers it, this fails and says what
 }
 
-module.exports = { qi, qiValue, qiOpen, qiMark, watchKeyboard, keyboardSettled, boardHasKeyboard, boardKeys, ctrlK, boardDialog, boardDialogClosed, qiClosed, pick, command, inputBox, openFile, goToLine, statusSel, text, typingIn, pmHasSelection, focusSettled, boardFrame, boardFrames, card, fit };
+module.exports = { qi, qiValue, qiOpen, qiMark, watchKeyboard, keyboardSettled, boardHasKeyboard, boardKeys, ctrlK, boardDialog, boardDialogClosed, qiClosed, pick, command, openBoard, clickBoardTab, inputBox, openFile, goToLine, statusSel, text, typingIn, pmHasSelection, focusSettled, boardFrame, boardFrames, card, fit };

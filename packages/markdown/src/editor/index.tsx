@@ -1,19 +1,21 @@
 // 解析 / 写回用 ../schema 里唯一的那一个 MarkdownManager；这里只加编辑专用的
 import { keepKey } from "../ui/editkeys";
-import { Editor, Extension, Node as TNode, posToDOMRect, type AnyExtension, type JSONContent, type Range } from "@tiptap/core";
+import { Editor, Extension, Mark as TMark, Node as TNode, mergeAttributes, posToDOMRect, type AnyExtension, type JSONContent, type MarkViewRendererProps, type Range } from "@tiptap/core";
 import Suggestion, { type SuggestionProps, type SuggestionKeyDownProps } from "@tiptap/suggestion";
 import { EditorState, NodeSelection, Plugin, PluginKey, Selection, TextSelection, type Transaction } from "@tiptap/pm/state";
-import type { Node as PMNode, Slice } from "@tiptap/pm/model";
+import { Slice, type Node as PMNode } from "@tiptap/pm/model";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { Placeholder } from "@tiptap/extensions";
 import DragHandle from "@tiptap/extension-drag-handle";
 import { render } from "solid-js/web";
 import { createEffect, createSignal, For, onCleanup, Show, type Accessor } from "solid-js";
-import { baseExtensions, parseMd, serializeMd } from "../schema";
+import { baseExtensions, parseMd, pastedMd, serializeMd } from "../schema";
+import { annotNoteHtml } from "../render";
 import { Ghost } from "./ghost";
 import { Icon, type IconName } from "./icons";
 import { clipboardText } from "./clipboard";
 import { mathInSlice } from "./pastemath";
+import { marksInSlice } from "./pastemarks";
 import { undoubleTex } from "../doubled";
 import { EMOJI, EMOJI_NAMES } from "../emoji";
 import { CodeBlockView, codeGapClick } from "./codeblock";
@@ -21,7 +23,7 @@ import type { CodeLang } from "./codelang";
 import { MathBlockView } from "./mathblock";
 import { mathHintsPlugin } from "./mathhints";
 import { mathMacros } from "../math";
-import { imageEditing, insertImageUrl, type SaveImage } from "./image";
+import { imageEditing, insertImageUrl, pastedImages, type SaveImage } from "./image";
 import { Typora, reconvert } from "./typora";
 import { sourceKey } from "./source";
 import { place, virtual } from "../ui/place";
@@ -319,6 +321,20 @@ function Bubble(p: { editor: Editor; tick: Accessor<number>; ui: Ui }) {
   );
 }
 
+/**
+ * {字|批注}：和静态显示一样，标签是被标的字前面的一个真节点（批注按行内 Markdown 画，见 render.ts），不能编辑、选不到；
+ * 批注在工具条的输入框里按原文改，改了这个标注就换一个新的视图
+ */
+function annotView({ mark, HTMLAttributes }: MarkViewRendererProps) {
+  const dom = document.createElement("span"), label = document.createElement("span"), body = document.createElement("span");
+  for (const [k, v] of Object.entries(mergeAttributes(HTMLAttributes, { class: "md-annot" }))) if (v != null) dom.setAttribute(k, String(v));
+  label.className = "md-annot-n";
+  label.contentEditable = "false";
+  label.innerHTML = annotNoteHtml(mark.attrs.note ?? "");
+  dom.append(label, body);
+  return { dom, contentDOM: body, ignoreMutation: (m: { target: Node }) => label.contains(m.target) };
+}
+
 // 每次排版时读：公式预设换了也跟上，公式里的 \newcommand 不漏到别的公式
 const mathOptions = { throwOnError: false, get macros() { return mathMacros(); } };
 
@@ -327,6 +343,7 @@ function editorExtensions(o: MdEditorOpts, ed: () => Editor, handle: HTMLElement
   // 公式：点一下在原处展开原文（行内的由 source.ts 换成 $…$，公式块自己的节点视图展开，见 mathblock.ts）
   const base = baseExtensions.map((x) => (x.name === "inlineMath" ? x.configure({ onClick: onMath, katexOptions: mathOptions })
     : x.name === "blockMath" ? (x as TNode).extend({ addNodeView: () => ({ node, view, getPos }) => new MathBlockView(node, view, getPos as () => number | undefined) })
+    : x.name === "annot" ? (x as TMark).extend({ addMarkView: () => annotView })
     : x.name === "image" ? imageEditing(x as TNode, ed, () => saveImage(o))
     : x.name === "codeBlock" ? (x as TNode).extend({ addProseMirrorPlugins: () => [codeGapClick()], addNodeView: () => ({ node, view, getPos }) => new CodeBlockView(node, view, getPos as () => number | undefined, { editor: ed, exit: () => { if (!uiOf.get(ed())?.closeFind()) exit(); }, complete, comment: (l) => o.code?.comment?.(l), lsp: (l) => o.code?.lsp?.(l), stopPointerDown: o.code?.stopPointerDown, langs: () => o.code?.langs ?? [] }) })
     : x));
@@ -420,13 +437,13 @@ function editorExtensions(o: MdEditorOpts, ed: () => Editor, handle: HTMLElement
   ];
 }
 
-const MD_HINT = /^(#{1,6}\s|[-*+]\s|\d+[.)]\s|>\s|```|\$\$|\|.*\|)|\*\*[^*]+\*\*|\[[^\]]+\]\([^)]+\)|\$[^$\s][^$]*\$/m;
 function handlePaste(e: Editor, o: MdEditorOpts, ev: ClipboardEvent, slice: Slice): boolean {
   const cd = ev.clipboardData;
   if (!cd) return false;
   const raw = cd.getData("text/plain").replace(/\r\n?/g, "\n");
   const $f = e.state.selection.$from;
   if ($f.parent.type.spec.code) return false; // 代码块里原样粘贴
+  if (pastedImages(cd).length) return false; // 图片（和整段 SVG 文字）交给 imageEditing 的粘贴，不当 Markdown 读
   const html = cd.getData("text/html");
   // 只有纯文字时（电子书、网页里排好的公式）"显示的字 + TeX" 只留 $TeX$；HTML 里的在 mathInSlice 里认
   const text = html || cd.getData("vscode-editor-data") ? raw : undoubleTex(raw);
@@ -455,21 +472,25 @@ function handlePaste(e: Editor, o: MdEditorOpts, ev: ClipboardEvent, slice: Slic
       }).run();
     return true;
   }
-  // 别处的 HTML（不是从编辑器里复制的：那里字面的 $ 是转义过的）：字里原样留着的 $…$ 变成公式
+  // 别处的 HTML（不是从编辑器里复制的：那里字面的 $ == 是转义过的）：字里原样留着的 ==…==、~~…~~、---、$…$ 变成格式、分隔线、公式。
+  // 先认格式：==a $x$ b== 里的公式跟着带上高亮
   if (html && !html.includes("data-pm-slice")) {
-    const fixed = mathInSlice(slice, e.state.schema);
+    const marked = marksInSlice(slice, e.state.schema) ?? slice;
+    const fixed = mathInSlice(marked, e.state.schema) ?? (marked !== slice ? marked : null);
     if (fixed) { e.view.dispatch(e.state.tr.replaceSelection(fixed).scrollIntoView().setMeta("paste", true).setMeta("uiEvent", "paste")); return true; }
   }
-  // 纯文字里有 Markdown 的样子：按 Markdown 解析（HTML 的交给 ProseMirror 按 schema 解析，写回时自然是干净的 Markdown）
+  // 纯文字解析器读得出 Markdown：按 Markdown 粘贴（HTML 的交给 ProseMirror 按 schema 解析，写回时自然是干净的 Markdown）
   // 之后把光标所在的这一段再当 Markdown 解析一遍：粘进来的字补完了前面打了一半的记号（打了 $\frac{，粘贴 a}{b}$）也能变
-  if (text && !html && MD_HINT.test(text)) {
-    const doc = parseMd(text);
-    // 只有一段：把段里的东西插在光标处（不另起一段）
-    const one = doc.content?.length === 1 && doc.content[0].type === "paragraph" ? doc.content[0].content ?? [] : doc.content!;
-    e.chain().focus().insertContent(one as JSONContent[]).command(({ tr }) => { reconvert(tr); return true; }).run();
+  const doc = text && !html ? pastedMd(text) : null;
+  if (doc) {
+    // 和别的粘贴一样，两头的段落是敞开的：头一段接在光标前的字后面，末一段接上光标后的字（只有一段就插在光标处，不另起一段）
+    const d = e.state.schema.nodeFromJSON(doc);
+    const open = (n: PMNode | null) => (n?.type.name === "paragraph" ? 1 : 0);
+    const tr = e.state.tr.replaceSelection(new Slice(d.content, open(d.firstChild), open(d.lastChild)));
+    e.view.dispatch(reconvert(tr).scrollIntoView().setMeta("paste", true).setMeta("uiEvent", "paste"));
     return true;
   }
-  if (text && !html && !text.includes("\n") && /[$*`~\]>]/.test(text)) {
+  if (text && !html && !text.includes("\n") && /[$*`~\]>=^]/.test(text)) {
     e.view.dispatch(reconvert(e.state.tr.insertText(text)));
     return true;
   }

@@ -146,7 +146,7 @@ export function applySharedUpdate(b: Board, sc: SharedUpdate): boolean {
  * 白板文件 → 白板：共享卡的引用换成卡库里的内容（get 找不到的换成一张说明的 Note，免得连着它的 Link 和摆放悬空）。
  * refs = 换上了内容的共享卡，missing = 卡库里找不到的
  */
-export function inflate(f: BoardFile, get: (id: string) => SharedCard | undefined): { board: Board; refs: string[]; missing: string[] } {
+export function inflate(f: BoardFile, cam: Camera, get: (id: string) => SharedCard | undefined): { board: Board; refs: string[]; missing: string[] } {
   const refs: string[] = [], missing: string[] = [];
   const cards: Card[] = [];
   const shared: SharedCard[] = [];
@@ -156,18 +156,19 @@ export function inflate(f: BoardFile, get: (id: string) => SharedCard | undefine
     if (sc) { refs.push(c.id); cards.push(sc.card); shared.push(sc); }
     else { missing.push(c.id); cards.push({ id: c.id, kind: "note", md: "Shared card not found in the card library.", look: "note" }); }
   }
-  const board = { ...f, cards } as Board;
+  const board = { ...f, cam, cards } as Board;
   board.sidenotes = [...f.sidenotes, ...shared.flatMap((s) => s.sidenotes)];
   return { board, refs, missing };
 }
 
-/** 白板 → 白板文件 + 共享卡的内容：refs 里的卡换成引用，跟着它们走的 Sidenote 去卡库 */
-export function deflate(b: Board, refs: ReadonlySet<string>): { file: BoardFile; shared: SharedCard[] } {
+/** 白板 → 白板文件 + 共享卡的内容：refs 里的卡换成引用，跟着它们走的 Sidenote 去卡库；镜头不进文件 */
+export function deflate(board: Board, refs: ReadonlySet<string>): { file: BoardFile; shared: SharedCard[] } {
+  const { cam: _cam, ...b } = board;
   if (!refs.size) return { file: b, shared: [] };
   const shared: SharedCard[] = [];
   const cards = b.cards.map((c) => {
     if (!refs.has(c.id)) return c;
-    shared.push(sharedOf(b, c.id)!);
+    shared.push(sharedOf(board, c.id)!);
     return { id: c.id, kind: "shared" as const };
   });
   const gone = new Set(shared.flatMap((s) => s.sidenotes.map((n) => n.id)));
@@ -177,7 +178,7 @@ export function deflate(b: Board, refs: ReadonlySet<string>): { file: BoardFile;
 /**
  * 白板文件的三方合并（另一个窗口在这块白板上次读 / 写之后改过文件时）：base = 上次读到 / 写下的那份，disk = 磁盘上现在的，mine = 要写的。
  * 每一项（卡、线、Section、Sidenote、Sticker、摆放、白板本身的字段）：mine 和 base 比变了就用 mine 的；没变就用 disk 的（disk 删了就删）；
- * mine 删了的项删掉；只在 disk 上有的（另一个窗口加的）留下，接在后面。镜头用 mine 的
+ * mine 删了的项删掉；只在 disk 上有的（另一个窗口加的）留下，接在后面
  */
 export function mergeFile(base: BoardFile, disk: BoardFile, mine: BoardFile): BoardFile {
   const out = { ...mine } as BoardFile;

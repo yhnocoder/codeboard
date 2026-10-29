@@ -16,7 +16,7 @@ import { setMediaDir } from "@codeboard/host/exports";
 import { initSource } from "@codeboard/host/source";
 import { recordProject } from "@codeboard/host/transfer";
 import { onDidOpenGithubFile } from "@codeboard/host/github";
-import { githubDir, openStorage, type Storage } from "@codeboard/host/storage";
+import { followStorageDir, githubDir, onDidSwitchStorage, openStorage, watchProjectDir, type Storage } from "@codeboard/host/storage";
 import { scheduleAssetSweep } from "@codeboard/host/assetsweep";
 import { watchVersions } from "@codeboard/host/watch";
 import { debounce, useWorkspace } from "@codeboard/host/ws";
@@ -51,7 +51,7 @@ export async function activate(ctx: vscode.ExtensionContext) {
 
   const tree = new BoardsTree(store, panels);
   const gh = new GithubTree(store);
-  sub(vscode.window.registerTreeDataProvider("codeboard.boards", tree));
+  sub(vscode.window.createTreeView("codeboard.boards", { treeDataProvider: tree, dragAndDropController: tree }));
   sub(vscode.window.registerTreeDataProvider("codeboard.github", gh));
   setMediaDir(path.join(ctx.extensionUri.fsPath, "media", "board"));
   const qtree = new QuestionsTree(store);
@@ -98,10 +98,14 @@ export async function activate(ctx: vscode.ExtensionContext) {
   sub(files.onDidRename(() => forgetDefs()));
   sub(watchNameIndex());
   sub(ws.settings.onDidChange((e) => {
-    if (e.affects("codeboard.storageDir")) void store.reset().then(() => { marks.rebuild(); unsweep(); unsweep = scheduleAssetSweep(store); void recordProject(panels.globalState, store.dir()); });
+    if (e.affects("codeboard.storageDir")) void followStorageDir(store);
     if (affectsSettings(e)) panels.broadcast({ type: "host", host: { settings: readSettings() } });
     if (e.affects("editor.fontFamily")) panels.broadcast({ type: "host", host: { fontFamily: ws.settings.get<string>("editor.fontFamily") } });
   }));
+  // 存储目录换了（设置、.codeboard/ 出现或没了、Move Boards into Project）
+  sub(onDidSwitchStorage(() => { void panels.followStorage(); marks.rebuild(); unsweep(); unsweep = scheduleAssetSweep(store); void recordProject(panels.globalState, store.dir()); }));
+  sub(watchProjectDir(() => void followStorageDir(store)));
+  sub(files.onDidChangeRoots(() => void followStorageDir(store)));
   sub(store.onDidSave(() => gh.refresh()));
   sub(onDidOpenGithubFile(() => gh.refresh()));
 

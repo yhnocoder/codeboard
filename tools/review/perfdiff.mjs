@@ -60,7 +60,10 @@ for (const op of ops) {
   const bf = median(B.map((r) => r[op]?.frameP95)), hf = median(H.map((r) => r[op]?.frameP95));
   const over = hf > FRAME_BUDGET;
   if (over) slow.push(op);
-  lines.push(`| ${op} | ${cell(bb, hb, LIMITS.busy, `${op} work per step`, FRAME_BUDGET)} | ${cell(bf, hf, LIMITS.frame, `${op} frame p95`, FRAME_BUDGET)} | ${over ? "⚠ over 16.7 ms" : ""} |`);
+  // frameOf: what the p95 is over (all tasks, or each step's frame, perf.ts sum()); when base measured it differently, nothing to compare
+  const sameFrames = !B.length || B.every((r) => r[op]?.frameOf === H[0][op].frameOf);
+  const frames = sameFrames ? cell(bf, hf, LIMITS.frame, `${op} frame p95`, FRAME_BUDGET) : `${fmt(bf)} → ${fmt(hf)} (measured differently, not compared)`;
+  lines.push(`| ${op} | ${cell(bb, hb, LIMITS.busy, `${op} work per step`, FRAME_BUDGET)} | ${frames} | ${over ? "⚠ over 16.7 ms" : ""} |`);
 }
 // with animated stickers (run-perf.mjs --anim), also the main-thread work per idle second: what the playing stickers cost when nothing moves
 for (const k of ["dragEnd", ...(H[0].animStickers ? ["idleBusy1s"] : [])]) {

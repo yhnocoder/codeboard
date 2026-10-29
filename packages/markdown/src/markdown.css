@@ -45,21 +45,21 @@ math { font-size: 1.05em; }
 .md s { color: var(--ink-2); }
 /* ==高亮==：左右没有内边距（进出编辑时字不挪）；下边的 .12em 是行内元素的竖向内边距，只加长底色，不占行高 */
 .md mark { background: linear-gradient(transparent 58%, var(--md-hl) 58%); color: inherit; padding: 0 0 .12em; margin: 0; }
-/* {字|批注}：被标的字是一个行内块，上面（data-below：下面）多出一条窄轨道，标签（::before）和箭头（::after）画在轨道里，
-   只用 CSS 居中：不量位置、不建节点，编辑器里和静态显示一样（静态显示时 view.ts 只把写出块外的标签挪回来，--ax）。
+/* {字|批注}：被标的字是一个行内块，上面（data-below：下面）多出一条窄轨道，标签（.md-annot-n，批注按行内 Markdown 画，公式也能写）
+   和箭头（::after）画在轨道里，只用 CSS 居中，编辑器里和静态显示一样（静态显示时 view.ts 只把写出块外的标签挪回来，--ax）。
    只有这一行变高，代码和字不会被盖住。颜色 --md-annot-blue / -purple / -orange / -green，手写字体 --md-hand（都有默认值） */
 .md .md-annot { --ac: var(--md-annot-blue, #3a72aa); position: relative; display: inline-block; max-width: 100%; padding-top: 2.05em; text-indent: 0;
   background: color-mix(in srgb, var(--ac) 16%, transparent); background-clip: content-box; border-radius: 3px; }
 .md .md-annot[data-color="purple"] { --ac: var(--md-annot-purple, #7d55b0); }
 .md .md-annot[data-color="orange"] { --ac: var(--md-annot-orange, #c46a2a); }
 .md .md-annot[data-color="green"] { --ac: var(--md-annot-green, #4c8a3a); }
-.md .md-annot::before { content: attr(data-note); position: absolute; top: 0; left: 50%; transform: translateX(calc(var(--ax, 0px) - 50%)); white-space: nowrap; pointer-events: none;
+.md .md-annot > .md-annot-n { position: absolute; top: 0; left: 50%; transform: translateX(calc(var(--ax, 0px) - 50%)); white-space: nowrap; pointer-events: none; user-select: none; -webkit-user-select: none;
   font: 400 1.1em/1.15 var(--md-hand, "Shantell Sans", "LXGW WenKai Lite", "Kaiti SC", STKaiti, KaiTi, cursive); color: var(--ac); }
 .md .md-annot::after { content: ""; position: absolute; left: calc(50% - 5px); top: 1.3em; width: 10px; height: .72em; min-height: 9px; pointer-events: none; background: var(--ac);
   -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 10' preserveAspectRatio='none'%3E%3Cpath d='M3.6 .8Q2.9 5 4 9.2M1.4 6.4Q3 7.6 4 9.2Q4.8 7.4 6.6 6.6' fill='none' stroke='%23000' stroke-width='1.3' stroke-linecap='round'/%3E%3C/svg%3E") center / 100% 100% no-repeat;
   mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 10' preserveAspectRatio='none'%3E%3Cpath d='M3.6 .8Q2.9 5 4 9.2M1.4 6.4Q3 7.6 4 9.2Q4.8 7.4 6.6 6.6' fill='none' stroke='%23000' stroke-width='1.3' stroke-linecap='round'/%3E%3C/svg%3E") center / 100% 100% no-repeat; }
 .md .md-annot[data-below] { padding-top: 0; padding-bottom: 2.05em; }
-.md .md-annot[data-below]::before { top: auto; bottom: 0; }
+.md .md-annot[data-below] > .md-annot-n { top: auto; bottom: 0; }
 .md .md-annot[data-below]::after { top: auto; bottom: 1.3em; transform: scaleY(-1); }
 .md pre code { background: none; padding: 0; font: inherit; }
 .md pre.md-code { position: relative; color: var(--ink); }
@@ -67,7 +67,14 @@ math { font-size: 1.05em; }
 /* 缩小了的图（![a](u){width=40%}）在那一行居中：图是行内的，居中的是它所在的那一段（静态显示是 img.sized，编辑器是 .md-img.sized；
    列表项、表格格子里这一段的 <p> 静态显示也留着，见 render.ts）。图一般单独一段，和字在同一段时那一段的字也居中。
    :has() 里只写有类名的后代，不写 > * 这样的任意一层：那样 Chrome 会在白板上任何类名变化时（拖卡、悬停）重算所有卡的样式 */
-.md p:has(img.sized), .md-pm p:has(.md-img.sized) { text-align: center; }
+.md p:has(img.sized), .md p:has(.md-fig.sized), .md-pm p:has(.md-img.sized) { text-align: center; }
+/* 图注（![a](u "图注")）：图正下方居中的小字，像论文的图注。静态显示里带图注的图包在 .md-fig 里（和编辑器的 .md-img 一样排），
+   图注不撑宽这一层（contain: inline-size）：宽度是图的宽，长的图注在图的宽度里折行 */
+.md .md-fig { display: inline-block; vertical-align: middle; max-width: 100%; margin: 4px 0; }
+.md .md-fig > img { display: block; margin: 0; }
+.md .md-fig.sized > img { width: 100%; }
+.md .md-cap { display: block; contain: inline-size; margin: 5px 0 2px; text-align: center; font-size: .82em; line-height: 1.45; color: var(--ink-2); white-space: normal; }
+.md .md-cap[hidden] { display: none; }
 .md kbd { font: .85em var(--mono); padding: 0 4px; border-radius: 4px; box-shadow: 0 0 0 .5px var(--hair), 0 1px 0 var(--hair); }
 .md :is(.math, [data-type="block-math"]) .katex-display { margin: 2px 0; }
 /* Note 里的调用点不能点，不画成链接 */

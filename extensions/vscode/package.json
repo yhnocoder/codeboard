@@ -97,6 +97,21 @@
         "category": "CodeBoard"
       },
       {
+        "command": "codeboard.moveBoardsIntoProject",
+        "title": "Move Boards into Project…",
+        "category": "CodeBoard"
+      },
+      {
+        "command": "codeboard.exportBoards",
+        "title": "Export Boards…",
+        "category": "CodeBoard"
+      },
+      {
+        "command": "codeboard.importBoards",
+        "title": "Import Boards…",
+        "category": "CodeBoard"
+      },
+      {
         "command": "codeboard.revealInFolder",
         "title": "Reveal in Folder",
         "category": "CodeBoard"
@@ -274,6 +289,21 @@
           "group": "navigation@2"
         },
         {
+          "command": "codeboard.moveBoardsIntoProject",
+          "when": "view == codeboard.boards",
+          "group": "2_storage@1"
+        },
+        {
+          "command": "codeboard.importBoards",
+          "when": "view == codeboard.boards",
+          "group": "2_transfer@1"
+        },
+        {
+          "command": "codeboard.exportBoards",
+          "when": "view == codeboard.boards",
+          "group": "2_transfer@2"
+        },
+        {
           "command": "codeboard.addGithubRepo",
           "when": "view == codeboard.github",
           "group": "navigation@1"
@@ -341,6 +371,11 @@
           "group": "2_edit@5"
         },
         {
+          "command": "codeboard.exportBoards",
+          "when": "view == codeboard.boards && viewItem == board",
+          "group": "2_edit@6"
+        },
+        {
           "command": "codeboard.revealInFolder",
           "when": "view == codeboard.boards && viewItem == board",
           "group": "3_misc@1"
@@ -359,6 +394,11 @@
           "command": "codeboard.renameGroup",
           "when": "view == codeboard.boards && viewItem == group",
           "group": "2_edit@1"
+        },
+        {
+          "command": "codeboard.exportBoards",
+          "when": "view == codeboard.boards && viewItem == group",
+          "group": "2_edit@2"
         },
         {
           "command": "codeboard.deleteGroup",
@@ -560,12 +600,37 @@
         "codeboard.ai.deepseekModel": {
           "type": "string",
           "default": "deepseek-flash",
-          "description": "DeepSeek model for inline completions."
+          "description": "DeepSeek model for inline completions and the AI tools (Extract Text, Convert to SVG, Modify SVG, Paste Image Text, Auto Focus). The image tools need a model that reads images."
         },
         "codeboard.ai.deepseekBaseUrl": {
           "type": "string",
           "default": "https://api.deepseek.com",
           "description": "DeepSeek API base URL."
+        },
+        "codeboard.ai.svg.removeBackground": {
+          "type": "boolean",
+          "default": true,
+          "description": "Convert to SVG draws no background (the paper color of the image becomes transparent). Also set from the check item under Convert to SVG in an image's context menu."
+        },
+        "codeboard.ai.svg.thinkFirst": {
+          "type": "boolean",
+          "default": false,
+          "description": "Convert to SVG lets the model think before it draws: several times slower, with a more accurate layout. Also set from the check item under Convert to SVG in an image's context menu."
+        },
+        "codeboard.ai.textModel": {
+          "type": "string",
+          "default": "auto",
+          "markdownDescription": "Model for reading text from images (Extract Text, Paste Image Text): `auto` (DeepSeek if an API key is set, otherwise a VS Code language model such as GitHub Copilot), `deepseek`, or the id of a VS Code language model. Pick it in CodeBoard Settings › AI, which lists the models you have."
+        },
+        "codeboard.ai.svgModel": {
+          "type": "string",
+          "default": "auto",
+          "markdownDescription": "Model for Convert to SVG and Modify SVG: `auto` (DeepSeek if an API key is set, otherwise a VS Code language model such as GitHub Copilot), `deepseek`, or the id of a VS Code language model. Pick it in CodeBoard Settings › AI, which lists the models you have. Think First applies to DeepSeek only."
+        },
+        "codeboard.ai.focusModel": {
+          "type": "string",
+          "default": "auto",
+          "markdownDescription": "Model for Auto Focus (highlights the key concepts and bolds what matters in a Note): `auto` (DeepSeek if an API key is set, otherwise a VS Code language model such as GitHub Copilot), `deepseek`, or the id of a VS Code language model. Pick it in CodeBoard Settings › AI, which lists the models you have."
         },
         "codeboard.editorMarks": {
           "type": "string",
@@ -581,7 +646,7 @@
         "codeboard.storageDir": {
           "type": "string",
           "default": "",
-          "markdownDescription": "Folder for board files. Leave empty to use VS Code workspace storage (outside the repo). Absolute, `~/…`, or relative to the first workspace folder, e.g. `~/notes/codeboard`."
+          "markdownDescription": "Folder for board files. Leave empty to use the `.codeboard` folder in the first workspace folder when there is one (see **Move Boards into Project…**), otherwise VS Code workspace storage (outside the repo). Absolute, `~/…`, or relative to the first workspace folder, e.g. `~/notes/codeboard`."
         },
         "codeboard.theme": {
           "type": "string",

@@ -25,9 +25,17 @@ const KEY: Record<keyof Settings, string> = {
   noteHeadingInBody: "notes.headingInBody",
   noteFontSize: "notes.fontSize",
   mathPreamble: "math.preamble",
+  svgNoBg: "ai.svg.removeBackground",
+  svgThink: "ai.svg.thinkFirst",
+  aiProvider: "ai.provider",
+  deepseekModel: "ai.deepseekModel",
+  aiText: "ai.textModel",
+  aiSvg: "ai.svgModel",
+  aiFocus: "ai.focusModel",
 };
 
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
+const aiChoice = (v: unknown) => typeof v === "string" && !!v.trim() && v.length <= 200;
 const num = (v: unknown) => typeof v === "number" && Number.isFinite(v);
 const VALID: { [K in keyof Settings]-?: (v: unknown) => boolean } = {
   theme: (v) => THEMES.some(([id]) => id === v),
@@ -51,6 +59,13 @@ const VALID: { [K in keyof Settings]-?: (v: unknown) => boolean } = {
   exportScope: (v) => v === "board" || v === "sections" || v === "walk",
   noteHeadingInBody: (v) => typeof v === "boolean",
   mathPreamble: (v) => typeof v === "string",
+  svgNoBg: (v) => typeof v === "boolean",
+  svgThink: (v) => typeof v === "boolean",
+  aiProvider: (v) => v === "auto" || v === "copilot" || v === "deepseek" || v === "off",
+  deepseekModel: (v) => typeof v === "string" && v.length <= 200,
+  aiText: aiChoice,
+  aiSvg: aiChoice,
+  aiFocus: aiChoice,
   noteFontSize: (v) => isObj(v) && Object.entries(v).every(([k, x]) => NOTE_FONT_LEVELS.includes(k as never) && (x === null || x === undefined || fontPx(k, x))),
 };
 function fontPx(level: string, v: unknown) {

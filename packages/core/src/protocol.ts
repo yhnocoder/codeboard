@@ -78,12 +78,22 @@ export type Settings = {
   noteHeadingInBody: boolean; // Note 开头的标题已经是卡头的名字时，正文里还显示它吗（默认不显示，只是显示上藏起来，编辑时照常出现）
   noteFontSize: NoteFontSizes; // Note 正文和各级标题的字号（px，null = 跟主题）；Text 卡有自己的字号档，不受影响
   mathPreamble: string; // 公式预设：几行 \newcommand / \def，所有白板的公式都认（显示、编辑、导出）
+  svgNoBg: boolean; // Convert to SVG 的 Remove Background（默认开）：画出来的 SVG 不带纸的底色
+  svgThink: boolean; // Convert to SVG 的 Think First：模型先思考再画（慢几倍，排版更准；默认关）
+  aiProvider: "auto" | "copilot" | "deepseek" | "off"; // 灰字补全用哪个模型（auto = 有 DeepSeek 密钥用 DeepSeek，没有用 VS Code 的模型）
+  deepseekModel: string; // DeepSeek 的模型名（补全和各个 AI 功能都用它）
+  aiText: AiChoice; // 识字（Extract Text、Paste Image Text）用哪个模型
+  aiSvg: AiChoice; // Convert to SVG、Modify SVG 用哪个模型
+  aiFocus: AiChoice; // Auto Focus 用哪个模型
 };
+/** AI 功能用哪个模型："auto" = 有 DeepSeek 密钥用 DeepSeek，没有用 VS Code 的语言模型（Copilot…）；"deepseek"；别的 = 某个 VS Code 语言模型的 id */
+export type AiChoice = string;
 export const DEFAULT_SETTINGS: Settings = {
   theme: "warm-ink", vscodeBg: false, hideOnNew: { blank: false }, studyScope: [], stickerDir: "", zoomOverview: 0.6, zoomMap: 0.25, dblClick: "text",
   hideNumbers: false, themeReflow: "push", debug: false, tune: {}, pasteOther: "linked", sharedUpdate: "ask", subPreview: "skeleton",
   welcomeBack: "2d", exportQuestions: false, exportBoardOnly: false, exportScope: "board", noteHeadingInBody: false,
   noteFontSize: { body: null, h1: null, h2: null, h3: null, h4: null, h5: null, h6: null }, mathPreamble: "",
+  svgNoBg: true, svgThink: false, aiProvider: "auto", deepseekModel: "deepseek-flash", aiText: "auto", aiSvg: "auto", aiFocus: "auto",
 };
 
 /**
@@ -308,6 +318,8 @@ export type BoardToHost =
   /** 白板的 ⋯ 菜单：Capture Run…（问命令、跑一次、发回 run）/ Apply Run…（从存着的运行记录里选一次） */
   | { type: "captureRun" }
   | { type: "applyRun" }
+  /** ⋯ 菜单的 Export Boards…：这块白板（连同子白板）存成 .codeboard */
+  | { type: "exportBoards" }
   /** Questions 面板：所有白板上的问题（宿主按存好的白板算；这块白板由白板自己按当前状态换掉） */
   | { type: "questions"; req: number }
   /** 导出 Markdown 前：段的 GitHub 永久链接（段 id → URL；算不出的不给） */
@@ -316,10 +328,43 @@ export type BoardToHost =
   | { type: "exportFile"; req: number; kind: "html" | "md"; name: string; text: string }
   /** 写剪贴板（webview 里写可能被拦下） */
   | { type: "copyText"; text: string }
+  /** 图片的 AI 操作（DeepSeek 看图）：宿主拿着密钥去问，回模型的原话或失败的原因（ImageAiResult）。job = 白板给的号，取消用 */
+  | { type: "imageAi"; req: number; job: number; op: ImageAiOp }
+  /** 取消还在等的 imageAi（卡上的 Cancel、Esc）：宿主中止请求，那个请求回 { fail: "canceled" } */
+  | { type: "imageAiCancel"; job: number }
+  /** 没有密钥、密钥被拒时提示里的 Set DeepSeek API Key…：和命令 CodeBoard: Set DeepSeek API Key 一样 */
+  | { type: "setDeepseekKey" }
+  /** Settings 的 AI 一节：密钥设了没有、有哪些 VS Code 语言模型。回 AiInfo */
+  | { type: "aiInfo"; req: number }
+  /** Settings 里的 Set Key… / Clear：set 弹 VS Code 的密码输入框（存进密钥存储），clear 删掉；回之后的 AiInfo。密钥本身不进白板 */
+  | { type: "aiKey"; req: number; action: "set" | "clear" }
   /** Add Variant 菜单：这段代码所在仓库的其他 worktree、本地分支。回 VariantSources */
   | { type: "variantSources"; req: number; seg: Segment }
   /** 加一个 Variant：segs = 上游的段，宿主在那个来源里按函数名重新找（file 没给 abs 时先让用户选文件）。回 NewVariant；取消回 null */
   | { type: "addVariant"; req: number; segs: Segment[]; from: AddVariantFrom };
+
+/**
+ * 图片的 AI 操作。image = 发给模型的图（data: URL，白板已经缩到模型收的大小、透明处垫成白色）。
+ * extract：图里的字转成 Markdown（不思考）；svg：重画成 SVG（size = 那张图的像素宽高，noBg = 不画底色，think = 先思考）；
+ * modify：照 instruction 改 svg 的源码（思考，effort low）
+ */
+export type ImageAiOp =
+  | { kind: "extract"; image: string }
+  | { kind: "svg"; image: string; size: { w: number; h: number }; noBg: boolean; think: boolean }
+  | { kind: "modify"; svg: string; instruction: string }
+  /** Auto Focus：给 Markdown 加 ==概念== 和 **强调**，别的一个字都不改（白板核对回来的字） */
+  | { kind: "focus"; md: string };
+/** 失败的原因：nokey = 没设密钥，badkey = 密钥被拒（401），balance = 余额用完（402），network = 连不上，timeout = 太久没回，
+ *  cut = 回答被截断（SVG 不完整），canceled = 取消了，http = 接口别的错误（message 是接口给的话）；
+ *  VS Code 的语言模型：nomodel = 没有能用的模型（或选的那个不在了、不收图），noconsent = 用户没同意 CodeBoard 用它 */
+export type ImageAiFail = "nokey" | "badkey" | "balance" | "network" | "timeout" | "cut" | "canceled" | "http" | "nomodel" | "noconsent";
+/** text = 模型的原话（去掉了包住整个回答的代码围栏；focus 的不去，白板自己认）；cut = 字被截断了（extract 照样给）；
+ *  reused = 同一张图识别过，没再问模型；via = 失败时问的是谁（"DeepSeek"、VS Code 模型的名字），提示里用 */
+export type ImageAiResult = { text: string; cut?: true; reused?: true } | { fail: ImageAiFail; message?: string; via?: string };
+/** VS Code 的一个语言模型（Copilot 的 GPT-4o、Claude…）：vision = 收图 */
+export type AiModel = { id: string; name: string; vendor: string; vision: boolean };
+/** key = DeepSeek 的密钥设了没有（只有这一位，密钥不进白板）；models = 现在能用的 VS Code 语言模型 */
+export type AiInfo = { key: boolean; models: AiModel[] };
 
 /** Add Variant 的来源：file 不给 abs = 让用户选；PR 只给编号（仓库从 origin 推出来） */
 export type AddVariantFrom = Exclude<VariantFrom, { kind: "upstream" | "file" | "pr" }> | { kind: "file"; abs?: string } | { kind: "pr"; num: number };
@@ -407,6 +452,9 @@ type Replies = {
   searchName: NameHit[];
   genSource: GenSource | null;
   complete: string | null;
+  imageAi: ImageAiResult;
+  aiInfo: AiInfo;
+  aiKey: AiInfo;
   lspComplete: LspItem[];
   lspHover: string[];
   lspSignature: LspSignature | null;

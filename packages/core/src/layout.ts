@@ -9,6 +9,8 @@ export const COL_GAP = 96; // 子卡放在父卡右边一列时和父卡之间�
 export const SIB_GAP = 24;
 /** 代码卡卡头的估计高度（Warm Ink：35 + 1px 下边线）。Place.h 只存内容区，量不到实测尺寸时按它加回去 */
 export const CODE_HEAD = 36;
+/** 新建的 Note / Text / Mark / Box / Free code 卡一样宽（Box 另有默认高度） */
+export const NEW_CARD_W = 381;
 
 /** 还没渲染、量不到实测尺寸时的估计（白板放新卡、宿主在白板没开时直接写卡都用它） */
 export function estSize(c: Card, p: Pick<Place, "w" | "h"> = { w: defaultWidth(c) }): { w: number; h: number } {
@@ -26,7 +28,7 @@ export function defaultWidth(c: Card): number {
       const longest = Math.max(20, ...c.segments.flatMap((s) => s.text.map((l) => l.replace(/\t/g, "    ").length)));
       return Math.round(Math.min(760, Math.max(380, longest * 7.4 + 70)));
     }
-    case "note": return c.look === "note" ? 280 : c.look === "box" ? 160 : 320;
+    case "note": return NEW_CARD_W;
     case "image": return 320;
     case "web": return 420;
     case "links": return 380;

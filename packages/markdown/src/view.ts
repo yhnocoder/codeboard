@@ -26,45 +26,39 @@ export function hydrate(el: HTMLElement, html: string) {
 }
 
 /*
- * {字|批注} 的标签靠 CSS 居中在被标的字上面；这里只把居中后超出所在块（段落、列表项、格子）左右的挪回块里（--ax，左边优先）。
- * 标签是 ::before，量不到：按它的字体用 canvas 算宽度。位置用 offsetLeft 量（不受镜头缩放、滚动影响）。
- * 字体按需加载（中文字体按 unicode-range 才下载），量的时候还没到的，到了再量一次。先全部量完再一起写，不来回排版
+ * {字|批注} 的标签（.md-annot-n）靠 CSS 居中在被标的字上面；这里只把居中后超出所在块（段落、列表项、格子）左右的挪回块里（--ax，左边优先）。
+ * 宽度、位置都用 offset* 量（不受镜头缩放、滚动和 --ax 的 transform 影响）。先全部量完再一起写，不来回排版。
+ * 字体（中文字体按 unicode-range 才下载）、公式的字体到得晚，标签变宽时 ResizeObserver 再量一次；块变宽变窄（卡片改宽）也一样
  */
-let ctx: CanvasRenderingContext2D | null | undefined;
-const refit = new Set<HTMLElement>();
 let sized: ResizeObserver | undefined;
+const rootOf = new WeakMap<Element, HTMLElement>();
 const BLOCK = "p, li, td, th, h1, h2, h3, h4, h5, h6, summary";
 function fitAnnots(el: HTMLElement) {
   if (!el.isConnected) { if (typeof requestAnimationFrame === "function") requestAnimationFrame(() => { if (el.isConnected) fitAnnots(el); }); return; }
-  ctx ??= document.createElement("canvas").getContext("2d");
-  if (!ctx) return;
-  if (typeof ResizeObserver === "function") sized ??= new ResizeObserver((es) => { for (const e of es) { const t = e.target as HTMLElement; if (!t.isConnected || !t.querySelector(".md-annot")) sized!.unobserve(t); else fitAnnots(t); } });
+  if (typeof ResizeObserver === "function") sized ??= new ResizeObserver((es) => {
+    const todo = new Set<HTMLElement>();
+    for (const e of es) {
+      const t = e.target as HTMLElement, root = rootOf.get(t) ?? t;
+      if (!t.isConnected || !root.isConnected || !root.querySelector(".md-annot")) sized!.unobserve(t); else todo.add(root);
+    }
+    for (const r of todo) fitAnnots(r);
+  });
   sized?.observe(el);
-  let late = false;
   const out: [HTMLElement, number][] = [];
   for (const a of el.querySelectorAll<HTMLElement>(".md-annot")) {
+    const n = a.querySelector<HTMLElement>(":scope > .md-annot-n");
+    if (!n) continue;
+    if (rootOf.get(n) !== el) { rootOf.set(n, el); sized?.observe(n); }
     const block = a.parentElement?.closest<HTMLElement>(BLOCK) ?? el;
     if (a.offsetParent !== block.offsetParent && a.offsetParent !== block) continue;
     const left = a.offsetParent === block ? a.offsetLeft : a.offsetLeft - block.offsetLeft;
-    const lb = getComputedStyle(a, "::before"), note = a.dataset.note ?? "";
-    ctx.font = `${lb.fontWeight} ${lb.fontSize} ${lb.fontFamily}`;
-    if (!document.fonts.check(ctx.font, note)) { late = true; void document.fonts.load(ctx.font, note).catch(() => {}); }
-    const w = ctx.measureText(note).width, from = left + (a.offsetWidth - w) / 2; // 居中时标签左边在块里的位置
+    const w = n.offsetWidth, from = left + (a.offsetWidth - w) / 2; // 居中时标签左边在块里的位置
     const room = block.clientWidth;
     let ax = from + w > room ? room - (from + w) : 0;
     if (from + ax < 0) ax = -from;
     out.push([a, Math.round(ax * 2) / 2]);
   }
   for (const [a, ax] of out) a.style.setProperty("--ax", `${ax}px`);
-  if (!late) return;
-  if (!refit.size) document.fonts.addEventListener("loadingdone", refitAll);
-  refit.add(el);
-}
-function refitAll() {
-  const els = [...refit];
-  refit.clear();
-  document.fonts.removeEventListener("loadingdone", refitAll);
-  for (const el of els) if (el.isConnected) fitAnnots(el);
 }
 
 /**

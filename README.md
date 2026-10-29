@@ -58,6 +58,8 @@ It was built for studying LLM inference and training codebases such as [nano-vll
 - Compare a card across branches, worktrees or pull requests, with change marks and a three-way view.
 - Turn a group of cards into a sub-board, or share one card across several boards.
 - Copy or move a board to another project, with its sub-boards, shared cards and images.
+- Keep boards in the repository: **Move Boards into Project…** (in the Boards view's `…` menu) moves them into a `.codeboard` folder that git can track, and anyone who opens the repository sees them. Panning and zooming don't change board files.
+- Export boards to a single `.codeboard` file (a zip) and import it into another project, on this machine or someone else's.
 - Browse a GitHub repository from the sidebar, or paste a GitHub file link onto a board.
 - Pin questions to code with `?` stickers and collect them in the Questions view.
 - Export a board as Markdown, a standalone HTML snapshot, or a PNG.
@@ -92,20 +94,22 @@ For the best results with Python, install [Pylance](https://marketplace.visualst
 | Setting | Default | Description |
 | --- | --- | --- |
 | `codeboard.theme` | `warm-ink` | Board theme. Each has a light and a dark variant. |
-| `codeboard.storageDir` | *(empty)* | Folder for board files. Empty uses VS Code's workspace storage, outside the repository. |
+| `codeboard.storageDir` | *(empty)* | Folder for board files. Empty uses the `.codeboard` folder in the first workspace folder if there is one, otherwise VS Code's workspace storage, outside the repository. |
 | `codeboard.ai.provider` | `auto` | Inline completions in Notes: `auto`, `copilot`, `deepseek` or `off`. |
-| `codeboard.ai.deepseekModel` | `deepseek-flash` | DeepSeek model used for completions. |
+| `codeboard.ai.deepseekModel` | `deepseek-flash` | DeepSeek model used for completions and the AI tools. |
+| `codeboard.ai.textModel`, `svgModel`, `focusModel` | `auto` | Model for Extract Text, for Convert / Modify SVG and for Auto Focus: `auto` (DeepSeek if a key is set, otherwise a VS Code language model), `deepseek`, or a VS Code language model picked in Settings › AI. |
 | `codeboard.studyScope` | `[]` | Packages outside the workspace that count as project code, for example `torch`. |
 | `codeboard.zoom.overview` | `0.6` | Below this zoom level, cards show an overview instead of code. |
 | `codeboard.doubleClick` | `text` | What double-clicking empty board space creates. |
 
-Set a DeepSeek API key with **CodeBoard: Set DeepSeek API Key**. It is kept in VS Code's secret storage.
+Set a DeepSeek API key in the board's Settings › AI, or with **CodeBoard: Set DeepSeek API Key**. It is kept in VS Code's secret storage.
 
 ## Privacy
 
-CodeBoard runs locally and collects no telemetry. Boards are stored on your machine, in VS Code's workspace storage or in `codeboard.storageDir`, and nothing is written into the repository you are reading. Only these features reach the network:
+CodeBoard runs locally and collects no telemetry. Boards are stored on your machine, in VS Code's workspace storage or in `codeboard.storageDir`, and nothing is written into the repository you are reading unless you move the boards into it (a `.codeboard` folder). Only these features reach the network:
 
 - **Gray inline completions** (in Notes and Free code cards): the text around the caret (up to a few thousand characters) goes to a VS Code language model such as GitHub Copilot or, only if you set a DeepSeek API key, to DeepSeek. Turn them off with `"codeboard.ai.provider": "off"`.
+- **AI tools** (Extract Text, Paste Image Text, Convert to SVG, Modify SVG, Auto Focus): only when you run one, the image, the SVG source or the card's Markdown goes to the model chosen in Settings › AI (DeepSeek, or a VS Code language model such as GitHub Copilot).
 - **GitHub**: the GitHub Files sidebar, pasted GitHub file links and pull-request variants read from GitHub's API, signed in with your VS Code GitHub account when a repository needs it.
 - **Web page cards**: pasting a link fetches that page once for its title, description and images, which are saved with the board. Images that a Note links by URL load from that URL.
 

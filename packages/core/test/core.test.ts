@@ -260,7 +260,7 @@ describe("migrateBoard", () => {
     const b = migrateBoard({ id: "b", name: "x", cam: { x: 0, y: 0, z: 1 }, version: 1,
       cards: [{ id: "c1", type: "code", x: 0, y: 0, w: 500, path: "a.py", start: 1, end: 2, lang: "python", snapshot: ["a", "b"], commit: "abc", hl: [2], symbol: "f" }],
       edges: [{ id: "e", from: { card: "c1", line: 2 }, to: { card: "c1" }, kind: "call" }] });
-    expect(b.version).toBe(8);
+    expect(b.version).toBe(9);
     expect(b.links[0].call).toEqual({ name: "f", col: 0 });
     const c = b.cards[0] as CodeCard;
     expect(c.segments[0]).toMatchObject({ path: "a.py", start: 1, end: 2, hl: [2], symbol: { qual: "f" } });
@@ -313,7 +313,8 @@ describe("migrateBoard", () => {
       { id: "gone", from: { card: "a" }, to: { card: "f" } },
       { id: "both", from: { card: "a", seg: "sa", line: 9 }, to: { card: "f" }, lost: { from: true } },
     ]);
-    expect(migrateBoard(structuredClone(b))).toEqual(b);
+    const { cam: _cam, ...file } = b;
+    expect(migrateBoard(structuredClone(b))).toEqual(file);
   });
   it("v3 → v4: code cards store the code area height (minus the 36px Warm Ink header), other cards keep theirs", () => {
     const a = { id: "a", kind: "code", segments: [seg("sa")], mergedFrom: [{ card: { id: "m", kind: "code", segments: [seg("sm")] }, place: { x: 0, y: 0, w: 300, h: 200 } }] };
@@ -323,7 +324,7 @@ describe("migrateBoard", () => {
       place: { a: { x: 0, y: 0, w: 400, h: 300 }, z: { x: 0, y: 0, w: 400 }, n: { x: 0, y: 0, w: 300, h: 120 } },
     };
     const b = migrateBoard(structuredClone(raw));
-    expect(b.version).toBe(8);
+    expect(b.version).toBe(9);
     expect(b.place.a.h).toBe(264);
     expect(b.place.z.h).toBeUndefined();
     expect(b.place.n.h).toBe(120);
@@ -344,7 +345,7 @@ describe("migrateBoard", () => {
       ],
     };
     const b = loadBoard(structuredClone(raw));
-    expect(b.version).toBe(8);
+    expect(b.version).toBe(9);
     expect(b.links).toEqual([
       { id: "c", from: { card: "a", seg: "sa", line: 3 }, to: { card: "b" }, label: "hot", at: 0.3, sides: { from: "left" }, call: { name: "g", col: 8, vars: [{ a: "x", b: "y" }], cands: [{ a: "x", b: "y" }, { a: "r", ret: true }], loop: true } },
       { id: "p1", from: { card: "n" }, to: { card: "a", seg: "sa", line: 2 }, style: { dash: true, head: { start: true }, color: "blue" } },
@@ -352,7 +353,8 @@ describe("migrateBoard", () => {
       { id: "p3", from: { card: "a" }, to: { card: "n" } },
     ]);
     expect(b.links.every((l) => !("kind" in l))).toBe(true);
-    expect(migrateBoard(structuredClone(b))).toEqual(b);
+    const { cam: _cam, ...file } = b;
+    expect(migrateBoard(structuredClone(b))).toEqual(file);
   });
   it("v4 → v5 keeps every flow letter, and Arrange no longer changes them", () => {
     // Old letters: trees ordered by their root's place in b.cards; a child card earlier in b.cards than its root (r2's child k) must not change that
@@ -396,6 +398,6 @@ describe("migrateBoard", () => {
     expect(b.stickers[0].q).toEqual({ md: "" });
   });
   it("refuses a board written by a newer CodeBoard", () => {
-    expect(() => migrateBoard({ version: 9, id: "b", name: "x", cards: [] })).toThrow(/newer/);
+    expect(() => migrateBoard({ version: 10, id: "b", name: "x", cards: [] })).toThrow(/newer/);
   });
 });

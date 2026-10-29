@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Export and import boards.** **Export Boards…** (sidebar, a board's or group's context menu, or the board's ⋯ menu) saves one board, a group or all boards to a single `.codeboard` file, with their sub-boards, shared cards, images and run records; it is a zip, so renamed to `.zip` it opens anywhere. **Import Boards…** (or drop the file onto the Boards view) brings it into the current project the way Copy to Another Project does: boards whose id or name is taken get new ones, code is found in this workspace, and shared cards and images already here are kept. The package is checked in full before anything is written.
 - **PyTorch calls go to their kernels.** In a PyTorch checkout, clicking `torch.softmax(x)`, `F.softmax`, `x.softmax()`, `torch._C._nn.…`, `torch.ops.aten.…` or `at::softmax(…)` places the C++ / CUDA kernel that runs it, found through `native_functions.yaml`, the Python bindings (`PyMethodDef`, pybind) and `DispatchStub` registrations; the CUDA kernel comes first, then CPU, Composite and the other dispatch keys (MPS, XPU, …) as alternatives. Objective-C++ `.mm` files (PyTorch's MPS kernels) are read as C++. Kernels generated into the build folder are found through `compile_commands.json`.
 - Cards on files git ignores (generated code in `build/`, a virtual environment inside the repository) no longer show **+ uncommitted**.
 

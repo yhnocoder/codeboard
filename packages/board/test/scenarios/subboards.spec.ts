@@ -32,6 +32,18 @@ async function shotPr(h: Host, name: string) {
 
 test("subboards", () => verdict("subboards", run));
 
+/** ⋯ → Export Boards…: the board asks the host to pack it (with its sub-boards) into a .codeboard file; the host asks where to save */
+test("exportBoardsFromMenu", async () => {
+  const b = emptyBoard("bExport", "Export me");
+  put(b, card("Scheduler.schedule"), 60, 60, 560);
+  const h = await open({ board: b, light });
+  await h.page.locator('.bbar [aria-label="More"]').click();
+  await h.page.locator(".ctx button", { hasText: "Export Boards…" }).click();
+  await until(h, "the host is asked to export the board", () => h.sent.some((m) => m.type === "exportBoards"));
+  await expect(h.page.locator(".ctx")).toHaveCount(0);
+  await h.page.context().close();
+});
+
 /** Turn into Board, edit the new board, go back, ⌘Z: the parent goes back, the sub-board keeps the edit; ⌘⇧Z links to it again. Unedited: ⌘Z trashes it, ⌘⇧Z brings it back */
 test("turnIntoBoardUndo", async () => {
   const E = emptyBoard("bUndo", "Undo");

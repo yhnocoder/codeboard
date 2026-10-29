@@ -14,7 +14,7 @@ import { jumpTo } from "./nav";
 import { searchAllLangs, drawManual, addGenerated } from "./chains";
 import { compareCheck, deleteLinks, deleteSel, doCompare, duplicateSel, hideLines, mergeCards, mergeCheck, moveToNewSection, moveToSection, removeSections, separate, toggleCollapse, toggleHide, toggleHl, toggleLock, toggleTilt, toggleSection, toggleWrap, unmerge, toggleBg, arrangeItem, fitSections, tidyUp } from "./edit";
 import { newFreeCode, newNote, newText, pasteText } from "./create";
-import { openAddNote, setMarkColor, showPeek, turnNote } from "./notes";
+import { captionItems, headingSplitCount, openAddNote, setMarkColor, showPeek, splitByHeadings, turnNote } from "./notes";
 import { canLinkList, mergeIntoLinkList, retryMeta, setListRich, setWebStyle } from "./web";
 import { unlinkShared } from "./edit";
 import { deleteEverywhere, pasteFromBoard, copyCardsSel, cutCardsSel, detachTwins } from "./shared";
@@ -25,6 +25,8 @@ import { askQuestion, askQuestionOnCard } from "./questions";
 import { addVariantMenu } from "./variants";
 import { LEGEND, legendName, HAND_COLORS, type Link } from "@codeboard/core";
 import { kbd } from "../keymap";
+import { imageAiItems, type ImgRef } from "./imageai";
+import { autoFocusItem } from "./autofocus";
 
 /**
  * 删除那一组：共享卡（在别的白板上也有）分成「从这块白板移除」（⌫）和「全部删掉」（⌘⌫，要确认），再加 Unlink；
@@ -104,6 +106,13 @@ export function lineMenu(ls: LineSel, x: number, y: number, annotate?: () => voi
   openMenu([...(annotate ? [{ label: "Annotate Selection…", hint: "A handwritten note above the selected words", run: annotate }, null] : []), ...lineItems(ls), null, { label: "Card", sub: cardItems(ls.card, x, y) }], x, y);
 }
 
+/** 右键 Note 里的一张图：图的操作，整张 Note 的菜单在最后的 Note ▸ 里 */
+export function noteImageMenu(ref: ImgRef, x: number, y: number) {
+  selectCard(ref.card);
+  const cap = captionItems(ref, document.elementFromPoint(x, y));
+  openMenu([...cap, ...(cap.length ? [null] : []), ...imageAiItems(ref), null, { label: "Note", sub: cardItems(ref.card, x, y) }], x, y);
+}
+
 export function cardMenu(id: string, x: number, y: number) {
   const items = cardItems(id, x, y);
   if (items.length) openMenu(items, x, y);
@@ -153,11 +162,13 @@ function cardItems(id: string, x: number, y: number): Item[] {
       ...tail,
     ];
     // Box 不和别的互转（底色在选中时的工具条上）
-    if (c.look === "box") return [edit, ...tail];
+    if (c.look === "box") return [autoFocusItem(id), edit, ...tail];
     // Note 只定高度（宽度是折行用的，不动）：Fit Content = 回到跟着内容长高。Text 没有改高度的把手，只有旧白板里定了高度的才需要它
     const fit: Item = { label: "Fit Content", kbd: kbd("fitContent"), disabled: placeOf(id).h ? false : "Already as tall as its content", run: () => fitContent([id]) };
-    if (c.look === "text") return [{ label: "Turn into Note", run: () => turnNote(id, "note") }, ...(placeOf(id).h ? [fit] : []), edit, ...tail];
-    return [{ label: "Turn into Text", run: () => turnNote(id, "text") }, fit, edit, ...tail];
+    if (c.look === "text") return [{ label: "Turn into Note", run: () => turnNote(id, "note") }, ...(placeOf(id).h ? [fit] : []), autoFocusItem(id), edit, ...tail];
+    const parts = headingSplitCount(id);
+    const split: Item = { label: "Split by Headings", hint: parts ? `${parts + 1} cards, linked by arrows` : undefined, disabled: parts ? false : "No headings to split at", run: () => void splitByHeadings(id) };
+    return [{ label: "Turn into Text", run: () => turnNote(id, "text") }, split, fit, autoFocusItem(id), edit, ...tail];
   }
   if (c.kind === "web") return [
     { label: "Open in Browser", kbd: "Double-click", run: () => openLink(c.url) },
@@ -181,6 +192,8 @@ function cardItems(id: string, x: number, y: number): Item[] {
     ...tail,
   ];
   if (c.kind === "image") return [
+    ...imageAiItems({ card: id }),
+    null,
     { label: "Fit Content", kbd: kbd("fitContent"), run: () => fitContent([id]) },
     { label: "Background", checked: !!c.bg, run: () => toggleBg(id) },
     { label: "Edit", sub: [
