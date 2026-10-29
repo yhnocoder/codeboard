@@ -88,6 +88,24 @@ describe("version re-checks", () => {
     W.fire.change.fire(bmAbs); // the board save starts the watch for this file asynchronously: this event comes too early
     await vi.waitFor(() => expect(rechecks.flat()).toContain(bmAbs), { timeout: 5000 });
   });
+  it("a file changed outside the editor is re-checked while the editor's own watch has not started", async () => {
+    // a file outside the workspace (another worktree, a copied file); the test workspace's watch reports nothing unless fired,
+    // like VS Code's while it still sets up the watches requested before it
+    const d = fs.mkdtempSync("/tmp/codeboard-watch-live-");
+    const abs = path.join(d, "kv.py");
+    fs.writeFileSync(abs, "def admit(budget):\n    return budget\n");
+    try {
+      const b = (await store.load("bW"))!;
+      const kv = (await card(abs, "admit")).card;
+      b.cards.push(kv); b.place[kv.id] = { x: 600, y: 600, w: 500 };
+      rechecks.length = 0;
+      await store.save(b);
+      await vi.waitFor(() => expect(rechecks.flat()).toContain(abs), { timeout: 5000 }); // the re-check once its watches start
+      rechecks.length = 0;
+      fs.writeFileSync(abs, "def admit(budget):\n    return budget - 1\n");
+      await vi.waitFor(() => expect(rechecks.flat()).toContain(abs), { timeout: 5000 });
+    } finally { fs.rmSync(d, { recursive: true, force: true }); }
+  });
 });
 
 describe("new-version counts for closed boards", () => {
