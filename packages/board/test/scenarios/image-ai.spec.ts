@@ -205,7 +205,7 @@ test("imageAiNoteImage", async () => {
   await h.page.locator('.card[data-id="n1"] .nbody img').evaluate((i) => (i as HTMLImageElement).decode());
   await rightClick(h, '.card[data-id="n1"] .nbody img');
   const items = await menuLabels(h);
-  check("imageAiNoteImage the image tools and the Note's menu", items.slice(0, 3).join("|") === "Extract Text to Note|Extract Text to Clipboard|Convert to SVG" && items.at(-1) === "Note", items);
+  check("imageAiNoteImage the image tools and the Note's menu", items.slice(0, 4).join("|") === "Add Caption…|Extract Text to Note|Extract Text to Clipboard|Convert to SVG" && items.at(-1) === "Note", items);
   await pick(h, "Convert to SVG");
   const moved = await until(h, "the old image is a card", () => h.board().cards.find((c): c is ImageCard => c.kind === "image"));
   const md = (card(h, "n1") as NoteCard).md, svgSrc = /!\[\]\((assets\/[0-9a-f]{16}-240x160\.svg)\)/.exec(md)?.[1];
