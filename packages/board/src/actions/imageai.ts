@@ -339,6 +339,6 @@ export function imageAiItems(ref: ImgRef): Item[] {
     { label: "Convert to SVG", disabled: web, run: () => void convertToSvg(ref) },
     { label: "Remove Background", inset: true, keep: true, checked: s.svgNoBg, run: () => setSetting("svgNoBg", !state.host.settings.svgNoBg) },
     // 先想一遍只有 DeepSeek 有：选了 VS Code 的模型时不摆一个不起作用的勾
-    ...(s.aiSvg === "auto" || s.aiSvg === "deepseek" ? [{ label: "Think First (slower)", inset: true, keep: true, checked: s.svgThink, run: () => setSetting("svgThink", !state.host.settings.svgThink) }] : []),
+    ...(s.aiSvg === "auto" || s.aiSvg === "deepseek" ? [{ label: "Think First (slower)", inset: true, keep: true, checked: s.svgThink, run: () => setSetting("svgThink", !state.host.settings.svgThink) } satisfies Item] : []),
   ];
 }
