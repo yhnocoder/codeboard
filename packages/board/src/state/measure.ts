@@ -6,6 +6,7 @@ import { isCode, cardRows, shownText, commonIndent } from "@codeboard/core";
 import { state, cardById } from "./store";
 import { shown } from "./ui";
 import { toWorld } from "./camera";
+import { cmNow } from "../cm/load";
 
 // 先读后写的一轮测量和共用的 ResizeObserver 在 @yhnocoder/markdown 里（Mermaid 图的重排也排在同一轮里）：写回包在 batch 里
 setMeasureBatch(batch);
@@ -99,6 +100,17 @@ export function naturalSize(id: string): { w?: number; h: number; minH: number; 
       const longest = Math.max(12, ...texts.map((t) => t.trimEnd().length - ded));
       // 加上代码区外面的那一圈（Soft Light 的托盘离卡边各 10px）：卡比 .cbody 宽多少
       w = Math.ceil(longest * monoWidth(src) + (ded ? DED_PAD : 0) + parseFloat(cs.marginLeft) + parseFloat(cs.paddingRight) + 4 + el.offsetWidth - body.offsetWidth);
+    } else {
+      // 编辑中的 Free code 卡（CodeMirror，⌥F）：按编辑器里现在的字量；字从哪开始量它画出来的位置（镜头缩放要除掉，横向滚过的要加回来），右边留白和显示时一样
+      const cm = code.querySelector<HTMLElement>(".cm-editor"), content = cm?.querySelector<HTMLElement>(".cm-content");
+      const v = cm && cmNow()?.EditorView.findFromDOM(cm);
+      if (v && content) {
+        let longest = 12;
+        for (const l of v.state.doc.iterLines()) longest = Math.max(longest, l.trimEnd().length);
+        const br = body.getBoundingClientRect(), k = br.width / body.offsetWidth || 1;
+        const left = (content.getBoundingClientRect().left - br.left) / k + body.scrollLeft + parseFloat(getComputedStyle(content).paddingLeft);
+        w = Math.ceil(longest * monoWidth(content) + left + parseFloat(getComputedStyle(content).paddingRight) + 4 + el.offsetWidth - body.offsetWidth);
+      }
     }
     return { w, h, minH: top + 6 + 20 + 8 + 2, body: code.offsetHeight - wrapped + frame };
   }

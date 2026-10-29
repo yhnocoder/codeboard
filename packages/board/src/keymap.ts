@@ -5,10 +5,10 @@
 // 动作拿到的 A 是 actions 的命名空间（类型 import，运行时不引用 actions：菜单要 import 这里拿快捷键文字）
 import type { KeyAction } from "@codeboard/core";
 import type * as Actions from "./actions";
-import { state, sel, lineSel, undo, redo, live, beginGesture, toast, clearSel, hostOf } from "./state/store";
+import { state, sel, lineSel, undo, redo, live, beginGesture, toast, clearSel, hostOf, cardById } from "./state/store";
 import { NUDGE_HOLD, NUDGE_RAMP, NUDGE_SPEED, NUDGE_MAX } from "./state/timing";
 import { camTarget, zoomAt } from "./state/camera";
-import { walk, keysOpen, setKeysOpen, setPaletteOpen, setEditing } from "./state/ui";
+import { walk, keysOpen, setKeysOpen, setPaletteOpen, setEditing, editing } from "./state/ui";
 import { setSpaceDown, cancelMode } from "./state/mode";
 import { selSticker, setSelSticker } from "./state/stickers";
 import { lastPointer, worldAt } from "./state/measure";
@@ -83,6 +83,13 @@ const nudge = (dx: number, dy: number) => (a: A, e: KeyboardEvent) => {
 };
 const atPointer = () => worldAt(lastPointer());
 const hasCards = () => sel.cards.length > 0;
+/** ⌥F 先 Fit 正在编辑的 Note / Free code 卡，再是指针下的卡（不用先选中），都没有才是选中的卡和 Section */
+export function fitTarget(): string | null {
+  const ed = editing();
+  if ((ed?.kind === "note" || ed?.kind === "free") && cardById(ed.id)) return ed.id;
+  const p = lastPointer(), el = document.elementFromPoint(p.x, p.y)?.closest<HTMLElement>("#board .card[data-id]");
+  return el && cardById(el.dataset.id!) ? el.dataset.id! : null;
+}
 
 export const KEYMAP: Bind[] = [
   { id: "newNote", keys: ["n"], label: "New Note", group: "Create", run: (a) => void a.newNote(atPointer()) },
@@ -167,7 +174,7 @@ export const KEYMAP: Bind[] = [
   { id: "deleteEverywhere", keys: ["mod+Backspace", "mod+Delete"], show: "⌘⌫", label: "Delete Everywhere (linked card)", group: "Cards", when: () => hasCards() && !lineSel(), run: (a) => void a.deleteEverywhere() },
   { id: "lock", keys: ["mod+shift+l"], label: "Lock / Unlock", group: "Cards", run: (a) => a.toggleLock(sel.cards.slice(), sel.sections.slice()) },
   { id: "turnIntoBoard", keys: ["mod+shift+b"], label: "Turn into Board", group: "Cards", run: (a) => void a.turnIntoBoard() },
-  { id: "fitContent", keys: ["alt+KeyF"], label: "Fit Content", group: "Cards", when: () => hasCards() || sel.sections.length > 0, run: (a) => { if (sel.cards.length) a.fitContent(sel.cards); else a.fitSections(sel.sections.slice()); } },
+  { id: "fitContent", keys: ["alt+KeyF"], label: "Fit Content", group: "Cards", when: () => !!fitTarget() || hasCards() || sel.sections.length > 0, run: (a) => { const t = fitTarget(); if (t) a.fitContent([t]); else if (sel.cards.length) a.fitContent(sel.cards); else a.fitSections(sel.sections.slice()); } },
   { id: "tidyUp", keys: ["alt+KeyT"], label: "Tidy Up", group: "Cards", when: () => sel.cards.length >= 2, run: (a) => void a.tidyUp() },
   // ⌥T 已经是 Tidy Up
   { id: "tilt", keys: ["alt+shift+KeyT"], label: "Tilt", group: "Cards", when: hasCards, run: (a) => a.toggleTilt(sel.cards.slice()) },

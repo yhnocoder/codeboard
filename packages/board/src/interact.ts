@@ -19,7 +19,7 @@ import { overNote, leaveNote, noteDropAt } from "./notedrop";
 import { boardPoint, worldAt, lastPointer, trackPointer, naturalSize, chromeOf } from "./state/measure";
 import { installOverlays, modalOpen, typing } from "./ui/overlay";
 import { NODRAG, CARD_CONTROL, OWNS_POINTER, BOARD_CHROME, holdPointer } from "./ui/guard";
-import { dispatch } from "./keymap";
+import { dispatch, matches } from "./keymap";
 import { holdGhosts } from "@yhnocoder/markdown/ui";
 import * as A from "./actions";
 import { onBoardSwitch } from "./state/root";
@@ -683,6 +683,13 @@ export function installKeys() {
     const t = e.target as HTMLElement;
     if (placing() && e.button === 0 && t.closest?.("#board") && !t.closest(BOARD_CHROME)) return void A.placeStickerAt(e);
     if (selSticker() && !t.closest?.("[data-sticker], .ctx")) setSelSticker(null);
+  }, true);
+  // 编辑 Note、Free code 卡时 ⌥F 也是 Fit Content（Mac 上不然打出 ƒ），光标不动、接着编辑。捕获阶段先拿：代码编辑器不往外冒按键
+  window.addEventListener("keydown", (e) => {
+    const ed = editing();
+    if (e.isComposing || !typing() || (ed?.kind !== "note" && ed?.kind !== "free") || !matches(e, "fitContent")) return;
+    e.preventDefault(); e.stopPropagation();
+    A.fitContent([ed.id]);
   }, true);
   window.addEventListener("keydown", (e) => {
     // 按下 ⌘：正在显示的弹窗固定下来。按住不放时系统会一直重发 keydown（repeat），那些不算，不然按住 ⌘ 扫过的每个弹窗都会被固定
