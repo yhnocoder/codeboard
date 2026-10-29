@@ -17,7 +17,7 @@ import { card, startTreeSitter } from "./helpers";
 const W = nodeWorkspace();
 const dir = fs.mkdtempSync("/tmp/codeboard-watch-");
 const store = new Storage(nodeFs, { dir: () => dir });
-const seqAbs = path.join(WS, "nanovllm/engine/sequence.py"), schAbs = path.join(WS, "nanovllm/engine/scheduler.py"), llmAbs = path.join(WS, "nanovllm/engine/llm_engine.py");
+const seqAbs = path.join(WS, "nanovllm/engine/sequence.py"), schAbs = path.join(WS, "nanovllm/engine/scheduler.py"), llmAbs = path.join(WS, "nanovllm/engine/llm_engine.py"), bmAbs = path.join(WS, "nanovllm/engine/block_manager.py");
 /** what the watcher asked the boards to re-check: one entry per call, the paths sorted (undefined = everything) */
 const rechecks: (string[] | undefined)[] = [];
 const panels = { refreshStale: async (paths?: ReadonlySet<string>) => { rechecks.push(paths && [...paths].sort()); }, get: () => undefined, staleChanged: () => undefined } as unknown as BoardHost;
@@ -78,6 +78,15 @@ describe("version re-checks", () => {
     onePause(() => W.fire.edit.fire(seqAbs));
     expect(rechecks).toEqual([[seqAbs]]);
     expect((await staleFor([seg]))[seg.id]?.state).toBe("lost");
+  });
+  it("a file changed outside the editor right after its card is saved, before its watch starts, is still re-checked", async () => {
+    const b = (await store.load("bW"))!;
+    const bm = (await card(bmAbs, "BlockManager.allocate")).card;
+    b.cards.push(bm); b.place[bm.id] = { x: 0, y: 600, w: 500 };
+    rechecks.length = 0;
+    await store.save(b);
+    W.fire.change.fire(bmAbs); // the board save starts the watch for this file asynchronously: this event comes too early
+    await vi.waitFor(() => expect(rechecks.flat()).toContain(bmAbs), { timeout: 5000 });
   });
 });
 
