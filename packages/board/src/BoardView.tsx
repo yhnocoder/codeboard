@@ -1,3 +1,4 @@
+import { AiClipBusy } from "./ui/AiBusy";
 import { Show, For, createEffect, on, type JSX } from "solid-js";
 import { tune } from "./state/tune";
 import { CAM_SETTLE } from "./state/timing";
@@ -77,6 +78,7 @@ export function BoardView(p: { children?: JSX.Element }) {
       <Show when={ghPicker()}><GitHubPicker /></Show>
       <Show when={exportOpen()}><ExportDialog /></Show>
       <Toast />
+      <AiClipBusy />
       <MenuLayer />
       <DialogLayer />
       <TooltipLayer />

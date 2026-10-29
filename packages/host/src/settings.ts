@@ -25,6 +25,8 @@ const KEY: Record<keyof Settings, string> = {
   noteHeadingInBody: "notes.headingInBody",
   noteFontSize: "notes.fontSize",
   mathPreamble: "math.preamble",
+  svgNoBg: "ai.svg.removeBackground",
+  svgThink: "ai.svg.thinkFirst",
 };
 
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
@@ -51,6 +53,8 @@ const VALID: { [K in keyof Settings]-?: (v: unknown) => boolean } = {
   exportScope: (v) => v === "board" || v === "sections" || v === "walk",
   noteHeadingInBody: (v) => typeof v === "boolean",
   mathPreamble: (v) => typeof v === "string",
+  svgNoBg: (v) => typeof v === "boolean",
+  svgThink: (v) => typeof v === "boolean",
   noteFontSize: (v) => isObj(v) && Object.entries(v).every(([k, x]) => NOTE_FONT_LEVELS.includes(k as never) && (x === null || x === undefined || fontPx(k, x))),
 };
 function fontPx(level: string, v: unknown) {

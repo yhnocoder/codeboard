@@ -92,6 +92,7 @@ export const KEYMAP: Bind[] = [
   { id: "dblText", show: "Double-click empty space", label: "New Text (change in Settings)", group: "Create" },
   { id: "addSidenote", keys: ["s"], label: "Add Sidenote", group: "Create", run: (a) => a.addSidenoteUI() },
   { id: "paste", show: "⌘V", label: "Paste code, link or image", group: "Create" },
+  { id: "pasteImageText", keys: ["mod+shift+KeyV"], label: "Paste Image Text (a Note with the text of the image on the clipboard)", group: "Create", run: (a) => void a.pasteImageText() },
   { id: "editorAdd", show: "⌥B", label: "Add to Board (editor)", group: "Create" },
   { id: "editorSplit", show: "⇧⌥B", label: "Add selection as separate cards, one per definition (editor)", group: "Create" },
   { id: "editorNote", show: "⌥S", label: "Add as Sidenote to selected lines (editor)", group: "Create" },
@@ -193,8 +194,9 @@ export const KEYMAP: Bind[] = [
   { id: "help", keys: ["?"], label: "Keyboard Shortcuts", group: "Board", run: () => setKeysOpen(!keysOpen()) },
   // Esc（浮层都关了以后）：取消正在用的工具 → 取消贴纸选中 → 退出讲解 → 子白板里回上一级 → 取消选择
   {
-    id: "escape", keys: ["Escape"], label: "Cancel · Deselect · Back to the parent board", group: "Board", run: (a) => {
+    id: "escape", keys: ["Escape"], label: "Cancel · Stop waiting for DeepSeek · Deselect · Back to the parent board", group: "Board", run: (a) => {
       if (cancelMode()) return;
+      if (a.cancelImageJob()) return;
       if (selSticker()) return void setSelSticker(null);
       if (walk()) return a.exitWalk();
       if (a.canLeave()) return a.leaveBoard();

@@ -32,6 +32,8 @@ import { merged, vlive } from "../state/variants";
 import { cardClick, cardContextMenu, cardDblClick, cardPointerDown, cardWheel, justDragged, linkPortDown, resizeDown } from "../interact";
 import { kbd } from "../keymap";
 import { tiltOf, trackTilt } from "../state/tilt";
+import { aiJobOn } from "../state/imageai";
+import { AiBusy } from "../ui/AiBusy";
 
 const EPORT_SIDE: Record<"t" | "r" | "b" | "l", LinkSide> = { t: "top", r: "right", b: "bottom", l: "left" };
 
@@ -130,6 +132,7 @@ export function CardView(p: { card: Card }) {
         {/* 拖动时由 .board.dragging 藏起来（CSS），不在每次拖动开始和结束时把几百张卡的圆点拆掉又建回来 */}
         <For each={["t", "r", "b", "l"] as const}>{(side) => <span class={`eport ${side}`} data-nodrag data-export="strip" style={portStyle(c().id)} classList={{ land: landed(`${c().id}|${EPORT_SIDE[side]}`) }} data-tip="Drag to link" onPointerDown={(e) => { const r = e.currentTarget.getBoundingClientRect(); linkPortDown(e, { card: c().id }, r.left + r.width / 2, r.top + r.height / 2, EPORT_SIDE[side]); }} />}</For>
         <Show when={frameless(c())}><WritingToolbar card={c() as NoteCard} /></Show>
+        <Show when={aiJobOn(c().id)} keyed>{(j) => <AiBusy job={j} />}</Show>
         <Show when={!pl().locked}>
           <Show when={frameless(c())} fallback={<>
             <div class="grip" data-nodrag data-export="strip" data-tip="Drag to resize · Double-click to fit content" onPointerDown={(e) => resizeDown(e, c().id, { right: true, bottom: true })} onDblClick={(e) => { e.stopPropagation(); act.fitContent([c().id]); }} />
