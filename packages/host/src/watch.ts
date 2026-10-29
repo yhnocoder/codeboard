@@ -88,17 +88,19 @@ export function watchVersions(panels: BoardHost, store: Storage): Disposable & {
   // 在 VS Code 外面改了卡片用到的文件（git checkout -- f、别的编辑器）：也重算。每个文件一个监听。
   // Variant 的文件也算（另一个 worktree、复制出来的文件：在别处保存后卡上跟着刷新）
   const watchedFiles = new Set<string>();
-  const watchFiles = async () => {
+  const watchFiles = async (catchUp: boolean) => {
     for (const { board } of await store.all()) for (const s of [...boardSegments(board), ...variantSegments(board)]) {
       if (!hasLocalFile(s.src)) continue;
       const a = absOf(s);
       if (!a || watchedFiles.has(a)) continue;
       watchedFiles.add(a);
       subs.push(files.watch(path.dirname(a), path.basename(a), () => recheck(a)));
+      // The file was read when its card or Variant was added, before this watch existed: a change made in between fires no event
+      if (catchUp) recheck(a);
     }
   };
-  const filesWatched = watchFiles();
+  const filesWatched = watchFiles(false);
   subs.push(files.onDidEdit((abs) => { if (abs && watchedFiles.has(abs)) recheck(abs); }));
-  subs.push(store.onDidSave(() => void (async () => { for (const r of await roots()) await watchRoot(r); await watchFiles(); })()));
+  subs.push(store.onDidSave(() => void (async () => { for (const r of await roots()) await watchRoot(r); await watchFiles(true); })()));
   return { dispose: () => { for (const d of subs) d.dispose(); }, ready: Promise.all([started, filesWatched]).then(() => undefined) };
 }
