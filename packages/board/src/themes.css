@@ -586,7 +586,7 @@
 :root.look-drafting .vcard, :root.look-drafting .vbox, :root.look-drafting .vlabel { font: 10px/14px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-2); }
 :root.look-drafting .mk, :root.look-drafting .addn { border-radius: 0; }
 :root.look-drafting .card.note .nbody { --md-fs: var(--note-fs, 11px); line-height: 1.7; font-family: var(--mono); color: var(--ink-2); }
-:root.look-drafting .card.note .nbody h1, :root.look-drafting .card.note .nbody h2, :root.look-drafting .card.note .nbody h3, :root.look-drafting .card.note .nbody strong, :root.look-drafting .card.note .nbody b { font-family: var(--head-font); color: var(--ink); letter-spacing: .06em; }
+:root.look-drafting .card.note .nbody h1, :root.look-drafting .card.note .nbody h2, :root.look-drafting .card.note .nbody h3 { font-family: var(--head-font); color: var(--ink); letter-spacing: .06em; } /* 加粗只加粗：用正文的字（标题字体排进等宽正文里像换了一种字） */
 :root.look-drafting .card.note .ctitle { font-size: 11px; }
 :root.look-drafting .md mark { background: none; text-decoration: underline 1.5px var(--ink); text-underline-offset: 3px; } /* 图纸上不涂荧光笔：==高亮== 是一道墨线 */
 :root.look-drafting .tx.st-title { font: 600 24px/1.25 var(--head-font); text-transform: uppercase; letter-spacing: .08em; }

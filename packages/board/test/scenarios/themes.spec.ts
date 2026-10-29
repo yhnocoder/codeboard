@@ -510,3 +510,27 @@ test("draftingHighlightUnderline", async () => {
   res.warm = warm;
   check("draftingHighlightUnderline", ok && warm.length === 2 && warm.every((m) => m.bg.startsWith("linear-gradient(") && m.line === "none"), res);
 });
+
+/** Drafting (usage feedback #57): bold in a Note's body only gets heavier, in the body's font (DM Mono) and spacing, in the static
+ *  Note and in its editor; headings keep the heading font */
+test("draftingBoldKeepsBodyFont", async () => {
+  const b = emptyBoard("b1", "drafting bold");
+  b.cards.push({ id: "n1", kind: "note", look: "note", md: "用 **for 循环** 遍历每个 thread block，<b>bold</b> 也一样。\n\n## 循环展开\n\n每次处理 4 个元素。" } as any);
+  b.place.n1 = { x: 60, y: 40, w: 381 };
+  b.cam = { x: 0, y: 0, z: 1 };
+  const h = await open({ board: b, light: true, w: 560, h: 280, settings: { theme: "drafting" } as never });
+  await idle(h);
+  const fonts = (root: string) => h.page.evaluate((root) => {
+    const cs = (sel: string) => [...document.querySelectorAll(`${root} ${sel}`)].map((e) => { const s = getComputedStyle(e); return { family: s.fontFamily, spacing: s.letterSpacing, weight: +s.fontWeight }; });
+    return { p: cs("p")[0], bold: [...cs("strong"), ...cs("b")], h2: cs("h2")[0] };
+  }, root);
+  const ok = (f: Awaited<ReturnType<typeof fonts>>) => !!f.p && !!f.h2 && f.bold.length > 0 && f.h2.family !== f.p.family &&
+    f.bold.every((s) => s.family === f.p.family && s.spacing === f.p.spacing && s.weight > f.p.weight);
+  const shown = await fonts('.card[data-id="n1"] .nbody');
+  await h.page.screenshot({ path: path.join(OUT, "drafting-bold-font.png") });
+  await h.page.locator('.card[data-id="n1"] .nbody p').first().dblclick();
+  await h.page.locator('.card[data-id="n1"] .md-pm strong').first().waitFor();
+  await idle(h);
+  const edit = await fonts('.card[data-id="n1"] .md-pm');
+  check("draftingBoldKeepsBodyFont", ok(shown) && ok(edit), { shown, edit });
+});
