@@ -73,13 +73,14 @@ async function pick(h: Host, path: string[]) {
 }
 const menuLabels = (h: Host, n = 0) => h.page.locator(".ctx").nth(n).locator("button .lb").allTextContents();
 async function arrowMenu(h: Host, id: string, f = 0.2) {
-  // a point on the arrow that nothing covers (label box, card)
-  let p = await onArrow(h, id, f);
+  // a point on the arrow that nothing covers (label box, card, another arrow)
+  let p: { x: number; y: number } | undefined;
   for (const g of [f, 0.15, 0.25, 0.35, 0.65, 0.75, 0.85, 0.1, 0.9]) {
     const q = await onArrow(h, id, g);
-    const top = await h.page.evaluate(([x, y]) => (document.elementFromPoint(x, y) as Element | null)?.closest("[data-link]")?.tagName ?? "", [q.x, q.y] as const);
-    if (top === "path") { p = q; break; }
+    const top = await h.page.evaluate(([x, y]) => (document.elementFromPoint(x, y) as Element | null)?.closest("path[data-link]")?.getAttribute("data-link") ?? "", [q.x, q.y] as const);
+    if (top === id) { p = q; break; }
   }
+  if (!p) throw new Error(`no uncovered point on arrow ${id} to right-click`);
   await h.page.mouse.click(p.x, p.y, { button: "right" });
   await h.page.locator(".ctx button").first().waitFor(); await idle(h);
 }
