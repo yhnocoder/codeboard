@@ -4,7 +4,7 @@ import { unwrap } from "solid-js/store";
 import {
   uid, findCard, isCode, placeCards,
   besideFree, findFree, bounds, removeCards, retargetCards, GAP,
-  classifyPaste, guessLang, estSize, defaultWidth, BOX_FILLS,
+  classifyPaste, guessLang, estSize, defaultWidth, BOX_FILLS, NEW_CARD_W,
   type Board, type Card, type CodeCard, type NoteCard, type NoteLook, type Segment, type Place,
   type NewCard, type Rect,
 } from "@codeboard/core";
@@ -76,10 +76,9 @@ export function newMark(at?: { x: number; y: number }) {
 export function newBox(at?: { x: number; y: number }) {
   return newWriting("box", at);
 }
-const WRITE_SIZE: Record<NoteLook, { w: number; h?: number }> = { note: { w: 476 }, text: { w: 544 }, mark: { w: 180 }, box: { w: 150, h: 60 } };
-const FREE_CODE_W = 816;
+const FREE_CODE_W = NEW_CARD_W;
 function newWriting(look: NoteLook, at?: { x: number; y: number }, text = "") {
-  const { w, h } = WRITE_SIZE[look];
+  const w = NEW_CARD_W, h = look === "box" ? 60 : undefined;
   const p = at ?? (() => { const v = viewportCenter(); return { x: v.x - w / 2, y: v.y - (h ?? 80) / 2 }; })();
   const id = uid("n");
   const card: NoteCard = { id, kind: "note", md: text, look };

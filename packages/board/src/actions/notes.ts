@@ -1,5 +1,5 @@
 import { unwrap } from "solid-js/store";
-import { uid, findCard, isCode, cardTitle, segOf, cardIntoSidenote, imageIntoNote, removeSidenotes, sidenoteCard, sidenoteToCard, turnNoteInto, type Sidenote, type SegView, type Anchor, type BoxFill, type HandColor } from "@codeboard/core";
+import { uid, findCard, isCode, cardTitle, segOf, cardIntoSidenote, imageIntoNote, removeSidenotes, sidenoteCard, sidenoteToCard, turnNoteInto, NEW_CARD_W, type Sidenote, type SegView, type Anchor, type BoxFill, type HandColor } from "@codeboard/core";
 import { state, setState, mutate, sel, select, clearSel, lineSel, cardById, hostOf, toast } from "../state/store";
 import { noteImageOf } from "./imagedata";
 import { quietHover } from "../state/camera";
@@ -80,7 +80,7 @@ export function placeSidenote(id: string) {
   const views: Record<string, SegView> = {};
   if (n.kind === "code" && isCode(card) && state.views[n.code.id]) views[card.segments[0].id] = state.views[n.code.id];
   // 放卡、去掉 Sidenote、连箭头是同一步（一次撤销）
-  addCards([{ card, views, w: card.kind === "note" ? 280 : card.kind === "web" ? 300 : 480 }], { at: { x: r.x + r.w + 48, y: r.y + 20 }, also: (b) => sidenoteToCard(b, id, card.id) });
+  addCards([{ card, views, w: card.kind === "note" || n.kind === "paste" ? NEW_CARD_W : card.kind === "web" ? 300 : 480 }], { at: { x: r.x + r.w + 48, y: r.y + 20 }, also: (b) => sidenoteToCard(b, id, card.id) });
   if (isCode(card) && card.segments[0].src.kind === "free") requestViews(card.segments);
   closePop();
 }

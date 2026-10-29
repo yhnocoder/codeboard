@@ -1,6 +1,6 @@
 // 解析 / 写回用 ../schema 里唯一的那一个 MarkdownManager；这里只加编辑专用的
 import { keepKey } from "../ui/editkeys";
-import { Editor, Extension, Node as TNode, posToDOMRect, type AnyExtension, type JSONContent, type Range } from "@tiptap/core";
+import { Editor, Extension, Mark as TMark, Node as TNode, mergeAttributes, posToDOMRect, type AnyExtension, type JSONContent, type MarkViewRendererProps, type Range } from "@tiptap/core";
 import Suggestion, { type SuggestionProps, type SuggestionKeyDownProps } from "@tiptap/suggestion";
 import { EditorState, NodeSelection, Plugin, PluginKey, Selection, TextSelection, type Transaction } from "@tiptap/pm/state";
 import type { Node as PMNode, Slice } from "@tiptap/pm/model";
@@ -10,6 +10,7 @@ import DragHandle from "@tiptap/extension-drag-handle";
 import { render } from "solid-js/web";
 import { createEffect, createSignal, For, onCleanup, Show, type Accessor } from "solid-js";
 import { baseExtensions, parseMd, serializeMd } from "../schema";
+import { annotNoteHtml } from "../render";
 import { Ghost } from "./ghost";
 import { Icon, type IconName } from "./icons";
 import { clipboardText } from "./clipboard";
@@ -319,6 +320,20 @@ function Bubble(p: { editor: Editor; tick: Accessor<number>; ui: Ui }) {
   );
 }
 
+/**
+ * {字|批注}：和静态显示一样，标签是被标的字前面的一个真节点（批注按行内 Markdown 画，见 render.ts），不能编辑、选不到；
+ * 批注在工具条的输入框里按原文改，改了这个标注就换一个新的视图
+ */
+function annotView({ mark, HTMLAttributes }: MarkViewRendererProps) {
+  const dom = document.createElement("span"), label = document.createElement("span"), body = document.createElement("span");
+  for (const [k, v] of Object.entries(mergeAttributes(HTMLAttributes, { class: "md-annot" }))) if (v != null) dom.setAttribute(k, String(v));
+  label.className = "md-annot-n";
+  label.contentEditable = "false";
+  label.innerHTML = annotNoteHtml(mark.attrs.note ?? "");
+  dom.append(label, body);
+  return { dom, contentDOM: body, ignoreMutation: (m: { target: Node }) => label.contains(m.target) };
+}
+
 // 每次排版时读：公式预设换了也跟上，公式里的 \newcommand 不漏到别的公式
 const mathOptions = { throwOnError: false, get macros() { return mathMacros(); } };
 
@@ -327,6 +342,7 @@ function editorExtensions(o: MdEditorOpts, ed: () => Editor, handle: HTMLElement
   // 公式：点一下在原处展开原文（行内的由 source.ts 换成 $…$，公式块自己的节点视图展开，见 mathblock.ts）
   const base = baseExtensions.map((x) => (x.name === "inlineMath" ? x.configure({ onClick: onMath, katexOptions: mathOptions })
     : x.name === "blockMath" ? (x as TNode).extend({ addNodeView: () => ({ node, view, getPos }) => new MathBlockView(node, view, getPos as () => number | undefined) })
+    : x.name === "annot" ? (x as TMark).extend({ addMarkView: () => annotView })
     : x.name === "image" ? imageEditing(x as TNode, ed, () => saveImage(o))
     : x.name === "codeBlock" ? (x as TNode).extend({ addProseMirrorPlugins: () => [codeGapClick()], addNodeView: () => ({ node, view, getPos }) => new CodeBlockView(node, view, getPos as () => number | undefined, { editor: ed, exit: () => { if (!uiOf.get(ed())?.closeFind()) exit(); }, complete, comment: (l) => o.code?.comment?.(l), lsp: (l) => o.code?.lsp?.(l), stopPointerDown: o.code?.stopPointerDown, langs: () => o.code?.langs ?? [] }) })
     : x));

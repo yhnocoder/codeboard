@@ -470,7 +470,8 @@ const Annot = Mark.create({
       below: { default: false, parseHTML: (e) => e.hasAttribute("data-below"), renderHTML: (a) => (a.below ? { "data-below": "" } : {}) },
     };
   },
-  parseHTML: () => [{ tag: "span.md-annot" }],
+  // 显示出来的标签（.md-annot-n）是批注属性画的，复制回来时不是字
+  parseHTML: () => [{ tag: "span.md-annot-n", ignore: true }, { tag: "span.md-annot" }],
   renderHTML: ({ HTMLAttributes }) => ["span", mergeAttributes(HTMLAttributes, { class: "md-annot" }), 0],
   markdownTokenName: "x_annot",
   parseMarkdown: (t: any, h: any) => h.applyMark("annot", h.parseInline(t.tokens ?? []), { note: t.note, color: t.color, below: t.below }),

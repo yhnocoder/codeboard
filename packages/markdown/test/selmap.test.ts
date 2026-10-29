@@ -32,6 +32,10 @@ describe("static selection → document range", () => {
   it("a word after a heading, bold text and inline math", () => {
     expect(mapped("# Title\n\nsome **bold** and $x^2$ then target here", "target")).toBe("target");
   });
+  it("a word after an annotation: its label is not part of the text", () => {
+    expect(mapped("a {wave count|$a$#num_total} is the target", "target")).toBe("target");
+    expect(mapped("a {wave count|note words} is the target", "count")).toBe("count");
+  });
   it("a word in the second list item and in a code block", () => {
     expect(mapped("- one\n- two words\n\n```\nlet code = 1\n```", "words")).toBe("words");
     expect(mapped("- one\n\n```\nlet code = 1\n```", "code")).toBe("code");

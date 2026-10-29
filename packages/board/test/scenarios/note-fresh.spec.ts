@@ -106,8 +106,8 @@ test("newTextReachesHostWhenShown", async () => {
   check("newTextReachesHostWhenShown posted when shown", runs.every((r) => r.shown && r.posted), { runs });
 });
 
-/** New cards start wide enough to write in: Note 476, Text 544, Free code 816 board px (1.7 times the old 280 / 320 / 480); Box and
- *  Mark keep their size. Each is made at the pointer with its key or the toolbar menu, written in and closed with Esc */
+/** Every new card starts 381 board px wide: Note, Text, Box, Mark and Free code alike (Box keeps its 60 px height). Each is made at
+ *  the pointer with its key or the toolbar menu, written in and closed with Esc */
 test("newCardsDefaultWidths", async () => {
   const h = await open({ board: emptyBoard("b1", "widths"), light: true, w: 1800, h: 1000, settings: { theme: "warm-ink" } as never });
   const pg = h.page;
@@ -131,11 +131,11 @@ test("newCardsDefaultWidths", async () => {
   const w = {
     note: await made("Note", key(80, 120, "n"), "A new note, wide enough for a sentence or two"),
     text: await made("Text", key(80, 480, "t"), "A new text"),
-    box: await made("Box", key(1500, 120, "r"), "Box"),
-    mark: await made("Mark", key(1500, 300, "m"), "Mark"),
+    box: await made("Box", key(1300, 120, "r"), "Box"),
+    mark: await made("Mark", key(1300, 300, "m"), "Mark"),
     code: await made("Free code", menu("Code", "New Code"), "def step(self):\n    return self.scheduler.schedule()"),
   };
   await pg.mouse.click(1700, 950); await idle(h);
   await pg.screenshot({ path: path.join(OUT, "new-card-widths.png") });
-  check("newCardsDefaultWidths", w.note === 476 && w.text === 544 && w.code === 816 && w.box === 150 && w.mark === 180, w);
+  check("newCardsDefaultWidths", Object.values(w).every((x) => x === 381), w);
 });

@@ -5,7 +5,7 @@ import { parseMd, serializeMd } from "../src/schema";
 import { renderMd } from "../src/render";
 import { toggleTask } from "../src/view";
 import { getSchema, type JSONContent } from "@tiptap/core";
-import { Node as PMNode } from "@tiptap/pm/model";
+import { DOMParser, Node as PMNode } from "@tiptap/pm/model";
 import { baseExtensions } from "../src/schema";
 
 const schema = getSchema(baseExtensions);
@@ -466,6 +466,37 @@ describe("annotations {text|note}", () => {
     expect(h).toContain('data-color="purple"');
     expect(h).toContain("data-below");
     expect(h).toContain(">Scheduler</span>");
+  });
+  it("draws the note as inline Markdown: $…$ is a formula, **bold** and `code` are formatted", () => {
+    const d = document.createElement("div");
+    d.innerHTML = renderMd("称为 {==wave count==|$a$#num_total/#num_concurrent}。");
+    const a = d.querySelector<HTMLElement>(".md-annot")!, n = a.querySelector(":scope > .md-annot-n")!;
+    expect(a.dataset.note).toBe("$a$#num_total/#num_concurrent");
+    expect(n.querySelector(".katex")?.textContent).toBe("a");
+    expect(n.textContent).toContain("#num_total/#num_concurrent");
+    expect(n.textContent).not.toContain("$");
+    expect(a.querySelector("mark")?.textContent).toBe("wave count");
+    const f = document.createElement("div");
+    f.innerHTML = renderMd("{x|**b** and `c`}");
+    expect(f.querySelector(".md-annot-n strong")?.textContent).toBe("b");
+    expect(f.querySelector(".md-annot-n code")?.textContent).toBe("c");
+  });
+  it("a note that does not read as one line of text is shown as written; an annotation inside a note keeps only its words", () => {
+    const label = (s: string) => { const d = document.createElement("div"); d.innerHTML = renderMd(s); return d.querySelector(".md-annot-n")!; };
+    expect(label("{x|- not a list}").textContent).toBe("- not a list");
+    expect(label("{x|# not a heading}").textContent).toBe("# not a heading");
+    const nested = label("{x|see \\{y\\|z\\}}");
+    expect(nested.textContent).toBe("see y");
+    expect(nested.querySelector(".md-annot, .md-annot-n")).toBeNull();
+  });
+  it("the label is not read back as text when the rendered HTML is parsed, and the source round-trips", () => {
+    for (const s of ["{wave count|$a$#num_total/#num_concurrent}", "{a \\| b|$x_1$ \\} y|purple below}", "{==w==|**b** `c`|green}"]) {
+      same(s);
+      const dom = document.createElement("div");
+      dom.innerHTML = renderMd(s);
+      const back = DOMParser.fromSchema(schema).parse(dom);
+      expect(back.toJSON()).toEqual(schema.nodeFromJSON(parseMd(s)).toJSON());
+    }
   });
   it("in a table the | is written \\|", () => {
     const s = "| a | b |\n| --- | --- |\n| {x\\|y} | z |";
