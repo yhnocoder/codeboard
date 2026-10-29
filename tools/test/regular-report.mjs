@@ -1,11 +1,13 @@
+// The report of a scheduled regular run (.github/workflows/regular.yml, every 6 hours) for the results issue (#19):
 //   failures      harness (harness-<k>/result.json), e2e (e2e-<k>/e2e.log), perf and Storybook (storybook/result.json); kept in the hidden marker
-//                 <!-- nightly-failures: [...] --> that the next night's "Passing again" diff and the PR carry-over read
-// Flakes, alone-passes and a repeat error go into their own marker, <!-- nightly-flaky: {...} -->.
-// Area groups (tiers.json) over their time limits, timed by this run, go into <!-- nightly-groups: [...] -->: npm run check runs
+//                 <!-- regular-failures: [...] --> that the next run's "Passing again" diff and the PR carry-over read
+// Flakes, alone-passes and a repeat error go into their own marker, <!-- regular-flaky: {...} -->.
+// Area groups (tiers.json) over their time limits, timed by this run, go into <!-- regular-groups: [...] -->: npm run check runs
 // each touched group whole, so a group that grew is fixed in tiers.json, not cut at run time.
-// A comment is due when the set of failures changes, when the repeat found a flake or could not run, when the alone set changes, or
-// when the set of groups over their limits changes.
-// Usage (github-script): const { nightlyReport } = await import(`${process.env.GITHUB_WORKSPACE}/tools/test/nightly-report.mjs`)
+// A comment is due when the set of failures changes, when the repeat found a flake, when its error changes (a repeat that keeps
+// failing the same way is reported once, not on every run, four a day), when the alone set changes, or when the set of groups over
+// their limits changes. A flake is reported once: the next run repeats only what changed since this one.
+// Usage (github-script): const { regularReport } = await import(`${process.env.GITHUB_WORKSPACE}/tools/test/regular-report.mjs`)
 import * as fs from "node:fs";
 import { groupTimes } from "./areas.mjs";
 
@@ -17,7 +19,7 @@ const first = (x) => (x.fails?.[0] || x.error || "").split("\n")[0].slice(0, 160
  * dir: the artifacts; jobs: the publish job's `needs`; comments: the issue's comment bodies, oldest first; run: the run's URL;
  * sha: the commit (short); tiers: packages/board/test/tiers.json → { fails, flaky, groups, due, body }
  */
-export function nightlyReport({ dir, jobs, comments, run, sha, tiers }) {
+export function regularReport({ dir, jobs, comments, run, sha, tiers }) {
   const fails = [], alone = [];
   const fullFailing = new Set();
   const took = new Map();
@@ -50,17 +52,19 @@ export function nightlyReport({ dir, jobs, comments, run, sha, tiers }) {
   const alsoFull = repeated.filter((x) => !x.ok && fullFailing.has(x.name)).map((x) => x.name);
 
   const mark = (re) => [...comments].reverse().map((c) => re.exec(c || "")).find(Boolean);
-  const lastFails = mark(/<!-- nightly-failures: (.*) -->/);
-  const lastFlaky = mark(/<!-- nightly-flaky: (.*) -->/);
-  const lastGroups = mark(/<!-- nightly-groups: (.*) -->/);
+  const lastFails = mark(/<!-- regular-failures: (.*) -->/);
+  const lastFlaky = mark(/<!-- regular-flaky: (.*) -->/);
+  const lastGroups = mark(/<!-- regular-groups: (.*) -->/);
   const before = new Set(lastFails ? JSON.parse(lastFails[1]) : []);
-  const beforeAlone = lastFlaky ? JSON.parse(lastFlaky[1]).alone ?? [] : [];
+  const beforeFlaky = lastFlaky ? JSON.parse(lastFlaky[1]) : {};
+  const beforeAlone = beforeFlaky.alone ?? [];
   const key = (f) => f.split(":")[0];
   const same = fails.length === before.size && fails.every((f) => [...before].some((b) => key(b) === key(f)));
   const aloneSame = alone.length === beforeAlone.length && alone.every((n) => beforeAlone.includes(n));
   const beforeGroups = lastGroups ? JSON.parse(lastGroups[1]).map(key) : [];
   const groupsSame = groups.length === beforeGroups.length && groups.every((g) => beforeGroups.includes(key(g)));
-  const due = !same || flakes.length > 0 || !!repeatError || !aloneSame || !groupsSame;
+  const errorSame = (repeatError ?? null) === (beforeFlaky.error ?? null);
+  const due = !same || flakes.length > 0 || !errorSame || !aloneSame || !groupsSame;
   const flaky = { flakes: flakes.map((x) => x.name), alone, ...(repeatError ? { error: repeatError } : {}) };
 
   const fixed = [...before].filter((b) => !fails.some((f) => key(f) === key(b)));
@@ -75,8 +79,8 @@ export function nightlyReport({ dir, jobs, comments, run, sha, tiers }) {
       ...(rep.deferred?.length ? [`- not repeated (over the time cap): ${rep.deferred.join(", ")}`] : []),
     ];
   const body = [
-    fails.length ? `❌ **Nightly: ${fails.length} failing** on main @ ${sha}`
-      : before.size ? `✅ **Nightly: everything passes again** on main @ ${sha}` : `✅ **Nightly: no failures** on main @ ${sha}`,
+    fails.length ? `❌ **Regular run: ${fails.length} failing** on main @ ${sha}`
+      : before.size ? `✅ **Regular run: everything passes again** on main @ ${sha}` : `✅ **Regular run: no failures** on main @ ${sha}`,
     `[Run log](${run}) · harness scenarios failing here are run on every PR until they pass`, "",
     ...fails.map((f) => `- ${[...before].some((b) => key(b) === key(f)) ? "" : "🆕 "}${f}`),
     ...(fixed.length ? ["", "Passing again:", ...fixed.map((f) => `- ${key(f)}`)] : []), "",
@@ -88,9 +92,9 @@ export function nightlyReport({ dir, jobs, comments, run, sha, tiers }) {
     `### Area groups over their time limits (${groups.length})`,
     `npm run check runs every group a change touches, whole: a group over its limit (tiers.json limits, timed by this run) gets trimmed there.`,
     ...(groups.length ? groups.map((g) => `- ${g}`) : ["- none"]), "",
-    `<!-- nightly-failures: ${JSON.stringify(fails)} -->`,
-    `<!-- nightly-flaky: ${JSON.stringify(flaky)} -->`,
-    `<!-- nightly-groups: ${JSON.stringify(groups)} -->`,
+    `<!-- regular-failures: ${JSON.stringify(fails)} -->`,
+    `<!-- regular-flaky: ${JSON.stringify(flaky)} -->`,
+    `<!-- regular-groups: ${JSON.stringify(groups)} -->`,
   ].join("\n").replace(/\n{3,}/g, "\n\n");
   return { fails, flaky, groups, due, body };
 }

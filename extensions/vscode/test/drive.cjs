@@ -770,7 +770,7 @@ const finish = async (browser, errors) => {
   const errors = [];
   page.on("console", (m) => { if (m.type() === "error" && /codeboard|board\.js/i.test(m.text())) errors.push(m.text()); });
   // E2E_ONLY=capture,addsel runs only those steps, in that order. E2E_PART splits the run for parallel CI jobs:
-  // 1 = the main flow, 2 = the steps after it, 3 = the steps the default run leaves out (nightly)
+  // 1 = the main flow, 2 = the steps after it, 3 = the steps the default run leaves out (regular runs)
   const STEPS = { capture: captureStep, export: exportStep, variants: variantsStep, codeedit: codeeditStep, addsel: addselStep, cardfocus: cardfocusStep, keyscope: keyscopeStep, close: closeStep, noteimage: noteimageStep, notepaste: notepasteStep, stickerfolder: stickerfolderStep, notesettings: notesettingsStep, projects: projectsStep };
   // Part 3 holds the slow steps (each 20 s or more on its own board); codeedit reloads the window, so it goes last
   const PARTS = { 2: "capture,addsel,cardfocus,keyscope,close,notepaste,projects", 3: "export,variants,noteimage,stickerfolder,notesettings,codeedit" };
