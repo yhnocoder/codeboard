@@ -271,19 +271,27 @@ async function closeStep(page) {
   if (!code) return;
   const el = f.locator(`.card[data-id="${code.id}"]`);
   // CI has seen this click leave the board as it was (no selection, no keyboard) while Playwright reported it done, which it does
-  // when no mouse event reaches the frame: record which document the press reached, to tell that apart from a lost hand-back
-  const pressed = (kind) => { window.__e2ePress = null; document.addEventListener(kind, (e) => { window.__e2ePress = `${e.target.tagName}.${String(e.target.className).slice(0, 40)}`; }, { capture: true, once: true }); };
+  // when no mouse event reaches the frame: record which document the press reached, to tell that apart from a lost hand-back. The one
+  // hit so far reached only the workbench, on the webview's <iframe>: Chromium does that with a press that arrives before the window
+  // has drawn the webview where it now is (keepWebviewsStill in ui.cjs), so also record when VS Code's box around the webview scrolled
+  const pressed = (kind) => { window.__e2ePress = null; document.addEventListener(kind, (e) => { window.__e2ePress = `${e.target.tagName}.${String(e.target.className).slice(0, 40)} at ${Date.now() % 100000}`; }, { capture: true, once: true }); };
   await f.evaluate(pressed, "pointerdown");
   await page.evaluate(pressed, "mousedown");
+  await page.evaluate(() => {
+    window.__e2eMoves = [];
+    if (!window.__e2eMovesOn) document.addEventListener("scroll", (e) => { if (e.target.classList?.contains("webview-overlay-content")) window.__e2eMoves.push(`top ${e.target.scrollTop} at ${Date.now() % 100000}`); }, true);
+    window.__e2eMovesOn = true;
+  });
+  const clickAt = Date.now() % 100000;
   // select it by its title: the file path next to it opens the code in the editor (and the keys would go there)
   await el.locator(".chead .ctitle").first().click();
   await until("the code card is selected and the board has the keyboard", async () => /\bsel\b/.test(await el.getAttribute("class")) && await boardHasKeyboard(f))
     .catch(async (e) => {
       const board = await f.evaluate(() => ({ focus: document.hasFocus(), active: `${document.activeElement?.tagName}.${document.activeElement?.className}`, press: window.__e2ePress }));
       const host = await f.parentFrame().evaluate(() => ({ focus: document.hasFocus(), active: `${document.activeElement?.tagName}#${document.activeElement?.id}` }));
-      const workbench = await page.evaluate(() => ({ focus: document.hasFocus(), active: `${document.activeElement?.tagName}.${String(document.activeElement?.className).slice(0, 40)}`, press: window.__e2ePress }));
+      const workbench = await page.evaluate(() => ({ focus: document.hasFocus(), active: `${document.activeElement?.tagName}.${String(document.activeElement?.className).slice(0, 40)}`, press: window.__e2ePress, webviewMoves: window.__e2eMoves }));
       await page.screenshot({ path: path.join(OUT, "close-click.png") });
-      throw new Error(`${e.message}: ${JSON.stringify({ card: await el.getAttribute("class"), board, host, workbench })}`);
+      throw new Error(`${e.message}: ${JSON.stringify({ clickAt, card: await el.getAttribute("class"), board, host, workbench })}`);
     });
   await page.keyboard.press("Alt+z");
   // close the tab as soon as the card shows the change: the board has sent it, the host has not necessarily written it yet
