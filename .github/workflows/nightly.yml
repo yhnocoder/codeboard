@@ -52,7 +52,7 @@ jobs:
       - uses: ./.github/actions/chromium
         if: matrix.part == 3
       - name: VS Code e2e
-        run: E2E_PART=${{ matrix.part }} E2E_OUT=$PWD/test-out/e2e npm run e2e
+        run: E2E_ARGS=--log=trace E2E_PART=${{ matrix.part }} E2E_OUT=$PWD/test-out/e2e npm run e2e
       - uses: actions/upload-artifact@v6
         if: ${{ !cancelled() }}
         with: { name: "e2e-${{ matrix.part }}", path: test-out/e2e, retention-days: 14 }

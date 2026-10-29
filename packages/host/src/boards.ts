@@ -186,6 +186,7 @@ export class BoardPanel {
     if (!this.board || !this.ready) return;
     try {
       const cards = await syncVariants(this.board, this.variantSent, { net });
+      workspace().log("info", `diag variants: ${Object.keys(cards).length} card(s) changed`);
       if (Object.keys(cards).length) this.post({ type: "variants", cards });
     } catch (e) { workspace().log("warn", `variants: ${e instanceof Error ? e.message : e}`); }
   }

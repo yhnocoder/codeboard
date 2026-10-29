@@ -17,7 +17,11 @@ export const GIT_PAUSE = 600, RECHECK_PAUSE = 500;
 
 /** ready：开始时的监听都挂好、关着的白板数过一遍之后（测试等它，不靠等一段时间） */
 export function watchVersions(panels: BoardHost, store: Storage): Disposable & { ready: Promise<void> } {
-  const files = workspace().files;
+  const raw = workspace().files;
+  const files = { ...raw, watch: (base: string, glob: string, fn: (abs: string) => void) => {
+    log("info", `diag watch: ${base} ${glob}`);
+    return raw.watch(base, glob, (abs) => { log("info", `diag event: ${abs} (${base} ${glob})`); fn(abs); });
+  } };
   const subs: Disposable[] = [];
   const watched = new Set<string>();
   const lastHead = new Map<string, string | null>();
@@ -82,7 +86,7 @@ export function watchVersions(panels: BoardHost, store: Storage): Disposable & {
 
   // 保存、改了文件：只影响这个文件里的段（uncommitted、仓库外文件），攒一会儿一起重查
   const changed = new Set<string>();
-  const flush = debounce(() => { const paths = new Set(changed); changed.clear(); void panels.refreshStale(paths); }, RECHECK_PAUSE);
+  const flush = debounce(() => { const paths = new Set(changed); changed.clear(); log("info", `diag recheck: ${[...paths].join(", ")}`); void panels.refreshStale(paths); }, RECHECK_PAUSE);
   const recheck = (abs: string) => { changed.add(abs); flush(); };
   subs.push(files.onDidSave((abs) => { if (abs) recheck(abs); }));
   // 在 VS Code 外面改了卡片用到的文件（git checkout -- f、别的编辑器）：也重算。每个文件一个监听。
@@ -101,6 +105,6 @@ export function watchVersions(panels: BoardHost, store: Storage): Disposable & {
   };
   const filesWatched = watchFiles(false);
   subs.push(files.onDidEdit((abs) => { if (abs && watchedFiles.has(abs)) recheck(abs); }));
-  subs.push(store.onDidSave(() => void (async () => { for (const r of await roots()) await watchRoot(r); await watchFiles(true); })()));
+  subs.push(store.onDidSave(() => void (async () => { log("info", "diag board saved"); for (const r of await roots()) await watchRoot(r); await watchFiles(true); log("info", "diag board saved: watches done"); })().catch((e) => log("warn", `diag board saved: ${e instanceof Error ? e.stack : e}`))));
   return { dispose: () => { for (const d of subs) d.dispose(); }, ready: Promise.all([started, filesWatched]).then(() => undefined) };
 }
