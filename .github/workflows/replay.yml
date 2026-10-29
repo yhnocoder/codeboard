@@ -1,8 +1,8 @@
-# Runs nightly, and on a PR when the label "replay" is added (remove and add it again to re-run).
+# Runs every 6 hours, 30 min after each regular run (regular.yml), and on a PR when the label "replay" is added (remove and add it again to re-run).
 name: Replay
 on:
   schedule:
-    - cron: "0 19 * * *" # 03:00 Beijing time
+    - cron: "0 1,7,13,19 * * *" # 03:00, 09:00, 15:00, 21:00 Beijing time, 30 min after each regular run
   workflow_dispatch:
   pull_request:
     types: [labeled]
@@ -25,7 +25,7 @@ jobs:
     timeout-minutes: 30
     strategy:
       fail-fast: false
-      # nightly replays only the checked-out commit; a PR also replays its base
+      # a scheduled run replays only the checked-out commit; a PR also replays its base
       matrix:
         side: ${{ fromJSON(github.event_name == 'pull_request' && '["head","base"]' || '["head"]') }}
         part: [1, 2, 3]
@@ -69,7 +69,7 @@ jobs:
       - uses: actions/download-artifact@v7
         with: { path: test-out/artifacts, pattern: "replay-*" }
       - name: Replay result
-        # PR: fails on checks that fail on head but not on base. Nightly: never fails here; failures go to the issue below.
+        # PR: fails on checks that fail on head but not on base. Scheduled: never fails here; failures go to the issue below.
         run: |
           A=test-out/artifacts
           # one folder per side: parts 3 and 2 first, so part 1's screenshots of the shared setup steps win
@@ -84,10 +84,10 @@ jobs:
         run: |
           A=test-out/artifacts
           ls $A/replay-head/*.png >/dev/null 2>&1 || exit 0
-          # PR: base → head from this run. Nightly: compared with the previous nightly's screenshots.
+          # PR: base → head from this run. Scheduled: compared with the previous scheduled run's screenshots.
           if [ "${{ github.event_name }}" = pull_request ]; then tools/review/publish-shots.sh $A/replay-head "pr/${{ github.event.pull_request.number }}/replay" $A/replay-base test-out/replay-summary.md
-          else K="nightly/${{ github.ref_name }}/replay"; tools/review/publish-shots.sh $A/replay-head "$K" "$K" test-out/replay-summary.md; fi
-      - name: Report to the PR description or the nightly issue
+          else K="regular/${{ github.ref_name }}/replay"; tools/review/publish-shots.sh $A/replay-head "$K" "$K" test-out/replay-summary.md; fi
+      - name: Report to the PR description or the results issue
         if: ${{ !cancelled() }}
         uses: actions/github-script@v8
         with:
@@ -119,11 +119,12 @@ jobs:
               return;
             }
 
-            // Nightly: one open issue labelled replay-nightly collects the results
+            // Scheduled: one open issue labelled replay-nightly (#19) collects the results, the regular runs' too. The label keeps
+            // its old name: it is how the open issue is found, and a new name would open a new issue
             const LABEL = "replay-nightly";
             const open = await github.rest.issues.listForRepo({ ...context.repo, labels: LABEL, state: "open", per_page: 1 });
-            const issue = open.data[0] || (await github.rest.issues.create({ ...context.repo, title: "Nightly study-task replay", labels: [LABEL],
-              body: "The nightly study-task replay (`.github/workflows/replay.yml`) comments here when the set of failing checks changes, including when everything passes again." })).data;
+            const issue = open.data[0] || (await github.rest.issues.create({ ...context.repo, title: "Scheduled test results", labels: [LABEL],
+              body: "The scheduled runs (`.github/workflows/regular.yml`, `replay.yml`, every 6 hours) comment here when their set of failures changes, including when everything passes again." })).data;
             // The failures last reported are kept in a hidden marker in the latest comment that has one
             const comments = await github.paginate(github.rest.issues.listComments, { ...context.repo, issue_number: issue.number, per_page: 100 });
             const lastMark = comments.reverse().map((c) => /<!-- replay-failures: (.*) -->/.exec(c.body || "")).find(Boolean);

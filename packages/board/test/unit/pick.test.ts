@@ -18,7 +18,7 @@ type Plan = { run: { name: string; why: string }[]; areas: { name: string; files
 
 // outside packages/board/test/scenarios, so that no area or broad holds the made-up spec files
 const spec = (n: string) => `test/${n}.spec.ts`;
-/** Scenarios as { name: [seconds in the last nightly run, source files it ran] }; a missing time means the nightly run doesn't have it */
+/** Scenarios as { name: [seconds in the last regular run, source files it ran] }; a missing time means the regular run doesn't have it */
 function setup(s: Record<string, [number | null, string[]?]>) {
   const all = Object.fromEntries(Object.keys(s).map((n) => [n, spec(n)]));
   const scenarios = Object.fromEntries(Object.entries(s).filter(([, [ms]]) => ms !== null).map(([n, [sec, files]]) => [n, { ms: sec! * 1000, files: files ?? ["packages/board/src/other.ts"] }]));
@@ -127,7 +127,7 @@ describe("pick for npm run check", () => {
       change: change(["packages/board/test/scenarios/links.spec.ts"]),
       changed: { added: ["links3"], edited: ["link2", "look1"] },
     });
-    expect(whyOf(plan)).toEqual({ other: "asked", links3: "test added", note1: "failing last night", smoke1: "smoke", link1: "area links", link2: "area links" });
+    expect(whyOf(plan)).toEqual({ other: "asked", links3: "test added", note1: "failing in the last regular run", smoke1: "smoke", link1: "area links", link2: "area links" });
     expect(plan.forCI).toEqual(["look1"]);
   });
 
@@ -141,7 +141,7 @@ describe("pick for npm run check", () => {
 describe("pick for CI", () => {
   const ci = { perShardMs: 10_000, minShards: 2, maxShards: 3 };
 
-  it("runs every changed scenario, then fills the shards' room with affected ones and leaves the rest to the nightly run", () => {
+  it("runs every changed scenario, then fills the shards' room with affected ones and leaves the rest to the regular run", () => {
     const { all, impact } = setup({ ...SCENARIOS, aff1: [4, ["packages/core/src/model.ts"]], aff2: [9, ["packages/core/src/model.ts"]] });
     const plan: Plan = pick({
       all, impact, tiers, ci,

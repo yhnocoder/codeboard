@@ -16,7 +16,7 @@ export function scriptString(): Plugin {
 }
 
 // With BOARD_SOURCEMAP: the board's source maps go through the maps of the built packages it uses (@yhnocoder/markdown's dist/) back
-// to their sources, so the nightly coverage sees packages/markdown/src
+// to their sources, so the regular-run coverage sees packages/markdown/src
 function inputSourcemaps(): Plugin {
   return {
     name: "input-sourcemaps",
@@ -37,7 +37,7 @@ export default defineConfig({
     emptyOutDir: true,
     cssCodeSplit: false,
     modulePreload: false,
-    // BOARD_SOURCEMAP=1 (nightly CI): source maps let the harness map each scenario's coverage back to source files
+    // BOARD_SOURCEMAP=1 (the regular CI runs): source maps let the harness map each scenario's coverage back to source files
     sourcemap: !!process.env.BOARD_SOURCEMAP,
     rolldownOptions: {
       input: "src/index.tsx",

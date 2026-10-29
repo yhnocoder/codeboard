@@ -2,9 +2,9 @@
 //
 // npm run check runs a fixed set, chosen by what the change touches and never cut by time:
 //   asked     named with --focus or on a "Tests:" line of the PR description
-//   added     scenarios this change adds: in neither the base version of their file nor the last nightly run (a scenario moved to
+//   added     scenarios this change adds: in neither the base version of their file nor the last regular run (a scenario moved to
 //             another file, or a renamed file, adds nothing)
-//   failing   failing in the last nightly run
+//   failing   failing in the last regular run
 //   smoke     the fixed list in packages/board/test/tiers.json: one quick scenario per main feature, so a big break never slips through
 //   areas     the whole group of every feature area (tiers.json "areas", tools/test/areas.mjs) that a changed source file or scenario
 //             spec belongs to. The groups are picked by hand to cover their area's main behaviour: a change runs what matters for
@@ -17,16 +17,16 @@
 //
 // CI (ci) adds every scenario the change edits (scenarioChanges), then sizes the harness jobs: enough shards of ci.perShardMs of
 // scenario time for that set (ci.minShards to ci.maxShards), the rest of their room filled with:
-//   new       scenarios the last nightly run doesn't have yet that this change doesn't touch (another branch added them; their own
+//   new       scenarios the last regular run doesn't have yet that this change doesn't touch (another branch added them; their own
 //             PR ran them), the quickest first
-//   affected  scenarios that ran a changed source file in the last nightly run (impact map), those that ran the fewest other
+//   affected  scenarios that ran a changed source file in the last regular run (impact map), those that ran the fewest other
 //             files first. A change the map can't place (broad, a source file no scenario ran) counts every scenario as affected,
 //             the quickest first. A new source file is placed through the changed files that import it; only when nothing else
 //             changed it can't be placed.
-// The fill is extra coverage: what doesn't fit is left to the nightly run (every scenario). The required set is never cut; when
+// The fill is extra coverage: what doesn't fit is left to the regular run (every scenario). The required set is never cut; when
 // it needs more than ci.maxShards it all runs on longer jobs, and the notes say so.
 //
-// repeatPick (harness.mjs --changed-since, the nightly flake repeat): the scenarios added, then those changed, since a commit, the
+// repeatPick (harness.mjs --changed-since, the regular runs' flake repeat): the scenarios added, then those changed, since a commit, the
 // quickest first within each, within a wall-time cap for running each of them several times.
 import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
@@ -37,7 +37,7 @@ import { areasOf, groupTimes } from "./areas.mjs";
 const REPO = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../..");
 const git = (...a) => execFileSync("git", a, { cwd: REPO, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: 256 << 20 }).trim();
 export const DEFAULT_MS = 10000;
-/** A scenario's expected time: its time in the last nightly run; one that run doesn't have (new since) takes the median there, as a
+/** A scenario's expected time: its time in the last regular run; one that run doesn't have (new since) takes the median there, as a
  *  new scenario is about as quick as the others (a flat guess of 10 s made a few new ones crowd affected ones out of the budget) */
 export function msOf(impact) {
   const map = impact.map?.scenarios ?? {};
@@ -47,7 +47,7 @@ export function msOf(impact) {
 }
 
 /**
- * Nightly results stored on the ci-screenshots branch: impact/harness.json { commit, generated, scenarios: { name: { ms, files: [paths] } } }
+ * Regular-run results stored on the ci-screenshots branch: impact/harness.json { commit, generated, scenarios: { name: { ms, files: [paths] } } }
  * and impact/failing.json [scenario names]. Cached for 6 hours in test-out/impact/. IMPACT_DIR=<dir> reads them from a local dir instead.
  */
 export function loadImpact() {
@@ -59,7 +59,7 @@ export function loadImpact() {
       git("fetch", "-q", "--depth", "1", "origin", "ci-screenshots");
       fs.mkdirSync(dir, { recursive: true });
       for (const n of ["harness.json", "failing.json"]) fs.writeFileSync(path.join(dir, n), git("show", `FETCH_HEAD:impact/${n}`));
-    } catch { /* no nightly results yet, or offline: what is cached */ }
+    } catch { /* no regular-run results yet, or offline: what is cached */ }
   }
   const read = (n, d) => { try { return JSON.parse(fs.readFileSync(path.join(dir, n), "utf8")); } catch { return d; } };
   return { map: read("harness.json", null), failing: read("failing.json", []) };
@@ -106,7 +106,7 @@ export function pick({ all, change, impact, tiers, focus = [], budgetMs, ci, cha
   const add = (n, w) => { if (all[n] && !why.has(n)) why.set(n, w); };
   for (const n of focus) { if (all[n]) add(n, "asked"); else notes.push(`unknown scenario: ${n}`); }
   for (const n of changed.added) add(n, "test added");
-  for (const n of impact.failing ?? []) add(n, "failing last night");
+  for (const n of impact.failing ?? []) add(n, "failing in the last regular run");
   for (const n of tiers.smoke ?? []) add(n, "smoke");
   const fixed = [...why.keys()].reduce((t, n) => t + ms(n), 0);
 
@@ -171,7 +171,7 @@ export function pick({ all, change, impact, tiers, focus = [], budgetMs, ci, cha
 /** Scenarios (manual ones left out) whose code the change touches: the scenario's own test(…) block, or the part of its file before
  *  the first test (imports, shared helpers). Comments, whitespace and types don't count, so a comment-only cleanup of many test files
  *  doesn't rerun all their scenarios. → { added, edited } (names). Added: in neither the base version of its file nor the last
- *  nightly run, so that moving a scenario to another file, or renaming its file, only edits it */
+ *  regular run, so that moving a scenario to another file, or renaming its file, only edits it */
 export function scenarioChanges(all, change, tiers, impact = {}) {
   const cache = new Map();
   const parts = (file) => {
@@ -212,7 +212,7 @@ export function chunks(src) {
 /**
  * The flake repeat: the scenarios added since the commit, then those changed (scenarioChanges), the quickest first within each, while
  * the estimated wall time of `repeat` runs of each fits in capMs: the "solo" ones (tiers.json) one at a time, the others on `workers`
- * workers. Added ones first: one that has never run beside the others in a nightly run is the likeliest to be flaky.
+ * workers. Added ones first: one that has never run beside the others in a regular run is the likeliest to be flaky.
  * → { run: [{ name, why, ms }], deferred: [names], notes: [strings] }
  */
 export function repeatPick({ all, change, impact, tiers, repeat, workers, capMs, changed = scenarioChanges(all, change, tiers, impact) }) {

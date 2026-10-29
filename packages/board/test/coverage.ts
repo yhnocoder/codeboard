@@ -1,4 +1,4 @@
-// Which of the repo's source files a scenario runs (nightly, HARNESS_COV=1): the impact map tools/test/pick.mjs picks
+// Which of the repo's source files a scenario runs (regular runs, HARNESS_COV=1): the impact map tools/test/pick.mjs picks
 // scenarios from. A file counts when a function in it ran, found through the source maps of the bundles that ran: the board
 // page's (the board is built with BOARD_SOURCEMAP=1) and the scenarios' own (core and extension code playing the host in the
 // Playwright worker). A module's top level runs on every import, so it never counts.
