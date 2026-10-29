@@ -745,14 +745,15 @@ export function pastedMd(text: string): JSONContent | null {
 export function texBrackets(src: string): string {
   const ds = bracketDelims(src);
   if (!ds.length) return src;
-  type Tok = { type?: string; raw?: string; tokens?: Tok[]; items?: Tok[]; header?: Tok[]; rows?: Tok[][] };
+  type Tok = { type?: string; raw?: string; tokens?: Tok[]; items?: Tok[]; header?: Tok[] | boolean; rows?: Tok[][] };
   let hidden = "", last = 0;
   for (const d of ds) { hidden += src.slice(last, d.at) + BRACKET; last = d.at + 2; }
   hidden += src.slice(last);
   const usable: boolean[] = [];
   const visit = (ts: Tok[] | undefined) => {
     for (const t of ts ?? []) {
-      const kids = [...(t.tokens ?? []), ...(t.items ?? []), ...(t.header ?? []), ...(t.rows ?? []).flat()];
+      // 表格的 header 是一行格子；格子自己的 header 是 true/false（是不是表头格）
+      const kids = [...(t.tokens ?? []), ...(t.items ?? []), ...(Array.isArray(t.header) ? t.header : []), ...(t.rows ?? []).flat()];
       const lit = /^(code|codespan|html|inlineMath|blockMath)$/.test(t.type ?? "");
       if (kids.length && !lit) { visit(kids); continue; }
       for (const c of t.raw ?? "") if (c === BRACKET) usable.push(!lit);
