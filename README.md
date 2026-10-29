@@ -59,6 +59,7 @@ It was built for studying LLM inference and training codebases such as [nano-vll
 - Turn a group of cards into a sub-board, or share one card across several boards.
 - Copy or move a board to another project, with its sub-boards, shared cards and images.
 - Keep boards in the repository: **Move Boards into Project…** (in the Boards view's `…` menu) moves them into a `.codeboard` folder that git can track, and anyone who opens the repository sees them. Panning and zooming don't change board files.
+- Export boards to a single `.codeboard` file (a zip) and import it into another project, on this machine or someone else's.
 - Browse a GitHub repository from the sidebar, or paste a GitHub file link onto a board.
 - Pin questions to code with `?` stickers and collect them in the Questions view.
 - Export a board as Markdown, a standalone HTML snapshot, or a PNG.

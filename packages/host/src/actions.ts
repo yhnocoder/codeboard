@@ -11,6 +11,7 @@ import { copyDiagnostics } from "./diagnostics";
 import { applyFlow, captureFlow } from "./runs";
 import { prompts } from "./prompts";
 import { copyToProject, otherProjects, removeMoved } from "./transfer";
+import { BUNDLE_EXT, exportFlow, importFile } from "./bundle";
 import { langOf, readText, splitLines, workspace, ws0 } from "./ws";
 
 /** 侧栏的节点（命令参数） */
@@ -121,6 +122,42 @@ export function makeActions(panels: BoardHost, store: Storage) {
       await panels.pushBoards();
     }
     void ui().info(`${move ? "Moved" : "Copied"} “${b.name}” to ${r.p.name}.`);
+  };
+
+  /** Export Boards…：侧栏的白板 / 组，或者从列表里选（所有白板、一个组、一块白板），存成一个 .codeboard */
+  const exportBoards = async (a: unknown) => {
+    const metas = await store.list();
+    let pick: { roots: string[]; name: string } | undefined;
+    const id = boardArg(a);
+    if (id) { const m = metas.find((x) => x.id === id); if (m) pick = { roots: [m.id], name: m.name }; }
+    else if ((a as Node)?.kind === "group") { const g = (a as { name: string }).name; pick = { roots: metas.filter((m) => m.group === g).map((m) => m.id), name: g }; }
+    else {
+      if (!metas.length) { void ui().info("There are no boards to export."); return; }
+      const count = (n: number) => `${n} board${n === 1 ? "" : "s"}`;
+      const groups = [...new Set(metas.flatMap((m) => (m.group ? [m.group] : [])))].sort();
+      pick = await ui().pick([
+        { label: "$(files) All Boards", description: count(metas.length), roots: metas.map((m) => m.id), name: workspace().files.name() || "Boards" },
+        ...groups.map((g) => { const ms = metas.filter((m) => m.group === g); return { label: `$(folder) ${g}`, description: count(ms.length), roots: ms.map((m) => m.id), name: g }; }),
+        ...metas.map((m) => ({ label: `$(layout) ${m.name}`, description: m.group, roots: [m.id], name: m.name })),
+      ], { placeHolder: "Export which boards? Sub-boards, shared cards and images go with them.", matchOnDescription: true });
+    }
+    if (pick?.roots.length) await exportFlow(store, pick.roots, pick.name);
+  };
+
+  /** Import Boards…：file = 拖到侧栏上的那个包；否则让用户选。导入后打开第一块 */
+  const importBoards = async (file?: string) => {
+    file ??= await ui().openDialog({ filters: { "CodeBoard Boards": [BUNDLE_EXT, "zip"] }, label: "Import", title: "Import Boards" });
+    if (!file) return;
+    let r: Awaited<ReturnType<typeof importFile>>;
+    try { r = await importFile(store, file); } catch (e) {
+      ui().error(`Can't import ${path.basename(file)}: ${e instanceof Error ? e.message : e}`);
+      return;
+    }
+    await panels.pushBoards();
+    await panels.show(r.first);
+    const from = r.manifest.folders.length ? ` from ${r.manifest.folders.join(", ")}` : "";
+    const renamed = r.renamed ? ` ${r.renamed} renamed: this project already had ${r.renamed === 1 ? "its name or id" : "their names or ids"}.` : "";
+    void ui().info(`Imported ${r.boards} board${r.boards === 1 ? "" : "s"}${from}.${renamed}`);
   };
 
   return {
@@ -273,6 +310,8 @@ export function makeActions(panels: BoardHost, store: Storage) {
     },
     "codeboard.copyToProject": (a?: unknown) => toProject(a, false),
     "codeboard.moveToProject": (a?: unknown) => toProject(a, true),
+    "codeboard.exportBoards": (a?: unknown) => exportBoards(a),
+    "codeboard.importBoards": (a?: unknown) => importBoards(typeof a === "string" ? a : undefined),
     "codeboard.moveToGroup": async (a?: unknown) => {
       const id = boardArg(a);
       if (!id) return;

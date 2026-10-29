@@ -308,6 +308,8 @@ export type BoardToHost =
   /** 白板的 ⋯ 菜单：Capture Run…（问命令、跑一次、发回 run）/ Apply Run…（从存着的运行记录里选一次） */
   | { type: "captureRun" }
   | { type: "applyRun" }
+  /** ⋯ 菜单的 Export Boards…：这块白板（连同子白板）存成 .codeboard */
+  | { type: "exportBoards" }
   /** Questions 面板：所有白板上的问题（宿主按存好的白板算；这块白板由白板自己按当前状态换掉） */
   | { type: "questions"; req: number }
   /** 导出 Markdown 前：段的 GitHub 永久链接（段 id → URL；算不出的不给） */

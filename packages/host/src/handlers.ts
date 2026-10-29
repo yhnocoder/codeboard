@@ -23,6 +23,7 @@ import { prefetchCall } from "./prefetch";
 import { applyFlow, captureFlow } from "./runs";
 import { prompts } from "./prompts";
 import { allQuestions, exportFile, permalinks } from "./exports";
+import { exportFlow } from "./bundle";
 import { absOf, currentVersion, currentVersionLabel, locOfFile, mapRepo, present, srcKey, srcLabel, versionText, hasLocalFile } from "./source";
 import { boardSegments, makeSegment, workingPlace } from "./versions";
 import { addVariant, variantSources } from "./variants";
@@ -124,6 +125,7 @@ export function makeHandler(panels: BoardHost): Handler {
     lspHover: (_p, m) => lspHover(m.id, m.text, m.line, m.col),
     lspSignature: (_p, m) => lspSignature(m.id, m.text, m.line, m.col, m.trigger),
     captureRun: (p) => void captureFlow(store.dir(), p, prompts(p)),
+    exportBoards: (p) => void exportFlow(store, [p.id], p.board?.name ?? "Board"),
     applyRun: (p) => void applyFlow(store.dir(), p, prompts(p)),
     questions: () => allQuestions(store),
     permalinks: (_p, m) => permalinks(m.segs),

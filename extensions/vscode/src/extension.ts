@@ -51,7 +51,7 @@ export async function activate(ctx: vscode.ExtensionContext) {
 
   const tree = new BoardsTree(store, panels);
   const gh = new GithubTree(store);
-  sub(vscode.window.registerTreeDataProvider("codeboard.boards", tree));
+  sub(vscode.window.createTreeView("codeboard.boards", { treeDataProvider: tree, dragAndDropController: tree }));
   sub(vscode.window.registerTreeDataProvider("codeboard.github", gh));
   setMediaDir(path.join(ctx.extensionUri.fsPath, "media", "board"));
   const qtree = new QuestionsTree(store);
