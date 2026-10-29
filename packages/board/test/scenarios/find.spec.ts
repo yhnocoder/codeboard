@@ -39,10 +39,11 @@ test("noteFindReplace", async () => {
   const opened = await focusIn(pg);
   await pg.keyboard.type("alpha");
   await until(h, "matches are counted", async () => (await count(pg)) === "1/6");
-  /** 画出来的匹配：正文里的是 CSS Custom Highlight 的 Range，代码块里的是 CodeMirror 的装饰 */
+  /** 画出来的匹配：正文里的是 CSS Custom Highlight 的 StaticRange（读字时转成 Range），代码块里的是 CodeMirror 的装饰 */
   const marks = () => pg.evaluate(() => {
+    const str = (s: AbstractRange) => { const r = document.createRange(); r.setStart(s.startContainer, s.startOffset); r.setEnd(s.endContainer, s.endOffset); return r.toString(); };
     const n = (k: string) => CSS.highlights.get(k)?.size ?? 0, code = document.querySelectorAll('.card[data-id="n0"] .md-pm pre :is(.md-find-hit, .md-find-on)').length;
-    const texts = [...(CSS.highlights.get("md-find") ?? []), ...(CSS.highlights.get("md-find-cur") ?? [])].map((r) => (r as Range).toString());
+    const texts = [...(CSS.highlights.get("md-find") ?? []), ...(CSS.highlights.get("md-find-cur") ?? [])].map(str);
     return { all: n("md-find") + n("md-find-cur") + code, active: n("md-find-cur"), inCode: code, texts };
   });
   const found = await marks();
@@ -81,7 +82,7 @@ test("noteFindReplace", async () => {
   await close(h);
 });
 
-/** 长 Note 里在查找框打字：每打一个字（重新查找、高亮、数个数、排版）一帧之内。量时间，单独跑（tiers.json 的 solo） */
+/** 长 Note 里在查找框打字：每打一个字（重新查找、高亮、数个数、排版）一帧之内，屏幕外的匹配之后补上。量时间，单独跑（tiers.json 的 solo） */
 test("noteFindTypingLatency", async () => {
   const para = (i: number) => `Paragraph ${i}: the scheduler picks a **sequence** from the waiting queue, then \`allocate\` blocks for it; see $x_${i}$ and the kernel launch.`;
   const LONG = Array.from({ length: 250 }, (_, i) => para(i)).join("\n\n");
@@ -105,6 +106,12 @@ test("noteFindTypingLatency", async () => {
     ts.sort((a, b) => a - b);
     return { p50: +ts[Math.floor(ts.length / 2)].toFixed(2), p90: +ts[Math.floor(ts.length * 0.9)].toFixed(2), max: +ts[ts.length - 1].toFixed(2), n: document.querySelector(".md-find .md-findn")!.textContent };
   });
+  // 每一下只画屏幕上的，其余的之后分批补上：停下来以后 250 个都画上了（大部分在屏幕外）
+  const painted = await until(h, "every match is painted", () => pg.evaluate(() => {
+    const n = (CSS.highlights.get("md-find")?.size ?? 0) + (CSS.highlights.get("md-find-cur")?.size ?? 0);
+    return n === 250 && n;
+  }));
+  check("noteFindTypingLatency all matches painted after typing stops, the active one once", painted === 250 && (await pg.evaluate(() => CSS.highlights.get("md-find-cur")?.size)) === 1, { painted });
   await pg.keyboard.press("Escape");
   await pg.keyboard.press("Escape");
   await idle(h);
