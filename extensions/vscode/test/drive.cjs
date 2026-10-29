@@ -271,27 +271,55 @@ async function closeStep(page) {
   if (!code) return;
   const el = f.locator(`.card[data-id="${code.id}"]`);
   // CI has seen this click leave the board as it was (no selection, no keyboard) while Playwright reported it done, which it does
-  // when no mouse event reaches the frame: record which document the press reached, to tell that apart from a lost hand-back. The one
-  // hit so far reached only the workbench, on the webview's <iframe>: Chromium does that with a press that arrives before the window
-  // has drawn the webview where it now is (keepWebviewsStill in ui.cjs), so also record when VS Code's box around the webview scrolled
-  const pressed = (kind) => { window.__e2ePress = null; document.addEventListener(kind, (e) => { window.__e2ePress = `${e.target.tagName}.${String(e.target.className).slice(0, 40)} at ${Date.now() % 100000}`; }, { capture: true, once: true }); };
+  // when no mouse event reaches the frame. In both hits so far the press reached only the workbench, on the webview's <iframe>
+  // element, about 25 ms after the click began, with VS Code's box around the webview not scrolled. That is where Chromium's browser
+  // process sent the event (its input routing chose the workbench, not the webview's renderer), so record what decides that: the
+  // browser's input routing trace (saved as close-trace.json), which documents got the moves and the press, and the <iframe>'s
+  // state as the workbench saw it at the press and before the click
+  const pressed = (kind) => {
+    const r = window.__e2eClick = { press: null, moves: 0, lastMove: null };
+    window.__e2ePress = null;
+    const T = () => Date.now() % 100000;
+    const iframeState = () => [...document.querySelectorAll("iframe.webview")].filter((x) => x.isConnected && x.checkVisibility()).map((x) => {
+      const b = x.getBoundingClientRect(), cs = getComputedStyle(x), box = x.closest(".webview-overlay-content");
+      return `${Math.round(b.x)},${Math.round(b.y)} ${Math.round(b.width)}x${Math.round(b.height)} pointer-events ${cs.pointerEvents} visibility ${cs.visibility}${x.closest("[inert]") ? " inert" : ""} box scrollTop ${box?.scrollTop}`;
+    });
+    r.before = iframeState();
+    const move = (e) => { r.moves++; r.lastMove = `${e.target.tagName}.${String(e.target.className).slice(0, 30)} at ${T()}`; };
+    document.addEventListener(kind === "mousedown" ? "mousemove" : "pointermove", move, true);
+    document.addEventListener(kind, (e) => {
+      window.__e2ePress = r.press = `${e.target.tagName}.${String(e.target.className).slice(0, 40)} at ${T()}`;
+      if (kind === "mousedown") r.atPress = iframeState();
+      document.removeEventListener(kind === "mousedown" ? "mousemove" : "pointermove", move, true);
+    }, { capture: true, once: true });
+  };
   await f.evaluate(pressed, "pointerdown");
   await page.evaluate(pressed, "mousedown");
-  await page.evaluate(() => {
-    window.__e2eMoves = [];
-    if (!window.__e2eMovesOn) document.addEventListener("scroll", (e) => { if (e.target.classList?.contains("webview-overlay-content")) window.__e2eMoves.push(`top ${e.target.scrollTop} at ${Date.now() % 100000}`); }, true);
-    window.__e2eMovesOn = true;
+  const focusNow = async () => ({
+    board: await f.evaluate(() => document.hasFocus()).catch(() => "?"), host: await f.parentFrame().evaluate(() => document.hasFocus()).catch(() => "?"),
+    workbench: await page.evaluate(() => `${document.hasFocus()} ${document.activeElement?.tagName}.${String(document.activeElement?.className).slice(0, 30)}`),
   });
+  const focusBefore = await focusNow();
+  const tracer = await page.context().browser().newBrowserCDPSession();
+  const traced = [];
+  tracer.on("Tracing.dataCollected", (d) => traced.push(...d.value));
+  const traceDone = new Promise((r) => tracer.once("Tracing.tracingComplete", r));
+  await tracer.send("Tracing.start", { transferMode: "ReportEvents", traceConfig: { includedCategories: ["input", "viz", "benchmark", "blink", "disabled-by-default-viz.hit_testing_flow"] } });
+  const stopTrace = async (keep) => {
+    await tracer.send("Tracing.end"); await traceDone; await tracer.detach();
+    if (keep) fs.writeFileSync(path.join(OUT, "close-trace.json"), JSON.stringify({ traceEvents: traced }));
+  };
   const clickAt = Date.now() % 100000;
   // select it by its title: the file path next to it opens the code in the editor (and the keys would go there)
   await el.locator(".chead .ctitle").first().click();
   await until("the code card is selected and the board has the keyboard", async () => /\bsel\b/.test(await el.getAttribute("class")) && await boardHasKeyboard(f))
-    .catch(async (e) => {
-      const board = await f.evaluate(() => ({ focus: document.hasFocus(), active: `${document.activeElement?.tagName}.${document.activeElement?.className}`, press: window.__e2ePress }));
+    .then(() => stopTrace(false), async (e) => {
+      await stopTrace(true);
+      const board = await f.evaluate(() => ({ focus: document.hasFocus(), active: `${document.activeElement?.tagName}.${document.activeElement?.className}`, click: window.__e2eClick }));
       const host = await f.parentFrame().evaluate(() => ({ focus: document.hasFocus(), active: `${document.activeElement?.tagName}#${document.activeElement?.id}` }));
-      const workbench = await page.evaluate(() => ({ focus: document.hasFocus(), active: `${document.activeElement?.tagName}.${String(document.activeElement?.className).slice(0, 40)}`, press: window.__e2ePress, webviewMoves: window.__e2eMoves }));
+      const workbench = await page.evaluate(() => ({ focus: document.hasFocus(), active: `${document.activeElement?.tagName}.${String(document.activeElement?.className).slice(0, 40)}`, click: window.__e2eClick }));
       await page.screenshot({ path: path.join(OUT, "close-click.png") });
-      throw new Error(`${e.message}: ${JSON.stringify({ clickAt, card: await el.getAttribute("class"), board, host, workbench })}`);
+      throw new Error(`${e.message}: ${JSON.stringify({ clickAt, card: await el.getAttribute("class"), focusBefore, board, host, workbench })}`);
     });
   await page.keyboard.press("Alt+z");
   // close the tab as soon as the card shows the change: the board has sent it, the host has not necessarily written it yet
