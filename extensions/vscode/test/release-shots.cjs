@@ -10,7 +10,7 @@ const fs = require("fs");
 const path = require("path");
 const { execSync } = require("child_process");
 const { until, soon, idle, track } = require("./wait.cjs");
-const { command, watchKeyboard, boardDialog, boardDialogClosed, openFile, boardFrames, boardFrame, card, typingIn, focusSettled, fit } = require("./ui.cjs");
+const { command, watchKeyboard, boardDialog, boardDialogClosed, openFile, boardFrames, boardFrame, card, typingIn, pmHasSelection, focusSettled, fit } = require("./ui.cjs");
 const [OUT, WS, UD] = process.argv.slice(2);
 const SHOTS = (process.env.SHOTS || "features,themes").split(",");
 // Board themes in the order the Settings page lists them; City is experimental and left out
@@ -229,7 +229,10 @@ const leaveNote = async (page, f) => {
     await until("the Note's editor has the keyboard", () => typingIn(f, ".card.note"), 5000);
     // Retype the closing period: the completion is asked for after an edit, once typing pauses
     await focusSettled(f); // or ProseMirror undoes the Ctrl+End (the double click just focused it)
-    await page.keyboard.press("Control+End"); await page.keyboard.press("Backspace"); await page.keyboard.type(".");
+    // The browser moves the caret for Ctrl+End and ProseMirror reads it only later: a Backspace before that acts where the double
+    // click put the caret (in this Note, between two paragraphs: it selects the one before, and the period replaces it)
+    await page.keyboard.press("Control+End"); await pmHasSelection(f);
+    await page.keyboard.press("Backspace"); await page.keyboard.type(".");
     check(await soon(() => f.locator(".md-ghost").count(), Boolean, 10000, 100), "gray completion shown in the Note");
     await park(page, f);
     await boardShot(page, f, "4-notes.png");
