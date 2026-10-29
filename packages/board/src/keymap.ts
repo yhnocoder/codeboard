@@ -201,7 +201,7 @@ export const KEYMAP: Bind[] = [
   { id: "help", keys: ["?"], label: "Keyboard Shortcuts", group: "Board", run: () => setKeysOpen(!keysOpen()) },
   // Esc（浮层都关了以后）：取消正在用的工具 → 取消贴纸选中 → 退出讲解 → 子白板里回上一级 → 取消选择
   {
-    id: "escape", keys: ["Escape"], label: "Cancel · Stop waiting for DeepSeek · Deselect · Back to the parent board", group: "Board", run: (a) => {
+    id: "escape", keys: ["Escape"], label: "Cancel · Stop waiting for AI · Deselect · Back to the parent board", group: "Board", run: (a) => {
       if (cancelMode()) return;
       if (a.cancelImageJob()) return;
       if (selSticker()) return void setSelSticker(null);
