@@ -44,7 +44,9 @@ test("noteFindReplace", async () => {
     const str = (s: AbstractRange) => { const r = document.createRange(); r.setStart(s.startContainer, s.startOffset); r.setEnd(s.endContainer, s.endOffset); return r.toString(); };
     const n = (k: string) => CSS.highlights.get(k)?.size ?? 0, code = document.querySelectorAll('.card[data-id="n0"] .md-pm pre :is(.md-find-hit, .md-find-on)').length;
     const texts = [...(CSS.highlights.get("md-find") ?? []), ...(CSS.highlights.get("md-find-cur") ?? [])].map(str);
-    return { all: n("md-find") + n("md-find-cur") + code, active: n("md-find-cur"), inCode: code, texts };
+    // 匹配有颜色：::highlight() 规则限定在编辑器里（.md-pm），见 markdown.css
+    const p = document.querySelector('.card[data-id="n0"] .md-pm p')!, bg = (k: string) => getComputedStyle(p, `::highlight(${k})`).backgroundColor;
+    return { all: n("md-find") + n("md-find-cur") + code, active: n("md-find-cur"), inCode: code, texts, colors: [bg("md-find"), bg("md-find-cur")] };
   });
   const found = await marks();
   // 查找条浮着，不挤动正文
@@ -76,7 +78,8 @@ test("noteFindReplace", async () => {
   await pg.keyboard.press("Escape");
   await idle(h);
   const r = { opened, found, moved: y1!.y - y0!.y, n2, nLast, caseOn, replFocus, afterOne, afterAll, allAlpha: /alpha/i.test(allText ?? ""), closed, undone, md: md(h, "n0") };
-  check("noteFindReplace", opened === "md-findq" && found.all === 6 && found.active === 1 && found.inCode === 1 && found.texts.every((t) => /^alpha$/i.test(t)) && r.moved === 0
+  check("noteFindReplace", opened === "md-findq" && found.all === 6 && found.active === 1 && found.inCode === 1 && found.texts.every((t) => /^alpha$/i.test(t))
+    && found.colors.every((c) => !/^(transparent|rgba\(0, 0, 0, 0\))$/.test(c)) && found.colors[0] !== found.colors[1] && r.moved === 0
     && n2 === "2/6" && nLast === "6/6" && caseOn === "1/5" && replFocus === "md-findr" && afterOne === "1/5" && afterAll === "No results" && !r.allAlpha
     && closed.bar === 0 && closed.focus === "editor" && closed.marks === 0 && undone === 5 && r.md === NOTE.replace("alpha", "omega"), r);
   await close(h);
