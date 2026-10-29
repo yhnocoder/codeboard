@@ -1,4 +1,4 @@
-// 图片的 AI 操作（DeepSeek 看图）：右键图片卡、或 Note 里的一张图 → Extract Text to Note / to Clipboard、Convert to SVG；
+// 图片的 AI 操作（DeepSeek 或 VS Code 的语言模型看图，Settings › AI 里选）：右键图片卡、或 Note 里的一张图 → Extract Text to Note / to Clipboard、Convert to SVG；
 // SVG 的图另有 Modify SVG…、Copy SVG Source；工具栏 Image ▾ 的 Paste Image Text（⇧⌘V）读剪贴板里的图直接建 Note。
 // 模型只在宿主里问（密钥不进白板，webview 的 CSP 也不让连 api.deepseek.com）：这里把图缩成模型收的大小发过去，回来的 SVG 在这里清洗。
 // 新建的 Note / SVG 图和指过去的箭头是一步改动（一次撤销）；Modify SVG 换掉图也是一步，⌘Z 换回原来的
@@ -14,7 +14,7 @@ import { aiJobOn, setAiJobs } from "../state/imageai";
 import { imageDataUrl } from "./imagedata";
 import { addCards } from "./create";
 import { hostRect, openLink } from "./common";
-import { setSetting } from "./settings";
+import { openSettings, setSetting } from "./settings";
 
 /** 一张图：图片卡本身，或 Note 里的一张（note = Markdown 里写的地址：assets/…、data:、网址） */
 export type ImgRef = { card: string; note?: string };
@@ -153,8 +153,8 @@ type Answer = Extract<ImageAiResult, { text: string }>;
  * 问一次模型，卡上（card）盖着「label…」等它；Cancel、Esc 取消（宿主中止请求，回来的不再用）。
  * 同一张卡同一时间只等一个。失败时提示原因，回 null
  */
-async function runJob(card: string | undefined, label: string, makeOp: () => Promise<ImageAiOp | null>): Promise<Answer | null> {
-  if (card && aiJobOn(card)) { toast("This card is still waiting for DeepSeek"); return null; }
+export async function runJob(card: string | undefined, label: string, makeOp: () => Promise<ImageAiOp | null>): Promise<Answer | null> {
+  if (card && aiJobOn(card)) { toast("This card is still waiting for the AI model"); return null; }
   const job = ++jobN;
   let over = false;
   const finish = () => { if (over) return false; over = true; live.delete(job); setAiJobs((js) => js.filter((j) => j.job !== job)); return true; };
@@ -175,16 +175,21 @@ async function runJob(card: string | undefined, label: string, makeOp: () => Pro
 }
 
 const KEY_ACTION = { label: "Set DeepSeek API Key…", run: () => send({ type: "setDeepseekKey" }) };
+const SETTINGS_ACTION = { label: "AI Settings…", run: () => openSettings("ai") };
 function failed(r: Extract<ImageAiResult, { fail: string }>) {
+  const who = r.via ?? "DeepSeek";
   switch (r.fail) {
-    case "nokey": return toast("No DeepSeek API key", [KEY_ACTION], 8000);
+    case "nokey": return toast("No DeepSeek API key", [KEY_ACTION, SETTINGS_ACTION], 8000);
     case "badkey": return toast("DeepSeek rejected the API key", [KEY_ACTION], 8000);
     case "balance": return toast("DeepSeek: the account balance is used up", [{ label: "Top Up…", run: () => openLink("https://platform.deepseek.com/top_up") }], 8000);
-    case "network": return toast("Couldn't reach api.deepseek.com: check the network or proxy (details in Output › CodeBoard)", undefined, 7000);
-    case "timeout": return toast(`DeepSeek didn't answer in time${r.message ? ` (${r.message})` : ""}`, undefined, 6000);
-    case "cut": return toast("The SVG was cut off: the answer hit its length limit", undefined, 6000);
+    case "network": return toast(who === "DeepSeek" ? "Couldn't reach api.deepseek.com: check the network or proxy (details in Output › CodeBoard)" : `Couldn't reach ${who}${r.message ? `: ${r.message}` : ""}`, undefined, 7000);
+    case "timeout": return toast(`${who} didn't answer in time${r.message ? ` (${r.message})` : ""}`, undefined, 6000);
+    case "cut": return toast("The answer was cut off at its length limit", undefined, 6000);
     case "canceled": return toast("Canceled");
-    default: return toast(`DeepSeek: ${r.message || "the request failed"}`, undefined, 6000);
+    // VS Code 的语言模型：没有、选的那个不在了 / 不收图、用户没同意
+    case "nomodel": return toast(r.message || "No VS Code language model is available (install GitHub Copilot and sign in)", [KEY_ACTION, SETTINGS_ACTION], 9000);
+    case "noconsent": return toast(`CodeBoard isn't allowed to use ${who}${r.message ? ` (${r.message})` : ""}. Allow it when VS Code asks, or pick another model`, [SETTINGS_ACTION], 9000);
+    default: return toast(`${who}: ${r.message || "the request failed"}`, undefined, 6000);
   }
 }
 

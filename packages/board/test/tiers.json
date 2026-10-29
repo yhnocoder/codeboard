@@ -229,6 +229,14 @@
         "svgPasteIntoNote", "noteImageReopens"
       ]
     },
+    "ai": {
+      "about": "the AI tools beside images: Auto Focus on Markdown cards, Settings › AI (DeepSeek key status, which model each tool uses)",
+      "files": [
+        "packages/board/src/actions/{autofocus,imageai}.ts", "packages/board/src/md/focusmarks.ts", "packages/host/src/imageai.ts",
+        "packages/board/test/scenarios/ai.spec.ts"
+      ],
+      "scenarios": ["aiSettingsSection", "autoFocusNote", "autoFocusRejectsAlteredReply", "imageAiBusyCancelAndNoKey"]
+    },
     "web": {
       "about": "Web cards, link lists, GitHub code cards and the GitHub picker",
       "files": [

@@ -26,6 +26,7 @@ import { addVariantMenu } from "./variants";
 import { LEGEND, legendName, HAND_COLORS, type Link } from "@codeboard/core";
 import { kbd } from "../keymap";
 import { imageAiItems, type ImgRef } from "./imageai";
+import { autoFocusItem } from "./autofocus";
 
 /**
  * 删除那一组：共享卡（在别的白板上也有）分成「从这块白板移除」（⌫）和「全部删掉」（⌘⌫，要确认），再加 Unlink；
@@ -160,11 +161,11 @@ function cardItems(id: string, x: number, y: number): Item[] {
       ...tail,
     ];
     // Box 不和别的互转（底色在选中时的工具条上）
-    if (c.look === "box") return [edit, ...tail];
+    if (c.look === "box") return [autoFocusItem(id), edit, ...tail];
     // Note 只定高度（宽度是折行用的，不动）：Fit Content = 回到跟着内容长高。Text 没有改高度的把手，只有旧白板里定了高度的才需要它
     const fit: Item = { label: "Fit Content", kbd: kbd("fitContent"), disabled: placeOf(id).h ? false : "Already as tall as its content", run: () => fitContent([id]) };
-    if (c.look === "text") return [{ label: "Turn into Note", run: () => turnNote(id, "note") }, ...(placeOf(id).h ? [fit] : []), edit, ...tail];
-    return [{ label: "Turn into Text", run: () => turnNote(id, "text") }, fit, edit, ...tail];
+    if (c.look === "text") return [{ label: "Turn into Note", run: () => turnNote(id, "note") }, ...(placeOf(id).h ? [fit] : []), autoFocusItem(id), edit, ...tail];
+    return [{ label: "Turn into Text", run: () => turnNote(id, "text") }, fit, autoFocusItem(id), edit, ...tail];
   }
   if (c.kind === "web") return [
     { label: "Open in Browser", kbd: "Double-click", run: () => openLink(c.url) },

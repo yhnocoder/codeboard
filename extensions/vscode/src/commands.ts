@@ -9,7 +9,7 @@ export function registerCommands(ctx: vscode.ExtensionContext, panels: BoardHub,
   const cmd = (id: string, fn: (...a: any[]) => unknown) => ctx.subscriptions.push(vscode.commands.registerCommand(id, fn));
   for (const [id, fn] of Object.entries(makeActions(panels, store))) cmd(id, fn as (...a: any[]) => unknown);
   cmd("codeboard.setDeepseekKey", async () => {
-    const key = await prompts(panels.all().find((p) => p.view.active)).input({ title: "DeepSeek API Key", ok: "Save", prompt: "Used for gray inline completions in Notes and for the image tools (Extract Text, Convert to SVG). Stored in VS Code's secret storage.", password: true, placeHolder: "sk-…" });
+    const key = await prompts(panels.all().find((p) => p.view.active)).input({ title: "DeepSeek API Key", ok: "Save", prompt: "Used for gray inline completions in Notes and for the AI tools (Extract Text, Convert to SVG, Auto Focus). Stored in VS Code's secret storage.", password: true, placeHolder: "sk-…" });
     if (!key?.trim()) return;
     await ctx.secrets.store(DEEPSEEK_SECRET, key.trim());
     void vscode.window.showInformationMessage("DeepSeek API key saved.");
