@@ -227,9 +227,9 @@ async function variantsStep(page) {
       `--- VS Code logs\n${vscode.split("\n").slice(-200).join("\n")}`,
     ].join("\n");
     fs.writeFileSync(path.join(OUT, "variants-diag.txt"), diag);
-    fs.cpSync(path.join(UD, "logs"), path.join(OUT, "vscode-logs"), { recursive: true });
     console.log(diag.split("\n").slice(0, 80).map((l) => "  · " + l.slice(0, 300)).join("\n"));
   }
+  fs.cpSync(path.join(UD, "logs"), path.join(OUT, "vscode-logs"), { recursive: true });
   // 切回上游：代码换回来、MINE 没了
   await card(f, "Scheduler.schedule").last().locator(".vtab.up").click();
   const up = await soon(async () => await card(f, "Scheduler.schedule").last().locator(".chead .mine").count() === 0 && !/keep order/.test(await text(card(f, "Scheduler.schedule").last().locator(".src"))), Boolean);
