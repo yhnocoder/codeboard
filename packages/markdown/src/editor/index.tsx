@@ -3,18 +3,19 @@ import { keepKey } from "../ui/editkeys";
 import { Editor, Extension, Mark as TMark, Node as TNode, mergeAttributes, posToDOMRect, type AnyExtension, type JSONContent, type MarkViewRendererProps, type Range } from "@tiptap/core";
 import Suggestion, { type SuggestionProps, type SuggestionKeyDownProps } from "@tiptap/suggestion";
 import { EditorState, NodeSelection, Plugin, PluginKey, Selection, TextSelection, type Transaction } from "@tiptap/pm/state";
-import type { Node as PMNode, Slice } from "@tiptap/pm/model";
+import { Slice, type Node as PMNode } from "@tiptap/pm/model";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { Placeholder } from "@tiptap/extensions";
 import DragHandle from "@tiptap/extension-drag-handle";
 import { render } from "solid-js/web";
 import { createEffect, createSignal, For, onCleanup, Show, type Accessor } from "solid-js";
-import { baseExtensions, parseMd, serializeMd } from "../schema";
+import { baseExtensions, parseMd, pastedMd, serializeMd } from "../schema";
 import { annotNoteHtml } from "../render";
 import { Ghost } from "./ghost";
 import { Icon, type IconName } from "./icons";
 import { clipboardText } from "./clipboard";
 import { mathInSlice } from "./pastemath";
+import { marksInSlice } from "./pastemarks";
 import { undoubleTex } from "../doubled";
 import { EMOJI, EMOJI_NAMES } from "../emoji";
 import { CodeBlockView, codeGapClick } from "./codeblock";
@@ -436,7 +437,6 @@ function editorExtensions(o: MdEditorOpts, ed: () => Editor, handle: HTMLElement
   ];
 }
 
-const MD_HINT = /^(#{1,6}\s|[-*+]\s|\d+[.)]\s|>\s|```|\$\$|\|.*\|)|\*\*[^*]+\*\*|\[[^\]]+\]\([^)]+\)|\$[^$\s][^$]*\$/m;
 function handlePaste(e: Editor, o: MdEditorOpts, ev: ClipboardEvent, slice: Slice): boolean {
   const cd = ev.clipboardData;
   if (!cd) return false;
@@ -471,21 +471,25 @@ function handlePaste(e: Editor, o: MdEditorOpts, ev: ClipboardEvent, slice: Slic
       }).run();
     return true;
   }
-  // 别处的 HTML（不是从编辑器里复制的：那里字面的 $ 是转义过的）：字里原样留着的 $…$ 变成公式
+  // 别处的 HTML（不是从编辑器里复制的：那里字面的 $ == 是转义过的）：字里原样留着的 ==…==、~~…~~、---、$…$ 变成格式、分隔线、公式。
+  // 先认格式：==a $x$ b== 里的公式跟着带上高亮
   if (html && !html.includes("data-pm-slice")) {
-    const fixed = mathInSlice(slice, e.state.schema);
+    const marked = marksInSlice(slice, e.state.schema) ?? slice;
+    const fixed = mathInSlice(marked, e.state.schema) ?? (marked !== slice ? marked : null);
     if (fixed) { e.view.dispatch(e.state.tr.replaceSelection(fixed).scrollIntoView().setMeta("paste", true).setMeta("uiEvent", "paste")); return true; }
   }
-  // 纯文字里有 Markdown 的样子：按 Markdown 解析（HTML 的交给 ProseMirror 按 schema 解析，写回时自然是干净的 Markdown）
+  // 纯文字解析器读得出 Markdown：按 Markdown 粘贴（HTML 的交给 ProseMirror 按 schema 解析，写回时自然是干净的 Markdown）
   // 之后把光标所在的这一段再当 Markdown 解析一遍：粘进来的字补完了前面打了一半的记号（打了 $\frac{，粘贴 a}{b}$）也能变
-  if (text && !html && MD_HINT.test(text)) {
-    const doc = parseMd(text);
-    // 只有一段：把段里的东西插在光标处（不另起一段）
-    const one = doc.content?.length === 1 && doc.content[0].type === "paragraph" ? doc.content[0].content ?? [] : doc.content!;
-    e.chain().focus().insertContent(one as JSONContent[]).command(({ tr }) => { reconvert(tr); return true; }).run();
+  const doc = text && !html ? pastedMd(text) : null;
+  if (doc) {
+    // 和别的粘贴一样，两头的段落是敞开的：头一段接在光标前的字后面，末一段接上光标后的字（只有一段就插在光标处，不另起一段）
+    const d = e.state.schema.nodeFromJSON(doc);
+    const open = (n: PMNode | null) => (n?.type.name === "paragraph" ? 1 : 0);
+    const tr = e.state.tr.replaceSelection(new Slice(d.content, open(d.firstChild), open(d.lastChild)));
+    e.view.dispatch(reconvert(tr).scrollIntoView().setMeta("paste", true).setMeta("uiEvent", "paste"));
     return true;
   }
-  if (text && !html && !text.includes("\n") && /[$*`~\]>]/.test(text)) {
+  if (text && !html && !text.includes("\n") && /[$*`~\]>=^]/.test(text)) {
     e.view.dispatch(reconvert(e.state.tr.insertText(text)));
     return true;
   }

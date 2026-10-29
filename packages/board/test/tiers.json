@@ -95,9 +95,9 @@
         "packages/board/src/md/{lazy,load}.ts", "packages/board/src/actions/notes.ts", "packages/board/src/ui/vscodekeys.ts",
         "packages/markdown/src/{index,render,schema,selmap,view,diagram,emoji,emoji-data}.ts", "packages/markdown/src/markdown.css",
         "packages/markdown/src/editor/{index,icons}.tsx",
-        "packages/markdown/src/editor/{clipboard,codeblock,codelang,find,ghost,pairs,source,typora}.ts", "packages/markdown/src/ui/**",
+        "packages/markdown/src/editor/{clipboard,codeblock,codelang,find,ghost,pairs,pastemarks,source,typora}.ts", "packages/markdown/src/ui/**",
         "packages/core/src/complete.ts", "packages/host/src/deepseek.ts", "packages/board/test/typing-sequence.json",
-        "packages/board/test/scenarios/{markdown,md-blocks,mdreview,note-editing,note-fold,note-fresh,note-sizing,writing,typing,typing-sequence,find}.spec.ts",
+        "packages/board/test/scenarios/{markdown,md-blocks,mdreview,note-editing,note-fold,note-fresh,note-sizing,writing,typing,typing-sequence,find,md-paste-marks}.spec.ts",
         "packages/markdown/src/marks.ts", "packages/board/src/actions/format.ts", "packages/board/src/ui/StaticFormat.tsx", "packages/board/test/scenarios/static-format.spec.ts"
       ],
       "scenarios": [
