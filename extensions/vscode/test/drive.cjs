@@ -204,9 +204,23 @@ async function variantsStep(page) {
   check(!!c, "the variant is saved with the card", boardJson()?.cards.find((k) => k.kind === "code" && k.variants)?.variants);
   await shot(page, "15-variant-worktree");
   // 在 worktree 里再改一下（VS Code 外面）：卡跟着刷新
+  const wroteAt = new Date().toISOString();
   fs.writeFileSync(file, fs.readFileSync(file, "utf8").replace("        num_batched_tokens = 0\n", "        num_batched_tokens = 0  # tuned\n"));
   const live = await soon(async () => { f = await boardFrame(page); return /# tuned/.test(await text(card(f, "Scheduler.schedule").last().locator(".src"))); }, Boolean, 15000);
   check(live, "editing the worktree file refreshes the variant on the card");
+  // A miss here passed locally and failed on CI: record when the edit was made and whether it is on disk, how this git lays out the
+  // worktree, and the host log's tail (variants-diag.txt next to the screenshots)
+  if (!live) {
+    const sh = (c) => { try { return execSync(c, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim(); } catch (e) { return `(${c}: ${String(e.stderr || e.message).trim()})`; } };
+    const gd = sh(`git -C "${WT}" rev-parse --absolute-git-dir`);
+    const diag = [
+      `written at ${wroteAt}, on disk: ${/# tuned/.test(fs.readFileSync(file, "utf8"))}`,
+      `${sh("git --version")}; ${WT}/.git: ${sh(`cat "${WT}/.git"`)}; ${gd}: ${sh(`ls "${gd}"`).split("\n").join(" ")}`,
+      `--- host log`, ...sh(`find "${UD}/logs" -name CodeBoard.log -exec cat {} +`).split("\n").slice(-60),
+    ].join("\n");
+    fs.writeFileSync(path.join(OUT, "variants-diag.txt"), diag);
+    console.log(diag.split("\n").slice(0, 2).map((l) => "  · " + l).join("\n"));
+  }
   // 切回上游：代码换回来、MINE 没了
   await card(f, "Scheduler.schedule").last().locator(".vtab.up").click();
   const up = await soon(async () => await card(f, "Scheduler.schedule").last().locator(".chead .mine").count() === 0 && !/keep order/.test(await text(card(f, "Scheduler.schedule").last().locator(".src"))), Boolean);
