@@ -9,7 +9,7 @@ const path = require("path");
 const { execSync } = require("child_process");
 const { audit, report } = require("../../../tools/review/audit.cjs");
 const { until, soon, hold, idle, track, sent, timing } = require("./wait.cjs");
-const { command, watchKeyboard, openFile, boardFrame, boardFrames, card, text, typingIn, fit, boardHasKeyboard } = require("./ui.cjs");
+const { command, openBoard, clickBoardTab, watchKeyboard, openFile, boardFrame, boardFrames, card, text, typingIn, fit, boardHasKeyboard } = require("./ui.cjs");
 const [OUT, WS, UD] = process.argv.slice(2);
 
 const steps = [], audits = [];
@@ -92,7 +92,7 @@ const gap = (a, b) => Math.hypot(Math.max(0, a.l - b.r, b.l - a.r), Math.max(0, 
   // Make the board's group the active one by clicking its tab (VS Code has "Focus Second Editor Group" only as the Ctrl+2 keybinding,
   // not in the palette, and a webview having the keyboard does not make its group the one Maximize acts on)
   const maximize = async () => {
-    await page.locator(".editor-group-container .tab.active").filter({ hasNotText: /\.py\b/ }).click();
+    await clickBoardTab(page, page.locator(".editor-group-container .tab.active").filter({ hasNotText: /\.py\b/ }));
     await command(page, "View: Toggle Maximize Editor Group");
     const fills = async () => { const [b, e] = [await (await f.frameElement()).boundingBox(), await page.locator(".monaco-workbench .part.editor").boundingBox()]; return b && e && b.width > e.width * 0.9; };
     await until("the board fills the editor area", fills);
@@ -117,7 +117,7 @@ const gap = (a, b) => Math.hypot(Math.max(0, a.l - b.r, b.l - a.r), Math.max(0, 
   await step("r01-first-card", "Alt+B inside a function, open the board", async () => {
     await openFile(page, path.join(WS, "nanovllm/engine/llm_engine.py"), 51);
     await page.keyboard.press("Alt+b");
-    await command(page, "CodeBoard: Open Board");
+    await openBoard(page);
     f = await boardFrame(page);
     await soon(() => card(f, "LLMEngine.step").count(), Boolean, 20000);
     await idle(f);
@@ -308,7 +308,7 @@ const gap = (a, b) => Math.hypot(Math.max(0, a.l - b.r, b.l - a.r), Math.max(0, 
     await page.keyboard.press("Escape");
     await command(page, "View: Close All Editors");
     await until("every editor is closed", async () => !(await page.locator(".tabs-container .tab").count()) && !(await boardFrames(page, { visible: false })).length);
-    await command(page, "CodeBoard: Open Board");
+    await openBoard(page);
     f = await boardFrame(page); await idle(f);
     const got = await soon(() => f.locator(".card").count(), (n) => n === want);
     check(got === want, "same card count after reopening", { want, got });

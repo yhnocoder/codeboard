@@ -5,7 +5,7 @@ const fs = require("fs");
 const path = require("path");
 const { execSync } = require("child_process");
 const { until, soon, hold, idle, track, fromSource } = require("./wait.cjs");
-const { command, watchKeyboard, boardDialog, boardDialogClosed, inputBox, qiClosed, openFile, goToLine, statusSel, text, typingIn, pmHasSelection, focusSettled, boardFrame, boardFrames, card, fit, boardHasKeyboard, boardKeys, ctrlK } = require("./ui.cjs");
+const { command, openBoard, watchKeyboard, boardDialog, boardDialogClosed, inputBox, qiClosed, openFile, goToLine, statusSel, text, typingIn, pmHasSelection, focusSettled, boardFrame, boardFrames, card, fit, boardHasKeyboard, boardKeys, ctrlK } = require("./ui.cjs");
 const [OUT, WS, UD] = process.argv.slice(2);
 /** The board file format the extension writes (core's model.ts), so the autosave check follows a format bump */
 const { BOARD_VERSION } = fromSource("packages/core/src/model.ts");
@@ -85,7 +85,7 @@ async function captureStep(page) {
   ].join("\n"));
   await openFile(page, path.join(WS, "e2e_capture.py"), 8);
   await page.keyboard.press("Alt+b");
-  await command(page, "CodeBoard: Open Board");
+  await openBoard(page);
   let f = await boardFrame(page);
   check(await soon(() => card(f, "mid").count(), (n) => n === 1, 20000) === 1, "Alt+B puts mid on the board");
   // Run from the palette over the board: it asks on the board
@@ -119,7 +119,7 @@ async function captureStep(page) {
 async function exportStep(page) {
   await openFile(page, SCHED, 26);
   await page.keyboard.press("Alt+b");
-  await command(page, "CodeBoard: Open Board");
+  await openBoard(page);
   let f = await boardFrame(page);
   check(await soon(() => f.locator(".card").count(), (n) => n >= 1, 20000) >= 1, "Alt+B puts a card on the board");
   await command(page, "Notifications: Clear All Notifications");
@@ -181,7 +181,7 @@ async function variantsStep(page) {
   let had = 0;
   for (const f0 of await boardFrames(page, { visible: false })) had = await card(f0, "Scheduler.schedule").count();
   await page.keyboard.press("Alt+b");
-  await command(page, "CodeBoard: Open Board");
+  await openBoard(page);
   let f = await boardFrame(page);
   const sch = card(f, "Scheduler.schedule").last();
   check(await soon(() => card(f, "Scheduler.schedule").count(), (n) => n === had + 1, 20000) === had + 1, "Alt+B puts Scheduler.schedule on the board", { had });
@@ -229,7 +229,7 @@ async function variantsStep(page) {
 // ⌥B 选中跨几个定义的代码（context.py 5–27：dataclass、_CONTEXT = Context()、三个函数）：默认一张多段卡，一行不丢；
 // 焦点留在编辑器，紧接着 ⌘Z / Ctrl+Z 撤销这次添加（编辑器里没改过字时）；⇧⌥B 一个定义一张卡。E2E_ONLY=addsel 只跑这一步
 async function addselStep(page) {
-  await command(page, "CodeBoard: Open Board");
+  await openBoard(page);
   let f = await boardFrame(page); await idle(f);
   const n0 = await f.locator(".card").count();
   await openFile(page, CONTEXT, 5);
@@ -275,7 +275,7 @@ async function addselStep(page) {
 async function closeStep(page) {
   if (process.env.E2E_ONLY === "close") { await openFile(page, ENGINE, 51); await altB(page, "LLMEngine.step"); }
   const closeTab = (name) => page.locator(".tabs-container .tab", { hasText: name }).first().click({ button: "middle", force: true });
-  await command(page, "CodeBoard: Open Board");
+  await openBoard(page);
   let f = await boardFrame(page); await idle(f);
   const name = (await page.locator(".editor-group-container.active .tab.active").first().textContent()).trim();
   // a code card that is drawn (not hidden in a collapsed call tree) and on screen
@@ -341,7 +341,7 @@ async function closeStep(page) {
   await closeTab(name);
   const wrapped = (await soon(() => boardNamed(name)?.cards.find((c) => c.id === code.id), (c) => c && !!c.wrap !== !!code.wrap))?.wrap;
   check(!!wrapped !== !!code.wrap, "closing the board tab right after Wrap Lines keeps the change", { before: !!code.wrap, after: !!wrapped });
-  await command(page, "CodeBoard: Open Board");
+  await openBoard(page);
   f = await boardFrame(page); await idle(f);
   await clickBoard(f);
   // t: a new Text card in edit mode; type only once its editor is there and has the keyboard focus
@@ -358,7 +358,7 @@ async function closeStep(page) {
   await closeTab(name);
   const notes = (await soon(() => (boardNamed(name)?.cards ?? []).filter((c) => c.kind === "note").map((c) => c.md), (n) => n.includes("typed then closed"))) ?? [];
   check(notes.includes("typed then closed"), "closing the board tab right after typing a Text card keeps the text", { notes, closeAfterMs: closeAfter });
-  await command(page, "CodeBoard: Open Board");
+  await openBoard(page);
   await idle(await boardFrame(page));
 }
 
@@ -368,7 +368,7 @@ async function closeStep(page) {
 async function keyscopeStep(page) {
   await openFile(page, SCHED, 26);
   await page.keyboard.press("Alt+b");
-  await command(page, "CodeBoard: Open Board");
+  await openBoard(page);
   const f = await boardFrame(page);
   check(await soon(() => f.locator(".card").count(), (n) => n >= 1, 20000) >= 1, "keyscope: Alt+B puts a card on the board");
   await idle(f);
@@ -399,7 +399,7 @@ async function keyscopeStep(page) {
 async function cardfocusStep(page) {
   // context.py on the left, the board on the right (run alone, the board opens in the file's group: move it)
   await openFile(page, CONTEXT, 18);
-  await command(page, "CodeBoard: Open Board");
+  await openBoard(page);
   let f = await boardFrame(page);
   if (await page.locator(".editor-group-container").count() < 2) { await command(page, "View: Move Editor into Right Group"); f = await boardFrame(page); }
   await idle(f);
@@ -476,7 +476,7 @@ async function cardfocusStep(page) {
 async function codeeditStep(page) {
   await openFile(page, ENGINE, 51);
   await page.keyboard.press("Alt+b");
-  await command(page, "CodeBoard: Open Board");
+  await openBoard(page);
   let f = await boardFrame(page);
   await until("Alt+B puts LLMEngine.step on the board", () => card(f, "LLMEngine.step").count(), 20000);
   await idle(f);
@@ -777,7 +777,7 @@ const finish = async (browser, errors) => {
   // E2E_FLOW=<file.cjs> runs a flow of your own after the E2E_ONLY steps (or alone): the file exports async (page, t) => { … }, t holds
   // this driver's helpers. For reproducing a problem in the real VS Code without editing this file
   const flow = process.env.E2E_FLOW && path.resolve(process.env.INIT_CWD || process.cwd(), process.env.E2E_FLOW);
-  if (flow) STEPS.flow = (page) => require(flow)(page, { check, until, soon, hold, idle, shot, newBoard, newNote, emptySpot, clickBoard, altB, sidenote, clipboard, boardJson, boardNamed, editorFocused, setUserSetting, command, inputBox, qiClosed, openFile, goToLine, statusSel, text, typingIn, pmHasSelection, focusSettled, boardFrame, boardFrames, card, fit, W, OUT, WS, UD });
+  if (flow) STEPS.flow = (page) => require(flow)(page, { check, until, soon, hold, idle, shot, newBoard, newNote, emptySpot, clickBoard, altB, sidenote, clipboard, boardJson, boardNamed, editorFocused, setUserSetting, command, openBoard, inputBox, qiClosed, openFile, goToLine, statusSel, text, typingIn, pmHasSelection, focusSettled, boardFrame, boardFrames, card, fit, W, OUT, WS, UD });
   const only = [process.env.E2E_ONLY || PARTS[process.env.E2E_PART], flow && "flow"].filter(Boolean).join(",");
   if (only) {
     // a step may begin with a command: wait until VS Code has loaded the extension's contributions (on a fresh window the command
