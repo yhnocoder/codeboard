@@ -1,6 +1,7 @@
 // 什么时候重查新版本：git HEAD 变了（.git/HEAD、refs 的文件监听 + VS Code 自带 git 插件的事件）、保存文件、
 // 编辑器里改了白板上用到的文件（版本状态按编辑器里的内容算，没保存的改动、Revert File 也算）。文件的改动只重查这个文件里的段，
 // 只在有它的白板上（打字时每停一下都会触发：不重读、不重新分析别的文件）。
+import * as fs from "node:fs";
 import * as path from "node:path";
 import type { Disposable } from "@codeboard/core";
 import { forgetIgnored, gitDirOf, headOf, repoRootOf } from "./git";
@@ -88,13 +89,29 @@ export function watchVersions(panels: BoardHost, store: Storage): Disposable & {
   // 在 VS Code 外面改了卡片用到的文件（git checkout -- f、别的编辑器）：也重算。每个文件一个监听。
   // Variant 的文件也算（另一个 worktree、复制出来的文件：在别处保存后卡上跟着刷新）
   const watchedFiles = new Set<string>();
+  /**
+   * fs.watch, not the editor's watcher: VS Code starts a watch only once the ones asked for before it have started, and a change made
+   * meanwhile fires nothing (on CI the Python Environments extension's recursive watch on /usr/lib took 18 s, and the e2e edit of a
+   * Variant's file in that time was lost). fs.watch is in place when it returns, so the catch-up re-check covers everything before.
+   * It watches the folder, so a save that renames a new file over the old one counts too. false = the folder is not there (yet): the
+   * next board save tries again
+   */
+  const watchFile = (a: string) => {
+    const name = path.basename(a);
+    let w: fs.FSWatcher;
+    try { w = fs.watch(path.dirname(a), { persistent: false }, (_e, f) => { if (!f || f === name) recheck(a); }); }
+    catch { return false; }
+    // the folder went away: the file with it
+    w.on("error", () => { w.close(); watchedFiles.delete(a); recheck(a); });
+    subs.push({ dispose: () => w.close() });
+    return true;
+  };
   const watchFiles = async (catchUp: boolean) => {
     for (const { board } of await store.all()) for (const s of [...boardSegments(board), ...variantSegments(board)]) {
       if (!hasLocalFile(s.src)) continue;
       const a = absOf(s);
-      if (!a || watchedFiles.has(a)) continue;
+      if (!a || watchedFiles.has(a) || !watchFile(a)) continue;
       watchedFiles.add(a);
-      subs.push(files.watch(path.dirname(a), path.basename(a), () => recheck(a)));
       // The file was read when its card or Variant was added, before this watch existed: a change made in between fires no event
       if (catchUp) recheck(a);
     }

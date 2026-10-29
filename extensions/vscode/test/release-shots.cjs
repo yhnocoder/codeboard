@@ -10,7 +10,7 @@ const fs = require("fs");
 const path = require("path");
 const { execSync } = require("child_process");
 const { until, soon, idle, track } = require("./wait.cjs");
-const { command, watchKeyboard, boardDialog, boardDialogClosed, openFile, boardFrames, boardFrame, card, typingIn, focusSettled, fit } = require("./ui.cjs");
+const { command, openBoard, clickBoardTab, watchKeyboard, boardDialog, boardDialogClosed, openFile, boardFrames, boardFrame, card, typingIn, pmHasSelection, focusSettled, fit } = require("./ui.cjs");
 const [OUT, WS, UD] = process.argv.slice(2);
 const SHOTS = (process.env.SHOTS || "features,themes").split(",");
 // Board themes in the order the Settings page lists them; City is experimental and left out
@@ -96,7 +96,7 @@ const leaveNote = async (page, f) => {
   // The first add in a workspace opens the board beside the code, in the second editor group
   await page.keyboard.press("Alt+b");
   await until("Alt+B puts LLMEngine.step on the board", async () => { const [b] = await boardFrames(page); return b && card(b, "LLMEngine.step").count(); }, 30000, 100);
-  await command(page, "CodeBoard: Open Board");
+  await openBoard(page);
   const f = await boardFrame(page);
   lap("board open");
   console.log(`  … reduced motion: ${await f.evaluate(() => matchMedia("(prefers-reduced-motion: reduce)").matches)}`);
@@ -118,11 +118,8 @@ const leaveNote = async (page, f) => {
   // The board fills the window while it is built (children are placed in the room the view has) and for the board shots
   // Make the board's group the active one by clicking its tab (VS Code has "Focus Second Editor Group" only as the Ctrl+2 keybinding,
   // not in the palette, and a webview having the keyboard does not make its group the one Maximize acts on)
-  await boardTab.click();
-  // The click puts the keyboard on the tab; VS Code focuses the tab's webview once the editor is open again (some 80 ms later), and a
-  // palette opened before that loses the keyboard to it. command() then waits for the hand-back that follows
-  const kb = () => page.evaluate(() => { const a = document.activeElement; return a?.matches("iframe.webview") ? "webview" : `${a?.tagName}.${a?.className}`; });
-  await until("VS Code focuses the clicked tab's webview", async () => await kb() === "webview").catch(async (e) => { throw new Error(`${e.message}: the keyboard is on ${await kb()}`); });
+  // VS Code focuses the board again once it has opened the clicked tab's editor: a palette opened before that loses the keyboard to it
+  await clickBoardTab(page, boardTab);
   await command(page, "View: Toggle Maximize Editor Group");
   const fills = async () => { const [b, e] = [await (await f.frameElement()).boundingBox(), await page.locator(".monaco-workbench .part.editor").boundingBox()]; return b && e && b.width > e.width * 0.9; };
   check(await soon(fills, Boolean, 5000), "board fills the editor area");
@@ -229,7 +226,10 @@ const leaveNote = async (page, f) => {
     await until("the Note's editor has the keyboard", () => typingIn(f, ".card.note"), 5000);
     // Retype the closing period: the completion is asked for after an edit, once typing pauses
     await focusSettled(f); // or ProseMirror undoes the Ctrl+End (the double click just focused it)
-    await page.keyboard.press("Control+End"); await page.keyboard.press("Backspace"); await page.keyboard.type(".");
+    // The browser moves the caret for Ctrl+End and ProseMirror reads it only later: a Backspace before that acts where the double
+    // click put the caret (in this Note, between two paragraphs: it selects the one before, and the period replaces it)
+    await page.keyboard.press("Control+End"); await pmHasSelection(f);
+    await page.keyboard.press("Backspace"); await page.keyboard.type(".");
     check(await soon(() => f.locator(".md-ghost").count(), Boolean, 10000, 100), "gray completion shown in the Note");
     await park(page, f);
     await boardShot(page, f, "4-notes.png");
