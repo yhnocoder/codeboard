@@ -1,4 +1,4 @@
-import { Emitter, cutCrumbs, sharedInfo, skeletonOf, subBoardsOf, type AskType, type BoardMeta, type BoardToHost, type Camera, type Crumb, type Disposable, type HostToBoard, type ReplyOf, type Segment, type Skeleton, type WalkHop } from "@codeboard/core";
+import { Emitter, cutCrumbs, diffBoards, sharedInfo, skeletonOf, subBoardsOf, type AskType, type BoardMeta, type BoardPatch, type BoardToHost, type Camera, type Crumb, type Disposable, type HostToBoard, type ReplyOf, type Segment, type Skeleton, type WalkHop } from "@codeboard/core";
 import type { CardClip, Storage } from "@codeboard/core/storage";
 import { BoardPanel, type BoardHost, type BoardView } from "./boards";
 import type { HostEnv, ViewPlace } from "./env";
@@ -49,11 +49,7 @@ export class BoardHub implements BoardHost, Disposable {
     this.subs.push(store.onDidMerge((e) => {
       this.shareQ = this.shareQ.then(async () => {
         const p = this.get(e.id);
-        if (!p) return;
-        const segs = (e.patch.cards?.set ?? []).flatMap((c) => (c.kind === "code" ? [...c.segments, ...variantSegments({ cards: [c] })] : []));
-        const views = segs.length ? await viewsFor(segs) : undefined;
-        p.board = store.peek(p.id);
-        p.post({ type: "merged", patch: e.patch, views });
+        if (p) await this.postMerged(p, e.patch);
       }).catch((err) => log("error", `merged: ${err instanceof Error ? err.message : err}`));
     }));
     // Delete Everywhere：开着的别的白板跟着删
@@ -80,6 +76,31 @@ export class BoardHub implements BoardHost, Disposable {
     this.subs.push(store.onDidSave(() => this.refreshShared()), store.onDidChange(() => this.refreshShared()));
     // 子白板的骨架：子白板存盘后重算（只算存了的那块），白板列表变了（改名、删白板）全部重算；都防抖
     this.subs.push(store.onDidSave((b) => { this.dirtySkels.add(b.id); this.refreshSkeletons(); }), store.onDidChange(() => { this.allSkels = true; this.refreshSkeletons(); }));
+  }
+
+  /** 面板换上宿主这边变了的白板（patch = 从它现在的样子到存储里的样子）；新来的代码卡带上段的展示数据 */
+  private async postMerged(p: BoardPanel, patch: BoardPatch) {
+    const segs = (patch.cards?.set ?? []).flatMap((c) => (c.kind === "code" ? [...c.segments, ...variantSegments({ cards: [c] })] : []));
+    const views = segs.length ? await viewsFor(segs) : undefined;
+    p.board = this.store.peek(p.id);
+    p.post({ type: "merged", patch, views });
+  }
+
+  /**
+   * 存储目录换了（.codeboard/ 出现或没了、设置改了、Move Boards into Project）：开着的白板新目录里没有的关掉（和删了一样），
+   * 有但内容不一样的（另一个分支上的那份）换上，和别的窗口改了文件时一样
+   */
+  async followStorage() {
+    await (this.shareQ = this.shareQ.then(async () => {
+      for (const p of this.all()) {
+        const b = await this.store.load(p.id);
+        if (!b) { p.view.dispose(); if (this.target === p.id) this.setTarget(undefined); continue; }
+        const patch = p.board && diffBoards(p.board, b);
+        if (patch) await this.postMerged(p, patch);
+        else p.board = this.store.peek(p.id);
+      }
+    }).catch((err) => log("error", `storage switch: ${err instanceof Error ? err.message : err}`)));
+    await this.pushBoards();
   }
 
   dispose() {

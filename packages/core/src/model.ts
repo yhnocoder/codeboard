@@ -7,7 +7,7 @@
 
 import type { BoundVal, CallAlt, Var } from "@codeboard/analysis/basics";
 
-export const BOARD_VERSION = 8;
+export const BOARD_VERSION = 9;
 
 /** 一段代码钉在哪个版本上 */
 export type Version =
@@ -339,11 +339,14 @@ export const cornerAt = (w: number, i = 0) => ({ x: w - 56 - i * 25, y: -11, siz
 export const isQuestion = (s: Pick<Sticker, "icon" | "q">) => !!s.q || (s.icon.pack === "builtin" && s.icon.name === "question");
 
 export type Camera = { x: number; y: number; z: number };
+/** 新白板、这台机器上还没看过的白板的镜头 */
+export const homeCam = (): Camera => ({ x: 80, y: 80, z: 1 });
 
 export type Board = {
-  version: 8;
+  version: 9;
   id: string;
   name: string;
+  /** 镜头：不写进白板文件（光是平移、缩放就改了文件，项目里用 git 管白板时全是噪音），每台机器各记各的（宿主的工作区状态，按白板 id） */
   cam: Camera;
   /** 卡片内容（顺序 = 叠放顺序）；Compare 的两栏也在这里 */
   cards: Card[];
@@ -374,18 +377,18 @@ export const legendName = (b: Pick<Board, "legend">, k: LegendKey) => b.legend?.
 
 /** 白板文件里共享卡的位置：只有 id，内容在卡库里。在 cards 里占着叠放顺序 */
 export type SharedRef = { id: string; kind: "shared" };
-/** 白板文件：cards 里可以有共享卡的引用。读进来后由宿主换成内容 */
-export type BoardFile = Omit<Board, "cards"> & { cards: (Card | SharedRef)[] };
+/** 白板文件：cards 里可以有共享卡的引用，读进来后由宿主换成内容；没有镜头（见 Board.cam） */
+export type BoardFile = Omit<Board, "cards" | "cam"> & { cards: (Card | SharedRef)[] };
 /** 一张共享卡的内容：卡本身 + 跟着它走的 Sidenote（挂在它上面、不是 boardOnly、不是 kind card） */
 export type SharedCard = { card: Card; sidenotes: Sidenote[] };
 /** 卡库里的文件 cards/<id>.json。写盘时按项（卡、每条 Sidenote）和磁盘上的合并（storage/boards.ts merged） */
-export type SharedCardFile = SharedCard & { version: 8 };
+export type SharedCardFile = SharedCard & { version: 9 };
 
 /** subs = 这块白板上嵌着的子白板（去重，按出现的先后；侧栏按它缩进成树） */
 export type BoardMeta = { id: string; name: string; group?: string; cards: number; stale?: number; subs?: string[] };
 
 export function emptyBoard(id: string, name: string): Board {
-  return { version: BOARD_VERSION, id, name, cam: { x: 80, y: 80, z: 1 }, cards: [], place: {}, links: [], sections: [], sidenotes: [], stickers: [], born: {}, seq: 0 };
+  return { version: BOARD_VERSION, id, name, cam: homeCam(), cards: [], place: {}, links: [], sections: [], sidenotes: [], stickers: [], born: {}, seq: 0 };
 }
 
 let seq = 0;

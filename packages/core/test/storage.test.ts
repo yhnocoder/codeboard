@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createHash } from "node:crypto";
-import { danglingRefs, emptyBoard, type Board } from "../src";
+import { danglingRefs, emptyBoard, type Board, type Camera } from "../src";
 
 const headOf = (b: Board) => { const { version: _v, id: _i, cam: _c, cards: _a, place: _p, links: _l, sections: _s, sidenotes: _n, stickers: _k, ...h } = b; return h; };
 import { Storage, pasteClip, type DirEnt, type Fs } from "../src/storage";
@@ -76,8 +76,10 @@ async function patchNow(store: Storage, ...a: Parameters<Storage["patch"]>) { co
 function setup() {
   const fs = new MemFs();
   const logs: string[] = [];
-  const store = new Storage(fs, { dir: () => ROOT, log: (_l, t) => logs.push(t) });
-  return { fs, store, logs };
+  // 这台机器上记下的镜头（宿主的工作区状态）
+  const cams = new Map<string, Camera>();
+  const store = new Storage(fs, { dir: () => ROOT, log: (_l, t) => logs.push(t), cams: { get: (id) => cams.get(id), set: (id, c) => void cams.set(id, c) } });
+  return { fs, store, logs, cams };
 }
 
 describe("core storage", () => {
@@ -112,6 +114,37 @@ describe("core storage", () => {
     fs.put(`${ROOT}/a.json`, { ...emptyBoard("a", "A2") });
     expect((await store.list())[0].name).toBe("A2");
     expect(fs.reads).toBe(n + 1);
+  });
+
+  it("keeps the camera out of the board file: panning writes nothing, the camera is kept per machine and comes back on load", async () => {
+    const { fs, store, cams } = setup();
+    const b = await store.create("B");
+    const file = `${ROOT}/${b.id}.json`;
+    const text = fs.files.get(file)!.data, mtime = fs.files.get(file)!.mtime;
+    expect(JSON.parse(text as string)).not.toHaveProperty("cam");
+    expect(await patchNow(store, b.id, { cam: { x: -300, y: 40, z: 1.5 } })).toEqual([]);
+    expect(fs.files.get(file)).toMatchObject({ data: text, mtime });
+    expect(cams.get(b.id)).toEqual({ x: -300, y: 40, z: 1.5 });
+    // An edit together with a camera move: the file gets the edit, still no camera
+    await patchNow(store, b.id, { cam: { x: 0, y: 0, z: 2 }, head: { name: "Renamed", born: {}, seq: 0 } });
+    expect(JSON.parse(fs.files.get(file)!.data as string)).toMatchObject({ version: 9, name: "Renamed" });
+    expect(JSON.parse(fs.files.get(file)!.data as string)).not.toHaveProperty("cam");
+    // Another window (same machine) reads the board with this machine's camera; a board never seen here starts at the default
+    const other = new Storage(fs, { dir: () => ROOT, cams: { get: (id) => cams.get(id), set: () => undefined } });
+    expect((await other.load(b.id))!.cam).toEqual({ x: 0, y: 0, z: 2 });
+    fs.put(`${ROOT}/fresh.json`, { version: 9, id: "fresh", name: "F", cards: [], place: {}, links: [], sections: [], sidenotes: [], stickers: [] });
+    expect((await other.load("fresh"))!.cam).toEqual({ x: 80, y: 80, z: 1 });
+  });
+
+  it("a v8 file's camera seeds this machine's camera until the board is saved as v9 without it", async () => {
+    const { fs, store, cams } = setup();
+    fs.put(`${ROOT}/old.json`, { ...emptyBoard("old", "Old"), version: 8, cam: { x: 7, y: 8, z: 0.5 } });
+    expect((await store.load("old"))!.cam).toEqual({ x: 7, y: 8, z: 0.5 });
+    await patchNow(store, "old", { head: { name: "Edited", born: {}, seq: 0 } });
+    const f = JSON.parse(fs.files.get(`${ROOT}/old.json`)!.data as string);
+    expect(f.version).toBe(9);
+    expect(f).not.toHaveProperty("cam");
+    expect(cams.get("old")).toEqual({ x: 7, y: 8, z: 0.5 });
   });
 
   it("deleting a group moves its boards out and keeps the folder with any file that isn't a readable board", async () => {
@@ -277,7 +310,7 @@ describe("card library (shared cards)", () => {
     expect(file(fs, "A").cards).toEqual([{ id: "s", kind: "shared" }, note("la")]);
     expect(file(fs, "A").sidenotes.map((n: any) => n.id)).toEqual(["n2"]);
     const c = card(fs, "s");
-    expect(c).toMatchObject({ version: 8, card: note("s") });
+    expect(c).toMatchObject({ version: 9, card: note("s") });
     expect(c.rev).toBeUndefined();
     expect(c.sidenotes.map((n: any) => n.id)).toEqual(["n1"]);
     // Loading inflates

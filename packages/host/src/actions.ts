@@ -4,14 +4,14 @@ import { analysisOf } from "./analysis";
 import { cardsFromEditor, symCard, widthFor, withViews, type Built } from "./cards";
 import type { BoardHost } from "./boards";
 import { absOf, locOfFile } from "./source";
-import type { Storage } from "./storage";
+import { moveIntoProject, projectDir, PROJECT_DIR, type Storage } from "./storage";
 import { workingPlace } from "./versions";
 import { viewsFor } from "./views";
 import { copyDiagnostics } from "./diagnostics";
 import { applyFlow, captureFlow } from "./runs";
 import { prompts } from "./prompts";
 import { copyToProject, otherProjects, removeMoved } from "./transfer";
-import { langOf, readText, splitLines, workspace } from "./ws";
+import { langOf, readText, splitLines, workspace, ws0 } from "./ws";
 
 /** 侧栏的节点（命令参数） */
 export type Node = { kind: "board"; id: string } | { kind: "group"; name: string } | undefined;
@@ -258,6 +258,18 @@ export function makeActions(panels: BoardHost, store: Storage) {
       await store.remove(b.id);
       if (panels.target === b.id) panels.setTarget(undefined);
       await panels.pushBoards();
+    },
+    // 白板搬进项目的 .codeboard/（git 能管，克隆了仓库的人看得到）；之后这个项目一直用它
+    "codeboard.moveBoardsIntoProject": async () => {
+      const to = projectDir();
+      if (to) {
+        const ok = await ui().warn(`Move this project's boards into ${PROJECT_DIR} in ${path.basename(ws0())}?`, { modal: true, detail: `Boards, groups, shared cards, images and run records are stored in ${to} from now on, where git can track them. Anyone who opens the repository with CodeBoard sees them. Deleted boards (.trash) are ignored by git.` }, "Move");
+        if (ok !== "Move") return;
+      }
+      const r = await moveIntoProject(store);
+      if (!r.moved) { void ui().info(r.why); return; }
+      await panels.pushBoards();
+      if ((await ui().info(`Boards moved into ${PROJECT_DIR}. Commit it to share them with the repository.`, "Reveal in Folder")) === "Reveal in Folder") await ui().revealInOS(r.to);
     },
     "codeboard.copyToProject": (a?: unknown) => toProject(a, false),
     "codeboard.moveToProject": (a?: unknown) => toProject(a, true),

@@ -3,11 +3,13 @@
 // 也是卡库（Library）：共享卡放 cards/<id>.json，白板文件里只留引用。这里缓存的、交出去的都是换上了内容的完整白板；
 // 写盘时再拆开（deflate），共享卡按项和磁盘上的合并后写卡文件，再通知开着同一张卡的别的白板（onDidShare）。
 // 白板发来的改动（patch）马上改缓存里的那份，稍后写盘（WRITE_DELAY 里的改动合成一次写）；关面板、退出时 flush() 把没写的写下去。
-// 存储目录有人在外面（另一个窗口）写了：白板文件三方合并进缓存（onDidMerge），卡库里的卡换进有它的白板（onDidShare），不等这边存盘。
-import { allCodeCards, baseName, BOARD_VERSION, emptyBoard, uid, withCols, type Board, type BoardFile, type BoardMeta, type Link, type SharedCard, type SharedCardFile } from "../model";
+// 存储目录有人在外面（另一个窗口、git pull / checkout）写了：白板文件三方合并进缓存（onDidMerge），卡库里的卡换进有它的白板（onDidShare），不等这边存盘。
+// 镜头不写进白板文件：交给宿主按白板 id 记在这台机器上（cams）。
+import { allCodeCards, baseName, BOARD_VERSION, emptyBoard, homeCam, uid, withCols, type Board, type BoardFile, type BoardMeta, type Camera, type Link, type SharedCard, type SharedCardFile } from "../model";
 import { Emitter, type Disposable } from "../emitter";
 import type { WorkspaceFiles } from "../workspace";
 import { loadBoardFile, loadSharedCard } from "../schema";
+import { fileCamera } from "../migrate";
 import { applyPatch, applySharedUpdate, cardCopies, deflate, diffBoards, inflate, mergeById, mergeFile, putShared, same, sharedOf, travels, type BoardPatch, type SharedUpdate } from "../patch";
 import { pruneRefs, removeCards, renameCard, unlinkCard, type CardCopy } from "../edit";
 import { subBoardsOf } from "../subboard";
@@ -35,6 +37,8 @@ export type StorageOpts = {
   log?: (level: "info" | "warn" | "error", text: string) => void;
   /** 看着存储目录里的文件（宿主的 Workspace files.watch）：另一个窗口写了白板或共享卡，开着的白板马上换上。不给就只在读目录时发现 */
   watch?: WorkspaceFiles["watch"];
+  /** 每块白板在这台机器上的镜头（宿主的工作区状态）。不给就只在内存里，读进来的白板从 homeCam 开始 */
+  cams?: { get(id: string): Camera | undefined; set(id: string, cam: Camera): void };
 };
 
 export const RESERVED = new Set(["assets", "github", "cards", "runs", ".trash"]);
@@ -193,7 +197,7 @@ export class Storage {
           // 共享卡：引用换成卡库里的内容
           const used = new Map<string, SharedCardFile>();
           for (const c of board.cards) if (c.kind === "shared") { const sc = await this.readShared(c.id); if (sc) used.set(c.id, sc); }
-          const r = inflate(board, (id) => { const sc = used.get(id); return sc && structuredClone({ card: sc.card, sidenotes: sc.sidenotes }); });
+          const r = inflate(board, this.opts.cams?.get(board.id) ?? fileCamera(raw) ?? homeCam(), (id) => { const sc = used.get(id); return sc && structuredClone({ card: sc.card, sidenotes: sc.sidenotes }); });
           if (r.missing.length) this.opts.log?.("warn", `storage: board ${f.file} refers to missing shared cards ${r.missing.join(", ")}`);
           e = { id: board.id, file: f.file, group: f.group, mtime: st.mtimeMs, birth: st.birthtimeMs || st.ctimeMs, board: r.board, refs: new Set(r.refs), held: new Set(r.refs), used, text };
           this.cache.set(board.id, e);
@@ -263,6 +267,9 @@ export class Storage {
    */
   async patch(id: string, p: BoardPatch, o: { undo?: boolean } = {}): Promise<SharedUpdate[]> {
     return this.serial(async () => {
+      if (p.cam) this.keepCam(id, p.cam);
+      // 只挪了镜头：不碰白板文件（白板不在这个目录里了也不要紧：存储目录刚换过，面板还没关）
+      if (Object.keys(p).every((k) => k === "cam")) { const c = this.cache.get(id); if (c && p.cam) c.board.cam = p.cam; return []; }
       const e = await this.entry(id);
       const was = prevOf(e);
       const skipped = o.undo && !p.full ? this.dropStale(e, p) : new Map<string, string[]>();
@@ -276,6 +283,11 @@ export class Storage {
       for (const [c, items] of skipped) { const sc = sharedOf(e.board, c); if (sc) out.push({ ...structuredClone(sc), items }); }
       return out;
     });
+  }
+
+  private keepCam(id: string, cam: Camera) {
+    const c = this.opts.cams?.get(id);
+    if (!c || c.x !== cam.x || c.y !== cam.y || c.z !== cam.z) this.opts.cams?.set(id, { ...cam });
   }
 
   /** 缓存里的这块白板有了没写盘的改动（was = 改之前的样子）：稍后写 */
@@ -346,6 +358,7 @@ export class Storage {
       // 卡文件被另一个窗口改过：这块白板也换上合并后的那份
       if (m.back.length) { putShared(e.board, structuredClone({ card: m.file.card, sidenotes: m.file.sidenotes })); back.push({ ...structuredClone({ card: m.file.card, sidenotes: m.file.sidenotes }), items: m.back }); }
     }
+    this.keepCam(e.id, e.board.cam);
     const fromDisk = await this.mergeDisk(e, data);
     // 写在它现在的文件夹里（存储目录刚换过时还是原来那个）；新白板、换了组的写到组的文件夹。文件名就是 id
     const dir = prev?.file && prev.group === e.group ? dirName(prev.file) : e.group ? fs.join(this.dir(), e.group) : this.dir();
@@ -388,7 +401,7 @@ export class Storage {
     const base = loadBoardFile(JSON.parse(e.text));
     const both = mergeFile(base, disk, mine ?? base);
     for (const c of both.cards) if (c.kind === "shared") await this.readShared(c.id);
-    const r = inflate(both, (id) => { const sc = this.lib.get(id)?.sc; return sc && withPending(e, sc); });
+    const r = inflate(both, e.board.cam, (id) => { const sc = this.lib.get(id)?.sc; return sc && withPending(e, sc); });
     // 按项合并不管引用（那边删了卡、这边往它上面连了线）：按删卡的规矩带走悬空的
     pruneRefs(r.board);
     const file = deflate(r.board, new Set(r.refs)).file;

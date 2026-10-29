@@ -58,6 +58,7 @@ It was built for studying LLM inference and training codebases such as [nano-vll
 - Compare a card across branches, worktrees or pull requests, with change marks and a three-way view.
 - Turn a group of cards into a sub-board, or share one card across several boards.
 - Copy or move a board to another project, with its sub-boards, shared cards and images.
+- Keep boards in the repository: **Move Boards into Project…** (in the Boards view's `…` menu) moves them into a `.codeboard` folder that git can track, and anyone who opens the repository sees them. Panning and zooming don't change board files.
 - Browse a GitHub repository from the sidebar, or paste a GitHub file link onto a board.
 - Pin questions to code with `?` stickers and collect them in the Questions view.
 - Export a board as Markdown, a standalone HTML snapshot, or a PNG.
@@ -92,7 +93,7 @@ For the best results with Python, install [Pylance](https://marketplace.visualst
 | Setting | Default | Description |
 | --- | --- | --- |
 | `codeboard.theme` | `warm-ink` | Board theme. Each has a light and a dark variant. |
-| `codeboard.storageDir` | *(empty)* | Folder for board files. Empty uses VS Code's workspace storage, outside the repository. |
+| `codeboard.storageDir` | *(empty)* | Folder for board files. Empty uses the `.codeboard` folder in the first workspace folder if there is one, otherwise VS Code's workspace storage, outside the repository. |
 | `codeboard.ai.provider` | `auto` | Inline completions in Notes: `auto`, `copilot`, `deepseek` or `off`. |
 | `codeboard.ai.deepseekModel` | `deepseek-flash` | DeepSeek model used for completions. |
 | `codeboard.studyScope` | `[]` | Packages outside the workspace that count as project code, for example `torch`. |
@@ -103,7 +104,7 @@ Set a DeepSeek API key with **CodeBoard: Set DeepSeek API Key**. It is kept in V
 
 ## Privacy
 
-CodeBoard runs locally and collects no telemetry. Boards are stored on your machine, in VS Code's workspace storage or in `codeboard.storageDir`, and nothing is written into the repository you are reading. Only these features reach the network:
+CodeBoard runs locally and collects no telemetry. Boards are stored on your machine, in VS Code's workspace storage or in `codeboard.storageDir`, and nothing is written into the repository you are reading unless you move the boards into it (a `.codeboard` folder). Only these features reach the network:
 
 - **Gray inline completions** (in Notes and Free code cards): the text around the caret (up to a few thousand characters) goes to a VS Code language model such as GitHub Copilot or, only if you set a DeepSeek API key, to DeepSeek. Turn them off with `"codeboard.ai.provider": "off"`.
 - **GitHub**: the GitHub Files sidebar, pasted GitHub file links and pull-request variants read from GitHub's API, signed in with your VS Code GitHub account when a repository needs it.
