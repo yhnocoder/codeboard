@@ -2,6 +2,7 @@
 export { parseMd, serializeMd, mdSchema, baseExtensions, mdBlockStarts, texBrackets } from "./schema";
 export { renderMd, renderMdInline, clearMdCache, mdCached } from "./render";
 export { setAssetBase, setImageResolver, type ImageResolver, type ResolvedImage } from "./image";
+export { imageCaption, setImageCaption } from "./caption";
 export { hydrate, mdClick, toggleTask, setRefResolver, resolveRef, type RefTarget } from "./view";
 export { setCodeHighlighter, highlightCode, cachedCode, colorCode, type CodeHighlighter } from "./code";
 export { staticTextRange, staticDomRange, docRange, type StaticTextRange } from "./selmap";

@@ -712,7 +712,9 @@ export function installKeys() {
     const w = worldAt(lastPointer());
     if (!file && !text && !svg) return;
     e.preventDefault();
-    const image = (f: File) => { const rd = new FileReader(); rd.onload = () => A.addImage(String(rd.result), f.name || "pasted.png", w); rd.readAsDataURL(f); };
+    // PNG 里没记分辨率时：网页上复制的图（剪贴板里带着 HTML）按 1 倍；截图按这个窗口的倍数（Retina 上是 2），看到的大小和截的时候一样
+    const scale = e.clipboardData?.types.includes("text/html") ? 1 : window.devicePixelRatio || 1;
+    const image = (f: File) => { const rd = new FileReader(); rd.onload = () => A.addImage(String(rd.result), f.name || "pasted.png", w, { scale }); rd.readAsDataURL(f); };
     if (!text && svg) return void A.pasteText(svg, w);
     if (!text) return image(file!);
     // 先看是不是白板上复制的卡（这块白板的，或者问宿主：别的白板上的就贴卡），否则照旧按图 / 文字粘贴

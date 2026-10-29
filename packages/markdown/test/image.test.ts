@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { parseMd, serializeMd } from "../src/schema";
 import { renderMd } from "../src/render";
 import { setAssetBase, setImageResolver } from "../src/image";
+import { imageCaption, setImageCaption } from "../src/caption";
 
 const rt = (s: string) => serializeMd(parseMd(s));
 const imgOf = (html: string) => { const d = document.createElement("div"); d.innerHTML = html; return d.querySelector("img")!; };
@@ -100,5 +101,40 @@ describe("image render", () => {
     expect(imgOf(renderMd("![](assets/k.png)")).getAttribute("src")).toBe("https://two.test/k.png");
     setAssetBase("");
     expect(imgOf(renderMd("![](assets/k.png)")).getAttribute("src")).toBe("assets/k.png");
+  });
+});
+
+describe("image captions (the title)", () => {
+  it("round-trips captions, escaping quotes and backslashes, with a width after", () => {
+    for (const s of ['![a](assets/a.png "Figure 1: a warp")', '![](assets/a.png "say \\"hi\\" \\\\ x")', '![a](assets/a.png "Fig. 2 (left)"){width=40%}', 'see ![a](https://a.b/c.png "c") here']) expect(rt(s)).toBe(s);
+    const doc = { type: "doc", content: [{ type: "paragraph", content: [{ type: "image", attrs: { src: "assets/a.png", alt: "", title: 'two\nlines "q"' } }] }] };
+    expect(serializeMd(doc)).toBe('![](assets/a.png "two lines \\"q\\"")');
+    expect(parseMd(serializeMd(doc)).content![0].content![0].attrs!.title).toBe('two lines "q"');
+  });
+  it("renders the caption under the image (static), with the width on the figure, and none for an empty title", () => {
+    const d = document.createElement("div");
+    d.innerHTML = renderMd('![a](assets/a.png "Figure 1"){width=40%}');
+    const fig = d.querySelector(".md-fig")!;
+    expect(fig.querySelector(".md-cap")!.textContent).toBe("Figure 1");
+    expect(fig.classList.contains("sized")).toBe(true);
+    expect((fig as HTMLElement).style.width).toBe("40%");
+    expect(fig.querySelector("img")!.hasAttribute("title")).toBe(false);
+    expect(fig.querySelector("img")!.hasAttribute("style")).toBe(false);
+    d.innerHTML = renderMd('![a](assets/a.png "  ")');
+    expect(d.querySelector(".md-fig")).toBeNull();
+    expect(d.querySelector("img")).not.toBeNull();
+  });
+  it("sets, changes and removes the caption of the nth image with that address, touching nothing else", () => {
+    const md = "# T\n\n`![x](assets/a.png)` and\n\n```\n![y](assets/a.png)\n```\n\n![first (1)](assets/a.png)\n\nmid *text*  \n![second](<assets/a.png> 'old'){width=50%}";
+    expect(imageCaption(md, "assets/a.png", 0)).toBe("");
+    expect(imageCaption(md, "assets/a.png", 1)).toBe("old");
+    expect(imageCaption(md, "assets/a.png", 2)).toBeNull();
+    const one = setImageCaption(md, "assets/a.png", 0, 'A "quoted" one');
+    expect(one).toBe(md.replace("![first (1)](assets/a.png)", '![first (1)](assets/a.png "A \\"quoted\\" one")'));
+    expect(imageCaption(one, "assets/a.png", 0)).toBe('A "quoted" one');
+    const two = setImageCaption(md, "assets/a.png", 1, "new");
+    expect(two).toBe(md.replace("![second](<assets/a.png> 'old')", '![second](<assets/a.png> "new")'));
+    expect(setImageCaption(two, "assets/a.png", 1, " ")).toBe(md.replace("![second](<assets/a.png> 'old')", "![second](<assets/a.png>)"));
+    expect(setImageCaption(md, "assets/zzz.png", 0, "x")).toBe(md);
   });
 });

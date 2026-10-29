@@ -107,3 +107,34 @@ function svgSize(attrs: string): SvgInfo {
   else if (!(w > 0) && !(h > 0)) { w = vw; h = vh; }
   return w > 0 && h > 0 ? { w: Math.max(1, Math.round(w)), h: Math.max(1, Math.round(h)) } : {};
 }
+
+/**
+ * PNG 的 pHYs 块记的分辨率（每英寸多少像素，按横向）：Mac 截图在 Retina 屏上是 144，普通屏 72。
+ * 只认单位是米的（单位 0 只记长宽比）；不是 PNG、没有这一块（或在 IDAT 之后）回 null
+ */
+export function pngDpi(b: Uint8Array): number | null {
+  if (b.length < 33 || b[0] !== 0x89 || ascii(b, 1, 7) !== "PNG\r\n\x1a\n") return null;
+  const dv = new DataView(b.buffer, b.byteOffset, b.byteLength);
+  for (let i = 8; i + 8 <= b.length;) {
+    const len = dv.getUint32(i), type = ascii(b, i + 4, 4);
+    if (type === "IDAT" || type === "IEND") return null;
+    if (type === "pHYs" && len >= 9 && i + 17 <= b.length) {
+      const ppm = dv.getUint32(i + 8);
+      return b[i + 16] === 1 && ppm > 0 ? ppm * 0.0254 : null;
+    }
+    i += 12 + len;
+  }
+  return null;
+}
+
+/**
+ * 图在屏幕上看到的大小是像素的几分之一（图片卡的宽度按它算）：PNG 有 pHYs 按 dpi / 72（Mac 的约定：72 dpi 是一倍）；
+ * 没有的用 fallback（白板：剪贴板里的截图用窗口的 devicePixelRatio，网页上复制的、文件按 1 倍）。
+ * dpi 取整到 72 的 1/4 倍附近（144 dpi 存成 5669 每米，换回来是 143.99）
+ */
+export function imageScale(b: Uint8Array, fallback = 1): number {
+  const dpi = pngDpi(b);
+  if (!dpi) return fallback;
+  const k = Math.min(4, Math.max(0.25, dpi / 72)); // 记错的（1 dpi、几千 dpi）不让卡大得、小得离谱
+  return Math.abs(k * 4 - Math.round(k * 4)) < 0.01 ? Math.round(k * 4) / 4 : k;
+}

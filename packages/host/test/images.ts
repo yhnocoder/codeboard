@@ -19,8 +19,10 @@ const pixels = (w: number, h: number, paint: Paint) => {
 const ihdr = (w: number, h: number) => chunk("IHDR", Buffer.concat([u32(w), u32(h), Buffer.from([8, 6, 0, 0, 0])]));
 const SIG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
-/** A static RGBA PNG */
-export const png = (w: number, h: number, paint: Paint) => Buffer.concat([SIG, ihdr(w, h), chunk("IDAT", pixels(w, h, paint)), chunk("IEND", Buffer.alloc(0))]);
+/** A static RGBA PNG; dpi: a pHYs chunk with that resolution (144 = a Mac screenshot on a Retina screen) */
+export const png = (w: number, h: number, paint: Paint, dpi?: number) => Buffer.concat([SIG, ihdr(w, h),
+  ...(dpi ? [chunk("pHYs", Buffer.concat([u32(Math.round(dpi / 0.0254)), u32(Math.round(dpi / 0.0254)), Buffer.from([1])]))] : []),
+  chunk("IDAT", pixels(w, h, paint)), chunk("IEND", Buffer.alloc(0))]);
 
 /** An animated PNG (APNG), looping, delay ms per frame */
 export function apng(w: number, h: number, frames: Paint[], delay = 200) {

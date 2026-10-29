@@ -5,8 +5,8 @@
 import type { Node as PMNode } from "@tiptap/pm/model";
 
 const LEAF_CHAR = "￼";
-/** 静态显示里一个节点占一整块、在文档里是一个叶子节点的：算一个字 */
-const LEAF = ".katex, .math, .md-ref, .fnref, .md-emoji, .md-toc, .md-html, img, br, hr";
+/** 静态显示里一个节点占一整块、在文档里是一个叶子节点的：算一个字（.md-fig = 带图注的图，图注是图的属性） */
+const LEAF = ".katex, .math, .md-ref, .fnref, .md-emoji, .md-toc, .md-html, .md-fig, img, br, hr";
 /** 静态显示里有、文档的字里没有的：{字|批注} 的标签（批注是标注的属性） */
 const EXTRA = "md-annot-n";
 

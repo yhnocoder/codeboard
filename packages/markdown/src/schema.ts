@@ -347,7 +347,11 @@ const Img = Image.extend({
     };
   },
   parseMarkdown: (t, h) => h.createNode("image", { src: t.href, title: t.title, alt: t.text, width: t.width ?? null }),
-  renderMarkdown(n, h, cx) { const md = this.parent!(n, h, cx); return n.attrs?.width ? `${md}{width=${n.attrs.width}%}` : md; },
+  // title 是图注（显示在图下面）：TipTap 自己写的 "title" 不转义引号，这里转义 \ 和 "，换行并成空格（标题只能一行）
+  renderMarkdown(n) {
+    const a = n.attrs ?? {}, t = String(a.title ?? "").replace(/\s*\n\s*/g, " ").trim();
+    return `![${a.alt ?? ""}](${a.src ?? ""}${t ? ` "${t.replace(/[\\"]/g, "\\$&")}"` : ""})${a.width ? `{width=${a.width}%}` : ""}`;
+  },
 }).configure({ inline: true, allowBase64: true });
 // TipTap 的段落把只有一张图的一段解析成块级的图：这里图片是行内的，照样是一段
 const Para = Paragraph.extend({

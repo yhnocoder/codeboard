@@ -4,7 +4,7 @@ import { unwrap } from "solid-js/store";
 import {
   uid, findCard, isCode, placeCards,
   besideFree, findFree, bounds, removeCards, retargetCards, GAP,
-  classifyPaste, guessLang, estSize, defaultWidth, BOX_FILLS, NEW_CARD_W,
+  classifyPaste, guessLang, estSize, defaultWidth, imageScale, BOX_FILLS, NEW_CARD_W,
   type Board, type Card, type CodeCard, type NoteCard, type NoteLook, type Segment, type Place,
   type NewCard, type Rect,
 } from "@codeboard/core";
@@ -98,14 +98,29 @@ export async function newImage(at?: { x: number; y: number }) {
   if (!dataUrl) return;
   return addImage(dataUrl, "image.png", at);
 }
-export async function addImage(dataUrl: string, name: string, at?: { x: number; y: number }) {
+const MIN_IMAGE_W = 24;
+/**
+ * 新图片卡的宽度：图在屏幕上看到的宽（像素 ÷ 倍数，见 core 的 imageScale），最宽 NEW_CARD_W，高度跟着比例。
+ * scale = PNG 里没记分辨率时按几倍算：剪贴板里的截图传窗口的 devicePixelRatio，别的（网页上复制的、文件）是 1
+ */
+export function imageCardWidth(dataUrl: string, natural: number, scale = 1): number {
+  const png = /^data:image\/png;base64,/.exec(dataUrl);
+  let k = scale;
+  if (png) {
+    // pHYs 在 IDAT 之前（前面可能有几 KB 的色彩配置 iCCP）：只解码开头 64 KB
+    const b64 = dataUrl.slice(png[0].length, png[0].length + 65536);
+    try { k = imageScale(Uint8Array.from(atob(b64.slice(0, b64.length - (b64.length % 4))), (ch) => ch.charCodeAt(0)), scale); } catch { /* 不是合法的 base64：按 scale */ }
+  }
+  return Math.max(MIN_IMAGE_W, Math.min(NEW_CARD_W, Math.round((natural || 320) / k)));
+}
+export async function addImage(dataUrl: string, name: string, at?: { x: number; y: number }, o: { scale?: number } = {}) {
   try { dataUrl = cleanImage(dataUrl); } catch (e) { toast((e as Error).message); return; }
   const file = await ask("saveAsset", { name, dataUrl }).catch(() => null);
   const src = file ?? dataUrl;
   const img = new Image();
   img.src = dataUrl;
   await img.decode().catch(() => {});
-  const w = Math.min(480, Math.max(160, img.naturalWidth || 320));
+  const w = imageCardWidth(dataUrl, img.naturalWidth, o.scale);
   const id = uid("i");
   addCards([{ card: { id, kind: "image", src }, views: {}, w }], { at });
   return id;

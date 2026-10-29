@@ -4,7 +4,7 @@ import { Fragment, type DOMOutputSpec, type Mark, type Node as PMNode } from "@t
 import katex from "katex";
 import DOMPurify from "dompurify";
 import { isHtmlComment, mathTex, mdSchema, parseMd, tocEntries, tocHtml } from "./schema";
-import { imageAttrs, onImagesChanged } from "./image";
+import { captionOf, imageAttrs, onImagesChanged } from "./image";
 import { mathMacros } from "./math";
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -55,7 +55,11 @@ const DISPLAY: Record<string, (n: PMNode, cx: Cx) => string | undefined> = {
   codeBlock: (n, cx) => (n.attrs.language === "mermaid" ? trust(cx, `<div class="mmd" data-src="${escA(n.textContent)}"><pre class="md-code"><code>${esc(n.textContent)}</code></pre></div>`) : undefined),
   toc: (_n, cx) => `<nav data-type="toc" class="md-toc">${tocHtml(tocEntries(cx.doc))}</nav>`,
   // 不让浏览器拖图（拖的是卡片）
-  image: (n) => specHtml(["img", { ...imageAttrs(n.attrs), draggable: "false" }], ""),
+  // 有图注（title）的图包一层 .md-fig，图注在图下面；缩小了的宽度写在这一层上（和编辑器里的 .md-img 一样）
+  image: (n) => {
+    const a: Record<string, string | null> = { ...imageAttrs(n.attrs), draggable: "false" }, cap = captionOf(n.attrs.title);
+    return cap ? specHtml(["span", { class: `md-fig${a.class ? " sized" : ""}`, style: a.style }, ["img", { ...a, class: null, style: null }], ["span", { class: "md-cap" }, cap]], "") : specHtml(["img", a], "");
+  },
   // 一条定义都还没写（只有正文里的 [^1]）：不画空的脚注列表
   footnotes: (n) => (n.content.content.some((f) => f.childCount > 1 || f.firstChild!.content.size > 0) ? undefined : ""),
   htmlInline: (n) => userHtml(n.attrs.raw),
