@@ -23,7 +23,7 @@ import type { CodeLang } from "./codelang";
 import { MathBlockView } from "./mathblock";
 import { mathHintsPlugin } from "./mathhints";
 import { mathMacros } from "../math";
-import { imageEditing, insertImageUrl, type SaveImage } from "./image";
+import { imageEditing, insertImageUrl, pastedImages, type SaveImage } from "./image";
 import { Typora, reconvert } from "./typora";
 import { sourceKey } from "./source";
 import { place, virtual } from "../ui/place";
@@ -443,6 +443,7 @@ function handlePaste(e: Editor, o: MdEditorOpts, ev: ClipboardEvent, slice: Slic
   const raw = cd.getData("text/plain").replace(/\r\n?/g, "\n");
   const $f = e.state.selection.$from;
   if ($f.parent.type.spec.code) return false; // 代码块里原样粘贴
+  if (pastedImages(cd).length) return false; // 图片（和整段 SVG 文字）交给 imageEditing 的粘贴，不当 Markdown 读
   const html = cd.getData("text/html");
   // 只有纯文字时（电子书、网页里排好的公式）"显示的字 + TeX" 只留 $TeX$；HTML 里的在 mathInSlice 里认
   const text = html || cd.getData("vscode-editor-data") ? raw : undoubleTex(raw);
