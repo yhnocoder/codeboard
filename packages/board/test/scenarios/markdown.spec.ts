@@ -124,10 +124,10 @@ test("markdownEdit", async () => {
   await pg.locator('.card[data-id="n1"] .nbody').dblclick({ position: { x: 200, y: 40 } });
   await pg.waitForSelector('.card[data-id="n1"] .md-pm', { timeout: 5000 });
   const focus = await pg.evaluate(() => !!document.activeElement?.closest(".md-pm"));
-  // 双击把光标放在双击处：先到文末
+  // 双击把光标放在双击处：先放到标题末尾（文末是脚注，里面放不了表格）
   await focusSettled(pg);
-  await pg.keyboard.press("ControlOrMeta+End");
-  // 文末打字：**x** 自动变粗体，板子的快捷键不响应（t 不会新建 Text）
+  await pg.evaluate(() => { const e = (document.querySelector('.card[data-id="n1"] .md-pm') as any).editor; e.commands.setTextSelection(e.state.doc.firstChild.nodeSize - 1); });
+  // 段末打字：**x** 自动变粗体，板子的快捷键不响应（t 不会新建 Text）
   await pg.keyboard.press("Enter");
   await pg.keyboard.type("Hello **world** and t");
   const tables0 = await pg.locator('.card[data-id="n1"] .md-pm table').count();

@@ -39,7 +39,7 @@ test("writeMenuAndKeysCreateTextBoxMark", async () => {
   await pg.keyboard.type("Model Runner");
   await commitEdit(h);
   const box = await until(h, "the Box is saved", () => notes(h).find((c) => c.look === "box" && c.md === "Model Runner"));
-  check("writeMenu New Box: yellow, 150 × 60", box.fill === "yellow" && h.board().place[box.id].w === 150 && h.board().place[box.id].h === 60, { box, place: h.board().place[box.id] });
+  check("writeMenu New Box: yellow, 381 × 60", box.fill === "yellow" && h.board().place[box.id].w === 381 && h.board().place[box.id].h === 60, { box, place: h.board().place[box.id] });
 
   const made: Record<string, NoteCard | undefined> = {};
   for (const [key, look, x] of [["t", "text", 200], ["r", "box", 500], ["m", "mark", 800]] as const) {

@@ -22,7 +22,7 @@ test("imageFollowsAspectRatio", async () => {
   b.place.wide = { x: 60, y: 80, w: 360, h: 360 };
   b.place.tall = { x: 520, y: 80, w: 240, h: 200 };
   b.cam = { x: 0, y: 0, z: 1 };
-  const h = await open({ board: migrateBoard(JSON.parse(JSON.stringify({ ...b, version: 6 }))), light, w: 1000, h: 800 });
+  const h = await open({ board: { ...migrateBoard(JSON.parse(JSON.stringify({ ...b, version: 6 }))), cam: b.cam }, light, w: 1000, h: 800 });
   const pg = h.page;
   await until(h, "both images are decoded", () => pg.locator(".imgb img").evaluateAll((els) => els.length === 2 && els.every((e) => (e as HTMLImageElement).complete && (e as HTMLImageElement).naturalWidth > 0)));
   await idle(h);
