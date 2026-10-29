@@ -67,10 +67,6 @@ describe("version re-checks", () => {
     onePause(() => { W.fire.edit.fire(schAbs); W.fire.save.fire(seqAbs); });
     expect(rechecks).toEqual([[seqAbs, schAbs].sort()]);
   });
-  it("re-check a file changed outside the editor", async () => {
-    onePause(() => W.fire.change.fire(schAbs));
-    expect(rechecks).toEqual([[schAbs]]);
-  });
   it("notice a reverted unsaved edit without a save: the card's code is gone", async () => {
     const seg = typed.segments[0];
     expect(seg.version).toMatchObject({ kind: "git", uncommitted: true });
@@ -79,14 +75,50 @@ describe("version re-checks", () => {
     expect(rechecks).toEqual([[seqAbs]]);
     expect((await staleFor([seg]))[seg.id]?.state).toBe("lost");
   });
-  it("a file changed outside the editor right after its card is saved, before its watch starts, is still re-checked", async () => {
+  it("a file newly on a board is re-checked once its watch is in place: a change made before then fires nothing", async () => {
     const b = (await store.load("bW"))!;
     const bm = (await card(bmAbs, "BlockManager.allocate")).card;
     b.cards.push(bm); b.place[bm.id] = { x: 0, y: 600, w: 500 };
     rechecks.length = 0;
     await store.save(b);
-    W.fire.change.fire(bmAbs); // the board save starts the watch for this file asynchronously: this event comes too early
     await vi.waitFor(() => expect(rechecks.flat()).toContain(bmAbs), { timeout: 5000 });
+  });
+});
+
+// The test workspace's watch() never sees the disk, like an editor whose watcher starts the watch late (VS Code starts it only once
+// the watches asked for before it have started): the file's change still has to arrive
+describe("files changed outside the editor", () => {
+  const ext = fs.mkdtempSync("/tmp/codeboard-watch-ext-");
+  const modAbs = path.join(ext, "mod.py");
+  const boards = fs.mkdtempSync("/tmp/codeboard-watch-ext-boards-");
+  const st = new Storage(nodeFs, { dir: () => boards });
+  const seen: string[] = [];
+  const host = { refreshStale: async (paths?: ReadonlySet<string>) => { seen.push(...(paths ?? [])); }, get: () => undefined, staleChanged: () => undefined } as unknown as BoardHost;
+  let w: Disposable & { ready: Promise<void> };
+  beforeAll(async () => {
+    fs.writeFileSync(modAbs, "def f():\n    return 1\n");
+    w = watchVersions(host, st);
+    await w.ready;
+  });
+  afterAll(() => { w.dispose(); for (const d of [ext, boards]) fs.rmSync(d, { recursive: true, force: true }); });
+
+  it("a change right after the card is saved is re-checked from the disk, however late the editor's watcher starts", async () => {
+    const b = emptyBoard("bX", "Outside");
+    const c = (await card(modAbs, "f")).card;
+    b.cards.push(c); b.place[c.id] = { x: 0, y: 0, w: 500 };
+    expect(c.segments[0].src).toEqual({ kind: "external", root: ext });
+    await st.save(b);
+    // the re-check made once the watch is in place
+    await vi.waitFor(() => expect(seen).toContain(modAbs), { timeout: 5000 });
+    seen.length = 0;
+    fs.writeFileSync(modAbs, "def f():\n    return 2\n");
+    await vi.waitFor(() => expect(seen).toContain(modAbs), { timeout: 5000 });
+  });
+  it("a save that renames a new file over the old one is re-checked too", async () => {
+    seen.length = 0;
+    fs.writeFileSync(modAbs + ".tmp", "def f():\n    return 3\n");
+    fs.renameSync(modAbs + ".tmp", modAbs);
+    await vi.waitFor(() => expect(seen).toContain(modAbs), { timeout: 5000 });
   });
 });
 
