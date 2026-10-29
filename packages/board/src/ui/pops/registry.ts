@@ -6,9 +6,9 @@ import { NotesPop, AddNotePop } from "./notes";
 import { PeekPop } from "./peek";
 import { DiffPop, ThreePop, CommitsPop } from "./versions";
 import { VarsPop, MarkPop, ImplsPop, ValsPop, NamesPop, RpcPop } from "./chains";
-import { QuestionPop, BoardsPop, PickPop } from "./misc";
+import { QuestionPop, BoardsPop, PickPop, ModifySvgPop } from "./misc";
 
 export const POPS: { [K in Pop["kind"]]: Component<PopProps<K>> } = {
   notes: NotesPop, peek: PeekPop, addNote: AddNotePop, diff: DiffPop, pick: PickPop, commits: CommitsPop, vars: VarsPop, mark: MarkPop,
-  boards: BoardsPop, impls: ImplsPop, vals: ValsPop, names: NamesPop, rpc: RpcPop, three: ThreePop, question: QuestionPop,
+  boards: BoardsPop, impls: ImplsPop, vals: ValsPop, names: NamesPop, rpc: RpcPop, three: ThreePop, question: QuestionPop, modifySvg: ModifySvgPop,
 };

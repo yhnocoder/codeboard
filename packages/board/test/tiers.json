@@ -215,13 +215,15 @@
       "scenarios": ["export", "svgImagesInHtmlExport", "svgImageInPngExport"]
     },
     "images": {
-      "about": "images: Image cards, images in Notes (paste, drop, resize), SVG, the asset store",
+      "about": "images: Image cards, images in Notes (paste, drop, resize), SVG, the asset store, the DeepSeek image tools (Extract Text, Convert to SVG, Modify SVG, Paste Image Text)",
       "files": [
-        "packages/board/src/md/images.ts", "packages/board/src/notedrop.ts", "packages/board/src/actions/imagedata.ts", "packages/markdown/src/image.ts",
-        "packages/markdown/src/editor/image.ts", "packages/core/src/image.ts", "packages/host/src/{images,assetsweep}.ts",
-        "packages/board/test/scenarios/{image-cards,note-images,svg-images,file-drops}.spec.ts"
+        "packages/board/src/md/images.ts", "packages/board/src/notedrop.ts", "packages/board/src/actions/{imagedata,imageai}.ts", "packages/markdown/src/image.ts",
+        "packages/markdown/src/editor/image.ts", "packages/core/src/image.ts", "packages/host/src/{images,assetsweep,imageai}.ts",
+        "packages/board/src/state/imageai.ts", "packages/board/src/ui/AiBusy.tsx",
+        "packages/board/test/scenarios/{image-cards,note-images,svg-images,file-drops,image-ai}.spec.ts"
       ],
       "scenarios": [
+        "imageAiConvertThenModify",
         "notePastedImageSameSizeInBothModes", "imageFollowsAspectRatio", "imageCardDrag", "notePasteImageIsOneUndoStep",
         "noteDropImageFileInserts", "noteNonImagePasteRefused", "imageCardDropsIntoNote", "noteImageResize", "svgFileDropMakesImageCard",
         "svgPasteIntoNote", "noteImageReopens"

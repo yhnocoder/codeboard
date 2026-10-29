@@ -25,6 +25,7 @@ import { askQuestion, askQuestionOnCard } from "./questions";
 import { addVariantMenu } from "./variants";
 import { LEGEND, legendName, HAND_COLORS, type Link } from "@codeboard/core";
 import { kbd } from "../keymap";
+import { imageAiItems, type ImgRef } from "./imageai";
 
 /**
  * 删除那一组：共享卡（在别的白板上也有）分成「从这块白板移除」（⌫）和「全部删掉」（⌘⌫，要确认），再加 Unlink；
@@ -104,6 +105,12 @@ export function lineMenu(ls: LineSel, x: number, y: number, annotate?: () => voi
   openMenu([...(annotate ? [{ label: "Annotate Selection…", hint: "A handwritten note above the selected words", run: annotate }, null] : []), ...lineItems(ls), null, { label: "Card", sub: cardItems(ls.card, x, y) }], x, y);
 }
 
+/** 右键 Note 里的一张图：图的操作，整张 Note 的菜单在最后的 Note ▸ 里 */
+export function noteImageMenu(ref: ImgRef, x: number, y: number) {
+  selectCard(ref.card);
+  openMenu([...imageAiItems(ref), null, { label: "Note", sub: cardItems(ref.card, x, y) }], x, y);
+}
+
 export function cardMenu(id: string, x: number, y: number) {
   const items = cardItems(id, x, y);
   if (items.length) openMenu(items, x, y);
@@ -181,6 +188,8 @@ function cardItems(id: string, x: number, y: number): Item[] {
     ...tail,
   ];
   if (c.kind === "image") return [
+    ...imageAiItems({ card: id }),
+    null,
     { label: "Fit Content", kbd: kbd("fitContent"), run: () => fitContent([id]) },
     { label: "Background", checked: !!c.bg, run: () => toggleBg(id) },
     { label: "Edit", sub: [

@@ -5,8 +5,9 @@ import { useOverlay } from "./overlay";
 import { useListNav } from "./hooks";
 
 export type Item =
-  | { label: string; kbd?: string; run?: () => void; disabled?: boolean | string; checked?: boolean; danger?: boolean; sub?: Item[]; hint?: string; head?: true }
-  | null; // 分隔线。head = 不能点的小标题（共享卡：「… · on 2 boards」）
+  | { label: string; kbd?: string; run?: () => void; disabled?: boolean | string; checked?: boolean; danger?: boolean; sub?: Item[]; hint?: string; head?: true; keep?: true; inset?: true }
+  | null; // 分隔线。head = 不能点的小标题（共享卡：「… · on 2 boards」）。
+// keep = 勾选项点了只切换、菜单不关（Convert to SVG 下面的选项）；inset = 缩进一级，表示它属于上面那一项
 
 type MenuState = { items: Item[]; x: number; y: number; n: number; up?: boolean };
 const [menu, setMenu] = createSignal<MenuState | null>(null);
@@ -39,6 +40,9 @@ function MenuList(p: { items: Item[]; x: number; y: number; onClose: () => void;
   const [subOf, setSubOf] = createSignal<{ i: number; x: number; y: number; el: Element; kb: boolean } | null>(null);
   /** 键盘选中的那一项（.kb，样子和悬停一样）；鼠标一动就交还给悬停 */
   const [kbAt, setKbAt] = createSignal<number | null>(null);
+  /** 点过的 keep 项（勾选状态跟着翻） */
+  const [flipped, setFlipped] = createSignal<ReadonlySet<number>>(new Set());
+  const checked = (it: Exclude<Item, null>, i: number) => !!it.checked !== flipped().has(i);
   const live = (it: Item) => !!it && !it.head && !it.disabled;
   const openSub = (i: number, kb: boolean) => {
     const b = btns[i];
@@ -82,16 +86,17 @@ function MenuList(p: { items: Item[]; x: number; y: number; onClose: () => void;
       <For each={p.items}>
         {(it, i) =>
           it?.head ? <div class="mh">{it.label}</div> : it ? (
-            <button ref={(b) => (btns[i()] = b)} role="menuitem" class={it.danger ? "danger" : ""} classList={{ kb: kbAt() === i(), subopen: subOf()?.i === i() }}
+            <button ref={(b) => (btns[i()] = b)} role={it.keep ? "menuitemcheckbox" : "menuitem"} aria-checked={it.keep ? checked(it, i()) : undefined} class={it.danger ? "danger" : ""} classList={{ kb: kbAt() === i(), subopen: subOf()?.i === i(), inset: !!it.inset }}
               disabled={!!it.disabled} title={typeof it.disabled === "string" ? it.disabled : it.hint}
               aria-haspopup={it.sub ? "menu" : undefined} aria-expanded={it.sub ? subOf()?.i === i() : undefined}
               onPointerEnter={() => { if (it.sub && !it.disabled) openSub(i(), false); else setSubOf(null); }}
               onClick={() => {
                 if (it.disabled) return;
                 if (it.sub) return openSub(i(), kbAt() === i());
+                if (it.keep) { const k = i(); setFlipped((f) => { const n = new Set(f); if (!n.delete(k)) n.add(k); return n; }); return it.run?.(); }
                 p.onClose(); it.run?.();
               }}>
-              <span class="ck">{it.checked ? <Icon name="check" size={12} /> : null}</span>
+              <span class="ck">{checked(it, i()) ? <Icon name="check" size={12} /> : null}</span>
               <span class="lb">{it.label}</span>
               <Show when={it.kbd}><small title={it.kbd}>{it.kbd}</small></Show>
               <Show when={it.sub}><Icon name="chevR" size={12} /></Show>

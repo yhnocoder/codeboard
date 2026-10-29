@@ -78,12 +78,15 @@ export type Settings = {
   noteHeadingInBody: boolean; // Note 开头的标题已经是卡头的名字时，正文里还显示它吗（默认不显示，只是显示上藏起来，编辑时照常出现）
   noteFontSize: NoteFontSizes; // Note 正文和各级标题的字号（px，null = 跟主题）；Text 卡有自己的字号档，不受影响
   mathPreamble: string; // 公式预设：几行 \newcommand / \def，所有白板的公式都认（显示、编辑、导出）
+  svgNoBg: boolean; // Convert to SVG 的 Remove Background（默认开）：画出来的 SVG 不带纸的底色
+  svgThink: boolean; // Convert to SVG 的 Think First：模型先思考再画（慢几倍，排版更准；默认关）
 };
 export const DEFAULT_SETTINGS: Settings = {
   theme: "warm-ink", vscodeBg: false, hideOnNew: { blank: false }, studyScope: [], stickerDir: "", zoomOverview: 0.6, zoomMap: 0.25, dblClick: "text",
   hideNumbers: false, themeReflow: "push", debug: false, tune: {}, pasteOther: "linked", sharedUpdate: "ask", subPreview: "skeleton",
   welcomeBack: "2d", exportQuestions: false, exportBoardOnly: false, exportScope: "board", noteHeadingInBody: false,
   noteFontSize: { body: null, h1: null, h2: null, h3: null, h4: null, h5: null, h6: null }, mathPreamble: "",
+  svgNoBg: true, svgThink: false,
 };
 
 /**
@@ -318,10 +321,31 @@ export type BoardToHost =
   | { type: "exportFile"; req: number; kind: "html" | "md"; name: string; text: string }
   /** 写剪贴板（webview 里写可能被拦下） */
   | { type: "copyText"; text: string }
+  /** 图片的 AI 操作（DeepSeek 看图）：宿主拿着密钥去问，回模型的原话或失败的原因（ImageAiResult）。job = 白板给的号，取消用 */
+  | { type: "imageAi"; req: number; job: number; op: ImageAiOp }
+  /** 取消还在等的 imageAi（卡上的 Cancel、Esc）：宿主中止请求，那个请求回 { fail: "canceled" } */
+  | { type: "imageAiCancel"; job: number }
+  /** 没有密钥、密钥被拒时提示里的 Set DeepSeek API Key…：和命令 CodeBoard: Set DeepSeek API Key 一样 */
+  | { type: "setDeepseekKey" }
   /** Add Variant 菜单：这段代码所在仓库的其他 worktree、本地分支。回 VariantSources */
   | { type: "variantSources"; req: number; seg: Segment }
   /** 加一个 Variant：segs = 上游的段，宿主在那个来源里按函数名重新找（file 没给 abs 时先让用户选文件）。回 NewVariant；取消回 null */
   | { type: "addVariant"; req: number; segs: Segment[]; from: AddVariantFrom };
+
+/**
+ * 图片的 AI 操作。image = 发给模型的图（data: URL，白板已经缩到模型收的大小、透明处垫成白色）。
+ * extract：图里的字转成 Markdown（不思考）；svg：重画成 SVG（size = 那张图的像素宽高，noBg = 不画底色，think = 先思考）；
+ * modify：照 instruction 改 svg 的源码（思考，effort low）
+ */
+export type ImageAiOp =
+  | { kind: "extract"; image: string }
+  | { kind: "svg"; image: string; size: { w: number; h: number }; noBg: boolean; think: boolean }
+  | { kind: "modify"; svg: string; instruction: string };
+/** 失败的原因：nokey = 没设密钥，badkey = 密钥被拒（401），balance = 余额用完（402），network = 连不上，timeout = 太久没回，
+ *  cut = 回答被截断（SVG 不完整），canceled = 取消了，http = 接口别的错误（message 是接口给的话） */
+export type ImageAiFail = "nokey" | "badkey" | "balance" | "network" | "timeout" | "cut" | "canceled" | "http";
+/** text = 模型的原话（去掉了包住整个回答的代码围栏）；cut = 字被截断了（extract 照样给）；reused = 同一张图识别过，没再问模型 */
+export type ImageAiResult = { text: string; cut?: true; reused?: true } | { fail: ImageAiFail; message?: string };
 
 /** Add Variant 的来源：file 不给 abs = 让用户选；PR 只给编号（仓库从 origin 推出来） */
 export type AddVariantFrom = Exclude<VariantFrom, { kind: "upstream" | "file" | "pr" }> | { kind: "file"; abs?: string } | { kind: "pr"; num: number };
@@ -409,6 +433,7 @@ type Replies = {
   searchName: NameHit[];
   genSource: GenSource | null;
   complete: string | null;
+  imageAi: ImageAiResult;
   lspComplete: LspItem[];
   lspHover: string[];
   lspSignature: LspSignature | null;

@@ -21,3 +21,4 @@ export * from "./variants";
 export * from "./pops";
 export * from "./annots";
 export * from "./format";
+export * from "./imageai";

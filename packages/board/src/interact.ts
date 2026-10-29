@@ -323,6 +323,9 @@ export function cardContextMenu(e: MouseEvent, id: string) {
   e.preventDefault();
   e.stopPropagation();
   const t = e.target as HTMLElement;
+  // Note 里的一张图（显示着或编辑中）：图的菜单
+  const img = A.noteImageAt(t, id);
+  if (img) return A.noteImageMenu(img, e.clientX, e.clientY);
   if (t.closest("[contenteditable], input, textarea")) return;
   const colEl = t.closest("[data-col]") as HTMLElement | null;
   A.cardMenu(colEl?.dataset.col ?? id, e.clientX, e.clientY);

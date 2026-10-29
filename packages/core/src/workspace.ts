@@ -140,6 +140,10 @@ export interface WorkspaceAi {
   ask(system: string, prompt: string, opts?: { signal?: AbortSignal; maxChars?: number }): Promise<string | undefined>;
   /** 灰字补全：光标前后的文字 → 模型的原话（清理交给 cleanCompletion）。宿主按设置选模型（Copilot、DeepSeek…）；不给时用 ask */
   complete?(before: string, after: string, opts?: { signal?: AbortSignal }): Promise<string | undefined>;
+  /** DeepSeek 的 API 密钥（编辑器的密钥存储里，不进设置、白板文件、日志）；没设回 undefined */
+  deepseekKey?(): Promise<string | undefined>;
+  /** 请用户设 DeepSeek 的密钥（和命令 Set DeepSeek API Key 一样）；回设好了没有 */
+  setDeepseekKey?(): Promise<boolean>;
 }
 
 export interface Workspace {

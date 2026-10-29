@@ -28,6 +28,8 @@ export type Pop =
   | { kind: "question"; sticker: string }
   /** 三方对照：原版 / 我的 / 上游最新 */
   | { kind: "three"; card: string }
+  /** Modify SVG…：写一句怎么改（图片卡，或 Note 里的一张 SVG，见 actions/imageai.ts） */
+  | { kind: "modifySvg"; ref: { card: string; note?: string } }
 
 export type ImplPop = { card: string; seg: string; call: CallSpan; impls: ImplPick[]; base: string; at?: { x: number; y: number }; again: boolean; link?: string; abstract?: boolean };
 export type NamesPop = { card: string; seg: string; call: CallSpan; hits?: NameHit[] };
