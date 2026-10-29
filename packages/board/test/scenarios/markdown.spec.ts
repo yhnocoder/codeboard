@@ -668,6 +668,9 @@ test("markdownPaste", async () => {
   const pg = h.page;
   await pg.locator('.card[data-id="t1"] .tx').dblclick();
   await pg.waitForSelector('.card[data-id="t1"] .md-pm', { timeout: 5000 });
+  // 双击把光标放在点的位置；这里要从文末开始粘
+  await focusSettled(pg);
+  await pg.evaluate(() => (document.querySelector('.card[data-id="t1"] .md-pm') as any).editor.commands.focus("end"));
   const paste = (data: Record<string, string>) => pg.evaluate((d) => {
     const dt = new DataTransfer();
     for (const [k, v] of Object.entries(d)) dt.setData(k, v);
