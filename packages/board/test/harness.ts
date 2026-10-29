@@ -83,7 +83,28 @@ export function symCard(f: string, s: Sym): CodeCard {
 export function put(b: Board, c: Card, x: number, y: number, w = 560) { b.cards.push(c); b.place[c.id] = { x, y, w }; }
 export const findSym = (qual: string) => allSyms().find((x) => x.s.qual === qual)!;
 
-export type PageCoverage = Awaited<ReturnType<Page["coverage"]["stopJSCoverage"]>>;
+export type PageCoverage = { url: string; source?: string; functions: { ranges: { startOffset: number; endOffset: number; count: number }[] }[] }[];
+
+/**
+ * Which functions of the page's scripts ran: V8's function-level precise coverage (binary, no block counters). The impact map only
+ * needs "a function of this file ran"; Playwright's startJSCoverage records block counts, which slows hot code several times over
+ * and so changes what the timing scenarios measure (noteFindTypingLatency: p50 3 ms → 16 ms)
+ */
+async function functionCoverage(page: Page) {
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send("Profiler.enable");
+  await cdp.send("Profiler.startPreciseCoverage", { callCount: false, detailed: false });
+  return {
+    async take(): Promise<PageCoverage> {
+      const { result } = await cdp.send("Profiler.takePreciseCoverage");
+      return result.filter((r) => r.url.startsWith("file://")).map((r) => {
+        let source: string | undefined;
+        try { source = fs.readFileSync(new URL(r.url), "utf8"); } catch { source = undefined; }
+        return { url: r.url, source, functions: r.functions };
+      });
+    },
+  };
+}
 
 export type Host = { page: Page; board: () => Board; sent: BoardToHost[]; post: (m: HostToBoard) => Promise<void>; close: () => Promise<void> };
 
@@ -126,13 +147,13 @@ export async function openBoard(browser: Browser, o: OpenOptions = {}, watch: Wa
   const context = await browser.newContext({ viewport: { width: o.w ?? 1400, height: o.h ?? 900 }, deviceScaleFactor: 1 });
   const page = await context.newPage();
   // coverage (nightly): which board code the scenario runs, for picking scenarios by changed file
-  if (watch.coverage) await page.coverage.startJSCoverage({ resetOnNavigation: false });
+  const cov = watch.coverage && (await functionCoverage(page));
   const closeContext = context.close.bind(context);
   let closed = false;
   context.close = async (opts) => {
     if (closed) return;
     closed = true;
-    if (watch.coverage) watch.coverage(await page.coverage.stopJSCoverage().catch(() => []));
+    if (cov) watch.coverage!(await cov.take().catch(() => []));
     await closeContext(opts);
     fs.rmSync(html, { force: true });
   };

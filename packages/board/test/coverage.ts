@@ -43,7 +43,7 @@ function mappingsOf(file: string, text: string): Mappings | null {
   return res;
 }
 
-/** Sources of the bundle `file` with a mapping inside code that ran (V8 block coverage: the innermost range decides) */
+/** Sources of the bundle `file` with a mapping inside code that ran (V8 coverage ranges, function or block: the innermost range decides) */
 function bundleSources(file: string, text: string, fns: Fn[], out: Set<string>) {
   const m = mappingsOf(file, text);
   if (!m) return;
