@@ -7,10 +7,20 @@ import { debounce } from "@codeboard/host/ws";
 import { treeChildren, type TreeNode } from "@codeboard/host/boardtree";
 import { firstLine, type QuestionItem } from "@codeboard/core";
 import { allQuestions } from "@codeboard/host/exports";
+import { BUNDLE_EXT } from "@codeboard/host/bundle";
 
 type BNode = TreeNode;
 
-export class BoardsTree implements vscode.TreeDataProvider<BNode> {
+export class BoardsTree implements vscode.TreeDataProvider<BNode>, vscode.TreeDragAndDropController<BNode> {
+  // 从系统或资源管理器拖进来的 .codeboard：导入（侧栏里的白板自己不拖）
+  readonly dropMimeTypes = ["text/uri-list"];
+  readonly dragMimeTypes: string[] = [];
+  async handleDrop(_target: BNode | undefined, data: vscode.DataTransfer): Promise<void> {
+    const list = await data.get("text/uri-list")?.asString();
+    const files = (list ?? "").split(/\r?\n/).map((x) => x.trim()).filter(Boolean).map((x) => vscode.Uri.parse(x)).filter((u) => u.scheme === "file" && u.path.endsWith(`.${BUNDLE_EXT}`));
+    for (const f of files) await vscode.commands.executeCommand("codeboard.importBoards", f.fsPath);
+  }
+
   private emitter = new vscode.EventEmitter<void>();
   readonly onDidChangeTreeData = this.emitter.event;
   readonly refresh = debounce(() => this.emitter.fire(), 200);

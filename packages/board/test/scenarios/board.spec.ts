@@ -411,7 +411,7 @@ test("dblclickText", async () => {
 
 /** Empty New Code: clicking its own language dropdown and picking an item keeps the card; it disappears only after clicking empty space */
 test("freeCodeLanguage", async () => {
-  const h = await open({ board: emptyBoard("b1", "free"), light, w: 1300, h: 700 }); // a new Free code card is 816 wide
+  const h = await open({ board: emptyBoard("b1", "free"), light, w: 1300, h: 700 });
   await h.page.mouse.click(300, 200, { button: "right" });
   await h.page.locator(".ctx button", { hasText: "New Code" }).click(); await idle(h);
   await h.page.locator(".card .chead .lang").first().click();

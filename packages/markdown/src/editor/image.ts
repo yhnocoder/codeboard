@@ -26,7 +26,7 @@ function svgText(cd: DataTransfer): File[] {
 }
 
 /** 剪贴板里有图又有字（从 Excel、网页复制的东西常带一张图）：有字就粘字（交给别的粘贴处理）；网页上复制一张图时 HTML 里只有那张图 */
-function pastedImages(cd: DataTransfer): File[] {
+export function pastedImages(cd: DataTransfer): File[] {
   const files = imagesOf(cd.files).length ? imagesOf(cd.files) : [...cd.items].filter((i) => i.kind === "file" && i.type.startsWith("image/")).map((i) => i.getAsFile()).filter((f): f is File => !!f);
   if (!files.length) return svgText(cd);
   const text = cd.getData("text/plain").trim(), html = cd.getData("text/html");

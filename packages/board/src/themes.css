@@ -560,7 +560,6 @@
 :root.look-drafting .card:not(.text):not(.nobg) { background: var(--bg); box-shadow: 0 0 0 1px var(--rule); }
 :root.look-drafting .card.sel:not(.text) { box-shadow: 0 0 0 1px var(--ink); }
 :root.look-drafting .card.sel:not(.text)::after { content: ""; position: absolute; inset: -9px; border: 1px dashed var(--ink-2); pointer-events: none; }
-:root.look-drafting .card.sel:not(.text)::before { content: "SELECTED"; position: absolute; top: -26px; left: -9px; font: 10px var(--mono); letter-spacing: .12em; color: var(--ink-2); pointer-events: none; }
 :root.look-drafting .card.lift { box-shadow: var(--sh-lift); }
 :root.look-drafting .chead { padding: 0 6px 0 12px; gap: 10px; --hg: 10px; border-bottom: 1px solid var(--rule); }
 :root.look-drafting .chead .kind { display: none; }
@@ -589,8 +588,10 @@
 :root.look-drafting .card.note .nbody { --md-fs: var(--note-fs, 11px); line-height: 1.7; font-family: var(--mono); color: var(--ink-2); }
 :root.look-drafting .card.note .nbody h1, :root.look-drafting .card.note .nbody h2, :root.look-drafting .card.note .nbody h3, :root.look-drafting .card.note .nbody strong, :root.look-drafting .card.note .nbody b { font-family: var(--head-font); color: var(--ink); letter-spacing: .06em; }
 :root.look-drafting .card.note .ctitle { font-size: 11px; }
+:root.look-drafting .md mark { background: none; text-decoration: underline 1.5px var(--ink); text-underline-offset: 3px; } /* 图纸上不涂荧光笔：==高亮== 是一道墨线 */
 :root.look-drafting .tx.st-title { font: 600 24px/1.25 var(--head-font); text-transform: uppercase; letter-spacing: .08em; }
 :root.look-drafting .tx.st-heading { font: 600 15px/1.4 var(--head-font); text-transform: uppercase; letter-spacing: .06em; }
+:root.look-drafting .tx.st-body { font: 11px/1.7 var(--mono); } /* 和 Note 正文同一种字：同样的字体、字号和中文后备字体 */
 :root.look-drafting .sect { border-radius: 0; }
 :root.look-drafting .slabel { font: 10.5px/20px var(--mono); text-transform: uppercase; letter-spacing: .12em; border-radius: 0; }
 :root.look-drafting .pill, :root.look-drafting .ctx, :root.look-drafting .pop, :root.look-drafting .dialog, :root.look-drafting .keys, :root.look-drafting .palette, :root.look-drafting .stkpick { background: var(--bg); -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: 0 0 0 1px var(--rule); border-radius: 0; }

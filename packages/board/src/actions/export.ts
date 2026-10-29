@@ -20,6 +20,9 @@ export function walkStart(): string | undefined {
   return startCards(state.board)[0] ?? flows().graphs[0]?.roots[0];
 }
 
+/** Export Boards…：宿主问存到哪，把这块白板和它的子白板打成 .codeboard（别的项目 Import Boards… 导入） */
+export function exportBoards() { send({ type: "exportBoards" }); }
+
 export function openExport(format: ExportFormat = "html") {
   const s = state.host.settings;
   // 选中的 Section，或选中的卡所在的 Section

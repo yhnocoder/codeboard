@@ -1,8 +1,8 @@
-// 旧白板文件 → 当前版本（第 8 版）。项目里唯一的兼容代码：旧版本的结构、缺省的字段、手改出来的 null 都在这里补成
+// 旧白板文件 → 当前版本（第 9 版）。项目里唯一的兼容代码：旧版本的结构、缺省的字段、手改出来的 null 都在这里补成
 // 和 model.ts 的类型一模一样，读进来之后的代码只认当前结构。schema.ts 校验的是这里的结果。
-import { BOARD_VERSION, cornerAt, emptyBoard, isCode, uid, type BoardFile, type Card, type Link, type LinkStyle, type Place, type Segment, type SharedCardFile, type Sidenote, type Sticker } from "./model";
+import { BOARD_VERSION, cornerAt, type Camera, emptyBoard, isCode, uid, type BoardFile, type Card, type Link, type LinkStyle, type Place, type Segment, type SharedCardFile, type Sidenote, type Sticker } from "./model";
 
-/** 读进来的白板文件（第 1–8 版）→ 第 8 版白板文件（共享卡还是引用，由宿主的存储换成内容） */
+/** 读进来的白板文件（第 1–9 版）→ 第 9 版白板文件（共享卡还是引用，由宿主的存储换成内容） */
 export function migrateBoard(raw: any): BoardFile {
   // 更新的版本写的文件：读不懂就别碰（当第 1 版迁移会丢掉所有卡，下次自动保存把空白板写回去）
   if (typeof raw?.version === "number" && raw.version > BOARD_VERSION) throw new Error(`Board file version ${raw.version} is newer than this CodeBoard (${BOARD_VERSION}). Update CodeBoard to open it.`);
@@ -20,9 +20,17 @@ export function migrateBoard(raw: any): BoardFile {
   // 第 6 版 → 第 7 版：所见即所得编辑器（v0.1.8 起，写第 5、6 版）写下的 \$…\$ 公式，见 v6to7
   if (from === 5 || from === 6) v6to7(b);
   if (from < 8) for (const c of b.cards) if (c.kind !== "shared") v7to8Card(c);
+  // 第 8 版 → 第 9 版：镜头不再存在文件里（每台机器各记各的，见 model.ts Board.cam；旧文件里的由 fileCamera 交给宿主）
+  delete b.cam;
   b.version = BOARD_VERSION;
   normalize(b);
   return b;
+}
+
+/** 第 9 版以前的白板文件里存着的镜头：这台机器上还没记过这块白板的镜头时，宿主拿它当起点 */
+export function fileCamera(raw: any): Camera | undefined {
+  const c = raw?.version < 9 ? raw.cam : undefined;
+  return c && [c.x, c.y, c.z].every((n) => typeof n === "number" && Number.isFinite(n)) && c.z > 0 ? { x: c.x, y: c.y, z: c.z } : undefined;
 }
 
 /** 卡库里的文件 cards/<id>.json：和白板文件一样补齐 */
@@ -34,10 +42,9 @@ export function migrateSharedCard(raw: any): SharedCardFile {
     if (sc.card) v6to7Card(sc.card);
     (sc.sidenotes ?? []).forEach(v6to7Note);
   }
-  if (sc?.version === 6 || sc?.version === 7) {
-    if (sc.card) v7to8Card(sc.card);
-    sc.version = BOARD_VERSION;
-  }
+  if (sc?.version === 6 || sc?.version === 7) if (sc.card) v7to8Card(sc.card);
+  // 第 9 版的卡文件和第 8 版一样（变的只是白板文件的镜头）
+  if (sc?.version >= 6 && sc.version < BOARD_VERSION) sc.version = BOARD_VERSION;
   if (sc?.card) normCard(sc.card);
   for (const n of sc?.sidenotes ?? []) normNote(n);
   return sc;
@@ -326,7 +333,6 @@ function contentV2(c: any, out: Card[], place: Record<string, Place> | null): Ca
 function v2to3(o: any): any {
   const b: any = emptyBoard(o.id, o.name ?? "Board");
   b.version = 3;
-  b.cam = o.cam ?? b.cam;
   if (o.hideAllComments) b.hideAllComments = true;
   if (o.hideNumbers) b.hideNumbers = true;
   const cards: Card[] = [];
@@ -341,7 +347,7 @@ function v2to3(o: any): any {
 
 /** 第 1 版白板（v1 插件）迁移到第 2 版的结构 */
 function v1to2(raw: any): any {
-  const b: any = { version: 2, id: raw?.id, name: raw?.name ?? "Board", cam: raw?.cam ?? { x: 80, y: 80, z: 1 }, cards: [], links: [], sections: [], sidenotes: [] };
+  const b: any = { version: 2, id: raw?.id, name: raw?.name ?? "Board", cards: [], links: [], sections: [], sidenotes: [] };
   for (const c of raw?.cards ?? []) {
     const base = { id: c.id, x: c.x, y: c.y, w: c.w };
     if (c.type === "code") {

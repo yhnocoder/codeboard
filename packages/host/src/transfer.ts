@@ -2,6 +2,7 @@
 // 别的项目的存储目录从跨工作区的登记表里找（每个窗口激活、换存储目录时记下自己的，recordProject）。
 // 写进去走一个指着那边目录的 Storage（共享卡拆进卡库、存盘格式都和平时一样）；那边已经有的共享卡、图片、运行记录用那边的，不覆盖。
 // 代码段的来源按那边的工作区改写：仓库在那个项目的任何一个文件夹里 → repo（相对它的第一个文件夹，和那边自己加卡时一样），否则 → external（绝对路径）；这边找不到的不动。
+// 导出成 .codeboard、从它导入（bundle.ts）走的是同一条 transfer，只是一头换成了包里的文件。
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
 import { allCodeCards, allSegments, loadSharedCard, pruneRefs, putShared, subBoardsOf, uid, type Board, type SharedCard, type Source, type WebMeta } from "@codeboard/core";
@@ -49,45 +50,76 @@ export type Transferred = { id: string; boards: string[] };
  */
 export async function copyToProject(store: Storage, id: string, to: Project): Promise<Transferred | null> {
   await store.flush();
-  const src = new Map<string, { board: Board; refs: Set<string>; group?: string }>();
-  for (const queue = [id]; queue.length;) {
-    const x = queue.shift()!;
-    if (src.has(x)) continue;
-    const b = await store.load(x);
-    if (!b) continue;
-    src.set(x, { board: b, refs: new Set(store.refsOf(x)), group: store.groupOf(x) });
-    queue.push(...subBoardsOf(b));
-  }
-  if (!src.has(id)) return null;
-
   const target = new Storage(nodeFs, { dir: () => to.dir, log });
   try {
-    const there = await target.list();
-    const taken = new Set(there.map((m) => m.id));
-    const ids = new Map([...src.keys()].map((x) => [x, taken.has(x) ? uid("b") : x]));
-    const names = new Set(there.map((m) => m.name));
-    const roots = new Map<string, Source | null>();
-    for (const { board, refs, group } of src.values()) {
-      board.id = ids.get(board.id)!;
-      board.name = freeName(board.name, names);
-      for (const c of board.cards) if (c.kind === "board" && ids.has(c.board)) c.board = ids.get(c.board)!;
-      await rehome(board, to.folders, roots);
-      // 那边卡库里已经有的共享卡：用那边的（同一张卡）；读不了的那张在这块白板上留成普通卡，不去盖掉那边的文件
-      let kept = false;
-      for (const r of [...refs]) {
-        const there = await readShared(to.dir, r);
-        if (there === "bad") refs.delete(r);
-        else if (there) kept = putShared(board, there) || kept;
-      }
-      if (kept) pruneRefs(board);
-      await copyFiles(store.assetsDir(), path.join(to.dir, "assets"), assetsOf(board));
-      await copyFiles(path.join(store.dir(), "runs"), path.join(to.dir, "runs"), [...runsOf(board)].map((r) => `${r}.json`));
-      await target.save(board, { group: group ?? null, refs });
-    }
-    return { id: ids.get(id)!, boards: [...src.keys()] };
+    const t = await transfer({ store, files: diskFiles(store.dir()) }, [id], { store: target, files: diskFiles(to.dir) }, { folders: to.folders });
+    return t.ids.has(id) ? { id: t.ids.get(id)!, boards: [...t.ids.keys()] } : null;
   } finally {
     target.dispose();
   }
+}
+
+/** 存储目录里白板以外的文件（assets/、runs/、cards/ 下面，按相对存储目录的 posix 路径）：读不到 = undefined；add 不覆盖已有的 */
+export interface Files {
+  read(rel: string): Promise<Uint8Array | undefined>;
+  add(rel: string, data: Uint8Array): Promise<void>;
+}
+
+export const diskFiles = (dir: string): Files => ({
+  read: (rel) => fs.readFile(path.join(dir, rel)).then((b) => new Uint8Array(b), () => undefined),
+  add: async (rel, data) => {
+    const abs = path.join(dir, rel);
+    await fs.mkdir(path.dirname(abs), { recursive: true });
+    await fs.writeFile(abs, data, { flag: "wx" }).catch((e: NodeJS.ErrnoException) => { if (e.code !== "EEXIST") throw e; });
+  },
+});
+
+/** 搬运的一头：白板存储和它旁边的文件 */
+export type End = { store: Storage; files: Files };
+/** ids = 搬了的白板：这边的 id → 那边的 id（这边的自己在前，后面是子白板）；renamed = 那边已经有这个 id 或名字、换了的块数 */
+export type Moved = { ids: Map<string, string>; renamed: number };
+
+/**
+ * Copy to Another Project…、导出、导入共用的一条路：from 里的白板 roots 和它们（一层层）嵌着的子白板，连同用到的共享卡、图片、运行记录，写进 to。
+ * to 里已经有的 id 换新 id（父白板上的子白板框跟着改），名字重了加编号；to 卡库里已经有的共享卡、已经有的图片和运行记录用 to 的，不覆盖。
+ * home：段的来源按这个项目改写（folders = 它的工作区文件夹，from 见 rehome）；不给 = 原样（导出）。
+ * 先把要搬的白板全读出来再写：from 里读不了的白板不搬
+ */
+export async function transfer(from: End, roots: string[], to: End, home?: { folders: string[]; from?: string[] }): Promise<Moved> {
+  const src = new Map<string, { board: Board; refs: Set<string>; group?: string }>();
+  for (const queue = [...roots]; queue.length;) {
+    const x = queue.shift()!;
+    if (src.has(x)) continue;
+    const b = await from.store.load(x);
+    if (!b) continue;
+    src.set(x, { board: b, refs: new Set(from.store.refsOf(x)), group: from.store.groupOf(x) });
+    queue.push(...subBoardsOf(b));
+  }
+  const there = await to.store.list();
+  const taken = new Set(there.map((m) => m.id));
+  const ids = new Map([...src.keys()].map((x) => [x, taken.has(x) ? uid("b") : x]));
+  const names = new Set(there.map((m) => m.name));
+  const memo = new Map<string, Source | null>();
+  let renamed = 0;
+  for (const { board, refs, group } of src.values()) {
+    const name = freeName(board.name, names);
+    if (board.id !== ids.get(board.id) || name !== board.name) renamed++;
+    board.id = ids.get(board.id)!;
+    board.name = name;
+    for (const c of board.cards) if (c.kind === "board" && ids.has(c.board)) c.board = ids.get(c.board)!;
+    if (home) await rehome(board, home.folders, memo, home.from);
+    // 那边卡库里已经有的共享卡：用那边的（同一张卡）；读不了的那张在这块白板上留成普通卡，不去盖掉那边的文件
+    let kept = false;
+    for (const r of [...refs]) {
+      const sc = await readShared(to.files, r);
+      if (sc === "bad") refs.delete(r);
+      else if (sc) kept = putShared(board, sc) || kept;
+    }
+    if (kept) pruneRefs(board);
+    await copyFiles(from.files, to.files, [...assetsOf(board).map((a) => `assets/${a}`), ...[...runsOf(board)].map((r) => `runs/${r}.json`)]);
+    await to.store.save(board, { group: group ?? null, refs });
+  }
+  return { ids, renamed };
 }
 
 /** 那边（所有分组）已经有这个名字：加 " (2)"、" (3)"……取第一个没用过的；names 记下用掉的（同一次搬的白板也算） */
@@ -145,11 +177,11 @@ async function sourceIn(src: Source, folders: string[], from?: string[]): Promis
 }
 
 /** 那边卡库里的一张卡：没有 = undefined，有但读不了 = "bad" */
-async function readShared(dir: string, id: string): Promise<SharedCard | "bad" | undefined> {
-  let text: string;
-  try { text = await fs.readFile(path.join(dir, "cards", `${id}.json`), "utf8"); } catch { return undefined; }
+async function readShared(files: Files, id: string): Promise<SharedCard | "bad" | undefined> {
+  const data = await files.read(`cards/${id}.json`);
+  if (!data) return undefined;
   try {
-    const sc = loadSharedCard(JSON.parse(text));
+    const sc = loadSharedCard(JSON.parse(new TextDecoder().decode(data)));
     sc.card.id = id;
     return { card: sc.card, sidenotes: sc.sidenotes };
   } catch { return "bad"; }
@@ -180,11 +212,10 @@ function runsOf(b: Pick<Board, "cards" | "links">): Set<string> {
 }
 
 /** 拷文件：只拷这边有的，那边已经有的不覆盖 */
-async function copyFiles(from: string, to: string, names: Iterable<string>) {
-  for (const n of names) {
-    if (!(await exists(path.join(from, n)))) continue;
-    await fs.mkdir(to, { recursive: true });
-    await fs.copyFile(path.join(from, n), path.join(to, n), fs.constants.COPYFILE_EXCL).catch((e: NodeJS.ErrnoException) => { if (e.code !== "EEXIST") throw e; });
+async function copyFiles(from: Files, to: Files, rels: Iterable<string>) {
+  for (const r of rels) {
+    const data = await from.read(r);
+    if (data) await to.add(r, data);
   }
 }
 
@@ -227,8 +258,7 @@ export async function pasteFar(store: Storage, target: string, o: { text?: strin
     if (!r) return null;
     const some = { cards: r.cards.map((x) => x.card), sidenotes: r.cards.flatMap((x) => x.sidenotes ?? []), links: r.links };
     await rehome(some, wsRoots(), new Map(), clip.folders);
-    await copyFiles(path.join(clip.dir, "assets"), store.assetsDir(), assetsOf(some));
-    await copyFiles(path.join(clip.dir, "runs"), path.join(store.dir(), "runs"), [...runsOf(some)].map((x) => `${x}.json`));
+    await copyFiles(diskFiles(clip.dir), diskFiles(store.dir()), [...assetsOf(some).map((a) => `assets/${a}`), ...[...runsOf(some)].map((x) => `runs/${x}.json`)]);
     const from = clip.folders[0] ? `${r.from} (${path.basename(clip.folders[0])})` : r.from;
     return { ...r, from };
   } finally {

@@ -132,8 +132,8 @@ test("noteAnnotations", async () => {
   const pg = h.page;
   await pg.evaluate(() => document.fonts.ready);
   const info = await pg.evaluate(() => [...document.querySelectorAll<HTMLElement>(".card .md-annot")].map((e) => {
-    const b4 = getComputedStyle(e, "::before"), r = e.getBoundingClientRect();
-    return { note: e.dataset.note, color: e.dataset.color ?? "blue", below: e.hasAttribute("data-below"), label: b4.content, font: b4.fontFamily, labelColor: b4.color, pt: getComputedStyle(e).paddingTop, pb: getComputedStyle(e).paddingBottom, h: r.height };
+    const n = e.querySelector(":scope > .md-annot-n")!, b4 = getComputedStyle(n), r = e.getBoundingClientRect();
+    return { note: e.dataset.note, color: e.dataset.color ?? "blue", below: e.hasAttribute("data-below"), label: n.textContent ?? "", font: b4.fontFamily, labelColor: b4.color, pt: getComputedStyle(e).paddingTop, pb: getComputedStyle(e).paddingBottom, h: r.height };
   }));
   check("annotRendered", info.length === 3 && info[0].note === "决定谁先跑" && info[1].below && info[2].color === "green", info);
   check("annotLabel", info.every((i) => i.label.includes(i.note!) && /Shantell Sans/.test(i.font)), info.map((i) => [i.label, i.font]));
@@ -141,18 +141,16 @@ test("noteAnnotations", async () => {
   check("annotHighlightSeparate", (await pg.locator(".card mark").count()) === 1);
   const lineH = await pg.evaluate(() => { const ps = [...document.querySelectorAll<HTMLElement>(".card .nbody p")]; return ps.map((p) => p.getBoundingClientRect().height); });
   check("annotOnlyAnnotatedLinesTaller", lineH.length === 3 && lineH[2] < lineH[1], lineH);
-  // a label at the end of a line is pulled back inside the paragraph, measured with the handwriting font once it has loaded
-  // (view.ts fitAnnots measures again on the fonts' loadingdone): every label's font is there, then the board is idle
-  await pg.waitForFunction(() => [...document.querySelectorAll<HTMLElement>(".card .md-annot")].every((e) => {
-    const lb = getComputedStyle(e, "::before");
-    return document.fonts.check(`${lb.fontWeight} ${lb.fontSize} ${lb.fontFamily}`, e.dataset.note ?? "");
+  // a label at the end of a line is pulled back inside the paragraph, measured once the handwriting font has loaded
+  // (view.ts fitAnnots measures again when a label changes size): every label's font is there, then the board is idle
+  await pg.waitForFunction(() => [...document.querySelectorAll<HTMLElement>(".card .md-annot > .md-annot-n")].every((n) => {
+    const lb = getComputedStyle(n);
+    return document.fonts.check(`${lb.fontWeight} ${lb.fontSize} ${lb.fontFamily}`, n.textContent ?? "");
   }), null, { timeout: 5000 });
   await idle(h);
   const fit = await pg.evaluate(() => {
     const e = [...document.querySelectorAll<HTMLElement>(".card .md-annot")][1], p = e.closest("p")!;
-    const lb = getComputedStyle(e, "::before"), c = document.createElement("canvas").getContext("2d")!;
-    c.font = `${lb.fontWeight} ${lb.fontSize} ${lb.fontFamily}`;
-    const right = e.getBoundingClientRect().left + parseFloat(lb.left) + new DOMMatrix(lb.transform).m41 + c.measureText(e.dataset.note!).width;
+    const right = e.querySelector(":scope > .md-annot-n")!.getBoundingClientRect().right;
     return { right, pRight: p.getBoundingClientRect().right, ax: e.style.getPropertyValue("--ax") };
   });
   // centered, the label would run past the paragraph (natural right = right - ax): it is pulled back inside, and only then
@@ -261,12 +259,10 @@ const CUDA_MD = [
   "",
   "每个 kernel 由 {很多个线程|thread}同时执行，**线程按 {block|线程块|purple} 分组**。",
 ].join("\n");
-/** Each annotation's span, label and arrow on screen: the label's box from the ::before font (canvas) and its computed left + transform */
+/** Each annotation's span, label and arrow on screen */
 const annotGeo = (pg: Host["page"], sel: string) => pg.evaluate((sel) => [...document.querySelectorAll<HTMLElement>(`${sel} .md-annot`)].map((e) => {
-  const r = e.getBoundingClientRect(), lb = getComputedStyle(e, "::before"), ar = getComputedStyle(e, "::after");
-  const c = document.createElement("canvas").getContext("2d")!;
-  c.font = `${lb.fontWeight} ${lb.fontSize} ${lb.fontFamily}`;
-  const w = c.measureText(e.dataset.note!).width, left = r.left + parseFloat(lb.left) + new DOMMatrix(lb.transform).m41;
+  const r = e.getBoundingClientRect(), lr = e.querySelector(":scope > .md-annot-n")!.getBoundingClientRect(), ar = getComputedStyle(e, "::after");
+  const w = lr.width, left = lr.left;
   const block = e.parentElement!.closest("p")!.getBoundingClientRect();
   return { note: e.dataset.note!, spanCenter: r.left + r.width / 2, labelCenter: left + w / 2, arrowCenter: r.left + parseFloat(ar.left) + parseFloat(ar.width) / 2,
     labelLeft: left, labelRight: left + w, atLineStart: Math.abs(r.left - block.left) < 1, inBlock: left >= block.left - 0.5 && left + w <= block.right + 0.5 };
@@ -296,6 +292,55 @@ test("noteAnnotationLabelCentered", async () => {
   await h.close();
 });
 
+/** The note of a {text|note} annotation is inline Markdown: $a$ in it is a KaTeX formula, the rest stays text, in the static Note and in
+ *  its editor; the label stays centered over the words; the toolbar's Handwritten Note field still edits the note's source */
+test("noteAnnotationMath", async () => {
+  const b = emptyBoard("b1", "annotations");
+  const md = "数与能够同时执行的 thread block 数之比，称为 {==wave count==|$a$#num_total/#num_concurrent}。例如，图 4.5 左侧示例有四个 wave。";
+  b.cards.push({ id: "n1", kind: "note", md, look: "note" } as NoteCard);
+  b.place.n1 = { x: 80, y: 80, w: 520 };
+  b.cam = { x: 0, y: 0, z: 1 };
+  const h = await open({ board: b, light: true, w: 760, h: 360, settings: { theme: "warm-ink" } as never });
+  const pg = h.page;
+  await pg.evaluate(() => document.fonts.ready);
+  await idle(h);
+  await shot(h, "marks-annotation-math");
+  const label = (root: string) => pg.evaluate((root) => {
+    const n = document.querySelector<HTMLElement>(`${root} .md-annot > .md-annot-n`);
+    return n && { text: n.textContent, katex: n.querySelector(".katex")?.textContent ?? null, editable: n.isContentEditable };
+  }, root);
+  const shown = await label(card("n1"));
+  const geo = await annotGeo(pg, card("n1"));
+  const ok = (l: typeof shown) => !!l && l.katex === "a" && l.text!.includes("#num_total/#num_concurrent") && !l.text!.includes("$");
+  const centered = geo.length === 1 && Math.abs(geo[0].labelCenter - geo[0].spanCenter) <= 2 && geo[0].inBlock;
+  check("annotMathStatic", ok(shown) && centered, { shown, geo });
+  const pm = `${card("n1")} .md-pm`;
+  await pg.locator(`${card("n1")} .nbody p`).dblclick({ position: { x: 20, y: 40 } });
+  await pg.waitForSelector(`${pm} .md-annot`, { timeout: 5000 });
+  await idle(h);
+  const edit = await label(pm);
+  const egeo = await annotGeo(pg, pm);
+  check("annotMathEditor", ok(edit) && !edit!.editable && egeo.length === 1 && Math.abs(egeo[0].labelCenter - egeo[0].spanCenter) <= 2, { edit, egeo });
+  await shot(h, "marks-annotation-math-editing");
+  await focusSettled(pg);
+  await pg.evaluate((pm) => {
+    const w = document.createTreeWalker(document.querySelector(`${pm} .md-annot > :not(.md-annot-n)`)!, NodeFilter.SHOW_TEXT);
+    const t = w.nextNode() as Text, r = document.createRange();
+    r.setStart(t, 0); r.setEnd(t, t.data.length);
+    getSelection()!.removeAllRanges(); getSelection()!.addRange(r);
+  }, pm);
+  await pmHasSelection(pg);
+  const btn = pg.locator('.md-bubble .tbtn[data-tip="Handwritten Note"]');
+  await btn.waitFor({ timeout: 2000 });
+  await btn.click();
+  const input = pg.locator(".md-bubble input.md-annotin");
+  await input.waitFor({ timeout: 2000 });
+  const src = await input.inputValue();
+  await pg.keyboard.press("Escape");
+  check("annotMathSourceInToolbar", src === "$a$#num_total/#num_concurrent", { src });
+  await h.close();
+});
+
 /** The annotation label is drawn in the bundled handwriting fonts (Shantell Sans for Latin, LXGW WenKai Lite for Chinese):
  *  the computed font is the hand font, both faces are loaded, and the glyphs really come from them (not a system fallback) */
 test("noteAnnotationHandFont", async () => {
@@ -307,7 +352,7 @@ test("noteAnnotationHandFont", async () => {
   await pg.evaluate(() => document.fonts.ready);
   const f = await pg.evaluate(() => {
     const labels = [...document.querySelectorAll<HTMLElement>(".card .md-annot")].map((e) => {
-      const lb = getComputedStyle(e, "::before"), font = `${lb.fontWeight} ${lb.fontSize} ${lb.fontFamily}`;
+      const lb = getComputedStyle(e.querySelector(":scope > .md-annot-n")!), font = `${lb.fontWeight} ${lb.fontSize} ${lb.fontFamily}`;
       return { note: e.dataset.note!, family: lb.fontFamily, checked: document.fonts.check(font, e.dataset.note) };
     });
     const faces = Object.fromEntries([...document.fonts].filter((x) => /Shantell Sans|LXGW WenKai Lite/.test(x.family)).map((x) => [x.family.replace(/"/g, ""), x.status]));
@@ -359,7 +404,7 @@ test("noteAnnotationFromToolbar", async () => {
   check("annotInputFocused", await input.evaluate((i) => document.activeElement === i));
   await pg.keyboard.type("not mixed");
   await pg.locator(`${pm} .md-annot`).first().waitFor(); await frames(pg);
-  const live = await pg.locator(`${pm} .md-annot`).evaluateAll((es) => es.map((e) => [e.textContent, (e as HTMLElement).dataset.note]));
+  const live = await pg.locator(`${pm} .md-annot`).evaluateAll((es) => es.map((e) => [[...e.childNodes].filter((k) => !(k as Element).classList?.contains("md-annot-n")).map((k) => k.textContent).join(""), (e as HTMLElement).dataset.note]));
   check("annotLivePreview", live.length === 1 && live[0][0] === "never share a batch" && live[0][1] === "not mixed", live);
   await shot(h, "marks-annotation-toolbar-typing");
   await pg.keyboard.press("Enter");

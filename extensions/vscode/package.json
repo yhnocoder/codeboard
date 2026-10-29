@@ -97,6 +97,21 @@
         "category": "CodeBoard"
       },
       {
+        "command": "codeboard.moveBoardsIntoProject",
+        "title": "Move Boards into Project…",
+        "category": "CodeBoard"
+      },
+      {
+        "command": "codeboard.exportBoards",
+        "title": "Export Boards…",
+        "category": "CodeBoard"
+      },
+      {
+        "command": "codeboard.importBoards",
+        "title": "Import Boards…",
+        "category": "CodeBoard"
+      },
+      {
         "command": "codeboard.revealInFolder",
         "title": "Reveal in Folder",
         "category": "CodeBoard"
@@ -274,6 +289,21 @@
           "group": "navigation@2"
         },
         {
+          "command": "codeboard.moveBoardsIntoProject",
+          "when": "view == codeboard.boards",
+          "group": "2_storage@1"
+        },
+        {
+          "command": "codeboard.importBoards",
+          "when": "view == codeboard.boards",
+          "group": "2_transfer@1"
+        },
+        {
+          "command": "codeboard.exportBoards",
+          "when": "view == codeboard.boards",
+          "group": "2_transfer@2"
+        },
+        {
           "command": "codeboard.addGithubRepo",
           "when": "view == codeboard.github",
           "group": "navigation@1"
@@ -341,6 +371,11 @@
           "group": "2_edit@5"
         },
         {
+          "command": "codeboard.exportBoards",
+          "when": "view == codeboard.boards && viewItem == board",
+          "group": "2_edit@6"
+        },
+        {
           "command": "codeboard.revealInFolder",
           "when": "view == codeboard.boards && viewItem == board",
           "group": "3_misc@1"
@@ -359,6 +394,11 @@
           "command": "codeboard.renameGroup",
           "when": "view == codeboard.boards && viewItem == group",
           "group": "2_edit@1"
+        },
+        {
+          "command": "codeboard.exportBoards",
+          "when": "view == codeboard.boards && viewItem == group",
+          "group": "2_edit@2"
         },
         {
           "command": "codeboard.deleteGroup",
@@ -581,7 +621,7 @@
         "codeboard.storageDir": {
           "type": "string",
           "default": "",
-          "markdownDescription": "Folder for board files. Leave empty to use VS Code workspace storage (outside the repo). Absolute, `~/…`, or relative to the first workspace folder, e.g. `~/notes/codeboard`."
+          "markdownDescription": "Folder for board files. Leave empty to use the `.codeboard` folder in the first workspace folder when there is one (see **Move Boards into Project…**), otherwise VS Code workspace storage (outside the repo). Absolute, `~/…`, or relative to the first workspace folder, e.g. `~/notes/codeboard`."
         },
         "codeboard.theme": {
           "type": "string",

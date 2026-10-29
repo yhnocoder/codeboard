@@ -470,7 +470,8 @@ const Annot = Mark.create({
       below: { default: false, parseHTML: (e) => e.hasAttribute("data-below"), renderHTML: (a) => (a.below ? { "data-below": "" } : {}) },
     };
   },
-  parseHTML: () => [{ tag: "span.md-annot" }],
+  // 显示出来的标签（.md-annot-n）是批注属性画的，复制回来时不是字
+  parseHTML: () => [{ tag: "span.md-annot-n", ignore: true }, { tag: "span.md-annot" }],
   renderHTML: ({ HTMLAttributes }) => ["span", mergeAttributes(HTMLAttributes, { class: "md-annot" }), 0],
   markdownTokenName: "x_annot",
   parseMarkdown: (t: any, h: any) => h.applyMark("annot", h.parseInline(t.tokens ?? []), { note: t.note, color: t.color, below: t.below }),
@@ -710,6 +711,27 @@ export function mdBlockStarts(src: string): number[] | null {
   for (const t of toks) { if (t.type !== "space") starts.push(at); at += t.raw.length; }
   const blocks = mgr.parse(src).content ?? [];
   return blocks.length === starts.length && blocks.every((b) => b.type !== "footnote") ? starts : null;
+}
+/**
+ * 粘贴的纯文字当不当 Markdown：交给解析器读一遍，读出了格式、块才算（给出读出来的文档），只是字给 null（照纯文字粘贴）。
+ * 不算数的：光秃秃的网址（链接扩展自己处理，选着字粘贴网址是给字加链接）、上下标（中文里 3~5、7~9 这样的范围读出来就是下标）、
+ * 缩进出来的代码块（排版里的缩进）。有别的格式时整段照 Markdown 读，它们也跟着变
+ */
+export function pastedMd(text: string): JSONContent | null {
+  const doc = parseMd(text);
+  let md = false, indented = false;
+  const plainMark = (m: { type: string; attrs?: Record<string, any> }, n: JSONContent) =>
+    m.type === "subscript" || m.type === "superscript" || (m.type === "link" && !!n.text && String(m.attrs?.href ?? "").endsWith(n.text));
+  walk(doc.content, (n) => {
+    if (n.type === "codeBlock") indented = true;
+    else if (!/^(paragraph|text|hardBreak)$/.test(n.type ?? "") || n.marks?.some((m) => !plainMark(m, n))) md = true;
+  });
+  if (!md && indented) {
+    type Tok = { type: string; codeBlockStyle?: string; tokens?: Tok[]; items?: Tok[] };
+    const fenced = (ts: Tok[]): boolean => ts.some((t) => (t.type === "code" && t.codeBlockStyle !== "indented") || fenced(t.tokens ?? []) || fenced(t.items ?? []));
+    md = fenced((mm as unknown as { createLexer(): { lex(s: string): Tok[] } }).createLexer().lex(text.replace(/\r\n?/g, "\n")));
+  }
+  return md ? doc : null;
 }
 function walk(ns: JSONContent[] | undefined, f: (n: JSONContent) => void) {
   for (const n of ns ?? []) { f(n); walk(n.content, f); }

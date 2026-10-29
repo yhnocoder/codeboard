@@ -72,6 +72,7 @@ function Toolbar() {
       null,
       { label: "Rename Board…", run: () => promptText("Rename Board", state.board.name).then((v) => v && mutate((b) => { b.name = v; })) },
       { label: "Export…", hint: "HTML snapshot, Markdown or PNG", run: () => A.openExport() },
+      { label: "Export Boards…", hint: "A .codeboard file to import into another project", run: () => A.exportBoards() },
       { label: "Questions", checked: questionsOpen(), run: () => A.toggleQuestions() },
       null,
       // 运行时：跑一次入口，给 Call 箭头挂上 observed 证据和实参

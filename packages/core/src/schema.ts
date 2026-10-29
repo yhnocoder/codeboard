@@ -115,15 +115,15 @@ const Sticker = obj({
 });
 
 const boardEntries = {
-  version: v.literal(BOARD_VERSION), id: opt(str), name: str, cam: obj({ x: num, y: num, z: num }),
+  version: v.literal(BOARD_VERSION), id: opt(str), name: str,
   cards: v.array(Card), place: v.record(str, Place), links: v.array(LinkMarked), sections: v.array(Section), sidenotes: v.array(Sidenote), stickers: v.array(Sticker),
   hideAllComments: opt(bool), hideNumbers: opt(bool),
   born: opt(v.record(str, num)), seq: opt(num), marks: opt(v.record(str, GraphMark)),
   legend: opt(v.record(str, str)),
 };
-/** 当前版本（迁移之后）、共享卡已经换成内容的白板（界面拿到的）。id 可以缺：宿主扫描时按文件名补 */
-export const BoardSchema = obj(boardEntries);
-/** 白板文件：cards 里还可以有共享卡的引用 */
+/** 当前版本（迁移之后）、共享卡已经换成内容的白板（界面拿到的，带着这台机器上的镜头）。id 可以缺：宿主扫描时按文件名补 */
+export const BoardSchema = obj({ ...boardEntries, cam: obj({ x: num, y: num, z: num }) });
+/** 白板文件：cards 里还可以有共享卡的引用；没有镜头 */
 const SharedRef = obj({ id: str, kind: v.literal("shared") });
 export const BoardFileSchema = obj({ ...boardEntries, cards: v.array(v.union([Card, SharedRef])) });
 export const SharedCardSchema = obj({ version: v.literal(BOARD_VERSION), card: Card, sidenotes: v.array(Sidenote) });
@@ -141,10 +141,10 @@ function check(schema: v.GenericSchema, x: unknown, what: string) {
   throw new BoardError(`${what}: ${lines.join("; ")}${r.issues.length > 3 ? ` (+${r.issues.length - 3} more)` : ""}`);
 }
 
-/** 读进来的白板 JSON（任何版本）→ 校验过的当前版本白板（不能有共享卡的引用：宿主发给界面的、测试里的白板） */
+/** 宿主和界面之间传的白板（带镜头；内容可以是任何版本）→ 校验过的当前版本白板（不能有共享卡的引用） */
 export function loadBoard(raw: unknown): Board {
   check(RawBoard, raw, "Not a board file");
-  const b = migrateBoard(raw);
+  const b = { ...migrateBoard(raw), cam: (raw as { cam?: unknown }).cam };
   check(BoardSchema, b, "Invalid board");
   return b as Board;
 }

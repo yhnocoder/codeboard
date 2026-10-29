@@ -437,3 +437,76 @@ test("softLightNoteBodyWeight", async () => {
   await h2.page.context().close();
   check("softLightNoteBodyWeight", soft.note === 400 && soft.bold >= 600 && soft.text === 400 && warm === 400, { soft, warm });
 });
+
+/** Drafting: a Text card's body is in the same font as a Note's body (DM Mono at the same size, with the same CJK fallback), not
+ *  a bigger one with another fallback */
+test("draftingTextMatchesNoteFont", async () => {
+  const b = emptyBoard("b1", "drafting fonts");
+  b.cards.push({ id: "n1", kind: "note", look: "note", md: "draft 模式下的高亮换一个色，现在太不搭调了" } as any);
+  b.place.n1 = { x: 60, y: 40, w: 381 };
+  b.cards.push({ id: "t1", kind: "note", look: "text", size: "body", md: "draft 模式的 text 的字体和 note 完全不一样" } as any);
+  b.place.t1 = { x: 60, y: 220, w: 381 };
+  b.cam = { x: 0, y: 0, z: 1 };
+  const h = await open({ board: b, light: true, w: 560, h: 340, settings: { theme: "drafting" } as never });
+  await idle(h);
+  const f = await h.page.evaluate(() => {
+    const cs = (sel: string) => { const s = getComputedStyle(document.querySelector(sel)!); return { family: s.fontFamily, size: s.fontSize, spacing: s.letterSpacing, weight: s.fontWeight, color: s.color }; };
+    return { note: cs('.card[data-id="n1"] .nbody p'), text: cs('.card[data-id="t1"] .tx p') };
+  });
+  await h.page.screenshot({ path: path.join(OUT, "drafting-text-font.png") });
+  check("draftingTextMatchesNoteFont", f.note.family === f.text.family && f.note.size === f.text.size, f);
+});
+
+/** Drafting: a selected card is marked by its dark outline and the dashed frame around it, with no "SELECTED" label above it */
+test("draftingSelectedCardHasNoLabel", async () => {
+  const b = emptyBoard("b1", "drafting selection");
+  b.cards.push({ id: "n1", kind: "note", look: "note", md: "A selected note" } as any);
+  b.place.n1 = { x: 60, y: 90, w: 381 };
+  b.cam = { x: 0, y: 0, z: 1 };
+  const h = await open({ board: b, light: true, w: 560, h: 300, settings: { theme: "drafting" } as never });
+  await idle(h);
+  await h.page.locator('.card[data-id="n1"] .chead').click();
+  await h.page.locator('.card[data-id="n1"].sel').waitFor();
+  await idle(h);
+  const pseudo = await h.page.evaluate(() => {
+    const c = document.querySelector('.card[data-id="n1"]')!;
+    return { before: getComputedStyle(c, "::before").content, after: getComputedStyle(c, "::after").content };
+  });
+  await h.page.screenshot({ path: path.join(OUT, "drafting-selected.png") });
+  check("draftingSelectedCardHasNoLabel", !/SELECTED/.test(pseudo.before) && pseudo.after !== "none", pseudo);
+});
+
+/** Drafting (light and dark): ==highlight== has no highlighter fill, only an ink underline, in the static Note and in its editor;
+ *  Warm Ink keeps its highlighter band */
+test("draftingHighlightUnderline", async () => {
+  const b = emptyBoard("b1", "drafting highlight");
+  b.cards.push({ id: "n1", kind: "note", look: "note", md: "draft 模式下的 ==高亮换一个色== and ==a **bold** phrase==" } as any);
+  b.place.n1 = { x: 60, y: 90, w: 381 };
+  b.cam = { x: 0, y: 0, z: 1 };
+  const look = (pg: Awaited<ReturnType<typeof open>>["page"], sel: string) => pg.evaluate((sel) => [...document.querySelectorAll(sel)].map((m) => {
+    const s = getComputedStyle(m);
+    return { bg: s.backgroundImage, bgc: s.backgroundColor, line: s.textDecorationLine, thick: s.textDecorationThickness, offset: s.textUnderlineOffset, color: s.textDecorationColor, ink: getComputedStyle(document.documentElement).getPropertyValue("--ink").trim() };
+  }), sel);
+  const res: Record<string, unknown> = {};
+  let ok = true;
+  const plain = (l: Awaited<ReturnType<typeof look>>) => l.length === 2 && l.every((m) => m.bg === "none" && /rgba\(0, 0, 0, 0\)|transparent/.test(m.bgc) && m.line === "underline" && m.thick === "1.5px" && m.offset === "3px");
+  for (const lt of [true, false]) {
+    const h = await open({ board: b, light: lt, w: 560, h: 260, settings: { theme: "drafting" } as never });
+    await idle(h);
+    const shown = await look(h.page, '.card[data-id="n1"] .nbody mark');
+    await h.page.screenshot({ path: path.join(OUT, `drafting-highlight-${lt ? "light" : "dark"}.png`) });
+    await h.page.locator('.card[data-id="n1"] .nbody p').dblclick();
+    await h.page.locator('.card[data-id="n1"] .md-pm mark').first().waitFor();
+    await idle(h);
+    const edit = await look(h.page, '.card[data-id="n1"] .md-pm mark');
+    res[lt ? "light" : "dark"] = { shown, edit };
+    ok &&= plain(shown) && plain(edit);
+    await h.page.context().close();
+  }
+  const h = await open({ board: b, light: true, w: 560, h: 260, settings: { theme: "warm-ink" } as never });
+  await idle(h);
+  const warm = await look(h.page, '.card[data-id="n1"] .nbody mark');
+  await h.page.context().close();
+  res.warm = warm;
+  check("draftingHighlightUnderline", ok && warm.length === 2 && warm.every((m) => m.bg.startsWith("linear-gradient(") && m.line === "none"), res);
+});
