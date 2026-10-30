@@ -535,7 +535,7 @@ test("draftingBoldKeepsBodyFont", async () => {
   check("draftingBoldKeepsBodyFont", ok(shown) && ok(edit), { shown, edit });
 });
 
-/** Ink Wash: bold is 700 (Source Serif here stops at 600) without a text stroke, which made it too heavy; the same while editing */
+/** Ink Wash: bold is 700 (Source Serif here stops at 600) with a .015em text stroke: .025em was too heavy, none too light on a Mac; the same while editing */
 test("inkWashBoldStandsOut", async () => {
   const b = emptyBoard("b1", "ink wash bold");
   b.cards.push({ id: "n1", kind: "note", look: "note", md: "程序员可以指定**变量的可见范围和访问速度**，<b>bold</b> 也一样。" } as any);
@@ -545,9 +545,9 @@ test("inkWashBoldStandsOut", async () => {
   await idle(h);
   const bold = (root: string) => h.page.evaluate((root) => [...document.querySelectorAll(`${root} :is(strong, b)`)].map((e) => {
     const s = getComputedStyle(e), p = getComputedStyle(e.closest("p")!);
-    return { weight: +s.fontWeight, stroke: parseFloat((s as any).webkitTextStrokeWidth) || 0, body: +p.fontWeight };
+    return { weight: +s.fontWeight, stroke: parseFloat((s as any).webkitTextStrokeWidth) || 0, size: parseFloat(s.fontSize), body: +p.fontWeight };
   }), root);
-  const ok = (r: Awaited<ReturnType<typeof bold>>) => r.length === 2 && r.every((x) => x.weight === 700 && x.stroke === 0 && x.body <= 400);
+  const ok = (r: Awaited<ReturnType<typeof bold>>) => r.length === 2 && r.every((x) => x.weight === 700 && Math.abs(x.stroke - .015 * x.size) < .01 && x.body <= 400);
   const shown = await bold('.card[data-id="n1"] .nbody');
   await shot(h, "ink-wash-bold");
   await h.page.locator('.card[data-id="n1"] .nbody p').first().dblclick();
