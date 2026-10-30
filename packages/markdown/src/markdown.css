@@ -64,6 +64,8 @@ math { font-size: 1.05em; }
 .md pre code { background: none; padding: 0; font: inherit; }
 .md pre.md-code { position: relative; color: var(--ink); }
 .md img { display: inline-block; vertical-align: middle; max-width: 100%; height: auto; margin: 4px 0; border-radius: 5px; }
+/* without a width of its own: its own size up to the column width and 340px tall (image.ts IMAGE_MAX_H) */
+.md :not(.md-fig.sized, .md-img.sized) > img:not(.sized, .ProseMirror-separator) { max-height: 340px; }
 /* A narrowed image (![a](u){width=40%}) is centred in its line: the image is inline, so its paragraph is centred, marked
    p.md-psized by the static render (render.ts) and by the editor's decorations (editor/inline.ts). A class, not p:has():
    Chrome checks a :has() rule again for every paragraph on each change, which made Enter in a long Note slow */
@@ -77,6 +79,16 @@ math { font-size: 1.05em; }
 .md .md-cap[hidden] { display: none; }
 .md kbd { font: .85em var(--mono); padding: 0 4px; border-radius: 4px; box-shadow: 0 0 0 .5px var(--hair), 0 1px 0 var(--hair); }
 .md :is(.math, [data-type="block-math"]) .katex-display { margin: 2px 0; }
+/* $$…$$ inside a line or a table cell: a display formula centred on a line of its own (render.ts, editor/widgets.ts); in the
+   editor, with the caret in its source, the drawn formula is under the source, framed */
+/* an image that could not load (view.ts imageFailed) */
+.md .md-imgerr { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; box-sizing: border-box; padding: 4px 9px; border-radius: 7px; box-shadow: inset 0 0 0 1px var(--hair); color: var(--ink-3); font: 11.5px/1.5 var(--sys); white-space: nowrap; overflow: hidden; vertical-align: middle; }
+.md .md-imgerr svg { flex: none; width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.3; stroke-linecap: round; stroke-linejoin: round; }
+.md .md-imgerr span { overflow: hidden; text-overflow: ellipsis; }
+.md .md-dmath { display: block; text-align: center; margin: 4px 0; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; }
+.md .md-dmath .katex-display { margin: 0; }
+.md-pm .md-dmath { cursor: text; }
+.md-pm .md-dmath.below { margin: 4px 0 2px; padding: 4px 6px; border-radius: 7px; box-shadow: inset 0 0 0 1px var(--hair); cursor: default; }
 /* Note 里的调用点不能点，不画成链接 */
 .md pre.md-code .call { text-decoration: none; cursor: inherit; }
 .md pre.md-code .call:hover { background: none; }
@@ -158,6 +170,8 @@ math { font-size: 1.05em; }
 /* 公式块展开的 LaTeX 原文（editor/mathblock.ts） */
 .md-pm .md-mathsrc { display: none; }
 .md-pm [data-type="block-math"].is-open { cursor: text; background: none; outline: none; }
+/* the open formula block's preview, framed under its source */
+.md-pm [data-type="block-math"].is-open > .block-math-inner { margin-top: 6px; padding: 6px; border-radius: 7px; box-shadow: inset 0 0 0 1px var(--hair); cursor: default; }
 .md-pm [data-type="block-math"].is-open .md-mathsrc { display: block; box-sizing: border-box; width: 100%; margin: 0 0 4px; padding: 5px 8px; border: 0; outline: none; resize: none; overflow: hidden; text-align: left; color: var(--ink); background: var(--hlrow); border-radius: 5px; font: 12px/1.5 var(--mono); }
 .md-pm [data-type="details"] { display: flex; gap: 2px; margin: 4px 0; padding: 2px 0 2px 4px; border-left: 2px solid var(--hair); }
 .md-pm [data-type="details"] > button { flex: none; width: 18px; height: 1.6em; color: var(--ink-3); border-radius: 4px; }
@@ -291,15 +305,16 @@ math { font-size: 1.05em; }
 .md-gc { width: 14px; height: 14px; border-radius: 3px; background: var(--hlrow); box-shadow: inset 0 0 0 .5px var(--hair); cursor: pointer; }
 .md-gc.cur { background: color-mix(in srgb, var(--ink) 14%, transparent); }
 .md-gc.in { background: color-mix(in srgb, var(--accent) 45%, transparent); }
-.md-gc.doom { background: color-mix(in srgb, var(--warn) 70%, transparent); }
+.md-gc.doom { background: var(--doom, rgba(205, 70, 45, .16)); box-shadow: inset 0 0 0 1px var(--doom-line, rgba(205, 70, 45, .55)); }
 .md-gp-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
 .md-gp-row label { display: flex; align-items: center; gap: 4px; color: var(--ink-2); }
 .md-gp-row input { width: 44px; height: 22px; padding: 0 4px; border: 0; border-radius: 5px; background: var(--hlrow); color: var(--ink); font: inherit; }
 .md-gp-row .sp { flex: 1; }
 .md-gp-apply { height: 22px; padding: 0 10px; border: 0; border-radius: 6px; background: var(--accent); color: var(--accent-ink); font: inherit; cursor: pointer; }
-.md-gp-warn { margin-top: 6px; color: var(--warn); font-size: 11.5px; }
+.md-gp-warn { margin-top: 6px; color: var(--doom-ink, #b23a22); font-size: 11.5px; }
 .md-gp-warn:empty { display: none; }
-.md-pm .md-doom { background: color-mix(in srgb, var(--warn) 18%, transparent); box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--warn) 65%, transparent); }
+/* cells a smaller size would drop: red, like a delete */
+.md-pm .md-doom { background: var(--doom, rgba(205, 70, 45, .16)); box-shadow: inset 0 0 0 1px var(--doom-line, rgba(205, 70, 45, .55)); }
 /* column widths: prosemirror-tables' handle; row heights: the bottom edge of a row (editor/table.ts) */
 .md-pm .column-resize-handle { position: absolute; right: -2px; top: 0; bottom: -2px; width: 4px; z-index: 3; background: var(--accent); pointer-events: none; }
 .md-pm.resize-cursor { cursor: col-resize; }

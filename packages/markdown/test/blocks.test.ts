@@ -8,10 +8,11 @@ import { parseMd, serializeMd, baseExtensions, mdSchema } from "../src/schema";
 import { renderMd } from "../src/render";
 
 describe("$$…$$ in the middle of a line", () => {
-  it("renders inline, typeset with \\displaystyle; a $$ block on its own lines stays a display block", () => {
+  it("renders as a display formula centred on a line of its own (md-dmath), and the source stays as typed", () => {
     const h = renderMd("3 $$\\sum_i x_i$$ end");
-    expect(h).not.toContain("katex-display");
-    expect(h).toContain(katex.renderToString("\\displaystyle \\sum_i x_i", { displayMode: false, throwOnError: false, output: "html" }));
+    expect(h).toMatch(/^<p>3 <span class="md-dmath"><span class="katex-display">/);
+    expect(h).toContain(katex.renderToString("\\sum_i x_i", { displayMode: true, throwOnError: false, output: "html" }));
+    expect(h).toMatch(/<\/span> end<\/p>$/);
     expect(renderMd("$$\n\\sum_i x_i\n$$")).toContain("katex-display");
     expect(serializeMd(parseMd("3 $$\\sum_i x_i$$ end"))).toBe("3 $$\\sum_i x_i$$ end");
   });

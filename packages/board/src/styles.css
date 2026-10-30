@@ -12,6 +12,8 @@
   --inote: rgba(60,45,20,.05);
   --hlrow: rgba(60,45,20,.07); --hlbar: #6a655c;
   --chg: rgba(196,138,31,.13); --chg-strong: rgba(196,138,31,.34); --del: rgba(181,85,45,.09); --add: rgba(74,117,54,.10);
+  /* what an edit would delete (the table size grid's doomed cells, @yhnocoder/markdown) */
+  --doom: rgba(205,70,45,.16); --doom-line: rgba(205,70,45,.55); --doom-ink: #b23a22;
   --hatch: rgba(60,45,20,.07);
   --edge: #9a958b;
   --s-sand: rgba(206,170,110,.16); --s-blue: rgba(96,145,205,.12); --s-green: rgba(110,165,95,.13); --s-pink: rgba(215,120,145,.12);
@@ -54,6 +56,7 @@
   --inote: rgba(255,240,220,.05);
   --hlrow: rgba(255,240,220,.07); --hlbar: #aca79d;
   --chg: rgba(224,176,85,.12); --chg-strong: rgba(224,176,85,.32); --del: rgba(227,137,95,.12); --add: rgba(163,201,140,.12);
+  --doom: rgba(240,110,90,.22); --doom-line: rgba(240,120,95,.6); --doom-ink: #f08a74;
   --hatch: rgba(255,240,220,.06);
   --edge: #78746c;
   --s-sand: rgba(214,180,120,.10); --s-blue: rgba(120,165,225,.09); --s-green: rgba(140,195,120,.09); --s-pink: rgba(230,140,165,.09);

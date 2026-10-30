@@ -235,8 +235,11 @@ test("noteTableToolbar", async () => {
   await until(h, "the preview marks doomed cells", async () => (await pg.locator(".md-pm .md-doom").count()) > 0);
   const doomed = await pg.locator(".md-pm .md-doom").evaluateAll((cs) => cs.map((c) => (c as HTMLElement).innerText.trim()));
   const red = await pg.locator(".md-gpick .md-gc.doom").count();
+  // red, not the amber of a warning: r high, g well below it (amber's g is close to r)
+  const hue = await pg.locator(".md-pm .md-doom").first().evaluate((c) => getComputedStyle(c).backgroundColor.match(/[\d.]+/g)!.map(Number));
   const warn = (await pg.locator(".md-gpick .md-gp-warn").innerText()).trim();
   await shot(h, "noteTableToolbar-grid");
+  check("noteTableToolbar grid preview cells that lose content are red", hue[0] > 150 && hue[1] < hue[0] * 0.5, hue);
   await pg.locator(".md-gpick .md-gc").nth(10 + 1).click();
   await until(h, "the table is 2 × 2", async () => (await pg.locator(".md-pm table tr").count()) === 2);
   const small = await cellText(pg, "n1");
@@ -473,5 +476,63 @@ test("noteLongNoteKeysScale", async () => {
   const ok = (k: "Enter" | "Backspace") => l[k] <= 3 * Math.max(s[k], 12);
   check("noteLongNoteKeysScale", ok("Enter") && ok("Backspace"), { short: s, long: l });
   check("noteLongNoteKeysScale no MathML in the editor", l.mathml === 0, l.mathml);
+  await close(h);
+});
+
+/** A web image shows at its natural size up to the column width, no taller than 340px; a width the user set wins; one that
+ *  fails to load is a quiet line naming it, in the static view and in the editor */
+test("noteImageSizing", async () => {
+  const svg = (w: number, hh: number) => `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${hh}"><rect width="100%" height="100%" fill="#8ab"/></svg>`;
+  const src = "Small ![s](https://img.test/small.svg)\n\n![big](https://img.test/big.svg)\n\n![tall](https://img.test/tall.svg){width=50%}\n\n![a broken one](https://img.invalid/gone.png)\n\nend";
+  const h = await open({ board: board([src]), light, h: 1500, beforeLoad: async (p) => {
+    await p.route("https://img.test/**", (r) => r.fulfill({ contentType: "image/svg+xml", body: r.request().url().includes("small") ? svg(80, 40) : r.request().url().includes("big") ? svg(1600, 1200) : svg(400, 1000) }));
+  } });
+  const pg = h.page, body = `${card("n0")} .nbody`;
+  await until(h, "the images decode", () => pg.evaluate((b) => [...document.querySelectorAll<HTMLImageElement>(`${b} img`)].filter((i) => i.complete && i.naturalWidth).length === 3, body));
+  await until(h, "the broken image is a placeholder", async () => (await pg.locator(`${body} .md-imgerr`).count()) === 1);
+  const sizes = (root: string) => pg.evaluate((root) => {
+    const col = [...document.querySelectorAll(`${root} p`)].at(-1)!.getBoundingClientRect().width; // the text column
+    const box = (alt: string) => { const r = document.querySelector(`${root} img[alt="${alt}"]`)!.getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)]; };
+    const err = document.querySelector(`${root} .md-imgerr`) as HTMLElement | null;
+    return { col: Math.round(col), small: box("s"), big: box("big"), tall: box("tall"), err: err?.innerText.trim() ?? null, errH: err ? Math.round(err.getBoundingClientRect().height) : 0 };
+  }, root);
+  const stat = await sizes(body);
+  await shot(h, "noteImageSizing-static");
+  const ok = (s: typeof stat) => s.small[0] === 80 && s.small[1] === 40 && s.big[1] <= 341 && s.big[0] <= s.col && Math.abs(s.big[0] / s.big[1] - 4 / 3) < 0.02
+    && Math.abs(s.tall[0] - s.col / 2) <= 3 && s.tall[1] > 341 && s.err === "Image failed to load · a broken one" && s.errH < 40;
+  check("noteImageSizing static: natural size, capped height, the set width, a placeholder", ok(stat), stat);
+  await pg.locator(`${body} p`, { hasText: "end" }).dblclick();
+  await pg.locator(`${card("n0")} .md-pm:focus`).waitFor();
+  await focusSettled(pg);
+  const root = `${card("n0")} .md-pm`;
+  await until(h, "the editor's images decode", () => pg.evaluate((b) => [...document.querySelectorAll<HTMLImageElement>(`${b} img`)].filter((i) => i.complete && i.naturalWidth).length === 3, root));
+  await until(h, "the editor's broken image is a placeholder", async () => (await pg.locator(`${root} .md-imgerr`).count()) === 1);
+  const edit = await sizes(root);
+  await shot(h, "noteImageSizing-edit");
+  check("noteImageSizing editor: the same sizes and placeholder", ok(edit), edit);
+  await exitEdit(h);
+  await close(h);
+});
+
+/** $$…$$ inside a paragraph or a cell is a display formula: centred on a line of its own, the same in the static view and the editor */
+test("noteInlineDisplayMath", async () => {
+  const h = await open({ board: board(["before $$\\sum_i x_i$$ after\n\n| a |\n| - |\n| x $$y^2$$ z |\n\nend"]), light });
+  const pg = h.page;
+  await idle(h);
+  const look = (root: string) => pg.evaluate((root) => [...document.querySelectorAll(`${root} .md-dmath`)].map((d) => {
+    const box = d.getBoundingClientRect(), k = d.querySelector(".katex")!.getBoundingClientRect(), line = (d.closest("p, td, th") as HTMLElement).getBoundingClientRect();
+    return { display: getComputedStyle(d).display, wide: Math.round(box.width - line.width) >= -24, centre: Math.round(k.left + k.width / 2 - (box.left + box.width / 2)), shown: !!d.querySelector(".katex-display") };
+  }), root);
+  const stat = await look(`${card("n0")} .nbody`);
+  await shot(h, "noteInlineDisplayMath-static");
+  const ok = (ls: typeof stat) => ls.length === 2 && ls.every((l) => l.display === "block" && l.wide && Math.abs(l.centre) <= 2 && l.shown);
+  check("noteInlineDisplayMath static centred on its own line", ok(stat), stat);
+  await pg.locator(`${card("n0")} .nbody p`).last().dblclick();
+  await pg.locator(`${card("n0")} .md-pm:focus`).waitFor();
+  await focusSettled(pg);
+  const edit = await look(`${card("n0")} .md-pm`);
+  await shot(h, "noteInlineDisplayMath-edit");
+  check("noteInlineDisplayMath editor centred on its own line", ok(edit), edit);
+  await exitEdit(h);
   await close(h);
 });

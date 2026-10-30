@@ -8,7 +8,7 @@ import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { REVEAL_AFTER_CLICK } from "../ui/timing";
 import { blockInfo, flat, type Span } from "./spans";
-import { atomWidget, ellipsis, foldButton, foldRange, imageBelow, placeCaret } from "./widgets";
+import { atomWidget, ellipsis, foldButton, foldRange, imageBelow, mathBelow, placeCaret } from "./widgets";
 
 type Tag = NonNullable<Span["tag"]>;
 
@@ -76,7 +76,10 @@ function layout(node: PMNode, pos: number, cell: boolean, head: number | null, e
           out?.push(Decoration.widget(to, imageBelow(a), { side: 2, key: `below:${raw}`, ignoreSelection: true, stopEvent: () => true }));
           continue;
         }
-        if (a.type === "math") out?.push(Decoration.inline(from, to, { class: "md-texsrc" }));
+        if (a.type === "math") {
+          out?.push(Decoration.inline(from, to, { class: "md-texsrc" }));
+          if (a.display) out?.push(Decoration.widget(to, mathBelow(a.latex), { side: 2, key: `dmath:${a.latex}`, ignoreSelection: true, stopEvent: () => true }));
+        }
         for (const [x, y] of sp.marks) mk(base + x, base + y, true);
         if (sp.inner && sp.tag && sp.inner[1] > sp.inner[0]) out?.push(Decoration.inline(base + sp.inner[0], base + sp.inner[1], { ...sp.tag }));
         if (a.type === "br") out?.push(Decoration.widget(to, atomWidget(a, raw, () => to, toCaret), { side: 1, key: "br", ignoreSelection: true }));

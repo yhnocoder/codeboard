@@ -4,11 +4,10 @@ import katex from "katex";
 import { TextSelection } from "@tiptap/pm/state";
 import { closeHistory } from "@tiptap/pm/history";
 import type { EditorView } from "@tiptap/pm/view";
-import { mathTex } from "../schema";
 import { mathMacros } from "../math";
 import { captionOf, imageAttrs } from "../image";
 import { renderMd } from "../render";
-import { paintRef } from "../view";
+import { imageFailed, imageFailedBefore, paintRef } from "../view";
 import { holdGhosts } from "../ui/ghost";
 import { IMAGE_SETTLE } from "../ui/timing";
 import { blockInfo, flat, type Atom, type Span } from "./spans";
@@ -30,7 +29,7 @@ const span = (cls: string) => { const e = document.createElement("span"); e.clas
 /** HTML only, as in the static render: MathML on the page turns on Chrome's MathML stylesheet, whose :nth-child rules make
  *  every inserted paragraph restyle all the blocks after it (Enter in a long Note took 150–200 ms) */
 export function renderTex(el: HTMLElement, latex: string, display: boolean) {
-  try { katex.render(mathTex(latex, display), el, { throwOnError: false, output: "html", macros: mathMacros() }); }
+  try { katex.render(latex, el, { displayMode: display, throwOnError: false, output: "html", macros: mathMacros() }); }
   catch { el.textContent = latex; }
 }
 
@@ -49,7 +48,8 @@ export function atomWidget(a: Atom, raw: string, caret: (from: number) => number
   return (view, getPos) => {
     let el: HTMLElement;
     if (a.type === "math") {
-      el = span("tiptap-mathematics-render");
+      // $$…$$ inside a line is a display formula, centred on a line of its own (md-dmath), as in the static render
+      el = span(`tiptap-mathematics-render${a.display ? " md-dmath" : ""}`);
       el.dataset.type = "inline-math";
       el.dataset.latex = a.latex;
       renderTex(el, a.latex, a.display);
@@ -108,10 +108,15 @@ const MIN_W = 24; // narrowest an image can be dragged to, in px
 /** An image as drawn: `below` is the copy under the source while the caret is in it, the one with the resize grips */
 function imageEl(a: Extract<Atom, { type: "image" }>, below: boolean): HTMLElement {
   const el = span(`md-img${below ? " below" : ""}`), img = document.createElement("img");
-  for (const [k, v] of Object.entries(imageAttrs(a))) if (v != null && k !== "style" && k !== "class") img.setAttribute(k, v);
+  const at = imageAttrs(a);
+  for (const [k, v] of Object.entries(at)) if (v != null && k !== "style" && k !== "class") img.setAttribute(k, v);
+  // the width of a sized image is on this box (below); an unsized one keeps its height cap
+  if (!a.width && at.style) img.setAttribute("style", at.style);
   img.draggable = false;
   if (!below && img.src) loaded.add(img.getAttribute("src")!);
   el.append(img);
+  if (imageFailedBefore(img.getAttribute("src"))) imageFailed(img);
+  else img.addEventListener("error", () => { if (img.getAttribute("src")) imageFailed(img); });
   const cap = captionOf(a.title);
   if (cap) { const c = span("md-cap"); c.textContent = cap; el.append(c); }
   if (a.width) { el.style.width = `${a.width}%`; el.classList.add("sized"); }
@@ -211,5 +216,15 @@ export function foldButton(expanded: boolean, toggle: (view: EditorView) => void
     b.innerHTML = `${expanded ? "Collapse" : "Expand"}${CHEV(!expanded)}`;
     b.addEventListener("mousedown", (ev) => { ev.preventDefault(); ev.stopPropagation(); toggle(view); });
     return b;
+  };
+}
+
+/** The drawn display formula under its source while the caret is in it (like an image's), framed */
+export function mathBelow(latex: string): ToDOM {
+  return () => {
+    const el = span("md-dmath below");
+    renderTex(el, latex, true);
+    el.addEventListener("mousedown", (e) => e.preventDefault());
+    return el;
   };
 }

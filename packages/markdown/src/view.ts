@@ -29,8 +29,32 @@ export function paintRef(r: HTMLElement) {
   r.replaceChildren(a, b);
 }
 
+const IMG_ERR = '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="3" width="11" height="10" rx="1.8"/><path d="M2.5 11l3.2-3.2 2.6 2.6 1.7-1.7 3.5 3.5M10.2 6.2h.01"/></svg>';
+/** Addresses that failed to load: drawn as the placeholder at once next time (no broken image in between) */
+const failedImages = new Set<string>();
+/** An image that could not load: a quiet line in its place (the alt text, or the address), not the browser's broken icon */
+export function imageFailed(img: HTMLImageElement) {
+  const src = img.getAttribute("src") ?? "";
+  if (src) failedImages.add(src);
+  const box = document.createElement("span"), t = document.createElement("span");
+  box.className = "md-imgerr";
+  box.title = src;
+  box.innerHTML = IMG_ERR;
+  t.textContent = `Image failed to load · ${img.alt || src}`;
+  box.append(t);
+  img.replaceWith(box);
+}
+export const imageFailedBefore = (src: string | null) => !!src && failedImages.has(src);
+const onImageError = (e: Event) => { if (e.target instanceof HTMLImageElement && e.target.closest(".md")) imageFailed(e.target); };
+const watched = new WeakSet<HTMLElement>();
+
 /** renderMd 的 HTML 用 innerHTML 放进 el 以后调用：认 [[引用]]、代码块着色、Mermaid 换成图、摆批注标签 */
 export function hydrate(el: HTMLElement, html: string) {
+  if (html.includes("<img")) {
+    // error does not bubble: caught on the way down
+    if (!watched.has(el)) { watched.add(el); el.addEventListener("error", onImageError, true); }
+    for (const img of el.querySelectorAll("img")) if (imageFailedBefore(img.getAttribute("src")) || (img.complete && !img.naturalWidth && img.getAttribute("src"))) imageFailed(img);
+  }
   if (html.includes('class="md-ref"')) for (const r of el.querySelectorAll<HTMLElement>(".md-ref")) paintRef(r);
   if (html.includes('class="md-code" data-lang')) colorCode(el);
   if (html.includes('class="mmd"')) void import("./diagram").then((m) => m.renderAll(el));
