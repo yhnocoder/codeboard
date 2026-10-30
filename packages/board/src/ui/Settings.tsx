@@ -329,7 +329,7 @@ function AiSettings() {
 
 function PathField() {
   const commit = (v: string) => { v = v.trim(); if (v !== cur().stickerDir) A.setSetting("stickerDir", v); };
-  return <input class="fld mono st-path" type="text" spellcheck={false} value={cur().stickerDir} placeholder="~/.codeboard/stickers"
+  return <input class="fld mono st-path" type="text" spellcheck={false} value={cur().stickerDir} placeholder="~/.codeboard/stickers" aria-label="Sticker folder"
     onChange={(e) => commit(e.currentTarget.value)} onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }} />;
 }
 

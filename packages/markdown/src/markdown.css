@@ -258,9 +258,11 @@ math { font-size: 1.05em; }
 .md-findbar.repl .md-tog .md-ico { rotate: 90deg; }
 /* 替换那一行的输入框和上面的对齐（让开展开替换的按钮） */
 .md-findpad { width: 24px; flex: none; }
-/* 匹配的字：淡的强调色底，选中的那一个深一点。Note 正文里是 CSS Custom Highlight（editor/find.ts），代码块里是 CodeMirror 的装饰 */
-::highlight(md-find), .md-pm .md-find-hit { background-color: color-mix(in srgb, var(--accent) 20%, transparent); }
-::highlight(md-find-cur), .md-pm .md-find-on { background-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+/* 匹配的字：淡的强调色底，选中的那一个深一点。Note 正文里是 CSS Custom Highlight（editor/find.ts），代码块里是 CodeMirror 的装饰。
+   ::highlight() 一定要限定在编辑器里（.md-pm）：不限定的话，Chromium 每次重算样式都给页面上每个元素多算一份高亮样式，
+   整块白板的样式计算翻倍（平移、缩放、拖卡都慢） */
+.md-pm ::highlight(md-find), .md-pm .md-find-hit { background-color: color-mix(in srgb, var(--accent) 20%, transparent); }
+.md-pm ::highlight(md-find-cur), .md-pm .md-find-on { background-color: color-mix(in srgb, var(--accent) 45%, transparent); }
 /* 代码编辑器（cm/editor.ts） */
 .cbcm .cm-content .call { cursor: text; }
 .cbcm .cm-content .call:hover { background: none; }
