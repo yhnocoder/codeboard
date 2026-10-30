@@ -205,10 +205,11 @@ export class CodeBlockView implements NodeView {
     item("Delete code block", () => this.remove(), true);
     m.addEventListener("pointerdown", (e) => e.stopPropagation());
     anchor.classList.add("on");
+    this.pill.classList.add("held");
     this.pill.append(m);
     const away = (e: Event) => { if (!m.contains(e.target as Node) && e.target !== anchor && !anchor.contains(e.target as Node)) this.closeMenu(); };
     document.addEventListener("mousedown", away, true);
-    this.offMenu = () => { document.removeEventListener("mousedown", away, true); anchor.classList.remove("on"); };
+    this.offMenu = () => { document.removeEventListener("mousedown", away, true); anchor.classList.remove("on"); this.pill.classList.remove("held"); };
   }
   private offMenu = () => {};
   private closeMenu() { this.menu?.remove(); this.menu = null; this.offMenu(); }

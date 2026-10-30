@@ -106,6 +106,7 @@ export class LangBox {
     });
     document.body.append(b);
     this.label.setAttribute("aria-expanded", "true");
+    this.label.closest(".md-cbpill")?.classList.add("held");
     this.touched = false;
     this.filter(false);
     // 和别的菜单一样从 .97 放大、淡入（.ctx → .ctx.open 的过渡：先让没打开的样子排一次版）；看得见了才拿得到焦点
@@ -124,6 +125,7 @@ export class LangBox {
     this.busy = false;
     this.i = -1;
     this.label.setAttribute("aria-expanded", "false");
+    this.label.closest(".md-cbpill")?.classList.remove("held");
   }
 
   /** typed：用户打了字（选中第一项）；否则（刚打开）选中现在的语言 */

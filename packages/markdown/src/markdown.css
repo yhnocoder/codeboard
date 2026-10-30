@@ -228,7 +228,8 @@ math { font-size: 1.05em; }
 .md-pm pre.md-code > .md-cbpill { position: absolute; right: 6px; top: 4px; z-index: 2; display: flex; align-items: center; gap: 1px; padding: 2px; border-radius: 8px;
   background: var(--surface); box-shadow: var(--sh-float, 0 1px 4px rgba(0, 0, 0, .15)); font: 11px/18px var(--sys); white-space: nowrap; cursor: default;
   user-select: none; -webkit-user-select: none; opacity: 0; pointer-events: none; transition: opacity calc(var(--t, 1) * 120ms); }
-.md-pm pre.md-code:is(:hover, :focus-within) > .md-cbpill, .md-pm pre.md-code > .md-cbpill:has([aria-expanded="true"], .md-cbmenu) { opacity: 1; pointer-events: auto; }
+/* .held: its menu or language list is open (a class, not :has(): a :has() rule is checked again on DOM changes across the board) */
+.md-pm pre.md-code:is(:hover, :focus-within) > .md-cbpill, .md-pm pre.md-code > .md-cbpill.held { opacity: 1; pointer-events: auto; }
 .md-pm .md-cbpill .md-lang { display: flex; align-items: center; gap: 3px; max-width: 140px; height: 22px; margin: 0; padding: 0 6px; border: 0; border-radius: 6px; outline: none; background: none; box-shadow: none;
   color: var(--ink-2); font: inherit; letter-spacing: .01em; cursor: pointer; }
 .md-pm .md-cbpill .md-lang .md-lang-nm { overflow: hidden; text-overflow: ellipsis; }
@@ -274,7 +275,9 @@ math { font-size: 1.05em; }
 .md-pm.md-row-resize { cursor: row-resize; }
 .md-pm td, .md-pm th { position: relative; }
 .md-rowline { position: fixed; z-index: 57; height: 2px; margin-top: -1px; background: var(--accent); pointer-events: none; }
-body.md-row-resizing, body.md-row-resizing * { cursor: row-resize !important; }
+/* over the whole page while a row is dragged, for the cursor (a `body.x *` rule would be matched against every element on
+   every style recalc of the board) */
+.md-rowshield { position: fixed; inset: 0; z-index: 56; cursor: row-resize; }
 .md-langbox { position: fixed; left: 0; top: 0; }
 .md-langbox .md-menu { width: 200px; min-width: 0; max-height: none; overflow: hidden; display: flex; flex-direction: column; padding: 4px; transform-origin: 100% 0; }
 .md-langbox .md-langq { flex: none; width: 100%; height: 28px; margin: 0 0 4px; padding: 0 8px; border: 0; border-bottom: .5px solid var(--hair); border-radius: 0; outline: none;

@@ -139,14 +139,16 @@ const rowResize = () => {
           const place = () => { line.style.top = `${r.top + h * k}px`; };
           place();
           document.body.append(line);
-          document.body.classList.add("md-row-resizing");
+          const shield = document.createElement("div");
+          shield.className = "md-rowshield";
+          document.body.append(shield);
           dragging = true;
           const move = (ev: MouseEvent) => { h = Math.max(ROW_MIN, h0 + (ev.clientY - y0) / k); place(); };
           const up = () => {
             window.removeEventListener("mousemove", move, true);
             window.removeEventListener("mouseup", up, true);
             line.remove();
-            document.body.classList.remove("md-row-resizing");
+            shield.remove();
             dragging = false;
             view.dom.classList.remove("md-row-resize");
             const n = view.state.doc.nodeAt(pos);
