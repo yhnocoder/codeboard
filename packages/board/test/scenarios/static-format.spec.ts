@@ -113,11 +113,14 @@ test("staticToolbarOverFirstLine", async () => {
   const pg = h.page;
   await pg.locator('.card[data-id="n0"]').click({ position: { x: 20, y: 12 } });
   await idle(h);
-  // 从第一行靠右的「每加载」选到第二行的「工作量」
+  // 从第一行末尾的几个字选到第二行开头几个字；第一行在哪断按实际排版找（各机器字体宽度不同）
   const lines = await pg.evaluate(() => {
     const root = document.querySelector('.card[data-id="n0"] .nbody p')!;
-    const t = root.firstChild as Text, i = t.data.indexOf("每加载"), j = t.data.indexOf("工作量") + 3;
-    const rg = document.createRange(); rg.setStart(t, i); rg.setEnd(t, j);
+    const t = root.firstChild as Text, rg = document.createRange();
+    const top = (k: number) => { rg.setStart(t, k); rg.setEnd(t, k + 1); return rg.getBoundingClientRect().top; };
+    let k = 1;
+    while (k < t.data.length && top(k) - top(0) < 4) k++;
+    rg.setStart(t, k - 6); rg.setEnd(t, k + 6);
     const s = getSelection()!; s.removeAllRanges(); s.addRange(rg);
     return [...rg.getClientRects()].filter((q) => q.width > 0).map((q) => ({ l: q.left, r: q.right, t: q.top }));
   });
