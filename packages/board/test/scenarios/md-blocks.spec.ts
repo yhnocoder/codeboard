@@ -213,7 +213,8 @@ test("codeBlockLabelClear", async () => {
   await pg.mouse.move(5, 5);
   await idle(h);
   const away = await pills();
-  await pg.locator(`${pres} .cm-content`).last().click();
+  // at the start of the code: the pill sits over the top-right corner of the block's first line
+  await pg.locator(`${pres} .cm-content`).last().click({ position: { x: 2, y: 4 } });
   await pg.keyboard.press("End");
   await pg.mouse.move(5, 5);
   await idle(h);

@@ -330,7 +330,8 @@ const ISSUES: Record<string, [string, (i: I) => boolean][]> = {
   "#21 ***both***": [["bold-italic", md("a ***both*** b")]],
   "#22 --- Enter": [["hr-dash-enter", md("---\n\nafter")]],
   "#23 ``x ` y``": [["code-double", md("a ``x ` y`` b")]],
-  "#25 Cmd+Enter in a table adds a row": [["table-enter-newrow", (i) => /tr\(td\(p\("R"\)\)/.test(i.dom)]],
+  // the row goes below and the caret stays in its cell (as in the demo): the R lands after the 2, the new row is empty
+  "#25 Cmd+Enter in a table adds a row": [["table-enter-newrow", (i) => /td\(p\("2R"\)\)\) tr\(td\(p\(\)\) td\(p\(\)\)\)/.test(i.dom)]],
   "#26 Backspace after math shows its source": [["backspace-into-math", md("a $x^2")]],
   "#28 1) list": [["ordered-paren", md("1. one")]],
   "#29 completions mid-paragraph and word by word": [

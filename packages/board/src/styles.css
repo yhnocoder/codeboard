@@ -732,6 +732,8 @@ kbd { font: 10.5px var(--mono); }
 .nbody pre, .cdesc pre, .tx pre, .sn-text pre { margin: 4px 0; padding: 6px 8px; background: var(--hlrow); border-radius: 7px; font: 11px/1.5 var(--mono); overflow-x: auto; white-space: pre; }
 /* a Note's code block, static and in the editor: a soft panel with room around the code (the demo's look) */
 .nbody pre.md-code { margin: .8em 0; padding: 18px 22px; background: var(--nc-bg, var(--hlrow)); border-radius: 12px; font: 12.5px/1.7 var(--mono); }
+/* the Note's last block has no margin below it (markdown.css .md > :last-child, the editor's .md-prepad), a code block too */
+.nbody > pre.md-code:last-child, .md-pm > pre.md-code.md-prepad { margin-bottom: 0; }
 .nbody pre.md-code .kw { color: var(--nc-kw, var(--k-kw)); } .nbody pre.md-code .fn { color: var(--nc-fn, var(--k-fn)); }
 .nbody pre.md-code :is(.num, .dec) { color: var(--nc-num, var(--k-num)); } .nbody pre.md-code .str { color: var(--nc-str, var(--k-str)); }
 .nbody pre.md-code .com { color: var(--nc-com, var(--k-com)); font-style: var(--nc-com-i, var(--com-i, italic)); } .nbody pre.md-code .p { color: var(--nc-p, var(--k-p)); }
