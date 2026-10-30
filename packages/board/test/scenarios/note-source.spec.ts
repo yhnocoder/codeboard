@@ -597,7 +597,7 @@ test("noteEscClosesPopupOnly", async () => {
  *  math and link text in colour), tints the caret's line, and wraps long lines between words, never inside one */
 test("noteSourceModeLook", async () => {
   const words = "occupancy depends on registers shared memory thread block slots and thread slots which are divided dynamically between resident threads".split(" ");
-  const src = `## Heading\n\n${words.join(" ")} with $x^2$ and [a link](https://example.com)\n\n| a | b |\n| - | - |\n| 1 | \`c\` |\n\n\`\`\`python\nx = 1\n\`\`\`\n\n$$\ny = 2\n$$`;
+  const src = `## Heading\n\n${words.join(" ")} with $x^2$ and [a link](https://example.com)\n\n| a | b |\n| - | - |\n| 1 | \`c\` |\n\n\`\`\`python\nx = 1\n\`\`\`\n\n$$\ny = 2\n$$\n\n![pic](data:image/svg+xml;utf8,${"%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='360'".repeat(12)})`;
   const h = await open({ board: board([src]), light });
   const pg = h.page;
   await idle(h);
@@ -620,13 +620,17 @@ test("noteSourceModeLook", async () => {
     const breaks: string[] = [];
     for (let i = 1; i < chars.length; i++) if (chars[i].top > chars[i - 1].top + 4) breaks.push(chars[i - 1].c + "|" + chars[i].c);
     const active = root.querySelector(".cm-activeLine");
-    return { mk: all("mk"), h: all("h"), code: all("code"), math: all("math"), link: all("link"), breaks, active: active ? getComputedStyle(active).backgroundColor : null };
+    // a token longer than the line (the data: address) breaks inside the box: the box keeps the card's width
+    const box = document.querySelector(cm.replace(" .cm-content", ""))!.getBoundingClientRect(), content = root.getBoundingClientRect();
+    const fits = Math.round(content.width) <= Math.round(box.width) && root.scrollWidth <= root.clientWidth + 1;
+    return { fits, widths: [Math.round(content.width), Math.round(box.width), root.scrollWidth, root.clientWidth], mk: all("mk"), h: all("h"), code: all("code"), math: all("math"), link: all("link"), breaks, active: active ? getComputedStyle(active).backgroundColor : null };
   }, cm);
   await shot(h, "noteSourceModeLook");
   await pg.keyboard.press("ControlOrMeta+/");
   await exitEdit(h);
   check("noteSourceModeLook colours", r.mk.includes("## ") && r.h.includes("Heading") && r.mk.includes("|") && r.mk.some((m) => /^\| -+ \| -+ \|$/.test(m ?? "")) && r.mk.includes("```python") && r.mk.includes("$$")
     && r.code.includes("x = 1") && r.code.includes("c") && r.math.includes("$x^2$") && r.math.includes("y = 2") && r.link.includes("a link"), r);
+  check("noteSourceModeLook an overlong token breaks inside the card", r.fits, r.widths);
   check("noteSourceModeLook wraps between words", r.breaks.length > 0 && r.breaks.every((b) => b.startsWith(" |")), r.breaks);
   check("noteSourceModeLook tints the caret's line", !!r.active && r.active !== "rgba(0, 0, 0, 0)", r.active);
   await close(h);
