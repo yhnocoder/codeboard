@@ -14,6 +14,8 @@
   --chg: rgba(196,138,31,.13); --chg-strong: rgba(196,138,31,.34); --del: rgba(181,85,45,.09); --add: rgba(74,117,54,.10);
   /* what an edit would delete (the table size grid's doomed cells, @yhnocoder/markdown) */
   --doom: rgba(205,70,45,.16); --doom-line: rgba(205,70,45,.55); --doom-ink: #b23a22;
+  /* a Note's code blocks (Warm Ink only, the demo's colours; other looks reset these below and use their --k-* colours) */
+  --nc-bg: #f5f3ef; --nc-pill: #ffffff; --nc-kw: #1f6fa8; --nc-fn: #d03b5c; --nc-num: #a3166b; --nc-com: #66758a; --nc-str: #4a7a2c; --nc-p: #8a857c; --nc-com-i: normal;
   --hatch: rgba(60,45,20,.07);
   --edge: #9a958b;
   --s-sand: rgba(206,170,110,.16); --s-blue: rgba(96,145,205,.12); --s-green: rgba(110,165,95,.13); --s-pink: rgba(215,120,145,.12);
@@ -58,6 +60,7 @@
   --chg: rgba(224,176,85,.12); --chg-strong: rgba(224,176,85,.32); --del: rgba(227,137,95,.12); --add: rgba(163,201,140,.12);
   --doom: rgba(240,110,90,.22); --doom-line: rgba(240,120,95,.6); --doom-ink: #f08a74;
   --md-float-ring: 0 0 0 1px rgba(255,240,220,.15);
+  --nc-bg: #2b2a27; --nc-pill: #34332f; --nc-kw: #7db4e4; --nc-fn: #f07c95; --nc-num: #e08cc0; --nc-com: #8b95a5; --nc-str: #a3c98c; --nc-p: #8f8a80;
   --hatch: rgba(255,240,220,.06);
   --edge: #78746c;
   --s-sand: rgba(214,180,120,.10); --s-blue: rgba(120,165,225,.09); --s-green: rgba(140,195,120,.09); --s-pink: rgba(230,140,165,.09);
@@ -71,6 +74,8 @@
   --sh-float: 0 0 0 .5px var(--hair), 0 2px 6px -1px rgba(0,0,0,.35), 0 10px 28px -8px rgba(0,0,0,.55);
   --sect-border: .5px solid var(--hair); --sect-fill: color-mix(in srgb, var(--ink) 2.5%, transparent); --sect-sh: inset 0 1px 0 rgba(255,245,230,.025);
 }
+/* the Note code block colours above are Warm Ink's alone: another look (the board's or a preview's) falls back to its own */
+[data-look]:not([data-look="warm-ink"]) { --nc-bg: initial; --nc-pill: initial; --nc-kw: initial; --nc-fn: initial; --nc-num: initial; --nc-com: initial; --nc-str: initial; --nc-p: initial; --nc-com-i: initial; }
 :root, [data-look] { --row: color-mix(in srgb, var(--accent) 9%, transparent); }
 /* 卡片阴影分两半：--sh-ring = 细边和内高光（不模糊），--sh-soft = 模糊的那几层。卡上两半分开画（.card::before / ::after）：
    squircle 外面的模糊阴影是一条路径的模糊，GPU 栅格化时每块瓦片都要按整张卡那么大的蒙版重算，圆角矩形的是便宜的解析模糊；
@@ -725,6 +730,11 @@ kbd { font: 10.5px var(--mono); }
 .nbody ul, .nbody ol, .cdesc ul, .cdesc ol, .tx ul, .tx ol, .inote ul, .sn-text ul, .sn-text ol { margin: 2px 0; padding-left: 1.3em; }
 .nbody blockquote, .cdesc blockquote, .tx blockquote, .sn-text blockquote { margin: 2px 0; padding-left: 8px; border-left: 2px solid var(--hair); color: var(--ink-2); }
 .nbody pre, .cdesc pre, .tx pre, .sn-text pre { margin: 4px 0; padding: 6px 8px; background: var(--hlrow); border-radius: 7px; font: 11px/1.5 var(--mono); overflow-x: auto; white-space: pre; }
+/* a Note's code block, static and in the editor: a soft panel with room around the code (the demo's look) */
+.nbody pre.md-code { margin: .8em 0; padding: 18px 22px; background: var(--nc-bg, var(--hlrow)); border-radius: 12px; font: 12.5px/1.7 var(--mono); }
+.nbody pre.md-code .kw { color: var(--nc-kw, var(--k-kw)); } .nbody pre.md-code .fn { color: var(--nc-fn, var(--k-fn)); }
+.nbody pre.md-code :is(.num, .dec) { color: var(--nc-num, var(--k-num)); } .nbody pre.md-code .str { color: var(--nc-str, var(--k-str)); }
+.nbody pre.md-code .com { color: var(--nc-com, var(--k-com)); font-style: var(--nc-com-i, var(--com-i, italic)); } .nbody pre.md-code .p { color: var(--nc-p, var(--k-p)); }
 .sp { height: .6em; }
 /* Markdown 本身的样式（.md、编辑器、代码编辑器）在 @yhnocoder/markdown 的 markdown.css（index.tsx 接在这一份后面）；这里只有白板这边的 */
 .md-pend { visibility: hidden; } /* md/lazy.ts：还没渲染的 Note 只占位，不露原文 */

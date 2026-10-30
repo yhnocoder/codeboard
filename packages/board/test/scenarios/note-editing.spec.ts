@@ -770,12 +770,12 @@ test("noteCodeBlockLanguagePicker", async () => {
   await until(h, "the language label shows while the caret is in the block", async () => (await opacity()) === "1");
   await idle(h);
   res.plain = { name: await name(), kw: await kws(), chevron: await chevron() };
-  // the pill in the top-right corner (6px in), the label in it a line of small plain text: no background, border, shadow
+  // the pill in the top-right corner (8px in, the label 3px further in), the label in it plain 13px text: no background, border, shadow
   const [lr, pr, pl] = [(await label.boundingBox())!, (await pre.boundingBox())!, (await pg.locator(`${n0} .md-pm pre .md-cbpill`).boundingBox())!];
   const look = await label.evaluate((e) => { const s = getComputedStyle(e); return { bg: s.backgroundColor, border: s.borderTopWidth + s.borderTopStyle, shadow: s.boxShadow, font: s.fontSize }; });
   res.place = { right: +(pr.x + pr.width - pl.x - pl.width).toFixed(1), top: +(lr.y - pr.y).toFixed(1), ...look };
-  check("noteCodeBlockLanguagePicker label at the top right, plain text", Math.abs((res.place as any).right - 6) <= 1 && Math.abs((res.place as any).top - 6) <= 1
-    && look.bg === "rgba(0, 0, 0, 0)" && /^0px/.test(look.border) && look.shadow === "none" && look.font === "11px", res.place);
+  check("noteCodeBlockLanguagePicker label at the top right, plain text", Math.abs((res.place as any).right - 8) <= 1 && Math.abs((res.place as any).top - 11) <= 1
+    && look.bg === "rgba(0, 0, 0, 0)" && /^0px/.test(look.border) && look.shadow === "none" && look.font === "13px", res.place);
   await snap("rest");
   // 悬停：▾ 淡入
   await pre.hover();

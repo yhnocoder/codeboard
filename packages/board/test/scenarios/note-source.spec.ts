@@ -174,6 +174,13 @@ test("noteCodeBlockPill", async () => {
   await pg.locator(pill).waitFor({ state: "visible" });
   const tips = await pg.locator(`${pill} .md-cbb`).evaluateAll((bs) => bs.map((b) => b.getAttribute("data-tip")));
   const lang = (await pg.locator(pill).innerText()).trim();
+  // the demo's look: a 12px-round panel, 18 / 22px around 12.5px code on 1.7 lines, a 34px pill with a hair line after the language;
+  // in Warm Ink the demo's number colour (the board's code cards keep theirs)
+  await until(h, "the code is coloured", async () => (await pg.locator(`${block} .cm-content .num`).count()) > 0);
+  const look = await pg.locator(block).evaluate((e) => {
+    const s = getComputedStyle(e), p = e.querySelector(".md-cbpill")!, num = e.querySelector(".cm-content .num");
+    return { radius: s.borderTopLeftRadius, pad: `${s.paddingTop} ${s.paddingLeft}`, font: s.fontSize, lh: s.lineHeight, pill: Math.round(p.getBoundingClientRect().height), sep: !!p.querySelector(".md-lang + .md-cbsep"), num: num ? getComputedStyle(num).color : null };
+  });
   const h0 = await pg.locator(block).evaluate((e) => e.getBoundingClientRect().height);
   await pg.locator(`${pill} .md-cbb[data-tip="Wrap lines"]`).click();
   await until(h, "wrap turns on", async () => (await pg.locator(`${pill} .md-cbb.on[data-tip="Wrap lines"]`).count()) === 1);
@@ -192,6 +199,8 @@ test("noteCodeBlockPill", async () => {
   await pg.locator(".md-cbmenu button", { hasText: "Convert to paragraph" }).click();
   await until(h, "the block became paragraphs", async () => (await pg.locator(`${card("n1")} .md-pm .md-code`).count()) === 0);
   await exitEdit(h);
+  check("noteCodeBlockPill look", look.radius === "12px" && look.pad === "18px 22px" && look.font === "12.5px" && Math.abs(parseFloat(look.lh) - 21.25) < .5 && look.pill === 34 && look.sep
+    && look.num === (light ? "rgb(163, 22, 107)" : "rgb(224, 140, 192)"), look);
   check("noteCodeBlockPill pill", lang.startsWith("Python") && JSON.stringify(tips) === JSON.stringify(["Copy code", "Wrap lines", "More"]), { lang, tips });
   check("noteCodeBlockPill wrap", h1 > h0 + 10 && staticWrap === 1 && mdAfterWrap === `Intro\n\n${code}\n\nafter`, { h0, h1, staticWrap, mdAfterWrap });
   check("noteCodeBlockPill menu", JSON.stringify(items.map((t) => t.trim())) === JSON.stringify(["Convert to paragraph", "Delete code block"]) && !md(h, "n1").includes("```") && md(h, "n1").includes("x = 1"), { items, md: md(h, "n1") });

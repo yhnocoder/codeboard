@@ -173,7 +173,10 @@ export class CodeBlockView implements NodeView {
     });
     this.wrapBtn = btn("wrap", "Wrap lines", () => this.setAttr({ wrap: !this.node.attrs.wrap }));
     const more = btn("dots", "More", (b) => (this.menu ? this.closeMenu() : this.openMenu(b)));
-    this.pill.append(this.langBox.label, copy, this.wrapBtn, more);
+    more.classList.add("dots");
+    const sep = document.createElement("span");
+    sep.className = "md-cbsep";
+    this.pill.append(this.langBox.label, sep, copy, this.wrapBtn, more);
     this.dom.append(this.pill);
     this.showWrap();
   }
