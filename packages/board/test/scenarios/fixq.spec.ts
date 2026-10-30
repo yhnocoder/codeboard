@@ -10,7 +10,7 @@ import { DEFAULT_SETTINGS, THEMES, emptyBoard, type CodeCard } from "@codeboard/
 import { shot, put, symCard, findSym, files, ready, OUT, REPO, type Host } from "../harness";
 import { analyze } from "@codeboard/analysis";
 import { uid, type Segment } from "@codeboard/core";
-import { test, open, light, verdict, expect, until, idle } from "../fixtures";
+import { test, open, light, verdict, expect, until, idle, check } from "../fixtures";
 
 async function shotTo(h: Host, name: string) {
   await shot(h, name);
@@ -21,6 +21,33 @@ const nv = (qual: string) => { const s = findSym(qual); return symCard(s.f, s.s)
 const lineOf = (c: CodeCard, re: RegExp) => { const s = c.segments[0]; return s.start + s.text.findIndex((t) => re.test(t)); };
 
 test("qpop", () => verdict("qpop", qpop));
+
+/** The question's text starts right at the top of its box: no browser paragraph margin above it, while editing (the placeholder)
+ *  and when shown (usage feedback #88) */
+test("questionTextNoTopGap", async () => {
+  const b = emptyBoard("bQ", "q");
+  const alloc = nv("BlockManager.allocate");
+  put(b, alloc, 60, 80, 640);
+  const L = alloc.segments[0].start + 3;
+  b.stickers.push({ id: "kQ", icon: { pack: "builtin", name: "question" }, at: { kind: "line", card: alloc.id, seg: alloc.segments[0].id, line: L }, q: { md: "" } },
+    { id: "kW", icon: { pack: "builtin", name: "question" }, at: { kind: "line", card: alloc.id, seg: alloc.segments[0].id, line: L + 4 }, q: { md: "Why here?\n\nSecond paragraph." } });
+  const h = await open({ board: b, light: true, w: 1300, h: 800, settings: { theme: "warm-ink" } as never }), page = h.page;
+  // gap between the text box's content edge and its first line
+  const gap = () => page.evaluate(() => {
+    const q = document.querySelector<HTMLElement>(".pop.k-question .qtext")!, p = q.querySelector("p")!;
+    return +(p.getBoundingClientRect().top - q.getBoundingClientRect().top - parseFloat(getComputedStyle(q).paddingTop)).toFixed(1);
+  });
+  await page.locator('[data-sticker="kW"]').first().click();
+  await page.locator(".pop.k-question .qtext p").first().waitFor(); await idle(h);
+  const shown = await gap();
+  await page.keyboard.press("Escape"); await idle(h);
+  await page.locator('[data-sticker="kQ"]').first().click();
+  await page.locator(".pop.k-question .qbody").dblclick();
+  await page.locator(".pop.k-question .ProseMirror:focus").waitFor(); await idle(h);
+  const editing = await gap();
+  await shot(h, "questionTextNoTopGap");
+  check("questionTextNoTopGap", Math.abs(shown) <= 0.5 && Math.abs(editing) <= 0.5, { shown, editing });
+});
 
 test("dataclass", () => verdict("dataclass", dataclass));
 

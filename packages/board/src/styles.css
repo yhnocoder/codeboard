@@ -697,7 +697,7 @@ textarea.fld { min-height: 86px; line-height: 1.5; }
 .lnk:hover { text-decoration-color: var(--k-fn); }
 kbd { font: 10.5px var(--mono); }
 
-.nbody p, .cdesc p, .tx p, .inote p, .sn-text p, .pdesc p { margin: 0; }
+.nbody p, .cdesc p, .tx p, .inote p, .sn-text p, .pdesc p, .k-question .qtext p { margin: 0; }
 .cdesc h1, .cdesc h2, .cdesc h3, .tx h1, .tx h2, .tx h3, .sn-text h1, .sn-text h2, .sn-text h3 { margin: 2px 0 4px; font: 600 1.05em/1.4 var(--note-h); color: var(--ink); }
 .nbody h1, .nbody h2, .nbody h3 { margin: 2px 0 4px; font-weight: 600; line-height: 1.4; font-family: var(--note-h); color: var(--ink); } /* 字号：--md-h1…h3（上面） */
 /* Note / Text 里的 Markdown 标题要有层级（# 大标题、## 小标题、### 加粗正文）；Text 用自己的字号档，按比例 */
