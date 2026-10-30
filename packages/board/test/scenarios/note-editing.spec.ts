@@ -432,7 +432,7 @@ test("mathSourceInPlace", async () => {
   const pg = h.page, card = '.card[data-id="n0"]';
   await idle(h);
   const blockH = () => pg.evaluate((card) => Math.round(document.querySelector(`${card} :is(.math, [data-type=block-math])`)!.getBoundingClientRect().height), card);
-  const tex = () => pg.evaluate((card) => [...document.querySelectorAll(`${card} annotation`)].map((a) => a.textContent), card);
+  const tex = () => pg.evaluate((card) => [...document.querySelectorAll(`${card} .katex[data-latex]`)].map((a) => a.getAttribute("data-latex")), card);
   const shownH = await blockH();
   await pg.locator(`${card} .nbody p`).last().dblclick();
   await pg.waitForSelector(`${card} .md-pm`, { timeout: 5000 });

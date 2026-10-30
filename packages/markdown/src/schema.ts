@@ -29,7 +29,10 @@ import { bracketDelims, dollarBrackets } from "./brackets";
 // 行内的 $$…$$ 是行内的大号公式
 const INLINE_MATH = /^\$\$([^$]+?)\$\$|^\$([^$\s](?:[^$]*[^$\s\\])?)\$(?!\d)/;
 /** 排好的公式（KaTeX、MathML）里的 TeX 原文；没有的不当公式（按字读进来） */
-const texAttrs = (e: HTMLElement) => { const tex = e.querySelector('annotation[encoding="application/x-tex"]')?.textContent?.trim(); return tex ? { latex: tex } : false; };
+const texAttrs = (e: HTMLElement) => {
+  const tex = (e.querySelector('annotation[encoding="application/x-tex"]')?.textContent ?? (e.matches(".katex[data-latex]") ? e : e.querySelector(".katex[data-latex]"))?.getAttribute("data-latex"))?.trim();
+  return tex ? { latex: tex } : false;
+};
 export type MathToken = { raw: string; latex: string; display: boolean };
 /** 行内公式的分词规则，解析、粘贴进来的 HTML 里的字、写回时的转义都照它：src 从一个 $ 开始，prev 是紧挨在它前面的那个字 */
 export function mathAt(src: string, prev: string): MathToken | null {
@@ -70,6 +73,7 @@ const Math1 = InlineMath.extend({
       if (node.attrs.display) dom.dataset.display = "yes";
       try {
         katex.render(mathTex(node.attrs.latex, !!node.attrs.display), dom, { ...this.options.katexOptions, displayMode: false, output: "html" });
+        dom.querySelector(".katex")?.setAttribute("data-latex", node.attrs.latex); // where a paste reads the TeX (texAttrs)
       } catch {
         dom.textContent = node.attrs.latex;
         dom.classList.add("inline-math-error");

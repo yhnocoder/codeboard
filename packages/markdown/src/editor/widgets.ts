@@ -4,7 +4,7 @@ import katex from "katex";
 import { TextSelection } from "@tiptap/pm/state";
 import { closeHistory } from "@tiptap/pm/history";
 import type { EditorView } from "@tiptap/pm/view";
-import { mathMacros } from "../math";
+import { markTex, mathMacros } from "../math";
 import { captionOf, imageAttrs } from "../image";
 import { renderMd } from "../render";
 import { imageFailed, imageFailedBefore, paintRef } from "../view";
@@ -29,7 +29,7 @@ const span = (cls: string) => { const e = document.createElement("span"); e.clas
 /** HTML only, as in the static render: MathML on the page turns on Chrome's MathML stylesheet, whose :nth-child rules make
  *  every inserted paragraph restyle all the blocks after it (Enter in a long Note took 150–200 ms) */
 export function renderTex(el: HTMLElement, latex: string, display: boolean) {
-  try { katex.render(latex, el, { displayMode: display, throwOnError: false, output: "html", macros: mathMacros() }); }
+  try { katex.render(latex, el, { displayMode: display, throwOnError: false, output: "html", macros: mathMacros() }); markTex(el, latex); }
   catch { el.textContent = latex; }
 }
 
@@ -129,12 +129,15 @@ const loaded = new Set<string>();
 /** The image under its source; dragging a grip rewrites the {width=N%} after it in one undo step */
 export function imageBelow(a: Extract<Atom, { type: "image" }>): ToDOM {
   return (view, getPos) => {
-    const el = imageEl(a, true), img = el.querySelector("img")!, src = img.getAttribute("src");
+    const el = imageEl(a, true), img = el.querySelector("img");
+    el.addEventListener("mousedown", (ev) => ev.preventDefault());
+    // an address that failed before is its placeholder already: nothing to size
+    if (!img) return el;
+    const src = img.getAttribute("src");
     if (src && !loaded.has(src)) {
       img.removeAttribute("src");
       setTimeout(() => { if (el.isConnected) { loaded.add(src); img.setAttribute("src", src); } }, IMAGE_SETTLE);
     }
-    el.addEventListener("mousedown", (ev) => ev.preventDefault());
     for (const side of [-1, 1]) {
       const g = span(`md-imgrip ${side < 0 ? "l" : "r"}`);
       g.setAttribute("data-tip", "Drag to resize · Double-click for full width");

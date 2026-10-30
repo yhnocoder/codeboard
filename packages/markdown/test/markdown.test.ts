@@ -259,7 +259,7 @@ describe("typed math and block source", () => {
     expect(marksOf("==*:tada:*==", "emoji")).toEqual(["highlight", "italic"]);
     expect(marksOf("[a $x$](https://e.com)", "inlineMath")).toEqual(["link"]);
     expect(marksOf("a $x$", "inlineMath")).toEqual([]);
-    expect(renderMd("**a $x$ :tada:**")).toMatch(/^<p><strong>a <span class="katex">.*<span class="md-emoji"[^>]*>🎉<\/span><\/strong><\/p>$/);
+    expect(renderMd("**a $x$ :tada:**")).toMatch(/^<p><strong>a <span class="katex" data-latex="x">.*<span class="md-emoji"[^>]*>🎉<\/span><\/strong><\/p>$/);
     expect(renderMd("==:tada:==")).toMatch(/^<p><mark><span class="md-emoji"[^>]*>🎉<\/span><\/mark><\/p>$/);
     // a mark made in the editor over text and a formula is written as one span
     const d: JSONContent = { type: "doc", content: [{ type: "paragraph", content: [

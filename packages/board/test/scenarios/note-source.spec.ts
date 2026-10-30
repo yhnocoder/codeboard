@@ -365,7 +365,8 @@ test("noteImageFold", async () => {
   const pg = h.page;
   await idle(h);
   await editNote(h, "n0");
-  const img = pg.locator(`${card("n0")} .md-pm .md-img:not(.below) img`);
+  // the drawn image (offline here: its failed-to-load placeholder, which opens the source the same way)
+  const img = pg.locator(`${card("n0")} .md-pm .md-img:not(.below)`);
   await img.waitFor();
   await img.click();
   await until(h, "the source opens with the image under it", async () => (await pg.locator(`${card("n0")} .md-pm .md-img.below`).count()) === 1);

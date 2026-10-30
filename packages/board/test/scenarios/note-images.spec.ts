@@ -263,9 +263,12 @@ test("noteImageResize", async () => {
   await editNote(h, "n0");
   const g2 = await imgGrip(h, "n0");
   await pg.mouse.dblclick(g2.x, g2.y);
-  await until(h, "double-click gives the full width back", async () => (await imgFrac(h, "n0", ".md-pm")).frac > 0.99);
+  // its own size again: the column's width, or less where that would be taller than the 340px cap (image.ts IMAGE_MAX_H)
+  const own = (f: { frac: number; h: number }) => f.frac > 0.99 || Math.abs(f.h - 340) < 1;
+  await until(h, "double-click gives the image its own size back", async () => own(await imgFrac(h, "n0", ".md-pm")));
   await exitEdit(h);
-  check("noteImageResize double-click resets", widthIn(md(h, "n0")) === null && /!\[\]\(assets\/[^)]+\)$/.test(md(h, "n0")) && (await imgFrac(h, "n0", ".nbody")).frac > 0.99, { md: md(h, "n0") });
+  const reset = await imgFrac(h, "n0", ".nbody");
+  check("noteImageResize double-click resets", widthIn(md(h, "n0")) === null && /!\[\]\(assets\/[^)]+\)$/.test(md(h, "n0")) && own(reset), { md: md(h, "n0"), reset });
   await done();
 });
 

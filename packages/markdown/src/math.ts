@@ -3,6 +3,12 @@
 import katex from "katex";
 import { clearMdCache } from "./render";
 
+/** The TeX source on KaTeX's HTML output (data-latex on its .katex element): it draws no MathML, whose <annotation> is where
+ *  a paste of a typeset formula reads its TeX from (schema.ts texAttrs) */
+export const withTex = (html: string, latex: string) =>
+  html.replace('<span class="katex">', `<span class="katex" data-latex="${latex.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;")}">`);
+export const markTex = (el: Element, latex: string) => { el.querySelector(".katex")?.setAttribute("data-latex", latex); };
+
 /** 一条用户定义的命令：name 不带 \，args = 参数个数，body = 定义的原文（补全里当说明） */
 export type MathDef = { name: string; args: number; body: string };
 

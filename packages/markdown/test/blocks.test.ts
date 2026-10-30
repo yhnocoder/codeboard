@@ -11,7 +11,7 @@ describe("$$…$$ in the middle of a line", () => {
   it("renders as a display formula centred on a line of its own (md-dmath), and the source stays as typed", () => {
     const h = renderMd("3 $$\\sum_i x_i$$ end");
     expect(h).toMatch(/^<p>3 <span class="md-dmath"><span class="katex-display">/);
-    expect(h).toContain(katex.renderToString("\\sum_i x_i", { displayMode: true, throwOnError: false, output: "html" }));
+    expect(h.replace(' data-latex="\\sum_i x_i"', "")).toContain(katex.renderToString("\\sum_i x_i", { displayMode: true, throwOnError: false, output: "html" }));
     expect(h).toMatch(/<\/span> end<\/p>$/);
     expect(renderMd("$$\n\\sum_i x_i\n$$")).toContain("katex-display");
     expect(serializeMd(parseMd("3 $$\\sum_i x_i$$ end"))).toBe("3 $$\\sum_i x_i$$ end");
@@ -70,5 +70,19 @@ describe("empty list items", () => {
     for (const s of ["1. a\n2. b", "3. a\n4. b", "1. a\n   1. b\n2. c", "- [x] a\n  - [ ] b\n- [ ] c", "- a\n  1. b"]) expect(serializeMd(parseMd(s))).toBe(s);
     // 段落中间的 "2. y" 不起列表（CommonMark：不从 1 开始的有序列表不打断段落）
     expect(items(parseMd("x\n2. y"))).toEqual(["<paragraph>"]);
+  });
+});
+
+describe("pasting a typeset formula", () => {
+  it("reads the TeX back from the static render's KaTeX HTML (data-latex: no MathML annotation is drawn)", async () => {
+    const { DOMParser } = await import("@tiptap/pm/model");
+    const host = document.createElement("div");
+    host.innerHTML = renderMd("a $x^2$ b\n\n$$\n\\sum_i y_i\n$$");
+    expect(host.querySelector("annotation")).toBeNull();
+    const doc = DOMParser.fromSchema(mdSchema()).parse(host).toJSON();
+    const found: string[] = [];
+    const walk = (n: any) => { if (n.attrs?.latex) found.push(`${n.type}:${n.attrs.latex}`); (n.content ?? []).forEach(walk); };
+    walk(doc);
+    expect(found).toEqual(["inlineMath:x^2", "blockMath:\\sum_i y_i"]);
   });
 });

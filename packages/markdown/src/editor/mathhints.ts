@@ -4,7 +4,7 @@ import type { EditorState } from "@tiptap/pm/state";
 import { Plugin, PluginKey, TextSelection } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
 import { place, virtual } from "../ui/place";
-import { defsIn, mathMacros, mathPreambleDefs, type MathDef } from "../math";
+import { defsIn, mathMacros, mathPreambleDefs, withTex, type MathDef } from "../math";
 import { blockInfo, flat } from "./spans";
 
 /** 一条补全：snip 里的 | 是插入后光标的位置；pv 是排出来给人看的样子 */
@@ -106,7 +106,7 @@ function braces(src: string) {
 
 /** 排一次：排得出给 HTML；排不出给大白话的说明（还在打命令名时 problem 是 null：先不报错） */
 export function checkMath(src: string, display: boolean, caret = src.length): MathCheck {
-  try { return { html: katex.renderToString(src, { displayMode: display, throwOnError: true, output: "html", macros: mathMacros() }) }; }
+  try { return { html: withTex(katex.renderToString(src, { displayMode: display, throwOnError: true, output: "html", macros: mathMacros() }), src) }; }
   catch (e) {
     const t = tokenAt(src, caret);
     const rest = /^[A-Za-z]*/.exec(src.slice(caret))![0];

@@ -63,8 +63,8 @@ test("noteEmptyListItem", async () => {
   check("noteEmptyListItem edits again as an empty item", JSON.stringify(again) === '["a",""]' && md(h, "n1") === "1. a\n2. b", { again, md: md(h, "n1") });
 });
 
-/** A $$…$$ in the middle of a line is an inline formula typeset larger (\displaystyle) in both the static Note and the editor,
- *  the same size in both; a $$ block on its own lines is still a centred display block */
+/** A $$…$$ in the middle of a line is a display formula centred on a line of its own, the same size in the static Note and the
+ *  editor; a $$ block on its own lines is a display block too */
 test("inlineDisplayMath", async () => {
   const src = "1. 3\n2. 3 $$2 * (\\text{threadIdx.x} + \\sum_{i=1}^n x_i)$$ end\n3. 4\n\n$$\nx^2\n$$";
   const h = await open({ board: board([{ id: "n1", md: src, w: 520 }]), light, w: 800, h: 500 });
@@ -77,8 +77,8 @@ test("inlineDisplayMath", async () => {
     return {
       inLiDisplay: li?.querySelectorAll(".katex-display").length ?? -1,
       h: r ? Math.round(r.height) : 0, w: r ? Math.round(r.width) : 0,
-      // 在 "3 " 的同一行：公式左边紧跟着字，不是另起一行居中
-      sameLine: !!r && !!lr && r.left - lr.left < 40,
+      // centred on a line of its own, not right after "3 "
+      centred: (() => { const d = k?.closest(".md-dmath"), dr = d?.getBoundingClientRect(); return !!r && !!dr && getComputedStyle(d!).display === "block" && Math.abs(r.left + r.width / 2 - (dr.left + dr.width / 2)) <= 3; })(),
       opLimits: !!k?.querySelector(".op-limits"),
       blocks: document.querySelectorAll(`${root} .katex-display`).length,
     };
@@ -88,9 +88,9 @@ test("inlineDisplayMath", async () => {
   await edit(h, "n1", { x: 300, y: 4 });
   const ed = await measure(`${card("n1")} .md-pm`);
   await shot(h, "n1", "02-editing", true);
-  // \displaystyle 排的 \sum 上下限在符号上下（op-limits），行内小号的排在右边
-  check("inlineDisplayMath inline in display", view.inLiDisplay === 0 && view.sameLine && view.opLimits && view.blocks === 1, view);
-  check("inlineDisplayMath same in editor", ed.inLiDisplay === 0 && ed.sameLine && ed.opLimits && Math.abs(ed.h - view.h) <= 1 && Math.abs(ed.w - view.w) <= 2, { view, ed });
+  // $$…$$ inside a line is a display formula: centred on its own line, \sum's limits above and below it (op-limits)
+  check("inlineDisplayMath display formula on its own line", view.inLiDisplay === 1 && view.centred && view.opLimits && view.blocks === 2, view);
+  check("inlineDisplayMath same in editor", ed.inLiDisplay === 1 && ed.centred && ed.opLimits && Math.abs(ed.h - view.h) <= 1 && Math.abs(ed.w - view.w) <= 2, { view, ed });
   await pg.keyboard.press("Escape");
   await idle(h);
   check("inlineDisplayMath source unchanged", md(h, "n1") === src, md(h, "n1"));
