@@ -669,7 +669,7 @@ async function stickerfolderStep(page) {
   // Settings page shows the folder the host passed on (live)
   await clickBoard(f); await boardKeys(page, f);
   await page.keyboard.press("Control+,");
-  await until("the board's Settings page shows the new sticker folder", async () => /stickers$/.test(await f.locator(".settings .st-path").inputValue({ timeout: 1000 })), 15000);
+  await until("the board's Settings page shows the new sticker folder", async () => /stickers$/.test(await f.locator('.settings input[aria-label="Sticker folder"]').inputValue({ timeout: 1000 })), 15000);
   await page.keyboard.press("Control+,");
   await until("Ctrl+, closes the board's Settings page", async () => !(await f.locator(".settings").count()));
   // the Sticker button; in a narrow pane (two editor groups) it is folded into More as Add a Sticker
