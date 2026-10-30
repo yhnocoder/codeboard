@@ -820,10 +820,10 @@
 
 /* 远山是白板背景（不跟着画布平移缩放，镜头动时不重画）；滤镜都在 SVG 里，只在换主题、改窗口大小时栅格化一次 */
 :root.look-ink-wash { --kw-w: 600; --no-link: var(--zhu); --call-deco: underline 1px var(--zhu); --ico-w: 1; }
-/* 加粗：宋体（Songti SC）的 Bold 笔画本来就细，Source Serif 这里只带到 600，和正文差得太少。用 700，再描一圈很细的边加重（只画不排版，编辑和显示一样宽） */
 /* ==高亮== 不涂黄：字下一道粗细不匀的朱笔，像在书上用朱笔画重点（和标题旁的朱印同色）。换行时每行各画一道；只画背景，字距不变 */
 :root.look-ink-wash .md mark { background: var(--hl-brush) left bottom / 100% .42em no-repeat; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
-:root.look-ink-wash .md :is(strong, b) { font-weight: 700; -webkit-text-stroke: .025em currentColor; }
+/* 加粗用 700：Source Serif 这里只带到 600，和正文差得太少。再加描边就太粗了（Luna 在五档里选了不描边） */
+:root.look-ink-wash .md :is(strong, b) { font-weight: 700; }
 :root.look-ink-wash .board { background: url("./scenes/ink-light.svg") center bottom / cover no-repeat, var(--canvas); }
 :root.look-ink-wash[data-theme="dark"] .board { background: url("./scenes/ink-dark.svg") center bottom / cover no-repeat, var(--canvas); }
 :root.look-ink-wash .card.sel:not(.text):not(.lo-map) { --ring: 0 0 0 1px var(--ink), 0 0 0 7px var(--wash), var(--sh-ring); }
