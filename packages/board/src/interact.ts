@@ -9,7 +9,7 @@ import { tune } from "./state/tune";
 import { WHEEL_GESTURE } from "./state/timing";
 import { cam, setCam, stopCam, camTo, fling, toWorld, view, ZMIN, ZMAX, lod } from "./state/camera";
 import { setGuides, setSizeHint, setDropTarget, dropTarget, setDragging, setMarquee, setRubber, setEditing, editing, setEditEntry } from "./state/ui";
-import { frames, deepestAt, homeFor, partlyIn, frameOf, sec, descSections, allMembers, visibleCards, setMovingHome } from "./state/sections";
+import { frames, deepestAt, hiddenByAncestor, homeFor, partlyIn, frameOf, sec, descSections, allMembers, visibleCards, setMovingHome } from "./state/sections";
 import { geo } from "./state/geo";
 import { pops, closeAllPops, pinPop } from "./state/pop";
 import { connectFrom, modeIs, idle, takePick, endDraw, cancelMode, placing, spaceDown, setSpaceDown, setPanning } from "./state/mode";
@@ -528,7 +528,14 @@ export function canvasPointerDown(e: PointerEvent) {
       return r.x < w1.x && r.x + r.w > w0.x && r.y < w1.y && r.y + r.h > w0.y;
     }).map((c) => c.id);
     select({ cards: [...new Set([...base, ...hit])] });
-  }, () => setMarquee(null));
+  }, (ev, moved) => {
+    setMarquee(null);
+    // 在 Section 空白处点一下（没拖）选中它，最里层的那个；拖动照常是框选
+    if (moved || e.shiftKey) return;
+    const w = worldOf(ev);
+    const s = deepestAt(frames(), w.x, w.y, new Set(state.board.sections.filter(hiddenByAncestor).map((x) => x.id)));
+    if (s) select({ sections: [s.id] });
+  });
 }
 
 /** 工具栏 Section（draw 模式）：在画布上拖出一个框 */
