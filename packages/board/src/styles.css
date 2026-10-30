@@ -1161,7 +1161,8 @@ mark.wdiff { background: var(--chg-strong); color: inherit; border-radius: 2px; 
 .sbtip span { overflow: hidden; text-overflow: ellipsis; }
 /* 框右上角（框外）：几张预览 · 收起 / 展开，1 / 2 栏，清空 */
 .sbacts { position: absolute; right: 0; bottom: calc(100% + 20px); display: flex; gap: 6px; align-items: center; }
-.sbacts button { all: unset; display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 8px; background: var(--surface); box-shadow: 0 0 0 .5px var(--hair), 0 1px 2px rgba(50,35,10,.05);
+/* all: unset also drops the global squircle corner-shape, so it is set again: the buttons and the column switch then share one corner shape */
+.sbacts button { all: unset; corner-shape: var(--corner); display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 11px; background: var(--surface); box-shadow: 0 0 0 .5px var(--hair), 0 1px 2px rgba(50,35,10,.05);
   font: 500 12px var(--sys); color: var(--ink-2); cursor: default; white-space: nowrap; transition: transform 100ms; }
 .sbacts button:hover { color: var(--ink); }
 .sbacts button:active { transform: scale(.97); }
@@ -1169,8 +1170,9 @@ mark.wdiff { background: var(--chg-strong); color: inherit; border-radius: 2px; 
 .sbfold b { font-weight: 600; color: var(--accent); font-variant-numeric: tabular-nums; }
 .sbfold .ico { transform: rotate(180deg); transition: transform 160ms var(--out); }
 .sbfold.folded .ico { transform: none; }
-.sbcolsw { display: inline-flex; padding: 2px; gap: 1px; border-radius: 8px; background: var(--surface); box-shadow: 0 0 0 .5px var(--hair), 0 1px 2px rgba(50,35,10,.05); }
-.sbacts .sbcolsw button { height: 22px; padding: 0 5px; border-radius: 6px; box-shadow: none; background: none; color: var(--ink-3); }
+.sbcolsw { display: inline-flex; padding: 2px; gap: 1px; border-radius: 11px; background: var(--surface); box-shadow: 0 0 0 .5px var(--hair), 0 1px 2px rgba(50,35,10,.05); }
+/* concentric with the switch: its radius minus the 2px padding */
+.sbacts .sbcolsw button { height: 22px; padding: 0 5px; border-radius: 9px; box-shadow: none; background: none; color: var(--ink-3); }
 .sbacts .sbcolsw button.on { background: var(--row); color: var(--ink); }
 .sbcolsw .ico path { fill: none; stroke: currentColor; stroke-width: 1.3; }
 /* 框外点开的预览（cards/SubPreviews.tsx，位置由 state/subboards.ts 的 pvLayout 按世界坐标算好）：宽 260，标题行 200 × 30，正文最高 170px，放不下渐隐，都不滚 */
@@ -1191,7 +1193,7 @@ mark.wdiff { background: var(--chg-strong); color: inherit; border-radius: 2px; 
 .sbpv .ph .ico { flex: none; color: var(--ink-3); }
 .sbpv .ph span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sbpv .ph span.mono { font: 500 11px var(--mono); }
-.sbpv .ph .x { all: unset; flex: none; width: 20px; height: 20px; display: grid; place-items: center; border-radius: 5px; color: var(--ink-3); cursor: default; }
+.sbpv .ph .x { all: unset; corner-shape: var(--corner); flex: none; width: 20px; height: 20px; display: grid; place-items: center; border-radius: 5px; color: var(--ink-3); cursor: default; }
 .sbpv .ph .x:hover { background: var(--hlrow); color: var(--ink); }
 .sbpv .pb { max-height: 170px; overflow: hidden; box-sizing: border-box; padding: 8px 11px 10px; font: 12.5px/1.6 var(--sys); color: var(--ink-2); }
 .sbpv .pb.cut { -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 34px), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - 34px), transparent); }
