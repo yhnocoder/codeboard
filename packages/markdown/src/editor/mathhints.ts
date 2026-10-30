@@ -475,7 +475,8 @@ export function mathHintsPlugin() {
   };
   const update = (v: EditorView, typing: boolean) => {
     region = v.composing ? region : inlineMathAt(v.state);
-    if (!region || !v.hasFocus()) { hints?.close(); return; }
+    // a closed $$…$$ in a paragraph already shows its typeset preview right under the source; a tip would cover it
+    if (!region || region.d === 2 || !v.hasFocus()) { hints?.close(); return; }
     hints ??= new MathHints(host);
     hints.refresh(typing);
   };

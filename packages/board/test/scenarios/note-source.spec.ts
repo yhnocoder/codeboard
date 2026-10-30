@@ -535,7 +535,8 @@ test("noteImageSizing", async () => {
   await close(h);
 });
 
-/** $$…$$ inside a paragraph or a cell is a display formula: centred on a line of its own, the same in the static view and the editor */
+/** $$…$$ inside a paragraph or a cell is a display formula: centred on a line of its own, the same in the static view and the editor;
+ *  with the caret in its source, the preview box under it is the only hint */
 test("noteInlineDisplayMath", async () => {
   const h = await open({ board: board(["before $$\\sum_i x_i$$ after\n\n| a |\n| - |\n| x $$y^2$$ z |\n\nend"]), light });
   const pg = h.page;
@@ -554,6 +555,13 @@ test("noteInlineDisplayMath", async () => {
   const edit = await look(`${card("n0")} .md-pm`);
   await shot(h, "noteInlineDisplayMath-edit");
   check("noteInlineDisplayMath editor centred on its own line", ok(edit), edit);
+  // the caret in its source: the typeset preview under it, and no floating hint over that preview
+  await pg.locator(`${card("n0")} .md-pm p .md-dmath`).first().click();
+  await pg.locator(`${card("n0")} .md-pm .md-dmath.below`).waitFor();
+  await idle(h);
+  const caret = { below: await pg.locator(`${card("n0")} .md-pm .md-dmath.below .katex`).count(), tip: await pg.locator(".md-mathtip").count() };
+  await shot(h, "noteInlineDisplayMath-caret");
+  check("noteInlineDisplayMath caret in the source: only the preview box", caret.below === 1 && caret.tip === 0, caret);
   await exitEdit(h);
   await close(h);
 });
