@@ -72,6 +72,12 @@ describe("loadBoard", () => {
     b.cards[2].tilt = "yes";
     expect(() => loadBoard(b)).toThrow(/cards\.2\.tilt/);
   });
+  it("keeps a sub-board card's two preview columns and drops the old one-column value", () => {
+    const b: any = { ...emptyBoard("b", "b"), cards: [{ id: "f1", kind: "board", board: "s1", pcols: 1 }, { id: "f2", kind: "board", board: "s2", pcols: 2 }], place: { f1: { x: 0, y: 0, w: 400, h: 300 }, f2: { x: 500, y: 0, w: 400, h: 300 } } };
+    const l = loadBoard(b) as any;
+    expect("pcols" in l.cards[0]).toBe(false);
+    expect(l.cards[1].pcols).toBe(2);
+  });
   it("leaves id to the caller (storage names it after the file)", () => {
     const b: any = full(); delete b.id;
     expect(loadBoard(b).id).toBeUndefined();

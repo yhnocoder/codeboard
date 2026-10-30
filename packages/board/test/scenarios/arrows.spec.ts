@@ -523,3 +523,50 @@ test("lineNumberHoverShowsPorts", async () => {
     && onNo5.length === 2 && Math.abs(onNo5[0].y - onNo[0].y - 2 * row.height) < 2, { onNo, onCode, onNo5, rowH: row.height });
   await close(h);
 });
+
+/**
+ * Two cards close together (feedback #65): an arrow dragged from the left card's right port to the right card, 20 px away,
+ * and an automatic arrow between two cards side by side 10 px apart, in Warm Ink (curves) and Drafting (right-angle lines).
+ * Neither arrow runs through a card, each ends on the target's edge and its last stretch points into the target.
+ * Before: in Drafting the dragged arrow went round the outside of the target and ended inside it, pointing left;
+ * the side-by-side pair was linked bottom → top, straight through both cards
+ */
+test("closeCardsArrow", async () => {
+  const res: Record<string, unknown> = {};
+  for (const theme of ["warm-ink", "drafting"]) {
+    const b = emptyBoard("b1", "closearrow");
+    const note = (id: string, md: string, x: number, y: number, w: number) => { b.cards.push({ id, kind: "note", md, look: "note" } as NoteCard); b.place[id] = { x, y, w }; };
+    note("n0", "Threads share the core", 80, 120, 300); note("n1", "Context switch and zero cost", 400, 150, 300);
+    note("m0", "Left of a close pair", 80, 520, 300); note("m1", "Right of a close pair", 390, 530, 300);
+    b.links.push({ id: "auto", from: { card: "m0" }, to: { card: "m1" } });
+    b.cam = { x: 0, y: 0, z: 1 };
+    const h = await open({ board: b, light: true, w: 900, h: 800, settings: { theme } as any });
+    const pg = h.page, c0 = pg.locator(`.card[data-id="n0"]`);
+    const box = (await c0.boundingBox())!;
+    await pg.mouse.move(box.x + 100, box.y + 10); await c0.locator(".eport.r").waitFor(); await idle(h);
+    const dot = (await c0.locator(".eport.r").boundingBox())!, tb = (await pg.locator(`.card[data-id="n1"]`).boundingBox())!;
+    await pg.mouse.move(dot.x + dot.width / 2, dot.y + dot.height / 2); await pg.mouse.down();
+    await pg.mouse.move(tb.x + 150, tb.y + 40, { steps: 10 }); await pg.mouse.up();
+    await until(h, "the dragged arrow is saved", () => h.board().links.length === 2); await idle(h);
+    const drawn = h.board().links.find((l) => l.id !== "auto")!.id;
+    await pg.mouse.move(5, 790); await idle(h);
+    await shot(h, `arrows-closecards-${theme}`);
+    const lines = await pg.evaluate((ids) => ids.map(([id, from, to]) => {
+      const r = (c: string) => document.querySelector(`.card[data-id="${c}"]`)!.getBoundingClientRect();
+      const a = r(from), t = r(to);
+      const path = document.querySelector(`path.lhit[data-link="${id}"]`) as SVGPathElement, m = path.getScreenCTM()!, len = path.getTotalLength();
+      const pts = Array.from({ length: 81 }, (_, i) => { const q = path.getPointAtLength((len * i) / 80); return { x: q.x * m.a + q.y * m.c + m.e, y: q.x * m.b + q.y * m.d + m.f }; });
+      const inside = (q: { x: number; y: number }, b: DOMRect) => q.x > b.left + 3 && q.x < b.right - 3 && q.y > b.top + 3 && q.y < b.bottom - 3;
+      const end = pts[80], prev = pts[78];
+      // the end sits on the target's edge; the last stretch moves from outside toward the inside of that edge
+      const edge = Math.min(Math.abs(end.x - t.left), Math.abs(end.x - t.right), Math.abs(end.y - t.top), Math.abs(end.y - t.bottom));
+      const into = Math.abs(end.x - t.left) <= 3 ? end.x > prev.x : Math.abs(end.x - t.right) <= 3 ? end.x < prev.x : Math.abs(end.y - t.top) <= 3 ? end.y > prev.y : end.y < prev.y;
+      const hit = pts.find((q) => inside(q, a) || inside(q, t));
+      return { id, sides: path.closest("g.link")?.getAttribute("data-sides"), hit: hit && { x: Math.round(hit.x), y: Math.round(hit.y) }, edge: Math.round(edge), into, d: path.getAttribute("d") };
+    }), [[drawn, "n0", "n1"], ["auto", "m0", "m1"]]);
+    res[theme] = lines;
+    for (const l of lines) check(`closeCardsArrow ${theme}: the ${l.id === "auto" ? "automatic" : "dragged"} arrow stays outside both cards and ends on the target's edge pointing in`, !l.hit && l.edge <= 3 && l.into, l);
+    await close(h);
+  }
+  check("closeCardsArrow the dragged arrow leaves the right port for the target's left side", Object.values(res).every((ls: any) => ls[0].sides === "right|left"), res);
+});

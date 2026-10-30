@@ -9,13 +9,19 @@ import * as A from "../actions";
 import { below } from "../ui/Menu";
 import { sourceModeOf, toggleNoteSource } from "../md/load";
 
+/**
+ * 卡头的名字就是 Markdown 开头的标题时，正文里藏起那一行（正文元素加 hidehead，styles.css 藏掉第一个标题）：没自己起名字、开头是标题、
+ * 设置 noteHeadingInBody 没开。heading = mdHeading(md)（Note 卡里按 md 缓存着）。子白板预览的 Note 也照这一条（cards/SubPreviews.tsx）
+ */
+export const hidesHeading = (c: NoteCard, heading = c.look === "note" ? mdHeading(c.md) : "") => !c.title && !!heading && !state.host.settings.noteHeadingInBody;
+
 export function NoteBody(p: { card: NoteCard }) {
   const c = () => p.card;
   // 卡头：用户改过的名字 → Markdown 开头的标题 → Note。只在 md 变了时重算（只看第一行非空的）
   const heading = createMemo(() => (c().look === "note" ? mdHeading(c().md) : ""));
   // 卡头的名字就是开头的标题时，正文里不再显示它（设置 noteHeadingInBody 可以留着）：只是显示上藏起来，Markdown 里还在，编辑时照常出现。
   // 编辑时整行卡头收起（folded，··· 留在右上角），标题从正文上沿滑出来，卡片高度不变（foldHeader）；退出时反过来，滑回去的那一会儿 sliding 让它先别藏
-  const hideHead = () => !c().title && !!heading() && !state.host.settings.noteHeadingInBody;
+  const hideHead = () => hidesHeading(c(), heading());
   const [sliding, setSliding] = createSignal(false);
   const [folded, setFolded] = createSignal(false);
   const isEditing = () => editing()?.kind === "note" && editing()?.id === c().id;

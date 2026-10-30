@@ -2,7 +2,7 @@
 // between boards like BoardHub.switchBoard (crumbs, cameras, walkthrough hops) and pushing skeletons after saves (120 ms debounce).
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { DEFAULT_SETTINGS, cardPath, cutCrumbs, skeletonOf, subBoardsOf, wouldCycle, type Board, type Camera, type Crumb, type Skeleton, type SegView, type HostToBoard } from "@codeboard/core";
+import { DEFAULT_SETTINGS, cardPath, cutCrumbs, isCode, skeletonOf, subCardOf, subBoardsOf, wouldCycle, type Board, type Camera, type Crumb, type Skeleton, type SegView, type HostToBoard } from "@codeboard/core";
 import { Storage } from "@codeboard/core/storage";
 import { nodeFs } from "@codeboard/host/nodefs";
 import { viewOf, OUT, type Host } from "./harness";
@@ -78,6 +78,11 @@ export async function subHost(start: Board, others: Board[], o: { light?: boolea
       switch (m.type) {
         case "patch": await store.patch(cur, m.patch, { undo: m.undo }); await h?.post({ type: "boards", boards: await store.list() }); await reply(m.req, { skipped: 0 }); return true;
         case "skeletons": await store.list(); await reply(m.req, Object.fromEntries(m.ids.map((id) => [id, sk(id)]))); return true;
+        case "subCard": {
+          const b = store.peek(m.board), r = b && subCardOf(b, m.card), views: Record<string, SegView> = {};
+          for (const c of r ? [r.card, ...(r.cols ?? [])] : []) if (isCode(c)) for (const s of c.segments) views[s.id] = viewOf(s);
+          await reply(m.req, r ? { ...r, views } : null); return true;
+        }
         case "newBoard": await store.save(m.board, { group: null }); await reply(m.req, true); return true;
         case "deleteBoard": await store.remove(m.id); await reply(m.req, true); return true;
         case "dropBoard": {

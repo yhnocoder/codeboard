@@ -1,4 +1,4 @@
-// AI 操作：看图（读字、重画成 SVG、照说的改 SVG）和 Auto Focus（给 Markdown 加高亮、加粗）。问 DeepSeek（密钥只在宿主里，
+// AI 操作：看图（读字、重画成 SVG、照说的改 SVG）、照一段字画 SVG（Draw as SVG）和 Auto Focus（给 Markdown 加高亮、加粗）。问 DeepSeek（密钥只在宿主里，
 // webview 的 CSP 也不让白板连 api.deepseek.com），或编辑器提供的语言模型（VS Code 的 Copilot…，经 Workspace.ai.chat）；
 // 每种功能用哪个按设置 codeboard.ai.textModel / svgModel / focusModel。白板把图缩好发来，回答的清洗（SVG 去脚本、去底色）
 // 和 Auto Focus 的核对在白板里做（要 DOM、要 Markdown 解析器）。
@@ -41,6 +41,23 @@ Shapes and color:
 - Compact: integer coordinates; shared styles in <g> attributes or one small <style>.`;
 export const SVG_BG_ON = "Background: draw NO background. Do not add a full-canvas <rect> or a background fill on the <svg>; the page/paper color of the image must be transparent. Keep fills that belong to the diagram itself (cells, boxes, shading, highlights).";
 export const SVG_BG_OFF = "Background: reproduce the image's background color as a full-size <rect> first.";
+export const SYS_DRAW = `You draw a clean, self-contained SVG diagram or illustration of what a piece of text describes.
+Output exactly one complete <svg>...</svg> element and nothing else: no Markdown fences, no explanation.
+What to draw:
+- A process, pipeline, structure, comparison or data → a diagram: boxes, arrows, groups, axes, with short labels. An object or scene → a simple flat illustration.
+- Show the content of the text, not the text itself: no paragraphs copied into the picture. Labels are a few words, in the language of the text.
+Layout:
+- viewBox="0 0 W H" sized to the content, W about 400 to 1000; no width/height attributes. Keep everything inside the viewBox with a margin of at least 16.
+- Text never overlaps other text or shapes it doesn't label, and never runs out of its box: make boxes wide enough for their labels.
+- Sans text: font-family="system-ui, -apple-system, 'PingFang SC', 'Noto Sans SC', sans-serif"; code and identifiers: "ui-monospace, Menlo, monospace". Font size 13 to 18.
+- Arrows: a <line> or <path> with marker-end="url(#ah)" and this marker defined once in <defs>: <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0 0L10 5L0 10z" fill="#333"/></marker> (fill = the arrow color; one marker per arrow color).
+Style:
+- Dark strokes and text (#333), a few soft fills to group things; flat shapes, no gradients, shadows or filters.
+- Self-contained: no <script>, <foreignObject>, <image>, external fonts, links or URLs.
+- Compact: integer coordinates; shared styles in <g> attributes or one small <style>.`;
+export const DRAW_BG_ON = "Background: draw NO background. Do not add a full-canvas <rect> or a background fill on the <svg>; only the diagram itself has fills.";
+export const DRAW_BG_OFF = "Background: start with a full-size white <rect>.";
+export const drawUser = (text: string) => `Draw this as an SVG.\n\n<text>\n${text.trim()}\n</text>`;
 export const SYS_MODIFY = [
   "You edit SVG documents.",
   "You get an SVG and an instruction. Apply the instruction and return the complete modified SVG: exactly one <svg>...</svg> element and nothing else (no Markdown fences, no explanation).",
@@ -106,6 +123,7 @@ function askOf(op: ImageAiOp): Ask {
   switch (op.kind) {
     case "extract": return { system: SYS_EXTRACT, text: "Transcribe this image to Markdown.", image: op.image, think: false, maxTokens: 4000 };
     case "svg": return { system: `${SYS_SVG}\n${op.noBg ? SVG_BG_ON : SVG_BG_OFF}`, text: `Redraw this image as SVG. The image is ${op.size.w}×${op.size.h} pixels.`, image: op.image, think: op.think, maxTokens: op.think ? 32000 : 16000 };
+    case "draw": return { system: `${SYS_DRAW}\n${op.noBg ? DRAW_BG_ON : DRAW_BG_OFF}`, text: drawUser(op.text), think: op.think, maxTokens: op.think ? 32000 : 16000 };
     case "modify": return { system: SYS_MODIFY, text: `Instruction: ${op.instruction.trim()}\n\nSVG:\n${op.svg}`, think: true, maxTokens: 24000 };
     // 回答和原文一样长再多几个记号；中文一个字差不多一个 token
     case "focus": return { system: SYS_FOCUS, text: focusUser(op.md), think: false, maxTokens: Math.min(32000, Math.max(1024, Math.ceil(op.md.length * 1.5))) };
@@ -133,7 +151,7 @@ const EXTRACT_CACHE = 64;
 /** 测试用：忘掉识别过的图 */
 export const resetImageAiCache = () => extracted.clear();
 const cacheKey = (who: string, image: string) => createHash("sha1").update(`${who}\n${SYS_EXTRACT}\n`).update(image).digest("hex");
-const limitOf = (op: ImageAiOp) => (op.kind === "svg" ? (op.think ? IMAGE_AI_TIMEOUT.svgThink : IMAGE_AI_TIMEOUT.svg) : IMAGE_AI_TIMEOUT[op.kind]);
+const limitOf = (op: ImageAiOp) => (op.kind === "svg" || op.kind === "draw" ? (op.think ? IMAGE_AI_TIMEOUT.svgThink : IMAGE_AI_TIMEOUT.svg) : IMAGE_AI_TIMEOUT[op.kind]);
 
 type Raw = { text: string; cut?: boolean } | { fail: ImageAiFail; message?: string };
 /**
@@ -192,7 +210,7 @@ export async function runImageAi(o: ImageAiOpts, op: ImageAiOp): Promise<ImageAi
   });
 }
 
-const JUSTIFY = "CodeBoard's AI tools (Extract Text, Convert to SVG, Modify SVG, Auto Focus) use the model chosen in CodeBoard Settings › AI.";
+const JUSTIFY = "CodeBoard's AI tools (Extract Text, Convert to SVG, Modify SVG, Draw as SVG, Auto Focus) use the model chosen in CodeBoard Settings › AI.";
 /** data: URL → 编辑器的模型收的字节 */
 function imageBytes(url: string): AiChatRequest["image"] {
   const m = /^data:([^;,]+)(;base64)?,(.*)$/s.exec(url);

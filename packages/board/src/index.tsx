@@ -23,7 +23,7 @@ listen(onHost);
 installKeys();
 reportFocus();
 setKeyPassThrough(vscodeKey); // 输入框里的剪贴板、撤销、命令面板之类交给 VS Code
-setRefResolver(resolveCardRef, { missing: "No card with this title on the board" });
+setRefResolver(resolveCardRef, { missing: "Nothing with this title on the board" });
 setCodeHighlighter(noteHighlight, langId);
 followHostTheme();
 render(() => <App />, document.getElementById("root")!);

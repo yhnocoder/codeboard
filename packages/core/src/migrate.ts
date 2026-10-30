@@ -102,6 +102,8 @@ function normalize(b: any) {
   // 图片卡的高度跟着图片的宽高比（宽度定了，高度由图片算出来），不存：旧文件、旧的拖角存下的高度去掉
   for (const c of b.cards as Card[]) if (c.kind === "image" && b.place[c.id]) delete b.place[c.id].h;
   for (const s of b.sections) s.title ??= "";
+  // 子白板卡的预览栏数：曾经缺省 2 栏、选 1 栏时存 pcols: 1；现在缺省 1 栏，只存 2
+  for (const c of b.cards) if (c.kind === "board" && c.pcols !== 2) delete c.pcols;
   b.links.forEach(normLink);
   b.sidenotes.forEach(normNote);
   cornerStickers(b);

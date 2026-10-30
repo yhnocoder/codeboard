@@ -8,6 +8,7 @@ import { mathTex } from "../schema";
 import { mathMacros } from "../math";
 import { captionOf, imageAttrs } from "../image";
 import { renderMd } from "../render";
+import { paintRef } from "../view";
 import { holdGhosts } from "../ui/ghost";
 import { IMAGE_SETTLE } from "../ui/timing";
 import { blockInfo, flat, type Atom, type Span } from "./spans";
@@ -74,6 +75,8 @@ export function atomWidget(a: Atom, raw: string, caret: (from: number) => number
     } else {
       el = span(`md-atom md-atom-${a.type}`);
       el.innerHTML = staticInline(raw);
+      // a ref chip drawn as outside the editor: its title, board badge, missing / gone look
+      if (a.type === "ref") el.querySelectorAll<HTMLElement>(".md-ref").forEach(paintRef);
       // one element (a ref chip, an emoji): that element itself, laid out exactly as in the static render
       const only = el.childNodes.length === 1 ? el.firstElementChild as HTMLElement | null : null;
       if (only) { only.classList.add("md-atom", `md-atom-${a.type}`); el = only; }

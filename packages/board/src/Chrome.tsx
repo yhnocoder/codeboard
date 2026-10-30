@@ -40,17 +40,18 @@ function Toolbar() {
     { label: "New Box", kbd: kbd("newBox"), run: () => A.newBox() },
     { label: "New Mark", kbd: kbd("newMark"), run: () => A.newMark() },
   ], x, y, { up: true }); };
-  // 图：选一张图，或把剪贴板里的图直接读成 Note（不留图片卡）
+  // 图：选一张图，或把剪贴板里的图直接读成 Note（不留图片卡），或照一句描述让 AI 画一张 SVG
   const imageMenu = (el: HTMLElement) => { const [x, y] = at(el); openMenu([
     { label: "New Image", run: () => void A.newImage() },
     { label: "Paste Image Text", kbd: kbd("pasteImageText"), hint: "A Note with the text of the image on the clipboard", run: () => void A.pasteImageText() },
+    { label: "New SVG from Text…", hint: "Describe a picture: AI draws it as an SVG image", run: () => void A.newSvgFromText() },
   ], x, y, { up: true }); };
   // fold：窄时收进 ⋯ 时的菜单名（foldRun：收进去以后点它做的事，不给 = 和按钮一样）
   const tools: { icon: string; label: string; run: (el: HTMLElement) => void; tip?: string; kbd?: string; more?: boolean; fold?: string; foldRun?: () => void }[] = [
     { icon: "note", label: "Note", kbd: kbd("newNote"), run: () => A.newNote() },
     { icon: "text", label: "Text", tip: "New Text, New Box, New Mark", more: true, run: writeMenu },
     { icon: "code", label: "Code", tip: "New Code, From GitHub, Add Function", more: true, run: codeMenu },
-    { icon: "image", label: "Image", tip: "New Image, Paste Image Text", more: true, fold: "New Image", foldRun: () => void A.newImage(), run: imageMenu },
+    { icon: "image", label: "Image", tip: "New Image, Paste Image Text, New SVG from Text", more: true, fold: "New Image", foldRun: () => void A.newImage(), run: imageMenu },
     { icon: "web", label: "Web", fold: "New Web Card", tip: "New Web Card", run: () => A.newWeb() },
     { icon: "section", label: "Section", fold: "Draw a Section", tip: "Draw a Section", run: () => startDraw() },
     { icon: "arrowLink", label: "Arrow", fold: "New Arrow", tip: "Select two cards, or pick a card then click another", run: () => {
@@ -65,6 +66,7 @@ function Toolbar() {
     const folded: Parameters<typeof openMenu>[0] = narrow() ? [
       ...tools.filter((t) => t.fold).map((t) => ({ label: t.fold!, run: () => (t.foldRun ? t.foldRun() : t.run(el)) })),
       { label: "Paste Image Text", kbd: kbd("pasteImageText"), run: () => void A.pasteImageText() },
+      { label: "New SVG from Text…", run: () => void A.newSvgFromText() },
       null,
       { label: "Call Tree", checked: treeOpen(), run: () => setTreeOpen(!treeOpen()) },
       { label: "Arrow Legend", checked: legendOpen(), run: () => setLegendOpen(!legendOpen()) },

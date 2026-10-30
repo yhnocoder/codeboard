@@ -69,7 +69,7 @@ export function nodeWorkspace(root = WS): TestWorkspace {
     settings: { get: () => undefined, set: async () => {}, onDidChange: quiet.event },
     editor: { active: () => undefined, open: async () => {}, openVersion: async () => {} },
     ui: {
-      info: async () => undefined, warn: async () => undefined, error: () => {}, pick: async () => undefined, input: async () => undefined,
+      info: async () => undefined, warn: async () => undefined, error: async () => undefined, pick: async () => undefined, input: async () => undefined,
       openDialog: async () => undefined, saveDialog: async () => undefined, openUrl: async () => {}, openFolder: async () => {}, revealInOS: async () => {}, copy: async () => {}, clipboard: async () => "",
     },
     githubToken: async () => undefined,

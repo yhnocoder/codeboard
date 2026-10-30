@@ -44,7 +44,7 @@ export const VariantSchema = obj({
   ]),
 });
 
-const Place = obj({ x: num, y: num, w: num, h: opt(num), section: opt(str), locked: opt(bool), collapsed: opt(bool), start: opt(bool) });
+const Place = obj({ x: num, y: num, w: num, h: opt(num), mh: opt(num), section: opt(str), locked: opt(bool), collapsed: opt(bool), start: opt(bool) });
 
 const base = { id: str, title: opt(str), desc: opt(str), procs: opt(v.array(obj({ text: str, light: opt(bool) }))), tilt: opt(yes), same: opt(str) };
 const WebMeta = obj({ title: opt(str), desc: opt(str), site: opt(str), image: opt(str), icon: opt(str), at: opt(num), failed: opt(bool) });
@@ -67,7 +67,7 @@ const Card = v.variant("kind", [
   obj({ ...base, kind: v.literal("web"), url: str, meta: opt(WebMeta), style: opt(v.picklist(["banner", "side", "text", "compact"])) }),
   obj({ ...base, kind: v.literal("links"), items: v.array(obj({ id: str, url: str, title: opt(str), meta: opt(WebMeta), rich: opt(bool) })), rich: opt(bool) }),
   obj({ ...base, kind: v.literal("compare"), cols: v.tuple([str, str]), swap: opt(bool), unified: opt(bool), hideSame: opt(bool) }),
-  obj({ ...base, kind: v.literal("board"), board: str }),
+  obj({ ...base, kind: v.literal("board"), board: str, pcols: opt(v.literal(2)) }),
 ]);
 
 const End = obj({ card: str, seg: opt(str), line: opt(num) });

@@ -1,7 +1,7 @@
-// The image tools' DeepSeek calls (Extract Text, Convert to SVG, Modify SVG) on a fake fetch: request shape and thinking flags,
+// The image tools' DeepSeek calls (Extract Text, Convert to SVG, Modify SVG, Draw as SVG) on a fake fetch: request shape and thinking flags,
 // reusing an image already read, and what each failure turns into. No network
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { imageAiJob, imageAiRequest, resetImageAiCache, runImageAi, stripFence, SYS_EXTRACT, SYS_MODIFY, SYS_SVG, SVG_BG_OFF, SVG_BG_ON } from "../src/imageai";
+import { DRAW_BG_OFF, DRAW_BG_ON, drawUser, IMAGE_AI_TIMEOUT, imageAiJob, imageAiRequest, resetImageAiCache, runImageAi, stripFence, SYS_DRAW, SYS_EXTRACT, SYS_MODIFY, SYS_SVG, SVG_BG_OFF, SVG_BG_ON } from "../src/imageai";
 import { useWorkspace } from "../src/ws";
 import { nodeWorkspace } from "./node-workspace";
 
@@ -54,6 +54,33 @@ describe("image tools: requests", () => {
     const b = JSON.parse(imageAiRequest({ key: KEY }, { kind: "modify", svg: "<svg/>", instruction: "  make it blue " }).init.body);
     expect(b).toMatchObject({ max_tokens: 24000, thinking: { type: "enabled" }, reasoning_effort: "low" });
     expect(b.messages).toEqual([{ role: "system", content: SYS_MODIFY }, { role: "user", content: "Instruction: make it blue\n\nSVG:\n<svg/>" }]);
+  });
+
+  it("Draw as SVG sends the text alone (no image) in <text> tags with the drawing rules and the background rule, thinking only with Think First", () => {
+    const fast = JSON.parse(imageAiRequest({ key: KEY }, { kind: "draw", text: "  prefill → decode\n", noBg: true, think: false }).init.body);
+    expect(fast).toMatchObject({ max_tokens: 16000, thinking: { type: "disabled" } });
+    expect(fast.reasoning_effort).toBeUndefined();
+    expect(fast.messages).toEqual([{ role: "system", content: `${SYS_DRAW}\n${DRAW_BG_ON}` }, { role: "user", content: "Draw this as an SVG.\n\n<text>\nprefill → decode\n</text>" }]);
+    expect(SYS_DRAW).toMatch(/self-contained/i);
+    expect(SYS_DRAW).toMatch(/no <script>, <foreignObject>, <image>/);
+    const slow = JSON.parse(imageAiRequest({ key: KEY }, { kind: "draw", text: "x", noBg: false, think: true }).init.body);
+    expect(slow).toMatchObject({ max_tokens: 32000, thinking: { type: "enabled" }, reasoning_effort: "low" });
+    expect(slow.messages[0].content).toBe(`${SYS_DRAW}\n${DRAW_BG_OFF}`);
+    expect(slow.messages[1].content).toBe(drawUser("x"));
+  });
+
+  it("Draw as SVG refuses a cut-off answer, never caches, and has the SVG time limits", async () => {
+    vi.useFakeTimers();
+    try {
+      const { f, calls } = fakeFetch([answer("<svg viewBox='0 0 1 1'><rect", "length"), answer("```svg\n<svg/>\n```"), hang]);
+      const op = { kind: "draw", text: "a box", noBg: true, think: false } as const;
+      expect(await runImageAi({ key: KEY, fetch: f }, op)).toEqual({ fail: "cut", via: "DeepSeek" });
+      expect(await runImageAi({ key: KEY, fetch: f }, op)).toEqual({ text: "<svg/>" });
+      const late = runImageAi({ key: KEY, fetch: f }, op);
+      await vi.advanceTimersByTimeAsync(IMAGE_AI_TIMEOUT.svg);
+      expect(await late).toMatchObject({ fail: "timeout", via: "DeepSeek" });
+      expect(calls.length).toBe(3);
+    } finally { vi.useRealTimers(); }
   });
 
   it("strips only a fence around the whole answer", () => {

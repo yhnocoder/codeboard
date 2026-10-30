@@ -13,6 +13,7 @@ import { choose, pickOne, promptText } from "./ui/Menu";
 import { setNoteAssets } from "./md/images";
 import { applyMathPreamble } from "./md/math";
 import { preloadEditor } from "./md/load";
+import { putBoardRefs } from "./md/refs";
 import { preloadCm } from "./cm/load";
 import { questionsOpen, setWelcome } from "./state/questions";
 
@@ -61,6 +62,7 @@ function handle(m: HostToBoard) {
       break;
     }
     case "skeletons": putSkels(m.boards); A.refreshRefs(); break;
+    case "boardRefs": putBoardRefs(m.refs); break;
     case "crumbs": setCrumbs(m.crumbs); break;
     case "views": setState("views", (v) => ({ ...v, ...m.views })); break;
     case "stale": {

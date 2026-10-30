@@ -27,7 +27,7 @@ export class BoardsTree implements vscode.TreeDataProvider<BNode>, vscode.TreeDr
   constructor(private store: Storage, private panels: BoardHub) {}
 
   async getChildren(n?: BNode): Promise<BNode[]> {
-    return treeChildren(await this.store.list(), n ? [] : await this.store.groups(), n);
+    return treeChildren(await this.store.list(), n ? [] : await this.store.groups(), n, this.store.broken());
   }
 
   getTreeItem(n: BNode): vscode.TreeItem {
@@ -36,6 +36,17 @@ export class BoardsTree implements vscode.TreeDataProvider<BNode>, vscode.TreeDr
       it.id = `g:${n.name}`;
       it.contextValue = "group";
       it.iconPath = vscode.ThemeIcon.Folder;
+      return it;
+    }
+    if (n.kind === "broken") {
+      const b = n.bad;
+      const it = new vscode.TreeItem(b.name, vscode.TreeItemCollapsibleState.None);
+      it.id = `x:${b.file}`;
+      it.contextValue = "brokenBoard";
+      it.iconPath = new vscode.ThemeIcon("warning", new vscode.ThemeColor("list.warningForeground"));
+      it.description = "Can't open";
+      it.tooltip = new vscode.MarkdownString().appendMarkdown(`**${b.name}**  \nCan't open this board file:  \n`).appendText(b.reason);
+      it.command = { command: "codeboard.openBrokenBoard", title: "Open", arguments: [b.file] };
       return it;
     }
     const m = n.meta;

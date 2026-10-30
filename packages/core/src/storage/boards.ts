@@ -5,7 +5,7 @@
 // 白板发来的改动（patch）马上改缓存里的那份，稍后写盘（WRITE_DELAY 里的改动合成一次写）；关面板、退出时 flush() 把没写的写下去。
 // 存储目录有人在外面（另一个窗口、git pull / checkout）写了：白板文件三方合并进缓存（onDidMerge），卡库里的卡换进有它的白板（onDidShare），不等这边存盘。
 // 镜头不写进白板文件：交给宿主按白板 id 记在这台机器上（cams）。
-import { allCodeCards, baseName, BOARD_VERSION, emptyBoard, homeCam, uid, withCols, type Board, type BoardFile, type BoardMeta, type Camera, type Link, type SharedCard, type SharedCardFile } from "../model";
+import { allCodeCards, baseName, BOARD_VERSION, emptyBoard, homeCam, uid, withCols, type Board, type BoardFile, type BoardMeta, type BrokenBoard, type Camera, type Link, type SharedCard, type SharedCardFile } from "../model";
 import { Emitter, type Disposable } from "../emitter";
 import type { WorkspaceFiles } from "../workspace";
 import { loadBoardFile, loadSharedCard } from "../schema";
@@ -65,6 +65,8 @@ export class Storage {
   readonly stale = new Map<string, number>();
   private emptyGroups = new Set<string>();
   private badFiles = new Set<string>();
+  /** 读不了的白板文件 → 侧栏里怎么列（按修改时间缓存：文件没动就不再读） */
+  private bad = new Map<string, BrokenBoard & { mtime: number }>();
   private sharedEmitter = new Emitter<SharedChange>();
   /** 共享卡变了（写进了卡库）：开着同一张卡的别的白板要跟着换 */
   readonly onDidShare = this.sharedEmitter.event;
@@ -180,13 +182,16 @@ export class Storage {
     const out: Entry[] = [];
     const idOf = (file: string) => baseName(file).slice(0, -".json".length);
     for (const f of files) {
+      let st: Awaited<ReturnType<Fs["stat"]>> | undefined, text: string | undefined;
       try {
-        const st = await fs.stat(f.file);
+        st = await fs.stat(f.file);
+        const b = this.bad.get(f.file);
+        if (b && b.mtime === st.mtimeMs) { b.group = f.group; continue; }
         let e = [...this.cache.values()].find((x) => x.file === f.file);
         // 另一个窗口改了文件：三方合并进缓存（没写盘的改动留着），开着的面板跟着换上
         if (e && e.mtime !== st.mtimeMs) await this.pull(e);
         if (!e) {
-          const text = await fs.readFile(f.file);
+          text = await fs.readFile(f.file);
           const raw = JSON.parse(text);
           const board = loadBoardFile(raw);
           // id 决定存盘的文件名：只认安全的 id；和别的文件重了（Finder 里复制出来的）就换一个新的，免得两份互相覆盖
@@ -208,16 +213,26 @@ export class Storage {
         e.group = f.group;
         seen.add(e.id);
         out.push(e);
-      } catch (e) { // 坏文件跳过（只记一次）
-        if (!this.badFiles.has(f.file)) { this.badFiles.add(f.file); this.opts.log?.("error", `storage: skipped unreadable board ${f.file}: ${e instanceof Error ? e.message : e}`); }
+        this.bad.delete(f.file);
+        this.badFiles.delete(f.file);
+      } catch (e) { // 坏文件不当白板读（只记一次），但侧栏照样列出来：打不开，也不会被写
+        const reason = e instanceof Error ? e.message : String(e);
+        if (!this.badFiles.has(f.file)) { this.badFiles.add(f.file); this.opts.log?.("error", `storage: unreadable board ${f.file}: ${reason}`); }
+        if (st) this.bad.set(f.file, { file: f.file, name: rawName(text) ?? baseName(f.file).slice(0, -".json".length), group: f.group, reason, mtime: st.mtimeMs });
       }
     }
+    for (const file of [...this.bad.keys()]) if (!files.some((f) => f.file === file)) this.bad.delete(file);
     for (const id of [...this.cache.keys()]) if (!seen.has(id)) this.cache.delete(id);
     return out.sort((a, b) => a.birth - b.birth);
   }
 
   async list(): Promise<BoardMeta[]> {
     return (await this.scan()).map((e) => this.meta(e));
+  }
+
+  /** 上一次扫描时读不了的白板文件（list() 之后取） */
+  broken(): BrokenBoard[] {
+    return [...this.bad.values()].map(({ mtime: _, ...b }) => b);
   }
 
   private meta(e: Entry): BoardMeta {
@@ -792,3 +807,8 @@ const boardKey = (b: Board) => JSON.stringify({ ...b, cam: undefined, version: u
 const outline = (b: Board) => JSON.stringify([b.name, b.cards.length, allCodeCards(b).length, subBoardsOf(b)]);
 /** 改之前的样子：有没写盘的改动时是第一次改之前的 */
 const prevOf = (e: Entry): Prev => e.pending ?? { file: e.file, outline: outline(e.board), group: e.group };
+
+/** 读不了的白板文件里的 name（JSON 还能解析时） */
+function rawName(text: string | undefined): string | undefined {
+  try { const n = JSON.parse(text ?? "")?.name; return typeof n === "string" && n.trim() ? n : undefined; } catch { return undefined; }
+}

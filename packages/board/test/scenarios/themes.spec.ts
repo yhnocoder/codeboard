@@ -535,3 +535,60 @@ test("draftingBoldKeepsBodyFont", async () => {
   const edit = await fonts('.card[data-id="n1"] .md-pm');
   check("draftingBoldKeepsBodyFont", ok(shown) && ok(edit), { shown, edit });
 });
+
+/** Ink Wash: bold is 700 (Source Serif here stops at 600) with a .015em text stroke: .025em was too heavy, none too light on a Mac; the same while editing */
+test("inkWashBoldStandsOut", async () => {
+  const b = emptyBoard("b1", "ink wash bold");
+  b.cards.push({ id: "n1", kind: "note", look: "note", md: "程序员可以指定**变量的可见范围和访问速度**，<b>bold</b> 也一样。" } as any);
+  b.place.n1 = { x: 60, y: 40, w: 381 };
+  b.cam = { x: 0, y: 0, z: 1 };
+  const h = await open({ board: b, light: true, w: 560, h: 220, settings: { theme: "ink-wash" } as never });
+  await idle(h);
+  const bold = (root: string) => h.page.evaluate((root) => [...document.querySelectorAll(`${root} :is(strong, b)`)].map((e) => {
+    const s = getComputedStyle(e), p = getComputedStyle(e.closest("p")!);
+    return { weight: +s.fontWeight, stroke: parseFloat((s as any).webkitTextStrokeWidth) || 0, size: parseFloat(s.fontSize), body: +p.fontWeight };
+  }), root);
+  const ok = (r: Awaited<ReturnType<typeof bold>>) => r.length === 2 && r.every((x) => x.weight === 700 && Math.abs(x.stroke - .015 * x.size) < .01 && x.body <= 400);
+  const shown = await bold('.card[data-id="n1"] .nbody');
+  await shot(h, "ink-wash-bold");
+  await h.page.locator('.card[data-id="n1"] .nbody p').first().dblclick();
+  await h.page.locator('.card[data-id="n1"] .md-pm strong').first().waitFor();
+  await idle(h);
+  const edit = await bold('.card[data-id="n1"] .md-pm');
+  check("inkWashBoldStandsOut", ok(shown) && ok(edit), { shown, edit });
+});
+
+/** Ink Wash (usage feedback #85): ==highlight== is a vermilion brush stroke under the words instead of the yellow marker, light and dark,
+ *  static and while editing, each wrapped line with its own stroke; other themes keep the marker */
+test("inkWashHighlightBrush", async () => {
+  const b = emptyBoard("b1", "ink wash highlight");
+  b.cards.push({ id: "n1", kind: "note", look: "note", md: "性能取决于==核心执行这些指令的速度==，即 ==FLOP/B==。我们把这个比值称为==算术强度（arithmetic intensity）或计算强度（computational intensity）==。" } as any);
+  b.place.n1 = { x: 60, y: 90, w: 381 };
+  b.cam = { x: 0, y: 0, z: 1 };
+  const look = (pg: Awaited<ReturnType<typeof open>>["page"], sel: string) => pg.evaluate((sel) => [...document.querySelectorAll(sel)].map((m) => {
+    const s = getComputedStyle(m);
+    return { bg: s.backgroundImage.slice(0, 40), size: s.backgroundSize, clone: s.boxDecorationBreak || (s as any).webkitBoxDecorationBreak, lines: m.getClientRects().length };
+  }), sel);
+  const brush = (l: Awaited<ReturnType<typeof look>>) => l.length === 3 && l.every((m) => m.bg.startsWith('url("data:image/svg+xml') && m.clone === "clone") && l.some((m) => m.lines > 1);
+  const res: Record<string, unknown> = {};
+  let ok = true;
+  for (const lt of [true, false]) {
+    const h = await open({ board: b, light: lt, w: 560, h: 280, settings: { theme: "ink-wash" } as never });
+    await idle(h);
+    const shown = await look(h.page, '.card[data-id="n1"] .nbody mark');
+    await shot(h, `ink-wash-highlight-${lt ? "light" : "dark"}`);
+    await h.page.locator('.card[data-id="n1"] .nbody p').dblclick();
+    await h.page.locator('.card[data-id="n1"] .md-pm mark').first().waitFor();
+    await idle(h);
+    const edit = await look(h.page, '.card[data-id="n1"] .md-pm mark');
+    res[lt ? "light" : "dark"] = { shown, edit };
+    ok &&= brush(shown) && brush(edit);
+    await h.page.context().close();
+  }
+  const h = await open({ board: b, light: true, w: 560, h: 280, settings: { theme: "warm-ink" } as never });
+  await idle(h);
+  const warm = await look(h.page, '.card[data-id="n1"] .nbody mark');
+  await h.page.context().close();
+  res.warm = warm;
+  check("inkWashHighlightBrush", ok && warm.length === 3 && warm.every((m) => m.bg.startsWith("linear-gradient(")), res);
+});

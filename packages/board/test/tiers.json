@@ -92,7 +92,7 @@
       "about": "Notes, sidenotes and the Markdown editor: rendering, editing, input rules, sizing, AI completions",
       "files": [
         "packages/board/src/cards/NoteBody.tsx", "packages/board/src/ui/{Md,Editable}.tsx", "packages/board/src/ui/pops/notes.tsx",
-        "packages/board/src/md/{lazy,load}.ts", "packages/board/src/actions/notes.ts", "packages/board/src/ui/vscodekeys.ts",
+        "packages/board/src/md/{lazy,load,refs}.ts", "packages/board/src/actions/notes.ts", "packages/board/src/ui/vscodekeys.ts",
         "packages/markdown/src/{index,render,schema,selmap,view,diagram,emoji,emoji-data,layout}.ts", "packages/markdown/src/markdown.css",
         "packages/markdown/src/editor/{index,icons}.tsx",
         "packages/markdown/src/editor/{clipboard,codeblock,codelang,find,ghost,pairs,pastemarks,typora,inline,spans,srcdoc,srcmode,table,visible,widgets}.ts", "packages/markdown/src/ui/**",
@@ -185,12 +185,12 @@
     "subboards": {
       "about": "sub-boards: the sub-board card, entering and leaving, Turn into Board, breadcrumbs, the board tree",
       "files": [
-        "packages/board/src/cards/BoardBody.tsx", "packages/board/src/state/subboards.ts", "packages/board/src/actions/subboards.ts",
+        "packages/board/src/cards/{BoardBody,SubPreviews}.tsx", "packages/board/src/state/subboards.ts", "packages/board/src/actions/subboards.ts",
         "packages/core/src/subboard.ts", "packages/host/src/{boardtree,transfer,bundle}.ts",
         "packages/board/test/scenarios/{subboards,subboard-card,boards}.spec.ts"
       ],
       "scenarios": [
-        "subboardColumns", "undoafterpeek", "undoturnintoboard", "deletedparentcrumb", "lineSelectionStaysOnItsBoard", "subboardLinkPicker",
+        "subboardMap", "undoafterpeek", "undoturnintoboard", "deletedparentcrumb", "lineSelectionStaysOnItsBoard", "subboardLinkPicker",
         "subboardEnterLeaveMorph", "walkHopWaitsForMeasure"
       ]
     },
@@ -215,7 +215,7 @@
       "scenarios": ["export", "svgImagesInHtmlExport", "svgImageInPngExport"]
     },
     "images": {
-      "about": "images: Image cards, images in Notes (paste, drop, resize), SVG, the asset store, the DeepSeek image tools (Extract Text, Convert to SVG, Modify SVG, Paste Image Text)",
+      "about": "images: Image cards, images in Notes (paste, drop, resize), SVG, the asset store, the DeepSeek image tools (Extract Text, Convert to SVG, Modify SVG, Paste Image Text, Draw as SVG)",
       "files": [
         "packages/board/src/md/images.ts", "packages/board/src/notedrop.ts", "packages/board/src/actions/{imagedata,imageai}.ts", "packages/markdown/src/image.ts",
         "packages/markdown/src/editor/image.ts", "packages/core/src/image.ts", "packages/host/src/{images,assetsweep,imageai}.ts",

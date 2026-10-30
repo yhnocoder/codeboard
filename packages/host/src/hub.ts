@@ -1,4 +1,4 @@
-import { Emitter, cutCrumbs, diffBoards, sharedInfo, skeletonOf, subBoardsOf, type AskType, type BoardMeta, type BoardPatch, type BoardToHost, type Camera, type Crumb, type Disposable, type HostToBoard, type ReplyOf, type Segment, type Skeleton, type WalkHop } from "@codeboard/core";
+import { Emitter, boardRefsOf, cutCrumbs, diffBoards, sharedInfo, skeletonOf, subBoardsOf, type AskType, type BoardRef, type BoardRefs, type RecentRef, type BoardMeta, type BoardPatch, type BoardToHost, type Camera, type Crumb, type Disposable, type HostToBoard, type ReplyOf, type Segment, type Skeleton, type WalkHop } from "@codeboard/core";
 import type { CardClip, Storage } from "@codeboard/core/storage";
 import { BoardPanel, type BoardHost, type BoardView } from "./boards";
 import type { HostEnv, ViewPlace } from "./env";
@@ -8,7 +8,7 @@ import { viewsFor } from "./views";
 import { variantSegments } from "./versions";
 import { workspace } from "./ws";
 
-const TARGET = "codeboard.target", OPEN = "codeboard.open", OPENED = "codeboard.opened", ADDED = "codeboard.added";
+const TARGET = "codeboard.target", OPEN = "codeboard.open", OPENED = "codeboard.opened", ADDED = "codeboard.added", REF_RECENT = "codeboard.refRecent";
 
 export class BoardHub implements BoardHost, Disposable {
   private panels = new Map<string, BoardPanel>();
@@ -76,6 +76,8 @@ export class BoardHub implements BoardHost, Disposable {
     this.subs.push(store.onDidSave(() => this.refreshShared()), store.onDidChange(() => this.refreshShared()));
     // 子白板的骨架：子白板存盘后重算（只算存了的那块），白板列表变了（改名、删白板）全部重算；都防抖
     this.subs.push(store.onDidSave((b) => { this.dirtySkels.add(b.id); this.refreshSkeletons(); }), store.onDidChange(() => { this.allSkels = true; this.refreshSkeletons(); }));
+    // [[ 引用能选的别的白板上的卡：存了盘的那块重算，白板列表变了（改名、增删）全部重算；都防抖
+    this.subs.push(store.onDidSave((b) => { this.refsOf.delete(b.id); this.refreshBoardRefs(); }), store.onDidChange(() => { this.refsOf.clear(); this.refreshBoardRefs(); }));
   }
 
   /** 面板换上宿主这边变了的白板（patch = 从它现在的样子到存储里的样子）；新来的代码卡带上段的展示数据 */
@@ -107,6 +109,7 @@ export class BoardHub implements BoardHost, Disposable {
     for (const d of this.subs) d.dispose();
     clearTimeout(this.skelT);
     clearTimeout(this.sharedT);
+    clearTimeout(this.refsT);
     this.targetEmitter.dispose();
     this.staleEmitter.dispose();
   }
@@ -160,6 +163,47 @@ export class BoardHub implements BoardHost, Disposable {
     if (now) run(); else this.skelT = setTimeout(run, 120);
   }
 
+  private refsT: ReturnType<typeof setTimeout> | undefined;
+  /** 要过 boardRefs 的面板 → 上次发给它的（JSON） */
+  private refsSent = new Map<BoardPanel, string>();
+  /** 每块白板上能 [[ 链接的卡（存盘时作废那一块）：别的白板一存盘就要给每个面板重排一遍，不每次都把所有白板的卡走一遍 */
+  private refsOf = new Map<string, BoardRef[]>();
+  /** 面板 p 的 [[ 能选的别的白板（除了它显示的这块）：最近打开的在前，没打开过的按建的先后；和这个工作区最近选过的引用 */
+  boardRefs(p: BoardPanel): BoardRefs {
+    if (!this.refsSent.has(p)) this.refsSent.set(p, "");
+    const all = this.store.cached().filter((e) => e.id !== p.id);
+    const nameOf = (id: string) => this.store.peek(id)?.name;
+    const seen = new Map(all.map((e, i) => [e.id, [this.lastOpened(e.id) ?? 0, i]]));
+    all.sort((a, b) => seen.get(b.id)![0] - seen.get(a.id)![0] || seen.get(a.id)![1] - seen.get(b.id)![1]);
+    const boards = all.map((e) => {
+      let refs = this.refsOf.get(e.id);
+      if (!refs) this.refsOf.set(e.id, (refs = boardRefsOf(e.board, nameOf)));
+      return { id: e.id, name: e.board.name, refs };
+    });
+    return { boards, recent: workspace().storage.get<RecentRef[]>(REF_RECENT) ?? [] };
+  }
+  /** 要过 boardRefs 的面板里变了的重推（防抖 120ms）；fresh = 刚 init 的面板（换了白板，之前发的不算） */
+  refreshBoardRefs(now = false, fresh?: string) {
+    if (fresh) for (const p of this.refsSent.keys()) if (p.id === fresh) this.refsSent.set(p, "");
+    clearTimeout(this.refsT);
+    const run = () => {
+      for (const [p, was] of this.refsSent) {
+        if (!p.ready) continue;
+        const refs = this.boardRefs(p), k = JSON.stringify(refs);
+        if (k === was) continue;
+        this.refsSent.set(p, k);
+        p.post({ type: "boardRefs", refs });
+      }
+    };
+    if (now) run(); else this.refsT = setTimeout(run, 120);
+  }
+  /** [[ 引用选了一项：记进最近选过的（新的在前，最多 3 个），要过的面板跟着更新 */
+  refPicked(b: string, id: string) {
+    const was = workspace().storage.get<RecentRef[]>(REF_RECENT) ?? [];
+    void workspace().storage.set(REF_RECENT, [{ b, id }, ...was.filter((r) => r.b !== b || r.id !== id)].slice(0, 3));
+    this.refreshBoardRefs();
+  }
+
   get globalState() { return this.env.globalState; }
 
   /** 上次打开的时间（跨工作区；「回来接上」的提示用） */
@@ -193,6 +237,7 @@ export class BoardHub implements BoardHost, Disposable {
     p.ready = false;
     this.skelSent.delete(p);
     this.sharedSent.delete(was);
+    if (this.refsSent.has(p)) this.refsSent.set(p, "");
     this.saveOpen();
     if (this.target === was) this.setTarget(to);
     await p.init();
@@ -261,7 +306,7 @@ export class BoardHub implements BoardHost, Disposable {
     // p.id 会变（进入子白板），这里都按 p.id 取
     view.onDidActivate(() => this.setTarget(p.id));
     // 关界面：它最后的改动宿主已经收下了，马上写盘（不等定时器，窗口可能正在关）
-    view.onDidDispose(() => { p.dropAsks(); void this.store.flush(p.id); if (this.panels.get(p.id) === p) this.panels.delete(p.id); this.sharedSent.delete(p.id); this.skelSent.delete(p); this.saveOpen(); });
+    view.onDidDispose(() => { p.dropAsks(); void this.store.flush(p.id); if (this.panels.get(p.id) === p) this.panels.delete(p.id); this.sharedSent.delete(p.id); this.skelSent.delete(p); this.refsSent.delete(p); this.saveOpen(); });
     this.saveOpen();
     return p;
   }
@@ -280,9 +325,9 @@ export class BoardHub implements BoardHost, Disposable {
       if (req !== undefined) p.post({ type: "reply", req, error: msg });
       else p.toast(`Error: ${msg}`);
     } finally {
-      // 慢的请求记一笔（Copy Diagnostics 里能看到），方便对照白板那边的耗时
+      // 慢的请求记一笔（Copy Diagnostics 里能看到），方便对照白板那边的耗时。要等用户在对话框里选的不算（量到的是用户想了多久）
       const ms = performance.now() - t0;
-      if (ms > 150 && m.type !== "confirm" && m.type !== "pickFile") log("info", `slow ${m.type}: ${Math.round(ms)} ms`);
+      if (ms > 150 && m.type !== "confirm" && m.type !== "pickFile" && m.type !== "copyDiagnostics") log("info", `slow ${m.type}: ${Math.round(ms)} ms`);
     }
   }
 

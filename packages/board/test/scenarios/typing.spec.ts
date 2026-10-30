@@ -186,6 +186,10 @@ test("markdownInputRules", async () => {
     { name: "slash divider", seq: "/divider{Enter}", md: "---" },
     { name: "slash task", seq: "/task{Enter}t", md: "- [ ] t" },
     { name: "ref picker", seq: "[[sched{Enter}", md: "[[Scheduler.schedule]]" },
+    // 全角【【（中文输入法）和 @ 也打开引用列表；@ 后面什么都对不上时不弹空列表，照常打字
+    { name: "ref picker fullwidth", seq: "【【sched{Enter}", md: "[[Scheduler.schedule]]" },
+    { name: "ref picker at", seq: "see @sched{Enter}", md: "see [[Scheduler.schedule]]" },
+    { name: "at without a card", seq: "meet @ 5pm{Enter}x", md: "meet @ 5pm\n\nx" },
   ];
   const run = process.env.CASES ? cases.filter((c) => process.env.CASES!.split(",").some((q) => c.name.includes(q))) : cases;
   const h = await open({ board: board(run.length, run.map((c) => c.init)), w: 1400, h: 900 });

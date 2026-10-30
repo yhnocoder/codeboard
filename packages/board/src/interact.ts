@@ -9,7 +9,7 @@ import { tune } from "./state/tune";
 import { WHEEL_GESTURE } from "./state/timing";
 import { cam, setCam, stopCam, camTo, fling, toWorld, view, ZMIN, ZMAX, lod } from "./state/camera";
 import { setGuides, setSizeHint, setDropTarget, dropTarget, setDragging, setMarquee, setRubber, setEditing, editing, setEditEntry } from "./state/ui";
-import { frames, deepestAt, homeFor, partlyIn, frameOf, sec, descSections, allMembers, visibleCards, setMovingHome } from "./state/sections";
+import { frames, deepestAt, hiddenByAncestor, homeFor, partlyIn, frameOf, sec, descSections, allMembers, visibleCards, setMovingHome } from "./state/sections";
 import { geo } from "./state/geo";
 import { pops, closeAllPops, pinPop } from "./state/pop";
 import { connectFrom, modeIs, idle, takePick, endDraw, cancelMode, placing, spaceDown, setSpaceDown, setPanning } from "./state/mode";
@@ -23,6 +23,7 @@ import { dispatch, matches } from "./keymap";
 import { holdGhosts } from "@yhnocoder/markdown/ui";
 import * as A from "./actions";
 import { onBoardSwitch } from "./state/root";
+import { togglePreview } from "./state/subboards";
 
 const pt = (e: { clientX: number; clientY: number }) => ({ x: e.clientX, y: e.clientY });
 const local = (e: { clientX: number; clientY: number }) => boardPoint(pt(e));
@@ -135,9 +136,12 @@ export function cardClick(e: MouseEvent, id: string) {
   clickEdit(a.kind, id, a, true);
 }
 
+/** 右键按下那一刻 Note 里选中的字：macOS 的右键会先选中光标下的词，菜单弹出时的选区不是用户选的 */
+let ctxSel: { id: string; text: string } | null = null;
 export function cardPointerDown(e: PointerEvent, id: string) {
   armed = null;
   const t = e.target as HTMLElement;
+  if (e.button === 2) ctxSel = { id, text: A.noteSelText(id) };
   if (e.button === 1 || (e.button === 0 && spaceDown())) return startPan(e);
   if (e.button !== 0) return;
   if (t.closest(CARD_CONTROL)) return;
@@ -174,7 +178,7 @@ export function cardPointerDown(e: PointerEvent, id: string) {
   }
   if (c.kind === "web" && inHead && isDbl(`w${id}`, e)) return A.openLink(c.url);
   // 双击子白板框：进去；双击在框里的一张小卡片上就进去以后带到那张卡
-  if (c.kind === "board" && isDbl(`b${id}`, e)) { const sub = (t.closest("[data-sub]") as HTMLElement | null)?.dataset.sub; return A.enterFrame(id, undefined, sub && !sub.startsWith("more:") ? sub : undefined); }
+  if (c.kind === "board" && isDbl(`b${id}`, e)) return A.enterFrame(id, undefined, (t.closest("[data-sub]") as HTMLElement | null)?.dataset.sub);
   const tc = cardById(target)?.card;
   const freeHead = !!tc && isCode(tc) && tc.segments[0]?.src.kind === "free" && !tc.title;
   if (inHead && (t.closest(".ctitle") || freeHead) && isDbl(`t${target}`, e)) return setEditing({ kind: "title", id: target });
@@ -190,7 +194,9 @@ export function cardPointerDown(e: PointerEvent, id: string) {
   if (!isSel(f.host.id)) A.selectCard(f.host.id);
   closeAllPops();
   const at = { x: e.clientX, y: e.clientY };
-  startCardDrag(e, f.host.id, multiBody ? () => A.selectCard(f.host.id) : isText && solo && editKind ? () => clickEdit("note", id, at, true) : undefined);
+  // 子白板框的地图上的一块：没拖动就松手是开 / 关它的预览
+  const block = c.kind === "board" ? (t.closest("[data-sub]") as HTMLElement | null)?.dataset.sub : undefined;
+  startCardDrag(e, f.host.id, multiBody ? () => A.selectCard(f.host.id) : isText && solo && editKind ? () => clickEdit("note", id, at, true) : block ? () => togglePreview(id, block) : undefined);
 }
 
 const hostPlace = (b: Board, id: string) => { const h = findCard(b, id)?.host; return h ? b.place[h.id] : undefined; };
@@ -326,6 +332,10 @@ export function cardContextMenu(e: MouseEvent, id: string) {
   // Note 里的一张图（显示着或编辑中）：图的菜单
   const img = A.noteImageAt(t, id);
   if (img) return A.noteImageMenu(img, e.clientX, e.clientY);
+  // Note 里选中了一段字：照这段字画 SVG 的菜单（编辑器里没选字时照旧不弹菜单）
+  const picked = ctxSel?.id === id ? ctxSel.text : A.noteSelText(id);
+  ctxSel = null;
+  if (picked) return A.noteTextMenu(id, picked, e.clientX, e.clientY);
   if (t.closest("[contenteditable], input, textarea")) return;
   const colEl = t.closest("[data-col]") as HTMLElement | null;
   A.cardMenu(colEl?.dataset.col ?? id, e.clientX, e.clientY);
@@ -356,7 +366,9 @@ export function resizeDown(e: PointerEvent, id: string, edges: { left?: boolean;
   const text = frameless(c), box = c.kind === "note" && c.look === "box";
   // 最矮 = 头部 + 一行；拉到内容本来的高度附近就回到自动高度（Box 的高度就是框的大小，一直存着）
   const nat = box ? undefined : naturalSize(c.id);
-  const minW = box ? 60 : text ? 80 : 160, minH = box ? 32 : nat ? Math.min(nat.minH, 100) : 64;
+  // 子白板的框：最小也放得下几块地图和右上角的按钮
+  const frame = c.kind === "board";
+  const minW = box ? 60 : text ? 80 : frame ? 200 : 160, minH = box ? 32 : frame ? 130 : nat ? Math.min(nat.minH, 100) : 64;
   const hx = c.kind === "code" ? chromeOf(c.id) : 0; // 代码卡存内容区高度：减掉卡头 / 底栏
   // 图片卡的高度跟着图片的宽高比（不存）：拖角只改宽度，往下拖按卡现在的比例折成宽度
   const image = c.kind === "image", bottom = !!edges.bottom && !image;
@@ -501,6 +513,12 @@ export function canvasPointerDown(e: PointerEvent) {
     return;
   }
   if (modeIs("draw")) return drawSection(e);
+  // ⌘ / Ctrl 按住 Section 的空白处拖就是拖它（和拖标题一样，最里层的那个）；不按时拖空白处总是框选，免得想框选时误拖走整个 Section
+  if (!e.shiftKey && (e.metaKey || e.ctrlKey)) {
+    const w = worldOf(e);
+    const s = deepestAt(frames(), w.x, w.y, new Set(state.board.sections.filter(hiddenByAncestor).map((x) => x.id)));
+    if (s) return sectionLabelDown(e, s.id);
+  }
   const base = e.shiftKey ? [...sel.cards] : [];
   if (!e.shiftKey) clearSel();
   window.getSelection()?.removeAllRanges();
@@ -516,7 +534,14 @@ export function canvasPointerDown(e: PointerEvent) {
       return r.x < w1.x && r.x + r.w > w0.x && r.y < w1.y && r.y + r.h > w0.y;
     }).map((c) => c.id);
     select({ cards: [...new Set([...base, ...hit])] });
-  }, () => setMarquee(null));
+  }, (ev, moved) => {
+    setMarquee(null);
+    // 在 Section 空白处点一下（没拖）选中它，最里层的那个；拖动照常是框选
+    if (moved || e.shiftKey) return;
+    const w = worldOf(ev);
+    const s = deepestAt(frames(), w.x, w.y, new Set(state.board.sections.filter(hiddenByAncestor).map((x) => x.id)));
+    if (s) select({ sections: [s.id] });
+  });
 }
 
 /** 工具栏 Section（draw 模式）：在画布上拖出一个框 */

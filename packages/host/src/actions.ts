@@ -150,7 +150,7 @@ export function makeActions(panels: BoardHost, store: Storage) {
     if (!file) return;
     let r: Awaited<ReturnType<typeof importFile>>;
     try { r = await importFile(store, file); } catch (e) {
-      ui().error(`Can't import ${path.basename(file)}: ${e instanceof Error ? e.message : e}`);
+      void ui().error(`Can't import ${path.basename(file)}: ${e instanceof Error ? e.message : e}`);
       return;
     }
     await panels.pushBoards();
@@ -251,6 +251,19 @@ export function makeActions(panels: BoardHost, store: Storage) {
     "codeboard.openBoard": async (a?: unknown, o?: { here?: boolean }) => {
       const id = boardArg(a) ?? (await targetId());
       await panels.show(id, { here: !!o?.here });
+    },
+    // 侧栏里读不了的白板：不开（开了就是空白板，存盘会盖掉原文件），说清楚为什么，给个手改 JSON 的入口
+    "codeboard.openBrokenBoard": async (file: string) => {
+      const metas = await store.list();
+      const bad = store.broken().find((b) => b.file === file);
+      if (!bad) { // 点之前文件已经修好了
+        const m = metas.find((x) => store.fileOf(x.id) === file);
+        if (m) await panels.show(m.id, { here: true });
+        return;
+      }
+      const r = await ui().error(`Can't open board “${bad.name}” (${path.basename(file)}): ${bad.reason}`, "Open JSON", "Reveal in Folder");
+      if (r === "Open JSON") await workspace().editor.open(file);
+      else if (r === "Reveal in Folder") await ui().revealInOS(file);
     },
     "codeboard.openBoardToSide": async (a?: unknown) => {
       const id = boardArg(a);

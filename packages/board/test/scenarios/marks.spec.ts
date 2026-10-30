@@ -37,7 +37,9 @@ test("markCard", async () => {
   await pg.evaluate(() => document.fonts.ready);
   const look = await pg.evaluate((sel) => {
     const c = document.querySelector<HTMLElement>(sel)!, t = c.querySelector<HTMLElement>(".tx")!, cs = getComputedStyle(c), ts = getComputedStyle(t);
-    return { cls: c.className, bg: cs.backgroundColor, shadow: cs.boxShadow, font: ts.fontFamily, size: ts.fontSize, color: ts.color };
+    // 卡片的框和阴影画在 ::after / ::before 上
+    const shadow = [cs, getComputedStyle(c, "::before"), getComputedStyle(c, "::after")].map((s) => s.boxShadow).filter((v) => v !== "none").join(" | ") || "none";
+    return { cls: c.className, bg: cs.backgroundColor, shadow, font: ts.fontFamily, size: ts.fontSize, color: ts.color };
   }, card("m1"));
   check("markNoFrame", /\bmark\b/.test(look.cls) && /rgba\(0, 0, 0, 0\)|transparent/.test(look.bg) && look.shadow === "none", look);
   check("markHandFont", /Shantell Sans/.test(look.font) && look.size === "18px", look);
