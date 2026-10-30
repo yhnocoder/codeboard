@@ -285,6 +285,8 @@ export type BoardToHost =
   | { type: "confirm"; req: number; text: string; detail?: string; ok: string }
   /** 子白板的骨架（白板上出现了还没有骨架的框时要；null = 那块白板没了） */
   | { type: "skeletons"; req: number; ids: string[] }
+  /** 子白板框的地图上点开的一张卡（board = 子白板，card = 卡 id）：回 SubCard（卡已经不在了回 null） */
+  | { type: "subCard"; req: number; board: string; card: string }
   /** Turn into Board：选中的卡拆出来的新白板（id 白板定），存到父白板所在的组；共享卡还是共享卡。回 ok */
   | { type: "newBoard"; req: number; board: Board }
   /**
@@ -420,6 +422,9 @@ export type NameHit = { lang: string; label: string; detail: string; path: strin
 export type GenSource = { text: string; lang: string; name: string };
 export type { BoundVal, CallAlt };
 
+/** 子白板里一张卡的只读预览：卡（Compare 带上两栏 cols）和其中代码段的展示数据（段 id → 高亮） */
+export type SubCard = { card: Card; cols?: Card[]; views: Record<string, SegView> };
+
 /** 要回答的请求（带 req）：白板用 ask 发，宿主用 { type: "reply", req, data } 回 */
 export type AskType = Extract<BoardToHost, { req: number }>["type"];
 
@@ -462,6 +467,7 @@ type Replies = {
   pasteCards: PastedCards | null;
   deleteEverywhere: number;
   skeletons: Record<string, Skeleton | null>;
+  subCard: SubCard | null;
   newBoard: boolean;
   dropBoard: boolean;
   restoreBoard: boolean;

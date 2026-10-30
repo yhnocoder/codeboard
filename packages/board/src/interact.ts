@@ -23,6 +23,7 @@ import { dispatch, matches } from "./keymap";
 import { holdGhosts } from "@yhnocoder/markdown/ui";
 import * as A from "./actions";
 import { onBoardSwitch } from "./state/root";
+import { togglePreview } from "./state/subboards";
 
 const pt = (e: { clientX: number; clientY: number }) => ({ x: e.clientX, y: e.clientY });
 const local = (e: { clientX: number; clientY: number }) => boardPoint(pt(e));
@@ -177,7 +178,7 @@ export function cardPointerDown(e: PointerEvent, id: string) {
   }
   if (c.kind === "web" && inHead && isDbl(`w${id}`, e)) return A.openLink(c.url);
   // 双击子白板框：进去；双击在框里的一张小卡片上就进去以后带到那张卡
-  if (c.kind === "board" && isDbl(`b${id}`, e)) { const sub = (t.closest("[data-sub]") as HTMLElement | null)?.dataset.sub; return A.enterFrame(id, undefined, sub && !sub.startsWith("more:") ? sub : undefined); }
+  if (c.kind === "board" && isDbl(`b${id}`, e)) return A.enterFrame(id, undefined, (t.closest("[data-sub]") as HTMLElement | null)?.dataset.sub);
   const tc = cardById(target)?.card;
   const freeHead = !!tc && isCode(tc) && tc.segments[0]?.src.kind === "free" && !tc.title;
   if (inHead && (t.closest(".ctitle") || freeHead) && isDbl(`t${target}`, e)) return setEditing({ kind: "title", id: target });
@@ -193,7 +194,9 @@ export function cardPointerDown(e: PointerEvent, id: string) {
   if (!isSel(f.host.id)) A.selectCard(f.host.id);
   closeAllPops();
   const at = { x: e.clientX, y: e.clientY };
-  startCardDrag(e, f.host.id, multiBody ? () => A.selectCard(f.host.id) : isText && solo && editKind ? () => clickEdit("note", id, at, true) : undefined);
+  // 子白板框的地图上的一块：没拖动就松手是开 / 关它的预览
+  const block = c.kind === "board" ? (t.closest("[data-sub]") as HTMLElement | null)?.dataset.sub : undefined;
+  startCardDrag(e, f.host.id, multiBody ? () => A.selectCard(f.host.id) : isText && solo && editKind ? () => clickEdit("note", id, at, true) : block ? () => togglePreview(id, block) : undefined);
 }
 
 const hostPlace = (b: Board, id: string) => { const h = findCard(b, id)?.host; return h ? b.place[h.id] : undefined; };

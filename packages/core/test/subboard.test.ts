@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cutCrumbs, danglingRefs, emptyBoard, extractBoard, loadBoard, refTitle, skeletonOf, subBoardsOf, wouldCycle, FAN_KEEP, type Board, type Card } from "../src";
+import { cutCrumbs, danglingRefs, emptyBoard, extractBoard, loadBoard, refTitle, skeletonOf, subBoardsOf, subCardOf, wouldCycle, type Board, type Card } from "../src";
 
 const note = (id: string): Card => ({ id, kind: "note", md: `# ${id}\nbody`, look: "note" });
 const code = (id: string, qual = id): Card => ({ id, kind: "code", segments: [{ id: `s${id}`, src: { kind: "repo", repo: "" }, path: "a.py", lang: "python", start: 1, end: 10, text: Array(10).fill("x"), version: { kind: "git", commit: "bb823b3c0ffee" }, symbol: { qual, kind: "function" } }] });
@@ -11,28 +11,28 @@ function board(id: string, cards: [Card, number, number][]): Board {
 const call = (id: string, from: string, line: number, to: string) => ({ id, from: { card: from, seg: `s${from}`, line }, to: { card: to }, call: { name: to, col: 0 } });
 
 describe("sub-board skeleton", () => {
-  it("has card boxes from (0, 0), titles, call graph marks, section colours, card count and main commit", () => {
+  it("has card boxes from (0, 0), titles, kinds, section indexes, the links between cards, card count and main commit", () => {
     const b = board("S", [[code("a", "Scheduler.schedule"), 100, 200], [code("b", "BlockManager.allocate"), 700, 200], [note("n"), 100, 900]]);
-    b.links.push(call("l1", "a", 3, "b"), { id: "l2", from: { card: "n" }, to: { card: "a" } });
+    b.links.push(call("l1", "a", 3, "b"), { id: "l2", from: { card: "n" }, to: { card: "a" } }, { id: "l3", from: { card: "a" }, to: { card: "n" } });
     b.sections.push({ id: "s1", title: "Alloc", x: 650, y: 150, w: 500, h: 400, color: "blue" });
     b.place.b.section = "s1";
     const sk = skeletonOf(b);
     expect(sk).toMatchObject({ id: "S", name: "S", n: 3, commit: "bb823b3" });
-    expect(sk.cards.map((c) => [c.id, c.t, c.k, c.m])).toEqual([["a", "Scheduler.schedule", "code", "A"], ["b", "BlockManager.allocate", "code", "A"], ["n", "n", "note", undefined]]);
+    expect(sk.cards.map((c) => [c.id, c.t, c.k])).toEqual([["a", "Scheduler.schedule", "code"], ["b", "BlockManager.allocate", "code"], ["n", "n", "note"]]);
     expect(Math.min(...sk.cards.map((c) => c.x), ...sk.secs.map((s) => s.x))).toBe(0);
-    expect(sk.cards[1].sec).toBe("blue");
+    expect(sk.cards[1].si).toBe(0);
+    expect(sk.cards[0]).toMatchObject({ x: 0, y: 50, w: 400 }); // true position and size, shifted with the section's top-left
     expect(sk.secs[0]).toMatchObject({ t: "Alloc", color: "blue" });
+    // one entry per pair of cards, whichever way the arrows go
+    expect(sk.ln).toEqual([[0, 1], [2, 0]]);
   });
 
-  it("folds many branches from one dispatch line into +N (only cards nothing else links to)", () => {
+  it("keeps every card, also many branches from one dispatch line", () => {
     const b = board("O", [[code("d"), 0, 0]]);
     for (let i = 0; i < 8; i++) { b.cards.push(note(`h${i}`)); b.place[`h${i}`] = { x: 600, y: i * 200, w: 200 }; b.links.push(call(`l${i}`, "d", 5, `h${i}`)); }
-    b.links.push({ id: "x", from: { card: "h0" }, to: { card: "h7" } }); // h7 has a second way in: stays
     const sk = skeletonOf(b);
-    const more = sk.cards.find((c) => c.k === "more")!;
-    expect(more.t).toBe("+4 more");
-    expect(sk.cards.filter((c) => c.k === "note").map((c) => c.id)).toEqual(["h0", "h1", "h2", "h7"].slice(0, FAN_KEEP).concat("h7"));
-    expect(sk.cards.filter((c) => /^h[3-6]$/.test(c.id))).toEqual([]);
+    expect(sk.cards.map((c) => c.id)).toEqual(["d", ...Array.from({ length: 8 }, (_, i) => `h${i}`)]);
+    expect(sk.ln).toHaveLength(8);
   });
 
   it("names nested sub-boards", () => {
@@ -42,20 +42,32 @@ describe("sub-board skeleton", () => {
     expect(subBoardsOf(b)).toEqual(["C"]);
   });
 
-  it("gives each card what its mini card shows: section, source, summary, line range, picture, Mark", () => {
-    const b = board("M", [[code("a", "Scheduler.schedule"), 0, 0], [note("n"), 500, 0]]);
-    b.cards.push({ id: "t", kind: "note", md: "**first** line\nsecond line", look: "note", title: "Own title" }, { id: "h", kind: "note", md: "check\nthis", look: "mark", hand: "orange" },
-      { id: "i", kind: "image", src: "pic-120x80.png" }, { id: "big", kind: "image", src: `data:image/png;base64,${"A".repeat(20_000)}` });
-    for (const id of ["t", "h", "i", "big"]) b.place[id] = { x: 0, y: 600, w: 200 };
-    b.sections.push({ id: "s0", title: "Other", x: 2000, y: 0, w: 10, h: 10 }, { id: "s1", title: "Notes", x: 450, y: -50, w: 500, h: 400, color: "sand" });
-    b.place.n.section = "s1";
+  it("gives the map what it draws: the look of frameless notes, pictures and their names (alt, else the caption right below)", () => {
+    const b = board("M", [[note("n"), 500, 0]]);
+    b.cards.push({ id: "tx", kind: "note", md: "Heading words", look: "text" }, { id: "h", kind: "note", md: "check\nthis", look: "mark", hand: "orange" },
+      { id: "i", kind: "image", src: "pic-120x80.png" }, { id: "cap", kind: "note", md: "BLUR_SIZE = 1", look: "text" },
+      { id: "alt", kind: "image", src: "a.png", alt: "Grid of blocks" }, { id: "far", kind: "image", src: "b.png" },
+      { id: "big", kind: "image", src: `data:image/png;base64,${"A".repeat(20_000)}` });
+    b.place.tx = { x: 0, y: 600, w: 200 }; b.place.h = { x: 300, y: 600, w: 200 };
+    b.place.i = { x: 0, y: 1000, w: 200, h: 130 }; b.place.cap = { x: 0, y: 1000 + 134, w: 200 };
+    b.place.alt = { x: 600, y: 1000, w: 200 }; b.place.far = { x: 1200, y: 1000, w: 200 }; b.place.big = { x: 1600, y: 1000, w: 200 };
     const by = Object.fromEntries(skeletonOf(b).cards.map((c) => [c.id, c]));
-    expect(by.a).toMatchObject({ f: "a.py", l: [1, 10] });
-    expect(by.n).toMatchObject({ t: "n", d: "body", si: 1, sec: "sand" });
-    expect(by.t).toMatchObject({ t: "Own title", d: "first line" });
-    expect(by.h).toMatchObject({ t: "check this", hand: true });
-    expect(by.i).toMatchObject({ img: "pic-120x80.png", f: "pic-120x80.png" });
+    expect(by.n.lk).toBeUndefined();
+    expect(by.tx).toMatchObject({ lk: "text", t: "Heading words" });
+    expect(by.h).toMatchObject({ lk: "mark", t: "check this" });
+    expect(by.i).toMatchObject({ img: "pic-120x80.png", t: "BLUR_SIZE = 1" });
+    expect(by.alt.t).toBe("Grid of blocks");
+    expect(by.far.t).toBe("");
     expect(by.big.img).toBeUndefined();
+  });
+
+  it("hands out one card's whole content for its preview, a Compare with its two columns", () => {
+    const b = board("C", [[note("n"), 0, 0], [code("x"), 0, 400], [code("y"), 500, 400]]);
+    b.cards.push({ id: "cmp", kind: "compare", cols: ["x", "y"] });
+    b.place.cmp = { x: 0, y: 900, w: 800 };
+    expect(subCardOf(b, "n")?.card).toMatchObject({ id: "n", md: "# n\nbody" });
+    expect(subCardOf(b, "cmp")?.cols?.map((c) => c.id)).toEqual(["x", "y"]);
+    expect(subCardOf(b, "gone")).toBeNull();
   });
 
   it("lists the cards [[ can link to, down through nested sub-boards, but no pictures or first-line names", () => {

@@ -1,32 +1,33 @@
-// 子白板（BoardCard）：宿主把子白板算成一份很小的骨架（卡片的名字、种类、一行摘要、调用图标记、所在的 Section，[[ 能链接的卡）发给父白板，
-// 父白板按它画框里的分栏，不拿子白板的完整内容。
-import { baseName, cardTitle, clone, domainOf, emptyBoard, firstLine, hostOf, isCode, uid, versionLabel, withCols, type Board, type BoardCard, type Card, type Link, type Place } from "./model";
+// 子白板（BoardCard）：宿主把子白板算成一份很小的骨架（每张卡的框、种类、名字，Section 的框，卡之间的连线，图片的缩略图，[[ 能链接的卡）发给父白板，
+// 父白板按它在框里画一张缩略地图，不拿子白板的完整内容。点开地图上的一块时才问宿主要那一张卡（subCardOf）。
+import { cardTitle, clone, emptyBoard, firstLine, hostOf, isCode, uid, versionLabel, withCols, type Board, type BoardCard, type Card, type Place } from "./model";
 import { cardsToFrame, removeCards, removeSections, removeStickers, renumberBorn } from "./edit";
-import { computeFlows } from "./flow";
 import { bounds, estSize, sectionFrames, type Rect } from "./layout";
 import type { Crumb } from "./protocol";
 
 /**
- * 骨架里的一张卡：框（相对骨架左上角，子白板的坐标）、名字、种类；g = 在子白板的第几张调用图里，m / i = 那张图的字母 / 图标；
- * sec = 所在 Section 的颜色，si = 那个 Section 在 secs 里的下标。k = "more" 是折起来的分支（「+N」）。
- * 框里的小卡片用的：f = 出处（代码的文件名、网页的域名），d = 一行摘要，l = 代码的行号范围，img = 图片（assets/ 下的文件名或小的 data: URL），
- * hand = 手写的 Mark（画成便签）
+ * 骨架里的一张卡：框（相对骨架左上角，子白板的坐标）、种类、名字（悬停时的提示；图片是 alt 或正下方的图注，没有就空）。
+ * lk = 没有卡框的 Note 的样子（Text 画成一道线，Box 只有边框，Mark 是几道手写色的线）；si = 所在 Section 在 secs 里的下标；
+ * img = 图片（assets/ 下的文件名或小的 data: URL）
  */
-export type SkelCard = {
-  id: string; x: number; y: number; w: number; h: number; t: string; k: Card["kind"] | "more"; g?: number; m?: string; i?: string; sec?: string; si?: number;
-  f?: string; d?: string; l?: [number, number]; img?: string; hand?: true;
-};
+export type SkelCard = { id: string; x: number; y: number; w: number; h: number; t: string; k: Card["kind"]; lk?: "text" | "box" | "mark"; si?: number; img?: string };
 /** [[ 能链接到的一张卡（有真正标题的）：via = 从这块子白板往下要经过的子白板（框的卡 id、白板 id、名字），直接在这块上的没有 */
 export type SkelRef = { id: string; t: string; k: Card["kind"]; via?: { f: string; b: string; n: string }[] };
 export type SkelSec = { x: number; y: number; w: number; h: number; color?: string; t: string };
 /**
  * 一块子白板的骨架。w / h = 内容的范围；n = 卡数；commit = 代码卡里最多的那个 commit（短）；
- * refs = 它和它里面的子白板（一路往下）上能 [[ 链接的卡。框里不画子白板的箭头，所以骨架里没有连线
+ * ln = 卡之间的连线（cards 里的下标，去重、不分方向）；refs = 它和它里面的子白板（一路往下）上能 [[ 链接的卡
  */
-export type Skeleton = { id: string; name: string; n: number; commit?: string; w: number; h: number; cards: SkelCard[]; secs: SkelSec[]; refs: SkelRef[] };
+export type Skeleton = { id: string; name: string; n: number; commit?: string; w: number; h: number; cards: SkelCard[]; secs: SkelSec[]; ln: [number, number][]; refs: SkelRef[] };
 
-/** 同一个出发点（同一张卡的同一行）的 Call 分支超过 FAN 条时，只留前 FAN_KEEP 条，其余折成「+N」 */
-export const FAN = 5, FAN_KEEP = 3;
+/** 框里地图的留白（世界坐标）：左右下 MAP_PAD，上 MAP_TOP（最上面的 Section 名一半在区域外，要留出来）；很小的子白板也最多缩到 MAP_MAX（一两张卡不放成一大块） */
+export const MAP_PAD = 14, MAP_TOP = 20, MAP_MAX = 0.5;
+export type MapFit = { s: number; ox: number; oy: number };
+/** 骨架（w × h）等比放进 W × H 的框：比例 s，左上角在框里的 (ox, oy)，居中 */
+export function mapFit(sk: { w: number; h: number }, W: number, H: number): MapFit {
+  const s = Math.max(1e-4, Math.min(MAP_MAX, (W - 2 * MAP_PAD) / sk.w, (H - MAP_TOP - MAP_PAD) / sk.h));
+  return { s, ox: (W - sk.w * s) / 2, oy: MAP_TOP + (H - MAP_TOP - MAP_PAD - sk.h * s) / 2 };
+}
 
 /** 这块白板上嵌着的子白板（去重，按出现的先后） */
 export function subBoardsOf(b: Pick<Board, "cards">): string[] {
@@ -83,7 +84,7 @@ export function refTitle(c: Card, nameOf: (board: string) => string | undefined 
 
 /** Note 去掉 Markdown 记号后的非空行（firstLine 同一套） */
 const textLines = (md: string) => md.split("\n").map((l) => firstLine(l)).filter(Boolean);
-/** 小卡片里能直接显示的图片：assets/ 下的文件，或者不大的 data: URL（大的不往骨架里塞） */
+/** 地图上能直接画的图片：assets/ 下的文件，或者不大的 data: URL（大的不往骨架里塞） */
 const thumbOf = (src: string) => (!src.startsWith("data:") ? src : src.length <= 16_000 ? src : undefined);
 
 /**
@@ -92,54 +93,32 @@ const thumbOf = (src: string) => (!src.startsWith("data:") ? src : src.length <=
  */
 export function skeletonOf(b: Board, peek: (id: string) => Board | undefined = () => undefined): Skeleton {
   const nameOf = (id: string) => peek(id)?.name;
-  const flows = computeFlows(b);
-  const graphIndex = new Map(flows.graphs.map((g, i) => [g.id, i]));
   const placed = b.cards.filter((c) => b.place[c.id]);
   const rects = new Map(placed.map((c) => [c.id, rectOf(c, b.place[c.id])]));
   const frames = sectionFrames(b, rects);
-  const secColor = new Map(b.sections.map((s) => [s.id, s.color]));
   const secIndex = new Map(b.sections.map((s, i) => [s.id, i]));
   const host = hostOf(b);
 
-  // 分支太多的出发点：留前 FAN_KEEP 条，其余目标折成「+N」（只折别处没有连进来的卡）
-  const inCount = new Map<string, number>();
-  for (const l of b.links) if (rects.has(host(l.to.card)) && host(l.from.card) !== host(l.to.card)) inCount.set(host(l.to.card), (inCount.get(host(l.to.card)) ?? 0) + 1);
-  const fold = new Map<string, string>(); // 卡 → 折进的那个「+N」的 id
-  const mores: SkelCard[] = [];
-  const points = new Map<string, Link[]>();
-  for (const ls of flows.kids.values()) for (const l of ls) {
-    const k = `${host(l.from.card)}|${l.from.seg ?? ""}|${l.from.line ?? ""}`;
-    points.set(k, [...(points.get(k) ?? []), l]);
-  }
-  for (const [k, ls] of points) {
-    const tos = [...new Set(ls.map((l) => host(l.to.card)))].filter((id) => rects.has(id));
-    if (tos.length <= FAN) continue;
-    const away = tos.slice(FAN_KEEP).filter((id) => (inCount.get(id) ?? 0) <= 1 && !fold.has(id));
-    if (away.length < 2) continue;
-    const id = `more:${k}`;
-    for (const t of away) fold.set(t, id);
-    const r = rects.get(away[0])!;
-    mores.push({ id, x: r.x, y: r.y, w: Math.min(r.w, 220), h: 40, t: `+${away.length} more`, k: "more" });
-  }
-
   const cards: SkelCard[] = [];
   for (const c of placed) {
-    if (fold.has(c.id)) continue;
     const r = rects.get(c.id)!;
-    const g = flows.byId.get(c.kind === "compare" ? c.cols.find((k) => flows.byId.has(k)) ?? c.id : c.id);
-    const sc: SkelCard = { id: c.id, x: r.x, y: r.y, w: r.w, h: r.h, t: titleOf(c, b, nameOf), k: c.kind, ...miniOf(c, nameOf) };
-    if (g) {
-      sc.g = graphIndex.get(g.id);
-      if ("icon" in g.mark) sc.i = g.mark.icon; else sc.m = g.label;
-    }
-    const sid = b.place[c.id].section ?? "";
-    const col = secColor.get(sid);
-    if (col) sc.sec = col;
-    const si = secIndex.get(sid);
+    const sc: SkelCard = { id: c.id, x: r.x, y: r.y, w: r.w, h: r.h, t: c.kind === "image" ? imageName(c, r, placed, rects) : titleOf(c, b, nameOf), k: c.kind };
+    if (c.kind === "note" && c.look !== "note") sc.lk = c.look;
+    if (c.kind === "image") { const img = thumbOf(c.src); if (img) sc.img = img; }
+    const si = secIndex.get(b.place[c.id].section ?? "");
     if (si !== undefined) sc.si = si;
     cards.push(sc);
   }
-  cards.push(...mores);
+  const at = new Map(cards.map((c, i) => [c.id, i]));
+  const ln: [number, number][] = [], seen = new Set<string>();
+  for (const l of b.links) {
+    const i = at.get(host(l.from.card)), j = at.get(host(l.to.card));
+    if (i === undefined || j === undefined || i === j) continue;
+    const k = i < j ? `${i},${j}` : `${j},${i}`;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    ln.push([i, j]);
+  }
   const secs: SkelSec[] = b.sections.map((s) => {
     const r = frames.get(s.id)!;
     const o: SkelSec = { x: r.x, y: r.y, w: r.w, h: r.h, t: s.title };
@@ -150,7 +129,7 @@ export function skeletonOf(b: Board, peek: (id: string) => Board | undefined = (
   const box = bounds([...cards, ...secs]) ?? { x: 0, y: 0, w: 1, h: 1 };
   const r0 = (n: number) => Math.round(n);
   for (const o of [...cards, ...secs]) { o.x = r0(o.x - box.x); o.y = r0(o.y - box.y); o.w = r0(o.w); o.h = r0(o.h); }
-  const sk: Skeleton = { id: b.id, name: b.name, n: b.cards.filter((c) => b.place[c.id]).length, w: Math.max(1, r0(box.w)), h: Math.max(1, r0(box.h)), cards, secs, refs: refsOf(b, peek) };
+  const sk: Skeleton = { id: b.id, name: b.name, n: placed.length, w: Math.max(1, r0(box.w)), h: Math.max(1, r0(box.h)), cards, secs, ln, refs: refsOf(b, peek) };
   const commit = mainCommit(b);
   if (commit) sk.commit = commit;
   return sk;
@@ -162,38 +141,27 @@ function titleOf(c: Card, b: Board, nameOf: (id: string) => string | undefined):
   return cardTitle(c, b).slice(0, 120);
 }
 
-/** 小卡片的出处、摘要、行号、图片（见 SkelCard） */
-function miniOf(c: Card, nameOf: (id: string) => string | undefined): Partial<SkelCard> {
-  const o: Partial<SkelCard> = {};
-  switch (c.kind) {
-    case "note": {
-      if (c.look === "mark") { o.hand = true; break; }
-      const ls = textLines(c.md), d = c.title ? ls[0] : ls[1];
-      if (d) o.d = d.slice(0, 120);
-      break;
-    }
-    case "code": {
-      const s = c.segments[0];
-      if (!s || s.src.kind === "free") break;
-      o.f = baseName(s.path);
-      o.l = [s.start, s.end];
-      break;
-    }
-    case "image": {
-      const img = thumbOf(c.src);
-      if (img) o.img = img;
-      if (!c.src.startsWith("data:")) o.f = baseName(c.src);
-      break;
-    }
-    case "web": {
-      o.f = c.meta?.site || domainOf(c.url);
-      if (c.meta?.desc) o.d = c.meta.desc.slice(0, 120);
-      break;
-    }
-    case "links": o.d = `${c.items.length} link${c.items.length === 1 ? "" : "s"}`; break;
-    case "board": { const n = nameOf(c.board); if (n && c.title && c.title !== n) o.d = n; break; }
-  }
-  return o;
+/** 图片的名字：自己的 alt、标题，没有就用正下方的图注（紧贴着图下边、和图左右对齐的 Text），都没有是空的 */
+function imageName(c: Extract<Card, { kind: "image" }>, r: Rect, cards: Card[], rects: Map<string, Rect>): string {
+  const own = (c.alt || c.title)?.trim();
+  if (own) return own.slice(0, 120);
+  const cap = cards.find((k) => {
+    if (k.kind !== "note" || k.look !== "text") return false;
+    const q = rects.get(k.id)!;
+    return q.y >= r.y + r.h - 4 && q.y <= r.y + r.h + 40 && Math.abs(q.x + q.w / 2 - (r.x + r.w / 2)) < r.w / 2;
+  });
+  return cap?.kind === "note" ? textLines(cap.md).join(" ").slice(0, 120) : "";
+}
+
+/**
+ * 地图上点开的一张卡的完整内容（只读预览用）：卡本身，Compare 再带上两栏的卡。不在 b 上是 null。
+ * 宿主再给代码段配上展示数据（高亮），见 protocol 的 subCard
+ */
+export function subCardOf(b: Board, id: string): { card: Card; cols?: Card[] } | null {
+  const c = b.cards.find((k) => k.id === id);
+  if (!c) return null;
+  if (c.kind !== "compare") return { card: c };
+  return { card: c, cols: c.cols.map((k) => b.cards.find((x) => x.id === k)).filter((x): x is Card => !!x) };
 }
 
 /** 这块白板上（和一路往下的子白板里）有真正标题的卡（refTitle）；套得太深、套成环的不往下走 */

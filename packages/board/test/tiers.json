@@ -185,12 +185,12 @@
     "subboards": {
       "about": "sub-boards: the sub-board card, entering and leaving, Turn into Board, breadcrumbs, the board tree",
       "files": [
-        "packages/board/src/cards/BoardBody.tsx", "packages/board/src/state/subboards.ts", "packages/board/src/actions/subboards.ts",
+        "packages/board/src/cards/{BoardBody,SubPreviews}.tsx", "packages/board/src/state/subboards.ts", "packages/board/src/actions/subboards.ts",
         "packages/core/src/subboard.ts", "packages/host/src/{boardtree,transfer,bundle}.ts",
         "packages/board/test/scenarios/{subboards,subboard-card,boards}.spec.ts"
       ],
       "scenarios": [
-        "subboardColumns", "undoafterpeek", "undoturnintoboard", "deletedparentcrumb", "lineSelectionStaysOnItsBoard", "subboardLinkPicker",
+        "subboardMap", "undoafterpeek", "undoturnintoboard", "deletedparentcrumb", "lineSelectionStaysOnItsBoard", "subboardLinkPicker",
         "subboardEnterLeaveMorph", "walkHopWaitsForMeasure"
       ]
     },

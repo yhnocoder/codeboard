@@ -214,7 +214,7 @@ async function run(res: Record<string, unknown>) {
     L("l5", sch, /preempt\(/, pre.id, "preempt");
     E.sections.push({ id: "secS", title: "Scheduling", x: 790, y: 20, w: 1180, h: 1300, color: "blue" });
     for (const c of [sch, can, alloc, pre, post]) E.place[c.id].section = "secS";
-    // Ops: one dispatch line with 7 branches (folds into "+N" in the skeleton)
+    // Ops: one dispatch line with 7 branches (the map draws every one of them, and the arrows)
     const O = emptyBoard("bOps", "Ops");
     const disp = card("LLMEngine.step");
     put(O, disp, 60, 60);
@@ -261,15 +261,15 @@ async function run(res: Record<string, unknown>) {
     await shotPr(h, "subboards-2-far");
     await page.keyboard.press("Shift+Digit1"); await idle(h);
 
-    // 3. Insert Ops (canvas menu ▸ Insert Board) → its dispatch line folds into "+N more"
+    // 3. Insert Ops (canvas menu ▸ Insert Board) → its map: all 8 cards, the 7 arrows from the dispatch line
     await page.mouse.click(700, 820, { button: "right" });
     await page.locator(".ctx button", { hasText: "Insert Board" }).hover();
     await page.locator(".ctx button", { hasText: /^Ops/ }).click();
     const opsFrame = await until(h, "Insert Board adds the Ops frame", () => t.store.peek("bEngine")!.cards.find((c) => c.kind === "board" && c.board === "bOps"));
-    await page.locator(`.card[data-id="${opsFrame.id}"] .skel .sk-more`).waitFor(); await idle(h); // with the skeleton push
-    res.more = await page.locator(`.card[data-id="${opsFrame.id}"] .skel .sk-more`).textContent();
+    await until(h, "the Ops frame draws its map", () => page.locator(`.card[data-id="${opsFrame.id}"] .skel [data-sub]`).count()); await idle(h); // with the skeleton push
+    res.more = `${await page.locator(`.card[data-id="${opsFrame.id}"] .skel [data-sub]`).count()} cards, ${await page.locator(`.card[data-id="${opsFrame.id}"] .skel .ln`).count()} lines`;
 
-    // 4. A new arrow from LLMEngine.step: Arrow tool, then click a mini card inside the frame: the arrow goes to the frame itself
+    // 4. A new arrow from LLMEngine.step: Arrow tool, then click a block of the map inside the frame: the arrow goes to the frame itself
     await page.keyboard.press("Escape");
     await page.keyboard.press("Shift+Digit1"); await idle(h);
     await page.locator(`.card[data-id="${step.id}"] .chead`).click({ timeout: 5000, position: { x: 120, y: 10 } });
@@ -326,7 +326,7 @@ async function run(res: Record<string, unknown>) {
     const into = JSON.stringify({ card: frame?.id });
     const ok = res.frame && res.child === 5 && res.childLinks === 3 && JSON.stringify(res.inLinks) === JSON.stringify([into, into])
       && (res.skelCards as number) >= 1 && /Scheduler\s*5$/.test(String(res.title)) && res.tip === "Scheduler · bb823b3" && res.far === 1
-      && /\+4 more/.test(String(res.more)) && res.newArrow === into && res.entered && /Engine.*Scheduler/.test(String(res.crumbs))
+      && res.more === "8 cards, 7 lines" && res.newArrow === into && res.entered && /Engine.*Scheduler/.test(String(res.crumbs))
       && /Can’t put Engine inside Scheduler: Scheduler is already inside Engine/.test(String(res.cycleToast)) && res.noCycle && res.back
       && res.walkIn && res.walkOut && res.removedFrame && res.lo === 0;
     check("subboards", ok, JSON.stringify(res));

@@ -64,7 +64,7 @@ const Card = v.variant("kind", [
   obj({ ...base, kind: v.literal("web"), url: str, meta: opt(WebMeta), style: opt(v.picklist(["banner", "side", "text", "compact"])) }),
   obj({ ...base, kind: v.literal("links"), items: v.array(obj({ id: str, url: str, title: opt(str), meta: opt(WebMeta), rich: opt(bool) })), rich: opt(bool) }),
   obj({ ...base, kind: v.literal("compare"), cols: v.tuple([str, str]), swap: opt(bool), unified: opt(bool), hideSame: opt(bool) }),
-  obj({ ...base, kind: v.literal("board"), board: str }),
+  obj({ ...base, kind: v.literal("board"), board: str, pcols: opt(v.literal(1)) }),
 ]);
 
 const End = obj({ card: str, seg: opt(str), line: opt(num) });
