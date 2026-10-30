@@ -3,7 +3,7 @@
 import { keepKey } from "@yhnocoder/markdown/ui";
 import { Show, batch, createEffect, onMount } from "solid-js";
 import { useFinish } from "./hooks";
-import { editing, setEditing, takeEditEntry, type Editing } from "../state/ui";
+import { editing, setEditing, setLiveNote, takeEditEntry, type Editing } from "../state/ui";
 import { docRange } from "@yhnocoder/markdown";
 import { MdStatic } from "./Md";
 import { loadEditor, editorNow, editorOpts, prepareSelected, NOTE_PLACEHOLDER, type MdEditorHandle } from "../md/load";
@@ -85,6 +85,7 @@ function MdEdit(p: P) {
     });
   }, (f) => {
     const v = ed?.value() ?? null;
+    if (p.kind === "note") setLiveNote(null);
     ed?.destroy();
     f(v);
   });
@@ -95,6 +96,7 @@ function MdEdit(p: P) {
     if (done() || !el.isConnected) return;
     el.textContent = "";
     ed = m.mountEditor(el, { ...editorOpts(), value: start, placeholder: p.placeholder ?? NOTE_PLACEHOLDER, onDone: finish });
+    if (p.kind === "note") { const h = ed; setLiveNote({ id: p.id, value: () => h.value() }); }
     const e = ed.editor();
     if (entry && "at" in entry) {
       // 编辑器和静态内容排得一样：点在静态内容哪个字上，编辑器里同一个地方就是那个字。

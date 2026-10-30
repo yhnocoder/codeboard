@@ -114,6 +114,8 @@ export function naturalSize(id: string): { w?: number; h: number; minH: number; 
     }
     return { w, h, minH: top + 6 + 20 + 8 + 2, body: code.offsetHeight - wrapped + frame };
   }
+  // 子白板的框里只有绝对定位的缩略地图，没有撑开它的内容：它的大小就是拖出来的大小，没有"内容本来的大小"
+  if (f?.card.kind === "board") return null;
   if (f?.card.kind === "image") {
     const img = el.querySelector("img");
     // 高度跟着宽度和图片的比例走（不存）：内容本来的大小就是图片自己的宽度

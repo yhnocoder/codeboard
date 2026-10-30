@@ -1,12 +1,12 @@
 // 静态 Markdown：缓存好的 HTML 直接放进去，挂上以后补引用 / 图表；点链接、[[引用]]、勾选框
 import { createEffect, onCleanup } from "solid-js";
-import { mdClick } from "@yhnocoder/markdown";
+import { mdClick, type RefTarget } from "@yhnocoder/markdown";
 import { mdInto, mdForget } from "../md/lazy";
 import { mathRev } from "../md/math";
 import { prepareHover, prepareLeave } from "../md/load";
 import * as A from "../actions";
 
-const openRef = (id: string) => A.openCardRef(id);
+const openRef = (id: string, to: RefTarget) => A.openCardRef(id, to.place);
 
 export function MdStatic(p: { src: string; class?: string; style?: any; ph?: string; tip?: string; inline?: boolean; onToggle?: (next: string) => void; onDblClick?: (e: MouseEvent) => void;
   /** 能双击编辑的：鼠标停上来就先在页面外准备好编辑器 */

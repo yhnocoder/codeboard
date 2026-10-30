@@ -7,7 +7,7 @@ import type { SegView } from "./lines";
 import type { BoardPatch, SharedUpdate } from "./patch";
 import type { CardCopy } from "./edit";
 import type { SharedInfo } from "./shared";
-import type { Skeleton } from "./subboard";
+import type { BoardRefs, Skeleton } from "./subboard";
 import type { RunApply } from "./run";
 import type { Rect } from "./layout";
 import type { QuestionItem } from "./questions";
@@ -213,6 +213,8 @@ export type HostToBoard =
   | { type: "merged"; patch: BoardPatch; views?: Record<string, SegView> }
   /** 这块白板上的子白板的骨架（变了的那几块；null = 那块白板没了）。子白板存盘后宿主重算，防抖 */
   | { type: "skeletons"; boards: Record<string, Skeleton | null> }
+  /** [[ 引用能选的别的白板上的卡和最近选过的（要过一次 boardRefs 之后，别的白板存盘、白板列表变了时宿主重推，只在变了时发） */
+  | { type: "boardRefs"; refs: BoardRefs }
   /** 面包屑变了（上面的一块白板删掉了，回不去了）：整个换掉 */
   | { type: "crumbs"; crumbs: Crumb[] }
   /** 一次运行（Capture Run 跑完，或 Apply Run… 选的）：白板给对上的 Call 箭头挂 observed 证据和实参，没对上的列出来 */
@@ -285,6 +287,12 @@ export type BoardToHost =
   | { type: "confirm"; req: number; text: string; detail?: string; ok: string }
   /** 子白板的骨架（白板上出现了还没有骨架的框时要；null = 那块白板没了） */
   | { type: "skeletons"; req: number; ids: string[] }
+  /** 子白板框的地图上点开的一张卡（board = 子白板，card = 卡 id）：回 SubCard（卡已经不在了回 null） */
+  | { type: "subCard"; req: number; board: string; card: string }
+  /** [[ 引用要列别的白板上的卡：回 BoardRefs（除了这块白板以外的白板，按最近打开的先后；最近选过的引用）。之后变了宿主自己推 boardRefs */
+  | { type: "boardRefs"; req: number }
+  /** [[ 引用选了一项（b = 它所在的白板）：宿主记进这个工作区最近选过的（最多 3 个） */
+  | { type: "refPicked"; b: string; id: string }
   /** Turn into Board：选中的卡拆出来的新白板（id 白板定），存到父白板所在的组；共享卡还是共享卡。回 ok */
   | { type: "newBoard"; req: number; board: Board }
   /**
@@ -346,12 +354,13 @@ export type BoardToHost =
 /**
  * 图片的 AI 操作。image = 发给模型的图（data: URL，白板已经缩到模型收的大小、透明处垫成白色）。
  * extract：图里的字转成 Markdown（不思考）；svg：重画成 SVG（size = 那张图的像素宽高，noBg = 不画底色，think = 先思考）；
- * modify：照 instruction 改 svg 的源码（思考，effort low）
+ * modify：照 instruction 改 svg 的源码（思考，effort low）；draw：照一段字（text，用户写的描述或 Note 里的字）画一张 SVG（noBg、think 同 svg）
  */
 export type ImageAiOp =
   | { kind: "extract"; image: string }
   | { kind: "svg"; image: string; size: { w: number; h: number }; noBg: boolean; think: boolean }
   | { kind: "modify"; svg: string; instruction: string }
+  | { kind: "draw"; text: string; noBg: boolean; think: boolean }
   /** Auto Focus：给 Markdown 加 ==概念== 和 **强调**，别的一个字都不改（白板核对回来的字） */
   | { kind: "focus"; md: string };
 /** 失败的原因：nokey = 没设密钥，badkey = 密钥被拒（401），balance = 余额用完（402），network = 连不上，timeout = 太久没回，
@@ -419,6 +428,9 @@ export type NameHit = { lang: string; label: string; detail: string; path: strin
 export type GenSource = { text: string; lang: string; name: string };
 export type { BoundVal, CallAlt };
 
+/** 子白板里一张卡的只读预览：卡（Compare 带上两栏 cols）和其中代码段的展示数据（段 id → 高亮） */
+export type SubCard = { card: Card; cols?: Card[]; views: Record<string, SegView> };
+
 /** 要回答的请求（带 req）：白板用 ask 发，宿主用 { type: "reply", req, data } 回 */
 export type AskType = Extract<BoardToHost, { req: number }>["type"];
 
@@ -461,6 +473,8 @@ type Replies = {
   pasteCards: PastedCards | null;
   deleteEverywhere: number;
   skeletons: Record<string, Skeleton | null>;
+  subCard: SubCard | null;
+  boardRefs: BoardRefs;
   newBoard: boolean;
   dropBoard: boolean;
   restoreBoard: boolean;

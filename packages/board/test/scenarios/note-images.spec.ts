@@ -359,3 +359,26 @@ test("noteImageDragMoves", async () => {
   check("noteImageDragMoves saved", /^First paragraph of text\.\n\nSecond!\[\]\(SRC\)\{width=\d+%\} paragraph of text here\.$/.test(text), text);
   await done();
 });
+
+/** A screenshot pasted while editing is saved to the card only when the editor closes: right-clicking it still offers Add Caption, and the caption lands on it */
+test("notePastedImageCaptionWhileEditing", async () => {
+  const { h, done } = await imageHost(["Before the image."]);
+  const pg = h.page;
+  await idle(h);
+  await editNote(h, "n0");
+  await pg.keyboard.press("Control+End");
+  await pg.keyboard.press("Enter");
+  await pasteFiles(pg, [pngFile]);
+  await imgBox(h, "n0", ".md-pm");
+  check("notePastedImageCaptionWhileEditing not saved to the card yet", !md(h, "n0").includes("assets/"), md(h, "n0"));
+  await pg.locator('.card[data-id="n0"] .md-pm img:not(.ProseMirror-separator)').first().click({ button: "right" });
+  await pg.locator(".ctx button").first().waitFor();
+  const items = await pg.locator(".ctx button .lb").allTextContents();
+  check("notePastedImageCaptionWhileEditing the menu offers Add Caption", items[0] === "Add Caption…", items);
+  await pg.locator(".ctx button", { hasText: "Add Caption…" }).first().click();
+  await pg.locator(".dialog input").fill("Figure 1");
+  await pg.keyboard.press("Enter");
+  await until(h, "the caption is saved", () => md(h, "n0").includes('"Figure 1")'));
+  check("notePastedImageCaptionWhileEditing the caption is on the pasted image", /^Before the image\.\n\n!\[\]\(assets\/[0-9a-f]{16}-800x450\.png "Figure 1"\)$/.test(md(h, "n0")), md(h, "n0"));
+  await done();
+});

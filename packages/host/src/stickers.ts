@@ -20,7 +20,7 @@ export async function openStickerDir() {
     await workspace().ui.openFolder(dir);
   } catch (e) {
     log("error", `sticker folder ${dir}: ${e instanceof Error ? e.message : e}`);
-    workspace().ui.error(`Cannot open the sticker folder ${dir}`);
+    void workspace().ui.error(`Cannot open the sticker folder ${dir}`);
   }
 }
 

@@ -11,7 +11,8 @@ import { notesOf, ping, setPopIn, popIn, setPaletteOpen, setSizeIn, type SizeAni
 import { openPop, updatePop } from "../state/pop";
 import { lastPointer, naturalSize, chromeOf, cardsMeasured, CODE_MAX } from "../state/measure";
 import { send, ask } from "../host";
-import { renderMd, renderMdInline } from "@yhnocoder/markdown";
+import { renderMd, renderMdInline, type RefBroken, type RefTarget } from "@yhnocoder/markdown";
+import { crossRef } from "../md/refs";
 import { mathRev } from "../md/math";
 
 const isMac = () => state.host.isMac;
@@ -37,8 +38,8 @@ export const selCards = () => sel.cards.map((id) => cardById(id)?.card).filter(B
 export const mdInline = (s: string) => (mathRev(), renderMdInline(s));
 export const mdBlock = (s: string) => (mathRev(), renderMd(s));
 export const sidenotesOf = notesOf;
-/** [[引用]] 找卡：先当 id，再按标题（不分大小写，重名时取第一张），再到子白板里找 */
-export function resolveCardRef(label: string): { id: string; title: string } | null {
+/** [[引用]] 找卡：先当 id，再按标题（不分大小写，重名时取第一张），再到子白板里找，最后是别的白板上的（[[白板 › 卡]]） */
+export function resolveCardRef(label: string): RefTarget | RefBroken | null {
   const l = label.trim();
   if (!l) return null;
   const byId = cardById(l);
@@ -47,7 +48,13 @@ export function resolveCardRef(label: string): { id: string; title: string } | n
   for (const c of placed()) { const t = cardTitle(c, state.board); if (t.trim().toLowerCase() === low) return { id: c.id, title: t.trim() }; }
   // 子白板里的卡：[[子白板 › 卡]]
   const s = subRef(l);
-  return s ? { id: s.id, title: s.label } : null;
+  if (s) return { id: s.id, title: s.label };
+  // 卡以外：这块白板上的 Section，再是别的白板（@ 引用列出它们，同名时卡优先）
+  const sec = state.board.sections.find((x) => x.title.trim().toLowerCase() === low);
+  if (sec) return { id: sec.id, title: sec.title.trim() };
+  const b = state.boards.find((m) => m.id !== state.board.id && m.name.trim().toLowerCase() === low);
+  if (b) return { id: b.id, title: b.name.trim() };
+  return crossRef(l, (t) => { const r = resolveCardRef(t); return r && !("broken" in r) ? r : null; });
 }
 export const hostRect = (id: string) => { const f = cardById(id); return f ? rectOf(f.host) : null; };
 

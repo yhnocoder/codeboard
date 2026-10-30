@@ -116,6 +116,12 @@ describe("LaTeX \\( … \\) and \\[ … \\] in pasted text", () => {
     expect(texBrackets("不跨段 \\(a\n\nb\\)")).toBe("不跨段 \\(a\n\nb\\)");
   });
 
+  it("works when the paste has a table, also inside its cells", () => {
+    const md = "| 大小 | occupancy |\n| :---: | :---: |\n| 1024 | \\(50\\%\\) |\n\n即\n\n\\[\n 32 \\times 32 = 1024 \n\\]";
+    expect(texBrackets(md)).toBe("| 大小 | occupancy |\n| :---: | :---: |\n| 1024 | $50\\%$ |\n\n即\n\n$$\n 32 \\times 32 = 1024 \n$$");
+    expect(pastedMd(md)!.content!.some((n) => n.type === "blockMath")).toBe(true);
+  });
+
   it("turns them into formulas in pasted HTML too, but not inside <code>", () => {
     const doc = pasteHtml(`<p>此时 occupancy 为</p><p>\\[<br> 1024/2048 = 50\\% <br>\\]</p><p>\\[ 2048/512 = 4 \\]</p><p>偏移 \\(x_1\\)，代码 <code>\\(y\\)</code></p>`);
     const all = nodes(doc);

@@ -372,3 +372,59 @@ test("cutCardsPasteUndo", async () => {
   check("cut-in-editor-keeps-card", ids.includes(code) && h.sent.filter((m) => m.type === "copyCards").length === 1, { ids, copies: h.sent.filter((m) => m.type === "copyCards").length });
   await close(h);
 });
+
+/** A click on a Section's empty area selects it (the innermost one); a drag there is still a marquee, and a click outside clears */
+test("sectionClickEmptySelects", async () => {
+  const b = twoSections();
+  b.sections.push({ id: "S3", title: "Inner", x: 760, y: 300, w: 320, h: 160, parent: "S2" });
+  b.cam = { x: 0, y: 0, z: 1 };
+  const h = await open({ board: b, light, w: 1400 });
+  await idle(h);
+  const pg = h.page;
+  const selected = () => pg.evaluate(() => [...document.querySelectorAll(".sect.sel")].map((e) => (e as HTMLElement).dataset.sect));
+  const box = async (id: string) => (await pg.locator(`.sect[data-sect="${id}"]`).boundingBox())!;
+  const s1 = await box("S1"), s3 = await box("S3");
+  // S1 的下半截是空的（代码卡在上面）
+  await pg.mouse.click(s1.x + 40, s1.y + s1.height - 30); await idle(h);
+  const one = await selected();
+  await pg.mouse.click(s3.x + s3.width - 30, s3.y + s3.height - 20); await idle(h);
+  const inner = await selected();
+  await pg.mouse.click(s1.x + s1.width + 40, s1.y + s1.height - 30); await idle(h);
+  const none = await selected();
+  // 在 S2 里拖一个框把 Note 框住：选中的是卡，不是 Section
+  const n1 = (await pg.locator('.card[data-id="n1"]').boundingBox())!;
+  await pg.mouse.move(n1.x - 20, n1.y - 20); await pg.mouse.down();
+  await pg.mouse.move(n1.x + n1.width / 2, n1.y + n1.height / 2, { steps: 5 }); await pg.mouse.up(); await idle(h);
+  const dragged = { sections: await selected(), cards: await pg.evaluate(() => [...document.querySelectorAll(".card.sel")].map((e) => (e as HTMLElement).dataset.id)) };
+  check("sectionClickEmptySelects", one.join() === "S1" && inner.join() === "S3" && none.length === 0 && dragged.sections.length === 0 && dragged.cards.join() === "n1", { one, inner, none, dragged });
+  await close(h);
+});
+
+/** A selected Section moves when its empty area is dragged, with its cards; an unselected one is not moved by that drag */
+test("sectionCmdDragEmptyMoves", async () => {
+  const b = twoSections();
+  b.cam = { x: 0, y: 0, z: 1 };
+  const h = await open({ board: b, light, w: 1400 });
+  await idle(h);
+  const pg = h.page;
+  const s1 = (await pg.locator('.sect[data-sect="S1"]').boundingBox())!;
+  const code = b.cards[0].id;
+  const at = () => { const q = h.board(); const s = q.sections.find((x) => x.id === "S1")!; return { sx: s.x, sy: s.y, cx: q.place[code].x, cy: q.place[code].y }; };
+  const drag = async (x: number, y: number) => { await pg.mouse.move(x, y); await pg.mouse.down(); await pg.mouse.move(x + 60, y + 40, { steps: 6 }); await pg.mouse.up(); await idle(h); };
+  const p0 = at();
+  // 不按 ⌘：没选中、选中了，拖空白处都是框选，Section 不动
+  await drag(s1.x + 40, s1.y + s1.height - 120);
+  await pg.mouse.click(s1.x + s1.width + 40, s1.y + 20); await idle(h);
+  await pg.mouse.click(s1.x + 40, s1.y + s1.height - 30); await idle(h);
+  await drag(s1.x + 200, s1.y + s1.height - 60);
+  const p1 = at();
+  // 按着 ⌘ 拖空白处：Section 和里面的卡一起走（⌘ 也关掉吸附，挪多少就是多少）
+  await pg.mouse.click(s1.x + s1.width + 40, s1.y + 20); await idle(h);
+  await pg.keyboard.down("Meta");
+  await drag(s1.x + 120, s1.y + s1.height - 90);
+  await pg.keyboard.up("Meta");
+  await until(h, "the Section move is saved", () => at().sx !== p0.sx);
+  const p2 = at();
+  check("sectionCmdDragEmptyMoves", p1.sx === p0.sx && p1.sy === p0.sy && p2.sx - p0.sx === 60 && p2.sy - p0.sy === 40 && p2.cx - p0.cx === 60 && p2.cy - p0.cy === 40, { p0, p1, p2 });
+  await close(h);
+});

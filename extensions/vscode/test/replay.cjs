@@ -85,8 +85,10 @@ const gap = (a, b) => Math.hypot(Math.max(0, a.l - b.r, b.l - a.r), Math.max(0, 
   await watchKeyboard(page); // the keyboard hand-backs to webviews, likewise
   await page.locator(".monaco-workbench .part.editor").waitFor({ timeout: 60000 });
   const errors = [];
-  // Node deprecation warnings from other extensions are logged as errors too, and the workspace path contains "codeboard": not ours
-  page.on("console", (m) => { if (m.type() === "error" && /codeboard|board\.js/i.test(m.text()) && !/DeprecationWarning/.test(m.text())) errors.push(m.text()); });
+  // Node deprecation warnings from other extensions are logged as errors too, and the workspace path contains "codeboard": not ours.
+  // Workbench errors carry the checkout's path in their stack, so match on the text without it
+  const repo = path.resolve(__dirname, "../../..");
+  page.on("console", (m) => { if (m.type() === "error" && /codeboard|board\.js/i.test(m.text().split(repo).join("")) && !/DeprecationWarning/.test(m.text())) errors.push(m.text()); });
   let f = null;
   // Maximize the board's editor group (by default it shares the width with code, leaving the board ~540px wide, too small to click after zooming)
   // Make the board's group the active one by clicking its tab (VS Code has "Focus Second Editor Group" only as the Ctrl+2 keybinding,

@@ -6,6 +6,7 @@ import {
   type Card, type CodeCard, type NoteCard, type ImageCard, type Graph, type LinkSide,
 } from "@codeboard/core";
 import { langLabel } from "@codeboard/analysis/langs";
+import { measuredHeight } from "../state/subboards";
 import { state, setSizes, isSel, flows, collapsedSet, sel, placeOf, rectOf, shared, sharedOn, twinsOf } from "../state/store";
 import { Glyph } from "../stickers/glyphs";
 import { editing, setEditing, dragging, popIn, sizeIn, walk, pingCard, dropTarget } from "../state/ui";
@@ -53,7 +54,7 @@ export function CardView(p: { card: Card }) {
   const read = () => {
     if (!el?.isConnected) return; // 卡被藏起来（折叠的 Section、折叠的子树）时不量：量到的是 0
     const id = c().id, w = el.offsetWidth, h = el.offsetHeight;
-    return () => setSizes(id, { w, h });
+    return () => { setSizes(id, { w, h }); measuredHeight(id); };
   };
   // 藏起来再显示（折叠、展开）时卡的元素是新建的：在 ref 里接上尺寸监听，随这个元素一起拆掉
   const mount = (e: HTMLDivElement) => { el = e; onCleanup(observeResize(e, () => queueMeasure(read, read))); };
@@ -135,7 +136,7 @@ export function CardView(p: { card: Card }) {
         <Show when={aiJobOn(c().id)} keyed>{(j) => <AiBusy job={j} />}</Show>
         <Show when={!pl().locked}>
           <Show when={frameless(c())} fallback={<>
-            <div class="grip" data-nodrag data-export="strip" data-tip="Drag to resize · Double-click to fit content" onPointerDown={(e) => resizeDown(e, c().id, { right: true, bottom: true })} onDblClick={(e) => { e.stopPropagation(); act.fitContent([c().id]); }} />
+            <div class="grip" data-nodrag data-export="strip" data-tip={c().kind === "board" ? "Drag to resize" : "Drag to resize · Double-click to fit content"} onPointerDown={(e) => resizeDown(e, c().id, { right: true, bottom: true })} onDblClick={(e) => { e.stopPropagation(); act.fitContent([c().id]); }} />
             {/* Note 的下边：只改高度（拖出来的高度会一直留着，直到 Fit Content） */}
             <Show when={c().kind === "note"}><span class="hb" data-nodrag data-export="strip" onPointerDown={(e) => resizeDown(e, c().id, { bottom: true })} onDblClick={(e) => { e.stopPropagation(); act.fitContent([c().id]); }} /></Show>
           </>}>

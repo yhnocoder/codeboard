@@ -1,10 +1,10 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { DEFAULT_SETTINGS, emptyBoard, type NoteCard } from "@codeboard/core";
+import { DEFAULT_SETTINGS, emptyBoard, estSize, mapFit, skeletonOf, type Board, type NoteCard } from "@codeboard/core";
 import { put, symCard, findSym, shot, OUT, type Host } from "../harness";
 import { subHost } from "../subhost";
 import { test, until, idle, hold, verdict, check } from "../fixtures";
-import { WHEEL_GESTURE } from "../../src/state/timing";
+import { DBL_CLICK, WHEEL_GESTURE } from "../../src/state/timing";
 
 const nv = (qual: string) => { const s = findSym(qual); return symCard(s.f, s.s); };
 const note = (id: string, md: string, o: Partial<NoteCard> = {}): NoteCard => ({ id, kind: "note", md, look: "note", ...o });
@@ -84,95 +84,14 @@ async function shotPr(h: Host, name: string) {
   const d = process.env.SHOTS_DIR;
   if (d) { fs.mkdirSync(d, { recursive: true }); fs.copyFileSync(path.join(OUT, `${name}.png`), path.join(d, `${name}.png`)); }
 }
-const hasMinis = (h: Host, frame: string) => h.page.locator(`.card[data-id="${frame}"] .mini`).count();
+/** How many blocks a frame's map draws */
+const hasBlocks = (h: Host, frame: string) => h.page.locator(`.card[data-id="${frame}"] .skel [data-sub]`).count();
 
-/**
- * In the page: a frame's built columns, each with its mini cards grouped into stacks (by their left edge), in world px at zoom 1
- * (the positions BoardBody writes). fill = how far each mini card's height is off its content (last line + bottom padding), so a
- * gap computed from the positions is also the gap you see
- */
-function geometry(id: string) {
-  const f = document.querySelector<HTMLElement>(`.card[data-id="${id}"]`)!, cols = f.querySelector<HTMLElement>(".sbcols")!;
-  const px = (v: string) => parseFloat(v) || 0;
-  const minis = [...cols.querySelectorAll<HTMLElement>(".mini")].map((m) => {
-    const last = m.lastElementChild as HTMLElement | null;
-    return { id: m.dataset.sub!, x: px(m.style.left), y: px(m.style.top), w: px(m.style.width), h: px(m.style.height), rw: m.offsetWidth, more: m.matches(".k-more"),
-      fill: last && !m.matches(".k-more") ? Math.abs(last.offsetTop + last.offsetHeight + px(getComputedStyle(m).paddingBottom) - m.offsetHeight) : 0 };
-  });
-  return [...cols.querySelectorAll<HTMLElement>(".sbcol")].map((c) => {
-    const x = px(c.style.left), w = px(c.style.width), n = +c.querySelector("em")!.textContent!;
-    const mine = minis.filter((m) => m.x >= x && m.x < x + w);
-    const stacks = [...new Set(mine.map((m) => m.x))].sort((a, b) => a - b).map((sx) => mine.filter((m) => m.x === sx).sort((a, b) => a.y - b.y));
-    return { t: c.querySelector("span")!.textContent!, n, x, w, fw: cols.offsetWidth, top: c.offsetTop, h: c.offsetHeight, stacks };
-  });
-}
-type Geo = ReturnType<typeof geometry>;
-/** Masonry: 3 or fewer cards one stack, 4 or more two; in a stack each card starts exactly MINI_GAP (6) below the one above; heights match content */
-function masonryOk(g: Geo) {
-  const bad: string[] = [];
-  for (const c of g) {
-    // a stack that starts past the frame's right edge isn't built
-    const want = c.n <= 3 ? 1 : 2, inside = [0, 1].slice(0, want).filter((k) => c.x + k * 130 < c.fw).length;
-    if (c.stacks.length !== inside) bad.push(`${c.t}: ${c.stacks.length} stacks for ${c.n} cards`);
-    if (Math.abs(c.w - (want * 124 + (want - 1) * 6)) > 0.01) bad.push(`${c.t}: width ${c.w}`);
-    for (const st of c.stacks) {
-      st.forEach((m, i) => {
-        if (m.fill > 1.5) bad.push(`${m.id}: ${m.fill}px between its content and its edge`);
-        if (i && Math.abs(m.y - (st[i - 1].y + st[i - 1].h) - 6) > 0.01) bad.push(`${m.id}: ${(m.y - st[i - 1].y - st[i - 1].h).toFixed(1)}px below ${st[i - 1].id}`);
-      });
-    }
-  }
-  return bad;
-}
-
-/** The columns the frame has room for (name + count), mini cards at one fixed size whatever the frame's size, in masonry stacks, no arrows; Warm Ink */
-test("subboardColumns", async () => {
-  const { M, P, S, D } = boards();
-  M.place.fSch.w = 560; // a narrower frame: the mini cards keep their size; its two two-stack columns just fit, so only the wide one fades out
-  const t = await subHost(M, [P, S, D]), h = t.h, page = h.page;
-  await until(h, "both frames show their boards", async () => (await hasMinis(h, "fPar")) && (await hasMinis(h, "fSch")));
-  await idle(h);
-  await verdict("subboardColumns", async (res) => {
-    const r = await page.evaluate(() => {
-      const frame = (id: string) => document.querySelector<HTMLElement>(`.card[data-id="${id}"]`)!;
-      const par = frame("fPar"), sch = frame("fSch");
-      const minis = (f: HTMLElement) => [...f.querySelectorAll<HTMLElement>(".mini")];
-      const font = (f: HTMLElement) => [...new Set(minis(f).filter((m) => !m.matches(".sticky, .k-more, .k-code")).map((m) => getComputedStyle(m.querySelector(".ti")!).fontSize))];
-      const ms = minis(par);
-      return {
-        look: document.documentElement.dataset.look,
-        cols: [...par.querySelectorAll(".sbcol")].map((c) => `${c.querySelector("span")!.textContent}:${c.querySelector("em")!.textContent}`),
-        widths: [...new Set([...ms, ...minis(sch)].map((m) => m.offsetWidth))],
-        fonts: [...new Set([...font(par), ...font(sch)])],
-        arrows: [par, sch].reduce((n, f) => n + f.querySelectorAll(".sbcols svg:not(.ico)").length, 0),
-        image: !!par.querySelector('.mini[data-sub="pImg"] img.thumb'),
-        code: sch.querySelector(".mini.k-code .sub")?.textContent,
-        codeSrc: sch.querySelector(".mini.k-code .src span")?.textContent,
-        sticky: !!sch.querySelector('.mini.sticky[data-sub="sMark"]'),
-        summary: par.querySelector('.mini[data-sub="p2"] .sub')?.textContent,
-        fade: par.querySelector(".sbcols")!.classList.contains("fade-r") && !sch.querySelector(".sbcols")!.classList.contains("fade-r"),
-        overlap: ms.some((a, i) => ms.some((b, j) => j > i && a.offsetLeft < b.offsetLeft + b.offsetWidth && b.offsetLeft < a.offsetLeft + a.offsetWidth && a.offsetTop < b.offsetTop + b.offsetHeight && b.offsetTop < a.offsetTop + a.offsetHeight)),
-      };
-    });
-    Object.assign(res, r);
-    const par = await page.evaluate(geometry, "fPar"), sch = await page.evaluate(geometry, "fSch");
-    res.stacks = [...par, ...sch].map((c) => `${c.t.slice(0, 6)}:${c.n}:${c.stacks.map((s) => s.length).join("+")}`);
-    res.masonry = [...masonryOk(par), ...masonryOk(sch)];
-    await shotPr(h, "subboardcard-columns");
-    // 620 wide: three section columns start inside the frame (two of two stacks, one of one); the rest would start past its right edge and aren't built
-    return r.look === "warm-ink" && JSON.stringify(r.cols) === JSON.stringify(["异构并行计算:6", "以 VectorAdd 为例介绍 Grid, Thread Block, Thread 的基本概念:5", "数据并行性:3"])
-      && r.widths.length === 1 && r.widths[0] === 124 && r.fonts.length === 1 && r.arrows === 0 && r.image && r.code === "lines 25–73" && r.codeSrc === "scheduler.py" && r.sticky
-      && r.summary === "两种不同的设计目标" && r.fade && !r.overlap && !(res.masonry as string[]).length
-      && JSON.stringify(par.map((c) => c.stacks.length)) === "[2,2,1]" && JSON.stringify(sch.map((c) => c.stacks.length)) === "[2,2]";
-  });
-  await page.context().close();
-});
-
-/** The board's name and card count sit above the frame, outside it; with Sub-board Preview = Title Only the frame draws no mini cards */
+/** The board's name and card count sit above the frame, outside it; with Sub-board Preview = Title Only the frame draws no map */
 test("subboardTitleAboveFrame", async () => {
   const { M, P, S, D } = boards();
   const t = await subHost(M, [P, S, D]), h = t.h, page = h.page;
-  await until(h, "the frame shows its board", () => hasMinis(h, "fSch"));
+  await until(h, "the frame shows its board", () => hasBlocks(h, "fSch"));
   await idle(h);
   const frame = page.locator('.card[data-id="fSch"]');
   const title = async () => {
@@ -185,7 +104,7 @@ test("subboardTitleAboveFrame", async () => {
   await shotPr(h, "subboardcard-title");
   check("subboardTitleAboveFrame-outside", full.above && full.hit && full.name === "nano-vllm 调度器" && full.count === "9", full);
   await h.post({ type: "host", host: { settings: { ...DEFAULT_SETTINGS, subPreview: "title" } } });
-  await until(h, "Title Only drops the mini cards", async () => (await hasMinis(h, "fSch")) === 0);
+  await until(h, "Title Only drops the map", async () => (await hasBlocks(h, "fSch")) === 0);
   await idle(h);
   const only = await title();
   check("subboardTitleAboveFrame-titleOnly", only.above && only.hit && only.name === "nano-vllm 调度器" && only.count === "9", only);
@@ -193,10 +112,10 @@ test("subboardTitleAboveFrame", async () => {
 });
 
 /**
- * A sub-board of 240 cards: the frame builds only the mini cards that start inside it (the cut ones under the fade too), and more
- * once it is made bigger; resizing only reveals more: the mini cards already shown keep their size and place
+ * A sub-board of 240 cards: the map draws every one of them inside the frame, smaller; made bigger with its corner grip, the same
+ * blocks grow with it. Panning the parent board leaves the map alone (it is built once, not per frame)
  */
-test("subboardDrawsOnlyWhatFits", async () => {
+test("subboardMapScales", async () => {
   const B = emptyBoard("bBig", "Big");
   for (let s = 0; s < 4; s++) {
     B.sections.push({ id: `s${s}`, title: `Section ${s}`, x: s * 1000, y: 0, w: 900, h: 9000 });
@@ -212,27 +131,25 @@ test("subboardDrawsOnlyWhatFits", async () => {
   M.cam = { x: 0, y: 0, z: 1 };
   const t = await subHost(M, [B]), h = t.h, page = h.page;
   const frame = page.locator('.card[data-id="fBig"]');
-  await until(h, "the frame shows its board", () => hasMinis(h, "fBig"));
+  await until(h, "the frame shows its board", () => hasBlocks(h, "fBig"));
   await idle(h);
   const drawn = () => frame.evaluate((f) => {
-    const cols = f.querySelector<HTMLElement>(".sbcols")!, w = cols.clientWidth, hh = cols.clientHeight;
-    const ms = [...cols.querySelectorAll<HTMLElement>(".mini")];
+    const fr = f.getBoundingClientRect(), hits = [...f.querySelectorAll(".skel [data-sub] .hit")].map((e) => e.getBoundingClientRect());
+    (f.querySelector(".sbsvg") as unknown as { __mark?: number }).__mark ??= 1;
     return {
-      n: ms.length, w, h: hh,
-      inside: ms.every((m) => m.offsetLeft < w && m.offsetTop < hh),
-      // what is built reaches past the right and bottom edges: nothing that shows is missing
-      reachR: Math.max(...ms.map((m) => m.offsetLeft + m.offsetWidth)) >= w, reachB: Math.max(...ms.map((m) => m.offsetTop + m.offsetHeight)) >= hh,
-      count: f.querySelector(".sbmeta")?.textContent,
-      boxes: Object.fromEntries(ms.map((m) => [m.dataset.sub!, `${m.style.left},${m.style.top},${m.offsetWidth}x${m.offsetHeight}`])),
+      n: hits.length, w: fr.width, h: fr.height, count: f.querySelector(".sbmeta")?.textContent,
+      inside: hits.every((r) => r.left >= fr.left && r.right <= fr.right && r.top >= fr.top && r.bottom <= fr.bottom),
+      bw: hits[0]?.width ?? 0,
     };
   });
   const small = await drawn();
-  // 500 × 300: two columns of two stacks start inside, four cards deep each (a card is about 63px tall)
-  check("subboardDrawsOnlyWhatFits-small", small.count === "240" && small.n > 0 && small.n <= 16 && small.inside && small.reachR && small.reachB, { ...small, boxes: undefined });
-  const geoSmall = await page.evaluate(geometry, "fBig");
-  check("subboardDrawsOnlyWhatFits-masonry", JSON.stringify(geoSmall.map((c) => c.stacks.length)) === "[2,2]" && !masonryOk(geoSmall).length, masonryOk(geoSmall));
-  // bigger with its corner grip: more mini cards, still only those that start inside it
-  await frame.click({ position: { x: 250, y: 150 } }); await idle(h);
+  check("subboardMapScales-small", small.count === "240" && small.n === 240 && small.inside, small);
+  // panning: the very same SVG stays (marked above), nothing rebuilt
+  await page.mouse.move(700, 600);
+  await page.mouse.wheel(-150, -90); await idle(h);
+  check("subboardMapScales-panKeepsMap", await frame.evaluate((f) => (f.querySelector(".sbsvg") as unknown as { __mark?: number }).__mark === 1));
+  // bigger with its corner grip
+  await frame.locator(".sbname").click(); await idle(h);
   const grip = (await frame.locator(".grip").boundingBox())!;
   await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2);
   await page.mouse.down();
@@ -240,100 +157,97 @@ test("subboardDrawsOnlyWhatFits", async () => {
   await page.mouse.up();
   await idle(h);
   const big = await drawn();
-  check("subboardDrawsOnlyWhatFits-bigger", big.w > small.w && big.h > small.h && big.n > small.n && big.n <= 42 && big.inside && big.reachR && big.reachB, { ...big, boxes: undefined });
-  const moved = Object.entries(small.boxes).filter(([id, b]) => big.boxes[id] !== b).map(([id, b]) => `${id}: ${b} → ${big.boxes[id]}`);
-  check("subboardDrawsOnlyWhatFits-noRelayout", !moved.length && Object.values(big.boxes).every((b) => b.split(",")[2].startsWith("124x")), moved);
+  check("subboardMapScales-bigger", big.w > small.w && big.h > small.h && big.n === 240 && big.inside && big.bw > small.bw * 1.3, { small, big });
   await page.context().close();
 });
 
 /**
- * The design's sub-board card (feedback demo #12, option B2: 600 × 340, three sections of seven cards) rebuilt on a board at zoom
- * 100%: the title 16px above the frame, the columns, their headers, the mini cards' sizes and text, the sticky note and the masonry
- * stacks land where the demo puts them (its numbers, measured in Chromium). A picture of it is the board half of 12-demo-vs-board
+ * Made smaller with its corner grip or bottom edge, a frame keeps the size it was dragged to: next to another frame it snaps to the
+ * same height, and dragged far past it stops at a minimum size instead of collapsing to a line
+ */
+test("subboardShrinkKeepsSize", async () => {
+  const { P } = boards();
+  const M = emptyBoard("bMain", "Main");
+  M.cards.push({ id: "fPar", kind: "board", board: "bPar" }, { id: "fNext", kind: "board", board: "bPar" });
+  M.place.fPar = { x: 80, y: 120, w: 520, h: 420 };
+  M.place.fNext = { x: 700, y: 160, w: 400, h: 260 };
+  M.cam = { x: 0, y: 0, z: 1 };
+  const t = await subHost(M, [P]), h = t.h, page = h.page;
+  const frame = page.locator('.card[data-id="fPar"]');
+  await until(h, "the frames show their board", async () => (await hasBlocks(h, "fPar")) > 0 && (await hasBlocks(h, "fNext")) > 0);
+  await idle(h);
+  const place = () => t.store.peek("bMain")!.place.fPar;
+  const shrink = async (sel: string, dx: number, dy: number) => {
+    await frame.locator(".sbname").click(); await idle(h);
+    const g = (await frame.locator(sel).boundingBox())!;
+    const x = g.x + g.width / 2, y = g.y + g.height / 2;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x + dx, y + dy, { steps: 10 });
+    const hint = await page.evaluate(() => document.querySelector(".ghint")?.textContent ?? "");
+    await page.mouse.up();
+    await idle(h);
+    const b = (await frame.boundingBox())!;
+    return { hint, w: b.width, h: b.height, place: { ...place() } };
+  };
+  // the corner grip up-left by ~158px: the height snaps to the neighbour's 260
+  const snap = await shrink(".grip", -100, -158);
+  check("subboardShrinkKeepsSize-sameHeight", snap.place.h === 260 && Math.abs(snap.h - 260) < 3 && snap.w > 380 && /same height/.test(snap.hint), snap);
+  await shotPr(h, "subboardcard-shrink-snap");
+  // far past everything: stops at the minimum size, still a frame with its map
+  const tiny = await shrink(".grip", -900, -900);
+  check("subboardShrinkKeepsSize-min", typeof tiny.place.h === "number" && tiny.h >= 120 && tiny.w >= 180 && Math.abs(tiny.h - tiny.place.h!) < 3 && (await hasBlocks(h, "fPar")) > 0, tiny);
+  // a double-click on the grip (Fit Content on other cards) leaves the frame as it is: it has no content size to fit
+  const before = { ...place() };
+  await frame.locator(".grip").dblclick(); await idle(h);
+  check("subboardShrinkKeepsSize-dblclick", place().h === before.h && place().w === before.w && Math.abs((await frame.boundingBox())!.height - before.h!) < 3, { before, after: place() });
+  await shotPr(h, "subboardcard-shrink-min");
+  await page.context().close();
+});
+
+/**
+ * The approved design (feedback demo #66, option B "缩略地图"): the title 16px above the frame as before; inside, Sections are tinted
+ * regions with their name and count in a fixed 11px label, notes are paper-white blocks with grey lines, code cards have a blue-grey
+ * header band, arrows are thin lines at 75%; a hovered block gets an accent outline; the tooltip is the dark tip pill. Warm Ink, light, zoom 100%
  */
 test("subboardMatchesDemo", async () => {
-  const B = emptyBoard("bDemo", "nano-vllm 调度器");
-  B.sections.push({ id: "sch", title: "Scheduler：每一步挑哪些序列", x: 0, y: 0, w: 760, h: 560, color: "sand" });
-  B.sections.push({ id: "bm", title: "BlockManager：KV cache 按块分配", x: 820, y: 0, w: 620, h: 560, color: "blue" });
-  B.sections.push({ id: "mr", title: "ModelRunner：把一批序列跑一步", x: 0, y: 620, w: 1440, h: 400, color: "green" });
-  // the demo's cards, at its positions (which set the reading order): [id or symbol, section, x, y, note text]
-  const cards: [string, string, number, number, string?][] = [
-    ["LLMEngine.step", "sch", 30, 50], ["Scheduler.schedule", "sch", 340, 50], ["n3", "sch", 30, 240, "## 先 prefill，后 decode\nwaiting 队列优先，凑满 max_num_batched_tokens"],
-    ["Scheduler.preempt", "sch", 340, 350], ["n5", "sch", 30, 350, "## 抢占：显存不够就把最后一个踢回 waiting\n释放它的块，之后重新 prefill"],
-    ["Scheduler.postprocess", "sch", 30, 460], ["n7", "sch", 640, 350, "待查：preempt 之后前缀缓存还能命中吗？"],
-    ["BlockManager.can_allocate", "bm", 850, 50], ["BlockManager.allocate", "bm", 850, 200], ["b3", "bm", 1160, 50, "## 前缀缓存：按块算 hash\ncompute_hash(token_ids, prefix) 一块接一块链起来"],
-    ["BlockManager.compute_hash", "bm", 1160, 160], ["BlockManager.may_append", "bm", 850, 410], ["b6", "bm", 1160, 300, "## ref_count 为 0 才真正释放\n共享前缀的块会被多个序列引用"],
-    ["BlockManager.deallocate", "bm", 1160, 420],
-    ["ModelRunner.run", "mr", 30, 670], ["ModelRunner.prepare_prefill", "mr", 330, 670], ["ModelRunner.prepare_decode", "mr", 670, 670], ["ModelRunner.run_model", "mr", 990, 670],
-    ["m5", "mr", 990, 830, "## decode 走 CUDA Graph\nbatch 不大时重放事先录好的图"], ["ModelRunner.capture_cudagraph", "mr", 670, 860],
-    ["m7", "mr", 30, 830, "## slot_mapping：每个 token 写进 KV cache 的哪一格\nprepare_prefill 和 prepare_decode 都要算"],
-  ];
-  for (const [k, sec, x, y, md] of cards) {
-    const c = md === undefined ? nv(k) : note(k, md, k === "n7" ? { look: "mark", hand: "orange" } : {});
-    put(B, c, x, y, 260); B.place[c.id].section = sec;
-  }
-  // Main: the demo's stage (a note and LLMEngine.step pointing at the frame), 40px in from the top left
-  const M = emptyBoard("bMain", "Main");
-  M.cards.push(note("n12", "显存不够时 `can_allocate` 返回 False，调度器就会 `preempt` 最后一个序列。"));
-  M.place.n12 = { x: 64, y: 104, w: 272 };
-  const step = nv("LLMEngine.step");
-  put(M, step, 64, 276, 300);
-  M.cards.push({ id: "fDemo", kind: "board", board: "bDemo" });
-  M.place.fDemo = { x: 420, y: 110, w: 600, h: 340 };
-  M.links.push({ id: "L1", from: { card: "n12" }, to: { card: "fDemo" } }, { id: "L2", from: { card: step.id }, to: { card: "fDemo" } });
-  M.cam = { x: 0, y: 0, z: 1 };
-  // the demo is light Warm Ink: so is this board, whatever HARNESS_LIGHT says
-  const t = await subHost(M, [B], { light: true }), h = t.h, page = h.page;
-  await until(h, "the frame shows its board", () => hasMinis(h, "fDemo"));
+  const { M, P, S, D } = boards();
+  M.cam = { x: -600, y: 40, z: 1 };
+  // two notes in Parallel with an arrow, to see a line on the map
+  P.links.push({ id: "pl", from: { card: "p1" }, to: { card: "p2" } });
+  const t = await subHost(M, [P, S, D], { light: true }), h = t.h, page = h.page;
+  await until(h, "the frame shows its board", () => hasBlocks(h, "fSch"));
   await idle(h);
   const r = await page.evaluate(() => {
-    const f = document.querySelector<HTMLElement>('.card[data-id="fDemo"]')!, fr = f.getBoundingClientRect();
+    const f = document.querySelector<HTMLElement>('.card[data-id="fPar"]')!, fr = f.getBoundingClientRect();
     const box = (sel: string) => { const e = f.querySelector(sel); if (!e) return null; const b = e.getBoundingClientRect(); return [b.left - fr.left, b.top - fr.top, b.width, b.height].map((v) => +v.toFixed(1)); };
-    const css = (sel: string, ...ks: string[]) => { const e = f.querySelector(sel); if (!e) return null; const s = getComputedStyle(e); return ks.map((k) => s.getPropertyValue(k)).join(" "); };
-    const T = ["font-size", "font-weight", "line-height", "color"];
+    const css = (root: Element, sel: string, ...ks: string[]) => { const e = root.querySelector(sel); if (!e) return null; const s = getComputedStyle(e); return ks.map((k) => s.getPropertyValue(k)).join(" "); };
+    const sch = document.querySelector('.card[data-id="fSch"]')!;
     return {
-      zoom: fr.width / f.offsetWidth, frame: [fr.width, fr.height], radius: getComputedStyle(f).borderRadius,
-      name: box(".sbname"), count: box(".sbmeta"),
-      nameCss: css(".sbname", ...T, "letter-spacing"), countCss: css(".sbmeta", ...T),
-      h4: box(".sbcol"), h4Css: css(".sbcol", ...T), emCss: css(".sbcol em", ...T),
-      bar: getComputedStyle(f.querySelector(".sbcol")!, "::before").backgroundColor,
-      code: css(".mini.k-code", "padding", "border-radius", "background-color", "box-shadow"),
-      src: css(".mini.k-code .src", ...T), ico: box(".mini.k-code .src .ico"),
-      codeTi: css(".mini.k-code .ti", ...T, "letter-spacing"), codeSub: css(".mini.k-code .sub", ...T),
-      noteTi: css(".mini.k-note:not(.sticky) .ti", ...T), noteSub: css(".mini.k-note:not(.sticky) .sub", ...T),
-      sticky: css(".mini.sticky", "background-color", "box-shadow", "border-radius"), stickySrc: css(".mini.sticky .src", "color"),
-      stickyIco: !!f.querySelector(".mini.sticky .src .ico"), stickyTi: css(".mini.sticky .ti", ...T, "-webkit-line-clamp"),
-      mask: css(".sbcols", "mask-image"), maskCls: f.querySelector(".sbcols")?.className,
-      rect: [fr.left, fr.top, fr.width, fr.height],
+      zoom: fr.width / f.offsetWidth, name: box(".sbname"), nameCss: css(f, ".sbname", "font-size", "font-weight", "line-height", "color"),
+      lab: css(f, ".sblab", "font-size", "font-weight", "color"), labEm: css(f, ".sblab em", "font-weight", "color"),
+      sec: css(f, ".sec.c-sand", "fill", "stroke"),
+      note: css(f, '.k-note:not(.l-text) .bx', "fill"), bar: css(f, ".k-note .bar:not(.t)", "fill"),
+      code: css(sch, ".k-code .bx", "fill"), head: css(sch, ".k-code .hd", "fill"),
+      line: css(f, ".ln", "stroke", "stroke-width", "opacity"),
     };
   });
-  const g = await page.evaluate(geometry, "fDemo");
-  const titles: Record<string, string> = Object.fromEntries(await page.locator('.card[data-id="fDemo"] .mini').evaluateAll((ms) => ms.map((m) => [(m as HTMLElement).dataset.sub!, m.querySelector(".ti")!.textContent!])));
-  const stacks = g.map((c) => c.stacks.map((s) => s.map((m) => titles[m.id])));
-  const near = (a: number[] | null, b: number[]) => !!a && a.length === b.length && a.every((v, i) => Math.abs(v - b[i]) <= 0.6);
-  // demo numbers (feedback-demo.html #12 B2, Warm Ink, zoom 100%), relative to the frame's top left
-  check("subboardMatchesDemo-frame", r.zoom === 1 && r.frame.join() === "600,340" && r.radius === "22px", r);
-  check("subboardMatchesDemo-title", !!r.name && !!r.count && near(r.name, [6, -46, r.name[2], 30]) && near(r.count, [r.name[0] + r.name[2] + 10, -46, r.count[2], 30])
-    && r.nameCss === "25px 700 30px rgb(33, 31, 27) -0.375px" && r.countCss === "25px 500 30px rgb(154, 149, 139)", { name: r.name, count: r.count, nameCss: r.nameCss, countCss: r.countCss });
-  check("subboardMatchesDemo-columns", JSON.stringify(g.map((c) => [c.x, c.w])) === "[[18,254],[288,254],[558,254]]" && near(r.h4, [18, 18, 254, 32.4])
-    && r.h4Css === "12px 600 16.2px rgb(33, 31, 27)" && r.emCss === "11px 500 14.85px rgb(154, 149, 139)" && r.bar === "rgba(206, 170, 110, 0.16)"
-    && g.every((c) => c.stacks.every((s) => Math.abs(s[0].y - 39.4) < 0.01)), { cols: g.map((c) => [c.t, c.x, c.w, c.stacks[0]?.[0]?.y]), h4: r.h4, h4Css: r.h4Css, emCss: r.emCss, bar: r.bar });
-  check("subboardMatchesDemo-mini", r.code === "7px 8px 8px 8px rgb(253, 252, 250) rgba(60, 45, 20, 0.16) 0px 0px 0px 0.5px, rgba(50, 35, 10, 0.05) 0px 1px 2px 0px"
-    && r.src === "10px 400 12px rgb(154, 149, 139)" && !!r.ico && near(r.ico, [26, r.ico[1], 11, 11])
-    && r.codeTi === "11px 600 14.85px rgb(33, 31, 27) -0.11px" && r.codeSub === "10px 400 13.5px rgb(154, 149, 139)"
-    && r.noteTi === "11.5px 600 15.525px rgb(33, 31, 27)" && r.noteSub === "10.5px 400 14.175px rgb(98, 94, 86)", r);
-  check("subboardMatchesDemo-sticky", r.sticky === "rgb(251, 239, 182) rgba(150, 110, 20, 0.2) 0px 0px 0px 0.5px 8px" && r.stickySrc === "rgb(138, 106, 22)" && !r.stickyIco
-    && r.stickyTi === "11.5px 500 15.525px rgb(74, 60, 18) 4", { sticky: r.sticky, src: r.stickySrc, ico: r.stickyIco, ti: r.stickyTi });
-  check("subboardMatchesDemo-fade", r.mask === "linear-gradient(to right, rgb(0, 0, 0) calc(100% - 44px), rgba(0, 0, 0, 0)), linear-gradient(rgb(0, 0, 0) calc(100% - 40px), rgba(0, 0, 0, 0))", [r.mask, r.maskCls]);
-  // the masonry rule, not the demo's exact stacks: which stack a card lands in follows the measured heights, and those follow how the
-  // installed fonts wrap the CJK titles (CI's fonts wrap differently from the machine the demo was measured on). The third column's
-  // second stack starts past the frame's right edge, so it isn't built
-  check("subboardMatchesDemo-masonry", !masonryOk(g).length && JSON.stringify(g.map((c) => c.stacks.length)) === "[2,2,1]"
-    && JSON.stringify(stacks.map((c) => c.flat().length)) === "[7,7,4]", { stacks, bad: masonryOk(g) });
+  check("subboardMatchesDemo-title", r.zoom === 1 && !!r.name && Math.abs(r.name[0] - 6) < 0.6 && Math.abs(r.name[1] + 46) < 0.6 && r.nameCss === "25px 700 30px rgb(33, 31, 27)", r);
+  check("subboardMatchesDemo-sections", r.lab === "11px 600 rgb(98, 94, 86)" && r.labEm === "500 rgb(154, 149, 139)" && r.sec === "rgba(206, 170, 110, 0.16) rgba(60, 45, 20, 0.16)", r);
+  check("subboardMatchesDemo-blocks", r.note === "rgb(253, 252, 250)" && /^color\(srgb|^rgba?\(/.test(r.bar ?? "") && !!r.code && r.code !== r.note && !!r.head, r);
+  check("subboardMatchesDemo-line", r.line === "rgb(154, 149, 139) 1px 0.75", r);
+  // hover a block: accent outline; its tooltip on the dark pill
+  const b = (await page.locator('.card[data-id="fPar"] .skel [data-sub="p1"] .hit').boundingBox())!;
+  await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
+  await page.locator(".sbtip").waitFor();
+  // the outline fades in (120ms)
+  await until(h, "the hovered block's outline", () => page.evaluate(() => getComputedStyle(document.querySelector('.card[data-id="fPar"] [data-sub="p1"] .hit')!).stroke === "rgb(181, 85, 45)"), 2000).catch(() => undefined);
+  const hov = await page.evaluate(() => ({
+    hit: getComputedStyle(document.querySelector('.card[data-id="fPar"] [data-sub="p1"] .hit')!).stroke,
+    tip: (() => { const s = getComputedStyle(document.querySelector(".sbtip")!); return `${s.backgroundColor} ${s.color} ${s.fontSize} ${s.borderRadius}`; })(),
+  }));
+  check("subboardMatchesDemo-hover", hov.hit === "rgb(181, 85, 45)" && hov.tip === "rgba(34, 32, 28, 0.92) rgb(246, 244, 239) 11.5px 7px", hov);
   await shotPr(h, "subboardcard-demo");
-  // the frame with its title and a margin: the board half of the side-by-side picture
-  const [x, y, w, hh] = r.rect;
-  await page.screenshot({ path: path.join(OUT, "subboardcard-demo-frame.png"), clip: { x: x - 24, y: y - 60, width: w + 48, height: hh + 84 } });
   await page.context().close();
 });
 
@@ -341,7 +255,7 @@ test("subboardMatchesDemo", async () => {
 test("subboardWheelPansBoard", async () => {
   const { M, P, S, D } = boards();
   const t = await subHost(M, [P, S, D]), h = t.h, page = h.page;
-  await until(h, "the frame shows its columns", () => hasMinis(h, "fPar"));
+  await until(h, "the frame shows its map", () => hasBlocks(h, "fPar"));
   await idle(h);
   const cam = () => page.evaluate(() => document.querySelector<HTMLElement>(".world")!.style.transform);
   const cols = page.locator('.card[data-id="fPar"] .skel');
@@ -351,7 +265,7 @@ test("subboardWheelPansBoard", async () => {
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
     await page.mouse.wheel(120, 0); await idle(h);
     res.unselectedPans = (await cam()) !== c0;
-    // select the frame (its name), then a new gesture over its columns
+    // select the frame (its name), then a new gesture over its map
     await page.locator('.card[data-id="fPar"] .sbname').click(); await idle(h);
     res.selected = await page.locator('.card.sel[data-id="fPar"]').count();
     await hold(h, WHEEL_GESTURE, "the panning gesture is over: the next wheel starts a new one");
@@ -366,22 +280,22 @@ test("subboardWheelPansBoard", async () => {
   await page.context().close();
 });
 
-/** An arrow dragged from a card's port onto a mini card inside the frame attaches to the frame itself: the frame lights up, the arrowhead is on its edge */
+/** An arrow dragged from a card's port onto a block of the map inside the frame attaches to the frame itself: the frame lights up, the arrowhead is on its edge */
 test("subboardLinkAttachesToFrame", async () => {
   const { M, P, S, D } = boards();
   const t = await subHost(M, [P, S, D]), h = t.h, page = h.page;
-  await until(h, "the frame shows its columns", () => hasMinis(h, "fSch"));
+  await until(h, "the frame shows its map", () => hasBlocks(h, "fSch"));
   await idle(h);
   await verdict("subboardLinkAttachesToFrame", async (res) => {
     const nb = (await page.locator('.card[data-id="mNote"]').boundingBox())!;
     await page.mouse.move(nb.x + nb.width / 2, nb.y + nb.height / 2); await idle(h);
     const port = (await page.locator('.card[data-id="mNote"] .eport.r').boundingBox())!;
-    const mini = (await page.locator('.card[data-id="fSch"] .mini[data-sub]').first().boundingBox())!;
+    const mini = (await page.locator('.card[data-id="fSch"] .skel [data-sub] .hit').first().boundingBox())!;
     await page.mouse.move(port.x + port.width / 2, port.y + port.height / 2);
     await page.mouse.down();
     await page.mouse.move(mini.x + mini.width / 2, mini.y + mini.height / 2, { steps: 10 });
     res.frameHot = await page.locator('.card.drop-hot[data-id="fSch"]').count();
-    res.miniHot = await page.locator(".mini.hot").count();
+    res.miniHot = await page.locator(".skel .hot").count();
     await page.mouse.up();
     const made = () => t.store.peek("bMain")!.links.find((l) => l.from.card === "mNote");
     await until(h, "the arrow is saved", made); await idle(h);
@@ -392,7 +306,7 @@ test("subboardLinkAttachesToFrame", async () => {
       return r ? { x: r.x + r.width / 2, y: r.y + r.height / 2 } : null;
     }, made()!.id);
     const hd = res.head as { x: number; y: number } | null;
-    // the head sits on the frame's outline, not on a mini card inside it
+    // the head sits on the frame's outline, not on a block inside it
     const near = (m: number) => !!hd && hd.x > f.x - m && hd.x < f.x + f.width + m && hd.y > f.y - m && hd.y < f.y + f.height + m;
     res.headAtEdge = near(14) && !near(-8);
     await shotPr(h, "subboardcard-arrow");
@@ -428,7 +342,7 @@ function film(page: Host["page"], ms: number): Promise<Frame[]> {
 test("subboardEnterLeaveMorph", async () => {
   const { M, P, S, D } = boards();
   const t = await subHost(M, [P, S, D]), h = t.h, page = h.page;
-  await until(h, "the frame shows its columns", () => hasMinis(h, "fPar"));
+  await until(h, "the frame shows its map", () => hasBlocks(h, "fPar"));
   await idle(h);
   const cam = () => page.evaluate(() => document.querySelector<HTMLElement>(".world")!.style.transform);
   const title = page.locator('.card[data-id="fPar"] .sbname');
@@ -481,7 +395,7 @@ test("subboardEnterLeaveMorph", async () => {
 test("subboardLinkPicker", async () => {
   const { M, P, S, D } = boards();
   const t = await subHost(M, [P, S, D]), h = t.h, page = h.page;
-  await until(h, "the frames show their boards", async () => (await hasMinis(h, "fPar")) && (await hasMinis(h, "fSch")));
+  await until(h, "the frames show their boards", async () => (await hasBlocks(h, "fPar")) && (await hasBlocks(h, "fSch")));
   await idle(h);
   await verdict("subboardLinkPicker", async (res) => {
     await page.locator('.card[data-id="mNote"] .nbody').dblclick({ position: { x: 300, y: 12 } });
@@ -512,5 +426,387 @@ test("subboardLinkPicker", async () => {
     res.crumbs = await page.locator(".crumbs .crumb:not(.back)").allTextContents();
     return !(res.missing as string[]).length && !(res.banned as string[]).length && res.resolved && JSON.stringify(res.crumbs) === JSON.stringify(["Main", "nano-vllm 调度器", "Deep"]);
   });
+  await page.context().close();
+});
+
+// ---- the map and the previews that open next to the frame (cards/BoardBody.tsx, cards/SubPreviews.tsx, state/subboards.ts) ----
+
+/**
+ * Main zoomed out a little and shifted so the frame Parallel, its previews on the right and its title rows below all fit the window.
+ * keepBelow: Scheduler stays right under Parallel (the title rows then go to the right); otherwise it is moved out of the way
+ */
+function setup(o: { keepBelow?: boolean } = {}) {
+  const b = boards();
+  b.M.cam = { x: -300, y: 60, z: 0.7 };
+  if (!o.keepBelow) b.M.place.fSch = { ...b.M.place.fSch, x: 1500, y: 900 };
+  return b;
+}
+const frameSel = (f: string) => `.card[data-id="${f}"]`;
+async function ready(h: Host, f: string) {
+  await until(h, "the frame draws its map", () => h.page.locator(`${frameSel(f)} .skel [data-sub]`).count());
+  await idle(h);
+}
+async function center(h: Host, sel: string) {
+  const b = (await h.page.locator(sel).first().boundingBox())!;
+  return { x: b.x + b.width / 2, y: b.y + b.height / 2 };
+}
+/** Click a block on a frame's map (its middle) and wait for the board to settle */
+async function clickBlock(h: Host, f: string, id: string) {
+  const c = await center(h, `${frameSel(f)} .skel [data-sub="${id}"] .hit`);
+  await h.page.mouse.click(c.x, c.y);
+  await idle(h);
+}
+type PvRow = { id: string; n: string; tit: boolean; mini: boolean; peek: boolean; x: number; y: number; w: number; h: number };
+/** The open previews of a frame, in screen px, with the frame's own screen box */
+const previews = (h: Host, f: string) => h.page.evaluate((f) => {
+  const fr = document.querySelector(`.card[data-id="${f}"]`)!.getBoundingClientRect();
+  const rows = [...document.querySelectorAll<HTMLElement>(`.sbpv[data-f="${f}"]`)].map((e) => {
+    const r = e.getBoundingClientRect();
+    return { id: e.dataset.pv!, n: e.querySelector(".ph i")!.textContent!, tit: e.classList.contains("tit"), mini: e.classList.contains("mini"), peek: e.classList.contains("peek"),
+      x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) };
+  });
+  return { frame: { x: fr.x, y: fr.y, w: fr.width, h: fr.height }, rows };
+}, f);
+/** Drag from one point to another with the mouse, in steps */
+async function drag(h: Host, from: { x: number; y: number }, to: { x: number; y: number }) {
+  await h.page.mouse.move(from.x, from.y);
+  await h.page.mouse.down();
+  await h.page.mouse.move(to.x, to.y, { steps: 10 });
+  await h.page.mouse.up();
+  await idle(h);
+}
+/** Wait out the moving previews (they slide to their new places in 160ms) by waiting for their positions to stop changing */
+async function settled(h: Host, f: string) {
+  let last = "";
+  await until(h, "the previews stopped moving", async () => { const s = JSON.stringify((await previews(h, f)).rows); const same = s === last; last = s; return same; });
+}
+
+/**
+ * The map draws the sub-board as it is: one block per card at its true position and size scaled to fit (same scale for all), sections
+ * as regions with their name and count, pictures as thumbnails, code cards with a header band, arrows as lines; no text on the blocks,
+ * a tooltip with the card's title on hover
+ */
+test("subboardMap", async () => {
+  const { M, P, S, D } = setup();
+  const t = await subHost(M, [P, S, D]), h = t.h, page = h.page;
+  await ready(h, "fPar"); await ready(h, "fSch");
+  const sk = skeletonOf(P, (id) => t.store.peek(id) as Board | undefined);
+  const got = await page.evaluate(() => {
+    const f = document.querySelector<HTMLElement>('.card[data-id="fPar"]')!, fr = f.getBoundingClientRect(), z = fr.width / f.offsetWidth;
+    const bl = Object.fromEntries([...f.querySelectorAll<SVGGElement>(".skel [data-sub]")].map((g) => {
+      const r = g.querySelector(".hit")!.getBoundingClientRect();
+      // the hit box is 1px larger than the block on every side
+      return [g.dataset.sub!, [(r.x - fr.x) / z + 1, (r.y - fr.y) / z + 1, r.width / z - 2, r.height / z - 2]];
+    }));
+    return {
+      w: f.offsetWidth, h: f.offsetHeight, bl,
+      labels: [...f.querySelectorAll(".sblab")].map((l) => `${l.querySelector("span")!.textContent}:${l.querySelector("em")!.textContent}`),
+      words: [...f.querySelectorAll(".skel svg text")].length,
+      image: !!f.querySelector('.skel [data-sub="pImg"] image'),
+      lines: f.querySelectorAll(".skel .ln").length,
+    };
+  });
+  const m = mapFit(sk, got.w, got.h);
+  const off = sk.cards.map((c) => {
+    const b = got.bl[c.id], want = [m.ox + c.x * m.s, m.oy + c.y * m.s, c.w * m.s, c.h * m.s];
+    return b && b.every((v, i) => Math.abs(v - want[i]) < 1) ? "" : `${c.id}: ${b?.map((v) => v.toFixed(1))} vs ${want.map((v) => v.toFixed(1))}`;
+  }).filter(Boolean);
+  check("subboardMap-blocks", Object.keys(got.bl).length === 18 && sk.cards.length === 18 && !off.length, { n: Object.keys(got.bl).length, off });
+  check("subboardMap-sections", JSON.stringify(got.labels) === JSON.stringify(["异构并行计算:6", "数据并行性:3", "CUDA 粗略介绍:2", "以 VectorAdd 为例介绍 Grid, Thread Block, Thread 的基本概念:5"]), got.labels);
+  check("subboardMap-look", got.image && got.words === 0, got);
+  const sch = await page.evaluate(() => {
+    const f = document.querySelector('.card[data-id="fSch"]')!;
+    return { codeHead: f.querySelectorAll(".skel .k-code .hd").length, mark: f.querySelectorAll('.skel [data-sub="sMark"] .bar.mk').length, nested: f.querySelectorAll(".skel .k-board").length };
+  });
+  check("subboardMap-kinds", sch.codeHead === 6 && sch.mark > 0 && sch.nested === 1, sch);
+  // hover a block: its title in a tooltip under it
+  const c = await center(h, '.card[data-id="fPar"] .skel [data-sub="p9"] .hit');
+  await page.mouse.move(c.x, c.y);
+  await page.locator(".sbtip").waitFor();
+  const tip = await page.evaluate(() => {
+    const e = document.querySelector(".sbtip")!, r = e.getBoundingClientRect(), b = document.querySelector('.card[data-id="fPar"] .skel [data-sub="p9"] .hit')!.getBoundingClientRect();
+    return { text: e.textContent, below: r.top >= b.bottom, ico: !!e.querySelector(".ico") };
+  });
+  check("subboardMap-tooltip", tip.text === "CUDA C 程序结构" && tip.below && tip.ico, tip);
+  const ic = await center(h, '.card[data-id="fPar"] .skel [data-sub="pImg"] .hit');
+  await page.mouse.move(ic.x, ic.y);
+  await until(h, "the picture's tooltip", async () => (await page.locator(".sbtip").textContent()) === "CPU 与 GPU 架构对比");
+  await shot(h, "subboardMap");
+  await page.context().close();
+});
+
+/**
+ * The map draws each card as tall as it is on its own board, not as estimated: a long Note, a big picture and five square pictures,
+ * measured while the sub-board was open, keep their real proportions on the map, and the gap under the long Note its real size
+ */
+test("subboardMapRealSizes", async () => {
+  const B = emptyBoard("bReal", "Real sizes");
+  const long = "## CUDA C++ 程序结构\n" + Array.from({ length: 12 }, (_, i) => `第 ${i + 1} 段：主机代码分配显存、拷数据、发射 kernel，设备代码在每个线程里算一个元素。`).join("\n\n");
+  B.cards.push(note("rLong", long), { id: "rBig", kind: "image", src: svg(700, 470, "#6091cd"), alt: "大图" }, note("rBelow", "## 下面的卡\n在长 Note 下面"));
+  B.place.rLong = { x: 0, y: 0, w: 300 };
+  B.place.rBelow = { x: 0, y: 900, w: 300 };
+  B.place.rBig = { x: 360, y: 0, w: 700 };
+  // 一段多行的纯文字（Text）
+  B.cards.push({ id: "rText", kind: "note", look: "text", size: "body", md: "本章讨论 GPU 的片上内存架构，并开始研究如何组织和放置数据，使大量线程能够高效访问它们。".repeat(4) } as NoteCard);
+  B.place.rText = { x: 360, y: 560, w: 380 };
+  for (let i = 0; i < 5; i++) {
+    B.cards.push({ id: `rSq${i}`, kind: "image", src: svg(236, 236, ["#d77891", "#7aa66b", "#c9a227", "#8a6fc4", "#4aa3a3"][i]), alt: `方图 ${i + 1}` });
+    B.place[`rSq${i}`] = { x: 1120 + (i % 3) * 270, y: Math.floor(i / 3) * 330, w: 236 };
+  }
+  const M = emptyBoard("bMain", "Main");
+  M.cards.push({ id: "fReal", kind: "board", board: "bReal" });
+  M.place.fReal = { x: 80, y: 80, w: 900, h: 420 };
+  M.cam = { x: 0, y: 0, z: 1 };
+  const t = await subHost(M, [B]), h = t.h, page = h.page;
+  await ready(h, "fReal");
+  const ids = B.cards.map((c) => c.id);
+  // inside the sub-board: the real sizes (world units)
+  const n0 = t.inits.length;
+  await page.locator('.card[data-id="fReal"] .sbname').dblclick();
+  await until(h, "entering opens the sub-board", () => t.inits.length > n0 && t.cur() === "bReal");
+  await idle(h);
+  const real = await page.evaluate((ids) => Object.fromEntries(ids.map((id) => { const e = document.querySelector<HTMLElement>(`.card[data-id="${id}"]`)!; return [id, { w: e.offsetWidth, h: e.offsetHeight }]; })), ids);
+  await until(h, "the measured heights are saved with the sub-board", () => { const sb = t.store.peek("bReal")!; return ids.every((id) => Math.abs(estSize(sb.cards.find((c) => c.id === id)!, sb.place[id]).h - real[id].h) <= 8); });
+  const n1 = t.inits.length;
+  await page.keyboard.press("Escape");
+  await until(h, "leaving opens Main", () => t.inits.length > n1 && t.cur() === "bMain");
+  await ready(h, "fReal");
+  await idle(h);
+  const map = await page.evaluate((ids) => {
+    const f = document.querySelector<HTMLElement>('.card[data-id="fReal"]')!;
+    // the hit box is 1px larger than the block on every side
+    return Object.fromEntries(ids.map((id) => { const r = f.querySelector(`.skel [data-sub="${id}"] .hit`)!.getBoundingClientRect(); return [id, { x: r.x + 1, y: r.y + 1, w: r.width - 2, h: r.height - 2 }]; }));
+  }, ids);
+  const off = ids.flatMap((id) => {
+    const want = real[id].h / real[id].w, got = map[id].h / map[id].w;
+    return Math.abs(got / want - 1) < 0.06 ? [] : [`${id}: drawn ${map[id].w.toFixed(1)}×${map[id].h.toFixed(1)} (h/w ${got.toFixed(2)}), real ${real[id].w}×${real[id].h} (h/w ${want.toFixed(2)})`];
+  });
+  check("subboardMapRealSizes-proportions", !off.length, off);
+  // the gap between the long Note and the card under it, in the board's units
+  const k = map.rBig.w / real.rBig.w, gap = (map.rBelow.y - map.rLong.y - map.rLong.h) / k, want = 900 - real.rLong.h;
+  check("subboardMapRealSizes-gap", Math.abs(gap - want) < 10, { gap, want });
+  // 多行的 Text 画成几道线（像字），不是一道
+  const textBars = await page.locator('.card[data-id="fReal"] .skel [data-sub="rText"] .bar').count();
+  check("subboardMapRealSizes-textLines", textBars >= 4, { textBars });
+  await shotPr(h, "subboardcard-real-sizes");
+  await page.context().close();
+});
+
+/**
+ * Clicking blocks opens read-only previews next to the frame, numbered like the badges on their blocks: a Note rendered as Markdown,
+ * a code card's highlighted code, a picture with its name; clicking an open block again closes it; the previews follow the frame
+ */
+test("subboardPreviewOpenClose", async () => {
+  const { M, P, S, D } = setup();
+  const t = await subHost(M, [P, S, D]), h = t.h, page = h.page;
+  await ready(h, "fPar"); await ready(h, "fSch");
+  await clickBlock(h, "fPar", "p1");
+  await clickBlock(h, "fPar", "pImg");
+  await page.locator('.sbpv[data-pv="p1"] .pmd h2').waitFor();
+  await page.locator('.sbpv[data-pv="pImg"] img.pimg').waitFor();
+  const a = await previews(h, "fPar");
+  const note = await page.evaluate(() => {
+    const e = document.querySelector('.sbpv[data-pv="p1"]')!, i = document.querySelector('.sbpv[data-pv="pImg"]')!;
+    return { title: e.querySelector(".ph span")!.textContent, h2: e.querySelector(".pmd h2")!.textContent, scroll: getComputedStyle(e.querySelector(".pb")!).overflowY,
+      cap: i.querySelector(".cap")?.textContent, badges: [...document.querySelectorAll('.card[data-id="fPar"] .sbpick')].map((b) => `${(b as HTMLElement).dataset.pick}:${b.textContent}`) };
+  });
+  const right = a.rows.every((r) => r.x >= a.frame.x + a.frame.w && !r.tit);
+  check("subboardPreviewOpenClose-open", a.rows.length === 2 && right && a.rows.map((r) => r.n).join() === "1,2" && note.title === "多核与众核" && note.h2 === "多核（multicore）与众核（many-core）"
+    && note.scroll === "hidden" && note.cap === "CPU 与 GPU 架构对比" && JSON.stringify(note.badges) === JSON.stringify(["p1:1", "pImg:2"]), { a, note });
+  // a code card on the other frame: its code, highlighted
+  await clickBlock(h, "fSch", t.store.peek("bSch")!.cards.find((c) => c.kind === "code")!.id);
+  await page.locator('.sbpv[data-f="fSch"] .pcode .kw').first().waitFor();
+  check("subboardPreviewOpenClose-code", /def schedule/.test((await page.locator('.sbpv[data-f="fSch"] .pcode').textContent()) ?? ""));
+  // the frame moves: its previews move with it
+  const before = (await previews(h, "fPar")).rows[0];
+  const name = await center(h, '.card[data-id="fPar"] .sbname');
+  await drag(h, name, { x: name.x + 60, y: name.y + 40 });
+  await settled(h, "fPar");
+  const after = (await previews(h, "fPar")).rows[0];
+  check("subboardPreviewOpenClose-follows", Math.abs(after.x - before.x - 60) <= 2 && Math.abs(after.y - before.y - 40) <= 2, { before, after });
+  await shot(h, "subboardPreviewOpenClose");
+  // the same block again (not a double click: that enters the board) closes its preview; the others renumber
+  await hold(h, DBL_CLICK, "the second click on the block must not count as a double click");
+  await clickBlock(h, "fPar", "p1");
+  const c = await previews(h, "fPar");
+  check("subboardPreviewOpenClose-close", c.rows.length === 1 && c.rows[0].id === "pImg" && c.rows[0].n === "1" && t.store.peek("bMain")!.cards.length === M.cards.length, c.rows);
+  await page.context().close();
+});
+
+/** Up to three previews expand on the right (one column by default, stacked); more open as title rows under the frame, as wide as it */
+test("subboardPreviewMaxThree", async () => {
+  const { M, P, S, D } = setup();
+  const t = await subHost(M, [P, S, D]), h = t.h, page = h.page;
+  await ready(h, "fPar");
+  for (const id of ["p1", "p2", "p3", "p4", "p5"]) await clickBlock(h, "fPar", id);
+  await settled(h, "fPar");
+  const s = await previews(h, "fPar");
+  const exp = s.rows.filter((r) => !r.tit), tit = s.rows.filter((r) => r.tit);
+  const fr = s.frame, z = 0.7;
+  check("subboardPreviewMaxThree-split", exp.map((r) => r.id).join() === "p1,p2,p3" && tit.map((r) => r.id).join() === "p4,p5" && s.rows.map((r) => r.n).join() === "1,2,3,4,5", s.rows);
+  check("subboardPreviewMaxThree-right", exp.every((r) => r.x >= fr.x + fr.w && Math.abs(r.w - 260 * z) <= 1) && new Set(exp.map((r) => r.x)).size === 1 && exp.every((r, i) => r.y >= fr.y - 1 && (!i || r.y > exp[i - 1].y)), exp);
+  check("subboardPreviewMaxThree-titles", tit.every((r) => r.mini && r.y >= fr.y + fr.h && Math.abs(r.h - 30 * z) <= 1 && Math.abs(r.w - 200 * z) <= 1 && r.x >= fr.x - 1 && r.x + r.w <= fr.x + fr.w + 1)
+    && tit[0].y === tit[1].y, tit);
+  // the bodies never scroll: capped and faded
+  const bodies = await page.evaluate(() => [...document.querySelectorAll<HTMLElement>(".sbpv:not(.tit) .pb")].map((b) => ({ h: b.offsetHeight, over: getComputedStyle(b).overflowY })));
+  check("subboardPreviewMaxThree-noScroll", bodies.every((b) => b.h <= 170 && b.over === "hidden"), bodies);
+  await shot(h, "subboardPreviewMaxThree");
+  await page.context().close();
+});
+
+/** A title row clicked expands in place, floating over what is below; a click anywhere else folds it back. Hovering a preview draws a dashed line to its block */
+test("subboardPreviewPeek", async () => {
+  const { M, P, S, D } = setup();
+  const t = await subHost(M, [P, S, D]), h = t.h, page = h.page;
+  await ready(h, "fPar");
+  for (const id of ["p1", "p2", "p3", "p4", "p5", "p7"]) await clickBlock(h, "fPar", id);
+  await settled(h, "fPar");
+  const before = (await previews(h, "fPar")).rows.find((r) => r.id === "p4")!;
+  const c = await center(h, '.sbpv[data-pv="p4"] .ph span');
+  await page.mouse.click(c.x, c.y); await idle(h);
+  const open = (await previews(h, "fPar")).rows.find((r) => r.id === "p4")!;
+  const z = await page.evaluate(() => getComputedStyle(document.querySelector('.sbpv[data-pv="p4"]')!).zIndex);
+  check("subboardPreviewPeek-open", open.peek && !open.mini && open.tit && open.x === before.x && open.y === before.y && open.h > before.h * 2 && +z > 4, { before, open, z });
+  // hovering it: a dashed line from its block
+  check("subboardPreviewPeek-line", (await page.locator(".sbpvl path").count()) === 1);
+  await shot(h, "subboardPreviewPeek");
+  // a click on the empty board folds it back
+  await page.mouse.click(1300, 600); await idle(h);
+  const back = (await previews(h, "fPar")).rows.find((r) => r.id === "p4")!;
+  check("subboardPreviewPeek-clickAway", back.mini && !back.peek && back.h === before.h, back);
+  await page.context().close();
+});
+
+/**
+ * Dragging a title row to the right expands it where it is dropped (a dashed drop area shows while dragging); the lowest expanded card
+ * on the right folds into the first title row. An expanded card dragged down onto the title rows folds into a title row there
+ */
+test("subboardPreviewDrag", async () => {
+  const { M, P, S, D } = setup();
+  const t = await subHost(M, [P, S, D]), h = t.h, page = h.page;
+  await ready(h, "fPar");
+  for (const id of ["p1", "p2", "p3", "p4", "p5"]) await clickBlock(h, "fPar", id);
+  await settled(h, "fPar");
+  const s0 = await previews(h, "fPar");
+  const exp0 = s0.rows.filter((r) => !r.tit);
+  // p5's title onto the top of the right area
+  const from = await center(h, '.sbpv[data-pv="p5"] .ph span');
+  const top = exp0.find((r) => r.id === "p1")!;
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move(top.x + 40, top.y + 6, { steps: 10 });
+  const area = await page.locator(".sbdrop.on").count();
+  await page.mouse.up(); await idle(h); await settled(h, "fPar");
+  const s1 = await previews(h, "fPar");
+  const exp1 = s1.rows.filter((r) => !r.tit), tit1 = s1.rows.filter((r) => r.tit).sort((a, b) => a.y - b.y || a.x - b.x).map((r) => r.id);
+  // dropped above p1: p5 takes the first place (top of the left column)
+  const put = exp1.find((r) => r.id === "p5");
+  check("subboardPreviewDrag-titleToRight", area === 1 && exp1.length === 3 && !!put && put.x === Math.min(...exp1.map((r) => r.x)) && Math.abs(put.y - s1.frame.y) <= 1
+    && ["p1", "p2", "p3"].includes(tit1[0]) && JSON.stringify(tit1.slice(1)) === '["p4"]', { area, exp1, tit1 });
+  await shot(h, "subboardPreviewDrag-right");
+  // an expanded one (p5) down onto the title rows
+  const p5 = await center(h, '.sbpv[data-pv="p5"] .ph span');
+  const row = s1.rows.filter((r) => r.tit).sort((a, b) => a.y - b.y || a.x - b.x)[0];
+  await page.mouse.move(p5.x, p5.y);
+  await page.mouse.down();
+  await page.mouse.move(row.x + 30, row.y + 10, { steps: 12 });
+  const area2 = await page.locator(".sbdrop.on").count();
+  await page.mouse.up(); await idle(h); await settled(h, "fPar");
+  const s2 = await previews(h, "fPar");
+  const exp2 = s2.rows.filter((r) => !r.tit).map((r) => r.id), tit2 = s2.rows.filter((r) => r.tit);
+  check("subboardPreviewDrag-rightToTitles", area2 === 1 && exp2.length === 2 && !exp2.includes("p5") && tit2.some((r) => r.id === "p5" && r.mini && r.y >= s2.frame.y + s2.frame.h), { area2, exp2, tit2 });
+  await page.context().close();
+});
+
+/** The right area in one column or two (one by default): two columns put the expanded previews side by side, the shorter column first, still at most three; the choice is kept with the frame. Hide / Show and Clear */
+test("subboardPreviewColumnsHideClear", async () => {
+  const { M, P, S, D } = setup();
+  const t = await subHost(M, [P, S, D]), h = t.h, page = h.page;
+  await ready(h, "fPar");
+  for (const id of ["p1", "p2", "p3", "p4"]) await clickBlock(h, "fPar", id);
+  await settled(h, "fPar");
+  const acts = '.card[data-id="fPar"] .sbacts';
+  const frame = () => t.store.peek("bMain")!.cards.find((c) => c.id === "fPar") as { pcols?: number };
+  const one = (await previews(h, "fPar")).rows.filter((r) => !r.tit);
+  check("subboardPreviewColumnsHideClear-one", frame().pcols === undefined && one.length === 3 && new Set(one.map((r) => r.x)).size === 1 && one.every((r, i) => !i || r.y > one[i - 1].y)
+    && (await page.locator(`${acts} [aria-label="One column"].on`).count()) === 1, one);
+  await page.locator(`${acts} [aria-label="Two columns"]`).click(); await idle(h); await settled(h, "fPar");
+  const two = (await previews(h, "fPar")).rows;
+  const exp = two.filter((r) => !r.tit);
+  await until(h, "the choice is saved with the frame", () => frame().pcols === 2);
+  check("subboardPreviewColumnsHideClear-two", exp.length === 3 && new Set(exp.map((r) => r.x)).size === 2 && two.filter((r) => r.tit).length === 1, two);
+  await shot(h, "subboardPreviewColumns-two");
+  check("subboardPreviewColumnsHideClear-label", ((await page.locator(`${acts} .sbfold`).textContent()) ?? "").includes("4 previews · Hide"));
+  await page.locator(`${acts} .sbfold`).click(); await idle(h);
+  const folded = await page.evaluate(() => { const e = document.querySelector<HTMLElement>('.sbpvs[data-f="fPar"]')!; return { cls: e.classList.contains("folded"), pe: getComputedStyle(e).pointerEvents }; });
+  check("subboardPreviewColumnsHideClear-hide", folded.cls && folded.pe === "none" && ((await page.locator(`${acts} .sbfold`).textContent()) ?? "").includes("Show"), folded);
+  await page.locator(`${acts} .sbfold`).click(); await idle(h);
+  check("subboardPreviewColumnsHideClear-show", !(await page.locator('.sbpvs[data-f="fPar"].folded').count()) && (await page.locator('.sbpv[data-f="fPar"]').count()) === 4);
+  await page.locator(`${acts} .sbclr`).click(); await idle(h);
+  check("subboardPreviewColumnsHideClear-clear", (await page.locator('.sbpv[data-f="fPar"]').count()) === 0 && (await page.locator(acts).count()) === 0 && (await page.locator('.card[data-id="fPar"] .sbpick').count()) === 0);
+  await clickBlock(h, "fPar", "p1");
+  await page.locator(`${acts} [aria-label="One column"]`).click(); await idle(h);
+  await until(h, "one column again", () => frame().pcols === undefined);
+  await page.context().close();
+});
+
+/** Screen boxes of everything on Main other than frame f: cards, and sub-board frames with the name above them */
+const others = (h: Host, f: string) => h.page.evaluate((f) => [...document.querySelectorAll<HTMLElement>(".world > .card")].filter((c) => c.dataset.id !== f).flatMap((c) => {
+  const r = c.getBoundingClientRect(), n = c.querySelector(".sbname")?.getBoundingClientRect();
+  return [{ id: c.dataset.id!, x: r.x, y: r.y, w: r.width, h: r.height }, ...(n ? [{ id: `${c.dataset.id} name`, x: n.x, y: n.y, w: n.width, h: n.height }] : [])];
+}), f);
+const overlap = (a: { x: number; y: number; w: number; h: number }, b: { x: number; y: number; w: number; h: number }) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+
+/**
+ * Title rows never cover what sits under the frame: with the next sub-board frame right below (its name in the way) they line up on
+ * the right under the expanded previews; once the space under the frame is clear they go back under it. The rule holds while the frame is dragged
+ */
+test("subboardPreviewTitlesAvoidCards", async () => {
+  const { M, P, S, D } = setup({ keepBelow: true });
+  const t = await subHost(M, [P, S, D]), h = t.h, page = h.page;
+  await ready(h, "fPar");
+  for (const id of ["p1", "p2", "p3", "p4", "p5"]) await clickBlock(h, "fPar", id);
+  await settled(h, "fPar");
+  const covered = async () => { const s = await previews(h, "fPar"), o = await others(h, "fPar"); return s.rows.flatMap((r) => o.filter((b) => overlap(r, b)).map((b) => `${r.id} on ${b.id}`)); };
+  const a = await previews(h, "fPar");
+  const exp = a.rows.filter((r) => !r.tit), tit = a.rows.filter((r) => r.tit);
+  const bottom = Math.max(...exp.map((r) => r.y + r.h));
+  check("subboardPreviewTitlesAvoidCards-side", tit.length === 2 && tit.every((r) => r.mini && r.x >= a.frame.x + a.frame.w && r.y >= bottom) && !(await covered()).length, { tit, bottom, covered: await covered() });
+  await shot(h, "subboardPreviewTitlesAvoidCards-side");
+  // Scheduler dragged away by its name: the title rows come back under Parallel
+  const n = await center(h, '.card[data-id="fSch"] .sbname');
+  await drag(h, n, { x: n.x + 750, y: n.y + 200 });
+  await settled(h, "fPar");
+  const b = await previews(h, "fPar");
+  check("subboardPreviewTitlesAvoidCards-below", b.rows.filter((r) => r.tit).every((r) => r.y >= b.frame.y + b.frame.h && r.x < b.frame.x + b.frame.w) && !(await covered()).length, { rows: b.rows, covered: await covered() });
+  // Parallel dragged down onto the Note column's level: wherever it stops, nothing is covered
+  const pn = await center(h, '.card[data-id="fPar"] .sbname');
+  await drag(h, pn, { x: pn.x - 120, y: pn.y + 330 });
+  await settled(h, "fPar");
+  check("subboardPreviewTitlesAvoidCards-dragged", !(await covered()).length, await covered());
+  await page.context().close();
+});
+
+/**
+ * A Note named by its leading heading shows that heading once, in the preview's title row, not again in the body (the same rule and
+ * setting as Note cards on the board: Settings → Notes keeps it in the body); a Note with its own name keeps its heading in the body
+ */
+test("subboardPreviewNoteHeading", async () => {
+  const { M, P, S, D } = setup();
+  const t = await subHost(M, [P, S, D]), h = t.h, page = h.page;
+  await ready(h, "fPar");
+  await clickBlock(h, "fPar", "p2");
+  await clickBlock(h, "fPar", "p1");
+  await page.locator('.sbpv[data-pv="p2"] .pmd h2').waitFor({ state: "attached" });
+  const read = () => page.evaluate(() => {
+    const one = (id: string) => { const e = document.querySelector(`.sbpv[data-pv="${id}"]`)!, h2 = e.querySelector<HTMLElement>(".pmd h2");
+      return { title: e.querySelector(".ph span")!.textContent, h2: h2 && h2.offsetHeight > 0 ? h2.textContent : null, text: e.querySelector(".pmd")!.textContent }; };
+    return { p2: one("p2"), p1: one("p1") };
+  });
+  const r = await read();
+  check("subboardPreviewNoteHeading-once", r.p2.title === "降低延迟 vs 提高吞吐" && r.p2.h2 === null && /两种不同的设计目标/.test(r.p2.text ?? ""), r.p2);
+  check("subboardPreviewNoteHeading-ownTitle", r.p1.title === "多核与众核" && r.p1.h2 === "多核（multicore）与众核（many-core）", r.p1);
+  await h.post({ type: "host", host: { settings: { ...DEFAULT_SETTINGS, noteHeadingInBody: true } } });
+  await until(h, "the setting shows the heading in the body", async () => (await read()).p2.h2 === "降低延迟 vs 提高吞吐");
   await page.context().close();
 });

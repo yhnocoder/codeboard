@@ -69,7 +69,7 @@ test("writeMenuAndKeysCreateTextBoxMark", async () => {
 test("boxFillEditAndToolbars", async () => {
   const h = await open({ board: fourBoard(), light, w: 1100, h: 520 });
   const pg = h.page;
-  const look = await pg.evaluate((sel) => { const c = document.querySelector<HTMLElement>(sel)!, t = c.querySelector<HTMLElement>(".tx")!; const cs = getComputedStyle(c); return { cls: c.className, bg: cs.backgroundColor, shadow: cs.boxShadow, align: getComputedStyle(t).textAlign, head: !!c.querySelector(".chead") }; }, card("box"));
+  const look = await pg.evaluate((sel) => { const c = document.querySelector<HTMLElement>(sel)!, t = c.querySelector<HTMLElement>(".tx")!; const cs = getComputedStyle(c); return { cls: c.className, bg: cs.backgroundColor, shadow: getComputedStyle(c, "::after").boxShadow, align: getComputedStyle(t).textAlign, head: !!c.querySelector(".chead") }; }, card("box"));
   check("boxLook frame and fill, no card header, centered", /\bbox\b/.test(look.cls) && look.bg !== "rgba(0, 0, 0, 0)" && look.shadow !== "none" && !look.head && look.align === "center", look);
   check("boxArrow attaches", (await pg.locator('.link[data-lk="L1"] path:not(.lhit)').count()) > 0);
 

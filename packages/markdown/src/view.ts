@@ -1,25 +1,37 @@
 import { renderMd } from "./render";
 import { colorCode } from "./code";
 
-/** [[标题]] 指向的东西（白板上是卡） */
-export type RefTarget = { id: string; title: string };
-type Ref = RefTarget | null;
+/** [[标题]] 指向的东西（白板上是卡）。badge = 标在标题后面的小字（白板：在别的白板上的卡写那块白板的名字），place = 它在哪（点的时候交给 openRef） */
+export type RefTarget = { id: string; title: string; badge?: string; place?: string };
+/** 认得出指的是哪儿、但已经找不到了：item = 那里已经没有这一项（灰、划掉），place = 那个地方本身没了（警告色）。why = 悬停的提示 */
+export type RefBroken = { broken: "item" | "place"; title: string; badge?: string; why?: string };
+type Ref = RefTarget | RefBroken | null;
 let resolve: (label: string) => Ref = () => null;
 let missing = "Nothing with this title";
 /** 接上 [[标题]] 怎么找目标；missing：找不到时的提示 */
 export const setRefResolver = (f: (label: string) => Ref, o: { missing?: string } = {}) => { resolve = f; if (o.missing) missing = o.missing; };
 export const resolveRef = (label: string) => resolve(label);
 
+/** 按现在能找到的把一个 [[引用]]（.md-ref）画出来：标题（和 badge），找不到时的样子和提示。数据晚到（别的白板的卡）时用的一方再调一次 */
+export function paintRef(r: HTMLElement) {
+  const hit = resolve(r.dataset.ref ?? "");
+  const broken = hit && "broken" in hit ? hit.broken : undefined;
+  r.classList.toggle("missing", !hit || broken === "item");
+  r.classList.toggle("gone", broken === "place");
+  if (!hit) { r.title = missing; return; }
+  if (broken) r.title = (hit as RefBroken).why ?? missing; else r.removeAttribute("title");
+  const t = r.querySelector<HTMLElement>(":scope > .t"), bd = r.querySelector<HTMLElement>(":scope > .bd");
+  if (!hit.badge) { if (t || r.textContent !== hit.title) r.textContent = hit.title; return; }
+  if (t?.textContent === hit.title && bd?.textContent === hit.badge && r.childNodes.length === 2) return;
+  const a = document.createElement("span"), b = document.createElement("span");
+  a.className = "t"; a.textContent = hit.title;
+  b.className = "bd"; b.textContent = hit.badge;
+  r.replaceChildren(a, b);
+}
+
 /** renderMd 的 HTML 用 innerHTML 放进 el 以后调用：认 [[引用]]、代码块着色、Mermaid 换成图、摆批注标签 */
 export function hydrate(el: HTMLElement, html: string) {
-  if (html.includes('class="md-ref"')) {
-    for (const r of el.querySelectorAll<HTMLElement>(".md-ref")) {
-      const hit = resolve(r.dataset.ref ?? "");
-      r.classList.toggle("missing", !hit);
-      if (hit && hit.title !== r.textContent) r.textContent = hit.title;
-      if (!hit) r.title = missing;
-    }
-  }
+  if (html.includes('class="md-ref"')) for (const r of el.querySelectorAll<HTMLElement>(".md-ref")) paintRef(r);
   if (html.includes('class="md-code" data-lang')) colorCode(el);
   if (html.includes('class="mmd"')) void import("./diagram").then((m) => m.renderAll(el));
   if (html.includes('class="md-annot"')) fitAnnots(el);
@@ -65,7 +77,7 @@ function fitAnnots(el: HTMLElement) {
  * 静态 Markdown 上的点击：链接交给 openLink（页面自己不跳转），引用交给 openRef，勾选框改原文交给 onToggle（不给就勾不了）。
  * 处理了返回 true
  */
-export function mdClick(e: MouseEvent, src: string, o: { openLink: (u: string) => void; openRef: (id: string) => void; onToggle?: (next: string) => void }): boolean {
+export function mdClick(e: MouseEvent, src: string, o: { openLink: (u: string) => void; openRef: (id: string, to: RefTarget) => void; onToggle?: (next: string) => void }): boolean {
   const t = e.target as HTMLElement;
   const a = t.closest?.("a.lnk") as HTMLElement | null;
   if (a?.dataset.href) { e.preventDefault(); e.stopPropagation(); o.openLink(a.dataset.href); return true; }
@@ -73,7 +85,7 @@ export function mdClick(e: MouseEvent, src: string, o: { openLink: (u: string) =
   if (r) {
     e.preventDefault(); e.stopPropagation();
     const hit = resolve(r.dataset.ref ?? "");
-    if (hit) o.openRef(hit.id);
+    if (hit && !("broken" in hit)) o.openRef(hit.id, hit);
     return true;
   }
   if (t instanceof HTMLInputElement && t.type === "checkbox" && t.closest("li[data-type=taskItem]")) {

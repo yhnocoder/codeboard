@@ -1,7 +1,7 @@
 // 白板发来的消息：带 req 的请求，处理函数的返回值就是回答（类型按 core 的 ReplyOf 检查；BoardHub 包成 reply）。
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
-import { BOARD_VERSION, COMPLETE_SYSTEM, cardPath, sniffImage, sniffSvg, cleanCompletion, spaceChatReply, loadBoard, wouldCycle, completePrompt, findCard, isCode, locateSeg, mapLineTo, segOf, versionLabel, type AskType, type BoardToHost, type Commit, type DiffData, type ReplyOf, type Segment, type SegView } from "@codeboard/core";
+import { BOARD_VERSION, COMPLETE_SYSTEM, cardPath, sniffImage, sniffSvg, cleanCompletion, spaceChatReply, loadBoard, subCardOf, wouldCycle, completePrompt, findCard, isCode, locateSeg, mapLineTo, segOf, versionLabel, type AskType, type BoardToHost, type Commit, type DiffData, type ReplyOf, type Segment, type SegView } from "@codeboard/core";
 import { analysisOf } from "./analysis";
 import { codeDoc, codeDocClose, lspComplete, lspHover, lspSignature } from "./codeedit";
 import { commitInfo, headOf, logLines, repoRootOf, resolveRef, showFile, upstreamRef } from "./git";
@@ -147,6 +147,18 @@ export function makeHandler(panels: BoardHost): Handler {
     skeletons: async (_p, m) => {
       await store.list(); // 缓存里还没有的白板先扫进来
       return Object.fromEntries(m.ids.map((id) => [id, panels.skeleton(id)]));
+    },
+    boardRefs: async (p) => {
+      await store.list(); // 缓存里还没有的白板先扫进来
+      return panels.boardRefs(p);
+    },
+    refPicked: (_p, m) => panels.refPicked(m.b, m.id),
+    subCard: async (_p, m) => {
+      const b = store.peek(m.board) ?? (await store.load(m.board));
+      const r = b && subCardOf(b, m.card);
+      if (!r) return null;
+      const segs = [r.card, ...(r.cols ?? [])].flatMap((c) => (isCode(c) ? c.segments : []));
+      return { ...r, views: segs.length ? await viewsFor(segs) : {} };
     },
     newBoard: async (p, m) => {
       // Turn into Board：白板拆好的新白板（schema 校验一遍）。共享卡在新白板上还是共享卡；放在父白板的组里

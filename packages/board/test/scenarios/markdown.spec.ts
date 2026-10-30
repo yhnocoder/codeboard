@@ -114,6 +114,162 @@ async function renderIn(themes: string[]) {
   }
 }
 
+/** @ lists Sections and other boards next to cards; a chip to a Section selects and frames it, one to another board opens that board */
+test("noteRefSectionAndBoard", async () => {
+  const { b } = mdBoard();
+  b.sections.push({ id: "g1", title: "Prefill stage", x: 1300, y: 60, w: 400, h: 300 });
+  const note: NoteCard = { id: "n2", kind: "note", md: "see [[Prefill stage]] and [[Kernels]]", look: "note" };
+  put(b, note, 60, 700, 360);
+  const h = await open({ board: b, light, w: 1400, h: 950 });
+  await h.post({ type: "boards", boards: [{ id: "b1", name: "markdown", cards: b.cards.length }, { id: "bk", name: "Kernels", cards: 3 }] });
+  await until(h, "both chips resolve", () => h.page.evaluate(() => document.querySelectorAll('.card[data-id="n2"] .md-ref:not(.missing)').length === 2));
+  const pg = h.page;
+  await pg.locator('.card[data-id="n2"] .md-ref', { hasText: "Kernels" }).click();
+  await until(h, "the chip opens the other board", () => h.sent.some((m) => m.type === "openBoard" && m.id === "bk"));
+  // @ 的列表：Section 和别的白板带着类型
+  // 双击正文右边空白处（别点在引用上）
+  const box = (await pg.locator('.card[data-id="n2"] .nbody').boundingBox())!;
+  await pg.locator('.card[data-id="n2"] .nbody').dblclick({ position: { x: box.width - 8, y: box.height / 2 } });
+  await pg.locator('.card[data-id="n2"] .md-pm').waitFor();
+  await focusSettled(pg);
+  await pg.evaluate(() => { const e = (document.querySelector('.card[data-id="n2"] .md-pm') as any).editor; e.commands.setTextSelection(e.state.doc.content.size - 1); });
+  await pg.keyboard.type(" @");
+  await pg.locator(".md-menu button").first().waitFor();
+  const items = await pg.locator(".md-menu button").allTextContents();
+  await saveShot(h, "md-at-ref");
+  const ok = items.some((t) => t.includes("Prefill stage") && t.includes("section")) && items.some((t) => t.includes("Kernels") && t.includes("whiteboard")) && !items.some((t) => t.includes("markdown") && t.includes("whiteboard"));
+  check("noteRefSectionAndBoard picker", ok, { items });
+  // 最后点 Section 的引用（镜头会挪到 Section 那边）
+  await pg.keyboard.press("Escape");
+  await pg.keyboard.press("Escape");
+  await pg.locator('.card[data-id="n2"] .nbody .md-ref', { hasText: "Prefill stage" }).click();
+  await until(h, "the chip selects the Section", () => pg.locator('.sect.sel[data-sect="g1"]').count());
+  await close(h);
+});
+
+/** [[ lists every other board's titled cards: each board's own row heads its group (3 cards, "+ N more" expands in place), a card from
+ *  another board is stored as [[Board › Title]], its chip carries the board's name and opens that board; gone cards and boards look broken */
+/** Long titles and Section paths in the [[ list: the title gets the width first, the path takes what is left; on the selected row whatever still doesn't fit slides into view */
+test("noteRefLongTitleSlides", async () => {
+  const b = emptyBoard("b1", "long refs");
+  put(b, { id: "n", kind: "note", md: "see", look: "note" } as NoteCard, 60, 60, 420);
+  b.cam = { x: 0, y: 0, z: 1 };
+  const sec = "以 Vector Add 为例介绍 Grid、Block 与 Thread 的组织方式";
+  const refs = [
+    { id: "v0", t: "VECADD - CUDA - SKELETON", k: "code", s: sec },
+    { id: "v1", t: "VECADD - CUDA - FULL KERNEL WITH BOUNDS CHECK AND HOST CODE FOR THE LAUNCH", k: "code", s: sec },
+  ];
+  const h = await open({ board: b, light, w: 1200, h: 800, settings: { theme: "warm-ink" } as any, on: (m, reply) => (m.type === "boardRefs" ? (void reply(m.req!, { boards: [{ id: "bg", name: "多维网格与数据", refs }], recent: [] }), true) : false) });
+  const pg = h.page;
+  await pg.locator('.card[data-id="n"] .nbody').dblclick();
+  await pg.locator('.card[data-id="n"] .md-pm').waitFor();
+  await focusSettled(pg);
+  await pg.evaluate(() => { const e = (document.querySelector('.card[data-id="n"] .md-pm') as any).editor; e.commands.setTextSelection(e.state.doc.content.size - 1); });
+  await pg.keyboard.type(" [[vecadd");
+  await until(h, "both long cards are listed", async () => (await pg.locator(".md-menu button .lb").allTextContents()).filter((t) => t.startsWith("VECADD")).length === 2);
+  const rows = () => pg.evaluate(() => [...document.querySelectorAll<HTMLElement>(".md-menu .md-list > button")].map((r) => {
+    const lb = r.querySelector<HTMLElement>(".lb")!, bc = r.querySelector<HTMLElement>(".bc");
+    return { t: lb.textContent!, sel: r.classList.contains("sel"), titleCut: lb.scrollWidth > lb.clientWidth, pathCut: !!bc && bc.scrollWidth > bc.clientWidth, slide: lb.classList.contains("slide") };
+  }));
+  const r0 = await rows(), short = r0.find((r) => r.t.endsWith("SKELETON"))!;
+  check("noteRefLongTitleSlides title first", !short.titleCut && short.pathCut, r0);
+  // 走到放不下的那行：标题滑到末尾时最后一个字露出来，别的行不滑
+  for (let k = 0; k < 4 && !(await rows()).find((r) => r.sel)?.t.includes("LAUNCH"); k++) await pg.keyboard.press("ArrowDown");
+  await until(h, "the long title slides", async () => (await rows()).some((r) => r.sel && r.t.includes("LAUNCH") && r.slide));
+  const end = await pg.evaluate(() => {
+    const lb = document.querySelector<HTMLElement>(".md-menu button.sel .lb")!, tx = lb.querySelector<HTMLElement>(".tx")!;
+    const a = tx.getAnimations()[0];
+    if (!a) return null;
+    a.pause();
+    a.currentTime = (a.effect!.getComputedTiming().delay ?? 0) + Number(a.effect!.getComputedTiming().duration) * 0.9;
+    const l = lb.getBoundingClientRect(), t = tx.getBoundingClientRect();
+    return { lbRight: Math.round(l.right), txRight: Math.round(t.right), slid: Math.round(l.left - t.left) };
+  });
+  await shot(h, "note-ref-long-title-slid", "now");
+  const others = (await rows()).filter((r) => !r.sel && r.slide);
+  check("noteRefLongTitleSlides the selected row slides to the end", !!end && Math.abs(end.txRight - end.lbRight) <= 1 && end.slid > 10 && !others.length, { end, others });
+  await close(h);
+});
+
+test("noteRefOtherBoards", async () => {
+  const { b } = mdBoard();
+  const note: NoteCard = { id: "n2", kind: "note", md: "see [[Kernels › Flash attention]], [[Kernels › Old card]] and [[Scratch › Notes]]", look: "note" };
+  put(b, note, 60, 700, 420);
+  const titles = ["Flash attention", "Paged KV", "Softmax online", "Tiling basics", "Warp shuffle", "Bank conflicts", "Occupancy", "Roofline"];
+  const kernels = { id: "bk", name: "Kernels", refs: titles.map((t, i) => ({ id: `k${i}`, t, k: i % 3 ? "note" : "code", s: i < 4 ? "Attention" : "Memory" })) };
+  const pmpp = { id: "bp", name: "pmpp", refs: ["Ch.3 grids", "matrixMulKernel", "Image blur"].map((t, i) => ({ id: `p${i}`, t, k: "note" })) };
+  const h = await open({ board: b, light, w: 1400, h: 950, on: (m, reply) => (m.type === "boardRefs" ? (void reply(m.req!, { boards: [kernels, pmpp], recent: [] }), true) : false) });
+  const pg = h.page;
+  const chip = (t: string) => pg.locator('.card[data-id="n2"] .nbody .md-ref', { hasText: t });
+  // 静态 Note：认出别的白板上的卡（带白板名的小字）；卡不在了是划掉的灰色，白板没了是警告色
+  await until(h, "the cross-board chip resolves", () => chip("Flash attention").evaluate((e) => !e.classList.contains("missing")));
+  const chips = await pg.evaluate(() => [...document.querySelectorAll('.card[data-id="n2"] .nbody .md-ref')].map((e) => ({ cls: e.className, t: e.querySelector(".t")?.textContent, bd: e.querySelector(".bd")?.textContent })));
+  check("noteRefOtherBoards chips", chips[0].bd === "Kernels" && chips[0].t === "Flash attention" && chips[1].cls.includes("missing") && chips[1].bd === "Kernels" && chips[2].cls.includes("gone") && !chips[2].cls.includes("missing"), { chips });
+  await pg.locator('.card[data-id="n2"]').scrollIntoViewIfNeeded();
+  await shot(h, "note-ref-other-boards-chip");
+  await chip("Flash attention").click();
+  await until(h, "the chip opens the other board at the card", () => h.sent.some((m) => m.type === "openBoard" && m.id === "bk" && m.card === "k0"));
+
+  // [[ 的列表：这块白板，再是别的白板各一组
+  const box = (await pg.locator('.card[data-id="n2"] .nbody').boundingBox())!;
+  await pg.locator('.card[data-id="n2"] .nbody').dblclick({ position: { x: box.width - 8, y: box.height / 2 } });
+  await pg.locator('.card[data-id="n2"] .md-pm').waitFor();
+  await focusSettled(pg);
+  await pg.evaluate(() => { const e = (document.querySelector('.card[data-id="n2"] .md-pm') as any).editor; e.commands.setTextSelection(e.state.doc.content.size - 1); });
+  await pg.keyboard.type(" [[");
+  await pg.locator(".md-menu button.brow").first().waitFor();
+  const menu = await pg.evaluate(() => {
+    const m = document.querySelector(".md-menu")!;
+    const rows = [...m.querySelectorAll(".md-list > *")].map((e) => `${e.className}|${e.querySelector(".lb")?.textContent ?? e.textContent}|${e.querySelector(".bc")?.textContent ?? ""}|${e.querySelector("small")?.textContent ?? ""}`);
+    return { rows, foot: m.querySelector(".md-foot")?.textContent };
+  });
+  const at = menu.rows.findIndex((r) => r.startsWith("brow") && r.includes("|Kernels|"));
+  const group = menu.rows.slice(at, at + 5);
+  const okMenu = menu.rows.some((r) => r.startsWith("md-gh cur|This board")) && at > 0 && group[0].endsWith("8 cards · whiteboard")
+    && group.slice(1, 4).every((r) => r.startsWith("child|") && r.includes("|Attention|")) && group[4].startsWith("more|5 more in Kernels")
+    && menu.rows.some((r) => r.startsWith("brow") && r.includes("|pmpp|")) && /^\d+ titled cards · 3 boards$/.test(menu.foot ?? "");
+  check("noteRefOtherBoards picker", okMenu, menu);
+  await pg.locator(".md-menu button.more").first().scrollIntoViewIfNeeded();
+  await shot(h, "note-ref-other-boards-picker", "now");
+
+  // ↓ 走下去：选中的那行下面总留着两行多（列表到底时除外）
+  const gaps: { gap: number; row: number; end: boolean }[] = [];
+  await pg.evaluate(() => { document.querySelector(".md-menu .md-list")!.scrollTop = 0; });
+  for (let i = 0; i < 9; i++) {
+    await pg.keyboard.press("ArrowDown");
+    gaps.push(await pg.evaluate(() => {
+      const l = document.querySelector(".md-menu .md-list") as HTMLElement, s = l.querySelector("button.sel") as HTMLElement;
+      const a = l.getBoundingClientRect(), r = s.getBoundingClientRect();
+      return { gap: a.bottom - r.bottom, row: r.height, end: l.scrollTop + l.clientHeight >= l.scrollHeight - 1 };
+    }));
+  }
+  check("noteRefOtherBoards arrow margin", gaps.every((g) => g.end || g.gap >= g.row * 2), { gaps });
+
+  // 鼠标点「+ 5 more」：列表不跳，点的地方换成展开出来的第一张
+  const more = pg.locator(".md-menu button.more", { hasText: "more in Kernels" });
+  await more.scrollIntoViewIfNeeded();
+  const mb = (await more.boundingBox())!;
+  const top0 = await pg.evaluate(() => document.querySelector(".md-menu .md-list")!.scrollTop);
+  await pg.mouse.click(mb.x + 40, mb.y + mb.height / 2);
+  await until(h, "the group expands", () => pg.locator(".md-menu button.child", { hasText: "Warp shuffle" }).count());
+  const after = await pg.evaluate(([x, y]) => ({ under: document.elementFromPoint(x, y)?.closest("button")?.querySelector(".lb")?.textContent, top: document.querySelector(".md-menu .md-list")!.scrollTop,
+    more: document.querySelectorAll(".md-menu button.more").length }), [mb.x + 40, mb.y + mb.height / 2]);
+  check("noteRefOtherBoards more", after.under === "Tiling basics" && after.top === top0 && after.more === 0, { after, top0 });
+
+  // 打字：别的白板上的对上的带着「白板 › Section」，选了写成 [[Kernels › Paged KV]]
+  await pg.keyboard.type("paged");
+  await pg.locator(".md-menu button", { hasText: "Paged KV" }).waitFor();
+  const hitRow = await pg.locator(".md-menu button", { hasText: "Paged KV" }).first().evaluate((e) => e.querySelector(".bc")?.textContent);
+  await pg.keyboard.press("Enter");
+  const edChip = await pg.locator('.card[data-id="n2"] .md-pm .md-ref', { hasText: "Paged KV" }).evaluate((e) => e.querySelector(".bd")?.textContent);
+  await pg.keyboard.press("Escape");
+  await until(h, "the note is saved", () => (h.board().cards.find((c) => c.id === "n2") as NoteCard).md.includes("Paged KV"));
+  const md = (h.board().cards.find((c) => c.id === "n2") as NoteCard).md;
+  const picked = h.sent.some((m) => m.type === "refPicked" && m.b === "bk" && m.id === "k1");
+  check("noteRefOtherBoards pick", hitRow === "Kernels › Attention" && edChip === "Kernels" && md.includes("[[Kernels › Paged KV]]") && picked, { hitRow, edChip, md, picked });
+  await close(h);
+});
+
 /** WYSIWYG editing: lazy chunk loads, typing with input rules, / menu, [[ picker, bubble toolbar, raw mode, ⌘Z stays in the editor, Esc saves */
 test("markdownEdit", async () => {
   const { b } = mdBoard();

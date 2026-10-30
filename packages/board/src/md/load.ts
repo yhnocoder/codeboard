@@ -10,6 +10,7 @@ import { camMoving } from "../state/camera";
 import { openLink } from "../actions/common";
 import { lspHost } from "../cm/load";
 import { saveNoteImage } from "./images";
+import { boardsGrouped, refFoot, refGroups, refPicked, refRecent, wantBoardRefs } from "./refs";
 import type { MdEditorOpts, MdEditorHandle } from "@yhnocoder/markdown/editor";
 
 export type { MdEditorHandle };
@@ -57,8 +58,8 @@ function whenIdle(f: () => void) {
 }
 
 /**
- * [[ 引用的候选：这块白板上和子白板里（一路往下，标上所在的子白板：子白板 › 卡）有真正标题的卡（core refTitle）：
- * 图片、名字只是正文第一行的卡不列
+ * [[ / 【【 / @ 引用的候选：这块白板上和子白板里（一路往下，标上所在的子白板：子白板 › 卡）有真正标题的卡（core refTitle），
+ * 再是这块白板上的 Section 和别的白板。图片、名字只是正文第一行的卡不列。别的白板上的卡在 refGroups
  */
 export function refCandidates(): { id: string; title: string; kind: string }[] {
   const out: { id: string; title: string; kind: string }[] = [];
@@ -69,6 +70,11 @@ export function refCandidates(): { id: string; title: string; kind: string }[] {
     if (t) out.push({ id: c.id, title: clean(t), kind: isCode(c) ? "code" : c.kind });
   }
   for (const r of subRefs()) out.push({ id: r.id, title: clean(r.label), kind: r.k });
+  for (const s of state.board.sections) if (s.title.trim()) out.push({ id: s.id, title: clean(s.title.trim()), kind: "section" });
+  // 别的白板：宿主给了别的白板上的卡时它们各成一组（refGroups，白板本身是组头），这里不列；已经作为子白板框列过的不重复
+  if (boardsGrouped()) return out;
+  const framed = new Set(placed().flatMap((c) => (c.kind === "board" ? [c.board] : [])));
+  for (const m of state.boards) if (m.id !== state.board.id && !framed.has(m.id) && m.name.trim()) out.push({ id: m.id, title: clean(m.name.trim()), kind: "whiteboard" });
   return out;
 }
 
@@ -88,9 +94,14 @@ const CODE_LANGS = LANG_TABLE.filter((l) => l.highlight).map((l) => ({ name: l.m
 
 /** 编辑器要的白板能力：[[ 引用卡片、存图、AI 补全（宿主没有就什么都不做）、代码块的注释记号和语言服务 */
 export function editorOpts(): Omit<MdEditorOpts, "value" | "onDone" | "placeholder"> {
+  wantBoardRefs();
   return {
     isMac: state.host.isMac,
-    refs: { items: refCandidates, menu: "Link to Card", empty: "No card with that title" },
+    refs: {
+      items: refCandidates, menu: "Link to Card", empty: "Nothing with that title",
+      groups: refGroups, recent: refRecent, here: "This board", picked: refPicked,
+      foot: () => refFoot(refCandidates().filter((c) => c.kind !== "section" && c.kind !== "whiteboard").length),
+    },
     openLink,
     pickImage: () => ask("pickFile", { kind: "image" }).catch(() => null),
     saveImage: saveNoteImage,

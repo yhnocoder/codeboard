@@ -600,7 +600,7 @@
         "codeboard.ai.deepseekModel": {
           "type": "string",
           "default": "deepseek-flash",
-          "description": "DeepSeek model for inline completions and the AI tools (Extract Text, Convert to SVG, Modify SVG, Paste Image Text, Auto Focus). The image tools need a model that reads images."
+          "description": "DeepSeek model for inline completions and the AI tools (Extract Text, Convert to SVG, Modify SVG, Draw as SVG, Paste Image Text, Auto Focus). The image tools need a model that reads images."
         },
         "codeboard.ai.deepseekBaseUrl": {
           "type": "string",
@@ -625,7 +625,7 @@
         "codeboard.ai.svgModel": {
           "type": "string",
           "default": "auto",
-          "markdownDescription": "Model for Convert to SVG and Modify SVG: `auto` (DeepSeek if an API key is set, otherwise a VS Code language model such as GitHub Copilot), `deepseek`, or the id of a VS Code language model. Pick it in CodeBoard Settings › AI, which lists the models you have. Think First applies to DeepSeek only."
+          "markdownDescription": "Model for Convert to SVG, Modify SVG and Draw as SVG: `auto` (DeepSeek if an API key is set, otherwise a VS Code language model such as GitHub Copilot), `deepseek`, or the id of a VS Code language model. Pick it in CodeBoard Settings › AI, which lists the models you have. Think First applies to DeepSeek only."
         },
         "codeboard.ai.focusModel": {
           "type": "string",

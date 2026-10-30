@@ -181,7 +181,8 @@ export type CompareCard = CardBase & {
  * 子白板：另一块白板嵌在这块白板上，框里按 Section 分栏画成能读的小卡片（种类图标、标题、一行摘要，不画代码和箭头）。
  * 只存是哪块白板；骨架由宿主按那块白板算好发来（白板界面里没有子白板的完整内容）。Place 总有 h（框的大小由用户定）。
  */
-export type BoardCard = CardBase & { kind: "board"; board: string };
+/** pcols = 框右边点开的预览排几栏：2 栏时写 2，缺省 1 栏（看的时候的选择，不进撤销） */
+export type BoardCard = CardBase & { kind: "board"; board: string; pcols?: 2 };
 
 export type Card = CodeCard | NoteCard | ImageCard | WebCard | LinksCard | CompareCard | BoardCard;
 export type CardKind = Card["kind"];
@@ -195,6 +196,9 @@ export type Place = {
   locked?: boolean;
   collapsed?: boolean; // 折叠了它下面的 Call 子树
   start?: boolean; // 起点卡：不选卡直接 Walkthrough、调用树从这里开始
+  // 白板上量到的整张卡的高（视图 sync 写，不进撤销）：宿主量不到实测尺寸，estSize 先用它（子白板的缩略地图、宿主排新卡）。
+  // 没定 h 的卡才写，和估计的差不到几像素就不写
+  mh?: number;
 };
 
 // Link 在界面上叫 Arrow
@@ -386,6 +390,8 @@ export type SharedCardFile = SharedCard & { version: 9 };
 
 /** subs = 这块白板上嵌着的子白板（去重，按出现的先后；侧栏按它缩进成树） */
 export type BoardMeta = { id: string; name: string; group?: string; cards: number; stale?: number; subs?: string[] };
+/** 读不了的白板文件（JSON 坏了、过不了 schema）：侧栏照样列出来，免得看起来像白板没了。name = 文件里的 name，没有就用文件名 */
+export type BrokenBoard = { file: string; name: string; group?: string; reason: string };
 
 export function emptyBoard(id: string, name: string): Board {
   return { version: BOARD_VERSION, id, name, cam: homeCam(), cards: [], place: {}, links: [], sections: [], sidenotes: [], stickers: [], born: {}, seq: 0 };

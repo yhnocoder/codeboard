@@ -779,7 +779,10 @@ const finish = async (browser, errors) => {
   await watchKeyboard(page); // the keyboard hand-backs to webviews, likewise
   await page.locator(".monaco-workbench .part.editor").waitFor({ timeout: 60000 });
   const errors = [];
-  page.on("console", (m) => { if (m.type() === "error" && /codeboard|board\.js/i.test(m.text())) errors.push(m.text()); });
+  // The checkout's path ("…/codeboard/codeboard/.vscode-test/…") is in the stack of every workbench error, such as a failed Marketplace
+  // fetch: match on the text without it
+  const repo = path.resolve(__dirname, "../../..");
+  page.on("console", (m) => { if (m.type() === "error" && /codeboard|board\.js/i.test(m.text().split(repo).join(""))) errors.push(m.text()); });
   // E2E_ONLY=capture,addsel runs only those steps, in that order. E2E_PART splits the run for parallel CI jobs:
   // 1 = the main flow, 2 = the steps after it, 3 = the steps the default run leaves out (regular runs)
   const STEPS = { capture: captureStep, export: exportStep, variants: variantsStep, codeedit: codeeditStep, addsel: addselStep, cardfocus: cardfocusStep, keyscope: keyscopeStep, close: closeStep, noteimage: noteimageStep, notepaste: notepasteStep, stickerfolder: stickerfolderStep, notesettings: notesettingsStep, projects: projectsStep };

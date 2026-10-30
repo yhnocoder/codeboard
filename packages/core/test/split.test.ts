@@ -33,6 +33,11 @@ describe("splitHeadings", () => {
     expect(splitHeadings("## Only\n\ntext\n\n### deeper is split\n\n#### but not this")?.parts.map((p) => p.title)).toEqual(["deeper is split"]);
     expect(splitHeadings("## Only\n\ntext")).toBeNull();
   });
+  it("a Note that starts with a heading followed by headings of the same level: they all hang off the Note", () => {
+    const sp = splitHeadings("## A\n\na\n\n## B\n\n### B1\n\n## C")!;
+    expect(sp.pre).toBe("## A\n\na");
+    expect(sp.parts.map((p) => [p.title, p.parent])).toEqual([["B", -1], ["B1", 0], ["C", -1]]);
+  });
   it("closing #s and empty headings", () => {
     expect(titles("x\n\n## A ##\n\n##")).toEqual(["## A <-1", "##  <-1"]);
   });
@@ -73,6 +78,15 @@ describe("splitNoteByHeadings", () => {
     expect(b.place.n.h).toBeUndefined();
     expect(b.place.a).toMatchObject({ w: 381, section: "s" });
     expect(b.place.a1.y).toBeGreaterThan(b.place.a.y);
+    expect(danglingRefs(b)).toEqual([]);
+  });
+  it("a Note that starts with its heading and has same-level headings after it: the new Note sits under it, linked", () => {
+    const b = board("## A\n\na\n\n| x | y |\n| :-: | :-: |\n| 1 | 2 |\n\n## B\n\n$$\n1/2\n$$");
+    expect(splitNoteByHeadings(b, "n", { ids: ["bb"] })).toEqual(["bb"]);
+    expect((b.cards[0] as NoteCard).md).toContain("## A");
+    expect(b.links.map((l) => `${l.from.card}→${l.to.card}`)).toEqual(["n→bb"]);
+    expect(b.place.bb.y).toBeGreaterThan(0); // 新卡在原卡下面，不是 NaN（看不见）
+    expect(Number.isFinite(b.place.bb.x)).toBe(true);
     expect(danglingRefs(b)).toEqual([]);
   });
   it("does nothing without a heading to split at", () => {

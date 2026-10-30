@@ -26,7 +26,7 @@
   --lk-orange: #c46a2a; --lk-blue: #3a72aa; --lk-green: #4c8a3a;
   --glass: #ffffff; --toast: #fffaf0;
   --tip-bg: rgba(31,30,27,.92); --tip-ink: #f6f4ef;
-  --sh-card: 0 1px 2px rgba(40,30,10,.05), 0 4px 14px rgba(40,30,10,.05);
+  --sh-ring: 0 0 transparent; --sh-soft: 0 1px 2px rgba(40,30,10,.05), 0 4px 14px rgba(40,30,10,.05);
   --sh-lift: 0 2px 6px rgba(40,30,10,.08), 0 18px 40px -12px rgba(40,30,10,.22);
   --sh-float: 0 1px 2px rgba(40,30,10,.05), 0 4px 14px rgba(40,30,10,.05);
   --r-card: 14px; --display: var(--serif); --label-font: var(--sys); --note-h: var(--sys); --edge-w: 1.5;
@@ -48,7 +48,7 @@
   --lk-orange: #e3955a; --lk-blue: #7fb0e0; --lk-green: #96c47e;
   --glass: #2a2926; --toast: #3a3934;
   --tip-bg: rgba(236,233,225,.94); --tip-ink: #1b1a18;
-  --sh-card: 0 1px 2px rgba(0,0,0,.3), 0 4px 14px rgba(0,0,0,.2);
+  --sh-ring: 0 0 transparent; --sh-soft: 0 1px 2px rgba(0,0,0,.3), 0 4px 14px rgba(0,0,0,.2);
   --sh-lift: 0 2px 6px rgba(0,0,0,.4), 0 18px 40px -12px rgba(0,0,0,.6);
   --sh-float: 0 1px 2px rgba(0,0,0,.3), 0 4px 14px rgba(0,0,0,.2);
   --r-card: 14px; --display: var(--serif); --label-font: var(--sys); --note-h: var(--sys); --edge-w: 1.5;
@@ -72,7 +72,7 @@
   --lk-orange: #c4661c; --lk-blue: #0a6cdc; --lk-green: #3d8a4a;
   --glass: rgba(255,255,255,.7);
   --tip-bg: rgba(29,29,31,.88); --tip-ink: #f5f5f7;
-  --sh-card: 0 0 0 .5px var(--hair), inset 0 .5px 0 rgba(255,255,255,1), 0 1px 1px rgba(0,0,0,.04), 0 3px 8px -2px rgba(0,0,0,.06), 0 18px 36px -14px rgba(0,0,0,.14);
+  --sh-ring: 0 0 0 .5px var(--hair), inset 0 .5px 0 rgba(255,255,255,1); --sh-soft: 0 1px 1px rgba(0,0,0,.04), 0 3px 8px -2px rgba(0,0,0,.06), 0 18px 36px -14px rgba(0,0,0,.14);
   --sh-lift: 0 0 0 .5px var(--hair), 0 4px 10px -2px rgba(0,0,0,.1), 0 30px 60px -18px rgba(0,0,0,.28);
   --sh-float: 0 0 0 .5px var(--hair), 0 2px 6px -1px rgba(0,0,0,.08), 0 10px 28px -8px rgba(0,0,0,.16);
   --r-card: 12.5px; --display: var(--sys); --label-font: var(--sys); --note-h: var(--sys); --edge-w: 1.25;
@@ -94,7 +94,7 @@
   --lk-orange: #e8964f; --lk-blue: #4e9cff; --lk-green: #7cc48a;
   --glass: rgba(44,44,47,.66);
   --tip-bg: rgba(242,242,244,.92); --tip-ink: #1b1b1d;
-  --sh-card: 0 0 0 .5px var(--hair), inset 0 .5px 0 rgba(255,255,255,.07), 0 1px 1px rgba(0,0,0,.3), 0 3px 8px -2px rgba(0,0,0,.35), 0 18px 36px -14px rgba(0,0,0,.6);
+  --sh-ring: 0 0 0 .5px var(--hair), inset 0 .5px 0 rgba(255,255,255,.07); --sh-soft: 0 1px 1px rgba(0,0,0,.3), 0 3px 8px -2px rgba(0,0,0,.35), 0 18px 36px -14px rgba(0,0,0,.6);
   --sh-lift: 0 0 0 .5px var(--hair), 0 4px 10px -2px rgba(0,0,0,.4), 0 30px 60px -18px rgba(0,0,0,.75);
   --sh-float: 0 0 0 .5px var(--hair), 0 2px 6px -1px rgba(0,0,0,.4), 0 10px 28px -8px rgba(0,0,0,.6);
   --r-card: 12.5px; --display: var(--sys); --label-font: var(--sys); --note-h: var(--sys); --edge-w: 1.25;
@@ -120,7 +120,7 @@
   --lk-orange: #f2583e; --lk-blue: #2563c9; --lk-green: #1f8a5b;
   --glass: #fffdfa;
   --tip-bg: rgba(40,34,28,.9); --tip-ink: #fffdfa;
-  --sh-card: 0 1px 2px rgba(55,38,20,.04), 0 28px 56px -22px rgba(55,38,20,.22), inset 0 .5px 0 rgba(255,255,255,1);
+  --sh-ring: inset 0 .5px 0 rgba(255,255,255,1); --sh-soft: 0 1px 2px rgba(55,38,20,.04), 0 28px 56px -22px rgba(55,38,20,.22);
   --sh-soft: 0 12px 30px -12px rgba(55,38,20,.2);
   --sh-lift: 0 2px 6px rgba(55,38,20,.06), 0 40px 70px -24px rgba(55,38,20,.32);
   --sh-float: 0 0 0 .5px var(--hair), 0 12px 30px -12px rgba(55,38,20,.2);
@@ -143,7 +143,7 @@
   --lk-orange: #ff6a4d; --lk-blue: #7fb0ff; --lk-green: #6fd3a2;
   --glass: #2a2724;
   --tip-bg: rgba(239,235,229,.94); --tip-ink: #1e1c1a;
-  --sh-card: 0 1px 2px rgba(0,0,0,.3), 0 28px 56px -22px rgba(0,0,0,.7), inset 0 .5px 0 rgba(255,255,255,.06);
+  --sh-ring: inset 0 .5px 0 rgba(255,255,255,.06); --sh-soft: 0 1px 2px rgba(0,0,0,.3), 0 28px 56px -22px rgba(0,0,0,.7);
   --sh-soft: 0 12px 30px -12px rgba(0,0,0,.6);
   --sh-lift: 0 2px 6px rgba(0,0,0,.35), 0 40px 70px -24px rgba(0,0,0,.8);
   --sh-float: 0 0 0 .5px var(--hair), 0 12px 30px -12px rgba(0,0,0,.6);
@@ -172,7 +172,7 @@
   --lk-orange: #161616; --lk-blue: #55544f; --lk-green: #9b9a95; --guide: #161616;
   --glass: #f2f1ed;
   --tip-bg: #161616; --tip-ink: #f2f1ed;
-  --sh-card: 0 0 0 1px var(--rule);
+  --sh-ring: 0 0 0 1px var(--rule); --sh-soft: 0 0 transparent;
   --sh-lift: 0 0 0 1px var(--ink), 6px 6px 0 rgba(22,22,22,.06);
   --sh-float: 0 0 0 1px var(--rule);
   --r-card: 0px; --display: var(--head-font); --label-font: var(--mono); --note-h: var(--head-font); --edge-w: 1;
@@ -196,7 +196,7 @@
   --lk-orange: #e9e8e4; --lk-blue: #a6a5a0; --lk-green: #6f6e6a; --guide: #e9e8e4;
   --glass: #141414;
   --tip-bg: #e9e8e4; --tip-ink: #141414;
-  --sh-card: 0 0 0 1px var(--rule);
+  --sh-ring: 0 0 0 1px var(--rule); --sh-soft: 0 0 transparent;
   --sh-lift: 0 0 0 1px var(--ink), 6px 6px 0 rgba(0,0,0,.5);
   --sh-float: 0 0 0 1px var(--rule);
   --r-card: 0px; --display: var(--head-font); --label-font: var(--mono); --note-h: var(--head-font); --edge-w: 1;
@@ -224,7 +224,7 @@
   --lk-orange: #d9592a; --lk-blue: #3f5e9c; --lk-green: #2f6f68;
   --glass: #f7efdd;
   --tip-bg: #2a231c; --tip-ink: #f7efdd;
-  --sh-card: 0 0 0 2px var(--rule);
+  --sh-ring: 0 0 0 2px var(--rule); --sh-soft: 0 0 transparent;
   --sh-lift: 0 0 0 2px var(--rule), 8px 8px 0 2px var(--rule);
   --sh-float: 0 0 0 2px var(--rule), 4px 4px 0 2px var(--rule);
   --r-card: 0px; --display: var(--sys); --label-font: var(--sys); --note-h: var(--sys); --edge-w: 2;
@@ -248,7 +248,7 @@
   --lk-orange: #c97850; --lk-blue: #7d93c4; --lk-green: #6aa59c;
   --glass: #262019;
   --tip-bg: #f0e6d0; --tip-ink: #1c1813;
-  --sh-card: 0 0 0 2px var(--rule);
+  --sh-ring: 0 0 0 2px var(--rule); --sh-soft: 0 0 transparent;
   --sh-lift: 0 0 0 2px var(--rule), 8px 8px 0 2px #0e0b08;
   --sh-float: 0 0 0 2px var(--rule), 4px 4px 0 2px #0e0b08;
   --r-card: 0px; --display: var(--sys); --label-font: var(--sys); --note-h: var(--sys); --edge-w: 2;
@@ -278,7 +278,7 @@
   --lk-orange: #a32a1c; --lk-blue: #2d4f7c; --lk-green: #3f6a3a; --guide: #a32a1c;
   --glass: #fdfdfb;
   --tip-bg: #191714; --tip-ink: #fdfdfb;
-  --sh-card: 0 1px 0 var(--hair), 0 0 0 .5px var(--hair);
+  --sh-ring: 0 1px 0 var(--hair), 0 0 0 .5px var(--hair); --sh-soft: 0 0 transparent;
   --sh-lift: 0 0 0 .5px var(--hair), 0 14px 28px -14px rgba(25,23,20,.35);
   --sh-float: 0 0 0 .5px var(--hair), 0 1px 0 var(--hair);
   --r-card: 0px; --display: var(--serif); --label-font: var(--serif); --note-h: var(--serif); --edge-w: 1;
@@ -302,7 +302,7 @@
   --lk-orange: #e2614e; --lk-blue: #8fafd8; --lk-green: #93b98a; --guide: #e2614e;
   --glass: #201f1b;
   --tip-bg: #ece7dc; --tip-ink: #1a1916;
-  --sh-card: 0 1px 0 var(--hair), 0 0 0 .5px var(--hair);
+  --sh-ring: 0 1px 0 var(--hair), 0 0 0 .5px var(--hair); --sh-soft: 0 0 transparent;
   --sh-lift: 0 0 0 .5px var(--hair), 0 14px 28px -14px rgba(0,0,0,.7);
   --sh-float: 0 0 0 .5px var(--hair), 0 1px 0 var(--hair);
   --r-card: 0px; --display: var(--serif); --label-font: var(--serif); --note-h: var(--serif); --edge-w: 1;
@@ -330,7 +330,7 @@
   --lk-orange: #9a5a2a; --lk-blue: #2d5f7c; --lk-green: #1f6a50; --guide: #1f6a50;
   --glass: #f6f7f2;
   --tip-bg: #13372b; --tip-ink: #e6eee5;
-  --sh-card: 0 0 0 1px var(--rule);
+  --sh-ring: 0 0 0 1px var(--rule); --sh-soft: 0 0 transparent;
   --sh-lift: 0 0 0 1px var(--rule), 0 18px 36px -18px rgba(19,55,43,.35);
   --sh-float: 0 0 0 1px var(--rule);
   --r-card: 0px; --display: var(--serif); --label-font: var(--serif); --note-h: var(--serif); --edge-w: 1;
@@ -353,7 +353,7 @@
   --lk-orange: #d9a27a; --lk-blue: #8cbbd9; --lk-green: #8fd1b0; --guide: #8fd1b0;
   --glass: #142821;
   --tip-bg: #cfe0d3; --tip-ink: #0f1f19;
-  --sh-card: 0 0 0 1px var(--rule);
+  --sh-ring: 0 0 0 1px var(--rule); --sh-soft: 0 0 transparent;
   --sh-lift: 0 0 0 1px var(--rule), 0 18px 36px -18px rgba(0,0,0,.7);
   --sh-float: 0 0 0 1px var(--rule);
   --r-card: 0px; --display: var(--serif); --label-font: var(--serif); --note-h: var(--serif); --edge-w: 1;
@@ -374,13 +374,14 @@
   --hi: rgba(45,91,112,.14);
   --chg: rgba(154,90,44,.1); --chg-strong: rgba(154,90,44,.26); --del: rgba(184,50,31,.08); --add: rgba(45,91,112,.08);
   --mark: #1d1c1a; --mark-ink: #faf7f0; --md-hl: rgba(226,190,110,.3);
+  --hl-brush: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 8' preserveAspectRatio='none'%3E%3Cpath d='M1 5.2C18 3.6 34 4.6 52 4.1S88 3.2 119 4.4L118.6 5.6C96 6.2 72 5.4 54 6.1S20 6.8 1.4 6.4Z' fill='%23b8321f' fill-opacity='.85'/%3E%3C/svg%3E");
   --inote: rgba(29,28,26,.04); --hlrow: rgba(29,28,26,.06); --hlbar: #1d1c1a; --hatch: rgba(29,28,26,.07);
   --edge: rgba(29,28,26,.8);
   --s-sand: rgba(154,90,44,.07); --s-blue: rgba(45,91,112,.07); --s-green: rgba(80,110,80,.07); --s-pink: rgba(184,50,31,.06);
   --lk-orange: #9a5a2c; --lk-blue: #2d5b70; --lk-green: #4d6b48; --guide: #b8321f;
   --glass: #faf7f0;
   --tip-bg: #1d1c1a; --tip-ink: #faf7f0;
-  --sh-card: 0 0 0 .5px var(--hair), 0 18px 34px -22px rgba(30,25,15,.35);
+  --sh-ring: 0 0 0 .5px var(--hair); --sh-soft: 0 18px 34px -22px rgba(30,25,15,.35);
   --sh-lift: 0 0 0 .5px var(--hair), 0 30px 50px -24px rgba(30,25,15,.45);
   --sh-float: 0 0 0 .5px var(--hair), 0 1px 2px rgba(60,40,10,.12), 0 12px 22px -12px rgba(0,0,0,.35);
   --r-card: 2px; --display: var(--serif); --label-font: var(--serif); --note-h: var(--serif); --edge-w: 2;
@@ -398,13 +399,14 @@
   --hi: rgba(143,183,201,.18);
   --chg: rgba(211,154,108,.1); --chg-strong: rgba(211,154,108,.26); --del: rgba(214,83,58,.12); --add: rgba(143,183,201,.08);
   --mark: #e9e5da; --mark-ink: #131312; --md-hl: rgba(214,180,110,.24);
+  --hl-brush: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 8' preserveAspectRatio='none'%3E%3Cpath d='M1 5.2C18 3.6 34 4.6 52 4.1S88 3.2 119 4.4L118.6 5.6C96 6.2 72 5.4 54 6.1S20 6.8 1.4 6.4Z' fill='%23d6533a' fill-opacity='.85'/%3E%3C/svg%3E");
   --inote: rgba(233,229,218,.04); --hlrow: rgba(233,229,218,.07); --hlbar: #e9e5da; --hatch: rgba(233,229,218,.06);
   --edge: rgba(233,229,218,.78);
   --s-sand: rgba(211,154,108,.06); --s-blue: rgba(143,183,201,.06); --s-green: rgba(140,170,130,.06); --s-pink: rgba(214,83,58,.06);
   --lk-orange: #d39a6c; --lk-blue: #8fb7c9; --lk-green: #9cbf92; --guide: #d6533a;
   --glass: #1c1b19;
   --tip-bg: #e9e5da; --tip-ink: #131312;
-  --sh-card: 0 0 0 .5px var(--hair), 0 18px 34px -22px rgba(0,0,0,.8);
+  --sh-ring: 0 0 0 .5px var(--hair); --sh-soft: 0 18px 34px -22px rgba(0,0,0,.8);
   --sh-lift: 0 0 0 .5px var(--hair), 0 30px 50px -24px rgba(0,0,0,.9);
   --sh-float: 0 0 0 .5px var(--hair), 0 1px 2px rgba(0,0,0,.5), 0 12px 22px -12px rgba(0,0,0,.6);
   --r-card: 2px; --display: var(--serif); --label-font: var(--serif); --note-h: var(--serif); --edge-w: 2;
@@ -431,7 +433,7 @@
   --lk-orange: #e5533d; --lk-blue: #1f5fbf; --lk-green: #13804a; --guide: #1f5fbf;
   --glass: #ffffff;
   --tip-bg: #23272e; --tip-ink: #ffffff;
-  --sh-card: 0 0 0 1px rgba(0,0,0,.08), 0 6px 14px -6px rgba(30,40,60,.3);
+  --sh-ring: 0 0 0 1px rgba(0,0,0,.08); --sh-soft: 0 6px 14px -6px rgba(30,40,60,.3);
   --sh-lift: 0 0 0 1px rgba(0,0,0,.08), 0 20px 34px -14px rgba(30,40,60,.4);
   --sh-float: 0 0 0 1px rgba(0,0,0,.08), 0 8px 18px -8px rgba(0,0,0,.4);
   --r-card: 8.5px; --display: var(--ui); --label-font: var(--ui); --note-h: var(--ui); --edge-w: 2;
@@ -455,7 +457,7 @@
   --lk-orange: #f07a5e; --lk-blue: #6ea0f0; --lk-green: #5fbf86; --guide: #6ea0f0;
   --glass: #1d222c;
   --tip-bg: #e6e9ef; --tip-ink: #161a22;
-  --sh-card: 0 0 0 1px rgba(255,255,255,.06), 0 6px 14px -6px rgba(0,0,0,.6);
+  --sh-ring: 0 0 0 1px rgba(255,255,255,.06); --sh-soft: 0 6px 14px -6px rgba(0,0,0,.6);
   --sh-lift: 0 0 0 1px rgba(255,255,255,.06), 0 20px 34px -14px rgba(0,0,0,.75);
   --sh-float: 0 0 0 1px rgba(255,255,255,.06), 0 8px 18px -8px rgba(0,0,0,.6);
   --r-card: 8.5px; --display: var(--ui); --label-font: var(--ui); --note-h: var(--ui); --edge-w: 2;
@@ -464,9 +466,9 @@
 
 /* 代码行里成千上万的小元素（关键字、行号、调用、图标、端口）只换变量、不加规则：缩放时整板样式重算不变慢 */
 :root.look-classic { --no-o: .8; --call-deco: none; --ico-w: 2; }
-:root.look-classic .card:not(.text):not(.nobg) { box-shadow: 0 0 0 1px var(--line), var(--sh-card); }
-:root.look-classic .card.sel:not(.text) { box-shadow: 0 0 0 1px var(--accent), 0 0 0 4px color-mix(in srgb, var(--accent) 13%, transparent), var(--sh-card); }
-:root.look-classic .card.lift { box-shadow: 0 0 0 1px var(--line), var(--sh-lift); }
+:root.look-classic .card:not(.text):not(.nobg) { --ring: 0 0 0 1px var(--line), var(--sh-ring); }
+:root.look-classic .card.sel:not(.text) { --ring: 0 0 0 1px var(--accent), 0 0 0 4px color-mix(in srgb, var(--accent) 13%, transparent), var(--sh-ring); }
+:root.look-classic .card.lift { --ring: 0 0 0 1px var(--line), var(--sh-lift); }
 :root.look-classic .chead { height: 38px; padding: 0 8px 0 12px; gap: 8px; --hg: 8px; }
 :root.look-classic .chead .step { border-radius: 1398.5px; corner-shape: round; background: var(--accent); color: var(--accent-ink); }
 :root.look-classic .ctitle { font-size: 12.5px; letter-spacing: 0; }
@@ -498,8 +500,8 @@
 :root.look-graphite .chead .rev.new { background: color-mix(in srgb, var(--warn) 9%, transparent); border-radius: 1398.5px; corner-shape: round; }
 
 :root.look-soft-light { --call-deco: underline dotted color-mix(in srgb, var(--k-fn) 50%, transparent); }
-:root.look-soft-light .card.sel:not(.text) { box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--coral) 70%, transparent), 0 0 0 6px color-mix(in srgb, var(--coral) 10%, transparent), var(--sh-card); }
-:root.look-soft-light .card.sel.lift { box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--coral) 70%, transparent), var(--sh-lift); }
+:root.look-soft-light .card.sel:not(.text) { --ring: 0 0 0 1.5px color-mix(in srgb, var(--coral) 70%, transparent), 0 0 0 6px color-mix(in srgb, var(--coral) 10%, transparent), var(--sh-ring); }
+:root.look-soft-light .card.sel.lift { --ring: 0 0 0 1.5px color-mix(in srgb, var(--coral) 70%, transparent), var(--sh-lift); }
 :root.look-soft-light .chead { --ib-ink: var(--ink-3); background: none; border-bottom: 0; } /* header icons in the header's own warm grey (the Note title, STEP and version chip) */
 :root.look-soft-light .ccard > .cface > .chead .kind, :root.look-soft-light .ccard > .cface > .chead .plusn { display: none; }
 /* Code card header = the Note's: one 40px row, 16px from the left, the title in the same small spaced capitals; the contents sit
@@ -557,10 +559,10 @@
 :root.look-soft-light .mast .mn { font: 300 24px/1.15 var(--sys); color: var(--ink); letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 :root.look-drafting { --no-o: 1; --kw-w: 500; --com-i: normal; --call-deco: underline 1px var(--ink-3); --ico-w: 1; --port-r: 0; }
-:root.look-drafting .card:not(.text):not(.nobg) { background: var(--bg); box-shadow: 0 0 0 1px var(--rule); }
-:root.look-drafting .card.sel:not(.text) { box-shadow: 0 0 0 1px var(--ink); }
-:root.look-drafting .card.sel:not(.text)::after { content: ""; position: absolute; inset: -9px; border: 1px dashed var(--ink-2); pointer-events: none; }
-:root.look-drafting .card.lift { box-shadow: var(--sh-lift); }
+:root.look-drafting .card:not(.text):not(.nobg) { background: var(--bg); --ring: 0 0 0 1px var(--rule); }
+:root.look-drafting .card.sel:not(.text) { --ring: 0 0 0 1px var(--ink); box-shadow: var(--ring); } /* ::after 是虚线框，描边由卡自己画 */
+:root.look-drafting .card.sel:not(.text)::after { content: ""; position: absolute; inset: -9px; z-index: auto; border-radius: 0; box-shadow: none; border: 1px dashed var(--ink-2); pointer-events: none; }
+:root.look-drafting .card.lift { --ring: var(--sh-lift); }
 :root.look-drafting .chead { padding: 0 6px 0 12px; gap: 10px; --hg: 10px; border-bottom: 1px solid var(--rule); }
 :root.look-drafting .chead .kind { display: none; }
 :root.look-drafting .chead .step { background: none; color: var(--ink-3); font: 400 10.5px var(--mono); padding: 0; min-width: 0; }
@@ -607,6 +609,21 @@
 :root.look-drafting .toast { background: var(--bg); color: var(--ink); box-shadow: 0 0 0 1px var(--ink); border-radius: 0; font: 10.5px var(--mono); letter-spacing: .06em; text-transform: uppercase; padding: 7px 12px; }
 :root.look-drafting .toast .tlink { color: var(--ink); font-weight: 500; text-decoration: underline; text-underline-offset: 3px; }
 :root.look-drafting .tip { border-radius: 0; }
+:root.look-drafting .sbmap :is(.sec, .bx, .hd, .bxo, .hit) { rx: 0; }
+:root.look-drafting .sbmap .sec { stroke: var(--ink-3); stroke-dasharray: 3 2; }
+:root.look-drafting .sbmap .ln { stroke-dasharray: 2 2; }
+:root.look-drafting :is(.sblab, .sbtip, .sbpick, .sbpick i, .sbdrop, .sbcolsw, .sbacts button, .sbacts .sbcolsw button, .sbpv, .sbpv .ph i) { border-radius: 0; }
+:root.look-drafting .sblab { font: 600 10px/1.3 var(--head-font); text-transform: uppercase; letter-spacing: .06em; }
+:root.look-drafting .sbacts > button, :root.look-drafting .sbcolsw { background: var(--bg); box-shadow: 0 0 0 1px var(--rule); }
+:root.look-drafting .sbacts > button { font: 500 10.5px var(--head-font); text-transform: uppercase; letter-spacing: .05em; }
+:root.look-drafting .sbpick { box-shadow: 0 0 0 1.5px var(--ink); }
+:root.look-drafting .sbpv { background: var(--bg); box-shadow: 0 0 0 1px var(--rule); }
+:root.look-drafting .sbpv.hot { box-shadow: 0 0 0 1.5px var(--ink); }
+:root.look-drafting .sbpv .ph { border-bottom: 1px solid var(--rule); font: 600 10.5px var(--head-font); text-transform: uppercase; letter-spacing: .06em; }
+:root.look-drafting .sbpv .ph span.mono { text-transform: none; letter-spacing: 0; }
+:root.look-drafting .sbdrop { outline-color: var(--ink); }
+:root.look-drafting .sbpvl path { stroke: var(--ink); }
+:root.look-drafting .sbpvl circle { fill: var(--ink); }
 :root.look-drafting .mast { display: block; position: absolute; left: 18px; top: 14px; z-index: 3; pointer-events: none; max-width: 46%; }
 :root.look-drafting .mast::before { content: "CODEBOARD · SHEET 1"; display: block; font: 10px var(--mono); letter-spacing: .14em; color: var(--ink-3); }
 :root.look-drafting .mast .mn { display: block; font: 600 12px var(--head-font); text-transform: uppercase; letter-spacing: .12em; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -618,8 +635,8 @@
 :root.look-colorful .card[data-fc="3"] { --fc: var(--f4); }
 :root.look-colorful .card[data-fc="4"] { --fc: var(--f5); }
 :root.look-colorful .card[data-fc="5"] { --fc: var(--f6); }
-:root.look-colorful .card.sel:not(.text) { box-shadow: 0 0 0 2px var(--rule), 6px 6px 0 2px var(--rule); }
-:root.look-colorful .card.lift { box-shadow: var(--sh-lift); }
+:root.look-colorful .card.sel:not(.text) { --ring: 0 0 0 2px var(--rule), 6px 6px 0 2px var(--rule); }
+:root.look-colorful .card.lift { --ring: var(--sh-lift); }
 :root.look-colorful .chead { height: 30px; gap: 0; --hg: 0px; padding: 0; border-bottom: 2px solid var(--rule); font: 500 9.5px var(--sys); letter-spacing: .2em; text-transform: uppercase; }
 :root.look-colorful .chead > .step, :root.look-colorful .chead > .subc, :root.look-colorful .chead > .lockb, :root.look-colorful .chead > .kind, :root.look-colorful .chead > .ctitle, :root.look-colorful .chead > .plusn, :root.look-colorful .chead > .cpath, :root.look-colorful .chead > .rev, :root.look-colorful .chead > .mk, :root.look-colorful .chead > .ib, :root.look-colorful .chead > .seg2, :root.look-colorful .chead > .tools, :root.look-colorful .chead > .lcount { height: 100%; display: flex; align-items: center; padding: 0 10px; border-radius: 0; }
 :root.look-colorful .chead .kind, :root.look-colorful .chead .grow { display: none; }
@@ -690,7 +707,7 @@
 
 :root.look-newspaper { --no-o: 1; --no-link: var(--ink); --no-link-w: 700; --kw-w: 700; --str-i: italic; --call-deco: underline 1px currentColor; --ico-w: 2; }
 :root.look-newspaper .card:not(.text):not(.nobg) { border-top: 3px solid var(--rule); }
-:root.look-newspaper .card.sel:not(.text) { box-shadow: var(--sh-card); outline: 1.5px solid var(--ink); outline-offset: 5px; }
+:root.look-newspaper .card.sel:not(.text) { --ring: var(--sh-ring); outline: 1.5px solid var(--ink); outline-offset: 5px; }
 :root.look-newspaper .chead { height: 28px; padding: 0 6px 0 12px; gap: 8px; --hg: 8px; border-bottom: .5px solid var(--hair); font: 700 9.5px var(--serif); letter-spacing: .16em; text-transform: uppercase; color: var(--ink-2); }
 :root.look-newspaper .chead .kind { display: none; }
 :root.look-newspaper .ccard > .cface > .chead .ctitle { display: none; }
@@ -744,11 +761,11 @@
 
 :root.look-poster { --no-link: var(--ink); --kw-w: 600; --call-deco: underline .5px var(--k-fn); --ico-w: 2; --port-r: 0; --port-rot: 45deg; }
 :root.look-poster .board { background-image: linear-gradient(var(--gridc) 1px, transparent 1px), linear-gradient(90deg, var(--gridc) 1px, transparent 1px); background-size: 44px 44px; }
-:root.look-poster .board::before, :root.look-poster .board::after { content: ""; position: absolute; pointer-events: none; z-index: 3; }
-:root.look-poster .board::before { inset: 8px; border: 1px solid var(--rule); }
-:root.look-poster .board::after { inset: 12px; border: .5px solid var(--rule); }
+:root.look-poster .board:not(.card)::before, :root.look-poster .board:not(.card)::after { content: ""; position: absolute; pointer-events: none; z-index: 3; }
+:root.look-poster .board:not(.card)::before { inset: 8px; border: 1px solid var(--rule); }
+:root.look-poster .board:not(.card)::after { inset: 12px; border: .5px solid var(--rule); }
 :root.look-poster .card:not(.text):not(.nobg) { outline: .5px solid var(--rule); outline-offset: 3px; }
-:root.look-poster .card.sel:not(.text) { box-shadow: 0 0 0 1.5px var(--rule); outline: 1px solid var(--ink); outline-offset: 5px; }
+:root.look-poster .card.sel:not(.text) { --ring: 0 0 0 1.5px var(--rule); outline: 1px solid var(--ink); outline-offset: 5px; }
 :root.look-poster .ccard > .cface > .chead { position: relative; justify-content: center; height: auto; padding: 10px 32px 0; gap: 10px; --hg: 10px; border-bottom: 0; font: 400 9.5px var(--mono); letter-spacing: .32em; text-transform: uppercase; color: var(--ink-2); }
 :root.look-poster .ccard > .cface > .chead .kind, :root.look-poster .ccard > .cface > .chead .grow, :root.look-poster .ccard > .cface > .chead .ctitle, :root.look-poster .ccard > .cface > .chead .rev:not(.unc) { display: none; }
 :root.look-poster .ccard > .cface > .chead .step { display: inline-flex; align-items: center; white-space: nowrap; background: none; color: var(--ink-2); font: inherit; letter-spacing: inherit; padding: 0; min-width: 0; height: auto; }
@@ -803,10 +820,15 @@
 
 /* 远山是白板背景（不跟着画布平移缩放，镜头动时不重画）；滤镜都在 SVG 里，只在换主题、改窗口大小时栅格化一次 */
 :root.look-ink-wash { --kw-w: 600; --no-link: var(--zhu); --call-deco: underline 1px var(--zhu); --ico-w: 1; }
+/* ==高亮== 不涂黄：字下一道粗细不匀的朱笔，像在书上用朱笔画重点（和标题旁的朱印同色）。换行时每行各画一道；只画背景，字距不变 */
+:root.look-ink-wash .md mark { background: var(--hl-brush) left bottom / 100% .42em no-repeat; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+/* 加粗：宋体（Songti SC）的 Bold 笔画细，Source Serif 这里只带到 600，和正文差得太少。用 700，再描 .015em 的边加重（只画不排版，编辑和显示一样宽）；
+   .025em 太粗，不描边在 Mac 上又不够（Luna 在 Mac 上比过） */
+:root.look-ink-wash .md :is(strong, b) { font-weight: 700; -webkit-text-stroke: .015em currentColor; }
 :root.look-ink-wash .board { background: url("./scenes/ink-light.svg") center bottom / cover no-repeat, var(--canvas); }
 :root.look-ink-wash[data-theme="dark"] .board { background: url("./scenes/ink-dark.svg") center bottom / cover no-repeat, var(--canvas); }
-:root.look-ink-wash .card.sel:not(.text):not(.lo-map) { box-shadow: 0 0 0 1px var(--ink), 0 0 0 7px var(--wash), var(--sh-card); }
-:root.look-ink-wash .card.sel.lift { box-shadow: 0 0 0 1px var(--ink), var(--sh-lift); }
+:root.look-ink-wash .card.sel:not(.text):not(.lo-map) { --ring: 0 0 0 1px var(--ink), 0 0 0 7px var(--wash), var(--sh-ring); }
+:root.look-ink-wash .card.sel.lift { --ring: 0 0 0 1px var(--ink), var(--sh-lift); }
 /* 卡头下面不画分隔线，换成一笔干笔墨痕 */
 :root.look-ink-wash .card:not(.nobg) > .cface > .chead { position: relative; height: 38px; padding: 0 8px 0 14px; gap: 9px; --hg: 9px; border-bottom: 0; }
 :root.look-ink-wash .card:not(.nobg) > .cface > .chead::after { content: ""; position: absolute; left: 8px; right: 30%; bottom: 1px; height: 3.5px; background: var(--ink); opacity: .55; pointer-events: none;
@@ -871,8 +893,8 @@
 :root.look-city[data-theme="dark"] .board { background: url("./scenes/city-dark.svg") center / cover no-repeat,
   linear-gradient(var(--street) 0 7px, transparent 7px) 0 50px / 120px 120px, linear-gradient(90deg, var(--street) 0 7px, transparent 7px) 40px 0 / 120px 120px,
   linear-gradient(var(--blockc) 1px, transparent 1px) 0 0 / 20px 20px, linear-gradient(90deg, var(--blockc) 1px, transparent 1px) 0 0 / 20px 20px, var(--canvas); }
-:root.look-city .card.sel:not(.text):not(.lo-map) { box-shadow: 0 0 0 2px var(--sign), 0 0 0 6px color-mix(in srgb, var(--sign) 20%, transparent), var(--sh-card); }
-:root.look-city .card.sel.lift { box-shadow: 0 0 0 2px var(--sign), var(--sh-lift); }
+:root.look-city .card.sel:not(.text):not(.lo-map) { --ring: 0 0 0 2px var(--sign), 0 0 0 6px color-mix(in srgb, var(--sign) 20%, transparent), var(--sh-ring); }
+:root.look-city .card.sel.lift { --ring: 0 0 0 2px var(--sign), var(--sh-lift); }
 /* 卡头是一块蓝底白字的路牌（内圈一道白线）；Note 是绿色指路牌 */
 :root.look-city .card:not(.nobg) > .cface > .chead { margin: 5px 5px 0; padding: 0 6px 0 9px; gap: 8px; --hg: 8px; border: 0; border-bottom: 1px solid rgba(0,0,0,.01); border-radius: 5.5px; /* 透明的下沿：见 Ink Wash 卡头编号印章的注释 */ background: var(--sign); color: var(--sign-ink); box-shadow: var(--signbox); }
 :root.look-city .card.note > .cface > .chead { background: var(--gsign); box-shadow: inset 0 0 0 2px var(--gsign), inset 0 0 0 3px rgba(255,255,255,.85); }
