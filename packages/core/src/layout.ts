@@ -13,8 +13,9 @@ export const CODE_HEAD = 36;
 export const NEW_CARD_W = 381;
 
 /** 还没渲染、量不到实测尺寸时的估计（白板放新卡、宿主在白板没开时直接写卡都用它） */
-export function estSize(c: Card, p: Pick<Place, "w" | "h"> = { w: defaultWidth(c) }): { w: number; h: number } {
+export function estSize(c: Card, p: Pick<Place, "w" | "h" | "mh"> = { w: defaultWidth(c) }): { w: number; h: number } {
   if (p.h) return { w: p.w, h: p.h + (c.kind === "code" ? CODE_HEAD : 0) };
+  if (p.mh) return { w: p.w, h: p.mh }; // 白板上量过（Place.mh）
   if (c.kind === "links") return { w: p.w, h: 52 + c.items.length * (c.rich ? 72 : 30) };
   if (c.kind !== "code") return { w: p.w, h: c.kind === "web" ? 112 : 160 };
   const lines = c.segments.reduce((n, s) => n + s.end - s.start + 1, 0);

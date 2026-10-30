@@ -1,9 +1,9 @@
 // 骨架画在框里（cards/BoardBody.tsx）：一张静态的缩略地图，不滚动，箭头只连到整个框；点开的预览在框外（cards/SubPreviews.tsx）。
 import { batch, createEffect, createMemo, createSignal, untrack } from "solid-js";
 import { createStore, produce, reconcile } from "solid-js/store";
-import { mapFit, type BoardCard, type Crumb, type Rect, type Skeleton, type SubCard } from "@codeboard/core";
+import { estSize, mapFit, type BoardCard, type Card, type Place, type Crumb, type Rect, type Skeleton, type SubCard } from "@codeboard/core";
 import { ask } from "../host";
-import { placeOf, placed, rectOf, state, sync } from "./store";
+import { cardById, placeOf, placed, rectOf, sizes, state, sync } from "./store";
 import { rooted } from "./root";
 
 /** 子白板 id → 骨架；null = 那块白板没了；没有这一项 = 还没拿到 */
@@ -49,6 +49,11 @@ export function putSkels(m: Record<string, Skeleton | null>) {
 // 白板上出现了还没有骨架的框（新加的、Turn into Board 拆出来的）：问宿主要一次。宿主之后在子白板存盘时自己推
 const asked = new Set<string>();
 export function trackSkeletons() {
+  // 打开的白板（又）嵌在别的白板上了：把量到的高写一遍
+  createEffect(() => {
+    if (!state.loaded || !framedHere()) return;
+    untrack(() => { for (const c of placed()) measuredHeight(c.id); });
+  });
   createEffect(() => {
     if (!state.loaded) return;
     const want = [...new Set(frames().map((c) => c.board))].filter((id) => !(id in untrack(() => skels)) && !asked.has(id));
@@ -56,6 +61,38 @@ export function trackSkeletons() {
     for (const id of want) asked.add(id);
     void ask("skeletons", { ids: want }).then((r) => { if (r) putSkels(r); }, () => { for (const id of want) asked.delete(id); });
   });
+}
+
+// 卡在白板上量到的高存进 Place.mh：宿主量不到实测尺寸，这块白板在别的白板上画成缩略地图时（core skeletonOf → estSize）按它画，
+// 不再按估计的（Note 一律 160、图片不看宽高比）。只在这块白板嵌在别的白板上时写（没人画它的地图就不为它存盘）；
+// Card.tsx 每量到一张卡的新尺寸就记一下，停下 MH_WAIT 后一次 sync 写完（存盘，不进撤销）。
+// 和现在按什么画（存过的 mh，或者估计的）差不到 MH_SLACK 的不写，免得每次量都存盘；定了高度（Place.h）的卡不写：estSize 本来就用 h
+const MH_SLACK = 8, MH_WAIT = 1000;
+const mhDirty = new Set<string>();
+let mhTimer: ReturnType<typeof setTimeout> | undefined;
+/** 这块白板嵌在别的白板上（侧栏的子白板树） */
+const framedHere = () => state.boards.some((m) => m.subs?.includes(state.board.id));
+export function measuredHeight(id: string) {
+  mhDirty.add(id);
+  clearTimeout(mhTimer);
+  mhTimer = setTimeout(writeHeights, MH_WAIT);
+}
+/** 这张卡该存的 mh：量到了、没定高度、和现在按什么画差得够多；否则 undefined */
+export function heightToKeep(c: Card, p: Place): number | undefined {
+  const s = sizes[c.id];
+  if (p.h || !s || s.h <= 0) return;
+  const h = Math.round(s.h);
+  return Math.abs(h - estSize(c, p).h) > MH_SLACK ? h : undefined;
+}
+function writeHeights() {
+  if (!state.loaded || !framedHere()) return; // 留着要量的：嵌进去以后（trackSkeletons）一起写
+  const out = new Map<string, number>();
+  for (const id of mhDirty) {
+    const p = state.board.place[id], c = cardById(id)?.card, h = p && c?.id === id ? heightToKeep(c, p) : undefined;
+    if (h) out.set(id, h);
+  }
+  mhDirty.clear();
+  if (out.size) sync((b) => { for (const [id, h] of out) { const p = b.place[id]; if (p && !p.h) p.mh = h; } });
 }
 
 // 框里是子白板的缩略地图（cards/BoardBody.tsx）：骨架按真实位置、大小等比缩进框里（core 的 mapFit），地图和预览的连线共用
@@ -89,7 +126,7 @@ export const [pvHot, setPvHot] = createSignal<{ f: string; id: string } | null>(
 
 /** 右边最多展开几张；预览宽、间距；标题行宽、高、行距；预览离框的距离（都是世界坐标，和 styles.css 的 .sbpv 一套） */
 export const PV_MAX = 3, PV_W = 260, PV_GAP = 10, TIT_W = 200, TIT_H = 30, TIT_GAP = 6, PV_OFF = 14;
-export const pvCols = (frame: string): 1 | 2 => (frameOf(frame)?.pcols === 1 ? 1 : 2);
+export const pvCols = (frame: string): 1 | 2 => (frameOf(frame)?.pcols === 2 ? 2 : 1);
 
 export type PvBox = { id: string; x: number; y: number; w: number; h: number };
 /** 子白板框的名字在框外上方（styles.css .sbhead：30px 高，离框 16px）：别的框挡不挡标题行，连名字一起算 */
@@ -145,7 +182,7 @@ export function clearPreviews(frame: string) {
 }
 export const foldPreviews = (frame: string) => { if (pvPeek()?.f === frame) setPvPeek(null); pvEdit(frame, (p) => { p.fold = !p.fold; }); };
 export function setPreviewCols(frame: string, n: 1 | 2) {
-  sync((b) => { const c = b.cards.find((k) => k.id === frame); if (c?.kind !== "board") return; if (n === 1) c.pcols = 1; else delete c.pcols; });
+  sync((b) => { const c = b.cards.find((k) => k.id === frame); if (c?.kind !== "board") return; if (n === 2) c.pcols = 2; else delete c.pcols; });
 }
 /**
  * 拖到右边松手（y = 松手时预览的上边）：插在落下的位置展开（压过哪张的中线之前就插在它前面）；右边多过 PV_MAX 张时，

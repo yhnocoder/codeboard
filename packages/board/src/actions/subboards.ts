@@ -4,7 +4,7 @@ import { cardTitle, descendants, escHtml, extractBoard, removeCards, uid, wouldC
 import { state, mutate, sel, select, clearSel, cardById, hostOf, rectOf, toast, flushSave, flows } from "../state/store";
 import { camTarget, camTo, fitRect, viewportCenter } from "../state/camera";
 import { iconHtml } from "../ui/icons";
-import { crumbs, frameOf, skelOf, subRefs, walkBack, setWalkBack, setCrumbMorph } from "../state/subboards";
+import { crumbs, frameOf, skelOf, subRefs, walkBack, setWalkBack, setCrumbMorph, heightToKeep } from "../state/subboards";
 import { resolveCardRef, revealCard, selectCard } from "./common";
 import { walk, setWalk } from "../state/ui";
 import { settleHome, frames as sectionFrames } from "../state/sections";
@@ -246,6 +246,8 @@ export async function turnIntoBoard() {
   const copy = structuredClone(unwrap(state.board));
   const r = extractBoard(copy, ids, rects, { id, name, frame });
   if (!r) return;
+  // 新白板上的卡带着在这里量到的高（Place.mh）：框里的地图一开始就按真实大小画
+  for (const c of r.child.cards) { const p = r.child.place[c.id], mh = p && heightToKeep(c, p); if (mh) p.mh = mh; }
   try {
     await ask("newBoard", { board: r.child });
   } catch (e) {

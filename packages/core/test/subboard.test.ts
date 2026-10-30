@@ -35,6 +35,16 @@ describe("sub-board skeleton", () => {
     expect(sk.ln).toHaveLength(8);
   });
 
+  it("draws a card as tall as the board measured it (Place.mh), else as estimated; a height set by hand wins", () => {
+    const b = board("H", [[note("m"), 0, 0], [note("e"), 500, 0], [note("s"), 1000, 0]]);
+    b.place.m.mh = 612;
+    b.place.s.h = 240; b.place.s.mh = 999;
+    const h = Object.fromEntries(skeletonOf(b).cards.map((c) => [c.id, c.h]));
+    expect(h).toEqual({ m: 612, e: 160, s: 240 });
+    // the field survives a save and load (the schema knows it)
+    expect(loadBoard(JSON.parse(JSON.stringify(b))).place.m.mh).toBe(612);
+  });
+
   it("names nested sub-boards", () => {
     const b = board("P", [[{ id: "f", kind: "board", board: "C" }, 0, 0]]);
     b.place.f.h = 300;

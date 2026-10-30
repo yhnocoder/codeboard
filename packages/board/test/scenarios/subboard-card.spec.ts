@@ -162,6 +162,50 @@ test("subboardMapScales", async () => {
 });
 
 /**
+ * Made smaller with its corner grip or bottom edge, a frame keeps the size it was dragged to: next to another frame it snaps to the
+ * same height, and dragged far past it stops at a minimum size instead of collapsing to a line
+ */
+test("subboardShrinkKeepsSize", async () => {
+  const { P } = boards();
+  const M = emptyBoard("bMain", "Main");
+  M.cards.push({ id: "fPar", kind: "board", board: "bPar" }, { id: "fNext", kind: "board", board: "bPar" });
+  M.place.fPar = { x: 80, y: 120, w: 520, h: 420 };
+  M.place.fNext = { x: 700, y: 160, w: 400, h: 260 };
+  M.cam = { x: 0, y: 0, z: 1 };
+  const t = await subHost(M, [P]), h = t.h, page = h.page;
+  const frame = page.locator('.card[data-id="fPar"]');
+  await until(h, "the frames show their board", async () => (await hasBlocks(h, "fPar")) > 0 && (await hasBlocks(h, "fNext")) > 0);
+  await idle(h);
+  const place = () => t.store.peek("bMain")!.place.fPar;
+  const shrink = async (sel: string, dx: number, dy: number) => {
+    await frame.locator(".sbname").click(); await idle(h);
+    const g = (await frame.locator(sel).boundingBox())!;
+    const x = g.x + g.width / 2, y = g.y + g.height / 2;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x + dx, y + dy, { steps: 10 });
+    const hint = await page.evaluate(() => document.querySelector(".ghint")?.textContent ?? "");
+    await page.mouse.up();
+    await idle(h);
+    const b = (await frame.boundingBox())!;
+    return { hint, w: b.width, h: b.height, place: { ...place() } };
+  };
+  // the corner grip up-left by ~158px: the height snaps to the neighbour's 260
+  const snap = await shrink(".grip", -100, -158);
+  check("subboardShrinkKeepsSize-sameHeight", snap.place.h === 260 && Math.abs(snap.h - 260) < 3 && snap.w > 380 && /same height/.test(snap.hint), snap);
+  await shotPr(h, "subboardcard-shrink-snap");
+  // far past everything: stops at the minimum size, still a frame with its map
+  const tiny = await shrink(".grip", -900, -900);
+  check("subboardShrinkKeepsSize-min", typeof tiny.place.h === "number" && tiny.h >= 120 && tiny.w >= 180 && Math.abs(tiny.h - tiny.place.h!) < 3 && (await hasBlocks(h, "fPar")) > 0, tiny);
+  // a double-click on the grip (Fit Content on other cards) leaves the frame as it is: it has no content size to fit
+  const before = { ...place() };
+  await frame.locator(".grip").dblclick(); await idle(h);
+  check("subboardShrinkKeepsSize-dblclick", place().h === before.h && place().w === before.w && Math.abs((await frame.boundingBox())!.height - before.h!) < 3, { before, after: place() });
+  await shotPr(h, "subboardcard-shrink-min");
+  await page.context().close();
+});
+
+/**
  * The approved design (feedback demo #66, option B "缩略地图"): the title 16px above the frame as before; inside, Sections are tinted
  * regions with their name and count in a fixed 11px label, notes are paper-white blocks with grey lines, code cards have a blue-grey
  * header band, arrows are thin lines at 75%; a hovered block gets an accent outline; the tooltip is the dark tip pill. Warm Ink, light, zoom 100%
@@ -492,6 +536,57 @@ test("subboardMap", async () => {
 });
 
 /**
+ * The map draws each card as tall as it is on its own board, not as estimated: a long Note, a big picture and five square pictures,
+ * measured while the sub-board was open, keep their real proportions on the map, and the gap under the long Note its real size
+ */
+test("subboardMapRealSizes", async () => {
+  const B = emptyBoard("bReal", "Real sizes");
+  const long = "## CUDA C++ 程序结构\n" + Array.from({ length: 12 }, (_, i) => `第 ${i + 1} 段：主机代码分配显存、拷数据、发射 kernel，设备代码在每个线程里算一个元素。`).join("\n\n");
+  B.cards.push(note("rLong", long), { id: "rBig", kind: "image", src: svg(700, 470, "#6091cd"), alt: "大图" }, note("rBelow", "## 下面的卡\n在长 Note 下面"));
+  B.place.rLong = { x: 0, y: 0, w: 300 };
+  B.place.rBelow = { x: 0, y: 900, w: 300 };
+  B.place.rBig = { x: 360, y: 0, w: 700 };
+  for (let i = 0; i < 5; i++) {
+    B.cards.push({ id: `rSq${i}`, kind: "image", src: svg(236, 236, ["#d77891", "#7aa66b", "#c9a227", "#8a6fc4", "#4aa3a3"][i]), alt: `方图 ${i + 1}` });
+    B.place[`rSq${i}`] = { x: 1120 + (i % 3) * 270, y: Math.floor(i / 3) * 330, w: 236 };
+  }
+  const M = emptyBoard("bMain", "Main");
+  M.cards.push({ id: "fReal", kind: "board", board: "bReal" });
+  M.place.fReal = { x: 80, y: 80, w: 900, h: 420 };
+  M.cam = { x: 0, y: 0, z: 1 };
+  const t = await subHost(M, [B]), h = t.h, page = h.page;
+  await ready(h, "fReal");
+  const ids = B.cards.map((c) => c.id);
+  // inside the sub-board: the real sizes (world units)
+  const n0 = t.inits.length;
+  await page.locator('.card[data-id="fReal"] .sbname').dblclick();
+  await until(h, "entering opens the sub-board", () => t.inits.length > n0 && t.cur() === "bReal");
+  await idle(h);
+  const real = await page.evaluate((ids) => Object.fromEntries(ids.map((id) => { const e = document.querySelector<HTMLElement>(`.card[data-id="${id}"]`)!; return [id, { w: e.offsetWidth, h: e.offsetHeight }]; })), ids);
+  await until(h, "the measured heights are saved with the sub-board", () => ids.every((id) => Math.abs((t.store.peek("bReal")!.place[id].mh ?? 0) - real[id].h) <= 8));
+  const n1 = t.inits.length;
+  await page.keyboard.press("Escape");
+  await until(h, "leaving opens Main", () => t.inits.length > n1 && t.cur() === "bMain");
+  await ready(h, "fReal");
+  await idle(h);
+  const map = await page.evaluate((ids) => {
+    const f = document.querySelector<HTMLElement>('.card[data-id="fReal"]')!;
+    // the hit box is 1px larger than the block on every side
+    return Object.fromEntries(ids.map((id) => { const r = f.querySelector(`.skel [data-sub="${id}"] .hit`)!.getBoundingClientRect(); return [id, { x: r.x + 1, y: r.y + 1, w: r.width - 2, h: r.height - 2 }]; }));
+  }, ids);
+  const off = ids.flatMap((id) => {
+    const want = real[id].h / real[id].w, got = map[id].h / map[id].w;
+    return Math.abs(got / want - 1) < 0.06 ? [] : [`${id}: drawn ${map[id].w.toFixed(1)}×${map[id].h.toFixed(1)} (h/w ${got.toFixed(2)}), real ${real[id].w}×${real[id].h} (h/w ${want.toFixed(2)})`];
+  });
+  check("subboardMapRealSizes-proportions", !off.length, off);
+  // the gap between the long Note and the card under it, in the board's units
+  const k = map.rBig.w / real.rBig.w, gap = (map.rBelow.y - map.rLong.y - map.rLong.h) / k, want = 900 - real.rLong.h;
+  check("subboardMapRealSizes-gap", Math.abs(gap - want) < 10, { gap, want });
+  await shotPr(h, "subboardcard-real-sizes");
+  await page.context().close();
+});
+
+/**
  * Clicking blocks opens read-only previews next to the frame, numbered like the badges on their blocks: a Note rendered as Markdown,
  * a code card's highlighted code, a picture with its name; clicking an open block again closes it; the previews follow the frame
  */
@@ -532,7 +627,7 @@ test("subboardPreviewOpenClose", async () => {
   await page.context().close();
 });
 
-/** Up to three previews expand on the right (two columns, the shorter one first); more open as title rows under the frame, as wide as it */
+/** Up to three previews expand on the right (one column by default, stacked); more open as title rows under the frame, as wide as it */
 test("subboardPreviewMaxThree", async () => {
   const { M, P, S, D } = setup();
   const t = await subHost(M, [P, S, D]), h = t.h, page = h.page;
@@ -543,7 +638,7 @@ test("subboardPreviewMaxThree", async () => {
   const exp = s.rows.filter((r) => !r.tit), tit = s.rows.filter((r) => r.tit);
   const fr = s.frame, z = 0.7;
   check("subboardPreviewMaxThree-split", exp.map((r) => r.id).join() === "p1,p2,p3" && tit.map((r) => r.id).join() === "p4,p5" && s.rows.map((r) => r.n).join() === "1,2,3,4,5", s.rows);
-  check("subboardPreviewMaxThree-right", exp.every((r) => r.x >= fr.x + fr.w && Math.abs(r.w - 260 * z) <= 1) && new Set(exp.map((r) => r.x)).size === 2 && exp.every((r) => r.y >= fr.y - 1), exp);
+  check("subboardPreviewMaxThree-right", exp.every((r) => r.x >= fr.x + fr.w && Math.abs(r.w - 260 * z) <= 1) && new Set(exp.map((r) => r.x)).size === 1 && exp.every((r, i) => r.y >= fr.y - 1 && (!i || r.y > exp[i - 1].y)), exp);
   check("subboardPreviewMaxThree-titles", tit.every((r) => r.mini && r.y >= fr.y + fr.h && Math.abs(r.h - 30 * z) <= 1 && Math.abs(r.w - 200 * z) <= 1 && r.x >= fr.x - 1 && r.x + r.w <= fr.x + fr.w + 1)
     && tit[0].y === tit[1].y, tit);
   // the bodies never scroll: capped and faded
@@ -617,7 +712,7 @@ test("subboardPreviewDrag", async () => {
   await page.context().close();
 });
 
-/** The right area in one column or two (two by default): one column stacks the expanded previews, still at most three; the choice is kept with the frame. Hide / Show and Clear */
+/** The right area in one column or two (one by default): two columns put the expanded previews side by side, the shorter column first, still at most three; the choice is kept with the frame. Hide / Show and Clear */
 test("subboardPreviewColumnsHideClear", async () => {
   const { M, P, S, D } = setup();
   const t = await subHost(M, [P, S, D]), h = t.h, page = h.page;
@@ -625,14 +720,16 @@ test("subboardPreviewColumnsHideClear", async () => {
   for (const id of ["p1", "p2", "p3", "p4"]) await clickBlock(h, "fPar", id);
   await settled(h, "fPar");
   const acts = '.card[data-id="fPar"] .sbacts';
-  check("subboardPreviewColumnsHideClear-two", new Set((await previews(h, "fPar")).rows.filter((r) => !r.tit).map((r) => r.x)).size === 2);
-  await page.locator(`${acts} [aria-label="One column"]`).click(); await idle(h); await settled(h, "fPar");
-  const one = (await previews(h, "fPar")).rows;
-  const exp = one.filter((r) => !r.tit);
   const frame = () => t.store.peek("bMain")!.cards.find((c) => c.id === "fPar") as { pcols?: number };
-  await until(h, "the choice is saved with the frame", () => frame().pcols === 1);
-  check("subboardPreviewColumnsHideClear-one", exp.length === 3 && new Set(exp.map((r) => r.x)).size === 1 && exp.every((r, i) => !i || r.y > exp[i - 1].y) && one.filter((r) => r.tit).length === 1, one);
-  await shot(h, "subboardPreviewColumns-one");
+  const one = (await previews(h, "fPar")).rows.filter((r) => !r.tit);
+  check("subboardPreviewColumnsHideClear-one", frame().pcols === undefined && one.length === 3 && new Set(one.map((r) => r.x)).size === 1 && one.every((r, i) => !i || r.y > one[i - 1].y)
+    && (await page.locator(`${acts} [aria-label="One column"].on`).count()) === 1, one);
+  await page.locator(`${acts} [aria-label="Two columns"]`).click(); await idle(h); await settled(h, "fPar");
+  const two = (await previews(h, "fPar")).rows;
+  const exp = two.filter((r) => !r.tit);
+  await until(h, "the choice is saved with the frame", () => frame().pcols === 2);
+  check("subboardPreviewColumnsHideClear-two", exp.length === 3 && new Set(exp.map((r) => r.x)).size === 2 && two.filter((r) => r.tit).length === 1, two);
+  await shot(h, "subboardPreviewColumns-two");
   check("subboardPreviewColumnsHideClear-label", ((await page.locator(`${acts} .sbfold`).textContent()) ?? "").includes("4 previews · Hide"));
   await page.locator(`${acts} .sbfold`).click(); await idle(h);
   const folded = await page.evaluate(() => { const e = document.querySelector<HTMLElement>('.sbpvs[data-f="fPar"]')!; return { cls: e.classList.contains("folded"), pe: getComputedStyle(e).pointerEvents }; });
@@ -642,8 +739,8 @@ test("subboardPreviewColumnsHideClear", async () => {
   await page.locator(`${acts} .sbclr`).click(); await idle(h);
   check("subboardPreviewColumnsHideClear-clear", (await page.locator('.sbpv[data-f="fPar"]').count()) === 0 && (await page.locator(acts).count()) === 0 && (await page.locator('.card[data-id="fPar"] .sbpick').count()) === 0);
   await clickBlock(h, "fPar", "p1");
-  await page.locator(`${acts} [aria-label="Two columns"]`).click(); await idle(h);
-  await until(h, "two columns again", () => frame().pcols === undefined);
+  await page.locator(`${acts} [aria-label="One column"]`).click(); await idle(h);
+  await until(h, "one column again", () => frame().pcols === undefined);
   await page.context().close();
 });
 

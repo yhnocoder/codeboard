@@ -366,7 +366,9 @@ export function resizeDown(e: PointerEvent, id: string, edges: { left?: boolean;
   const text = frameless(c), box = c.kind === "note" && c.look === "box";
   // 最矮 = 头部 + 一行；拉到内容本来的高度附近就回到自动高度（Box 的高度就是框的大小，一直存着）
   const nat = box ? undefined : naturalSize(c.id);
-  const minW = box ? 60 : text ? 80 : 160, minH = box ? 32 : nat ? Math.min(nat.minH, 100) : 64;
+  // 子白板的框：最小也放得下几块地图和右上角的按钮
+  const frame = c.kind === "board";
+  const minW = box ? 60 : text ? 80 : frame ? 200 : 160, minH = box ? 32 : frame ? 130 : nat ? Math.min(nat.minH, 100) : 64;
   const hx = c.kind === "code" ? chromeOf(c.id) : 0; // 代码卡存内容区高度：减掉卡头 / 底栏
   // 图片卡的高度跟着图片的宽高比（不存）：拖角只改宽度，往下拖按卡现在的比例折成宽度
   const image = c.kind === "image", bottom = !!edges.bottom && !image;

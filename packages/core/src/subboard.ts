@@ -57,7 +57,7 @@ export function wouldCycle(subs: (id: string) => readonly string[] | undefined, 
   return false;
 }
 
-/** 卡在子白板上的框：Place 的位置 + 估计的大小（宿主量不到实测尺寸，layout.estSize） */
+/** 卡在子白板上的框：Place 的位置 + 大小（宿主量不到实测尺寸：layout.estSize，白板上量过的用量到的高 Place.mh） */
 function rectOf(c: Card, p: Place): Rect {
   const s = estSize(c, p);
   return { x: p.x, y: p.y, w: s.w, h: c.kind === "board" ? p.h ?? 320 : s.h };
