@@ -6,7 +6,7 @@ module.exports = async (page, t) => {
   await t.openFile(page, `${t.WS}/nanovllm/engine/scheduler.py`, 20);
   const f = await t.newBoard(page, "focus race");
   const spot = await t.emptySpot(f);
-  const delays = [0, 20, 50, 100, 200, 400, 700];
+  const delays = [0, 2, 5, 10, 20, 50, 100, 200, 400, 700];
   const log = [];
   const inEditor = () => page.evaluate(() => !!document.activeElement?.closest(".monaco-editor") && document.hasFocus() && !document.activeElement?.closest(".quick-input-widget"));
   const inQuick = () => page.evaluate(() => !!document.activeElement?.closest(".quick-input-widget") && document.hasFocus());
