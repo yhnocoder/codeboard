@@ -3,7 +3,7 @@ export { parseMd, serializeMd, mdSchema, baseExtensions, mdBlockStarts, texBrack
 export { renderMd, renderMdInline, clearMdCache, mdCached } from "./render";
 export { setAssetBase, setImageResolver, type ImageResolver, type ResolvedImage } from "./image";
 export { imageCaption, setImageCaption } from "./caption";
-export { hydrate, mdClick, toggleTask, setRefResolver, resolveRef, type RefTarget } from "./view";
+export { hydrate, mdClick, toggleTask, setRefResolver, resolveRef, paintRef, type RefTarget, type RefBroken } from "./view";
 export { setCodeHighlighter, highlightCode, cachedCode, colorCode, type CodeHighlighter } from "./code";
 export { staticTextRange, staticDomRange, docRange, type StaticTextRange } from "./selmap";
 export { toggleStaticMark, staticMarkActive, type StaticMark } from "./marks";

@@ -11,6 +11,7 @@ import { render } from "solid-js/web";
 import { createEffect, createSignal, For, onCleanup, Show, type Accessor } from "solid-js";
 import { baseExtensions, parseMd, pastedMd, serializeMd } from "../schema";
 import { annotNoteHtml } from "../render";
+import { paintRef } from "../view";
 import { Ghost } from "./ghost";
 import { Icon, type IconName } from "./icons";
 import { clipboardText } from "./clipboard";
@@ -40,8 +41,14 @@ export type MdEditorOpts = {
   isMac?: boolean;
   /** 结束编辑：改过给新的原文，没改给 null */
   onDone: (v: string | null) => void;
-  /** [[ 引用：候选（kind 显示在右边）、/ 菜单里那一项的名字、没有对得上的候选时的提示。不给就没有 [[ 菜单 */
-  refs?: { items: () => { id: string; title: string; kind: string }[]; menu: string; empty: string };
+  /** [[ 引用：候选（kind 显示在右边）、/ 菜单里那一项的名字、没有对得上的候选时的提示。不给就没有 [[ 菜单。
+   *  groups = 别处（白板：别的白板）的候选，一组一处，排在本地的后面：组头那一行本身能选（引用那一处），没打字时每组露 3 个、多的收进「N more in 组」；
+   *  recent = 没打字时排在最前的最近选过的（group 不给 = 本地的）；here = 有 groups 或 recent 时本地那组的名字；foot = 列表下面的一行字；
+   *  picked = 选了一项（记最近选过的） */
+  refs?: {
+    items: () => RefItem[]; menu: string; empty: string;
+    groups?: () => RefGroup[]; recent?: () => RefPick[]; here?: string; foot?: () => string; picked?: (p: RefPick) => void;
+  };
   /** 存图（粘贴、拖进来、/Image）：回写进 Markdown 的地址，null = 不插（存不了，用的一方自己提示）；不给就把 data: 地址原样写进去 */
   saveImage?: SaveImage;
   pickImage?: () => Promise<string | null>;
@@ -55,9 +62,18 @@ export type MdEditorOpts = {
   dragHandle?: boolean;
 };
 export type { CodeLang } from "./codelang";
+/** [[ 的一个候选：label = 写进 [[…]] 的（不给就是 title），crumb = 标在标题后面的小字（白板：所在的 Section） */
+export type RefItem = { id: string; title: string; kind: string; label?: string; crumb?: string };
+/** 别处的一组候选：title = 那一处的名字，label = 引用那一处本身时写进 [[…]] 的，note = 组头右边的字 */
+export type RefGroup = { id: string; title: string; label?: string; note?: string; items: RefItem[] };
+export type RefPick = { group?: string; id: string };
 export type MdEditorHandle = { value(): string | null; destroy(): void; editor(): Editor };
 
-type MenuItem = { title: string; hint?: string; key: string; run: (e: Editor, r: Range) => void; ref?: true };
+/**
+ * 菜单的一项。crumb = 标题后面的灰色小字；cls = 样子（brow：别处那一组的组头，child：组里的，more：「N more」）；
+ * head / sep = 这一项上面的组名、分隔线（不能选）；expand = 选它不插东西，而是原地多列出几项（菜单不关）
+ */
+type MenuItem = { title: string; hint?: string; key: string; run: (e: Editor, r: Range) => void; ref?: true; crumb?: string; cls?: "brow" | "child" | "more"; head?: { text: string; cur?: boolean }; sep?: true; expand?: () => void };
 
 const SLASH: MenuItem[] = [
   { title: "Heading 1", key: "h1 title", hint: "#", run: (e, r) => e.chain().focus().deleteRange(r).setNode("heading", { level: 1 }).run() },
@@ -88,6 +104,8 @@ type Ui = {
   setLink: (v: string | null) => void;
   /** 查找条开着就关上（Esc） */
   closeFind: () => boolean;
+  /** 下一次选中项变了时要不要把它滚进视野（键盘、打字：要；指针移上去、点「more」展开：不要，列表不跳） */
+  follow: boolean;
   opts: MdEditorOpts;
 };
 const uiOf = new WeakMap<Editor, Ui>();
@@ -116,7 +134,7 @@ async function insertPickedImage(e: Editor) {
   await insertImageUrl(e, saveImage(ui!.opts), url, "image.png");
 }
 
-function menuSuggestion(editor: Editor, kind: "slash" | "ref" | "emoji", o: { char: string; key?: string; quiet?: boolean; allowSpaces?: boolean; allowedPrefixes?: string[] | null; items: (q: string) => MenuItem[]; on?: () => boolean }) {
+function menuSuggestion(editor: Editor, kind: "slash" | "ref" | "emoji", o: { char: string; key?: string; quiet?: boolean; allowSpaces?: boolean; allowedPrefixes?: string[] | null; items: (q: string) => MenuItem[]; on?: () => boolean; start?: () => void }) {
   return Suggestion<MenuItem, MenuItem>({
     editor,
     pluginKey: new PluginKey(`cb-${o.key ?? kind}`),
@@ -130,15 +148,25 @@ function menuSuggestion(editor: Editor, kind: "slash" | "ref" | "emoji", o: { ch
       const ui = () => uiOf.get(editor)!;
       const show = (p: SuggestionProps<MenuItem, MenuItem>) => {
         last = p;
+        ui().follow = true;
         const cur = ui().menu();
         ui().setMenu(p.items.length || (kind === "ref" && !o.quiet) ? { kind, items: p.items, i: Math.min(cur?.kind === kind ? cur.i : 0, Math.max(0, p.items.length - 1)) } : null);
       };
+      // 「N more」：原地多列出几项，选中的还在这一格（换成展开出来的第一项）
+      const pick = (it: MenuItem, keys: boolean) => {
+        if (!it.expand) return last?.command(it);
+        it.expand();
+        const m = ui().menu(), items = last ? o.items(last.query) : [];
+        ui().follow = keys;
+        ui().setMenu({ kind, items, i: Math.max(0, Math.min(m?.i ?? 0, items.length - 1)) });
+      };
       return {
         onStart: (p) => {
+          o.start?.();
           box = document.createElement("div");
           box.className = "mdui-anchor";
           unmount = p.mount(box, {});
-          const dispose = render(() => <MenuView ui={ui()} pick={(it) => last?.command(it)} />, box);
+          const dispose = render(() => <MenuView ui={ui()} pick={(it) => pick(it, false)} />, box);
           const u0 = unmount;
           unmount = () => { dispose(); u0(); };
           show(p);
@@ -151,10 +179,11 @@ function menuSuggestion(editor: Editor, kind: "slash" | "ref" | "emoji", o: { ch
           if (!m.items.length) return false;
           if (event.key === "ArrowDown" || event.key === "ArrowUp") {
             const d = event.key === "ArrowDown" ? 1 : -1;
+            ui().follow = true;
             ui().setMenu({ ...m, i: (m.i + d + m.items.length) % m.items.length });
             return true;
           }
-          if (event.key === "Enter" || event.key === "Tab") { last?.command(m.items[m.i]); return true; }
+          if (event.key === "Enter" || event.key === "Tab") { pick(m.items[m.i], true); return true; }
           return false;
         },
         onExit: () => { ui().setMenu(null); unmount?.(); unmount = undefined; },
@@ -163,20 +192,43 @@ function menuSuggestion(editor: Editor, kind: "slash" | "ref" | "emoji", o: { ch
   });
 }
 
+/** 选中项上下各留 2.5 行再滚（到列表两头时除外）：往下翻时看得到接下来是什么 */
+function keepInView(list: HTMLElement, row: HTMLElement) {
+  const h = row.offsetHeight, m = h * 2.5, y = row.offsetTop;
+  if (y - m < list.scrollTop) list.scrollTop = Math.max(0, y - m);
+  else if (y + h + m > list.scrollTop + list.clientHeight) list.scrollTop = y + h + m - list.clientHeight;
+}
+
 function MenuView(p: { ui: Ui; pick: (it: MenuItem) => void }) {
   return (
-    <Show when={p.ui.menu()}>{(m) => (
-      <div class="ctx open md-menu" role="listbox" onMouseDown={(e) => e.preventDefault()} onPointerDown={(e) => e.stopPropagation()}>
-        <Show when={m().items.length} fallback={<div class="md-empty">{m().kind === "ref" ? p.ui.opts.refs?.empty : "No matching block"}</div>}>
-          <For each={m().items}>{(it, i) => (
-            <button role="option" classList={{ sel: i() === m().i }} onClick={() => p.pick(it)} onPointerEnter={() => p.ui.setMenu({ ...m(), i: i() })}
-              ref={(el) => queueMicrotask(() => { if (i() === m().i) el.scrollIntoView({ block: "nearest" }); })}>
-              <span class="lb">{it.title}</span><Show when={it.hint}><small>{it.hint}</small></Show>
-            </button>
-          )}</For>
-        </Show>
-      </div>
-    )}</Show>
+    <Show when={p.ui.menu()}>{(m) => {
+      let list!: HTMLDivElement;
+      const foot = () => (m().kind === "ref" ? p.ui.opts.refs?.foot?.() : undefined);
+      createEffect(() => {
+        const i = m().i;
+        void m().items;
+        if (!p.ui.follow) return;
+        p.ui.follow = false;
+        const row = list.querySelectorAll<HTMLElement>(":scope > button")[i];
+        if (row) keepInView(list, row);
+      });
+      return (
+        <div class="ctx open md-menu md-pick" classList={{ "md-refs": m().kind === "ref" }} role="listbox" onMouseDown={(e) => e.preventDefault()} onPointerDown={(e) => e.stopPropagation()}>
+          <div class="md-list" ref={list}>
+            <Show when={m().items.length} fallback={<div class="md-empty">{m().kind === "ref" ? p.ui.opts.refs?.empty : "No matching block"}</div>}>
+              <For each={m().items}>{(it, i) => (<>
+                <Show when={it.sep}><div class="md-gsep" /></Show>
+                <Show when={it.head}>{(h) => <div class="md-gh" classList={{ cur: !!h().cur }}>{h().text}</div>}</Show>
+                <button role="option" class={it.cls} classList={{ sel: i() === m().i }} onClick={() => p.pick(it)} onPointerEnter={() => p.ui.setMenu({ ...m(), i: i() })}>
+                  <span class="lb">{it.title}</span><Show when={it.crumb}><span class="bc">{it.crumb}</span></Show><Show when={it.hint}><small>{it.hint}</small></Show>
+                </button>
+              </>)}</For>
+            </Show>
+          </div>
+          <Show when={foot()}><div class="md-foot">{foot()}</div></Show>
+        </div>
+      );
+    }}</Show>
   );
 }
 
@@ -335,6 +387,16 @@ function annotView({ mark, HTMLAttributes }: MarkViewRendererProps) {
   return { dom, contentDOM: body, ignoreMutation: (m: { target: Node }) => label.contains(m.target) };
 }
 
+/** 编辑时的 [[引用]] 和静态的画法一样（paintRef：标题、badge、找不到的样子） */
+function refView(node: PMNode) {
+  const dom = document.createElement("span");
+  dom.className = "md-ref";
+  dom.dataset.ref = node.attrs.label;
+  dom.textContent = node.attrs.label;
+  paintRef(dom);
+  return { dom };
+}
+
 // 每次排版时读：公式预设换了也跟上，公式里的 \newcommand 不漏到别的公式
 const mathOptions = { throwOnError: false, get macros() { return mathMacros(); } };
 
@@ -344,6 +406,7 @@ function editorExtensions(o: MdEditorOpts, ed: () => Editor, handle: HTMLElement
   const base = baseExtensions.map((x) => (x.name === "inlineMath" ? x.configure({ onClick: onMath, katexOptions: mathOptions })
     : x.name === "blockMath" ? (x as TNode).extend({ addNodeView: () => ({ node, view, getPos }) => new MathBlockView(node, view, getPos as () => number | undefined) })
     : x.name === "annot" ? (x as TMark).extend({ addMarkView: () => annotView })
+    : x.name === "wikiRef" ? (x as TNode).extend({ addNodeView: () => ({ node }) => refView(node) })
     : x.name === "image" ? imageEditing(x as TNode, ed, () => saveImage(o))
     : x.name === "codeBlock" ? (x as TNode).extend({ addProseMirrorPlugins: () => [codeGapClick()], addNodeView: () => ({ node, view, getPos }) => new CodeBlockView(node, view, getPos as () => number | undefined, { editor: ed, exit: () => { if (!uiOf.get(ed())?.closeFind()) exit(); }, complete, comment: (l) => o.code?.comment?.(l), lsp: (l) => o.code?.lsp?.(l), stopPointerDown: o.code?.stopPointerDown, langs: () => o.code?.langs ?? [] }) })
     : x));
@@ -358,26 +421,70 @@ function editorExtensions(o: MdEditorOpts, ed: () => Editor, handle: HTMLElement
     },
   });
   // 引用卡片：[[、全角的【【（中文输入法下不用切半角）和 @ 都打开同一个卡片列表
-  const refItems = (close: string) => (q: string): MenuItem[] => {
-    const s = q.replace(/[\]】]+$/, "").trim().toLowerCase();
-    const all = o.refs?.items() ?? [];
-    const hit = (t: string) => { const l = t.toLowerCase(); return !s ? 1 : l.startsWith(s) ? 3 : l.includes(s) ? 2 : 0; };
-    return all.map((c) => ({ c, w: hit(c.title) })).filter((x) => x.w).sort((a, b) => b.w - a.w).slice(0, 30)
-      .map(({ c }) => ({ title: c.title, hint: c.kind, key: c.id, run: (e: Editor, r: Range) => {
-        // 自动配对补上的 ]]（pairs.ts）或手打的 】】 也一起换掉
-        const to = close && e.state.doc.textBetween(r.to, Math.min(r.to + close.length, e.state.doc.content.size), "", "\ufffc") === close ? r.to + close.length : r.to;
-        e.chain().focus().insertContentAt({ from: r.from, to }, [{ type: "wikiRef", attrs: { label: c.title } }, { type: "text", text: " " }]).run();
-      } }));
+  const refItems = (close: string) => {
+    // 这一次打开的列表里展开了的组（「N more」）
+    const open = new Set<string>();
+    const insert = (label: string, pick: RefPick) => (e: Editor, r: Range) => {
+      // 自动配对补上的 ]]（pairs.ts）或手打的 】】 也一起换掉
+      const to = close && e.state.doc.textBetween(r.to, Math.min(r.to + close.length, e.state.doc.content.size), "", "￼") === close ? r.to + close.length : r.to;
+      e.chain().focus().insertContentAt({ from: r.from, to }, [{ type: "wikiRef", attrs: { label } }, { type: "text", text: " " }]).run();
+      o.refs?.picked?.(pick);
+    };
+    const row = (c: RefItem, g?: RefGroup, more: Partial<MenuItem> = {}): MenuItem =>
+      ({ title: c.title, hint: c.kind, key: `${g?.id ?? ""}/${c.id}`, run: insert(c.label ?? c.title, { group: g?.id, id: c.id }), ...more });
+    const self = (g: RefGroup): RefItem => ({ id: g.id, title: g.title, kind: "whiteboard", label: g.label ?? g.title });
+    const where = (c: RefItem, g?: RefGroup) => (g ? [g.title, c.crumb].filter(Boolean).join(" › ") : undefined);
+    const items = (q: string): MenuItem[] => {
+      const s = q.replace(/[\]】]+$/, "").trim().toLowerCase();
+      const here = o.refs?.items() ?? [], groups = o.refs?.groups?.() ?? [];
+      const hit = (t: string) => { const l = t.toLowerCase(); return !s ? 1 : l.startsWith(s) ? 3 : l.includes(s) ? 2 : 0; };
+      if (s) {
+        const mine = here.map((c) => ({ c, w: hit(c.title) })).filter((x) => x.w).sort((a, b) => b.w - a.w).slice(0, 30).map(({ c }) => row(c));
+        // 别处的：标题对上的在前；只对上了所在的地方（组名、crumb）的排在后面
+        const far: { m: MenuItem; w: number }[] = [];
+        for (const g of groups) {
+          const gw = hit(g.title);
+          if (gw) far.push({ m: row(self(g), g), w: gw });
+          for (const c of g.items) {
+            const w = hit(c.title) || (hit(`${g.title} ${c.crumb ?? ""}`) && 1);
+            if (w) far.push({ m: row(c, g, { crumb: where(c, g) }), w });
+          }
+        }
+        const other = far.sort((a, b) => b.w - a.w).slice(0, 30).map((x) => x.m);
+        if (mine.length && other.length) other[0] = { ...other[0], sep: true };
+        return [...mine, ...other];
+      }
+      const out: MenuItem[] = [], seen = new Set<string>();
+      for (const r of o.refs?.recent?.() ?? []) {
+        const g = r.group ? groups.find((x) => x.id === r.group) : undefined;
+        if (r.group && !g) continue;
+        const c = !g ? here.find((x) => x.id === r.id) : r.id === g.id ? self(g) : g.items.find((x) => x.id === r.id);
+        if (!c) continue;
+        seen.add(`${r.group ?? ""}/${r.id}`);
+        out.push(row(c, g, { crumb: where(c, g), head: out.length ? undefined : { text: "Recent" } }));
+      }
+      const titled = !!(groups.length || out.length);
+      here.filter((c) => !seen.has(`/${c.id}`)).slice(0, 30).forEach((c, i) => out.push(row(c, undefined, i || !titled ? {} : { head: { text: o.refs?.here ?? "Here", cur: true } })));
+      for (const g of groups) {
+        const rest = g.items.filter((c) => !seen.has(`${g.id}/${c.id}`));
+        out.push(row(self(g), g, { cls: "brow", hint: g.note }));
+        const lim = open.has(g.id) ? rest.length : 3;
+        for (const c of rest.slice(0, lim)) out.push(row(c, g, { cls: "child", crumb: c.crumb }));
+        if (rest.length > lim) out.push({ title: `${rest.length - lim} more in ${g.title}`, key: `${g.id}/+`, cls: "more", run: () => undefined, expand: () => open.add(g.id) });
+      }
+      return out;
+    };
+    return { items, start: () => open.clear() };
   };
   const Ref = Extension.create({
     name: "cbRef",
     addProseMirrorPlugins() {
       const on = () => !!o.refs;
       return [
-        menuSuggestion(this.editor, "ref", { char: "[[", allowSpaces: true, allowedPrefixes: null, on, items: refItems("]]") }),
-        menuSuggestion(this.editor, "ref", { char: "【【", key: "ref-cjk", allowSpaces: true, allowedPrefixes: null, on, items: refItems("】】") }),
+        menuSuggestion(this.editor, "ref", { char: "[[", allowSpaces: true, allowedPrefixes: null, on, ...refItems("]]") }),
+        menuSuggestion(this.editor, "ref", { char: "【【", key: "ref-cjk", allowSpaces: true, allowedPrefixes: null, on, ...refItems("】】") }),
         // @ 在正文里也常见（邮箱、@某人）：没有对上的卡就不弹空列表
-        menuSuggestion(this.editor, "ref", { char: "@", key: "ref-at", quiet: true, allowSpaces: true, allowedPrefixes: null, on, items: refItems("") }),
+        menuSuggestion(this.editor, "ref", { char: "@", key: "ref-at", quiet: true, allowSpaces: true, allowedPrefixes: null, on, ...refItems("") }),
       ];
     },
   });
@@ -667,7 +774,7 @@ export function mountEditor(host: HTMLElement, o: MdEditorOpts): MdEditorHandle 
   document.body.append(layer);
   // 查找条在 host 里（编辑器右上角）：焦点在它和编辑器之间来回不算离开
   find = noteFind(editor.view, host, { isMac: o.isMac, owns: (n) => host.contains(n) || layer.contains(n), leave: (ev) => blurred(ev) });
-  const ui: Ui = { menu, setMenu, link, setLink, closeFind: () => !!find?.close(), opts: o };
+  const ui: Ui = { menu, setMenu, link, setLink, closeFind: () => !!find?.close(), follow: false, opts: o };
   uiOf.set(editor, ui);
   const disposeUi = render(() => <Bubble editor={editor} tick={tick} ui={ui} />, layer);
 

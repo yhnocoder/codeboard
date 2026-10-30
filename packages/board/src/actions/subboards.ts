@@ -5,7 +5,8 @@ import { state, mutate, sel, select, clearSel, cardById, hostOf, rectOf, toast, 
 import { camTarget, camTo, fitRect, viewportCenter } from "../state/camera";
 import { iconHtml } from "../ui/icons";
 import { crumbs, frameOf, skelOf, subRefs, walkBack, setWalkBack, setCrumbMorph, heightToKeep } from "../state/subboards";
-import { resolveCardRef, revealCard, selectCard } from "./common";
+import { revealCard, selectCard } from "./common";
+import { paintRef } from "@yhnocoder/markdown";
 import { walk, setWalk } from "../state/ui";
 import { settleHome, frames as sectionFrames } from "../state/sections";
 import { ask, send } from "../host";
@@ -307,8 +308,10 @@ export async function deleteFrameBoard(id: string) {
 /** Esc：没有别的可取消的时候回上一级 */
 export const canLeave = () => crumbs().length > 0 && !sel.cards.length && !sel.links.length && !sel.sections.length;
 
-/** 点 [[引用]]：这块白板上的卡选中、带到眼前；子白板里的卡进那块子白板（更深的一路进去）再带到它；Section 选中、框进视口；别的白板打开它 */
-export function openCardRef(id: string) {
+/** 点 [[引用]]：这块白板上的卡选中、带到眼前；子白板里的卡进那块子白板（更深的一路进去）再带到它；Section 选中、框进视口；
+ *  别的白板打开它；别的白板上的卡（place = 那块白板）打开那块白板，选中、带到那张卡 */
+export function openCardRef(id: string, place?: string) {
+  if (place && place !== state.board.id) return send({ type: "openBoard", id: place, card: id });
   if (cardById(id)) { selectCard(id); revealCard(id); return; }
   const r = subRefs().find((x) => x.id === id);
   if (r) return enterFrame(r.frame, undefined, id);
@@ -316,14 +319,7 @@ export function openCardRef(id: string) {
   if (fr) { select({ sections: [id] }); const f = fitRect(fr, 1.4); camTo(f.x, f.y, f.z); return; }
   if (state.boards.some((m) => m.id === id)) send({ type: "openBoard", id });
 }
-/** 骨架到了以后，静态 Note 里的 [[引用]] 再认一遍（指向子白板里的卡的，骨架没到时显示成找不到） */
+/** 骨架、别的白板的卡到了以后，静态 Note 里的 [[引用]] 再认一遍（指向它们的，没到时显示成找不到） */
 export function refreshRefs() {
-  for (const r of document.querySelectorAll<HTMLElement>(".md .md-ref")) {
-    if (r.closest("[contenteditable=true]")) continue;
-    const hit = resolveCardRef(r.dataset.ref ?? "");
-    r.classList.toggle("missing", !hit);
-    if (!hit) continue;
-    if (hit.title !== r.textContent) r.textContent = hit.title;
-    r.removeAttribute("title");
-  }
+  for (const r of document.querySelectorAll<HTMLElement>(".md .md-ref")) if (!r.closest("[contenteditable=true]")) paintRef(r);
 }

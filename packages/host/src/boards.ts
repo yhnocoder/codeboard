@@ -1,5 +1,5 @@
 // 白板状态由界面持有，改动后把变了的项发回来保存（patch，存储改它缓存的那份再写盘）。
-import { boardQuestions, type Board, type BoardAsk, type BoardMeta, type BoardToHost, type Camera, type Crumb, type Event, type HostInfo, type HostToBoard, type Segment, type Settings, type Skeleton, type Stale, type WalkHop } from "@codeboard/core";
+import { boardQuestions, type Board, type BoardAsk, type BoardRefs, type BoardMeta, type BoardToHost, type Camera, type Crumb, type Event, type HostInfo, type HostToBoard, type Segment, type Settings, type Skeleton, type Stale, type WalkHop } from "@codeboard/core";
 import type { CardClip, Storage } from "@codeboard/core/storage";
 import { boardSegments, countStale, staleFor, staleSegments, variantSegments } from "./versions";
 import { syncVariants } from "./variants";
@@ -53,6 +53,10 @@ export interface BoardHost {
   /** 子白板的骨架重新推给白板（变了的）；now = 不等防抖，fresh = 刚 init 的白板 */
   refreshSkeletons(now?: boolean, fresh?: string): void;
   skeleton(id: string): Skeleton | null;
+  /** [[ 引用能选的别的白板上的卡（p 之后会收到变了的 boardRefs）；refreshBoardRefs 重推变了的；refPicked 记下最近选过的 */
+  boardRefs(p: BoardPanel): BoardRefs;
+  refreshBoardRefs(now?: boolean, fresh?: string): void;
+  refPicked(b: string, id: string): void;
   /** 面板换一块白板显示（进入 / 离开子白板） */
   switchBoard(p: BoardPanel, to: string, o: { crumbs: Crumb[]; cams: Camera[]; walk?: WalkHop; cam?: Camera }): Promise<boolean>;
   /** 每块白板上次打开的时间（「回来接上」的提示用）；opened 记下这一次 */
@@ -147,6 +151,7 @@ export class BoardPanel {
     for (const m of q) this.view.postMessage(m);
     this.mgr.refreshShared(true, this.id);
     this.mgr.refreshSkeletons(true, this.id);
+    this.mgr.refreshBoardRefs(true, this.id);
     this.mgr.staleChanged(this.id, countStale(b, stale));
     this.variantSent.clear();
     void this.refreshVariants(true);

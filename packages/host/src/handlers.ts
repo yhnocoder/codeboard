@@ -148,6 +148,11 @@ export function makeHandler(panels: BoardHost): Handler {
       await store.list(); // 缓存里还没有的白板先扫进来
       return Object.fromEntries(m.ids.map((id) => [id, panels.skeleton(id)]));
     },
+    boardRefs: async (p) => {
+      await store.list(); // 缓存里还没有的白板先扫进来
+      return panels.boardRefs(p);
+    },
+    refPicked: (_p, m) => panels.refPicked(m.b, m.id),
     subCard: async (_p, m) => {
       const b = store.peek(m.board) ?? (await store.load(m.board));
       const r = b && subCardOf(b, m.card);

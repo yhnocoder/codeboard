@@ -92,7 +92,7 @@
       "about": "Notes, sidenotes and the Markdown editor: rendering, editing, input rules, sizing, AI completions",
       "files": [
         "packages/board/src/cards/NoteBody.tsx", "packages/board/src/ui/{Md,Editable}.tsx", "packages/board/src/ui/pops/notes.tsx",
-        "packages/board/src/md/{lazy,load}.ts", "packages/board/src/actions/notes.ts", "packages/board/src/ui/vscodekeys.ts",
+        "packages/board/src/md/{lazy,load,refs}.ts", "packages/board/src/actions/notes.ts", "packages/board/src/ui/vscodekeys.ts",
         "packages/markdown/src/{index,render,schema,selmap,view,diagram,emoji,emoji-data}.ts", "packages/markdown/src/markdown.css",
         "packages/markdown/src/editor/{index,icons}.tsx",
         "packages/markdown/src/editor/{clipboard,codeblock,codelang,find,ghost,pairs,pastemarks,source,typora}.ts", "packages/markdown/src/ui/**",

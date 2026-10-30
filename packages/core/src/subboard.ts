@@ -184,6 +184,31 @@ function refsOf(b: Board, peek: (id: string) => Board | undefined): SkelRef[] {
   return out;
 }
 
+/** 别的白板上能 [[ 链接的一张卡：k = 种类（代码卡都是 code），s = 所在 Section 的名字 */
+export type BoardRef = { id: string; t: string; k: string; s?: string };
+/** [[ 选卡时列出的一块别的白板（宿主按最近打开的先后排）和它上面有真正标题的卡 */
+export type RefBoard = { id: string; name: string; refs: BoardRef[] };
+/** 最近选过的引用：b = 卡所在的白板，id = 卡（引用整块白板时就是白板 id） */
+export type RecentRef = { b: string; id: string };
+export type BoardRefs = { boards: RefBoard[]; recent: RecentRef[] };
+
+/** 一块白板自己（不往子白板里走）上有真正标题的卡（refTitle），按摆放的先后 */
+export function boardRefsOf(b: Board, nameOf: (id: string) => string | undefined = () => undefined): BoardRef[] {
+  const out: BoardRef[] = [];
+  const secs = new Map(b.sections.map((s) => [s.id, s.title.trim()]));
+  for (const c of b.cards) {
+    const p = b.place[c.id];
+    if (!p) continue;
+    const t = refTitle(c, nameOf)?.replace(/[\[\]\n]/g, " ").trim().slice(0, 160);
+    if (!t) continue;
+    const r: BoardRef = { id: c.id, t, k: isCode(c) ? "code" : c.kind };
+    const s = p.section && secs.get(p.section);
+    if (s) r.s = s;
+    out.push(r);
+  }
+  return out;
+}
+
 /** 代码卡里出现最多的 git commit（短）；没有 git 代码时 undefined */
 function mainCommit(b: Board): string | undefined {
   const n = new Map<string, number>();

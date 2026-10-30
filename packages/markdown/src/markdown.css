@@ -102,7 +102,14 @@ math { font-size: 1.05em; }
 .md-ref { display: inline-block; padding: 0 6px; margin: 0 1px; border-radius: 5px; line-height: 1.45; font-size: .94em; color: var(--k-fn); background: color-mix(in srgb, var(--k-fn) 11%, transparent); box-shadow: inset 0 0 0 .5px color-mix(in srgb, var(--k-fn) 30%, transparent); cursor: pointer; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; vertical-align: baseline; baseline-source: first; }
 .md-ref::before { content: "↗ "; opacity: .6; }
 .md-ref:hover { background: color-mix(in srgb, var(--k-fn) 18%, transparent); }
-.md-ref.missing { color: var(--ink-3); background: var(--hlrow); box-shadow: inset 0 0 0 .5px var(--hair); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--ink-3) 50%, transparent); }
+/* 别处（别的白板）的：标题后面带那一处的名字；那里没有这一项了：灰、标题划掉；那一处本身没了：警告色（paintRef） */
+.md-ref .bd { font-size: .86em; opacity: .62; margin-left: 4px; }
+.md-ref .bd::before { content: "· "; }
+.md-ref.missing { color: var(--ink-3); background: var(--hlrow); box-shadow: inset 0 0 0 .5px var(--hair); }
+.md-ref.missing:not(:has(> .t)), .md-ref.missing > .t { text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--ink-3) 50%, transparent); }
+.md-ref.gone { color: var(--warn); background: color-mix(in srgb, var(--warn) 10%, transparent); box-shadow: inset 0 0 0 .5px color-mix(in srgb, var(--warn) 35%, transparent); }
+.md-ref.gone::before { content: "⚠ "; opacity: .9; }
+.md-ref.gone > .bd { text-decoration: line-through; }
 .md sup.fnref { color: var(--k-fn); font-size: .75em; padding: 0 1px; }
 .md ol.footnotes { margin-top: 8px; padding-top: 4px; border-top: 1px solid var(--line); font-size: .9em; color: var(--ink-2); }
 /* Mermaid（pele 画的 SVG）的颜色和字体是 CSS 变量：接到主题变量上，换明暗 / 配色不用重画 */
@@ -200,6 +207,24 @@ math { font-size: 1.05em; }
 .md-menu { position: static; max-height: 300px; min-width: 220px; }
 .md-menu button.sel { background: var(--accent); color: var(--accent-ink); }
 .md-menu button.sel small { color: color-mix(in srgb, var(--accent-ink) 75%, transparent); }
+/* / [[ : 的菜单（editor MenuView）：列表在 .md-list 里滚，下面可以有一行字（.md-foot） */
+.md-menu.md-pick { display: flex; flex-direction: column; overflow: hidden; padding: 0; }
+.md-pick .md-list { position: relative; flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 5px; }
+.md-pick.md-refs { width: 372px; max-width: calc(100vw - 24px); max-height: 340px; }
+.md-pick button .lb { flex: 0 1 auto; min-width: 0; max-width: none; }
+.md-pick button .bc { flex: 0 10 auto; min-width: 0; font-size: 11px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.md-pick button small { flex: none; }
+.md-pick button.sel .bc { color: color-mix(in srgb, var(--accent-ink) 75%, transparent); }
+.md-pick button.brow { font-weight: 600; margin-top: 4px; }
+.md-pick button.child { padding-left: 16px; }
+.md-pick button.more { color: var(--ink-2); font-size: 12px; padding-left: 16px; }
+.md-pick button.more .lb::before { content: "+ "; }
+.md-pick button.more:is(.sel, :hover) { color: var(--accent-ink); }
+.md-pick .md-gh { padding: 7px 8px 3px; font: 600 10.5px var(--sys); color: var(--ink-3); letter-spacing: .03em; }
+.md-pick .md-list > .md-gh:first-child { padding-top: 3px; }
+.md-pick .md-gh.cur { color: var(--accent); }
+.md-pick .md-gsep { height: .5px; background: var(--hair); margin: 4px 6px; }
+.md-pick .md-foot { flex: none; padding: 5px 10px; border-top: .5px solid var(--line); font-size: 10.5px; color: var(--ink-3); text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .md-empty { padding: 6px 8px; font-size: 12px; color: var(--ink-3); }
 .md-bubble { position: absolute; z-index: 60; left: 0; top: 0; }
 .md-bubble { transform-origin: 50% 100%; animation: md-pop calc(var(--t) * 140ms) cubic-bezier(.2, .8, .2, 1); }
