@@ -116,10 +116,10 @@ async function insertPickedImage(e: Editor) {
   await insertImageUrl(e, saveImage(ui!.opts), url, "image.png");
 }
 
-function menuSuggestion(editor: Editor, kind: "slash" | "ref" | "emoji", o: { char: string; allowSpaces?: boolean; allowedPrefixes?: string[] | null; items: (q: string) => MenuItem[]; on?: () => boolean }) {
+function menuSuggestion(editor: Editor, kind: "slash" | "ref" | "emoji", o: { char: string; key?: string; quiet?: boolean; allowSpaces?: boolean; allowedPrefixes?: string[] | null; items: (q: string) => MenuItem[]; on?: () => boolean }) {
   return Suggestion<MenuItem, MenuItem>({
     editor,
-    pluginKey: new PluginKey(`cb-${kind}`),
+    pluginKey: new PluginKey(`cb-${o.key ?? kind}`),
     char: o.char, allowSpaces: o.allowSpaces, allowedPrefixes: o.allowedPrefixes,
     items: ({ query }) => o.items(query),
     command: ({ editor, range, props }) => props.run(editor, range),
@@ -131,7 +131,7 @@ function menuSuggestion(editor: Editor, kind: "slash" | "ref" | "emoji", o: { ch
       const show = (p: SuggestionProps<MenuItem, MenuItem>) => {
         last = p;
         const cur = ui().menu();
-        ui().setMenu(p.items.length || kind === "ref" ? { kind, items: p.items, i: Math.min(cur?.kind === kind ? cur.i : 0, Math.max(0, p.items.length - 1)) } : null);
+        ui().setMenu(p.items.length || (kind === "ref" && !o.quiet) ? { kind, items: p.items, i: Math.min(cur?.kind === kind ? cur.i : 0, Math.max(0, p.items.length - 1)) } : null);
       };
       return {
         onStart: (p) => {
@@ -357,23 +357,28 @@ function editorExtensions(o: MdEditorOpts, ed: () => Editor, handle: HTMLElement
       } })];
     },
   });
+  // 引用卡片：[[、全角的【【（中文输入法下不用切半角）和 @ 都打开同一个卡片列表
+  const refItems = (close: string) => (q: string): MenuItem[] => {
+    const s = q.replace(/[\]】]+$/, "").trim().toLowerCase();
+    const all = o.refs?.items() ?? [];
+    const hit = (t: string) => { const l = t.toLowerCase(); return !s ? 1 : l.startsWith(s) ? 3 : l.includes(s) ? 2 : 0; };
+    return all.map((c) => ({ c, w: hit(c.title) })).filter((x) => x.w).sort((a, b) => b.w - a.w).slice(0, 30)
+      .map(({ c }) => ({ title: c.title, hint: c.kind, key: c.id, run: (e: Editor, r: Range) => {
+        // 自动配对补上的 ]]（pairs.ts）或手打的 】】 也一起换掉
+        const to = close && e.state.doc.textBetween(r.to, Math.min(r.to + close.length, e.state.doc.content.size), "", "\ufffc") === close ? r.to + close.length : r.to;
+        e.chain().focus().insertContentAt({ from: r.from, to }, [{ type: "wikiRef", attrs: { label: c.title } }, { type: "text", text: " " }]).run();
+      } }));
+  };
   const Ref = Extension.create({
     name: "cbRef",
     addProseMirrorPlugins() {
-      return [menuSuggestion(this.editor, "ref", {
-        char: "[[", allowSpaces: true, allowedPrefixes: null, on: () => !!o.refs,
-        items: (q) => {
-          const s = q.replace(/\]+$/, "").trim().toLowerCase();
-          const all = o.refs?.items() ?? [];
-          const hit = (t: string) => { const l = t.toLowerCase(); return !s ? 1 : l.startsWith(s) ? 3 : l.includes(s) ? 2 : 0; };
-          return all.map((c) => ({ c, w: hit(c.title) })).filter((x) => x.w).sort((a, b) => b.w - a.w).slice(0, 30)
-            .map(({ c }) => ({ title: c.title, hint: c.kind, key: c.id, run: (e: Editor, r: Range) => {
-              // 自动配对补上的 ]] 也一起换掉（pairs.ts）
-              const to = e.state.doc.textBetween(r.to, Math.min(r.to + 2, e.state.doc.content.size), "", "\ufffc") === "]]" ? r.to + 2 : r.to;
-              e.chain().focus().insertContentAt({ from: r.from, to }, [{ type: "wikiRef", attrs: { label: c.title } }, { type: "text", text: " " }]).run();
-            } }));
-        },
-      })];
+      const on = () => !!o.refs;
+      return [
+        menuSuggestion(this.editor, "ref", { char: "[[", allowSpaces: true, allowedPrefixes: null, on, items: refItems("]]") }),
+        menuSuggestion(this.editor, "ref", { char: "【【", key: "ref-cjk", allowSpaces: true, allowedPrefixes: null, on, items: refItems("】】") }),
+        // @ 在正文里也常见（邮箱、@某人）：没有对上的卡就不弹空列表
+        menuSuggestion(this.editor, "ref", { char: "@", key: "ref-at", quiet: true, allowSpaces: true, allowedPrefixes: null, on, items: refItems("") }),
+      ];
     },
   });
   // 打完 :名字: 直接变是 schema.ts 的输入规则

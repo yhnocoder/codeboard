@@ -7,7 +7,7 @@ import { iconHtml } from "../ui/icons";
 import { crumbs, frameOf, skelOf, subRefs, walkBack, setWalkBack, setCrumbMorph } from "../state/subboards";
 import { resolveCardRef, revealCard, selectCard } from "./common";
 import { walk, setWalk } from "../state/ui";
-import { settleHome } from "../state/sections";
+import { settleHome, frames as sectionFrames } from "../state/sections";
 import { ask, send } from "../host";
 import { promptText } from "../ui/Menu";
 
@@ -305,11 +305,14 @@ export async function deleteFrameBoard(id: string) {
 /** Esc：没有别的可取消的时候回上一级 */
 export const canLeave = () => crumbs().length > 0 && !sel.cards.length && !sel.links.length && !sel.sections.length;
 
-/** 点 [[引用]]：这块白板上的卡选中、带到眼前；子白板里的卡进那块子白板（更深的一路进去）再带到它 */
+/** 点 [[引用]]：这块白板上的卡选中、带到眼前；子白板里的卡进那块子白板（更深的一路进去）再带到它；Section 选中、框进视口；别的白板打开它 */
 export function openCardRef(id: string) {
   if (cardById(id)) { selectCard(id); revealCard(id); return; }
   const r = subRefs().find((x) => x.id === id);
-  if (r) enterFrame(r.frame, undefined, id);
+  if (r) return enterFrame(r.frame, undefined, id);
+  const fr = sectionFrames().get(id);
+  if (fr) { select({ sections: [id] }); const f = fitRect(fr, 1.4); camTo(f.x, f.y, f.z); return; }
+  if (state.boards.some((m) => m.id === id)) send({ type: "openBoard", id });
 }
 /** 骨架到了以后，静态 Note 里的 [[引用]] 再认一遍（指向子白板里的卡的，骨架没到时显示成找不到） */
 export function refreshRefs() {

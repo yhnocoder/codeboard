@@ -114,6 +114,39 @@ async function renderIn(themes: string[]) {
   }
 }
 
+/** @ lists Sections and other boards next to cards; a chip to a Section selects and frames it, one to another board opens that board */
+test("noteRefSectionAndBoard", async () => {
+  const { b } = mdBoard();
+  b.sections.push({ id: "g1", title: "Prefill stage", x: 1300, y: 60, w: 400, h: 300 });
+  const note: NoteCard = { id: "n2", kind: "note", md: "see [[Prefill stage]] and [[Kernels]]", look: "note" };
+  put(b, note, 60, 700, 360);
+  const h = await open({ board: b, light, w: 1400, h: 950 });
+  await h.post({ type: "boards", boards: [{ id: "b1", name: "markdown", cards: b.cards.length }, { id: "bk", name: "Kernels", cards: 3 }] });
+  await until(h, "both chips resolve", () => h.page.evaluate(() => document.querySelectorAll('.card[data-id="n2"] .md-ref:not(.missing)').length === 2));
+  const pg = h.page;
+  await pg.locator('.card[data-id="n2"] .md-ref', { hasText: "Kernels" }).click();
+  await until(h, "the chip opens the other board", () => h.sent.some((m) => m.type === "openBoard" && m.id === "bk"));
+  // @ 的列表：Section 和别的白板带着类型
+  // 双击正文右边空白处（别点在引用上）
+  const box = (await pg.locator('.card[data-id="n2"] .nbody').boundingBox())!;
+  await pg.locator('.card[data-id="n2"] .nbody').dblclick({ position: { x: box.width - 8, y: box.height / 2 } });
+  await pg.locator('.card[data-id="n2"] .md-pm').waitFor();
+  await focusSettled(pg);
+  await pg.evaluate(() => { const e = (document.querySelector('.card[data-id="n2"] .md-pm') as any).editor; e.commands.setTextSelection(e.state.doc.content.size - 1); });
+  await pg.keyboard.type(" @");
+  await pg.locator(".md-menu button").first().waitFor();
+  const items = await pg.locator(".md-menu button").allTextContents();
+  await saveShot(h, "md-at-ref");
+  const ok = items.some((t) => t.includes("Prefill stage") && t.includes("section")) && items.some((t) => t.includes("Kernels") && t.includes("whiteboard")) && !items.some((t) => t.includes("markdown") && t.includes("whiteboard"));
+  check("noteRefSectionAndBoard picker", ok, { items });
+  // 最后点 Section 的引用（镜头会挪到 Section 那边）
+  await pg.keyboard.press("Escape");
+  await pg.keyboard.press("Escape");
+  await pg.locator('.card[data-id="n2"] .nbody .md-ref', { hasText: "Prefill stage" }).click();
+  await until(h, "the chip selects the Section", () => pg.locator('.sect.sel[data-sect="g1"]').count());
+  await close(h);
+});
+
 /** WYSIWYG editing: lazy chunk loads, typing with input rules, / menu, [[ picker, bubble toolbar, raw mode, ⌘Z stays in the editor, Esc saves */
 test("markdownEdit", async () => {
   const { b } = mdBoard();

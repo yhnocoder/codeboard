@@ -47,7 +47,12 @@ export function resolveCardRef(label: string): { id: string; title: string } | n
   for (const c of placed()) { const t = cardTitle(c, state.board); if (t.trim().toLowerCase() === low) return { id: c.id, title: t.trim() }; }
   // 子白板里的卡：[[子白板 › 卡]]
   const s = subRef(l);
-  return s ? { id: s.id, title: s.label } : null;
+  if (s) return { id: s.id, title: s.label };
+  // 卡以外：这块白板上的 Section，再是别的白板（@ 引用列出它们，同名时卡优先）
+  const sec = state.board.sections.find((x) => x.title.trim().toLowerCase() === low);
+  if (sec) return { id: sec.id, title: sec.title.trim() };
+  const b = state.boards.find((m) => m.id !== state.board.id && m.name.trim().toLowerCase() === low);
+  return b ? { id: b.id, title: b.name.trim() } : null;
 }
 export const hostRect = (id: string) => { const f = cardById(id); return f ? rectOf(f.host) : null; };
 

@@ -24,7 +24,7 @@ import "../src/settings.css";
 
 listen(onHost);
 installKeys();
-setRefResolver(resolveCardRef, { missing: "No card with this title on the board" });
+setRefResolver(resolveCardRef, { missing: "Nothing with this title on the board" });
 setCodeHighlighter(noteHighlight, langId);
 followHostTheme();
 
