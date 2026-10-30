@@ -67,7 +67,7 @@ if (!base) {
 }
 const workers = Math.min(4, os.availableParallelism());
 // Harness budget, for the over-budget warning: what is left of the 90 seconds, minus a margin for start-up and the slowest scenario finishing last, times the
-// scenario seconds this machine got through per second of wall time in the last check (the nightly estimates come from another
+// scenario seconds this machine got through per second of wall time in the last check (the regular-run estimates come from another
 // machine, and here the scenarios share the CPU with typecheck and unit tests); 0.8 per worker before the first run
 const JSON_OUT = path.join(REPO, "test-out/check/harness.json");
 const rate = (() => {

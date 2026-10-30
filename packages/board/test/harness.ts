@@ -146,7 +146,7 @@ export async function openBoard(browser: Browser, o: OpenOptions = {}, watch: Wa
 <script type="module" src="file://${MEDIA}/board.js"></script></body></html>`);
   const context = await browser.newContext({ viewport: { width: o.w ?? 1400, height: o.h ?? 900 }, deviceScaleFactor: 1 });
   const page = await context.newPage();
-  // coverage (nightly): which board code the scenario runs, for picking scenarios by changed file
+  // coverage (regular runs): which board code the scenario runs, for picking scenarios by changed file
   const cov = watch.coverage && (await functionCoverage(page));
   const closeContext = context.close.bind(context);
   let closed = false;

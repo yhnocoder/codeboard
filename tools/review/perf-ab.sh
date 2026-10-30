@@ -3,7 +3,7 @@
 # hits both sides equally, then compare them with perfdiff.mjs. Each side runs its own benchmark scripts.
 # Usage: tools/review/perf-ab.sh <base checkout dir, or "" for none> <out dir> [quick]
 #   quick (PR CI, to fit the 5-minute budget): head, base, head for the board benchmark and one host run per side instead of four and two
-#   full (nightly, no third argument): also the board benchmark with 100 animated GIF stickers on the board (run-perf.mjs --anim),
+#   full (regular runs, no third argument): also the board benchmark with 100 animated GIF stickers on the board (run-perf.mjs --anim),
 #   compared on its own in <out dir>/anim and appended to the summary. The base side runs it only when its benchmark has --anim
 # Exits 1 when perfdiff.mjs finds a regression.
 set -e

@@ -1,5 +1,5 @@
 // Feature areas (packages/board/test/tiers.json "areas"): which files belong to an area, and the group of scenarios that stands
-// for it. No dependencies, so that the nightly report (which runs without npm ci) can use it too.
+// for it. No dependencies, so that the regular report (which runs without npm ci) can use it too.
 
 /** A glob as a RegExp over a repository path: ** any depth, * and ? within one path segment, {a,b} alternatives */
 export function globRe(g) {

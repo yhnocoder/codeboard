@@ -7,10 +7,10 @@
 //          jobs it needs; with --dry --json=plan.json it writes the plan ({ shards, run, deferred, notes, planned }) for them
 //        --plan=<plan.json>: run that plan's scenarios (with --shard=i/n, the i-th of n parts by their times in the plan)
 //        --dry: print what would run (and what is left out), run nothing
-//        --coverage: also record which source files each scenario runs (nightly, for --select)
+//        --coverage: also record which source files each scenario runs (regular runs, for --select)
 //        --against=<ref>: run the scenarios (as they are now) on the board built from <ref>: does a new scenario fail on the old code?
 //          The build is made once per commit in a git worktree, test-out/against/<commit>
-//        --changed-since=<commit> --repeat=N [--cap=<minutes>]: the nightly flake repeat. The scenarios defined in test files changed
+//        --changed-since=<commit> --repeat=N [--cap=<minutes>]: the regular runs' flake repeat. The scenarios defined in test files changed
 //          since <commit> (tools/test/pick.mjs repeatPick), each run N times (Playwright --repeat-each), within a wall-time cap
 //          (default 15 min). No second run alone: any failed repetition fails the scenario. A missing or unknown <commit> is an
 //          error, written to --json as { error } (no fallback to some other set of scenarios).
@@ -38,7 +38,7 @@ const writeJson = (data) => {
   fs.mkdirSync(path.dirname(path.resolve(out)), { recursive: true });
   fs.writeFileSync(out, JSON.stringify(data, null, 1));
 };
-// with --changed-since the error goes into --json too, so that the nightly report shows it
+// with --changed-since the error goes into --json too, so that the regular report shows it
 const sinceMode = has("changed-since") || opt("changed-since") !== undefined;
 const die = (msg) => { console.error(msg); if (sinceMode) writeJson({ error: msg, results: [] }); process.exit(2); };
 
@@ -59,7 +59,7 @@ let list, plan;
 const since = opt("changed-since");
 const workersWanted = +(opt("workers") ?? Math.min(4, os.availableParallelism()));
 if (sinceMode) {
-  if (!since) die("--changed-since: no base commit (no previous scheduled nightly run found): nothing repeated");
+  if (!since) die("--changed-since: no base commit (no previous scheduled regular run found): nothing repeated");
   let change;
   try { change = changes(since); } catch (e) { die(`--changed-since: ${e.message}`); }
   plan = repeatPick({ all, change, impact, tiers, repeat, workers: workersWanted, capMs: +(opt("cap") ?? 15) * 60000 });
@@ -93,7 +93,7 @@ const sh = opt("shard")?.split("/").map(Number);
 const planMs = Object.fromEntries((opt("plan") ? plan.run : []).map((x) => [x.name, x.ms]));
 if (sh) list = shard(list, sh[0], sh[1], (it) => planMs[it.name] ?? msOf(it.name));
 
-const left = since ? "not repeated (over the cap)" : "left to the nightly run";
+const left = since ? "not repeated (over the cap)" : "left to the regular run";
 const workers = Math.max(1, Math.min(workersWanted, list.length * repeat));
 const why = Object.fromEntries(list.map((x) => [x.name, x.why]));
 const counts = Object.entries(Object.groupBy(list, (x) => x.why)).map(([w, xs]) => `${xs.length} ${w}`).join(", ");

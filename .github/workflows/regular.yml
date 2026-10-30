@@ -1,13 +1,15 @@
-name: Nightly
+# The full test tier, every 6 hours: every harness scenario (with coverage, for the impact map), the whole e2e, full perf,
+# Storybook and the flake repeat. Reports to the results issue (#19) only when something changes.
+name: Regular
 on:
   schedule:
-    - cron: "30 18 * * *" # 02:30 Beijing time, before the replay at 03:00
+    - cron: "30 0,6,12,18 * * *" # every 6 hours: 02:30, 08:30, 14:30, 20:30 Beijing time, each 30 min before a replay (replay.yml)
   workflow_dispatch:
 permissions:
   contents: write
   issues: write
 concurrency:
-  group: nightly-${{ github.ref }}
+  group: regular-${{ github.ref }}
   cancel-in-progress: true
 env:
   VSCODE_VERSION: "1.142.0"
@@ -67,6 +69,7 @@ jobs:
       - uses: ./.github/actions/setup
       - uses: ./.github/actions/chromium
       - name: Check out and build main as it was a day earlier
+        # a fixed day back, not the previous run's commit: a 6-hour window often holds no change, and a slow drift over a day shows
         run: |
           BASE=$(git rev-list -1 --before="24 hours ago" HEAD)
           if [ -n "$BASE" ] && [ "$BASE" != "$(git rev-parse HEAD)" ]; then tools/review/checkout-base.sh "$BASE" base; fi
@@ -100,14 +103,14 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with: { fetch-depth: 0 } # the base commit and the diff to it
-      - name: Find the previous scheduled nightly run
+      - name: Find the previous scheduled regular run
         id: base
         env: { GH_TOKEN: "${{ github.token }}" }
         run: |
-          BASE=$(gh api "repos/${{ github.repository }}/actions/workflows/nightly.yml/runs?event=schedule&status=completed&per_page=30" \
+          BASE=$(gh api "repos/${{ github.repository }}/actions/workflows/regular.yml/runs?event=schedule&status=completed&per_page=30" \
             --jq '[.workflow_runs[] | select(.id != ${{ github.run_id }} and (.conclusion == "success" or .conclusion == "failure"))][0].head_sha // ""') || BASE=""
           if [ -z "$BASE" ]; then
-            MSG="no previous finished scheduled nightly run found: nothing repeated"
+            MSG="no previous finished scheduled regular run found: nothing repeated"
             echo "::error::Flake repeat: $MSG"
             mkdir -p test-out/harness
             node -e 'require("fs").writeFileSync("test-out/harness/repeat.json", JSON.stringify({ error: process.argv[1], results: [] }))' "$MSG"
@@ -140,21 +143,22 @@ jobs:
         with: { path: test-out/artifacts }
       - name: Publish the impact map
         run: tools/test/publish-impact.sh test-out/artifacts
-      - name: Report to the nightly issue
+      - name: Report to the results issue
         uses: actions/github-script@v8
         env:
           JOBS: ${{ toJSON(needs) }}
         with:
           script: |
-            const { nightlyReport } = await import(`${process.env.GITHUB_WORKSPACE}/tools/test/nightly-report.mjs`);
+            const { regularReport } = await import(`${process.env.GITHUB_WORKSPACE}/tools/test/regular-report.mjs`);
             const run = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
-            // Same issue as the nightly replay; this run keeps its own hidden markers
+            // Same issue as the scheduled replay; this run keeps its own hidden markers. The label keeps its old name: it is how
+            // the open issue (#19) is found, and a new name would open a new issue
             const LABEL = "replay-nightly";
             const open = await github.rest.issues.listForRepo({ ...context.repo, labels: LABEL, state: "open", per_page: 1 });
-            const issue = open.data[0] || (await github.rest.issues.create({ ...context.repo, title: "Nightly test results", labels: [LABEL],
-              body: "The nightly runs (`.github/workflows/nightly.yml`, `replay.yml`) comment here when their set of failures changes, including when everything passes again." })).data;
+            const issue = open.data[0] || (await github.rest.issues.create({ ...context.repo, title: "Scheduled test results", labels: [LABEL],
+              body: "The scheduled runs (`.github/workflows/regular.yml`, `replay.yml`, every 6 hours) comment here when their set of failures changes, including when everything passes again." })).data;
             const comments = await github.paginate(github.rest.issues.listComments, { ...context.repo, issue_number: issue.number, per_page: 100 });
-            const r = nightlyReport({ dir: "test-out/artifacts", jobs: JSON.parse(process.env.JOBS), comments: comments.map((c) => c.body || ""), run, sha: context.sha.slice(0, 7),
+            const r = regularReport({ dir: "test-out/artifacts", jobs: JSON.parse(process.env.JOBS), comments: comments.map((c) => c.body || ""), run, sha: context.sha.slice(0, 7),
               tiers: JSON.parse(require("fs").readFileSync(`${process.env.GITHUB_WORKSPACE}/packages/board/test/tiers.json`, "utf8")) });
             core.info(`failing: ${r.fails.length}, flakes: ${r.flaky.flakes.length}, alone: ${r.flaky.alone.length}${r.flaky.error ? `, repeat error: ${r.flaky.error}` : ""}, groups over their limits: ${r.groups.length}; comment: ${r.due}`);
             if (r.due) await github.rest.issues.createComment({ ...context.repo, issue_number: issue.number, body: r.body });

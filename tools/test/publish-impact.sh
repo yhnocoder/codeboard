@@ -1,5 +1,5 @@
 #!/bin/bash
-# For the nightly CI run: merge the harness results of all shards into the impact map that tools/test/pick.mjs reads, and push it
+# For the regular CI run: merge the harness results of all shards into the impact map that tools/test/pick.mjs reads, and push it
 # to the ci-screenshots branch under impact/ (harness.json: each scenario's time and the source files it ran; failing.json).
 # Usage: tools/test/publish-impact.sh <dir with harness-*/result.json>
 # Needs: run from the repo root with a pushable origin. Keeps the old map when a shard has no results.
