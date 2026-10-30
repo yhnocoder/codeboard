@@ -585,7 +585,11 @@ function editorExtensions(o: MdEditorOpts, ed: () => Editor, handle: HTMLElement
           if (at === null) return null;
           const end = at + st.doc.nodeAt(at)!.nodeSize, { $head } = st.selection;
           const inside = st.selection.empty && $head.pos > at && $head.pos < end;
-          return DecorationSet.create(st.doc, [Decoration.node(at, end, { class: inside ? "md-pad at" : "md-pad" })]);
+          // the block before it ends the Note's content (markdown.css: no bottom margin); a class, not a sibling :has() rule,
+          // which would restyle every block of the Note on each change
+          const prev = st.doc.resolve(at).nodeBefore, ds = [Decoration.node(at, end, { class: inside ? "md-pad at" : "md-pad" })];
+          if (prev) ds.push(Decoration.node(at - prev.nodeSize, at, { class: "md-prepad" }));
+          return DecorationSet.create(st.doc, ds);
         },
       },
     })],

@@ -62,13 +62,15 @@ describe("image width", () => {
     expect(im.classList.contains("sized")).toBe(true); // centered (markdown.css)
     expect(imgOf(renderMd("![](assets/w.png)")).hasAttribute("style")).toBe(false);
   });
-  it("keeps the paragraph around a sized image in a list item or table cell, so p:has(img.sized) centers it", () => {
+  it("keeps the paragraph around a sized image in a list item or table cell, marked p.md-psized to center it", () => {
     const host = document.createElement("div");
     host.innerHTML = renderMd("- ![](assets/w.png){width=40%}\n- ![](assets/w.png)\n\n| a |\n| - |\n| [![](assets/w.png){width=40%}](https://a.b) |");
     const [sized, full] = [...host.querySelectorAll("li")];
     expect(sized.firstElementChild!.tagName).toBe("P");
+    expect(sized.firstElementChild!.classList.contains("md-psized")).toBe(true);
     expect(full.firstElementChild!.tagName).toBe("IMG");
-    expect(host.querySelector("td > p img.sized")).not.toBeNull();
+    expect(host.querySelector("td > p.md-psized img.sized")).not.toBeNull();
+    expect(host.querySelectorAll("p.md-psized").length).toBe(2);
   });
 });
 

@@ -240,7 +240,10 @@ class TableBar {
     const v = this.view;
     if (v.isDestroyed) return;
     const live = v.hasFocus() || this.owns(document.activeElement) || !!this.open;
-    const pos = live && v.dom.isConnected && v.dom.offsetParent ? tablePos(v.state) : null;
+    // the state first: offsetParent forces a style and layout pass, which only a caret in a table needs
+    const at = live ? tablePos(v.state) : null;
+    const pos = at !== null && v.dom.isConnected && v.dom.offsetParent ? at : null;
+    if (pos === null && this.pos === null && !this.bar.isConnected) return;
     this.pos = pos;
     if (pos === null) { this.bar.remove(); if (this.open) this.closePick(false); return; }
     if (!this.bar.isConnected) document.body.append(this.bar);

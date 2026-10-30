@@ -431,3 +431,47 @@ test("noteSourceModeRoundTrip", async () => {
   check("noteSourceModeRoundTrip saved with layout", saved.startsWith("# Title\n\nSome **bold** NEW text here\n\n| a") && layoutOf(h, "n0")?.tables?.[0]?.cols?.[0] === 180 && Math.abs(col - 180) <= 1, { saved, layout: layoutOf(h, "n0"), col });
   await close(h);
 });
+
+/** Enter and Backspace (joining paragraphs) in a 200-paragraph Note cost about what they cost in a short one: nothing on the
+ *  page restyles every block of the Note when one is inserted or removed (each key's time: keydown to the frame after it) */
+test("noteLongNoteKeysScale", async () => {
+  const para = (i: number) => `Para ${i}: the SM also has ==registers==, **shared memory**, \`code ${i}\` and $x_{${i}} = ${i}$, *italic* and [a link](https://example.com/${i}), long enough to wrap onto a second line of the Note.`;
+  const long = Array.from({ length: 200 }, (_, i) => para(i + 1)).join("\n\n"), short = Array.from({ length: 6 }, (_, i) => para(i + 1)).join("\n\n");
+  const h = await open({ board: board([long, short]), light, w: 1400, h: 900 });
+  const pg = h.page;
+  await idle(h);
+  await pg.evaluate(() => {
+    const w = window as any; w.__lat = [];
+    document.addEventListener("keydown", () => { const t = performance.now(); requestAnimationFrame(() => setTimeout(() => w.__lat.push(performance.now() - t), 0)); }, true);
+  });
+  const timed = async (id: string, at: string) => {
+    await h.page.locator(`${card(id)} .nbody p`).first().dblclick();
+    await pg.locator(`${card(id)} .md-pm:focus`).waitFor();
+    await focusSettled(pg);
+    await pg.evaluate((at) => {
+      const e = (document.querySelector(".md-pm") as any).editor; let p = -1;
+      e.state.doc.descendants((n: any, pos: number) => { if (p < 0 && n.isText && n.text.startsWith(at)) p = pos + at.length; return p < 0; });
+      e.commands.setTextSelection(p);
+    }, at);
+    const out: Record<string, number> = {};
+    for (const [k, n] of [["Enter", 7], ["Backspace", 7]] as const) {
+      await pg.evaluate(() => { (window as any).__lat = []; });
+      for (let i = 0; i < n; i++) {
+        await pg.keyboard.press(k);
+        await pg.waitForFunction((i) => (window as any).__lat.length > i, i);
+      }
+      const l = await pg.evaluate(() => ((window as any).__lat as number[]).slice(1).sort((a, b) => a - b));
+      out[k] = +l[Math.floor(l.length / 2)].toFixed(1);
+    }
+    // MathML (KaTeX's default) turns on Chrome's MathML stylesheet, whose :nth-child rules restyle all later blocks on each insert
+    out.mathml = await pg.locator(".md-pm math").count();
+    await exitEdit(h);
+    return out;
+  };
+  const s = await timed("n1", "Para 3: the SM"), l = await timed("n0", "Para 100: the SM");
+  // a few ms of noise on a fast machine is not a regression: compare with at least 12 ms
+  const ok = (k: "Enter" | "Backspace") => l[k] <= 3 * Math.max(s[k], 12);
+  check("noteLongNoteKeysScale", ok("Enter") && ok("Backspace"), { short: s, long: l });
+  check("noteLongNoteKeysScale no MathML in the editor", l.mathml === 0, l.mathml);
+  await close(h);
+});

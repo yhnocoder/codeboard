@@ -52,6 +52,9 @@ function layout(node: PMNode, pos: number, cell: boolean, head: number | null, e
       const a = sp.atom;
       if (a) {
         const raw = text.slice(sp.from, sp.to);
+        // a narrowed image is centred in its line: a class on the paragraph (markdown.css; a p:has() rule would be checked
+        // again for every paragraph of the Note on each change)
+        if (a.type === "image" && a.width) out?.push(Decoration.node(pos, pos + node.nodeSize, { class: "md-psized" }));
         if (!act) {
           hide(from, to, true);
           out?.push(Decoration.widget(from, atomWidget(a, raw, (f) => f + caretIn(sp), toCaret, wrap), {

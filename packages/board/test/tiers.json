@@ -6,7 +6,7 @@
     "stickerBitmapsPicker", "notePastedImageSameSizeInBothModes"
   ],
   "manual": ["markdownRecord"],
-  "solo": ["markdownLazyRender", "codeEditKeystrokeLatency", "variantTabSwitchTime", "changesReachHostTime", "mathHintsKeystrokeTime", "noteFindTypingLatency", "nudgeHoldAccelerates"],
+  "solo": ["markdownLazyRender", "codeEditKeystrokeLatency", "variantTabSwitchTime", "changesReachHostTime", "mathHintsKeystrokeTime", "noteFindTypingLatency", "nudgeHoldAccelerates", "noteLongNoteKeysScale"],
   "known": {},
   "limits": {"area": 30, "smoke": 90, "local": 180},
   "broad": {

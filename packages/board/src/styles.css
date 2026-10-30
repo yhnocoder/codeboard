@@ -397,18 +397,20 @@ input, textarea { font: inherit; color: var(--ink); }
 
 .cmp .colh { display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid var(--line); flex: none; background: var(--head); }
 .cmp .colh > div { display: flex; align-items: center; gap: 6px; min-width: 0; white-space: nowrap; transition: opacity .2s; }
-.cmp .colh > div + div { border-left: 1px solid var(--line); }
+/* the two columns are .coll / .colr, not div + div: a sibling rule with descendants after it (.colr .chead > :not(.rev))
+   made Chrome restyle the whole of any element a child was inserted into, e.g. every Enter in a long Note */
+.cmp .colh > .colr { border-left: 1px solid var(--line); }
 /* Unified：一个卡头。左栏的头照常（标题、路径、版本），右栏只留它的版本接在后面：fc778a4 → bb823b3；两个版本用删 / 加的底色标出 */
 .cmpwrap.unified .colh { display: flex; }
-.cmpwrap.unified .colh > div:first-child { flex: 1 1 auto; }
-.cmpwrap.unified .colh > div:first-child .ib { display: none; }
-.cmpwrap.unified .colh > div + div { flex: none; border-left: 0; gap: 4px; }
-.cmpwrap.unified .colh > div + div::before { content: "→"; color: var(--ink-3); font: 11px var(--mono); margin-right: 2px; }
-.cmpwrap.unified .colh > div + div .chead > :not(.rev) { display: none; }
+.cmpwrap.unified .colh > .coll { flex: 1 1 auto; }
+.cmpwrap.unified .colh > .coll .ib { display: none; }
+.cmpwrap.unified .colh > .colr { flex: none; border-left: 0; gap: 4px; }
+.cmpwrap.unified .colh > .colr::before { content: "→"; color: var(--ink-3); font: 11px var(--mono); margin-right: 2px; }
+.cmpwrap.unified .colh > .colr .chead > :not(.rev) { display: none; }
 /* 比的是两个不同的函数：右边的名字也留着 */
-.cmpwrap.unified.difffn .colh > div + div .chead > .ctitle { display: block; }
-.cmpwrap.unified .colh > div:first-child .rev:not(.unc) { background: var(--del); color: var(--ink-2); }
-.cmpwrap.unified .colh > div + div .rev:not(.unc) { background: var(--add); color: var(--ink-2); }
+.cmpwrap.unified.difffn .colh > .colr .chead > .ctitle { display: block; }
+.cmpwrap.unified .colh > .coll .rev:not(.unc) { background: var(--del); color: var(--ink-2); }
+.cmpwrap.unified .colh > .colr .rev:not(.unc) { background: var(--add); color: var(--ink-2); }
 .cmp .tools { display: inline-flex; gap: 2px; }
 .seg2 { font-size: 11.5px; padding: 3px 8px; border-radius: 8.5px; color: var(--ink-2); }
 .seg2:hover { background: color-mix(in srgb, var(--ink) 7%, transparent); color: var(--ink); }
@@ -711,9 +713,9 @@ kbd { font: 10.5px var(--mono); }
 .nbody > :first-child, .tx > :first-child, .nbody .md-pm > :first-child, .tx .md-pm > :first-child { margin-top: 0; }
 /* Note whose leading heading is already its title (Settings → Notes): not shown again in the body; the editor shows it. The same for a Note in a sub-board preview (.pmd, cards/SubPreviews.tsx) */
 :is(.nbody, .pmd).hidehead.md:not(.editing) > :is(h1, h2, h3, h4, h5, h6):first-child { display: none; }
-:is(.nbody, .pmd).hidehead.md:not(.editing) > :is(h1, h2, h3, h4, h5, h6):first-child + * { margin-top: 0; }
+:is(.nbody, .pmd).hidehead.md:not(.editing) > :nth-child(2) { margin-top: 0; }
 .nbody.hidehead.editing > .md-loading > :is(h1, h2, h3, h4, h5, h6):first-child { display: none; } /* still hidden while the editor loads (NoteBody foldHeader) */
-.nbody.hidehead.editing > .md-loading > :is(h1, h2, h3, h4, h5, h6):first-child + * { margin-top: 0; }
+.nbody.hidehead.editing > .md-loading > :nth-child(2) { margin-top: 0; }
 .nbody ul, .nbody ol, .cdesc ul, .cdesc ol, .tx ul, .tx ol, .inote ul, .sn-text ul, .sn-text ol { margin: 2px 0; padding-left: 1.3em; }
 .nbody blockquote, .cdesc blockquote, .tx blockquote, .sn-text blockquote { margin: 2px 0; padding-left: 8px; border-left: 2px solid var(--hair); color: var(--ink-2); }
 .nbody pre, .cdesc pre, .tx pre, .sn-text pre { margin: 4px 0; padding: 6px 8px; background: var(--hlrow); border-radius: 7px; font: 11px/1.5 var(--mono); overflow-x: auto; white-space: pre; }
@@ -926,7 +928,7 @@ mark.wdiff { background: var(--chg-strong); color: inherit; border-radius: 2px; 
 .lastc { padding: 5px 12px; font-size: 11.5px; color: var(--ink-3); border-bottom: 1px solid var(--line); }
 .colh.dh { display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid var(--line); background: var(--head); font-size: 11.5px; }
 .colh.dh > div { display: flex; gap: 8px; padding: 5px 12px; white-space: nowrap; overflow: hidden; }
-.colh.dh > div + div { border-left: 1px solid var(--line); }
+.colh.dh > .colr { border-left: 1px solid var(--line); }
 .colh.dh span { font: 10.5px var(--mono); color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; }
 .dbody { overflow: auto; min-height: 0; flex: 1 1 auto; }
 .crows.dt .crow { grid-template-columns: 1fr 1fr; }

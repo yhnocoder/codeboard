@@ -69,7 +69,7 @@ const Math1 = InlineMath.extend({
       dom.setAttribute("data-latex", node.attrs.latex);
       if (node.attrs.display) dom.dataset.display = "yes";
       try {
-        katex.render(mathTex(node.attrs.latex, !!node.attrs.display), dom, { ...this.options.katexOptions, displayMode: false });
+        katex.render(mathTex(node.attrs.latex, !!node.attrs.display), dom, { ...this.options.katexOptions, displayMode: false, output: "html" });
       } catch {
         dom.textContent = node.attrs.latex;
         dom.classList.add("inline-math-error");

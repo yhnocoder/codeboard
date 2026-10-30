@@ -64,7 +64,7 @@ export class MathBlockView implements NodeView {
   }
 
   private render(latex: string) {
-    katex.render(latex, this.preview, { displayMode: true, throwOnError: false, macros: mathMacros() });
+    katex.render(latex, this.preview, { displayMode: true, throwOnError: false, output: "html", macros: mathMacros() });
     if (!latex.trim()) this.preview.textContent = "";
   }
   /** 原文排出来多高就多高（折行也算），不在框里滚、不被裁掉 */

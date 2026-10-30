@@ -71,7 +71,7 @@ const DISPLAY_MARKS: Record<string, (m: Mark) => DOMOutputSpec> = {
 };
 /** 只有一段（非空）的列表项、脚注、表格格子不画那层 <p>：外观一样（它本来就没有边距），少画一些节点 */
 const SLIM = new Set(["listItem", "footnote", "tableCell", "tableHeader"]);
-/** 段里有缩小了的图时留着 <p>：居中只认 p:has(img.sized)（markdown.css），不用再匹配列表项、格子和它们下面的任意一层 */
+/** 段里有缩小了的图时留着 <p>（p.md-psized 才居中，见 markdown.css），列表项、格子里也一样 */
 const sizedImg = (p: PMNode) => { let y = false; p.forEach((c) => { if (c.type.name === "image" && c.attrs.width) y = true; }); return y; };
 
 function markParts(m: Mark, display: boolean): [string, string] {
@@ -128,6 +128,9 @@ function nodeHtml(n: PMNode, cx: Cx | null): string {
   if (n.isText) return esc(n.text!);
   const d = cx && DISPLAY[n.type.name]?.(n, cx);
   if (d != null) return d;
+  // a narrowed image is centred in its line: a class on its paragraph (markdown.css), not a p:has() rule, which Chrome
+  // checks again for every paragraph on the page (the open editor's too) on each change
+  if (cx && n.type.name === "paragraph" && sizedImg(n)) return specHtml(["p", { class: "md-psized" }, 0], contentHtml(n, cx));
   return specHtml(n.type.spec.toDOM!(n), contentHtml(n, cx));
 }
 function contentHtml(n: PMNode, cx: Cx | null): string {

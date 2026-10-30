@@ -106,7 +106,7 @@ function braces(src: string) {
 
 /** 排一次：排得出给 HTML；排不出给大白话的说明（还在打命令名时 problem 是 null：先不报错） */
 export function checkMath(src: string, display: boolean, caret = src.length): MathCheck {
-  try { return { html: katex.renderToString(src, { displayMode: display, throwOnError: true, macros: mathMacros() }) }; }
+  try { return { html: katex.renderToString(src, { displayMode: display, throwOnError: true, output: "html", macros: mathMacros() }) }; }
   catch (e) {
     const t = tokenAt(src, caret);
     const rest = /^[A-Za-z]*/.exec(src.slice(caret))![0];
@@ -170,7 +170,7 @@ function cmdPreview(x: MathCmd, src: string): string {
   if (h === undefined) {
     const macros = mathMacros();
     for (const d of defsIn(src)) if (!(`\\${d.name}` in macros)) macros[`\\${d.name}`] = d.body;
-    try { h = katex.renderToString(x.pv, { throwOnError: true, macros }); } catch { h = ""; }
+    try { h = katex.renderToString(x.pv, { throwOnError: true, output: "html", macros }); } catch { h = ""; }
     if (pvCache.size > 500) pvCache.clear();
     pvCache.set(key, h);
   }

@@ -27,8 +27,10 @@ export function placeCaret(view: EditorView, pos: number, meta: (tr: import("@ti
 
 const span = (cls: string) => { const e = document.createElement("span"); e.className = cls; e.contentEditable = "false"; return e; };
 
+/** HTML only, as in the static render: MathML on the page turns on Chrome's MathML stylesheet, whose :nth-child rules make
+ *  every inserted paragraph restyle all the blocks after it (Enter in a long Note took 150–200 ms) */
 export function renderTex(el: HTMLElement, latex: string, display: boolean) {
-  try { katex.render(mathTex(latex, display), el, { throwOnError: false, macros: mathMacros() }); }
+  try { katex.render(mathTex(latex, display), el, { throwOnError: false, output: "html", macros: mathMacros() }); }
   catch { el.textContent = latex; }
 }
 
