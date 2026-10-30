@@ -399,3 +399,28 @@ test("sectionClickEmptySelects", async () => {
   check("sectionClickEmptySelects", one.join() === "S1" && inner.join() === "S3" && none.length === 0 && dragged.sections.length === 0 && dragged.cards.join() === "n1", { one, inner, none, dragged });
   await close(h);
 });
+
+/** A selected Section moves when its empty area is dragged, with its cards; an unselected one is not moved by that drag */
+test("sectionDragEmptyMovesSelected", async () => {
+  const b = twoSections();
+  b.cam = { x: 0, y: 0, z: 1 };
+  const h = await open({ board: b, light, w: 1400 });
+  await idle(h);
+  const pg = h.page;
+  const s1 = (await pg.locator('.sect[data-sect="S1"]').boundingBox())!;
+  const code = b.cards[0].id;
+  const at = () => { const q = h.board(); const s = q.sections.find((x) => x.id === "S1")!; return { sx: s.x, sy: s.y, cx: q.place[code].x, cy: q.place[code].y }; };
+  const drag = async (x: number, y: number) => { await pg.mouse.move(x, y); await pg.mouse.down(); await pg.mouse.move(x + 60, y + 40, { steps: 6 }); await pg.mouse.up(); await idle(h); };
+  const p0 = at();
+  // 没选中：拖空白处是框选，Section 不动
+  await drag(s1.x + 40, s1.y + s1.height - 120);
+  const p1 = at();
+  await pg.mouse.click(s1.x + s1.width + 40, s1.y + 20); await idle(h);
+  await pg.mouse.click(s1.x + 40, s1.y + s1.height - 30); await idle(h);
+  // 离点选的地方远一点按下（同一处紧接着再按会算双击）
+  await drag(s1.x + 200, s1.y + s1.height - 60);
+  await until(h, "the Section move is saved", () => at().sx !== p0.sx);
+  const p2 = at();
+  check("sectionDragEmptyMovesSelected", p1.sx === p0.sx && p1.sy === p0.sy && p2.sx - p0.sx === 60 && p2.sy - p0.sy === 40 && p2.cx - p0.cx === 60 && p2.cy - p0.cy === 40, { p0, p1, p2 });
+  await close(h);
+});

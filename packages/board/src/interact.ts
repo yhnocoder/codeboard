@@ -513,6 +513,12 @@ export function canvasPointerDown(e: PointerEvent) {
     return;
   }
   if (modeIs("draw")) return drawSection(e);
+  // 已经选中的 Section：在它的空白处按住拖就是拖它（和拖标题一样）；没选中时拖空白处仍是框选
+  if (!e.shiftKey && sel.sections.length && !sel.cards.length) {
+    const w = worldOf(e);
+    const s = deepestAt(frames(), w.x, w.y, new Set(state.board.sections.filter(hiddenByAncestor).map((x) => x.id)));
+    if (s && sel.sections.includes(s.id)) return sectionLabelDown(e, s.id);
+  }
   const base = e.shiftKey ? [...sel.cards] : [];
   if (!e.shiftKey) clearSel();
   window.getSelection()?.removeAllRanges();
