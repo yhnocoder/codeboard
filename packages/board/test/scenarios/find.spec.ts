@@ -18,7 +18,8 @@ function noteBoard(texts: string[]): Board {
   return b;
 }
 async function editNote(h: Host, id: string) {
-  await h.page.locator(`.card[data-id="${id}"] .nbody`).dblclick();
+  // on the first block: the middle of the Note can be a code block, where Ctrl+Home goes only to the code's start
+  await h.page.locator(`.card[data-id="${id}"] .nbody > :first-child`).dblclick();
   await h.page.waitForSelector(`.card[data-id="${id}"] .md-pm`, { timeout: 5000 });
   // 双击把光标放在点的地方；查找从光标往后数，这里从头开始，计数才是固定的
   await focusSettled(h.page);

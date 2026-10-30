@@ -108,7 +108,8 @@ test("noteTrailingBlockExit", async () => {
   await typeCases("noteTrailingBlockExit", [
     { name: "typed fence", seq: "```{Enter}x{ArrowDown}after", md: "```\nx\n```\n\nafter" },
     { name: "slash menu", seq: "/code{Enter}y{ArrowDown}after", md: "```\ny\n```\n\nafter" },
-    { name: "existing code", init: "```\nz\n```", seq: "{Control+End}{ArrowUp}{ArrowDown}after", md: "```\nz\n```\n\nafter" },
+    // the double-click lands in the block or below it; Ctrl+End then puts the caret at the code's end or after the block
+    { name: "existing code", init: "```\nz\n```", seq: "{ArrowDown}after", md: "```\nz\n```\n\nafter" },
   ]);
 });
 
