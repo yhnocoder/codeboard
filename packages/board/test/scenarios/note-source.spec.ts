@@ -635,3 +635,40 @@ test("noteSourceModeLook", async () => {
   check("noteSourceModeLook tints the caret's line", !!r.active && r.active !== "rgba(0, 0, 0, 0)", r.active);
   await close(h);
 });
+
+/** A copied formula carries its TeX: from a static Note and from the editor, text/plain and text/html have $TeX$ (another app gets
+ *  the TeX), the HTML keeps data-latex, and pasting only that HTML into a Note gives the formula back */
+test("noteFormulaCopyKeepsTex", async () => {
+  const h = await open({ board: board(["see $\\frac{b}{a}=c$ here\n\n$$\nx^2\n$$", "target"]), light });
+  const pg = h.page;
+  await idle(h);
+  const copy = (sel: string) => pg.evaluate((sel) => {
+    const root = document.querySelector(sel)!, r = document.createRange();
+    r.selectNodeContents(root);
+    getSelection()!.removeAllRanges(); getSelection()!.addRange(r);
+    const dt = new DataTransfer();
+    (document.activeElement && root.contains(document.activeElement) ? document.activeElement : root.querySelector("p")!)
+      .dispatchEvent(new ClipboardEvent("copy", { clipboardData: dt, bubbles: true, cancelable: true }));
+    return { html: dt.getData("text/html"), text: dt.getData("text/plain"), live: document.querySelectorAll(`${sel} annotation`).length };
+  }, sel);
+  const stat = await copy(`${card("n0")} .nbody`);
+  await editNote(h, "n0");
+  await pg.keyboard.press("ControlOrMeta+a");
+  const ed = await copy(`${card("n0")} .md-pm`);
+  await exitEdit(h);
+  // the editor's HTML alone (no text/plain), pasted into the other Note
+  await editNote(h, "n1");
+  await pg.keyboard.press("ControlOrMeta+a");
+  await pg.evaluate((html) => {
+    const dt = new DataTransfer();
+    dt.setData("text/html", html);
+    document.activeElement!.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true }));
+  }, ed.html);
+  await exitEdit(h);
+  const pasted = md(h, "n1");
+  const tex = (x: { html: string; text: string }) => x.text.includes("$\\frac{b}{a}=c$") && /\n\$\$\s*x\^2\s*\$\$/.test(x.text) && x.html.includes('data-latex="\\frac{b}{a}=c"') && x.html.includes("$\\frac{b}{a}=c$");
+  check("noteFormulaCopyKeepsTex static copy", tex(stat) && stat.live === 0, stat);
+  check("noteFormulaCopyKeepsTex editor copy", tex(ed), ed);
+  check("noteFormulaCopyKeepsTex HTML-only paste", pasted.includes("$\\frac{b}{a}=c$") && /\$\$\s*x\^2\s*\$\$/.test(pasted), pasted);
+  await close(h);
+});

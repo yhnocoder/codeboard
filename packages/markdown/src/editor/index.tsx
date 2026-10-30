@@ -660,8 +660,9 @@ function handlePaste(e: Editor, _o: MdEditorOpts, ev: ClipboardEvent): boolean {
   }
   // a copy from an editor of this board carries data-pm-slice, and its text/plain is the Markdown source: pasted as that
   const own = !!html && html.includes("data-pm-slice");
-  // HTML from elsewhere: read with the full schema (formatting, links, typeset formulas), then written as Markdown source
-  if (html && !own) {
+  // HTML from elsewhere (or ours without its text/plain): read with the full schema (formatting, links, typeset formulas), then written
+  // as Markdown source
+  if (html && (!own || !text)) {
     const md = htmlSource(new DOMParser().parseFromString(html, "text/html").body);
     return md ? put(sourceSlice(e, md)) : false;
   }

@@ -49,7 +49,44 @@ const onImageError = (e: Event) => { if (e.target instanceof HTMLImageElement &&
 const watched = new WeakSet<HTMLElement>();
 
 /** renderMd 的 HTML 用 innerHTML 放进 el 以后调用：认 [[引用]]、代码块着色、Mermaid 换成图、摆批注标签 */
+/**
+ * A copy's formulas as their TeX: each typeset formula in root (a copied fragment, never the page) becomes its $TeX$ ($$TeX$$ for a
+ * display one) inside the same .katex element, which keeps data-latex. Another app gets the TeX as text; our paste reads data-latex.
+ * The page itself draws HTML only, without MathML (whose <annotation> would carry the TeX, at a cost on every edit; see widgets.ts)
+ */
+export function texForCopy(root: ParentNode) {
+  for (const k of root.querySelectorAll<HTMLElement>(".katex[data-latex]")) {
+    const d = !!k.closest(".katex-display");
+    k.textContent = d ? `$$${k.dataset.latex}$$` : `$${k.dataset.latex}$`;
+  }
+}
+/** A copy from the static render: a selection that cuts into a formula takes all of it, and every formula goes as its TeX */
+function copyTex(e: ClipboardEvent) {
+  const sel = getSelection(), el = e.currentTarget as HTMLElement;
+  if (!sel?.rangeCount || !e.clipboardData) return;
+  const r = sel.getRangeAt(0).cloneRange();
+  const at = (n: Node) => (n instanceof Element ? n : n.parentElement)?.closest<HTMLElement>(".katex-display, .katex");
+  const a = at(r.startContainer), b = at(r.endContainer);
+  if (a && el.contains(a)) r.setStartBefore(a);
+  if (b && el.contains(b)) r.setEndAfter(b);
+  const frag = r.cloneContents();
+  if (!frag.querySelector(".katex[data-latex]")) return;
+  texForCopy(frag);
+  const box = document.createElement("div");
+  box.append(frag);
+  e.clipboardData.setData("text/html", box.innerHTML);
+  e.clipboardData.setData("text/plain", plainOf(box));
+  e.preventDefault();
+}
+/** The copied fragment's text with its blocks on lines of their own (textContent alone runs paragraphs together) */
+function plainOf(box: HTMLElement) {
+  for (const b of box.querySelectorAll("p, h1, h2, h3, h4, h5, h6, li, pre, blockquote, .math, tr")) b.after(/^(LI|TR)$/.test(b.tagName) ? "\n" : "\n\n");
+  return (box.textContent ?? "").replace(/\n{3,}/g, "\n\n").trim();
+}
+const copying = new WeakSet<HTMLElement>();
+
 export function hydrate(el: HTMLElement, html: string) {
+  if (html.includes("data-latex") && !copying.has(el)) { copying.add(el); el.addEventListener("copy", copyTex); }
   if (html.includes("<img")) {
     // error does not bubble: caught on the way down
     if (!watched.has(el)) { watched.add(el); el.addEventListener("error", onImageError, true); }
