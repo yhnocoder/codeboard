@@ -761,6 +761,18 @@ function stateFor(editor: Editor, value: string, layout?: MdLayout | null): Edit
  * ProseMirror 读 DOM 选区会强制整页排版一次）。双击时只剩挂上去、拿焦点。编辑器正在用时不做
  */
 const prepKey = (value: string, layout?: MdLayout | null) => (layout ? `${JSON.stringify(layout)}\n${value}` : value);
+/**
+ * The caret at pos, or where a caret can be nearest to it: a point between blocks, at a table cell's edge or past the last
+ * block resolves to no text, and a text selection there is invalid (ProseMirror warns and the caret goes nowhere visible)
+ */
+export function placeCaret(e: Editor, pos: number) {
+  const doc = e.state.doc, $p = doc.resolve(Math.max(0, Math.min(pos, doc.content.size)));
+  if ($p.parent.inlineContent) { e.view.dispatch(e.state.tr.setSelection(TextSelection.create(doc, $p.pos))); return; }
+  // the nearer text of the two sides: a cell's start goes into that cell, the end of a row into its last cell
+  const back = Selection.findFrom($p, -1, true), fwd = Selection.findFrom($p, 1, true);
+  const near = back && fwd ? ($p.pos - back.head <= fwd.head - $p.pos ? back : fwd) : back ?? fwd ?? Selection.near($p, -1);
+  e.view.dispatch(e.state.tr.setSelection(near));
+}
 export function prepare(value: string, layout?: MdLayout | null) {
   const inst = pool, key = prepKey(value, layout);
   if (!inst || inst.sess || inst.prepared === key) return;

@@ -566,6 +566,40 @@ test("noteInlineDisplayMath", async () => {
   await close(h);
 });
 
+/** Entering edit with a double-click where the editor has no text at that point (a table cell's padding, between a table and the
+ *  next paragraph, beside a row): the caret goes to the nearest text, never to a place ProseMirror warns about */
+test("noteEditEntryCaretInText", async () => {
+  const h = await open({ board: board(["Numbers:\n\n| thread block | blocks |\n| --- | --- |\n| 64 | **32** |\n| 1024 | 2<br>$$\\frac{2048}{1024}$$ |\n\nThe cells keep their source too, like the **32** above."]), light });
+  const pg = h.page;
+  const warns: string[] = [];
+  pg.on("console", (m) => { if (m.type() === "warning" || m.type() === "error") warns.push(m.text()); });
+  await idle(h);
+  const body = `${card("n0")} .nbody`;
+  const box = async (sel: string, nth = 0) => (await pg.locator(sel).nth(nth).boundingBox())!;
+  const points: [string, () => Promise<{ x: number; y: number }>][] = [
+    ["last paragraph", async () => { const b = await box(`${body} > p`, 1); return { x: b.x + b.width - 4, y: b.y + b.height / 2 }; }],
+    ["cell padding left", async () => { const b = await box(`${body} td`, 3); return { x: b.x + 1, y: b.y + 2 }; }],
+    ["cell padding top", async () => { const b = await box(`${body} td`, 0); return { x: b.x + b.width / 2, y: b.y + 1 }; }],
+    ["between table and paragraph", async () => { const t = await box(`${body} table`), p = await box(`${body} > p`, 1); return { x: p.x + 20, y: (t.y + t.height + p.y) / 2 }; }],
+    ["beside a row", async () => { const b = await box(`${body} tr`, 2); return { x: b.x + b.width + 6, y: b.y + b.height / 2 }; }],
+  ];
+  const res: Record<string, unknown> = {};
+  for (const [name, at] of points) {
+    warns.length = 0;
+    const p = await at();
+    await pg.mouse.dblclick(p.x, p.y);
+    await pg.locator(`${card("n0")} .md-pm:focus`).waitFor();
+    await focusSettled(pg);
+    const sel = await pg.evaluate(() => { const s = (document.querySelector(".md-pm") as any).editor.state.selection; return { inText: !!s.$head.parent.inlineContent, in: s.$head.parent.textContent.slice(0, 24) as string }; });
+    res[name] = { ...sel, warns: [...warns] };
+    await exitEdit(h);
+  }
+  const r = res as Record<string, { inText: boolean; in: string; warns: string[] }>;
+  check("noteEditEntryCaretInText the caret lands in text, without warnings", Object.values(r).every((x) => x.inText && !x.warns.length), res);
+  check("noteEditEntryCaretInText a cell's padding puts the caret in that cell", r["cell padding left"].in.startsWith("2<br>") && r["cell padding top"].in === "64", res);
+  await close(h);
+});
+
 /** Esc with a popup of the editor open (the table's size grid, a code block's language list or ⋯ menu) closes only that popup:
  *  the Note stays in edit mode, and the next Esc leaves it */
 test("noteEscClosesPopupOnly", async () => {

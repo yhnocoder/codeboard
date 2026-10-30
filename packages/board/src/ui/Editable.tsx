@@ -112,10 +112,10 @@ function MdEdit(p: P) {
       // 编辑器和静态内容排得一样：点在静态内容哪个字上，编辑器里同一个地方就是那个字。
       // 点在内容外面（卡比内容高时下面的空白、两边的边距）：下面 → 最后一段的末尾；旁边 → 收进内容里最近的地方
       const r = e.view.dom.getBoundingClientRect();
-      if (entry.at.y >= r.bottom) { e.commands.setTextSelection(e.state.doc.content.size); return; }
+      if (entry.at.y >= r.bottom) { m.placeCaret(e, e.state.doc.content.size); return; }
       const x = Math.min(Math.max(entry.at.x, r.left + 1), r.right - 1), y = Math.max(entry.at.y, r.top + 1);
       const at = e.view.posAtCoords({ left: x, top: y });
-      if (at) e.commands.setTextSelection(at.pos);
+      if (at) m.placeCaret(e, at.pos);
       return;
     }
     const r = entry && m.visibleRange(e.state.doc, entry.range);
