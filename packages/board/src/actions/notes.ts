@@ -1,7 +1,7 @@
 import { unwrap } from "solid-js/store";
 import { uid, findCard, isCode, cardTitle, segOf, cardIntoSidenote, imageIntoNote, removeSidenotes, sidenoteCard, sidenoteToCard, splitHeadings, splitNoteByHeadings, turnNoteInto, NEW_CARD_W, type Sidenote, type SegView, type Anchor, type BoxFill, type HandColor } from "@codeboard/core";
 import { state, setState, mutate, sel, select, clearSel, lineSel, cardById, hostOf, toast, rectOf, placeOf } from "../state/store";
-import { editing, setEditing } from "../state/ui";
+import { editing, liveNoteMd, setEditing } from "../state/ui";
 import { cardsMeasured } from "../state/measure";
 import { noteImageOf } from "./imagedata";
 import { quietHover } from "../state/camera";
@@ -224,7 +224,8 @@ function imageIndex(el: Element, ref: ImgRef): number {
 export function captionItems(ref: ImgRef, el: Element | null): Item[] {
   const c = cardById(ref.card)?.card;
   if (c?.kind !== "note" || ref.note === undefined || !el) return [];
-  const nth = imageIndex(el, ref), src = ref.note, cap = imageCaption(c.md, src, nth);
+  // 编辑中：刚贴进来的图还没存回卡上，按编辑器里眼前的字找
+  const nth = imageIndex(el, ref), src = ref.note, cap = imageCaption(liveNoteMd(ref.card) ?? c.md, src, nth);
   if (cap === null) return [];
   return [
     { label: cap ? "Edit Caption…" : "Add Caption…", run: () => void editCaption(ref.card, src, nth, cap) },

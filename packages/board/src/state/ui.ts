@@ -71,6 +71,11 @@ export type EditEntry = { id: string } & (
 );
 /** 代码卡显示的代码（.src）→ 选区两头在第几段第几行第几个字（行从 0 数，按原文算）；两头不在同一段的代码行里给 null。CodeBody 挂上 */
 export const codeTextRange = new WeakMap<Element, (rg: Range) => { seg: string; from: [number, number]; to: [number, number] } | null>();
+// 正在编辑的 Note 的编辑器：退出编辑时才存回卡上，在那之前要按眼前的字算的（右键刚贴进来的图）从这里读
+let liveNote: { id: string; value: () => string | null } | null = null;
+export const setLiveNote = (n: typeof liveNote) => { liveNote = n; };
+/** 编辑中的 Note 眼前的原文；没在编辑它时 undefined */
+export const liveNoteMd = (id: string) => (liveNote?.id === id ? liveNote.value() ?? undefined : undefined);
 let entry: EditEntry | null = null;
 export const setEditEntry = (e: EditEntry | null) => { entry = e; };
 export function takeEditEntry<K extends EditEntry["kind"]>(kind: K, id: string): Extract<EditEntry, { kind: K }> | null {
