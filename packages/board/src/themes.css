@@ -834,6 +834,8 @@
 :root.look-ink-wash .card:not(.nobg) > .cface > .chead::after { content: ""; position: absolute; left: 8px; right: 30%; bottom: 1px; height: 3.5px; background: var(--ink); opacity: .55; pointer-events: none;
   -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 8' preserveAspectRatio='none'%3E%3Cpath d='M0 4.6C20 2.4 60 1.6 120 2.2S240 3 300 4.4L300 4.9C250 5.2 180 6.4 110 6.1S30 6.6 0 5.4Z'/%3E%3Cpath d='M30 3.2L90 2.9M150 3.4L230 3.6M60 6L140 5.7' stroke='%23000' stroke-width='.5' opacity='.5'/%3E%3C/svg%3E") 0 0 / 100% 100% no-repeat;
           mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 8' preserveAspectRatio='none'%3E%3Cpath d='M0 4.6C20 2.4 60 1.6 120 2.2S240 3 300 4.4L300 4.9C250 5.2 180 6.4 110 6.1S30 6.6 0 5.4Z'/%3E%3Cpath d='M30 3.2L90 2.9M150 3.4L230 3.6M60 6L140 5.7' stroke='%23000' stroke-width='.5' opacity='.5'/%3E%3C/svg%3E") 0 0 / 100% 100% no-repeat; }
+/* 编辑开头是标题的 Note 时卡头收起、标题滑到这里（NoteBody 的 foldHeader）：墨线跟着卡头一起淡掉，不压在标题上 */
+:root.look-ink-wash .card.note:not(.nobg) > .cface > .chead.fold::after { opacity: 0; }
 :root.look-ink-wash .chead .kind { display: none; }
 /* 编号是一枚朱印，盖在卡头右边 */
 /* 印的底色留 1% 透明：卡头整块不透明时，Chromium 会在缩放分档切换时把每张卡的行号栏单独提成合成层（几百层，捏合缩放每帧多 20–30ms） */

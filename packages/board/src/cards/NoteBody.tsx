@@ -78,6 +78,8 @@ function foldHeader(id: string, entering: boolean, setFolded: (v: boolean) => vo
   if (entering) {
     H = head.offsetHeight; p0 = parseFloat(getComputedStyle(body).paddingTop);
     face.style.setProperty("--fold-h", `${H}px`); face.style.setProperty("--fold-p0", `${p0}px`);
+    // 主题画在卡头下的线（Ink Wash 的墨线）收起时淡掉（themes.css）：记下它没收起时的透明度，进出都从这里淡
+    face.dataset.foldLine = getComputedStyle(head, "::after").opacity;
     setFolded(true);
   } else {
     H = parseFloat(face.style.getPropertyValue("--fold-h")) || head.offsetHeight;
@@ -95,6 +97,7 @@ function foldHeader(id: string, entering: boolean, setFolded: (v: boolean) => vo
   const anims = [pad,
     head.animate(dir({ marginBottom: "0px", backgroundColor: hs.backgroundColor, borderBottomColor: hs.borderBottomColor }, { marginBottom: `${-H}px`, backgroundColor: "transparent", borderBottomColor: "transparent" }) as Keyframe[], opts),
     ...[...head.children].filter((e) => !e.classList.contains("ib")).map((e) => e.animate(dir({ opacity: 1, transform: "none" }, { opacity: 0, transform: "translateY(-30%)" }) as Keyframe[], opts)),
+    head.animate(dir({ opacity: +(face.dataset.foldLine ?? 1) }, { opacity: 0 }) as Keyframe[], { ...opts, pseudoElement: "::after" }),
     // 滑动时标题在正文上沿外面的那部分剪掉（只剪上边，下面和两侧照常溢出）
     body.animate([{ clipPath: "inset(0 -100vmax -100vmax -100vmax)" }, { clipPath: "inset(0 -100vmax -100vmax -100vmax)" }], opts),
   ];
