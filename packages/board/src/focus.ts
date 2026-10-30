@@ -42,7 +42,9 @@ function keepAfterPress() {
   window.addEventListener("pointerdown", () => { pressed = performance.now(); }, true);
   window.addEventListener("blur", () => {
     if (performance.now() - pressed > CLICK_KEEPS_KEYS) return;
-    // where the keyboard went is settled after this event
-    setTimeout(() => { if (!document.hasFocus() && host.hasFocus() && host.activeElement === host.body) window.focus(); });
+    // where the keyboard went is settled after this event; checked again a frame later, so a focus state another process has not
+    // caught up with yet (VS Code moving the keyboard on right after its first step) does not pull it back here
+    const stuck = () => !document.hasFocus() && host.hasFocus() && host.activeElement === host.body;
+    setTimeout(() => { if (stuck()) requestAnimationFrame(() => { if (stuck()) window.focus(); }); });
   });
 }
