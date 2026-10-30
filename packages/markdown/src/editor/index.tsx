@@ -212,6 +212,22 @@ function MenuView(p: { ui: Ui; pick: (it: MenuItem) => void }) {
         const row = list.querySelectorAll<HTMLElement>(":scope > button")[i];
         if (row) keepInView(list, row);
       });
+      // 选中的那行放不下的标题、路径：来回慢慢滑着露出整段（只这一行，别的行照旧省略号）
+      createEffect(() => {
+        const i = m().i;
+        void m().items;
+        queueMicrotask(() => {
+          for (const el of list.querySelectorAll<HTMLElement>(".slide")) el.classList.remove("slide");
+          const row = list.querySelectorAll<HTMLElement>(":scope > button")[i];
+          for (const el of row?.querySelectorAll<HTMLElement>(".lb, .bc") ?? []) {
+            const over = el.scrollWidth - el.clientWidth;
+            if (over < 2) continue;
+            el.style.setProperty("--over", `${over}px`);
+            el.style.setProperty("--slide", `${Math.max(1.2, over / 45).toFixed(2)}s`);
+            el.classList.add("slide");
+          }
+        });
+      });
       return (
         <div class="ctx open md-menu md-pick" classList={{ "md-refs": m().kind === "ref" }} role="listbox" onMouseDown={(e) => e.preventDefault()} onPointerDown={(e) => e.stopPropagation()}>
           <div class="md-list" ref={list}>
@@ -220,7 +236,7 @@ function MenuView(p: { ui: Ui; pick: (it: MenuItem) => void }) {
                 <Show when={it.sep}><div class="md-gsep" /></Show>
                 <Show when={it.head}>{(h) => <div class="md-gh" classList={{ cur: !!h().cur }}>{h().text}</div>}</Show>
                 <button role="option" class={it.cls} classList={{ sel: i() === m().i }} onClick={() => p.pick(it)} onPointerEnter={() => p.ui.setMenu({ ...m(), i: i() })}>
-                  <span class="lb">{it.title}</span><Show when={it.crumb}><span class="bc">{it.crumb}</span></Show><Show when={it.hint}><small>{it.hint}</small></Show>
+                  <span class="lb"><span class="tx">{it.title}</span></span><Show when={it.crumb}><span class="bc"><span class="tx">{it.crumb}</span></span></Show><Show when={it.hint}><small>{it.hint}</small></Show>
                 </button>
               </>)}</For>
             </Show>

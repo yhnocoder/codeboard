@@ -149,6 +149,48 @@ test("noteRefSectionAndBoard", async () => {
 
 /** [[ lists every other board's titled cards: each board's own row heads its group (3 cards, "+ N more" expands in place), a card from
  *  another board is stored as [[Board › Title]], its chip carries the board's name and opens that board; gone cards and boards look broken */
+/** Long titles and Section paths in the [[ list: the title gets the width first, the path takes what is left; on the selected row whatever still doesn't fit slides into view */
+test("noteRefLongTitleSlides", async () => {
+  const b = emptyBoard("b1", "long refs");
+  put(b, { id: "n", kind: "note", md: "see", look: "note" } as NoteCard, 60, 60, 420);
+  b.cam = { x: 0, y: 0, z: 1 };
+  const sec = "以 Vector Add 为例介绍 Grid、Block 与 Thread 的组织方式";
+  const refs = [
+    { id: "v0", t: "VECADD - CUDA - SKELETON", k: "code", s: sec },
+    { id: "v1", t: "VECADD - CUDA - FULL KERNEL WITH BOUNDS CHECK AND HOST CODE FOR THE LAUNCH", k: "code", s: sec },
+  ];
+  const h = await open({ board: b, light, w: 1200, h: 800, settings: { theme: "warm-ink" } as any, on: (m, reply) => (m.type === "boardRefs" ? (void reply(m.req!, { boards: [{ id: "bg", name: "多维网格与数据", refs }], recent: [] }), true) : false) });
+  const pg = h.page;
+  await pg.locator('.card[data-id="n"] .nbody').dblclick();
+  await pg.locator('.card[data-id="n"] .md-pm').waitFor();
+  await focusSettled(pg);
+  await pg.evaluate(() => { const e = (document.querySelector('.card[data-id="n"] .md-pm') as any).editor; e.commands.setTextSelection(e.state.doc.content.size - 1); });
+  await pg.keyboard.type(" [[vecadd");
+  await until(h, "both long cards are listed", async () => (await pg.locator(".md-menu button .lb").allTextContents()).filter((t) => t.startsWith("VECADD")).length === 2);
+  const rows = () => pg.evaluate(() => [...document.querySelectorAll<HTMLElement>(".md-menu .md-list > button")].map((r) => {
+    const lb = r.querySelector<HTMLElement>(".lb")!, bc = r.querySelector<HTMLElement>(".bc");
+    return { t: lb.textContent!, sel: r.classList.contains("sel"), titleCut: lb.scrollWidth > lb.clientWidth, pathCut: !!bc && bc.scrollWidth > bc.clientWidth, slide: lb.classList.contains("slide") };
+  }));
+  const r0 = await rows(), short = r0.find((r) => r.t.endsWith("SKELETON"))!;
+  check("noteRefLongTitleSlides title first", !short.titleCut && short.pathCut, r0);
+  // 走到放不下的那行：标题滑到末尾时最后一个字露出来，别的行不滑
+  for (let k = 0; k < 4 && !(await rows()).find((r) => r.sel)?.t.includes("LAUNCH"); k++) await pg.keyboard.press("ArrowDown");
+  await until(h, "the long title slides", async () => (await rows()).some((r) => r.sel && r.t.includes("LAUNCH") && r.slide));
+  const end = await pg.evaluate(() => {
+    const lb = document.querySelector<HTMLElement>(".md-menu button.sel .lb")!, tx = lb.querySelector<HTMLElement>(".tx")!;
+    const a = tx.getAnimations()[0];
+    if (!a) return null;
+    a.pause();
+    a.currentTime = (a.effect!.getComputedTiming().delay ?? 0) + Number(a.effect!.getComputedTiming().duration) * 0.9;
+    const l = lb.getBoundingClientRect(), t = tx.getBoundingClientRect();
+    return { lbRight: Math.round(l.right), txRight: Math.round(t.right), slid: Math.round(l.left - t.left) };
+  });
+  await shot(h, "note-ref-long-title-slid", "now");
+  const others = (await rows()).filter((r) => !r.sel && r.slide);
+  check("noteRefLongTitleSlides the selected row slides to the end", !!end && Math.abs(end.txRight - end.lbRight) <= 1 && end.slid > 10 && !others.length, { end, others });
+  await close(h);
+});
+
 test("noteRefOtherBoards", async () => {
   const { b } = mdBoard();
   const note: NoteCard = { id: "n2", kind: "note", md: "see [[Kernels › Flash attention]], [[Kernels › Old card]] and [[Scratch › Notes]]", look: "note" };

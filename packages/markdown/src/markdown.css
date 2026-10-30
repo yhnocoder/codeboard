@@ -211,8 +211,14 @@ math { font-size: 1.05em; }
 .md-menu.md-pick { display: flex; flex-direction: column; overflow: hidden; padding: 0; }
 .md-pick .md-list { position: relative; flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 5px; }
 .md-pick.md-refs { width: 372px; max-width: calc(100vw - 24px); max-height: 340px; }
-.md-pick button .lb { flex: 0 1 auto; min-width: 0; max-width: none; }
-.md-pick button .bc { flex: 0 10 auto; min-width: 0; font-size: 11px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* 标题先占宽度（最多七成），路径拿剩下的：路径长时不再把标题挤成几个字 */
+.md-pick button .lb { flex: 0 0 auto; min-width: 0; max-width: 70%; }
+.md-pick button .bc { flex: 0 1 auto; min-width: 0; font-size: 11px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* 选中行放不下的字：停一下，滑到末尾，停一下，滑回来（--over 是多出来的宽度，MenuView 量好写上） */
+.md-pick button.sel .slide { text-overflow: clip; }
+.md-pick button.sel .slide > .tx { display: inline-block; animation: md-slide var(--slide) ease-in-out .6s infinite alternate; }
+@keyframes md-slide { 0%, 20% { transform: none; } 80%, 100% { transform: translateX(calc(-1 * var(--over))); } }
+@media (prefers-reduced-motion: reduce) { .md-pick button.sel .slide > .tx { animation: none; } .md-pick button.sel .slide { text-overflow: ellipsis; } }
 .md-pick button small { flex: none; }
 .md-pick button.sel .bc { color: color-mix(in srgb, var(--accent-ink) 75%, transparent); }
 .md-pick button.brow { font-weight: 600; margin-top: 4px; }
