@@ -208,8 +208,11 @@ export class CodeBlockView implements NodeView {
     this.pill.classList.add("held");
     this.pill.append(m);
     const away = (e: Event) => { if (!m.contains(e.target as Node) && e.target !== anchor && !anchor.contains(e.target as Node)) this.closeMenu(); };
+    // Esc closes only the menu (the code editor's own Esc would leave edit mode)
+    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); this.closeMenu(); this.cm.focus(); } };
     document.addEventListener("mousedown", away, true);
-    this.offMenu = () => { document.removeEventListener("mousedown", away, true); anchor.classList.remove("on"); this.pill.classList.remove("held"); };
+    document.addEventListener("keydown", esc, true);
+    this.offMenu = () => { document.removeEventListener("mousedown", away, true); document.removeEventListener("keydown", esc, true); anchor.classList.remove("on"); this.pill.classList.remove("held"); };
   }
   private offMenu = () => {};
   private closeMenu() { this.menu?.remove(); this.menu = null; this.offMenu(); }

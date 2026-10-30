@@ -32,15 +32,10 @@ function cellDown(view: EditorView): boolean {
   if (!go(view.state)) { addRowAfter(view.state, view.dispatch); go(view.state); }
   return true;
 }
-/** Adds a row above or below and puts the caret in its first cell */
+/** Adds a row above or below; the caret stays where it is, in its cell (as the demo's prosemirror-tables commands leave it) */
 function addRow(view: EditorView, below: boolean): boolean {
   if (!isInTable(view.state)) return false;
-  const $cell = selectionCell(view.state), start = $cell.start(-1), map = TableMap.get($cell.node(-1));
-  const row = map.findCell($cell.pos - start).top + (below ? 1 : 0);
-  if (!(below ? addRowAfter : addRowBefore)(view.state, view.dispatch)) return false;
-  const st = view.state, t = st.doc.nodeAt(start - 1)!, m = TableMap.get(t);
-  view.dispatch(st.tr.setSelection(TextSelection.near(st.doc.resolve(start + m.map[row * m.width] + 1))).scrollIntoView());
-  return true;
+  return (below ? addRowAfter : addRowBefore)(view.state, (tr) => view.dispatch(tr.scrollIntoView()));
 }
 /** Sets (or, when it is already that, clears) the alignment of the caret's column: written as :-- / :-: / --: */
 function setColAlign(view: EditorView, align: "left" | "center" | "right") {
@@ -120,7 +115,13 @@ const rowResize = () => {
     key: new PluginKey("cbRowResize"),
     props: {
       handleDOMEvents: {
-        mousemove: (view, e) => { if (!dragging) view.dom.classList.toggle("md-row-resize", !!rowEdge(view, e) && !view.dom.classList.contains("resize-cursor")); return false; },
+        // after this event's other handlers: prosemirror-tables' column handle, which wins at a corner, updates its class then
+        mousemove: (view, e) => {
+          if (dragging) return false;
+          const edge = !!rowEdge(view, e);
+          queueMicrotask(() => { if (!dragging) view.dom.classList.toggle("md-row-resize", edge && !view.dom.classList.contains("resize-cursor")); });
+          return false;
+        },
         mouseleave: (view) => { view.dom.classList.remove("md-row-resize"); return false; },
         mousedown: (view, e) => {
           if (e.button !== 0) return false;
@@ -234,6 +235,8 @@ class TableBar {
     this.update();
   }
   private onDoc = (e: MouseEvent) => { if (this.open && !this.pick.contains(e.target as Node) && !this.bar.contains(e.target as Node)) this.closePick(false); };
+  // Esc while the grid is open closes only the grid: the caret, wherever it is, never sees it (it would leave edit mode)
+  private onEsc = (e: KeyboardEvent) => { if (e.key === "Escape" && this.open) { e.preventDefault(); e.stopPropagation(); this.closePick(true); } };
   private onFocus = () => { cancelAnimationFrame(this.frame); this.frame = requestAnimationFrame(() => this.update()); };
   private owns = (el: Element | null) => !!el && (this.bar.contains(el) || this.pick.contains(el));
   update() {
@@ -285,6 +288,7 @@ class TableBar {
     this.inC.value = String(m.width);
     this.bar.querySelector("[data-act=grid]")!.classList.add("on");
     document.body.append(this.pick);
+    document.addEventListener("keydown", this.onEsc, true);
     this.placePick();
     this.preview();
   }
@@ -297,6 +301,7 @@ class TableBar {
   private closePick(refocus: boolean) {
     if (!this.open) return;
     this.open = null;
+    document.removeEventListener("keydown", this.onEsc, true);
     this.pick.remove();
     this.bar.querySelector("[data-act=grid]")?.classList.remove("on");
     if (!this.view.isDestroyed) this.view.dispatch(this.view.state.tr.setMeta(PREV, null));
@@ -331,6 +336,7 @@ class TableBar {
     document.removeEventListener("focusout", this.onFocus);
     window.removeEventListener("resize", this.onFocus);
     document.removeEventListener("scroll", this.onFocus, true);
+    document.removeEventListener("keydown", this.onEsc, true);
     this.bar.remove();
     this.pick.remove();
   }

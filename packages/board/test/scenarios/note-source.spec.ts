@@ -228,6 +228,9 @@ test("noteTableToolbar", async () => {
   await bar.locator('[data-act="center"]').click();
   const grown = await cellText(pg, "n1");
   await shot(h, "noteTableToolbar-bar");
+  // its edge shows on a dark Note too: a 1px ring under the float shadow (the shadow's own .5px hair is lost there)
+  const ring = await bar.evaluate((b) => getComputedStyle(b).boxShadow);
+  check("noteTableToolbar outline visible", light || /^rgba\(255, 240, 220, 0\.15\) 0px 0px 0px 1px/.test(ring), ring);
   // the grid: pointing at 2 × 2 marks the cells with content outside it
   await bar.locator('[data-act="grid"]').click();
   await pg.locator(".md-gpick").waitFor({ state: "visible" });
@@ -260,6 +263,7 @@ test("noteTableShortcuts", async () => {
   await idle(h);
   await editNote(h, "n0");
   await intoCell(h, "n0", "1");
+  // ⌘↵ / ⌘⇧↵ add a row below / above and leave the caret where it was (typing goes on in the same cell)
   await pg.keyboard.press("ControlOrMeta+Enter");
   await pg.keyboard.type("x");
   await pg.keyboard.press("ControlOrMeta+Shift+Enter");
@@ -267,27 +271,29 @@ test("noteTableShortcuts", async () => {
   const added = await cellText(pg, "n0");
   await pg.keyboard.press("ControlOrMeta+Shift+Backspace");
   const deleted = await cellText(pg, "n0");
-  await intoCell(h, "n0", "1");
+  await intoCell(h, "n0", "4");
   await pg.keyboard.press("Tab");
   await key(pg, "End");
   await pg.keyboard.type("T");
   await pg.keyboard.press("Enter");
   await pg.keyboard.type("E");
-  await intoCell(h, "n0", "3");
+  await intoCell(h, "n0", "6");
   await pg.keyboard.press("Shift+Enter");
   await pg.keyboard.type("two");
   await pg.locator('.md-tbar [data-act="center"]').click();
   await shot(h, "noteTableShortcuts");
   await exitEdit(h);
   const saved = md(h, "n0"), rows = saved.split("\n");
-  check("noteTableShortcuts rows", JSON.stringify(added.slice(1, 4)) === JSON.stringify(["1,2,3", "y,,", "x,,"]) && JSON.stringify(deleted.slice(1, 3)) === JSON.stringify(["1,2,3", "x,,"]), { added, deleted });
-  check("noteTableShortcuts saved", rows.length === 5 && /^:-+:$/.test(rows[1].split("|")[3].trim())
-    && /\| *2T *\| *3<br>two *\|/.test(saved) && /\| *x *\| *E *\|/.test(saved), { saved });
+  check("noteTableShortcuts rows", JSON.stringify(added.slice(1)) === JSON.stringify([",,", "1xy,2,3", ",,", "4,5,6"]) && JSON.stringify(deleted.slice(1)) === JSON.stringify([",,", ",,", "4,5,6"]), { added, deleted });
+  check("noteTableShortcuts saved", rows.length === 6 && /^:-+:$/.test(rows[1].split("|")[3].trim())
+    && /\| *5T *\| *6<br>two *\|/.test(saved) && /\| *\| *E *\| *\|$/.test(saved), { saved });
   await close(h);
 });
 
 /** Column widths and row heights dragged in the editor: one undo step each, the caret stays where it was, kept as the Note's
  *  layout next to the Markdown (which doesn't change) and drawn the same in the static render */
+/** The cursor the page shows at a point: that of the element under it */
+const cursorAt = (pg: Page, x: number, y: number) => pg.evaluate(([x, y]) => getComputedStyle(document.elementFromPoint(x, y)!).cursor, [x, y] as const);
 test("noteTableResizePersists", async () => {
   const h = await open({ board: board([TABLE]), light });
   const pg = h.page;
@@ -297,9 +303,11 @@ test("noteTableResizePersists", async () => {
   const caret0 = (await pm(pg)).from;
   const th = (await pg.locator(`${card("n0")} .md-pm th`).first().boundingBox())!;
   const colW0 = th.width;
+  const textCursor = await cursorAt(pg, th.x + th.width / 2, th.y + th.height / 2);
   // column: prosemirror-tables' handle at the cell's right edge
   await pg.mouse.move(th.x + th.width - 2, th.y + th.height / 2);
   await until(h, "the column handle shows", async () => (await pg.locator(`${card("n0")} .md-pm.resize-cursor, ${card("n0")} .md-pm .resize-cursor`).count()) > 0);
+  const colCursor = await cursorAt(pg, th.x + th.width - 2, th.y + th.height / 2);
   await pg.mouse.down();
   for (let i = 1; i <= 6; i++) await pg.mouse.move(th.x + th.width - 2 + i * 10, th.y + th.height / 2);
   await pg.mouse.up();
@@ -308,6 +316,8 @@ test("noteTableResizePersists", async () => {
   const tr = (await pg.locator(`${card("n0")} .md-pm tr`).nth(1).boundingBox())!;
   const rowH0 = tr.height;
   await pg.mouse.move(tr.x + tr.width / 2, tr.y + tr.height - 1);
+  await until(h, "the row edge is marked", async () => (await pg.locator(`${card("n0")} .md-pm.md-row-resize`).count()) > 0);
+  const rowCursor = await cursorAt(pg, tr.x + tr.width / 2, tr.y + tr.height - 1);
   await pg.mouse.down();
   for (let i = 1; i <= 5; i++) await pg.mouse.move(tr.x + tr.width / 2, tr.y + tr.height - 1 + i * 8);
   await pg.mouse.up();
@@ -325,6 +335,7 @@ test("noteTableResizePersists", async () => {
   const l = layoutOf(h, "n0")!.tables![0]!;
   const shown = await pg.evaluate(() => ({ col: document.querySelector(".nbody th")!.getBoundingClientRect().width, row: document.querySelectorAll(".nbody tr")[1].getBoundingClientRect().height }));
   await shot(h, "noteTableResizePersists");
+  check("noteTableResizePersists resize cursors on the edges", colCursor === "col-resize" && rowCursor === "row-resize" && textCursor === "text", { colCursor, rowCursor, textCursor });
   check("noteTableResizePersists caret stays", caret1 === caret0, { caret0, caret1 });
   check("noteTableResizePersists one step each", colAfterOne > colW0 + 40, { colAfterOne, colW0 });
   check("noteTableResizePersists saved as layout", md(h, "n0") === TABLE && (l.cols?.[0] ?? 0) > colW0 + 40 && (l.rows?.[1] ?? 0) > rowH0 + 30, { md: md(h, "n0"), l });
@@ -534,5 +545,40 @@ test("noteInlineDisplayMath", async () => {
   await shot(h, "noteInlineDisplayMath-edit");
   check("noteInlineDisplayMath editor centred on its own line", ok(edit), edit);
   await exitEdit(h);
+  await close(h);
+});
+
+/** Esc with a popup of the editor open (the table's size grid, a code block's language list or ⋯ menu) closes only that popup:
+ *  the Note stays in edit mode, and the next Esc leaves it */
+test("noteEscClosesPopupOnly", async () => {
+  const h = await open({ board: board([`${TABLE}\n\n\`\`\`python\nx = 1\n\`\`\`\n\nend`]), light });
+  const pg = h.page;
+  await idle(h);
+  await editNote(h, "n0");
+  const editing = () => pg.locator(`${card("n0")} .md-pm`).count();
+  const res: Record<string, unknown> = {};
+  await intoCell(h, "n0", "5");
+  await pg.locator('.md-tbar [data-act="grid"]').click();
+  await pg.locator(".md-gpick").waitFor({ state: "visible" });
+  await pg.keyboard.press("Escape");
+  await idle(h);
+  res.grid = { open: await pg.locator(".md-gpick").count(), editing: await editing() };
+  const block = `${card("n0")} .md-pm .md-code`;
+  await pg.locator(`${block} .cm-content`).click();
+  await pg.locator(`${block} .md-lang`).click();
+  await pg.locator(".md-langbox .md-langq").waitFor();
+  await pg.keyboard.press("Escape");
+  await idle(h);
+  res.lang = { open: await pg.locator(".md-langbox").count(), editing: await editing() };
+  await pg.locator(block).hover();
+  await pg.locator(`${block} .md-cbb[data-tip="More"]`).click();
+  await pg.locator(".md-cbmenu").waitFor();
+  await pg.keyboard.press("Escape");
+  await idle(h);
+  res.more = { open: await pg.locator(".md-cbmenu").count(), editing: await editing() };
+  await pg.keyboard.press("Escape");
+  await idle(h);
+  res.after = await editing();
+  check("noteEscClosesPopupOnly", JSON.stringify(res) === JSON.stringify({ grid: { open: 0, editing: 1 }, lang: { open: 0, editing: 1 }, more: { open: 0, editing: 1 }, after: 0 }), res);
   await close(h);
 });

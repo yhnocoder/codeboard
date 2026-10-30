@@ -295,6 +295,8 @@ math { font-size: 1.05em; }
 .md-tbar { position: fixed; z-index: 55; left: 0; top: 0; display: flex; align-items: center; gap: 1px; padding: 2px; }
 .md-tbar .tbtn.md-ib { width: 26px; height: 24px; padding: 0; justify-content: center; }
 .md-tbar .tbtn.md-ib.danger:hover { color: var(--warn); }
+/* --md-float-ring: a page can draw a firmer edge where its float shadow alone doesn't show (the board's dark theme) */
+.mdui.md-tbar, .md-gpick { box-shadow: var(--md-float-ring, 0 0 0 0 transparent), var(--sh-float); }
 .md-tbar .sep { width: 1px; height: 16px; background: var(--hair); margin: 0 3px; }
 .md-tcount { padding: 0 4px; font: 11px var(--sys); color: var(--ink-3); font-variant-numeric: tabular-nums; }
 .md-gpick { position: fixed; z-index: 56; left: 0; top: 0; padding: 8px; border-radius: 10px; background: var(--surface); color: var(--ink); box-shadow: var(--sh-float); font: 12px/1.4 var(--sys); }

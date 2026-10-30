@@ -57,6 +57,7 @@
   --hlrow: rgba(255,240,220,.07); --hlbar: #aca79d;
   --chg: rgba(224,176,85,.12); --chg-strong: rgba(224,176,85,.32); --del: rgba(227,137,95,.12); --add: rgba(163,201,140,.12);
   --doom: rgba(240,110,90,.22); --doom-line: rgba(240,120,95,.6); --doom-ink: #f08a74;
+  --md-float-ring: 0 0 0 1px rgba(255,240,220,.15);
   --hatch: rgba(255,240,220,.06);
   --edge: #78746c;
   --s-sand: rgba(214,180,120,.10); --s-blue: rgba(120,165,225,.09); --s-green: rgba(140,195,120,.09); --s-pink: rgba(230,140,165,.09);
@@ -97,6 +98,8 @@ body { background: var(--canvas); color: var(--ink); font: 13px/1.5 var(--sys); 
 :where(.chrome .pcode, .chrome .pcode *) { user-select: text; -webkit-user-select: text; cursor: text; }
 :where(.chrome .nbody, .chrome .nbody *, .chrome .cdesc, .chrome .cdesc *, .chrome .tx, .chrome .tx *, .chrome .inote, .chrome .inote *, .chrome .sn-text, .chrome .sn-text *, .chrome .fld, .chrome .pin) { user-select: text; -webkit-user-select: text; }
 :where(.chrome .nbody, .chrome .cdesc, .chrome .tx) { cursor: default; }
+/* the open Note editor sets its cursor on its root (text, or a table edge's col-resize / row-resize): its content takes it from there */
+:where(.chrome .md-pm *) { cursor: inherit; }
 :where(.chrome .pk-top, .chrome .pk-top *) { user-select: text; -webkit-user-select: text; }
 :where(.chrome .src .gap, .chrome .src .gap *, .chrome .src .inote, .chrome .src .inote *) { user-select: none; -webkit-user-select: none; cursor: default; }
 :where(.chrome .src .arail, .chrome .src .arail *) { user-select: none; -webkit-user-select: none; cursor: default; }
