@@ -111,3 +111,26 @@ describe("version re-check after a file change", () => {
     expect([...new Set(read)].sort()).toEqual([llmAbs, schAbs, seqAbs].sort());
   });
 });
+
+describe("opening a board", () => {
+  const blockAbs = path.join(WS, "nanovllm/engine/block_manager.py");
+  afterAll(() => { W.open.delete(blockAbs); });
+  it("posts the board with its highlighting before the version status, then the status; a re-check runs after it", async () => {
+    const c = (await card(blockAbs, "BlockManager.allocate")).card;
+    const seg = c.segments[0];
+    // an unsaved edit inside the function: the version check says "uncommitted"
+    const text = fs.readFileSync(blockAbs, "utf8").split("\n");
+    text[seg.start] += "  # edited";
+    W.open.set(blockAbs, text.join("\n"));
+    await store.save({ ...emptyBoard("bV", "V"), cards: [c], place: { [c.id]: { x: 0, y: 0, w: 500 } } });
+    const p = (await hub.show("bV"))!, posted = views.at(-1)!.posted;
+    await p.init();
+    const init = posted.find((m) => m.type === "init");
+    expect(init?.type === "init" && init.views[seg.id]?.html.length).toBe(seg.text.length);
+    expect(init?.type === "init" && init.stale).toEqual({});
+    await p.refreshStale();
+    expect(p.stale[seg.id]).toEqual({ state: "uncommitted" });
+    const after = posted.slice(posted.indexOf(init!) + 1).filter((m) => m.type === "stale");
+    expect(after).toEqual([{ type: "stale", stale: { [seg.id]: { state: "uncommitted" } } }]); // the re-check found nothing new: posted once
+  });
+});
