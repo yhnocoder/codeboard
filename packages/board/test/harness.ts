@@ -5,7 +5,9 @@ import { launch } from "./chromium";
 import { uid, emptyBoard, loadBoard, applyPatch, DEFAULT_SETTINGS, renderLine, type Board, type BoardToHost, type Card, type CodeCard, type Segment, type SegView, type HostToBoard, type CallSpan } from "@codeboard/core";
 import { F_BLANK } from "@codeboard/analysis/basics";
 import { tidy } from "@codeboard/core/tidy";
-import { initAnalysis, analyze, varCandidates, importPkg, peekPlan, type FileAnalysis, type Sym } from "@codeboard/analysis";
+import { analyze, varCandidates, importPkg, peekPlan, type FileAnalysis, type Sym } from "@codeboard/analysis";
+import { highlight } from "@codeboard/host/views";
+import { analysisReady, startAnalysis } from "@codeboard/host/analysis";
 
 /** The repo's root, defined by the builds that bundle this file (playwright.config.ts, run-perf.mjs) */
 declare const REPO_ROOT: string;
@@ -54,6 +56,11 @@ export function viewOf(seg: Segment): SegView {
   }
   const defs = (a?.symbols ?? []).filter((s) => s.defLine >= seg.start && s.defLine <= seg.end).map((s) => ({ line: s.defLine, name: s.name, qual: s.qual }));
   return { html, flags, calls, defs, bare };
+}
+/** A hand-written snippet in another language (a Note's code block) gets the host's real highlighting, so a language change shows */
+async function langView(seg: Segment): Promise<SegView> {
+  const v = viewOf(seg);
+  return seg.src.kind === "free" && seg.lang && seg.lang !== "python" ? { ...v, html: await highlight(seg.text, seg.lang) } : v;
 }
 // Crude Python highlighting: keywords, strings, comments, numbers
 const KW = new Set("def return for in if else elif while and or not is None True False class break continue del import from as with lambda yield assert pass raise try except finally global nonlocal async await".split(" "));
@@ -108,7 +115,8 @@ async function functionCoverage(page: Page) {
 
 export type Host = { page: Page; board: () => Board; sent: BoardToHost[]; post: (m: HostToBoard) => Promise<void>; close: () => Promise<void> };
 
-export async function ready() { await initAnalysis(); if (!files.size) load(); }
+// the host's own start, which its highlighting of C / C++ / CUDA waits for
+export async function ready() { if (!analysisReady()) await startAnalysis(); if (!analysisReady()) throw new Error("tree-sitter did not start"); if (!files.size) load(); }
 
 /** Lets a scenario play part of the host: return true if handled */
 export type OnMsg = (m: BoardToHost & { req?: number }, reply: (req: number, data?: unknown, error?: string) => Promise<void>) => boolean | Promise<boolean>;
@@ -210,7 +218,7 @@ export async function openBoard(browser: Browser, o: OpenOptions = {}, watch: Wa
         const vars = call ? varCandidates(call, cands[0].s) : [];
         return reply(m.req, { card: c, views: { [c.segments[0].id]: viewOf(c.segments[0]) }, vars, w: 560 });
       }
-      case "views": return reply(m.req, Object.fromEntries(m.segs.map((s) => [s.id, viewOf(s)])));
+      case "views": return reply(m.req, Object.fromEntries(await Promise.all(m.segs.map(async (s) => [s.id, await langView(s)] as const))));
       case "search": {
         const q = m.q.toLowerCase();
         const syms = allSyms().filter((x) => x.s.qual.toLowerCase().includes(q)).slice(0, 12).map((x) => ({ kind: "symbol" as const, label: x.s.qual, detail: `${x.f}:${x.s.defLine}`, path: x.f, line: x.s.defLine, sym: x.s.qual, glyph: x.s.kind === "class" ? "C" : "ƒ" }));

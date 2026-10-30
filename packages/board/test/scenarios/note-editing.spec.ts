@@ -720,6 +720,27 @@ test("noteEndingInCodeBlockNoExtraSpace", async () => {
 /** Note 代码块右上角的语言名（照 Typora）：光标在块里时淡淡地显示（Plain text、Python），右上角、没有底色和边框；
  *  悬停时出现 ▾。点它在下面打开列表，筛选框里打字筛出语言，↵ 定下来（马上换着色，一次撤销回去），Esc 不改，点列表里的一项也行，
  *  Plain text 那一行 = 纯文字；列表开着时点了别处：照筛出的定下来，保存退出。写回成 ```语言 */
+// Picking another language colours the block by that language: a line starting with # is a comment in Python, not in Rust
+test("noteCodeBlockLanguageRecolor", async () => {
+  const h = await open({ board: board(["```python\n# per SM\nthreads = 2048  # trailing\n```\n\nafter"]), light });
+  await idle(h);
+  const pg = h.page, n0 = '.card[data-id="n0"]';
+  const label = pg.locator(`${n0} .md-pm pre .md-lang`), filter = pg.locator(".md-langbox .md-langq");
+  const coms = () => pg.locator(`${n0} .md-pm pre .cm-content .com`).count();
+  await editNote(h, "n0");
+  await pg.locator(`${n0} .md-pm pre .cm-content`).click();
+  await until(h, "python comments coloured", async () => (await coms()) === 2);
+  await label.click();
+  await expect(filter).toBeFocused();
+  await pg.keyboard.type("rust");
+  await pg.keyboard.press("Enter");
+  await expect(pg.locator(".md-langbox")).toHaveCount(0);
+  await until(h, "the block is coloured as Rust", async () => (await label.innerText()) === "Rust" && (await pg.locator(`${n0} .md-pm pre .cm-content .num`).count()) > 0 && (await coms()) === 0).catch(() => undefined);
+  const r = { name: await label.innerText(), coms: await coms(), nums: await pg.locator(`${n0} .md-pm pre .cm-content .num`).count() };
+  check("noteCodeBlockLanguageRecolor no Python comment colour left after switching to Rust", r.name === "Rust" && r.coms === 0 && r.nums > 0, r);
+  await shot(h, "noteCodeBlockLanguageRecolor");
+});
+
 test("noteCodeBlockLanguagePicker", async () => {
   const CODE = "def f():\n    return 1";
   const h = await open({ board: board([`Intro\n\n\`\`\`\n${CODE}\n\`\`\`\n\nafter`, "other note"]), light });
