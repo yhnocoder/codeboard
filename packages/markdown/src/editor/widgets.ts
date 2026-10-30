@@ -11,6 +11,7 @@ import { imageFailed, imageFailedBefore, paintRef } from "../view";
 import { holdGhosts } from "../ui/ghost";
 import { IMAGE_SETTLE } from "../ui/timing";
 import { blockInfo, flat, type Atom, type Span } from "./spans";
+import { checkMath, problemBox } from "./mathhints";
 
 type Tag = NonNullable<Span["tag"]>;
 
@@ -226,7 +227,10 @@ export function foldButton(expanded: boolean, toggle: (view: EditorView) => void
 export function mathBelow(latex: string): ToDOM {
   return () => {
     const el = span("md-dmath below");
-    renderTex(el, latex, true);
+    // as the formula block does: a formula that does not typeset says what is wrong under its red source
+    const r = checkMath(latex, true);
+    if (r.html) el.innerHTML = r.html;
+    else { renderTex(el, latex, true); if (r.problem) el.append(problemBox(r.problem, latex, false)); }
     el.addEventListener("mousedown", (e) => e.preventDefault());
     return el;
   };

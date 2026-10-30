@@ -544,7 +544,7 @@ test("noteImageSizing", async () => {
 /** $$…$$ inside a paragraph or a cell is a display formula: centred on a line of its own, the same in the static view and the editor;
  *  with the caret in its source, the preview box under it is the only hint */
 test("noteInlineDisplayMath", async () => {
-  const h = await open({ board: board(["before $$\\sum_i x_i$$ after\n\n| a |\n| - |\n| x $$y^2$$ z |\n\nend"]), light });
+  const h = await open({ board: board(["before $$\\sum_i x_i$$ after\n\n| a |\n| - |\n| x $$y^2$$ z |\n\nend", "broken $$\\frac{a$$ here\n\nend"]), light });
   const pg = h.page;
   await idle(h);
   const look = (root: string) => pg.evaluate((root) => [...document.querySelectorAll(`${root} .md-dmath`)].map((d) => {
@@ -568,6 +568,15 @@ test("noteInlineDisplayMath", async () => {
   const caret = { below: await pg.locator(`${card("n0")} .md-pm .md-dmath.below .katex`).count(), tip: await pg.locator(".md-mathtip").count() };
   await shot(h, "noteInlineDisplayMath-caret");
   check("noteInlineDisplayMath caret in the source: only the preview box", caret.below === 1 && caret.tip === 0, caret);
+  await exitEdit(h);
+  // one that does not typeset: the preview box says what is wrong, as the formula block does
+  await pg.locator(`${card("n1")} .nbody p`).last().dblclick();
+  await pg.locator(`${card("n1")} .md-pm:focus`).waitFor();
+  await focusSettled(pg);
+  await pg.locator(`${card("n1")} .md-pm p .md-dmath`).first().click();
+  await pg.locator(`${card("n1")} .md-pm .md-dmath.below`).waitFor();
+  const broken = await pg.locator(`${card("n1")} .md-pm .md-dmath.below`).evaluate((e) => ({ err: e.querySelector(".md-matherr")?.textContent ?? null, red: !!e.querySelector(".katex-error") }));
+  check("noteInlineDisplayMath a broken one explains itself under its source", broken.red && /少了一个\s*}/.test(broken.err ?? ""), broken);
   await exitEdit(h);
   await close(h);
 });

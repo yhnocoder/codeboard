@@ -362,22 +362,7 @@ export class MathHints {
 
   private showProblem(p: MathProblem | null, src: string) {
     if (!p) { this.err?.remove(); this.err = null; return; }
-    const msg = el("div", "");
-    for (const x of p.parts) {
-      if (typeof x === "string") msg.append(x);
-      else if ("code" in x) msg.append(el("code", "", x.code));
-      else {
-        const b = el("button", "fix", x.fix);
-        b.type = "button";
-        Object.assign(b.dataset, { from: String(x.from), to: String(x.to), text: x.text });
-        msg.append(b);
-      }
-    }
-    if (p.at !== null) {
-      const a = Math.max(0, p.at - 18), ch = src[p.at] ?? " ";
-      msg.append(el("span", "where", a > 0 ? "…" : "", src.slice(a, p.at), el("u", "", ch === " " ? "␣" : ch), src.slice(p.at + 1, p.at + 12)));
-    }
-    const box = el("div", "md-matherr", el("span", "dot", "!"), msg);
+    const box = problemBox(p, src, true);
     // 气泡自己接着点击；公式块的说明在卡片里，自己接（按下不拿走原文框的焦点）
     if (!this.tip) {
       box.addEventListener("mousedown", (e) => e.preventDefault());
@@ -396,6 +381,28 @@ export class MathHints {
     const from = +b.dataset.from!, to = +b.dataset.to!, text = b.dataset.text!;
     this.host.replace(from, to, text, from + text.length);
   }
+}
+
+/** What is wrong with a formula, and where (.md-matherr). fixes: its one-click fixes as buttons (the caller handles their clicks);
+ *  without, the fix is shown as the text it would write */
+export function problemBox(p: MathProblem, src: string, fixes: boolean): HTMLElement {
+  const msg = el("div", "");
+  for (const x of p.parts) {
+    if (typeof x === "string") msg.append(x);
+    else if ("code" in x) msg.append(el("code", "", x.code));
+    else if (!fixes) msg.append(el("code", "", x.text));
+    else {
+      const b = el("button", "fix", x.fix);
+      b.type = "button";
+      Object.assign(b.dataset, { from: String(x.from), to: String(x.to), text: x.text });
+      msg.append(b);
+    }
+  }
+  if (p.at !== null) {
+    const a = Math.max(0, p.at - 18), ch = src[p.at] ?? " ";
+    msg.append(el("span", "where", a > 0 ? "…" : "", src.slice(a, p.at), el("u", "", ch === " " ? "␣" : ch), src.slice(p.at + 1, p.at + 12)));
+  }
+  return el("div", "md-matherr", el("span", "dot", "!"), msg);
 }
 
 /** 文本框里第 i 个字前面的光标在屏幕上的位置：照它的样式摆一个看不见的副本量（框可能被白板的镜头缩放：按显示的比例换算） */

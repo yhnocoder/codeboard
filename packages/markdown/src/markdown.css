@@ -285,7 +285,7 @@ math { font-size: 1.05em; }
 .md-pm .md-cbpill .md-lang { display: flex; align-items: center; gap: 6px; max-width: 160px; height: 28px; margin: 0; padding: 0 8px 0 10px; border: 0; border-radius: 7px; outline: none; background: none; box-shadow: none;
   color: var(--ink-2); font: inherit; letter-spacing: .01em; cursor: pointer; }
 .md-pm .md-cbpill .md-lang .md-lang-nm { overflow: hidden; text-overflow: ellipsis; }
-/* the chevron only with the mouse over the block: with just the caret in it the label reads as a plain caption */
+/* the chevron always shown, as in the demo: the label reads as a menu even with just the caret in the block */
 .md-pm .md-cbpill .md-lang .md-lang-v { flex: none; width: 10px; height: 10px; color: var(--ink-3); opacity: .8; }
 .md-pm .md-cbpill .md-lang:is(:hover, [aria-expanded="true"]) { color: var(--ink); background: var(--hlrow); }
 .md-pm .md-cbpill .md-lang:focus-visible { outline: 1.5px solid var(--accent); outline-offset: 1px; }
