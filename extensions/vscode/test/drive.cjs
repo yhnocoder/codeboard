@@ -5,7 +5,7 @@ const fs = require("fs");
 const path = require("path");
 const { execSync } = require("child_process");
 const { until, soon, hold, idle, track, fromSource } = require("./wait.cjs");
-const { command, openBoard, watchKeyboard, boardDialog, boardDialogClosed, inputBox, qiClosed, openFile, goToLine, statusSel, text, typingIn, pmHasSelection, focusSettled, boardFrame, boardFrames, card, fit, boardHasKeyboard, boardKeys, ctrlK } = require("./ui.cjs");
+const { command, openBoard, watchKeyboard, boardDialog, boardDialogClosed, inputBox, qiClosed, openFile, goToLine, statusSel, text, typingIn, pmHasSelection, focusSettled, boardFrame, boardFrames, card, fit, boardHasKeyboard, boardKeys, ctrlK, webviewBoxes } = require("./ui.cjs");
 const [OUT, WS, UD] = process.argv.slice(2);
 /** The board file format the extension writes (core's model.ts), so the autosave check follows a format bump */
 const { BOARD_VERSION } = fromSource("packages/core/src/model.ts");
@@ -285,11 +285,12 @@ async function closeStep(page) {
   if (!code) return;
   const el = f.locator(`.card[data-id="${code.id}"]`);
   // CI has seen this click leave the board as it was (no selection, no keyboard) while Playwright reported it done, which it does
-  // when no mouse event reaches the frame. In both hits so far the press reached only the workbench, on the webview's <iframe>
-  // element, about 25 ms after the click began, with VS Code's box around the webview not scrolled. That is where Chromium's browser
-  // process sent the event (its input routing chose the workbench, not the webview's renderer), so record what decides that: the
-  // browser's input routing trace (saved as close-trace.json), which documents got the moves and the press, and the <iframe>'s
-  // state as the workbench saw it at the press and before the click
+  // when no mouse event reaches the frame. In the hits the press reached only the workbench, on the webview's <iframe> element: the
+  // browser asked the workbench where the point is, the workbench hit the <iframe>, and the browser still sent the events to the
+  // workbench in its own coordinates. Chromium does that when the webview-local point the workbench answers does not map back to the
+  // press through the frame the window drew last: the webview moved, as when VS Code's box around it scrolls (webviewBoxes). In case
+  // it comes back, record the browser's input routing trace (saved as close-trace.json), which documents got the moves and the press,
+  // and the <iframe>'s state as the workbench saw it at the press and before the click
   const pressed = (kind) => {
     const r = window.__e2eClick = { press: null, moves: 0, lastMove: null };
     window.__e2ePress = null;
@@ -393,6 +394,16 @@ async function keyscopeStep(page) {
   await boardDialog(page, f, "Rename Board");
   await page.keyboard.press("Escape"); await boardDialogClosed(f, "the Rename Board dialog");
   check(true, "keyscope: Rename Board from the palette over the Explorer gives the board's dialog the keyboard");
+  // Search… in Keyboard Shortcuts opens the Settings page at its shortcuts section: that scrolls the Settings page, not VS Code's box
+  // around the webview (webviewBoxes), which shifted the whole board
+  await clickBoard(f);
+  await page.keyboard.press("?");
+  await f.locator("h3", { hasText: "Keyboard Shortcuts" }).locator("button.tlink", { hasText: "Search" }).click();
+  const shortcuts = await soon(() => f.evaluate(() => { const s = document.querySelector(".settings"), sec = s?.querySelector('[data-sec="shortcuts"]'); return s && sec ? Math.round(sec.getBoundingClientRect().top - s.getBoundingClientRect().top) : null; }), (t) => t !== null && t < 100);
+  check(shortcuts !== null && shortcuts < 100, "keyscope: Search… in Keyboard Shortcuts opens the Settings page at its shortcuts section", shortcuts);
+  check((await webviewBoxes(page)).every((t) => t === 0), "keyscope: …without scrolling VS Code's box around the webview", await webviewBoxes(page));
+  await page.keyboard.press("Escape");
+  await until("Escape closes the board's Settings page", async () => !(await f.locator(".settings").count()));
 }
 // Clicking a card takes keyboard focus from a file editor: select text in context.py, click a card (its header, then its code),
 // press Backspace. The card is deleted and the file is untouched. E2E_ONLY=cardfocus runs only this step
@@ -779,11 +790,17 @@ const finish = async (browser, errors) => {
   const flow = process.env.E2E_FLOW && path.resolve(process.env.INIT_CWD || process.cwd(), process.env.E2E_FLOW);
   if (flow) STEPS.flow = (page) => require(flow)(page, { check, until, soon, hold, idle, shot, newBoard, newNote, emptySpot, clickBoard, altB, sidenote, clipboard, boardJson, boardNamed, editorFocused, setUserSetting, command, openBoard, inputBox, qiClosed, openFile, goToLine, statusSel, text, typingIn, pmHasSelection, focusSettled, boardFrame, boardFrames, card, fit, W, OUT, WS, UD });
   const only = [process.env.E2E_ONLY || PARTS[process.env.E2E_PART], flow && "flow"].filter(Boolean).join(",");
+  // the next step's clicks land where the board is drawn only if this step left VS Code's box around the webview where it was
+  const runStep = async (k) => {
+    const t0 = Date.now(); await STEPS[k](page); console.log(`- ${k}: ${((Date.now() - t0) / 1000).toFixed(1)} s`);
+    const boxes = await webviewBoxes(page);
+    check(boxes.every((t) => t === 0), `${k}: VS Code's box around each webview is not scrolled afterwards`, boxes);
+  };
   if (only) {
     // a step may begin with a command: wait until VS Code has loaded the extension's contributions (on a fresh window the command
     // palette doesn't list them yet)
     await page.locator('.activitybar .action-item a[aria-label^="CodeBoard"]').waitFor({ timeout: 60000 });
-    for (const k of only.split(",")) { if (!STEPS[k]) throw new Error(`E2E_ONLY: no step ${k}`); const t0 = Date.now(); await STEPS[k](page); console.log(`- ${k}: ${((Date.now() - t0) / 1000).toFixed(1)} s`); }
+    for (const k of only.split(",")) { if (!STEPS[k]) throw new Error(`E2E_ONLY: no step ${k}`); await runStep(k); }
     return finish(browser, errors);
   }
 
@@ -1055,6 +1072,6 @@ const finish = async (browser, errors) => {
     await shot(page, "10-pick-impl");
   } else console.log("- skip pick-implementation step (no Pylance in E2E_EXTENSIONS)");
 
-  if (process.env.E2E_PART !== "1") { await captureStep(page); await addselStep(page); await cardfocusStep(page); await keyscopeStep(page); await closeStep(page); await projectsStep(); }
+  if (process.env.E2E_PART !== "1") for (const k of ["capture", "addsel", "cardfocus", "keyscope", "close", "projects"]) await runStep(k);
   await finish(browser, errors);
 })().catch((e) => { console.error(e); process.exit(2); });

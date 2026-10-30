@@ -293,8 +293,36 @@ async function ctrlK(page, f) {
  *  context on once the board reports getting the keyboard, so right after a click a shortcut can still be VS Code's own */
 const boardKeys = (page, f) => until("VS Code sends the board's shortcuts to the board", async () => await boardHasKeyboard(f) && await ctrlK(page, f) === "board", 10000);
 
-/** The frames that show a board (#board); boards in background tabs keep their webview, and VS Code hides those */
+/** VS Code's box around each webview (.webview-overlay-content, overflow hidden) has a few px of room to scroll: its <iframe> sits on a
+ *  line box. VS Code never scrolls it, but a scroll into view from inside the webview does, and the board then moves under the pointer:
+ *  a press that lands before the window has drawn the moved webview fails Chromium's check that the webview's answer for where the
+ *  point is matches the frame it drew last, and goes to the workbench, onto the <iframe> element. The scrollTop of each such box */
+const webviewBoxes = (page) => page.evaluate(() => [...document.querySelectorAll(".webview-overlay-content")].map((b) => b.scrollTop));
+
+/** Before a pointer action Playwright scrolls the element into view, and on each retry (the element moving, a VS Code toast over it) it
+ *  scrolls with scrollIntoView({ block: "end" | "center" | "start" }), which also scrolls VS Code's box around the webview
+ *  (webviewBoxes). Nothing on a board needs that box scrolled to be reached, so pointer actions on elements in a webview do not scroll
+ *  (scroll: "none"; Playwright then clicks the element where it is, or fails saying it is outside the viewport). Applies to every
+ *  locator of the process from the first call on */
+function keepWebviewsStill(page) {
+  const proto = Object.getPrototypeOf(page.locator("body"));
+  if (proto.__e2eStill) return;
+  proto.__e2eStill = true;
+  const inWebview = (loc) => /^vscode-webview:/.test(loc._frame?.url?.() ?? "");
+  // the methods with a scroll option; setChecked and dragTo take their options second
+  for (const [name, at] of [["click", 0], ["dblclick", 0], ["hover", 0], ["tap", 0], ["check", 0], ["uncheck", 0], ["setChecked", 1], ["dragTo", 1]]) {
+    const orig = proto[name];
+    proto[name] = function (...args) {
+      if (inWebview(this)) args[at] = { scroll: "none", ...args[at] };
+      return orig.apply(this, args);
+    };
+  }
+}
+
+/** The frames that show a board (#board); boards in background tabs keep their webview, and VS Code hides those. Every board action
+ *  starts from one of these frames, so this also keeps the webviews still for actions in them (keepWebviewsStill) */
 async function boardFrames(page, { visible = true } = {}) {
+  keepWebviewsStill(page);
   const shown = async (f) => { for (let x = f; x.parentFrame(); x = x.parentFrame()) if (!await (await x.frameElement()).isVisible()) return false; return true; };
   const out = [];
   for (const f of page.frames()) { try { if (await f.$("#board") && (!visible || await shown(f))) out.push(f); } catch { /* frame going away */ } }
@@ -314,4 +342,4 @@ async function fit(f) {
   await btn.click({ timeout: 5000 }); // when something else covers it, this fails and says what
 }
 
-module.exports = { qi, qiValue, qiOpen, qiMark, watchKeyboard, keyboardSettled, boardHasKeyboard, boardKeys, ctrlK, boardDialog, boardDialogClosed, qiClosed, pick, command, openBoard, clickBoardTab, inputBox, openFile, goToLine, statusSel, text, typingIn, pmHasSelection, focusSettled, boardFrame, boardFrames, card, fit };
+module.exports = { qi, qiValue, qiOpen, qiMark, watchKeyboard, keyboardSettled, boardHasKeyboard, boardKeys, ctrlK, boardDialog, boardDialogClosed, qiClosed, pick, command, openBoard, clickBoardTab, inputBox, openFile, goToLine, statusSel, text, typingIn, pmHasSelection, focusSettled, boardFrame, boardFrames, card, fit, webviewBoxes };
