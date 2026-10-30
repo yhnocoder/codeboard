@@ -1,5 +1,6 @@
 import { keepKey } from "../ui/editkeys";
 import { place } from "../ui/place";
+import { scrollIntoBox } from "../ui/reveal";
 
 /** 一种语言：name 是写进围栏的名字，label 显示的名字，aliases 打这些也算它（不分大小写） */
 export type CodeLang = { name: string; label: string; aliases?: string[] };
@@ -162,7 +163,8 @@ export class LangBox {
   private mark() {
     const bs = this.box?.querySelectorAll(".md-lo");
     bs?.forEach((b, k) => b.classList.toggle("sel", k === this.i));
-    bs?.[this.i]?.scrollIntoView({ block: "nearest" });
+    const b = bs?.[this.i];
+    if (b) scrollIntoBox(b, "nearest");
   }
 
   private key(e: KeyboardEvent) {

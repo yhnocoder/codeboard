@@ -1,5 +1,5 @@
 // 数据都由宿主走 GitHub REST API 拿（私有仓库用 VS Code 的 GitHub 登录，被拒时才请用户登录）。
-import { keepKey } from "@yhnocoder/markdown/ui";
+import { keepKey, scrollIntoBox } from "@yhnocoder/markdown/ui";
 import { For, Show, createMemo, createSignal, onMount, batch } from "solid-js";
 import { baseName, parseRepoInput, type Commit, type GhFile, type GhQuery, type GhReplyOf, type GhRepo, type GhTree, type RepoInput } from "@codeboard/core";
 import { toast } from "../state/store";
@@ -93,7 +93,7 @@ export function GitHubPicker() {
     batch(() => { setFile(f); setSel(lines ? [Math.min(...lines), Math.min(f.text.length, Math.max(...lines))] : null); });
     requestAnimationFrame(() => {
       const el = lines && codeEl?.querySelector(`[data-l="${lines[0]}"]`);
-      if (el) (el as HTMLElement).scrollIntoView({ block: "center" }); else codeEl?.scrollTo(0, 0);
+      if (el) scrollIntoBox(el, "center"); else codeEl?.scrollTo(0, 0);
     });
   }
 
