@@ -286,8 +286,7 @@ math { font-size: 1.05em; }
   color: var(--ink-2); font: inherit; letter-spacing: .01em; cursor: pointer; }
 .md-pm .md-cbpill .md-lang .md-lang-nm { overflow: hidden; text-overflow: ellipsis; }
 /* the chevron only with the mouse over the block: with just the caret in it the label reads as a plain caption */
-.md-pm .md-cbpill .md-lang .md-lang-v { flex: none; width: 10px; height: 10px; color: var(--ink-3); opacity: 0; transition: opacity calc(var(--t, 1) * 120ms); }
-.md-pm pre.md-code:hover .md-lang .md-lang-v, .md-pm .md-cbpill .md-lang[aria-expanded="true"] .md-lang-v { opacity: .8; }
+.md-pm .md-cbpill .md-lang .md-lang-v { flex: none; width: 10px; height: 10px; color: var(--ink-3); opacity: .8; }
 .md-pm .md-cbpill .md-lang:is(:hover, [aria-expanded="true"]) { color: var(--ink); background: var(--hlrow); }
 .md-pm .md-cbpill .md-lang:focus-visible { outline: 1.5px solid var(--accent); outline-offset: 1px; }
 .md-pm .md-cbsep { flex: none; width: 1px; height: 18px; margin: 0 3px; background: var(--hair); }

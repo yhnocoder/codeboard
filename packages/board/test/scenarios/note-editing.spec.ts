@@ -764,7 +764,7 @@ test("noteCodeBlockLanguagePicker", async () => {
   };
   const res: Record<string, unknown> = { inDisplay: await pg.locator(`${n0} .md-lang`).count() }; // 只在编辑时有
   await editNote(h, "n0");
-  // 光标在代码里：显示 Plain text（纯文字）；鼠标不在块上：没有 ▾
+  // caret in the code: Plain text (no colouring); the ▾ shows even without the mouse on the block
   await pg.locator(`${n0} .md-pm pre .cm-content`).click();
   await pg.mouse.move(2, 2);
   await until(h, "the language label shows while the caret is in the block", async () => (await opacity()) === "1");
@@ -777,9 +777,7 @@ test("noteCodeBlockLanguagePicker", async () => {
   check("noteCodeBlockLanguagePicker label at the top right, plain text", Math.abs((res.place as any).right - 8) <= 1 && Math.abs((res.place as any).top - 11) <= 1
     && look.bg === "rgba(0, 0, 0, 0)" && /^0px/.test(look.border) && look.shadow === "none" && look.font === "13px", res.place);
   await snap("rest");
-  // 悬停：▾ 淡入
   await pre.hover();
-  await until(h, "the chevron fades in on hover", async () => +(await chevron()) > 0.5);
   await snap("hover");
   // 点开：筛选框拿到焦点，现在的（Plain text）打 ✓、选中
   await label.click();
@@ -846,7 +844,7 @@ test("noteCodeBlockLanguagePicker", async () => {
   await idle(h);
   res.away = { md: md(h, "n0"), editing: await editing(h, "n0"), list: await pg.locator(".md-langbox").count() };
   const ok = res.inDisplay === 0
-    && JSON.stringify(res.plain) === JSON.stringify({ name: "Plain text", kw: 0, chevron: "0" })
+    && JSON.stringify(res.plain) === JSON.stringify({ name: "Plain text", kw: 0, chevron: "0.8" })
     && JSON.stringify(res.open) === JSON.stringify({ placeholder: "Filter languages", sel: "Plain text", ck: "✓" })
     && /^Python\s+python$/.test(String((res.list as any).first)) && /Python/.test(String((res.list as any).sel))
     && JSON.stringify(res.python) === JSON.stringify({ name: "Python", inCode: true })

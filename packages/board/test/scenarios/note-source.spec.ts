@@ -162,7 +162,7 @@ test("noteCaretMovesNoUndo", async () => {
 /** A code block's pill: language, copy, wrap (kept as the Note's layout, also in the static render) and a menu that turns the
  *  block into paragraphs or deletes it */
 test("noteCodeBlockPill", async () => {
-  const code = "```python\nvery_long_name = compute_something(with_a, rather_long, list_of, arguments, that_keeps_going, past_the_edge)\nx = 1\n```";
+  const code = "```python\nvery_long_name = compute_something(with_a, rather_long, list_of, arguments, that_keeps_going, past_the_edge)\nx = 1\nprint(min(x, 2) // 3)\n```";
   const h = await open({ board: board([`Intro\n\n${code}\n\nafter`, `${code}`]), light });
   const pg = h.page;
   await idle(h);
@@ -174,12 +174,17 @@ test("noteCodeBlockPill", async () => {
   await pg.locator(pill).waitFor({ state: "visible" });
   const tips = await pg.locator(`${pill} .md-cbb`).evaluateAll((bs) => bs.map((b) => b.getAttribute("data-tip")));
   const lang = (await pg.locator(pill).innerText()).trim();
-  // the demo's look: a 12px-round panel, 18 / 22px around 12.5px code on 1.7 lines, a 34px pill with a hair line after the language;
-  // in Warm Ink the demo's number colour (the board's code cards keep theirs)
+  // the demo's look: a 12px-round panel, 18 / 22px around 12.5px code on 1.7 lines, a 34px pill with a hair line after the language
+  // and its ▾ always shown; in Warm Ink the demo's colours for numbers, called builtins and operators, with a call's arguments
+  // in plain ink (the board's code cards keep their colours)
   await until(h, "the code is coloured", async () => (await pg.locator(`${block} .cm-content .num`).count()) > 0);
   const look = await pg.locator(block).evaluate((e) => {
     const s = getComputedStyle(e), p = e.querySelector(".md-cbpill")!, num = e.querySelector(".cm-content .num");
-    return { radius: s.borderTopLeftRadius, pad: `${s.paddingTop} ${s.paddingLeft}`, font: s.fontSize, lh: s.lineHeight, pill: Math.round(p.getBoundingClientRect().height), sep: !!p.querySelector(".md-lang + .md-cbsep"), num: num ? getComputedStyle(num).color : null };
+    const color = (sel: string, text: string) => { const t = [...e.querySelectorAll(`.cm-content ${sel}`)].find((x) => x.textContent?.trim() === text); return t ? getComputedStyle(t).color : null; };
+    const plain = [...e.querySelectorAll(".cm-content .p")].filter((x) => /\w/.test(x.textContent ?? "")).length;
+    return { radius: s.borderTopLeftRadius, pad: `${s.paddingTop} ${s.paddingLeft}`, font: s.fontSize, lh: s.lineHeight, pill: Math.round(p.getBoundingClientRect().height), sep: !!p.querySelector(".md-lang + .md-cbsep"),
+      num: num ? getComputedStyle(num).color : null, builtin: color(".fn", "min"), op: color(".op", "//"), argsAsMarks: plain,
+      chevron: getComputedStyle(p.querySelector(".md-lang-v")!).opacity };
   });
   const h0 = await pg.locator(block).evaluate((e) => e.getBoundingClientRect().height);
   await pg.locator(`${pill} .md-cbb[data-tip="Wrap lines"]`).click();
@@ -200,7 +205,8 @@ test("noteCodeBlockPill", async () => {
   await until(h, "the block became paragraphs", async () => (await pg.locator(`${card("n1")} .md-pm .md-code`).count()) === 0);
   await exitEdit(h);
   check("noteCodeBlockPill look", look.radius === "12px" && look.pad === "18px 22px" && look.font === "12.5px" && Math.abs(parseFloat(look.lh) - 21.25) < .5 && look.pill === 34 && look.sep
-    && look.num === (light ? "rgb(163, 22, 107)" : "rgb(224, 140, 192)"), look);
+    && look.num === (light ? "rgb(163, 22, 107)" : "rgb(224, 140, 192)") && look.builtin === (light ? "rgb(208, 59, 92)" : "rgb(240, 124, 149)")
+    && look.op === (light ? "rgb(154, 106, 44)" : "rgb(214, 168, 106)") && look.argsAsMarks === 0 && look.chevron === "0.8", look);
   check("noteCodeBlockPill pill", lang.startsWith("Python") && JSON.stringify(tips) === JSON.stringify(["Copy code", "Wrap lines", "More"]), { lang, tips });
   check("noteCodeBlockPill wrap", h1 > h0 + 10 && staticWrap === 1 && mdAfterWrap === `Intro\n\n${code}\n\nafter`, { h0, h1, staticWrap, mdAfterWrap });
   check("noteCodeBlockPill menu", JSON.stringify(items.map((t) => t.trim())) === JSON.stringify(["Convert to paragraph", "Delete code block"]) && !md(h, "n1").includes("```") && md(h, "n1").includes("x = 1"), { items, md: md(h, "n1") });
