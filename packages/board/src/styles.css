@@ -162,7 +162,9 @@ input, textarea { font: inherit; color: var(--ink); }
 /* 模糊的那层只在没卡框、地图档、拿起来时整层去掉，不渐变：渐变的话缩放换到地图档那一下每张卡要多算一个动画 */
 /* 圆角取卡的一半：同样的半径，圆弧在 squircle 里面，阴影会画进卡的四个角里（底色上一道细边）；半径 ≤ 0.54 倍的圆弧整个在 squircle 外面 */
 .card::before { corner-shape: round; border-radius: calc(var(--cr) * .5); box-shadow: var(--sh-soft); }
-.card::after { box-shadow: var(--ring); transition: box-shadow calc(var(--t) * 160ms) var(--out); }
+/* --ring 注册成不继承，只有卡和 ::after 读它：会继承的话，换档、选中、悬停每改一次，卡里几百个节点都要跟着重算样式（241 张卡换地图档 ~250ms） */
+@property --ring { syntax: "*"; inherits: false; }
+.card::after { --ring: inherit; box-shadow: var(--ring); transition: box-shadow calc(var(--t) * 160ms) var(--out); }
 /* 没有卡框的、地图档的、拿起来的（--sh-lift 自己带着阴影）不画模糊的那层 */
 .card:is(.text, .nobg, .lo-map, .lift)::before { box-shadow: none; }
 .card.lift::after { transition-duration: calc(var(--t) * 120ms); }
@@ -1237,7 +1239,8 @@ mark.wdiff { background: var(--chg-strong); color: inherit; border-radius: 2px; 
   background: color-mix(in srgb, var(--surface) 88%, transparent); font: 700 calc(12px * var(--iz, 1))/1.25 var(--sys); color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; z-index: 1; --iz: inherit; }
 .card.board.lo-map > .cface { clip-path: none; --iz: inherit; }
 .card.board.lo-map .sbfar { visibility: visible; }
-.card.board.lo-map .sbhead, .card.board.lo-map .sbhead > *, .card.board.lo-map .sbgone { visibility: hidden; }
+/* 标题行里的几样逐个写出来：最右边是 * 的话，任何一张卡换 .lo-map 都要把整棵子树的样式重算一遍 */
+.card.board.lo-map .sbhead, .card.board.lo-map .sbhead > :is(.step, .sbname, .sbmeta), .card.board.lo-map .sbgone { visibility: hidden; }
 /* 地图档：Section 名、提示、按钮都不画，地图本身照样（已经是缩略的） */
 .card.board.lo-map .sblab, .card.board.lo-map .sbtip, .card.board.lo-map .sbacts { visibility: hidden; }
 /* 面包屑：进入子白板后在左上角，点上一级回去 */
