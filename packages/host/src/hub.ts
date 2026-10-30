@@ -280,9 +280,9 @@ export class BoardHub implements BoardHost, Disposable {
       if (req !== undefined) p.post({ type: "reply", req, error: msg });
       else p.toast(`Error: ${msg}`);
     } finally {
-      // 慢的请求记一笔（Copy Diagnostics 里能看到），方便对照白板那边的耗时
+      // 慢的请求记一笔（Copy Diagnostics 里能看到），方便对照白板那边的耗时。要等用户在对话框里选的不算（量到的是用户想了多久）
       const ms = performance.now() - t0;
-      if (ms > 150 && m.type !== "confirm" && m.type !== "pickFile") log("info", `slow ${m.type}: ${Math.round(ms)} ms`);
+      if (ms > 150 && m.type !== "confirm" && m.type !== "pickFile" && m.type !== "copyDiagnostics") log("info", `slow ${m.type}: ${Math.round(ms)} ms`);
     }
   }
 
