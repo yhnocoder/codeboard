@@ -102,3 +102,30 @@ test("staticSelectionBoldHighlight", async () => {
   check("staticSelectionUndoOneStep", b5.ok, b5);
   await h.close();
 });
+
+/** A selection that wraps onto the next line: the toolbar sits over the selected part of the first line, not over the middle of the paragraph */
+test("staticToolbarOverFirstLine", async () => {
+  const b = emptyBoard("b1", "static format wrap");
+  const long = "横轴是以 FLOP/B 表示的算术强度或计算强度，反映应用每加载一个字节数据所完成的工作量；纵轴是以 GFLOPS 表示的计算吞吐量。图中的两条线表示硬件限制。";
+  put(b, { id: "n0", kind: "note", md: `## Roofline\n\n${long}`, look: "note" } as NoteCard, 80, 80, 520);
+  b.cam = { x: 0, y: 0, z: 1 };
+  const h = await open({ board: b, light });
+  const pg = h.page;
+  await pg.locator('.card[data-id="n0"]').click({ position: { x: 20, y: 12 } });
+  await idle(h);
+  // 从第一行靠右的「每加载」选到第二行的「工作量」
+  const lines = await pg.evaluate(() => {
+    const root = document.querySelector('.card[data-id="n0"] .nbody p')!;
+    const t = root.firstChild as Text, i = t.data.indexOf("每加载"), j = t.data.indexOf("工作量") + 3;
+    const rg = document.createRange(); rg.setStart(t, i); rg.setEnd(t, j);
+    const s = getSelection()!; s.removeAllRanges(); s.addRange(rg);
+    return [...rg.getClientRects()].filter((q) => q.width > 0).map((q) => ({ l: q.left, r: q.right, t: q.top }));
+  });
+  const bubble = pg.locator(".md-bubble");
+  await bubble.waitFor();
+  await until(h, "the toolbar is placed", async () => ((await bubble.boundingBox())?.y ?? 0) > 0);
+  const bb = (await bubble.boundingBox())!, cx = bb.x + bb.width / 2, first = lines[0];
+  await shot(h, "static-toolbar-first-line");
+  check("staticToolbarOverFirstLine", lines.length >= 2 && cx >= first.l - 4 && cx <= first.r + 4 && bb.y + bb.height <= first.t, { lines, bubble: bb });
+  await h.page.context().close();
+});

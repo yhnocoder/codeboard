@@ -41,7 +41,8 @@ export function StaticFormat() {
   const pos = () => {
     const s = cur();
     if (!s || !el) return;
-    const r = s.dom.getBoundingClientRect(), box = el;
+    // 跨行的选区：贴着第一行选中的那段字，不按几行合起来的外框（那样会落到整段的正中）
+    const r = [...s.dom.getClientRects()].find((q) => q.width > 0) ?? s.dom.getBoundingClientRect(), box = el;
     void place(box, virtual({ x: r.left, y: r.top, width: r.width, height: r.height }), "top", { gap: 8, pad: 6 }).then(({ x, y }) => {
       if (cur() === s) { box.style.left = `${x}px`; box.style.top = `${y}px`; }
     });
