@@ -19,7 +19,7 @@ import { nodeFs } from "@codeboard/host/nodefs";
 import { readAsset, saveNoteImage } from "@codeboard/host/images";
 import { inlineFor, setMediaDir } from "@codeboard/host/exports";
 import { OUT, REPO, put, shot, type Host } from "../harness";
-import { test, open, check, until, idle, frames } from "../fixtures";
+import { test, open, check, until, idle, frames, focusSettled } from "../fixtures";
 
 const BASE = "https://cb-assets.test/res";
 
@@ -164,6 +164,7 @@ test("svgAddImageButtonMakesImageCard", async () => {
 async function editNote(h: Host) {
   await h.page.locator('.card[data-id="n1"] .nbody').dblclick();
   await h.page.locator('.card[data-id="n1"] .md-pm:focus').waitFor();
+  await focusSettled(h.page); // ProseMirror's focus timers would put the double-click's caret back over Control+End
   await h.page.keyboard.press("Control+End");
   await h.page.keyboard.press("Enter");
 }

@@ -205,6 +205,9 @@ test("markdownHighlight", async () => {
   const marks = () => pg.locator(`${pm} mark`).allTextContents();
   await pg.locator('.card[data-id="n1"] .nbody').dblclick({ position: { x: 300, y: 12 } });
   await pg.waitForSelector(pm, { timeout: 5000 });
+  // ProseMirror's focus timers put the double-click's caret back over a key pressed within them
+  await pg.locator(`${pm}:focus`).waitFor();
+  await focusSettled(pg);
   await pg.keyboard.press("ControlOrMeta+End");
   // 打字：==hi== 打完收尾的 = 就变高亮
   await pg.keyboard.type(" and ==hi=");
