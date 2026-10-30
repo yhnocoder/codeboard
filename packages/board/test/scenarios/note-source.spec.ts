@@ -606,6 +606,40 @@ test("noteEditEntryCaretInText", async () => {
   await close(h);
 });
 
+/** A Note that starts with a heading shows it as the card's title and slides it into the editor on entering edit, so the editor's
+ *  layout is still moving when it mounts: a double-click still puts the caret in the block that was clicked, not one above it */
+test("noteEditEntryUnderHeading", async () => {
+  const src = "## Title\n\nIntro text here\n\n- one\n- two\n- three\n\n| head a | head b |\n| --- | --- |\n| cell a | cell b |\n\n```python\nx = 1\ny = 2\n```\n\nThe last paragraph";
+  const h = await open({ board: board([src, src.replace("## Title\n\n", "")]), light });
+  const pg = h.page;
+  await idle(h);
+  const res: Record<string, Record<string, string>> = {};
+  for (const id of ["n0", "n1"]) {
+    const body = `${card(id)} .nbody`;
+    const spots: [string, string, number][] = [["li two", `${body} li`, 1], ["th", `${body} th`, 1], ["td", `${body} td`, 1], ["paragraph", `${body} > p`, -1], ["code line 2", `${body} pre`, 0]];
+    res[id] = {};
+    for (const [name, sel, nth] of spots) {
+      const b = (await pg.locator(sel).nth(nth).boundingBox())!;
+      // the code block: its second line (18px padding, 1.7 lines of 12.5px)
+      const p = name.startsWith("code") ? { x: b.x + 30, y: b.y + b.height - 18 - 10 } : { x: b.x + Math.min(30, b.width / 2), y: b.y + b.height / 2 };
+      await pg.mouse.dblclick(p.x, p.y);
+      await pg.locator(`${card(id)} .md-pm:focus, ${card(id)} .md-pm .cm-content:focus`).first().waitFor();
+      await focusSettled(pg);
+      await idle(h);
+      res[id][name] = await pg.evaluate(() => {
+        const s = (document.querySelector(".md-pm") as any).editor.state.selection, t = s.$head.parent.textContent as string;
+        return s.$head.parent.type.name === "codeBlock" ? `code: ${t.slice(0, s.$head.parentOffset).split("\n").pop()}` : t;
+      });
+      await exitEdit(h);
+    }
+  }
+  const want = { "li two": "two", th: "head b", td: "cell b", paragraph: "The last paragraph", "code line 2": "code: y" };
+  const ok = (r: Record<string, string>) => Object.entries(want).every(([k, v]) => r[k] === v || (k.startsWith("code") && r[k]?.startsWith(v)));
+  check("noteEditEntryUnderHeading the caret in the clicked block, with a leading heading", ok(res.n0), res.n0);
+  check("noteEditEntryUnderHeading the same without one", ok(res.n1), res.n1);
+  await close(h);
+});
+
 /** Esc with a popup of the editor open (the table's size grid, a code block's language list or ⋯ menu) closes only that popup:
  *  the Note stays in edit mode, and the next Esc leaves it */
 test("noteEscClosesPopupOnly", async () => {
