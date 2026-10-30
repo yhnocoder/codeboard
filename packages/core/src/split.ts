@@ -36,10 +36,10 @@ export function splitHeadings(md: string): HeadingSplit | null {
     stack.push(k);
   });
   const pre = text(0, split[0].line);
-  // 第一个标题前没有字：原卡留着第一段（不然原卡空了），它下面的段直接挂在原卡上
+  // 第一个标题前没有字：原卡留着第一段（不然原卡空了），它下面的段和与它同级的段都挂在原卡上
   if (!pre) {
     const first = parts.shift()!;
-    for (const p of parts) p.parent = p.parent === 0 ? -1 : p.parent - 1;
+    for (const p of parts) p.parent = p.parent <= 0 ? -1 : p.parent - 1;
     return parts.length ? { pre: first.md, parts, cut } : null;
   }
   return { pre, parts, cut };

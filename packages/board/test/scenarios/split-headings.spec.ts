@@ -3,6 +3,7 @@
 // (solid), the cards sit in a tree going down without covering other cards, and the whole split is one undo step.
 //   splitByHeadingsMakesTree    menu item → five Notes, arrows, layout, ⌘Z back to the one Note
 //   splitByHeadingsDisabled     a Note without headings (or only headings in code) has the item greyed out
+//   splitByHeadingsSameLevel    a Note that starts with ## and has another ## later: the Note keeps the first section, the second one shows up under it
 import { emptyBoard, mdHeading, type Board, type NoteCard } from "@codeboard/core";
 import { shot, type Host } from "../harness";
 import { test, open, check, light, until, idle } from "../fixtures";
@@ -107,4 +108,45 @@ test("splitByHeadingsDisabled", async () => {
   check("splitByHeadingsDisabled greyed out without headings", (await item(h).count()) === 1 && (await item(h).isDisabled()));
   await h.page.keyboard.press("Escape");
   check("splitByHeadingsDisabled nothing split", notes(h).length === 3);
+});
+
+test("splitByHeadingsSameLevel", async () => {
+  const md = [
+    "## 资源划分与占用率",
+    "",
+    "分配给 SM 的 warp 数与 SM 支持的最大 warp 数之比，称为 ==occupancy==。",
+    "",
+    "| thread block 大小 | 每个 SM 可同时容纳的 block 数 |",
+    "| :---------------: | :--------------------: |",
+    "| 1024 | 2 |",
+    "",
+    "## 造成 Occupancy 利用率低的情况",
+    "",
+    "$$",
+    "1024/2048 = 50\\%",
+    "$$",
+    "",
+    "```c",
+    "cudaOccupancyMaxActiveBlocksPerMultiprocessor()",
+    "```",
+  ].join("\n");
+  const b = emptyBoard("b1", "split");
+  b.cards.push({ id: "n", kind: "note", md, look: "note" });
+  b.place.n = { x: 200, y: 60, w: 360 };
+  b.cam = { x: 0, y: 0, z: 1 };
+  const h = await open({ board: b, light, w: 1200, h: 1000 });
+  await openMenu(h, "n");
+  await item(h).click();
+  await until(h, "the split is saved", () => notes(h).length === 2);
+  await idle(h);
+  await shot(h, "split-headings-same-level");
+  const n = notes(h).find((c) => c.id === "n")!, other = notes(h).find((c) => c.id !== "n")!;
+  check("splitByHeadingsSameLevel the Note keeps the first section", mdHeading(n.md) === "资源划分与占用率" && n.md.includes("| 1024 | 2 |"), n.md);
+  check("splitByHeadingsSameLevel the new Note has the second section", mdHeading(other.md) === "造成 Occupancy 利用率低的情况" && other.md.includes("cudaOccupancyMaxActiveBlocksPerMultiprocessor"), other.md);
+  const p = h.board().place[other.id];
+  check("splitByHeadingsSameLevel the new Note is placed under the Note", Number.isFinite(p?.x) && Number.isFinite(p?.y) && p.y > 60, p);
+  const bx = new Map((await boxes(h)).map((r) => [r.id, r]));
+  const N = bx.get("n"), O = bx.get(other.id);
+  check("splitByHeadingsSameLevel both Notes are on screen", !!N && !!O && N.h > 40 && O.h > 40 && O.y > N.y + N.h, { N, O });
+  check("splitByHeadingsSameLevel arrow Note → new Note", h.board().links.map((l) => `${l.from.card}→${l.to.card}`).join() === `n→${other.id}`);
 });
