@@ -1,5 +1,7 @@
 // 图片的 AI 操作（DeepSeek 或 VS Code 的语言模型看图，Settings › AI 里选）：右键图片卡、或 Note 里的一张图 → Extract Text to Note / to Clipboard、Convert to SVG；
 // SVG 的图另有 Modify SVG…、Copy SVG Source；工具栏 Image ▾ 的 Paste Image Text（⇧⌘V）读剪贴板里的图直接建 Note。
+// 照字画 SVG（同一个 SVG 模型）：Image ▾ New SVG from Text…（问一句描述）、Note / Text 右键 Draw as SVG（整张卡的字，或选中的那段），
+// 画出来是普通的 SVG 图片卡（之后能 Modify SVG）。
 // 模型只在宿主里问（密钥不进白板，webview 的 CSP 也不让连 api.deepseek.com）：这里把图缩成模型收的大小发过去，回来的 SVG 在这里清洗。
 // 新建的 Note / SVG 图和指过去的箭头是一步改动（一次撤销）；Modify SVG 换掉图也是一步，⌘Z 换回原来的
 import { findCard, uid, GAP, type Board, type ImageAiOp, type ImageAiResult, type ImageCard, type NoteCard } from "@codeboard/core";
@@ -7,6 +9,7 @@ import { state, mutate, toast, cardById, placeOf } from "../state/store";
 import { ask, send } from "../host";
 import { editing, setEditing } from "../state/ui";
 import { openPop } from "../state/pop";
+import { promptText } from "../ui/Menu";
 import { onBoardSwitch } from "../state/root";
 import type { Item } from "../ui/Menu";
 import { cleanSvg, svgDataUrl } from "../md/images";
@@ -150,17 +153,17 @@ export function cancelImageJob(): boolean {
 }
 type Answer = Extract<ImageAiResult, { text: string }>;
 /**
- * 问一次模型，卡上（card）盖着「label…」等它；Cancel、Esc 取消（宿主中止请求，回来的不再用）。
- * 同一张卡同一时间只等一个。失败时提示原因，回 null
+ * 问一次模型，卡上（card）盖着「label…」等它；Cancel、Esc 取消（宿主中止请求，回来的不再用）。没有卡时 ghost = 视口中间摆一张空卡等，
+ * 否则是工具栏上方的条子。同一张卡同一时间只等一个。失败时提示原因，回 null
  */
-export async function runJob(card: string | undefined, label: string, makeOp: () => Promise<ImageAiOp | null>): Promise<Answer | null> {
+export async function runJob(card: string | undefined, label: string, makeOp: () => Promise<ImageAiOp | null>, o: { ghost?: boolean } = {}): Promise<Answer | null> {
   if (card && aiJobOn(card)) { toast("This card is still waiting for the AI model"); return null; }
   const job = ++jobN;
   let over = false;
   const finish = () => { if (over) return false; over = true; live.delete(job); setAiJobs((js) => js.filter((j) => j.job !== job)); return true; };
   const cancel = (quiet?: boolean) => { if (!finish()) return; send({ type: "imageAiCancel", job }); if (!quiet) toast("Canceled"); };
   live.set(job, cancel);
-  setAiJobs((js) => [...js, { job, card, label, cancel }]);
+  setAiJobs((js) => [...js, { job, card, ghost: !card && o.ghost, label, cancel }]);
   try {
     const op = await makeOp();
     if (over || !op) return null;
@@ -296,6 +299,63 @@ export async function copySvgSource(ref: ImgRef) {
   void navigator.clipboard?.writeText(svg).catch(() => undefined);
   send({ type: "copyText", text: svg });
   toast("Copied the SVG source");
+}
+
+/** 照字画的描述最长多少字：一段说明，不是整篇文档 */
+export const DRAW_MAX = 8000;
+/** 画出来的图片卡的宽：照 viewBox 的宽，限在常见卡宽之间 */
+function drawnWidth(svg: string): number {
+  const vb = /\bviewBox\s*=\s*["']\s*[-\d.]+[\s,]+[-\d.]+[\s,]+([\d.]+)/i.exec(svg);
+  const w = vb ? parseFloat(vb[1]) : NaN;
+  return Number.isFinite(w) && w > 0 ? Math.min(560, Math.max(240, Math.round(w))) : 400;
+}
+/**
+ * 照一段字画一张 SVG：from = 字所在的卡（等的时候它盖着忙碌层；画好的图放它右边、从它连一条箭头，一步改动）；
+ * 没有 from（New SVG from Text…）就在视口中间摆一张空卡等，画好放在那里
+ */
+export async function drawSvg(text: string, from?: string) {
+  const desc = text.trim();
+  if (!desc) return toast("Nothing to draw: the text is empty");
+  if (desc.length > DRAW_MAX) return toast(`Too long to draw (${desc.length.toLocaleString()} characters; up to ${DRAW_MAX.toLocaleString()}). Select a part of it`, undefined, 6000);
+  const { svgNoBg: noBg, svgThink: think } = state.host.settings;
+  const r = await runJob(from, think ? "Thinking, then drawing SVG…" : "Drawing SVG…", async () => ({ kind: "draw", text: desc, noBg, think }), { ghost: true });
+  if (!r) return;
+  let svg: string;
+  try { svg = svgOfAnswer(r.text); if (noBg) svg = dropBackground(svg, null); }
+  catch (e) { return toast((e as Error).message); }
+  const file = await ask("saveAsset", { name: "image.svg", dataUrl: svgDataUrl(svg) }).catch((e) => { toast((e as Error).message || "Couldn't save the SVG"); return null; });
+  if (!file) return;
+  const card: ImageCard = { id: uid("i"), kind: "image", src: file }, w = drawnWidth(svg);
+  if (from && cardById(from)) placeBeside(from, card, w);
+  else addCards([{ card, views: {}, w }], { besideSel: false });
+  toast("Drew an SVG from the text");
+}
+export async function newSvgFromText() {
+  const t = await promptText("New SVG from Text", "", "A diagram of…", "Draw", { text: "Describe the picture: the AI model draws it as an SVG image" });
+  if (t) await drawSvg(t);
+}
+/** 右键时 Note 里选中的字（编辑中或静态显示）：选区得整个落在这张卡的正文里 */
+export function noteSelText(card: string): string {
+  const s = window.getSelection();
+  if (!s || s.isCollapsed || !s.rangeCount || cardById(card)?.card.kind !== "note") return "";
+  const face = document.querySelector(`.card[data-id="${CSS.escape(card)}"] .cface`);
+  const r = s.getRangeAt(0);
+  return face && face.contains(r.startContainer) && face.contains(r.endContainer) ? s.toString().trim() : "";
+}
+const quote = (t: string) => { const s = t.replace(/\s+/g, " "); return `“${s.length > 40 ? `${s.slice(0, 39)}…` : s}”`; };
+/** Note / Text 右键的 Draw as SVG：sel = 选中的字（只画这段），不给 = 整张卡的字 */
+export function drawSvgItem(card: string, sel?: string): Item {
+  const md = (cardById(card)?.card as NoteCard | undefined)?.md ?? "";
+  return sel
+    ? { label: "Draw as SVG", hint: `The selected text ${quote(sel)}, drawn by AI`, run: () => void drawSvg(sel, card) }
+    : { label: "Draw as SVG", hint: "An SVG image of this card's text, drawn by AI", disabled: md.trim() ? false : "The card is empty", run: () => void drawSvgOfCard(card) };
+}
+async function drawSvgOfCard(card: string) {
+  // 正在编辑：先把编辑器里的字存回去，画的是最新的
+  const ed = editing();
+  if (ed?.kind === "note" && ed.id === card) setEditing(null);
+  const c = cardById(card)?.card;
+  if (c?.kind === "note") await drawSvg(c.md, card);
 }
 
 /** 剪贴板里的图 → 直接读成 Note，放在视口中间（没有图片卡） */

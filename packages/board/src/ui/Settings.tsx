@@ -265,7 +265,7 @@ function Preamble() {
 /** 每项 AI 功能用哪个模型：Auto、DeepSeek、或某个 VS Code 语言模型（看图的功能只列收图的） */
 const AI_FEATURES = [
   ["aiText", "Extract Text, Paste Image Text", true],
-  ["aiSvg", "Convert to SVG, Modify SVG", true],
+  ["aiSvg", "Convert to SVG, Modify SVG, Draw as SVG", true],
   ["aiFocus", "Auto Focus", false],
 ] as const;
 

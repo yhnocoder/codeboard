@@ -346,12 +346,13 @@ export type BoardToHost =
 /**
  * 图片的 AI 操作。image = 发给模型的图（data: URL，白板已经缩到模型收的大小、透明处垫成白色）。
  * extract：图里的字转成 Markdown（不思考）；svg：重画成 SVG（size = 那张图的像素宽高，noBg = 不画底色，think = 先思考）；
- * modify：照 instruction 改 svg 的源码（思考，effort low）
+ * modify：照 instruction 改 svg 的源码（思考，effort low）；draw：照一段字（text，用户写的描述或 Note 里的字）画一张 SVG（noBg、think 同 svg）
  */
 export type ImageAiOp =
   | { kind: "extract"; image: string }
   | { kind: "svg"; image: string; size: { w: number; h: number }; noBg: boolean; think: boolean }
   | { kind: "modify"; svg: string; instruction: string }
+  | { kind: "draw"; text: string; noBg: boolean; think: boolean }
   /** Auto Focus：给 Markdown 加 ==概念== 和 **强调**，别的一个字都不改（白板核对回来的字） */
   | { kind: "focus"; md: string };
 /** 失败的原因：nokey = 没设密钥，badkey = 密钥被拒（401），balance = 余额用完（402），network = 连不上，timeout = 太久没回，

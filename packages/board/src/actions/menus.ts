@@ -25,7 +25,7 @@ import { askQuestion, askQuestionOnCard } from "./questions";
 import { addVariantMenu } from "./variants";
 import { LEGEND, legendName, HAND_COLORS, type Link } from "@codeboard/core";
 import { kbd } from "../keymap";
-import { imageAiItems, type ImgRef } from "./imageai";
+import { drawSvgItem, imageAiItems, type ImgRef } from "./imageai";
 import { autoFocusItem } from "./autofocus";
 
 /**
@@ -113,6 +113,11 @@ export function noteImageMenu(ref: ImgRef, x: number, y: number) {
   openMenu([...cap, ...(cap.length ? [null] : []), ...imageAiItems(ref), null, { label: "Note", sub: cardItems(ref.card, x, y) }], x, y);
 }
 
+/** 右键 Note 里选中的一段字（编辑中或静态显示）：照这段字画 SVG，整张 Note 的菜单在最后的 Note ▸ 里 */
+export function noteTextMenu(id: string, text: string, x: number, y: number) {
+  openMenu([drawSvgItem(id, text), null, { label: "Note", sub: cardItems(id, x, y) }], x, y);
+}
+
 export function cardMenu(id: string, x: number, y: number) {
   const items = cardItems(id, x, y);
   if (items.length) openMenu(items, x, y);
@@ -162,13 +167,13 @@ function cardItems(id: string, x: number, y: number): Item[] {
       ...tail,
     ];
     // Box 不和别的互转（底色在选中时的工具条上）
-    if (c.look === "box") return [autoFocusItem(id), edit, ...tail];
+    if (c.look === "box") return [drawSvgItem(id), autoFocusItem(id), edit, ...tail];
     // Note 只定高度（宽度是折行用的，不动）：Fit Content = 回到跟着内容长高。Text 没有改高度的把手，只有旧白板里定了高度的才需要它
     const fit: Item = { label: "Fit Content", kbd: kbd("fitContent"), disabled: placeOf(id).h ? false : "Already as tall as its content", run: () => fitContent([id]) };
-    if (c.look === "text") return [{ label: "Turn into Note", run: () => turnNote(id, "note") }, ...(placeOf(id).h ? [fit] : []), autoFocusItem(id), edit, ...tail];
+    if (c.look === "text") return [{ label: "Turn into Note", run: () => turnNote(id, "note") }, ...(placeOf(id).h ? [fit] : []), drawSvgItem(id), autoFocusItem(id), edit, ...tail];
     const parts = headingSplitCount(id);
     const split: Item = { label: "Split by Headings", hint: parts ? `${parts + 1} cards, linked by arrows` : undefined, disabled: parts ? false : "No headings to split at", run: () => void splitByHeadings(id) };
-    return [{ label: "Turn into Text", run: () => turnNote(id, "text") }, split, fit, autoFocusItem(id), edit, ...tail];
+    return [{ label: "Turn into Text", run: () => turnNote(id, "text") }, split, fit, drawSvgItem(id), autoFocusItem(id), edit, ...tail];
   }
   if (c.kind === "web") return [
     { label: "Open in Browser", kbd: "Double-click", run: () => openLink(c.url) },

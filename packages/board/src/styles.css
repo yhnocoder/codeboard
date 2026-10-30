@@ -1436,6 +1436,8 @@ mark.wdiff { background: var(--chg-strong); color: inherit; border-radius: 2px; 
 .aix kbd { font: 10px var(--mono); color: var(--ink-3); }
 .aiclip { position: absolute; left: 50%; bottom: 62px; z-index: 44; translate: -50% 0; }
 .aiclip .aichip { position: static; }
+.aighost { position: absolute; left: 50%; top: 50%; translate: -50% -50%; z-index: 19; min-width: 220px; aspect-ratio: 3 / 2; border-radius: var(--r-card); background: var(--surface); box-shadow: var(--sh-card); pointer-events: none; }
+.aighost .aibusy { --cr: var(--r-card); }
 @media (prefers-reduced-motion: reduce) { .aishim { display: none; } .aispin { animation-duration: 2.4s; } }
 .pop.k-modifySvg { width: 320px; }
 .k-modifySvg textarea.msvg { display: block; margin: 10px 10px 0; width: calc(100% - 20px); min-height: 40px; max-height: 140px; font: 13px/1.45 var(--sys); color: var(--ink); }

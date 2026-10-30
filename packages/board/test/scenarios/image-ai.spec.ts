@@ -10,8 +10,14 @@
 //                                   and swaps the picture in one change, ⌘Z brings the old one back
 //   imageAiNoteImage                right-click an image inside a Note: the image tools plus the Note's menu; Convert to SVG puts the
 //                                   SVG in the Note in place and moves the old image out as an image card linked from the Note (one undo)
-//   imageAiPasteImageText           the toolbar's Image button is a dropdown (New Image, Paste Image Text ⇧⌘V); Paste Image Text reads
-//                                   the clipboard's image into a Note in the middle of the view, with no image card
+//   imageAiPasteImageText           the toolbar's Image button is a dropdown (New Image, Paste Image Text ⇧⌘V, New SVG from Text…);
+//                                   Paste Image Text reads the clipboard's image into a Note in the middle of the view, with no image card
+//   drawSvgFromTextMenu             Image ▾ New SVG from Text… asks for a description; while waiting an empty card with the busy layer sits
+//                                   in the middle of the view (Esc cancels, the host is told); the answer becomes a cleaned SVG image card there
+//   drawSvgFromNoteCard             right-click a Note: Draw as SVG (before Auto Focus) sends the card's text; the card is busy while
+//                                   waiting; the SVG image card lands right of the Note with an arrow from it, one undo; Text cards have it too
+//   drawSvgFromNoteSelection        a selection in a Note (shown, then while editing) + right-click: Draw as SVG sends only the selected
+//                                   words; the image card lands beside the Note with an arrow
 //   imageAiBusyCancelAndNoKey       waiting shows a busy layer on the card that Esc cancels (the host is told); without a key the
 //                                   notice offers Set DeepSeek API Key…
 import * as fs from "node:fs";
@@ -228,7 +234,7 @@ test("imageAiPasteImageText", async () => {
   await h.page.locator(".ctx.open").waitFor();
   const items = await menuLabels(h);
   const kbd = await h.page.locator(".ctx.open button", { hasText: "Paste Image Text" }).locator("small").innerText();
-  check("imageAiPasteImageText the Image button is a dropdown", items.join("|") === "New Image|Paste Image Text" && kbd === "⇧⌘V", { items, kbd });
+  check("imageAiPasteImageText the Image button is a dropdown", items.join("|") === "New Image|Paste Image Text|New SVG from Text…" && kbd === "⇧⌘V", { items, kbd });
   await shoot(h, "52-toolbar-image.png");
   await pick(h, "Paste Image Text");
   const note = await until(h, "a Note is made", () => h.board().cards.find((c): c is NoteCard => c.kind === "note"));
@@ -264,4 +270,133 @@ test("imageAiBusyCancelAndNoKey", async () => {
   await until(k.h, "the key command is asked for", () => sentOf(k.h, "setDeepseekKey").length);
   check("imageAiBusyCancelAndNoKey Set DeepSeek API Key… asks the host", sentOf(k.h, "setDeepseekKey").length === 1 && k.h.board().cards.length === 1, k.h.sent.map((m) => m.type));
   await k.done();
+});
+
+/** What the model draws: a background rect (removed: Remove Background is on by default), a script and a handler (cleaned away) */
+const DRAWN = "Here it is:\n\n```svg\n" + `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 200" onload="alert(1)"><defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0 0L10 5L0 10z" fill="#333"/></marker></defs><rect x="0" y="0" width="480" height="200" fill="#ffffff"/><script>alert(2)</script><rect x="30" y="70" width="150" height="56" rx="8" fill="#f6e3bf" stroke="#333"/><text x="105" y="104" text-anchor="middle" font-size="16" font-family="system-ui, sans-serif">prefill</text><line x1="180" y1="98" x2="290" y2="98" stroke="#333" stroke-width="2" marker-end="url(#ah)"/><rect x="300" y="70" width="150" height="56" rx="8" fill="#d9e8f6" stroke="#333"/><text x="375" y="104" text-anchor="middle" font-size="16" font-family="system-ui, sans-serif">decode</text></svg>` + "\n```";
+const drawOps = (f: Fake) => f.calls.map((c) => c.op).filter((o): o is Extract<ImageAiOp, { kind: "draw" }> => o.kind === "draw");
+const images = (h: Host) => h.board().cards.filter((c): c is ImageCard => c.kind === "image");
+/** The new image card holds the cleaned SVG (stored as an asset, no script / handler / background rect) and is as wide as its viewBox */
+function checkDrawn(name: string, h: Host, img: ImageCard | undefined, asset: (f: string) => string) {
+  const text = img && /^[0-9a-f]{16}\.svg$/.test(img.src) ? asset(img.src) : "";
+  check(`${name} the image card holds the cleaned SVG`, text.includes(">prefill</text>") && text.includes(">decode</text>") && !/script|onload|alert/i.test(text) && !/fill="#ffffff"/.test(text) && h.board().place[img!.id]?.w === 480, { src: img?.src, text: text.slice(0, 200), w: img && h.board().place[img.id]?.w });
+}
+
+test("drawSvgFromTextMenu", async () => {
+  let reply = "hang";
+  const { h, fake, asset, done } = await aiHost(board(() => {}), () => reply);
+  const ask = async (desc: string) => {
+    await h.page.locator('.tbtn[aria-label="Image"]').click();
+    await h.page.locator(".ctx.open").waitFor();
+    await pick(h, "New SVG from Text…");
+    await h.page.locator(".dialog input").waitFor();
+    await h.page.keyboard.type(desc);
+    await h.page.keyboard.press("Enter");
+  };
+  await ask("prefill then decode, as two boxes");
+  const ghost = h.page.locator(".aighost .aibusy");
+  await ghost.waitFor();
+  const g = (await h.page.locator(".aighost").boundingBox())!;
+  check("drawSvgFromTextMenu an empty card with the busy layer sits in the middle of the view", (await ghost.innerText()).includes("Drawing SVG…") && Math.abs(g.x + g.width / 2 - 640) < 4 && Math.abs(g.y + g.height / 2 - 410) < 4 && g.width >= 300, { text: await ghost.innerText(), g });
+  await until(h, "the model is asked", () => drawOps(fake).length);
+  check("drawSvgFromTextMenu sends the description as a draw request", drawOps(fake)[0]?.text === "prefill then decode, as two boxes" && drawOps(fake)[0]?.noBg === true && fake.calls[0].body.messages[1].content.includes("<text>\nprefill then decode, as two boxes\n</text>"), drawOps(fake));
+  if (SHOTS) await h.page.screenshot({ path: path.join(SHOTS, "64-new-svg-busy.png") }); // still waiting on the host: no idle
+  await h.page.keyboard.press("Escape");
+  await ghost.waitFor({ state: "detached" });
+  await until(h, "the host is told to cancel", () => sentOf(h, "imageAiCancel").length);
+  check("drawSvgFromTextMenu Esc cancels: no card, the host stops", !h.board().cards.length && sentOf(h, "imageAiCancel").length === 1, h.board().cards.length);
+  reply = DRAWN;
+  await ask("prefill then decode, again");
+  const img = await until(h, "an SVG image card is made", () => images(h)[0]);
+  checkDrawn("drawSvgFromTextMenu", h, img, asset);
+  await h.page.locator(`.card[data-id="${img.id}"] .imgb img`).evaluate((i) => (i as HTMLImageElement).decode());
+  const r = (await h.page.locator(`.card[data-id="${img.id}"]`).boundingBox())!;
+  check("drawSvgFromTextMenu the image card is in the middle of the view, the busy card gone", Math.abs(r.x + r.width / 2 - 640) < 40 && r.y > 0 && r.y + r.height < 820 && !(await h.page.locator(".aighost").count()), r);
+  await shoot(h, "64-new-svg-done.png");
+  await done();
+});
+
+test("drawSvgFromNoteCard", async () => {
+  const md = "## Serving loop\n\nThe **scheduler** picks requests, runs *prefill*, then decodes token by token.";
+  let reply = "hang";
+  const { h, fake, asset, done } = await aiHost(board((b) => {
+    put(b, { id: "n1", kind: "note", md, look: "note" } as NoteCard, 80, 120, 380);
+    put(b, { id: "t1", kind: "note", md: "a ring of four GPUs", look: "text" } as NoteCard, 80, 520, 260);
+  }), () => reply);
+  await rightClick(h, '.card[data-id="n1"] .nbody');
+  const items = await menuLabels(h);
+  check("drawSvgFromNoteCard the Note's menu has Draw as SVG right before Auto Focus", items.indexOf("Draw as SVG") > 0 && items.indexOf("Draw as SVG") === items.indexOf("Auto Focus") - 1, items);
+  await shoot(h, "64-note-menu.png");
+  await pick(h, "Draw as SVG");
+  const busy = h.page.locator('.card[data-id="n1"] .aibusy');
+  await busy.waitFor();
+  check("drawSvgFromNoteCard the Note is busy with a Cancel while waiting", (await busy.innerText()).includes("Drawing SVG…") && (await busy.locator("button", { hasText: "Cancel" }).count()) === 1, await busy.innerText());
+  await until(h, "the model is asked", () => drawOps(fake).length);
+  check("drawSvgFromNoteCard sends the card's whole text", drawOps(fake)[0]?.text === md, drawOps(fake));
+  await busy.locator("button", { hasText: "Cancel" }).click();
+  await busy.waitFor({ state: "detached" });
+  await until(h, "the host is told to cancel", () => sentOf(h, "imageAiCancel").length);
+  check("drawSvgFromNoteCard Cancel stops it: no image", !images(h).length, h.board().cards.map((c) => c.id));
+  reply = DRAWN;
+  await rightClick(h, '.card[data-id="n1"] .nbody');
+  await pick(h, "Draw as SVG");
+  const img = await until(h, "an SVG image card is made", () => images(h)[0]);
+  checkDrawn("drawSvgFromNoteCard", h, img, asset);
+  const pn = h.board().place.n1, pi = h.board().place[img.id];
+  check("drawSvgFromNoteCard the image is right of the Note, with an arrow from the Note", pi.x >= pn.x + pn.w && Math.abs(pi.y - pn.y) < 200 && h.board().links.some((l) => l.from.card === "n1" && l.to.card === img.id), { pn, pi, links: h.board().links });
+  await h.page.locator(`.card[data-id="${img.id}"] .imgb img`).evaluate((i) => (i as HTMLImageElement).decode());
+  await shoot(h, "64-note-drawn.png");
+  // an ordinary SVG image: Modify SVG… works on it
+  await rightClick(h, `.card[data-id="${img.id}"] .imgb img`);
+  check("drawSvgFromNoteCard the drawn image has the SVG tools", (await menuLabels(h))[0] === "Modify SVG…", await menuLabels(h));
+  await h.page.keyboard.press("Escape");
+  await h.page.keyboard.press("Meta+z");
+  await until(h, "undo removes the image", () => !images(h).length);
+  check("drawSvgFromNoteCard one undo removes the image and its arrow", !h.board().links.length && !!card(h, "n1"), h.board().cards.map((c) => c.id));
+  await rightClick(h, '.card[data-id="t1"] .cface');
+  check("drawSvgFromNoteCard Text cards have Draw as SVG too", (await menuLabels(h)).includes("Draw as SVG"), await menuLabels(h));
+  await done();
+});
+
+test("drawSvgFromNoteSelection", async () => {
+  const md = "Prefill fills the KV cache for the prompt.\n\nDecode then appends one token per step to every running sequence.";
+  const { h, fake, asset, done } = await aiHost(board((b) => put(b, { id: "n1", kind: "note", md, look: "note" } as NoteCard, 80, 120, 420)), () => DRAWN);
+  /** Selects `words` inside the Note's shown text or its editor (the first text node that has them); the middle of the selection */
+  const select = (root: string, words: string) => h.page.locator(`.card[data-id="n1"] ${root}`).evaluate((el, w) => {
+    const it = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    for (let n = it.nextNode(); n; n = it.nextNode()) {
+      const i = n.textContent!.indexOf(w);
+      if (i < 0) continue;
+      const r = document.createRange(); r.setStart(n, i); r.setEnd(n, i + w.length);
+      const s = getSelection()!; s.removeAllRanges(); s.addRange(r);
+      const b = r.getBoundingClientRect();
+      return { x: b.x + b.width / 2, y: b.y + b.height / 2 };
+    }
+    return null;
+  }, words);
+  const rightAt = async (p: { x: number; y: number }) => { await h.page.mouse.click(p.x, p.y, { button: "right" }); await h.page.locator(".ctx.open").first().waitFor(); };
+  // a selection in the shown Note
+  const p1 = await select(".nbody", "appends one token per step");
+  await rightAt(p1!);
+  const items = await menuLabels(h);
+  check("drawSvgFromNoteSelection the selection menu: Draw as SVG, then the Note's menu", items[0] === "Draw as SVG" && items.at(-1) === "Note", items);
+  await shoot(h, "64-selection-menu.png");
+  await pick(h, "Draw as SVG");
+  const img = await until(h, "an SVG image card is made", () => images(h)[0]);
+  check("drawSvgFromNoteSelection sends only the selected words", drawOps(fake).length === 1 && drawOps(fake)[0].text === "appends one token per step", drawOps(fake));
+  checkDrawn("drawSvgFromNoteSelection", h, img, asset);
+  const pn = h.board().place.n1, pi = h.board().place[img.id];
+  check("drawSvgFromNoteSelection the image is beside the Note, with an arrow from it", pi.x >= pn.x + pn.w && h.board().links.some((l) => l.from.card === "n1" && l.to.card === img.id), { pn, pi });
+  // a selection while editing the Note
+  await h.page.locator('.card[data-id="n1"] .nbody').dblclick();
+  await h.page.locator('.card[data-id="n1"] .md-pm:focus').waitFor();
+  const p2 = await select(".md-pm", "the KV cache");
+  await until(h, "the editor has the selection", () => h.page.evaluate(() => getSelection()?.toString() === "the KV cache"));
+  await rightAt(p2!);
+  check("drawSvgFromNoteSelection while editing, a selection gets Draw as SVG", (await menuLabels(h))[0] === "Draw as SVG", await menuLabels(h));
+  await pick(h, "Draw as SVG");
+  await until(h, "a second image card is made", () => images(h).length === 2);
+  const img2 = images(h).find((c) => c.id !== img.id)!;
+  check("drawSvgFromNoteSelection while editing, only the selected words are sent; the image is linked from the Note", drawOps(fake)[1]?.text === "the KV cache" && h.board().links.some((l) => l.from.card === "n1" && l.to.card === img2.id) && h.board().place[img2.id].x >= pn.x + pn.w, { ops: drawOps(fake), links: h.board().links });
+  await done();
 });

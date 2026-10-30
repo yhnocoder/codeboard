@@ -135,9 +135,12 @@ export function cardClick(e: MouseEvent, id: string) {
   clickEdit(a.kind, id, a, true);
 }
 
+/** 右键按下那一刻 Note 里选中的字：macOS 的右键会先选中光标下的词，菜单弹出时的选区不是用户选的 */
+let ctxSel: { id: string; text: string } | null = null;
 export function cardPointerDown(e: PointerEvent, id: string) {
   armed = null;
   const t = e.target as HTMLElement;
+  if (e.button === 2) ctxSel = { id, text: A.noteSelText(id) };
   if (e.button === 1 || (e.button === 0 && spaceDown())) return startPan(e);
   if (e.button !== 0) return;
   if (t.closest(CARD_CONTROL)) return;
@@ -326,6 +329,10 @@ export function cardContextMenu(e: MouseEvent, id: string) {
   // Note 里的一张图（显示着或编辑中）：图的菜单
   const img = A.noteImageAt(t, id);
   if (img) return A.noteImageMenu(img, e.clientX, e.clientY);
+  // Note 里选中了一段字：照这段字画 SVG 的菜单（编辑器里没选字时照旧不弹菜单）
+  const picked = ctxSel?.id === id ? ctxSel.text : A.noteSelText(id);
+  ctxSel = null;
+  if (picked) return A.noteTextMenu(id, picked, e.clientX, e.clientY);
   if (t.closest("[contenteditable], input, textarea")) return;
   const colEl = t.closest("[data-col]") as HTMLElement | null;
   A.cardMenu(colEl?.dataset.col ?? id, e.clientX, e.clientY);

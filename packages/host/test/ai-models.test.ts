@@ -83,6 +83,19 @@ describe("AI tools: which model", () => {
     expect(chats.length).toBe(1);
   });
 
+  it("Draw as SVG uses the SVG tool's model and sends the VS Code model only text", async () => {
+    conf.set("codeboard.ai.svgModel", "o3-mini");
+    const draw = { kind: "draw", text: "a pipeline", noBg: true, think: false } as const;
+    expect(await imageAiJob(new Map(), 1, draw, fetchFake)).toEqual({ text: "from copilot" });
+    expect(chats.map((c) => c.model)).toEqual(["o3-mini"]);
+    expect(chats[0].req.image).toBeUndefined();
+    expect(chats[0].req.user).toContain("<text>\na pipeline\n</text>");
+    expect(chats[0].justification).toMatch(/Draw as SVG/);
+    conf.set("codeboard.ai.svgModel", "auto");
+    expect(await imageAiJob(new Map(), 2, draw, fetchFake)).toEqual({ text: "from deepseek" });
+    expect(fetches[0].body.messages[1].content).toContain("a pipeline");
+  });
+
   it("caches text read by each model on its own", async () => {
     conf.set("codeboard.ai.textModel", "gpt-4o");
     expect(await imageAiJob(new Map(), 1, extract, fetchFake)).toEqual({ text: "from copilot" });
