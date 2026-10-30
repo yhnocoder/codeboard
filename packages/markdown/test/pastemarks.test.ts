@@ -1,11 +1,10 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from "vitest";
 import { DOMParser as PMParser, type Node as PMNode } from "@tiptap/pm/model";
-import { EditorState, TextSelection } from "@tiptap/pm/state";
 import type { JSONContent } from "@tiptap/core";
 import { mdSchema, parseMd, pastedMd, serializeMd } from "../src/schema";
 import { marksInSlice } from "../src/editor/pastemarks";
-import { mathInSlice } from "../src/editor/pastemath";
+import { htmlSource } from "../src/editor/pastemarks";
 
 // From usage feedback #53: notes with three ==highlights== in CJK text, one closing right before 。
 const SIMT = [
@@ -42,16 +41,13 @@ describe("pasted text/plain read as Markdown", () => {
   });
 });
 
-/** What ProseMirror makes of pasted HTML (the editor's clipboard parser), then the editor's paste steps for marks and formulas */
+/** What the editor makes of pasted HTML: Markdown source (htmlSource), read back the way it will be saved */
 function pasteHtml(html: string): PMNode {
-  const schema = mdSchema();
   const box = document.createElement("div");
   box.innerHTML = html;
-  const slice = PMParser.fromSchema(schema).parseSlice(box);
-  const m = marksInSlice(slice, schema) ?? slice;
-  const fixed = mathInSlice(m, schema) ?? m;
-  const st = EditorState.create({ schema, doc: schema.nodeFromJSON(parseMd("开头")) });
-  return st.apply(st.tr.setSelection(TextSelection.atEnd(st.doc)).replaceSelection(fixed)).doc;
+  const md = htmlSource(box), first = parseMd(md).content?.[0]?.type;
+  // pasted at the end of a paragraph 开头: a first paragraph joins it, a first block of another kind follows it
+  return mdSchema().nodeFromJSON(parseMd(first === "paragraph" ? `开头${md}` : `开头\n\n${md}`));
 }
 const nodes = (doc: PMNode) => { const out: PMNode[] = []; doc.descendants((n) => { out.push(n); }); return out; };
 const withMark = (doc: PMNode, mark: string) => nodes(doc).filter((n) => n.marks.some((m) => m.type.name === mark)).map((n) => n.text ?? n.type.name);

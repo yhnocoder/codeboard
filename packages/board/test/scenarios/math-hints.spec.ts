@@ -156,7 +156,13 @@ test("mathInlinePreviewBubble", async () => {
   await openInline(h);
   await pg.locator(".md-mathtip .md-mathpv .katex").waitFor();
   const ok = await pg.evaluate(() => ({ tex: document.querySelector(".md-mathtip annotation")?.textContent, err: !!document.querySelector(".md-mathtip .md-matherr") }));
-  const tip = await pg.locator(".md-mathtip").boundingBox(), src = await pg.locator(".md-pm .md-src").boundingBox();
+  const tip = await pg.locator(".md-mathtip").boundingBox(), src = await pg.evaluate(() => {
+    // the formula's source is drawn in pieces (its markers and the LaTeX): their union
+    const rs = [...document.querySelectorAll(".md-pm .md-texsrc")].map((e) => e.getBoundingClientRect());
+    if (!rs.length) return null;
+    const y = Math.min(...rs.map((r) => r.top));
+    return { y, height: Math.max(...rs.map((r) => r.bottom)) - y };
+  });
   await pg.keyboard.type(" + \\tidd");
   await until(h, "the bubble shows the error", async () => pg.locator(".md-mathtip .md-matherr").count());
   const bad = await pg.evaluate(() => ({ text: document.querySelector(".md-mathtip .md-matherr")?.textContent, fix: document.querySelector(".md-mathtip .fix")?.textContent }));

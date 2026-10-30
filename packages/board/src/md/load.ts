@@ -11,6 +11,8 @@ import { openLink } from "../actions/common";
 import { lspHost } from "../cm/load";
 import { saveNoteImage } from "./images";
 import type { MdEditorOpts, MdEditorHandle } from "@yhnocoder/markdown/editor";
+import type { MdLayout } from "@yhnocoder/markdown";
+import { createSignal } from "solid-js";
 
 export type { MdEditorHandle };
 type Mod = typeof import("@yhnocoder/markdown/editor");
@@ -25,22 +27,34 @@ export function preloadEditor() {
 }
 // 鼠标停在一张能编辑的 Markdown 上 120ms（或按下第一下），或者只选中了一张 Note：在页面外把它画进编辑器，
 // 双击时只剩挂上去（见 editor 的 prepare）。鼠标下面的优先，其次是选中的；镜头在动、在拖时等停下，正在编辑时不做
-let prepT: number | undefined, hovSrc: string | undefined, selSrc: string | undefined;
+type Prep = { src: string; layout?: MdLayout | null };
+let prepT: number | undefined, hov: Prep | undefined, selP: Prep | undefined;
 function schedule(now = false) {
   clearTimeout(prepT);
   let tries = 0;
   const run = () => {
-    const src = hovSrc ?? selSrc;
-    if (!ready || editing() || src === undefined) return;
+    const p = hov ?? selP;
+    if (!ready || editing() || p === undefined) return;
     if (camMoving() || dragging().size) { if (++tries < 16) prepT = window.setTimeout(run, 120); return; }
-    ready.prepare(src);
+    ready.prepare(p.src, p.layout);
   };
   prepT = window.setTimeout(run, now ? 0 : 120);
 }
-export function prepareHover(src: string | undefined, now = false) { hovSrc = src; schedule(now); }
+export function prepareHover(src: string, layout?: MdLayout | null, now = false) { hov = { src, layout }; schedule(now); }
 /** 鼠标离开这一张（别的卡在它之后进来的不动） */
-export function prepareLeave(src: string) { if (hovSrc === src) { hovSrc = undefined; schedule(); } }
-export function prepareSelected(src: string | undefined) { selSrc = src; schedule(); }
+export function prepareLeave(src: string) { if (hov?.src === src) { hov = undefined; schedule(); } }
+export function prepareSelected(src: string | undefined, layout?: MdLayout | null) { selP = src === undefined ? undefined : { src, layout }; schedule(); }
+
+// The Note being edited and whether it shows its Markdown source (⌘/): the card header's M↓ toggle reads and drives it
+let current: { id: string; ed: MdEditorHandle } | null = null;
+const [srcNote, setSrcNote] = createSignal<string | null>(null);
+export function setCurrentEditor(id: string, ed: MdEditorHandle | null) {
+  if (ed) current = { id, ed };
+  else if (current?.id === id) { current = null; if (srcNote() === id) setSrcNote(null); }
+}
+export const sourceModeOf = (id: string) => srcNote() === id;
+export const setSourceMode = (id: string, on: boolean) => setSrcNote(on ? id : srcNote() === id ? null : srcNote());
+export function toggleNoteSource(id: string) { if (current?.id === id) current.ed.toggleSource(); }
 
 /** 白板上最长的一张 Note 的原文（预热用） */
 function sampleNote() {

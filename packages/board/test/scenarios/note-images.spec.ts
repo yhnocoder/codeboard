@@ -104,8 +104,10 @@ test("notePastedImageSameSizeInBothModes", async () => {
   // the Note body is 520 wide minus padding: the 800-pixel screenshot is scaled to it, keeping 16:9
   check("notePastedImageFitsWidth", edit.w < 520 && Math.abs(edit.h / edit.w - 450 / 800) < 0.01, edit);
   check("notePastedImageSameSize", Math.abs(edit.w - disp.w) < 0.6 && Math.abs(edit.h - disp.h) < 0.6, { edit, disp });
-  // editing again: the image has its size at once (reserved from the file name), so the card doesn't jump
-  await editNote(h, "n0");
+  // editing again: the image has its size at once (reserved from the file name), so the card doesn't jump. Entered on the text
+  // after it: a double-click on the image itself puts the caret in its source, which then shows above it
+  await h.page.locator('.card[data-id="n0"] .nbody p').last().dblclick();
+  await h.page.locator('.card[data-id="n0"] .md-pm:focus').waitFor();
   const again = await h.page.locator('.card[data-id="n0"] .md-pm img:not(.ProseMirror-separator)').first().evaluate((el) => { const r = el.getBoundingClientRect(); return { w: Math.round(r.width * 10) / 10, h: Math.round(r.height * 10) / 10 }; });
   const againH = await cardH(h, "n0");
   check("notePastedImageNoJump", Math.abs(again.w - disp.w) < 0.6 && Math.abs(again.h - disp.h) < 0.6 && Math.abs(againH - dispH) <= 2 && Math.abs(editH - dispH) <= 2, { again, disp, editH, dispH, againH });
@@ -208,7 +210,11 @@ test("noteImageResize", async () => {
   await imgBox(h, "n0", ".md-pm");
   const full = await imgFrac(h, "n0", ".md-pm");
   check("noteImageResize full width at first", full.frac > 0.99, full);
-  check("noteImageResize grip hidden until selected", (await pg.locator('.card[data-id="n0"] .md-pm .md-imgrip:visible').count()) === 0);
+  // the caret after the pasted image is in its source: the image shows under it, with grips. Elsewhere it is drawn alone, without
+  await pg.keyboard.press("Control+Home");
+  await idle(h);
+  check("noteImageResize grip hidden until selected", (await pg.locator('.card[data-id="n0"] .md-pm .md-imgrip:visible').count()) === 0
+    && (await pg.locator('.card[data-id="n0"] .md-pm img:not(.ProseMirror-separator)').count()) === 1);
   const g = await imgGrip(h, "n0", "17-note-image-selected");
   const place0 = JSON.stringify(h.board().place.n0);
   await dragBy(h, g, -full.w * 0.35);
@@ -229,6 +235,9 @@ test("noteImageResize", async () => {
   await pg.keyboard.press("Control+Shift+z");
   await pg.keyboard.press("Control+Shift+z");
   await until(h, "redo puts both drags back", async () => Math.abs((await frac()) - edit.frac) < 0.01);
+  // the card's height while editing, with the caret out of the image's source (in it, the source line shows above the image)
+  await pg.keyboard.press("Control+Home");
+  await idle(h);
   const editH = await cardH(h, "n0");
   await exitEdit(h);
   const text = md(h, "n0"), w = widthIn(text);
@@ -246,7 +255,11 @@ test("noteImageResize", async () => {
   await idle(h);
   const wide = await imgFrac(h, "n0", ".nbody");
   check("noteImageResize scales with the card", wide.w > disp.w + 80 && Math.abs(wide.frac - disp.frac) < 0.01 && widthIn(md(h, "n0")) === w, { disp, wide });
-  // double-click on the grip: full width again, nothing written for the width
+  // double-click on the grip: full width again, nothing written for the width. The card's height is back to fitting its content
+  // first: the corner drag fixed it, and the image's source line shown while editing would push the image's grips under the
+  // card's bottom edge handle
+  await pg.locator('.card[data-id="n0"] .grip').dblclick();
+  await idle(h);
   await editNote(h, "n0");
   const g2 = await imgGrip(h, "n0");
   await pg.mouse.dblclick(g2.x, g2.y);
@@ -268,7 +281,7 @@ type Look = { shadow: string; border: string; padding: string; bg: string; filte
 const bare = (l: Look | null) => !l || (l.shadow === "none" && l.border === "0px0px0px0px" && l.padding === "0px" && l.bg === "rgba(0, 0, 0, 0)" && l.filter === "none");
 
 /** #22: an image in a Note is drawn bare, with no hairline frame, shadow, padding or background around it, the same in the
- *  static view and in the editor; the editor still outlines the image while it is selected */
+ *  static view and in the editor; clicked, it opens its source with the image under it, still bare, with its resize grips */
 test("noteImageNoFrame", async () => {
   const { h, done } = await imageHost([`Pages the scheduler hands out:\n\n![](${PAGE_SRC})\n\nOne block per sequence.`]);
   const pg = h.page;
@@ -277,16 +290,18 @@ test("noteImageNoFrame", async () => {
   const disp = await frameOf(h, "n0", ".nbody");
   const r = (await pg.locator('.card[data-id="n0"]').boundingBox())!;
   await pg.screenshot({ path: path.join(OUT, "22-note-image-frame.png"), clip: { x: r.x - 20, y: r.y - 20, width: r.width + 40, height: r.height + 40 } });
-  await editNote(h, "n0");
+  // entered on the text after it: the image is drawn alone (a double-click on it would open its source above it)
+  await pg.locator('.card[data-id="n0"] .nbody p').last().dblclick();
+  await pg.locator('.card[data-id="n0"] .md-pm:focus').waitFor();
   await imgBox(h, "n0", ".md-pm");
   const edit = await frameOf(h, "n0", ".md-pm");
   check("noteImageNoFrame static view", bare(disp.img), disp);
   check("noteImageNoFrame editor", bare(edit.img) && bare(edit.wrap), edit);
   check("noteImageNoFrame same in both", JSON.stringify(disp.box) === JSON.stringify(edit.box), { disp: disp.box, edit: edit.box });
   await h.page.locator('.card[data-id="n0"] .md-pm img:not(.ProseMirror-separator)').first().click();
-  await pg.locator('.card[data-id="n0"] .md-pm .md-img.ProseMirror-selectednode').waitFor();
-  const picked = await frameOf(h, "n0", ".md-pm");
-  check("noteImageNoFrame selection outline kept", picked.wrap?.outline === "solid" && picked.wrap.shadow === "none", picked.wrap);
+  await pg.locator('.card[data-id="n0"] .md-pm .md-img.below .md-imgrip.r').waitFor({ state: "visible" });
+  const picked = await frameOf(h, "n0", ".md-pm .md-img.below");
+  check("noteImageNoFrame opened: bare, with grips", bare(picked.img) && picked.wrap?.shadow === "none", picked);
   await exitEdit(h);
   await done();
 });
@@ -304,21 +319,26 @@ const afterWord = (h: Host, id: string, word: string) => h.page.evaluate(([id, w
   }
   throw new Error(`no "${word}"`);
 }, [id, word] as const);
-const paras = (h: Host, id: string) => h.page.locator(`.card[data-id="${id}"] .md-pm`).evaluate((el) => [...el.querySelectorAll(":scope > p")].map((p) => (p.textContent ?? "") + (p.querySelector(".md-img") ? "[img]" : "")));
+/** The editor's paragraphs as shown: the text (the hidden source of a drawn image left out) and [img] for an image in it */
+const paras = (h: Host, id: string) => h.page.locator(`.card[data-id="${id}"] .md-pm`).evaluate((el) => [...el.querySelectorAll(":scope > p")].map((p) => {
+  const c = p.cloneNode(true) as HTMLElement;
+  c.querySelectorAll(".md-hide, .md-img").forEach((e) => e.remove());
+  return (c.textContent ?? "") + (p.querySelector(".md-img") ? "[img]" : "");
+}));
 
 /** #24: while editing a Note, pressing on an image and dragging it moves it (not a copy) to where it is released, inside a
  *  paragraph too, with the drop cursor showing where; the paragraph it left goes away; the card stays put; one undo step puts it
- *  back; a click still selects the image and its resize grips still work */
+ *  back; a click still opens the image's source and its resize grips still work */
 test("noteImageDragMoves", async () => {
   const { h, done } = await imageHost([`First paragraph of text.\n\n![](${PAGE_SRC})\n\nSecond paragraph of text here.`]);
   const pg = h.page, card = pg.locator('.card[data-id="n0"]');
   const img = card.locator(".md-pm img:not(.ProseMirror-separator)").first();
   await idle(h);
   const place0 = JSON.stringify(h.board().place.n0);
-  await editNote(h, "n0");
+  // entered on the first paragraph: the image is drawn alone, ready to drag
+  await card.locator(".nbody p").first().dblclick();
+  await card.locator(".md-pm:focus").waitFor();
   await imgBox(h, "n0", ".md-pm");
-  await img.click();
-  const selected = await card.locator(".md-pm .md-img.ProseMirror-selectednode").count();
   const r = (await img.boundingBox())!, to = await afterWord(h, "n0", "Second");
   const from = { x: r.x + r.width / 2, y: r.y + r.height / 2 };
   await pg.mouse.move(from.x, from.y);
@@ -334,7 +354,6 @@ test("noteImageDragMoves", async () => {
   await until(h, "the image moves into the second paragraph", async () => (await card.locator(".md-pm > p").count()) === 2);
   const moved = await paras(h, "n0");
   const imgs = await card.locator(".md-pm img:not(.ProseMirror-separator)").count();
-  check("noteImageDragMoves click selects", selected === 1, selected);
   check("noteImageDragMoves drop cursor at the release point", Math.abs(caret.x + caret.w / 2 - to.x) < 4 && Math.abs(caret.y + caret.h / 2 - to.y) < caret.h && caret.bg !== "rgba(0, 0, 0, 0)", { caret, to });
   check("noteImageDragMoves card does not move", mid.place === place0 && !mid.lifted && JSON.stringify(h.board().place.n0) === place0, { mid, place0 });
   check("noteImageDragMoves moved not copied", imgs === 1 && JSON.stringify(moved) === JSON.stringify(["First paragraph of text.", "Second paragraph of text here.[img]"]), { moved, imgs });
@@ -345,8 +364,10 @@ test("noteImageDragMoves", async () => {
   check("noteImageDragMoves one undo step", JSON.stringify(undone) === JSON.stringify(["First paragraph of text.", "[img]", "Second paragraph of text here."]), undone);
   await pg.keyboard.press("Control+Shift+z");
   await until(h, "redo moves it again", async () => (await card.locator(".md-pm > p").count()) === 2);
-  // the grip still resizes the image (it does not start a drag of its own)
+  // a click opens the image's source; the grip still resizes the image (it does not start a drag of its own)
   await img.click();
+  const opened = await card.locator(".md-pm .md-img.below").count();
+  check("noteImageDragMoves click opens the source", opened === 1, opened);
   const g = card.locator(".md-pm .md-imgrip.r").first();
   await g.waitFor({ state: "visible" });
   const gb = (await g.boundingBox())!;

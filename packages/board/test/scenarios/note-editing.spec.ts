@@ -344,7 +344,9 @@ test("headingMarkerTypedAtHeadingSize", async () => {
   await editNote(h, "n0");
   const line = () => h.page.evaluate(() => {
     const c = document.querySelector('.card[data-id="n0"]')!, e = c.querySelector(".md-pm")!.firstElementChild as HTMLElement;
-    return { tag: e.tagName, fs: getComputedStyle(e).fontSize, mk: getComputedStyle(e, "::before").fontSize, mkText: getComputedStyle(e, "::before").content, lh: Math.round(e.getBoundingClientRect().height), card: Math.round(c.getBoundingClientRect().height) };
+    // the heading's "## " is its own source text, drawn as a marker while the caret is in the line
+    const mk = e.querySelector(".md-mkh") as HTMLElement | null;
+    return { tag: e.tagName, fs: getComputedStyle(e).fontSize, mk: mk ? getComputedStyle(mk).fontSize : "", mkText: mk?.textContent ?? "", lh: Math.round(e.getBoundingClientRect().height), card: Math.round(c.getBoundingClientRect().height) };
   });
   await keys(h.page, "## ");
   await idle(h);
@@ -354,7 +356,7 @@ test("headingMarkerTypedAtHeadingSize", async () => {
   await idle(h);
   const typed = await line();
   await shot(h, "headingMarkerTypedAtHeadingSize-typed");
-  check("headingMarkerTypedAtHeadingSize", space.tag === "H2" && space.mkText === '"## "' && space.mk === space.fs && typed.lh === space.lh && typed.card === space.card, { space, typed });
+  check("headingMarkerTypedAtHeadingSize", space.tag === "H2" && space.mkText === "## " && space.mk === space.fs && typed.lh === space.lh && typed.card === space.card, { space, typed });
   await close(h);
 });
 
@@ -399,7 +401,7 @@ test("noteTitleHeadingHiddenInBody", async () => {
   await h.page.waitForFunction(() => (window as any).__hsDone, null, { timeout: 5000 }); // the heights recorded over 1.5 s
   const hs: number[] = await h.page.evaluate(() => (window as any).__hs);
   const steps = hs.slice(1).map((v, i) => v - hs[i]), grow = hs[hs.length - 1] - hs[0], jump = Math.max(...steps);
-  const edit = await h.page.evaluate(() => { const e = document.querySelector('.card[data-id="n0"] .md-pm h1') as HTMLElement | null; return { text: e?.textContent, op: e ? getComputedStyle(e).opacity : "" }; });
+  const edit = await h.page.evaluate(() => { const e = document.querySelector('.card[data-id="n0"] .md-pm h1') as HTMLElement | null; return { text: e?.innerText, op: e ? getComputedStyle(e).opacity : "" }; }); // innerText: the hidden "# " of the source is not shown
   check("note-heading-editable", edit.text === "KV cache budget" && edit.op === "1", edit);
   check("note-heading-slides-in", hs.length > 5 && Math.abs(grow) <= 0.5 && Math.max(...steps.map(Math.abs)) <= 0.5, { grow, jump, frames: hs.length });
   // leave: hidden again, card back to its height; while it slides out, the part above the body's top edge is clipped (never over the card header)
@@ -658,7 +660,10 @@ test("noteRefChipOnBaseline", async () => {
         ctx.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
         return r.getClientRects()[0].top + ctx.measureText(t.textContent!).fontBoundingBoxAscent;
       };
-      const label = [...chip.childNodes].find((n) => n.nodeType === Node.TEXT_NODE)!, next = chip.nextSibling!;
+      // the text after the chip (in the editor, past its hidden [[…]] source)
+      let next = chip.nextSibling!;
+      while (next.nodeType === 1 && (next as Element).classList.contains("md-hide")) next = next.nextSibling!;
+      const label = [...chip.childNodes].find((n) => n.nodeType === Node.TEXT_NODE)!;
       const lh = parseFloat(getComputedStyle(p).lineHeight), ph = p.getBoundingClientRect().height, lines = Math.round(ph / lh);
       return { chip: +base(label).toFixed(2), text: +base(next).toFixed(2), chipH: +chip.getBoundingClientRect().height.toFixed(2), lh, ph: +ph.toFixed(2), lines,
         missing: chip.classList.contains("missing") };
@@ -724,7 +729,8 @@ test("noteCodeBlockLanguagePicker", async () => {
   const list = pg.locator(".md-langbox .md-lo"), filter = pg.locator(".md-langbox .md-langq");
   const kws = () => pg.locator(`${n0} .md-pm pre .cm-content .kw`).count();
   const style = (sel: string, k: string) => pg.locator(sel).first().evaluate((e, k) => getComputedStyle(e).getPropertyValue(k), k);
-  const opacity = () => style(`${n0} .md-pm pre .md-lang`, "opacity");
+  // the label is the first item of the block's pill (language, copy, wrap, menu), which shows while wanted
+  const opacity = () => style(`${n0} .md-pm pre .md-cbpill`, "opacity");
   const chevron = () => style(`${n0} .md-pm pre .md-lang .md-lang-v`, "opacity");
   const name = () => label.innerText();
   const inCode = () => pg.evaluate(() => !!document.activeElement?.closest(".cm-content"));
@@ -743,11 +749,11 @@ test("noteCodeBlockLanguagePicker", async () => {
   await until(h, "the language label shows while the caret is in the block", async () => (await opacity()) === "1");
   await idle(h);
   res.plain = { name: await name(), kw: await kws(), chevron: await chevron() };
-  // 右上角（离右边 10px、上边 6px），一行淡色小字：没有底色、边框、阴影
-  const [lr, pr] = [(await label.boundingBox())!, (await pre.boundingBox())!];
+  // the pill in the top-right corner (6px in), the label in it a line of small plain text: no background, border, shadow
+  const [lr, pr, pl] = [(await label.boundingBox())!, (await pre.boundingBox())!, (await pg.locator(`${n0} .md-pm pre .md-cbpill`).boundingBox())!];
   const look = await label.evaluate((e) => { const s = getComputedStyle(e); return { bg: s.backgroundColor, border: s.borderTopWidth + s.borderTopStyle, shadow: s.boxShadow, font: s.fontSize }; });
-  res.place = { right: +(pr.x + pr.width - lr.x - lr.width).toFixed(1), top: +(lr.y - pr.y).toFixed(1), ...look };
-  check("noteCodeBlockLanguagePicker label at the top right, plain text", Math.abs((res.place as any).right - 10) <= 1 && Math.abs((res.place as any).top - 6) <= 1
+  res.place = { right: +(pr.x + pr.width - pl.x - pl.width).toFixed(1), top: +(lr.y - pr.y).toFixed(1), ...look };
+  check("noteCodeBlockLanguagePicker label at the top right, plain text", Math.abs((res.place as any).right - 6) <= 1 && Math.abs((res.place as any).top - 6) <= 1
     && look.bg === "rgba(0, 0, 0, 0)" && /^0px/.test(look.border) && look.shadow === "none" && look.font === "11px", res.place);
   await snap("rest");
   // 悬停：▾ 淡入
@@ -857,7 +863,7 @@ test("noteLanguagePickerOpenWhenBoardChanges", async () => {
   await close(h);
 });
 
-/** #41：光标走进 **粗体**（方向键）展开成原文时，照 Typora 记号淡色、中间的字还是粗体（紧挨中文和中文标点的也一样）；
+/** #41：光标走进 **粗体**（方向键）时显出 ** 记号（原文里的字，淡色），中间的字还是粗体（紧挨中文和中文标点的也一样）；
  *  不在编辑时也是粗体，退出后存的字不变 */
 test("noteBoldStaysBoldInSource", async () => {
   const P = "GPU 的资源有限，而且**每个 SM 能同时分配的 thread block** 数量也**有限**，所以设备能够**同时执行的 thread block 总数存在上限**。但是，一个 grid 可以远多于该上限的 thread block。";
@@ -867,28 +873,49 @@ test("noteBoldStaysBoldInSource", async () => {
   const pg = h.page;
   const tags = (sel: string) => pg.evaluate((sel) => [...document.querySelectorAll(sel)].map((e) => `${e.tagName.toLowerCase()}:${e.textContent}`), sel);
   const shown = await tags('.card[data-id="n0"] .nbody strong');
-  /** 点进第 i 个粗体，再按一下右方向键：展开成原文 */
+  /** 点进第 i 个粗体，再按一下右方向键：记号显出来 */
   const into = async (id: string, i: number) => {
     await editNote(h, id);
     // 粗体可能折行：点它第一行的中间
     const r = await pg.locator(`.card[data-id="${id}"] .md-pm strong`).nth(i).evaluate((e) => { const q = e.getClientRects()[0]; return { x: q.x + q.width / 2, y: q.y + q.height / 2 }; });
     await pg.mouse.click(r.x, r.y);
     await keys(pg, "{ArrowRight}");
-    await until(h, "the bold opened as source", async () => (await pg.locator(`.card[data-id="${id}"] .md-pm .md-src`).count()) > 0);
+    await until(h, "the bold shows its markers", async () => (await pg.locator(`.card[data-id="${id}"] .md-pm .md-mk:not(.md-hide)`).count()) > 0);
+    await idle(h);
   };
+  /** 显出来的记号，和第一个到最后一个记号之间看得见的字：是不是都是粗体、斜体的是哪些 */
+  const opened = (id: string) => pg.evaluate((id) => {
+    const p = document.querySelector(`.card[data-id="${id}"] .md-pm .md-mk:not(.md-hide)`)!.closest("p")!;
+    const w = document.createTreeWalker(p, NodeFilter.SHOW_TEXT), marks: string[] = [];
+    let on = false, text = "", bold = true, em = "";
+    const visible = [...document.querySelectorAll(`.card[data-id="${id}"] .md-pm .md-mk:not(.md-hide)`)];
+    const last = visible[visible.length - 1];
+    for (let n = w.nextNode(); n; n = w.nextNode()) {
+      const el = n.parentElement!;
+      if (el.closest(".md-hide")) continue;
+      const mk = el.closest(".md-mk");
+      if (mk) { marks.push(n.textContent!); on = mk !== last; continue; }
+      if (!on) continue;
+      text += n.textContent;
+      if (!el.closest("strong")) bold = false;
+      if (el.closest("em")) em += n.textContent;
+    }
+    const weight = getComputedStyle(visible[0]).fontWeight;
+    return { marks, text, bold, em, faint: getComputedStyle(visible[0]).color !== getComputedStyle(p).color, weight };
+  }, id);
   await into("n0", 2);
-  const src = await tags('.card[data-id="n0"] .md-pm .md-src :is(strong, em)');
-  const marks = await tags('.card[data-id="n0"] .md-pm .md-src .md-mkc');
+  const src = await opened("n0");
   await shot(h, "noteBoldStaysBoldInSource");
   await exitEdit(h);
   await into("n1", 0);
-  const nested = await tags('.card[data-id="n1"] .md-pm .md-src :is(strong, em)');
+  const nested = await opened("n1");
   await exitEdit(h);
   await idle(h);
-  const r = { shown, src, marks, nested, md: [md(h, "n0"), md(h, "n1")] };
+  const r = { shown, src, nested, md: [md(h, "n0"), md(h, "n1")] };
   check("noteBoldStaysBoldInSource", JSON.stringify(shown) === JSON.stringify(["strong:每个 SM 能同时分配的 thread block", "strong:有限", "strong:同时执行的 thread block 总数存在上限"])
-    && JSON.stringify(src) === '["strong:同时执行的 thread block 总数存在上限"]' && JSON.stringify(marks) === '["span:**","span:**"]'
-    && JSON.stringify(nested) === '["strong:a ","strong:b","em:b","strong: c"]' && r.md[0] === P && r.md[1] === NEST, r);
+    && JSON.stringify(src.marks) === '["**","**"]' && src.text === "同时执行的 thread block 总数存在上限" && src.bold && src.faint
+    && nested.marks[0] === "**" && nested.marks[nested.marks.length - 1] === "**" && nested.text.replace(/\*/g, "") === "a b c" && nested.bold && nested.em === "b"
+    && r.md[0] === P && r.md[1] === NEST, r);
   await close(h);
 });
 

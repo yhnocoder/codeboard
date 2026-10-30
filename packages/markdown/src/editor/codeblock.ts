@@ -7,11 +7,12 @@ import { closeHistory } from "@tiptap/pm/history";
 import type { EditorView as PMView, NodeView } from "@tiptap/pm/view";
 import type { Editor } from "@tiptap/core";
 import { Decoration as CmDeco, EditorView as CmView, type DecorationSet as CmDecos, type ViewUpdate, type KeyBinding } from "@codemirror/view";
-import { EditorSelection, StateEffect, StateField } from "@codemirror/state";
+import { Compartment, StateEffect, StateField } from "@codemirror/state";
 import { completionStatus } from "@codemirror/autocomplete";
 import { codeEditor, type CodeEditor, type LspHost } from "../cm/editor";
 import { cachedCode, highlightCode } from "../code";
 import { LangBox, type CodeLang } from "./codelang";
+import { iconEl, type IconName } from "../ui/icons";
 
 /** GapCursor.valid 是 prosemirror-gapcursor 自己的箭头键用的判断，有，只是类型里没写 */
 const gapAt = ($p: ResolvedPos) => (GapCursor as unknown as { valid($p: ResolvedPos): boolean }).valid($p);
@@ -86,8 +87,11 @@ export class CodeBlockView implements NodeView {
   cm: CodeEditor;
   langBox: LangBox;
   updating = false;
-  private fitting = 0;
   private found = "";
+  private wrapper = new Compartment();
+  private pill: HTMLElement;
+  private wrapBtn: HTMLButtonElement;
+  private menu: HTMLElement | null = null;
   constructor(public node: PMNode, public view: PMView, public getPos: () => number | undefined, host: CodeBlockHost) {
     const lang = () => (this.node.attrs.language as string | null) ?? "";
     this.dom = document.createElement("pre");
@@ -126,7 +130,7 @@ export class CodeBlockView implements NodeView {
       },
       onUpdate: (u) => this.forward(u),
       className: "cbcm-md",
-      extensions: [foundField],
+      extensions: [foundField, this.wrapper.of(node.attrs.wrap ? CmView.lineWrapping : [])],
     });
     codeBlockAt.set(this.dom, this);
     this.langBox = new LangBox({
@@ -141,24 +145,93 @@ export class CodeBlockView implements NodeView {
       back: () => this.cm.focus(),
       left: (to) => this.view.dom.dispatchEvent(new FocusEvent("blur", { relatedTarget: to })),
     });
-    this.dom.append(this.langBox.label);
-    // 第一行长到伸进语言名下面（.md-under）：悬停、光标在块里时都不显示它，不盖住代码（见 markdown.css）
-    this.dom.addEventListener("pointerenter", () => this.fitLabel());
-    this.dom.addEventListener("focusin", () => this.fitLabel());
-    this.fitLabel();
+    // The pill in the block's top-right corner (shown on hover and while the caret is in the block; it overlays the code
+    // and takes no space): language, copy, wrap, and a menu with the rest
+    this.pill = document.createElement("div");
+    this.pill.className = "md-cbpill";
+    this.pill.contentEditable = "false";
+    const btn = (icon: IconName, tip: string, run: (b: HTMLButtonElement) => void) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "md-cbb";
+      b.tabIndex = -1;
+      b.dataset.tip = tip;
+      b.setAttribute("aria-label", tip);
+      b.append(iconEl(icon));
+      b.addEventListener("mousedown", (e) => e.preventDefault());
+      b.addEventListener("pointerdown", (e) => e.stopPropagation());
+      b.addEventListener("click", (e) => { e.preventDefault(); run(b); });
+      return b;
+    };
+    const copy = btn("copy", "Copy code", (b) => {
+      void navigator.clipboard?.writeText(this.node.textContent).then(() => {
+        b.classList.add("done");
+        b.replaceChildren(iconEl("check"));
+        b.dataset.tip = "Copied";
+        setTimeout(() => { b.classList.remove("done"); b.replaceChildren(iconEl("copy")); b.dataset.tip = "Copy code"; }, 1200);
+      }, () => {});
+    });
+    this.wrapBtn = btn("wrap", "Wrap lines", () => this.setAttr({ wrap: !this.node.attrs.wrap }));
+    const more = btn("dots", "More", (b) => (this.menu ? this.closeMenu() : this.openMenu(b)));
+    this.pill.append(this.langBox.label, copy, this.wrapBtn, more);
+    this.dom.append(this.pill);
+    this.showWrap();
   }
 
-  /** 下一帧量一次：第一行（屏幕上的第一行，折行也算）的末尾伸到了语言名的左边没有 */
-  fitLabel() {
-    if (this.fitting) return;
-    this.fitting = requestAnimationFrame(() => {
-      this.fitting = 0;
-      const v = this.cm.view, lb = this.langBox.label;
-      if (!lb.isConnected) return;
-      const r = lb.getBoundingClientRect();
-      const c = v.coordsAtPos(v.moveToLineBoundary(EditorSelection.cursor(0), true).head, -1);
-      lb.classList.toggle("md-under", !!c && c.right > r.left - 4 && c.top < r.bottom);
-    });
+  private setAttr(a: Record<string, unknown>) {
+    const pos = this.getPos();
+    if (pos === undefined) return;
+    this.view.dispatch(closeHistory(this.view.state.tr.setNodeMarkup(pos, undefined, { ...this.node.attrs, ...a })));
+  }
+  private showWrap() {
+    const on = !!this.node.attrs.wrap;
+    this.wrapBtn.classList.toggle("on", on);
+    this.wrapBtn.setAttribute("aria-pressed", String(on));
+    this.dom.classList.toggle("wrap", on);
+  }
+  private openMenu(anchor: HTMLElement) {
+    const m = (this.menu = document.createElement("div"));
+    m.className = "ctx open md-menu md-cbmenu";
+    const item = (label: string, run: () => void, danger = false) => {
+      const b = document.createElement("button");
+      b.className = danger ? "danger" : "";
+      b.innerHTML = `<span class="lb"></span>`;
+      b.firstElementChild!.textContent = label;
+      b.addEventListener("mousedown", (e) => e.preventDefault());
+      b.addEventListener("click", () => { this.closeMenu(); run(); });
+      m.append(b);
+    };
+    item("Convert to paragraph", () => this.toParagraphs());
+    item("Delete code block", () => this.remove(), true);
+    m.addEventListener("pointerdown", (e) => e.stopPropagation());
+    anchor.classList.add("on");
+    this.pill.append(m);
+    const away = (e: Event) => { if (!m.contains(e.target as Node) && e.target !== anchor && !anchor.contains(e.target as Node)) this.closeMenu(); };
+    document.addEventListener("mousedown", away, true);
+    this.offMenu = () => { document.removeEventListener("mousedown", away, true); anchor.classList.remove("on"); };
+  }
+  private offMenu = () => {};
+  private closeMenu() { this.menu?.remove(); this.menu = null; this.offMenu(); }
+  /** The code's lines become paragraphs of source text (one per line; empty lines dropped) */
+  private toParagraphs() {
+    const pos = this.getPos();
+    if (pos === undefined) return;
+    const st = this.view.state, s = st.schema;
+    const lines = this.node.textContent.split("\n").filter((l) => l.trim());
+    const ps = (lines.length ? lines : [""]).map((l) => s.nodes.paragraph.create(null, l ? s.text(l) : null));
+    const tr = closeHistory(st.tr).replaceWith(pos, pos + this.node.nodeSize, ps);
+    tr.setSelection(TextSelection.near(tr.doc.resolve(pos + 1)));
+    this.view.dispatch(tr);
+    this.view.focus();
+  }
+  private remove() {
+    const pos = this.getPos();
+    if (pos === undefined) return;
+    const st = this.view.state, tr = closeHistory(st.tr).delete(pos, pos + this.node.nodeSize);
+    if (!tr.doc.childCount) tr.insert(0, st.schema.nodes.paragraph.create());
+    tr.setSelection(Selection.near(tr.doc.resolve(Math.min(pos, tr.doc.content.size)), -1));
+    this.view.dispatch(tr);
+    this.view.focus();
   }
 
   /** CodeMirror → ProseMirror：改动和选区 */
@@ -179,7 +252,6 @@ export class CodeBlockView implements NodeView {
     });
     tr.setSelection(TextSelection.create(tr.doc, selFrom, selTo));
     this.view.dispatch(tr);
-    if (u.docChanged) this.fitLabel();
   }
 
   escape(unit: "line" | "char", dir: -1 | 1): boolean {
@@ -222,9 +294,10 @@ export class CodeBlockView implements NodeView {
   /** ProseMirror → CodeMirror（撤销、别处的改动） */
   update(node: PMNode) {
     if (node.type !== this.node.type) return false;
-    const langChanged = node.attrs.language !== this.node.attrs.language;
+    const langChanged = node.attrs.language !== this.node.attrs.language, old = this.node;
     this.node = node;
     if (langChanged) { const l = (node.attrs.language as string | null) ?? ""; if (l) this.dom.dataset.lang = l; else delete this.dom.dataset.lang; this.cm.setLang(l); this.langBox.sync(); }
+    if (!!node.attrs.wrap !== !!old.attrs.wrap) { this.cm.view.dispatch({ effects: this.wrapper.reconfigure(node.attrs.wrap ? CmView.lineWrapping : []) }); this.showWrap(); }
     if (this.updating) return true;
     const next = node.textContent, cur = this.cm.view.state.doc.toString();
     if (next !== cur) {
@@ -234,7 +307,6 @@ export class CodeBlockView implements NodeView {
       this.updating = true;
       this.cm.view.dispatch({ changes: { from: a, to: ca, insert: next.slice(a, na) } });
       this.updating = false;
-      this.fitLabel();
     }
     return true;
   }
@@ -250,5 +322,5 @@ export class CodeBlockView implements NodeView {
   // 按在块自己的内边距上（不在代码里）交给 ProseMirror：codeGapClick 看是不是点在两块之间的缝上
   stopEvent(e: Event) { return !(e.type === "mousedown" && e.target === this.dom); }
   ignoreMutation() { return true; }
-  destroy() { cancelAnimationFrame(this.fitting); this.cm.destroy(); this.langBox.destroy(); }
+  destroy() { this.closeMenu(); this.cm.destroy(); this.langBox.destroy(); }
 }

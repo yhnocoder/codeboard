@@ -36,7 +36,8 @@ const snap = (pg: Page) => pg.evaluate(() => {
   const walk = (n: Node): string => {
     if (n.nodeType === 3) return n.textContent ?? "";
     const e = n as HTMLElement;
-    if (e.classList.contains("md-ghost")) return "";
+    // hidden source (markers away from the caret, a formula's TeX under its drawing) is not on screen
+    if (e.classList.contains("md-ghost") || e.classList.contains("md-hide")) return "";
     if (e.matches("[data-type=inline-math]")) return `<math:${e.getAttribute("data-latex") ?? e.textContent}>`;
     const inner = [...e.childNodes].map(walk).join("");
     const t = e.classList.contains("md-src") ? "src" : TAG[e.tagName];

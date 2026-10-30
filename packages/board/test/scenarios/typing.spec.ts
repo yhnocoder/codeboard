@@ -79,16 +79,8 @@ async function runCases(h: Host, prefix: string, all: Case[]) {
 }
 
 const count = (sel: string) => async (pg: Page) => pg.locator(sel).count();
-/** 编辑器里显示出来的记号：还没展开时是 CSS 伪元素的字；展开成原文后是真的字（.md-src，能改） */
-const marks = async (pg: Page) => pg.evaluate(() => {
-  const out: string[] = [];
-  for (const e of document.querySelectorAll(".md-pm .md-src")) out.push(`src:${e.textContent}`);
-  for (const e of document.querySelectorAll(".md-pm .md-mka, .md-pm .md-mkb, .md-pm .md-mkh")) {
-    const b = getComputedStyle(e, "::before").content, a = getComputedStyle(e, "::after").content;
-    for (const c of [b, a]) if (c && c !== "none" && c !== "normal") out.push(JSON.parse(c));
-  }
-  return out;
-});
+/** 编辑器里显示出来的记号：记号就是原文里的字，光标挨着这一段时显示（.md-mk），别处藏着（.md-hide） */
+const marks = async (pg: Page) => pg.evaluate(() => [...document.querySelectorAll(".md-pm .md-mk:not(.md-hide)")].map((e) => e.textContent ?? ""));
 
 /** Typora 式的块规则和行内规则：打完记号就变，写回干净的 Markdown */
 test("markdownInputRules", async () => {
@@ -117,13 +109,13 @@ test("markdownInputRules", async () => {
     // [toc] 回车出目录，跟着后面打的标题变
     { name: "toc", seq: "[toc]{Enter}# A{Enter}## B", md: "[toc]\n\n# A\n\n## B", dom: (pg) => pg.evaluate(() => [...document.querySelectorAll(".md-pm nav.md-toc > div")].map((d) => `${d.className}:${d.textContent}`)), domOk: (v) => JSON.stringify(v) === '["l1:A","l2:B"]' },
     { name: "hr dashes", seq: "---{Enter}", md: "---" },
-    // 没按回车就还是字（编辑时看到的也是字）：写回时转义，读回来不会变成分隔线
-    { name: "dashes without enter stay text", seq: "---", md: "\\---" },
+    // 没按回车就还是这一段的原文，照打的写回（原文就是文档）
+    { name: "dashes without enter stay text", seq: "---", md: "---" },
     { name: "hr stars", seq: "***{Enter}", md: "---" },
     { name: "table", seq: "|a|b|{Enter}c", md: /^\| a +\| b +\|\n\| -+ \| -+ \|\n\| c +\| +\|$/ },
     { name: "bold", seq: "x **b** y", md: "x **b** y" },
     { name: "italic star", seq: "x *i* y", md: "x *i* y" },
-    { name: "italic underscore", seq: "x _i_ y", md: "x *i* y" },
+    { name: "italic underscore", seq: "x _i_ y", md: "x _i_ y" },
     { name: "underscore names", seq: "block_manager and __init__", md: "block_manager and __init__" },
     { name: "strike", seq: "~~s~~ t", md: "~~s~~ t" },
     // Typora 的 ==高亮==、H~2~O、x^2^；~~删除线~~ 和单个 ~ 照旧
@@ -133,21 +125,22 @@ test("markdownInputRules", async () => {
     { name: "strike not subscript", seq: "~~ab~~ c", md: "~~ab~~ c", dom: count(".md-pm sub"), domOk: (n) => n === 0 },
     { name: "lone tilde", seq: "a ~ b ~/x", md: "a ~ b ~/x" },
     { name: "code span", seq: "`c` t", md: "`c` t" },
-    { name: "inline math", seq: "$\\frac{a}{b}$ and $a$, $b$", md: "$\\frac{a}{b}$ and $a$, $b$", dom: count(".md-pm [data-type=inline-math]"), domOk: (n) => n === 3 },
+    // the formula at the caret shows its source; the other two are drawn
+    { name: "inline math", seq: "$\\frac{a}{b}$ and $a$, $b$", md: "$\\frac{a}{b}$ and $a$, $b$", dom: count(".md-pm [data-type=inline-math]"), domOk: (n) => n === 2 },
     // 打的 \* 照 Typora：存成 \*，光标不在旁边时 \ 不显示，在旁边时显示（能删）
     { name: "escape hidden", seq: "a \\*not\\* b", md: "a \\*not\\* b", dom: (pg) => pg.evaluate(() => [(document.querySelector(".md-pm p") as HTMLElement).innerText, document.querySelectorAll(".md-pm em").length]), domOk: (v) => JSON.stringify(v) === '["a *not* b",0]' },
     { name: "escape shown at caret", seq: "x \\# y{ArrowLeft}{ArrowLeft}", md: "x \\# y", dom: (pg) => pg.evaluate(() => (document.querySelector(".md-pm p") as HTMLElement).innerText), domOk: (v) => v === "x \\# y" },
     { name: "dollars stay text", seq: "$5 and $10", md: "$5 and $10" },
     { name: "display inline", seq: "x $$y$$ z", md: "x $$y$$ z" },
     { name: "link", seq: "[t](https://x.y/a) z", md: "[t](https://x.y/a) z" },
-    { name: "autolink", seq: "<https://a.b/c> z", md: "https://a.b/c z" },
+    { name: "autolink", seq: "<https://a.b/c> z", md: "<https://a.b/c> z" },
     { name: "image", seq: "![alt](https://x.y/i.png)", md: "![alt](https://x.y/i.png)" },
     { name: "card ref", seq: "see [[Scheduler.schedule]]", md: "see [[Scheduler.schedule]]" },
-    // ⌘Z 紧跟在转换后面：撤回成打的字
-    { name: "undo bold rule", seq: "**b**{Control+z}", md: "\\*\\*b\\*\\*", dom: count(".md-pm strong"), domOk: (n) => n === 0 },
-    { name: "undo heading rule", seq: "# {Control+z}x", md: "\\# x" },
+    // 打字不转换（原文就是文档），⌘Z 撤回的是打的字，不会留下只画了样子的东西
+    { name: "undo bold rule", seq: "**b**{Control+z}", md: "", dom: count(".md-pm strong"), domOk: (n) => n === 0 },
+    { name: "undo heading rule", seq: "# {Control+z}x", md: "x" },
     // 写回成 \$a$；再读进来时字里的 $a$ 会变成公式
-    { name: "undo math rule", seq: "$a${Control+z}", md: "\\$a$", dom: count(".md-pm [data-type=inline-math]"), domOk: (n) => n === 0 },
+    { name: "undo math rule", seq: "$a${Control+z}", md: "", dom: count(".md-pm [data-type=inline-math]"), domOk: (n) => n === 0 },
     // ⌘Z 撤回公式转换后存下的 \$x$，再打开编辑还是字面的 $x$（不变回公式），写回不变
     { name: "escaped dollar reopens as text", init: "a \\$x$ b", seq: "{End} c", md: "a \\$x$ b c", dom: count(".md-pm [data-type=inline-math]"), domOk: (n) => n === 0 },
     { name: "undo fence rule", seq: "```js{Enter}{Control+z}", md: /^```js$|^\\`\\`\\`js$/, dom: count(".md-pm pre"), domOk: (n) => n === 0 },
@@ -163,9 +156,9 @@ test("markdownInputRules", async () => {
     { name: "home in text", init: "hello", seq: " ab{Home}x", md: "xhello ab" },
     // 光标在格式里：显示记号
     // 光标移进去（方向键、Home）就展开成真的原文，能改记号；离开时重新解析
-    { name: "markers bold", seq: "x **bo**{ArrowLeft}", md: "x **bo**", dom: marks, domOk: (v) => JSON.stringify(v) === '["src:**bo**"]' },
+    { name: "markers bold", seq: "x **bo**{ArrowLeft}", md: "x **bo**", dom: marks, domOk: (v) => JSON.stringify(v) === '["**","**"]' },
     { name: "markers heading", seq: "## hd", md: "## hd", dom: marks, domOk: (v) => JSON.stringify(v) === '["## "]' },
-    { name: "markers link", seq: "[t](https://q.r){ArrowLeft}", md: "[t](https://q.r)", dom: marks, domOk: (v) => JSON.stringify(v) === '["src:[t](https://q.r)"]' },
+    { name: "markers link", seq: "[t](https://q.r){ArrowLeft}", md: "[t](https://q.r)", dom: marks, domOk: (v) => JSON.stringify(v) === '["[","](https://q.r)"]' },
     { name: "source bold to italic", seq: "x **bo** y{Home}{ArrowRight}{ArrowRight}{Delete}{ArrowRight}{ArrowRight}{ArrowRight}{Delete}{End}!", md: "x *bo* y!", dom: count(".md-pm em"), domOk: (n) => n === 1 },
     { name: "source heading level", seq: "## hd{Home}{ArrowLeft}#{End}", md: "### hd", dom: count(".md-pm h3"), domOk: (n) => n === 1 },
     { name: "source link url", seq: "[t](https://q.r) z{Home}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}s{End}", md: "[t](https://qs.r) z" },
@@ -218,7 +211,7 @@ test("editorKeys", async () => {
     { name: "list tab", seq: "- a{Enter}b{Tab}", md: "- a\n  - b" },
     { name: "list shift-tab", seq: "- a{Enter}b{Tab}{Shift+Tab}", md: "- a\n- b" },
     { name: "raw toggle", seq: "a{Control+/}{End}\n**r**{Control+/}", md: "a\n**r**", dom: count(".md-pm strong"), domOk: (n) => n === 1 },
-    { name: "hard break", seq: "a{Shift+Enter}b", md: /^a(\\|  )\nb$/ },
+    { name: "hard break", seq: "a{Shift+Enter}b", md: "a<br>b" },
     { name: "word nav", seq: "one two{Control+ArrowLeft}x", md: "one xtwo" },
     { name: "delete word", seq: "one two{Control+Backspace}", md: "one" },
   ];
@@ -288,10 +281,10 @@ test("editorKeys", async () => {
   const passed = await fwd();
   const clip = await pg.evaluate(() => (window as any).__clip);
   const emptied = (await pg.locator(inNote(n, "p")).first().textContent())?.trim() ?? "";
-  // 粘贴（剪贴板里是 Markdown 的纯文字）
+  // 粘贴（剪贴板里是 Markdown 的纯文字）; text after the formula keeps the caret off it, so it shows drawn
   await pg.evaluate(() => {
     const dt = new DataTransfer();
-    dt.setData("text/plain", "pasted **b** and $m$");
+    dt.setData("text/plain", "pasted **b** and $m$ ok");
     document.activeElement?.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true }));
   });
   const pasted = { strong: await pg.locator(inNote(n, "strong")).count(), math: await pg.locator(inNote(n, "[data-type=inline-math]")).count() };
@@ -311,7 +304,7 @@ test("editorKeys", async () => {
     && JSON.stringify(paletteFwd) === JSON.stringify(["c", "x", "v", "a", "z"]);
   check("editorKeys forward+clipboard", ok, { blocked, passed, clip, emptied, pasted, paletteFwd });
   await idle(h);
-  check("editorKeys paste saved", md(h, n) === "pasted **b** and $m$", { got: md(h, n) });
+  check("editorKeys paste saved", md(h, n) === "pasted **b** and $m$ ok", { got: md(h, n) });
   await close(h);
 });
 
@@ -368,7 +361,7 @@ test("aiCompletionAccept", async () => {
 test("noteBoldInputRuleAfterCjk", async () => {
   const CODE = "- (`void **`) 指向要 free 的对象的", CJK = "- 指向要 free 的对象的";
   /** 这一项里的行内元素：标签:字 */
-  const inline = (pg: Page) => pg.evaluate(() => [...document.querySelectorAll(".md-pm li p > *")].map((e) => `${e.tagName.toLowerCase()}:${e.textContent}`));
+  const inline = (pg: Page) => pg.evaluate(() => [...document.querySelectorAll(".md-pm li p > :not(.md-mk)")].map((e) => `${e.tagName.toLowerCase()}:${e.textContent}`));
   const want = (...v: string[]) => (got: string[]) => JSON.stringify(got) === JSON.stringify(v);
   /** 输入法：每段先组字再提交（CDP），提交后 TipTap 再跑一遍打字规则 */
   const ime = (parts: string[]) => async (pg: Page) => {

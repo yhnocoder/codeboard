@@ -8,6 +8,9 @@ import { migrateBoard, migrateSharedCard } from "./migrate";
 const str = v.string(), num = v.number(), bool = v.boolean(), yes = v.literal(true);
 const opt = <T extends v.GenericSchema>(s: T) => v.optional(s);
 const obj = v.looseObject;
+const cellSizes = opt(v.array(v.nullable(v.number())));
+/** Note layout that Markdown cannot hold (model.ts NoteLayout) */
+const NoteLayout = obj({ tables: opt(v.array(v.nullable(obj({ cols: cellSizes, rows: cellSizes })))), wrap: opt(v.array(v.number())) });
 
 const Version = v.variant("kind", [
   obj({ kind: v.literal("git"), commit: str, uncommitted: opt(bool) }),
@@ -59,7 +62,7 @@ const CodeCard: v.GenericSchema = obj(codeEntries);
 export type CodeCardSchemaKeys = keyof typeof codeEntries;
 const Card = v.variant("kind", [
   CodeCard as v.LooseObjectSchema<{ kind: v.LiteralSchema<"code", undefined> }, undefined>,
-  obj({ ...base, kind: v.literal("note"), md: str, look: v.picklist(NOTE_LOOKS), size: opt(v.picklist(["title", "heading", "body"])), bold: opt(bool), fill: opt(v.picklist(BOX_FILLS)), hand: opt(v.picklist(HAND_COLORS)), msg: opt(obj({ where: opt(str) })) }),
+  obj({ ...base, kind: v.literal("note"), md: str, look: v.picklist(NOTE_LOOKS), size: opt(v.picklist(["title", "heading", "body"])), bold: opt(bool), fill: opt(v.picklist(BOX_FILLS)), hand: opt(v.picklist(HAND_COLORS)), msg: opt(obj({ where: opt(str) })), mdLayout: opt(NoteLayout) }),
   obj({ ...base, kind: v.literal("image"), src: str, alt: opt(str), bg: opt(bool) }),
   obj({ ...base, kind: v.literal("web"), url: str, meta: opt(WebMeta), style: opt(v.picklist(["banner", "side", "text", "compact"])) }),
   obj({ ...base, kind: v.literal("links"), items: v.array(obj({ id: str, url: str, title: opt(str), meta: opt(WebMeta), rich: opt(bool) })), rich: opt(bool) }),

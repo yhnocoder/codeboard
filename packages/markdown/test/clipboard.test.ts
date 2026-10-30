@@ -1,20 +1,19 @@
 import { describe, expect, it } from "vitest";
 import { getSchema } from "@tiptap/core";
-import { baseExtensions, parseMd } from "../src/schema";
+import { baseExtensions, parseMd, sourceExtensions } from "../src/schema";
 import { clipboardText } from "../src/editor/clipboard";
+import { sourceDoc } from "../src/editor/srcdoc";
 import type { Node as PMNode } from "@tiptap/pm/model";
 
-const schema = getSchema(baseExtensions);
-/** md 文档里的 sel 这几个字（只出现一次，可以跨过公式：公式算一个位置，写成 \u0000）的那一片 */
+// The editor's paragraphs are their Markdown source, so a copy is the source characters selected: the markers come along
+// exactly when they are selected (they show around the caret), and what is pasted back reads as what was seen.
+const schema = getSchema(sourceExtensions), base = getSchema(baseExtensions);
+/** The slice of the source text `sel` (found once in the document's text) */
 function copy(md: string, sel: string) {
-  const doc = schema.nodeFromJSON(parseMd(md));
-  // 文档里每个位置上的字：字就是字，公式、表情这样的行内节点是一个 \u0000
+  const doc = schema.nodeFromJSON(sourceDoc(md));
   let flat = "";
   const pos: number[] = [];
-  doc.descendants((n, p) => {
-    if (n.isText) for (let i = 0; i < n.text!.length; i++) { flat += n.text![i]; pos.push(p + i); }
-    else if (n.isInline) { flat += "\u0000"; pos.push(p); }
-  });
+  doc.descendants((n, p) => { if (n.isText) for (let i = 0; i < n.text!.length; i++) { flat += n.text![i]; pos.push(p + i); } });
   const i = flat.indexOf(sel);
   expect(i, `"${sel}" in ${md}`).toBeGreaterThanOrEqual(0);
   expect(flat.indexOf(sel, i + 1), `"${sel}" once in ${md}`).toBe(-1);
@@ -22,36 +21,38 @@ function copy(md: string, sel: string) {
   // what ProseMirror puts on the clipboard: the selection's content, with its parents (selection.content())
   return clipboardText(doc.slice(from, to, true));
 }
-/** 粘回来（文字按 Markdown 解析）后，sel 的那些字身上的格式 */
+/** The formatting the pasted text reads as */
 const marksIn = (md: string) => {
   const out = new Set<string>();
-  const doc: PMNode = schema.nodeFromJSON(parseMd(md));
+  const doc: PMNode = base.nodeFromJSON(parseMd(md));
   doc.descendants((n) => { for (const m of n.marks) out.add(m.type.name); });
   return [...out].sort();
 };
 
 describe("copying part of a formatted span", () => {
   const cases: [string, string, string, string[]][] = [
-    ["==Plain words== here", "ain wor", "==ain wor==", ["highlight"]],
-    ["**Plain words** here", "ain wor", "**ain wor**", ["bold"]],
-    ["*Plain words* here", "ain wor", "*ain wor*", ["italic"]],
-    ["~~Plain words~~ here", "ain wor", "~~ain wor~~", ["strike"]],
-    ["`Plain words` here", "ain wor", "`ain wor`", ["code"]],
-    ["[Plain words](https://e.com/p) here", "ain wor", "[ain wor](https://e.com/p)", ["link"]],
-    // starts in the middle of a highlight and takes the formula inside it
-    // a leading space goes outside the opening marker (== x== would not be a highlight)
-    ["==a $x$ b== c", " \u0000 b", " ==$x$ b==", ["highlight"]],
-    ["==aa $x$ bb== c", "a \u0000 b", "==a $x$ b==", ["highlight"]],
+    ["==Plain words== here", "==Plain words==", "==Plain words==", ["highlight"]],
+    ["**Plain words** here", "**Plain words**", "**Plain words**", ["bold"]],
+    ["*Plain words* here", "*Plain words*", "*Plain words*", ["italic"]],
+    ["~~Plain words~~ here", "~~Plain words~~", "~~Plain words~~", ["strike"]],
+    ["`Plain words` here", "`Plain words`", "`Plain words`", ["code"]],
+    ["[Plain words](https://e.com/p) here", "[Plain words](https://e.com/p)", "[Plain words](https://e.com/p)", ["link"]],
+    // inside a span: just the characters (the markers are not selected)
+    ["==a $x$ b== c", " $x$ b", " $x$ b", []],
+    ["==aa $x$ bb== c", "a $x$ b", "a $x$ b", []],
     // runs out of the span into plain text, and across nested marks
-    ["==Plain words== here", "words he", "==words== he", ["highlight"]],
-    ["==a **bold** b== c", "a bold b", "==a **bold** b==", ["bold", "highlight"]],
-    ["==a **bold** b== c", "old b", "==**old** b==", ["bold", "highlight"]],
+    ["==Plain words== here", "words== he", "words== he", []],
+    ["==a **bold** b== c", "==a **bold** b==", "==a **bold** b==", ["bold", "highlight"]],
+    ["==a **bold** b== c", "**bold** b", "**bold** b", ["bold"]],
   ];
   for (const [md, sel, want, marks] of cases) {
-    it(`${md} → "${sel.replace("\u0000", "$x$")}"`, () => {
+    it(`${md} → "${sel}"`, () => {
       const text = copy(md, sel);
       expect(text).toBe(want);
       expect(marksIn(text)).toEqual(marks);
     });
   }
+  it("across blocks: the blocks' Markdown", () => {
+    expect(copy("# Title\n\npara **b** end", "tlepara **b**")).toBe("tle\n\npara **b**");
+  });
 });

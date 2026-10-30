@@ -196,32 +196,34 @@ test("codeBlockGapCursor", async () => {
   check("codeBlockGapCursor saved", saved === `top\n\n${src.replace("```\n\n```", "```\n\nclicked\n\n```")}`, { saved });
 });
 
-/** A code line that fills the block's width never has the language label drawn over it: hovering the block or putting the cursor
- *  in it shows the label only where it covers no code */
+/** The code block's pill (language, copy, wrap, menu) floats over the block's top-right corner, opaque, and only while it is
+ *  wanted: hovering the block or the caret in it. Otherwise it is invisible and lets clicks through to the code under it */
 test("codeBlockLabelClear", async () => {
   const h = await open({ board: board([{ id: "n1", md: TWO_CODE, w: 400 }]), light, w: 900, h: 600 });
   const pg = h.page;
   await idle(h);
   await edit(h, "n1", { x: 20, y: 6 });
   const pres = `${card("n1")} .md-pm pre.md-code`;
-  /** label shown (opacity) and overlapping any code text of its block */
-  const covers = () => pg.locator(pres).evaluateAll((ps) => ps.map((p) => {
-    const lb = p.querySelector(".md-lang") as HTMLElement, lr = lb.getBoundingClientRect();
-    const shown = Number(getComputedStyle(lb).opacity) > 0.05;
-    const hit = [...p.querySelectorAll(".cm-line")].some((l) => {
-      const rg = document.createRange(); rg.selectNodeContents(l);
-      return [...rg.getClientRects()].some((r) => r.width > 0 && r.right > lr.left && r.left < lr.right && r.bottom > lr.top && r.top < lr.bottom);
-    });
-    return shown && hit;
+  /** per block: pill shown (opacity), takes clicks, its background is opaque, and it lies inside the block's top-right corner */
+  const pills = () => pg.locator(pres).evaluateAll((ps) => ps.map((p) => {
+    const pill = p.querySelector(".md-cbpill") as HTMLElement, cs = getComputedStyle(pill), r = pill.getBoundingClientRect(), b = p.getBoundingClientRect();
+    return { shown: Number(cs.opacity) > 0.95, clicks: cs.pointerEvents !== "none", opaque: !/rgba\(.*, 0(\.\d+)?\)$|transparent/.test(cs.backgroundColor), corner: r.right <= b.right && r.top >= b.top && r.right > b.right - 20 };
   }));
+  // the caret in the first paragraph, the mouse away: no pill
+  await pg.mouse.move(5, 5);
+  await idle(h);
+  const away = await pills();
   await pg.locator(`${pres} .cm-content`).last().click();
   await pg.keyboard.press("End");
-  const focused = await covers();
-  await pg.locator(pres).last().hover();
+  await pg.mouse.move(5, 5);
   await idle(h);
-  const hovered = await covers();
+  const focused = await pills();
+  await pg.locator(pres).first().hover();
+  await idle(h);
+  const hovered = await pills();
   await shot(h, "n1", "08-label-hover", true);
-  check("codeBlockLabelClear", !focused.some(Boolean) && !hovered.some(Boolean), { focused, hovered });
+  const ok = away.every((x) => !x.shown && !x.clicks) && focused[1].shown && focused[1].clicks && !focused[0].shown && hovered[0].shown && [...focused, ...hovered].every((x) => !x.shown || (x.opaque && x.corner));
+  check("codeBlockLabelClear", ok, { away, focused, hovered });
   await pg.keyboard.press("Escape");
   await idle(h);
 });

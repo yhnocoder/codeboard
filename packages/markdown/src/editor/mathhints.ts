@@ -5,7 +5,7 @@ import { Plugin, PluginKey, TextSelection } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
 import { place, virtual } from "../ui/place";
 import { defsIn, mathMacros, mathPreambleDefs, type MathDef } from "../math";
-import { srcRuns } from "./source";
+import { blockInfo, flat } from "./spans";
 
 /** 一条补全：snip 里的 | 是插入后光标的位置；pv 是排出来给人看的样子 */
 export type MathCmd = { name: string; snip: string; pv: string; desc: string; tag?: "预设" | "本式" };
@@ -423,15 +423,17 @@ export function inlineMathAt(state: EditorState): Region | null {
   const $h = sel.$head, p = $h.parent;
   if (!p.isTextblock || p.type.spec.code) return null;
   const base = $h.start(), off = $h.parentOffset;
-  for (const r of srcRuns(p)) {
-    if (off < r.from || off > r.to) continue;
-    if (r.text.length < 2 || r.text[0] !== "$" || !r.text.endsWith("$")) continue;
-    const d = r.text.length >= 4 && r.text.startsWith("$$") && r.text.endsWith("$$") ? 2 : 1;
+  const text = p.textContent;
+  for (const r of flat(blockInfo(text, false).spans)) {
+    if (r.atom?.type !== "math" || off < r.from || off > r.to) continue;
+    const d = r.marks[0] ? r.marks[0][1] - r.marks[0][0] : 1;
     const a = r.from + d, b = r.to - d;
     if (off < a || off > b) return null;
-    return { from: base + a, to: base + b, text: r.text.slice(d, r.text.length - d), caret: off - a, d };
+    return { from: base + a, to: base + b, text: text.slice(a, b), caret: off - a, d };
   }
   // 还没打完的：光标前有落单的 $（成对的、代码里的、转义的不算）
+  const codes = flat(blockInfo(text, false).spans).filter((sp) => sp.tag?.nodeName === "code");
+  const inCode = (i: number) => codes.some((sp) => i >= sp.from && i < sp.to);
   const before = p.textBetween(0, off, undefined, "\ufffc");
   let open = -1, d = 0;
   for (let i = 0; i < before.length; i++) {
@@ -439,7 +441,7 @@ export function inlineMathAt(state: EditorState): Region | null {
     if (ch === "\\") { i++; continue; }
     if (ch !== "$") continue;
     const n = before[i + 1] === "$" ? 2 : 1;
-    if (p.childAfter(i).node?.marks.some((m) => m.type.spec.code)) { i += n - 1; continue; }
+    if (inCode(i)) { i += n - 1; continue; }
     if (open < 0) { open = i; d = n; } else open = -1;
     i += n - 1;
   }

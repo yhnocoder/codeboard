@@ -216,6 +216,8 @@ input, textarea { font: inherit; color: var(--ink); }
 .ib:hover, .tbtn:hover { background: color-mix(in srgb, var(--ink) 7%, transparent); color: var(--ink); }
 .ib:active, .tbtn:active { background: color-mix(in srgb, var(--ink) 12%, transparent); transition: none; scale: .96; }
 .ib[disabled] { opacity: .35; }
+.ib.mdsrc { width: auto; padding: 0 6px; font: 600 11.5px/1 var(--mono, ui-monospace, monospace); letter-spacing: -.02em; }
+.ib.mdsrc.on { background: color-mix(in srgb, var(--accent, var(--ink)) 14%, transparent); color: var(--accent, var(--ink)); }
 /* 图标（ui/icons.tsx）横竖线画在整数坐标上：2px 描边正好盖满两行像素；1px 描边整组平移 (-.5, -.5) 落到半像素中心上。
    线宽只能是 1px 或 2px（1.4 / 1.5 在 1x 和 2x 屏上都会糊）。轻量主题 1px；繁复主题（Classic、Colorful、Newspaper、Poster、City）
    在 themes.css 里设 --ico-w: 2。.f 是填色的小方块（⋯ 的点），本身在整像素上，不平移 */

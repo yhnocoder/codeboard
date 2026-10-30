@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 // jsdom：静态显示整篇过 DOMPurify，happy-dom 解析时会丢掉开头的元素
+import { sourceMd } from "../src/editor/srcdoc";
 import { describe, expect, it } from "vitest";
 import { parseMd, serializeMd } from "../src/schema";
 import { renderMd } from "../src/render";
@@ -193,32 +194,28 @@ describe("typed math and block source", () => {
     same("```\n\\$a$\n```");
     expect(rt("[t](http://x/\\$y)")).toBe("[t](http://x/$y)");
   });
-  // 编辑器里光标处展开的原文（mdSrc 标记）写出来时先收回去，不会被当成字转义，也不会把 "## " 写两遍
-  it("open source at the caret is written back as Markdown, not as escaped text", () => {
-    const src = (text: string) => ({ type: "text", text, marks: [{ type: "mdSrc" }] });
-    const p = (...content: object[]) => ({ type: "doc", content: [{ type: "paragraph", content }] });
-    expect(serializeMd(p({ type: "text", text: "x " }, src("**bo**"), { type: "text", text: " y" }))).toBe("x **bo** y");
-    expect(serializeMd(p(src("*bo**")))).not.toContain("mdSrc");
-    expect(serializeMd(p({ type: "text", text: "a " }, src("$x$")))).toBe("a $x$");
-    const h = (level: number, ...content: object[]) => ({ type: "doc", content: [{ type: "heading", attrs: { level }, content }] });
-    expect(serializeMd(h(2, src("### "), { type: "text", text: "hd" }))).toBe("### hd");
-    expect(serializeMd(h(2, src("## x"), { type: "text", text: "hd" }))).toBe("## xhd");
-    // ## 改坏了：变回普通段落，字照留
-    const bad = parseMd(serializeMd(h(2, src("##"), { type: "text", text: "hd" }))).content![0];
+  // The editor's paragraphs are source: written back as they are, never escaped as text, and "## " is not written twice
+  it("a paragraph's source is written back as Markdown, not as escaped text", () => {
+    const p = (...texts: string[]) => ({ type: "doc", content: texts.map((text) => ({ type: "paragraph", content: [{ type: "text", text }] })) });
+    expect(sourceMd(p("x **bo** y"))).toBe("x **bo** y");
+    expect(sourceMd(p("a $x$"))).toBe("a $x$");
+    expect(sourceMd(p("### hd"))).toBe("### hd");
+    expect(parseMd(sourceMd(p("## hd"))).content![0].type).toBe("heading");
+    // a broken ## stays a paragraph, its text kept
+    const bad = parseMd(sourceMd(p("##hd"))).content![0];
     expect(bad.type).toBe("paragraph");
     expect(bad.content?.map((c) => c.text).join("")).toBe("##hd");
   });
-  // 编辑器里打的 \*（\ 带 mdEsc 标记）写出来就是 \*，不会变成 \\\*；读回来是字面的 *
+  // a typed \* is written as typed (not as \\\*) and reads back as a literal *
   it("a typed backslash escape is written as typed", () => {
-    const esc = { type: "text", text: "\\", marks: [{ type: "mdEsc" }] };
-    const doc = (...content: object[]) => ({ type: "doc", content: [{ type: "paragraph", content }] });
-    const md = serializeMd(doc({ type: "text", text: "a " }, esc, { type: "text", text: "*not" }, esc, { type: "text", text: "* b" }));
+    const md = sourceMd({ type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "a \\*not\\* b" }] }] });
     expect(md).toBe("a \\*not\\* b");
     same(md);
     expect(JSON.stringify(parseMd(md))).not.toContain('"italic"');
-    expect(serializeMd(doc({ type: "text", text: "x " }, esc, { type: "text", text: "# y" }))).toBe("x \\# y");
-    // 后面没有字的 \：就是一个 \
-    expect(serializeMd(doc({ type: "text", text: "end " }, esc))).toBe(serializeMd(doc({ type: "text", text: "end \\" })));
+    const p = (text: string) => sourceMd({ type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text }] }] });
+    expect(p("x \\# y")).toBe("x \\# y");
+    // a \ with nothing after it is just a \
+    expect(parseMd(p("end \\")).content![0].content![0].text).toBe("end \\");
   });
   // ==高亮==、H~2~O、x^2^；~~删除线~~ 照旧；读不成这些的 ~ ^ == 不转义
   it("highlight, subscript and superscript", () => {
@@ -305,11 +302,11 @@ describe("typed math and block source", () => {
   it("inline $$x$$ stays display math in the paragraph", () => {
     same("sum $$x$$ here");
   });
-  it("blockSource gives the block's Markdown without escaping", async () => {
-    const { blockSource } = await import("../src/schema");
+  it("inlineMd gives the block's Markdown source (escaped where the text is literal)", async () => {
+    const { inlineMd } = await import("../src/schema");
     const p = parseMd("**b** and $m$").content![0];
-    expect(blockSource(p)).toBe("**b** and $m$");
-    expect(blockSource({ type: "paragraph", content: [{ type: "text", text: "x $y$ *z*" }] })).toBe("x $y$ *z*");
+    expect(inlineMd(p)).toBe("**b** and $m$");
+    expect(inlineMd({ type: "paragraph", content: [{ type: "text", text: "x $y$ *z*" }] })).toBe("x \\$y$ \\*z\\*");
   });
 });
 

@@ -198,9 +198,19 @@ const DetBody = DetailsContent.extend({ parseMarkdown: undefined, renderMarkdown
 
 // 单独一行的 [toc]（不分大小写）。目录里是这篇的所有标题，跟着标题变：显示时 render.ts 填，编辑时节点视图自己填
 const TOC_RE = /^ {0,3}\[toc\][ \t]*(?:\n|$)/i;
-export const tocEntries = (doc: { descendants: (f: (n: any) => boolean | void) => void }) => {
+// the editor keeps headings as paragraphs of source ("## text", editor/srcdoc.ts): those count too (never in a table cell)
+const HEAD_SRC = /^ {0,3}(#{1,6})(?:[ \t]+|$)/;
+export const tocEntries = (doc: { descendants: (f: (n: any, pos: number, parent: any) => boolean | void) => void }) => {
   const out: { level: number; text: string }[] = [];
-  doc.descendants((n) => { if (n.type.name === "heading") { out.push({ level: n.attrs.level, text: n.textContent }); return false; } return n.type.name !== "toc"; });
+  doc.descendants((n, _pos, parent) => {
+    if (n.type.name === "heading") { out.push({ level: n.attrs.level, text: n.textContent }); return false; }
+    if (n.type.name === "paragraph") {
+      const m = /cell|header/.test(parent?.type.spec.tableRole ?? "") ? null : HEAD_SRC.exec(n.textContent);
+      if (m) out.push({ level: m[1].length, text: n.textContent.slice(m[0].length).replace(/[ \t]+#+[ \t]*$/, "").trim() });
+      return false;
+    }
+    return n.type.name !== "toc";
+  });
   return out;
 };
 export const tocHtml = (es: { level: number; text: string }[]) =>
@@ -577,6 +587,27 @@ export const baseExtensions: AnyExtension[] = [
   WikiRef, Emoji, FnList, FnDef, FnRef, HtmlInline, HtmlBlock,
 ];
 
+/**
+ * The editor's schema: the same blocks, but paragraphs (headings and table cells included) hold Markdown source as
+ * plain text, so there are no marks and no inline nodes (editor/inline.ts draws them). Footnote definitions are
+ * paragraphs too. Layout that Markdown cannot hold lives in attributes: code block wrap, row height (column widths are
+ * the cells' own colwidth); see layout.ts
+ */
+export const sourceExtensions: AnyExtension[] = [
+  StarterKit.configure({
+    document: false, paragraph: false, codeBlock: false, underline: false, trailingNode: false, bold: false, italic: false, strike: false, horizontalRule: false, code: false, link: false, listItem: false, orderedList: false,
+    heading: false, hardBreak: false,
+    dropcursor: { color: false, width: 2, class: "md-dropcursor" },
+  }),
+  Hr, Toc, Item, Ordered, Tasks, Task, Det, DetSum, DetBody, Math2, HtmlBlock,
+  Document.extend({ content: "block+" }),
+  Paragraph.extend({ marks: "" }),
+  Code.extend({ addAttributes() { return { ...this.parent?.(), wrap: { default: false, rendered: false } }; } }),
+  Tbl,
+  TableRow.extend({ addAttributes() { return { height: { default: null, renderHTML: (a) => (a.height ? { style: `height: ${a.height}px` } : {}), parseHTML: (e) => parseInt(e.style.height, 10) || null } }; } }),
+  Head, Cell,
+];
+
 // 原版把 \ ` * _ [ ] ~ 全部转义，还把 < & 变成实体：block_manager 会写成 block\_manager。这里只在重新解析会变样时才转义
 const PUNCT = /[!-/:-@[-`{-~]/;
 /**
@@ -767,7 +798,7 @@ function walk(ns: JSONContent[] | undefined, f: (n: JSONContent) => void) {
 }
 
 export function serializeMd(doc: JSONContent): string {
-  const content = escPairs(unsource(doc.content ?? []));
+  const content = [...(doc.content ?? [])];
   const fi = content.findIndex((n) => n.type === "footnotes");
   const fns = fi >= 0 ? content.splice(fi, 1)[0] : undefined;
   // 脚注按引用出现的顺序重新编号
@@ -784,31 +815,15 @@ export function serializeMd(doc: JSONContent): string {
     .map((f) => [num.get(f.attrs!["data-id"]), toMd(markStarts(renumber(f.content ?? [])), false).trim()] as const)
     .filter(([, body]) => body).map(([k, body]) => `[^${k}]: ${body.replace(/\n/g, "\n    ")}`);
   if (defs.length) out = `${out.trimEnd()}\n\n${defs.join("\n")}`;
-  return unPair(out.replace(/^\n+/, "").replace(/\s+$/, ""));
+  return out.replace(/^\n+/, "").replace(/\s+$/, "");
 }
-/**
- * 一个块当成 Markdown 源码：字原样写出（不转义），重新解析时字里的 **b**、$m$、# 之类就生效（打字、接受补全、粘贴之后用）。
- * 打字时转义过的 \X 写成私用区的一个字：解析器当普通字，重新解析也不会变；parseSource 再变回带 mdEsc 标记的那一对
- */
-export function blockSource(n: JSONContent): string {
-  return toMd(escPairs(unsource([n])), true).replace(/^\n+/, "").replace(/\s+$/, "");
-}
-/** blockSource 的原文解析回来；inline：只要行内内容（# - 1. > 之类不当成块），解析出来不是一段行内内容时给 null */
+/** 一段行内 Markdown 解析回行内内容；解析出来不是一段行内内容时给 null（粘贴进来的 HTML 里的字按 Markdown 读时用） */
 export function parseSource(src: string, inline: boolean): JSONContent[] | null {
-  const ns = inline ? inlineParse(src) : (parseMd(src).content ?? []).filter((n) => n.type !== "footnotes");
-  return ns && restorePairs(ns);
+  return inline ? inlineParse(src) : (parseMd(src).content ?? []).filter((n) => n.type !== "footnotes");
 }
-
-// 光标处展开的 Markdown 原文（编辑器里的 mdSrc 标记，见 editor/source.ts）
-// 光标走进 **粗体**、链接、标题、行内公式时，那一段换成带 mdSrc 标记的原文（真的字，能改）；光标离开时把原文重新解析回去。
-// 写出 Markdown 之前（保存、复制、原文模式）先在这里把还展开着的原文收回去，所以 mdSrc 永远不会写进文件
-export const SRC_MARK = "mdSrc";
-const INLINE_HEAD = "\uE026";
-const isSrc = (n: JSONContent) => n.type === "text" && !!n.marks?.some((m) => m.type === SRC_MARK);
-/** 一段行内原文解析回行内内容；两头的空白照留（解析会去掉）。前面垫一个字，# - 1. > 之类不会被当成块 */
-export const parseInlineSrc = (src: string): JSONContent[] => inlineParse(src) ?? plain(src);
+const INLINE_HEAD = "";
 const plain = (t: string): JSONContent[] => (t ? [{ type: "text", text: t }] : []);
-/** 同上；解析出来不是一段行内内容时给 null */
+/** 两头的空白照留（解析会去掉）。前面垫一个字，# - 1. > 之类不会被当成块 */
 function inlineParse(src: string): JSONContent[] | null {
   const lead = /^\s*/.exec(src)![0], trail = src.slice(lead.length).match(/\s*$/)![0], core = src.slice(lead.length, src.length - trail.length);
   if (!core) return plain(src);
@@ -818,91 +833,44 @@ function inlineParse(src: string): JSONContent[] | null {
   const rest = first.text.slice(INLINE_HEAD.length);
   return [...plain(lead), ...(rest ? [{ ...first, text: rest }] : []), ...p.content!.slice(1), ...plain(trail)];
 }
-/**
- * 一个文字块里的原文收回去。keep(from, to, prefix)：这一段（块里的字偏移，行内节点算 1）留着不收（光标在里面）。
- * 标题开头的原文是它的 "## "：合法的就定级别（留着时也跟着改级别），收的时候不合法就变回普通段落、原文当正文
- */
-export function unsourceBlock(b: JSONContent, keep: (from: number, to: number, prefix: boolean) => boolean = () => false): JSONContent {
-  const cs = b.content ?? [];
-  if (!cs.some(isSrc)) return b;
-  let attrs = b.attrs, type = b.type;
-  const out: JSONContent[] = [];
-  let at = 0;
-  for (let i = 0; i < cs.length;) {
-    if (!isSrc(cs[i])) { out.push(cs[i]); at += cs[i].text?.length ?? 1; i++; continue; }
-    let j = i, text = "";
-    while (j < cs.length && isSrc(cs[j])) text += cs[j++].text ?? "";
-    const from = at, to = at + text.length, prefix = from === 0 && type === "heading";
-    // 标题的 "## "（后面紧跟着的字是正文）
-    const head = prefix ? /^(#{1,6})[ \t]+/.exec(text) : null;
-    if (head) attrs = { ...attrs, level: head[1].length };
-    if (keep(from, to, prefix)) out.push(...cs.slice(i, j));
-    else if (head) out.push(...parseInlineSrc(text.slice(head[0].length)));
-    else {
-      if (prefix) type = "paragraph";
-      out.push(...parseInlineSrc(text));
-    }
-    at = to; i = j;
-  }
-  if (type !== b.type) attrs = undefined;
-  return { ...b, type, ...(attrs ? { attrs } : { attrs: undefined }), content: out };
-}
-// 打字时的反斜杠转义（编辑器里的 mdEsc 标记）
-// 在编辑器里打 \* 时那个 \ 带 mdEsc 标记（光标不在旁边时不显示，Typora 一样）；写出时这一对原样写 \*，不再把 \ 当字转义成 \\\*。
-// 先换成一个私用区的字（写出时不会被转义、不影响旁边的记号），写完再换回 \X
-export const ESC_MARK = "mdEsc";
-const PAIR0 = 0xe100;
-function escPairs(ns: JSONContent[]): JSONContent[] {
-  return ns.map((n) => {
-    const cs = n.content;
-    if (!cs?.some((c) => c.marks?.some((m) => m.type === ESC_MARK))) return cs ? { ...n, content: escPairs(cs) } : n;
-    const out: JSONContent[] = [];
-    for (let i = 0; i < cs.length; i++) {
-      const c = cs[i], esc = c.type === "text" && c.marks?.some((m) => m.type === ESC_MARK);
-      if (!esc) { out.push(c); continue; }
-      const marks = c.marks!.filter((m) => m.type !== ESC_MARK), rest = { ...c, marks: marks.length ? marks : undefined };
-      const next = cs[i + 1], ch = next?.type === "text" ? next.text?.[0] : undefined;
-      if (c.text === "\\" && ch && /[!-/:-@[-`{-~]/.test(ch)) {
-        out.push({ ...next, text: String.fromCharCode(PAIR0 + ch.charCodeAt(0)) + next.text!.slice(1) });
-        i++;
-      } else out.push(rest);
-    }
-    return { ...n, content: out };
-  });
-}
-const unPair = (s: string) => s.replace(/[\uE100-\uE17F]/g, (c) => `\\${String.fromCharCode(c.charCodeAt(0) - PAIR0)}`);
-/** 私用区的 \X 变回带 mdEsc 标记的 \ 加那个字；代码、属性里的变回字面的 \X */
-function restorePairs(ns: JSONContent[], code = false): JSONContent[] {
-  const { nodes, marks } = mdSchema();
-  return ns.flatMap((n): JSONContent[] => {
-    const attrs = n.attrs && Object.fromEntries(Object.entries(n.attrs).map(([k, v]) => [k, typeof v === "string" ? unPair(v) : v]));
-    const m: JSONContent = attrs ? { ...n, attrs } : n;
-    if (m.content) return [{ ...m, content: restorePairs(m.content, code || !!nodes[m.type!]?.spec.code) }];
-    const t = m.text;
-    if (m.type !== "text" || !t || !/[\uE100-\uE17F]/.test(t)) return [m];
-    if (code || m.marks?.some((k) => marks[k.type]?.spec.code)) return [{ ...m, text: unPair(t) }];
-    const out: JSONContent[] = [];
-    let acc = "";
-    for (const c of t) {
-      const k = c.charCodeAt(0) - PAIR0;
-      if (k < 0 || k > 0x7f) { acc += c; continue; }
-      if (acc) out.push({ ...m, text: acc });
-      out.push({ ...m, text: "\\", marks: [...(m.marks ?? []), { type: ESC_MARK }] });
-      acc = String.fromCharCode(k);
-    }
-    if (acc) out.push({ ...m, text: acc });
-    return out;
-  });
-}
 
-function unsource(ns: JSONContent[]): JSONContent[] {
-  return ns.map((n) => (n.content?.some(isSrc) ? unsourceBlock(n) : n.content ? { ...n, content: unsource(n.content) } : n));
+// 编辑器的文档：段落（标题、格子里的那一段也是段落）里存的就是这一段的 Markdown 原文（editor/srcdoc.ts）。
+// 读进来时每一段照 serializeMd 的规则写成原文；写出去时原文一字不改，只有块的结构交给 MarkdownManager 拼起来
+
+/** 一段（段落、标题）的行内内容写成 Markdown 原文：和 serializeMd 写出来的一样，只是硬换行写成 <br>（Shift+↵ 打的也是它，编辑器里看得见） */
+export function inlineMd(block: JSONContent): string {
+  const content = block.content?.map((n) => (n.type === "hardBreak" ? { type: "htmlInline", attrs: { raw: "<br>" }, marks: n.marks } : n));
+  const b = { ...block, content };
+  return toMd(block.type === "paragraph" ? markStarts([b]) : [b], false).replace(/^\n+|\n+$/g, "");
+}
+/** 几个块写成 Markdown（脚注定义的正文） */
+export const blocksMd = (content: JSONContent[]) => toMd(markStarts(content), false).trim();
+/** 编辑器文档的块写成 Markdown：段落里的原文原样写出。格子里的 | 写成 \|（GFM 的格子靠 | 断开；原文里已经写成 \| 的不再转义） */
+export function sourceBlocksMd(content: JSONContent[]): string {
+  const prep = (ns: JSONContent[], cell: boolean): JSONContent[] => ns.map((n) => {
+    if (n.type === "paragraph") {
+      const t = (n.content ?? []).map((c) => c.text ?? "").join("");
+      return { ...n, content: t ? [{ type: "text", text: cell ? shieldCell(t) : shield(t) }] : undefined };
+    }
+    if (!n.content || mdSchema().nodes[n.type!]?.spec.code || n.type === "detailsSummary") return n;
+    return { ...n, content: prep(n.content, cell || n.type === "tableCell" || n.type === "tableHeader") };
+  });
+  return unshield(mm.serialize({ type: "doc", content: prep(dropEmpty(content), false) })).replace(/^\n+/, "").replace(/\s+$/, "");
+}
+const shieldCell = (t: string) => shield(t.replace(/\\.|\|/g, (m) => (m === "|" ? "\\|" : m))).replace(/\|/g, (c) => String.fromCharCode(SHIELD + c.charCodeAt(0)));
+
+export type InlineToken = { type: string; raw: string; text?: string; tokens?: InlineToken[]; href?: string; title?: string | null; [k: string]: unknown };
+let lexer: { inlineTokens(src: string): InlineToken[] } | undefined;
+/** 一段行内原文按解析器分词（和 parseMd 读一段时是同一套规则）：编辑器照它画格式 */
+export function inlineTokens(src: string): InlineToken[] {
+  lexer ??= (mm as unknown as { createLexer(): { inlineTokens(src: string): InlineToken[] } }).createLexer();
+  return lexer.inlineTokens(src);
 }
 
 // 字里看着像 $公式$ 的（Pandoc 规则，和 INLINE_MATH 一样）变成公式：两头都是没转义的 $。转义过的 \$ 总是字面的 $（Typora 一样）：
 // \$x$、\$x\$ 都是普通文字（打 $x$ 变成公式后 ⌘Z 撤回的就存成 \$x$）
-const ESC_DOLLAR = "\uE024";
-const TEXT_MATH = /(^|[^$\\\uE024])\$([^$\s\uE024](?:[^$\uE024]*[^$\s\\\uE024])?)\$(?![\d$\uE024])/g;
+export const ESC_DOLLAR = "\uE024";
+export const TEXT_MATH = /(^|[^$\\\uE024])\$([^$\s\uE024](?:[^$\uE024]*[^$\s\\\uE024])?)\$(?![\d$\uE024])/g;
 /** 占位字换回去：正文、链接地址里是 $；代码、公式源码、原样的 HTML 里原样是 \$ */
 function unDollar(ns: JSONContent[], raw = false): JSONContent[] {
   const fix = (t: string, r: boolean) => (t.includes(ESC_DOLLAR) ? t.replaceAll(ESC_DOLLAR, r ? "\\$" : "$") : t);

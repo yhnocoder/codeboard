@@ -4,24 +4,27 @@ import { keepKey } from "@yhnocoder/markdown/ui";
 import { Show, batch, createEffect, onMount } from "solid-js";
 import { useFinish } from "./hooks";
 import { editing, setEditing, takeEditEntry, type Editing } from "../state/ui";
-import { docRange } from "@yhnocoder/markdown";
+import type { MdLayout } from "@yhnocoder/markdown";
 import { MdStatic } from "./Md";
-import { loadEditor, editorNow, editorOpts, prepareSelected, NOTE_PLACEHOLDER, type MdEditorHandle } from "../md/load";
+import { loadEditor, editorNow, editorOpts, prepareSelected, setCurrentEditor, setSourceMode, NOTE_PLACEHOLDER, type MdEditorHandle } from "../md/load";
 import { sel } from "../state/store";
 
 export function Editable(p: {
   class?: string; kind: NonNullable<Editing>["kind"]; id: string; value: string; multiline?: boolean; md?: boolean; placeholder?: string;
-  onCommit: (v: string) => void; style?: any;
+  /** Markdown only: table widths, row heights and code wrap (card data next to the Markdown) */
+  layout?: MdLayout | null;
+  /** layout is given only when the edit changed it (null = all automatic again) */
+  onCommit: (v: string, layout?: MdLayout | null) => void; style?: any;
 }) {
   const on = () => editing()?.kind === p.kind && editing()?.id === p.id;
   // 只选中了这一张 Note、镜头停下：先在页面外准备好编辑器（双击多半跟着来）
   if (p.md && p.kind === "note") createEffect(() => {
-    if (sel.cards.length === 1 && sel.cards[0] === p.id && !on()) prepareSelected(p.value);
+    if (sel.cards.length === 1 && sel.cards[0] === p.id && !on()) prepareSelected(p.value, p.layout);
   });
   return (
     <Show when={on()} fallback={
       p.md
-        ? <MdStatic class={p.class} style={p.style} ph={p.placeholder} src={p.value} onToggle={(v) => p.onCommit(v)} prep />
+        ? <MdStatic class={p.class} style={p.style} ph={p.placeholder} src={p.value} layout={p.layout} onToggle={(v) => p.onCommit(v)} prep />
         : <div class={p.class} style={p.style} data-ph={p.placeholder}>{p.value}</div>
     }>
       {p.md ? <MdEdit {...p} /> : <PlainEdit {...p} />}
@@ -77,16 +80,19 @@ function PlainEdit(p: P) {
 function MdEdit(p: P) {
   let el!: HTMLDivElement;
   let ed: MdEditorHandle | undefined;
-  const { finish, done } = useFinish((v: string | null) => {
+  const { finish, done } = useFinish((v: string | null, layout?: MdLayout | null) => {
+    setCurrentEditor(p.id, null);
     // 先存再退出、一批更新：静态内容直接按新原文画一次（先退出的话会先按旧原文画一遍，存了再画一遍）
     batch(() => {
-      if (v !== null && v !== p.value) p.onCommit(v);
+      const text = v !== null && v !== p.value;
+      if (layout !== undefined) p.onCommit(text ? v! : p.value, layout);
+      else if (text) p.onCommit(v!);
       if (editing()?.kind === p.kind && editing()?.id === p.id) setEditing(null);
     });
   }, (f) => {
-    const v = ed?.value() ?? null;
+    const v = ed?.value() ?? null, l = ed ? ed.layout() : undefined;
     ed?.destroy();
-    f(v);
+    f(v, l !== undefined && JSON.stringify(l) !== JSON.stringify(p.layout ?? null) ? l : undefined);
   });
   const start = p.value;
   // 显示时选了一段字再按 ⌫ / Delete 进来的：选上同一段，再把这个键交给编辑器
@@ -94,7 +100,11 @@ function MdEdit(p: P) {
   const mount = (m: NonNullable<ReturnType<typeof editorNow>>) => {
     if (done() || !el.isConnected) return;
     el.textContent = "";
-    ed = m.mountEditor(el, { ...editorOpts(), value: start, placeholder: p.placeholder ?? NOTE_PLACEHOLDER, onDone: finish });
+    ed = m.mountEditor(el, {
+      ...editorOpts(), value: start, layout: p.layout, placeholder: p.placeholder ?? NOTE_PLACEHOLDER, onDone: finish,
+      onSourceMode: (on) => setSourceMode(p.id, on),
+    });
+    setCurrentEditor(p.id, ed);
     const e = ed.editor();
     if (entry && "at" in entry) {
       // 编辑器和静态内容排得一样：点在静态内容哪个字上，编辑器里同一个地方就是那个字。
@@ -106,7 +116,7 @@ function MdEdit(p: P) {
       if (at) e.commands.setTextSelection(at.pos);
       return;
     }
-    const r = entry && docRange(e.state.doc, entry.range);
+    const r = entry && m.visibleRange(e.state.doc, entry.range);
     if (!r) return;
     e.commands.setTextSelection(r);
     // 编辑器拿到焦点（mountEditor 放进了微任务）以后，和在编辑器里按这个键一样走它的键表；键表没接（不会发生）就直接删

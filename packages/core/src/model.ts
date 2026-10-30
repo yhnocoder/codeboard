@@ -145,7 +145,11 @@ export type NoteCard = CardBase & {
   hand?: HandColor;
   /** 消息卡：跨进程时夹在发送点和接收处之间的消息类型（md = 类型名，where = 定义在哪，如 io_struct.py） */
   msg?: { where?: string };
+  /** Layout Markdown cannot hold: table column widths and row heights, wrapped code blocks (by position: nth table,
+   *  nth code block). Kept out of md so the Markdown stays plain GFM; same shape as @yhnocoder/markdown's MdLayout */
+  mdLayout?: NoteLayout;
 };
+export type NoteLayout = { tables?: ({ cols?: (number | null)[]; rows?: (number | null)[] } | null)[]; wrap?: number[] };
 /** 没有卡框、字直接写在画布上的（Text、Box、Mark） */
 export const frameless = (c: Card | undefined): c is NoteCard => c?.kind === "note" && c.look !== "note";
 /** 图片：默认无背景（只显示图片本身），bg = 有卡片外框 */

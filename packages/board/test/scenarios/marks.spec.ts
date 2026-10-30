@@ -323,11 +323,12 @@ test("noteAnnotationMath", async () => {
   check("annotMathEditor", ok(edit) && !edit!.editable && egeo.length === 1 && Math.abs(egeo[0].labelCenter - egeo[0].spanCenter) <= 2, { edit, egeo });
   await shot(h, "marks-annotation-math-editing");
   await focusSettled(pg);
+  // select the annotated words in the source (the drawn annotation is not editable text)
   await pg.evaluate((pm) => {
-    const w = document.createTreeWalker(document.querySelector(`${pm} .md-annot > :not(.md-annot-n)`)!, NodeFilter.SHOW_TEXT);
-    const t = w.nextNode() as Text, r = document.createRange();
-    r.setStart(t, 0); r.setEnd(t, t.data.length);
-    getSelection()!.removeAllRanges(); getSelection()!.addRange(r);
+    const e = (document.querySelector(pm) as any).editor, w = "{==wave count==|";
+    let at = -1;
+    e.state.doc.descendants((n: any, pos: number) => { if (at < 0 && n.isText && n.text.includes(w)) at = pos + n.text.indexOf(w); });
+    e.commands.setTextSelection({ from: at + 1, to: at + 1 + "==wave count==".length });
   }, pm);
   await pmHasSelection(pg);
   const btn = pg.locator('.md-bubble .tbtn[data-tip="Handwritten Note"]');
@@ -426,8 +427,9 @@ test("noteAnnotationFromToolbar", async () => {
   const undone = await pg.evaluate((pm) => ({ annots: document.querySelectorAll(`${pm} .md-annot`).length, text: document.querySelector(pm)!.textContent }), pm);
   await pg.keyboard.press("ControlOrMeta+Shift+z");
   await frames(pg);
-  const redone = await pg.evaluate((pm) => document.querySelector(pm)!.innerHTML, pm);
-  check("annotOneUndoStep", undone.annots === 0 && undone.text === "Prefill and decode never share a batch in nano-vllm." && /data-note="not mixed"/.test(redone), { undone, redone });
+  // redo puts the caret back in the annotation, which then shows as its source
+  const redone = await pg.evaluate((pm) => document.querySelector(pm)!.textContent, pm);
+  check("annotOneUndoStep", undone.annots === 0 && undone.text === "Prefill and decode never share a batch in nano-vllm." && redone === "Prefill and decode {never share a batch|not mixed} in nano-vllm.", { undone, redone });
   await pg.mouse.click(760, 380);
   await pg.locator(pm).waitFor({ state: "detached" }); await idle(h); // the editor has closed and its save reached the host
   check("annotSaved", md() === "Prefill and decode {never share a batch|not mixed} in nano-vllm.", md());

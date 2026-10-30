@@ -61,7 +61,7 @@ const res = {};
   await run("ctrl1", async () => { await startEdit("head test"); const z0 = await zoom(); await key("Control+1"); return { zoomChanged: z0 !== (await zoom()), html: await html() }; });
   await run("ctrl0", async () => { await startEdit("para test"); const z0 = await zoom(); await key("Control+0"); return { zoomChanged: z0 !== (await zoom()), editing: await pm().count() }; });
   await run("ctrlMinus", async () => { await startEdit("minus"); const z0 = await zoom(); await key("Control+-"); return { zoomChanged: z0 !== (await zoom()), editing: await pm().count() }; });
-  await run("ctrlSlash", async () => { await startEdit("raw test"); await key("Control+/"); const r = { raw: await f.locator(".md-raw").count() }; await key("Control+/"); return r; });
+  await run("ctrlSlash", async () => { await startEdit("raw test"); await key("Control+/"); const r = { raw: await f.locator(".md-srcmode .cm-content").count() }; await key("Control+/"); return r; });
   await run("ctrlS", async () => { await startEdit("save test"); await key("Control+s"); return { editing: await pm().count(), text: await text() }; });
   await run("ctrlShiftL", async () => { await startEdit("lock test"); await key("Control+Shift+l"); return { editing: await pm().count(), locked: await f.locator(".card.locked, .card .lock").count() }; });
   await run("ctrlComma", async () => { await startEdit("settings test"); await key("Control+,"); return { editing: await pm().count(), settings: await f.locator(".settings").count() }; });

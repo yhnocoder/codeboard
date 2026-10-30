@@ -28,7 +28,8 @@ const md = (h: Host, id: string) => (h.board().cards.find((c) => c.id === id) as
 const look = (h: Host, root: string) => h.page.evaluate((root) => {
   const box = document.querySelector(root)!;
   const copy = box.cloneNode(true) as HTMLElement;
-  copy.querySelectorAll("code, pre").forEach((e) => e.remove());
+  // in the editor the source's markers are hidden (.md-hide) away from the caret
+  copy.querySelectorAll("code, pre, .md-hide").forEach((e) => e.remove());
   return {
     hl: [...box.querySelectorAll("mark")].map((e) => e.textContent),
     strike: [...box.querySelectorAll("s, del")].map((e) => e.textContent),

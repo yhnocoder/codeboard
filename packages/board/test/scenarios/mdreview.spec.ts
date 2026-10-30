@@ -311,7 +311,7 @@ const ISSUES: Record<string, [string, (i: I) => boolean][]> = {
   "#7 $$x$$ inline and on its own line": [["math-inline-display", md("big $$x^2$$ inline")], ["mathblock-oneline", md("$$\na+b\n$$\n\nafter")]],
   "#8 typed HTML": [
     ["underline-html", md("a <u>under</u> b")], ["html-inline", md("a <kbd>Ctrl</kbd> b")],
-    ["link-angle", md("see https://x.y now")], ["details-html", (i) => /^<details>/.test(i.md) && /details/.test(i.dom)],
+    ["link-angle", md("see <https://x.y> now")], ["details-html", (i) => /^<details>/.test(i.md) && /details/.test(i.dom)],
   ],
   "#9 footnotes": [["footnote-def", md("ref[^1]\n\n[^1]: the note")], ["footnote-ref", md("claim[^1] ok")]],
   "#12 | a | b | Enter makes a table": [["table-enter", md("| a   | b   |\n| --- | --- |\n| c   |     |")]],

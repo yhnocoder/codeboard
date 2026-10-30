@@ -2,33 +2,47 @@ import { describe, expect, it } from "vitest";
 import { getSchema } from "@tiptap/core";
 import { EditorState, TextSelection } from "@tiptap/pm/state";
 import { history, undo, redo, closeHistory } from "@tiptap/pm/history";
-import { baseExtensions, parseMd, serializeMd } from "../src/schema";
-import { Typora, codeSpanAtEnd, reconvert, retype } from "../src/editor/typora";
+import { parseMd, sourceExtensions } from "../src/schema";
+import { enterBlock } from "../src/editor/typora";
+import { sourceDoc, sourceMd } from "../src/editor/srcdoc";
+import { blockInfo, flat, type Span } from "../src/editor/spans";
 
-const schema = getSchema([...baseExtensions, Typora]);
+// Paragraphs hold their Markdown source: typing never rewrites them, and what the parser reads in the text is drawn.
+// These are the old typing-rule cases, checked against the source model: the stored text is exactly what was typed,
+// and the spans (what inline.ts draws) show the formatting the old rules produced.
+const schema = getSchema(sourceExtensions);
 function state(md: string) {
-  const doc = schema.nodeFromJSON(parseMd(md));
-  let s = EditorState.create({ doc, schema, plugins: [history()] });
+  const doc = schema.nodeFromJSON(sourceDoc(md));
+  const s = EditorState.create({ doc, schema, plugins: [history()] });
   return s.apply(s.tr.setSelection(TextSelection.atEnd(s.doc)));
 }
-const mdOf = (s: EditorState) => serializeMd(s.doc.toJSON()).trim();
+const mdOf = (s: EditorState) => sourceMd(s.doc.toJSON());
 const run = (s: EditorState, cmd: typeof undo) => { let out = s; cmd(s, (tr) => { out = s.apply(tr); }); return out; };
+/** What a paragraph's source draws: tag names and atom types, in order */
+const drawn = (text: string, headings = true) => flat(blockInfo(text, headings).spans).map((sp: Span) => sp.atom?.type ?? sp.tag?.nodeName ?? "esc");
+const innerOf = (text: string, sp: Span) => (sp.inner ? text.slice(sp.inner[0], sp.inner[1]) : "");
+const TAG: Record<string, string> = { bold: "strong", italic: "em", strike: "s", code: "code", highlight: "mark", subscript: "sub", superscript: "sup", underline: "u", link: "a" };
+/** The formatting the static render shows for a paragraph's source (the editor draws the same) */
+function shown(text: string): string[] {
+  const out = new Set<string>();
+  const walk = (ns: { marks?: { type: string }[]; content?: unknown[] }[] | undefined) => { for (const n of ns ?? []) { for (const m of n.marks ?? []) out.add(TAG[m.type] ?? m.type); walk(n.content as typeof ns); } };
+  walk(parseMd(text).content as Parameters<typeof walk>[0]);
+  return [...out].sort();
+}
+const tags = (text: string) => [...new Set(flat(blockInfo(text).spans).flatMap((sp) => (sp.tag ? [sp.tag.nodeName] : [])))].sort();
 function accept(s: EditorState, text: string) {
-  return s.apply(reconvert(closeHistory(s.tr).insertText(text, s.selection.head)));
+  return s.apply(closeHistory(s.tr).insertText(text, s.selection.head));
 }
 
-describe("reconvert", () => {
-  it("turns inserted spans into marks and math", () => {
+describe("accepting inserted text (ghost text, paste of one line)", () => {
+  it("keeps inserted spans as source and draws them as math, bold and code", () => {
     const s = accept(state("see"), " $a$ and **b** with `c`");
     expect(mdOf(s)).toBe("see $a$ and **b** with `c`");
-    expect(s.doc.firstChild!.childCount).toBeGreaterThan(3);
-    expect(s.storedMarks).toEqual([]);
+    expect(drawn(s.doc.firstChild!.textContent)).toEqual(["math", "strong", "code"]);
   });
   it("finishes math the user started", () => {
     const s = accept(state("x $\\frac{"), "a}{b}$ done");
-    let math = 0;
-    s.doc.descendants((n) => { if (n.type.name === "inlineMath") math++; });
-    expect(math).toBe(1);
+    expect(drawn(s.doc.firstChild!.textContent)).toEqual(["math"]);
     expect(mdOf(s)).toBe("x $\\frac{a}{b}$ done");
   });
   it("one undo reverts the accept, redo brings it back", () => {
@@ -43,113 +57,108 @@ describe("reconvert", () => {
     const s = accept(state("a"), " **b** c");
     expect(s.doc.textBetween(s.selection.head, s.doc.content.size)).toBe("");
   });
-  it("a whole $$…$$ paragraph becomes a math block", () => {
-    const s = accept(state(""), "$$y$$");
-    expect(s.doc.firstChild!.type.name).not.toBe("paragraph");
+  it("a whole $$…$$ paragraph becomes a math block on Enter", () => {
+    let s = accept(state(""), "$$y$$");
+    expect(enterBlock(s, (tr) => { s = s.apply(tr); })).toBe(true);
+    expect(s.doc.firstChild!.type.name).toBe("blockMath");
   });
 });
 
-describe("code span typing rule", () => {
-  it("pairs runs of the same length", () => {
-    expect(codeSpanAtEnd("a `x`")?.replaceWith).toBe("x");
-    expect(codeSpanAtEnd("a ``x ` y``")?.replaceWith).toBe("x ` y");
-    expect(codeSpanAtEnd("a `` x ``")?.replaceWith).toBe("x");
+describe("code spans", () => {
+  it("pair runs of the same length", () => {
+    for (const [t, want] of [["a `x`", "x"], ["a ``x ` y``", "x ` y"], ["a `` x ``", "x"]] as const) {
+      const sp = flat(blockInfo(t).spans).find((x) => x.tag?.nodeName === "code")!;
+      expect(innerOf(t, sp).trim(), t).toBe(want);
+    }
   });
-  it("waits while a longer run is still open", () => {
-    expect(codeSpanAtEnd("a ``x ` y`")).toBeNull();
-    expect(codeSpanAtEnd("a `")).toBeNull();
-    expect(codeSpanAtEnd("a \\`x`")).toBeNull();
+  it("wait while a longer run is still open", () => {
+    // the parser's own pairing: no span opens at the `` run (the single-backtick ` y` is a span of its own, as rendered)
+    const t = "a ``x ` y`";
+    expect(flat(blockInfo(t).spans).every((sp) => t.slice(sp.from, sp.from + 2) !== "``")).toBe(true);
+    expect(tags(t)).toEqual(shown(t));
+    expect(drawn("a `")).toEqual([]);
   });
 });
 
-describe("typing rule: re-parse what is before the caret (retype)", () => {
-  /** 一段打好的字（还没转换过），光标往回挪 back 个字（默认段尾），再打一个字 */
+describe("typing: the source is what was typed, the parser decides what it draws", () => {
+  /** A typed paragraph, the caret back `back` characters from its end, then one more character */
   function type(text: string, ch: string, back = 0) {
     const doc = schema.node("doc", null, [schema.node("paragraph", null, [schema.text(text)])]);
     let s = EditorState.create({ doc, schema });
     s = s.apply(s.tr.setSelection(TextSelection.atEnd(s.doc)));
     s = s.apply(s.tr.setSelection(TextSelection.create(s.doc, s.selection.head - back)));
-    const tr = s.tr.insertText(ch);
-    const changed = retype(tr);
-    return { changed, s: s.apply(tr) };
+    s = s.apply(s.tr.insertText(ch));
+    return { s, text: s.doc.firstChild!.textContent };
   }
-  it("turns finished syntax into marks, math, links, refs", () => {
-    for (const [md, ch, want] of [
-      ["x ==hi=", "=", "x ==hi=="], ["H~2", "~", "H~2~"], ["x^2", "^", "x^2^"], ["a $x", "$", "a $x$"], ["a $$y$", "$", "a $$y$$"],
-      ["[t](https://x.y/a", ")", "[t](https://x.y/a)"], ["***bi**", "*", "***bi***"], ["<u>u</u", ">", "<u>u</u>"], ["hi :tada", ":", "hi :tada:"], ["see [[C]", "]", "see [[C]]"],
+  it("draws finished syntax as formatting, math, links, refs", () => {
+    for (const [md, ch, want, kind] of [
+      ["x ==hi=", "=", "x ==hi==", "mark"], ["H~2", "~", "H~2~", "sub"], ["x^2", "^", "x^2^", "sup"], ["a $x", "$", "a $x$", "math"], ["a $$y$", "$", "a $$y$$", "math"],
+      ["[t](https://x.y/a", ")", "[t](https://x.y/a)", "a"], ["***bi**", "*", "***bi***", "em"], ["<u>u</u", ">", "<u>u</u>", "u"], ["hi :tada", ":", "hi :tada:", "emoji"], ["see [[C]", "]", "see [[C]]", "ref"],
     ] as const) {
-      const { changed, s } = type(md, ch);
-      expect(changed, md).toBe(true);
-      expect(mdOf(s)).toBe(want);
+      const { s, text } = type(md, ch);
+      expect(text, md).toBe(want);
+      expect(drawn(text), md).toContain(kind);
       expect(s.doc.textBetween(s.selection.head, s.doc.content.size)).toBe("");
-      expect(s.storedMarks).toEqual([]);
     }
   });
   it("leaves text the parser keeps literal", () => {
-    for (const [md, ch] of [["$5 and ", "$"], ["a ~ b ", "~"], ["$$x", "$"], ["x :nosuch", ":"], ["a 1:100", ":"]] as const) expect(type(md, ch).changed, md).toBe(false);
+    for (const [md, ch] of [["$5 and ", "$"], ["a ~ b ", "~"], ["$$x", "$"], ["x :nosuch", ":"], ["a 1:100", ":"]] as const) expect(drawn(type(md, ch).text), md).toEqual([]);
   });
-  it("waits while a longer run of the same marker is still being typed", () => {
-    for (const [md, ch] of [["**b", "*"], ["~~ab", "~"], ["***bi*", "*"], ["***bi", "*"]] as const) expect(type(md, ch).changed, md).toBe(false);
+  it("draws no bold while a longer run of the same marker is still being typed, and only what the static render shows", () => {
+    expect(drawn(type("**b", "*").text)).not.toContain("strong");
+    for (const [md, ch] of [["**b", "*"], ["~~ab", "~"], ["***bi*", "*"], ["***bi", "*"]] as const) {
+      const { text } = type(md, ch);
+      expect(tags(text), md).toEqual(shown(text));
+    }
   });
   it("keeps text after the caret and typed escapes", () => {
     const a = type("x ==a= tail", "=", 5);
     expect(mdOf(a.s)).toBe("x ==a== tail");
     expect(a.s.doc.textBetween(a.s.selection.head, a.s.doc.content.size)).toBe(" tail");
-    // 打字时的 \* 是转义：重解析以后还是那一对
-    let s = state("a");
-    s = s.apply(s.tr.insert(s.selection.head, [schema.text("\\", [schema.marks.mdEsc.create()]), schema.text("*b ==c=")]));
-    const tr = s.tr.insertText("=");
-    expect(retype(tr)).toBe(true);
-    const after = s.apply(tr);
-    expect(mdOf(after)).toBe("a\\*b ==c==");
-    expect(after.doc.rangeHasMark(0, after.doc.content.size, schema.marks.mdEsc)).toBe(true);
+    // a typed \* is an escape: it stays, and the * is not a marker
+    const b = type("a\\*b ==c=", "=");
+    expect(mdOf(b.s)).toBe("a\\*b ==c==");
+    expect(drawn(b.text)).toEqual(["esc", "mark"]);
   });
-  it("only converts the span ending at the caret (text undone to plain stays plain)", () => {
-    const a = type("$a$ and $b", "$");
-    expect(a.changed).toBe(true);
-    expect(mdOf(a.s)).toBe("\\$a$ and $b$");
-    expect(type("==a== x ==b=", "=").s.doc.firstChild!.firstChild!.text).toBe("==a== x ");
+  it("only what is written is drawn (an earlier span stays as typed)", () => {
+    expect(drawn(type("$a$ and $b", "$").text)).toEqual(["math", "math"]);
+    expect(drawn(type("\\$a$ and $b", "$").text)).toEqual(["esc", "math"]);
   });
   it("typing the closing = of ==hi== highlights it and saves it back as ==hi==", () => {
-    const { changed, s } = type("say ==hi=", "=");
-    expect(changed).toBe(true);
-    const hl = s.doc.firstChild!.child(1);
-    expect(hl.text).toBe("hi");
-    expect(hl.marks.map((m) => m.type.name)).toEqual(["highlight"]);
+    const { s, text } = type("say ==hi=", "=");
+    const sp = flat(blockInfo(text).spans).find((x) => x.tag?.nodeName === "mark")!;
+    expect(innerOf(text, sp)).toBe("hi");
     expect(mdOf(s)).toBe("say ==hi==");
     // a lone == (x == y) and a space inside the markers stay text
-    expect(type("x == y =", "=").changed).toBe(false);
-    expect(type("x == y=", "=").changed).toBe(false);
+    expect(drawn(type("x == y =", "=").text)).toEqual([]);
+    expect(drawn(type("x == y=", "=").text)).toEqual([]);
   });
-  it("waits for the closing ~~, and keeps a single ~ with spaces as text", () => {
-    for (const [md, ch] of [["x ~~s", "~"], ["x ~a b", "~"]] as const) expect(type(md, ch).changed, md).toBe(false);
+  it("draws a strike only as the static render does, and keeps a single ~ with spaces as text", () => {
+    for (const [md, ch] of [["x ~~s", "~"], ["x ~a b", "~"]] as const) expect(tags(type(md, ch).text), md).toEqual(shown(type(md, ch).text));
   });
-  // 打完收尾的记号就变，和解析器一样：前面紧挨着中文、同一行前面有行内代码 `void **` 时也变，代码里的记号不动
-  it("converts **b**, *i*, ~~s~~, ==h== and `c` after CJK text, also with ** inside an earlier code span", () => {
-    const code = (pre: string) => [schema.text("("), schema.text("void **", [schema.marks.code.create()]), schema.text(`) ${pre}`)];
+  // the parser's own rules: right after CJK text, and with ** inside an earlier code span
+  it("draws **b**, *i*, ~~s~~, ==h== and `c` after CJK text, also with ** inside an earlier code span", () => {
     for (const pre of ["指向要 free 的对象的 ", "指向要 free 的对象的"]) {
-      for (const [typed, ch, want, mark] of [["**Pointer*", "*", "**Pointer**", "bold"], ["*Pointer", "*", "*Pointer*", "italic"], ["~~Pointer~", "~", "~~Pointer~~", "strike"], ["==Pointer=", "=", "==Pointer==", "highlight"]] as const) {
+      for (const [typed, ch, want, tag] of [["**Pointer*", "*", "**Pointer**", "strong"], ["*Pointer", "*", "*Pointer*", "em"], ["~~Pointer~", "~", "~~Pointer~~", "s"], ["==Pointer=", "=", "==Pointer==", "mark"]] as const) {
         for (const withCode of [false, true]) {
-          const doc = schema.node("doc", null, [schema.node("bulletList", null, [schema.node("listItem", null, [schema.node("paragraph", null, [...(withCode ? code(pre) : [schema.text(pre)]), schema.text(typed)])])])]);
+          const head = `${withCode ? "(`void **`) " : ""}${pre}`;
+          const doc = schema.node("doc", null, [schema.node("bulletList", null, [schema.node("listItem", null, [schema.node("paragraph", null, [schema.text(head + typed)])])])]);
           let s = EditorState.create({ doc, schema });
           s = s.apply(s.tr.setSelection(TextSelection.atEnd(s.doc)));
-          const tr = s.tr.insertText(ch);
-          expect(retype(tr), `${withCode} ${pre}${typed}${ch}`).toBe(true);
-          s = s.apply(tr);
-          const last = s.doc.firstChild!.firstChild!.firstChild!.lastChild!;
-          expect(last.text).toBe("Pointer");
-          expect(last.marks.map((m) => m.type.name)).toEqual([mark]);
-          expect(mdOf(s)).toBe(`- ${withCode ? "(`void **`) " : ""}${pre}${want}`);
+          s = s.apply(s.tr.insertText(ch));
+          const text = s.selection.$head.parent.textContent, sp = flat(blockInfo(text).spans).filter((x) => x.tag?.nodeName === tag).pop();
+          expect(sp && innerOf(text, sp), `${withCode} ${pre}${typed}${ch}`).toBe("Pointer");
+          expect(mdOf(s)).toBe(`- ${head}${want}`);
         }
       }
     }
   });
-  it("does not create footnotes", () => {
-    expect(type("see [[x]] and [^1", "]").changed).toBe(false);
+  it("writes footnote references as typed", () => {
+    expect(type("see [[x]] and [^1", "]").text).toBe("see [[x]] and [^1]");
   });
-  it("a whole-line $$…$$ becomes a math block at once, the caret in the paragraph after it", () => {
-    const { changed, s } = type("$$\\frac{200}{10}$", "$");
-    expect(changed).toBe(true);
+  it("a whole-line $$…$$ plus Enter becomes a math block, the caret in the paragraph after it", () => {
+    let s = type("$$\\frac{200}{10}$", "$").s;
+    expect(enterBlock(s, (tr) => { s = s.apply(tr); })).toBe(true);
     expect(s.doc.firstChild!.type.name).toBe("blockMath");
     expect(s.doc.firstChild!.attrs.latex).toBe("\\frac{200}{10}");
     expect(s.selection.$head.parent.type.name).toBe("paragraph");
@@ -160,12 +169,9 @@ describe("typing rule: re-parse what is before the caret (retype)", () => {
     let s = state("| a |\n| - |\n| x |");
     let cell = -1;
     s.doc.descendants((n, pos) => { if (cell < 0 && n.type.name === "tableCell") cell = pos; });
-    s = s.apply(s.tr.setSelection(TextSelection.create(s.doc, cell + 2)).deleteRange(cell + 2, cell + 3).insertText("$$y$", cell + 2));
-    const tr = s.tr.insertText("$");
-    expect(retype(tr)).toBe(true);
-    const after = s.apply(tr);
-    let inline = 0;
-    after.doc.descendants((n) => { if (n.type.name === "inlineMath") inline++; });
-    expect(inline).toBe(1);
+    s = s.apply(s.tr.setSelection(TextSelection.create(s.doc, cell + 2)).deleteRange(cell + 2, cell + 3).insertText("$$y$$", cell + 2));
+    expect(enterBlock(s)).toBe(false);
+    expect(drawn(s.selection.$head.parent.textContent, false)).toEqual(["math"]);
+    expect(mdOf(s)).toBe("| a     |\n| ----- |\n| $$y$$ |");
   });
 });

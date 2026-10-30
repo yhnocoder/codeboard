@@ -9,3 +9,4 @@ export { staticTextRange, staticDomRange, docRange, type StaticTextRange } from 
 export { toggleStaticMark, staticMarkActive, type StaticMark } from "./marks";
 export { setMathPreamble, mathMacros, mathPreambleErrors } from "./math";
 export { undoubleTex } from "./doubled";
+export { applyMdLayout, type MdLayout, type TableLayout } from "./layout";
