@@ -1,6 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { DEFAULT_SETTINGS, emptyBoard, mapFit, skeletonOf, type Board, type NoteCard } from "@codeboard/core";
+import { DEFAULT_SETTINGS, emptyBoard, estSize, mapFit, skeletonOf, type Board, type NoteCard } from "@codeboard/core";
 import { put, symCard, findSym, shot, OUT, type Host } from "../harness";
 import { subHost } from "../subhost";
 import { test, until, idle, hold, verdict, check } from "../fixtures";
@@ -546,6 +546,9 @@ test("subboardMapRealSizes", async () => {
   B.place.rLong = { x: 0, y: 0, w: 300 };
   B.place.rBelow = { x: 0, y: 900, w: 300 };
   B.place.rBig = { x: 360, y: 0, w: 700 };
+  // 一段多行的纯文字（Text）
+  B.cards.push({ id: "rText", kind: "note", look: "text", size: "body", md: "本章讨论 GPU 的片上内存架构，并开始研究如何组织和放置数据，使大量线程能够高效访问它们。".repeat(4) } as NoteCard);
+  B.place.rText = { x: 360, y: 560, w: 380 };
   for (let i = 0; i < 5; i++) {
     B.cards.push({ id: `rSq${i}`, kind: "image", src: svg(236, 236, ["#d77891", "#7aa66b", "#c9a227", "#8a6fc4", "#4aa3a3"][i]), alt: `方图 ${i + 1}` });
     B.place[`rSq${i}`] = { x: 1120 + (i % 3) * 270, y: Math.floor(i / 3) * 330, w: 236 };
@@ -563,7 +566,7 @@ test("subboardMapRealSizes", async () => {
   await until(h, "entering opens the sub-board", () => t.inits.length > n0 && t.cur() === "bReal");
   await idle(h);
   const real = await page.evaluate((ids) => Object.fromEntries(ids.map((id) => { const e = document.querySelector<HTMLElement>(`.card[data-id="${id}"]`)!; return [id, { w: e.offsetWidth, h: e.offsetHeight }]; })), ids);
-  await until(h, "the measured heights are saved with the sub-board", () => ids.every((id) => Math.abs((t.store.peek("bReal")!.place[id].mh ?? 0) - real[id].h) <= 8));
+  await until(h, "the measured heights are saved with the sub-board", () => { const sb = t.store.peek("bReal")!; return ids.every((id) => Math.abs(estSize(sb.cards.find((c) => c.id === id)!, sb.place[id]).h - real[id].h) <= 8); });
   const n1 = t.inits.length;
   await page.keyboard.press("Escape");
   await until(h, "leaving opens Main", () => t.inits.length > n1 && t.cur() === "bMain");
@@ -582,6 +585,9 @@ test("subboardMapRealSizes", async () => {
   // the gap between the long Note and the card under it, in the board's units
   const k = map.rBig.w / real.rBig.w, gap = (map.rBelow.y - map.rLong.y - map.rLong.h) / k, want = 900 - real.rLong.h;
   check("subboardMapRealSizes-gap", Math.abs(gap - want) < 10, { gap, want });
+  // 多行的 Text 画成几道线（像字），不是一道
+  const textBars = await page.locator('.card[data-id="fReal"] .skel [data-sub="rText"] .bar').count();
+  check("subboardMapRealSizes-textLines", textBars >= 4, { textBars });
   await shotPr(h, "subboardcard-real-sizes");
   await page.context().close();
 });

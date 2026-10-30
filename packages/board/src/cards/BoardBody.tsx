@@ -109,7 +109,9 @@ function mapHtml(sk: Skeleton, m: MapFit): string {
       inner = src ? `<image href="${escHtml(src)}" x="${x}" y="${y}" width="${w}" height="${h}" preserveAspectRatio="xMidYMid slice"/><rect class="im" x="${x}" y="${y}" width="${w}" height="${h}"/>`
         : `<rect class="imx" x="${x}" y="${y}" width="${w}" height="${h}"/>`;
     } else if (c.lk === "text") {
-      inner = `<rect class="bar t" x="${x}" y="${n1(y + h / 2 - 1.2)}" width="${n1(w * 0.8)}" height="2.4"/>`;
+      // 一行放得下就是一道粗线（标题、短标签）；多行的正文按高度画满几道线，没有纸
+      if (h < 9) inner = `<rect class="bar t" x="${x}" y="${n1(y + h / 2 - 1.2)}" width="${n1(w * 0.8)}" height="2.4"/>`;
+      else for (let k = 0, yy = y + 2; yy + 2 < y + h && k < 60; k++, yy += 5) inner += `<rect class="bar" x="${x}" y="${n1(yy)}" width="${n1(w * NOTE_W[k % 7])}" height="1.6"/>`;
     } else if (c.lk === "mark") {
       for (let k = 0, yy = y + 2; k < 3 && yy + 2 < y + h; k++, yy += 5) inner += `<rect class="bar mk" x="${x}" y="${n1(yy)}" width="${n1(w * [0.9, 0.75, 0.5][k])}" height="1.8"/>`;
     } else if (c.lk === "box") {
