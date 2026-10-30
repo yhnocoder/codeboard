@@ -57,11 +57,12 @@ export function viewOf(seg: Segment): SegView {
   const defs = (a?.symbols ?? []).filter((s) => s.defLine >= seg.start && s.defLine <= seg.end).map((s) => ({ line: s.defLine, name: s.name, qual: s.qual }));
   return { html, flags, calls, defs, bare };
 }
-/** A hand-written snippet (a Note's code block) gets the host's real highlighting, so its colours and a language change show
- *  as in the product; Python with calls keeps the crude one, which marks the calls */
+/** A hand-written snippet in another language, and a Note's code block (cm/load.ts noteHighlight), get the host's real
+ *  highlighting, so their colours and a language change show as in the product. Free Python code cards keep the crude one:
+ *  the board draws them from views made the same way (viewOf), so entering and leaving edit compare like with like */
 async function langView(seg: Segment): Promise<SegView> {
   const v = viewOf(seg);
-  return seg.src.kind === "free" && seg.lang && (seg.lang !== "python" || !v.calls.length) ? { ...v, html: await highlight(seg.text, seg.lang) } : v;
+  return seg.src.kind === "free" && seg.lang && (seg.lang !== "python" || seg.id === "note-code") ? { ...v, html: await highlight(seg.text, seg.lang) } : v;
 }
 // Crude Python highlighting: keywords, strings, comments, numbers
 const KW = new Set("def return for in if else elif while and or not is None True False class break continue del import from as with lambda yield assert pass raise try except finally global nonlocal async await".split(" "));
