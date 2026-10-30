@@ -6,6 +6,7 @@ import { settingsOpen } from "../state/ui";
 import { ask, send } from "../host";
 import * as A from "../actions";
 import { Icon } from "./icons";
+import { scrollIntoBox } from "@yhnocoder/markdown/ui";
 import { promptText } from "./Menu";
 import { helpRows, matches } from "../keymap";
 import { useOverlay } from "./overlay";
@@ -31,7 +32,7 @@ function SettingsPage(p: { section?: string }) {
   useOverlay({ close: () => A.closeSettings(), grab: true, modal: true, stay: true, keys: (e) => matches(e, "settings") && (A.closeSettings(), true) });
   onMount(() => {
     const t = p.section && el.querySelector<HTMLElement>(`[data-sec="${p.section}"]`);
-    if (t) t.scrollIntoView({ block: "start" });
+    if (t) scrollIntoBox(t, "start");
     el.focus({ preventScroll: true });
   });
   return (

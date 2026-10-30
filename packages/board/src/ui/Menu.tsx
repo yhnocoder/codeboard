@@ -1,6 +1,6 @@
 import { createSignal, For, Show, onCleanup, onMount, createEffect, createMemo, on } from "solid-js";
 import { Icon } from "./icons";
-import { place, virtual } from "@yhnocoder/markdown/ui";
+import { place, virtual, scrollIntoBox } from "@yhnocoder/markdown/ui";
 import { useOverlay } from "./overlay";
 import { useListNav } from "./hooks";
 
@@ -57,7 +57,8 @@ function MenuList(p: { items: Item[]; x: number; y: number; onClose: () => void;
       const k = ids.indexOf(kbAt() ?? -1);
       const next = ids[k < 0 ? (d > 0 ? 0 : ids.length - 1) : (k + d + ids.length) % ids.length];
       setKbAt(next);
-      btns[next]?.scrollIntoView({ block: "nearest" });
+      const b = btns[next];
+      if (b) scrollIntoBox(b, "nearest");
     },
     enter: () => { const i = kbAt(); if (i !== null && (p.items[i] as Exclude<Item, null>).sub) openSub(i, true); },
     activate: () => { const i = kbAt(); if (i === null) return false; btns[i]?.click(); return true; },
@@ -179,7 +180,7 @@ function PickList(p: { rows: PickRow[]; nav: (k: (e: KeyboardEvent) => boolean, 
   const { i, setI, key } = useListNav(() => shown().length);
   createEffect(on(q, () => setI(0), { defer: true }));
   let list!: HTMLDivElement, inp!: HTMLInputElement;
-  createEffect(() => { i(); list?.querySelector(".cand.on")?.scrollIntoView({ block: "nearest" }); });
+  createEffect(() => { i(); const on = list?.querySelector(".cand.on"); if (on) scrollIntoBox(on, "nearest"); });
   p.nav(key, () => shown()[i()]?.i);
   onMount(() => inp.focus());
   return (
