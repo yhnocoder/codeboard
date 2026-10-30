@@ -401,7 +401,7 @@ test("sectionClickEmptySelects", async () => {
 });
 
 /** A selected Section moves when its empty area is dragged, with its cards; an unselected one is not moved by that drag */
-test("sectionDragEmptyMovesSelected", async () => {
+test("sectionCmdDragEmptyMoves", async () => {
   const b = twoSections();
   b.cam = { x: 0, y: 0, z: 1 };
   const h = await open({ board: b, light, w: 1400 });
@@ -412,15 +412,19 @@ test("sectionDragEmptyMovesSelected", async () => {
   const at = () => { const q = h.board(); const s = q.sections.find((x) => x.id === "S1")!; return { sx: s.x, sy: s.y, cx: q.place[code].x, cy: q.place[code].y }; };
   const drag = async (x: number, y: number) => { await pg.mouse.move(x, y); await pg.mouse.down(); await pg.mouse.move(x + 60, y + 40, { steps: 6 }); await pg.mouse.up(); await idle(h); };
   const p0 = at();
-  // 没选中：拖空白处是框选，Section 不动
+  // 不按 ⌘：没选中、选中了，拖空白处都是框选，Section 不动
   await drag(s1.x + 40, s1.y + s1.height - 120);
-  const p1 = at();
   await pg.mouse.click(s1.x + s1.width + 40, s1.y + 20); await idle(h);
   await pg.mouse.click(s1.x + 40, s1.y + s1.height - 30); await idle(h);
-  // 离点选的地方远一点按下（同一处紧接着再按会算双击）
   await drag(s1.x + 200, s1.y + s1.height - 60);
+  const p1 = at();
+  // 按着 ⌘ 拖空白处：Section 和里面的卡一起走（⌘ 也关掉吸附，挪多少就是多少）
+  await pg.mouse.click(s1.x + s1.width + 40, s1.y + 20); await idle(h);
+  await pg.keyboard.down("Meta");
+  await drag(s1.x + 120, s1.y + s1.height - 90);
+  await pg.keyboard.up("Meta");
   await until(h, "the Section move is saved", () => at().sx !== p0.sx);
   const p2 = at();
-  check("sectionDragEmptyMovesSelected", p1.sx === p0.sx && p1.sy === p0.sy && p2.sx - p0.sx === 60 && p2.sy - p0.sy === 40 && p2.cx - p0.cx === 60 && p2.cy - p0.cy === 40, { p0, p1, p2 });
+  check("sectionCmdDragEmptyMoves", p1.sx === p0.sx && p1.sy === p0.sy && p2.sx - p0.sx === 60 && p2.sy - p0.sy === 40 && p2.cx - p0.cx === 60 && p2.cy - p0.cy === 40, { p0, p1, p2 });
   await close(h);
 });
