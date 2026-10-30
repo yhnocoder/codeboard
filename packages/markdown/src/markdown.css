@@ -64,8 +64,6 @@ math { font-size: 1.05em; }
 .md pre code { background: none; padding: 0; font: inherit; }
 .md pre.md-code { position: relative; color: var(--ink); }
 .md img { display: inline-block; vertical-align: middle; max-width: 100%; height: auto; margin: 4px 0; border-radius: 5px; }
-/* without a width of its own: its own size up to the column width and 340px tall (image.ts IMAGE_MAX_H) */
-.md :not(.md-fig.sized, .md-img.sized) > img:not(.sized, .ProseMirror-separator) { max-height: 340px; }
 /* A narrowed image (![a](u){width=40%}) is centred in its line: the image is inline, so its paragraph is centred, marked
    p.md-psized by the static render (render.ts) and by the editor's decorations (editor/inline.ts). A class, not p:has():
    Chrome checks a :has() rule again for every paragraph on each change, which made Enter in a long Note slow */

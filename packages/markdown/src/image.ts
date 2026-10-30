@@ -33,8 +33,6 @@ export function setAssetBase(b: string) {
 /** 图注：Markdown 里图的 title（![a](u "图注")），空白的不算 */
 export const captionOf = (title: unknown): string => (typeof title === "string" ? title.trim() : "");
 
-/** Tallest an image is drawn without a width of its own (px; markdown.css has the same number) */
-export const IMAGE_MAX_H = 340;
 /** 一张图的 <img> 属性（值为 null 的不写） */
 export function imageAttrs(a: { src?: string | null; alt?: string | null; title?: string | null; width?: number | null }): Record<string, string | null> {
   const raw = a.src ?? "";
@@ -50,10 +48,7 @@ export function imageAttrs(a: { src?: string | null; alt?: string | null; title?
     src: r.src, alt: a.alt ?? "",
     width: w && h ? String(w) : null, height: w && h ? String(h) : null,
     // 缩小了的图：正文宽的百分之几，居中（.sized，见 markdown.css；编辑器里这个宽度在包着图的那一层上，见 editor/image.ts）
-    // the rest at their own size up to the column width and IMAGE_MAX_H tall (as markdown.css's max-height does for images
-    // whose size is not known yet): with the size known, a max-width keeps the proportions
-    style: a.width ? `width: ${a.width}%` : w && h && h > IMAGE_MAX_H ? `max-width: min(100%, ${Math.round((IMAGE_MAX_H * w) / h)}px)` : null,
-    class: a.width ? "sized" : null,
+    style: a.width ? `width: ${a.width}%` : null, class: a.width ? "sized" : null,
     loading: "lazy", decoding: "async",
   };
 }

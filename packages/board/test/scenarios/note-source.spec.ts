@@ -506,7 +506,7 @@ test("noteLongNoteKeysScale", async () => {
   await close(h);
 });
 
-/** A web image shows at its natural size up to the column width, no taller than 340px; a width the user set wins; one that
+/** A web image shows at its natural size up to the column width, however tall that makes it; a width the user set wins; one that
  *  fails to load is a quiet line naming it, in the static view and in the editor */
 test("noteImageSizing", async () => {
   const svg = (w: number, hh: number) => `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${hh}"><rect width="100%" height="100%" fill="#8ab"/></svg>`;
@@ -525,9 +525,9 @@ test("noteImageSizing", async () => {
   }, root);
   const stat = await sizes(body);
   await shot(h, "noteImageSizing-static");
-  const ok = (s: typeof stat) => s.small[0] === 80 && s.small[1] === 40 && s.big[1] <= 341 && s.big[0] <= s.col && Math.abs(s.big[0] / s.big[1] - 4 / 3) < 0.02
-    && Math.abs(s.tall[0] - s.col / 2) <= 3 && s.tall[1] > 341 && s.err === "Image failed to load · a broken one" && s.errH < 40;
-  check("noteImageSizing static: natural size, capped height, the set width, a placeholder", ok(stat), stat);
+  const ok = (s: typeof stat) => s.small[0] === 80 && s.small[1] === 40 && Math.abs(s.big[0] - s.col) <= 1 && Math.abs(s.big[0] / s.big[1] - 4 / 3) < 0.02
+    && Math.abs(s.tall[0] - s.col / 2) <= 3 && Math.abs(s.tall[1] - s.tall[0] * 2.5) <= 2 && s.err === "Image failed to load · a broken one" && s.errH < 40;
+  check("noteImageSizing static: natural size up to the column, the set width, a placeholder", ok(stat), stat);
   await pg.locator(`${body} p`, { hasText: "end" }).dblclick();
   await pg.locator(`${card("n0")} .md-pm:focus`).waitFor();
   await focusSettled(pg);
