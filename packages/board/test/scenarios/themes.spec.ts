@@ -556,3 +556,38 @@ test("inkWashBoldStandsOut", async () => {
   const edit = await bold('.card[data-id="n1"] .md-pm');
   check("inkWashBoldStandsOut", ok(shown) && ok(edit), { shown, edit });
 });
+
+/** Ink Wash (usage feedback #85): ==highlight== is a vermilion brush stroke under the words instead of the yellow marker, light and dark,
+ *  static and while editing, each wrapped line with its own stroke; other themes keep the marker */
+test("inkWashHighlightBrush", async () => {
+  const b = emptyBoard("b1", "ink wash highlight");
+  b.cards.push({ id: "n1", kind: "note", look: "note", md: "性能取决于==核心执行这些指令的速度==，即 ==FLOP/B==。我们把这个比值称为==算术强度（arithmetic intensity）或计算强度（computational intensity）==。" } as any);
+  b.place.n1 = { x: 60, y: 90, w: 381 };
+  b.cam = { x: 0, y: 0, z: 1 };
+  const look = (pg: Awaited<ReturnType<typeof open>>["page"], sel: string) => pg.evaluate((sel) => [...document.querySelectorAll(sel)].map((m) => {
+    const s = getComputedStyle(m);
+    return { bg: s.backgroundImage.slice(0, 40), size: s.backgroundSize, clone: s.boxDecorationBreak || (s as any).webkitBoxDecorationBreak, lines: m.getClientRects().length };
+  }), sel);
+  const brush = (l: Awaited<ReturnType<typeof look>>) => l.length === 3 && l.every((m) => m.bg.startsWith('url("data:image/svg+xml') && m.clone === "clone") && l.some((m) => m.lines > 1);
+  const res: Record<string, unknown> = {};
+  let ok = true;
+  for (const lt of [true, false]) {
+    const h = await open({ board: b, light: lt, w: 560, h: 280, settings: { theme: "ink-wash" } as never });
+    await idle(h);
+    const shown = await look(h.page, '.card[data-id="n1"] .nbody mark');
+    await shot(h, `ink-wash-highlight-${lt ? "light" : "dark"}`);
+    await h.page.locator('.card[data-id="n1"] .nbody p').dblclick();
+    await h.page.locator('.card[data-id="n1"] .md-pm mark').first().waitFor();
+    await idle(h);
+    const edit = await look(h.page, '.card[data-id="n1"] .md-pm mark');
+    res[lt ? "light" : "dark"] = { shown, edit };
+    ok &&= brush(shown) && brush(edit);
+    await h.page.context().close();
+  }
+  const h = await open({ board: b, light: true, w: 560, h: 280, settings: { theme: "warm-ink" } as never });
+  await idle(h);
+  const warm = await look(h.page, '.card[data-id="n1"] .nbody mark');
+  await h.page.context().close();
+  res.warm = warm;
+  check("inkWashHighlightBrush", ok && warm.length === 3 && warm.every((m) => m.bg.startsWith("linear-gradient(")), res);
+});

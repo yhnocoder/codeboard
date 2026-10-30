@@ -374,6 +374,7 @@
   --hi: rgba(45,91,112,.14);
   --chg: rgba(154,90,44,.1); --chg-strong: rgba(154,90,44,.26); --del: rgba(184,50,31,.08); --add: rgba(45,91,112,.08);
   --mark: #1d1c1a; --mark-ink: #faf7f0; --md-hl: rgba(226,190,110,.3);
+  --hl-brush: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 8' preserveAspectRatio='none'%3E%3Cpath d='M1 5.2C18 3.6 34 4.6 52 4.1S88 3.2 119 4.4L118.6 5.6C96 6.2 72 5.4 54 6.1S20 6.8 1.4 6.4Z' fill='%23b8321f' fill-opacity='.85'/%3E%3C/svg%3E");
   --inote: rgba(29,28,26,.04); --hlrow: rgba(29,28,26,.06); --hlbar: #1d1c1a; --hatch: rgba(29,28,26,.07);
   --edge: rgba(29,28,26,.8);
   --s-sand: rgba(154,90,44,.07); --s-blue: rgba(45,91,112,.07); --s-green: rgba(80,110,80,.07); --s-pink: rgba(184,50,31,.06);
@@ -398,6 +399,7 @@
   --hi: rgba(143,183,201,.18);
   --chg: rgba(211,154,108,.1); --chg-strong: rgba(211,154,108,.26); --del: rgba(214,83,58,.12); --add: rgba(143,183,201,.08);
   --mark: #e9e5da; --mark-ink: #131312; --md-hl: rgba(214,180,110,.24);
+  --hl-brush: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 8' preserveAspectRatio='none'%3E%3Cpath d='M1 5.2C18 3.6 34 4.6 52 4.1S88 3.2 119 4.4L118.6 5.6C96 6.2 72 5.4 54 6.1S20 6.8 1.4 6.4Z' fill='%23d6533a' fill-opacity='.85'/%3E%3C/svg%3E");
   --inote: rgba(233,229,218,.04); --hlrow: rgba(233,229,218,.07); --hlbar: #e9e5da; --hatch: rgba(233,229,218,.06);
   --edge: rgba(233,229,218,.78);
   --s-sand: rgba(211,154,108,.06); --s-blue: rgba(143,183,201,.06); --s-green: rgba(140,170,130,.06); --s-pink: rgba(214,83,58,.06);
@@ -819,6 +821,8 @@
 /* 远山是白板背景（不跟着画布平移缩放，镜头动时不重画）；滤镜都在 SVG 里，只在换主题、改窗口大小时栅格化一次 */
 :root.look-ink-wash { --kw-w: 600; --no-link: var(--zhu); --call-deco: underline 1px var(--zhu); --ico-w: 1; }
 /* 加粗：宋体（Songti SC）的 Bold 笔画本来就细，Source Serif 这里只带到 600，和正文差得太少。用 700，再描一圈很细的边加重（只画不排版，编辑和显示一样宽） */
+/* ==高亮== 不涂黄：字下一道粗细不匀的朱笔，像在书上用朱笔画重点（和标题旁的朱印同色）。换行时每行各画一道；只画背景，字距不变 */
+:root.look-ink-wash .md mark { background: var(--hl-brush) left bottom / 100% .42em no-repeat; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
 :root.look-ink-wash .md :is(strong, b) { font-weight: 700; -webkit-text-stroke: .025em currentColor; }
 :root.look-ink-wash .board { background: url("./scenes/ink-light.svg") center bottom / cover no-repeat, var(--canvas); }
 :root.look-ink-wash[data-theme="dark"] .board { background: url("./scenes/ink-dark.svg") center bottom / cover no-repeat, var(--canvas); }
