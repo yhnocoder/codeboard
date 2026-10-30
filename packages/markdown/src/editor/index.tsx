@@ -30,7 +30,7 @@ import { mathHintsPlugin } from "./mathhints";
 import { imageEditing, insertImageUrl, pastedImages, type SaveImage } from "./image";
 import { Typora, setHeading } from "./typora";
 import { place, virtual } from "../ui/place";
-import { revealIn, scroller } from "../ui/reveal";
+import { revealIn, scroller, scrollIntoBox } from "../ui/reveal";
 import { TOOLBAR_SETTLE } from "../ui/timing";
 import type { LspHost } from "../cm/editor";
 import { FindExt, noteFind } from "./find";
@@ -198,7 +198,7 @@ function MenuView(p: { ui: Ui; pick: (it: MenuItem) => void }) {
         <Show when={m().items.length} fallback={<div class="md-empty">{m().kind === "ref" ? p.ui.opts.refs?.empty : "No matching block"}</div>}>
           <For each={m().items}>{(it, i) => (
             <button role="option" classList={{ sel: i() === m().i }} onClick={() => p.pick(it)} onPointerEnter={() => p.ui.setMenu({ ...m(), i: i() })}
-              ref={(el) => queueMicrotask(() => { if (i() === m().i) el.scrollIntoView({ block: "nearest" }); })}>
+              ref={(el) => queueMicrotask(() => { if (i() === m().i) scrollIntoBox(el, "nearest"); })}>
               <span class="lb">{it.title}</span><Show when={it.hint}><small>{it.hint}</small></Show>
             </button>
           )}</For>

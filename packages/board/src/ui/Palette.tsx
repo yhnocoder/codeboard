@@ -1,6 +1,6 @@
 // 鼠标只有真的移动才改高亮项：结果刷新时停在原地的鼠标不该抢走键盘选中的那项。
 // 没输入时列出入口（pyproject scripts、__init__ 导出、__main__、examples）。
-import { keepKey } from "@yhnocoder/markdown/ui";
+import { keepKey, scrollIntoBox } from "@yhnocoder/markdown/ui";
 import { Icon } from "./icons";
 import { useOverlay } from "./overlay";
 import { useListNav, useDebouncedAsk } from "./hooks";
@@ -24,7 +24,7 @@ export function Palette() {
   const busy = useDebouncedAsk(() => q().trim(),
     (s) => (s ? ask("search", { q: s, scope: init.mode === "code" ? "code" : "all" }) : ask("entryPoints", {})).catch((): SearchItem[] => []),
     (r) => { setRes(r); setI(0); }, (s) => (s ? 90 : 0));
-  createEffect(() => { i(); list?.querySelector(".cand.on")?.scrollIntoView({ block: "nearest" }); });
+  createEffect(() => { i(); const on = list?.querySelector(".cand.on"); if (on) scrollIntoBox(on, "nearest"); });
   const close = () => setPaletteOpen(false);
   useOverlay({ close, inside: (t) => !!t.closest(".palette"), grab: true, modal: true, outside: true });
   const run = async (it: SearchItem, alt: boolean) => {
