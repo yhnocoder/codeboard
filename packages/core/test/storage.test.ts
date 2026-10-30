@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createHash } from "node:crypto";
 import { danglingRefs, emptyBoard, type Board, type Camera } from "../src";
 
@@ -249,6 +249,41 @@ describe("core storage", () => {
     await store.list();
     expect(logs.length).toBe(2);
     expect(logs.some((l) => l.includes("bad.json")) && logs.some((l) => l.includes("newer"))).toBe(true);
+  });
+
+  it("lists unreadable board files as broken, in their group, with the reason", async () => {
+    const { fs, store } = setup();
+    fs.put(`${ROOT}/bad.json`, "{not json");
+    fs.put(`${ROOT}/g/strict.json`, { ...emptyBoard("strict", "Luna's board"), cards: [{ kind: "nope" }] });
+    fs.put(`${ROOT}/ok.json`, emptyBoard("ok", "OK"));
+    expect((await store.list()).map((m) => m.id)).toEqual(["ok"]);
+    const broken = store.broken();
+    expect(broken.map((b) => [b.name, b.group])).toEqual([["bad", undefined], ["Luna's board", "g"]]);
+    expect(broken[0].reason).toMatch(/JSON/);
+    expect(broken[1].reason).toMatch(/^Invalid board: .*cards/);
+    expect(await store.load("strict")).toBeNull();
+  });
+
+  it("turns a broken board file back into a board once it is fixed on disk", async () => {
+    const fs = new MemFs();
+    const logs: string[] = [];
+    const store = new Storage(fs, { dir: () => ROOT, watch: fs.watch, log: (_l, t) => logs.push(t) });
+    let changed = 0;
+    store.onDidChange(() => changed++);
+    fs.put(`${ROOT}/b.json`, { ...emptyBoard("b", "B"), cards: [{ kind: "nope" }] });
+    await store.list();
+    expect(store.broken().map((b) => b.file)).toEqual([`${ROOT}/b.json`]);
+    await fs.writeFile(`${ROOT}/b.json`, JSON.stringify(emptyBoard("b", "B")));
+    await vi.waitFor(() => expect(changed).toBeGreaterThan(0));
+    expect((await store.list()).map((m) => m.name)).toEqual(["B"]);
+    expect(store.broken()).toEqual([]);
+    // 修好时清掉了「只记一次」：之后再出现的坏文件照样记日志
+    await fs.rm(`${ROOT}/b.json`);
+    await store.list();
+    fs.put(`${ROOT}/b.json`, "{");
+    await store.list();
+    expect(store.broken()).toHaveLength(1);
+    expect(logs.filter((l) => l.includes("b.json"))).toHaveLength(2);
   });
 
   it("migrates old boards and fills missing arrays", async () => {

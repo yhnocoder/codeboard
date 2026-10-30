@@ -390,6 +390,8 @@ export type SharedCardFile = SharedCard & { version: 9 };
 
 /** subs = 这块白板上嵌着的子白板（去重，按出现的先后；侧栏按它缩进成树） */
 export type BoardMeta = { id: string; name: string; group?: string; cards: number; stale?: number; subs?: string[] };
+/** 读不了的白板文件（JSON 坏了、过不了 schema）：侧栏照样列出来，免得看起来像白板没了。name = 文件里的 name，没有就用文件名 */
+export type BrokenBoard = { file: string; name: string; group?: string; reason: string };
 
 export function emptyBoard(id: string, name: string): Board {
   return { version: BOARD_VERSION, id, name, cam: homeCam(), cards: [], place: {}, links: [], sections: [], sidenotes: [], stickers: [], born: {}, seq: 0 };

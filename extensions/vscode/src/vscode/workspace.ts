@@ -235,7 +235,7 @@ export function vscodeWorkspace(ctx: vscode.ExtensionContext): Workspace {
     ui: {
       info: async (text, ...actions) => vscode.window.showInformationMessage(text, ...actions),
       warn: async (text, o, ...actions) => vscode.window.showWarningMessage(text, { modal: o.modal, detail: o.detail }, ...actions),
-      error: (text) => void vscode.window.showErrorMessage(text),
+      error: async (text, ...actions) => vscode.window.showErrorMessage(text, ...actions),
       pick: async (items, o) => vscode.window.showQuickPick(items, o),
       // A secret is pasted from elsewhere: going to copy it must not close the box
       input: async (o) => vscode.window.showInputBox({ title: o.title, prompt: o.prompt, value: o.value, placeHolder: o.placeHolder, password: o.password, ignoreFocusOut: o.password }),

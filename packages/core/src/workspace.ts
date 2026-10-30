@@ -117,7 +117,7 @@ export type InputOpts = { prompt: string; value?: string; placeHolder?: string; 
 export interface WorkspaceUi {
   info(text: string, ...actions: string[]): Promise<string | undefined>;
   warn(text: string, opts: { modal?: boolean; detail?: string }, ...actions: string[]): Promise<string | undefined>;
-  error(text: string): void;
+  error(text: string, ...actions: string[]): Promise<string | undefined>;
   /** 选一项；回的是传进来的那个对象 */
   pick<T extends PickItem>(items: T[], opts?: PickOpts): Promise<T | undefined>;
   input(opts: InputOpts): Promise<string | undefined>;
