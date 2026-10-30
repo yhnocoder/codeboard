@@ -1070,8 +1070,9 @@ mark.wdiff { background: var(--chg-strong); color: inherit; border-radius: 2px; 
 .carea { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; min-width: 0; }
 .card.lo-map > .cface { clip-path: inset(50%); }
 .card.lo-map { background: color-mix(in srgb, var(--surface) 92%, var(--accent)); --ring: 0 0 0 calc(1px * var(--iz, 1)) var(--hair); }
-/* 地图档的描边每一步缩放都跟着 --iz 变：不给 box-shadow 过渡，不然每一步给 241 张卡各起一段 160ms 的动画（其余过渡跟 .card 一样） */
+/* 地图档的描边（::after）每一步缩放都跟着 --iz 变：不给 box-shadow 过渡，不然每一步给 241 张卡各起一段 160ms 的动画（其余过渡跟 .card 一样） */
 .card.lo-map { transition: scale calc(var(--t) * 260ms) cubic-bezier(.3, 1.35, .5, 1), opacity calc(var(--t) * 240ms) var(--out), filter calc(var(--t) * 240ms); }
+.card.lo-map::after { transition: none; }
 .card.lo-map.note { background: color-mix(in srgb, var(--surface) 70%, var(--mark)); }
 .card.lo-map.text { background: transparent; }
 .card.lo-map.sel { --ring: 0 0 0 calc(2px * var(--iz, 1)) var(--accent); }
