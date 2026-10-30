@@ -225,11 +225,16 @@ math { font-size: 1.05em; }
 .md-handle { position: fixed; z-index: 30; width: 14px; height: 20px; display: grid; place-items: center; font-size: 11px; letter-spacing: -2px; color: var(--ink-3); border-radius: 4px; cursor: grab; user-select: none; -webkit-user-select: none; transition: color calc(var(--t) * 100ms), background calc(var(--t) * 100ms); }
 .md-handle:hover { color: var(--ink); background: var(--hlrow); }
 /* ⌘/ Markdown source mode (editor/srcmode.ts) */
-.md-srcmode { font: 12px/1.6 var(--mono); color: var(--ink); }
+/* words wrap whole: a word breaks only when it is longer than the line (the Note body's break-word would split any word) */
+.md-srcmode { font: 12.5px/1.75 var(--mono); color: var(--ink); word-break: normal; overflow-wrap: break-word; }
 .md-srcmode .cbcm .cm-content { padding: 0; }
+.md-srcmode .cbcm .cm-content.cm-lineWrapping { word-break: normal; overflow-wrap: break-word; }
+.md-srcmode .cbcm .cm-activeLine { background: color-mix(in srgb, var(--ink) 3.5%, transparent); }
 .md-srcmode .md-s-h { color: var(--ink); font-weight: 650; }
 .md-srcmode .md-s-mk { color: var(--ink-3); }
-.md-srcmode .md-s-code { color: var(--k-str); }
+.md-srcmode .md-s-code { color: var(--nc-kw, var(--k-str)); }
+.md-srcmode .md-s-math { color: var(--nc-num, var(--k-num)); }
+.md-srcmode .md-s-link { color: var(--k-fn); }
 .mdui-anchor { z-index: 60; }
 .md-menu { position: static; max-height: 300px; min-width: 220px; }
 .md-menu button.sel { background: var(--accent); color: var(--accent-ink); }

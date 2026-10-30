@@ -62,26 +62,41 @@ export function docAt(old: PMNode, md: string, at: number): { doc: PMNode; pos: 
   return { doc, pos: null };
 }
 
-/** Parser-driven colours for the source: heading prefixes, markers, code, link addresses; fenced code is left alone */
+/** Parser-driven colours for the source: headings (their "## " dimmed), markers, list and quote prefixes, table pipes and
+ *  rules, inline and fenced code (fences dimmed), $math$ and $$ blocks, link text (the address dimmed) */
 const srcHighlight = ViewPlugin.fromClass(class {
   decorations: DecorationSet;
   constructor(v: EditorView) { this.decorations = this.build(v); }
   update(u: ViewUpdate) { if (u.docChanged || u.viewportChanged) this.decorations = this.build(u.view); }
   build(v: EditorView): DecorationSet {
     const b = new RangeSetBuilder<Decoration>(), doc = v.state.doc;
-    let fence = "";
+    let fence = "", math = false;
     const { from, to } = v.viewport;
     for (let n = 1; n <= doc.lines; n++) {
-      const line = doc.line(n), t = line.text, f = /^ {0,3}(`{3,}|~{3,})/.exec(t);
-      if (fence) { if (f && f[1][0] === fence[0] && f[1].length >= fence.length) fence = ""; if (line.from <= to && line.to >= from) b.add(line.from, line.to, CODE); continue; }
-      if (f) { fence = f[1]; if (line.from <= to && line.to >= from) b.add(line.from, line.to, CODE); continue; }
-      if (line.to < from || line.from > to || !t) continue;
-      const info = blockInfo(t, true), out: [number, number, Decoration][] = [];
-      if (info.prefix) out.push([0, t.length, HEAD]);
+      const line = doc.line(n), t = line.text, f = /^ {0,3}(`{3,}|~{3,})/.exec(t), seen = line.from <= to && line.to >= from;
+      if (fence) {
+        if (f && f[1][0] === fence[0] && f[1].length >= fence.length) { fence = ""; if (seen) b.add(line.from, line.to, MARK); }
+        else if (seen && t) b.add(line.from, line.to, CODE);
+        continue;
+      }
+      if (f) { fence = f[1]; if (seen) b.add(line.from, line.to, MARK); continue; }
+      if (/^ {0,3}\$\$\s*$/.test(t)) { math = !math; if (seen) b.add(line.from, line.to, MARK); continue; }
+      if (math) { if (seen && t) b.add(line.from, line.to, MATH); continue; }
+      if (!seen || !t) continue;
+      const out: [number, number, Decoration][] = [];
+      if (/^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)*\|?\s*$/.test(t) && t.includes("|")) { b.add(line.from, line.to, MARK); continue; }
+      const info = blockInfo(t, true);
+      if (info.prefix) { out.push([0, info.prefix, MARK]); if (t.length > info.prefix) out.push([info.prefix, t.length, HEAD]); }
+      const lead = /^(\s*(?:>\s?)*)(?:[-*+]|\d+[.)])\s(?:\[[ xX]\]\s)?|^\s*(?:>\s?)+/.exec(t);
+      if (!info.prefix && lead) out.push([0, lead[0].length, MARK]);
       for (const sp of flat(info.spans)) {
+        if (sp.atom?.type === "math") { out.push([sp.from, sp.to, MATH]); continue; }
         for (const [a, c] of sp.marks) if (c > a) out.push([a, c, MARK]);
         if (sp.tag?.nodeName === "code" && sp.inner) out.push([sp.inner[0], sp.inner[1], CODE]);
+        if (sp.tag?.nodeName === "a" && sp.inner && sp.inner[1] > sp.inner[0]) out.push([sp.inner[0], sp.inner[1], LINK]);
       }
+      // a table row's pipes (not an escaped \| inside a cell)
+      if (/^\s*\|/.test(t)) for (let i = t.indexOf("|"); i >= 0; i = t.indexOf("|", i + 1)) if (t[i - 1] !== "\\") out.push([i, i + 1, MARK]);
       // RangeSetBuilder needs ranges in order of start, then of side
       out.sort((x, y) => x[0] - y[0] || y[1] - x[1]);
       for (const [a, c, d] of out) b.add(line.from + a, line.from + c, d);
@@ -90,6 +105,7 @@ const srcHighlight = ViewPlugin.fromClass(class {
   }
 }, { decorations: (p) => p.decorations });
 const HEAD = Decoration.mark({ class: "md-s-h" }), MARK = Decoration.mark({ class: "md-s-mk" }), CODE = Decoration.mark({ class: "md-s-code" });
+const MATH = Decoration.mark({ class: "md-s-math" }), LINK = Decoration.mark({ class: "md-s-link" });
 
 export function sourceMode(editor: Editor, host: HTMLElement, o: { isMac?: boolean; back: () => void; exit: () => void; blur: (ev: FocusEvent) => void }): SourceMode {
   const { md, at } = mdAt(editor.state.doc, editor.state.selection.head);
@@ -98,7 +114,7 @@ export function sourceMode(editor: Editor, host: HTMLElement, o: { isMac?: boole
   host.append(box);
   editor.view.dom.style.display = "none";
   const cm = codeEditor({
-    parent: box, text: md, wrap: true, activeLine: false, className: "cbcm-src",
+    parent: box, text: md, wrap: true, className: "cbcm-src",
     // ahead of CodeMirror's own ⌘/ (line comments): back to rich editing
     keys: [{ key: "Mod-/", run: () => { o.back(); return true; } }],
     onExit: () => o.exit(),

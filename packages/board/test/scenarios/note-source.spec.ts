@@ -591,3 +591,42 @@ test("noteEscClosesPopupOnly", async () => {
   check("noteEscClosesPopupOnly", JSON.stringify(res) === JSON.stringify({ grid: { open: 0, editing: 1 }, lang: { open: 0, editing: 1 }, more: { open: 0, editing: 1 }, after: 0 }), res);
   await close(h);
 });
+
+/** ⌘/ source mode colours the Markdown lightly (headings bold with "##" dimmed, markers, table pipes and fences dimmed, code,
+ *  math and link text in colour), tints the caret's line, and wraps long lines between words, never inside one */
+test("noteSourceModeLook", async () => {
+  const words = "occupancy depends on registers shared memory thread block slots and thread slots which are divided dynamically between resident threads".split(" ");
+  const src = `## Heading\n\n${words.join(" ")} with $x^2$ and [a link](https://example.com)\n\n| a | b |\n| - | - |\n| 1 | \`c\` |\n\n\`\`\`python\nx = 1\n\`\`\`\n\n$$\ny = 2\n$$`;
+  const h = await open({ board: board([src]), light });
+  const pg = h.page;
+  await idle(h);
+  await pg.locator(`${card("n0")} .nbody p`).first().dblclick();
+  await pg.locator(`${card("n0")} .md-pm:focus`).waitFor();
+  await focusSettled(pg);
+  await pg.keyboard.press("ControlOrMeta+/");
+  const cm = `${card("n0")} .md-srcmode .cm-content`;
+  await pg.locator(cm).waitFor();
+  await idle(h);
+  const r = await pg.evaluate((cm) => {
+    const root = document.querySelector(cm)!, all = (c: string) => [...root.querySelectorAll(`.md-s-${c}`)].map((e) => e.textContent);
+    // where each line box of the long paragraph line starts: the character before it must be a space
+    const line = [...root.querySelectorAll(".cm-line")].find((l) => l.textContent!.startsWith("occupancy"))!;
+    const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT), chars: { c: string; top: number }[] = [];
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) for (let i = 0; i < n.textContent!.length; i++) {
+      const rg = document.createRange(); rg.setStart(n, i); rg.setEnd(n, i + 1);
+      const b = rg.getClientRects()[0]; if (b) chars.push({ c: n.textContent![i], top: Math.round(b.top) });
+    }
+    const breaks: string[] = [];
+    for (let i = 1; i < chars.length; i++) if (chars[i].top > chars[i - 1].top + 4) breaks.push(chars[i - 1].c + "|" + chars[i].c);
+    const active = root.querySelector(".cm-activeLine");
+    return { mk: all("mk"), h: all("h"), code: all("code"), math: all("math"), link: all("link"), breaks, active: active ? getComputedStyle(active).backgroundColor : null };
+  }, cm);
+  await shot(h, "noteSourceModeLook");
+  await pg.keyboard.press("ControlOrMeta+/");
+  await exitEdit(h);
+  check("noteSourceModeLook colours", r.mk.includes("## ") && r.h.includes("Heading") && r.mk.includes("|") && r.mk.some((m) => /^\| -+ \| -+ \|$/.test(m ?? "")) && r.mk.includes("```python") && r.mk.includes("$$")
+    && r.code.includes("x = 1") && r.code.includes("c") && r.math.includes("$x^2$") && r.math.includes("y = 2") && r.link.includes("a link"), r);
+  check("noteSourceModeLook wraps between words", r.breaks.length > 0 && r.breaks.every((b) => b.startsWith(" |")), r.breaks);
+  check("noteSourceModeLook tints the caret's line", !!r.active && r.active !== "rgba(0, 0, 0, 0)", r.active);
+  await close(h);
+});
