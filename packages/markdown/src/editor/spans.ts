@@ -163,3 +163,15 @@ export function flat(spans: Span[], out: Span[] = []): Span[] {
   for (const s of spans) { out.push(s); flat(s.kids, out); }
   return out;
 }
+
+/** An offset at the edge of a span's text (right after the opening ** or right before the closing **) moved outside its
+ *  markers, innermost span first (so ***x*** steps out of both): what is inserted or split there goes next to the bold
+ *  words, not into them */
+export function spanEdgeOut(text: string, off: number, headings: boolean): number {
+  const spans = flat(blockInfo(text, headings).spans).filter((sp) => !sp.atom && sp.inner && sp.tag).reverse();
+  for (const sp of spans) {
+    if (off === sp.inner![1] && off < sp.to) off = sp.to;
+    else if (off === sp.inner![0] && off > sp.from) off = sp.from;
+  }
+  return off;
+}

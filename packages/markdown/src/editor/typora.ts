@@ -10,7 +10,7 @@ import { Fragment, type Node as PMNode, type ResolvedPos } from "@tiptap/pm/mode
 import { closeHistory } from "@tiptap/pm/history";
 import { parseMd } from "../schema";
 import { pairsPlugin } from "./pairs";
-import { blockInfo } from "./spans";
+import { blockInfo, spanEdgeOut } from "./spans";
 import { inlinePlugin, revealMeta, toggleWrap } from "./inline";
 import { sourceBlock } from "./srcdoc";
 
@@ -187,6 +187,14 @@ export const Typora = Extension.create<{ openMath: (e: Editor, pos: number) => v
       "Mod-z": () => e.commands.undoInputRule() || e.commands.undo(),
       // the keymap falls back from Shift-Mod-z to Mod-z when the key is a lowercase z: catch redo here first
       "Shift-Mod-z": () => e.commands.redo(),
+      // Enter at the edge of a span's text splits outside its markers (**bold**| then Enter, not **bold| and **)
+      Enter: () => {
+        const sel = e.state.selection, $h = sel.$head, p = $h.parent;
+        if (!sel.empty || p.type.name !== "paragraph" || !$h.depth || /cell/.test($h.node(-1).type.spec.tableRole ?? "")) return false;
+        const off = spanEdgeOut(p.textContent, $h.parentOffset, true);
+        if (off !== $h.parentOffset) e.view.dispatch(e.state.tr.setSelection(TextSelection.create(e.state.doc, $h.start() + off)));
+        return false;
+      },
       // Home on a paragraph's first line goes to the start of its source (the browser would stop after a hidden opening
       // marker, so the caret's place would depend on what is hidden); on a heading to the start of its text, after the
       // "## " (a second Home goes before it)

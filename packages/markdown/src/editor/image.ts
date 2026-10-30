@@ -4,7 +4,7 @@ import { closeHistory } from "@tiptap/pm/history";
 import { Mapping } from "@tiptap/pm/transform";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import type { EditorView } from "@tiptap/pm/view";
-import { blockInfo } from "./spans";
+import { blockInfo, spanEdgeOut } from "./spans";
 
 /** 存一张图（data: URL、文件名）→ 写进 Markdown 的地址；null = 不插（存不了时用的一方自己提示） */
 export type SaveImage = (dataUrl: string, name: string) => Promise<string | null>;
@@ -36,13 +36,20 @@ export function pastedImages(cd: DataTransfer): File[] {
 /** Image source for a saved address */
 const imageSrc = (src: string) => `![](${/[\s()<>]/.test(src) ? `<${src}>` : src})`;
 
+/** The caret's position moved outside the markers of spans it sits at the edge of (spans.ts outsideSpans) */
+function outsideSpans(doc: PMNode, pos: number) {
+  const $p = doc.resolve(pos);
+  if ($p.parent.type.name !== "paragraph" || !$p.depth) return pos;
+  return $p.start() + spanEdgeOut($p.parent.textContent, pos - $p.start(), !/cell/.test($p.node(-1).type.spec.tableRole ?? ""));
+}
+
 /** Inserts the saved images at `at` (or at the caret if the document changed meanwhile), as one undo step */
 async function insertFiles(editor: Editor, save: SaveImage, files: File[], at: number) {
   const doc0 = editor.state.doc;
   const srcs = await Promise.all(files.map((f) => readUrl(f).then((u) => save(u, f.name || "pasted.png")).catch(() => null)));
   const text = srcs.filter((s): s is string => !!s).map(imageSrc).join(" ");
   if (!text || editor.isDestroyed) return;
-  const pos = editor.state.doc === doc0 ? Math.min(at, editor.state.doc.content.size) : editor.state.selection.from;
+  const pos = outsideSpans(editor.state.doc, editor.state.doc === doc0 ? Math.min(at, editor.state.doc.content.size) : editor.state.selection.from);
   const tr = closeHistory(editor.state.tr).insertText(text, pos);
   editor.view.dispatch(tr);
   editor.view.dispatch(closeHistory(editor.state.tr)); // what is typed next is a new step
@@ -53,7 +60,8 @@ async function insertFiles(editor: Editor, save: SaveImage, files: File[], at: n
 export function insertImageUrl(editor: Editor, save: SaveImage, dataUrl: string, name: string) {
   return save(dataUrl, name).then((src) => {
     if (!src || editor.isDestroyed) return;
-    editor.view.dispatch(closeHistory(editor.state.tr).insertText(imageSrc(src)));
+    const { from, to, empty } = editor.state.selection;
+    editor.view.dispatch(empty ? closeHistory(editor.state.tr).insertText(imageSrc(src), outsideSpans(editor.state.doc, from)) : closeHistory(editor.state.tr).insertText(imageSrc(src), from, to));
     editor.view.dispatch(closeHistory(editor.state.tr));
     editor.view.focus();
   });

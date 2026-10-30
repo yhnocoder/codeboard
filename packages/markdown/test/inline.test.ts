@@ -4,6 +4,7 @@ import { EditorState, TextSelection, type Transaction } from "@tiptap/pm/state";
 import { sourceExtensions } from "../src/schema";
 import { sourceDoc } from "../src/editor/srcdoc";
 import { balancedSource } from "../src/editor/clipboard";
+import { spanEdgeOut } from "../src/editor/spans";
 import { toggleWrap } from "../src/editor/inline";
 import { visibleRange } from "../src/editor/visible";
 
@@ -77,5 +78,20 @@ describe("visibleRange: a range counted on the static render, in the editor's so
   it("text that differs gives null", () => {
     const doc = docOf("some text");
     expect(visibleRange(doc, { from: 0, to: 4, text: "nope" })).toBeNull();
+  });
+});
+
+describe("spanEdgeOut: an offset at the edge of a span's text goes outside its markers", () => {
+  const out = (text: string, at: string, after = true) => { const i = text.indexOf(at) + (after ? at.length : 0); return text.slice(0, spanEdgeOut(text, i, true)); };
+  it("before the closing markers: after them", () => {
+    expect(out("**Prefill, then decode.**", "decode.")).toBe("**Prefill, then decode.**");
+    expect(out("x ***bi*** y", "bi")).toBe("x ***bi***");
+  });
+  it("after the opening markers: before them", () => {
+    expect(out("a **bold** b", "**")).toBe("a ");
+  });
+  it("inside the text or outside any span: unchanged", () => {
+    expect(out("a **bold** b", "**bo")).toBe("a **bo");
+    expect(out("plain text", "plain")).toBe("plain");
   });
 });
