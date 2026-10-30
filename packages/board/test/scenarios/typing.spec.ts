@@ -42,8 +42,12 @@ function board(n: number, init: (string | undefined)[] = []): Board {
 }
 const md = (h: Host, id: string) => ((h.board().cards.find((c) => c.id === id) as NoteCard | undefined)?.md ?? "").trim();
 async function editNote(h: Host, id: string, pre?: (pg: Page) => Promise<void>) {
+  // the camera jumps to the card (reduced motion only for this): the flight is not what these cases test, and 85 flights
+  // took most of a minute and a half
+  await h.page.emulateMedia({ reducedMotion: "reduce" });
   await h.post({ type: "reveal", card: id } as any);
-  await idle(h); // the camera flies to the card
+  await idle(h);
+  await h.page.emulateMedia({ reducedMotion: "no-preference" });
   // reveal selects the card: deselect it first, so the double click is the same gesture on every case (an unselected Note
   // edited from a double click, with the caret where it lands: the cases that need it elsewhere move it themselves)
   await h.page.keyboard.press("Escape");
@@ -100,7 +104,8 @@ test("markdownInputRules", async () => {
     // Note 代码块里回车保留缩进（和 Free code 卡一样，按语言缩进；没语言时照上一行）
     { name: "code indent typed", seq: "```python{Enter}    x = 1{Enter}y", md: "```python\n    x = 1\n    y\n```" },
     { name: "code indent plain", seq: "```{Enter}  x = 1{Enter}y", md: "```\n  x = 1\n  y\n```" },
-    { name: "code indent block", init: "```python\nif a:\n    x = 1\n```", seq: "{ArrowUp}{End}{Enter}y", md: "```python\nif a:\n    x = 1\n    y\n```" },
+    // the double-click lands in the block (the block fills the Note): to its last line's end, then Enter
+    { name: "code indent block", init: "```python\nif a:\n    x = 1\n```", seq: "{Control+End}{Enter}y", md: "```python\nif a:\n    x = 1\n    y\n```" },
     { name: "code fence c++", seq: "```c++{Enter}int a;", md: "```c++\nint a;\n```" },
     { name: "math block", seq: "$${Enter}", after: async (pg) => { await pg.waitForSelector(".md-pm .md-mathsrc:focus"); await pg.keyboard.type("x^2"); await pg.keyboard.press("Control+Enter"); }, md: "$$\nx^2\n$$" },
     // 公式框打开后，打开编辑器时排着的那次补焦点（下一帧）不能把焦点从公式框抢回编辑器（公式框会关掉，空公式块被删）
