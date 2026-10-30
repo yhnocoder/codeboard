@@ -387,10 +387,14 @@ test("subboardLinkPicker", async () => {
 
 // ---- the map and the previews that open next to the frame (cards/BoardBody.tsx, cards/SubPreviews.tsx, state/subboards.ts) ----
 
-/** Main zoomed out a little and shifted so the frame Parallel, its previews on the right and its title rows below all fit the window */
-function setup() {
+/**
+ * Main zoomed out a little and shifted so the frame Parallel, its previews on the right and its title rows below all fit the window.
+ * keepBelow: Scheduler stays right under Parallel (the title rows then go to the right); otherwise it is moved out of the way
+ */
+function setup(o: { keepBelow?: boolean } = {}) {
   const b = boards();
   b.M.cam = { x: -300, y: 60, z: 0.7 };
+  if (!o.keepBelow) b.M.place.fSch = { ...b.M.place.fSch, x: 1500, y: 900 };
   return b;
 }
 const frameSel = (f: string) => `.card[data-id="${f}"]`;
@@ -640,5 +644,66 @@ test("subboardPreviewColumnsHideClear", async () => {
   await clickBlock(h, "fPar", "p1");
   await page.locator(`${acts} [aria-label="Two columns"]`).click(); await idle(h);
   await until(h, "two columns again", () => frame().pcols === undefined);
+  await page.context().close();
+});
+
+/** Screen boxes of everything on Main other than frame f: cards, and sub-board frames with the name above them */
+const others = (h: Host, f: string) => h.page.evaluate((f) => [...document.querySelectorAll<HTMLElement>(".world > .card")].filter((c) => c.dataset.id !== f).flatMap((c) => {
+  const r = c.getBoundingClientRect(), n = c.querySelector(".sbname")?.getBoundingClientRect();
+  return [{ id: c.dataset.id!, x: r.x, y: r.y, w: r.width, h: r.height }, ...(n ? [{ id: `${c.dataset.id} name`, x: n.x, y: n.y, w: n.width, h: n.height }] : [])];
+}), f);
+const overlap = (a: { x: number; y: number; w: number; h: number }, b: { x: number; y: number; w: number; h: number }) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+
+/**
+ * Title rows never cover what sits under the frame: with the next sub-board frame right below (its name in the way) they line up on
+ * the right under the expanded previews; once the space under the frame is clear they go back under it. The rule holds while the frame is dragged
+ */
+test("subboardPreviewTitlesAvoidCards", async () => {
+  const { M, P, S, D } = setup({ keepBelow: true });
+  const t = await subHost(M, [P, S, D]), h = t.h, page = h.page;
+  await ready(h, "fPar");
+  for (const id of ["p1", "p2", "p3", "p4", "p5"]) await clickBlock(h, "fPar", id);
+  await settled(h, "fPar");
+  const covered = async () => { const s = await previews(h, "fPar"), o = await others(h, "fPar"); return s.rows.flatMap((r) => o.filter((b) => overlap(r, b)).map((b) => `${r.id} on ${b.id}`)); };
+  const a = await previews(h, "fPar");
+  const exp = a.rows.filter((r) => !r.tit), tit = a.rows.filter((r) => r.tit);
+  const bottom = Math.max(...exp.map((r) => r.y + r.h));
+  check("subboardPreviewTitlesAvoidCards-side", tit.length === 2 && tit.every((r) => r.mini && r.x >= a.frame.x + a.frame.w && r.y >= bottom) && !(await covered()).length, { tit, bottom, covered: await covered() });
+  await shot(h, "subboardPreviewTitlesAvoidCards-side");
+  // Scheduler dragged away by its name: the title rows come back under Parallel
+  const n = await center(h, '.card[data-id="fSch"] .sbname');
+  await drag(h, n, { x: n.x + 750, y: n.y + 200 });
+  await settled(h, "fPar");
+  const b = await previews(h, "fPar");
+  check("subboardPreviewTitlesAvoidCards-below", b.rows.filter((r) => r.tit).every((r) => r.y >= b.frame.y + b.frame.h && r.x < b.frame.x + b.frame.w) && !(await covered()).length, { rows: b.rows, covered: await covered() });
+  // Parallel dragged down onto the Note column's level: wherever it stops, nothing is covered
+  const pn = await center(h, '.card[data-id="fPar"] .sbname');
+  await drag(h, pn, { x: pn.x - 120, y: pn.y + 330 });
+  await settled(h, "fPar");
+  check("subboardPreviewTitlesAvoidCards-dragged", !(await covered()).length, await covered());
+  await page.context().close();
+});
+
+/**
+ * A Note named by its leading heading shows that heading once, in the preview's title row, not again in the body (the same rule and
+ * setting as Note cards on the board: Settings → Notes keeps it in the body); a Note with its own name keeps its heading in the body
+ */
+test("subboardPreviewNoteHeading", async () => {
+  const { M, P, S, D } = setup();
+  const t = await subHost(M, [P, S, D]), h = t.h, page = h.page;
+  await ready(h, "fPar");
+  await clickBlock(h, "fPar", "p2");
+  await clickBlock(h, "fPar", "p1");
+  await page.locator('.sbpv[data-pv="p2"] .pmd h2').waitFor({ state: "attached" });
+  const read = () => page.evaluate(() => {
+    const one = (id: string) => { const e = document.querySelector(`.sbpv[data-pv="${id}"]`)!, h2 = e.querySelector<HTMLElement>(".pmd h2");
+      return { title: e.querySelector(".ph span")!.textContent, h2: h2 && h2.offsetHeight > 0 ? h2.textContent : null, text: e.querySelector(".pmd")!.textContent }; };
+    return { p2: one("p2"), p1: one("p1") };
+  });
+  const r = await read();
+  check("subboardPreviewNoteHeading-once", r.p2.title === "降低延迟 vs 提高吞吐" && r.p2.h2 === null && /两种不同的设计目标/.test(r.p2.text ?? ""), r.p2);
+  check("subboardPreviewNoteHeading-ownTitle", r.p1.title === "多核与众核" && r.p1.h2 === "多核（multicore）与众核（many-core）", r.p1);
+  await h.post({ type: "host", host: { settings: { ...DEFAULT_SETTINGS, noteHeadingInBody: true } } });
+  await until(h, "the setting shows the heading in the body", async () => (await read()).p2.h2 === "降低延迟 vs 提高吞吐");
   await page.context().close();
 });

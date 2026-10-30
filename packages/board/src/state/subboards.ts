@@ -3,7 +3,7 @@ import { batch, createEffect, createMemo, createSignal, untrack } from "solid-js
 import { createStore, produce, reconcile } from "solid-js/store";
 import { mapFit, type BoardCard, type Crumb, type Rect, type Skeleton, type SubCard } from "@codeboard/core";
 import { ask } from "../host";
-import { placeOf, state, sync } from "./store";
+import { placeOf, placed, rectOf, state, sync } from "./store";
 import { rooted } from "./root";
 
 /** 子白板 id → 骨架；null = 那块白板没了；没有这一项 = 还没拿到 */
@@ -76,7 +76,7 @@ export function blockRect(frame: string, id: string): Rect | null {
 }
 
 // 点开的预览：点地图上的一块，框外弹出那张卡的只读预览（cards/SubPreviews.tsx）。右边最多完整展开 PV_MAX 张（1 栏或 2 栏，哪栏矮放哪栏），
-// 再开的只显示一行标题，排在框下面（一行排多少按框的宽）。不滚动：预览的正文有最大高度，放不下的渐隐。
+// 再开的只显示一行标题，排在框下面（一行排多少按框的宽；框下面有别的卡时排到右边展开的那几张下面）。不滚动：预览的正文有最大高度，放不下的渐隐。
 // 点开的是看的时候的状态：不进撤销、不存盘，换白板就清掉；栏数是框自己的设置（BoardCard.pcols，sync 写，不进撤销）
 
 /** 一个框点开的预览：open = 点开的先后（编号 = 下标 + 1），exp = 右边展开着的（摆放的先后），tit = 框下面只显示标题的，fold = 收起了 */
@@ -92,9 +92,17 @@ export const PV_MAX = 3, PV_W = 260, PV_GAP = 10, TIT_W = 200, TIT_H = 30, TIT_G
 export const pvCols = (frame: string): 1 | 2 => (frameOf(frame)?.pcols === 1 ? 1 : 2);
 
 export type PvBox = { id: string; x: number; y: number; w: number; h: number };
+/** 子白板框的名字在框外上方（styles.css .sbhead：30px 高，离框 16px）：别的框挡不挡标题行，连名字一起算 */
+const FRAME_HEAD = 46;
+/** 父白板上别的卡（frame 自己除外）占的地方：标题行不往上盖。子白板框连上它头上的名字 */
+export function pvObstacles(frame: string): Rect[] {
+  return placed().filter((c) => c.id !== frame).map((c) => { const r = rectOf(c); return c.kind === "board" ? { ...r, y: r.y - FRAME_HEAD, h: r.h + FRAME_HEAD } : r; });
+}
+const hits = (a: Rect, b: Rect) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 /** 预览的摆法：exp 按 cols 栏瀑布流放在框右边（一样高放左边），tit 一行行排在框下面；peek 的那行标题原地展开（宽 PV_W，高按它展开后的）。
- *  hOf = 量到的展开后的高（还没量到按 120 算）。right / titles = 右边、下面两块区域（拖动时的落点） */
-export function pvLayout(f: Rect, p: Pick<Pv, "exp" | "tit">, cols: 1 | 2, hOf: (id: string) => number, peek?: string) {
+ *  框下面那块会盖住别的卡（obstacles，pvObstacles）时，标题行改排在右边展开的那几张下面，一行排右边那么宽：规则只看此刻框下面空不空，
+ *  拖着框走时每一帧照它重摆，同一个位置总是同一种摆法。hOf = 量到的展开后的高（还没量到按 120 算）。right / titles = 右边、标题行两块区域（拖动时的落点） */
+export function pvLayout(f: Rect, p: Pick<Pv, "exp" | "tit">, cols: 1 | 2, hOf: (id: string) => number, peek?: string, obstacles: Rect[] = []) {
   const boxes = new Map<string, PvBox>();
   const x0 = f.x + f.w + PV_OFF, colH = cols === 2 ? [0, 0] : [0];
   for (const id of p.exp) {
@@ -102,17 +110,17 @@ export function pvLayout(f: Rect, p: Pick<Pv, "exp" | "tit">, cols: 1 | 2, hOf: 
     boxes.set(id, { id, x: x0 + c * (PV_W + PV_GAP), y: f.y + colH[c], w: PV_W, h });
     colH[c] += h + PV_GAP;
   }
-  const per = Math.max(1, Math.floor((f.w + PV_GAP) / (TIT_W + PV_GAP))), y0 = f.y + f.h + PV_OFF;
+  const expH = Math.max(0, ...colH.map((h) => h - PV_GAP)), rightW = cols * PV_W + (cols - 1) * PV_GAP;
+  const rowsIn = (w: number) => { const per = Math.max(1, Math.floor((w + PV_GAP) / (TIT_W + PV_GAP))); return { per, h: Math.max(TIT_H, Math.ceil(p.tit.length / per) * (TIT_H + TIT_GAP) - TIT_GAP) }; };
+  const under = rowsIn(f.w), below: Rect = { x: f.x, y: f.y + f.h + PV_OFF, w: f.w, h: under.h };
+  const side = !!p.tit.length && obstacles.some((o) => hits(o, below));
+  const { per, h: th } = side ? rowsIn(rightW) : under;
+  const titles: Rect = side ? { x: x0, y: f.y + (expH ? expH + PV_OFF : 0), w: rightW, h: th } : below;
   p.tit.forEach((id, i) => {
     const pk = id === peek;
-    boxes.set(id, { id, x: f.x + (i % per) * (TIT_W + PV_GAP), y: y0 + Math.floor(i / per) * (TIT_H + TIT_GAP), w: pk ? PV_W : TIT_W, h: pk ? hOf(id) : TIT_H });
+    boxes.set(id, { id, x: titles.x + (i % per) * (TIT_W + PV_GAP), y: titles.y + Math.floor(i / per) * (TIT_H + TIT_GAP), w: pk ? PV_W : TIT_W, h: pk ? hOf(id) : TIT_H });
   });
-  const rows = Math.ceil(p.tit.length / per);
-  return {
-    boxes, per,
-    right: { x: x0, y: f.y, w: cols * PV_W + (cols - 1) * PV_GAP, h: Math.max(f.h, ...colH.map((h) => h - PV_GAP)) },
-    titles: { x: f.x, y: y0, w: f.w, h: Math.max(TIT_H, rows * (TIT_H + TIT_GAP) - TIT_GAP) },
-  };
+  return { boxes, per, side, right: { x: x0, y: f.y, w: rightW, h: side ? Math.max(TIT_H, expH) : Math.max(f.h, expH) }, titles };
 }
 
 const pvEdit = (frame: string, fn: (p: Pv) => void) => setPvs(frame, produce((p) => { if (p) fn(p); }));

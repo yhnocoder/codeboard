@@ -692,9 +692,9 @@ kbd { font: 10.5px var(--mono); }
 .tx h2 { font-size: 1.35em; }
 .tx h3 { font-size: 1.1em; }
 .nbody > :first-child, .tx > :first-child, .nbody .md-pm > :first-child, .tx .md-pm > :first-child { margin-top: 0; }
-/* Note whose leading heading is already its title (Settings → Notes): not shown again in the body; the editor shows it */
-.nbody.hidehead.md:not(.editing) > :is(h1, h2, h3, h4, h5, h6):first-child { display: none; }
-.nbody.hidehead.md:not(.editing) > :is(h1, h2, h3, h4, h5, h6):first-child + * { margin-top: 0; }
+/* Note whose leading heading is already its title (Settings → Notes): not shown again in the body; the editor shows it. The same for a Note in a sub-board preview (.pmd, cards/SubPreviews.tsx) */
+:is(.nbody, .pmd).hidehead.md:not(.editing) > :is(h1, h2, h3, h4, h5, h6):first-child { display: none; }
+:is(.nbody, .pmd).hidehead.md:not(.editing) > :is(h1, h2, h3, h4, h5, h6):first-child + * { margin-top: 0; }
 .nbody.hidehead.editing > .md-loading > :is(h1, h2, h3, h4, h5, h6):first-child { display: none; } /* still hidden while the editor loads (NoteBody foldHeader) */
 .nbody.hidehead.editing > .md-loading > :is(h1, h2, h3, h4, h5, h6):first-child + * { margin-top: 0; }
 .nbody ul, .nbody ol, .cdesc ul, .cdesc ol, .tx ul, .tx ol, .inote ul, .sn-text ul, .sn-text ol { margin: 2px 0; padding-left: 1.3em; }

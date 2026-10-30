@@ -7,12 +7,13 @@ import { createStore } from "solid-js/store";
 import { escHtml, isCode, type BoardCard, type Card, type SkelCard, type SubCard } from "@codeboard/core";
 import { observeResize } from "@yhnocoder/markdown/ui";
 import { cam } from "../state/camera";
-import { frames, skels, pvs, pvPeek, setPvPeek, pvHot, setPvHot, pvCols, pvLayout, frameRect, blockRect, subCard, togglePreview, dropRight, dropTitles,
+import { frames, skels, pvs, pvPeek, setPvPeek, pvHot, setPvHot, pvCols, pvLayout, pvObstacles, frameRect, blockRect, subCard, togglePreview, dropRight, dropTitles,
   PV_W, PV_GAP, TIT_W, TIT_H, TIT_GAP, type PvBox } from "../state/subboards";
 import { assetSrc } from "../actions/web";
 import { Icon } from "../ui/icons";
 import { MdStatic } from "../ui/Md";
 import { skelIcon, skelName } from "./BoardBody";
+import { hidesHeading } from "./NoteBody";
 
 /** 拖动多远（屏幕 px）才算拖，不算点 */
 const DRAG_SLOP = 4;
@@ -46,7 +47,9 @@ function FramePreviews(p: { frame: BoardCard }) {
   const [drag, setDrag] = createSignal<Drag | null>(null);
   const peek = () => { const k = pvPeek(); return k?.f === fid() ? k.id : undefined; };
   const rect = () => frameRect(fid());
-  const lay = createMemo(() => pvLayout(rect(), pv(), pvCols(fid()), hOf, peek()));
+  // 别的卡在哪（标题行不盖它们）：只有开着预览的框才算
+  const obstacles = createMemo(() => (pv().tit.length ? pvObstacles(fid()) : []));
+  const lay = createMemo(() => pvLayout(rect(), pv(), pvCols(fid()), hOf, peek(), obstacles()));
   const layFor = (exp: string[]) => pvLayout(rect(), { exp, tit: [] }, pvCols(fid()), hOf).boxes;
   const isTit = (id: string) => pv().tit.includes(id);
 
@@ -60,9 +63,9 @@ function FramePreviews(p: { frame: BoardCard }) {
     el.setPointerCapture(e.pointerId);
     let moved = false;
     const zoneOf = (x: number, y: number): Drag["zone"] => {
-      const l = lay(), cx = x + (fromRight ? PV_W : TIT_W) / 2;
-      if (cx > l.right.x - PV_GAP) return "right";
-      return fromRight && y + TIT_H / 2 > l.titles.y - PV_GAP ? "tit" : null;
+      const l = lay(), cx = x + (fromRight ? PV_W : TIT_W) / 2, t = l.titles;
+      if (fromRight && y + TIT_H / 2 > t.y - PV_GAP && cx > t.x - PV_GAP && cx < t.x + t.w + PV_GAP) return "tit";
+      return cx > l.right.x - PV_GAP ? "right" : null;
     };
     const move = (ev: PointerEvent) => {
       if (!moved && Math.hypot(ev.clientX - x0, ev.clientY - y0) < DRAG_SLOP) return;
@@ -162,7 +165,7 @@ function PvContent(p: { data: SubCard; sk: SkelCard }) {
       {(() => {
         const k = c();
         switch (k.kind) {
-          case "note": return <MdStatic src={noteBody(k)} class="pmd" />;
+          case "note": return <MdStatic src={k.md} class={`pmd${hidesHeading(k) ? " hidehead" : ""}`} />;
           case "code": return <CodeLines card={k} views={p.data.views} />;
           case "compare": return <For each={p.data.cols ?? []}>{(col) => <><div class="pcol">{col.title || (isCode(col) ? col.segments[0]?.scope || col.segments[0]?.path : "") || "Column"}</div>{isCode(col) ? <CodeLines card={col} views={p.data.views} /> : null}</>}</For>;
           case "image": return <>
@@ -177,13 +180,6 @@ function PvContent(p: { data: SubCard; sk: SkelCard }) {
       })()}
     </>
   );
-}
-
-/** Note 的正文：没起名字、第一行是标题的，那一行已经是预览的标题，正文里不再重复 */
-function noteBody(k: Extract<Card, { kind: "note" }>): string {
-  if (k.title || k.look !== "note") return k.md;
-  const ls = k.md.split("\n"), i = ls.findIndex((l) => l.trim());
-  return i >= 0 && /^\s{0,3}#{1,6}\s/.test(ls[i]) ? ls.slice(i + 1).join("\n") : k.md;
 }
 
 /** 代码卡的前几行，按宿主给的高亮（没有就是原文） */
