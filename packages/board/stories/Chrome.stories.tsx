@@ -6,7 +6,9 @@ import { Stage, scene, noteCard, codeCard, type Globals, type Scene } from "./su
 import { settled, hover, key, el, frames, click } from "./support/play";
 import { SHORT, TITLED, changed } from "./support/groups";
 import { onHost } from "../src/hostio";
-import { setState, toast, select } from "../src/state/store";
+import { setState } from "../src/state/store";
+import { select } from "../src/state/selection";
+import { toast } from "../src/state/toast";
 import { onCleanup } from "solid-js";
 
 type Args = { name: string; stale: number; crumbs: number; toast: string; action: string };

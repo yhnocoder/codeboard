@@ -3,7 +3,8 @@ import { batch, createEffect, createMemo, createSignal, untrack } from "solid-js
 import { createStore, produce, reconcile } from "solid-js/store";
 import { estSize, mapFit, type BoardCard, type Card, type Place, type Crumb, type Rect, type Skeleton, type SubCard } from "@codeboard/core";
 import { ask } from "../host";
-import { cardById, placeOf, placed, rectOf, sizes, state, sync } from "./store";
+import { cardById, placeOf, placed, rectOf, sizes, state } from "./store";
+import { sync } from "./changes";
 import { boardSignal, onBoardSwitch, rooted } from "./root";
 
 /** 子白板 id → 骨架；null = 那块白板没了；没有这一项 = 还没拿到 */

@@ -4,7 +4,7 @@
 import DOMPurify from "dompurify";
 import { setImageResolver } from "@yhnocoder/markdown";
 import { ask } from "../host";
-import { toast } from "../state/store";
+import { toast } from "../state/toast";
 
 const SIZED = /-(\d{1,5})x(\d{1,5})\.(?:png|jpg|webp|gif|svg)$/;
 let base: string | undefined;

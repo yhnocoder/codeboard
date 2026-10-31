@@ -1,9 +1,10 @@
 // @vitest-environment happy-dom
 // 换白板（宿主发 init）时界面状态怎么处理：这块白板的临时状态回到初值，宿主状态整个换掉，浮层关掉（设置页留着）
 import { afterAll, describe, expect, it, vi } from "vitest";
-import { DEFAULT_SETTINGS, emptyBoard, type HostInfo, type HostToBoard, type Stale } from "@codeboard/core";
+import { DEFAULT_SETTINGS, emptyBoard, type HostInfo, type HostToBoard, type SegView, type Stale } from "@codeboard/core";
 import { onHost } from "../../src/hostio";
-import { state, lineSel, setLineSel, reportSelection } from "../../src/state/store";
+import { state } from "../../src/state/store";
+import { lineSel, setLineSel, reportSelection } from "../../src/state/selection";
 import { dropTarget, setDropTarget, editing, setEditing, settingsOpen, setSettingsOpen } from "../../src/state/ui";
 import { traffic, setTraffic } from "../../src/state/look";
 import { pushLayer, closeOverlays } from "../../src/ui/overlay";
@@ -11,9 +12,9 @@ import { choose, promptText } from "../../src/ui/Menu";
 import { boardSignal } from "../../src/state/root";
 
 const HOST: HostInfo = { isMac: true, assetBase: "", target: true, settings: DEFAULT_SETTINGS };
-function init(id: string, o: { stale?: Record<string, Stale>; host?: Partial<HostInfo> } = {}): HostToBoard {
+function init(id: string, o: { stale?: Record<string, Stale>; views?: Record<string, SegView>; host?: Partial<HostInfo> } = {}): HostToBoard {
   const board = emptyBoard(id, id);
-  return { type: "init", board, boards: [{ id, name: id, cards: 0 }], views: {}, stale: o.stale ?? {}, host: { ...HOST, ...o.host } };
+  return { type: "init", board, boards: [{ id, name: id, cards: 0 }], views: o.views ?? {}, stale: o.stale ?? {}, host: { ...HOST, ...o.host } };
 }
 /** 还没 resolve 的 Promise 给 "pending"（先让已经排好的微任务跑完） */
 const settled = <T>(p: Promise<T>) => Promise.race([p, new Promise<"pending">((r) => setTimeout(() => r("pending"), 0))]);
@@ -61,6 +62,14 @@ describe("board switch", () => {
     expect(Object.keys(state.stale)).toEqual(["s2"]);
     expect(state.host.readonly).toBeUndefined();
     expect(state.host.clip).toBeUndefined();
+  });
+
+  it("keeps only the new board's segment views", () => {
+    const v = (t: string): SegView => ({ html: [t], flags: [0], calls: [], defs: [] });
+    onHost(init("a", { views: { s1: v("one"), s2: v("two") } }));
+    onHost(init("b", { views: { s2: v("two again"), s3: v("three") } }));
+    expect(Object.keys(state.views).sort()).toEqual(["s2", "s3"]);
+    expect(state.views.s2.html).toEqual(["two again"]);
   });
 
   it("closes overlays from the top down, keeping the ones that stay", () => {

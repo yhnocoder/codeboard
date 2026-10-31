@@ -2,7 +2,9 @@
 // 直接改原文（一步撤销），选区留在同一段字上，接着还能再按另一个
 import { findCard } from "@codeboard/core";
 import { staticTextRange, staticDomRange, toggleStaticMark, staticMarkActive, type StaticMark, type StaticTextRange } from "@yhnocoder/markdown";
-import { mutate, sel, cardById, hostOf } from "../state/store";
+import { cardById, hostOf } from "../state/store";
+import { mutate } from "../state/changes";
+import { sel } from "../state/selection";
 import { cardSel } from "../cardsel";
 
 export type StaticSel = { id: string; body: HTMLElement; range: StaticTextRange; dom: Range };

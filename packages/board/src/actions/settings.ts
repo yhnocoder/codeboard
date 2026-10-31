@@ -1,6 +1,7 @@
 // 设置改了先乐观更新本地 state.host.settings，再让宿主写进 codeboard.*（宿主会再广播回来）。
 import { NOTE_FONT_LEVELS, type NoteFontLevel, type NoteFontSizes, type Settings } from "@codeboard/core";
-import { setState, state, placed, rectOf, sync } from "../state/store";
+import { setState, state, placed, rectOf } from "../state/store";
+import { sync } from "../state/changes";
 import { settingsOpen, setSettingsOpen, setKeysOpen } from "../state/ui";
 import { send } from "../host";
 

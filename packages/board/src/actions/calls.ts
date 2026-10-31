@@ -3,7 +3,10 @@ import { rooted } from "../state/root";
 import {
   uid, isCode, cardTitle, findFree, callTree, startCards, matchRun, applyRun, callName, legendName, rpcText, LEGEND, sameSource, baseName, joinLinks, splitLink, placeCards, canMark, type Link, type LegendKey, type NoteCard, type ProcTag, type RpcMark, type RunApply, type CallSpan, type TreeRow,
 } from "@codeboard/core";
-import { state, mutate, select, flows, cardById, hostOf, rectOf, toast, placeOf, placed, sel } from "../state/store";
+import { state, flows, cardById, hostOf, rectOf, placeOf, placed } from "../state/store";
+import { mutate } from "../state/changes";
+import { select, sel } from "../state/selection";
+import { toast } from "../state/toast";
 import { openPop } from "../state/pop";
 import { walk } from "../state/ui";
 import { treeOpen, setRunState, runState } from "../state/calls";

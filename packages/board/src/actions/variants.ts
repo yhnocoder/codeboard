@@ -5,7 +5,10 @@ import { unwrap } from "solid-js/store";
 import {
   activeOf, addVariant as addV, dropVariants, findCard, isCode, isMine, removeVariant as removeV, segsOf, setVariantSegs, switchVariant as switchV, upstreamSegs, variantMarks, variantTitle, viewKey, UPSTREAM, parseViewKey, type AddVariantFrom, type VariantSources, type Card, type CodeCard, type Segment, type SegView, type VariantMarks, type VariantSync,
 } from "@codeboard/core";
-import { state, setState, mutate, sync, cardById, toast } from "../state/store";
+import { state, cardById } from "../state/store";
+import { putViews, staleOk } from "../state/views";
+import { mutate, sync } from "../state/changes";
+import { toast } from "../state/toast";
 import { ask } from "../host";
 import { openMenu, promptText, choose, type Item } from "../ui/Menu";
 import { openPop } from "../state/pop";
@@ -44,7 +47,7 @@ function ensureViews(c: CodeCard) {
     else { put[s.id] = undefined; missing.push({ ...unwrap(s), id: viewKey(s.id, act) }); }
     shownView.set(s.id, act);
   }
-  if (Object.keys(put).length) setState("views", put as Record<string, SegView>);
+  putViews(put as Record<string, SegView>);
   if (missing.length) void ask("views", { segs: structuredClone(missing) }).then(absorbViews).catch(() => {});
 }
 /** 宿主给的 Variant 展示数据（键 viewKey(段, Variant)）：那个 Variant 正显示着就直接放到 views[段] */
@@ -54,7 +57,7 @@ function absorbViews(v: Record<string, SegView>) {
     const { sid, vid } = parseViewKey(k);
     if (vid && shownView.get(sid) === vid) put[sid] = view; else put[k] = view;
   }
-  setState("views", put as Record<string, SegView>);
+  putViews(put as Record<string, SegView>);
 }
 // 撤销 / 重做、同步都可能换掉显示的 Variant：盯着每张有 Variant 的卡的 active
 rooted(() => createEffect(() => {
@@ -110,7 +113,7 @@ async function addVariant(id: string, from: AddVariantFrom) {
   const cur = code(id)!;
   for (const s of cur.segments) shownView.set(s.id, activeOf(cur));
   batch(() => {
-    setState("views", Object.fromEntries(nv.segs.flatMap((s) => (nv.views[s.id] ? [[viewKey(s.id, vid), nv.views[s.id]]] : []))));
+    putViews(Object.fromEntries(nv.segs.flatMap((s) => (nv.views[s.id] ? [[viewKey(s.id, vid), nv.views[s.id]]] : []))));
     mutate((b) => addV(b, id, { id: vid, name: nv.name, from: nv.from, segs: nv.segs }));
   });
   switchVariant(id, vid);
@@ -232,12 +235,12 @@ function convertMerged(id: string) {
   if (!c) return;
   batch(() => {
     if (activeOf(c) !== UPSTREAM) switchVariant(id, UPSTREAM);
-    if (latest) setState("views", Object.fromEntries(latest.segs.flatMap((s) => (latest.views[s.id] ? [[s.id, structuredClone(unwrap(latest.views[s.id]))]] : []))));
+    if (latest) putViews(Object.fromEntries(latest.segs.flatMap((s) => (latest.views[s.id] ? [[s.id, structuredClone(unwrap(latest.views[s.id]))]] : []))));
     for (const s of c.segments) shownView.delete(s.id);
     mutate((b) => dropVariants(b, id, latest ? structuredClone(unwrap(latest.segs)) : undefined));
     setMergedSig((m) => { const n = { ...m }; delete n[id]; return n; });
   });
-  for (const s of latest?.segs ?? []) setState("stale", s.id, { state: "ok" });
+  staleOk((latest?.segs ?? []).map((s) => s.id));
   toast(latest ? `Now a regular card pinned to ${latest.label}` : "Now a regular card");
 }
 function keepMerged(id: string, vid: string, tip: string) {

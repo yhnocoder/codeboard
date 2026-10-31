@@ -1,7 +1,7 @@
 // 白板发来的消息：带 req 的请求，处理函数的返回值就是回答（类型按 core 的 ReplyOf 检查；BoardHub 包成 reply）。
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
-import { BOARD_VERSION, cardPath, sniffImage, sniffSvg, cleanCompletion, loadBoard, subCardOf, wouldCycle, findCard, isCode, locateSeg, mapLineTo, segOf, versionLabel, type AskType, type BoardToHost, type Commit, type DiffData, type ReplyOf, type Segment, type SegView } from "@codeboard/core";
+import { boardSegments, BOARD_VERSION, cardPath, sniffImage, sniffSvg, cleanCompletion, loadBoard, subCardOf, wouldCycle, findCard, isCode, locateSeg, mapLineTo, segOf, versionLabel, type AskType, type BoardToHost, type Commit, type DiffData, type ReplyOf, type Segment, type SegView } from "@codeboard/core";
 import { analysisOf } from "./analysis";
 import { codeDoc, codeDocClose, lspComplete, lspHover, lspSignature } from "./codeedit";
 import { commitInfo, headOf, logLines, repoRootOf, resolveRef, showFile, upstreamRef } from "./git";
@@ -25,7 +25,7 @@ import { prompts } from "./prompts";
 import { allQuestions, exportFile, permalinks } from "./exports";
 import { exportFlow } from "./bundle";
 import { absOf, currentVersion, currentVersionLabel, locOfFile, mapRepo, present, srcKey, srcLabel, versionText, hasLocalFile } from "./source";
-import { boardSegments, makeSegment, workingPlace } from "./versions";
+import { makeSegment, workingPlace } from "./versions";
 import { addVariant, variantSources } from "./variants";
 import { highlight, segView, viewsFor } from "./views";
 import { fromHostPath, hostPath, langOf, readText, splitLines, workspace, ws0 } from "./ws";

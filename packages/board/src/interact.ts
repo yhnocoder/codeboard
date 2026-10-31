@@ -2,9 +2,10 @@ import {
   findCard, frameless, isCode, snapMove, snapResize, bounds, center,
   type Board, type Card, type CallSpan, type Rect, type Anchor, type End, type LinkSide,
 } from "@codeboard/core";
-import {
-  state, sel, select, toggleSel, clearSel, setLineSel, isSel, cardById, hostOf, rectOf, live, toast, placeOf, placed,
-} from "./state/store";
+import { state, cardById, hostOf, rectOf, placeOf, placed } from "./state/store";
+import { live } from "./state/changes";
+import { sel, select, toggleSel, clearSel, setLineSel, isSel } from "./state/selection";
+import { toast } from "./state/toast";
 import { tune } from "./state/tune";
 import { WHEEL_GESTURE, BLOCK_GLIDE } from "./state/timing";
 import { cam, setCam, stopCam, camTo, fling, toWorld, view, ZMIN, ZMAX, lod, reduceMotion } from "./state/camera";

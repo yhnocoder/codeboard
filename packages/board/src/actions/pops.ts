@@ -1,10 +1,11 @@
 import { unwrap } from "solid-js/store";
 import { uid, type Anchor, type PeekDef, type SearchItem, type Sidenote } from "@codeboard/core";
-import { toast } from "../state/store";
+import { toast } from "../state/toast";
 import { closePop, updatePop, type Pop } from "../state/pop";
 import { ask } from "../host";
 import { hostRect } from "./common";
-import { addCards, requestViews } from "./create";
+import { addCards } from "./create";
+import { requestViews } from "../state/views";
 import { addSidenotes } from "./notes";
 import { addLink } from "./links";
 

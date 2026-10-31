@@ -1,6 +1,8 @@
 import { For, Show, onMount, onCleanup, createMemo, createEffect, createSignal, on } from "solid-js";
 import { bounds, twinContent, type AlignOp } from "@codeboard/core";
-import { state, sel, rectOf, cardById, hostOf, mutate, placed, placeOf } from "../state/store";
+import { state, rectOf, cardById, hostOf, placed, placeOf } from "../state/store";
+import { mutate } from "../state/changes";
+import { sel } from "../state/selection";
 import { cam, setViewport, viewTracked, lod, camMoving, stillZ, camTarget, camTo, fitRect } from "../state/camera";
 import { trackOffscreen } from "../state/cull";
 import { trackCardLod, izMap } from "../state/lodcards";

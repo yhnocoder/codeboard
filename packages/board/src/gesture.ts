@@ -2,7 +2,7 @@
 // board opened), each one is dropped: listeners removed, nothing committed, so the old board's snapshot never lands in the new
 // board's undo stack. View state of the drag (guides, drop target, dragged arrow…) is boardSignal and resets itself; `drop`
 // cleans up the rest (timers, the undo snapshot, paused completions)
-import { beginGesture, isFresh } from "./state/store";
+import { beginGesture, isFresh } from "./state/changes";
 import { onBoardSwitch } from "./state/root";
 import { holdPointer } from "./ui/guard";
 import { holdGhosts } from "@yhnocoder/markdown/ui";

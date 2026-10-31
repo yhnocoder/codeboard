@@ -1,7 +1,8 @@
 // 都是开着才算（关着的面板不读 flows、不进每帧的工作）
 import { For, Show } from "solid-js";
 import { cardTitle, LEGEND, legendName, type LegendKey } from "@codeboard/core";
-import { state, flows, cardById, hostOf, sel } from "../state/store";
+import { state, flows, cardById, hostOf } from "../state/store";
+import { sel } from "../state/selection";
 import { Icon } from "./icons";
 import * as A from "../actions";
 import { runState, setLegendOpen, setRunState, setTreeOpen } from "../state/calls";

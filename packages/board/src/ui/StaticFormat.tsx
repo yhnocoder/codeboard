@@ -5,7 +5,7 @@ import { Portal } from "solid-js/web";
 import { Icon, place, virtual, TOOLBAR_SETTLE, type IconName } from "@yhnocoder/markdown/ui";
 import type { StaticMark } from "@yhnocoder/markdown";
 import { formatStaticSel, staticSel, staticSelHas, type StaticSel } from "../actions/format";
-import { sel } from "../state/store";
+import { sel } from "../state/selection";
 import { editing } from "../state/ui";
 import { cam } from "../state/camera";
 import { kbd } from "../keymap";

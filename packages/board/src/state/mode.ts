@@ -2,7 +2,7 @@
 // 拖着平移、按住空格是临时盖在模式上面的，松开就回到原来的模式。
 import { createSignal } from "solid-js";
 import type { CallSpan, IconRef } from "@codeboard/core";
-import { toast, toastMsg, setToastMsg } from "./store";
+import { toast, toastMsg, setToastMsg } from "./toast";
 import { boardSignal } from "./root";
 
 export type ConnectFrom = { card: string; seg?: string; line?: number; call?: CallSpan };

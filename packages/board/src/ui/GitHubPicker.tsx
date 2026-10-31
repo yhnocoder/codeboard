@@ -2,7 +2,7 @@
 import { keepKey, scrollIntoBox } from "@yhnocoder/markdown/ui";
 import { For, Show, createMemo, createSignal, onMount, batch } from "solid-js";
 import { baseName, parseRepoInput, type Commit, type GhFile, type GhQuery, type GhReplyOf, type GhRepo, type GhTree, type RepoInput } from "@codeboard/core";
-import { toast } from "../state/store";
+import { toast } from "../state/toast";
 import { ask } from "../host";
 import { Icon } from "./icons";
 import { useOverlay, Overlay } from "./overlay";

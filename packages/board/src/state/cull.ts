@@ -9,7 +9,8 @@
 import { createEffect, createMemo, createSignal, mapArray, untrack } from "solid-js";
 import { createStore } from "solid-js/store";
 import { cam, camMoving, viewTracked } from "./camera";
-import { placed, rectOf, sel } from "./store";
+import { placed, rectOf } from "./store";
+import { sel } from "./selection";
 import { editing, dragging } from "./ui";
 import { lodOf, lodBusy } from "./lodcards";
 

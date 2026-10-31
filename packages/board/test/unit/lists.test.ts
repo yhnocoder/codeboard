@@ -9,6 +9,9 @@ import { helpRows, keyText } from "../../src/keymap";
 // keymap 的表里动作要用白板的状态（DOM、宿主桥）；这里只读表和清单文字，状态模块换成空的
 vi.mock("../../src/state/store", () => ({}));
 vi.mock("../../src/state/camera", () => ({}));
+vi.mock("../../src/state/changes", () => ({}));
+vi.mock("../../src/state/selection", () => ({}));
+vi.mock("../../src/state/toast", () => ({}));
 vi.mock("../../src/state/ui", () => ({}));
 vi.mock("../../src/state/mode", () => ({}));
 vi.mock("../../src/state/stickers", () => ({}));

@@ -6,7 +6,11 @@ import {
   type GraphMark, type CallSpan, type ExpandPick, type ExpandResult, type Rect, type SegView, type CrossMark,
 } from "@codeboard/core";
 import type { Var } from "@codeboard/analysis/basics";
-import { state, setState, mutate, sync, sel, select, clearSel, flows, cardById, hostOf, rectOf, toast, setShowCollapsed, placeOf, placed } from "../state/store";
+import { state, setState, flows, cardById, hostOf, rectOf, setShowCollapsed, placeOf, placed } from "../state/store";
+import { putViews } from "../state/views";
+import { mutate, sync } from "../state/changes";
+import { sel, select, clearSel } from "../state/selection";
+import { toast } from "../state/toast";
 import { camTo, camTarget, fitRect, usableW, usableH, fitTop, isVisible, union, overviewZ } from "../state/camera";
 import { lineY } from "../state/geo";
 import { flash, ping, setWalk, walk } from "../state/ui";
@@ -71,7 +75,7 @@ export async function expandCall(cardId: string, segId: string, call: CallSpan, 
 
 /** ex：并进 Call 标记的、箭头上的字、卡的名字（模板实例 dispatch<8, 768>） */
 export function placeExpanded(cardId: string, segId: string, call: CallSpan, card: CodeCard, views: Record<string, SegView>, vars: Var[], at?: { x: number; y: number }, w?: number, ex?: ExpandExtra & { title?: string }) {
-  setState("views", (v) => ({ ...v, ...views }));
+  putViews(views);
   const host = cardById(cardId)!.host;
   const id = card.id;
   const size = estSize(card, { w: w ?? defaultWidth(card) });

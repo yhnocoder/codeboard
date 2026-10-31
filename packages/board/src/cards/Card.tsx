@@ -7,7 +7,8 @@ import {
 } from "@codeboard/core";
 import { langLabel } from "@codeboard/analysis/langs";
 import { measuredHeight } from "../state/subboards";
-import { state, setSizes, isSel, flows, collapsedSet, sel, placeOf, rectOf, shared, sharedOn, twinsOf } from "../state/store";
+import { state, setSizes, flows, collapsedSet, placeOf, rectOf, shared, sharedOn, twinsOf } from "../state/store";
+import { isSel, sel } from "../state/selection";
 import { Glyph } from "../stickers/glyphs";
 import { editing, setEditing, dragging, popIn, sizeIn, walk, pingCard, dropTarget, staged } from "../state/ui";
 import { foldAt, toTitle, fadeAt, goneAt, skel } from "../state/fold";

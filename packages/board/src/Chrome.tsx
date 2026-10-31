@@ -1,5 +1,8 @@
 import { Show, For } from "solid-js";
-import { state, mutate, toast, canUndo, canRedo, undo, redo, sel } from "./state/store";
+import { state } from "./state/store";
+import { mutate, canUndo, canRedo, undo, redo } from "./state/changes";
+import { sel } from "./state/selection";
+import { toast } from "./state/toast";
 import { cam, camTarget, zoomAt, viewTracked } from "./state/camera";
 import { walk, setKeysOpen, setPaletteOpen } from "./state/ui";
 import { kbd } from "./keymap";

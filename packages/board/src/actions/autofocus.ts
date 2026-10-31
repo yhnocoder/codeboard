@@ -2,7 +2,9 @@
 // 按 Markdown 解析后（去掉粗体、高亮）也必须和原文一样（代码、公式、链接、结构一个字都没动），否则整份不用。
 // 写回是一步改动（⌘Z 撤）；等的时候卡上盖着忙碌层，能取消（和图片的 AI 操作同一套）
 import { findCard } from "@codeboard/core";
-import { state, mutate, toast, cardById } from "../state/store";
+import { state, cardById } from "../state/store";
+import { mutate } from "../state/changes";
+import { toast } from "../state/toast";
 import { editing, setEditing } from "../state/ui";
 import type { Item } from "../ui/Menu";
 import { runJob } from "./imageai";

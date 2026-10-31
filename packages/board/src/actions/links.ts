@@ -1,6 +1,9 @@
 import { uid, isCode, cardTitle, callName, canMark, type End, type Link, type CallSpan, type LinkStyle, type LinkSide } from "@codeboard/core";
 import { varKey, type Var } from "@codeboard/analysis/basics";
-import { state, mutate, select, cardById, hostOf, toast } from "../state/store";
+import { state, cardById, hostOf } from "../state/store";
+import { mutate } from "../state/changes";
+import { select } from "../state/selection";
+import { toast } from "../state/toast";
 import { setEditing, setHoverVar } from "../state/ui";
 import { setConnectFrom } from "../state/mode";
 import { openPop } from "../state/pop";

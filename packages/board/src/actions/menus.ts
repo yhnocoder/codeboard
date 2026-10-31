@@ -1,7 +1,10 @@
 import {
   findCard, isCode, cardTitle, segOf, allCodeCards, walkOrder, headOf, canMark, type CodeCard, type CompareCard, type LinkSide, type Section, type CallSpan,
 } from "@codeboard/core";
-import { state, mutate, sel, select, lineSel, isSel, flows, cardById, hostOf, toast, placeOf, sharedOn, twinsOf, type LineSel } from "../state/store";
+import { state, flows, cardById, hostOf, placeOf, sharedOn, twinsOf } from "../state/store";
+import { mutate } from "../state/changes";
+import { sel, select, lineSel, isSel, type LineSel } from "../state/selection";
+import { toast } from "../state/toast";
 import { hiddenByAncestor, fitFrame } from "../state/sections";
 import { toWorld } from "../state/camera";
 import { setEditing, setPaletteOpen } from "../state/ui";

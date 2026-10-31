@@ -5,9 +5,9 @@
 export const CAM_STILL = 180;
 /** The camera position is saved once it has not changed for this long (BoardView.tsx), then sent after LIVE_DELAY */
 export const CAM_SETTLE = 600;
-/** Live changes (drag in progress, a settled camera) go to the host this long after the last one (store.ts) */
+/** Live changes (drag in progress, a settled camera) go to the host this long after the last one (save.ts) */
 export const LIVE_DELAY = 800;
-/** After the host refused a patch, the whole board is sent again once, this long later (store.ts) */
+/** After the host refused a patch, the whole board is sent again once, this long later (save.ts) */
 export const RESEND_DELAY = 2000;
 /** Two clicks on the same thing within this long (and 6 px) are a double-click (interact.ts isDbl; TUNE.dblClick's default) */
 export const DBL_CLICK = 420;
@@ -16,7 +16,7 @@ export const PEEK_DELAY = 800;
 /** After the pointer leaves an arrow or a card, its hover (the + on the arrow, the arrow lifted above the cards) lasts this long
  *  (hover.ts; TUNE.linkLeave's default) */
 export const LINK_LEAVE = 300;
-/** The selection (cards, code lines) is reported to the host this long after its last change (store.ts reportSelection) */
+/** The selection (cards, code lines) is reported to the host this long after its last change (selection.ts reportSelection) */
 export const SEL_REPORT = 60;
 /** A tilted card turns straight when its editing starts, and back when it ends, over this long (tilt.ts) */
 export const TILT_MS = 200;

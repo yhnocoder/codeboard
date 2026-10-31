@@ -1,6 +1,8 @@
 import { uid, removeStickers, isQuestion, type IconRef, type Sticker, type StickerAt } from "@codeboard/core";
 import { openQuestion, setAnswered, linkAnswer, setStickerDragged } from "./questions";
-import { state, mutate, live, toast, rectOf } from "../state/store";
+import { state, rectOf } from "../state/store";
+import { mutate, live } from "../state/changes";
+import { toast } from "../state/toast";
 import { linkCurve } from "../state/geo";
 import { bezAt, nearestT } from "../canvas/geom";
 import { cam, toWorld } from "../state/camera";

@@ -1,3 +1,4 @@
+import { boardSegments, variantSegments } from "@codeboard/core";
 // 什么时候重查新版本：git HEAD 变了（.git/HEAD、refs 的文件监听 + VS Code 自带 git 插件的事件）、保存文件、
 // 编辑器里改了白板上用到的文件（版本状态按编辑器里的内容算，没保存的改动、Revert File 也算）。文件的改动只重查这个文件里的段，
 // 只在有它的白板上（打字时每停一下都会触发：不重读、不重新分析别的文件）。
@@ -8,7 +9,7 @@ import { forgetIgnored, forgetRepos, gitDirOf, headOf, repoRootOf } from "./git"
 import type { BoardHost } from "./boards";
 import { absOf, hasLocalFile } from "./source";
 import type { Storage } from "./storage";
-import { boardSegments, countStale, staleFor, staleSegments, variantSegments } from "./versions";
+import { countStale, staleFor, staleSegments } from "./versions";
 import { debounce, inWorkspace, workspace, wsRoots } from "./ws";
 import { forgetDefs } from "./defcache";
 import { log } from "./log";
