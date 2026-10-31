@@ -14,12 +14,22 @@ const FENCE = /^ {0,3}(`{3,}|~{3,})/;
 export function splitHeadings(md: string): HeadingSplit | null {
   const lines = md.replace(/\r\n?/g, "\n").split("\n");
   const heads: { line: number; level: number; title: string }[] = [];
-  let fence = "", math = false;
+  let fence = "",
+    math = false;
   lines.forEach((l, i) => {
-    if (fence) { if (new RegExp(`^ {0,3}${fence[0] === "`" ? "`" : "~"}{${fence.length},}\\s*$`).test(l)) fence = ""; return; }
+    if (fence) {
+      if (new RegExp(`^ {0,3}${fence[0] === "`" ? "`" : "~"}{${fence.length},}\\s*$`).test(l)) fence = "";
+      return;
+    }
     const f = FENCE.exec(l);
-    if (f) { fence = f[1]; return; }
-    if (l.trim() === "$$") { math = !math; return; }
+    if (f) {
+      fence = f[1];
+      return;
+    }
+    if (l.trim() === "$$") {
+      math = !math;
+      return;
+    }
     if (math) return;
     const m = HEADING.exec(l);
     if (m) heads.push({ line: i, level: m[1].length, title: (m[2] ?? "").trim() });
@@ -27,12 +37,21 @@ export function splitHeadings(md: string): HeadingSplit | null {
   if (!heads.length) return null;
   const cut = heads[0].level + 1;
   const split = heads.filter((h) => h.level <= cut);
-  const text = (a: number, e: number) => lines.slice(a, e).join("\n").replace(/^\s*\n|\s+$/g, "");
+  const text = (a: number, e: number) =>
+    lines
+      .slice(a, e)
+      .join("\n")
+      .replace(/^\s*\n|\s+$/g, "");
   const parts: HeadingPart[] = [];
   const stack: number[] = [];
   split.forEach((h, k) => {
     while (stack.length && parts[stack[stack.length - 1]].level >= h.level) stack.pop();
-    parts.push({ level: h.level, title: h.title, md: text(h.line, split[k + 1]?.line ?? lines.length), parent: stack.length ? stack[stack.length - 1] : -1 });
+    parts.push({
+      level: h.level,
+      title: h.title,
+      md: text(h.line, split[k + 1]?.line ?? lines.length),
+      parent: stack.length ? stack[stack.length - 1] : -1,
+    });
     stack.push(k);
   });
   const pre = text(0, split[0].line);
@@ -49,29 +68,48 @@ export function splitHeadings(md: string): HeadingSplit | null {
  * 拆出来的卡怎么摆（向下的树）：子卡在父卡下面排成一行、父卡居中，同一层的卡顶端对齐（行高取这层最高的）；原卡 root 不动。
  * 每张卡都和原卡一样宽。others = 别的卡：碰上了就把拆出来的卡整体往下挪到不碰为止（挪太远就不挪了）。返回每段的左上角
  */
-export function headingTree(root: Rect, parts: { h: number; parent: number }[], others: Rect[] = [], o: { gx?: number; gy?: number } = {}): { x: number; y: number }[] {
-  const gx = o.gx ?? 28, gy = o.gy ?? 56, W = root.w;
+export function headingTree(
+  root: Rect,
+  parts: { h: number; parent: number }[],
+  others: Rect[] = [],
+  o: { gx?: number; gy?: number } = {},
+): { x: number; y: number }[] {
+  const gx = o.gx ?? 28,
+    gy = o.gy ?? 56,
+    W = root.w;
   const kids = (i: number) => parts.flatMap((p, k) => (p.parent === i ? [k] : []));
   const hOf = (i: number) => (i < 0 ? root.h : parts[i].h);
   const rowH: number[] = [];
   const depth = new Map<number, number>();
-  const walk = (i: number, d: number) => { depth.set(i, d); rowH[d] = Math.max(rowH[d] ?? 0, hOf(i)); for (const k of kids(i)) walk(k, d + 1); };
+  const walk = (i: number, d: number) => {
+    depth.set(i, d);
+    rowH[d] = Math.max(rowH[d] ?? 0, hOf(i));
+    for (const k of kids(i)) walk(k, d + 1);
+  };
   walk(-1, 0);
   const rowY = [0];
   for (let d = 1; d < rowH.length; d++) rowY[d] = rowY[d - 1] + rowH[d - 1] + gy;
   const widths = new Map<number, number>();
   const wid = (i: number): number => {
     let w = widths.get(i);
-    if (w === undefined) { const ks = kids(i); w = Math.max(W, ks.reduce((s, k) => s + wid(k), 0) + gx * Math.max(0, ks.length - 1)); widths.set(i, w); }
+    if (w === undefined) {
+      const ks = kids(i);
+      w = Math.max(W, ks.reduce((s, k) => s + wid(k), 0) + gx * Math.max(0, ks.length - 1));
+      widths.set(i, w);
+    }
     return w;
   };
   const xs = new Map<number, number>();
   const put = (i: number, left: number) => {
-    const w = wid(i), ks = kids(i);
+    const w = wid(i),
+      ks = kids(i);
     xs.set(i, left + (w - W) / 2);
     const span = ks.reduce((s, k) => s + wid(k), 0) + gx * Math.max(0, ks.length - 1);
     let x = left + (w - span) / 2;
-    for (const k of ks) { put(k, x); x += wid(k) + gx; }
+    for (const k of ks) {
+      put(k, x);
+      x += wid(k) + gx;
+    }
   };
   put(-1, 0);
   const dx = root.x - xs.get(-1)!;

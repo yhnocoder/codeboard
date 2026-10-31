@@ -4,7 +4,25 @@
 // 不比可选 / 必填和 null：schema 故意更宽（可选字段允许 null；Board.id、Section.title、Segment.lang 在文件里可以缺；true 写成 boolean）
 import type * as v from "valibot";
 import type { BoardFileSchema, BoardSchema, CodeCardSchemaKeys, SharedCardSchema, VariantSchema } from "../src/schema";
-import type { Board, BoardFile, Variant, VariantFrom, CallEvidence, CallSample, RpcMark, Card, CodeCard, Link, Place, Section, Segment, SharedCardFile, SharedRef, Sidenote, Sticker } from "../src/model";
+import type {
+  Board,
+  BoardFile,
+  Variant,
+  VariantFrom,
+  CallEvidence,
+  CallSample,
+  RpcMark,
+  Card,
+  CodeCard,
+  Link,
+  Place,
+  Section,
+  Segment,
+  SharedCardFile,
+  SharedRef,
+  Sidenote,
+  Sticker,
+} from "../src/model";
 import type { BoundVal, CallAlt } from "@codeboard/analysis/basics";
 
 type In = v.InferInput<typeof BoardSchema>;
@@ -14,7 +32,8 @@ type Out = v.InferOutput<typeof BoardSchema>;
 type Keys<T> = T extends unknown ? keyof { [K in keyof T as string extends K ? never : K]: T[K] } : never;
 type Same<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
 /** 两边字段名一样；不一样时报错信息里能看到多出来的名字 */
-type SameKeys<T, S> = Same<Keys<T>, Keys<S>> extends true ? true : { model: Exclude<Keys<T>, Keys<S>>; schema: Exclude<Keys<S>, Keys<T>> };
+type SameKeys<T, S> =
+  Same<Keys<T>, Keys<S>> extends true ? true : { model: Exclude<Keys<T>, Keys<S>>; schema: Exclude<Keys<S>, Keys<T>> };
 type ByKind<T, K> = Extract<T, { kind: K }>;
 type EachKind<T extends { kind: string }, S> = { [K in T["kind"]]: SameKeys<ByKind<T, K>, ByKind<S, K>> };
 type AllTrue<T> = { [K in keyof T]: T[K] extends true ? true : T[K] };
@@ -48,8 +67,32 @@ export const keys = {
   shared: ok({} as SameKeys<SharedCardFile, SharedOut>),
   // Variant：CodeCard 的 schema 是递归的 GenericSchema 推不出类型，Variant 单独导出来对
   variant: ok({} as SameKeys<Variant, VOut>),
-  code: ok({} as Same<keyof CodeCard, CodeCardSchemaKeys> extends true ? true : { model: Exclude<keyof CodeCard, CodeCardSchemaKeys>; schema: Exclude<CodeCardSchemaKeys, keyof CodeCard> }),
+  code: ok(
+    {} as Same<keyof CodeCard, CodeCardSchemaKeys> extends true
+      ? true
+      : { model: Exclude<keyof CodeCard, CodeCardSchemaKeys>; schema: Exclude<CodeCardSchemaKeys, keyof CodeCard> },
+  ),
 };
-export const cards: AllTrue<EachKind<Exclude<Card, CodeCard>, Out["cards"][number]>> = { note: true, image: true, web: true, links: true, compare: true, board: true };
-export const sidenotes: AllTrue<EachKind<Sidenote, SNote>> = { code: true, paste: true, text: true, link: true, card: true };
-export const variantFroms: AllTrue<EachKind<VariantFrom, VOut["from"]>> = { upstream: true, ref: true, worktree: true, wt: true, file: true, pr: true };
+export const cards: AllTrue<EachKind<Exclude<Card, CodeCard>, Out["cards"][number]>> = {
+  note: true,
+  image: true,
+  web: true,
+  links: true,
+  compare: true,
+  board: true,
+};
+export const sidenotes: AllTrue<EachKind<Sidenote, SNote>> = {
+  code: true,
+  paste: true,
+  text: true,
+  link: true,
+  card: true,
+};
+export const variantFroms: AllTrue<EachKind<VariantFrom, VOut["from"]>> = {
+  upstream: true,
+  ref: true,
+  worktree: true,
+  wt: true,
+  file: true,
+  pr: true,
+};

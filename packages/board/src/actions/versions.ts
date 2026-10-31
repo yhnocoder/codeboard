@@ -1,6 +1,19 @@
 import { batch } from "solid-js";
 import { unwrap } from "solid-js/store";
-import { uid, isCode, rebaseSegment, rebaseUpstream, upstreamSegs, viewKeyOf, UPSTREAM, type CodeCard, type Segment, type DiffData, type Commit, type SegView } from "@codeboard/core";
+import {
+  uid,
+  isCode,
+  rebaseSegment,
+  rebaseUpstream,
+  upstreamSegs,
+  viewKeyOf,
+  UPSTREAM,
+  type CodeCard,
+  type Segment,
+  type DiffData,
+  type Commit,
+  type SegView,
+} from "@codeboard/core";
 import * as V from "@codeboard/core/commands";
 import { state, cardById, hostOf } from "../state/store";
 import { putViews, staleOk, putStale } from "../state/views";
@@ -29,19 +42,32 @@ export async function openDiff(id: string, segId?: string) {
   if (!isCode(c)) return;
   // 有 Variant 的卡：新版本说的是上游的段，跟上游分支比
   const ups = upstreamSegs(c);
-  const s = segId ? ups.find((q) => q.id === segId) : ups.find((q) => state.stale[q.id]?.state === "changed") ?? ups[0];
+  const s = segId
+    ? ups.find((q) => q.id === segId)
+    : (ups.find((q) => state.stale[q.id]?.state === "changed") ?? ups[0]);
   if (!s) return;
   const el = document.querySelector(`${cardSel(hostOf(id))} .rev`) ?? undefined;
   const pid = openPop({ kind: "diff", card: id, seg: s.id }, el ? { el, prefer: "below" } : lastPointer());
   try {
     const data = await ask("diff", { seg: s, against: c.variants?.length ? "upstream" : undefined });
     updatePop(pid, "diff", (p) => ({ ...p, data }));
-  } catch (e) { updatePop(pid, "diff", (p) => ({ ...p, error: (e as Error).message })); }
+  } catch (e) {
+    updatePop(pid, "diff", (p) => ({ ...p, error: (e as Error).message }));
+  }
 }
 /** Update：换成新版本；Sidenote 跟着行走，那一行被删了改挂整卡，挂着的行变了的标上复查。共享卡先问范围（shared.updateScoped） */
 export async function applyNewVersion(cardId: string, segId: string, data: DiffData) {
   if (!data.newSeg) return;
-  await updateScoped(cardId, segId, data, (id) => { V.applyVersion(versionEnv, id, segId, data); toast(`Updated to the new version${reviewToast(id)}`); }, () => keepVersion(cardId, segId));
+  await updateScoped(
+    cardId,
+    segId,
+    data,
+    (id) => {
+      V.applyVersion(versionEnv, id, segId, data);
+      toast(`Updated to the new version${reviewToast(id)}`);
+    },
+    () => keepVersion(cardId, segId),
+  );
 }
 export async function duplicateNewVersion(cardId: string, segId: string, data: DiffData) {
   if (!data.newSeg) return;
@@ -50,10 +76,15 @@ export async function duplicateNewVersion(cardId: string, segId: string, data: D
   const d = structuredClone(unwrap(c)) as CodeCard;
   d.id = uid("c");
   d.title = undefined;
-  d.segments = d.segments.map((s) => (s.id === segId ? { ...structuredClone(data.newSeg!), id: uid("s") } : { ...s, id: uid("s") }));
+  d.segments = d.segments.map((s) =>
+    s.id === segId ? { ...structuredClone(data.newSeg!), id: uid("s") } : { ...s, id: uid("s") },
+  );
   const r = hostRect(cardId)!;
   const views: Record<string, SegView> = {};
-  c.segments.forEach((s, i) => { const v = s.id === segId ? data.newView : state.views[s.id]; if (v) views[d.segments[i].id] = v; });
+  c.segments.forEach((s, i) => {
+    const v = s.id === segId ? data.newView : state.views[s.id];
+    if (v) views[d.segments[i].id] = v;
+  });
   addCards([{ card: d, views }], { at: { x: r.x + r.w + 40, y: r.y } });
 }
 
@@ -77,11 +108,16 @@ export async function switchCommit(id: string, commit: string) {
   const segs: { seg: Segment; view: SegView }[] = [];
   for (const s of c.segments) {
     if (s.src.kind !== "repo" && s.src.kind !== "external") continue;
-    try { segs.push(await ask("switchCommit", { seg: s, commit })); }
-    catch (e) { return toast((e as Error).message); }
+    try {
+      segs.push(await ask("switchCommit", { seg: s, commit }));
+    } catch (e) {
+      return toast((e as Error).message);
+    }
   }
   // 走 rebaseSegment：段上的隐藏 / 高亮，Link、Sidenote、Sticker 的行号按内容跟到那个 commit 的行上
-  mutate((b) => { for (const r of segs) rebaseSegment(b, id, r.seg); });
+  mutate((b) => {
+    for (const r of segs) rebaseSegment(b, id, r.seg);
+  });
   batch(() => {
     putViews(Object.fromEntries(segs.map((r) => [r.seg.id, r.view])));
     putStale(Object.fromEntries(segs.map((r) => [r.seg.id, undefined])));

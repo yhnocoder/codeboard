@@ -45,14 +45,25 @@ function bornRank(b: Pick<Board, "cards"> & Partial<Pick<Board, "born">>): (id: 
 function fromKey(byId: Map<string, Card>, l: Link): number {
   if (l.from.line === undefined) return -1;
   const c = byId.get(l.from.card);
-  const si = c?.kind === "code" ? Math.max(0, c.segments.findIndex((s) => s.id === l.from.seg)) : 0;
+  const si =
+    c?.kind === "code"
+      ? Math.max(
+          0,
+          c.segments.findIndex((s) => s.id === l.from.seg),
+        )
+      : 0;
   return si * 1e6 + l.from.line + (l.call?.col ?? 0) / 1000;
 }
-const sortFrom = <T extends Link>(byId: Map<string, Card>, ls: T[]) => ls.map((l, i) => ({ l, i, k: fromKey(byId, l) })).sort((x, y) => x.k - y.k || x.i - y.i).map((x) => x.l);
+const sortFrom = <T extends Link>(byId: Map<string, Card>, ls: T[]) =>
+  ls
+    .map((l, i) => ({ l, i, k: fromKey(byId, l) }))
+    .sort((x, y) => x.k - y.k || x.i - y.i)
+    .map((x) => x.l);
 
 function push<K, V>(m: Map<K, V[]>, k: K, v: V) {
   const a = m.get(k);
-  if (a) a.push(v); else m.set(k, [v]);
+  if (a) a.push(v);
+  else m.set(k, [v]);
 }
 
 /**
@@ -61,18 +72,26 @@ function push<K, V>(m: Map<K, V[]>, k: K, v: V) {
  */
 export function computeFlows(b: G): Flows {
   const cardsById = new Map(b.cards.map((c) => [c.id, c]));
-  const calls = b.links.filter((l) => isCall(l) && cardsById.has(l.from.card) && cardsById.has(l.to.card) && l.from.card !== l.to.card);
+  const calls = b.links.filter(
+    (l) => isCall(l) && cardsById.has(l.from.card) && cardsById.has(l.to.card) && l.from.card !== l.to.card,
+  );
   const up = new Map<string, string>();
   const find = (x: string): string => {
     let r = x;
     while (up.get(r) !== r) r = up.get(r)!;
-    while (x !== r) { const n = up.get(x)!; up.set(x, r); x = n; }
+    while (x !== r) {
+      const n = up.get(x)!;
+      up.set(x, r);
+      x = n;
+    }
     return r;
   };
-  const kids = new Map<string, CallLink[]>(), parents = new Map<string, CallLink[]>();
+  const kids = new Map<string, CallLink[]>(),
+    parents = new Map<string, CallLink[]>();
   for (const l of calls) {
     for (const id of [l.from.card, l.to.card]) if (!up.has(id)) up.set(id, id);
-    const a = find(l.from.card), c = find(l.to.card);
+    const a = find(l.from.card),
+      c = find(l.to.card);
     if (a !== c) up.set(a, c);
     push(kids, l.from.card, l);
     push(parents, l.to.card, l);
@@ -81,13 +100,18 @@ export function computeFlows(b: G): Flows {
   const rank = bornRank(b);
   const groups = new Map<string, string[]>();
   for (const id of up.keys()) push(groups, find(id), id);
-  const raw = [...groups.values()].map((cards) => {
-    cards.sort((x, y) => rank(x) - rank(y));
-    const roots = cards.filter((id) => !parents.has(id));
-    return { id: cards[0], cards, roots: roots.length ? roots : [cards[0]] };
-  }).sort((x, y) => rank(x.id) - rank(y.id));
+  const raw = [...groups.values()]
+    .map((cards) => {
+      cards.sort((x, y) => rank(x) - rank(y));
+      const roots = cards.filter((id) => !parents.has(id));
+      return { id: cards[0], cards, roots: roots.length ? roots : [cards[0]] };
+    })
+    .sort((x, y) => rank(x.id) - rank(y.id));
   const taken = new Set<string>();
-  for (const g of raw) { const m = b.marks?.[g.id]; if (m && "letter" in m) taken.add(m.letter); }
+  for (const g of raw) {
+    const m = b.marks?.[g.id];
+    if (m && "letter" in m) taken.add(m.letter);
+  }
   let i = 0;
   const graphs: Graph[] = raw.map((g) => {
     const m = b.marks?.[g.id];
@@ -108,7 +132,12 @@ export function descendants(f: Flows, id: string): string[] {
   const stack = [id];
   while (stack.length) {
     const x = stack.pop()!;
-    for (const l of f.kids.get(x) ?? []) if (!seen.has(l.to.card)) { seen.add(l.to.card); out.push(l.to.card); stack.push(l.to.card); }
+    for (const l of f.kids.get(x) ?? [])
+      if (!seen.has(l.to.card)) {
+        seen.add(l.to.card);
+        out.push(l.to.card);
+        stack.push(l.to.card);
+      }
   }
   return out;
 }
@@ -118,7 +147,13 @@ function outLinks(b: Pick<Board, "links">, byId: Map<string, Card>, id: string):
   const c = byId.get(id);
   const from = c ? cardAndCols(c) : [id];
   const out: Link[] = [];
-  for (const k of from) out.push(...sortFrom(byId, b.links.filter((l) => l.from.card === k && byId.has(l.to.card))));
+  for (const k of from)
+    out.push(
+      ...sortFrom(
+        byId,
+        b.links.filter((l) => l.from.card === k && byId.has(l.to.card)),
+      ),
+    );
   return out;
 }
 
@@ -140,14 +175,18 @@ export function walkOrder(b: Pick<Board, "cards" | "links">, start: string): str
     for (const l of outLinks(b, byId, id)) if (isCall(l)) calls(l.to.card);
   };
   calls(start);
-  for (let i = 0; i < out.length; i++) for (const l of outLinks(b, byId, out[i])) if (!isCall(l) && !l.back) calls(l.to.card);
+  for (let i = 0; i < out.length; i++)
+    for (const l of outLinks(b, byId, out[i])) if (!isCall(l) && !l.back) calls(l.to.card);
   return out;
 }
 
 /** 起点卡（Place.start），按创建顺序 */
 export function startCards(b: Pick<Board, "cards" | "place"> & Partial<Pick<Board, "born">>): string[] {
   const rank = bornRank(b);
-  return b.cards.filter((c) => b.place[c.id]?.start).map((c) => c.id).sort((x, y) => rank(x) - rank(y));
+  return b.cards
+    .filter((c) => b.place[c.id]?.start)
+    .map((c) => c.id)
+    .sort((x, y) => rank(x) - rank(y));
 }
 
 /** 调用树的一行：缩进 depth；again = 这张卡在上面已经展开过（递归、被多处调用），不再往下 */
@@ -187,7 +226,11 @@ export function hiddenByCollapse(b: Pick<Board, "cards" | "place">, f: Flows): S
     while (stack.length) {
       const x = stack.pop()!;
       if (collapsed(x)) continue;
-      for (const l of f.kids.get(x) ?? []) if (!seen.has(l.to.card)) { seen.add(l.to.card); stack.push(l.to.card); }
+      for (const l of f.kids.get(x) ?? [])
+        if (!seen.has(l.to.card)) {
+          seen.add(l.to.card);
+          stack.push(l.to.card);
+        }
     }
     for (const id of g.cards) if (!seen.has(id)) hidden.add(id);
   }

@@ -10,7 +10,16 @@ export type SegView = {
   defs: { line: number; name: string; qual: string }[]; // 段里开始的函数（画函数边界线）
 };
 /** pkg = 调用绑到的 library 包（工作区外）；在 Study Scope 里的包白板照 project 处理 */
-export type CallSpan = { line: number; col: number; end: number; name: string; recv?: string; loop: boolean; dispatch?: string; pkg?: string };
+export type CallSpan = {
+  line: number;
+  col: number;
+  end: number;
+  name: string;
+  recv?: string;
+  loop: boolean;
+  dispatch?: string;
+  pkg?: string;
+};
 
 export type Row =
   | { t: "line"; seg: string; line: number; skipped: boolean } // skipped = 上面有被开关藏掉的行（行号栏画虚线）
@@ -33,10 +42,18 @@ export function cardRows(c: Pick<CodeCard, "segments" | "hide">, o: RowOpts = {}
     const prev = c.segments[si - 1];
     const v = o.views?.[s.id];
     if (prev) {
-      if (prev.path !== s.path || prev.src.kind !== s.src.kind) rows.push({ t: "file", seg: s.id, path: s.src.kind === "free" ? "Free code" : s.path, version: o.versionOf?.(s) });
-      else if (s.scope && prev.scope !== s.scope && !v?.defs.some((d) => d.line === s.start)) rows.push({ t: "fn", seg: s.id, name: shortFn(s.scope) });
+      if (prev.path !== s.path || prev.src.kind !== s.src.kind)
+        rows.push({
+          t: "file",
+          seg: s.id,
+          path: s.src.kind === "free" ? "Free code" : s.path,
+          version: o.versionOf?.(s),
+        });
+      else if (s.scope && prev.scope !== s.scope && !v?.defs.some((d) => d.line === s.start))
+        rows.push({ t: "fn", seg: s.id, name: shortFn(s.scope) });
       // 段与段之间总要看得出边界：中间隔着行 → 「⋯ N lines」；紧挨着、新段从一个定义开始 → 细线 + 定义名（同段里换函数也是这样）
-      else if (s.start > prev.end + 1) rows.push({ t: "gap", seg: s.id, from: prev.end + 1, to: s.start - 1, manual: false });
+      else if (s.start > prev.end + 1)
+        rows.push({ t: "gap", seg: s.id, from: prev.end + 1, to: s.start - 1, manual: false });
       else {
         let dl = s.start;
         while (dl < s.end && /^\s*@/.test(s.text[dl - s.start] ?? "")) dl++;
@@ -55,8 +72,13 @@ export function cardRows(c: Pick<CodeCard, "segments" | "hide">, o: RowOpts = {}
         continue;
       }
       const f = v?.flags[l - s.start] ?? 0;
-      const off = (hide.blank && f & F_BLANK) || (hide.comments && f & F_COMMENT) || (hide.docstrings && f & F_DOCSTRING);
-      if (off) { skipped = true; l++; continue; }
+      const off =
+        (hide.blank && f & F_BLANK) || (hide.comments && f & F_COMMENT) || (hide.docstrings && f & F_DOCSTRING);
+      if (off) {
+        skipped = true;
+        l++;
+        continue;
+      }
       // 装饰器是定义的一部分：线画在装饰器上面，不画在装饰器和 def 之间
       const isDec = (k: number) => /^\s*@/.test(s.text[k - s.start] ?? "");
       let dl = l;
@@ -73,12 +95,24 @@ export function cardRows(c: Pick<CodeCard, "segments" | "hide">, o: RowOpts = {}
 
 const shortFn = (q: string) => `def ${q.split(".").pop()}`;
 
-const unesc = (h: string) => h.replace(/<[^>]*>/g, "").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, "&");
+const unesc = (h: string) =>
+  h
+    .replace(/<[^>]*>/g, "")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, "&");
 /**
  * 一行显示出来的文字（tab 展开成 4 格）：Hide Comments 时去掉行尾注释（和渲染用的 bare 一样长）。
  * Fit Content 按它量宽，所以藏掉的东西不算
  */
-export function shownText(s: Pick<Segment, "start" | "text">, line: number, v: SegView | undefined, hideComments?: boolean): string {
+export function shownText(
+  s: Pick<Segment, "start" | "text">,
+  line: number,
+  v: SegView | undefined,
+  hideComments?: boolean,
+): string {
   let t = s.text[line - s.start] ?? "";
   const bare = hideComments ? v?.bare?.[line] : undefined;
   if (bare !== undefined) t = t.slice(0, unesc(bare).length);
@@ -116,7 +150,9 @@ export function rowIndexOf(rows: Row[], seg: string, line: number): number {
 /** 复制选中的行：只要代码文本，保留相对缩进（去掉公共缩进） */
 export function copyText(lines: string[]): string {
   const ind = Math.min(...lines.filter((l) => l.trim()).map((l) => l.length - l.trimStart().length));
-  return lines.map((l) => (Number.isFinite(ind) ? l.slice(Math.min(ind, l.length - l.trimStart().length)) : l)).join("\n");
+  return lines
+    .map((l) => (Number.isFinite(ind) ? l.slice(Math.min(ind, l.length - l.trimStart().length)) : l))
+    .join("\n");
 }
 
 /** 段的版本不全一样（标题上显示 Mixed versions） */

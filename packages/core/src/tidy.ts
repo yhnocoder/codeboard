@@ -31,7 +31,9 @@ export async function tidy(rs: R[], links: [string, string][], fixed: Rect[] = [
   if (linked.length) {
     const flow = await layered(linked, edges);
     // 先放上面的：被锁住的卡压到就往下挪，再压到已经放好的也往下，所以一列里后面的卡会跟着让
-    for (const r of [...linked].sort((p, q) => flow.get(p.id)!.y - flow.get(q.id)!.y || flow.get(p.id)!.x - flow.get(q.id)!.x)) {
+    for (const r of [...linked].sort(
+      (p, q) => flow.get(p.id)!.y - flow.get(q.id)!.y || flow.get(p.id)!.x - flow.get(q.id)!.x,
+    )) {
       const f = flow.get(r.id)!;
       const p = clear({ x: b.x + f.x, y: b.y + f.y, w: r.w, h: r.h }, fixed, placed, false);
       out.set(r.id, p);
@@ -43,12 +45,15 @@ export async function tidy(rs: R[], links: [string, string][], fixed: Rect[] = [
   const rows: { top: number; h: number; rs: R[] }[] = [];
   for (const r of [...rest].sort((p, q) => p.y - q.y || p.x - q.x)) {
     const last = rows[rows.length - 1];
-    if (last && r.y < last.top + last.h * 0.75) { last.rs.push(r); last.h = Math.max(last.h, r.y + r.h - last.top); }
-    else rows.push({ top: r.y, h: r.h, rs: [r] });
+    if (last && r.y < last.top + last.h * 0.75) {
+      last.rs.push(r);
+      last.h = Math.max(last.h, r.y + r.h - last.top);
+    } else rows.push({ top: r.y, h: r.h, rs: [r] });
   }
   let y = top;
   for (const row of rows) {
-    let x = b.x, bottom = y;
+    let x = b.x,
+      bottom = y;
     for (const r of row.rs.sort((p, q) => p.x - q.x || p.y - q.y)) {
       const p = clear({ x, y, w: r.w, h: r.h }, fixed, placed, true);
       out.set(r.id, p);
@@ -69,7 +74,8 @@ function clear(r: Rect, fixed: Rect[], placed: Rect[], alongX: boolean): { x: nu
     moved = false;
     for (const o of all) {
       if (!overlaps({ x, y, w: r.w, h: r.h }, o, GAP - 1)) continue;
-      if (alongX) x = o.x + o.w + GAP; else y = o.y + o.h + GAP;
+      if (alongX) x = o.x + o.w + GAP;
+      else y = o.y + o.h + GAP;
       moved = true;
     }
   }
@@ -81,7 +87,9 @@ async function layered(rs: R[], edges: [string, string][]): Promise<At> {
   elk ??= new (await import("elkjs/lib/elk.bundled.js")).default();
   const order = [...rs].sort((p, q) => p.y - q.y || p.x - q.x);
   const rank = new Map(order.map((r, i) => [r.id, i]));
-  const sorted = [...edges].sort(([f1, t1], [f2, t2]) => rank.get(f1)! - rank.get(f2)! || rank.get(t1)! - rank.get(t2)!);
+  const sorted = [...edges].sort(
+    ([f1, t1], [f2, t2]) => rank.get(f1)! - rank.get(f2)! || rank.get(t1)! - rank.get(t2)!,
+  );
   const g = await elk.layout({
     id: "root",
     layoutOptions: {
@@ -101,7 +109,8 @@ async function layered(rs: R[], edges: [string, string][]): Promise<At> {
   });
   const at: At = new Map();
   for (const c of g.children ?? []) at.set(c.id, { x: c.x ?? 0, y: c.y ?? 0 });
-  const x0 = Math.min(...[...at.values()].map((p) => p.x)), y0 = Math.min(...[...at.values()].map((p) => p.y));
+  const x0 = Math.min(...[...at.values()].map((p) => p.x)),
+    y0 = Math.min(...[...at.values()].map((p) => p.y));
   for (const [id, p] of at) at.set(id, { x: Math.round(p.x - x0), y: Math.round(p.y - y0) });
   return at;
 }

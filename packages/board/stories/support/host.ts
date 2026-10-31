@@ -8,7 +8,9 @@ import code from "../fixtures/code.json";
 import NOTE_HTML from "../fixtures/notecode.json";
 import { noteCodeKey } from "../fixtures/notecode";
 
-export const VIEWS: Record<string, SegView> = Object.fromEntries(Object.values(code).map((x) => [x.seg.id, x.view as SegView]));
+export const VIEWS: Record<string, SegView> = Object.fromEntries(
+  Object.values(code).map((x) => [x.seg.id, x.view as SegView]),
+);
 
 /** 这一层不管，问下一层 */
 export const PASS = Symbol("pass");
@@ -29,12 +31,15 @@ export const COMMITS: Commit[] = [
 // 没有仓库、不存盘：回空的，白板照常走下去
 const DEFAULTS: Replies = {
   patch: () => ({ skipped: 0 }),
-  views: (m: Extract<BoardToHost, { type: "views" }>) => Object.fromEntries(m.segs.flatMap((s) => {
-    if (VIEWS[s.id]) return [[s.id, VIEWS[s.id]]];
-    // Note 代码块的着色：宿主用 shiki 做，这里查 gen.ts 预先算好的表（按「语言 + 代码」）
-    const html = (NOTE_HTML as Record<string, string[]>)[noteCodeKey(s.lang, s.text.join("\n"))];
-    return html ? [[s.id, { html, flags: html.map(() => 0), calls: [], defs: [], bare: {} }]] : [];
-  })),
+  views: (m: Extract<BoardToHost, { type: "views" }>) =>
+    Object.fromEntries(
+      m.segs.flatMap((s) => {
+        if (VIEWS[s.id]) return [[s.id, VIEWS[s.id]]];
+        // Note 代码块的着色：宿主用 shiki 做，这里查 gen.ts 预先算好的表（按「语言 + 代码」）
+        const html = (NOTE_HTML as Record<string, string[]>)[noteCodeKey(s.lang, s.text.join("\n"))];
+        return html ? [[s.id, { html, flags: html.map(() => 0), calls: [], defs: [], bare: {} }]] : [];
+      }),
+    ),
   skeletons: () => ({}),
   permalinks: () => ({}),
   stickerPacks: () => [],
@@ -44,8 +49,13 @@ const DEFAULTS: Replies = {
   searchName: () => [],
   commits: () => COMMITS,
   variantSources: () => ({
-    worktrees: [{ dir: "/work/vllm-exp", branch: "exp-overlap", label: "../vllm-exp · exp-overlap" }, { dir: "/work/nano-vllm-spec", branch: "fix-spec-bug", label: "../nano-vllm-spec · fix-spec-bug", dirty: true }],
-    branches: ["main", "fix-spec-bug", "exp-overlap", "chunked-prefill-v2"], current: "main", pr: "GeeeekExplorer/nano-vllm",
+    worktrees: [
+      { dir: "/work/vllm-exp", branch: "exp-overlap", label: "../vllm-exp · exp-overlap" },
+      { dir: "/work/nano-vllm-spec", branch: "fix-spec-bug", label: "../nano-vllm-spec · fix-spec-bug", dirty: true },
+    ],
+    branches: ["main", "fix-spec-bug", "exp-overlap", "chunked-prefill-v2"],
+    current: "main",
+    pr: "GeeeekExplorer/nano-vllm",
   }),
   callVars: () => [],
   lspComplete: () => [],
@@ -57,15 +67,22 @@ const area: Partial<Record<AskType, Reply[]>> = {};
 const scoped: Replies[] = [];
 
 /** 各块小样在模块里登记（一直有效）：只答自己认得的（自己的段 id、词），别的返回 PASS */
-export function reply(type: AskType, f: Reply) { (area[type] ??= []).push(f); }
+export function reply(type: AskType, f: Reply) {
+  (area[type] ??= []).push(f);
+}
 
 /** story 挂着时才有效的回答，比 reply() 和默认的先问；返回撤掉的函数 */
 export function addReplies(r: Replies): () => void {
   scoped.unshift(r);
-  return () => { const i = scoped.indexOf(r); if (i >= 0) scoped.splice(i, 1); };
+  return () => {
+    const i = scoped.indexOf(r);
+    if (i >= 0) scoped.splice(i, 1);
+  };
 }
 /** 在组件里：卸下时撤掉 */
-export function useReplies(r: Replies) { onCleanup(addReplies(r)); }
+export function useReplies(r: Replies) {
+  onCleanup(addReplies(r));
+}
 
 function answer(q: { type: AskType }): unknown {
   for (const f of [...scoped.map((r) => r[q.type]), ...(area[q.type] ?? []), DEFAULTS[q.type]]) {
@@ -86,7 +103,9 @@ sent.push = (...ms: unknown[]) => {
       try {
         const data = await answer(q as { type: AskType });
         if (data !== HANG) window.postMessage({ type: "reply", req, data: data ?? null }, "*");
-      } catch (e) { window.postMessage({ type: "reply", req, error: (e as Error).message }, "*"); }
+      } catch (e) {
+        window.postMessage({ type: "reply", req, error: (e as Error).message }, "*");
+      }
     })();
   }
   return Array.prototype.push.apply(sent, ms);

@@ -1,14 +1,31 @@
-// Biome: lint only (npm run lint, part of npm run check). Two rules: no unused imports, no `any`. Formatting is not checked.
+// Biome (npm run lint, part of npm run check): the formatter (line width 120) and two lint rules, no unused imports and no `any`.
+// npm run format rewrites the files
 {
   "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
   "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
   "files": {
     "includes": [
-      "packages/*/src/**", "packages/*/test/**", "packages/board/stories/**", "extensions/vscode/src/**", "extensions/vscode/test/**",
-      "tools/**", "examples/markdown-demo/**", "!**/fixtures/**", "!**/dist/**"
+      "packages/*/src/**",
+      "packages/*/test/**",
+      "packages/board/stories/**",
+      "extensions/vscode/src/**",
+      "extensions/vscode/test/**",
+      "tools/**",
+      "examples/markdown-demo/**",
+      "!**/fixtures/**",
+      "!**/dist/**",
+      "!**/*.md"
     ]
   },
-  "formatter": { "enabled": false },
+  "formatter": { "enabled": true, "lineWidth": 120, "indentStyle": "space", "indentWidth": 2 },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "double",
+      "semicolons": "always",
+      "trailingCommas": "all",
+      "arrowParentheses": "always"
+    }
+  },
   "assist": { "enabled": false },
   "linter": {
     "enabled": true,
@@ -19,9 +36,24 @@
     }
   },
   "overrides": [
+    // Written by tools/icons/gen.mjs, which finds its rows by their one-line shape
+    {
+      "includes": [
+        "packages/board/src/ui/icons.tsx",
+        "packages/board/src/stickers/glyphs.tsx",
+        "packages/markdown/src/ui/icons.ts"
+      ],
+      "formatter": { "enabled": false }
+    },
     // Old board files are untyped JSON until they are upgraded; tests, stories and scripts poke at internals
     {
-      "includes": ["packages/core/src/migrate.ts", "**/test/**", "packages/board/stories/**", "tools/**", "examples/**"],
+      "includes": [
+        "packages/core/src/migrate.ts",
+        "**/test/**",
+        "packages/board/stories/**",
+        "tools/**",
+        "examples/**"
+      ],
       "linter": { "rules": { "suspicious": { "noExplicitAny": "off" } } }
     }
   ]

@@ -5,7 +5,16 @@ import { changed, codeGroup } from "./support/groups";
 import { themes } from "./support/themes";
 
 type Fixture = "schedule" | "preempt" | "canAppend";
-type Args = { code: Fixture; title: string; w: number; h: number; newVersion: boolean; annot: string; annotColor: HandColor; selected: boolean };
+type Args = {
+  code: Fixture;
+  title: string;
+  w: number;
+  h: number;
+  newVersion: boolean;
+  annot: string;
+  annotColor: HandColor;
+  selected: boolean;
+};
 
 function overview(a: Args): Scene {
   const { board, at } = scene("Code overview");
@@ -15,20 +24,43 @@ function overview(a: Args): Scene {
 
 function single(a: Args): Scene {
   const { board, put } = scene("Code");
-  const c = put(codeCard("c1", a.code, { title: a.title || undefined, annots: a.annot ? (s) => annotAt(s, a.code === "schedule" ? "can_allocate" : "self", a.annot, { color: a.annotColor }) : undefined }),
-    { x: 40, y: 40, w: a.w, ...(a.h ? { h: a.h } : {}) });
-  return { board, stale: a.newVersion ? { [c.segments[0].id]: changed } : undefined, sel: a.selected ? ["c1"] : undefined };
+  const c = put(
+    codeCard("c1", a.code, {
+      title: a.title || undefined,
+      annots: a.annot
+        ? (s) => annotAt(s, a.code === "schedule" ? "can_allocate" : "self", a.annot, { color: a.annotColor })
+        : undefined,
+    }),
+    { x: 40, y: 40, w: a.w, ...(a.h ? { h: a.h } : {}) },
+  );
+  return {
+    board,
+    stale: a.newVersion ? { [c.segments[0].id]: changed } : undefined,
+    sel: a.selected ? ["c1"] : undefined,
+  };
 }
 
 const meta = {
   title: "Cards/Code",
   render: (a, ctx) => <Stage scene={() => single(a)} globals={ctx.globals as Globals} />,
-  args: { code: "schedule", title: "", w: 560, h: 0, newVersion: false, annot: "", annotColor: "blue", selected: false },
+  args: {
+    code: "schedule",
+    title: "",
+    w: 560,
+    h: 0,
+    newVersion: false,
+    annot: "",
+    annotColor: "blue",
+    selected: false,
+  },
   argTypes: {
     code: { control: "select", options: ["schedule", "preempt", "canAppend"], description: "Code from nano-vllm" },
     title: { control: "text", description: "Card title (empty: the function's name)" },
     w: { control: { type: "range", min: 160, max: 900, step: 10 }, description: "Width" },
-    h: { control: { type: "range", min: 0, max: 900, step: 10 }, description: "Height of the code area (0: fits, up to 460)" },
+    h: {
+      control: { type: "range", min: 0, max: 900, step: 10 },
+      description: "Height of the code area (0: fits, up to 460)",
+    },
     newVersion: { control: "boolean", description: "The host reports a new version" },
     annot: { control: "text", description: "Annotation text (empty: none)" },
     annotColor: { control: "inline-radio", options: [...HAND_COLORS] },
@@ -41,7 +73,13 @@ type Story = StoryObj<typeof meta>;
 export const Overview: Story = {
   render: (a, ctx) => <Stage scene={() => overview(a)} globals={ctx.globals as Globals} />,
   args: { w: 460, annot: "KV cache blocks", annotColor: "purple" },
-  argTypes: { code: { table: { disable: true } }, title: { table: { disable: true } }, h: { table: { disable: true } }, newVersion: { table: { disable: true } }, selected: { table: { disable: true } } },
+  argTypes: {
+    code: { table: { disable: true } },
+    title: { table: { disable: true } },
+    h: { table: { disable: true } },
+    newVersion: { table: { disable: true } },
+    selected: { table: { disable: true } },
+  },
 };
 export const Themes: Story = themes("schedule");
 export const Schedule: Story = { name: "Scheduler.schedule" };

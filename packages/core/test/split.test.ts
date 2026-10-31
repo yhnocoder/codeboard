@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { danglingRefs, emptyBoard, headingTree, mdHeading, splitHeadings, splitNoteByHeadings, type Board, type NoteCard } from "../src";
+import {
+  danglingRefs,
+  emptyBoard,
+  headingTree,
+  mdHeading,
+  splitHeadings,
+  splitNoteByHeadings,
+  type Board,
+  type NoteCard,
+} from "../src";
 
 const titles = (md: string) => splitHeadings(md)?.parts.map((p) => `${"#".repeat(p.level)} ${p.title} <${p.parent}`);
 
@@ -13,7 +22,12 @@ describe("splitHeadings", () => {
     expect(sp.parts[0].md).toBe("## A\n\na text");
   });
   it("starting at ### splits ### and ####; ##### stays in the card", () => {
-    expect(titles("x\n\n### A\n\n#### A1\n\n##### keep\n\n#### A2\n\n### B")).toEqual(["### A <-1", "#### A1 <0", "#### A2 <0", "### B <-1"]);
+    expect(titles("x\n\n### A\n\n#### A1\n\n##### keep\n\n#### A2\n\n### B")).toEqual([
+      "### A <-1",
+      "#### A1 <0",
+      "#### A2 <0",
+      "### B <-1",
+    ]);
   });
   it("a heading shallower than the first one later on is split too and becomes a top card", () => {
     const md = "x\n\n### A\n\n#### A1\n\n## Summary\n\n### C";
@@ -28,15 +42,24 @@ describe("splitHeadings", () => {
   it("a Note that starts with its heading keeps the first section, and its sub-headings hang off the Note", () => {
     const sp = splitHeadings("# Title\n\nintro\n\n## A\n\n## B\n\n### B1")!;
     expect(sp.pre).toBe("# Title\n\nintro");
-    expect(sp.parts.map((p) => [p.title, p.parent])).toEqual([["A", -1], ["B", -1]]);
+    expect(sp.parts.map((p) => [p.title, p.parent])).toEqual([
+      ["A", -1],
+      ["B", -1],
+    ]);
     expect(sp.parts[1].md).toBe("## B\n\n### B1"); // 第一个标题是 #：### 留在卡里
-    expect(splitHeadings("## Only\n\ntext\n\n### deeper is split\n\n#### but not this")?.parts.map((p) => p.title)).toEqual(["deeper is split"]);
+    expect(
+      splitHeadings("## Only\n\ntext\n\n### deeper is split\n\n#### but not this")?.parts.map((p) => p.title),
+    ).toEqual(["deeper is split"]);
     expect(splitHeadings("## Only\n\ntext")).toBeNull();
   });
   it("a Note that starts with a heading followed by headings of the same level: they all hang off the Note", () => {
     const sp = splitHeadings("## A\n\na\n\n## B\n\n### B1\n\n## C")!;
     expect(sp.pre).toBe("## A\n\na");
-    expect(sp.parts.map((p) => [p.title, p.parent])).toEqual([["B", -1], ["B1", 0], ["C", -1]]);
+    expect(sp.parts.map((p) => [p.title, p.parent])).toEqual([
+      ["B", -1],
+      ["B1", 0],
+      ["C", -1],
+    ]);
   });
   it("closing #s and empty headings", () => {
     expect(titles("x\n\n## A ##\n\n##")).toEqual(["## A <-1", "##  <-1"]);
@@ -45,7 +68,12 @@ describe("splitHeadings", () => {
 
 describe("headingTree", () => {
   it("puts children in a row under their parent, centred, rows aligned by depth", () => {
-    const at = headingTree({ x: 100, y: 0, w: 300, h: 100 }, [{ h: 200, parent: -1 }, { h: 80, parent: 0 }, { h: 90, parent: 0 }, { h: 150, parent: -1 }]);
+    const at = headingTree({ x: 100, y: 0, w: 300, h: 100 }, [
+      { h: 200, parent: -1 },
+      { h: 80, parent: 0 },
+      { h: 90, parent: 0 },
+      { h: 150, parent: -1 },
+    ]);
     // 原卡下面一行：A（带两个子卡，宽 628）和 B；整体以原卡为中心
     expect(at[0].y).toBe(156);
     expect(at[3].y).toBe(156);
@@ -56,7 +84,11 @@ describe("headingTree", () => {
     expect((at[1].x + at[3].x + 300) / 2).toBe(250); // 整棵树在原卡下居中
   });
   it("moves the new cards down past cards already there", () => {
-    const at = headingTree({ x: 0, y: 0, w: 300, h: 100 }, [{ h: 100, parent: -1 }], [{ x: 0, y: 150, w: 300, h: 200 }]);
+    const at = headingTree(
+      { x: 0, y: 0, w: 300, h: 100 },
+      [{ h: 100, parent: -1 }],
+      [{ x: 0, y: 150, w: 300, h: 200 }],
+    );
     expect(at[0].y).toBeGreaterThanOrEqual(350);
   });
 });
@@ -73,7 +105,12 @@ describe("splitNoteByHeadings", () => {
     const ids = splitNoteByHeadings(b, "n", { ids: ["a", "a1", "bb"] })!;
     expect(ids).toEqual(["a", "a1", "bb"]);
     expect((b.cards[0] as NoteCard).md).toBe("intro");
-    expect(b.cards.map((c) => [c.id, c.kind === "note" && mdHeading(c.md)])).toEqual([["n", ""], ["a", "A"], ["a1", "A1"], ["bb", "B"]]);
+    expect(b.cards.map((c) => [c.id, c.kind === "note" && mdHeading(c.md)])).toEqual([
+      ["n", ""],
+      ["a", "A"],
+      ["a1", "A1"],
+      ["bb", "B"],
+    ]);
     expect(b.links.map((l) => `${l.from.card}→${l.to.card}${l.style ? "!" : ""}`)).toEqual(["n→a", "a→a1", "n→bb"]);
     expect(b.place.n.h).toBeUndefined();
     expect(b.place.a).toMatchObject({ w: 381, section: "s" });

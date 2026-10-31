@@ -22,26 +22,42 @@ const IDLE: Mode = { kind: "idle" };
 const [mode, setMode] = boardSignal<Mode>(IDLE);
 export { setMode };
 export const idle = () => setMode(IDLE);
-export const modeIs = <K extends ModeKind>(k: K): Extract<Mode, { kind: K }> | null => { const m = mode(); return m.kind === k ? (m as Extract<Mode, { kind: K }>) : null; };
+export const modeIs = <K extends ModeKind>(k: K): Extract<Mode, { kind: K }> | null => {
+  const m = mode();
+  return m.kind === k ? (m as Extract<Mode, { kind: K }>) : null;
+};
 
 export const connectFrom = () => modeIs("connect")?.from ?? null;
 export const setConnectFrom = (from: ConnectFrom) => setMode({ kind: "connect", from });
 export const placing = () => modeIs("place");
 
 const DRAW_HINT = "Drag on the canvas to draw a section · Esc to cancel";
-export function startDraw() { setMode({ kind: "draw" }); toast(DRAW_HINT); }
+export function startDraw() {
+  setMode({ kind: "draw" });
+  toast(DRAW_HINT);
+}
 /** 画完（或取消）：把提示也收掉 */
-export function endDraw() { if (modeIs("draw")) idle(); if (toastMsg()?.text === DRAW_HINT) setToastMsg(null); }
+export function endDraw() {
+  if (modeIs("draw")) idle();
+  if (toastMsg()?.text === DRAW_HINT) setToastMsg(null);
+}
 
 export const pickCardThen = (then: (id: string) => void) => setMode({ kind: "pick", then });
 /** 点一张卡：交出回调，回到 idle */
-export function takePick(): ((id: string) => void) | null { const m = modeIs("pick"); if (m) idle(); return m?.then ?? null; }
+export function takePick(): ((id: string) => void) | null {
+  const m = modeIs("pick");
+  if (m) idle();
+  return m?.then ?? null;
+}
 
 /** Esc：取消正在进行的模式；没有模式时返回 false */
 export function cancelMode(): boolean {
   const k = mode().kind;
   if (k === "idle") return false;
-  if (k === "draw") { endDraw(); return true; }
+  if (k === "draw") {
+    endDraw();
+    return true;
+  }
   idle();
   toast(k === "connect" ? "Connect cancelled" : "Cancelled");
   return true;
@@ -52,4 +68,5 @@ export { setPanning };
 // 按着的空格是键盘的状态，不跟白板走（换白板时还按着，松开才收到 keyup）
 export const [spaceDown, setSpaceDown] = createSignal(false);
 /** #board 的 data-mode */
-export const boardMode = (): string | undefined => (panning() ? "pan" : spaceDown() ? "space" : mode().kind === "idle" ? undefined : mode().kind);
+export const boardMode = (): string | undefined =>
+  panning() ? "pan" : spaceDown() ? "space" : mode().kind === "idle" ? undefined : mode().kind;

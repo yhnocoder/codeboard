@@ -7,17 +7,25 @@ import type { Node as PMNode } from "@tiptap/pm/model";
 
 // The editor's paragraphs are their Markdown source, so a copy is the source characters selected: the markers come along
 // exactly when they are selected (they show around the caret), and what is pasted back reads as what was seen.
-const schema = getSchema(sourceExtensions), base = getSchema(baseExtensions);
+const schema = getSchema(sourceExtensions),
+  base = getSchema(baseExtensions);
 /** The slice of the source text `sel` (found once in the document's text) */
 function copy(md: string, sel: string) {
   const doc = schema.nodeFromJSON(sourceDoc(md));
   let flat = "";
   const pos: number[] = [];
-  doc.descendants((n, p) => { if (n.isText) for (let i = 0; i < n.text!.length; i++) { flat += n.text![i]; pos.push(p + i); } });
+  doc.descendants((n, p) => {
+    if (n.isText)
+      for (let i = 0; i < n.text!.length; i++) {
+        flat += n.text![i];
+        pos.push(p + i);
+      }
+  });
   const i = flat.indexOf(sel);
   expect(i, `"${sel}" in ${md}`).toBeGreaterThanOrEqual(0);
   expect(flat.indexOf(sel, i + 1), `"${sel}" once in ${md}`).toBe(-1);
-  const from = pos[i], to = pos[i + sel.length - 1] + 1;
+  const from = pos[i],
+    to = pos[i + sel.length - 1] + 1;
   // what ProseMirror puts on the clipboard: the selection's content, with its parents (selection.content())
   return clipboardText(doc.slice(from, to, true));
 }
@@ -25,7 +33,9 @@ function copy(md: string, sel: string) {
 const marksIn = (md: string) => {
   const out = new Set<string>();
   const doc: PMNode = base.nodeFromJSON(parseMd(md));
-  doc.descendants((n) => { for (const m of n.marks) out.add(m.type.name); });
+  doc.descendants((n) => {
+    for (const m of n.marks) out.add(m.type.name);
+  });
   return [...out].sort();
 };
 
@@ -36,7 +46,12 @@ describe("copying part of a formatted span", () => {
     ["*Plain words* here", "*Plain words*", "*Plain words*", ["italic"]],
     ["~~Plain words~~ here", "~~Plain words~~", "~~Plain words~~", ["strike"]],
     ["`Plain words` here", "`Plain words`", "`Plain words`", ["code"]],
-    ["[Plain words](https://e.com/p) here", "[Plain words](https://e.com/p)", "[Plain words](https://e.com/p)", ["link"]],
+    [
+      "[Plain words](https://e.com/p) here",
+      "[Plain words](https://e.com/p)",
+      "[Plain words](https://e.com/p)",
+      ["link"],
+    ],
     // inside a span: just the characters (the markers are not selected)
     ["==a $x$ b== c", " $x$ b", " $x$ b", []],
     ["==aa $x$ bb== c", "a $x$ b", "a $x$ b", []],
@@ -59,7 +74,10 @@ describe("copying part of a formatted span", () => {
 
 describe("copying from a source that shows", () => {
   const img = 'A ![](a.svg "Fig 5.1: memory types"){width=83%} b';
-  const cut = (t: string, sel: string, shown: number | null) => { const i = t.indexOf(sel); return balancedSource(t, i, i + sel.length, true, shown); };
+  const cut = (t: string, sel: string, shown: number | null) => {
+    const i = t.indexOf(sel);
+    return balancedSource(t, i, i + sel.length, true, shown);
+  };
   it("an image whose source line is open: just the characters", () => {
     expect(cut(img, "memory types", img.indexOf("types"))).toBe("memory types");
     expect(cut(img, "A ![](a.s", img.indexOf("a.s"))).toBe("A ![](a.s");

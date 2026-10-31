@@ -27,13 +27,17 @@ export function watchVersions(panels: BoardHost, store: Storage): Disposable & {
 
   const roots = async () => {
     const out = new Set<string>();
-    for (const f of wsRoots()) { const r = await repoRootOf(path.join(f, "x")); if (r) out.add(r); }
-    for (const { board } of await store.all()) for (const s of boardSegments(board)) {
-      if (s.version.kind !== "git" || !hasLocalFile(s.src)) continue;
-      const a = absOf(s);
-      const r = a && (await repoRootOf(a));
+    for (const f of wsRoots()) {
+      const r = await repoRootOf(path.join(f, "x"));
       if (r) out.add(r);
     }
+    for (const { board } of await store.all())
+      for (const s of boardSegments(board)) {
+        if (s.version.kind !== "git" || !hasLocalFile(s.src)) continue;
+        const a = absOf(s);
+        const r = a && (await repoRootOf(a));
+        if (r) out.add(r);
+      }
     return [...out];
   };
 
@@ -57,8 +61,15 @@ export function watchVersions(panels: BoardHost, store: Storage): Disposable & {
   const countClosed = async () => {
     for (const { board } of await store.all()) {
       if (panels.get(board.id)?.ready) continue;
-      try { const ss = staleSegments(board); panels.staleChanged(board.id, countStale(board, await staleFor(ss.segs, ss.up))); }
-      catch (e) { log("warn", `versions: could not count new versions on closed board ${board.id}: ${e instanceof Error ? e.message : e}`); }
+      try {
+        const ss = staleSegments(board);
+        panels.staleChanged(board.id, countStale(board, await staleFor(ss.segs, ss.up)));
+      } catch (e) {
+        log(
+          "warn",
+          `versions: could not count new versions on closed board ${board.id}: ${e instanceof Error ? e.message : e}`,
+        );
+      }
     }
   };
 
@@ -67,7 +78,10 @@ export function watchVersions(panels: BoardHost, store: Storage): Disposable & {
     let changed = false;
     for (const r of watched) {
       const h = await headOf(r);
-      if (lastHead.get(r) !== h) { changed = true; lastHead.set(r, h); }
+      if (lastHead.get(r) !== h) {
+        changed = true;
+        lastHead.set(r, h);
+      }
     }
     if (!changed) return;
     forgetDefs(); // checkout 之类：文件可能整批换了
@@ -86,9 +100,20 @@ export function watchVersions(panels: BoardHost, store: Storage): Disposable & {
 
   // 保存、改了文件：只影响这个文件里的段（uncommitted、仓库外文件），攒一会儿一起重查
   const changed = new Set<string>();
-  const flush = debounce(() => { const paths = new Set(changed); changed.clear(); void panels.refreshStale(paths); }, RECHECK_PAUSE);
-  const recheck = (abs: string) => { changed.add(abs); flush(); };
-  subs.push(files.onDidSave((abs) => { if (abs) recheck(abs); }));
+  const flush = debounce(() => {
+    const paths = new Set(changed);
+    changed.clear();
+    void panels.refreshStale(paths);
+  }, RECHECK_PAUSE);
+  const recheck = (abs: string) => {
+    changed.add(abs);
+    flush();
+  };
+  subs.push(
+    files.onDidSave((abs) => {
+      if (abs) recheck(abs);
+    }),
+  );
   // 在 VS Code 外面改了卡片用到的文件（git checkout -- f、别的编辑器）：也重算。每个文件一个监听。
   // Variant 的文件也算（另一个 worktree、复制出来的文件：在别处保存后卡上跟着刷新）
   const watchedFiles = new Set<string>();
@@ -102,25 +127,52 @@ export function watchVersions(panels: BoardHost, store: Storage): Disposable & {
   const watchFile = (a: string) => {
     const name = path.basename(a);
     let w: fs.FSWatcher;
-    try { w = fs.watch(path.dirname(a), { persistent: false }, (_e, f) => { if (!f || f === name) recheck(a); }); }
-    catch { return false; }
+    try {
+      w = fs.watch(path.dirname(a), { persistent: false }, (_e, f) => {
+        if (!f || f === name) recheck(a);
+      });
+    } catch {
+      return false;
+    }
     // the folder went away: the file with it
-    w.on("error", () => { w.close(); watchedFiles.delete(a); recheck(a); });
+    w.on("error", () => {
+      w.close();
+      watchedFiles.delete(a);
+      recheck(a);
+    });
     subs.push({ dispose: () => w.close() });
     return true;
   };
   const watchFiles = async (catchUp: boolean) => {
-    for (const { board } of await store.all()) for (const s of [...boardSegments(board), ...variantSegments(board)]) {
-      if (!hasLocalFile(s.src)) continue;
-      const a = absOf(s);
-      if (!a || watchedFiles.has(a) || !watchFile(a)) continue;
-      watchedFiles.add(a);
-      // The file was read when its card or Variant was added, before this watch existed: a change made in between fires no event
-      if (catchUp) recheck(a);
-    }
+    for (const { board } of await store.all())
+      for (const s of [...boardSegments(board), ...variantSegments(board)]) {
+        if (!hasLocalFile(s.src)) continue;
+        const a = absOf(s);
+        if (!a || watchedFiles.has(a) || !watchFile(a)) continue;
+        watchedFiles.add(a);
+        // The file was read when its card or Variant was added, before this watch existed: a change made in between fires no event
+        if (catchUp) recheck(a);
+      }
   };
   const filesWatched = watchFiles(false);
-  subs.push(files.onDidEdit((abs) => { if (abs && watchedFiles.has(abs)) recheck(abs); }));
-  subs.push(store.onDidSave(() => void (async () => { for (const r of await roots()) await watchRoot(r); await watchFiles(true); })()));
-  return { dispose: () => { for (const d of subs) d.dispose(); }, ready: Promise.all([started, filesWatched]).then(() => undefined) };
+  subs.push(
+    files.onDidEdit((abs) => {
+      if (abs && watchedFiles.has(abs)) recheck(abs);
+    }),
+  );
+  subs.push(
+    store.onDidSave(
+      () =>
+        void (async () => {
+          for (const r of await roots()) await watchRoot(r);
+          await watchFiles(true);
+        })(),
+    ),
+  );
+  return {
+    dispose: () => {
+      for (const d of subs) d.dispose();
+    },
+    ready: Promise.all([started, filesWatched]).then(() => undefined),
+  };
 }

@@ -9,7 +9,7 @@ import { docAt, mdAt } from "../src/editor/srcmode";
 
 const schema = getSchema(sourceExtensions);
 const SAMPLES = [
-  "# T\n\npara **b** *i* `c` $x$ [l](https://u) ![a](i.png \"cap\"){width=40%}",
+  '# T\n\npara **b** *i* `c` $x$ [l](https://u) ![a](i.png "cap"){width=40%}',
   "- a\n- b\n  - c\n\n1. x\n2. y",
   "> q **b**\n\n- [ ] t\n- [x] d",
   "| a | b |\n| :- | -: |\n| x\\|y | `a|b` |\n| **c** | |",
@@ -59,14 +59,19 @@ describe("layout: column widths, row heights and code wrap as card data", () => 
     el.innerHTML = `<div>${renderMd(md)}</div>`;
     applyMdLayout(el, { tables: [{ cols: [120, 80], rows: [null, 48] }], wrap: [0] });
     const t = el.querySelector("table")!;
-    expect([...t.querySelectorAll("colgroup col")].map((c) => (c as HTMLElement).style.width)).toEqual(["120px", "80px"]);
+    expect([...t.querySelectorAll("colgroup col")].map((c) => (c as HTMLElement).style.width)).toEqual([
+      "120px",
+      "80px",
+    ]);
     expect(t.style.width).toBe("200px");
     expect(t.rows[1].style.height).toBe("48px");
     expect(el.querySelector("pre")!.classList.contains("wrap")).toBe(true);
     applyMdLayout(el, null);
     expect([...t.querySelectorAll("colgroup col")].map((c) => (c as HTMLElement).style.width)).toEqual(["", ""]);
     expect(el.querySelector("pre")!.classList.contains("wrap")).toBe(false);
-    expect(renderMd("| a | b | c |\n| :- | :-: | -: |\n| 1 | 2 | 3 |")).toMatch(/text-align: ?left[\s\S]*text-align: ?center[\s\S]*text-align: ?right/);
+    expect(renderMd("| a | b | c |\n| :- | :-: | -: |\n| 1 | 2 | 3 |")).toMatch(
+      /text-align: ?left[\s\S]*text-align: ?center[\s\S]*text-align: ?right/,
+    );
   });
 });
 
@@ -74,13 +79,16 @@ describe("source mode caret mapping", () => {
   it("maps a caret into the Markdown and back", () => {
     const doc = schema.nodeFromJSON(sourceDoc("# Title\n\n- item **b**\n\n| a |\n| - |\n| cell |"));
     let pos = -1;
-    doc.descendants((n, p) => { if (pos < 0 && n.isText && n.text!.includes("cell")) pos = p + 2; });
+    doc.descendants((n, p) => {
+      if (pos < 0 && n.isText && n.text!.includes("cell")) pos = p + 2;
+    });
     const { md, at } = mdAt(doc, pos);
     expect(md.slice(at - 2, at + 2)).toBe("cell");
     const back = docAt(doc, md, at);
     expect(back.pos).toBe(pos);
     // a caret between the two * of ** falls back to the word start
-    const i = md.indexOf("**b") + 1, b2 = docAt(doc, md, i);
+    const i = md.indexOf("**b") + 1,
+      b2 = docAt(doc, md, i);
     expect(b2.pos).not.toBeNull();
   });
 });

@@ -5,7 +5,15 @@ import { ONE, MANY, markGroup } from "./support/groups";
 import { noteAt } from "./support/cards";
 import { themes } from "./support/themes";
 
-type Args = { md: string; color: HandColor; w: number; state: "normal" | "selected" | "editing"; locked: boolean; arrow: boolean; lod: "toolbar" | "map" };
+type Args = {
+  md: string;
+  color: HandColor;
+  w: number;
+  state: "normal" | "selected" | "editing";
+  locked: boolean;
+  arrow: boolean;
+  lod: "toolbar" | "map";
+};
 
 const MD = "**抢占** 最后进来的请求：`preempt(seq)`";
 const PARAS = "block 不够就抢占\n\n被抢占的回到 waiting 最前面";
@@ -17,7 +25,12 @@ function single(a: Args): Scene {
     put(codeCard("m-target", "preempt"), { x: a.w + 200, y: 200, w: 440 });
     board.links.push({ id: "m-l1", from: { card: "m1" }, to: { card: "m-target" } });
   }
-  return { board, sel: a.state === "selected" ? ["m1"] : undefined, editing: a.state === "editing" ? "m1" : undefined, zoom: a.lod === "map" ? 0.2 : undefined };
+  return {
+    board,
+    sel: a.state === "selected" ? ["m1"] : undefined,
+    editing: a.state === "editing" ? "m1" : undefined,
+    zoom: a.lod === "map" ? 0.2 : undefined,
+  };
 }
 
 // 和 Overview/All 共用的那一组：四种颜色、一行、折行、选中、编辑
@@ -29,21 +42,40 @@ function overview(a: Args): Scene {
 
 function states(a: Args): Scene {
   const { board, put, caption } = scene("Mark states");
-  caption("Empty (placeholder)", 40, 40, 200); put(markCard("ms-empty", "", a.color), { x: 40, y: 40, w: 200 });
-  caption("Markdown inside", 300, 40, 320); put(markCard("ms-md", MD, a.color), { x: 300, y: 40, w: 360 });
-  caption("Two paragraphs", 720, 40, 260); put(markCard("ms-paras", PARAS, a.color), { x: 720, y: 40, w: 260 });
-  caption("Locked", 40, 220, 200); put(markCard("ms-lock", ONE, a.color), { x: 40, y: 220, w: 200, locked: true });
+  caption("Empty (placeholder)", 40, 40, 200);
+  put(markCard("ms-empty", "", a.color), { x: 40, y: 40, w: 200 });
+  caption("Markdown inside", 300, 40, 320);
+  put(markCard("ms-md", MD, a.color), { x: 300, y: 40, w: 360 });
+  caption("Two paragraphs", 720, 40, 260);
+  put(markCard("ms-paras", PARAS, a.color), { x: 720, y: 40, w: 260 });
+  caption("Locked", 40, 220, 200);
+  put(markCard("ms-lock", ONE, a.color), { x: 40, y: 220, w: 200, locked: true });
   // 几张一起选中：颜色条只在单选时出
   caption("Two selected (no colour bar)", 300, 220, 320);
-  put(markCard("ms-s1", ONE, "purple"), { x: 300, y: 290, w: 200 }); put(markCard("ms-s2", MANY, "green"), { x: 520, y: 290, w: 300 });
+  put(markCard("ms-s1", ONE, "purple"), { x: 300, y: 290, w: 200 });
+  put(markCard("ms-s2", MANY, "green"), { x: 520, y: 290, w: 300 });
   // 从 Mark 出发的箭头画成这个颜色的手绘线（每种颜色一条）
   caption("Arrows from Marks (hand-drawn, Mark colour)", 40, 420, 420);
   put(codeCard("ms-target", "preempt"), { x: 640, y: 440, w: 420 });
   HAND_COLORS.forEach((k, i) => {
-    put(markCard(`ms-a-${k}`, k === "blue" ? "这里抢占" : k === "purple" ? "释放 block" : k === "orange" ? "回到 waiting" : "下次重新 prefill", k), { x: 40, y: 440 + i * 90, w: 200 });
+    put(
+      markCard(
+        `ms-a-${k}`,
+        k === "blue"
+          ? "这里抢占"
+          : k === "purple"
+            ? "释放 block"
+            : k === "orange"
+              ? "回到 waiting"
+              : "下次重新 prefill",
+        k,
+      ),
+      { x: 40, y: 440 + i * 90, w: 200 },
+    );
     board.links.push({ id: `ms-l-${k}`, from: { card: `ms-a-${k}` }, to: { card: "ms-target" } });
   });
-  caption("Mark pointing at a Note", 40, 840, 260); put(markCard("ms-n", "先读这个", "orange"), { x: 40, y: 840, w: 160 });
+  caption("Mark pointing at a Note", 40, 840, 260);
+  put(markCard("ms-n", "先读这个", "orange"), { x: 40, y: 840, w: 160 });
   put(noteAt("ms-note", "## 抢占\n\nblock 不够就抢占最后进来的请求。"), { x: 320, y: 820, w: 300 });
   board.links.push({ id: "ms-l-n", from: { card: "ms-n" }, to: { card: "ms-note" } });
   return { board, sel: ["ms-s1", "ms-s2"] };
@@ -57,7 +89,10 @@ const meta = {
   argTypes: {
     md: { control: "text", description: "Text (Markdown)" },
     color: { control: "inline-radio", options: [...HAND_COLORS] },
-    w: { control: { type: "range", min: 80, max: 720, step: 10 }, description: "Width (the text wraps, the size stays)" },
+    w: {
+      control: { type: "range", min: 80, max: 720, step: 10 },
+      description: "Width (the text wraps, the size stays)",
+    },
     state: { control: "inline-radio", options: ["normal", "selected", "editing"] },
     locked: { control: "boolean" },
     arrow: { control: "boolean", description: "An arrow from the Mark to a code card" },
@@ -91,7 +126,14 @@ export const MarkdownInside: Story = { name: "Markdown Inside", args: { md: MD, 
 export const Paragraphs: Story = { name: "Two Paragraphs", args: { md: PARAS, w: 260 } };
 export const Locked: Story = { args: { w: 200, locked: true, state: "selected" } };
 export const WithArrow: Story = { name: "Arrow to a Card", args: { w: 200, arrow: true } };
-export const WithArrowSelected: Story = { name: "Arrow to a Card, Selected", args: { w: 200, arrow: true, color: "orange", state: "selected" } };
+export const WithArrowSelected: Story = {
+  name: "Arrow to a Card, Selected",
+  args: { w: 200, arrow: true, color: "orange", state: "selected" },
+};
 export const Map: Story = { name: "Map Level (20%)", args: { w: 200, lod: "map" } };
 // 悬停（CSS :hover，story 的 globals.pseudo 摆出来）：Mark 悬停时出一圈淡淡的虚线框，颜色跟着 Mark
-export const Hover: Story = { name: "Hover (dashed frame)", args: { w: 200 }, globals: { pseudo: { hover: [".card"] } } };
+export const Hover: Story = {
+  name: "Hover (dashed frame)",
+  args: { w: 200 },
+  globals: { pseudo: { hover: [".card"] } },
+};

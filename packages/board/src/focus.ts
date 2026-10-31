@@ -39,10 +39,18 @@ function keepAfterPress() {
   const host = window.frameElement?.ownerDocument;
   if (!host) return;
   let pressed = -Infinity;
-  window.addEventListener("pointerdown", () => { pressed = performance.now(); }, true);
+  window.addEventListener(
+    "pointerdown",
+    () => {
+      pressed = performance.now();
+    },
+    true,
+  );
   window.addEventListener("blur", () => {
     if (performance.now() - pressed > CLICK_KEEPS_KEYS) return;
     // where the keyboard went is settled after this event
-    setTimeout(() => { if (!document.hasFocus() && host.hasFocus() && host.activeElement === host.body) window.focus(); });
+    setTimeout(() => {
+      if (!document.hasFocus() && host.hasFocus() && host.activeElement === host.body) window.focus();
+    });
   });
 }

@@ -23,15 +23,31 @@ export function noteBlocks(md: string): string[] | null {
 export function followBlocks(b: Board, seen: Map<string, string>, raw: <T>(x: T) => T): void {
   const rb = raw(b);
   const on = new Set<string>();
-  for (const l of rb.links) { if (l.from.block) on.add(l.from.card); if (l.to.block) on.add(l.to.card); }
-  if (!on.size) { seen.clear(); return; }
-  const first = !seen.size, now = new Map<string, string>(), fresh: { card: string; blocks: string[] }[] = [], changed: [string, string, string][] = [];
+  for (const l of rb.links) {
+    if (l.from.block) on.add(l.from.card);
+    if (l.to.block) on.add(l.to.card);
+  }
+  if (!on.size) {
+    seen.clear();
+    return;
+  }
+  const first = !seen.size,
+    now = new Map<string, string>(),
+    fresh: { card: string; blocks: string[] }[] = [],
+    changed: [string, string, string][] = [];
   for (const c of rb.cards) {
     if (c.kind !== "note") continue;
     now.set(c.id, c.md);
     const was = seen.get(c.id);
-    if (was === undefined) { if (!first) fresh.push({ card: c.id, get blocks() { return noteBlocks(c.md) ?? []; } }); }
-    else if (was !== c.md && on.has(c.id)) changed.push([c.id, was, c.md]);
+    if (was === undefined) {
+      if (!first)
+        fresh.push({
+          card: c.id,
+          get blocks() {
+            return noteBlocks(c.md) ?? [];
+          },
+        });
+    } else if (was !== c.md && on.has(c.id)) changed.push([c.id, was, c.md]);
   }
   for (const [id, was, md] of changed) rebaseBlocks(b, id, noteBlocks(was), noteBlocks(md), fresh);
   seen.clear();

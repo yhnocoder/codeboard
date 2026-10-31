@@ -17,10 +17,19 @@ import { card, startTreeSitter } from "./helpers";
 const W = nodeWorkspace();
 const dir = fs.mkdtempSync("/tmp/codeboard-watch-");
 const store = new Storage(nodeFs, { dir: () => dir });
-const seqAbs = path.join(WS, "nanovllm/engine/sequence.py"), schAbs = path.join(WS, "nanovllm/engine/scheduler.py"), llmAbs = path.join(WS, "nanovllm/engine/llm_engine.py"), bmAbs = path.join(WS, "nanovllm/engine/block_manager.py");
+const seqAbs = path.join(WS, "nanovllm/engine/sequence.py"),
+  schAbs = path.join(WS, "nanovllm/engine/scheduler.py"),
+  llmAbs = path.join(WS, "nanovllm/engine/llm_engine.py"),
+  bmAbs = path.join(WS, "nanovllm/engine/block_manager.py");
 /** what the watcher asked the boards to re-check: one entry per call, the paths sorted (undefined = everything) */
 const rechecks: (string[] | undefined)[] = [];
-const panels = { refreshStale: async (paths?: ReadonlySet<string>) => { rechecks.push(paths && [...paths].sort()); }, get: () => undefined, staleChanged: () => undefined } as unknown as BoardHost;
+const panels = {
+  refreshStale: async (paths?: ReadonlySet<string>) => {
+    rechecks.push(paths && [...paths].sort());
+  },
+  get: () => undefined,
+  staleChanged: () => undefined,
+} as unknown as BoardHost;
 let off: Disposable & { ready: Promise<void> }, typed: CodeCard;
 
 beforeAll(async () => {
@@ -29,15 +38,22 @@ beforeAll(async () => {
   // a function typed but not saved ("+ uncommitted") and a committed one, on one board
   const text = fs.readFileSync(seqAbs, "utf8") + "\n\ndef added_here():\n    return 1\n";
   W.open.set(seqAbs, text);
-  typed = (await cardForFileSym(seqAbs, analysisOf("python", text).symbols.find((x) => x.qual === "added_here")!))!.card as CodeCard;
+  typed = (await cardForFileSym(seqAbs, analysisOf("python", text).symbols.find((x) => x.qual === "added_here")!))!
+    .card as CodeCard;
   const sch = (await card(schAbs, "Scheduler.schedule")).card;
   const b = emptyBoard("bW", "Watch");
-  b.cards.push(typed, sch); b.place[typed.id] = { x: 0, y: 0, w: 500 }; b.place[sch.id] = { x: 600, y: 0, w: 500 };
+  b.cards.push(typed, sch);
+  b.place[typed.id] = { x: 0, y: 0, w: 500 };
+  b.place[sch.id] = { x: 600, y: 0, w: 500 };
   await store.save(b);
   off = watchVersions(panels, store);
   await off.ready;
 });
-afterAll(() => { off.dispose(); W.open.clear(); fs.rmSync(dir, { recursive: true, force: true }); });
+afterAll(() => {
+  off.dispose();
+  W.open.clear();
+  fs.rmSync(dir, { recursive: true, force: true });
+});
 
 /**
  * Fire events on a fake clock and let the pause run out: nothing is re-checked a moment before the end of the pause, then exactly
@@ -52,19 +68,25 @@ function onePause(fire: () => void) {
     expect(rechecks).toEqual([]);
     vi.advanceTimersByTime(1);
     expect(vi.getTimerCount()).toBe(0);
-  } finally { vi.useRealTimers(); }
+  } finally {
+    vi.useRealTimers();
+  }
 }
 
 describe("version re-checks", () => {
   it("re-check only the edited file, once per pause, and not for files no board uses", async () => {
     onePause(() => {
-      W.fire.edit.fire(schAbs); W.fire.edit.fire(schAbs);
+      W.fire.edit.fire(schAbs);
+      W.fire.edit.fire(schAbs);
       W.fire.edit.fire(llmAbs); // a file no board uses
     });
     expect(rechecks).toEqual([[schAbs]]);
   });
   it("collect the files edited within one pause into one re-check", async () => {
-    onePause(() => { W.fire.edit.fire(schAbs); W.fire.save.fire(seqAbs); });
+    onePause(() => {
+      W.fire.edit.fire(schAbs);
+      W.fire.save.fire(seqAbs);
+    });
     expect(rechecks).toEqual([[seqAbs, schAbs].sort()]);
   });
   it("notice a reverted unsaved edit without a save: the card's code is gone", async () => {
@@ -78,7 +100,8 @@ describe("version re-checks", () => {
   it("a file newly on a board is re-checked once its watch is in place: a change made before then fires nothing", async () => {
     const b = (await store.load("bW"))!;
     const bm = (await card(bmAbs, "BlockManager.allocate")).card;
-    b.cards.push(bm); b.place[bm.id] = { x: 0, y: 600, w: 500 };
+    b.cards.push(bm);
+    b.place[bm.id] = { x: 0, y: 600, w: 500 };
     rechecks.length = 0;
     await store.save(b);
     await vi.waitFor(() => expect(rechecks.flat()).toContain(bmAbs), { timeout: 5000 });
@@ -93,19 +116,29 @@ describe("files changed outside the editor", () => {
   const boards = fs.mkdtempSync("/tmp/codeboard-watch-ext-boards-");
   const st = new Storage(nodeFs, { dir: () => boards });
   const seen: string[] = [];
-  const host = { refreshStale: async (paths?: ReadonlySet<string>) => { seen.push(...(paths ?? [])); }, get: () => undefined, staleChanged: () => undefined } as unknown as BoardHost;
+  const host = {
+    refreshStale: async (paths?: ReadonlySet<string>) => {
+      seen.push(...(paths ?? []));
+    },
+    get: () => undefined,
+    staleChanged: () => undefined,
+  } as unknown as BoardHost;
   let w: Disposable & { ready: Promise<void> };
   beforeAll(async () => {
     fs.writeFileSync(modAbs, "def f():\n    return 1\n");
     w = watchVersions(host, st);
     await w.ready;
   });
-  afterAll(() => { w.dispose(); for (const d of [ext, boards]) fs.rmSync(d, { recursive: true, force: true }); });
+  afterAll(() => {
+    w.dispose();
+    for (const d of [ext, boards]) fs.rmSync(d, { recursive: true, force: true });
+  });
 
   it("a change right after the card is saved is re-checked from the disk, however late the editor's watcher starts", async () => {
     const b = emptyBoard("bX", "Outside");
     const c = (await card(modAbs, "f")).card;
-    b.cards.push(c); b.place[c.id] = { x: 0, y: 0, w: 500 };
+    b.cards.push(c);
+    b.place[c.id] = { x: 0, y: 0, w: 500 };
     expect(c.segments[0].src).toEqual({ kind: "external", root: ext });
     await st.save(b);
     // the re-check made once the watch is in place
@@ -130,15 +163,23 @@ describe("new-version counts for closed boards", () => {
     await st.save(emptyBoard("bOk", "Ok"));
     const counted: string[] = [];
     const failing = {
-      refreshStale: async () => {}, get: () => undefined,
-      staleChanged: (id: string) => { if (id === "bBad") throw new Error("sidebar is gone"); counted.push(id); },
+      refreshStale: async () => {},
+      get: () => undefined,
+      staleChanged: (id: string) => {
+        if (id === "bBad") throw new Error("sidebar is gone");
+        counted.push(id);
+      },
     } as unknown as BoardHost;
     const w = watchVersions(failing, st);
     try {
       await w.ready;
-      const logged = () => recentLog().find((l) => l.includes("[warn]") && l.includes("bBad") && l.includes("sidebar is gone"));
+      const logged = () =>
+        recentLog().find((l) => l.includes("[warn]") && l.includes("bBad") && l.includes("sidebar is gone"));
       expect(logged()).toMatch(/versions: could not count new versions on closed board bBad: sidebar is gone/);
       expect(counted).toContain("bOk");
-    } finally { w.dispose(); fs.rmSync(d2, { recursive: true, force: true }); }
+    } finally {
+      w.dispose();
+      fs.rmSync(d2, { recursive: true, force: true });
+    }
   });
 });

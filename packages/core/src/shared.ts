@@ -5,7 +5,15 @@ import { computeFlows, type Flows } from "./flow";
 /** 有这张卡的一块白板：名字、这张卡在那块白板上的调用图标记（字母或图标名） */
 export type SharedBoard = { id: string; name: string; mark?: string; icon?: string };
 /** 别的白板上连进这张卡的箭头：从哪张卡（哪一行）来 */
-export type SharedIn = { board: string; boardName: string; card: string; title: string; line?: number; call?: string; label?: string };
+export type SharedIn = {
+  board: string;
+  boardName: string;
+  card: string;
+  title: string;
+  line?: number;
+  call?: string;
+  label?: string;
+};
 export type SharedInfo = { boards: SharedBoard[]; ins: SharedIn[] };
 
 type Entry = { id: string; board: Board; refs: ReadonlySet<string> };
@@ -16,7 +24,11 @@ export function sharedInfo(all: Entry[], here: string): Record<string, SharedInf
   const out: Record<string, SharedInfo> = {};
   if (!me?.refs.size) return out;
   const flows = new Map<string, Flows>();
-  const flowsOf = (e: Entry) => { let f = flows.get(e.id); if (!f) flows.set(e.id, (f = computeFlows(e.board))); return f; };
+  const flowsOf = (e: Entry) => {
+    let f = flows.get(e.id);
+    if (!f) flows.set(e.id, (f = computeFlows(e.board)));
+    return f;
+  };
   for (const card of me.refs) {
     const on = all.filter((e) => e.refs.has(card) && e.board.cards.some((c) => c.id === card));
     if (on.length < 2) continue;

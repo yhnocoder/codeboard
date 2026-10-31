@@ -17,19 +17,38 @@ import { stubView } from "./helpers";
 type Ask = Extract<HostToBoard, { type: "ask" }>;
 const W = nodeWorkspace();
 const vscodeAsked: string[] = [];
-W.ui = { ...W.ui, input: async (o) => { vscodeAsked.push(o.prompt); return "From VS Code"; }, pick: async (items) => { vscodeAsked.push("pick"); return items[0]; } };
+W.ui = {
+  ...W.ui,
+  input: async (o) => {
+    vscodeAsked.push(o.prompt);
+    return "From VS Code";
+  },
+  pick: async (items) => {
+    vscodeAsked.push("pick");
+    return items[0];
+  },
+};
 const views: ReturnType<typeof stubView>[] = [];
 const env: HostEnv = {
   globalState: { get: () => undefined, set: async () => undefined },
-  openView: () => { const v = stubView(); views.push(v); return v.view; },
+  openView: () => {
+    const v = stubView();
+    views.push(v);
+    return v.view;
+  },
 };
 const dir = fs.mkdtempSync("/tmp/codeboard-prompts-");
 const store = new Storage(nodeFs, { dir: () => dir });
 let hub: BoardHub;
 const asks = () => views[0].posted.filter((m): m is Ask => m.type === "ask");
-const answer = (id: number, value: string | number | null) => hub.handler(hub.get("bP")!, { type: "answer", id, value });
+const answer = (id: number, value: string | number | null) =>
+  hub.handler(hub.get("bP")!, { type: "answer", id, value });
 /** The next question posted to the board (after the board is given the keyboard) */
-const nextAsk = (n: number) => vi.waitFor(() => { expect(asks().length).toBe(n); return asks().at(-1)!; });
+const nextAsk = (n: number) =>
+  vi.waitFor(() => {
+    expect(asks().length).toBe(n);
+    return asks().at(-1)!;
+  });
 const order: string[] = [];
 
 beforeAll(async () => {
@@ -39,24 +58,58 @@ beforeAll(async () => {
   hub.handler = makeHandler(hub);
   const p = (await hub.show("bP"))!;
   p.ready = true;
-  p.view.focus = async () => { order.push("focus"); };
+  p.view.focus = async () => {
+    order.push("focus");
+  };
   const post = p.view.postMessage;
-  p.view.postMessage = (m) => { if (m.type === "ask") order.push("ask"); post(m); };
+  p.view.postMessage = (m) => {
+    if (m.type === "ask") order.push("ask");
+    post(m);
+  };
 });
-afterAll(() => { hub.dispose(); fs.rmSync(dir, { recursive: true, force: true }); });
+afterAll(() => {
+  hub.dispose();
+  fs.rmSync(dir, { recursive: true, force: true });
+});
 
 describe("prompts", () => {
   it("asks in a board dialog and resolves with the board's answer", async () => {
     const p = hub.get("bP")!;
-    const typed = prompts(p).input({ title: "Capture Run", prompt: "Run a Python entry once", ok: "Run", value: "a.py" });
+    const typed = prompts(p).input({
+      title: "Capture Run",
+      prompt: "Run a Python entry once",
+      ok: "Run",
+      value: "a.py",
+    });
     const a = await nextAsk(1);
-    expect(a.ask).toEqual({ kind: "text", title: "Capture Run", text: "Run a Python entry once", value: "a.py", placeholder: undefined, ok: "Run", password: undefined });
+    expect(a.ask).toEqual({
+      kind: "text",
+      title: "Capture Run",
+      text: "Run a Python entry once",
+      value: "a.py",
+      placeholder: undefined,
+      ok: "Run",
+      password: undefined,
+    });
     await answer(a.id, "b.py --steps 2");
     expect(await typed).toBe("b.py --steps 2");
 
-    const picked = prompts(p).pick([{ label: "One", icon: "board" as const, k: 1 }, { label: "Two", description: "here", k: 2 }], { placeHolder: "Which?" });
+    const picked = prompts(p).pick(
+      [
+        { label: "One", icon: "board" as const, k: 1 },
+        { label: "Two", description: "here", k: 2 },
+      ],
+      { placeHolder: "Which?" },
+    );
     const b = await nextAsk(2);
-    expect(b.ask).toEqual({ kind: "pick", title: "Which?", items: [{ label: "One", description: undefined, detail: undefined }, { label: "Two", description: "here", detail: undefined }] });
+    expect(b.ask).toEqual({
+      kind: "pick",
+      title: "Which?",
+      items: [
+        { label: "One", description: undefined, detail: undefined },
+        { label: "Two", description: "here", detail: undefined },
+      ],
+    });
     await answer(b.id, 1);
     expect((await picked)?.k).toBe(2);
     expect(vscodeAsked).toEqual([]);

@@ -59,10 +59,35 @@ export interface WorkspaceLanguage {
 }
 
 /** 补全的一项（从语言服务转过来）：insert 缺省 = label；from / to = 这一行上要替换的列（缺省 = 光标前的词） */
-export type LspItem = { label: string; kind?: LspKind; detail?: string; doc?: string; insert?: string; from?: number; to?: number };
-export type LspKind = "function" | "method" | "class" | "interface" | "enum" | "variable" | "constant" | "property" | "module" | "keyword" | "type" | "text";
+export type LspItem = {
+  label: string;
+  kind?: LspKind;
+  detail?: string;
+  doc?: string;
+  insert?: string;
+  from?: number;
+  to?: number;
+};
+export type LspKind =
+  | "function"
+  | "method"
+  | "class"
+  | "interface"
+  | "enum"
+  | "variable"
+  | "constant"
+  | "property"
+  | "module"
+  | "keyword"
+  | "type"
+  | "text";
 /** 签名提示：label 是整个签名，params 是每个参数在 label 里的 [起, 止)，active = 当前参数（没有时 -1） */
-export type LspSignature = { label: string; doc?: string; params: { at: [number, number]; doc?: string }[]; active: number };
+export type LspSignature = {
+  label: string;
+  doc?: string;
+  params: { at: [number, number]; doc?: string }[];
+  active: number;
+};
 
 /** 白板里编辑中的代码的虚拟文档（不在编辑器里显示）：语言服务照它回答。行列从 0 开始 */
 export interface WorkspaceScratch {
@@ -114,7 +139,14 @@ export type PickIcon = "board" | "boards" | "folder" | "file" | "add" | "class" 
 export type PickItem = { label: string; description?: string; detail?: string; icon?: PickIcon };
 export type PickOpts = { placeHolder?: string; title?: string; matchOnDescription?: boolean };
 /** title: what is asked (the dialog's title on a board); ok: the button that accepts it there; password: the text is a secret */
-export type InputOpts = { prompt: string; value?: string; placeHolder?: string; title?: string; ok?: string; password?: boolean };
+export type InputOpts = {
+  prompt: string;
+  value?: string;
+  placeHolder?: string;
+  title?: string;
+  ok?: string;
+  password?: boolean;
+};
 
 export interface WorkspaceUi {
   info(text: string, ...actions: string[]): Promise<string | undefined>;
@@ -124,7 +156,12 @@ export interface WorkspaceUi {
   pick<T extends PickItem>(items: T[], opts?: PickOpts): Promise<T | undefined>;
   input(opts: InputOpts): Promise<string | undefined>;
   /** 选一个文件（filters）或文件夹（folders） */
-  openDialog(opts: { folders?: boolean; filters?: Record<string, string[]>; label: string; title?: string }): Promise<string | undefined>;
+  openDialog(opts: {
+    folders?: boolean;
+    filters?: Record<string, string[]>;
+    label: string;
+    title?: string;
+  }): Promise<string | undefined>;
   saveDialog(opts: { defaultPath: string; filters: Record<string, string[]> }): Promise<string | undefined>;
   openUrl(url: string): Promise<void>;
   openFolder(abs: string): Promise<void>;
@@ -144,7 +181,11 @@ export interface WorkspaceAi {
    * 问一个语言模型。model = AiModel 的 id，不给 = 自动挑一个（有图时只挑收图的，fast 时先挑小模型）。
    * 不抛出：没有模型、用户没同意、取消都折成 fail（ImageAiResult 的那几种）
    */
-  chat(model: string | undefined, req: AiChatRequest, opts: { signal: AbortSignal; justification: string }): Promise<AiChatResult>;
+  chat(
+    model: string | undefined,
+    req: AiChatRequest,
+    opts: { signal: AbortSignal; justification: string },
+  ): Promise<AiChatResult>;
 }
 /** 编辑器的密钥存储（VS Code 的 SecretStorage）：不进设置、白板文件、日志 */
 export interface WorkspaceSecrets {
@@ -153,8 +194,16 @@ export interface WorkspaceSecrets {
   delete(key: string): Promise<void>;
 }
 /** 发给编辑器的语言模型的一次请求：system 和 user 两段字，可带一张图（编辑器的接口没有 system 角色时并进第一条）；maxChars = 回答读到这么长就停 */
-export type AiChatRequest = { system: string; user: string; image?: { mime: string; data: Uint8Array }; fast?: boolean; maxChars?: number };
-export type AiChatResult = { text: string; via: string } | { fail: "nomodel" | "noconsent" | "canceled" | "http"; message?: string; via?: string };
+export type AiChatRequest = {
+  system: string;
+  user: string;
+  image?: { mime: string; data: Uint8Array };
+  fast?: boolean;
+  maxChars?: number;
+};
+export type AiChatResult =
+  | { text: string; via: string }
+  | { fail: "nomodel" | "noconsent" | "canceled" | "http"; message?: string; via?: string };
 
 export interface Workspace {
   files: WorkspaceFiles;

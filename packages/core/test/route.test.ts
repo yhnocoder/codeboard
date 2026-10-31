@@ -59,7 +59,8 @@ describe("tilt (W03 D 11)", () => {
 
 describe("slide (W03 B 6)", () => {
   it("moves the end and turns its direction", () => {
-    const a = { x: 0, y: 10, nx: -1, ny: 0 }, b = { x: 300, y: 10, nx: 1, ny: 0 };
+    const a = { x: 0, y: 10, nx: -1, ny: 0 },
+      b = { x: 300, y: 10, nx: 1, ny: 0 };
     const m = slide(a, b, 0.5);
     expect(m.x).toBe(150);
     expect(Math.hypot(m.nx, m.ny)).toBeCloseTo(1);
@@ -69,8 +70,15 @@ describe("slide (W03 B 6)", () => {
 
 describe("elbow clearance (City roads)", () => {
   // Stacked cards, both ends on the right edge: the vertical trunk runs outside the wider card
-  const p = { x: 300, y: 40, nx: 1, ny: 0 }, q = { x: 420, y: 500, nx: 1, ny: 0 };
-  const trunkX = (d: string) => Math.max(...d.slice(1).split(" L").map((v) => +v.split(" ")[0]));
+  const p = { x: 300, y: 40, nx: 1, ny: 0 },
+    q = { x: 420, y: 500, nx: 1, ny: 0 };
+  const trunkX = (d: string) =>
+    Math.max(
+      ...d
+        .slice(1)
+        .split(" L")
+        .map((v) => +v.split(" ")[0]),
+    );
   it("default keeps the trunk 24 px off the outer card edge", () => {
     expect(trunkX(connect(p, q, "elbow").d)).toBe(444);
   });
@@ -84,25 +92,33 @@ describe("close cards: the arrow never runs through either card (#65)", () => {
   function sample(d: string): { x: number; y: number }[] {
     const tok = d.match(/[MLQC]|-?\d+(?:\.\d+)?/g)!;
     const out: { x: number; y: number }[] = [];
-    let i = 0, cur = { x: 0, y: 0 }, cmd = "M";
+    let i = 0,
+      cur = { x: 0, y: 0 },
+      cmd = "M";
     const num = () => +tok[i++];
     while (i < tok.length) {
       if (/[MLQC]/.test(tok[i])) cmd = tok[i++];
-      if (cmd === "M") { cur = { x: num(), y: num() }; out.push(cur); continue; }
+      if (cmd === "M") {
+        cur = { x: num(), y: num() };
+        out.push(cur);
+        continue;
+      }
       const k = cmd === "L" ? 1 : cmd === "Q" ? 2 : 3;
       const ps = [cur];
       for (let j = 0; j < k; j++) ps.push({ x: num(), y: num() });
       for (let s = 1; s <= 24; s++) {
         const t = s / 24;
         let q = ps.slice();
-        while (q.length > 1) q = q.slice(1).map((v, n) => ({ x: q[n].x + (v.x - q[n].x) * t, y: q[n].y + (v.y - q[n].y) * t }));
+        while (q.length > 1)
+          q = q.slice(1).map((v, n) => ({ x: q[n].x + (v.x - q[n].x) * t, y: q[n].y + (v.y - q[n].y) * t }));
         out.push(q[0]);
       }
       cur = ps[k];
     }
     return out;
   }
-  const inside = (pt: { x: number; y: number }, b: Box, e: number) => pt.x > b.x + e && pt.x < b.x + b.w - e && pt.y > b.y + e && pt.y < b.y + b.h - e;
+  const inside = (pt: { x: number; y: number }, b: Box, e: number) =>
+    pt.x > b.x + e && pt.x < b.x + b.w - e && pt.y > b.y + e && pt.y < b.y + b.h - e;
   const A: Box = { x: 0, y: 0, w: 300, h: 200 };
   const sides = ["left", "right", "top", "bottom"] as const;
   type S = (typeof sides)[number];
@@ -110,11 +126,13 @@ describe("close cards: the arrow never runs through either card (#65)", () => {
 
   /** 指定的边正对着、贴着另一张卡（出头第一步就进卡）：怎么走都穿卡，不算 */
   function blocked(b: Box, s: [S, S]) {
-    const p = anchor(A, s[0]), q = anchor(b, s[1]);
+    const p = anchor(A, s[0]),
+      q = anchor(b, s[1]);
     return inside({ x: p.x + p.nx, y: p.y + p.ny }, b, 0) || inside({ x: q.x + q.nx, y: q.y + q.ny }, A, 0);
   }
   function bad(b: Box, s: [S, S], route: "curve" | "elbow"): string | null {
-    const p = anchor(A, s[0]), q = anchor(b, s[1]);
+    const p = anchor(A, s[0]),
+      q = anchor(b, s[1]);
     const sh = connect(p, q, route, undefined, { a: A, b });
     const e = route === "curve" ? 4 : 0.5;
     const pts = sample(sh.d);
@@ -122,19 +140,22 @@ describe("close cards: the arrow never runs through either card (#65)", () => {
     if (hit) return `enters a card at ${hit.x},${hit.y}: ${sh.d}`;
     const last = pts[pts.length - 1];
     if (Math.hypot(last.x - q.x, last.y - q.y) > 0.2) return `ends at ${last.x},${last.y}, not on the target's edge`;
-    if (sh.inDir.x * -q.nx + sh.inDir.y * -q.ny < 0.6) return `head does not point into the target: ${JSON.stringify(sh.inDir)}`;
+    if (sh.inDir.x * -q.nx + sh.inDir.y * -q.ny < 0.6)
+      return `head does not point into the target: ${JSON.stringify(sh.inDir)}`;
     return null;
   }
 
   // b 绕着 a 放一圈：左右缝 / 上下缝从负（叠着）到比出头还小，再到正常距离
   const gaps = [-120, -40, -8, 0, 4, 10, 16, 24, 31, 40, 80];
   const placements: Box[] = [];
-  for (const g of gaps) for (const dy of [-260, -150, -60, -17, 0, 30, 90, 150, 260]) {
-    placements.push({ x: 300 + g, y: dy, w: 260, h: 160 }, { x: -260 - g, y: dy, w: 260, h: 160 });
-  }
-  for (const g of gaps) for (const dx of [-300, -150, -40, 0, 60, 200, 330]) {
-    placements.push({ x: dx, y: 200 + g, w: 260, h: 160 }, { x: dx, y: -160 - g, w: 260, h: 160 });
-  }
+  for (const g of gaps)
+    for (const dy of [-260, -150, -60, -17, 0, 30, 90, 150, 260]) {
+      placements.push({ x: 300 + g, y: dy, w: 260, h: 160 }, { x: -260 - g, y: dy, w: 260, h: 160 });
+    }
+  for (const g of gaps)
+    for (const dx of [-300, -150, -40, 0, 60, 200, 330]) {
+      placements.push({ x: dx, y: 200 + g, w: 260, h: 160 }, { x: dx, y: -160 - g, w: 260, h: 160 });
+    }
   const apart = (b: Box) => b.x >= A.x + A.w || b.x + b.w <= A.x || b.y >= A.y + A.h || b.y + b.h <= A.y;
 
   for (const route of ["elbow", "curve"] as const) {
@@ -151,11 +172,12 @@ describe("close cards: the arrow never runs through either card (#65)", () => {
       const fails: string[] = [];
       for (const b of placements) {
         if (!apart(b)) continue;
-        for (const s0 of sides) for (const s1 of sides) {
-          if (blocked(b, [s0, s1])) continue;
-          const why = bad(b, [s0, s1], route);
-          if (why) fails.push(`${JSON.stringify(b)} ${s0}→${s1} ${why}`);
-        }
+        for (const s0 of sides)
+          for (const s1 of sides) {
+            if (blocked(b, [s0, s1])) continue;
+            const why = bad(b, [s0, s1], route);
+            if (why) fails.push(`${JSON.stringify(b)} ${s0}→${s1} ${why}`);
+          }
       }
       expect(fails.length, fails.slice(0, 5).join("\n")).toBe(0);
     });

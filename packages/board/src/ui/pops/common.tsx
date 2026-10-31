@@ -8,9 +8,15 @@ export type PopProps<K extends Pop["kind"]> = { inst: PopInst; pop: Extract<Pop,
 export function PopHead(p: { title: JSX.Element; inst: PopInst; right?: JSX.Element }) {
   return (
     <div class="ph">
-      <span class="pt">{p.title}</span><span class="grow" />{p.right}
-      <Show when={p.inst.pinned}><span class="pinned">Pinned</span></Show>
-      <button class="ib" aria-label="Close" onClick={() => closePop(p.inst.id)}><Icon name="close" size={13} /></button>
+      <span class="pt">{p.title}</span>
+      <span class="grow" />
+      {p.right}
+      <Show when={p.inst.pinned}>
+        <span class="pinned">Pinned</span>
+      </Show>
+      <button class="ib" aria-label="Close" onClick={() => closePop(p.inst.id)}>
+        <Icon name="close" size={13} />
+      </button>
     </div>
   );
 }
@@ -19,8 +25,20 @@ export function PopHead(p: { title: JSX.Element; inst: PopInst; right?: JSX.Elem
 export function Code(p: { start: number; html: string[]; hl?: number; rows?: number[] }) {
   const no = (i: number) => p.rows?.[i] ?? p.start + i;
   return (
-    <div class="pcode"><div class="pc-in">
-      <For each={p.html}>{(h, i) => <div class="pl" classList={{ hl: p.hl === no(i()), jump: i() > 0 && !!p.rows && no(i()) !== no(i() - 1) + 1 }}><span class="no">{no(i())}</span><span class="t" innerHTML={h || "​"} /></div>}</For>
-    </div></div>
+    <div class="pcode">
+      <div class="pc-in">
+        <For each={p.html}>
+          {(h, i) => (
+            <div
+              class="pl"
+              classList={{ hl: p.hl === no(i()), jump: i() > 0 && !!p.rows && no(i()) !== no(i() - 1) + 1 }}
+            >
+              <span class="no">{no(i())}</span>
+              <span class="t" innerHTML={h || "​"} />
+            </div>
+          )}
+        </For>
+      </div>
+    </div>
   );
 }

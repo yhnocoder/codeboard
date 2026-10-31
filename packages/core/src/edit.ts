@@ -3,7 +3,33 @@
 // 纯函数，直接改传进来的 board（白板里在 mutate 的 produce 里调用）。
 import { diffArrays } from "diff";
 import { mapLines } from "./diff";
-import { activeOf, blockAt, blockSig, clone, copyTwinContent, twinContent, cornerAt, findCard, mdHeading, sameVersion, UPSTREAM, withCols, sortSegments, mergeOverlapping, uid, type Board, type Card, type CodeCard, type End, type Link, type Place, type Segment, type Sidenote, type Sticker, type StickerAt } from "./model";
+import {
+  activeOf,
+  blockAt,
+  blockSig,
+  clone,
+  copyTwinContent,
+  twinContent,
+  cornerAt,
+  findCard,
+  mdHeading,
+  sameVersion,
+  UPSTREAM,
+  withCols,
+  sortSegments,
+  mergeOverlapping,
+  uid,
+  type Board,
+  type Card,
+  type CodeCard,
+  type End,
+  type Link,
+  type Place,
+  type Segment,
+  type Sidenote,
+  type Sticker,
+  type StickerAt,
+} from "./model";
 import { escapeRegExp, type BoundVal, type CallAlt } from "@codeboard/analysis/basics";
 import { estSize, type Rect } from "./layout";
 import { headingTree, splitHeadings } from "./split";
@@ -29,13 +55,34 @@ export function pruneRefs(b: Board): void {
   const ids = () => new Map(b.cards.map((c) => [c.id, c]));
   let cards = ids();
   const broken = b.cards.filter((c) => c.kind === "compare" && c.cols.some((k) => !cards.has(k))).map((c) => c.id);
-  if (broken.length) { removeCards(b, broken); cards = ids(); }
-  const segOk = (card: string, seg?: string) => { const c = cards.get(card); return !!c && (!seg || (c.kind === "code" && c.segments.some((s) => s.id === seg))); };
-  removeLinks(b, b.links.filter((l) => !segOk(l.from.card, l.from.seg) || !segOk(l.to.card, l.to.seg)).map((l) => l.id));
-  removeSidenotes(b, b.sidenotes.filter((n) => !segOk(n.at.card, n.at.seg) || (n.kind === "card" && !cards.has(n.card))).map((n) => n.id));
-  removeStickers(b, b.stickers.filter((k) => k.at.kind === "line" && !segOk(k.at.card, k.at.seg)).map((k) => k.id));
+  if (broken.length) {
+    removeCards(b, broken);
+    cards = ids();
+  }
+  const segOk = (card: string, seg?: string) => {
+    const c = cards.get(card);
+    return !!c && (!seg || (c.kind === "code" && c.segments.some((s) => s.id === seg)));
+  };
+  removeLinks(
+    b,
+    b.links.filter((l) => !segOk(l.from.card, l.from.seg) || !segOk(l.to.card, l.to.seg)).map((l) => l.id),
+  );
+  removeSidenotes(
+    b,
+    b.sidenotes
+      .filter((n) => !segOk(n.at.card, n.at.seg) || (n.kind === "card" && !cards.has(n.card)))
+      .map((n) => n.id),
+  );
+  removeStickers(
+    b,
+    b.stickers.filter((k) => k.at.kind === "line" && !segOk(k.at.card, k.at.seg)).map((k) => k.id),
+  );
   for (const k of b.stickers) if (k.q?.answer && !cards.has(k.q.answer)) delete k.q.answer;
-  const gone = new Set([...Object.keys(b.place), ...Object.keys(b.marks ?? {}), ...Object.keys(b.born ?? {})].filter((id) => !cards.has(id)));
+  const gone = new Set(
+    [...Object.keys(b.place), ...Object.keys(b.marks ?? {}), ...Object.keys(b.born ?? {})].filter(
+      (id) => !cards.has(id),
+    ),
+  );
   for (const id of gone) delete b.place[id];
   forget(b, gone);
   const secs = new Set(b.sections.map((s) => s.id));
@@ -75,8 +122,14 @@ export function renameCard(b: Board, from: string, to: string): void {
     c.id = r(c.id);
     if (c.kind === "compare") c.cols = [r(c.cols[0]), r(c.cols[1])];
   }
-  if (b.place[from]) { b.place[to] = b.place[from]; delete b.place[from]; }
-  for (const l of b.links) { l.from.card = r(l.from.card); l.to.card = r(l.to.card); }
+  if (b.place[from]) {
+    b.place[to] = b.place[from];
+    delete b.place[from];
+  }
+  for (const l of b.links) {
+    l.from.card = r(l.from.card);
+    l.to.card = r(l.to.card);
+  }
   for (const n of b.sidenotes) {
     n.at.card = r(n.at.card);
     if (n.kind === "card") n.card = r(n.card);
@@ -87,12 +140,28 @@ export function renameCard(b: Board, from: string, to: string): void {
     else if (at.on && "card" in at.on) at.on.card = r(at.on.card);
     if (k.q?.answer) k.q.answer = r(k.q.answer);
   }
-  for (const m of [b.born, b.marks] as (Record<string, unknown> | undefined)[]) if (m && from in m) { m[to] = m[from]; delete m[from]; }
+  for (const m of [b.born, b.marks] as (Record<string, unknown> | undefined)[])
+    if (m && from in m) {
+      m[to] = m[from];
+      delete m[from];
+    }
 }
 
 /** 这一行的这个调用连到的卡没了（lost.to，比如子白板里删了那张卡）的 Call 箭头删掉：重新展开出来的箭头替它 */
 export function removeLostCalls(b: Board, from: End, name: string): void {
-  removeLinks(b, b.links.filter((l) => l.lost?.to && l.call?.name === name && l.from.card === from.card && l.from.seg === from.seg && l.from.line === from.line).map((l) => l.id));
+  removeLinks(
+    b,
+    b.links
+      .filter(
+        (l) =>
+          l.lost?.to &&
+          l.call?.name === name &&
+          l.from.card === from.card &&
+          l.from.seg === from.seg &&
+          l.from.line === from.line,
+      )
+      .map((l) => l.id),
+  );
 }
 
 /** 卡右上角、绑在卡上的贴纸位置（Compare 的栏 → 那张 Compare） */
@@ -110,7 +179,8 @@ export function removeLinks(b: Board, ids: Iterable<string>): void {
 
 /** 绑着的卡 / 箭头没了的 Sticker 一起删（删卡、删箭头之后调用；撤销时一起回来） */
 function pruneStickers(b: Board): void {
-  const cards = new Set(b.cards.map((c) => c.id)), links = new Set(b.links.map((l) => l.id));
+  const cards = new Set(b.cards.map((c) => c.id)),
+    links = new Set(b.links.map((l) => l.id));
   b.stickers = b.stickers.filter((k) => {
     const on = k.at.kind === "canvas" ? k.at.on : undefined;
     return !on || ("card" in on ? cards.has(on.card) : links.has(on.link));
@@ -133,7 +203,8 @@ export function retargetCards(b: Board, ids: Iterable<string>, to: Retarget): vo
   };
   const touched = new Set<string>();
   for (const l of b.links) {
-    const f = gone.has(l.from.card), t = gone.has(l.to.card);
+    const f = gone.has(l.from.card),
+      t = gone.has(l.to.card);
     if (f) l.from = moveEnd(l.from);
     if (t) l.to = moveEnd(l.to);
     if (f || t) touched.add(l.id);
@@ -151,7 +222,8 @@ export function retargetCards(b: Board, ids: Iterable<string>, to: Retarget): vo
     if (at.kind === "line" && gone.has(at.card)) {
       const o = to({ card: at.card, seg: at.seg, line: at.line });
       k.at = o.seg ? { kind: "line", card: o.card, seg: o.seg, line: at.line } : cornerOf(b, o.card);
-    } else if (at.kind === "canvas" && at.on && "card" in at.on && gone.has(at.on.card)) at.on = { card: to({ card: at.on.card }).card };
+    } else if (at.kind === "canvas" && at.on && "card" in at.on && gone.has(at.on.card))
+      at.on = { card: to({ card: at.on.card }).card };
   }
   pruneStickers(b);
 }
@@ -180,18 +252,29 @@ export function replaceCards(b: Board, ids: Iterable<string>, to: Retarget): voi
  * 原来的实现 oldAlt 放回被点的备选（第 alt 个）的位置；否则旧卡留着（新卡往下挪 40，成了第二条分支），只把这条箭头改连新卡，被点的备选拿掉。
  * label / vals：箭头的新标签、新取值（不给就不改）。返回旧卡留没留着；箭头不在或不是 Call 时什么都不改，返回 null
  */
-export function swapCallTarget(b: Board, linkId: string, card: Card, o: { alt: number; oldAlt?: CallAlt; w: number; label?: string; vals?: BoundVal[] }): { kept: boolean } | null {
+export function swapCallTarget(
+  b: Board,
+  linkId: string,
+  card: Card,
+  o: { alt: number; oldAlt?: CallAlt; w: number; label?: string; vals?: BoundVal[] },
+): { kept: boolean } | null {
   const l = b.links.find((x) => x.id === linkId);
   if (!l?.call) return null;
   const oldId = l.to.card;
-  const kept = b.links.some((x) => x.id !== linkId && (x.from.card === oldId || x.to.card === oldId)) || b.sidenotes.some((n) => n.at.card === oldId);
+  const kept =
+    b.links.some((x) => x.id !== linkId && (x.from.card === oldId || x.to.card === oldId)) ||
+    b.sidenotes.some((n) => n.at.card === oldId);
   const p = b.place[oldId];
   const section = p?.section;
-  placeCards(b, [{ card, place: p ? { x: p.x, y: kept ? p.y + 40 : p.y, w: p.w } : { x: 0, y: 0, w: o.w } }], { copy: false, at: (q) => (section ? { ...q, section } : q) });
+  placeCards(b, [{ card, place: p ? { x: p.x, y: kept ? p.y + 40 : p.y, w: p.w } : { x: 0, y: 0, w: o.w } }], {
+    copy: false,
+    at: (q) => (section ? { ...q, section } : q),
+  });
   const alts = [...(l.call.alts ?? [])];
   alts.splice(o.alt, 1, ...(o.oldAlt && !kept ? [o.oldAlt] : []));
   if (o.label) l.label = o.label;
-  if (alts.length) l.call.alts = alts; else delete l.call.alts;
+  if (alts.length) l.call.alts = alts;
+  else delete l.call.alts;
   if (o.vals) l.call.vals = o.vals;
   if (kept) l.to = { card: card.id };
   else replaceCards(b, [oldId], () => ({ card: card.id }));
@@ -212,7 +295,10 @@ export function renumberBorn(b: Board): void {
 export function danglingRefs(b: Board): string[] {
   const out: string[] = [];
   const cards = new Map<string, Board["cards"][number]>();
-  for (const c of b.cards) { if (cards.has(c.id)) out.push(`duplicate card id ${c.id}`); cards.set(c.id, c); }
+  for (const c of b.cards) {
+    if (cards.has(c.id)) out.push(`duplicate card id ${c.id}`);
+    cards.set(c.id, c);
+  }
   const links = new Set(b.links.map((l) => l.id));
   const sections = new Set(b.sections.map((s) => s.id));
   const segOk = (card: string, seg?: string) => {
@@ -220,15 +306,19 @@ export function danglingRefs(b: Board): string[] {
     if (!c) return false;
     return !seg || (c.kind === "code" && c.segments.some((s) => s.id === seg));
   };
-  for (const l of b.links) for (const e of [l.from, l.to]) if (!segOk(e.card, e.seg)) out.push(`link ${l.id} → missing ${e.card}${e.seg ? `/${e.seg}` : ""}`);
+  for (const l of b.links)
+    for (const e of [l.from, l.to])
+      if (!segOk(e.card, e.seg)) out.push(`link ${l.id} → missing ${e.card}${e.seg ? `/${e.seg}` : ""}`);
   // Note 的块：只能在 Note 上，和行不能同时有；块还在不在由白板拆 Markdown 时看（blockAt 找不到就画在卡头）
-  for (const l of b.links) for (const e of [l.from, l.to]) {
-    if (!e.block) continue;
-    const c = cards.get(e.card);
-    if (c && c.kind !== "note") out.push(`link ${l.id} → block on ${e.card}, which is not a Note`);
-    if (e.seg !== undefined || e.line !== undefined) out.push(`link ${l.id} → both a block and a line on ${e.card}`);
-    if (!Number.isInteger(e.block.i) || e.block.i < 0 || !e.block.h) out.push(`link ${l.id} → bad block ${JSON.stringify(e.block)} on ${e.card}`);
-  }
+  for (const l of b.links)
+    for (const e of [l.from, l.to]) {
+      if (!e.block) continue;
+      const c = cards.get(e.card);
+      if (c && c.kind !== "note") out.push(`link ${l.id} → block on ${e.card}, which is not a Note`);
+      if (e.seg !== undefined || e.line !== undefined) out.push(`link ${l.id} → both a block and a line on ${e.card}`);
+      if (!Number.isInteger(e.block.i) || e.block.i < 0 || !e.block.h)
+        out.push(`link ${l.id} → bad block ${JSON.stringify(e.block)} on ${e.card}`);
+    }
   // 标记的组合（LinkMarks）：类型挡住了写法，这里挡住从别处来的数据
   for (const l of b.links as { id: string; gen?: true; call?: unknown; rpc?: unknown; back?: true }[]) {
     const extra = (["call", "rpc", "back"] as const).filter((k) => l[k]);
@@ -244,19 +334,28 @@ export function danglingRefs(b: Board): string[] {
     if (!at.on) return null;
     return "card" in at.on ? (cards.has(at.on.card) ? null : at.on.card) : links.has(at.on.link) ? null : at.on.link;
   };
-  for (const k of b.stickers) { const m = stickerRef(k); if (m) out.push(`sticker ${k.id} on missing ${m}`); }
-  for (const k of b.stickers) if (k.q?.answer && !cards.has(k.q.answer)) out.push(`question ${k.id} answered by missing ${k.q.answer}`);
-  for (const c of b.cards) if (c.kind === "compare") for (const k of c.cols) if (!cards.has(k)) out.push(`compare ${c.id} column missing ${k}`);
+  for (const k of b.stickers) {
+    const m = stickerRef(k);
+    if (m) out.push(`sticker ${k.id} on missing ${m}`);
+  }
+  for (const k of b.stickers)
+    if (k.q?.answer && !cards.has(k.q.answer)) out.push(`question ${k.id} answered by missing ${k.q.answer}`);
+  for (const c of b.cards)
+    if (c.kind === "compare")
+      for (const k of c.cols) if (!cards.has(k)) out.push(`compare ${c.id} column missing ${k}`);
   for (const id of Object.keys(b.place)) if (!cards.has(id)) out.push(`place for missing card ${id}`);
-  for (const s of b.sections) if (s.parent && !sections.has(s.parent)) out.push(`section ${s.id} parent missing ${s.parent}`);
+  for (const s of b.sections)
+    if (s.parent && !sections.has(s.parent)) out.push(`section ${s.id} parent missing ${s.parent}`);
   for (const id of Object.keys(b.marks ?? {})) if (!cards.has(id)) out.push(`graph mark for missing card ${id}`);
   for (const id of Object.keys(b.born ?? {})) if (!cards.has(id)) out.push(`creation order for missing card ${id}`);
   for (const c of b.cards) if (c.kind === "code" && c.variants) out.push(...variantProblems(c));
   const twins = new Map<string, string>();
   for (const c of b.cards) {
     if (!c.same) continue;
-    const k = twinContent(c), p = twins.get(c.same);
-    if (p === undefined) twins.set(c.same, k); else if (p !== k) out.push(`card ${c.id} differs from the other places of the same card`);
+    const k = twinContent(c),
+      p = twins.get(c.same);
+    if (p === undefined) twins.set(c.same, k);
+    else if (p !== k) out.push(`card ${c.id} differs from the other places of the same card`);
   }
   return out;
 }
@@ -265,14 +364,24 @@ export function danglingRefs(b: Board): string[] {
 function variantProblems(c: CodeCard): string[] {
   const vs = c.variants ?? [];
   const act = activeOf(c);
-  const ids = c.segments.map((s) => s.id).sort().join();
+  const ids = c.segments
+    .map((s) => s.id)
+    .sort()
+    .join();
   const out: string[] = [];
   if (vs[0]?.id !== UPSTREAM) out.push(`card ${c.id}: first variant is not upstream`);
   if (!vs.some((v) => v.id === act)) out.push(`card ${c.id} shows missing variant ${act}`);
   for (const v of vs) {
-    if (v.id === act) { if (v.segs) out.push(`card ${c.id}: shown variant ${v.id} keeps its own segments`); }
-    else if (!v.segs) out.push(`card ${c.id}: variant ${v.id} has no segments`);
-    else if (v.segs.map((s) => s.id).sort().join() !== ids) out.push(`card ${c.id}: variant ${v.id} segments do not match the card's`);
+    if (v.id === act) {
+      if (v.segs) out.push(`card ${c.id}: shown variant ${v.id} keeps its own segments`);
+    } else if (!v.segs) out.push(`card ${c.id}: variant ${v.id} has no segments`);
+    else if (
+      v.segs
+        .map((s) => s.id)
+        .sort()
+        .join() !== ids
+    )
+      out.push(`card ${c.id}: variant ${v.id} segments do not match the card's`);
   }
   return out;
 }
@@ -288,8 +397,15 @@ export function lineMapOf(old: Pick<Segment, "text" | "start">, now: Pick<Segmen
 
 /** 一段行映射到新版本：取区间里还在的行的首尾 */
 function mapRange(map: LineMap, a: number, e: number): [number, number] | null {
-  let lo = Infinity, hi = -Infinity;
-  for (let l = a; l <= e; l++) { const m = map(l); if (m) { lo = Math.min(lo, m); hi = Math.max(hi, m); } }
+  let lo = Infinity,
+    hi = -Infinity;
+  for (let l = a; l <= e; l++) {
+    const m = map(l);
+    if (m) {
+      lo = Math.min(lo, m);
+      hi = Math.max(hi, m);
+    }
+  }
   return lo <= hi ? [lo, hi] : null;
 }
 
@@ -300,7 +416,13 @@ function mapRange(map: LineMap, a: number, e: number): [number, number] | null {
  * 合并卡的 mergedFrom（拆开时用的原卡快照）里落在这段上的段也一起换版本、挪行，Unmerge 时行锚还对得上。
  * review：挂在内容变了的行上的 Sidenote 标上 review（新版本的标签），提醒复查（Update 时传）
  */
-export function rebaseSegment(b: Board, cardId: string, ns: Segment, map: LineMap = lineMapOf(findSeg(b, cardId, ns.id) ?? ns, ns), o: { review?: string; notes?: (n: Sidenote) => boolean } = {}): void {
+export function rebaseSegment(
+  b: Board,
+  cardId: string,
+  ns: Segment,
+  map: LineMap = lineMapOf(findSeg(b, cardId, ns.id) ?? ns, ns),
+  o: { review?: string; notes?: (n: Sidenote) => boolean } = {},
+): void {
   const owner = findOwner(b, cardId);
   const i = owner?.segments.findIndex((s) => s.id === ns.id) ?? -1;
   if (!owner || i < 0) return;
@@ -308,10 +430,23 @@ export function rebaseSegment(b: Board, cardId: string, ns: Segment, map: LineMa
   owner.segments[i] = remapSegMarks(ns, old, map);
   for (const o of owner.mergedFrom ?? []) {
     o.card.segments = o.card.segments.map((s) => {
-      if (s.path !== old.path || s.src.kind !== old.src.kind || !sameVersion(s.version, old.version) || s.start > old.end || s.end < old.start) return s;
+      if (
+        s.path !== old.path ||
+        s.src.kind !== old.src.kind ||
+        !sameVersion(s.version, old.version) ||
+        s.start > old.end ||
+        s.end < old.start
+      )
+        return s;
       const r = mapRange(map, Math.max(s.start, old.start), Math.min(s.end, old.end));
       if (!r) return s;
-      return { ...remapSegMarks(s, s, map), start: r[0], end: r[1], text: ns.text.slice(r[0] - ns.start, r[1] - ns.start + 1), version: ns.version };
+      return {
+        ...remapSegMarks(s, s, map),
+        start: r[0],
+        end: r[1],
+        text: ns.text.slice(r[0] - ns.start, r[1] - ns.start + 1),
+        version: ns.version,
+      };
     });
   }
   // 有 Variant 的卡：「只在某个 Variant」的 Sidenote 行号按那个 Variant 的代码算，只跟着当前显示的那个挪
@@ -323,20 +458,28 @@ export function rebaseSegment(b: Board, cardId: string, ns: Segment, map: LineMa
  * 新段 ns 带上旧段的隐藏 / 高亮 / 标注（按 map 映射过去，没了的行去掉）。返回一份拷贝。
  * 标注要被标的字还在那一行里：原位置不是那几个字时在新的这一行里找同样的字（找第一处），找不到就去掉
  */
-export function remapSegMarks(ns: Segment, old: Pick<Segment, "hidden" | "hl" | "annots" | "text" | "start">, map: LineMap): Segment {
+export function remapSegMarks(
+  ns: Segment,
+  old: Pick<Segment, "hidden" | "hl" | "annots" | "text" | "start">,
+  map: LineMap,
+): Segment {
   const hidden = (old.hidden ?? []).map(([a, e]) => mapRange(map, a, e)).filter((r): r is [number, number] => !!r);
   const hl = (old.hl ?? []).map(map).filter(Boolean);
   const annots = (old.annots ?? []).flatMap((a) => {
-    const line = map(a.line), words = (old.text[a.line - old.start] ?? "").slice(a.from, a.to);
+    const line = map(a.line),
+      words = (old.text[a.line - old.start] ?? "").slice(a.from, a.to);
     const t = line ? ns.text[line - ns.start] : undefined;
     if (!line || t === undefined || !words) return [];
     const from = t.slice(a.from, a.to) === words ? a.from : t.indexOf(words);
     return from < 0 ? [] : [{ ...a, line, from, to: from + words.length }];
   });
   const out = clone(ns);
-  if (hidden.length) out.hidden = hidden; else delete out.hidden;
-  if (hl.length) out.hl = hl; else delete out.hl;
-  if (annots.length) out.annots = annots; else delete out.annots;
+  if (hidden.length) out.hidden = hidden;
+  else delete out.hidden;
+  if (hl.length) out.hl = hl;
+  else delete out.hl;
+  if (annots.length) out.annots = annots;
+  else delete out.annots;
   return out;
 }
 
@@ -344,12 +487,23 @@ export function remapSegMarks(ns: Segment, old: Pick<Segment, "hidden" | "hl" | 
  * 挂在这张卡这一段上的 Sidenote（which 选的）行号按 map 挪；行没了改挂整卡并标上 lineRemoved。
  * mark：挪之前看一眼（Update 时标 review）
  */
-export function moveNoteLines(b: Board, cardId: string, segId: string, map: LineMap, which: (n: Sidenote) => boolean = () => true, mark?: (n: Sidenote, lines: [number, number]) => void): void {
+export function moveNoteLines(
+  b: Board,
+  cardId: string,
+  segId: string,
+  map: LineMap,
+  which: (n: Sidenote) => boolean = () => true,
+  mark?: (n: Sidenote, lines: [number, number]) => void,
+): void {
   for (const n of b.sidenotes) {
     if (n.at.card !== cardId || n.at.seg !== segId || !n.at.lines || !which(n)) continue;
     mark?.(n, n.at.lines);
     const r = mapRange(map, n.at.lines[0], n.at.lines[1]);
-    if (r) n.at.lines = r; else { n.at = { card: cardId }; n.lineRemoved = true; }
+    if (r) n.at.lines = r;
+    else {
+      n.at = { card: cardId };
+      n.lineRemoved = true;
+    }
   }
 }
 
@@ -358,27 +512,59 @@ export function moveNoteLines(b: Board, cardId: string, segId: string, map: Line
  * notes：哪些 Sidenote 要挪（缺省全部；别的白板改了共享卡时，跟着卡来的 Sidenote 那边已经挪好了，这边只挪自己的）。
  * review：挂着的行内容变了的 Sidenote 标上 review
  */
-export function moveLineRefs(b: Board, cardId: string, old: Segment, ns: Segment, map: LineMap, o: { notes?: (n: Sidenote) => boolean; review?: string } = {}): void {
+export function moveLineRefs(
+  b: Board,
+  cardId: string,
+  old: Segment,
+  ns: Segment,
+  map: LineMap,
+  o: { notes?: (n: Sidenote) => boolean; review?: string } = {},
+): void {
   const moveEnd = (l: Link, k: "from" | "to") => {
     const e = l[k];
     if (e.card !== cardId || e.seg !== ns.id || !e.line) return;
     const m = map(e.line);
-    if (m) { e.line = m; return; }
-    e.seg = undefined; e.line = undefined;
+    if (m) {
+      e.line = m;
+      return;
+    }
+    e.seg = undefined;
+    e.line = undefined;
     l.lost = { ...l.lost, [k]: true };
   };
-  for (const l of b.links) { moveEnd(l, "from"); moveEnd(l, "to"); }
+  for (const l of b.links) {
+    moveEnd(l, "from");
+    moveEnd(l, "to");
+  }
   const review = o.review;
-  moveNoteLines(b, cardId, ns.id, map, o.notes, review ? (n, [a, e]) => { if (linesChanged(old, ns, map, a, e)) n.review = review; } : undefined);
+  moveNoteLines(
+    b,
+    cardId,
+    ns.id,
+    map,
+    o.notes,
+    review
+      ? (n, [a, e]) => {
+          if (linesChanged(old, ns, map, a, e)) n.review = review;
+        }
+      : undefined,
+  );
   for (const k of b.stickers) {
     if (k.at.kind !== "line" || k.at.card !== cardId || k.at.seg !== ns.id) continue;
     const m = map(k.at.line);
-    if (m) k.at.line = m; else k.at = cornerOf(b, cardId);
+    if (m) k.at.line = m;
+    else k.at = cornerOf(b, cardId);
   }
 }
 
 /** 旧段的 a..e 行在新段里变了没有（没了，或那一行的内容不一样） */
-function linesChanged(old: Pick<Segment, "text" | "start">, ns: Pick<Segment, "text" | "start">, map: LineMap, a: number, e: number): boolean {
+function linesChanged(
+  old: Pick<Segment, "text" | "start">,
+  ns: Pick<Segment, "text" | "start">,
+  map: LineMap,
+  a: number,
+  e: number,
+): boolean {
   for (let l = a; l <= e; l++) {
     const m = map(l);
     if (!m || (old.text[l - old.start] ?? "") !== (ns.text[m - ns.start] ?? "")) return true;
@@ -391,11 +577,20 @@ export function notesOnChangedLines(b: Pick<Board, "cards" | "sidenotes">, cardI
   const old = (b.cards.find((c) => c.id === cardId) as CodeCard | undefined)?.segments?.find((s) => s.id === ns.id);
   if (!old) return [];
   const map = lineMapOf(old, ns);
-  return b.sidenotes.filter((n) => n.at.card === cardId && n.at.seg === ns.id && n.at.lines && linesChanged(old, ns, map, n.at.lines[0], n.at.lines[1]));
+  return b.sidenotes.filter(
+    (n) =>
+      n.at.card === cardId &&
+      n.at.seg === ns.id &&
+      n.at.lines &&
+      linesChanged(old, ns, map, n.at.lines[0], n.at.lines[1]),
+  );
 }
 
 /** 段只是整体挪了几行（内容没变） */
-export const shiftBy = (d: number): LineMap => (l) => l + d;
+export const shiftBy =
+  (d: number): LineMap =>
+  (l) =>
+    l + d;
 
 function findOwner(b: Board, cardId: string) {
   const c = b.cards.find((k) => k.id === cardId);
@@ -416,14 +611,34 @@ export function removeSidenotes(b: Board, ids: Iterable<string>): void {
  */
 export function sidenoteCard(n: Sidenote, id = uid("c")): Card | null {
   switch (n.kind) {
-    case "code": return { id, kind: "code", segments: [{ ...clone(n.code), id: uid("s") }], desc: n.why };
+    case "code":
+      return { id, kind: "code", segments: [{ ...clone(n.code), id: uid("s") }], desc: n.why };
     case "paste": {
       const text = n.text.split("\n");
-      return { id, kind: "code", segments: [{ id: uid("s"), src: { kind: "free", url: n.url }, path: "", lang: n.lang, start: 1, end: text.length, text, version: { kind: "none" } }], desc: n.why };
+      return {
+        id,
+        kind: "code",
+        segments: [
+          {
+            id: uid("s"),
+            src: { kind: "free", url: n.url },
+            path: "",
+            lang: n.lang,
+            start: 1,
+            end: text.length,
+            text,
+            version: { kind: "none" },
+          },
+        ],
+        desc: n.why,
+      };
     }
-    case "text": return { id, kind: "note", md: n.md, look: "note" };
-    case "link": return { id, kind: "web", url: n.url, meta: n.title ? { title: n.title } : undefined, desc: n.why };
-    case "card": return null;
+    case "text":
+      return { id, kind: "note", md: n.md, look: "note" };
+    case "link":
+      return { id, kind: "web", url: n.url, meta: n.title ? { title: n.title } : undefined, desc: n.why };
+    case "card":
+      return null;
   }
 }
 /** Place on Board 在白板上的改动（新卡 card 已经放上白板）：Sidenote 去掉，从它挂的那一行连一条箭头到新卡 */
@@ -448,8 +663,13 @@ export type CardCopy = { card: Card; place?: Place; sidenotes?: Sidenote[] };
  * 摆放：Section、折叠、锁定是原来那块白板的，不带过来；at 可以再挪。links = 原来那块白板上的 Link：两端都是这次放的卡（或白板上已有的
  * 同一张共享卡）的跟着来，换新 id、两端换成放下的卡和段，已经有一样的就不加。返回 旧 id → 新 id（卡和段，放了的才有）
  */
-export function placeCards(b: Board, items: CardCopy[], o: { copy: boolean; at?: (p: Place) => Place; links?: Link[] }): { cards: Record<string, string>; segs: Record<string, string> } {
-  const cards: Record<string, string> = {}, segs: Record<string, string> = {};
+export function placeCards(
+  b: Board,
+  items: CardCopy[],
+  o: { copy: boolean; at?: (p: Place) => Place; links?: Link[] },
+): { cards: Record<string, string>; segs: Record<string, string> } {
+  const cards: Record<string, string> = {},
+    segs: Record<string, string> = {};
   // 每张卡自己的段 旧 → 新：摆在几处的同一张卡（same）段 id 一样，副本各换各的
   const segsOf = new Map<string, Record<string, string>>();
   const have = new Set(b.cards.map((c) => c.id));
@@ -462,7 +682,12 @@ export function placeCards(b: Board, items: CardCopy[], o: { copy: boolean; at?:
     const own: Record<string, string> = {};
     segsOf.set(it.card.id, own);
     if (c.kind === "code") {
-      for (const s of c.segments) { const n = o.copy ? uid("s") : s.id; segs[s.id] = n; own[s.id] = n; s.id = n; }
+      for (const s of c.segments) {
+        const n = o.copy ? uid("s") : s.id;
+        segs[s.id] = n;
+        own[s.id] = n;
+        s.id = n;
+      }
       for (const v of c.variants ?? []) for (const s of v.segs ?? []) s.id = own[s.id] ?? s.id; // Variant 的段和卡上的段同一个 id
     }
     if (c.kind === "compare") c.cols = [cards[c.cols[0]] ?? c.cols[0], cards[c.cols[1]] ?? c.cols[1]];
@@ -476,18 +701,34 @@ export function placeCards(b: Board, items: CardCopy[], o: { copy: boolean; at?:
     for (const n of it.sidenotes ?? []) {
       if (n.kind === "card" || n.at.card !== it.card.id) continue; // 指着别的卡的 Sidenote 不带（那张卡不在这块白板上）
       const m = clone(n);
-      if (o.copy) m.id = uid("n"); else if (nids.has(m.id)) continue;
+      if (o.copy) m.id = uid("n");
+      else if (nids.has(m.id)) continue;
       m.at = { ...m.at, card: c.id, seg: m.at.seg && own[m.at.seg] };
       if (!m.at.seg) delete m.at.seg;
       b.sidenotes.push(m);
     }
   }
   const on = (id: string) => cards[id] ?? (!o.copy && have.has(id) ? id : undefined);
-  const end = (e: End, card: string): End => ({ ...e, card, ...(e.seg ? { seg: segsOf.get(e.card)?.[e.seg] ?? e.seg } : {}) });
-  const key = (l: Link) => JSON.stringify([l.from.card, l.from.seg, l.from.line, l.from.block?.i, l.to.card, l.to.seg, l.to.line, l.to.block?.i]);
+  const end = (e: End, card: string): End => ({
+    ...e,
+    card,
+    ...(e.seg ? { seg: segsOf.get(e.card)?.[e.seg] ?? e.seg } : {}),
+  });
+  const key = (l: Link) =>
+    JSON.stringify([
+      l.from.card,
+      l.from.seg,
+      l.from.line,
+      l.from.block?.i,
+      l.to.card,
+      l.to.seg,
+      l.to.line,
+      l.to.block?.i,
+    ]);
   const there = new Set(b.links.map(key));
   for (const l of o.links ?? []) {
-    const from = on(l.from.card), to = on(l.to.card);
+    const from = on(l.from.card),
+      to = on(l.to.card);
     if (!from || !to) continue;
     const c = clone(l);
     const n: Link = { ...c, id: uid("l"), from: end(c.from, from), to: end(c.to, to) };
@@ -516,8 +757,10 @@ export function unlinkCard(b: Board, id: string, to = uid("c")): string {
  * Compare 不行（栏是别的卡）。返回 false = 没做
  */
 export function makeTwin(b: Board, id: string, of: string): boolean {
-  const c = b.cards.find((k) => k.id === id), o = b.cards.find((k) => k.id === of);
-  if (!c || !o || c === o || c.kind === "compare" || o.kind === "compare" || (c.same && c.same === o.same)) return false;
+  const c = b.cards.find((k) => k.id === id),
+    o = b.cards.find((k) => k.id === of);
+  if (!c || !o || c === o || c.kind === "compare" || o.kind === "compare" || (c.same && c.same === o.same))
+    return false;
   const old = c.kind === "code" ? c.segments.map((s) => s.id) : [];
   const now = o.kind === "code" ? o.segments.map((s) => s.id) : [];
   o.same ??= uid("t");
@@ -540,7 +783,10 @@ export function detachTwin(b: Board, id: string): Record<string, string> {
   if (rest.length === 1) delete rest[0].same;
   const segs: Record<string, string> = {};
   if (c.kind !== "code") return segs;
-  for (const sg of c.segments) { segs[sg.id] = uid("s"); sg.id = segs[sg.id]; }
+  for (const sg of c.segments) {
+    segs[sg.id] = uid("s");
+    sg.id = segs[sg.id];
+  }
   for (const v of c.variants ?? []) for (const sg of v.segs ?? []) sg.id = segs[sg.id] ?? sg.id;
   resegCard(b, id, new Map(Object.entries(segs)));
   return segs;
@@ -549,23 +795,31 @@ export function detachTwin(b: Board, id: string): Record<string, string> {
 /** 卡 id 上指着段的引用换段 id（map 里没有的：箭头、Sidenote 退到整张卡，行上的 Sticker 删掉） */
 function resegCard(b: Board, id: string, map: Map<string, string | undefined>): void {
   if (!map.size) return;
-  for (const l of b.links) for (const e of [l.from, l.to]) {
-    if (e.card !== id || !e.seg) continue;
-    const n = map.get(e.seg);
-    if (n) e.seg = n;
-    else { delete e.seg; delete e.line; }
-  }
+  for (const l of b.links)
+    for (const e of [l.from, l.to]) {
+      if (e.card !== id || !e.seg) continue;
+      const n = map.get(e.seg);
+      if (n) e.seg = n;
+      else {
+        delete e.seg;
+        delete e.line;
+      }
+    }
   for (const n of b.sidenotes) {
     if (n.at.card !== id || !n.at.seg) continue;
     const k = map.get(n.at.seg);
     if (k) n.at.seg = k;
-    else { delete n.at.seg; delete n.at.lines; }
+    else {
+      delete n.at.seg;
+      delete n.at.lines;
+    }
   }
   const gone: string[] = [];
   for (const k of b.stickers) {
     if (k.at.kind !== "line" || k.at.card !== id) continue;
     const n = map.get(k.at.seg);
-    if (n) k.at.seg = n; else gone.push(k.id);
+    if (n) k.at.seg = n;
+    else gone.push(k.id);
   }
   if (gone.length) removeStickers(b, gone);
 }
@@ -580,14 +834,19 @@ export function syncTwins(b: Board, seen: Map<string, string>, raw: <T>(x: T) =>
     const g = raw(c).same;
     if (!g) continue;
     const a = groups.get(g);
-    if (a) a.push(c); else groups.set(g, [c]);
+    if (a) a.push(c);
+    else groups.set(g, [c]);
   }
   const next = new Map<string, string>();
   for (const cs of groups.values()) {
     if (cs.length < 2) continue;
     const keys = cs.map((c) => twinContent(raw(c)));
     let src = cs.findIndex((c, i) => seen.has(c.id) && seen.get(c.id) !== keys[i]);
-    if (src < 0) src = Math.max(0, cs.findIndex((c) => seen.has(c.id)));
+    if (src < 0)
+      src = Math.max(
+        0,
+        cs.findIndex((c) => seen.has(c.id)),
+      );
     const from = clone(raw(cs[src]));
     for (let i = 0; i < cs.length; i++) if (keys[i] !== keys[src]) copyTwinContent(from, cs[i], raw);
     for (const c of cs) next.set(c.id, keys[src]);
@@ -601,29 +860,60 @@ export function syncTwins(b: Board, seen: Map<string, string>, raw: <T>(x: T) =>
  * target = 被拖到的那张卡（标题、说明、文件顺序以它为准），别的卡的说明转成挂在整张卡上的 Text sidenote。
  * unlink：共享卡先在这块白板上变成副本（别的白板不受影响；mergedFrom 里记的是副本，Unmerge 不会把旧内容写回卡库）
  */
-export function mergeCodeCards(b: Board, ids: string[], target: string, o: { id?: string; unlink?: (id: string) => boolean } = {}): { id: string; segments: Segment[] } | null {
+export function mergeCodeCards(
+  b: Board,
+  ids: string[],
+  target: string,
+  o: { id?: string; unlink?: (id: string) => boolean } = {},
+): { id: string; segments: Segment[] } | null {
   const mid = o.id ?? uid("c");
   const re = new Map<string, string>();
   for (const id of ids) re.set(id, o.unlink?.(id) ? unlinkCard(b, id) : id);
   const now = ids.map((id) => re.get(id)!);
-  const orig = now.map((id) => b.cards.find((c) => c.id === id)).filter((c): c is CodeCard => c?.kind === "code").map(clone);
+  const orig = now
+    .map((id) => b.cards.find((c) => c.id === id))
+    .filter((c): c is CodeCard => c?.kind === "code")
+    .map(clone);
   if (orig.length < 2) return null;
   const T = orig.find((c) => c.id === re.get(target)) ?? orig[0];
-  const segs = mergeOverlapping(sortSegments(orig.flatMap((c) => c.segments), T.segments[0]?.path));
+  const segs = mergeOverlapping(
+    sortSegments(
+      orig.flatMap((c) => c.segments),
+      T.segments[0]?.path,
+    ),
+  );
   // 合并后段 id 变了的，Link / Sidenote 要跟着换：旧段 id → 新段（按文件 + 行找）
-  const segFor = (old: Segment, line?: number) => segs.find((s) => s.path === old.path && s.src.kind === old.src.kind && sameVersion(s.version, old.version) && (line === undefined || (line >= s.start && line <= s.end))) ?? segs[0];
+  const segFor = (old: Segment, line?: number) =>
+    segs.find(
+      (s) =>
+        s.path === old.path &&
+        s.src.kind === old.src.kind &&
+        sameVersion(s.version, old.version) &&
+        (line === undefined || (line >= s.start && line <= s.end)),
+    ) ?? segs[0];
   const oldSegs = new Map(orig.flatMap((c) => c.segments.map((s) => [s.id, s] as const)));
   const TP = b.place[T.id];
   const M: CodeCard = {
-    id: mid, kind: "code", segments: segs, title: T.title, desc: T.desc, hide: T.hide, tilt: T.tilt,
+    id: mid,
+    kind: "code",
+    segments: segs,
+    title: T.title,
+    desc: T.desc,
+    hide: T.hide,
+    tilt: T.tilt,
     mergedFrom: orig.flatMap((c) => c.mergedFrom ?? [{ card: c, place: clone(b.place[c.id]) }]),
   };
-  for (const c of orig) if (c !== T && c.desc) b.sidenotes.push({ id: uid("n"), at: { card: mid }, kind: "text", md: c.desc });
+  for (const c of orig)
+    if (c !== T && c.desc) b.sidenotes.push({ id: uid("n"), at: { card: mid }, kind: "text", md: c.desc });
   const w = Math.max(560, ...orig.map((c) => b.place[c.id]?.w ?? 560)); // 先量宽度，再删原来的摆放
-  replaceCards(b, orig.map((c) => c.id), (at) => {
-    const os = at.seg ? oldSegs.get(at.seg) : undefined;
-    return { card: mid, seg: os ? segFor(os, at.line).id : undefined };
-  });
+  replaceCards(
+    b,
+    orig.map((c) => c.id),
+    (at) => {
+      const os = at.seg ? oldSegs.get(at.seg) : undefined;
+      return { card: mid, seg: os ? segFor(os, at.line).id : undefined };
+    },
+  );
   b.cards.push(M);
   b.place[mid] = { x: TP?.x ?? 0, y: TP?.y ?? 0, w, section: TP?.section };
   if (b.place[mid].section === undefined) delete b.place[mid].section;
@@ -636,37 +926,58 @@ export function unmergeCard(b: Board, id: string): { made: string[]; segments: S
   const mp = b.place[id];
   if (m?.kind !== "code" || !mp || (!m.mergedFrom && m.segments.length < 2)) return null;
   const f0 = m.mergedFrom?.[0].place;
-  const dx = f0 ? mp.x - f0.x : 0, dy = f0 ? mp.y - f0.y : 0;
+  const dx = f0 ? mp.x - f0.x : 0,
+    dy = f0 ? mp.y - f0.y : 0;
   const pp: Place[] = [];
   const have = new Set(b.cards.map((c) => c.id));
   const parts: CodeCard[] = m.mergedFrom
     ? m.mergedFrom.map((o) => {
-      pp.push({ ...clone(o.place), x: o.place.x + dx, y: o.place.y + dy, section: mp.section });
-      const k = clone(o.card);
-      if (have.has(k.id)) k.id = uid("c"); // 复制过的合并卡再拆：原卡的 id 已经被另一份占了
-      // 拆出来的卡看起来和合并卡一样：合并后改过的倾斜算数
-      k.tilt = m.tilt;
-      return k;
-    })
-    : m.segments.map((s, i) => { pp.push({ x: mp.x + i * 40, y: mp.y + i * 40, w: mp.w, section: mp.section }); return { id: uid("c"), kind: "code", segments: [clone(s)], hide: m.hide, tilt: m.tilt }; });
+        pp.push({ ...clone(o.place), x: o.place.x + dx, y: o.place.y + dy, section: mp.section });
+        const k = clone(o.card);
+        if (have.has(k.id)) k.id = uid("c"); // 复制过的合并卡再拆：原卡的 id 已经被另一份占了
+        // 拆出来的卡看起来和合并卡一样：合并后改过的倾斜算数
+        k.tilt = m.tilt;
+        return k;
+      })
+    : m.segments.map((s, i) => {
+        pp.push({ x: mp.x + i * 40, y: mp.y + i * 40, w: mp.w, section: mp.section });
+        return { id: uid("c"), kind: "code", segments: [clone(s)], hide: m.hide, tilt: m.tilt };
+      });
   // 段的高亮 / 隐藏跟着行走
-  for (const p of parts) for (const s of p.segments) {
-    const src = m.segments.filter((q) => q.path === s.path && sameVersion(q.version, s.version) && q.start <= s.end && q.end >= s.start);
-    s.hl = [...new Set(src.flatMap((q) => q.hl ?? []).filter((l) => l >= s.start && l <= s.end))];
-    s.hidden = src.flatMap((q) => q.hidden ?? []).map(([a, c]) => [Math.max(a, s.start), Math.min(c, s.end)] as [number, number]).filter(([a, c]) => a <= c);
-    s.annots = src.flatMap((q) => q.annots ?? []).filter((a) => a.line >= s.start && a.line <= s.end).map((a) => ({ ...a }));
-    if (!s.annots.length) s.annots = undefined;
-    if (!s.hl.length) s.hl = undefined;
-    if (!s.hidden.length) s.hidden = undefined;
-  }
+  for (const p of parts)
+    for (const s of p.segments) {
+      const src = m.segments.filter(
+        (q) => q.path === s.path && sameVersion(q.version, s.version) && q.start <= s.end && q.end >= s.start,
+      );
+      s.hl = [...new Set(src.flatMap((q) => q.hl ?? []).filter((l) => l >= s.start && l <= s.end))];
+      s.hidden = src
+        .flatMap((q) => q.hidden ?? [])
+        .map(([a, c]) => [Math.max(a, s.start), Math.min(c, s.end)] as [number, number])
+        .filter(([a, c]) => a <= c);
+      s.annots = src
+        .flatMap((q) => q.annots ?? [])
+        .filter((a) => a.line >= s.start && a.line <= s.end)
+        .map((a) => ({ ...a }));
+      if (!s.annots.length) s.annots = undefined;
+      if (!s.hl.length) s.hl = undefined;
+      if (!s.hidden.length) s.hidden = undefined;
+    }
   const owner = (seg?: string, line?: number) => {
     const ms = m.segments.find((q) => q.id === seg);
     if (!ms) return { card: parts[0].id, seg: undefined as string | undefined };
-    for (const p of parts) for (const s of p.segments) if (s.path === ms.path && sameVersion(s.version, ms.version) && (line === undefined ? s.start <= ms.end && s.end >= ms.start : line >= s.start && line <= s.end)) return { card: p.id, seg: s.id };
+    for (const p of parts)
+      for (const s of p.segments)
+        if (
+          s.path === ms.path &&
+          sameVersion(s.version, ms.version) &&
+          (line === undefined ? s.start <= ms.end && s.end >= ms.start : line >= s.start && line <= s.end)
+        )
+          return { card: p.id, seg: s.id };
     return { card: parts[0].id, seg: undefined };
   };
   replaceCards(b, [id], (at) => (at.seg ? owner(at.seg, at.line) : { card: parts[0].id }));
-  const made: string[] = [], segments: Segment[] = [];
+  const made: string[] = [],
+    segments: Segment[] = [];
   parts.forEach((p, i) => {
     b.cards.push(p);
     const q = pp[i];
@@ -683,13 +994,26 @@ export function unmergeCard(b: Board, id: string): { made: string[]; segments: S
  * 外面连进来的箭头改连到整个框（去掉行），从里面连出去的改成从整个框出发（去掉行和出发边）；
  * 其余跟删卡一样（removeCards）：里面的箭头、挂在这些卡上的 Sidenote、贴纸、问题的解答
  */
-export function cardsToFrame(b: Board, ids: Iterable<string>, frame: Card, place: Place, sections: Iterable<string>): void {
+export function cardsToFrame(
+  b: Board,
+  ids: Iterable<string>,
+  frame: Card,
+  place: Place,
+  sections: Iterable<string>,
+): void {
   const want = new Set(withCols(b, ids));
   for (const l of b.links) {
-    const a = want.has(l.from.card), t = want.has(l.to.card);
+    const a = want.has(l.from.card),
+      t = want.has(l.to.card);
     if (a === t) continue;
-    if (t) { l.to = { card: frame.id }; if (l.lost) delete l.lost.to; }
-    else { l.from = { card: frame.id }; if (l.lost) delete l.lost.from; if (l.sides) delete l.sides.from; }
+    if (t) {
+      l.to = { card: frame.id };
+      if (l.lost) delete l.lost.to;
+    } else {
+      l.from = { card: frame.id };
+      if (l.lost) delete l.lost.from;
+      if (l.sides) delete l.sides.from;
+    }
     if (l.lost && !l.lost.from && !l.lost.to) delete l.lost;
     if (l.sides && !l.sides.from && !l.sides.to) delete l.sides;
   }
@@ -703,9 +1027,23 @@ export function cardsToFrame(b: Board, ids: Iterable<string>, frame: Card, place
 /** 删掉这些 Section：子 Section 和成员卡归到被删的那个的父 Section（父也删了就再往上找；都没有就不在 Section 里） */
 export function removeSections(b: Board, ids: Iterable<string>): void {
   const gone = new Set(ids);
-  const up = (id?: string) => { let s = id; for (let i = 0; s && gone.has(s) && i < 50; i++) s = b.sections.find((x) => x.id === s)?.parent; return s && !gone.has(s) ? s : undefined; };
-  for (const s of b.sections) if (!gone.has(s.id) && s.parent && gone.has(s.parent)) { const p = up(s.parent); if (p) s.parent = p; else delete s.parent; }
-  for (const p of Object.values(b.place)) if (p.section && gone.has(p.section)) { const s = up(p.section); if (s) p.section = s; else delete p.section; }
+  const up = (id?: string) => {
+    let s = id;
+    for (let i = 0; s && gone.has(s) && i < 50; i++) s = b.sections.find((x) => x.id === s)?.parent;
+    return s && !gone.has(s) ? s : undefined;
+  };
+  for (const s of b.sections)
+    if (!gone.has(s.id) && s.parent && gone.has(s.parent)) {
+      const p = up(s.parent);
+      if (p) s.parent = p;
+      else delete s.parent;
+    }
+  for (const p of Object.values(b.place))
+    if (p.section && gone.has(p.section)) {
+      const s = up(p.section);
+      if (s) p.section = s;
+      else delete p.section;
+    }
   b.sections = b.sections.filter((s) => !gone.has(s.id));
 }
 
@@ -713,7 +1051,8 @@ export function removeSections(b: Board, ids: Iterable<string>): void {
 export type Arrange = "front" | "forward" | "backward" | "back";
 export function arrangeCards(b: Board, ids: Iterable<string>, how: Arrange, overlaps: (id: string) => boolean): void {
   const set = new Set(ids);
-  const moving = b.cards.filter((c) => set.has(c.id)), rest = b.cards.filter((c) => !set.has(c.id));
+  const moving = b.cards.filter((c) => set.has(c.id)),
+    rest = b.cards.filter((c) => !set.has(c.id));
   if (!moving.length) return;
   const idx = b.cards.map((c) => c.id);
   const hit = (i: number) => !set.has(idx[i]) && !!b.place[idx[i]] && overlaps(idx[i]);
@@ -723,12 +1062,20 @@ export function arrangeCards(b: Board, ids: Iterable<string>, how: Arrange, over
   else if (how === "forward") {
     const top = Math.max(...moving.map((c) => idx.indexOf(c.id)));
     let next = -1;
-    for (let i = top + 1; i < idx.length; i++) if (hit(i)) { next = i; break; }
+    for (let i = top + 1; i < idx.length; i++)
+      if (hit(i)) {
+        next = i;
+        break;
+      }
     at = next < 0 ? rest.length : rest.findIndex((c) => c.id === idx[next]) + 1;
   } else {
     const bot = Math.min(...moving.map((c) => idx.indexOf(c.id)));
     let prev = -1;
-    for (let i = bot - 1; i >= 0; i--) if (hit(i)) { prev = i; break; }
+    for (let i = bot - 1; i >= 0; i--)
+      if (hit(i)) {
+        prev = i;
+        break;
+      }
     at = prev < 0 ? 0 : rest.findIndex((c) => c.id === idx[prev]);
   }
   b.cards = [...rest.slice(0, at), ...moving, ...rest.slice(at)];
@@ -744,7 +1091,8 @@ export function makeCompare(b: Board, id: string, cols: [string, string], place:
   b.cards.push({ id, kind: "compare", cols: [...cols], tilt });
   b.place[id] = place;
   for (const k of cols) delete b.place[k];
-  for (const s of b.stickers) if (s.at.kind === "canvas" && s.at.on && "card" in s.at.on && cols.includes(s.at.on.card)) s.at.on = { card: id };
+  for (const s of b.stickers)
+    if (s.at.kind === "canvas" && s.at.on && "card" in s.at.on && cols.includes(s.at.on.card)) s.at.on = { card: id };
 }
 
 /**
@@ -762,10 +1110,14 @@ export function splitLink(b: Board, id: string, mid: string, second: string): vo
 
 /** splitLink 反过来：first 接上 second 的终点（终点的箭头恢复），second 和夹在中间的卡 mid 删掉 */
 export function joinLinks(b: Board, first: string, second: string, mid: string): void {
-  const la = b.links.find((k) => k.id === first), lb = b.links.find((k) => k.id === second);
+  const la = b.links.find((k) => k.id === first),
+    lb = b.links.find((k) => k.id === second);
   if (!la || !lb) return;
   la.to = { ...lb.to };
-  if (la.style?.head?.end === false) { delete la.style.head; if (!Object.keys(la.style).length) delete la.style; }
+  if (la.style?.head?.end === false) {
+    delete la.style.head;
+    if (!Object.keys(la.style).length) delete la.style;
+  }
   removeLinks(b, [second]);
   removeCards(b, [mid]);
 }
@@ -782,19 +1134,22 @@ export function cardIntoSidenote(b: Board, cardId: string, n: Sidenote): void {
  * 不是 Image 卡 / Note 时什么都不改，返回 false
  */
 export function imageIntoNote(b: Board, imageId: string, noteId: string, src: string, at?: number): boolean {
-  const img = b.cards.find((c) => c.id === imageId), note = b.cards.find((c) => c.id === noteId);
+  const img = b.cards.find((c) => c.id === imageId),
+    note = b.cards.find((c) => c.id === noteId);
   if (img?.kind !== "image" || note?.kind !== "note") return false;
   const alt = (img.alt ?? "").replace(/[[\]\s]+/g, " ").trim();
   const block = `![${alt}](${src})${img.desc?.trim() ? `\n\n${img.desc.trim()}` : ""}`;
   const cut = at === undefined ? note.md.length : Math.max(0, Math.min(at, note.md.length));
-  const head = note.md.slice(0, cut).replace(/\s+$/, ""), tail = note.md.slice(cut).replace(/\s+$/, "");
+  const head = note.md.slice(0, cut).replace(/\s+$/, ""),
+    tail = note.md.slice(cut).replace(/\s+$/, "");
   note.md = [head, block, tail].filter(Boolean).join("\n\n");
   removeCards(b, [imageId]);
   return true;
 }
 
 // Note 的字在标题栏（36，含下边线）下面、内边距 10 / 14；Text 的内边距 2 / 4
-const NOTE_PAD_X = 14 - 4, NOTE_HEAD = 36 + 10 - 2;
+const NOTE_PAD_X = 14 - 4,
+  NOTE_HEAD = 36 + 10 - 2;
 /**
  * Note ↔ Text（只有这两种互转）。看到的就是全部：Note 卡头的名字（改过的名字）变成 Text 正文的第一行 # 标题；
  * Text 开头的 # 标题本来就显示在 Note 的卡头上（mdHeading），所以 Turn into Note 不用搬字，来回转看起来不变。
@@ -807,13 +1162,19 @@ export function turnNoteInto(b: Board, id: string, look: "note" | "text"): void 
     if (mdHeading(n.md) !== n.title) n.md = n.md.trim() ? `# ${n.title}\n\n${n.md}` : `# ${n.title}`;
     delete n.title;
   }
-  if (look === "note") { delete n.size; delete n.bold; }
+  if (look === "note") {
+    delete n.size;
+    delete n.bold;
+  }
   const headed = !!(n.title || mdHeading(n.md));
   n.look = look;
   const p = b.place[id];
   if (!p) return;
-  const s = look === "text" ? 1 : -1, dy = headed ? 4 : NOTE_HEAD;
-  p.x += s * NOTE_PAD_X; p.y += s * dy; p.w -= s * 2 * NOTE_PAD_X;
+  const s = look === "text" ? 1 : -1,
+    dy = headed ? 4 : NOTE_HEAD;
+  p.x += s * NOTE_PAD_X;
+  p.y += s * dy;
+  p.w -= s * 2 * NOTE_PAD_X;
   delete p.h;
 }
 
@@ -823,10 +1184,20 @@ export function renameTitleRefs(b: Board, from: string, to: string): void {
   const re = new RegExp(`\\[\\[\\s*${escapeRegExp(from)}\\s*\\]\\]`, "gi");
   const fix = (s: string) => (s.includes("[[") ? s.replace(re, `[[${to}]]`) : s);
   for (const k of b.cards) {
-    if (k.kind === "note") { const m = fix(k.md); if (m !== k.md) k.md = m; }
-    if (k.desc) { const d = fix(k.desc); if (d !== k.desc) k.desc = d; }
+    if (k.kind === "note") {
+      const m = fix(k.md);
+      if (m !== k.md) k.md = m;
+    }
+    if (k.desc) {
+      const d = fix(k.desc);
+      if (d !== k.desc) k.desc = d;
+    }
   }
-  for (const n of b.sidenotes) if (n.kind === "text") { const m = fix(n.md); if (m !== n.md) n.md = m; }
+  for (const n of b.sidenotes)
+    if (n.kind === "text") {
+      const m = fix(n.md);
+      if (m !== n.md) n.md = m;
+    }
 }
 
 /**
@@ -836,14 +1207,22 @@ export function renameTitleRefs(b: Board, from: string, to: string): void {
  * heights：原卡拆完以后的高、每段新卡的高（白板量出来的；不给按估计）；others：别的卡的矩形（新卡尽量不压着它们）。
  * 不是 Note、没有可拆的标题时什么都不改，返回 null；否则返回新卡的 id（按原文的先后）
  */
-export function splitNoteByHeadings(b: Board, id: string, o: { heights?: { root: number; parts: number[] }; others?: Rect[]; ids?: string[] } = {}): string[] | null {
+export function splitNoteByHeadings(
+  b: Board,
+  id: string,
+  o: { heights?: { root: number; parts: number[] }; others?: Rect[]; ids?: string[] } = {},
+): string[] | null {
   const n = b.cards.find((c) => c.id === id);
   const sp = n?.kind === "note" ? splitHeadings(n.md) : null;
   if (n?.kind !== "note" || !sp) return null;
   const p = b.place[id] ?? { x: 0, y: 0, w: estSize(n).w };
   const est = (md: string) => 60 + md.split("\n").length * 21;
   const hs = sp.parts.map((q, i) => o.heights?.parts[i] ?? est(q.md));
-  const at = headingTree({ x: p.x, y: p.y, w: p.w, h: o.heights?.root ?? est(sp.pre) }, sp.parts.map((q, i) => ({ h: hs[i], parent: q.parent })), o.others);
+  const at = headingTree(
+    { x: p.x, y: p.y, w: p.w, h: o.heights?.root ?? est(sp.pre) },
+    sp.parts.map((q, i) => ({ h: hs[i], parent: q.parent })),
+    o.others,
+  );
   const ids = sp.parts.map((_, i) => o.ids?.[i] ?? uid("n"));
   n.md = sp.pre;
   delete p.h; // 内容变少了：高度跟着内容
@@ -863,11 +1242,25 @@ function blockKind(src: string): string {
 }
 /** 两块字有多像（字符二元组的 Dice 系数，中文没有空格也能比）：0..1 */
 function likeness(x: string, y: string): number {
-  const grams = (s: string) => { const t = s.toLowerCase().replace(/\s+/g, " ").trim(), m = new Map<string, number>(); for (let i = 0; i + 1 < t.length; i++) { const g = t.slice(i, i + 2); m.set(g, (m.get(g) ?? 0) + 1); } return m; };
-  const a = grams(x), c = grams(y);
-  let both = 0, na = 0, nc = 0;
+  const grams = (s: string) => {
+    const t = s.toLowerCase().replace(/\s+/g, " ").trim(),
+      m = new Map<string, number>();
+    for (let i = 0; i + 1 < t.length; i++) {
+      const g = t.slice(i, i + 2);
+      m.set(g, (m.get(g) ?? 0) + 1);
+    }
+    return m;
+  };
+  const a = grams(x),
+    c = grams(y);
+  let both = 0,
+    na = 0,
+    nc = 0;
   for (const v of a.values()) na += v;
-  for (const [g, v] of c) { nc += v; both += Math.min(v, a.get(g) ?? 0); }
+  for (const [g, v] of c) {
+    nc += v;
+    both += Math.min(v, a.get(g) ?? 0);
+  }
   return na + nc ? (2 * both) / (na + nc) : x.trim() === y.trim() ? 1 : 0;
 }
 /** 改写后还算同一块：字至少这么像 */
@@ -880,18 +1273,38 @@ const LIKE = 0.3;
 export function blockMap(old: readonly string[], now: readonly string[]): number[] {
   const out = old.map(() => -1);
   const parts = diffArrays(old.map(blockSig), now.map(blockSig));
-  let i = 0, j = 0;
+  let i = 0,
+    j = 0;
   for (let k = 0; k < parts.length; k++) {
-    if (!parts[k].added && !parts[k].removed) { for (let n = 0; n < parts[k].count; n++) out[i++] = j++; continue; }
-    const dels: number[] = [], adds: number[] = [];
-    for (; k < parts.length && (parts[k].added || parts[k].removed); k++) for (let n = 0; n < parts[k].count; n++) parts[k].removed ? dels.push(i++) : adds.push(j++);
+    if (!parts[k].added && !parts[k].removed) {
+      for (let n = 0; n < parts[k].count; n++) out[i++] = j++;
+      continue;
+    }
+    const dels: number[] = [],
+      adds: number[] = [];
+    for (; k < parts.length && (parts[k].added || parts[k].removed); k++)
+      for (let n = 0; n < parts[k].count; n++) parts[k].removed ? dels.push(i++) : adds.push(j++);
     k--;
-    if (dels.length === 1 && adds.length === 1 && blockKind(old[dels[0]]) === blockKind(now[adds[0]])) { out[dels[0]] = adds[0]; continue; }
+    if (dels.length === 1 && adds.length === 1 && blockKind(old[dels[0]]) === blockKind(now[adds[0]])) {
+      out[dels[0]] = adds[0];
+      continue;
+    }
     const used = new Set<number>();
     for (const d of dels) {
-      let best = -1, score = LIKE;
-      for (const a of adds) { if (used.has(a)) continue; const s = likeness(old[d], now[a]); if (s >= score) { best = a; score = s; } }
-      if (best >= 0) { out[d] = best; used.add(best); }
+      let best = -1,
+        score = LIKE;
+      for (const a of adds) {
+        if (used.has(a)) continue;
+        const s = likeness(old[d], now[a]);
+        if (s >= score) {
+          best = a;
+          score = s;
+        }
+      }
+      if (best >= 0) {
+        out[d] = best;
+        used.add(best);
+      }
     }
   }
   return out;
@@ -902,7 +1315,13 @@ export function blockMap(old: readonly string[], now: readonly string[]): number
  * 那一块删掉了就退到整张卡。端点的指纹和 old 里那一块对不上的（连的时候 Note 正开着编辑器、按编辑器里的字连的）直接按指纹在 now 里找。
  * moved：这次改动里新出现的 Note（Split by Headings 拆出来的）和它们的块：删掉的块原样到了那里，端点跟着搬过去
  */
-export function rebaseBlocks(b: Board, card: string, old: readonly string[] | null, now: readonly string[] | null, moved: readonly { card: string; blocks: readonly string[] }[] = []): void {
+export function rebaseBlocks(
+  b: Board,
+  card: string,
+  old: readonly string[] | null,
+  now: readonly string[] | null,
+  moved: readonly { card: string; blocks: readonly string[] }[] = [],
+): void {
   const ends = b.links.flatMap((l) => [l.from, l.to].filter((e) => e.card === card && e.block).map((e) => ({ l, e })));
   if (!ends.length) return;
   const map = old && now ? blockMap(old, now) : null;
@@ -911,9 +1330,18 @@ export function rebaseBlocks(b: Board, card: string, old: readonly string[] | nu
   for (const { l, e } of ends) {
     const ref = e.block!;
     const k = map && old && blockSig(old[ref.i] ?? "") === ref.h ? map[ref.i] : blockAt(ref, sigs);
-    if (k >= 0 && now) { e.block = { i: k, h: sigs[k] }; continue; }
-    const to = moved.map((m) => ({ card: m.card, i: blockAt({ i: 0, h: ref.h }, m.blocks.map(blockSig)) })).find((m) => m.i >= 0);
-    if (to) { e.card = to.card; e.block = { i: to.i, h: ref.h }; away.add(l); } else delete e.block;
+    if (k >= 0 && now) {
+      e.block = { i: k, h: sigs[k] };
+      continue;
+    }
+    const to = moved
+      .map((m) => ({ card: m.card, i: blockAt({ i: 0, h: ref.h }, m.blocks.map(blockSig)) }))
+      .find((m) => m.i >= 0);
+    if (to) {
+      e.card = to.card;
+      e.block = { i: to.i, h: ref.h };
+      away.add(l);
+    } else delete e.block;
   }
   // 搬过去以后两端落在同一张卡上的箭头删掉（和换卡时一样）
   const same = [...away].filter((l) => l.from.card === l.to.card).map((l) => l.id);

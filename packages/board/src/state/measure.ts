@@ -31,10 +31,21 @@ export const lastDown = () => down;
 // （读 getBoundingClientRect 会让浏览器在事件里先把上一批改动的样式、排版做掉，同一帧里再做一遍）
 let boardAt: { x: number; y: number } | null = null;
 export function trackPointer() {
-  const at = (e: PointerEvent) => { lastPtr = { x: e.clientX, y: e.clientY }; };
+  const at = (e: PointerEvent) => {
+    lastPtr = { x: e.clientX, y: e.clientY };
+  };
   window.addEventListener("pointermove", at, { capture: true, passive: true });
-  window.addEventListener("pointerdown", (e) => { at(e); down = { ...lastPtr, target: e.target as HTMLElement | null }; }, { capture: true, passive: true });
-  window.addEventListener("resize", () => { boardAt = null; });
+  window.addEventListener(
+    "pointerdown",
+    (e) => {
+      at(e);
+      down = { ...lastPtr, target: e.target as HTMLElement | null };
+    },
+    { capture: true, passive: true },
+  );
+  window.addEventListener("resize", () => {
+    boardAt = null;
+  });
 }
 export function boardOffset() {
   if (boardAt) return boardAt;
@@ -44,8 +55,14 @@ export function boardOffset() {
   return (boardAt = { x: r.left, y: r.top });
 }
 /** 屏幕坐标 → 白板里的坐标 / 世界坐标 */
-export const boardPoint = (p: { x: number; y: number }) => { const o = boardOffset(); return { x: p.x - o.x, y: p.y - o.y }; };
-export const worldAt = (p: { x: number; y: number }) => { const b = boardPoint(p); return toWorld(b.x, b.y); };
+export const boardPoint = (p: { x: number; y: number }) => {
+  const o = boardOffset();
+  return { x: p.x - o.x, y: p.y - o.y };
+};
+export const worldAt = (p: { x: number; y: number }) => {
+  const b = boardPoint(p);
+  return toWorld(b.x, b.y);
+};
 
 // 代码卡的固定尺寸，CSS 里用同一份：BoardView 挂到 body 上的 --ded-pad；行号栏宽 --gutter 在 styles.css 的 .code 上，量 .src 的左边距
 
@@ -77,9 +94,14 @@ export function naturalSize(id: string): { w?: number; h: number; minH: number; 
   const head = el.querySelector<HTMLElement>(":scope > .cface > .chead")?.offsetHeight ?? 0;
   if (f && isCode(f.card) && body && code) {
     const src = code.querySelector<HTMLElement>(".src");
-    const top = body.offsetTop, bs = getComputedStyle(body);
+    const top = body.offsetTop,
+      bs = getComputedStyle(body);
     // 代码区自己的边框、内边距，再加上它下面到卡边的那一截（Soft Light 的托盘离卡底 10px）。不算横向滚动条：适配后的宽度放得下最长行
-    const frame = parseFloat(bs.borderTopWidth) + parseFloat(bs.borderBottomWidth) + parseFloat(bs.paddingTop) + parseFloat(bs.paddingBottom);
+    const frame =
+      parseFloat(bs.borderTopWidth) +
+      parseFloat(bs.borderBottomWidth) +
+      parseFloat(bs.paddingTop) +
+      parseFloat(bs.paddingBottom);
     // 自动换行开着时：新的宽度放得下最长行，不会再折行，减掉现在折出来的那几行（每行比一行高多出的部分）
     let wrapped = 0;
     if (src && f.card.wrap) {
@@ -100,17 +122,37 @@ export function naturalSize(id: string): { w?: number; h: number; minH: number; 
       const ded = commonIndent(texts);
       const longest = Math.max(12, ...texts.map((t) => t.trimEnd().length - ded));
       // 加上代码区外面的那一圈（Soft Light 的托盘离卡边各 10px）：卡比 .cbody 宽多少
-      w = Math.ceil(longest * monoWidth(src) + (ded ? DED_PAD : 0) + parseFloat(cs.marginLeft) + parseFloat(cs.paddingRight) + 4 + el.offsetWidth - body.offsetWidth);
+      w = Math.ceil(
+        longest * monoWidth(src) +
+          (ded ? DED_PAD : 0) +
+          parseFloat(cs.marginLeft) +
+          parseFloat(cs.paddingRight) +
+          4 +
+          el.offsetWidth -
+          body.offsetWidth,
+      );
     } else {
       // 编辑中的 Free code 卡（CodeMirror，⌥F）：按编辑器里现在的字量；字从哪开始量它画出来的位置（镜头缩放要除掉，横向滚过的要加回来），右边留白和显示时一样
-      const cm = code.querySelector<HTMLElement>(".cm-editor"), content = cm?.querySelector<HTMLElement>(".cm-content");
+      const cm = code.querySelector<HTMLElement>(".cm-editor"),
+        content = cm?.querySelector<HTMLElement>(".cm-content");
       const v = cm && cmNow()?.EditorView.findFromDOM(cm);
       if (v && content) {
         let longest = 12;
         for (const l of v.state.doc.iterLines()) longest = Math.max(longest, l.trimEnd().length);
-        const br = body.getBoundingClientRect(), k = br.width / body.offsetWidth || 1;
-        const left = (content.getBoundingClientRect().left - br.left) / k + body.scrollLeft + parseFloat(getComputedStyle(content).paddingLeft);
-        w = Math.ceil(longest * monoWidth(content) + left + parseFloat(getComputedStyle(content).paddingRight) + 4 + el.offsetWidth - body.offsetWidth);
+        const br = body.getBoundingClientRect(),
+          k = br.width / body.offsetWidth || 1;
+        const left =
+          (content.getBoundingClientRect().left - br.left) / k +
+          body.scrollLeft +
+          parseFloat(getComputedStyle(content).paddingLeft);
+        w = Math.ceil(
+          longest * monoWidth(content) +
+            left +
+            parseFloat(getComputedStyle(content).paddingRight) +
+            4 +
+            el.offsetWidth -
+            body.offsetWidth,
+        );
       }
     }
     return { w, h, minH: top + 6 + 20 + 8 + 2, body: code.offsetHeight - wrapped + frame };
@@ -124,6 +166,10 @@ export function naturalSize(id: string): { w?: number; h: number; minH: number; 
   }
   // Note / Text：正文定了高度时在自己里面滚（styles.css），整张卡的 scrollHeight 量不到它：正文以上 + 正文的内容 + 卡的下边
   const nb = el.querySelector<HTMLElement>(":scope > .cface > .nbody, :scope > .cface > .tx");
-  if (nb) return { h: Math.ceil(nb.offsetTop + nb.scrollHeight + parseFloat(getComputedStyle(el).paddingBottom) + el.clientTop), minH: head + 30 };
+  if (nb)
+    return {
+      h: Math.ceil(nb.offsetTop + nb.scrollHeight + parseFloat(getComputedStyle(el).paddingBottom) + el.clientTop),
+      minH: head + 30,
+    };
   return { h: el.scrollHeight, minH: head + 30 };
 }

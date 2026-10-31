@@ -40,7 +40,13 @@ export const staleOk = (ids: string[]) => putStale(Object.fromEntries(ids.map((i
 export function resetSegs(views: Record<string, SegView>, stale: Record<string, Stale>) {
   batch(() => {
     const gone = Object.keys(state.views).filter((k) => !(k in views));
-    if (gone.length) setState("views", produce((v) => { for (const k of gone) delete v[k]; }));
+    if (gone.length)
+      setState(
+        "views",
+        produce((v) => {
+          for (const k of gone) delete v[k];
+        }),
+      );
     setState("views", views);
     setState("stale", reconcile(stale));
   });

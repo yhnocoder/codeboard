@@ -14,9 +14,16 @@ const knownOf = (line: string) => Object.keys(tiers.known ?? {}).find((k) => new
 
 export function check(name: string, ok: unknown, ...detail: unknown[]) {
   const line = [name, ...detail.map((d) => (typeof d === "string" ? d : JSON.stringify(d)))].join(" ");
-  if (ok) { console.log("PASS", line.slice(0, 1000)); return; }
+  if (ok) {
+    console.log("PASS", line.slice(0, 1000));
+    return;
+  }
   const k = knownOf(line);
-  if (k) { test.info().annotations.push({ type: "known", description: line.slice(0, 400) }); console.log("FAIL (known)", line); return; }
+  if (k) {
+    test.info().annotations.push({ type: "known", description: line.slice(0, 400) });
+    console.log("FAIL (known)", line);
+    return;
+  }
   expect.soft(ok, line.slice(0, 3000)).toBeTruthy();
 }
 
@@ -24,7 +31,12 @@ export function check(name: string, ok: unknown, ...detail: unknown[]) {
 export async function verdict(name: string, f: (res: Record<string, unknown>) => Promise<unknown>) {
   const res: Record<string, unknown> = {};
   let ok: unknown;
-  try { ok = await f(res); } catch (e) { if (e instanceof Error) e.message += `\n${name} ${JSON.stringify(res)}`; throw e; }
+  try {
+    ok = await f(res);
+  } catch (e) {
+    if (e instanceof Error) e.message += `\n${name} ${JSON.stringify(res)}`;
+    throw e;
+  }
   if (ok !== undefined) check(name, ok, JSON.stringify(res));
 }
 
@@ -48,17 +60,25 @@ export const hold = (h: { page: Page }, ms: number, _why: string) => h.page.wait
 
 /** n rendered frames of the page, through its own requestAnimationFrame (so a page that makes frames late makes these late too):
  *  each pointer move of a drag landing in a frame of its own, as a real one does */
-export const frames = (pg: Page, n = 1) => pg.evaluate(async (n) => { for (let i = 0; i < n; i++) await new Promise<void>((r) => requestAnimationFrame(() => r())); }, n);
+export const frames = (pg: Page, n = 1) =>
+  pg.evaluate(async (n) => {
+    for (let i = 0; i < n; i++) await new Promise<void>((r) => requestAnimationFrame(() => r()));
+  }, n);
 
 /** ProseMirror has read the DOM selection: Home / End / arrows move the caret in the browser, and ProseMirror only learns of it in
  *  the async selectionchange (its DOM observer's currentSelection is the DOM selection it last read). With the focus in a nested
  *  editor (a code block's CodeMirror, a formula box) that editor has the caret, not ProseMirror */
-export const pmHasSelection = (pg: Page) => pg.waitForFunction(() => {
-  const root = document.querySelector(".md-pm") as any;
-  if (!root?.editor || document.activeElement !== root) return true;
-  const v = root.editor.view;
-  return v.domObserver.currentSelection.eq(v.domSelectionRange());
-}, null, { timeout: 5000 });
+export const pmHasSelection = (pg: Page) =>
+  pg.waitForFunction(
+    () => {
+      const root = document.querySelector(".md-pm") as any;
+      if (!root?.editor || document.activeElement !== root) return true;
+      const v = root.editor.view;
+      return v.domObserver.currentSelection.eq(v.domSelectionRange());
+    },
+    null,
+    { timeout: 5000 },
+  );
 
 /** prosemirror-view's guard after the editor gets focus (DOMObserver.flush: input.lastFocus > Date.now() - 200) */
 const PM_FOCUS_GUARD = 200;
@@ -73,7 +93,11 @@ export async function focusSettled(pg: Page) {
     return v ? Math.max(0, v.input.lastFocus + guard + 1 - Date.now()) : -1;
   }, PM_FOCUS_GUARD);
   if (left < 0) return;
-  await hold({ page: pg }, left, "ProseMirror's focus timers: a caret the browser moves within PM_FOCUS_GUARD ms of the focus is undone");
+  await hold(
+    { page: pg },
+    left,
+    "ProseMirror's focus timers: a caret the browser moves within PM_FOCUS_GUARD ms of the focus is undone",
+  );
   await pg.evaluate(async (guard) => {
     const v = (document.querySelector(".md-pm") as any)?.editor?.view;
     if (!v) return;
@@ -87,26 +111,39 @@ let cur: { browser: Browser; hosts: Host[]; coverage?: PageCoverage } | undefine
 export async function open(o: OpenOptions = {}): Promise<Host> {
   if (!cur) throw new Error("open() is for a running test");
   const c = cur;
-  const h = await openBoard(c.browser, o, { fail: (name, detail) => check(name, false, detail), coverage: c.coverage && ((e) => c.coverage!.push(...e)) });
+  const h = await openBoard(c.browser, o, {
+    fail: (name, detail) => check(name, false, detail),
+    coverage: c.coverage && ((e) => c.coverage!.push(...e)),
+  });
   c.hosts.push(h);
   return h;
 }
 
 export const test = base.extend<{ boards: void }, { nodeCov: Awaited<ReturnType<typeof nodeCoverage>> | undefined }>({
   // once per worker: the analysis of nano-vllm, which every test's host reads
-  nodeCov: [async ({}, use) => { const cov = COV ? await nodeCoverage() : undefined; await ready(); await use(cov); }, { scope: "worker" }],
-  boards: [async ({ browser, nodeCov }, use, info) => {
-    await nodeCov?.take(); // what ran before the test (loading the test files, the analysis of nano-vllm) belongs to no test
-    cur = { browser, hosts: [], coverage: COV ? [] : undefined };
-    await use();
-    const c = cur;
-    cur = undefined;
-    for (const h of c.hosts) await h.close().catch(() => {});
-    if (COV) {
-      const files = new Set<string>();
-      pageFiles(c.coverage!, files);
-      await nodeCov!.take(files);
-      await info.attach("coverage", { body: JSON.stringify([...files].sort()), contentType: "application/json" });
-    }
-  }, { auto: true }],
+  nodeCov: [
+    async ({}, use) => {
+      const cov = COV ? await nodeCoverage() : undefined;
+      await ready();
+      await use(cov);
+    },
+    { scope: "worker" },
+  ],
+  boards: [
+    async ({ browser, nodeCov }, use, info) => {
+      await nodeCov?.take(); // what ran before the test (loading the test files, the analysis of nano-vllm) belongs to no test
+      cur = { browser, hosts: [], coverage: COV ? [] : undefined };
+      await use();
+      const c = cur;
+      cur = undefined;
+      for (const h of c.hosts) await h.close().catch(() => {});
+      if (COV) {
+        const files = new Set<string>();
+        pageFiles(c.coverage!, files);
+        await nodeCov!.take(files);
+        await info.attach("coverage", { body: JSON.stringify([...files].sort()), contentType: "application/json" });
+      }
+    },
+    { auto: true },
+  ],
 });

@@ -26,7 +26,10 @@ export function toggleSel(kind: keyof Sel, id: string) {
   setSel(kind, (old) => (old.includes(id) ? old.filter((x) => x !== id) : [...old, id]));
   reportSelection();
 }
-export const clearSel = () => { select({}); setLineSel(null); };
+export const clearSel = () => {
+  select({});
+  setLineSel(null);
+};
 export const isSel = (id: string) => sel.cards.includes(id);
 /** A card went away (a fresh card left empty) */
 export const unselectCard = (id: string) => setSel("cards", (c) => c.filter((x) => x !== id));

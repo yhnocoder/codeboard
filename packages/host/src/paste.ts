@@ -16,9 +16,17 @@ export async function pasteCard(text: string): Promise<NewCard | null> {
   if (hit) {
     const lines = splitLines(hit.text);
     const lang = langOf(hit.abs);
-    const plan = planSelection([{ startLine: hit.start, startCol: 0, endLine: hit.end, endCol: lines[hit.end - 1].length }], analysisOf(lang, hit.text));
+    const plan = planSelection(
+      [{ startLine: hit.start, startCol: 0, endLine: hit.end, endCol: lines[hit.end - 1].length }],
+      analysisOf(lang, hit.text),
+    );
     if (plan) {
-      const built = await cardsFromPlan(await locOfFile(hit.abs), lines, plan.kind === "split" ? { kind: "segments", ranges: [plan.range] } : plan, lang);
+      const built = await cardsFromPlan(
+        await locOfFile(hit.abs),
+        lines,
+        plan.kind === "split" ? { kind: "segments", ranges: [plan.range] } : plan,
+        lang,
+      );
       return (await withViews(built.cards))[0];
     }
   }
@@ -32,7 +40,9 @@ export async function pasteCard(text: string): Promise<NewCard | null> {
 const norm = (l: string) => l.replace(/\s+$/, "");
 
 /** 在打开的文档和工作区代码文件里找这段文本（第一行可以只是行尾一部分：从行中间开始复制的） */
-async function findInWorkspace(text: string): Promise<{ abs: string; text: string; start: number; end: number } | null> {
+async function findInWorkspace(
+  text: string,
+): Promise<{ abs: string; text: string; start: number; end: number } | null> {
   const block = splitLines(text).map(norm);
   while (block.length && !block[0].trim()) block.shift();
   while (block.length && !block[block.length - 1].trim()) block.pop();
@@ -61,4 +71,3 @@ async function findInWorkspace(text: string): Promise<{ abs: string; text: strin
   }
   return null;
 }
-

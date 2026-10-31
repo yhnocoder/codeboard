@@ -23,21 +23,39 @@ function board(): Scene {
   const m = put(markCard("z-m", "抢占最后进来的", "orange"), { x: 1520, y: 1040, w: 280 });
   arrow(b, "z5", whole(m), whole(pr));
   put(noteCard("z-short", "**prefix caching**：按 hash 复用"), { x: 40, y: 860, w: 360 });
-  section(b, { id: "z-s", title: "Block Manager", x: 1460, y: 60, w: 1020, h: 900, color: "blue" }, [ca.id, de.id, pr.id]);
-  section(b, { id: "z-c", title: "Model Runner", x: 780, y: 860, w: 500, h: 200, color: "sand", collapsed: true }, [put(noteCard("z-mr", "CUDA graph"), { x: 800, y: 900, w: 200 }).id]);
+  section(b, { id: "z-s", title: "Block Manager", x: 1460, y: 60, w: 1020, h: 900, color: "blue" }, [
+    ca.id,
+    de.id,
+    pr.id,
+  ]);
+  section(b, { id: "z-c", title: "Model Runner", x: 780, y: 860, w: 500, h: 200, color: "sand", collapsed: true }, [
+    put(noteCard("z-mr", "CUDA graph"), { x: 800, y: 900, w: 200 }).id,
+  ]);
   b.stickers.push(
     { id: "s1", icon: { pack: "builtin", name: "star" }, at: { kind: "canvas", x: 680, y: 30, size: 48 } },
     { id: "s2", icon: { pack: PACK, name: "wink" }, at: { kind: "canvas", x: 760, y: 26, size: 56 } },
-    { id: "s3", icon: { pack: "builtin", name: "bug" }, at: { kind: "line", card: sch.id, seg: sch.segments[0].id, line: sch.segments[0].start + 11 } },
+    {
+      id: "s3",
+      icon: { pack: "builtin", name: "bug" },
+      at: { kind: "line", card: sch.id, seg: sch.segments[0].id, line: sch.segments[0].start + 11 },
+    },
   );
   return { board: b };
 }
 
 const meta = {
   title: "Canvas/LOD",
-  render: (a, ctx) => { usePacks(); return <Stage scene={() => ({ ...board(), zoom: a.zoom || undefined })} globals={ctx.globals as Globals} />; },
+  render: (a, ctx) => {
+    usePacks();
+    return <Stage scene={() => ({ ...board(), zoom: a.zoom || undefined })} globals={ctx.globals as Globals} />;
+  },
   args: { zoom: 0 },
-  argTypes: { zoom: { control: { type: "range", min: 0, max: 1.5, step: 0.01 }, description: "Camera zoom (0: the toolbar's Zoom). Overview below 0.6, map below 0.25" } },
+  argTypes: {
+    zoom: {
+      control: { type: "range", min: 0, max: 1.5, step: 0.01 },
+      description: "Camera zoom (0: the toolbar's Zoom). Overview below 0.6, map below 0.25",
+    },
+  },
 } satisfies Meta<Args>;
 export default meta;
 type Story = StoryObj<typeof meta>;

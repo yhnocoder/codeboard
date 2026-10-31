@@ -11,7 +11,20 @@ import { nodeWorkspace } from "./node-workspace";
 const tmp = fs.mkdtempSync("/tmp/codeboard-sweep-");
 afterAll(() => fs.rmSync(tmp, { recursive: true, force: true }));
 const state = new Map<string, unknown>();
-beforeEach(() => { state.clear(); useWorkspace({ ...nodeWorkspace(), storage: { dir: () => tmp, globalDir: () => tmp, get: <T>(k: string) => state.get(k) as T | undefined, set: async (k: string, v: unknown) => { state.set(k, v); } } }); });
+beforeEach(() => {
+  state.clear();
+  useWorkspace({
+    ...nodeWorkspace(),
+    storage: {
+      dir: () => tmp,
+      globalDir: () => tmp,
+      get: <T>(k: string) => state.get(k) as T | undefined,
+      set: async (k: string, v: unknown) => {
+        state.set(k, v);
+      },
+    },
+  });
+});
 
 const NOW = Date.now();
 let n = 0;
@@ -25,7 +38,11 @@ function setup() {
     const t = new Date(NOW - ageDays * 24 * 3600 * 1000);
     fs.utimesSync(p, t, t);
   };
-  const json = (rel: string, v: unknown) => { const p = path.join(dir, rel); fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, JSON.stringify(v)); };
+  const json = (rel: string, v: unknown) => {
+    const p = path.join(dir, rel);
+    fs.mkdirSync(path.dirname(p), { recursive: true });
+    fs.writeFileSync(p, JSON.stringify(v));
+  };
   const left = () => fs.readdirSync(path.join(dir, "assets")).sort();
   return { dir, store, asset, json, left };
 }
@@ -38,7 +55,13 @@ describe("sweeping unused images", () => {
     asset("bbbbbbbbbbbbbbbb-10x10.png", 30); // unreferenced, old
     asset("cccccccccccccccc-10x10.png", 2); // unreferenced, pasted 2 days ago (maybe undone, maybe redone later)
     asset("dddddddddddddddd.png", 30); // an Image card's src (bare file name)
-    json("b1.json", { ...emptyBoard("b1", "one"), cards: [note("n", "see ![](assets/aaaaaaaaaaaaaaaa-10x10.png)"), { id: "i", kind: "image", src: "dddddddddddddddd.png" }] });
+    json("b1.json", {
+      ...emptyBoard("b1", "one"),
+      cards: [
+        note("n", "see ![](assets/aaaaaaaaaaaaaaaa-10x10.png)"),
+        { id: "i", kind: "image", src: "dddddddddddddddd.png" },
+      ],
+    });
     expect(await sweepAssets(store, { now: NOW })).toEqual(["bbbbbbbbbbbbbbbb-10x10.png"]);
     expect(left()).toEqual(["aaaaaaaaaaaaaaaa-10x10.png", "cccccccccccccccc-10x10.png", "dddddddddddddddd.png"]);
   });
@@ -48,7 +71,10 @@ describe("sweeping unused images", () => {
     for (const k of ["1", "2", "3", "4"]) asset(`${k.repeat(16)}-1x1.png`, 30);
     json("group/b2.json", { ...emptyBoard("b2", "two"), cards: [note("n", "![](assets/1111111111111111-1x1.png)")] });
     json("cards/n9.json", { version: 8, card: note("n9", "![x](assets/2222222222222222-1x1.png)"), sidenotes: [] });
-    json(".trash/b3.json", { ...emptyBoard("b3", "deleted"), cards: [note("n", "![](assets/3333333333333333-1x1.png)")] });
+    json(".trash/b3.json", {
+      ...emptyBoard("b3", "deleted"),
+      cards: [note("n", "![](assets/3333333333333333-1x1.png)")],
+    });
     const b = { ...emptyBoard("b4", "open"), cards: [note("n", "")] };
     await store.save(b);
     await store.load("b4");
@@ -74,7 +100,14 @@ describe("sweeping unused images", () => {
     asset("gggggggggggggggg-1x1.png", 30);
     json("b1.json", emptyBoard("b1", "one"));
     fs.chmodSync(path.join(dir, "b1.json"), 0o000);
-    const readable = (() => { try { fs.readFileSync(path.join(dir, "b1.json")); return true; } catch { return false; } })();
+    const readable = (() => {
+      try {
+        fs.readFileSync(path.join(dir, "b1.json"));
+        return true;
+      } catch {
+        return false;
+      }
+    })();
     await sweepAssets(store, { now: NOW }).catch(() => []);
     fs.chmodSync(path.join(dir, "b1.json"), 0o644);
     if (!readable) expect(left()).toEqual(["gggggggggggggggg-1x1.png"]); // as root every file is readable: nothing to check

@@ -1,7 +1,15 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { emptyBoard, placeCards, type Board, type BoardToHost, type CodeCard, type Segment, type Source } from "@codeboard/core";
+import {
+  emptyBoard,
+  placeCards,
+  type Board,
+  type BoardToHost,
+  type CodeCard,
+  type Segment,
+  type Source,
+} from "@codeboard/core";
 import { Storage, type Pasted } from "@codeboard/core/storage";
 import { nodeFs } from "../src/nodefs";
 import { useWorkspace } from "../src/ws";
@@ -11,14 +19,30 @@ import { nodeWorkspace } from "./node-workspace";
 import { tempRepo } from "./helpers";
 
 const tmp: string[] = [];
-const mk = (p: string) => { const d = fs.mkdtempSync(`/tmp/codeboard-${p}-`); tmp.push(d); return d; };
+const mk = (p: string) => {
+  const d = fs.mkdtempSync(`/tmp/codeboard-${p}-`);
+  tmp.push(d);
+  return d;
+};
 /** 窗口 A 的工作区（仓库 A）、窗口 B 的工作区（里面有 B/lib）、两个窗口共用的全局存储目录 G */
 let A: string, B: string, G: string;
 let n = 0;
 
-const seg = (src: Source, p = "x.py"): Segment => ({ id: `s${++n}`, src, path: p, lang: "python", start: 1, end: 1, text: ["x = 1"], version: { kind: "none" } });
+const seg = (src: Source, p = "x.py"): Segment => ({
+  id: `s${++n}`,
+  src,
+  path: p,
+  lang: "python",
+  start: 1,
+  end: 1,
+  text: ["x = 1"],
+  version: { kind: "none" },
+});
 const code = (id: string, ...segs: Segment[]): CodeCard => ({ id, kind: "code", segments: segs });
-const put = (b: Board, c: Board["cards"][number], x = 0) => { b.cards.push(c); b.place[c.id] = { x, y: 0, w: 400 }; };
+const put = (b: Board, c: Board["cards"][number], x = 0) => {
+  b.cards.push(c);
+  b.place[c.id] = { x, y: 0, w: 400 };
+};
 const codeOf = (r: Pasted | null, id: string) => r?.cards.find((x) => x.card.id === id)?.card as CodeCard | undefined;
 
 /** 一个窗口：它的工作区、存储目录、白板消息处理 */
@@ -30,18 +54,24 @@ function windowOf(folder: string, more: string[] = []) {
   const store = new Storage(nodeFs, { dir: () => dir });
   const host = { store, clip: undefined, broadcast: () => undefined } as unknown as BoardHost;
   const h = makeHandler(host);
-  const send = (board: string, m: Record<string, unknown>) => { useWorkspace(ws); return h({ id: board } as BoardPanel, { req: 1, ...m } as BoardToHost); };
+  const send = (board: string, m: Record<string, unknown>) => {
+    useWorkspace(ws);
+    return h({ id: board } as BoardPanel, { req: 1, ...m } as BoardToHost);
+  };
   return { dir, store, host, send };
 }
 
 beforeAll(() => {
-  A = tempRepo("pa", { "x.py": "x = 1\n" }); tmp.push(A);
+  A = tempRepo("pa", { "x.py": "x = 1\n" });
+  tmp.push(A);
   B = mk("pb");
   fs.mkdirSync(path.join(B, "lib"));
   fs.writeFileSync(path.join(B, "lib/x.py"), "x = 1\n");
   G = mk("pg");
 });
-afterAll(() => { for (const d of tmp) fs.rmSync(d, { recursive: true, force: true }); });
+afterAll(() => {
+  for (const d of tmp) fs.rmSync(d, { recursive: true, force: true });
+});
 
 /** 窗口 A 上一块白板：带图片的 Note、仓库 A 里的代码卡（Generated，用到一份运行记录）、B/lib 里的代码卡、它们之间的 Link */
 async function source() {
@@ -73,7 +103,11 @@ describe("paste cards from another window", () => {
     await copied(a, "Into a multi-root window");
     const b = windowOf(B, [A]);
     await b.store.save(emptyBoard("bHere", "Here"));
-    const r = (await b.send("bHere", { type: "pasteCards", text: "Into a multi-root window", copy: false })) as Pasted | null;
+    const r = (await b.send("bHere", {
+      type: "pasteCards",
+      text: "Into a multi-root window",
+      copy: false,
+    })) as Pasted | null;
     // 仓库 A 是这个窗口的第二个根：和这边自己加卡一样写成相对第一个根的 repo
     expect(codeOf(r, "k1")?.segments[0].src).toEqual({ kind: "repo", repo: path.relative(B, A) });
     expect(codeOf(r, "k2")?.segments[0].src).toEqual({ kind: "repo", repo: "lib" });
@@ -86,13 +120,19 @@ describe("paste cards from another window", () => {
     await b.store.save(emptyBoard("bHere", "Here"));
     const fileBefore = fs.readFileSync(path.join(a.dir, "bMain.json"), "utf8");
 
-    const r = (await b.send("bHere", { type: "pasteCards", text: "Note and two cards\r\n", copy: false })) as Pasted | null;
+    const r = (await b.send("bHere", {
+      type: "pasteCards",
+      text: "Note and two cards\r\n",
+      copy: false,
+    })) as Pasted | null;
     expect(r?.shared).toBe(false);
     expect(r?.from).toBe(`Main (${path.basename(A)})`);
     expect(r?.cards.map((x) => x.card.id).sort()).toEqual(["k1", "k2", "note"]);
     expect(r?.links.map((l) => l.id)).toEqual(["l1"]);
     // Note 的 Markdown 不变，图片拷到了这边的 assets/（没用到的不拷）
-    expect((r?.cards.find((x) => x.card.id === "note")?.card as { md: string }).md).toBe("see ![x](assets/def456-40x30.png)");
+    expect((r?.cards.find((x) => x.card.id === "note")?.card as { md: string }).md).toBe(
+      "see ![x](assets/def456-40x30.png)",
+    );
     expect(fs.readFileSync(path.join(b.dir, "assets/def456-40x30.png"), "utf8")).toBe("png");
     expect(fs.existsSync(path.join(b.dir, "assets/unused.png"))).toBe(false);
     expect(fs.existsSync(path.join(b.dir, "runs/r1.json"))).toBe(true);
@@ -140,9 +180,16 @@ describe("paste cards from another window", () => {
     const a = await source();
     await copied(a, "same folder");
     // 同一个项目的第二个窗口：同一个存储目录，自己的剪贴板是空的
-    const ws2 = { store: new Storage(nodeFs, { dir: () => a.dir }), clip: undefined, broadcast: () => undefined } as unknown as BoardHost;
+    const ws2 = {
+      store: new Storage(nodeFs, { dir: () => a.dir }),
+      clip: undefined,
+      broadcast: () => undefined,
+    } as unknown as BoardHost;
     await ws2.store.save(emptyBoard("bOther", "Other"));
-    const r = (await makeHandler(ws2)({ id: "bOther" } as BoardPanel, { type: "pasteCards", req: 1, text: "same folder", copy: false } as BoardToHost)) as Pasted | null;
+    const r = (await makeHandler(ws2)(
+      { id: "bOther" } as BoardPanel,
+      { type: "pasteCards", req: 1, text: "same folder", copy: false } as BoardToHost,
+    )) as Pasted | null;
     expect(r?.shared).toBe(false);
     expect(codeOf(r, "k1")?.segments[0].src).toEqual({ kind: "repo", repo: "" });
   });

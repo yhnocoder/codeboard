@@ -26,7 +26,14 @@ export async function activate(ctx: vscode.ExtensionContext) {
   const { hub, store } = h;
 
   // 先注册恢复面板，再等 tree-sitter（恢复时的 ready 消息会等 init 里的分析）
-  sub(vscode.window.registerWebviewPanelSerializer(VIEW_TYPE, { deserializeWebviewPanel: async (p, state) => { await h.ready; await webviews.restore(hub, p, state); } }));
+  sub(
+    vscode.window.registerWebviewPanelSerializer(VIEW_TYPE, {
+      deserializeWebviewPanel: async (p, state) => {
+        await h.ready;
+        await webviews.restore(hub, p, state);
+      },
+    }),
+  );
   registerCommands(ctx, h);
 
   const tree = new BoardsTree(store, hub);
@@ -37,15 +44,24 @@ export async function activate(ctx: vscode.ExtensionContext) {
   sub(vscode.window.registerTreeDataProvider("codeboard.questions", qtree));
   sub(vscode.commands.registerCommand("codeboard.questions.showAll", () => qtree.setAll(true)));
   sub(vscode.commands.registerCommand("codeboard.questions.showOpen", () => qtree.setAll(false)));
-  sub(vscode.commands.registerCommand("codeboard.copyQuestions", async () => {
-    const qs = await qtree.shown();
-    if (!qs.length) return void vscode.window.showInformationMessage("No questions to copy.");
-    await vscode.env.clipboard.writeText(questionsMarkdown(qs));
-    void vscode.window.showInformationMessage(`Copied ${qs.length} question${qs.length > 1 ? "s" : ""} as a Markdown list.`);
-  }));
+  sub(
+    vscode.commands.registerCommand("codeboard.copyQuestions", async () => {
+      const qs = await qtree.shown();
+      if (!qs.length) return void vscode.window.showInformationMessage("No questions to copy.");
+      await vscode.env.clipboard.writeText(questionsMarkdown(qs));
+      void vscode.window.showInformationMessage(
+        `Copied ${qs.length} question${qs.length > 1 ? "s" : ""} as a Markdown list.`,
+      );
+    }),
+  );
 
   const marks = new EditorMarks(ctx, store, hub);
-  sub(vscode.languages.registerCodeLensProvider(analyzedEditorLangs().map((language) => ({ scheme: "file", language })), marks));
+  sub(
+    vscode.languages.registerCodeLensProvider(
+      analyzedEditorLangs().map((language) => ({ scheme: "file", language })),
+      marks,
+    ),
+  );
 
   sub(registerVersionDocs(showFile));
 
@@ -55,16 +71,42 @@ export async function activate(ctx: vscode.ExtensionContext) {
   const updateStatus = debounce(async () => {
     const metas = await store.list();
     const t = metas.find((m) => m.id === hub.target);
-    if (!t) { status.hide(); return; }
+    if (!t) {
+      status.hide();
+      return;
+    }
     status.text = `$(layout) ${t.name}${t.stale ? `  $(circle-filled) ${t.stale}` : ""}`;
     status.tooltip = `CodeBoard: Add to Board goes to “${t.name}”${t.stale ? ` · ${t.stale} cards have new versions` : ""}. Click to switch.`;
     status.show();
   }, 100);
 
-  sub(store.onDidChange(() => { tree.refresh(); qtree.refresh(); updateStatus(); }));
-  sub(store.onDidSave(() => { marks.rebuild(); qtree.refresh(); gh.refresh(); }));
-  sub(hub.onDidChangeTarget(() => { tree.refresh(); updateStatus(); marks.rebuild(); }));
-  sub(hub.onDidChangeStale(() => { tree.refresh(); updateStatus(); }));
+  sub(
+    store.onDidChange(() => {
+      tree.refresh();
+      qtree.refresh();
+      updateStatus();
+    }),
+  );
+  sub(
+    store.onDidSave(() => {
+      marks.rebuild();
+      qtree.refresh();
+      gh.refresh();
+    }),
+  );
+  sub(
+    hub.onDidChangeTarget(() => {
+      tree.refresh();
+      updateStatus();
+      marks.rebuild();
+    }),
+  );
+  sub(
+    hub.onDidChangeStale(() => {
+      tree.refresh();
+      updateStatus();
+    }),
+  );
   sub(h.onDidSwitchStorage(() => marks.rebuild()));
   sub(h.onDidOpenGithubFile(() => gh.refresh()));
   sub(vscode.window.onDidChangeVisibleTextEditors(() => marks.redecorate()));
@@ -75,4 +117,7 @@ export async function activate(ctx: vscode.ExtensionContext) {
   updateStatus();
 }
 
-export async function deactivate() { disposeScratch(); await host?.flush(); }
+export async function deactivate() {
+  disposeScratch();
+  await host?.flush();
+}

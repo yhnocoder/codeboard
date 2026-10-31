@@ -6,7 +6,8 @@ import { workspace } from "./ws";
 const KEY = Object.fromEntries(Object.entries(SETTINGS).map(([k, d]) => [k, d.key])) as Record<keyof Settings, string>;
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
 
-export const validSetting = (k: string, v: unknown): k is keyof Settings => k in SETTINGS && SETTINGS[k as keyof Settings].valid(v);
+export const validSetting = (k: string, v: unknown): k is keyof Settings =>
+  k in SETTINGS && SETTINGS[k as keyof Settings].valid(v);
 
 /**
  * 白板改了、还没写完的设置（写一次 settings.json 要一两百毫秒）。连着改（点两个主题、按住字号的箭头）时，前一次写完的改动事件
@@ -33,10 +34,18 @@ const PROJECT = new Set<keyof Settings>(["mathPreamble"]);
 
 export async function writeSetting(k: keyof Settings, v: unknown) {
   if (!(k in KEY)) return;
-  if (!validSetting(k, v)) { log("warn", `setSetting: ignored bad value for ${k}: ${JSON.stringify(v)?.slice(0, 200)}`); return; }
+  if (!validSetting(k, v)) {
+    log("warn", `setSetting: ignored bad value for ${k}: ${JSON.stringify(v)?.slice(0, 200)}`);
+    return;
+  }
   const w = { v };
   writing.set(k, w);
-  try { await workspace().settings.set(`codeboard.${KEY[k]}`, v, PROJECT.has(k) ? "workspace" : "user"); } finally { if (writing.get(k) === w) writing.delete(k); }
+  try {
+    await workspace().settings.set(`codeboard.${KEY[k]}`, v, PROJECT.has(k) ? "workspace" : "user");
+  } finally {
+    if (writing.get(k) === w) writing.delete(k);
+  }
 }
 
-export const affectsSettings = (e: { affects(key: string): boolean }) => (Object.values(KEY) as string[]).some((k) => e.affects(`codeboard.${k}`));
+export const affectsSettings = (e: { affects(key: string): boolean }) =>
+  (Object.values(KEY) as string[]).some((k) => e.affects(`codeboard.${k}`));

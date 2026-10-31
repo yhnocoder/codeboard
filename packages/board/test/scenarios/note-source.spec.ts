@@ -12,25 +12,48 @@ const card = (id: string) => `.card[data-id="${id}"]`;
 
 function board(init: string[]): Board {
   const b = emptyBoard("b1", "note source");
-  init.forEach((md, i) => put(b, { id: `n${i}`, kind: "note", md, look: "note" } as NoteCard, 60 + (i % 2) * 620, 60 + Math.floor(i / 2) * 420, 560));
+  init.forEach((md, i) =>
+    put(
+      b,
+      { id: `n${i}`, kind: "note", md, look: "note" } as NoteCard,
+      60 + (i % 2) * 620,
+      60 + Math.floor(i / 2) * 420,
+      560,
+    ),
+  );
   b.cam = { x: 0, y: 0, z: 1 };
   return b;
 }
-const md = (h: Host, id: string) => ((h.board().cards.find((c) => c.id === id) as NoteCard | undefined)?.md ?? "").trim();
+const md = (h: Host, id: string) =>
+  ((h.board().cards.find((c) => c.id === id) as NoteCard | undefined)?.md ?? "").trim();
 const layoutOf = (h: Host, id: string) => (h.board().cards.find((c) => c.id === id) as NoteCard | undefined)?.mdLayout;
 async function editNote(h: Host, id: string) {
-  await h.page.locator(`${card(id)} .nbody :is(p, td)`).last().dblclick();
+  await h.page
+    .locator(`${card(id)} .nbody :is(p, td)`)
+    .last()
+    .dblclick();
   await h.page.locator(`${card(id)} .md-pm:focus`).waitFor();
   await focusSettled(h.page);
 }
 async function exitEdit(h: Host) {
-  for (let k = 0; k < 3 && (await h.page.locator(".md-pm").count()); k++) { await h.page.keyboard.press("Escape"); await idle(h); }
+  for (let k = 0; k < 3 && (await h.page.locator(".md-pm").count()); k++) {
+    await h.page.keyboard.press("Escape");
+    await idle(h);
+  }
 }
 /** The editor's document as Markdown-ish JSON (to see that it did not change), its selected text and selection */
-const pm = (pg: Page) => pg.evaluate(() => {
-  const e = (document.querySelector(".md-pm") as any).editor, s = e.state.selection;
-  return { doc: JSON.stringify(e.state.doc.toJSON()), sel: e.state.doc.textBetween(s.from, s.to) as string, from: s.from as number, to: s.to as number, empty: s.empty as boolean };
-});
+const pm = (pg: Page) =>
+  pg.evaluate(() => {
+    const e = (document.querySelector(".md-pm") as any).editor,
+      s = e.state.selection;
+    return {
+      doc: JSON.stringify(e.state.doc.toJSON()),
+      sel: e.state.doc.textBetween(s.from, s.to) as string,
+      from: s.from as number,
+      to: s.to as number,
+      empty: s.empty as boolean,
+    };
+  });
 /** Moves the caret with a key and waits until ProseMirror has it */
 async function key(pg: Page, k: string) {
   await pmHasSelection(pg);
@@ -38,18 +61,24 @@ async function key(pg: Page, k: string) {
   await pmHasSelection(pg);
 }
 /** The screen point of character i (its left edge + dx) of the text `word` inside the editor's element matching sel */
-const charAt = (pg: Page, sel: string, word: string, i: number, dx = 1) => pg.evaluate(([sel, word, i, dx]) => {
-  const root = document.querySelector(sel as string)!, walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
-    const k = n.textContent!.indexOf(word as string);
-    if (k < 0) continue;
-    const r = document.createRange();
-    r.setStart(n, k + (i as number)); r.setEnd(n, k + (i as number) + 1);
-    const b = r.getBoundingClientRect();
-    return { x: b.left + (dx as number), y: b.top + b.height / 2 };
-  }
-  return null;
-}, [sel, word, i, dx] as const);
+const charAt = (pg: Page, sel: string, word: string, i: number, dx = 1) =>
+  pg.evaluate(
+    ([sel, word, i, dx]) => {
+      const root = document.querySelector(sel as string)!,
+        walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+      for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+        const k = n.textContent!.indexOf(word as string);
+        if (k < 0) continue;
+        const r = document.createRange();
+        r.setStart(n, k + (i as number));
+        r.setEnd(n, k + (i as number) + 1);
+        const b = r.getBoundingClientRect();
+        return { x: b.left + (dx as number), y: b.top + b.height / 2 };
+      }
+      return null;
+    },
+    [sel, word, i, dx] as const,
+  );
 /** Where a word is drawn (to see that nothing is laid out again) */
 const wordX = async (pg: Page, word: string) => (await charAt(pg, ".md-pm", word, 0, 0))?.x ?? null;
 const visibleMarkers = (pg: Page) => pg.locator(".md-pm .md-mk:not(.md-hide)").count();
@@ -63,11 +92,13 @@ test("noteDragSelectFromHighlight", async () => {
   await editNote(h, "n0");
   await key(pg, "Control+End");
   await idle(h);
-  const from = (await charAt(pg, ".md-pm mark", "words", 0))!, to = (await charAt(pg, ".md-pm", "tail of", 4, 1))!;
+  const from = (await charAt(pg, ".md-pm mark", "words", 0))!,
+    to = (await charAt(pg, ".md-pm", "tail of", 4, 1))!;
   const tail0 = await wordX(pg, "tail");
   await pg.mouse.move(from.x, from.y);
   await pg.mouse.down();
-  const moved: (number | null)[] = [], shown: number[] = [];
+  const moved: (number | null)[] = [],
+    shown: number[] = [];
   for (let i = 1; i <= 8; i++) {
     await pg.mouse.move(from.x + ((to.x - from.x) * i) / 8, from.y);
     moved.push(await wordX(pg, "tail"));
@@ -77,11 +108,23 @@ test("noteDragSelectFromHighlight", async () => {
   await pmHasSelection(pg);
   const s = await pm(pg);
   await shot(h, "noteDragSelectFromHighlight");
-  check("noteDragSelectFromHighlight nothing moves while dragging", moved.every((x) => x === tail0) && shown.every((n) => n === 0), { tail0, moved, shown });
+  check(
+    "noteDragSelectFromHighlight nothing moves while dragging",
+    moved.every((x) => x === tail0) && shown.every((n) => n === 0),
+    { tail0, moved, shown },
+  );
   // the selection is of the source: the hidden closing == lies between the press and the release
-  check("noteDragSelectFromHighlight selects from the press to the release", s.sel === "words here== and the tail", s.sel);
+  check(
+    "noteDragSelectFromHighlight selects from the press to the release",
+    s.sel === "words here== and the tail",
+    s.sel,
+  );
   await exitEdit(h);
-  check("noteDragSelectFromHighlight leaves the Markdown alone", md(h, "n0") === "Plain start ==highlighted words here== and the tail of the line", md(h, "n0"));
+  check(
+    "noteDragSelectFromHighlight leaves the Markdown alone",
+    md(h, "n0") === "Plain start ==highlighted words here== and the tail of the line",
+    md(h, "n0"),
+  );
   await close(h);
 });
 
@@ -93,10 +136,13 @@ test("noteDoubleClickSelectsWord", async () => {
   await editNote(h, "n0");
   await key(pg, "Control+End");
   await idle(h);
-  const at = (await charAt(pg, ".md-pm strong", "words", 2))!, x0 = await wordX(pg, "words");
+  const at = (await charAt(pg, ".md-pm strong", "words", 2))!,
+    x0 = await wordX(pg, "words");
   await pg.mouse.dblclick(at.x, at.y);
   await pmHasSelection(pg);
-  const s = await pm(pg), x1 = await wordX(pg, "words"), shownNow = await visibleMarkers(pg);
+  const s = await pm(pg),
+    x1 = await wordX(pg, "words"),
+    shownNow = await visibleMarkers(pg);
   await shot(h, "noteDoubleClickSelectsWord");
   check("noteDoubleClickSelectsWord", s.sel === "words" && x1 === x0 && shownNow === 0, { s: s.sel, x0, x1, shownNow });
   // a single click in the bold shows its markers once the double-click time is over (on the other word: a click on the
@@ -104,7 +150,14 @@ test("noteDoubleClickSelectsWord", async () => {
   const other = (await charAt(pg, ".md-pm strong", "bold", 1))!;
   await pg.mouse.click(other.x, other.y);
   await pmHasSelection(pg);
-  const shownAfter = await until(h, "the markers show after a single click", async () => (await visibleMarkers(pg)) === 2).then(() => true, () => false);
+  const shownAfter = await until(
+    h,
+    "the markers show after a single click",
+    async () => (await visibleMarkers(pg)) === 2,
+  ).then(
+    () => true,
+    () => false,
+  );
   check("noteDoubleClickSelectsWord single click shows the markers", shownAfter, await visibleMarkers(pg));
   await close(h);
 });
@@ -121,15 +174,29 @@ test("noteArrowsCrossHiddenMarkers", async () => {
   await key(pg, "Home");
   await idle(h);
   const sels: string[] = [];
-  for (let i = 0; i < 9; i++) { await key(pg, "Shift+ArrowRight"); sels.push((await pm(pg)).sel); }
+  for (let i = 0; i < 9; i++) {
+    await key(pg, "Shift+ArrowRight");
+    sels.push((await pm(pg)).sel);
+  }
   await shot(h, "noteArrowsCrossHiddenMarkers");
-  check("noteArrowsCrossHiddenMarkers shift", sels[3] === "ab **c" && sels[6] === "ab **cd** $x$" && sels[8] === src, sels);
+  check(
+    "noteArrowsCrossHiddenMarkers shift",
+    sels[3] === "ab **c" && sels[6] === "ab **cd** $x$" && sels[8] === src,
+    sels,
+  );
   // back over them: from the end, ⇧← seven times; hidden markers go with the character next to them
   await key(pg, "End");
   await idle(h);
   const back: string[] = [];
-  for (let i = 0; i < 7; i++) { await key(pg, "Shift+ArrowLeft"); back.push((await pm(pg)).sel); }
-  check("noteArrowsCrossHiddenMarkers shift back", back[1] === " e" && back[2] === "$x$ e" && back[4] === "d** $x$ e" && back[6] === " **cd** $x$ e", back);
+  for (let i = 0; i < 7; i++) {
+    await key(pg, "Shift+ArrowLeft");
+    back.push((await pm(pg)).sel);
+  }
+  check(
+    "noteArrowsCrossHiddenMarkers shift back",
+    back[1] === " e" && back[2] === "$x$ e" && back[4] === "d** $x$ e" && back[6] === " **cd** $x$ e",
+    back,
+  );
   await exitEdit(h);
   check("noteArrowsCrossHiddenMarkers unchanged", md(h, "n0") === src, md(h, "n0"));
   await close(h);
@@ -147,26 +214,51 @@ test("noteCaretMovesNoUndo", async () => {
   await pg.keyboard.type("!");
   await idle(h);
   const before = await pm(pg);
-  for (const k of ["Control+Home", "ArrowRight", "ArrowRight", "ArrowRight", "ArrowRight", "End", "ArrowLeft", "ArrowLeft", "ArrowDown", "Home", "ArrowRight", "ArrowUp"]) await key(pg, k);
+  for (const k of [
+    "Control+Home",
+    "ArrowRight",
+    "ArrowRight",
+    "ArrowRight",
+    "ArrowRight",
+    "End",
+    "ArrowLeft",
+    "ArrowLeft",
+    "ArrowDown",
+    "Home",
+    "ArrowRight",
+    "ArrowUp",
+  ])
+    await key(pg, k);
   await idle(h);
   const after = await pm(pg);
   await pg.keyboard.press("ControlOrMeta+z");
   await idle(h);
   const undone = await pm(pg);
   await exitEdit(h);
-  check("noteCaretMovesNoUndo document unchanged by moves", after.doc === before.doc, { before: before.doc.slice(0, 300), after: after.doc.slice(0, 300) });
-  check("noteCaretMovesNoUndo one undo takes the typing back", md(h, "n0") === src && !undone.doc.includes("code`!"), md(h, "n0"));
+  check("noteCaretMovesNoUndo document unchanged by moves", after.doc === before.doc, {
+    before: before.doc.slice(0, 300),
+    after: after.doc.slice(0, 300),
+  });
+  check(
+    "noteCaretMovesNoUndo one undo takes the typing back",
+    md(h, "n0") === src && !undone.doc.includes("code`!"),
+    md(h, "n0"),
+  );
   await close(h);
 });
 
 /** A code block's pill: language, copy, wrap (kept as the Note's layout, also in the static render) and a menu that turns the
  *  block into paragraphs or deletes it */
 test("noteCodeBlockPill", async () => {
-  const code = "```python\nvery_long_name = compute_something(with_a, rather_long, list_of, arguments, that_keeps_going, past_the_edge)\nx = 1\nprint(min(x, 2) // 3)\n```";
+  const code =
+    "```python\nvery_long_name = compute_something(with_a, rather_long, list_of, arguments, that_keeps_going, past_the_edge)\nx = 1\nprint(min(x, 2) // 3)\n```";
   const h = await open({ board: board([`Intro\n\n${code}\n\nafter`, `${code}`]), light });
   const pg = h.page;
   await idle(h);
-  await pg.locator(`${card("n0")} .nbody p`).first().dblclick();
+  await pg
+    .locator(`${card("n0")} .nbody p`)
+    .first()
+    .dblclick();
   await pg.locator(`${card("n0")} .md-pm:focus`).waitFor();
   const block = `${card("n0")} .md-pm .md-code`;
   await pg.locator(block).hover();
@@ -179,16 +271,35 @@ test("noteCodeBlockPill", async () => {
   // in plain ink (the board's code cards keep their colours)
   await until(h, "the code is coloured", async () => (await pg.locator(`${block} .cm-content .num`).count()) > 0);
   const look = await pg.locator(block).evaluate((e) => {
-    const s = getComputedStyle(e), p = e.querySelector(".md-cbpill")!, num = e.querySelector(".cm-content .num");
-    const color = (sel: string, text: string) => { const t = [...e.querySelectorAll(`.cm-content ${sel}`)].find((x) => x.textContent?.trim() === text); return t ? getComputedStyle(t).color : null; };
+    const s = getComputedStyle(e),
+      p = e.querySelector(".md-cbpill")!,
+      num = e.querySelector(".cm-content .num");
+    const color = (sel: string, text: string) => {
+      const t = [...e.querySelectorAll(`.cm-content ${sel}`)].find((x) => x.textContent?.trim() === text);
+      return t ? getComputedStyle(t).color : null;
+    };
     const plain = [...e.querySelectorAll(".cm-content .p")].filter((x) => /\w/.test(x.textContent ?? "")).length;
-    return { radius: s.borderTopLeftRadius, pad: `${s.paddingTop} ${s.paddingLeft}`, font: s.fontSize, lh: s.lineHeight, pill: Math.round(p.getBoundingClientRect().height), sep: !!p.querySelector(".md-lang + .md-cbsep"),
-      num: num ? getComputedStyle(num).color : null, builtin: color(".fn", "min"), op: color(".op", "//"), argsAsMarks: plain,
-      chevron: getComputedStyle(p.querySelector(".md-lang-v")!).opacity };
+    return {
+      radius: s.borderTopLeftRadius,
+      pad: `${s.paddingTop} ${s.paddingLeft}`,
+      font: s.fontSize,
+      lh: s.lineHeight,
+      pill: Math.round(p.getBoundingClientRect().height),
+      sep: !!p.querySelector(".md-lang + .md-cbsep"),
+      num: num ? getComputedStyle(num).color : null,
+      builtin: color(".fn", "min"),
+      op: color(".op", "//"),
+      argsAsMarks: plain,
+      chevron: getComputedStyle(p.querySelector(".md-lang-v")!).opacity,
+    };
   });
   const h0 = await pg.locator(block).evaluate((e) => e.getBoundingClientRect().height);
   await pg.locator(`${pill} .md-cbb[data-tip="Wrap lines"]`).click();
-  await until(h, "wrap turns on", async () => (await pg.locator(`${pill} .md-cbb.on[data-tip="Wrap lines"]`).count()) === 1);
+  await until(
+    h,
+    "wrap turns on",
+    async () => (await pg.locator(`${pill} .md-cbb.on[data-tip="Wrap lines"]`).count()) === 1,
+  );
   const h1 = await pg.locator(block).evaluate((e) => e.getBoundingClientRect().height);
   await shot(h, "noteCodeBlockPill-wrap");
   await exitEdit(h);
@@ -202,19 +313,53 @@ test("noteCodeBlockPill", async () => {
   await pg.locator(`${card("n1")} .md-cbb[data-tip="More"]`).click();
   const items = await pg.locator(".md-cbmenu button").allInnerTexts();
   await pg.locator(".md-cbmenu button", { hasText: "Convert to paragraph" }).click();
-  await until(h, "the block became paragraphs", async () => (await pg.locator(`${card("n1")} .md-pm .md-code`).count()) === 0);
+  await until(
+    h,
+    "the block became paragraphs",
+    async () => (await pg.locator(`${card("n1")} .md-pm .md-code`).count()) === 0,
+  );
   await exitEdit(h);
-  check("noteCodeBlockPill look", look.radius === "12px" && look.pad === "18px 22px" && look.font === "12.5px" && Math.abs(parseFloat(look.lh) - 21.25) < .5 && look.pill === 34 && look.sep
-    && look.num === (light ? "rgb(163, 22, 107)" : "rgb(224, 140, 192)") && look.builtin === (light ? "rgb(208, 59, 92)" : "rgb(240, 124, 149)")
-    && look.op === (light ? "rgb(154, 106, 44)" : "rgb(214, 168, 106)") && look.argsAsMarks === 0 && look.chevron === "0.8", look);
-  check("noteCodeBlockPill pill", lang.startsWith("Python") && JSON.stringify(tips) === JSON.stringify(["Copy code", "Wrap lines", "More"]), { lang, tips });
-  check("noteCodeBlockPill wrap", h1 > h0 + 10 && staticWrap === 1 && mdAfterWrap === `Intro\n\n${code}\n\nafter`, { h0, h1, staticWrap, mdAfterWrap });
-  check("noteCodeBlockPill menu", JSON.stringify(items.map((t) => t.trim())) === JSON.stringify(["Convert to paragraph", "Delete code block"]) && !md(h, "n1").includes("```") && md(h, "n1").includes("x = 1"), { items, md: md(h, "n1") });
+  check(
+    "noteCodeBlockPill look",
+    look.radius === "12px" &&
+      look.pad === "18px 22px" &&
+      look.font === "12.5px" &&
+      Math.abs(parseFloat(look.lh) - 21.25) < 0.5 &&
+      look.pill === 34 &&
+      look.sep &&
+      look.num === (light ? "rgb(163, 22, 107)" : "rgb(224, 140, 192)") &&
+      look.builtin === (light ? "rgb(208, 59, 92)" : "rgb(240, 124, 149)") &&
+      look.op === (light ? "rgb(154, 106, 44)" : "rgb(214, 168, 106)") &&
+      look.argsAsMarks === 0 &&
+      look.chevron === "0.8",
+    look,
+  );
+  check(
+    "noteCodeBlockPill pill",
+    lang.startsWith("Python") && JSON.stringify(tips) === JSON.stringify(["Copy code", "Wrap lines", "More"]),
+    { lang, tips },
+  );
+  check("noteCodeBlockPill wrap", h1 > h0 + 10 && staticWrap === 1 && mdAfterWrap === `Intro\n\n${code}\n\nafter`, {
+    h0,
+    h1,
+    staticWrap,
+    mdAfterWrap,
+  });
+  check(
+    "noteCodeBlockPill menu",
+    JSON.stringify(items.map((t) => t.trim())) === JSON.stringify(["Convert to paragraph", "Delete code block"]) &&
+      !md(h, "n1").includes("```") &&
+      md(h, "n1").includes("x = 1"),
+    { items, md: md(h, "n1") },
+  );
   await close(h);
 });
 
 const TABLE = "| a | b | c |\n| - | - | - |\n| 1 | 2 | 3 |\n| 4 | 5 | 6 |";
-const cellText = (pg: Page, id: string) => pg.locator(`${card(id)} .md-pm table tr`).evaluateAll((rs) => rs.map((r) => [...r.children].map((c) => (c as HTMLElement).innerText.trim()).join(",")));
+const cellText = (pg: Page, id: string) =>
+  pg
+    .locator(`${card(id)} .md-pm table tr`)
+    .evaluateAll((rs) => rs.map((r) => [...r.children].map((c) => (c as HTMLElement).innerText.trim()).join(",")));
 async function intoCell(h: Host, id: string, text: string) {
   await h.page.locator(`${card(id)} .md-pm :is(td, th)`, { hasText: new RegExp(`^${text}$`) }).click();
   await pmHasSelection(h.page);
@@ -233,9 +378,15 @@ test("noteTableToolbar", async () => {
   const bar = pg.locator(".md-tbar");
   await bar.waitFor({ state: "visible" });
   const pos = await pg.evaluate(() => {
-    const b = document.querySelector(".md-tbar")!.getBoundingClientRect(), t = document.querySelector(".md-pm table")!.getBoundingClientRect();
+    const b = document.querySelector(".md-tbar")!.getBoundingClientRect(),
+      t = document.querySelector(".md-pm table")!.getBoundingClientRect();
     const right = Math.min(t.right, document.querySelector(".md-pm")!.getBoundingClientRect().right);
-    return { above: b.bottom <= t.top + 1, right: Math.abs(b.right - right) <= 2, bar: [b.left, b.right, b.width], table: [t.left, t.right] };
+    return {
+      above: b.bottom <= t.top + 1,
+      right: Math.abs(b.right - right) <= 2,
+      bar: [b.left, b.right, b.width],
+      table: [t.left, t.right],
+    };
   });
   const count0 = (await pg.locator(".md-tbar .md-tcount").innerText()).trim();
   await bar.locator('[data-act="colRight"]').click();
@@ -249,24 +400,60 @@ test("noteTableToolbar", async () => {
   // the grid: pointing at 2 × 2 marks the cells with content outside it
   await bar.locator('[data-act="grid"]').click();
   await pg.locator(".md-gpick").waitFor({ state: "visible" });
-  await pg.locator(".md-gpick .md-gc").nth(10 + 1).hover();
+  await pg
+    .locator(".md-gpick .md-gc")
+    .nth(10 + 1)
+    .hover();
   await until(h, "the preview marks doomed cells", async () => (await pg.locator(".md-pm .md-doom").count()) > 0);
-  const doomed = await pg.locator(".md-pm .md-doom").evaluateAll((cs) => cs.map((c) => (c as HTMLElement).innerText.trim()));
+  const doomed = await pg
+    .locator(".md-pm .md-doom")
+    .evaluateAll((cs) => cs.map((c) => (c as HTMLElement).innerText.trim()));
   const red = await pg.locator(".md-gpick .md-gc.doom").count();
   // red, not the amber of a warning: r high, g well below it (amber's g is close to r)
-  const hue = await pg.locator(".md-pm .md-doom").first().evaluate((c) => getComputedStyle(c).backgroundColor.match(/[\d.]+/g)!.map(Number));
+  const hue = await pg
+    .locator(".md-pm .md-doom")
+    .first()
+    .evaluate((c) =>
+      getComputedStyle(c)
+        .backgroundColor.match(/[\d.]+/g)!
+        .map(Number),
+    );
   const warn = (await pg.locator(".md-gpick .md-gp-warn").innerText()).trim();
   await shot(h, "noteTableToolbar-grid");
   check("noteTableToolbar grid preview cells that lose content are red", hue[0] > 150 && hue[1] < hue[0] * 0.5, hue);
-  await pg.locator(".md-gpick .md-gc").nth(10 + 1).click();
+  await pg
+    .locator(".md-gpick .md-gc")
+    .nth(10 + 1)
+    .click();
   await until(h, "the table is 2 × 2", async () => (await pg.locator(".md-pm table tr").count()) === 2);
   const small = await cellText(pg, "n1");
   await exitEdit(h);
   const saved = md(h, "n1");
-  check("noteTableToolbar placed above the top-right corner", pos.above && pos.right && count0 === "3×3", { pos, count0 });
-  check("noteTableToolbar rows, columns, alignment", grown.length === 4 && grown[0].split(",").length === 4 && grown[2] === "4,5,,6", grown);
-  check("noteTableToolbar grid preview", doomed.includes("c") && doomed.includes("6") && !doomed.includes("1") && red === doomed.length && /removed/.test(warn), { doomed, red, warn });
-  check("noteTableToolbar shrink", JSON.stringify(small) === JSON.stringify(["a,b", "1,2"]) && /^Before\n\n\| a +\| b +\|\n/.test(saved) && saved.endsWith("After"), { small, saved });
+  check("noteTableToolbar placed above the top-right corner", pos.above && pos.right && count0 === "3×3", {
+    pos,
+    count0,
+  });
+  check(
+    "noteTableToolbar rows, columns, alignment",
+    grown.length === 4 && grown[0].split(",").length === 4 && grown[2] === "4,5,,6",
+    grown,
+  );
+  check(
+    "noteTableToolbar grid preview",
+    doomed.includes("c") &&
+      doomed.includes("6") &&
+      !doomed.includes("1") &&
+      red === doomed.length &&
+      /removed/.test(warn),
+    { doomed, red, warn },
+  );
+  check(
+    "noteTableToolbar shrink",
+    JSON.stringify(small) === JSON.stringify(["a,b", "1,2"]) &&
+      /^Before\n\n\| a +\| b +\|\n/.test(saved) &&
+      saved.endsWith("After"),
+    { small, saved },
+  );
   await close(h);
 });
 
@@ -298,25 +485,40 @@ test("noteTableShortcuts", async () => {
   await pg.locator('.md-tbar [data-act="center"]').click();
   await shot(h, "noteTableShortcuts");
   await exitEdit(h);
-  const saved = md(h, "n0"), rows = saved.split("\n");
-  check("noteTableShortcuts rows", JSON.stringify(added.slice(1)) === JSON.stringify([",,", "1xy,2,3", ",,", "4,5,6"]) && JSON.stringify(deleted.slice(1)) === JSON.stringify([",,", ",,", "4,5,6"]), { added, deleted });
-  check("noteTableShortcuts saved", rows.length === 6 && /^:-+:$/.test(rows[1].split("|")[3].trim())
-    && /\| *5T *\| *6<br>two *\|/.test(saved) && /\| *\| *E *\| *\|$/.test(saved), { saved });
+  const saved = md(h, "n0"),
+    rows = saved.split("\n");
+  check(
+    "noteTableShortcuts rows",
+    JSON.stringify(added.slice(1)) === JSON.stringify([",,", "1xy,2,3", ",,", "4,5,6"]) &&
+      JSON.stringify(deleted.slice(1)) === JSON.stringify([",,", ",,", "4,5,6"]),
+    { added, deleted },
+  );
+  check(
+    "noteTableShortcuts saved",
+    rows.length === 6 &&
+      /^:-+:$/.test(rows[1].split("|")[3].trim()) &&
+      /\| *5T *\| *6<br>two *\|/.test(saved) &&
+      /\| *\| *E *\| *\|$/.test(saved),
+    { saved },
+  );
   await close(h);
 });
 
 /** Column widths and row heights dragged in the editor: one undo step each, the caret stays where it was, kept as the Note's
  *  layout next to the Markdown (which doesn't change) and drawn the same in the static render */
 /** The cursor the page shows at a point: that of the element under it */
-const cursorAt = (pg: Page, x: number, y: number) => pg.evaluate(([x, y]) => getComputedStyle(document.elementFromPoint(x, y)!).cursor, [x, y] as const);
+const cursorAt = (pg: Page, x: number, y: number) =>
+  pg.evaluate(([x, y]) => getComputedStyle(document.elementFromPoint(x, y)!).cursor, [x, y] as const);
 /** The resize line on a table edge: its size, where it is and how opaque its colour is (null while there is none) */
-const lineLook = (pg: Page, sel: string) => pg.evaluate((sel) => {
-  const el = document.querySelector(sel);
-  if (!el) return null;
-  const r = el.getBoundingClientRect(), bg = getComputedStyle(el).backgroundColor;
-  const a = /\/\s*([\d.]+)\s*\)$/.exec(bg) ?? /^rgba\(.*,\s*([\d.]+)\)$/.exec(bg);
-  return { w: r.width, h: r.height, y: r.y + r.height / 2, bg, alpha: a ? +a[1] : 1 };
-}, sel);
+const lineLook = (pg: Page, sel: string) =>
+  pg.evaluate((sel) => {
+    const el = document.querySelector(sel);
+    if (!el) return null;
+    const r = el.getBoundingClientRect(),
+      bg = getComputedStyle(el).backgroundColor;
+    const a = /\/\s*([\d.]+)\s*\)$/.exec(bg) ?? /^rgba\(.*,\s*([\d.]+)\)$/.exec(bg);
+    return { w: r.width, h: r.height, y: r.y + r.height / 2, bg, alpha: a ? +a[1] : 1 };
+  }, sel);
 test("noteTableResizePersists", async () => {
   const h = await open({ board: board([TABLE]), light });
   const pg = h.page;
@@ -324,49 +526,131 @@ test("noteTableResizePersists", async () => {
   await editNote(h, "n0");
   await intoCell(h, "n0", "5");
   const caret0 = (await pm(pg)).from;
-  const th = (await pg.locator(`${card("n0")} .md-pm th`).first().boundingBox())!;
+  const th = (await pg
+    .locator(`${card("n0")} .md-pm th`)
+    .first()
+    .boundingBox())!;
   const colW0 = th.width;
   const textCursor = await cursorAt(pg, th.x + th.width / 2, th.y + th.height / 2);
   // column: prosemirror-tables' handle at the cell's right edge
   await pg.mouse.move(th.x + th.width - 2, th.y + th.height / 2);
-  await until(h, "the column handle shows", async () => (await pg.locator(`${card("n0")} .md-pm.resize-cursor, ${card("n0")} .md-pm .resize-cursor`).count()) > 0);
+  await until(
+    h,
+    "the column handle shows",
+    async () =>
+      (await pg.locator(`${card("n0")} .md-pm.resize-cursor, ${card("n0")} .md-pm .resize-cursor`).count()) > 0,
+  );
   const colCursor = await cursorAt(pg, th.x + th.width - 2, th.y + th.height / 2);
   const colLine = await lineLook(pg, ".md-pm .column-resize-handle");
   await pg.mouse.down();
   for (let i = 1; i <= 6; i++) await pg.mouse.move(th.x + th.width - 2 + i * 10, th.y + th.height / 2);
   await pg.mouse.up();
-  await until(h, "the column is wider", async () => ((await pg.locator(`${card("n0")} .md-pm th`).first().boundingBox())!.width) > colW0 + 40);
+  await until(
+    h,
+    "the column is wider",
+    async () =>
+      (await pg
+        .locator(`${card("n0")} .md-pm th`)
+        .first()
+        .boundingBox())!.width >
+      colW0 + 40,
+  );
   // row: the bottom edge of the second row
-  const tr = (await pg.locator(`${card("n0")} .md-pm tr`).nth(1).boundingBox())!;
+  const tr = (await pg
+    .locator(`${card("n0")} .md-pm tr`)
+    .nth(1)
+    .boundingBox())!;
   const rowH0 = tr.height;
   await pg.mouse.move(tr.x + tr.width / 2, tr.y + tr.height - 1);
-  await until(h, "the row edge is marked", async () => (await pg.locator(`${card("n0")} .md-pm.md-row-resize`).count()) > 0);
+  await until(
+    h,
+    "the row edge is marked",
+    async () => (await pg.locator(`${card("n0")} .md-pm.md-row-resize`).count()) > 0,
+  );
   const rowCursor = await cursorAt(pg, tr.x + tr.width / 2, tr.y + tr.height - 1);
   const rowLine = await until(h, "the row edge shows its line", () => lineLook(pg, ".md-rowline"));
   await pg.mouse.down();
   for (let i = 1; i <= 5; i++) await pg.mouse.move(tr.x + tr.width / 2, tr.y + tr.height - 1 + i * 8);
   await pg.mouse.up();
-  await until(h, "the row is taller", async () => ((await pg.locator(`${card("n0")} .md-pm tr`).nth(1).boundingBox())!.height) > rowH0 + 30);
+  await until(
+    h,
+    "the row is taller",
+    async () =>
+      (await pg
+        .locator(`${card("n0")} .md-pm tr`)
+        .nth(1)
+        .boundingBox())!.height >
+      rowH0 + 30,
+  );
   const caret1 = (await pm(pg)).from;
-  const edit = await pg.evaluate(() => ({ col: document.querySelector(".md-pm th")!.getBoundingClientRect().width, row: document.querySelectorAll(".md-pm tr")[1].getBoundingClientRect().height }));
+  const edit = await pg.evaluate(() => ({
+    col: document.querySelector(".md-pm th")!.getBoundingClientRect().width,
+    row: document.querySelectorAll(".md-pm tr")[1].getBoundingClientRect().height,
+  }));
   // one undo per drag: the row, then the column
   await pg.keyboard.press("ControlOrMeta+z");
-  await until(h, "undo takes the row back", async () => Math.abs(((await pg.locator(`${card("n0")} .md-pm tr`).nth(1).boundingBox())!.height) - rowH0) < 2);
-  const colAfterOne = (await pg.locator(`${card("n0")} .md-pm th`).first().boundingBox())!.width;
+  await until(
+    h,
+    "undo takes the row back",
+    async () =>
+      Math.abs(
+        (await pg
+          .locator(`${card("n0")} .md-pm tr`)
+          .nth(1)
+          .boundingBox())!.height - rowH0,
+      ) < 2,
+  );
+  const colAfterOne = (await pg
+    .locator(`${card("n0")} .md-pm th`)
+    .first()
+    .boundingBox())!.width;
   await pg.keyboard.press("ControlOrMeta+Shift+z");
-  await until(h, "redo puts it back", async () => ((await pg.locator(`${card("n0")} .md-pm tr`).nth(1).boundingBox())!.height) > rowH0 + 30);
+  await until(
+    h,
+    "redo puts it back",
+    async () =>
+      (await pg
+        .locator(`${card("n0")} .md-pm tr`)
+        .nth(1)
+        .boundingBox())!.height >
+      rowH0 + 30,
+  );
   await exitEdit(h);
   await until(h, "the layout is saved", () => !!layoutOf(h, "n0")?.tables?.[0]);
   const l = layoutOf(h, "n0")!.tables![0]!;
-  const shown = await pg.evaluate(() => ({ col: document.querySelector(".nbody th")!.getBoundingClientRect().width, row: document.querySelectorAll(".nbody tr")[1].getBoundingClientRect().height }));
+  const shown = await pg.evaluate(() => ({
+    col: document.querySelector(".nbody th")!.getBoundingClientRect().width,
+    row: document.querySelectorAll(".nbody tr")[1].getBoundingClientRect().height,
+  }));
   await shot(h, "noteTableResizePersists");
-  check("noteTableResizePersists resize cursors on the edges", colCursor === "col-resize" && rowCursor === "row-resize" && textCursor === "text", { colCursor, rowCursor, textCursor });
-  check("noteTableResizePersists edge lines thin and quiet", !!colLine && colLine.w <= 2 && colLine.alpha < 0.8 && !!rowLine && rowLine.h <= 2 && rowLine.alpha < 0.8
-    && Math.abs(rowLine.y - (tr.y + tr.height)) <= 2, { colLine, rowLine });
+  check(
+    "noteTableResizePersists resize cursors on the edges",
+    colCursor === "col-resize" && rowCursor === "row-resize" && textCursor === "text",
+    { colCursor, rowCursor, textCursor },
+  );
+  check(
+    "noteTableResizePersists edge lines thin and quiet",
+    !!colLine &&
+      colLine.w <= 2 &&
+      colLine.alpha < 0.8 &&
+      !!rowLine &&
+      rowLine.h <= 2 &&
+      rowLine.alpha < 0.8 &&
+      Math.abs(rowLine.y - (tr.y + tr.height)) <= 2,
+    { colLine, rowLine },
+  );
   check("noteTableResizePersists caret stays", caret1 === caret0, { caret0, caret1 });
   check("noteTableResizePersists one step each", colAfterOne > colW0 + 40, { colAfterOne, colW0 });
-  check("noteTableResizePersists saved as layout", md(h, "n0") === TABLE && (l.cols?.[0] ?? 0) > colW0 + 40 && (l.rows?.[1] ?? 0) > rowH0 + 30, { md: md(h, "n0"), l });
-  check("noteTableResizePersists same in the static render", Math.abs(shown.col - edit.col) <= 1 && Math.abs(shown.row - edit.row) <= 1, { shown, edit });
+  check(
+    "noteTableResizePersists saved as layout",
+    md(h, "n0") === TABLE && (l.cols?.[0] ?? 0) > colW0 + 40 && (l.rows?.[1] ?? 0) > rowH0 + 30,
+    { md: md(h, "n0"), l },
+  );
+  check(
+    "noteTableResizePersists same in the static render",
+    Math.abs(shown.col - edit.col) <= 1 && Math.abs(shown.row - edit.row) <= 1,
+    { shown, edit },
+  );
   // editing again starts from the saved layout
   await editNote(h, "n0");
   const again = await pg.evaluate(() => document.querySelector(".md-pm th")!.getBoundingClientRect().width);
@@ -387,20 +671,43 @@ test("noteImageFold", async () => {
   const img = pg.locator(`${card("n0")} .md-pm .md-img:not(.below)`);
   await img.waitFor();
   await img.click();
-  await until(h, "the source opens with the image under it", async () => (await pg.locator(`${card("n0")} .md-pm .md-img.below`).count()) === 1);
+  await until(
+    h,
+    "the source opens with the image under it",
+    async () => (await pg.locator(`${card("n0")} .md-pm .md-img.below`).count()) === 1,
+  );
   const caret = await pm(pg);
   const folded = await pg.evaluate(() => {
-    const p = [...document.querySelectorAll(".md-pm p")].find((e) => e.textContent!.includes("![a cat]")) as HTMLElement;
-    return { text: p.innerText.split("\n")[0], ell: p.querySelectorAll(".md-ell").length, btn: (p.querySelector(".md-fold") as HTMLElement | null)?.innerText.trim() ?? "" };
+    const p = [...document.querySelectorAll(".md-pm p")].find((e) =>
+      e.textContent!.includes("![a cat]"),
+    ) as HTMLElement;
+    return {
+      text: p.innerText.split("\n")[0],
+      ell: p.querySelectorAll(".md-ell").length,
+      btn: (p.querySelector(".md-fold") as HTMLElement | null)?.innerText.trim() ?? "",
+    };
   });
   await shot(h, "noteImageFold-folded");
   await pg.locator(`${card("n0")} .md-pm .md-fold`).click();
   await until(h, "the address expands", async () => (await pg.locator(`${card("n0")} .md-pm .md-ell`).count()) === 0);
-  const expanded = await pg.evaluate(() => ([...document.querySelectorAll(".md-pm p")].find((e) => e.textContent!.includes("![a cat]")) as HTMLElement).innerText.split("\n")[0]);
+  const expanded = await pg.evaluate(
+    () =>
+      (
+        [...document.querySelectorAll(".md-pm p")].find((e) => e.textContent!.includes("![a cat]")) as HTMLElement
+      ).innerText.split("\n")[0],
+  );
   await shot(h, "noteImageFold-expanded");
   await exitEdit(h);
   check("noteImageFold caret in the source", caret.empty && caret.from > 0, caret);
-  check("noteImageFold folded", folded.ell === 1 && folded.text.includes("https://example.com/s") && folded.text.includes("icture.png") && !folded.text.includes("/goes/on/") && folded.btn === "Expand", folded);
+  check(
+    "noteImageFold folded",
+    folded.ell === 1 &&
+      folded.text.includes("https://example.com/s") &&
+      folded.text.includes("icture.png") &&
+      !folded.text.includes("/goes/on/") &&
+      folded.btn === "Expand",
+    folded,
+  );
   check("noteImageFold expanded", expanded.includes(url), expanded);
   check("noteImageFold unchanged", md(h, "n0") === `Text before\n\n![a cat](${url})\n\nText after`, md(h, "n0"));
   await close(h);
@@ -415,15 +722,45 @@ test("noteCellShiftEnter", async () => {
   await intoCell(h, "n0", "6");
   await pg.keyboard.press("Shift+Enter");
   await pg.keyboard.type("seven");
-  const lines = await pg.locator(`${card("n0")} .md-pm td`).last().evaluate((e) => (e as HTMLElement).innerText.split("\n").map((s) => s.trim()).filter(Boolean));
+  const lines = await pg
+    .locator(`${card("n0")} .md-pm td`)
+    .last()
+    .evaluate((e) =>
+      (e as HTMLElement).innerText
+        .split("\n")
+        .map((s) => s.trim())
+        .filter(Boolean),
+    );
   const rows = await pg.locator(`${card("n0")} .md-pm tr`).count();
   // the line break is the cell's own source text, not a node
-  const cellSrc = await pg.evaluate(() => { const e = (document.querySelector(".md-pm") as any).editor; let t = ""; e.state.doc.descendants((n: any) => { if (n.type.name === "tableCell") t = n.textContent; }); return t as string; });
+  const cellSrc = await pg.evaluate(() => {
+    const e = (document.querySelector(".md-pm") as any).editor;
+    let t = "";
+    e.state.doc.descendants((n: any) => {
+      if (n.type.name === "tableCell") t = n.textContent;
+    });
+    return t as string;
+  });
   await exitEdit(h);
   const saved = md(h, "n0");
-  const shownLines = await pg.locator(`${card("n0")} .nbody td`).last().evaluate((e) => (e as HTMLElement).innerText.split("\n").map((s) => s.trim()).filter(Boolean));
+  const shownLines = await pg
+    .locator(`${card("n0")} .nbody td`)
+    .last()
+    .evaluate((e) =>
+      (e as HTMLElement).innerText
+        .split("\n")
+        .map((s) => s.trim())
+        .filter(Boolean),
+    );
   check("noteCellShiftEnter source", cellSrc === "6<br>seven", cellSrc);
-  check("noteCellShiftEnter", JSON.stringify(lines) === JSON.stringify(["6", "seven"]) && rows === 3 && /\| *6<br>seven *\|$/.test(saved) && JSON.stringify(shownLines) === JSON.stringify(["6", "seven"]), { lines, rows, saved, shownLines });
+  check(
+    "noteCellShiftEnter",
+    JSON.stringify(lines) === JSON.stringify(["6", "seven"]) &&
+      rows === 3 &&
+      /\| *6<br>seven *\|$/.test(saved) &&
+      JSON.stringify(shownLines) === JSON.stringify(["6", "seven"]),
+    { lines, rows, saved, shownLines },
+  );
   await close(h);
 });
 
@@ -437,7 +774,10 @@ test("noteSourceModeRoundTrip", async () => {
   const pg = h.page;
   await idle(h);
   // into the paragraph (with the caret in the table its bar would sit over the line above it)
-  await pg.locator(`${card("n0")} .nbody p`).first().dblclick();
+  await pg
+    .locator(`${card("n0")} .nbody p`)
+    .first()
+    .dblclick();
   await pg.locator(`${card("n0")} .md-pm:focus`).waitFor();
   await focusSettled(pg);
   // the caret before "text"
@@ -446,58 +786,107 @@ test("noteSourceModeRoundTrip", async () => {
   await pmHasSelection(pg);
   const toggle = pg.locator(`${card("n0")} .chead .mdsrc`);
   await toggle.waitFor({ state: "visible" });
-  const tip = { tip: await toggle.getAttribute("data-tip"), kbd: await toggle.getAttribute("data-kbd"), text: (await toggle.innerText()).trim() };
+  const tip = {
+    tip: await toggle.getAttribute("data-tip"),
+    kbd: await toggle.getAttribute("data-kbd"),
+    text: (await toggle.innerText()).trim(),
+  };
   await pg.keyboard.press("ControlOrMeta+/");
   const cm = `${card("n0")} .md-srcmode .cm-content`;
   await pg.locator(cm).waitFor();
   await until(h, "the toggle shows pressed", async () => (await toggle.getAttribute("aria-pressed")) === "true");
   await pg.keyboard.type("NEW ");
-  const srcText = await pg.evaluate((q) => [...document.querySelectorAll(`${q} .cm-line`)].map((l) => l.textContent).join("\n"), cm);
+  const srcText = await pg.evaluate(
+    (q) => [...document.querySelectorAll(`${q} .cm-line`)].map((l) => l.textContent).join("\n"),
+    cm,
+  );
   await shot(h, "noteSourceModeRoundTrip-source");
   await toggle.click();
   await pg.locator(`${card("n0")} .md-pm:focus`).waitFor();
   await pmHasSelection(pg);
   const back = await pm(pg);
-  const backText = await pg.evaluate(() => { const e = (document.querySelector(".md-pm") as any).editor, s = e.state.selection; return e.state.doc.textBetween(s.from, Math.min(s.from + 4, e.state.doc.content.size)) as string; });
+  const backText = await pg.evaluate(() => {
+    const e = (document.querySelector(".md-pm") as any).editor,
+      s = e.state.selection;
+    return e.state.doc.textBetween(s.from, Math.min(s.from + 4, e.state.doc.content.size)) as string;
+  });
   const col = await pg.evaluate(() => Math.round(document.querySelector(".md-pm th")!.getBoundingClientRect().width));
   await pg.keyboard.press("ControlOrMeta+z");
   await idle(h);
-  const undone = await pg.evaluate(() => (document.querySelector(".md-pm") as any).editor.state.doc.textContent as string);
+  const undone = await pg.evaluate(
+    () => (document.querySelector(".md-pm") as any).editor.state.doc.textContent as string,
+  );
   await pg.keyboard.press("ControlOrMeta+Shift+z");
   await exitEdit(h);
   const saved = md(h, "n0");
-  check("noteSourceModeRoundTrip toggle", tip.tip === "Markdown Source" && /\/$/.test(tip.kbd ?? "") && tip.text === "M↓", tip);
+  check(
+    "noteSourceModeRoundTrip toggle",
+    tip.tip === "Markdown Source" && /\/$/.test(tip.kbd ?? "") && tip.text === "M↓",
+    tip,
+  );
   check("noteSourceModeRoundTrip caret into the source", srcText.includes("Some **bold** NEW text here"), srcText);
   check("noteSourceModeRoundTrip caret back", back.empty && backText === "text", { back, backText });
-  check("noteSourceModeRoundTrip one undo", !undone.includes("NEW") && undone.includes("Some **bold** text here"), undone);
-  check("noteSourceModeRoundTrip saved with layout", saved.startsWith("# Title\n\nSome **bold** NEW text here\n\n| a") && layoutOf(h, "n0")?.tables?.[0]?.cols?.[0] === 180 && Math.abs(col - 180) <= 1, { saved, layout: layoutOf(h, "n0"), col });
+  check(
+    "noteSourceModeRoundTrip one undo",
+    !undone.includes("NEW") && undone.includes("Some **bold** text here"),
+    undone,
+  );
+  check(
+    "noteSourceModeRoundTrip saved with layout",
+    saved.startsWith("# Title\n\nSome **bold** NEW text here\n\n| a") &&
+      layoutOf(h, "n0")?.tables?.[0]?.cols?.[0] === 180 &&
+      Math.abs(col - 180) <= 1,
+    { saved, layout: layoutOf(h, "n0"), col },
+  );
   await close(h);
 });
 
 /** Enter and Backspace (joining paragraphs) in a 200-paragraph Note cost about what they cost in a short one: nothing on the
  *  page restyles every block of the Note when one is inserted or removed (each key's time: keydown to the frame after it) */
 test("noteLongNoteKeysScale", async () => {
-  const para = (i: number) => `Para ${i}: the SM also has ==registers==, **shared memory**, \`code ${i}\` and $x_{${i}} = ${i}$, *italic* and [a link](https://example.com/${i}), long enough to wrap onto a second line of the Note.`;
-  const long = Array.from({ length: 200 }, (_, i) => para(i + 1)).join("\n\n"), short = Array.from({ length: 6 }, (_, i) => para(i + 1)).join("\n\n");
+  const para = (i: number) =>
+    `Para ${i}: the SM also has ==registers==, **shared memory**, \`code ${i}\` and $x_{${i}} = ${i}$, *italic* and [a link](https://example.com/${i}), long enough to wrap onto a second line of the Note.`;
+  const long = Array.from({ length: 200 }, (_, i) => para(i + 1)).join("\n\n"),
+    short = Array.from({ length: 6 }, (_, i) => para(i + 1)).join("\n\n");
   const h = await open({ board: board([long, short]), light, w: 1400, h: 900 });
   const pg = h.page;
   await idle(h);
   await pg.evaluate(() => {
-    const w = window as any; w.__lat = [];
-    document.addEventListener("keydown", () => { const t = performance.now(); requestAnimationFrame(() => setTimeout(() => w.__lat.push(performance.now() - t), 0)); }, true);
+    const w = window as any;
+    w.__lat = [];
+    document.addEventListener(
+      "keydown",
+      () => {
+        const t = performance.now();
+        requestAnimationFrame(() => setTimeout(() => w.__lat.push(performance.now() - t), 0));
+      },
+      true,
+    );
   });
   const timed = async (id: string, at: string) => {
-    await h.page.locator(`${card(id)} .nbody p`).first().dblclick();
+    await h.page
+      .locator(`${card(id)} .nbody p`)
+      .first()
+      .dblclick();
     await pg.locator(`${card(id)} .md-pm:focus`).waitFor();
     await focusSettled(pg);
     await pg.evaluate((at) => {
-      const e = (document.querySelector(".md-pm") as any).editor; let p = -1;
-      e.state.doc.descendants((n: any, pos: number) => { if (p < 0 && n.isText && n.text.startsWith(at)) p = pos + at.length; return p < 0; });
+      const e = (document.querySelector(".md-pm") as any).editor;
+      let p = -1;
+      e.state.doc.descendants((n: any, pos: number) => {
+        if (p < 0 && n.isText && n.text.startsWith(at)) p = pos + at.length;
+        return p < 0;
+      });
       e.commands.setTextSelection(p);
     }, at);
     const out: Record<string, number> = {};
-    for (const [k, n] of [["Enter", 7], ["Backspace", 7]] as const) {
-      await pg.evaluate(() => { (window as any).__lat = []; });
+    for (const [k, n] of [
+      ["Enter", 7],
+      ["Backspace", 7],
+    ] as const) {
+      await pg.evaluate(() => {
+        (window as any).__lat = [];
+      });
       for (let i = 0; i < n; i++) {
         await pg.keyboard.press(k);
         await pg.waitForFunction((i) => (window as any).__lat.length > i, i);
@@ -510,7 +899,8 @@ test("noteLongNoteKeysScale", async () => {
     await exitEdit(h);
     return out;
   };
-  const s = await timed("n1", "Para 3: the SM"), l = await timed("n0", "Para 100: the SM");
+  const s = await timed("n1", "Para 3: the SM"),
+    l = await timed("n0", "Para 100: the SM");
   // a few ms of noise on a fast machine is not a regression: compare with at least 12 ms
   const ok = (k: "Enter" | "Backspace") => l[k] <= 3 * Math.max(s[k], 12);
   check("noteLongNoteKeysScale", ok("Enter") && ok("Backspace"), { short: s, long: l });
@@ -521,31 +911,88 @@ test("noteLongNoteKeysScale", async () => {
 /** A web image shows at its natural size up to the column width, however tall that makes it; a width the user set wins; one that
  *  fails to load is a quiet line naming it, in the static view and in the editor */
 test("noteImageSizing", async () => {
-  const svg = (w: number, hh: number) => `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${hh}"><rect width="100%" height="100%" fill="#8ab"/></svg>`;
-  const src = "Small ![s](https://img.test/small.svg)\n\n![big](https://img.test/big.svg)\n\n![tall](https://img.test/tall.svg){width=50%}\n\n![a broken one](https://img.invalid/gone.png)\n\nend";
-  const h = await open({ board: board([src]), light, h: 1500, beforeLoad: async (p) => {
-    await p.route("https://img.test/**", (r) => r.fulfill({ contentType: "image/svg+xml", body: r.request().url().includes("small") ? svg(80, 40) : r.request().url().includes("big") ? svg(1600, 1200) : svg(400, 1000) }));
-  } });
-  const pg = h.page, body = `${card("n0")} .nbody`;
-  await until(h, "the images decode", () => pg.evaluate((b) => [...document.querySelectorAll<HTMLImageElement>(`${b} img`)].filter((i) => i.complete && i.naturalWidth).length === 3, body));
-  await until(h, "the broken image is a placeholder", async () => (await pg.locator(`${body} .md-imgerr`).count()) === 1);
-  const sizes = (root: string) => pg.evaluate((root) => {
-    const col = [...document.querySelectorAll(`${root} p`)].at(-1)!.getBoundingClientRect().width; // the text column
-    const box = (alt: string) => { const r = document.querySelector(`${root} img[alt="${alt}"]`)!.getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)]; };
-    const err = document.querySelector(`${root} .md-imgerr`) as HTMLElement | null;
-    return { col: Math.round(col), small: box("s"), big: box("big"), tall: box("tall"), err: err?.innerText.trim() ?? null, errH: err ? Math.round(err.getBoundingClientRect().height) : 0 };
-  }, root);
+  const svg = (w: number, hh: number) =>
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${hh}"><rect width="100%" height="100%" fill="#8ab"/></svg>`;
+  const src =
+    "Small ![s](https://img.test/small.svg)\n\n![big](https://img.test/big.svg)\n\n![tall](https://img.test/tall.svg){width=50%}\n\n![a broken one](https://img.invalid/gone.png)\n\nend";
+  const h = await open({
+    board: board([src]),
+    light,
+    h: 1500,
+    beforeLoad: async (p) => {
+      await p.route("https://img.test/**", (r) =>
+        r.fulfill({
+          contentType: "image/svg+xml",
+          body: r.request().url().includes("small")
+            ? svg(80, 40)
+            : r.request().url().includes("big")
+              ? svg(1600, 1200)
+              : svg(400, 1000),
+        }),
+      );
+    },
+  });
+  const pg = h.page,
+    body = `${card("n0")} .nbody`;
+  await until(h, "the images decode", () =>
+    pg.evaluate(
+      (b) =>
+        [...document.querySelectorAll<HTMLImageElement>(`${b} img`)].filter((i) => i.complete && i.naturalWidth)
+          .length === 3,
+      body,
+    ),
+  );
+  await until(
+    h,
+    "the broken image is a placeholder",
+    async () => (await pg.locator(`${body} .md-imgerr`).count()) === 1,
+  );
+  const sizes = (root: string) =>
+    pg.evaluate((root) => {
+      const col = [...document.querySelectorAll(`${root} p`)].at(-1)!.getBoundingClientRect().width; // the text column
+      const box = (alt: string) => {
+        const r = document.querySelector(`${root} img[alt="${alt}"]`)!.getBoundingClientRect();
+        return [Math.round(r.width), Math.round(r.height)];
+      };
+      const err = document.querySelector(`${root} .md-imgerr`) as HTMLElement | null;
+      return {
+        col: Math.round(col),
+        small: box("s"),
+        big: box("big"),
+        tall: box("tall"),
+        err: err?.innerText.trim() ?? null,
+        errH: err ? Math.round(err.getBoundingClientRect().height) : 0,
+      };
+    }, root);
   const stat = await sizes(body);
   await shot(h, "noteImageSizing-static");
-  const ok = (s: typeof stat) => s.small[0] === 80 && s.small[1] === 40 && Math.abs(s.big[0] - s.col) <= 1 && Math.abs(s.big[0] / s.big[1] - 4 / 3) < 0.02
-    && Math.abs(s.tall[0] - s.col / 2) <= 3 && Math.abs(s.tall[1] - s.tall[0] * 2.5) <= 2 && s.err === "Image failed to load · a broken one" && s.errH < 40;
+  const ok = (s: typeof stat) =>
+    s.small[0] === 80 &&
+    s.small[1] === 40 &&
+    Math.abs(s.big[0] - s.col) <= 1 &&
+    Math.abs(s.big[0] / s.big[1] - 4 / 3) < 0.02 &&
+    Math.abs(s.tall[0] - s.col / 2) <= 3 &&
+    Math.abs(s.tall[1] - s.tall[0] * 2.5) <= 2 &&
+    s.err === "Image failed to load · a broken one" &&
+    s.errH < 40;
   check("noteImageSizing static: natural size up to the column, the set width, a placeholder", ok(stat), stat);
   await pg.locator(`${body} p`, { hasText: "end" }).dblclick();
   await pg.locator(`${card("n0")} .md-pm:focus`).waitFor();
   await focusSettled(pg);
   const root = `${card("n0")} .md-pm`;
-  await until(h, "the editor's images decode", () => pg.evaluate((b) => [...document.querySelectorAll<HTMLImageElement>(`${b} img`)].filter((i) => i.complete && i.naturalWidth).length === 3, root));
-  await until(h, "the editor's broken image is a placeholder", async () => (await pg.locator(`${root} .md-imgerr`).count()) === 1);
+  await until(h, "the editor's images decode", () =>
+    pg.evaluate(
+      (b) =>
+        [...document.querySelectorAll<HTMLImageElement>(`${b} img`)].filter((i) => i.complete && i.naturalWidth)
+          .length === 3,
+      root,
+    ),
+  );
+  await until(
+    h,
+    "the editor's broken image is a placeholder",
+    async () => (await pg.locator(`${root} .md-imgerr`).count()) === 1,
+  );
   const edit = await sizes(root);
   await shot(h, "noteImageSizing-edit");
   check("noteImageSizing editor: the same sizes and placeholder", ok(edit), edit);
@@ -556,67 +1003,134 @@ test("noteImageSizing", async () => {
 /** ![alt](…) whose address the parser can't read (an unencoded <svg> in a data: URL) shows as an image that failed to load, in the
  *  static view and the editor: never as its text with the <svg> drawn as a black box; percent-encoded, it is an image */
 test("noteUnreadableImage", async () => {
-  const svg = "<svg xmlns='http://www.w3.org/2000/svg' width='360' height='150'><rect width='360' height='150' rx='10' fill='%23f6f1e7'/><text x='22' y='29'>SM</text></svg>";
+  const svg =
+    "<svg xmlns='http://www.w3.org/2000/svg' width='360' height='150'><rect width='360' height='150' rx='10' fill='%23f6f1e7'/><text x='22' y='29'>SM</text></svg>";
   const good = encodeURIComponent(decodeURIComponent(svg)).replace(/'/g, "%27");
-  const h = await open({ board: board([`Diagram:\n\n![SM 示意图](data:image/svg+xml;utf8,${svg})\n\nend`, `![SM 示意图](data:image/svg+xml;utf8,${good})\n\nend`]), light });
+  const h = await open({
+    board: board([
+      `Diagram:\n\n![SM 示意图](data:image/svg+xml;utf8,${svg})\n\nend`,
+      `![SM 示意图](data:image/svg+xml;utf8,${good})\n\nend`,
+    ]),
+    light,
+  });
   const pg = h.page;
   await idle(h);
-  const look = (root: string) => pg.evaluate((root) => {
-    const r = document.querySelector(root)!;
-    return { err: r.querySelector(".md-imgerr")?.textContent ?? null, drawn: [...r.querySelectorAll("img, svg")].filter((e) => !e.closest(".md-imgerr")).length, html: r.querySelectorAll(".md-html").length, text: (r as HTMLElement).innerText.includes("data:image") };
-  }, root);
+  const look = (root: string) =>
+    pg.evaluate((root) => {
+      const r = document.querySelector(root)!;
+      return {
+        err: r.querySelector(".md-imgerr")?.textContent ?? null,
+        drawn: [...r.querySelectorAll("img, svg")].filter((e) => !e.closest(".md-imgerr")).length,
+        html: r.querySelectorAll(".md-html").length,
+        text: (r as HTMLElement).innerText.includes("data:image"),
+      };
+    }, root);
   const stat = await look(`${card("n0")} .nbody`);
   await shot(h, "noteUnreadableImage-static");
-  await pg.locator(`${card("n0")} .nbody p`).last().dblclick();
+  await pg
+    .locator(`${card("n0")} .nbody p`)
+    .last()
+    .dblclick();
   await pg.locator(`${card("n0")} .md-pm:focus`).waitFor();
   await focusSettled(pg);
   const edit = await look(`${card("n0")} .md-pm`);
   await shot(h, "noteUnreadableImage-edit");
   await exitEdit(h);
-  await until(h, "the encoded one decodes", () => pg.evaluate((c) => { const i = document.querySelector<HTMLImageElement>(`${c} .nbody img`); return !!i?.complete && i.naturalWidth === 360; }, card("n1")));
-  const ok = (l: typeof stat) => l.err === "Image failed to load · SM 示意图" && l.drawn === 0 && l.html === 0 && !l.text;
+  await until(h, "the encoded one decodes", () =>
+    pg.evaluate((c) => {
+      const i = document.querySelector<HTMLImageElement>(`${c} .nbody img`);
+      return !!i?.complete && i.naturalWidth === 360;
+    }, card("n1")),
+  );
+  const ok = (l: typeof stat) =>
+    l.err === "Image failed to load · SM 示意图" && l.drawn === 0 && l.html === 0 && !l.text;
   check("noteUnreadableImage static: a failed image, no drawn <svg>", ok(stat), stat);
   check("noteUnreadableImage editor: the same", ok(edit), edit);
-  check("noteUnreadableImage source kept", md(h, "n0") === `Diagram:\n\n![SM 示意图](data:image/svg+xml;utf8,${svg})\n\nend`, md(h, "n0"));
+  check(
+    "noteUnreadableImage source kept",
+    md(h, "n0") === `Diagram:\n\n![SM 示意图](data:image/svg+xml;utf8,${svg})\n\nend`,
+    md(h, "n0"),
+  );
   await close(h);
 });
 
 /** $$…$$ inside a paragraph or a cell is a display formula: centred on a line of its own, the same in the static view and the editor;
  *  with the caret in its source, the preview box under it is the only hint */
 test("noteInlineDisplayMath", async () => {
-  const h = await open({ board: board(["before $$\\sum_i x_i$$ after\n\n| a |\n| - |\n| x $$y^2$$ z |\n\nend", "broken $$\\frac{a$$ here\n\nend"]), light });
+  const h = await open({
+    board: board([
+      "before $$\\sum_i x_i$$ after\n\n| a |\n| - |\n| x $$y^2$$ z |\n\nend",
+      "broken $$\\frac{a$$ here\n\nend",
+    ]),
+    light,
+  });
   const pg = h.page;
   await idle(h);
-  const look = (root: string) => pg.evaluate((root) => [...document.querySelectorAll(`${root} .md-dmath`)].map((d) => {
-    const box = d.getBoundingClientRect(), k = d.querySelector(".katex")!.getBoundingClientRect(), line = (d.closest("p, td, th") as HTMLElement).getBoundingClientRect();
-    return { display: getComputedStyle(d).display, wide: Math.round(box.width - line.width) >= -24, centre: Math.round(k.left + k.width / 2 - (box.left + box.width / 2)), shown: !!d.querySelector(".katex-display") };
-  }), root);
+  const look = (root: string) =>
+    pg.evaluate(
+      (root) =>
+        [...document.querySelectorAll(`${root} .md-dmath`)].map((d) => {
+          const box = d.getBoundingClientRect(),
+            k = d.querySelector(".katex")!.getBoundingClientRect(),
+            line = (d.closest("p, td, th") as HTMLElement).getBoundingClientRect();
+          return {
+            display: getComputedStyle(d).display,
+            wide: Math.round(box.width - line.width) >= -24,
+            centre: Math.round(k.left + k.width / 2 - (box.left + box.width / 2)),
+            shown: !!d.querySelector(".katex-display"),
+          };
+        }),
+      root,
+    );
   const stat = await look(`${card("n0")} .nbody`);
   await shot(h, "noteInlineDisplayMath-static");
-  const ok = (ls: typeof stat) => ls.length === 2 && ls.every((l) => l.display === "block" && l.wide && Math.abs(l.centre) <= 2 && l.shown);
+  const ok = (ls: typeof stat) =>
+    ls.length === 2 && ls.every((l) => l.display === "block" && l.wide && Math.abs(l.centre) <= 2 && l.shown);
   check("noteInlineDisplayMath static centred on its own line", ok(stat), stat);
-  await pg.locator(`${card("n0")} .nbody p`).last().dblclick();
+  await pg
+    .locator(`${card("n0")} .nbody p`)
+    .last()
+    .dblclick();
   await pg.locator(`${card("n0")} .md-pm:focus`).waitFor();
   await focusSettled(pg);
   const edit = await look(`${card("n0")} .md-pm`);
   await shot(h, "noteInlineDisplayMath-edit");
   check("noteInlineDisplayMath editor centred on its own line", ok(edit), edit);
   // the caret in its source: the typeset preview under it, and no floating hint over that preview
-  await pg.locator(`${card("n0")} .md-pm p .md-dmath`).first().click();
+  await pg
+    .locator(`${card("n0")} .md-pm p .md-dmath`)
+    .first()
+    .click();
   await pg.locator(`${card("n0")} .md-pm .md-dmath.below`).waitFor();
   await idle(h);
-  const caret = { below: await pg.locator(`${card("n0")} .md-pm .md-dmath.below .katex`).count(), tip: await pg.locator(".md-mathtip").count() };
+  const caret = {
+    below: await pg.locator(`${card("n0")} .md-pm .md-dmath.below .katex`).count(),
+    tip: await pg.locator(".md-mathtip").count(),
+  };
   await shot(h, "noteInlineDisplayMath-caret");
   check("noteInlineDisplayMath caret in the source: only the preview box", caret.below === 1 && caret.tip === 0, caret);
   await exitEdit(h);
   // one that does not typeset: the preview box says what is wrong, as the formula block does
-  await pg.locator(`${card("n1")} .nbody p`).last().dblclick();
+  await pg
+    .locator(`${card("n1")} .nbody p`)
+    .last()
+    .dblclick();
   await pg.locator(`${card("n1")} .md-pm:focus`).waitFor();
   await focusSettled(pg);
-  await pg.locator(`${card("n1")} .md-pm p .md-dmath`).first().click();
+  await pg
+    .locator(`${card("n1")} .md-pm p .md-dmath`)
+    .first()
+    .click();
   await pg.locator(`${card("n1")} .md-pm .md-dmath.below`).waitFor();
-  const broken = await pg.locator(`${card("n1")} .md-pm .md-dmath.below`).evaluate((e) => ({ err: e.querySelector(".md-matherr")?.textContent ?? null, red: !!e.querySelector(".katex-error") }));
-  check("noteInlineDisplayMath a broken one explains itself under its source", broken.red && /少了一个\s*}/.test(broken.err ?? ""), broken);
+  const broken = await pg.locator(`${card("n1")} .md-pm .md-dmath.below`).evaluate((e) => ({
+    err: e.querySelector(".md-matherr")?.textContent ?? null,
+    red: !!e.querySelector(".katex-error"),
+  }));
+  check(
+    "noteInlineDisplayMath a broken one explains itself under its source",
+    broken.red && /少了一个\s*}/.test(broken.err ?? ""),
+    broken,
+  );
   await exitEdit(h);
   await close(h);
 });
@@ -624,19 +1138,57 @@ test("noteInlineDisplayMath", async () => {
 /** Entering edit with a double-click where the editor has no text at that point (a table cell's padding, between a table and the
  *  next paragraph, beside a row): the caret goes to the nearest text, never to a place ProseMirror warns about */
 test("noteEditEntryCaretInText", async () => {
-  const h = await open({ board: board(["Numbers:\n\n| thread block | blocks |\n| --- | --- |\n| 64 | **32** |\n| 1024 | 2<br>$$\\frac{2048}{1024}$$ |\n\nThe cells keep their source too, like the **32** above."]), light });
+  const h = await open({
+    board: board([
+      "Numbers:\n\n| thread block | blocks |\n| --- | --- |\n| 64 | **32** |\n| 1024 | 2<br>$$\\frac{2048}{1024}$$ |\n\nThe cells keep their source too, like the **32** above.",
+    ]),
+    light,
+  });
   const pg = h.page;
   const warns: string[] = [];
-  pg.on("console", (m) => { if (m.type() === "warning" || m.type() === "error") warns.push(m.text()); });
+  pg.on("console", (m) => {
+    if (m.type() === "warning" || m.type() === "error") warns.push(m.text());
+  });
   await idle(h);
   const body = `${card("n0")} .nbody`;
   const box = async (sel: string, nth = 0) => (await pg.locator(sel).nth(nth).boundingBox())!;
   const points: [string, () => Promise<{ x: number; y: number }>][] = [
-    ["last paragraph", async () => { const b = await box(`${body} > p`, 1); return { x: b.x + b.width - 4, y: b.y + b.height / 2 }; }],
-    ["cell padding left", async () => { const b = await box(`${body} td`, 3); return { x: b.x + 1, y: b.y + 2 }; }],
-    ["cell padding top", async () => { const b = await box(`${body} td`, 0); return { x: b.x + b.width / 2, y: b.y + 1 }; }],
-    ["between table and paragraph", async () => { const t = await box(`${body} table`), p = await box(`${body} > p`, 1); return { x: p.x + 20, y: (t.y + t.height + p.y) / 2 }; }],
-    ["beside a row", async () => { const b = await box(`${body} tr`, 2); return { x: b.x + b.width + 6, y: b.y + b.height / 2 }; }],
+    [
+      "last paragraph",
+      async () => {
+        const b = await box(`${body} > p`, 1);
+        return { x: b.x + b.width - 4, y: b.y + b.height / 2 };
+      },
+    ],
+    [
+      "cell padding left",
+      async () => {
+        const b = await box(`${body} td`, 3);
+        return { x: b.x + 1, y: b.y + 2 };
+      },
+    ],
+    [
+      "cell padding top",
+      async () => {
+        const b = await box(`${body} td`, 0);
+        return { x: b.x + b.width / 2, y: b.y + 1 };
+      },
+    ],
+    [
+      "between table and paragraph",
+      async () => {
+        const t = await box(`${body} table`),
+          p = await box(`${body} > p`, 1);
+        return { x: p.x + 20, y: (t.y + t.height + p.y) / 2 };
+      },
+    ],
+    [
+      "beside a row",
+      async () => {
+        const b = await box(`${body} tr`, 2);
+        return { x: b.x + b.width + 6, y: b.y + b.height / 2 };
+      },
+    ],
   ];
   const res: Record<string, unknown> = {};
   for (const [name, at] of points) {
@@ -645,45 +1197,78 @@ test("noteEditEntryCaretInText", async () => {
     await pg.mouse.dblclick(p.x, p.y);
     await pg.locator(`${card("n0")} .md-pm:focus`).waitFor();
     await focusSettled(pg);
-    const sel = await pg.evaluate(() => { const s = (document.querySelector(".md-pm") as any).editor.state.selection; return { inText: !!s.$head.parent.inlineContent, in: s.$head.parent.textContent.slice(0, 24) as string }; });
+    const sel = await pg.evaluate(() => {
+      const s = (document.querySelector(".md-pm") as any).editor.state.selection;
+      return { inText: !!s.$head.parent.inlineContent, in: s.$head.parent.textContent.slice(0, 24) as string };
+    });
     res[name] = { ...sel, warns: [...warns] };
     await exitEdit(h);
   }
   const r = res as Record<string, { inText: boolean; in: string; warns: string[] }>;
-  check("noteEditEntryCaretInText the caret lands in text, without warnings", Object.values(r).every((x) => x.inText && !x.warns.length), res);
-  check("noteEditEntryCaretInText a cell's padding puts the caret in that cell", r["cell padding left"].in.startsWith("2<br>") && r["cell padding top"].in === "64", res);
+  check(
+    "noteEditEntryCaretInText the caret lands in text, without warnings",
+    Object.values(r).every((x) => x.inText && !x.warns.length),
+    res,
+  );
+  check(
+    "noteEditEntryCaretInText a cell's padding puts the caret in that cell",
+    r["cell padding left"].in.startsWith("2<br>") && r["cell padding top"].in === "64",
+    res,
+  );
   await close(h);
 });
 
 /** A Note that starts with a heading shows it as the card's title and slides it into the editor on entering edit, so the editor's
  *  layout is still moving when it mounts: a double-click still puts the caret in the block that was clicked, not one above it */
 test("noteEditEntryUnderHeading", async () => {
-  const src = "## Title\n\nIntro text here\n\n- one\n- two\n- three\n\n| head a | head b |\n| --- | --- |\n| cell a | cell b |\n\n```python\nx = 1\ny = 2\n```\n\nThe last paragraph";
+  const src =
+    "## Title\n\nIntro text here\n\n- one\n- two\n- three\n\n| head a | head b |\n| --- | --- |\n| cell a | cell b |\n\n```python\nx = 1\ny = 2\n```\n\nThe last paragraph";
   const h = await open({ board: board([src, src.replace("## Title\n\n", "")]), light });
   const pg = h.page;
   await idle(h);
   const res: Record<string, Record<string, string>> = {};
   for (const id of ["n0", "n1"]) {
     const body = `${card(id)} .nbody`;
-    const spots: [string, string, number][] = [["li two", `${body} li`, 1], ["th", `${body} th`, 1], ["td", `${body} td`, 1], ["paragraph", `${body} > p`, -1], ["code line 2", `${body} pre`, 0]];
+    const spots: [string, string, number][] = [
+      ["li two", `${body} li`, 1],
+      ["th", `${body} th`, 1],
+      ["td", `${body} td`, 1],
+      ["paragraph", `${body} > p`, -1],
+      ["code line 2", `${body} pre`, 0],
+    ];
     res[id] = {};
     for (const [name, sel, nth] of spots) {
       const b = (await pg.locator(sel).nth(nth).boundingBox())!;
       // the code block: its second line (18px padding, 1.7 lines of 12.5px)
-      const p = name.startsWith("code") ? { x: b.x + 30, y: b.y + b.height - 18 - 10 } : { x: b.x + Math.min(30, b.width / 2), y: b.y + b.height / 2 };
+      const p = name.startsWith("code")
+        ? { x: b.x + 30, y: b.y + b.height - 18 - 10 }
+        : { x: b.x + Math.min(30, b.width / 2), y: b.y + b.height / 2 };
       await pg.mouse.dblclick(p.x, p.y);
-      await pg.locator(`${card(id)} .md-pm:focus, ${card(id)} .md-pm .cm-content:focus`).first().waitFor();
+      await pg
+        .locator(`${card(id)} .md-pm:focus, ${card(id)} .md-pm .cm-content:focus`)
+        .first()
+        .waitFor();
       await focusSettled(pg);
       await idle(h);
       res[id][name] = await pg.evaluate(() => {
-        const s = (document.querySelector(".md-pm") as any).editor.state.selection, t = s.$head.parent.textContent as string;
-        return s.$head.parent.type.name === "codeBlock" ? `code: ${t.slice(0, s.$head.parentOffset).split("\n").pop()}` : t;
+        const s = (document.querySelector(".md-pm") as any).editor.state.selection,
+          t = s.$head.parent.textContent as string;
+        return s.$head.parent.type.name === "codeBlock"
+          ? `code: ${t.slice(0, s.$head.parentOffset).split("\n").pop()}`
+          : t;
       });
       await exitEdit(h);
     }
   }
-  const want = { "li two": "two", th: "head b", td: "cell b", paragraph: "The last paragraph", "code line 2": "code: y" };
-  const ok = (r: Record<string, string>) => Object.entries(want).every(([k, v]) => r[k] === v || (k.startsWith("code") && r[k]?.startsWith(v)));
+  const want = {
+    "li two": "two",
+    th: "head b",
+    td: "cell b",
+    paragraph: "The last paragraph",
+    "code line 2": "code: y",
+  };
+  const ok = (r: Record<string, string>) =>
+    Object.entries(want).every(([k, v]) => r[k] === v || (k.startsWith("code") && r[k]?.startsWith(v)));
   check("noteEditEntryUnderHeading the caret in the clicked block, with a leading heading", ok(res.n0), res.n0);
   check("noteEditEntryUnderHeading the same without one", ok(res.n1), res.n1);
   await close(h);
@@ -720,19 +1305,35 @@ test("noteEscClosesPopupOnly", async () => {
   await pg.keyboard.press("Escape");
   await idle(h);
   res.after = await editing();
-  check("noteEscClosesPopupOnly", JSON.stringify(res) === JSON.stringify({ grid: { open: 0, editing: 1 }, lang: { open: 0, editing: 1 }, more: { open: 0, editing: 1 }, after: 0 }), res);
+  check(
+    "noteEscClosesPopupOnly",
+    JSON.stringify(res) ===
+      JSON.stringify({
+        grid: { open: 0, editing: 1 },
+        lang: { open: 0, editing: 1 },
+        more: { open: 0, editing: 1 },
+        after: 0,
+      }),
+    res,
+  );
   await close(h);
 });
 
 /** ⌘/ source mode colours the Markdown lightly (headings bold with "##" dimmed, markers, table pipes and fences dimmed, code,
  *  math and link text in colour), tints the caret's line, and wraps long lines between words, never inside one */
 test("noteSourceModeLook", async () => {
-  const words = "occupancy depends on registers shared memory thread block slots and thread slots which are divided dynamically between resident threads".split(" ");
+  const words =
+    "occupancy depends on registers shared memory thread block slots and thread slots which are divided dynamically between resident threads".split(
+      " ",
+    );
   const src = `## Heading\n\n${words.join(" ")} with $x^2$ and [a link](https://example.com)\n\n| a | b |\n| - | - |\n| 1 | \`c\` |\n\n\`\`\`python\nx = 1\n\`\`\`\n\n$$\ny = 2\n$$\n\n![pic](data:image/svg+xml;utf8,${"%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='360'".repeat(12)})`;
   const h = await open({ board: board([src]), light });
   const pg = h.page;
   await idle(h);
-  await pg.locator(`${card("n0")} .nbody p`).first().dblclick();
+  await pg
+    .locator(`${card("n0")} .nbody p`)
+    .first()
+    .dblclick();
   await pg.locator(`${card("n0")} .md-pm:focus`).waitFor();
   await focusSettled(pg);
   await pg.keyboard.press("ControlOrMeta+/");
@@ -740,29 +1341,64 @@ test("noteSourceModeLook", async () => {
   await pg.locator(cm).waitFor();
   await idle(h);
   const r = await pg.evaluate((cm) => {
-    const root = document.querySelector(cm)!, all = (c: string) => [...root.querySelectorAll(`.md-s-${c}`)].map((e) => e.textContent);
+    const root = document.querySelector(cm)!,
+      all = (c: string) => [...root.querySelectorAll(`.md-s-${c}`)].map((e) => e.textContent);
     // where each line box of the long paragraph line starts: the character before it must be a space
     const line = [...root.querySelectorAll(".cm-line")].find((l) => l.textContent!.startsWith("occupancy"))!;
-    const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT), chars: { c: string; top: number }[] = [];
-    for (let n = walker.nextNode(); n; n = walker.nextNode()) for (let i = 0; i < n.textContent!.length; i++) {
-      const rg = document.createRange(); rg.setStart(n, i); rg.setEnd(n, i + 1);
-      const b = rg.getClientRects()[0]; if (b) chars.push({ c: n.textContent![i], top: Math.round(b.top) });
-    }
+    const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT),
+      chars: { c: string; top: number }[] = [];
+    for (let n = walker.nextNode(); n; n = walker.nextNode())
+      for (let i = 0; i < n.textContent!.length; i++) {
+        const rg = document.createRange();
+        rg.setStart(n, i);
+        rg.setEnd(n, i + 1);
+        const b = rg.getClientRects()[0];
+        if (b) chars.push({ c: n.textContent![i], top: Math.round(b.top) });
+      }
     const breaks: string[] = [];
-    for (let i = 1; i < chars.length; i++) if (chars[i].top > chars[i - 1].top + 4) breaks.push(chars[i - 1].c + "|" + chars[i].c);
+    for (let i = 1; i < chars.length; i++)
+      if (chars[i].top > chars[i - 1].top + 4) breaks.push(chars[i - 1].c + "|" + chars[i].c);
     const active = root.querySelector(".cm-activeLine");
     // a token longer than the line (the data: address) breaks inside the box: the box keeps the card's width
-    const box = document.querySelector(cm.replace(" .cm-content", ""))!.getBoundingClientRect(), content = root.getBoundingClientRect();
+    const box = document.querySelector(cm.replace(" .cm-content", ""))!.getBoundingClientRect(),
+      content = root.getBoundingClientRect();
     const fits = Math.round(content.width) <= Math.round(box.width) && root.scrollWidth <= root.clientWidth + 1;
-    return { fits, widths: [Math.round(content.width), Math.round(box.width), root.scrollWidth, root.clientWidth], mk: all("mk"), h: all("h"), code: all("code"), math: all("math"), link: all("link"), breaks, active: active ? getComputedStyle(active).backgroundColor : null };
+    return {
+      fits,
+      widths: [Math.round(content.width), Math.round(box.width), root.scrollWidth, root.clientWidth],
+      mk: all("mk"),
+      h: all("h"),
+      code: all("code"),
+      math: all("math"),
+      link: all("link"),
+      breaks,
+      active: active ? getComputedStyle(active).backgroundColor : null,
+    };
   }, cm);
   await shot(h, "noteSourceModeLook");
   await pg.keyboard.press("ControlOrMeta+/");
   await exitEdit(h);
-  check("noteSourceModeLook colours", r.mk.includes("## ") && r.h.includes("Heading") && r.mk.includes("|") && r.mk.some((m) => /^\| -+ \| -+ \|$/.test(m ?? "")) && r.mk.includes("```python") && r.mk.includes("$$")
-    && r.code.includes("x = 1") && r.code.includes("c") && r.math.includes("$x^2$") && r.math.includes("y = 2") && r.link.includes("a link"), r);
+  check(
+    "noteSourceModeLook colours",
+    r.mk.includes("## ") &&
+      r.h.includes("Heading") &&
+      r.mk.includes("|") &&
+      r.mk.some((m) => /^\| -+ \| -+ \|$/.test(m ?? "")) &&
+      r.mk.includes("```python") &&
+      r.mk.includes("$$") &&
+      r.code.includes("x = 1") &&
+      r.code.includes("c") &&
+      r.math.includes("$x^2$") &&
+      r.math.includes("y = 2") &&
+      r.link.includes("a link"),
+    r,
+  );
   check("noteSourceModeLook an overlong token breaks inside the card", r.fits, r.widths);
-  check("noteSourceModeLook wraps between words", r.breaks.length > 0 && r.breaks.every((b) => b.startsWith(" |")), r.breaks);
+  check(
+    "noteSourceModeLook wraps between words",
+    r.breaks.length > 0 && r.breaks.every((b) => b.startsWith(" |")),
+    r.breaks,
+  );
   check("noteSourceModeLook tints the caret's line", !!r.active && r.active !== "rgba(0, 0, 0, 0)", r.active);
   await close(h);
 });
@@ -773,15 +1409,24 @@ test("noteFormulaCopyKeepsTex", async () => {
   const h = await open({ board: board(["see $\\frac{b}{a}=c$ here\n\n$$\nx^2\n$$", "target"]), light });
   const pg = h.page;
   await idle(h);
-  const copy = (sel: string) => pg.evaluate((sel) => {
-    const root = document.querySelector(sel)!, r = document.createRange();
-    r.selectNodeContents(root);
-    getSelection()!.removeAllRanges(); getSelection()!.addRange(r);
-    const dt = new DataTransfer();
-    (document.activeElement && root.contains(document.activeElement) ? document.activeElement : root.querySelector("p")!)
-      .dispatchEvent(new ClipboardEvent("copy", { clipboardData: dt, bubbles: true, cancelable: true }));
-    return { html: dt.getData("text/html"), text: dt.getData("text/plain"), live: document.querySelectorAll(`${sel} annotation`).length };
-  }, sel);
+  const copy = (sel: string) =>
+    pg.evaluate((sel) => {
+      const root = document.querySelector(sel)!,
+        r = document.createRange();
+      r.selectNodeContents(root);
+      getSelection()!.removeAllRanges();
+      getSelection()!.addRange(r);
+      const dt = new DataTransfer();
+      (document.activeElement && root.contains(document.activeElement)
+        ? document.activeElement
+        : root.querySelector("p")!
+      ).dispatchEvent(new ClipboardEvent("copy", { clipboardData: dt, bubbles: true, cancelable: true }));
+      return {
+        html: dt.getData("text/html"),
+        text: dt.getData("text/plain"),
+        live: document.querySelectorAll(`${sel} annotation`).length,
+      };
+    }, sel);
   const stat = await copy(`${card("n0")} .nbody`);
   await editNote(h, "n0");
   await pg.keyboard.press("ControlOrMeta+a");
@@ -793,13 +1438,23 @@ test("noteFormulaCopyKeepsTex", async () => {
   await pg.evaluate((html) => {
     const dt = new DataTransfer();
     dt.setData("text/html", html);
-    document.activeElement!.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true }));
+    document.activeElement!.dispatchEvent(
+      new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true }),
+    );
   }, ed.html);
   await exitEdit(h);
   const pasted = md(h, "n1");
-  const tex = (x: { html: string; text: string }) => x.text.includes("$\\frac{b}{a}=c$") && /\n\$\$\s*x\^2\s*\$\$/.test(x.text) && x.html.includes('data-latex="\\frac{b}{a}=c"') && x.html.includes("$\\frac{b}{a}=c$");
+  const tex = (x: { html: string; text: string }) =>
+    x.text.includes("$\\frac{b}{a}=c$") &&
+    /\n\$\$\s*x\^2\s*\$\$/.test(x.text) &&
+    x.html.includes('data-latex="\\frac{b}{a}=c"') &&
+    x.html.includes("$\\frac{b}{a}=c$");
   check("noteFormulaCopyKeepsTex static copy", tex(stat) && stat.live === 0, stat);
   check("noteFormulaCopyKeepsTex editor copy", tex(ed), ed);
-  check("noteFormulaCopyKeepsTex HTML-only paste", pasted.includes("$\\frac{b}{a}=c$") && /\$\$\s*x\^2\s*\$\$/.test(pasted), pasted);
+  check(
+    "noteFormulaCopyKeepsTex HTML-only paste",
+    pasted.includes("$\\frac{b}{a}=c$") && /\$\$\s*x\^2\s*\$\$/.test(pasted),
+    pasted,
+  );
   await close(h);
 });

@@ -40,9 +40,18 @@ async function langMenu(id: string) {
 
 function single(a: Args): Scene {
   const { board, put } = scene("Free code");
-  put(free("f1", CODE[a.lang], { lang: a.lang, title: a.title || undefined, url: a.url || undefined, card: a.wrap ? { wrap: true } : {} }), { x: 40, y: 60, w: a.w });
+  put(
+    free("f1", CODE[a.lang], {
+      lang: a.lang,
+      title: a.title || undefined,
+      url: a.url || undefined,
+      card: a.wrap ? { wrap: true } : {},
+    }),
+    { x: 40, y: 60, w: a.w },
+  );
   return {
-    board, sel: a.mode === "selected" || a.mode === "langMenu" ? ["f1"] : undefined,
+    board,
+    sel: a.mode === "selected" || a.mode === "langMenu" ? ["f1"] : undefined,
     after: async () => {
       await el(`${card("f1")} .src .l`);
       if (a.mode === "editing") setEditing({ kind: "free", id: "f1" });
@@ -56,17 +65,31 @@ function overview(a: Args): Scene {
   const cells: [string, string, Parameters<typeof free>[1], Parameters<typeof free>[2], number][] = [
     ["Python, no title", "f-py", CODE.python, { lang: "python" }, a.w],
     ["C, titled", "f-c", CODE.c, { lang: "c", title: "vecAdd - cpu" }, a.w],
-    ["Pasted with a source link", "f-url", CODE["cuda-cpp"], { lang: "cuda-cpp", title: "vecAdd - kernel", url: "https://docs.nvidia.com/cuda/cuda-c-programming-guide/" }, a.w + 60],
+    [
+      "Pasted with a source link",
+      "f-url",
+      CODE["cuda-cpp"],
+      { lang: "cuda-cpp", title: "vecAdd - kernel", url: "https://docs.nvidia.com/cuda/cuda-c-programming-guide/" },
+      a.w + 60,
+    ],
     ["Wrap Lines, narrow", "f-wrap", CODE["cuda-cpp"], { lang: "cuda-cpp", card: { wrap: true } }, 280],
     ["Selected (Copy Code, language)", "f-sel", CODE.python, { lang: "python", title: "num_blocks" }, a.w],
     ["Editing (CodeMirror)", "f-edit", CODE.python, { lang: "python", title: "num_blocks" }, a.w],
   ];
   cells.forEach(([cap, id, text, o, w], i) => {
-    const x = 40 + (i % 3) * (a.w + 120), y = 60 + Math.floor(i / 3) * 300;
+    const x = 40 + (i % 3) * (a.w + 120),
+      y = 60 + Math.floor(i / 3) * 300;
     caption(cap, x, y, w);
     put(free(id, text, o), { x, y, w });
   });
-  return { board, sel: ["f-sel"], after: async () => { await el(`${card("f-edit")} .src .l`); setEditing({ kind: "free", id: "f-edit" }); } };
+  return {
+    board,
+    sel: ["f-sel"],
+    after: async () => {
+      await el(`${card("f-edit")} .src .l`);
+      setEditing({ kind: "free", id: "f-edit" });
+    },
+  };
 }
 
 const meta = {
@@ -88,12 +111,26 @@ type Story = StoryObj<typeof meta>;
 export const Overview: Story = {
   render: (a, ctx) => <Stage scene={() => overview(a)} globals={ctx.globals as Globals} />,
   args: { w: 440 },
-  argTypes: { lang: { table: { disable: true } }, title: { table: { disable: true } }, url: { table: { disable: true } }, wrap: { table: { disable: true } }, mode: { table: { disable: true } } },
+  argTypes: {
+    lang: { table: { disable: true } },
+    title: { table: { disable: true } },
+    url: { table: { disable: true } },
+    wrap: { table: { disable: true } },
+    mode: { table: { disable: true } },
+  },
 };
 export const Themes: Story = themes("python");
 export const Python: Story = {};
 export const Titled: Story = { args: { lang: "c", title: "vecAdd - cpu" } };
-export const WithSource: Story = { name: "Pasted with Source", args: { lang: "cuda-cpp", title: "vecAdd - kernel", url: "https://docs.nvidia.com/cuda/cuda-c-programming-guide/", w: 560 } };
+export const WithSource: Story = {
+  name: "Pasted with Source",
+  args: {
+    lang: "cuda-cpp",
+    title: "vecAdd - kernel",
+    url: "https://docs.nvidia.com/cuda/cuda-c-programming-guide/",
+    w: 560,
+  },
+};
 export const Wrapped: Story = { args: { lang: "cuda-cpp", wrap: true, w: 280 } };
 export const Selected: Story = { args: { mode: "selected", title: "num_blocks" } };
 export const Editing: Story = { args: { mode: "editing", title: "num_blocks" } };

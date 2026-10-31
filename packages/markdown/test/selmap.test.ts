@@ -15,9 +15,11 @@ function select(root: HTMLElement, word: string, i = 0) {
   const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
   const hits: Text[] = [];
   for (let n = w.nextNode(); n; n = w.nextNode()) if ((n as Text).data.includes(word)) hits.push(n as Text);
-  const t = hits[i], at = t.data.indexOf(word);
+  const t = hits[i],
+    at = t.data.indexOf(word);
   const r = document.createRange();
-  r.setStart(t, at); r.setEnd(t, at + word.length);
+  r.setStart(t, at);
+  r.setEnd(t, at + word.length);
   return r;
 }
 const mapped = (md: string, word: string, i = 0) => {
@@ -42,9 +44,11 @@ describe("static selection → document range", () => {
   });
   it("a range across two paragraphs", () => {
     const { root, doc } = setup("first para\n\nsecond para");
-    const a = select(root, "para", 0), b = select(root, "second", 0);
+    const a = select(root, "para", 0),
+      b = select(root, "second", 0);
     const r = document.createRange();
-    r.setStart(a.startContainer, a.startOffset); r.setEnd(b.endContainer, b.endOffset);
+    r.setStart(a.startContainer, a.startOffset);
+    r.setEnd(b.endContainer, b.endOffset);
     const s = staticTextRange(root, r)!;
     const d = docRange(doc, s)!;
     expect(doc.textBetween(d.from, d.to, "\n")).toBe("para\nsecond");

@@ -9,7 +9,8 @@ export type StaticMark = "bold" | "highlight";
 
 /** 两头的空白不算进去（** 、== 包着空白读回来就不是格式了） */
 function trimmed(r: StaticTextRange): StaticTextRange | null {
-  const a = r.text.length - r.text.trimStart().length, b = r.text.length - r.text.trimEnd().length;
+  const a = r.text.length - r.text.trimStart().length,
+    b = r.text.length - r.text.trimEnd().length;
   return a + b >= r.text.length ? null : { from: r.from + a, to: r.to - b, text: r.text.slice(a, r.text.length - b) };
 }
 function locate(src: string, r: StaticTextRange) {
@@ -21,7 +22,8 @@ function locate(src: string, r: StaticTextRange) {
 }
 /** 这一段里能带这种格式的字是不是全带着（一个字都没有的算不带） */
 function covered(doc: PMNode, from: number, to: number, type: MarkType) {
-  let any = false, all = true;
+  let any = false,
+    all = true;
   doc.nodesBetween(from, to, (n, _pos, parent) => {
     if (!n.isText || !parent?.type.allowsMarkType(type)) return;
     any = true;
@@ -40,7 +42,8 @@ export function staticMarkActive(src: string, r: StaticTextRange, mark: StaticMa
 export function toggleStaticMark(src: string, r: StaticTextRange, mark: StaticMark): string | null {
   const l = locate(src, r);
   if (!l) return null;
-  const type = mdSchema().marks[mark], tr = new Transform(l.doc);
+  const type = mdSchema().marks[mark],
+    tr = new Transform(l.doc);
   if (covered(l.doc, l.from, l.to, type)) tr.removeMark(l.from, l.to, type);
   else tr.addMark(l.from, l.to, type.create());
   if (!tr.docChanged) return null;
@@ -51,12 +54,16 @@ export function toggleStaticMark(src: string, r: StaticTextRange, mark: StaticMa
 function spliceBlocks(src: string, before: PMNode, after: PMNode): string | null {
   const starts = mdBlockStarts(src);
   if (!starts || before.childCount !== starts.length || after.childCount !== starts.length) return null;
-  let out = "", at = 0;
+  let out = "",
+    at = 0;
   for (let i = 0; i < starts.length; i++) {
     const nb = after.child(i);
     if (nb.eq(before.child(i))) continue;
     let refs = false;
-    nb.descendants((n) => { if (n.type.name === "footnoteReference") refs = true; return !refs; });
+    nb.descendants((n) => {
+      if (n.type.name === "footnoteReference") refs = true;
+      return !refs;
+    });
     if (refs) return null;
     const s = starts[i];
     out += src.slice(at, s) + serializeMd({ type: "doc", content: [nb.toJSON()] });

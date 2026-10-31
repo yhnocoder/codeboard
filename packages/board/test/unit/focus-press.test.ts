@@ -12,10 +12,16 @@ let focused = 0;
 beforeAll(() => {
   Object.defineProperty(window, "frameElement", { value: { ownerDocument: host }, configurable: true });
   vi.spyOn(document, "hasFocus").mockReturnValue(false);
-  vi.spyOn(window, "focus").mockImplementation(() => { focused++; });
+  vi.spyOn(window, "focus").mockImplementation(() => {
+    focused++;
+  });
   reportFocus();
 });
-afterEach(() => { vi.useRealTimers(); host.hasFocus = () => true; host.activeElement = body; });
+afterEach(() => {
+  vi.useRealTimers();
+  host.hasFocus = () => true;
+  host.activeElement = body;
+});
 
 const pressThenBlur = async (after: number) => {
   vi.useFakeTimers();

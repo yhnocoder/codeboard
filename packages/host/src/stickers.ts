@@ -37,7 +37,12 @@ const BITMAP_EXT = /\.(png|webp|gif)$/i;
 const ICON_EXT = /\.(svg|png|webp|gif)$/i;
 
 // An Iconify icon set (the part we read): https://iconify.design/docs/types/iconify-json.html
-const Box = { left: v.optional(v.number()), top: v.optional(v.number()), width: v.optional(v.number()), height: v.optional(v.number()) };
+const Box = {
+  left: v.optional(v.number()),
+  top: v.optional(v.number()),
+  width: v.optional(v.number()),
+  height: v.optional(v.number()),
+};
 const IconifyJson = v.object({
   prefix: v.optional(v.string()),
   info: v.optional(v.object({ name: v.optional(v.string()) })),
@@ -49,39 +54,65 @@ const IconifyJson = v.object({
 function iconifyPack(id: string, raw: unknown): StickerPack | null {
   const r = v.safeParse(IconifyJson, raw);
   if (!r.success) return null;
-  const j = r.output, W = j.width ?? 16, H = j.height ?? 16;
-  const icons = Object.entries(j.icons).map(([name, ic]) => ({
-    name, svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${ic.left ?? 0} ${ic.top ?? 0} ${ic.width ?? W} ${ic.height ?? H}">${ic.body ?? ""}</svg>`,
-  })).filter((ic) => ic.svg.length <= MAX_SVG);
+  const j = r.output,
+    W = j.width ?? 16,
+    H = j.height ?? 16;
+  const icons = Object.entries(j.icons)
+    .map(([name, ic]) => ({
+      name,
+      svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${ic.left ?? 0} ${ic.top ?? 0} ${ic.width ?? W} ${ic.height ?? H}">${ic.body ?? ""}</svg>`,
+    }))
+    .filter((ic) => ic.svg.length <= MAX_SVG);
   return { id, name: j.info?.name ?? j.prefix ?? id, icons };
 }
 
 /** 文件夹包：图标名 = 文件名去掉扩展名（白板文件里贴纸只记包名 + 图标名）；同名的 SVG 和位图只留一个，SVG 优先 */
 async function folderPack(dir: string, id: string): Promise<StickerPack | null> {
   const isBitmap = (f: string) => Number(BITMAP_EXT.test(f));
-  const files = (await fs.readdir(dir)).filter((f) => ICON_EXT.test(f)).sort((a, b) => isBitmap(a) - isBitmap(b) || a.localeCompare(b));
-  const icons: StickerIcon[] = [], seen = new Set<string>();
+  const files = (await fs.readdir(dir))
+    .filter((f) => ICON_EXT.test(f))
+    .sort((a, b) => isBitmap(a) - isBitmap(b) || a.localeCompare(b));
+  const icons: StickerIcon[] = [],
+    seen = new Set<string>();
   let total = 0;
   for (const f of files) {
-    const fp = path.join(dir, f), name = f.replace(ICON_EXT, "");
-    if (seen.has(name)) { log("warn", `sticker ${fp}: the pack already has an icon named ${name}, skipped`); continue; }
+    const fp = path.join(dir, f),
+      name = f.replace(ICON_EXT, "");
+    if (seen.has(name)) {
+      log("warn", `sticker ${fp}: the pack already has an icon named ${name}, skipped`);
+      continue;
+    }
     try {
       const size = (await fs.stat(fp)).size;
       if (!isBitmap(f)) {
-        if (size > MAX_SVG) { log("warn", `sticker ${fp}: larger than ${MAX_SVG >> 10} KB, skipped`); continue; }
+        if (size > MAX_SVG) {
+          log("warn", `sticker ${fp}: larger than ${MAX_SVG >> 10} KB, skipped`);
+          continue;
+        }
         icons.push({ name, svg: (await fs.readFile(fp, "utf8")).trim() });
       } else {
-        if (size > MAX_BITMAP) { log("warn", `sticker ${fp}: larger than ${MAX_BITMAP >> 20} MB, skipped`); continue; }
-        if (total + size > MAX_PACK_BITMAPS) { log("warn", `sticker ${fp}: the pack's images pass ${MAX_PACK_BITMAPS >> 20} MB, skipped`); continue; }
+        if (size > MAX_BITMAP) {
+          log("warn", `sticker ${fp}: larger than ${MAX_BITMAP >> 20} MB, skipped`);
+          continue;
+        }
+        if (total + size > MAX_PACK_BITMAPS) {
+          log("warn", `sticker ${fp}: the pack's images pass ${MAX_PACK_BITMAPS >> 20} MB, skipped`);
+          continue;
+        }
         const buf = await fs.readFile(fp);
         const t = sniffImage(buf);
-        if (!t || t.mime === "image/jpeg") { log("warn", `sticker ${fp}: not a PNG, WebP or GIF image, skipped`); continue; }
+        if (!t || t.mime === "image/jpeg") {
+          log("warn", `sticker ${fp}: not a PNG, WebP or GIF image, skipped`);
+          continue;
+        }
         total += buf.length;
         const img = `data:${t.mime};base64,${buf.toString("base64")}`;
         icons.push(t.anim ? { name, img, anim: true } : { name, img });
       }
       seen.add(name);
-    } catch (err) { log("warn", `sticker ${fp}: ${(err as Error).message}`); }
+    } catch (err) {
+      log("warn", `sticker ${fp}: ${(err as Error).message}`);
+    }
   }
   icons.sort((a, b) => a.name.localeCompare(b.name));
   return icons.length ? { id, name: id, icons } : null;
@@ -95,14 +126,19 @@ export async function readPacks(): Promise<StickerPack[]> {
     const p = path.join(dir, e.name);
     try {
       if (e.isFile() && e.name.endsWith(".json")) {
-        if ((await fs.stat(p)).size > MAX_JSON) { log("warn", `sticker pack ${p}: larger than ${MAX_JSON >> 20} MB, skipped`); continue; }
+        if ((await fs.stat(p)).size > MAX_JSON) {
+          log("warn", `sticker pack ${p}: larger than ${MAX_JSON >> 20} MB, skipped`);
+          continue;
+        }
         const pk = iconifyPack(e.name.replace(/\.json$/, ""), JSON.parse(await fs.readFile(p, "utf8")));
         if (pk) out.push(pk);
       } else if (e.isDirectory()) {
         const pk = await folderPack(p, e.name);
         if (pk) out.push(pk);
       }
-    } catch (err) { log("warn", `sticker pack ${p}: ${(err as Error).message}`); }
+    } catch (err) {
+      log("warn", `sticker pack ${p}: ${(err as Error).message}`);
+    }
   }
   return out.sort((a, b) => a.name.localeCompare(b.name));
 }

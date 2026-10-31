@@ -1,9 +1,32 @@
 import {
-  uid, findCard, isCode, cardTitle, segOf, allCodeCards,
-  placeChild, walkOrder, descendants, startCards, SIB_GAP, COL_GAP,
-  estSize, defaultWidth, removeLostCalls, callName, sameCallSite,
-  type Card, type CodeCard, type Link, type Place,
-  type GraphMark, type CallSpan, type ExpandPick, type ExpandResult, type Rect, type SegView, type CrossMark,
+  uid,
+  findCard,
+  isCode,
+  cardTitle,
+  segOf,
+  allCodeCards,
+  placeChild,
+  walkOrder,
+  descendants,
+  startCards,
+  SIB_GAP,
+  COL_GAP,
+  estSize,
+  defaultWidth,
+  removeLostCalls,
+  callName,
+  sameCallSite,
+  type Card,
+  type CodeCard,
+  type Link,
+  type Place,
+  type GraphMark,
+  type CallSpan,
+  type ExpandPick,
+  type ExpandResult,
+  type Rect,
+  type SegView,
+  type CrossMark,
 } from "@codeboard/core";
 import type { Var } from "@codeboard/analysis/basics";
 import { state, setState, flows, cardById, hostOf, rectOf, setShowCollapsed, placeOf, placed } from "../state/store";
@@ -34,7 +57,12 @@ export function expandedTo(cardId: string, segId: string, call: CallSpan): strin
     const t = cardById(l.to.card);
     if (!t || l.lost?.to) continue;
     const lc = l.call;
-    if (lc ? lc.name === call.name && (lc.col === call.col || lc.col === 0 || call.col === 0) : calleeMatches(t.card, call)) return l.to.card;
+    if (
+      lc
+        ? lc.name === call.name && (lc.col === call.col || lc.col === 0 || call.col === 0)
+        : calleeMatches(t.card, call)
+    )
+      return l.to.card;
   }
 }
 
@@ -42,13 +70,25 @@ export function expandedTo(cardId: string, segId: string, call: CallSpan): strin
 export type ExpandExtra = { mark?: CrossMark; label?: string };
 
 /** again：已经展开过也再建一张（右键 Expand Again）；默认再点只是跳到已有的那张 */
-export async function expandCall(cardId: string, segId: string, call: CallSpan, at?: { x: number; y: number }, pick?: ExpandPick, again = false, extra?: ExpandExtra) {
+export async function expandCall(
+  cardId: string,
+  segId: string,
+  call: CallSpan,
+  at?: { x: number; y: number },
+  pick?: ExpandPick,
+  again = false,
+  extra?: ExpandExtra,
+) {
   const f = cardById(cardId);
   if (!f || !isCode(f.card)) return;
   const seg = segOf(f.card, segId);
   if (!seg) return;
   const had = !again && !at && !pick ? expandedTo(cardId, segId, call) : undefined;
-  if (had) { flash(cardId, segId, [call.line]); jumpTo(had); return; }
+  if (had) {
+    flash(cardId, segId, [call.line]);
+    jumpTo(had);
+    return;
+  }
   const key = `${cardId}:${segId}:${call.line}:${call.col}`;
   if (pending.has(key)) return;
   // call("run", …)：按字符串转发，静态解析不到，直接按名字 run 搜（接收者的类排前面），选一个建卡连线
@@ -60,21 +100,48 @@ export async function expandCall(cardId: string, segId: string, call: CallSpan, 
   } catch (e) {
     toast(`Could not expand ${call.name}(): ${(e as Error).message}`);
     return;
-  } finally { pending.delete(key); }
+  } finally {
+    pending.delete(key);
+  }
   // 解析不到（字符串注册表等）：给两条路，按名字跨语言搜或手动补边
-  if ("none" in r) { if (r.name) unresolvedMenu(cardId, segId, call, r.reason); else toast(r.reason || `No definition found for ${call.name}()`); return; }
+  if ("none" in r) {
+    if (r.name) unresolvedMenu(cardId, segId, call, r.reason);
+    else toast(r.reason || `No definition found for ${call.name}()`);
+    return;
+  }
   if ("pick" in r) {
-    showPicker(`${call.name}() · ${r.pick.length} definitions`, r.pick.map((p) => ({ label: p.label, detail: p.detail, run: () => expandCall(cardId, segId, call, at, { path: p.path, line: p.line }, again, extra) })));
+    showPicker(
+      `${call.name}() · ${r.pick.length} definitions`,
+      r.pick.map((p) => ({
+        label: p.label,
+        detail: p.detail,
+        run: () => expandCall(cardId, segId, call, at, { path: p.path, line: p.line }, again, extra),
+      })),
+    );
     return;
   }
   if ("impls" in r) return openImplPicker(cardId, segId, call, r, at, again);
-  placeExpanded(cardId, segId, call, r.card, r.views, r.vars, at, r.w, { mark: { ...r.mark, ...extra?.mark }, label: extra?.label, title: r.title });
+  placeExpanded(cardId, segId, call, r.card, r.views, r.vars, at, r.w, {
+    mark: { ...r.mark, ...extra?.mark },
+    label: extra?.label,
+    title: r.title,
+  });
   // 宿主没等转到实现就建了卡：有没有子类覆盖在后台问，回来了再给选（不让点击等语言服务在整个工作区里找子类）
   if (r.dispatching && !pick) void lateDispatch(cardId, segId, call, r.card.id);
 }
 
 /** ex：并进 Call 标记的、箭头上的字、卡的名字（模板实例 dispatch<8, 768>） */
-export function placeExpanded(cardId: string, segId: string, call: CallSpan, card: CodeCard, views: Record<string, SegView>, vars: Var[], at?: { x: number; y: number }, w?: number, ex?: ExpandExtra & { title?: string }) {
+export function placeExpanded(
+  cardId: string,
+  segId: string,
+  call: CallSpan,
+  card: CodeCard,
+  views: Record<string, SegView>,
+  vars: Var[],
+  at?: { x: number; y: number },
+  w?: number,
+  ex?: ExpandExtra & { title?: string },
+) {
   putViews(views);
   const host = cardById(cardId)!.host;
   const id = card.id;
@@ -83,8 +150,10 @@ export function placeExpanded(cardId: string, segId: string, call: CallSpan, car
   mutate((b) => {
     const nc = structuredClone(card) as CodeCard;
     const np: Place = { x: 0, y: 0, w: size.w };
-    if (at) { np.x = Math.round(at.x); np.y = Math.round(at.y); }
-    else {
+    if (at) {
+      np.x = Math.round(at.x);
+      np.y = Math.round(at.y);
+    } else {
       const f = flows();
       // 出发行在它前面的 Call 箭头连着的卡（及它们往下调用的）：新卡放在它们下面
       const before: Rect[] = [];
@@ -95,13 +164,20 @@ export function placeExpanded(cardId: string, segId: string, call: CallSpan, car
         for (const d of [kl.to.card, ...descendants(f, kl.to.card)]) {
           const h = hostOf(d);
           if (h === host.id || beforeIds.has(h)) continue;
-          const r = hostRect(d); if (r) before.push(r); beforeIds.add(h);
+          const r = hostRect(d);
+          if (r) before.push(r);
+          beforeIds.add(h);
         }
       }
       // 同一张调用图里排在后面的卡给新卡让位（整体下移），不让新卡被挤到图的最底下；往上调用到这张卡的那些不动
       const chain = new Set<string>([host.id]);
       const up = [cardId];
-      while (up.length) for (const l of f.parents.get(up.pop()!) ?? []) if (!chain.has(hostOf(l.from.card))) { chain.add(hostOf(l.from.card)); up.push(l.from.card); }
+      while (up.length)
+        for (const l of f.parents.get(up.pop()!) ?? [])
+          if (!chain.has(hostOf(l.from.card))) {
+            chain.add(hostOf(l.from.card));
+            up.push(l.from.card);
+          }
       const tree = new Set((f.byId.get(cardId)?.cards ?? []).map(hostOf));
       const hb = rectOf(host);
       // 白板够宽（父卡和新卡并排时缩放不低于概览）就放右边一列，新卡头对着出发行、箭头基本是平的；
@@ -109,15 +185,26 @@ export function placeExpanded(cardId: string, segId: string, call: CallSpan, car
       const side = hb.w + COL_GAP + size.w <= usableW(overviewZ());
       const top = side ? (lineY(cardId, segId, call.line)?.y ?? hb.y) - 18 : hb.y + hb.h;
       // 别的子树的卡也可能在这一列：在新卡上方的挡住它，下方的给它让位（下面整体下移）
-      const fixed = placed().filter((k) => !tree.has(k.id) || (!chain.has(k.id) && b.place[k.id].y < top)).map((k) => rectOf(k));
+      const fixed = placed()
+        .filter((k) => !tree.has(k.id) || (!chain.has(k.id) && b.place[k.id].y < top))
+        .map((k) => rectOf(k));
       const p = placeChild(hb, size, before, fixed, { side, top });
-      np.x = Math.round(p.x); np.y = Math.round(p.y);
+      np.x = Math.round(p.x);
+      np.y = Math.round(p.y);
       const want = { x: p.x, y: p.y, w: size.w, h: size.h };
-      const below = placed().filter((k) => tree.has(k.id) && !chain.has(k.id) && !beforeIds.has(k.id) && b.place[k.id].y >= top - 1);
-      const hit = below.some((k) => { const r = rectOf(k); return r.x < want.x + want.w && want.x < r.x + r.w && r.y < want.y + want.h + SIB_GAP; });
+      const below = placed().filter(
+        (k) => tree.has(k.id) && !chain.has(k.id) && !beforeIds.has(k.id) && b.place[k.id].y >= top - 1,
+      );
+      const hit = below.some((k) => {
+        const r = rectOf(k);
+        return r.x < want.x + want.w && want.x < r.x + r.w && r.y < want.y + want.h + SIB_GAP;
+      });
       if (hit) {
         const dy = size.h + SIB_GAP;
-        for (const k of below) { b.place[k.id].y += dy; pushed.push({ id: k.id, dy }); }
+        for (const k of below) {
+          b.place[k.id].y += dy;
+          pushed.push({ id: k.id, dy });
+        }
       }
     }
     const hp = b.place[host.id];
@@ -129,7 +216,13 @@ export function placeExpanded(cardId: string, segId: string, call: CallSpan, car
     const mk = { ...callMark(call, vars), ...ex?.mark };
     for (const k of Object.keys(mk) as (keyof typeof mk)[]) if (mk[k] === undefined) delete mk[k];
     removeLostCalls(b, { card: cardId, seg: segId, line: call.line }, call.name);
-    b.links.push({ id: uid("l"), from: { card: cardId, seg: segId, line: call.line }, to: { card: id }, call: mk, ...(ex?.label ? { label: ex.label } : {}) });
+    b.links.push({
+      id: uid("l"),
+      from: { card: cardId, seg: segId, line: call.line },
+      to: { card: id },
+      call: mk,
+      ...(ex?.label ? { label: ex.label } : {}),
+    });
   });
   select({ cards: [id] });
   flash(cardId, segId, [call.line]);
@@ -146,7 +239,8 @@ export function placeExpanded(cardId: string, segId: string, call: CallSpan, car
  * 概览比例下还放不下：新卡（太高就上面一截）加调用名；还放不下就只看新卡，往左尽量带上出发的那一行
  */
 function followExpanded(cardId: string, segId: string, call: CallSpan, id: string) {
-  const r = hostRect(id), p = hostRect(cardId);
+  const r = hostRect(id),
+    p = hostRect(cardId);
   if (!r || !p) return;
   const y = lineY(cardId, segId, call.line)?.y ?? p.y + 20;
   const from = { x: p.x, y: y - 14, w: p.w, h: 28 };
@@ -159,13 +253,15 @@ function followExpanded(cardId: string, segId: string, call: CallSpan, id: strin
   let f = fitRect(union(from, r), c.z);
   for (const t of [union(from, body), union(name, body)]) if (f.z < floor) f = fitRect(t, c.z);
   if (f.z < floor) {
-    const w = usableW(floor), right = r.x + r.w;
+    const w = usableW(floor),
+      right = r.x + r.w;
     const left = r.w >= w ? r.x : Math.max(Math.min(name.x, r.x), right - w);
     f = fitRect({ x: left, y: body.y, w: Math.min(right - left, w), h: body.h }, c.z, floor);
   }
   camTo(f.x, f.y, f.z);
 }
-const CODE_LEFT = 52, CHAR_W = 7.4; // 代码卡里代码左边距、一个字的宽（和 defaultWidth 的估计一致）
+const CODE_LEFT = 52,
+  CHAR_W = 7.4; // 代码卡里代码左边距、一个字的宽（和 defaultWidth 的估计一致）
 
 export function callMark(call: CallSpan, cands?: Var[]): NonNullable<Link["call"]> {
   const m: NonNullable<Link["call"]> = { name: call.name, col: call.col };
@@ -182,28 +278,49 @@ export function attachCall(cardId: string, segId: string, call: CallSpan, target
   const t = cardById(target);
   if (!t || !isCode(t.card)) return toast("Only code cards can be the target of a call.");
   if (t.host.id === hostOf(cardId)) return toast("A card cannot call itself.");
-  const dup = state.board.links.some((l) => sameCallSite(l, { card: cardId, seg: segId, line: call.line, name: call.name }) && l.to.card === target);
-  if (dup) { ping(t.host.id); return toast(`Already linked to ${cardTitle(t.card)}`); }
+  const dup = state.board.links.some(
+    (l) => sameCallSite(l, { card: cardId, seg: segId, line: call.line, name: call.name }) && l.to.card === target,
+  );
+  if (dup) {
+    ping(t.host.id);
+    return toast(`Already linked to ${cardTitle(t.card)}`);
+  }
   const lid = uid("l");
-  mutate((b) => { b.links.push({ id: lid, from: { card: cardId, seg: segId, line: call.line }, to: { card: target }, call: callMark(call), ...(sides ? { sides } : {}) }); });
+  mutate((b) => {
+    b.links.push({
+      id: lid,
+      from: { card: cardId, seg: segId, line: call.line },
+      to: { card: target },
+      call: callMark(call),
+      ...(sides ? { sides } : {}),
+    });
+  });
   toast(`Linked to ${cardTitle(t.card)}`);
   ping(t.host.id);
   askCands(lid, cardId, segId, call, target);
 }
 /** 参数候选：按目标卡的函数问宿主，回来写进箭头的 Call 标记（候选不进撤销历史） */
 export function askCands(lid: string, cardId: string, segId: string, call: CallSpan, target: string) {
-  const t = cardById(target)?.card, f = cardById(cardId)?.card;
+  const t = cardById(target)?.card,
+    f = cardById(cardId)?.card;
   if (!isCode(t) || !isCode(f)) return;
   const seg = segOf(f, segId);
   const tseg = t.segments.find((s) => s.symbol) ?? t.segments[0];
   if (!seg || !tseg) return;
   ask("callVars", { seg, line: call.line, col: call.col, name: call.name, target: tseg })
-    .then((vs) => { if (vs?.length) sync((b) => { const l = b.links.find((x) => x.id === lid); if (l?.call) l.call.cands = vs; }); })
+    .then((vs) => {
+      if (vs?.length)
+        sync((b) => {
+          const l = b.links.find((x) => x.id === lid);
+          if (l?.call) l.call.cands = vs;
+        });
+    })
     .catch(() => {});
 }
 
 const PREFETCH_DWELL = 150; // 停这么久才算（鼠标扫过去的不算）
-let preKey = "", preTimer: number | undefined;
+let preKey = "",
+  preTimer: number | undefined;
 const sent = new Map<string, number>(); // 已经发过的调用 → 时间（宿主有缓存，短时间内不再发）
 
 /** target 在 .call 上停稳了就发 prefetch（不等回答） */
@@ -222,7 +339,8 @@ export function hoverCall(cardId: string, segId: string | undefined, target: Eve
     const f = cardById(cardId);
     const seg = f && isCode(f.card) ? segOf(f.card, segId!) : undefined;
     if (!call || !seg || call.dispatch || isLibCall(call) || expandedTo(cardId, segId!, call)) return;
-    const k = `${segId}:${call.line}:${call.col}`, now = Date.now();
+    const k = `${segId}:${call.line}:${call.col}`,
+      now = Date.now();
     if (now - (sent.get(k) ?? 0) < 20_000) return;
     if (sent.size > 200) sent.clear();
     sent.set(k, now);
@@ -231,7 +349,8 @@ export function hoverCall(cardId: string, segId: string | undefined, target: Eve
 }
 
 /** library 调用：宿主标了包名，且不在 Study Scope 里 */
-export const isLibCall = (call: Pick<CallSpan, "pkg">) => !!call.pkg && !state.host.settings.studyScope.includes(call.pkg);
+export const isLibCall = (call: Pick<CallSpan, "pkg">) =>
+  !!call.pkg && !state.host.settings.studyScope.includes(call.pkg);
 
 /** 把包加进 Study Scope（先改本地设置，界面立即生效；宿主写进 codeboard.studyScope 再广播回来） */
 export function addToStudyScope(pkg: string) {
@@ -254,10 +373,15 @@ export function libCallCss() {
 export function calleeMatches(c: Card, call: CallSpan) {
   if (!isCode(c)) return false;
   // ModelRunner(...) 是构造：连到 ModelRunner.__init__ 也算调用
-  return c.segments.some((s) => !!s.symbol && (s.symbol.qual.split(".").pop() === call.name || callName(s.symbol.qual) === call.name));
+  return c.segments.some(
+    (s) => !!s.symbol && (s.symbol.qual.split(".").pop() === call.name || callName(s.symbol.qual) === call.name),
+  );
 }
 
-export const allCodeCandidates = (call: CallSpan) => allCodeCards(state.board).filter((k) => calleeMatches(k, call)).map((k) => k.id);
+export const allCodeCandidates = (call: CallSpan) =>
+  allCodeCards(state.board)
+    .filter((k) => calleeMatches(k, call))
+    .map((k) => k.id);
 
 /** 选中这张卡和它往下调用到的所有卡（点调用图标记时；拖标记 = 一起移动） */
 export function selectSubtree(id: string, add = false) {
@@ -275,7 +399,13 @@ export function setGraphMark(cardId: string, mark: GraphMark | null) {
   const g = flows().byId.get(cardId);
   if (!g) return;
   mutate((b) => {
-    if (!mark) { if (b.marks) { delete b.marks[g.id]; if (!Object.keys(b.marks).length) delete b.marks; } return; }
+    if (!mark) {
+      if (b.marks) {
+        delete b.marks[g.id];
+        if (!Object.keys(b.marks).length) delete b.marks;
+      }
+      return;
+    }
     (b.marks ??= {})[g.id] = mark;
   });
 }
@@ -295,7 +425,8 @@ export function startWalk(id?: string, o: { at?: number; single?: boolean } = {}
   if (!start) return toast("No call graph on this board yet. Click a call in a code card to start one.");
   const order = walkOrder(state.board, start);
   // 从父白板讲进来的（single）：只有一张卡也讲，讲完回去
-  if (order.length < 2 && !o.single) return toast("Nothing to walk through from this card. Link it to other cards first.");
+  if (order.length < 2 && !o.single)
+    return toast("Nothing to walk through from this card. Link it to other cards first.");
   const before = { ...camTarget() };
   // 折叠的卡讲解时临时展开（只是显示状态）
   const expanded = order.filter((cid) => placeOf(cid).collapsed);
@@ -334,8 +465,16 @@ export function expandMember(cardId: string, d: { line: number; name: string; qu
   if (!isCode(c)) return;
   const s = c.segments[0];
   // 路径相对段自己的来源根（工作区外的类卡也能找到文件），按 qual 找（钉的版本行号可能挪了）
-  expandCall(cardId, s.id, { line: d.line, col: 0, end: d.name.length, name: d.name, loop: false }, undefined, { path: s.path, line: d.line, rel: true, qual: d.qual });
+  expandCall(cardId, s.id, { line: d.line, col: 0, end: d.name.length, name: d.name, loop: false }, undefined, {
+    path: s.path,
+    line: d.line,
+    rel: true,
+    qual: d.qual,
+  });
 }
 export function showAllMembers(id: string) {
-  mutate((b) => { const c = findCard(b, id)?.card; if (isCode(c) && c.members) c.members.shown = []; });
+  mutate((b) => {
+    const c = findCard(b, id)?.card;
+    if (isCode(c) && c.members) c.members.shown = [];
+  });
 }

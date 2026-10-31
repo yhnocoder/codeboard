@@ -12,7 +12,13 @@ export const TUNE = {
   snapSpeed: { def: SNAP_SPEED, label: "No snapping while dragging faster than", unit: "px/s", min: 100, max: 5000 },
   sideBuffer: { def: 16, label: "Arrows: distance before an end switches sides", unit: "px", min: 0, max: 80 },
   sideSlide: { def: SIDE_SLIDE, label: "Arrows: end slide when switching sides", unit: "ms", min: 0, max: 1000 },
-  liftFade: { def: LIFT_FADE, label: "Arrows: fade when lifting above / dropping below cards", unit: "ms", min: 0, max: 1000 },
+  liftFade: {
+    def: LIFT_FADE,
+    label: "Arrows: fade when lifting above / dropping below cards",
+    unit: "ms",
+    min: 0,
+    max: 1000,
+  },
   menuOpen: { def: MENU_OPEN, label: "Menu open animation", unit: "ms", min: 0, max: 600 },
   animSpeed: { def: 100, label: "All animations speed (slow motion)", unit: "%", min: 5, max: 100 },
 } as const;

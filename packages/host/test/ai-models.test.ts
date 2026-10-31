@@ -10,8 +10,12 @@ import { useWorkspace } from "../src/ws";
 import { nodeWorkspace } from "./node-workspace";
 
 const KEY = "sk-test-models";
-const PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==";
-const MODELS: AiModel[] = [{ id: "gpt-4o", name: "GPT-4o", vendor: "copilot", vision: true }, { id: "o3-mini", name: "o3-mini", vendor: "copilot", vision: false }];
+const PNG =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==";
+const MODELS: AiModel[] = [
+  { id: "gpt-4o", name: "GPT-4o", vendor: "copilot", vision: true },
+  { id: "o3-mini", name: "o3-mini", vendor: "copilot", vision: false },
+];
 
 type Chat = { model: string | undefined; req: AiChatRequest; signal: AbortSignal; justification: string };
 const conf = new Map<string, unknown>();
@@ -21,20 +25,41 @@ let chatReply: (c: Chat) => Promise<AiChatResult> = async () => ({ text: "from c
 let fetches: { url: string; body: any }[] = [];
 const fetchFake = (async (url: string, init: RequestInit) => {
   fetches.push({ url, body: JSON.parse(String(init.body)) });
-  return new Response(JSON.stringify({ choices: [{ finish_reason: "stop", message: { content: "from deepseek" } }] }), { status: 200 });
+  return new Response(JSON.stringify({ choices: [{ finish_reason: "stop", message: { content: "from deepseek" } }] }), {
+    status: 200,
+  });
 }) as unknown as typeof fetch;
 
 const W = nodeWorkspace();
 W.settings = { ...W.settings, get: <T>(k: string) => conf.get(k) as T };
 let cleared = 0;
-W.secrets = { get: async () => key, set: async (_k, v) => { key = v; }, delete: async () => { cleared++; key = undefined; } };
+W.secrets = {
+  get: async () => key,
+  set: async (_k, v) => {
+    key = v;
+  },
+  delete: async () => {
+    cleared++;
+    key = undefined;
+  },
+};
 W.ui = { ...W.ui, input: async () => " sk-new " };
 W.ai = {
   models: async () => MODELS,
-  chat: (model, req, o) => { const c = { model, req, signal: o.signal, justification: o.justification }; chats.push(c); return chatReply(c); },
+  chat: (model, req, o) => {
+    const c = { model, req, signal: o.signal, justification: o.justification };
+    chats.push(c);
+    return chatReply(c);
+  },
 };
 beforeEach(() => {
-  conf.clear(); key = KEY; chats = []; fetches = []; cleared = 0; resetImageAiCache(); useWorkspace(W);
+  conf.clear();
+  key = KEY;
+  chats = [];
+  fetches = [];
+  cleared = 0;
+  resetImageAiCache();
+  useWorkspace(W);
   chatReply = async () => ({ text: "from copilot", via: "GPT-4o" });
 });
 
@@ -107,9 +132,16 @@ describe("AI tools: which model", () => {
   it("passes on the VS Code model's failures with its name: no consent, model gone; Auto with nothing at all says what to do", async () => {
     conf.set("codeboard.ai.svgModel", "gpt-4o");
     chatReply = async () => ({ fail: "noconsent", message: "denied", via: "GPT-4o" });
-    expect(await imageAiJob(new Map(), 1, svg, fetchFake)).toEqual({ fail: "noconsent", message: "denied", via: "GPT-4o" });
+    expect(await imageAiJob(new Map(), 1, svg, fetchFake)).toEqual({
+      fail: "noconsent",
+      message: "denied",
+      via: "GPT-4o",
+    });
     chatReply = async () => ({ fail: "nomodel", message: "The language model “gpt-4o” isn't available" });
-    expect(await imageAiJob(new Map(), 2, svg, fetchFake)).toMatchObject({ fail: "nomodel", message: "The language model “gpt-4o” isn't available" });
+    expect(await imageAiJob(new Map(), 2, svg, fetchFake)).toMatchObject({
+      fail: "nomodel",
+      message: "The language model “gpt-4o” isn't available",
+    });
     key = undefined;
     chatReply = async () => ({ fail: "nomodel" });
     const r = await imageAiJob(new Map(), 3, extract, fetchFake);
@@ -135,7 +167,10 @@ describe("Auto Focus request", () => {
     const b = JSON.parse(imageAiRequest({ key: KEY }, { kind: "focus", md }).init.body);
     expect(b).toMatchObject({ thinking: { type: "disabled" }, stream: false });
     expect(b.reasoning_effort).toBeUndefined();
-    expect(b.messages).toEqual([{ role: "system", content: SYS_FOCUS }, { role: "user", content: focusUser(md) }]);
+    expect(b.messages).toEqual([
+      { role: "system", content: SYS_FOCUS },
+      { role: "user", content: focusUser(md) },
+    ]);
     expect(focusUser(md)).toBe(`Add the marks to this Markdown document.\n\n<document>\n${md}\n</document>`);
     expect(SYS_FOCUS).toMatch(/==text==/);
     expect(SYS_FOCUS).toMatch(/Never touch code or formulas/);
@@ -151,7 +186,10 @@ describe("Settings › AI", () => {
     expect(info).toEqual({ key: true, models: MODELS });
     expect(JSON.stringify(info)).not.toContain(KEY);
     const h = makeHandler({ store: {} } as never);
-    expect(await h(undefined as never, { type: "aiKey", req: 1, action: "clear" })).toEqual({ key: false, models: MODELS });
+    expect(await h(undefined as never, { type: "aiKey", req: 1, action: "clear" })).toEqual({
+      key: false,
+      models: MODELS,
+    });
     expect(cleared).toBe(1);
     const after = await h(undefined as never, { type: "aiKey", req: 2, action: "set" });
     expect(after).toEqual({ key: true, models: MODELS });

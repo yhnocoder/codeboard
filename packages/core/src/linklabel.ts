@@ -13,13 +13,19 @@ export function callText(s: Segment, line: number, col = 0): string {
   const first = lineText(s, line);
   if (first === undefined) return "";
   const out = [first];
-  let depth = 0, opened = false;
+  let depth = 0,
+    opened = false;
   const scan = (t: string, from: number) => {
     for (let i = from; i < t.length; i++) {
       const ch = t[i];
       if (ch === "#") break;
-      if (ch === "(" || ch === "[" || ch === "{") { depth++; opened = true; }
-      else if (ch === ")" || ch === "]" || ch === "}") { depth--; if (opened && depth <= 0) return true; }
+      if (ch === "(" || ch === "[" || ch === "{") {
+        depth++;
+        opened = true;
+      } else if (ch === ")" || ch === "]" || ch === "}") {
+        depth--;
+        if (opened && depth <= 0) return true;
+      }
     }
     return false;
   };

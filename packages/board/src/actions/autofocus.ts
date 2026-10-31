@@ -22,21 +22,37 @@ async function autoFocus(id: string) {
   if (c0?.kind !== "note") return;
   const md = c0.md;
   if (!md.trim()) return toast("Nothing to focus: the card is empty");
-  if (md.length > FOCUS_MAX) return toast(`Too long for Auto Focus (${md.length.toLocaleString()} characters; up to ${FOCUS_MAX.toLocaleString()})`, undefined, 6000);
+  if (md.length > FOCUS_MAX)
+    return toast(
+      `Too long for Auto Focus (${md.length.toLocaleString()} characters; up to ${FOCUS_MAX.toLocaleString()})`,
+      undefined,
+      6000,
+    );
   const r = await runJob(id, "Auto Focus…", async () => ({ kind: "focus", md }));
   if (!r) return;
   const now = cardById(id)?.card;
-  if (now?.kind !== "note" || now.md !== md) return toast("The card changed while waiting: Auto Focus was not applied", undefined, 6000);
+  if (now?.kind !== "note" || now.md !== md)
+    return toast("The card changed while waiting: Auto Focus was not applied", undefined, 6000);
   const v = checkFocus(md, r.text);
   if ("why" in v) {
-    return v.why === "same" ? toast("Auto Focus found nothing to mark")
+    return v.why === "same"
+      ? toast("Auto Focus found nothing to mark")
       : toast("Auto Focus: the model changed the text, so nothing was applied. Try again", undefined, 7000);
   }
   const cur = editing();
   if (cur?.kind === "note" && cur.id === id) setEditing(null);
-  mutate((b) => { const c = findCard(b, id)?.card; if (c?.kind === "note") c.md = v.md; });
-  const parts = [v.hl && plural(v.hl, "highlight"), v.bold && plural(v.bold, "bold mark")].filter(Boolean).join(" and ");
+  mutate((b) => {
+    const c = findCard(b, id)?.card;
+    if (c?.kind === "note") c.md = v.md;
+  });
+  const parts = [v.hl && plural(v.hl, "highlight"), v.bold && plural(v.bold, "bold mark")]
+    .filter(Boolean)
+    .join(" and ");
   toast(`Auto Focus added ${parts}. ${state.host.isMac ? "⌘Z" : "Ctrl+Z"} undoes it`);
 }
 
-export const autoFocusItem = (id: string): Item => ({ label: "Auto Focus", hint: "Highlight the key concepts and bold what matters, with AI", run: () => void autoFocus(id) });
+export const autoFocusItem = (id: string): Item => ({
+  label: "Auto Focus",
+  hint: "Highlight the key concepts and bold what matters, with AI",
+  run: () => void autoFocus(id),
+});

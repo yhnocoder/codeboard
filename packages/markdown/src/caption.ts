@@ -6,10 +6,14 @@ import { captionOf } from "./image";
 
 /** 第 nth 张地址是 src 的图（文档 JSON 里的节点） */
 function imageNode(doc: JSONContent, src: string, nth: number): JSONContent | null {
-  let k = 0, hit: JSONContent | null = null;
+  let k = 0,
+    hit: JSONContent | null = null;
   const walk = (n: JSONContent) => {
     if (hit) return;
-    if (n.type === "image" && n.attrs?.src === src && k++ === nth) { hit = n; return; }
+    if (n.type === "image" && n.attrs?.src === src && k++ === nth) {
+      hit = n;
+      return;
+    }
     n.content?.forEach(walk);
   };
   walk(doc);
@@ -22,18 +26,28 @@ export function imageCaption(md: string, src: string, nth = 0): string | null {
   return n ? captionOf(n.attrs?.title) : null;
 }
 
-const IMAGE = /!\[(?:\\.|[^\]\\\n])*\]\(\s*(<[^>\n]*>|(?:\\.|[^\s()\\]|\([^\s()]*\))+)((?:\s+(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\((?:\\.|[^)\\])*\)))?)\s*\)/g;
+const IMAGE =
+  /!\[(?:\\.|[^\]\\\n])*\]\(\s*(<[^>\n]*>|(?:\\.|[^\s()\\]|\([^\s()]*\))+)((?:\s+(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\((?:\\.|[^)\\])*\)))?)\s*\)/g;
 
 /** 代码（围栏代码块、行内代码）换成等长的空白：在里面的 ![…](…) 不是图 */
 function maskCode(md: string): string {
   let out = md.replace(/(`+)(?!`)[\s\S]*?[^`]\1(?!`)/g, (m) => m.replace(/[^\n]/g, " "));
   let fence = "";
-  out = out.split("\n").map((l) => {
-    const f = /^ {0,3}(`{3,}|~{3,})/.exec(l);
-    if (fence) { if (f && f[1][0] === fence[0] && f[1].length >= fence.length && !l.slice(f[0].length).trim()) fence = ""; return " ".repeat(l.length); }
-    if (f) { fence = f[1]; return " ".repeat(l.length); }
-    return l;
-  }).join("\n");
+  out = out
+    .split("\n")
+    .map((l) => {
+      const f = /^ {0,3}(`{3,}|~{3,})/.exec(l);
+      if (fence) {
+        if (f && f[1][0] === fence[0] && f[1].length >= fence.length && !l.slice(f[0].length).trim()) fence = "";
+        return " ".repeat(l.length);
+      }
+      if (f) {
+        fence = f[1];
+        return " ".repeat(l.length);
+      }
+      return l;
+    })
+    .join("\n");
   return out;
 }
 
@@ -42,7 +56,8 @@ export function setImageCaption(md: string, src: string, nth: number, caption: s
   const cap = caption.replace(/\s*\n\s*/g, " ").trim();
   if (!imageNode(parseMd(md), src, nth)) return md;
   const masked = maskCode(md);
-  let k = 0, out: string | null = null;
+  let k = 0,
+    out: string | null = null;
   for (const m of masked.matchAll(IMAGE)) {
     const raw = m[1].startsWith("<") ? m[1].slice(1, -1) : m[1];
     if (raw !== src || k++ !== nth) continue;
@@ -54,7 +69,8 @@ export function setImageCaption(md: string, src: string, nth: number, caption: s
   }
   // 照着改完的读一遍：真是那张图换了图注才算数，否则整篇按文档写回
   if (out !== null && captionOf(imageNode(parseMd(out), src, nth)?.attrs?.title) === cap) return out;
-  const doc = parseMd(md), n = imageNode(doc, src, nth)!;
+  const doc = parseMd(md),
+    n = imageNode(doc, src, nth)!;
   n.attrs = { ...n.attrs, title: cap || null };
   return serializeMd(doc);
 }

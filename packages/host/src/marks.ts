@@ -14,10 +14,11 @@ export class BoardMarks {
   async rebuild(store: Storage) {
     const m = new Map<string, Entry[]>();
     for (const { board } of await store.all()) {
-      for (const c of allCodeCards(board)) for (const s of c.segments) {
-        const abs = s.src.kind === "free" ? null : absOf(s);
-        if (abs) (m.get(abs) ?? m.set(abs, []).get(abs)!).push({ board: board.id, card: c.id, seg: s });
-      }
+      for (const c of allCodeCards(board))
+        for (const s of c.segments) {
+          const abs = s.src.kind === "free" ? null : absOf(s);
+          if (abs) (m.get(abs) ?? m.set(abs, []).get(abs)!).push({ board: board.id, card: c.id, seg: s });
+        }
     }
     this.byFile = m;
   }
@@ -41,8 +42,21 @@ export class BoardMarks {
       const on = ents.filter((e) => e.seg.symbol?.qual === s.qual);
       if (!on.length) continue;
       const boards = new Set(on.map((e) => e.board));
-      if (!boards.has(target ?? "")) out.push({ line: s.defLine, title: "+ Card", tooltip: "Add to the target board", command: "codeboard.addSymbol", args: [abs, s.qual] });
-      out.push({ line: s.defLine, title: `on ${boards.size} board${boards.size > 1 ? "s" : ""}`, tooltip: "Reveal on Board", command: "codeboard.revealSymbol", args: [abs, s.start, s.end] });
+      if (!boards.has(target ?? ""))
+        out.push({
+          line: s.defLine,
+          title: "+ Card",
+          tooltip: "Add to the target board",
+          command: "codeboard.addSymbol",
+          args: [abs, s.qual],
+        });
+      out.push({
+        line: s.defLine,
+        title: `on ${boards.size} board${boards.size > 1 ? "s" : ""}`,
+        tooltip: "Reveal on Board",
+        command: "codeboard.revealSymbol",
+        args: [abs, s.start, s.end],
+      });
     }
     return out;
   }

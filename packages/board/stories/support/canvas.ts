@@ -31,14 +31,28 @@ export const LINK_COLORS = ["grey", "orange", "blue", "green"] as const;
 
 // 假宿主（host.ts）对 stickerPacks 回空的；贴纸的小样挂着时多一个文件夹包（位图、动图）。
 // 图在 fixtures/assets/stickers，宿主给的是 data: URL（动图的第一帧要从它解码），所以先取回来转一次
-const PACK_FILES: [name: string, file: string, anim?: true][] = [["smile", "smile.png"], ["banner", "banner.png"], ["wink", "wink.gif", true], ["blink", "blink.png", true]];
+const PACK_FILES: [name: string, file: string, anim?: true][] = [
+  ["smile", "smile.png"],
+  ["banner", "banner.png"],
+  ["wink", "wink.gif", true],
+  ["blink", "blink.png", true],
+];
 export const PACK = "Party";
 let pack: Promise<StickerPack> | undefined;
-const toData = (b: Blob) => new Promise<string>((ok, fail) => { const r = new FileReader(); r.onload = () => ok(r.result as string); r.onerror = fail; r.readAsDataURL(b); });
-const packOf = () => (pack ??= Promise.all(PACK_FILES.map(async ([name, file, anim]) => {
-  const img = await toData(await (await fetch(`sb-assets/stickers/${file}`)).blob());
-  return anim ? { name, img, anim } : { name, img };
-})).then((icons) => ({ id: PACK, name: PACK, icons })));
+const toData = (b: Blob) =>
+  new Promise<string>((ok, fail) => {
+    const r = new FileReader();
+    r.onload = () => ok(r.result as string);
+    r.onerror = fail;
+    r.readAsDataURL(b);
+  });
+const packOf = () =>
+  (pack ??= Promise.all(
+    PACK_FILES.map(async ([name, file, anim]) => {
+      const img = await toData(await (await fetch(`sb-assets/stickers/${file}`)).blob());
+      return anim ? { name, img, anim } : { name, img };
+    }),
+  ).then((icons) => ({ id: PACK, name: PACK, icons })));
 
 /** 在组件里调用：挂着的时候宿主有 Party 这个包，卸下时换回没有包（别的小样的选图标面板不多一页） */
 export function usePacks() {
@@ -46,5 +60,8 @@ export function usePacks() {
   // 白板加载（换白板）会让还没回的请求都失败（包就成了空的），所以等白板挂好再问
   onMount(() => requestAnimationFrame(() => void loadPacks(true)));
   // 先撤掉回答再重新问：问到的是没有包
-  onCleanup(() => { off(); void loadPacks(true); });
+  onCleanup(() => {
+    off();
+    void loadPacks(true);
+  });
 }

@@ -15,25 +15,50 @@ export const DEEPSEEK_MODEL = "deepseek-flash";
 export type DeepseekRequest = { url: string; init: { method: "POST"; headers: Record<string, string>; body: string } };
 
 const base = (o: DeepseekOpts) => (o.baseUrl || "https://api.deepseek.com").replace(/\/+$/, "");
-const headers = (key: string) => ({ "Content-Type": "application/json", Accept: "application/json", Authorization: `Bearer ${key}` });
+const headers = (key: string) => ({
+  "Content-Type": "application/json",
+  Accept: "application/json",
+  Authorization: `Bearer ${key}`,
+});
 
 export function deepseekFimRequest(o: DeepseekOpts, before: string, after: string): DeepseekRequest {
   return {
     url: `${base(o)}/beta/completions`,
-    init: { method: "POST", headers: headers(o.key), body: JSON.stringify({
-      model: o.model || DEEPSEEK_MODEL, prompt: before.slice(-4000), suffix: after.slice(0, 1000), max_tokens: 48, temperature: 0.2, stop: ["\n"], stream: false,
-    }) },
+    init: {
+      method: "POST",
+      headers: headers(o.key),
+      body: JSON.stringify({
+        model: o.model || DEEPSEEK_MODEL,
+        prompt: before.slice(-4000),
+        suffix: after.slice(0, 1000),
+        max_tokens: 48,
+        temperature: 0.2,
+        stop: ["\n"],
+        stream: false,
+      }),
+    },
   };
 }
 
 export function deepseekChatRequest(o: DeepseekOpts, before: string, after: string): DeepseekRequest {
   return {
     url: `${base(o)}/chat/completions`,
-    init: { method: "POST", headers: headers(o.key), body: JSON.stringify({
-      // deepseek-flash 默认会先“思考”，思考把 max_tokens 用光，回答是空的：关掉
-      model: o.model || DEEPSEEK_MODEL, max_tokens: 64, temperature: 0.2, stream: false, thinking: { type: "disabled" },
-      messages: [{ role: "system", content: COMPLETE_SYSTEM }, { role: "user", content: completePrompt(before, after) }],
-    }) },
+    init: {
+      method: "POST",
+      headers: headers(o.key),
+      body: JSON.stringify({
+        // deepseek-flash 默认会先“思考”，思考把 max_tokens 用光，回答是空的：关掉
+        model: o.model || DEEPSEEK_MODEL,
+        max_tokens: 64,
+        temperature: 0.2,
+        stream: false,
+        thinking: { type: "disabled" },
+        messages: [
+          { role: "system", content: COMPLETE_SYSTEM },
+          { role: "user", content: completePrompt(before, after) },
+        ],
+      }),
+    },
   };
 }
 
@@ -60,7 +85,10 @@ export async function deepseekComplete(o: DeepseekOpts, before: string, after: s
   try {
     if (!noFim.has(fk)) {
       let status = 0;
-      const fim = await send(deepseekFimRequest(o, before, after), (s) => (status = s)).catch((e) => { if (ac.signal.aborted) throw e; return null; });
+      const fim = await send(deepseekFimRequest(o, before, after), (s) => (status = s)).catch((e) => {
+        if (ac.signal.aborted) throw e;
+        return null;
+      });
       const text = fim?.choices?.[0]?.text;
       if (typeof text === "string") return text;
       if (ac.signal.aborted) return undefined;

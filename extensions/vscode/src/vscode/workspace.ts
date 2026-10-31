@@ -2,7 +2,14 @@ import * as vscode from "vscode";
 import * as path from "node:path";
 import { hoverAt, locations } from "./lsp";
 import { isScratch, vscodeScratch } from "./scratch";
-import { Emitter, type AiChatRequest, type AiChatResult, type AiModel, type PickIcon, type Workspace } from "@codeboard/core";
+import {
+  Emitter,
+  type AiChatRequest,
+  type AiChatResult,
+  type AiModel,
+  type PickIcon,
+  type Workspace,
+} from "@codeboard/core";
 
 const EXT_ID = "yhnocoder.codeboard-vscode";
 // esbuild.mjs 写进来的构建信息：正式版是 ""，开发版是 "dev <commit>[ dirty]"（vitest 里没有这个常量）
@@ -12,15 +19,23 @@ const BUILD = typeof __CODEBOARD_BUILD__ === "string" ? __CODEBOARD_BUILD__ : ""
 // 历史版本的只读文档：codeboard-git:/<path>?{root, commit, path}
 const GIT_SCHEME = "codeboard-git";
 function gitUri(root: string, commit: string, rel: string): vscode.Uri {
-  return vscode.Uri.from({ scheme: GIT_SCHEME, path: `/${commit.slice(0, 7)}/${rel}`, query: JSON.stringify({ root, commit, path: rel }) });
+  return vscode.Uri.from({
+    scheme: GIT_SCHEME,
+    path: `/${commit.slice(0, 7)}/${rel}`,
+    query: JSON.stringify({ root, commit, path: rel }),
+  });
 }
 function parseGitUri(u: vscode.Uri): { root: string; commit: string; path: string; abs: string } | null {
   try {
     const q = JSON.parse(u.query);
     return { ...q, abs: path.join(q.root, q.path) };
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 }
-export function registerVersionDocs(show: (root: string, commit: string, rel: string) => Promise<string | null>): vscode.Disposable {
+export function registerVersionDocs(
+  show: (root: string, commit: string, rel: string) => Promise<string | null>,
+): vscode.Disposable {
   return vscode.workspace.registerTextDocumentContentProvider(GIT_SCHEME, {
     provideTextDocumentContent: async (u) => {
       const q = parseGitUri(u);
@@ -33,15 +48,25 @@ let flashDeco: vscode.TextEditorDecorationType | undefined;
 
 async function show(uri: vscode.Uri, line: number | undefined, end?: number, readonly = false) {
   const doc = await vscode.workspace.openTextDocument(uri);
-  const ed = await vscode.window.showTextDocument(doc, { viewColumn: codeColumn(), preserveFocus: false, preview: true });
-  if (readonly && uri.scheme === "file") await vscode.commands.executeCommand("workbench.action.files.setActiveEditorReadonlyInSession").then(undefined, () => {});
+  const ed = await vscode.window.showTextDocument(doc, {
+    viewColumn: codeColumn(),
+    preserveFocus: false,
+    preview: true,
+  });
+  if (readonly && uri.scheme === "file")
+    await vscode.commands
+      .executeCommand("workbench.action.files.setActiveEditorReadonlyInSession")
+      .then(undefined, () => {});
   if (line) {
     const l = Math.max(0, Math.min(doc.lineCount - 1, line - 1));
     const pos = new vscode.Position(l, doc.lineAt(l).firstNonWhitespaceCharacterIndex);
     ed.selection = new vscode.Selection(pos, pos);
     ed.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenterIfOutsideViewport);
     const r = new vscode.Range(l, 0, Math.max(l, Math.min(doc.lineCount - 1, (end ?? line) - 1)), 0);
-    const deco = (flashDeco ??= vscode.window.createTextEditorDecorationType({ backgroundColor: new vscode.ThemeColor("editor.rangeHighlightBackground"), isWholeLine: true }));
+    const deco = (flashDeco ??= vscode.window.createTextEditorDecorationType({
+      backgroundColor: new vscode.ThemeColor("editor.rangeHighlightBackground"),
+      isWholeLine: true,
+    }));
     ed.setDecorations(deco, [r]);
     setTimeout(() => ed.setDecorations(deco, []), 1200);
   }
@@ -56,33 +81,70 @@ function codeColumn(): vscode.ViewColumn {
 }
 
 // 设置的完整键 codeboard.newCards.hide = 节 codeboard + 键 newCards.hide
-const splitKey = (k: string) => { const i = k.indexOf("."); return [k.slice(0, i), k.slice(i + 1)] as const; };
+const splitKey = (k: string) => {
+  const i = k.indexOf(".");
+  return [k.slice(0, i), k.slice(i + 1)] as const;
+};
 
 const fileOrUndef = (u: vscode.Uri) => (u.scheme === "file" ? u.fsPath : undefined);
 
 /** The codicon for each PickItem icon */
-const CODICON: Record<PickIcon, string> = { board: "layout", boards: "files", folder: "folder", file: "folder-opened", add: "add", class: "symbol-class", function: "symbol-method" };
+const CODICON: Record<PickIcon, string> = {
+  board: "layout",
+  boards: "files",
+  folder: "folder",
+  file: "folder-opened",
+  add: "add",
+  class: "symbol-class",
+  function: "symbol-method",
+};
 
 // 第一次用时 VS Code 会问用户同不同意。capabilities.supportsImageToText 运行时有，@types/vscode 里还没写
 type LmModel = vscode.LanguageModelChat & { capabilities?: { supportsImageToText?: boolean } };
 /** A small, quick model (for completions and reading text) */
 const FAST_MODEL = /mini|haiku|flash|nano|small|fast/i;
 const isFast = (m: vscode.LanguageModelChat) => FAST_MODEL.test(m.family) || FAST_MODEL.test(m.id);
-const aiModel = (m: LmModel): AiModel => ({ id: m.id, name: m.name || m.family || m.id, vendor: m.vendor, vision: !!m.capabilities?.supportsImageToText });
+const aiModel = (m: LmModel): AiModel => ({
+  id: m.id,
+  name: m.name || m.family || m.id,
+  vendor: m.vendor,
+  vision: !!m.capabilities?.supportsImageToText,
+});
 
 async function lmModels(): Promise<AiModel[]> {
-  try { return (await vscode.lm.selectChatModels()).map((m) => aiModel(m as LmModel)); } catch { return []; }
+  try {
+    return (await vscode.lm.selectChatModels()).map((m) => aiModel(m as LmModel));
+  } catch {
+    return [];
+  }
 }
 
 /** 问 VS Code 的语言模型（Copilot…）。model 不给 = 自动挑：有图时只挑收图的，fast 时先挑小模型。没有 system 角色：system 并进那条 User */
-async function lmChat(model: string | undefined, req: AiChatRequest, o: { signal: AbortSignal; justification: string }): Promise<AiChatResult> {
+async function lmChat(
+  model: string | undefined,
+  req: AiChatRequest,
+  o: { signal: AbortSignal; justification: string },
+): Promise<AiChatResult> {
   let all: LmModel[];
-  try { all = (await vscode.lm.selectChatModels()) as LmModel[]; } catch (e) { return { fail: "nomodel", message: (e as Error)?.message }; }
+  try {
+    all = (await vscode.lm.selectChatModels()) as LmModel[];
+  } catch (e) {
+    return { fail: "nomodel", message: (e as Error)?.message };
+  }
   let m: LmModel | undefined;
   if (model) {
     m = all.find((x) => x.id === model);
-    if (!m) return { fail: "nomodel", message: `The language model “${model}” isn't available. Pick another one in CodeBoard Settings › AI` };
-    if (req.image && !m.capabilities?.supportsImageToText) return { fail: "nomodel", message: `${aiModel(m).name} can't read images. Pick another model in CodeBoard Settings › AI`, via: aiModel(m).name };
+    if (!m)
+      return {
+        fail: "nomodel",
+        message: `The language model “${model}” isn't available. Pick another one in CodeBoard Settings › AI`,
+      };
+    if (req.image && !m.capabilities?.supportsImageToText)
+      return {
+        fail: "nomodel",
+        message: `${aiModel(m).name} can't read images. Pick another model in CodeBoard Settings › AI`,
+        via: aiModel(m).name,
+      };
   } else {
     const ok = all.filter((x) => !req.image || x.capabilities?.supportsImageToText);
     m = (req.fast ? ok.find(isFast) : ok.find((x) => !isFast(x))) ?? ok[0];
@@ -90,24 +152,36 @@ async function lmChat(model: string | undefined, req: AiChatRequest, o: { signal
   }
   const via = aiModel(m).name;
   const text = `${req.system}\n\n${req.user}`;
-  const content = req.image ? [new vscode.LanguageModelTextPart(text), vscode.LanguageModelDataPart.image(req.image.data, req.image.mime)] : text;
+  const content = req.image
+    ? [new vscode.LanguageModelTextPart(text), vscode.LanguageModelDataPart.image(req.image.data, req.image.mime)]
+    : text;
   const cts = new vscode.CancellationTokenSource();
   const stop = () => cts.cancel();
   o.signal.addEventListener("abort", stop);
   try {
     if (o.signal.aborted) return { fail: "canceled" };
-    const r = await m.sendRequest([vscode.LanguageModelChatMessage.User(content)], { justification: o.justification }, cts.token);
+    const r = await m.sendRequest(
+      [vscode.LanguageModelChatMessage.User(content)],
+      { justification: o.justification },
+      cts.token,
+    );
     let out = "";
     for await (const t of r.text) {
       out += t;
-      if (req.maxChars && out.length > req.maxChars) { cts.cancel(); break; }
+      if (req.maxChars && out.length > req.maxChars) {
+        cts.cancel();
+        break;
+      }
     }
     return { text: out, via };
   } catch (e) {
     if (o.signal.aborted) return { fail: "canceled" };
-    const code = (e as { code?: string })?.code, msg = (e as Error)?.message;
-    if (e instanceof vscode.LanguageModelError && code === vscode.LanguageModelError.NoPermissions.name) return { fail: "noconsent", message: msg, via };
-    if (e instanceof vscode.LanguageModelError && code === vscode.LanguageModelError.NotFound.name) return { fail: "nomodel", message: msg, via };
+    const code = (e as { code?: string })?.code,
+      msg = (e as Error)?.message;
+    if (e instanceof vscode.LanguageModelError && code === vscode.LanguageModelError.NoPermissions.name)
+      return { fail: "noconsent", message: msg, via };
+    if (e instanceof vscode.LanguageModelError && code === vscode.LanguageModelError.NotFound.name)
+      return { fail: "nomodel", message: msg, via };
     return { fail: "http", message: msg || String(e), via };
   } finally {
     o.signal.removeEventListener("abort", stop);
@@ -126,10 +200,13 @@ export function vscodeWorkspace(ctx: vscode.ExtensionContext): Workspace {
       const gitExt = vscode.extensions.getExtension("vscode.git");
       const api = (gitExt?.isActive ? gitExt.exports : await gitExt?.activate())?.getAPI?.(1);
       if (!api) return;
-      const hook = (repo: { state: { onDidChange: vscode.Event<void> } }) => ctx.subscriptions.push(repo.state.onDidChange(() => git.fire()));
+      const hook = (repo: { state: { onDidChange: vscode.Event<void> } }) =>
+        ctx.subscriptions.push(repo.state.onDidChange(() => git.fire()));
       api.repositories.forEach(hook);
       ctx.subscriptions.push(api.onDidOpenRepository(hook));
-    } catch { /* 没有 git 插件 */ }
+    } catch {
+      /* 没有 git 插件 */
+    }
   };
 
   return {
@@ -142,28 +219,51 @@ export function vscodeWorkspace(ctx: vscode.ExtensionContext): Workspace {
         return r ? path.basename(r.uri.fsPath) : "";
       },
       rootOf: (abs) => vscode.workspace.getWorkspaceFolder(vscode.Uri.file(abs))?.uri.fsPath,
-      unsavedText: (abs) => vscode.workspace.textDocuments.find((d) => d.uri.scheme === "file" && d.uri.fsPath === abs && d.isDirty)?.getText(),
+      unsavedText: (abs) =>
+        vscode.workspace.textDocuments
+          .find((d) => d.uri.scheme === "file" && d.uri.fsPath === abs && d.isDirty)
+          ?.getText(),
       openLanguage: (abs) => vscode.workspace.textDocuments.find((d) => d.uri.fsPath === abs)?.languageId,
-      openFiles: () => vscode.workspace.textDocuments.filter((d) => d.uri.scheme === "file").map((d) => ({ abs: d.uri.fsPath, text: () => d.getText() })),
+      openFiles: () =>
+        vscode.workspace.textDocuments
+          .filter((d) => d.uri.scheme === "file")
+          .map((d) => ({ abs: d.uri.fsPath, text: () => d.getText() })),
       readBytes: async (uri, max) => {
         const u = vscode.Uri.parse(uri, true);
         return (await vscode.workspace.fs.stat(u)).size > max ? undefined : vscode.workspace.fs.readFile(u);
       },
-      findFiles: async (include, exclude, max) => (await vscode.workspace.findFiles(include, exclude, max)).map((u) => u.fsPath),
+      findFiles: async (include, exclude, max) =>
+        (await vscode.workspace.findFiles(include, exclude, max)).map((u) => u.fsPath),
       watch: (base, glob, fn) => {
         const w = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(vscode.Uri.file(base), glob));
-        const f = (u: vscode.Uri) => { if (!isScratch(u)) fn(u.fsPath); };
-        w.onDidChange(f); w.onDidCreate(f); w.onDidDelete(f);
+        const f = (u: vscode.Uri) => {
+          if (!isScratch(u)) fn(u.fsPath);
+        };
+        w.onDidChange(f);
+        w.onDidCreate(f);
+        w.onDidDelete(f);
         return w;
       },
-      onDidSave: (fn) => vscode.workspace.onDidSaveTextDocument((d) => { if (!isScratch(d.uri)) fn(fileOrUndef(d.uri)); }),
-      onDidEdit: (fn) => vscode.workspace.onDidChangeTextDocument((e) => { if (e.contentChanges.length && !isScratch(e.document.uri)) fn(fileOrUndef(e.document.uri)); }),
+      onDidSave: (fn) =>
+        vscode.workspace.onDidSaveTextDocument((d) => {
+          if (!isScratch(d.uri)) fn(fileOrUndef(d.uri));
+        }),
+      onDidEdit: (fn) =>
+        vscode.workspace.onDidChangeTextDocument((e) => {
+          if (e.contentChanges.length && !isScratch(e.document.uri)) fn(fileOrUndef(e.document.uri));
+        }),
       onDidCreate: (fn) => vscode.workspace.onDidCreateFiles((e) => fn(e.files.map((u) => u.fsPath))),
       onDidDelete: (fn) => vscode.workspace.onDidDeleteFiles((e) => fn(e.files.map((u) => u.fsPath))),
-      onDidRename: (fn) => vscode.workspace.onDidRenameFiles((e) => fn(e.files.map((f) => ({ from: f.oldUri.fsPath, to: f.newUri.fsPath })))),
+      onDidRename: (fn) =>
+        vscode.workspace.onDidRenameFiles((e) =>
+          fn(e.files.map((f) => ({ from: f.oldUri.fsPath, to: f.newUri.fsPath }))),
+        ),
       onDidChangeRoots: (fn) => vscode.workspace.onDidChangeWorkspaceFolders(() => fn()),
       onDidChangeGit: (fn) => {
-        if (!gitHooked) { gitHooked = true; void hookGit(); }
+        if (!gitHooked) {
+          gitHooked = true;
+          void hookGit();
+        }
         return git.event(fn);
       },
     },
@@ -171,7 +271,9 @@ export function vscodeWorkspace(ctx: vscode.ExtensionContext): Workspace {
       dir: () => (ctx.storageUri ?? ctx.globalStorageUri).fsPath,
       globalDir: () => ctx.globalStorageUri.fsPath,
       get: (k) => ctx.workspaceState.get(k),
-      set: async (k, v) => { await ctx.workspaceState.update(k, v); },
+      set: async (k, v) => {
+        await ctx.workspaceState.update(k, v);
+      },
     },
     language: {
       definitions: (abs, line, col) => locations("vscode.executeDefinitionProvider", abs, line, col),
@@ -180,21 +282,44 @@ export function vscodeWorkspace(ctx: vscode.ExtensionContext): Workspace {
       scratch: vscodeScratch(() => ctx.globalStorageUri.fsPath),
     },
     settings: {
-      get: (key, scope) => { const [s, k] = splitKey(key); return vscode.workspace.getConfiguration(s, scope ? vscode.Uri.file(scope) : undefined).get(k); },
-      set: async (key, v, scope) => { const [s, k] = splitKey(key); await vscode.workspace.getConfiguration(s).update(k, v, scope === "workspace" ? vscode.ConfigurationTarget.Workspace : vscode.ConfigurationTarget.Global); },
-      onDidChange: (fn) => vscode.workspace.onDidChangeConfiguration((e) => fn({ affects: (k) => e.affectsConfiguration(k) })),
+      get: (key, scope) => {
+        const [s, k] = splitKey(key);
+        return vscode.workspace.getConfiguration(s, scope ? vscode.Uri.file(scope) : undefined).get(k);
+      },
+      set: async (key, v, scope) => {
+        const [s, k] = splitKey(key);
+        await vscode.workspace
+          .getConfiguration(s)
+          .update(
+            k,
+            v,
+            scope === "workspace" ? vscode.ConfigurationTarget.Workspace : vscode.ConfigurationTarget.Global,
+          );
+      },
+      onDidChange: (fn) =>
+        vscode.workspace.onDidChangeConfiguration((e) => fn({ affects: (k) => e.affectsConfiguration(k) })),
     },
     editor: {
       active: () => {
         const ed = vscode.window.activeTextEditor;
         if (!ed) return undefined;
-        const doc = ed.document, u = doc.uri;
+        const doc = ed.document,
+          u = doc.uri;
         const q = u.scheme === GIT_SCHEME ? parseGitUri(u) : null;
         return {
-          path: u.fsPath, file: u.scheme === "file", version: q ? { root: q.root, commit: q.commit, path: q.path } : undefined,
-          lang: doc.languageId, text: doc.getText(),
-          selections: ed.selections.map((s) => ({ startLine: s.start.line + 1, startCol: s.start.character, endLine: s.end.line + 1, endCol: s.end.character })),
-          cursorLine: ed.selection.active.line + 1, selectionText: doc.getText(ed.selection),
+          path: u.fsPath,
+          file: u.scheme === "file",
+          version: q ? { root: q.root, commit: q.commit, path: q.path } : undefined,
+          lang: doc.languageId,
+          text: doc.getText(),
+          selections: ed.selections.map((s) => ({
+            startLine: s.start.line + 1,
+            startCol: s.start.character,
+            endLine: s.end.line + 1,
+            endCol: s.end.character,
+          })),
+          cursorLine: ed.selection.active.line + 1,
+          selectionText: doc.getText(ed.selection),
         };
       },
       open: (abs, o = {}) => show(vscode.Uri.file(abs), o.line, o.end, o.readonly),
@@ -202,38 +327,67 @@ export function vscodeWorkspace(ctx: vscode.ExtensionContext): Workspace {
     },
     ui: {
       info: async (text, ...actions) => vscode.window.showInformationMessage(text, ...actions),
-      warn: async (text, o, ...actions) => vscode.window.showWarningMessage(text, { modal: o.modal, detail: o.detail }, ...actions),
+      warn: async (text, o, ...actions) =>
+        vscode.window.showWarningMessage(text, { modal: o.modal, detail: o.detail }, ...actions),
       error: async (text, ...actions) => vscode.window.showErrorMessage(text, ...actions),
       pick: async (items, o) => {
-        const shown = items.map((it) => ({ label: it.icon ? `$(${CODICON[it.icon]}) ${it.label}` : it.label, description: it.description, detail: it.detail, it }));
+        const shown = items.map((it) => ({
+          label: it.icon ? `$(${CODICON[it.icon]}) ${it.label}` : it.label,
+          description: it.description,
+          detail: it.detail,
+          it,
+        }));
         return (await vscode.window.showQuickPick(shown, o))?.it;
       },
       // A secret is pasted from elsewhere: going to copy it must not close the box
-      input: async (o) => vscode.window.showInputBox({ title: o.title, prompt: o.prompt, value: o.value, placeHolder: o.placeHolder, password: o.password, ignoreFocusOut: o.password }),
+      input: async (o) =>
+        vscode.window.showInputBox({
+          title: o.title,
+          prompt: o.prompt,
+          value: o.value,
+          placeHolder: o.placeHolder,
+          password: o.password,
+          ignoreFocusOut: o.password,
+        }),
       openDialog: async (o) => {
-        const r = await vscode.window.showOpenDialog(o.folders
-          ? { canSelectFolders: true, canSelectFiles: false, openLabel: o.label, title: o.title }
-          : { canSelectMany: false, filters: o.filters, openLabel: o.label, title: o.title });
+        const r = await vscode.window.showOpenDialog(
+          o.folders
+            ? { canSelectFolders: true, canSelectFiles: false, openLabel: o.label, title: o.title }
+            : { canSelectMany: false, filters: o.filters, openLabel: o.label, title: o.title },
+        );
         return r?.[0]?.fsPath;
       },
-      saveDialog: async (o) => (await vscode.window.showSaveDialog({ defaultUri: vscode.Uri.file(o.defaultPath), filters: o.filters }))?.fsPath,
+      saveDialog: async (o) =>
+        (await vscode.window.showSaveDialog({ defaultUri: vscode.Uri.file(o.defaultPath), filters: o.filters }))
+          ?.fsPath,
       openUrl: async (url) => void (await vscode.env.openExternal(vscode.Uri.parse(url))),
       openFolder: async (abs) => void (await vscode.env.openExternal(vscode.Uri.file(abs))),
       revealInOS: async (abs) => void (await vscode.commands.executeCommand("revealFileInOS", vscode.Uri.file(abs))),
       copy: async (text) => vscode.env.clipboard.writeText(text),
       clipboard: async () => vscode.env.clipboard.readText(),
       undoAddKey: (on) => undoAddKey(on),
-      boardFocusKey: async (on) => { await vscode.commands.executeCommand("setContext", "codeboard.boardFocused", on); },
+      boardFocusKey: async (on) => {
+        await vscode.commands.executeCommand("setContext", "codeboard.boardFocused", on);
+      },
     },
     ai: { models: lmModels, chat: lmChat },
     secrets: {
       get: async (k) => (await ctx.secrets.get(k)) || undefined,
-      set: async (k, v) => { await ctx.secrets.store(k, v); },
-      delete: async (k) => { await ctx.secrets.delete(k); },
+      set: async (k, v) => {
+        await ctx.secrets.store(k, v);
+      },
+      delete: async (k) => {
+        await ctx.secrets.delete(k);
+      },
     },
     // CODEBOARD_GITHUB_TOKEN（CI、无界面环境）优先于 VS Code 的 GitHub 登录
-    githubToken: async (ask) => process.env.CODEBOARD_GITHUB_TOKEN || (await vscode.authentication.getSession("github", ["repo"], ask ? { createIfNone: true } : { silent: true }))?.accessToken,
-    log: (level, text) => { (ch ??= vscode.window.createOutputChannel("CodeBoard", { log: true }))[level](text); },
+    githubToken: async (ask) =>
+      process.env.CODEBOARD_GITHUB_TOKEN ||
+      (await vscode.authentication.getSession("github", ["repo"], ask ? { createIfNone: true } : { silent: true }))
+        ?.accessToken,
+    log: (level, text) => {
+      (ch ??= vscode.window.createOutputChannel("CodeBoard", { log: true }))[level](text);
+    },
     about: {
       app: vscode.version,
       get ext() {
@@ -255,7 +409,9 @@ function undoAddKey(on: boolean) {
   if (!on) return;
   const off = () => undoAddKey(false);
   undoAddOff = [
-    vscode.workspace.onDidChangeTextDocument((e) => { if (e.contentChanges.length) off(); }),
+    vscode.workspace.onDidChangeTextDocument((e) => {
+      if (e.contentChanges.length) off();
+    }),
     vscode.window.onDidChangeTextEditorSelection(off),
     vscode.window.onDidChangeActiveTextEditor(off),
   ];

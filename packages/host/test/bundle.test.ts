@@ -2,7 +2,15 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { strFromU8, strToU8, unzipSync, zipSync, type Zippable } from "fflate";
-import { BOARD_VERSION, emptyBoard, type Board, type CodeCard, type RunRecord, type Segment, type Source } from "@codeboard/core";
+import {
+  BOARD_VERSION,
+  emptyBoard,
+  type Board,
+  type CodeCard,
+  type RunRecord,
+  type Segment,
+  type Source,
+} from "@codeboard/core";
 import { Storage } from "@codeboard/core/storage";
 import { nodeFs } from "../src/nodefs";
 import { useWorkspace } from "../src/ws";
@@ -11,17 +19,52 @@ import { nodeWorkspace } from "./node-workspace";
 import { tempRepo } from "./helpers";
 
 const tmp: string[] = [];
-const mk = (p: string) => { const d = fs.mkdtempSync(`/tmp/codeboard-${p}-`); tmp.push(d); return d; };
+const mk = (p: string) => {
+  const d = fs.mkdtempSync(`/tmp/codeboard-${p}-`);
+  tmp.push(d);
+  return d;
+};
 /** A = 导出那边的工作区，B = 导入这边的工作区（同一个仓库的另一份），O = 两边都不在的仓库 */
 let A: string, B: string, O: string;
 let n = 0;
 
-const seg = (src: Source, p = "x.py"): Segment => ({ id: `s${++n}`, src, path: p, lang: "python", start: 1, end: 1, text: ["x = 1"], version: { kind: "none" } });
+const seg = (src: Source, p = "x.py"): Segment => ({
+  id: `s${++n}`,
+  src,
+  path: p,
+  lang: "python",
+  start: 1,
+  end: 1,
+  text: ["x = 1"],
+  version: { kind: "none" },
+});
 const code = (id: string, ...segs: Segment[]): CodeCard => ({ id, kind: "code", segments: segs });
-const put = (b: Board, c: Board["cards"][number], x = 0) => { b.cards.push(c); b.place[c.id] = { x, y: 0, w: 400, ...(c.kind === "board" ? { h: 300 } : {}) }; };
+const put = (b: Board, c: Board["cards"][number], x = 0) => {
+  b.cards.push(c);
+  b.place[c.id] = { x, y: 0, w: 400, ...(c.kind === "board" ? { h: 300 } : {}) };
+};
 const codeOf = (b: Board | null, id: string) => b?.cards.find((c) => c.id === id) as CodeCard | undefined;
-const run = (id: string): RunRecord => ({ version: 1, id, entry: "python x.py", cwd: "/w", commit: null, at: 1, ms: 1, exit: 0, scope: ["/w"], pkgs: [], calls: [] });
-const files = (dir: string): string[] => fs.existsSync(dir) ? fs.readdirSync(dir, { recursive: true, withFileTypes: true }).filter((d) => d.isFile()).map((d) => path.relative(dir, path.join(d.parentPath, d.name))).sort() : [];
+const run = (id: string): RunRecord => ({
+  version: 1,
+  id,
+  entry: "python x.py",
+  cwd: "/w",
+  commit: null,
+  at: 1,
+  ms: 1,
+  exit: 0,
+  scope: ["/w"],
+  pkgs: [],
+  calls: [],
+});
+const files = (dir: string): string[] =>
+  fs.existsSync(dir)
+    ? fs
+        .readdirSync(dir, { recursive: true, withFileTypes: true })
+        .filter((d) => d.isFile())
+        .map((d) => path.relative(dir, path.join(d.parentPath, d.name)))
+        .sort()
+    : [];
 
 /** 导出那边的存储：Main（组 g）带共享卡、图片卡、引用图片的 Note、子白板框、运行记录；Sub 里一张 B 里的外部来源 */
 async function source(): Promise<Storage> {
@@ -50,17 +93,36 @@ async function source(): Promise<Storage> {
   return store;
 }
 
-const manifest = (o: Partial<Manifest> = {}): Uint8Array => strToU8(JSON.stringify({ format: 1, codeboard: "t", exported: "", folders: [], boards: [{ id: "bX", name: "X" }], groups: [], ...o }));
-const boardFile = (id: string, name = "X") => strToU8(JSON.stringify({ ...emptyBoard(id, name), version: BOARD_VERSION }));
+const manifest = (o: Partial<Manifest> = {}): Uint8Array =>
+  strToU8(
+    JSON.stringify({
+      format: 1,
+      codeboard: "t",
+      exported: "",
+      folders: [],
+      boards: [{ id: "bX", name: "X" }],
+      groups: [],
+      ...o,
+    }),
+  );
+const boardFile = (id: string, name = "X") =>
+  strToU8(JSON.stringify({ ...emptyBoard(id, name), version: BOARD_VERSION }));
 const zip = (z: Zippable) => zipSync(z);
 
 beforeAll(() => {
-  A = tempRepo("ba", { "x.py": "x = 1\n" }); tmp.push(A);
-  B = tempRepo("bb", { "x.py": "x = 1\n", "lib/x.py": "x = 1\n" }); tmp.push(B);
-  O = tempRepo("bo", { "x.py": "x = 1\n" }); tmp.push(O);
+  A = tempRepo("ba", { "x.py": "x = 1\n" });
+  tmp.push(A);
+  B = tempRepo("bb", { "x.py": "x = 1\n", "lib/x.py": "x = 1\n" });
+  tmp.push(B);
+  O = tempRepo("bo", { "x.py": "x = 1\n" });
+  tmp.push(O);
 });
-afterEach(() => { Object.assign(LIMITS, { file: 256 << 20, entry: 64 << 20, total: 512 << 20, entries: 20_000 }); });
-afterAll(() => { for (const d of tmp) fs.rmSync(d, { recursive: true, force: true }); });
+afterEach(() => {
+  Object.assign(LIMITS, { file: 256 << 20, entry: 64 << 20, total: 512 << 20, entries: 20_000 });
+});
+afterAll(() => {
+  for (const d of tmp) fs.rmSync(d, { recursive: true, force: true });
+});
 
 describe("export boards", () => {
   it("writes a zip with a manifest, the board and its sub-board in their group, the shared card, used images and run records", async () => {
@@ -68,10 +130,21 @@ describe("export boards", () => {
     const store = await source();
     const r = (await packBoards(store, ["bMain"]))!;
     const z = unzipSync(r.data);
-    expect(Object.keys(z).sort()).toEqual(["assets/abc123.png", "assets/def456.png", "cards/sh.json", "g/bMain.json", "g/bSub.json", "manifest.json", "runs/r1.json"]);
+    expect(Object.keys(z).sort()).toEqual([
+      "assets/abc123.png",
+      "assets/def456.png",
+      "cards/sh.json",
+      "g/bMain.json",
+      "g/bSub.json",
+      "manifest.json",
+      "runs/r1.json",
+    ]);
     const m = JSON.parse(strFromU8(z["manifest.json"])) as Manifest;
     expect(m).toMatchObject({ format: 1, codeboard: "test", folders: [path.basename(A)], groups: ["g"] });
-    expect(m.boards).toEqual([{ id: "bMain", name: "Main", group: "g" }, { id: "bSub", name: "Sub", group: "g", sub: true }]);
+    expect(m.boards).toEqual([
+      { id: "bMain", name: "Main", group: "g" },
+      { id: "bSub", name: "Sub", group: "g", sub: true },
+    ]);
     // 来源原样带走，白板文件里只有共享卡的引用
     const main = JSON.parse(strFromU8(z["g/bMain.json"]));
     expect(main.cards.find((c: { id: string }) => c.id === "sh").kind).toBe("shared");
@@ -90,10 +163,14 @@ describe("export boards", () => {
     const r = (await packBoards(store, ["bMain"]))!;
     expect(Object.keys(unzipSync(r.data))).not.toContain("assets/abc123.png");
     useWorkspace(nodeWorkspace(B));
-    const dstDir = mk("bdst"), dst = new Storage(nodeFs, { dir: () => dstDir });
+    const dstDir = mk("bdst"),
+      dst = new Storage(nodeFs, { dir: () => dstDir });
     const got = await importBundle(dst, r.data);
     expect(got.boards).toBe(2);
-    expect((await dst.load("bMain"))?.cards.find((c) => c.id === "img")).toMatchObject({ kind: "image", src: "abc123.png" });
+    expect((await dst.load("bMain"))?.cards.find((c) => c.id === "img")).toMatchObject({
+      kind: "image",
+      src: "abc123.png",
+    });
     expect(files(path.join(dst.dir(), "assets"))).toEqual(["def456.png"]);
   });
 });
@@ -110,10 +187,20 @@ describe("import boards", () => {
     const dst = new Storage(nodeFs, { dir: () => dstDir });
     const got = await importFile(dst, file);
     expect(got).toMatchObject({ first: "bMain", boards: 2, renamed: 0 });
-    expect(files(dstDir)).toEqual(["assets/abc123.png", "assets/def456.png", "cards/sh.json", "g/bMain.json", "g/bSub.json", "runs/r1.json"]);
+    expect(files(dstDir)).toEqual([
+      "assets/abc123.png",
+      "assets/def456.png",
+      "cards/sh.json",
+      "g/bMain.json",
+      "g/bSub.json",
+      "runs/r1.json",
+    ]);
 
     const there = new Storage(nodeFs, { dir: () => dstDir });
-    expect((await there.list()).map((m) => [m.id, m.name, m.group]).sort()).toEqual([["bMain", "Main", "g"], ["bSub", "Sub", "g"]]);
+    expect((await there.list()).map((m) => [m.id, m.name, m.group]).sort()).toEqual([
+      ["bMain", "Main", "g"],
+      ["bSub", "Sub", "g"],
+    ]);
     const main = await there.load("bMain");
     expect([...there.refsOf("bMain")]).toEqual(["sh"]);
     // repo 来源相对这边的主根（同一个仓库的另一份）；B 里的外部来源换成 repo；哪边都不在的仓库还是外部路径
@@ -166,21 +253,86 @@ describe("import boards", () => {
 
   describe("rejects a package and writes nothing", () => {
     const bad: [string, () => Uint8Array, RegExp][] = [
-      ["a parent-directory entry", () => zip({ "manifest.json": manifest(), "bX.json": boardFile("bX"), "../evil.json": boardFile("evil") }), /Unexpected file “\.\.\/evil\.json”/],
-      ["an absolute entry", () => zip({ "manifest.json": manifest(), "bX.json": boardFile("bX"), "/etc/evil.json": boardFile("evil") }), /Unexpected file/],
-      ["a traversal inside assets", () => zip({ "manifest.json": manifest(), "bX.json": boardFile("bX"), "assets/../../x.png": strToU8("x") }), /Unexpected file/],
-      ["a backslash path", () => zip({ "manifest.json": manifest(), "bX.json": boardFile("bX"), "cards\\..\\x.json": strToU8("{}") }), /Unexpected file/],
-      ["a nested folder", () => zip({ "manifest.json": manifest(), "bX.json": boardFile("bX"), "g/h/bY.json": boardFile("bY") }), /Unexpected file/],
-      ["a dot folder", () => zip({ "manifest.json": manifest(), "bX.json": boardFile("bX"), ".trash/bY.json": boardFile("bY") }), /Unexpected file/],
-      ["an unknown file", () => zip({ "manifest.json": manifest(), "bX.json": boardFile("bX"), "run.sh": strToU8("rm -rf /") }), /Unexpected file/],
+      [
+        "a parent-directory entry",
+        () => zip({ "manifest.json": manifest(), "bX.json": boardFile("bX"), "../evil.json": boardFile("evil") }),
+        /Unexpected file “\.\.\/evil\.json”/,
+      ],
+      [
+        "an absolute entry",
+        () => zip({ "manifest.json": manifest(), "bX.json": boardFile("bX"), "/etc/evil.json": boardFile("evil") }),
+        /Unexpected file/,
+      ],
+      [
+        "a traversal inside assets",
+        () => zip({ "manifest.json": manifest(), "bX.json": boardFile("bX"), "assets/../../x.png": strToU8("x") }),
+        /Unexpected file/,
+      ],
+      [
+        "a backslash path",
+        () => zip({ "manifest.json": manifest(), "bX.json": boardFile("bX"), "cards\\..\\x.json": strToU8("{}") }),
+        /Unexpected file/,
+      ],
+      [
+        "a nested folder",
+        () => zip({ "manifest.json": manifest(), "bX.json": boardFile("bX"), "g/h/bY.json": boardFile("bY") }),
+        /Unexpected file/,
+      ],
+      [
+        "a dot folder",
+        () => zip({ "manifest.json": manifest(), "bX.json": boardFile("bX"), ".trash/bY.json": boardFile("bY") }),
+        /Unexpected file/,
+      ],
+      [
+        "an unknown file",
+        () => zip({ "manifest.json": manifest(), "bX.json": boardFile("bX"), "run.sh": strToU8("rm -rf /") }),
+        /Unexpected file/,
+      ],
       ["no manifest", () => zip({ "bX.json": boardFile("bX") }), /no manifest\.json/],
       ["not a zip", () => strToU8("hello"), /Not a CodeBoard package/],
-      ["a newer package format", () => zip({ "manifest.json": manifest({ format: 99 }), "bX.json": boardFile("bX") }), /newer CodeBoard/],
-      ["a board listed but missing", () => zip({ "manifest.json": manifest({ boards: [{ id: "bX", name: "X" }, { id: "bY", name: "Y" }] }), "bX.json": boardFile("bX") }), /“Y” \(bY\) is listed/],
-      ["a board that fails the schema", () => zip({ "manifest.json": manifest(), "bX.json": strToU8(JSON.stringify({ version: BOARD_VERSION, id: "bX", name: 3, cards: "no" })) }), /“bX\.json”/],
-      ["a board whose file name is another id", () => zip({ "manifest.json": manifest(), "bX.json": boardFile("bZ") }), /holds board “bZ”/],
-      ["a bad shared card next to a good board", () => zip({ "manifest.json": manifest(), "bX.json": boardFile("bX"), "cards/c1.json": strToU8("{\"card\":1}") }), /“cards\/c1\.json”/],
-      ["a bad run record", () => zip({ "manifest.json": manifest(), "bX.json": boardFile("bX"), "runs/r1.json": strToU8("{}") }), /“runs\/r1\.json”: Invalid run record/],
+      [
+        "a newer package format",
+        () => zip({ "manifest.json": manifest({ format: 99 }), "bX.json": boardFile("bX") }),
+        /newer CodeBoard/,
+      ],
+      [
+        "a board listed but missing",
+        () =>
+          zip({
+            "manifest.json": manifest({
+              boards: [
+                { id: "bX", name: "X" },
+                { id: "bY", name: "Y" },
+              ],
+            }),
+            "bX.json": boardFile("bX"),
+          }),
+        /“Y” \(bY\) is listed/,
+      ],
+      [
+        "a board that fails the schema",
+        () =>
+          zip({
+            "manifest.json": manifest(),
+            "bX.json": strToU8(JSON.stringify({ version: BOARD_VERSION, id: "bX", name: 3, cards: "no" })),
+          }),
+        /“bX\.json”/,
+      ],
+      [
+        "a board whose file name is another id",
+        () => zip({ "manifest.json": manifest(), "bX.json": boardFile("bZ") }),
+        /holds board “bZ”/,
+      ],
+      [
+        "a bad shared card next to a good board",
+        () => zip({ "manifest.json": manifest(), "bX.json": boardFile("bX"), "cards/c1.json": strToU8('{"card":1}') }),
+        /“cards\/c1\.json”/,
+      ],
+      [
+        "a bad run record",
+        () => zip({ "manifest.json": manifest(), "bX.json": boardFile("bX"), "runs/r1.json": strToU8("{}") }),
+        /“runs\/r1\.json”: Invalid run record/,
+      ],
     ];
     for (const [what, make, msg] of bad) {
       it(what, async () => {
@@ -194,12 +346,18 @@ describe("import boards", () => {
     }
 
     it("an entry larger than the limit, by its header and by what it inflates to", async () => {
-      const data = zip({ "manifest.json": manifest(), "bX.json": boardFile("bX"), "assets/big.png": new Uint8Array(4096) });
+      const data = zip({
+        "manifest.json": manifest(),
+        "bX.json": boardFile("bX"),
+        "assets/big.png": new Uint8Array(4096),
+      });
       LIMITS.entry = 1024;
       expect(() => readBundle(data)).toThrow(/“assets\/big\.png” is larger than/);
-      LIMITS.entry = 64 << 20; LIMITS.total = 2048;
+      LIMITS.entry = 64 << 20;
+      LIMITS.total = 2048;
       expect(() => readBundle(data)).toThrow(/contents are larger than/);
-      LIMITS.total = 512 << 20; LIMITS.file = 100;
+      LIMITS.total = 512 << 20;
+      LIMITS.file = 100;
       expect(() => readBundle(data)).toThrow(/file is larger than/);
     });
   });
@@ -209,7 +367,8 @@ describe("import boards", () => {
     const data = zip({ "manifest.json": manifest(), "bX.json": boardFile("bX"), "assets/": new Uint8Array(0) });
     const file = path.join(mk("bfile"), "X.zip");
     fs.writeFileSync(file, data);
-    const dstDir = mk("bdst"), dst = new Storage(nodeFs, { dir: () => dstDir });
+    const dstDir = mk("bdst"),
+      dst = new Storage(nodeFs, { dir: () => dstDir });
     expect((await importFile(dst, file)).first).toBe("bX");
   });
 });

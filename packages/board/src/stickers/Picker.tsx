@@ -6,7 +6,17 @@ import { linkCurve } from "../state/geo";
 import { bezAt } from "@codeboard/core/canvas";
 import { BUILTIN, EMOJI, STICKER_COLORS, Glyph, GlyphPlay, packs } from "./glyphs";
 import { pickSticker, stickerDown, stickerMenu, stickerLabel } from "../actions/stickers";
-import { stickerPick, setStickerPick, stickerColor, setStickerColor, isSelSticker, stickerList, freeStickers, boundStickers, linkStickers } from "../state/stickers";
+import {
+  stickerPick,
+  setStickerPick,
+  stickerColor,
+  setStickerColor,
+  isSelSticker,
+  stickerList,
+  freeStickers,
+  boundStickers,
+  linkStickers,
+} from "../state/stickers";
 import { placing } from "../state/mode";
 import { placeOf, rectOf, state } from "../state/store";
 import { nearView } from "../state/cull";
@@ -22,45 +32,110 @@ export function StickerPicker() {
   const [q, setQ] = createSignal("");
   let el!: HTMLDivElement;
   // 工具栏的 Sticker 按钮自己会开关面板：点它不算点外面
-  useOverlay({ close: () => setStickerPick(null), inside: (t) => el.contains(t) || !!t.closest('[aria-label="Sticker"]'), outside: true, grab: true });
+  useOverlay({
+    close: () => setStickerPick(null),
+    inside: (t) => el.contains(t) || !!t.closest('[aria-label="Sticker"]'),
+    outside: true,
+    grab: true,
+  });
   const items = createMemo<{ icon: IconRef; label: string }[]>(() => {
     const s = q().trim().toLowerCase();
     const t = tab();
     let all: { icon: IconRef; label: string }[];
     if (t === "builtin") all = BUILTIN.map((b) => ({ icon: { pack: "builtin", name: b.name }, label: b.label }));
     else if (t === "emoji") all = EMOJI.map((e) => ({ icon: { pack: "emoji", name: e }, label: e }));
-    else all = (packs()?.find((p) => p.id === t)?.icons ?? []).map((i) => ({ icon: { pack: t, name: i.name }, label: i.name }));
-    return (s ? all.filter((x) => x.label.toLowerCase().includes(s) || x.icon.name.toLowerCase().includes(s)) : all).slice(0, MAX);
+    else
+      all = (packs()?.find((p) => p.id === t)?.icons ?? []).map((i) => ({
+        icon: { pack: t, name: i.name },
+        label: i.name,
+      }));
+    return (
+      s ? all.filter((x) => x.label.toLowerCase().includes(s) || x.icon.name.toLowerCase().includes(s)) : all
+    ).slice(0, MAX);
   });
   const p = () => stickerPick()!;
   return (
     <div ref={el} class="pill stkpick" data-nodrag style={{ left: `${p().x}px`, top: `${p().y}px` }}>
       <div class="stabs">
-        <button classList={{ on: tab() === "builtin" }} onClick={() => setTab("builtin")}>Built-in</button>
-        <For each={packs() ?? []}>{(pk) => <button classList={{ on: tab() === pk.id }} onClick={() => setTab(pk.id)}>{pk.name}</button>}</For>
-        <button classList={{ on: tab() === "emoji" }} onClick={() => setTab("emoji")}>Emoji</button>
+        <button classList={{ on: tab() === "builtin" }} onClick={() => setTab("builtin")}>
+          Built-in
+        </button>
+        <For each={packs() ?? []}>
+          {(pk) => (
+            <button classList={{ on: tab() === pk.id }} onClick={() => setTab(pk.id)}>
+              {pk.name}
+            </button>
+          )}
+        </For>
+        <button classList={{ on: tab() === "emoji" }} onClick={() => setTab("emoji")}>
+          Emoji
+        </button>
       </div>
-      <input class="sq" placeholder="Search icons…" value={q()} onInput={(e) => setQ(e.currentTarget.value)} onKeyDown={keepKey} />
+      <input
+        class="sq"
+        placeholder="Search icons…"
+        value={q()}
+        onInput={(e) => setQ(e.currentTarget.value)}
+        onKeyDown={keepKey}
+      />
       <div class="sgrid">
         {/* 动图只在指针停在格子上时播：一个包几百个动图表情一起播，每帧都要重画整个面板 */}
-        <For each={items()}>{(it) => {
-          const [hot, setHot] = createSignal(false);
-          return <button class="scell" data-tip={it.label} onClick={() => pickSticker(it.icon)} onPointerEnter={() => setHot(true)} onPointerLeave={() => setHot(false)}>
-            <GlyphPlay.Provider value={hot}><Glyph icon={it.icon} color={tab() === "emoji" ? undefined : stickerColor()} size={22} /></GlyphPlay.Provider>
-          </button>;
-        }}</For>
-        <Show when={!items().length}><div class="sempty">{tab() === "builtin" || tab() === "emoji" ? "No match" : "No icons in this pack"}</div></Show>
+        <For each={items()}>
+          {(it) => {
+            const [hot, setHot] = createSignal(false);
+            return (
+              <button
+                class="scell"
+                data-tip={it.label}
+                onClick={() => pickSticker(it.icon)}
+                onPointerEnter={() => setHot(true)}
+                onPointerLeave={() => setHot(false)}
+              >
+                <GlyphPlay.Provider value={hot}>
+                  <Glyph icon={it.icon} color={tab() === "emoji" ? undefined : stickerColor()} size={22} />
+                </GlyphPlay.Provider>
+              </button>
+            );
+          }}
+        </For>
+        <Show when={!items().length}>
+          <div class="sempty">{tab() === "builtin" || tab() === "emoji" ? "No match" : "No icons in this pack"}</div>
+        </Show>
       </div>
-      <Show when={tab() !== "emoji" && (tab() === "builtin" || !packs()?.find((pk) => pk.id === tab())?.icons.every((i) => "img" in i))}>
+      <Show
+        when={
+          tab() !== "emoji" &&
+          (tab() === "builtin" ||
+            !packs()
+              ?.find((pk) => pk.id === tab())
+              ?.icons.every((i) => "img" in i))
+        }
+      >
         <div class="scolors">
           <span>Color</span>
-          <button class="sw def" classList={{ on: !stickerColor() }} data-tip="Default" onClick={() => setStickerColor(undefined)} />
-          <For each={STICKER_COLORS}>{(c) => <button class="sw" classList={{ on: stickerColor() === c }} style={{ background: c }} onClick={() => setStickerColor(c)} />}</For>
+          <button
+            class="sw def"
+            classList={{ on: !stickerColor() }}
+            data-tip="Default"
+            onClick={() => setStickerColor(undefined)}
+          />
+          <For each={STICKER_COLORS}>
+            {(c) => (
+              <button
+                class="sw"
+                classList={{ on: stickerColor() === c }}
+                style={{ background: c }}
+                onClick={() => setStickerColor(c)}
+              />
+            )}
+          </For>
         </div>
       </Show>
       <div class="sfoot">
         <span>Your packs: {state.host.settings.stickerDir || "~/.codeboard/stickers"}</span>
-        <button class="tlink" onClick={() => send({ type: "openStickerDir" })}>Open Folder</button>
+        <button class="tlink" onClick={() => send({ type: "openStickerDir" })}>
+          Open Folder
+        </button>
       </div>
     </div>
   );
@@ -68,17 +143,29 @@ export function StickerPicker() {
 
 /** 放贴纸时跟着指针走的影子（只在放的时候听指针） */
 export function PlacingGhost() {
-  return <Show when={placing()}>{(p) => {
-    const [pt, setPt] = createSignal({ x: -100, y: -100 });
-    const mv = (e: PointerEvent) => setPt({ x: e.clientX, y: e.clientY });
-    window.addEventListener("pointermove", mv, true);
-    onCleanup(() => window.removeEventListener("pointermove", mv, true));
-    return <div class="stkghost" style={{ left: `${pt().x}px`, top: `${pt().y}px` }}><Glyph icon={p().icon} color={p().color} size={28} /></div>;
-  }}</Show>;
+  return (
+    <Show when={placing()}>
+      {(p) => {
+        const [pt, setPt] = createSignal({ x: -100, y: -100 });
+        const mv = (e: PointerEvent) => setPt({ x: e.clientX, y: e.clientY });
+        window.addEventListener("pointermove", mv, true);
+        onCleanup(() => window.removeEventListener("pointermove", mv, true));
+        return (
+          <div class="stkghost" style={{ left: `${pt().x}px`, top: `${pt().y}px` }}>
+            <Glyph icon={p().icon} color={p().color} size={28} />
+          </div>
+        );
+      }}
+    </Show>
+  );
 }
 
 type FreeAt = Extract<Sticker["at"], { kind: "canvas" }>;
-const menuAt = (id: string) => (e: MouseEvent) => { e.preventDefault(); e.stopPropagation(); stickerMenu(id, e.clientX, e.clientY); };
+const menuAt = (id: string) => (e: MouseEvent) => {
+  e.preventDefault();
+  e.stopPropagation();
+  stickerMenu(id, e.clientX, e.clientY);
+};
 
 /**
  * 动图贴纸能不能播：完整档（概览、地图档不播），且世界坐标里的这一块在屏幕附近（state/cull.ts 的 nearView）。
@@ -95,13 +182,39 @@ function FreeSticker(p: { s: Sticker; x: number; y: number; card?: string }) {
   const at = () => p.s.at as FreeAt;
   const size = () => at().size ?? 32;
   const sel = () => isSelSticker(p.s.id);
-  const play = playNear(() => { const o = p.card ? placeOf(p.card) : { x: 0, y: 0 }; return { x: o.x + p.x, y: o.y + p.y, w: size(), h: size() }; });
+  const play = playNear(() => {
+    const o = p.card ? placeOf(p.card) : { x: 0, y: 0 };
+    return { x: o.x + p.x, y: o.y + p.y, w: size(), h: size() };
+  });
   return (
-    <div class="stk canvas" classList={{ q: !!p.s.q, done: !!p.s.q?.done, sel: sel(), bound: !!at().on, "lod-map": lod() === "map" }} data-sticker={p.s.id} data-tip={stickerLabel(p.s.icon)}
-      style={{ left: `${p.x}px`, top: `${p.y}px`, "min-width": `${size()}px`, height: `${size()}px`, "--s": `${size()}px` }}
-      onPointerDown={(e) => stickerDown(e, p.s.id)} onClick={(e) => stickerClick(p.s.id, e.currentTarget)} onContextMenu={menuAt(p.s.id)}>
-      <GlyphPlay.Provider value={play}><Glyph icon={shownIcon(p.s).icon} color={shownIcon(p.s).color} size={size()} /></GlyphPlay.Provider>
-      <Show when={sel()}><span class="sgrip" data-nodrag data-export="strip" style={{ scale: `${1 / cam.z}` }} onPointerDown={(e) => stickerDown(e, p.s.id, true)} /></Show>
+    <div
+      class="stk canvas"
+      classList={{ q: !!p.s.q, done: !!p.s.q?.done, sel: sel(), bound: !!at().on, "lod-map": lod() === "map" }}
+      data-sticker={p.s.id}
+      data-tip={stickerLabel(p.s.icon)}
+      style={{
+        left: `${p.x}px`,
+        top: `${p.y}px`,
+        "min-width": `${size()}px`,
+        height: `${size()}px`,
+        "--s": `${size()}px`,
+      }}
+      onPointerDown={(e) => stickerDown(e, p.s.id)}
+      onClick={(e) => stickerClick(p.s.id, e.currentTarget)}
+      onContextMenu={menuAt(p.s.id)}
+    >
+      <GlyphPlay.Provider value={play}>
+        <Glyph icon={shownIcon(p.s).icon} color={shownIcon(p.s).color} size={size()} />
+      </GlyphPlay.Provider>
+      <Show when={sel()}>
+        <span
+          class="sgrip"
+          data-nodrag
+          data-export="strip"
+          style={{ scale: `${1 / cam.z}` }}
+          onPointerDown={(e) => stickerDown(e, p.s.id, true)}
+        />
+      </Show>
     </div>
   );
 }
@@ -111,14 +224,28 @@ export function StickerChip(p: { s: Sticker; size: number }) {
   const card = p.s.at.kind === "line" ? p.s.at.card : undefined;
   const play = card ? playNear(() => rectOf(card)) : () => lod() === "full";
   return (
-    <span class="stk" classList={{ sel: isSelSticker(p.s.id), q: !!p.s.q, done: !!p.s.q?.done }} data-sticker={p.s.id} data-tip={p.s.q?.md ? firstLine(p.s.q.md) : stickerLabel(p.s.icon)}
-      onPointerDown={(e) => stickerDown(e, p.s.id)} onClick={(e) => { e.stopPropagation(); stickerClick(p.s.id, e.currentTarget); }} onContextMenu={menuAt(p.s.id)}>
-      <GlyphPlay.Provider value={play}><Glyph icon={shownIcon(p.s).icon} color={shownIcon(p.s).color} size={p.size} /></GlyphPlay.Provider>
+    <span
+      class="stk"
+      classList={{ sel: isSelSticker(p.s.id), q: !!p.s.q, done: !!p.s.q?.done }}
+      data-sticker={p.s.id}
+      data-tip={p.s.q?.md ? firstLine(p.s.q.md) : stickerLabel(p.s.icon)}
+      onPointerDown={(e) => stickerDown(e, p.s.id)}
+      onClick={(e) => {
+        e.stopPropagation();
+        stickerClick(p.s.id, e.currentTarget);
+      }}
+      onContextMenu={menuAt(p.s.id)}
+    >
+      <GlyphPlay.Provider value={play}>
+        <Glyph icon={shownIcon(p.s).icon} color={shownIcon(p.s).color} size={p.size} />
+      </GlyphPlay.Provider>
     </span>
   );
 }
 
-const FreeList = (p: { list: Sticker[]; card?: string }) => <For each={p.list}>{(s) => <FreeSticker s={s} x={(s.at as FreeAt).x} y={(s.at as FreeAt).y} card={p.card} />}</For>;
+const FreeList = (p: { list: Sticker[]; card?: string }) => (
+  <For each={p.list}>{(s) => <FreeSticker s={s} x={(s.at as FreeAt).x} y={(s.at as FreeAt).y} card={p.card} />}</For>
+);
 
 /** 画布上没绑东西的贴纸（世界坐标层，在所有卡上面） */
 export function CanvasStickers() {
@@ -139,16 +266,31 @@ export function LinkStickers(p: { link: string }) {
     <For each={list()}>
       {(s) => {
         const at = () => s.at as FreeAt;
-        const anchor = createMemo(() => { const on = at().on as { link: string; t: number }; const c = linkCurve(on.link); return c ? bezAt(c, on.t) : null; });
+        const anchor = createMemo(() => {
+          const on = at().on as { link: string; t: number };
+          const c = linkCurve(on.link);
+          return c ? bezAt(c, on.t) : null;
+        });
         const half = () => (at().size ?? 32) / 2;
         return (
           <Show when={anchor()}>
-            {(q) => <>
-              <Show when={isSelSticker(s.id)}>
-                <svg class="tether" data-export="strip" width="1" height="1"><line x1={q().x} y1={q().y} x2={q().x + at().x + half()} y2={q().y + at().y + half()} style={{ "stroke-width": `${1 / cam.z}px` }} /><circle cx={q().x} cy={q().y} r={3 / Math.max(cam.z, 0.5)} /></svg>
-              </Show>
-              <FreeSticker s={s} x={q().x + at().x} y={q().y + at().y} />
-            </>}
+            {(q) => (
+              <>
+                <Show when={isSelSticker(s.id)}>
+                  <svg class="tether" data-export="strip" width="1" height="1">
+                    <line
+                      x1={q().x}
+                      y1={q().y}
+                      x2={q().x + at().x + half()}
+                      y2={q().y + at().y + half()}
+                      style={{ "stroke-width": `${1 / cam.z}px` }}
+                    />
+                    <circle cx={q().x} cy={q().y} r={3 / Math.max(cam.z, 0.5)} />
+                  </svg>
+                </Show>
+                <FreeSticker s={s} x={q().x + at().x} y={q().y + at().y} />
+              </>
+            )}
           </Show>
         );
       }}

@@ -15,10 +15,13 @@ async function folderInfo(p: string): Promise<DiagInfo["folders"][number]> {
 /** board 给了就带上规模；attach = undefined 时问一次要不要附上白板 JSON */
 export async function copyDiagnostics(ask: Prompts, board?: Board, attach?: boolean) {
   if (board && attach === undefined) {
-    const pick = await ask.pick([
-      { label: "Copy Diagnostics", description: "Versions, workspace, recent log", attach: false },
-      { label: "Copy Diagnostics + Board JSON", description: `Also attach “${board.name}”`, attach: true },
-    ], { title: "Copy Diagnostics", placeHolder: "Attach board JSON?" });
+    const pick = await ask.pick(
+      [
+        { label: "Copy Diagnostics", description: "Versions, workspace, recent log", attach: false },
+        { label: "Copy Diagnostics + Board JSON", description: `Also attach “${board.name}”`, attach: true },
+      ],
+      { title: "Copy Diagnostics", placeHolder: "Attach board JSON?" },
+    );
     if (!pick) return;
     attach = pick.attach;
   }
@@ -30,11 +33,15 @@ export async function copyDiagnostics(ask: Prompts, board?: Board, attach?: bool
     os: `${process.platform} ${os.release()} ${process.arch}`,
     env: [`Python ext: ${yes("ms-python.python")} · Pylance: ${yes("ms-python.vscode-pylance")}`],
     folders: await Promise.all(wsRoots().map(folderInfo)),
-    board: board && { name: board.name, cards: board.cards.length, arrows: board.links.length, sections: board.sections.length },
+    board: board && {
+      name: board.name,
+      cards: board.cards.length,
+      arrows: board.links.length,
+      sections: board.sections.length,
+    },
     log: recentLog(),
     boardJson: board && attach ? JSON.stringify(board, null, 1) : undefined,
   };
   await w.ui.copy(formatDiagnostics(info, os.homedir()));
   void w.ui.info("Diagnostics copied to clipboard");
 }
-

@@ -5,7 +5,6 @@ import { sync } from "../state/changes";
 import { settingsOpen, setSettingsOpen, setKeysOpen } from "../state/ui";
 import { send } from "../host";
 
-
 /** 打开 Settings 页；section = "shortcuts" 等直接滚到那一节 */
 export function openSettings(section?: string) {
   setKeysOpen(false);
@@ -44,7 +43,8 @@ export function applyVscodeBg(on: boolean) {
 export function applyNoteFonts(f: NoteFontSizes) {
   const st = document.documentElement.style;
   for (const k of NOTE_FONT_LEVELS) {
-    const v = f[k], name = k === "body" ? "--note-fs" : `--note-fs-${k}`;
+    const v = f[k],
+      name = k === "body" ? "--note-fs" : `--note-fs-${k}`;
     if (typeof v === "number" && Number.isFinite(v)) st.setProperty(name, `${v}px`);
     else st.removeProperty(name);
   }
@@ -67,14 +67,20 @@ const rects = () => new Map(placed().map((k) => [k.id, rectOf(k)]));
 function pushDownLater(before: Map<string, R>) {
   if (state.host.settings.themeReflow === "overlap") return;
   const two = (f: () => void) => requestAnimationFrame(() => requestAnimationFrame(f));
-  two(() => (document.fonts?.status === "loading" ? document.fonts.ready.then(() => two(() => reflowAfterTheme(before))) : reflowAfterTheme(before)));
+  two(() =>
+    document.fonts?.status === "loading"
+      ? document.fonts.ready.then(() => two(() => reflowAfterTheme(before)))
+      : reflowAfterTheme(before),
+  );
 }
 
 type R = { x: number; y: number; w: number; h: number };
 /** 换主题、改字号后：原来不重叠的上下两张卡，上面那张变高压住了下面那张 → 下面那张（连同更下面的）往下挪，间距保持原样（最多 24）。
  *  视图推出来的改动：走 sync，不产生撤销步骤 */
 function reflowAfterTheme(before: Map<string, R>) {
-  const ids = [...before.keys()].filter((id) => state.board.place[id]).sort((a, b) => before.get(a)!.y - before.get(b)!.y);
+  const ids = [...before.keys()]
+    .filter((id) => state.board.place[id])
+    .sort((a, b) => before.get(a)!.y - before.get(b)!.y);
   const now = new Map(ids.map((id) => [id, rectOf(id)]));
   const dy = new Map<string, number>();
   for (const b of ids) {
@@ -82,7 +88,8 @@ function reflowAfterTheme(before: Map<string, R>) {
     let need = 0;
     for (const a of ids) {
       if (a === b) continue;
-      const A0 = before.get(a)!, A1 = now.get(a)!;
+      const A0 = before.get(a)!,
+        A1 = now.get(a)!;
       if (A0.y >= B0.y || A0.x >= B0.x + B0.w || B0.x >= A0.x + A0.w) continue; // 只看上面、横向有重叠的
       const gap = B0.y - (A0.y + A0.h);
       if (gap < 0) continue; // 原来就叠着：不管
@@ -94,7 +101,12 @@ function reflowAfterTheme(before: Map<string, R>) {
   if (!dy.size) return;
   // 记下挪之前的 y：撤销回更早的白板后重放时，只挪还在原处的卡
   const moves = [...dy].map(([id, d]) => [id, state.board.place[id].y, d] as const);
-  sync((bd) => { for (const [id, y, d] of moves) { const p = bd.place[id]; if (p && p.y === y) p.y = y + d; } });
+  sync((bd) => {
+    for (const [id, y, d] of moves) {
+      const p = bd.place[id];
+      if (p && p.y === y) p.y = y + d;
+    }
+  });
 }
 
 /** Copy Diagnostics：宿主收集版本、工作区、日志，问要不要附上白板 JSON */

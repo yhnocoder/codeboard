@@ -16,5 +16,9 @@ export const BOARD_CHROME = ".alignbar";
  * 不显示 :hover、不弹提示、不换光标，拖动照常跟着走。落点照样按位置找（elementFromPoint），不受影响
  */
 export function holdPointer(e: PointerEvent) {
-  try { (e.target as Element | null)?.setPointerCapture?.(e.pointerId); } catch { /* 不是还按着的指针（合成的事件） */ }
+  try {
+    (e.target as Element | null)?.setPointerCapture?.(e.pointerId);
+  } catch {
+    /* 不是还按着的指针（合成的事件） */
+  }
 }

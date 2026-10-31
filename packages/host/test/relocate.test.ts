@@ -15,14 +15,25 @@ beforeAll(startTreeSitter);
 
 describe("relocate", () => {
   it("after a rename offers the function in the renamed file and re-pins the card to it at HEAD", async () => {
-    const R = tempRepo("mv", { "engine/scheduler.py": ["class Scheduler:", "    def schedule(self):", "        return 1", "", "    def other(self):", "        return 2", ""].join("\n") });
+    const R = tempRepo("mv", {
+      "engine/scheduler.py": [
+        "class Scheduler:",
+        "    def schedule(self):",
+        "        return 1",
+        "",
+        "    def other(self):",
+        "        return 2",
+        "",
+      ].join("\n"),
+    });
     const offered: string[][] = [];
     const W = nodeWorkspace(R);
     useWorkspace(W);
     resetIndex();
     try {
       const { card: c } = await card(path.join(R, "engine/scheduler.py"), "Scheduler.schedule");
-      git(R, "mv", "engine/scheduler.py", "engine/sched.py"); git(R, "commit", "-qm", "rename");
+      git(R, "mv", "engine/scheduler.py", "engine/sched.py");
+      git(R, "commit", "-qm", "rename");
       const head = git(R, "rev-parse", "HEAD");
       const { view, posted } = stubView();
       const host = { store: new Storage(nodeFs, { dir: () => path.join(R, ".boards") }) } as unknown as BoardHost;
@@ -34,7 +45,12 @@ describe("relocate", () => {
         if (m.type !== "ask" || m.ask.kind !== "pick") return;
         const ds = m.ask.items.map((i) => i.description ?? "");
         offered.push(ds);
-        queueMicrotask(() => p.answer(m.id, ds.findIndex((d) => d.startsWith("engine/sched.py"))));
+        queueMicrotask(() =>
+          p.answer(
+            m.id,
+            ds.findIndex((d) => d.startsWith("engine/sched.py")),
+          ),
+        );
       };
       p.ready = true;
       p.board = { ...emptyBoard("b", "B"), cards: [c], place: { [c.id]: { x: 0, y: 0, w: 500 } } };
@@ -42,7 +58,9 @@ describe("relocate", () => {
       const opts = offered[0] ?? [];
       expect(opts.some((d) => d.startsWith("engine/sched.py"))).toBe(true);
       expect(opts.some((d) => d.startsWith("engine/scheduler.py"))).toBe(false);
-      const rs = posted.find((m) => m.type === "replaceSegment") as Extract<HostToBoard, { type: "replaceSegment" }> | undefined;
+      const rs = posted.find((m) => m.type === "replaceSegment") as
+        | Extract<HostToBoard, { type: "replaceSegment" }>
+        | undefined;
       expect(rs?.seg.path).toBe("engine/sched.py");
       expect(rs?.seg.symbol?.qual).toBe("Scheduler.schedule");
       expect(rs?.seg.version).toEqual({ kind: "git", commit: head });

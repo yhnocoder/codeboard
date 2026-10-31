@@ -7,9 +7,13 @@ describe("City cars", () => {
     expect(carAt(100, 50, 0, 1, 1.25)).toEqual({ tx: 100, ty: 49, deg: 90, s: 1.25 });
   });
   it("parked car is drawn straight into world coordinates (no transform per car)", () => {
-    expect(carPaths({ tx: 99, ty: 50, deg: 0, s: 1 }).body.startsWith("M79.5 45L95.5 45A3.5 3.5 0 0 1 99 48.5")).toBe(true);
+    expect(carPaths({ tx: 99, ty: 50, deg: 0, s: 1 }).body.startsWith("M79.5 45L95.5 45A3.5 3.5 0 0 1 99 48.5")).toBe(
+      true,
+    );
     // Turned 90°: the body runs up from the nose, its corners keep their radius
-    expect(carPaths({ tx: 100, ty: 49, deg: 90, s: 1 }).body.startsWith("M105 29.5L105 45.5A3.5 3.5 0 0 1 101.5 49")).toBe(true);
+    expect(
+      carPaths({ tx: 100, ty: 49, deg: 90, s: 1 }).body.startsWith("M105 29.5L105 45.5A3.5 3.5 0 0 1 101.5 49"),
+    ).toBe(true);
     expect(carPaths({ tx: 0, ty: 0, deg: 0, s: 2 }).roof.startsWith("M-27.8 -7.6")).toBe(true);
   });
   it("zebra crossing: baked into the lamp path in front of the car, the car parks behind it", () => {

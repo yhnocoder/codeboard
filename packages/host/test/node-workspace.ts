@@ -10,21 +10,48 @@ export const WS = "/tmp/codeboard-perf/ws";
 export type TestWorkspace = Workspace & {
   /** Unsaved editor buffers */
   open: Map<string, string>;
-  fire: { save: Emitter<string | undefined>; edit: Emitter<string | undefined>; create: Emitter<string[]>; delete: Emitter<string[]>; rename: Emitter<{ from: string; to: string }[]>; change: Emitter<string> };
+  fire: {
+    save: Emitter<string | undefined>;
+    edit: Emitter<string | undefined>;
+    create: Emitter<string[]>;
+    delete: Emitter<string[]>;
+    rename: Emitter<{ from: string; to: string }[]>;
+    change: Emitter<string>;
+  };
   /** Number of findFiles calls (the name index must not walk the workspace on every click) */
   finds: number;
 };
 
-const SKIP = new Set(["node_modules", ".git", ".venv", "venv", "site-packages", "build", "dist", "__pycache__", ".mypy_cache", ".tox"]);
+const SKIP = new Set([
+  "node_modules",
+  ".git",
+  ".venv",
+  "venv",
+  "site-packages",
+  "build",
+  "dist",
+  "__pycache__",
+  ".mypy_cache",
+  ".tox",
+]);
 
 export function nodeWorkspace(root = WS): TestWorkspace {
   const inRoot = (p: string) => p === root || p.startsWith(root + "/");
   const quiet = new Emitter<never>();
-  const fire = { save: new Emitter<string | undefined>(), edit: new Emitter<string | undefined>(), create: new Emitter<string[]>(), delete: new Emitter<string[]>(), rename: new Emitter<{ from: string; to: string }[]>(), change: new Emitter<string>() };
+  const fire = {
+    save: new Emitter<string | undefined>(),
+    edit: new Emitter<string | undefined>(),
+    create: new Emitter<string[]>(),
+    delete: new Emitter<string[]>(),
+    rename: new Emitter<{ from: string; to: string }[]>(),
+    change: new Emitter<string>(),
+  };
   const open = new Map<string, string>();
   const secrets = new Map<string, string>();
   const w: TestWorkspace = {
-    open, fire, finds: 0,
+    open,
+    fire,
+    finds: 0,
     files: {
       roots: () => [root],
       name: () => path.basename(root),
@@ -41,22 +68,26 @@ export function nodeWorkspace(root = WS): TestWorkspace {
         w.finds++;
         const ext = /^\*\*\/\*\.\{?([\w,]+)\}?$/.exec(include)?.[1].split(",");
         const tail = /^\*\*\/([^*?{}[\]]+)$/.exec(include)?.[1];
-        const want = (p: string) => (ext ? ext.some((e) => p.endsWith(`.${e}`)) : tail ? p.endsWith(`/${tail}`) : p.endsWith(".py"));
+        const want = (p: string) =>
+          ext ? ext.some((e) => p.endsWith(`.${e}`)) : tail ? p.endsWith(`/${tail}`) : p.endsWith(".py");
         const out: string[] = [];
         const walk = (d: string) => {
           for (const e of fs.readdirSync(d, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
             if (e.name.startsWith(".") || SKIP.has(e.name)) continue;
             const p = path.join(d, e.name);
-            if (e.isDirectory()) walk(p); else if (want(p)) out.push(p);
+            if (e.isDirectory()) walk(p);
+            else if (want(p)) out.push(p);
           }
         };
         walk(root);
         return max ? out.slice(0, max) : out;
       },
       /** fire.change(abs) reaches the watchers whose base holds abs (a glob without wildcards must be the file's name) */
-      watch: (base, glob, fn) => fire.change.event((abs) => {
-        if ((abs.startsWith(base + "/") || abs === base) && (/[*?{[]/.test(glob) || path.basename(abs) === glob)) fn(abs);
-      }),
+      watch: (base, glob, fn) =>
+        fire.change.event((abs) => {
+          if ((abs.startsWith(base + "/") || abs === base) && (/[*?{[]/.test(glob) || path.basename(abs) === glob))
+            fn(abs);
+        }),
       onDidSave: fire.save.event,
       onDidEdit: fire.edit.event,
       onDidCreate: fire.create.event,
@@ -65,15 +96,38 @@ export function nodeWorkspace(root = WS): TestWorkspace {
       onDidChangeRoots: quiet.event,
       onDidChangeGit: quiet.event,
     },
-    storage: { dir: () => "/tmp/codeboard-perf/storage", globalDir: () => "/tmp/codeboard-perf/global", get: () => undefined, set: async () => {} },
+    storage: {
+      dir: () => "/tmp/codeboard-perf/storage",
+      globalDir: () => "/tmp/codeboard-perf/global",
+      get: () => undefined,
+      set: async () => {},
+    },
     language: { definitions: async () => [], hover: async () => [], implementations: async () => [] },
     settings: { get: () => undefined, set: async () => {}, onDidChange: quiet.event },
     editor: { active: () => undefined, open: async () => {}, openVersion: async () => {} },
     ui: {
-      info: async () => undefined, warn: async () => undefined, error: async () => undefined, pick: async () => undefined, input: async () => undefined,
-      openDialog: async () => undefined, saveDialog: async () => undefined, openUrl: async () => {}, openFolder: async () => {}, revealInOS: async () => {}, copy: async () => {}, clipboard: async () => "",
+      info: async () => undefined,
+      warn: async () => undefined,
+      error: async () => undefined,
+      pick: async () => undefined,
+      input: async () => undefined,
+      openDialog: async () => undefined,
+      saveDialog: async () => undefined,
+      openUrl: async () => {},
+      openFolder: async () => {},
+      revealInOS: async () => {},
+      copy: async () => {},
+      clipboard: async () => "",
     },
-    secrets: { get: async (k) => secrets.get(k), set: async (k, v) => { secrets.set(k, v); }, delete: async (k) => { secrets.delete(k); } },
+    secrets: {
+      get: async (k) => secrets.get(k),
+      set: async (k, v) => {
+        secrets.set(k, v);
+      },
+      delete: async (k) => {
+        secrets.delete(k);
+      },
+    },
     githubToken: async () => undefined,
     log: () => {},
     about: { app: "test", ext: "test", hasExtension: () => false },

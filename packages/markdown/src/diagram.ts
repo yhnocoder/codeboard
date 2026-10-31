@@ -36,7 +36,10 @@ function fit(p: P, box: HTMLElement, w: number, font: string) {
     box.dataset.key = "err";
     const err = document.createElement("div");
     err.className = "mmd-err";
-    err.textContent = `Mermaid: ${String((e as Error)?.message ?? e).split("\n").slice(0, 3).join(" ")}`;
+    err.textContent = `Mermaid: ${String((e as Error)?.message ?? e)
+      .split("\n")
+      .slice(0, 3)
+      .join(" ")}`;
     box.prepend(err);
   }
 }
@@ -55,7 +58,9 @@ function watchLook(p: P) {
   if (watching) return;
   watching = true;
   new MutationObserver(() => {
-    const refit = () => { for (const box of document.querySelectorAll<HTMLElement>(".mmd[data-done]")) queueFit(p, box); };
+    const refit = () => {
+      for (const box of document.querySelectorAll<HTMLElement>(".mmd[data-done]")) queueFit(p, box);
+    };
     // 新主题的字体可能还没下载：按后备字体量出来的字宽不对
     document.fonts.load(`1em ${fontOf()}`).then(refit, refit);
   }).observe(document.documentElement, { attributes: true, attributeFilter: ["data-look"] });
@@ -72,7 +77,10 @@ export async function renderAll(el: HTMLElement) {
     box.dataset.done = "1";
     let w = -1;
     const stop = observeResize(box, () => {
-      if (!box.isConnected) { stop(); return; } // Note 重新渲染换掉了这块
+      if (!box.isConnected) {
+        stop();
+        return;
+      } // Note 重新渲染换掉了这块
       if (box.clientWidth === w) return; // 只是换了图以后变高
       w = box.clientWidth;
       queueFit(p, box);

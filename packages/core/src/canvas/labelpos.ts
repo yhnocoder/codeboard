@@ -6,10 +6,10 @@ export type LabelBox = { w: number; h: number };
 /** 框离卡边至少留这么多（世界坐标 px） */
 const LABEL_GAP = 6;
 
-
 /** 以 (x, y) 为中心的框碰不碰到这些矩形（留 gap） */
 export function boxClear(x: number, y: number, box: LabelBox, rs: Rect[], gap = LABEL_GAP) {
-  const hw = box.w / 2 + gap, hh = box.h / 2 + gap;
+  const hw = box.w / 2 + gap,
+    hh = box.h / 2 + gap;
   for (const r of rs) if (x + hw > r.x && x - hw < r.x + r.w && y + hh > r.y && y - hh < r.y + r.h) return false;
   return true;
 }

@@ -35,41 +35,266 @@ export type LangInfo = {
 };
 
 const words = (s: string): ReadonlySet<string> => new Set(s.split(" "));
-const PY_KW = words("def return for in if else elif while and or not is None True False class break continue del import from as with lambda yield assert pass raise try except finally global nonlocal async await self cls int str float bool list dict tuple set");
-const C_KW = words("return for if else while do break continue switch case default goto sizeof typedef struct union enum class template typename namespace using public private protected virtual static const constexpr auto void int char bool float double long short unsigned signed inline extern volatile new delete this nullptr true false");
+const PY_KW = words(
+  "def return for in if else elif while and or not is None True False class break continue del import from as with lambda yield assert pass raise try except finally global nonlocal async await self cls int str float bool list dict tuple set",
+);
+const C_KW = words(
+  "return for if else while do break continue switch case default goto sizeof typedef struct union enum class template typename namespace using public private protected virtual static const constexpr auto void int char bool float double long short unsigned signed inline extern volatile new delete this nullptr true false",
+);
 // C++ 和 CUDA 的限定符（__global__ 这些不是名字，语言服务也找不到定义）
-const CPP_KW = words("noexcept override final mutable explicit friend operator static_cast dynamic_cast reinterpret_cast const_cast decltype throw try catch concept requires co_await co_return co_yield thread_local alignas alignof static_assert register restrict export __restrict __restrict__ __inline__ __forceinline__ __noinline__ __attribute__ __global__ __device__ __host__ __shared__ __constant__ __managed__ __grid_constant__ __launch_bounds__");
-const RUST_KW = words("as break const continue crate else enum extern false fn for if impl in let loop match mod move mut pub ref return self Self static struct super trait true type unsafe use where while async await dyn i8 i16 i32 i64 i128 isize u8 u16 u32 u64 u128 usize f32 f64 bool char str");
-const py = { comment: "#", vscodeId: "python", md: "python", highlight: shiki("python"), lsp: true, keywords: PY_KW, noDef: "setattr, dispatch by string, or no Python extension", grammar: "python" as const };
-const cpp = { comment: "//", highlight: { by: "tree-sitter" } as const, lsp: true, keywords: new Set([...C_KW, ...CPP_KW]), noDef: "a macro, a header it cannot find, or no C/C++ extension: clangd or ms-vscode.cpptools", grammar: "cpp" as const };
+const CPP_KW = words(
+  "noexcept override final mutable explicit friend operator static_cast dynamic_cast reinterpret_cast const_cast decltype throw try catch concept requires co_await co_return co_yield thread_local alignas alignof static_assert register restrict export __restrict __restrict__ __inline__ __forceinline__ __noinline__ __attribute__ __global__ __device__ __host__ __shared__ __constant__ __managed__ __grid_constant__ __launch_bounds__",
+);
+const RUST_KW = words(
+  "as break const continue crate else enum extern false fn for if impl in let loop match mod move mut pub ref return self Self static struct super trait true type unsafe use where while async await dyn i8 i16 i32 i64 i128 isize u8 u16 u32 u64 u128 usize f32 f64 bool char str",
+);
+const py = {
+  comment: "#",
+  vscodeId: "python",
+  md: "python",
+  highlight: shiki("python"),
+  lsp: true,
+  keywords: PY_KW,
+  noDef: "setattr, dispatch by string, or no Python extension",
+  grammar: "python" as const,
+};
+const cpp = {
+  comment: "//",
+  highlight: { by: "tree-sitter" } as const,
+  lsp: true,
+  keywords: new Set([...C_KW, ...CPP_KW]),
+  noDef: "a macro, a header it cannot find, or no C/C++ extension: clangd or ms-vscode.cpptools",
+  grammar: "cpp" as const,
+};
 
 export const LANG_TABLE: readonly LangInfo[] = [
   { id: "python", label: "Python", pick: true, aliases: ["py", "python3"], ext: ["py", "pyi"], ...py },
   { id: "triton", label: "Triton", pick: true, aliases: [], ext: [], ...py },
   { id: "tilelang", label: "TileLang", pick: true, aliases: [], ext: [], ...py },
-  { id: "cuda-cpp", label: "CUDA", pick: true, aliases: ["cuda", "cu"], ext: ["cu", "cuh"], vscodeId: "cuda-cpp", md: "cuda", ...cpp },
-  { id: "cpp", label: "C++", pick: true, aliases: ["c++", "cc", "cxx", "hpp", "objective-cpp"], ext: ["cpp", "cc", "cxx", "hpp", "hh", "hxx", "h", "inl", "mm"], vscodeId: "cpp", md: "cpp", ...cpp },
+  {
+    id: "cuda-cpp",
+    label: "CUDA",
+    pick: true,
+    aliases: ["cuda", "cu"],
+    ext: ["cu", "cuh"],
+    vscodeId: "cuda-cpp",
+    md: "cuda",
+    ...cpp,
+  },
+  {
+    id: "cpp",
+    label: "C++",
+    pick: true,
+    aliases: ["c++", "cc", "cxx", "hpp", "objective-cpp"],
+    ext: ["cpp", "cc", "cxx", "hpp", "hh", "hxx", "h", "inl", "mm"],
+    vscodeId: "cpp",
+    md: "cpp",
+    ...cpp,
+  },
   { id: "c", label: "C", pick: true, aliases: ["objective-c"], ext: ["c"], vscodeId: "c", md: "c", ...cpp },
-  { id: "rust", label: "Rust", pick: true, aliases: ["rs"], ext: ["rs"], comment: "//", vscodeId: "rust", md: "rust", highlight: shiki("rust"), lsp: true, keywords: RUST_KW, noDef: "a macro, or no rust-analyzer", grammar: "rust" },
-  { id: "typescript", label: "TypeScript", pick: true, aliases: ["ts", "tsx"], ext: ["ts", "tsx"], comment: "//", vscodeId: "typescript", md: "typescript", highlight: shiki("typescript"), lsp: true },
-  { id: "javascript", label: "JavaScript", pick: true, aliases: ["js", "jsx", "mjs", "cjs"], ext: ["js", "jsx", "mjs", "cjs"], comment: "//", vscodeId: "javascript", md: "javascript", highlight: shiki("javascript"), lsp: true },
-  { id: "go", label: "Go", pick: true, aliases: ["golang"], ext: ["go"], comment: "//", vscodeId: "go", md: "go", highlight: shiki("go"), lsp: true },
-  { id: "java", label: "Java", aliases: [], ext: ["java"], comment: "//", vscodeId: "java", md: "java", highlight: shiki("java"), lsp: true },
-  { id: "shellscript", label: "Shell", pick: true, aliases: ["bash", "sh", "zsh", "shell", "console"], ext: ["sh", "bash", "zsh"], comment: "#", vscodeId: "shellscript", md: "bash", highlight: shiki("shellscript") },
-  { id: "json", label: "JSON", aliases: ["jsonc"], ext: ["json"], comment: "//", vscodeId: "json", md: "json", highlight: shiki("json") },
-  { id: "yaml", label: "YAML", aliases: ["yml"], ext: ["yaml", "yml"], comment: "#", vscodeId: "yaml", md: "yaml", highlight: shiki("yaml") },
-  { id: "toml", label: "TOML", aliases: [], ext: ["toml"], comment: "#", vscodeId: "toml", md: "toml", highlight: shiki("toml") },
-  { id: "ini", label: "INI", aliases: ["cfg"], ext: ["ini", "cfg"], comment: ";", vscodeId: "ini", md: "ini", highlight: shiki("ini") },
-  { id: "sql", label: "SQL", aliases: [], ext: ["sql"], comment: "--", vscodeId: "sql", md: "sql", highlight: shiki("sql") },
-  { id: "lua", label: "Lua", aliases: [], ext: ["lua"], comment: "--", vscodeId: "lua", md: "lua", highlight: shiki("lua") },
-  { id: "ruby", label: "Ruby", aliases: ["rb"], ext: ["rb"], comment: "#", vscodeId: "ruby", md: "ruby", highlight: shiki("ruby") },
+  {
+    id: "rust",
+    label: "Rust",
+    pick: true,
+    aliases: ["rs"],
+    ext: ["rs"],
+    comment: "//",
+    vscodeId: "rust",
+    md: "rust",
+    highlight: shiki("rust"),
+    lsp: true,
+    keywords: RUST_KW,
+    noDef: "a macro, or no rust-analyzer",
+    grammar: "rust",
+  },
+  {
+    id: "typescript",
+    label: "TypeScript",
+    pick: true,
+    aliases: ["ts", "tsx"],
+    ext: ["ts", "tsx"],
+    comment: "//",
+    vscodeId: "typescript",
+    md: "typescript",
+    highlight: shiki("typescript"),
+    lsp: true,
+  },
+  {
+    id: "javascript",
+    label: "JavaScript",
+    pick: true,
+    aliases: ["js", "jsx", "mjs", "cjs"],
+    ext: ["js", "jsx", "mjs", "cjs"],
+    comment: "//",
+    vscodeId: "javascript",
+    md: "javascript",
+    highlight: shiki("javascript"),
+    lsp: true,
+  },
+  {
+    id: "go",
+    label: "Go",
+    pick: true,
+    aliases: ["golang"],
+    ext: ["go"],
+    comment: "//",
+    vscodeId: "go",
+    md: "go",
+    highlight: shiki("go"),
+    lsp: true,
+  },
+  {
+    id: "java",
+    label: "Java",
+    aliases: [],
+    ext: ["java"],
+    comment: "//",
+    vscodeId: "java",
+    md: "java",
+    highlight: shiki("java"),
+    lsp: true,
+  },
+  {
+    id: "shellscript",
+    label: "Shell",
+    pick: true,
+    aliases: ["bash", "sh", "zsh", "shell", "console"],
+    ext: ["sh", "bash", "zsh"],
+    comment: "#",
+    vscodeId: "shellscript",
+    md: "bash",
+    highlight: shiki("shellscript"),
+  },
+  {
+    id: "json",
+    label: "JSON",
+    aliases: ["jsonc"],
+    ext: ["json"],
+    comment: "//",
+    vscodeId: "json",
+    md: "json",
+    highlight: shiki("json"),
+  },
+  {
+    id: "yaml",
+    label: "YAML",
+    aliases: ["yml"],
+    ext: ["yaml", "yml"],
+    comment: "#",
+    vscodeId: "yaml",
+    md: "yaml",
+    highlight: shiki("yaml"),
+  },
+  {
+    id: "toml",
+    label: "TOML",
+    aliases: [],
+    ext: ["toml"],
+    comment: "#",
+    vscodeId: "toml",
+    md: "toml",
+    highlight: shiki("toml"),
+  },
+  {
+    id: "ini",
+    label: "INI",
+    aliases: ["cfg"],
+    ext: ["ini", "cfg"],
+    comment: ";",
+    vscodeId: "ini",
+    md: "ini",
+    highlight: shiki("ini"),
+  },
+  {
+    id: "sql",
+    label: "SQL",
+    aliases: [],
+    ext: ["sql"],
+    comment: "--",
+    vscodeId: "sql",
+    md: "sql",
+    highlight: shiki("sql"),
+  },
+  {
+    id: "lua",
+    label: "Lua",
+    aliases: [],
+    ext: ["lua"],
+    comment: "--",
+    vscodeId: "lua",
+    md: "lua",
+    highlight: shiki("lua"),
+  },
+  {
+    id: "ruby",
+    label: "Ruby",
+    aliases: ["rb"],
+    ext: ["rb"],
+    comment: "#",
+    vscodeId: "ruby",
+    md: "ruby",
+    highlight: shiki("ruby"),
+  },
   { id: "r", label: "R", aliases: [], ext: ["r"], comment: "#", vscodeId: "r", md: "r", highlight: shiki("r") },
-  { id: "perl", label: "Perl", aliases: ["pl"], ext: ["pl", "pm"], comment: "#", vscodeId: "perl", md: "perl", highlight: shiki("perl") },
-  { id: "haskell", label: "Haskell", aliases: ["hs"], ext: ["hs"], comment: "--", vscodeId: "haskell", md: "haskell", highlight: shiki("haskell") },
-  { id: "diff", label: "Diff", aliases: ["patch"], ext: ["diff", "patch"], comment: "#", vscodeId: "diff", md: "diff", highlight: shiki("diff") },
-  { id: "css", label: "CSS", aliases: [], ext: ["css"], comment: "//", vscodeId: "css", md: "css", highlight: shiki("css") },
-  { id: "html", label: "HTML", aliases: ["xml", "svg"], ext: ["html", "htm"], comment: "//", vscodeId: "html", md: "html", highlight: shiki("html") },
-  { id: "plaintext", label: "Plain Text", aliases: ["text", "txt"], ext: ["txt"], comment: "#", vscodeId: "plaintext", md: "" },
+  {
+    id: "perl",
+    label: "Perl",
+    aliases: ["pl"],
+    ext: ["pl", "pm"],
+    comment: "#",
+    vscodeId: "perl",
+    md: "perl",
+    highlight: shiki("perl"),
+  },
+  {
+    id: "haskell",
+    label: "Haskell",
+    aliases: ["hs"],
+    ext: ["hs"],
+    comment: "--",
+    vscodeId: "haskell",
+    md: "haskell",
+    highlight: shiki("haskell"),
+  },
+  {
+    id: "diff",
+    label: "Diff",
+    aliases: ["patch"],
+    ext: ["diff", "patch"],
+    comment: "#",
+    vscodeId: "diff",
+    md: "diff",
+    highlight: shiki("diff"),
+  },
+  {
+    id: "css",
+    label: "CSS",
+    aliases: [],
+    ext: ["css"],
+    comment: "//",
+    vscodeId: "css",
+    md: "css",
+    highlight: shiki("css"),
+  },
+  {
+    id: "html",
+    label: "HTML",
+    aliases: ["xml", "svg"],
+    ext: ["html", "htm"],
+    comment: "//",
+    vscodeId: "html",
+    md: "html",
+    highlight: shiki("html"),
+  },
+  {
+    id: "plaintext",
+    label: "Plain Text",
+    aliases: ["text", "txt"],
+    ext: ["txt"],
+    comment: "#",
+    vscodeId: "plaintext",
+    md: "",
+  },
 ];
 
 const byName = new Map<string, LangInfo>();
@@ -79,8 +304,10 @@ for (const l of LANG_TABLE) {
   for (const e of l.ext) if (!byExt.has(e)) byExt.set(e, l);
 }
 
-export const langInfo = (name: string | null | undefined): LangInfo | undefined => (name ? byName.get(name.toLowerCase()) : undefined);
-export const langOfExt = (file: string): LangInfo | undefined => byExt.get(/\.([^./\\]+)$/.exec(file)?.[1].toLowerCase() ?? "");
+export const langInfo = (name: string | null | undefined): LangInfo | undefined =>
+  name ? byName.get(name.toLowerCase()) : undefined;
+export const langOfExt = (file: string): LangInfo | undefined =>
+  byExt.get(/\.([^./\\]+)$/.exec(file)?.[1].toLowerCase() ?? "");
 export const LANGS: readonly LangInfo[] = LANG_TABLE.filter((l) => l.pick);
 export const langLabel = (name: string) => langInfo(name)?.label ?? name;
 export const langId = (name: string) => langInfo(name)?.id ?? name;
@@ -88,5 +315,8 @@ export const grammarOf = (lang: string): Grammar | null => langInfo(lang)?.gramm
 export const grammarOfFile = (file: string): Grammar | null => langOfExt(file)?.grammar ?? null;
 /** 有语法的语言的扩展名（只这一个语法的，或全部）：建名字索引、找工作区代码的文件 */
 /** The editor's language ids of every language the analysis reads (the editor shows board marks on their files) */
-export const analyzedEditorLangs = (): string[] => [...new Set(LANG_TABLE.filter((l) => l.grammar).map((l) => l.vscodeId))];
-export const codeExts = (g?: Grammar): string[] => LANG_TABLE.filter((l) => l.grammar && (!g || l.grammar === g)).flatMap((l) => l.ext);
+export const analyzedEditorLangs = (): string[] => [
+  ...new Set(LANG_TABLE.filter((l) => l.grammar).map((l) => l.vscodeId)),
+];
+export const codeExts = (g?: Grammar): string[] =>
+  LANG_TABLE.filter((l) => l.grammar && (!g || l.grammar === g)).flatMap((l) => l.ext);

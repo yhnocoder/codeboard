@@ -34,7 +34,10 @@ export function createSave(d: SaveDeps) {
   function changed() {
     if (queued) return;
     queued = true;
-    queueMicrotask(() => { queued = false; flush(); });
+    queueMicrotask(() => {
+      queued = false;
+      flush();
+    });
   }
   function changedLive() {
     if (!d.loaded()) return;
@@ -50,21 +53,35 @@ export function createSave(d: SaveDeps) {
     const p = diff(sent, s, cam);
     if (!p) return;
     sent = { snap: s, cam: camKey(cam) };
-    d.post(p, d.takeUndone()).then((r) => { if (r?.skipped) d.toast(NOT_UNDONE); }, (e: Error) => {
-      sent = null;
-      if (retry) return;
-      d.toast(`Couldn't save the board: ${e.message}`);
-      resend = setTimeout(() => flush(true), d.resendDelay); // sent whole once more; not taken again → wait for the next change
-    });
+    d.post(p, d.takeUndone()).then(
+      (r) => {
+        if (r?.skipped) d.toast(NOT_UNDONE);
+      },
+      (e: Error) => {
+        sent = null;
+        if (retry) return;
+        d.toast(`Couldn't save the board: ${e.message}`);
+        resend = setTimeout(() => flush(true), d.resendDelay); // sent whole once more; not taken again → wait for the next change
+      },
+    );
   }
   /** The host already has the board as it is now (it just sent it, or just merged it in) */
-  function align() { sent = { snap: d.snap(), cam: camKey(d.cam()) }; }
+  function align() {
+    sent = { snap: d.snap(), cam: camKey(d.cam()) };
+  }
 
   return {
-    changed, changedLive, flush,
+    changed,
+    changedLive,
+    flush,
     /** The board the host just sent is the saved one */
-    markSaved() { align(); d.takeUndone(); },
+    markSaved() {
+      align();
+      d.takeUndone();
+    },
     /** The host changed the board itself (shared cards, a merge): what it has is now, so this is not sent back */
-    alignSent() { if (sent) align(); },
+    alignSent() {
+      if (sent) align();
+    },
   };
 }

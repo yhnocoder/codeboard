@@ -6,6 +6,7 @@ import { WS } from "./node-workspace";
 
 export default function setup() {
   const src = path.resolve(__dirname, "../../../examples/nano-vllm");
-  if (!fs.existsSync(path.join(src, ".git"))) throw new Error("examples/nano-vllm is not checked out: run git submodule update --init examples/nano-vllm");
+  if (!fs.existsSync(path.join(src, ".git")))
+    throw new Error("examples/nano-vllm is not checked out: run git submodule update --init examples/nano-vllm");
   if (!fs.existsSync(WS)) execFileSync("git", ["clone", "-q", src, WS]);
 }

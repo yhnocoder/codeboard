@@ -18,7 +18,8 @@ let on: Slots | null = null;
 /** Note 的正文里显示着的顶层块，和 Markdown 的块一一对上时给出它们；正在编辑、没渲染完、对不上时给 null（图放在末尾） */
 function blocksOf(body: HTMLElement | null, md: string): HTMLElement[] | null {
   if (!body || body.querySelector(".md-pm")) return null;
-  const starts = mdBlockStarts(md), kids = [...body.children] as HTMLElement[];
+  const starts = mdBlockStarts(md),
+    kids = [...body.children] as HTMLElement[];
   return starts && starts.length === kids.length ? kids : null;
 }
 
@@ -28,7 +29,8 @@ function measure(id: string): Slots | null {
   const c = cardById(id)?.card;
   if (!el || !face || c?.kind !== "note") return null;
   const body = face.querySelector<HTMLElement>(":scope > .md");
-  const fr = face.getBoundingClientRect(), k = fr.width / face.offsetWidth || 1;
+  const fr = face.getBoundingClientRect(),
+    k = fr.width / face.offsetWidth || 1;
   const br = (body ?? face).getBoundingClientRect();
   const local = (cy: number) => Math.min(Math.max((cy - fr.top) / k, (br.top - fr.top) / k), (br.bottom - fr.top) / k);
   const kids = blocksOf(body, c.md) ?? [];
@@ -47,7 +49,10 @@ function measure(id: string): Slots | null {
 
 /** 拖着图片卡在 Note id 上移动（pointer：屏幕坐标） */
 export function overNote(id: string, pointer: { x: number; y: number }) {
-  if (on?.card !== id) { leaveNote(); on = measure(id); }
+  if (on?.card !== id) {
+    leaveNote();
+    on = measure(id);
+  }
   if (!on) return;
   const wy = worldAt(pointer).y;
   const j = on.slots.findIndex((s) => wy < s.wy);
@@ -67,7 +72,8 @@ export function leaveNote() {
  */
 export function noteDropAt(id: string): number | undefined {
   if (on?.card !== id || on.cur < 0) return undefined;
-  const block = on.slots[on.cur].block, c = cardById(id)?.card;
+  const block = on.slots[on.cur].block,
+    c = cardById(id)?.card;
   if (c?.kind !== "note") return undefined;
   const starts = mdBlockStarts(c.md);
   return starts && block < starts.length ? starts[block] : undefined;

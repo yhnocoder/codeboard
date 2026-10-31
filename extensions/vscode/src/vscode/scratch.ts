@@ -30,31 +30,61 @@ function cleanup(dir: string) {
     const entries: { name: string; mtimeMs: number }[] = [];
     for (const name of fs.readdirSync(dir)) {
       if (!isScratchName(name)) continue;
-      try { const st = fs.statSync(path.join(dir, name)); if (st.isFile()) entries.push({ name, mtimeMs: st.mtimeMs }); } catch { /* 刚被删了 */ }
+      try {
+        const st = fs.statSync(path.join(dir, name));
+        if (st.isFile()) entries.push({ name, mtimeMs: st.mtimeMs });
+      } catch {
+        /* 刚被删了 */
+      }
     }
     for (const name of staleScratch(entries, now, (n) => files.has(path.join(dir, n)))) {
-      try { fs.rmSync(path.join(dir, name), { force: true }); } catch {}
+      try {
+        fs.rmSync(path.join(dir, name), { force: true });
+      } catch {}
     }
   } catch {}
 }
 let heartbeat: ReturnType<typeof setInterval> | undefined;
 function beat() {
   const now = new Date();
-  for (const d of docs.values()) { try { fs.utimesSync(d.uri.fsPath, now, now); } catch { /* 文件没了 */ } }
+  for (const d of docs.values()) {
+    try {
+      fs.utimesSync(d.uri.fsPath, now, now);
+    } catch {
+      /* 文件没了 */
+    }
+  }
 }
 
 const KIND: Partial<Record<vscode.CompletionItemKind, LspKind>> = {
-  [vscode.CompletionItemKind.Method]: "method", [vscode.CompletionItemKind.Function]: "function", [vscode.CompletionItemKind.Constructor]: "class",
-  [vscode.CompletionItemKind.Field]: "property", [vscode.CompletionItemKind.Variable]: "variable", [vscode.CompletionItemKind.Class]: "class",
-  [vscode.CompletionItemKind.Interface]: "interface", [vscode.CompletionItemKind.Module]: "module", [vscode.CompletionItemKind.Property]: "property",
-  [vscode.CompletionItemKind.Enum]: "enum", [vscode.CompletionItemKind.EnumMember]: "constant", [vscode.CompletionItemKind.Keyword]: "keyword",
-  [vscode.CompletionItemKind.Constant]: "constant", [vscode.CompletionItemKind.Struct]: "class", [vscode.CompletionItemKind.TypeParameter]: "type",
-  [vscode.CompletionItemKind.Value]: "constant", [vscode.CompletionItemKind.Text]: "text", [vscode.CompletionItemKind.Snippet]: "text",
+  [vscode.CompletionItemKind.Method]: "method",
+  [vscode.CompletionItemKind.Function]: "function",
+  [vscode.CompletionItemKind.Constructor]: "class",
+  [vscode.CompletionItemKind.Field]: "property",
+  [vscode.CompletionItemKind.Variable]: "variable",
+  [vscode.CompletionItemKind.Class]: "class",
+  [vscode.CompletionItemKind.Interface]: "interface",
+  [vscode.CompletionItemKind.Module]: "module",
+  [vscode.CompletionItemKind.Property]: "property",
+  [vscode.CompletionItemKind.Enum]: "enum",
+  [vscode.CompletionItemKind.EnumMember]: "constant",
+  [vscode.CompletionItemKind.Keyword]: "keyword",
+  [vscode.CompletionItemKind.Constant]: "constant",
+  [vscode.CompletionItemKind.Struct]: "class",
+  [vscode.CompletionItemKind.TypeParameter]: "type",
+  [vscode.CompletionItemKind.Value]: "constant",
+  [vscode.CompletionItemKind.Text]: "text",
+  [vscode.CompletionItemKind.Snippet]: "text",
 };
 
-const md = (d: string | vscode.MarkdownString | undefined) => (d === undefined ? undefined : typeof d === "string" ? d : d.value) || undefined;
+const md = (d: string | vscode.MarkdownString | undefined) =>
+  (d === undefined ? undefined : typeof d === "string" ? d : d.value) || undefined;
 /** 代码片段 → 纯文字（${1:x} → x，$1 / $0 去掉） */
-const unsnippet = (s: string) => s.replace(/\$\{\d+:([^}]*)\}/g, "$1").replace(/\$\{\d+\}|\$\d+/g, "").replace(/\\([$}\\])/g, "$1");
+const unsnippet = (s: string) =>
+  s
+    .replace(/\$\{\d+:([^}]*)\}/g, "$1")
+    .replace(/\$\{\d+\}|\$\d+/g, "")
+    .replace(/\\([$}\\])/g, "$1");
 
 async function ensure(id: string, lang: string, near: string | undefined, store: string): Promise<Doc> {
   const have = docs.get(id);
@@ -66,11 +96,17 @@ async function ensure(id: string, lang: string, near: string | undefined, store:
   const dir = dirFor(near, store);
   fs.mkdirSync(dir, { recursive: true });
   await excludeScratch(dir);
-  if (!cleaned.has(dir)) { cleaned.add(dir); cleanup(dir); }
+  if (!cleaned.has(dir)) {
+    cleaned.add(dir);
+    cleanup(dir);
+  }
   const file = path.join(dir, scratchName(id, lang));
   if (!files.has(file)) fs.writeFileSync(file, "");
   files.add(file);
-  if (!heartbeat) { heartbeat = setInterval(beat, HEARTBEAT_MS); heartbeat.unref?.(); }
+  if (!heartbeat) {
+    heartbeat = setInterval(beat, HEARTBEAT_MS);
+    heartbeat.unref?.();
+  }
   const uri = vscode.Uri.file(file);
   let doc = await vscode.workspace.openTextDocument(uri);
   if (doc.languageId !== lang) doc = await vscode.languages.setTextDocumentLanguage(doc, lang);
@@ -98,29 +134,50 @@ export async function setText(d: Doc, text: string) {
       over = true;
       clearTimeout(limit);
       for (const s of subs) s.dispose();
-      if (err) reject(err); else resolve();
+      if (err) reject(err);
+      else resolve();
     };
     const subs = [
-      vscode.workspace.onDidChangeTextDocument((e) => { if (e.document.uri.toString() === k && sameText(e.document.getText(), text)) { d.doc = e.document; end(); } }),
-      vscode.workspace.onDidCloseTextDocument((doc) => { if (doc.uri.toString() === k) end(new Error(`scratch document was closed before it reloaded: ${d.uri.fsPath}`)); }),
+      vscode.workspace.onDidChangeTextDocument((e) => {
+        if (e.document.uri.toString() === k && sameText(e.document.getText(), text)) {
+          d.doc = e.document;
+          end();
+        }
+      }),
+      vscode.workspace.onDidCloseTextDocument((doc) => {
+        if (doc.uri.toString() === k) end(new Error(`scratch document was closed before it reloaded: ${d.uri.fsPath}`));
+      }),
     ];
-    const limit = setTimeout(() => end(new Error(`scratch document did not reload within ${RELOAD_LIMIT_MS} ms: ${d.uri.fsPath}`)), RELOAD_LIMIT_MS);
-    vscode.workspace.fs.writeFile(d.uri, Buffer.from(text, "utf8")).then(undefined, (e: unknown) => end(e instanceof Error ? e : new Error(String(e))));
+    const limit = setTimeout(
+      () => end(new Error(`scratch document did not reload within ${RELOAD_LIMIT_MS} ms: ${d.uri.fsPath}`)),
+      RELOAD_LIMIT_MS,
+    );
+    vscode.workspace.fs
+      .writeFile(d.uri, Buffer.from(text, "utf8"))
+      .then(undefined, (e: unknown) => end(e instanceof Error ? e : new Error(String(e))));
   });
 }
 
 function item(c: vscode.CompletionItem, line: number): LspItem {
   const label = typeof c.label === "string" ? c.label : c.label.label;
-  const ins = c.insertText === undefined ? undefined : typeof c.insertText === "string" ? c.insertText : unsnippet(c.insertText.value);
+  const ins =
+    c.insertText === undefined
+      ? undefined
+      : typeof c.insertText === "string"
+        ? c.insertText
+        : unsnippet(c.insertText.value);
   const r = c.range && ("replacing" in c.range ? c.range.replacing : c.range);
-  const detail = c.detail ?? (typeof c.label === "string" ? undefined : c.label.description ?? c.label.detail);
+  const detail = c.detail ?? (typeof c.label === "string" ? undefined : (c.label.description ?? c.label.detail));
   const out: LspItem = { label };
   if (c.kind !== undefined && KIND[c.kind]) out.kind = KIND[c.kind];
   if (detail) out.detail = detail;
   const doc = md(c.documentation);
   if (doc) out.doc = doc;
   if (ins !== undefined && ins !== label) out.insert = ins;
-  if (r && r.start.line === line && r.end.line === line) { out.from = r.start.character; out.to = r.end.character; }
+  if (r && r.start.line === line && r.end.line === line) {
+    out.from = r.start.character;
+    out.to = r.end.character;
+  }
   return out;
 }
 
@@ -130,8 +187,10 @@ function signature(h: vscode.SignatureHelp | undefined): LspSignature | null {
   let at = 0;
   const params = (s.parameters ?? []).map((p) => {
     let r: [number, number];
-    if (typeof p.label === "string") { const i = s.label.indexOf(p.label, at); r = i >= 0 ? [i, i + p.label.length] : [0, 0]; }
-    else r = [p.label[0], p.label[1]];
+    if (typeof p.label === "string") {
+      const i = s.label.indexOf(p.label, at);
+      r = i >= 0 ? [i, i + p.label.length] : [0, 0];
+    } else r = [p.label[0], p.label[1]];
     at = r[1];
     return { at: r, doc: md(p.documentation) };
   });
@@ -140,7 +199,10 @@ function signature(h: vscode.SignatureHelp | undefined): LspSignature | null {
 }
 
 export function disposeScratch() {
-  if (heartbeat) { clearInterval(heartbeat); heartbeat = undefined; }
+  if (heartbeat) {
+    clearInterval(heartbeat);
+    heartbeat = undefined;
+  }
   for (const f of files) fs.rmSync(f, { force: true });
   files.clear();
   docs.clear();
@@ -148,7 +210,9 @@ export function disposeScratch() {
 
 export function vscodeScratch(storeDir: () => string): WorkspaceScratch {
   return {
-    sync: async (id, lang, text, near) => { await setText(await ensure(id, lang, near, storeDir()), text); },
+    sync: async (id, lang, text, near) => {
+      await setText(await ensure(id, lang, near, storeDir()), text);
+    },
     close: async (id) => {
       const d = docs.get(id);
       docs.delete(id);
@@ -160,8 +224,18 @@ export function vscodeScratch(storeDir: () => string): WorkspaceScratch {
     completions: async (id, line, col, trigger) => {
       const d = docs.get(id);
       if (!d) return [];
-      const l = await vscode.commands.executeCommand<vscode.CompletionList>("vscode.executeCompletionItemProvider", d.uri, new vscode.Position(line, col), trigger, 0);
-      const items = [...(l?.items ?? [])].sort((a, b) => (a.sortText ?? (typeof a.label === "string" ? a.label : a.label.label)).localeCompare(b.sortText ?? (typeof b.label === "string" ? b.label : b.label.label)));
+      const l = await vscode.commands.executeCommand<vscode.CompletionList>(
+        "vscode.executeCompletionItemProvider",
+        d.uri,
+        new vscode.Position(line, col),
+        trigger,
+        0,
+      );
+      const items = [...(l?.items ?? [])].sort((a, b) =>
+        (a.sortText ?? (typeof a.label === "string" ? a.label : a.label.label)).localeCompare(
+          b.sortText ?? (typeof b.label === "string" ? b.label : b.label.label),
+        ),
+      );
       return items.map((c) => item(c, line));
     },
     hover: async (id, line, col) => {
@@ -172,7 +246,14 @@ export function vscodeScratch(storeDir: () => string): WorkspaceScratch {
     signature: async (id, line, col, trigger) => {
       const d = docs.get(id);
       if (!d) return null;
-      return signature(await vscode.commands.executeCommand<vscode.SignatureHelp>("vscode.executeSignatureHelpProvider", d.uri, new vscode.Position(line, col), trigger));
+      return signature(
+        await vscode.commands.executeCommand<vscode.SignatureHelp>(
+          "vscode.executeSignatureHelpProvider",
+          d.uri,
+          new vscode.Position(line, col),
+          trigger,
+        ),
+      );
     },
   };
 }

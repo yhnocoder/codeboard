@@ -11,9 +11,26 @@ describe("sticker folder", () => {
     const dir = path.join(WS, rel);
     fs.rmSync(dir, { recursive: true, force: true });
     fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(path.join(dir, "mypack.json"), JSON.stringify({ prefix: "mypack", info: { name: "MyPack" }, icons: { star: { body: "<path d='M0 0h16v16z'/>" } } }));
-    const W = nodeWorkspace(), opened: string[] = [];
-    useWorkspace({ ...W, settings: { ...W.settings, get: <T>(k: string) => (k === "codeboard.stickerFolder" ? rel : undefined) as T }, ui: { ...W.ui, openFolder: async (d: string) => { opened.push(d); } } });
+    fs.writeFileSync(
+      path.join(dir, "mypack.json"),
+      JSON.stringify({
+        prefix: "mypack",
+        info: { name: "MyPack" },
+        icons: { star: { body: "<path d='M0 0h16v16z'/>" } },
+      }),
+    );
+    const W = nodeWorkspace(),
+      opened: string[] = [];
+    useWorkspace({
+      ...W,
+      settings: { ...W.settings, get: <T>(k: string) => (k === "codeboard.stickerFolder" ? rel : undefined) as T },
+      ui: {
+        ...W.ui,
+        openFolder: async (d: string) => {
+          opened.push(d);
+        },
+      },
+    });
     try {
       await openStickerDir();
       expect(opened).toEqual([dir]);

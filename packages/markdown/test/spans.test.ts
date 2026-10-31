@@ -22,8 +22,15 @@ describe("decoration ranges of a paragraph's source", () => {
       { text: "**b *c* d**", marks: ["**", "**"], inner: "b *c* d", kind: "strong" },
       { text: "*c*", marks: ["*", "*"], inner: "c", kind: "em" },
     ]);
-    expect(all("==h== ~~s~~ H~2~O x^2^ <u>u</u> <kbd>K</kbd>").map((s) => [s.kind, s.marks.join(" "), s.inner])).toEqual([
-      ["mark", "== ==", "h"], ["s", "~~ ~~", "s"], ["sub", "~ ~", "2"], ["sup", "^ ^", "2"], ["u", "<u> </u>", "u"], ["kbd", "<kbd> </kbd>", "K"],
+    expect(
+      all("==h== ~~s~~ H~2~O x^2^ <u>u</u> <kbd>K</kbd>").map((s) => [s.kind, s.marks.join(" "), s.inner]),
+    ).toEqual([
+      ["mark", "== ==", "h"],
+      ["s", "~~ ~~", "s"],
+      ["sub", "~ ~", "2"],
+      ["sup", "^ ^", "2"],
+      ["u", "<u> </u>", "u"],
+      ["kbd", "<kbd> </kbd>", "K"],
     ]);
   });
   it("code spans keep their content unparsed; links mark [ and ](url)", () => {
@@ -34,9 +41,17 @@ describe("decoration ranges of a paragraph's source", () => {
     ]);
   });
   it("atoms: formulas, images, emoji, refs, footnotes, <br>, notes, inline HTML", () => {
-    const t = "$x$ $$y$$ ![a](i.png \"c\"){width=40%} :smile: [[R]] [^1] <br> {w|n} <span>h</span>";
+    const t = '$x$ $$y$$ ![a](i.png "c"){width=40%} :smile: [[R]] [^1] <br> {w|n} <span>h</span>';
     expect(all(t).map((s) => [s.kind, s.text])).toEqual([
-      ["math", "$x$"], ["math", "$$y$$"], ["image", "![a](i.png \"c\"){width=40%}"], ["emoji", ":smile:"], ["ref", "[[R]]"], ["fn", "[^1]"], ["br", "<br>"], ["annot", "{w|n}"], ["html", "<span>h</span>"],
+      ["math", "$x$"],
+      ["math", "$$y$$"],
+      ["image", '![a](i.png "c"){width=40%}'],
+      ["emoji", ":smile:"],
+      ["ref", "[[R]]"],
+      ["fn", "[^1]"],
+      ["br", "<br>"],
+      ["annot", "{w|n}"],
+      ["html", "<span>h</span>"],
     ]);
     const img = flat(blockInfo(t).spans).find((s) => s.atom?.type === "image")!.atom!;
     expect(img).toMatchObject({ type: "image", src: "i.png", alt: "a", title: "c", width: 40 });

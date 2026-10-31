@@ -2,12 +2,27 @@ import { describe, expect, it } from "vitest";
 import { imageScale, pngDpi, sniffImage } from "../src";
 
 const u32 = (n: number) => [(n >>> 24) & 255, (n >>> 16) & 255, (n >>> 8) & 255, n & 255];
-const chunk = (type: string, data: number[]) => [...u32(data.length), ...[...type].map((c) => c.charCodeAt(0)), ...data, 0, 0, 0, 0];
+const chunk = (type: string, data: number[]) => [
+  ...u32(data.length),
+  ...[...type].map((c) => c.charCodeAt(0)),
+  ...data,
+  0,
+  0,
+  0,
+  0,
+];
 /** 一张 w×h 的 PNG 的块结构（不解码，CRC 不算）：IHDR、可选的 iCCP 和 pHYs、IDAT、IEND */
 function png(w: number, h: number, o: { ppm?: number; unit?: number; iccp?: number; afterIdat?: boolean } = {}) {
   const phys = o.ppm === undefined ? [] : chunk("pHYs", [...u32(o.ppm), ...u32(o.ppm), o.unit ?? 1]);
   return new Uint8Array([
-    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+    0x89,
+    0x50,
+    0x4e,
+    0x47,
+    0x0d,
+    0x0a,
+    0x1a,
+    0x0a,
     ...chunk("IHDR", [...u32(w), ...u32(h), 8, 6, 0, 0, 0]),
     ...(o.iccp ? chunk("iCCP", new Array(o.iccp).fill(1)) : []),
     ...(o.afterIdat ? [] : phys),

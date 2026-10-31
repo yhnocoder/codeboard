@@ -42,27 +42,47 @@ export const changed: Stale = { state: "changed", hiddenOnly: false, head: "f64d
 export function noteGroup(g: Group, a: { w: number; h: number }) {
   const { put, caption } = g;
   const col = (i: number) => 40 + i * (a.w + 60);
-  caption("Empty", col(0), 40); put(noteCard("n-empty", ""), { x: col(0), y: 40, w: a.w });
-  caption("Short", col(0), 220); put(noteCard("n-short", SHORT), { x: col(0), y: 220, w: a.w });
-  caption("Titled (heading in the header)", col(0), 420); put(noteCard("n-titled", TITLED), { x: col(0), y: 420, w: a.w });
-  caption("Long (fixed height, scrolls)", col(1), 40); put(noteCard("n-long", LONG), { x: col(1), y: 40, w: a.w, h: a.h });
-  caption("Math, code, image, annotation", col(2), 40); put(noteCard("n-rich", RICH), { x: col(2), y: 40, w: a.w + 40 });
-  caption("Selected", col(1), a.h + 120); put(noteCard("n-sel", SHORT), { x: col(1), y: a.h + 120, w: a.w });
-  caption("Editing", col(2), 620); put(noteCard("n-edit", TITLED), { x: col(2), y: 620, w: a.w + 40 });
+  caption("Empty", col(0), 40);
+  put(noteCard("n-empty", ""), { x: col(0), y: 40, w: a.w });
+  caption("Short", col(0), 220);
+  put(noteCard("n-short", SHORT), { x: col(0), y: 220, w: a.w });
+  caption("Titled (heading in the header)", col(0), 420);
+  put(noteCard("n-titled", TITLED), { x: col(0), y: 420, w: a.w });
+  caption("Long (fixed height, scrolls)", col(1), 40);
+  put(noteCard("n-long", LONG), { x: col(1), y: 40, w: a.w, h: a.h });
+  caption("Math, code, image, annotation", col(2), 40);
+  put(noteCard("n-rich", RICH), { x: col(2), y: 40, w: a.w + 40 });
+  caption("Selected", col(1), a.h + 120);
+  put(noteCard("n-sel", SHORT), { x: col(1), y: a.h + 120, w: a.w });
+  caption("Editing", col(2), 620);
+  put(noteCard("n-edit", TITLED), { x: col(2), y: 620, w: a.w + 40 });
   return { sel: "n-sel", editing: "n-edit" };
 }
 
 export function codeGroup(g: Group, a: { w: number; annot: string; annotColor: HandColor }) {
   const { put, caption } = g;
   // 从 y = 80 起：上面留给「有新版本」的横幅
-  const y = 80, c2 = a.w + 80, c3 = 2 * a.w + 120;
-  caption("Scheduler.schedule", 40, y); put(codeCard("c-default", "schedule"), { x: 40, y, w: a.w });
+  const y = 80,
+    c2 = a.w + 80,
+    c3 = 2 * a.w + 120;
+  caption("Scheduler.schedule", 40, y);
+  put(codeCard("c-default", "schedule"), { x: 40, y, w: a.w });
   caption("Annotations on the code", c2, y);
-  put(codeCard("c-annot", "schedule", { annots: (s) => [...annotAt(s, "self.waiting", "还没跑的请求"), ...annotAt(s, "num_cached_blocks", a.annot, { color: a.annotColor, below: true })] }), { x: c2, y, w: a.w, h: 300 });
+  put(
+    codeCard("c-annot", "schedule", {
+      annots: (s) => [
+        ...annotAt(s, "self.waiting", "还没跑的请求"),
+        ...annotAt(s, "num_cached_blocks", a.annot, { color: a.annotColor, below: true }),
+      ],
+    }),
+    { x: c2, y, w: a.w, h: 300 },
+  );
   caption("New version (amber dot)", c2, y + 430);
   const stale = put(codeCard("c-stale", "canAppend"), { x: c2, y: y + 430, w: a.w });
-  caption("Narrow", c3, y, 200); put(codeCard("c-narrow", "preempt"), { x: c3, y, w: 200 });
-  caption("Selected", c3, y + 260); put(codeCard("c-sel", "preempt"), { x: c3, y: y + 260, w: 280 });
+  caption("Narrow", c3, y, 200);
+  put(codeCard("c-narrow", "preempt"), { x: c3, y, w: 200 });
+  caption("Selected", c3, y + 260);
+  put(codeCard("c-sel", "preempt"), { x: c3, y: y + 260, w: 280 });
   return { stale: { [stale.segments[0].id]: changed }, sel: "c-sel" };
 }
 
@@ -72,10 +92,16 @@ export function markGroup(g: Group, a: { color: HandColor; w: number }, o: { edi
     caption(k[0].toUpperCase() + k.slice(1), 40 + i * 220, 40, 200);
     put(markCard(`m-${k}`, ONE, k), { x: 40 + i * 220, y: 40, w: 200 });
   });
-  caption("One line (wide)", 40, 200, 400); put(markCard("m-wide", MANY, a.color), { x: 40, y: 200, w: 620 });
-  caption("Wrapped (narrow)", 700, 200); put(markCard("m-narrow", MANY, a.color), { x: 700, y: 200, w: a.w });
+  caption("One line (wide)", 40, 200, 400);
+  put(markCard("m-wide", MANY, a.color), { x: 40, y: 200, w: 620 });
+  caption("Wrapped (narrow)", 700, 200);
+  put(markCard("m-narrow", MANY, a.color), { x: 700, y: 200, w: a.w });
   // 选中时颜色条在卡上方，名字再往上让开
-  caption("Selected (toolbar, handle)", 40, 384); put(markCard("m-sel", ONE, a.color), { x: 40, y: 420, w: 220 });
-  if (o.editing) { caption("Editing", 420, 420); put(markCard("m-edit", ONE, a.color), { x: 420, y: 420, w: 220 }); }
+  caption("Selected (toolbar, handle)", 40, 384);
+  put(markCard("m-sel", ONE, a.color), { x: 40, y: 420, w: 220 });
+  if (o.editing) {
+    caption("Editing", 420, 420);
+    put(markCard("m-edit", ONE, a.color), { x: 420, y: 420, w: 220 });
+  }
   return { sel: "m-sel", editing: o.editing ? "m-edit" : undefined };
 }

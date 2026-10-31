@@ -1,5 +1,25 @@
 import { unwrap } from "solid-js/store";
-import { uid, findCard, isCode, cardTitle, segOf, cardIntoSidenote, imageIntoNote, removeSidenotes, sidenoteCard, sidenoteToCard, splitHeadings, splitNoteByHeadings, turnNoteInto, NEW_CARD_W, type Sidenote, type SegView, type Anchor, type BoxFill, type HandColor } from "@codeboard/core";
+import {
+  uid,
+  findCard,
+  isCode,
+  cardTitle,
+  segOf,
+  cardIntoSidenote,
+  imageIntoNote,
+  removeSidenotes,
+  sidenoteCard,
+  sidenoteToCard,
+  splitHeadings,
+  splitNoteByHeadings,
+  turnNoteInto,
+  NEW_CARD_W,
+  type Sidenote,
+  type SegView,
+  type Anchor,
+  type BoxFill,
+  type HandColor,
+} from "@codeboard/core";
 import { state, cardById, hostOf, rectOf, placeOf } from "../state/store";
 import { mutate } from "../state/changes";
 import { sel, select, clearSel, lineSel } from "../state/selection";
@@ -26,7 +46,14 @@ export function hoverMarker(el: Element, ids: string[]) {
   clearTimeout(leaveT);
   clearTimeout(hoverT);
   hoverT = window.setTimeout(() => showNotes(el, ids, false), 120);
-  el.addEventListener("pointerleave", () => { clearTimeout(hoverT); scheduleHideNotes(); }, { once: true });
+  el.addEventListener(
+    "pointerleave",
+    () => {
+      clearTimeout(hoverT);
+      scheduleHideNotes();
+    },
+    { once: true },
+  );
 }
 export function scheduleHideNotes() {
   clearTimeout(leaveT);
@@ -36,21 +63,36 @@ export function scheduleHideNotes() {
   }, 260);
 }
 export const cancelHideNotes = () => clearTimeout(leaveT);
-export function pinMarker(el: Element, ids: string[]) { showNotes(el, ids, true); }
+export function pinMarker(el: Element, ids: string[]) {
+  showNotes(el, ids, true);
+}
 function showNotes(el: Element, ids: string[], pin: boolean) {
   const n0 = state.board.sidenotes.find((n) => n.id === ids[0]);
   if (!n0) return;
   const same = pops().find((p) => p.pop.kind === "notes" && p.pop.ids.join() === ids.join());
-  if (same) { if (pin && !same.pinned) pinPop(same.id); return; }
+  if (same) {
+    if (pin && !same.pinned) pinPop(same.id);
+    return;
+  }
   const f = cardById(n0.at.card);
-  const where = n0.at.lines ? (n0.at.lines[0] === n0.at.lines[1] ? `line ${n0.at.lines[0]}` : `lines ${n0.at.lines[0]}–${n0.at.lines[1]}`) : f ? cardTitle(f.card) : "card";
-  const id = openPop({ kind: "notes", card: n0.at.card, ids, title: `Sidenotes · ${where}`, sel: ids[0] }, { el, prefer: "right" });
+  const where = n0.at.lines
+    ? n0.at.lines[0] === n0.at.lines[1]
+      ? `line ${n0.at.lines[0]}`
+      : `lines ${n0.at.lines[0]}–${n0.at.lines[1]}`
+    : f
+      ? cardTitle(f.card)
+      : "card";
+  const id = openPop(
+    { kind: "notes", card: n0.at.card, ids, title: `Sidenotes · ${where}`, sel: ids[0] },
+    { el, prefer: "right" },
+  );
   if (pin) pinPop(id);
 }
 
 export function openAddNote(at: Anchor, tab: "code" | "paste" | "text" | "link" | "card" = "code") {
   const host = hostOf(at.card);
-  const el = (at.lines && document.querySelector(`${cardSel(host)} .addn`)) || document.querySelector(`${cardSel(host)}`);
+  const el =
+    (at.lines && document.querySelector(`${cardSel(host)} .addn`)) || document.querySelector(`${cardSel(host)}`);
   openPop({ kind: "addNote", at, tab }, el ? { el, prefer: "right" } : lastPointer());
 }
 /** @public run from the key table (keymap.ts) */
@@ -64,17 +106,24 @@ export function addSidenote(n: Omit<Sidenote, "id">, view?: SegView) {
   const id = uid("n");
   const sn = { ...n, id } as Sidenote;
   if (sn.kind === "code" && view) putViews({ [sn.code.id]: view });
-  mutate((b) => { b.sidenotes.push(sn); });
+  mutate((b) => {
+    b.sidenotes.push(sn);
+  });
   return id;
 }
 /** 一次加好几条（一个撤销步骤），返回新 id */
 export function addSidenotes(list: Omit<Sidenote, "id">[]) {
   const sns = list.map((n) => ({ ...n, id: uid("n") }) as Sidenote);
-  mutate((b) => { b.sidenotes.push(...sns); });
+  mutate((b) => {
+    b.sidenotes.push(...sns);
+  });
   return sns.map((n) => n.id);
 }
 export function updateSidenote(id: string, f: (n: Sidenote) => void) {
-  mutate((b) => { const n = b.sidenotes.find((k) => k.id === id); if (n) f(n); });
+  mutate((b) => {
+    const n = b.sidenotes.find((k) => k.id === id);
+    if (n) f(n);
+  });
 }
 export function deleteSidenote(id: string) {
   mutate((b) => removeSidenotes(b, [id]));
@@ -90,7 +139,10 @@ export function placeSidenote(id: string) {
   const views: Record<string, SegView> = {};
   if (n.kind === "code" && isCode(card) && state.views[n.code.id]) views[card.segments[0].id] = state.views[n.code.id];
   // 放卡、去掉 Sidenote、连箭头是同一步（一次撤销）
-  addCards([{ card, views, w: card.kind === "note" || n.kind === "paste" ? NEW_CARD_W : card.kind === "web" ? 300 : 480 }], { at: { x: r.x + r.w + 48, y: r.y + 20 }, also: (b) => sidenoteToCard(b, id, card.id) });
+  addCards(
+    [{ card, views, w: card.kind === "note" || n.kind === "paste" ? NEW_CARD_W : card.kind === "web" ? 300 : 480 }],
+    { at: { x: r.x + r.w + 48, y: r.y + 20 }, also: (b) => sidenoteToCard(b, id, card.id) },
+  );
   if (isCode(card) && card.segments[0].src.kind === "free") requestViews(card.segments);
   closePop();
 }
@@ -100,15 +152,21 @@ export async function cardToSidenote(cardId: string, at: Anchor) {
   if (!c) return;
   const links = state.board.links.filter((l) => l.from.card === cardId || l.to.card === cardId).length;
   if (links) {
-    const ok = await choose(`Turn into a Sidenote?`, ["Turn into Sidenote", "Cancel"], { text: `${links} link${links > 1 ? "s" : ""} on this card will be deleted.` });
+    const ok = await choose(`Turn into a Sidenote?`, ["Turn into Sidenote", "Cancel"], {
+      text: `${links} link${links > 1 ? "s" : ""} on this card will be deleted.`,
+    });
     if (ok !== 0) return;
   }
   // 多段卡：挂成 Card sidenote，卡留着
   const id = uid("n");
-  const n: Sidenote | null = isCode(c) && c.segments.length > 1 ? { id, at, kind: "card", card: cardId }
-    : c.kind === "note" ? { id, at, kind: "text", md: c.md }
-    : isCode(c) ? { id, at, kind: "code", code: structuredClone(unwrap(c.segments[0])), why: c.desc }
-    : null;
+  const n: Sidenote | null =
+    isCode(c) && c.segments.length > 1
+      ? { id, at, kind: "card", card: cardId }
+      : c.kind === "note"
+        ? { id, at, kind: "text", md: c.md }
+        : isCode(c)
+          ? { id, at, kind: "code", code: structuredClone(unwrap(c.segments[0])), why: c.desc }
+          : null;
   if (!n) return;
   const ok = mutate((b) => cardIntoSidenote(b, cardId, n));
   if (!ok) return;
@@ -124,7 +182,13 @@ export async function noteImageFor(imageId: string): Promise<string | null> {
 /** 图放进 Note 的 Markdown（at = 第几个字，一块的开头；不给 = 末尾），图片卡删掉：一步撤销 */
 export function putImageInNote(imageId: string, noteId: string, src: string, at?: number) {
   let ok = false;
-  if (!mutate((b) => { ok = imageIntoNote(b, imageId, noteId, src, at); }) || !ok) return;
+  if (
+    !mutate((b) => {
+      ok = imageIntoNote(b, imageId, noteId, src, at);
+    }) ||
+    !ok
+  )
+    return;
   select({ cards: [noteId] });
   toast("Added the image to the Note");
 }
@@ -138,7 +202,16 @@ export function scheduleHidePeek() {
   }, tune("peekHide"));
 }
 export const cancelHidePeek = () => clearTimeout(peekLeave);
-export async function showPeek(el: Element, cardId: string, segId: string, line: number, col: number, word: string, pin = false, at?: { path: string; line: number; col: number }) {
+export async function showPeek(
+  el: Element,
+  cardId: string,
+  segId: string,
+  line: number,
+  col: number,
+  word: string,
+  pin = false,
+  at?: { path: string; line: number; col: number },
+) {
   if (quietHover() && !pin) return;
   const c = cardById(cardId)?.card;
   const s = isCode(c) ? segOf(c, segId) : undefined;
@@ -148,16 +221,24 @@ export async function showPeek(el: Element, cardId: string, segId: string, line:
   try {
     const r = await ask("peek", { seg: s, line, col, word, at });
     updatePop(pid, "peek", (p) => ({ ...p, data: r ?? { none: "No definition found", word } }));
-  } catch { updatePop(pid, "peek", (p) => ({ ...p, data: { none: "No definition found", word } })); }
+  } catch {
+    updatePop(pid, "peek", (p) => ({ ...p, data: { none: "No definition found", word } }));
+  }
 }
 
 /** Mark 的颜色（它的箭头跟着变） */
 export function setMarkColor(id: string, hand: HandColor) {
-  mutate((b) => { const n = findCard(b, id)?.card; if (n?.kind === "note" && n.look === "mark") n.hand = hand; });
+  mutate((b) => {
+    const n = findCard(b, id)?.card;
+    if (n?.kind === "note" && n.look === "mark") n.hand = hand;
+  });
 }
 
 export function setBoxFill(id: string, fill: BoxFill) {
-  mutate((b) => { const n = findCard(b, id)?.card; if (n?.kind === "note" && n.look === "box") n.fill = fill; });
+  mutate((b) => {
+    const n = findCard(b, id)?.card;
+    if (n?.kind === "note" && n.look === "box") n.fill = fill;
+  });
 }
 
 export function turnNote(id: string, look: "note" | "text") {
@@ -167,7 +248,7 @@ export function turnNote(id: string, look: "note" | "text") {
 /** Split by Headings 能拆成几张卡（0 = 没有可拆的标题，菜单项灰掉） */
 export function headingSplitCount(id: string): number {
   const c = cardById(id)?.card;
-  return c?.kind === "note" && c.look === "note" ? splitHeadings(c.md)?.parts.length ?? 0 : 0;
+  return c?.kind === "note" && c.look === "note" ? (splitHeadings(c.md)?.parts.length ?? 0) : 0;
 }
 
 /** 卡里的元素到卡左上角的距离（布局像素，不受画布缩放、斜贴影响） */
@@ -207,12 +288,22 @@ export async function splitByHeadings(id: string) {
   const sp = c?.kind === "note" ? splitHeadings(c.md) : null;
   if (!sp) return;
   // 正在编辑：先存下编辑器里的字，等静态显示画出来再量
-  if (editing()?.id === id) { setEditing(null); await cardsMeasured(); return splitByHeadings(id); }
+  if (editing()?.id === id) {
+    setEditing(null);
+    await cardsMeasured();
+    return splitByHeadings(id);
+  }
   const m = measureSplit(id, sp.cut, sp.parts.length);
   const p0 = { ...placeOf(id) };
   const others = state.board.cards.filter((k) => k.id !== id && state.board.place[k.id]).map((k) => rectOf(k));
   let ids: string[] | null = null;
-  if (!mutate((b) => { ids = splitNoteByHeadings(b, id, { heights: m ? { root: m.root, parts: m.parts } : undefined, others }); }) || !ids) return;
+  if (
+    !mutate((b) => {
+      ids = splitNoteByHeadings(b, id, { heights: m ? { root: m.root, parts: m.parts } : undefined, others });
+    }) ||
+    !ids
+  )
+    return;
   const made: string[] = ids;
   select({ cards: [id, ...made] });
   made.forEach((k, i) => popCard(k, { x: p0.x, y: p0.y + (m?.tops[i] ?? 40) }));
@@ -231,7 +322,9 @@ export function captionItems(ref: ImgRef, el: Element | null): Item[] {
   const c = cardById(ref.card)?.card;
   if (c?.kind !== "note" || ref.note === undefined || !el) return [];
   // 编辑中：刚贴进来的图还没存回卡上，按编辑器里眼前的字找
-  const nth = imageIndex(el, ref), src = ref.note, cap = imageCaption(liveNoteMd(ref.card) ?? c.md, src, nth);
+  const nth = imageIndex(el, ref),
+    src = ref.note,
+    cap = imageCaption(liveNoteMd(ref.card) ?? c.md, src, nth);
   if (cap === null) return [];
   return [
     { label: cap ? "Edit Caption…" : "Add Caption…", run: () => void editCaption(ref.card, src, nth, cap) },
@@ -239,11 +332,16 @@ export function captionItems(ref: ImgRef, el: Element | null): Item[] {
   ];
 }
 async function editCaption(card: string, src: string, nth: number, cap: string) {
-  const v = await promptText(cap ? "Edit Caption" : "Add Caption", cap, "Figure 1: …", cap ? "Save" : "Add", { text: "Shown under the image, like a figure caption" });
+  const v = await promptText(cap ? "Edit Caption" : "Add Caption", cap, "Figure 1: …", cap ? "Save" : "Add", {
+    text: "Shown under the image, like a figure caption",
+  });
   if (v !== null && v !== cap) setCaption(card, src, nth, v);
 }
 function setCaption(card: string, src: string, nth: number, cap: string) {
   // 正在编辑这张 Note：先存下编辑器里的字，再改图注（编辑器里的文档不跟着外面的改动走）
   if (editing()?.kind === "note" && editing()?.id === card) setEditing(null);
-  mutate((b) => { const n = findCard(b, card)?.card; if (n?.kind === "note") n.md = setImageCaption(n.md, src, nth, cap); });
+  mutate((b) => {
+    const n = findCard(b, card)?.card;
+    if (n?.kind === "note") n.md = setImageCaption(n.md, src, nth, cap);
+  });
 }

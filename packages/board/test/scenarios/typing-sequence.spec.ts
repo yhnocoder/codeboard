@@ -25,27 +25,45 @@ const SEQS: Record<string, string> = {
 
 function board(n: number): Board {
   const b = emptyBoard("b1", "typeseq");
-  for (let i = 0; i < n; i++) put(b, { id: `n${i}`, kind: "note", md: "", look: "note" } as NoteCard, 60 + (i % 4) * 560, 60 + Math.floor(i / 4) * 360, 520);
+  for (let i = 0; i < n; i++)
+    put(
+      b,
+      { id: `n${i}`, kind: "note", md: "", look: "note" } as NoteCard,
+      60 + (i % 4) * 560,
+      60 + Math.floor(i / 4) * 360,
+      520,
+    );
   b.cam = { x: 0, y: 0, z: 1 };
   return b;
 }
 
 /** 编辑器里第一段：字照原样，格式写成 <b>…</b> 之类（装饰的 span 不算） */
-const snap = (pg: Page) => pg.evaluate(() => {
-  const TAG: Record<string, string> = { STRONG: "b", EM: "i", S: "s", DEL: "s", MARK: "hl", CODE: "code", SUB: "sub", SUP: "sup", A: "a" };
-  const walk = (n: Node): string => {
-    if (n.nodeType === 3) return n.textContent ?? "";
-    const e = n as HTMLElement;
-    // hidden source (markers away from the caret, a formula's TeX under its drawing) is not on screen
-    if (e.classList.contains("md-ghost") || e.classList.contains("md-hide")) return "";
-    if (e.matches("[data-type=inline-math]")) return `<math:${e.getAttribute("data-latex") ?? e.textContent}>`;
-    const inner = [...e.childNodes].map(walk).join("");
-    const t = e.classList.contains("md-src") ? "src" : TAG[e.tagName];
-    return t ? `<${t}>${inner}</${t}>` : inner;
-  };
-  const p = document.querySelector(".md-pm p");
-  return p ? walk(p) : "";
-});
+const snap = (pg: Page) =>
+  pg.evaluate(() => {
+    const TAG: Record<string, string> = {
+      STRONG: "b",
+      EM: "i",
+      S: "s",
+      DEL: "s",
+      MARK: "hl",
+      CODE: "code",
+      SUB: "sub",
+      SUP: "sup",
+      A: "a",
+    };
+    const walk = (n: Node): string => {
+      if (n.nodeType === 3) return n.textContent ?? "";
+      const e = n as HTMLElement;
+      // hidden source (markers away from the caret, a formula's TeX under its drawing) is not on screen
+      if (e.classList.contains("md-ghost") || e.classList.contains("md-hide")) return "";
+      if (e.matches("[data-type=inline-math]")) return `<math:${e.getAttribute("data-latex") ?? e.textContent}>`;
+      const inner = [...e.childNodes].map(walk).join("");
+      const t = e.classList.contains("md-src") ? "src" : TAG[e.tagName];
+      return t ? `<${t}>${inner}</${t}>` : inner;
+    };
+    const p = document.querySelector(".md-pm p");
+    return p ? walk(p) : "";
+  });
 /** The editor's paragraph once it has stopped changing: the same in two frames in a row (input rules and the Markdown
  *  source marks are applied in the key's own task, decorations that follow the caret may take a frame) */
 async function settled(pg: Page) {
@@ -80,13 +98,21 @@ test("typingKeyByKey", async () => {
       }
     }
     got[names[i]] = states;
-    for (let k = 0; k < 3 && (await pg.locator(".md-pm").count()); k++) { await pg.keyboard.press("Escape"); await idle(h); }
+    for (let k = 0; k < 3 && (await pg.locator(".md-pm").count()); k++) {
+      await pg.keyboard.press("Escape");
+      await idle(h);
+    }
   }
   await pg.context().close();
-  if (process.env.RECORD) { fs.writeFileSync(FIXTURE, JSON.stringify(got, null, 2) + "\n"); console.log(`recorded ${FIXTURE}`); return; }
+  if (process.env.RECORD) {
+    fs.writeFileSync(FIXTURE, JSON.stringify(got, null, 2) + "\n");
+    console.log(`recorded ${FIXTURE}`);
+    return;
+  }
   const want = JSON.parse(fs.readFileSync(FIXTURE, "utf8")) as Record<string, string[]>;
   for (const n of names) {
-    const a = got[n], b = want[n] ?? [];
+    const a = got[n],
+      b = want[n] ?? [];
     const i = a.findIndex((s, j) => s !== b[j]);
     const ok = i < 0 && a.length === b.length;
     check(`typingKeyByKey ${n}`, ok, ok ? a[a.length - 1] : { at: i, got: a[i], main: b[i] });

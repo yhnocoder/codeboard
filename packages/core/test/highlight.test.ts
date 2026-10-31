@@ -3,8 +3,19 @@ import { Highlighter, plainView, segViewOf, type SegSource } from "../src/highli
 import type { FileAnalysis } from "@codeboard/analysis";
 import type { Segment } from "../src";
 
-const fa = (calls: FileAnalysis["calls"] = []): FileAnalysis => ({ symbols: [], calls, imports: [], flags: [], trailing: {} } as unknown as FileAnalysis);
-const seg = (o: Partial<Segment> = {}): Segment => ({ id: "s1", src: { kind: "repo", repo: "" }, path: "m.py", lang: "python", start: 3, end: 4, text: ["    x = run(1)", "    return x"], version: { kind: "none" }, ...o });
+const fa = (calls: FileAnalysis["calls"] = []): FileAnalysis =>
+  ({ symbols: [], calls, imports: [], flags: [], trailing: {} }) as unknown as FileAnalysis;
+const seg = (o: Partial<Segment> = {}): Segment => ({
+  id: "s1",
+  src: { kind: "repo", repo: "" },
+  path: "m.py",
+  lang: "python",
+  start: 3,
+  end: 4,
+  text: ["    x = run(1)", "    return x"],
+  version: { kind: "none" },
+  ...o,
+});
 
 describe("highlighter", () => {
   const hl = new Highlighter({ treeLines: async () => null });
@@ -21,7 +32,12 @@ describe("highlighter", () => {
 
   it("asks the port for tree-sitter languages, and shows plain text when the parsers are not there", async () => {
     const asked: string[] = [];
-    const h = new Highlighter({ treeLines: async (g) => { asked.push(g); return null; } });
+    const h = new Highlighter({
+      treeLines: async (g) => {
+        asked.push(g);
+        return null;
+      },
+    });
     expect(await h.tokensOf("cpp", "int x;")).toEqual([[{ text: "int x;" }]]);
     expect(asked.length).toBe(1);
   });
@@ -42,7 +58,10 @@ describe("segment views", () => {
       fileText: async () => null,
       currentText: async () => null,
       fileOf: () => null,
-      analyze: (_l, text) => { analysed.push(text); return fa([{ line: 1, col: 4, end: 7, name: "run", loop: false } as FileAnalysis["calls"][number]]); },
+      analyze: (_l, text) => {
+        analysed.push(text);
+        return fa([{ line: 1, col: 4, end: 7, name: "run", loop: false } as FileAnalysis["calls"][number]]);
+      },
     };
     const v = await segViewOf(seg(), src, hl);
     // The common indent is taken off for the analysis and added back to the columns
@@ -59,7 +78,10 @@ describe("segment views", () => {
       fileText: async () => file,
       currentText: async () => file,
       fileOf: () => "/r/m.py",
-      analyze: (_l, _t, range) => { ranges.push(range); return fa(); },
+      analyze: (_l, _t, range) => {
+        ranges.push(range);
+        return fa();
+      },
     };
     const v = await segViewOf(seg({ start: 4, end: 5 }), src, hl);
     expect(ranges).toEqual([{ start: 4, end: 5 }]);
@@ -67,6 +89,11 @@ describe("segment views", () => {
   });
 
   it("gives a plain view for a segment that cannot be built", () => {
-    expect(plainView(seg({ text: ["a < b", ""] }))).toEqual({ html: ["a &lt; b", ""], flags: [0, 1], calls: [], defs: [] });
+    expect(plainView(seg({ text: ["a < b", ""] }))).toEqual({
+      html: ["a &lt; b", ""],
+      flags: [0, 1],
+      calls: [],
+      defs: [],
+    });
   });
 });

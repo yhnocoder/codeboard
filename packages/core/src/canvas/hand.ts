@@ -6,7 +6,8 @@
 import { clamp } from "./geom";
 
 /** 抖动的幅度（A）和弓形（B） */
-const A = 1.9, B = 5;
+const A = 1.9,
+  B = 5;
 
 /** 箭头 id → 种子（FNV-1a） */
 function hash(s: string) {
@@ -28,27 +29,51 @@ function rng(seed: number) {
 type P = { x: number; y: number };
 const bez = (c: readonly number[], t: number): P => {
   const u = 1 - t;
-  return { x: u * u * u * c[0] + 3 * u * u * t * c[2] + 3 * u * t * t * c[4] + t * t * t * c[6], y: u * u * u * c[1] + 3 * u * u * t * c[3] + 3 * u * t * t * c[5] + t * t * t * c[7] };
+  return {
+    x: u * u * u * c[0] + 3 * u * u * t * c[2] + 3 * u * t * t * c[4] + t * t * t * c[6],
+    y: u * u * u * c[1] + 3 * u * u * t * c[3] + 3 * u * t * t * c[5] + t * t * t * c[7],
+  };
 };
 
 /** 沿曲线从弧长比例 from 到 to 取点，往法线方向偏；amp = 波动幅度，bow = 弓形（第二笔跟着主笔的弓形），shift = 整体平移 */
-function wobble(c: readonly number[], rand: () => number, amp: number, bow: number, from: number, to: number, shift: number): P[] {
-  const n = 24, raw: P[] = [], len = [0];
+function wobble(
+  c: readonly number[],
+  rand: () => number,
+  amp: number,
+  bow: number,
+  from: number,
+  to: number,
+  shift: number,
+): P[] {
+  const n = 24,
+    raw: P[] = [],
+    len = [0];
   for (let i = 0; i <= n; i++) {
     raw.push(bez(c, i / n));
     if (i) len.push(len[i - 1] + Math.hypot(raw[i].x - raw[i - 1].x, raw[i].y - raw[i - 1].y));
   }
-  const L = len[n] || 1, m = clamp(Math.round(L / 16), 8, 40);
-  const ph1 = rand() * 6.283, ph2 = rand() * 6.283, f1 = 6.283 / (110 + rand() * 60), f2 = 6.283 / (38 + rand() * 20);
+  const L = len[n] || 1,
+    m = clamp(Math.round(L / 16), 8, 40);
+  const ph1 = rand() * 6.283,
+    ph2 = rand() * 6.283,
+    f1 = 6.283 / (110 + rand() * 60),
+    f2 = 6.283 / (38 + rand() * 20);
   const out: P[] = [];
   let j = 0;
   for (let i = 0; i <= m; i++) {
     const s = L * (from + ((to - from) * i) / m);
     while (j < n - 1 && len[j + 1] < s) j++;
-    const k = (s - len[j]) / (len[j + 1] - len[j] || 1), a = raw[j], b = raw[j + 1];
-    const tx = b.x - a.x, ty = b.y - a.y, tl = Math.hypot(tx, ty) || 1;
+    const k = (s - len[j]) / (len[j + 1] - len[j] || 1),
+      a = raw[j],
+      b = raw[j + 1];
+    const tx = b.x - a.x,
+      ty = b.y - a.y,
+      tl = Math.hypot(tx, ty) || 1;
     const env = Math.sin((Math.PI * clamp(Math.min(s, L - s) / Math.min(30, L / 2), 0, 1)) / 2);
-    const off = env * (amp * (0.65 * Math.sin(s * f1 + ph1) + 0.35 * Math.sin(s * f2 + ph2)) + bow * Math.sin((Math.PI * s) / L)) + shift;
+    const off =
+      env *
+        (amp * (0.65 * Math.sin(s * f1 + ph1) + 0.35 * Math.sin(s * f2 + ph2)) + bow * Math.sin((Math.PI * s) / L)) +
+      shift;
     out.push({ x: a.x + tx * k - (ty / tl) * off, y: a.y + ty * k + (tx / tl) * off });
   }
   return out;
@@ -56,9 +81,14 @@ function wobble(c: readonly number[], rand: () => number, amp: number, bow: numb
 
 /** 点串 → 平滑的 path（二次曲线过各段中点）。整数坐标：小数转字符串是这里最贵的一步，抖动的线上 0.5px 看不出来 */
 function smooth(ps: P[]) {
-  const R = Math.round, n = ps.length;
+  const R = Math.round,
+    n = ps.length;
   let d = `M${R(ps[0].x)} ${R(ps[0].y)}`;
-  for (let i = 1; i < n - 1; i++) { const a = ps[i], b = ps[i + 1]; d += `Q${R(a.x)} ${R(a.y)} ${R((a.x + b.x) / 2)} ${R((a.y + b.y) / 2)}`; }
+  for (let i = 1; i < n - 1; i++) {
+    const a = ps[i],
+      b = ps[i + 1];
+    d += `Q${R(a.x)} ${R(a.y)} ${R((a.x + b.x) / 2)} ${R((a.y + b.y) / 2)}`;
+  }
   return `${d}L${R(ps[n - 1].x)} ${R(ps[n - 1].y)}`;
 }
 
@@ -66,10 +96,15 @@ function smooth(ps: P[]) {
 function headStrokes(tip: P, ux: number, uy: number, rand: () => number, s: number) {
   let d = "";
   for (const sg of [-1, 1]) {
-    const ang = (0.46 + rand() * 0.12) * sg, len = (10 + rand() * 3.5) * s;
-    const vx = -ux * Math.cos(ang) + uy * Math.sin(ang), vy = -ux * Math.sin(ang) - uy * Math.cos(ang);
-    const ex = tip.x + vx * len, ey = tip.y + vy * len, bend = (rand() - 0.5) * 2.2;
-    const mx = (tip.x + ex) / 2 - vy * bend, my = (tip.y + ey) / 2 + vx * bend;
+    const ang = (0.46 + rand() * 0.12) * sg,
+      len = (10 + rand() * 3.5) * s;
+    const vx = -ux * Math.cos(ang) + uy * Math.sin(ang),
+      vy = -ux * Math.sin(ang) - uy * Math.cos(ang);
+    const ex = tip.x + vx * len,
+      ey = tip.y + vy * len,
+      bend = (rand() - 0.5) * 2.2;
+    const mx = (tip.x + ex) / 2 - vy * bend,
+      my = (tip.y + ey) / 2 + vx * bend;
     d += `M${ex.toFixed(1)} ${ey.toFixed(1)}Q${mx.toFixed(1)} ${my.toFixed(1)} ${(tip.x + ux * 0.6).toFixed(1)} ${(tip.y + uy * 0.6).toFixed(1)}`;
   }
   return d;
@@ -85,11 +120,25 @@ export function handLine(id: string, c: readonly number[], end: boolean, start: 
   const rand = rng(hash(id));
   const bow = (rand() < 0.5 ? -1 : 1) * B * (0.6 + rand() * 0.4);
   const p1 = wobble(c, rand, A, bow, 0, 1, 0);
-  const p2 = wobble(c, rand, A * 0.8, bow * (0.85 + rand() * 0.25), 0.03 + rand() * 0.03, 0.94 + rand() * 0.03, (rand() - 0.5) * 1.6);
-  const dir = (a: P, b: P) => { const l = Math.hypot(b.x - a.x, b.y - a.y) || 1; return { x: (b.x - a.x) / l, y: (b.y - a.y) / l }; };
-  const n = p1.length, ue = dir(p1[n - 3], p1[n - 1]), us = dir(p1[2], p1[0]);
+  const p2 = wobble(
+    c,
+    rand,
+    A * 0.8,
+    bow * (0.85 + rand() * 0.25),
+    0.03 + rand() * 0.03,
+    0.94 + rand() * 0.03,
+    (rand() - 0.5) * 1.6,
+  );
+  const dir = (a: P, b: P) => {
+    const l = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+    return { x: (b.x - a.x) / l, y: (b.y - a.y) / l };
+  };
+  const n = p1.length,
+    ue = dir(p1[n - 3], p1[n - 1]),
+    us = dir(p1[2], p1[0]);
   return {
-    d: smooth(p1), d2: smooth(p2),
+    d: smooth(p1),
+    d2: smooth(p2),
     head: end ? headStrokes(p1[n - 1], ue.x, ue.y, rand, s) : undefined,
     tail: start ? headStrokes(p1[0], us.x, us.y, rand, s) : undefined,
   };

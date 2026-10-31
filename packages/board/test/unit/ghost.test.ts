@@ -10,7 +10,10 @@ function cardOnBoard() {
 }
 const ghosts = () => document.querySelectorAll(".ghost-out").length;
 
-afterEach(() => { vi.useRealTimers(); document.documentElement.style.removeProperty("--t"); });
+afterEach(() => {
+  vi.useRealTimers();
+  document.documentElement.style.removeProperty("--t");
+});
 
 describe("ghostOut", () => {
   it("removes the copy once the fade-out is over", () => {

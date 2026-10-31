@@ -2,7 +2,23 @@
 // 字体和图片写成 cbres: 引用，宿主换成 data: URL（webview 的 CSP 不让 fetch）；配一小段只读的平移缩放脚本（export/viewer.ts）。
 // PNG 用同一份克隆画到 canvas 上。交互用的部件在组件里标 data-export="strip"，克隆时一起删。
 import { unwrap } from "solid-js/store";
-import { boardMarkdown, cardTitle, exportOrder, findCard, isQuestion, startCards, walkOrder, bounds, escHtml, THEMES, type Board, type ExportFormat, type ExportScope, type Segment, type Sidenote } from "@codeboard/core";
+import {
+  boardMarkdown,
+  cardTitle,
+  exportOrder,
+  findCard,
+  isQuestion,
+  startCards,
+  walkOrder,
+  bounds,
+  escHtml,
+  THEMES,
+  type Board,
+  type ExportFormat,
+  type ExportScope,
+  type Segment,
+  type Sidenote,
+} from "@codeboard/core";
 import { state, rectOf, hostOf, flows } from "../state/store";
 import { sel, select, lineSel, setLineSel } from "../state/selection";
 import { toast } from "../state/toast";
@@ -24,44 +40,72 @@ export function walkStart(): string | undefined {
 }
 
 /** Export Boards…：宿主问存到哪，把这块白板和它的子白板打成 .codeboard（别的项目 Import Boards… 导入） */
-export function exportBoards() { send({ type: "exportBoards" }); }
+export function exportBoards() {
+  send({ type: "exportBoards" });
+}
 
 export function openExport(format: ExportFormat = "html") {
   const s = state.host.settings;
   // 选中的 Section，或选中的卡所在的 Section
-  const secs = sel.sections.length ? [...sel.sections] : [...new Set(sel.cards.map((id) => state.board.place[id]?.section).filter(Boolean) as string[])];
+  const secs = sel.sections.length
+    ? [...sel.sections]
+    : [...new Set(sel.cards.map((id) => state.board.place[id]?.section).filter(Boolean) as string[])];
   let scope = s.exportScope;
   if (scope === "sections" && !state.board.sections.length) scope = "board";
   if (scope === "walk" && !walkStart()) scope = "board";
-  setExportOpen({ format, scope, sections: secs.length ? secs : state.board.sections.slice(0, 1).map((x) => x.id), questions: s.exportQuestions, boardOnly: s.exportBoardOnly });
+  setExportOpen({
+    format,
+    scope,
+    sections: secs.length ? secs : state.board.sections.slice(0, 1).map((x) => x.id),
+    questions: s.exportQuestions,
+    boardOnly: s.exportBoardOnly,
+  });
 }
 
 const fileName = () => (state.board.name || "board").trim();
 export const themeLabel = () => {
   const id = document.documentElement.dataset.look ?? "warm-ink";
-  const dark = document.body.classList.contains("vscode-dark") || document.body.classList.contains("vscode-high-contrast");
+  const dark =
+    document.body.classList.contains("vscode-dark") || document.body.classList.contains("vscode-high-contrast");
   return `${THEMES.find((t) => t[0] === id)?.[1] ?? id} · ${dark ? "Dark" : "Light"}`;
 };
 
 function scopeOf(o: ExportOpts): ExportScope {
   if (o.scope === "sections") return { kind: "sections", ids: o.sections };
-  if (o.scope === "walk") { const s = walkStart(); if (s) return { kind: "walk", start: s }; }
+  if (o.scope === "walk") {
+    const s = walkStart();
+    if (s) return { kind: "walk", start: s };
+  }
   return { kind: "board" };
 }
 
 export async function runExport(o: ExportOpts) {
   if (exportBusy()) return;
-  if (o.format === "png") { setExportOpen(null); return exportPng(); }
+  if (o.format === "png") {
+    setExportOpen(null);
+    return exportPng();
+  }
   setExportBusy(true);
   try {
     const b = structuredClone(unwrap(state.board)) as Board;
     const order = exportOrder(b, scopeOf(o));
-    if (!order.length) { toast("Nothing to export in this scope"); return; }
+    if (!order.length) {
+      toast("Nothing to export in this scope");
+      return;
+    }
     const segs = order.flatMap((id) => segsOf(b, id));
     const links = (await ask("permalinks", { segs }).catch(() => null)) ?? {};
-    const text = o.format === "md"
-      ? boardMarkdown(b, { order, questions: o.questions, boardOnly: o.boardOnly, links, boardName: (id) => state.boards.find((m) => m.id === id)?.name, blocks: noteBlocks })
-      : await snapshotHtml(b, order, o, links);
+    const text =
+      o.format === "md"
+        ? boardMarkdown(b, {
+            order,
+            questions: o.questions,
+            boardOnly: o.boardOnly,
+            links,
+            boardName: (id) => state.boards.find((m) => m.id === id)?.name,
+            blocks: noteBlocks,
+          })
+        : await snapshotHtml(b, order, o, links);
     const ok = await ask("exportFile", { kind: o.format === "md" ? "md" : "html", name: fileName(), text });
     if (ok) setExportOpen(null);
   } catch (e) {
@@ -77,12 +121,19 @@ function segsOf(b: Board, id: string): Segment[] {
   if (!c) return [];
   const ids = c.kind === "compare" ? [c.id, ...c.cols] : [c.id];
   const out: Segment[] = [];
-  for (const k of ids) { const x = b.cards.find((q) => q.id === k); if (x?.kind === "code") out.push(...x.segments); }
+  for (const k of ids) {
+    const x = b.cards.find((q) => q.id === k);
+    if (x?.kind === "code") out.push(...x.segments);
+  }
   for (const n of b.sidenotes) if (ids.includes(n.at.card) && n.kind === "code") out.push(n.code);
   return out;
 }
 
-const frames = (n = 2) => new Promise<void>((r) => { const f = () => (--n <= 0 ? r() : requestAnimationFrame(f)); requestAnimationFrame(f); });
+const frames = (n = 2) =>
+  new Promise<void>((r) => {
+    const f = () => (--n <= 0 ? r() : requestAnimationFrame(f));
+    requestAnimationFrame(f);
+  });
 
 /** 卡片都换成完整的样子（缩小时卡片是概览 / 地图）：分档临时定在 full（镜头不动），等卡一批批换完，做完再放开 */
 async function withFullDetail<T>(fn: () => T | Promise<T>): Promise<T> {
@@ -93,30 +144,72 @@ async function withFullDetail<T>(fn: () => T | Promise<T>): Promise<T> {
     for (let i = 0; i < 180 && (lodBusy() || notFull()); i++) await frames(1);
     await frames(2);
   }
-  try { return await fn(); } finally { if (need) holdFullDetail(false); }
+  try {
+    return await fn();
+  } finally {
+    if (need) holdFullDetail(false);
+  }
 }
 
 // 交互状态的 class（选中、悬停、分档、离屏、镜头在动）：导出的是静止、没选中的样子
-const LIVE_CLASSES = ["off", "far", "sel", "lift", "hov", "editing", "lo-ov", "lo-map", "moving", "settle", "bind-hot", "bind-anchor", "pinged"];
+const LIVE_CLASSES = [
+  "off",
+  "far",
+  "sel",
+  "lift",
+  "hov",
+  "editing",
+  "lo-ov",
+  "lo-map",
+  "moving",
+  "settle",
+  "bind-hot",
+  "bind-anchor",
+  "pinged",
+];
 
 /** 导出用的画布克隆：完整细节、没有选中；范围外的卡、两端不都在范围里的箭头、范围外的 Section 去掉，
  *  标了 data-export="strip" 的部件和交互状态也去掉。HTML 快照、PNG 共用 */
 async function cloneForExport(b: Board, scope: ExportScope, order: string[]): Promise<HTMLElement> {
-  const prevSel = { cards: [...sel.cards], links: [...sel.links], sections: [...sel.sections] }, prevLine = lineSel();
-  select({}); setLineSel(null);
+  const prevSel = { cards: [...sel.cards], links: [...sel.links], sections: [...sel.sections] },
+    prevLine = lineSel();
+  select({});
+  setLineSel(null);
   flushMd(); // 视野外还没渲染完的 Note 先补上
   await frames(2);
-  const world = await withFullDetail(async () => { flushMd(); await frames(1); return (document.querySelector("#board .world") as HTMLElement).cloneNode(true) as HTMLElement; });
-  select(prevSel); setLineSel(prevLine);
+  const world = await withFullDetail(async () => {
+    flushMd();
+    await frames(1);
+    return (document.querySelector("#board .world") as HTMLElement).cloneNode(true) as HTMLElement;
+  });
+  select(prevSel);
+  setLineSel(prevLine);
   const keep = new Set(order);
-  const linkOk = new Set(b.links.filter((l) => keep.has(hostOf(l.from.card)) && keep.has(hostOf(l.to.card))).map((l) => l.id));
-  world.querySelectorAll<HTMLElement>(".card[data-id]").forEach((el) => { if (!keep.has(el.dataset.id!) && !el.parentElement?.closest(".card")) el.remove(); });
-  world.querySelectorAll<HTMLElement>("[data-lk]").forEach((el) => { if (!linkOk.has(el.dataset.lk!)) el.remove(); });
-  world.querySelectorAll<HTMLElement>("[data-link]").forEach((el) => { if (!linkOk.has(el.dataset.link!)) el.remove(); });
+  const linkOk = new Set(
+    b.links.filter((l) => keep.has(hostOf(l.from.card)) && keep.has(hostOf(l.to.card))).map((l) => l.id),
+  );
+  world.querySelectorAll<HTMLElement>(".card[data-id]").forEach((el) => {
+    if (!keep.has(el.dataset.id!) && !el.parentElement?.closest(".card")) el.remove();
+  });
+  world.querySelectorAll<HTMLElement>("[data-lk]").forEach((el) => {
+    if (!linkOk.has(el.dataset.lk!)) el.remove();
+  });
+  world.querySelectorAll<HTMLElement>("[data-link]").forEach((el) => {
+    if (!linkOk.has(el.dataset.link!)) el.remove();
+  });
   if (scope.kind !== "board") {
     const secs = new Set(scope.kind === "sections" ? scope.ids : []);
-    for (let grew = true; grew;) { grew = false; for (const s of b.sections) if (s.parent && secs.has(s.parent) && !secs.has(s.id)) { secs.add(s.id); grew = true; } }
-    world.querySelectorAll<HTMLElement>("[data-sect]").forEach((el) => { if (!secs.has(el.dataset.sect!)) el.remove(); });
+    for (let grew = true; grew; ) {
+      grew = false;
+      for (const s of b.sections)
+        if (s.parent && secs.has(s.parent) && !secs.has(s.id)) {
+          secs.add(s.id);
+          grew = true;
+        }
+    }
+    world.querySelectorAll<HTMLElement>("[data-sect]").forEach((el) => {
+      if (!secs.has(el.dataset.sect!)) el.remove();
+    });
   }
   world.querySelectorAll('[data-export="strip"]').forEach((el) => el.remove());
   for (const c of LIVE_CLASSES) world.querySelectorAll(`.${c}`).forEach((el) => el.classList.remove(c));
@@ -128,28 +221,51 @@ async function cloneForExport(b: Board, scope: ExportScope, order: string[]): Pr
 /** 导出 PNG：整块白板的克隆用 SVG foreignObject 画到 canvas 上 */
 async function exportPng() {
   const b = structuredClone(unwrap(state.board)) as Board;
-  const box = bounds([...b.cards.filter((c) => b.place[c.id]).map((c) => rectOf(c)), ...b.sections.map((s) => ({ x: s.x, y: s.y, w: s.w, h: s.h }))]);
+  const box = bounds([
+    ...b.cards.filter((c) => b.place[c.id]).map((c) => rectOf(c)),
+    ...b.sections.map((s) => ({ x: s.x, y: s.y, w: s.w, h: s.h })),
+  ]);
   if (!box) return toast("Nothing to export");
-  const pad = 40, scale = 2;
-  const W = Math.ceil(box.w + pad * 2), H = Math.ceil(box.h + pad * 2);
+  const pad = 40,
+    scale = 2;
+  const W = Math.ceil(box.w + pad * 2),
+    H = Math.ceil(box.h + pad * 2);
   const world = await cloneForExport(b, { kind: "board" }, exportOrder(b, { kind: "board" }));
   world.style.transform = `translate(${-box.x + pad}px, ${-box.y + pad}px)`;
   await inlineAssets(world);
-  const css = [...document.styleSheets].map((s) => { try { return [...s.cssRules].map((r) => r.cssText).join("\n"); } catch { return ""; } }).join("\n");
-  const bg = getComputedStyle(document.body).getPropertyValue("--canvas") || getComputedStyle(document.body).backgroundColor;
+  const css = [...document.styleSheets]
+    .map((s) => {
+      try {
+        return [...s.cssRules].map((r) => r.cssText).join("\n");
+      } catch {
+        return "";
+      }
+    })
+    .join("\n");
+  const bg =
+    getComputedStyle(document.body).getPropertyValue("--canvas") || getComputedStyle(document.body).backgroundColor;
   const rootStyle = document.body.getAttribute("style") ?? "";
   const xml = new XMLSerializer().serializeToString(world);
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W * scale}" height="${H * scale}" viewBox="0 0 ${W} ${H}"><foreignObject width="${W}" height="${H}"><div xmlns="http://www.w3.org/1999/xhtml" class="${document.body.className}" style="${rootStyle};position:relative;width:${W}px;height:${H}px;overflow:hidden;background:${bg}"><style>${css.replace(/</g, "\\3c ")}</style>${xml}</div></foreignObject></svg>`;
   const img = new Image();
   img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
-  try { await img.decode(); } catch { return toast("Export failed"); }
+  try {
+    await img.decode();
+  } catch {
+    return toast("Export failed");
+  }
   const cv = document.createElement("canvas");
-  cv.width = W * scale; cv.height = H * scale;
+  cv.width = W * scale;
+  cv.height = H * scale;
   const g = cv.getContext("2d")!;
-  g.fillStyle = bg; g.fillRect(0, 0, cv.width, cv.height);
+  g.fillStyle = bg;
+  g.fillRect(0, 0, cv.width, cv.height);
   g.drawImage(img, 0, 0);
-  try { send({ type: "exportPng", dataUrl: cv.toDataURL("image/png"), name: `${fileName()}.png` }); }
-  catch { toast("Export failed: an image on the board blocks export"); }
+  try {
+    send({ type: "exportPng", dataUrl: cv.toDataURL("image/png"), name: `${fileName()}.png` });
+  } catch {
+    toast("Export failed: an image on the board blocks export");
+  }
 }
 
 /** SVG 当图片画的时候不加载外面的东西：assets/ 里的图（Image 卡、Note 里的图）先换成宿主读出来的 data: URL，同一个文件只读一次 */
@@ -157,47 +273,80 @@ async function inlineAssets(world: HTMLElement) {
   const assets = state.host.assetBase ? new URL(state.host.assetBase + "/", location.href).href : "";
   if (!assets) return;
   const read = new Map<string, Promise<string | null>>();
-  await Promise.all([...world.querySelectorAll<HTMLImageElement>("img[src]")].filter((im) => im.src.startsWith(assets)).map(async (im) => {
-    const file = decodeURIComponent(im.src.slice(assets.length).split(/[?#]/)[0]);
-    if (!read.has(file)) read.set(file, ask("readAsset", { file }).catch(() => null));
-    const url = await read.get(file);
-    if (url) { im.removeAttribute("loading"); im.setAttribute("src", url); }
-  }));
+  await Promise.all(
+    [...world.querySelectorAll<HTMLImageElement>("img[src]")]
+      .filter((im) => im.src.startsWith(assets))
+      .map(async (im) => {
+        const file = decodeURIComponent(im.src.slice(assets.length).split(/[?#]/)[0]);
+        if (!read.has(file))
+          read.set(
+            file,
+            ask("readAsset", { file }).catch(() => null),
+          );
+        const url = await read.get(file);
+        if (url) {
+          im.removeAttribute("loading");
+          im.setAttribute("src", url);
+        }
+      }),
+  );
 }
 
 /** 页面上的地址 → cbres: 引用（插件的 media/board、存储目录的 assets/），宿主换成 data: URL */
 function resRef(u: string, base: string): string {
   if (/^(data:|#)/.test(u)) return u;
   let abs: string;
-  try { abs = new URL(u, base).href; } catch { return u; }
-  const media = mediaBase(), assets = state.host.assetBase ? new URL(state.host.assetBase + "/", location.href).href : "";
+  try {
+    abs = new URL(u, base).href;
+  } catch {
+    return u;
+  }
+  const media = mediaBase(),
+    assets = state.host.assetBase ? new URL(state.host.assetBase + "/", location.href).href : "";
   if (media && abs.startsWith(media)) return `cbres:media/${abs.slice(media.length).split(/[?#]/)[0]}`;
   if (assets && abs.startsWith(assets)) return `cbres:asset/${abs.slice(assets.length).split(/[?#]/)[0]}`;
   return abs;
 }
 /** 悬停内容（HTML 字符串）里的图（Markdown 里的 assets/ 图）也换成 cbres: 引用 */
-const imgRefs = (html: string) => html.replace(/(<img\b[^>]*?\ssrc=")([^"]*)"/g, (_m, a, u) => `${a}${resRef(u.replace(/&amp;/g, "&"), location.href).replace(/&/g, "&amp;")}"`);
+const imgRefs = (html: string) =>
+  html.replace(
+    /(<img\b[^>]*?\ssrc=")([^"]*)"/g,
+    (_m, a, u) => `${a}${resRef(u.replace(/&amp;/g, "&"), location.href).replace(/&/g, "&amp;")}"`,
+  );
 /** board.css 所在的目录（字体、背景图都在它下面） */
 function mediaBase(): string {
-  const l = [...document.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]')].find((x) => /board\.css(\?|$)/.test(x.href));
+  const l = [...document.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]')].find((x) =>
+    /board\.css(\?|$)/.test(x.href),
+  );
   return l ? l.href.replace(/[^/]*$/, "") : "";
 }
 
 /** 页面上所有样式：字体只留这块白板真用到的（已经加载的），每个字体只留第一个地址（woff2） */
 function collectCss(): string {
   const loaded = new Set<string>();
-  document.fonts?.forEach((f) => { if (f.status === "loaded") loaded.add(`${f.family.replace(/["']/g, "")}|${f.style}|${f.weight}`); });
+  document.fonts?.forEach((f) => {
+    if (f.status === "loaded") loaded.add(`${f.family.replace(/["']/g, "")}|${f.style}|${f.weight}`);
+  });
   const out: string[] = [];
   for (const sh of [...document.styleSheets]) {
     let rules: CSSRuleList;
-    try { rules = sh.cssRules; } catch { continue; }
+    try {
+      rules = sh.cssRules;
+    } catch {
+      continue;
+    }
     const base = sh.href ?? location.href;
     const walk = (rs: CSSRuleList) => {
       for (const r of [...rs]) {
         if (r instanceof CSSFontFaceRule) {
           const st = r.style;
           const fam = st.getPropertyValue("font-family").replace(/["']/g, "").trim();
-          if (!loaded.has(`${fam}|${st.getPropertyValue("font-style") || "normal"}|${st.getPropertyValue("font-weight") || "normal"}`)) continue;
+          if (
+            !loaded.has(
+              `${fam}|${st.getPropertyValue("font-style") || "normal"}|${st.getPropertyValue("font-weight") || "normal"}`,
+            )
+          )
+            continue;
           const src = st.getPropertyValue("src");
           const first = /url\(\s*(["']?)([^"')]+)\1\s*\)(\s*format\([^)]*\))?/.exec(src);
           if (!first) continue;
@@ -213,13 +362,22 @@ function collectCss(): string {
 }
 
 function noteHtml(n: Sidenote): string {
-  const where = n.at.lines ? `<div class="xv-w">${n.at.lines[0] === n.at.lines[1] ? `line ${n.at.lines[0]}` : `lines ${n.at.lines[0]}–${n.at.lines[1]}`}${n.why ? ` · ${escHtml(n.why)}` : ""}</div>` : "";
+  const where = n.at.lines
+    ? `<div class="xv-w">${n.at.lines[0] === n.at.lines[1] ? `line ${n.at.lines[0]}` : `lines ${n.at.lines[0]}–${n.at.lines[1]}`}${n.why ? ` · ${escHtml(n.why)}` : ""}</div>`
+    : "";
   switch (n.kind) {
-    case "text": return `${where}<div class="md">${renderMd(n.md)}</div>`;
-    case "link": return `${where}<a href="${escHtml(n.url)}" target="_blank" rel="noopener">${escHtml(n.title || n.url)}</a>`;
-    case "card": { const c = findCard(state.board, n.card)?.card; return `${where}See “${escHtml(c ? cardTitle(c, state.board) : n.card)}”`; }
-    case "paste": return `${where}<pre>${escHtml(n.text)}</pre>`;
-    case "code": return `${where}<div class="xv-w">${escHtml(n.code.path)}:${n.code.start}–${n.code.end}</div><pre>${escHtml(n.code.text.join("\n"))}</pre>`;
+    case "text":
+      return `${where}<div class="md">${renderMd(n.md)}</div>`;
+    case "link":
+      return `${where}<a href="${escHtml(n.url)}" target="_blank" rel="noopener">${escHtml(n.title || n.url)}</a>`;
+    case "card": {
+      const c = findCard(state.board, n.card)?.card;
+      return `${where}See “${escHtml(c ? cardTitle(c, state.board) : n.card)}”`;
+    }
+    case "paste":
+      return `${where}<pre>${escHtml(n.text)}</pre>`;
+    case "code":
+      return `${where}<div class="xv-w">${escHtml(n.code.path)}:${n.code.start}–${n.code.end}</div><pre>${escHtml(n.code.text.join("\n"))}</pre>`;
   }
 }
 
@@ -231,7 +389,8 @@ async function snapshotHtml(b: Board, order: string[], o: ExportOpts, links: Rec
   // 贴纸：问题不带出去时删掉；画布上没绑东西的只在整块导出时留
   const qs = new Set(b.stickers.filter((s) => isQuestion(s)).map((s) => s.id));
   world.querySelectorAll<HTMLElement>("[data-sticker]").forEach((el) => {
-    const id = el.dataset.sticker!, s = b.stickers.find((k) => k.id === id);
+    const id = el.dataset.sticker!,
+      s = b.stickers.find((k) => k.id === id);
     if ((!o.questions && qs.has(id)) || (!whole && s?.at.kind === "canvas" && !s.at.on)) el.remove();
   });
   if (!o.questions) world.querySelectorAll(".qcount").forEach((el) => el.remove());
@@ -240,15 +399,32 @@ async function snapshotHtml(b: Board, order: string[], o: ExportOpts, links: Rec
   const hidden = new Set(o.boardOnly ? [] : b.sidenotes.filter((n) => n.boardOnly).map((n) => n.id));
   world.querySelectorAll<HTMLElement>("[data-notes]").forEach((el) => {
     const ids = el.dataset.notes!.split(",").filter((id) => !hidden.has(id));
-    if (!ids.length) { el.remove(); return; }
+    if (!ids.length) {
+      el.remove();
+      return;
+    }
     el.dataset.notes = ids.join(",");
     if (/^\d+$/.test(el.textContent ?? "")) el.textContent = String(ids.length);
   });
-  world.querySelectorAll<HTMLElement>("[data-note]").forEach((el) => { if (hidden.has(el.dataset.note!)) el.remove(); });
+  world.querySelectorAll<HTMLElement>("[data-note]").forEach((el) => {
+    if (hidden.has(el.dataset.note!)) el.remove();
+  });
   // 停在第一帧的动图贴纸（屏幕外的）在快照里照样播
-  world.querySelectorAll<HTMLImageElement>("img.glyph.anim").forEach((im) => { const ic = bitmapOf({ pack: im.dataset.pack!, name: im.dataset.name! }); if (ic) im.setAttribute("src", ic.img); });
-  world.querySelectorAll<HTMLImageElement>("img[src]").forEach((im) => { im.setAttribute("src", resRef(im.getAttribute("src")!, location.href)); });
-  world.querySelectorAll<HTMLElement>("[style*='url(']").forEach((el) => el.setAttribute("style", el.getAttribute("style")!.replace(/url\(\s*(["']?)([^"')]+)\1\s*\)/g, (_m, _q, u) => `url("${resRef(u, location.href)}")`)));
+  world.querySelectorAll<HTMLImageElement>("img.glyph.anim").forEach((im) => {
+    const ic = bitmapOf({ pack: im.dataset.pack!, name: im.dataset.name! });
+    if (ic) im.setAttribute("src", ic.img);
+  });
+  world.querySelectorAll<HTMLImageElement>("img[src]").forEach((im) => {
+    im.setAttribute("src", resRef(im.getAttribute("src")!, location.href));
+  });
+  world.querySelectorAll<HTMLElement>("[style*='url(']").forEach((el) =>
+    el.setAttribute(
+      "style",
+      el
+        .getAttribute("style")!
+        .replace(/url\(\s*(["']?)([^"')]+)\1\s*\)/g, (_m, _q, u) => `url("${resRef(u, location.href)}")`),
+    ),
+  );
 
   // 查看脚本要的数据：范围、讲解顺序、悬停的 Sidenote 和问题、永久链接
   const rs = order.map((id) => ({ id, ...rectOf(id) }));
@@ -256,17 +432,54 @@ async function snapshotHtml(b: Board, order: string[], o: ExportOpts, links: Rec
   const notes: Record<string, string> = {};
   for (const n of b.sidenotes) if (keep.has(hostOf(n.at.card)) && !hidden.has(n.id)) notes[n.id] = imgRefs(noteHtml(n));
   const questions: Record<string, string> = {};
-  if (o.questions) for (const s of b.stickers) if (qs.has(s.id)) questions[s.id] = imgRefs(`<div class="xv-w">${s.q?.done ? "Answered" : "Question"}</div><div class="md">${renderMd(s.q?.md || "(no text)")}</div>`);
+  if (o.questions)
+    for (const s of b.stickers)
+      if (qs.has(s.id))
+        questions[s.id] = imgRefs(
+          `<div class="xv-w">${s.q?.done ? "Answered" : "Question"}</div><div class="md">${renderMd(s.q?.md || "(no text)")}</div>`,
+        );
   const cardLinks: Record<string, string> = {};
-  for (const id of order) { const c = b.cards.find((k) => k.id === id); const s = c?.kind === "code" ? c.segments[0] : undefined; if (s && links[s.id]) cardLinks[id] = links[s.id]; }
-  const walkIds = o.scope === "walk" ? order : (() => { const s = startCards(b)[0]; return s ? walkOrder(b, s).map(hostOf).filter((id) => keep.has(id)) : []; })();
-  const commit = (() => { for (const id of order) { const c = b.cards.find((k) => k.id === id); const v = c?.kind === "code" ? c.segments[0]?.version : undefined; if (v?.kind === "git") return v.commit.slice(0, 7); } return ""; })();
+  for (const id of order) {
+    const c = b.cards.find((k) => k.id === id);
+    const s = c?.kind === "code" ? c.segments[0] : undefined;
+    if (s && links[s.id]) cardLinks[id] = links[s.id];
+  }
+  const walkIds =
+    o.scope === "walk"
+      ? order
+      : (() => {
+          const s = startCards(b)[0];
+          return s
+            ? walkOrder(b, s)
+                .map(hostOf)
+                .filter((id) => keep.has(id))
+            : [];
+        })();
+  const commit = (() => {
+    for (const id of order) {
+      const c = b.cards.find((k) => k.id === id);
+      const v = c?.kind === "code" ? c.segments[0]?.version : undefined;
+      if (v?.kind === "git") return v.commit.slice(0, 7);
+    }
+    return "";
+  })();
   const data: ViewerData = {
-    name: b.name, box, walk: walkIds.map((id) => ({ id, title: cardTitle(findCard(b, id)!.card, b), mark: flows().byId.get(id)?.label ?? "", r: rectOf(id) })),
-    notes, questions, links: cardLinks, info: `Read-only${commit ? ` · ${commit}` : ""} · exported ${new Date().toISOString().slice(0, 10)}`,
+    name: b.name,
+    box,
+    walk: walkIds.map((id) => ({
+      id,
+      title: cardTitle(findCard(b, id)!.card, b),
+      mark: flows().byId.get(id)?.label ?? "",
+      r: rectOf(id),
+    })),
+    notes,
+    questions,
+    links: cardLinks,
+    info: `Read-only${commit ? ` · ${commit}` : ""} · exported ${new Date().toISOString().slice(0, 10)}`,
   };
 
-  const html = document.documentElement, body = document.body;
+  const html = document.documentElement,
+    body = document.body;
   const attrs = (el: Element) => [...el.attributes].map((a) => ` ${a.name}="${escHtml(a.value)}"`).join("");
   const app = document.querySelector(".app") as HTMLElement | null;
   const json = JSON.stringify(data).replace(/</g, "\\u003c");

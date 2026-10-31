@@ -14,6 +14,16 @@ export default defineConfig({
   retries: 0,
   timeout: 20e3,
   reporter: "list",
-  webServer: { command: "npx vite preview", cwd: here, url: "http://localhost:4317/", reuseExistingServer: false, timeout: 30e3 },
-  use: { baseURL: "http://localhost:4317/", launchOptions: { executablePath: CHROMIUM, args: CHROMIUM_ARGS }, actionTimeout: 5e3 },
+  webServer: {
+    command: "npx vite preview",
+    cwd: here,
+    url: "http://localhost:4317/",
+    reuseExistingServer: false,
+    timeout: 30e3,
+  },
+  use: {
+    baseURL: "http://localhost:4317/",
+    launchOptions: { executablePath: CHROMIUM, args: CHROMIUM_ARGS },
+    actionTimeout: 5e3,
+  },
 });

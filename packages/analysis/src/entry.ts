@@ -4,7 +4,10 @@ export function pyprojectScripts(toml: string): { name: string; module: string; 
   let inSec = false;
   for (const raw of toml.split(/\r?\n/)) {
     const line = raw.trim();
-    if (line.startsWith("[")) { inSec = /^\[(project\.scripts|tool\.poetry\.scripts)\]$/.test(line); continue; }
+    if (line.startsWith("[")) {
+      inSec = /^\[(project\.scripts|tool\.poetry\.scripts)\]$/.test(line);
+      continue;
+    }
     if (!inSec) continue;
     const m = /^["']?([\w.-]+)["']?\s*=\s*["']([\w.]+):([\w.]+)["']/.exec(line);
     if (m) out.push({ name: m[1], module: m[2], func: m[3] });

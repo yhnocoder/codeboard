@@ -4,7 +4,8 @@ export type Tok = { text: string; cls?: string };
 /** 一行里的调用：[col, end) 是 UTF-16 下标，idx = SegView.calls 里的下标 */
 export type Mark = { col: number; end: number; idx: number; pkg?: string }; // pkg：library 调用，写成 data-p
 
-export const escHtml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+export const escHtml = (s: string) =>
+  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
 /**
  * 拼一行 HTML。cut = 从这一列开始不要了（去掉行尾注释的版本，末尾空白也去掉）。
@@ -27,17 +28,28 @@ export function renderLine(toks: Tok[], marks: Mark[] = [], cut?: number): strin
   const ms = marks.filter((m) => m.col < line.length && m.end > m.col).sort((a, b) => a.col - b.col);
   const cuts = new Set<number>([0, line.length]);
   let c = 0;
-  for (const t of tk) { cuts.add(c); c += t.text.length; }
-  for (const m of ms) { cuts.add(m.col); cuts.add(Math.min(m.end, line.length)); }
+  for (const t of tk) {
+    cuts.add(c);
+    c += t.text.length;
+  }
+  for (const m of ms) {
+    cuts.add(m.col);
+    cuts.add(Math.min(m.end, line.length));
+  }
   const pts = [...cuts].sort((a, b) => a - b);
   const clsAt = (i: number) => {
     let col = 0;
-    for (const t of tk) { if (i < col + t.text.length) return t.cls; col += t.text.length; }
+    for (const t of tk) {
+      if (i < col + t.text.length) return t.cls;
+      col += t.text.length;
+    }
     return undefined;
   };
-  let out = "", open: Mark | undefined;
+  let out = "",
+    open: Mark | undefined;
   for (let k = 0; k + 1 < pts.length; k++) {
-    const a = pts[k], b = pts[k + 1];
+    const a = pts[k],
+      b = pts[k + 1];
     const m = ms.find((x) => x.col <= a && a < x.end);
     if (m !== open) {
       if (open) out += "</span>";
@@ -57,12 +69,20 @@ export function tokenClass(color: string | undefined, text: string): string | un
   if (/^(self|cls|this)$/.test(text.trim())) return "self";
   const m = /--shiki-token-([\w-]+)/.exec(color ?? "");
   switch (m?.[1]) {
-    case "keyword": return "kw";
-    case "function": return "fn";
-    case "string": case "string-expression": return "str";
-    case "comment": return "com";
-    case "constant": return "num";
-    case "punctuation": return "p";
-    default: return undefined;
+    case "keyword":
+      return "kw";
+    case "function":
+      return "fn";
+    case "string":
+    case "string-expression":
+      return "str";
+    case "comment":
+      return "com";
+    case "constant":
+      return "num";
+    case "punctuation":
+      return "p";
+    default:
+      return undefined;
   }
 }

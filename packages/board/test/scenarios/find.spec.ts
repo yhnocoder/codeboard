@@ -6,14 +6,21 @@ import { put, shot, type Host } from "../harness";
 import { test, open, check, until, idle, focusSettled } from "../fixtures";
 
 const close = (h: Host) => h.page.context().close();
-const md = (h: Host, id: string) => ((h.board().cards.find((c) => c.id === id) as NoteCard | undefined)?.md ?? "").trim();
+const md = (h: Host, id: string) =>
+  ((h.board().cards.find((c) => c.id === id) as NoteCard | undefined)?.md ?? "").trim();
 const count = (pg: Page) => pg.locator(".md-find .md-findn").textContent();
 /** 查找条里有焦点的是哪个框（md-findq / md-findr），不在条里给 null */
-const focusIn = (pg: Page) => pg.evaluate(() => { const a = document.activeElement; return a?.closest(".md-find") ? a.className : a?.closest(".md-pm, .cm-content") ? "editor" : (a?.className ?? null); });
+const focusIn = (pg: Page) =>
+  pg.evaluate(() => {
+    const a = document.activeElement;
+    return a?.closest(".md-find") ? a.className : a?.closest(".md-pm, .cm-content") ? "editor" : (a?.className ?? null);
+  });
 
 function noteBoard(texts: string[]): Board {
   const b = emptyBoard("b1", "find");
-  texts.forEach((t, i) => put(b, { id: `n${i}`, kind: "note", md: t, look: "note" } as NoteCard, 60 + i * 580, 60, 540));
+  texts.forEach((t, i) =>
+    put(b, { id: `n${i}`, kind: "note", md: t, look: "note" } as NoteCard, 60 + i * 580, 60, 540),
+  );
   b.cam = { x: 0, y: 0, z: 1 };
   return b;
 }
@@ -30,7 +37,13 @@ const NOTE = "alpha beta Alpha\n\n**alpha** in bold and `alpha` in code\n\n```py
 
 /** Note：六个 alpha（一个大写、一个粗体、一个行内代码、一个在代码块里） */
 test("noteFindReplace", async () => {
-  const h = await open({ board: noteBoard([NOTE]), light: true, w: 1100, h: 700, settings: { theme: "warm-ink" } as never });
+  const h = await open({
+    board: noteBoard([NOTE]),
+    light: true,
+    w: 1100,
+    h: 700,
+    settings: { theme: "warm-ink" } as never,
+  });
   await idle(h);
   const pg = h.page;
   await editNote(h, "n0");
@@ -41,14 +54,28 @@ test("noteFindReplace", async () => {
   await pg.keyboard.type("alpha");
   await until(h, "matches are counted", async () => (await count(pg)) === "1/6");
   /** 画出来的匹配：正文里的是 CSS Custom Highlight 的 StaticRange（读字时转成 Range），代码块里的是 CodeMirror 的装饰 */
-  const marks = () => pg.evaluate(() => {
-    const str = (s: AbstractRange) => { const r = document.createRange(); r.setStart(s.startContainer, s.startOffset); r.setEnd(s.endContainer, s.endOffset); return r.toString(); };
-    const n = (k: string) => CSS.highlights.get(k)?.size ?? 0, code = document.querySelectorAll('.card[data-id="n0"] .md-pm pre :is(.md-find-hit, .md-find-on)').length;
-    const texts = [...(CSS.highlights.get("md-find") ?? []), ...(CSS.highlights.get("md-find-cur") ?? [])].map(str);
-    // 匹配有颜色：::highlight() 规则限定在编辑器里（.md-pm），见 markdown.css
-    const p = document.querySelector('.card[data-id="n0"] .md-pm p')!, bg = (k: string) => getComputedStyle(p, `::highlight(${k})`).backgroundColor;
-    return { all: n("md-find") + n("md-find-cur") + code, active: n("md-find-cur"), inCode: code, texts, colors: [bg("md-find"), bg("md-find-cur")] };
-  });
+  const marks = () =>
+    pg.evaluate(() => {
+      const str = (s: AbstractRange) => {
+        const r = document.createRange();
+        r.setStart(s.startContainer, s.startOffset);
+        r.setEnd(s.endContainer, s.endOffset);
+        return r.toString();
+      };
+      const n = (k: string) => CSS.highlights.get(k)?.size ?? 0,
+        code = document.querySelectorAll('.card[data-id="n0"] .md-pm pre :is(.md-find-hit, .md-find-on)').length;
+      const texts = [...(CSS.highlights.get("md-find") ?? []), ...(CSS.highlights.get("md-find-cur") ?? [])].map(str);
+      // 匹配有颜色：::highlight() 规则限定在编辑器里（.md-pm），见 markdown.css
+      const p = document.querySelector('.card[data-id="n0"] .md-pm p')!,
+        bg = (k: string) => getComputedStyle(p, `::highlight(${k})`).backgroundColor;
+      return {
+        all: n("md-find") + n("md-find-cur") + code,
+        active: n("md-find-cur"),
+        inCode: code,
+        texts,
+        colors: [bg("md-find"), bg("md-find-cur")],
+      };
+    });
   const found = await marks();
   // 查找条浮着，不挤动正文
   const y1 = await pg.locator('.card[data-id="n0"] .md-pm p').first().boundingBox();
@@ -78,27 +105,91 @@ test("noteFindReplace", async () => {
   const undone = (await pg.locator('.card[data-id="n0"] .md-pm').textContent())?.match(/alpha/gi)?.length ?? 0;
   await pg.keyboard.press("Escape");
   await idle(h);
-  const r = { opened, found, moved: y1!.y - y0!.y, n2, nLast, caseOn, replFocus, afterOne, afterAll, allAlpha: /alpha/i.test(allText ?? ""), closed, undone, md: md(h, "n0") };
-  check("noteFindReplace", opened === "md-findq" && found.all === 6 && found.active === 1 && found.inCode === 1 && found.texts.every((t) => /^alpha$/i.test(t))
-    && found.colors.every((c) => !/^(transparent|rgba\(0, 0, 0, 0\))$/.test(c)) && found.colors[0] !== found.colors[1] && r.moved === 0
-    && n2 === "2/6" && nLast === "6/6" && caseOn === "1/5" && replFocus === "md-findr" && afterOne === "1/5" && afterAll === "No results" && !r.allAlpha
-    && closed.bar === 0 && closed.focus === "editor" && closed.marks === 0 && undone === 5 && r.md === NOTE.replace("alpha", "omega"), r);
+  const r = {
+    opened,
+    found,
+    moved: y1!.y - y0!.y,
+    n2,
+    nLast,
+    caseOn,
+    replFocus,
+    afterOne,
+    afterAll,
+    allAlpha: /alpha/i.test(allText ?? ""),
+    closed,
+    undone,
+    md: md(h, "n0"),
+  };
+  check(
+    "noteFindReplace",
+    opened === "md-findq" &&
+      found.all === 6 &&
+      found.active === 1 &&
+      found.inCode === 1 &&
+      found.texts.every((t) => /^alpha$/i.test(t)) &&
+      found.colors.every((c) => !/^(transparent|rgba\(0, 0, 0, 0\))$/.test(c)) &&
+      found.colors[0] !== found.colors[1] &&
+      r.moved === 0 &&
+      n2 === "2/6" &&
+      nLast === "6/6" &&
+      caseOn === "1/5" &&
+      replFocus === "md-findr" &&
+      afterOne === "1/5" &&
+      afterAll === "No results" &&
+      !r.allAlpha &&
+      closed.bar === 0 &&
+      closed.focus === "editor" &&
+      closed.marks === 0 &&
+      undone === 5 &&
+      r.md === NOTE.replace("alpha", "omega"),
+    r,
+  );
   await close(h);
 });
 
 /** 长 Note 里在查找框打字：每打一个字（重新查找、高亮、数个数、排版）一帧之内，屏幕外的匹配之后补上。量时间，单独跑（tiers.json 的 solo） */
 test("noteFindTypingLatency", async () => {
-  const para = (i: number) => `Paragraph ${i}: the scheduler picks a **sequence** from the waiting queue, then \`allocate\` blocks for it; see $x_${i}$ and the kernel launch.`;
+  const para = (i: number) =>
+    `Paragraph ${i}: the scheduler picks a **sequence** from the waiting queue, then \`allocate\` blocks for it; see $x_${i}$ and the kernel launch.`;
   const LONG = Array.from({ length: 250 }, (_, i) => para(i)).join("\n\n");
-  const h = await open({ board: noteBoard([LONG]), light: true, w: 1100, h: 700, settings: { theme: "warm-ink" } as never });
+  const h = await open({
+    board: noteBoard([LONG]),
+    light: true,
+    w: 1100,
+    h: 700,
+    settings: { theme: "warm-ink" } as never,
+  });
   await idle(h);
   const pg = h.page;
   await editNote(h, "n0");
   await pg.keyboard.press("Control+f");
   await pg.locator(".md-find .md-findq").waitFor();
   const lat = await pg.evaluate(async () => {
-    const q = document.querySelector(".md-find .md-findq") as HTMLInputElement, ts: number[] = [];
-    const words = ["s", "se", "seq", "sequ", "seque", "sequen", "sequenc", "sequence", "sequenc", "sequen", "seque", "sequ", "seq", "se", "s", "k", "ke", "ker", "kern", "kerne", "kernel"];
+    const q = document.querySelector(".md-find .md-findq") as HTMLInputElement,
+      ts: number[] = [];
+    const words = [
+      "s",
+      "se",
+      "seq",
+      "sequ",
+      "seque",
+      "sequen",
+      "sequenc",
+      "sequence",
+      "sequenc",
+      "sequen",
+      "seque",
+      "sequ",
+      "seq",
+      "se",
+      "s",
+      "k",
+      "ke",
+      "ker",
+      "kern",
+      "kerne",
+      "kernel",
+    ];
     for (const w of [...words, ...words]) {
       await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
       const t0 = performance.now();
@@ -108,30 +199,63 @@ test("noteFindTypingLatency", async () => {
       ts.push(performance.now() - t0);
     }
     ts.sort((a, b) => a - b);
-    return { p50: +ts[Math.floor(ts.length / 2)].toFixed(2), p90: +ts[Math.floor(ts.length * 0.9)].toFixed(2), max: +ts[ts.length - 1].toFixed(2), n: document.querySelector(".md-find .md-findn")!.textContent };
+    return {
+      p50: +ts[Math.floor(ts.length / 2)].toFixed(2),
+      p90: +ts[Math.floor(ts.length * 0.9)].toFixed(2),
+      max: +ts[ts.length - 1].toFixed(2),
+      n: document.querySelector(".md-find .md-findn")!.textContent,
+    };
   });
   // 每一下只画屏幕上的，其余的之后分批补上：停下来以后 250 个都画上了（大部分在屏幕外）
-  const painted = await until(h, "every match is painted", () => pg.evaluate(() => {
-    const n = (CSS.highlights.get("md-find")?.size ?? 0) + (CSS.highlights.get("md-find-cur")?.size ?? 0);
-    return n === 250 && n;
-  }));
-  check("noteFindTypingLatency all matches painted after typing stops, the active one once", painted === 250 && (await pg.evaluate(() => CSS.highlights.get("md-find-cur")?.size)) === 1, { painted });
+  const painted = await until(h, "every match is painted", () =>
+    pg.evaluate(() => {
+      const n = (CSS.highlights.get("md-find")?.size ?? 0) + (CSS.highlights.get("md-find-cur")?.size ?? 0);
+      return n === 250 && n;
+    }),
+  );
+  check(
+    "noteFindTypingLatency all matches painted after typing stops, the active one once",
+    painted === 250 && (await pg.evaluate(() => CSS.highlights.get("md-find-cur")?.size)) === 1,
+    { painted },
+  );
   await pg.keyboard.press("Escape");
   await pg.keyboard.press("Escape");
   await idle(h);
-  check("noteFindTypingLatency one keystroke in the find field on a 250-paragraph Note well inside a frame", lat.n === "1/250" && lat.p50 < 8 && lat.p90 < 16, lat);
+  check(
+    "noteFindTypingLatency one keystroke in the find field on a 250-paragraph Note well inside a frame",
+    lat.n === "1/250" && lat.p50 < 8 && lat.p90 < 16,
+    lat,
+  );
   await close(h);
 });
 
 const CODE = ["def f(x):", "    y = x + 1  # one", "    return y", "", "print(f(2))"];
 function freeBoard(): Board {
   const b = emptyBoard("b1", "free");
-  b.cards.push({ id: "c1", kind: "code", segments: [{ id: "s1", src: { kind: "free" }, path: "", lang: "python", start: 1, end: CODE.length, text: CODE.slice(), version: { kind: "none" } }] } as any);
+  b.cards.push({
+    id: "c1",
+    kind: "code",
+    segments: [
+      {
+        id: "s1",
+        src: { kind: "free" },
+        path: "",
+        lang: "python",
+        start: 1,
+        end: CODE.length,
+        text: CODE.slice(),
+        version: { kind: "none" },
+      },
+    ],
+  } as any);
   b.place.c1 = { x: 80, y: 80, w: 480 };
   b.cam = { x: 0, y: 0, z: 1 };
   return b;
 }
-const codeText = (pg: Page) => pg.evaluate(() => [...document.querySelectorAll('.card[data-id="c1"] .cm-line')].map((l) => l.textContent).join("\n"));
+const codeText = (pg: Page) =>
+  pg.evaluate(() =>
+    [...document.querySelectorAll('.card[data-id="c1"] .cm-line')].map((l) => l.textContent).join("\n"),
+  );
 
 /** Free code 卡：同一个查找条（CodeMirror 的面板里，浮着不挤动代码） */
 test("codeFindReplace", async () => {
@@ -164,7 +288,19 @@ test("codeFindReplace", async () => {
   await pg.keyboard.press("Escape");
   await idle(h);
   const r = { opened, found, moved: y1!.y - y0!.y, n1, n2, replFocus, replaced, closed, undone };
-  check("codeFindReplace", opened === "md-findq" && found === 2 && r.moved === 0 && n1 === "1/2" && n2 === "2/2" && replFocus === "md-findr"
-    && replaced === CODE.join("\n").replaceAll("y", "z") && closed.bar === 0 && closed.focus === "editor" && undone === CODE.join("\n"), r);
+  check(
+    "codeFindReplace",
+    opened === "md-findq" &&
+      found === 2 &&
+      r.moved === 0 &&
+      n1 === "1/2" &&
+      n2 === "2/2" &&
+      replFocus === "md-findr" &&
+      replaced === CODE.join("\n").replaceAll("y", "z") &&
+      closed.bar === 0 &&
+      closed.focus === "editor" &&
+      undone === CODE.join("\n"),
+    r,
+  );
   await close(h);
 });

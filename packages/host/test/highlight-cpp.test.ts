@@ -64,19 +64,50 @@ describe("tree-sitter highlighting for C / C++ / CUDA", () => {
   it("colours keywords, types, functions, literals, comments and the preprocessor", async () => {
     const t = await tokensOf("cuda-cpp", SRC);
     const want: [marker: string, word: string, cls: string | undefined, nth?: number][] = [
-      ["#include <cstdint>", "#include", "kw"], ["#include <cstdint>", "<cstdint>", "str"], ['#include "launch', '"launch.cuh"', "str"],
-      ["namespace ep", "namespace", "kw"], ["template <", "template", "kw"], ["template <", "typename", "kw"], ["template <", "int", "kw"],
-      ["reduce(const", "reduce", "fn"], ["reduce(const", "const", "kw"], ["reduce(const", "T", "fn"], ["reduce(const", "int64_t", "kw"], ["reduce(const", "float", "kw"],
-      ["const auto tid", "auto", "kw"], ["const auto tid", "static_cast", "kw"],
-      ["float acc", "0.5f", "num"], ["float acc", "0xffull", "num"], ["float acc", "unsigned long long", "kw"],
-      ["for (int i", "for", "kw"], ["for (int i", "+=", "kw"], ["for (int i", "// strided", "com"], ["for (int i", "x[i]", undefined],
-      ["if (tid == 0", "nullptr", "num"], ["if (tid == 0", "0", "num"],
-      ['printf("done', "printf", "fn"], ['printf("done', '"done', "str"], ['printf("done', "\\n", "str"],
-      ["struct Buffer", "struct", "kw"], ["struct Buffer", "Buffer", "fn"], ["struct Buffer", "public", "kw"], ["std::vector", "vector", "fn"], ["std::vector", "Tensor", "fn"],
-      ["std::vector", "std", undefined], ["std::vector", "::", "p"],
-      ["int size()", "size", "fn"], ["int size()", "noexcept", "kw"], ["int size()", "this", "self"], ["int size()", "size", "fn", 1], ["int size()", "return", "kw"],
-      ["void launch", "launch", "fn"], ["void launch", "cudaStream_t", "fn"], ["at::cuda::get", "getCurrentCUDAStream", "fn"], ["at::cuda::get", "cuda", undefined],
-      ["Reduce one tile", "Reduce", "com"], ["per block", "per", "com"],
+      ["#include <cstdint>", "#include", "kw"],
+      ["#include <cstdint>", "<cstdint>", "str"],
+      ['#include "launch', '"launch.cuh"', "str"],
+      ["namespace ep", "namespace", "kw"],
+      ["template <", "template", "kw"],
+      ["template <", "typename", "kw"],
+      ["template <", "int", "kw"],
+      ["reduce(const", "reduce", "fn"],
+      ["reduce(const", "const", "kw"],
+      ["reduce(const", "T", "fn"],
+      ["reduce(const", "int64_t", "kw"],
+      ["reduce(const", "float", "kw"],
+      ["const auto tid", "auto", "kw"],
+      ["const auto tid", "static_cast", "kw"],
+      ["float acc", "0.5f", "num"],
+      ["float acc", "0xffull", "num"],
+      ["float acc", "unsigned long long", "kw"],
+      ["for (int i", "for", "kw"],
+      ["for (int i", "+=", "kw"],
+      ["for (int i", "// strided", "com"],
+      ["for (int i", "x[i]", undefined],
+      ["if (tid == 0", "nullptr", "num"],
+      ["if (tid == 0", "0", "num"],
+      ['printf("done', "printf", "fn"],
+      ['printf("done', '"done', "str"],
+      ['printf("done', "\\n", "str"],
+      ["struct Buffer", "struct", "kw"],
+      ["struct Buffer", "Buffer", "fn"],
+      ["struct Buffer", "public", "kw"],
+      ["std::vector", "vector", "fn"],
+      ["std::vector", "Tensor", "fn"],
+      ["std::vector", "std", undefined],
+      ["std::vector", "::", "p"],
+      ["int size()", "size", "fn"],
+      ["int size()", "noexcept", "kw"],
+      ["int size()", "this", "self"],
+      ["int size()", "size", "fn", 1],
+      ["int size()", "return", "kw"],
+      ["void launch", "launch", "fn"],
+      ["void launch", "cudaStream_t", "fn"],
+      ["at::cuda::get", "getCurrentCUDAStream", "fn"],
+      ["at::cuda::get", "cuda", undefined],
+      ["Reduce one tile", "Reduce", "com"],
+      ["per block", "per", "com"],
     ];
     for (const [m, w, c, nth = 0] of want) expect([m, w, clsOf(t, m, w, nth)]).toEqual([m, w, c]);
   });
@@ -117,7 +148,12 @@ describe("tree-sitter highlighting for C / C++ / CUDA", () => {
 
   it("keeps every character of real C++ / CUDA files, line by line", async () => {
     const dir = path.join(REPO, "packages/host/test/fixtures/crosslang");
-    for (const f of ["csrc/kernels/intranode.cu", "csrc/kernels/launch.cuh", "csrc/deep_ep.cpp", "csrc/jit/dispatch.hpp"]) {
+    for (const f of [
+      "csrc/kernels/intranode.cu",
+      "csrc/kernels/launch.cuh",
+      "csrc/deep_ep.cpp",
+      "csrc/jit/dispatch.hpp",
+    ]) {
       const text = fs.readFileSync(path.join(dir, f), "utf8");
       const toks = await tokensOf(f.endsWith(".cpp") || f.endsWith(".hpp") ? "cpp" : "cuda-cpp", text);
       expect(toks.map((l) => l.map((x) => x.text).join(""))).toEqual(text.split(/\r?\n/));

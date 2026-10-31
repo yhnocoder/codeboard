@@ -1,6 +1,20 @@
 // 子白板（BoardCard）：宿主把子白板算成一份很小的骨架（每张卡的框、种类、名字，Section 的框，卡之间的连线，图片的缩略图，[[ 能链接的卡）发给父白板，
 // 父白板按它在框里画一张缩略地图，不拿子白板的完整内容。点开地图上的一块时才问宿主要那一张卡（subCardOf）。
-import { cardTitle, clone, emptyBoard, firstLine, hostOf, isCode, uid, versionLabel, withCols, type Board, type BoardCard, type Card, type Place } from "./model";
+import {
+  cardTitle,
+  clone,
+  emptyBoard,
+  firstLine,
+  hostOf,
+  isCode,
+  uid,
+  versionLabel,
+  withCols,
+  type Board,
+  type BoardCard,
+  type Card,
+  type Place,
+} from "./model";
 import { cardsToFrame, removeCards, removeSections, removeStickers, renumberBorn } from "./edit";
 import { bounds, estSize, sectionFrames, type Rect } from "./layout";
 import type { Crumb } from "./protocol";
@@ -10,7 +24,18 @@ import type { Crumb } from "./protocol";
  * lk = 没有卡框的 Note 的样子（Text 画成一道线，Box 只有边框，Mark 是几道手写色的线）；si = 所在 Section 在 secs 里的下标；
  * img = 图片（assets/ 下的文件名或小的 data: URL）
  */
-export type SkelCard = { id: string; x: number; y: number; w: number; h: number; t: string; k: Card["kind"]; lk?: "text" | "box" | "mark"; si?: number; img?: string };
+export type SkelCard = {
+  id: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  t: string;
+  k: Card["kind"];
+  lk?: "text" | "box" | "mark";
+  si?: number;
+  img?: string;
+};
 /** [[ 能链接到的一张卡（有真正标题的）：via = 从这块子白板往下要经过的子白板（框的卡 id、白板 id、名字），直接在这块上的没有 */
 export type SkelRef = { id: string; t: string; k: Card["kind"]; via?: { f: string; b: string; n: string }[] };
 export type SkelSec = { x: number; y: number; w: number; h: number; color?: string; t: string };
@@ -18,10 +43,23 @@ export type SkelSec = { x: number; y: number; w: number; h: number; color?: stri
  * 一块子白板的骨架。w / h = 内容的范围；n = 卡数；commit = 代码卡里最多的那个 commit（短）；
  * ln = 卡之间的连线（cards 里的下标，去重、不分方向）；refs = 它和它里面的子白板（一路往下）上能 [[ 链接的卡
  */
-export type Skeleton = { id: string; name: string; n: number; commit?: string; w: number; h: number; cards: SkelCard[]; secs: SkelSec[]; ln: [number, number][]; refs: SkelRef[] };
+export type Skeleton = {
+  id: string;
+  name: string;
+  n: number;
+  commit?: string;
+  w: number;
+  h: number;
+  cards: SkelCard[];
+  secs: SkelSec[];
+  ln: [number, number][];
+  refs: SkelRef[];
+};
 
 /** 框里地图的留白（世界坐标）：左右下 MAP_PAD，上 MAP_TOP（最上面的 Section 名一半在区域外，要留出来）；很小的子白板也最多缩到 MAP_MAX（一两张卡不放成一大块） */
-const MAP_PAD = 14, MAP_TOP = 20, MAP_MAX = 0.5;
+const MAP_PAD = 14,
+  MAP_TOP = 20,
+  MAP_MAX = 0.5;
 export type MapFit = { s: number; ox: number; oy: number };
 /** 骨架（w × h）等比放进 W × H 的框：比例 s，左上角在框里的 (ox, oy)，居中 */
 export function mapFit(sk: { w: number; h: number }, W: number, H: number): MapFit {
@@ -38,13 +76,21 @@ export function subBoardsOf(b: Pick<Board, "cards">): string[] {
  * 面包屑上的一块白板删掉了：它和它上面的几层都回不去了，只留它下面的几层（cams[i] 是回到 crumbs[i] 时的镜头，跟着一起剪）。
  * 面包屑上没有它返回 null
  */
-export function cutCrumbs<T>(crumbs: readonly Crumb[], cams: readonly T[], gone: string): { crumbs: Crumb[]; cams: T[] } | null {
+export function cutCrumbs<T>(
+  crumbs: readonly Crumb[],
+  cams: readonly T[],
+  gone: string,
+): { crumbs: Crumb[]; cams: T[] } | null {
   const i = crumbs.findIndex((c) => c.id === gone);
   return i < 0 ? null : { crumbs: crumbs.slice(i + 1), cams: cams.slice(i + 1) };
 }
 
 /** child 放进 parent 会不会套成环：child 就是 parent，或者从 child 往下能走到 parent。subs(id) = 那块白板的子白板 */
-export function wouldCycle(subs: (id: string) => readonly string[] | undefined, parent: string, child: string): boolean {
+export function wouldCycle(
+  subs: (id: string) => readonly string[] | undefined,
+  parent: string,
+  child: string,
+): boolean {
   const seen = new Set<string>();
   const stack = [child];
   while (stack.length) {
@@ -60,7 +106,7 @@ export function wouldCycle(subs: (id: string) => readonly string[] | undefined, 
 /** 卡在子白板上的框：Place 的位置 + 大小（宿主量不到实测尺寸：layout.estSize，白板上量过的用量到的高 Place.mh） */
 function rectOf(c: Card, p: Place): Rect {
   const s = estSize(c, p);
-  return { x: p.x, y: p.y, w: s.w, h: c.kind === "board" ? p.h ?? 320 : s.h };
+  return { x: p.x, y: p.y, w: s.w, h: c.kind === "board" ? (p.h ?? 320) : s.h };
 }
 
 /**
@@ -74,16 +120,26 @@ export function refTitle(c: Card, nameOf: (board: string) => string | undefined 
   switch (c.kind) {
     case "note": {
       const head = c.md.split("\n").find((l) => l.trim());
-      return head && (/^\s{0,3}#{1,6}\s/.test(head) || (c.look === "text" && (c.size === "title" || c.size === "heading"))) ? firstLine(head) || undefined : undefined;
+      return head &&
+        (/^\s{0,3}#{1,6}\s/.test(head) || (c.look === "text" && (c.size === "title" || c.size === "heading")))
+        ? firstLine(head) || undefined
+        : undefined;
     }
-    case "code": return c.segments[0]?.symbol ? cardTitle(c) : undefined;
-    case "board": return nameOf(c.board) ?? "Board";
-    default: return undefined;
+    case "code":
+      return c.segments[0]?.symbol ? cardTitle(c) : undefined;
+    case "board":
+      return nameOf(c.board) ?? "Board";
+    default:
+      return undefined;
   }
 }
 
 /** Note 去掉 Markdown 记号后的非空行（firstLine 同一套） */
-const textLines = (md: string) => md.split("\n").map((l) => firstLine(l)).filter(Boolean);
+const textLines = (md: string) =>
+  md
+    .split("\n")
+    .map((l) => firstLine(l))
+    .filter(Boolean);
 /** 地图上能直接画的图片：assets/ 下的文件，或者不大的 data: URL（大的不往骨架里塞） */
 const thumbOf = (src: string) => (!src.startsWith("data:") ? src : src.length <= 16_000 ? src : undefined);
 
@@ -102,17 +158,30 @@ export function skeletonOf(b: Board, peek: (id: string) => Board | undefined = (
   const cards: SkelCard[] = [];
   for (const c of placed) {
     const r = rects.get(c.id)!;
-    const sc: SkelCard = { id: c.id, x: r.x, y: r.y, w: r.w, h: r.h, t: c.kind === "image" ? imageName(c, r, placed, rects) : titleOf(c, b, nameOf), k: c.kind };
+    const sc: SkelCard = {
+      id: c.id,
+      x: r.x,
+      y: r.y,
+      w: r.w,
+      h: r.h,
+      t: c.kind === "image" ? imageName(c, r, placed, rects) : titleOf(c, b, nameOf),
+      k: c.kind,
+    };
     if (c.kind === "note" && c.look !== "note") sc.lk = c.look;
-    if (c.kind === "image") { const img = thumbOf(c.src); if (img) sc.img = img; }
+    if (c.kind === "image") {
+      const img = thumbOf(c.src);
+      if (img) sc.img = img;
+    }
     const si = secIndex.get(b.place[c.id].section ?? "");
     if (si !== undefined) sc.si = si;
     cards.push(sc);
   }
   const at = new Map(cards.map((c, i) => [c.id, i]));
-  const ln: [number, number][] = [], seen = new Set<string>();
+  const ln: [number, number][] = [],
+    seen = new Set<string>();
   for (const l of b.links) {
-    const i = at.get(host(l.from.card)), j = at.get(host(l.to.card));
+    const i = at.get(host(l.from.card)),
+      j = at.get(host(l.to.card));
     if (i === undefined || j === undefined || i === j) continue;
     const k = i < j ? `${i},${j}` : `${j},${i}`;
     if (seen.has(k)) continue;
@@ -128,8 +197,23 @@ export function skeletonOf(b: Board, peek: (id: string) => Board | undefined = (
 
   const box = bounds([...cards, ...secs]) ?? { x: 0, y: 0, w: 1, h: 1 };
   const r0 = (n: number) => Math.round(n);
-  for (const o of [...cards, ...secs]) { o.x = r0(o.x - box.x); o.y = r0(o.y - box.y); o.w = r0(o.w); o.h = r0(o.h); }
-  const sk: Skeleton = { id: b.id, name: b.name, n: placed.length, w: Math.max(1, r0(box.w)), h: Math.max(1, r0(box.h)), cards, secs, ln, refs: refsOf(b, peek) };
+  for (const o of [...cards, ...secs]) {
+    o.x = r0(o.x - box.x);
+    o.y = r0(o.y - box.y);
+    o.w = r0(o.w);
+    o.h = r0(o.h);
+  }
+  const sk: Skeleton = {
+    id: b.id,
+    name: b.name,
+    n: placed.length,
+    w: Math.max(1, r0(box.w)),
+    h: Math.max(1, r0(box.h)),
+    cards,
+    secs,
+    ln,
+    refs: refsOf(b, peek),
+  };
   const commit = mainCommit(b);
   if (commit) sk.commit = commit;
   return sk;
@@ -137,7 +221,12 @@ export function skeletonOf(b: Board, peek: (id: string) => Board | undefined = (
 
 function titleOf(c: Card, b: Board, nameOf: (id: string) => string | undefined): string {
   if (c.kind === "board") return c.title || nameOf(c.board) || "Board";
-  if (c.kind === "note") return (c.look === "mark" ? textLines(c.md).join(" ").slice(0, 160) : (c.title || firstLine(c.md) || "Note").slice(0, 80)) || "Mark";
+  if (c.kind === "note")
+    return (
+      (c.look === "mark"
+        ? textLines(c.md).join(" ").slice(0, 160)
+        : (c.title || firstLine(c.md) || "Note").slice(0, 80)) || "Mark"
+    );
   return cardTitle(c, b).slice(0, 120);
 }
 
@@ -199,7 +288,10 @@ export function boardRefsOf(b: Board, nameOf: (id: string) => string | undefined
   for (const c of b.cards) {
     const p = b.place[c.id];
     if (!p) continue;
-    const t = refTitle(c, nameOf)?.replace(/[\[\]\n]/g, " ").trim().slice(0, 160);
+    const t = refTitle(c, nameOf)
+      ?.replace(/[\[\]\n]/g, " ")
+      .trim()
+      .slice(0, 160);
     if (!t) continue;
     const r: BoardRef = { id: c.id, t, k: isCode(c) ? "code" : c.kind };
     const s = p.section && secs.get(p.section);
@@ -212,9 +304,20 @@ export function boardRefsOf(b: Board, nameOf: (id: string) => string | undefined
 /** 代码卡里出现最多的 git commit（短）；没有 git 代码时 undefined */
 function mainCommit(b: Board): string | undefined {
   const n = new Map<string, number>();
-  for (const c of b.cards) if (isCode(c)) for (const s of c.segments) if (s.version.kind === "git") { const k = versionLabel(s.version); n.set(k, (n.get(k) ?? 0) + 1); }
-  let best: string | undefined, bn = 0;
-  for (const [k, v] of n) if (v > bn) { best = k; bn = v; }
+  for (const c of b.cards)
+    if (isCode(c))
+      for (const s of c.segments)
+        if (s.version.kind === "git") {
+          const k = versionLabel(s.version);
+          n.set(k, (n.get(k) ?? 0) + 1);
+        }
+  let best: string | undefined,
+    bn = 0;
+  for (const [k, v] of n)
+    if (v > bn) {
+      best = k;
+      bn = v;
+    }
   return best;
 }
 
@@ -222,7 +325,11 @@ function mainCommit(b: Board): string | undefined {
  * 卡 card 在 b 或它一路往下的哪块子白板上：从 b 进到那块要经过的框（frame = 上一层白板上的框，board = 进到的白板）。
  * 就在 b 上是 []，哪都找不到是 null。宽度优先：同一张卡（共享卡）出现在几层时走最近的那层
  */
-export function cardPath(b: Board, card: string, peek: (id: string) => Board | undefined): { frame: string; board: string }[] | null {
+export function cardPath(
+  b: Board,
+  card: string,
+  peek: (id: string) => Board | undefined,
+): { frame: string; board: string }[] | null {
   const seen = new Set<string>([b.id]);
   let level: { b: Board; path: { frame: string; board: string }[] }[] = [{ b, path: [] }];
   for (let depth = 0; level.length && depth < 9; depth++) {
@@ -251,31 +358,75 @@ const FRAME_PAD = 16;
  * 新白板是父白板的拷贝删掉其余的卡和 Section（removeCards / removeSections），引用的清理和父白板删卡一样。
  * rects：卡的实测矩形（白板界面量的）。直接改 parent，返回新白板（还没存）
  */
-export function extractBoard(parent: Board, ids: string[], rects: (id: string) => Rect, o: { id: string; name: string; frame?: string }): { child: Board; frame: string } | null {
+export function extractBoard(
+  parent: Board,
+  ids: string[],
+  rects: (id: string) => Rect,
+  o: { id: string; name: string; frame?: string },
+): { child: Board; frame: string } | null {
   const top = ids.filter((id) => parent.place[id] && parent.cards.some((c) => c.id === id));
   if (!top.length) return null;
   const want = new Set(withCols(parent, top));
   const box = bounds(top.map(rects))!;
-  const dx = 80 - box.x, dy = 80 - box.y;
+  const dx = 80 - box.x,
+    dy = 80 - box.y;
   // 成员全在选区里的 Section（和它下面的子 Section）一起搬走
   const secs = new Set<string>();
   const members = (sid: string) => parent.cards.filter((c) => parent.place[c.id]?.section === sid).map((c) => c.id);
-  for (const s of parent.sections) { const m = members(s.id); if (m.length && m.every((id) => want.has(id))) secs.add(s.id); }
-  for (let grew = true; grew;) { grew = false; for (const s of parent.sections) if (!secs.has(s.id) && s.parent && secs.has(s.parent) && members(s.id).every((id) => want.has(id))) { secs.add(s.id); grew = true; } }
+  for (const s of parent.sections) {
+    const m = members(s.id);
+    if (m.length && m.every((id) => want.has(id))) secs.add(s.id);
+  }
+  for (let grew = true; grew; ) {
+    grew = false;
+    for (const s of parent.sections)
+      if (!secs.has(s.id) && s.parent && secs.has(s.parent) && members(s.id).every((id) => want.has(id))) {
+        secs.add(s.id);
+        grew = true;
+      }
+  }
 
   const { cards, place, links, sections, sidenotes, stickers, born, marks } = clone(parent);
-  const child: Board = { ...emptyBoard(o.id, o.name), cam: { x: 40, y: 40, z: 1 }, cards, place, links, sections, sidenotes, stickers, born, marks };
-  removeCards(child, child.cards.filter((c) => !want.has(c.id)).map((c) => c.id));
-  removeSections(child, child.sections.filter((s) => !secs.has(s.id)).map((s) => s.id));
-  removeStickers(child, child.stickers.filter((k) => k.at.kind === "canvas" && !k.at.on).map((k) => k.id)); // 画布上没绑东西的留在父白板
-  for (const p of Object.values(child.place)) { p.x += dx; p.y += dy; }
-  for (const s of child.sections) { s.x += dx; s.y += dy; }
+  const child: Board = {
+    ...emptyBoard(o.id, o.name),
+    cam: { x: 40, y: 40, z: 1 },
+    cards,
+    place,
+    links,
+    sections,
+    sidenotes,
+    stickers,
+    born,
+    marks,
+  };
+  removeCards(
+    child,
+    child.cards.filter((c) => !want.has(c.id)).map((c) => c.id),
+  );
+  removeSections(
+    child,
+    child.sections.filter((s) => !secs.has(s.id)).map((s) => s.id),
+  );
+  removeStickers(
+    child,
+    child.stickers.filter((k) => k.at.kind === "canvas" && !k.at.on).map((k) => k.id),
+  ); // 画布上没绑东西的留在父白板
+  for (const p of Object.values(child.place)) {
+    p.x += dx;
+    p.y += dy;
+  }
+  for (const s of child.sections) {
+    s.x += dx;
+    s.y += dy;
+  }
   renumberBorn(child);
 
   // 父白板：卡换成框。框比原来那片小（骨架是缩略的）：宽取一半左右，高按原来的长宽比
   const frame = o.frame ?? uid("c");
   const fw = Math.round(Math.max(360, Math.min(640, box.w * 0.45)));
-  const fh = Math.round(Math.max(220, Math.min(560, (fw - FRAME_PAD * 2) * (box.h / Math.max(1, box.w)) + FRAME_PAD * 2)));
+  const fh = Math.round(
+    Math.max(220, Math.min(560, (fw - FRAME_PAD * 2) * (box.h / Math.max(1, box.w)) + FRAME_PAD * 2)),
+  );
   const fr: Place = { x: Math.round(box.x), y: Math.round(box.y), w: fw, h: fh };
   const sec0 = parent.place[top[0]].section;
   if (sec0 && !secs.has(sec0)) fr.section = sec0;

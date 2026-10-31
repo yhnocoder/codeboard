@@ -3,7 +3,8 @@ import { fuzzy, substr } from "../src";
 
 describe("⌘K name matching", () => {
   it("does not match names that only contain the query's letters scattered", () => {
-    for (const name of ["main", "Context", "get_context", "__init__", "set_params", "Qwen3ForCausalLM"]) expect(fuzzy("step", name)).toBe(-1);
+    for (const name of ["main", "Context", "get_context", "__init__", "set_params", "Qwen3ForCausalLM"])
+      expect(fuzzy("step", name)).toBe(-1);
   });
   it("matches a query that is part of the name or the qualified name", () => {
     expect(fuzzy("step", "step")).toBeGreaterThan(0);

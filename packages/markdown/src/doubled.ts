@@ -14,10 +14,18 @@ function shownText(tex: string): string | null {
   if (s === undefined) {
     try {
       const html = katex.renderToString(tex, { output: "mathml", throwOnError: true, macros: mathMacros() });
-      s = html.replace(/<annotation[\s\S]*?<\/annotation>/, "").replace(/<[^>]+>/g, "")
-        .replace(/&(#x[0-9a-f]+|#\d+|amp|lt|gt|quot);/gi, (_, e: string) => (e[0] === "#" ? String.fromCodePoint(parseInt(e[1] === "x" ? e.slice(2) : e.slice(1), e[1] === "x" ? 16 : 10)) : ({ amp: "&", lt: "<", gt: ">", quot: '"' } as Record<string, string>)[e.toLowerCase()]))
+      s = html
+        .replace(/<annotation[\s\S]*?<\/annotation>/, "")
+        .replace(/<[^>]+>/g, "")
+        .replace(/&(#x[0-9a-f]+|#\d+|amp|lt|gt|quot);/gi, (_, e: string) =>
+          e[0] === "#"
+            ? String.fromCodePoint(parseInt(e[1] === "x" ? e.slice(2) : e.slice(1), e[1] === "x" ? 16 : 10))
+            : ({ amp: "&", lt: "<", gt: ">", quot: '"' } as Record<string, string>)[e.toLowerCase()],
+        )
         .replace(new RegExp(INVISIBLE.source, "g"), "");
-    } catch { s = null; }
+    } catch {
+      s = null;
+    }
     if (shown.size > 500) shown.clear();
     shown.set(tex, s);
   }
@@ -25,21 +33,26 @@ function shownText(tex: string): string | null {
 }
 /** 显示的字 r 是否正好在 t[..end) 的末尾（不管空白和不可见的字），是的话返回它开始的位置 */
 function endsWith(t: string, end: number, r: string): number {
-  let i = end, j = r.length;
+  let i = end,
+    j = r.length;
   while (j > 0) {
     while (i > 0 && INVISIBLE.test(t[i - 1])) i--;
     if (i === 0 || t[i - 1] !== r[j - 1]) return -1;
-    i--; j--;
+    i--;
+    j--;
   }
   return i;
 }
 /** 纯文字里"显示的字 + TeX"连着的公式换成 $TeX$；没有的原样返回 */
 export function undoubleTex(t: string): string {
-  let out = "", last = 0, budget = MAX_RENDERS;
+  let out = "",
+    last = 0,
+    budget = MAX_RENDERS;
   for (const m of t.matchAll(ANCHOR)) {
     const a = m.index!;
     if (a < last) continue;
-    let lo = a, hi = a + m[0].length;
+    let lo = a,
+      hi = a + m[0].length;
     while (lo > last && TEX_CH.test(t[lo - 1]) && a - lo < 40) lo--;
     while (hi < t.length && TEX_CH.test(t[hi]) && hi - a < 80) hi++;
     let hit: [number, number, number] | null = null;
@@ -49,9 +62,13 @@ export function undoubleTex(t: string): string {
       for (let s = lo; s <= a && budget > 0; s++) {
         if (t[s] === " ") continue;
         budget--;
-        const tex = t.slice(s, e), r = shownText(tex);
+        const tex = t.slice(s, e),
+          r = shownText(tex);
         const from = r ? endsWith(t, s, r) : -1;
-        if (from >= last) { hit = [from, s, e]; break; }
+        if (from >= last) {
+          hit = [from, s, e];
+          break;
+        }
       }
     }
     if (!hit) continue;
@@ -64,7 +81,10 @@ export function undoubleTex(t: string): string {
 function balanced(s: string): boolean {
   let d = 0;
   for (let i = 0; i < s.length; i++) {
-    if (s[i] === "\\") { i++; continue; }
+    if (s[i] === "\\") {
+      i++;
+      continue;
+    }
     if (s[i] === "{") d++;
     else if (s[i] === "}" && --d < 0) return false;
   }

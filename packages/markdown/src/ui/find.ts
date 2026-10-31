@@ -52,35 +52,57 @@ export class FindBar {
   /** 关的时候焦点先回编辑器、再拿掉条：拿掉有焦点的输入框时浏览器会报一次失焦，不能当成离开 */
   private closing = false;
 
-  constructor(private t: FindTarget, private o: FindBarOpts) {
-    const mod = o.isMac ? "⌘" : "Ctrl+", alt = mod === "⌘" ? "⌥" : "Alt+";
+  constructor(
+    private t: FindTarget,
+    private o: FindBarOpts,
+  ) {
+    const mod = o.isMac ? "⌘" : "Ctrl+",
+      alt = mod === "⌘" ? "⌥" : "Alt+";
     this.el = div("md-find");
     this.el.dataset.nodrag = "";
     this.bar = div("pill md-findbar");
     this.el.append(this.bar);
-    const row1 = div("md-findrow"), row2 = div("md-findrow md-replrow");
-    const tog = button("replace", "Toggle Replace", `${alt}${mod}F`, "md-tog", () => this.showReplace(!this.bar.classList.contains("repl")));
+    const row1 = div("md-findrow"),
+      row2 = div("md-findrow md-replrow");
+    const tog = button("replace", "Toggle Replace", `${alt}${mod}F`, "md-tog", () =>
+      this.showReplace(!this.bar.classList.contains("repl")),
+    );
     this.q = input("md-findq", "Find");
     this.n = div("md-findn");
     this.caseBtn = button(null, "Match Case", `${alt}C`, "md-case", () => this.toggleCase());
     this.caseBtn.textContent = "Aa";
-    row1.append(tog, this.q, this.n, this.caseBtn,
+    row1.append(
+      tog,
+      this.q,
+      this.n,
+      this.caseBtn,
       button("up", "Previous Match", "⇧Enter", "", () => this.go(-1)),
       button("down", "Next Match", "Enter", "", () => this.go(1)),
-      button("close", "Close", "Esc", "", () => this.close()));
+      button("close", "Close", "Esc", "", () => this.close()),
+    );
     this.r = input("md-findr", "Replace");
-    const one = button(null, "Replace", "Enter", "md-txt", () => this.replace()), all = button(null, "Replace All", `${mod}Enter`, "md-txt", () => this.replaceAll());
+    const one = button(null, "Replace", "Enter", "md-txt", () => this.replace()),
+      all = button(null, "Replace All", `${mod}Enter`, "md-txt", () => this.replaceAll());
     one.textContent = "Replace";
     all.textContent = "All";
     row2.append(div("md-findpad"), this.r, one, all);
     this.bar.append(row1, row2);
 
-    this.q.addEventListener("input", () => { this.spec = { ...this.spec, search: this.q.value }; this.t.query(this.spec, true); this.refresh(); });
-    this.r.addEventListener("input", () => { this.spec = { ...this.spec, replace: this.r.value }; this.t.query(this.spec, false); });
+    this.q.addEventListener("input", () => {
+      this.spec = { ...this.spec, search: this.q.value };
+      this.t.query(this.spec, true);
+      this.refresh();
+    });
+    this.r.addEventListener("input", () => {
+      this.spec = { ...this.spec, replace: this.r.value };
+      this.t.query(this.spec, false);
+    });
     this.q.addEventListener("keydown", (e) => this.key(e, false));
     this.r.addEventListener("keydown", (e) => this.key(e, true));
     // 按钮不拿焦点（焦点留在输入框里）；按下不让白板当成拖卡片
-    this.bar.addEventListener("mousedown", (e) => { if (!(e.target as HTMLElement).closest("input")) e.preventDefault(); });
+    this.bar.addEventListener("mousedown", (e) => {
+      if (!(e.target as HTMLElement).closest("input")) e.preventDefault();
+    });
     this.el.addEventListener("pointerdown", (e) => e.stopPropagation());
     this.el.addEventListener("focusout", (e) => {
       const to = e.relatedTarget;
@@ -89,11 +111,16 @@ export class FindBar {
     });
   }
 
-  get open() { return this.el.isConnected; }
+  get open() {
+    return this.el.isConnected;
+  }
 
   /** 打开（已经开着就再选中查找框）：seed 是选中的字 */
   show(replace: boolean, seed?: string) {
-    if (seed !== undefined && seed !== this.q.value) { this.q.value = seed; this.spec = { ...this.spec, search: seed }; }
+    if (seed !== undefined && seed !== this.q.value) {
+      this.q.value = seed;
+      this.spec = { ...this.spec, search: seed };
+    }
     if (replace) this.showReplace(true);
     this.t.query(this.spec, true);
     this.refresh();
@@ -114,12 +141,33 @@ export class FindBar {
   close() {
     if (!this.open) return;
     this.closing = true;
-    try { this.t.closed(); this.el.remove(); } finally { this.closing = false; }
+    try {
+      this.t.closed();
+      this.el.remove();
+    } finally {
+      this.closing = false;
+    }
   }
 
-  private go(d: 1 | -1) { if (this.spec.search) { if (d > 0) this.t.next(); else this.t.prev(); this.refresh(); } }
-  private replace() { if (this.spec.search) { this.t.replace(); this.refresh(); } }
-  private replaceAll() { if (this.spec.search) { this.t.replaceAll(); this.refresh(); } }
+  private go(d: 1 | -1) {
+    if (this.spec.search) {
+      if (d > 0) this.t.next();
+      else this.t.prev();
+      this.refresh();
+    }
+  }
+  private replace() {
+    if (this.spec.search) {
+      this.t.replace();
+      this.refresh();
+    }
+  }
+  private replaceAll() {
+    if (this.spec.search) {
+      this.t.replaceAll();
+      this.refresh();
+    }
+  }
   private toggleCase() {
     this.spec = { ...this.spec, caseSensitive: !this.spec.caseSensitive };
     this.caseBtn.classList.toggle("on", this.spec.caseSensitive);
@@ -129,22 +177,49 @@ export class FindBar {
   }
   private showReplace(on: boolean) {
     this.bar.classList.toggle("repl", on);
-    if (on) { this.r.focus({ preventScroll: true }); this.r.select(); } else this.q.focus({ preventScroll: true });
+    if (on) {
+      this.r.focus({ preventScroll: true });
+      this.r.select();
+    } else this.q.focus({ preventScroll: true });
   }
 
   private key(e: KeyboardEvent, inReplace: boolean) {
-    const mod = e.metaKey || e.ctrlKey, k = findKey(e);
-    if (e.isComposing || e.key === "Process") { keepKey(e); return; }
-    if (k) { e.preventDefault(); if (k === "replace") this.showReplace(true); else { this.q.focus(); this.q.select(); } }
-    else if (e.key === "Escape") { e.preventDefault(); this.close(); }
-    else if (e.key === "Enter" && inReplace) { e.preventDefault(); if (mod) this.replaceAll(); else this.replace(); }
-    else if (e.key === "Enter") { e.preventDefault(); this.go(e.shiftKey ? -1 : 1); }
-    else if (e.altKey && !mod && e.code === "KeyC") { e.preventDefault(); this.toggleCase(); }
+    const mod = e.metaKey || e.ctrlKey,
+      k = findKey(e);
+    if (e.isComposing || e.key === "Process") {
+      keepKey(e);
+      return;
+    }
+    if (k) {
+      e.preventDefault();
+      if (k === "replace") this.showReplace(true);
+      else {
+        this.q.focus();
+        this.q.select();
+      }
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      this.close();
+    } else if (e.key === "Enter" && inReplace) {
+      e.preventDefault();
+      if (mod) this.replaceAll();
+      else this.replace();
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      this.go(e.shiftKey ? -1 : 1);
+    } else if (e.altKey && !mod && e.code === "KeyC") {
+      e.preventDefault();
+      this.toggleCase();
+    }
     keepKey(e);
   }
 }
 
-const div = (cls: string) => { const d = document.createElement("div"); d.className = cls; return d; };
+const div = (cls: string) => {
+  const d = document.createElement("div");
+  d.className = cls;
+  return d;
+};
 function input(cls: string, ph: string) {
   const i = document.createElement("input");
   i.className = cls;

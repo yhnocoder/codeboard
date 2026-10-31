@@ -7,23 +7,55 @@ import { cam } from "../src/state/camera";
 
 type Args = { count: number; locked: boolean; links: boolean; marquee: boolean; nearTop: boolean };
 
-const NOTES = ["**Scheduler**\n\n先 prefill 后 decode", "**BlockManager**\n\nblock 分配与释放", "**ModelRunner**\n\nCUDA graph 捕获", "**Sampler**\n\ntemperature 采样", "**Sequence**\n\ntoken 和 block 表", "**LLMEngine**\n\n主循环 step()", "**Config**\n\nkvcache_block_size = 256"];
+const NOTES = [
+  "**Scheduler**\n\n先 prefill 后 decode",
+  "**BlockManager**\n\nblock 分配与释放",
+  "**ModelRunner**\n\nCUDA graph 捕获",
+  "**Sampler**\n\ntemperature 采样",
+  "**Sequence**\n\ntoken 和 block 表",
+  "**LLMEngine**\n\n主循环 step()",
+  "**Config**\n\nkvcache_block_size = 256",
+];
 
 /** 7 张散着的 Note：a → b、a → c、c → d 有箭头，e、f、g 没有（和 multi-select 场景一样） */
 function scattered(a: Args): Scene {
   const { board: b, put } = scene("Multi-select");
   const y0 = a.nearTop ? 20 : 140;
-  const at = [[60, y0], [420, y0 + 40], [380, y0 + 260], [760, y0 + 220], [80, y0 + 380], [700, y0 + 480], [1020, y0 + 60]];
-  const ids = NOTES.map((md, i) => put(noteCard(`n${i}`, md), { x: at[i][0], y: at[i][1], w: 230, ...(a.locked && i % 2 === 0 ? { locked: true } : {}) }).id);
-  if (a.links) { arrow(b, "ab", whole(b.cards[0]), whole(b.cards[1])); arrow(b, "ac", whole(b.cards[0]), whole(b.cards[2])); arrow(b, "cd", whole(b.cards[2]), whole(b.cards[3])); }
+  const at = [
+    [60, y0],
+    [420, y0 + 40],
+    [380, y0 + 260],
+    [760, y0 + 220],
+    [80, y0 + 380],
+    [700, y0 + 480],
+    [1020, y0 + 60],
+  ];
+  const ids = NOTES.map(
+    (md, i) =>
+      put(noteCard(`n${i}`, md), {
+        x: at[i][0],
+        y: at[i][1],
+        w: 230,
+        ...(a.locked && i % 2 === 0 ? { locked: true } : {}),
+      }).id,
+  );
+  if (a.links) {
+    arrow(b, "ab", whole(b.cards[0]), whole(b.cards[1]));
+    arrow(b, "ac", whole(b.cards[0]), whole(b.cards[2]));
+    arrow(b, "cd", whole(b.cards[2]), whole(b.cards[3]));
+  }
   const sel = ids.slice(0, a.count);
   return {
-    board: b, sel,
-    after: a.marquee ? () => {
-      // 框选拖到一半：框是 .board 里的屏幕坐标
-      const x0 = 30 * cam.z + cam.x, y = (y0 - 30) * cam.z + cam.y;
-      setMarquee({ x: x0, y, w: 900 * cam.z, h: 460 * cam.z });
-    } : undefined,
+    board: b,
+    sel,
+    after: a.marquee
+      ? () => {
+          // 框选拖到一半：框是 .board 里的屏幕坐标
+          const x0 = 30 * cam.z + cam.x,
+            y = (y0 - 30) * cam.z + cam.y;
+          setMarquee({ x: x0, y, w: 900 * cam.z, h: 460 * cam.z });
+        }
+      : undefined,
   };
 }
 
@@ -45,7 +77,10 @@ const meta = {
   render: (a, ctx) => <Stage scene={() => scattered(a)} globals={ctx.globals as Globals} />,
   args: { count: 4, locked: false, links: true, marquee: false, nearTop: false },
   argTypes: {
-    count: { control: { type: "range", min: 0, max: 7, step: 1 }, description: "Selected cards (the toolbar shows from 2)" },
+    count: {
+      control: { type: "range", min: 0, max: 7, step: 1 },
+      description: "Selected cards (the toolbar shows from 2)",
+    },
     locked: { control: "boolean", description: "Every other card locked (lock in the header)" },
     links: { control: "boolean", description: "Arrows a → b, a → c, c → d" },
     marquee: { control: "boolean", description: "A selection box being dragged" },
@@ -58,9 +93,13 @@ type Story = StoryObj<typeof meta>;
 export const Overview: Story = { name: "Overview (toolbar)" };
 export const AlignMenu: Story = {
   name: "Align and Distribute (··· open)",
-  play: async () => (await waitFor(() => $<HTMLButtonElement>('.alignbar button[aria-label="More"]'), "the ··· button")).click(),
+  play: async () =>
+    (await waitFor(() => $<HTMLButtonElement>('.alignbar button[aria-label="More"]'), "the ··· button")).click(),
 };
 export const Marquee: Story = { args: { marquee: true, count: 3 } };
 export const ToolbarBelow: Story = { name: "Toolbar Below (no room above)", args: { nearTop: true } };
 export const Locked: Story = { args: { locked: true, count: 7 } };
-export const Mixed: Story = { name: "Cards, Arrow and Section", render: (_, ctx) => <Stage scene={mixed} globals={ctx.globals as Globals} /> };
+export const Mixed: Story = {
+  name: "Cards, Arrow and Section",
+  render: (_, ctx) => <Stage scene={mixed} globals={ctx.globals as Globals} />,
+};

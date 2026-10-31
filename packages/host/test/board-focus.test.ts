@@ -13,11 +13,20 @@ import { stubView } from "./helpers";
 
 const W = nodeWorkspace();
 const keyContext: boolean[] = [];
-W.ui = { ...W.ui, boardFocusKey: async (on) => { keyContext.push(on); } };
+W.ui = {
+  ...W.ui,
+  boardFocusKey: async (on) => {
+    keyContext.push(on);
+  },
+};
 const views: ReturnType<typeof stubView>[] = [];
 const env: HostEnv = {
   globalState: { get: () => undefined, set: async () => undefined },
-  openView: () => { const v = stubView(); views.push(v); return v.view; },
+  openView: () => {
+    const v = stubView();
+    views.push(v);
+    return v.view;
+  },
 };
 const dir = fs.mkdtempSync("/tmp/codeboard-focus-");
 const store = new Storage(nodeFs, { dir: () => dir });
@@ -31,7 +40,10 @@ beforeAll(async () => {
   hub.handler = makeHandler(hub);
   (await hub.show("bF"))!.ready = true;
 });
-afterAll(() => { hub.dispose(); fs.rmSync(dir, { recursive: true, force: true }); });
+afterAll(() => {
+  hub.dispose();
+  fs.rmSync(dir, { recursive: true, force: true });
+});
 
 describe("board focus", () => {
   it("sets the key context when a board gets or loses the keyboard", async () => {

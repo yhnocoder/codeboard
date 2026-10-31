@@ -2,8 +2,22 @@
 // 这样小样里看到的和插件里一样
 import { createEffect, createMemo, on, onCleanup, onMount, untrack } from "solid-js";
 import {
-  DEFAULT_SETTINGS, emptyBoard, type Board, type Card, type CodeAnnot, type CodeCard, type NoteCard, type BoxFill, type HandColor, type Place, type Settings, type SharedInfo,
-  type Skeleton, type Stale, type ThemeId, type HostToBoard,
+  DEFAULT_SETTINGS,
+  emptyBoard,
+  type Board,
+  type Card,
+  type CodeAnnot,
+  type CodeCard,
+  type NoteCard,
+  type BoxFill,
+  type HandColor,
+  type Place,
+  type Settings,
+  type SharedInfo,
+  type Skeleton,
+  type Stale,
+  type ThemeId,
+  type HostToBoard,
 } from "@codeboard/core";
 import { App } from "../../src/App";
 import { BoardView } from "../../src/BoardView";
@@ -24,9 +38,13 @@ import code from "../fixtures/code.json";
 export type Globals = { theme: ThemeId; scheme: "light" | "dark"; zoom: "100" | "60" | "30" };
 
 export type Scene = {
-  board: Board; stale?: Record<string, Stale>; sel?: string[]; editing?: string;
+  board: Board;
+  stale?: Record<string, Stale>;
+  sel?: string[];
+  editing?: string;
   /** 白板加载以后才能选的（加载时 boardSwitched 会把选中的线、Section 清掉） */
-  links?: string[]; sections?: string[];
+  links?: string[];
+  sections?: string[];
   /** 合进宿主设置（init 之后再发一条 host，和用户在设置页改了一样） */
   settings?: Partial<Settings>;
   /** 宿主推来的子白板骨架；null = 那块白板没了；不给 = 还在等（Loading…） */
@@ -51,7 +69,12 @@ const ASSETS = "sb-assets";
  * 跨白板留着的（设置页、问题面板、toast、贴纸颜色、导出中）要在这里清
  */
 function resetChrome() {
-  setSettingsOpen(false); setExportBusy(false); setQuestionsOpen(false); setQTab("open"); setToastMsg(null); setStickerColor(undefined);
+  setSettingsOpen(false);
+  setExportBusy(false);
+  setQuestionsOpen(false);
+  setQTab("open");
+  setToastMsg(null);
+  setStickerColor(undefined);
 }
 
 let chromeDefault = true;
@@ -74,10 +97,21 @@ export function Stage(p: { scene: () => Scene; globals: Globals; replies?: Repli
     cancelAnimationFrame(raf);
     const b: Board = { ...s.board, cam: { x: ORIGIN, y: ORIGIN, z: s.zoom ?? untrack(z) } };
     // 宿主的消息是 postMessage 来的（结构化克隆）：store 会就地改它收下的对象（reconcile），小样之间共用的常量不能直接交出去
-    onHost(structuredClone({
-      type: "init", board: b, boards: [{ id: b.id, name: b.name, cards: b.cards.length }], views: { ...VIEWS }, stale: s.stale ?? {},
-      host: { isMac: true, assetBase: ASSETS, target: true, settings: { ...DEFAULT_SETTINGS, theme: untrack(() => g.theme) } },
-    } satisfies HostToBoard));
+    onHost(
+      structuredClone({
+        type: "init",
+        board: b,
+        boards: [{ id: b.id, name: b.name, cards: b.cards.length }],
+        views: { ...VIEWS },
+        stale: s.stale ?? {},
+        host: {
+          isMac: true,
+          assetBase: ASSETS,
+          target: true,
+          settings: { ...DEFAULT_SETTINGS, theme: untrack(() => g.theme) },
+        },
+      } satisfies HostToBoard),
+    );
     // init 会把设置、骨架、共享都重置：紧跟着补上
     if (s.settings) onHost({ type: "host", host: { settings: { ...state.host.settings, ...s.settings } } });
     if (s.skels) onHost({ type: "skeletons", boards: s.skels });
@@ -85,12 +119,18 @@ export function Stage(p: { scene: () => Scene; globals: Globals; replies?: Repli
     setFetchingKeys(new Set(s.fetching ?? []));
     if (s.sel) select({ cards: s.sel });
     // 卡画出来以后再进编辑：NoteBody 的卡头收起只在「进入」那一刻做，挂上时就在编辑的话标题会出现两遍
-    if (s.editing) { const id = s.editing; requestAnimationFrame(() => setEditing({ kind: "note", id })); }
+    if (s.editing) {
+      const id = s.editing;
+      requestAnimationFrame(() => setEditing({ kind: "note", id }));
+    }
     // 等两帧：卡先量好大小，线的几何才在
     raf = requestAnimationFrame(() => {
       raf = requestAnimationFrame(() => {
         if (s.links?.length || s.sections?.length) select({ links: s.links, sections: s.sections }, true);
-        if (s.after) void Promise.resolve().then(s.after).catch((e) => console.error("Story setup failed:", e));
+        if (s.after)
+          void Promise.resolve()
+            .then(s.after)
+            .catch((e) => console.error("Story setup failed:", e));
       });
     });
   };
@@ -98,8 +138,22 @@ export function Stage(p: { scene: () => Scene; globals: Globals; replies?: Repli
   load(untrack(scene));
   // Solid 的 renderer 不重新挂 story，args 是响应式的：参数一变就整块重发
   createEffect(on(scene, load, { defer: true }));
-  createEffect(on(() => g.theme, (theme) => onHost({ type: "host", host: { settings: { ...state.host.settings, theme } } }), { defer: true }));
-  createEffect(on(z, (z) => { if (!untrack(scene).zoom) setCam(ORIGIN, ORIGIN, z); }, { defer: true }));
+  createEffect(
+    on(
+      () => g.theme,
+      (theme) => onHost({ type: "host", host: { settings: { ...state.host.settings, theme } } }),
+      { defer: true },
+    ),
+  );
+  createEffect(
+    on(
+      z,
+      (z) => {
+        if (!untrack(scene).zoom) setCam(ORIGIN, ORIGIN, z);
+      },
+      { defer: true },
+    ),
+  );
   onCleanup(() => {
     cancelAnimationFrame(raf);
     // 卸下时编辑器把正在编辑的交上去（mutate → 存盘的 patch），假宿主的回答要等下一个任务：下一个 story 的 init 先到，
@@ -122,7 +176,8 @@ export function scene(name: string) {
     board.place[c.id] = p;
     return c;
   };
-  const caption = (text: string, x: number, y: number, w = 280) => put(textCard(`cap-${board.cards.length}`, text), { x, y: y - 34, w });
+  const caption = (text: string, x: number, y: number, w = 280) =>
+    put(textCard(`cap-${board.cards.length}`, text), { x, y: y - 34, w });
   // 几组卡摆在同一块白板上：每组按自己的坐标写，放的时候整体平移
   const at = (dx: number, dy: number) => ({
     put: <C extends Card>(c: C, p: Parameters<typeof put>[1]) => put(c, { ...p, x: p.x + dx, y: p.y + dy }),
@@ -132,13 +187,35 @@ export function scene(name: string) {
 }
 export type Group = ReturnType<ReturnType<typeof scene>["at"]>;
 
-export const noteCard = (id: string, md: string, title?: string): NoteCard => ({ id, kind: "note", md, look: "note", ...(title ? { title } : {}) });
+export const noteCard = (id: string, md: string, title?: string): NoteCard => ({
+  id,
+  kind: "note",
+  md,
+  look: "note",
+  ...(title ? { title } : {}),
+});
 export const textCard = (id: string, md: string): NoteCard => ({ id, kind: "note", md, look: "text", size: "body" });
-export const markCard = (id: string, md: string, hand: HandColor): NoteCard => ({ id, kind: "note", md, look: "mark", hand });
-export const boxCard = (id: string, md: string, fill: BoxFill = "yellow"): NoteCard => ({ id, kind: "note", md, look: "box", fill });
+export const markCard = (id: string, md: string, hand: HandColor): NoteCard => ({
+  id,
+  kind: "note",
+  md,
+  look: "mark",
+  hand,
+});
+export const boxCard = (id: string, md: string, fill: BoxFill = "yellow"): NoteCard => ({
+  id,
+  kind: "note",
+  md,
+  look: "box",
+  fill,
+});
 
 // 段 id 按卡另起：同一段代码要在一块白板上放几张，新版本状态又是按段 id 算的
-export function codeCard(id: string, f: Fixture, o: { title?: string; annots?: (seg: CodeCard["segments"][0]) => CodeAnnot[] } = {}): CodeCard {
+export function codeCard(
+  id: string,
+  f: Fixture,
+  o: { title?: string; annots?: (seg: CodeCard["segments"][0]) => CodeAnnot[] } = {},
+): CodeCard {
   const x = code[f];
   const seg = { ...structuredClone(x.seg), id: `${x.seg.id}-${id}` } as CodeCard["segments"][0];
   VIEWS[seg.id] = x.view;
@@ -146,7 +223,12 @@ export function codeCard(id: string, f: Fixture, o: { title?: string; annots?: (
   if (annots?.length) seg.annots = annots;
   return { id, kind: "code", segments: [seg], ...(o.title ? { title: o.title } : {}) };
 }
-export function annotAt(seg: CodeCard["segments"][0], word: string, text: string, o: { color?: HandColor; below?: true } = {}): CodeAnnot[] {
+export function annotAt(
+  seg: CodeCard["segments"][0],
+  word: string,
+  text: string,
+  o: { color?: HandColor; below?: true } = {},
+): CodeAnnot[] {
   const i = seg.text.findIndex((t) => t.includes(word));
   if (i < 0) return [];
   const from = seg.text[i].indexOf(word);

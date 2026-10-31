@@ -1,7 +1,17 @@
 // 骨架画在框里（cards/BoardBody.tsx）：一张静态的缩略地图，不滚动，箭头只连到整个框；点开的预览在框外（cards/SubPreviews.tsx）。
 import { batch, createEffect, createMemo, createSignal, untrack } from "solid-js";
 import { createStore, produce, reconcile } from "solid-js/store";
-import { estSize, mapFit, type BoardCard, type Card, type Place, type Crumb, type Rect, type Skeleton, type SubCard } from "@codeboard/core";
+import {
+  estSize,
+  mapFit,
+  type BoardCard,
+  type Card,
+  type Place,
+  type Crumb,
+  type Rect,
+  type Skeleton,
+  type SubCard,
+} from "@codeboard/core";
 import { ask } from "../host";
 import { cardById, placeOf, placed, rectOf, sizes, state } from "./store";
 import { sync } from "./changes";
@@ -17,10 +27,15 @@ export const [crumbMorph, setCrumbMorph] = createSignal(false);
 /** 从父白板的讲解进来的：讲完（→ 走过最后一步 / ← 退过第一步）回到父白板，从这里接着讲 */
 export const [walkBack, setWalkBack] = boardSignal<{ root: string; i: number } | null>(null);
 
-export const frames = rooted(() => createMemo(() => state.board.cards.filter((c): c is BoardCard => c.kind === "board")));
+export const frames = rooted(() =>
+  createMemo(() => state.board.cards.filter((c): c is BoardCard => c.kind === "board")),
+);
 const frameById = rooted(() => createMemo(() => new Map(frames().map((c) => [c.id, c]))));
 export const frameOf = (id: string) => frameById().get(id);
-export const skelOf = (frame: string): Skeleton | null | undefined => { const f = frameOf(frame); return f ? skels[f.board] : undefined; };
+export const skelOf = (frame: string): Skeleton | null | undefined => {
+  const f = frameOf(frame);
+  return f ? skels[f.board] : undefined;
+};
 
 // skeletons, previews and their cards are the last board's (the crumbs come with the new board's init)
 onBoardSwitch(() => {
@@ -51,14 +66,25 @@ export function trackSkeletons() {
   // 打开的白板（又）嵌在别的白板上了：把量到的高写一遍
   createEffect(() => {
     if (!state.loaded || !framedHere()) return;
-    untrack(() => { for (const c of placed()) measuredHeight(c.id); });
+    untrack(() => {
+      for (const c of placed()) measuredHeight(c.id);
+    });
   });
   createEffect(() => {
     if (!state.loaded) return;
-    const want = [...new Set(frames().map((c) => c.board))].filter((id) => !(id in untrack(() => skels)) && !asked.has(id));
+    const want = [...new Set(frames().map((c) => c.board))].filter(
+      (id) => !(id in untrack(() => skels)) && !asked.has(id),
+    );
     if (!want.length) return;
     for (const id of want) asked.add(id);
-    void ask("skeletons", { ids: want }).then((r) => { if (r) putSkels(r); }, () => { for (const id of want) asked.delete(id); });
+    void ask("skeletons", { ids: want }).then(
+      (r) => {
+        if (r) putSkels(r);
+      },
+      () => {
+        for (const id of want) asked.delete(id);
+      },
+    );
   });
 }
 
@@ -66,7 +92,8 @@ export function trackSkeletons() {
 // 不再按估计的（Note 一律 160、图片不看宽高比）。只在这块白板嵌在别的白板上时写（没人画它的地图就不为它存盘）；
 // Card.tsx 每量到一张卡的新尺寸就记一下，停下 MH_WAIT 后一次 sync 写完（存盘，不进撤销）。
 // 和现在按什么画（存过的 mh，或者估计的）差不到 MH_SLACK 的不写，免得每次量都存盘；定了高度（Place.h）的卡不写：estSize 本来就用 h
-const MH_SLACK = 8, MH_WAIT = 1000;
+const MH_SLACK = 8,
+  MH_WAIT = 1000;
 const mhDirty = new Set<string>();
 let mhTimer: ReturnType<typeof setTimeout> | undefined;
 /** 这块白板嵌在别的白板上（侧栏的子白板树） */
@@ -87,11 +114,19 @@ function writeHeights() {
   if (!state.loaded || !framedHere()) return; // 留着要量的：嵌进去以后（trackSkeletons）一起写
   const out = new Map<string, number>();
   for (const id of mhDirty) {
-    const p = state.board.place[id], c = cardById(id)?.card, h = p && c?.id === id ? heightToKeep(c, p) : undefined;
+    const p = state.board.place[id],
+      c = cardById(id)?.card,
+      h = p && c?.id === id ? heightToKeep(c, p) : undefined;
     if (h) out.set(id, h);
   }
   mhDirty.clear();
-  if (out.size) sync((b) => { for (const [id, h] of out) { const p = b.place[id]; if (p && !p.h) p.mh = h; } });
+  if (out.size)
+    sync((b) => {
+      for (const [id, h] of out) {
+        const p = b.place[id];
+        if (p && !p.h) p.mh = h;
+      }
+    });
 }
 
 // 框里是子白板的缩略地图（cards/BoardBody.tsx）：骨架按真实位置、大小等比缩进框里（core 的 mapFit），地图和预览的连线共用
@@ -105,9 +140,11 @@ export function frameRect(frame: string): Rect {
 }
 /** 地图上一块（子白板的卡 id）在父白板上的位置；框、骨架、那张卡没有时 null */
 export function blockRect(frame: string, id: string): Rect | null {
-  const sk = skelOf(frame), c = sk?.cards.find((k) => k.id === id);
+  const sk = skelOf(frame),
+    c = sk?.cards.find((k) => k.id === id);
   if (!sk || !c) return null;
-  const f = frameRect(frame), m = mapFit(sk, f.w, f.h);
+  const f = frameRect(frame),
+    m = mapFit(sk, f.w, f.h);
   return { x: f.x + m.ox + c.x * m.s, y: f.y + m.oy + c.y * m.s, w: c.w * m.s, h: c.h * m.s };
 }
 
@@ -125,8 +162,13 @@ export const [pvPeek, setPvPeek] = boardSignal<{ f: string; id: string } | null>
 export const [pvHot, setPvHot] = boardSignal<{ f: string; id: string } | null>(null);
 
 /** 右边最多展开几张；预览宽、间距；标题行宽、高、行距；预览离框的距离（都是世界坐标，和 styles.css 的 .sbpv 一套） */
-export const PV_W = 260, PV_GAP = 10, TIT_W = 200, TIT_H = 30, TIT_GAP = 6;
-const PV_MAX = 3, PV_OFF = 14;
+export const PV_W = 260,
+  PV_GAP = 10,
+  TIT_W = 200,
+  TIT_H = 30,
+  TIT_GAP = 6;
+const PV_MAX = 3,
+  PV_OFF = 14;
 export const pvCols = (frame: string): 1 | 2 => (frameOf(frame)?.pcols === 2 ? 2 : 1);
 
 export type PvBox = { id: string; x: number; y: number; w: number; h: number };
@@ -134,35 +176,77 @@ export type PvBox = { id: string; x: number; y: number; w: number; h: number };
 const FRAME_HEAD = 46;
 /** 父白板上别的卡（frame 自己除外）占的地方：标题行不往上盖。子白板框连上它头上的名字 */
 export function pvObstacles(frame: string): Rect[] {
-  return placed().filter((c) => c.id !== frame).map((c) => { const r = rectOf(c); return c.kind === "board" ? { ...r, y: r.y - FRAME_HEAD, h: r.h + FRAME_HEAD } : r; });
+  return placed()
+    .filter((c) => c.id !== frame)
+    .map((c) => {
+      const r = rectOf(c);
+      return c.kind === "board" ? { ...r, y: r.y - FRAME_HEAD, h: r.h + FRAME_HEAD } : r;
+    });
 }
 const hits = (a: Rect, b: Rect) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 /** 预览的摆法：exp 按 cols 栏瀑布流放在框右边（一样高放左边），tit 一行行排在框下面；peek 的那行标题原地展开（宽 PV_W，高按它展开后的）。
  *  框下面那块会盖住别的卡（obstacles，pvObstacles）时，标题行改排在右边展开的那几张下面，一行排右边那么宽：规则只看此刻框下面空不空，
  *  拖着框走时每一帧照它重摆，同一个位置总是同一种摆法。hOf = 量到的展开后的高（还没量到按 120 算）。right / titles = 右边、标题行两块区域（拖动时的落点） */
-export function pvLayout(f: Rect, p: Pick<Pv, "exp" | "tit">, cols: 1 | 2, hOf: (id: string) => number, peek?: string, obstacles: Rect[] = []) {
+export function pvLayout(
+  f: Rect,
+  p: Pick<Pv, "exp" | "tit">,
+  cols: 1 | 2,
+  hOf: (id: string) => number,
+  peek?: string,
+  obstacles: Rect[] = [],
+) {
   const boxes = new Map<string, PvBox>();
-  const x0 = f.x + f.w + PV_OFF, colH = cols === 2 ? [0, 0] : [0];
+  const x0 = f.x + f.w + PV_OFF,
+    colH = cols === 2 ? [0, 0] : [0];
   for (const id of p.exp) {
-    const c = colH.length > 1 && colH[1] < colH[0] ? 1 : 0, h = hOf(id);
+    const c = colH.length > 1 && colH[1] < colH[0] ? 1 : 0,
+      h = hOf(id);
     boxes.set(id, { id, x: x0 + c * (PV_W + PV_GAP), y: f.y + colH[c], w: PV_W, h });
     colH[c] += h + PV_GAP;
   }
-  const expH = Math.max(0, ...colH.map((h) => h - PV_GAP)), rightW = cols * PV_W + (cols - 1) * PV_GAP;
-  const rowsIn = (w: number) => { const per = Math.max(1, Math.floor((w + PV_GAP) / (TIT_W + PV_GAP))); return { per, h: Math.max(TIT_H, Math.ceil(p.tit.length / per) * (TIT_H + TIT_GAP) - TIT_GAP) }; };
-  const under = rowsIn(f.w), below: Rect = { x: f.x, y: f.y + f.h + PV_OFF, w: f.w, h: under.h };
+  const expH = Math.max(0, ...colH.map((h) => h - PV_GAP)),
+    rightW = cols * PV_W + (cols - 1) * PV_GAP;
+  const rowsIn = (w: number) => {
+    const per = Math.max(1, Math.floor((w + PV_GAP) / (TIT_W + PV_GAP)));
+    return { per, h: Math.max(TIT_H, Math.ceil(p.tit.length / per) * (TIT_H + TIT_GAP) - TIT_GAP) };
+  };
+  const under = rowsIn(f.w),
+    below: Rect = { x: f.x, y: f.y + f.h + PV_OFF, w: f.w, h: under.h };
   const side = !!p.tit.length && obstacles.some((o) => hits(o, below));
   const { per, h: th } = side ? rowsIn(rightW) : under;
   const titles: Rect = side ? { x: x0, y: f.y + (expH ? expH + PV_OFF : 0), w: rightW, h: th } : below;
   p.tit.forEach((id, i) => {
     const pk = id === peek;
-    boxes.set(id, { id, x: titles.x + (i % per) * (TIT_W + PV_GAP), y: titles.y + Math.floor(i / per) * (TIT_H + TIT_GAP), w: pk ? PV_W : TIT_W, h: pk ? hOf(id) : TIT_H });
+    boxes.set(id, {
+      id,
+      x: titles.x + (i % per) * (TIT_W + PV_GAP),
+      y: titles.y + Math.floor(i / per) * (TIT_H + TIT_GAP),
+      w: pk ? PV_W : TIT_W,
+      h: pk ? hOf(id) : TIT_H,
+    });
   });
-  return { boxes, per, side, right: { x: x0, y: f.y, w: rightW, h: side ? Math.max(TIT_H, expH) : Math.max(f.h, expH) }, titles };
+  return {
+    boxes,
+    per,
+    side,
+    right: { x: x0, y: f.y, w: rightW, h: side ? Math.max(TIT_H, expH) : Math.max(f.h, expH) },
+    titles,
+  };
 }
 
-const pvEdit = (frame: string, fn: (p: Pv) => void) => setPvs(frame, produce((p) => { if (p) fn(p); }));
-const drop = (p: Pv, id: string) => { for (const a of [p.exp, p.tit]) { const i = a.indexOf(id); if (i >= 0) a.splice(i, 1); } };
+const pvEdit = (frame: string, fn: (p: Pv) => void) =>
+  setPvs(
+    frame,
+    produce((p) => {
+      if (p) fn(p);
+    }),
+  );
+const drop = (p: Pv, id: string) => {
+  for (const a of [p.exp, p.tit]) {
+    const i = a.indexOf(id);
+    if (i >= 0) a.splice(i, 1);
+  }
+};
 
 /** 点地图上的一块：没开的弹出预览（右边还有空就展开，满了放成框下面的一行标题；收起着的一起展开），开着的关掉 */
 export function togglePreview(frame: string, id: string) {
@@ -170,7 +254,11 @@ export function togglePreview(frame: string, id: string) {
   if (pvPeek()?.f === frame && pvPeek()!.id === id) setPvPeek(null);
   pvEdit(frame, (p) => {
     const i = p.open.indexOf(id);
-    if (i >= 0) { p.open.splice(i, 1); drop(p, id); return; }
+    if (i >= 0) {
+      p.open.splice(i, 1);
+      drop(p, id);
+      return;
+    }
     p.open.push(id);
     (p.exp.length < PV_MAX ? p.exp : p.tit).push(id);
     p.fold = false;
@@ -181,9 +269,19 @@ export function clearPreviews(frame: string) {
   if (pvHot()?.f === frame) setPvHot(null);
   setPvs(frame, { open: [], exp: [], tit: [], fold: false });
 }
-export const foldPreviews = (frame: string) => { if (pvPeek()?.f === frame) setPvPeek(null); pvEdit(frame, (p) => { p.fold = !p.fold; }); };
+export const foldPreviews = (frame: string) => {
+  if (pvPeek()?.f === frame) setPvPeek(null);
+  pvEdit(frame, (p) => {
+    p.fold = !p.fold;
+  });
+};
 export function setPreviewCols(frame: string, n: 1 | 2) {
-  sync((b) => { const c = b.cards.find((k) => k.id === frame); if (c?.kind !== "board") return; if (n === 2) c.pcols = 2; else delete c.pcols; });
+  sync((b) => {
+    const c = b.cards.find((k) => k.id === frame);
+    if (c?.kind !== "board") return;
+    if (n === 2) c.pcols = 2;
+    else delete c.pcols;
+  });
 }
 /**
  * 拖到右边松手（y = 松手时预览的上边）：插在落下的位置展开（压过哪张的中线之前就插在它前面）；右边多过 PV_MAX 张时，
@@ -194,12 +292,17 @@ export function dropRight(frame: string, id: string, y: number, layout: (exp: st
   pvEdit(frame, (p) => {
     drop(p, id);
     const at0 = layout([...p.exp]);
-    let at = p.exp.findIndex((k) => { const r = at0.get(k)!; return y < r.y + r.h / 2; });
+    let at = p.exp.findIndex((k) => {
+      const r = at0.get(k)!;
+      return y < r.y + r.h / 2;
+    });
     if (at < 0) at = p.exp.length;
     p.exp.splice(at, 0, id);
     if (p.exp.length <= PV_MAX) return;
     const l = layout([...p.exp]);
-    const low = p.exp.filter((k) => k !== id).sort((a, b) => l.get(b)!.y + l.get(b)!.h - (l.get(a)!.y + l.get(a)!.h))[0];
+    const low = p.exp
+      .filter((k) => k !== id)
+      .sort((a, b) => l.get(b)!.y + l.get(b)!.h - (l.get(a)!.y + l.get(a)!.h))[0];
     p.exp.splice(p.exp.indexOf(low), 1);
     p.tit.unshift(low);
   });
@@ -218,35 +321,57 @@ const [subCards, setSubCards] = createStore<Record<string, SubCard | null>>({});
 const asking = new Set<string>();
 /** 子白板 board 上卡 card 的完整内容：还没拿到是 undefined（顺手去要），卡已经不在了是 null */
 export function subCard(board: string, card: string): SubCard | null | undefined {
-  const k = `${board}/${card}`, v = subCards[k];
+  const k = `${board}/${card}`,
+    v = subCards[k];
   if (v !== undefined || asking.has(k)) return v;
   asking.add(k);
-  void ask("subCard", { board, card }).then((r) => setSubCards(k, r), () => setSubCards(k, null)).finally(() => asking.delete(k));
+  void ask("subCard", { board, card })
+    .then(
+      (r) => setSubCards(k, r),
+      () => setSubCards(k, null),
+    )
+    .finally(() => asking.delete(k));
   return undefined;
 }
 
 // 骨架带着子白板（一路往下）上有真正标题的卡（Skeleton.refs）。链接写成 [[子白板 › 卡]]（更深的一层层接上），按名字找回来
 
-export const frameName = (f: BoardCard) => f.title || skels[f.board]?.name || state.boards.find((m) => m.id === f.board)?.name || "Board";
+export const frameName = (f: BoardCard) =>
+  f.title || skels[f.board]?.name || state.boards.find((m) => m.id === f.board)?.name || "Board";
 export const REF_SEP = " › ";
 type SubRef = { id: string; label: string; k: string; frame: string };
 export function subRefs(): SubRef[] {
-  const out: SubRef[] = [], seen = new Set<string>();
+  const out: SubRef[] = [],
+    seen = new Set<string>();
   for (const f of frames()) {
     const sk = skels[f.board];
     if (!sk) continue;
     for (const r of sk.refs) {
       if (seen.has(r.id)) continue;
       seen.add(r.id);
-      out.push({ id: r.id, label: [frameName(f), ...(r.via ?? []).map((v) => v.n), r.t].join(REF_SEP), k: r.k, frame: f.id });
+      out.push({
+        id: r.id,
+        label: [frameName(f), ...(r.via ?? []).map((v) => v.n), r.t].join(REF_SEP),
+        k: r.k,
+        frame: f.id,
+      });
     }
   }
   return out;
 }
 /** [[子白板 › … › 卡]] 或子白板里一张卡的 id → 那张卡（和它所在的、这块白板上的框） */
 export function subRef(label: string): SubRef | undefined {
-  const l = label.trim(), low = l.toLowerCase();
+  const l = label.trim(),
+    low = l.toLowerCase();
   const all = subRefs();
-  return all.find((r) => r.id === l) ?? (l.includes(REF_SEP.trim()) ? all.find((r) => norm(r.label) === norm(low)) : undefined);
+  return (
+    all.find((r) => r.id === l) ??
+    (l.includes(REF_SEP.trim()) ? all.find((r) => norm(r.label) === norm(low)) : undefined)
+  );
 }
-const norm = (s: string) => s.toLowerCase().split(/\s*›\s*/).map((x) => x.trim()).join("›");
+const norm = (s: string) =>
+  s
+    .toLowerCase()
+    .split(/\s*›\s*/)
+    .map((x) => x.trim())
+    .join("›");

@@ -1,12 +1,36 @@
 import { describe, expect, it } from "vitest";
-import { blockAt, blockMap, blockSig, boardMarkdown, danglingRefs, emptyBoard, loadBoard, rebaseBlocks, BOARD_VERSION, type Board, type Card, type Link } from "../src";
+import {
+  blockAt,
+  blockMap,
+  blockSig,
+  boardMarkdown,
+  danglingRefs,
+  emptyBoard,
+  loadBoard,
+  rebaseBlocks,
+  BOARD_VERSION,
+  type Board,
+  type Card,
+  type Link,
+} from "../src";
 
 const ROOF = "**Roofline 模型**把应用画在一张图上：左边的斜线是内存带宽的上限，右边的水平线是峰值算力。";
-const OLD = ["# 计算强度", "每从 global memory 读一个字节能做多少次浮点运算（FLOP/B）。", ROOF, "- vecAdd：0.25 FLOP/B\n- tiled matmul：随 tile 变大而升高", "```\nratio = flops / bytes\n```"];
+const OLD = [
+  "# 计算强度",
+  "每从 global memory 读一个字节能做多少次浮点运算（FLOP/B）。",
+  ROOF,
+  "- vecAdd：0.25 FLOP/B\n- tiled matmul：随 tile 变大而升高",
+  "```\nratio = flops / bytes\n```",
+];
 const note = (id: string, blocks: string[]): Card => ({ id, kind: "note", md: blocks.join("\n\n"), look: "note" });
 const ref = (blocks: string[], i: number) => ({ i, h: blockSig(blocks[i]) });
 function board(links: Link[]): Board {
-  return { ...emptyBoard("b", "B"), cards: [note("n", OLD), note("m", ["other"])], place: { n: { x: 0, y: 0, w: 300 }, m: { x: 400, y: 0, w: 300 } }, links };
+  return {
+    ...emptyBoard("b", "B"),
+    cards: [note("n", OLD), note("m", ["other"])],
+    place: { n: { x: 0, y: 0, w: 300 }, m: { x: 400, y: 0, w: 300 } },
+    links,
+  };
 }
 const arrow = (i: number): Link => ({ id: "l", from: { card: "m" }, to: { card: "n", block: ref(OLD, i) } });
 
@@ -44,7 +68,12 @@ describe("Note block ends (rebaseBlocks)", () => {
 
   it("does not hand a deleted block to an unrelated block put in its place, unless it is a one-for-one rewrite of the same kind", () => {
     const b = board([arrow(2)]);
-    rebaseBlocks(b, "n", OLD, [...OLD.slice(0, 2), "| a | b |\n|---|---|\n| 1 | 2 |", "> 完全不同的引用", ...OLD.slice(3)]);
+    rebaseBlocks(b, "n", OLD, [
+      ...OLD.slice(0, 2),
+      "| a | b |\n|---|---|\n| 1 | 2 |",
+      "> 完全不同的引用",
+      ...OLD.slice(3),
+    ]);
     expect(b.links[0].to.block).toBeUndefined();
   });
 
@@ -58,11 +87,17 @@ describe("Note block ends (rebaseBlocks)", () => {
   it("Markdown that cannot be split drops every block end on that Note", () => {
     const b = board([arrow(1), { id: "k", from: { card: "n", block: ref(OLD, 0) }, to: { card: "m" } }]);
     rebaseBlocks(b, "n", OLD, null);
-    expect(b.links.map((l) => [l.from, l.to])).toEqual([[{ card: "m" }, { card: "n" }], [{ card: "n" }, { card: "m" }]]);
+    expect(b.links.map((l) => [l.from, l.to])).toEqual([
+      [{ card: "m" }, { card: "n" }],
+      [{ card: "n" }, { card: "m" }],
+    ]);
   });
 
   it("a block moved to a Note made in the same change (Split by Headings) takes its end along; a link left with both ends on one card goes", () => {
-    const b = board([arrow(2), { id: "self", from: { card: "n", block: ref(OLD, 1) }, to: { card: "x", block: ref(["## 子标题", ROOF], 1) } }]);
+    const b = board([
+      arrow(2),
+      { id: "self", from: { card: "n", block: ref(OLD, 1) }, to: { card: "x", block: ref(["## 子标题", ROOF], 1) } },
+    ]);
     b.cards.push(note("x", ["## 子标题"]));
     rebaseBlocks(b, "n", OLD, OLD.slice(0, 2), [{ card: "x", blocks: ["## 子标题", ROOF] }]);
     expect(b.links.find((l) => l.id === "l")!.to).toEqual({ card: "x", block: { i: 1, h: blockSig(ROOF) } });
@@ -94,9 +129,19 @@ describe("Note block ends in the board file", () => {
     expect(loadBoard(structuredClone(file)).links[0].to.block).toEqual(ref(OLD, 2));
     (file.links[0].to as { block: unknown }).block = { i: "2", h: "x" };
     expect(() => loadBoard(file)).toThrow(/links\.0\.to\.block\.i/);
-    const c = board([{ id: "l", from: { card: "c", block: { i: 0, h: "x" } }, to: { card: "n", seg: "s", line: 1, block: { i: 0, h: "y" } } }]);
+    const c = board([
+      {
+        id: "l",
+        from: { card: "c", block: { i: 0, h: "x" } },
+        to: { card: "n", seg: "s", line: 1, block: { i: 0, h: "y" } },
+      },
+    ]);
     c.cards.push({ id: "c", kind: "code", segments: [] });
-    expect(danglingRefs(c)).toEqual(["link l → missing n/s", "link l → block on c, which is not a Note", "link l → both a block and a line on n"]);
+    expect(danglingRefs(c)).toEqual([
+      "link l → missing n/s",
+      "link l → block on c, which is not a Note",
+      "link l → both a block and a line on n",
+    ]);
   });
 
   it("the Markdown export names the block an arrow starts from or points at", () => {

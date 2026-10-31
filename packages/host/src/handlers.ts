@@ -1,7 +1,30 @@
 // 白板发来的消息：带 req 的请求，处理函数的返回值就是回答（类型按 core 的 ReplyOf 检查；BoardHub 包成 reply）。
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
-import { boardSegments, BOARD_VERSION, cardPath, sniffImage, sniffSvg, cleanCompletion, loadBoard, subCardOf, wouldCycle, findCard, isCode, locateSeg, mapLineTo, segOf, versionLabel, type AskType, type BoardToHost, type Commit, type DiffData, type ReplyOf, type Segment, type SegView } from "@codeboard/core";
+import {
+  boardSegments,
+  BOARD_VERSION,
+  cardPath,
+  sniffImage,
+  sniffSvg,
+  cleanCompletion,
+  loadBoard,
+  subCardOf,
+  wouldCycle,
+  findCard,
+  isCode,
+  locateSeg,
+  mapLineTo,
+  segOf,
+  versionLabel,
+  type AskType,
+  type BoardToHost,
+  type Commit,
+  type DiffData,
+  type ReplyOf,
+  type Segment,
+  type SegView,
+} from "@codeboard/core";
 import { analysisOf } from "./analysis";
 import { codeDoc, codeDocClose, lspComplete, lspHover, lspSignature } from "./codeedit";
 import { commitInfo, headOf, logLines, repoRootOf, resolveRef, showFile, upstreamRef } from "./git";
@@ -24,7 +47,18 @@ import { applyFlow, captureFlow } from "./runs";
 import { prompts } from "./prompts";
 import { allQuestions, exportFile, permalinks } from "./exports";
 import { exportFlow } from "./bundle";
-import { absOf, currentVersion, currentVersionLabel, locOfFile, mapRepo, present, srcKey, srcLabel, versionText, hasLocalFile } from "./source";
+import {
+  absOf,
+  currentVersion,
+  currentVersionLabel,
+  locOfFile,
+  mapRepo,
+  present,
+  srcKey,
+  srcLabel,
+  versionText,
+  hasLocalFile,
+} from "./source";
 import { makeSegment, workingPlace } from "./versions";
 import { addVariant, variantSources } from "./variants";
 import { highlight, segView, viewsFor } from "./views";
@@ -32,7 +66,6 @@ import { fromHostPath, hostPath, langOf, readText, splitLines, workspace, ws0 } 
 import { lookupName } from "./nameindex";
 import { imageAiJob } from "./imageai";
 import { aiInfo, clearDeepseekKey, completeNote, setDeepseekKey } from "./ai";
-
 
 type Msg<T extends BoardToHost["type"]> = Extract<BoardToHost, { type: T }>;
 type Out<T extends BoardToHost["type"]> = T extends AskType ? ReplyOf<T> : unknown;
@@ -50,10 +83,15 @@ export function makeHandler(panels: BoardHost): Handler {
       p.board = store.peek(p.id);
       // 撤销时跳过的共享项：宿主这边留着别的白板的版本，白板换回来
       if (skipped.length) p.post({ type: "shared", cards: skipped });
-      if (p.board && p.board.name !== name) { p.view.title = p.board.name; void panels.pushBoards(); }
+      if (p.board && p.board.name !== name) {
+        p.view.title = p.board.name;
+        void panels.pushBoards();
+      }
       return { skipped: skipped.length };
     },
-    selection: (p, m) => { p.selection = m; },
+    selection: (p, m) => {
+      p.selection = m;
+    },
     focus: (p, m) => panels.boardFocus(p, m.has),
     answer: (p, m) => p.answer(m.id, m.value),
     open: (p, m) => openCard(p, m),
@@ -61,7 +99,10 @@ export function makeHandler(panels: BoardHost): Handler {
     openLink: (_p, m) => {
       // 白板文件里的链接只放行网页和邮件：file:// 之类会直接打开本机的程序
       const scheme = /^([^:/?#]+?):/.exec(m.url)?.[1] ?? "file";
-      if (!/^(https?|mailto)$/.test(scheme)) { log("info", `openLink: blocked ${scheme}: link`); return; }
+      if (!/^(https?|mailto)$/.test(scheme)) {
+        log("info", `openLink: blocked ${scheme}: link`);
+        return;
+      }
       void workspace().ui.openUrl(m.url);
     },
     expand: (_p, m) => expand(m),
@@ -99,7 +140,9 @@ export function makeHandler(panels: BoardHost): Handler {
     copyCards: async (p, m) => {
       panels.clip = { board: p.id, cards: m.cards, text: m.text };
       // 别的窗口（别的项目）也能贴：记进全局存储目录
-      const recorded = recordClip(store.dir(), panels.clip).catch((e) => log("warn", `copyCards: ${e instanceof Error ? e.message : e}`));
+      const recorded = recordClip(store.dir(), panels.clip).catch((e) =>
+        log("warn", `copyCards: ${e instanceof Error ? e.message : e}`),
+      );
       panels.broadcast({ type: "host", host: { clip: { board: p.id, n: m.cards.length } } });
       // 白板里写剪贴板可能被 webview 拦下：宿主再写一次，⌘V 收到的文字和记下的一样。
       // rich = 白板自己写了文字 + 图片：宿主再写只有文字的会把图盖掉（白板写不了时会再发 copyText）
@@ -111,7 +154,10 @@ export function makeHandler(panels: BoardHost): Handler {
       // 这个窗口的剪贴板对不上：看是不是别的窗口复制的卡
       const r = (await pasteClip(store, panels.clip, p.id, o)) ?? (await pasteFar(store, p.id, o));
       if (!r) return null;
-      const segs: Segment[] = r.cards.flatMap((x) => [...(x.card.kind === "code" ? x.card.segments : []), ...(x.sidenotes ?? []).flatMap((n) => (n.kind === "code" ? [n.code] : []))]);
+      const segs: Segment[] = r.cards.flatMap((x) => [
+        ...(x.card.kind === "code" ? x.card.segments : []),
+        ...(x.sidenotes ?? []).flatMap((n) => (n.kind === "code" ? [n.code] : [])),
+      ]);
       return { ...r, views: await viewsFor(segs) };
     },
     deleteEverywhere: async (p, m) => (await store.deleteEverywhere(m.card, p.id)).length,
@@ -133,7 +179,9 @@ export function makeHandler(panels: BoardHost): Handler {
     exportFile: (_p, m) => exportFile(store, m.kind, m.name, m.text),
     copyText: (_p, m) => workspace().ui.copy(m.text),
     imageAi: (p, m) => imageAiJob(jobsOf(p), m.job, m.op),
-    imageAiCancel: (p, m) => { jobsOf(p).get(m.job)?.abort(); },
+    imageAiCancel: (p, m) => {
+      jobsOf(p).get(m.job)?.abort();
+    },
     aiInfo: () => aiInfo(),
     aiKey: async (p, m) => {
       if (m.action === "set") await setDeepseekKey(prompts(p));
@@ -172,13 +220,15 @@ export function makeHandler(panels: BoardHost): Handler {
       const subs = (id: string) => metas.find((x) => x.id === id)?.subs;
       if (m.id === p.id || wouldCycle(subs, p.id, m.id)) return "Can't open a board inside itself.";
       const name = p.board?.name ?? metas.find((x) => x.id === p.id)?.name ?? "";
-      const crumbs = [...p.crumbs, { id: p.id, name, frame: m.frame }], cams = [...p.cams, m.cam];
+      const crumbs = [...p.crumbs, { id: p.id, name, frame: m.frame }],
+        cams = [...p.cams, m.cam];
       // 要带到的卡在更深的子白板里（[[ 链接）：一路进去，每一层都进面包屑，回去时落在那一层存着的镜头上
       let to = m.id;
-      const start = m.reveal ? store.peek(m.id) ?? (await store.load(m.id)) : undefined;
+      const start = m.reveal ? (store.peek(m.id) ?? (await store.load(m.id))) : undefined;
       for (const hop of (start && m.reveal && cardPath(start, m.reveal, (id) => store.peek(id))) || []) {
         const at = store.peek(to)!;
-        crumbs.push({ id: to, name: at.name, frame: hop.frame }); cams.push(at.cam);
+        crumbs.push({ id: to, name: at.name, frame: hop.frame });
+        cams.push(at.cam);
         to = hop.board;
       }
       const ok = await panels.switchBoard(p, to, { crumbs, cams, walk: m.walk });
@@ -189,13 +239,19 @@ export function makeHandler(panels: BoardHost): Handler {
       if (!p.crumbs.length) return "There is no parent board to go back to.";
       const depth = Math.max(0, Math.min(p.crumbs.length - 1, m.depth ?? p.crumbs.length - 1));
       const to = p.crumbs[depth];
-      const ok = await panels.switchBoard(p, to.id, { crumbs: p.crumbs.slice(0, depth), cams: p.cams.slice(0, depth), walk: m.walk, cam: p.cams[depth] });
+      const ok = await panels.switchBoard(p, to.id, {
+        crumbs: p.crumbs.slice(0, depth),
+        cams: p.cams.slice(0, depth),
+        walk: m.walk,
+        cam: p.cams[depth],
+      });
       return ok ? null : "That board is already open in another tab.";
     },
     dropBoard: async (p, m) => {
       if ((await store.list()).some((x) => x.id !== p.id && x.subs?.includes(m.id))) return false;
       // 和存下来时一样校验一遍再比（newBoard 存的是校验过的那份）
-      if (!(await store.dropIfUnchanged(m.id, loadBoard(structuredClone({ ...m.made, version: BOARD_VERSION }))))) return false;
+      if (!(await store.dropIfUnchanged(m.id, loadBoard(structuredClone({ ...m.made, version: BOARD_VERSION })))))
+        return false;
       closeOthers(p, m.id);
       return true;
     },
@@ -207,7 +263,11 @@ export function makeHandler(panels: BoardHost): Handler {
     deleteBoard: async (p, m) => {
       const b = await store.load(m.id);
       if (!b) return false;
-      const ok = await workspace().ui.warn(`Delete board “${b.name}”?`, { modal: true, detail: `${b.cards.length} cards and their links will be removed. Your code is not affected.` }, "Delete");
+      const ok = await workspace().ui.warn(
+        `Delete board “${b.name}”?`,
+        { modal: true, detail: `${b.cards.length} cards and their links will be removed. Your code is not affected.` },
+        "Delete",
+      );
       if (ok !== "Delete") return false;
       await removeBoard(p, m.id);
       return true;
@@ -247,9 +307,13 @@ async function openSeg(seg: Segment, line?: number) {
   if (seg.version.kind === "git" && abs) {
     const root = await repoRootOf(abs);
     if (root && (await showFile(root, seg.version.commit, path.relative(root, abs).split(path.sep).join("/"))) !== null)
-      return ed.openVersion({ root, commit: seg.version.commit, path: path.relative(root, abs).split(path.sep).join("/") }, line ?? seg.start);
+      return ed.openVersion(
+        { root, commit: seg.version.commit, path: path.relative(root, abs).split(path.sep).join("/") },
+        line ?? seg.start,
+      );
   }
-  if (wp) return ed.open(wp.abs, { line: mapLineTo(seg, line ?? seg.start, wp.lines.slice(wp.start - 1, wp.end), wp.start) });
+  if (wp)
+    return ed.open(wp.abs, { line: mapLineTo(seg, line ?? seg.start, wp.lines.slice(wp.start - 1, wp.end), wp.start) });
   throw new Error(`Cannot open ${seg.path}.`);
 }
 
@@ -271,17 +335,32 @@ async function diff(seg: Segment, against?: string): Promise<DiffData> {
   const wt = against === "worktree" || against === "working";
   const name = seg.symbol?.qual ?? `${path.basename(seg.path)} ${seg.start}–${seg.end}`;
   const title = wt ? `Uncommitted Changes · ${name}` : `New Version · ${name}`;
-  const left = { label: wt ? versionLabel(seg.version) : `Pinned ${versionLabel(seg.version)}`, path: seg.path, start: seg.start, text: seg.text, html: await highlight(seg.text, seg.lang, (await versionText(seg)) ?? undefined) };
+  const left = {
+    label: wt ? versionLabel(seg.version) : `Pinned ${versionLabel(seg.version)}`,
+    path: seg.path,
+    start: seg.start,
+    text: seg.text,
+    html: await highlight(seg.text, seg.lang, (await versionText(seg)) ?? undefined),
+  };
   const abs = absOf(seg);
-  const empty = (label: string): DiffData => ({ title, left, right: { label, path: seg.path, start: seg.start, text: [], html: [] }, canUpdate: false });
+  const empty = (label: string): DiffData => ({
+    title,
+    left,
+    right: { label, path: seg.path, start: seg.start, text: [], html: [] },
+    canUpdate: false,
+  });
   if (!abs || !hasLocalFile(seg.src)) return empty("No newer version");
-  let text: string | null = null, label = "", newVersion = seg.version, lastChange: string | undefined;
+  let text: string | null = null,
+    label = "",
+    newVersion = seg.version,
+    lastChange: string | undefined;
   const root = seg.version.kind === "git" ? await repoRootOf(abs) : null;
   const rel = root ? path.relative(root, abs).split(path.sep).join("/") : seg.path;
   if (wt || seg.version.kind !== "git" || seg.version.uncommitted) {
     text = await readText(abs);
     label = seg.version.kind === "git" ? "Working Tree" : `Installed ${await currentVersionLabel(abs, seg.version)}`;
-    if (seg.version.kind === "git") newVersion = { kind: "git", commit: (root && (await headOf(root))) || seg.version.commit, uncommitted: true };
+    if (seg.version.kind === "git")
+      newVersion = { kind: "git", commit: (root && (await headOf(root))) || seg.version.commit, uncommitted: true };
     else if (text !== null) newVersion = await currentVersion(abs, seg.version, text);
   } else if (root) {
     // upstream：有 Variant 的卡跟上游分支比（HEAD 可能是我的分支）
@@ -295,7 +374,11 @@ async function diff(seg: Segment, against?: string): Promise<DiffData> {
   if (text === null) return empty(label || "Not found");
   const lines = splitLines(text);
   const at = locateSeg(seg, lines, analysisOf(seg.lang, text).symbols);
-  if (!at || at === "many") return { ...empty(label), lastChange: at === "many" ? "Found in several places" : "Symbol not found (removed or renamed)" };
+  if (!at || at === "many")
+    return {
+      ...empty(label),
+      lastChange: at === "many" ? "Found in several places" : "Symbol not found (removed or renamed)",
+    };
   const now = lines.slice(at.start - 1, at.end);
   if (root && newVersion.kind === "git" && !newVersion.uncommitted) {
     const log = await logLines(root, rel, at.start, at.end, newVersion.commit, 1);
@@ -303,9 +386,13 @@ async function diff(seg: Segment, against?: string): Promise<DiffData> {
   }
   const newSeg: Segment = { ...seg, start: at.start, end: at.end, text: now, version: newVersion };
   return {
-    title, left,
+    title,
+    left,
     right: { label, path: seg.path, start: at.start, text: now, html: await highlight(now, seg.lang, text) },
-    lastChange, canUpdate: true, newSeg, newView: await segView(newSeg),
+    lastChange,
+    canUpdate: true,
+    newSeg,
+    newView: await segView(newSeg),
   };
 }
 
@@ -318,10 +405,13 @@ async function commits(seg: Segment): Promise<Commit[]> {
   const rel = path.relative(root, abs).split(path.sep).join("/");
   const head = await headOf(root);
   // 按 HEAD 里的位置算；HEAD 里找不到就按钉住的版本算
-  let rev = head ?? seg.version.commit, start = seg.start, end = seg.end;
+  let rev = head ?? seg.version.commit,
+    start = seg.start,
+    end = seg.end;
   const ht = head && (await showFile(root, head, rel));
   const at = ht ? locateSeg(seg, splitLines(ht), analysisOf(seg.lang, ht).symbols) : null;
-  if (at && at !== "many") ({ start, end } = at); else rev = seg.version.commit;
+  if (at && at !== "many") ({ start, end } = at);
+  else rev = seg.version.commit;
   const log = await logLines(root, rel, start, end, rev, 40);
   const pinned = seg.version.commit;
   if (!log.some((c) => c.commit.startsWith(pinned))) {
@@ -350,7 +440,13 @@ async function switchCommit(seg: Segment, commit: string): Promise<{ seg: Segmen
   const at = locateSeg(seg, lines, analysisOf(seg.lang, text).symbols);
   if (!at) throw new Error(`${seg.symbol?.qual ?? "This code"} is not in ${sha.slice(0, 7)}.`);
   if (at === "many") throw new Error(`Found in several places in ${sha.slice(0, 7)}.`);
-  const ns: Segment = { ...seg, start: at.start, end: at.end, text: lines.slice(at.start - 1, at.end), version: { kind: "git", commit: sha } };
+  const ns: Segment = {
+    ...seg,
+    start: at.start,
+    end: at.end,
+    text: lines.slice(at.start - 1, at.end),
+    version: { kind: "git", commit: sha },
+  };
   return { seg: ns, view: await segView(ns) };
 }
 
@@ -362,7 +458,10 @@ async function resolveTyped(p: BoardPanel, text: string): Promise<Commit | null>
     const r = a && s.version.kind === "git" && (await repoRootOf(a));
     if (r && !roots.includes(r)) roots.push(r);
   }
-  if (ws0()) { const r = await repoRootOf(path.join(ws0(), "x")); if (r && !roots.includes(r)) roots.push(r); }
+  if (ws0()) {
+    const r = await repoRootOf(path.join(ws0(), "x"));
+    if (r && !roots.includes(r)) roots.push(r);
+  }
   for (const r of roots) {
     const sha = await resolveRef(r, text.trim());
     if (!sha) continue;
@@ -377,24 +476,39 @@ export async function openOnBoard(panels: BoardHost, id: string, card?: string, 
   const np = await panels.show(id);
   if (!np || !card) return;
   const c = np.board && findCard(np.board, card)?.card;
-  const seg = line !== undefined && c && isCode(c) ? c.segments.find((s) => line >= s.start && line <= s.end) : undefined;
-  np.post({ type: "reveal", card, ...(seg ? { seg: seg.id, lines: [line!, line!] as [number, number] } : {}), ...(sticker ? { sticker } : {}) });
+  const seg =
+    line !== undefined && c && isCode(c) ? c.segments.find((s) => line >= s.start && line <= s.end) : undefined;
+  np.post({
+    type: "reveal",
+    card,
+    ...(seg ? { seg: seg.id, lines: [line!, line!] as [number, number] } : {}),
+    ...(sticker ? { sticker } : {}),
+  });
 }
 
 async function exportPng(dataUrl: string, name: string) {
   const ui = workspace().ui;
-  const file = await ui.saveDialog({ defaultPath: path.join(ws0() || process.env.HOME || "", `${name || "board"}.png`), filters: { "PNG Image": ["png"] } });
+  const file = await ui.saveDialog({
+    defaultPath: path.join(ws0() || process.env.HOME || "", `${name || "board"}.png`),
+    filters: { "PNG Image": ["png"] },
+  });
   if (!file) return;
   await fs.writeFile(file, Buffer.from(dataUrl.replace(/^data:[^,]*,/, ""), "base64"));
   void ui.info(`Exported ${path.basename(file)}`, "Reveal").then((r) => (r ? ui.revealInOS(file) : undefined));
 }
 
 async function pickImage(): Promise<string | null> {
-  const file = await workspace().ui.openDialog({ filters: { Images: ["png", "jpg", "jpeg", "gif", "svg", "webp"] }, label: "Add Image" });
+  const file = await workspace().ui.openDialog({
+    filters: { Images: ["png", "jpg", "jpeg", "gif", "svg", "webp"] },
+    label: "Add Image",
+  });
   if (!file) return null;
   const buf = await fs.readFile(file);
   const mime = sniffImage(buf)?.mime ?? (sniffSvg(buf) ? "image/svg+xml" : null);
-  if (!mime) { void workspace().ui.warn(`${path.basename(file)} is not a PNG, JPEG, WebP, GIF or SVG image.`, {}); return null; }
+  if (!mime) {
+    void workspace().ui.warn(`${path.basename(file)} is not a PNG, JPEG, WebP, GIF or SVG image.`, {});
+    return null;
+  }
   return `data:${mime};base64,${buf.toString("base64")}`;
 }
 
@@ -402,7 +516,16 @@ async function pickImage(): Promise<string | null> {
 type Spot = { abs: string; qual: string; kind: string; start: number; end: number; defLine: number };
 async function spotsIn(abs: string): Promise<Spot[]> {
   const text = await readText(abs);
-  return text === null ? [] : analysisOf(langOf(abs), text).symbols.map((s) => ({ abs, qual: s.qual, kind: s.kind, start: s.start, end: s.end, defLine: s.defLine }));
+  return text === null
+    ? []
+    : analysisOf(langOf(abs), text).symbols.map((s) => ({
+        abs,
+        qual: s.qual,
+        kind: s.kind,
+        start: s.start,
+        end: s.end,
+        defLine: s.defLine,
+      }));
 }
 
 /**
@@ -413,14 +536,24 @@ async function relocate(p: BoardPanel, cardId: string) {
   const f = p.board && findCard(p.board, cardId);
   if (!f || !isCode(f.card)) throw new Error("Card not found.");
   const seg = f.card.segments.find((s) => s.symbol) ?? f.card.segments[0];
-  const ui = workspace().ui, ask = prompts(p);
+  const ui = workspace().ui,
+    ask = prompts(p);
   const name = seg.symbol?.qual.split(".").pop();
   const old = absOf(seg);
-  const spots = [...(name ? await lookupName(name) : []), ...(old ? await spotsIn(old) : [])]
-    .filter((s, i, all) => all.findIndex((o) => o.abs === s.abs && o.start === s.start) === i);
-  const item = (s: Spot) => ({ label: s.qual, icon: s.kind === "class" ? ("class" as const) : ("function" as const), description: `${hostPath(s.abs)}:${s.defLine}`, s });
+  const spots = [...(name ? await lookupName(name) : []), ...(old ? await spotsIn(old) : [])].filter(
+    (s, i, all) => all.findIndex((o) => o.abs === s.abs && o.start === s.start) === i,
+  );
+  const item = (s: Spot) => ({
+    label: s.qual,
+    icon: s.kind === "class" ? ("class" as const) : ("function" as const),
+    description: `${hostPath(s.abs)}:${s.defLine}`,
+    s,
+  });
   const where = `Where is ${seg.symbol?.qual ?? "this code"} now?`;
-  const pick = await ask.pick([...spots.map(item), { label: "Choose File…", icon: "file" as const, description: "", s: undefined }], { placeHolder: where, matchOnDescription: true });
+  const pick = await ask.pick(
+    [...spots.map(item), { label: "Choose File…", icon: "file" as const, description: "", s: undefined }],
+    { placeHolder: where, matchOnDescription: true },
+  );
   if (!pick) return;
   let to = pick.s;
   if (!to) {
@@ -431,7 +564,10 @@ async function relocate(p: BoardPanel, cardId: string) {
   }
   const text = await readText(to.abs);
   if (text === null) throw new Error(`${hostPath(to.abs)} not found.`);
-  const ns = await makeSegment(await locOfFile(to.abs), splitLines(text), to.start, to.end, { lang: langOf(to.abs), symbol: { qual: to.qual, kind: to.kind === "class" ? "class" : "function" } });
+  const ns = await makeSegment(await locOfFile(to.abs), splitLines(text), to.start, to.end, {
+    lang: langOf(to.abs),
+    symbol: { qual: to.qual, kind: to.kind === "class" ? "class" : "function" },
+  });
   ns.id = seg.id;
   p.post({ type: "replaceSegment", card: cardId, seg: ns, view: await segView(ns) });
   p.post({ type: "stale", stale: { ...p.stale, [seg.id]: { state: "ok" } } });
@@ -441,18 +577,32 @@ async function relocate(p: BoardPanel, cardId: string) {
 async function locateRepo(p: BoardPanel) {
   if (!p.board) return;
   const miss = new Map<string, Segment>();
-  for (const s of boardSegments(p.board)) if (s.src.kind !== "free" && s.src.kind !== "github" && !(await present(s))) miss.set(srcKey(s.src), s);
-  if (!miss.size) { p.toast("All repos are available."); return; }
+  for (const s of boardSegments(p.board))
+    if (s.src.kind !== "free" && s.src.kind !== "github" && !(await present(s))) miss.set(srcKey(s.src), s);
+  if (!miss.size) {
+    p.toast("All repos are available.");
+    return;
+  }
   let key = [...miss.keys()][0];
   if (miss.size > 1) {
-    const r = await prompts(p).pick([...miss.entries()].map(([k, s]) => ({ label: srcLabel(s.src), description: k, k })), { placeHolder: "Which repo do you want to locate?" });
+    const r = await prompts(p).pick(
+      [...miss.entries()].map(([k, s]) => ({ label: srcLabel(s.src), description: k, k })),
+      { placeHolder: "Which repo do you want to locate?" },
+    );
     if (!r) return;
     key = r.k;
   }
   const seg = miss.get(key)!;
-  const dir = await workspace().ui.openDialog({ folders: true, label: "Use This Folder", title: `Locate “${srcLabel(seg.src)}”` });
+  const dir = await workspace().ui.openDialog({
+    folders: true,
+    label: "Use This Folder",
+    title: `Locate “${srcLabel(seg.src)}”`,
+  });
   if (!dir) return;
-  const exists = await fs.stat(path.join(dir, seg.path)).then(() => true, () => false);
+  const exists = await fs.stat(path.join(dir, seg.path)).then(
+    () => true,
+    () => false,
+  );
   if (!exists) {
     const go = await workspace().ui.warn(`${seg.path} is not in this folder.`, { modal: true }, "Use Anyway");
     if (go !== "Use Anyway") return;
@@ -461,11 +611,13 @@ async function locateRepo(p: BoardPanel) {
   await p.reload();
 }
 
-
-
 /** 图片的 AI 操作：每块面板还在等的请求（白板给的 job 号 → 取消用的） */
 const imageJobs = new WeakMap<BoardPanel, Map<number, AbortController>>();
-const jobsOf = (p: BoardPanel) => { let m = imageJobs.get(p); if (!m) imageJobs.set(p, (m = new Map())); return m; };
+const jobsOf = (p: BoardPanel) => {
+  let m = imageJobs.get(p);
+  if (!m) imageJobs.set(p, (m = new Map()));
+  return m;
+};
 
 /** Note 的灰字补全：同一块面板新的请求来了就取消旧的；没有模型回 null */
 const inflight = new WeakMap<BoardPanel, AbortController>();

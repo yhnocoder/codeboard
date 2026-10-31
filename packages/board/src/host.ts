@@ -4,7 +4,10 @@ import { onBoardSwitch } from "./state/root";
 
 type Api = { postMessage(m: unknown): void };
 declare global {
-  interface Window { acquireVsCodeApi?: () => Api; __cbSent?: unknown[] }
+  interface Window {
+    acquireVsCodeApi?: () => Api;
+    __cbSent?: unknown[];
+  }
 }
 
 const api: Api = window.acquireVsCodeApi?.() ?? { postMessage: (m) => (window.__cbSent ??= []).push(m) };
@@ -20,7 +23,18 @@ const pending = new Map<number, Pending>();
 /** 宿主一直不回（出错、重载了）时多久算失败；等用户操作的请求（确认框、选文件、保存对话框、GitHub 登录、输密钥）不限时。
  *  imageAi 也不限：宿主自己按操作限时（重画 SVG 最多 6 分钟），第一次用 Copilot 的模型还要等用户同意 */
 const TIMEOUT = 60_000;
-const WAITS_ON_USER = new Set<AskType>(["confirm", "pickFile", "exportFile", "deleteEverywhere", "deleteBoard", "newBoard", "gh", "github", "aiKey", "imageAi"]);
+const WAITS_ON_USER = new Set<AskType>([
+  "confirm",
+  "pickFile",
+  "exportFile",
+  "deleteEverywhere",
+  "deleteBoard",
+  "newBoard",
+  "gh",
+  "github",
+  "aiKey",
+  "imageAi",
+]);
 
 function settle(id: number): Pending | undefined {
   const p = pending.get(id);
@@ -30,7 +44,9 @@ function settle(id: number): Pending | undefined {
   return p;
 }
 // 换了白板：上一块白板的请求都作废（回答到了也对不上现在的卡）
-onBoardSwitch(() => { for (const id of [...pending.keys()]) settle(id)?.fail(new Error("The board changed")); });
+onBoardSwitch(() => {
+  for (const id of [...pending.keys()]) settle(id)?.fail(new Error("The board changed"));
+});
 
 type Req<T extends AskType> = Omit<Extract<BoardToHost, { type: T }>, "req" | "type">;
 
@@ -38,7 +54,9 @@ type Req<T extends AskType> = Omit<Extract<BoardToHost, { type: T }>, "req" | "t
 export function ask<T extends AskType>(type: T, body: Req<T>): Promise<ReplyOf<T>> {
   const id = ++req;
   return new Promise<ReplyOf<T>>((ok, fail) => {
-    const timer = WAITS_ON_USER.has(type) ? undefined : window.setTimeout(() => settle(id)?.fail(new Error(`No reply from the editor (${type})`)), TIMEOUT);
+    const timer = WAITS_ON_USER.has(type)
+      ? undefined
+      : window.setTimeout(() => settle(id)?.fail(new Error(`No reply from the editor (${type})`)), TIMEOUT);
     pending.set(id, { ok: ok as (v: unknown) => void, fail, timer });
     api.postMessage(unwrap({ type, req: id, ...body }));
   });
@@ -48,7 +66,8 @@ export function ask<T extends AskType>(type: T, body: Req<T>): Promise<ReplyOf<T
 export function followHostTheme() {
   const sync = () => {
     const c = document.body.classList;
-    document.documentElement.dataset.theme = c.contains("vscode-light") || c.contains("vscode-high-contrast-light") ? "light" : "dark";
+    document.documentElement.dataset.theme =
+      c.contains("vscode-light") || c.contains("vscode-high-contrast-light") ? "light" : "dark";
   };
   sync();
   new MutationObserver(sync).observe(document.body, { attributes: true, attributeFilter: ["class"] });
@@ -61,10 +80,21 @@ export function forwardErrors() {
     const now = Date.now();
     if (now - (seen.get(text) ?? 0) < 5000) return;
     seen.set(text, now);
-    try { send({ type: "log", level: "error", text: `board: ${text}`.slice(0, 2000) }); } catch { /* 宿主不在 */ }
+    try {
+      send({ type: "log", level: "error", text: `board: ${text}`.slice(0, 2000) });
+    } catch {
+      /* 宿主不在 */
+    }
   };
-  window.addEventListener("error", (e) => out(`${e.message}${e.filename ? ` @ ${e.filename.split("/").pop()}:${e.lineno}:${e.colno}` : ""}${e.error?.stack ? `\n${e.error.stack}` : ""}`));
-  window.addEventListener("unhandledrejection", (e) => { const r = e.reason; out(`unhandled rejection: ${r instanceof Error ? `${r.message}\n${r.stack ?? ""}` : String(r)}`); });
+  window.addEventListener("error", (e) =>
+    out(
+      `${e.message}${e.filename ? ` @ ${e.filename.split("/").pop()}:${e.lineno}:${e.colno}` : ""}${e.error?.stack ? `\n${e.error.stack}` : ""}`,
+    ),
+  );
+  window.addEventListener("unhandledrejection", (e) => {
+    const r = e.reason;
+    out(`unhandled rejection: ${r instanceof Error ? `${r.message}\n${r.stack ?? ""}` : String(r)}`);
+  });
 }
 
 export function listen(fn: (m: HostToBoard) => void) {

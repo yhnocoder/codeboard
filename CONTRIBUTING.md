@@ -8,7 +8,8 @@ npm install
 npm run build      # @yhnocoder/markdown (packages/markdown/dist), board UI + extension, compiled into extensions/vscode/dist (no .vsix)
 npm test           # unit tests (analysis, core, markdown, board, host, extension)
 npm run check      # local test tier: typecheck, lint, unit tests and affected harness scenarios (~90 s)
-npm run lint       # Biome (no unused imports, no `any`; biome.jsonc) and knip (dead code against tools/test/knip-known.txt); part of check and CI
+npm run lint       # Biome (formatting at 120 columns, no unused imports, no `any`; biome.jsonc) and knip (dead code against tools/test/knip-known.txt); part of check and CI
+npm run format     # format every file with Biome
 npm run e2e        # main flows in a real VS Code, with screenshots (needs VS Code and xvfb)
 npm run storybook  # Storybook for the board UI at http://localhost:6006 (cards and toolbar, every theme, light / dark, zoom); not part of check or the per-push CI. `npm run storybook:check` builds it and opens every story in Chromium; that runs in the regular full test run, every 6 hours (`.github/workflows/regular.yml`)
 ```

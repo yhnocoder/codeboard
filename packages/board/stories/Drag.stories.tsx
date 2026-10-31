@@ -5,7 +5,14 @@ import { Stage, scene, codeCard, noteCard, type Globals, type Scene } from "./su
 import { ln } from "./support/canvas";
 import { setDragging, setGuides, setSizeHint, setDropTarget } from "../src/state/ui";
 
-type What = "snap guides" | "resize: same width" | "merge: armed" | "merge: hovering" | "as sidenote" | "as code sidenote" | "call: candidates";
+type What =
+  | "snap guides"
+  | "resize: same width"
+  | "merge: armed"
+  | "merge: hovering"
+  | "as sidenote"
+  | "as code sidenote"
+  | "call: candidates";
 type Args = { what: What };
 
 function board(a: Args): Scene {
@@ -19,19 +26,25 @@ function board(a: Args): Scene {
       case "snap guides":
         // Note 拖到左边对齐 preempt、上边对齐 may_append 的地方
         setDragging(new Set([n.id]));
-        setGuides([{ axis: "x", at: 40, from: 60, to: 520 }, { axis: "y", at: 420, from: 40, to: 1080 }]);
+        setGuides([
+          { axis: "x", at: 40, from: 60, to: 520 },
+          { axis: "y", at: 420, from: 40, to: 1080 },
+        ]);
         return;
       case "resize: same width":
         setDragging(new Set<string>());
         setGuides([{ axis: "x", at: 480, from: 60, to: 600 }]);
         setSizeHint({ x: 40 + 220, y: 520 + 8, text: "same width · 440" });
         return;
-      case "merge: armed": case "merge: hovering":
+      case "merge: armed":
+      case "merge: hovering":
         setDragging(new Set([c3.id]));
         setDropTarget({ kind: "merge", card: c2.id, armed: a.what === "merge: armed" });
         return;
-      case "as sidenote": case "as code sidenote": {
-        const id = a.what === "as sidenote" ? n.id : c3.id, at = ln(c1, "is_prefill");
+      case "as sidenote":
+      case "as code sidenote": {
+        const id = a.what === "as sidenote" ? n.id : c3.id,
+          at = ln(c1, "is_prefill");
         setDragging(new Set([id]));
         setDropTarget({ kind: "line", card: c1.id, seg: at.seg, line: at.line });
         return;
@@ -47,11 +60,26 @@ function board(a: Args): Scene {
   if (a.what === "as sidenote") b.place[n.id] = { ...b.place[n.id], x: 200, y: 200 };
   if (a.what === "as code sidenote") b.place[c3.id] = { ...b.place[c3.id], x: 220, y: 210 };
   if (a.what === "resize: same width") b.place[n.id] = { ...b.place[n.id], w: 440, y: 420 };
-  const sel = a.what === "call: candidates" ? [c1.id] : a.what.startsWith("merge") ? [c3.id] : a.what === "as code sidenote" ? [c3.id] : [n.id];
+  const sel =
+    a.what === "call: candidates"
+      ? [c1.id]
+      : a.what.startsWith("merge")
+        ? [c3.id]
+        : a.what === "as code sidenote"
+          ? [c3.id]
+          : [n.id];
   return { board: b, sel, after };
 }
 
-const WHATS: What[] = ["snap guides", "resize: same width", "merge: armed", "merge: hovering", "as sidenote", "as code sidenote", "call: candidates"];
+const WHATS: What[] = [
+  "snap guides",
+  "resize: same width",
+  "merge: armed",
+  "merge: hovering",
+  "as sidenote",
+  "as code sidenote",
+  "call: candidates",
+];
 const meta = {
   title: "Canvas/Drag",
   render: (a, ctx) => <Stage scene={() => board(a)} globals={ctx.globals as Globals} />,

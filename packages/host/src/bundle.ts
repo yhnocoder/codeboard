@@ -39,19 +39,25 @@ export class MemFs implements Fs, Files {
   private mtimes = new Map<string, number>();
   private clock = 0;
 
-  private touch(p: string) { this.mtimes.set(p, ++this.clock); }
+  private touch(p: string) {
+    this.mtimes.set(p, ++this.clock);
+  }
   private norm = (p: string) => path.posix.resolve("/", p);
 
   async readdir(dir: string): Promise<DirEnt[]> {
     const d = this.norm(dir);
     if (!this.dirs.has(d)) throw new Error(`ENOENT: ${dir}`);
     const out: DirEnt[] = [];
-    for (const f of this.files.keys()) if (path.posix.dirname(f) === d) out.push({ name: path.posix.basename(f), isFile: true, isDir: false });
-    for (const x of this.dirs) if (x !== "/" && path.posix.dirname(x) === d) out.push({ name: path.posix.basename(x), isFile: false, isDir: true });
+    for (const f of this.files.keys())
+      if (path.posix.dirname(f) === d) out.push({ name: path.posix.basename(f), isFile: true, isDir: false });
+    for (const x of this.dirs)
+      if (x !== "/" && path.posix.dirname(x) === d)
+        out.push({ name: path.posix.basename(x), isFile: false, isDir: true });
     return out;
   }
   async stat(p: string) {
-    const n = this.norm(p), t = this.mtimes.get(n);
+    const n = this.norm(p),
+      t = this.mtimes.get(n);
     if (t === undefined && !this.dirs.has(n)) throw new Error(`ENOENT: ${p}`);
     return { mtimeMs: t ?? 0, birthtimeMs: t ?? 0, ctimeMs: t ?? 0 };
   }
@@ -65,27 +71,53 @@ export class MemFs implements Fs, Files {
     this.put(n, typeof data === "string" ? strToU8(data) : data);
   }
   async rename(a: string, b: string) {
-    const from = this.norm(a), data = this.files.get(from);
+    const from = this.norm(a),
+      data = this.files.get(from);
     if (!data) throw new Error(`ENOENT: ${a}`);
-    this.files.delete(from); this.mtimes.delete(from);
+    this.files.delete(from);
+    this.mtimes.delete(from);
     await this.writeFile(b, data);
   }
-  async rm(p: string) { const n = this.norm(p); this.files.delete(n); this.mtimes.delete(n); }
+  async rm(p: string) {
+    const n = this.norm(p);
+    this.files.delete(n);
+    this.mtimes.delete(n);
+  }
   async rmdir(p: string) {
     const n = this.norm(p);
-    if ([...this.files.keys(), ...this.dirs].some((x) => x !== n && x.startsWith(`${n}/`))) throw new Error(`ENOTEMPTY: ${p}`);
+    if ([...this.files.keys(), ...this.dirs].some((x) => x !== n && x.startsWith(`${n}/`)))
+      throw new Error(`ENOTEMPTY: ${p}`);
     this.dirs.delete(n);
   }
-  async mkdir(p: string) { this.dirOf(p); }
-  private dirOf(p: string) { for (let d = this.norm(p); !this.dirs.has(d); d = path.posix.dirname(d)) this.dirs.add(d); }
+  async mkdir(p: string) {
+    this.dirOf(p);
+  }
+  private dirOf(p: string) {
+    for (let d = this.norm(p); !this.dirs.has(d); d = path.posix.dirname(d)) this.dirs.add(d);
+  }
   /** 解包时放进一个文件（相对根的路径） */
-  put(rel: string, data: Uint8Array) { const n = this.norm(rel); this.dirOf(path.posix.dirname(n)); this.files.set(n, data); this.touch(n); }
-  join(...parts: string[]) { return path.posix.join(...parts); }
-  fromBase64(s: string) { return new Uint8Array(Buffer.from(s, "base64")); }
-  sha1(d: Uint8Array) { return createHash("sha1").update(d).digest("hex"); }
+  put(rel: string, data: Uint8Array) {
+    const n = this.norm(rel);
+    this.dirOf(path.posix.dirname(n));
+    this.files.set(n, data);
+    this.touch(n);
+  }
+  join(...parts: string[]) {
+    return path.posix.join(...parts);
+  }
+  fromBase64(s: string) {
+    return new Uint8Array(Buffer.from(s, "base64"));
+  }
+  sha1(d: Uint8Array) {
+    return createHash("sha1").update(d).digest("hex");
+  }
 
-  async read(rel: string) { return this.files.get(this.norm(rel)); }
-  async add(rel: string, data: Uint8Array) { if (!this.files.has(this.norm(rel))) await this.writeFile(rel, data); }
+  async read(rel: string) {
+    return this.files.get(this.norm(rel));
+  }
+  async add(rel: string, data: Uint8Array) {
+    if (!this.files.has(this.norm(rel))) await this.writeFile(rel, data);
+  }
 }
 
 const memStorage = (mem: MemFs) => new Storage(mem, { dir: () => "/", log });
@@ -94,9 +126,13 @@ const memStorage = (mem: MemFs) => new Storage(mem, { dir: () => "/", log });
  * 把白板 roots（和它们嵌着的子白板、共享卡、图片、运行记录）打成 .codeboard 的字节。来源原样带上（导入的那边再按它的工作区改写）。
  * 一块都没有返回 null
  */
-export async function packBoards(store: Storage, roots: string[]): Promise<{ data: Uint8Array; manifest: Manifest } | null> {
+export async function packBoards(
+  store: Storage,
+  roots: string[],
+): Promise<{ data: Uint8Array; manifest: Manifest } | null> {
   await store.flush();
-  const mem = new MemFs(), out = memStorage(mem);
+  const mem = new MemFs(),
+    out = memStorage(mem);
   try {
     const moved = await transfer({ store, files: diskFiles(store.dir()) }, roots, { store: out, files: mem });
     if (!moved.ids.size) return null;
@@ -115,7 +151,8 @@ export async function packBoards(store: Storage, roots: string[]): Promise<{ dat
     };
     const z: Zippable = { "manifest.json": strToU8(JSON.stringify(manifest, null, 1)) };
     // 图片本来就压过了，再压一遍只费时间
-    for (const [f, data] of [...mem.files].sort(([a], [b]) => a.localeCompare(b))) z[f.slice(1)] = f.startsWith("/assets/") ? [data, { level: 0 }] : data;
+    for (const [f, data] of [...mem.files].sort(([a], [b]) => a.localeCompare(b)))
+      z[f.slice(1)] = f.startsWith("/assets/") ? [data, { level: 0 }] : data;
     return { data: zipSync(z, { level: 6 }), manifest };
   } finally {
     out.dispose();
@@ -141,7 +178,8 @@ function entryKind(name: string): "manifest" | "board" | "card" | "asset" | "run
 /** 解开、校验一个 .codeboard：不对抛 BundleError（说清哪个条目哪里不对），对了返回装着包里文件的 MemFs 和 manifest */
 export function readBundle(data: Uint8Array): { mem: MemFs; manifest: Manifest } {
   if (data.length > LIMITS.file) throw new BundleError(`The file is larger than ${LIMITS.file >> 20} MB.`);
-  let total = 0, count = 0;
+  let total = 0,
+    count = 0;
   const seen = new Set<string>();
   let files: Record<string, Uint8Array>;
   try {
@@ -152,8 +190,10 @@ export function readBundle(data: Uint8Array): { mem: MemFs; manifest: Manifest }
         if (!entryKind(f.name)) throw new BundleError(`Unexpected file “${f.name}”.`);
         if (seen.has(f.name)) throw new BundleError(`“${f.name}” appears twice.`);
         seen.add(f.name);
-        if (f.originalSize > LIMITS.entry) throw new BundleError(`“${f.name}” is larger than ${LIMITS.entry >> 20} MB.`);
-        if ((total += f.originalSize) > LIMITS.total) throw new BundleError(`The contents are larger than ${LIMITS.total >> 20} MB.`);
+        if (f.originalSize > LIMITS.entry)
+          throw new BundleError(`“${f.name}” is larger than ${LIMITS.entry >> 20} MB.`);
+        if ((total += f.originalSize) > LIMITS.total)
+          throw new BundleError(`The contents are larger than ${LIMITS.total >> 20} MB.`);
         return true;
       },
     });
@@ -162,13 +202,22 @@ export function readBundle(data: Uint8Array): { mem: MemFs; manifest: Manifest }
     throw new BundleError(`Not a CodeBoard package (${e instanceof Error ? e.message : e}).`);
   }
   // 条目头里声明的大小可以是假的：解出来的再量一遍
-  for (const [name, d] of Object.entries(files)) if (d.length > LIMITS.entry) throw new BundleError(`“${name}” is larger than ${LIMITS.entry >> 20} MB.`);
+  for (const [name, d] of Object.entries(files))
+    if (d.length > LIMITS.entry) throw new BundleError(`“${name}” is larger than ${LIMITS.entry >> 20} MB.`);
 
   const json = (name: string) => {
-    try { return JSON.parse(strFromU8(files[name])); } catch { throw new BundleError(`“${name}” is not valid JSON.`); }
+    try {
+      return JSON.parse(strFromU8(files[name]));
+    } catch {
+      throw new BundleError(`“${name}” is not valid JSON.`);
+    }
   };
   const valid = <T>(name: string, fn: () => T): T => {
-    try { return fn(); } catch (e) { throw new BundleError(`“${name}”: ${e instanceof Error ? e.message : e}`); }
+    try {
+      return fn();
+    } catch (e) {
+      throw new BundleError(`“${name}”: ${e instanceof Error ? e.message : e}`);
+    }
   };
   if (!files["manifest.json"]) throw new BundleError("Not a CodeBoard package (no manifest.json).");
   const manifest = valid("manifest.json", () => checkManifest(json("manifest.json")));
@@ -192,7 +241,10 @@ export function readBundle(data: Uint8Array): { mem: MemFs; manifest: Manifest }
     const f = boardFiles.get(b.id);
     if (!f) throw new BundleError(`Board “${b.name}” (${b.id}) is listed in manifest.json but not in the package.`);
     const group = f.includes("/") ? f.split("/")[0] : undefined;
-    if (group !== b.group) throw new BundleError(`Board “${b.name}” is in “${group ?? "(no group)"}”, but manifest.json says “${b.group ?? "(no group)"}”.`);
+    if (group !== b.group)
+      throw new BundleError(
+        `Board “${b.name}” is in “${group ?? "(no group)"}”, but manifest.json says “${b.group ?? "(no group)"}”.`,
+      );
   }
   return { mem, manifest };
 }
@@ -202,20 +254,37 @@ const ManifestSchema = v.object({
   codeboard: v.string(),
   exported: v.string(),
   folders: v.array(v.string()),
-  boards: v.pipe(v.array(v.object({
-    id: v.pipe(v.string(), v.regex(SAFE_ID, "not a board id")),
-    name: v.string(),
-    group: v.optional(v.pipe(v.string(), v.check((g) => groupName(g) === g, "not a group folder name"))),
-    sub: v.optional(v.boolean()),
-  })), v.minLength(1, "lists no boards")),
+  boards: v.pipe(
+    v.array(
+      v.object({
+        id: v.pipe(v.string(), v.regex(SAFE_ID, "not a board id")),
+        name: v.string(),
+        group: v.optional(
+          v.pipe(
+            v.string(),
+            v.check((g) => groupName(g) === g, "not a group folder name"),
+          ),
+        ),
+        sub: v.optional(v.boolean()),
+      }),
+    ),
+    v.minLength(1, "lists no boards"),
+  ),
   groups: v.array(v.string()),
 });
 
 function checkManifest(m: unknown): Manifest {
   const format = (m as { format?: unknown } | null)?.format;
-  if (typeof format === "number" && format > BUNDLE_FORMAT) throw new Error(`made by a newer CodeBoard (package format ${format}). Update CodeBoard to import it.`);
+  if (typeof format === "number" && format > BUNDLE_FORMAT)
+    throw new Error(`made by a newer CodeBoard (package format ${format}). Update CodeBoard to import it.`);
   const r = v.safeParse(ManifestSchema, m);
-  if (!r.success) throw new Error(r.issues.slice(0, 3).map((i) => `${v.getDotPath(i) ?? "(root)"}: ${i.message}`).join("; "));
+  if (!r.success)
+    throw new Error(
+      r.issues
+        .slice(0, 3)
+        .map((i) => `${v.getDotPath(i) ?? "(root)"}: ${i.message}`)
+        .join("; "),
+    );
   return r.output;
 }
 
@@ -238,8 +307,15 @@ export async function importBundle(store: Storage, data: Uint8Array): Promise<Im
     const tops = manifest.boards.filter((b) => !b.sub).map((b) => b.id);
     const roots = tops.length ? tops : manifest.boards.map((b) => b.id);
     // 嵌着的子白板也要在包里：不然导入后框是空的
-    for (const id of roots) for (const s of subBoardsOf((await src.load(id))!)) if (!listed.has(s)) log("warn", `import: board ${id} embeds ${s}, which is not in the package`);
-    const moved = await transfer({ store: src, files: mem }, roots, { store, files: diskFiles(store.dir()) }, { folders: wsRoots(), from: [] });
+    for (const id of roots)
+      for (const s of subBoardsOf((await src.load(id))!))
+        if (!listed.has(s)) log("warn", `import: board ${id} embeds ${s}, which is not in the package`);
+    const moved = await transfer(
+      { store: src, files: mem },
+      roots,
+      { store, files: diskFiles(store.dir()) },
+      { folders: wsRoots(), from: [] },
+    );
     return { first: moved.ids.get(roots[0])!, boards: moved.ids.size, renamed: moved.renamed, manifest };
   } finally {
     src.dispose();
@@ -256,13 +332,18 @@ export async function importFile(store: Storage, file: string): Promise<Imported
 /** 问存到哪、打包、写下去，说一声（name = 默认文件名用的白板 / 组 / 工作区的名字） */
 export async function exportFlow(store: Storage, roots: string[], name: string): Promise<string | undefined> {
   const ui = workspace().ui;
-  const file = await ui.saveDialog({ defaultPath: path.join(ws0() || store.dir(), bundleName(name)), filters: { "CodeBoard Boards": [BUNDLE_EXT] } });
+  const file = await ui.saveDialog({
+    defaultPath: path.join(ws0() || store.dir(), bundleName(name)),
+    filters: { "CodeBoard Boards": [BUNDLE_EXT] },
+  });
   if (!file) return;
   const r = await packBoards(store, roots);
   if (!r) return;
   await fs.writeFile(file, r.data);
   const n = r.manifest.boards.length;
-  void ui.info(`Exported ${n} board${n === 1 ? "" : "s"} to ${path.basename(file)}.`, "Reveal in Folder").then((go) => { if (go) void ui.revealInOS(file); });
+  void ui.info(`Exported ${n} board${n === 1 ? "" : "s"} to ${path.basename(file)}.`, "Reveal in Folder").then((go) => {
+    if (go) void ui.revealInOS(file);
+  });
   return file;
 }
 

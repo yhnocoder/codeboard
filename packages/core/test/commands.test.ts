@@ -1,13 +1,44 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_SETTINGS, danglingRefs, emptyBoard, type Board, type CodeCard, type DiffData, type Segment, type SegView, type Settings, type Stale } from "../src";
-import { cardStale, keepVersion, nextToReview, staleCount, updateAll, type Choice, type VersionEnv } from "../src/commands";
+import {
+  DEFAULT_SETTINGS,
+  danglingRefs,
+  emptyBoard,
+  type Board,
+  type CodeCard,
+  type DiffData,
+  type Segment,
+  type SegView,
+  type Settings,
+  type Stale,
+} from "../src";
+import {
+  cardStale,
+  keepVersion,
+  nextToReview,
+  staleCount,
+  updateAll,
+  type Choice,
+  type VersionEnv,
+} from "../src/commands";
 
-const seg = (id: string, text: string[], commit = "aaa1111"): Segment => ({ id, src: { kind: "repo", repo: "" }, path: "m.py", lang: "python", start: 10, end: 9 + text.length, text, version: { kind: "git", commit } });
+const seg = (id: string, text: string[], commit = "aaa1111"): Segment => ({
+  id,
+  src: { kind: "repo", repo: "" },
+  path: "m.py",
+  lang: "python",
+  start: 10,
+  end: 9 + text.length,
+  text,
+  version: { kind: "git", commit },
+});
 const view = (n: number): SegView => ({ html: Array(n).fill("x"), flags: Array(n).fill(0), calls: [], defs: [] });
 
 function board(): Board {
   const b = emptyBoard("b", "B");
-  b.cards.push({ id: "c1", kind: "code", segments: [seg("s1", ["def f():", "    return 1"])] }, { id: "c2", kind: "code", segments: [seg("s2", ["def g():", "    return 2"])] });
+  b.cards.push(
+    { id: "c1", kind: "code", segments: [seg("s1", ["def f():", "    return 1"])] },
+    { id: "c2", kind: "code", segments: [seg("s2", ["def g():", "    return 2"])] },
+  );
   b.place.c1 = { x: 0, y: 0, w: 400 };
   b.place.c2 = { x: 500, y: 0, w: 400 };
   b.sidenotes.push({ id: "n1", at: { card: "c1", seg: "s1", lines: [11, 11] }, kind: "text", md: "one" });
@@ -15,23 +46,45 @@ function board(): Board {
 }
 
 /** A plain-object env: the board, the stale map, the boards each card is on, scripted answers to the host and the user */
-function env(o: { stale: Record<string, Stale>; shared?: Record<string, number>; answer?: number | null; settings?: Partial<Settings>; diff?: (s: Segment) => DiffData }) {
+function env(o: {
+  stale: Record<string, Stale>;
+  shared?: Record<string, number>;
+  answer?: number | null;
+  settings?: Partial<Settings>;
+  diff?: (s: Segment) => DiffData;
+}) {
   const b = board();
   const stale: Record<string, Stale | undefined> = { ...o.stale };
-  const log = { edits: 0, asked: [] as Choice[], toasts: [] as string[], views: {} as Record<string, SegView>, diffs: [] as string[] };
+  const log = {
+    edits: 0,
+    asked: [] as Choice[],
+    toasts: [] as string[],
+    views: {} as Record<string, SegView>,
+    diffs: [] as string[],
+  };
   const e: VersionEnv = {
     board: () => b,
-    edit: (fn) => { fn(b); log.edits++; },
+    edit: (fn) => {
+      fn(b);
+      log.edits++;
+    },
     ask: (async (type: string, body: { seg: Segment }) => {
       expect(type).toBe("diff");
       log.diffs.push(body.seg.id);
       return (o.diff ?? newVersion)(body.seg);
     }) as VersionEnv["ask"],
-    choose: async (q) => { log.asked.push(q); return o.answer ?? null; },
-    toast: (t) => { log.toasts.push(t); },
+    choose: async (q) => {
+      log.asked.push(q);
+      return o.answer ?? null;
+    },
+    toast: (t) => {
+      log.toasts.push(t);
+    },
     settings: () => ({ ...DEFAULT_SETTINGS, ...o.settings }),
     stale: (id) => stale[id],
-    staleOk: (ids) => { for (const id of ids) stale[id] = { state: "ok" }; },
+    staleOk: (ids) => {
+      for (const id of ids) stale[id] = { state: "ok" };
+    },
     putViews: (v) => Object.assign(log.views, v),
     sharedOn: (id) => o.shared?.[id] ?? 1,
   };
@@ -39,7 +92,14 @@ function env(o: { stale: Record<string, Stale>; shared?: Record<string, number>;
 }
 const newVersion = (s: Segment): DiffData => {
   const text = [...s.text.slice(0, 1), "    return 3"];
-  return { title: "New Version", left: { label: "", path: "", start: 10, text: s.text, html: [] }, right: { label: "", path: "", start: 10, text, html: [] }, canUpdate: true, newSeg: { ...s, text, version: { kind: "git", commit: "bbb2222" } }, newView: view(2) };
+  return {
+    title: "New Version",
+    left: { label: "", path: "", start: 10, text: s.text, html: [] },
+    right: { label: "", path: "", start: 10, text, html: [] },
+    canUpdate: true,
+    newSeg: { ...s, text, version: { kind: "git", commit: "bbb2222" } },
+    newView: view(2),
+  };
 };
 const changed = (head = "bbb2222"): Stale => ({ state: "changed", hiddenOnly: false, head });
 
@@ -103,14 +163,21 @@ describe("version commands", () => {
   });
 
   it("follows the sharedUpdate setting without asking", async () => {
-    const { log } = await (async () => { const r = env({ stale: { s1: changed() }, shared: { c1: 3 }, settings: { sharedUpdate: "all" } }); await updateAll(r.e); return r; })();
+    const { log } = await (async () => {
+      const r = env({ stale: { s1: changed() }, shared: { c1: 3 }, settings: { sharedUpdate: "all" } });
+      await updateAll(r.e);
+      return r;
+    })();
     expect(log.asked).toEqual([]);
     expect(log.diffs).toEqual(["s1"]);
   });
 
   it("counts a card the host cannot update as left for review", async () => {
     const { log } = await (async () => {
-      const r = env({ stale: { s1: changed(), s2: changed() }, diff: (s) => (s.id === "s2" ? { ...newVersion(s), canUpdate: false } : newVersion(s)) });
+      const r = env({
+        stale: { s1: changed(), s2: changed() },
+        diff: (s) => (s.id === "s2" ? { ...newVersion(s), canUpdate: false } : newVersion(s)),
+      });
       await updateAll(r.e);
       return r;
     })();

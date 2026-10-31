@@ -1,238 +1,463 @@
 {
   "_doc": "Test tiers, see TESTING.md. smoke: always run by npm run check and PR CI (one quick scenario per main feature). areas: feature areas, each with the files that belong to it (globs, source and scenario specs) and a hand-picked group of scenarios that runs whole when a change touches one of them; broad: the same for changes no area holds. limits: seconds of scenario time for a group beside smoke (area), for smoke, and for smoke with the three largest groups (local). manual: left out of every default run, run them by name. known: checks failing on main that are tracked elsewhere; their FAIL lines are reported but don't fail a run (remove the entry with the fix).",
   "smoke": [
-    "expandCall", "peek", "notes", "markdownRender", "markdownEdit", "export", "patchsave", "versions", "compare", "web", "calltree",
-    "emptyquestion", "runtime", "syncundo", "sharedsync", "walkthroughOrder", "zoomLevels", "palette", "settingsPage", "linkMergeSection",
-    "stickerBitmapsPicker", "notePastedImageSameSizeInBothModes"
+    "expandCall",
+    "peek",
+    "notes",
+    "markdownRender",
+    "markdownEdit",
+    "export",
+    "patchsave",
+    "versions",
+    "compare",
+    "web",
+    "calltree",
+    "emptyquestion",
+    "runtime",
+    "syncundo",
+    "sharedsync",
+    "walkthroughOrder",
+    "zoomLevels",
+    "palette",
+    "settingsPage",
+    "linkMergeSection",
+    "stickerBitmapsPicker",
+    "notePastedImageSameSizeInBothModes"
   ],
   "manual": ["markdownRecord"],
-  "solo": ["markdownLazyRender", "codeEditKeystrokeLatency", "variantTabSwitchTime", "changesReachHostTime", "mathHintsKeystrokeTime", "noteFindTypingLatency", "nudgeHoldAccelerates", "noteLongNoteKeysScale"],
+  "solo": [
+    "markdownLazyRender",
+    "codeEditKeystrokeLatency",
+    "variantTabSwitchTime",
+    "changesReachHostTime",
+    "mathHintsKeystrokeTime",
+    "noteFindTypingLatency",
+    "nudgeHoldAccelerates",
+    "noteLongNoteKeysScale"
+  ],
   "known": {},
-  "limits": {"area": 30, "smoke": 90, "local": 180},
+  "limits": { "area": 30, "smoke": 90, "local": 180 },
   "broad": {
     "about": "changes no area holds: the board's shared stylesheet and fonts, build and test config, the lockfile, the harness, the example repository. They can break any look, so the group is looks across themes",
     "files": [
-      "package.json", "package-lock.json", "packages/*/package.json", "packages/*/tsconfig*.json", "packages/*/vite.config.*",
-      "packages/board/playwright.config.ts", "packages/board/src/{styles,fonts}.css", "packages/board/src/fonts/**",
-      "packages/board/test/{harness,fixtures,coverage,subhost,chromium}.ts", "packages/host/test/node-workspace.ts", "tools/test/**",
+      "package.json",
+      "package-lock.json",
+      "packages/*/package.json",
+      "packages/*/tsconfig*.json",
+      "packages/*/vite.config.*",
+      "packages/board/playwright.config.ts",
+      "packages/board/src/{styles,fonts}.css",
+      "packages/board/src/fonts/**",
+      "packages/board/test/{harness,fixtures,coverage,subhost,chromium}.ts",
+      "packages/host/test/node-workspace.ts",
+      "tools/test/**",
       "examples/nano-vllm"
     ],
     "scenarios": [
-      "themeLooks", "markdownRenderThemes", "codeAreaPadding", "softLightCodeHeaderOneRow", "sectionLook",
-      "noteHeightSameInWarmInkAndSoftLight", "squircleCorners", "menusFitWindow"
+      "themeLooks",
+      "markdownRenderThemes",
+      "codeAreaPadding",
+      "softLightCodeHeaderOneRow",
+      "sectionLook",
+      "noteHeightSameInWarmInkAndSoftLight",
+      "squircleCorners",
+      "menusFitWindow"
     ]
   },
   "areas": {
     "canvas": {
       "about": "the board itself: camera, zoom, pan, drag, select, resize, copy / paste, undo, the store and measuring",
       "files": [
-        "packages/board/src/{App,BoardView}.tsx", "packages/board/src/{index.tsx,interact.ts,gesture.ts,cardsel.ts,focus.ts,env.d.ts}",
-        "packages/board/src/canvas/Canvas.tsx", "packages/core/src/canvas/{index,geom}.ts", "packages/board/src/cards/Card.tsx",
+        "packages/board/src/{App,BoardView}.tsx",
+        "packages/board/src/{index.tsx,interact.ts,gesture.ts,cardsel.ts,focus.ts,env.d.ts}",
+        "packages/board/src/canvas/Canvas.tsx",
+        "packages/core/src/canvas/{index,geom}.ts",
+        "packages/board/src/cards/Card.tsx",
         "packages/board/src/state/{camera,changes,cull,extent,geo,ghost,history,hover,idle,lodcards,lru,measure,mode,root,save,selection,snap,store,timing,toast,tune,ui,upkeep,views}.ts",
-        "packages/board/src/actions/{index,common,edit,create,env}.ts", "packages/board/src/ui/{guard,hooks,overlay,shield}.ts",
-        "packages/board/src/ui/icons.tsx", "packages/core/src/{index,model,edit,layout,tidy,emitter,paste}.ts",
-        "packages/core/src/storage/clip.ts", "packages/core/src/commands/{index,env}.ts", "packages/host/src/paste.ts",
+        "packages/board/src/actions/{index,common,edit,create,env}.ts",
+        "packages/board/src/ui/{guard,hooks,overlay,shield}.ts",
+        "packages/board/src/ui/icons.tsx",
+        "packages/core/src/{index,model,edit,layout,tidy,emitter,paste}.ts",
+        "packages/core/src/storage/clip.ts",
+        "packages/core/src/commands/{index,env}.ts",
+        "packages/host/src/paste.ts",
         "packages/board/test/scenarios/{board,fit,drag-by-body,drag-controls,copy-paste,multi-select,text-selection-delete,click-to-edit}.spec.ts"
       ],
       "scenarios": [
-        "zoomLevels", "syncundo", "dragUnselectedCardByBody", "pastedCardsKeepTheirSize",
-        "copiedCardsGiveOtherAppsTheirContent", "deleteKeyWithoutTextSelectionDeletesCard", "cardResizeFit", "dragSnap",
-        "undoAddKeepsLaterWork", "nudgeHoldIsOneUndoStep", "farClicksNotDoubleClick", "multiSelectToolbarTidyUp"
+        "zoomLevels",
+        "syncundo",
+        "dragUnselectedCardByBody",
+        "pastedCardsKeepTheirSize",
+        "copiedCardsGiveOtherAppsTheirContent",
+        "deleteKeyWithoutTextSelectionDeletesCard",
+        "cardResizeFit",
+        "dragSnap",
+        "undoAddKeepsLaterWork",
+        "nudgeHoldIsOneUndoStep",
+        "farClicksNotDoubleClick",
+        "multiSelectToolbarTidyUp"
       ]
     },
     "code": {
       "about": "code cards: lines, highlighting, hidden lines, Fit Content, the code card header, Free code editing",
       "files": [
-        "packages/board/src/cards/{CodeBody,FreeEdit}.tsx", "packages/board/src/cm/**", "packages/board/src/actions/create.ts",
-        "packages/markdown/src/cm/**", "packages/markdown/src/code.ts",
-        "packages/analysis/src/{index,tree,highlight,langs,select,basics}.ts", "packages/core/src/{render,lines,chip,highlight}.ts",
+        "packages/board/src/cards/{CodeBody,FreeEdit}.tsx",
+        "packages/board/src/cm/**",
+        "packages/board/src/actions/create.ts",
+        "packages/markdown/src/cm/**",
+        "packages/markdown/src/code.ts",
+        "packages/analysis/src/{index,tree,highlight,langs,select,basics}.ts",
+        "packages/core/src/{render,lines,chip,highlight}.ts",
         "packages/host/src/{cards,source,views,analysis,codeedit,scratchnames}.ts",
         "packages/board/test/scenarios/{code-cards,code-card-header,codeedit,fixq,text-selection-delete,code-line-band,find}.spec.ts"
       ],
       "scenarios": [
-        "dataclass", "segsep", "fithide", "commonIndentHidden", "fitContentWidthCodeCard", "softLightCodeHeaderOneRow", "codeAreaPadding",
-        "deleteKeyWithTextSelectionEditsFreeCode", "freeCodeLanguageDetect", "fitFramesVisibleContent"
+        "dataclass",
+        "segsep",
+        "fithide",
+        "commonIndentHidden",
+        "fitContentWidthCodeCard",
+        "softLightCodeHeaderOneRow",
+        "codeAreaPadding",
+        "deleteKeyWithTextSelectionEditsFreeCode",
+        "freeCodeLanguageDetect",
+        "fitFramesVisibleContent"
       ]
     },
     "calls": {
       "about": "the call graph: expanding calls, call marks, the call tree, Walkthrough, runs, symbol search",
       "files": [
-        "packages/board/src/actions/{calls,flow,nav}.ts", "packages/board/src/state/calls.ts", "packages/board/src/ui/CallPanels.tsx",
-        "packages/core/src/{flow,run,rank}.ts", "packages/analysis/src/{entry,vars}.ts",
-        "packages/host/src/{resolve,defcache,prefetch,nameindex,scope,runs,search}.ts", "packages/host/test/fixtures/runtime/**",
+        "packages/board/src/actions/{calls,flow,nav}.ts",
+        "packages/board/src/state/calls.ts",
+        "packages/board/src/ui/CallPanels.tsx",
+        "packages/core/src/{flow,run,rank}.ts",
+        "packages/analysis/src/{entry,vars}.ts",
+        "packages/host/src/{resolve,defcache,prefetch,nameindex,scope,runs,search}.ts",
+        "packages/host/test/fixtures/runtime/**",
         "packages/board/test/scenarios/{calls,ux,flows}.spec.ts"
       ],
       "scenarios": [
-        "expandCall", "calltree", "runtime", "walkthroughOrder", "constructorCall", "manualCallMark", "libcalls", "attachvars",
-        "search-lists-symbols-containing-the-query", "string-dispatch-offers-receiver-method", "expanded-calls-go-in-columns-to-the-right",
+        "expandCall",
+        "calltree",
+        "runtime",
+        "walkthroughOrder",
+        "constructorCall",
+        "manualCallMark",
+        "libcalls",
+        "attachvars",
+        "search-lists-symbols-containing-the-query",
+        "string-dispatch-offers-receiver-method",
+        "expanded-calls-go-in-columns-to-the-right",
         "secondCallUnderFirstCall"
       ]
     },
     "chains": {
       "about": "broken call chains (picking the implementation) and calls across languages (pybind, torch.ops, kernels)",
       "files": [
-        "packages/board/src/actions/chains.ts", "packages/board/src/ui/pops/chains.tsx", "packages/analysis/src/bridge.ts",
-        "packages/host/src/bridge.ts", "packages/host/src/torchops.ts", "packages/host/test/fixtures/crosslang/**", "packages/board/test/scenarios/chains.spec.ts"
+        "packages/board/src/actions/chains.ts",
+        "packages/board/src/ui/pops/chains.tsx",
+        "packages/analysis/src/bridge.ts",
+        "packages/host/src/bridge.ts",
+        "packages/host/src/torchops.ts",
+        "packages/host/test/fixtures/crosslang/**",
+        "packages/board/test/scenarios/chains.spec.ts"
       ],
       "scenarios": ["crosslang", "implPickerKeyboard", "string-dispatch-offers-receiver-method"]
     },
     "peek": {
       "about": "definition previews (peek) and the popovers they open in",
       "files": [
-        "packages/board/src/ui/pops/{index,common,misc,peek}.tsx", "packages/board/src/ui/pops/registry.ts",
-        "packages/board/src/state/pop.ts", "packages/board/src/actions/pops.ts", "packages/analysis/src/peek.ts",
+        "packages/board/src/ui/pops/{index,common,misc,peek}.tsx",
+        "packages/board/src/ui/pops/registry.ts",
+        "packages/board/src/state/pop.ts",
+        "packages/board/src/actions/pops.ts",
+        "packages/analysis/src/peek.ts",
         "packages/board/test/scenarios/peek-hover.spec.ts"
       ],
       "scenarios": [
-        "peek", "peekClosesOnLeave", "cmdHeldBeforeHoverShowsOnePeek", "cudaKeywordNotPeekable", "peekNoDefNamesLanguageExtension",
+        "peek",
+        "peekClosesOnLeave",
+        "cmdHeldBeforeHoverShowsOnePeek",
+        "cudaKeywordNotPeekable",
+        "peekNoDefNamesLanguageExtension",
         "peekkinds"
       ]
     },
     "notes": {
       "about": "Notes, sidenotes and the Markdown editor: rendering, editing, input rules, sizing, AI completions",
       "files": [
-        "packages/board/src/cards/NoteBody.tsx", "packages/board/src/ui/{Md,Editable}.tsx", "packages/board/src/ui/pops/notes.tsx",
-        "packages/board/src/md/{lazy,load,refs}.ts", "packages/board/src/actions/notes.ts", "packages/board/src/ui/vscodekeys.ts",
-        "packages/markdown/src/{index,render,schema,selmap,view,diagram,emoji,emoji-data,layout}.ts", "packages/markdown/src/markdown.css",
+        "packages/board/src/cards/NoteBody.tsx",
+        "packages/board/src/ui/{Md,Editable}.tsx",
+        "packages/board/src/ui/pops/notes.tsx",
+        "packages/board/src/md/{lazy,load,refs}.ts",
+        "packages/board/src/actions/notes.ts",
+        "packages/board/src/ui/vscodekeys.ts",
+        "packages/markdown/src/{index,render,schema,selmap,view,diagram,emoji,emoji-data,layout}.ts",
+        "packages/markdown/src/markdown.css",
         "packages/markdown/src/editor/{index,icons}.tsx",
-        "packages/markdown/src/editor/{clipboard,codeblock,codelang,find,ghost,pairs,pastemarks,typora,inline,spans,srcdoc,srcmode,table,visible,widgets}.ts", "packages/markdown/src/ui/**",
-        "packages/core/src/complete.ts", "packages/host/src/{deepseek,ai}.ts", "packages/board/test/typing-sequence.json",
-        "packages/board/test/scenarios/{markdown,md-blocks,mdreview,note-editing,note-source,note-fold,note-fresh,note-sizing,writing,typing,typing-sequence,find,md-paste-marks,split-headings}.spec.ts", "packages/core/src/split.ts",
-        "packages/markdown/src/marks.ts", "packages/board/src/actions/format.ts", "packages/board/src/ui/StaticFormat.tsx", "packages/board/test/scenarios/static-format.spec.ts"
+        "packages/markdown/src/editor/{clipboard,codeblock,codelang,find,ghost,pairs,pastemarks,typora,inline,spans,srcdoc,srcmode,table,visible,widgets}.ts",
+        "packages/markdown/src/ui/**",
+        "packages/core/src/complete.ts",
+        "packages/host/src/{deepseek,ai}.ts",
+        "packages/board/test/typing-sequence.json",
+        "packages/board/test/scenarios/{markdown,md-blocks,mdreview,note-editing,note-source,note-fold,note-fresh,note-sizing,writing,typing,typing-sequence,find,md-paste-marks,split-headings}.spec.ts",
+        "packages/core/src/split.ts",
+        "packages/markdown/src/marks.ts",
+        "packages/board/src/actions/format.ts",
+        "packages/board/src/ui/StaticFormat.tsx",
+        "packages/board/test/scenarios/static-format.spec.ts"
       ],
       "scenarios": [
-        "notes", "markdownRender", "markdownEdit", "undoIsOneStep", "noteEditKeepsLayout", "headingMarkerTypedAtHeadingSize",
-        "sidenoteTextEditSaves", "noteResizeClipsContent", "noteGhostStaysInCard", "codeBlockGapCursor", "noteEmptyListItem",
+        "notes",
+        "markdownRender",
+        "markdownEdit",
+        "undoIsOneStep",
+        "noteEditKeepsLayout",
+        "headingMarkerTypedAtHeadingSize",
+        "sidenoteTextEditSaves",
+        "noteResizeClipsContent",
+        "noteGhostStaysInCard",
+        "codeBlockGapCursor",
+        "noteEmptyListItem",
         "markdownPaste"
       ]
     },
     "math": {
       "about": "formulas: KaTeX rendering, the preamble, math blocks, math hints, pasted formulas",
       "files": [
-        "packages/markdown/src/{math,doubled,brackets}.ts", "packages/markdown/src/katex.css",
-        "packages/markdown/src/editor/{mathblock,mathhints,pastemath}.ts", "packages/board/src/md/math.ts",
+        "packages/markdown/src/{math,doubled,brackets}.ts",
+        "packages/markdown/src/katex.css",
+        "packages/markdown/src/editor/{mathblock,mathhints,pastemath}.ts",
+        "packages/board/src/md/math.ts",
         "packages/board/test/scenarios/{math-hints,md-paste-math}.spec.ts"
       ],
       "scenarios": [
-        "mathCommandAutocomplete", "mathInlinePreviewBubble", "mathPreviewPlainErrors", "mathPreambleMacros", "inlineDisplayMath",
-        "wideDisplayMath", "noteDisplayMathTypedAsBlock", "mathSourceInPlace", "notePasteMarkdownWithMath", "markdownMarksAroundFormula"
+        "mathCommandAutocomplete",
+        "mathInlinePreviewBubble",
+        "mathPreviewPlainErrors",
+        "mathPreambleMacros",
+        "inlineDisplayMath",
+        "wideDisplayMath",
+        "noteDisplayMathTypedAsBlock",
+        "mathSourceInPlace",
+        "notePasteMarkdownWithMath",
+        "markdownMarksAroundFormula"
       ]
     },
     "arrows": {
       "about": "arrows and their labels, ports and routing; Marks and hand-drawn annotations",
       "files": [
-        "packages/board/src/canvas/{Links,Labels}.tsx", "packages/core/src/canvas/{labelpos,route,hand}.ts",
-        "packages/board/src/actions/{links,annots}.ts", "packages/core/src/linklabel.ts", "packages/host/src/marks.ts",
-        "packages/board/src/state/blocks.ts", "packages/board/src/md/blocks.ts", "packages/board/test/scenarios/{arrows,labels,layers,marks,note-block-arrows}.spec.ts"
+        "packages/board/src/canvas/{Links,Labels}.tsx",
+        "packages/core/src/canvas/{labelpos,route,hand}.ts",
+        "packages/board/src/actions/{links,annots}.ts",
+        "packages/core/src/linklabel.ts",
+        "packages/host/src/marks.ts",
+        "packages/board/src/state/blocks.ts",
+        "packages/board/src/md/blocks.ts",
+        "packages/board/test/scenarios/{arrows,labels,layers,marks,note-block-arrows}.spec.ts"
       ],
       "scenarios": [
-        "linkMergeSection", "arrowShapeUpRight", "linkLabelBoxes", "labelDragAlongArrow", "dragLinkSide", "lineToLineLink",
-        "childArrowAnchor", "headPortHidden", "markCard", "markArrowStable", "codeAnnotations", "noteAnnotations"
+        "linkMergeSection",
+        "arrowShapeUpRight",
+        "linkLabelBoxes",
+        "labelDragAlongArrow",
+        "dragLinkSide",
+        "lineToLineLink",
+        "childArrowAnchor",
+        "headPortHidden",
+        "markCard",
+        "markArrowStable",
+        "codeAnnotations",
+        "noteAnnotations"
       ]
     },
     "sections": {
       "about": "Sections (frames): drawing, membership, folding, Fit Content",
       "files": [
-        "packages/board/src/canvas/Sections.tsx", "packages/board/src/state/sections.ts", "packages/board/src/state/fold.ts", "packages/core/src/layout.ts",
+        "packages/board/src/canvas/Sections.tsx",
+        "packages/board/src/state/sections.ts",
+        "packages/board/src/state/fold.ts",
+        "packages/core/src/layout.ts",
         "packages/board/test/scenarios/sections-cards.spec.ts"
       ],
       "scenarios": [
-        "linkMergeSection", "sections", "sectionLook", "sectionFitContent", "sectionCollapsedPill", "dragCardIntoOtherSection",
-        "sectionMembershipByOverlap", "secout", "cutCardsPasteUndo"
+        "linkMergeSection",
+        "sections",
+        "sectionLook",
+        "sectionFitContent",
+        "sectionCollapsedPill",
+        "dragCardIntoOtherSection",
+        "sectionMembershipByOverlap",
+        "secout",
+        "cutCardsPasteUndo"
       ]
     },
     "stickers": {
       "about": "stickers (built-in, packs, bitmaps) and the questions they carry",
       "files": [
-        "packages/board/src/stickers/**", "packages/board/src/state/{stickers,questions}.ts",
-        "packages/board/src/actions/{stickers,questions}.ts", "packages/board/src/ui/QuestionsPanel.tsx", "packages/core/src/questions.ts",
-        "packages/host/src/stickers.ts", "packages/board/test/scenarios/{bitmap-stickers,questions}.spec.ts"
+        "packages/board/src/stickers/**",
+        "packages/board/src/state/{stickers,questions}.ts",
+        "packages/board/src/actions/{stickers,questions}.ts",
+        "packages/board/src/ui/QuestionsPanel.tsx",
+        "packages/core/src/questions.ts",
+        "packages/host/src/stickers.ts",
+        "packages/board/test/scenarios/{bitmap-stickers,questions}.spec.ts"
       ],
       "scenarios": [
-        "stickerBitmapsPicker", "emptyquestion", "stickerPlace", "stickerBinding", "stickerMagnet", "stickerSvgSanitize", "questions",
+        "stickerBitmapsPicker",
+        "emptyquestion",
+        "stickerPlace",
+        "stickerBinding",
+        "stickerMagnet",
+        "stickerSvgSanitize",
+        "questions",
         "stickerBitmapsAnimate"
       ]
     },
     "themes": {
       "about": "themes and looks, tilt, the city and ink scenes, the Settings page",
       "files": [
-        "packages/board/src/themes.css", "packages/board/src/settings.css", "packages/board/src/scenes/**",
-        "packages/board/src/state/{look,tilt}.ts", "packages/board/src/canvas/city.ts", "packages/board/src/canvas/Traffic.tsx",
-        "packages/board/src/ui/Settings.tsx", "packages/board/src/actions/settings.ts", "packages/host/src/settings.ts", "packages/core/src/settings.ts",
+        "packages/board/src/themes.css",
+        "packages/board/src/settings.css",
+        "packages/board/src/scenes/**",
+        "packages/board/src/state/{look,tilt}.ts",
+        "packages/board/src/canvas/city.ts",
+        "packages/board/src/canvas/Traffic.tsx",
+        "packages/board/src/ui/Settings.tsx",
+        "packages/board/src/actions/settings.ts",
+        "packages/host/src/settings.ts",
+        "packages/core/src/settings.ts",
         "packages/board/test/scenarios/{themes,tilt}.spec.ts"
       ],
       "scenarios": [
-        "settingsPage", "palette", "themeLooks", "cityTheme", "themeMenuSwitchesTheme", "themeNotUndoStep", "tiltCardFromMenu",
-        "tiltStraightensWhileEditing", "squircleCorners"
+        "settingsPage",
+        "palette",
+        "themeLooks",
+        "cityTheme",
+        "themeMenuSwitchesTheme",
+        "themeNotUndoStep",
+        "tiltCardFromMenu",
+        "tiltStraightensWhileEditing",
+        "squircleCorners"
       ]
     },
     "variants": {
       "about": "Variants and Compare",
       "files": [
-        "packages/board/src/cards/CompareBody.tsx", "packages/board/src/state/variants.ts", "packages/board/src/actions/variants.ts",
-        "packages/core/src/{variants,diff}.ts", "packages/host/src/variants.ts", "packages/board/test/scenarios/variants.spec.ts"
+        "packages/board/src/cards/CompareBody.tsx",
+        "packages/board/src/state/variants.ts",
+        "packages/board/src/actions/variants.ts",
+        "packages/core/src/{variants,diff}.ts",
+        "packages/host/src/variants.ts",
+        "packages/board/test/scenarios/variants.spec.ts"
       ],
       "scenarios": ["compare", "variants", "compareWordDiffMark", "cmpdel", "cmptree", "varmenu"]
     },
     "versions": {
       "about": "code that changed since the card was made: version dots and diffs, Update, Relocate, lost code, git",
       "files": [
-        "packages/board/src/actions/versions.ts", "packages/board/src/ui/pops/versions.tsx", "packages/core/src/{track,diff}.ts", "packages/core/src/commands/versions.ts",
-        "packages/host/src/{versions,watch,git}.ts", "packages/board/test/scenarios/flows.spec.ts"
+        "packages/board/src/actions/versions.ts",
+        "packages/board/src/ui/pops/versions.tsx",
+        "packages/core/src/{track,diff}.ts",
+        "packages/core/src/commands/versions.ts",
+        "packages/host/src/{versions,watch,git}.ts",
+        "packages/board/test/scenarios/flows.spec.ts"
       ],
       "scenarios": ["versions", "patchsave", "lost", "rebase", "follow"]
     },
     "subboards": {
       "about": "sub-boards: the sub-board card, entering and leaving, Turn into Board, breadcrumbs, the board tree",
       "files": [
-        "packages/board/src/cards/{BoardBody,SubPreviews}.tsx", "packages/board/src/state/subboards.ts", "packages/board/src/actions/subboards.ts",
-        "packages/core/src/subboard.ts", "packages/host/src/{boardtree,transfer,bundle}.ts",
+        "packages/board/src/cards/{BoardBody,SubPreviews}.tsx",
+        "packages/board/src/state/subboards.ts",
+        "packages/board/src/actions/subboards.ts",
+        "packages/core/src/subboard.ts",
+        "packages/host/src/{boardtree,transfer,bundle}.ts",
         "packages/board/test/scenarios/{subboards,subboard-card,boards}.spec.ts"
       ],
       "scenarios": [
-        "subboardMap", "undoafterpeek", "undoturnintoboard", "deletedparentcrumb", "lineSelectionStaysOnItsBoard", "subboardLinkPicker",
-        "subboardEnterLeaveMorph", "walkHopWaitsForMeasure"
+        "subboardMap",
+        "undoafterpeek",
+        "undoturnintoboard",
+        "deletedparentcrumb",
+        "lineSelectionStaysOnItsBoard",
+        "subboardLinkPicker",
+        "subboardEnterLeaveMorph",
+        "walkHopWaitsForMeasure"
       ]
     },
     "menus": {
       "about": "the toolbar, menus, the command palette, keyboard shortcuts, dialogs",
       "files": [
-        "packages/board/src/Chrome.tsx", "packages/board/src/ui/{Menu,Palette}.tsx", "packages/board/src/actions/menus.ts",
-        "packages/board/src/keymap.ts", "packages/host/src/prompts.ts",
+        "packages/board/src/Chrome.tsx",
+        "packages/board/src/ui/{Menu,Palette}.tsx",
+        "packages/board/src/actions/menus.ts",
+        "packages/board/src/keymap.ts",
+        "packages/host/src/prompts.ts",
         "packages/board/test/scenarios/{dialogs,keyboard-focus,header,multi-select}.spec.ts"
       ],
       "scenarios": [
-        "palette", "menusFitWindow", "contextMenuCorners", "submenuFlip", "shortcutHelpComplete", "headnarrow", "askTextDialog",
-        "askReplacesOpen", "hostPageKeysReachBoard", "right-click-line-opens-line-menu", "selectionToolbarAtEdge"
+        "palette",
+        "menusFitWindow",
+        "contextMenuCorners",
+        "submenuFlip",
+        "shortcutHelpComplete",
+        "headnarrow",
+        "askTextDialog",
+        "askReplacesOpen",
+        "hostPageKeysReachBoard",
+        "right-click-line-opens-line-menu",
+        "selectionToolbarAtEdge"
       ]
     },
     "export": {
       "about": "export: HTML snapshot, PNG, Markdown",
       "files": [
-        "packages/board/src/actions/export.ts", "packages/board/src/export/**", "packages/board/src/state/export.ts",
-        "packages/board/src/ui/ExportDialog.tsx", "packages/core/src/export.ts", "packages/host/src/exports.ts"
+        "packages/board/src/actions/export.ts",
+        "packages/board/src/export/**",
+        "packages/board/src/state/export.ts",
+        "packages/board/src/ui/ExportDialog.tsx",
+        "packages/core/src/export.ts",
+        "packages/host/src/exports.ts"
       ],
       "scenarios": ["export", "svgImagesInHtmlExport", "svgImageInPngExport"]
     },
     "images": {
       "about": "images: Image cards, images in Notes (paste, drop, resize), SVG, the asset store, the DeepSeek image tools (Extract Text, Convert to SVG, Modify SVG, Paste Image Text, Draw as SVG)",
       "files": [
-        "packages/board/src/md/images.ts", "packages/board/src/notedrop.ts", "packages/board/src/actions/{imagedata,imageai}.ts", "packages/markdown/src/image.ts",
-        "packages/markdown/src/editor/{image,imageslide}.ts", "packages/core/src/image.ts", "packages/host/src/{images,assetsweep,imageai}.ts",
-        "packages/board/src/state/imageai.ts", "packages/board/src/ui/AiBusy.tsx",
-        "packages/board/test/scenarios/{image-cards,note-images,svg-images,file-drops,image-ai,image-width,note-captions}.spec.ts", "packages/markdown/src/caption.ts"
+        "packages/board/src/md/images.ts",
+        "packages/board/src/notedrop.ts",
+        "packages/board/src/actions/{imagedata,imageai}.ts",
+        "packages/markdown/src/image.ts",
+        "packages/markdown/src/editor/{image,imageslide}.ts",
+        "packages/core/src/image.ts",
+        "packages/host/src/{images,assetsweep,imageai}.ts",
+        "packages/board/src/state/imageai.ts",
+        "packages/board/src/ui/AiBusy.tsx",
+        "packages/board/test/scenarios/{image-cards,note-images,svg-images,file-drops,image-ai,image-width,note-captions}.spec.ts",
+        "packages/markdown/src/caption.ts"
       ],
       "scenarios": [
         "imageAiConvertThenModify",
-        "notePastedImageSameSizeInBothModes", "imageFollowsAspectRatio", "imageCardDrag", "notePasteImageIsOneUndoStep",
-        "noteDropImageFileInserts", "noteNonImagePasteRefused", "imageCardDropsIntoNote", "noteImageResize", "svgFileDropMakesImageCard",
-        "svgPasteIntoNote", "noteImageReopens"
+        "notePastedImageSameSizeInBothModes",
+        "imageFollowsAspectRatio",
+        "imageCardDrag",
+        "notePasteImageIsOneUndoStep",
+        "noteDropImageFileInserts",
+        "noteNonImagePasteRefused",
+        "imageCardDropsIntoNote",
+        "noteImageResize",
+        "svgFileDropMakesImageCard",
+        "svgPasteIntoNote",
+        "noteImageReopens"
       ]
     },
     "ai": {
       "about": "the AI tools beside images: Auto Focus on Markdown cards, Settings › AI (DeepSeek key status, which model each tool uses)",
       "files": [
-        "packages/board/src/actions/{autofocus,imageai}.ts", "packages/board/src/md/focusmarks.ts", "packages/host/src/imageai.ts",
+        "packages/board/src/actions/{autofocus,imageai}.ts",
+        "packages/board/src/md/focusmarks.ts",
+        "packages/host/src/imageai.ts",
         "packages/board/test/scenarios/ai.spec.ts"
       ],
       "scenarios": ["aiSettingsSection", "autoFocusNote", "autoFocusRejectsAlteredReply", "imageAiBusyCancelAndNoKey"]
@@ -240,21 +465,36 @@
     "web": {
       "about": "Web cards, link lists, GitHub code cards and the GitHub picker",
       "files": [
-        "packages/board/src/cards/WebBody.tsx", "packages/board/src/cards/web.css", "packages/board/src/state/web.ts",
-        "packages/board/src/actions/web.ts", "packages/board/src/ui/GitHubPicker.tsx", "packages/board/src/ui/github.css",
-        "packages/core/src/web.ts", "packages/host/src/{web,github}.ts", "packages/board/test/scenarios/web.spec.ts"
+        "packages/board/src/cards/WebBody.tsx",
+        "packages/board/src/cards/web.css",
+        "packages/board/src/state/web.ts",
+        "packages/board/src/actions/web.ts",
+        "packages/board/src/ui/GitHubPicker.tsx",
+        "packages/board/src/ui/github.css",
+        "packages/core/src/web.ts",
+        "packages/host/src/{web,github}.ts",
+        "packages/board/test/scenarios/web.spec.ts"
       ],
       "scenarios": ["web", "webdrag", "webstyles", "linklist", "github"]
     },
     "host": {
       "about": "the host side: messages, autosave patches, storage, shared cards, migration of old files",
       "files": [
-        "packages/board/src/{host,hostio}.ts", "packages/board/src/actions/shared.ts",
-        "packages/core/src/{protocol,patch,schema,migrate,shared,workspace,diagnostics}.ts", "packages/core/src/storage/**",
+        "packages/board/src/{host,hostio}.ts",
+        "packages/board/src/actions/shared.ts",
+        "packages/core/src/{protocol,patch,schema,migrate,shared,workspace,diagnostics}.ts",
+        "packages/core/src/storage/**",
         "packages/host/src/{hub,handlers,boards,storage,env,ws,nodefs,log,actions,commands,diagnostics,start,index}.ts",
         "packages/board/test/scenarios/{shared,boards}.spec.ts"
       ],
-      "scenarios": ["patchsave", "sharedsync", "syncundo", "changesreachhost", "newTextReachesHostWhenShown", "sharedcards"]
+      "scenarios": [
+        "patchsave",
+        "sharedsync",
+        "syncundo",
+        "changesreachhost",
+        "newTextReachesHostWhenShown",
+        "sharedcards"
+      ]
     }
   }
 }

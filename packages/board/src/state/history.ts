@@ -66,8 +66,13 @@ export function createHistory(doc: Doc, hooks: Hooks) {
   function mutate(fn: (b: Board) => void, opts: { merge?: string; fx?: Effect } = {}): boolean {
     const before = snap();
     cur = null;
-    try { doc.write((b) => { fn(b); upkeep.run(b); stamp(b, doc.raw); }); }
-    catch (e) {
+    try {
+      doc.write((b) => {
+        fn(b);
+        upkeep.run(b);
+        stamp(b, doc.raw);
+      });
+    } catch (e) {
       // the draft is half changed: put the whole board back, no half-changed board is left
       restore(before);
       console.error("mutate failed", e);
@@ -77,7 +82,10 @@ export function createHistory(doc: Doc, hooks: Hooks) {
     const bad = danglingRefs(doc.read());
     if (bad.length) console.warn("[codeboard] dangling references after a change:", bad); // self-check: always empty, the harness fails on it
     const after = snapNow();
-    if (same(after, before)) { cur = before; return true; }
+    if (same(after, before)) {
+      cur = before;
+      return true;
+    }
     cur = after;
     hooks.changed();
     pushUndo(before, after, opts);
@@ -116,8 +124,14 @@ export function createHistory(doc: Doc, hooks: Hooks) {
     const f = fresh.get(id);
     if (!f) return;
     fresh.delete(id);
-    if (!keep) { live(f.drop); return; }
-    live((b) => { fn?.(b); stamp(b, doc.raw); });
+    if (!keep) {
+      live(f.drop);
+      return;
+    }
+    live((b) => {
+      fn?.(b);
+      stamp(b, doc.raw);
+    });
     pushUndo(f.before, snap());
     hooks.changed();
   }
@@ -128,17 +142,29 @@ export function createHistory(doc: Doc, hooks: Hooks) {
   function beginGesture(): (record?: boolean) => void {
     const before = snap();
     held.add(before);
-    return (record = true) => { held.delete(before); const after = snap(); if (record && !same(after, before)) { pushUndo(before, after); hooks.changed(); } };
+    return (record = true) => {
+      held.delete(before);
+      const after = snap();
+      if (record && !same(after, before)) {
+        pushUndo(before, after);
+        hooks.changed();
+      }
+    };
   }
   /** A change during a drag (no undo step) */
   function live(fn: (b: Board) => void) {
     cur = null;
-    doc.write((b) => { fn(b); upkeep.run(b); });
+    doc.write((b) => {
+      fn(b);
+      upkeep.run(b);
+    });
     hooks.changedLive();
   }
   /** The camera came to rest. Snapshots have no camera, so the cached one stays valid and saving sends only the camera */
   function liveCam(c: Board["cam"]) {
-    doc.write((b) => { b.cam = c; });
+    doc.write((b) => {
+      b.cam = c;
+    });
     hooks.changedLive();
   }
 
@@ -153,7 +179,11 @@ export function createHistory(doc: Doc, hooks: Hooks) {
    */
   function sync(fn: (b: Board) => void, shared?: string[]) {
     cur = null;
-    doc.write((b) => { fn(b); upkeep.run(b); stamp(b, doc.raw); });
+    doc.write((b) => {
+      fn(b);
+      upkeep.run(b);
+      stamp(b, doc.raw);
+    });
     syncLog.push({ n: ++syncN, fn, shared });
     trimSync();
     hooks.changed();
@@ -172,7 +202,10 @@ export function createHistory(doc: Doc, hooks: Hooks) {
     const xs = syncLog.filter((x) => x.n > s.epoch);
     const shared = new Set(xs.flatMap((x) => x.shared ?? []));
     if (!xs.length) return { any: false, shared };
-    doc.write((b) => { for (const x of xs) x.fn(b); upkeep.run(b); });
+    doc.write((b) => {
+      for (const x of xs) x.fn(b);
+      upkeep.run(b);
+    });
     return { any: true, shared };
   }
 
@@ -226,18 +259,38 @@ export function createHistory(doc: Doc, hooks: Hooks) {
     loaded = true;
     doc.replace(b);
     reseeTwins();
-    cur = null; topMerge = undefined; snaps.reset();
+    cur = null;
+    topMerge = undefined;
+    snaps.reset();
     const h = histories.get(b.id);
     histories.delete(b.id);
-    if (h && same(h.at, snapNow())) { undoStack.push(...h.undo); redoStack.push(...h.redo); syncLog = h.sync; }
+    if (h && same(h.at, snapNow())) {
+      undoStack.push(...h.undo);
+      redoStack.push(...h.redo);
+      syncLog = h.sync;
+    }
     trimLru(histories, new Set(crumbs), RECENT_HISTORIES);
     stacks();
   }
 
   return {
-    snap, mutate, live, liveCam, sync, undo, redo, setBoard, beginGesture, createFresh, settleFresh,
+    snap,
+    mutate,
+    live,
+    liveCam,
+    sync,
+    undo,
+    redo,
+    setBoard,
+    beginGesture,
+    createFresh,
+    settleFresh,
     isFresh: (id: string) => fresh.has(id),
     /** Read and clear the undo / redo flag (see `undone`) */
-    takeUndone() { const u = undone; undone = false; return u; },
+    takeUndone() {
+      const u = undone;
+      undone = false;
+      return u;
+    },
   };
 }

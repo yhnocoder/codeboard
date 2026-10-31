@@ -2,7 +2,13 @@
 // 按 Markdown 解析后（去掉粗体、高亮）也必须和原文一样：代码、公式、链接、列表和标题的结构、已有的标记都没动
 import { parseMd } from "@yhnocoder/markdown";
 
-type Node = { type?: string; text?: string; marks?: { type: string; attrs?: Record<string, unknown> }[]; content?: Node[]; attrs?: Record<string, unknown> };
+type Node = {
+  type?: string;
+  text?: string;
+  marks?: { type: string; attrs?: Record<string, unknown> }[];
+  content?: Node[];
+  attrs?: Record<string, unknown>;
+};
 const ADDED = new Set(["bold", "highlight"]);
 /** 文档去掉粗体和高亮（代码字上的不去：代码外面包一层也算动了它），相邻的同样的字并起来，用来比较结构和其余的字 */
 function plain(ns: Node[] | undefined): Node[] | undefined {
@@ -12,10 +18,15 @@ function plain(ns: Node[] | undefined): Node[] | undefined {
     let m = n;
     if (n.type === "text") {
       const code = n.marks?.some((k) => k.type === "code");
-      const marks = (code ? n.marks! : (n.marks ?? []).filter((k) => !ADDED.has(k.type))).slice().sort((a, b) => a.type.localeCompare(b.type));
+      const marks = (code ? n.marks! : (n.marks ?? []).filter((k) => !ADDED.has(k.type)))
+        .slice()
+        .sort((a, b) => a.type.localeCompare(b.type));
       m = { type: "text", text: n.text, ...(marks.length ? { marks } : {}) };
       const prev = out[out.length - 1];
-      if (prev?.type === "text" && JSON.stringify(prev.marks ?? []) === JSON.stringify(m.marks ?? [])) { out[out.length - 1] = { ...prev, text: (prev.text ?? "") + (m.text ?? "") }; continue; }
+      if (prev?.type === "text" && JSON.stringify(prev.marks ?? []) === JSON.stringify(m.marks ?? [])) {
+        out[out.length - 1] = { ...prev, text: (prev.text ?? "") + (m.text ?? "") };
+        continue;
+      }
     } else if (n.content) m = { ...n, content: plain(n.content) };
     out.push(m);
   }
@@ -39,9 +50,16 @@ function unwrap(reply: string, orig: string): string[] {
  * 一样的字先当原文的字对（原文自己的 ** 不会被当成加的）；对错了位置只会让它多拒一次，不会放过改了字的
  */
 function inserted(orig: string, reply: string): { hl: number; bold: number } | null {
-  let i = 0, j = 0, hl = 0, bold = 0;
+  let i = 0,
+    j = 0,
+    hl = 0,
+    bold = 0;
   while (j < reply.length) {
-    if (i < orig.length && orig[i] === reply[j]) { i++; j++; continue; }
+    if (i < orig.length && orig[i] === reply[j]) {
+      i++;
+      j++;
+      continue;
+    }
     const two = reply.slice(j, j + 2);
     if (two === "==") hl++;
     else if (two === "**") bold++;
@@ -54,10 +72,13 @@ function inserted(orig: string, reply: string): { hl: number; bold: number } | n
 export type FocusCheck = { md: string; hl: number; bold: number } | { why: "changed" | "same" };
 /** 核对模型回来的 Markdown：只加了记号、解析出来别的都一样才回 md（原文开头结尾的空白照旧）；加了 0 个回 same */
 export function checkFocus(orig: string, reply: string): FocusCheck {
-  const core = orig.trim(), lead = orig.slice(0, orig.indexOf(core)), trail = orig.slice(lead.length + core.length);
+  const core = orig.trim(),
+    lead = orig.slice(0, orig.indexOf(core)),
+    trail = orig.slice(lead.length + core.length);
   const base = JSON.stringify(plain(parseMd(core).content));
   for (const cand of unwrap(reply, orig)) {
-    const r = cand.trim(), n = inserted(core, r);
+    const r = cand.trim(),
+      n = inserted(core, r);
     if (!n) continue;
     if (!n.hl && !n.bold) return { why: "same" };
     if (JSON.stringify(plain(parseMd(r).content)) !== base) continue;

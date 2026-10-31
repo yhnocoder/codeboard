@@ -15,9 +15,19 @@ export function matchLangs(all: readonly CodeLang[], q: string): CodeLang[] {
   if (!s) return [...all];
   const w = (l: CodeLang) => {
     const keys = [l.name, l.label, ...(l.aliases ?? [])].filter(Boolean).map((k) => k.toLowerCase());
-    return keys.some((k) => k === s) ? 4 : keys.some((k) => k.startsWith(s)) ? 3 : keys.some((k) => k.includes(s)) ? 2 : 0;
+    return keys.some((k) => k === s)
+      ? 4
+      : keys.some((k) => k.startsWith(s))
+        ? 3
+        : keys.some((k) => k.includes(s))
+          ? 2
+          : 0;
   };
-  return all.map((l) => ({ l, w: w(l) })).filter((x) => x.w).sort((a, b) => b.w - a.w).map((x) => x.l);
+  return all
+    .map((l) => ({ l, w: w(l) }))
+    .filter((x) => x.w)
+    .sort((a, b) => b.w - a.w)
+    .map((x) => x.l);
 }
 /** 打的字定下来的语言：是某种语言的名字、显示名、别名时用它的名字，别的照打的写（围栏的语言是一个词）；空 = 纯文字 */
 export function langOf(all: readonly CodeLang[], typed: string): string | null {
@@ -29,7 +39,7 @@ export function langOf(all: readonly CodeLang[], typed: string): string | null {
 /** 围栏里的语言显示成什么：认得的用显示名（py 也是 Python），不认得的照写，空是 Plain text */
 export function langLabel(all: readonly CodeLang[], lang: string): string {
   const n = langOf(all, lang);
-  return n === null ? PLAIN.label : all.find((x) => x.name === n)?.label ?? n;
+  return n === null ? PLAIN.label : (all.find((x) => x.name === n)?.label ?? n);
 }
 
 export type LangBoxHost = {
@@ -71,7 +81,11 @@ export class LangBox {
     // 按下时焦点不动（还在代码里），点开后交给筛选框
     b.addEventListener("mousedown", (e) => e.preventDefault());
     b.addEventListener("pointerdown", (e) => e.stopPropagation());
-    b.addEventListener("click", (e) => { e.preventDefault(); if (this.box) this.leave(); else this.open(); });
+    b.addEventListener("click", (e) => {
+      e.preventDefault();
+      if (this.box) this.leave();
+      else this.open();
+    });
     this.sync();
   }
 
@@ -93,15 +107,21 @@ export class LangBox {
     const b = (this.box = document.createElement("div"));
     b.className = "mdui-anchor md-langbox";
     b.innerHTML = `<div class="ctx md-menu"><input class="md-langq" placeholder="Filter languages" spellcheck="false" autocomplete="off" aria-label="Filter languages"><div class="md-langs" role="listbox"></div></div>`;
-    b.addEventListener("mousedown", (e) => { if (e.target !== this.q) e.preventDefault(); }); // 焦点留在筛选框里
+    b.addEventListener("mousedown", (e) => {
+      if (e.target !== this.q) e.preventDefault();
+    }); // 焦点留在筛选框里
     b.addEventListener("pointerdown", (e) => e.stopPropagation());
     const q = (this.q = b.querySelector("input")!);
-    q.addEventListener("input", () => { this.touched = true; this.filter(true); });
+    q.addEventListener("input", () => {
+      this.touched = true;
+      this.filter(true);
+    });
     q.addEventListener("keydown", (e) => this.key(e));
     q.addEventListener("blur", (e) => {
       if (this.busy) return;
       const to = e.relatedTarget;
-      if (this.touched) this.commit(false); else this.close();
+      if (this.touched) this.commit(false);
+      else this.close();
       if (!(to instanceof Node && this.label.closest(".md-pm")?.contains(to))) this.host.left(to);
     });
     document.body.append(b);
@@ -131,36 +151,50 @@ export class LangBox {
   /** typed：用户打了字（选中第一项）；否则（刚打开）选中现在的语言 */
   private filter(typed: boolean) {
     if (!this.box) return;
-    const q = this.q!.value, cur = langOf(this.all(), this.host.lang()) ?? "";
+    const q = this.q!.value,
+      cur = langOf(this.all(), this.host.lang()) ?? "";
     this.items = matchLangs([...this.all(), PLAIN], typed ? q : "");
     this.i = typed && q.trim() ? (this.items.length ? 0 : -1) : this.items.findIndex((l) => l.name === cur);
     this.draw(cur);
   }
   private draw(cur: string) {
     const list = this.box!.querySelector(".md-langs") as HTMLElement;
-    list.replaceChildren(...this.items.map((l, k) => {
-      const btn = document.createElement("button");
-      btn.className = "md-lo";
-      btn.tabIndex = -1;
-      btn.setAttribute("role", "option");
-      btn.setAttribute("aria-selected", String(l.name === cur));
-      btn.innerHTML = `<span class="ck"></span><span class="lb"></span><small></small>`;
-      const [ck, lb, sm] = btn.children;
-      ck.textContent = l.name === cur ? "✓" : "";
-      lb.textContent = l.label;
-      sm.textContent = l.name;
-      btn.addEventListener("pointerenter", () => { this.i = k; this.mark(); });
-      btn.addEventListener("click", () => { this.i = k; this.commit(true); });
-      return btn;
-    }));
-    if (!this.items.length) list.innerHTML = `<div class="md-empty">No known language: Enter keeps what you typed</div>`;
+    list.replaceChildren(
+      ...this.items.map((l, k) => {
+        const btn = document.createElement("button");
+        btn.className = "md-lo";
+        btn.tabIndex = -1;
+        btn.setAttribute("role", "option");
+        btn.setAttribute("aria-selected", String(l.name === cur));
+        btn.innerHTML = `<span class="ck"></span><span class="lb"></span><small></small>`;
+        const [ck, lb, sm] = btn.children;
+        ck.textContent = l.name === cur ? "✓" : "";
+        lb.textContent = l.label;
+        sm.textContent = l.name;
+        btn.addEventListener("pointerenter", () => {
+          this.i = k;
+          this.mark();
+        });
+        btn.addEventListener("click", () => {
+          this.i = k;
+          this.commit(true);
+        });
+        return btn;
+      }),
+    );
+    if (!this.items.length)
+      list.innerHTML = `<div class="md-empty">No known language: Enter keeps what you typed</div>`;
     this.mark();
-    void place(this.box!, this.label, "bottom-end", { gap: 4, pad: 6, strategy: "fixed" }).then(({ x, y, placement }) => {
-      if (!this.box) return;
-      this.box.style.left = `${x}px`;
-      this.box.style.top = `${y}px`;
-      (this.box.firstElementChild as HTMLElement).style.transformOrigin = placement.startsWith("top") ? "100% 100%" : "100% 0";
-    });
+    void place(this.box!, this.label, "bottom-end", { gap: 4, pad: 6, strategy: "fixed" }).then(
+      ({ x, y, placement }) => {
+        if (!this.box) return;
+        this.box.style.left = `${x}px`;
+        this.box.style.top = `${y}px`;
+        (this.box.firstElementChild as HTMLElement).style.transformOrigin = placement.startsWith("top")
+          ? "100% 100%"
+          : "100% 0";
+      },
+    );
   }
   private mark() {
     const bs = this.box?.querySelectorAll(".md-lo");
@@ -189,9 +223,10 @@ export class LangBox {
 
   /** 定下来：选中的那一项，没有时照筛选框里打的字（空 = 不改）；back：回到代码里 */
   private commit(back: boolean) {
-    const it = this.items[this.i], typed = this.q?.value ?? "";
+    const it = this.items[this.i],
+      typed = this.q?.value ?? "";
     const all = this.all();
-    const lang = it ? (it.name || null) : typed.trim() ? langOf(all, typed) : langOf(all, this.host.lang());
+    const lang = it ? it.name || null : typed.trim() ? langOf(all, typed) : langOf(all, this.host.lang());
     this.close();
     if (lang !== langOf(all, this.host.lang())) this.host.set(lang); // py 和 python 是同一种：不改
     this.sync();
@@ -203,5 +238,7 @@ export class LangBox {
     this.host.back();
   }
 
-  destroy() { this.close(); }
+  destroy() {
+    this.close();
+  }
 }

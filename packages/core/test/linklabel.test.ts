@@ -1,7 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { callText, loopLine, varGone, varText, type Segment } from "../src";
 
-const seg = (start: number, text: string[], lang = "python"): Segment => ({ id: "s", src: { kind: "repo", repo: "" }, path: "a.py", lang, start, end: start + text.length - 1, text, version: { kind: "git", commit: "x" } });
+const seg = (start: number, text: string[], lang = "python"): Segment => ({
+  id: "s",
+  src: { kind: "repo", repo: "" },
+  path: "a.py",
+  lang,
+  start,
+  end: start + text.length - 1,
+  text,
+  version: { kind: "git", commit: "x" },
+});
 
 describe("callText", () => {
   it("is the call line when the parentheses close on it", () => {
@@ -18,7 +27,8 @@ describe("callText", () => {
 });
 
 describe("varGone", () => {
-  const site = "    out = self.runner.run(seqs, cfg)", callee = "def run(self, seqs, config):\n    return x";
+  const site = "    out = self.runner.run(seqs, cfg)",
+    callee = "def run(self, seqs, config):\n    return x";
   it("keeps arguments whose names are still in both places", () => {
     expect(varGone({ a: "seqs" }, site, callee)).toBe(false);
     expect(varGone({ a: "cfg", b: "config" }, site, callee)).toBe(false);
@@ -38,7 +48,13 @@ describe("varGone", () => {
 
 describe("loopLine", () => {
   it("finds the enclosing for / while above the call line", () => {
-    const s = seg(50, ["def step(self):", "    for seq in seqs:", "        if seq.ok:", "            out = run(seq)", "    done()"]);
+    const s = seg(50, [
+      "def step(self):",
+      "    for seq in seqs:",
+      "        if seq.ok:",
+      "            out = run(seq)",
+      "    done()",
+    ]);
     expect(loopLine(s, 53)).toEqual({ line: 51, text: "for seq in seqs:" });
     expect(loopLine(s, 54)).toBeUndefined();
   });

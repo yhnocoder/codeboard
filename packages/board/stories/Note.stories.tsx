@@ -35,7 +35,11 @@ type Story = StoryObj<typeof meta>;
 export const Overview: Story = {
   render: (a, ctx) => <Stage scene={() => overview(a)} globals={ctx.globals as Globals} />,
   args: { w: 300, h: 260 },
-  argTypes: { md: { table: { disable: true } }, title: { table: { disable: true } }, state: { table: { disable: true } } },
+  argTypes: {
+    md: { table: { disable: true } },
+    title: { table: { disable: true } },
+    state: { table: { disable: true } },
+  },
 };
 export const Themes: Story = themes("rich");
 export const Empty: Story = { args: { md: "" } };

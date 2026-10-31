@@ -7,7 +7,10 @@ import { buildHash } from "../../../../tools/test/buildhash.mjs";
 
 // npm run check rebuilds the board when anything it is built from changed: fonts and icons in public/ too, not its tests
 const repo = fs.mkdtempSync(path.join(os.tmpdir(), "codeboard-buildhash-"));
-const put = (f: string, text: string) => { fs.mkdirSync(path.dirname(path.join(repo, f)), { recursive: true }); fs.writeFileSync(path.join(repo, f), text); };
+const put = (f: string, text: string) => {
+  fs.mkdirSync(path.dirname(path.join(repo, f)), { recursive: true });
+  fs.writeFileSync(path.join(repo, f), text);
+};
 put("packages/board/src/index.tsx", "x");
 put("packages/board/public/fonts/a.woff2", "font");
 put("packages/board/test/unit/a.test.ts", "test");

@@ -3,11 +3,13 @@
 import { describe, expect, it } from "vitest";
 import { checkFocus } from "../../src/md/focusmarks";
 
-const MD = "The scheduler batches `prefill` requests.\n\n- A *block table* maps sequences, see [docs](https://x.test/a_b).\n- Cost: $O(n)$ per ==step==.\n\n```py\nx = 1  # cache\n```";
+const MD =
+  "The scheduler batches `prefill` requests.\n\n- A *block table* maps sequences, see [docs](https://x.test/a_b).\n- Cost: $O(n)$ per ==step==.\n\n```py\nx = 1  # cache\n```";
 
 describe("Auto Focus check", () => {
   it("accepts added highlights and bold, counts them and keeps the original's surrounding whitespace", () => {
-    const reply = "The ==scheduler== batches `prefill` requests.\n\n- A *block table* maps **sequences**, see [docs](https://x.test/a_b).\n- Cost: $O(n)$ per ==step==.\n\n```py\nx = 1  # cache\n```";
+    const reply =
+      "The ==scheduler== batches `prefill` requests.\n\n- A *block table* maps **sequences**, see [docs](https://x.test/a_b).\n- Cost: $O(n)$ per ==step==.\n\n```py\nx = 1  # cache\n```";
     expect(checkFocus(`\n${MD}\n\n`, reply)).toEqual({ md: `\n${reply}\n\n`, hl: 1, bold: 1 });
   });
 
@@ -31,7 +33,9 @@ describe("Auto Focus check", () => {
     expect(checkFocus("```\nx = y\n```", "```\n**x** = y\n```")).toEqual({ why: "changed" });
     expect(checkFocus("Cost $a + b$ here.", "Cost $==a== + b$ here.")).toEqual({ why: "changed" });
     expect(checkFocus("$$\na + b\n$$", "$$\n**a** + b\n$$")).toEqual({ why: "changed" });
-    expect(checkFocus("See [docs](https://x.test/a).", "See [docs](https://x.test/**a**).")).toEqual({ why: "changed" });
+    expect(checkFocus("See [docs](https://x.test/a).", "See [docs](https://x.test/**a**).")).toEqual({
+      why: "changed",
+    });
   });
 
   it("rejects markers that don't pair up or break the structure", () => {

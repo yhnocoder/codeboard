@@ -21,7 +21,8 @@ const fileOf = (url: string) => (url.startsWith("file://") ? fileURLToPath(url) 
 
 /** The ranges of a script's functions, outermost first; the script's own top level (the first function, from offset 0) left out */
 const ranOf = (fns: Fn[]) =>
-  fns.flatMap((f, i) => (i === 0 && f.ranges[0]?.startOffset === 0 ? [] : f.ranges))
+  fns
+    .flatMap((f, i) => (i === 0 && f.ranges[0]?.startOffset === 0 ? [] : f.ranges))
     .sort((a, b) => a.startOffset - b.startOffset || b.endOffset - a.endOffset);
 
 type Mappings = { offsets: number[]; sources: (string | undefined)[]; srcs: number[] };
@@ -35,10 +36,19 @@ function mappingsOf(file: string, text: string): Mappings | null {
     const sources = map.resolvedSources.map((s) => ownFile(fileOf(s)));
     const lineStart = [0];
     for (let i = 0; i < text.length; i++) if (text.charCodeAt(i) === 10) lineStart.push(i + 1);
-    const offsets: number[] = [], srcs: number[] = [];
-    decodedMappings(map).forEach((segs, line) => { for (const s of segs) if (s.length >= 4) { offsets.push(lineStart[line] + s[0]); srcs.push(s[1]!); } });
+    const offsets: number[] = [],
+      srcs: number[] = [];
+    decodedMappings(map).forEach((segs, line) => {
+      for (const s of segs)
+        if (s.length >= 4) {
+          offsets.push(lineStart[line] + s[0]);
+          srcs.push(s[1]!);
+        }
+    });
     res = { offsets, sources, srcs };
-  } catch { res = null; }
+  } catch {
+    res = null;
+  }
   maps.set(file, res);
   return res;
 }
@@ -52,7 +62,8 @@ function bundleSources(file: string, text: string, fns: Fn[], out: Set<string>) 
   const stack: Range[] = [];
   let p = 0;
   for (const k of order) {
-    const o = m.offsets[k], src = m.sources[m.srcs[k]];
+    const o = m.offsets[k],
+      src = m.sources[m.srcs[k]];
     while (p < ranges.length && ranges[p].startOffset <= o) {
       while (stack.length && stack[stack.length - 1].endOffset <= ranges[p].startOffset) stack.pop();
       stack.push(ranges[p++]);
@@ -63,7 +74,8 @@ function bundleSources(file: string, text: string, fns: Fn[], out: Set<string>) 
 }
 
 export function pageFiles(entries: PageCoverage, out: Set<string>) {
-  for (const e of entries) if (e.url.startsWith("file://") && e.source) bundleSources(fileOf(e.url), e.source, e.functions, out);
+  for (const e of entries)
+    if (e.url.startsWith("file://") && e.source) bundleSources(fileOf(e.url), e.source, e.functions, out);
 }
 
 /** Precise coverage of this worker process; take() adds the files run since the last take() */

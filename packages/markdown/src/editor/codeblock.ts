@@ -6,7 +6,13 @@ import { GapCursor } from "@tiptap/pm/gapcursor";
 import { closeHistory } from "@tiptap/pm/history";
 import type { EditorView as PMView, NodeView } from "@tiptap/pm/view";
 import type { Editor } from "@tiptap/core";
-import { Decoration as CmDeco, EditorView as CmView, type DecorationSet as CmDecos, type ViewUpdate, type KeyBinding } from "@codemirror/view";
+import {
+  Decoration as CmDeco,
+  EditorView as CmView,
+  type DecorationSet as CmDecos,
+  type ViewUpdate,
+  type KeyBinding,
+} from "@codemirror/view";
 import { Compartment, StateEffect, StateField } from "@codemirror/state";
 import { completionStatus } from "@codemirror/autocomplete";
 import { codeEditor, type CodeEditor, type LspHost } from "../cm/editor";
@@ -21,32 +27,40 @@ const gapAt = ($p: ResolvedPos) => (GapCursor as unknown as { valid($p: Resolved
  * 点在两个代码块之间的空隙里、或者点在代码块靠那条缝的内边距上：光标停在两块中间。prosemirror-gapcursor 自己的点击只看
  * 离点的地方最近的字，那是代码块里的字，进的是代码块
  */
-export const codeGapClick = () => new Plugin({
-  props: {
-    handleDOMEvents: {
-      mousedown(view, e) {
-        const t = e.target as HTMLElement;
-        if (e.button !== 0 || !view.editable || (t !== view.dom && !(t.parentElement === view.dom && t.matches("pre.md-code")))) return false;
-        const doc = view.state.doc, y = e.clientY;
-        for (let i = 0, at = 0; i <= doc.childCount; at += i < doc.childCount ? doc.child(i).nodeSize : 0, i++) {
-          const before = i > 0 ? (view.nodeDOM(at - doc.child(i - 1).nodeSize) as HTMLElement | null) : null;
-          const after = i < doc.childCount ? (view.nodeDOM(at) as HTMLElement | null) : null;
-          if (!(before?.matches("pre.md-code") || after?.matches("pre.md-code"))) continue;
-          // 缝从上一块的字的下沿到下一块的字的上沿（代码块的内边距算在缝里）
-          const top = before ? edge(before, "bottom") : -Infinity, bottom = after ? edge(after, "top") : Infinity;
-          if (y < top || y > bottom) continue;
-          const $p = doc.resolve(at);
-          if (!gapAt($p)) return false;
-          e.preventDefault();
-          view.dispatch(view.state.tr.setSelection(new GapCursor($p)));
-          view.focus();
-          return true;
-        }
-        return false;
+export const codeGapClick = () =>
+  new Plugin({
+    props: {
+      handleDOMEvents: {
+        mousedown(view, e) {
+          const t = e.target as HTMLElement;
+          if (
+            e.button !== 0 ||
+            !view.editable ||
+            (t !== view.dom && !(t.parentElement === view.dom && t.matches("pre.md-code")))
+          )
+            return false;
+          const doc = view.state.doc,
+            y = e.clientY;
+          for (let i = 0, at = 0; i <= doc.childCount; at += i < doc.childCount ? doc.child(i).nodeSize : 0, i++) {
+            const before = i > 0 ? (view.nodeDOM(at - doc.child(i - 1).nodeSize) as HTMLElement | null) : null;
+            const after = i < doc.childCount ? (view.nodeDOM(at) as HTMLElement | null) : null;
+            if (!(before?.matches("pre.md-code") || after?.matches("pre.md-code"))) continue;
+            // 缝从上一块的字的下沿到下一块的字的上沿（代码块的内边距算在缝里）
+            const top = before ? edge(before, "bottom") : -Infinity,
+              bottom = after ? edge(after, "top") : Infinity;
+            if (y < top || y > bottom) continue;
+            const $p = doc.resolve(at);
+            if (!gapAt($p)) return false;
+            e.preventDefault();
+            view.dispatch(view.state.tr.setSelection(new GapCursor($p)));
+            view.focus();
+            return true;
+          }
+          return false;
+        },
       },
     },
-  },
-});
+  });
 /** 一块的内容的上沿 / 下沿：代码块不算内边距，别的块就是它的边 */
 function edge(el: HTMLElement, side: "top" | "bottom") {
   const r = el.getBoundingClientRect();
@@ -62,7 +76,12 @@ const foundField = StateField.define<CmDecos>({
   create: () => CmDeco.none,
   update(v, tr) {
     v = v.map(tr.changes);
-    for (const e of tr.effects) if (e.is(setFound)) v = CmDeco.set(e.value.map((r) => CmDeco.mark({ class: r.cls }).range(r.from, r.to)), true);
+    for (const e of tr.effects)
+      if (e.is(setFound))
+        v = CmDeco.set(
+          e.value.map((r) => CmDeco.mark({ class: r.cls }).range(r.from, r.to)),
+          true,
+        );
     return v;
   },
   provide: (f) => CmView.decorations.from(f),
@@ -72,7 +91,9 @@ export const codeBlockAt = new WeakMap<Element, CodeBlockView>();
 
 /** comment 不给就是 // */
 export type CodeBlockHost = {
-  editor: () => Editor; exit: () => void; complete: (before: string, after: string) => Promise<string | null>;
+  editor: () => Editor;
+  exit: () => void;
+  complete: (before: string, after: string) => Promise<string | null>;
   comment?: (lang: string | undefined) => string | undefined;
   /** 这一块的语言服务（lang 跟着块的语言变）；这种语言没有就给 undefined。块拆掉时代码编辑器调它的 close */
   lsp?: (lang: () => string) => LspHost | undefined;
@@ -92,7 +113,12 @@ export class CodeBlockView implements NodeView {
   private pill: HTMLElement;
   private wrapBtn: HTMLButtonElement;
   private menu: HTMLElement | null = null;
-  constructor(public node: PMNode, public view: PMView, public getPos: () => number | undefined, host: CodeBlockHost) {
+  constructor(
+    public node: PMNode,
+    public view: PMView,
+    public getPos: () => number | undefined,
+    host: CodeBlockHost,
+  ) {
     const lang = () => (this.node.attrs.language as string | null) ?? "";
     this.dom = document.createElement("pre");
     this.dom.className = "md-code";
@@ -126,7 +152,8 @@ export class CodeBlockView implements NodeView {
       // 收不到，替它发一个，用的一方照常保存退出（和公式块的原文一样）
       onBlur: (e) => {
         const to = e.relatedTarget;
-        if (!(to instanceof Node && this.view.dom.contains(to))) this.view.dom.dispatchEvent(new FocusEvent("blur", { relatedTarget: to }));
+        if (!(to instanceof Node && this.view.dom.contains(to)))
+          this.view.dom.dispatchEvent(new FocusEvent("blur", { relatedTarget: to }));
       },
       onUpdate: (u) => this.forward(u),
       className: "cbcm-md",
@@ -140,7 +167,9 @@ export class CodeBlockView implements NodeView {
       set: (language) => {
         const pos = this.getPos();
         if (pos === undefined) return;
-        this.view.dispatch(closeHistory(this.view.state.tr.setNodeMarkup(pos, undefined, { ...this.node.attrs, language })));
+        this.view.dispatch(
+          closeHistory(this.view.state.tr.setNodeMarkup(pos, undefined, { ...this.node.attrs, language })),
+        );
       },
       back: () => this.cm.focus(),
       left: (to) => this.view.dom.dispatchEvent(new FocusEvent("blur", { relatedTarget: to })),
@@ -160,16 +189,26 @@ export class CodeBlockView implements NodeView {
       b.append(iconEl(icon));
       b.addEventListener("mousedown", (e) => e.preventDefault());
       b.addEventListener("pointerdown", (e) => e.stopPropagation());
-      b.addEventListener("click", (e) => { e.preventDefault(); run(b); });
+      b.addEventListener("click", (e) => {
+        e.preventDefault();
+        run(b);
+      });
       return b;
     };
     const copy = btn("copy", "Copy code", (b) => {
-      void navigator.clipboard?.writeText(this.node.textContent).then(() => {
-        b.classList.add("done");
-        b.replaceChildren(iconEl("check"));
-        b.dataset.tip = "Copied";
-        setTimeout(() => { b.classList.remove("done"); b.replaceChildren(iconEl("copy")); b.dataset.tip = "Copy code"; }, 1200);
-      }, () => {});
+      void navigator.clipboard?.writeText(this.node.textContent).then(
+        () => {
+          b.classList.add("done");
+          b.replaceChildren(iconEl("check"));
+          b.dataset.tip = "Copied";
+          setTimeout(() => {
+            b.classList.remove("done");
+            b.replaceChildren(iconEl("copy"));
+            b.dataset.tip = "Copy code";
+          }, 1200);
+        },
+        () => {},
+      );
     });
     this.wrapBtn = btn("wrap", "Wrap lines", () => this.setAttr({ wrap: !this.node.attrs.wrap }));
     const more = btn("dots", "More", (b) => (this.menu ? this.closeMenu() : this.openMenu(b)));
@@ -201,7 +240,10 @@ export class CodeBlockView implements NodeView {
       b.innerHTML = `<span class="lb"></span>`;
       b.firstElementChild!.textContent = label;
       b.addEventListener("mousedown", (e) => e.preventDefault());
-      b.addEventListener("click", () => { this.closeMenu(); run(); });
+      b.addEventListener("click", () => {
+        this.closeMenu();
+        run();
+      });
       m.append(b);
     };
     item("Convert to paragraph", () => this.toParagraphs());
@@ -210,20 +252,39 @@ export class CodeBlockView implements NodeView {
     anchor.classList.add("on");
     this.pill.classList.add("held");
     this.pill.append(m);
-    const away = (e: Event) => { if (!m.contains(e.target as Node) && e.target !== anchor && !anchor.contains(e.target as Node)) this.closeMenu(); };
+    const away = (e: Event) => {
+      if (!m.contains(e.target as Node) && e.target !== anchor && !anchor.contains(e.target as Node)) this.closeMenu();
+    };
     // Esc closes only the menu (the code editor's own Esc would leave edit mode)
-    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); this.closeMenu(); this.cm.focus(); } };
+    const esc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
+        this.closeMenu();
+        this.cm.focus();
+      }
+    };
     document.addEventListener("mousedown", away, true);
     document.addEventListener("keydown", esc, true);
-    this.offMenu = () => { document.removeEventListener("mousedown", away, true); document.removeEventListener("keydown", esc, true); anchor.classList.remove("on"); this.pill.classList.remove("held"); };
+    this.offMenu = () => {
+      document.removeEventListener("mousedown", away, true);
+      document.removeEventListener("keydown", esc, true);
+      anchor.classList.remove("on");
+      this.pill.classList.remove("held");
+    };
   }
   private offMenu = () => {};
-  private closeMenu() { this.menu?.remove(); this.menu = null; this.offMenu(); }
+  private closeMenu() {
+    this.menu?.remove();
+    this.menu = null;
+    this.offMenu();
+  }
   /** The code's lines become paragraphs of source text (one per line; empty lines dropped) */
   private toParagraphs() {
     const pos = this.getPos();
     if (pos === undefined) return;
-    const st = this.view.state, s = st.schema;
+    const st = this.view.state,
+      s = st.schema;
     const lines = this.node.textContent.split("\n").filter((l) => l.trim());
     const ps = (lines.length ? lines : [""]).map((l) => s.nodes.paragraph.create(null, l ? s.text(l) : null));
     const tr = closeHistory(st.tr).replaceWith(pos, pos + this.node.nodeSize, ps);
@@ -234,7 +295,8 @@ export class CodeBlockView implements NodeView {
   private remove() {
     const pos = this.getPos();
     if (pos === undefined) return;
-    const st = this.view.state, tr = closeHistory(st.tr).delete(pos, pos + this.node.nodeSize);
+    const st = this.view.state,
+      tr = closeHistory(st.tr).delete(pos, pos + this.node.nodeSize);
     if (!tr.doc.childCount) tr.insert(0, st.schema.nodes.paragraph.create());
     tr.setSelection(Selection.near(tr.doc.resolve(Math.min(pos, tr.doc.content.size)), -1));
     this.view.dispatch(tr);
@@ -243,12 +305,13 @@ export class CodeBlockView implements NodeView {
 
   /** CodeMirror → ProseMirror：改动和选区 */
   forward(u: ViewUpdate) {
-    if (this.updating || !this.cm?.view.hasFocus && !u.docChanged) return;
+    if (this.updating || (!this.cm?.view.hasFocus && !u.docChanged)) return;
     const pos = this.getPos();
     if (pos === undefined) return;
     let off = pos + 1;
     const { main } = u.state.selection;
-    const selFrom = off + main.from, selTo = off + main.to;
+    const selFrom = off + main.from,
+      selTo = off + main.to;
     const pm = this.view.state.selection;
     if (!u.docChanged && pm.from === selFrom && pm.to === selTo) return;
     const tr = this.view.state.tr;
@@ -262,11 +325,16 @@ export class CodeBlockView implements NodeView {
   }
 
   escape(unit: "line" | "char", dir: -1 | 1): boolean {
-    const v = this.cm.view, s = v.state, main = s.selection.main;
+    const v = this.cm.view,
+      s = v.state,
+      main = s.selection.main;
     if (completionStatus(s) === "active" || !main.empty) return false;
     // ↑ ↓：在屏幕上的第一 / 最后一行（折行也算）就走出去，光标在行里哪儿都一样（CodeMirror 在最后一行按 ↓ 只是挪到行尾）
     const row = (p: number) => v.coordsAtPos(p, dir)?.top;
-    const edge = unit === "line" ? row(v.moveVertically(main, dir > 0).head) === row(main.head) : main.head === (dir < 0 ? 0 : s.doc.length);
+    const edge =
+      unit === "line"
+        ? row(v.moveVertically(main, dir > 0).head) === row(main.head)
+        : main.head === (dir < 0 ? 0 : s.doc.length);
     if (!edge) return false;
     const pos = this.getPos();
     if (pos === undefined) return false;
@@ -292,7 +360,8 @@ export class CodeBlockView implements NodeView {
 
   /** 查找的匹配（块里的偏移）：和上次一样就不动 */
   showFound(rs: Found[]) {
-    const n = this.cm.view.state.doc.length, key = JSON.stringify(rs = rs.filter((r) => r.from < r.to && r.to <= n));
+    const n = this.cm.view.state.doc.length,
+      key = JSON.stringify((rs = rs.filter((r) => r.from < r.to && r.to <= n)));
     if (key === this.found) return;
     this.found = key;
     this.cm.view.dispatch({ effects: setFound.of(rs) });
@@ -301,16 +370,32 @@ export class CodeBlockView implements NodeView {
   /** ProseMirror → CodeMirror（撤销、别处的改动） */
   update(node: PMNode) {
     if (node.type !== this.node.type) return false;
-    const langChanged = node.attrs.language !== this.node.attrs.language, old = this.node;
+    const langChanged = node.attrs.language !== this.node.attrs.language,
+      old = this.node;
     this.node = node;
-    if (langChanged) { const l = (node.attrs.language as string | null) ?? ""; if (l) this.dom.dataset.lang = l; else delete this.dom.dataset.lang; this.cm.setLang(l); this.langBox.sync(); }
-    if (!!node.attrs.wrap !== !!old.attrs.wrap) { this.cm.view.dispatch({ effects: this.wrapper.reconfigure(node.attrs.wrap ? CmView.lineWrapping : []) }); this.showWrap(); }
+    if (langChanged) {
+      const l = (node.attrs.language as string | null) ?? "";
+      if (l) this.dom.dataset.lang = l;
+      else delete this.dom.dataset.lang;
+      this.cm.setLang(l);
+      this.langBox.sync();
+    }
+    if (!!node.attrs.wrap !== !!old.attrs.wrap) {
+      this.cm.view.dispatch({ effects: this.wrapper.reconfigure(node.attrs.wrap ? CmView.lineWrapping : []) });
+      this.showWrap();
+    }
     if (this.updating) return true;
-    const next = node.textContent, cur = this.cm.view.state.doc.toString();
+    const next = node.textContent,
+      cur = this.cm.view.state.doc.toString();
     if (next !== cur) {
-      let a = 0, ca = cur.length, na = next.length;
+      let a = 0,
+        ca = cur.length,
+        na = next.length;
       while (a < ca && a < na && cur.charCodeAt(a) === next.charCodeAt(a)) a++;
-      while (ca > a && na > a && cur.charCodeAt(ca - 1) === next.charCodeAt(na - 1)) { ca--; na--; }
+      while (ca > a && na > a && cur.charCodeAt(ca - 1) === next.charCodeAt(na - 1)) {
+        ca--;
+        na--;
+      }
       this.updating = true;
       this.cm.view.dispatch({ changes: { from: a, to: ca, insert: next.slice(a, na) } });
       this.updating = false;
@@ -325,9 +410,19 @@ export class CodeBlockView implements NodeView {
     this.cm.view.dispatch({ selection: { anchor: Math.min(anchor, n), head: Math.min(head, n) } });
     this.updating = false;
   }
-  selectNode() { this.cm.view.focus(); }
+  selectNode() {
+    this.cm.view.focus();
+  }
   // 按在块自己的内边距上（不在代码里）交给 ProseMirror：codeGapClick 看是不是点在两块之间的缝上
-  stopEvent(e: Event) { return !(e.type === "mousedown" && e.target === this.dom); }
-  ignoreMutation() { return true; }
-  destroy() { this.closeMenu(); this.cm.destroy(); this.langBox.destroy(); }
+  stopEvent(e: Event) {
+    return !(e.type === "mousedown" && e.target === this.dom);
+  }
+  ignoreMutation() {
+    return true;
+  }
+  destroy() {
+    this.closeMenu();
+    this.cm.destroy();
+    this.langBox.destroy();
+  }
 }

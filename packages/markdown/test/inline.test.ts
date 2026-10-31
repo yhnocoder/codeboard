@@ -14,7 +14,10 @@ const schema = getSchema(sourceExtensions);
 const docOf = (md: string) => schema.nodeFromJSON(sourceDoc(md));
 
 describe("balancedSource: part of a paragraph with the markers of the spans it cuts into", () => {
-  const cut = (text: string, sel: string) => { const a = text.indexOf(sel); return balancedSource(text, a, a + sel.length, true); };
+  const cut = (text: string, sel: string) => {
+    const a = text.indexOf(sel);
+    return balancedSource(text, a, a + sel.length, true);
+  };
   it("inside one span: its markers around the part", () => {
     expect(cut("==Plain words== here", "ain wor")).toBe("==ain wor==");
     expect(cut("a **bold words** b", "old wor")).toBe("**old wor**");
@@ -42,7 +45,13 @@ describe("toggleWrap: markers around the selection", () => {
     const at = md.indexOf(sel) + 1;
     state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, at, at + sel.length)));
     let out = state;
-    toggleWrap(state, (tr: Transaction) => { out = state.apply(tr); }, open);
+    toggleWrap(
+      state,
+      (tr: Transaction) => {
+        out = state.apply(tr);
+      },
+      open,
+    );
     const s = out.selection;
     return { text: out.doc.textContent, sel: out.doc.textBetween(s.from, s.to) };
   };
@@ -50,7 +59,9 @@ describe("toggleWrap: markers around the selection", () => {
     expect(run("a note here", "note", "==")).toEqual({ text: "a ==note== here", sel: "note" });
   });
   it("a selection ending inside bold takes the whole bold, so the markers never interleave", () => {
-    expect(run("Plain words in a note with **bold** inside", "note with **bold", "==").text).toBe("Plain words in a ==note with **bold**== inside");
+    expect(run("Plain words in a note with **bold** inside", "note with **bold", "==").text).toBe(
+      "Plain words in a ==note with **bold**== inside",
+    );
     expect(run("a **bold** and more", "old** and", "==").text).toBe("a ==**bold** and== more");
   });
   it("inside a span: just the part", () => {
@@ -63,7 +74,8 @@ describe("toggleWrap: markers around the selection", () => {
 
 describe("visibleRange: a range counted on the static render, in the editor's source", () => {
   const pick = (md: string, shown: string, word: string) => {
-    const doc = docOf(md), from = shown.indexOf(word);
+    const doc = docOf(md),
+      from = shown.indexOf(word);
     const r = visibleRange(doc, { from, to: from + word.length, text: word });
     return r && doc.textBetween(r.from, r.to);
   };
@@ -82,7 +94,10 @@ describe("visibleRange: a range counted on the static render, in the editor's so
 });
 
 describe("spanEdgeOut: an offset at the edge of a span's text goes outside its markers", () => {
-  const out = (text: string, at: string, after = true) => { const i = text.indexOf(at) + (after ? at.length : 0); return text.slice(0, spanEdgeOut(text, i, true)); };
+  const out = (text: string, at: string, after = true) => {
+    const i = text.indexOf(at) + (after ? at.length : 0);
+    return text.slice(0, spanEdgeOut(text, i, true));
+  };
   it("before the closing markers: after them", () => {
     expect(out("**Prefill, then decode.**", "decode.")).toBe("**Prefill, then decode.**");
     expect(out("x ***bi*** y", "bi")).toBe("x ***bi***");

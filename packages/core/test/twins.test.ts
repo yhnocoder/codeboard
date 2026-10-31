@@ -1,11 +1,35 @@
 import { describe, expect, it } from "vitest";
 import {
-  applySharedUpdate, danglingRefs, detachTwin, emptyBoard, loadBoard, makeTwin, placeCards, syncTwins, twinContent,
-  type Board, type CodeCard, type NoteCard, type Segment,
+  applySharedUpdate,
+  danglingRefs,
+  detachTwin,
+  emptyBoard,
+  loadBoard,
+  makeTwin,
+  placeCards,
+  syncTwins,
+  twinContent,
+  type Board,
+  type CodeCard,
+  type NoteCard,
+  type Segment,
 } from "../src";
 
-const seg = (id: string, start: number, text: string[]): Segment => ({ id, src: { kind: "repo", repo: "" }, path: "a.py", lang: "python", start, end: start + text.length - 1, text, version: { kind: "git", commit: "x" } });
-const code = (id: string, sid = `s${id}`): CodeCard => ({ id, kind: "code", segments: [seg(sid, 1, ["def f():", "    g()"])] });
+const seg = (id: string, start: number, text: string[]): Segment => ({
+  id,
+  src: { kind: "repo", repo: "" },
+  path: "a.py",
+  lang: "python",
+  start,
+  end: start + text.length - 1,
+  text,
+  version: { kind: "git", commit: "x" },
+});
+const code = (id: string, sid = `s${id}`): CodeCard => ({
+  id,
+  kind: "code",
+  segments: [seg(sid, 1, ["def f():", "    g()"])],
+});
 const note = (id: string, md: string): NoteCard => ({ id, kind: "note", md, look: "note" });
 const board = (b: Partial<Board>): Board => ({ ...emptyBoard("b", "B"), ...b });
 
@@ -16,7 +40,9 @@ describe("makeTwin", () => {
       place: { a: { x: 0, y: 0, w: 300 }, c: { x: 400, y: 0, w: 300 }, n: { x: 0, y: 400, w: 200 } },
       links: [{ id: "l1", from: { card: "c", seg: "sc", line: 2 }, to: { card: "n" } }],
       sidenotes: [{ id: "sn", at: { card: "c", seg: "sc", lines: [1, 1] }, kind: "text", md: "why" }],
-      stickers: [{ id: "k", icon: { pack: "builtin", name: "star" }, at: { kind: "line", card: "c", seg: "sc", line: 1 } }],
+      stickers: [
+        { id: "k", icon: { pack: "builtin", name: "star" }, at: { kind: "line", card: "c", seg: "sc", line: 1 } },
+      ],
     });
     (b.cards[1] as CodeCard).tilt = true;
     expect(makeTwin(b, "c", "a")).toBe(true);
@@ -43,7 +69,10 @@ describe("makeTwin", () => {
   });
 
   it("leaves Compare cards alone", () => {
-    const b = board({ cards: [code("p"), code("q"), { id: "k", kind: "compare", cols: ["p", "q"] }, note("n", "x")], place: {} });
+    const b = board({
+      cards: [code("p"), code("q"), { id: "k", kind: "compare", cols: ["p", "q"] }, note("n", "x")],
+      place: {},
+    });
     expect(makeTwin(b, "n", "k")).toBe(false);
   });
 });
@@ -88,7 +117,8 @@ describe("syncTwins", () => {
 describe("detachTwin", () => {
   it("makes this place its own copy with new segment ids; the last place left is a plain card again", () => {
     const b = board({
-      cards: [code("a"), code("c", "sc")], place: { a: { x: 0, y: 0, w: 1 }, c: { x: 0, y: 0, w: 1 } },
+      cards: [code("a"), code("c", "sc")],
+      place: { a: { x: 0, y: 0, w: 1 }, c: { x: 0, y: 0, w: 1 } },
       links: [{ id: "l1", from: { card: "c", seg: "sc", line: 2 }, to: { card: "a", seg: "sa", line: 1 } }],
     });
     makeTwin(b, "c", "a");
@@ -108,7 +138,8 @@ describe("detachTwin", () => {
 describe("copies and shared updates", () => {
   it("a copy of a place is a separate card, and arrows between two places of one card get each card's own new segments", () => {
     const b = board({
-      cards: [code("a"), code("c", "sc")], place: { a: { x: 0, y: 0, w: 1 }, c: { x: 0, y: 0, w: 1 } },
+      cards: [code("a"), code("c", "sc")],
+      place: { a: { x: 0, y: 0, w: 1 }, c: { x: 0, y: 0, w: 1 } },
       links: [{ id: "l1", from: { card: "a", seg: "sa", line: 2 }, to: { card: "c", seg: "sc", line: 1 } }],
     });
     makeTwin(b, "c", "a");
@@ -126,13 +157,20 @@ describe("copies and shared updates", () => {
   it("a shared card updated from another board updates its other places here", () => {
     const b = board({ cards: [note("a", "x"), note("b", "x")], place: {} });
     makeTwin(b, "b", "a");
-    applySharedUpdate(b, { card: { ...structuredClone(b.cards[0]), md: "from elsewhere" } as NoteCard, sidenotes: [], items: ["a"] });
+    applySharedUpdate(b, {
+      card: { ...structuredClone(b.cards[0]), md: "from elsewhere" } as NoteCard,
+      sidenotes: [],
+      items: ["a"],
+    });
     expect((b.cards[1] as NoteCard).md).toBe("from elsewhere");
     expect(danglingRefs(b)).toEqual([]);
   });
 
   it("the board file keeps which cards are the same card", () => {
-    const b = board({ cards: [note("a", "x"), note("b", "x")], place: { a: { x: 0, y: 0, w: 1 }, b: { x: 0, y: 0, w: 1 } } });
+    const b = board({
+      cards: [note("a", "x"), note("b", "x")],
+      place: { a: { x: 0, y: 0, w: 1 }, b: { x: 0, y: 0, w: 1 } },
+    });
     makeTwin(b, "b", "a");
     const back = loadBoard(JSON.parse(JSON.stringify(b)));
     expect(back.cards[1].same).toBe(b.cards[0].same);

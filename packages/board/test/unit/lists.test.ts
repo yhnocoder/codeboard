@@ -21,7 +21,9 @@ const ROOT = path.resolve(__dirname, "../../../..");
 
 describe("hand-synced lists", () => {
   it("every key the host forwards to the board is in the shortcut help", () => {
-    const help = helpRows(true).flatMap(([, rows]) => rows.map(([k]) => k)).join(" ");
+    const help = helpRows(true)
+      .flatMap(([, rows]) => rows.map(([k]) => k))
+      .join(" ");
     const sym: Record<string, string> = { "=": "+", "+": "+", "-": "−" };
     for (const k of FORWARDED_KEYS) {
       const [shift, key] = k.startsWith("shift+") ? ["⇧", k.slice(6)] : ["", k];
@@ -37,6 +39,8 @@ describe("hand-synced lists", () => {
   });
 
   it("icon tables are what tools/icons/gen.mjs writes", () => {
-    expect(() => execFileSync("node", [path.join(ROOT, "tools/icons/gen.mjs"), "--check"], { stdio: "pipe" })).not.toThrow();
+    expect(() =>
+      execFileSync("node", [path.join(ROOT, "tools/icons/gen.mjs"), "--check"], { stdio: "pipe" }),
+    ).not.toThrow();
   });
 });

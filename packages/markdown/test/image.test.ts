@@ -8,20 +8,44 @@ import { setAssetBase, setImageResolver } from "../src/image";
 import { imageCaption, setImageCaption } from "../src/caption";
 
 const rt = (s: string) => serializeMd(parseMd(s));
-const imgOf = (html: string) => { const d = document.createElement("div"); d.innerHTML = html; return d.querySelector("img")!; };
+const imgOf = (html: string) => {
+  const d = document.createElement("div");
+  d.innerHTML = html;
+  return d.querySelector("img")!;
+};
 
 afterEach(() => setImageResolver(null));
 
 describe("image Markdown round trip", () => {
   it("keeps ![alt](path) as typed: relative, absolute, with a title, next to text", () => {
-    for (const s of ["![](assets/0123456789abcdef-640x480.png)", "![screen shot](assets/a.png)", "![x](https://a.b/c.png \"Title\")", "before ![a](assets/a.png) after", "![a](assets/a.png)![b](assets/b.png)"]) {
+    for (const s of [
+      "![](assets/0123456789abcdef-640x480.png)",
+      "![screen shot](assets/a.png)",
+      '![x](https://a.b/c.png "Title")',
+      "before ![a](assets/a.png) after",
+      "![a](assets/a.png)![b](assets/b.png)",
+    ]) {
       expect(rt(s)).toBe(s);
     }
   });
   it("writes an inserted image (what a paste adds) as ![](path)", () => {
-    const doc = { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "see " }, { type: "image", attrs: { src: "assets/0123456789abcdef-12x7.gif", alt: "" } }] }] };
+    const doc = {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [
+            { type: "text", text: "see " },
+            { type: "image", attrs: { src: "assets/0123456789abcdef-12x7.gif", alt: "" } },
+          ],
+        },
+      ],
+    };
     expect(serializeMd(doc)).toBe("see ![](assets/0123456789abcdef-12x7.gif)");
-    expect(parseMd(serializeMd(doc)).content![0].content![1]).toMatchObject({ type: "image", attrs: { src: "assets/0123456789abcdef-12x7.gif", alt: "" } });
+    expect(parseMd(serializeMd(doc)).content![0].content![1]).toMatchObject({
+      type: "image",
+      attrs: { src: "assets/0123456789abcdef-12x7.gif", alt: "" },
+    });
   });
   it("never puts image bytes into the Markdown for a path", () => {
     expect(rt("![](assets/x.png)")).not.toContain("base64");
@@ -31,30 +55,58 @@ describe("image Markdown round trip", () => {
 describe("image width", () => {
   const img = (s: string) => parseMd(s).content![0].content!.find((n) => n.type === "image")!;
   it("reads {width=N%} after an image as its width and writes it back the same", () => {
-    for (const s of ["![a](assets/a.png){width=40%}", "see ![a](assets/a.png){width=33.5%} here", "![x](https://a.b/c.png \"Title\"){width=100%}", "[![a](assets/a.png){width=20%}](https://l.test)", "**![a](assets/a.png){width=20%}** b"]) {
+    for (const s of [
+      "![a](assets/a.png){width=40%}",
+      "see ![a](assets/a.png){width=33.5%} here",
+      '![x](https://a.b/c.png "Title"){width=100%}',
+      "[![a](assets/a.png){width=20%}](https://l.test)",
+      "**![a](assets/a.png){width=20%}** b",
+    ]) {
       expect(rt(s)).toBe(s);
     }
     expect(img("![a](assets/a.png){width=40%}").attrs).toMatchObject({ src: "assets/a.png", alt: "a", width: 40 });
     expect(img("![a](assets/a.png)").attrs!.width).toBeNull();
   });
   it("writes an image's width (what a resize sets) and nothing for a full-width one", () => {
-    const doc = (width: number | null) => ({ type: "doc", content: [{ type: "paragraph", content: [{ type: "image", attrs: { src: "assets/a.png", alt: "", width } }] }] });
+    const doc = (width: number | null) => ({
+      type: "doc",
+      content: [{ type: "paragraph", content: [{ type: "image", attrs: { src: "assets/a.png", alt: "", width } }] }],
+    });
     expect(serializeMd(doc(25))).toBe("![](assets/a.png){width=25%}");
     expect(serializeMd(doc(null))).toBe("![](assets/a.png)");
     expect(img(serializeMd(doc(25))).attrs!.width).toBe(25);
   });
   it("leaves other braces as text: out of range, not right after the image, or escaped", () => {
-    for (const s of ["![a](assets/a.png){width=150%}", "![a](assets/a.png){width=0%}", "![a](assets/a.png) {width=40%}", "![a](assets/a.png){height=40%}"]) {
+    for (const s of [
+      "![a](assets/a.png){width=150%}",
+      "![a](assets/a.png){width=0%}",
+      "![a](assets/a.png) {width=40%}",
+      "![a](assets/a.png){height=40%}",
+    ]) {
       expect(rt(s)).toBe(s);
       expect(img(s).attrs!.width).toBeNull();
     }
     expect(img("![a](assets/a.png)\\{width=40%}").attrs!.width).toBeNull();
   });
   it("escapes text that would read back as the width of the image before it", () => {
-    const doc = { type: "doc", content: [{ type: "paragraph", content: [{ type: "image", attrs: { src: "assets/a.png", alt: "" } }, { type: "text", text: "{width=40%} literal" }] }] };
+    const doc = {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [
+            { type: "image", attrs: { src: "assets/a.png", alt: "" } },
+            { type: "text", text: "{width=40%} literal" },
+          ],
+        },
+      ],
+    };
     const md = serializeMd(doc);
     expect(md).toBe("![](assets/a.png)\\{width=40%} literal");
-    expect(parseMd(md).content![0].content).toMatchObject([{ type: "image", attrs: { width: null } }, { type: "text", text: "{width=40%} literal" }]);
+    expect(parseMd(md).content![0].content).toMatchObject([
+      { type: "image", attrs: { width: null } },
+      { type: "text", text: "{width=40%} literal" },
+    ]);
   });
   it("renders the width as a percentage of the body, centered", () => {
     const im = imgOf(renderMd("![](assets/w.png){width=40%}"));
@@ -64,7 +116,9 @@ describe("image width", () => {
   });
   it("keeps the paragraph around a sized image in a list item or table cell, marked p.md-psized to center it", () => {
     const host = document.createElement("div");
-    host.innerHTML = renderMd("- ![](assets/w.png){width=40%}\n- ![](assets/w.png)\n\n| a |\n| - |\n| [![](assets/w.png){width=40%}](https://a.b) |");
+    host.innerHTML = renderMd(
+      "- ![](assets/w.png){width=40%}\n- ![](assets/w.png)\n\n| a |\n| - |\n| [![](assets/w.png){width=40%}](https://a.b) |",
+    );
     const [sized, full] = [...host.querySelectorAll("li")];
     expect(sized.firstElementChild!.tagName).toBe("P");
     expect(sized.firstElementChild!.classList.contains("md-psized")).toBe(true);
@@ -108,8 +162,22 @@ describe("image render", () => {
 
 describe("image captions (the title)", () => {
   it("round-trips captions, escaping quotes and backslashes, with a width after", () => {
-    for (const s of ['![a](assets/a.png "Figure 1: a warp")', '![](assets/a.png "say \\"hi\\" \\\\ x")', '![a](assets/a.png "Fig. 2 (left)"){width=40%}', 'see ![a](https://a.b/c.png "c") here']) expect(rt(s)).toBe(s);
-    const doc = { type: "doc", content: [{ type: "paragraph", content: [{ type: "image", attrs: { src: "assets/a.png", alt: "", title: 'two\nlines "q"' } }] }] };
+    for (const s of [
+      '![a](assets/a.png "Figure 1: a warp")',
+      '![](assets/a.png "say \\"hi\\" \\\\ x")',
+      '![a](assets/a.png "Fig. 2 (left)"){width=40%}',
+      'see ![a](https://a.b/c.png "c") here',
+    ])
+      expect(rt(s)).toBe(s);
+    const doc = {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [{ type: "image", attrs: { src: "assets/a.png", alt: "", title: 'two\nlines "q"' } }],
+        },
+      ],
+    };
     expect(serializeMd(doc)).toBe('![](assets/a.png "two lines \\"q\\"")');
     expect(parseMd(serializeMd(doc)).content![0].content![0].attrs!.title).toBe('two lines "q"');
   });
@@ -127,7 +195,8 @@ describe("image captions (the title)", () => {
     expect(d.querySelector("img")).not.toBeNull();
   });
   it("sets, changes and removes the caption of the nth image with that address, touching nothing else", () => {
-    const md = "# T\n\n`![x](assets/a.png)` and\n\n```\n![y](assets/a.png)\n```\n\n![first (1)](assets/a.png)\n\nmid *text*  \n![second](<assets/a.png> 'old'){width=50%}";
+    const md =
+      "# T\n\n`![x](assets/a.png)` and\n\n```\n![y](assets/a.png)\n```\n\n![first (1)](assets/a.png)\n\nmid *text*  \n![second](<assets/a.png> 'old'){width=50%}";
     expect(imageCaption(md, "assets/a.png", 0)).toBe("");
     expect(imageCaption(md, "assets/a.png", 1)).toBe("old");
     expect(imageCaption(md, "assets/a.png", 2)).toBeNull();
@@ -136,13 +205,16 @@ describe("image captions (the title)", () => {
     expect(imageCaption(one, "assets/a.png", 0)).toBe('A "quoted" one');
     const two = setImageCaption(md, "assets/a.png", 1, "new");
     expect(two).toBe(md.replace("![second](<assets/a.png> 'old')", '![second](<assets/a.png> "new")'));
-    expect(setImageCaption(two, "assets/a.png", 1, " ")).toBe(md.replace("![second](<assets/a.png> 'old')", "![second](<assets/a.png>)"));
+    expect(setImageCaption(two, "assets/a.png", 1, " ")).toBe(
+      md.replace("![second](<assets/a.png> 'old')", "![second](<assets/a.png>)"),
+    );
     expect(setImageCaption(md, "assets/zzz.png", 0, "x")).toBe(md);
   });
 });
 
 describe("![alt](…) whose address does not parse", () => {
-  const svg = "<svg xmlns='http://www.w3.org/2000/svg' width='36' height='15'><rect width='36' height='15' fill='%23f6f1e7'/></svg>";
+  const svg =
+    "<svg xmlns='http://www.w3.org/2000/svg' width='36' height='15'><rect width='36' height='15' fill='%23f6f1e7'/></svg>";
   const bad = `before ![SM 示意图](data:image/svg+xml;utf8,${svg}) after`;
   it("draws as an image that failed to load, never as the inline <svg> it holds", () => {
     const d = document.createElement("div");

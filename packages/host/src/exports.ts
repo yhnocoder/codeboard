@@ -1,6 +1,13 @@
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
-import { collectQuestions, inlineSnapshot, mimeOf, segPermalink, type QuestionItem, type Segment } from "@codeboard/core";
+import {
+  collectQuestions,
+  inlineSnapshot,
+  mimeOf,
+  segPermalink,
+  type QuestionItem,
+  type Segment,
+} from "@codeboard/core";
 import type { Storage } from "@codeboard/core/storage";
 import { git, repoRootOf } from "./git";
 import { absOf } from "./source";
@@ -9,7 +16,9 @@ import { workspace, ws0 } from "./ws";
 
 /** 插件的 media/board 目录（白板的 CSS、字体）：激活时设好；测试里按源码位置找 */
 let mediaDir = path.resolve(__dirname, "../media/board");
-export const setMediaDir = (d: string) => { mediaDir = d; };
+export const setMediaDir = (d: string) => {
+  mediaDir = d;
+};
 
 /** 所有白板上的问题（共享卡上的只算一次） */
 export async function allQuestions(store: Storage): Promise<QuestionItem[]> {
@@ -20,7 +29,10 @@ export async function allQuestions(store: Storage): Promise<QuestionItem[]> {
 const remotes = new Map<string, Promise<string | undefined>>();
 const remoteOf = (root: string) => {
   let p = remotes.get(root);
-  if (!p) { p = git(root, ["remote", "get-url", "origin"]).then((s) => s?.trim() || undefined); remotes.set(root, p); }
+  if (!p) {
+    p = git(root, ["remote", "get-url", "origin"]).then((s) => s?.trim() || undefined);
+    remotes.set(root, p);
+  }
   return p;
 };
 
@@ -29,7 +41,11 @@ export async function permalinks(segs: Segment[]): Promise<Record<string, string
   const out: Record<string, string> = {};
   for (const s of segs.slice(0, 2000)) {
     let remote: string | undefined;
-    if (s.src.kind === "repo") { const a = absOf(s); const r = a ? await repoRootOf(a) : null; remote = r ? await remoteOf(r) : undefined; }
+    if (s.src.kind === "repo") {
+      const a = absOf(s);
+      const r = a ? await repoRootOf(a) : null;
+      remote = r ? await remoteOf(r) : undefined;
+    }
     const u = segPermalink(s, () => remote);
     if (u) out[s.id] = u;
   }
@@ -42,7 +58,10 @@ const SAFE_NAME = (n: string) => n.replace(/[\\/:*?"<>|]+/g, "-").trim() || "boa
 export async function exportFile(store: Storage, kind: "html" | "md", name: string, text: string): Promise<boolean> {
   const ui = workspace().ui;
   const ext = kind === "html" ? "html" : "md";
-  const file = await ui.saveDialog({ defaultPath: path.join(ws0() || process.env.HOME || "", `${SAFE_NAME(name)}.${ext}`), filters: kind === "html" ? { "HTML Snapshot": ["html"] } : { Markdown: ["md"] } });
+  const file = await ui.saveDialog({
+    defaultPath: path.join(ws0() || process.env.HOME || "", `${SAFE_NAME(name)}.${ext}`),
+    filters: kind === "html" ? { "HTML Snapshot": ["html"] } : { Markdown: ["md"] },
+  });
   if (!file) return false;
   const out = kind === "html" ? await inlineFor(store, text) : text;
   await fs.writeFile(file, out);
@@ -57,6 +76,10 @@ export function inlineFor(store: Storage, html: string): Promise<string> {
     const base = kind === "media" ? mediaDir : store.assetsDir();
     const abs = path.resolve(base, rel);
     if (path.relative(base, abs).startsWith("..")) return null;
-    try { return { mime: mimeOf(abs), base64: (await fs.readFile(abs)).toString("base64") }; } catch { return null; }
+    try {
+      return { mime: mimeOf(abs), base64: (await fs.readFile(abs)).toString("base64") };
+    } catch {
+      return null;
+    }
   });
 }

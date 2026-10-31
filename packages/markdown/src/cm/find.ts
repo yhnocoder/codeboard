@@ -3,7 +3,19 @@
 import { Prec, type Extension } from "@codemirror/state";
 import { EditorView, type Panel } from "@codemirror/view";
 import { isolateHistory } from "@codemirror/commands";
-import { SearchQuery, search, setSearchQuery, getSearchQuery, findNext, findPrevious, replaceNext, replaceAll, openSearchPanel, closeSearchPanel, searchPanelOpen } from "@codemirror/search";
+import {
+  SearchQuery,
+  search,
+  setSearchQuery,
+  getSearchQuery,
+  findNext,
+  findPrevious,
+  replaceNext,
+  replaceAll,
+  openSearchPanel,
+  closeSearchPanel,
+  searchPanelOpen,
+} from "@codemirror/search";
 import { FindBar, findKey, seedText, type FindSpec, type FindTarget } from "../ui/find";
 
 const bars = new WeakMap<EditorView, FindBar>();
@@ -14,24 +26,44 @@ function target(view: EditorView, origin: () => number): FindTarget {
   const isolate = () => view.dispatch({ annotations: isolateHistory.of("full") });
   return {
     query(spec: FindSpec, moved) {
-      const q = new SearchQuery({ search: spec.search, replace: spec.replace, caseSensitive: spec.caseSensitive, literal: true });
+      const q = new SearchQuery({
+        search: spec.search,
+        replace: spec.replace,
+        caseSensitive: spec.caseSensitive,
+        literal: true,
+      });
       let m: { from: number; to: number } | null = null;
       if (moved && q.valid) {
         const a = q.getCursor(view.state, origin()).next();
         m = a.done ? (q.getCursor(view.state).next().value ?? null) : a.value;
       }
-      view.dispatch({ effects: setSearchQuery.of(q), ...(m ? { selection: { anchor: m.from, head: m.to }, scrollIntoView: true } : {}) });
+      view.dispatch({
+        effects: setSearchQuery.of(q),
+        ...(m ? { selection: { anchor: m.from, head: m.to }, scrollIntoView: true } : {}),
+      });
     },
-    next: () => { findNext(view); },
-    prev: () => { findPrevious(view); },
-    replace: () => { replaceNext(view); },
+    next: () => {
+      findNext(view);
+    },
+    prev: () => {
+      findPrevious(view);
+    },
+    replace: () => {
+      replaceNext(view);
+    },
     // 一步：前后各断开撤销记录，不和前后打的字连成一次撤销
-    replaceAll: () => { isolate(); replaceAll(view); isolate(); },
+    replaceAll: () => {
+      isolate();
+      replaceAll(view);
+      isolate();
+    },
     count() {
-      const q = getSearchQuery(view.state), main = view.state.selection.main;
+      const q = getSearchQuery(view.state),
+        main = view.state.selection.main;
       if (!q.valid) return { at: 0, total: 0 };
-      let total = 0, at = 0;
-      for (const c = q.getCursor(view.state); total < MAX_COUNT;) {
+      let total = 0,
+        at = 0;
+      for (const c = q.getCursor(view.state); total < MAX_COUNT; ) {
         const r = c.next();
         if (r.done) break;
         total++;
@@ -39,7 +71,10 @@ function target(view: EditorView, origin: () => number): FindTarget {
       }
       return { at, total };
     },
-    closed() { view.focus(); closeSearchPanel(view); },
+    closed() {
+      view.focus();
+      closeSearchPanel(view);
+    },
   };
 }
 
@@ -55,7 +90,8 @@ function openFind(view: EditorView, replace: boolean) {
 export function closeFind(view: EditorView) {
   if (!searchPanelOpen(view.state)) return false;
   const b = bars.get(view);
-  if (b) b.close(); else closeSearchPanel(view);
+  if (b) b.close();
+  else closeSearchPanel(view);
   return true;
 }
 
@@ -67,18 +103,34 @@ export function findExtension(o: { isMac: boolean; leave: (e: FocusEvent) => voi
       literal: true,
       createPanel: (view): Panel => {
         const origin = view.state.selection.main.from;
-        const bar = new FindBar(target(view, () => origin), { isMac: o.isMac, owns: (n) => view.dom.contains(n), leave: o.leave });
+        const bar = new FindBar(
+          target(view, () => origin),
+          { isMac: o.isMac, owns: (n) => view.dom.contains(n), leave: o.leave },
+        );
         bars.set(view, bar);
         return {
           dom: bar.el,
           top: true,
-          update: (u) => { if (u.docChanged || u.selectionSet) bar.refresh(); },
-          destroy: () => { if (bars.get(view) === bar) bars.delete(view); },
+          update: (u) => {
+            if (u.docChanged || u.selectionSet) bar.refresh();
+          },
+          destroy: () => {
+            if (bars.get(view) === bar) bars.delete(view);
+          },
         };
       },
     }),
     // ⌘F / ⌥⌘F / ⌘H（和 Note 一样按 e.code 认字母：⌥ 在 mac 上改了 e.key，键表认不出来）
-    Prec.highest(EditorView.domEventHandlers({ keydown: (e, v) => { const k = findKey(e); if (!k) return false; e.preventDefault(); return openFind(v, k === "replace"); } })),
+    Prec.highest(
+      EditorView.domEventHandlers({
+        keydown: (e, v) => {
+          const k = findKey(e);
+          if (!k) return false;
+          e.preventDefault();
+          return openFind(v, k === "replace");
+        },
+      }),
+    ),
     EditorView.theme({
       // 面板不占地方：条浮在右上角（ui/find.ts 的 .md-find）
       ".cm-panels": { background: "transparent", color: "inherit", height: "0", overflow: "visible" },

@@ -1,15 +1,35 @@
 import { describe, expect, it } from "vitest";
 import {
-  applyPatch, deflate, emptyBoard, homeCam, mergeById, inflate, loadBoard, loadBoardFile, loadSharedCard, putShared, renameCard, sharedOf, travels, applySharedUpdate, followShared,
-  type Board, type Card, type Sidenote,
+  applyPatch,
+  deflate,
+  emptyBoard,
+  homeCam,
+  mergeById,
+  inflate,
+  loadBoard,
+  loadBoardFile,
+  loadSharedCard,
+  putShared,
+  renameCard,
+  sharedOf,
+  travels,
+  applySharedUpdate,
+  followShared,
+  type Board,
+  type Card,
+  type Sidenote,
 } from "../src";
 
 const note = (id: string, md = id): Card => ({ id, kind: "note", md, look: "note" });
-const text = (id: string, card: string, extra: Partial<Sidenote> = {}): Sidenote => ({ id, kind: "text", md: id, at: { card }, ...extra } as Sidenote);
+const text = (id: string, card: string, extra: Partial<Sidenote> = {}): Sidenote =>
+  ({ id, kind: "text", md: id, at: { card }, ...extra }) as Sidenote;
 
 function board(): Board {
   const b = emptyBoard("b", "B");
-  for (const id of ["a", "b", "c"]) { b.cards.push(note(id)); b.place[id] = { x: 0, y: 0, w: 100 }; }
+  for (const id of ["a", "b", "c"]) {
+    b.cards.push(note(id));
+    b.place[id] = { x: 0, y: 0, w: 100 };
+  }
   b.links.push({ id: "l1", from: { card: "a" }, to: { card: "b" } });
   b.sidenotes.push(text("n1", "a"), text("n2", "b"));
   return b;
@@ -40,7 +60,10 @@ describe("applyPatch", () => {
   it("replaces the head (missing fields are removed) and the camera, never the id or version", () => {
     const b = board();
     b.hideNumbers = true;
-    applyPatch(b, { head: { name: "New", born: { a: 0 }, seq: 1, id: "evil", version: 1 } as any, cam: { x: 1, y: 2, z: 3 } });
+    applyPatch(b, {
+      head: { name: "New", born: { a: 0 }, seq: 1, id: "evil", version: 1 } as any,
+      cam: { x: 1, y: 2, z: 3 },
+    });
     expect(b.name).toBe("New");
     expect(b.hideNumbers).toBeUndefined();
     expect(b.id).toBe("b");
@@ -51,7 +74,12 @@ describe("applyPatch", () => {
 
   it("full patches replace every collection", () => {
     const b = board();
-    applyPatch(b, { full: true, head: { name: "F" } as any, cards: { set: [note("z")] }, place: { set: { z: { x: 0, y: 0, w: 1 } } } });
+    applyPatch(b, {
+      full: true,
+      head: { name: "F" } as any,
+      cards: { set: [note("z")] },
+      place: { set: { z: { x: 0, y: 0, w: 1 } } },
+    });
     expect(b.cards.map((c) => c.id)).toEqual(["z"]);
     expect(Object.keys(b.place)).toEqual(["z"]);
     expect(b.links).toEqual([]);
@@ -62,7 +90,12 @@ describe("applyPatch", () => {
 describe("shared cards: inflate / deflate / putShared", () => {
   it("deflate turns shared cards into refs in place and takes their travelling sidenotes; inflate puts them back", () => {
     const b = board();
-    b.sidenotes.push(text("n3", "b", { boardOnly: true }), { id: "n4", kind: "card", card: "c", at: { card: "b" } } as Sidenote);
+    b.sidenotes.push(text("n3", "b", { boardOnly: true }), {
+      id: "n4",
+      kind: "card",
+      card: "c",
+      at: { card: "b" },
+    } as Sidenote);
     const { file, shared } = deflate(b, new Set(["b"]));
     expect(file.cards.map((c) => c.kind)).toEqual(["note", "shared", "note"]);
     expect(file.sidenotes.map((n) => n.id)).toEqual(["n1", "n3", "n4"]); // board-only and card-kind sidenotes stay on the board
@@ -86,7 +119,10 @@ describe("shared cards: inflate / deflate / putShared", () => {
   it("putShared replaces the card and its travelling sidenotes in place, keeps board-only ones", () => {
     const b = board();
     b.sidenotes.push(text("n5", "a", { boardOnly: true }), text("n6", "a"));
-    const ok = putShared(b, { card: note("a", "new"), sidenotes: [text("n6", "a", { md: "edited" } as any), text("n7", "a")] });
+    const ok = putShared(b, {
+      card: note("a", "new"),
+      sidenotes: [text("n6", "a", { md: "edited" } as any), text("n7", "a")],
+    });
     expect(ok).toBe(true);
     expect((b.cards[0] as any).md).toBe("new");
     expect(b.sidenotes.map((n) => n.id)).toEqual(["n2", "n5", "n6", "n7"]); // n1 left the shared card
@@ -99,7 +135,11 @@ describe("shared cards: inflate / deflate / putShared", () => {
   it("renameCard moves every reference", () => {
     const b = board();
     b.born = { a: 0, b: 1, c: 2 };
-    b.stickers.push({ id: "k", icon: { pack: "builtin", name: "star" }, at: { kind: "canvas", x: 0, y: 0, on: { card: "a" } } });
+    b.stickers.push({
+      id: "k",
+      icon: { pack: "builtin", name: "star" },
+      at: { kind: "canvas", x: 0, y: 0, on: { card: "a" } },
+    });
     renameCard(b, "a", "a2");
     expect(b.cards[0].id).toBe("a2");
     expect(b.place.a2 && !b.place.a).toBeTruthy();
@@ -110,14 +150,22 @@ describe("shared cards: inflate / deflate / putShared", () => {
   });
 
   it("validates shared card files", () => {
-    expect(loadSharedCard({ version: 6, card: note("a"), sidenotes: [text("n", "a")], rev: { a: 1 } }).card.id).toBe("a");
-    expect(() => loadSharedCard({ version: 6, card: { id: "a", kind: "nope" }, sidenotes: [] })).toThrow(/Invalid shared card/);
+    expect(loadSharedCard({ version: 6, card: note("a"), sidenotes: [text("n", "a")], rev: { a: 1 } }).card.id).toBe(
+      "a",
+    );
+    expect(() => loadSharedCard({ version: 6, card: { id: "a", kind: "nope" }, sidenotes: [] })).toThrow(
+      /Invalid shared card/,
+    );
   });
 });
 
 describe("board format v6 and v7", () => {
   it("v5 → v8 only bumps the version and turns bg into look when no Markdown has escaped dollars; boards keep sidenote boardOnly", () => {
-    const v5 = { ...board(), version: 5, cards: board().cards.map(({ look: _, ...c }: any) => ({ ...c, bg: true })) } as any;
+    const v5 = {
+      ...board(),
+      version: 5,
+      cards: board().cards.map(({ look: _, ...c }: any) => ({ ...c, bg: true })),
+    } as any;
     const b = loadBoard(structuredClone(v5));
     expect(b).toEqual(board());
     const c = board();
@@ -131,13 +179,25 @@ describe("board format v6 and v7", () => {
     b.version = version;
     b.cards[0].md = "a \\$x^2\\$ b, \\$\\frac{a}{b}\\$ and \\$\\{n\\}\\$";
     b.cards[1].desc = "cost \\$O(n)\\$";
-    b.cards.push({ id: "m", kind: "code", segments: [], mergedFrom: [{ card: { id: "o", kind: "code", segments: [], desc: "\\$y\\$" }, place: { x: 0, y: 0, w: 1 } }] });
+    b.cards.push({
+      id: "m",
+      kind: "code",
+      segments: [],
+      mergedFrom: [{ card: { id: "o", kind: "code", segments: [], desc: "\\$y\\$" }, place: { x: 0, y: 0, w: 1 } }],
+    });
     b.place.m = { x: 0, y: 0, w: 100 };
     b.sidenotes[0].md = "\\$z\\$";
-    b.stickers.push({ id: "q", icon: { pack: "builtin", name: "question" }, at: { kind: "canvas", x: 0, y: 0 }, q: { md: "why \\$k\\$?" } });
+    b.stickers.push({
+      id: "q",
+      icon: { pack: "builtin", name: "question" },
+      at: { kind: "canvas", x: 0, y: 0 },
+      q: { md: "why \\$k\\$?" },
+    });
     b.cards[2].md = [
       "`\\$a\\$` code, \\$x$ half escaped, costs \\$5 or \\$6, \\$**b**\\$ split by bold, [t](http://x/\\$y\\$)",
-      "```", "\\$c\\$", "```",
+      "```",
+      "\\$c\\$",
+      "```",
       "    \\$indented\\$",
       "$a\\$b$ math with an escaped dollar, \\\\\\$e\\$ after an escaped backslash",
     ].join("\n");
@@ -159,7 +219,8 @@ describe("board format v6 and v7", () => {
   });
   it("v6 → v7 leaves boards from before the WYSIWYG editor alone: their \\$ was always literal", () => {
     const raw = { ...oldMath(6), version: 4 };
-    delete raw.born; delete raw.seq;
+    delete raw.born;
+    delete raw.seq;
     expect((loadBoard(raw).cards[0] as any).md).toBe(oldMath(6).cards[0].md);
   });
   it("a v8 board's escaped \\$a\\$ is literal text and stays as written", () => {
@@ -169,7 +230,11 @@ describe("board format v6 and v7", () => {
     expect((again.cards[0] as any).md).toBe("\\$a\\$");
   });
   it("v6 → v8 upgrades shared card files (the card and its travelling sidenotes) once, and refuses newer ones", () => {
-    const sc = loadSharedCard({ version: 6, card: { ...note("s", "\\$a\\$"), desc: "\\$d\\$" }, sidenotes: [text("n", "s", { md: "\\$t\\$" } as any)] });
+    const sc = loadSharedCard({
+      version: 6,
+      card: { ...note("s", "\\$a\\$"), desc: "\\$d\\$" },
+      sidenotes: [text("n", "s", { md: "\\$t\\$" } as any)],
+    });
     expect(sc.version).toBe(10);
     expect(sc.card).toMatchObject({ md: "$a$", desc: "$d$" });
     expect((sc.sidenotes[0] as any).md).toBe("$t$");
@@ -179,13 +244,25 @@ describe("board format v6 and v7", () => {
 });
 
 describe("shared card updates on a board (followShared / applySharedUpdate)", () => {
-  const seg = (start: number, text: string[], commit: string) => ({ id: "g", src: { kind: "repo" as const, repo: "" }, path: "a.py", lang: "python", start, end: start + text.length - 1, text, version: { kind: "git" as const, commit } });
+  const seg = (start: number, text: string[], commit: string) => ({
+    id: "g",
+    src: { kind: "repo" as const, repo: "" },
+    path: "a.py",
+    lang: "python",
+    start,
+    end: start + text.length - 1,
+    text,
+    version: { kind: "git" as const, commit },
+  });
   const code = (s: ReturnType<typeof seg>): Card => ({ id: "s", kind: "code", segments: [s] });
   function withCode(): Board {
     const b = board();
     b.cards.push(code(seg(10, ["def f():", "    x = 1", "    return x"], "a")));
     b.links.push({ id: "l2", from: { card: "a" }, to: { card: "s", seg: "g", line: 12 } });
-    b.sidenotes.push(text("own", "s", { at: { card: "s", seg: "g", lines: [11, 11] }, boardOnly: true }), text("tr", "s", { at: { card: "s", seg: "g", lines: [11, 11] } }));
+    b.sidenotes.push(
+      text("own", "s", { at: { card: "s", seg: "g", lines: [11, 11] }, boardOnly: true }),
+      text("tr", "s", { at: { card: "s", seg: "g", lines: [11, 11] } }),
+    );
     return b;
   }
   const now = seg(10, ["# new", "def f():", "    x = 2", "    return x"], "b");
@@ -220,7 +297,11 @@ describe("shared card updates on a board (followShared / applySharedUpdate)", ()
 describe("mergeById", () => {
   const x = (id: string, v = id) => ({ id, v });
   it("takes this side's changes and deletes, the other side's untouched items and additions", () => {
-    const r = mergeById([x("a"), x("b"), x("c")], [x("a", "a2"), x("b"), x("c"), x("d")], [x("a"), x("b", "b1"), x("e")]);
+    const r = mergeById(
+      [x("a"), x("b"), x("c")],
+      [x("a", "a2"), x("b"), x("c"), x("d")],
+      [x("a"), x("b", "b1"), x("e")],
+    );
     expect(r.items).toEqual([x("a", "a2"), x("b", "b1"), x("e"), x("d")]);
     expect(r.changed).toEqual(["b", "e", "c"]);
   });

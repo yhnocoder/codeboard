@@ -3,11 +3,38 @@
 import * as os from "node:os";
 import * as path from "node:path";
 import {
-  fingerprint, isCode, locateSeg, sameLines, segsOf, upstreamSegs, viewKey, UPSTREAM,
-  type AddVariantFrom, type Board, type CodeCard, type NewVariant, type Segment, type Source, type VariantFrom, type VariantSources, type VariantSync, type Version,
+  fingerprint,
+  isCode,
+  locateSeg,
+  sameLines,
+  segsOf,
+  upstreamSegs,
+  viewKey,
+  UPSTREAM,
+  type AddVariantFrom,
+  type Board,
+  type CodeCard,
+  type NewVariant,
+  type Segment,
+  type Source,
+  type VariantFrom,
+  type VariantSources,
+  type VariantSync,
+  type Version,
 } from "@codeboard/core";
 import { analysisOf } from "./analysis";
-import { branches, git, githubRemote, headOf, isAncestor, repoRootOf, resolveRef, showFile, upstreamRef, worktrees } from "./git";
+import {
+  branches,
+  git,
+  githubRemote,
+  headOf,
+  isAncestor,
+  repoRootOf,
+  resolveRef,
+  showFile,
+  upstreamRef,
+  worktrees,
+} from "./git";
 import { fetchFile, pullRequest } from "./github";
 import { absOf, locOfFile, hasLocalFile } from "./source";
 import { viewsFor } from "./views";
@@ -24,18 +51,33 @@ async function repoOf(seg: Segment): Promise<{ root: string; rel: string; abs: s
 export async function variantSources(seg: Segment): Promise<VariantSources> {
   const r = await repoOf(seg);
   if (!r) return { worktrees: [], branches: [] };
-  const [wts, bs, gh, cur] = await Promise.all([worktrees(r.root), branches(r.root), githubRemote(r.root), git(r.root, ["rev-parse", "--abbrev-ref", "HEAD"])]);
+  const [wts, bs, gh, cur] = await Promise.all([
+    worktrees(r.root),
+    branches(r.root),
+    githubRemote(r.root),
+    git(r.root, ["rev-parse", "--abbrev-ref", "HEAD"]),
+  ]);
   const here = path.normalize(r.root);
   return {
-    worktrees: wts.filter((w) => w.dir !== here).map((w) => ({ dir: w.dir, branch: w.branch, label: [w.branch ?? w.head?.slice(0, 7), shortDir(here, w.dir)].filter(Boolean).join(" · ") })),
-    branches: bs, current: cur?.trim() || undefined, pr: gh ? `${gh.owner}/${gh.name}` : undefined,
+    worktrees: wts
+      .filter((w) => w.dir !== here)
+      .map((w) => ({
+        dir: w.dir,
+        branch: w.branch,
+        label: [w.branch ?? w.head?.slice(0, 7), shortDir(here, w.dir)].filter(Boolean).join(" · "),
+      })),
+    branches: bs,
+    current: cur?.trim() || undefined,
+    pr: gh ? `${gh.owner}/${gh.name}` : undefined,
   };
 }
 /** worktree 目录的短写法：仓库旁边 / 里面的写相对路径（../vllm-exp），远的用 ~ 缩写的绝对路径 */
 function shortDir(here: string, dir: string, home = os.homedir()) {
   const r = path.relative(path.dirname(here), dir);
   if (!path.isAbsolute(r) && !r.startsWith("..")) return `../${r.split(path.sep).join("/")}`;
-  return home && (dir === home || dir.startsWith(home + path.sep)) ? `~${dir.slice(home.length).split(path.sep).join("/")}` : dir;
+  return home && (dir === home || dir.startsWith(home + path.sep))
+    ? `~${dir.slice(home.length).split(path.sep).join("/")}`
+    : dir;
 }
 
 type Read = { text: string; src: Source; path: string; version: Version; tip?: string };
@@ -50,18 +92,27 @@ async function readFrom(up: Segment, from: VariantFrom, net = true): Promise<Rea
   const r = await repoOf(up);
   if (!r) return null;
   switch (from.kind) {
-    case "upstream": return null;
+    case "upstream":
+      return null;
     case "ref": {
       const sha = await resolveRef(r.root, from.ref);
       const text = sha && (await showFile(r.root, sha, r.rel));
-      return sha && text != null ? { text, src: up.src, path: up.path, version: { kind: "git", commit: sha }, tip: sha } : null;
+      return sha && text != null
+        ? { text, src: up.src, path: up.path, version: { kind: "git", commit: sha }, tip: sha }
+        : null;
     }
     case "worktree": {
       const text = await readText(r.abs);
       if (text === null) return null;
       const head = await headOf(r.root);
       const committed = head ? await showFile(r.root, head, r.rel) : null;
-      return { text, src: up.src, path: up.path, version: { kind: "git", commit: head ?? "", ...(committed === text ? {} : { uncommitted: true }) }, tip: head ?? undefined };
+      return {
+        text,
+        src: up.src,
+        path: up.path,
+        version: { kind: "git", commit: head ?? "", ...(committed === text ? {} : { uncommitted: true }) },
+        tip: head ?? undefined,
+      };
     }
     case "wt": {
       const abs = path.join(from.dir, r.rel);
@@ -69,13 +120,24 @@ async function readFrom(up: Segment, from: VariantFrom, net = true): Promise<Rea
       if (text === null) return null;
       const head = (await git(from.dir, ["rev-parse", "HEAD"]))?.trim();
       const committed = head ? await showFile(from.dir, head, r.rel) : null;
-      return { text, src: { kind: "external", root: from.dir }, path: r.rel, version: { kind: "git", commit: head ?? "", ...(committed === text ? {} : { uncommitted: true }) }, tip: committed === text ? head : undefined };
+      return {
+        text,
+        src: { kind: "external", root: from.dir },
+        path: r.rel,
+        version: { kind: "git", commit: head ?? "", ...(committed === text ? {} : { uncommitted: true }) },
+        tip: committed === text ? head : undefined,
+      };
     }
     case "pr": {
       if (!net) return null;
       const pr = await pullRequest(from.owner, from.name, from.num);
       const text = await fetchFile(from.owner, from.name, pr.head, r.rel, pr.branch);
-      return { text, src: { kind: "github", owner: from.owner, name: from.name, ref: pr.branch }, path: r.rel, version: { kind: "git", commit: pr.head } };
+      return {
+        text,
+        src: { kind: "github", owner: from.owner, name: from.name, ref: pr.branch },
+        path: r.rel,
+        version: { kind: "git", commit: pr.head },
+      };
     }
   }
 }
@@ -85,7 +147,15 @@ function locateIn(seg: Segment, rd: Read): Segment | null {
   const lines = splitLines(rd.text);
   const at = locateSeg(seg, lines, analysisOf(seg.lang, rd.text).symbols);
   if (!at || at === "many") return null;
-  return { ...seg, src: rd.src, path: rd.path, start: at.start, end: at.end, text: lines.slice(at.start - 1, at.end), version: rd.version };
+  return {
+    ...seg,
+    src: rd.src,
+    path: rd.path,
+    start: at.start,
+    end: at.end,
+    text: lines.slice(at.start - 1, at.end),
+    version: rd.version,
+  };
 }
 
 /** Add Variant：宿主把来源补全（PR 的仓库、选文件），在那里找每一段 */
@@ -119,23 +189,38 @@ export async function addVariant(segs: Segment[], f: AddVariantFrom): Promise<Ne
 
 function nameOf(f: VariantFrom): string {
   switch (f.kind) {
-    case "upstream": return "Upstream";
-    case "ref": return /^[0-9a-f]{40}$/.test(f.ref) ? f.ref.slice(0, 7) : f.ref;
-    case "worktree": return "Working tree";
-    case "wt": return path.basename(f.dir);
-    case "file": return path.basename(f.abs);
-    case "pr": return `#${f.num}${f.branch ? ` ${f.branch}` : ""}`;
+    case "upstream":
+      return "Upstream";
+    case "ref":
+      return /^[0-9a-f]{40}$/.test(f.ref) ? f.ref.slice(0, 7) : f.ref;
+    case "worktree":
+      return "Working tree";
+    case "wt":
+      return path.basename(f.dir);
+    case "file":
+      return path.basename(f.abs);
+    case "pr":
+      return `#${f.num}${f.branch ? ` ${f.branch}` : ""}`;
   }
 }
 
-const sameSeg = (a: Segment, b: Segment) => a.start === b.start && a.end === b.end && a.path === b.path && sameLines(a.text, b.text) && JSON.stringify(a.version) === JSON.stringify(b.version);
+const sameSeg = (a: Segment, b: Segment) =>
+  a.start === b.start &&
+  a.end === b.end &&
+  a.path === b.path &&
+  sameLines(a.text, b.text) &&
+  JSON.stringify(a.version) === JSON.stringify(b.version);
 const tipOf = (s: Segment | undefined) => (s?.version.kind === "git" ? s.version.commit : undefined);
 
 /**
  * 刷新一块白板上有 Variant 的卡：每个 Variant 重新读（按函数名找）、rebase / 合进上游、落后几个 commit、上游最新的代码。
  * sent = 每张卡上次发的（同样的不再发）；net = 也问 GitHub
  */
-export async function syncVariants(b: Board, sent: Map<string, string>, o: { net?: boolean } = {}): Promise<Record<string, VariantSync>> {
+export async function syncVariants(
+  b: Board,
+  sent: Map<string, string>,
+  o: { net?: boolean } = {},
+): Promise<Record<string, VariantSync>> {
   const out: Record<string, VariantSync> = {};
   for (const c of b.cards) {
     if (!isCode(c) || !c.variants?.length) continue;
@@ -154,7 +239,8 @@ async function syncCard(c: CodeCard, net: boolean): Promise<VariantSync> {
   const ups = upstreamSegs(c);
   const repo = ups[0] && (await repoOf(ups[0]));
   const views: Segment[] = [];
-  let upSha: string | null = null, upLabel = "";
+  let upSha: string | null = null,
+    upLabel = "";
   if (repo) {
     const ref = await upstreamRef(repo.root);
     upSha = await resolveRef(repo.root, ref);
@@ -174,7 +260,8 @@ async function syncCard(c: CodeCard, net: boolean): Promise<VariantSync> {
     if (v.id === UPSTREAM) continue;
     const cur = segsOf(c, v.id) ?? [];
     const fresh: Segment[] = [];
-    let changed = false, tip: string | undefined;
+    let changed = false,
+      tip: string | undefined;
     for (const s of cur) {
       const rd = s.src.kind === "free" ? null : await readFrom(s, v.from, net).catch(() => null);
       if (rd?.tip) tip = rd.tip;
@@ -187,15 +274,30 @@ async function syncCard(c: CodeCard, net: boolean): Promise<VariantSync> {
       // 一律按 viewKey 给：白板那边哪个 Variant 在显示由白板自己定（这边的白板副本可能还没收到切换）
       views.push(...fresh.map((s) => ({ ...s, id: viewKey(s.id, v.id) })));
       // 分支 / worktree 的 commit 换了、又不是快进：rebase 过（force push），上面已经按函数名重新找过了
-      const old = tipOf(cur[0]), now = tipOf(fresh[0]);
-      if (repo && old && now && old !== now && (v.from.kind === "ref" || v.from.kind === "wt") && !(await isAncestor(repo.root, old, now))) (r.rebased ??= []).push(v.id);
+      const old = tipOf(cur[0]),
+        now = tipOf(fresh[0]);
+      if (
+        repo &&
+        old &&
+        now &&
+        old !== now &&
+        (v.from.kind === "ref" || v.from.kind === "wt") &&
+        !(await isAncestor(repo.root, old, now))
+      )
+        (r.rebased ??= []).push(v.id);
     }
     // 合进上游：分支的 commit 已经在上游里，又不是钉住的那个 commit 本身或更早
-    if (repo && upSha && pinned && (v.from.kind === "ref" && !/^[0-9a-f]{7,40}$/.test(v.from.ref) || v.from.kind === "wt")) {
+    if (
+      repo &&
+      upSha &&
+      pinned &&
+      ((v.from.kind === "ref" && !/^[0-9a-f]{7,40}$/.test(v.from.ref)) || v.from.kind === "wt")
+    ) {
       tip ??= tipOf(fresh[0]);
       if (tip && tip !== pinned && !(await isAncestor(repo.root, tip, pinned))) {
-        if (await isAncestor(repo.root, tip, upSha)) { if (v.merged !== tip) (r.merged ??= {})[v.id] = { into: upLabel, tip }; }
-        else {
+        if (await isAncestor(repo.root, tip, upSha)) {
+          if (v.merged !== tip) (r.merged ??= {})[v.id] = { into: upLabel, tip };
+        } else {
           const n = Number((await git(repo.root, ["rev-list", "--count", `${tip}..${upSha}`]))?.trim());
           if (n > 0) (r.behind ??= {})[v.id] = n;
         }

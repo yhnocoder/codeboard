@@ -3,16 +3,64 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  danglingRefs, emptyBoard, migrateBoard, rebaseSegment, removeCards, removeLinks, replaceCards, retargetCards, shiftBy, stampBorn,
-  placeCards, unlinkCard, mergeCodeCards, removeLostCalls, unmergeCard, removeSidenotes, removeStickers, notesOnChangedLines, sidenoteCard, sidenoteToCard,
-  arrangeCards, cardIntoSidenote, imageIntoNote, joinLinks, makeCompare, removeSections, renameTitleRefs, splitLink, swapCallTarget, renumberBorn,
-  loadBoard, loadSharedCard, turnNoteInto, cardTitle,
-  type Board, type Card, type CodeCard, type Link, type Segment,
+  danglingRefs,
+  emptyBoard,
+  migrateBoard,
+  rebaseSegment,
+  removeCards,
+  removeLinks,
+  replaceCards,
+  retargetCards,
+  shiftBy,
+  stampBorn,
+  placeCards,
+  unlinkCard,
+  mergeCodeCards,
+  removeLostCalls,
+  unmergeCard,
+  removeSidenotes,
+  removeStickers,
+  notesOnChangedLines,
+  sidenoteCard,
+  sidenoteToCard,
+  arrangeCards,
+  cardIntoSidenote,
+  imageIntoNote,
+  joinLinks,
+  makeCompare,
+  removeSections,
+  renameTitleRefs,
+  splitLink,
+  swapCallTarget,
+  renumberBorn,
+  loadBoard,
+  loadSharedCard,
+  turnNoteInto,
+  cardTitle,
+  type Board,
+  type Card,
+  type CodeCard,
+  type Link,
+  type Segment,
 } from "../src";
 
-const seg = (id: string, start: number, text: string[]): Segment => ({ id, src: { kind: "repo", repo: "" }, path: "a.py", lang: "python", start, end: start + text.length - 1, text, version: { kind: "git", commit: "x" } });
+const seg = (id: string, start: number, text: string[]): Segment => ({
+  id,
+  src: { kind: "repo", repo: "" },
+  path: "a.py",
+  lang: "python",
+  start,
+  end: start + text.length - 1,
+  text,
+  version: { kind: "git", commit: "x" },
+});
 const code = (id: string, s = seg(`s${id}`, 1, ["pass"])): CodeCard => ({ id, kind: "code", segments: [s] });
-const call = (from: string, to: string, line = 1): Extract<Link, { gen?: undefined }> => ({ id: `${from}-${to}`, call: { name: "f", col: 0 }, from: { card: from, seg: `s${from}`, line }, to: { card: to } });
+const call = (from: string, to: string, line = 1): Extract<Link, { gen?: undefined }> => ({
+  id: `${from}-${to}`,
+  call: { name: "f", col: 0 },
+  from: { card: from, seg: `s${from}`, line },
+  to: { card: to },
+});
 const compare = (id: string, a: string, b: string): Card => ({ id, kind: "compare", cols: [a, b] });
 
 describe("removeCards", () => {
@@ -90,7 +138,10 @@ describe("rebaseSegment", () => {
   });
 
   it("works on a Compare column", () => {
-    const b: Board = { ...emptyBoard("b", "B"), cards: [code("a", old), code("c"), { id: "k", kind: "compare", cols: ["a", "c"] }] };
+    const b: Board = {
+      ...emptyBoard("b", "B"),
+      cards: [code("a", old), code("c"), { id: "k", kind: "compare", cols: ["a", "c"] }],
+    };
     rebaseSegment(b, "a", { ...old, start: 11, end: 14 }, shiftBy(1));
     expect((b.cards[0] as CodeCard).segments[0].start).toBe(11);
   });
@@ -133,7 +184,13 @@ describe("creation order and graph marks upkeep", () => {
     expect(b.born).toEqual({ a: 7, n: 8 });
   });
   it("removeCards forgets the order and the mark; replaceCards hands them to the card that takes over", () => {
-    const b: Board = { ...emptyBoard("b", "B"), cards: [code("a"), code("b"), code("m")], born: { a: 0, b: 1 }, seq: 2, marks: { a: { icon: "star" }, b: { letter: "Q" } } };
+    const b: Board = {
+      ...emptyBoard("b", "B"),
+      cards: [code("a"), code("b"), code("m")],
+      born: { a: 0, b: 1 },
+      seq: 2,
+      marks: { a: { icon: "star" }, b: { letter: "Q" } },
+    };
     replaceCards(b, ["a", "b"], () => ({ card: "m" }));
     expect(b.born).toEqual({ m: 0 });
     expect(b.marks).toEqual({ m: { icon: "star" } });
@@ -142,7 +199,12 @@ describe("creation order and graph marks upkeep", () => {
     expect(b.marks).toBeUndefined();
   });
   it("danglingRefs reports marks and orders of missing cards", () => {
-    const b: Board = { ...emptyBoard("b", "B"), cards: [code("a")], born: { a: 0, x: 1 }, marks: { y: { letter: "B" } } };
+    const b: Board = {
+      ...emptyBoard("b", "B"),
+      cards: [code("a")],
+      born: { a: 0, x: 1 },
+      marks: { y: { letter: "B" } },
+    };
     expect(danglingRefs(b)).toEqual(["graph mark for missing card y", "creation order for missing card x"]);
   });
 });
@@ -180,7 +242,9 @@ describe("retargetCards", () => {
       { kind: "canvas", x: 0, y: 0, on: { card: "m" } },
       { kind: "canvas", x: 0, y: 0, on: { card: "m" } },
     ]);
-    delete b.place.a; delete b.place.b; b.place.m = { x: 0, y: 0, w: 1 };
+    delete b.place.a;
+    delete b.place.b;
+    b.place.m = { x: 0, y: 0, w: 1 };
     expect(danglingRefs(b)).toEqual([]);
   });
 
@@ -194,25 +258,56 @@ describe("retargetCards", () => {
 
 describe("danglingRefs", () => {
   it("is empty for a sound board and names every broken reference", () => {
-    const b: Board = { ...emptyBoard("b", "B"), cards: [code("a"), code("a")], place: { a: { x: 0, y: 0, w: 1 }, z: { x: 0, y: 0, w: 1 } }, links: [call("a", "x")] };
-    b.stickers = [{ id: "k", icon: { pack: "builtin", name: "star" }, at: { kind: "canvas", x: 0, y: 0, on: { link: "gone", t: 0 } } }];
-    expect(danglingRefs(b)).toEqual(["duplicate card id a", "link a-x → missing x", "sticker k on missing gone", "place for missing card z"]);
-    expect(danglingRefs({ ...emptyBoard("b", "B"), cards: [code("a")], place: { a: { x: 0, y: 0, w: 1 } } })).toEqual([]);
+    const b: Board = {
+      ...emptyBoard("b", "B"),
+      cards: [code("a"), code("a")],
+      place: { a: { x: 0, y: 0, w: 1 }, z: { x: 0, y: 0, w: 1 } },
+      links: [call("a", "x")],
+    };
+    b.stickers = [
+      {
+        id: "k",
+        icon: { pack: "builtin", name: "star" },
+        at: { kind: "canvas", x: 0, y: 0, on: { link: "gone", t: 0 } },
+      },
+    ];
+    expect(danglingRefs(b)).toEqual([
+      "duplicate card id a",
+      "link a-x → missing x",
+      "sticker k on missing gone",
+      "place for missing card z",
+    ]);
+    expect(danglingRefs({ ...emptyBoard("b", "B"), cards: [code("a")], place: { a: { x: 0, y: 0, w: 1 } } })).toEqual(
+      [],
+    );
   });
 });
 
 describe("migrateBoard", () => {
   it("refuses a board written by a newer CodeBoard instead of wiping it", () => {
-    expect(() => migrateBoard({ version: 11, id: "b", name: "B", cards: [{ id: "a", kind: "code", segments: [] }] })).toThrow(/newer/);
+    expect(() =>
+      migrateBoard({ version: 11, id: "b", name: "B", cards: [{ id: "a", kind: "code", segments: [] }] }),
+    ).toThrow(/newer/);
   });
   it("v7 → v8: a note's background and handwriting become one of Note / Text / Mark, code's nobg becomes bg: false", () => {
     const old = (o: object) => ({ id: "x", kind: "note", md: "x", ...o });
     const b = loadBoard({
-      version: 7, id: "b", name: "B", cam: { x: 0, y: 0, z: 1 },
+      version: 7,
+      id: "b",
+      name: "B",
+      cam: { x: 0, y: 0, z: 1 },
       cards: [
-        old({ id: "n", bg: true }), old({ id: "t", bg: false, size: "title", bold: true }), old({ id: "m", bg: false, hand: "orange" }),
-        old({ id: "nh", bg: true, hand: "blue" }), old({ id: "bare" }),
-        { ...code("c"), nobg: true, mergedFrom: [{ card: { ...code("old"), nobg: true }, place: { x: 0, y: 0, w: 1 } }] }, { ...code("f"), nobg: false },
+        old({ id: "n", bg: true }),
+        old({ id: "t", bg: false, size: "title", bold: true }),
+        old({ id: "m", bg: false, hand: "orange" }),
+        old({ id: "nh", bg: true, hand: "blue" }),
+        old({ id: "bare" }),
+        {
+          ...code("c"),
+          nobg: true,
+          mergedFrom: [{ card: { ...code("old"), nobg: true }, place: { x: 0, y: 0, w: 1 } }],
+        },
+        { ...code("f"), nobg: false },
       ],
       place: {},
     });
@@ -228,14 +323,21 @@ describe("migrateBoard", () => {
     expect(loadBoard(structuredClone(b))).toEqual(b); // v8 is read as is
   });
   it("v7 → v8 upgrades shared card files too", () => {
-    expect(loadSharedCard({ version: 7, card: { id: "s", kind: "note", md: "x", bg: false, hand: "green" }, sidenotes: [] }))
-      .toEqual({ version: 10, card: { id: "s", kind: "note", md: "x", look: "mark", hand: "green" }, sidenotes: [] });
-    expect(loadSharedCard({ version: 6, card: { ...code("s"), nobg: true }, sidenotes: [] }).card).toMatchObject({ bg: false });
+    expect(
+      loadSharedCard({ version: 7, card: { id: "s", kind: "note", md: "x", bg: false, hand: "green" }, sidenotes: [] }),
+    ).toEqual({ version: 10, card: { id: "s", kind: "note", md: "x", look: "mark", hand: "green" }, sidenotes: [] });
+    expect(loadSharedCard({ version: 6, card: { ...code("s"), nobg: true }, sidenotes: [] }).card).toMatchObject({
+      bg: false,
+    });
   });
 });
 
 describe("turnNoteInto (Note ↔ Text)", () => {
-  const board = (card: Card) => ({ ...emptyBoard("b", "B"), cards: [card], place: { [card.id]: { x: 100, y: 100, w: 280, h: 200 } } });
+  const board = (card: Card) => ({
+    ...emptyBoard("b", "B"),
+    cards: [card],
+    place: { [card.id]: { x: 100, y: 100, w: 280, h: 200 } },
+  });
   it("puts a renamed Note's title on the text's first line as a heading, and back in the header on the way back", () => {
     const b = board({ id: "n", kind: "note", md: "body **bold**\n\n- item", look: "note", title: "Scheduler" });
     turnNoteInto(b, "n", "text");
@@ -269,14 +371,19 @@ describe("turnNoteInto (Note ↔ Text)", () => {
 });
 
 describe("reference upkeep in board actions", () => {
-  const sw = (commit: string, start: number, text: string[]): Segment => ({ ...seg("s1", start, text), version: { kind: "git", commit } });
+  const sw = (commit: string, start: number, text: string[]): Segment => ({
+    ...seg("s1", start, text),
+    version: { kind: "git", commit },
+  });
   it("switching a card to another commit (switchCommit) rebases: hidden lines, links, sidenotes and stickers follow the content", () => {
     const b: Board = {
       ...emptyBoard("b", "B"),
       cards: [code("a", { ...sw("x", 10, ["def f():", "    x = 1", "    return x"]), hidden: [[11, 11]] }), code("z")],
       links: [{ id: "l", from: { card: "z" }, to: { card: "a", seg: "s1", line: 12 } }],
       sidenotes: [{ id: "n", at: { card: "a", seg: "s1", lines: [11, 11] }, kind: "text", md: "" }],
-      stickers: [{ id: "k", icon: { pack: "builtin", name: "star" }, at: { kind: "line", card: "a", seg: "s1", line: 12 } }],
+      stickers: [
+        { id: "k", icon: { pack: "builtin", name: "star" }, at: { kind: "line", card: "a", seg: "s1", line: 12 } },
+      ],
     };
     rebaseSegment(b, "a", sw("y", 30, ["# moved", "def f():", "    x = 1", "    return x"]));
     const s = (b.cards[0] as CodeCard).segments[0];
@@ -292,25 +399,52 @@ describe("reference upkeep in board actions", () => {
       ...emptyBoard("b", "B"),
       cards: [code("a", s), code("z")],
       place: { a: { x: 0, y: 0, w: 1 }, z: { x: 0, y: 0, w: 1 } },
-      links: [{ id: "l1", call: { name: "f", col: 0 }, from: { card: "a", seg: "s1", line: 4 }, to: { card: "z" } }, { id: "l2", from: { card: "z" }, to: { card: "a" } }],
+      links: [
+        { id: "l1", call: { name: "f", col: 0 }, from: { card: "a", seg: "s1", line: 4 }, to: { card: "z" } },
+        { id: "l2", from: { card: "z" }, to: { card: "a" } },
+      ],
       sidenotes: [{ id: "n", at: { card: "a", seg: "s1", lines: [2, 2] }, kind: "text", md: "" }],
     };
     const parts = [seg("p1", 1, s.text.slice(0, 2)), seg("p2", 3, s.text.slice(2))];
     const ids = ["c1", "c2"];
-    const i = (line?: number) => Math.max(0, parts.findIndex((p) => line !== undefined && line >= p.start && line <= p.end));
-    retargetCards(b, ["a"], (at) => ({ card: ids[i(at.line)], seg: at.seg === "s1" && at.line ? parts[i(at.line)].id : undefined }));
+    const i = (line?: number) =>
+      Math.max(
+        0,
+        parts.findIndex((p) => line !== undefined && line >= p.start && line <= p.end),
+      );
+    retargetCards(b, ["a"], (at) => ({
+      card: ids[i(at.line)],
+      seg: at.seg === "s1" && at.line ? parts[i(at.line)].id : undefined,
+    }));
     removeCards(b, ["a"]);
-    parts.forEach((p, k) => { b.cards.push(code(ids[k], p)); b.place[ids[k]] = { x: 0, y: 0, w: 1 }; });
-    expect(b.links.map((l) => [l.from, l.to])).toEqual([[{ card: "c2", seg: "p2", line: 4 }, { card: "z" }], [{ card: "z" }, { card: "c1", seg: undefined, line: undefined }]]);
+    parts.forEach((p, k) => {
+      b.cards.push(code(ids[k], p));
+      b.place[ids[k]] = { x: 0, y: 0, w: 1 };
+    });
+    expect(b.links.map((l) => [l.from, l.to])).toEqual([
+      [{ card: "c2", seg: "p2", line: 4 }, { card: "z" }],
+      [{ card: "z" }, { card: "c1", seg: undefined, line: undefined }],
+    ]);
     expect(b.sidenotes[0].at).toEqual({ card: "c1", seg: "p1", lines: [2, 2] });
     expect(danglingRefs(b)).toEqual([]);
   });
   it("updating a merged card also updates its mergedFrom snapshot, so Unmerge still finds the lines", () => {
-    const a = seg("sa", 10, ["def f():", "    return 1"]), c = { ...seg("sc", 12, ["def g():", "    return 2"]) };
+    const a = seg("sa", 10, ["def f():", "    return 1"]),
+      c = { ...seg("sc", 12, ["def g():", "    return 2"]) };
     const merged = seg("m1", 10, [...a.text, ...c.text]);
     const b: Board = {
       ...emptyBoard("b", "B"),
-      cards: [{ id: "m", kind: "code", segments: [merged], mergedFrom: [{ card: code("a", a), place: { x: 0, y: 0, w: 1 } }, { card: code("c", c), place: { x: 0, y: 0, w: 1 } }] }],
+      cards: [
+        {
+          id: "m",
+          kind: "code",
+          segments: [merged],
+          mergedFrom: [
+            { card: code("a", a), place: { x: 0, y: 0, w: 1 } },
+            { card: code("c", c), place: { x: 0, y: 0, w: 1 } },
+          ],
+        },
+      ],
       place: { m: { x: 0, y: 0, w: 1 } },
     };
     // New version: one line added on top
@@ -327,7 +461,13 @@ describe("reference upkeep in board actions", () => {
       cards: [code("a"), code("p"), code("q"), compare("k", "p", "q")],
       place: { a: { x: 0, y: 0, w: 1 }, k: { x: 0, y: 0, w: 1 } },
       links: [call("a", "k")],
-      stickers: [{ id: "s", icon: { pack: "builtin", name: "star" }, at: { kind: "canvas", x: 0, y: 0, on: { link: "a-k", t: 0 } } }],
+      stickers: [
+        {
+          id: "s",
+          icon: { pack: "builtin", name: "star" },
+          at: { kind: "canvas", x: 0, y: 0, on: { link: "a-k", t: 0 } },
+        },
+      ],
     };
     const c = structuredClone(b);
     removeLinks(b, ["a-k"]);
@@ -341,26 +481,42 @@ describe("reference upkeep in board actions", () => {
 });
 
 describe("swapCallTarget", () => {
-  const alts = [{ label: "Impl.a", path: "a.py", line: 1 }, { label: "Impl.b", path: "b.py", line: 5 }];
+  const alts = [
+    { label: "Impl.a", path: "a.py", line: 1 },
+    { label: "Impl.b", path: "b.py", line: 5 },
+  ];
   const setup = (): Board => ({
     ...emptyBoard("b", "B"),
     cards: [code("a"), code("old")],
     place: { a: { x: 0, y: 0, w: 1 }, old: { x: 100, y: 200, w: 500, section: "sec" } },
     sections: [{ id: "sec", title: "S", x: 0, y: 0, w: 1, h: 1 }],
     links: [{ ...call("a", "old"), call: { name: "f", col: 0, alts } }],
-    stickers: [{ id: "k", icon: { pack: "builtin", name: "star" }, at: { kind: "canvas", x: 0, y: 0, on: { card: "old" } } }],
+    stickers: [
+      { id: "k", icon: { pack: "builtin", name: "star" }, at: { kind: "canvas", x: 0, y: 0, on: { card: "old" } } },
+    ],
     marks: { old: { letter: "B" } },
-    born: { a: 0, old: 1 }, seq: 2,
+    born: { a: 0, old: 1 },
+    seq: 2,
   });
   const oldAlt = { label: "Old.f", path: "old.py", line: 1 };
 
   it("replaces a card only this arrow uses: the new card takes its place, section, stickers, mark and creation order; the old one becomes the alternative", () => {
     const b = setup();
-    const r = swapCallTarget(b, "a-old", code("new"), { alt: 1, oldAlt, w: 560, label: "picked", vals: [{ name: "k", value: "2" }] });
+    const r = swapCallTarget(b, "a-old", code("new"), {
+      alt: 1,
+      oldAlt,
+      w: 560,
+      label: "picked",
+      vals: [{ name: "k", value: "2" }],
+    });
     expect(r).toEqual({ kept: false });
     expect(b.cards.map((c) => c.id)).toEqual(["a", "new"]);
     expect(b.place.new).toEqual({ x: 100, y: 200, w: 500, section: "sec" });
-    expect(b.links[0]).toMatchObject({ label: "picked", to: { card: "new" }, call: { alts: [alts[0], oldAlt], vals: [{ name: "k", value: "2" }] } });
+    expect(b.links[0]).toMatchObject({
+      label: "picked",
+      to: { card: "new" },
+      call: { alts: [alts[0], oldAlt], vals: [{ name: "k", value: "2" }] },
+    });
     expect(b.stickers[0].at).toMatchObject({ on: { card: "new" } });
     expect([b.marks, b.born]).toEqual([{ new: { letter: "B" } }, { a: 0, new: 1 }]);
     expect(danglingRefs(b)).toEqual([]);
@@ -427,19 +583,56 @@ describe("guard: reference upkeep only in core/src/edit.ts", () => {
   /** [文件, 命中那一行里的一段原文, 为什么可以]：每一条都必须还命中（删了那行代码就删这一条） */
   const ALLOW: [string, string, string][] = [
     ["core/src/patch.ts", "if (p.full) b.place = {", "transport: applyPatch replays a diff edit.ts already computed"],
-    ["core/src/patch.ts", "for (const id of p.place.del ?? []) delete b.place[id];", "transport: applyPatch replays a diff"],
+    [
+      "core/src/patch.ts",
+      "for (const id of p.place.del ?? []) delete b.place[id];",
+      "transport: applyPatch replays a diff",
+    ],
     ["core/src/patch.ts", "Object.assign(b.place, p.place.set);", "transport: applyPatch replays a diff"],
-    ["core/src/patch.ts", "b.sidenotes = out;", "putShared swaps in a shared card's sidenotes from the card library, by id"],
-    ["core/src/patch.ts", "b.sidenotes.splice(j, 1);", "applySharedUpdate drops a shared card's sidenote another board deleted"],
-    ["core/src/patch.ts", "board.sidenotes = [...f.sidenotes", "inflate builds a board from its file plus the card library"],
-    ["core/src/patch.ts", "out.place = Object.fromEntries(mergeById(", "mergeFile: three-way merge of whole files, item by item"],
+    [
+      "core/src/patch.ts",
+      "b.sidenotes = out;",
+      "putShared swaps in a shared card's sidenotes from the card library, by id",
+    ],
+    [
+      "core/src/patch.ts",
+      "b.sidenotes.splice(j, 1);",
+      "applySharedUpdate drops a shared card's sidenote another board deleted",
+    ],
+    [
+      "core/src/patch.ts",
+      "board.sidenotes = [...f.sidenotes",
+      "inflate builds a board from its file plus the card library",
+    ],
+    ["core/src/patch.ts", "out.place = Object.fromEntries(", "mergeFile: three-way merge of whole files, item by item"],
     ["core/src/patch.ts", "p.place = {", "diffBoards builds a patch object, not a board"],
     ["core/src/questions.ts", "it.answer = a.card.id;", "a row of the derived questions list, not a board sticker"],
     ["board/src/actions/questions.ts", "delete q.answer;", "the user reopens a question: that is the edit itself"],
-    ["board/src/actions/questions.ts", "s.q = { ...(s.q ?? { md: \"\" }), done: true, answer: card }", "the user links the answer card: that is the edit itself"],
-    ["board/src/actions/flow.ts", "delete b.marks[g.id];", "the user clears a call graph's mark: that is the edit itself"],
-    ["board/src/actions/flow.ts", "(b.marks ??= {})[g.id] = mark;", "the user sets a call graph's mark: that is the edit itself"],
-    ["board/src/state/upkeep.ts", "b.born = tmp.born;", "mutate stamps creation order on new cards (core stampBorn on a plain copy)"],
+    [
+      "board/src/actions/questions.ts",
+      's.q = { ...(s.q ?? { md: "" }), done: true, answer: card }',
+      "the user links the answer card: that is the edit itself",
+    ],
+    [
+      "board/src/actions/flow.ts",
+      "delete b.marks[g.id];",
+      "the user clears a call graph's mark: that is the edit itself",
+    ],
+    [
+      "board/src/actions/flow.ts",
+      "if (!Object.keys(b.marks).length) delete b.marks;",
+      "the user clears the last call graph mark: that is the edit itself",
+    ],
+    [
+      "board/src/actions/flow.ts",
+      "(b.marks ??= {})[g.id] = mark;",
+      "the user sets a call graph's mark: that is the edit itself",
+    ],
+    [
+      "board/src/state/upkeep.ts",
+      "b.born = tmp.born;",
+      "mutate stamps creation order on new cards (core stampBorn on a plain copy)",
+    ],
   ];
   const LISTS = "cards|links|sections|sidenotes|stickers";
   const SPLICE = "splice|pop|shift|sort|reverse|fill|copyWithin";
@@ -460,69 +653,119 @@ describe("guard: reference upkeep only in core/src/edit.ts", () => {
     /\.(?:born|marks)\s*(?:\[[^\]]*\]\s*)?(?:\?\?)?=(?![=>])/g,
     /\bdelete\s+[\w$.]*\.(?:born|marks)\b/g,
   ];
-  const roots = ["../../core/src", "../../board/src", "../../host/src", "../../../extensions/vscode/src"].map((r) => fileURLToPath(new URL(r, import.meta.url)));
+  const roots = ["../../core/src", "../../board/src", "../../host/src", "../../../extensions/vscode/src"].map((r) =>
+    fileURLToPath(new URL(r, import.meta.url)),
+  );
   const repo = fileURLToPath(new URL("../../", import.meta.url));
-  const walk = (d: string): string[] => fs.readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(path.join(d, e.name)) : /\.tsx?$/.test(e.name) ? [path.join(d, e.name)] : []));
+  const walk = (d: string): string[] =>
+    fs
+      .readdirSync(d, { withFileTypes: true })
+      .flatMap((e) =>
+        e.isDirectory() ? walk(path.join(d, e.name)) : /\.tsx?$/.test(e.name) ? [path.join(d, e.name)] : [],
+      );
   type Hit = { at: string; line: string; match: string };
   const scan = (file: string, text: string): Hit[] => {
     const src = text.replace(/^[ \t]*(\/\/|\/?\*).*$/gm, (m) => " ".repeat(m.length)); // 整行注释换成空白，行号不变（[ \t]：不吞掉前面的空行）
     const lines = text.split("\n");
     const out: Hit[] = [];
-    for (const re of RULES) for (const m of src.matchAll(re)) {
-      const n = src.slice(0, m.index).split("\n").length;
-      out.push({ at: `${file}:${n}`, line: lines[n - 1], match: m[0].replace(/\s+/g, " ").trim() });
-    }
+    for (const re of RULES)
+      for (const m of src.matchAll(re)) {
+        const n = src.slice(0, m.index).split("\n").length;
+        out.push({ at: `${file}:${n}`, line: lines[n - 1], match: m[0].replace(/\s+/g, " ").trim() });
+      }
     return out;
   };
   const allowed = (file: string, h: Hit) => ALLOW.findIndex(([f, snip]) => f === file && h.line.includes(snip));
   it("no other file replaces, filters, reorders or deletes from a board's collections, or rewires links, answers, Compare columns, creation order or call marks", () => {
     const bad: string[] = [];
     const used = new Set<number>();
-    for (const r of roots) for (const f of walk(r)) {
-      const rel = path.relative(repo, f).split(path.sep).join("/").replace(/^packages\//, "");
-      if (EXEMPT.has(rel)) continue;
-      for (const h of scan(rel, fs.readFileSync(f, "utf8"))) {
-        const i = allowed(rel, h);
-        if (i < 0) bad.push(`${h.at}: ${h.match}`); else used.add(i);
+    for (const r of roots)
+      for (const f of walk(r)) {
+        const rel = path
+          .relative(repo, f)
+          .split(path.sep)
+          .join("/")
+          .replace(/^packages\//, "");
+        if (EXEMPT.has(rel)) continue;
+        for (const h of scan(rel, fs.readFileSync(f, "utf8"))) {
+          const i = allowed(rel, h);
+          if (i < 0) bad.push(`${h.at}: ${h.match}`);
+          else used.add(i);
+        }
       }
-    }
     expect(bad).toEqual([]);
     expect(ALLOW.filter((_, i) => !used.has(i)).map(([f, snip]) => `${f}: ${snip}`)).toEqual([]);
   });
   it("catches the shapes it is meant to catch", () => {
-    const hits = scan("x.ts", [
-      "b.cards = b.cards.filter((c) => c.id !== id);",
-      "const keep = b.links.filter(ok);\nb.links =\n  keep;",
-      "parent.sections.splice(0, 1); b.stickers.sort(byId); b.sidenotes.length = 0;",
-      "delete b.place[id]; Object.assign(b.place, more);",
-      "// b.cards = [] in a comment",
-      "b.cards.push(c); b.cards[i] = next; if (b.cards == x) {}",
-      "child.sections = child.sections",
-      "  .filter((s) => keep.has(s.id));",
-      "b.stickers",
-      "  .splice(i, 1); b[\"links\"] = []; Object.assign(b, { sections: [] });",
-      "l.to = { card: newId }; l.from = {",
-      "  ...l.from, card: x }; n.at.card = y; k.at.on.card = z;",
-      "s.q.answer = id; delete k.q.answer; s.q = { ...(s.q ?? { md: \"\" }), answer: id };",
-      "c.cols = [a, b]; c.cols[0] = a; c.cols.reverse();",
-      "b.born = {}; b.born[id] = 3; delete b.marks[id]; (b.marks ??= {})[g] = m;",
-      "l.to.line = 3; l.from.seg = s; s.from = side; if (k.q.answer === id) {} const x = { answer: 1 };",
-    ].join("\n"));
-    expect(hits.map((h) => h.at.split(":")[1]).sort((a, b) => +a - +b)).toEqual(["1", "3", "5", "5", "5", "6", "6", "9", "11", "12", "12", "13", "13", "14", "14", "15", "15", "15", "16", "16", "16", "17", "17", "17", "17"]);
+    const hits = scan(
+      "x.ts",
+      [
+        "b.cards = b.cards.filter((c) => c.id !== id);",
+        "const keep = b.links.filter(ok);\nb.links =\n  keep;",
+        "parent.sections.splice(0, 1); b.stickers.sort(byId); b.sidenotes.length = 0;",
+        "delete b.place[id]; Object.assign(b.place, more);",
+        "// b.cards = [] in a comment",
+        "b.cards.push(c); b.cards[i] = next; if (b.cards == x) {}",
+        "child.sections = child.sections",
+        "  .filter((s) => keep.has(s.id));",
+        "b.stickers",
+        '  .splice(i, 1); b["links"] = []; Object.assign(b, { sections: [] });',
+        "l.to = { card: newId }; l.from = {",
+        "  ...l.from, card: x }; n.at.card = y; k.at.on.card = z;",
+        's.q.answer = id; delete k.q.answer; s.q = { ...(s.q ?? { md: "" }), answer: id };',
+        "c.cols = [a, b]; c.cols[0] = a; c.cols.reverse();",
+        "b.born = {}; b.born[id] = 3; delete b.marks[id]; (b.marks ??= {})[g] = m;",
+        "l.to.line = 3; l.from.seg = s; s.from = side; if (k.q.answer === id) {} const x = { answer: 1 };",
+      ].join("\n"),
+    );
+    expect(hits.map((h) => h.at.split(":")[1]).sort((a, b) => +a - +b)).toEqual([
+      "1",
+      "3",
+      "5",
+      "5",
+      "5",
+      "6",
+      "6",
+      "9",
+      "11",
+      "12",
+      "12",
+      "13",
+      "13",
+      "14",
+      "14",
+      "15",
+      "15",
+      "15",
+      "16",
+      "16",
+      "16",
+      "17",
+      "17",
+      "17",
+      "17",
+    ]);
   });
   it("no hand-made card copies or merges in packages/board/src: new ids for a copied card come from placeCards / unlinkCard", () => {
     const root = fileURLToPath(new URL("../../board/src", import.meta.url));
-    const walk = (d: string): string[] => fs.readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(path.join(d, e.name)) : /\.tsx?$/.test(e.name) ? [path.join(d, e.name)] : []));
+    const walk = (d: string): string[] =>
+      fs
+        .readdirSync(d, { withFileTypes: true })
+        .flatMap((e) =>
+          e.isDirectory() ? walk(path.join(d, e.name)) : /\.tsx?$/.test(e.name) ? [path.join(d, e.name)] : [],
+        );
     const bad: string[] = [];
     for (const f of walk(root)) {
-      fs.readFileSync(f, "utf8").split("\n").forEach((t, i) => {
-        if (/mergedFrom:\s*orig|mergeOverlapping\(|\bd\.segments\.forEach\(\(s\) => \(s\.id = uid/.test(t)) bad.push(`${path.relative(root, f)}:${i + 1}: ${t.trim()}`);
-      });
+      fs.readFileSync(f, "utf8")
+        .split("\n")
+        .forEach((t, i) => {
+          if (/mergedFrom:\s*orig|mergeOverlapping\(|\bd\.segments\.forEach\(\(s\) => \(s\.id = uid/.test(t))
+            bad.push(`${path.relative(root, f)}:${i + 1}: ${t.trim()}`);
+        });
     }
     expect(bad).toEqual([]);
   });
 });
-
 
 describe("card copies, unlink, merge and unmerge (core edit, D2)", () => {
   const two = (): Board => ({
@@ -534,21 +777,29 @@ describe("card copies, unlink, merge and unmerge (core edit, D2)", () => {
     sidenotes: [{ id: "n1", at: { card: "a", seg: "sa", lines: [2, 2] }, kind: "text", md: "why" }],
   });
   it("placeCards copy: new ids for card, segments and sidenotes; drops section and lock; links stay behind", () => {
-    const src = two(), b = emptyBoard("t", "T");
-    const r = placeCards(b, [{ card: src.cards[0], place: src.place.a, sidenotes: src.sidenotes }], { copy: true, at: (p) => ({ ...p, x: p.x + 5 }) });
-    const id = r.cards.a, c = b.cards[0] as CodeCard;
+    const src = two(),
+      b = emptyBoard("t", "T");
+    const r = placeCards(b, [{ card: src.cards[0], place: src.place.a, sidenotes: src.sidenotes }], {
+      copy: true,
+      at: (p) => ({ ...p, x: p.x + 5 }),
+    });
+    const id = r.cards.a,
+      c = b.cards[0] as CodeCard;
     expect(id).not.toBe("a");
     expect(c.id).toBe(id);
     expect(c.segments[0].id).toBe(r.segs.sa);
     expect(r.segs.sa).not.toBe("sa");
     expect(b.place[id]).toEqual({ x: 15, y: 20, w: 300 });
-    expect(b.sidenotes.map((n) => [n.id !== "n1", n.at])).toEqual([[true, { card: id, seg: r.segs.sa, lines: [2, 2] }]]);
+    expect(b.sidenotes.map((n) => [n.id !== "n1", n.at])).toEqual([
+      [true, { card: id, seg: r.segs.sa, lines: [2, 2] }],
+    ]);
     expect(b.links).toEqual([]);
     expect(danglingRefs(b)).toEqual([]);
     expect((src.cards[0] as CodeCard).segments[0].id).toBe("sa"); // the source is not touched
   });
   it("placeCards linked: same ids, skips cards already on the board", () => {
-    const src = two(), b = emptyBoard("t", "T");
+    const src = two(),
+      b = emptyBoard("t", "T");
     const it = [{ card: src.cards[0], place: src.place.a, sidenotes: src.sidenotes }];
     expect(placeCards(b, it, { copy: false }).cards).toEqual({ a: "a" });
     expect(b.sidenotes.map((n) => n.id)).toEqual(["n1"]);
@@ -558,10 +809,15 @@ describe("card copies, unlink, merge and unmerge (core edit, D2)", () => {
   it("placeCards brings the links between the placed cards: copies get new link ids and ends, linked cards keep their ids", () => {
     const src = two();
     src.links.push({ id: "out", from: { card: "a" }, to: { card: "elsewhere" } });
-    const items = [{ card: src.cards[0], place: src.place.a }, { card: src.cards[1], place: src.place.z }];
+    const items = [
+      { card: src.cards[0], place: src.place.a },
+      { card: src.cards[1], place: src.place.z },
+    ];
     const c = emptyBoard("t", "T");
     const r = placeCards(c, items, { copy: true, links: src.links });
-    expect(c.links.map((l) => [l.id !== "a-z", l.from, l.to, l.call?.name])).toEqual([[true, { card: r.cards.a, seg: r.segs.sa, line: 2 }, { card: r.cards.z }, "f"]]);
+    expect(c.links.map((l) => [l.id !== "a-z", l.from, l.to, l.call?.name])).toEqual([
+      [true, { card: r.cards.a, seg: r.segs.sa, line: 2 }, { card: r.cards.z }, "f"],
+    ]);
     expect(danglingRefs(c)).toEqual([]);
     const s = emptyBoard("t", "T");
     placeCards(s, items, { copy: false, links: src.links });
@@ -584,15 +840,22 @@ describe("card copies, unlink, merge and unmerge (core edit, D2)", () => {
   });
   it("placeCards keeps a Compare with its columns", () => {
     const b = emptyBoard("t", "T");
-    const r = placeCards(b, [{ card: code("p") }, { card: code("q") }, { card: compare("k", "p", "q"), place: { x: 0, y: 0, w: 1 } }], { copy: true });
+    const r = placeCards(
+      b,
+      [{ card: code("p") }, { card: code("q") }, { card: compare("k", "p", "q"), place: { x: 0, y: 0, w: 1 } }],
+      { copy: true },
+    );
     expect((b.cards[2] as any).cols).toEqual([r.cards.p, r.cards.q]);
     expect(Object.keys(b.place)).toEqual([r.cards.k]);
     expect(danglingRefs(b)).toEqual([]);
   });
   it("unlinkCard gives the card a new id and carries every reference on this board", () => {
     const b = two();
-    b.stickers = [{ id: "k", icon: { pack: "builtin", name: "star" }, at: { kind: "line", card: "a", seg: "sa", line: 2 } }];
-    b.born = { a: 0, z: 1 }; b.marks = { a: { letter: "Q" } };
+    b.stickers = [
+      { id: "k", icon: { pack: "builtin", name: "star" }, at: { kind: "line", card: "a", seg: "sa", line: 2 } },
+    ];
+    b.born = { a: 0, z: 1 };
+    b.marks = { a: { letter: "Q" } };
     const to = unlinkCard(b, "a");
     expect(b.cards[0].id).toBe(to);
     expect(b.links[0].from.card).toBe(to);
@@ -609,21 +872,31 @@ describe("card copies, unlink, merge and unmerge (core edit, D2)", () => {
     const r = mergeCodeCards(b, ["a", "c"], "a", { id: "m", unlink: (id) => id === "c" })!;
     expect(r.id).toBe("m");
     const m = b.cards.find((x) => x.id === "m") as CodeCard;
-    expect(m.segments.map((s) => [s.start, s.end])).toEqual([[1, 2], [10, 11]]);
+    expect(m.segments.map((s) => [s.start, s.end])).toEqual([
+      [1, 2],
+      [10, 11],
+    ]);
     expect(m.mergedFrom!.map((o) => o.card.id)).toEqual(["a", expect.not.stringMatching(/^c$/)]);
-    expect(b.links.map((l) => [l.from.card, l.to.card])).toEqual([["m", "z"], ["z", "m"]]);
+    expect(b.links.map((l) => [l.from.card, l.to.card])).toEqual([
+      ["m", "z"],
+      ["z", "m"],
+    ]);
     expect(b.cards.some((x) => x.id === "c" || x.id === "a")).toBe(false);
     expect(danglingRefs(b)).toEqual([]);
     // Unmerge brings the originals back, links go back to their cards
     const u = unmergeCard(b, "m")!;
     expect(u.made.length).toBe(2);
-    expect(b.links.map((l) => [l.from.card === u.made[0], l.to.card === u.made[1]])).toEqual([[true, false], [false, true]]);
+    expect(b.links.map((l) => [l.from.card === u.made[0], l.to.card === u.made[1]])).toEqual([
+      [true, false],
+      [false, true],
+    ]);
     expect(danglingRefs(b)).toEqual([]);
   });
   it("removeSidenotes / removeStickers", () => {
     const b = two();
     b.stickers = [{ id: "k", icon: { pack: "builtin", name: "star" }, at: { kind: "canvas", x: 0, y: 0 } }];
-    removeSidenotes(b, ["n1"]); removeStickers(b, ["k"]);
+    removeSidenotes(b, ["n1"]);
+    removeStickers(b, ["k"]);
     expect([b.sidenotes, b.stickers]).toEqual([[], []]);
   });
   it("rebaseSegment with review marks sidenotes on changed lines; notesOnChangedLines counts them beforehand", () => {
@@ -632,23 +905,60 @@ describe("card copies, unlink, merge and unmerge (core edit, D2)", () => {
     const ns = { ...seg("sa", 1, ["def f():", "    g(1)"]), version: { kind: "git" as const, commit: "y" } };
     expect(notesOnChangedLines(b, "a", ns).map((n) => n.id)).toEqual(["n1"]);
     rebaseSegment(b, "a", ns, undefined, { review: "y" });
-    expect(b.sidenotes.map((n) => [n.id, n.review])).toEqual([["n1", "y"], ["n2", undefined]]);
+    expect(b.sidenotes.map((n) => [n.id, n.review])).toEqual([
+      ["n1", "y"],
+      ["n2", undefined],
+    ]);
   });
 });
 
 describe("placing a sidenote on the board", () => {
   const at = { card: "a", seg: "sa", lines: [2, 2] as [number, number] };
   it("makes the matching card: code, paste, text, link; a Card sidenote has none", () => {
-    const c = sidenoteCard({ id: "n", at, kind: "code", code: seg("s1", 5, ["x = 1"]), why: "because" }, "c1") as CodeCard;
-    expect([c.id, c.kind, c.desc, c.segments[0].text, c.segments[0].id === "s1"]).toEqual(["c1", "code", "because", ["x = 1"], false]);
-    const p = sidenoteCard({ id: "n", at, kind: "paste", text: "a\nb", lang: "python", url: "https://x.y" }) as CodeCard;
-    expect([p.segments[0].src, p.segments[0].start, p.segments[0].end, p.segments[0].text]).toEqual([{ kind: "free", url: "https://x.y" }, 1, 2, ["a", "b"]]);
-    expect(sidenoteCard({ id: "n", at, kind: "text", md: "hi" }, "c2")).toEqual({ id: "c2", kind: "note", md: "hi", look: "note" });
-    expect(sidenoteCard({ id: "n", at, kind: "link", url: "https://x.y", title: "T" })).toMatchObject({ kind: "web", url: "https://x.y", meta: { title: "T" } });
+    const c = sidenoteCard(
+      { id: "n", at, kind: "code", code: seg("s1", 5, ["x = 1"]), why: "because" },
+      "c1",
+    ) as CodeCard;
+    expect([c.id, c.kind, c.desc, c.segments[0].text, c.segments[0].id === "s1"]).toEqual([
+      "c1",
+      "code",
+      "because",
+      ["x = 1"],
+      false,
+    ]);
+    const p = sidenoteCard({
+      id: "n",
+      at,
+      kind: "paste",
+      text: "a\nb",
+      lang: "python",
+      url: "https://x.y",
+    }) as CodeCard;
+    expect([p.segments[0].src, p.segments[0].start, p.segments[0].end, p.segments[0].text]).toEqual([
+      { kind: "free", url: "https://x.y" },
+      1,
+      2,
+      ["a", "b"],
+    ]);
+    expect(sidenoteCard({ id: "n", at, kind: "text", md: "hi" }, "c2")).toEqual({
+      id: "c2",
+      kind: "note",
+      md: "hi",
+      look: "note",
+    });
+    expect(sidenoteCard({ id: "n", at, kind: "link", url: "https://x.y", title: "T" })).toMatchObject({
+      kind: "web",
+      url: "https://x.y",
+      meta: { title: "T" },
+    });
     expect(sidenoteCard({ id: "n", at, kind: "card", card: "b" })).toBeNull();
   });
   it("swaps the sidenote for an arrow from its line to the new card", () => {
-    const b: Board = { ...emptyBoard("b", "B"), cards: [code("a", seg("sa", 1, ["def f():", "    g()"])), code("b")], sidenotes: [{ id: "n9", at, kind: "text", md: "hi" }] };
+    const b: Board = {
+      ...emptyBoard("b", "B"),
+      cards: [code("a", seg("sa", 1, ["def f():", "    g()"])), code("b")],
+      sidenotes: [{ id: "n9", at, kind: "text", md: "hi" }],
+    };
     sidenoteToCard(b, "n9", "b");
     expect(b.sidenotes).toEqual([]);
     expect(b.links.at(-1)).toMatchObject({ from: { card: "a", seg: "sa", line: 2 }, to: { card: "b" } });
@@ -657,11 +967,23 @@ describe("placing a sidenote on the board", () => {
 });
 
 describe("board action edits (core edit)", () => {
-  const base = (cards: Card[]): Board => ({ ...emptyBoard("b", "B"), cards, place: Object.fromEntries(cards.map((c, i) => [c.id, { x: i * 10, y: 0, w: 100 }])) });
+  const base = (cards: Card[]): Board => ({
+    ...emptyBoard("b", "B"),
+    cards,
+    place: Object.fromEntries(cards.map((c, i) => [c.id, { x: i * 10, y: 0, w: 100 }])),
+  });
 
   it("removeSections hands children and members to the nearest surviving parent", () => {
     const b = base([code("a"), code("c")]);
-    const sec = (id: string, parent?: string) => ({ id, title: id, x: 0, y: 0, w: 10, h: 10, ...(parent ? { parent } : {}) });
+    const sec = (id: string, parent?: string) => ({
+      id,
+      title: id,
+      x: 0,
+      y: 0,
+      w: 10,
+      h: 10,
+      ...(parent ? { parent } : {}),
+    });
     b.sections = [sec("top"), sec("mid", "top"), sec("low", "mid"), sec("solo")];
     b.place.a.section = "low";
     b.place.c.section = "solo";
@@ -687,9 +1009,14 @@ describe("board action edits (core edit)", () => {
   it("splitLink and joinLinks are inverses", () => {
     const b = base([code("a"), code("b")]);
     b.links = [{ id: "l", from: { card: "a" }, to: { card: "b" }, rpc: { mech: "shm" } }];
-    placeCards(b, [{ card: { id: "m", kind: "note", md: "m", look: "note", msg: {} }, place: { x: 0, y: 0, w: 50 } }], { copy: false });
+    placeCards(b, [{ card: { id: "m", kind: "note", md: "m", look: "note", msg: {} }, place: { x: 0, y: 0, w: 50 } }], {
+      copy: false,
+    });
     splitLink(b, "l", "m", "l2");
-    expect(b.links.map((l) => [l.id, l.from.card, l.to.card, l.style?.head?.end, !!l.rpc])).toEqual([["l", "a", "m", false, true], ["l2", "m", "b", undefined, true]]);
+    expect(b.links.map((l) => [l.id, l.from.card, l.to.card, l.style?.head?.end, !!l.rpc])).toEqual([
+      ["l", "a", "m", false, true],
+      ["l2", "m", "b", undefined, true],
+    ]);
     expect(danglingRefs(b)).toEqual([]);
     joinLinks(b, "l", "l2", "m");
     expect(b.links.map((l) => [l.id, l.from.card, l.to.card, l.style])).toEqual([["l", "a", "b", undefined]]);
@@ -700,7 +1027,9 @@ describe("board action edits (core edit)", () => {
   it("sidenoteToCard swaps the note for a linked card; cardIntoSidenote goes back", () => {
     const b = base([code("a")]);
     b.sidenotes = [{ id: "n", at: { card: "a", seg: "sa", lines: [1, 1] }, kind: "text", md: "hi" }];
-    placeCards(b, [{ card: { id: "t", kind: "note", md: "hi", look: "text" }, place: { x: 0, y: 0, w: 50 } }], { copy: false });
+    placeCards(b, [{ card: { id: "t", kind: "note", md: "hi", look: "text" }, place: { x: 0, y: 0, w: 50 } }], {
+      copy: false,
+    });
     sidenoteToCard(b, "n", "t");
     expect(b.sidenotes).toEqual([]);
     expect(b.links).toMatchObject([{ from: { card: "a", seg: "sa", line: 1 }, to: { card: "t" } }]);
@@ -713,15 +1042,24 @@ describe("board action edits (core edit)", () => {
 
   it("imageIntoNote appends the image (and its caption) to the Note and removes the image card with its arrows", () => {
     const b = base([code("a")]);
-    placeCards(b, [
-      { card: { id: "n", kind: "note", md: "# Plan\n\nStep one\n\n", look: "note" }, place: { x: 0, y: 0, w: 300 } },
-      { card: { id: "i", kind: "image", src: "abc.png", alt: "the [batch]", desc: "Prefill first" }, place: { x: 400, y: 0, w: 200 } },
-    ], { copy: false });
+    placeCards(
+      b,
+      [
+        { card: { id: "n", kind: "note", md: "# Plan\n\nStep one\n\n", look: "note" }, place: { x: 0, y: 0, w: 300 } },
+        {
+          card: { id: "i", kind: "image", src: "abc.png", alt: "the [batch]", desc: "Prefill first" },
+          place: { x: 400, y: 0, w: 200 },
+        },
+      ],
+      { copy: false },
+    );
     b.links.push({ id: "l", from: { card: "a" }, to: { card: "i" } });
     expect(imageIntoNote(b, "i", "a", "assets/x.png")).toBe(false);
     expect(imageIntoNote(b, "i", "n", "assets/abc-40x30.png")).toBe(true);
     expect(b.cards.map((c) => c.id)).toEqual(["a", "n"]);
-    expect((b.cards[1] as { md: string }).md).toBe("# Plan\n\nStep one\n\n![the batch](assets/abc-40x30.png)\n\nPrefill first");
+    expect((b.cards[1] as { md: string }).md).toBe(
+      "# Plan\n\nStep one\n\n![the batch](assets/abc-40x30.png)\n\nPrefill first",
+    );
     expect(b.links).toEqual([]);
     expect(b.place.i).toBeUndefined();
     expect(danglingRefs(b)).toEqual([]);
@@ -730,21 +1068,29 @@ describe("board action edits (core edit)", () => {
   it("imageIntoNote at a block's start puts the image there as its own paragraph", () => {
     const b = base([]);
     const md = "# Plan\n\nStep one\n\n- a\n- b\n";
-    placeCards(b, [
-      { card: { id: "n", kind: "note", md, look: "note" }, place: { x: 0, y: 0, w: 300 } },
-      { card: { id: "i", kind: "image", src: "abc.png" }, place: { x: 400, y: 0, w: 200 } },
-      { card: { id: "j", kind: "image", src: "def.png" }, place: { x: 400, y: 300, w: 200 } },
-    ], { copy: false });
+    placeCards(
+      b,
+      [
+        { card: { id: "n", kind: "note", md, look: "note" }, place: { x: 0, y: 0, w: 300 } },
+        { card: { id: "i", kind: "image", src: "abc.png" }, place: { x: 400, y: 0, w: 200 } },
+        { card: { id: "j", kind: "image", src: "def.png" }, place: { x: 400, y: 300, w: 200 } },
+      ],
+      { copy: false },
+    );
     expect(imageIntoNote(b, "i", "n", "assets/abc.png", md.indexOf("- a"))).toBe(true);
     expect((b.cards[0] as { md: string }).md).toBe("# Plan\n\nStep one\n\n![](assets/abc.png)\n\n- a\n- b");
     expect(imageIntoNote(b, "j", "n", "assets/def.png", 0)).toBe(true);
-    expect((b.cards[0] as { md: string }).md).toBe("![](assets/def.png)\n\n# Plan\n\nStep one\n\n![](assets/abc.png)\n\n- a\n- b");
+    expect((b.cards[0] as { md: string }).md).toBe(
+      "![](assets/def.png)\n\n# Plan\n\nStep one\n\n![](assets/abc.png)\n\n- a\n- b",
+    );
     expect(danglingRefs(b)).toEqual([]);
   });
 
   it("makeCompare unplaces the columns and moves their card stickers onto the compare", () => {
     const b = base([code("p"), code("q")]);
-    b.stickers = [{ id: "s", icon: { pack: "builtin", name: "star" }, at: { kind: "canvas", x: 1, y: 2, on: { card: "q" } } }];
+    b.stickers = [
+      { id: "s", icon: { pack: "builtin", name: "star" }, at: { kind: "canvas", x: 1, y: 2, on: { card: "q" } } },
+    ];
     makeCompare(b, "k", ["p", "q"], { x: 0, y: 0, w: 300 });
     expect(Object.keys(b.place)).toEqual(["k"]);
     expect(b.stickers[0].at).toEqual({ kind: "canvas", x: 1, y: 2, on: { card: "k" } });
@@ -769,12 +1115,19 @@ describe("board action edits (core edit)", () => {
     makeCompare(k2, "k", ["p", "q"], { x: 0, y: 0, w: 300 });
     expect(k2.cards.find((x) => x.id === "k")!.tilt).toBeUndefined();
     const into = base([]);
-    const ids = placeCards(into, [{ card: { id: "n", kind: "note", md: "x", look: "note", tilt: true }, place: { x: 0, y: 0, w: 100 } }], { copy: true });
+    const ids = placeCards(
+      into,
+      [{ card: { id: "n", kind: "note", md: "x", look: "note", tilt: true }, place: { x: 0, y: 0, w: 100 } }],
+      { copy: true },
+    );
     expect(into.cards.find((x) => x.id === ids.cards.n)!.tilt).toBe(true);
   });
 
   it("renameTitleRefs rewrites [[old]] in notes, descriptions and text sidenotes", () => {
-    const b = base([{ id: "n", kind: "note", md: "see [[ Foo ]] and [[foo.bar]]", look: "text" }, { ...code("a"), desc: "[[foo]]" }]);
+    const b = base([
+      { id: "n", kind: "note", md: "see [[ Foo ]] and [[foo.bar]]", look: "text" },
+      { ...code("a"), desc: "[[foo]]" },
+    ]);
     b.sidenotes = [{ id: "s", at: { card: "a" }, kind: "text", md: "[[FOO]]" }];
     renameTitleRefs(b, "foo", "Baz");
     expect((b.cards[0] as { md: string }).md).toBe("see [[Baz]] and [[foo.bar]]");

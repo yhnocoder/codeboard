@@ -10,21 +10,34 @@ const DEEPSEEK_SECRET = "codeboard.deepseekApiKey";
 
 /** DeepSeek 的密钥；没设、密钥存储出错都回 undefined */
 export async function deepseekKey(): Promise<string | undefined> {
-  return (await workspace().secrets.get(DEEPSEEK_SECRET).catch(() => undefined)) || undefined;
+  return (
+    (await workspace()
+      .secrets.get(DEEPSEEK_SECRET)
+      .catch(() => undefined)) || undefined
+  );
 }
 
 /** DeepSeek 的模型名和地址（设置 codeboard.ai.deepseekModel / deepseekBaseUrl，空 = 默认） */
 export function deepseekTarget(): { model?: string; baseUrl?: string } {
   const s = workspace().settings;
-  return { model: s.get<string>("codeboard.ai.deepseekModel") || undefined, baseUrl: s.get<string>("codeboard.ai.deepseekBaseUrl") || undefined };
+  return {
+    model: s.get<string>("codeboard.ai.deepseekModel") || undefined,
+    baseUrl: s.get<string>("codeboard.ai.deepseekBaseUrl") || undefined,
+  };
 }
 
 /** 命令 Set DeepSeek API Key 和白板上的 Set Key…：在 ask 的地方（白板的对话框或编辑器的输入框）问密钥，存进密钥存储；回设好了没有 */
 export async function setDeepseekKey(ask: Prompts): Promise<boolean> {
-  const key = (await ask.input({
-    title: "DeepSeek API Key", ok: "Save", password: true, placeHolder: "sk-…",
-    prompt: "Used for gray inline completions in Notes and for the AI tools (Extract Text, Convert to SVG, Auto Focus). Stored in VS Code's secret storage.",
-  }))?.trim();
+  const key = (
+    await ask.input({
+      title: "DeepSeek API Key",
+      ok: "Save",
+      password: true,
+      placeHolder: "sk-…",
+      prompt:
+        "Used for gray inline completions in Notes and for the AI tools (Extract Text, Convert to SVG, Auto Focus). Stored in VS Code's secret storage.",
+    })
+  )?.trim();
   if (!key) return false;
   await workspace().secrets.set(DEEPSEEK_SECRET, key);
   void workspace().ui.info("DeepSeek API key saved.");
@@ -57,12 +70,21 @@ export async function completeNote(before: string, after: string, signal: AbortS
   }
   const ai = workspace().ai;
   if (!ai || signal.aborted) return undefined;
-  const r = await ai.chat(undefined, { system: COMPLETE_SYSTEM, user: completePrompt(before, after), fast: true, maxChars: 600 }, { signal, justification: NOTE_JUSTIFY });
+  const r = await ai.chat(
+    undefined,
+    { system: COMPLETE_SYSTEM, user: completePrompt(before, after), fast: true, maxChars: 600 },
+    { signal, justification: NOTE_JUSTIFY },
+  );
   return "fail" in r ? undefined : spaceChatReply(r.text, before);
 }
 
 /** Settings 的 AI 一节：DeepSeek 的密钥设了没有（只回这一位）、编辑器现在有哪些语言模型 */
 export async function aiInfo(): Promise<AiInfo> {
-  const [key, models] = await Promise.all([deepseekKey(), workspace().ai?.models().catch(() => []) ?? []]);
+  const [key, models] = await Promise.all([
+    deepseekKey(),
+    workspace()
+      .ai?.models()
+      .catch(() => []) ?? [],
+  ]);
   return { key: !!key, models };
 }

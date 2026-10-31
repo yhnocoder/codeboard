@@ -14,7 +14,8 @@ function rangeOf(md: string, word: string, i = 0) {
   const dom = staticDomRange(root, at, at + word.length)!;
   return { root, dom, r: staticTextRange(root, dom)! };
 }
-const toggle = (md: string, word: string, mark: "bold" | "highlight", i = 0) => toggleStaticMark(md, rangeOf(md, word, i).r, mark);
+const toggle = (md: string, word: string, mark: "bold" | "highlight", i = 0) =>
+  toggleStaticMark(md, rangeOf(md, word, i).r, mark);
 
 describe("marks on a static selection", () => {
   it("bolds and highlights a phrase, and toggles each off again", () => {

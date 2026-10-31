@@ -59,12 +59,14 @@ export function startHost(ws: Workspace, env: HostEnv, o: HostOptions = {}): Hos
   record();
   let unsweep = scheduleAssetSweep(store);
   on({ dispose: () => unsweep() });
-  on(onDidSwitchStorage(() => {
-    void hub.followStorage();
-    unsweep();
-    unsweep = scheduleAssetSweep(store);
-    record();
-  }));
+  on(
+    onDidSwitchStorage(() => {
+      void hub.followStorage();
+      unsweep();
+      unsweep = scheduleAssetSweep(store);
+      record();
+    }),
+  );
   const follow = () => void followStorageDir(store);
   on(watchProjectDir(follow));
   on(ws.files.onDidChangeRoots(follow));
@@ -74,24 +76,39 @@ export function startHost(ws: Workspace, env: HostEnv, o: HostOptions = {}): Hos
 
   // 代码变了：记下的定义跳转结果作废
   const files = ws.files;
-  on(files.onDidEdit((abs) => { if (abs) forgetDefs(); }));
-  on(files.onDidSave((abs) => { if (abs) forgetDefs(); }));
+  on(
+    files.onDidEdit((abs) => {
+      if (abs) forgetDefs();
+    }),
+  );
+  on(
+    files.onDidSave((abs) => {
+      if (abs) forgetDefs();
+    }),
+  );
   on(files.onDidCreate(() => forgetDefs()));
   on(files.onDidDelete(() => forgetDefs()));
   on(files.onDidRename(() => forgetDefs()));
   on(watchNameIndex());
 
-  on(ws.settings.onDidChange((e) => {
-    if (e.affects("codeboard.storageDir")) follow();
-    if (affectsSettings(e)) hub.broadcast({ type: "host", host: { settings: readSettings() } });
-    if (e.affects("editor.fontFamily")) hub.broadcast({ type: "host", host: { fontFamily: ws.settings.get<string>("editor.fontFamily") } });
-  }));
+  on(
+    ws.settings.onDidChange((e) => {
+      if (e.affects("codeboard.storageDir")) follow();
+      if (affectsSettings(e)) hub.broadcast({ type: "host", host: { settings: readSettings() } });
+      if (e.affects("editor.fontFamily"))
+        hub.broadcast({ type: "host", host: { fontFamily: ws.settings.get<string>("editor.fontFamily") } });
+    }),
+  );
 
   let disposed = false;
-  const ready = analysis.then(() => { if (!disposed) on(watchVersions(hub, store)); });
+  const ready = analysis.then(() => {
+    if (!disposed) on(watchVersions(hub, store));
+  });
 
   return {
-    hub, store, ready,
+    hub,
+    store,
+    ready,
     actions: makeActions(hub, store),
     onDidSwitchStorage,
     onDidOpenGithubFile,
