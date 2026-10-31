@@ -30,6 +30,21 @@ export function setAssetBase(b: string) {
   setImageResolver(b ? (src) => (src.startsWith("assets/") ? { src: `${b}/${src.slice(7)}` } : undefined) : null);
 }
 
+/**
+ * The drag data type an image dragged in the editor carries besides its Markdown source (text/plain): JSON of
+ * DraggedImage. A drop the editor does not take (released outside it) can read which image it was
+ */
+export const IMAGE_DRAG_TYPE = "application/x-markdown-image";
+/** src = the address as written in the Markdown (not the resolved one), caption = the title */
+export type DraggedImage = { src: string; alt: string; caption: string };
+export function draggedImage(dt: DataTransfer | null | undefined): DraggedImage | null {
+  if (!dt?.types.includes(IMAGE_DRAG_TYPE)) return null;
+  try {
+    const v = JSON.parse(dt.getData(IMAGE_DRAG_TYPE)) as Partial<DraggedImage>;
+    return typeof v.src === "string" && v.src ? { src: v.src, alt: String(v.alt ?? ""), caption: String(v.caption ?? "") } : null;
+  } catch { return null; }
+}
+
 /** 图注：Markdown 里图的 title（![a](u "图注")），空白的不算 */
 export const captionOf = (title: unknown): string => (typeof title === "string" ? title.trim() : "");
 

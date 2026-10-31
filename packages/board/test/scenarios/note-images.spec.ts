@@ -1,6 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { emptyBoard, type Board, type NoteCard } from "@codeboard/core";
+import { emptyBoard, type Board, type ImageCard, type NoteCard } from "@codeboard/core";
 import { Storage } from "@codeboard/core/storage";
 import { nodeFs } from "@codeboard/host/nodefs";
 import { saveNoteImage } from "@codeboard/host/images";
@@ -454,6 +454,59 @@ test("noteImageDragMoves", async () => {
   const text = md(h, "n0").replace(PAGE_SRC, "SRC");
   check("noteImageDragMoves saved", /^First paragraph of text\.\n\nSecond!\[\]\(SRC\)\{width=\d+%\} paragraph of text here\.$/.test(text), text);
   await done();
+});
+
+/** #95: while editing a Note, an image dragged out of it and released on the board becomes an image card there (the same file
+ *  in assets/, its alt text and caption, as wide as it was drawn); the Note keeps its image, and ⌘Z takes the card away. The
+ *  same from the image under its opened source */
+test("noteImageDragOut", async () => {
+  const file = "0123456789abcdef-320x180.png", PIC = screenshot(320, 180);
+  const b = board([`First paragraph of text.\n\n![Pages](assets/${file} "Block table")\n\nSecond paragraph of text here.`]);
+  const h = await open({
+    board: b, light, w: 1240, h: 820, settings: { theme: "warm-ink" } as any, host: { assetBase: BASE },
+    beforeLoad: (p) => p.route(`${BASE}/**`, (r) => r.fulfill({ body: PIC, contentType: "image/png" })),
+  });
+  const pg = h.page, card = pg.locator('.card[data-id="n0"]'), md0 = md(h, "n0");
+  const images = () => h.board().cards.filter((c) => c.kind === "image");
+  /** Presses on the image `sel` in the editor and drags it to the board point `to`, a move per frame */
+  const dragOut = async (sel: string, to: { x: number; y: number }) => {
+    const img = card.locator(sel).first();
+    await pg.waitForFunction((el) => (el as HTMLImageElement).complete && (el as HTMLImageElement).naturalWidth > 0, await img.elementHandle());
+    const r = (await img.boundingBox())!, from = { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+    await pg.mouse.move(from.x, from.y);
+    await pg.mouse.down();
+    for (let i = 1; i <= 12; i++) { await pg.mouse.move(from.x + ((to.x - from.x) * i) / 12, from.y + ((to.y - from.y) * i) / 12); await frames(pg); }
+    await pg.mouse.up();
+    return r.width;
+  };
+  await idle(h);
+  await card.locator(".nbody p").first().dblclick();
+  await card.locator(".md-pm:focus").waitFor();
+  const to = { x: 760, y: 420 };
+  const drawn = await dragOut(".md-pm .md-img:not(.below) img", to);
+  await until(h, "an image card is made where the image is released", () => images().length === 1);
+  await idle(h);
+  await pg.screenshot({ path: path.join(OUT, "95-note-image-drag-out.png") });
+  const c = images()[0] as ImageCard, p = h.board().place[c.id];
+  check("noteImageDragOut card of the same image", c.src === file && c.alt === "Pages" && c.desc === "Block table", c);
+  check("noteImageDragOut card where released, as wide as drawn", Math.abs(p.x - to.x) <= 2 && Math.abs(p.y - to.y) <= 2 && Math.abs(p.w - drawn) <= 2, { p, to, drawn });
+  check("noteImageDragOut the Note keeps its image", (await card.locator(".md-pm img:not(.ProseMirror-separator)").count()) === 1, await card.locator(".md-pm").innerText());
+  await exitEdit(h);
+  check("noteImageDragOut the Note is unchanged", md(h, "n0") === md0, md(h, "n0"));
+  await pg.keyboard.press("Control+z");
+  await until(h, "undo takes the card away", () => images().length === 0);
+  // with the source opened (a click on the image), the image under it drags out the same way
+  await card.locator(".nbody p").first().dblclick();
+  await card.locator(".md-pm:focus").waitFor();
+  await card.locator(".md-pm .md-img:not(.below) img").first().click();
+  await card.locator(".md-pm .md-img.below").waitFor();
+  await dragOut(".md-pm .md-img.below img", { x: 760, y: 560 });
+  await until(h, "the image under the source drags out too", () => images().length === 1);
+  const c2 = images()[0] as ImageCard;
+  check("noteImageDragOut from the opened source", c2.src === file && c2.alt === "Pages", c2);
+  await exitEdit(h);
+  check("noteImageDragOut the Note is unchanged after both", md(h, "n0") === md0, md(h, "n0"));
+  await h.close();
 });
 
 /** A screenshot pasted while editing is saved to the card only when the editor closes: right-clicking it still offers Add Caption, and the caption lands on it */

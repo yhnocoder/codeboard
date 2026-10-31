@@ -9,7 +9,7 @@ import { tune } from "./state/tune";
 import { WHEEL_GESTURE, BLOCK_GLIDE } from "./state/timing";
 import { cam, setCam, stopCam, camTo, fling, toWorld, view, ZMIN, ZMAX, lod, reduceMotion } from "./state/camera";
 import { setGuides, setSizeHint, setDropTarget, dropTarget, setDragging, setMarquee, setRubber, setEditing, editing, setEditEntry, type NoteSpot } from "./state/ui";
-import { staticTextRange } from "@yhnocoder/markdown";
+import { staticTextRange, draggedImage, IMAGE_DRAG_TYPE } from "@yhnocoder/markdown";
 import { frames, deepestAt, hiddenByAncestor, homeFor, partlyIn, frameOf, sec, descSections, allMembers, visibleCards, setMovingHome } from "./state/sections";
 import { geo } from "./state/geo";
 import { aimBlock, aimPoint, blockOf, tintBlocks, type BlockAim } from "./state/blocks";
@@ -822,9 +822,26 @@ export function installKeys() {
   // webview wrapper cancels every dragover and drop on this window, before the board's own listeners run: listen on the document,
   // which the drop passes first, so defaultPrevented still says only whether a Note being edited took it
   const FILE_TYPES = ["Files", "text/uri-list", "application/vnd.code.uri-list", "resourceurls", "codefiles"];
-  document.addEventListener("dragover", (e) => { if (e.dataTransfer?.types.some((t) => FILE_TYPES.includes(t))) e.preventDefault(); });
+  // An image dragged in a Note being edited: released in that editor (or another one) the editor takes it; anywhere else on the
+  // board it becomes an image card there. Which Note and how wide it is drawn are read when the drag starts
+  let outOf: { card: string; w: number } | null = null;
+  document.addEventListener("dragstart", (e) => {
+    const t = e.target instanceof Element ? e.target : null, card = t?.closest<HTMLElement>(".card[data-id]");
+    const img = t?.querySelector("img") ?? t?.closest("img");
+    outOf = card && img && draggedImage(e.dataTransfer) ? { card: card.dataset.id!, w: img.getBoundingClientRect().width / cam.z } : null;
+  });
+  document.addEventListener("dragend", () => { outOf = null; });
+  const DROP_TYPES = [...FILE_TYPES, IMAGE_DRAG_TYPE];
+  document.addEventListener("dragover", (e) => { if (e.dataTransfer?.types.some((t) => DROP_TYPES.includes(t))) e.preventDefault(); });
   document.addEventListener("drop", (e) => {
     if (e.defaultPrevented || !e.dataTransfer) return;
+    const img = outOf && draggedImage(e.dataTransfer);
+    if (img) {
+      e.preventDefault();
+      // released on the Note it came from, outside its text: nothing happens
+      if ((e.target instanceof Element ? e.target.closest<HTMLElement>(".card[data-id]")?.dataset.id : undefined) !== outOf!.card) A.dropNoteImage(img, worldOf(e), outOf!.w);
+      return;
+    }
     if (A.dropFiles(e.dataTransfer, worldOf(e))) e.preventDefault();
   });
 }

@@ -5,7 +5,7 @@ import { TextSelection } from "@tiptap/pm/state";
 import { closeHistory } from "@tiptap/pm/history";
 import type { EditorView } from "@tiptap/pm/view";
 import { markTex, mathMacros } from "../math";
-import { captionOf, imageAttrs, missingImage } from "../image";
+import { captionOf, imageAttrs, missingImage, IMAGE_DRAG_TYPE, type DraggedImage } from "../image";
 import { renderMd } from "../render";
 import { imageFailed, imageFailedBefore, paintRef } from "../view";
 import { holdGhosts } from "../ui/ghost";
@@ -65,6 +65,7 @@ export function atomWidget(a: Atom, raw: string, caret: (from: number) => number
         view.dragging = { slice: view.state.doc.slice(from, to), move: true };
         ev.dataTransfer.effectAllowed = "copyMove";
         ev.dataTransfer.setData("text/plain", raw);
+        carryImage(ev.dataTransfer, a);
         ev.dataTransfer.setDragImage(el.querySelector("img") ?? el, 0, 0);
       });
       el.addEventListener("dragend", () => { view.dragging = null; });
@@ -102,6 +103,13 @@ export function atomWidget(a: Atom, raw: string, caret: (from: number) => number
     }
     return out;
   };
+}
+
+/** Which image is dragged, for a drop outside the editor (IMAGE_DRAG_TYPE) */
+function carryImage(dt: DataTransfer, a: Extract<Atom, { type: "image" }>) {
+  if (a.broken || !a.src) return;
+  const d: DraggedImage = { src: a.src, alt: a.alt, caption: captionOf(a.title) };
+  dt.setData(IMAGE_DRAG_TYPE, JSON.stringify(d));
 }
 
 const MIN_W = 24; // narrowest an image can be dragged to, in px
@@ -154,6 +162,7 @@ export function imageBelow(a: Extract<Atom, { type: "image" }>): ToDOM {
       view.dragging = { slice: view.state.doc.slice(at[0], at[1]), move: true };
       ev.dataTransfer.effectAllowed = "copyMove";
       ev.dataTransfer.setData("text/plain", raw);
+      carryImage(ev.dataTransfer, a);
       ev.dataTransfer.setDragImage(img, 0, 0);
     });
     frame.addEventListener("dragend", () => { view.dragging = null; });
