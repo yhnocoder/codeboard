@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanCompletion, spaceChatReply, COMPLETE_SYSTEM } from "@codeboard/core";
 import { deepseekChatRequest, deepseekComplete, deepseekFimRequest, resetDeepseekFim } from "../src/deepseek";
-import { chatComplete } from "../src/complete";
 
 type Call = { url: string; body: any; headers: Record<string, string>; signal?: AbortSignal };
 // 假的 fetch：按顺序回给定的回答，记下每次请求（不连网）
@@ -110,15 +109,5 @@ describe("DeepSeek completion", () => {
       expect(await q).toBeUndefined();
     } finally { vi.useRealTimers(); }
     expect(b.calls.length).toBe(1);
-  });
-});
-
-// Without a DeepSeek key, Auto asks the editor's chat model (Copilot): its reply gets the same leading space as DeepSeek's chat reply
-describe("chatComplete", () => {
-  it("puts back the space a chat model's reply leaves out", async () => {
-    const ask = async () => "and more";
-    expect(await chatComplete(ask, "done.", "")).toBe(" and more");
-    expect(await chatComplete(ask, "done. ", "")).toBe("and more");
-    expect(await chatComplete(async () => undefined, "done.", "")).toBeUndefined();
   });
 });

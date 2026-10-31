@@ -158,7 +158,7 @@ describe("image tools: the host's job", () => {
   let key: string | undefined;
   const W = nodeWorkspace();
   W.settings = { ...W.settings, get: <T>(k: string) => conf.get(k) as T };
-  W.ai = { ask: async () => undefined, deepseekKey: async () => key };
+  W.secrets = { ...W.secrets, get: async () => key };
   beforeEach(() => { conf.clear(); key = KEY; useWorkspace(W); });
 
   it("says there is no key without calling the network", async () => {

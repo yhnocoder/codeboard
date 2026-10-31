@@ -96,7 +96,7 @@
         "packages/markdown/src/{index,render,schema,selmap,view,diagram,emoji,emoji-data,layout}.ts", "packages/markdown/src/markdown.css",
         "packages/markdown/src/editor/{index,icons}.tsx",
         "packages/markdown/src/editor/{clipboard,codeblock,codelang,find,ghost,pairs,pastemarks,typora,inline,spans,srcdoc,srcmode,table,visible,widgets}.ts", "packages/markdown/src/ui/**",
-        "packages/core/src/complete.ts", "packages/host/src/{deepseek,complete}.ts", "packages/board/test/typing-sequence.json",
+        "packages/core/src/complete.ts", "packages/host/src/{deepseek,ai}.ts", "packages/board/test/typing-sequence.json",
         "packages/board/test/scenarios/{markdown,md-blocks,mdreview,note-editing,note-source,note-fold,note-fresh,note-sizing,writing,typing,typing-sequence,find,md-paste-marks,split-headings}.spec.ts", "packages/core/src/split.ts",
         "packages/markdown/src/marks.ts", "packages/board/src/actions/format.ts", "packages/board/src/ui/StaticFormat.tsx", "packages/board/test/scenarios/static-format.spec.ts"
       ],
@@ -158,7 +158,7 @@
       "files": [
         "packages/board/src/themes.css", "packages/board/src/settings.css", "packages/board/src/scenes/**",
         "packages/board/src/state/{look,tilt}.ts", "packages/board/src/canvas/city.ts", "packages/board/src/canvas/Traffic.tsx",
-        "packages/board/src/ui/Settings.tsx", "packages/board/src/actions/settings.ts", "packages/host/src/settings.ts",
+        "packages/board/src/ui/Settings.tsx", "packages/board/src/actions/settings.ts", "packages/host/src/settings.ts", "packages/core/src/settings.ts",
         "packages/board/test/scenarios/{themes,tilt}.spec.ts"
       ],
       "scenarios": [
@@ -251,7 +251,7 @@
       "files": [
         "packages/board/src/{host,hostio}.ts", "packages/board/src/actions/shared.ts",
         "packages/core/src/{protocol,patch,schema,migrate,shared,workspace,diagnostics}.ts", "packages/core/src/storage/**",
-        "packages/host/src/{hub,handlers,boards,storage,env,ws,nodefs,log,actions,diagnostics,start,index}.ts",
+        "packages/host/src/{hub,handlers,boards,storage,env,ws,nodefs,log,actions,commands,diagnostics,start,index}.ts",
         "packages/board/test/scenarios/{shared,boards}.spec.ts"
       ],
       "scenarios": ["patchsave", "sharedsync", "syncundo", "changesreachhost", "newTextReachesHostWhenShown", "sharedcards"]

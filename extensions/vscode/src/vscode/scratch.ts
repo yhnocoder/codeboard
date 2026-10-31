@@ -9,6 +9,7 @@ import * as vscode from "vscode";
 import * as path from "node:path";
 import * as fs from "node:fs";
 import type { LspItem, LspKind, LspSignature, WorkspaceScratch } from "@codeboard/core";
+import { hoverAt } from "./lsp";
 import { HEARTBEAT_MS, excludeScratch, isScratchName, scratchName, staleScratch } from "@codeboard/host";
 
 export type Doc = { uri: vscode.Uri; lang: string; doc: vscode.TextDocument };
@@ -136,18 +137,6 @@ function signature(h: vscode.SignatureHelp | undefined): LspSignature | null {
   });
   const active = s.activeParameter ?? h!.activeParameter ?? -1;
   return { label: s.label, doc: md(s.documentation), params, active: active < params.length ? active : -1 };
-}
-
-/** 语言服务在这个位置的悬停说明，每段一个 Markdown（line 从 0 数） */
-export async function hoverAt(uri: vscode.Uri, line: number, col: number): Promise<string[]> {
-  const hs = await vscode.commands.executeCommand<vscode.Hover[]>("vscode.executeHoverProvider", uri, new vscode.Position(line, col));
-  const parts: string[] = [];
-  for (const h of hs ?? []) for (const c of h.contents) {
-    if (typeof c === "string") parts.push(c);
-    else if ("language" in c) parts.push("```" + c.language + "\n" + c.value + "\n```");
-    else if (c.value) parts.push(c.value);
-  }
-  return parts;
 }
 
 export function disposeScratch() {

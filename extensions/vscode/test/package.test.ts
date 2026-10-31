@@ -1,16 +1,25 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
-import { THEMES, EXPERIMENTAL_THEMES } from "@codeboard/core";
 import { FORWARDED_KEYS } from "@codeboard/host";
+import { contributes } from "../src/contributes";
 
 const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, "../package.json"), "utf8"));
 
 describe("package.json", () => {
-  it("codeboard.theme enum = core THEMES", () => {
-    expect(pkg.contributes.configuration.properties["codeboard.theme"].enum).toEqual(THEMES.map(([id]) => id));
-    // 实验性的主题在 VS Code 设置的下拉里也标 Experimental
-    expect(pkg.contributes.configuration.properties["codeboard.theme"].enumDescriptions).toEqual(THEMES.map(([id, name]) => (EXPERIMENTAL_THEMES.includes(id) ? `${name} (Experimental)` : name)));
+  it("commands and settings are the ones generated from the host's command table and core's settings (npm run build writes them)", () => {
+    const gen = contributes();
+    expect(pkg.contributes.commands).toEqual(gen.commands);
+    expect(pkg.contributes.configuration).toEqual(gen.configuration);
+  });
+
+  it("every command in menus and keybindings is declared", () => {
+    const declared = new Set(pkg.contributes.commands.map((c: { command: string }) => c.command));
+    const used = [
+      ...Object.values(pkg.contributes.menus as Record<string, { command?: string }[]>).flat().map((m) => m.command),
+      ...pkg.contributes.keybindings.map((k: { command: string }) => k.command),
+    ].filter((c): c is string => !!c);
+    expect(used.filter((c) => !declared.has(c))).toEqual([]);
   });
 
   it("the keys bound to codeboard.boardKey = the keys the host forwards", () => {

@@ -11,6 +11,8 @@ import { copyDiagnostics } from "./diagnostics";
 import { applyFlow, captureFlow } from "./runs";
 import { openOnBoard } from "./handlers";
 import { prompts } from "./prompts";
+import { clearDeepseekKey, setDeepseekKey } from "./ai";
+import type { CommandId } from "./commands";
 import { copyToProject, otherProjects, removeMoved } from "./transfer";
 import { BUNDLE_EXT, exportFlow, importFile } from "./bundle";
 import { langOf, readText, splitLines, workspace, ws0 } from "./ws";
@@ -268,7 +270,6 @@ export function makeActions(panels: BoardHost, store: Storage) {
     },
     "codeboard.openQuestion": (board: string, card?: string, line?: number, sticker?: string) => openOnBoard(panels, board, card, line, sticker),
     "codeboard.openGithubFile": (abs: string) => workspace().editor.open(abs, { readonly: true }),
-    // 共享卡还没有界面，这两个命令是测试用的入口
     "codeboard._shareCards": async (board: string, cards: string[]) => {
       const renamed = await store.share(board, cards);
       if (Object.keys(renamed).length) await panels.get(board)?.init();
@@ -385,7 +386,9 @@ export function makeActions(panels: BoardHost, store: Storage) {
       const p = await panels.show(await targetId());
       p?.post({ type: "githubPicker" });
     },
-  };
+    "codeboard.setDeepseekKey": () => setDeepseekKey(prompts(active())),
+    "codeboard.clearDeepseekKey": () => clearDeepseekKey(),
+  } satisfies Record<CommandId, (...a: never[]) => unknown>;
 }
 
 async function pickBoard(store: Storage, placeHolder: string, allowNew: boolean): Promise<string | undefined> {

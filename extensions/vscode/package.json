@@ -16,9 +16,17 @@
     "url": "https://github.com/yhnocoder/codeboard/issues"
   },
   "icon": "media/icon.png",
-  "keywords": ["whiteboard", "code reading", "call graph", "canvas", "notes", "python", "diagram"],
+  "keywords": [
+    "whiteboard",
+    "code reading",
+    "call graph",
+    "canvas",
+    "notes",
+    "python",
+    "diagram"
+  ],
   "engines": {
-    "vscode": "^1.90.0"
+    "vscode": "^1.142.0"
   },
   "categories": [
     "Visualization",
@@ -221,6 +229,11 @@
         "category": "CodeBoard"
       },
       {
+        "command": "codeboard.openQuestion",
+        "title": "Open Question",
+        "category": "CodeBoard"
+      },
+      {
         "command": "codeboard.questions.showAll",
         "title": "Show All Questions",
         "category": "CodeBoard",
@@ -237,11 +250,6 @@
         "title": "Copy Questions as List",
         "category": "CodeBoard",
         "icon": "$(copy)"
-      },
-      {
-        "command": "codeboard.openQuestion",
-        "title": "Open Question",
-        "category": "CodeBoard"
       }
     ],
     "menus": {
@@ -588,7 +596,12 @@
         "codeboard.ai.provider": {
           "type": "string",
           "default": "auto",
-          "enum": ["auto", "copilot", "deepseek", "off"],
+          "enum": [
+            "auto",
+            "copilot",
+            "deepseek",
+            "off"
+          ],
           "enumDescriptions": [
             "DeepSeek if an API key is set, otherwise a VS Code language model such as Copilot.",
             "A VS Code language model (for example GitHub Copilot).",
@@ -601,11 +614,6 @@
           "type": "string",
           "default": "deepseek-flash",
           "description": "DeepSeek model for inline completions and the AI tools (Extract Text, Convert to SVG, Modify SVG, Draw as SVG, Paste Image Text, Auto Focus). The image tools need a model that reads images."
-        },
-        "codeboard.ai.deepseekBaseUrl": {
-          "type": "string",
-          "default": "https://api.deepseek.com",
-          "description": "DeepSeek API base URL."
         },
         "codeboard.ai.svg.removeBackground": {
           "type": "boolean",
@@ -631,22 +639,6 @@
           "type": "string",
           "default": "auto",
           "markdownDescription": "Model for Auto Focus (highlights the key concepts and bolds what matters in a Note): `auto` (DeepSeek if an API key is set, otherwise a VS Code language model such as GitHub Copilot), `deepseek`, or the id of a VS Code language model. Pick it in CodeBoard Settings › AI, which lists the models you have."
-        },
-        "codeboard.editorMarks": {
-          "type": "string",
-          "default": "all",
-          "enum": ["all", "lens", "off"],
-          "enumDescriptions": [
-            "The \"on N boards\" / \"+ Card\" CodeLens above functions and classes, plus the orange bar next to the line numbers and its mark in the overview ruler for lines on the target board.",
-            "Only the CodeLens: no bar next to the line numbers and no overview ruler mark.",
-            "No CodeBoard marks in file editors."
-          ],
-          "description": "What CodeBoard shows in file editors for code that is on a board. Applies right away."
-        },
-        "codeboard.storageDir": {
-          "type": "string",
-          "default": "",
-          "markdownDescription": "Folder for board files. Leave empty to use the `.codeboard` folder in the first workspace folder when there is one (see **Move Boards into Project…**), otherwise VS Code workspace storage (outside the repo). Absolute, `~/…`, or relative to the first workspace folder, e.g. `~/notes/codeboard`."
         },
         "codeboard.theme": {
           "type": "string",
@@ -697,10 +689,10 @@
         },
         "codeboard.studyScope": {
           "type": "array",
+          "default": [],
           "items": {
             "type": "string"
           },
-          "default": [],
           "description": "Packages outside the workspace that count as project code (e.g. torch, vllm)."
         },
         "codeboard.stickerFolder": {
@@ -720,9 +712,19 @@
         },
         "codeboard.doubleClick": {
           "type": "string",
-          "enum": ["text", "note", "code", "none"],
-          "enumDescriptions": ["Text", "Note", "Free Code card", "Nothing"],
           "default": "text",
+          "enum": [
+            "text",
+            "note",
+            "code",
+            "none"
+          ],
+          "enumDescriptions": [
+            "Text",
+            "Note",
+            "Free Code card",
+            "Nothing"
+          ],
           "description": "What double-clicking empty board space creates."
         },
         "codeboard.notes.headingInBody": {
@@ -742,43 +744,64 @@
           "additionalProperties": false,
           "properties": {
             "body": {
-              "type": ["number", "null"],
+              "type": [
+                "number",
+                "null"
+              ],
               "minimum": 10,
               "maximum": 24,
               "description": "Body text size in px. Leave out or null to use the theme's size."
             },
             "h1": {
-              "type": ["number", "null"],
+              "type": [
+                "number",
+                "null"
+              ],
               "minimum": 10,
               "maximum": 40,
               "description": "Heading 1 size in px. Leave out or null to use the theme's size."
             },
             "h2": {
-              "type": ["number", "null"],
+              "type": [
+                "number",
+                "null"
+              ],
               "minimum": 10,
               "maximum": 40,
               "description": "Heading 2 size in px. Leave out or null to use the theme's size."
             },
             "h3": {
-              "type": ["number", "null"],
+              "type": [
+                "number",
+                "null"
+              ],
               "minimum": 10,
               "maximum": 40,
               "description": "Heading 3 size in px. Leave out or null to use the theme's size."
             },
             "h4": {
-              "type": ["number", "null"],
+              "type": [
+                "number",
+                "null"
+              ],
               "minimum": 10,
               "maximum": 40,
               "description": "Heading 4 size in px. Leave out or null to use the theme's size."
             },
             "h5": {
-              "type": ["number", "null"],
+              "type": [
+                "number",
+                "null"
+              ],
               "minimum": 10,
               "maximum": 40,
               "description": "Heading 5 size in px. Leave out or null to use the theme's size."
             },
             "h6": {
-              "type": ["number", "null"],
+              "type": [
+                "number",
+                "null"
+              ],
               "minimum": 10,
               "maximum": 40,
               "description": "Heading 6 size in px. Leave out or null to use the theme's size."
@@ -798,37 +821,71 @@
         },
         "codeboard.themeReflow": {
           "type": "string",
-          "enum": ["push", "overlap"],
-          "enumDescriptions": ["Push cards below down", "Allow overlap"],
           "default": "push",
+          "enum": [
+            "push",
+            "overlap"
+          ],
+          "enumDescriptions": [
+            "Push cards below down",
+            "Allow overlap"
+          ],
           "description": "When switching themes makes cards taller: push the cards below them down, or let them overlap."
         },
         "codeboard.sharedCards.paste": {
           "type": "string",
-          "enum": ["linked", "copy"],
-          "enumDescriptions": ["Linked card: the same card on both boards, content stays in sync", "Copy: a new card that changes on its own"],
           "default": "linked",
+          "enum": [
+            "linked",
+            "copy"
+          ],
+          "enumDescriptions": [
+            "Linked card: the same card on both boards, content stays in sync",
+            "Copy: a new card that changes on its own"
+          ],
           "description": "What pasting a card onto another board makes. Holding Alt (Option) while pasting makes the other one."
         },
         "codeboard.sharedCards.update": {
           "type": "string",
-          "enum": ["ask", "all", "this"],
-          "enumDescriptions": ["Ask every time", "Update on all boards", "Update this board only (makes a copy here)"],
           "default": "ask",
+          "enum": [
+            "ask",
+            "all",
+            "this"
+          ],
+          "enumDescriptions": [
+            "Ask every time",
+            "Update on all boards",
+            "Update this board only (makes a copy here)"
+          ],
           "description": "When updating a card that is on several boards to a new version."
         },
         "codeboard.subBoards.preview": {
           "type": "string",
-          "enum": ["skeleton", "title"],
-          "enumDescriptions": ["Named skeleton: card titles, call graph marks and arrows of the board inside", "Title only: the board's name and card count"],
           "default": "skeleton",
+          "enum": [
+            "skeleton",
+            "title"
+          ],
+          "enumDescriptions": [
+            "Named skeleton: card titles, call graph marks and arrows of the board inside",
+            "Title only: the board's name and card count"
+          ],
           "description": "What a sub-board frame shows on its parent board."
         },
         "codeboard.questions.welcomeBack": {
           "type": "string",
-          "enum": ["2d", "always", "off"],
-          "enumDescriptions": ["When the board was last opened more than 2 days ago", "Every time a board with open questions opens", "Never"],
           "default": "2d",
+          "enum": [
+            "2d",
+            "always",
+            "off"
+          ],
+          "enumDescriptions": [
+            "When the board was last opened more than 2 days ago",
+            "Every time a board with open questions opens",
+            "Never"
+          ],
           "description": "When reopening a board, show how many questions on it are still open."
         },
         "codeboard.export.includeQuestions": {
@@ -843,9 +900,17 @@
         },
         "codeboard.export.scope": {
           "type": "string",
-          "enum": ["board", "sections", "walk"],
-          "enumDescriptions": ["Whole board", "Selected sections", "One walkthrough path (from the Start card or the selected card)"],
           "default": "board",
+          "enum": [
+            "board",
+            "sections",
+            "walk"
+          ],
+          "enumDescriptions": [
+            "Whole board",
+            "Selected sections",
+            "One walkthrough path (from the Start card or the selected card)"
+          ],
           "description": "What the Export dialog exports by default."
         },
         "codeboard.zoom.overview": {
@@ -861,6 +926,31 @@
           "minimum": 0.05,
           "maximum": 0.6,
           "description": "Below this zoom, cards show only their titles (map view)."
+        },
+        "codeboard.ai.deepseekBaseUrl": {
+          "type": "string",
+          "default": "https://api.deepseek.com",
+          "description": "DeepSeek API base URL."
+        },
+        "codeboard.storageDir": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Folder for board files. Leave empty to use the `.codeboard` folder in the first workspace folder when there is one (see **Move Boards into Project…**), otherwise VS Code workspace storage (outside the repo). Absolute, `~/…`, or relative to the first workspace folder, e.g. `~/notes/codeboard`."
+        },
+        "codeboard.editorMarks": {
+          "type": "string",
+          "default": "all",
+          "enum": [
+            "all",
+            "lens",
+            "off"
+          ],
+          "enumDescriptions": [
+            "The \"on N boards\" / \"+ Card\" CodeLens above functions and classes, plus the orange bar next to the line numbers and its mark in the overview ruler for lines on the target board.",
+            "Only the CodeLens: no bar next to the line numbers and no overview ruler mark.",
+            "No CodeBoard marks in file editors."
+          ],
+          "description": "What CodeBoard shows in file editors for code that is on a board. Applies right away."
         }
       }
     }
@@ -881,7 +971,7 @@
   "devDependencies": {
     "@codeboard/board": "^0.1.0",
     "@types/node": "^20.19.43",
-    "@types/vscode": "^1.90.0",
+    "@types/vscode": "1.140.0",
     "@vscode/tree-sitter-wasm": "^0.3.1",
     "@yhnocoder/tree-sitter-cuda": "https://github.com/yhnocoder/tree-sitter-cuda/releases/download/v0.21.2-cb.2/yhnocoder-tree-sitter-cuda-0.21.2-cb.2.tgz",
     "elkjs": "0.12.0",

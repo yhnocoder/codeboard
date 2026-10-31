@@ -1,79 +1,12 @@
-import { DEFAULT_SETTINGS, THEMES, NOTE_FONT_LEVELS, NOTE_FONT_RANGE, type Settings } from "@codeboard/core";
+import { DEFAULT_SETTINGS, type Settings } from "@codeboard/core";
+import { SETTINGS } from "@codeboard/core/settings";
 import { log } from "./log";
 import { workspace } from "./ws";
 
-const KEY: Record<keyof Settings, string> = {
-  theme: "theme",
-  vscodeBg: "useVSCodeBackground",
-  hideOnNew: "newCards.hide",
-  studyScope: "studyScope",
-  stickerDir: "stickerFolder",
-  zoomOverview: "zoom.overview",
-  zoomMap: "zoom.map",
-  dblClick: "doubleClick",
-  themeReflow: "themeReflow", // not "theme.reflow": codeboard.theme is a string, so VS Code ignores keys under it
-  hideNumbers: "flowNumbers.hide",
-  debug: "debug.enabled",
-  tune: "debug.tune",
-  pasteOther: "sharedCards.paste",
-  sharedUpdate: "sharedCards.update",
-  subPreview: "subBoards.preview",
-  welcomeBack: "questions.welcomeBack",
-  exportQuestions: "export.includeQuestions",
-  exportBoardOnly: "export.includeBoardOnlyNotes",
-  exportScope: "export.scope",
-  noteHeadingInBody: "notes.headingInBody",
-  noteFontSize: "notes.fontSize",
-  mathPreamble: "math.preamble",
-  svgNoBg: "ai.svg.removeBackground",
-  svgThink: "ai.svg.thinkFirst",
-  aiProvider: "ai.provider",
-  deepseekModel: "ai.deepseekModel",
-  aiText: "ai.textModel",
-  aiSvg: "ai.svgModel",
-  aiFocus: "ai.focusModel",
-};
-
+const KEY = Object.fromEntries(Object.entries(SETTINGS).map(([k, d]) => [k, d.key])) as Record<keyof Settings, string>;
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
-const aiChoice = (v: unknown) => typeof v === "string" && !!v.trim() && v.length <= 200;
-const num = (v: unknown) => typeof v === "number" && Number.isFinite(v);
-const VALID: { [K in keyof Settings]-?: (v: unknown) => boolean } = {
-  theme: (v) => THEMES.some(([id]) => id === v),
-  vscodeBg: (v) => typeof v === "boolean",
-  hideOnNew: (v) => isObj(v) && Object.values(v).every((x) => x === undefined || typeof x === "boolean"),
-  studyScope: (v) => Array.isArray(v) && v.every((x) => typeof x === "string"),
-  stickerDir: (v) => typeof v === "string",
-  zoomOverview: num,
-  zoomMap: num,
-  dblClick: (v) => v === "text" || v === "note" || v === "code" || v === "none",
-  hideNumbers: (v) => typeof v === "boolean",
-  themeReflow: (v) => v === "push" || v === "overlap",
-  debug: (v) => typeof v === "boolean",
-  tune: (v) => (isObj(v) && Object.values(v).every(num)),
-  pasteOther: (v) => v === "linked" || v === "copy",
-  sharedUpdate: (v) => v === "ask" || v === "all" || v === "this",
-  subPreview: (v) => v === "skeleton" || v === "title",
-  welcomeBack: (v) => v === "2d" || v === "always" || v === "off",
-  exportQuestions: (v) => typeof v === "boolean",
-  exportBoardOnly: (v) => typeof v === "boolean",
-  exportScope: (v) => v === "board" || v === "sections" || v === "walk",
-  noteHeadingInBody: (v) => typeof v === "boolean",
-  mathPreamble: (v) => typeof v === "string",
-  svgNoBg: (v) => typeof v === "boolean",
-  svgThink: (v) => typeof v === "boolean",
-  aiProvider: (v) => v === "auto" || v === "copilot" || v === "deepseek" || v === "off",
-  deepseekModel: (v) => typeof v === "string" && v.length <= 200,
-  aiText: aiChoice,
-  aiSvg: aiChoice,
-  aiFocus: aiChoice,
-  noteFontSize: (v) => isObj(v) && Object.entries(v).every(([k, x]) => NOTE_FONT_LEVELS.includes(k as never) && (x === null || x === undefined || fontPx(k, x))),
-};
-function fontPx(level: string, v: unknown) {
-  const [lo, hi] = NOTE_FONT_RANGE[level === "body" ? "body" : "heading"];
-  return num(v) && (v as number) >= lo && (v as number) <= hi;
-}
 
-export const validSetting = (k: string, v: unknown): k is keyof Settings => k in KEY && VALID[k as keyof Settings](v);
+export const validSetting = (k: string, v: unknown): k is keyof Settings => k in SETTINGS && SETTINGS[k as keyof Settings].valid(v);
 
 /**
  * 白板改了、还没写完的设置（写一次 settings.json 要一两百毫秒）。连着改（点两个主题、按住字号的箭头）时，前一次写完的改动事件

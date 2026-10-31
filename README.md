@@ -22,7 +22,7 @@
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT license"></a>
-  <img src="https://img.shields.io/badge/VS%20Code-%E2%89%A5%201.90-007acc.svg" alt="VS Code 1.90 or later">
+  <img src="https://img.shields.io/badge/VS%20Code-%E2%89%A5%201.142-007acc.svg" alt="VS Code 1.142 or later">
   <img src="https://img.shields.io/badge/status-early%20preview-d4472a.svg" alt="Early preview">
 </p>
 
@@ -73,7 +73,7 @@ It was built for studying LLM inference and training codebases such as [nano-vll
 
 ### Install
 
-CodeBoard runs as a VS Code extension (VS Code 1.90 or later).
+CodeBoard runs as a VS Code extension (VS Code 1.142 or later).
 
 Install it from the [Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=yhnocoder.codeboard-vscode), or search for **CodeBoard** in the Extensions view. VSCodium, Cursor and other editors that use [Open VSX](https://open-vsx.org/extension/yhnocoder/codeboard-vscode) can install it from there.
 

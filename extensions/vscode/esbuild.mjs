@@ -1,6 +1,7 @@
 import { build, context } from "esbuild";
 import { execFileSync } from "node:child_process";
-import { copyFileSync, mkdirSync, readFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 
@@ -41,5 +42,20 @@ const opts = {
   // @codeboard/analysis 里 import.meta.resolve 只在没给 wasm 目录时用（vitest）；打包后用不到
   define: { "import.meta.resolve": "undefined", __CODEBOARD_BUILD__: JSON.stringify(buildId()) },
 };
+// package.json 的 contributes.commands / configuration 由 src/contributes.ts 生成（宿主的命令表、core 的设置声明）：变了就写回
+async function writeContributes() {
+  const r = await build({ ...opts, entryPoints: ["src/contributes.ts"], outfile: undefined, write: false, sourcemap: false, logLevel: "warning" });
+  const f = join(tmpdir(), `codeboard-contributes-${process.pid}.cjs`);
+  writeFileSync(f, r.outputFiles[0].text);
+  let gen;
+  try { gen = require(f).contributes(); } finally { rmSync(f, { force: true }); }
+  const text = readFileSync("package.json", "utf8"), pkg = JSON.parse(text);
+  pkg.contributes.commands = gen.commands;
+  pkg.contributes.configuration = gen.configuration;
+  const out = `${JSON.stringify(pkg, null, 2)}\n`;
+  if (out !== text) { writeFileSync("package.json", out); console.log("package.json: contributes.commands / configuration regenerated"); }
+}
+
+await writeContributes();
 if (process.argv.includes("--watch")) await (await context(opts)).watch();
 else await build(opts);

@@ -178,7 +178,7 @@ export async function runJob(card: string | undefined, label: string, makeOp: ()
   } finally { finish(); }
 }
 
-const KEY_ACTION = { label: "Set DeepSeek API Key…", run: () => send({ type: "setDeepseekKey" }) };
+const KEY_ACTION = { label: "Set DeepSeek API Key…", run: () => void ask("aiKey", { action: "set" }).catch(() => undefined) };
 const SETTINGS_ACTION = { label: "AI Settings…", run: () => openSettings("ai") };
 function failed(r: Extract<ImageAiResult, { fail: string }>) {
   const who = r.via ?? "DeepSeek";

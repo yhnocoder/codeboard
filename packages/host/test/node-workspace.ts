@@ -22,6 +22,7 @@ export function nodeWorkspace(root = WS): TestWorkspace {
   const quiet = new Emitter<never>();
   const fire = { save: new Emitter<string | undefined>(), edit: new Emitter<string | undefined>(), create: new Emitter<string[]>(), delete: new Emitter<string[]>(), rename: new Emitter<{ from: string; to: string }[]>(), change: new Emitter<string>() };
   const open = new Map<string, string>();
+  const secrets = new Map<string, string>();
   const w: TestWorkspace = {
     open, fire, finds: 0,
     files: {
@@ -72,6 +73,7 @@ export function nodeWorkspace(root = WS): TestWorkspace {
       info: async () => undefined, warn: async () => undefined, error: async () => undefined, pick: async () => undefined, input: async () => undefined,
       openDialog: async () => undefined, saveDialog: async () => undefined, openUrl: async () => {}, openFolder: async () => {}, revealInOS: async () => {}, copy: async () => {}, clipboard: async () => "",
     },
+    secrets: { get: async (k) => secrets.get(k), set: async (k, v) => { secrets.set(k, v); }, delete: async (k) => { secrets.delete(k); } },
     githubToken: async () => undefined,
     log: () => {},
     about: { app: "test", ext: "test", hasExtension: () => false },

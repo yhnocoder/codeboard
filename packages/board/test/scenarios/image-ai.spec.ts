@@ -265,8 +265,8 @@ test("imageAiBusyCancelAndNoKey", async () => {
   await act.waitFor();
   check("imageAiBusyCancelAndNoKey without a key the notice says so", (await k.h.page.locator(".toast").innerText()).includes("No DeepSeek API key"), await k.h.page.locator(".toast").innerText());
   await act.click();
-  await until(k.h, "the key command is asked for", () => sentOf(k.h, "setDeepseekKey").length);
-  check("imageAiBusyCancelAndNoKey Set DeepSeek API Key… asks the host", sentOf(k.h, "setDeepseekKey").length === 1 && k.h.board().cards.length === 1, k.h.sent.map((m) => m.type));
+  await until(k.h, "the host is asked to set the key", () => sentOf(k.h, "aiKey").length);
+  check("imageAiBusyCancelAndNoKey Set DeepSeek API Key… asks the host", sentOf(k.h, "aiKey").map((m) => m.action).join() === "set" && k.h.board().cards.length === 1, k.h.sent.map((m) => m.type));
   await k.done();
 });
 
