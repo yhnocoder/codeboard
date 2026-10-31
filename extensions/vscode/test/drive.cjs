@@ -578,13 +578,16 @@ async function newBoard(page, name) {
   await idle(f);
   return f;
 }
-/** A new Note at an empty spot, in edit mode with its editor focused */
+/** A new Note at an empty spot, in edit mode with its editor focused and past ProseMirror's focus timers, so keys can be typed */
 async function newNote(page, f) {
   const fb = await (await f.frameElement()).boundingBox(), sp = await emptySpot(f);
   await page.mouse.click(fb.x + sp.x, fb.y + sp.y);
   await until("the board has the keyboard", () => boardHasKeyboard(f));
   await page.keyboard.press("n");
-  return f.waitForFunction(() => !!document.activeElement?.closest(".card.note .md-pm"), null, { timeout: 5000 }).then(() => true, () => false);
+  const focused = await f.waitForFunction(() => !!document.activeElement?.closest(".card.note .md-pm"), null, { timeout: 5000 }).then(() => true, () => false);
+  // keys typed within ProseMirror's first 20 ms of focus can land before its selection is put back: "# Plan" became "Plan" and "#"
+  if (focused) await focusSettled(f);
+  return focused;
 }
 
 // Paste while editing a Note: Ctrl+C a piece of a code block, select text in another code block and Ctrl+V. The text lands in the
@@ -594,7 +597,6 @@ async function newNote(page, f) {
 async function notepasteStep(page) {
   const f = await newBoard(page, "Note Paste E2E");
   check(await newNote(page, f), "notepaste: n opens a new Note with its editor focused");
-  await focusSettled(f);
   const code = "vecAddKernel<<<ceil(n/128), 128>>>(...);";
   await page.keyboard.type("Blocks"); await page.keyboard.press("Enter");
   await page.keyboard.type("```cuda"); await page.keyboard.press("Enter");
