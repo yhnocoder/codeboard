@@ -874,6 +874,23 @@ mark.wdiff { background: var(--chg-strong); color: inherit; border-radius: 2px; 
 .present .ptitle { font: 500 12px var(--mono); }
 .present .pdesc { flex-basis: 100%; padding: 4px 4px 6px 0; font-size: 12.5px; line-height: 1.55; color: var(--ink-2); }
 .board.walking .card:not(.dim) { }
+/* Walkthrough Quiz: the steps ahead lie face down (their content hidden, a back on top) and the arrows to them are hidden; a card
+   turned up flips open around its middle; a wrong guess tints and shakes its line. The bar keeps the score and asks the question */
+.quizhide { visibility: hidden; }
+.card.facedown > .cface { visibility: hidden; }
+.card.facedown.dim { opacity: .75; filter: none; }
+.cback { position: absolute; inset: 0; border-radius: var(--cr); display: grid; place-items: center; overflow: hidden; pointer-events: none;
+  background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--accent) 8%, var(--surface)) 0 9px, var(--surface) 9px 18px); }
+.cback span { font: 400 56px/1 var(--display); color: color-mix(in srgb, var(--accent) 60%, transparent); }
+.card.reveal { transform-origin: 50% 50%; animation: cardflip calc(var(--t) * 420ms) var(--out); }
+@keyframes cardflip { from { rotate: y 90deg; } }
+.rowbg.miss { animation: miss calc(var(--t) * 520ms) var(--out); }
+@keyframes miss { 0% { translate: 0; background: color-mix(in srgb, var(--warn) 34%, transparent); } 20% { translate: -5px; } 40% { translate: 4px; } 60% { translate: -2px; } 80% { translate: 1px; } 100% { translate: 0; } }
+.present .ib.on { background: var(--accent); color: var(--accent-ink); }
+.pquiz { flex-basis: 100%; display: flex; align-items: center; gap: 8px; padding: 2px 4px 4px 2px; font-size: 12.5px; color: var(--ink-2); }
+.pquiz .qscore { font: 600 11px/1 var(--mono); font-variant-numeric: tabular-nums; padding: 4px 7px; border-radius: 7px; background: color-mix(in srgb, var(--ok) 18%, transparent); color: var(--ok); }
+.pquiz .qcard { font: 500 12px var(--mono); color: var(--ink); padding: 1px 4px; margin: 0 -2px; border-radius: 5.5px; }
+.pquiz .qcard:hover { background: var(--hlrow); }
 .toast { pointer-events: auto; display: flex; gap: 10px; align-items: center; }
 .toast .tlink { color: var(--accent); font-weight: 600; }
 .emptyhint { position: absolute; left: 50%; top: 42%; translate: -50% -50%; text-align: center; color: var(--ink-3); pointer-events: none; }

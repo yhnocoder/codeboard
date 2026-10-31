@@ -125,7 +125,14 @@ function WalkBar() {
       <span class="cnt">{w().i + 1} / {w().order.length}</span>
       <button class="ib" aria-label="Previous Step" data-tip="Previous Step" data-kbd="←" disabled={w().i === 0 && !walkBack()} onClick={() => A.walkTo(w().i - 1)}><Icon name="left" /></button>
       <button class="ib" aria-label="Next Step" data-tip={walkBack() && w().i === w().order.length - 1 ? "Back to the Parent Board" : "Next Step"} data-kbd="→" disabled={w().i === w().order.length - 1 && !walkBack()} onClick={() => A.walkTo(w().i + 1)}><Icon name="right" /></button>
+      <button class="ib" classList={{ on: !!w().quiz }} aria-label="Quiz" aria-pressed={!!w().quiz} data-tip={w().quiz ? "End Quiz" : "Quiz: Guess Each Next Step"} data-kbd="Q" onClick={() => A.toggleQuiz()}><Icon name="question" /></button>
       <button class="ib" aria-label="Exit Walkthrough" data-tip="Exit Walkthrough" data-kbd="Esc" onClick={() => A.exitWalk()}><Icon name="close" /></button>
+      <Show when={w().quiz}>{(q) =>
+        <div class="pquiz">
+          <span class="qscore" data-tip="Steps found on the first try">{q().right} / {q().asked}</span>
+          <span class="qask">{(() => { const a = A.quizAsk(); return !a ? "All steps turned up" : a.from ? <>Which line in <button class="qcard" data-tip="Show this card" onClick={() => A.jumpTo(a.from!.id)}>{a.from.title}</button> leads to step {a.step}?</> : <>Press → to turn step {a.step}</>; })()}</span>
+        </div>
+      }</Show>
       <Show when={desc()}><div class="pdesc" innerHTML={A.mdBlock(desc()!)} /></Show>
     </div></div>
   );

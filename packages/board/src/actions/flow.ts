@@ -6,6 +6,8 @@ import {
   type GraphMark, type CallSpan, type ExpandPick, type ExpandResult, type Rect, type SegView, type CrossMark,
 } from "@codeboard/core";
 import type { Var } from "@codeboard/analysis/basics";
+import { createMemo } from "solid-js";
+import { rooted } from "../state/root";
 import { state, setState, flows, cardById, hostOf, rectOf, setShowCollapsed, placeOf, placed } from "../state/store";
 import { putViews } from "../state/views";
 import { mutate, sync } from "../state/changes";
@@ -13,7 +15,7 @@ import { sel, select, clearSel } from "../state/selection";
 import { toast } from "../state/toast";
 import { camTo, camTarget, fitRect, usableW, usableH, fitTop, isVisible, union, overviewZ } from "../state/camera";
 import { lineY } from "../state/geo";
-import { flash, ping, setWalk, walk } from "../state/ui";
+import { flash, miss, ping, revealCard, setWalk, walk } from "../state/ui";
 import { openPop } from "../state/pop";
 import { send, ask } from "../host";
 import { headPoint, hostRect, popCard, showPicker, slideFrom } from "./common";
@@ -73,8 +75,8 @@ export async function expandCall(cardId: string, segId: string, call: CallSpan, 
   if (r.dispatching && !pick) void lateDispatch(cardId, segId, call, r.card.id);
 }
 
-/** ex：并进 Call 标记的、箭头上的字、卡的名字（模板实例 dispatch<8, 768>） */
-export function placeExpanded(cardId: string, segId: string, call: CallSpan, card: CodeCard, views: Record<string, SegView>, vars: Var[], at?: { x: number; y: number }, w?: number, ex?: ExpandExtra & { title?: string }) {
+/** ex：并进 Call 标记的、箭头上的字、卡的名字（模板实例 dispatch<8, 768>）；merge = 和上一步同一个撤销步（mutate 的 merge） */
+export function placeExpanded(cardId: string, segId: string, call: CallSpan, card: CodeCard, views: Record<string, SegView>, vars: Var[], at?: { x: number; y: number }, w?: number, ex?: ExpandExtra & { title?: string; merge?: string }) {
   putViews(views);
   const host = cardById(cardId)!.host;
   const id = card.id;
@@ -130,7 +132,7 @@ export function placeExpanded(cardId: string, segId: string, call: CallSpan, car
     for (const k of Object.keys(mk) as (keyof typeof mk)[]) if (mk[k] === undefined) delete mk[k];
     removeLostCalls(b, { card: cardId, seg: segId, line: call.line }, call.name);
     b.links.push({ id: uid("l"), from: { card: cardId, seg: segId, line: call.line }, to: { card: id }, call: mk, ...(ex?.label ? { label: ex.label } : {}) });
-  });
+  }, { merge: ex?.merge });
   select({ cards: [id] });
   flash(cardId, segId, [call.line]);
   requestAnimationFrame(() => {
@@ -311,7 +313,16 @@ export function walkTo(i: number) {
   // 子白板里的讲解（从父白板讲进来的）走出两头：回父白板接着讲
   if (walkBack() && (i >= w.order.length || i < 0)) return walkOut(i < 0 ? -1 : 1);
   i = Math.max(0, Math.min(w.order.length - 1, i));
-  setWalk({ ...w, i });
+  let quiz = w.quiz;
+  // Quiz: going past the last card turned up turns the next ones up (with a flip); a question skipped with → still counts as asked
+  if (quiz && i > quiz.shown) {
+    let asked = quiz.asked;
+    for (let k = quiz.shown + 1; k <= i; k++) if (!(k === quiz.shown + 1 && quiz.counted) && answerOf(w.order, k - 1, k)) asked++;
+    quiz = { ...quiz, shown: i, asked, counted: false };
+    revealCard(hostOf(w.order[i]));
+    if (i === w.order.length - 1 && asked) toast(`Quiz done · ${quiz.right} of ${asked} step${asked === 1 ? "" : "s"} found on the first try`);
+  }
+  setWalk({ ...w, i, quiz });
   // 走到子白板框：镜头推进去，在子白板里接着讲，讲完回来
   if (cardById(w.order[i])?.card.kind === "board") return walkIntoFrame(w.order[i], i);
   const r = hostRect(w.order[i]);
@@ -326,6 +337,64 @@ export function exitWalk() {
   setWalkBack(null);
   setShowCollapsed(false);
   camTo(w.before.x, w.before.y, w.before.z, true);
+}
+
+// Quiz（Walkthrough 里按 Q）：还没走到的卡背面朝上、通往它们的箭头藏起来；点你认为调用了下一步的那一行，对了卡翻过来
+
+/** The arrow that leads to step `next` from a line of a card already turned up (steps 0…shown): what a guess must hit */
+function answerOf(order: string[], shown: number, next: number): Link | undefined {
+  const up = new Set(order.slice(0, shown + 1).map(hostOf)), to = hostOf(order[next]);
+  const ok = (l: Link) => hostOf(l.to.card) === to && l.from.line !== undefined && up.has(hostOf(l.from.card));
+  return state.board.links.find((l) => ok(l) && l.call) ?? state.board.links.find(ok);
+}
+/** Each card's first step in the walk (host id → index) */
+const walkIndex = rooted(() => createMemo(() => {
+  const m = new Map<string, number>();
+  walk()?.order.forEach((id, k) => { const h = hostOf(id); if (!m.has(h)) m.set(h, k); });
+  return m;
+}));
+/** Face down in the Quiz: a step not reached yet */
+export function faceDown(id: string): boolean {
+  const q = walk()?.quiz;
+  if (!q) return false;
+  const k = walkIndex().get(hostOf(id));
+  return k !== undefined && k > q.shown;
+}
+/** An arrow the Quiz hides: it would give away where a face-down card is called from */
+export const quizHides = (l: Link) => !!walk()?.quiz && (faceDown(l.to.card) || faceDown(l.from.card));
+
+export function toggleQuiz() {
+  const w = walk();
+  if (!w) return;
+  if (w.quiz) { setWalk({ ...w, quiz: undefined }); return; }
+  setWalk({ ...w, quiz: { shown: w.i, right: 0, asked: 0, counted: false } });
+  if (w.i < w.order.length - 1) toast(answerOf(w.order, w.i, w.i + 1) ? "Click the line that leads to the next step" : "Press → to turn the next card");
+}
+/** What the walk bar asks: the step to find and the card its call is in */
+export function quizAsk(): { step: number; from?: { id: string; title: string } } | null {
+  const w = walk(), q = w?.quiz;
+  if (!w || !q || q.shown >= w.order.length - 1) return null;
+  const l = answerOf(w.order, q.shown, q.shown + 1);
+  const c = l && cardById(l.from.card)?.card;
+  return { step: q.shown + 2, from: c && l ? { id: l.from.card, title: cardTitle(c, state.board) } : undefined };
+}
+/** A click on a line during the Quiz: right → the next card turns up; wrong → the line shakes. false = not a guess (no Quiz) */
+export function quizGuess(cardId: string, seg: string, line: number): boolean {
+  const w = walk(), q = w?.quiz;
+  if (!w || !q) return false;
+  const next = q.shown + 1;
+  if (next >= w.order.length || faceDown(cardId)) return true;
+  const l = answerOf(w.order, q.shown, next);
+  if (!l) { toast("No line leads to the next step: press → to turn it"); return true; }
+  if (hostOf(l.from.card) === hostOf(cardId) && l.from.seg === seg && l.from.line === line) {
+    setWalk({ ...w, quiz: { ...q, right: q.right + (q.counted ? 0 : 1), asked: q.asked + (q.counted ? 0 : 1), counted: true } });
+    flash(cardId, seg, [line]);
+    walkTo(next);
+  } else {
+    miss(cardId, seg, line);
+    if (!q.counted) setWalk({ ...w, quiz: { ...q, asked: q.asked + 1, counted: true } });
+  }
+  return true;
 }
 
 /** 类卡里点一个成员：展开成函数卡，从类卡那一行连一条带 Call 标记的箭头 */

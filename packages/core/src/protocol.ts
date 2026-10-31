@@ -12,6 +12,7 @@ import type { RunApply } from "./run";
 import type { Rect } from "./layout";
 import type { QuestionItem } from "./questions";
 import type { LspItem, LspSignature } from "./workspace";
+import type { TraceFrame } from "./paste";
 
 /** A question for the user in a board dialog (HostToBoard "ask"): a line of text, or one of a list */
 export type BoardAsk =
@@ -163,6 +164,8 @@ export type DiffData = {
 
 /** 宿主建好的卡（位置由白板定；w 缺省按内容估） */
 export type NewCard = { card: Card; views: Record<string, SegView>; w?: number };
+/** A traceback frame found in the workspace: the function it ran in, and the line it was on (moved to where that code is now) */
+export type TraceHit = { card: NewCard; line: number };
 
 /** From GitHub… 面板向宿主要的数据（走 GitHub REST API，需要时用 VS Code 的 GitHub 登录） */
 export type GhQuery =
@@ -253,6 +256,7 @@ export type BoardToHost =
   | { type: "switchCommit"; req: number; seg: Segment; commit: string } // 回 { seg, view }
   | { type: "resolveRef"; req: number; text: string } // 手输 commit / branch / tag
   | { type: "paste"; req: number; text: string } // 回 NewCard | null（工作区代码、GitHub 链接）
+  | { type: "trace"; req: number; frames: TraceFrame[] } // a pasted traceback: one TraceHit per frame, null where it is not in the workspace
   | { type: "github"; req: number; url: string }
   | { type: "gh"; req: number; q: GhQuery }
   | { type: "saveAsset"; req: number; name: string; dataUrl: string }
@@ -446,6 +450,7 @@ type Replies = {
   switchCommit: { seg: Segment; view: SegView };
   resolveRef: Commit | null;
   paste: NewCard | null;
+  trace: (TraceHit | null)[];
   github: NewCard;
   gh: GhReplyOf<GhQuery["op"]>; // 按 q.op
   saveAsset: string; // assets/ 里的文件名

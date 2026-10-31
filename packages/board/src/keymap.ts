@@ -200,6 +200,7 @@ const KEYMAP: Bind[] = [
   { id: "walk", keys: ["p"], label: "Walk Through from the selected card", group: "Walkthrough", run: (a) => a.startWalk() },
   { id: "walkNext", keys: ["ArrowRight", "ArrowDown"], show: "→", label: "Next Step", group: "Walkthrough", when: () => !!walk(), run: (a) => a.walkTo(walk()!.i + 1) },
   { id: "walkPrev", keys: ["ArrowLeft", "ArrowUp"], show: "←", label: "Previous Step", group: "Walkthrough", when: () => !!walk(), run: (a) => a.walkTo(walk()!.i - 1) },
+  { id: "walkQuiz", keys: ["q"], label: "Quiz: turn the steps ahead face down, click the line that calls the next one", group: "Walkthrough", when: () => !!walk(), run: (a) => a.toggleQuiz() },
   { id: "walkExit", show: "Esc", label: "Exit", group: "Walkthrough" },
   { id: "undo", keys: ["mod+z"], label: "Undo", group: "Board", run: () => void undo() },
   { id: "redo", keys: ["mod+shift+z", "mod+y"], show: "⇧⌘Z", label: "Redo", group: "Board", run: () => void redo() },
