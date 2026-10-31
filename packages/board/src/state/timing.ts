@@ -69,5 +69,3 @@ export const LIFT_FADE = 140;
 export const MENU_OPEN = 150;
 /** A pasted traceback unrolls one frame after another: each next card pops out of its calling line this long after the last (actions/trace.ts) */
 export const TRACE_STEP = 240;
-/** A card the Walkthrough Quiz turns up flips open over this long (styles.css .card.reveal, times --t) */
-export const REVEAL_MS = 420;

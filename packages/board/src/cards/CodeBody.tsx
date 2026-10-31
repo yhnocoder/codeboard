@@ -16,7 +16,7 @@ import { geo, setGeo } from "../state/geo";
 import { look } from "../state/look";
 import { queueMeasure, observeResize, DED_PAD, monoWidth, lastDown } from "../state/measure";
 import { whenIdle } from "../state/idle";
-import { shown, toggleShown, notesOn, linksFrom, flashRows, missRow, walk, hoverVar, editing, setEditing, dragging, dropTarget, codeTextRange, type AnnotDraft } from "../state/ui";
+import { shown, toggleShown, notesOn, linksFrom, flashRows, hoverVar, editing, setEditing, dragging, dropTarget, codeTextRange, type AnnotDraft } from "../state/ui";
 import * as act from "../actions";
 import { callPointerDown, cardWheel, linkPortDown } from "../interact";
 import { Editable } from "../ui/Editable";
@@ -78,8 +78,7 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
   onMount(observe);
   createEffect(() => { rows(); notesOn(c().id); look(); later(); }); // 换材质主题：标题区高度变了，行的位置要重量
 
-  // lines arrows leave from (the Walkthrough Quiz leaves out those to face-down cards: they would give the answer away)
-  const fromLines = createMemo(() => new Set(linksFrom(c().id).filter((l) => !act.quizHides(l)).map((l) => `${l.from.seg}:${l.from.line}`)));
+  const fromLines = createMemo(() => new Set(linksFrom(c().id).map((l) => `${l.from.seg}:${l.from.line}`)));
   // 我的改动：和对比基准比新加 / 改过的行（只有显示着别的 Variant 的卡才有，其余卡不多建任何节点）
   const vrows = createMemo(() => {
     if (!c().variants?.length) return [];
@@ -202,11 +201,6 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
 
   // 点调用 = 逐层展开；按住拖出来 = 接到已有卡上
   const onCodeDown = (e: PointerEvent) => {
-    // Walkthrough Quiz: a click on a line is a guess at where the next step is called
-    if (walk()?.quiz && e.button === 0) {
-      const rowE = rowEl(e.target as Node), r = rowE && rows()[+rowE.dataset.r!];
-      if (r?.t === "line" && act.quizGuess(c().id, r.seg, r.line)) { e.preventDefault(); e.stopPropagation(); return; }
-    }
     const x = (e.target as HTMLElement).closest?.(".call") as HTMLElement | null;
     if (!x || e.button !== 0) return;
     const rowE = rowEl(x);
@@ -490,7 +484,7 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
           {(r, i) => (
             <Show when={ys()[i()] && lineRow(r)}>
               {(l) => (
-                <div class="rowbg" classList={{ hl: isHl(segById(l().seg), l().line), origin: fromLines().has(`${l().seg}:${l().line}`), lsel: inSel(l().seg, l().line), flash: flashRows().has(`${c().id}:${l().seg}:${l().line}`), miss: missRow() === `${c().id}:${l().seg}:${l().line}`, vhi: vhi(l()) }}
+                <div class="rowbg" classList={{ hl: isHl(segById(l().seg), l().line), origin: fromLines().has(`${l().seg}:${l().line}`), lsel: inSel(l().seg, l().line), flash: flashRows().has(`${c().id}:${l().seg}:${l().line}`), vhi: vhi(l()) }}
                   style={{ top: `${ys()[i()].y}px`, height: `${ys()[i()].h}px` }} />
               )}
             </Show>

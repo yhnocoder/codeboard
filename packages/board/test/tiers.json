@@ -60,7 +60,7 @@
         "packages/board/src/actions/{calls,flow,nav,trace}.ts", "packages/board/src/state/calls.ts", "packages/board/src/ui/CallPanels.tsx",
         "packages/core/src/{flow,run,rank}.ts", "packages/analysis/src/{entry,vars}.ts",
         "packages/host/src/{resolve,defcache,prefetch,nameindex,scope,runs,search,trace}.ts", "packages/host/test/fixtures/runtime/**",
-        "packages/board/test/scenarios/{calls,ux,flows,traceback,quiz}.spec.ts"
+        "packages/board/test/scenarios/{calls,ux,flows,traceback}.spec.ts"
       ],
       "scenarios": [
         "expandCall", "calltree", "runtime", "walkthroughOrder", "constructorCall", "manualCallMark", "libcalls", "attachvars",

@@ -642,8 +642,6 @@ function linkDom(r: Route, g: Accessor<Geo | null>, merged: Accessor<boolean>, c
   const kerb = <g><Show when={city() && L.call && !gutter() && !hand() && g()}>{(gg) => <path class={`kerb${widthCls(L)}`} d={gg().d} />}</Show></g> as SVGGElement;
   const label = <div class="lw"><LinkLabel L={L} g={g} /><LinkStickers link={L.id} /></div> as HTMLDivElement;
   foldLink([line, casing, kerb, port], label, createMemo(() => innerFold(L)));
-  // Walkthrough Quiz: the arrow to a face-down card would give away where it is called from
-  createRenderEffect(() => { const h = A.quizHides(L); for (const el of [line, casing, kerb, port, label]) el.classList.toggle("quizhide", h); });
   return { line, casing, kerb, port, label };
 }
 

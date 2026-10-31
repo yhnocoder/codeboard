@@ -5,8 +5,7 @@ import { noteShown, type CodeCard, type Guide, type Link, type Sidenote } from "
 import { state } from "./store";
 import { rooted, boardSignal } from "./root";
 import type { StaticTextRange } from "@yhnocoder/markdown";
-import { FLASH_MS, REVEAL_MS } from "./timing";
-import { animScale } from "./ghost";
+import { FLASH_MS } from "./timing";
 
 // 临时展开的手动隐藏范围（Show）："seg:from"
 const [shown, setShown] = boardSignal<Set<string>>(new Set());
@@ -50,22 +49,6 @@ export function flash(card: string, seg: string, lines: number[]) {
   const keys = lines.map((l) => `${card}:${seg}:${l}`);
   setFlashRows(new Set([...flashRows(), ...keys]));
   setTimeout(() => { const s = new Set(flashRows()); keys.forEach((k) => s.delete(k)); setFlashRows(s); }, FLASH_MS);
-}
-// A wrong guess in a Quiz: that line shakes, "card:seg:line"
-const [missRow, setMissRow] = boardSignal<string | null>(null);
-export { missRow };
-export function miss(card: string, seg: string, line: number) {
-  const k = `${card}:${seg}:${line}`;
-  setMissRow(null);
-  requestAnimationFrame(() => setMissRow(k));
-  setTimeout(() => { if (missRow() === k) setMissRow(null); }, FLASH_MS);
-}
-// A card the Quiz just turned up: it flips open (styles.css .card.reveal)
-const [revealing, setRevealing] = boardSignal<string | null>(null);
-export { revealing };
-export function revealCard(id: string) {
-  setRevealing(id);
-  setTimeout(() => { if (revealing() === id) setRevealing(null); }, REVEAL_MS * animScale() + 40);
 }
 const [pingCard, setPingCard] = boardSignal<{ id: string; n: number } | null>(null);
 export { pingCard };
@@ -145,11 +128,7 @@ export type SizeAnim = { w: number; h: number };
 const [sizeStore, setSizeStore] = createStore<Record<string, SizeAnim | undefined>>({});
 export const sizeIn = () => sizeStore;
 export const setSizeIn = (id: string, s: SizeAnim | undefined) => setSizeStore(id, s);
-/** Quiz during a Walkthrough: the cards after `shown` (in walk order) are face down and the arrows to them hidden; the next step
- *  is guessed by clicking the line that calls it. right / asked = steps guessed on the first try / steps that had a question;
- *  counted = the next step's question is already counted in asked (a wrong guess, or the right one) */
-export type Quiz = { shown: number; right: number; asked: number; counted: boolean };
-export type Walk = { root: string; order: string[]; i: number; before: { x: number; y: number; z: number }; expanded: string[]; quiz?: Quiz };
+export type Walk = { root: string; order: string[]; i: number; before: { x: number; y: number; z: number }; expanded: string[] };
 export const [walk, setWalk] = boardSignal<Walk | null>(null);
 export const [paletteOpen, setPaletteOpen] = createSignal<false | { mode: "all" | "code" | "entry"; q?: string }>(false);
 export const [keysOpen, setKeysOpen] = createSignal(false);

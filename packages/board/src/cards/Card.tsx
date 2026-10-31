@@ -10,7 +10,7 @@ import { measuredHeight } from "../state/subboards";
 import { state, setSizes, flows, collapsedSet, placeOf, rectOf, shared, sharedOn, twinsOf } from "../state/store";
 import { isSel, sel } from "../state/selection";
 import { Glyph } from "../stickers/glyphs";
-import { editing, setEditing, dragging, popIn, sizeIn, walk, pingCard, dropTarget, staged, revealing } from "../state/ui";
+import { editing, setEditing, dragging, popIn, sizeIn, walk, pingCard, dropTarget, staged } from "../state/ui";
 import { foldAt, toTitle, fadeAt, goneAt, skel } from "../state/fold";
 import { Icon } from "../ui/icons";
 import { isHidden } from "../state/sections";
@@ -147,12 +147,10 @@ export function CardView(p: { card: Card }) {
           "bind-hot": isBindHot(`card:${c().id}`),
           "bind-anchor": isBindAnchor(c().id),
           skel: skel(c().id) === "out", "skel-in": skel(c().id) === "in",
-          facedown: act.faceDown(c().id), reveal: revealing() === c().id,
         }}
         onPointerEnter={() => enterCard(c().id)} onPointerLeave={() => leaveCard(c().id)}
         onPointerDown={(e) => cardPointerDown(e, c().id)} onContextMenu={(e) => cardContextMenu(e, c().id)} onClick={(e) => cardClick(e, c().id)} onDblClick={(e) => cardDblClick(e, c().id)}>
         {/* 定了高度的 Note / Text 正文放不下时自己滚（styles.css）：滚轮和代码卡的 .cbody 一样归 cardWheel 判 */}
-        <Show when={act.faceDown(c().id)}><div class="cback" aria-hidden="true"><span>?</span></div></Show>
         <div class="cface" onWheel={(e) => { const b = (e.target as HTMLElement).closest<HTMLElement>(".nbody, .tx"); if (b) cardWheel(e, b); }}>
         <Dynamic component={BODIES[c().kind] as Component<{ card: Card }>} card={c()} />
         {/* 拖动时由 .board.dragging 藏起来（CSS），不在每次拖动开始和结束时把几百张卡的圆点拆掉又建回来 */}
