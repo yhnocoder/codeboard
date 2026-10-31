@@ -8,13 +8,16 @@ import { renderMd } from "../render";
 import { texForCopy } from "../view";
 import { sourceMd } from "./srcdoc";
 import { blockInfo, flat } from "./spans";
+import { inlineKey } from "./inline";
 
-/** text[a, b) of a paragraph's source, with the markers of the spans it cuts into balanced around it */
-export function balancedSource(text: string, a: number, b: number, headings: boolean): string {
+/** text[a, b) of a paragraph's source, with the markers of the spans it cuts into balanced around it. shown: where the caret
+ *  shows the source (an atom around it is shown as its source text, not drawn), relative to the paragraph */
+export function balancedSource(text: string, a: number, b: number, headings: boolean, shown: number | null = null): string {
   const spans = flat(blockInfo(text, headings).spans);
-  // a cut through a drawn atom (formula, image, ref…) takes the whole of it
+  // a cut through a drawn atom (formula, image, ref…) takes the whole of it; through one whose source shows, the characters
   for (const sp of spans) {
     if (!sp.atom || sp.atom.type === "annot") continue;
+    if (shown !== null && shown >= sp.from && shown <= sp.to) continue;
     if (a > sp.from && a < sp.to) a = sp.from;
     if (b > sp.from && b < sp.to) b = sp.to;
   }
@@ -23,7 +26,9 @@ export function balancedSource(text: string, a: number, b: number, headings: boo
   for (const sp of spans) {
     if (sp.atom || sp.plain || !sp.inner || !sp.tag) continue;
     const [i0, i1] = sp.inner;
-    const startsIn = sp.from < a && a < sp.to && a <= i1, endsIn = sp.from < b && b < sp.to && b >= i0;
+    // a cut inside the span's own syntax on both ends (a link's address, a marker) is plain characters, not the span's text
+    const startsIn = sp.from < a && a < sp.to && a < i1, endsIn = sp.from < b && b < sp.to && b > i0;
+    if ((sp.from < a && a < sp.to && !startsIn) || (sp.from < b && b < sp.to && !endsIn)) continue;
     if (!startsIn && !endsIn) continue;
     if (startsIn && endsIn && b <= i0) continue; // only part of the opening marker
     if (startsIn) { open += text.slice(sp.from, i0); A = Math.max(A, i0); }
@@ -38,7 +43,8 @@ export function selectionMd(state: EditorState): string {
   if ($from.sameParent($to) && $from.parent.type.name === "paragraph") {
     const p = $from.parent, cell = $from.depth > 0 && /cell|header/.test($from.node(-1).type.spec.tableRole ?? "");
     const a = from - $from.start(), b = to - $from.start();
-    if (a > 0 || b < p.content.size) return balancedSource(p.textContent, a, b, !cell);
+    const head = inlineKey.getState(state)?.head ?? null, shown = head === null ? null : head - $from.start();
+    if (a > 0 || b < p.content.size) return balancedSource(p.textContent, a, b, !cell, shown);
     return p.textContent;
   }
   return sliceMd(state.selection.content());

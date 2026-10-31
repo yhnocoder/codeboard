@@ -735,6 +735,63 @@ test("copyPartialMarkBalanced", async () => {
   await close(h);
 });
 
+/** Copying from a source that shows (an image's opened source line, an inline formula's TeX, a link's address, in a paragraph
+ *  and in a table cell): the selection is native, so the clipboard gets exactly the selected characters, as text/plain and as
+ *  text/html; only a selection over the whole source copies the whole image */
+test("copyInsideShownSource", async () => {
+  const b = emptyBoard("b1", "copy");
+  const src = `Intro\n\n![](https://e.com/p.png "Fig 5.1: memory types"){width=60%}\n\nSum $a+b+c$ and [the link](https://e.com/page) end\n\n| k | v |\n| - | - |\n| one | $x+y$ |`;
+  put(b, { id: "n1", kind: "note", md: src, look: "note" } as NoteCard, 60, 60, 760);
+  b.cam = { x: 0, y: 0, z: 1 };
+  const h = await open({ board: b, light, w: 1100, h: 700 });
+  const pg = h.page, pm = '.card[data-id="n1"] .md-pm';
+  await pg.locator('.card[data-id="n1"] .nbody p').first().dblclick();
+  await pg.locator(`${pm}:focus`).waitFor();
+  await focusSettled(pg);
+  await pg.evaluate(() => { const w = window as any; w.__clip = []; document.addEventListener("copy", (e) => w.__clip.push([e.clipboardData?.getData("text/plain"), e.clipboardData?.getData("text/html")])); });
+  // the caret into the source first (so it shows), then the characters selected natively, as a drag does
+  const copyOf = async (inside: string, sel: string) => {
+    const at = await pg.evaluate(([root, inside, sel]) => {
+      const ed = (document.querySelector(root) as any).editor;
+      let found: [number, number] | null = null;
+      ed.state.doc.descendants((n: any, pos: number) => {
+        if (found || !n.isTextblock) return !found;
+        const i = n.textContent.indexOf(inside);
+        if (i >= 0) { const j = inside.indexOf(sel); found = [pos + 1 + i + j, pos + 1 + i + j + sel.length]; }
+        return false;
+      });
+      if (found) ed.commands.setTextSelection(found[0] + 1);
+      return found;
+    }, [pm, inside, sel] as const);
+    if (!at) return { sel, missing: true };
+    await idle(h);
+    await pg.evaluate(([root, [from, to]]) => {
+      const view = (document.querySelector(root) as any).editor.view, a = view.domAtPos(from), z = view.domAtPos(to), r = document.createRange();
+      r.setStart(a.node, a.offset); r.setEnd(z.node, z.offset);
+      getSelection()!.removeAllRanges(); getSelection()!.addRange(r);
+    }, [pm, at] as const);
+    await pg.waitForFunction(([root, [from, to]]) => { const s = (document.querySelector(root) as any)?.editor?.state.selection; return !!s && s.from === from && s.to === to; }, [pm, at] as const, { timeout: 5000 });
+    await idle(h);
+    const shown = await pg.evaluate((root) => getSelection()!.toString(), pm);
+    await pg.keyboard.press("ControlOrMeta+c");
+    const [plain, html] = await pg.evaluate(() => (window as any).__clip.pop() ?? []) as [string, string];
+    return { sel, shown, plain, html: (html ?? "").replace(/data:[^"]+/g, "…") };
+  };
+  const cases: [string, string, string, RegExp][] = [
+    ['p.png "Fig 5.1: memory types"', "memory types", "memory types", /^(?![\s\S]*<img)[\s\S]*memory types/],
+    ["(https://e.com/p.png", "e.com/p", "e.com/p", /^(?![\s\S]*<img)[\s\S]*e\.com\/p/],
+    ["$a+b+c$", "b+c", "b+c", /^(?![\s\S]*katex)[\s\S]*b\+c/],
+    ["(https://e.com/page)", "e.com/pa", "e.com/pa", /^(?![\s\S]*<a )[\s\S]*e\.com\/pa/],
+    ["$x+y$", "+y", "+y", /^(?![\s\S]*katex)[\s\S]*\+y/],
+    ['![](https://e.com/p.png "Fig 5.1: memory types"){width=60%}', '![](https://e.com/p.png "Fig 5.1: memory types"){width=60%}', '![](https://e.com/p.png "Fig 5.1: memory types"){width=60%}', /<img[^>]*src="https:\/\/e\.com\/p\.png"/],
+  ];
+  for (const [inside, sel, plain, html] of cases) {
+    const r = await copyOf(inside, sel);
+    check(`copyInsideShownSource ${sel}`, "plain" in r && r.plain === plain && html.test(r.html ?? ""), r);
+  }
+  await close(h);
+});
+
 /** One editor is reused across Notes: each edit starts from that Note's text with its own undo history */
 test("markdownEditorReuse", async () => {
   const { b } = mdBoard();

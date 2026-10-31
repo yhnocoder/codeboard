@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { getSchema } from "@tiptap/core";
 import { baseExtensions, parseMd, sourceExtensions } from "../src/schema";
-import { clipboardText } from "../src/editor/clipboard";
+import { balancedSource, clipboardText } from "../src/editor/clipboard";
 import { sourceDoc } from "../src/editor/srcdoc";
 import type { Node as PMNode } from "@tiptap/pm/model";
 
@@ -54,5 +54,27 @@ describe("copying part of a formatted span", () => {
   }
   it("across blocks: the blocks' Markdown", () => {
     expect(copy("# Title\n\npara **b** end", "tlepara **b**")).toBe("tle\n\npara **b**");
+  });
+});
+
+describe("copying from a source that shows", () => {
+  const img = 'A ![](a.svg "Fig 5.1: memory types"){width=83%} b';
+  const cut = (t: string, sel: string, shown: number | null) => { const i = t.indexOf(sel); return balancedSource(t, i, i + sel.length, true, shown); };
+  it("an image whose source line is open: just the characters", () => {
+    expect(cut(img, "memory types", img.indexOf("types"))).toBe("memory types");
+    expect(cut(img, "A ![](a.s", img.indexOf("a.s"))).toBe("A ![](a.s");
+  });
+  it("a drawn image (its source hidden): the whole of it", () => {
+    expect(cut(img, "A ![](a.s", null)).toBe('A ![](a.svg "Fig 5.1: memory types"){width=83%}');
+  });
+  it("an inline formula whose TeX shows: just the characters", () => {
+    const t = "f $a+b+c$ g";
+    expect(cut(t, "b+c", t.indexOf("b+c"))).toBe("b+c");
+    expect(cut(t, "b+c", null)).toBe("$a+b+c$");
+  });
+  it("part of a link's address: just the characters; part of its text: the link", () => {
+    const t = "see [the link](https://e.com/page) ok";
+    expect(cut(t, "e.com/pa", t.indexOf("e.com"))).toBe("e.com/pa");
+    expect(cut(t, "he li", t.indexOf("he li"))).toBe("[he li](https://e.com/page)");
   });
 });
