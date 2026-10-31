@@ -4,7 +4,7 @@ import { state, rectOf } from "../state/store";
 import { mutate, live } from "../state/changes";
 import { toast } from "../state/toast";
 import { linkCurve } from "../state/geo";
-import { bezAt, nearestT } from "../canvas/geom";
+import { bezAt, nearestT } from "@codeboard/core/canvas";
 import { cam, toWorld } from "../state/camera";
 import { boardOffset } from "../state/measure";
 import { openMenu, type Item } from "../ui/Menu";

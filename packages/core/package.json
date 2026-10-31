@@ -17,9 +17,13 @@
     "@codeboard/analysis": "^0.1.0",
     "diff": "9.0.0",
     "elkjs": "0.12.0",
+    "shiki": "^4.5.0",
     "valibot": "1.5.0"
   },
   "exports": {
+    "./commands": "./src/commands/index.ts",
+    "./highlight": "./src/highlight.ts",
+    "./canvas": "./src/canvas/index.ts",
     ".": "./src/index.ts",
     "./storage": "./src/storage/index.ts",
     "./settings": "./src/settings.ts",

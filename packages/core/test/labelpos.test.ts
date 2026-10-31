@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { boxClear, dragT, placeT } from "../../src/canvas/labelpos";
-import { bezAt } from "../../src/canvas/geom";
+import { boxClear, dragT, placeT } from "../src/canvas/labelpos";
+import { bezAt } from "../src/canvas/geom";
 
 // 一条从 (0, 0) 到 (400, 0) 的直线（控制点在线上），两端各一张卡
 const line = [0, 0, 100, 0, 300, 0, 400, 0];

@@ -3,7 +3,7 @@ import { keepKey } from "@yhnocoder/markdown/ui";
 import { createMemo, createSignal, For, Show, onCleanup } from "solid-js";
 import { firstLine, type IconRef, type Sticker } from "@codeboard/core";
 import { linkCurve } from "../state/geo";
-import { bezAt } from "../canvas/geom";
+import { bezAt } from "@codeboard/core/canvas";
 import { BUILTIN, EMOJI, STICKER_COLORS, Glyph, GlyphPlay, packs } from "./glyphs";
 import { pickSticker, stickerDown, stickerMenu, stickerLabel } from "../actions/stickers";
 import { stickerPick, setStickerPick, stickerColor, setStickerColor, isSelSticker, stickerList, freeStickers, boundStickers, linkStickers } from "../state/stickers";

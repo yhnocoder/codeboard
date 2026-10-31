@@ -1,8 +1,7 @@
 import { batch } from "solid-js";
 import { unwrap } from "solid-js/store";
-import {
-  uid, findCard, isCode, allCodeCards, rebaseSegment, rebaseUpstream, upstreamSegs, viewKeyOf, UPSTREAM, type Card, type CodeCard, type Segment, type Settings, type DiffData, type Commit, type SegView,
-} from "@codeboard/core";
+import { uid, isCode, rebaseSegment, rebaseUpstream, upstreamSegs, viewKeyOf, UPSTREAM, type CodeCard, type Segment, type DiffData, type Commit, type SegView } from "@codeboard/core";
+import * as V from "@codeboard/core/commands";
 import { state, cardById, hostOf } from "../state/store";
 import { putViews, staleOk, putStale } from "../state/views";
 import { mutate } from "../state/changes";
@@ -14,26 +13,16 @@ import { addCards } from "./create";
 import { hostRect, revealCard } from "./common";
 import { lastPointer } from "../state/measure";
 import { updateScoped, reviewToast } from "./shared";
-import { choose } from "../ui/Menu";
-import { unlinkCard, versionLabel } from "@codeboard/core";
-import { sharedOn } from "../state/store";
+import { versionEnv } from "./env";
 import { COMMITS_WAIT } from "../state/timing";
 import { cardSel } from "../cardsel";
 
-/** 卡片标题上的版本点：changed = 黄点；hidden = 只有隐藏的行变了（空心点） */
-export function cardStale(c: CodeCard): "changed" | "hidden" | "lost" | "missing" | null {
-  let hidden = false;
-  for (const s of upstreamSegs(c)) {
-    const st = state.stale[s.id];
-    if (!st) continue;
-    if (st.state === "changed" && s.keep && st.head.startsWith(s.keep)) continue;
-    if (st.state === "changed") { if (!st.hiddenOnly) return "changed"; hidden = true; }
-    if ((st.state === "lost" || st.state === "many") && !c.keepOld) return "lost";
-    if (st.state === "missing") return "missing";
-  }
-  return hidden ? "hidden" : null;
-}
-export const uncommitted = (c: Card | undefined) => isCode(c) && c.segments.some((s) => s.version.kind === "git" && s.version.uncommitted);
+const staleOf = (id: string) => state.stale[id];
+export const cardStale = (c: CodeCard) => V.cardStale(c, staleOf);
+export const uncommitted = V.uncommitted;
+export const staleCount = () => V.staleCount(state.board, staleOf);
+export const updateAll = () => V.updateAll(versionEnv);
+export const keepVersion = (cardId: string, segId: string) => V.keepVersion(versionEnv, cardId, segId);
 
 export async function openDiff(id: string, segId?: string) {
   const c = cardById(id)?.card;
@@ -52,51 +41,7 @@ export async function openDiff(id: string, segId?: string) {
 /** Update：换成新版本；Sidenote 跟着行走，那一行被删了改挂整卡，挂着的行变了的标上复查。共享卡先问范围（shared.updateScoped） */
 export async function applyNewVersion(cardId: string, segId: string, data: DiffData) {
   if (!data.newSeg) return;
-  await updateScoped(cardId, segId, data, (id) => { updateNow(id, segId, data); toast(`Updated to the new version${reviewToast(id)}`); }, () => keepVersion(cardId, segId));
-}
-function updateNow(cardId: string, segId: string, data: DiffData) {
-  const ns = structuredClone(data.newSeg!);
-  ns.id = segId;
-  const c = cardById(cardId)?.card;
-  mutate((b) => rebaseUpstream(b, cardId, ns, undefined, { review: versionLabel(ns.version) }));
-  // 上游不在显示：展示数据存在它的 viewKey 下
-  if (data.newView && isCode(c)) putViews({ [viewKeyOf(c, segId, UPSTREAM)]: data.newView });
-  staleOk([segId]);
-}
-/** Keep：留在钉住的版本，记下这次的 HEAD，同一个新版本不再提醒 */
-export function keepVersion(cardId: string, segId: string) {
-  const st = state.stale[segId];
-  const head = st?.state === "changed" ? st.head : undefined;
-  if (head) mutate((b) => { const c = findCard(b, cardId)?.card; if (isCode(c)) { const s = upstreamSegs(c).find((q) => q.id === segId); if (s) s.keep = head; } });
-  else staleOk([segId]);
-}
-/** 横幅里的 Update All：每段都取 diff 再更新，跟一张张点 Update 一样 */
-export async function updateAll() {
-  const todo: [string, Segment][] = [];
-  for (const c of allCodeCards(state.board)) if (cardStale(c) === "changed") for (const s of upstreamSegs(c)) if (state.stale[s.id]?.state === "changed") todo.push([c.id, s]);
-  // 共享卡：范围按设置；要问的话一批只问一次
-  const linked = [...new Set(todo.map(([c]) => c))].filter((c) => sharedOn(c) > 1);
-  let scope: Settings["sharedUpdate"] | "skip" = state.host.settings.sharedUpdate;
-  if (linked.length && scope === "ask") {
-    const i = await choose(`${linked.length} of these cards ${linked.length > 1 ? "are" : "is"} also on other boards`, ["Update on All Boards", "This Board Only", "Skip Linked Cards"], {
-      note: "This Board Only makes a copy here, so the other boards keep the old version.",
-    });
-    if (i === null) return;
-    scope = i === 0 ? "all" : i === 1 ? "this" : "skip";
-  }
-  const ren = new Map<string, string>();
-  if (scope === "this") mutate((b) => { for (const c of linked) ren.set(c, unlinkCard(b, c)); });
-  let n = 0;
-  for (const [cid0, s] of todo) {
-    if (linked.includes(cid0) && (scope as string) === "skip") continue;
-    const cid = ren.get(cid0) ?? cid0;
-    try {
-      const k = cardById(cid)?.card;
-      const data = await ask("diff", { seg: s, against: isCode(k) && k.variants?.length ? "upstream" : undefined });
-      if (data.canUpdate) { updateNow(cid, s.id, data); n++; }
-    } catch { /* 这张跳过 */ }
-  }
-  toast(n === todo.length ? `Updated ${n} card${n === 1 ? "" : "s"}` : `Updated ${n} of ${todo.length}; open the others to review`);
+  await updateScoped(cardId, segId, data, (id) => { V.applyVersion(versionEnv, id, segId, data); toast(`Updated to the new version${reviewToast(id)}`); }, () => keepVersion(cardId, segId));
 }
 export async function duplicateNewVersion(cardId: string, segId: string, data: DiffData) {
   if (!data.newSeg) return;
@@ -153,12 +98,10 @@ export function replaceSegment(cardId: string, seg: Segment, view: SegView) {
   mutate((b) => rebaseUpstream(b, cardId, seg));
 }
 
-/** 新版本横幅里的 Review：一张张打开 diff */
+/** Review in the new-version banner: open the diffs one by one */
 export function reviewNext() {
-  for (const c of allCodeCards(state.board)) {
-    const st = cardStale(c);
-    if (st === "changed" || st === "hidden") { select({ cards: [hostOf(c.id)] }); void revealCard(c.id, false).then(() => openDiff(c.id)); return; }
-  }
-  toast("All cards are up to date");
+  const id = V.nextToReview(state.board, staleOf);
+  if (!id) return toast("All cards are up to date");
+  select({ cards: [hostOf(id)] });
+  void revealCard(id, false).then(() => openDiff(id));
 }
-export const staleCount = () => allCodeCards(state.board).filter((c) => cardStale(c) === "changed").length;

@@ -24,13 +24,11 @@ import { LinkLabel } from "./Labels";
 import { LinkStickers } from "../stickers/Picker";
 import { track, undoGesture } from "../gesture";
 import { isBindHot } from "../state/stickers";
-import { chooseMode, sidesOf, anchorOn, turnAnchor, slide, connect, selfArc, gutterLine, headPath, type Anchor, type Box, type Mode, type Side, type Shape } from "./route";
-import { handLine } from "./hand";
+import { chooseMode, sidesOf, anchorOn, turnAnchor, slide, connect, selfArc, gutterLine, headPath, type Anchor, type Box, type Mode, type Side, type Shape, handLine, clamp } from "@codeboard/core/canvas";
 import { carAt, type CarPose, type Road } from "./city";
 import { Car, Lane, trackTraffic } from "./Traffic";
 import { tiltOf } from "../state/tilt";
 
-import { clamp } from "./geom";
 
 const popOf = (host: string) => popIn()[host];
 /** 两端都在同一个正在折叠、展开的 Section 里的线：那个 Section（这条线不重新走线，整条跟着卡缩放，Links 的 foldLink） */

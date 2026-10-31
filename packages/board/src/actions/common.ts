@@ -6,7 +6,7 @@ import { frames, isHidden, visibleCards } from "../state/sections";
 import { subRef } from "../state/subboards";
 import { linkCurve } from "../state/geo";
 import { extraList } from "../state/extent";
-import { bezAt, bezBox } from "../canvas/geom";
+import { bezAt, bezBox } from "@codeboard/core/canvas";
 import { camTo, camRest, ensureVisible, fitRect, animate, Spring, reduceMotion } from "../state/camera";
 import { notesOf, ping, setPopIn, popIn, setPaletteOpen, setSizeIn, type SizeAnim } from "../state/ui";
 import { openPop, updatePop } from "../state/pop";

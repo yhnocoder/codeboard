@@ -27,11 +27,11 @@
       "about": "the board itself: camera, zoom, pan, drag, select, resize, copy / paste, undo, the store and measuring",
       "files": [
         "packages/board/src/{App,BoardView}.tsx", "packages/board/src/{index.tsx,interact.ts,gesture.ts,cardsel.ts,focus.ts,env.d.ts}",
-        "packages/board/src/canvas/{Canvas.tsx,geom.ts}", "packages/board/src/cards/Card.tsx",
+        "packages/board/src/canvas/Canvas.tsx", "packages/core/src/canvas/{index,geom}.ts", "packages/board/src/cards/Card.tsx",
         "packages/board/src/state/{camera,changes,cull,extent,geo,ghost,history,hover,idle,lodcards,lru,measure,mode,root,save,selection,snap,store,timing,toast,tune,ui,upkeep,views}.ts",
-        "packages/board/src/actions/{index,common,edit,create}.ts", "packages/board/src/ui/{guard,hooks,overlay,shield}.ts",
+        "packages/board/src/actions/{index,common,edit,create,env}.ts", "packages/board/src/ui/{guard,hooks,overlay,shield}.ts",
         "packages/board/src/ui/icons.tsx", "packages/core/src/{index,model,edit,layout,tidy,emitter,paste}.ts",
-        "packages/core/src/storage/clip.ts", "packages/host/src/paste.ts",
+        "packages/core/src/storage/clip.ts", "packages/core/src/commands/{index,env}.ts", "packages/host/src/paste.ts",
         "packages/board/test/scenarios/{board,fit,drag-by-body,drag-controls,copy-paste,multi-select,text-selection-delete,click-to-edit}.spec.ts"
       ],
       "scenarios": [
@@ -45,7 +45,7 @@
       "files": [
         "packages/board/src/cards/{CodeBody,FreeEdit}.tsx", "packages/board/src/cm/**", "packages/board/src/actions/create.ts",
         "packages/markdown/src/cm/**", "packages/markdown/src/code.ts",
-        "packages/analysis/src/{index,tree,highlight,langs,select,basics}.ts", "packages/core/src/{render,lines,chip}.ts",
+        "packages/analysis/src/{index,tree,highlight,langs,select,basics}.ts", "packages/core/src/{render,lines,chip,highlight}.ts",
         "packages/host/src/{cards,source,views,analysis,codeedit,scratchnames}.ts",
         "packages/board/test/scenarios/{code-cards,code-card-header,codeedit,fixq,text-selection-delete,code-line-band,find}.spec.ts"
       ],
@@ -121,7 +121,7 @@
     "arrows": {
       "about": "arrows and their labels, ports and routing; Marks and hand-drawn annotations",
       "files": [
-        "packages/board/src/canvas/{Links,Labels}.tsx", "packages/board/src/canvas/{labelpos,route,hand}.ts",
+        "packages/board/src/canvas/{Links,Labels}.tsx", "packages/core/src/canvas/{labelpos,route,hand}.ts",
         "packages/board/src/actions/{links,annots}.ts", "packages/core/src/linklabel.ts", "packages/host/src/marks.ts",
         "packages/board/src/state/blocks.ts", "packages/board/src/md/blocks.ts", "packages/board/test/scenarios/{arrows,labels,layers,marks,note-block-arrows}.spec.ts"
       ],
@@ -177,7 +177,7 @@
     "versions": {
       "about": "code that changed since the card was made: version dots and diffs, Update, Relocate, lost code, git",
       "files": [
-        "packages/board/src/actions/versions.ts", "packages/board/src/ui/pops/versions.tsx", "packages/core/src/{track,diff}.ts",
+        "packages/board/src/actions/versions.ts", "packages/board/src/ui/pops/versions.tsx", "packages/core/src/{track,diff}.ts", "packages/core/src/commands/versions.ts",
         "packages/host/src/{versions,watch,git}.ts", "packages/board/test/scenarios/flows.spec.ts"
       ],
       "scenarios": ["versions", "patchsave", "lost", "rebase", "follow"]

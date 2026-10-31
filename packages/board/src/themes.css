@@ -1030,7 +1030,7 @@
 /* City：交通标志，白边 */
 [data-look="city"] .glyph.bi { --stk-bg: var(--c); --stk-fg: #fff; --stk-ring: #fff; --stk-rw: 1.6; }
 
-/* 手绘线（从 Mark 出发的箭头）：每个主题都是 Mark 的颜色、实线、圆头；第二笔淡一些（canvas/hand.ts）。写在所有主题后面，主题的线样式不碰它 */
+/* 手绘线（从 Mark 出发的箭头）：每个主题都是 Mark 的颜色、实线、圆头；第二笔淡一些（@codeboard/core/canvas hand.ts）。写在所有主题后面，主题的线样式不碰它 */
 :root .edge.hand:not(.rubber), :root .ahead.hand { stroke: var(--hc); stroke-width: calc(1.6px * var(--lw, 1)); stroke-dasharray: none; stroke-linecap: round; stroke-linejoin: round; fill: none; }
 :root .edge.hand.p2 { stroke-width: calc(1.1px * var(--lw, 1)); opacity: .5; pointer-events: none; }
 :root .edge.hand.on:not(.p2), :root .ahead.hand.on { stroke-width: calc(2.4px * var(--lw, 1)); }

@@ -1,5 +1,5 @@
 // 纯计算，不碰 DOM、不读 store。
-import type { Pt } from "./route";
+import type { Pt } from "@codeboard/core/canvas";
 
 const r = (v: number) => Math.round(v * 10) / 10;
 

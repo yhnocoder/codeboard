@@ -12,16 +12,15 @@ import { Editable } from "../ui/Editable";
 import { isDbl } from "../interact";
 import * as A from "../actions";
 import { visible, type Geo } from "./Links";
-import { dragT, placeT, type Box } from "./labelpos";
-import { bezAt } from "./geom";
+import { dragT, placeT, type LabelBox, bezAt } from "@codeboard/core/canvas";
 import { NODRAG } from "../ui/guard";
 import { DRAG_SLOP, track, undoGesture } from "../gesture";
 import { addExtra, keepSize, keptSize } from "../state/extent";
 
 // 框的大小（世界坐标）：一个共用的 ResizeObserver，只在框的内容变了时回调，平移 / 缩放 / 拖卡时不读布局
-const sizeCbs = new WeakMap<Element, (b: Box) => void>();
+const sizeCbs = new WeakMap<Element, (b: LabelBox) => void>();
 let ro: ResizeObserver | undefined;
-function watchSize(el: HTMLElement, cb: (b: Box) => void) {
+function watchSize(el: HTMLElement, cb: (b: LabelBox) => void) {
   if (typeof ResizeObserver === "undefined") return;
   ro ??= new ResizeObserver((es) => {
     for (const e of es) {
@@ -42,7 +41,7 @@ function labelDrag(e: PointerEvent, id: string, el: HTMLElement, pts: () => numb
   const o0 = boardOffset(), w0 = toWorld(e.clientX - o0.x, e.clientY - o0.y), c0 = at();
   const grab = c0 ? { x: w0.x - c0.x, y: w0.y - c0.y } : { x: 0, y: 0 };
   let g: ReturnType<typeof undoGesture> | null = null;
-  let box: Box = { w: 0, h: 0 }, rs: Rect[] = [];
+  let box: LabelBox = { w: 0, h: 0 }, rs: Rect[] = [];
   track(e, (ev) => {
     if (!g) {
       g = undoGesture();
@@ -153,7 +152,7 @@ export function LinkLabel(p: { L: Link; g: Accessor<Geo | null> }) {
     return ll ? `In a loop · L${ll.line}  ${ll.text}` : "Called inside a loop";
   });
 
-  const [box, setBox] = createSignal<Box | null>(null, { equals: (a, b) => !!a && !!b && a.w === b.w && a.h === b.h });
+  const [box, setBox] = createSignal<LabelBox | null>(null, { equals: (a, b) => !!a && !!b && a.w === b.w && a.h === b.h });
   const ends = (): Rect[] => {
     const a = cardById(L.from.card), b = cardById(L.to.card);
     return a && b ? [rectOf(a.host), rectOf(b.host)] : [];

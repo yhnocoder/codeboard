@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { chooseMode, sidesOf, anchorOn, tiltAngle, connect, slide, type Box } from "../../src/canvas/route";
+import { chooseMode, sidesOf, anchorOn, tiltAngle, connect, slide, type Box } from "../src/canvas/route";
 
 const S: Box = { x: 0, y: 0, w: 300, h: 200 };
 const at = (x: number, y: number, w = 300, h = 160): Box => ({ x, y, w, h });
