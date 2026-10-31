@@ -1,6 +1,6 @@
-// Usage: node packages/board/test/run-perf.mjs [--cards 240] [--notes 200] (a board of Notes with realistic Markdown: open, pan, zoom, enter edit, type) [--runs 3] [--json out.json] [--quick] [--theme ink-wash] [--traffic] (City: green light, cars driving) [--profile <step>] [--trace <step>] [--steps <step>] [--long <step>] [--stop pinch] [--inval <step>] [--anim] (--anim: the line and corner stickers are animated GIFs from a sticker pack; --inval counts what invalidated style and layout; --stop pinch: end each run after the camera steps; --long breaks down each dropped frame; --steps prints each step's time, LOD class and camera)
+// Usage: node packages/board/test/run-perf.mjs [--cards 240] [--notes 200] (a board of Notes with realistic Markdown: open, pan, zoom, enter edit, type) [--runs 3] [--json out.json] [--quick] [--theme ink-wash] [--light] [--traffic] (City: green light, cars driving) [--profile <step>] [--trace <step>] [--steps <step>] [--long <step>] [--stop pinch] [--inval <step>] [--anim] (--anim: the line and corner stickers are animated GIFs from a sticker pack; --inval counts what invalidated style and layout; --stop pinch: end each run after the camera steps; --long breaks down each dropped frame, LONG_OVER=8.3 each frame over that many ms; --steps prints each step's time, LOD class and camera)
 // Each scenario reports wall clock (action → next frame painted), main-thread busy time (CDP TaskDuration) and frame times
-// (frameP95 / frameMax / over16: main-thread task durations; the 60 fps budget is 16.7 ms).
+// (frameP95 / frameMax / over16 / over8: main-thread task durations; the 60 fps budget is 16.7 ms, 120 fps 8.3 ms).
 import * as fs from "node:fs";
 import { ready, openBoard, launch, symCard, files, type Host } from "./harness";
 import { emptyBoard, skeletonOf, stampBorn, uid, type Board, type BoardCard, type CodeCard, type Link, type Section, type Sidenote, type Skeleton } from "@codeboard/core";
@@ -98,7 +98,8 @@ export function notesBoard(n: number): Board {
     ].join("\n");
     const c = { id: `n${i}`, kind: "note", md, look: i % 3 ? "note" : "text" } as Board["cards"][number];
     b.cards.push(c);
-    b.place[c.id] = { x: (i % COLS) * 480, y: Math.floor(i / COLS) * 620, w: 420 };
+    // n10 has a fixed height its Markdown does not fit in: the scrollNote scenario scrolls inside it
+    b.place[c.id] = { x: (i % COLS) * 480, y: Math.floor(i / COLS) * 620, w: 420, ...(i === 10 ? { h: 220 } : {}) };
   }
   b.cam = { x: 80, y: 80, z: 1 };
   stampBorn(b);
@@ -162,8 +163,8 @@ async function steps(h: Host, cdp: CDPSession, n: number, step: (i: number) => P
   const marks = events.filter((e) => e.name === "TimeStamp" && e.args?.data?.message === STEP_MARK && onMain(e)).map((e) => e.ts as number).sort((a, b) => a - b);
   const frames = perStep && marks.length === n ? marks.map((ts, i) => Math.max(0, ...runTasks.filter((e) => e.ts >= ts && e.ts < (marks[i + 1] ?? Infinity)).map((e) => e.dur / 1000))) : undefined;
   if (name && name === arg("long", "")) {
-    // What each dropped frame spent its time on (events inside the task, >1.5 ms)
-    for (const t of events.filter((e) => e.ph === "X" && e.name === "RunTask" && main && e.pid === main.pid && e.tid === main.tid && e.dur > 16700))
+    // What each dropped frame spent its time on (events inside the task, >1.5 ms); LONG_OVER=8.3: the frames dropped at 120 fps
+    for (const t of events.filter((e) => e.ph === "X" && e.name === "RunTask" && main && e.pid === main.pid && e.tid === main.tid && e.dur > +(process.env.LONG_OVER ?? 16.7) * 1000))
       console.log(`  long ${(t.dur / 1000).toFixed(0)}ms:`, events.filter((e) => e.ph === "X" && e.pid === main.pid && e.tid === main.tid && e.ts >= t.ts && e.ts + e.dur <= t.ts + t.dur && e.dur > +(process.env.LONG_MIN ?? 1500) && e.name !== "RunTask")
         .map((e) => `${e.name}${e.args?.data?.functionName ? "(" + e.args.data.functionName + ")" : ""} ${(e.dur / 1000).toFixed(1)}`).join(" > "));
   }
@@ -218,14 +219,15 @@ function top(p: { nodes: { id: number; callFrame: { functionName: string; url: s
 const med = (a: number[]) => { const s = [...a].sort((x, y) => x - y); return s[Math.floor(s.length / 2)]; };
 const p95 = (a: number[]) => { const s = [...a].sort((x, y) => x - y); return s[Math.min(s.length - 1, Math.floor(s.length * 0.95))]; };
 /**
- * Frames: main-thread task durations (>1 ms); frameMax over 16.7 means a dropped frame, over16 counts such tasks. frameP95 is the 95th
+ * Frames: main-thread task durations (>1 ms); frameMax over 16.7 means a dropped frame, over16 counts such tasks (over8: over 8.3 ms, a dropped frame at 120 fps). frameP95 is the 95th
  * percentile of all the tasks, or after steps(..., perStep) (frameOf "step") of each step's frame, its longest task: for steps that wait, where
  * the waits' own frames outnumber the steps' (hover: 12 steps that wait 250–500 ms each for the cross-fades, ~125 tasks of which the
  * 6 lifts are 5%, so p95 fell on either side of them by how many fade frames the runner drew: 12.7 → 19.6 ms, same code)
  */
 const sum = (m: M) => ({ median: +med(m.wall).toFixed(1), p95: +p95(m.wall).toFixed(1), busyPerStep: +(m.busy / m.wall.length).toFixed(2), ...m.parts,
   ...(m.frames ? { frameOf: "step" } : {}),
-  frameP95: +p95(m.frames ?? (m.tasks?.length ? m.tasks : [0])).toFixed(1), frameMax: +Math.max(0, ...(m.tasks ?? [])).toFixed(1), over16: (m.tasks ?? []).filter((t) => t > 16.7).length });
+  frameP95: +p95(m.frames ?? (m.tasks?.length ? m.tasks : [0])).toFixed(1), frameMax: +Math.max(0, ...(m.tasks ?? [])).toFixed(1), over16: (m.tasks ?? []).filter((t) => t > 16.7).length,
+  over8: (m.tasks ?? []).filter((t) => t > 8.3).length });
 
 async function profiled<T>(cdp: CDPSession, name: string, fn: () => Promise<T>): Promise<T> {
   if (name !== PROFILE) return fn();
@@ -252,7 +254,7 @@ async function once() {
   const res: Record<string, unknown> = { cards: board.cards.length, links: board.links.length, sections: board.sections.length, sidenotes: board.sidenotes.length, ...(ANIM ? { animStickers: board.stickers.filter((k) => k.icon.pack === "perf").length } : {}), ...(sk ? { frames: NFRAMES } : {}) };
   const t0 = performance.now();
   let cdp!: CDPSession;
-  const h = await openBoard(await launch(), { until: "shown", board, settings: THEME ? { theme: THEME } as any : undefined, on: (m, reply) => (sk && m.type === "skeletons" ? (void reply(m.req!, Object.fromEntries(m.ids.map((id) => [id, sk]))), true) : ANIM && m.type === "stickerPacks" ? (void reply(m.req!, pack), true) : false), beforeLoad: async (page) => {
+  const h = await openBoard(await launch(), { until: "shown", board, light: process.argv.includes("--light"), settings: THEME ? { theme: THEME } as any : undefined, on: (m, reply) => (sk && m.type === "skeletons" ? (void reply(m.req!, Object.fromEntries(m.ids.map((id) => [id, sk]))), true) : ANIM && m.type === "stickerPacks" ? (void reply(m.req!, pack), true) : false), beforeLoad: async (page) => {
     cdp = await page.context().newCDPSession(page);
     await cdp.send("Performance.enable");
     if (PROFILE === "load") { await cdp.send("Profiler.enable"); await cdp.send("Profiler.setSamplingInterval", { interval: 200 }); await cdp.send("Profiler.start"); }
@@ -266,7 +268,14 @@ async function once() {
   if (process.argv.includes("--traffic")) { await h.page.locator(".dock .traffic").click(); res.movers = await h.page.locator(".movers .mover").count(); }
   await h.page.waitForTimeout(1500);
   if (arg("shot", "")) {
-    for (const z of [1, 2.5]) { await h.post({ type: "reveal", card: board.links[0].to.card }); await h.page.waitForTimeout(1000); if (z > 1) { await h.page.keyboard.down("Control"); for (let i = 0; i < 12; i++) await h.page.mouse.wheel(0, -40); await h.page.keyboard.up("Control"); await h.page.waitForTimeout(800); } await h.page.screenshot({ path: `${arg("shot", "")}-${z}.png` }); }
+    const still = () => h.page.waitForFunction(() => !document.querySelector(".world")?.matches(".moving, .settle"), null, { timeout: 30000 });
+    for (const z of [1, 2.5]) { await h.post({ type: "reveal", card: board.links[0].to.card }); await h.page.waitForTimeout(1000); await still(); if (z > 1) { await h.page.keyboard.down("Control"); for (let i = 0; i < 12; i++) await h.page.mouse.wheel(0, -40); await h.page.keyboard.up("Control"); await h.page.waitForTimeout(800); await still(); } await h.page.screenshot({ path: `${arg("shot", "")}-${z}.png` }); }
+    // After a wheel pan across two rows of cards that were hidden off screen (state/cull.ts), at rest
+    await h.post({ type: "reveal", card: board.links[0].to.card }); await h.page.waitForTimeout(1000); await still();
+    await h.page.mouse.move(700, 450);
+    for (let i = 0; i < 35; i++) { await h.page.mouse.wheel(i % 3 ? 0 : 60, 40); await h.page.waitForTimeout(16); }
+    await h.page.waitForTimeout(1500); await h.page.mouse.move(5, 5); await h.page.waitForTimeout(500); await still();
+    await h.page.screenshot({ path: `${arg("shot", "")}-pan.png` });
     await h.page.context().browser()!.close(); return res;
   }
   if (arg("stop", "") === "lod") {
@@ -348,6 +357,10 @@ async function once() {
   // Trackpad pinch: many small steps from 100% down to the map level and back (passes every level and every switch)
   res.pinch = sum(await steps(h, cdp, 100, async (i) => { await h.page.keyboard.down("Control"); await h.page.mouse.wheel(0, i < 50 ? 5 : -5); await h.page.keyboard.up("Control"); }, "pinch"));
   await h.page.waitForTimeout(800);
+  // Scroll inside a card: the wheel over a selected card's long body scrolls the body itself (the card owns the gesture), down then up
+  // (the code card whose code overflows its body the most: the longest function, capped at CODE_MAX)
+  const scrolled = NNOTES ? "n10" : await h.page.evaluate(() => [...document.querySelectorAll<HTMLElement>(".card.ccard")].map((c) => { const b = c.querySelector<HTMLElement>(".cbody"); return { id: c.dataset.id!, over: b ? b.scrollHeight - b.clientHeight : 0 }; }).sort((a, b) => b.over - a.over)[0]?.id);
+  if (scrolled) res[NNOTES ? "scrollNote" : "scrollCode"] = await scrollIn(h, cdp, scrolled, NNOTES ? ".nbody" : ".cbody", NNOTES ? "scrollNote" : "scrollCode");
   if (arg("stop", "") === "pinch") { await h.page.context().browser()!.close(); return res; }
   if (NNOTES) { await notesEdit(h, cdp, board, res); await h.page.context().browser()!.close(); return res; }
 
@@ -457,6 +470,28 @@ async function once() {
   res.staleMsg = +(performance.now() - t).toFixed(1);
   await h.page.context().browser()!.close();
   return res;
+}
+
+/** Wheel over the scrolling body of card id (selected first, so the gesture is the card's): 30 steps down, then 30 up, each a 30th of
+ *  how far it scrolls (at most 30 px). Throws when it did not scroll */
+async function scrollIn(h: Host, cdp: CDPSession, id: string, body: string, name: string) {
+  await focusCard(h, id);
+  // A point that really is the body: Sidenotes, stickers and arrows can lie over parts of it
+  const at = await h.page.evaluate(([id, body]) => {
+    const b = document.querySelector<HTMLElement>(`.card[data-id="${id}"] ${body}`)!, r = b.getBoundingClientRect();
+    for (let y = r.top + 40; y < Math.min(r.bottom, innerHeight) - 20; y += 20) for (let x = r.left + 40; x < r.right - 40; x += 40) if (document.elementFromPoint(x, y)?.closest(body) === b) return { x, y };
+    return null;
+  }, [id, body] as const);
+  if (!at) throw new Error(`${name}: no free point over ${body} of ${id}`);
+  await h.page.mouse.move(at.x, at.y);
+  const top = () => h.page.evaluate(([id, body]) => document.querySelector(`.card[data-id="${id}"] ${body}`)!.scrollTop, [id, body] as const);
+  const over = await h.page.evaluate(([id, body]) => { const b = document.querySelector(`.card[data-id="${id}"] ${body}`)!; return b.scrollHeight - b.clientHeight; }, [id, body] as const);
+  const d = Math.max(4, Math.min(30, Math.floor(over / 30)));
+  const t0 = await top();
+  let far = 0;
+  const m = sum(await steps(h, cdp, 60, async (i) => { await h.page.mouse.wheel(0, i < 30 ? d : -d); if (i === 29) far = await top(); }, name));
+  if (!(far - t0 > Math.min(100, over / 2))) throw new Error(`${name}: the body of ${id} did not scroll (scrollTop ${t0} → ${far} of ${over})`);
+  return { ...m, scrolledPx: far - t0 };
 }
 
 /** Notes board: double-click a Note → its editor has focus (10 different Notes, the first one includes loading the editor if it was not preloaded),
