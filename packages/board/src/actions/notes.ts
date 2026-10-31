@@ -1,6 +1,9 @@
 import { unwrap } from "solid-js/store";
 import { uid, findCard, isCode, cardTitle, segOf, cardIntoSidenote, imageIntoNote, removeSidenotes, sidenoteCard, sidenoteToCard, splitHeadings, splitNoteByHeadings, turnNoteInto, NEW_CARD_W, type Sidenote, type SegView, type Anchor, type BoxFill, type HandColor } from "@codeboard/core";
-import { state, setState, mutate, sel, select, clearSel, lineSel, cardById, hostOf, toast, rectOf, placeOf } from "../state/store";
+import { state, cardById, hostOf, rectOf, placeOf } from "../state/store";
+import { mutate } from "../state/changes";
+import { sel, select, clearSel, lineSel } from "../state/selection";
+import { toast } from "../state/toast";
 import { editing, liveNoteMd, setEditing } from "../state/ui";
 import { cardsMeasured } from "../state/measure";
 import { noteImageOf } from "./imagedata";
@@ -10,7 +13,8 @@ import { imageCaption, setImageCaption } from "@yhnocoder/markdown";
 import { noteImageAt, type ImgRef } from "./imageai";
 import { openPop, closePop, pops, updatePop, pinPop } from "../state/pop";
 import { ask } from "../host";
-import { addCards, requestViews } from "./create";
+import { addCards } from "./create";
+import { requestViews, putViews } from "../state/views";
 import { tune } from "../state/tune";
 import { hostRect, popCard, revealCard } from "./common";
 import { lastPointer } from "../state/measure";
@@ -59,7 +63,7 @@ export function addSidenoteUI() {
 export function addSidenote(n: Omit<Sidenote, "id">, view?: SegView) {
   const id = uid("n");
   const sn = { ...n, id } as Sidenote;
-  if (sn.kind === "code" && view) setState("views", sn.code.id, view);
+  if (sn.kind === "code" && view) putViews({ [sn.code.id]: view });
   mutate((b) => { b.sidenotes.push(sn); });
   return id;
 }

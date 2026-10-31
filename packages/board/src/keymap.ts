@@ -5,7 +5,10 @@
 // 动作拿到的 A 是 actions 的命名空间（类型 import，运行时不引用 actions：菜单要 import 这里拿快捷键文字）
 import type { KeyAction } from "@codeboard/core";
 import type * as Actions from "./actions";
-import { state, sel, lineSel, undo, redo, live, beginGesture, toast, clearSel, hostOf, cardById } from "./state/store";
+import { state, hostOf, cardById } from "./state/store";
+import { undo, redo, live, beginGesture } from "./state/changes";
+import { sel, lineSel, clearSel } from "./state/selection";
+import { toast } from "./state/toast";
 import { holdGesture } from "./gesture";
 import { NUDGE_HOLD, NUDGE_RAMP, NUDGE_SPEED, NUDGE_MAX } from "./state/timing";
 import { camTarget, zoomAt } from "./state/camera";

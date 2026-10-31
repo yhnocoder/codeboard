@@ -3,7 +3,9 @@
 // PNG 用同一份克隆画到 canvas 上。交互用的部件在组件里标 data-export="strip"，克隆时一起删。
 import { unwrap } from "solid-js/store";
 import { boardMarkdown, cardTitle, exportOrder, findCard, isQuestion, startCards, walkOrder, bounds, escHtml, THEMES, type Board, type ExportFormat, type ExportScope, type Segment, type Sidenote } from "@codeboard/core";
-import { state, sel, select, lineSel, setLineSel, rectOf, hostOf, toast, flows } from "../state/store";
+import { state, rectOf, hostOf, flows } from "../state/store";
+import { sel, select, lineSel, setLineSel } from "../state/selection";
+import { toast } from "../state/toast";
 import { lod, holdFullDetail } from "../state/camera";
 import { lodBusy, lodOf } from "../state/lodcards";
 import { setExportOpen, exportBusy, setExportBusy, type ExportOpts } from "../state/export";

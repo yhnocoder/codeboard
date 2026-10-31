@@ -1,7 +1,11 @@
 import { batch } from "solid-js";
 import { reconcile } from "solid-js/store";
 import { loadBoard, findCard, isCode, allCodeCards, rebaseUpstream, upstreamSegs, shiftBy, walkOrder, removeCards, type HostToBoard, type Sidenote } from "@codeboard/core";
-import { state, setState, markSaved, setBoard, select, clearSel, toast, mutate, sync, syncShared, syncGone, syncMerged, setShared, setLineSel, lineSel, sel, flows } from "./state/store";
+import { state, setState, setShared, flows } from "./state/store";
+import { putViews, putStale, resetSegs } from "./state/views";
+import { markSaved, setBoard, mutate, sync, syncShared, syncGone, syncMerged } from "./state/changes";
+import { select, clearSel, setLineSel, lineSel, sel } from "./state/selection";
+import { toast } from "./state/toast";
 import { setCam } from "./state/camera";
 import { cardsMeasured } from "./state/measure";
 import { putSkels, setCrumbs, setWalkBack } from "./state/subboards";
@@ -36,14 +40,13 @@ function handle(m: HostToBoard) {
     case "init": {
       const b = loadBoard(m.board);
       batch(() => {
-        // 宿主状态、版本状态整个换掉（store 的 setState 是合并：上一块白板的项会留下来）；views 是按段 id 的缓存，合并是故意的
+        // the host state and the segments' views and version states are replaced (store setState merges: the last board's would stay)
         setState("host", reconcile(m.host));
         setNoteAssets(m.host.assetBase);
         applyMathPreamble(m.host.settings.mathPreamble);
         if (!preloaded) { preloaded = true; preloadEditor(); preloadCm(); }
         setState("boards", m.boards);
-        setState("views", m.views);
-        setState("stale", reconcile(m.stale));
+        resetSegs(m.views, m.stale);
         setBoard(b, (m.crumbs ?? []).map((c) => c.id));
         A.resetShownViews();
         setState("loaded", true);
@@ -63,7 +66,7 @@ function handle(m: HostToBoard) {
     case "skeletons": putSkels(m.boards); A.refreshRefs(); break;
     case "boardRefs": putBoardRefs(m.refs); break;
     case "crumbs": setCrumbs(m.crumbs); break;
-    case "views": setState("views", (v) => ({ ...v, ...m.views })); break;
+    case "views": putViews(m.views); break;
     case "stale": {
       // moved：只是挪了位置，白板静默跟上（行号、Link、Sidenote 一起平移，钉的版本换成找到它的那个版本）。
       // 这是跟宿主同步，不是用户的操作，所以走 sync：不进撤销栈，⌘Z 回到更早的快照后会再平移一次（按段现在的位置算到目标行，不会平移两遍）
@@ -81,11 +84,7 @@ function handle(m: HostToBoard) {
           }
         });
       }
-      setState("stale", (o) => {
-        const n = { ...o };
-        for (const [k, v] of Object.entries(m.stale)) n[k] = v.state === "moved" ? { state: "ok" } : v;
-        return n;
-      });
+      putStale(Object.fromEntries(Object.entries(m.stale).map(([k, v]) => [k, v.state === "moved" ? { state: "ok" } : v])));
       break;
     }
     case "boards": setState("boards", m.boards); break;
@@ -105,7 +104,7 @@ function handle(m: HostToBoard) {
       break;
     }
     case "appendSegment": {
-      setState("views", m.seg.id, m.view);
+      putViews({ [m.seg.id]: m.view });
       mutate((b) => {
         const c = findCard(b, m.card)?.card;
         if (!isCode(c)) return;

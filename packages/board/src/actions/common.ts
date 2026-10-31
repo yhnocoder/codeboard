@@ -1,5 +1,7 @@
 import { cardTitle, isCode, segOf, bounds, type Card, type Section, type Rect } from "@codeboard/core";
-import { state, mutate, sel, select, isSel, cardById, hostOf, rectOf, placeOf, placed, flows } from "../state/store";
+import { state, cardById, hostOf, rectOf, placeOf, placed, flows } from "../state/store";
+import { mutate } from "../state/changes";
+import { sel, select, isSel } from "../state/selection";
 import { frames, isHidden, visibleCards } from "../state/sections";
 import { subRef } from "../state/subboards";
 import { linkCurve } from "../state/geo";

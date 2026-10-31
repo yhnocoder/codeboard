@@ -9,10 +9,10 @@ import {
   type Rect, type NoteCard, type NoteLayout,
 } from "@codeboard/core";
 import { LANGS, langLabel } from "@codeboard/analysis/langs";
-import {
-  state, setState, mutate, isFresh, settleFresh, sel, select, clearSel, setLineSel, cardById, hostOf, rectOf, toast, placeOf, sharedOn, collapsedAway,
-  type LineSel,
-} from "../state/store";
+import { state, cardById, hostOf, rectOf, placeOf, sharedOn, collapsedAway } from "../state/store";
+import { mutate, isFresh, settleFresh } from "../state/changes";
+import { sel, select, clearSel, setLineSel, type LineSel } from "../state/selection";
+import { toast } from "../state/toast";
 import { animate, Spring, reduceMotion } from "../state/camera";
 import { setEditing, setEditEntry, codeTextRange, staged, setStaged } from "../state/ui";
 import { foldOf, setFold, setFoldV, setFoldHome, setSkel, unskel, type Fold } from "../state/fold";
@@ -24,7 +24,7 @@ import { openMenu, type Item } from "../ui/Menu";
 import { ghostOut } from "../state/ghost";
 import { frameOf, fitFrame, setFitting, allMembers, isHidden, descSections, openUnder, measureShut } from "../state/sections";
 import { popCard, revealCard, sectionById, sectionLocked, selCards, isLocked, slideFrom } from "./common";
-import { requestViews } from "./create";
+import { requestViews, copyViews, staleOk } from "../state/views";
 import { offerReference } from "./shared";
 import { kbd } from "../keymap";
 import { ask } from "../host";
@@ -189,7 +189,7 @@ export function duplicateSel() {
     // core placeCards：卡、段换新 id；摆放错开 48，不带折叠、锁定
     const r = placeCards(b, cs.map((c) => ({ card: unwrap(c), place: unwrap(b.place[c.id]) })), { copy: true, at: (p) => ({ ...p, x: p.x + 48, y: p.y + 48 }) });
     made = cs.map((c) => r.cards[c.id]);
-    for (const [o, n] of Object.entries(r.segs)) { const v = state.views[o]; if (v) setState("views", n, v); }
+    copyViews(r.segs);
   });
   select({ cards: made });
   made.forEach((id) => popCard(id));
@@ -303,7 +303,7 @@ export function toggleLock(cards: string[], sections: string[] = []) {
 export function keepLost(cardId: string) {
   const c = cardById(cardId)?.card;
   if (!isCode(c)) return;
-  for (const s of c.segments) if (state.stale[s.id]?.state === "lost" || state.stale[s.id]?.state === "many") setState("stale", s.id, { state: "ok" });
+  staleOk(c.segments.filter((s) => state.stale[s.id]?.state === "lost" || state.stale[s.id]?.state === "many").map((s) => s.id));
   mutate((b) => { const k = findCard(b, cardId)?.card; if (isCode(k)) k.keepOld = true; });
 }
 export function missingNote(c: CodeCard): string | null {

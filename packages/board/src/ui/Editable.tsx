@@ -7,7 +7,7 @@ import { editing, setEditing, setLiveNote, takeEditEntry, type Editing } from ".
 import type { MdLayout } from "@yhnocoder/markdown";
 import { MdStatic } from "./Md";
 import { loadEditor, editorNow, editorOpts, prepareSelected, setCurrentEditor, setSourceMode, NOTE_PLACEHOLDER, type MdEditorHandle } from "../md/load";
-import { sel } from "../state/store";
+import { sel } from "../state/selection";
 
 export function Editable(p: {
   class?: string; kind: NonNullable<Editing>["kind"]; id: string; value: string; multiline?: boolean; md?: boolean; placeholder?: string;

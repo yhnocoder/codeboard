@@ -8,7 +8,11 @@ import {
   type Board, type Card, type CodeCard, type ImageCard, type NoteCard, type NoteLook, type Segment, type Place,
   type NewCard, type Rect,
 } from "@codeboard/core";
-import { state, setState, mutate, createFresh, isFresh, settleFresh, sel, select, cardById, rectOf, toast, placeOf } from "../state/store";
+import { state, cardById, rectOf, placeOf } from "../state/store";
+import { putViews, requestViews } from "../state/views";
+import { mutate, createFresh, isFresh, settleFresh } from "../state/changes";
+import { sel, select } from "../state/selection";
+import { toast } from "../state/toast";
 import { camTo, camTarget, fitTop, isVisible, viewportCenter } from "../state/camera";
 import { editing, setEditing } from "../state/ui";
 import { promptText } from "../ui/Menu";
@@ -30,7 +34,7 @@ function withDefaults(c: Card): Card {
 /** 把宿主建好的卡放到白板上：有选中的卡就放旁边，没有就放视口中央。also：同一步里（一次撤销）跟着要做的别的改动 */
 export function addCards(list: NewCard[], o: { at?: { x: number; y: number }; exact?: boolean; besideSel?: boolean; section?: string; also?: (b: Board) => void } = {}) {
   if (!list.length) return [];
-  setState("views", (v) => ({ ...v, ...Object.assign({}, ...list.map((n) => n.views)) }));
+  putViews(Object.assign({}, ...list.map((n) => n.views)));
   const ids: string[] = [];
   const anchor = o.besideSel !== false && sel.cards.length ? hostRect(sel.cards[sel.cards.length - 1]) : null;
   mutate((b) => {
@@ -217,12 +221,6 @@ export function newFreeCode(at?: { x: number; y: number }, text = "", lang = "py
   return id;
 }
 
-/** 白板自己生成的段（合并、Free code 改动）找宿主要高亮 */
-export async function requestViews(segs: Segment[]) {
-  if (!segs.length) return;
-  const v = await ask("views", { segs }).catch(() => null);
-  if (v) setState("views", (o) => ({ ...o, ...v }));
-}
 
 export async function pasteText(text: string, at?: { x: number; y: number }, exact = false) {
   if (!text.trim()) return;

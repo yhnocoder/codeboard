@@ -8,7 +8,9 @@ import {
 import { App } from "../../src/App";
 import { BoardView } from "../../src/BoardView";
 import { onHost } from "../../src/hostio";
-import { select, state, setState, setToastMsg } from "../../src/state/store";
+import { state, setState } from "../../src/state/store";
+import { select } from "../../src/state/selection";
+import { setToastMsg } from "../../src/state/toast";
 import { setEditing, setSettingsOpen } from "../../src/state/ui";
 import { setCam } from "../../src/state/camera";
 import { setStickerColor } from "../../src/state/stickers";

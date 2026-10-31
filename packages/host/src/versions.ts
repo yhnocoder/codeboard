@@ -1,16 +1,9 @@
 import * as path from "node:path";
-import { allCodeCards, locateSeg, sameLines, storedSegs, trackSeg, uid, upstreamSegs, viewKey, type Board, type Segment, type Stale, type SymRef } from "@codeboard/core";
+import { allCodeCards, locateSeg, sameLines, trackSeg, uid, upstreamSegs, type Board, type Segment, type Stale, type SymRef } from "@codeboard/core";
 import { headOf, isAncestor, repoRootOf, resolveRef, showFile, upstreamRef } from "./git";
 import { analysisOf } from "./analysis";
 import { currentVersion, currentVersionLabel, hasLocalFile, rootOf, versionFor, type Loc } from "./source";
 import { exists, langOf, readText, splitLines } from "./ws";
-
-/** 白板上所有的段：代码卡（含 Compare 的两栏）和 Code sidenote */
-export function boardSegments(b: Pick<Board, "cards" | "sidenotes">): Segment[] {
-  const out = allCodeCards(b).flatMap((c) => c.segments);
-  for (const s of b.sidenotes ?? []) if (s.kind === "code") out.push(s.code);
-  return out;
-}
 
 /**
  * 版本状态要看的段：代码卡按上游的段（有 Variant 的卡显示的可能是我的分支，新版本提示和它无关），加上 Code sidenote。
@@ -24,10 +17,6 @@ export function staleSegments(b: Pick<Board, "cards" | "sidenotes">): { segs: Se
   }
   for (const s of b.sidenotes ?? []) if (s.kind === "code") segs.push(s.code);
   return { segs, up };
-}
-/** 不在显示的 Variant 的段，id 换成 viewKey（展示数据、文件监听用） */
-export function variantSegments(b: Pick<Board, "cards">): Segment[] {
-  return allCodeCards(b).flatMap((c) => storedSegs(c).map(({ vid, seg }) => ({ ...seg, id: viewKey(seg.id, vid) })));
 }
 
 export async function makeSegment(loc: Loc, lines: string[], start: number, end: number, opts: { symbol?: SymRef; scope?: string; lang?: string } = {}): Promise<Segment> {

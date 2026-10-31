@@ -1,7 +1,10 @@
 import { batch } from "solid-js";
 import { unwrap } from "solid-js/store";
 import { cardTitle, descendants, escHtml, extractBoard, removeCards, uid, wouldCycle, type BoardCard, type WalkHop } from "@codeboard/core";
-import { state, mutate, sel, select, clearSel, cardById, hostOf, rectOf, toast, flushSave, flows } from "../state/store";
+import { state, cardById, hostOf, rectOf, flows } from "../state/store";
+import { mutate, flushSave } from "../state/changes";
+import { sel, select, clearSel } from "../state/selection";
+import { toast } from "../state/toast";
 import { camTarget, camTo, fitRect, viewportCenter } from "../state/camera";
 import { iconHtml } from "../ui/icons";
 import { crumbs, frameOf, skelOf, subRefs, walkBack, setWalkBack, setCrumbMorph, heightToKeep } from "../state/subboards";

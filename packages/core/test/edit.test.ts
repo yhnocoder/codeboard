@@ -439,7 +439,7 @@ describe("guard: reference upkeep only in core/src/edit.ts", () => {
     ["board/src/actions/questions.ts", "s.q = { ...(s.q ?? { md: \"\" }), done: true, answer: card }", "the user links the answer card: that is the edit itself"],
     ["board/src/actions/flow.ts", "delete b.marks[g.id];", "the user clears a call graph's mark: that is the edit itself"],
     ["board/src/actions/flow.ts", "(b.marks ??= {})[g.id] = mark;", "the user sets a call graph's mark: that is the edit itself"],
-    ["board/src/state/store.ts", "b.born = tmp.born;", "mutate stamps creation order on new cards (core stampBorn on a plain copy)"],
+    ["board/src/state/upkeep.ts", "b.born = tmp.born;", "mutate stamps creation order on new cards (core stampBorn on a plain copy)"],
   ];
   const LISTS = "cards|links|sections|sidenotes|stickers";
   const SPLICE = "splice|pop|shift|sort|reverse|fill|copyWithin";

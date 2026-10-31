@@ -1,7 +1,8 @@
 import { keepKey } from "@yhnocoder/markdown/ui";
 import { For, Show, createSignal, createMemo } from "solid-js";
 import { alignRows, wordDiff, cardTitle, versionLabel, isCode, segOf, escHtml, threeWay, upstreamSegs, activeOf, viewKeyOf, UPSTREAM, type Segment } from "@codeboard/core";
-import { state, cardById, toast } from "../../state/store";
+import { state, cardById } from "../../state/store";
+import { toast } from "../../state/toast";
 import { closePop } from "../../state/pop";
 import { vlive } from "../../state/variants";
 import { markHtml } from "../../cards/CompareBody";

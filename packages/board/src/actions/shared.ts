@@ -1,10 +1,15 @@
+import { batch } from "solid-js";
 // 卡在几块白板上、谁连到它由宿主算好（state/store 的 shared），这里只读。
 import { unwrap } from "solid-js/store";
 import {
   bounds, cardTitle, isCode, placeCards, findFree, removeCards, unlinkCard, notesOnChangedLines, versionLabel, cardCopies, makeTwin, detachTwin,
   type Card, type CardCopy, type DiffData, type ImageCard, type Link, type PastedCards, type SegView,
 } from "@codeboard/core";
-import { state, setState, mutate, sel, select, clearSel, cardById, hostOf, toast, flushSave, shared, sharedOn, rectOf, twinsOf } from "../state/store";
+import { state, cardById, hostOf, shared, sharedOn, rectOf, twinsOf } from "../state/store";
+import { putViews, copyViews } from "../state/views";
+import { mutate, flushSave } from "../state/changes";
+import { sel, select, clearSel } from "../state/selection";
+import { toast } from "../state/toast";
 import { boardSignal } from "../state/root";
 import { PASTE_CHIP_IDLE } from "../state/timing";
 import { isHidden, settleHome } from "../state/sections";
@@ -102,7 +107,7 @@ export function pasteAs(ref: boolean) {
 export function detachTwins(ids: string[]) {
   const segs: Record<string, string> = {};
   if (!mutate((b) => { for (const id of ids) Object.assign(segs, detachTwin(b, id)); })) return;
-  setState("views", (v) => { const n = { ...v }; for (const [o, k] of Object.entries(segs)) if (v[o]) n[k] = v[o]; return n; });
+  copyViews(segs);
   toast(ids.length > 1 ? `Detached ${ids.length} cards: each is its own copy now` : "Detached: this is its own copy now");
 }
 /** 卡上「同一张卡在几处」的记号：点一下跳到下一处 */
@@ -217,7 +222,7 @@ function putCards(items: CardCopy[], links: Link[], copy: boolean, at: { x: numb
     segs = m.segs;
     for (const id of ids) settleHome(b, id);
   });
-  setState("views", (v) => { const n = { ...v }; for (const [o, k] of Object.entries(segs)) if (views[o]) n[k] = views[o]; for (const [k, x] of Object.entries(views)) if (!segs[k]) n[k] = x; return n; });
+  batch(() => { copyViews(segs, views); putViews(Object.fromEntries(Object.entries(views).filter(([k]) => !segs[k]))); });
   select({ cards: ids });
   requestAnimationFrame(() => {
     const u = bounds(ids.map((id) => hostRect(id)!).filter(Boolean));

@@ -1,6 +1,7 @@
 import { For, Match, Show, Switch, createEffect, createMemo, createSignal, on } from "solid-js";
 import { mdHeading, BOX_FILLS, HAND_COLORS, type NoteCard } from "@codeboard/core";
-import { state, isSel, sel, placeOf } from "../state/store";
+import { state, placeOf } from "../state/store";
+import { isSel, sel } from "../state/selection";
 import { editing } from "../state/ui";
 import { reduceMotion } from "../state/camera";
 import { Editable } from "../ui/Editable";

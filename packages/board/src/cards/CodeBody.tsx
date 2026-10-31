@@ -8,7 +8,8 @@ import { createMemo, For, Show, onMount, onCleanup, createEffect, createSignal, 
 import { cardRows, commonIndent, shownText, copyText, escHtml, type CodeCard, type Row, type Segment, type SegView, type Sidenote, type Sticker } from "@codeboard/core";
 import { langInfo } from "@codeboard/analysis/langs";
 import { escapeRegExp, F_COMMENT } from "@codeboard/analysis/basics";
-import { state, lineSel, setLineSel, reportSelection } from "../state/store";
+import { state } from "../state/store";
+import { lineSel, setLineSel, reportSelection } from "../state/selection";
 import { lineStickers, stickerList } from "../state/stickers";
 import { StickerChip } from "../stickers/Picker";
 import { geo, setGeo } from "../state/geo";

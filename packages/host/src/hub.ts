@@ -1,11 +1,10 @@
-import { Emitter, boardRefsOf, cutCrumbs, diffBoards, sharedInfo, skeletonOf, subBoardsOf, type AskType, type BoardRef, type BoardRefs, type RecentRef, type BoardMeta, type BoardPatch, type BoardToHost, type Camera, type Crumb, type Disposable, type HostToBoard, type ReplyOf, type Segment, type Skeleton, type WalkHop } from "@codeboard/core";
+import { variantSegments, Emitter, boardRefsOf, cutCrumbs, diffBoards, sharedInfo, skeletonOf, subBoardsOf, type AskType, type BoardRef, type BoardRefs, type RecentRef, type BoardMeta, type BoardPatch, type BoardToHost, type Camera, type Crumb, type Disposable, type HostToBoard, type ReplyOf, type Segment, type Skeleton, type WalkHop } from "@codeboard/core";
 import type { CardClip, Storage } from "@codeboard/core/storage";
 import { BoardPanel, type BoardHost, type BoardView } from "./boards";
 import type { HostEnv, ViewPlace } from "./env";
 import type { Handler } from "./handlers";
 import { log } from "./log";
 import { viewsFor } from "./views";
-import { variantSegments } from "./versions";
 import { workspace } from "./ws";
 
 /** How long pushes to open boards (skeletons, [[ refs, shared cards) wait for more changes */

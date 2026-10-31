@@ -3,7 +3,11 @@ import {
   type CallSpan, type CodeCard, type DispatchResult, type ExpandResult, type ImplPick, type Link, type NameHit, type Segment, type SearchItem,
 } from "@codeboard/core";
 import type { CallAlt, BoundVal } from "@codeboard/analysis/basics";
-import { state, setState, mutate, cardById, hostOf, toast, placeOf, select } from "../state/store";
+import { state, cardById, hostOf, placeOf } from "../state/store";
+import { putViews } from "../state/views";
+import { mutate } from "../state/changes";
+import { select } from "../state/selection";
+import { toast } from "../state/toast";
 import { setConnectFrom } from "../state/mode";
 import { openPop, updatePop, type ImplPop, type NamesPop } from "../state/pop";
 import { ask } from "../host";
@@ -151,7 +155,7 @@ export async function swapAlt(linkId: string, k: number, o: { label?: string; dr
   const os = isCode(old) ? old.segments[0] : undefined;
   const oldAlt: CallAlt | undefined = os && hostPathOf(os) ? { label: os.symbol?.qual ?? cardTitle(old!), detail: `${hostPathOf(os)}:${os.start}`, path: hostPathOf(os), line: os.start, qual: os.symbol?.qual, ...(L.call.vals ? { vals: L.call.vals } : {}) } : undefined;
   const newId = r.card.id;
-  setState("views", (v) => ({ ...v, ...r.views }));
+  putViews(r.views);
   let kept = false;
   mutate((b) => {
     const nc = structuredClone(r.card) as CodeCard;
@@ -252,7 +256,7 @@ export async function addGenerated(at: { card: string; seg?: string; line?: numb
   const name = baseName(src.name);
   const card: CodeCard = { id: uid("c"), kind: "code", segments: [seg], gen: { what: genWhat(src.lang, src.name, src.text), run: `${name ? `${name} · ` : "run "}${hhmm()}` } };
   const views = await ask("views", { segs: [seg] }).catch(() => ({}));
-  setState("views", (v) => ({ ...v, ...views }));
+  putViews(views);
   const r = hostRect(at.card);
   const pl = placeOf(hostOf(at.card));
   mutate((b) => {

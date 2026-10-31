@@ -5,7 +5,9 @@
 // 模型只在宿主里问（密钥不进白板，webview 的 CSP 也不让连 api.deepseek.com）：这里把图缩成模型收的大小发过去，回来的 SVG 在这里清洗。
 // 新建的 Note / SVG 图和指过去的箭头是一步改动（一次撤销）；Modify SVG 换掉图也是一步，⌘Z 换回原来的
 import { findCard, uid, GAP, type Board, type ImageAiOp, type ImageAiResult, type ImageCard, type NoteCard } from "@codeboard/core";
-import { state, mutate, toast, cardById, placeOf } from "../state/store";
+import { state, cardById, placeOf } from "../state/store";
+import { mutate } from "../state/changes";
+import { toast } from "../state/toast";
 import { ask, send } from "../host";
 import { editing, setEditing } from "../state/ui";
 import { openPop } from "../state/pop";

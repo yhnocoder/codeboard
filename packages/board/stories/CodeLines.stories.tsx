@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import type { Board, CodeCard, Segment } from "@codeboard/core";
 import { Stage, scene, noteCard, type Globals, type Group, type Scene } from "./support/board";
 import { fn, multi, slice, seg0, lineOf } from "./support/code";
-import { setLineSel } from "../src/state/store";
+import { setLineSel } from "../src/state/selection";
 import { setDropTarget, setHoverVar, toggleShown } from "../src/state/ui";
 import { themes } from "./support/themes";
 

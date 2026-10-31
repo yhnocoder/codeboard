@@ -1,6 +1,6 @@
 // 当前显示的 Variant 的段在 card.segments，其余的存在 variant.segs，段 id 一一对应：Link、Sticker 的行号切换时按内容跟过去（rebaseSegment），
 // 「只在这个 Variant」的 Sidenote 行号按那个 Variant 的代码算，切换时不动。纯函数，读文件、跑 git 由宿主做。
-import { activeOf, clone, onVariant, UPSTREAM, versionLabel, type Board, type CodeCard, type Segment, type Sidenote, type Variant, type VariantFrom } from "./model";
+import { activeOf, allCodeCards, clone, onVariant, UPSTREAM, versionLabel, viewKey, type Board, type CodeCard, type Segment, type Sidenote, type Variant, type VariantFrom } from "./model";
 import { alignRows, mapLines, sameLines } from "./diff";
 import { lineMapOf, moveNoteLines, rebaseSegment, remapSegMarks, type LineMap } from "./edit";
 
@@ -19,10 +19,21 @@ export function isMine(c: Pick<CodeCard, "segments" | "variants" | "active">): b
 }
 
 /** 不是当前显示的 Variant 的段（展示数据在 views[viewKey(段, Variant)]） */
-export function storedSegs(c: Pick<CodeCard, "variants" | "active">): { vid: string; seg: Segment }[] {
+function storedSegs(c: Pick<CodeCard, "variants" | "active">): { vid: string; seg: Segment }[] {
   const out: { vid: string; seg: Segment }[] = [];
   for (const v of c.variants ?? []) if (v.id !== activeOf(c)) for (const s of v.segs ?? []) out.push({ vid: v.id, seg: s });
   return out;
+}
+
+/** Every segment on the board: code cards (both columns of a Compare) and Code sidenotes */
+export function boardSegments(b: Pick<Board, "cards" | "sidenotes">): Segment[] {
+  const out = allCodeCards(b).flatMap((c) => c.segments);
+  for (const s of b.sidenotes ?? []) if (s.kind === "code") out.push(s.code);
+  return out;
+}
+/** The segments of the Variants not shown, their ids made viewKey (their views are kept under those) */
+export function variantSegments(b: Pick<Board, "cards">): Segment[] {
+  return allCodeCards(b).flatMap((c) => storedSegs(c).map(({ vid, seg }) => ({ ...seg, id: viewKey(seg.id, vid) })));
 }
 
 /** 标签上的小字：branch、worktree、file、PR */

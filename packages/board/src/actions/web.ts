@@ -3,7 +3,10 @@ import {
   uid, findCard, removeCards, estSize, defaultWidth, findFree,
   type Board, type Card, type LinkItem, type LinksCard, type WebCard, type WebStyle, type Place,
 } from "@codeboard/core";
-import { state, mutate, sync, select, cardById, rectOf, placeOf, toast, sel } from "../state/store";
+import { state, cardById, rectOf, placeOf } from "../state/store";
+import { mutate, sync } from "../state/changes";
+import { select, sel } from "../state/selection";
+import { toast } from "../state/toast";
 import { toWorld, viewportCenter } from "../state/camera";
 import { setEditing } from "../state/ui";
 import { openMenu, type Item } from "../ui/Menu";

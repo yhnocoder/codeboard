@@ -2,7 +2,8 @@
 // 指着它停一会儿下面摊开几张成员卡的预览。
 import { For, Show, createMemo, createRenderEffect, createSignal, onCleanup, untrack } from "solid-js";
 import { cardTitle, type Card } from "@codeboard/core";
-import { state, sel } from "../state/store";
+import { state } from "../state/store";
+import { sel } from "../state/selection";
 import { shownFrame, depthOf, hiddenByAncestor, allMembers, dropSections, fitting, measureShut, setLabelEl } from "../state/sections";
 import { foldOf, foldAt, frameAt, toTitle, fadeAt, goneAt, shutLook, lerp } from "../state/fold";
 import { observeResize } from "../state/measure";

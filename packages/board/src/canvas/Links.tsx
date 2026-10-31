@@ -3,7 +3,9 @@
 // 汇到同一处（同一张卡的卡头 / 同一行、同一侧）的几条线：合并点到终点的那一小段和箭头只画一次（<g class="merge">）。
 import { Show, createComputed, createEffect, createMemo, createRenderEffect, createSignal, mapArray, on, onCleanup, untrack, type Accessor, type Signal } from "solid-js";
 import { headOf, type Link, type LinkSide, type Rect } from "@codeboard/core";
-import { state, sel, select, rectOf, cardById, hostOf, collapsedAway, placeOf, placed, live } from "../state/store";
+import { state, rectOf, cardById, hostOf, collapsedAway, placeOf, placed } from "../state/store";
+import { live } from "../state/changes";
+import { sel, select } from "../state/selection";
 import { geo, lineY, setCurveSource, HEAD_H } from "../state/geo";
 import { blockY, hoverBlock, keepBlock, leaveBlock, watchBlockHover } from "../state/blocks";
 import { portStyle } from "../state/hover";

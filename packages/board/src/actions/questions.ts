@@ -1,7 +1,10 @@
 // 面板只在开着时算；卡头的个数是一张按卡分好的表，贴纸变了才重算（不进每帧的工作）
 import { createMemo } from "solid-js";
 import { boardQuestions, isQuestion, questionsMarkdown, removeStickers, uid, type Board, type IconRef, type QuestionItem, type Sticker } from "@codeboard/core";
-import { state, mutate, createFresh, isFresh, settleFresh, toast, cardById, select, setLineSel, rectOf } from "../state/store";
+import { state, cardById, rectOf } from "../state/store";
+import { mutate, createFresh, isFresh, settleFresh } from "../state/changes";
+import { select, setLineSel } from "../state/selection";
+import { toast } from "../state/toast";
 import { openPop, closePop, pops } from "../state/pop";
 import { setEditing } from "../state/ui";
 import { rooted } from "../state/root";

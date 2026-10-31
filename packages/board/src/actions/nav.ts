@@ -1,6 +1,8 @@
 import { createMemo } from "solid-js";
 import { cardTitle, isCode, segOf, type Link } from "@codeboard/core";
-import { state, sel, select, clearSel, cardById, toast, shared } from "../state/store";
+import { state, cardById, shared } from "../state/store";
+import { sel, select, clearSel } from "../state/selection";
+import { toast } from "../state/toast";
 import { send } from "../host";
 import { camTo, camTarget } from "../state/camera";
 import { flash } from "../state/ui";

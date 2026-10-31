@@ -2,7 +2,7 @@
 // 新加的一条先是草稿（在 Editing 里），写了字才进白板和撤销栈；什么都没写就消失
 import { createMemo } from "solid-js";
 import { findCard, isCode, HAND_COLORS, type Board, type CodeAnnot, type HandColor } from "@codeboard/core";
-import { mutate } from "../state/store";
+import { mutate } from "../state/changes";
 import { editing, setEditing, type AnnotDraft } from "../state/ui";
 import { rooted } from "../state/root";
 import { openMenu } from "../ui/Menu";

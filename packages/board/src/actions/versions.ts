@@ -1,8 +1,13 @@
+import { batch } from "solid-js";
 import { unwrap } from "solid-js/store";
 import {
   uid, findCard, isCode, allCodeCards, rebaseSegment, rebaseUpstream, upstreamSegs, viewKeyOf, UPSTREAM, type Card, type CodeCard, type Segment, type Settings, type DiffData, type Commit, type SegView,
 } from "@codeboard/core";
-import { state, setState, mutate, select, cardById, hostOf, toast } from "../state/store";
+import { state, cardById, hostOf } from "../state/store";
+import { putViews, staleOk, putStale } from "../state/views";
+import { mutate } from "../state/changes";
+import { select } from "../state/selection";
+import { toast } from "../state/toast";
 import { openPop, updatePop } from "../state/pop";
 import { send, ask } from "../host";
 import { addCards } from "./create";
@@ -55,15 +60,15 @@ function updateNow(cardId: string, segId: string, data: DiffData) {
   const c = cardById(cardId)?.card;
   mutate((b) => rebaseUpstream(b, cardId, ns, undefined, { review: versionLabel(ns.version) }));
   // 上游不在显示：展示数据存在它的 viewKey 下
-  if (data.newView && isCode(c)) setState("views", { [viewKeyOf(c, segId, UPSTREAM)]: data.newView });
-  setState("stale", segId, { state: "ok" });
+  if (data.newView && isCode(c)) putViews({ [viewKeyOf(c, segId, UPSTREAM)]: data.newView });
+  staleOk([segId]);
 }
 /** Keep：留在钉住的版本，记下这次的 HEAD，同一个新版本不再提醒 */
 export function keepVersion(cardId: string, segId: string) {
   const st = state.stale[segId];
   const head = st?.state === "changed" ? st.head : undefined;
   if (head) mutate((b) => { const c = findCard(b, cardId)?.card; if (isCode(c)) { const s = upstreamSegs(c).find((q) => q.id === segId); if (s) s.keep = head; } });
-  else setState("stale", segId, { state: "ok" });
+  else staleOk([segId]);
 }
 /** 横幅里的 Update All：每段都取 diff 再更新，跟一张张点 Update 一样 */
 export async function updateAll() {
@@ -132,7 +137,10 @@ export async function switchCommit(id: string, commit: string) {
   }
   // 走 rebaseSegment：段上的隐藏 / 高亮，Link、Sidenote、Sticker 的行号按内容跟到那个 commit 的行上
   mutate((b) => { for (const r of segs) rebaseSegment(b, id, r.seg); });
-  for (const r of segs) { setState("views", r.seg.id, r.view); setState("stale", r.seg.id, undefined); }
+  batch(() => {
+    putViews(Object.fromEntries(segs.map((r) => [r.seg.id, r.view])));
+    putStale(Object.fromEntries(segs.map((r) => [r.seg.id, undefined])));
+  });
   send({ type: "checkVersions" });
   toast(`Switched to ${commit.slice(0, 7)}`);
 }
@@ -140,8 +148,8 @@ export async function switchCommit(id: string, commit: string) {
 /** Relocate 之后宿主送来新段（同一个 id）：换掉旧段，行号跟过去，状态回到正常 */
 export function replaceSegment(cardId: string, seg: Segment, view: SegView) {
   const c = cardById(cardId)?.card;
-  if (isCode(c)) setState("views", { [viewKeyOf(c, seg.id, UPSTREAM)]: view });
-  setState("stale", seg.id, { state: "ok" });
+  if (isCode(c)) putViews({ [viewKeyOf(c, seg.id, UPSTREAM)]: view });
+  staleOk([seg.id]);
   mutate((b) => rebaseUpstream(b, cardId, seg));
 }
 

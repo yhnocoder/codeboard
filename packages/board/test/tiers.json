@@ -28,7 +28,7 @@
       "files": [
         "packages/board/src/{App,BoardView}.tsx", "packages/board/src/{index.tsx,interact.ts,gesture.ts,cardsel.ts,focus.ts,env.d.ts}",
         "packages/board/src/canvas/{Canvas.tsx,geom.ts}", "packages/board/src/cards/Card.tsx",
-        "packages/board/src/state/{camera,cull,extent,geo,ghost,hover,idle,lodcards,lru,measure,mode,root,store,timing,tune,ui}.ts",
+        "packages/board/src/state/{camera,changes,cull,extent,geo,ghost,history,hover,idle,lodcards,lru,measure,mode,root,save,selection,snap,store,timing,toast,tune,ui,upkeep,views}.ts",
         "packages/board/src/actions/{index,common,edit,create}.ts", "packages/board/src/ui/{guard,hooks,overlay,shield}.ts",
         "packages/board/src/ui/icons.tsx", "packages/core/src/{index,model,edit,layout,tidy,emitter,paste}.ts",
         "packages/core/src/storage/clip.ts", "packages/host/src/paste.ts",

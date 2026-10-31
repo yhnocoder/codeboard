@@ -1,7 +1,7 @@
 // 白板状态由界面持有，改动后把变了的项发回来保存（patch，存储改它缓存的那份再写盘）。
-import { boardQuestions, type Board, type BoardAsk, type BoardRefs, type BoardMeta, type BoardToHost, type Camera, type Crumb, type Event, type HostInfo, type HostToBoard, type Segment, type Settings, type Skeleton, type Stale, type WalkHop } from "@codeboard/core";
+import { boardSegments, variantSegments, boardQuestions, type Board, type BoardAsk, type BoardRefs, type BoardMeta, type BoardToHost, type Camera, type Crumb, type Event, type HostInfo, type HostToBoard, type Segment, type Settings, type Skeleton, type Stale, type WalkHop } from "@codeboard/core";
 import type { CardClip, Storage } from "@codeboard/core/storage";
-import { boardSegments, countStale, staleFor, staleSegments, variantSegments } from "./versions";
+import { countStale, staleFor, staleSegments } from "./versions";
 import { syncVariants } from "./variants";
 import { viewsFor } from "./views";
 import { absOf, present, srcLabel } from "./source";

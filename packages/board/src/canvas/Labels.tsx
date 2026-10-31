@@ -1,7 +1,9 @@
 import { For, Show, createMemo, createRenderEffect, createSignal, onCleanup, type Accessor } from "solid-js";
 import { callText, varGone, loopLine, segOf, isCode, type Link, type Rect } from "@codeboard/core";
 import { varKey } from "@codeboard/analysis/basics";
-import { state, sel, select, live, cardById, rectOf } from "../state/store";
+import { state, cardById, rectOf } from "../state/store";
+import { live } from "../state/changes";
+import { sel, select } from "../state/selection";
 import { editing, setDragLink } from "../state/ui";
 import { hoverLink, enterLink, leaveLink } from "../state/hover";
 import { toWorld } from "../state/camera";

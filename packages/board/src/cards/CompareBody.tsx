@@ -2,7 +2,8 @@
 // 只有一边有的行另一边留斜纹空位。两栏还是原来的卡（编号、Link 都在）。
 import { createMemo, For, Show, onMount, onCleanup, createEffect } from "solid-js";
 import { alignRows, wordDiff, findCard, cardTitle, escHtml, type CompareCard, type CodeCard, type Row } from "@codeboard/core";
-import { state, mutate, cardById, placeOf } from "../state/store";
+import { state, cardById, placeOf } from "../state/store";
+import { mutate } from "../state/changes";
 import { setGeo } from "../state/geo";
 import { queueMeasure, observeResize } from "../state/measure";
 import { Icon } from "../ui/icons";
