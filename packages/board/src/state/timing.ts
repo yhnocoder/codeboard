@@ -59,3 +59,11 @@ export const WEB_PEEK_DELAY = 550;
 export const SECTION_PEEK_OUT = 140;
 /** Lines that flash (a jump to a line, a call's target) stay lit this long (state/ui.ts flash) */
 export const FLASH_MS = 700;
+/** A peek closes this long after the pointer leaves the word and the peek (TUNE.peekHide's default) */
+export const PEEK_HIDE = 260;
+/** An arrow's end slides to the other side of its card over this long (TUNE.sideSlide's default) */
+export const SIDE_SLIDE = 120;
+/** An arrow fades over this long as it lifts above the cards or drops below them (TUNE.liftFade's default) */
+export const LIFT_FADE = 140;
+/** A menu's open animation (TUNE.menuOpen's default) */
+export const MENU_OPEN = 150;
