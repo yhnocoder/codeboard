@@ -7,6 +7,7 @@ import { Editable } from "../ui/Editable";
 import { Icon } from "../ui/icons";
 import * as A from "../actions";
 import { below, ownMenu } from "../ui/Menu";
+import { sourceModeOf, toggleNoteSource } from "../md/load";
 
 /**
  * 卡头的名字就是 Markdown 开头的标题时，正文里藏起那一行（正文元素加 hidehead，styles.css 藏掉第一个标题）：没自己起名字、开头是标题、
@@ -32,23 +33,29 @@ export function NoteBody(p: { card: NoteCard }) {
   }));
   return (
     <Switch fallback={
-      <Editable class={`tx st-${c().size ?? "body"}`} kind="note" id={c().id} value={c().md} multiline md placeholder="Type something…"
-        style={c().bold ? { "font-weight": 650 } : undefined} onCommit={(v) => A.setNoteText(c().id, v)} />
+      <Editable class={`tx st-${c().size ?? "body"}`} kind="note" id={c().id} value={c().md} layout={c().mdLayout} multiline md placeholder="Type something…"
+        style={c().bold ? { "font-weight": 650 } : undefined} onCommit={(v, l) => A.setNoteText(c().id, v, l)} />
     }>
       {/* Mark：手写字，统一字号，颜色在卡上（--hc） */}
       <Match when={c().look === "mark"}>
-        <Editable class="tx hand" kind="note" id={c().id} value={c().md} multiline md placeholder="Write a mark…" onCommit={(v) => A.setNoteText(c().id, v)} />
+        <Editable class="tx hand" kind="note" id={c().id} value={c().md} layout={c().mdLayout} multiline md placeholder="Write a mark…" onCommit={(v, l) => A.setNoteText(c().id, v, l)} />
       </Match>
       <Match when={c().look === "box"}>
-        <Editable class="tx bx" kind="note" id={c().id} value={c().md} multiline md placeholder="Type…" onCommit={(v) => A.setNoteText(c().id, v)} />
+        <Editable class="tx bx" kind="note" id={c().id} value={c().md} layout={c().mdLayout} multiline md placeholder="Type…" onCommit={(v, l) => A.setNoteText(c().id, v, l)} />
       </Match>
       <Match when={c().look === "note"}>
       <div class="chead" classList={{ fold: folded() }} data-drag>
         <Show when={placeOf(c().id).locked}><button class="lockb" data-tip="Unlock" data-nodrag onClick={() => A.toggleLock([c().id])}><Icon name="lock" /></button></Show>
         <span class="kind">¶</span><span class="ctitle sys" classList={{ untitled: !c().title && !heading() }}>{c().title || heading() || "Note"}</span><span class="grow" />
+        {/* ⌘/: the Note as its Markdown source; mousedown keeps focus in the editor (data-md-keep: not a blur) */}
+        <Show when={isEditing()}>
+          <button class="ib mdsrc" classList={{ on: sourceModeOf(c().id) }} aria-pressed={sourceModeOf(c().id)} aria-label="Markdown Source"
+            data-tip="Markdown Source" data-kbd={state.host.isMac ? "⌘/" : "Ctrl+/"} data-nodrag data-md-keep
+            onMouseDown={(e) => e.preventDefault()} onClick={() => toggleNoteSource(c().id)}>M↓</button>
+        </Show>
         <button class="ib cmenu" classList={{ on: more.open() }} aria-label="Note Menu" data-tip="More Actions" data-nodrag onClick={(e) => { A.cardMenu(c().id, ...below(e.currentTarget)); more.opened(); }}><Icon name="more" /></button>
       </div>
-      <Editable class={`nbody${hideHead() && !sliding() ? " hidehead" : ""}${folded() ? " fold" : ""}`} kind="note" id={c().id} value={c().md} multiline md placeholder="Write a note… Markdown and $math$ work" onCommit={(v) => A.setNoteText(c().id, v)} />
+      <Editable class={`nbody${hideHead() && !sliding() ? " hidehead" : ""}${folded() ? " fold" : ""}`} kind="note" id={c().id} value={c().md} layout={c().mdLayout} multiline md placeholder="Write a note… Markdown and $math$ work" onCommit={(v, l) => A.setNoteText(c().id, v, l)} />
       </Match>
     </Switch>
   );

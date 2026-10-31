@@ -18,6 +18,13 @@ const SHOW = 3, HIDE = 4, NOTE_COST = 1.5;
 const [off, setOff] = createStore<Record<string, boolean>>({});
 /** 这张卡离屏幕很远，内容不画 */
 export const offscreen = (id: string) => !!off[id];
+// 藏着内容、又在屏幕外半屏以外的卡，连卡片本身（底色、阴影）也不画：镜头动的时候世界层每隔几百 px 按新范围重画一遍，
+// 范围是屏幕外 4000px，里面上百张空卡的底色、阴影占了重画的四成（Paint）和分层的四分之一（Layerize）。
+// 进到半屏以内马上显示（只是卡片自己和它直接的几个子节点重算样式：里面的内容本来就藏着，值不变，浏览器不往下传），内容照旧按 SHOW 排队。
+// 地图档的卡在屏幕附近时内容藏着、卡片照常画（off 但不 far）
+const [distant, setDistant] = createStore<Record<string, boolean>>({});
+/** 这张卡藏着内容、离屏幕半屏以外：整张不画 */
+export const farAway = (id: string) => !!distant[id];
 
 /**
  * 世界坐标里的一块（动图贴纸）在不在屏幕附近：进到屏幕外 1/4 屏以内算在，离开半屏以外才算不在（was = 上一次的结果，免得在边上来回切）。
@@ -39,7 +46,7 @@ export function trackOffscreen() {
     tick();
     const { w, h } = viewTracked(), z = cam.z, x = cam.x, y = cam.y, moving = camMoving();
     const ed = editing()?.id, dr = dragging(), keep = new Set(sel.cards), busy = lodBusy();
-    const show: [string, number, number][] = [], hide: string[] = [];
+    const show: [string, number, number][] = [], hide: string[] = [], away: [string, boolean][] = [];
     for (const { id, r: rr, cost } of rects()) {
       const r = rr();
       const L = r.x * z + x, T = r.y * z + y, R = L + r.w * z, B = T + r.h * z;
@@ -49,6 +56,7 @@ export function trackOffscreen() {
       const far = R < -w * m || L > w * (1 + m) || B < -h * m || T > h * (1 + m);
       const free = !keep.has(id) && ed !== id && !dr.has(id);
       const hidden = far && free;
+      away.push([id, free && (R < -w * 0.5 || L > w * 1.5 || B < -h * 0.5 || T > h * 1.5)]);
       // 已经进到屏幕里的（平移极快时会有）不排队，这一帧就显示，不能让人看到空卡
       if (was && !hidden && !(free && lodOf(id) === "map")) {
         const d = R > 0 && L < w && B > 0 && T < h ? -1 : Math.hypot((L + R) / 2 - w / 2, (T + B) / 2 - h / 2);
@@ -60,6 +68,8 @@ export function trackOffscreen() {
     let n = 0, k = 0;
     for (const [id, d, cost] of show) { if (d >= 0 && n + cost > SHOW) break; setOff(id, false); n += cost; k++; }
     for (const id of hide.slice(0, HIDE)) setOff(id, true);
+    // 不画只在镜头停下以后加（和藏内容一样）：缩放时一圈圈的卡进出半屏，每帧都换的话缩放每步多出一截重画
+    untrack(() => { for (const [id, a] of away) { const f = a && !!off[id]; if (f !== !!distant[id] && (!f || !moving)) setDistant(id, f); } });
     if ((show.length > k || hide.length > HIDE) && !again) { again = true; requestAnimationFrame(() => { again = false; setTick((t) => t + 1); }); }
   });
 }

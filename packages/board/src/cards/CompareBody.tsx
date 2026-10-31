@@ -145,7 +145,7 @@ export function CompareBody(p: { card: CompareCard }) {
         <button class="ib cmenu" classList={{ on: more.open() }} aria-label="Compare Menu" data-tip="More Actions" data-nodrag onClick={(e) => { A.cardMenu(k().id, ...below(e.currentTarget)); more.opened(); }}><Icon name="more" /></button>
       </div>
       <div class="colh">
-        <For each={cols()}>{(c) => <div data-col={c.id}><CodeHead card={c} col /></div>}</For>
+        <For each={cols()}>{(c, i) => <div class={i() ? "colr" : "coll"} data-col={c.id}><CodeHead card={c} col /></div>}</For>
       </div>
       <div ref={scrollEl} class="cbody" onScroll={measure} onWheel={(e) => cardWheel(e, scrollEl)}>
         <div ref={rowsEl} class="crows" onPointerDown={onDown} onContextMenu={onCtx} style={{ "--cw": `${Math.round((placeOf(k().id).w - 2) / 2)}px` }}>

@@ -108,7 +108,7 @@ test("mathPreviewPlainErrors", async () => {
   const err = () => pg.evaluate((blk) => {
     const b = document.querySelector(blk)!, e = b.querySelector(".md-matherr");
     return { text: e?.textContent ?? null, fix: e?.querySelector(".fix")?.textContent ?? null, where: e?.querySelector(".where u")?.textContent ?? null,
-      stale: b.querySelector(".block-math-inner")!.classList.contains("md-mathstale"), tex: b.querySelector(".block-math-inner annotation")?.textContent ?? null };
+      stale: b.querySelector(".block-math-inner")!.classList.contains("md-mathstale"), tex: b.querySelector(".block-math-inner .katex")?.getAttribute("data-latex") ?? null };
   }, blk);
   // the preview draws in the frame after an input: an error read before it has drawn the whole text is one of a keystroke on the way
   const drawn = (src: string) => until(h, `the preview shows ${src}`, () => pg.evaluate(([blk, src]) => document.querySelector<HTMLElement>(`${blk} [data-src]`)?.dataset.src === src, [blk, src] as const));
@@ -155,8 +155,14 @@ test("mathInlinePreviewBubble", async () => {
   await idle(h);
   await openInline(h);
   await pg.locator(".md-mathtip .md-mathpv .katex").waitFor();
-  const ok = await pg.evaluate(() => ({ tex: document.querySelector(".md-mathtip annotation")?.textContent, err: !!document.querySelector(".md-mathtip .md-matherr") }));
-  const tip = await pg.locator(".md-mathtip").boundingBox(), src = await pg.locator(".md-pm .md-src").boundingBox();
+  const ok = await pg.evaluate(() => ({ tex: document.querySelector(".md-mathtip .katex")?.getAttribute("data-latex"), err: !!document.querySelector(".md-mathtip .md-matherr") }));
+  const tip = await pg.locator(".md-mathtip").boundingBox(), src = await pg.evaluate(() => {
+    // the formula's source is drawn in pieces (its markers and the LaTeX): their union
+    const rs = [...document.querySelectorAll(".md-pm .md-texsrc")].map((e) => e.getBoundingClientRect());
+    if (!rs.length) return null;
+    const y = Math.min(...rs.map((r) => r.top));
+    return { y, height: Math.max(...rs.map((r) => r.bottom)) - y };
+  });
   await pg.keyboard.type(" + \\tidd");
   await until(h, "the bubble shows the error", async () => pg.locator(".md-mathtip .md-matherr").count());
   const bad = await pg.evaluate(() => ({ text: document.querySelector(".md-mathtip .md-matherr")?.textContent, fix: document.querySelector(".md-mathtip .fix")?.textContent }));

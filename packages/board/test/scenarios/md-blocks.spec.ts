@@ -63,8 +63,8 @@ test("noteEmptyListItem", async () => {
   check("noteEmptyListItem edits again as an empty item", JSON.stringify(again) === '["a",""]' && md(h, "n1") === "1. a\n2. b", { again, md: md(h, "n1") });
 });
 
-/** A $$…$$ in the middle of a line is an inline formula typeset larger (\displaystyle) in both the static Note and the editor,
- *  the same size in both; a $$ block on its own lines is still a centred display block */
+/** A $$…$$ in the middle of a line is a display formula centred on a line of its own, the same size in the static Note and the
+ *  editor; a $$ block on its own lines is a display block too */
 test("inlineDisplayMath", async () => {
   const src = "1. 3\n2. 3 $$2 * (\\text{threadIdx.x} + \\sum_{i=1}^n x_i)$$ end\n3. 4\n\n$$\nx^2\n$$";
   const h = await open({ board: board([{ id: "n1", md: src, w: 520 }]), light, w: 800, h: 500 });
@@ -77,8 +77,8 @@ test("inlineDisplayMath", async () => {
     return {
       inLiDisplay: li?.querySelectorAll(".katex-display").length ?? -1,
       h: r ? Math.round(r.height) : 0, w: r ? Math.round(r.width) : 0,
-      // 在 "3 " 的同一行：公式左边紧跟着字，不是另起一行居中
-      sameLine: !!r && !!lr && r.left - lr.left < 40,
+      // centred on a line of its own, not right after "3 "
+      centred: (() => { const d = k?.closest(".md-dmath"), dr = d?.getBoundingClientRect(); return !!r && !!dr && getComputedStyle(d!).display === "block" && Math.abs(r.left + r.width / 2 - (dr.left + dr.width / 2)) <= 3; })(),
       opLimits: !!k?.querySelector(".op-limits"),
       blocks: document.querySelectorAll(`${root} .katex-display`).length,
     };
@@ -88,9 +88,9 @@ test("inlineDisplayMath", async () => {
   await edit(h, "n1", { x: 300, y: 4 });
   const ed = await measure(`${card("n1")} .md-pm`);
   await shot(h, "n1", "02-editing", true);
-  // \displaystyle 排的 \sum 上下限在符号上下（op-limits），行内小号的排在右边
-  check("inlineDisplayMath inline in display", view.inLiDisplay === 0 && view.sameLine && view.opLimits && view.blocks === 1, view);
-  check("inlineDisplayMath same in editor", ed.inLiDisplay === 0 && ed.sameLine && ed.opLimits && Math.abs(ed.h - view.h) <= 1 && Math.abs(ed.w - view.w) <= 2, { view, ed });
+  // $$…$$ inside a line is a display formula: centred on its own line, \sum's limits above and below it (op-limits)
+  check("inlineDisplayMath display formula on its own line", view.inLiDisplay === 1 && view.centred && view.opLimits && view.blocks === 2, view);
+  check("inlineDisplayMath same in editor", ed.inLiDisplay === 1 && ed.centred && ed.opLimits && Math.abs(ed.h - view.h) <= 1 && Math.abs(ed.w - view.w) <= 2, { view, ed });
   await pg.keyboard.press("Escape");
   await idle(h);
   check("inlineDisplayMath source unchanged", md(h, "n1") === src, md(h, "n1"));
@@ -196,32 +196,61 @@ test("codeBlockGapCursor", async () => {
   check("codeBlockGapCursor saved", saved === `top\n\n${src.replace("```\n\n```", "```\n\nclicked\n\n```")}`, { saved });
 });
 
-/** A code line that fills the block's width never has the language label drawn over it: hovering the block or putting the cursor
- *  in it shows the label only where it covers no code */
+/** The code block's pill (language, copy, wrap, menu) floats over the block's top-right corner, opaque, and only while it is
+ *  wanted: hovering the block or the caret in it. Otherwise it is invisible and lets clicks through to the code under it */
 test("codeBlockLabelClear", async () => {
   const h = await open({ board: board([{ id: "n1", md: TWO_CODE, w: 400 }]), light, w: 900, h: 600 });
   const pg = h.page;
   await idle(h);
   await edit(h, "n1", { x: 20, y: 6 });
   const pres = `${card("n1")} .md-pm pre.md-code`;
-  /** label shown (opacity) and overlapping any code text of its block */
-  const covers = () => pg.locator(pres).evaluateAll((ps) => ps.map((p) => {
-    const lb = p.querySelector(".md-lang") as HTMLElement, lr = lb.getBoundingClientRect();
-    const shown = Number(getComputedStyle(lb).opacity) > 0.05;
-    const hit = [...p.querySelectorAll(".cm-line")].some((l) => {
-      const rg = document.createRange(); rg.selectNodeContents(l);
-      return [...rg.getClientRects()].some((r) => r.width > 0 && r.right > lr.left && r.left < lr.right && r.bottom > lr.top && r.top < lr.bottom);
-    });
-    return shown && hit;
+  /** per block: pill shown (opacity), takes clicks, its background is opaque, and it lies inside the block's top-right corner */
+  const pills = () => pg.locator(pres).evaluateAll((ps) => ps.map((p) => {
+    const pill = p.querySelector(".md-cbpill") as HTMLElement, cs = getComputedStyle(pill), r = pill.getBoundingClientRect(), b = p.getBoundingClientRect();
+    return { shown: Number(cs.opacity) > 0.95, clicks: cs.pointerEvents !== "none", opaque: !/rgba\(.*, 0(\.\d+)?\)$|transparent/.test(cs.backgroundColor), corner: r.right <= b.right && r.top >= b.top && r.right > b.right - 20 };
   }));
-  await pg.locator(`${pres} .cm-content`).last().click();
-  await pg.keyboard.press("End");
-  const focused = await covers();
-  await pg.locator(pres).last().hover();
+  // the caret in the first paragraph, the mouse away: no pill
+  await pg.mouse.move(5, 5);
   await idle(h);
-  const hovered = await covers();
+  const away = await pills();
+  // at the start of the code: the pill sits over the top-right corner of the block's first line
+  await pg.locator(`${pres} .cm-content`).last().click({ position: { x: 2, y: 4 } });
+  await pg.keyboard.press("End");
+  await pg.mouse.move(5, 5);
+  await idle(h);
+  const focused = await pills();
+  await pg.locator(pres).first().hover();
+  await idle(h);
+  const hovered = await pills();
   await shot(h, "n1", "08-label-hover", true);
-  check("codeBlockLabelClear", !focused.some(Boolean) && !hovered.some(Boolean), { focused, hovered });
+  const ok = away.every((x) => !x.shown && !x.clicks) && focused[1].shown && focused[1].clicks && !focused[0].shown && hovered[0].shown && [...focused, ...hovered].every((x) => !x.shown || (x.opaque && x.corner));
+  check("codeBlockLabelClear", ok, { away, focused, hovered });
   await pg.keyboard.press("Escape");
   await idle(h);
+});
+
+/** A code block whose long line runs past the Note: at rest it does not scroll (a block that can scroll is a composited layer
+ *  of its own, and a board of such Notes is slow to zoom and pan); on the card pointed at, selected or edited it scrolls
+ *  sideways, with no change in its size or where its text sits */
+test("noteCodeBlockScrollsOnlyWhenActive", async () => {
+  const long = `x = compute(${Array.from({ length: 30 }, (_, i) => `arg_${i}`).join(", ")})`;
+  const h = await open({ board: board([{ id: "a", md: `Code:\n\n\`\`\`python\n${long}\nprint(x)\n\`\`\`\n\nAfter.`, w: 420 }, { id: "b", md: "Other note", w: 300 }]), light });
+  const pg = h.page, pre = pg.locator(`${card("a")} .nbody pre.md-code`).first();
+  await pg.mouse.move(2, 2);
+  await idle(h);
+  const look = () => pre.evaluate((el) => { const r = el.getBoundingClientRect(), t = el.querySelector("code")!.getBoundingClientRect(); return { ox: getComputedStyle(el).overflowX, oy: getComputedStyle(el).overflowY, h: r.height, w: r.width, textY: t.y, over: el.scrollWidth > el.clientWidth + 20 }; });
+  const rest = await look();
+  const r = (await pre.boundingBox())!;
+  await pg.mouse.move(r.x + r.width / 2, r.y + r.height / 2);
+  await idle(h);
+  const hover = await look();
+  await pg.locator(`${card("b")} .nbody`).click();
+  await pg.locator(`${card("a")} .chead`).click();
+  await pg.mouse.move(2, 2);
+  await idle(h);
+  const selected = await look();
+  check("noteCodeBlockScrollsOnlyWhenActive not a scroller at rest", rest.over && rest.ox !== "auto" && rest.ox !== "scroll" && rest.oy !== "auto" && rest.oy !== "scroll", rest);
+  check("noteCodeBlockScrollsOnlyWhenActive scrolls when pointed at or selected", hover.ox === "auto" && selected.ox === "auto", { hover, selected });
+  check("noteCodeBlockScrollsOnlyWhenActive nothing moves", hover.h === rest.h && hover.w === rest.w && hover.textY === rest.textY && selected.h === rest.h, { rest, hover, selected });
+  await h.page.context().close();
 });

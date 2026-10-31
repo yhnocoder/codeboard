@@ -24,7 +24,8 @@ const anims = new Set<Anim>();
 let last = 0, rafOn = false;
 function tick(now: number) {
   // Debug 里的慢动作：弹簧、镜头都按比例放慢
-  const dt = Math.min(0.032, (now - last) / 1000) * (tune("animSpeed") / 100);
+  // 第一帧的时间戳可能比 animate() 被调的时刻还早（指针事件和这一帧在同一轮里处理）：dt 不能是负的，倒着走的弹簧会越走越快
+  const dt = Math.max(0, Math.min(0.032, (now - last) / 1000)) * (tune("animSpeed") / 100);
   last = now;
   const instant = reduceMotion();
   for (const a of [...anims]) if (a(dt, instant)) anims.delete(a);

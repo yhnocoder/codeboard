@@ -406,9 +406,9 @@ test("pasteIntoEditorMakesNoCard", async () => {
   // into the code block
   await cardEl(h, "n1").locator(".cm-content").click();
   await cardEl(h, "n1").locator(".cm-content:focus").waitFor();
-  // the selection starts on a highlighted token, "(": the editor replaces its span
-  const kept = await paste(".cm-content", "(n/128), 128", "+64");
-  await expect(cardEl(h, "n1").locator(".cm-content")).toContainText("ceil+64>>>");
+  // the selection starts on a highlighted token, the call "ceil": the editor replaces its span
+  const kept = await paste(".cm-content", "ceil(n/128), 128", "+64");
+  await expect(cardEl(h, "n1").locator(".cm-content")).toContainText("<<<+64>>>");
   check("pasteIntoEditorMakesNoCard code block: the paste target left the page", !kept, kept);
   await idle(h);
   check("pasteIntoEditorMakesNoCard code block: no new card", h.board().cards.length === 1, h.board().cards.map((c) => `${c.id}:${c.kind}`));

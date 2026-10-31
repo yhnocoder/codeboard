@@ -64,10 +64,10 @@ math { font-size: 1.05em; }
 .md pre code { background: none; padding: 0; font: inherit; }
 .md pre.md-code { position: relative; color: var(--ink); }
 .md img { display: inline-block; vertical-align: middle; max-width: 100%; height: auto; margin: 4px 0; border-radius: 5px; }
-/* 缩小了的图（![a](u){width=40%}）在那一行居中：图是行内的，居中的是它所在的那一段（静态显示是 img.sized，编辑器是 .md-img.sized；
-   列表项、表格格子里这一段的 <p> 静态显示也留着，见 render.ts）。图一般单独一段，和字在同一段时那一段的字也居中。
-   :has() 里只写有类名的后代，不写 > * 这样的任意一层：那样 Chrome 会在白板上任何类名变化时（拖卡、悬停）重算所有卡的样式 */
-.md p:has(img.sized), .md p:has(.md-fig.sized), .md-pm p:has(.md-img.sized) { text-align: center; }
+/* A narrowed image (![a](u){width=40%}) is centred in its line: the image is inline, so its paragraph is centred, marked
+   p.md-psized by the static render (render.ts) and by the editor's decorations (editor/inline.ts). A class, not p:has():
+   Chrome checks a :has() rule again for every paragraph on each change, which made Enter in a long Note slow */
+.md p.md-psized, .md-pm p.md-psized { text-align: center; }
 /* 图注（![a](u "图注")）：图正下方居中的小字，像论文的图注。静态显示里带图注的图包在 .md-fig 里（和编辑器的 .md-img 一样排），
    图注不撑宽这一层（contain: inline-size）：宽度是图的宽，长的图注在图的宽度里折行 */
 .md .md-fig { display: inline-block; vertical-align: middle; max-width: 100%; margin: 4px 0; }
@@ -77,6 +77,16 @@ math { font-size: 1.05em; }
 .md .md-cap[hidden] { display: none; }
 .md kbd { font: .85em var(--mono); padding: 0 4px; border-radius: 4px; box-shadow: 0 0 0 .5px var(--hair), 0 1px 0 var(--hair); }
 .md :is(.math, [data-type="block-math"]) .katex-display { margin: 2px 0; }
+/* $$…$$ inside a line or a table cell: a display formula centred on a line of its own (render.ts, editor/widgets.ts); in the
+   editor, with the caret in its source, the drawn formula is under the source, framed */
+/* an image that could not load (view.ts imageFailed) */
+.md .md-imgerr { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; box-sizing: border-box; padding: 4px 9px; border-radius: 7px; box-shadow: inset 0 0 0 1px var(--hair); color: var(--ink-3); font: 11.5px/1.5 var(--sys); white-space: nowrap; overflow: hidden; vertical-align: middle; }
+.md .md-imgerr svg { flex: none; width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.3; stroke-linecap: round; stroke-linejoin: round; }
+.md .md-imgerr span { overflow: hidden; text-overflow: ellipsis; }
+.md .md-dmath { display: block; text-align: center; margin: 4px 0; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; }
+.md .md-dmath .katex-display { margin: 0; }
+.md-pm .md-dmath { cursor: text; }
+.md-pm .md-dmath.below { margin: 4px 0 2px; padding: 4px 6px; border-radius: 7px; box-shadow: inset 0 0 0 1px var(--hair); cursor: default; }
 /* Note 里的调用点不能点，不画成链接 */
 .md pre.md-code .call { text-decoration: none; cursor: inherit; }
 .md pre.md-code .call:hover { background: none; }
@@ -137,7 +147,7 @@ math { font-size: 1.05em; }
 @keyframes pm-blink { to { visibility: hidden; } }
 /* 编辑器里最后一块后面垫着的空段落（editor/index.tsx padEnd）还空着时是 .md-pad：不占高度（进出编辑时卡片一样高），
    光标在里面（.at）时画成一条短横线（和 gapcursor 一样） */
-.md > :last-child, .md-pm > :last-child, .md-pm > :has(+ .md-pad:last-child) { margin-bottom: 0; }
+.md > :last-child, .md-pm > :last-child, .md-pm > .md-prepad { margin-bottom: 0; }
 .md-pm > p.md-pad.md-pad { height: 0; margin: 0; font-size: 0; line-height: 0; position: relative; caret-color: transparent; }
 .md-pm.ProseMirror-focused > p.md-pad.at::after { content: ""; position: absolute; left: 0; top: 4px; width: 20px; border-top: 1px solid var(--ink); animation: pm-blink 1.1s steps(2, start) infinite; pointer-events: none; }
 .md-pm.ProseMirror-focused .ProseMirror-gapcursor { display: block; }
@@ -145,7 +155,7 @@ math { font-size: 1.05em; }
 .md-pm.ProseMirror-hideselection * { caret-color: transparent; }
 /* 占位字可能折成几行：浮动占满一整行宽、右边距抵掉（不挤光标），段落 flow-root 把浮动的高度算进来，几行都露得出来 */
 /* 只在整篇都空着时显示（有内容的 Note 里的空行不显示，Typora 一样） */
-.md-pm .is-editor-empty:not(.md-mkh)::before { content: attr(data-placeholder); color: var(--ink-3); float: left; width: 100%; margin-right: -100%; pointer-events: none; }
+.md-pm .is-editor-empty::before { content: attr(data-placeholder); color: var(--ink-3); float: left; width: 100%; margin-right: -100%; pointer-events: none; }
 .md-pm :is(p, h1, h2, h3, h4, h5, h6).is-editor-empty { display: flow-root; }
 .md-pm .ProseMirror-selectednode { outline: 1.5px solid var(--accent); outline-offset: 1px; border-radius: 4px; }
 .md-pm pre { white-space: pre; tab-size: 4; }
@@ -158,6 +168,8 @@ math { font-size: 1.05em; }
 /* 公式块展开的 LaTeX 原文（editor/mathblock.ts） */
 .md-pm .md-mathsrc { display: none; }
 .md-pm [data-type="block-math"].is-open { cursor: text; background: none; outline: none; }
+/* the open formula block's preview, framed under its source */
+.md-pm [data-type="block-math"].is-open > .block-math-inner { margin-top: 6px; padding: 6px; border-radius: 7px; box-shadow: inset 0 0 0 1px var(--hair); cursor: default; }
 .md-pm [data-type="block-math"].is-open .md-mathsrc { display: block; box-sizing: border-box; width: 100%; margin: 0 0 4px; padding: 5px 8px; border: 0; outline: none; resize: none; overflow: hidden; text-align: left; color: var(--ink); background: var(--hlrow); border-radius: 5px; font: 12px/1.5 var(--mono); }
 .md-pm [data-type="details"] { display: flex; gap: 2px; margin: 4px 0; padding: 2px 0 2px 4px; border-left: 2px solid var(--hair); }
 .md-pm [data-type="details"] > button { flex: none; width: 18px; height: 1.6em; color: var(--ink-3); border-radius: 4px; }
@@ -174,35 +186,56 @@ math { font-size: 1.05em; }
 .md-pm ol.footnotes li::marker { color: var(--ink-3); }
 .md-pm a { color: var(--k-fn); text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--k-fn) 40%, transparent); text-underline-offset: 2px; }
 .md-pm img { cursor: default; }
-/* 编辑器里的图包在 .md-img 里（editor/image.ts）：这一层照静态显示里 <img> 的样子排（行内块、居中对齐、上下边距、最宽占满），
-   图在里面占满它，所以和静态显示一样宽一样高、位置一样；缩小了的宽度（正文宽的百分比）写在这一层上 */
-.md-pm .md-img { display: inline-block; position: relative; vertical-align: middle; max-width: 100%; margin: 4px 0; border-radius: 5px; }
+/* Images the editor draws for their hidden source (editor/widgets.ts): laid out like <img> in the static render (inline
+   block, middle aligned, same margins, at most full width); a reduced width (percent of the body width) is on this box.
+   .below: the copy under the source while the caret is in it, with the resize grips */
+.md-pm .md-img { display: inline-block; position: relative; vertical-align: middle; max-width: 100%; margin: 4px 0; border-radius: 5px; text-indent: 0; }
 .md-pm .md-img > img { display: block; margin: 0; cursor: inherit; }
 .md-pm .md-img.sized > img { width: 100%; }
-.md-pm .md-img.ProseMirror-selectednode { outline-offset: 2px; }
-/* 按住图拖到别处（ProseMirror 自己的节点拖动，落点是它的 drop cursor）：页面上常有 -webkit-user-drag: none 的总规则（白板就有），
-   那样 draggable 也拖不起来 */
-.md-pm .md-img[draggable="true"] { -webkit-user-drag: element; cursor: grab; }
-/* 落点线（ProseMirror 的 drop cursor，加在编辑器的 offsetParent 里，不在 .md-pm 下面） */
+.md-pm .md-img.below { display: block; width: fit-content; margin: 4px auto 4px 0; }
+.md-pm .md-img.below.sized { margin-inline: auto; }
+.md-pm .md-img[draggable="true"] { -webkit-user-drag: element; cursor: pointer; }
+/* drop line (ProseMirror's drop cursor, added to the editor's offsetParent, not under .md-pm) */
 .md-dropcursor { background: var(--accent); border-radius: 1px; }
-/* 改宽度的把手：选中图时在它左右两个下角（和白板上贴纸、标记卡的改大小把手一个样子） */
-.md-pm .md-imgrip { display: none; position: absolute; bottom: -6px; width: 10px; height: 10px; border-radius: 3px; background: var(--surface); box-shadow: 0 0 0 1.5px var(--accent); touch-action: none; }
-.md-pm .md-imgrip.l { left: -6px; cursor: nesw-resize; }
-.md-pm .md-imgrip.r { right: -6px; cursor: nwse-resize; }
-.md-pm .md-img.ProseMirror-selectednode > .md-imgrip, .md-pm .md-img.resizing > .md-imgrip { display: block; }
+/* the selected image (the copy under its source): a thin accent frame with a soft shadow on the image itself, and the width
+   grips on the frame's two sides, centred (the width changes symmetrically about the centre) */
+.md-pm .md-imgframe { display: block; position: relative; border-radius: 5px; box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--accent) 75%, transparent), 0 6px 18px -8px rgba(0, 0, 0, .28); }
+.md-pm .md-imgframe > img { display: block; width: 100%; border-radius: 5px; }
+.md-pm .md-imgframe[draggable="true"] { -webkit-user-drag: element; }
+.md-pm .md-imgrip { position: absolute; top: 50%; width: 6px; height: 26px; margin-top: -13px; border-radius: 3px; background: var(--surface); box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--accent) 75%, transparent), 0 1px 3px rgba(0, 0, 0, .18); cursor: ew-resize; touch-action: none; }
+.md-pm .md-imgrip.l { left: -3.75px; }
+.md-pm .md-imgrip.r { right: -3.75px; }
+.md-pm .md-imgalt { color: var(--ink-2); }
+/* a long image address folds to its head and tail; the button opens it */
+.md-pm .md-ell { color: var(--ink-3); font-family: var(--mono); font-size: .85em; }
+.md-pm .md-fold { display: inline-flex; align-items: center; gap: 2px; margin-left: 6px; padding: 0 5px; border-radius: 5px; color: var(--ink-3); font: 11px/18px var(--sys); cursor: pointer; vertical-align: 1px; user-select: none; -webkit-user-select: none; }
+.md-pm .md-fold:hover { color: var(--ink); background: var(--hlrow); }
+.md-pm .md-fold svg { width: 10px; height: 10px; fill: none; stroke: currentColor; stroke-width: 1.4; }
+/* <br>: a line break; the source stays visible while the caret touches it */
+.md-pm .md-br { display: block; height: 0; }
+.md-pm .md-comment { color: var(--ink-3); font-family: var(--mono); font-size: .85em; }
+.md-pm .md-atom { cursor: pointer; }
+.md-pm .md-texsrc { font-family: var(--mono); font-size: .9em; color: var(--ink-2); }
 .md-ghost { color: var(--ink-3); opacity: .85; pointer-events: none; user-select: none; -webkit-user-select: none; }
-/* 光标所在处显示的 Markdown 记号（editor/typora.ts） */
-.md-pm .md-mk, .md-pm .md-mka::before, .md-pm .md-mkb::after { color: var(--ink-3); opacity: .75; font-family: var(--mono); font-size: .85em; font-weight: 400; font-style: normal; text-decoration: none; user-select: none; -webkit-user-select: none; }
-.md-pm .md-mka::before { content: attr(data-mka); }
-.md-pm .md-mkb::after { content: attr(data-mkb); }
-/* 标题的 "## "：照 Typora 用标题自己的字体、字号，淡色（和光标走进去后展开成的原文 .md-mkc 一样）：打完 "## " 这一行马上就是标题的样子，后面打字不再跳 */
-.md-pm .md-mkh::before { content: attr(data-mka); color: var(--ink-3); user-select: none; -webkit-user-select: none; }
-/* 光标处展开的 Markdown 原文（editor/source.ts） */
-.md-pm .md-mkc { color: var(--ink-3); }
-.md-pm .md-esch { display: none; }
+/* Markdown markers (editor/inline.ts): shown only around the caret, display: none elsewhere. A heading's "## " keeps the
+   heading's own font and size (as in Typora), so the line does not jump when the caret enters it */
+.md-pm .md-mk { color: var(--ink-3); opacity: .75; font-family: var(--mono); font-size: .85em; font-weight: 400; font-style: normal; text-decoration: none; }
+.md-pm .md-mk.md-mkh { font: inherit; opacity: 1; }
+.md-pm .md-hide { display: none; }
 .md-handle { position: fixed; z-index: 30; width: 14px; height: 20px; display: grid; place-items: center; font-size: 11px; letter-spacing: -2px; color: var(--ink-3); border-radius: 4px; cursor: grab; user-select: none; -webkit-user-select: none; transition: color calc(var(--t) * 100ms), background calc(var(--t) * 100ms); }
 .md-handle:hover { color: var(--ink); background: var(--hlrow); }
-.md-raw { display: block; width: 100%; min-height: 3em; margin: 0; padding: 0; border: 0; outline: none; resize: none; background: transparent; color: var(--ink); font: 12px/1.6 var(--mono); white-space: pre-wrap; overflow: hidden; }
+/* ⌘/ Markdown source mode (editor/srcmode.ts) */
+/* words wrap whole; only a token longer than the line (a data: address) breaks, and it never widens the box (anywhere, not break-word,
+   which leaves the min-content width at the longest token) */
+.md-srcmode { font: 12.5px/1.75 var(--mono); color: var(--ink); word-break: normal; overflow-wrap: anywhere; }
+.md-srcmode .cbcm .cm-content { padding: 0; }
+.md-srcmode .cbcm .cm-content.cm-lineWrapping { word-break: normal; overflow-wrap: anywhere; }
+.md-srcmode .cbcm .cm-activeLine { background: color-mix(in srgb, var(--ink) 3.5%, transparent); }
+.md-srcmode .md-s-h { color: var(--ink); font-weight: 650; }
+.md-srcmode .md-s-mk { color: var(--ink-3); }
+.md-srcmode .md-s-code { color: var(--nc-kw, var(--k-str)); }
+.md-srcmode .md-s-math { color: var(--nc-num, var(--k-num)); }
+.md-srcmode .md-s-link { color: var(--k-fn); }
 .mdui-anchor { z-index: 60; }
 .md-menu { position: static; max-height: 300px; min-width: 220px; }
 .md-menu button.sel { background: var(--accent); color: var(--accent-ink); }
@@ -241,19 +274,68 @@ math { font-size: 1.05em; }
 .md-ico { display: block; width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: var(--ico-w, 1); stroke-linecap: round; stroke-linejoin: round; }
 .md-ico > path { transform: translate(calc(var(--ico-w, 1) * .5px - 1px), calc(var(--ico-w, 1) * .5px - 1px)); }
 .md-bubble .sep { width: 1px; height: 16px; background: var(--hair); margin: 0 3px; }
-/* 代码块右上角的语言名（editor/codelang.ts）：不占地方，显示、编辑时的排版一样。第一行伸到它下面时（.md-under）
-   悬停在块上、光标在块里都不显示（不盖住代码），只在指着它那一角、用键盘走到它上面、列表开着时显示 */
-.md-pm pre.md-code > .md-lang { position: absolute; right: 10px; top: 6px; z-index: 1; display: flex; align-items: center; gap: 3px; max-width: 50%; margin: 0; padding: 0;
-  border: 0; border-radius: 0; outline: none; background: none; box-shadow: none; color: var(--ink-3); font: 11px/18px var(--sys); letter-spacing: .01em; white-space: nowrap;
-  cursor: default; user-select: none; -webkit-user-select: none;
-  opacity: 0; transition: opacity calc(var(--t, 1) * 120ms), color calc(var(--t, 1) * 120ms); }
-.md-pm pre.md-code > .md-lang .md-lang-nm { overflow: hidden; text-overflow: ellipsis; }
-.md-pm pre.md-code > .md-lang .md-lang-v { flex: none; opacity: 0; transition: opacity calc(var(--t, 1) * 120ms); }
-.md-pm pre.md-code:is(:hover, :focus-within) > .md-lang, .md-pm pre.md-code > .md-lang[aria-expanded="true"] { opacity: 1; }
-.md-pm pre.md-code > .md-lang.md-under:not(:hover, :focus-visible, [aria-expanded="true"]) { opacity: 0; }
-.md-pm pre.md-code > .md-lang:is(:hover, [aria-expanded="true"]) { color: var(--ink-2); }
-.md-pm pre.md-code:hover > .md-lang .md-lang-v, .md-pm pre.md-code > .md-lang[aria-expanded="true"] .md-lang-v { opacity: .8; }
-.md-pm pre.md-code > .md-lang:focus-visible { outline: 1.5px solid var(--accent); outline-offset: 1px; }
+/* The code block pill (editor/codeblock.ts): inside the block's top-right corner, over the code (it takes no space), shown
+   on hover and while the caret is in the block; language, copy, wrap, more */
+/* --nc-pill: the page's pill colour for code blocks (the board's Warm Ink: white on the warm code background) */
+.md-pm pre.md-code > .md-cbpill { position: absolute; right: 8px; top: 8px; z-index: 2; display: flex; align-items: center; gap: 2px; box-sizing: border-box; height: 34px; padding: 3px; border-radius: 10px;
+  background: var(--nc-pill, var(--surface)); box-shadow: 0 0 0 1px var(--hair), 0 1px 3px rgba(50, 35, 10, .06); font: 13px/18px var(--sys); white-space: nowrap; cursor: default;
+  user-select: none; -webkit-user-select: none; opacity: 0; pointer-events: none; transition: opacity calc(var(--t, 1) * 120ms); }
+/* .held: its menu or language list is open (a class, not :has(): a :has() rule is checked again on DOM changes across the board) */
+.md-pm pre.md-code:is(:hover, :focus-within) > .md-cbpill, .md-pm pre.md-code > .md-cbpill.held { opacity: 1; pointer-events: auto; }
+.md-pm .md-cbpill .md-lang { display: flex; align-items: center; gap: 6px; max-width: 160px; height: 28px; margin: 0; padding: 0 8px 0 10px; border: 0; border-radius: 7px; outline: none; background: none; box-shadow: none;
+  color: var(--ink-2); font: inherit; letter-spacing: .01em; cursor: pointer; }
+.md-pm .md-cbpill .md-lang .md-lang-nm { overflow: hidden; text-overflow: ellipsis; }
+/* the chevron always shown, as in the demo: the label reads as a menu even with just the caret in the block */
+.md-pm .md-cbpill .md-lang .md-lang-v { flex: none; width: 10px; height: 10px; color: var(--ink-3); opacity: .8; }
+.md-pm .md-cbpill .md-lang:is(:hover, [aria-expanded="true"]) { color: var(--ink); background: var(--hlrow); }
+.md-pm .md-cbpill .md-lang:focus-visible { outline: 1.5px solid var(--accent); outline-offset: 1px; }
+.md-pm .md-cbsep { flex: none; width: 1px; height: 18px; margin: 0 3px; background: var(--hair); }
+.md-pm .md-cbb { display: grid; place-items: center; width: 30px; height: 28px; margin: 0; padding: 0; border: 0; border-radius: 7px; background: none; color: var(--ink-2); cursor: pointer; }
+.md-pm .md-cbb .md-ico { width: 17px; height: 17px; --ico-w: 1.3; }
+.md-pm .md-cbb.dots .md-ico { --ico-w: 2; }
+.md-pm .md-cbb:hover { color: var(--ink); background: var(--hlrow); }
+.md-pm .md-cbb.on { color: var(--ink); background: color-mix(in srgb, var(--ink) 9%, transparent); }
+.md-pm .md-cbb.done { color: var(--ok, var(--accent)); }
+.md-pm .md-cbmenu { position: absolute; right: 0; top: calc(100% + 4px); min-width: 180px; }
+.md-pm .md-cbmenu button.danger { color: var(--warn); }
+/* static render: a code block set to wrap (card data, layout.ts) */
+.md pre.md-code.wrap, .md pre.md-code.wrap code { white-space: pre-wrap; word-break: break-all; }
+/* Table toolbar pill (editor/table.ts): fixed on the page, just above the table's top-right corner */
+.md-tbar { position: fixed; z-index: 55; left: 0; top: 0; display: flex; align-items: center; gap: 1px; padding: 2px; }
+.md-tbar .tbtn.md-ib { width: 26px; height: 24px; padding: 0; justify-content: center; }
+.md-tbar .tbtn.md-ib.danger:hover { color: var(--warn); }
+/* --md-float-ring: a page can draw a firmer edge where its float shadow alone doesn't show (the board's dark theme) */
+.mdui.md-tbar, .md-gpick { box-shadow: var(--md-float-ring, 0 0 0 0 transparent), var(--sh-float); }
+.md-tbar .sep { width: 1px; height: 16px; background: var(--hair); margin: 0 3px; }
+.md-tcount { padding: 0 4px; font: 11px var(--sys); color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.md-gpick { position: fixed; z-index: 56; left: 0; top: 0; padding: 8px; border-radius: 10px; background: var(--surface); color: var(--ink); box-shadow: var(--sh-float); font: 12px/1.4 var(--sys); }
+.md-gp-head { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 6px; }
+.md-gp-title { font-weight: 600; }
+.md-gp-hint { color: var(--ink-3); font-size: 11px; }
+.md-gp-grid { display: grid; grid-template-columns: repeat(10, 14px); gap: 2px; }
+.md-gc { width: 14px; height: 14px; border-radius: 3px; background: var(--hlrow); box-shadow: inset 0 0 0 .5px var(--hair); cursor: pointer; }
+.md-gc.cur { background: color-mix(in srgb, var(--ink) 14%, transparent); }
+.md-gc.in { background: color-mix(in srgb, var(--accent) 45%, transparent); }
+.md-gc.doom { background: var(--doom, rgba(205, 70, 45, .16)); box-shadow: inset 0 0 0 1px var(--doom-line, rgba(205, 70, 45, .55)); }
+.md-gp-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.md-gp-row label { display: flex; align-items: center; gap: 4px; color: var(--ink-2); }
+.md-gp-row input { width: 44px; height: 22px; padding: 0 4px; border: 0; border-radius: 5px; background: var(--hlrow); color: var(--ink); font: inherit; }
+.md-gp-row .sp { flex: 1; }
+.md-gp-apply { height: 22px; padding: 0 10px; border: 0; border-radius: 6px; background: var(--accent); color: var(--accent-ink); font: inherit; cursor: pointer; }
+.md-gp-warn { margin-top: 6px; color: var(--doom-ink, #b23a22); font-size: 11.5px; }
+.md-gp-warn:empty { display: none; }
+/* cells a smaller size would drop: red, like a delete */
+.md-pm .md-doom { background: var(--doom, rgba(205, 70, 45, .16)); box-shadow: inset 0 0 0 1px var(--doom-line, rgba(205, 70, 45, .55)); }
+/* column widths: prosemirror-tables' handle; row heights: the bottom edge of a row (editor/table.ts) */
+/* a thin line on the border, only while near it or dragging: quiet, like the platform's own split lines */
+.md-pm .column-resize-handle { position: absolute; right: -1px; top: 0; bottom: -1px; width: 2px; z-index: 3; background: color-mix(in srgb, var(--accent) 45%, transparent); pointer-events: none; }
+.md-pm.resize-cursor { cursor: col-resize; }
+.md-pm.md-row-resize { cursor: row-resize; }
+.md-pm td, .md-pm th { position: relative; }
+.md-rowline { position: fixed; z-index: 57; height: 2px; margin-top: -1px; background: color-mix(in srgb, var(--accent) 45%, transparent); pointer-events: none; }
+/* over the whole page while a row is dragged, for the cursor (a `body.x *` rule would be matched against every element on
+   every style recalc of the board) */
+.md-rowshield { position: fixed; inset: 0; z-index: 56; cursor: row-resize; }
 .md-langbox { position: fixed; left: 0; top: 0; }
 .md-langbox .md-menu { width: 200px; min-width: 0; max-height: none; overflow: hidden; display: flex; flex-direction: column; padding: 4px; transform-origin: 100% 0; }
 .md-langbox .md-langq { flex: none; width: 100%; height: 28px; margin: 0 0 4px; padding: 0 8px; border: 0; border-bottom: .5px solid var(--hair); border-radius: 0; outline: none;

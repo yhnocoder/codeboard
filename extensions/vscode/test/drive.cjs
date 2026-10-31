@@ -609,7 +609,8 @@ async function notepasteStep(page) {
   const before = await cards();
   // select "ceil(n/128)" in the first block and copy it
   const selectIn = async (i, from, len) => {
-    await blocks.nth(i).click();
+    // at the code's start: the block's pill sits over the right end of its first line while the mouse is over the block
+    await blocks.nth(i).click({ position: { x: 2, y: 4 } });
     await until(`code block ${i} has the keyboard`, () => f.evaluate((i) => document.activeElement === document.querySelectorAll(".card.note .cm-content")[i], i));
     await page.keyboard.press("Home");
     for (let k = 0; k < from; k++) await page.keyboard.press("ArrowRight");

@@ -5,9 +5,9 @@
 // - 空闲时：其余的由近到远补完（镜头在动时每段最多 3ms，免得挤进平移、缩放的帧）
 import { createEffect, createRoot, on, untrack } from "solid-js";
 import { cam, camMoving } from "../state/camera";
-import { renderMd, renderMdInline, mdCached, hydrate } from "@yhnocoder/markdown";
+import { renderMd, renderMdInline, mdCached, hydrate, applyMdLayout, type MdLayout } from "@yhnocoder/markdown";
 
-type Job = { el: HTMLElement; src: string; inline?: boolean };
+type Job = { el: HTMLElement; src: string; inline?: boolean; layout?: MdLayout | null };
 const pending = new Map<HTMLElement, Job>();
 let idleOn = false, frameOn = false;
 const FRAME_MS = 4;
@@ -37,6 +37,8 @@ function paint(j: Job) {
   j.el.classList.remove("md-pend");
   j.el.innerHTML = h;
   hydrate(j.el, h);
+  // table widths, row heights and code wrap are card data, not Markdown: put onto the shared cached HTML here
+  if (!j.inline) applyMdLayout(j.el, j.layout);
 }
 // 已经在屏幕里的排最前（-2），屏幕外一圈里的其次（-1），远处的按距离
 const byDist = () => [...pending.values()].map((j) => { const d = offView(j.el); return { j, d: d < 0 && inView(j.el) ? -2 : d }; }).sort((a, b) => a.d - b.d);
@@ -94,8 +96,8 @@ export function flushMd() { for (const j of [...pending.values()]) run(j); }
 export const mdPending = () => pending.size;
 
 /** 渲染进 el（远处的、没缓存的排队，见上） */
-export function mdInto(el: HTMLElement, src: string, inline?: boolean) {
-  const j: Job = { el, src, inline };
+export function mdInto(el: HTMLElement, src: string, inline?: boolean, layout?: MdLayout | null) {
+  const j: Job = { el, src, inline, layout };
   pending.delete(el);
   // 不跟踪镜头：镜头动了不该让每个 Note 的 effect 重跑
   if (!inline && !mdCached(src) && src.trim() && untrack(() => offView(el)) >= 0) {

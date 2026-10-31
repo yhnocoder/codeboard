@@ -4,7 +4,7 @@ import type { Node as PMNode } from "@tiptap/pm/model";
 import { NodeSelection, TextSelection } from "@tiptap/pm/state";
 import type { EditorView, NodeView } from "@tiptap/pm/view";
 import { keepKey } from "../ui/editkeys";
-import { mathMacros } from "../math";
+import { markTex, mathMacros } from "../math";
 import { MathHints, textareaCaret } from "./mathhints";
 
 export class MathBlockView implements NodeView {
@@ -64,7 +64,8 @@ export class MathBlockView implements NodeView {
   }
 
   private render(latex: string) {
-    katex.render(latex, this.preview, { displayMode: true, throwOnError: false, macros: mathMacros() });
+    katex.render(latex, this.preview, { displayMode: true, throwOnError: false, output: "html", macros: mathMacros() });
+    markTex(this.preview, latex);
     if (!latex.trim()) this.preview.textContent = "";
   }
   /** 原文排出来多高就多高（折行也算），不在框里滚、不被裁掉 */

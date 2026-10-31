@@ -32,3 +32,5 @@ export const NUDGE_RAMP = 1500;
 /** The speed a held arrow key starts gliding at, in screen px per ms (Shift: 10 times) */
 export const NUDGE_SPEED = 0.04;
 export const NUDGE_MAX = 6;
+/** After a press on the board, how long the board takes the keyboard back if the webview's host page takes it from its frame (focus.ts) */
+export const CLICK_KEEPS_KEYS = 1000;

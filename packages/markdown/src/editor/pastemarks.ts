@@ -1,8 +1,9 @@
 // 粘贴的 HTML 里没排出来的 ==高亮==、~~删除线~~ 和单独一段的 ---：不认这些写法的网页、聊天应用、阅读器把它们原样当字放进 <p>
 // （usage feedback #53）。ProseMirror 按 schema 读 HTML 时它们只是字；这里交给解析器按 Markdown 读，和打字、粘贴纯文字一样。
 // 字里别的 ASCII 标点先藏起来再解析：HTML 里的 * _ [ ] $ # 之类本来就是字（要的格式 HTML 自己带着），单个的 ~ 也是（3~5 是范围，不当下标）
-import { Fragment, Slice, type Mark, type Node as PMNode, type Schema } from "@tiptap/pm/model";
-import { parseSource } from "../schema";
+import { DOMParser as PMDOMParser, Fragment, Slice, type Mark, type Node as PMNode, type Schema } from "@tiptap/pm/model";
+import { mdSchema, parseSource, serializeMd } from "../schema";
+import { mathInSlice } from "./pastemath";
 
 // 藏成私用区的字（和 schema.ts 的 SHIELD、PAIR0 错开）：解析器当普通字，位置、长度不变，读完再换回来
 const HIDE = 0xe400;
@@ -58,4 +59,16 @@ function marksInBlock(b: PMNode, schema: Schema): PMNode {
     changed = true;
   });
   return changed ? b.type.create(b.attrs, out, b.marks) : b;
+}
+
+/**
+ * Pasted HTML as Markdown source: read with the full schema, then ==hl==, ~~s~~, --- and $x$ left as text in a chat app's
+ * or web page's paragraphs become formatting, rules and formulas (as typing them would); other punctuation in the text
+ * stays literal (escaped)
+ */
+export function htmlSource(dom: HTMLElement): string {
+  const schema = mdSchema(), s0 = PMDOMParser.fromSchema(schema).parseSlice(dom);
+  const s1 = marksInSlice(s0, schema) ?? s0, s2 = mathInSlice(s1, schema) ?? s1;
+  const json = s2.content.toJSON() ?? [];
+  return serializeMd({ type: "doc", content: s2.content.firstChild?.isInline ? [{ type: "paragraph", content: json }] : json });
 }

@@ -4,8 +4,7 @@ import { closeHistory } from "@tiptap/pm/history";
 import { Mapping } from "@tiptap/pm/transform";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import type { EditorView } from "@tiptap/pm/view";
-import { captionOf, imageAttrs } from "../image";
-import { holdGhosts } from "../ui/ghost";
+import { blockInfo, spanEdgeOut } from "./spans";
 
 /** 存一张图（data: URL、文件名）→ 写进 Markdown 的地址；null = 不插（存不了时用的一方自己提示） */
 export type SaveImage = (dataUrl: string, name: string) => Promise<string | null>;
@@ -34,152 +33,66 @@ export function pastedImages(cd: DataTransfer): File[] {
   return !text || (html && !htmlText) ? files : [];
 }
 
-/** 存好以后插在 at（文档在这期间变过就插在光标处）；撤销时一步拿掉 */
+/** Image source for a saved address */
+const imageSrc = (src: string) => `![](${/[\s()<>]/.test(src) ? `<${src}>` : src})`;
+
+/** The caret's position moved outside the markers of spans it sits at the edge of (spans.ts outsideSpans) */
+function outsideSpans(doc: PMNode, pos: number) {
+  const $p = doc.resolve(pos);
+  if ($p.parent.type.name !== "paragraph" || !$p.depth) return pos;
+  return $p.start() + spanEdgeOut($p.parent.textContent, pos - $p.start(), !/cell/.test($p.node(-1).type.spec.tableRole ?? ""));
+}
+
+/** Inserts the saved images at `at` (or at the caret if the document changed meanwhile), as one undo step */
 async function insertFiles(editor: Editor, save: SaveImage, files: File[], at: number) {
   const doc0 = editor.state.doc;
   const srcs = await Promise.all(files.map((f) => readUrl(f).then((u) => save(u, f.name || "pasted.png")).catch(() => null)));
-  const content = srcs.filter((s): s is string => !!s).map((src) => ({ type: "image", attrs: { src, alt: "" } }));
-  if (!content.length || editor.isDestroyed) return;
-  const pos = editor.state.doc === doc0 ? Math.min(at, editor.state.doc.content.size) : editor.state.selection.from;
-  editor.chain().focus().command(({ tr }) => { closeHistory(tr); return true; }).insertContentAt(pos, content).run();
-  editor.view.dispatch(closeHistory(editor.state.tr)); // 接着打的字是新的一步
+  const text = srcs.filter((s): s is string => !!s).map(imageSrc).join(" ");
+  if (!text || editor.isDestroyed) return;
+  const pos = outsideSpans(editor.state.doc, editor.state.doc === doc0 ? Math.min(at, editor.state.doc.content.size) : editor.state.selection.from);
+  const tr = closeHistory(editor.state.tr).insertText(text, pos);
+  editor.view.dispatch(tr);
+  editor.view.dispatch(closeHistory(editor.state.tr)); // what is typed next is a new step
+  editor.view.focus();
 }
 
-/** 从文件选的、或者别的地方来的 data: URL 插在光标处 */
+/** Inserts a data: URL (picked from a file, or from elsewhere) at the caret */
 export function insertImageUrl(editor: Editor, save: SaveImage, dataUrl: string, name: string) {
   return save(dataUrl, name).then((src) => {
     if (!src || editor.isDestroyed) return;
-    editor.chain().focus().command(({ tr }) => { closeHistory(tr); return true; }).insertContent({ type: "image", attrs: { src, alt: "" } }).run();
+    const { from, to, empty } = editor.state.selection;
+    editor.view.dispatch(empty ? closeHistory(editor.state.tr).insertText(imageSrc(src), outsideSpans(editor.state.doc, from)) : closeHistory(editor.state.tr).insertText(imageSrc(src), from, to));
     editor.view.dispatch(closeHistory(editor.state.tr));
+    editor.view.focus();
   });
 }
 
-// 编辑器里图包在一层 span.md-img 里（放改宽度的把手）：缩小了的宽度写在这一层上，图占满它。静态显示没有这一层，
-// 宽度直接在 <img> 上；两边都是正文宽的百分之几、带 .sized（居中），样式见 markdown.css，进出编辑不跳
-const MIN_W = 24; // 最窄（像素）
+/** A paragraph holding only images (and line breaks): what is left empty after its image is dragged away */
+const imageOnly = (p: PMNode) => {
+  const t = p.textContent;
+  if (!t.trim()) return false;
+  const sps = blockInfo(t, false).spans;
+  let rest = t;
+  for (const sp of [...sps].reverse()) if (sp.atom?.type === "image" || sp.atom?.type === "br") rest = rest.slice(0, sp.from) + rest.slice(sp.to);
+  return !rest.trim();
+};
 
-class ImageView {
-  dom: HTMLElement;
-  private img: HTMLImageElement;
-  private cap: HTMLElement;
-  private grips: HTMLElement[];
-  constructor(private node: PMNode, private view: EditorView, private getPos: () => number | undefined) {
-    this.dom = document.createElement("span");
-    this.dom.className = "md-img";
-    this.img = document.createElement("img");
-    // 缩小了的图居中：两边各一个把手，拖哪一边都是以中心为准两边一起变
-    const grips = [-1, 1].map((side) => {
-      const g = document.createElement("span");
-      g.className = `md-imgrip ${side < 0 ? "l" : "r"}`;
-      g.draggable = false;
-      g.setAttribute("data-tip", "Drag to resize · Double-click for full width");
-      g.addEventListener("pointerdown", (e) => this.down(e, g, side));
-      g.addEventListener("dblclick", (e) => { e.preventDefault(); e.stopPropagation(); this.commit(null); });
-      return g;
-    });
-    this.grips = grips;
-    // 图注（title）：和静态显示一样画在图下面，只是显示（改图注走用的一方的菜单）
-    this.cap = document.createElement("span");
-    this.cap.className = "md-cap";
-    this.cap.contentEditable = "false";
-    this.dom.append(this.img, this.cap, ...grips);
-    this.set(node);
-  }
-  private set(n: PMNode) {
-    for (const [k, v] of Object.entries(imageAttrs(n.attrs))) {
-      if (k === "style" || k === "class") continue;
-      if (v == null) this.img.removeAttribute(k); else if (this.img.getAttribute(k) !== v) this.img.setAttribute(k, v);
-    }
-    const cap = captionOf(n.attrs.title);
-    if (this.cap.textContent !== cap) this.cap.textContent = cap;
-    this.cap.hidden = !cap;
-    this.show(n.attrs.width);
-  }
-  private show(w: number | null) {
-    this.dom.style.width = w ? `${w}%` : "";
-    this.dom.classList.toggle("sized", !!w);
-  }
-  /** 拖把手：按下时量一次（正文宽、图现在的宽），拖动中每帧只写宽度不读排版；放开时写进文档，一次撤销 */
-  private down(e: PointerEvent, grip: HTMLElement, side: number) {
-    if (e.button !== 0) return;
-    // 卡片不跟着拖、ProseMirror 不选字也不拖图、焦点留在编辑器里
-    e.preventDefault();
-    e.stopPropagation();
-    const box = blockOf(this.dom), cs = getComputedStyle(box), r = box.getBoundingClientRect();
-    const k = box.offsetWidth ? r.width / box.offsetWidth : 1; // 白板的缩放
-    const full = (box.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight)) * k;
-    if (!(full > 0)) return;
-    const w0 = this.dom.getBoundingClientRect().width, x0 = e.clientX, min = Math.min(100, (MIN_W * k / full) * 100);
-    let w: number | null = this.node.attrs.width, frame = 0, moved = false;
-    grip.setPointerCapture(e.pointerId);
-    this.dom.draggable = false;
-    this.dom.classList.add("resizing");
-    holdGhosts(true);
-    const move = (ev: PointerEvent) => {
-      moved ||= ev.clientX !== x0;
-      if (!moved) return;
-      const p = Math.min(100, Math.max(min, ((w0 + 2 * side * (ev.clientX - x0)) / full) * 100));
-      w = p >= 99.5 ? null : Math.round(p);
-      if (!frame) frame = requestAnimationFrame(() => { frame = 0; this.show(w); });
-    };
-    const up = () => {
-      grip.removeEventListener("pointermove", move);
-      grip.removeEventListener("pointerup", up);
-      grip.removeEventListener("pointercancel", up);
-      grip.removeEventListener("lostpointercapture", up);
-      cancelAnimationFrame(frame);
-      this.dom.draggable = true;
-      this.dom.classList.remove("resizing");
-      holdGhosts(false);
-      if (moved) this.commit(w); else this.show(this.node.attrs.width);
-    };
-    grip.addEventListener("pointermove", move);
-    grip.addEventListener("pointerup", up);
-    grip.addEventListener("pointercancel", up);
-    grip.addEventListener("lostpointercapture", up);
-  }
-  private commit(w: number | null) {
-    const pos = this.getPos();
-    if (pos == null || (this.node.attrs.width ?? null) === w) { this.show(this.node.attrs.width); return; }
-    const v = this.view;
-    v.dispatch(closeHistory(v.state.tr.setNodeAttribute(pos, "width", w)));
-    v.dispatch(closeHistory(v.state.tr)); // 接着打的字是新的一步
-  }
-  update(n: PMNode) {
-    if (n.type !== this.node.type) return false;
-    if (n.attrs !== this.node.attrs) this.set(n);
-    this.node = n;
-    return true;
-  }
-  stopEvent(e: Event) { return this.grips.some((g) => g.contains(e.target as globalThis.Node)); }
-  ignoreMutation() { return true; }
-}
-/** 百分比宽度算的是哪一个的宽：最近的块级祖先（图可能在链接、加粗这些行内元素里） */
-function blockOf(el: HTMLElement): HTMLElement {
-  let p = el.parentElement!;
-  while (p.parentElement && getComputedStyle(p).display.startsWith("inline")) p = p.parentElement;
-  return p;
-}
-
-const imageOnly = (p: PMNode) => { let y = true; p.forEach((c) => { if (c.type.name !== "image" && c.type.name !== "hardBreak") y = false; }); return y; };
-
-/** save 每次粘贴时才取（编辑器是共用的，选项跟着这一次编辑） */
+/** Pasting and dropping image files; save is read per paste (the editor is shared, the options follow this session) */
 export function imageEditing(base: TNode, editor: () => Editor, save: () => SaveImage) {
   return base.extend({
-    addNodeView: () => ({ node, view, getPos }) => new ImageView(node, view, getPos as () => number | undefined),
     addProseMirrorPlugins() {
       return [...(this.parent?.() ?? []), new Plugin({
         key: new PluginKey("cbImage"),
-        // 把单独一段的图拖到别处：那一段空了，一起拿掉（同一步撤销：history 把追加的这一笔并进拖放那一步）
+        // An image dragged out of a paragraph of its own leaves it empty: take that paragraph away too, in the same undo step
         appendTransaction: (trs, old, now) => {
           if (!trs.some((t) => t.docChanged && t.getMeta("uiEvent") === "drop")) return null;
           const map = new Mapping(trs.flatMap((t) => t.mapping.maps));
           const empty: number[] = [];
           old.doc.descendants((n, pos) => {
             if (n.type.name !== "paragraph") return true;
-            if (!n.childCount || !imageOnly(n)) return false;
+            if (!imageOnly(n)) return false;
             const r = map.mapResult(pos, 1), p = now.doc.nodeAt(r.pos);
-            if (!r.deleted && p?.type.name === "paragraph" && !p.childCount && now.doc.resolve(r.pos).parent.childCount > 1) empty.push(r.pos);
+            if (!r.deleted && p?.type.name === "paragraph" && !p.content.size && now.doc.resolve(r.pos).parent.childCount > 1) empty.push(r.pos);
             return false;
           });
           if (!empty.length) return null;
@@ -190,7 +103,7 @@ export function imageEditing(base: TNode, editor: () => Editor, save: () => Save
         props: {
           handlePaste: (view: EditorView, ev: ClipboardEvent) => {
             const files = ev.clipboardData && !view.state.selection.$from.parent.type.spec.code ? pastedImages(ev.clipboardData) : [];
-            if (!files.length) return false; // 代码块里照原样粘字
+            if (!files.length) return false;
             ev.preventDefault();
             void insertFiles(editor(), save(), files, view.state.selection.from);
             return true;

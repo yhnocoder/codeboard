@@ -1,6 +1,12 @@
 // 照 Typora 的默认：Markdown 记号（* _ ` $ ~）不配对
 import { Plugin, PluginKey, TextSelection, type EditorState } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
+import { blockInfo, flat } from "./spans";
+
+const inCodeSpan = (state: EditorState, pos: number) => {
+  const $p = state.doc.resolve(pos), off = $p.parentOffset;
+  return flat(blockInfo($p.parent.textContent, false).spans).some((s) => s.tag?.nodeName === "code" && s.inner && off > s.inner[0] && off < s.inner[1]);
+};
 
 const PAIRS: Record<string, string> = { "(": ")", "[": "]", "{": "}", '"': '"', "'": "'" };
 const CLOSE = new Set(Object.values(PAIRS));
@@ -48,9 +54,8 @@ export function pairsPlugin() {
         if (!(sel instanceof TextSelection)) return false;
         const $f = sel.$from;
         if (!$f.parent.inlineContent || $f.parent.type.spec.code) return false;
-        // 行内代码里不配（代码里的引号、括号是字）；展开着的 Markdown 原文（也是 code 标记）里照配。看的是打的字会带的格式：
-        // 刚打完 `c` 的光标紧跟在代码后面，但接着打的字不再是代码
-        if ((state.storedMarks ?? $f.marks()).some((m) => m.type.spec.code && m.type.name !== "mdSrc")) return false;
+        // Not inside an inline code span: quotes and brackets there are code
+        if (inCodeSpan(state, $f.pos)) return false;
         const k = ev.key, list = pairsKey.getState(state) ?? [];
         if (k === "Backspace" && sel.empty) {
           const prev = charAt(view, sel.from), next = nextChar(view, sel.from);

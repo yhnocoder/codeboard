@@ -58,12 +58,22 @@ async function treeTokens(g: Grammar, text: string, file?: string): Promise<Tok[
   return analysisReady() ? highlightLines(g, text, file) : splitLines(text).map((l) => [{ text: l }]);
 }
 
+/**
+ * shiki's theme colours a call's arguments like its brackets, and they come merged into one token ("(a, b "): only the marks
+ * stay punctuation, the names between them are plain text. Operators share the keyword colour; "op" lets a look tell them apart
+ */
+function refine(t: Tok): Tok[] {
+  if (t.cls === "kw" && /^\s*[-+*/%=<>!&|^~@:?]+\s*$/.test(t.text)) return [{ text: t.text, cls: "kw op" }];
+  if (t.cls !== "p" || !/[\p{L}\p{N}_$]/u.test(t.text)) return [t];
+  return t.text.split(/([\p{L}\p{N}_$]+|\s+)/u).filter(Boolean).map((x) => ({ text: x, cls: /^\s+$/.test(x) ? undefined : /[\p{L}\p{N}_$]/u.test(x) ? tokenClass(undefined, x) : "p" }));
+}
+
 async function tokenize(sl: string, text: string): Promise<Tok[][]> {
   const lines = splitLines(text);
   let res: Tok[][];
   try {
     const h = await highlighter(sl);
-    res = h.codeToTokens(text, { lang: sl, theme: "codeboard" }).tokens.map((line) => line.map((t) => ({ text: t.content, cls: tokenClass(t.color, t.content) })));
+    res = h.codeToTokens(text, { lang: sl, theme: "codeboard" }).tokens.map((line) => line.flatMap((t) => refine({ text: t.content, cls: tokenClass(t.color, t.content) })));
   } catch {
     res = lines.map((l) => [{ text: l }]);
   }

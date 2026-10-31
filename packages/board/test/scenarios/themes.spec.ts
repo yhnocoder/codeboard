@@ -489,7 +489,8 @@ test("draftingHighlightUnderline", async () => {
   }), sel);
   const res: Record<string, unknown> = {};
   let ok = true;
-  const plain = (l: Awaited<ReturnType<typeof look>>) => l.length === 2 && l.every((m) => m.bg === "none" && /rgba\(0, 0, 0, 0\)|transparent/.test(m.bgc) && m.line === "underline" && m.thick === "1.5px" && m.offset === "3px");
+  // the editor draws a highlight as decorations, split into several <mark>s where other formatting or hidden markers cut it
+  const plain = (l: Awaited<ReturnType<typeof look>>, edit = false) => (edit ? l.length >= 2 : l.length === 2) && l.every((m) => m.bg === "none" && /rgba\(0, 0, 0, 0\)|transparent/.test(m.bgc) && m.line === "underline" && m.thick === "1.5px" && m.offset === "3px");
   for (const lt of [true, false]) {
     const h = await open({ board: b, light: lt, w: 560, h: 260, settings: { theme: "drafting" } as never });
     await idle(h);
@@ -500,7 +501,7 @@ test("draftingHighlightUnderline", async () => {
     await idle(h);
     const edit = await look(h.page, '.card[data-id="n1"] .md-pm mark');
     res[lt ? "light" : "dark"] = { shown, edit };
-    ok &&= plain(shown) && plain(edit);
+    ok &&= plain(shown) && plain(edit, true);
     await h.page.context().close();
   }
   const h = await open({ board: b, light: true, w: 560, h: 260, settings: { theme: "warm-ink" } as never });

@@ -65,13 +65,14 @@ const md = (h: Host, id: string) => (h.board().cards.find((c) => c.id === id) as
 /** Inline formulas (TeX in order), display blocks and the text outside formulas and code, in a card's editor or static body */
 const look = (h: Host, root: string) => h.page.evaluate((root) => {
   const box = document.querySelector(root)!;
-  // editor: node views carry the TeX; static body: bare KaTeX output (no TeX), display blocks wrapped in .katex-display
+  // editor: the drawn formulas carry the TeX, and their source is hidden (.md-hide) while the caret is elsewhere; static body:
+  // bare KaTeX output (no TeX), display blocks wrapped in .katex-display
   const editor = !!box.querySelector('[data-type="inline-math"], [data-type="block-math"]') || box.classList.contains("md-pm");
   const inline = editor ? [...box.querySelectorAll('[data-type="inline-math"]')] : [...box.querySelectorAll(".katex")].filter((e) => !e.parentElement!.closest(".katex, .katex-display"));
   const tex = inline.map((e) => e.getAttribute("data-latex") ?? "");
   const blocks = box.querySelectorAll(editor ? '[data-type="block-math"]' : ".katex-display").length;
   const copy = box.cloneNode(true) as HTMLElement;
-  copy.querySelectorAll('.katex, [data-type="inline-math"], [data-type="block-math"], code, pre').forEach((e) => e.remove());
+  copy.querySelectorAll('.katex, [data-type="inline-math"], [data-type="block-math"], code, pre, .md-hide').forEach((e) => e.remove());
   return { tex, blocks, text: copy.textContent ?? "" };
 }, root);
 

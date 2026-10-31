@@ -3,12 +3,13 @@ import {
   type Board, type Card, type CallSpan, type Rect, type Anchor, type LinkSide,
 } from "@codeboard/core";
 import {
-  state, sel, select, toggleSel, clearSel, setLineSel, isSel, cardById, hostOf, rectOf, live, beginGesture, isFresh, toast, placeOf,
+  state, sel, select, toggleSel, clearSel, setLineSel, isSel, cardById, hostOf, rectOf, live, beginGesture, isFresh, toast, placeOf, placed,
 } from "./state/store";
 import { tune } from "./state/tune";
 import { WHEEL_GESTURE } from "./state/timing";
 import { cam, setCam, stopCam, camTo, fling, toWorld, view, ZMIN, ZMAX, lod } from "./state/camera";
-import { setGuides, setSizeHint, setDropTarget, dropTarget, setDragging, setMarquee, setRubber, setEditing, editing, setEditEntry } from "./state/ui";
+import { setGuides, setSizeHint, setDropTarget, dropTarget, setDragging, setMarquee, setRubber, setEditing, editing, setEditEntry, type NoteSpot } from "./state/ui";
+import { staticTextRange } from "@yhnocoder/markdown";
 import { frames, deepestAt, hiddenByAncestor, homeFor, partlyIn, frameOf, sec, descSections, allMembers, visibleCards, setMovingHome } from "./state/sections";
 import { geo } from "./state/geo";
 import { pops, closeAllPops, pinPop } from "./state/pop";
@@ -21,6 +22,7 @@ import { installOverlays, modalOpen, typing } from "./ui/overlay";
 import { NODRAG, CARD_CONTROL, OWNS_POINTER, BOARD_CHROME, holdPointer } from "./ui/guard";
 import { dispatch, matches } from "./keymap";
 import { holdGhosts } from "@yhnocoder/markdown/ui";
+import { installShield, raiseShield } from "./ui/shield";
 import * as A from "./actions";
 import { onBoardSwitch } from "./state/root";
 import { togglePreview } from "./state/subboards";
@@ -113,7 +115,7 @@ function clickEditKind(c: Card, t: HTMLElement): "note" | "free" | null {
 }
 /** first：这是单击（可能是双击的第一下）；双击的第二下进来的不用再拦下一下 */
 function clickEdit(kind: "note" | "free", id: string, at: { x: number; y: number }, first = false) {
-  if (kind === "note") setEditEntry({ kind: "note", id, at }); // 手写代码卡的编辑器自己按最近一次按下的地方放光标（lastDown）
+  if (kind === "note") setEditEntry({ kind: "note", id, at, spot: staticSpot(id, at) }); // 手写代码卡的编辑器自己按最近一次按下的地方放光标（lastDown）
   setEditing({ kind, id });
   if (!first) return;
   // 这一下是双击的第一下时，第二下落在刚挂上的编辑器里：只放光标，不让浏览器 / 编辑器选中一个词
@@ -123,6 +125,32 @@ function clickEdit(kind: "note" | "free", id: string, at: { x: number; y: number
     if (performance.now() - t0 < tune("dblClick") && Math.hypot(e.clientX - at.x, e.clientY - at.y) <= DBL_SLOP) e.preventDefault();
   };
   addEventListener("pointerdown", second, true);
+}
+/** The click on the Note's static view as a place in its text (NoteSpot); undefined where the point maps to no character */
+function staticSpot(id: string, at: { x: number; y: number }): NoteSpot | undefined {
+  const md = document.querySelector<HTMLElement>(`.card[data-id="${CSS.escape(id)}"] .md:is(.nbody, .tx):not(.editing)`);
+  const last = md?.lastElementChild;
+  if (!md || !last) return undefined;
+  if (at.y >= last.getBoundingClientRect().bottom) return "end";
+  const c = document.caretRangeFromPoint?.(at.x, at.y);
+  if (!c || !md.contains(c.startContainer)) return undefined;
+  // the character before the point, inside the same text (a point past a line's end is after its last character, not before the
+  // next block's first); at a text's start the one after it
+  const before = () => {
+    const all = document.createRange();
+    all.selectNodeContents(md);
+    all.setEnd(c.startContainer, c.startOffset);
+    const b = staticTextRange(md, all);
+    return b && { char: { from: b.to - 1, to: b.to, text: b.text[b.text.length - 1] }, after: true };
+  };
+  const after = () => {
+    const rest = document.createRange();
+    rest.setStart(c.startContainer, c.startOffset);
+    rest.setEnd(md, md.childNodes.length);
+    const r = staticTextRange(md, rest);
+    return r && { char: { from: r.from, to: r.from + 1, text: r.text[0] }, after: false };
+  };
+  return (c.startContainer.nodeType === 3 && c.startOffset > 0 ? before() ?? after() : after() ?? before()) ?? undefined;
 }
 // 按在只选着的这一张的正文上（Note、手写代码）：按下时不知道是点还是选字（原生文本选择），等 click 再看
 let armed: { id: string; kind: "note" | "free"; x: number; y: number } | null = null;
@@ -212,6 +240,13 @@ function startCardDrag(e: PointerEvent, grabbed: string, onClick?: () => void) {
   const box = bounds(ids.map((i) => rectOf(cardById(i)!.host)))!;
   const targets = [...visibleCards().filter((c) => !skip.has(c.id)).map((c) => rectOf(c)), ...[...frames().entries()].map(([, r]) => r)];
   const fr = new Map(frames());
+  // 别的卡占的地方（世界坐标）：指针不在哪张附近时不用问浏览器指针下面是什么。elementsFromPoint 要把指针下面每一层都找出来，
+  // 241 张卡的白板每次 3–6 ms，是拖动每帧最大的一块。外面留一圈：浮在卡上方的卡头、斜贴的卡角、卡边上的贴纸
+  const others = placed().filter((c) => !skip.has(c.id)).map((c) => rectOf(c));
+  const nearOther = (ev: PointerEvent) => {
+    const p = worldOf(ev), pad = Math.max(64, 24 / cam.z);
+    return others.some((r) => p.x >= r.x - pad && p.x <= r.x + r.w + pad && p.y >= r.y - pad && p.y <= r.y + r.h + pad);
+  };
   const { end, moving, drop: dropGesture } = cardGesture(ids);
   const sx = e.clientX, sy = e.clientY;
   let mergeT: number | undefined, mergeTgt: string | undefined;
@@ -227,7 +262,7 @@ function startCardDrag(e: PointerEvent, grabbed: string, onClick?: () => void) {
     let dx = (ev.clientX - sx) / z, dy = (ev.clientY - sy) / z;
     const fast = pace.fast(ev, still);
     // 合并 / 变成 Sidenote 的落点
-    const under = document.elementsFromPoint(ev.clientX, ev.clientY).find((n) => (n as HTMLElement).closest?.(".card") && !skip.has(((n as HTMLElement).closest(".card") as HTMLElement).dataset.id!)) as HTMLElement | undefined;
+    const under = !nearOther(ev) ? undefined : document.elementsFromPoint(ev.clientX, ev.clientY).find((n) => (n as HTMLElement).closest?.(".card") && !skip.has(((n as HTMLElement).closest(".card") as HTMLElement).dataset.id!)) as HTMLElement | undefined;
     const uc = under?.closest(".card") as HTMLElement | undefined;
     const uid = uc?.dataset.id;
     const head = under?.closest(".chead");
@@ -603,6 +638,8 @@ export function canvasWheel(e: WheelEvent) {
   e.preventDefault();
   if (!t.closest(".cbody, .nbody, .tx")) ownerFor(e, null); // 卡片里的已经在 cardWheel 里记过
   stopCam();
+  // 编辑中不盖：点回编辑器里放光标靠原生的 mousedown，挡板转不过去
+  if (!editing()) raiseShield(e, t);
   const p = local(e);
   if (e.ctrlKey || e.metaKey) {
     const z0 = cam.z, z = Math.min(ZMAX, Math.max(ZMIN, z0 * Math.exp(-e.deltaY * (e.deltaMode ? 0.05 : 0.01))));
@@ -697,6 +734,7 @@ export function sectionEdgeDown(e: PointerEvent, id: string) {
 }
 
 export function installKeys() {
+  installShield();
   installOverlays();
   trackPointer();
   // 点白板任何地方都要拿到键盘焦点。卡片标题、画布、连线等的 pointerdown 调了 preventDefault（拖动时不选字），这也取消了

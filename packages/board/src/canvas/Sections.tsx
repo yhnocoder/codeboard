@@ -2,7 +2,7 @@
 import { For, Show, createMemo, createSignal, onCleanup } from "solid-js";
 import { cardTitle, type Card } from "@codeboard/core";
 import { state, sel } from "../state/store";
-import { frames, depthOf, hiddenByAncestor, allMembers, dropSections, movingHome, fitting } from "../state/sections";
+import { shownFrame, depthOf, hiddenByAncestor, allMembers, dropSections, fitting } from "../state/sections";
 import { Editable } from "../ui/Editable";
 import { Icon } from "../ui/icons";
 import { sectionLabelDown, sectionEdgeDown } from "../interact";
@@ -14,10 +14,10 @@ export function SectionFrames() {
   return (
     <For each={ordered().filter((s) => !s.collapsed)}>
       {(s) => {
-        const r = createMemo(() => frames().get(s.id));
+        const r = createMemo(() => shownFrame(s.id));
         return (
           <Show when={r()}>
-            <div class="sect" classList={{ [`c-${s.color}`]: !!s.color, sel: sel.sections.includes(s.id), locked: A.sectionLocked(s), drop: dropSections().has(s.id), moving: !!movingHome(), fit: fitting().has(s.id) }} data-sect={s.id}
+            <div class="sect" classList={{ [`c-${s.color}`]: !!s.color, sel: sel.sections.includes(s.id), locked: A.sectionLocked(s), drop: dropSections().has(s.id), fit: fitting().has(s.id) }} data-sect={s.id}
               style={{ left: `${r()!.x}px`, top: `${r()!.y}px`, width: `${r()!.w}px`, height: `${r()!.h}px` }}>
               <span class="sgrip" data-nodrag data-export="strip" onPointerDown={(e) => sectionEdgeDown(e, s.id)} />
             </div>
@@ -33,7 +33,7 @@ export function SectionLabels() {
   return (
     <For each={ordered()}>
       {(s) => {
-        const r = createMemo(() => frames().get(s.id));
+        const r = createMemo(() => shownFrame(s.id));
         const n = () => allMembers(s.id).length;
         // 折叠条上停一会儿：下面摊开几张成员卡的预览（Peek）。只有指着的那一个建 DOM；2 = 正在淡出
         const [peek, setPeek] = createSignal<0 | 1 | 2>(0);
@@ -43,7 +43,7 @@ export function SectionLabels() {
         onCleanup(() => clearTimeout(t));
         return (
           <Show when={r()}>
-            <div class="slabel" classList={{ collapsed: !!s.collapsed, [`c-${s.color}`]: !!s.color, sel: sel.sections.includes(s.id), drop: dropSections().has(s.id), moving: !!movingHome(), fit: fitting().has(s.id) }} data-sect={s.id}
+            <div class="slabel" classList={{ collapsed: !!s.collapsed, [`c-${s.color}`]: !!s.color, sel: sel.sections.includes(s.id), drop: dropSections().has(s.id), fit: fitting().has(s.id) }} data-sect={s.id}
               style={{ left: `${r()!.x}px`, top: `${r()!.y}px`, ...(s.collapsed ? { width: `${r()!.w}px`, height: `${r()!.h}px` } : {}) }}
               onPointerEnter={enter} onPointerLeave={leave}
               onPointerDown={(e) => { if (!(e.target as Element).closest(".spv")) { clearTimeout(t); setPeek(0); } sectionLabelDown(e, s.id); }}

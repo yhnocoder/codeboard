@@ -3,9 +3,9 @@
 import { Fragment, type DOMOutputSpec, type Mark, type Node as PMNode } from "@tiptap/pm/model";
 import katex from "katex";
 import DOMPurify from "dompurify";
-import { isHtmlComment, mathTex, mdSchema, parseMd, tocEntries, tocHtml } from "./schema";
-import { captionOf, imageAttrs, onImagesChanged } from "./image";
-import { mathMacros } from "./math";
+import { isHtmlComment, mdSchema, parseMd, tocEntries, tocHtml } from "./schema";
+import { captionOf, imageAttrs, missingImageHtml, onImagesChanged } from "./image";
+import { mathMacros, withTex } from "./math";
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 const escA = (s: string) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
@@ -33,7 +33,7 @@ type Cx = { doc: PMNode; trusted: string[] };
 const trust = (cx: Cx, html: string) => `<span data-cbr="${cx.trusted.push(html) - 1}"></span>`;
 const untrust = (html: string, t: string[]) => html.replace(/<span data-cbr="(\d+)"><\/span>/g, (_, i) => t[+i] ?? "");
 function tex(cx: Cx, src: string, display: boolean) {
-  try { return trust(cx, katex.renderToString(src, { displayMode: display, throwOnError: false, output: "html", macros: mathMacros() })); }
+  try { return trust(cx, withTex(katex.renderToString(src, { displayMode: display, throwOnError: false, output: "html", macros: mathMacros() }), src)); }
   catch { return `<code>${esc(src)}</code>`; }
 }
 
@@ -49,7 +49,8 @@ const userHtml = (h: string) => (isHtmlComment(h) ? "" : h);
 /** 编辑器里是节点视图、或者显示时要交给用的一方的节点（返回 undefined 照 renderHTML） */
 const DISPLAY: Record<string, (n: PMNode, cx: Cx) => string | undefined> = {
   // 行内的不再包一层 span，少一个节点
-  inlineMath: (n, cx) => tex(cx, mathTex(n.attrs.latex, !!n.attrs.display), false),
+  // $$…$$ inside a line: a display formula centred on its own line (md-dmath), in the editor too
+  inlineMath: (n, cx) => (n.attrs.display ? `<span class="md-dmath">${tex(cx, n.attrs.latex, true)}</span>` : tex(cx, n.attrs.latex, false)),
   blockMath: (n, cx) => `<div class="math" data-latex="${escA(n.attrs.latex)}">${tex(cx, n.attrs.latex, true)}</div>`,
   // Mermaid：先放源码，挂到页面上以后换成图。源码里常有 -->，DOMPurify 会删掉带它的属性：自己转义过，不过 DOMPurify
   codeBlock: (n, cx) => (n.attrs.language === "mermaid" ? trust(cx, `<div class="mmd" data-src="${escA(n.textContent)}"><pre class="md-code"><code>${esc(n.textContent)}</code></pre></div>`) : undefined),
@@ -57,6 +58,7 @@ const DISPLAY: Record<string, (n: PMNode, cx: Cx) => string | undefined> = {
   // 不让浏览器拖图（拖的是卡片）
   // 有图注（title）的图包一层 .md-fig，图注在图下面；缩小了的宽度写在这一层上（和编辑器里的 .md-img 一样）
   image: (n) => {
+    if (n.attrs.broken) return missingImageHtml(String(n.attrs.alt ?? ""), String(n.attrs.src ?? ""), escA);
     const a: Record<string, string | null> = { ...imageAttrs(n.attrs), draggable: "false" }, cap = captionOf(n.attrs.title);
     return cap ? specHtml(["span", { class: `md-fig${a.class ? " sized" : ""}`, style: a.style }, ["img", { ...a, class: null, style: null }], ["span", { class: "md-cap" }, cap]], "") : specHtml(["img", a], "");
   },
@@ -71,7 +73,7 @@ const DISPLAY_MARKS: Record<string, (m: Mark) => DOMOutputSpec> = {
 };
 /** 只有一段（非空）的列表项、脚注、表格格子不画那层 <p>：外观一样（它本来就没有边距），少画一些节点 */
 const SLIM = new Set(["listItem", "footnote", "tableCell", "tableHeader"]);
-/** 段里有缩小了的图时留着 <p>：居中只认 p:has(img.sized)（markdown.css），不用再匹配列表项、格子和它们下面的任意一层 */
+/** 段里有缩小了的图时留着 <p>（p.md-psized 才居中，见 markdown.css），列表项、格子里也一样 */
 const sizedImg = (p: PMNode) => { let y = false; p.forEach((c) => { if (c.type.name === "image" && c.attrs.width) y = true; }); return y; };
 
 function markParts(m: Mark, display: boolean): [string, string] {
@@ -128,6 +130,9 @@ function nodeHtml(n: PMNode, cx: Cx | null): string {
   if (n.isText) return esc(n.text!);
   const d = cx && DISPLAY[n.type.name]?.(n, cx);
   if (d != null) return d;
+  // a narrowed image is centred in its line: a class on its paragraph (markdown.css), not a p:has() rule, which Chrome
+  // checks again for every paragraph on the page (the open editor's too) on each change
+  if (cx && n.type.name === "paragraph" && sizedImg(n)) return specHtml(["p", { class: "md-psized" }, 0], contentHtml(n, cx));
   return specHtml(n.type.spec.toDOM!(n), contentHtml(n, cx));
 }
 function contentHtml(n: PMNode, cx: Cx | null): string {

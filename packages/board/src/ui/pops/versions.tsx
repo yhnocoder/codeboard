@@ -56,7 +56,7 @@ export function DiffPop(p: PopProps<"diff">) {
       <Show when={p.pop.error}><div class="empty">{p.pop.error}</div></Show>
       <Show when={d()}>
         <Show when={d()!.lastChange}><div class="lastc">{d()!.lastChange}</div></Show>
-        <div class="colh dh"><div><b>{d()!.left.label}</b><span>{d()!.left.path}:{d()!.left.start}</span></div><div><b>{d()!.right.label}</b><span>{d()!.right.path}:{d()!.right.start}</span></div></div>
+        <div class="colh dh"><div class="coll"><b>{d()!.left.label}</b><span>{d()!.left.path}:{d()!.left.start}</span></div><div class="colr"><b>{d()!.right.label}</b><span>{d()!.right.path}:{d()!.right.start}</span></div></div>
         <div class="dbody"><DiffTable left={d()!.left} right={d()!.right} /></div>
         <Show when={impact()}><div class="lastc">{impact()}</div></Show>
         <div class="db">

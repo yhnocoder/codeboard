@@ -2,8 +2,7 @@ import { Extension } from "@tiptap/core";
 import { Plugin, PluginKey, type EditorState } from "@tiptap/pm/state";
 import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
 import { closeHistory } from "@tiptap/pm/history";
-import { reconvert } from "./typora";
-import { serializeMd } from "../schema";
+import { sourceMd } from "./srcdoc";
 import { autoClosersAt } from "./pairs";
 import { GhostAsker, eatGhost, nextWord, wantGhost, type Complete, type Ghost as G } from "../ui/ghost";
 import { revealIn, scroller } from "../ui/reveal";
@@ -12,7 +11,7 @@ const CARET = "\uE000";
 /** 问 Markdown 原文：模型看到 **b**、`c`、$x$、[[Ref]]、# 才知道该写 Markdown */
 export function mdAround(s: EditorState, pos: number): [string, string] {
   try {
-    const md = serializeMd(s.tr.insertText(CARET, pos).doc.toJSON());
+    const md = sourceMd(s.tr.insertText(CARET, pos).doc.toJSON());
     const i = md.indexOf(CARET);
     if (i >= 0) return [md.slice(0, i), md.slice(i + 1)];
   } catch { /* 退回纯文字 */ }
@@ -78,21 +77,21 @@ export const Ghost = Extension.create<{ complete?: Complete }>({
           const g = ghostKey.getState(view.state);
           if (!g || e.isComposing) return false;
           if (e.key === "Tab" && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
-            // 一次进来一整段：打字规则不会触发，这一段当 Markdown 重新解析（$a$、**b**、补完前面打了一半的 $\frac{…）。单独一步撤销
+            // the whole suggestion comes in as source, one undo step of its own
             // 光标后面是自动补的右括号（打 $\frac{ 时补的 }），补全里按顺序也写了它们：先删掉，不然多出一个
             const auto = autoClosersAt(view.state, g.pos);
             let n = 0;
             for (let i = 0; n < auto.length && i < g.text.length; i++) if (g.text[i] === auto[n]) n++;
             const tr = closeHistory(view.state.tr);
             if (n) tr.delete(g.pos, g.pos + n);
-            view.dispatch(reconvert(tr.insertText(g.text, g.pos).setMeta(ghostKey, null)));
+            view.dispatch(tr.insertText(g.text, g.pos).setMeta(ghostKey, null));
             return true;
           }
           // ⌘→（Windows / Linux 上 Ctrl+→）：只接受下一个词
           if (e.key === "ArrowRight" && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) {
             const w = nextWord(g.text);
             const tr = view.state.tr.insertText(w, g.pos);
-            view.dispatch(w.length === g.text.length ? reconvert(tr.setMeta(ghostKey, null)) : tr);
+            view.dispatch(w.length === g.text.length ? tr.setMeta(ghostKey, null) : tr);
             return true;
           }
           if (e.key === "Escape") { view.dispatch(view.state.tr.setMeta(ghostKey, null)); return true; }
