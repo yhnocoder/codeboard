@@ -94,7 +94,7 @@ async function withFullDetail<T>(fn: () => T | Promise<T>): Promise<T> {
 }
 
 // 交互状态的 class（选中、悬停、分档、离屏、镜头在动）：导出的是静止、没选中的样子
-const LIVE_CLASSES = ["off", "sel", "lift", "hov", "editing", "lo-ov", "lo-map", "moving", "settle", "bind-hot", "bind-anchor", "pinged"];
+const LIVE_CLASSES = ["off", "far", "sel", "lift", "hov", "editing", "lo-ov", "lo-map", "moving", "settle", "bind-hot", "bind-anchor", "pinged"];
 
 /** 导出用的画布克隆：完整细节、没有选中；范围外的卡、两端不都在范围里的箭头、范围外的 Section 去掉，
  *  标了 data-export="strip" 的部件和交互状态也去掉。HTML 快照、PNG 共用 */

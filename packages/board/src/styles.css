@@ -1065,6 +1065,7 @@ mark.wdiff { background: var(--chg-strong); color: inherit; border-radius: 2px; 
 /* 卡的内容（除了名字、贴纸）都在 .cface 里，跟卡一样是竖排 flex；地图档整块用 clip-path 藏起来（不继承，里面的节点不用重算样式，也挡住指针）。
    别写成 .card > :not(...) 再用会继承的 visibility：最右边没有类名，切档时浏览器只能把整块白板 3 万个节点全重算一遍 */
 .card.off > .cface { visibility: hidden; } /* state/cull.ts：离屏幕很远的卡不画内容 */
+.card.far { visibility: hidden; } /* state/cull.ts：内容藏着、又不在屏幕附近的卡，连卡片本身也不画 */
 .cface { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; min-width: 0; }
 /* 代码卡卡头 / 色带 / 底栏之间的内容区（说明、代码、Source）：手动定了高度的代码卡，Place.h 就是它的高度，卡头 / 底栏由主题自己撑开 */
 .carea { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; min-width: 0; }
