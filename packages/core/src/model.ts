@@ -189,7 +189,6 @@ export type CompareCard = CardBase & {
 export type BoardCard = CardBase & { kind: "board"; board: string; pcols?: 2 };
 
 export type Card = CodeCard | NoteCard | ImageCard | WebCard | LinksCard | CompareCard | BoardCard;
-export type CardKind = Card["kind"];
 
 export type Place = {
   x: number;
@@ -343,7 +342,6 @@ export type Sidenote = {
   | { kind: "link"; url: string; title?: string }
   | { kind: "card"; card: string }
 );
-export type SidenoteKind = Sidenote["kind"];
 
 /** 图标：包名 + 图标名。builtin = 内置的十几个；emoji = 系统 emoji（name 就是那个字符）；其余是 Sticker Packs 目录里的包 */
 export type IconRef = { pack: string; name: string };
@@ -455,7 +453,7 @@ function compareName(c: CompareCard, b: Pick<Board, "cards">) {
 }
 const shortName = (s: string) => s.split(".").pop() ?? s;
 
-export function codeTitle(c: CodeCard): string {
+function codeTitle(c: CodeCard): string {
   const s = c.segments[0];
   if (!s) return "Empty";
   if (s.src.kind === "free") return "Code";
@@ -618,8 +616,6 @@ export function stickerWhere(b: Pick<Board, "links">, s: Sticker): { card?: stri
   return l ? { card: l.from.card, seg: l.from.seg, line: l.from.line } : {};
 }
 
-/** 画布上摆着的卡（有 Place 的），按叠放顺序 */
-export const placedCards = (b: Pick<Board, "cards" | "place">): Card[] => b.cards.filter((c) => b.place[c.id]);
 
 export const segOf = (c: CodeCard, seg?: string) => (seg ? c.segments.find((s) => s.id === seg) : c.segments[0]);
 

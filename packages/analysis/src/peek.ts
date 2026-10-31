@@ -26,7 +26,7 @@ export function isModuleDef(lines: string[], line: number, col: number, word: st
 }
 
 /** 类体里直接写的字段行（不在方法里、不是注释 / docstring / 装饰器） */
-export function classFields(a: FileAnalysis, lines: string[], cls: Sym): number[] {
+function classFields(a: FileAnalysis, lines: string[], cls: Sym): number[] {
   const kids = a.symbols.filter((s) => s.parent === cls.qual || (s.qual.startsWith(cls.qual + ".") && s.qual.split(".").length === cls.qual.split(".").length + 1));
   let base = -1;
   const out: number[] = [];
@@ -47,7 +47,7 @@ export function classFields(a: FileAnalysis, lines: string[], cls: Sym): number[
 }
 
 /** 从第 l 行开始的这条语句在哪一行结束：括号没配平、行尾 \ 都接着往下（最多 40 行） */
-export function stmtEnd(lines: string[], l: number): number {
+function stmtEnd(lines: string[], l: number): number {
   let depth = 0;
   for (let k = l; k <= Math.min(lines.length, l + 40); k++) {
     const t = (lines[k - 1] ?? "").replace(/(["'])(?:\\.|(?!\1).)*\1/g, "").replace(/#.*$/, "");

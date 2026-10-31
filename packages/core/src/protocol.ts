@@ -2,7 +2,7 @@
 // 以及把共享卡的改动转给开着同一张卡的别的白板（shared）。
 // 需要回答的请求带 req，宿主用 { type: "reply", req, … } 回。
 import type { Board, BoardMeta, Camera, CodeCard, Segment, Card, Version, HideFlags, WebMeta, CallMark, VariantFrom, Link } from "./model";
-import type { Var, BoundVal, CallAlt } from "@codeboard/analysis/basics";
+import type { Var } from "@codeboard/analysis/basics";
 import type { SegView } from "./lines";
 import type { BoardPatch, SharedUpdate } from "./patch";
 import type { CardCopy } from "./edit";
@@ -426,7 +426,6 @@ export type ImplPick = { label: string; detail: string; path: string; line: numb
 export type NameHit = { lang: string; label: string; detail: string; path: string; line: number; def: boolean; qual?: string };
 /** Generated 卡的来源：文本、语言、文件名（剪贴板为空串） */
 export type GenSource = { text: string; lang: string; name: string };
-export type { BoundVal, CallAlt };
 
 /** 子白板里一张卡的只读预览：卡（Compare 带上两栏 cols）和其中代码段的展示数据（段 id → 高亮） */
 export type SubCard = { card: Card; cols?: Card[]; views: Record<string, SegView> };

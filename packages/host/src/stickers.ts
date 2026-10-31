@@ -8,7 +8,7 @@ import { readSettings } from "./settings";
 import { log } from "./log";
 import { settingDir, workspace } from "./ws";
 
-export const stickerDir = () => {
+const stickerDir = () => {
   const d = readSettings().stickerDir.trim();
   return d ? settingDir(d) : path.join(os.homedir(), ".codeboard", "stickers");
 };
@@ -29,13 +29,13 @@ export const MAX_SVG = 256 * 1024;
 /** 单个位图（PNG / WebP / GIF）的大小上限：更大的跳过。128px 的动图表情一般几十到几百 KB */
 export const MAX_BITMAP = 2 * 1024 * 1024;
 /** 一个文件夹里位图加起来的上限：整包一次发给白板，超出以后的跳过 */
-export const MAX_PACK_BITMAPS = 32 * 1024 * 1024;
+const MAX_PACK_BITMAPS = 32 * 1024 * 1024;
 /** Iconify JSON 整个文件的上限（一整套图标通常几 MB） */
 const MAX_JSON = 64 * 1024 * 1024;
 const BITMAP_EXT = /\.(png|webp|gif)$/i;
 const ICON_EXT = /\.(svg|png|webp|gif)$/i;
 
-export function iconifyPack(id: string, j: any): StickerPack | null {
+function iconifyPack(id: string, j: any): StickerPack | null {
   if (!j || typeof j.icons !== "object") return null;
   const W = j.width ?? 16, H = j.height ?? 16;
   const icons = Object.entries<any>(j.icons).map(([name, ic]) => ({

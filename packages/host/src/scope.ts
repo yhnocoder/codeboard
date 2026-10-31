@@ -10,7 +10,7 @@ const wsPkg = new Map<string, Promise<boolean>>();
 export const resetScope = () => wsPkg.clear();
 
 /** 顶层包名在不在工作区里：某个根下有 <pkg>/、<pkg>.py 或 src/<pkg>/ */
-export function isWorkspacePkg(pkg: string): Promise<boolean> {
+function isWorkspacePkg(pkg: string): Promise<boolean> {
   let p = wsPkg.get(pkg);
   if (!p) {
     p = (async () => {
@@ -28,7 +28,7 @@ export function isWorkspacePkg(pkg: string): Promise<boolean> {
 const SITE = /[\\/](site-packages|dist-packages)[\\/]/;
 
 /** 工作区外文件所属的顶层包：site-packages 下第一层；否则沿 __init__.py 往上找到最外层包；都不是就用文件名 */
-export async function topPkgOf(abs: string): Promise<string> {
+async function topPkgOf(abs: string): Promise<string> {
   const site = SITE.exec(abs);
   if (site) return abs.slice(site.index + site[0].length).split(/[\\/]/)[0].replace(/\.pyi?$/, "");
   let dir = path.dirname(abs), top = "";

@@ -231,7 +231,7 @@ export async function entriesOf(abs: string): Promise<IndexEntry[]> {
 }
 
 /** 文件改了（保存、新建、在外面改了）：重新排进待分析 */
-export function changedFile(abs: string) {
+function changedFile(abs: string) {
   follower?.changed(abs);
   if (!isCode(abs) || !listing) return; // 还没列过：列的时候自然会读到
   drop(abs);
@@ -241,7 +241,7 @@ export function changedFile(abs: string) {
   if (wanted) void drain();
 }
 
-export function removedPath(p: string) {
+function removedPath(p: string) {
   follower?.removed(p);
   for (const abs of [...order.keys()]) if (abs === p || abs.startsWith(p + path.sep)) { drop(abs); todo.delete(abs); sigs.delete(abs); order.delete(abs); stamps.set(abs, (stamps.get(abs) ?? 0) + 1); }
 }

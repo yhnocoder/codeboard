@@ -25,7 +25,7 @@ function slicer() {
   };
 }
 
-export const OPS_YAML = "aten/src/ATen/native/native_functions.yaml";
+const OPS_YAML = "aten/src/ATen/native/native_functions.yaml";
 
 /** yaml 里的一个 func：add.out → name add，overload out；逗号连着的 key 拆开（CPU, CUDA: f → 两条） */
 export type OpDecl = {
@@ -92,7 +92,7 @@ export function opTable(root: string, yaml: string, decls: OpDecl[]): OpTable {
 const cppName = (d: OpDecl) => d.name + (d.out ? "_out" : "");
 
 /** 一个 func 的所有 kernel：自己的 dispatch；自己没有的 key 从 structured_delegate 拿；ufunc 的 CPU / CUDA；都没有 = CompositeImplicitAutograd */
-export function declKernels(t: OpTable, d: OpDecl): Kernel[] {
+function declKernels(t: OpTable, d: OpDecl): Kernel[] {
   const own: Kernel[] = d.dispatch.map(([key, kernel]) => ({ key, kernel, decl: fullName(d) }));
   const has = (key: string, xs: Kernel[]) => xs.some((k) => k.key === key);
   const out = [...own];
@@ -244,7 +244,7 @@ export async function ufuncDir(cdb: string, dir: string, p: path.PlatformPath = 
  * 路径写成编辑器文件事件里的样子，生成的文件才对得上（isGen 比较的是字符串）：Windows 上 VS Code 的盘符是小写的 c:，
  * 而 CMake 写进 compile_commands.json 的、设置里手写的是 C:
  */
-export const editorPath = (abs: string, p: path.PlatformPath = path) => (p === path.win32 ? abs.replace(/^[A-Z](?=:)/, (c) => c.toLowerCase()) : abs);
+const editorPath = (abs: string, p: path.PlatformPath = path) => (p === path.win32 ? abs.replace(/^[A-Z](?=:)/, (c) => c.toLowerCase()) : abs);
 const UFUNC_PATH = /[\\/]aten[\\/]src[\\/]ATen[\\/]Ufunc\w*\.(cpp|cu)$/;
 const CDB_PIECE = 1 << 20;
 const UFUNC_FILE_KEY = /"file"\s*:\s*("(?:[^"\\]|\\.)*Ufunc\w*\.(?:cpp|cu)")/g;
@@ -523,7 +523,7 @@ export async function kernelEntry(t: OpTable, k: Kernel): Promise<IndexEntry | u
  * 宏定义的 kernel：名字是某个顶层全大写宏调用的参数（CREATE_UNARY_TORCH_IMPL_FUNC(acos_out, acos_stub)）。
  * 目标就是那一行（从那里接着点 acos_stub）
  */
-export async function macroKernel(t: OpTable, k: Kernel): Promise<{ abs: string; sym: Sym } | null> {
+async function macroKernel(t: OpTable, k: Kernel): Promise<{ abs: string; sym: Sym } | null> {
   const x = scanOf(t);
   await settled(x, "head");
   if (!x.macros.has(k.kernel)) await settled(x); // 拼名字的宏拼出来的：第 2 遍之后才知道
@@ -614,10 +614,10 @@ function dropScan(root: string) {
   const x = scans.get(root);
   if (x) { x.dead = true; scans.delete(root); }
 }
-export function resetOpTables() { found = undefined; tables.clear(); latest.clear(); for (const r of [...scans.keys()]) dropScan(r); }
+function resetOpTables() { found = undefined; tables.clear(); latest.clear(); for (const r of [...scans.keys()]) dropScan(r); }
 
 /** 文件保存、新建、在编辑器外改了或删了：yaml 丢掉它的表和扫描，扫描过的文件重做 */
-export function opsFileChanged(abs: string) {
+function opsFileChanged(abs: string) {
   if (path.basename(abs) === "compile_commands.json") { opsBuildChanged(); return; }
   if (abs.endsWith(path.sep + OPS_YAML.split("/").join(path.sep))) {
     if (!tables.has(abs)) { found = undefined; return; } // 工作区里新来了一个 PyTorch
@@ -628,7 +628,7 @@ export function opsFileChanged(abs: string) {
   for (const x of scans.values()) if (inScan(x, abs)) rescanFile(x, abs);
 }
 /** compile_commands.json 或 clangd 的参数变了：生成的文件现在可能在别处 */
-export function opsBuildChanged() {
+function opsBuildChanged() {
   for (const x of scans.values()) {
     if (x.rebuild) continue;
     x.rebuild = true;
@@ -648,7 +648,7 @@ export function opsBuildChanged() {
 }
 
 /** 删了文件或目录 */
-export function opsPathRemoved(p: string) {
+function opsPathRemoved(p: string) {
   for (const yaml of [...tables.keys()]) if (yaml === p || yaml.startsWith(p + path.sep)) opsFileChanged(yaml);
   for (const x of scans.values()) for (const abs of [...x.files.keys()]) if (abs === p || abs.startsWith(p + path.sep)) rescanFile(x, abs);
 }
@@ -661,7 +661,7 @@ export type OpEntry = { op: string; overload?: string; how: "explicit" | "torch"
  * recv 的第一段换成完整模块名，经过 import 和模块级的 torch.ops 别名：
  * F.x → torch.nn.functional；from torch import _C → torch._C；aten = torch._ops.ops.aten → torch.ops.aten
  */
-export function resolveRecv(recv: string, text: string): string {
+function resolveRecv(recv: string, text: string): string {
   const [head, ...rest] = recv.split(".");
   const im = analysisOf("python", text).imports.find((i) => i.name === head);
   const alias = im ? undefined : new RegExp(`^${escapeRegExp(head)}\\s*=\\s*(torch(?:\\._ops)?\\.ops(?:\\.\\w+)?)\\s*(?:#.*)?$`, "m").exec(text)?.[1];

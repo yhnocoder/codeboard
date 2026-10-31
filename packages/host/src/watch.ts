@@ -14,7 +14,8 @@ import { forgetDefs } from "./defcache";
 import { log } from "./log";
 
 /** 攒多久的 git 事件再查 HEAD、攒多久的文件改动再重查（ms） */
-export const GIT_PAUSE = 600, RECHECK_PAUSE = 500;
+const GIT_PAUSE = 600;
+export const RECHECK_PAUSE = 500;
 
 /** ready：开始时的监听都挂好、关着的白板数过一遍之后（测试等它，不靠等一段时间） */
 export function watchVersions(panels: BoardHost, store: Storage): Disposable & { ready: Promise<void> } {

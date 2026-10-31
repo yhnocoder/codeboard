@@ -14,7 +14,7 @@ import { workspace, ws0, wsRoots } from "./ws";
 
 export const BUNDLE_EXT = "codeboard";
 /** 包格式的版本：只在包的布局或 manifest 变了时加；白板文件自己的版本由白板文件带着（导入时照常迁移） */
-export const BUNDLE_FORMAT = 1;
+const BUNDLE_FORMAT = 1;
 
 /** 包和解开后的上限：防 zip 炸弹和把整个磁盘写满 */
 export const LIMITS = { file: 256 << 20, entry: 64 << 20, total: 512 << 20, entries: 20_000 };
@@ -263,4 +263,4 @@ export async function exportFlow(store: Storage, roots: string[], name: string):
 }
 
 /** 文件名里不能有的字符换掉：默认的包名用白板 / 组 / 工作区的名字 */
-export const bundleName = (name: string) => `${name.replace(/[\\/:*?"<>|\x00-\x1f]/g, "-").trim() || "Boards"}.${BUNDLE_EXT}`;
+const bundleName = (name: string) => `${name.replace(/[\\/:*?"<>|\x00-\x1f]/g, "-").trim() || "Boards"}.${BUNDLE_EXT}`;

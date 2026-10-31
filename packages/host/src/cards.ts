@@ -58,7 +58,7 @@ export async function cardsFromPlan(loc: Loc, lines: string[], plan: Plan, lang:
 }
 
 /** 编辑器 → 白板位置。没保存的新文件、不在磁盘上的文档 → null（建 Free code） */
-export async function locOfEditor(ed: EditorState): Promise<Loc | null> {
+async function locOfEditor(ed: EditorState): Promise<Loc | null> {
   if (ed.file) return locOfFile(ed.path);
   if (ed.version) {
     const loc = await locOfFile(path.join(ed.version.root, ed.version.path));

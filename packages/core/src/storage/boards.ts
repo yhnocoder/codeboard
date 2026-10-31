@@ -778,7 +778,7 @@ export class Storage {
  * 返回要写的文件（和磁盘上一样时 null）、这块白板改了的项（mine）、和磁盘上比变了的项（items，发给别的白板）、和 view 比变了的项（back，这块白板自己要换上）。
  * Sidenote 的先后不算（每块白板上可能不一样）
  */
-export function merged(base: SharedCard | undefined, disk: SharedCard | undefined, view: SharedCard): { file: SharedCardFile | null; mine: string[]; items: string[]; back: string[] } {
+function merged(base: SharedCard | undefined, disk: SharedCard | undefined, view: SharedCard): { file: SharedCardFile | null; mine: string[]; items: string[]; back: string[] } {
   const c = mergeById(base && [base.card], disk ? [disk.card] : [], [view.card]);
   const n = mergeById(base?.sidenotes, disk?.sidenotes ?? [], view.sidenotes);
   const now: SharedCard = { card: c.items[0] ?? view.card, sidenotes: n.items };

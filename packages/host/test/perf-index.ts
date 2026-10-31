@@ -9,6 +9,7 @@ import type { CodeCard, ExpandResult, Segment } from "@codeboard/core";
 import { startAnalysis, analysisOf } from "../src/analysis";
 import { cardForFileSym } from "../src/cards";
 import * as R from "../src/resolve";
+import { nameIndexReady, resetIndex } from "../src/nameindex";
 import { useWorkspace } from "../src/ws";
 import { WS, nodeWorkspace } from "./node-workspace";
 
@@ -79,9 +80,9 @@ void (async () => {
   let bgMs: number | undefined, bgStall: number | undefined;
   if (bg) {
     // after: the whole index built in the background (fresh index), worst stall while it runs
-    (R as { resetIndex: () => void }).resetIndex();
+    resetIndex();
     const t3 = performance.now();
-    [bgStall] = await stall(async () => { bg(); await (R as { nameIndexReady: () => Promise<void> }).nameIndexReady(); });
+    [bgStall] = await stall(async () => { bg(); await nameIndexReady(); });
     bgMs = Math.round(performance.now() - t3);
   }
   console.log(JSON.stringify({

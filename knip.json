@@ -2,6 +2,8 @@
   "$schema": "https://unpkg.com/knip@6/schema.json",
   "ignoreWorkspaces": ["examples/markdown-demo"],
   "ignoreBinaries": ["mkfifo"],
+  // a type named in an exported signature stays exported
+  "ignoreExportsUsedInFile": { "interface": true, "type": true },
   "ignoreDependencies": [
     // the wasm is loaded by file path (packages/analysis/src/tree.ts), not imported
     "@yhnocoder/tree-sitter-cuda",
@@ -10,11 +12,11 @@
   ],
   "workspaces": {
     ".": { "entry": ["tools/**/*.{mjs,cjs}", "vitest.config.mts"], "project": ["tools/**/*.{mjs,cjs}"] },
-    "packages/core": { "entry": ["src/tidy.ts", "test/**/*.ts"], "project": ["src/**/*.ts"] },
-    "packages/host": { "entry": ["src/*.ts", "test/**/*.ts"], "project": ["src/**/*.ts"] },
-    "packages/board": { "entry": ["src/export/viewer.ts", "test/**/*.ts", "stories/**/*.tsx"], "project": ["src/**/*.{ts,tsx}"] },
+    "packages/core": { "includeEntryExports": true, "entry": ["test/**/*.ts"], "project": ["src/**/*.ts"] },
+    "packages/host": { "includeEntryExports": true, "entry": ["src/*.ts", "test/**/*.ts"], "project": ["src/**/*.ts"] },
+    "packages/board": { "includeEntryExports": true, "entry": ["src/export/viewer.ts", "test/**/*.ts", "stories/**/*.tsx"], "project": ["src/**/*.{ts,tsx}"] },
     "packages/markdown": { "entry": ["src/cm/editor.ts", "src/ui/index.ts", "test/**/*.ts"], "project": ["src/**/*.{ts,tsx}"], "ignore": ["dist/**"] },
-    "packages/analysis": { "entry": ["test/**/*.{ts,mjs}"], "project": ["src/**/*.ts"] },
-    "extensions/vscode": { "entry": ["esbuild.mjs", "test/**/*.{ts,cjs}"], "project": ["src/**/*.ts"] }
+    "packages/analysis": { "includeEntryExports": true, "entry": ["test/**/*.{ts,mjs}"], "project": ["src/**/*.ts"] },
+    "extensions/vscode": { "includeEntryExports": true, "entry": ["esbuild.mjs", "test/**/*.{ts,cjs}"], "project": ["src/**/*.ts"] }
   }
 }

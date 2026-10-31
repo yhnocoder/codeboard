@@ -558,7 +558,6 @@ export function symbolAt(syms: Sym[], line: number, kind?: Sym["kind"]): Sym | u
   return syms.filter((s) => s.start <= line && line <= s.end && (!kind || s.kind === kind)).sort((a, b) => a.end - a.start - (b.end - b.start))[0];
 }
 
-export const callsOn = (a: FileAnalysis, line: number) => a.calls.filter((c) => c.line === line);
 
 export * from "./vars";
 export * from "./select";

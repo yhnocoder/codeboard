@@ -1,5 +1,5 @@
 // Triton、TileLang 的文件也是 python，看装饰器认。
-import type { CodeCard, Segment } from "./model";
+import type { Segment } from "./model";
 
 export type LangChip = "PY" | "C++" | "CUDA" | "TRITON" | "TILELANG" | "RUST";
 
@@ -20,7 +20,6 @@ export function segChip(s: Pick<Segment, "lang" | "path" | "text">): LangChip | 
   return undefined;
 }
 
-export const cardChip = (c: CodeCard): LangChip | undefined => (c.segments[0] ? segChip(c.segments[0]) : undefined);
 
 const EXT_CHIP: [RegExp, LangChip][] = [[/\.pyi?$/, "PY"], [/\.(cu|cuh)$/, "CUDA"], [/\.(c|cc|cpp|cxx|h|hh|hpp|hxx)$/, "C++"], [/\.rs$/, "RUST"]];
 const CHIP_NAME: Record<LangChip, string> = { PY: "Python", "C++": "C++", CUDA: "CUDA", TRITON: "Triton", TILELANG: "TileLang", RUST: "Rust" };

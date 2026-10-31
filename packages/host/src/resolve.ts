@@ -17,7 +17,6 @@ import { entriesOf, indexedFiles, knownEntries, lookupName, pausingIndex, type I
 import { log } from "./log";
 import { exists, fromHostPath, hostPath, inExcludedDir, inWorkspace, langOf, mkUid, readText, recentFiles, splitLines, workspace, wsRoots } from "./ws";
 
-export { nameIndexReady, resetIndex, startNameIndex } from "./nameindex";
 
 /** 问语言服务（同一个文件、位置、内容的请求共用：悬停时可能已经在问了） */
 export const lspDefs = (abs: string, line: number, col: number): Promise<Def[]> => sharedDefs(abs, line, col, () => askDefs(abs, line, col));
@@ -38,7 +37,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 export const forgetLspSeen = () => { lspSeen = false; retryClicks = 0; };
 
 /** 点击时问定义：语言服务像是还在启动（装了 Pylance、还没答过）就重试 */
-export async function clickDefs(abs: string, line: number, col: number): Promise<Def[]> {
+async function clickDefs(abs: string, line: number, col: number): Promise<Def[]> {
   let d = await lspDefs(abs, line, col);
   if (d.length || lspSeen || retryClicks >= RETRY_CLICKS || langOf(abs) !== "python" || !workspace().about.hasExtension("ms-python.vscode-pylance")) return d;
   retryClicks++;
@@ -72,7 +71,7 @@ const toSym = (e: IndexEntry): Sym => ({ name: e.name, qual: e.qual, kind: e.kin
 type ExpandReq = { seg: Segment; line: number; col: number; name: string; recv?: string; pick?: ExpandPick };
 
 /** pick 的文件：rel = 相对段自己的来源根（工作区外的类卡点成员），否则是 hostPath */
-export const pickAbs = (seg: Segment, p: ExpandPick) => (p.rel ? absOf({ ...seg, path: p.path }) : fromHostPath(p.path));
+const pickAbs = (seg: Segment, p: ExpandPick) => (p.rel ? absOf({ ...seg, path: p.path }) : fromHostPath(p.path));
 
 const none = (reason: string): ExpandResult => ({ none: true, reason });
 
@@ -223,7 +222,7 @@ const within = <T>(p: Promise<T>, ms: number): Promise<T | typeof LATE> => {
 const isStub = (d: Def) => /\.pyi$/.test(d.abs);
 
 /** .pyi 存根声明的定义在旁边 .py 里的位置（typeshed 式的 Python 代码存根）；编译代码的存根返回 null */
-export async function stubImpl(d: Def, name?: string): Promise<Def | null> {
+async function stubImpl(d: Def, name?: string): Promise<Def | null> {
   const py = d.abs.replace(/\.pyi$/, ".py");
   const stub = await symAtDef(d, name);
   const text = stub && (await readText(py, false));

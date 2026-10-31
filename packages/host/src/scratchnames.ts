@@ -4,7 +4,7 @@
 // 清理只删 mtime 超过 STALE_MS 的文件，所以别的窗口还在用的文件不会被删。
 import { LANG_TABLE, langInfo } from "@codeboard/analysis/langs";
 
-export const SCRATCH_PREFIX = ".codeboard-scratch-";
+const SCRATCH_PREFIX = ".codeboard-scratch-";
 /** .git/info/exclude 里写的那一行 */
 export const SCRATCH_GLOB = `${SCRATCH_PREFIX}*`;
 export const HEARTBEAT_MS = 60_000;
@@ -14,7 +14,7 @@ const extOf = (lang: string) => langInfo(lang)?.ext[0] ?? "txt";
 const EXTS = [...new Set([...LANG_TABLE.map((l) => extOf(l.id)), "txt"])];
 const NAME = new RegExp(`^${SCRATCH_PREFIX.replace(/[.]/g, "\\.")}[\\w-]+\\.(?:${EXTS.join("|")})$`);
 
-export const sanitizeId = (id: string) => id.replace(/[^\w-]/g, "_");
+const sanitizeId = (id: string) => id.replace(/[^\w-]/g, "_");
 export const scratchName = (id: string, lang: string) => `${SCRATCH_PREFIX}${sanitizeId(id)}.${extOf(lang)}`;
 export const isScratchName = (name: string) => NAME.test(name);
 export const isStale = (mtimeMs: number, now: number) => now - mtimeMs > STALE_MS;

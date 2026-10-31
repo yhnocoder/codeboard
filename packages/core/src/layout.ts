@@ -4,7 +4,7 @@ import type { Board, Card, Place, Section } from "./model";
 export type Rect = { x: number; y: number; w: number; h: number };
 
 export const GAP = 28; // 卡片之间留的空
-export const INDENT = 56; // 子卡放在父卡下面时的缩进
+const INDENT = 56; // 子卡放在父卡下面时的缩进
 export const COL_GAP = 96; // 子卡放在父卡右边一列时和父卡之间的空（留给箭头）
 export const SIB_GAP = 24;
 /** 代码卡卡头的估计高度（Warm Ink：35 + 1px 下边线）。Place.h 只存内容区，量不到实测尺寸时按它加回去 */
@@ -41,8 +41,7 @@ export function defaultWidth(c: Card): number {
 export function overlaps(a: Rect, b: Rect, gap = 0) {
   return a.x < b.x + b.w + gap && b.x < a.x + a.w + gap && a.y < b.y + b.h + gap && b.y < a.y + a.h + gap;
 }
-export const contains = (r: Rect, x: number, y: number) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
-export const union = (a: Rect, b: Rect): Rect => {
+const union = (a: Rect, b: Rect): Rect => {
   const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y);
   return { x, y, w: Math.max(a.x + a.w, b.x + b.w) - x, h: Math.max(a.y + a.h, b.y + b.h) - y };
 };
@@ -201,7 +200,7 @@ export function align(rs: (Rect & { id: string })[], op: AlignOp): Map<string, P
 
 /** Section 的框给成员卡、子 Section 留的边距；折叠后的标题条大小 */
 export const SECTION_PAD = { l: 22, r: 22, t: 34, b: 22 };
-export const SECTION_PILL = { w: 220, h: 32 };
+const SECTION_PILL = { w: 220, h: 32 };
 
 /** 折叠的 Section：只剩左上角的标题条 */
 export const sectionPill = (s: Pick<Section, "x" | "y">): Rect => ({ x: s.x, y: s.y, w: SECTION_PILL.w, h: SECTION_PILL.h });

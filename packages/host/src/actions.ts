@@ -374,7 +374,7 @@ export function makeActions(panels: BoardHost, store: Storage) {
   };
 }
 
-export async function pickBoard(store: Storage, placeHolder: string, allowNew: boolean): Promise<string | undefined> {
+async function pickBoard(store: Storage, placeHolder: string, allowNew: boolean): Promise<string | undefined> {
   const metas = await store.list();
   const NEW = { label: "$(add) New Board…", id: "" };
   const items = [...metas.map((m) => ({ label: `$(layout) ${m.name}`, description: m.group, detail: undefined, id: m.id })), ...(allowNew ? [NEW] : [])];
@@ -387,7 +387,7 @@ export async function pickBoard(store: Storage, placeHolder: string, allowNew: b
 }
 
 /** 白板关着时新卡摆在哪：已有卡片的右边，一张接一张往下排（放进白板用 core placeCards） */
-export function stackRight(b: Board, cards: CodeCard[]): CardCopy[] {
+function stackRight(b: Board, cards: CodeCard[]): CardCopy[] {
   const ps = Object.values(b.place);
   const right = ps.length ? Math.max(...ps.map((p) => p.x + p.w)) + 80 : b.cam.x > 0 ? 80 : -b.cam.x + 80;
   let y = ps.length ? Math.min(...ps.map((p) => p.y)) : 80;
@@ -401,7 +401,7 @@ export function stackRight(b: Board, cards: CodeCard[]): CardCopy[] {
 export type Hit = { board: Board; card: CodeCard; seg: string; lines: [number, number] };
 
 /** 所有白板上含有这个文件这几行的卡（按段在工作区里的位置算） */
-export async function findOnBoards(store: Storage, abs: string, start: number, end: number): Promise<Hit[]> {
+async function findOnBoards(store: Storage, abs: string, start: number, end: number): Promise<Hit[]> {
   const out: Hit[] = [];
   for (const { board } of await store.all()) {
     for (const card of allCodeCards(board)) for (const s of card.segments) {

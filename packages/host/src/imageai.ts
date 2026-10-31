@@ -218,7 +218,7 @@ function imageBytes(url: string): AiChatRequest["image"] {
   return { mime: m[1], data: m[2] ? new Uint8Array(Buffer.from(m[3], "base64")) : new TextEncoder().encode(decodeURIComponent(m[3])) };
 }
 /** 问编辑器提供的语言模型（model 不给 = 自动挑）。思考、长度上限只有 DeepSeek 有，这里不用 */
-export async function runChatAi(chat: NonNullable<WorkspaceAi["chat"]>, model: string | undefined, op: ImageAiOp, o: { signal?: AbortSignal; timeoutMs?: number } = {}): Promise<ImageAiResult> {
+async function runChatAi(chat: NonNullable<WorkspaceAi["chat"]>, model: string | undefined, op: ImageAiOp, o: { signal?: AbortSignal; timeoutMs?: number } = {}): Promise<ImageAiResult> {
   const a = askOf(op);
   const image = a.image ? imageBytes(a.image) : undefined;
   if (a.image && !image) return { fail: "http", message: "The image couldn't be sent" };
@@ -231,8 +231,8 @@ export async function runChatAi(chat: NonNullable<WorkspaceAi["chat"]>, model: s
 }
 
 /** 每种功能用哪个模型的设置 */
-export const AI_SETTING = { text: "codeboard.ai.textModel", svg: "codeboard.ai.svgModel", focus: "codeboard.ai.focusModel" } as const;
-export const featureOf = (op: ImageAiOp): keyof typeof AI_SETTING => (op.kind === "extract" ? "text" : op.kind === "focus" ? "focus" : "svg");
+const AI_SETTING = { text: "codeboard.ai.textModel", svg: "codeboard.ai.svgModel", focus: "codeboard.ai.focusModel" } as const;
+const featureOf = (op: ImageAiOp): keyof typeof AI_SETTING => (op.kind === "extract" ? "text" : op.kind === "focus" ? "focus" : "svg");
 
 /**
  * 白板的一个 imageAi 请求。用哪个模型按这项功能的设置：auto = 有 DeepSeek 密钥用 DeepSeek，没有用编辑器的语言模型；deepseek；

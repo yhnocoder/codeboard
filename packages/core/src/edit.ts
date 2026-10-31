@@ -109,7 +109,7 @@ export function removeLinks(b: Board, ids: Iterable<string>): void {
 }
 
 /** 绑着的卡 / 箭头没了的 Sticker 一起删（删卡、删箭头之后调用；撤销时一起回来） */
-export function pruneStickers(b: Board): void {
+function pruneStickers(b: Board): void {
   const cards = new Set(b.cards.map((c) => c.id)), links = new Set(b.links.map((l) => l.id));
   b.stickers = b.stickers.filter((k) => {
     const on = k.at.kind === "canvas" ? k.at.on : undefined;
@@ -287,7 +287,7 @@ export function lineMapOf(old: Pick<Segment, "text" | "start">, now: Pick<Segmen
 }
 
 /** 一段行映射到新版本：取区间里还在的行的首尾 */
-export function mapRange(map: LineMap, a: number, e: number): [number, number] | null {
+function mapRange(map: LineMap, a: number, e: number): [number, number] | null {
   let lo = Infinity, hi = -Infinity;
   for (let l = a; l <= e; l++) { const m = map(l); if (m) { lo = Math.min(lo, m); hi = Math.max(hi, m); } }
   return lo <= hi ? [lo, hi] : null;
@@ -378,7 +378,7 @@ export function moveLineRefs(b: Board, cardId: string, old: Segment, ns: Segment
 }
 
 /** 旧段的 a..e 行在新段里变了没有（没了，或那一行的内容不一样） */
-export function linesChanged(old: Pick<Segment, "text" | "start">, ns: Pick<Segment, "text" | "start">, map: LineMap, a: number, e: number): boolean {
+function linesChanged(old: Pick<Segment, "text" | "start">, ns: Pick<Segment, "text" | "start">, map: LineMap, a: number, e: number): boolean {
   for (let l = a; l <= e; l++) {
     const m = map(l);
     if (!m || (old.text[l - old.start] ?? "") !== (ns.text[m - ns.start] ?? "")) return true;

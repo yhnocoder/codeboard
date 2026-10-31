@@ -32,7 +32,7 @@ export async function pasteCard(text: string): Promise<NewCard | null> {
 const norm = (l: string) => l.replace(/\s+$/, "");
 
 /** 在打开的文档和工作区代码文件里找这段文本（第一行可以只是行尾一部分：从行中间开始复制的） */
-export async function findInWorkspace(text: string): Promise<{ abs: string; text: string; start: number; end: number } | null> {
+async function findInWorkspace(text: string): Promise<{ abs: string; text: string; start: number; end: number } | null> {
   const block = splitLines(text).map(norm);
   while (block.length && !block[0].trim()) block.shift();
   while (block.length && !block[block.length - 1].trim()) block.pop();

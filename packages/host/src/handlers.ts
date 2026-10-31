@@ -230,10 +230,10 @@ export function makeHandler(panels: BoardHost): Handler {
   return async (p, m) => (h[m.type] as ((p: BoardPanel, m: BoardToHost) => unknown) | undefined)?.(p, m); // 不认识的消息（更新的白板）不理
 }
 
-export const openAt = (abs: string, line?: number) => workspace().editor.open(abs, { line });
+const openAt = (abs: string, line?: number) => workspace().editor.open(abs, { line });
 
 /** Open in Editor：钉的版本就是当前代码时开工作区文件，否则开那个 commit 的只读版本 */
-export async function openSeg(seg: Segment, line?: number) {
+async function openSeg(seg: Segment, line?: number) {
   if (seg.src.kind === "free") throw new Error("Free code has no source file.");
   const ed = workspace().editor;
   const abs = absOf(seg);
