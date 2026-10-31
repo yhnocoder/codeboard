@@ -11,7 +11,7 @@ import { escapeRegExp, F_COMMENT } from "@codeboard/analysis/basics";
 import { state, lineSel, setLineSel, reportSelection } from "../state/store";
 import { lineStickers, stickerList } from "../state/stickers";
 import { StickerChip } from "../stickers/Picker";
-import { setGeo } from "../state/geo";
+import { geo, setGeo } from "../state/geo";
 import { look } from "../state/look";
 import { queueMeasure, observeResize, DED_PAD, monoWidth, lastDown } from "../state/measure";
 import { whenIdle } from "../state/idle";
@@ -263,7 +263,12 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
   };
 
   const [scrollY, setScrollY] = createSignal(0);
-  const onScroll = () => { setScrollY(scrollEl.scrollTop); measure(); };
+  // 滚动只改 scroll：行的位置（offsetTop）不随滚动变。整份重量的话每帧都换掉 ys、rows，概览档的行条、连着这张卡的线全跟着重算（每帧 ~2 ms）
+  const onScroll = () => {
+    const t = scrollEl.scrollTop, id = c().id;
+    setScrollY(t);
+    if (geo[id]) setGeo(id, "scroll", t); else measure();
+  };
 
   // 悬停：标识符 → 定义预览；行尾圆点 → 拉箭头
   const [hoverRow, setHoverRow] = createSignal(-1);
