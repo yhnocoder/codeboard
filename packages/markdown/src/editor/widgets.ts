@@ -12,6 +12,7 @@ import { holdGhosts } from "../ui/ghost";
 import { IMAGE_SETTLE } from "../ui/timing";
 import { blockInfo, flat, type Atom, type Span } from "./spans";
 import { checkMath, problemBox } from "./mathhints";
+import { DRAGGED_OUT } from "./image";
 
 type Tag = NonNullable<Span["tag"]>;
 
@@ -55,12 +56,14 @@ export function atomWidget(a: Atom, raw: string, caret: (from: number) => number
       el.dataset.latex = a.latex;
       renderTex(el, a.latex, a.display);
     } else if (a.type === "image") {
+      let dragged: [number, number] | null = null;
       el = imageEl(a, false);
       el.draggable = true;
       el.addEventListener("dragstart", (ev) => {
         const from = getPos();
         if (from == null || !ev.dataTransfer) return;
         const to = from + raw.length, st = view.state;
+        dragged = [from, to];
         view.dispatch(st.tr.setSelection(TextSelection.create(st.doc, from, to)));
         view.dragging = { slice: view.state.doc.slice(from, to), move: true };
         ev.dataTransfer.effectAllowed = "copyMove";
@@ -68,7 +71,7 @@ export function atomWidget(a: Atom, raw: string, caret: (from: number) => number
         carryImage(ev.dataTransfer, a);
         ev.dataTransfer.setDragImage(el.querySelector("img") ?? el, 0, 0);
       });
-      el.addEventListener("dragend", () => { view.dragging = null; });
+      el.addEventListener("dragend", (ev) => { dragEnd(view, ev, dragged); dragged = null; });
     } else if (a.type === "br") {
       el = span("md-br");
     } else if (a.type === "fn") {
@@ -103,6 +106,23 @@ export function atomWidget(a: Atom, raw: string, caret: (from: number) => number
     }
     return out;
   };
+}
+
+/**
+ * The end of an image's drag. Released in this editor, the editor's drop has moved its source already (and cleared
+ * view.dragging). Released outside it with a move (the drop target set dropEffect "move": it took the image), the source leaves
+ * the document, with the space it stood in and, through the image plugin, a paragraph it leaves empty. Cancelled or refused
+ * (dropEffect "none"), nothing changes
+ */
+function dragEnd(view: EditorView, ev: DragEvent, range: [number, number] | null) {
+  const moved = !!view.dragging;
+  view.dragging = null;
+  if (!moved || !range || ev.dataTransfer?.dropEffect !== "move" || view.isDestroyed) return;
+  let [from, to] = range;
+  const $f = view.state.doc.resolve(from), text = $f.parent.textContent, start = $f.start(), a = from - start, b = to - start;
+  if (a > 0 && text[a - 1] === " " && (b === text.length || text[b] === " ")) from--;
+  else if (a === 0 && text[b] === " ") to++;
+  view.dispatch(view.state.tr.delete(from, to).setMeta(DRAGGED_OUT, true).scrollIntoView());
 }
 
 /** Which image is dragged, for a drop outside the editor (IMAGE_DRAG_TYPE) */
@@ -153,10 +173,12 @@ export function imageBelow(a: Extract<Atom, { type: "image" }>): ToDOM {
       setTimeout(() => { if (el.isConnected) { loaded.add(src); img.setAttribute("src", src); } }, IMAGE_SETTLE);
     }
     // dragging the image moves its source, as it does before the source is opened
+    let dragged: [number, number] | null = null;
     frame.draggable = true;
     frame.addEventListener("dragstart", (ev) => {
       const at = imageSourceEnding(view, getPos());
       if (!at || !ev.dataTransfer) return;
+      dragged = at;
       const st = view.state, raw = st.doc.textBetween(at[0], at[1]);
       view.dispatch(st.tr.setSelection(TextSelection.create(st.doc, at[0], at[1])));
       view.dragging = { slice: view.state.doc.slice(at[0], at[1]), move: true };
@@ -165,7 +187,7 @@ export function imageBelow(a: Extract<Atom, { type: "image" }>): ToDOM {
       carryImage(ev.dataTransfer, a);
       ev.dataTransfer.setDragImage(img, 0, 0);
     });
-    frame.addEventListener("dragend", () => { view.dragging = null; });
+    frame.addEventListener("dragend", (ev) => { dragEnd(view, ev, dragged); dragged = null; });
     // the selected image: a frame on the image itself (not around its caption), the grips on the frame's sides
     img.replaceWith(frame);
     frame.append(img);

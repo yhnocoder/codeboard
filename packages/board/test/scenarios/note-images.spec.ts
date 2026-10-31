@@ -456,56 +456,90 @@ test("noteImageDragMoves", async () => {
   await done();
 });
 
-/** #95: while editing a Note, an image dragged out of it and released on the board becomes an image card there (the same file
- *  in assets/, its alt text and caption, as wide as it was drawn); the Note keeps its image, and ⌘Z takes the card away. The
- *  same from the image under its opened source */
+/** #95: while editing a Note, an image dragged out of it and released on the board moves out of the Note into an image card
+ *  there (the same file in assets/, its alt text and caption, as wide as it was drawn): the Note's Markdown loses the image and
+ *  the paragraph it stood in, nothing else; ⌘Z puts it back and takes the card away in one step (what was typed before is a
+ *  step of its own). Released back on its own Note outside the text, or cancelled with Esc, nothing changes. The same from the
+ *  image under its opened source */
 test("noteImageDragOut", async () => {
   const file = "0123456789abcdef-320x180.png", PIC = screenshot(320, 180);
-  const b = board([`First paragraph of text.\n\n![Pages](assets/${file} "Block table")\n\nSecond paragraph of text here.`]);
+  const IMG = `![Pages](assets/${file} "Block table"){width=60%}`;
+  const md0 = `First paragraph of text.\n\n${IMG}\n\nSecond paragraph of text here.`;
   const h = await open({
-    board: b, light, w: 1240, h: 820, settings: { theme: "warm-ink" } as any, host: { assetBase: BASE },
+    board: board([md0, `Some words first.\n\nBefore ${IMG} after.`]), light, w: 1240, h: 820, settings: { theme: "warm-ink" } as any, host: { assetBase: BASE },
     beforeLoad: (p) => p.route(`${BASE}/**`, (r) => r.fulfill({ body: PIC, contentType: "image/png" })),
   });
-  const pg = h.page, card = pg.locator('.card[data-id="n0"]'), md0 = md(h, "n0");
+  const pg = h.page, card = pg.locator('.card[data-id="n0"]');
   const images = () => h.board().cards.filter((c) => c.kind === "image");
-  /** Presses on the image `sel` in the editor and drags it to the board point `to`, a move per frame */
-  const dragOut = async (sel: string, to: { x: number; y: number }) => {
+  const edit = async () => {
+    await card.locator(".nbody p").first().dblclick();
+    await card.locator(".md-pm:focus").waitFor();
+  };
+  /** Presses on the image `sel` in the editor and drags it to `to`, a move per frame; `end` releases it (or presses Esc first) */
+  const drag = async (sel: string, to: { x: number; y: number }, end: "drop" | "esc" = "drop") => {
     const img = card.locator(sel).first();
     await pg.waitForFunction((el) => (el as HTMLImageElement).complete && (el as HTMLImageElement).naturalWidth > 0, await img.elementHandle());
     const r = (await img.boundingBox())!, from = { x: r.x + r.width / 2, y: r.y + r.height / 2 };
     await pg.mouse.move(from.x, from.y);
     await pg.mouse.down();
     for (let i = 1; i <= 12; i++) { await pg.mouse.move(from.x + ((to.x - from.x) * i) / 12, from.y + ((to.y - from.y) * i) / 12); await frames(pg); }
+    if (end === "esc") await pg.keyboard.press("Escape");
     await pg.mouse.up();
+    await frames(pg, 3);
     return r.width;
   };
   await idle(h);
-  await card.locator(".nbody p").first().dblclick();
-  await card.locator(".md-pm:focus").waitFor();
-  const to = { x: 760, y: 420 };
-  const drawn = await dragOut(".md-pm .md-img:not(.below) img", to);
+
+  // released back on its own Note, outside the text (its title bar), and cancelled with Esc over the board: nothing changes
+  await edit();
+  const head = (await card.locator(".chead").first().boundingBox())!;
+  await drag(".md-pm .md-img:not(.below) img", { x: head.x + head.width / 2, y: head.y + head.height / 2 });
+  await drag(".md-pm .md-img:not(.below) img", { x: 640, y: 520 }, "esc");
+  const kept = { cards: images().length, imgs: await card.locator(".md-pm img:not(.ProseMirror-separator)").count(), live: await card.locator(".md-pm").count() };
+  await exitEdit(h);
+  check("noteImageDragOut refused or cancelled changes nothing", kept.cards === 0 && kept.imgs === 1 && kept.live === 1 && md(h, "n0") === md0 && images().length === 0, { kept, md: md(h, "n0") });
+
+  // typed, then dragged out onto the board
+  await edit();
+  await pg.keyboard.press("End");
+  await pg.keyboard.type(" More.");
+  const typed = md0.replace("of text.", "of text. More.");
+  const to = { x: 640, y: 520 };
+  const drawn = await drag(".md-pm .md-img:not(.below) img", to);
   await until(h, "an image card is made where the image is released", () => images().length === 1);
   await idle(h);
   await pg.screenshot({ path: path.join(OUT, "95-note-image-drag-out.png") });
   const c = images()[0] as ImageCard, p = h.board().place[c.id];
   check("noteImageDragOut card of the same image", c.src === file && c.alt === "Pages" && c.desc === "Block table", c);
   check("noteImageDragOut card where released, as wide as drawn", Math.abs(p.x - to.x) <= 2 && Math.abs(p.y - to.y) <= 2 && Math.abs(p.w - drawn) <= 2, { p, to, drawn });
-  check("noteImageDragOut the Note keeps its image", (await card.locator(".md-pm img:not(.ProseMirror-separator)").count()) === 1, await card.locator(".md-pm").innerText());
-  await exitEdit(h);
-  check("noteImageDragOut the Note is unchanged", md(h, "n0") === md0, md(h, "n0"));
+  const out = { md: md(h, "n0"), imgs: await card.locator("img").count(), editing: await card.locator(".md-pm").count() };
+  check("noteImageDragOut the image leaves the Note, nothing else", out.md === "First paragraph of text. More.\n\nSecond paragraph of text here." && out.imgs === 0 && out.editing === 0, out);
   await pg.keyboard.press("Control+z");
-  await until(h, "undo takes the card away", () => images().length === 0);
-  // with the source opened (a click on the image), the image under it drags out the same way
-  await card.locator(".nbody p").first().dblclick();
-  await card.locator(".md-pm:focus").waitFor();
-  await card.locator(".md-pm .md-img:not(.below) img").first().click();
-  await card.locator(".md-pm .md-img.below").waitFor();
-  await dragOut(".md-pm .md-img.below img", { x: 760, y: 560 });
-  await until(h, "the image under the source drags out too", () => images().length === 1);
-  const c2 = images()[0] as ImageCard;
-  check("noteImageDragOut from the opened source", c2.src === file && c2.alt === "Pages", c2);
-  await exitEdit(h);
-  check("noteImageDragOut the Note is unchanged after both", md(h, "n0") === md0, md(h, "n0"));
+  await until(h, "one undo takes the card away", () => images().length === 0);
+  check("noteImageDragOut one undo puts the image back", md(h, "n0") === typed, md(h, "n0"));
+  await pg.keyboard.press("Control+z");
+  await until(h, "the next undo takes the typing back", () => md(h, "n0") === md0);
+  await pg.keyboard.press("Control+Shift+z");
+  await pg.keyboard.press("Control+Shift+z");
+  await until(h, "redo moves it out again", () => images().length === 1 && !md(h, "n0").includes(file));
+
+  // an image in a line of text, dragged from under its opened source: only the image and the space before it go
+  const card1 = pg.locator('.card[data-id="n1"]');
+  await card1.locator(".nbody p").first().dblclick();
+  await card1.locator(".md-pm:focus").waitFor();
+  await card1.locator(".md-pm .md-img:not(.below) img").first().click();
+  await card1.locator(".md-pm .md-img.below").waitFor();
+  const before = images().length;
+  const img1 = card1.locator(".md-pm .md-img.below img").first();
+  await pg.waitForFunction((el) => (el as HTMLImageElement).complete && (el as HTMLImageElement).naturalWidth > 0, await img1.elementHandle());
+  const r1 = (await img1.boundingBox())!, f1 = { x: r1.x + r1.width / 2, y: r1.y + r1.height / 2 }, t1 = { x: 900, y: 600 };
+  await pg.mouse.move(f1.x, f1.y);
+  await pg.mouse.down();
+  for (let i = 1; i <= 12; i++) { await pg.mouse.move(f1.x + ((t1.x - f1.x) * i) / 12, f1.y + ((t1.y - f1.y) * i) / 12); await frames(pg); }
+  await pg.mouse.up();
+  await until(h, "the image under the source drags out too", () => images().length === before + 1);
+  const c2 = images().at(-1) as ImageCard;
+  check("noteImageDragOut from the opened source, in a line", c2.src === file && c2.alt === "Pages" && md(h, "n1") === "Some words first.\n\nBefore after.", { c2, md: md(h, "n1") });
   await h.close();
 });
 

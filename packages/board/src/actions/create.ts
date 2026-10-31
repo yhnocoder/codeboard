@@ -16,6 +16,7 @@ import { ask } from "../host";
 import { settleHome } from "../state/sections";
 import { hostRect, popCard } from "./common";
 import { fetchMeta, newLinkList } from "./web";
+import { setNoteText } from "./edit";
 import { cleanImage, svgDataUrl } from "../md/images";
 import { texBrackets, undoubleTex, type DraggedImage } from "@yhnocoder/markdown";
 
@@ -126,14 +127,23 @@ export async function addImage(dataUrl: string, name: string, at?: { x: number; 
   return id;
 }
 /**
- * An image dragged out of a Note being edited and released on the board: an image card of the same picture (the same file in
- * assets/, its alt text and caption) there, as wide as it was drawn in the Note. The Note keeps its image
+ * An image dragged out of the Note being edited and released on the board: it moves out of the Note into an image card there
+ * (the same file in assets/, its alt text and caption, as wide as it was drawn in the Note). The editor has taken its source
+ * out already: note.md is the Note's text now, note.before the text just before (with what was typed in this edit). The Note
+ * without the image and the new card are one undo step; what was typed before is a step of its own before it. Ends the edit
  */
-export function dropNoteImage(d: DraggedImage, at: { x: number; y: number }, w: number) {
+export function dropNoteImage(d: DraggedImage, at: { x: number; y: number }, w: number, note: { id: string; before?: string; md?: string }) {
+  const n0 = cardById(note.id)?.card;
+  if (note.before !== undefined && n0?.kind === "note" && n0.md !== note.before) setNoteText(note.id, note.before);
   const card: ImageCard = { id: uid("i"), kind: "image", src: d.src.startsWith("assets/") ? d.src.slice(7) : d.src };
   if (d.alt) card.alt = d.alt;
   if (d.caption) card.desc = d.caption;
-  addCards([{ card, views: {}, w: w > 0 ? Math.max(MIN_IMAGE_W, Math.round(w)) : NEW_CARD_W }], { at });
+  addCards([{ card, views: {}, w: w > 0 ? Math.max(MIN_IMAGE_W, Math.round(w)) : NEW_CARD_W }], {
+    at,
+    also: (b) => { const c = findCard(b, note.id)?.card; if (c?.kind === "note" && note.md !== undefined) c.md = note.md; },
+  });
+  const ed = editing();
+  if (ed?.kind === "note" && ed.id === note.id) setEditing(null);
   return card.id;
 }
 const IMAGE_FILE = /\.(png|jpe?g|gif|webp|svg)$/i;
