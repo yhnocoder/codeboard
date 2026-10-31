@@ -1,4 +1,5 @@
-import { BLANK, symbolAt, type FileAnalysis, type Sym } from "./index";
+import { symbolAt, type FileAnalysis, type Sym } from "./index";
+import { F_BLANK } from "./basics";
 
 export type Sel = { startLine: number; startCol: number; endLine: number; endCol: number }; // 1-based 行，0-based 列
 
@@ -19,8 +20,8 @@ const UPGRADE = 0.9;
 function normalize(sel: Sel, a: FileAnalysis): { start: number; end: number } | null {
   let start = sel.startLine, end = sel.endLine;
   if (end > start && sel.endCol === 0) end--;
-  while (start <= end && (a.flags[start - 1] ?? BLANK) & BLANK) start++;
-  while (end >= start && (a.flags[end - 1] ?? BLANK) & BLANK) end--;
+  while (start <= end && (a.flags[start - 1] ?? F_BLANK) & F_BLANK) start++;
+  while (end >= start && (a.flags[end - 1] ?? F_BLANK) & F_BLANK) end--;
   return start <= end ? { start, end } : null;
 }
 

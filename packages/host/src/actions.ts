@@ -1,7 +1,7 @@
 import * as path from "node:path";
-import { allCodeCards, estSize, placeCards, removeCards, type Board, type CardCopy, type CodeCard, type KeyAction } from "@codeboard/core";
+import { allCodeCards, defaultWidth, estSize, placeCards, removeCards, type Board, type CardCopy, type CodeCard, type KeyAction } from "@codeboard/core";
 import { analysisOf } from "./analysis";
-import { cardsFromEditor, symCard, widthFor, withViews, type Built } from "./cards";
+import { cardsFromEditor, symCard, withViews, type Built } from "./cards";
 import type { BoardHost } from "./boards";
 import { absOf, locOfFile } from "./source";
 import { moveIntoProject, projectDir, PROJECT_DIR, type Storage } from "./storage";
@@ -392,7 +392,7 @@ function stackRight(b: Board, cards: CodeCard[]): CardCopy[] {
   const right = ps.length ? Math.max(...ps.map((p) => p.x + p.w)) + 80 : b.cam.x > 0 ? 80 : -b.cam.x + 80;
   let y = ps.length ? Math.min(...ps.map((p) => p.y)) : 80;
   return cards.map((card) => {
-    const place = { x: right, y, w: widthFor(card.segments) };
+    const place = { x: right, y, w: defaultWidth(card) };
     y += estSize(card, place).h + 40;
     return { card, place };
   });

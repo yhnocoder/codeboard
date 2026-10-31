@@ -6,7 +6,8 @@ import {
   cardRows, rowIndexOf, copyText, parseGithubUrl, classifyPaste, guessLang, migrateBoard, mergeOverlapping, sortSegments, emptyBoard, estSize, mdHeading,
   type Board, type CodeCard, type Link, type Segment, type SegView,
 } from "../src";
-import { initAnalysis, analyze, BLANK, COMMENT, DOCSTRING, type FileAnalysis } from "@codeboard/analysis";
+import { initAnalysis, analyze, type FileAnalysis } from "@codeboard/analysis";
+import { F_BLANK, F_COMMENT, F_DOCSTRING } from "@codeboard/analysis/basics";
 
 // Uses the repo's nano-vllm submodule as test data
 const repo = fileURLToPath(new URL("../../../examples/nano-vllm", import.meta.url));
@@ -160,7 +161,7 @@ describe("snapping and align", () => {
 
 describe("cardRows", () => {
   const s: Segment = { ...seg("s1", 10, 16), text: ["def f():", '    """d"""', "    # c", "", "    x = 1", "    y = 2", "    return x"], hidden: [[15, 15]] };
-  const v: SegView = { html: [], flags: [0, DOCSTRING, COMMENT, BLANK, 0, 0, 0], calls: [], defs: [{ line: 10, name: "f", qual: "f" }] };
+  const v: SegView = { html: [], flags: [0, F_DOCSTRING, F_COMMENT, F_BLANK, 0, 0, 0], calls: [], defs: [{ line: 10, name: "f", qual: "f" }] };
   it("hides by flags with a dashed gutter, and manual hides become a gap bar", () => {
     const rows = cardRows({ segments: [s], hide: { comments: true, docstrings: true, blank: true } }, { views: { s1: v } });
     expect(rows).toEqual([

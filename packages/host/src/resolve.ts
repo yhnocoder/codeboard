@@ -1,6 +1,6 @@
 // 先问 VS Code 的「转到定义」（装了 Pylance、clangd 时最准）；钉的版本不是工作区当前内容、或者语言服务没给结果时，按名字在索引里找。
 import * as path from "node:path";
-import { rankByReceiver, renderLine, type CodeCard, type ExpandPick, type ExpandResult, type ImplPick, type DispatchResult, type PeekDef, type PeekResult, type Segment } from "@codeboard/core";
+import { rankByReceiver, renderLine, uid, type CodeCard, type ExpandPick, type ExpandResult, type ImplPick, type DispatchResult, type PeekDef, type PeekResult, type Segment } from "@codeboard/core";
 import { grammarOf, grammarOfFile } from "@codeboard/analysis/langs";
 import { escapeRegExp, type Var } from "@codeboard/analysis/basics";
 import { isAbstractBody, isModuleDef, peekPlan, splitHover, symbolAt, varCandidates, type CallSite, type FileAnalysis, type Sym } from "@codeboard/analysis";
@@ -15,7 +15,7 @@ import { highlight, tokensOf } from "./views";
 import { libOf } from "./scope";
 import { entriesOf, indexedFiles, knownEntries, lookupName, pausingIndex, type IndexEntry } from "./nameindex";
 import { log } from "./log";
-import { exists, fromHostPath, hostPath, inExcludedDir, inWorkspace, langOf, mkUid, readText, recentFiles, splitLines, workspace, wsRoots } from "./ws";
+import { exists, fromHostPath, hostPath, inExcludedDir, inWorkspace, langOf, readText, recentFiles, sleep, splitLines, workspace, wsRoots } from "./ws";
 
 
 /** 问语言服务（同一个文件、位置、内容的请求共用：悬停时可能已经在问了） */
@@ -32,7 +32,6 @@ const lspImpls = (d: Def): Promise<Def[]> => sharedDefs(d.abs, d.line, d.col, as
 export const RETRY_GAP = 600;
 const RETRY = 3, RETRY_CLICKS = 3;
 let lspSeen = false, retryClicks = 0;
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 /** 测试用：当作语言服务还没答过话 */
 export const forgetLspSeen = () => { lspSeen = false; retryClicks = 0; };
 
@@ -504,7 +503,7 @@ async function importedModule(m: PeekReq): Promise<PeekDef | null> {
   for (const f of wsRoots()) for (const c of [path.join(f, ...rel, "__init__.py"), path.join(f, ...rel) + ".py"])
     if (await exists(c)) return peekAt({ abs: c, line: 1, col: 0 }, m.word, null, true);
   const lines = splitLines(full);
-  const pseg: Segment = { id: mkUid("s"), src: seg.src, path: seg.path, lang: seg.lang, start: im.line, end: im.line, text: [lines[im.line - 1] ?? ""], version: seg.version };
+  const pseg: Segment = { id: uid("s"), src: seg.src, path: seg.path, lang: seg.lang, start: im.line, end: im.line, text: [lines[im.line - 1] ?? ""], version: seg.version };
   const abs = absOf(seg);
   return {
     path: hostPath(abs ?? seg.path), line: im.line, start: im.line, text: [], html: [], seg: pseg, kind: "module", rows: [],
@@ -533,7 +532,7 @@ async function localDef(m: PeekReq): Promise<PeekDef | null> {
   // 函数参数那一行：只要上下文
   const rows = plan.kind === "function" ? [Math.max(1, hit - 1), hit, Math.min(lines.length, hit + 1)].filter((x, i, xs) => xs.indexOf(x) === i) : plan.rows;
   const start = rows[0], end = rows[rows.length - 1];
-  const pseg: Segment = { id: mkUid("s"), src: seg.src, path: seg.path, lang: seg.lang, start, end, text: lines.slice(start - 1, end), version: seg.version, scope: symbolAt(a.symbols, hit)?.qual };
+  const pseg: Segment = { id: uid("s"), src: seg.src, path: seg.path, lang: seg.lang, start, end, text: lines.slice(start - 1, end), version: seg.version, scope: symbolAt(a.symbols, hit)?.qual };
   const abs = absOf(seg);
   const out: PeekDef = {
     path: hostPath(abs ?? seg.path), line: hit, start, text: rows.map((l) => lines[l - 1] ?? ""), html: await rowsHtml(rows, seg.lang, full, lines), seg: pseg,

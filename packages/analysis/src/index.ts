@@ -39,12 +39,11 @@ export type CallSite = {
 };
 
 // 行标记和 basics.ts 的 F_* 是同一套值
-export const BLANK = F_BLANK, COMMENT = F_COMMENT, DOCSTRING = F_DOCSTRING;
 
 export type FileAnalysis = {
   lang: string;
   symbols: Sym[];
-  /** 每行的标记（下标 = 行号 - 1）：BLANK / COMMENT（整行是注释）/ DOCSTRING */
+  /** 每行的标记（下标 = 行号 - 1）：F_BLANK / F_COMMENT（整行是注释）/ F_DOCSTRING */
   flags: number[];
   /** 行尾注释：行号 → 注释开始的列 */
   trailing: Record<number, number>;
@@ -63,8 +62,8 @@ export type AnalyzeOpts = {
   /** 上次（同一个 key）的文本 → 这次文本的编辑；不给就按公共前后缀算 */
   edit?: Edit;
   /**
-   * 只要这几行（1-based，含两头）：calls、COMMENT / DOCSTRING 标记、trailing 只算这段，symbols 只给和这段相交的；
-   * imports、mainBlocks、doc、BLANK 标记仍是整个文件的。结果等于 clipAnalysis(整文件分析, start, end)
+   * 只要这几行（1-based，含两头）：calls、F_COMMENT / F_DOCSTRING 标记、trailing 只算这段，symbols 只给和这段相交的；
+   * imports、mainBlocks、doc、F_BLANK 标记仍是整个文件的。结果等于 clipAnalysis(整文件分析, start, end)
    */
   lines?: { start: number; end: number };
 };
@@ -72,7 +71,7 @@ export type AnalyzeOpts = {
 /** 分析一个文件（或一段代码）。不认识的语言只给空行标记 */
 export function analyze(lang: string, text: string, o: AnalyzeOpts = {}): FileAnalysis {
   const lines = text.split(/\r?\n/);
-  const flags = lines.map((l) => (l.trim() === "" ? BLANK : 0));
+  const flags = lines.map((l) => (l.trim() === "" ? F_BLANK : 0));
   const out: FileAnalysis = { lang, symbols: [], flags, trailing: {}, calls: [], mainBlocks: [], imports: [] };
   const g = grammarOf(lang);
   if (!g || !languageOf(g)) return out;
@@ -104,7 +103,7 @@ export function clipAnalysis(a: FileAnalysis, start: number, end: number): FileA
   for (const k in a.trailing) if (inR(+k)) trailing[+k] = a.trailing[k];
   return {
     ...a, symbols: a.symbols.filter((s) => s.start <= end && s.end >= start), calls: a.calls.filter((c) => inR(c.line)),
-    flags: a.flags.map((f, i) => (inR(i + 1) ? f : f & BLANK)), trailing,
+    flags: a.flags.map((f, i) => (inR(i + 1) ? f : f & F_BLANK)), trailing,
   };
 }
 
@@ -207,7 +206,7 @@ function walk(n: Node, fn: (n: Node) => boolean | void) {
   for (const c of n.namedChildren) if (c) walk(c, fn);
 }
 
-/** 注释：整行都是注释的标 COMMENT，行尾注释记列号 */
+/** 注释：整行都是注释的标 F_COMMENT，行尾注释记列号 */
 function comments(nodes: Node[], { lines, out, r0, r1 }: Cx) {
   for (const n of nodes) {
     const a = n.startPosition, b = n.endPosition;
@@ -215,7 +214,7 @@ function comments(nodes: Node[], { lines, out, r0, r1 }: Cx) {
       const line = lines[r] ?? "";
       const s = r === a.row ? a.column : 0, e = r === b.row ? b.column : line.length;
       const before = line.slice(0, s).trim(), after = line.slice(e).trim();
-      if (!before && !after) out.flags[r] |= COMMENT;
+      if (!before && !after) out.flags[r] |= F_COMMENT;
       else if (before && r === a.row && !(r + 1 in out.trailing)) out.trailing[r + 1] = s;
     }
   }
@@ -225,12 +224,12 @@ function comments(nodes: Node[], { lines, out, r0, r1 }: Cx) {
 const oneLine = (s: string) => s.replace(/\s+/g, " ").trim();
 const meets = (cx: Cx, n: Node) => n.startPosition.row <= cx.r1 && n.endPosition.row >= cx.r0;
 
-/** body 的第一条语句是字符串：标 DOCSTRING，返回正文 */
+/** body 的第一条语句是字符串：标 F_DOCSTRING，返回正文 */
 function docstring(cx: Cx, body: Node | null): string | undefined {
   let first = body?.firstNamedChild ?? null;
   while (first?.type === "comment") first = first.nextNamedSibling;
   if (first?.type === "expression_statement" && first.namedChildCount === 1 && first.firstNamedChild?.type === "string") {
-    for (let r = first.startPosition.row; r <= first.endPosition.row; r++) cx.out.flags[r] |= DOCSTRING;
+    for (let r = first.startPosition.row; r <= first.endPosition.row; r++) cx.out.flags[r] |= F_DOCSTRING;
     return cleanDoc(first.firstNamedChild.text) || undefined;
   }
 }

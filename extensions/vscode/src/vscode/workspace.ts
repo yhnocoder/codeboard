@@ -72,8 +72,7 @@ async function copilotAsk(system: string, prompt: string, o?: { signal?: AbortSi
     const all = await lm.selectChatModels();
     if (!all.length) return undefined;
     // 补全要快：优先小模型
-    const fast = /mini|haiku|flash|nano|small|fast/i;
-    const m = all.find((x) => fast.test(x.family) || fast.test(x.id)) ?? all[0];
+    const m = all.find(isFast) ?? all[0];
     const cts = new vscode.CancellationTokenSource();
     o?.signal?.addEventListener("abort", () => cts.cancel());
     if (o?.signal?.aborted) return undefined;
@@ -85,6 +84,9 @@ async function copilotAsk(system: string, prompt: string, o?: { signal?: AbortSi
 }
 
 type LmModel = vscode.LanguageModelChat & { capabilities?: { supportsImageToText?: boolean } };
+/** A small, quick model (for completions) */
+const FAST_MODEL = /mini|haiku|flash|nano|small|fast/i;
+const isFast = (m: vscode.LanguageModelChat) => FAST_MODEL.test(m.family) || FAST_MODEL.test(m.id);
 const lmApi = () => (vscode as any).lm as typeof vscode.lm | undefined;
 // 1.143 的模型有 capabilities.supportsImageToText（@types/vscode 1.90 里还没有）
 const aiModel = (m: LmModel): AiModel => ({ id: m.id, name: m.name || m.family || m.id, vendor: m.vendor, vision: !!m.capabilities?.supportsImageToText });
@@ -109,8 +111,7 @@ async function lmChat(model: string | undefined, req: AiChatRequest, o: { signal
     if (req.image && !m.capabilities?.supportsImageToText) return { fail: "nomodel", message: `${aiModel(m).name} can't read images. Pick another model in CodeBoard Settings › AI`, via: aiModel(m).name };
   } else {
     const ok = all.filter((x) => !req.image || x.capabilities?.supportsImageToText);
-    const fast = /mini|haiku|flash|nano|small|fast/i;
-    m = (req.fast ? ok.find((x) => fast.test(x.family) || fast.test(x.id)) : ok.find((x) => !fast.test(x.family) && !fast.test(x.id))) ?? ok[0];
+    m = (req.fast ? ok.find(isFast) : ok.find((x) => !isFast(x))) ?? ok[0];
     if (!m) return { fail: "nomodel", message: all.length ? "No VS Code language model here reads images" : undefined };
   }
   const via = aiModel(m).name;

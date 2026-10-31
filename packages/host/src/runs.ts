@@ -6,7 +6,7 @@ import { spawn } from "node:child_process";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { loadRun, type CallSample, type RunCall, type RunLoc, type RunRecord } from "@codeboard/core";
+import { loadRun, uid, type CallSample, type RunCall, type RunLoc, type RunRecord } from "@codeboard/core";
 import { git } from "./git";
 import { log } from "./log";
 import { readSettings } from "./settings";
@@ -186,7 +186,6 @@ function mergeTraces(ts: Trace[]): { calls: RunCall[]; truncated: boolean } {
   return { calls: [...m.values()].sort((a, b) => b.count - a.count), truncated: ts.some((t) => t.truncated) };
 }
 
-const rid = () => `r${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
 /** 跑一次入口，回运行记录（还没存）。命令起不来时抛出；退出码不是 0 也回记录（exit 里记着），抓到多少算多少 */
 export async function captureRun(o: CaptureOpts): Promise<RunRecord> {
@@ -219,7 +218,7 @@ export async function captureRun(o: CaptureOpts): Promise<RunRecord> {
     }
     const m = mergeTraces(ts);
     const commit = (await git(o.cwd, ["rev-parse", "HEAD"]))?.trim() || null;
-    const rec: RunRecord = { version: 1, id: rid(), entry: o.cmd.trim(), cwd: o.cwd, commit, at: t0, ms: Date.now() - t0, exit, scope: o.scope, pkgs: o.pkgs, calls: m.calls };
+    const rec: RunRecord = { version: 1, id: uid("r"), entry: o.cmd.trim(), cwd: o.cwd, commit, at: t0, ms: Date.now() - t0, exit, scope: o.scope, pkgs: o.pkgs, calls: m.calls };
     if (m.truncated) rec.truncated = true;
     return loadRun(rec);
   } finally {

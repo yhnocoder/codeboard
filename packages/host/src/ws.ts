@@ -67,9 +67,7 @@ export const inExcludedDir = (abs: string) => {
   return NOT_PROJECT_DIR.test(path.sep + (root ? path.relative(root, abs) : abs));
 };
 
-export function mkUid(p: string) {
-  return `${p}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
-}
+export const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 export function debounce<A extends unknown[]>(fn: (...a: A) => void, ms: number) {
   let t: NodeJS.Timeout | undefined;

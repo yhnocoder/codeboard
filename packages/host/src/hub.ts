@@ -8,6 +8,18 @@ import { viewsFor } from "./views";
 import { variantSegments } from "./versions";
 import { workspace } from "./ws";
 
+/** How long pushes to open boards (skeletons, [[ refs, shared cards) wait for more changes */
+const PUSH_PAUSE = 120;
+/** One debounced push: run(now, fn) runs fn after PUSH_PAUSE of quiet, or at once; a newer run replaces a waiting one */
+class Push {
+  private t: ReturnType<typeof setTimeout> | undefined;
+  run(now: boolean, fn: () => void) {
+    clearTimeout(this.t);
+    if (now) fn(); else this.t = setTimeout(fn, PUSH_PAUSE);
+  }
+  dispose() { clearTimeout(this.t); }
+}
+
 const TARGET = "codeboard.target", OPEN = "codeboard.open", OPENED = "codeboard.opened", ADDED = "codeboard.added", REF_RECENT = "codeboard.refRecent";
 
 export class BoardHub implements BoardHost, Disposable {
@@ -107,14 +119,14 @@ export class BoardHub implements BoardHost, Disposable {
 
   dispose() {
     for (const d of this.subs) d.dispose();
-    clearTimeout(this.skelT);
-    clearTimeout(this.sharedT);
-    clearTimeout(this.refsT);
+    this.skelPush.dispose();
+    this.sharedPush.dispose();
+    this.refsPush.dispose();
     this.targetEmitter.dispose();
     this.staleEmitter.dispose();
   }
 
-  private skelT: ReturnType<typeof setTimeout> | undefined;
+  private skelPush = new Push();
   /** 每个面板发过的骨架（子白板 id → JSON） */
   private skelSent = new Map<BoardPanel, Map<string, string>>();
   private dirtySkels = new Set<string>();
@@ -129,8 +141,7 @@ export class BoardHub implements BoardHost, Disposable {
    */
   refreshSkeletons(now = false, fresh?: string) {
     if (fresh) { const p = this.panels.get(fresh); if (p) this.skelSent.delete(p); }
-    clearTimeout(this.skelT);
-    const run = () => {
+    this.skelPush.run(now, () => {
       const dirty = this.dirtySkels, all = this.allSkels;
       this.dirtySkels = new Set();
       this.allSkels = false;
@@ -159,11 +170,10 @@ export class BoardHub implements BoardHost, Disposable {
         }
         if (Object.keys(out).length) p.post({ type: "skeletons", boards: out });
       }
-    };
-    if (now) run(); else this.skelT = setTimeout(run, 120);
+    });
   }
 
-  private refsT: ReturnType<typeof setTimeout> | undefined;
+  private refsPush = new Push();
   /** 要过 boardRefs 的面板 → 上次发给它的（JSON） */
   private refsSent = new Map<BoardPanel, string>();
   /** 每块白板上能 [[ 链接的卡（存盘时作废那一块）：别的白板一存盘就要给每个面板重排一遍，不每次都把所有白板的卡走一遍 */
@@ -185,8 +195,7 @@ export class BoardHub implements BoardHost, Disposable {
   /** 要过 boardRefs 的面板里变了的重推（防抖 120ms）；fresh = 刚 init 的面板（换了白板，之前发的不算） */
   refreshBoardRefs(now = false, fresh?: string) {
     if (fresh) for (const p of this.refsSent.keys()) if (p.id === fresh) this.refsSent.set(p, "");
-    clearTimeout(this.refsT);
-    const run = () => {
+    this.refsPush.run(now, () => {
       for (const [p, was] of this.refsSent) {
         if (!p.ready) continue;
         const refs = this.boardRefs(p), k = JSON.stringify(refs);
@@ -194,8 +203,7 @@ export class BoardHub implements BoardHost, Disposable {
         this.refsSent.set(p, k);
         p.post({ type: "boardRefs", refs });
       }
-    };
-    if (now) run(); else this.refsT = setTimeout(run, 120);
+    });
   }
   /** [[ 引用选了一项：记进最近选过的（新的在前，最多 3 个），要过的面板跟着更新 */
   refPicked(b: string, id: string) {
@@ -237,7 +245,7 @@ export class BoardHub implements BoardHost, Disposable {
     p.next = { walk: o.walk, cam: o.cam };
     p.ready = false;
     this.skelSent.delete(p);
-    this.sharedSent.delete(was);
+    this.sharedSent.delete(p);
     if (this.refsSent.has(p)) this.refsSent.set(p, "");
     this.saveOpen();
     if (this.target === was) this.setTarget(to);
@@ -245,24 +253,22 @@ export class BoardHub implements BoardHost, Disposable {
     return true;
   }
 
-  private sharedT: ReturnType<typeof setTimeout> | undefined;
-  private sharedSent = new Map<string, string>();
+  private sharedPush = new Push();
+  private sharedSent = new Map<BoardPanel, string>();
   /** 共享卡的情况推给开着的白板（防抖，宿主这边算；白板只在收到时更新卡头）。fresh = 刚 init 的白板（之前发过的不算） */
   refreshShared(now = false, fresh?: string) {
-    if (fresh) this.sharedSent.delete(fresh);
-    clearTimeout(this.sharedT);
-    const run = () => {
+    if (fresh) { const p = this.panels.get(fresh); if (p) this.sharedSent.delete(p); }
+    this.sharedPush.run(now, () => {
       const all = this.store.cached();
       for (const p of this.all()) {
         if (!p.ready) continue;
         const cards = sharedInfo(all, p.id);
         const key = JSON.stringify(cards);
-        if (this.sharedSent.get(p.id) === key) continue;
-        this.sharedSent.set(p.id, key);
+        if (this.sharedSent.get(p) === key) continue;
+        this.sharedSent.set(p, key);
         p.post({ type: "sharedInfo", cards });
       }
-    };
-    if (now) run(); else this.sharedT = setTimeout(run, 120);
+    });
   }
 
   private keyOn = false;
@@ -307,7 +313,7 @@ export class BoardHub implements BoardHost, Disposable {
     // p.id 会变（进入子白板），这里都按 p.id 取
     view.onDidActivate(() => this.setTarget(p.id));
     // 关界面：它最后的改动宿主已经收下了，马上写盘（不等定时器，窗口可能正在关）
-    view.onDidDispose(() => { p.dropAsks(); void this.store.flush(p.id); if (this.panels.get(p.id) === p) this.panels.delete(p.id); this.sharedSent.delete(p.id); this.skelSent.delete(p); this.refsSent.delete(p); this.saveOpen(); });
+    view.onDidDispose(() => { p.dropAsks(); void this.store.flush(p.id); if (this.panels.get(p.id) === p) this.panels.delete(p.id); this.sharedSent.delete(p); this.skelSent.delete(p); this.refsSent.delete(p); this.saveOpen(); });
     this.saveOpen();
     return p;
   }

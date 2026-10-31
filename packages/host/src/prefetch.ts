@@ -6,7 +6,7 @@ import { cardForFileSym } from "./cards";
 import { dispatchOf, lspDefs, symAtDef } from "./resolve";
 import { workingPlace } from "./versions";
 import { log } from "./log";
-import { readText } from "./ws";
+import { readText, sleep } from "./ws";
 import { hasLocalFile } from "./source";
 
 type PrefetchReq = { seg: Segment; line: number; col: number; name: string };
@@ -48,7 +48,6 @@ async function warmCall(seg: Segment, line: number, col: number, name: string) {
 export const WARM_DELAY = 1500, WARM_GAP = 200;
 const WARM_FILES = 6, WARM_RETRY = 6;
 const warmed = new Map<string, number>(); // 文件 → 上次预热的时间
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** 白板上每个文件（最多几个）挑一个调用问一次定义，一个接一个、在悬停预取之后；alive = 白板还开着 */
 export function warmBoard(segs: Segment[], alive: () => boolean) {

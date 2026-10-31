@@ -1,6 +1,7 @@
 // 定义预览（peek）的源码部分按定义类型取：字段 → 所在类的所有字段；函数 → 开头几行；模块 → 不放源码。
 // 没有语言服务的 hover 时，签名和文档也从这里出（docstring 转成 Markdown）。
-import { COMMENT, DOCSTRING, BLANK, symbolAt, type FileAnalysis, type Sym } from "./index";
+import { symbolAt, type FileAnalysis, type Sym } from "./index";
+import { F_BLANK, F_COMMENT, F_DOCSTRING } from "./basics";
 
 export type PeekKind = "field" | "function" | "class" | "module" | "other";
 
@@ -34,7 +35,7 @@ function classFields(a: FileAnalysis, lines: string[], cls: Sym): number[] {
     const k = kids.find((s) => s.start <= l && l <= s.end);
     if (k) { l = k.end; continue; }
     const t = lines[l - 1] ?? "";
-    if (((a.flags[l - 1] ?? 0) & (BLANK | COMMENT | DOCSTRING)) || !t.trim()) continue;
+    if (((a.flags[l - 1] ?? 0) & (F_BLANK | F_COMMENT | F_DOCSTRING)) || !t.trim()) continue;
     const ind = indentOf(t);
     if (base < 0) base = ind;
     if (ind !== base || /^\s*@/.test(t) || /^\s*(pass|\.\.\.)\s*$/.test(t)) continue;
@@ -73,7 +74,7 @@ export function peekPlan(a: FileAnalysis, lines: string[], line: number, o: { wo
     const rows: number[] = [];
     let body = 0;
     for (let l = sym.start; l <= sym.end && body < FN_ROWS; l++) {
-      if ((a.flags[l - 1] ?? 0) & DOCSTRING) continue;
+      if ((a.flags[l - 1] ?? 0) & F_DOCSTRING) continue;
       if (!(lines[l - 1] ?? "").trim()) continue;
       rows.push(l);
       if (l > sym.defLine && sigDone(lines, sym, l)) body++;

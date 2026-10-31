@@ -17,7 +17,7 @@ import { copyDiagnostics } from "./diagnostics";
 import type { BoardHost, BoardPanel } from "./boards";
 import { callVars, dispatchAt, expand, peek } from "./resolve";
 import { search, searchPick, entryPoints, searchName, genSource } from "./search";
-import { pasteClip } from "@codeboard/core/storage";
+import { SAFE_ID, pasteClip } from "@codeboard/core/storage";
 import { pasteFar, recordClip } from "./transfer";
 import { prefetchCall } from "./prefetch";
 import { applyFlow, captureFlow } from "./runs";
@@ -33,7 +33,6 @@ import { lookupName } from "./nameindex";
 import { aiInfo, imageAiJob } from "./imageai";
 import { chatComplete } from "./complete";
 
-const SAFE_BOARD_ID = /^[\w-]{1,80}$/;
 
 type Msg<T extends BoardToHost["type"]> = Extract<BoardToHost, { type: T }>;
 type Out<T extends BoardToHost["type"]> = T extends AskType ? ReplyOf<T> : unknown;
@@ -164,7 +163,7 @@ export function makeHandler(panels: BoardHost): Handler {
     newBoard: async (p, m) => {
       // Turn into Board：白板拆好的新白板（schema 校验一遍）。共享卡在新白板上还是共享卡；放在父白板的组里
       const b = loadBoard(structuredClone({ ...m.board, version: BOARD_VERSION }));
-      if (!SAFE_BOARD_ID.test(b.id) || (await store.load(b.id))) throw new Error("Bad board id.");
+      if (!SAFE_ID.test(b.id) || (await store.load(b.id))) throw new Error("Bad board id.");
       const refs = [...store.refsOf(p.id)].filter((id) => b.cards.some((c) => c.id === id));
       await store.save(b, { group: store.groupOf(p.id) ?? null, refs });
       return true;
