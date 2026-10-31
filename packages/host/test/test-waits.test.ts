@@ -17,9 +17,12 @@ const RULES = [
 describe("host tests wait for events, not for time", () => {
   it("no host test sleeps or asserts wall-clock time", () => {
     const bad: string[] = [];
-    for (const f of fs.readdirSync(__dirname).filter((f) => /\.test\.ts$|^helpers\.ts$/.test(f) && f !== "test-waits.test.ts")) {
+    for (const f of fs
+      .readdirSync(__dirname)
+      .filter((f) => /\.test\.ts$|^helpers\.ts$/.test(f) && f !== "test-waits.test.ts")) {
       const text = fs.readFileSync(path.join(__dirname, f), "utf8").replace(/^[ \t]*\/\/.*$/gm, "");
-      for (const re of RULES) for (const m of text.matchAll(re)) bad.push(`${f}:${text.slice(0, m.index).split("\n").length}: ${m[0]}`);
+      for (const re of RULES)
+        for (const m of text.matchAll(re)) bad.push(`${f}:${text.slice(0, m.index).split("\n").length}: ${m[0]}`);
     }
     expect(bad).toEqual([]);
   });

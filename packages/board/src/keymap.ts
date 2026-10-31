@@ -37,23 +37,50 @@ export type Bind = {
  * the key is held (the OS key repeat would move in uneven jumps at one fixed speed, so its repeats are ignored). From the first
  * arrow down to the last one up is one gesture: one undo step, however long it was held
  */
-let held: { dirs: Map<string, [number, number]>; shift: boolean; t0: number; last: number; acc: [number, number]; a: A; end: (record?: boolean) => void; release: () => void; raf: number } | null = null;
+let held: {
+  dirs: Map<string, [number, number]>;
+  shift: boolean;
+  t0: number;
+  last: number;
+  acc: [number, number];
+  a: A;
+  end: (record?: boolean) => void;
+  release: () => void;
+  raf: number;
+} | null = null;
 const moveSel = (a: A, dx: number, dy: number) =>
-  live((b) => { for (const id of sel.cards) { const c = b.place[hostOf(id)]; if (c && !a.isLocked(id)) { c.x += dx; c.y += dy; } } });
+  live((b) => {
+    for (const id of sel.cards) {
+      const c = b.place[hostOf(id)];
+      if (c && !a.isLocked(id)) {
+        c.x += dx;
+        c.y += dy;
+      }
+    }
+  });
 const glide = (now: number) => {
   const h = held;
   if (!h) return;
-  const dt = Math.min(50, now - h.last), t = now - h.t0;
+  const dt = Math.min(50, now - h.last),
+    t = now - h.t0;
   h.last = now;
   if (t > NUDGE_HOLD) {
-    const r = Math.min(1, (t - NUDGE_HOLD) / NUDGE_RAMP), ease = r * r * (3 - 2 * r);
-    const v = NUDGE_SPEED * (1 + (NUDGE_MAX - 1) * ease) * (h.shift ? 10 : 1) / camTarget().z;
-    let vx = 0, vy = 0;
-    for (const [x, y] of h.dirs.values()) { vx += x; vy += y; }
-    h.acc[0] += Math.sign(vx) * v * dt; h.acc[1] += Math.sign(vy) * v * dt;
+    const r = Math.min(1, (t - NUDGE_HOLD) / NUDGE_RAMP),
+      ease = r * r * (3 - 2 * r);
+    const v = (NUDGE_SPEED * (1 + (NUDGE_MAX - 1) * ease) * (h.shift ? 10 : 1)) / camTarget().z;
+    let vx = 0,
+      vy = 0;
+    for (const [x, y] of h.dirs.values()) {
+      vx += x;
+      vy += y;
+    }
+    h.acc[0] += Math.sign(vx) * v * dt;
+    h.acc[1] += Math.sign(vy) * v * dt;
     // whole world pixels like every other placement; the rest carries over to the next frame
-    const mx = Math.trunc(h.acc[0]), my = Math.trunc(h.acc[1]);
-    h.acc[0] -= mx; h.acc[1] -= my;
+    const mx = Math.trunc(h.acc[0]),
+      my = Math.trunc(h.acc[1]);
+    h.acc[0] -= mx;
+    h.acc[1] -= my;
     if (mx || my) moveSel(h.a, mx, my);
   }
   h.raf = requestAnimationFrame(glide);
@@ -70,7 +97,9 @@ function stopNudge(record = true) {
   if (!h) return;
   held = null;
   cancelAnimationFrame(h.raf);
-  window.removeEventListener("keydown", nudgeKeys, true); window.removeEventListener("keyup", nudgeKeys, true); window.removeEventListener("blur", blurNudge);
+  window.removeEventListener("keydown", nudgeKeys, true);
+  window.removeEventListener("keyup", nudgeKeys, true);
+  window.removeEventListener("blur", blurNudge);
   h.release();
   h.end(record);
 }
@@ -81,11 +110,26 @@ const nudge = (dx: number, dy: number) => (a: A, e: KeyboardEvent) => {
   const d = Math.max(1, Math.round((e.shiftKey ? 10 : 1) / camTarget().z));
   const now = performance.now();
   if (!held) {
-    held = { dirs: new Map(), shift: e.shiftKey, t0: now, last: now, acc: [0, 0], a, end: beginGesture(), release: holdGesture(() => stopNudge(false)), raf: requestAnimationFrame(glide) };
-    window.addEventListener("keydown", nudgeKeys, true); window.addEventListener("keyup", nudgeKeys, true); window.addEventListener("blur", blurNudge);
+    held = {
+      dirs: new Map(),
+      shift: e.shiftKey,
+      t0: now,
+      last: now,
+      acc: [0, 0],
+      a,
+      end: beginGesture(),
+      release: holdGesture(() => stopNudge(false)),
+      raf: requestAnimationFrame(glide),
+    };
+    window.addEventListener("keydown", nudgeKeys, true);
+    window.addEventListener("keyup", nudgeKeys, true);
+    window.addEventListener("blur", blurNudge);
   }
   // another arrow joining the hold (a diagonal) starts the speed-up over
-  held.dirs.set(e.key, [dx, dy]); held.shift = e.shiftKey; held.t0 = now; held.acc = [0, 0];
+  held.dirs.set(e.key, [dx, dy]);
+  held.shift = e.shiftKey;
+  held.t0 = now;
+  held.acc = [0, 0];
   moveSel(a, dx * d, dy * d);
 };
 const atPointer = () => worldAt(lastPointer());
@@ -94,7 +138,8 @@ const hasCards = () => sel.cards.length > 0;
 function fitTarget(): string | null {
   const ed = editing();
   if ((ed?.kind === "note" || ed?.kind === "free") && cardById(ed.id)) return ed.id;
-  const p = lastPointer(), el = document.elementFromPoint(p.x, p.y)?.closest<HTMLElement>("#board .card[data-id]");
+  const p = lastPointer(),
+    el = document.elementFromPoint(p.x, p.y)?.closest<HTMLElement>("#board .card[data-id]");
   return el && cardById(el.dataset.id!) ? el.dataset.id! : null;
 }
 
@@ -106,30 +151,71 @@ const KEYMAP: Bind[] = [
   { id: "dblText", show: "Double-click empty space", label: "New Text (change in Settings)", group: "Create" },
   { id: "addSidenote", keys: ["s"], label: "Add Sidenote", group: "Create", run: (a) => a.addSidenoteUI() },
   { id: "paste", show: "⌘V", label: "Paste code, link or image", group: "Create" },
-  { id: "pasteImageText", keys: ["mod+shift+KeyV"], label: "Paste Image Text (a Note with the text of the image on the clipboard)", group: "Create", run: (a) => void a.pasteImageText() },
+  {
+    id: "pasteImageText",
+    keys: ["mod+shift+KeyV"],
+    label: "Paste Image Text (a Note with the text of the image on the clipboard)",
+    group: "Create",
+    run: (a) => void a.pasteImageText(),
+  },
   { id: "editorAdd", show: "⌥B", label: "Add to Board (editor)", group: "Create" },
-  { id: "editorSplit", show: "⇧⌥B", label: "Add selection as separate cards, one per definition (editor)", group: "Create" },
+  {
+    id: "editorSplit",
+    show: "⇧⌥B",
+    label: "Add selection as separate cards, one per definition (editor)",
+    group: "Create",
+  },
   { id: "editorNote", show: "⌥S", label: "Add as Sidenote to selected lines (editor)", group: "Create" },
   { id: "search", keys: ["mod+k"], label: "Search", group: "View", run: () => void setPaletteOpen({ mode: "all" }) },
-  { id: "fitWindow", keys: ["shift+Digit1", "!"], show: "⇧1", label: "Fit to Window", group: "View", run: (a) => a.fitAll() },
+  {
+    id: "fitWindow",
+    keys: ["shift+Digit1", "!"],
+    show: "⇧1",
+    label: "Fit to Window",
+    group: "View",
+    run: (a) => a.fitAll(),
+  },
   { id: "fitSelection", keys: ["shift+Digit2"], label: "Fit Selection", group: "View", run: (a) => a.fitSelection() },
   { id: "fitAll", keys: ["mod+0"], label: "Fit All", group: "View", run: (a) => a.fitAll() },
   { id: "zoom100", keys: ["mod+1"], label: "Zoom to 100%", group: "View", run: () => zoomAt(1 / camTarget().z) },
   // ⌃- 在 ⌘- 前面：Mac 上 ⌃ 也算 mod
   { id: "navBack", keys: ["ctrl+Minus"], label: "Back after a jump", group: "View", run: (a) => a.navBack() },
-  { id: "navForward", keys: ["ctrl+shift+Minus"], label: "Forward after a jump", group: "View", run: (a) => a.navForward() },
+  {
+    id: "navForward",
+    keys: ["ctrl+shift+Minus"],
+    label: "Forward after a jump",
+    group: "View",
+    run: (a) => a.navForward(),
+  },
   { id: "zoomIn", keys: ["mod+=", "mod++"], show: "⌘+", label: "Zoom In", group: "View", run: () => zoomAt(1.25) },
   { id: "zoomOut", keys: ["mod+-"], show: "⌘−", label: "Zoom Out", group: "View", run: () => zoomAt(0.8) },
   { id: "zoomGesture", show: "⌘ + scroll / pinch", label: "Zoom", group: "View" },
-  { id: "pan", keys: [" "], show: "Space + drag / two fingers", label: "Pan", group: "View", run: () => setSpaceDown(true) },
+  {
+    id: "pan",
+    keys: [" "],
+    show: "Space + drag / two fingers",
+    label: "Pan",
+    group: "View",
+    run: () => setSpaceDown(true),
+  },
   { id: "marquee", show: "Drag empty space", label: "Select with a box", group: "Cards" },
   { id: "selectAll", keys: ["mod+a"], label: "Select All", group: "Cards", run: (a) => a.selectAll() },
   { id: "move", show: "Drag title bar", label: "Move (snaps; ⌘ to turn off)", group: "Cards" },
   { id: "merge", show: "Drag onto a title bar, pause", label: "Merge (⌥ = at once)", group: "Cards" },
   { id: "toSidenote", show: "⌥ + drag onto a line", label: "Turn into a Code Sidenote", group: "Cards" },
-  { id: "editLabel", keys: ["Enter"], when: () => sel.links.length === 1 && !sel.cards.length && !sel.sections.length, run: (a) => a.setLinkEditing(sel.links[0]) },
   {
-    id: "open", keys: ["Enter"], label: "Open in Editor (at the selected line)", group: "Cards", when: () => hasCards(), run: (a) => {
+    id: "editLabel",
+    keys: ["Enter"],
+    when: () => sel.links.length === 1 && !sel.cards.length && !sel.sections.length,
+    run: (a) => a.setLinkEditing(sel.links[0]),
+  },
+  {
+    id: "open",
+    keys: ["Enter"],
+    label: "Open in Editor (at the selected line)",
+    group: "Cards",
+    when: () => hasCards(),
+    run: (a) => {
       const c = a.selCards()[0];
       if (!c) return false;
       // 选了这张卡的几行：在编辑器里打开到第一行
@@ -141,10 +227,24 @@ const KEYMAP: Bind[] = [
       else if (c.kind === "board") a.enterFrame(c.id);
     },
   },
-  { id: "enterBoard", keys: ["mod+Enter"], label: "Open the selected board frame", group: "Cards", run: (a) => { const c = a.selCards()[0]; if (c?.kind !== "board") return false; a.enterFrame(c.id); } },
+  {
+    id: "enterBoard",
+    keys: ["mod+Enter"],
+    label: "Open the selected board frame",
+    group: "Cards",
+    run: (a) => {
+      const c = a.selCards()[0];
+      if (c?.kind !== "board") return false;
+      a.enterFrame(c.id);
+    },
+  },
   {
     // 有原生选区：交给浏览器（CodeBody 的 copy 事件）；选了行：只要代码；选了卡：文字照旧进剪贴板，宿主记下是哪几张卡（贴到别的白板 = 共享卡）
-    id: "copy", keys: ["mod+c"], label: "Copy (paste on another board = linked card)", group: "Cards", run: (a) => {
+    id: "copy",
+    keys: ["mod+c"],
+    label: "Copy (paste on another board = linked card)",
+    group: "Cards",
+    run: (a) => {
       const s = window.getSelection();
       if (s && !s.isCollapsed) return false;
       const ls = lineSel();
@@ -154,7 +254,12 @@ const KEYMAP: Bind[] = [
   },
   {
     // ⌘X 剪下选中的卡（复制 + 删除，一步撤销）。有原生选区、选了行时不管（浏览器自己处理）；编辑器里的 ⌘X 到不了这里（typing）
-    id: "cut", keys: ["mod+x"], label: "Cut (paste on this board puts the cards back)", group: "Cards", when: hasCards, run: (a) => {
+    id: "cut",
+    keys: ["mod+x"],
+    label: "Cut (paste on this board puts the cards back)",
+    group: "Cards",
+    when: hasCards,
+    run: (a) => {
       const s = window.getSelection();
       if ((s && !s.isCollapsed) || lineSel()) return false;
       return a.cutCardsSel();
@@ -162,44 +267,196 @@ const KEYMAP: Bind[] = [
   },
   {
     // ⌥⌘V：别的白板上复制的卡贴成另一种（默认是独立副本）。浏览器不一定为它发 paste 事件，这里直接要
-    id: "pasteOther", keys: ["mod+alt+KeyV"], label: "Paste as Copy (on another board)", group: "Cards",
-    run: (a) => void a.pasteFromBoard(undefined, atPointer(), true).then((ok) => { if (!ok) toast("Copy cards on another board first"); }),
+    id: "pasteOther",
+    keys: ["mod+alt+KeyV"],
+    label: "Paste as Copy (on another board)",
+    group: "Cards",
+    run: (a) =>
+      void a.pasteFromBoard(undefined, atPointer(), true).then((ok) => {
+        if (!ok) toast("Copy cards on another board first");
+      }),
   },
   { id: "duplicate", keys: ["mod+d"], label: "Duplicate", group: "Cards", run: (a) => a.duplicateSel() },
-  { id: "forward", keys: ["mod+BracketRight"], label: "Bring Forward", group: "Cards", when: hasCards, run: (a) => a.arrange([...sel.cards], "forward") },
-  { id: "backward", keys: ["mod+BracketLeft"], label: "Send Backward", group: "Cards", when: hasCards, run: (a) => a.arrange([...sel.cards], "backward") },
-  { id: "front", keys: ["mod+shift+BracketRight"], label: "Bring to Front", group: "Cards", when: hasCards, run: (a) => a.arrange([...sel.cards], "front") },
-  { id: "back", keys: ["mod+shift+BracketLeft"], label: "Send to Back", group: "Cards", when: hasCards, run: (a) => a.arrange([...sel.cards], "back") },
-  { id: "deleteSticker", keys: ["Backspace", "Delete"], when: () => !!selSticker(), run: (a) => a.removeSticker(selSticker()!) },
+  {
+    id: "forward",
+    keys: ["mod+BracketRight"],
+    label: "Bring Forward",
+    group: "Cards",
+    when: hasCards,
+    run: (a) => a.arrange([...sel.cards], "forward"),
+  },
+  {
+    id: "backward",
+    keys: ["mod+BracketLeft"],
+    label: "Send Backward",
+    group: "Cards",
+    when: hasCards,
+    run: (a) => a.arrange([...sel.cards], "backward"),
+  },
+  {
+    id: "front",
+    keys: ["mod+shift+BracketRight"],
+    label: "Bring to Front",
+    group: "Cards",
+    when: hasCards,
+    run: (a) => a.arrange([...sel.cards], "front"),
+  },
+  {
+    id: "back",
+    keys: ["mod+shift+BracketLeft"],
+    label: "Send to Back",
+    group: "Cards",
+    when: hasCards,
+    run: (a) => a.arrange([...sel.cards], "back"),
+  },
+  {
+    id: "deleteSticker",
+    keys: ["Backspace", "Delete"],
+    when: () => !!selSticker(),
+    run: (a) => a.removeSticker(selSticker()!),
+  },
   // 只选着的那张 Note 的静态正文里选了字：不进编辑直接加粗 / 高亮（和编辑器里同样的键）；没有这样的选区就接着往下找
-  { id: "staticBold", keys: ["mod+b"], label: "Bold the text selected in a Note", group: "Cards", run: (a) => a.formatStaticSel("bold") },
-  { id: "staticHighlight", keys: ["mod+shift+h"], label: "Highlight the text selected in a Note", group: "Cards", run: (a) => a.formatStaticSel("highlight") },
+  {
+    id: "staticBold",
+    keys: ["mod+b"],
+    label: "Bold the text selected in a Note",
+    group: "Cards",
+    run: (a) => a.formatStaticSel("bold"),
+  },
+  {
+    id: "staticHighlight",
+    keys: ["mod+shift+h"],
+    label: "Highlight the text selected in a Note",
+    group: "Cards",
+    run: (a) => a.formatStaticSel("highlight"),
+  },
   // 选中了一张卡里的一段字：进入编辑删掉这段字，不删卡
-  { id: "deleteText", keys: ["Backspace", "Delete"], run: (a, e) => a.editTextSel(e.key === "Delete" ? "Delete" : "Backspace") },
-  { id: "delete", keys: ["Backspace", "Delete"], show: "⌫", label: "Delete (linked card: remove from this board)", group: "Cards", run: (a) => { if (!lineSel() || sel.cards.length) a.deleteSel(); } },
+  {
+    id: "deleteText",
+    keys: ["Backspace", "Delete"],
+    run: (a, e) => a.editTextSel(e.key === "Delete" ? "Delete" : "Backspace"),
+  },
+  {
+    id: "delete",
+    keys: ["Backspace", "Delete"],
+    show: "⌫",
+    label: "Delete (linked card: remove from this board)",
+    group: "Cards",
+    run: (a) => {
+      if (!lineSel() || sel.cards.length) a.deleteSel();
+    },
+  },
   // ⌘⌫：共享卡 Delete Everywhere（要确认）；⌫ 只从这块白板移除
-  { id: "deleteEverywhere", keys: ["mod+Backspace", "mod+Delete"], show: "⌘⌫", label: "Delete Everywhere (linked card)", group: "Cards", when: () => hasCards() && !lineSel(), run: (a) => void a.deleteEverywhere() },
-  { id: "lock", keys: ["mod+shift+l"], label: "Lock / Unlock", group: "Cards", run: (a) => a.toggleLock(sel.cards.slice(), sel.sections.slice()) },
-  { id: "turnIntoBoard", keys: ["mod+shift+b"], label: "Turn into Board", group: "Cards", run: (a) => void a.turnIntoBoard() },
-  { id: "fitContent", keys: ["alt+KeyF"], label: "Fit Content", group: "Cards", when: () => !!fitTarget() || hasCards() || sel.sections.length > 0, run: (a) => { const t = fitTarget(); if (t) a.fitContent([t]); else if (sel.cards.length) a.fitContent(sel.cards); else a.fitSections(sel.sections.slice()); } },
-  { id: "tidyUp", keys: ["alt+KeyT"], label: "Tidy Up", group: "Cards", when: () => sel.cards.length >= 2, run: (a) => void a.tidyUp() },
+  {
+    id: "deleteEverywhere",
+    keys: ["mod+Backspace", "mod+Delete"],
+    show: "⌘⌫",
+    label: "Delete Everywhere (linked card)",
+    group: "Cards",
+    when: () => hasCards() && !lineSel(),
+    run: (a) => void a.deleteEverywhere(),
+  },
+  {
+    id: "lock",
+    keys: ["mod+shift+l"],
+    label: "Lock / Unlock",
+    group: "Cards",
+    run: (a) => a.toggleLock(sel.cards.slice(), sel.sections.slice()),
+  },
+  {
+    id: "turnIntoBoard",
+    keys: ["mod+shift+b"],
+    label: "Turn into Board",
+    group: "Cards",
+    run: (a) => void a.turnIntoBoard(),
+  },
+  {
+    id: "fitContent",
+    keys: ["alt+KeyF"],
+    label: "Fit Content",
+    group: "Cards",
+    when: () => !!fitTarget() || hasCards() || sel.sections.length > 0,
+    run: (a) => {
+      const t = fitTarget();
+      if (t) a.fitContent([t]);
+      else if (sel.cards.length) a.fitContent(sel.cards);
+      else a.fitSections(sel.sections.slice());
+    },
+  },
+  {
+    id: "tidyUp",
+    keys: ["alt+KeyT"],
+    label: "Tidy Up",
+    group: "Cards",
+    when: () => sel.cards.length >= 2,
+    run: (a) => void a.tidyUp(),
+  },
   // ⌥T 已经是 Tidy Up
-  { id: "tilt", keys: ["alt+shift+KeyT"], label: "Tilt", group: "Cards", when: hasCards, run: (a) => a.toggleTilt(sel.cards.slice()) },
+  {
+    id: "tilt",
+    keys: ["alt+shift+KeyT"],
+    label: "Tilt",
+    group: "Cards",
+    when: hasCards,
+    run: (a) => a.toggleTilt(sel.cards.slice()),
+  },
   { id: "wrap", keys: ["alt+KeyZ"], label: "Wrap Lines", group: "Cards", run: (a) => a.toggleWrap(sel.cards.slice()) },
-  { id: "nudgeL", keys: ["ArrowLeft", "shift+ArrowLeft"], show: "Arrows", label: "Nudge (⇧ = 10px on screen)", group: "Cards", when: () => hasCards() && !walk(), run: nudge(-1, 0) },
+  {
+    id: "nudgeL",
+    keys: ["ArrowLeft", "shift+ArrowLeft"],
+    show: "Arrows",
+    label: "Nudge (⇧ = 10px on screen)",
+    group: "Cards",
+    when: () => hasCards() && !walk(),
+    run: nudge(-1, 0),
+  },
   { id: "nudgeR", keys: ["ArrowRight", "shift+ArrowRight"], when: () => hasCards() && !walk(), run: nudge(1, 0) },
   { id: "nudgeU", keys: ["ArrowUp", "shift+ArrowUp"], when: () => hasCards() && !walk(), run: nudge(0, -1) },
   { id: "nudgeD", keys: ["ArrowDown", "shift+ArrowDown"], when: () => hasCards() && !walk(), run: nudge(0, 1) },
-  { id: "expand", show: "Click a call", label: "Expand into a new card (or go to the one already expanded)", group: "Code" },
+  {
+    id: "expand",
+    show: "Click a call",
+    label: "Expand into a new card (or go to the one already expanded)",
+    group: "Code",
+  },
   { id: "dragCall", show: "Drag a call", label: "Arrow to an existing card", group: "Code" },
   { id: "selectLines", show: "Click line numbers", label: "Select lines (⇧ extends)", group: "Code" },
-  { id: "hide", keys: ["h"], label: "Hide lines", group: "Code", when: () => !!lineSel(), run: (a) => a.hideLines(lineSel()!) },
+  {
+    id: "hide",
+    keys: ["h"],
+    label: "Hide lines",
+    group: "Code",
+    when: () => !!lineSel(),
+    run: (a) => a.hideLines(lineSel()!),
+  },
   { id: "copyCode", show: "⌘C", label: "Copy code without line numbers", group: "Code" },
   { id: "peek", show: "Hover a name", label: "Definition peek", group: "Code" },
   { id: "pinPop", show: "Press ⌘ on a popup", label: "Pin a popup", group: "Code" },
-  { id: "walk", keys: ["p"], label: "Walk Through from the selected card", group: "Walkthrough", run: (a) => a.startWalk() },
-  { id: "walkNext", keys: ["ArrowRight", "ArrowDown"], show: "→", label: "Next Step", group: "Walkthrough", when: () => !!walk(), run: (a) => a.walkTo(walk()!.i + 1) },
-  { id: "walkPrev", keys: ["ArrowLeft", "ArrowUp"], show: "←", label: "Previous Step", group: "Walkthrough", when: () => !!walk(), run: (a) => a.walkTo(walk()!.i - 1) },
+  {
+    id: "walk",
+    keys: ["p"],
+    label: "Walk Through from the selected card",
+    group: "Walkthrough",
+    run: (a) => a.startWalk(),
+  },
+  {
+    id: "walkNext",
+    keys: ["ArrowRight", "ArrowDown"],
+    show: "→",
+    label: "Next Step",
+    group: "Walkthrough",
+    when: () => !!walk(),
+    run: (a) => a.walkTo(walk()!.i + 1),
+  },
+  {
+    id: "walkPrev",
+    keys: ["ArrowLeft", "ArrowUp"],
+    show: "←",
+    label: "Previous Step",
+    group: "Walkthrough",
+    when: () => !!walk(),
+    run: (a) => a.walkTo(walk()!.i - 1),
+  },
   { id: "walkExit", show: "Esc", label: "Exit", group: "Walkthrough" },
   { id: "undo", keys: ["mod+z"], label: "Undo", group: "Board", run: () => void undo() },
   { id: "redo", keys: ["mod+shift+z", "mod+y"], show: "⇧⌘Z", label: "Redo", group: "Board", run: () => void redo() },
@@ -208,13 +465,18 @@ const KEYMAP: Bind[] = [
   { id: "help", keys: ["?"], label: "Keyboard Shortcuts", group: "Board", run: () => setKeysOpen(!keysOpen()) },
   // Esc（浮层都关了以后）：取消正在用的工具 → 取消贴纸选中 → 退出讲解 → 子白板里回上一级 → 取消选择
   {
-    id: "escape", keys: ["Escape"], label: "Cancel · Stop waiting for AI · Deselect · Back to the parent board", group: "Board", run: (a) => {
+    id: "escape",
+    keys: ["Escape"],
+    label: "Cancel · Stop waiting for AI · Deselect · Back to the parent board",
+    group: "Board",
+    run: (a) => {
       if (cancelMode()) return;
       if (a.cancelImageJob()) return;
       if (selSticker()) return void setSelSticker(null);
       if (walk()) return a.exitWalk();
       if (a.canLeave()) return a.leaveBoard();
-      clearSel(); window.getSelection()?.removeAllRanges();
+      clearSel();
+      window.getSelection()?.removeAllRanges();
     },
   },
 ];
@@ -234,8 +496,9 @@ const symbol = (k: string) => k.length === 1 && !/[a-z0-9 ]/i.test(k);
 function hit(c: Combo, e: KeyboardEvent): boolean {
   const mac = state.host.isMac;
   // ⌃：Mac 上是 Control（不带 ⌘）；别的系统上是 Ctrl+Alt（Ctrl+- 是缩小）
-  if (c.ctrl) { if (!(e.ctrlKey && !e.metaKey && (mac || e.altKey))) return false; }
-  else if ((e.metaKey || e.ctrlKey) !== c.mod || e.altKey !== c.alt) return false;
+  if (c.ctrl) {
+    if (!(e.ctrlKey && !e.metaKey && (mac || e.altKey))) return false;
+  } else if ((e.metaKey || e.ctrlKey) !== c.mod || e.altKey !== c.alt) return false;
   if (!symbol(c.key) && e.shiftKey !== c.shift) return false;
   return CODE.test(c.key) ? e.code === c.key : e.key.toLowerCase() === c.key.toLowerCase();
 }
@@ -258,7 +521,23 @@ export function runKey(a: A, k: KeyAction) {
   if (b?.run && (!b.when || b.when())) b.run(a, new KeyboardEvent("keydown"));
 }
 
-const KEY_TEXT: Record<string, string> = { Enter: "↵", Escape: "Esc", Backspace: "⌫", Delete: "⌫", ArrowLeft: "←", ArrowRight: "→", ArrowUp: "↑", ArrowDown: "↓", " ": "Space", Minus: "-", Equal: "=", Comma: ",", BracketLeft: "[", BracketRight: "]", "-": "−" };
+const KEY_TEXT: Record<string, string> = {
+  Enter: "↵",
+  Escape: "Esc",
+  Backspace: "⌫",
+  Delete: "⌫",
+  ArrowLeft: "←",
+  ArrowRight: "→",
+  ArrowUp: "↑",
+  ArrowDown: "↓",
+  " ": "Space",
+  Minus: "-",
+  Equal: "=",
+  Comma: ",",
+  BracketLeft: "[",
+  BracketRight: "]",
+  "-": "−",
+};
 /** Mac 的写法，修饰键按 ⌃⌥⇧⌘ 的顺序 */
 function macText(s: string) {
   const c = parse(s);
@@ -266,15 +545,28 @@ function macText(s: string) {
   return `${c.ctrl ? "⌃" : ""}${c.alt ? "⌥" : ""}${c.shift ? "⇧" : ""}${c.mod ? "⌘" : ""}${k}`;
 }
 /** 别的系统：修饰键按 Ctrl、Alt、Shift 的顺序写成字（⌃ 是 Ctrl+Alt） */
-const WORDS: [string, string][] = [["⌃", "Ctrl+Alt+"], ["⌘", "Ctrl+"], ["⌥", "Alt+"], ["⇧", "Shift+"]];
+const WORDS: [string, string][] = [
+  ["⌃", "Ctrl+Alt+"],
+  ["⌘", "Ctrl+"],
+  ["⌥", "Alt+"],
+  ["⇧", "Shift+"],
+];
 export const keyText = (s: string, mac: boolean) => {
   if (mac) return s;
   // 「⌘ + scroll」：后面跟着空格的不再带 +
-  return s.replace(/([⌃⌘⌥⇧]+)( ?)/g, (_, run: string, sp: string) => { const w = WORDS.filter(([m]) => run.includes(m)).map(([, t]) => t).join(""); return sp ? `${w.slice(0, -1)} ` : w; });
+  return s.replace(/([⌃⌘⌥⇧]+)( ?)/g, (_, run: string, sp: string) => {
+    const w = WORDS.filter(([m]) => run.includes(m))
+      .map(([, t]) => t)
+      .join("");
+    return sp ? `${w.slice(0, -1)} ` : w;
+  });
 };
 const showOf = (b: Bind) => b.show ?? (b.keys ? macText(b.keys[0]) : "");
 /** 菜单、按钮提示里的快捷键（当前系统的写法） */
-export const kbd = (id: string) => { const b = byId.get(id); return b ? keyText(showOf(b), state.host.isMac) : undefined; };
+export const kbd = (id: string) => {
+  const b = byId.get(id);
+  return b ? keyText(showOf(b), state.host.isMac) : undefined;
+};
 
 export type HelpRow = [keys: string, label: string];
 const GROUPS: Group[] = ["Create", "View", "Cards", "Code", "Walkthrough", "Board"];
@@ -282,7 +574,14 @@ const GROUPS: Group[] = ["Create", "View", "Cards", "Code", "Walkthrough", "Boar
 export function helpRows(mac: boolean, q = ""): [Group, HelpRow[]][] {
   const t = q.trim().toLowerCase();
   return GROUPS.map((g): [Group, HelpRow[]] => {
-    const rows = KEYMAP.filter((b) => b.group === g && b.label).map((b): HelpRow => [keyText(showOf(b), mac), b.label!]);
-    return [g, !t || g.toLowerCase().includes(t) ? rows : rows.filter(([k, l]) => l.toLowerCase().includes(t) || k.toLowerCase().includes(t))];
+    const rows = KEYMAP.filter((b) => b.group === g && b.label).map(
+      (b): HelpRow => [keyText(showOf(b), mac), b.label!],
+    );
+    return [
+      g,
+      !t || g.toLowerCase().includes(t)
+        ? rows
+        : rows.filter(([k, l]) => l.toLowerCase().includes(t) || k.toLowerCase().includes(t)),
+    ];
   }).filter(([, r]) => r.length);
 }

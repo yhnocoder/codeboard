@@ -147,7 +147,7 @@ function splitCmd(s: string): string[] {
   const out: string[] = [];
   const re = /"((?:\\.|[^"\\])*)"|'([^']*)'|(\S+)/g;
   let m: RegExpExecArray | null;
-  while ((m = re.exec(s))) out.push(m[1] !== undefined ? m[1].replace(/\\(.)/g, "$1") : m[2] ?? m[3]);
+  while ((m = re.exec(s))) out.push(m[1] !== undefined ? m[1].replace(/\\(.)/g, "$1") : (m[2] ?? m[3]));
   return out;
 }
 
@@ -161,10 +161,13 @@ function toArgv(cmd: string, python: string): string[] {
 }
 
 export type CaptureOpts = {
-  cmd: string; cwd: string;
+  cmd: string;
+  cwd: string;
   /** 算 Study Scope 的根目录（工作区的根）和包名（设置里的 studyScope） */
-  scope: string[]; pkgs: string[];
-  python?: string; timeoutMs?: number;
+  scope: string[];
+  pkgs: string[];
+  python?: string;
+  timeoutMs?: number;
   /** 子进程的输出（写到 Output 面板） */
   out?: (s: string) => void;
 };
@@ -174,18 +177,21 @@ type Trace = { pid: number; calls: RunCall[]; truncated?: boolean };
 /** 几个进程的记录合成一份：同一对 from → to 次数相加，实参留前 FIRST 次 + 最后一次 */
 function mergeTraces(ts: Trace[]): { calls: RunCall[]; truncated: boolean } {
   const m = new Map<string, RunCall>();
-  for (const t of ts) for (const c of t.calls) {
-    const k = `${c.from.file}:${c.from.line}>${c.to.file}:${c.to.line}:${c.to.qual}`;
-    const o = m.get(k);
-    if (!o) { m.set(k, { ...c, samples: [...c.samples] }); continue; }
-    const base = o.count;
-    o.count += c.count;
-    const all: CallSample[] = [...o.samples, ...c.samples.map((s) => ({ ...s, n: s.n + base }))];
-    o.samples = all.length > FIRST + 1 ? [...all.slice(0, FIRST), all[all.length - 1]] : all;
-  }
+  for (const t of ts)
+    for (const c of t.calls) {
+      const k = `${c.from.file}:${c.from.line}>${c.to.file}:${c.to.line}:${c.to.qual}`;
+      const o = m.get(k);
+      if (!o) {
+        m.set(k, { ...c, samples: [...c.samples] });
+        continue;
+      }
+      const base = o.count;
+      o.count += c.count;
+      const all: CallSample[] = [...o.samples, ...c.samples.map((s) => ({ ...s, n: s.n + base }))];
+      o.samples = all.length > FIRST + 1 ? [...all.slice(0, FIRST), all[all.length - 1]] : all;
+    }
   return { calls: [...m.values()].sort((a, b) => b.count - a.count), truncated: ts.some((t) => t.truncated) };
 }
-
 
 /** 跑一次入口，回运行记录（还没存）。命令起不来时抛出；退出码不是 0 也回记录（exit 里记着），抓到多少算多少 */
 export async function captureRun(o: CaptureOpts): Promise<RunRecord> {
@@ -193,32 +199,62 @@ export async function captureRun(o: CaptureOpts): Promise<RunRecord> {
   const argv = toArgv(o.cmd, python);
   if (!argv.length) throw new Error("No command given.");
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "codeboard-run-"));
-  const boot = path.join(tmp, "boot"), out = path.join(tmp, "out");
-  await fs.mkdir(boot); await fs.mkdir(out);
+  const boot = path.join(tmp, "boot"),
+    out = path.join(tmp, "out");
+  await fs.mkdir(boot);
+  await fs.mkdir(out);
   await fs.writeFile(path.join(boot, "sitecustomize.py"), TRACER);
   const env = {
     ...process.env,
     PYTHONPATH: [boot, process.env.PYTHONPATH].filter(Boolean).join(path.delimiter),
-    CODEBOARD_TRACE_OUT: out, CODEBOARD_TRACE_SCOPE: JSON.stringify(o.scope), CODEBOARD_TRACE_PKGS: JSON.stringify(o.pkgs),
+    CODEBOARD_TRACE_OUT: out,
+    CODEBOARD_TRACE_SCOPE: JSON.stringify(o.scope),
+    CODEBOARD_TRACE_PKGS: JSON.stringify(o.pkgs),
   };
   const t0 = Date.now();
   try {
     const exit = await new Promise<number>((res, rej) => {
       const p = spawn(argv[0], argv.slice(1), { cwd: o.cwd, env, stdio: ["ignore", "pipe", "pipe"] });
-      const timer = setTimeout(() => { o.out?.(`Timed out after ${Math.round((o.timeoutMs ?? 120_000) / 1000)} s; stopping.\n`); p.kill("SIGINT"); setTimeout(() => p.kill("SIGKILL"), 3000); }, o.timeoutMs ?? 120_000);
+      const timer = setTimeout(() => {
+        o.out?.(`Timed out after ${Math.round((o.timeoutMs ?? 120_000) / 1000)} s; stopping.\n`);
+        p.kill("SIGINT");
+        setTimeout(() => p.kill("SIGKILL"), 3000);
+      }, o.timeoutMs ?? 120_000);
       p.stdout.on("data", (d) => o.out?.(String(d)));
       p.stderr.on("data", (d) => o.out?.(String(d)));
-      p.on("error", (e) => { clearTimeout(timer); rej(new Error(`Could not start ${argv[0]}: ${e.message}`)); });
-      p.on("close", (code) => { clearTimeout(timer); res(code ?? -1); });
+      p.on("error", (e) => {
+        clearTimeout(timer);
+        rej(new Error(`Could not start ${argv[0]}: ${e.message}`));
+      });
+      p.on("close", (code) => {
+        clearTimeout(timer);
+        res(code ?? -1);
+      });
     });
     const ts: Trace[] = [];
     for (const f of await fs.readdir(out)) {
       if (!/^trace-\d+\.json$/.test(f)) continue;
-      try { ts.push(JSON.parse(await fs.readFile(path.join(out, f), "utf8"))); } catch { /* 进程被杀时写了一半 */ }
+      try {
+        ts.push(JSON.parse(await fs.readFile(path.join(out, f), "utf8")));
+      } catch {
+        /* 进程被杀时写了一半 */
+      }
     }
     const m = mergeTraces(ts);
     const commit = (await git(o.cwd, ["rev-parse", "HEAD"]))?.trim() || null;
-    const rec: RunRecord = { version: 1, id: uid("r"), entry: o.cmd.trim(), cwd: o.cwd, commit, at: t0, ms: Date.now() - t0, exit, scope: o.scope, pkgs: o.pkgs, calls: m.calls };
+    const rec: RunRecord = {
+      version: 1,
+      id: uid("r"),
+      entry: o.cmd.trim(),
+      cwd: o.cwd,
+      commit,
+      at: t0,
+      ms: Date.now() - t0,
+      exit,
+      scope: o.scope,
+      pkgs: o.pkgs,
+      calls: m.calls,
+    };
     if (m.truncated) rec.truncated = true;
     return loadRun(rec);
   } finally {
@@ -240,10 +276,18 @@ export async function saveRun(storageDir: string, r: RunRecord): Promise<string>
 export async function listRuns(storageDir: string): Promise<RunRecord[]> {
   const d = runsDir(storageDir);
   let names: string[] = [];
-  try { names = (await fs.readdir(d)).filter((n) => n.endsWith(".json")); } catch { return []; }
+  try {
+    names = (await fs.readdir(d)).filter((n) => n.endsWith(".json"));
+  } catch {
+    return [];
+  }
   const out: RunRecord[] = [];
   for (const n of names) {
-    try { out.push(loadRun(JSON.parse(await fs.readFile(path.join(d, n), "utf8")))); } catch { /* 坏文件 */ }
+    try {
+      out.push(loadRun(JSON.parse(await fs.readFile(path.join(d, n), "utf8"))));
+    } catch {
+      /* 坏文件 */
+    }
   }
   return out.sort((a, b) => b.at - a.at);
 }
@@ -251,7 +295,10 @@ export async function listRuns(storageDir: string): Promise<RunRecord[]> {
 /** 运行记录里出现的文件 → 白板上的位置（来源 + 相对路径），白板拿它对箭头 */
 async function runLocs(r: RunRecord): Promise<Record<string, RunLoc>> {
   const files = new Set<string>();
-  for (const c of r.calls) { files.add(c.from.file); files.add(c.to.file); }
+  for (const c of r.calls) {
+    files.add(c.from.file);
+    files.add(c.to.file);
+  }
   const out: Record<string, RunLoc> = {};
   for (const f of files) {
     if (!path.isAbsolute(f)) continue;
@@ -265,19 +312,37 @@ function runLabel(r: RunRecord): { label: string; description: string; detail: s
   const d = new Date(r.at);
   const when = `${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
   const n = r.calls.reduce((s, c) => s + c.count, 0);
-  return { label: r.entry, description: `${when}${r.commit ? ` · ${r.commit.slice(0, 7)}` : ""}`, detail: `${r.calls.length} call sites · ${n} calls${r.exit ? ` · exit ${r.exit}` : ""}` };
+  return {
+    label: r.entry,
+    description: `${when}${r.commit ? ` · ${r.commit.slice(0, 7)}` : ""}`,
+    detail: `${r.calls.length} call sites · ${n} calls${r.exit ? ` · exit ${r.exit}` : ""}`,
+  };
 }
 
 /** 发给白板的那一份（白板只要记录 + 路径对照） */
-export async function runApply(r: RunRecord) { return { run: r, locs: await runLocs(r) }; }
+export async function runApply(r: RunRecord) {
+  return { run: r, locs: await runLocs(r) };
+}
 
-type Target = { post(m: { type: "run"; apply: Awaited<ReturnType<typeof runApply>> } | { type: "toast"; text: string }): void };
+type Target = {
+  post(m: { type: "run"; apply: Awaited<ReturnType<typeof runApply>> } | { type: "toast"; text: string }): void;
+};
 
 /** 问入口、跑一次、存下来、发给白板（没有白板就只存） */
-export async function captureFlow(storageDir: string, p: Target | undefined, ask: Prompts): Promise<RunRecord | undefined> {
+export async function captureFlow(
+  storageDir: string,
+  p: Target | undefined,
+  ask: Prompts,
+): Promise<RunRecord | undefined> {
   const w = workspace();
   const last = w.storage.get<string>("codeboard.lastRun");
-  const cmd = await ask.input({ title: "Capture Run", ok: "Run", prompt: "Run a Python entry once and record the calls into Study Scope (script or -m module, with arguments)", value: last ?? "", placeHolder: "example.py --steps 2   ·   -m mypkg.main" });
+  const cmd = await ask.input({
+    title: "Capture Run",
+    ok: "Run",
+    prompt: "Run a Python entry once and record the calls into Study Scope (script or -m module, with arguments)",
+    value: last ?? "",
+    placeHolder: "example.py --steps 2   ·   -m mypkg.main",
+  });
   if (!cmd?.trim()) return;
   await w.storage.set("codeboard.lastRun", cmd.trim());
   const interp = w.settings.get<string>("python.defaultInterpreterPath");
@@ -285,22 +350,41 @@ export async function captureFlow(storageDir: string, p: Target | undefined, ask
   log("info", `Capture Run: ${cmd.trim()}`);
   let rec: RunRecord;
   try {
-    rec = await captureRun({ cmd, cwd: ws0(), scope: wsRoots(), pkgs: readSettings().studyScope, python: interp && interp !== "python" ? interp : undefined, out: (s) => log("info", s.replace(/\n$/, "")) });
+    rec = await captureRun({
+      cmd,
+      cwd: ws0(),
+      scope: wsRoots(),
+      pkgs: readSettings().studyScope,
+      python: interp && interp !== "python" ? interp : undefined,
+      out: (s) => log("info", s.replace(/\n$/, "")),
+    });
   } catch (e) {
     void w.ui.info(`Capture Run failed: ${(e as Error).message}`);
     return;
   }
   await saveRun(storageDir, rec);
-  if (!rec.calls.length) void w.ui.info(`The run finished (exit ${rec.exit}) but recorded no calls into Study Scope. See Output › CodeBoard.`);
+  if (!rec.calls.length)
+    void w.ui.info(
+      `The run finished (exit ${rec.exit}) but recorded no calls into Study Scope. See Output › CodeBoard.`,
+    );
   if (p) p.post({ type: "run", apply: await runApply(rec) });
   return rec;
 }
 
 export async function applyFlow(storageDir: string, p: Target | undefined, ask: Prompts) {
   const w = workspace();
-  if (!p) { void w.ui.info("Open a board first."); return; }
+  if (!p) {
+    void w.ui.info("Open a board first.");
+    return;
+  }
   const rs = await listRuns(storageDir);
-  if (!rs.length) { void w.ui.info("No runs yet. Use CodeBoard: Capture Run… first."); return; }
-  const r = await ask.pick(rs.map((x) => ({ ...runLabel(x), r: x })), { placeHolder: "Apply which run to this board?" });
+  if (!rs.length) {
+    void w.ui.info("No runs yet. Use CodeBoard: Capture Run… first.");
+    return;
+  }
+  const r = await ask.pick(
+    rs.map((x) => ({ ...runLabel(x), r: x })),
+    { placeHolder: "Apply which run to this board?" },
+  );
   if (r) p.post({ type: "run", apply: await runApply(r.r) });
 }

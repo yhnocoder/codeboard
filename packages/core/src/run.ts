@@ -22,27 +22,55 @@ export type RunSite = { file: string; line: number };
 export type RunDef = { file: string; line: number; qual: string };
 export type RunCall = { from: RunSite; to: RunDef; count: number; samples: CallSample[] };
 export type RunRecord = {
-  version: 1; id: string; entry: string; cwd: string; commit: string | null;
-  at: number; ms: number; exit: number; scope: string[]; pkgs: string[]; calls: RunCall[]; truncated?: boolean;
+  version: 1;
+  id: string;
+  entry: string;
+  cwd: string;
+  commit: string | null;
+  at: number;
+  ms: number;
+  exit: number;
+  scope: string[];
+  pkgs: string[];
+  calls: RunCall[];
+  truncated?: boolean;
 };
 
-const str = v.string(), num = v.number();
+const str = v.string(),
+  num = v.number();
 const Sample = v.looseObject({ n: num, args: v.array(v.tuple([str, str])) });
 const RunRecordSchema = v.looseObject({
-  version: v.literal(1), id: str, entry: str, cwd: str, commit: v.nullable(str),
-  at: num, ms: num, exit: num, scope: v.array(str), pkgs: v.array(str),
-  calls: v.array(v.looseObject({
-    from: v.looseObject({ file: str, line: num }),
-    to: v.looseObject({ file: str, line: num, qual: str }),
-    count: num, samples: v.array(Sample),
-  })),
+  version: v.literal(1),
+  id: str,
+  entry: str,
+  cwd: str,
+  commit: v.nullable(str),
+  at: num,
+  ms: num,
+  exit: num,
+  scope: v.array(str),
+  pkgs: v.array(str),
+  calls: v.array(
+    v.looseObject({
+      from: v.looseObject({ file: str, line: num }),
+      to: v.looseObject({ file: str, line: num, qual: str }),
+      count: num,
+      samples: v.array(Sample),
+    }),
+  ),
   truncated: v.nullish(v.boolean()),
 });
 
 /** 读进来的运行记录 → 校验过的；不对抛出 */
 export function loadRun(raw: unknown): RunRecord {
   const r = v.safeParse(RunRecordSchema, raw);
-  if (!r.success) throw new Error(`Invalid run record: ${r.issues.slice(0, 2).map((i) => `${v.getDotPath(i) ?? "(root)"}: ${i.message}`).join("; ")}`);
+  if (!r.success)
+    throw new Error(
+      `Invalid run record: ${r.issues
+        .slice(0, 2)
+        .map((i) => `${v.getDotPath(i) ?? "(root)"}: ${i.message}`)
+        .join("; ")}`,
+    );
   return r.output as RunRecord;
 }
 
@@ -51,7 +79,10 @@ export type RunLoc = { src: Source; path: string; hp: string };
 export type RunApply = { run: RunRecord; locs: Record<string, RunLoc> };
 
 function segAt(c: CodeCard, loc: RunLoc, line: number) {
-  return c.segments.find((s) => s.src.kind !== "free" && s.path === loc.path && sameSource(s.src, loc.src) && s.start <= line && line <= s.end);
+  return c.segments.find(
+    (s) =>
+      s.src.kind !== "free" && s.path === loc.path && sameSource(s.src, loc.src) && s.start <= line && line <= s.end,
+  );
 }
 
 /** 箭头的终点卡是不是这次调用的被调函数：同一个文件里、def 那一行在段里；有符号时 qualname 也要对（__init__ 也认类卡） */
@@ -63,7 +94,11 @@ function calleeIs(c: CodeCard, loc: RunLoc, to: RunDef): boolean {
   return q === to.qual || to.qual.startsWith(`${q}.`) || (to.qual.endsWith(".__init__") && to.qual.slice(0, -9) === q);
 }
 
-export type RunMatch = { hits: { link: string; call: number }[]; misses: number[]; callers: Record<number, { card: string; seg: string }> };
+export type RunMatch = {
+  hits: { link: string; call: number }[];
+  misses: number[];
+  callers: Record<number, { card: string; seg: string }>;
+};
 
 /**
  * 运行记录对白板：哪条 Call 箭头是哪次调用（出发行 = 调用行，终点卡 = 被调函数），哪些调用白板上没有箭头。
@@ -75,12 +110,14 @@ export function matchRun(b: Pick<Board, "cards" | "links">, a: RunApply): RunMat
   const used = new Set<number>();
   for (const l of b.links) {
     if (!l.call || l.from.line === undefined) continue;
-    const f = byId.get(l.from.card), t = byId.get(l.to.card);
+    const f = byId.get(l.from.card),
+      t = byId.get(l.to.card);
     if (f?.kind !== "code" || t?.kind !== "code") continue;
     const fs = f.segments.find((s) => s.id === l.from.seg);
     if (!fs || fs.src.kind === "free") continue;
     a.run.calls.forEach((c, i) => {
-      const fl = a.locs[c.from.file], tl = a.locs[c.to.file];
+      const fl = a.locs[c.from.file],
+        tl = a.locs[c.to.file];
       if (!fl || !tl || c.from.line !== l.from.line || fl.path !== fs.path || !sameSource(fl.src, fs.src)) return;
       if (!calleeIs(t, tl, c.to)) return;
       hits.push({ link: l.id, call: i });
@@ -97,7 +134,10 @@ export function matchRun(b: Pick<Board, "cards" | "links">, a: RunApply): RunMat
     for (const k of b.cards) {
       if (k.kind !== "code") continue;
       const s = segAt(k, fl, c.from.line);
-      if (s) { callers[i] = { card: k.id, seg: s.id }; break; }
+      if (s) {
+        callers[i] = { card: k.id, seg: s.id };
+        break;
+      }
     }
   });
   return { hits, misses, callers };
@@ -117,14 +157,19 @@ export function applyRun(b: Pick<Board, "links">, a: RunApply, m: RunMatch): num
     const calls = cs.map((i) => a.run.calls[i]);
     const old = l.call.ev;
     const ev: NonNullable<NonNullable<Link["call"]>["ev"]> = {
-      kind: "observed", cmd: a.run.entry, at: a.run.at, count: calls.reduce((s, c) => s + c.count, 0), run: a.run.id,
+      kind: "observed",
+      cmd: a.run.entry,
+      at: a.run.at,
+      count: calls.reduce((s, c) => s + c.count, 0),
+      run: a.run.id,
     };
     if (a.run.commit) ev.commit = a.run.commit;
     if (old?.kind === "manual" || old?.base === "manual") ev.base = "manual";
     if (old?.via) ev.via = old.via;
     l.call.ev = ev;
     const seen = calls.flatMap((c) => c.samples);
-    if (seen.length) l.call.seen = seen; else delete l.call.seen;
+    if (seen.length) l.call.seen = seen;
+    else delete l.call.seen;
     n++;
   }
   return n;

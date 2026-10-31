@@ -43,22 +43,37 @@ const paraText = (n: JSONContent) => (n.content ?? []).map((c) => c.text ?? "").
 /** The editor's document JSON → Markdown. Footnote definitions at the end are one per line (as serializeMd writes them) */
 export function sourceMd(doc: JSONContent): string {
   const content = [...(doc.content ?? [])];
-  while (content.length && content[content.length - 1].type === "paragraph" && !paraText(content[content.length - 1]).trim()) content.pop();
+  while (
+    content.length &&
+    content[content.length - 1].type === "paragraph" &&
+    !paraText(content[content.length - 1]).trim()
+  )
+    content.pop();
   let k = content.length;
   while (k > 0 && content[k - 1].type === "paragraph" && DEF.test(paraText(content[k - 1]))) k--;
-  const body = sourceBlocksMd(content.slice(0, k)), tail = content.slice(k).map(paraText);
+  const body = sourceBlocksMd(content.slice(0, k)),
+    tail = content.slice(k).map(paraText);
   return tail.length ? `${body ? `${body}\n\n` : ""}${tail.join("\n")}` : body;
 }
 
 /** The layout of the document's tables and code blocks, by position (null when all are automatic) */
 export function layoutOf(doc: PMNode): MdLayout | null {
-  const tables: (TableLayout | null)[] = [], wrap: number[] = [];
+  const tables: (TableLayout | null)[] = [],
+    wrap: number[] = [];
   let code = 0;
   doc.descendants((n) => {
-    if (n.type.name === "codeBlock") { if (n.attrs.wrap) wrap.push(code); code++; return false; }
+    if (n.type.name === "codeBlock") {
+      if (n.attrs.wrap) wrap.push(code);
+      code++;
+      return false;
+    }
     if (n.type.name !== "table") return true;
-    const cols: (number | null)[] = [], rows: (number | null)[] = [];
-    n.firstChild?.forEach((c) => { const w = c.attrs.colwidth; for (let i = 0; i < (c.attrs.colspan ?? 1); i++) cols.push(Array.isArray(w) && w[i] ? w[i] : null); });
+    const cols: (number | null)[] = [],
+      rows: (number | null)[] = [];
+    n.firstChild?.forEach((c) => {
+      const w = c.attrs.colwidth;
+      for (let i = 0; i < (c.attrs.colspan ?? 1); i++) cols.push(Array.isArray(w) && w[i] ? w[i] : null);
+    });
     n.forEach((r) => rows.push(r.attrs.height ?? null));
     const t: TableLayout = {};
     if (cols.some((w) => w !== null)) t.cols = cols;
@@ -75,21 +90,29 @@ export function layoutOf(doc: PMNode): MdLayout | null {
 
 /** The layout put onto the document JSON's tables and code blocks (nth to nth; extra columns and rows are ignored) */
 export function withLayout(doc: JSONContent, layout: MdLayout): JSONContent {
-  let ti = 0, ci = 0;
+  let ti = 0,
+    ci = 0;
   const fix = (n: JSONContent): JSONContent => {
     if (n.type === "codeBlock") return layout.wrap?.includes(ci++) ? { ...n, attrs: { ...n.attrs, wrap: true } } : n;
     if (n.type === "table") {
       const t = layout.tables?.[ti++];
       if (!t) return n;
-      return { ...n, content: (n.content ?? []).map((r, ri) => ({
-        ...r,
-        attrs: { ...r.attrs, height: t.rows?.[ri] ?? null },
-        content: (r.content ?? []).map((c, ci2) => ({ ...c, attrs: { ...c.attrs, colwidth: t.cols?.[ci2] ? [t.cols[ci2]] : null } })),
-      })) };
+      return {
+        ...n,
+        content: (n.content ?? []).map((r, ri) => ({
+          ...r,
+          attrs: { ...r.attrs, height: t.rows?.[ri] ?? null },
+          content: (r.content ?? []).map((c, ci2) => ({
+            ...c,
+            attrs: { ...c.attrs, colwidth: t.cols?.[ci2] ? [t.cols[ci2]] : null },
+          })),
+        })),
+      };
     }
     return n.content && !CODE.has(n.type!) ? { ...n, content: n.content.map(fix) } : n;
   };
   return fix(doc);
 }
 
-export const sameLayout = (a: MdLayout | null | undefined, b: MdLayout | null | undefined) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+export const sameLayout = (a: MdLayout | null | undefined, b: MdLayout | null | undefined) =>
+  JSON.stringify(a ?? null) === JSON.stringify(b ?? null);

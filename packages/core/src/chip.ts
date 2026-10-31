@@ -15,14 +15,26 @@ export function segChip(s: Pick<Segment, "lang" | "path" | "text">): LangChip | 
     return "PY";
   }
   if (lang === "cuda-cpp" || lang === "cuda" || /\.(cu|cuh)$/.test(s.path)) return "CUDA";
-  if (lang === "cpp" || lang === "c") return s.text.slice(0, 12).some((l) => /__global__|__device__/.test(l)) ? "CUDA" : "C++";
+  if (lang === "cpp" || lang === "c")
+    return s.text.slice(0, 12).some((l) => /__global__|__device__/.test(l)) ? "CUDA" : "C++";
   if (lang === "rust") return "RUST";
   return undefined;
 }
 
-
-const EXT_CHIP: [RegExp, LangChip][] = [[/\.pyi?$/, "PY"], [/\.(cu|cuh)$/, "CUDA"], [/\.(c|cc|cpp|cxx|h|hh|hpp|hxx)$/, "C++"], [/\.rs$/, "RUST"]];
-const CHIP_NAME: Record<LangChip, string> = { PY: "Python", "C++": "C++", CUDA: "CUDA", TRITON: "Triton", TILELANG: "TileLang", RUST: "Rust" };
+const EXT_CHIP: [RegExp, LangChip][] = [
+  [/\.pyi?$/, "PY"],
+  [/\.(cu|cuh)$/, "CUDA"],
+  [/\.(c|cc|cpp|cxx|h|hh|hpp|hxx)$/, "C++"],
+  [/\.rs$/, "RUST"],
+];
+const CHIP_NAME: Record<LangChip, string> = {
+  PY: "Python",
+  "C++": "C++",
+  CUDA: "CUDA",
+  TRITON: "Triton",
+  TILELANG: "TileLang",
+  RUST: "Rust",
+};
 
 /** 路径看不出来的语言（.py 里的 Triton / TileLang kernel、.hpp 里的 CUDA），写在卡头路径后面；路径已经说明了的不写 */
 export function hiddenLang(s: Pick<Segment, "lang" | "path" | "text">): string | undefined {
@@ -45,4 +57,5 @@ export function genWhat(lang: string, name = "", text = ""): string {
 }
 
 /** 模板实例的卡名：dispatch<8, 768, 8192> */
-export const instName = (kernel: string, vals: { value: string }[]) => (vals.length ? `${kernel}<${vals.map((v) => v.value).join(", ")}>` : kernel);
+export const instName = (kernel: string, vals: { value: string }[]) =>
+  vals.length ? `${kernel}<${vals.map((v) => v.value).join(", ")}>` : kernel;

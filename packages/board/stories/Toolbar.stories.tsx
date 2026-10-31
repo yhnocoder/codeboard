@@ -24,26 +24,87 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 const narrow = { viewport: { value: "narrow", isRotated: false } };
-const more = async () => { await settled(); await toolbar("More"); await menu(); };
+const more = async () => {
+  await settled();
+  await toolbar("More");
+  await menu();
+};
 // 改一次白板名（⋯ → Rename Board…，和用户一样），撤销栈里就有一步
-const renameOnce = async () => { await more(); await menuItem("Rename Board…"); await type(await el<HTMLInputElement>(".dialog input"), "KV cache 调度（新）"); await key("Enter"); };
+const renameOnce = async () => {
+  await more();
+  await menuItem("Rename Board…");
+  await type(await el<HTMLInputElement>(".dialog input"), "KV cache 调度（新）");
+  await key("Enter");
+};
 
-export const Overview: Story = { play: async () => { await more(); await menuItem("Theme", { sub: true }); } };
+export const Overview: Story = {
+  play: async () => {
+    await more();
+    await menuItem("Theme", { sub: true });
+  },
+};
 export const Wide: Story = {};
-export const CodeMenu: Story = { name: "Code Menu", play: async () => { await settled(); await toolbar("Code"); } };
-export const WriteMenu: Story = { name: "Text Menu (New Text, Box, Mark)", play: async () => { await settled(); await toolbar("Text"); } };
+export const CodeMenu: Story = {
+  name: "Code Menu",
+  play: async () => {
+    await settled();
+    await toolbar("Code");
+  },
+};
+export const WriteMenu: Story = {
+  name: "Text Menu (New Text, Box, Mark)",
+  play: async () => {
+    await settled();
+    await toolbar("Text");
+  },
+};
 export const MoreMenu: Story = { name: "More Menu", play: more };
-export const MoreUndo: Story = { name: "More · Undo Enabled", play: async () => { await renameOnce(); await more(); } };
-export const MoreRedo: Story = { name: "More · Undo and Redo Enabled", play: async () => { await renameOnce(); await renameOnce(); await more(); await menuItem("Undo"); await more(); } };
+export const MoreUndo: Story = {
+  name: "More · Undo Enabled",
+  play: async () => {
+    await renameOnce();
+    await more();
+  },
+};
+export const MoreRedo: Story = {
+  name: "More · Undo and Redo Enabled",
+  play: async () => {
+    await renameOnce();
+    await renameOnce();
+    await more();
+    await menuItem("Undo");
+    await more();
+  },
+};
 // 窄的样子按白板的宽度算（< 700px）：用 Storybook 工具栏的 viewport（preview.tsx 里的 narrow）
 export const Narrow: Story = { globals: narrow };
 export const NarrowMore: Story = { name: "Narrow · More (Folded Tools)", globals: narrow, play: more };
-export const NarrowMoreCity: Story = { name: "Narrow · More in City (Moving Cars)", globals: { ...narrow, theme: "city" }, play: more };
-export const NarrowCode: Story = { name: "Narrow · Code Menu", globals: narrow, play: async () => { await settled(); await toolbar("Code"); } };
+export const NarrowMoreCity: Story = {
+  name: "Narrow · More in City (Moving Cars)",
+  globals: { ...narrow, theme: "city" },
+  play: more,
+};
+export const NarrowCode: Story = {
+  name: "Narrow · Code Menu",
+  globals: narrow,
+  play: async () => {
+    await settled();
+    await toolbar("Code");
+  },
+};
 // City 的 Dock 多一个红绿灯（车流开关）
 export const DockCity: Story = { name: "Dock · City (Traffic Light)", globals: { theme: "city" } };
 // 悬停（CSS :hover，story 的 globals.pseudo 摆出来）：底部工具栏和右下角 Dock 上的按钮、缩放的 − / 100% / +
 export const Hover: Story = {
   name: "Hover (tools, dock, zoom)",
-  globals: { pseudo: { hover: ['.bbar button[aria-label="Text"]', '.dock button[aria-label="Call Tree"]', '.dock button[aria-label="Zoom In"]', ".dock .zoom"] } },
+  globals: {
+    pseudo: {
+      hover: [
+        '.bbar button[aria-label="Text"]',
+        '.dock button[aria-label="Call Tree"]',
+        '.dock button[aria-label="Zoom In"]',
+        ".dock .zoom",
+      ],
+    },
+  },
 };

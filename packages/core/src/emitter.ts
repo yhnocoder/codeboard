@@ -12,8 +12,14 @@ export class Emitter<T = void> {
   };
   fire(e: T) {
     for (const f of [...this.fns]) {
-      try { f(e); } catch (err) { console.error("[codeboard] listener", err); }
+      try {
+        f(e);
+      } catch (err) {
+        console.error("[codeboard] listener", err);
+      }
     }
   }
-  dispose() { this.fns.clear(); }
+  dispose() {
+    this.fns.clear();
+  }
 }

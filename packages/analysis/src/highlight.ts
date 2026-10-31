@@ -96,12 +96,17 @@ function collect(g: Grammar, src: string, root: Node, off: number, out: Span[]) 
       const t = n.parent?.type;
       if ((t !== "preproc_def" && t !== "preproc_function_def") || !n.text.trim()) continue;
       const sub = treeOf(g, n.text).tree;
-      try { collect(g, src, sub.rootNode, off + n.startIndex, out); } finally { sub.delete(); }
+      try {
+        collect(g, src, sub.rootNode, off + n.startIndex, out);
+      } finally {
+        sub.delete();
+      }
       continue;
     }
     const cls = c.name === "callee" ? "fn" : c.name;
     if (c.name === "callee") n = calleeName(n);
-    if (n && n.endIndex > n.startIndex) out.push({ s: n.startIndex + off, e: n.endIndex + off, cls, pat: c.patternIndex });
+    if (n && n.endIndex > n.startIndex)
+      out.push({ s: n.startIndex + off, e: n.endIndex + off, cls, pat: c.patternIndex });
   }
 }
 
@@ -109,10 +114,21 @@ function collect(g: Grammar, src: string, root: Node, off: number, out: Span[]) 
 function calleeName(n: Node | null): Node | null {
   while (n) {
     switch (n.type) {
-      case "identifier": case "field_identifier": case "destructor_name": case "operator_name": return n;
-      case "qualified_identifier": case "template_function": case "template_method": n = n.childForFieldName("name"); break;
-      case "field_expression": n = n.childForFieldName("field"); break;
-      default: return null;
+      case "identifier":
+      case "field_identifier":
+      case "destructor_name":
+      case "operator_name":
+        return n;
+      case "qualified_identifier":
+      case "template_function":
+      case "template_method":
+        n = n.childForFieldName("name");
+        break;
+      case "field_expression":
+        n = n.childForFieldName("field");
+        break;
+      default:
+        return null;
     }
   }
   return null;
@@ -121,7 +137,7 @@ function calleeName(n: Node | null): Node | null {
 /** 长的（外层）先涂、短的（里层）后涂，一样长的按模式顺序；每个字符留最后一次的 class，再按行切成 token */
 function paint(text: string, lines: string[], spans: Span[]): HlTok[][] {
   const cls: (string | undefined)[] = new Array(text.length);
-  spans.sort((a, b) => (b.e - b.s) - (a.e - a.s) || a.pat - b.pat);
+  spans.sort((a, b) => b.e - b.s - (a.e - a.s) || a.pat - b.pat);
   for (const sp of spans) {
     const c = sp.cls === "plain" ? undefined : sp.cls;
     for (let i = sp.s; i < sp.e; i++) cls[i] = c;
@@ -131,7 +147,7 @@ function paint(text: string, lines: string[], spans: Span[]): HlTok[][] {
     const base = at;
     at += l.length + (text[at + l.length] === "\r" ? 2 : 1);
     const toks: HlTok[] = [];
-    for (let i = 0; i < l.length;) {
+    for (let i = 0; i < l.length; ) {
       const c = cls[base + i];
       let j = i + 1;
       while (j < l.length && cls[base + j] === c) j++;

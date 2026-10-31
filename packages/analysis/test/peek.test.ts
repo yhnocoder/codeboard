@@ -5,7 +5,10 @@ import { initAnalysis, analyze, peekPlan, isModuleDef, docToMd, cleanDoc, import
 
 const repo = fileURLToPath(new URL("../../../examples/nano-vllm/", import.meta.url));
 const read = (p: string) => readFileSync(repo + p, "utf8");
-const fa = (p: string) => { const t = read(p); return { a: analyze("python", t), lines: t.split("\n") }; };
+const fa = (p: string) => {
+  const t = read(p);
+  return { a: analyze("python", t), lines: t.split("\n") };
+};
 
 beforeAll(() => initAnalysis());
 
@@ -28,7 +31,8 @@ describe("peekPlan", () => {
   });
   it("multi-line field and module assignment: whole statement shown", () => {
     const src = `class Qwen3ForCausalLM:\n    packed_modules_mapping = {\n        "q_proj": ("qkv_proj", "q"),\n        "k_proj": ("qkv_proj", "k"),\n    }\n    tie = False\n\nTABLE = [\n    1,\n    2,\n]\nx = 1\n`;
-    const lines = src.split("\n"), a = analyze("python", src);
+    const lines = src.split("\n"),
+      a = analyze("python", src);
     const f = peekPlan(a, lines, 2);
     expect(f.rows).toEqual(expect.arrayContaining([2, 3, 4, 5]));
     const m = peekPlan(a, lines, 8);
@@ -50,22 +54,34 @@ describe("peekPlan", () => {
     expect(isModuleDef(["mp = 1"], 1, 0, "mp")).toBe(false);
     const p = peekPlan(analyze("python", src), lines, 1, { word: "mp", module: true });
     expect(p).toMatchObject({ kind: "module", rows: [], sig: "(module) mp" });
-    expect(p.doc).toBe("torch.multiprocessing is a wrapper around the native `multiprocessing` module.\n\nIt registers custom reducers, that use shared memory to provide shared views on the same data in different processes.");
+    expect(p.doc).toBe(
+      "torch.multiprocessing is a wrapper around the native `multiprocessing` module.\n\nIt registers custom reducers, that use shared memory to provide shared views on the same data in different processes.",
+    );
   });
 });
 
 describe("docstrings and imports", () => {
   it("extracts and cleans docstrings", () => {
-    expect(cleanDoc(`"""Creates a block.\n\n    Every block is named.\n    """`)).toBe("Creates a block.\n\nEvery block is named.");
-    const a = analyze("python", `class A:\n    """Doc A."""\n    x = 1\n    def f(self):\n        'f doc'\n        return 1\n`);
+    expect(cleanDoc(`"""Creates a block.\n\n    Every block is named.\n    """`)).toBe(
+      "Creates a block.\n\nEvery block is named.",
+    );
+    const a = analyze(
+      "python",
+      `class A:\n    """Doc A."""\n    x = 1\n    def f(self):\n        'f doc'\n        return 1\n`,
+    );
     expect(a.symbols.map((s) => s.doc)).toEqual(["Doc A.", "f doc"]);
   });
   it("docToMd keeps arg lists and examples", () => {
-    expect(docToMd("Load it.\n\nArgs:\n    model: the model\n    path: dir\n\n>>> load(m, p)")).toBe("Load it.\n\nArgs:\n- model: the model\n- path: dir\n\n```\n>>> load(m, p)\n```");
+    expect(docToMd("Load it.\n\nArgs:\n    model: the model\n    path: dir\n\n>>> load(m, p)")).toBe(
+      "Load it.\n\nArgs:\n- model: the model\n- path: dir\n\n```\n>>> load(m, p)\n```",
+    );
   });
   it("maps calls to the package they were imported from", () => {
     const { a } = fa("nanovllm/engine/model_runner.py");
-    const pk = (name: string) => { const c = a.calls.find((x) => x.name === name)!; return importPkg(a, c); };
+    const pk = (name: string) => {
+      const c = a.calls.find((x) => x.name === name)!;
+      return importPkg(a, c);
+    };
     expect(pk("init_process_group")).toBe("torch"); // dist.init_process_group
     expect(pk("SharedMemory")).toBe("multiprocessing");
     expect(pk("Qwen3ForCausalLM")).toBe("nanovllm");

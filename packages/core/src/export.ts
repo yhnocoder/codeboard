@@ -1,5 +1,25 @@
 // Markdown 原样写出用户的文字和标识符：不做转义（block_manager 不会变成 block\_manager）
-import { blockAt, blockSig, cardAndCols, cardTitle, firstLine, colsOf, hostOf, stickerWhere, domainOf, findCard, isQuestion, rpcText, versionLabel, type Board, type Card, type CodeCard, type Segment, type Sidenote, type Link } from "./model";
+import {
+  blockAt,
+  blockSig,
+  cardAndCols,
+  cardTitle,
+  firstLine,
+  colsOf,
+  hostOf,
+  stickerWhere,
+  domainOf,
+  findCard,
+  isQuestion,
+  rpcText,
+  versionLabel,
+  type Board,
+  type Card,
+  type CodeCard,
+  type Segment,
+  type Sidenote,
+  type Link,
+} from "./model";
 import { computeFlows, isCall, startCards, walkOrder } from "./flow";
 import { langInfo } from "@codeboard/analysis/langs";
 
@@ -9,9 +29,13 @@ export type ExportFormat = "html" | "md" | "png";
 /** Section 和它下面所有层的子 Section */
 function sectionTree(b: Pick<Board, "sections">, ids: string[]): Set<string> {
   const out = new Set(ids);
-  for (let grew = true; grew;) {
+  for (let grew = true; grew; ) {
     grew = false;
-    for (const s of b.sections) if (s.parent && out.has(s.parent) && !out.has(s.id)) { out.add(s.id); grew = true; }
+    for (const s of b.sections)
+      if (s.parent && out.has(s.parent) && !out.has(s.id)) {
+        out.add(s.id);
+        grew = true;
+      }
   }
   return out;
 }
@@ -26,12 +50,26 @@ export function exportOrder(b: Board, scope: ExportScope): string[] {
   let keep: (id: string) => boolean = () => true;
   if (scope.kind === "sections") {
     const secs = sectionTree(b, scope.ids);
-    keep = (id) => { const s = b.place[id]?.section; return !!s && secs.has(s); };
+    keep = (id) => {
+      const s = b.place[id]?.section;
+      return !!s && secs.has(s);
+    };
   }
   const out: string[] = [];
   const seen = new Set<string>();
-  const add = (ids: string[]) => { for (const id0 of ids) { const id = placed(id0); if (id && !seen.has(id) && keep(id)) { seen.add(id); out.push(id); } } };
-  if (scope.kind === "walk") { add(walkOrder(b, scope.start)); return out; }
+  const add = (ids: string[]) => {
+    for (const id0 of ids) {
+      const id = placed(id0);
+      if (id && !seen.has(id) && keep(id)) {
+        seen.add(id);
+        out.push(id);
+      }
+    }
+  };
+  if (scope.kind === "walk") {
+    add(walkOrder(b, scope.start));
+    return out;
+  }
   for (const s of startCards(b)) add(walkOrder(b, s));
   for (const g of computeFlows(b).graphs) for (const r of g.roots) add(walkOrder(b, r));
   const rest = b.cards.filter((c) => b.place[c.id] && !seen.has(c.id) && keep(c.id)).map((c) => c.id);
@@ -79,8 +117,11 @@ function segMd(s: Segment, link?: string): string[] {
     const h = s.hidden?.find(([a, z]) => ln >= a && ln <= z);
     if (h) {
       const next = s.text[h[1] - s.start + 1] ?? "";
-      lines.push(`${" ".repeat(Math.max(0, next.length - next.trimStart().length - cut))}⋯ ${h[1] - h[0] + 1} hidden line${h[1] > h[0] ? "s" : ""}`);
-      i += h[1] - ln; continue;
+      lines.push(
+        `${" ".repeat(Math.max(0, next.length - next.trimStart().length - cut))}⋯ ${h[1] - h[0] + 1} hidden line${h[1] > h[0] ? "s" : ""}`,
+      );
+      i += h[1] - ln;
+      continue;
     }
     lines.push(s.text[i].slice(Math.min(cut, s.text[i].length - s.text[i].trimStart().length)));
   }
@@ -94,21 +135,42 @@ function segMd(s: Segment, link?: string): string[] {
  * Note 里存储目录 assets/ 下的图（粘贴的截图）：导出的 .md 放在别处，地址对不上，和 Image 卡一样写成 *Image: alt*；
  * 有图注（title）的接在后面（*Image: alt — 图注*），缩小的宽度 {width=…%} 一起去掉
  */
-const localImages = (md: string) => md.replace(/!\[([^\]\n]*)\]\(<?assets\/[^)\s>]+>?(?:\s+"((?:\\.|[^"\\\n])*)")?\)(?:\{width=[\d.]+%\})?/g, (_m, alt: string, title?: string) => {
-  const cap = title?.replace(/\\(.)/g, "$1").trim();
-  return `*Image${[alt, cap].some(Boolean) ? `: ${[alt, cap].filter(Boolean).join(" — ")}` : ""}*`;
-});
-const quote = (s: string) => s.split("\n").map((l) => (l ? `> ${l}` : ">")).join("\n");
+const localImages = (md: string) =>
+  md.replace(
+    /!\[([^\]\n]*)\]\(<?assets\/[^)\s>]+>?(?:\s+"((?:\\.|[^"\\\n])*)")?\)(?:\{width=[\d.]+%\})?/g,
+    (_m, alt: string, title?: string) => {
+      const cap = title?.replace(/\\(.)/g, "$1").trim();
+      return `*Image${[alt, cap].some(Boolean) ? `: ${[alt, cap].filter(Boolean).join(" — ")}` : ""}*`;
+    },
+  );
+const quote = (s: string) =>
+  s
+    .split("\n")
+    .map((l) => (l ? `> ${l}` : ">"))
+    .join("\n");
 
 function noteMd(b: Board, n: Sidenote, links?: Record<string, string>): string {
-  const where = n.at.lines ? (n.at.lines[0] === n.at.lines[1] ? ` · line ${n.at.lines[0]}` : ` · lines ${n.at.lines[0]}–${n.at.lines[1]}`) : "";
+  const where = n.at.lines
+    ? n.at.lines[0] === n.at.lines[1]
+      ? ` · line ${n.at.lines[0]}`
+      : ` · lines ${n.at.lines[0]}–${n.at.lines[1]}`
+    : "";
   const head = `**Sidenote**${where}${n.why ? ` · ${n.why}` : ""}`;
   switch (n.kind) {
-    case "text": return quote(`${head}\n\n${localImages(n.md.trim())}`);
-    case "link": return quote(`${head}: [${n.title || domainOf(n.url)}](${n.url})`);
-    case "card": { const c = findCard(b, n.card)?.card; return quote(`${head}: see “${c ? cardTitle(c, b) : n.card}”`); }
-    case "paste": { const f = fence(n.text); return quote(`${head}${n.url ? ` · ${n.url}` : ""}\n\n${f}${mdLang(n.lang)}\n${n.text}\n${f}`); }
-    case "code": return quote([head, "", ...segMd(n.code, links?.[n.code.id])].join("\n"));
+    case "text":
+      return quote(`${head}\n\n${localImages(n.md.trim())}`);
+    case "link":
+      return quote(`${head}: [${n.title || domainOf(n.url)}](${n.url})`);
+    case "card": {
+      const c = findCard(b, n.card)?.card;
+      return quote(`${head}: see “${c ? cardTitle(c, b) : n.card}”`);
+    }
+    case "paste": {
+      const f = fence(n.text);
+      return quote(`${head}${n.url ? ` · ${n.url}` : ""}\n\n${f}${mdLang(n.lang)}\n${n.text}\n${f}`);
+    }
+    case "code":
+      return quote([head, "", ...segMd(n.code, links?.[n.code.id])].join("\n"));
   }
 }
 
@@ -141,26 +203,37 @@ function bodyMd(b: Board, c: Card, o: MdOpts): string[] {
     case "code": {
       const out: string[] = [];
       if (c.gen) out.push(`*Generated · ${c.gen.what}${c.gen.run ? ` · ${c.gen.run}` : ""}*`, "");
-      c.segments.forEach((s, i) => { if (i) out.push(""); out.push(...segMd(s, o.links?.[s.id])); });
+      c.segments.forEach((s, i) => {
+        if (i) out.push("");
+        out.push(...segMd(s, o.links?.[s.id]));
+      });
       return out;
     }
     case "note": {
       if (c.msg) return [`Message: ${c.md.trim()}${c.msg.where ? ` (${c.msg.where})` : ""}`];
       // Note 自己第一行就是标题（## prefix caching）：节标题已经写了，不重复
-      const md = c.md.trim(), m = /^#{1,6}\s+(.+)\n?/.exec(md);
+      const md = c.md.trim(),
+        m = /^#{1,6}\s+(.+)\n?/.exec(md);
       return [localImages(m && m[1].trim() === cardTitle(c, b) ? md.slice(m[0].length).trim() : md)];
     }
-    case "image": return [/^(https?:|data:)/.test(c.src) ? `![${c.alt ?? ""}](${c.src})` : `*Image${c.alt ? `: ${c.alt}` : ""}*`];
-    case "web": return [`[${c.meta?.title || domainOf(c.url)}](${c.url})`, ...(c.meta?.desc ? ["", c.meta.desc] : [])];
-    case "links": return c.items.map((it) => `- [${it.title || it.meta?.title || domainOf(it.url)}](${it.url})`);
+    case "image":
+      return [/^(https?:|data:)/.test(c.src) ? `![${c.alt ?? ""}](${c.src})` : `*Image${c.alt ? `: ${c.alt}` : ""}*`];
+    case "web":
+      return [`[${c.meta?.title || domainOf(c.url)}](${c.url})`, ...(c.meta?.desc ? ["", c.meta.desc] : [])];
+    case "links":
+      return c.items.map((it) => `- [${it.title || it.meta?.title || domainOf(it.url)}](${it.url})`);
     case "compare": {
       const cols = colsOf(b, c);
       if (!cols) return [];
       const out: string[] = [];
-      for (const k of cols as CodeCard[]) { out.push(`**${cardTitle(k, b)}**`, ""); for (const s of k.segments) out.push(...segMd(s, o.links?.[s.id]), ""); }
+      for (const k of cols as CodeCard[]) {
+        out.push(`**${cardTitle(k, b)}**`, "");
+        for (const s of k.segments) out.push(...segMd(s, o.links?.[s.id]), "");
+      }
       return out;
     }
-    case "board": return [`Sub-board: ${o.boardName?.(c.board) ?? c.board}`];
+    case "board":
+      return [`Sub-board: ${o.boardName?.(c.board) ?? c.board}`];
   }
 }
 
@@ -177,24 +250,42 @@ export function boardMarkdown(b: Board, o: MdOpts): string {
     if (c.desc?.trim()) out.push(c.desc.trim(), "");
     const body = bodyMd(b, c, o);
     if (body.length) out.push(...body, "");
-    for (const n of b.sidenotes) if (ids.includes(n.at.card) && (o.boardOnly || !n.boardOnly)) out.push(noteMd(b, n, o.links), "");
+    for (const n of b.sidenotes)
+      if (ids.includes(n.at.card) && (o.boardOnly || !n.boardOnly)) out.push(noteMd(b, n, o.links), "");
     if (o.questions) {
-      const qs = b.stickers.filter((s) => { const c = stickerWhere(b, s).card; return isQuestion(s) && c !== undefined && ids.includes(c); });
+      const qs = b.stickers.filter((s) => {
+        const c = stickerWhere(b, s).card;
+        return isQuestion(s) && c !== undefined && ids.includes(c);
+      });
       for (const s of qs) {
         const line = s.at.kind === "line" ? ` (line ${s.at.line})` : "";
         const [first, ...rest] = (s.q?.md.trim() || "(no text)").split("\n");
-        out.push(`- [${s.q?.done ? "x" : " "}] **Question**${line}: ${first}`, ...rest.map((r) => (r.trim() ? `  ${r}` : "")));
+        out.push(
+          `- [${s.q?.done ? "x" : " "}] **Question**${line}: ${first}`,
+          ...rest.map((r) => (r.trim() ? `  ${r}` : "")),
+        );
       }
       if (qs.length) out.push("");
     }
-    const outs = b.links.filter((l) => ids.includes(l.from.card) && !ids.includes(l.to.card) && !l.gen).sort((x, y) => Number(!isCall(x)) - Number(!isCall(y)) || (x.from.line ?? 0) - (y.from.line ?? 0));
+    const outs = b.links
+      .filter((l) => ids.includes(l.from.card) && !ids.includes(l.to.card) && !l.gen)
+      .sort((x, y) => Number(!isCall(x)) - Number(!isCall(y)) || (x.from.line ?? 0) - (y.from.line ?? 0));
     if (outs.length) out.push(...outs.map((l) => `- ${arrowMd(b, l, o)}`), "");
   }
-  return `${out.join("\n").replace(/\n{3,}/g, "\n\n").trimEnd()}\n`;
+  return `${out
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trimEnd()}\n`;
 }
 
 /** GitHub 永久链接：remote（git@github.com:o/n.git、https://github.com/o/n）+ commit + 路径 + 行 */
-export function githubPermalink(remote: string, commit: string, path: string, start: number, end: number): string | undefined {
+export function githubPermalink(
+  remote: string,
+  commit: string,
+  path: string,
+  start: number,
+  end: number,
+): string | undefined {
   const m = /github\.com[:/]+([^/]+)\/([^/]+?)(?:\.git)?\/?$/.exec(remote.trim());
   if (!m || !/^[0-9a-f]{7,40}$/.test(commit)) return undefined;
   return `https://github.com/${m[1]}/${m[2]}/blob/${commit}/${path.split("/").map(encodeURIComponent).join("/")}#L${start}${end > start ? `-L${end}` : ""}`;
@@ -203,7 +294,8 @@ export function githubPermalink(remote: string, commit: string, path: string, st
 /** 段 → 永久链接（GitHub Code 段直接有 owner / name；仓库里的段问 remote） */
 export function segPermalink(s: Segment, remoteOf?: (s: Segment) => string | undefined): string | undefined {
   if (s.version.kind !== "git") return undefined;
-  if (s.src.kind === "github") return githubPermalink(`github.com/${s.src.owner}/${s.src.name}`, s.version.commit, s.path, s.start, s.end);
+  if (s.src.kind === "github")
+    return githubPermalink(`github.com/${s.src.owner}/${s.src.name}`, s.version.commit, s.path, s.start, s.end);
   const r = s.src.kind === "repo" ? remoteOf?.(s) : undefined;
   return r ? githubPermalink(r, s.version.commit, s.path, s.start, s.end) : undefined;
 }
@@ -212,11 +304,20 @@ export function segPermalink(s: Segment, remoteOf?: (s: Segment) => string | und
 const RES_RE = /cbres:(media|asset)\/([^"')\s]+)/g;
 
 /** 把 cbres: 引用换成 data: URL（load 读文件；读不到的留空，图片显示成破图而不是去连网） */
-export async function inlineSnapshot(html: string, load: (kind: "media" | "asset", path: string) => Promise<{ mime: string; base64: string } | null>): Promise<string> {
+export async function inlineSnapshot(
+  html: string,
+  load: (kind: "media" | "asset", path: string) => Promise<{ mime: string; base64: string } | null>,
+): Promise<string> {
   const want = new Map<string, Promise<string>>();
   for (const m of html.matchAll(RES_RE)) {
     const k = m[0];
-    if (!want.has(k)) want.set(k, load(m[1] as "media" | "asset", decodeURIComponent(m[2])).then((r) => (r ? `data:${r.mime};base64,${r.base64}` : "")).catch(() => ""));
+    if (!want.has(k))
+      want.set(
+        k,
+        load(m[1] as "media" | "asset", decodeURIComponent(m[2]))
+          .then((r) => (r ? `data:${r.mime};base64,${r.base64}` : ""))
+          .catch(() => ""),
+      );
   }
   const got = new Map<string, string>();
   for (const [k, p] of want) got.set(k, await p);
@@ -225,5 +326,21 @@ export async function inlineSnapshot(html: string, load: (kind: "media" | "asset
 
 export function mimeOf(p: string): string {
   const e = p.toLowerCase().split(".").pop() ?? "";
-  return ({ woff2: "font/woff2", woff: "font/woff", ttf: "font/ttf", otf: "font/otf", png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", webp: "image/webp", svg: "image/svg+xml", ico: "image/x-icon" } as Record<string, string>)[e] ?? "application/octet-stream";
+  return (
+    (
+      {
+        woff2: "font/woff2",
+        woff: "font/woff",
+        ttf: "font/ttf",
+        otf: "font/otf",
+        png: "image/png",
+        jpg: "image/jpeg",
+        jpeg: "image/jpeg",
+        gif: "image/gif",
+        webp: "image/webp",
+        svg: "image/svg+xml",
+        ico: "image/x-icon",
+      } as Record<string, string>
+    )[e] ?? "application/octet-stream"
+  );
 }

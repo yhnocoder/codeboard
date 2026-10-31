@@ -6,7 +6,10 @@ import type { Page } from "playwright-core";
 import { test, open, check, expect, until, idle, pmHasSelection, focusSettled, frames } from "../fixtures";
 
 const close = (h: Host) => h.page.context().close();
-const card = (q: string) => { const s = findSym(q); return symCard(s.f, s.s); };
+const card = (q: string) => {
+  const s = findSym(q);
+  return symCard(s.f, s.s);
+};
 
 /** 打一串：{Enter}、{Control+z} 之类是按键，其余是字 */
 async function keys(pg: Page, seq: string) {
@@ -15,32 +18,57 @@ async function keys(pg: Page, seq: string) {
     if (part.startsWith("{") && part.endsWith("}")) {
       // Home / End / 方向键是浏览器自己移光标，ProseMirror 要等异步的 selectionchange 才知道；脚本按键比人快得多，前后各等它读到选区
       const nav = /Home|End|Arrow/.test(part);
-      if (nav) { await focusSettled(pg); await pmHasSelection(pg); }
+      if (nav) {
+        await focusSettled(pg);
+        await pmHasSelection(pg);
+      }
       await pg.keyboard.press(part.slice(1, -1));
       if (nav) await pmHasSelection(pg);
-    }
-    else await pg.keyboard.type(part);
+    } else await pg.keyboard.type(part);
   }
 }
 
-type Case = { name: string; init?: string; seq: string; md: string | RegExp; dom?: (pg: Page) => Promise<unknown>; domOk?: (v: any) => boolean; after?: (pg: Page) => Promise<void>; pre?: (pg: Page) => Promise<void> };
+type Case = {
+  name: string;
+  init?: string;
+  seq: string;
+  md: string | RegExp;
+  dom?: (pg: Page) => Promise<unknown>;
+  domOk?: (v: any) => boolean;
+  after?: (pg: Page) => Promise<void>;
+  pre?: (pg: Page) => Promise<void>;
+};
 
 // 慢机器上（CI）打开编辑器后的第一帧可能来得很晚，脚本的按键全都赶在它前面：pre 里让每一帧晚 ms 毫秒，after 里放回去
-const slowFrames = (ms: number) => (pg: Page) => pg.evaluate((ms) => {
-  const w = window as any, raf = window.requestAnimationFrame.bind(window);
-  w.__raf = raf;
-  window.requestAnimationFrame = (cb) => window.setTimeout(() => raf(cb), ms);
-}, ms);
-const fastFrames = (pg: Page) => pg.evaluate(() => { const w = window as any; if (w.__raf) window.requestAnimationFrame = w.__raf; });
+const slowFrames = (ms: number) => (pg: Page) =>
+  pg.evaluate((ms) => {
+    const w = window as any,
+      raf = window.requestAnimationFrame.bind(window);
+    w.__raf = raf;
+    window.requestAnimationFrame = (cb) => window.setTimeout(() => raf(cb), ms);
+  }, ms);
+const fastFrames = (pg: Page) =>
+  pg.evaluate(() => {
+    const w = window as any;
+    if (w.__raf) window.requestAnimationFrame = w.__raf;
+  });
 
 function board(n: number, init: (string | undefined)[] = []): Board {
   const b = emptyBoard("b1", "typora");
   put(b, card("Scheduler.schedule"), 2400, 60, 420);
-  for (let i = 0; i < n; i++) put(b, { id: `n${i}`, kind: "note", md: init[i] ?? "", look: "note" } as NoteCard, 60 + (i % 4) * 560, 60 + Math.floor(i / 4) * 360, 520);
+  for (let i = 0; i < n; i++)
+    put(
+      b,
+      { id: `n${i}`, kind: "note", md: init[i] ?? "", look: "note" } as NoteCard,
+      60 + (i % 4) * 560,
+      60 + Math.floor(i / 4) * 360,
+      520,
+    );
   b.cam = { x: 0, y: 0, z: 1 };
   return b;
 }
-const md = (h: Host, id: string) => ((h.board().cards.find((c) => c.id === id) as NoteCard | undefined)?.md ?? "").trim();
+const md = (h: Host, id: string) =>
+  ((h.board().cards.find((c) => c.id === id) as NoteCard | undefined)?.md ?? "").trim();
 async function editNote(h: Host, id: string, pre?: (pg: Page) => Promise<void>) {
   // the camera jumps to the card (reduced motion only for this): the flight is not what these cases test, and 85 flights
   // took most of a minute and a half
@@ -61,21 +89,28 @@ const inNote = (id: string, sel: string) => `.card[data-id="${id}"] .md-pm ${sel
 /** 跑一组：每条一张 Note，打完 Esc，最后一起看写回的 */
 async function runCases(h: Host, prefix: string, all: Case[]) {
   // CASES=名字的一部分：只跑这几条（调试用）
-  const cases = process.env.CASES ? all.filter((c) => process.env.CASES!.split(",").some((q) => c.name.includes(q))) : all;
+  const cases = process.env.CASES
+    ? all.filter((c) => process.env.CASES!.split(",").some((q) => c.name.includes(q)))
+    : all;
   const doms: unknown[] = [];
   for (let i = 0; i < cases.length; i++) {
-    const c = cases[i], id = `n${i}`;
+    const c = cases[i],
+      id = `n${i}`;
     await editNote(h, id, c.pre);
     await keys(h.page, c.seq);
     if (c.dom) await idle(h); // what the DOM looks like once the keys are handled
     doms[i] = c.dom ? await c.dom(h.page) : undefined;
     if (c.after) await c.after(h.page);
     // 退出：公式框、菜单开着时 Esc 先关它们
-    for (let k = 0; k < 3 && (await h.page.locator(".md-pm").count()); k++) { await h.page.keyboard.press("Escape"); await idle(h); }
+    for (let k = 0; k < 3 && (await h.page.locator(".md-pm").count()); k++) {
+      await h.page.keyboard.press("Escape");
+      await idle(h);
+    }
   }
   await idle(h); // every Note's Markdown has reached the host
   for (let i = 0; i < cases.length; i++) {
-    const c = cases[i], got = md(h, `n${i}`);
+    const c = cases[i],
+      got = md(h, `n${i}`);
     const okMd = typeof c.md === "string" ? got === c.md : c.md.test(got);
     const okDom = c.domOk ? c.domOk(doms[i]) : true;
     check(`${prefix} ${c.name}`, okMd && okDom, { got, ...(c.dom ? { dom: doms[i] } : {}) });
@@ -84,7 +119,8 @@ async function runCases(h: Host, prefix: string, all: Case[]) {
 
 const count = (sel: string) => async (pg: Page) => pg.locator(sel).count();
 /** 编辑器里显示出来的记号：记号就是原文里的字，光标挨着这一段时显示（.md-mk），别处藏着（.md-hide） */
-const marks = async (pg: Page) => pg.evaluate(() => [...document.querySelectorAll(".md-pm .md-mk:not(.md-hide)")].map((e) => e.textContent ?? ""));
+const marks = async (pg: Page) =>
+  pg.evaluate(() => [...document.querySelectorAll(".md-pm .md-mk:not(.md-hide)")].map((e) => e.textContent ?? ""));
 
 /** Typora 式的块规则和行内规则：打完记号就变，写回干净的 Markdown */
 test("markdownInputRules", async () => {
@@ -105,14 +141,55 @@ test("markdownInputRules", async () => {
     { name: "code indent typed", seq: "```python{Enter}    x = 1{Enter}y", md: "```python\n    x = 1\n    y\n```" },
     { name: "code indent plain", seq: "```{Enter}  x = 1{Enter}y", md: "```\n  x = 1\n  y\n```" },
     // the double-click lands in the block (the block fills the Note): to its last line's end, then Enter
-    { name: "code indent block", init: "```python\nif a:\n    x = 1\n```", seq: "{Control+End}{Enter}y", md: "```python\nif a:\n    x = 1\n    y\n```" },
+    {
+      name: "code indent block",
+      init: "```python\nif a:\n    x = 1\n```",
+      seq: "{Control+End}{Enter}y",
+      md: "```python\nif a:\n    x = 1\n    y\n```",
+    },
     { name: "code fence c++", seq: "```c++{Enter}int a;", md: "```c++\nint a;\n```" },
-    { name: "math block", seq: "$${Enter}", after: async (pg) => { await pg.waitForSelector(".md-pm .md-mathsrc:focus"); await pg.keyboard.type("x^2"); await pg.keyboard.press("Control+Enter"); }, md: "$$\nx^2\n$$" },
+    {
+      name: "math block",
+      seq: "$${Enter}",
+      after: async (pg) => {
+        await pg.waitForSelector(".md-pm .md-mathsrc:focus");
+        await pg.keyboard.type("x^2");
+        await pg.keyboard.press("Control+Enter");
+      },
+      md: "$$\nx^2\n$$",
+    },
     // 公式框打开后，打开编辑器时排着的那次补焦点（下一帧）不能把焦点从公式框抢回编辑器（公式框会关掉，空公式块被删）
-    { name: "math block slow frame", pre: slowFrames(400), seq: "$${Enter}", after: async (pg) => { await pg.waitForSelector(".md-pm .md-mathsrc:focus"); await frames(pg, 2); await pg.keyboard.type("x^2"); await pg.keyboard.press("Control+Enter"); await fastFrames(pg); }, md: "$$\nx^2\n$$" },
-    { name: "math block one line", seq: "$$a+b$${Enter}", md: "$$\na+b\n$$", dom: count(".md-pm [data-type=block-math]"), domOk: (n) => n === 1 },
+    {
+      name: "math block slow frame",
+      pre: slowFrames(400),
+      seq: "$${Enter}",
+      after: async (pg) => {
+        await pg.waitForSelector(".md-pm .md-mathsrc:focus");
+        await frames(pg, 2);
+        await pg.keyboard.type("x^2");
+        await pg.keyboard.press("Control+Enter");
+        await fastFrames(pg);
+      },
+      md: "$$\nx^2\n$$",
+    },
+    {
+      name: "math block one line",
+      seq: "$$a+b$${Enter}",
+      md: "$$\na+b\n$$",
+      dom: count(".md-pm [data-type=block-math]"),
+      domOk: (n) => n === 1,
+    },
     // [toc] 回车出目录，跟着后面打的标题变
-    { name: "toc", seq: "[toc]{Enter}# A{Enter}## B", md: "[toc]\n\n# A\n\n## B", dom: (pg) => pg.evaluate(() => [...document.querySelectorAll(".md-pm nav.md-toc > div")].map((d) => `${d.className}:${d.textContent}`)), domOk: (v) => JSON.stringify(v) === '["l1:A","l2:B"]' },
+    {
+      name: "toc",
+      seq: "[toc]{Enter}# A{Enter}## B",
+      md: "[toc]\n\n# A\n\n## B",
+      dom: (pg) =>
+        pg.evaluate(() =>
+          [...document.querySelectorAll(".md-pm nav.md-toc > div")].map((d) => `${d.className}:${d.textContent}`),
+        ),
+      domOk: (v) => JSON.stringify(v) === '["l1:A","l2:B"]',
+    },
     { name: "hr dashes", seq: "---{Enter}", md: "---" },
     // 没按回车就还是这一段的原文，照打的写回（原文就是文档）
     { name: "dashes without enter stay text", seq: "---", md: "---" },
@@ -131,10 +208,32 @@ test("markdownInputRules", async () => {
     { name: "lone tilde", seq: "a ~ b ~/x", md: "a ~ b ~/x" },
     { name: "code span", seq: "`c` t", md: "`c` t" },
     // the formula at the caret shows its source; the other two are drawn
-    { name: "inline math", seq: "$\\frac{a}{b}$ and $a$, $b$", md: "$\\frac{a}{b}$ and $a$, $b$", dom: count(".md-pm [data-type=inline-math]"), domOk: (n) => n === 2 },
+    {
+      name: "inline math",
+      seq: "$\\frac{a}{b}$ and $a$, $b$",
+      md: "$\\frac{a}{b}$ and $a$, $b$",
+      dom: count(".md-pm [data-type=inline-math]"),
+      domOk: (n) => n === 2,
+    },
     // 打的 \* 照 Typora：存成 \*，光标不在旁边时 \ 不显示，在旁边时显示（能删）
-    { name: "escape hidden", seq: "a \\*not\\* b", md: "a \\*not\\* b", dom: (pg) => pg.evaluate(() => [(document.querySelector(".md-pm p") as HTMLElement).innerText, document.querySelectorAll(".md-pm em").length]), domOk: (v) => JSON.stringify(v) === '["a *not* b",0]' },
-    { name: "escape shown at caret", seq: "x \\# y{ArrowLeft}{ArrowLeft}", md: "x \\# y", dom: (pg) => pg.evaluate(() => (document.querySelector(".md-pm p") as HTMLElement).innerText), domOk: (v) => v === "x \\# y" },
+    {
+      name: "escape hidden",
+      seq: "a \\*not\\* b",
+      md: "a \\*not\\* b",
+      dom: (pg) =>
+        pg.evaluate(() => [
+          (document.querySelector(".md-pm p") as HTMLElement).innerText,
+          document.querySelectorAll(".md-pm em").length,
+        ]),
+      domOk: (v) => JSON.stringify(v) === '["a *not* b",0]',
+    },
+    {
+      name: "escape shown at caret",
+      seq: "x \\# y{ArrowLeft}{ArrowLeft}",
+      md: "x \\# y",
+      dom: (pg) => pg.evaluate(() => (document.querySelector(".md-pm p") as HTMLElement).innerText),
+      domOk: (v) => v === "x \\# y",
+    },
     { name: "dollars stay text", seq: "$5 and $10", md: "$5 and $10" },
     { name: "display inline", seq: "x $$y$$ z", md: "x $$y$$ z" },
     { name: "link", seq: "[t](https://x.y/a) z", md: "[t](https://x.y/a) z" },
@@ -145,47 +244,145 @@ test("markdownInputRules", async () => {
     { name: "undo bold rule", seq: "**b**{Control+z}", md: "", dom: count(".md-pm strong"), domOk: (n) => n === 0 },
     { name: "undo heading rule", seq: "# {Control+z}x", md: "x" },
     // 写回成 \$a$；再读进来时字里的 $a$ 会变成公式
-    { name: "undo math rule", seq: "$a${Control+z}", md: "", dom: count(".md-pm [data-type=inline-math]"), domOk: (n) => n === 0 },
+    {
+      name: "undo math rule",
+      seq: "$a${Control+z}",
+      md: "",
+      dom: count(".md-pm [data-type=inline-math]"),
+      domOk: (n) => n === 0,
+    },
     // ⌘Z 撤回公式转换后存下的 \$x$，再打开编辑还是字面的 $x$（不变回公式），写回不变
-    { name: "escaped dollar reopens as text", init: "a \\$x$ b", seq: "{End} c", md: "a \\$x$ b c", dom: count(".md-pm [data-type=inline-math]"), domOk: (n) => n === 0 },
-    { name: "undo fence rule", seq: "```js{Enter}{Control+z}", md: /^```js$|^\\`\\`\\`js$/, dom: count(".md-pm pre"), domOk: (n) => n === 0 },
+    {
+      name: "escaped dollar reopens as text",
+      init: "a \\$x$ b",
+      seq: "{End} c",
+      md: "a \\$x$ b c",
+      dom: count(".md-pm [data-type=inline-math]"),
+      domOk: (n) => n === 0,
+    },
+    {
+      name: "undo fence rule",
+      seq: "```js{Enter}{Control+z}",
+      md: /^```js$|^\\`\\`\\`js$/,
+      dom: count(".md-pm pre"),
+      domOk: (n) => n === 0,
+    },
     // 标题行首退格：变回段落
     // Home 之后要等 ProseMirror 收到 selectionchange 再按 Backspace（keys 里等），不然 Backspace 按的还是行尾的光标
     // 一次退一个 #：## → # → 普通段落（Typora 一样）
     { name: "heading backspace one level", seq: "## h", after: (pg) => keys(pg, "{Home}{Backspace}"), md: "# h" },
-    { name: "heading backspace to paragraph", seq: "## h", after: (pg) => keys(pg, "{Home}{Backspace}{Backspace}"), md: "h" },
-    { name: "task toggle", seq: "- [ ] t", after: async (pg) => { await pg.locator('.md-pm li[data-type="taskItem"] input[type=checkbox]').first().click(); await expect(pg.locator('.md-pm li[data-type="taskItem"] input[type=checkbox]').first()).toBeChecked(); }, md: "- [x] t" },
+    {
+      name: "heading backspace to paragraph",
+      seq: "## h",
+      after: (pg) => keys(pg, "{Home}{Backspace}{Backspace}"),
+      md: "h",
+    },
+    {
+      name: "task toggle",
+      seq: "- [ ] t",
+      after: async (pg) => {
+        await pg.locator('.md-pm li[data-type="taskItem"] input[type=checkbox]').first().click();
+        await expect(pg.locator('.md-pm li[data-type="taskItem"] input[type=checkbox]').first()).toBeChecked();
+      },
+      md: "- [x] t",
+    },
     { name: "quote backspace", seq: "> q", after: (pg) => keys(pg, "{Home}{Backspace}"), md: "q" },
     { name: "list backspace", seq: "- a{Enter}b", after: (pg) => keys(pg, "{Home}{Backspace}"), md: "- a\n\nb" },
     { name: "task backspace", seq: "- [ ] t", after: (pg) => keys(pg, "{Home}{Backspace}"), md: "t" },
     { name: "home in text", init: "hello", seq: " ab{Home}x", md: "xhello ab" },
     // 光标在格式里：显示记号
     // 光标移进去（方向键、Home）就展开成真的原文，能改记号；离开时重新解析
-    { name: "markers bold", seq: "x **bo**{ArrowLeft}", md: "x **bo**", dom: marks, domOk: (v) => JSON.stringify(v) === '["**","**"]' },
+    {
+      name: "markers bold",
+      seq: "x **bo**{ArrowLeft}",
+      md: "x **bo**",
+      dom: marks,
+      domOk: (v) => JSON.stringify(v) === '["**","**"]',
+    },
     { name: "markers heading", seq: "## hd", md: "## hd", dom: marks, domOk: (v) => JSON.stringify(v) === '["## "]' },
-    { name: "markers link", seq: "[t](https://q.r){ArrowLeft}", md: "[t](https://q.r)", dom: marks, domOk: (v) => JSON.stringify(v) === '["[","](https://q.r)"]' },
-    { name: "source bold to italic", seq: "x **bo** y{Home}{ArrowRight}{ArrowRight}{Delete}{ArrowRight}{ArrowRight}{ArrowRight}{Delete}{End}!", md: "x *bo* y!", dom: count(".md-pm em"), domOk: (n) => n === 1 },
-    { name: "source heading level", seq: "## hd{Home}{ArrowLeft}#{End}", md: "### hd", dom: count(".md-pm h3"), domOk: (n) => n === 1 },
-    { name: "source link url", seq: "[t](https://q.r) z{Home}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}s{End}", md: "[t](https://qs.r) z" },
+    {
+      name: "markers link",
+      seq: "[t](https://q.r){ArrowLeft}",
+      md: "[t](https://q.r)",
+      dom: marks,
+      domOk: (v) => JSON.stringify(v) === '["[","](https://q.r)"]',
+    },
+    {
+      name: "source bold to italic",
+      seq: "x **bo** y{Home}{ArrowRight}{ArrowRight}{Delete}{ArrowRight}{ArrowRight}{ArrowRight}{Delete}{End}!",
+      md: "x *bo* y!",
+      dom: count(".md-pm em"),
+      domOk: (n) => n === 1,
+    },
+    {
+      name: "source heading level",
+      seq: "## hd{Home}{ArrowLeft}#{End}",
+      md: "### hd",
+      dom: count(".md-pm h3"),
+      domOk: (n) => n === 1,
+    },
+    {
+      name: "source link url",
+      seq: "[t](https://q.r) z{Home}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}s{End}",
+      md: "[t](https://qs.r) z",
+    },
     // 原文里改了一下又离开（收回去了）：一次 ⌘Z 回到改之前，格式照旧
     { name: "source undo", seq: "x **bo** y{Home}{ArrowRight}{ArrowRight}{Delete}{End}{Control+z}", md: "x **bo** y" },
-    { name: "source math by arrows", seq: "a $x$ b{ArrowLeft}{ArrowLeft}{ArrowLeft}y{End}", md: "a $xy$ b", dom: count(".md-pm [data-type=inline-math]"), domOk: (n) => n === 1 },
-    { name: "markers leave", seq: "x **bo** y", md: "x **bo** y", dom: marks, domOk: (v) => JSON.stringify(v) === "[]" },
+    {
+      name: "source math by arrows",
+      seq: "a $x$ b{ArrowLeft}{ArrowLeft}{ArrowLeft}y{End}",
+      md: "a $xy$ b",
+      dom: count(".md-pm [data-type=inline-math]"),
+      domOk: (n) => n === 1,
+    },
+    {
+      name: "markers leave",
+      seq: "x **bo** y",
+      md: "x **bo** y",
+      dom: marks,
+      domOk: (v) => JSON.stringify(v) === "[]",
+    },
     { name: "home in heading", seq: "## hd{Home}x", md: "## xhd" },
     // 输入法提交（不经过按键）
-    { name: "ime insert", seq: "", after: async (pg) => { await pg.keyboard.insertText("看 $x^2$"); await pg.keyboard.insertText(" 完"); }, md: "看 $x^2$ 完" },
+    {
+      name: "ime insert",
+      seq: "",
+      after: async (pg) => {
+        await pg.keyboard.insertText("看 $x^2$");
+        await pg.keyboard.insertText(" 完");
+      },
+      md: "看 $x^2$ 完",
+    },
     // 括号、引号自动配对（Typora 默认）；盖过补上的右括号；空的一对里退格两个都删；撇号不配；Markdown 记号不配
     { name: "pair paren", seq: "f(x", md: "f(x)" },
     { name: "pair overtype", seq: "f(x) and [a] {b}", md: "f(x) and [a] {b}" },
-    { name: "pair quotes", seq: 'say "hi" and \'yo\' ok', md: 'say "hi" and \'yo\' ok' },
+    { name: "pair quotes", seq: "say \"hi\" and 'yo' ok", md: "say \"hi\" and 'yo' ok" },
     { name: "pair apostrophe", seq: "don't stop", md: "don't stop" },
     { name: "pair wrap", seq: "word{Shift+Home}(", md: "(word)" },
     { name: "pair backspace", seq: "a ({Backspace}b", md: "a b" },
     { name: "pair not markdown", seq: "*a and `b", md: "*a and `b" },
     // 打完 :名字: 变表情（存回短名）；: 加两个字出菜单，↵ 选；不认识的、跟在数字后面的不变
-    { name: "emoji typed", seq: "hi :tada: x", md: "hi :tada: x", dom: (pg) => pg.evaluate(() => [...document.querySelectorAll(".md-pm .md-emoji")].map((e) => e.textContent)), domOk: (v) => JSON.stringify(v) === '["🎉"]' },
-    { name: "emoji menu", seq: ":smi{Enter} ok", md: ":smile: ok", dom: count(".md-pm .md-emoji"), domOk: (n) => n === 1 },
-    { name: "emoji literal", seq: "a :nosuch: 1:100: b", md: "a :nosuch: 1:100: b", dom: count(".md-pm .md-emoji"), domOk: (n) => n === 0 },
+    {
+      name: "emoji typed",
+      seq: "hi :tada: x",
+      md: "hi :tada: x",
+      dom: (pg) => pg.evaluate(() => [...document.querySelectorAll(".md-pm .md-emoji")].map((e) => e.textContent)),
+      domOk: (v) => JSON.stringify(v) === '["🎉"]',
+    },
+    {
+      name: "emoji menu",
+      seq: ":smi{Enter} ok",
+      md: ":smile: ok",
+      dom: count(".md-pm .md-emoji"),
+      domOk: (n) => n === 1,
+    },
+    {
+      name: "emoji literal",
+      seq: "a :nosuch: 1:100: b",
+      md: "a :nosuch: 1:100: b",
+      dom: count(".md-pm .md-emoji"),
+      domOk: (n) => n === 0,
+    },
     { name: "slash quote", seq: "/quote{Enter}q", md: "> q" },
     { name: "slash code", seq: "/code{Enter}k", md: "```\nk\n```" },
     { name: "slash divider", seq: "/divider{Enter}", md: "---" },
@@ -196,8 +393,17 @@ test("markdownInputRules", async () => {
     { name: "ref picker at", seq: "see @sched{Enter}", md: "see [[Scheduler.schedule]]" },
     { name: "at without a card", seq: "meet @ 5pm{Enter}x", md: "meet @ 5pm\n\nx" },
   ];
-  const run = process.env.CASES ? cases.filter((c) => process.env.CASES!.split(",").some((q) => c.name.includes(q))) : cases;
-  const h = await open({ board: board(run.length, run.map((c) => c.init)), w: 1400, h: 900 });
+  const run = process.env.CASES
+    ? cases.filter((c) => process.env.CASES!.split(",").some((q) => c.name.includes(q)))
+    : cases;
+  const h = await open({
+    board: board(
+      run.length,
+      run.map((c) => c.init),
+    ),
+    w: 1400,
+    h: 900,
+  });
   // IME：用 CDP 的 composition 打一个 $m$（组字结束时 TipTap 再跑一遍规则）
   await runCases(h, "markdownInputRules", cases);
   await close(h);
@@ -211,20 +417,63 @@ test("editorKeys", async () => {
     { name: "strike ⇧S", seq: "{Control+Shift+s}s{Control+Shift+s} x", md: "~~s~~ x" },
     { name: "strike ⇧X", seq: "{Control+Shift+x}s{Control+Shift+x} x", md: "~~s~~ x" },
     { name: "code", seq: "{Control+e}c{Control+e} x", md: "`c` x" },
-    { name: "link ⌘K on selection", seq: "word{Shift+Home}{Control+k}", after: async (pg) => { await pg.waitForSelector(".md-linkin"); await pg.keyboard.type("x.y/z"); await pg.keyboard.press("Enter"); }, md: "[word](https://x.y/z)" },
-    { name: "link ⌘K slow frame", pre: slowFrames(400), seq: "see {Control+k}", after: async (pg) => { await pg.waitForSelector(".md-linkin"); await frames(pg, 2); await pg.keyboard.type("https://c.d"); await pg.keyboard.press("Enter"); await fastFrames(pg); }, md: "see https://c.d" },
-    { name: "link ⌘K at caret", seq: "see {Control+k}", after: async (pg) => { await pg.waitForSelector(".md-linkin"); await pg.keyboard.type("https://a.b"); await pg.keyboard.press("Enter"); }, md: "see https://a.b" },
+    {
+      name: "link ⌘K on selection",
+      seq: "word{Shift+Home}{Control+k}",
+      after: async (pg) => {
+        await pg.waitForSelector(".md-linkin");
+        await pg.keyboard.type("x.y/z");
+        await pg.keyboard.press("Enter");
+      },
+      md: "[word](https://x.y/z)",
+    },
+    {
+      name: "link ⌘K slow frame",
+      pre: slowFrames(400),
+      seq: "see {Control+k}",
+      after: async (pg) => {
+        await pg.waitForSelector(".md-linkin");
+        await frames(pg, 2);
+        await pg.keyboard.type("https://c.d");
+        await pg.keyboard.press("Enter");
+        await fastFrames(pg);
+      },
+      md: "see https://c.d",
+    },
+    {
+      name: "link ⌘K at caret",
+      seq: "see {Control+k}",
+      after: async (pg) => {
+        await pg.waitForSelector(".md-linkin");
+        await pg.keyboard.type("https://a.b");
+        await pg.keyboard.press("Enter");
+      },
+      md: "see https://a.b",
+    },
     { name: "undo redo", seq: "one{Control+z}two{Control+z}{Control+Shift+z}", md: "two" },
     { name: "redo ⌘Y", seq: "abc{Control+z}{Control+y}", md: "abc" },
     { name: "select all", seq: "abc{Enter}def{Control+a}x", md: "x" },
     { name: "list tab", seq: "- a{Enter}b{Tab}", md: "- a\n  - b" },
     { name: "list shift-tab", seq: "- a{Enter}b{Tab}{Shift+Tab}", md: "- a\n- b" },
-    { name: "raw toggle", seq: "a{Control+/}{End}\n**r**{Control+/}", md: "a\n**r**", dom: count(".md-pm strong"), domOk: (n) => n === 1 },
+    {
+      name: "raw toggle",
+      seq: "a{Control+/}{End}\n**r**{Control+/}",
+      md: "a\n**r**",
+      dom: count(".md-pm strong"),
+      domOk: (n) => n === 1,
+    },
     { name: "hard break", seq: "a{Shift+Enter}b", md: "a<br>b" },
     { name: "word nav", seq: "one two{Control+ArrowLeft}x", md: "one xtwo" },
     { name: "delete word", seq: "one two{Control+Backspace}", md: "one" },
   ];
-  const h = await open({ board: board(cases.length + 4, cases.map((c) => c.init)), w: 1400, h: 900 });
+  const h = await open({
+    board: board(
+      cases.length + 4,
+      cases.map((c) => c.init),
+    ),
+    w: 1400,
+    h: 900,
+  });
   const pg = h.page;
   await runCases(h, "editorKeys", cases);
   // ⌘↵ / Esc：存好退出
@@ -236,19 +485,33 @@ test("editorKeys", async () => {
   await keys(pg, "esc{Escape}");
   const exitedEsc = (await pg.locator(".md-pm").count()) === 0;
   await idle(h);
-  check("editorKeys exit", exitedEnter && exitedEsc && md(h, `n${base}`) === "saved" && md(h, `n${base + 1}`) === "esc", { exitedEnter, exitedEsc });
+  check(
+    "editorKeys exit",
+    exitedEnter && exitedEsc && md(h, `n${base}`) === "saved" && md(h, `n${base + 1}`) === "esc",
+    { exitedEnter, exitedEsc },
+  );
 
   // 冒泡到 window 的按键（VS Code 的 webview 外壳就在 window 上收 keydown）
   await pg.evaluate(() => {
     const w = window as any;
     w.__fwd = [];
-    addEventListener("keydown", (e) => { if (e.metaKey || e.ctrlKey) w.__fwd.push(`${e.shiftKey ? "S" : ""}${e.key.toLowerCase()}`); });
+    addEventListener("keydown", (e) => {
+      if (e.metaKey || e.ctrlKey) w.__fwd.push(`${e.shiftKey ? "S" : ""}${e.key.toLowerCase()}`);
+    });
     // 复制 / 剪切：ProseMirror 写进剪贴板的内容
     w.__clip = [];
-    document.addEventListener("copy", (e) => w.__clip.push(["copy", e.clipboardData?.getData("text/plain"), e.clipboardData?.getData("text/html")]));
+    document.addEventListener("copy", (e) =>
+      w.__clip.push(["copy", e.clipboardData?.getData("text/plain"), e.clipboardData?.getData("text/html")]),
+    );
     document.addEventListener("cut", (e) => w.__clip.push(["cut", e.clipboardData?.getData("text/plain")]));
   });
-  const fwd = async () => pg.evaluate(() => { const w = window as any; const r = w.__fwd; w.__fwd = []; return r as string[]; });
+  const fwd = async () =>
+    pg.evaluate(() => {
+      const w = window as any;
+      const r = w.__fwd;
+      w.__fwd = [];
+      return r as string[];
+    });
   const n = `n${base + 2}`;
   await editNote(h, n);
   await keys(pg, "x **bold** y");
@@ -258,27 +521,36 @@ test("editorKeys", async () => {
   await pg.locator(`.card[data-id="${n}"] .md-pm`).waitFor();
   const blocked = await fwd();
   // 选中 bold 那段复制：text/plain 是 Markdown
-  const selectBoldY = () => pg.evaluate((sel) => {
-    // 用 DOM Range 选中 "bold y"（键盘选区在无头浏览器里不稳）
-    const p = document.querySelector(sel)!;
-    const w = document.createTreeWalker(p, NodeFilter.SHOW_TEXT);
-    const nodes: Text[] = [];
-    for (let t = w.nextNode(); t; t = w.nextNode()) nodes.push(t as Text);
-    const r = document.createRange();
-    const b = nodes.find((t) => t.data.includes("bold"))!, last = nodes[nodes.length - 1];
-    r.setStart(b, b.data.indexOf("bold"));
-    r.setEnd(last, last.data.length);
-    const s = getSelection()!;
-    s.removeAllRanges();
-    s.addRange(r);
-  }, inNote(n, "p"));
+  const selectBoldY = () =>
+    pg.evaluate(
+      (sel) => {
+        // 用 DOM Range 选中 "bold y"（键盘选区在无头浏览器里不稳）
+        const p = document.querySelector(sel)!;
+        const w = document.createTreeWalker(p, NodeFilter.SHOW_TEXT);
+        const nodes: Text[] = [];
+        for (let t = w.nextNode(); t; t = w.nextNode()) nodes.push(t as Text);
+        const r = document.createRange();
+        const b = nodes.find((t) => t.data.includes("bold"))!,
+          last = nodes[nodes.length - 1];
+        r.setStart(b, b.data.indexOf("bold"));
+        r.setEnd(last, last.data.length);
+        const s = getSelection()!;
+        s.removeAllRanges();
+        s.addRange(r);
+      },
+      inNote(n, "p"),
+    );
   // 等 ProseMirror 真的拿到这个选区再复制：它是在异步的 selectionchange 里才读 DOM 选区的；刚拿到焦点时它还会在 20ms 后把自己的
   // （收起的）选区写回 DOM，慢机器上这一下可能落在脚本设好选区之后，选区就没了（CI 上复制、剪切到的都是空的）。
   // 选中工具条只在 ProseMirror 的选区不空时出现；DOM 上的选区也还得是 "bold y"，不是就重新选
   // 所以先等 ProseMirror 拿到焦点后的那一下（prosemirror-view handlers.focus：焦点后 20ms 的 setTimeout）过去，再设选区、等它读到
   await focusSettled(pg);
   await selectBoldY();
-  await pg.waitForFunction(() => !!document.querySelector(".md-bubble") && getSelection()!.toString() === "bold y", null, { timeout: 5000 });
+  await pg.waitForFunction(
+    () => !!document.querySelector(".md-bubble") && getSelection()!.toString() === "bold y",
+    null,
+    { timeout: 5000 },
+  );
   await pg.keyboard.press("Control+c");
   // 收起选区再剪（按 End 在 CI 上偶尔赶在选区同步前，选区没收起来）。等 ProseMirror 也收起来了（选中工具条消失）再剪：
   // 它同样是在异步的 selectionchange 里才读到，固定等 100ms 在忙的机器上不够（剪到的还是 "**bold** y"）
@@ -294,9 +566,14 @@ test("editorKeys", async () => {
   await pg.evaluate(() => {
     const dt = new DataTransfer();
     dt.setData("text/plain", "pasted **b** and $m$ ok");
-    document.activeElement?.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true }));
+    document.activeElement?.dispatchEvent(
+      new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true }),
+    );
   });
-  const pasted = { strong: await pg.locator(inNote(n, "strong")).count(), math: await pg.locator(inNote(n, "[data-type=inline-math]")).count() };
+  const pasted = {
+    strong: await pg.locator(inNote(n, "strong")).count(),
+    math: await pg.locator(inNote(n, "[data-type=inline-math]")).count(),
+  };
   await pg.keyboard.press("Escape");
   // 单行名字、搜索框、公式框：剪切 / 复制 / 粘贴 / 全选 / 撤销 也要交给 VS Code，白板自己不撤销
   await pg.locator(`.card[data-id="${n}"]`).click({ position: { x: 5, y: 5 } });
@@ -306,11 +583,18 @@ test("editorKeys", async () => {
   for (const k of ["Control+c", "Control+x", "Control+v", "Control+a", "Control+z"]) await pg.keyboard.press(k);
   const paletteFwd = await fwd();
   await pg.keyboard.press("Escape");
-  const ok = !blocked.length && ["c", "x", "x"].every((k, i) => passed[i] === k) && !passed.includes("a")
-    && clip[0]?.[0] === "copy" && clip[0]?.[1] === "**bold** y" && /<strong>bold<\/strong>/.test(clip[0]?.[2] ?? "")
-    && clip.some((c: string[]) => c[0] === "cut" && c[1] === "x **bold** y") && emptied === ""
-    && pasted.strong === 1 && pasted.math === 1
-    && JSON.stringify(paletteFwd) === JSON.stringify(["c", "x", "v", "a", "z"]);
+  const ok =
+    !blocked.length &&
+    ["c", "x", "x"].every((k, i) => passed[i] === k) &&
+    !passed.includes("a") &&
+    clip[0]?.[0] === "copy" &&
+    clip[0]?.[1] === "**bold** y" &&
+    /<strong>bold<\/strong>/.test(clip[0]?.[2] ?? "") &&
+    clip.some((c: string[]) => c[0] === "cut" && c[1] === "x **bold** y") &&
+    emptied === "" &&
+    pasted.strong === 1 &&
+    pasted.math === 1 &&
+    JSON.stringify(paletteFwd) === JSON.stringify(["c", "x", "v", "a", "z"]);
   check("editorKeys forward+clipboard", ok, { blocked, passed, clip, emptied, pasted, paletteFwd });
   await idle(h);
   check("editorKeys paste saved", md(h, n) === "pasted **b** and $m$ ok", { got: md(h, n) });
@@ -320,11 +604,26 @@ test("editorKeys", async () => {
 /** 接受灰字补全（Tab）：一整段进来，打字规则不触发，要把这一段重新当 Markdown 解析；一次 ⌘Z 撤回整个接受 */
 test("aiCompletionAccept", async () => {
   // 按光标前的字回答（撤销后会再问一次）
-  const reply = (before: string) => before.endsWith("see ") ? "$a$ and **b** with `c`" : before.endsWith("\\frac{") ? "a}{b}$ done"
-    : before.endsWith("Tit") ? "le **x**" : before.endsWith("Sum ") ? "$$y$$" : "";
+  const reply = (before: string) =>
+    before.endsWith("see ")
+      ? "$a$ and **b** with `c`"
+      : before.endsWith("\\frac{")
+        ? "a}{b}$ done"
+        : before.endsWith("Tit")
+          ? "le **x**"
+          : before.endsWith("Sum ")
+            ? "$$y$$"
+            : "";
   const h = await open({
-    board: board(6), w: 1400, h: 900, host: { complete: true },
-    on: (m, r) => { if (m.type !== "complete") return false; void r(m.req!, reply((m as any).before)); return true; },
+    board: board(6),
+    w: 1400,
+    h: 900,
+    host: { complete: true },
+    on: (m, r) => {
+      if (m.type !== "complete") return false;
+      void r(m.req!, reply((m as any).before));
+      return true;
+    },
   });
   const pg = h.page;
   const accept = async (id: string, seq: string) => {
@@ -336,7 +635,11 @@ test("aiCompletionAccept", async () => {
   };
   // 1：补全里有完整的 $a$ **b** `c`
   await accept("n0", "see ");
-  const d1 = { math: await pg.locator(inNote("n0", "[data-type=inline-math]")).count(), strong: await pg.locator(inNote("n0", "strong")).count(), code: await pg.locator(inNote("n0", "code")).count() };
+  const d1 = {
+    math: await pg.locator(inNote("n0", "[data-type=inline-math]")).count(),
+    strong: await pg.locator(inNote("n0", "strong")).count(),
+    code: await pg.locator(inNote("n0", "code")).count(),
+  };
   await keys(pg, " end");
   await pg.keyboard.press("Escape");
   // 2：用户打了 $\frac{（自动配对补了 }，光标在它前面），补全补上 a}{b}$：补全里写了 }，自动补的那个就不再留（不能多出一个）
@@ -351,16 +654,29 @@ test("aiCompletionAccept", async () => {
   await pg.keyboard.press("Escape");
   // 3：标题里接受
   await accept("n2", "# Tit");
-  const d3 = { h1: await pg.locator(inNote("n2", "h1")).count(), strong: await pg.locator(inNote("n2", "h1 strong")).count() };
+  const d3 = {
+    h1: await pg.locator(inNote("n2", "h1")).count(),
+    strong: await pg.locator(inNote("n2", "h1 strong")).count(),
+  };
   await pg.keyboard.press("Escape");
   // 4：补全是一个 $$…$$（单独一段就是公式块）
   await accept("n3", "Sum ");
   await pg.keyboard.press("Escape");
   await idle(h);
   const r = { d1, d2, undone, redone, d3, md: [0, 1, 2, 3].map((i) => md(h, `n${i}`)) };
-  const ok = d1.math === 1 && d1.strong === 1 && d1.code === 1 && d2 === 1 && undone === "x $\\frac{}" && redone === 1
-    && r.md[0] === "see $a$ and **b** with `c` end" && r.md[1] === "x $\\frac{a}{b}$ done" && d3.h1 === 1 && d3.strong === 1 && r.md[2] === "# Title **x**"
-    && r.md[3] === "Sum $$y$$";
+  const ok =
+    d1.math === 1 &&
+    d1.strong === 1 &&
+    d1.code === 1 &&
+    d2 === 1 &&
+    undone === "x $\\frac{}" &&
+    redone === 1 &&
+    r.md[0] === "see $a$ and **b** with `c` end" &&
+    r.md[1] === "x $\\frac{a}{b}$ done" &&
+    d3.h1 === 1 &&
+    d3.strong === 1 &&
+    r.md[2] === "# Title **x**" &&
+    r.md[3] === "Sum $$y$$";
   check("aiCompletionAccept", ok, r);
   await close(h);
 });
@@ -368,10 +684,19 @@ test("aiCompletionAccept", async () => {
 /** 列表项里中文后面打的行内格式：打完收尾的记号就变，前面紧挨着中文、同一行前面有带 ** 的行内代码时也变，代码里的 ** 不动；
  *  输入法一个个提交的字也一样。存下来的是没转义的 **Pointer**，退出编辑后显示成粗体 */
 test("noteBoldInputRuleAfterCjk", async () => {
-  const CODE = "- (`void **`) 指向要 free 的对象的", CJK = "- 指向要 free 的对象的";
+  const CODE = "- (`void **`) 指向要 free 的对象的",
+    CJK = "- 指向要 free 的对象的";
   /** 这一项里的行内元素：标签:字 */
-  const inline = (pg: Page) => pg.evaluate(() => [...document.querySelectorAll(".md-pm li p > :not(.md-mk)")].map((e) => `${e.tagName.toLowerCase()}:${e.textContent}`));
-  const want = (...v: string[]) => (got: string[]) => JSON.stringify(got) === JSON.stringify(v);
+  const inline = (pg: Page) =>
+    pg.evaluate(() =>
+      [...document.querySelectorAll(".md-pm li p > :not(.md-mk)")].map(
+        (e) => `${e.tagName.toLowerCase()}:${e.textContent}`,
+      ),
+    );
+  const want =
+    (...v: string[]) =>
+    (got: string[]) =>
+      JSON.stringify(got) === JSON.stringify(v);
   /** 输入法：每段先组字再提交（CDP），提交后 TipTap 再跑一遍打字规则 */
   const ime = (parts: string[]) => async (pg: Page) => {
     const cdp = await pg.context().newCDPSession(pg);
@@ -382,20 +707,82 @@ test("noteBoldInputRuleAfterCjk", async () => {
     await cdp.detach();
   };
   const cases: Case[] = [
-    { name: "bold after code with **", init: CODE, seq: " **Pointer**", md: `${CODE} **Pointer**`, dom: inline, domOk: want("code:void **", "strong:Pointer") },
-    { name: "bold right after CJK", init: CJK, seq: "**Pointer**", md: `${CJK}**Pointer**`, dom: inline, domOk: want("strong:Pointer") },
-    { name: "bold right after CJK with code", init: CODE, seq: "**Pointer**", md: `${CODE}**Pointer**`, dom: inline, domOk: want("code:void **", "strong:Pointer") },
-    { name: "italic", init: CODE, seq: " *Pointer*", md: `${CODE} *Pointer*`, dom: inline, domOk: want("code:void **", "em:Pointer") },
-    { name: "strike", init: CODE, seq: " ~~Pointer~~", md: `${CODE} ~~Pointer~~`, dom: inline, domOk: want("code:void **", "s:Pointer") },
-    { name: "highlight", init: CODE, seq: " ==Pointer==", md: `${CODE} ==Pointer==`, dom: inline, domOk: want("code:void **", "mark:Pointer") },
-    { name: "code", init: CODE, seq: " `Pointer`", md: `${CODE} \`Pointer\``, dom: inline, domOk: want("code:void **", "code:Pointer") },
+    {
+      name: "bold after code with **",
+      init: CODE,
+      seq: " **Pointer**",
+      md: `${CODE} **Pointer**`,
+      dom: inline,
+      domOk: want("code:void **", "strong:Pointer"),
+    },
+    {
+      name: "bold right after CJK",
+      init: CJK,
+      seq: "**Pointer**",
+      md: `${CJK}**Pointer**`,
+      dom: inline,
+      domOk: want("strong:Pointer"),
+    },
+    {
+      name: "bold right after CJK with code",
+      init: CODE,
+      seq: "**Pointer**",
+      md: `${CODE}**Pointer**`,
+      dom: inline,
+      domOk: want("code:void **", "strong:Pointer"),
+    },
+    {
+      name: "italic",
+      init: CODE,
+      seq: " *Pointer*",
+      md: `${CODE} *Pointer*`,
+      dom: inline,
+      domOk: want("code:void **", "em:Pointer"),
+    },
+    {
+      name: "strike",
+      init: CODE,
+      seq: " ~~Pointer~~",
+      md: `${CODE} ~~Pointer~~`,
+      dom: inline,
+      domOk: want("code:void **", "s:Pointer"),
+    },
+    {
+      name: "highlight",
+      init: CODE,
+      seq: " ==Pointer==",
+      md: `${CODE} ==Pointer==`,
+      dom: inline,
+      domOk: want("code:void **", "mark:Pointer"),
+    },
+    {
+      name: "code",
+      init: CODE,
+      seq: " `Pointer`",
+      md: `${CODE} \`Pointer\``,
+      dom: inline,
+      domOk: want("code:void **", "code:Pointer"),
+    },
     { name: "ime bold", init: CODE, seq: " ", after: ime(["*", "*", "Pointer", "*", "*"]), md: `${CODE} **Pointer**` },
   ];
-  const run = process.env.CASES ? cases.filter((c) => process.env.CASES!.split(",").some((q) => c.name.includes(q))) : cases;
-  const h = await open({ board: board(run.length, run.map((c) => c.init)), w: 1400, h: 900 });
+  const run = process.env.CASES
+    ? cases.filter((c) => process.env.CASES!.split(",").some((q) => c.name.includes(q)))
+    : cases;
+  const h = await open({
+    board: board(
+      run.length,
+      run.map((c) => c.init),
+    ),
+    w: 1400,
+    h: 900,
+  });
   await runCases(h, "noteBoldInputRuleAfterCjk", cases);
   // 显示（不在编辑）：存下来的 **Pointer** 是粗体，代码里的 ** 照旧
-  const shown = await h.page.evaluate(() => [...document.querySelectorAll('.card[data-id="n0"] .nbody li :is(code, strong)')].map((e) => `${e.tagName.toLowerCase()}:${e.textContent}`));
+  const shown = await h.page.evaluate(() =>
+    [...document.querySelectorAll('.card[data-id="n0"] .nbody li :is(code, strong)')].map(
+      (e) => `${e.tagName.toLowerCase()}:${e.textContent}`,
+    ),
+  );
   check("noteBoldInputRuleAfterCjk display", JSON.stringify(shown) === '["code:void **","strong:Pointer"]', shown);
   await close(h);
 });

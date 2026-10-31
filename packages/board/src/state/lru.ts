@@ -4,6 +4,9 @@ export function trimLru<K, V>(m: Map<K, V>, keep: ReadonlySet<K>, max: number) {
   for (const k of m.keys()) if (!keep.has(k)) extra++;
   for (const k of m.keys()) {
     if (extra <= 0) break;
-    if (!keep.has(k)) { m.delete(k); extra--; }
+    if (!keep.has(k)) {
+      m.delete(k);
+      extra--;
+    }
   }
 }

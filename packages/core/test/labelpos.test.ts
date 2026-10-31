@@ -4,7 +4,10 @@ import { bezAt } from "../src/canvas/geom";
 
 // 一条从 (0, 0) 到 (400, 0) 的直线（控制点在线上），两端各一张卡
 const line = [0, 0, 100, 0, 300, 0, 400, 0];
-const cards = [{ x: -200, y: -50, w: 200, h: 100 }, { x: 400, y: -50, w: 200, h: 100 }];
+const cards = [
+  { x: -200, y: -50, w: 200, h: 100 },
+  { x: 400, y: -50, w: 200, h: 100 },
+];
 const box = { w: 80, h: 20 };
 
 describe("label position along the arrow", () => {

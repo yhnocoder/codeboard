@@ -4,8 +4,11 @@ import type { EditorView } from "@tiptap/pm/view";
 import { blockInfo, flat } from "./spans";
 
 const inCodeSpan = (state: EditorState, pos: number) => {
-  const $p = state.doc.resolve(pos), off = $p.parentOffset;
-  return flat(blockInfo($p.parent.textContent, false).spans).some((s) => s.tag?.nodeName === "code" && s.inner && off > s.inner[0] && off < s.inner[1]);
+  const $p = state.doc.resolve(pos),
+    off = $p.parentOffset;
+  return flat(blockInfo($p.parent.textContent, false).spans).some(
+    (s) => s.tag?.nodeName === "code" && s.inner && off > s.inner[0] && off < s.inner[1],
+  );
 };
 
 const PAIRS: Record<string, string> = { "(": ")", "[": "]", "{": "}", '"': '"', "'": "'" };
@@ -42,7 +45,10 @@ export function pairsPlugin() {
         const meta = tr.getMeta(pairsKey) as { add?: Auto; drop?: number } | undefined;
         // drop 是这一步之前的位置：先去掉再映射（被删的那个和它后面的那个会映射到同一个位置）
         let out = meta?.drop !== undefined ? list.filter((a) => a.pos !== meta.drop) : list;
-        if (tr.docChanged) out = out.map((a) => ({ ...a, pos: tr.mapping.map(a.pos, 1) })).filter((a) => tr.doc.textBetween(a.pos, Math.min(a.pos + 1, tr.doc.content.size), "", "￼") === a.ch);
+        if (tr.docChanged)
+          out = out
+            .map((a) => ({ ...a, pos: tr.mapping.map(a.pos, 1) }))
+            .filter((a) => tr.doc.textBetween(a.pos, Math.min(a.pos + 1, tr.doc.content.size), "", "￼") === a.ch);
         if (meta?.add) out = [...out.filter((a) => a.pos !== meta.add!.pos), meta.add];
         return out;
       },
@@ -50,15 +56,18 @@ export function pairsPlugin() {
     props: {
       handleKeyDown(view, ev) {
         if (ev.isComposing || ev.metaKey || ev.ctrlKey || ev.altKey || ev.key === "Process") return false;
-        const { state } = view, sel = state.selection;
+        const { state } = view,
+          sel = state.selection;
         if (!(sel instanceof TextSelection)) return false;
         const $f = sel.$from;
         if (!$f.parent.inlineContent || $f.parent.type.spec.code) return false;
         // Not inside an inline code span: quotes and brackets there are code
         if (inCodeSpan(state, $f.pos)) return false;
-        const k = ev.key, list = pairsKey.getState(state) ?? [];
+        const k = ev.key,
+          list = pairsKey.getState(state) ?? [];
         if (k === "Backspace" && sel.empty) {
-          const prev = charAt(view, sel.from), next = nextChar(view, sel.from);
+          const prev = charAt(view, sel.from),
+            next = nextChar(view, sel.from);
           if (PAIRS[prev] && PAIRS[prev] === next) {
             view.dispatch(state.tr.delete(sel.from - 1, sel.from + 1));
             return true;
@@ -70,14 +79,18 @@ export function pairsPlugin() {
         if (CLOSE.has(k) && sel.empty && list.some((a) => a.pos === sel.from && a.ch === k)) {
           const at = sel.from;
           view.dispatch(state.tr.setMeta(pairsKey, { drop: at }));
-          const ruled = view.someProp("handleTextInput", (f) => f(view, at, at + 1, k, () => view.state.tr.insertText(k, at, at + 1)));
-          if (!ruled) view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, at + 1)).scrollIntoView());
+          const ruled = view.someProp("handleTextInput", (f) =>
+            f(view, at, at + 1, k, () => view.state.tr.insertText(k, at, at + 1)),
+          );
+          if (!ruled)
+            view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, at + 1)).scrollIntoView());
           ev.preventDefault();
           return true;
         }
         const close = PAIRS[k];
         if (!close) return false;
-        const prev = charAt(view, sel.from), next = nextChar(view, sel.to);
+        const prev = charAt(view, sel.from),
+          next = nextChar(view, sel.to);
         const tr = state.tr;
         if (!sel.empty) {
           tr.insertText(close, sel.to).insertText(k, sel.from);

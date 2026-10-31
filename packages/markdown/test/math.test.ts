@@ -4,13 +4,18 @@ import { renderMd } from "../src/render";
 import { mathMacros, mathPreambleDefs, mathPreambleErrors, setMathPreamble } from "../src/math";
 import { checkMath, completions, tokenAt, type MathProblem, type Part } from "../src/editor/mathhints";
 
-const PRE = "\\newcommand{\\tid}{\\text{threadIdx.x}}\n\\newcommand{\\R}{\\mathbb{R}}\n\\def\\pair#1#2{(#1,#2)}\n\\newcommand{\\norm}[1]{\\lVert #1\n\\rVert}";
+const PRE =
+  "\\newcommand{\\tid}{\\text{threadIdx.x}}\n\\newcommand{\\R}{\\mathbb{R}}\n\\def\\pair#1#2{(#1,#2)}\n\\newcommand{\\norm}[1]{\\lVert #1\n\\rVert}";
 // KaTeX draws a command it does not know as red text
 const red = (html: string) => (html.match(/class="mord text" style="color:#cc0000;"/g) ?? []).length;
-const text = (p: MathProblem | null | undefined) => (p?.parts ?? []).map((x: Part) => (typeof x === "string" ? x : "code" in x ? x.code : `[${x.fix}]`)).join("");
-const fixOf = (p: MathProblem | null | undefined) => p?.parts.find((x): x is Extract<Part, { fix: string }> => typeof x === "object" && "fix" in x);
+const text = (p: MathProblem | null | undefined) =>
+  (p?.parts ?? []).map((x: Part) => (typeof x === "string" ? x : "code" in x ? x.code : `[${x.fix}]`)).join("");
+const fixOf = (p: MathProblem | null | undefined) =>
+  p?.parts.find((x): x is Extract<Part, { fix: string }> => typeof x === "object" && "fix" in x);
 
-afterEach(() => { setMathPreamble(""); });
+afterEach(() => {
+  setMathPreamble("");
+});
 
 describe("math preamble", () => {
   it("defines commands for the static render, with arguments, \\def and definitions over several lines", () => {
@@ -19,7 +24,12 @@ describe("math preamble", () => {
     const h = renderMd("$\\tid + \\pair{a}{b} + \\norm{x} \\in \\R$");
     expect(red(h)).toBe(0);
     expect(h).toContain("threadIdx.x");
-    expect(mathPreambleDefs().map((d) => [d.name, d.args])).toEqual([["tid", 0], ["R", 0], ["pair", 2], ["norm", 1]]);
+    expect(mathPreambleDefs().map((d) => [d.name, d.args])).toEqual([
+      ["tid", 0],
+      ["R", 0],
+      ["pair", 2],
+      ["norm", 1],
+    ]);
     expect(mathPreambleErrors()).toEqual([]);
   });
 
@@ -54,9 +64,19 @@ describe("command completion", () => {
   it("lists prefix matches first, preamble commands tagged 预设, this formula's tagged 本式", () => {
     setMathPreamble(PRE);
     expect(completions("fr", "")[0].name).toBe("frac");
-    expect(completions("ti", "").map((c) => c.name).slice(0, 3)).toEqual(["tid", "times", "tilde"]);
+    expect(
+      completions("ti", "")
+        .map((c) => c.name)
+        .slice(0, 3),
+    ).toEqual(["tid", "times", "tilde"]);
     const all = completions("", "\\newcommand{\\half}{\\frac12} \\");
-    expect(all.slice(0, 5).map((c) => [c.name, c.tag])).toEqual([["tid", "预设"], ["R", "预设"], ["pair", "预设"], ["norm", "预设"], ["half", "本式"]]);
+    expect(all.slice(0, 5).map((c) => [c.name, c.tag])).toEqual([
+      ["tid", "预设"],
+      ["R", "预设"],
+      ["pair", "预设"],
+      ["norm", "预设"],
+      ["half", "本式"],
+    ]);
     expect(completions("pa", "").find((c) => c.name === "pair")?.snip).toBe("\\pair{|}{}");
   });
 

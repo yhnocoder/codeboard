@@ -67,15 +67,7 @@
     "  → x <code>code</code> ",
     "y → x <code>code</code> y"
   ],
-  "math": [
-    "x → x",
-    "  → x ",
-    "$ → x $",
-    "m → x $m",
-    "$ → x $m$",
-    "  → x <math:m> ",
-    "y → x <math:m> y"
-  ],
+  "math": ["x → x", "  → x ", "$ → x $", "m → x $m", "$ → x $m$", "  → x <math:m> ", "y → x <math:m> y"],
   "boldItalic": [
     "x → x",
     "  → x ",

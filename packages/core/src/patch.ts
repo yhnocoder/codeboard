@@ -1,7 +1,23 @@
 // 白板 → 宿主的增量保存：每类东西只发变了的项和删掉的 id，白板本身的字段整个发。宿主按它改自己那份白板再写盘。
 // 共享卡：白板文件里是引用，内容在卡库；inflate / deflate 在两种样子之间换，putShared 把卡库里的新内容放进一块白板。
 // 直接改传进来的对象。
-import { clone, copyTwinContent, sameVersion, versionLabel, withCols, type Board, type BoardFile, type Camera, type Card, type Link, type Place, type Section, type SharedCard, type Sidenote, type Sticker } from "./model";
+import {
+  clone,
+  copyTwinContent,
+  sameVersion,
+  versionLabel,
+  withCols,
+  type Board,
+  type BoardFile,
+  type Camera,
+  type Card,
+  type Link,
+  type Place,
+  type Section,
+  type SharedCard,
+  type Sidenote,
+  type Sticker,
+} from "./model";
 import { lineMapOf, moveLineRefs, type CardCopy } from "./edit";
 
 /** 一类有 id 的东西的改动。order = 改完之后的完整 id 顺序（只在顺序变了时发：叠放顺序、Bring to Front） */
@@ -47,13 +63,22 @@ function applyList<T extends { id: string }>(xs: T[], p: ListPatch<T>, full: boo
   if (full) return [...(p.set ?? [])];
   const del = new Set(p.del);
   const set = new Map((p.set ?? []).map((x) => [x.id, x]));
-  const out = xs.filter((x) => !del.has(x.id)).map((x) => { const n = set.get(x.id); if (n) set.delete(x.id); return n ?? x; });
+  const out = xs
+    .filter((x) => !del.has(x.id))
+    .map((x) => {
+      const n = set.get(x.id);
+      if (n) set.delete(x.id);
+      return n ?? x;
+    });
   out.push(...set.values());
   const order = p.order;
   if (!order) return out;
   // 按发来的顺序排；发来的顺序里没有的（宿主这边才有的，比如别的白板刚改的共享卡的 Sidenote）接在后面，不丢
   const at = new Map(order.map((id, i) => [id, i]));
-  return out.map((x, i) => ({ x, k: at.get(x.id) ?? order.length + i })).sort((a, b) => a.k - b.k).map((o) => o.x);
+  return out
+    .map((x, i) => ({ x, k: at.get(x.id) ?? order.length + i }))
+    .sort((a, b) => a.k - b.k)
+    .map((o) => o.x);
 }
 
 /** 宿主转给白板的一张共享卡的改动：内容 + 变了的项（卡 id、Sidenote id；Sidenote 不在 sidenotes 里 = 删了） */
@@ -82,14 +107,29 @@ export function followShared(b: Board, old: Card, now: Card): boolean {
   let moved = false;
   for (const ns of now.segments) {
     const os = old.segments.find((s) => s.id === ns.id);
-    if (!os || (os.start === ns.start && os.end === ns.end && sameVersion(os.version, ns.version) && os.text.join("\n") === ns.text.join("\n"))) continue;
+    if (
+      !os ||
+      (os.start === ns.start &&
+        os.end === ns.end &&
+        sameVersion(os.version, ns.version) &&
+        os.text.join("\n") === ns.text.join("\n"))
+    )
+      continue;
     const before = refsKey(b, now.id);
-    moveLineRefs(b, now.id, os, ns, lineMapOf(os, ns), { notes: (n) => !travels(n, now.id), review: sameVersion(os.version, ns.version) ? undefined : versionLabel(ns.version) });
+    moveLineRefs(b, now.id, os, ns, lineMapOf(os, ns), {
+      notes: (n) => !travels(n, now.id),
+      review: sameVersion(os.version, ns.version) ? undefined : versionLabel(ns.version),
+    });
     if (refsKey(b, now.id) !== before) moved = true;
   }
   return moved;
 }
-const refsKey = (b: Board, id: string) => JSON.stringify([b.links.filter((l) => l.from.card === id || l.to.card === id), b.stickers.filter((k) => k.at.kind === "line" && k.at.card === id), b.sidenotes.filter((n) => n.at.card === id && !travels(n, id))]);
+const refsKey = (b: Board, id: string) =>
+  JSON.stringify([
+    b.links.filter((l) => l.from.card === id || l.to.card === id),
+    b.stickers.filter((k) => k.at.kind === "line" && k.at.card === id),
+    b.sidenotes.filter((n) => n.at.card === id && !travels(n, id)),
+  ]);
 
 /**
  * 卡库里的新内容放进白板：换掉卡（叠放位置不变；这块白板自己指着它的行号跟着挪，followShared），
@@ -106,8 +146,10 @@ export function putShared(b: Board, sc: SharedCard, o: { moved?: boolean } = {})
   const out: Sidenote[] = [];
   for (const n of b.sidenotes) {
     const m = next.get(n.id);
-    if (m) { out.push(m); next.delete(n.id); }
-    else if (!travels(n, id)) out.push(n);
+    if (m) {
+      out.push(m);
+      next.delete(n.id);
+    } else if (!travels(n, id)) out.push(n);
   }
   out.push(...next.values());
   b.sidenotes = out;
@@ -146,15 +188,29 @@ export function applySharedUpdate(b: Board, sc: SharedUpdate): boolean {
  * 白板文件 → 白板：共享卡的引用换成卡库里的内容（get 找不到的换成一张说明的 Note，免得连着它的 Link 和摆放悬空）。
  * refs = 换上了内容的共享卡，missing = 卡库里找不到的
  */
-export function inflate(f: BoardFile, cam: Camera, get: (id: string) => SharedCard | undefined): { board: Board; refs: string[]; missing: string[] } {
-  const refs: string[] = [], missing: string[] = [];
+export function inflate(
+  f: BoardFile,
+  cam: Camera,
+  get: (id: string) => SharedCard | undefined,
+): { board: Board; refs: string[]; missing: string[] } {
+  const refs: string[] = [],
+    missing: string[] = [];
   const cards: Card[] = [];
   const shared: SharedCard[] = [];
   for (const c of f.cards) {
-    if (c.kind !== "shared") { cards.push(c); continue; }
+    if (c.kind !== "shared") {
+      cards.push(c);
+      continue;
+    }
     const sc = get(c.id);
-    if (sc) { refs.push(c.id); cards.push(sc.card); shared.push(sc); }
-    else { missing.push(c.id); cards.push({ id: c.id, kind: "note", md: "Shared card not found in the card library.", look: "note" }); }
+    if (sc) {
+      refs.push(c.id);
+      cards.push(sc.card);
+      shared.push(sc);
+    } else {
+      missing.push(c.id);
+      cards.push({ id: c.id, kind: "note", md: "Shared card not found in the card library.", look: "note" });
+    }
   }
   const board = { ...f, cam, cards } as Board;
   board.sidenotes = [...f.sidenotes, ...shared.flatMap((s) => s.sidenotes)];
@@ -182,15 +238,27 @@ export function deflate(board: Board, refs: ReadonlySet<string>): { file: BoardF
  */
 export function mergeFile(base: BoardFile, disk: BoardFile, mine: BoardFile): BoardFile {
   const out = { ...mine } as BoardFile;
-  const bh = base as unknown as Record<string, unknown>, dh = disk as unknown as Record<string, unknown>, mh = mine as unknown as Record<string, unknown>;
+  const bh = base as unknown as Record<string, unknown>,
+    dh = disk as unknown as Record<string, unknown>,
+    mh = mine as unknown as Record<string, unknown>;
   const oh = out as unknown as Record<string, unknown>;
   for (const k of new Set([...Object.keys(bh), ...Object.keys(dh), ...Object.keys(mh)])) {
     if (OWN.has(k)) continue;
-    if (JSON.stringify(bh[k]) === JSON.stringify(mh[k])) { if (k in dh) oh[k] = dh[k]; else delete oh[k]; }
+    if (JSON.stringify(bh[k]) === JSON.stringify(mh[k])) {
+      if (k in dh) oh[k] = dh[k];
+      else delete oh[k];
+    }
   }
-  for (const k of LISTS) (out as Record<string, unknown>)[k] = mergeById(base[k] as { id: string }[], disk[k] as { id: string }[], mine[k] as { id: string }[]).items;
+  for (const k of LISTS)
+    (out as Record<string, unknown>)[k] = mergeById(
+      base[k] as { id: string }[],
+      disk[k] as { id: string }[],
+      mine[k] as { id: string }[],
+    ).items;
   const ids = (p: Record<string, Place>) => Object.keys(p).map((id) => ({ id, p: p[id] }));
-  out.place = Object.fromEntries(mergeById(ids(base.place), ids(disk.place), ids(mine.place)).items.map((x) => [x.id, x.p]));
+  out.place = Object.fromEntries(
+    mergeById(ids(base.place), ids(disk.place), ids(mine.place)).items.map((x) => [x.id, x.p]),
+  );
   return out;
 }
 
@@ -200,18 +268,28 @@ export function mergeFile(base: BoardFile, disk: BoardFile, mine: BoardFile): Bo
  * 没有 base（这边第一次写，比如刚贴过来的共享卡）：mine 的项都算它改的，但从不删任何项。
  * changed = mine 这边改了、加了、删了（磁盘上原来有）的项
  */
-export function mergeById<T extends { id: string }>(base: readonly T[] | undefined, disk: readonly T[], mine: readonly T[]): { items: T[]; changed: string[] } {
-  const b = new Map((base ?? []).map((x) => [x.id, x])), d = new Map(disk.map((x) => [x.id, x]));
-  const items: T[] = [], changed: string[] = [];
+export function mergeById<T extends { id: string }>(
+  base: readonly T[] | undefined,
+  disk: readonly T[],
+  mine: readonly T[],
+): { items: T[]; changed: string[] } {
+  const b = new Map((base ?? []).map((x) => [x.id, x])),
+    d = new Map(disk.map((x) => [x.id, x]));
+  const items: T[] = [],
+    changed: string[] = [];
   for (const x of mine) {
-    if (!same(b.get(x.id), x)) { items.push(x); changed.push(x.id); } // 这边改的 / 加的
+    if (!same(b.get(x.id), x)) {
+      items.push(x);
+      changed.push(x.id);
+    } // 这边改的 / 加的
     else if (d.has(x.id)) items.push(d.get(x.id)!); // 没改：用磁盘上的
     // 没改、磁盘上删了：删
   }
   const kept = new Set(mine.map((x) => x.id));
   for (const x of disk) {
     if (kept.has(x.id)) continue;
-    if (base && b.has(x.id)) changed.push(x.id); // 这边删的
+    if (base && b.has(x.id))
+      changed.push(x.id); // 这边删的
     else items.push(x); // 另一边加的
   }
   return { items, changed };
@@ -225,21 +303,35 @@ export function diffBoards(a: Board, b: Board): BoardPatch | null {
   const p: BoardPatch = {};
   let any = false;
   for (const k of LISTS) {
-    const xs = a[k] as { id: string }[], ys = b[k] as { id: string }[];
+    const xs = a[k] as { id: string }[],
+      ys = b[k] as { id: string }[];
     const old = new Map(xs.map((x) => [x.id, x]));
     const set = ys.filter((y) => !same(old.get(y.id), y));
     const now = new Set(ys.map((y) => y.id));
     const del = xs.filter((x) => !now.has(x.id)).map((x) => x.id);
-    const exp = [...xs.filter((x) => now.has(x.id)).map((x) => x.id), ...ys.filter((y) => !old.has(y.id)).map((y) => y.id)];
+    const exp = [
+      ...xs.filter((x) => now.has(x.id)).map((x) => x.id),
+      ...ys.filter((y) => !old.has(y.id)).map((y) => y.id),
+    ];
     const order = exp.some((id, i) => id !== ys[i].id) ? ys.map((y) => y.id) : undefined;
     if (!set.length && !del.length && !order) continue;
-    (p as Record<string, unknown>)[k] = { ...(set.length ? { set } : {}), ...(del.length ? { del } : {}), ...(order ? { order } : {}) };
+    (p as Record<string, unknown>)[k] = {
+      ...(set.length ? { set } : {}),
+      ...(del.length ? { del } : {}),
+      ...(order ? { order } : {}),
+    };
     any = true;
   }
   const pset = Object.fromEntries(Object.entries(b.place).filter(([id, v]) => !same(a.place[id], v)));
   const pdel = Object.keys(a.place).filter((id) => !(id in b.place));
-  if (Object.keys(pset).length || pdel.length) { p.place = { ...(Object.keys(pset).length ? { set: pset } : {}), ...(pdel.length ? { del: pdel } : {}) }; any = true; }
+  if (Object.keys(pset).length || pdel.length) {
+    p.place = { ...(Object.keys(pset).length ? { set: pset } : {}), ...(pdel.length ? { del: pdel } : {}) };
+    any = true;
+  }
   const head = (x: Board) => Object.fromEntries(Object.entries(x).filter(([k]) => !OWN.has(k)));
-  if (!same(head(a), head(b))) { p.head = head(b) as BoardHead; any = true; }
+  if (!same(head(a), head(b))) {
+    p.head = head(b) as BoardHead;
+    any = true;
+  }
   return any ? p : null;
 }

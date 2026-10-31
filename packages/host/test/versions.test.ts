@@ -14,7 +14,9 @@ import { card, git, startTreeSitter, tempRepo } from "./helpers";
 
 beforeAll(startTreeSitter);
 let R: string;
-afterEach(() => { fs.rmSync(R, { recursive: true, force: true }); });
+afterEach(() => {
+  fs.rmSync(R, { recursive: true, force: true });
+});
 
 describe("new version check", () => {
   it("shows no new version when an older commit is checked out, and one when a newer commit is", async () => {
@@ -25,7 +27,10 @@ describe("new version check", () => {
     git(R, "commit", "-qam", "pinned");
     useWorkspace(nodeWorkspace(R));
     const { card: c } = await card(path.join(R, "f.py"), "g");
-    const stale = async (cc: CodeCard) => { const ss = staleSegments({ cards: [cc], sidenotes: [] }); return (await staleFor(ss.segs, ss.up))[cc.segments[0].id]?.state; };
+    const stale = async (cc: CodeCard) => {
+      const ss = staleSegments({ cards: [cc], sidenotes: [] });
+      return (await staleFor(ss.segs, ss.up))[cc.segments[0].id]?.state;
+    };
     expect(await stale(c)).toBe("ok");
     git(R, "checkout", "-q", old);
     expect(await stale(c)).toBe("ok");
@@ -62,7 +67,11 @@ describe("new version check", () => {
     R = tempRepo("ignore-watch", { ".gitignore": "build/\n" });
     const W = nodeWorkspace(R);
     useWorkspace(W);
-    const panels = { refreshStale: async () => {}, get: () => undefined, staleChanged: () => undefined } as unknown as BoardHost;
+    const panels = {
+      refreshStale: async () => {},
+      get: () => undefined,
+      staleChanged: () => undefined,
+    } as unknown as BoardHost;
     const w = watchVersions(panels, new Storage(nodeFs, { dir: () => path.join(R, ".boards") }));
     try {
       await w.ready;
@@ -73,11 +82,22 @@ describe("new version check", () => {
       fs.writeFileSync(path.join(R, ".git/info/exclude"), "build/\n");
       W.fire.change.fire(path.join(R, ".git/info/exclude"));
       expect(await isIgnored(R, "build/gen.py")).toBe(true);
-    } finally { w.dispose(); }
+    } finally {
+      w.dispose();
+    }
   });
 
   it("moves the card to the new lines with the new commit as its pin when a commit only moves the code", async () => {
-    const F = ["def can_allocate(x):", "    return x > 0", "", "", "def allocate(x):", "    y = x + 1", "    return y", ""];
+    const F = [
+      "def can_allocate(x):",
+      "    return x > 0",
+      "",
+      "",
+      "def allocate(x):",
+      "    y = x + 1",
+      "    return y",
+      "",
+    ];
     R = tempRepo("moved", { "blocks.py": F.join("\n") });
     const base = git(R, "rev-parse", "HEAD");
     useWorkspace(nodeWorkspace(R));

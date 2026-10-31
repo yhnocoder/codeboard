@@ -7,7 +7,11 @@ const norm = (s: string) => s.replace(/_/g, "").toLowerCase();
  * 没有接收者 → 同一个文件里的排前面、模块级函数排前面。
  * 返回排好序的候选，以及「有没有唯一的最佳」。
  */
-export function rankByReceiver<T extends Cand>(cands: T[], recv: string | undefined, here: { path: string; selfClass?: string }): { ranked: T[]; best?: T } {
+export function rankByReceiver<T extends Cand>(
+  cands: T[],
+  recv: string | undefined,
+  here: { path: string; selfClass?: string },
+): { ranked: T[]; best?: T } {
   const score = (c: T) => {
     const parts = c.qual.split(/\.|::/);
     const cls = parts.length > 1 ? parts[parts.length - 2] : "";
@@ -31,7 +35,10 @@ export function rankByReceiver<T extends Cand>(cands: T[], recv: string | undefi
     return s;
   };
   const ranked = cands.map((c) => ({ c, s: score(c) })).sort((a, b) => b.s - a.s || a.c.qual.localeCompare(b.c.qual));
-  const best = ranked.length === 1 || (ranked.length > 1 && ranked[0].s > ranked[1].s && ranked[0].s >= 1) ? ranked[0].c : undefined;
+  const best =
+    ranked.length === 1 || (ranked.length > 1 && ranked[0].s > ranked[1].s && ranked[0].s >= 1)
+      ? ranked[0].c
+      : undefined;
   return { ranked: ranked.map((r) => r.c), best };
 }
 
@@ -43,10 +50,15 @@ export function parseDistInfo(dir: string): { name: string; version: string } | 
 
 /** git log --format=%H%x09%s%x09%as 的输出 */
 export function parseGitLog(out: string): { commit: string; msg: string; date: string }[] {
-  return out.split("\n").map((l) => l.split("\t")).filter((p) => /^[0-9a-f]{7,40}$/.test(p[0] ?? "")).map(([commit, msg, date]) => ({ commit, msg: msg ?? "", date: date ?? "" }));
+  return out
+    .split("\n")
+    .map((l) => l.split("\t"))
+    .filter((p) => /^[0-9a-f]{7,40}$/.test(p[0] ?? ""))
+    .map(([commit, msg, date]) => ({ commit, msg: msg ?? "", date: date ?? "" }));
 }
 
-const wordStart = (s: string, k: number) => k === 0 || /[._/\s-]/.test(s[k - 1]) || (s[k] >= "A" && s[k] <= "Z" && !(s[k - 1] >= "A" && s[k - 1] <= "Z"));
+const wordStart = (s: string, k: number) =>
+  k === 0 || /[._/\s-]/.test(s[k - 1]) || (s[k] >= "A" && s[k] <= "Z" && !(s[k - 1] >= "A" && s[k - 1] <= "Z"));
 
 /** 子串匹配打分：越靠前越高，在词首再加分，越短越高；不包含返回 -1 */
 export function substr(q: string, s: string): number {
@@ -62,11 +74,15 @@ export function substr(q: string, s: string): number {
 export function fuzzy(q: string, s: string): number {
   const sub = substr(q, s);
   if (sub >= 0 || !q) return sub;
-  const ql = q.toLowerCase(), sl = s.toLowerCase();
-  let i = 0, score = 0, last = -2;
+  const ql = q.toLowerCase(),
+    sl = s.toLowerCase();
+  let i = 0,
+    score = 0,
+    last = -2;
   for (let k = 0; k < sl.length && i < ql.length; k++) {
     if (sl[k] !== ql[i]) continue;
-    const next = last === k - 1, start = wordStart(s, k);
+    const next = last === k - 1,
+      start = wordStart(s, k);
     if (!next && !start) continue;
     score += next ? 3 : 2;
     last = k;

@@ -5,7 +5,10 @@ export type CodeHighlighter = (text: string, lang: string) => Promise<string | n
 let ask: CodeHighlighter | undefined;
 let langId = (lang: string) => lang;
 /** 接上着色。id：语言名 → 正式 id（py 和 python 是同一份缓存、问的是同一个名字）；不给就照原样 */
-export const setCodeHighlighter = (f: CodeHighlighter, id?: (lang: string) => string) => { ask = f; if (id) langId = id; };
+export const setCodeHighlighter = (f: CodeHighlighter, id?: (lang: string) => string) => {
+  ask = f;
+  if (id) langId = id;
+};
 
 const done = new Map<string, string>();
 const flying = new Map<string, Promise<string | null>>();
@@ -23,14 +26,16 @@ export function highlightCode(text: string, lang: string): Promise<string | null
   if (!ask || !lang) return Promise.resolve(null);
   let p = flying.get(k);
   if (!p) {
-    p = ask(text, langId(lang)).catch(() => null).then((h) => {
-      flying.delete(k);
-      if (h !== null) {
-        if (done.size >= MAX) done.delete(done.keys().next().value!);
-        done.set(k, h);
-      }
-      return h;
-    });
+    p = ask(text, langId(lang))
+      .catch(() => null)
+      .then((h) => {
+        flying.delete(k);
+        if (h !== null) {
+          if (done.size >= MAX) done.delete(done.keys().next().value!);
+          done.set(k, h);
+        }
+        return h;
+      });
     flying.set(k, p);
   }
   return p;
@@ -42,8 +47,11 @@ export function colorCode(el: HTMLElement) {
   for (const code of el.querySelectorAll<HTMLElement>("pre.md-code[data-lang] > code")) {
     if (colored.has(code)) continue;
     colored.add(code);
-    const lang = code.parentElement!.dataset.lang!, text = code.textContent ?? "";
-    const put = (h: string | null) => { if (h !== null && code.textContent === text) code.innerHTML = h; };
+    const lang = code.parentElement!.dataset.lang!,
+      text = code.textContent ?? "";
+    const put = (h: string | null) => {
+      if (h !== null && code.textContent === text) code.innerHTML = h;
+    };
     const hit = cachedCode(text, lang);
     if (hit !== undefined) put(hit);
     else void highlightCode(text, lang).then(put);

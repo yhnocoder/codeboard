@@ -13,15 +13,20 @@ export function setNoteAssets(b: string) {
   base = b;
   setImageResolver((src) => {
     if (!src.startsWith("assets/")) return undefined;
-    const name = src.slice(7), m = SIZED.exec(name);
+    const name = src.slice(7),
+      m = SIZED.exec(name);
     return { src: b ? `${b}/${name}` : src, ...(m ? { width: +m[1], height: +m[2] } : {}) };
   });
 }
 
 /** 编辑器里粘贴、拖进来、/Image 选的图交给宿主存；存不了（不是这几种图、太大）提示一下，不插 */
 export async function saveNoteImage(dataUrl: string): Promise<string | null> {
-  try { return await ask("saveImage", { dataUrl: cleanImage(dataUrl) }); }
-  catch (e) { toast((e as Error).message || "Could not add the image"); return null; }
+  try {
+    return await ask("saveImage", { dataUrl: cleanImage(dataUrl) });
+  } catch (e) {
+    toast((e as Error).message || "Could not add the image");
+    return null;
+  }
 }
 
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -37,24 +42,39 @@ const abs = (v: string | null) => (v && /^\s*[\d.]+(?:e[+-]?\d+)?(?:px)?\s*$/i.t
 export function cleanSvg(text: string): string | null {
   const doc = new DOMParser().parseFromString(text, "image/svg+xml");
   const root = doc.documentElement;
-  if (root.namespaceURI !== SVG_NS || root.localName !== "svg" || doc.getElementsByTagNameNS("*", "parsererror").length) return null;
+  if (root.namespaceURI !== SVG_NS || root.localName !== "svg" || doc.getElementsByTagNameNS("*", "parsererror").length)
+    return null;
   const body = DOMPurify.sanitize(root, { USE_PROFILES: { svg: true, svgFilters: true }, RETURN_DOM: true });
-  const svg = [...body.childNodes].find((e): e is Element => e instanceof Element && e.namespaceURI === SVG_NS && e.localName === "svg");
+  const svg = [...body.childNodes].find(
+    (e): e is Element => e instanceof Element && e.namespaceURI === SVG_NS && e.localName === "svg",
+  );
   if (!svg) return null;
-  let w = abs(svg.getAttribute("width")), h = abs(svg.getAttribute("height"));
+  let w = abs(svg.getAttribute("width")),
+    h = abs(svg.getAttribute("height"));
   if (!(w > 0 && h > 0)) {
-    const vb = (svg.getAttribute("viewBox") ?? "").trim().split(/[\s,]+/).map(Number);
+    const vb = (svg.getAttribute("viewBox") ?? "")
+      .trim()
+      .split(/[\s,]+/)
+      .map(Number);
     const [vw, vh] = vb.length === 4 && vb[2] > 0 && vb[3] > 0 ? [vb[2], vb[3]] : [300, 150];
     if (w > 0) h = (w * vh) / vw;
     else if (h > 0) w = (h * vw) / vh;
-    else { w = vw; h = vh; }
+    else {
+      w = vw;
+      h = vh;
+    }
     svg.setAttribute("width", String(Math.round(w * 100) / 100));
     svg.setAttribute("height", String(Math.round(h * 100) / 100));
   }
   return new XMLSerializer().serializeToString(svg);
 }
 
-const utf8Base64 = (s: string) => { const b = new TextEncoder().encode(s); let bin = ""; for (let i = 0; i < b.length; i += 0x8000) bin += String.fromCharCode(...b.subarray(i, i + 0x8000)); return btoa(bin); };
+const utf8Base64 = (s: string) => {
+  const b = new TextEncoder().encode(s);
+  let bin = "";
+  for (let i = 0; i < b.length; i += 0x8000) bin += String.fromCharCode(...b.subarray(i, i + 0x8000));
+  return btoa(bin);
+};
 export const svgDataUrl = (svg: string) => `data:image/svg+xml;base64,${utf8Base64(svg)}`;
 
 /** 要存的图（data: URL）：SVG 换成清洗过的，读不了的 SVG 抛错（消息给用户看）；别的照原样（宿主按文件头认，认不出的不收） */
@@ -62,7 +82,15 @@ export function cleanImage(dataUrl: string): string {
   const m = /^data:image\/svg\+xml(;[^,]*)?,(.*)$/s.exec(dataUrl);
   if (!m) return dataUrl;
   let svg: string | null = null;
-  try { svg = cleanSvg(/;base64$/.test(m[1] ?? "") ? new TextDecoder().decode(Uint8Array.from(atob(m[2]), (c) => c.charCodeAt(0))) : decodeURIComponent(m[2])); } catch { /* 下面一起报 */ }
+  try {
+    svg = cleanSvg(
+      /;base64$/.test(m[1] ?? "")
+        ? new TextDecoder().decode(Uint8Array.from(atob(m[2]), (c) => c.charCodeAt(0)))
+        : decodeURIComponent(m[2]),
+    );
+  } catch {
+    /* 下面一起报 */
+  }
   if (!svg) throw new Error("This SVG image could not be read");
   return svgDataUrl(svg);
 }

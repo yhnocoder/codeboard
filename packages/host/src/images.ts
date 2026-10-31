@@ -18,14 +18,20 @@ export async function saveNoteImage(store: Storage, dataUrl: string): Promise<st
   const m = /^data:[^,;]*(;[^,]*)?;base64,/.exec(dataUrl);
   if (!m) throw new Error("Not an image");
   // base64 每 4 个字 3 个字节：先按长度挡掉太大的，不解码
-  if (((dataUrl.length - m[0].length) * 3) / 4 > MAX_NOTE_IMAGE + 3) throw new Error(`Image is larger than ${MAX_NOTE_IMAGE >> 20} MB`);
+  if (((dataUrl.length - m[0].length) * 3) / 4 > MAX_NOTE_IMAGE + 3)
+    throw new Error(`Image is larger than ${MAX_NOTE_IMAGE >> 20} MB`);
   const buf = Buffer.from(dataUrl.slice(m[0].length), "base64");
   if (buf.length > MAX_NOTE_IMAGE) throw new Error(`Image is larger than ${MAX_NOTE_IMAGE >> 20} MB`);
   // SVG 原样存成 .svg（矢量，放大也清楚）：Note 里的图只用 <img> 显示，SVG 里的脚本不会跑
-  const t = sniffImage(buf), svg = t ? null : sniffSvg(buf);
+  const t = sniffImage(buf),
+    svg = t ? null : sniffSvg(buf);
   if (!t && !svg) throw new Error("Only PNG, JPEG, WebP, GIF and SVG images can go into a Note");
   const sha = createHash("sha1").update(buf).digest("hex").slice(0, 16);
-  const file = t ? `${sha}-${t.w}x${t.h}.${IMAGE_EXT[t.mime]}` : svg!.w ? `${sha}-${svg!.w}x${svg!.h}.svg` : `${sha}.svg`;
+  const file = t
+    ? `${sha}-${t.w}x${t.h}.${IMAGE_EXT[t.mime]}`
+    : svg!.w
+      ? `${sha}-${svg!.w}x${svg!.h}.svg`
+      : `${sha}.svg`;
   await store.putAsset(file, buf);
   return ASSET_PREFIX + file;
 }
@@ -46,8 +52,17 @@ export async function readAsset(store: Storage, file: string): Promise<string> {
  * 经编辑器读（工作区外的 file:、远程的 vscode-remote: 都行）；认不出、太大时抛错（消息给用户看）
  */
 export async function readImageUri(uri: string): Promise<string> {
-  const name = decodeURIComponent(uri.replace(/[?#].*$/, "").split("/").pop() || uri);
-  const bytes = await workspace().files.readBytes(uri, MAX_NOTE_IMAGE).catch(() => { throw new Error(`Could not read ${name}`); });
+  const name = decodeURIComponent(
+    uri
+      .replace(/[?#].*$/, "")
+      .split("/")
+      .pop() || uri,
+  );
+  const bytes = await workspace()
+    .files.readBytes(uri, MAX_NOTE_IMAGE)
+    .catch(() => {
+      throw new Error(`Could not read ${name}`);
+    });
   if (!bytes) throw new Error(`${name} is larger than ${MAX_NOTE_IMAGE >> 20} MB`);
   const buf = Buffer.from(bytes);
   const mime = sniffImage(buf)?.mime ?? (sniffSvg(buf) ? "image/svg+xml" : null);

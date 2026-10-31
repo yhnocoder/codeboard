@@ -10,11 +10,22 @@ import { WS, nodeWorkspace } from "./node-workspace";
 import { card, startTreeSitter } from "./helpers";
 
 const abs = path.join(WS, "nanovllm/utils/context.py");
-const ed = () => ({ path: abs, file: true, lang: "python", text: fs.readFileSync(abs, "utf8"), selections: [{ startLine: 5, startCol: 0, endLine: 27, endCol: 24 }], cursorLine: 27, selectionText: "" });
+const ed = () => ({
+  path: abs,
+  file: true,
+  lang: "python",
+  text: fs.readFileSync(abs, "utf8"),
+  selections: [{ startLine: 5, startCol: 0, endLine: 27, endCol: 24 }],
+  cursorLine: 27,
+  selectionText: "",
+});
 const ranges = (c: CodeCard) => c.segments.map((sg) => `${sg.symbol?.qual ?? sg.scope ?? "?"}:${sg.start}-${sg.end}`);
 const want = ["Context:5-14", "<module>:16-16", "get_context:18-19", "set_context:21-23", "reset_context:25-27"];
 
-beforeAll(async () => { useWorkspace(nodeWorkspace()); await startTreeSitter(); });
+beforeAll(async () => {
+  useWorkspace(nodeWorkspace());
+  await startTreeSitter();
+});
 
 describe("cards from a selection over several definitions", () => {
   it("⌥B: one card, a segment per definition plus the module line between", async () => {

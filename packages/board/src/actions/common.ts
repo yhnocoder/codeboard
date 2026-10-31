@@ -20,19 +20,31 @@ import { cardSel } from "../cardsel";
 const isMac = () => state.host.isMac;
 /** 说明文字里的修饰键（「⌥-click」「⌘↵ to save」）；有绑定的快捷键用 keymap 的 kbd(id) */
 export const K = {
-  get mod() { return isMac() ? "⌘" : "Ctrl+"; },
-  get alt() { return isMac() ? "⌥" : "Alt+"; },
+  get mod() {
+    return isMac() ? "⌘" : "Ctrl+";
+  },
+  get alt() {
+    return isMac() ? "⌥" : "Alt+";
+  },
 };
 
 export function selectCard(id: string, add = false) {
   const f = cardById(id);
   if (!f) return;
   const top = f.host.id;
-  if (add) { if (!isSel(top)) select({ cards: [top] }, true); return; }
-  if (!(sel.cards.length === 1 && sel.cards[0] === top && !sel.links.length && !sel.sections.length)) select({ cards: [top] });
+  if (add) {
+    if (!isSel(top)) select({ cards: [top] }, true);
+    return;
+  }
+  if (!(sel.cards.length === 1 && sel.cards[0] === top && !sel.links.length && !sel.sections.length))
+    select({ cards: [top] });
 }
 export function selectAll() {
-  select({ cards: visibleCards().filter((c) => !isLocked(c.id)).map((c) => c.id) });
+  select({
+    cards: visibleCards()
+      .filter((c) => !isLocked(c.id))
+      .map((c) => c.id),
+  });
 }
 export const selCards = () => sel.cards.map((id) => cardById(id)?.card).filter(Boolean) as Card[];
 
@@ -47,7 +59,10 @@ export function resolveCardRef(label: string): RefTarget | RefBroken | null {
   const byId = cardById(l);
   if (byId) return { id: byId.card.id, title: cardTitle(byId.card, state.board) };
   const low = l.toLowerCase();
-  for (const c of placed()) { const t = cardTitle(c, state.board); if (t.trim().toLowerCase() === low) return { id: c.id, title: t.trim() }; }
+  for (const c of placed()) {
+    const t = cardTitle(c, state.board);
+    if (t.trim().toLowerCase() === low) return { id: c.id, title: t.trim() };
+  }
   // 子白板里的卡：[[子白板 › 卡]]
   const s = subRef(l);
   if (s) return { id: s.id, title: s.label };
@@ -56,9 +71,15 @@ export function resolveCardRef(label: string): RefTarget | RefBroken | null {
   if (sec) return { id: sec.id, title: sec.title.trim() };
   const b = state.boards.find((m) => m.id !== state.board.id && m.name.trim().toLowerCase() === low);
   if (b) return { id: b.id, title: b.name.trim() };
-  return crossRef(l, (t) => { const r = resolveCardRef(t); return r && !("broken" in r) ? r : null; });
+  return crossRef(l, (t) => {
+    const r = resolveCardRef(t);
+    return r && !("broken" in r) ? r : null;
+  });
 }
-export const hostRect = (id: string) => { const f = cardById(id); return f ? rectOf(f.host) : null; };
+export const hostRect = (id: string) => {
+  const f = cardById(id);
+  return f ? rectOf(f.host) : null;
+};
 
 function sectionOf(id: string): Section | undefined {
   const f = cardById(id);
@@ -90,15 +111,28 @@ export async function revealCard(id: string, doPing = true): Promise<void> {
 /** 展开藏着这张卡的：调用图里它上面折叠着的卡、它所在的折叠的 Section（一层层往外）。返回有没有展开什么 */
 function unhide(id: string): boolean {
   if (!isHidden(id)) return false;
-  const h = hostOf(id), up = new Set<string>(), todo = [id];
-  while (todo.length) for (const l of flows().parents.get(todo.pop()!) ?? []) {
-    const p = hostOf(l.from.card);
-    if (!up.has(p)) { up.add(p); todo.push(l.from.card); }
-  }
+  const h = hostOf(id),
+    up = new Set<string>(),
+    todo = [id];
+  while (todo.length)
+    for (const l of flows().parents.get(todo.pop()!) ?? []) {
+      const p = hostOf(l.from.card);
+      if (!up.has(p)) {
+        up.add(p);
+        todo.push(l.from.card);
+      }
+    }
   return mutate((b) => {
     for (const k of up) if (b.place[k]?.collapsed) b.place[k].collapsed = undefined;
     const seen = new Set<string>();
-    for (let s = b.sections.find((q) => q.id === b.place[h]?.section); s && !seen.has(s.id); s = b.sections.find((q) => q.id === s!.parent)) { seen.add(s.id); if (s.collapsed) s.collapsed = undefined; }
+    for (
+      let s = b.sections.find((q) => q.id === b.place[h]?.section);
+      s && !seen.has(s.id);
+      s = b.sections.find((q) => q.id === s!.parent)
+    ) {
+      seen.add(s.id);
+      if (s.collapsed) s.collapsed = undefined;
+    }
   });
 }
 /**
@@ -107,26 +141,46 @@ function unhide(id: string): boolean {
  * on the cards or on the lines. Only model geometry and sizes measured earlier: no layout read
  */
 function drawnAround(hosts: Set<string> | null): Rect[] {
-  const ours = (card: string) => { const f = cardById(card); return !!f && (hosts ? hosts.has(f.host.id) : !isHidden(f.host.id)); };
+  const ours = (card: string) => {
+    const f = cardById(card);
+    return !!f && (hosts ? hosts.has(f.host.id) : !isHidden(f.host.id));
+  };
   const out: Rect[] = [];
   const lines = new Set<string>();
   for (const L of state.board.links) {
     if (!ours(L.from.card) || !ours(L.to.card)) continue;
     const c = linkCurve(L.id);
-    if (c) { out.push(bezBox(c)); lines.add(L.id); }
+    if (c) {
+      out.push(bezBox(c));
+      lines.add(L.id);
+    }
   }
   for (const e of extraList()) {
-    if (e.kind === "label" ? !lines.has(e.link) : !ours(state.board.links.find((l) => l.id === e.link)?.to.card ?? "")) continue;
+    if (e.kind === "label" ? !lines.has(e.link) : !ours(state.board.links.find((l) => l.id === e.link)?.to.card ?? ""))
+      continue;
     const r = e.rect();
     if (r) out.push(r);
   }
   for (const s of state.board.stickers) {
     if (s.at.kind !== "canvas") continue;
-    const { x, y, on } = s.at, n = s.at.size ?? 32;
-    if (!on) { if (!hosts) out.push({ x, y, w: n, h: n }); continue; }
-    if ("card" in on) { if (ours(on.card)) { const p = placeOf(on.card); out.push({ x: p.x + x, y: p.y + y, w: n, h: n }); } continue; }
+    const { x, y, on } = s.at,
+      n = s.at.size ?? 32;
+    if (!on) {
+      if (!hosts) out.push({ x, y, w: n, h: n });
+      continue;
+    }
+    if ("card" in on) {
+      if (ours(on.card)) {
+        const p = placeOf(on.card);
+        out.push({ x: p.x + x, y: p.y + y, w: n, h: n });
+      }
+      continue;
+    }
     const c = lines.has(on.link) ? linkCurve(on.link) : null;
-    if (c) { const q = bezAt(c, on.t); out.push({ x: q.x + x, y: q.y + y, w: n, h: n }); }
+    if (c) {
+      const q = bezAt(c, on.t);
+      out.push({ x: q.x + x, y: q.y + y, w: n, h: n });
+    }
   }
   return out;
 }
@@ -141,8 +195,16 @@ export function fitAll() {
 }
 /** @public run from the key table (keymap.ts) */
 export function fitSelection() {
-  const hosts = new Set(sel.cards.flatMap((id) => { const f = cardById(id); return f ? [f.host.id] : []; }));
-  const rs = [...[...hosts].map((id) => hostRect(id)).filter(Boolean) as Rect[], ...(hosts.size ? drawnAround(hosts) : [])];
+  const hosts = new Set(
+    sel.cards.flatMap((id) => {
+      const f = cardById(id);
+      return f ? [f.host.id] : [];
+    }),
+  );
+  const rs = [
+    ...([...hosts].map((id) => hostRect(id)).filter(Boolean) as Rect[]),
+    ...(hosts.size ? drawnAround(hosts) : []),
+  ];
   const b = bounds(rs);
   if (!b) return fitAll();
   const f = fitRect(b, 1.4);
@@ -176,7 +238,8 @@ export function popCard(id: string, from?: { x: number; y: number }) {
 /** 卡片已经挪到新位置，画面上从旧位置滑过去 */
 export function slideFrom(list: { id: string; ox: number; oy: number }[]) {
   if (reduceMotion()) return;
-  const sp = new Spring(0, 170, 26, 0.002); sp.t = 1;
+  const sp = new Spring(0, 170, 26, 0.002);
+  sp.t = 1;
   for (const q of list) setPopIn(q.id, { ox: q.ox, oy: q.oy, v: 0, slide: true });
   animate((dt) => {
     sp.step(dt);
@@ -204,8 +267,12 @@ export function openCode(id: string, seg?: string, line?: number) {
   if (!s || s.src.kind === "free") return;
   send({ type: "open", card: id, seg: s.id, line: line ?? s.start });
 }
-export function openLink(url: string) { send({ type: "openLink", url }); }
-export function searchWorkspace(word: string) { setPaletteOpen({ mode: "code", q: word }); }
+export function openLink(url: string) {
+  send({ type: "openLink", url });
+}
+export function searchWorkspace(word: string) {
+  setPaletteOpen({ mode: "code", q: word });
+}
 
 /** HEAD 和工作区的 diff（卡头的「+ uncommitted」） */
 export function openWorktreeDiff(id: string) {
@@ -223,10 +290,19 @@ export function openWorktreeDiff(id: string) {
  *  高度不存（Note、代码卡和新卡一样跟着内容：加行变高、删行变矮），只有代码比没存高度时的上限（CODE_MAX）还高的代码卡存下内容区的高度 */
 export function fitContent(ids: string[]) {
   const sz = new Map<string, { w?: number; h: number; body?: number }>();
-  for (const id of ids) { const h = cardById(id)?.host.id; const n = h && naturalSize(h); if (h && n) sz.set(h, n); }
+  for (const id of ids) {
+    const h = cardById(id)?.host.id;
+    const n = h && naturalSize(h);
+    if (h && n) sz.set(h, n);
+  }
   if (!sz.size) return;
   const chrome = new Map([...sz.keys()].map((id) => [id, chromeOf(id)]));
-  const from = new Map([...sz.keys()].flatMap((id) => { const s = shownSize(id); return s ? [[id, s] as const] : []; }));
+  const from = new Map(
+    [...sz.keys()].flatMap((id) => {
+      const s = shownSize(id);
+      return s ? [[id, s] as const] : [];
+    }),
+  );
   mutate((b) => {
     for (const [id, n] of sz) {
       const p = b.place[id];
@@ -234,7 +310,13 @@ export function fitContent(ids: string[]) {
       if (n.w) p.w = Math.max(240, Math.min(1600, n.w));
       const c = b.cards.find((k) => k.id === id);
       const code = c?.kind === "code";
-      p.h = c?.kind === "note" || c?.kind === "web" || c?.kind === "image" || (code && n.body !== undefined && n.body <= CODE_MAX) ? undefined : Math.round(n.h - (code ? chrome.get(id)! : 0));
+      p.h =
+        c?.kind === "note" ||
+        c?.kind === "web" ||
+        c?.kind === "image" ||
+        (code && n.body !== undefined && n.body <= CODE_MAX)
+          ? undefined
+          : Math.round(n.h - (code ? chrome.get(id)! : 0));
     }
   });
   growFrom(from);
@@ -257,13 +339,22 @@ function growFrom(from: Map<string, SizeAnim>) {
   if (!runs.length) return;
   const me = {};
   for (const r of runs) growing.set(r.id, me);
-  const sp = new Spring(0, 170, 26, 0.002); sp.t = 1;
+  const sp = new Spring(0, 170, 26, 0.002);
+  sp.t = 1;
   // 动画中又变了一次（再按一次 Fit Content）：那张卡归新的这一轮，从它画到一半的大小接着变
-  const at = (v: number | null) => { for (const r of runs) if (growing.get(r.id) === me) setSizeIn(r.id, v === null ? undefined : { w: r.a.w + (r.b.w - r.a.w) * v, h: r.a.h + (r.b.h - r.a.h) * v }); };
+  const at = (v: number | null) => {
+    for (const r of runs)
+      if (growing.get(r.id) === me)
+        setSizeIn(r.id, v === null ? undefined : { w: r.a.w + (r.b.w - r.a.w) * v, h: r.a.h + (r.b.h - r.a.h) * v });
+  };
   at(0);
   animate((dt, instant) => {
     instant ? sp.set(1) : sp.step(dt);
-    if (sp.done) { at(null); for (const r of runs) if (growing.get(r.id) === me) growing.delete(r.id); return true; }
+    if (sp.done) {
+      at(null);
+      for (const r of runs) if (growing.get(r.id) === me) growing.delete(r.id);
+      return true;
+    }
     at(Math.min(1, sp.v));
     return false;
   });

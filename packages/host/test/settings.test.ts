@@ -6,9 +6,18 @@ import { nodeWorkspace } from "./node-workspace";
 
 const conf = new Map<string, unknown>();
 const W = nodeWorkspace();
-W.settings = { ...W.settings, get: <T>(k: string) => conf.get(k) as T, set: async (k, v) => { conf.set(k, v); } };
+W.settings = {
+  ...W.settings,
+  get: <T>(k: string) => conf.get(k) as T,
+  set: async (k, v) => {
+    conf.set(k, v);
+  },
+};
 
-beforeEach(() => { conf.clear(); useWorkspace(W); });
+beforeEach(() => {
+  conf.clear();
+  useWorkspace(W);
+});
 
 describe("Note font sizes", () => {
   it("default to the theme's sizes", () => {
@@ -72,7 +81,10 @@ describe("Math preamble", () => {
   it("is saved in the project's workspace settings, other settings in the user settings", async () => {
     const scopes = new Map<string, string | undefined>();
     const set = W.settings.set;
-    W.settings.set = async (k, v, scope) => { scopes.set(k, scope); await set(k, v); };
+    W.settings.set = async (k, v, scope) => {
+      scopes.set(k, scope);
+      await set(k, v);
+    };
     await writeSetting("mathPreamble", "\\def\\x{y}");
     await writeSetting("theme", DEFAULT_SETTINGS.theme);
     W.settings.set = set;
@@ -86,8 +98,15 @@ describe("Changes made in a row", () => {
     // each write finishes when the test lets it; the change event of the first one reads the settings before the second is written
     const done: (() => void)[] = [];
     const set = W.settings.set;
-    W.settings.set = (k, v) => new Promise<void>((r) => done.push(() => { conf.set(k, v); r(); }));
-    const a = writeSetting("theme", "graphite"), b = writeSetting("theme", "city");
+    W.settings.set = (k, v) =>
+      new Promise<void>((r) =>
+        done.push(() => {
+          conf.set(k, v);
+          r();
+        }),
+      );
+    const a = writeSetting("theme", "graphite"),
+      b = writeSetting("theme", "city");
     done[0]();
     await a;
     expect(conf.get("codeboard.theme")).toBe("graphite");

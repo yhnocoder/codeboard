@@ -9,7 +9,11 @@ import { nodeWorkspace } from "./node-workspace";
 import { animWebp, apng, faceFrames, gif, png, WEBP_1PX } from "./images";
 
 const [open, wink] = faceFrames(16, [240, 190, 60, 255]);
-const PAL: [number, number, number][] = [[0, 0, 0], [240, 190, 60], [60, 40, 30]];
+const PAL: [number, number, number][] = [
+  [0, 0, 0],
+  [240, 190, 60],
+  [60, 40, 30],
+];
 const GIF1 = gif(8, 8, PAL, [(x) => (x < 4 ? 1 : 2)]);
 const GIF2 = gif(8, 8, PAL, [(x) => (x < 4 ? 1 : 2), (x) => (x < 4 ? 2 : 1)], 100, 0);
 const PNG = png(16, 16, open);
@@ -30,7 +34,8 @@ describe("sniffImage", () => {
     expect(sniffImage(Buffer.from("<svg xmlns='http://www.w3.org/2000/svg'/>"))).toBeNull();
     expect(sniffImage(Buffer.from("not an image at all, just text pretending"))).toBeNull();
     expect(sniffImage(Buffer.from([0xff, 0xd8, 0xff, 0xe0, ...Buffer.alloc(40)]))).toBeNull(); // JPEG start without a frame header
-    const badSig = Buffer.from(PNG); badSig[1] = 0x51;
+    const badSig = Buffer.from(PNG);
+    badSig[1] = 0x51;
     expect(sniffImage(badSig)).toBeNull();
     expect(sniffImage(PNG.subarray(0, 40))).toBeNull(); // cut before IDAT
     expect(sniffImage(GIF2.subarray(0, 800))).toBeNull(); // cut inside the first frame
@@ -47,23 +52,36 @@ describe("bitmap sticker packs", () => {
     const p = path.join(dir, "Party");
     fs.mkdirSync(p);
     const files: Record<string, Buffer | string> = {
-      "smile.png": PNG, "wink.png": APNG, "dot.webp": WEBP_1PX, "dance.webp": AWEBP, "flag.gif": GIF1, "blink.gif": GIF2,
+      "smile.png": PNG,
+      "wink.png": APNG,
+      "dot.webp": WEBP_1PX,
+      "dance.webp": AWEBP,
+      "flag.gif": GIF1,
+      "blink.gif": GIF2,
       "line.svg": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M0 0h16'/></svg>",
       // the same name as an SVG: the SVG wins
       "line.png": PNG,
       // a GIF saved with a .webp name: the bytes decide the type
       "renamed.webp": GIF2,
       // not images
-      "fake.png": "<html>not a png</html>", "script.gif": "GIF89a<script>alert(1)</script>", "notes.txt": "hello",
+      "fake.png": "<html>not a png</html>",
+      "script.gif": "GIF89a<script>alert(1)</script>",
+      "notes.txt": "hello",
       // too big
       "huge.png": Buffer.concat([PNG, Buffer.alloc(MAX_BITMAP)]),
       "huge.svg": `<svg xmlns='http://www.w3.org/2000/svg'>${" ".repeat(MAX_SVG)}</svg>`,
     };
     for (const [f, b] of Object.entries(files)) fs.writeFileSync(path.join(p, f), b);
-    useWorkspace({ ...W, settings: { ...W.settings, get: <T>(k: string) => (k === "codeboard.stickerFolder" ? dir : undefined) as T } });
+    useWorkspace({
+      ...W,
+      settings: { ...W.settings, get: <T>(k: string) => (k === "codeboard.stickerFolder" ? dir : undefined) as T },
+    });
     packs = await readPacks();
   });
-  afterAll(() => { useWorkspace(W); fs.rmSync(dir, { recursive: true, force: true }); });
+  afterAll(() => {
+    useWorkspace(W);
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
 
   const icon = (name: string) => packs.find((p) => p.id === "Party")!.icons.find((i) => i.name === name) as any;
 

@@ -26,8 +26,12 @@ export function varCandidates(call: CallSite, callee: Sym | undefined): Var[] {
   }
   if (call.assigned?.length) out.push({ a: call.assigned.join(", "), ret: true });
   const seen = new Set<string>();
-  return out.filter((v) => { const k = varKey(v); if (seen.has(k)) return false; seen.add(k); return true; });
+  return out.filter((v) => {
+    const k = varKey(v);
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
 }
 
 const pair = (a: string, b: string): Var => (a === b ? { a } : { a, b });
-

@@ -8,13 +8,25 @@ module.exports = async (page, t) => {
   const spot = await t.emptySpot(f);
   const delays = [0, 2, 5, 10, 20, 50, 100, 200, 400, 700];
   const log = [];
-  const inEditor = () => page.evaluate(() => !!document.activeElement?.closest(".monaco-editor") && document.hasFocus() && !document.activeElement?.closest(".quick-input-widget"));
-  const inQuick = () => page.evaluate(() => !!document.activeElement?.closest(".quick-input-widget") && document.hasFocus());
+  const inEditor = () =>
+    page.evaluate(
+      () =>
+        !!document.activeElement?.closest(".monaco-editor") &&
+        document.hasFocus() &&
+        !document.activeElement?.closest(".quick-input-widget"),
+    );
+  const inQuick = () =>
+    page.evaluate(() => !!document.activeElement?.closest(".quick-input-widget") && document.hasFocus());
   for (let i = 0; i < N; i++) {
-    const mode = i % 2 ? "quickopen" : "editor", d = delays[i % delays.length];
+    const mode = i % 2 ? "quickopen" : "editor",
+      d = delays[i % delays.length];
     await t.clickBoard(f, { position: spot });
     if (d) await t.hold(d, "the user's gap between clicking the board and going elsewhere");
-    if (mode === "editor") await page.locator(".editor-group-container .monaco-editor .view-lines").first().click({ position: { x: 60, y: 30 } });
+    if (mode === "editor")
+      await page
+        .locator(".editor-group-container .monaco-editor .view-lines")
+        .first()
+        .click({ position: { x: 60, y: 30 } });
     else await page.keyboard.press("Control+p");
     const at0 = mode === "editor" ? await inEditor() : await t.soon(inQuick, (v) => v, 3000);
     await t.hold(1300, "past CLICK_KEEPS_KEYS: the board must not take the keyboard back meanwhile");
@@ -22,7 +34,10 @@ module.exports = async (page, t) => {
     const board = await f.evaluate(() => (window.frameElement?.ownerDocument ?? document).hasFocus()).catch(() => null);
     log.push({ i, mode, d, at0, at1, board });
     if (!at1) console.log("  LOST", JSON.stringify(log[log.length - 1]));
-    if (mode === "quickopen") { await page.keyboard.press("Escape"); await t.qiClosed(page, "Quick Open"); }
+    if (mode === "quickopen") {
+      await page.keyboard.press("Escape");
+      await t.qiClosed(page, "Quick Open");
+    }
   }
   fs.writeFileSync(`${t.OUT}/focus-race.json`, JSON.stringify(log, null, 1));
   const lost = log.filter((r) => !r.at1);

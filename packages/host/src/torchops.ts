@@ -6,7 +6,20 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { parse } from "yaml";
 import { grammarOfFile } from "@codeboard/analysis/langs";
-import { dispatchAll, lineIndex, matchClose, stubDevice, macroCalls, pasteMacros, pastedNames, pybindAll, pyMethodAll, type CallSite, type Paster, type Sym } from "@codeboard/analysis";
+import {
+  dispatchAll,
+  lineIndex,
+  matchClose,
+  stubDevice,
+  macroCalls,
+  pasteMacros,
+  pastedNames,
+  pybindAll,
+  pyMethodAll,
+  type CallSite,
+  type Paster,
+  type Sym,
+} from "@codeboard/analysis";
 import { escapeRegExp } from "@codeboard/analysis/basics";
 import { analysisOf, symbolsOf, whenAnalysisReady } from "./analysis";
 import { entriesOf, followIndex, indexedFiles, isCode, type IndexEntry } from "./nameindex";
@@ -29,10 +42,23 @@ const OPS_YAML = "aten/src/ATen/native/native_functions.yaml";
 
 /** yaml 里的一个 func：add.out → name add，overload out；逗号连着的 key 拆开（CPU, CUDA: f → 两条） */
 export type OpDecl = {
-  name: string; overload: string; line: number; dispatch: [string, string][]; structured: boolean; delegate?: string; ufunc: boolean;
-  variants: string[]; out: boolean;
+  name: string;
+  overload: string;
+  line: number;
+  dispatch: [string, string][];
+  structured: boolean;
+  delegate?: string;
+  ufunc: boolean;
+  variants: string[];
+  out: boolean;
 };
-export type OpTable = { root: string; yaml: string; decls: OpDecl[]; byName: Map<string, OpDecl[]>; byFull: Map<string, OpDecl> };
+export type OpTable = {
+  root: string;
+  yaml: string;
+  decls: OpDecl[];
+  byName: Map<string, OpDecl[]>;
+  byFull: Map<string, OpDecl>;
+};
 /**
  * 一个 kernel：dispatch key、C++ 名字、写在哪个 func 上（via = 经 structured_delegate 走到的 func）；
  * inner = 有 ufunc_inner_loop 的算子：kernel 是生成的 ufunc_add_CUDA（有构建才找得到），没有就是手写的 ufunc::add
@@ -52,7 +78,11 @@ function* opEntries(text: string, bad: { n: number }): Generator<OpDecl> {
     if (i < lines.length && !lines[i].startsWith("- ")) continue;
     if (start >= 0) {
       let e: Record<string, unknown> | undefined;
-      try { e = (parse(lines.slice(start, i).join("\n")) as Record<string, unknown>[] | null)?.[0]; } catch { bad.n++; }
+      try {
+        e = (parse(lines.slice(start, i).join("\n")) as Record<string, unknown>[] | null)?.[0];
+      } catch {
+        bad.n++;
+      }
       const d = e && declOf(e, start + 1);
       if (d) yield d;
     }
@@ -64,11 +94,19 @@ function declOf(e: Record<string, unknown>, line: number): OpDecl | null {
   const m = /^([\w]+)(?:\.(\w+))?\s*\(([\s\S]*)\)\s*->/.exec(String(e.func ?? ""));
   if (!m) return null;
   const dispatch: [string, string][] = [];
-  for (const [keys, k] of Object.entries((e.dispatch ?? {}) as Record<string, unknown>)) for (const key of keys.split(",")) dispatch.push([key.trim(), String(k)]);
+  for (const [keys, k] of Object.entries((e.dispatch ?? {}) as Record<string, unknown>))
+    for (const key of keys.split(",")) dispatch.push([key.trim(), String(k)]);
   return {
-    name: m[1], overload: m[2] ?? "", line, dispatch, structured: e.structured === true,
+    name: m[1],
+    overload: m[2] ?? "",
+    line,
+    dispatch,
+    structured: e.structured === true,
     delegate: typeof e.structured_delegate === "string" ? e.structured_delegate : undefined,
-    ufunc: !!e.ufunc_inner_loop, variants: String(e.variants ?? "function").split(",").map((v) => v.trim()),
+    ufunc: !!e.ufunc_inner_loop,
+    variants: String(e.variants ?? "function")
+      .split(",")
+      .map((v) => v.trim()),
     out: /\*[^]*Tensor\(\w!\)/.test(m[3]), // 关键字参数里有可写的 Tensor：out 变体
   };
 }
@@ -77,14 +115,22 @@ export const parseOps = (text: string): OpDecl[] => [...opEntries(text, { n: 0 }
 
 /** 不阻塞的 parseOps：整个文件要 300–600 ms */
 async function parseOpsSliced(text: string, bad: { n: number }): Promise<OpDecl[]> {
-  const out: OpDecl[] = [], turn = slicer();
-  for (const d of opEntries(text, bad)) { out.push(d); await turn(); }
+  const out: OpDecl[] = [],
+    turn = slicer();
+  for (const d of opEntries(text, bad)) {
+    out.push(d);
+    await turn();
+  }
   return out;
 }
 
 export function opTable(root: string, yaml: string, decls: OpDecl[]): OpTable {
-  const byName = new Map<string, OpDecl[]>(), byFull = new Map<string, OpDecl>();
-  for (const d of decls) { (byName.get(d.name) ?? byName.set(d.name, []).get(d.name)!).push(d); byFull.set(fullName(d), d); }
+  const byName = new Map<string, OpDecl[]>(),
+    byFull = new Map<string, OpDecl>();
+  for (const d of decls) {
+    (byName.get(d.name) ?? byName.set(d.name, []).get(d.name)!).push(d);
+    byFull.set(fullName(d), d);
+  }
   return { root, yaml, decls, byName, byFull };
 }
 
@@ -98,9 +144,14 @@ function declKernels(t: OpTable, d: OpDecl): Kernel[] {
   const out = [...own];
   const target = d.delegate ? t.byFull.get(d.delegate) : d.structured ? d : undefined;
   // via = 写着 kernel 的那个 func（几层 structured_delegate 时是最后一层）
-  if (target && target !== d) for (const k of declKernels(t, target)) if (!has(k.key, out)) out.push({ ...k, decl: fullName(d), via: k.via ?? k.decl });
-  if (target === d && d.ufunc) for (const key of ["CUDA", "CPU"]) if (!has(key, out)) out.push({ key, kernel: `ufunc_${d.name}_${key}`, decl: fullName(d), inner: d.name });
-  if (!d.dispatch.length && !d.delegate) out.push({ key: "CompositeImplicitAutograd", kernel: cppName(d), decl: fullName(d) });
+  if (target && target !== d)
+    for (const k of declKernels(t, target))
+      if (!has(k.key, out)) out.push({ ...k, decl: fullName(d), via: k.via ?? k.decl });
+  if (target === d && d.ufunc)
+    for (const key of ["CUDA", "CPU"])
+      if (!has(key, out)) out.push({ key, kernel: `ufunc_${d.name}_${key}`, decl: fullName(d), inner: d.name });
+  if (!d.dispatch.length && !d.delegate)
+    out.push({ key: "CompositeImplicitAutograd", kernel: cppName(d), decl: fullName(d) });
   return out;
 }
 
@@ -108,8 +159,18 @@ function declKernels(t: OpTable, d: OpDecl): Kernel[] {
  * 0 = CUDA，1 = CPU，2 = Composite*，3 = 别的设备（MPS、XPU、HPU、MTIA…），4 = 布局（Sparse*、SparseCsr*、Nested*、Mkldnn*、Quantized*），
  * 5 = Meta（只算形状）、ZeroTensor
  */
-export const keyRank = (key: string) => (key === "CUDA" ? 0 : key === "CPU" ? 1 : /^Composite/.test(key) ? 2
-  : /Meta$|^ZeroTensor$/.test(key) ? 5 : /^(Sparse|Nested|Mkldnn|Quantized)/.test(key) ? 4 : 3);
+export const keyRank = (key: string) =>
+  key === "CUDA"
+    ? 0
+    : key === "CPU"
+      ? 1
+      : /^Composite/.test(key)
+        ? 2
+        : /Meta$|^ZeroTensor$/.test(key)
+          ? 5
+          : /^(Sparse|Nested|Mkldnn|Quantized)/.test(key)
+            ? 4
+            : 3;
 
 /**
  * 算子 name（overload 可选）的 kernel，按 keyRank 排：CUDA、CPU、Composite，再是别的设备（Mac 上要看的是 MPS 的）、布局、Meta。
@@ -119,15 +180,22 @@ export function kernelsOf(t: OpTable, name: string, overload?: string): Kernel[]
   // 没给 overload：默认的 func 在前，然后别的非 out 的，out 变体最后（边界标的是最像这次调用的那个）。
   // 非 out 的已经有的 key，out 变体的 kernel 不要：调用 torch.add(a, b) 跑的是 add.Tensor 的那个，out= 的只是同一个 key 的另一个入口
   const rank = (d: OpDecl) => (!d.overload ? 0 : d.out ? 2 : 1);
-  const decls = overload !== undefined ? [t.byFull.get(overload ? `${name}.${overload}` : name)].filter((d): d is OpDecl => !!d)
-    : [...(t.byName.get(name) ?? [])].sort((a, b) => rank(a) - rank(b));
+  const decls =
+    overload !== undefined
+      ? [t.byFull.get(overload ? `${name}.${overload}` : name)].filter((d): d is OpDecl => !!d)
+      : [...(t.byName.get(name) ?? [])].sort((a, b) => rank(a) - rank(b));
   const plain = new Set(decls.filter((d) => !d.out).flatMap((d) => declKernels(t, d).map((k) => k.key)));
-  const list = decls.flatMap((d) => declKernels(t, d).filter((k) => overload !== undefined || !d.out || !plain.has(k.key)))
-    .map((k, i) => ({ k, i })).sort((a, b) => keyRank(a.k.key) - keyRank(b.k.key) || a.i - b.i).map((x) => x.k);
+  const list = decls
+    .flatMap((d) => declKernels(t, d).filter((k) => overload !== undefined || !d.out || !plain.has(k.key)))
+    .map((k, i) => ({ k, i }))
+    .sort((a, b) => keyRank(a.k.key) - keyRank(b.k.key) || a.i - b.i)
+    .map((x) => x.k);
   const out: Kernel[] = [];
   for (const k of list) {
     const same = out.find((o) => o.kernel === k.kernel);
-    if (same) { if (!same.key.split(", ").includes(k.key)) same.key += `, ${k.key}`; } else out.push({ ...k });
+    if (same) {
+      if (!same.key.split(", ").includes(k.key)) same.key += `, ${k.key}`;
+    } else out.push({ ...k });
   }
   return out;
 }
@@ -137,7 +205,8 @@ export function kernelsOf(t: OpTable, name: string, overload?: string): Kernel[]
  * 布局的 key 看后缀：SparseCUDA、NestedTensorCUDA 的在 CUDA 文件里
  */
 const onDevice = (abs: string, key: string) => {
-  const dev = stubDevice("REGISTER_DISPATCH", abs), k = key.split(", ")[0];
+  const dev = stubDevice("REGISTER_DISPATCH", abs),
+    k = key.split(", ")[0];
   return dev === (/CUDA$/.test(k) ? "CUDA" : /MPS$/.test(k) ? "MPS" : "CPU");
 };
 
@@ -153,15 +222,28 @@ type MacroSite = { abs: string; line: number; macro: string; sig: string };
 /**
  * 一个文件给扫描的表加了什么。pasters = 它里面用 ## 拼名字的 #define；pasted = 它调用这些宏拼出来的 kernel（第 2 遍：#define 可能在别的文件里）
  */
-type FileRec = { regs: [string, Reg][]; pyRegs: [string, Reg][]; macros: [string, MacroSite][]; words: string[]; gen: IndexEntry[]; pasters: [string, Paster][]; pasted: [string, MacroSite][] };
+type FileRec = {
+  regs: [string, Reg][];
+  pyRegs: [string, Reg][];
+  macros: [string, MacroSite][];
+  words: string[];
+  gen: IndexEntry[];
+  pasters: [string, Paster][];
+  pasted: [string, MacroSite][];
+};
 type Scan = {
-  t: OpTable; aten: string; root: string;
+  t: OpTable;
+  aten: string;
+  root: string;
   /** <build>/aten/src/ATen，torchgen 把 Ufunc kernel 写在这里（没有：没构建过，或者没有 compile_commands.json） */
   genDir?: string;
   /** 要在文件里找的名字：yaml 里的 kernel 和 ufunc inner loop，再加注册目标；值是拷贝出来的扁平字符串 */
   wanted: Map<string, string>;
   files: Map<string, FileRec>;
-  regs: Map<string, Reg[]>; pyRegs: Map<string, Reg[]>; macros: Map<string, MacroSite[]>; gen: Map<string, IndexEntry[]>;
+  regs: Map<string, Reg[]>;
+  pyRegs: Map<string, Reg[]>;
+  macros: Map<string, MacroSite[]>;
+  gen: Map<string, IndexEntry[]>;
   pasters: Map<string, { abs: string; p: Paster }[]>;
   /** 要找的名字 → 它可能定义在里面的文件 */
   where: Map<string, Set<string>>;
@@ -176,7 +258,8 @@ type Scan = {
   /** 正在做的文件更新 */
   updating: Map<string, Promise<void>>;
   /** 排着、还没开始的第 2 遍重做 / 构建目录重找（一次就够） */
-  retarget?: true; rebuild?: true;
+  retarget?: true;
+  rebuild?: true;
   dead?: true;
   /** 来自 yaml 的名字（第 1 遍就找它们的文件） */
   yamlNames: Set<string>;
@@ -192,8 +275,13 @@ const own = (s: string) => Buffer.from(s, "utf8").toString("utf8");
 const isGen = (x: Scan, abs: string) => !!x.genDir && path.dirname(abs) === x.genDir;
 /** 不找 Python 绑定的目录：第三方库（自己的 pybind 测试、示例）、测试、benchmark、代码生成的模板（生成的文件在 torch/csrc 里，模板再算一遍就重复了） */
 const NOT_BINDINGS = /[\\/](third_party|test|tests|benchmarks|templates)[\\/]/;
-const isBindings = (x: Scan, abs: string) => abs.startsWith(x.root) && !abs.startsWith(x.aten) && grammarOfFile(abs) === "cpp" && !NOT_BINDINGS.test(abs.slice(x.root.length - 1));
-const inScan = (x: Scan, abs: string) => (isGen(x, abs) ? UFUNC_FILE.test(path.basename(abs)) : isCode(abs) && (abs.startsWith(x.aten) || isBindings(x, abs)));
+const isBindings = (x: Scan, abs: string) =>
+  abs.startsWith(x.root) &&
+  !abs.startsWith(x.aten) &&
+  grammarOfFile(abs) === "cpp" &&
+  !NOT_BINDINGS.test(abs.slice(x.root.length - 1));
+const inScan = (x: Scan, abs: string) =>
+  isGen(x, abs) ? UFUNC_FILE.test(path.basename(abs)) : isCode(abs) && (abs.startsWith(x.aten) || isBindings(x, abs));
 
 /**
  * 构建生成的 ATen 目录，从 clangd 用的 compile_commands.json 找：clangd 的 --compile-commands-dir 指的目录，
@@ -207,10 +295,18 @@ export async function genDirOf(root: string): Promise<string | undefined> {
   if (Array.isArray(args)) {
     const i = args.findIndex((a) => typeof a === "string" && /^--compile-commands-dir(=|$)/.test(a));
     const v = i < 0 ? undefined : /=/.test(args[i]) ? String(args[i]).replace(/^[^=]*=/, "") : args[i + 1];
-    if (typeof v === "string" && v) dirs.push(path.resolve(ws, v.replace(/\$\{(workspaceFolder|workspaceRoot)\}/g, ws)));
+    if (typeof v === "string" && v)
+      dirs.push(path.resolve(ws, v.replace(/\$\{(workspaceFolder|workspaceRoot)\}/g, ws)));
   }
   dirs.push(root, path.join(root, "build"));
-  try { for (const d of (await fs.readdir(path.join(root, "build"), { withFileTypes: true })).sort((a, b) => a.name.localeCompare(b.name))) if (d.isDirectory()) dirs.push(path.join(root, "build", d.name)); } catch { /* no build/ */ }
+  try {
+    for (const d of (await fs.readdir(path.join(root, "build"), { withFileTypes: true })).sort((a, b) =>
+      a.name.localeCompare(b.name),
+    ))
+      if (d.isDirectory()) dirs.push(path.join(root, "build", d.name));
+  } catch {
+    /* no build/ */
+  }
   for (const d of dirs) {
     const text = await readText(path.join(d, "compile_commands.json"), false);
     if (text === null) continue;
@@ -227,10 +323,15 @@ export async function genDirOf(root: string): Promise<string | undefined> {
 export async function ufuncDir(cdb: string, dir: string, p: path.PlatformPath = path): Promise<string | undefined> {
   const turn = slicer();
   for (let i = 0; i < cdb.length; ) {
-    const nl = cdb.indexOf("\n", i + CDB_PIECE), j = nl < 0 ? cdb.length : nl + 1;
+    const nl = cdb.indexOf("\n", i + CDB_PIECE),
+      j = nl < 0 ? cdb.length : nl + 1;
     for (const m of cdb.slice(i, j).matchAll(UFUNC_FILE_KEY)) {
       let file: unknown;
-      try { file = JSON.parse(m[1]); } catch { continue; }
+      try {
+        file = JSON.parse(m[1]);
+      } catch {
+        continue;
+      }
       const abs = typeof file === "string" ? p.resolve(dir, file) : "";
       if (UFUNC_PATH.test(abs)) return editorPath(p.dirname(abs), p);
     }
@@ -244,7 +345,8 @@ export async function ufuncDir(cdb: string, dir: string, p: path.PlatformPath = 
  * 路径写成编辑器文件事件里的样子，生成的文件才对得上（isGen 比较的是字符串）：Windows 上 VS Code 的盘符是小写的 c:，
  * 而 CMake 写进 compile_commands.json 的、设置里手写的是 C:
  */
-const editorPath = (abs: string, p: path.PlatformPath = path) => (p === path.win32 ? abs.replace(/^[A-Z](?=:)/, (c) => c.toLowerCase()) : abs);
+const editorPath = (abs: string, p: path.PlatformPath = path) =>
+  p === path.win32 ? abs.replace(/^[A-Z](?=:)/, (c) => c.toLowerCase()) : abs;
 const UFUNC_PATH = /[\\/]aten[\\/]src[\\/]ATen[\\/]Ufunc\w*\.(cpp|cu)$/;
 const CDB_PIECE = 1 << 20;
 const UFUNC_FILE_KEY = /"file"\s*:\s*("(?:[^"\\]|\\.)*Ufunc\w*\.(?:cpp|cu)")/g;
@@ -252,28 +354,66 @@ const UFUNC_FILE_KEY = /"file"\s*:\s*("(?:[^"\\]|\\.)*Ufunc\w*\.(?:cpp|cu)")/g;
 /** 一个文件注册了什么、它的宏调用定义了哪些 kernel、哪些要找的名字可能定义在这里。生成的文件有几 MB：长循环里也让出 */
 async function scanText(x: Scan, abs: string, text: string, turn = slicer()): Promise<FileRec> {
   const rec: FileRec = { regs: [], pyRegs: [], macros: [], words: [], gen: [], pasters: [], pasted: [] };
-  const aten = isGen(x, abs) || abs.startsWith(x.aten), binds = isBindings(x, abs);
+  const aten = isGen(x, abs) || abs.startsWith(x.aten),
+    binds = isBindings(x, abs);
   if (aten) {
-    for (const r of dispatchAll(text)) rec.regs.push([own(r.name), { abs, line: r.line, target: r.target && own(r.target), how: own(r.macro) }]);
+    for (const r of dispatchAll(text))
+      rec.regs.push([own(r.name), { abs, line: r.line, target: r.target && own(r.target), how: own(r.macro) }]);
     let lineAt: ((i: number) => number) | undefined;
     for (const [i, m] of each(MACRO_CALL, text)) {
       if (i % EVERY === 0) await turn();
       for (const id of m[2].match(/\b[A-Za-z_]\w*\b/g) ?? []) {
         const k = x.wanted.get(id);
-        if (k) rec.macros.push([k, { abs, line: (lineAt ??= lineIndex(text))(m.index), macro: own(m[1]), sig: own(m[0].trim()) }]);
+        if (k)
+          rec.macros.push([
+            k,
+            { abs, line: (lineAt ??= lineIndex(text))(m.index), macro: own(m[1]), sig: own(m[0].trim()) },
+          ]);
       }
     }
-    if (!isGen(x, abs)) for (const [name, p] of pasteMacros(text)) rec.pasters.push([own(name), { params: p.params.map(own), names: p.names.map((n) => n.map((v) => (typeof v === "string" ? own(v) : v))) }]);
+    if (!isGen(x, abs))
+      for (const [name, p] of pasteMacros(text))
+        rec.pasters.push([
+          own(name),
+          { params: p.params.map(own), names: p.names.map((n) => n.map((v) => (typeof v === "string" ? own(v) : v))) },
+        ]);
   }
   if (binds) {
     // 头文件文档注释里的示例（torch/library.h 的 /// m.def("add", add_fn);）不是注册
     let lines: string[] | undefined;
     const comment = (line: number) => /^\s*(\/\/|\/?\*)/.test((lines ??= text.split("\n"))[line - 1] ?? "");
-    for (const r of pybindAll(text)) if (!comment(r.line)) rec.pyRegs.push([own(r.name), { abs, line: r.line, target: r.target && own(r.target), lambda: r.lambda, how: `pybind · ${path.basename(abs)} ${r.how}` }]);
-    for (const r of pyMethodAll(text)) if (!comment(r.line)) rec.pyRegs.push([own(r.name), { abs, line: r.line, target: r.target && own(r.target), how: `PyMethodDef · ${path.basename(abs)}` }]);
+    for (const r of pybindAll(text))
+      if (!comment(r.line))
+        rec.pyRegs.push([
+          own(r.name),
+          {
+            abs,
+            line: r.line,
+            target: r.target && own(r.target),
+            lambda: r.lambda,
+            how: `pybind · ${path.basename(abs)} ${r.how}`,
+          },
+        ]);
+    for (const r of pyMethodAll(text))
+      if (!comment(r.line))
+        rec.pyRegs.push([
+          own(r.name),
+          { abs, line: r.line, target: r.target && own(r.target), how: `PyMethodDef · ${path.basename(abs)}` },
+        ]);
   }
   if (isGen(x, abs)) {
-    for (const s of symbolsOf(langOf(abs), text)) if (s.kind === "def") rec.gen.push({ name: own(s.name), qual: own(s.qual), kind: s.kind, abs, start: s.start, end: s.end, defLine: s.defLine, sig: own(s.sig) });
+    for (const s of symbolsOf(langOf(abs), text))
+      if (s.kind === "def")
+        rec.gen.push({
+          name: own(s.name),
+          qual: own(s.qual),
+          kind: s.kind,
+          abs,
+          start: s.start,
+          end: s.end,
+          defLine: s.defLine,
+          sig: own(s.sig),
+        });
   } else rec.words = await defNames(x, text, turn);
   return rec;
 }
@@ -295,7 +435,8 @@ const DEF_AFTER = /^\s*(?:[A-Za-z_]\w*\b\s*(?:\([^()]*\)\s*)?)*(?:\{|->|:(?!:))/
 /** 参数表最多看这么长（文件写坏了括号不配对时不一直找到文件尾） */
 const PARAMS_MAX = 4096;
 const defAfter = (text: string, open: number) => {
-  const piece = text.slice(open, open + PARAMS_MAX), close = matchClose(piece, 0);
+  const piece = text.slice(open, open + PARAMS_MAX),
+    close = matchClose(piece, 0);
   return close >= 0 && DEF_AFTER.test(piece.slice(close + 1));
 };
 const NOT_DECL = /^\s*(?:return|else|case|throw|new|delete|co_return|co_yield|goto|sizeof|if|while|for|switch|do)\b/;
@@ -308,7 +449,12 @@ async function defNames(x: Scan, text: string, turn: () => Promise<void>): Promi
     const k = x.wanted.get(m[1]);
     if (!k || seen.has(k)) continue;
     const pre = text.slice(text.lastIndexOf("\n", m.index - 1) + 1, m.index);
-    if (m[2] === "(" ? DECL_PREFIX.test(pre) && !NOT_DECL.test(pre) && defAfter(text, m.index + m[0].length - 1) : MACRO_ARG.test(pre)) seen.add(k);
+    if (
+      m[2] === "("
+        ? DECL_PREFIX.test(pre) && !NOT_DECL.test(pre) && defAfter(text, m.index + m[0].length - 1)
+        : MACRO_ARG.test(pre)
+    )
+      seen.add(k);
   }
   return [...seen];
 }
@@ -329,37 +475,74 @@ function dropRec(x: Scan, abs: string) {
   if (!rec) return;
   x.files.delete(abs);
   const drop = <V extends { abs: string }>(m: Map<string, V[]>, keys: Iterable<string>) => {
-    for (const k of keys) { const rest = (m.get(k) ?? []).filter((v) => v.abs !== abs); if (rest.length) m.set(k, rest); else m.delete(k); }
+    for (const k of keys) {
+      const rest = (m.get(k) ?? []).filter((v) => v.abs !== abs);
+      if (rest.length) m.set(k, rest);
+      else m.delete(k);
+    }
   };
-  drop(x.regs, rec.regs.map(([k]) => k));
-  drop(x.pyRegs, rec.pyRegs.map(([k]) => k));
-  drop(x.macros, [...rec.macros, ...rec.pasted].map(([k]) => k));
-  drop(x.pasters, rec.pasters.map(([k]) => k));
-  drop(x.gen, rec.gen.map((e) => e.name));
-  for (const w of rec.words) { const s = x.where.get(w); s?.delete(abs); if (s && !s.size) x.where.delete(w); }
+  drop(
+    x.regs,
+    rec.regs.map(([k]) => k),
+  );
+  drop(
+    x.pyRegs,
+    rec.pyRegs.map(([k]) => k),
+  );
+  drop(
+    x.macros,
+    [...rec.macros, ...rec.pasted].map(([k]) => k),
+  );
+  drop(
+    x.pasters,
+    rec.pasters.map(([k]) => k),
+  );
+  drop(
+    x.gen,
+    rec.gen.map((e) => e.name),
+  );
+  for (const w of rec.words) {
+    const s = x.where.get(w);
+    s?.delete(abs);
+    if (s && !s.size) x.where.delete(w);
+  }
 }
 
 /** 注册目标也成为要找的名字（它们的定义和 kernel 一样查） */
 function wantTargets(x: Scan, rec: FileRec) {
-  for (const [, r] of [...rec.regs, ...rec.pyRegs]) if (r.target) { const n = r.target.split("::").pop()!; if (!x.wanted.has(n)) x.wanted.set(n, own(n)); }
+  for (const [, r] of [...rec.regs, ...rec.pyRegs])
+    if (r.target) {
+      const n = r.target.split("::").pop()!;
+      if (!x.wanted.has(n)) x.wanted.set(n, own(n));
+    }
 }
 
 async function genFiles(x: Scan): Promise<string[]> {
   const dir = x.genDir;
   if (!dir) return [];
-  try { return (await fs.readdir(dir)).filter((f) => UFUNC_FILE.test(f)).map((f) => path.join(dir, f)); } catch { return []; }
+  try {
+    return (await fs.readdir(dir)).filter((f) => UFUNC_FILE.test(f)).map((f) => path.join(dir, f));
+  } catch {
+    return [];
+  }
 }
 
 /** 第 1 遍：注册、宏定义的 kernel、yaml 里的名字在哪些文件；大多数点击有这些就够了 */
 async function scanHead(x: Scan) {
-  const t0 = performance.now(), turn = slicer();
+  const t0 = performance.now(),
+    turn = slicer();
   const files = (await indexedFiles()).map((f) => f.abs).filter((a) => inScan(x, a));
   x.genDir = await genDirOf(x.t.root);
   const gen = await genFiles(x);
   for (const abs of [...gen, ...files]) {
     if (x.dead) return;
     const text = await readText(abs, false);
-    if (text !== null) { const rec = await scanText(x, abs, text, turn); if (x.dead) return; addRec(x, abs, rec); wantTargets(x, rec); }
+    if (text !== null) {
+      const rec = await scanText(x, abs, text, turn);
+      if (x.dead) return;
+      addRec(x, abs, rec);
+      wantTargets(x, rec);
+    }
     await turn();
   }
   return Math.round(performance.now() - t0);
@@ -367,25 +550,39 @@ async function scanHead(x: Scan) {
 
 /** 所有文件都读过之后一个文件再加的：可能定义在这里的注册目标、调用拼名字的宏拼出来的 kernel */
 async function targetsIn(x: Scan, abs: string, rec: FileRec, text: string, turn = slicer()) {
-  const had = new Set(rec.words), words = (await defNames(x, text, turn)).filter((w) => !had.has(w));
+  const had = new Set(rec.words),
+    words = (await defNames(x, text, turn)).filter((w) => !had.has(w));
   if (x.dead || x.files.get(abs) !== rec) return; // 这期间文件事件已经重做过了
   rec.words.push(...words);
   for (const w of words) (x.where.get(w) ?? x.where.set(w, new Set()).get(w)!).add(abs);
-  for (const [k, m] of rec.pasted) { const rest = (x.macros.get(k) ?? []).filter((v) => v !== m); if (rest.length) x.macros.set(k, rest); else x.macros.delete(k); }
+  for (const [k, m] of rec.pasted) {
+    const rest = (x.macros.get(k) ?? []).filter((v) => v !== m);
+    if (rest.length) x.macros.set(k, rest);
+    else x.macros.delete(k);
+  }
   rec.pasted = [];
   if (!abs.startsWith(x.aten)) return;
   for (const c of macroCalls(text, (n) => x.pasters.has(n))) {
-    const defs = x.pasters.get(c.macro)!, here = defs.filter((d) => d.abs === abs);
+    const defs = x.pasters.get(c.macro)!,
+      here = defs.filter((d) => d.abs === abs);
     // 同一个宏名在不同文件里可能是不同的 #define（CPU 和 CUDA 文件里的 FOREACH_BINARY_OP_SCALAR）
-    const made = new Set((here.length ? here : defs.filter((d) => d.p.params.length === c.args.length)).flatMap((d) => pastedNames(d.p, c.args)));
-    for (const n of made) { const k = x.yamlNames.has(n) && x.wanted.get(n); if (k) rec.pasted.push([k, { abs, line: c.line, macro: own(c.macro), sig: own(c.sig) }]); }
+    const made = new Set(
+      (here.length ? here : defs.filter((d) => d.p.params.length === c.args.length)).flatMap((d) =>
+        pastedNames(d.p, c.args),
+      ),
+    );
+    for (const n of made) {
+      const k = x.yamlNames.has(n) && x.wanted.get(n);
+      if (k) rec.pasted.push([k, { abs, line: c.line, macro: own(c.macro), sig: own(c.sig) }]);
+    }
   }
   for (const [k, m] of rec.pasted) push(x.macros, k, m);
 }
 
 /** 第 2 遍：第 1 遍找到的注册目标、拼名字的宏拼出来的 kernel 在哪些文件。文件重新读而不是留着：文本有 ~80 MB 堆 */
 async function scanTargets(x: Scan): Promise<number> {
-  const t0 = performance.now(), turn = slicer();
+  const t0 = performance.now(),
+    turn = slicer();
   for (const [abs, rec] of [...x.files]) {
     if (x.dead) break;
     if (isGen(x, abs) || x.files.get(abs) !== rec) continue; // 这期间文件事件已经重做过了
@@ -395,7 +592,8 @@ async function scanTargets(x: Scan): Promise<number> {
   }
   return Math.round(performance.now() - t0);
 }
-const counts = (x: Scan) => `${x.files.size} files of ${x.t.root}, ${x.regs.size} dispatch stubs, ${x.pyRegs.size} Python names`;
+const counts = (x: Scan) =>
+  `${x.files.size} files of ${x.t.root}, ${x.regs.size} dispatch stubs, ${x.pyRegs.size} Python names`;
 
 /** 扫描范围里的文件变了（保存、新建、在外面改了、删了）：扫描完后只重做这一个文件 */
 function rescanFile(x: Scan, abs: string) {
@@ -431,8 +629,11 @@ function updateNow(x: Scan, abs: string): Promise<void> {
     }
     // 这里加、删、改了拼名字的宏，别的文件里的调用拼出来的东西也变了：重做第 2 遍
     if (!x.dead && mine() !== before) retarget(x);
-  })().catch((e) => log("warn", `op index: cannot update ${abs}: ${e instanceof Error ? e.message : e}`))
-    .finally(() => { if (x.updating.get(abs) === p) x.updating.delete(abs); });
+  })()
+    .catch((e) => log("warn", `op index: cannot update ${abs}: ${e instanceof Error ? e.message : e}`))
+    .finally(() => {
+      if (x.updating.get(abs) === p) x.updating.delete(abs);
+    });
   x.updating.set(abs, p);
   return p;
 }
@@ -443,12 +644,14 @@ const fresh = (x: Scan, files: Iterable<string>) => Promise.all([...new Set(file
 function retarget(x: Scan) {
   if (x.retarget) return;
   x.retarget = true;
-  x.queue = x.queue.then(async () => {
-    x.retarget = undefined;
-    if (x.dead) return;
-    const ms = await scanTargets(x);
-    log("info", `op index: second pass again after a macro changed, ${ms} ms`);
-  }).catch((e) => log("warn", `op index: cannot redo the second pass: ${e instanceof Error ? e.message : e}`));
+  x.queue = x.queue
+    .then(async () => {
+      x.retarget = undefined;
+      if (x.dead) return;
+      const ms = await scanTargets(x);
+      log("info", `op index: second pass again after a macro changed, ${ms} ms`);
+    })
+    .catch((e) => log("warn", `op index: cannot redo the second pass: ${e instanceof Error ? e.message : e}`));
 }
 
 /**
@@ -462,41 +665,70 @@ const settled = (x: Scan, head?: "head") => (head ? x.head : x.ready);
 export function scanOf(t: OpTable): Scan {
   let x = scans.get(t.root);
   // 解析 yaml 期间它又存了：旧表的扫描不能占着这个根，新表的 kernel 才会被找（还拿着旧表的点击不换掉新表的扫描）
-  if (x && x.t !== t && latest.get(t.yaml) === t) { dropScan(t.root); x = undefined; }
+  if (x && x.t !== t && latest.get(t.yaml) === t) {
+    dropScan(t.root);
+    x = undefined;
+  }
   if (!x) {
     const wanted = new Map<string, string>();
-    for (const d of t.decls) for (const k of declKernels(t, d)) for (const n of [k.kernel, k.inner]) if (n && !wanted.has(n)) wanted.set(n, own(n));
+    for (const d of t.decls)
+      for (const k of declKernels(t, d))
+        for (const n of [k.kernel, k.inner]) if (n && !wanted.has(n)) wanted.set(n, own(n));
     const s: Scan = {
-      t, aten: path.dirname(path.dirname(t.yaml)) + path.sep, root: t.root + path.sep,
-      wanted, yamlNames: new Set(wanted.keys()), files: new Map(), regs: new Map(), pyRegs: new Map(), macros: new Map(), gen: new Map(), pasters: new Map(), where: new Map(),
-      head: Promise.resolve(), ready: Promise.resolve(), queue: Promise.resolve(), pending: new Set(), updating: new Map(),
+      t,
+      aten: path.dirname(path.dirname(t.yaml)) + path.sep,
+      root: t.root + path.sep,
+      wanted,
+      yamlNames: new Set(wanted.keys()),
+      files: new Map(),
+      regs: new Map(),
+      pyRegs: new Map(),
+      macros: new Map(),
+      gen: new Map(),
+      pasters: new Map(),
+      where: new Map(),
+      head: Promise.resolve(),
+      ready: Promise.resolve(),
+      queue: Promise.resolve(),
+      pending: new Set(),
+      updating: new Map(),
     };
     const fail = (e: unknown) => log("warn", `op index: scan failed: ${e instanceof Error ? e.message : e}`);
     const first = whenAnalysisReady().then(() => scanHead(s));
     s.head = first.then(() => undefined, fail);
-    s.ready = first.then(async (a) => {
-      const b = await scanTargets(s);
-      if (!s.dead) log("info", `op index: ${counts(s)}, ${a} + ${b} ms`);
-    }).catch(fail);
+    s.ready = first
+      .then(async (a) => {
+        const b = await scanTargets(s);
+        if (!s.dead) log("info", `op index: ${counts(s)}, ${a} + ${b} ms`);
+      })
+      .catch(fail);
     scans.set(t.root, (x = s));
   }
   return x;
 }
 /** 白板打开时：找 yaml、开始扫描、等它完成 */
-export async function warmOps() { await Promise.all((await opTables()).map((t) => scanOf(t).ready)); }
+export async function warmOps() {
+  await Promise.all((await opTables()).map((t) => scanOf(t).ready));
+}
 
 /** 一个 DispatchStub 的注册 */
 export async function stubRegs(t: OpTable, stub: string): Promise<Reg[]> {
   const x = scanOf(t);
   await settled(x, "head");
-  await fresh(x, (x.regs.get(stub) ?? []).map((r) => r.abs));
+  await fresh(
+    x,
+    (x.regs.get(stub) ?? []).map((r) => r.abs),
+  );
   return x.regs.get(stub) ?? [];
 }
 /** 一个 Python 名字的 pybind / PyMethodDef 注册 */
 export async function pyRegs(t: OpTable, name: string): Promise<Reg[]> {
   const x = scanOf(t);
   await settled(x, "head");
-  await fresh(x, (x.pyRegs.get(name) ?? []).map((r) => r.abs));
+  await fresh(
+    x,
+    (x.pyRegs.get(name) ?? []).map((r) => r.abs),
+  );
   return x.pyRegs.get(name) ?? [];
 }
 
@@ -512,7 +744,8 @@ export async function defsOf(t: OpTable, name: string): Promise<IndexEntry[]> {
 /** kernel 的 C++ 定义：at::native::name 优先；CUDA key 优先 .cu / cuda/ 里的，MPS 优先 mps/ 里的，其他 key 优先别处的；ufunc：生成的 ufunc_add_CUDA，没有就是 ufunc::add */
 export async function kernelEntry(t: OpTable, k: Kernel): Promise<IndexEntry | undefined> {
   const x = scanOf(t);
-  const ok = (e: IndexEntry) => e.kind === "def" && (e.abs.startsWith(x.aten) || isGen(x, e.abs)) && grammarOfFile(e.abs) === "cpp";
+  const ok = (e: IndexEntry) =>
+    e.kind === "def" && (e.abs.startsWith(x.aten) || isGen(x, e.abs)) && grammarOfFile(e.abs) === "cpp";
   let ents = (await defsOf(t, k.kernel)).filter(ok);
   if (!ents.length && k.inner) ents = (await defsOf(t, k.inner)).filter((e) => ok(e) && /(^|::)ufunc::/.test(e.qual));
   const score = (e: IndexEntry) => (e.qual.endsWith(`native::${k.kernel}`) ? 2 : 0) + (onDevice(e.abs, k.key) ? 1 : 0);
@@ -527,17 +760,44 @@ async function macroKernel(t: OpTable, k: Kernel): Promise<{ abs: string; sym: S
   const x = scanOf(t);
   await settled(x, "head");
   if (!x.macros.has(k.kernel)) await settled(x); // 拼名字的宏拼出来的：第 2 遍之后才知道
-  await fresh(x, (x.macros.get(k.kernel) ?? []).map((m) => m.abs));
-  const m = [...(x.macros.get(k.kernel) ?? [])].sort((a, b) => (onDevice(a.abs, k.key) ? 0 : 1) - (onDevice(b.abs, k.key) ? 0 : 1))[0];
-  return m ? { abs: m.abs, sym: { name: k.kernel, qual: `${m.macro}(${k.kernel})`, kind: "def", start: m.line, defLine: m.line, end: m.line, sig: m.sig, params: [] } } : null;
+  await fresh(
+    x,
+    (x.macros.get(k.kernel) ?? []).map((m) => m.abs),
+  );
+  const m = [...(x.macros.get(k.kernel) ?? [])].sort(
+    (a, b) => (onDevice(a.abs, k.key) ? 0 : 1) - (onDevice(b.abs, k.key) ? 0 : 1),
+  )[0];
+  return m
+    ? {
+        abs: m.abs,
+        sym: {
+          name: k.kernel,
+          qual: `${m.macro}(${k.kernel})`,
+          kind: "def",
+          start: m.line,
+          defLine: m.line,
+          end: m.line,
+          sig: m.sig,
+          params: [],
+        },
+      }
+    : null;
 }
 
 /** 名字索引的一条 → 带完整分析（参数）的符号 */
 async function entrySym(e: IndexEntry): Promise<{ abs: string; sym: Sym } | null> {
   const text = await readText(e.abs);
   if (text === null) return null;
-  const sym = analysisOf(langOf(e.abs), text).symbols.find((s) => s.qual === e.qual && s.defLine === e.defLine)
-    ?? { name: e.name, qual: e.qual, kind: e.kind, start: e.start, end: e.end, defLine: e.defLine, sig: e.sig, params: [] };
+  const sym = analysisOf(langOf(e.abs), text).symbols.find((s) => s.qual === e.qual && s.defLine === e.defLine) ?? {
+    name: e.name,
+    qual: e.qual,
+    kind: e.kind,
+    start: e.start,
+    end: e.end,
+    defLine: e.defLine,
+    sig: e.sig,
+    params: [],
+  };
   return { abs: e.abs, sym };
 }
 
@@ -557,9 +817,13 @@ const latest = new Map<string, OpTable>();
 async function loadTable(yaml: string): Promise<OpTable | null> {
   const text = await readText(yaml, false);
   if (text === null) return null;
-  const t0 = performance.now(), bad = { n: 0 };
+  const t0 = performance.now(),
+    bad = { n: 0 };
   const t = opTable(yaml.slice(0, yaml.length - OPS_YAML.length - 1), yaml, await parseOpsSliced(text, bad));
-  log(bad.n ? "warn" : "info", `op index: ${t.decls.length} ops from ${yaml}${bad.n ? `, ${bad.n} entries not valid YAML` : ""}, ${Math.round(performance.now() - t0)} ms`);
+  log(
+    bad.n ? "warn" : "info",
+    `op index: ${t.decls.length} ops from ${yaml}${bad.n ? `, ${bad.n} entries not valid YAML` : ""}, ${Math.round(performance.now() - t0)} ms`,
+  );
   return t;
 }
 
@@ -569,9 +833,15 @@ export async function opTables(): Promise<OpTable[]> {
   found ??= (async () => {
     const native = `${path.sep}${path.dirname(OPS_YAML).split("/").join(path.sep)}${path.sep}`;
     const roots = new Set<string>();
-    for (const { abs } of await indexedFiles()) { const i = abs.indexOf(native); if (i > 0) roots.add(abs.slice(0, i)); }
+    for (const { abs } of await indexedFiles()) {
+      const i = abs.indexOf(native);
+      if (i > 0) roots.add(abs.slice(0, i));
+    }
     const out: string[] = [];
-    for (const r of roots) { const y = path.join(r, OPS_YAML); if (await exists(y)) out.push(y); }
+    for (const r of roots) {
+      const y = path.join(r, OPS_YAML);
+      if (await exists(y)) out.push(y);
+    }
     return out;
   })().catch(() => []);
   const out: OpTable[] = [];
@@ -581,7 +851,10 @@ export async function opTables(): Promise<OpTable[]> {
       if (!p) tables.set(yaml, (p = loadTable(yaml)));
       const t = await p;
       if (tables.get(yaml) !== p) continue; // 解析期间 yaml 又存了：用新的那份
-      if (t) { latest.set(yaml, t); out.push(t); }
+      if (t) {
+        latest.set(yaml, t);
+        out.push(t);
+      }
       break;
     }
   }
@@ -602,25 +875,45 @@ export async function opTableFor(abs?: string): Promise<OpTable | undefined> {
  * 项目自己的代码调 PyTorch 时，语言服务的定义（存根、生成的头文件）所在的那个；工作区里只有一个 PyTorch 就是它。
  * 有几个、又看不出是哪个时没有（不猜）。defs 只在有几个 PyTorch 时才问
  */
-export async function entryTable(here: string | undefined, defs: () => Promise<string[]>): Promise<OpTable | undefined> {
+export async function entryTable(
+  here: string | undefined,
+  defs: () => Promise<string[]>,
+): Promise<OpTable | undefined> {
   const ts = await opTables();
   const mine = here && tableHolding(ts, here);
   if (mine || ts.length < 2) return mine || ts[0];
-  for (const d of await defs()) { const t = tableHolding(ts, d); if (t) return t; }
+  for (const d of await defs()) {
+    const t = tableHolding(ts, d);
+    if (t) return t;
+  }
   return undefined;
 }
 
 function dropScan(root: string) {
   const x = scans.get(root);
-  if (x) { x.dead = true; scans.delete(root); }
+  if (x) {
+    x.dead = true;
+    scans.delete(root);
+  }
 }
-function resetOpTables() { found = undefined; tables.clear(); latest.clear(); for (const r of [...scans.keys()]) dropScan(r); }
+function resetOpTables() {
+  found = undefined;
+  tables.clear();
+  latest.clear();
+  for (const r of [...scans.keys()]) dropScan(r);
+}
 
 /** 文件保存、新建、在编辑器外改了或删了：yaml 丢掉它的表和扫描，扫描过的文件重做 */
 function opsFileChanged(abs: string) {
-  if (path.basename(abs) === "compile_commands.json") { opsBuildChanged(); return; }
+  if (path.basename(abs) === "compile_commands.json") {
+    opsBuildChanged();
+    return;
+  }
   if (abs.endsWith(path.sep + OPS_YAML.split("/").join(path.sep))) {
-    if (!tables.has(abs)) { found = undefined; return; } // 工作区里新来了一个 PyTorch
+    if (!tables.has(abs)) {
+      found = undefined;
+      return;
+    } // 工作区里新来了一个 PyTorch
     tables.delete(abs);
     dropScan(abs.slice(0, abs.length - OPS_YAML.length - 1));
     return;
@@ -632,25 +925,31 @@ function opsBuildChanged() {
   for (const x of scans.values()) {
     if (x.rebuild) continue;
     x.rebuild = true;
-    x.queue = x.queue.then(async () => {
-      x.rebuild = undefined;
-      await x.ready;
-      if (x.dead) return;
-      for (const abs of [...x.files.keys()]) if (isGen(x, abs)) dropRec(x, abs);
-      x.genDir = await genDirOf(x.t.root);
-      for (const abs of await genFiles(x)) {
-        const text = await readText(abs, false);
-        const rec = text === null ? null : await scanText(x, abs, text);
-        if (rec && !x.dead) { dropRec(x, abs); addRec(x, abs, rec); }
-      }
-    }).catch((e) => log("warn", `op index: cannot update the build folder: ${e instanceof Error ? e.message : e}`));
+    x.queue = x.queue
+      .then(async () => {
+        x.rebuild = undefined;
+        await x.ready;
+        if (x.dead) return;
+        for (const abs of [...x.files.keys()]) if (isGen(x, abs)) dropRec(x, abs);
+        x.genDir = await genDirOf(x.t.root);
+        for (const abs of await genFiles(x)) {
+          const text = await readText(abs, false);
+          const rec = text === null ? null : await scanText(x, abs, text);
+          if (rec && !x.dead) {
+            dropRec(x, abs);
+            addRec(x, abs, rec);
+          }
+        }
+      })
+      .catch((e) => log("warn", `op index: cannot update the build folder: ${e instanceof Error ? e.message : e}`));
   }
 }
 
 /** 删了文件或目录 */
 function opsPathRemoved(p: string) {
   for (const yaml of [...tables.keys()]) if (yaml === p || yaml.startsWith(p + path.sep)) opsFileChanged(yaml);
-  for (const x of scans.values()) for (const abs of [...x.files.keys()]) if (abs === p || abs.startsWith(p + path.sep)) rescanFile(x, abs);
+  for (const x of scans.values())
+    for (const abs of [...x.files.keys()]) if (abs === p || abs.startsWith(p + path.sep)) rescanFile(x, abs);
 }
 
 // 入口：调用处 → 算子名
@@ -664,7 +963,11 @@ export type OpEntry = { op: string; overload?: string; how: "explicit" | "torch"
 function resolveRecv(recv: string, text: string): string {
   const [head, ...rest] = recv.split(".");
   const im = analysisOf("python", text).imports.find((i) => i.name === head);
-  const alias = im ? undefined : new RegExp(`^${escapeRegExp(head)}\\s*=\\s*(torch(?:\\._ops)?\\.ops(?:\\.\\w+)?)\\s*(?:#.*)?$`, "m").exec(text)?.[1];
+  const alias = im
+    ? undefined
+    : new RegExp(`^${escapeRegExp(head)}\\s*=\\s*(torch(?:\\._ops)?\\.ops(?:\\.\\w+)?)\\s*(?:#.*)?$`, "m").exec(
+        text,
+      )?.[1];
   const mod = alias ?? (!im ? head : im.from ? (im.module === head ? head : `${im.module}.${head}`) : im.module);
   return [mod, ...rest].join(".").replace(/^torch\._ops\.ops\b/, "torch.ops");
 }
@@ -680,17 +983,19 @@ export function pyOpEntry(t: OpTable, site: Pick<CallSite, "name" | "recv">, tex
   const full = resolveRecv(site.recv, text);
   const imports = analysisOf("python", text).imports;
   const ops = /^torch\.ops\.aten\.(\w+)(?:\.(\w+))?$/.exec(`${full}.${site.name}`);
-  if (ops) return t.byName.has(ops[1]) ? { op: ops[1], overload: ops[2] === "default" ? "" : ops[2], how: "explicit" } : null;
+  if (ops)
+    return t.byName.has(ops[1]) ? { op: ops[1], overload: ops[2] === "default" ? "" : ops[2], how: "explicit" } : null;
   // torch.linalg.norm → linalg_norm（torch/linalg 里是 _add_docstr(_linalg.linalg_norm, …)）
   const sub = /^torch\.(linalg|fft|special)$/.exec(full);
   if (sub && t.byName.has(`${sub[1]}_${site.name}`)) return { op: `${sub[1]}_${site.name}`, how: "explicit" };
   if (!t.byName.has(site.name)) return null;
   const decls = t.byName.get(site.name)!;
   if (C_NS.test(full)) return { op: site.name, how: "explicit" };
-  if (full === "torch") return decls.some((d) => d.variants.includes("function")) ? { op: site.name, how: "torch" } : null;
+  if (full === "torch")
+    return decls.some((d) => d.variants.includes("function")) ? { op: site.name, how: "torch" } : null;
   if (full === "torch.nn.functional") return { op: site.name, how: "functional" };
   const head = site.recv.split(".")[0];
-  if (/^(self|cls)$/.test(site.recv) || imports.some((i) => i.name === head) && full !== "torch.Tensor") return null;
+  if (/^(self|cls)$/.test(site.recv) || (imports.some((i) => i.name === head) && full !== "torch.Tensor")) return null;
   return decls.some((d) => d.variants.includes("method")) ? { op: site.name, how: "method" } : null;
 }
 
@@ -702,7 +1007,9 @@ export function cppOpEntry(t: OpTable, site: Pick<CallSite, "name" | "recv">): O
   if (ops && /^(call|redispatch)$/.test(site.name)) {
     if (t.byName.has(ops)) return { op: ops, overload: "", how: "at" };
     // add_Tensor → add.Tensor：从右往左第一个能拆成已知 func 的 _
-    for (let i = ops.lastIndexOf("_"); i > 0; i = ops.lastIndexOf("_", i - 1)) if (t.byFull.has(`${ops.slice(0, i)}.${ops.slice(i + 1)}`)) return { op: ops.slice(0, i), overload: ops.slice(i + 1), how: "at" };
+    for (let i = ops.lastIndexOf("_"); i > 0; i = ops.lastIndexOf("_", i - 1))
+      if (t.byFull.has(`${ops.slice(0, i)}.${ops.slice(i + 1)}`))
+        return { op: ops.slice(0, i), overload: ops.slice(i + 1), how: "at" };
   }
   return null;
 }
@@ -712,17 +1019,29 @@ export function cppOpEntry(t: OpTable, site: Pick<CallSite, "name" | "recv">): O
  * 照常去 Python（在 F.softmax 的 def 里再点 input.softmax）：就是这个 def。路径相对 yaml 所在的 PyTorch，
  * 所以 vendored 的 PyTorch 不在 Python 路径上、语言服务找不到时也对
  */
-export async function pyDefInTorch(t: OpTable, name: string, how: OpEntry["how"]): Promise<{ abs: string; sym: Sym } | null> {
+export async function pyDefInTorch(
+  t: OpTable,
+  name: string,
+  how: OpEntry["how"],
+): Promise<{ abs: string; sym: Sym } | null> {
   for (const f of how === "functional" ? ["torch/nn/functional.py"] : ["torch/functional.py", "torch/__init__.py"]) {
     const abs = path.join(t.root, f);
     const text = await readText(abs, false);
-    const sym = text === null ? undefined : analysisOf("python", text).symbols.find((s) => s.qual === name && s.kind === "def");
+    const sym =
+      text === null ? undefined : analysisOf("python", text).symbols.find((s) => s.qual === name && s.kind === "def");
     if (sym) return { abs, sym };
   }
   return null;
 }
 
 /** DispatchStub 调用：第一个参数是设备（iter.device_type()、self.device().type()、kCPU、DeviceType::CUDA） */
-export const isStubCall = (site: Pick<CallSite, "args">) => /device|DeviceType|^(at::|c10::)?k[A-Z][A-Za-z]+$/.test(site.args[0]?.text.trim() ?? "");
+export const isStubCall = (site: Pick<CallSite, "args">) =>
+  /device|DeviceType|^(at::|c10::)?k[A-Z][A-Za-z]+$/.test(site.args[0]?.text.trim() ?? "");
 
-followIndex({ changed: opsFileChanged, removed: opsPathRemoved, buildChanged: opsBuildChanged, reset: resetOpTables, warm: warmOps });
+followIndex({
+  changed: opsFileChanged,
+  removed: opsPathRemoved,
+  buildChanged: opsBuildChanged,
+  reset: resetOpTables,
+  warm: warmOps,
+});

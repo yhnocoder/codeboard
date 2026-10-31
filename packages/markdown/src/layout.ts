@@ -15,7 +15,9 @@ export const CELL_MIN = 25;
 export function applyMdLayout(el: HTMLElement, layout: MdLayout | null | undefined) {
   if (!layout && !el.querySelector("table[data-md-style], pre.md-code.wrap")) return;
   el.querySelectorAll("table").forEach((t, i) => sizeTable(t, layout?.tables?.[i] ?? null));
-  const codes = [...el.querySelectorAll<HTMLElement>(".mmd, pre.md-code")].filter((p) => !p.parentElement?.closest(".mmd"));
+  const codes = [...el.querySelectorAll<HTMLElement>(".mmd, pre.md-code")].filter(
+    (p) => !p.parentElement?.closest(".mmd"),
+  );
   codes.forEach((p, i) => p.classList.toggle("wrap", !!layout?.wrap?.includes(i)));
 }
 
@@ -26,17 +28,36 @@ function sizeTable(t: HTMLTableElement, l: TableLayout | null) {
   t.setAttribute("style", t.dataset.mdStyle);
   const rows = t.rows;
   for (let r = 0; r < rows.length; r++) rows[r].style.height = l?.rows?.[r] ? `${l.rows[r]}px` : "";
-  const cols = l?.cols ?? [], n = Math.max(rows[0]?.cells.length ?? 0, cols.length);
+  const cols = l?.cols ?? [],
+    n = Math.max(rows[0]?.cells.length ?? 0, cols.length);
   let g = t.querySelector<HTMLTableColElement>(":scope > colgroup");
   if (!g && !cols.some((w) => w)) return;
-  if (!g) { g = document.createElement("colgroup"); t.prepend(g); }
+  if (!g) {
+    g = document.createElement("colgroup");
+    t.prepend(g);
+  }
   while (g.children.length < n) g.append(document.createElement("col"));
-  let total = 0, fixed = true;
+  let total = 0,
+    fixed = true;
   [...g.children].forEach((c, i) => {
-    const w = cols[i] ?? null, st = (c as HTMLElement).style;
-    if (w) { st.width = `${Math.max(w, CELL_MIN)}px`; st.minWidth = ""; } else { st.width = ""; st.minWidth = `${CELL_MIN}px`; fixed = false; }
+    const w = cols[i] ?? null,
+      st = (c as HTMLElement).style;
+    if (w) {
+      st.width = `${Math.max(w, CELL_MIN)}px`;
+      st.minWidth = "";
+    } else {
+      st.width = "";
+      st.minWidth = `${CELL_MIN}px`;
+      fixed = false;
+    }
     total += w ? Math.max(w, CELL_MIN) : CELL_MIN;
   });
   if (!cols.some((w) => w)) return;
-  if (fixed) { t.style.width = `${total}px`; t.style.minWidth = ""; } else { t.style.width = ""; t.style.minWidth = `${total}px`; }
+  if (fixed) {
+    t.style.width = `${total}px`;
+    t.style.minWidth = "";
+  } else {
+    t.style.width = "";
+    t.style.minWidth = `${total}px`;
+  }
 }

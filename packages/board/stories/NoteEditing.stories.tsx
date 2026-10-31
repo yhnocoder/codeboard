@@ -24,11 +24,18 @@ function shown(a: Args): Scene {
 }
 
 type PM = { state: any; view: any; commands: any; chain: () => any; isDestroyed: boolean };
-const editor = () => waitFor(() => ($(`.card[data-id="${ID}"] .md-pm`) as (HTMLElement & { editor?: PM }) | null)?.editor, "the Markdown editor");
+const editor = () =>
+  waitFor(
+    () => ($(`.card[data-id="${ID}"] .md-pm`) as (HTMLElement & { editor?: PM }) | null)?.editor,
+    "the Markdown editor",
+  );
 /** 第一个 type 节点的位置（ProseMirror 的文档位置） */
 function nodePos(ed: PM, type: string): number {
   let at = -1;
-  ed.state.doc.descendants((n: any, pos: number) => { if (at < 0 && n.type.name === type) at = pos; return at < 0; });
+  ed.state.doc.descendants((n: any, pos: number) => {
+    if (at < 0 && n.type.name === type) at = pos;
+    return at < 0;
+  });
   if (at < 0) throw new Error(`No ${type} in the note`);
   return at;
 }
@@ -44,24 +51,46 @@ function textRange(ed: PM, text: string, a: number, b: number): { from: number; 
   if (!r) throw new Error(`No "${text}" in the note`);
   return r;
 }
-const settle = async () => { await frames(3); };
+const settle = async () => {
+  await frames(3);
+};
 
 const inlineMathOpen = async () => {
   const ed = await editor();
   await settle();
   // 点公式和光标走进去一样：换成 $…$ 原文，光标在里面
-  const k = await waitFor(() => $(`.card[data-id="${ID}"] .md-pm [data-type=inline-math] .katex-base`) ?? $(`.card[data-id="${ID}"] .md-pm [data-type=inline-math]`), "an inline formula");
-  pointer(k, "pointerdown"); k.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, clientX: k.getBoundingClientRect().left + 4, clientY: k.getBoundingClientRect().top + 6 }));
-  k.dispatchEvent(new MouseEvent("mouseup", { bubbles: true })); k.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  const k = await waitFor(
+    () =>
+      $(`.card[data-id="${ID}"] .md-pm [data-type=inline-math] .katex-base`) ??
+      $(`.card[data-id="${ID}"] .md-pm [data-type=inline-math]`),
+    "an inline formula",
+  );
+  pointer(k, "pointerdown");
+  k.dispatchEvent(
+    new MouseEvent("mousedown", {
+      bubbles: true,
+      clientX: k.getBoundingClientRect().left + 4,
+      clientY: k.getBoundingClientRect().top + 6,
+    }),
+  );
+  k.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+  k.dispatchEvent(new MouseEvent("click", { bubbles: true }));
   await settle();
-  if ($(`.card[data-id="${ID}"] .md-pm [data-type=inline-math]`)) ed.chain().focus().setTextSelection(nodePos(ed, "inlineMath") + 1).run();
+  if ($(`.card[data-id="${ID}"] .md-pm [data-type=inline-math]`))
+    ed.chain()
+      .focus()
+      .setTextSelection(nodePos(ed, "inlineMath") + 1)
+      .run();
 };
 const blockMathOpen = async () => {
   const ed = await editor();
   await settle();
   ed.chain().focus().setNodeSelection(nodePos(ed, "blockMath")).run();
   // 方向键走进公式块时焦点落在原文框里（它按内容长高）
-  const t = await waitFor(() => $<HTMLTextAreaElement>(`.card[data-id="${ID}"] [data-type=block-math] textarea`), "the formula source");
+  const t = await waitFor(
+    () => $<HTMLTextAreaElement>(`.card[data-id="${ID}"] [data-type=block-math] textarea`),
+    "the formula source",
+  );
   t.focus();
   t.dispatchEvent(new Event("input", { bubbles: true }));
   await settle();
@@ -69,7 +98,10 @@ const blockMathOpen = async () => {
 const codeFocused = async () => {
   const ed = await editor();
   await settle();
-  ed.chain().focus().setTextSelection(nodePos(ed, "codeBlock") + 5).run();
+  ed.chain()
+    .focus()
+    .setTextSelection(nodePos(ed, "codeBlock") + 5)
+    .run();
   await settle();
   ($(`.card[data-id="${ID}"] .md-pm pre .cm-content`) as HTMLElement | null)?.focus();
   await settle();
@@ -77,13 +109,17 @@ const codeFocused = async () => {
 const langPicker = async () => {
   await codeFocused();
   const l = await waitFor(() => $<HTMLElement>(`.card[data-id="${ID}"] .md-pm pre .md-lang`), "the language label");
-  l.dispatchEvent(new MouseEvent("mousedown", { bubbles: true })); l.click();
+  l.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+  l.click();
   await waitFor(() => $(".md-langbox"), "the language list");
 };
 const selectWords = async () => {
   const ed = await editor();
   await settle();
-  ed.chain().focus().setTextSelection(textRange(ed, "KV cache", 0, 8)).run();
+  ed.chain()
+    .focus()
+    .setTextSelection(textRange(ed, "KV cache", 0, 8))
+    .run();
   // 选区停稳一会儿工具条才出来（TOOLBAR_SETTLE）
   await waitFor(() => $(".md-bubble, .md-toolbar, .bubble"), "the selection toolbar", 3000).catch(() => undefined);
 };
@@ -94,9 +130,14 @@ const typeAtEnd = (text: string) => async () => {
   await settle();
   // 和打字一样一个字一个字进（输入规则、/ 和 [[ 的建议都看 handleTextInput）
   for (const ch of text) {
-    if (ch === "\n") { ed.commands.keyboardShortcut("Enter"); await frames(1); continue; }
+    if (ch === "\n") {
+      ed.commands.keyboardShortcut("Enter");
+      await frames(1);
+      continue;
+    }
     const { from, to } = ed.state.selection;
-    if (!ed.view.someProp("handleTextInput", (f: any) => f(ed.view, from, to, ch))) ed.view.dispatch(ed.state.tr.insertText(ch, from, to));
+    if (!ed.view.someProp("handleTextInput", (f: any) => f(ed.view, from, to, ch)))
+      ed.view.dispatch(ed.state.tr.insertText(ch, from, to));
     await frames(1);
   }
   await settle();
@@ -108,9 +149,14 @@ const staticSelection = async () => {
   const w = document.createTreeWalker(p, NodeFilter.SHOW_TEXT);
   const ts: Text[] = [];
   for (let n = w.nextNode(); n; n = w.nextNode()) if (n.textContent!.trim()) ts.push(n as Text);
-  const a = ts[0], b = ts[Math.min(2, ts.length - 1)];
-  const r = document.createRange(); r.setStart(a, Math.floor(a.length / 2)); r.setEnd(b, Math.ceil(b.length / 2));
-  const s = getSelection()!; s.removeAllRanges(); s.addRange(r);
+  const a = ts[0],
+    b = ts[Math.min(2, ts.length - 1)];
+  const r = document.createRange();
+  r.setStart(a, Math.floor(a.length / 2));
+  r.setEnd(b, Math.ceil(b.length / 2));
+  const s = getSelection()!;
+  s.removeAllRanges();
+  s.addRange(r);
 };
 // 卡的小样不挂工具栏：指针停在工具栏的 Note 会放卡的地方（左上角在视野正中往左上 140、40），按 N
 const newNote = async () => {
@@ -135,30 +181,63 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-const MATH = "注意力的开销是 $O(n^2 d)$，按 block 存 KV。\n\n$$\n\\text{blocks} = \\left\\lceil \\frac{n}{256} \\right\\rceil\n$$\n\n公式下面一行。";
+const MATH =
+  "注意力的开销是 $O(n^2 d)$，按 block 存 KV。\n\n$$\n\\text{blocks} = \\left\\lceil \\frac{n}{256} \\right\\rceil\n$$\n\n公式下面一行。";
 
 export const Fresh: Story = {
   name: "Fresh Note (just created)",
   render: (_, ctx) => <Stage scene={() => ({ board: scene("Empty board").board })} globals={ctx.globals as Globals} />,
-  argTypes: { md: { table: { disable: true } }, title: { table: { disable: true } }, w: { table: { disable: true } }, h: { table: { disable: true } } },
+  argTypes: {
+    md: { table: { disable: true } },
+    title: { table: { disable: true } },
+    w: { table: { disable: true } },
+    h: { table: { disable: true } },
+  },
   play: newNote,
 };
 export const Empty: Story = { name: "Empty (placeholder)", args: { md: "" } };
 export const TitledHeaderFolded: Story = { name: "Heading Note (header folds away)", args: { md: TITLED } };
 export const Untitled: Story = { name: "No Heading (header stays)", args: { md: SHORT } };
-export const CustomTitle: Story = { name: "Custom Title (header stays)", args: { md: TITLED, title: "BlockManager 笔记" } };
+export const CustomTitle: Story = {
+  name: "Custom Title (header stays)",
+  args: { md: TITLED, title: "BlockManager 笔记" },
+};
 export const FixedHeight: Story = { name: "Fixed Height (scrolls while editing)", args: { md: LONG, h: 260 } };
 export const Everything: Story = { name: "Every Markdown Feature", args: { md: ALL_MD, w: 420 } };
-export const InlineFormulaOpen: Story = { name: "Inline Formula Source Open", args: { md: MATH }, play: inlineMathOpen };
-export const BlockFormulaOpen: Story = { name: "Block Formula Open", args: { md: MATH.replace("= \\left", "=\n\\left") }, play: blockMathOpen };
+export const InlineFormulaOpen: Story = {
+  name: "Inline Formula Source Open",
+  args: { md: MATH },
+  play: inlineMathOpen,
+};
+export const BlockFormulaOpen: Story = {
+  name: "Block Formula Open",
+  args: { md: MATH.replace("= \\left", "=\n\\left") },
+  play: blockMathOpen,
+};
 // 原文框按换行数定行数（mathblock.ts fit）：一行长公式在窄 Note 里折行后下半截被剪掉
-export const BlockFormulaLongLine: Story = { name: "Block Formula Open, Long Line (clipped)", args: { md: MATH }, play: blockMathOpen };
-export const CodeBlockFocused: Story = { name: "Code Block Focused", args: { md: `先找空闲块：\n\n${codeBlock("python")}\n\n后面一行。`, w: 440 }, play: codeFocused };
-export const LanguagePicker: Story = { name: "Code Block Language List", args: { md: `先找空闲块：\n\n${codeBlock("python")}\n\n后面一行。`, w: 440 }, play: langPicker };
+export const BlockFormulaLongLine: Story = {
+  name: "Block Formula Open, Long Line (clipped)",
+  args: { md: MATH },
+  play: blockMathOpen,
+};
+export const CodeBlockFocused: Story = {
+  name: "Code Block Focused",
+  args: { md: `先找空闲块：\n\n${codeBlock("python")}\n\n后面一行。`, w: 440 },
+  play: codeFocused,
+};
+export const LanguagePicker: Story = {
+  name: "Code Block Language List",
+  args: { md: `先找空闲块：\n\n${codeBlock("python")}\n\n后面一行。`, w: 440 },
+  play: langPicker,
+};
 export const SelectionToolbar: Story = { name: "Text Selected (toolbar)", args: { md: SHORT }, play: selectWords };
 export const SlashMenu: Story = { name: "Slash Menu", args: { md: SHORT }, play: typeAtEnd("\n/") };
 export const RefPicker: Story = { name: "Card Ref List ([[)", args: { md: SHORT }, play: typeAtEnd(" [[sch") };
-export const Typed: Story = { name: "Typing Turns Into Formatting", args: { md: "" }, play: typeAtEnd("## 抢占\n- block 不够就 **抢占** ") };
+export const Typed: Story = {
+  name: "Typing Turns Into Formatting",
+  args: { md: "" },
+  play: typeAtEnd("## 抢占\n- block 不够就 **抢占** "),
+};
 export const StaticSelection: Story = {
   name: "Text Selected (not editing)",
   render: (a, ctx) => <Stage scene={() => shown(a)} globals={ctx.globals as Globals} />,

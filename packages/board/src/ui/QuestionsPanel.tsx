@@ -15,7 +15,15 @@ export function QuestionsPanel() {
     const m = new Map<string, { name: string; here: boolean; items: QuestionItem[] }>();
     for (const q of shown()) {
       let g = m.get(q.board);
-      if (!g) m.set(q.board, (g = { name: q.group ? `${q.group} · ${q.boardName}` : q.boardName, here: q.board === state.board.id, items: [] }));
+      if (!g)
+        m.set(
+          q.board,
+          (g = {
+            name: q.group ? `${q.group} · ${q.boardName}` : q.boardName,
+            here: q.board === state.board.id,
+            items: [],
+          }),
+        );
       g.items.push(q);
     }
     return [...m.values()];
@@ -25,31 +33,68 @@ export function QuestionsPanel() {
       <div class="cph">
         <b>Questions</b>
         <span class="qtabs">
-          <button classList={{ on: qTab() === "open" }} onClick={() => setQTab("open")}>Open {open().length}</button>
-          <button classList={{ on: qTab() === "all" }} onClick={() => setQTab("all")}>All {all().length}</button>
+          <button classList={{ on: qTab() === "open" }} onClick={() => setQTab("open")}>
+            Open {open().length}
+          </button>
+          <button classList={{ on: qTab() === "all" }} onClick={() => setQTab("all")}>
+            All {all().length}
+          </button>
         </span>
         <span class="grow" />
-        <button class="ib" aria-label="Close Questions" onClick={() => A.toggleQuestions(false)}><Icon name="close" size={13} /></button>
+        <button class="ib" aria-label="Close Questions" onClick={() => A.toggleQuestions(false)}>
+          <Icon name="close" size={13} />
+        </button>
       </div>
       <div class="qrows">
         <Show when={otherQuestions() !== null || all().length} fallback={<div class="empty sm">Loading…</div>}>
-          <For each={groups()} fallback={<div class="empty sm">{qTab() === "open" && all().length ? "Every question is answered." : "No questions yet. Put a ? sticker on a code line, or right-click a line → Ask a Question."}</div>}>{(g) => (
-            <>
-              <div class="qg">{g.name}<Show when={g.here}><small> · this board</small></Show></div>
-              <For each={g.items}>{(q) => (
-                <button class="qrow" classList={{ done: q.done }} data-q={q.sticker} onClick={() => A.gotoQuestion(q)}>
-                  <Glyph icon={{ pack: "builtin", name: q.done ? "check" : "question" }} size={14} />
-                  <span class="qt">{firstLine(q.md) || <i>(no text)</i>}</span>
-                  <small class="qw">{[q.title, q.file && `${q.file}${q.line !== undefined ? `:${q.line}` : ""}`].filter(Boolean).join(" · ")}</small>
-                </button>
-              )}</For>
-            </>
-          )}</For>
+          <For
+            each={groups()}
+            fallback={
+              <div class="empty sm">
+                {qTab() === "open" && all().length
+                  ? "Every question is answered."
+                  : "No questions yet. Put a ? sticker on a code line, or right-click a line → Ask a Question."}
+              </div>
+            }
+          >
+            {(g) => (
+              <>
+                <div class="qg">
+                  {g.name}
+                  <Show when={g.here}>
+                    <small> · this board</small>
+                  </Show>
+                </div>
+                <For each={g.items}>
+                  {(q) => (
+                    <button
+                      class="qrow"
+                      classList={{ done: q.done }}
+                      data-q={q.sticker}
+                      onClick={() => A.gotoQuestion(q)}
+                    >
+                      <Glyph icon={{ pack: "builtin", name: q.done ? "check" : "question" }} size={14} />
+                      <span class="qt">{firstLine(q.md) || <i>(no text)</i>}</span>
+                      <small class="qw">
+                        {[q.title, q.file && `${q.file}${q.line !== undefined ? `:${q.line}` : ""}`]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </small>
+                    </button>
+                  )}
+                </For>
+              </>
+            )}
+          </For>
         </Show>
       </div>
       <div class="cpf qfoot">
-        <button class="tbtn" onClick={() => A.copyQuestions(shown())}><Icon name="copy" size={12} /> Copy as List</button>
-        <button class="tbtn" onClick={() => A.exportQuestions(shown())}><Icon name="export" size={12} /> Export…</button>
+        <button class="tbtn" onClick={() => A.copyQuestions(shown())}>
+          <Icon name="copy" size={12} /> Copy as List
+        </button>
+        <button class="tbtn" onClick={() => A.exportQuestions(shown())}>
+          <Icon name="export" size={12} /> Export…
+        </button>
       </div>
     </div>
   );
@@ -60,9 +105,15 @@ export function WelcomeHint() {
   const ago = () => (w().days <= 0 ? "today" : w().days === 1 ? "yesterday" : `${w().days} days ago`);
   return (
     <div class="welcome pill" role="status">
-      <span>Welcome back · last opened {ago()} · {w().open} open question{w().open > 1 ? "s" : ""} on this board</span>
-      <button class="tbtn" onClick={() => A.showWelcomeQuestions()}>Show</button>
-      <button class="ib" aria-label="Dismiss" onClick={() => setWelcome(null)}><Icon name="close" size={13} /></button>
+      <span>
+        Welcome back · last opened {ago()} · {w().open} open question{w().open > 1 ? "s" : ""} on this board
+      </span>
+      <button class="tbtn" onClick={() => A.showWelcomeQuestions()}>
+        Show
+      </button>
+      <button class="ib" aria-label="Dismiss" onClick={() => setWelcome(null)}>
+        <Icon name="close" size={13} />
+      </button>
     </div>
   );
 }

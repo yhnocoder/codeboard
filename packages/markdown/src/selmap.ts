@@ -19,7 +19,9 @@ export type StaticTextRange = { from: number; to: number; text: string };
  */
 export function staticTextRange(root: HTMLElement, range: Range): StaticTextRange | null {
   if (!root.contains(range.startContainer) || !root.contains(range.endContainer)) return null;
-  let text = "", from = -1, to = -1;
+  let text = "",
+    from = -1,
+    to = -1;
   const mark = (n: Node, o: number) => {
     if (from < 0 && n === range.startContainer && o === range.startOffset) from = text.length;
     if (to < 0 && n === range.endContainer && o === range.endOffset) to = text.length;
@@ -38,14 +40,17 @@ export function staticTextRange(root: HTMLElement, range: Range): StaticTextRang
     // Mermaid：挂上页面后换成了图，文档里是代码块的原文
     const mmd = e.classList.contains("mmd");
     if (mmd || e.matches(LEAF)) {
-      const s = mmd ? e.dataset.src ?? "" : LEAF_CHAR;
+      const s = mmd ? (e.dataset.src ?? "") : LEAF_CHAR;
       if (from < 0 && (e === range.startContainer || e.contains(range.startContainer))) from = text.length;
       text += s;
       if (to < 0 && (e === range.endContainer || e.contains(range.endContainer))) to = text.length;
       return;
     }
     const kids = e.childNodes;
-    for (let i = 0; i < kids.length; i++) { mark(e, i); visit(kids[i]); }
+    for (let i = 0; i < kids.length; i++) {
+      mark(e, i);
+      visit(kids[i]);
+    }
     mark(e, kids.length);
   };
   visit(root);
@@ -56,20 +61,33 @@ export function staticTextRange(root: HTMLElement, range: Range): StaticTextRang
 /** staticTextRange 反过来：root 里第 from 到第 to 个字的 DOM Range（重画以后把选区放回同一段字上）；数不到给 null */
 export function staticDomRange(root: HTMLElement, from: number, to: number): Range | null {
   const r = document.createRange();
-  let n = 0, start = false;
+  let n = 0,
+    start = false;
   const visit = (node: Node): boolean => {
-    let len = 0, leaf: HTMLElement | null = null;
+    let len = 0,
+      leaf: HTMLElement | null = null;
     if (node.nodeType === 3) len = (node as Text).data.length;
     else if (node.nodeType === 1) {
-      const e = node as HTMLElement, mmd = e.classList.contains("mmd");
+      const e = node as HTMLElement,
+        mmd = e.classList.contains("mmd");
       if (e.classList.contains(EXTRA)) return false;
-      if (!mmd && !e.matches(LEAF)) { for (const k of e.childNodes) if (visit(k)) return true; return false; }
+      if (!mmd && !e.matches(LEAF)) {
+        for (const k of e.childNodes) if (visit(k)) return true;
+        return false;
+      }
       leaf = e;
       len = mmd ? (e.dataset.src ?? "").length : LEAF_CHAR.length;
     } else return false;
-    if (!start && from < n + len) { if (leaf) r.setStartBefore(leaf); else r.setStart(node, from - n); start = true; }
+    if (!start && from < n + len) {
+      if (leaf) r.setStartBefore(leaf);
+      else r.setStart(node, from - n);
+      start = true;
+    }
     const end = start && to > n && to <= n + len;
-    if (end) { if (leaf) r.setEndAfter(leaf); else r.setEnd(node, to - n); }
+    if (end) {
+      if (leaf) r.setEndAfter(leaf);
+      else r.setEnd(node, to - n);
+    }
     n += len;
     return end;
   };
@@ -78,12 +96,14 @@ export function staticDomRange(root: HTMLElement, from: number, to: number): Ran
 
 /** 文档里第 k 个字的位置。start：块和块之间、叶子前面取后一个位置（下一块的开头）；否则取前一个（上一块的末尾） */
 function posAt(doc: PMNode, k: number, start: boolean): number | null {
-  let n = 0, at: number | null = null;
+  let n = 0,
+    at: number | null = null;
   doc.descendants((node, pos) => {
     if (at !== null) return false;
     if (!node.isText && !node.isLeaf) return true;
     const len = node.isText ? node.text!.length : 1;
-    if (start ? k < n + len : k > n && k <= n + len) at = node.isText ? pos + (k - n) : start ? pos : pos + node.nodeSize;
+    if (start ? k < n + len : k > n && k <= n + len)
+      at = node.isText ? pos + (k - n) : start ? pos : pos + node.nodeSize;
     n += len;
     return false;
   });
@@ -92,7 +112,8 @@ function posAt(doc: PMNode, k: number, start: boolean): number | null {
 
 /** staticTextRange 记下的一段在文档 doc 里的位置；两边的字对不上给 null */
 export function docRange(doc: PMNode, r: StaticTextRange): { from: number; to: number } | null {
-  const from = posAt(doc, r.from, true), to = posAt(doc, r.to, false);
+  const from = posAt(doc, r.from, true),
+    to = posAt(doc, r.to, false);
   if (from === null || to === null || to <= from) return null;
   return doc.textBetween(from, to, "", LEAF_CHAR) === r.text ? { from, to } : null;
 }

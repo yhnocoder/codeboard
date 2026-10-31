@@ -16,7 +16,9 @@ describe("package.json", () => {
   it("every command in menus and keybindings is declared", () => {
     const declared = new Set(pkg.contributes.commands.map((c: { command: string }) => c.command));
     const used = [
-      ...Object.values(pkg.contributes.menus as Record<string, { command?: string }[]>).flat().map((m) => m.command),
+      ...Object.values(pkg.contributes.menus as Record<string, { command?: string }[]>)
+        .flat()
+        .map((m) => m.command),
       ...pkg.contributes.keybindings.map((k: { command: string }) => k.command),
     ].filter((c): c is string => !!c);
     expect(used.filter((c) => !declared.has(c))).toEqual([]);

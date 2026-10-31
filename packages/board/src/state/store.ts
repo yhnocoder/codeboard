@@ -3,8 +3,19 @@
 import { createStore, reconcile } from "solid-js/store";
 import { createMemo } from "solid-js";
 import {
-  computeFlows, emptyBoard, hiddenByCollapse, DEFAULT_SETTINGS, CODE_HEAD,
-  type Board, type BoardMeta, type Card, type HostInfo, type Place, type SegView, type SharedInfo, type Stale,
+  computeFlows,
+  emptyBoard,
+  hiddenByCollapse,
+  DEFAULT_SETTINGS,
+  CODE_HEAD,
+  type Board,
+  type BoardMeta,
+  type Card,
+  type HostInfo,
+  type Place,
+  type SegView,
+  type SharedInfo,
+  type Stale,
 } from "@codeboard/core";
 import { rooted, boardSignal, onBoardSwitch } from "./root";
 
@@ -32,12 +43,19 @@ export { setShowCollapsed };
 export const collapsedAway = rooted(() => createMemo(() => (showCollapsed() ? new Set<string>() : collapsedSet())));
 
 /** id → 卡（Compare 的栏也在里面，host 是外面的 Compare）。卡的增删、换 id 时才重建；拖动、改内容不动它 */
-const cardIndex = rooted(() => createMemo(() => {
-  const m = new Map<string, { card: Card; host: Card }>();
-  for (const c of state.board.cards) if (!m.has(c.id)) m.set(c.id, { card: c, host: c });
-  for (const c of state.board.cards) if (c.kind === "compare") for (const k of c.cols) { const f = m.get(k); if (f) m.set(k, { card: f.card, host: c }); }
-  return m;
-}));
+const cardIndex = rooted(() =>
+  createMemo(() => {
+    const m = new Map<string, { card: Card; host: Card }>();
+    for (const c of state.board.cards) if (!m.has(c.id)) m.set(c.id, { card: c, host: c });
+    for (const c of state.board.cards)
+      if (c.kind === "compare")
+        for (const k of c.cols) {
+          const f = m.get(k);
+          if (f) m.set(k, { card: f.card, host: c });
+        }
+    return m;
+  }),
+);
 export const cardById = (id: string) => cardIndex().get(id);
 export const hostOf = (id: string) => cardById(id)?.host.id ?? id;
 /** 按叠放顺序 */
@@ -56,18 +74,29 @@ export function rectOf(c: { id: string } | string) {
   const p = placeOf(id);
   const s = sizes[hostOf(id)];
   // 还没量到：代码卡的 h 只是内容区，按 Warm Ink 的卡头加回去
-  return { x: p.x, y: p.y, w: s && s.w > 0 ? s.w : p.w, h: s && s.h > 0 ? s.h : p.h ? p.h + (cardById(id)?.host.kind === "code" ? CODE_HEAD : 0) : 120 };
+  return {
+    x: p.x,
+    y: p.y,
+    w: s && s.w > 0 ? s.w : p.w,
+    h: s && s.h > 0 ? s.h : p.h ? p.h + (cardById(id)?.host.kind === "code" ? CODE_HEAD : 0) : 120,
+  };
 }
 
 /** 和 id 是同一张卡的几处（含它自己，按叠放顺序）；不是的话空 */
-const twinIndex = rooted(() => createMemo(() => {
-  const m = new Map<string, string[]>();
-  for (const c of state.board.cards) if (c.same) { const a = m.get(c.same); if (a) a.push(c.id); else m.set(c.same, [c.id]); }
-  return m;
-}));
+const twinIndex = rooted(() =>
+  createMemo(() => {
+    const m = new Map<string, string[]>();
+    for (const c of state.board.cards)
+      if (c.same) {
+        const a = m.get(c.same);
+        if (a) a.push(c.id);
+        else m.set(c.same, [c.id]);
+      }
+    return m;
+  }),
+);
 export const twinsOf = (id: string): string[] => {
   const g = cardById(id)?.card.same;
   const a = g ? twinIndex().get(g) : undefined;
   return a && a.length > 1 ? a : [];
 };
-

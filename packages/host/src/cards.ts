@@ -1,5 +1,13 @@
 import { defaultWidth, uid, type CodeCard, type EditorState, type NewCard, type Segment } from "@codeboard/core";
-import { listsMembers, planSelection, symbolAtCursor, type Plan, type Range, type Sel, type Sym } from "@codeboard/analysis";
+import {
+  listsMembers,
+  planSelection,
+  symbolAtCursor,
+  type Plan,
+  type Range,
+  type Sel,
+  type Sym,
+} from "@codeboard/analysis";
 import * as path from "node:path";
 import { analysisOf } from "./analysis";
 import { locOfFile, type Loc } from "./source";
@@ -12,13 +20,24 @@ export function newCodeCard(segs: Segment[], extra: Partial<CodeCard> = {}): Cod
 }
 
 export async function withViews(cards: CodeCard[]): Promise<NewCard[]> {
-  return Promise.all(cards.map(async (card) => ({ card, views: await viewsFor(card.segments), w: defaultWidth(card) })));
+  return Promise.all(
+    cards.map(async (card) => ({ card, views: await viewsFor(card.segments), w: defaultWidth(card) })),
+  );
 }
 
 /** 一个符号 → 函数卡 / 类卡（类卡只列成员签名，shown = 显示哪些成员；没有方法的类照普通代码卡显示源码） */
-export async function symCard(loc: Loc, lines: string[], sym: Sym, lang: string, shown: string[] = []): Promise<CodeCard> {
+export async function symCard(
+  loc: Loc,
+  lines: string[],
+  sym: Sym,
+  lang: string,
+  shown: string[] = [],
+): Promise<CodeCard> {
   const cls = sym.kind === "class";
-  const seg = await makeSegment(loc, lines, sym.start, sym.end, { symbol: { qual: sym.qual, kind: cls ? "class" : "function" }, lang });
+  const seg = await makeSegment(loc, lines, sym.start, sym.end, {
+    symbol: { qual: sym.qual, kind: cls ? "class" : "function" },
+    lang,
+  });
   return newCodeCard([seg], cls && listsMembers(analysisOf(lang, lines.join("\n")), sym) ? { members: { shown } } : {});
 }
 
@@ -31,24 +50,50 @@ export async function cardForFileSym(abs: string, sym: Sym): Promise<NewCard | n
 
 export type Built = { cards: CodeCard[]; ask?: "split" };
 
-const rangeSeg = (loc: Loc, lines: string[], r: Range, lang: string) => makeSegment(loc, lines, r.start, r.end, {
-  lang, scope: r.scope, symbol: r.module ? { qual: "<module>", kind: "module" } : undefined,
-});
+const rangeSeg = (loc: Loc, lines: string[], r: Range, lang: string) =>
+  makeSegment(loc, lines, r.start, r.end, {
+    lang,
+    scope: r.scope,
+    symbol: r.module ? { qual: "<module>", kind: "module" } : undefined,
+  });
 
 /** 按选区计划建卡。选中几个完整定义（split）：默认一张多段卡（每个定义一段，中间的模块级代码也各成一段）；
  *  separate = 一个定义一张卡，中间的代码各成一张小卡。两种都不丢选中的行 */
-export async function cardsFromPlan(loc: Loc, lines: string[], plan: Plan, lang: string, o: { separate?: boolean } = {}): Promise<Built> {
+export async function cardsFromPlan(
+  loc: Loc,
+  lines: string[],
+  plan: Plan,
+  lang: string,
+  o: { separate?: boolean } = {},
+): Promise<Built> {
   switch (plan.kind) {
-    case "function": return { cards: [await symCard(loc, lines, plan.sym, lang)] };
-    case "class": return { cards: [await symCard(loc, lines, plan.sym, lang, plan.members ?? [])] };
+    case "function":
+      return { cards: [await symCard(loc, lines, plan.sym, lang)] };
+    case "class":
+      return { cards: [await symCard(loc, lines, plan.sym, lang, plan.members ?? [])] };
     case "split": {
-      if (o.separate) return { cards: await Promise.all(plan.parts.map(async (p) => "sym" in p ? symCard(loc, lines, p.sym, lang) : newCodeCard([await rangeSeg(loc, lines, p.range, lang)]))) };
-      const segs = await Promise.all(plan.parts.map((p) => "sym" in p
-        ? makeSegment(loc, lines, p.sym.start, p.sym.end, { lang, symbol: { qual: p.sym.qual, kind: p.sym.kind === "class" ? "class" : "function" } })
-        : rangeSeg(loc, lines, p.range, lang)));
+      if (o.separate)
+        return {
+          cards: await Promise.all(
+            plan.parts.map(async (p) =>
+              "sym" in p ? symCard(loc, lines, p.sym, lang) : newCodeCard([await rangeSeg(loc, lines, p.range, lang)]),
+            ),
+          ),
+        };
+      const segs = await Promise.all(
+        plan.parts.map((p) =>
+          "sym" in p
+            ? makeSegment(loc, lines, p.sym.start, p.sym.end, {
+                lang,
+                symbol: { qual: p.sym.qual, kind: p.sym.kind === "class" ? "class" : "function" },
+              })
+            : rangeSeg(loc, lines, p.range, lang),
+        ),
+      );
       return { cards: [newCodeCard(segs)] };
     }
-    case "segments": return { cards: [newCodeCard(await Promise.all(plan.ranges.map((r) => rangeSeg(loc, lines, r, lang))))] };
+    case "segments":
+      return { cards: [newCodeCard(await Promise.all(plan.ranges.map((r) => rangeSeg(loc, lines, r, lang))))] };
   }
 }
 
@@ -63,7 +108,10 @@ async function locOfEditor(ed: EditorState): Promise<Loc | null> {
 }
 
 /** 编辑器里的选区 → 卡片；没有选区 = 光标所在的函数 */
-export async function cardsFromEditor(ed: EditorState, mode: "auto" | "function" | "separate" = "auto"): Promise<Built | { error: string }> {
+export async function cardsFromEditor(
+  ed: EditorState,
+  mode: "auto" | "function" | "separate" = "auto",
+): Promise<Built | { error: string }> {
   const text = ed.text;
   const lines = splitLines(text);
   const lang = ed.lang;
@@ -89,5 +137,16 @@ export async function cardsFromEditor(ed: EditorState, mode: "auto" | "function"
 
 export function freeCard(text: string, lang: string, url?: string): CodeCard {
   const lines = splitLines(text);
-  return newCodeCard([{ id: uid("s"), src: { kind: "free", url }, path: "", lang, start: 1, end: lines.length, text: lines, version: { kind: "none" } }]);
+  return newCodeCard([
+    {
+      id: uid("s"),
+      src: { kind: "free", url },
+      path: "",
+      lang,
+      start: 1,
+      end: lines.length,
+      text: lines,
+      version: { kind: "none" },
+    },
+  ]);
 }

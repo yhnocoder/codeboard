@@ -1,7 +1,15 @@
 // Every change to the board goes through here: the undo engine (history.ts) and saving (save.ts) wired to the Solid store
 import { batch, createSignal } from "solid-js";
 import { produce, reconcile, unwrap } from "solid-js/store";
-import { applyPatch, applySharedUpdate, removeCards, type Board, type BoardPatch, type SegView, type SharedUpdate } from "@codeboard/core";
+import {
+  applyPatch,
+  applySharedUpdate,
+  removeCards,
+  type Board,
+  type BoardPatch,
+  type SegView,
+  type SharedUpdate,
+} from "@codeboard/core";
 import { ask } from "../host";
 import { createHistory, type Doc } from "./history";
 import { createSave } from "./save";
@@ -13,12 +21,20 @@ import { ghostOut } from "./ghost";
 import { LIVE_DELAY, RESEND_DELAY } from "./timing";
 
 // a path the store's typed setter can't spell (collection k, index or place key at)
-const setAt = setState as unknown as (b: "board", k: string, at: number | string, v: ReturnType<typeof reconcile>) => void;
+const setAt = setState as unknown as (
+  b: "board",
+  k: string,
+  at: number | string,
+  v: ReturnType<typeof reconcile>,
+) => void;
 const doc: Doc = {
   read: () => unwrap(state.board),
   write: (fn) => setState("board", produce(fn)),
   replace: (b) => setState("board", reconcile(b)),
-  putItems: (ops) => batch(() => { for (const [k, at, v] of ops) setAt("board", k, at, reconcile(v)); }),
+  putItems: (ops) =>
+    batch(() => {
+      for (const [k, at, v] of ops) setAt("board", k, at, reconcile(v));
+    }),
   raw: unwrap,
 };
 
@@ -29,8 +45,15 @@ export { canUndo, canRedo };
 const history = createHistory(doc, {
   changed: () => save.changed(),
   changedLive: () => save.changedLive(),
-  stacks: (u, r) => batch(() => { setCanUndo(u); setCanRedo(r); }),
-  restored: () => { keepOn(state.board); requestMissing(state.board); },
+  stacks: (u, r) =>
+    batch(() => {
+      setCanUndo(u);
+      setCanRedo(r);
+    }),
+  restored: () => {
+    keepOn(state.board);
+    requestMissing(state.board);
+  },
   toast,
 });
 const save = createSave({
@@ -64,14 +87,21 @@ export function syncShared(cards: SharedUpdate[], views?: Record<string, SegView
     if (views) putViews(views);
     // core applySharedUpdate: replaced by index, other cards not notified; a fresh copy each time (an undo's reconcile changes the
     // board's objects in place, a replay must not get one of those)
-    sync((b) => { for (const sc of cards) applySharedUpdate(b, sc); }, keys);
+    sync((b) => {
+      for (const sc of cards) applySharedUpdate(b, sc);
+    }, keys);
   });
   save.alignSent();
 }
 /** Another board's Delete Everywhere removed these shared cards (the host already did) */
 export function syncGone(ids: string[]) {
   flushSave();
-  sync((b) => removeCards(b, ids.filter((id) => b.cards.some((c) => c.id === id))));
+  sync((b) =>
+    removeCards(
+      b,
+      ids.filter((id) => b.cards.some((c) => c.id === id)),
+    ),
+  );
   save.alignSent();
 }
 /** Another window changed this board's file and the host merged it in when writing */

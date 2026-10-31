@@ -9,7 +9,8 @@ const SCRATCH_PREFIX = ".codeboard-scratch-";
 /** .git/info/exclude 里写的那一行 */
 const SCRATCH_GLOB = `${SCRATCH_PREFIX}*`;
 /** 名字写进 dir 所在仓库的 info/exclude：git status 看不到编辑中的文件 */
-export const excludeScratch = (dir: string) => excludeFromGit(dir, SCRATCH_GLOB, "CodeBoard: code being edited on a board (deleted when editing ends)");
+export const excludeScratch = (dir: string) =>
+  excludeFromGit(dir, SCRATCH_GLOB, "CodeBoard: code being edited on a board (deleted when editing ends)");
 export const HEARTBEAT_MS = 60_000;
 export const STALE_MS = 10 * 60_000;
 
@@ -22,6 +23,10 @@ export const scratchName = (id: string, lang: string) => `${SCRATCH_PREFIX}${san
 export const isScratchName = (name: string) => NAME.test(name);
 export const isStale = (mtimeMs: number, now: number) => now - mtimeMs > STALE_MS;
 
-export function staleScratch(entries: { name: string; mtimeMs: number }[], now: number, live: (name: string) => boolean): string[] {
+export function staleScratch(
+  entries: { name: string; mtimeMs: number }[],
+  now: number,
+  live: (name: string) => boolean,
+): string[] {
   return entries.filter((e) => isScratchName(e.name) && !live(e.name) && isStale(e.mtimeMs, now)).map((e) => e.name);
 }

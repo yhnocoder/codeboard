@@ -1,7 +1,32 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import {
-  initAnalysis, analyze, pybindDefs, pasteMacros, pastedNames, macroCalls, torchLibDefs, torchOpOf, pyo3Defs, macroDefs, launchMacro, launchVals, templateParams, constexprs,
-  jitKernels, tritonInfo, tritonVals, tilelangInner, factoryVals, launchTemplateArgs, bindLaunch, splitArgs, pyMethodDefs, stubDevice, pybindAll, pyMethodAll, dispatchAll,
+  initAnalysis,
+  analyze,
+  pybindDefs,
+  pasteMacros,
+  pastedNames,
+  macroCalls,
+  torchLibDefs,
+  torchOpOf,
+  pyo3Defs,
+  macroDefs,
+  launchMacro,
+  launchVals,
+  templateParams,
+  constexprs,
+  jitKernels,
+  tritonInfo,
+  tritonVals,
+  tilelangInner,
+  factoryVals,
+  launchTemplateArgs,
+  bindLaunch,
+  splitArgs,
+  pyMethodDefs,
+  stubDevice,
+  pybindAll,
+  pyMethodAll,
+  dispatchAll,
 } from "../src";
 
 beforeAll(() => initAnalysis());
@@ -19,11 +44,15 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
 
 describe("pybind", () => {
   it("finds .def and m.def registrations with their C++ targets", () => {
-    expect(pybindDefs(PYBIND, "intranode_dispatch")).toEqual([{ line: 6, target: "deep_ep::Buffer::intranode_dispatch", how: ".def" }]);
-    expect(pybindDefs(PYBIND, "get_low_latency_rdma_size_hint")).toEqual([{ line: 8, target: "deep_ep::get_low_latency_rdma_size_hint", how: "m.def" }]);
+    expect(pybindDefs(PYBIND, "intranode_dispatch")).toEqual([
+      { line: 6, target: "deep_ep::Buffer::intranode_dispatch", how: ".def" },
+    ]);
+    expect(pybindDefs(PYBIND, "get_low_latency_rdma_size_hint")).toEqual([
+      { line: 8, target: "deep_ep::get_low_latency_rdma_size_hint", how: "m.def" },
+    ]);
     expect(pybindDefs(PYBIND, "get_size")).toEqual([{ line: 7, lambda: true, how: ".def" }]);
     expect(pybindDefs(PYBIND, "nope")).toEqual([]);
-    expect(pybindDefs("void f() { x.def(\"intranode_dispatch\", &g); }", "intranode_dispatch")).toEqual([]); // 不是 pybind 文件
+    expect(pybindDefs('void f() { x.def("intranode_dispatch", &g); }', "intranode_dispatch")).toEqual([]); // 不是 pybind 文件
   });
 });
 
@@ -36,15 +65,25 @@ describe("PyTorch's own bindings", () => {
   });
   it("PyMethodDef tables: plain, castPyCFunction…, TypeError_to_NotImplemented_<…>", () => {
     const src = `static PyMethodDef methods[] = {\n  {"_get_cudnn_enabled", THPModule_userEnabledCuDNN, METH_NOARGS, nullptr},\n  {"_set", castPyCFunctionWithKeywords(THPModule_set), METH_VARARGS | METH_KEYWORDS, nullptr},\n  {"__add__", castPyCFunctionWithKeywords(TypeError_to_NotImplemented_<THPVariable_add>), METH_VARARGS, NULL},\n};\n`;
-    expect(pyMethodDefs(src, "_get_cudnn_enabled")).toEqual([{ line: 2, target: "THPModule_userEnabledCuDNN", how: "PyMethodDef" }]);
+    expect(pyMethodDefs(src, "_get_cudnn_enabled")).toEqual([
+      { line: 2, target: "THPModule_userEnabledCuDNN", how: "PyMethodDef" },
+    ]);
     expect(pyMethodDefs(src, "_set")[0].target).toBe("THPModule_set");
     expect(pyMethodDefs(src, "__add__")[0].target).toBe("THPVariable_add");
     expect(pyMethodDefs(src, "nope")).toEqual([]);
-    expect(pyMethodAll(src).map((r) => `${r.name} → ${r.target}`)).toEqual(["_get_cudnn_enabled → THPModule_userEnabledCuDNN", "_set → THPModule_set", "__add__ → THPVariable_add"]);
+    expect(pyMethodAll(src).map((r) => `${r.name} → ${r.target}`)).toEqual([
+      "_get_cudnn_enabled → THPModule_userEnabledCuDNN",
+      "_set → THPModule_set",
+      "__add__ → THPVariable_add",
+    ]);
   });
   it("DispatchStub registrations and their device", () => {
     const src = `#define REGISTER_DISPATCH(name, fn) X(name, fn)\nREGISTER_DISPATCH(abs_stub, &abs_kernel_cuda)\nREGISTER_ARCH_DISPATCH(abs_stub, DEFAULT, &abs_kernel)\nREGISTER_NO_CPU_DISPATCH(abs_stub);\nREGISTER_CUDA_DISPATCH(abs_stub, &qadd_kernel<false>);\n`;
-    expect(dispatchAll(src).map((r) => [r.name, r.line, r.macro, r.target])).toEqual([["abs_stub", 2, "REGISTER_DISPATCH", "abs_kernel_cuda"], ["abs_stub", 3, "REGISTER_ARCH_DISPATCH", "abs_kernel"], ["abs_stub", 5, "REGISTER_CUDA_DISPATCH", "qadd_kernel"]]);
+    expect(dispatchAll(src).map((r) => [r.name, r.line, r.macro, r.target])).toEqual([
+      ["abs_stub", 2, "REGISTER_DISPATCH", "abs_kernel_cuda"],
+      ["abs_stub", 3, "REGISTER_ARCH_DISPATCH", "abs_kernel"],
+      ["abs_stub", 5, "REGISTER_CUDA_DISPATCH", "qadd_kernel"],
+    ]);
     expect(stubDevice("REGISTER_DISPATCH", "aten/src/ATen/native/cuda/AbsKernel.cu")).toBe("CUDA");
     expect(stubDevice("REGISTER_DISPATCH", "aten/src/ATen/native/cpu/AbsKernel.cpp")).toBe("CPU");
     expect(stubDevice("REGISTER_DISPATCH", "aten/src/ATen/native/mps/operations/Unary.mm")).toBe("MPS");
@@ -68,10 +107,20 @@ describe("torch.ops / TORCH_LIBRARY", () => {
     expect(torchLibDefs(src, "rms")).toEqual([{ line: 7, target: "rms_norm", how: "m.def" }]);
   });
   it("torch.ops.ns.op(…) and .default", () => {
-    expect(torchOpOf({ name: "awq_marlin_repack", recv: "torch.ops.sgl_kernel" })).toEqual({ ns: "sgl_kernel", op: "awq_marlin_repack" });
-    expect(torchOpOf({ name: "default", recv: "torch.ops.sgl_kernel.awq_marlin_repack" })).toEqual({ ns: "sgl_kernel", op: "awq_marlin_repack" });
+    expect(torchOpOf({ name: "awq_marlin_repack", recv: "torch.ops.sgl_kernel" })).toEqual({
+      ns: "sgl_kernel",
+      op: "awq_marlin_repack",
+    });
+    expect(torchOpOf({ name: "default", recv: "torch.ops.sgl_kernel.awq_marlin_repack" })).toEqual({
+      ns: "sgl_kernel",
+      op: "awq_marlin_repack",
+    });
     expect(torchOpOf({ name: "forward", recv: "self.impl" })).toBeNull();
-    expect(torchOpOf({ name: "Tensor", recv: "torch.ops.aten.add" })).toEqual({ ns: "aten", op: "add", overload: "Tensor" });
+    expect(torchOpOf({ name: "Tensor", recv: "torch.ops.aten.add" })).toEqual({
+      ns: "aten",
+      op: "add",
+      overload: "Tensor",
+    });
   });
 });
 
@@ -140,8 +189,18 @@ describe("launch macro", () => {
     const call = a.calls.find((c) => c.name === "SWITCH_RANKS")!;
     expect(call).toBeTruthy();
     const lm = launchMacro(call, macroDefs(INTRANODE), macroDefs(LAUNCH_CUH))!;
-    expect(lm).toMatchObject({ kernel: "dispatch", targs: ["ranks", "kNumThreads", "kNumTMABytesPerWarp"], param: "ranks", cases: ["2", "4", "8"], on: "num_ranks" });
-    expect(templateParams(INTRANODE.split("\n").slice(0, 3).join("\n"))).toEqual(["kNumRanks", "kNumThreads", "kNumTMABytesPerWarp"]);
+    expect(lm).toMatchObject({
+      kernel: "dispatch",
+      targs: ["ranks", "kNumThreads", "kNumTMABytesPerWarp"],
+      param: "ranks",
+      cases: ["2", "4", "8"],
+      on: "num_ranks",
+    });
+    expect(templateParams(INTRANODE.split("\n").slice(0, 3).join("\n"))).toEqual([
+      "kNumRanks",
+      "kNumThreads",
+      "kNumTMABytesPerWarp",
+    ]);
     expect(constexprs(INTRANODE)).toEqual({ kNumThreads: "768", kNumTMABytesPerWarp: "8192" });
     const vals = launchVals(lm, INTRANODE.split("\n").slice(0, 3).join("\n"), INTRANODE);
     expect(vals).toEqual([
@@ -153,9 +212,22 @@ describe("launch macro", () => {
   it("kernel<…><<<…>>>: template arguments at the launch", () => {
     const line = "  dispatch<8, kNumThreads><<<grid, 256>>>(p);";
     expect(launchTemplateArgs(line, 2)).toEqual(["8", "kNumThreads"]);
-    expect(bindLaunch("template <int kNumRanks, int kNumThreads>\n__global__ void dispatch(", ["8", "kNumThreads"], "constexpr int kNumThreads = 768;")).toEqual([{ name: "kNumRanks", value: "8" }, { name: "kNumThreads", value: "768" }]);
+    expect(
+      bindLaunch(
+        "template <int kNumRanks, int kNumThreads>\n__global__ void dispatch(",
+        ["8", "kNumThreads"],
+        "constexpr int kNumThreads = 768;",
+      ),
+    ).toEqual([
+      { name: "kNumRanks", value: "8" },
+      { name: "kNumThreads", value: "768" },
+    ]);
     expect(launchTemplateArgs("  plain<<<1, 1>>>();", 2)).toEqual([]);
-    expect(templateParams("template <bool kLow, int kNumRDMARanks,\n          int kNumTopk = get_num(kNumRDMARanks)>\n__global__ void __launch_bounds__(((kW + 1) * 32), 1)")).toEqual(["kLow", "kNumRDMARanks", "kNumTopk"]);
+    expect(
+      templateParams(
+        "template <bool kLow, int kNumRDMARanks,\n          int kNumTopk = get_num(kNumRDMARanks)>\n__global__ void __launch_bounds__(((kW + 1) * 32), 1)",
+      ),
+    ).toEqual(["kLow", "kNumRDMARanks", "kNumTopk"]);
   });
 });
 
@@ -183,8 +255,18 @@ static void __instantiate_kernel() {{
     const at = fn.indexOf("jit->compile");
     const call = fn.slice(at, fn.indexOf("));", at) + 3);
     expect(jitKernels(call, fn)).toEqual([
-      { header: "deep_ep/impls/ep/dispatch.cuh", kernel: "dispatch_impl", targs: ["is_scaleup_nvlink", "num_sms", "num_scaleup_ranks"], ns: "deep_ep::ep" },
-      { header: "deep_ep/impls/ep/hybrid_dispatch.cuh", kernel: "hybrid_dispatch_impl", targs: ["num_sms", "num_scaleout_ranks"], ns: "deep_ep::ep" },
+      {
+        header: "deep_ep/impls/ep/dispatch.cuh",
+        kernel: "dispatch_impl",
+        targs: ["is_scaleup_nvlink", "num_sms", "num_scaleup_ranks"],
+        ns: "deep_ep::ep",
+      },
+      {
+        header: "deep_ep/impls/ep/hybrid_dispatch.cuh",
+        kernel: "hybrid_dispatch_impl",
+        targs: ["num_sms", "num_scaleout_ranks"],
+        ns: "deep_ep::ep",
+      },
     ]);
   });
 });
@@ -218,9 +300,32 @@ def launch(a, n):
     expect(info.configs.length).toBe(2);
     const call = a.calls.find((c) => c.name === "fused_kernel")!;
     expect(call.launch).toBe("grid");
-    const { vals, alts } = tritonVals(info, sym.params.map((p) => p.name), call.args);
-    expect(vals.map((v) => `${v.name}=${v.value}`)).toEqual(["group_n=0", "BLOCK_K=32", "BLOCK_M=64", "BLOCK_N=128", "stages=3", "warps=4"]);
-    expect(alts).toEqual([{ label: "config 2 · BLOCK_M=128 BLOCK_N=64 stages=4 warps=8", vals: [{ name: "group_n", value: "0" }, { name: "BLOCK_K", value: "32" }, { name: "BLOCK_M", value: "128" }, { name: "BLOCK_N", value: "64" }, { name: "stages", value: "4" }, { name: "warps", value: "8" }] }]);
+    const { vals, alts } = tritonVals(
+      info,
+      sym.params.map((p) => p.name),
+      call.args,
+    );
+    expect(vals.map((v) => `${v.name}=${v.value}`)).toEqual([
+      "group_n=0",
+      "BLOCK_K=32",
+      "BLOCK_M=64",
+      "BLOCK_N=128",
+      "stages=3",
+      "warps=4",
+    ]);
+    expect(alts).toEqual([
+      {
+        label: "config 2 · BLOCK_M=128 BLOCK_N=64 stages=4 warps=8",
+        vals: [
+          { name: "group_n", value: "0" },
+          { name: "BLOCK_K", value: "32" },
+          { name: "BLOCK_M", value: "128" },
+          { name: "BLOCK_N", value: "64" },
+          { name: "stages", value: "4" },
+          { name: "warps", value: "8" },
+        ],
+      },
+    ]);
   });
   it("TileLang factory → inner prim_func, factory parameters as values", () => {
     const tl = `import tilelang
@@ -247,11 +352,21 @@ def run(q):
     const inner = tilelangInner(tl.split("\n"), f, a.symbols)!;
     expect(inner.qual).toBe("flashmla_decode.main");
     const call = a.calls.find((c) => c.name === "flashmla_decode")!;
-    expect(factoryVals(f.params, call.args)).toEqual([{ name: "h", value: "16" }, { name: "block_N", value: "128" }, { name: "num_stages", value: "2" }]);
+    expect(factoryVals(f.params, call.args)).toEqual([
+      { name: "h", value: "16" },
+      { name: "block_N", value: "128" },
+      { name: "num_stages", value: "2" },
+    ]);
     expect(tilelangInner(tl.split("\n"), a.symbols.find((s) => s.qual === "run")!, a.symbols)).toBeUndefined();
   });
   it("splitArgs keeps nested brackets and strings", () => {
-    expect(splitArgs(`a, f(b, c), "x, y", [1, 2], t<int, 2>`)).toEqual(["a", "f(b, c)", `"x, y"`, "[1, 2]", "t<int, 2>"]);
+    expect(splitArgs(`a, f(b, c), "x, y", [1, 2], t<int, 2>`)).toEqual([
+      "a",
+      "f(b, c)",
+      `"x, y"`,
+      "[1, 2]",
+      "t<int, 2>",
+    ]);
   });
 });
 
@@ -275,7 +390,12 @@ describe("dynamic dispatch", () => {
     const a = analyze("python", src);
     const by = (q: string) => a.symbols.find((s) => s.qual === q)!;
     const ls = src.split("\n");
-    expect(["Base.forward", "Base.other", "Base.real", "Base.dots"].map((q) => isAbstractBody(ls, by(q)))).toEqual([true, true, false, true]);
+    expect(["Base.forward", "Base.other", "Base.real", "Base.dots"].map((q) => isAbstractBody(ls, by(q)))).toEqual([
+      true,
+      true,
+      false,
+      true,
+    ]);
   });
 });
 
@@ -305,7 +425,11 @@ FOREACH_BINARY_OP_SCALAR(all_types, mul(x), std::multiplies);
   it("finds the names a #define pastes from its parameters, not macros without ##", () => {
     const ps = pasteMacros(SRC);
     expect([...ps.keys()]).toEqual(["CREATE_COMPARISON_SCALAR_TENSOR_IMPL_FUNC", "FOREACH_BINARY_OP_SCALAR"]);
-    expect(ps.get("CREATE_COMPARISON_SCALAR_TENSOR_IMPL_FUNC")!.names).toEqual([[0, "_Tensor_out"], [0, "_stub"], [0, "_Scalar_out"]]);
+    expect(ps.get("CREATE_COMPARISON_SCALAR_TENSOR_IMPL_FUNC")!.names).toEqual([
+      [0, "_Tensor_out"],
+      [0, "_stub"],
+      [0, "_Scalar_out"],
+    ]);
   });
   it("makes the names of each call, at the call's line, skipping arguments that are not identifiers and calls inside a #define", () => {
     const ps = pasteMacros(SRC);
@@ -315,8 +439,9 @@ FOREACH_BINARY_OP_SCALAR(all_types, mul(x), std::multiplies);
       ["FOREACH_BINARY_OP_SCALAR", 20, ["foreach_tensor_add_scalar_kernel_cuda"]],
       ["FOREACH_BINARY_OP_SCALAR", 21, []],
     ]);
-    expect(calls[1].sig).toBe("FOREACH_BINARY_OP_SCALAR(all_types_complex_bool_half_bfloat16, add, std::plus<opmath_t>);");
+    expect(calls[1].sig).toBe(
+      "FOREACH_BINARY_OP_SCALAR(all_types_complex_bool_half_bfloat16, add, std::plus<opmath_t>);",
+    );
     expect(macroCalls(SRC, (n) => n === "TORCH_IMPL_FUNC" || n === "INNER_CALL")).toEqual([]);
   });
 });
-

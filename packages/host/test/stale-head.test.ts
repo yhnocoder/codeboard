@@ -18,7 +18,11 @@ vi.mock("../src/git", async (orig) => {
   return {
     ...m,
     showFile: async (...a: Parameters<typeof m.showFile>) => {
-      if (gate.armed) { gate.armed = false; gate.reached?.(); await gate.release; }
+      if (gate.armed) {
+        gate.armed = false;
+        gate.reached?.();
+        await gate.release;
+      }
       return m.showFile(...a);
     },
   };
@@ -34,15 +38,22 @@ describe("version re-checks of one board", () => {
       useWorkspace(nodeWorkspace(R));
       const abs = path.join(R, "f.py");
       const { card: c } = await card(abs, "g");
-      const host = { store: new Storage(nodeFs, { dir: () => path.join(R, ".boards") }), staleChanged: () => undefined } as unknown as BoardHost;
+      const host = {
+        store: new Storage(nodeFs, { dir: () => path.join(R, ".boards") }),
+        staleChanged: () => undefined,
+      } as unknown as BoardHost;
       const p = new BoardPanel("b", stubView().view, host);
       p.ready = true;
       p.board = { ...emptyBoard("b", "B"), cards: [c], place: { [c.id]: { x: 0, y: 0, w: 500 } } };
 
       fs.writeFileSync(abs, src("x + 1"));
       let release!: () => void;
-      const reached = new Promise<void>((r) => { gate.reached = r; });
-      gate.release = new Promise<void>((r) => { release = r; });
+      const reached = new Promise<void>((r) => {
+        gate.reached = r;
+      });
+      gate.release = new Promise<void>((r) => {
+        release = r;
+      });
       gate.armed = true;
       const edited = p.refreshStale(new Set([abs])); // the saved edit: HEAD is still the pinned commit
       await reached;

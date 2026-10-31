@@ -11,7 +11,11 @@ export type Located = { start: number; end: number };
  * 在 lines 里找这一段：函数卡 / 类卡按符号全名找（同名多个时取离原位置最近的），
  * 片段卡、模块顶部按内容找。找不到返回 null，按内容找到多处返回 "many"。
  */
-export function locateSeg(seg: Pick<Segment, "symbol" | "text" | "start" | "end">, lines: string[], syms: SymLoc[]): Located | "many" | null {
+export function locateSeg(
+  seg: Pick<Segment, "symbol" | "text" | "start" | "end">,
+  lines: string[],
+  syms: SymLoc[],
+): Located | "many" | null {
   const sym = seg.symbol;
   if (sym && sym.kind !== "module") {
     const hits = syms.filter((s) => s.qual === sym.qual);
@@ -28,18 +32,35 @@ export function locateSeg(seg: Pick<Segment, "symbol" | "text" | "start" | "end"
  * 内容变了，变化是不是全在手动隐藏的行里：删掉 / 改掉的旧行都是隐藏行，
  * 新增的行夹在两条隐藏行之间（或贴着开头 / 结尾的隐藏行）。
  */
-export function onlyHiddenChanged(oldText: string[], oldStart: number, newText: string[], hidden: [number, number][] | undefined): boolean {
+export function onlyHiddenChanged(
+  oldText: string[],
+  oldStart: number,
+  newText: string[],
+  hidden: [number, number][] | undefined,
+): boolean {
   if (!hidden?.length) return false;
   const d = diffLines(oldText, newText, oldStart, 1);
   let prev: number | undefined;
   for (let i = 0; i < d.length; i++) {
     const x = d[i];
-    if (x.op === " ") { prev = x.a; continue; }
-    if (x.op === "-") { if (!inRanges(hidden, x.a!)) return false; prev = x.a; continue; }
+    if (x.op === " ") {
+      prev = x.a;
+      continue;
+    }
+    if (x.op === "-") {
+      if (!inRanges(hidden, x.a!)) return false;
+      prev = x.a;
+      continue;
+    }
     // 新增：找后面第一条旧行
     let next: number | undefined;
-    for (let k = i + 1; k < d.length; k++) if (d[k].a !== undefined) { next = d[k].a; break; }
-    const ph = prev !== undefined && inRanges(hidden, prev), nh = next !== undefined && inRanges(hidden, next);
+    for (let k = i + 1; k < d.length; k++)
+      if (d[k].a !== undefined) {
+        next = d[k].a;
+        break;
+      }
+    const ph = prev !== undefined && inRanges(hidden, prev),
+      nh = next !== undefined && inRanges(hidden, next);
     if (!ph && !nh) return false;
   }
   return true;
@@ -50,7 +71,12 @@ export function onlyHiddenChanged(oldText: string[], oldStart: number, newText: 
  * against = 拿来比的那个版本和它的显示名（短 commit / 包版本，放进 changed 里给白板显示）。
  * 只是挪了位置（moved）时段就钉到这个版本上：行号是哪个版本的，钉的就是哪个版本
  */
-export function trackSeg(seg: Segment, lines: string[], syms: SymLoc[], against: { label: string; version: Version }): Stale & { at?: Located } {
+export function trackSeg(
+  seg: Segment,
+  lines: string[],
+  syms: SymLoc[],
+  against: { label: string; version: Version },
+): Stale & { at?: Located } {
   const loc = locateSeg(seg, lines, syms);
   if (loc === null) return { state: "lost" };
   if (loc === "many") return { state: "many" };
@@ -59,7 +85,12 @@ export function trackSeg(seg: Segment, lines: string[], syms: SymLoc[], against:
     if (loc.start === seg.start && loc.end === seg.end) return { state: "ok", at: loc };
     return { state: "moved", start: loc.start, end: loc.end, version: against.version, at: loc };
   }
-  return { state: "changed", hiddenOnly: onlyHiddenChanged(seg.text, seg.start, now, seg.hidden), head: against.label, at: loc };
+  return {
+    state: "changed",
+    hiddenOnly: onlyHiddenChanged(seg.text, seg.start, now, seg.hidden),
+    head: against.label,
+    at: loc,
+  };
 }
 
 /** 卡片上的某一行在新版本里是第几行（按内容映射；这一行被删了就落在它前面最近一条还在的行上） */

@@ -19,9 +19,25 @@ afterAll(() => fs.rmSync(dir, { recursive: true, force: true }));
 describe("code editing without a language service", () => {
   it("returns empty completion, hover and signature", async () => {
     await send({ type: "codeDoc", id: "free-a", lang: "python", text: "import os\nos." });
-    const c0 = await send({ type: "lspComplete", req: 1, id: "free-a", text: "import os\nos.", line: 1, col: 3, trigger: "." });
+    const c0 = await send({
+      type: "lspComplete",
+      req: 1,
+      id: "free-a",
+      text: "import os\nos.",
+      line: 1,
+      col: 3,
+      trigger: ".",
+    });
     const h0 = await send({ type: "lspHover", req: 2, id: "free-a", text: "import os\nos.", line: 0, col: 7 });
-    const s0 = await send({ type: "lspSignature", req: 3, id: "free-a", text: "print(", line: 0, col: 6, trigger: "(" });
+    const s0 = await send({
+      type: "lspSignature",
+      req: 3,
+      id: "free-a",
+      text: "print(",
+      line: 0,
+      col: 6,
+      trigger: "(",
+    });
     await send({ type: "codeDocClose", id: "free-a" });
     expect([c0, h0, s0]).toEqual([[], [], null]);
   });
@@ -34,46 +50,93 @@ describe("code editing with a language service", () => {
   let slow: Promise<void> | undefined; // a slow language service: completions wait for this
   beforeAll(async () => {
     W.language.scratch = {
-      sync: async (id, lang, text, near) => { log.push(`sync ${id} ${lang} ${near ? path.relative(WS, near) : "-"} ${JSON.stringify(text)}`); docs.set(id, text); },
-      close: async (id) => { log.push(`close ${id}`); docs.delete(id); },
+      sync: async (id, lang, text, near) => {
+        log.push(`sync ${id} ${lang} ${near ? path.relative(WS, near) : "-"} ${JSON.stringify(text)}`);
+        docs.set(id, text);
+      },
+      close: async (id) => {
+        log.push(`close ${id}`);
+        docs.delete(id);
+      },
       completions: async (id, line, col) => {
         await slow;
         log.push(`complete ${JSON.stringify(docs.get(id))} ${line}:${col}`);
-        return [...Array.from({ length: 1000 }, (_, i) => ({ label: `zz${i}` })), { label: "schedule", kind: "method" as const }, { label: "is_finished", kind: "method" as const }, { label: "reschedule" }];
+        return [
+          ...Array.from({ length: 1000 }, (_, i) => ({ label: `zz${i}` })),
+          { label: "schedule", kind: "method" as const },
+          { label: "is_finished", kind: "method" as const },
+          { label: "reschedule" },
+        ];
       },
       hover: async () => ["```python\ndef schedule(self) -> tuple[list[Sequence], bool]\n```"],
-      signature: async () => ({ label: "allocate(seq: Sequence)", params: [{ at: [9, 22] as [number, number] }], active: 0 }),
+      signature: async () => ({
+        label: "allocate(seq: Sequence)",
+        params: [{ at: [9, 22] as [number, number] }],
+        active: 0,
+      }),
     };
-    const near = { src: { kind: "repo" as const, repo: "" }, path: "nanovllm/engine/llm_engine.py", version: { kind: "none" as const } };
+    const near = {
+      src: { kind: "repo" as const, repo: "" },
+      path: "nanovllm/engine/llm_engine.py",
+      version: { kind: "none" as const },
+    };
     await send({ type: "codeDoc", id: "free-b", lang: "python", text: "self.scheduler.", near });
   });
-  afterAll(() => { delete W.language.scratch; });
+  afterAll(() => {
+    delete W.language.scratch;
+  });
 
   it("syncs the virtual document next to the linked source file before asking, and narrows by the word before the cursor", async () => {
-    const items = await send({ type: "lspComplete", req: 4, id: "free-b", text: "self.scheduler.sch", line: 0, col: 18 }) as { label: string }[];
+    const items = (await send({
+      type: "lspComplete",
+      req: 4,
+      id: "free-b",
+      text: "self.scheduler.sch",
+      line: 0,
+      col: 18,
+    })) as { label: string }[];
     expect(log[0]).toBe(`sync free-b python nanovllm/engine/llm_engine.py "self.scheduler."`);
     expect(log).toContain(`complete "self.scheduler.sch" 0:18`);
     expect(items.map((i) => i.label)).toEqual(["schedule", "reschedule"]); // prefix matches first
   });
   it("caps an empty prefix at 300 items", async () => {
-    expect(await send({ type: "lspComplete", req: 5, id: "free-b", text: "self.scheduler.", line: 0, col: 15 })).toHaveLength(300);
+    expect(
+      await send({ type: "lspComplete", req: 5, id: "free-b", text: "self.scheduler.", line: 0, col: 15 }),
+    ).toHaveLength(300);
   });
   it("drops an older request before it reaches the language service when a newer one comes", async () => {
     let answer!: () => void;
-    slow = new Promise((r) => { answer = r; });
+    slow = new Promise((r) => {
+      answer = r;
+    });
     const both = Promise.all([
       send({ type: "lspComplete", req: 6, id: "free-b", text: "self.scheduler.s", line: 0, col: 16 }),
       send({ type: "lspComplete", req: 7, id: "free-b", text: "self.scheduler.sc", line: 0, col: 17 }),
     ]);
     answer(); // both were asked while the language service was still busy
-    const [a, b] = await both as unknown[][];
+    const [a, b] = (await both) as unknown[][];
     slow = undefined;
     expect([a.length, b.length]).toEqual([0, 2]);
     expect(log).not.toContain(`complete "self.scheduler.s" 0:16`);
   });
   it("passes hover and signature help through", async () => {
-    const hv = await send({ type: "lspHover", req: 8, id: "free-b", text: "self.scheduler.schedule()", line: 0, col: 16 }) as string[];
-    const sg = await send({ type: "lspSignature", req: 9, id: "free-b", text: "self.block_manager.allocate(", line: 0, col: 28, trigger: "(" }) as { active: number } | null;
+    const hv = (await send({
+      type: "lspHover",
+      req: 8,
+      id: "free-b",
+      text: "self.scheduler.schedule()",
+      line: 0,
+      col: 16,
+    })) as string[];
+    const sg = (await send({
+      type: "lspSignature",
+      req: 9,
+      id: "free-b",
+      text: "self.block_manager.allocate(",
+      line: 0,
+      col: 28,
+      trigger: "(",
+    })) as { active: number } | null;
     expect(hv).toHaveLength(1);
     expect(hv[0]).toMatch(/def schedule/);
     expect(sg?.active).toBe(0);

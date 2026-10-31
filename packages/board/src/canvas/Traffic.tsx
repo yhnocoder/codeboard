@@ -7,7 +7,13 @@ import { carPaths, laneOf, zebraBack, driveFrames, type CarPose, type Road } fro
 /** 停着的车：同一份位置烤成三条 path（车身、车顶、车灯 + 人行横道） */
 export function Car(p: { cls: string; at: CarPose; road?: Road }) {
   const c = createMemo(() => carPaths(p.at, p.road));
-  return <g class={p.cls} data-deg={p.at.deg}><path class="cbody" d={c().body} /><path class="croof" d={c().roof} /><path class="clamp" d={c().lamp} /></g>;
+  return (
+    <g class={p.cls} data-deg={p.at.deg}>
+      <path class="cbody" d={c().body} />
+      <path class="croof" d={c().roof} />
+      <path class="clamp" d={c().lamp} />
+    </g>
+  );
 }
 /**
  * City 的路面标线（一个 path）：大路是双黄线，小街是一道白中线；停车和人行横道那头剪掉（车停在横道前，见 carPaths）。
@@ -36,27 +42,41 @@ let pick: Accessor<Way[]> = () => [];
 /** 挑车流开哪几条路：Links.tsx 的 trackLinks 在它的 root 里调一次，views = 画着的线 */
 export function trackTraffic(views: Accessor<Way[]>) {
   const trafficOn = () => look() === "city" && traffic() && !reduceMotion();
-  pick = createMemo(on([camMoving, views, trafficOn], ([moving, rs, ok], _, prev?: Way[]) => {
-    if (!ok) return [];
-    if (moving && prev?.length) return prev;
-    return untrack(() => {
-      const v = worldView(), m = 200;
-      const out: Way[] = [];
-      for (const r of rs) {
-        if (!r.L.call || r.base()?.kind !== "normal") continue;
-        const p = r.geo?.()?.pts;
-        if (!p) continue;
-        const xs = [p[0], p[2], p[4], p[6]], ys = [p[1], p[3], p[5], p[7]];
-        if (Math.max(...xs) < v.x - m || Math.min(...xs) > v.x + v.w + m || Math.max(...ys) < v.y - m || Math.min(...ys) > v.y + v.h + m) continue;
-        out.push(r);
-        if (out.length >= MAX_ROADS) break;
-      }
-      return out;
-    });
-  }));
+  pick = createMemo(
+    on([camMoving, views, trafficOn], ([moving, rs, ok], _, prev?: Way[]) => {
+      if (!ok) return [];
+      if (moving && prev?.length) return prev;
+      return untrack(() => {
+        const v = worldView(),
+          m = 200;
+        const out: Way[] = [];
+        for (const r of rs) {
+          if (!r.L.call || r.base()?.kind !== "normal") continue;
+          const p = r.geo?.()?.pts;
+          if (!p) continue;
+          const xs = [p[0], p[2], p[4], p[6]],
+            ys = [p[1], p[3], p[5], p[7]];
+          if (
+            Math.max(...xs) < v.x - m ||
+            Math.min(...xs) > v.x + v.w + m ||
+            Math.max(...ys) < v.y - m ||
+            Math.min(...ys) > v.y + v.h + m
+          )
+            continue;
+          out.push(r);
+          if (out.length >= MAX_ROADS) break;
+        }
+        return out;
+      });
+    }),
+  );
 }
 export function Traffic() {
-  return <Show when={look() === "city" && traffic() && !reduceMotion()}><Movers /></Show>;
+  return (
+    <Show when={look() === "city" && traffic() && !reduceMotion()}>
+      <Movers />
+    </Show>
+  );
 }
 function Movers() {
   return (
@@ -74,18 +94,27 @@ function Movers() {
 function Mover(p: { d: () => string; k: number; phase: number }) {
   let el!: HTMLDivElement;
   let anims: Animation[] = [];
-  const stop = () => { for (const a of anims) a.cancel(); anims = []; };
-  createEffect(on(p.d, (d) => {
-    const old = anims[0], was = old ? ((old.currentTime as number) ?? 0) / ((old.effect?.getTiming().duration as number) || 1) : p.phase;
-    stop();
-    const f = d ? driveFrames(d) : null;
-    if (!f) return;
-    const ms = Math.max(3000, (f.len / 50) * 1000);
-    const at = ((was % 1) + 1) % 1 * ms;
-    const opt: KeyframeAnimationOptions = { duration: ms, iterations: Infinity, easing: "linear" };
-    anims = [el.animate(f.frames, opt), el.animate([{ opacity: 0 }, { opacity: 1, offset: 0.08 }, { opacity: 1, offset: 0.88 }, { opacity: 0 }], opt)];
-    for (const a of anims) a.currentTime = at;
-  }));
+  const stop = () => {
+    for (const a of anims) a.cancel();
+    anims = [];
+  };
+  createEffect(
+    on(p.d, (d) => {
+      const old = anims[0],
+        was = old ? ((old.currentTime as number) ?? 0) / ((old.effect?.getTiming().duration as number) || 1) : p.phase;
+      stop();
+      const f = d ? driveFrames(d) : null;
+      if (!f) return;
+      const ms = Math.max(3000, (f.len / 50) * 1000);
+      const at = (((was % 1) + 1) % 1) * ms;
+      const opt: KeyframeAnimationOptions = { duration: ms, iterations: Infinity, easing: "linear" };
+      anims = [
+        el.animate(f.frames, opt),
+        el.animate([{ opacity: 0 }, { opacity: 1, offset: 0.08 }, { opacity: 1, offset: 0.88 }, { opacity: 0 }], opt),
+      ];
+      for (const a of anims) a.currentTime = at;
+    }),
+  );
   onCleanup(stop);
   return <div ref={el} class={`mover k${p.k}`} />;
 }

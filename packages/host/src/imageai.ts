@@ -40,7 +40,8 @@ Shapes and color:
 - Flat shapes only; simplify photos and noise.
 - Self-contained: no <script>, <foreignObject>, <image>, external fonts, links or URLs.
 - Compact: integer coordinates; shared styles in <g> attributes or one small <style>.`;
-export const SVG_BG_ON = "Background: draw NO background. Do not add a full-canvas <rect> or a background fill on the <svg>; the page/paper color of the image must be transparent. Keep fills that belong to the diagram itself (cells, boxes, shading, highlights).";
+export const SVG_BG_ON =
+  "Background: draw NO background. Do not add a full-canvas <rect> or a background fill on the <svg>; the page/paper color of the image must be transparent. Keep fills that belong to the diagram itself (cells, boxes, shading, highlights).";
 export const SVG_BG_OFF = "Background: reproduce the image's background color as a full-size <rect> first.";
 export const SYS_DRAW = `You draw a clean, self-contained SVG diagram or illustration of what a piece of text describes.
 Output exactly one complete <svg>...</svg> element and nothing else: no Markdown fences, no explanation.
@@ -56,7 +57,8 @@ Style:
 - Dark strokes and text (#333), a few soft fills to group things; flat shapes, no gradients, shadows or filters.
 - Self-contained: no <script>, <foreignObject>, <image>, external fonts, links or URLs.
 - Compact: integer coordinates; shared styles in <g> attributes or one small <style>.`;
-export const DRAW_BG_ON = "Background: draw NO background. Do not add a full-canvas <rect> or a background fill on the <svg>; only the diagram itself has fills.";
+export const DRAW_BG_ON =
+  "Background: draw NO background. Do not add a full-canvas <rect> or a background fill on the <svg>; only the diagram itself has fills.";
 export const DRAW_BG_OFF = "Background: start with a full-size white <rect>.";
 export const drawUser = (text: string) => `Draw this as an SVG.\n\n<text>\n${text.trim()}\n</text>`;
 export const SYS_MODIFY = [
@@ -111,66 +113,151 @@ The ==scheduler== batches ==prefill== and ==decode== requests. Each step it chec
 export const focusUser = (md: string) => `Add the marks to this Markdown document.\n\n<document>\n${md}\n</document>`;
 
 /** 每种操作最多等多久：先思考的重画量过是 40 秒上下，留足余量；读字不思考，3 秒上下 */
-export const IMAGE_AI_TIMEOUT = { extract: 120_000, svg: 180_000, svgThink: 360_000, modify: 300_000, focus: 120_000 } as const;
+export const IMAGE_AI_TIMEOUT = {
+  extract: 120_000,
+  svg: 180_000,
+  svgThink: 360_000,
+  modify: 300_000,
+  focus: 120_000,
+} as const;
 
-export type ImageAiOpts = { key: string; baseUrl?: string; model?: string; signal?: AbortSignal; fetch?: typeof fetch; timeoutMs?: number };
+export type ImageAiOpts = {
+  key: string;
+  baseUrl?: string;
+  model?: string;
+  signal?: AbortSignal;
+  fetch?: typeof fetch;
+  timeoutMs?: number;
+};
 
 const base = (o: { baseUrl?: string }) => (o.baseUrl || "https://api.deepseek.com").replace(/\/+$/, "");
-const vision = (text: string, url: string) => [{ type: "text", text }, { type: "image_url", image_url: { url } }];
+const vision = (text: string, url: string) => [
+  { type: "text", text },
+  { type: "image_url", image_url: { url } },
+];
 
 /** 一次操作要问的话（DeepSeek 和编辑器的模型共用）：think、maxTokens 只有 DeepSeek 用 */
 type Ask = { system: string; text: string; image?: string; think: boolean; maxTokens: number };
 function askOf(op: ImageAiOp): Ask {
   switch (op.kind) {
-    case "extract": return { system: SYS_EXTRACT, text: "Transcribe this image to Markdown.", image: op.image, think: false, maxTokens: 4000 };
-    case "svg": return { system: `${SYS_SVG}\n${op.noBg ? SVG_BG_ON : SVG_BG_OFF}`, text: `Redraw this image as SVG. The image is ${op.size.w}×${op.size.h} pixels.`, image: op.image, think: op.think, maxTokens: op.think ? 32000 : 16000 };
-    case "draw": return { system: `${SYS_DRAW}\n${op.noBg ? DRAW_BG_ON : DRAW_BG_OFF}`, text: drawUser(op.text), think: op.think, maxTokens: op.think ? 32000 : 16000 };
-    case "modify": return { system: SYS_MODIFY, text: `Instruction: ${op.instruction.trim()}\n\nSVG:\n${op.svg}`, think: true, maxTokens: 24000 };
+    case "extract":
+      return {
+        system: SYS_EXTRACT,
+        text: "Transcribe this image to Markdown.",
+        image: op.image,
+        think: false,
+        maxTokens: 4000,
+      };
+    case "svg":
+      return {
+        system: `${SYS_SVG}\n${op.noBg ? SVG_BG_ON : SVG_BG_OFF}`,
+        text: `Redraw this image as SVG. The image is ${op.size.w}×${op.size.h} pixels.`,
+        image: op.image,
+        think: op.think,
+        maxTokens: op.think ? 32000 : 16000,
+      };
+    case "draw":
+      return {
+        system: `${SYS_DRAW}\n${op.noBg ? DRAW_BG_ON : DRAW_BG_OFF}`,
+        text: drawUser(op.text),
+        think: op.think,
+        maxTokens: op.think ? 32000 : 16000,
+      };
+    case "modify":
+      return {
+        system: SYS_MODIFY,
+        text: `Instruction: ${op.instruction.trim()}\n\nSVG:\n${op.svg}`,
+        think: true,
+        maxTokens: 24000,
+      };
     // 回答和原文一样长再多几个记号；中文一个字差不多一个 token
-    case "focus": return { system: SYS_FOCUS, text: focusUser(op.md), think: false, maxTokens: Math.min(32000, Math.max(1024, Math.ceil(op.md.length * 1.5))) };
+    case "focus":
+      return {
+        system: SYS_FOCUS,
+        text: focusUser(op.md),
+        think: false,
+        maxTokens: Math.min(32000, Math.max(1024, Math.ceil(op.md.length * 1.5))),
+      };
   }
 }
 
 export function imageAiRequest(o: ImageAiOpts, op: ImageAiOp): DeepseekRequest {
   const a = askOf(op);
   const body = {
-    model: o.model || DEEPSEEK_MODEL, max_tokens: a.maxTokens, stream: false, thinking: { type: a.think ? "enabled" : "disabled" },
+    model: o.model || DEEPSEEK_MODEL,
+    max_tokens: a.maxTokens,
+    stream: false,
+    thinking: { type: a.think ? "enabled" : "disabled" },
     ...(a.think ? { reasoning_effort: "low" } : {}),
-    messages: [{ role: "system", content: a.system }, { role: "user", content: a.image ? vision(a.text, a.image) : a.text }],
+    messages: [
+      { role: "system", content: a.system },
+      { role: "user", content: a.image ? vision(a.text, a.image) : a.text },
+    ],
   };
   return {
     url: `${base(o)}/chat/completions`,
-    init: { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json", Authorization: `Bearer ${o.key}` }, body: JSON.stringify(body) },
+    init: {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json", Authorization: `Bearer ${o.key}` },
+      body: JSON.stringify(body),
+    },
   };
 }
 
 /** 包住整个回答的代码围栏（```markdown … ```）去掉；里面的围栏不动 */
-export const stripFence = (s: string) => { const m = s.trim().match(/^```[\w-]*\n([\s\S]*?)\n?```$/); return m ? m[1] : s.trim(); };
+export const stripFence = (s: string) => {
+  const m = s.trim().match(/^```[\w-]*\n([\s\S]*?)\n?```$/);
+  return m ? m[1] : s.trim();
+};
 
 const extracted = new Map<string, string>();
 const EXTRACT_CACHE = 64;
 /** 测试用：忘掉识别过的图 */
 export const resetImageAiCache = () => extracted.clear();
-const cacheKey = (who: string, image: string) => createHash("sha1").update(`${who}\n${SYS_EXTRACT}\n`).update(image).digest("hex");
-const limitOf = (op: ImageAiOp) => (op.kind === "svg" || op.kind === "draw" ? (op.think ? IMAGE_AI_TIMEOUT.svgThink : IMAGE_AI_TIMEOUT.svg) : IMAGE_AI_TIMEOUT[op.kind]);
+const cacheKey = (who: string, image: string) =>
+  createHash("sha1").update(`${who}\n${SYS_EXTRACT}\n`).update(image).digest("hex");
+const limitOf = (op: ImageAiOp) =>
+  op.kind === "svg" || op.kind === "draw"
+    ? op.think
+      ? IMAGE_AI_TIMEOUT.svgThink
+      : IMAGE_AI_TIMEOUT.svg
+    : IMAGE_AI_TIMEOUT[op.kind];
 
 type Raw = { text: string; cut?: boolean } | { fail: ImageAiFail; message?: string };
 /**
  * 问一次（who = 缓存用的「谁答的」，via = 提示里的名字）：读字先查缓存；限时、取消；回答去掉外面的围栏（Auto Focus 的不去：原文自己可能就是一段代码），
  * 截断的 SVG、空回答算失败。不抛出
  */
-async function run(op: ImageAiOp, who: string, via: string, o: { signal?: AbortSignal; timeoutMs?: number }, send: (signal: AbortSignal) => Promise<Raw>): Promise<ImageAiResult> {
+async function run(
+  op: ImageAiOp,
+  who: string,
+  via: string,
+  o: { signal?: AbortSignal; timeoutMs?: number },
+  send: (signal: AbortSignal) => Promise<Raw>,
+): Promise<ImageAiResult> {
   const key = op.kind === "extract" ? cacheKey(who, op.image) : "";
   const hit = key && extracted.get(key);
-  if (hit) { extracted.delete(key); extracted.set(key, hit); return { text: hit, reused: true }; }
+  if (hit) {
+    extracted.delete(key);
+    extracted.set(key, hit);
+    return { text: hit, reused: true };
+  }
   if (o.signal?.aborted) return { fail: "canceled" };
   const ac = new AbortController();
   let timedOut = false;
   const stop = () => ac.abort();
   o.signal?.addEventListener("abort", stop);
   const limit = o.timeoutMs ?? limitOf(op);
-  const t = setTimeout(() => { timedOut = true; ac.abort(); }, limit);
-  const late = (): ImageAiResult | null => (timedOut ? { fail: "timeout", message: `No answer within ${Math.round(limit / 1000)} s`, via } : ac.signal.aborted ? { fail: "canceled" } : null);
+  const t = setTimeout(() => {
+    timedOut = true;
+    ac.abort();
+  }, limit);
+  const late = (): ImageAiResult | null =>
+    timedOut
+      ? { fail: "timeout", message: `No answer within ${Math.round(limit / 1000)} s`, via }
+      : ac.signal.aborted
+        ? { fail: "canceled" }
+        : null;
   try {
     const r = await send(ac.signal);
     const l = late();
@@ -200,9 +287,18 @@ export async function runImageAi(o: ImageAiOpts, op: ImageAiOp): Promise<ImageAi
   return run(op, `${base(o)}\n${o.model || DEEPSEEK_MODEL}`, "DeepSeek", o, async (signal) => {
     const r = imageAiRequest(o, op);
     const res = await f(r.url, { ...r.init, signal });
-    const raw = await res.text().catch((e) => { if (signal.aborted) throw e; return ""; });
-    let json: { error?: { message?: string }; choices?: { finish_reason?: string; message?: { content?: string } }[] } | undefined;
-    try { json = JSON.parse(raw); } catch { json = undefined; }
+    const raw = await res.text().catch((e) => {
+      if (signal.aborted) throw e;
+      return "";
+    });
+    let json:
+      | { error?: { message?: string }; choices?: { finish_reason?: string; message?: { content?: string } }[] }
+      | undefined;
+    try {
+      json = JSON.parse(raw);
+    } catch {
+      json = undefined;
+    }
     if (res.status === 401) return { fail: "badkey", message: json?.error?.message };
     if (res.status === 402) return { fail: "balance", message: json?.error?.message };
     if (!res.ok) return { fail: "http", message: json?.error?.message || `HTTP ${res.status}` };
@@ -211,40 +307,64 @@ export async function runImageAi(o: ImageAiOpts, op: ImageAiOp): Promise<ImageAi
   });
 }
 
-const JUSTIFY = "CodeBoard's AI tools (Extract Text, Convert to SVG, Modify SVG, Draw as SVG, Auto Focus) use the model chosen in CodeBoard Settings › AI.";
+const JUSTIFY =
+  "CodeBoard's AI tools (Extract Text, Convert to SVG, Modify SVG, Draw as SVG, Auto Focus) use the model chosen in CodeBoard Settings › AI.";
 /** data: URL → 编辑器的模型收的字节 */
 function imageBytes(url: string): AiChatRequest["image"] {
   const m = /^data:([^;,]+)(;base64)?,(.*)$/s.exec(url);
   if (!m) return undefined;
-  return { mime: m[1], data: m[2] ? new Uint8Array(Buffer.from(m[3], "base64")) : new TextEncoder().encode(decodeURIComponent(m[3])) };
+  return {
+    mime: m[1],
+    data: m[2] ? new Uint8Array(Buffer.from(m[3], "base64")) : new TextEncoder().encode(decodeURIComponent(m[3])),
+  };
 }
 /** 问编辑器提供的语言模型（model 不给 = 自动挑）。思考、长度上限只有 DeepSeek 有，这里不用 */
-async function runChatAi(chat: WorkspaceAi["chat"], model: string | undefined, op: ImageAiOp, o: { signal?: AbortSignal; timeoutMs?: number } = {}): Promise<ImageAiResult> {
+async function runChatAi(
+  chat: WorkspaceAi["chat"],
+  model: string | undefined,
+  op: ImageAiOp,
+  o: { signal?: AbortSignal; timeoutMs?: number } = {},
+): Promise<ImageAiResult> {
   const a = askOf(op);
   const image = a.image ? imageBytes(a.image) : undefined;
   if (a.image && !image) return { fail: "http", message: "The image couldn't be sent" };
   let via = "VS Code language model";
   return run(op, `vscode\n${model ?? "auto"}`, via, o, async (signal) => {
-    const r: AiChatResult = await chat(model, { system: a.system, user: a.text, image, fast: op.kind === "extract" || op.kind === "focus" }, { signal, justification: JUSTIFY });
+    const r: AiChatResult = await chat(
+      model,
+      { system: a.system, user: a.text, image, fast: op.kind === "extract" || op.kind === "focus" },
+      { signal, justification: JUSTIFY },
+    );
     if (r.via) via = r.via;
     return "fail" in r ? { fail: r.fail, message: r.message } : { text: r.text };
   }).then((r) => ("fail" in r && r.fail !== "canceled" ? { ...r, via } : r));
 }
 
 /** 每种功能用哪个模型的设置 */
-const AI_SETTING = { text: "codeboard.ai.textModel", svg: "codeboard.ai.svgModel", focus: "codeboard.ai.focusModel" } as const;
-const featureOf = (op: ImageAiOp): keyof typeof AI_SETTING => (op.kind === "extract" ? "text" : op.kind === "focus" ? "focus" : "svg");
+const AI_SETTING = {
+  text: "codeboard.ai.textModel",
+  svg: "codeboard.ai.svgModel",
+  focus: "codeboard.ai.focusModel",
+} as const;
+const featureOf = (op: ImageAiOp): keyof typeof AI_SETTING =>
+  op.kind === "extract" ? "text" : op.kind === "focus" ? "focus" : "svg";
 
 /**
  * 白板的一个 imageAi 请求。用哪个模型按这项功能的设置：auto = 有 DeepSeek 密钥用 DeepSeek，没有用编辑器的语言模型；deepseek；
  * 别的 = 那个语言模型的 id。DeepSeek 的密钥从编辑器的密钥存储拿，模型和地址按 codeboard.ai.deepseekModel / deepseekBaseUrl。
  * jobs = 这块面板还在等的（取消时按 job 号中止）；失败写进日志（不带密钥）
  */
-export async function imageAiJob(jobs: Map<number, AbortController>, job: number, op: ImageAiOp, f?: typeof fetch): Promise<ImageAiResult> {
+export async function imageAiJob(
+  jobs: Map<number, AbortController>,
+  job: number,
+  op: ImageAiOp,
+  f?: typeof fetch,
+): Promise<ImageAiResult> {
   const ac = new AbortController();
   jobs.set(job, ac);
   try {
-    const ws = workspace(), s = ws.settings;
+    const ws = workspace(),
+      s = ws.settings;
     const choice = (s.get<string>(AI_SETTING[featureOf(op)]) || "auto").trim();
     const key = choice === "auto" || choice === "deepseek" ? await deepseekKey() : undefined;
     if (ac.signal.aborted) return { fail: "canceled" };
@@ -252,13 +372,23 @@ export async function imageAiJob(jobs: Map<number, AbortController>, job: number
     if (key || choice === "deepseek") {
       r = await runImageAi({ key: key ?? "", ...deepseekTarget(), signal: ac.signal, fetch: f }, op);
     } else if (!ws.ai) {
-      r = choice === "auto" ? { fail: "nokey", via: "DeepSeek" } : { fail: "nomodel", message: "This editor has no language models" };
+      r =
+        choice === "auto"
+          ? { fail: "nokey", via: "DeepSeek" }
+          : { fail: "nomodel", message: "This editor has no language models" };
     } else {
       r = await runChatAi(ws.ai.chat, choice === "auto" ? undefined : choice, op, { signal: ac.signal });
       // 自动挑也没有模型：先设 DeepSeek 的密钥是最直接的出路（提示里给 Set DeepSeek API Key…）
-      if ("fail" in r && r.fail === "nomodel" && choice === "auto") r = { ...r, message: r.message ?? "No DeepSeek API key, and no VS Code language model (such as GitHub Copilot)" };
+      if ("fail" in r && r.fail === "nomodel" && choice === "auto")
+        r = {
+          ...r,
+          message: r.message ?? "No DeepSeek API key, and no VS Code language model (such as GitHub Copilot)",
+        };
     }
-    if ("fail" in r && r.fail !== "canceled") log("warn", `ai ${op.kind}: ${r.via ?? "model"} ${r.fail}${r.message ? `: ${r.message}` : ""}`);
+    if ("fail" in r && r.fail !== "canceled")
+      log("warn", `ai ${op.kind}: ${r.via ?? "model"} ${r.fail}${r.message ? `: ${r.message}` : ""}`);
     return r;
-  } finally { jobs.delete(job); }
+  } finally {
+    jobs.delete(job);
+  }
 }

@@ -22,7 +22,11 @@ export function initAnalysis(dir?: string): Promise<void> {
 }
 
 // C / C++ / CUDA 都用 tree-sitter-cuda：C++ 语法加上 <<<>>>、__global__、__launch_bounds__ 等，节点名和 C++ 一样
-const WASM: [Grammar, string][] = [["python", "tree-sitter-python.wasm"], ["cpp", "tree-sitter-cuda.wasm"], ["rust", "tree-sitter-rust.wasm"]];
+const WASM: [Grammar, string][] = [
+  ["python", "tree-sitter-python.wasm"],
+  ["cpp", "tree-sitter-cuda.wasm"],
+  ["rust", "tree-sitter-rust.wasm"],
+];
 const PKG: Record<string, string> = { "tree-sitter-cuda.wasm": "@yhnocoder/tree-sitter-cuda" };
 
 function wasmPath(f: string) {
@@ -73,7 +77,11 @@ function trim() {
   }
 }
 export function forgetTree(key?: string) {
-  for (const [k, e] of trees) if (key === undefined || k === key) { e.tree.delete(); trees.delete(k); }
+  for (const [k, e] of trees)
+    if (key === undefined || k === key) {
+      e.tree.delete();
+      trees.delete(k);
+    }
 }
 export const cachedTrees = () => [...trees.keys()];
 
@@ -87,19 +95,38 @@ export function diffEdit(a: string, b: string): Edit {
   // 不从代理对中间切开
   if (s > 0 && isHigh(a.charCodeAt(s - 1))) s--;
   if (e > 0 && isLow(a.charCodeAt(a.length - e))) e--;
-  return { startIndex: s, oldEndIndex: a.length - e, newEndIndex: b.length - e, startPosition: pointAt(a, s), oldEndPosition: pointAt(a, a.length - e), newEndPosition: pointAt(b, b.length - e) };
+  return {
+    startIndex: s,
+    oldEndIndex: a.length - e,
+    newEndIndex: b.length - e,
+    startPosition: pointAt(a, s),
+    oldEndPosition: pointAt(a, a.length - e),
+    newEndPosition: pointAt(b, b.length - e),
+  };
 }
-const isHigh = (c: number) => c >= 0xd800 && c <= 0xdbff, isLow = (c: number) => c >= 0xdc00 && c <= 0xdfff;
+const isHigh = (c: number) => c >= 0xd800 && c <= 0xdbff,
+  isLow = (c: number) => c >= 0xdc00 && c <= 0xdfff;
 function pointAt(t: string, i: number) {
-  let row = 0, ls = 0;
-  for (let k = t.indexOf("\n"); k !== -1 && k < i; k = t.indexOf("\n", k + 1)) { row++; ls = k + 1; }
+  let row = 0,
+    ls = 0;
+  for (let k = t.indexOf("\n"); k !== -1 && k < i; k = t.indexOf("\n", k + 1)) {
+    row++;
+    ls = k + 1;
+  }
   return { row, column: i - ls };
 }
 
 /** 编辑能不能把 a 变成 b（只核对长度和前后没动的部分） */
 function fits(a: string, b: string, e: Edit) {
-  return e.startIndex <= e.oldEndIndex && e.oldEndIndex <= a.length && e.startIndex <= e.newEndIndex && e.newEndIndex <= b.length
-    && a.length - e.oldEndIndex === b.length - e.newEndIndex && a.slice(0, e.startIndex) === b.slice(0, e.startIndex) && a.slice(e.oldEndIndex) === b.slice(e.newEndIndex);
+  return (
+    e.startIndex <= e.oldEndIndex &&
+    e.oldEndIndex <= a.length &&
+    e.startIndex <= e.newEndIndex &&
+    e.newEndIndex <= b.length &&
+    a.length - e.oldEndIndex === b.length - e.newEndIndex &&
+    a.slice(0, e.startIndex) === b.slice(0, e.startIndex) &&
+    a.slice(e.oldEndIndex) === b.slice(e.newEndIndex)
+  );
 }
 
 /**
@@ -119,7 +146,10 @@ export function treeOf(g: Grammar, text: string, key?: string, edit?: Edit): { t
       old.tree.delete();
     }
   } else {
-    if (old) { old.tree.delete(); trees.delete(key); }
+    if (old) {
+      old.tree.delete();
+      trees.delete(key);
+    }
     tree = parser(g).parse(text)!;
   }
   trees.set(key, { g, text, tree });

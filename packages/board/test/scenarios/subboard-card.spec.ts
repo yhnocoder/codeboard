@@ -6,9 +6,19 @@ import { subHost } from "../subhost";
 import { test, until, idle, hold, verdict, check } from "../fixtures";
 import { DBL_CLICK, WHEEL_GESTURE } from "../../src/state/timing";
 
-const nv = (qual: string) => { const s = findSym(qual); return symCard(s.f, s.s); };
-const note = (id: string, md: string, o: Partial<NoteCard> = {}): NoteCard => ({ id, kind: "note", md, look: "note", ...o });
-const svg = (w: number, h: number, c: string) => `data:image/svg+xml;utf8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><rect width="${w}" height="${h}" fill="${c}"/><circle cx="${w / 2}" cy="${h / 2}" r="${h / 3}" fill="#fff8"/></svg>`)}`;
+const nv = (qual: string) => {
+  const s = findSym(qual);
+  return symCard(s.f, s.s);
+};
+const note = (id: string, md: string, o: Partial<NoteCard> = {}): NoteCard => ({
+  id,
+  kind: "note",
+  md,
+  look: "note",
+  ...o,
+});
+const svg = (w: number, h: number, c: string) =>
+  `data:image/svg+xml;utf8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><rect width="${w}" height="${h}" fill="${c}"/><circle cx="${w / 2}" cy="${h / 2}" r="${h / 3}" fill="#fff8"/></svg>`)}`;
 
 /**
  * Main holds two sub-boards: Parallel (four sections of notes, an image, ungrouped notes) and Scheduler (code cards in two sections,
@@ -16,7 +26,12 @@ const svg = (w: number, h: number, c: string) => `data:image/svg+xml;utf8,${enco
  */
 export function boards() {
   const P = emptyBoard("bPar", "异构数据并行计算");
-  const secs: [string, string, string, number, number][] = [["s1", "异构并行计算", "sand", 40, 40], ["s2", "数据并行性", "green", 40, 700], ["s3", "CUDA 粗略介绍", "blue", 700, 700], ["s4", "以 VectorAdd 为例介绍 Grid, Thread Block, Thread 的基本概念", "pink", 700, 40]];
+  const secs: [string, string, string, number, number][] = [
+    ["s1", "异构并行计算", "sand", 40, 40],
+    ["s2", "数据并行性", "green", 40, 700],
+    ["s3", "CUDA 粗略介绍", "blue", 700, 700],
+    ["s4", "以 VectorAdd 为例介绍 Grid, Thread Block, Thread 的基本概念", "pink", 700, 40],
+  ];
   for (const [id, title, color, x, y] of secs) P.sections.push({ id, title, x, y, w: 600, h: 600, color });
   const notes: [string, string, string | undefined, string][] = [
     ["p1", "s1", "多核与众核", "## 多核（multicore）与众核（many-core）\nCPU 走多核，GPU 走众核"],
@@ -40,7 +55,12 @@ export function boards() {
   notes.forEach(([id, sec, title, md], i) => {
     const s = P.sections.find((k) => k.id === sec);
     P.cards.push(note(id, md, title ? { title } : {}));
-    P.place[id] = { x: (s?.x ?? 1400) + 20 + (i % 2) * 290, y: (s?.y ?? 40) + 40 + Math.floor((i % 6) / 2) * 180, w: 260, ...(sec ? { section: sec } : {}) };
+    P.place[id] = {
+      x: (s?.x ?? 1400) + 20 + (i % 2) * 290,
+      y: (s?.y ?? 40) + 40 + Math.floor((i % 6) / 2) * 180,
+      w: 260,
+      ...(sec ? { section: sec } : {}),
+    };
   });
   P.cards.push({ id: "pImg", kind: "image", src: svg(220, 120, "#6091cd"), alt: "CPU 与 GPU 架构对比" });
   P.place.pImg = { x: 330, y: 760, w: 260, section: "s2" };
@@ -51,10 +71,28 @@ export function boards() {
 
   const S = emptyBoard("bSch", "nano-vllm 调度器");
   S.sections.push({ id: "sch", title: "Scheduler：每一步挑哪些序列", x: 0, y: 0, w: 1300, h: 900, color: "sand" });
-  S.sections.push({ id: "bm", title: "BlockManager：KV cache 按块分配", x: 1400, y: 0, w: 1300, h: 900, color: "blue" });
-  const codes: [string, string, number, number][] = [["Scheduler.schedule", "sch", 40, 40], ["Scheduler.preempt", "sch", 640, 40], ["Scheduler.postprocess", "sch", 40, 500],
-    ["BlockManager.can_allocate", "bm", 1440, 40], ["BlockManager.allocate", "bm", 2040, 40], ["BlockManager.deallocate", "bm", 1440, 500]];
-  for (const [q, sec, x, y] of codes) { const c = nv(q); put(S, c, x, y, 520); S.place[c.id].section = sec; }
+  S.sections.push({
+    id: "bm",
+    title: "BlockManager：KV cache 按块分配",
+    x: 1400,
+    y: 0,
+    w: 1300,
+    h: 900,
+    color: "blue",
+  });
+  const codes: [string, string, number, number][] = [
+    ["Scheduler.schedule", "sch", 40, 40],
+    ["Scheduler.preempt", "sch", 640, 40],
+    ["Scheduler.postprocess", "sch", 40, 500],
+    ["BlockManager.can_allocate", "bm", 1440, 40],
+    ["BlockManager.allocate", "bm", 2040, 40],
+    ["BlockManager.deallocate", "bm", 1440, 500],
+  ];
+  for (const [q, sec, x, y] of codes) {
+    const c = nv(q);
+    put(S, c, x, y, 520);
+    S.place[c.id].section = sec;
+  }
   S.cards.push(note("sMark", "待查：preempt 之后前缀缓存还能命中吗？", { look: "mark", hand: "orange" }));
   S.place.sMark = { x: 700, y: 520, w: 220, section: "sch" };
   S.cards.push(note("sNote", "## 抢占\n显存不够就把最后一个踢回 waiting"));
@@ -73,7 +111,8 @@ export function boards() {
   M.place.fSch = { x: 700, y: 540, w: 620, h: 360 };
   // on Main itself: a note named only by its first line and a picture, which [[ leaves out
   M.cards.push(note("mPlain", "1. 3"), { id: "mImg", kind: "image", src: svg(160, 90, "#d77891") });
-  M.place.mPlain = { x: 60, y: 760, w: 200 }; M.place.mImg = { x: 300, y: 760, w: 200 };
+  M.place.mPlain = { x: 60, y: 760, w: 200 };
+  M.place.mImg = { x: 300, y: 760, w: 200 };
   M.cam = { x: -20, y: 24, z: 0.95 };
   return { M, P, S, D, step };
 }
@@ -82,7 +121,10 @@ export function boards() {
 async function shotPr(h: Host, name: string) {
   await shot(h, name, "now");
   const d = process.env.SHOTS_DIR;
-  if (d) { fs.mkdirSync(d, { recursive: true }); fs.copyFileSync(path.join(OUT, `${name}.png`), path.join(d, `${name}.png`)); }
+  if (d) {
+    fs.mkdirSync(d, { recursive: true });
+    fs.copyFileSync(path.join(OUT, `${name}.png`), path.join(d, `${name}.png`));
+  }
 }
 /** How many blocks a frame's map draws */
 const hasBlocks = (h: Host, frame: string) => h.page.locator(`.card[data-id="${frame}"] .skel [data-sub]`).count();
@@ -90,24 +132,48 @@ const hasBlocks = (h: Host, frame: string) => h.page.locator(`.card[data-id="${f
 /** The board's name and card count sit above the frame, outside it; with Sub-board Preview = Title Only the frame draws no map */
 test("subboardTitleAboveFrame", async () => {
   const { M, P, S, D } = boards();
-  const t = await subHost(M, [P, S, D]), h = t.h, page = h.page;
+  const t = await subHost(M, [P, S, D]),
+    h = t.h,
+    page = h.page;
   await until(h, "the frame shows its board", () => hasBlocks(h, "fSch"));
   await idle(h);
   const frame = page.locator('.card[data-id="fSch"]');
   const title = async () => {
-    const [f, n, c] = await Promise.all([frame.boundingBox(), frame.locator(".sbname").boundingBox(), frame.locator(".sbmeta").boundingBox()]);
+    const [f, n, c] = await Promise.all([
+      frame.boundingBox(),
+      frame.locator(".sbname").boundingBox(),
+      frame.locator(".sbmeta").boundingBox(),
+    ]);
     // drawn and taking the pointer there (not cut off at the frame's edge)
-    const hit = !!n && await page.evaluate(([x, y]) => !!document.elementFromPoint(x, y)?.closest('.card[data-id="fSch"] .sbname'), [n.x + n.width / 2, n.y + n.height / 2]);
-    return { above: !!f && !!n && !!c && n.y + n.height <= f.y && c.y + c.height <= f.y && n.x >= f.x && c.x > n.x, hit, name: await frame.locator(".sbname").textContent(), count: await frame.locator(".sbmeta").textContent() };
+    const hit =
+      !!n &&
+      (await page.evaluate(
+        ([x, y]) => !!document.elementFromPoint(x, y)?.closest('.card[data-id="fSch"] .sbname'),
+        [n.x + n.width / 2, n.y + n.height / 2],
+      ));
+    return {
+      above: !!f && !!n && !!c && n.y + n.height <= f.y && c.y + c.height <= f.y && n.x >= f.x && c.x > n.x,
+      hit,
+      name: await frame.locator(".sbname").textContent(),
+      count: await frame.locator(".sbmeta").textContent(),
+    };
   };
   const full = await title();
   await shotPr(h, "subboardcard-title");
-  check("subboardTitleAboveFrame-outside", full.above && full.hit && full.name === "nano-vllm 调度器" && full.count === "9", full);
+  check(
+    "subboardTitleAboveFrame-outside",
+    full.above && full.hit && full.name === "nano-vllm 调度器" && full.count === "9",
+    full,
+  );
   await h.post({ type: "host", host: { settings: { ...DEFAULT_SETTINGS, subPreview: "title" } } });
   await until(h, "Title Only drops the map", async () => (await hasBlocks(h, "fSch")) === 0);
   await idle(h);
   const only = await title();
-  check("subboardTitleAboveFrame-titleOnly", only.above && only.hit && only.name === "nano-vllm 调度器" && only.count === "9", only);
+  check(
+    "subboardTitleAboveFrame-titleOnly",
+    only.above && only.hit && only.name === "nano-vllm 调度器" && only.count === "9",
+    only,
+  );
   await page.context().close();
 });
 
@@ -129,27 +195,39 @@ test("subboardMapScales", async () => {
   M.cards.push({ id: "fBig", kind: "board", board: "bBig" });
   M.place.fBig = { x: 80, y: 120, w: 500, h: 300 };
   M.cam = { x: 0, y: 0, z: 1 };
-  const t = await subHost(M, [B]), h = t.h, page = h.page;
+  const t = await subHost(M, [B]),
+    h = t.h,
+    page = h.page;
   const frame = page.locator('.card[data-id="fBig"]');
   await until(h, "the frame shows its board", () => hasBlocks(h, "fBig"));
   await idle(h);
-  const drawn = () => frame.evaluate((f) => {
-    const fr = f.getBoundingClientRect(), hits = [...f.querySelectorAll(".skel [data-sub] .hit")].map((e) => e.getBoundingClientRect());
-    (f.querySelector(".sbsvg") as unknown as { __mark?: number }).__mark ??= 1;
-    return {
-      n: hits.length, w: fr.width, h: fr.height, count: f.querySelector(".sbmeta")?.textContent,
-      inside: hits.every((r) => r.left >= fr.left && r.right <= fr.right && r.top >= fr.top && r.bottom <= fr.bottom),
-      bw: hits[0]?.width ?? 0,
-    };
-  });
+  const drawn = () =>
+    frame.evaluate((f) => {
+      const fr = f.getBoundingClientRect(),
+        hits = [...f.querySelectorAll(".skel [data-sub] .hit")].map((e) => e.getBoundingClientRect());
+      (f.querySelector(".sbsvg") as unknown as { __mark?: number }).__mark ??= 1;
+      return {
+        n: hits.length,
+        w: fr.width,
+        h: fr.height,
+        count: f.querySelector(".sbmeta")?.textContent,
+        inside: hits.every((r) => r.left >= fr.left && r.right <= fr.right && r.top >= fr.top && r.bottom <= fr.bottom),
+        bw: hits[0]?.width ?? 0,
+      };
+    });
   const small = await drawn();
   check("subboardMapScales-small", small.count === "240" && small.n === 240 && small.inside, small);
   // panning: the very same SVG stays (marked above), nothing rebuilt
   await page.mouse.move(700, 600);
-  await page.mouse.wheel(-150, -90); await idle(h);
-  check("subboardMapScales-panKeepsMap", await frame.evaluate((f) => (f.querySelector(".sbsvg") as unknown as { __mark?: number }).__mark === 1));
+  await page.mouse.wheel(-150, -90);
+  await idle(h);
+  check(
+    "subboardMapScales-panKeepsMap",
+    await frame.evaluate((f) => (f.querySelector(".sbsvg") as unknown as { __mark?: number }).__mark === 1),
+  );
   // bigger with its corner grip
-  await frame.locator(".sbname").click(); await idle(h);
+  await frame.locator(".sbname").click();
+  await idle(h);
   const grip = (await frame.locator(".grip").boundingBox())!;
   await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2);
   await page.mouse.down();
@@ -157,7 +235,11 @@ test("subboardMapScales", async () => {
   await page.mouse.up();
   await idle(h);
   const big = await drawn();
-  check("subboardMapScales-bigger", big.w > small.w && big.h > small.h && big.n === 240 && big.inside && big.bw > small.bw * 1.3, { small, big });
+  check(
+    "subboardMapScales-bigger",
+    big.w > small.w && big.h > small.h && big.n === 240 && big.inside && big.bw > small.bw * 1.3,
+    { small, big },
+  );
   await page.context().close();
 });
 
@@ -172,15 +254,23 @@ test("subboardShrinkKeepsSize", async () => {
   M.place.fPar = { x: 80, y: 120, w: 520, h: 420 };
   M.place.fNext = { x: 700, y: 160, w: 400, h: 260 };
   M.cam = { x: 0, y: 0, z: 1 };
-  const t = await subHost(M, [P]), h = t.h, page = h.page;
+  const t = await subHost(M, [P]),
+    h = t.h,
+    page = h.page;
   const frame = page.locator('.card[data-id="fPar"]');
-  await until(h, "the frames show their board", async () => (await hasBlocks(h, "fPar")) > 0 && (await hasBlocks(h, "fNext")) > 0);
+  await until(
+    h,
+    "the frames show their board",
+    async () => (await hasBlocks(h, "fPar")) > 0 && (await hasBlocks(h, "fNext")) > 0,
+  );
   await idle(h);
   const place = () => t.store.peek("bMain")!.place.fPar;
   const shrink = async (sel: string, dx: number, dy: number) => {
-    await frame.locator(".sbname").click(); await idle(h);
+    await frame.locator(".sbname").click();
+    await idle(h);
     const g = (await frame.locator(sel).boundingBox())!;
-    const x = g.x + g.width / 2, y = g.y + g.height / 2;
+    const x = g.x + g.width / 2,
+      y = g.y + g.height / 2;
     await page.mouse.move(x, y);
     await page.mouse.down();
     await page.mouse.move(x + dx, y + dy, { steps: 10 });
@@ -192,15 +282,32 @@ test("subboardShrinkKeepsSize", async () => {
   };
   // the corner grip up-left by ~158px: the height snaps to the neighbour's 260
   const snap = await shrink(".grip", -100, -158);
-  check("subboardShrinkKeepsSize-sameHeight", snap.place.h === 260 && Math.abs(snap.h - 260) < 3 && snap.w > 380 && /same height/.test(snap.hint), snap);
+  check(
+    "subboardShrinkKeepsSize-sameHeight",
+    snap.place.h === 260 && Math.abs(snap.h - 260) < 3 && snap.w > 380 && /same height/.test(snap.hint),
+    snap,
+  );
   await shotPr(h, "subboardcard-shrink-snap");
   // far past everything: stops at the minimum size, still a frame with its map
   const tiny = await shrink(".grip", -900, -900);
-  check("subboardShrinkKeepsSize-min", typeof tiny.place.h === "number" && tiny.h >= 120 && tiny.w >= 180 && Math.abs(tiny.h - tiny.place.h!) < 3 && (await hasBlocks(h, "fPar")) > 0, tiny);
+  check(
+    "subboardShrinkKeepsSize-min",
+    typeof tiny.place.h === "number" &&
+      tiny.h >= 120 &&
+      tiny.w >= 180 &&
+      Math.abs(tiny.h - tiny.place.h!) < 3 &&
+      (await hasBlocks(h, "fPar")) > 0,
+    tiny,
+  );
   // a double-click on the grip (Fit Content on other cards) leaves the frame as it is: it has no content size to fit
   const before = { ...place() };
-  await frame.locator(".grip").dblclick(); await idle(h);
-  check("subboardShrinkKeepsSize-dblclick", place().h === before.h && place().w === before.w && Math.abs((await frame.boundingBox())!.height - before.h!) < 3, { before, after: place() });
+  await frame.locator(".grip").dblclick();
+  await idle(h);
+  check(
+    "subboardShrinkKeepsSize-dblclick",
+    place().h === before.h && place().w === before.w && Math.abs((await frame.boundingBox())!.height - before.h!) < 3,
+    { before, after: place() },
+  );
   await shotPr(h, "subboardcard-shrink-min");
   await page.context().close();
 });
@@ -215,38 +322,95 @@ test("subboardMatchesDemo", async () => {
   M.cam = { x: -600, y: 40, z: 1 };
   // two notes in Parallel with an arrow, to see a line on the map
   P.links.push({ id: "pl", from: { card: "p1" }, to: { card: "p2" } });
-  const t = await subHost(M, [P, S, D], { light: true }), h = t.h, page = h.page;
+  const t = await subHost(M, [P, S, D], { light: true }),
+    h = t.h,
+    page = h.page;
   await until(h, "the frame shows its board", () => hasBlocks(h, "fSch"));
   await idle(h);
   const r = await page.evaluate(() => {
-    const f = document.querySelector<HTMLElement>('.card[data-id="fPar"]')!, fr = f.getBoundingClientRect();
-    const box = (sel: string) => { const e = f.querySelector(sel); if (!e) return null; const b = e.getBoundingClientRect(); return [b.left - fr.left, b.top - fr.top, b.width, b.height].map((v) => +v.toFixed(1)); };
-    const css = (root: Element, sel: string, ...ks: string[]) => { const e = root.querySelector(sel); if (!e) return null; const s = getComputedStyle(e); return ks.map((k) => s.getPropertyValue(k)).join(" "); };
+    const f = document.querySelector<HTMLElement>('.card[data-id="fPar"]')!,
+      fr = f.getBoundingClientRect();
+    const box = (sel: string) => {
+      const e = f.querySelector(sel);
+      if (!e) return null;
+      const b = e.getBoundingClientRect();
+      return [b.left - fr.left, b.top - fr.top, b.width, b.height].map((v) => +v.toFixed(1));
+    };
+    const css = (root: Element, sel: string, ...ks: string[]) => {
+      const e = root.querySelector(sel);
+      if (!e) return null;
+      const s = getComputedStyle(e);
+      return ks.map((k) => s.getPropertyValue(k)).join(" ");
+    };
     const sch = document.querySelector('.card[data-id="fSch"]')!;
     return {
-      zoom: fr.width / f.offsetWidth, name: box(".sbname"), nameCss: css(f, ".sbname", "font-size", "font-weight", "line-height", "color"),
-      lab: css(f, ".sblab", "font-size", "font-weight", "color"), labEm: css(f, ".sblab em", "font-weight", "color"),
+      zoom: fr.width / f.offsetWidth,
+      name: box(".sbname"),
+      nameCss: css(f, ".sbname", "font-size", "font-weight", "line-height", "color"),
+      lab: css(f, ".sblab", "font-size", "font-weight", "color"),
+      labEm: css(f, ".sblab em", "font-weight", "color"),
       sec: css(f, ".sec.c-sand", "fill", "stroke"),
-      note: css(f, '.k-note:not(.l-text) .bx', "fill"), bar: css(f, ".k-note .bar:not(.t)", "fill"),
-      code: css(sch, ".k-code .bx", "fill"), head: css(sch, ".k-code .hd", "fill"),
+      note: css(f, ".k-note:not(.l-text) .bx", "fill"),
+      bar: css(f, ".k-note .bar:not(.t)", "fill"),
+      code: css(sch, ".k-code .bx", "fill"),
+      head: css(sch, ".k-code .hd", "fill"),
       line: css(f, ".ln", "stroke", "stroke-width", "opacity"),
     };
   });
-  check("subboardMatchesDemo-title", r.zoom === 1 && !!r.name && Math.abs(r.name[0] - 6) < 0.6 && Math.abs(r.name[1] + 46) < 0.6 && r.nameCss === "25px 700 30px rgb(33, 31, 27)", r);
-  check("subboardMatchesDemo-sections", r.lab === "11px 600 rgb(98, 94, 86)" && r.labEm === "500 rgb(154, 149, 139)" && r.sec === "rgba(206, 170, 110, 0.16) rgba(60, 45, 20, 0.16)", r);
-  check("subboardMatchesDemo-blocks", r.note === "rgb(253, 252, 250)" && /^color\(srgb|^rgba?\(/.test(r.bar ?? "") && !!r.code && r.code !== r.note && !!r.head, r);
+  check(
+    "subboardMatchesDemo-title",
+    r.zoom === 1 &&
+      !!r.name &&
+      Math.abs(r.name[0] - 6) < 0.6 &&
+      Math.abs(r.name[1] + 46) < 0.6 &&
+      r.nameCss === "25px 700 30px rgb(33, 31, 27)",
+    r,
+  );
+  check(
+    "subboardMatchesDemo-sections",
+    r.lab === "11px 600 rgb(98, 94, 86)" &&
+      r.labEm === "500 rgb(154, 149, 139)" &&
+      r.sec === "rgba(206, 170, 110, 0.16) rgba(60, 45, 20, 0.16)",
+    r,
+  );
+  check(
+    "subboardMatchesDemo-blocks",
+    r.note === "rgb(253, 252, 250)" &&
+      /^color\(srgb|^rgba?\(/.test(r.bar ?? "") &&
+      !!r.code &&
+      r.code !== r.note &&
+      !!r.head,
+    r,
+  );
   check("subboardMatchesDemo-line", r.line === "rgb(154, 149, 139) 1px 0.75", r);
   // hover a block: accent outline; its tooltip on the dark pill
   const b = (await page.locator('.card[data-id="fPar"] .skel [data-sub="p1"] .hit').boundingBox())!;
   await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
   await page.locator(".sbtip").waitFor();
   // the outline fades in (120ms)
-  await until(h, "the hovered block's outline", () => page.evaluate(() => getComputedStyle(document.querySelector('.card[data-id="fPar"] [data-sub="p1"] .hit')!).stroke === "rgb(181, 85, 45)"), 2000).catch(() => undefined);
+  await until(
+    h,
+    "the hovered block's outline",
+    () =>
+      page.evaluate(
+        () =>
+          getComputedStyle(document.querySelector('.card[data-id="fPar"] [data-sub="p1"] .hit')!).stroke ===
+          "rgb(181, 85, 45)",
+      ),
+    2000,
+  ).catch(() => undefined);
   const hov = await page.evaluate(() => ({
     hit: getComputedStyle(document.querySelector('.card[data-id="fPar"] [data-sub="p1"] .hit')!).stroke,
-    tip: (() => { const s = getComputedStyle(document.querySelector(".sbtip")!); return `${s.backgroundColor} ${s.color} ${s.fontSize} ${s.borderRadius}`; })(),
+    tip: (() => {
+      const s = getComputedStyle(document.querySelector(".sbtip")!);
+      return `${s.backgroundColor} ${s.color} ${s.fontSize} ${s.borderRadius}`;
+    })(),
   }));
-  check("subboardMatchesDemo-hover", hov.hit === "rgb(181, 85, 45)" && hov.tip === "rgba(34, 32, 28, 0.92) rgb(246, 244, 239) 11.5px 7px", hov);
+  check(
+    "subboardMatchesDemo-hover",
+    hov.hit === "rgb(181, 85, 45)" && hov.tip === "rgba(34, 32, 28, 0.92) rgb(246, 244, 239) 11.5px 7px",
+    hov,
+  );
   await shotPr(h, "subboardcard-demo");
   await page.context().close();
 });
@@ -254,7 +418,9 @@ test("subboardMatchesDemo", async () => {
 /** The wheel over a sub-board card pans the board, selected or not: nothing in the frame scrolls */
 test("subboardWheelPansBoard", async () => {
   const { M, P, S, D } = boards();
-  const t = await subHost(M, [P, S, D]), h = t.h, page = h.page;
+  const t = await subHost(M, [P, S, D]),
+    h = t.h,
+    page = h.page;
   await until(h, "the frame shows its map", () => hasBlocks(h, "fPar"));
   await idle(h);
   const cam = () => page.evaluate(() => document.querySelector<HTMLElement>(".world")!.style.transform);
@@ -263,16 +429,19 @@ test("subboardWheelPansBoard", async () => {
     const c0 = await cam();
     const box = (await cols.boundingBox())!;
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-    await page.mouse.wheel(120, 0); await idle(h);
+    await page.mouse.wheel(120, 0);
+    await idle(h);
     res.unselectedPans = (await cam()) !== c0;
     // select the frame (its name), then a new gesture over its map
-    await page.locator('.card[data-id="fPar"] .sbname').click(); await idle(h);
+    await page.locator('.card[data-id="fPar"] .sbname').click();
+    await idle(h);
     res.selected = await page.locator('.card.sel[data-id="fPar"]').count();
     await hold(h, WHEEL_GESTURE, "the panning gesture is over: the next wheel starts a new one");
     const c1 = await cam();
     const moved = (await cols.boundingBox())!;
     await page.mouse.move(moved.x + moved.width / 2, moved.y + moved.height / 2);
-    await page.mouse.wheel(200, 200); await idle(h);
+    await page.mouse.wheel(200, 200);
+    await idle(h);
     res.selectedPans = (await cam()) !== c1;
     res.scrolled = await cols.evaluate((e) => e.scrollLeft + e.scrollTop);
     return res.unselectedPans && res.selected === 1 && res.selectedPans && res.scrolled === 0;
@@ -283,12 +452,15 @@ test("subboardWheelPansBoard", async () => {
 /** An arrow dragged from a card's port onto a block of the map inside the frame attaches to the frame itself: the frame lights up, the arrowhead is on its edge */
 test("subboardLinkAttachesToFrame", async () => {
   const { M, P, S, D } = boards();
-  const t = await subHost(M, [P, S, D]), h = t.h, page = h.page;
+  const t = await subHost(M, [P, S, D]),
+    h = t.h,
+    page = h.page;
   await until(h, "the frame shows its map", () => hasBlocks(h, "fSch"));
   await idle(h);
   await verdict("subboardLinkAttachesToFrame", async (res) => {
     const nb = (await page.locator('.card[data-id="mNote"]').boundingBox())!;
-    await page.mouse.move(nb.x + nb.width / 2, nb.y + nb.height / 2); await idle(h);
+    await page.mouse.move(nb.x + nb.width / 2, nb.y + nb.height / 2);
+    await idle(h);
     const port = (await page.locator('.card[data-id="mNote"] .eport.r').boundingBox())!;
     const mini = (await page.locator('.card[data-id="fSch"] .skel [data-sub] .hit').first().boundingBox())!;
     await page.mouse.move(port.x + port.width / 2, port.y + port.height / 2);
@@ -298,7 +470,8 @@ test("subboardLinkAttachesToFrame", async () => {
     res.miniHot = await page.locator(".skel .hot").count();
     await page.mouse.up();
     const made = () => t.store.peek("bMain")!.links.find((l) => l.from.card === "mNote");
-    await until(h, "the arrow is saved", made); await idle(h);
+    await until(h, "the arrow is saved", made);
+    await idle(h);
     res.to = made()!.to;
     const f = (await page.locator('.card[data-id="fSch"]').boundingBox())!;
     res.head = await page.evaluate((id) => {
@@ -307,10 +480,16 @@ test("subboardLinkAttachesToFrame", async () => {
     }, made()!.id);
     const hd = res.head as { x: number; y: number } | null;
     // the head sits on the frame's outline, not on a block inside it
-    const near = (m: number) => !!hd && hd.x > f.x - m && hd.x < f.x + f.width + m && hd.y > f.y - m && hd.y < f.y + f.height + m;
+    const near = (m: number) =>
+      !!hd && hd.x > f.x - m && hd.x < f.x + f.width + m && hd.y > f.y - m && hd.y < f.y + f.height + m;
     res.headAtEdge = near(14) && !near(-8);
     await shotPr(h, "subboardcard-arrow");
-    return res.frameHot === 1 && res.miniHot === 0 && JSON.stringify(res.to) === JSON.stringify({ card: "fSch" }) && res.headAtEdge;
+    return (
+      res.frameHot === 1 &&
+      res.miniHot === 0 &&
+      JSON.stringify(res.to) === JSON.stringify({ card: "fSch" }) &&
+      res.headAtEdge
+    );
   });
   await page.context().close();
 });
@@ -321,18 +500,31 @@ type Frame = { t: number; cam: string; op: number; ghost?: { x: number; y: numbe
  * until the morph is over (no flying title, the board fully shown), so a slow machine still films the whole flight
  */
 function film(page: Host["page"], ms: number): Promise<Frame[]> {
-  return page.evaluate((ms) => new Promise<Frame[]>((done) => {
-    const out: Frame[] = [], t0 = performance.now();
-    const step = () => {
-      const w = document.querySelector<HTMLElement>(".world")!, g = document.querySelector<HTMLElement>(".sbmorph");
-      const r = g?.getBoundingClientRect();
-      out.push({ t: performance.now() - t0, cam: w.style.transform, op: +getComputedStyle(w).opacity, ghost: g && r ? { x: Math.round(r.left), y: Math.round(r.top), text: g.textContent ?? "" } : undefined,
-        board: document.querySelector(".mast .mn")?.textContent ?? "" });
-      const t = performance.now() - t0, over = !g && out.at(-1)!.op === 1;
-      if (t < ms || (!over && t < 6000)) requestAnimationFrame(step); else done(out);
-    };
-    requestAnimationFrame(step);
-  }), ms);
+  return page.evaluate(
+    (ms) =>
+      new Promise<Frame[]>((done) => {
+        const out: Frame[] = [],
+          t0 = performance.now();
+        const step = () => {
+          const w = document.querySelector<HTMLElement>(".world")!,
+            g = document.querySelector<HTMLElement>(".sbmorph");
+          const r = g?.getBoundingClientRect();
+          out.push({
+            t: performance.now() - t0,
+            cam: w.style.transform,
+            op: +getComputedStyle(w).opacity,
+            ghost: g && r ? { x: Math.round(r.left), y: Math.round(r.top), text: g.textContent ?? "" } : undefined,
+            board: document.querySelector(".mast .mn")?.textContent ?? "",
+          });
+          const t = performance.now() - t0,
+            over = !g && out.at(-1)!.op === 1;
+          if (t < ms || (!over && t < 6000)) requestAnimationFrame(step);
+          else done(out);
+        };
+        requestAnimationFrame(step);
+      }),
+    ms,
+  );
 }
 
 /**
@@ -341,7 +533,9 @@ function film(page: Host["page"], ms: number): Promise<Frame[]> {
  */
 test("subboardEnterLeaveMorph", async () => {
   const { M, P, S, D } = boards();
-  const t = await subHost(M, [P, S, D]), h = t.h, page = h.page;
+  const t = await subHost(M, [P, S, D]),
+    h = t.h,
+    page = h.page;
   await until(h, "the frame shows its map", () => hasBlocks(h, "fPar"));
   await idle(h);
   const cam = () => page.evaluate(() => document.querySelector<HTMLElement>(".world")!.style.transform);
@@ -354,14 +548,22 @@ test("subboardEnterLeaveMorph", async () => {
       const filming = film(page, 600);
       await title.dblclick();
       const f = await filming;
-      await until(h, "entering opens the sub-board", () => t.inits.length > n); await idle(h);
+      await until(h, "entering opens the sub-board", () => t.inits.length > n);
+      await idle(h);
       const firstGhost = f.find((x) => x.ghost)?.ghost;
       const cur = (await page.locator(".crumbs .cur").boundingBox())!;
       res[`in-${how}`] = {
-        cameraStill: f.filter((x) => x.board === "Main").every((x) => x.cam === c0), faded: Math.min(...f.map((x) => x.op)) < 0.5, ghost: firstGhost?.text,
+        cameraStill: f.filter((x) => x.board === "Main").every((x) => x.cam === c0),
+        faded: Math.min(...f.map((x) => x.op)) < 0.5,
+        ghost: firstGhost?.text,
         from: !!firstGhost && Math.abs(firstGhost.y - tb.y) < 24 && Math.abs(firstGhost.x - tb.x) < 30,
         to: f.some((x) => !!x.ghost && Math.abs(x.ghost.x - cur.x) < 4 && Math.abs(x.ghost.y - cur.y) < 4),
-        settled: (await page.evaluate(() => [+getComputedStyle(document.querySelector(".world")!).opacity, !!document.querySelector(".sbmorph")])).join(),
+        settled: (
+          await page.evaluate(() => [
+            +getComputedStyle(document.querySelector(".world")!).opacity,
+            !!document.querySelector(".sbmorph"),
+          ])
+        ).join(),
         // the breadcrumb already names the board and sits where the masthead would be
         noMast: (await page.locator(".mast").count()) === 0,
       };
@@ -372,18 +574,36 @@ test("subboardEnterLeaveMorph", async () => {
       else if (how === "crumb") await page.locator(".crumbs .crumb:not(.cur):not(.back)").first().click();
       else await page.locator(".crumbs .crumb.back").click();
       const g = await filmBack;
-      await until(h, "leaving opens Main", () => t.inits.length > n && t.cur() === "bMain"); await idle(h);
+      await until(h, "leaving opens Main", () => t.inits.length > n && t.cur() === "bMain");
+      await idle(h);
       const tb2 = (await title.boundingBox())!;
       res[`out-${how}`] = {
-        ghost: g.some((x) => x.ghost?.text === "异构数据并行计算"), faded: Math.min(...g.map((x) => x.op)) < 0.5,
-        lands: g.some((x) => !!x.ghost && Math.abs(x.ghost.x - tb2.x) < 12 && Math.abs(x.ghost.y - tb2.y) < 12), camera: (await cam()) === c0,
+        ghost: g.some((x) => x.ghost?.text === "异构数据并行计算"),
+        faded: Math.min(...g.map((x) => x.op)) < 0.5,
+        lands: g.some((x) => !!x.ghost && Math.abs(x.ghost.x - tb2.x) < 12 && Math.abs(x.ghost.y - tb2.y) < 12),
+        camera: (await cam()) === c0,
         titleShown: await title.evaluate((e) => getComputedStyle(e).visibility === "visible"),
         mast: (await page.locator(".mast").count()) === 1,
       };
     }
     return (["Escape", "crumb", "back"] as const).every((k) => {
-      const i = res[`in-${k}`] as Record<string, unknown>, o = res[`out-${k}`] as Record<string, unknown>;
-      return i.cameraStill && i.faded && i.ghost === "异构数据并行计算" && i.from && i.to && i.settled === "1,false" && i.noMast && o.ghost && o.faded && o.lands && o.camera && o.titleShown && o.mast;
+      const i = res[`in-${k}`] as Record<string, unknown>,
+        o = res[`out-${k}`] as Record<string, unknown>;
+      return (
+        i.cameraStill &&
+        i.faded &&
+        i.ghost === "异构数据并行计算" &&
+        i.from &&
+        i.to &&
+        i.settled === "1,false" &&
+        i.noMast &&
+        o.ghost &&
+        o.faded &&
+        o.lands &&
+        o.camera &&
+        o.titleShown &&
+        o.mast
+      );
     });
   });
   // a picture half way through entering (played 8× slower)
@@ -397,8 +617,14 @@ test("subboardEnterLeaveMorph", async () => {
 /** [[ lists cards inside sub-boards (named after the sub-board, two levels down too) but no pictures or first-line names; the link opens the card there */
 test("subboardLinkPicker", async () => {
   const { M, P, S, D } = boards();
-  const t = await subHost(M, [P, S, D]), h = t.h, page = h.page;
-  await until(h, "the frames show their boards", async () => (await hasBlocks(h, "fPar")) && (await hasBlocks(h, "fSch")));
+  const t = await subHost(M, [P, S, D]),
+    h = t.h,
+    page = h.page;
+  await until(
+    h,
+    "the frames show their boards",
+    async () => (await hasBlocks(h, "fPar")) && (await hasBlocks(h, "fSch")),
+  );
   await idle(h);
   await verdict("subboardLinkPicker", async (res) => {
     await page.locator('.card[data-id="mNote"] .nbody').dblclick({ position: { x: 300, y: 12 } });
@@ -409,15 +635,39 @@ test("subboardLinkPicker", async () => {
     const all = await page.locator(".md-menu button .lb").allTextContents();
     res.all = all;
     await shotPr(h, "subboardcard-picker");
-    const want = ["异构数据并行计算 › 多核与众核", "异构数据并行计算 › 降低延迟 vs 提高吞吐", "nano-vllm 调度器 › Scheduler.schedule", "nano-vllm 调度器 › Deep › 深处的笔记", "nano-vllm 调度器 › 抢占", "LLMEngine.step", "异构数据并行计算"];
-    const banned = ["1. 3", "1. 增加 shape(圆角矩形、圆形等)", "CPU 与 GPU 架构对比", "随手记一句没有标题的话", "Image", "待查：preempt 之后前缀缓存还能命中吗？"];
+    const want = [
+      "异构数据并行计算 › 多核与众核",
+      "异构数据并行计算 › 降低延迟 vs 提高吞吐",
+      "nano-vllm 调度器 › Scheduler.schedule",
+      "nano-vllm 调度器 › Deep › 深处的笔记",
+      "nano-vllm 调度器 › 抢占",
+      "LLMEngine.step",
+      "异构数据并行计算",
+    ];
+    const banned = [
+      "1. 3",
+      "1. 增加 shape(圆角矩形、圆形等)",
+      "CPU 与 GPU 架构对比",
+      "随手记一句没有标题的话",
+      "Image",
+      "待查：preempt 之后前缀缓存还能命中吗？",
+    ];
     res.missing = want.filter((w) => !all.includes(w));
     res.banned = all.filter((x) => banned.some((b) => x === b || x.endsWith(` › ${b}`)));
     await page.keyboard.type("深处");
-    await until(h, "the picker narrows to the deep card", async () => (await page.locator(".md-menu button .lb").allTextContents()).join() === "nano-vllm 调度器 › Deep › 深处的笔记");
+    await until(
+      h,
+      "the picker narrows to the deep card",
+      async () =>
+        (await page.locator(".md-menu button .lb").allTextContents()).join() === "nano-vllm 调度器 › Deep › 深处的笔记",
+    );
     await page.keyboard.press("Enter");
     await page.keyboard.press("Escape");
-    await until(h, "the link is saved", () => (t.store.peek("bMain")!.cards.find((c) => c.id === "mNote") as NoteCard).md.includes("[[nano-vllm 调度器 › Deep › 深处的笔记]]"));
+    await until(h, "the link is saved", () =>
+      (t.store.peek("bMain")!.cards.find((c) => c.id === "mNote") as NoteCard).md.includes(
+        "[[nano-vllm 调度器 › Deep › 深处的笔记]]",
+      ),
+    );
     await idle(h);
     const chip = page.locator('.card[data-id="mNote"] .md-ref', { hasText: "深处" });
     res.resolved = await chip.evaluate((e) => !e.classList.contains("missing"));
@@ -427,7 +677,12 @@ test("subboardLinkPicker", async () => {
     await until(h, "the card is selected there", () => page.locator('.card.sel[data-id="d1"]').count());
     await idle(h);
     res.crumbs = await page.locator(".crumbs .crumb:not(.back)").allTextContents();
-    return !(res.missing as string[]).length && !(res.banned as string[]).length && res.resolved && JSON.stringify(res.crumbs) === JSON.stringify(["Main", "nano-vllm 调度器", "Deep"]);
+    return (
+      !(res.missing as string[]).length &&
+      !(res.banned as string[]).length &&
+      res.resolved &&
+      JSON.stringify(res.crumbs) === JSON.stringify(["Main", "nano-vllm 调度器", "Deep"])
+    );
   });
   await page.context().close();
 });
@@ -459,17 +714,37 @@ async function clickBlock(h: Host, f: string, id: string) {
   await h.page.mouse.click(c.x, c.y);
   await idle(h);
 }
-type PvRow = { id: string; n: string; tit: boolean; mini: boolean; peek: boolean; x: number; y: number; w: number; h: number };
+type PvRow = {
+  id: string;
+  n: string;
+  tit: boolean;
+  mini: boolean;
+  peek: boolean;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+};
 /** The open previews of a frame, in screen px, with the frame's own screen box */
-const previews = (h: Host, f: string) => h.page.evaluate((f) => {
-  const fr = document.querySelector(`.card[data-id="${f}"]`)!.getBoundingClientRect();
-  const rows = [...document.querySelectorAll<HTMLElement>(`.sbpv[data-f="${f}"]`)].map((e) => {
-    const r = e.getBoundingClientRect();
-    return { id: e.dataset.pv!, n: e.querySelector(".ph i")!.textContent!, tit: e.classList.contains("tit"), mini: e.classList.contains("mini"), peek: e.classList.contains("peek"),
-      x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) };
-  });
-  return { frame: { x: fr.x, y: fr.y, w: fr.width, h: fr.height }, rows };
-}, f);
+const previews = (h: Host, f: string) =>
+  h.page.evaluate((f) => {
+    const fr = document.querySelector(`.card[data-id="${f}"]`)!.getBoundingClientRect();
+    const rows = [...document.querySelectorAll<HTMLElement>(`.sbpv[data-f="${f}"]`)].map((e) => {
+      const r = e.getBoundingClientRect();
+      return {
+        id: e.dataset.pv!,
+        n: e.querySelector(".ph i")!.textContent!,
+        tit: e.classList.contains("tit"),
+        mini: e.classList.contains("mini"),
+        peek: e.classList.contains("peek"),
+        x: Math.round(r.x),
+        y: Math.round(r.y),
+        w: Math.round(r.width),
+        h: Math.round(r.height),
+      };
+    });
+    return { frame: { x: fr.x, y: fr.y, w: fr.width, h: fr.height }, rows };
+  }, f);
 /** Drag from one point to another with the mouse, in steps */
 async function drag(h: Host, from: { x: number; y: number }, to: { x: number; y: number }) {
   await h.page.mouse.move(from.x, from.y);
@@ -481,7 +756,12 @@ async function drag(h: Host, from: { x: number; y: number }, to: { x: number; y:
 /** Wait out the moving previews (they slide to their new places in 160ms) by waiting for their positions to stop changing */
 async function settled(h: Host, f: string) {
   let last = "";
-  await until(h, "the previews stopped moving", async () => { const s = JSON.stringify((await previews(h, f)).rows); const same = s === last; last = s; return same; });
+  await until(h, "the previews stopped moving", async () => {
+    const s = JSON.stringify((await previews(h, f)).rows);
+    const same = s === last;
+    last = s;
+    return same;
+  });
 }
 
 /**
@@ -491,35 +771,68 @@ async function settled(h: Host, f: string) {
  */
 test("subboardMap", async () => {
   const { M, P, S, D } = setup();
-  const t = await subHost(M, [P, S, D]), h = t.h, page = h.page;
-  await ready(h, "fPar"); await ready(h, "fSch");
+  const t = await subHost(M, [P, S, D]),
+    h = t.h,
+    page = h.page;
+  await ready(h, "fPar");
+  await ready(h, "fSch");
   const sk = skeletonOf(P, (id) => t.store.peek(id) as Board | undefined);
   const got = await page.evaluate(() => {
-    const f = document.querySelector<HTMLElement>('.card[data-id="fPar"]')!, fr = f.getBoundingClientRect(), z = fr.width / f.offsetWidth;
-    const bl = Object.fromEntries([...f.querySelectorAll<SVGGElement>(".skel [data-sub]")].map((g) => {
-      const r = g.querySelector(".hit")!.getBoundingClientRect();
-      // the hit box is 1px larger than the block on every side
-      return [g.dataset.sub!, [(r.x - fr.x) / z + 1, (r.y - fr.y) / z + 1, r.width / z - 2, r.height / z - 2]];
-    }));
+    const f = document.querySelector<HTMLElement>('.card[data-id="fPar"]')!,
+      fr = f.getBoundingClientRect(),
+      z = fr.width / f.offsetWidth;
+    const bl = Object.fromEntries(
+      [...f.querySelectorAll<SVGGElement>(".skel [data-sub]")].map((g) => {
+        const r = g.querySelector(".hit")!.getBoundingClientRect();
+        // the hit box is 1px larger than the block on every side
+        return [g.dataset.sub!, [(r.x - fr.x) / z + 1, (r.y - fr.y) / z + 1, r.width / z - 2, r.height / z - 2]];
+      }),
+    );
     return {
-      w: f.offsetWidth, h: f.offsetHeight, bl,
-      labels: [...f.querySelectorAll(".sblab")].map((l) => `${l.querySelector("span")!.textContent}:${l.querySelector("em")!.textContent}`),
+      w: f.offsetWidth,
+      h: f.offsetHeight,
+      bl,
+      labels: [...f.querySelectorAll(".sblab")].map(
+        (l) => `${l.querySelector("span")!.textContent}:${l.querySelector("em")!.textContent}`,
+      ),
       words: [...f.querySelectorAll(".skel svg text")].length,
       image: !!f.querySelector('.skel [data-sub="pImg"] image'),
       lines: f.querySelectorAll(".skel .ln").length,
     };
   });
   const m = mapFit(sk, got.w, got.h);
-  const off = sk.cards.map((c) => {
-    const b = got.bl[c.id], want = [m.ox + c.x * m.s, m.oy + c.y * m.s, c.w * m.s, c.h * m.s];
-    return b && b.every((v, i) => Math.abs(v - want[i]) < 1) ? "" : `${c.id}: ${b?.map((v) => v.toFixed(1))} vs ${want.map((v) => v.toFixed(1))}`;
-  }).filter(Boolean);
-  check("subboardMap-blocks", Object.keys(got.bl).length === 18 && sk.cards.length === 18 && !off.length, { n: Object.keys(got.bl).length, off });
-  check("subboardMap-sections", JSON.stringify(got.labels) === JSON.stringify(["异构并行计算:6", "数据并行性:3", "CUDA 粗略介绍:2", "以 VectorAdd 为例介绍 Grid, Thread Block, Thread 的基本概念:5"]), got.labels);
+  const off = sk.cards
+    .map((c) => {
+      const b = got.bl[c.id],
+        want = [m.ox + c.x * m.s, m.oy + c.y * m.s, c.w * m.s, c.h * m.s];
+      return b && b.every((v, i) => Math.abs(v - want[i]) < 1)
+        ? ""
+        : `${c.id}: ${b?.map((v) => v.toFixed(1))} vs ${want.map((v) => v.toFixed(1))}`;
+    })
+    .filter(Boolean);
+  check("subboardMap-blocks", Object.keys(got.bl).length === 18 && sk.cards.length === 18 && !off.length, {
+    n: Object.keys(got.bl).length,
+    off,
+  });
+  check(
+    "subboardMap-sections",
+    JSON.stringify(got.labels) ===
+      JSON.stringify([
+        "异构并行计算:6",
+        "数据并行性:3",
+        "CUDA 粗略介绍:2",
+        "以 VectorAdd 为例介绍 Grid, Thread Block, Thread 的基本概念:5",
+      ]),
+    got.labels,
+  );
   check("subboardMap-look", got.image && got.words === 0, got);
   const sch = await page.evaluate(() => {
     const f = document.querySelector('.card[data-id="fSch"]')!;
-    return { codeHead: f.querySelectorAll(".skel .k-code .hd").length, mark: f.querySelectorAll('.skel [data-sub="sMark"] .bar.mk').length, nested: f.querySelectorAll(".skel .k-board").length };
+    return {
+      codeHead: f.querySelectorAll(".skel .k-code .hd").length,
+      mark: f.querySelectorAll('.skel [data-sub="sMark"] .bar.mk').length,
+      nested: f.querySelectorAll(".skel .k-board").length,
+    };
   });
   check("subboardMap-kinds", sch.codeHead === 6 && sch.mark > 0 && sch.nested === 1, sch);
   // hover a block: its title in a tooltip under it
@@ -527,13 +840,19 @@ test("subboardMap", async () => {
   await page.mouse.move(c.x, c.y);
   await page.locator(".sbtip").waitFor();
   const tip = await page.evaluate(() => {
-    const e = document.querySelector(".sbtip")!, r = e.getBoundingClientRect(), b = document.querySelector('.card[data-id="fPar"] .skel [data-sub="p9"] .hit')!.getBoundingClientRect();
+    const e = document.querySelector(".sbtip")!,
+      r = e.getBoundingClientRect(),
+      b = document.querySelector('.card[data-id="fPar"] .skel [data-sub="p9"] .hit')!.getBoundingClientRect();
     return { text: e.textContent, below: r.top >= b.bottom, ico: !!e.querySelector(".ico") };
   });
   check("subboardMap-tooltip", tip.text === "CUDA C 程序结构" && tip.below && tip.ico, tip);
   const ic = await center(h, '.card[data-id="fPar"] .skel [data-sub="pImg"] .hit');
   await page.mouse.move(ic.x, ic.y);
-  await until(h, "the picture's tooltip", async () => (await page.locator(".sbtip").textContent()) === "CPU 与 GPU 架构对比");
+  await until(
+    h,
+    "the picture's tooltip",
+    async () => (await page.locator(".sbtip").textContent()) === "CPU 与 GPU 架构对比",
+  );
   await shot(h, "subboardMap");
   await page.context().close();
 });
@@ -544,23 +863,45 @@ test("subboardMap", async () => {
  */
 test("subboardMapRealSizes", async () => {
   const B = emptyBoard("bReal", "Real sizes");
-  const long = "## CUDA C++ 程序结构\n" + Array.from({ length: 12 }, (_, i) => `第 ${i + 1} 段：主机代码分配显存、拷数据、发射 kernel，设备代码在每个线程里算一个元素。`).join("\n\n");
-  B.cards.push(note("rLong", long), { id: "rBig", kind: "image", src: svg(700, 470, "#6091cd"), alt: "大图" }, note("rBelow", "## 下面的卡\n在长 Note 下面"));
+  const long =
+    "## CUDA C++ 程序结构\n" +
+    Array.from(
+      { length: 12 },
+      (_, i) => `第 ${i + 1} 段：主机代码分配显存、拷数据、发射 kernel，设备代码在每个线程里算一个元素。`,
+    ).join("\n\n");
+  B.cards.push(
+    note("rLong", long),
+    { id: "rBig", kind: "image", src: svg(700, 470, "#6091cd"), alt: "大图" },
+    note("rBelow", "## 下面的卡\n在长 Note 下面"),
+  );
   B.place.rLong = { x: 0, y: 0, w: 300 };
   B.place.rBelow = { x: 0, y: 900, w: 300 };
   B.place.rBig = { x: 360, y: 0, w: 700 };
   // 一段多行的纯文字（Text）
-  B.cards.push({ id: "rText", kind: "note", look: "text", size: "body", md: "本章讨论 GPU 的片上内存架构，并开始研究如何组织和放置数据，使大量线程能够高效访问它们。".repeat(4) } as NoteCard);
+  B.cards.push({
+    id: "rText",
+    kind: "note",
+    look: "text",
+    size: "body",
+    md: "本章讨论 GPU 的片上内存架构，并开始研究如何组织和放置数据，使大量线程能够高效访问它们。".repeat(4),
+  } as NoteCard);
   B.place.rText = { x: 360, y: 560, w: 380 };
   for (let i = 0; i < 5; i++) {
-    B.cards.push({ id: `rSq${i}`, kind: "image", src: svg(236, 236, ["#d77891", "#7aa66b", "#c9a227", "#8a6fc4", "#4aa3a3"][i]), alt: `方图 ${i + 1}` });
+    B.cards.push({
+      id: `rSq${i}`,
+      kind: "image",
+      src: svg(236, 236, ["#d77891", "#7aa66b", "#c9a227", "#8a6fc4", "#4aa3a3"][i]),
+      alt: `方图 ${i + 1}`,
+    });
     B.place[`rSq${i}`] = { x: 1120 + (i % 3) * 270, y: Math.floor(i / 3) * 330, w: 236 };
   }
   const M = emptyBoard("bMain", "Main");
   M.cards.push({ id: "fReal", kind: "board", board: "bReal" });
   M.place.fReal = { x: 80, y: 80, w: 900, h: 420 };
   M.cam = { x: 0, y: 0, z: 1 };
-  const t = await subHost(M, [B]), h = t.h, page = h.page;
+  const t = await subHost(M, [B]),
+    h = t.h,
+    page = h.page;
   await ready(h, "fReal");
   const ids = B.cards.map((c) => c.id);
   // inside the sub-board: the real sizes (world units)
@@ -568,8 +909,20 @@ test("subboardMapRealSizes", async () => {
   await page.locator('.card[data-id="fReal"] .sbname').dblclick();
   await until(h, "entering opens the sub-board", () => t.inits.length > n0 && t.cur() === "bReal");
   await idle(h);
-  const real = await page.evaluate((ids) => Object.fromEntries(ids.map((id) => { const e = document.querySelector<HTMLElement>(`.card[data-id="${id}"]`)!; return [id, { w: e.offsetWidth, h: e.offsetHeight }]; })), ids);
-  await until(h, "the measured heights are saved with the sub-board", () => { const sb = t.store.peek("bReal")!; return ids.every((id) => Math.abs(estSize(sb.cards.find((c) => c.id === id)!, sb.place[id]).h - real[id].h) <= 8); });
+  const real = await page.evaluate(
+    (ids) =>
+      Object.fromEntries(
+        ids.map((id) => {
+          const e = document.querySelector<HTMLElement>(`.card[data-id="${id}"]`)!;
+          return [id, { w: e.offsetWidth, h: e.offsetHeight }];
+        }),
+      ),
+    ids,
+  );
+  await until(h, "the measured heights are saved with the sub-board", () => {
+    const sb = t.store.peek("bReal")!;
+    return ids.every((id) => Math.abs(estSize(sb.cards.find((c) => c.id === id)!, sb.place[id]).h - real[id].h) <= 8);
+  });
   const n1 = t.inits.length;
   await page.keyboard.press("Escape");
   await until(h, "leaving opens Main", () => t.inits.length > n1 && t.cur() === "bMain");
@@ -578,15 +931,27 @@ test("subboardMapRealSizes", async () => {
   const map = await page.evaluate((ids) => {
     const f = document.querySelector<HTMLElement>('.card[data-id="fReal"]')!;
     // the hit box is 1px larger than the block on every side
-    return Object.fromEntries(ids.map((id) => { const r = f.querySelector(`.skel [data-sub="${id}"] .hit`)!.getBoundingClientRect(); return [id, { x: r.x + 1, y: r.y + 1, w: r.width - 2, h: r.height - 2 }]; }));
+    return Object.fromEntries(
+      ids.map((id) => {
+        const r = f.querySelector(`.skel [data-sub="${id}"] .hit`)!.getBoundingClientRect();
+        return [id, { x: r.x + 1, y: r.y + 1, w: r.width - 2, h: r.height - 2 }];
+      }),
+    );
   }, ids);
   const off = ids.flatMap((id) => {
-    const want = real[id].h / real[id].w, got = map[id].h / map[id].w;
-    return Math.abs(got / want - 1) < 0.06 ? [] : [`${id}: drawn ${map[id].w.toFixed(1)}×${map[id].h.toFixed(1)} (h/w ${got.toFixed(2)}), real ${real[id].w}×${real[id].h} (h/w ${want.toFixed(2)})`];
+    const want = real[id].h / real[id].w,
+      got = map[id].h / map[id].w;
+    return Math.abs(got / want - 1) < 0.06
+      ? []
+      : [
+          `${id}: drawn ${map[id].w.toFixed(1)}×${map[id].h.toFixed(1)} (h/w ${got.toFixed(2)}), real ${real[id].w}×${real[id].h} (h/w ${want.toFixed(2)})`,
+        ];
   });
   check("subboardMapRealSizes-proportions", !off.length, off);
   // the gap between the long Note and the card under it, in the board's units
-  const k = map.rBig.w / real.rBig.w, gap = (map.rBelow.y - map.rLong.y - map.rLong.h) / k, want = 900 - real.rLong.h;
+  const k = map.rBig.w / real.rBig.w,
+    gap = (map.rBelow.y - map.rLong.y - map.rLong.h) / k,
+    want = 900 - real.rLong.h;
   check("subboardMapRealSizes-gap", Math.abs(gap - want) < 10, { gap, want });
   // 多行的 Text 画成几道线（像字），不是一道
   const textBars = await page.locator('.card[data-id="fReal"] .skel [data-sub="rText"] .bar').count();
@@ -601,58 +966,129 @@ test("subboardMapRealSizes", async () => {
  */
 test("subboardPreviewOpenClose", async () => {
   const { M, P, S, D } = setup();
-  const t = await subHost(M, [P, S, D]), h = t.h, page = h.page;
-  await ready(h, "fPar"); await ready(h, "fSch");
+  const t = await subHost(M, [P, S, D]),
+    h = t.h,
+    page = h.page;
+  await ready(h, "fPar");
+  await ready(h, "fSch");
   await clickBlock(h, "fPar", "p1");
   await clickBlock(h, "fPar", "pImg");
   await page.locator('.sbpv[data-pv="p1"] .pmd h2').waitFor();
   await page.locator('.sbpv[data-pv="pImg"] img.pimg').waitFor();
   const a = await previews(h, "fPar");
   const note = await page.evaluate(() => {
-    const e = document.querySelector('.sbpv[data-pv="p1"]')!, i = document.querySelector('.sbpv[data-pv="pImg"]')!;
-    return { title: e.querySelector(".ph span")!.textContent, h2: e.querySelector(".pmd h2")!.textContent, scroll: getComputedStyle(e.querySelector(".pb")!).overflowY,
-      cap: i.querySelector(".cap")?.textContent, badges: [...document.querySelectorAll('.card[data-id="fPar"] .sbpick')].map((b) => `${(b as HTMLElement).dataset.pick}:${b.textContent}`) };
+    const e = document.querySelector('.sbpv[data-pv="p1"]')!,
+      i = document.querySelector('.sbpv[data-pv="pImg"]')!;
+    return {
+      title: e.querySelector(".ph span")!.textContent,
+      h2: e.querySelector(".pmd h2")!.textContent,
+      scroll: getComputedStyle(e.querySelector(".pb")!).overflowY,
+      cap: i.querySelector(".cap")?.textContent,
+      badges: [...document.querySelectorAll('.card[data-id="fPar"] .sbpick')].map(
+        (b) => `${(b as HTMLElement).dataset.pick}:${b.textContent}`,
+      ),
+    };
   });
   const right = a.rows.every((r) => r.x >= a.frame.x + a.frame.w && !r.tit);
-  check("subboardPreviewOpenClose-open", a.rows.length === 2 && right && a.rows.map((r) => r.n).join() === "1,2" && note.title === "多核与众核" && note.h2 === "多核（multicore）与众核（many-core）"
-    && note.scroll === "hidden" && note.cap === "CPU 与 GPU 架构对比" && JSON.stringify(note.badges) === JSON.stringify(["p1:1", "pImg:2"]), { a, note });
+  check(
+    "subboardPreviewOpenClose-open",
+    a.rows.length === 2 &&
+      right &&
+      a.rows.map((r) => r.n).join() === "1,2" &&
+      note.title === "多核与众核" &&
+      note.h2 === "多核（multicore）与众核（many-core）" &&
+      note.scroll === "hidden" &&
+      note.cap === "CPU 与 GPU 架构对比" &&
+      JSON.stringify(note.badges) === JSON.stringify(["p1:1", "pImg:2"]),
+    { a, note },
+  );
   // a code card on the other frame: its code, highlighted
   await clickBlock(h, "fSch", t.store.peek("bSch")!.cards.find((c) => c.kind === "code")!.id);
   await page.locator('.sbpv[data-f="fSch"] .pcode .kw').first().waitFor();
-  check("subboardPreviewOpenClose-code", /def schedule/.test((await page.locator('.sbpv[data-f="fSch"] .pcode').textContent()) ?? ""));
+  check(
+    "subboardPreviewOpenClose-code",
+    /def schedule/.test((await page.locator('.sbpv[data-f="fSch"] .pcode').textContent()) ?? ""),
+  );
   // the frame moves: its previews move with it
   const before = (await previews(h, "fPar")).rows[0];
   const name = await center(h, '.card[data-id="fPar"] .sbname');
   await drag(h, name, { x: name.x + 60, y: name.y + 40 });
   await settled(h, "fPar");
   const after = (await previews(h, "fPar")).rows[0];
-  check("subboardPreviewOpenClose-follows", Math.abs(after.x - before.x - 60) <= 2 && Math.abs(after.y - before.y - 40) <= 2, { before, after });
+  check(
+    "subboardPreviewOpenClose-follows",
+    Math.abs(after.x - before.x - 60) <= 2 && Math.abs(after.y - before.y - 40) <= 2,
+    { before, after },
+  );
   await shot(h, "subboardPreviewOpenClose");
   // the same block again (not a double click: that enters the board) closes its preview; the others renumber
   await hold(h, DBL_CLICK, "the second click on the block must not count as a double click");
   await clickBlock(h, "fPar", "p1");
   const c = await previews(h, "fPar");
-  check("subboardPreviewOpenClose-close", c.rows.length === 1 && c.rows[0].id === "pImg" && c.rows[0].n === "1" && t.store.peek("bMain")!.cards.length === M.cards.length, c.rows);
+  check(
+    "subboardPreviewOpenClose-close",
+    c.rows.length === 1 &&
+      c.rows[0].id === "pImg" &&
+      c.rows[0].n === "1" &&
+      t.store.peek("bMain")!.cards.length === M.cards.length,
+    c.rows,
+  );
   await page.context().close();
 });
 
 /** Up to three previews expand on the right (one column by default, stacked); more open as title rows under the frame, as wide as it */
 test("subboardPreviewMaxThree", async () => {
   const { M, P, S, D } = setup();
-  const t = await subHost(M, [P, S, D]), h = t.h, page = h.page;
+  const t = await subHost(M, [P, S, D]),
+    h = t.h,
+    page = h.page;
   await ready(h, "fPar");
   for (const id of ["p1", "p2", "p3", "p4", "p5"]) await clickBlock(h, "fPar", id);
   await settled(h, "fPar");
   const s = await previews(h, "fPar");
-  const exp = s.rows.filter((r) => !r.tit), tit = s.rows.filter((r) => r.tit);
-  const fr = s.frame, z = 0.7;
-  check("subboardPreviewMaxThree-split", exp.map((r) => r.id).join() === "p1,p2,p3" && tit.map((r) => r.id).join() === "p4,p5" && s.rows.map((r) => r.n).join() === "1,2,3,4,5", s.rows);
-  check("subboardPreviewMaxThree-right", exp.every((r) => r.x >= fr.x + fr.w && Math.abs(r.w - 260 * z) <= 1) && new Set(exp.map((r) => r.x)).size === 1 && exp.every((r, i) => r.y >= fr.y - 1 && (!i || r.y > exp[i - 1].y)), exp);
-  check("subboardPreviewMaxThree-titles", tit.every((r) => r.mini && r.y >= fr.y + fr.h && Math.abs(r.h - 30 * z) <= 1 && Math.abs(r.w - 200 * z) <= 1 && r.x >= fr.x - 1 && r.x + r.w <= fr.x + fr.w + 1)
-    && tit[0].y === tit[1].y, tit);
+  const exp = s.rows.filter((r) => !r.tit),
+    tit = s.rows.filter((r) => r.tit);
+  const fr = s.frame,
+    z = 0.7;
+  check(
+    "subboardPreviewMaxThree-split",
+    exp.map((r) => r.id).join() === "p1,p2,p3" &&
+      tit.map((r) => r.id).join() === "p4,p5" &&
+      s.rows.map((r) => r.n).join() === "1,2,3,4,5",
+    s.rows,
+  );
+  check(
+    "subboardPreviewMaxThree-right",
+    exp.every((r) => r.x >= fr.x + fr.w && Math.abs(r.w - 260 * z) <= 1) &&
+      new Set(exp.map((r) => r.x)).size === 1 &&
+      exp.every((r, i) => r.y >= fr.y - 1 && (!i || r.y > exp[i - 1].y)),
+    exp,
+  );
+  check(
+    "subboardPreviewMaxThree-titles",
+    tit.every(
+      (r) =>
+        r.mini &&
+        r.y >= fr.y + fr.h &&
+        Math.abs(r.h - 30 * z) <= 1 &&
+        Math.abs(r.w - 200 * z) <= 1 &&
+        r.x >= fr.x - 1 &&
+        r.x + r.w <= fr.x + fr.w + 1,
+    ) && tit[0].y === tit[1].y,
+    tit,
+  );
   // the bodies never scroll: capped and faded
-  const bodies = await page.evaluate(() => [...document.querySelectorAll<HTMLElement>(".sbpv:not(.tit) .pb")].map((b) => ({ h: b.offsetHeight, over: getComputedStyle(b).overflowY })));
-  check("subboardPreviewMaxThree-noScroll", bodies.every((b) => b.h <= 170 && b.over === "hidden"), bodies);
+  const bodies = await page.evaluate(() =>
+    [...document.querySelectorAll<HTMLElement>(".sbpv:not(.tit) .pb")].map((b) => ({
+      h: b.offsetHeight,
+      over: getComputedStyle(b).overflowY,
+    })),
+  );
+  check(
+    "subboardPreviewMaxThree-noScroll",
+    bodies.every((b) => b.h <= 170 && b.over === "hidden"),
+    bodies,
+  );
   await shot(h, "subboardPreviewMaxThree");
   await page.context().close();
 });
@@ -660,21 +1096,35 @@ test("subboardPreviewMaxThree", async () => {
 /** A title row clicked expands in place, floating over what is below; a click anywhere else folds it back. Hovering a preview draws a dashed line to its block */
 test("subboardPreviewPeek", async () => {
   const { M, P, S, D } = setup();
-  const t = await subHost(M, [P, S, D]), h = t.h, page = h.page;
+  const t = await subHost(M, [P, S, D]),
+    h = t.h,
+    page = h.page;
   await ready(h, "fPar");
   for (const id of ["p1", "p2", "p3", "p4", "p5", "p7"]) await clickBlock(h, "fPar", id);
   await settled(h, "fPar");
   const before = (await previews(h, "fPar")).rows.find((r) => r.id === "p4")!;
   const c = await center(h, '.sbpv[data-pv="p4"] .ph span');
-  await page.mouse.click(c.x, c.y); await idle(h);
+  await page.mouse.click(c.x, c.y);
+  await idle(h);
   const open = (await previews(h, "fPar")).rows.find((r) => r.id === "p4")!;
   const z = await page.evaluate(() => getComputedStyle(document.querySelector('.sbpv[data-pv="p4"]')!).zIndex);
-  check("subboardPreviewPeek-open", open.peek && !open.mini && open.tit && open.x === before.x && open.y === before.y && open.h > before.h * 2 && +z > 4, { before, open, z });
+  check(
+    "subboardPreviewPeek-open",
+    open.peek &&
+      !open.mini &&
+      open.tit &&
+      open.x === before.x &&
+      open.y === before.y &&
+      open.h > before.h * 2 &&
+      +z > 4,
+    { before, open, z },
+  );
   // hovering it: a dashed line from its block
   check("subboardPreviewPeek-line", (await page.locator(".sbpvl path").count()) === 1);
   await shot(h, "subboardPreviewPeek");
   // a click on the empty board folds it back
-  await page.mouse.click(1300, 600); await idle(h);
+  await page.mouse.click(1300, 600);
+  await idle(h);
   const back = (await previews(h, "fPar")).rows.find((r) => r.id === "p4")!;
   check("subboardPreviewPeek-clickAway", back.mini && !back.peek && back.h === before.h, back);
   await page.context().close();
@@ -686,7 +1136,9 @@ test("subboardPreviewPeek", async () => {
  */
 test("subboardPreviewDrag", async () => {
   const { M, P, S, D } = setup();
-  const t = await subHost(M, [P, S, D]), h = t.h, page = h.page;
+  const t = await subHost(M, [P, S, D]),
+    h = t.h,
+    page = h.page;
   await ready(h, "fPar");
   for (const id of ["p1", "p2", "p3", "p4", "p5"]) await clickBlock(h, "fPar", id);
   await settled(h, "fPar");
@@ -699,13 +1151,28 @@ test("subboardPreviewDrag", async () => {
   await page.mouse.down();
   await page.mouse.move(top.x + 40, top.y + 6, { steps: 10 });
   const area = await page.locator(".sbdrop.on").count();
-  await page.mouse.up(); await idle(h); await settled(h, "fPar");
+  await page.mouse.up();
+  await idle(h);
+  await settled(h, "fPar");
   const s1 = await previews(h, "fPar");
-  const exp1 = s1.rows.filter((r) => !r.tit), tit1 = s1.rows.filter((r) => r.tit).sort((a, b) => a.y - b.y || a.x - b.x).map((r) => r.id);
+  const exp1 = s1.rows.filter((r) => !r.tit),
+    tit1 = s1.rows
+      .filter((r) => r.tit)
+      .sort((a, b) => a.y - b.y || a.x - b.x)
+      .map((r) => r.id);
   // dropped above p1: p5 takes the first place (top of the left column)
   const put = exp1.find((r) => r.id === "p5");
-  check("subboardPreviewDrag-titleToRight", area === 1 && exp1.length === 3 && !!put && put.x === Math.min(...exp1.map((r) => r.x)) && Math.abs(put.y - s1.frame.y) <= 1
-    && ["p1", "p2", "p3"].includes(tit1[0]) && JSON.stringify(tit1.slice(1)) === '["p4"]', { area, exp1, tit1 });
+  check(
+    "subboardPreviewDrag-titleToRight",
+    area === 1 &&
+      exp1.length === 3 &&
+      !!put &&
+      put.x === Math.min(...exp1.map((r) => r.x)) &&
+      Math.abs(put.y - s1.frame.y) <= 1 &&
+      ["p1", "p2", "p3"].includes(tit1[0]) &&
+      JSON.stringify(tit1.slice(1)) === '["p4"]',
+    { area, exp1, tit1 },
+  );
   await shot(h, "subboardPreviewDrag-right");
   // an expanded one (p5) down onto the title rows
   const p5 = await center(h, '.sbpv[data-pv="p5"] .ph span');
@@ -714,51 +1181,115 @@ test("subboardPreviewDrag", async () => {
   await page.mouse.down();
   await page.mouse.move(row.x + 30, row.y + 10, { steps: 12 });
   const area2 = await page.locator(".sbdrop.on").count();
-  await page.mouse.up(); await idle(h); await settled(h, "fPar");
+  await page.mouse.up();
+  await idle(h);
+  await settled(h, "fPar");
   const s2 = await previews(h, "fPar");
-  const exp2 = s2.rows.filter((r) => !r.tit).map((r) => r.id), tit2 = s2.rows.filter((r) => r.tit);
-  check("subboardPreviewDrag-rightToTitles", area2 === 1 && exp2.length === 2 && !exp2.includes("p5") && tit2.some((r) => r.id === "p5" && r.mini && r.y >= s2.frame.y + s2.frame.h), { area2, exp2, tit2 });
+  const exp2 = s2.rows.filter((r) => !r.tit).map((r) => r.id),
+    tit2 = s2.rows.filter((r) => r.tit);
+  check(
+    "subboardPreviewDrag-rightToTitles",
+    area2 === 1 &&
+      exp2.length === 2 &&
+      !exp2.includes("p5") &&
+      tit2.some((r) => r.id === "p5" && r.mini && r.y >= s2.frame.y + s2.frame.h),
+    { area2, exp2, tit2 },
+  );
   await page.context().close();
 });
 
 /** The right area in one column or two (one by default): two columns put the expanded previews side by side, the shorter column first, still at most three; the choice is kept with the frame. Hide / Show and Clear */
 test("subboardPreviewColumnsHideClear", async () => {
   const { M, P, S, D } = setup();
-  const t = await subHost(M, [P, S, D]), h = t.h, page = h.page;
+  const t = await subHost(M, [P, S, D]),
+    h = t.h,
+    page = h.page;
   await ready(h, "fPar");
   for (const id of ["p1", "p2", "p3", "p4"]) await clickBlock(h, "fPar", id);
   await settled(h, "fPar");
   const acts = '.card[data-id="fPar"] .sbacts';
   const frame = () => t.store.peek("bMain")!.cards.find((c) => c.id === "fPar") as { pcols?: number };
   const one = (await previews(h, "fPar")).rows.filter((r) => !r.tit);
-  check("subboardPreviewColumnsHideClear-one", frame().pcols === undefined && one.length === 3 && new Set(one.map((r) => r.x)).size === 1 && one.every((r, i) => !i || r.y > one[i - 1].y)
-    && (await page.locator(`${acts} [aria-label="One column"].on`).count()) === 1, one);
-  await page.locator(`${acts} [aria-label="Two columns"]`).click(); await idle(h); await settled(h, "fPar");
+  check(
+    "subboardPreviewColumnsHideClear-one",
+    frame().pcols === undefined &&
+      one.length === 3 &&
+      new Set(one.map((r) => r.x)).size === 1 &&
+      one.every((r, i) => !i || r.y > one[i - 1].y) &&
+      (await page.locator(`${acts} [aria-label="One column"].on`).count()) === 1,
+    one,
+  );
+  await page.locator(`${acts} [aria-label="Two columns"]`).click();
+  await idle(h);
+  await settled(h, "fPar");
   const two = (await previews(h, "fPar")).rows;
   const exp = two.filter((r) => !r.tit);
   await until(h, "the choice is saved with the frame", () => frame().pcols === 2);
-  check("subboardPreviewColumnsHideClear-two", exp.length === 3 && new Set(exp.map((r) => r.x)).size === 2 && two.filter((r) => r.tit).length === 1, two);
+  check(
+    "subboardPreviewColumnsHideClear-two",
+    exp.length === 3 && new Set(exp.map((r) => r.x)).size === 2 && two.filter((r) => r.tit).length === 1,
+    two,
+  );
   await shot(h, "subboardPreviewColumns-two");
-  check("subboardPreviewColumnsHideClear-label", ((await page.locator(`${acts} .sbfold`).textContent()) ?? "").includes("4 previews · Hide"));
-  await page.locator(`${acts} .sbfold`).click(); await idle(h);
-  const folded = await page.evaluate(() => { const e = document.querySelector<HTMLElement>('.sbpvs[data-f="fPar"]')!; return { cls: e.classList.contains("folded"), pe: getComputedStyle(e).pointerEvents }; });
-  check("subboardPreviewColumnsHideClear-hide", folded.cls && folded.pe === "none" && ((await page.locator(`${acts} .sbfold`).textContent()) ?? "").includes("Show"), folded);
-  await page.locator(`${acts} .sbfold`).click(); await idle(h);
-  check("subboardPreviewColumnsHideClear-show", !(await page.locator('.sbpvs[data-f="fPar"].folded').count()) && (await page.locator('.sbpv[data-f="fPar"]').count()) === 4);
-  await page.locator(`${acts} .sbclr`).click(); await idle(h);
-  check("subboardPreviewColumnsHideClear-clear", (await page.locator('.sbpv[data-f="fPar"]').count()) === 0 && (await page.locator(acts).count()) === 0 && (await page.locator('.card[data-id="fPar"] .sbpick').count()) === 0);
+  check(
+    "subboardPreviewColumnsHideClear-label",
+    ((await page.locator(`${acts} .sbfold`).textContent()) ?? "").includes("4 previews · Hide"),
+  );
+  await page.locator(`${acts} .sbfold`).click();
+  await idle(h);
+  const folded = await page.evaluate(() => {
+    const e = document.querySelector<HTMLElement>('.sbpvs[data-f="fPar"]')!;
+    return { cls: e.classList.contains("folded"), pe: getComputedStyle(e).pointerEvents };
+  });
+  check(
+    "subboardPreviewColumnsHideClear-hide",
+    folded.cls &&
+      folded.pe === "none" &&
+      ((await page.locator(`${acts} .sbfold`).textContent()) ?? "").includes("Show"),
+    folded,
+  );
+  await page.locator(`${acts} .sbfold`).click();
+  await idle(h);
+  check(
+    "subboardPreviewColumnsHideClear-show",
+    !(await page.locator('.sbpvs[data-f="fPar"].folded').count()) &&
+      (await page.locator('.sbpv[data-f="fPar"]').count()) === 4,
+  );
+  await page.locator(`${acts} .sbclr`).click();
+  await idle(h);
+  check(
+    "subboardPreviewColumnsHideClear-clear",
+    (await page.locator('.sbpv[data-f="fPar"]').count()) === 0 &&
+      (await page.locator(acts).count()) === 0 &&
+      (await page.locator('.card[data-id="fPar"] .sbpick').count()) === 0,
+  );
   await clickBlock(h, "fPar", "p1");
-  await page.locator(`${acts} [aria-label="One column"]`).click(); await idle(h);
+  await page.locator(`${acts} [aria-label="One column"]`).click();
+  await idle(h);
   await until(h, "one column again", () => frame().pcols === undefined);
   await page.context().close();
 });
 
 /** Screen boxes of everything on Main other than frame f: cards, and sub-board frames with the name above them */
-const others = (h: Host, f: string) => h.page.evaluate((f) => [...document.querySelectorAll<HTMLElement>(".world > .card")].filter((c) => c.dataset.id !== f).flatMap((c) => {
-  const r = c.getBoundingClientRect(), n = c.querySelector(".sbname")?.getBoundingClientRect();
-  return [{ id: c.dataset.id!, x: r.x, y: r.y, w: r.width, h: r.height }, ...(n ? [{ id: `${c.dataset.id} name`, x: n.x, y: n.y, w: n.width, h: n.height }] : [])];
-}), f);
-const overlap = (a: { x: number; y: number; w: number; h: number }, b: { x: number; y: number; w: number; h: number }) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+const others = (h: Host, f: string) =>
+  h.page.evaluate(
+    (f) =>
+      [...document.querySelectorAll<HTMLElement>(".world > .card")]
+        .filter((c) => c.dataset.id !== f)
+        .flatMap((c) => {
+          const r = c.getBoundingClientRect(),
+            n = c.querySelector(".sbname")?.getBoundingClientRect();
+          return [
+            { id: c.dataset.id!, x: r.x, y: r.y, w: r.width, h: r.height },
+            ...(n ? [{ id: `${c.dataset.id} name`, x: n.x, y: n.y, w: n.width, h: n.height }] : []),
+          ];
+        }),
+    f,
+  );
+const overlap = (
+  a: { x: number; y: number; w: number; h: number },
+  b: { x: number; y: number; w: number; h: number },
+) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 
 /**
  * Title rows never cover what sits under the frame: with the next sub-board frame right below (its name in the way) they line up on
@@ -766,22 +1297,40 @@ const overlap = (a: { x: number; y: number; w: number; h: number }, b: { x: numb
  */
 test("subboardPreviewTitlesAvoidCards", async () => {
   const { M, P, S, D } = setup({ keepBelow: true });
-  const t = await subHost(M, [P, S, D]), h = t.h, page = h.page;
+  const t = await subHost(M, [P, S, D]),
+    h = t.h,
+    page = h.page;
   await ready(h, "fPar");
   for (const id of ["p1", "p2", "p3", "p4", "p5"]) await clickBlock(h, "fPar", id);
   await settled(h, "fPar");
-  const covered = async () => { const s = await previews(h, "fPar"), o = await others(h, "fPar"); return s.rows.flatMap((r) => o.filter((b) => overlap(r, b)).map((b) => `${r.id} on ${b.id}`)); };
+  const covered = async () => {
+    const s = await previews(h, "fPar"),
+      o = await others(h, "fPar");
+    return s.rows.flatMap((r) => o.filter((b) => overlap(r, b)).map((b) => `${r.id} on ${b.id}`));
+  };
   const a = await previews(h, "fPar");
-  const exp = a.rows.filter((r) => !r.tit), tit = a.rows.filter((r) => r.tit);
+  const exp = a.rows.filter((r) => !r.tit),
+    tit = a.rows.filter((r) => r.tit);
   const bottom = Math.max(...exp.map((r) => r.y + r.h));
-  check("subboardPreviewTitlesAvoidCards-side", tit.length === 2 && tit.every((r) => r.mini && r.x >= a.frame.x + a.frame.w && r.y >= bottom) && !(await covered()).length, { tit, bottom, covered: await covered() });
+  check(
+    "subboardPreviewTitlesAvoidCards-side",
+    tit.length === 2 &&
+      tit.every((r) => r.mini && r.x >= a.frame.x + a.frame.w && r.y >= bottom) &&
+      !(await covered()).length,
+    { tit, bottom, covered: await covered() },
+  );
   await shot(h, "subboardPreviewTitlesAvoidCards-side");
   // Scheduler dragged away by its name: the title rows come back under Parallel
   const n = await center(h, '.card[data-id="fSch"] .sbname');
   await drag(h, n, { x: n.x + 750, y: n.y + 200 });
   await settled(h, "fPar");
   const b = await previews(h, "fPar");
-  check("subboardPreviewTitlesAvoidCards-below", b.rows.filter((r) => r.tit).every((r) => r.y >= b.frame.y + b.frame.h && r.x < b.frame.x + b.frame.w) && !(await covered()).length, { rows: b.rows, covered: await covered() });
+  check(
+    "subboardPreviewTitlesAvoidCards-below",
+    b.rows.filter((r) => r.tit).every((r) => r.y >= b.frame.y + b.frame.h && r.x < b.frame.x + b.frame.w) &&
+      !(await covered()).length,
+    { rows: b.rows, covered: await covered() },
+  );
   // Parallel dragged down onto the Note column's level: wherever it stops, nothing is covered
   const pn = await center(h, '.card[data-id="fPar"] .sbname');
   await drag(h, pn, { x: pn.x - 120, y: pn.y + 330 });
@@ -796,20 +1345,42 @@ test("subboardPreviewTitlesAvoidCards", async () => {
  */
 test("subboardPreviewNoteHeading", async () => {
   const { M, P, S, D } = setup();
-  const t = await subHost(M, [P, S, D]), h = t.h, page = h.page;
+  const t = await subHost(M, [P, S, D]),
+    h = t.h,
+    page = h.page;
   await ready(h, "fPar");
   await clickBlock(h, "fPar", "p2");
   await clickBlock(h, "fPar", "p1");
   await page.locator('.sbpv[data-pv="p2"] .pmd h2').waitFor({ state: "attached" });
-  const read = () => page.evaluate(() => {
-    const one = (id: string) => { const e = document.querySelector(`.sbpv[data-pv="${id}"]`)!, h2 = e.querySelector<HTMLElement>(".pmd h2");
-      return { title: e.querySelector(".ph span")!.textContent, h2: h2 && h2.offsetHeight > 0 ? h2.textContent : null, text: e.querySelector(".pmd")!.textContent }; };
-    return { p2: one("p2"), p1: one("p1") };
-  });
+  const read = () =>
+    page.evaluate(() => {
+      const one = (id: string) => {
+        const e = document.querySelector(`.sbpv[data-pv="${id}"]`)!,
+          h2 = e.querySelector<HTMLElement>(".pmd h2");
+        return {
+          title: e.querySelector(".ph span")!.textContent,
+          h2: h2 && h2.offsetHeight > 0 ? h2.textContent : null,
+          text: e.querySelector(".pmd")!.textContent,
+        };
+      };
+      return { p2: one("p2"), p1: one("p1") };
+    });
   const r = await read();
-  check("subboardPreviewNoteHeading-once", r.p2.title === "降低延迟 vs 提高吞吐" && r.p2.h2 === null && /两种不同的设计目标/.test(r.p2.text ?? ""), r.p2);
-  check("subboardPreviewNoteHeading-ownTitle", r.p1.title === "多核与众核" && r.p1.h2 === "多核（multicore）与众核（many-core）", r.p1);
+  check(
+    "subboardPreviewNoteHeading-once",
+    r.p2.title === "降低延迟 vs 提高吞吐" && r.p2.h2 === null && /两种不同的设计目标/.test(r.p2.text ?? ""),
+    r.p2,
+  );
+  check(
+    "subboardPreviewNoteHeading-ownTitle",
+    r.p1.title === "多核与众核" && r.p1.h2 === "多核（multicore）与众核（many-core）",
+    r.p1,
+  );
   await h.post({ type: "host", host: { settings: { ...DEFAULT_SETTINGS, noteHeadingInBody: true } } });
-  await until(h, "the setting shows the heading in the body", async () => (await read()).p2.h2 === "降低延迟 vs 提高吞吐");
+  await until(
+    h,
+    "the setting shows the heading in the body",
+    async () => (await read()).p2.h2 === "降低延迟 vs 提高吞吐",
+  );
   await page.context().close();
 });

@@ -1,6 +1,14 @@
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
-import { fingerprint, locateSeg, parseDistInfo, sameLines, type Segment, type Source, type Version } from "@codeboard/core";
+import {
+  fingerprint,
+  locateSeg,
+  parseDistInfo,
+  sameLines,
+  type Segment,
+  type Source,
+  type Version,
+} from "@codeboard/core";
 import { headOf, isIgnored, repoRootOf, showFile } from "./git";
 import { exists, inWorkspace, posix, readText, splitLines, workspace, ws0 } from "./ws";
 import { analysisOf } from "./analysis";
@@ -21,8 +29,24 @@ export async function mapRepo(key: string, root: string) {
   repoMap[key] = root;
   await workspace().storage.set("codeboard.repoMap", repoMap);
 }
-export const srcKey = (s: Source) => (s.kind === "repo" ? `repo:${s.repo}` : s.kind === "external" ? `ext:${s.root}` : s.kind === "github" ? `gh:${s.owner}/${s.name}` : "free");
-export const srcLabel = (s: Source) => (s.kind === "repo" ? (s.repo ? path.basename(s.repo) : path.basename(ws0()) || "workspace") : s.kind === "external" ? s.root : s.kind === "github" ? `${s.owner}/${s.name}` : "Free code");
+export const srcKey = (s: Source) =>
+  s.kind === "repo"
+    ? `repo:${s.repo}`
+    : s.kind === "external"
+      ? `ext:${s.root}`
+      : s.kind === "github"
+        ? `gh:${s.owner}/${s.name}`
+        : "free";
+export const srcLabel = (s: Source) =>
+  s.kind === "repo"
+    ? s.repo
+      ? path.basename(s.repo)
+      : path.basename(ws0()) || "workspace"
+    : s.kind === "external"
+      ? s.root
+      : s.kind === "github"
+        ? `${s.owner}/${s.name}`
+        : "Free code";
 
 /** 代码在本机的工作文件里（工作区仓库、工作区外的文件）；GitHub Code 是钉住的缓存，Free code 没有文件 */
 export const hasLocalFile = (s: Source) => s.kind === "repo" || s.kind === "external";
@@ -32,10 +56,14 @@ export function rootOf(src: Source, version?: Version): string | null {
   const mapped = repoMap[srcKey(src)];
   if (mapped) return mapped;
   switch (src.kind) {
-    case "repo": return ws0() ? path.resolve(ws0(), src.repo) : null;
-    case "external": return src.root;
-    case "github": return version?.kind === "git" ? githubFileDir(src.owner, src.name, version.commit) : null;
-    case "free": return null;
+    case "repo":
+      return ws0() ? path.resolve(ws0(), src.repo) : null;
+    case "external":
+      return src.root;
+    case "github":
+      return version?.kind === "git" ? githubFileDir(src.owner, src.name, version.commit) : null;
+    case "free":
+      return null;
   }
 }
 
@@ -56,12 +84,25 @@ export async function locOfFile(abs: string): Promise<Loc> {
   if (ghRoot && abs.startsWith(ghRoot + path.sep)) {
     const [owner, name, commit, ...rest] = posix(path.relative(ghRoot, abs)).split("/");
     let ref = commit;
-    try { ref = (await fs.readFile(path.join(ghRoot, owner, name, commit, ".codeboard-ref"), "utf8")).trim() || commit; } catch {}
-    return { src: { kind: "github", owner, name, ref }, path: rest.join("/"), root: path.join(ghRoot, owner, name, commit), abs, fixed: { kind: "git", commit } };
+    try {
+      ref = (await fs.readFile(path.join(ghRoot, owner, name, commit, ".codeboard-ref"), "utf8")).trim() || commit;
+    } catch {}
+    return {
+      src: { kind: "github", owner, name, ref },
+      path: rest.join("/"),
+      root: path.join(ghRoot, owner, name, commit),
+      abs,
+      fixed: { kind: "git", commit },
+    };
   }
   const git = await repoRootOf(abs);
-  if (git && inWorkspace(git) || git && inWorkspace(abs)) {
-    return { src: { kind: "repo", repo: posix(path.relative(ws0(), git)) }, path: posix(path.relative(git, abs)), root: git, abs };
+  if ((git && inWorkspace(git)) || (git && inWorkspace(abs))) {
+    return {
+      src: { kind: "repo", repo: posix(path.relative(ws0(), git)) },
+      path: posix(path.relative(git, abs)),
+      root: git,
+      abs,
+    };
   }
   if (git) return { src: { kind: "external", root: git }, path: posix(path.relative(git, abs)), root: git, abs };
   const site = SITE.exec(abs);
@@ -70,7 +111,13 @@ export async function locOfFile(abs: string): Promise<Loc> {
     return { src: { kind: "external", root }, path: posix(path.relative(root, abs)), root, abs };
   }
   const folder = workspace().files.rootOf(abs);
-  if (folder) return { src: { kind: "repo", repo: posix(path.relative(ws0(), folder)) }, path: posix(path.relative(folder, abs)), root: folder, abs };
+  if (folder)
+    return {
+      src: { kind: "repo", repo: posix(path.relative(ws0(), folder)) },
+      path: posix(path.relative(folder, abs)),
+      root: folder,
+      abs,
+    };
   const root = path.dirname(abs);
   return { src: { kind: "external", root }, path: path.basename(abs), root, abs };
 }
@@ -90,7 +137,11 @@ async function pkgVersion(abs: string): Promise<{ name: string; version: string 
   const root = abs.slice(0, site.index + site[0].length - 1);
   const top = posix(path.relative(root, abs)).split("/")[0].replace(/\.py$/, "");
   let dirs: string[] = [];
-  try { dirs = (await fs.readdir(root)).filter((d) => d.endsWith(".dist-info") || d.endsWith(".egg-info")); } catch { return null; }
+  try {
+    dirs = (await fs.readdir(root)).filter((d) => d.endsWith(".dist-info") || d.endsWith(".egg-info"));
+  } catch {
+    return null;
+  }
   const norm = (s: string) => s.toLowerCase().replace(/[-_.]+/g, "_");
   for (const d of dirs) {
     const p = parseDistInfo(d);
@@ -99,7 +150,9 @@ async function pkgVersion(abs: string): Promise<{ name: string; version: string 
     try {
       const tl = await fs.readFile(path.join(root, d, "top_level.txt"), "utf8");
       if (splitLines(tl).some((l) => l.trim() === top)) return p;
-    } catch { /* 没有 top_level.txt */ }
+    } catch {
+      /* 没有 top_level.txt */
+    }
   }
   return null;
 }
@@ -108,7 +161,11 @@ async function pkgVersion(abs: string): Promise<{ name: string; version: string 
  * 建卡时的版本。git 仓库：钉 HEAD；选中的行和 HEAD 不一样就标 uncommitted（用当前内容）。
  * 行在 HEAD 里内容一样但位置不同时，行号换成 HEAD 里的（行号永远是那个版本的真实行号）。
  */
-export async function versionFor(loc: Loc, seg: Pick<Segment, "start" | "end" | "text" | "symbol">, lang: string): Promise<{ version: Version; start: number; end: number }> {
+export async function versionFor(
+  loc: Loc,
+  seg: Pick<Segment, "start" | "end" | "text" | "symbol">,
+  lang: string,
+): Promise<{ version: Version; start: number; end: number }> {
   const keep = { start: seg.start, end: seg.end };
   if (loc.fixed) return { version: loc.fixed, ...keep };
   if (loc.src.kind !== "free") {
@@ -120,9 +177,11 @@ export async function versionFor(loc: Loc, seg: Pick<Segment, "start" | "end" | 
     if (root && head && rel && (headText !== null || !(await isIgnored(root, rel)))) {
       if (headText === null) return { version: { kind: "git", commit: head, uncommitted: true }, ...keep };
       const lines = splitLines(headText);
-      if (sameLines(lines.slice(seg.start - 1, seg.end), seg.text)) return { version: { kind: "git", commit: head }, ...keep };
+      if (sameLines(lines.slice(seg.start - 1, seg.end), seg.text))
+        return { version: { kind: "git", commit: head }, ...keep };
       const at = locateSeg(seg, lines, analysisOf(lang, headText).symbols);
-      if (at && at !== "many" && sameLines(lines.slice(at.start - 1, at.end), seg.text)) return { version: { kind: "git", commit: head }, start: at.start, end: at.end };
+      if (at && at !== "many" && sameLines(lines.slice(at.start - 1, at.end), seg.text))
+        return { version: { kind: "git", commit: head }, start: at.start, end: at.end };
       return { version: { kind: "git", commit: head, uncommitted: true }, ...keep };
     }
   }
@@ -158,7 +217,11 @@ export async function versionText(seg: Segment): Promise<string | null> {
   const abs = path.join(root, seg.path);
   const fits = (t: string | null) => t !== null && sameLines(splitLines(t).slice(seg.start - 1, seg.end), seg.text);
   if (seg.src.kind === "github") {
-    try { return await fs.readFile(abs, "utf8"); } catch { return null; }
+    try {
+      return await fs.readFile(abs, "utf8");
+    } catch {
+      return null;
+    }
   }
   if (seg.version.kind === "git" && !seg.version.uncommitted) {
     const gr = await repoRootOf(abs);

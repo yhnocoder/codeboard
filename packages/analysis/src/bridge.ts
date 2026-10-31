@@ -9,7 +9,16 @@ const lineAt = (text: string, i: number) => text.slice(0, i).split("\n").length;
 export function lineIndex(text: string): (i: number) => number {
   const starts = [0];
   for (let i = text.indexOf("\n"); i >= 0; i = text.indexOf("\n", i + 1)) starts.push(i + 1);
-  return (i) => { let lo = 0, hi = starts.length - 1; while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (starts[mid] <= i) lo = mid; else hi = mid - 1; } return lo + 1; };
+  return (i) => {
+    let lo = 0,
+      hi = starts.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (starts[mid] <= i) lo = mid;
+      else hi = mid - 1;
+    }
+    return lo + 1;
+  };
 }
 type Named<T> = T & { name: string };
 const unnamed = <T extends { name: string }>(xs: T[]) => xs.map(({ name: _, ...r }) => r);
@@ -26,13 +35,26 @@ export function matchClose(text: string, open: number): number {
     const ch = text[i];
     if (ch === '"' || ch === "'") {
       // 原始字符串 R"(...)"：跳到 )"
-      if (ch === '"' && text[i - 1] === "R") { const e = text.indexOf(')"', i); if (e < 0) return -1; i = e + 1; continue; }
+      if (ch === '"' && text[i - 1] === "R") {
+        const e = text.indexOf(')"', i);
+        if (e < 0) return -1;
+        i = e + 1;
+        continue;
+      }
       for (i++; i < text.length && text[i] !== ch; i++) if (text[i] === "\\") i++;
       continue;
     }
-    if (ch === "/" && text[i + 1] === "/") { const e = text.indexOf("\n", i); if (e < 0) return -1; i = e; continue; }
+    if (ch === "/" && text[i + 1] === "/") {
+      const e = text.indexOf("\n", i);
+      if (e < 0) return -1;
+      i = e;
+      continue;
+    }
     if (pairs[ch]) stack.push(pairs[ch]);
-    else if (ch === stack[stack.length - 1]) { stack.pop(); if (!stack.length) return i; }
+    else if (ch === stack[stack.length - 1]) {
+      stack.pop();
+      if (!stack.length) return i;
+    }
   }
   return -1;
 }
@@ -40,14 +62,32 @@ export function matchClose(text: string, open: number): number {
 /** 参数列表的文本按顶层逗号切开 */
 export function splitArgs(s: string): string[] {
   const out: string[] = [];
-  let depth = 0, cur = "", q = "";
+  let depth = 0,
+    cur = "",
+    q = "";
   for (let i = 0; i < s.length; i++) {
     const ch = s[i];
-    if (q) { cur += ch; if (ch === "\\") { cur += s[++i] ?? ""; continue; } if (ch === q) q = ""; continue; }
-    if (ch === '"' || ch === "'") { q = ch; cur += ch; continue; }
+    if (q) {
+      cur += ch;
+      if (ch === "\\") {
+        cur += s[++i] ?? "";
+        continue;
+      }
+      if (ch === q) q = "";
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      q = ch;
+      cur += ch;
+      continue;
+    }
     if ("([{<".includes(ch)) depth++;
     else if (")]}>".includes(ch)) depth--;
-    if (ch === "," && depth === 0) { out.push(cur.trim()); cur = ""; continue; }
+    if (ch === "," && depth === 0) {
+      out.push(cur.trim());
+      cur = "";
+      continue;
+    }
     cur += ch;
   }
   if (cur.trim()) out.push(cur.trim());
@@ -85,13 +125,17 @@ function pybindScan(text: string, pat: string): Named<Registration>[] {
     const line = lineAt(m.index);
     const how = /\bm\s*\.def/.test(text.slice(Math.max(0, m.index - 3), m.index + 4)) ? "m.def" : ".def";
     if (/^\[/.test(second)) out.push({ name, line, lambda: true, how });
-    else { const t = targetOf(second); if (t) out.push({ name, line, target: t, how }); }
+    else {
+      const t = targetOf(second);
+      if (t) out.push({ name, line, target: t, how });
+    }
   }
   return out;
 }
 
 /** CPython 的方法表 PyMethodDef：{"_x", fn, METH_…}、{"_x", castPyCFunctionWithKeywords(fn), …}、TypeError_to_NotImplemented_<fn> → fn */
-export const pyMethodDefs = (text: string, name: string): Registration[] => unnamed(pyMethodScan(text, escapeRegExp(name)));
+export const pyMethodDefs = (text: string, name: string): Registration[] =>
+  unnamed(pyMethodScan(text, escapeRegExp(name)));
 /** 文件里全部的 PyMethodDef 条目（建索引用） */
 export const pyMethodAll = (text: string) => pyMethodScan(text, "\\w+");
 function pyMethodScan(text: string, pat: string): Named<Registration>[] {
@@ -154,7 +198,10 @@ export function torchLibDefs(text: string, name: string): Registration[] {
     if (args.length < 2) continue; // 只有 schema
     const line = lineAt(text, m.index);
     if (/^\[/.test(last)) out.push({ line, lambda: true, how: `m.${m[1]}` });
-    else { const t = targetOf(last); if (t && !/^torch::|^c10::|^k[A-Z]/.test(t)) out.push({ line, target: t, how: `m.${m[1]}` }); }
+    else {
+      const t = targetOf(last);
+      if (t && !/^torch::|^c10::|^k[A-Z]/.test(t)) out.push({ line, target: t, how: `m.${m[1]}` });
+    }
   }
   return out;
 }
@@ -177,11 +224,15 @@ export function pyo3Defs(text: string, syms: Sym[], name: string): Sym[] {
     const attrs = lines.slice(s.start - 1, s.defLine - 1).join("\n");
     const renamed = /#\[pyo3\([^)]*name\s*=\s*"(\w+)"/.exec(attrs)?.[1];
     if ((renamed ?? s.name) !== name) continue;
-    if (/#\[pyfunction/.test(attrs)) { out.push(s); continue; }
+    if (/#\[pyfunction/.test(attrs)) {
+      out.push(s);
+      continue;
+    }
     // 方法：所在的 impl 前面有 #[pymethods]
     if (s.parent) {
       const ty = s.parent.split("::").pop()!;
-      if (new RegExp(`#\\[pymethods\\][\\s\\S]{0,200}?impl\\s+(?:<[^>]*>\\s*)?${escapeRegExp(ty)}\\b`).test(text)) out.push(s);
+      if (new RegExp(`#\\[pymethods\\][\\s\\S]{0,200}?impl\\s+(?:<[^>]*>\\s*)?${escapeRegExp(ty)}\\b`).test(text))
+        out.push(s);
     }
   }
   return out;
@@ -192,30 +243,43 @@ export function templateParams(head: string): string[] {
   const t = /\btemplate\s*</.exec(head);
   if (!t) return [];
   const open = t.index + t[0].length - 1;
-  let depth = 0, paren = 0, end = -1;
+  let depth = 0,
+    paren = 0,
+    end = -1;
   for (let i = open; i < head.length; i++) {
     const ch = head[i];
     if (ch === "(") paren++;
     else if (ch === ")") paren--;
     else if (paren) continue;
     else if (ch === "<") depth++;
-    else if (ch === ">" && !--depth) { end = i; break; }
+    else if (ch === ">" && !--depth) {
+      end = i;
+      break;
+    }
   }
   if (end < 0) return [];
-  return splitArgs(head.slice(open + 1, end)).map((p) => /([A-Za-z_]\w*)\s*$/.exec(p.replace(/=[\s\S]*$/, "").trim())?.[1] ?? "").filter(Boolean);
+  return splitArgs(head.slice(open + 1, end))
+    .map((p) => /([A-Za-z_]\w*)\s*$/.exec(p.replace(/=[\s\S]*$/, "").trim())?.[1] ?? "")
+    .filter(Boolean);
 }
 
 /** 函数里的 constexpr int kNumThreads = 768; → { kNumThreads: "768" } */
 export function constexprs(text: string): Record<string, string> {
   const out: Record<string, string> = {};
-  for (const m of text.matchAll(/constexpr\s+(?:static\s+)?[\w:<>]+\s+([A-Za-z_]\w*)\s*=\s*([^;]+);/g)) out[m[1]] = m[2].trim();
+  for (const m of text.matchAll(/constexpr\s+(?:static\s+)?[\w:<>]+\s+([A-Za-z_]\w*)\s*=\s*([^;]+);/g))
+    out[m[1]] = m[2].trim();
   return out;
 }
 
 const literal = (s: string) => /^(-?\d[\w.]*|True|False|true|false|None|"[^"]*"|'[^']*')$/.test(s.trim());
 
 /** 模板参数名 ← 实参（实参是常量就换成值） */
-function bindTemplate(params: string[], args: string[], consts: Record<string, string>, pick?: { arg: string; opts: string[]; from: string; value: string }): BoundVal[] {
+function bindTemplate(
+  params: string[],
+  args: string[],
+  consts: Record<string, string>,
+  pick?: { arg: string; opts: string[]; from: string; value: string },
+): BoundVal[] {
   return args.map((a, i) => {
     const name = params[i] ?? `#${i + 1}`;
     if (pick && a.trim() === pick.arg) return { name, value: pick.value, opts: pick.opts, from: pick.from };
@@ -233,9 +297,18 @@ export function macroDefs(text: string): Map<string, { params: string[]; body: s
     if (!m) continue;
     let body = m[3];
     let k = i;
-    while (/\\\s*$/.test(lines[k]) && k + 1 < lines.length) { body = body.replace(/\\\s*$/, " ") + lines[++k]; }
+    while (/\\\s*$/.test(lines[k]) && k + 1 < lines.length) {
+      body = body.replace(/\\\s*$/, " ") + lines[++k];
+    }
     body = body.replace(/\\\s*$/, "");
-    out.set(m[1], { params: m[2].split(",").map((p) => p.trim()).filter(Boolean), body, line: i + 1 });
+    out.set(m[1], {
+      params: m[2]
+        .split(",")
+        .map((p) => p.trim())
+        .filter(Boolean),
+      body,
+      line: i + 1,
+    });
   }
   return out;
 }
@@ -250,8 +323,15 @@ export function pasteMacros(text: string): Map<string, Paster> {
   for (const [name, d] of macroDefs(text)) {
     const names: (string | number)[][] = [];
     for (const m of d.body.matchAll(/\w+(?:\s*##\s*\w+)+/g)) {
-      const pieces = m[0].split("##").map((p) => p.trim()).map((p) => { const i = d.params.indexOf(p); return i < 0 ? p : i; });
-      if (pieces.some((p) => typeof p === "number") && !names.some((n) => n.join("\0") === pieces.join("\0"))) names.push(pieces);
+      const pieces = m[0]
+        .split("##")
+        .map((p) => p.trim())
+        .map((p) => {
+          const i = d.params.indexOf(p);
+          return i < 0 ? p : i;
+        });
+      if (pieces.some((p) => typeof p === "number") && !names.some((n) => n.join("\0") === pieces.join("\0")))
+        names.push(pieces);
     }
     if (names.length) out.set(name, { params: d.params, names });
   }
@@ -262,22 +342,36 @@ export function pasteMacros(text: string): Map<string, Paster> {
 export function pastedNames(p: Paster, args: string[]): string[] {
   const out: string[] = [];
   for (const n of p.names) {
-    const parts = n.map((x) => (typeof x === "number" ? args[x]?.trim() ?? "" : x));
+    const parts = n.map((x) => (typeof x === "number" ? (args[x]?.trim() ?? "") : x));
     if (n.every((x, i) => typeof x !== "number" || /^\w*$/.test(parts[i]))) out.push(parts.join(""));
   }
   return out;
 }
 
 /** 行首的、`want` 接受的宏的调用：宏名、拆开的实参、行号、调用的第一行 */
-export function macroCalls(text: string, want: (name: string) => boolean): { macro: string; args: string[]; line: number; sig: string }[] {
+export function macroCalls(
+  text: string,
+  want: (name: string) => boolean,
+): { macro: string; args: string[]; line: number; sig: string }[] {
   const out: { macro: string; args: string[]; line: number; sig: string }[] = [];
   const lineOf = lineIndex(text);
   for (const m of text.matchAll(/^[ \t]*([A-Z][A-Z0-9_]*)\s*\(/gm)) {
-    if (!want(m[1]) || inDefine(text, m.index) || /\\\s*$/.test(text.slice(text.lastIndexOf("\n", m.index - 2) + 1, m.index))) continue; // 在某个 #define 的宏体里
-    const open = m.index + m[0].length - 1, close = matchClose(text, open);
+    if (
+      !want(m[1]) ||
+      inDefine(text, m.index) ||
+      /\\\s*$/.test(text.slice(text.lastIndexOf("\n", m.index - 2) + 1, m.index))
+    )
+      continue; // 在某个 #define 的宏体里
+    const open = m.index + m[0].length - 1,
+      close = matchClose(text, open);
     if (close < 0) continue;
     const end = text.indexOf("\n", m.index);
-    out.push({ macro: m[1], args: splitArgs(text.slice(open + 1, close)), line: lineOf(m.index), sig: text.slice(m.index, end < 0 ? undefined : end).trim() });
+    out.push({
+      macro: m[1],
+      args: splitArgs(text.slice(open + 1, close)),
+      line: lineOf(m.index),
+      sig: text.slice(m.index, end < 0 ? undefined : end).trim(),
+    });
   }
   return out;
 }
@@ -299,8 +393,18 @@ function kernelIn(body: string): { kernel: string; targs: string[] } | null {
     if (NOT.test(name)) continue;
     const open = m.index! + m[0].length - 1;
     // 模板实参：配对的 >
-    let depth = 0, end = -1;
-    for (let i = open; i < body.length; i++) { if (body[i] === "<") depth++; else if (body[i] === ">") { depth--; if (!depth) { end = i; break; } } else if (body[i] === ";" || body[i] === "{") break; }
+    let depth = 0,
+      end = -1;
+    for (let i = open; i < body.length; i++) {
+      if (body[i] === "<") depth++;
+      else if (body[i] === ">") {
+        depth--;
+        if (!depth) {
+          end = i;
+          break;
+        }
+      } else if (body[i] === ";" || body[i] === "{") break;
+    }
     if (end < 0) continue;
     if (body[end + 1] === ">" || body[open + 1] === "<") continue; // << / >>
     return { kernel: name, targs: splitArgs(body.slice(open + 1, end)) };
@@ -312,14 +416,26 @@ function kernelIn(body: string): { kernel: string; targs: string[] } | null {
  * 调用处是 SWITCH_X(CASE_MACRO)：CASE_MACRO 在 defs 里（同一个文件），SWITCH_X 在 switches 里（可能在别的头文件）。
  * 认不出返回 null
  */
-export function launchMacro(call: Pick<CallSite, "name" | "args">, defs: Map<string, { params: string[]; body: string }>, switches: Map<string, { params: string[]; body: string }>): LaunchMacro | null {
+export function launchMacro(
+  call: Pick<CallSite, "name" | "args">,
+  defs: Map<string, { params: string[]; body: string }>,
+  switches: Map<string, { params: string[]; body: string }>,
+): LaunchMacro | null {
   const arg = call.args.map((a) => a.text.trim()).find((a) => defs.has(a));
   const sw = switches.get(call.name) ?? defs.get(call.name);
   if (!arg) {
     // 直接点的是 case 宏自己（DISPATCH_LAUNCH_CASE(8)）或 LAUNCH_KERNEL(&cfg, kernel<…>, …)
     const own = defs.get(call.name);
     const k = own ? kernelIn(own.body) : call.args[1] ? kernelIn(call.args[1].text + " ") : null;
-    return k ? { kernel: k.kernel, targs: k.targs, param: own?.params[0], cases: own && call.args[0] ? [call.args[0].text] : undefined, switchName: call.name } : null;
+    return k
+      ? {
+          kernel: k.kernel,
+          targs: k.targs,
+          param: own?.params[0],
+          cases: own && call.args[0] ? [call.args[0].text] : undefined,
+          switchName: call.name,
+        }
+      : null;
   }
   const cm = defs.get(arg)!;
   const k = kernelIn(cm.body);
@@ -328,8 +444,15 @@ export function launchMacro(call: Pick<CallSite, "name" | "args">, defs: Map<str
   if (sw) {
     const on = /switch\s*\(\s*([^)]*?)\s*\)/.exec(sw.body)?.[1];
     const cp = sw.params[sw.params.length - 1];
-    const cases = [...sw.body.matchAll(new RegExp(`case\\s+([^:]+?)\\s*:\\s*${escapeRegExp(cp ?? "case_macro")}\\s*\\(([^)]*)\\)`, "g"))].map((m) => splitArgs(m[2]).pop() ?? m[1]);
-    if (cases.length) { out.cases = cases; out.on = on; }
+    const cases = [
+      ...sw.body.matchAll(
+        new RegExp(`case\\s+([^:]+?)\\s*:\\s*${escapeRegExp(cp ?? "case_macro")}\\s*\\(([^)]*)\\)`, "g"),
+      ),
+    ].map((m) => splitArgs(m[2]).pop() ?? m[1]);
+    if (cases.length) {
+      out.cases = cases;
+      out.on = on;
+    }
   }
   return out;
 }
@@ -337,7 +460,15 @@ export function launchMacro(call: Pick<CallSite, "name" | "args">, defs: Map<str
 /** launch macro 的取值：模板参数名 ← 实参；switch 的那个参数有几个取值（默认最后一个，通常最大） */
 export function launchVals(lm: LaunchMacro, kernelHead: string, fnText: string): BoundVal[] {
   const params = templateParams(kernelHead);
-  const pick = lm.param && lm.cases?.length ? { arg: lm.param, opts: lm.cases, from: lm.on ? `${lm.switchName}(${lm.on})` : lm.switchName, value: lm.cases[lm.cases.length - 1] } : undefined;
+  const pick =
+    lm.param && lm.cases?.length
+      ? {
+          arg: lm.param,
+          opts: lm.cases,
+          from: lm.on ? `${lm.switchName}(${lm.on})` : lm.switchName,
+          value: lm.cases[lm.cases.length - 1],
+        }
+      : undefined;
   return bindTemplate(params, lm.targs, constexprs(fnText), pick);
 }
 
@@ -349,12 +480,18 @@ export function launchTemplateArgs(lineText: string, col: number): string[] {
   const open = m[0].length - 1;
   let depth = 0;
   for (let i = open; i < rest.length; i++) {
-    if (rest[i] === "<") { if (rest.startsWith("<<<", i) && depth === 0) return []; depth++; }
-    else if (rest[i] === ">") { depth--; if (!depth) return splitArgs(rest.slice(open + 1, i)); }
+    if (rest[i] === "<") {
+      if (rest.startsWith("<<<", i) && depth === 0) return [];
+      depth++;
+    } else if (rest[i] === ">") {
+      depth--;
+      if (!depth) return splitArgs(rest.slice(open + 1, i));
+    }
   }
   return [];
 }
-export const bindLaunch = (kernelHead: string, targs: string[], fnText: string) => bindTemplate(templateParams(kernelHead), targs, constexprs(fnText));
+export const bindLaunch = (kernelHead: string, targs: string[], fnText: string) =>
+  bindTemplate(templateParams(kernelHead), targs, constexprs(fnText));
 
 // jit->compile("dispatch", std::format(R"(#include <…/{}.cuh> … &ns::{})", header, func))
 
@@ -366,9 +503,17 @@ export function jitKernels(callText: string, fnText: string): JitKernel[] {
   const ref = /&([\w:]*?)\{\}/.exec(callText);
   if (!inc || !ref) return [];
   const fmtArgs = /\)"\s*,\s*([A-Za-z_]\w*)\s*,\s*([A-Za-z_]\w*)\s*\)/.exec(callText);
-  const hv = fmtArgs?.[1] ?? "header_name", fv = fmtArgs?.[2] ?? "func_name";
-  const headers = [...fnText.matchAll(new RegExp(`\\b${escapeRegExp(hv)}\\s*=\\s*"([^"]+)"`, "g"))].map((m) => ({ at: m.index!, v: m[1] }));
-  const funcs = [...fnText.matchAll(new RegExp(`\\b${escapeRegExp(fv)}\\s*=\\s*std::format\\(\\s*"([A-Za-z_]\\w*)<([^"]*)>"\\s*,`, "g"))].map((m) => {
+  const hv = fmtArgs?.[1] ?? "header_name",
+    fv = fmtArgs?.[2] ?? "func_name";
+  const headers = [...fnText.matchAll(new RegExp(`\\b${escapeRegExp(hv)}\\s*=\\s*"([^"]+)"`, "g"))].map((m) => ({
+    at: m.index!,
+    v: m[1],
+  }));
+  const funcs = [
+    ...fnText.matchAll(
+      new RegExp(`\\b${escapeRegExp(fv)}\\s*=\\s*std::format\\(\\s*"([A-Za-z_]\\w*)<([^"]*)>"\\s*,`, "g"),
+    ),
+  ].map((m) => {
     const open = fnText.indexOf("(", m.index!);
     const close = matchClose(fnText, open);
     const args = splitArgs(fnText.slice(open + 1, close < 0 ? undefined : close)).slice(1);
@@ -376,7 +521,12 @@ export function jitKernels(callText: string, fnText: string): JitKernel[] {
   });
   return funcs.map((f) => {
     const h = [...headers].reverse().find((x) => x.at < f.at) ?? headers[0];
-    return { header: `${inc[1]}${h?.v ?? ""}${inc[2]}`, kernel: f.kernel, targs: f.targs, ns: ref[1].replace(/::$/, "") || undefined };
+    return {
+      header: `${inc[1]}${h?.v ?? ""}${inc[2]}`,
+      kernel: f.kernel,
+      targs: f.targs,
+      ns: ref[1].replace(/::$/, "") || undefined,
+    };
   });
 }
 
@@ -388,13 +538,17 @@ export function tritonInfo(lines: string[], sym: Pick<Sym, "start" | "defLine" |
   const jit = /@triton\.jit|@triton\.autotune|@triton\.heuristics|@jit\b/.test(head);
   // 参数到 ) 为止（多行）
   let sig = "";
-  for (let i = sym.defLine - 1; i < Math.min(lines.length, sym.end); i++) { sig += lines[i] + "\n"; if (/\)\s*(->[^:]*)?:\s*(#.*)?$/.test(lines[i])) break; }
+  for (let i = sym.defLine - 1; i < Math.min(lines.length, sym.end); i++) {
+    sig += lines[i] + "\n";
+    if (/\)\s*(->[^:]*)?:\s*(#.*)?$/.test(lines[i])) break;
+  }
   const cx = [...sig.matchAll(/([A-Za-z_]\w*)\s*:\s*tl\.constexpr/g)].map((m) => m[1]);
   const configs: BoundVal[][] = [];
   for (const m of head.matchAll(/triton\.Config\(\s*\{([^}]*)\}\s*(?:,([^)]*))?\)/g)) {
     const vals: BoundVal[] = [];
     for (const kv of m[1].matchAll(/["'](\w+)["']\s*:\s*([^,]+)/g)) vals.push({ name: kv[1], value: kv[2].trim() });
-    for (const kv of (m[2] ?? "").matchAll(/(num_stages|num_warps|num_ctas)\s*=\s*([^,\s)]+)/g)) vals.push({ name: kv[1] === "num_stages" ? "stages" : kv[1] === "num_warps" ? "warps" : kv[1], value: kv[2] });
+    for (const kv of (m[2] ?? "").matchAll(/(num_stages|num_warps|num_ctas)\s*=\s*([^,\s)]+)/g))
+      vals.push({ name: kv[1] === "num_stages" ? "stages" : kv[1] === "num_warps" ? "warps" : kv[1], value: kv[2] });
     configs.push(vals);
   }
   return { jit, constexprs: cx, configs };
@@ -415,20 +569,36 @@ export function tritonVals(info: TritonInfo, params: string[], args: Arg[]): { v
   }
   for (const a of args) if (a.kw && info.constexprs.includes(a.kw)) bound.push({ name: a.kw, text: a.text });
   const lits = bound.filter((b) => literal(b.text));
-  const vals: BoundVal[] = (lits.length ? lits : bound.slice(0, 3)).map((b) => ({ name: b.name, value: short(b.text, 28) }));
+  const vals: BoundVal[] = (lits.length ? lits : bound.slice(0, 3)).map((b) => ({
+    name: b.name,
+    value: short(b.text, 28),
+  }));
   const alts: CallAlt[] = [];
   if (info.configs.length) {
     vals.push(...info.configs[0]);
-    info.configs.slice(1).forEach((c, k) => alts.push({ label: `config ${k + 2} · ${c.map((v) => `${v.name}=${v.value}`).join(" ")}`, vals: [...vals.slice(0, vals.length - info.configs[0].length), ...c] }));
+    info.configs.slice(1).forEach((c, k) =>
+      alts.push({
+        label: `config ${k + 2} · ${c.map((v) => `${v.name}=${v.value}`).join(" ")}`,
+        vals: [...vals.slice(0, vals.length - info.configs[0].length), ...c],
+      }),
+    );
   }
   return { vals, alts };
 }
 
 /** @tilelang.jit 的工厂函数：里面 @T.prim_func 的那个函数（跳过工厂直达 prim_func） */
-export function tilelangInner(lines: string[], factory: Pick<Sym, "start" | "defLine" | "qual">, syms: Sym[]): Sym | undefined {
+export function tilelangInner(
+  lines: string[],
+  factory: Pick<Sym, "start" | "defLine" | "qual">,
+  syms: Sym[],
+): Sym | undefined {
   const head = lines.slice(factory.start - 1, factory.defLine - 1).join("\n");
   if (!/@(tilelang|tl)\.jit\b|@tilelang\.jit|@jit\b/.test(head)) return undefined;
-  return syms.find((s) => s.qual.startsWith(factory.qual + ".") && lines.slice(s.start - 1, s.defLine - 1).some((l) => /@T\.prim_func|@tilelang\.prim_func|@T\.macro/.test(l)));
+  return syms.find(
+    (s) =>
+      s.qual.startsWith(factory.qual + ".") &&
+      lines.slice(s.start - 1, s.defLine - 1).some((l) => /@T\.prim_func|@tilelang\.prim_func|@T\.macro/.test(l)),
+  );
 }
 
 /** 工厂参数 ← 实参：block_N → 64、num_stages → 2 */
@@ -451,6 +621,9 @@ export function isAbstractBody(lines: string[], sym: Pick<Sym, "start" | "defLin
   if (lines.slice(sym.start - 1, sym.defLine - 1).some((l) => /@(abc\.)?abstractmethod/.test(l))) return true;
   let body = lines.slice(sym.defLine - 1, sym.end).join("\n");
   body = body.replace(/^[\s\S]*?\)\s*(->[^:]*)?:/, ""); // 去掉签名
-  body = body.replace(/^\s*[rRbBuU]*("""|''')[\s\S]*?\1/, "").replace(/#.*$/gm, "").trim();
+  body = body
+    .replace(/^\s*[rRbBuU]*("""|''')[\s\S]*?\1/, "")
+    .replace(/#.*$/gm, "")
+    .trim();
   return body === "" || /^(raise\s+NotImplementedError\b.*|\.\.\.|pass)$/s.test(body);
 }

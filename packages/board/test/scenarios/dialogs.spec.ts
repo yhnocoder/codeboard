@@ -7,7 +7,12 @@ import { put, findSym, symCard, shot, type Host } from "../harness";
 import { test, open, check, until, idle, light } from "../fixtures";
 
 type Answer = Extract<BoardToHost, { type: "answer" }>;
-const board = () => { const b = emptyBoard("bD", "Dialogs"); const s = findSym("LLMEngine.step"); put(b, symCard(s.f, s.s), 80, 80, 560); return b; };
+const board = () => {
+  const b = emptyBoard("bD", "Dialogs");
+  const s = findSym("LLMEngine.step");
+  put(b, symCard(s.f, s.s), 80, 80, 560);
+  return b;
+};
 let n = 0;
 async function ask(h: Host, a: BoardAsk) {
   const id = ++n;
@@ -15,11 +20,22 @@ async function ask(h: Host, a: BoardAsk) {
   await h.page.locator(".dialog").waitFor();
   return id;
 }
-const answer = (h: Host, id: number) => until(h, `the board answers ask ${id}`, () => h.sent.find((m): m is Answer => m.type === "answer" && m.id === id));
-const inDialog = (h: Host) => h.page.evaluate(() => !!document.activeElement?.closest(".dialog") && document.activeElement instanceof HTMLInputElement);
+const answer = (h: Host, id: number) =>
+  until(h, `the board answers ask ${id}`, () => h.sent.find((m): m is Answer => m.type === "answer" && m.id === id));
+const inDialog = (h: Host) =>
+  h.page.evaluate(
+    () => !!document.activeElement?.closest(".dialog") && document.activeElement instanceof HTMLInputElement,
+  );
 const cards = (h: Host) => h.board().cards.length;
 
-const RUN: BoardAsk = { kind: "text", title: "Capture Run", text: "Run a Python entry once and record the calls into Study Scope", value: "example.py", placeholder: "example.py --steps 2", ok: "Run" };
+const RUN: BoardAsk = {
+  kind: "text",
+  title: "Capture Run",
+  text: "Run a Python entry once and record the calls into Study Scope",
+  value: "example.py",
+  placeholder: "example.py --steps 2",
+  ok: "Run",
+};
 
 test("askTextDialog", async () => {
   const h = await open({ board: board(), light });
@@ -27,10 +43,21 @@ test("askTextDialog", async () => {
   const before = cards(h);
   const id = await ask(h, RUN);
   check("askTextDialog: the field has the keyboard", await inDialog(h));
-  check("askTextDialog: it shows the title, the prompt and the Run button",
-    (await h.page.locator(".dialog .dt").textContent()) === "Capture Run" && (await h.page.locator(".dialog .dx").textContent())?.includes("Study Scope")
-    && (await h.page.locator(".dialog .db button.def").textContent()) === "Run");
-  check("askTextDialog: the last entry is there, selected", await h.page.locator(".dialog input").evaluate((i: HTMLInputElement) => i.value === "example.py" && i.selectionStart === 0 && i.selectionEnd === i.value.length));
+  check(
+    "askTextDialog: it shows the title, the prompt and the Run button",
+    (await h.page.locator(".dialog .dt").textContent()) === "Capture Run" &&
+      (await h.page.locator(".dialog .dx").textContent())?.includes("Study Scope") &&
+      (await h.page.locator(".dialog .db button.def").textContent()) === "Run",
+  );
+  check(
+    "askTextDialog: the last entry is there, selected",
+    await h.page
+      .locator(".dialog input")
+      .evaluate(
+        (i: HTMLInputElement) =>
+          i.value === "example.py" && i.selectionStart === 0 && i.selectionEnd === i.value.length,
+      ),
+  );
   await shot(h, "dialogs-01-text");
   // t on the board makes a Text card: in the dialog it is just a letter
   await h.page.keyboard.type("tests/run.py --steps 2");
@@ -78,7 +105,12 @@ test("askFocusReturns", async () => {
   await h.page.evaluate(() => window.focus());
   await until(h, "the board's frame has the keyboard back", () => h.page.evaluate(() => document.hasFocus()));
   check("askFocusReturns: the field has the keyboard again", await inDialog(h));
-  check("askFocusReturns: its text is still selected", await h.page.locator(".dialog input").evaluate((i: HTMLInputElement) => i.selectionStart === 0 && i.selectionEnd === i.value.length));
+  check(
+    "askFocusReturns: its text is still selected",
+    await h.page
+      .locator(".dialog input")
+      .evaluate((i: HTMLInputElement) => i.selectionStart === 0 && i.selectionEnd === i.value.length),
+  );
   await h.page.keyboard.type("tests/run.py");
   await h.page.keyboard.press("Enter");
   check("askFocusReturns: what is typed then answers", (await answer(h, id)).value === "tests/run.py");
@@ -89,8 +121,18 @@ test("askFocusReturns", async () => {
 test("askPassword", async () => {
   const h = await open({ board: board(), light });
   await idle(h);
-  const id = await ask(h, { kind: "text", title: "DeepSeek API Key", text: "Stored in VS Code's secret storage.", placeholder: "sk-…", ok: "Save", password: true });
-  check("askPassword: the key is typed into a password field", await h.page.locator(".dialog input").getAttribute("type") === "password" && await inDialog(h));
+  const id = await ask(h, {
+    kind: "text",
+    title: "DeepSeek API Key",
+    text: "Stored in VS Code's secret storage.",
+    placeholder: "sk-…",
+    ok: "Save",
+    password: true,
+  });
+  check(
+    "askPassword: the key is typed into a password field",
+    (await h.page.locator(".dialog input").getAttribute("type")) === "password" && (await inDialog(h)),
+  );
   await shot(h, "dialogs-02-password");
   await h.page.keyboard.type("sk-test");
   await h.page.locator(".dialog .db button.def").click();
@@ -104,11 +146,19 @@ test("askPickDialog", async () => {
   const items = [
     { label: "example.py --steps 2", description: "6/3/2026 14:02 · a1b2c3d", detail: "41 call sites · 3,112 calls" },
     { label: "-m nanovllm.bench", description: "6/2/2026 09:40", detail: "28 call sites · 902 calls" },
-    { label: "tests/test_engine.py", description: "6/1/2026 18:21 · 9f8e7d6", detail: "12 call sites · 77 calls · exit 1" },
+    {
+      label: "tests/test_engine.py",
+      description: "6/1/2026 18:21 · 9f8e7d6",
+      detail: "12 call sites · 77 calls · exit 1",
+    },
   ];
   const id = await ask(h, { kind: "pick", title: "Apply which run to this board?", items });
   check("askPickDialog: the filter has the keyboard", await inDialog(h));
-  check("askPickDialog: every row is listed, the first highlighted", await h.page.locator(".dialog .cand").count() === 3 && (await h.page.locator(".dialog .cand.on").textContent())?.includes("example.py"));
+  check(
+    "askPickDialog: every row is listed, the first highlighted",
+    (await h.page.locator(".dialog .cand").count()) === 3 &&
+      (await h.page.locator(".dialog .cand.on").textContent())?.includes("example.py"),
+  );
   await shot(h, "dialogs-03-pick");
   // Typing filters (by label and description); ↓ moves; ↵ answers the row's index in the list asked
   await h.page.keyboard.type("py");
@@ -134,7 +184,11 @@ test("askReplacesOpen", async () => {
   const h = await open({ board: board(), light });
   await idle(h);
   const id1 = await ask(h, RUN);
-  await h.post({ type: "ask", id: ++n, ask: { kind: "pick", title: "Apply which run to this board?", items: [{ label: "a.py" }] } });
+  await h.post({
+    type: "ask",
+    id: ++n,
+    ask: { kind: "pick", title: "Apply which run to this board?", items: [{ label: "a.py" }] },
+  });
   check("askReplacesOpen: the open question is answered null", (await answer(h, id1)).value === null);
   await until(h, "the new question is shown", async () => (await h.page.locator(".dialog .cand").count()) === 1);
   await h.page.keyboard.press("Enter");

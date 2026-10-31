@@ -7,7 +7,13 @@ import { git as sh, tempRepo } from "./helpers";
 const runs = vi.hoisted(() => ({ n: 0 }));
 vi.mock("node:child_process", async (orig) => {
   const cp = await orig<typeof import("node:child_process")>();
-  return { ...cp, execFile: ((...a: Parameters<typeof cp.execFile>) => { if ((a[1] as string[] | undefined)?.includes("--is-ancestor")) runs.n++; return (cp.execFile as (...x: unknown[]) => unknown)(...a); }) as typeof cp.execFile };
+  return {
+    ...cp,
+    execFile: ((...a: Parameters<typeof cp.execFile>) => {
+      if ((a[1] as string[] | undefined)?.includes("--is-ancestor")) runs.n++;
+      return (cp.execFile as (...x: unknown[]) => unknown)(...a);
+    }) as typeof cp.execFile,
+  };
 });
 const { isAncestor, repoRootOfDir, forgetRepos, upstreamRef } = await import("../src/git");
 
@@ -15,15 +21,20 @@ let R: string, C: string, c1: string, c2: string, later: string;
 beforeAll(() => {
   R = tempRepo("anc", { "f.py": "x = 1\n" });
   c1 = sh(R, "rev-parse", "HEAD");
-  fs.writeFileSync(path.join(R, "f.py"), "x = 2\n"); sh(R, "commit", "-qam", "two");
+  fs.writeFileSync(path.join(R, "f.py"), "x = 2\n");
+  sh(R, "commit", "-qam", "two");
   c2 = sh(R, "rev-parse", "HEAD");
   // a clone that doesn't have the next commit yet
   C = fs.mkdtempSync("/tmp/codeboard-anc-clone-");
   sh(C, "clone", "-q", R, ".");
-  fs.writeFileSync(path.join(R, "f.py"), "x = 3\n"); sh(R, "commit", "-qam", "three");
+  fs.writeFileSync(path.join(R, "f.py"), "x = 3\n");
+  sh(R, "commit", "-qam", "three");
   later = sh(R, "rev-parse", "HEAD");
 });
-afterAll(() => { fs.rmSync(R, { recursive: true, force: true }); fs.rmSync(C, { recursive: true, force: true }); });
+afterAll(() => {
+  fs.rmSync(R, { recursive: true, force: true });
+  fs.rmSync(C, { recursive: true, force: true });
+});
 
 describe("isAncestor", () => {
   it("answers and remembers both yes and no for full shas", async () => {
@@ -58,7 +69,9 @@ describe("repo lookups", () => {
       expect(await repoRootOfDir(d)).toBeNull();
       sh(d, "init", "-q");
       expect(await repoRootOfDir(d)).toBe(d);
-    } finally { fs.rmSync(d, { recursive: true, force: true }); }
+    } finally {
+      fs.rmSync(d, { recursive: true, force: true });
+    }
   });
   it("takes a new origin as the upstream after a git event", async () => {
     const d = tempRepo("upstream", { "f.py": "x = 1\n" });
@@ -68,6 +81,8 @@ describe("repo lookups", () => {
       sh(d, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/dev");
       forgetRepos();
       expect(await upstreamRef(d)).toBe("origin/dev");
-    } finally { fs.rmSync(d, { recursive: true, force: true }); }
+    } finally {
+      fs.rmSync(d, { recursive: true, force: true });
+    }
   });
 });

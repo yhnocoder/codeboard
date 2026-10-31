@@ -1,7 +1,20 @@
 // 宿主 ↔ 白板的消息。白板持有白板状态，改动后把变了的项发回来保存（patch）；宿主负责读代码、高亮、版本、跳转，
 // 以及把共享卡的改动转给开着同一张卡的别的白板（shared）。
 // 需要回答的请求带 req，宿主用 { type: "reply", req, … } 回。
-import type { Board, BoardMeta, Camera, CodeCard, Segment, Card, Version, HideFlags, WebMeta, CallMark, VariantFrom, Link } from "./model";
+import type {
+  Board,
+  BoardMeta,
+  Camera,
+  CodeCard,
+  Segment,
+  Card,
+  Version,
+  HideFlags,
+  WebMeta,
+  CallMark,
+  VariantFrom,
+  Link,
+} from "./model";
 import type { Var } from "@codeboard/analysis/basics";
 import type { SegView } from "./lines";
 import type { BoardPatch, SharedUpdate } from "./patch";
@@ -38,9 +51,16 @@ export type Stale =
 
 /** 材质主题；明暗跟随 VS Code */
 export const THEMES = [
-  ["warm-ink", "Warm Ink"], ["graphite", "Graphite"], ["soft-light", "Soft Light"], ["drafting", "Drafting"],
-  ["colorful", "Colorful"], ["newspaper", "Newspaper"], ["poster", "Poster"], ["classic", "Classic"],
-  ["ink-wash", "Ink Wash"], ["city", "City"],
+  ["warm-ink", "Warm Ink"],
+  ["graphite", "Graphite"],
+  ["soft-light", "Soft Light"],
+  ["drafting", "Drafting"],
+  ["colorful", "Colorful"],
+  ["newspaper", "Newspaper"],
+  ["poster", "Poster"],
+  ["classic", "Classic"],
+  ["ink-wash", "Ink Wash"],
+  ["city", "City"],
 ] as const;
 export type ThemeId = (typeof THEMES)[number][0];
 /** 实验性的主题：主题选择里和 VS Code 设置说明里标 Experimental；性能测试和 CI 的性能门槛不管它们（City 太复杂，容易超时） */
@@ -89,11 +109,35 @@ export type Settings = {
 /** AI 功能用哪个模型："auto" = 有 DeepSeek 密钥用 DeepSeek，没有用 VS Code 的语言模型（Copilot…）；"deepseek"；别的 = 某个 VS Code 语言模型的 id */
 export type AiChoice = string;
 export const DEFAULT_SETTINGS: Settings = {
-  theme: "warm-ink", vscodeBg: false, hideOnNew: { blank: false }, studyScope: [], stickerDir: "", zoomOverview: 0.6, zoomMap: 0.25, dblClick: "text",
-  hideNumbers: false, themeReflow: "push", debug: false, tune: {}, pasteOther: "linked", sharedUpdate: "ask", subPreview: "skeleton",
-  welcomeBack: "2d", exportQuestions: false, exportBoardOnly: false, exportScope: "board", noteHeadingInBody: false,
-  noteFontSize: { body: null, h1: null, h2: null, h3: null, h4: null, h5: null, h6: null }, mathPreamble: "",
-  svgNoBg: true, svgThink: false, aiProvider: "auto", deepseekModel: "deepseek-flash", aiText: "auto", aiSvg: "auto", aiFocus: "auto",
+  theme: "warm-ink",
+  vscodeBg: false,
+  hideOnNew: { blank: false },
+  studyScope: [],
+  stickerDir: "",
+  zoomOverview: 0.6,
+  zoomMap: 0.25,
+  dblClick: "text",
+  hideNumbers: false,
+  themeReflow: "push",
+  debug: false,
+  tune: {},
+  pasteOther: "linked",
+  sharedUpdate: "ask",
+  subPreview: "skeleton",
+  welcomeBack: "2d",
+  exportQuestions: false,
+  exportBoardOnly: false,
+  exportScope: "board",
+  noteHeadingInBody: false,
+  noteFontSize: { body: null, h1: null, h2: null, h3: null, h4: null, h5: null, h6: null },
+  mathPreamble: "",
+  svgNoBg: true,
+  svgThink: false,
+  aiProvider: "auto",
+  deepseekModel: "deepseek-flash",
+  aiText: "auto",
+  aiSvg: "auto",
+  aiFocus: "auto",
 };
 
 /**
@@ -119,7 +163,17 @@ export type HostInfo = {
 };
 
 /** 宿主替白板拦下的快捷键对应的动作（VS Code 会先吃掉 ⌘K ⌘D ⌘0 ⌘1 ⌘± ⌘⇧L ⌘⇧B ⌘,）；settings = ⌘, 开关设置页，openSettings = 命令 Open Settings（只开） */
-export type KeyAction = "search" | "duplicate" | "fitAll" | "zoom100" | "zoomIn" | "zoomOut" | "lock" | "settings" | "openSettings" | "turnIntoBoard";
+export type KeyAction =
+  | "search"
+  | "duplicate"
+  | "fitAll"
+  | "zoom100"
+  | "zoomIn"
+  | "zoomOut"
+  | "lock"
+  | "settings"
+  | "openSettings"
+  | "turnIntoBoard";
 
 export type PeekDef = {
   path: string; // 显示用的路径
@@ -171,14 +225,32 @@ export type GhQuery =
   | { op: "tree"; owner: string; name: string; commit: string } // 回 GhTree
   | { op: "file"; owner: string; name: string; commit: string; ref?: string; path: string } // 回 GhFile（文件同时缓存到本地，出现在 GITHUB FILES 侧栏）
   | { op: "card"; owner: string; name: string; commit: string; ref: string; path: string; start: number; end: number }; // 回 NewCard
-export type GhRepo = { owner: string; name: string; branch: string; branches: string[]; tags: string[]; private?: boolean; desc?: string };
+export type GhRepo = {
+  owner: string;
+  name: string;
+  branch: string;
+  branches: string[];
+  tags: string[];
+  private?: boolean;
+  desc?: string;
+};
 export type GhTree = { commit: string; paths: { path: string; dir?: boolean }[]; truncated?: boolean };
 export type GhFile = { path: string; lang: string; text: string[]; html: string[] };
 
 export type HostToBoard =
   /** crumbs：这块白板是从哪几块父白板一路进来的（没有 = 顶层）；walk：进来 / 回来时接着讲解 */
   /** welcome：隔了一阵再打开（设置 welcomeBack）、这块白板还有没解决的问题：days = 上次打开是几天前，open = 几个问题 */
-  | { type: "init"; board: Board; boards: BoardMeta[]; views: Record<string, SegView>; stale: Record<string, Stale>; host: HostInfo; crumbs?: Crumb[]; walk?: WalkHop; welcome?: { days: number; open: number } }
+  | {
+      type: "init";
+      board: Board;
+      boards: BoardMeta[];
+      views: Record<string, SegView>;
+      stale: Record<string, Stale>;
+      host: HostInfo;
+      crumbs?: Crumb[];
+      walk?: WalkHop;
+      welcome?: { days: number; open: number };
+    }
   | { type: "views"; views: Record<string, SegView> }
   | { type: "stale"; stale: Record<string, Stale> }
   | { type: "boards"; boards: BoardMeta[] }
@@ -237,14 +309,31 @@ export type BoardToHost =
   | { type: "openPath"; path: string; line?: number }
   | { type: "openLink"; url: string }
   /** 点调用展开：回 ExpandResult */
-  | { type: "expand"; req: number; seg: Segment; line: number; col: number; name: string; recv?: string; pick?: ExpandPick }
+  | {
+      type: "expand";
+      req: number;
+      seg: Segment;
+      line: number;
+      col: number;
+      name: string;
+      recv?: string;
+      pick?: ExpandPick;
+    }
   /** expand 回了 dispatching：这个调用的覆盖实现（转到实现回来了才答；回 DispatchResult） */
   | { type: "dispatch"; req: number; seg: Segment; line: number; col: number; name: string }
   /** 鼠标停在调用上：宿主先在后台问定义、读好目标文件（不回答；点下去的 expand 复用） */
   | { type: "prefetch"; seg: Segment; line: number; col: number; name: string }
   /** 调用接到已有的卡上：算变量候选（回 Var[]） */
   | { type: "callVars"; req: number; seg: Segment; line: number; col: number; name: string; target: Segment }
-  | { type: "peek"; req: number; seg: Segment; line: number; col: number; word: string; at?: { path: string; line: number; col: number } } // 回 PeekResult
+  | {
+      type: "peek";
+      req: number;
+      seg: Segment;
+      line: number;
+      col: number;
+      word: string;
+      at?: { path: string; line: number; col: number };
+    } // 回 PeekResult
   | { type: "search"; req: number; q: string; scope?: "all" | "code" | "symbols" }
   | { type: "searchPick"; req: number; item: SearchItem; alt?: boolean }
   | { type: "entryPoints"; req: number }
@@ -364,19 +453,39 @@ export type ImageAiOp =
 /** 失败的原因：nokey = 没设密钥，badkey = 密钥被拒（401），balance = 余额用完（402），network = 连不上，timeout = 太久没回，
  *  cut = 回答被截断（SVG 不完整），canceled = 取消了，http = 接口别的错误（message 是接口给的话）；
  *  VS Code 的语言模型：nomodel = 没有能用的模型（或选的那个不在了、不收图），noconsent = 用户没同意 CodeBoard 用它 */
-export type ImageAiFail = "nokey" | "badkey" | "balance" | "network" | "timeout" | "cut" | "canceled" | "http" | "nomodel" | "noconsent";
+export type ImageAiFail =
+  | "nokey"
+  | "badkey"
+  | "balance"
+  | "network"
+  | "timeout"
+  | "cut"
+  | "canceled"
+  | "http"
+  | "nomodel"
+  | "noconsent";
 /** text = 模型的原话（去掉了包住整个回答的代码围栏；focus 的不去，白板自己认）；cut = 字被截断了（extract 照样给）；
  *  reused = 同一张图识别过，没再问模型；via = 失败时问的是谁（"DeepSeek"、VS Code 模型的名字），提示里用 */
-export type ImageAiResult = { text: string; cut?: true; reused?: true } | { fail: ImageAiFail; message?: string; via?: string };
+export type ImageAiResult =
+  | { text: string; cut?: true; reused?: true }
+  | { fail: ImageAiFail; message?: string; via?: string };
 /** VS Code 的一个语言模型（Copilot 的 GPT-4o、Claude…）：vision = 收图 */
 export type AiModel = { id: string; name: string; vendor: string; vision: boolean };
 /** key = DeepSeek 的密钥设了没有（只有这一位，密钥不进白板）；models = 现在能用的 VS Code 语言模型 */
 export type AiInfo = { key: boolean; models: AiModel[] };
 
 /** Add Variant 的来源：file 不给 abs = 让用户选；PR 只给编号（仓库从 origin 推出来） */
-export type AddVariantFrom = Exclude<VariantFrom, { kind: "upstream" | "file" | "pr" }> | { kind: "file"; abs?: string } | { kind: "pr"; num: number };
+export type AddVariantFrom =
+  | Exclude<VariantFrom, { kind: "upstream" | "file" | "pr" }>
+  | { kind: "file"; abs?: string }
+  | { kind: "pr"; num: number };
 /** 同一仓库的其他 worktree（git worktree list，不含这段代码所在的那个）；branches = 本地分支；pr = 能不能加 GitHub PR（origin 在 GitHub 上） */
-export type VariantSources = { worktrees: { dir: string; branch?: string; label: string; dirty?: boolean }[]; branches: string[]; current?: string; pr?: string };
+export type VariantSources = {
+  worktrees: { dir: string; branch?: string; label: string; dirty?: boolean }[];
+  branches: string[];
+  current?: string;
+  pr?: string;
+};
 /** 宿主建好的 Variant（段 id 和请求里的一一对应；views 按段 id）。refresh 时的 VariantSync.views 一律按 viewKey(段, Variant) */
 export type NewVariant = { name: string; from: VariantFrom; segs: Segment[]; views: Record<string, SegView> };
 /**
@@ -394,7 +503,13 @@ export type VariantSync = {
 };
 
 /** 贴过来的别的白板上的卡和它们之间的 Link（views = 各段的展示数据） */
-export type PastedCards = { from: string; shared: boolean; cards: CardCopy[]; links: Link[]; views: Record<string, SegView> };
+export type PastedCards = {
+  from: string;
+  shared: boolean;
+  cards: CardCopy[];
+  links: Link[];
+  views: Record<string, SegView>;
+};
 
 /** 指定展开哪个定义。rel = path 相对 seg 自己的来源根（类卡点成员；工作区外的文件也对），qual = 按符号找（钉的版本行号可能挪了） */
 export type ExpandPick = { path: string; line: number; rel?: true; qual?: string };
@@ -408,7 +523,15 @@ export type PeekResult = PeekDef | null;
  * impls：动态分发，列出全部实现让人选（base = 静态类型的方法）。none：解析不到（name = 可以按名字跨语言搜）
  */
 export type ExpandResult =
-  | { card: CodeCard; views: Record<string, SegView>; vars: Var[]; w?: number; mark?: CrossMark; title?: string; dispatching?: true }
+  | {
+      card: CodeCard;
+      views: Record<string, SegView>;
+      vars: Var[];
+      w?: number;
+      mark?: CrossMark;
+      title?: string;
+      dispatching?: true;
+    }
   | { pick: { label: string; detail: string; path: string; line: number }[] }
   | { impls: ImplPick[]; base: string }
   | { none: true; reason: string; name?: string };
@@ -419,9 +542,25 @@ export type DispatchResult = { impls: ImplPick[]; base: string; abstract?: true 
 /** 跨边界时宿主给的 Call 标记部分 */
 export type CrossMark = Pick<CallMark, "bound" | "vals" | "alts" | "impls" | "ev">;
 /** 动态分发的一个实现：qual / 路径 / 行；lib = 在 library 里（包名）；base = 基类自己的实现（不是抽象的） */
-export type ImplPick = { label: string; detail: string; path: string; line: number; qual: string; lib?: string; base?: true };
+export type ImplPick = {
+  label: string;
+  detail: string;
+  path: string;
+  line: number;
+  qual: string;
+  lib?: string;
+  base?: true;
+};
 /** 跨语言按名字搜到的一处：lang = 语言表（@codeboard/analysis 的 langs.ts）的 id；def = 定义，否则是字符串注册（"name"） */
-export type NameHit = { lang: string; label: string; detail: string; path: string; line: number; def: boolean; qual?: string };
+export type NameHit = {
+  lang: string;
+  label: string;
+  detail: string;
+  path: string;
+  line: number;
+  def: boolean;
+  qual?: string;
+};
 /** Generated 卡的来源：文本、语言、文件名（剪贴板为空串） */
 export type GenSource = { text: string; lang: string; name: string };
 

@@ -8,9 +8,13 @@ export function scrollIntoBox(el: Element, block: "start" | "center" | "nearest"
   if (!box) return;
   const r = el.getBoundingClientRect();
   if (block === "nearest") return revealIn(box, r.top, r.bottom);
-  const b = box.getBoundingClientRect(), k = box.offsetHeight ? b.height / box.offsetHeight : 1;
+  const b = box.getBoundingClientRect(),
+    k = box.offsetHeight ? b.height / box.offsetHeight : 1;
   const top = b.top + box.clientTop * k;
-  const at = block === "start" ? top + (parseFloat(getComputedStyle(el).scrollMarginTop) || 0) * k : top + (box.clientHeight * k - r.height) / 2;
+  const at =
+    block === "start"
+      ? top + (parseFloat(getComputedStyle(el).scrollMarginTop) || 0) * k
+      : top + (box.clientHeight * k - r.height) / 2;
   if (Math.abs(r.top - at) >= 0.5) box.scrollTop += (r.top - at) / k;
 }
 
@@ -26,10 +30,13 @@ export function scroller(el: Element): HTMLElement | null {
 /** 把屏幕上 top…bottom 这一段尽量少地滚进 box 看得见的地方（留出 box 的上下内边距）；放不下时 top 优先。
  *  box 可能被缩放（白板的镜头）：按显示的比例换算 */
 export function revealIn(box: HTMLElement, top: number, bottom: number) {
-  const r = box.getBoundingClientRect(), cs = getComputedStyle(box);
+  const r = box.getBoundingClientRect(),
+    cs = getComputedStyle(box);
   const k = box.offsetHeight ? r.height / box.offsetHeight : 1;
-  const vt = r.top + box.clientTop * k, vb = vt + box.clientHeight * k;
-  const pt = Math.max(4, parseFloat(cs.paddingTop) || 0) * k, pb = Math.max(4, parseFloat(cs.paddingBottom) || 0) * k;
+  const vt = r.top + box.clientTop * k,
+    vb = vt + box.clientHeight * k;
+  const pt = Math.max(4, parseFloat(cs.paddingTop) || 0) * k,
+    pb = Math.max(4, parseFloat(cs.paddingBottom) || 0) * k;
   let d = 0;
   if (bottom > vb - pb) d = bottom - (vb - pb);
   if (top - d < vt + pt) d = top - (vt + pt);

@@ -1,5 +1,24 @@
 // 白板状态由界面持有，改动后把变了的项发回来保存（patch，存储改它缓存的那份再写盘）。
-import { boardSegments, variantSegments, boardQuestions, type Board, type BoardAsk, type BoardRefs, type BoardMeta, type BoardToHost, type Camera, type Crumb, type Event, type HostInfo, type HostToBoard, type Segment, type Settings, type Skeleton, type Stale, type WalkHop } from "@codeboard/core";
+import {
+  boardSegments,
+  variantSegments,
+  boardQuestions,
+  type Board,
+  type BoardAsk,
+  type BoardRefs,
+  type BoardMeta,
+  type BoardToHost,
+  type Camera,
+  type Crumb,
+  type Event,
+  type HostInfo,
+  type HostToBoard,
+  type Segment,
+  type Settings,
+  type Skeleton,
+  type Stale,
+  type WalkHop,
+} from "@codeboard/core";
 import type { CardClip, Storage } from "@codeboard/core/storage";
 import { countStale, staleFor, staleSegments } from "./versions";
 import { syncVariants } from "./variants";
@@ -59,7 +78,11 @@ export interface BoardHost {
   refreshBoardRefs(now?: boolean, fresh?: string): void;
   refPicked(b: string, id: string): void;
   /** 面板换一块白板显示（进入 / 离开子白板） */
-  switchBoard(p: BoardPanel, to: string, o: { crumbs: Crumb[]; cams: Camera[]; walk?: WalkHop; cam?: Camera }): Promise<boolean>;
+  switchBoard(
+    p: BoardPanel,
+    to: string,
+    o: { crumbs: Crumb[]; cams: Camera[]; walk?: WalkHop; cam?: Camera },
+  ): Promise<boolean>;
   /** 每块白板上次打开的时间（「回来接上」的提示用）；opened 记下这一次 */
   lastOpened?(id: string): number | undefined;
   opened?(id: string): void;
@@ -73,7 +96,12 @@ export interface BoardHost {
 
 const DAY = 864e5;
 /** 「回来接上」：设置 welcomeBack 允许、隔得够久、这块白板上还有没解决的问题时才提示 */
-function welcomeOf(b: Board, last: number | undefined, mode: Settings["welcomeBack"], now = Date.now()): { days: number; open: number } | undefined {
+function welcomeOf(
+  b: Board,
+  last: number | undefined,
+  mode: Settings["welcomeBack"],
+  now = Date.now(),
+): { days: number; open: number } | undefined {
   if (mode === "off" || last === undefined) return undefined;
   const days = Math.floor((now - last) / DAY);
   if (mode !== "always" && now - last < 2 * DAY) return undefined;
@@ -83,7 +111,10 @@ function welcomeOf(b: Board, last: number | undefined, mode: Settings["welcomeBa
 
 const INDEX_DELAY = 4000;
 
-const inPaths = (s: Segment, paths: ReadonlySet<string>) => { const a = absOf(s); return !!a && paths.has(a); };
+const inPaths = (s: Segment, paths: ReadonlySet<string>) => {
+  const a = absOf(s);
+  return !!a && paths.has(a);
+};
 
 export class BoardPanel {
   board: Board | undefined;
@@ -105,23 +136,40 @@ export class BoardPanel {
   private askN = 0;
 
   /** id 会变：进入子白板时同一个面板换成那块白板（BoardHub.switchBoard） */
-  constructor(public id: string, readonly view: BoardView, private mgr: BoardHost) {}
+  constructor(
+    public id: string,
+    readonly view: BoardView,
+    private mgr: BoardHost,
+  ) {}
 
-  get visible() { return this.view.visible; }
+  get visible() {
+    return this.view.visible;
+  }
 
   post(m: HostToBoard) {
     if (this.ready) this.view.postMessage(m);
     else if (m.type !== "init") this.queue.push(m);
   }
-  toast(text: string) { this.post({ type: "toast", text }); }
+  toast(text: string) {
+    this.post({ type: "toast", text });
+  }
 
   /** Ask in a board dialog (HostToBoard "ask"); null when cancelled, or when the board closes or reloads first */
   ask(a: BoardAsk): Promise<string | number | null> {
     const id = ++this.askN;
-    return new Promise((r) => { this.asks.set(id, r); this.post({ type: "ask", id, ask: a }); });
+    return new Promise((r) => {
+      this.asks.set(id, r);
+      this.post({ type: "ask", id, ask: a });
+    });
   }
-  answer(id: number, v: string | number | null) { this.asks.get(id)?.(v); this.asks.delete(id); }
-  dropAsks() { for (const r of this.asks.values()) r(null); this.asks.clear(); }
+  answer(id: number, v: string | number | null) {
+    this.asks.get(id)?.(v);
+    this.asks.delete(id);
+  }
+  dropAsks() {
+    for (const r of this.asks.values()) r(null);
+    this.asks.clear();
+  }
 
   /** 第几次 init：换了白板，上一块的版本状态就不发了 */
   private gen = 0;
@@ -130,7 +178,10 @@ export class BoardPanel {
   async init(loaded?: Board) {
     this.dropAsks(); // a reloaded webview has no dialogs open
     const b = loaded ?? (await this.mgr.store.load(this.id));
-    if (!b) { this.view.dispose(); return; }
+    if (!b) {
+      this.view.dispose();
+      return;
+    }
     const gen = ++this.gen;
     const next = this.next;
     this.next = {};
@@ -141,14 +192,21 @@ export class BoardPanel {
     const ss = staleSegments(b);
     // 版本状态要跑 git、在新版本里重新找段，常常比高亮还慢：白板不等它（卡上的提示晚一点出来）。高亮要等：注释折叠决定卡的高度
     const staleP = staleFor(ss.segs, ss.up);
-    const [views, boards, readonly] = await Promise.all([viewsFor([...segs, ...variantSegments(b)]), this.mgr.metas(), this.readonlyNote(b)]);
+    const [views, boards, readonly] = await Promise.all([
+      viewsFor([...segs, ...variantSegments(b)]),
+      this.mgr.metas(),
+      this.readonlyNote(b),
+    ]);
     this.stale = {};
     this.readonly = readonly;
     const host = this.host();
     const init: HostToBoard = { type: "init", board: b, boards, views, stale: {}, host };
     if (this.crumbs.length) init.crumbs = this.crumbs;
     // 进出子白板不算「回来」
-    if (!this.crumbs.length && !next.walk) { const w = welcomeOf(b, this.mgr.lastOpened?.(b.id), host.settings.welcomeBack); if (w) init.welcome = w; }
+    if (!this.crumbs.length && !next.walk) {
+      const w = welcomeOf(b, this.mgr.lastOpened?.(b.id), host.settings.welcomeBack);
+      if (w) init.welcome = w;
+    }
     this.mgr.opened?.(b.id);
     if (next.walk) init.walk = next.walk;
     this.view.postMessage(init);
@@ -160,12 +218,14 @@ export class BoardPanel {
     this.mgr.refreshSkeletons(true, this.id);
     this.mgr.refreshBoardRefs(true, this.id);
     // 排进版本检查的队列：之后的 refreshStale 在它后面（旧的结果不盖掉新的）
-    const first = this.staleRun.then(() => staleP).then((stale) => {
-      if (gen !== this.gen) return;
-      this.stale = stale;
-      if (Object.keys(stale).length) this.post({ type: "stale", stale });
-      this.mgr.staleChanged(this.id, countStale(b, stale));
-    });
+    const first = this.staleRun
+      .then(() => staleP)
+      .then((stale) => {
+        if (gen !== this.gen) return;
+        this.stale = stale;
+        if (Object.keys(stale).length) this.post({ type: "stale", stale });
+        this.mgr.staleChanged(this.id, countStale(b, stale));
+      });
     this.staleRun = first.catch((e) => workspace().log("warn", `stale: ${e instanceof Error ? e.message : e}`));
     this.variantSent.clear();
     void this.refreshVariants(true);
@@ -207,11 +267,15 @@ export class BoardPanel {
     try {
       const cards = await syncVariants(this.board, this.variantSent, { net });
       if (Object.keys(cards).length) this.post({ type: "variants", cards });
-    } catch (e) { workspace().log("warn", `variants: ${e instanceof Error ? e.message : e}`); }
+    } catch (e) {
+      workspace().log("warn", `variants: ${e instanceof Error ? e.message : e}`);
+    }
   }
 
   holds(paths: ReadonlySet<string>): boolean {
-    return !!this.board && [...boardSegments(this.board), ...variantSegments(this.board)].some((s) => inPaths(s, paths));
+    return (
+      !!this.board && [...boardSegments(this.board), ...variantSegments(this.board)].some((s) => inPaths(s, paths))
+    );
   }
 
   /** 重算版本状态并推给白板；paths = 只重查这些文件里的段（别的段留着上次的结果） */
@@ -230,7 +294,10 @@ export class BoardPanel {
     let st = fresh;
     if (paths) {
       st = {};
-      for (const s of ss.segs) { const v = fresh[s.id] ?? this.stale[s.id]; if (v) st[s.id] = v; }
+      for (const s of ss.segs) {
+        const v = fresh[s.id] ?? this.stale[s.id];
+        if (v) st[s.id] = v;
+      }
     }
     const changed = JSON.stringify(st) !== JSON.stringify(this.stale);
     this.stale = st;

@@ -4,7 +4,12 @@ import { createHash } from "node:crypto";
 import type { Fs } from "@codeboard/core/storage";
 
 export const nodeFs: Fs = {
-  readdir: async (dir) => (await fs.readdir(dir, { withFileTypes: true })).map((d) => ({ name: d.name, isFile: d.isFile(), isDir: d.isDirectory() })),
+  readdir: async (dir) =>
+    (await fs.readdir(dir, { withFileTypes: true })).map((d) => ({
+      name: d.name,
+      isFile: d.isFile(),
+      isDir: d.isDirectory(),
+    })),
   stat: (p) => fs.stat(p),
   readFile: (p) => fs.readFile(p, "utf8"),
   writeFile: (p, data) => fs.writeFile(p, data),

@@ -16,7 +16,8 @@ function isWorkspacePkg(pkg: string): Promise<boolean> {
     p = (async () => {
       for (const r of wsRoots()) {
         if (path.basename(r) === pkg) return true;
-        for (const c of [path.join(r, pkg), path.join(r, `${pkg}.py`), path.join(r, "src", pkg)]) if (await exists(c)) return true;
+        for (const c of [path.join(r, pkg), path.join(r, `${pkg}.py`), path.join(r, "src", pkg)])
+          if (await exists(c)) return true;
       }
       return false;
     })();
@@ -30,9 +31,17 @@ const SITE = /[\\/](site-packages|dist-packages)[\\/]/;
 /** 工作区外文件所属的顶层包：site-packages 下第一层；否则沿 __init__.py 往上找到最外层包；都不是就用文件名 */
 async function topPkgOf(abs: string): Promise<string> {
   const site = SITE.exec(abs);
-  if (site) return abs.slice(site.index + site[0].length).split(/[\\/]/)[0].replace(/\.pyi?$/, "");
-  let dir = path.dirname(abs), top = "";
-  while (dir !== path.dirname(dir) && (await exists(path.join(dir, "__init__.py")))) { top = path.basename(dir); dir = path.dirname(dir); }
+  if (site)
+    return abs
+      .slice(site.index + site[0].length)
+      .split(/[\\/]/)[0]
+      .replace(/\.pyi?$/, "");
+  let dir = path.dirname(abs),
+    top = "";
+  while (dir !== path.dirname(dir) && (await exists(path.join(dir, "__init__.py")))) {
+    top = path.basename(dir);
+    dir = path.dirname(dir);
+  }
   return top || path.basename(abs).replace(/\.\w+$/, "");
 }
 
@@ -44,7 +53,11 @@ export async function libOf(abs: string): Promise<string | undefined> {
  * 段里每个调用的 library 包。import 进来的名字看 import 的顶层包；本地的、self.x、相对导入跟着段所在的文件走。
  * imports 取自段那个版本的整个文件（拿不到就用当前文件）。
  */
-export async function callPkgs(seg: Segment, imports: FileAnalysis["imports"], abs: string | null): Promise<(c: { name: string; recv?: string }) => string | undefined> {
+export async function callPkgs(
+  seg: Segment,
+  imports: FileAnalysis["imports"],
+  abs: string | null,
+): Promise<(c: { name: string; recv?: string }) => string | undefined> {
   if (!hasLocalFile(seg.src)) return () => undefined;
   const own = seg.src.kind === "external" && abs ? await topPkgOf(abs) : undefined;
   const lib = new Map<string, boolean>();

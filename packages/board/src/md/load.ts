@@ -24,7 +24,18 @@ export const editorNow = () => ready;
 
 /** 白板打开后空闲时预加载，再预热（建好那一个编辑器），第一次双击就不用等 */
 export function preloadEditor() {
-  setTimeout(() => whenIdle(() => void loadEditor().then((m) => whenIdle(() => m.warmUp(sampleNote()))).catch(() => { mod = undefined; })), 2500);
+  setTimeout(
+    () =>
+      whenIdle(
+        () =>
+          void loadEditor()
+            .then((m) => whenIdle(() => m.warmUp(sampleNote())))
+            .catch(() => {
+              mod = undefined;
+            }),
+      ),
+    2500,
+  );
 }
 // 鼠标停在一张能编辑的 Markdown 上 120ms（或按下第一下），或者只选中了一张 Note：在页面外把它画进编辑器，
 // 双击时只剩挂上去（见 editor 的 prepare）。鼠标下面的优先，其次是选中的；镜头在动、在拖时等停下，正在编辑时不做
@@ -36,26 +47,45 @@ function schedule(now = false) {
   const run = () => {
     const p = hov ?? selP;
     if (!ready || editing() || p === undefined) return;
-    if (camMoving() || dragging().size) { if (++tries < 16) prepT = window.setTimeout(run, 120); return; }
+    if (camMoving() || dragging().size) {
+      if (++tries < 16) prepT = window.setTimeout(run, 120);
+      return;
+    }
     ready.prepare(p.src, p.layout);
   };
   prepT = window.setTimeout(run, now ? 0 : 120);
 }
-export function prepareHover(src: string, layout?: MdLayout | null, now = false) { hov = { src, layout }; schedule(now); }
+export function prepareHover(src: string, layout?: MdLayout | null, now = false) {
+  hov = { src, layout };
+  schedule(now);
+}
 /** 鼠标离开这一张（别的卡在它之后进来的不动） */
-export function prepareLeave(src: string) { if (hov?.src === src) { hov = undefined; schedule(); } }
-export function prepareSelected(src: string | undefined, layout?: MdLayout | null) { selP = src === undefined ? undefined : { src, layout }; schedule(); }
+export function prepareLeave(src: string) {
+  if (hov?.src === src) {
+    hov = undefined;
+    schedule();
+  }
+}
+export function prepareSelected(src: string | undefined, layout?: MdLayout | null) {
+  selP = src === undefined ? undefined : { src, layout };
+  schedule();
+}
 
 // The Note being edited and whether it shows its Markdown source (⌘/): the card header's M↓ toggle reads and drives it
 let current: { id: string; ed: MdEditorHandle } | null = null;
 const [srcNote, setSrcNote] = createSignal<string | null>(null);
 export function setCurrentEditor(id: string, ed: MdEditorHandle | null) {
   if (ed) current = { id, ed };
-  else if (current?.id === id) { current = null; if (srcNote() === id) setSrcNote(null); }
+  else if (current?.id === id) {
+    current = null;
+    if (srcNote() === id) setSrcNote(null);
+  }
 }
 export const sourceModeOf = (id: string) => srcNote() === id;
 export const setSourceMode = (id: string, on: boolean) => setSrcNote(on ? id : srcNote() === id ? null : srcNote());
-export function toggleNoteSource(id: string) { if (current?.id === id) current.ed.toggleSource(); }
+export function toggleNoteSource(id: string) {
+  if (current?.id === id) current.ed.toggleSource();
+}
 
 /** 白板上最长的一张 Note 的原文（预热用） */
 function sampleNote() {
@@ -67,7 +97,10 @@ function sampleNote() {
 function whenIdle(f: () => void) {
   const ric = "requestIdleCallback" in window ? (cb: IdleRequestCallback) => window.requestIdleCallback(cb) : undefined;
   if (!ric) return void setTimeout(f, 0);
-  const tryIt = (d: IdleDeadline) => { if (d.timeRemaining() >= 40 && !camMoving() && !editing()) f(); else setTimeout(() => ric(tryIt), 100); };
+  const tryIt = (d: IdleDeadline) => {
+    if (d.timeRemaining() >= 40 && !camMoving() && !editing()) f();
+    else setTimeout(() => ric(tryIt), 100);
+  };
   ric(tryIt);
 }
 
@@ -84,11 +117,14 @@ function refCandidates(): { id: string; title: string; kind: string }[] {
     if (t) out.push({ id: c.id, title: clean(t), kind: isCode(c) ? "code" : c.kind });
   }
   for (const r of subRefs()) out.push({ id: r.id, title: clean(r.label), kind: r.k });
-  for (const s of state.board.sections) if (s.title.trim()) out.push({ id: s.id, title: clean(s.title.trim()), kind: "section" });
+  for (const s of state.board.sections)
+    if (s.title.trim()) out.push({ id: s.id, title: clean(s.title.trim()), kind: "section" });
   // 别的白板：宿主给了别的白板上的卡时它们各成一组（refGroups，白板本身是组头），这里不列；已经作为子白板框列过的不重复
   if (boardsGrouped()) return out;
   const framed = new Set(placed().flatMap((c) => (c.kind === "board" ? [c.board] : [])));
-  for (const m of state.boards) if (m.id !== state.board.id && !framed.has(m.id) && m.name.trim()) out.push({ id: m.id, title: clean(m.name.trim()), kind: "whiteboard" });
+  for (const m of state.boards)
+    if (m.id !== state.board.id && !framed.has(m.id) && m.name.trim())
+      out.push({ id: m.id, title: clean(m.name.trim()), kind: "whiteboard" });
   return out;
 }
 
@@ -104,7 +140,11 @@ function codeLsp(lang: () => string) {
 }
 
 /** Note 代码块语言框里的语言：着色认得的（语言表里有 highlight 的）。写进围栏的是 GitHub 认的名字（cuda、bash），它指的不是这种语言时（Triton 的是 python）写 id */
-const CODE_LANGS = LANG_TABLE.filter((l) => l.highlight).map((l) => ({ name: l.md && langInfo(l.md) === l ? l.md : l.id, label: l.label, aliases: [l.id, ...l.aliases] }));
+const CODE_LANGS = LANG_TABLE.filter((l) => l.highlight).map((l) => ({
+  name: l.md && langInfo(l.md) === l ? l.md : l.id,
+  label: l.label,
+  aliases: [l.id, ...l.aliases],
+}));
 
 /** 编辑器要的白板能力：[[ 引用卡片、存图、AI 补全（宿主没有就什么都不做）、代码块的注释记号和语言服务 */
 export function editorOpts(): Omit<MdEditorOpts, "value" | "onDone" | "placeholder"> {
@@ -112,14 +152,21 @@ export function editorOpts(): Omit<MdEditorOpts, "value" | "onDone" | "placehold
   return {
     isMac: state.host.isMac,
     refs: {
-      items: refCandidates, menu: "Link to Card", empty: "Nothing with that title",
-      groups: refGroups, recent: refRecent, here: "This board", picked: refPicked,
+      items: refCandidates,
+      menu: "Link to Card",
+      empty: "Nothing with that title",
+      groups: refGroups,
+      recent: refRecent,
+      here: "This board",
+      picked: refPicked,
       foot: () => refFoot(refCandidates().filter((c) => c.kind !== "section" && c.kind !== "whiteboard").length),
     },
     openLink,
     pickImage: () => ask("pickFile", { kind: "image" }).catch(() => null),
     saveImage: saveNoteImage,
-    complete: state.host.complete ? (before: string, after: string) => ask("complete", { before, after }).catch(() => null) : undefined,
+    complete: state.host.complete
+      ? (before: string, after: string) => ask("complete", { before, after }).catch(() => null)
+      : undefined,
     code: { comment: (l) => langInfo(l)?.comment, lsp: codeLsp, stopPointerDown: true, langs: CODE_LANGS },
   };
 }

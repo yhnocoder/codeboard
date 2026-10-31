@@ -1,7 +1,14 @@
 // @vitest-environment happy-dom
 // 换白板（宿主发 init）时界面状态怎么处理：这块白板的临时状态回到初值，宿主状态整个换掉，浮层关掉（设置页留着）
 import { afterAll, describe, expect, it, vi } from "vitest";
-import { DEFAULT_SETTINGS, emptyBoard, type HostInfo, type HostToBoard, type SegView, type Stale } from "@codeboard/core";
+import {
+  DEFAULT_SETTINGS,
+  emptyBoard,
+  type HostInfo,
+  type HostToBoard,
+  type SegView,
+  type Stale,
+} from "@codeboard/core";
 import { onHost } from "../../src/hostio";
 import { state } from "../../src/state/store";
 import { lineSel, setLineSel, reportSelection } from "../../src/state/selection";
@@ -12,19 +19,36 @@ import { choose, promptText } from "../../src/ui/Menu";
 import { boardSignal } from "../../src/state/root";
 
 const HOST: HostInfo = { isMac: true, assetBase: "", target: true, settings: DEFAULT_SETTINGS };
-function init(id: string, o: { stale?: Record<string, Stale>; views?: Record<string, SegView>; host?: Partial<HostInfo> } = {}): HostToBoard {
+function init(
+  id: string,
+  o: { stale?: Record<string, Stale>; views?: Record<string, SegView>; host?: Partial<HostInfo> } = {},
+): HostToBoard {
   const board = emptyBoard(id, id);
-  return { type: "init", board, boards: [{ id, name: id, cards: 0 }], views: o.views ?? {}, stale: o.stale ?? {}, host: { ...HOST, ...o.host } };
+  return {
+    type: "init",
+    board,
+    boards: [{ id, name: id, cards: 0 }],
+    views: o.views ?? {},
+    stale: o.stale ?? {},
+    host: { ...HOST, ...o.host },
+  };
 }
 /** 还没 resolve 的 Promise 给 "pending"（先让已经排好的微任务跑完） */
-const settled = <T>(p: Promise<T>) => Promise.race([p, new Promise<"pending">((r) => setTimeout(() => r("pending"), 0))]);
+const settled = <T>(p: Promise<T>) =>
+  Promise.race([p, new Promise<"pending">((r) => setTimeout(() => r("pending"), 0))]);
 
 // A board switch clears the selection, and the board reports the selection to the host a moment after it changes (a timer): the
 // last report goes out before happy-dom is torn down, or it fires on a window that is gone (an uncaught error in the run)
 afterAll(async () => {
   const before = window.__cbSent?.length ?? 0;
   reportSelection();
-  await vi.waitFor(() => expect((window.__cbSent ?? []).slice(before).some((m) => (m as { type: string }).type === "selection")).toBe(true), { timeout: 5000, interval: 5 });
+  await vi.waitFor(
+    () =>
+      expect((window.__cbSent ?? []).slice(before).some((m) => (m as { type: string }).type === "selection")).toBe(
+        true,
+      ),
+    { timeout: 5000, interval: 5 },
+  );
 });
 
 describe("board switch", () => {
@@ -56,7 +80,12 @@ describe("board switch", () => {
   });
 
   it("replaces the host info and version states instead of merging them", () => {
-    onHost(init("a", { stale: { s1: { state: "ok" } }, host: { readonly: "Repository not found", clip: { board: "a", n: 1 } } }));
+    onHost(
+      init("a", {
+        stale: { s1: { state: "ok" } },
+        host: { readonly: "Repository not found", clip: { board: "a", n: 1 } },
+      }),
+    );
     expect(state.stale.s1).toBeDefined();
     onHost(init("b", { stale: { s2: { state: "ok" } } }));
     expect(Object.keys(state.stale)).toEqual(["s2"]);
@@ -74,7 +103,16 @@ describe("board switch", () => {
 
   it("closes overlays from the top down, keeping the ones that stay", () => {
     const closed: string[] = [];
-    const layer = (name: string, stay?: boolean) => { const off = pushLayer({ close: () => { closed.push(name); off(); }, stay }); return off; };
+    const layer = (name: string, stay?: boolean) => {
+      const off = pushLayer({
+        close: () => {
+          closed.push(name);
+          off();
+        },
+        stay,
+      });
+      return off;
+    };
     layer("settings", true);
     layer("menu");
     layer("dialog");

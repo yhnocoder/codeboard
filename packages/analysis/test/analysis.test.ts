@@ -18,11 +18,17 @@ function pyFiles(dir: string, out: string[] = []): string[] {
   }
   return out;
 }
-const PY = pyFiles(repo).sort().map((p) => ({ name: p.slice(repo.length + 1), lang: "python", text: readFileSync(p, "utf8") }));
+const PY = pyFiles(repo)
+  .sort()
+  .map((p) => ({ name: p.slice(repo.length + 1), lang: "python", text: readFileSync(p, "utf8") }));
 
 /** extra = symbols the node walk missed (nested struct in a struct body, definitions inside an ERROR node) */
 const CPP: { name: string; lang: string; text: string; extra?: string[] }[] = [
-  { name: "kernel.cu", lang: "cuda-cpp", extra: ["flash::detail::Params::Inner", "flash::detail::Params::Inner::g"], text: `// 简单的 kernel
+  {
+    name: "kernel.cu",
+    lang: "cuda-cpp",
+    extra: ["flash::detail::Params::Inner", "flash::detail::Params::Inner::g"],
+    text: `// 简单的 kernel
 #include <cuda_runtime.h>
 #include "utils.h"
 
@@ -81,8 +87,12 @@ class Engine : public Base {
 };
 Engine::~Engine() { cleanup(); }
 int Engine::helper(int v) { return v ? sizeof(v) : printf("x"); }
-` },
-  { name: "ops.cpp", lang: "cpp", text: `#include <torch/extension.h>
+`,
+  },
+  {
+    name: "ops.cpp",
+    lang: "cpp",
+    text: `#include <torch/extension.h>
 
 torch::Tensor rms_norm(torch::Tensor x, torch::Tensor w, double eps) {
   TORCH_CHECK(x.is_cuda(), "x must be CUDA");
@@ -95,8 +105,14 @@ torch::Tensor rms_norm(torch::Tensor x, torch::Tensor w, double eps) {
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.def("rms_norm", &rms_norm, "RMSNorm");  // 绑定
 }
-` },
-  { name: "broken.h", lang: "c", extra: ["f", "h"], text: "struct A { int x; \nvoid f( { g(); }\n#define M(x) ((x) + 1)\nint h(void) { return M(k()); }\n" },
+`,
+  },
+  {
+    name: "broken.h",
+    lang: "c",
+    extra: ["f", "h"],
+    text: "struct A { int x; \nvoid f( { g(); }\n#define M(x) ((x) + 1)\nint h(void) { return M(k()); }\n",
+  },
 ];
 
 beforeAll(() => initAnalysis());
@@ -113,73 +129,152 @@ describe("query-based analysis matches the v0.1.5 node walk", () => {
   });
   it("python edge cases", () => {
     const src = [
-      '"""Module doc."""', "import os, torch.nn as nn", "from .a import b as c, d", "try:", "    import numpy as np", "except ImportError:", "    np = None",
-      "@decorator(x=f(1))", "class A(Base):", "    '''A doc.'''", "    x = [g(i) for i in range(3)]", "    if True:", "        def m(self, a, *args, k=1, **kw):", "            return [h(j) for j in a]",
-      "    @staticmethod", "    def s(*, q): return lambda: inner(q)",
-      "def outer():", "    import sys", "    def inner2(): pass", "    for x in it(y):", "        r = call('run', x)", "        a, b = self.do(x).tolist()", "    else:", "        z()",
-      "    while w(): v()", "    return (await k() for _ in z)",
-      "for i in q():", "    lambda: p()", "    f = lambda: [t() for _ in u]", "    def d(): e()",
-      "if __name__ == '__main__':", "    main()  # run", "x = '中文'  # 注释", "# 整行注释", "s = getattr(o, 'name')",
+      '"""Module doc."""',
+      "import os, torch.nn as nn",
+      "from .a import b as c, d",
+      "try:",
+      "    import numpy as np",
+      "except ImportError:",
+      "    np = None",
+      "@decorator(x=f(1))",
+      "class A(Base):",
+      "    '''A doc.'''",
+      "    x = [g(i) for i in range(3)]",
+      "    if True:",
+      "        def m(self, a, *args, k=1, **kw):",
+      "            return [h(j) for j in a]",
+      "    @staticmethod",
+      "    def s(*, q): return lambda: inner(q)",
+      "def outer():",
+      "    import sys",
+      "    def inner2(): pass",
+      "    for x in it(y):",
+      "        r = call('run', x)",
+      "        a, b = self.do(x).tolist()",
+      "    else:",
+      "        z()",
+      "    while w(): v()",
+      "    return (await k() for _ in z)",
+      "for i in q():",
+      "    lambda: p()",
+      "    f = lambda: [t() for _ in u]",
+      "    def d(): e()",
+      "if __name__ == '__main__':",
+      "    main()  # run",
+      "x = '中文'  # 注释",
+      "# 整行注释",
+      "s = getattr(o, 'name')",
     ].join("\n");
     same(analyze("python", src), analyzeOld("python", src));
     const bad = "def f(:\n    g()\nclass B\n    def h(self): i()\n";
     same(analyze("python", bad), analyzeOld("python", bad));
   });
-  for (const f of CPP) it(`c++ / cuda: ${f.name}`, () => {
-    const a = analyze(f.lang, f.text);
-    expect(a.calls.length).toBeGreaterThan(1);
-    expect(a.symbols.filter((s) => f.extra?.includes(s.qual)).map((s) => s.qual)).toEqual(f.extra ?? []);
-    same({ ...a, symbols: a.symbols.filter((s) => !f.extra?.includes(s.qual)) }, analyzeOld(f.lang, f.text));
-  });
-  it("unknown languages only mark blank lines", () => same(analyze("go", "func main() {}\n\n"), analyzeOld("go", "func main() {}\n\n")));
+  for (const f of CPP)
+    it(`c++ / cuda: ${f.name}`, () => {
+      const a = analyze(f.lang, f.text);
+      expect(a.calls.length).toBeGreaterThan(1);
+      expect(a.symbols.filter((s) => f.extra?.includes(s.qual)).map((s) => s.qual)).toEqual(f.extra ?? []);
+      same({ ...a, symbols: a.symbols.filter((s) => !f.extra?.includes(s.qual)) }, analyzeOld(f.lang, f.text));
+    });
+  it("unknown languages only mark blank lines", () =>
+    same(analyze("go", "func main() {}\n\n"), analyzeOld("go", "func main() {}\n\n")));
 });
 
 describe("v0.2 call kinds", () => {
   it("Triton kernel[grid](…) is a call to kernel, marked as a grid launch", () => {
-    const a = analyze("python", "def f(x):\n    grid = (4,)\n    my_kernel[grid](x, BLOCK=64)\n    mod.k2[(1, 2)](x)\n");
+    const a = analyze(
+      "python",
+      "def f(x):\n    grid = (4,)\n    my_kernel[grid](x, BLOCK=64)\n    mod.k2[(1, 2)](x)\n",
+    );
     const k = a.calls.find((c) => c.name === "my_kernel")!;
     expect(k).toMatchObject({ line: 3, col: 4, launch: "grid" });
     expect(k.args.map((x) => x.kw ?? x.text)).toEqual(["x", "BLOCK"]);
     expect(a.calls.find((c) => c.name === "k2")).toMatchObject({ recv: "mod", launch: "grid" });
   });
   it("CUDA kernel<<<…>>>(…) is a call marked as a launch", () => {
-    const a = analyze("cuda-cpp", "void go(int* p) {\n  dispatch<8, 768><<<grid, 256, 0, s>>>(p);\n  plain<<<1, 1>>>();\n}\n");
-    expect(a.calls.filter((c) => c.launch === "<<<").map((c) => [c.name, c.line, c.col])).toEqual([["dispatch", 2, 2], ["plain", 3, 2]]);
+    const a = analyze(
+      "cuda-cpp",
+      "void go(int* p) {\n  dispatch<8, 768><<<grid, 256, 0, s>>>(p);\n  plain<<<1, 1>>>();\n}\n",
+    );
+    expect(a.calls.filter((c) => c.launch === "<<<").map((c) => [c.name, c.line, c.col])).toEqual([
+      ["dispatch", 2, 2],
+      ["plain", 3, 2],
+    ]);
   });
-  const launches = (src: string) => analyze("cuda-cpp", src).calls.filter((c) => c.launch === "<<<")
-    .map((c) => ({ name: c.name, recv: c.recv, line: c.line, col: c.col, loop: c.loop, args: c.args.map((x) => x.text) }));
+  const launches = (src: string) =>
+    analyze("cuda-cpp", src)
+      .calls.filter((c) => c.launch === "<<<")
+      .map((c) => ({
+        name: c.name,
+        recv: c.recv,
+        line: c.line,
+        col: c.col,
+        loop: c.loop,
+        args: c.args.map((x) => x.text),
+      }));
   it("CUDA launch with the kernel name and <<< on different lines, qualified and templated", () => {
-    const src = "void go(int* p) {\n  sgl::act::act_and_mul_kernel<c_type, silu>\n      <<<grid, block, 0,\n         stream>>>(p, n);\n}\n";
-    expect(launches(src)).toEqual([{ name: "act_and_mul_kernel", recv: "sgl::act", line: 2, col: 12, loop: false, args: ["p", "n"] }]);
+    const src =
+      "void go(int* p) {\n  sgl::act::act_and_mul_kernel<c_type, silu>\n      <<<grid, block, 0,\n         stream>>>(p, n);\n}\n";
+    expect(launches(src)).toEqual([
+      { name: "act_and_mul_kernel", recv: "sgl::act", line: 2, col: 12, loop: false, args: ["p", "n"] },
+    ]);
   });
   it("CUDA launch inside a loop is marked as in a loop", () => {
-    expect(launches("void go(int* p) {\n  for (int i = 0; i < n; ++i)\n    step<<<1, 32>>>(p, i);\n}\n")).toEqual([{ name: "step", recv: undefined, line: 3, col: 4, loop: true, args: ["p", "i"] }]);
+    expect(launches("void go(int* p) {\n  for (int i = 0; i < n; ++i)\n    step<<<1, 32>>>(p, i);\n}\n")).toEqual([
+      { name: "step", recv: undefined, line: 3, col: 4, loop: true, args: ["p", "i"] },
+    ]);
   });
   it("<<< in a comment is not a launch", () => {
     expect(launches("// runs in a <<<1, 32>>> kernel\nvoid go() {\n  /* with <<<g, b>>> */ f();\n}\n")).toEqual([]);
   });
   it("C++ call of a qualified or member template function: name without template arguments, receiver from the scopes", () => {
-    const a = analyze("cpp", "void go() {\n  auto c = std::make_shared<comm::Context>(n);\n  ns::f<T>(x);\n  a::B<x::Y>::g(1);\n  fa->allreduce<float>(s);\n  t.template pivot<false>(k);\n}\n");
-    expect(a.calls.map((c) => [c.name, c.recv, c.col])).toEqual([["make_shared", "std", 16], ["f", "ns", 6], ["g", "a::B<x::Y>", 14], ["allreduce", "fa", 6], ["pivot", "t", 13]]);
+    const a = analyze(
+      "cpp",
+      "void go() {\n  auto c = std::make_shared<comm::Context>(n);\n  ns::f<T>(x);\n  a::B<x::Y>::g(1);\n  fa->allreduce<float>(s);\n  t.template pivot<false>(k);\n}\n",
+    );
+    expect(a.calls.map((c) => [c.name, c.recv, c.col])).toEqual([
+      ["make_shared", "std", 16],
+      ["f", "ns", 6],
+      ["g", "a::B<x::Y>", 14],
+      ["allreduce", "fa", 6],
+      ["pivot", "t", 13],
+    ]);
   });
   it("CUDA kernel with #if __launch_bounds__ #endif between the specifiers and the name is a symbol", () => {
-    const src = "template <typename scalar_t, bool need_check>\nstatic __global__ void\n#if defined(USE_ROCM)\n__launch_bounds__(WARP_SIZE * NWARPS, 2)\n#endif\n    mul_mat_q4_0(const void* __restrict__ vx, scalar_t* __restrict__ dst) {\n  go(vx);\n}\n";
-    expect(analyze("cuda-cpp", src).symbols.map((s) => [s.qual, s.start, s.defLine, s.end])).toEqual([["mul_mat_q4_0", 1, 2, 8]]);
+    const src =
+      "template <typename scalar_t, bool need_check>\nstatic __global__ void\n#if defined(USE_ROCM)\n__launch_bounds__(WARP_SIZE * NWARPS, 2)\n#endif\n    mul_mat_q4_0(const void* __restrict__ vx, scalar_t* __restrict__ dst) {\n  go(vx);\n}\n";
+    expect(analyze("cuda-cpp", src).symbols.map((s) => [s.qual, s.start, s.defLine, s.end])).toEqual([
+      ["mul_mat_q4_0", 1, 2, 8],
+    ]);
   });
   it("CUDA kernel with __launch_bounds__ and __cluster_dims__ is a symbol", () => {
-    const src = "namespace k3 {\ntemplate <uint32_t kWorldSize, uint32_t kClusterSize>\n__global__ __launch_bounds__(kRows / kClusterSize) __cluster_dims__(kClusterSize, 1, 1)  //\n    void all_reduce_kernel(const __grid_constant__ Params params) {\n  go(params);\n}\n}\n";
-    expect(analyze("cuda-cpp", src).symbols.map((s) => [s.qual, s.name, s.start, s.end])).toEqual([["k3::all_reduce_kernel", "all_reduce_kernel", 2, 6]]);
+    const src =
+      "namespace k3 {\ntemplate <uint32_t kWorldSize, uint32_t kClusterSize>\n__global__ __launch_bounds__(kRows / kClusterSize) __cluster_dims__(kClusterSize, 1, 1)  //\n    void all_reduce_kernel(const __grid_constant__ Params params) {\n  go(params);\n}\n}\n";
+    expect(analyze("cuda-cpp", src).symbols.map((s) => [s.qual, s.name, s.start, s.end])).toEqual([
+      ["k3::all_reduce_kernel", "all_reduce_kernel", 2, 6],
+    ]);
   });
   it("a function declared with a modifier macro like SGL_DEVICE gets a clean name", () => {
     const src = "SGL_DEVICE float compute_rstd(const float* x, int n) {\n  return rsqrtf(sum(x, n));\n}\n";
-    expect(analyze("cuda-cpp", src).symbols.map((s) => [s.qual, s.name, s.start, s.end])).toEqual([["compute_rstd", "compute_rstd", 1, 3]]);
+    expect(analyze("cuda-cpp", src).symbols.map((s) => [s.qual, s.name, s.start, s.end])).toEqual([
+      ["compute_rstd", "compute_rstd", 1, 3],
+    ]);
   });
   it("Rust: functions, impl methods, attributes in the start line, calls", () => {
-    const src = "use pyo3::prelude::*;\n\n#[pyfunction]\n#[pyo3(name = \"tok\")]\nfn tokenize(s: &str) -> Vec<u32> {\n    let v = encode(s);\n    v\n}\n\nstruct Tree { n: u32 }\n\nimpl Tree {\n    pub fn insert(&mut self, k: u32) {\n        self.grow(k);\n        helpers::fix(k);\n    }\n}\n";
+    const src =
+      'use pyo3::prelude::*;\n\n#[pyfunction]\n#[pyo3(name = "tok")]\nfn tokenize(s: &str) -> Vec<u32> {\n    let v = encode(s);\n    v\n}\n\nstruct Tree { n: u32 }\n\nimpl Tree {\n    pub fn insert(&mut self, k: u32) {\n        self.grow(k);\n        helpers::fix(k);\n    }\n}\n';
     const a = analyze("rust", src);
-    expect(a.symbols.map((s) => [s.qual, s.kind, s.start, s.defLine, s.end])).toEqual([["tokenize", "def", 3, 5, 8], ["Tree", "class", 10, 10, 10], ["Tree::insert", "def", 13, 13, 16]]);
+    expect(a.symbols.map((s) => [s.qual, s.kind, s.start, s.defLine, s.end])).toEqual([
+      ["tokenize", "def", 3, 5, 8],
+      ["Tree", "class", 10, 10, 10],
+      ["Tree::insert", "def", 13, 13, 16],
+    ]);
     expect(a.symbols[2].params.map((p) => p.kind)).toEqual(["self", "pos"]);
-    expect(a.calls.map((c) => [c.name, c.recv, c.line])).toEqual([["encode", undefined, 6], ["grow", "self", 14], ["fix", "helpers", 15]]);
+    expect(a.calls.map((c) => [c.name, c.recv, c.line])).toEqual([
+      ["encode", undefined, 6],
+      ["grow", "self", 14],
+      ["fix", "helpers", 15],
+    ]);
     expect(a.calls[0].assigned).toEqual(["v"]);
   });
 });
@@ -191,10 +286,12 @@ describe("segment analysis", () => {
     out.push([1, n], [n + 1, n + 5]);
     return out;
   };
-  for (const f of [...PY, ...CPP]) it(`${f.name}: lines = clipped whole-file result`, () => {
-    const full = analyze(f.lang, f.text);
-    for (const [s, e] of ranges(full, full.flags.length)) same(analyze(f.lang, f.text, { lines: { start: s, end: e } }), clipAnalysis(full, s, e));
-  });
+  for (const f of [...PY, ...CPP])
+    it(`${f.name}: lines = clipped whole-file result`, () => {
+      const full = analyze(f.lang, f.text);
+      for (const [s, e] of ranges(full, full.flags.length))
+        same(analyze(f.lang, f.text, { lines: { start: s, end: e } }), clipAnalysis(full, s, e));
+    });
 });
 
 describe("incremental parsing", () => {
@@ -221,7 +318,20 @@ describe("incremental parsing", () => {
       same(analyze("python", text, { key, edit: diffEdit(prev, text) }), analyze("python", text));
     }
     // 给错的编辑：退回按前后缀算
-    same(analyze("python", f.text, { key, edit: { startIndex: 0, oldEndIndex: 1, newEndIndex: 1, startPosition: { row: 0, column: 0 }, oldEndPosition: { row: 0, column: 1 }, newEndPosition: { row: 0, column: 1 } } }), analyze("python", f.text));
+    same(
+      analyze("python", f.text, {
+        key,
+        edit: {
+          startIndex: 0,
+          oldEndIndex: 1,
+          newEndIndex: 1,
+          startPosition: { row: 0, column: 0 },
+          oldEndPosition: { row: 0, column: 1 },
+          newEndPosition: { row: 0, column: 1 },
+        },
+      }),
+      analyze("python", f.text),
+    );
     // 换语言：重新解析
     same(analyze("cuda-cpp", CPP[0].text, { key }), analyze("cuda-cpp", CPP[0].text));
     forgetTree(key);
@@ -235,7 +345,14 @@ describe("incremental parsing", () => {
     setTreeCacheSize(16);
   });
   it("diffEdit covers the changed span", () => {
-    expect(diffEdit("ab\ncd\nef", "ab\ncXd\nef")).toEqual({ startIndex: 4, oldEndIndex: 4, newEndIndex: 5, startPosition: { row: 1, column: 1 }, oldEndPosition: { row: 1, column: 1 }, newEndPosition: { row: 1, column: 2 } });
+    expect(diffEdit("ab\ncd\nef", "ab\ncXd\nef")).toEqual({
+      startIndex: 4,
+      oldEndIndex: 4,
+      newEndIndex: 5,
+      startPosition: { row: 1, column: 1 },
+      oldEndPosition: { row: 1, column: 1 },
+      newEndPosition: { row: 1, column: 2 },
+    });
     expect(diffEdit("aaa", "aaa")).toMatchObject({ startIndex: 3, oldEndIndex: 3, newEndIndex: 3 });
     expect(diffEdit("x😀y", "x😃y")).toMatchObject({ startIndex: 1, oldEndIndex: 3, newEndIndex: 3 });
   });

@@ -10,16 +10,23 @@ const PKG = path.resolve(__dirname, "..");
 const pkg = JSON.parse(fs.readFileSync(path.join(PKG, "package.json"), "utf8"));
 const DIST = path.join(PKG, "dist");
 /** Every file under dir, relative to PKG */
-const walk = (dir: string): string[] => fs.readdirSync(dir, { withFileTypes: true })
-  .flatMap((e) => (e.isDirectory() ? walk(path.join(dir, e.name)) : [path.relative(PKG, path.join(dir, e.name))]));
+const walk = (dir: string): string[] =>
+  fs
+    .readdirSync(dir, { withFileTypes: true })
+    .flatMap((e) => (e.isDirectory() ? walk(path.join(dir, e.name)) : [path.relative(PKG, path.join(dir, e.name))]));
 /** Every target of the exports map ("./x" strings, conditions included) */
 const targets = (e: unknown): string[] => (typeof e === "string" ? [e] : Object.values(e as object).flatMap(targets));
 
 let packed: string[] = [];
 beforeAll(() => {
-  if (!fs.existsSync(path.join(DIST, "index.js"))) throw new Error("packages/markdown/dist is missing: run `npm run build -w @yhnocoder/markdown` first");
+  if (!fs.existsSync(path.join(DIST, "index.js")))
+    throw new Error("packages/markdown/dist is missing: run `npm run build -w @yhnocoder/markdown` first");
   // --ignore-scripts: no prepack build here (the build is already there, and a second one would race whoever else reads dist)
-  const out = execFileSync("npm", ["pack", "--dry-run", "--json", "--ignore-scripts"], { cwd: PKG, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+  const out = execFileSync("npm", ["pack", "--dry-run", "--json", "--ignore-scripts"], {
+    cwd: PKG,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "ignore"],
+  });
   packed = JSON.parse(out)[0].files.map((f: { path: string }) => f.path);
 }, 30e3);
 
@@ -49,16 +56,33 @@ describe("the published @yhnocoder/markdown package", () => {
   });
 
   it("packs dist (JS, declarations, stylesheets) and the README, never src or tests", () => {
-    expect(packed).toEqual(expect.arrayContaining(["package.json", "README.md", "dist/style.css", "dist/katex.css", "dist/index.js", "dist/index.d.ts", "dist/editor/index.js", "dist/editor/index.d.ts"]));
+    expect(packed).toEqual(
+      expect.arrayContaining([
+        "package.json",
+        "README.md",
+        "dist/style.css",
+        "dist/katex.css",
+        "dist/index.js",
+        "dist/index.d.ts",
+        "dist/editor/index.js",
+        "dist/editor/index.d.ts",
+      ]),
+    );
     expect(packed.filter((f) => !/^(dist\/|package\.json$|README\.md$|LICENSE$)/.test(f))).toEqual([]);
-    expect(packed.filter((f) => /(^|\/)(src|test)\//.test(f) || /\.(tsx?|spec\.\w+)$/.test(f) && !f.endsWith(".d.ts"))).toEqual([]);
+    expect(
+      packed.filter((f) => /(^|\/)(src|test)\//.test(f) || (/\.(tsx?|spec\.\w+)$/.test(f) && !f.endsWith(".d.ts"))),
+    ).toEqual([]);
     // everything the build made is packed
     expect([...packed].filter((f) => f.startsWith("dist/")).sort()).toEqual(walk(DIST).sort());
   });
 
   it("the built code imports only its own files and declared packages", () => {
     const declared = new Set([...Object.keys(pkg.dependencies ?? {}), ...Object.keys(pkg.peerDependencies ?? {})]);
-    const pkgName = (s: string) => s.split("/").slice(0, s.startsWith("@") ? 2 : 1).join("/");
+    const pkgName = (s: string) =>
+      s
+        .split("/")
+        .slice(0, s.startsWith("@") ? 2 : 1)
+        .join("/");
     const bad: string[] = [];
     for (const f of walk(DIST).filter((f) => /\.(js|css)$/.test(f))) {
       const text = fs.readFileSync(path.join(PKG, f), "utf8");
@@ -66,7 +90,12 @@ describe("the published @yhnocoder/markdown package", () => {
         ? [...text.matchAll(/@import\s+(?:url\(\s*)?["']?([^"')\s;]+)/g)].map((m) => m[1])
         : [...text.matchAll(/(?:\bfrom\s*|\bimport\s*\(\s*|^\s*import\s+)(["'])([^"']+)\1/gm)].map((m) => m[2]);
       for (const s of specs) {
-        if (s.startsWith(".") ? !fs.existsSync(path.resolve(path.dirname(path.join(PKG, f)), s)) : !declared.has(pkgName(s))) bad.push(`${f}: ${s}`);
+        if (
+          s.startsWith(".")
+            ? !fs.existsSync(path.resolve(path.dirname(path.join(PKG, f)), s))
+            : !declared.has(pkgName(s))
+        )
+          bad.push(`${f}: ${s}`);
       }
     }
     expect(bad).toEqual([]);

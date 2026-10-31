@@ -19,7 +19,14 @@ function on(s: Segment, word: string, text: string, color: HandColor, below = fa
 
 function single(a: Args): Scene {
   const { board, put } = scene("Annotations");
-  const c = fn("a1", "allocate", { seg: (s) => { s.annots = [on(s, "self.compute_hash", a.text, a.color, a.below), on(s, "ref_count += 1", "命中：只加引用", "green", true)]; } });
+  const c = fn("a1", "allocate", {
+    seg: (s) => {
+      s.annots = [
+        on(s, "self.compute_hash", a.text, a.color, a.below),
+        on(s, "ref_count += 1", "命中：只加引用", "green", true),
+      ];
+    },
+  });
   put(c, { x: 40, y: 60, w: a.w });
   const s = c.segments[0];
   return {
@@ -45,15 +52,40 @@ function single(a: Args): Scene {
 function overview(a: Args): Scene {
   const { board, put, caption } = scene("Annotations");
   HAND_COLORS.forEach((k, i) => {
-    const x = 40 + (i % 2) * (a.w + 60), y = 60 + Math.floor(i / 2) * 480;
+    const x = 40 + (i % 2) * (a.w + 60),
+      y = 60 + Math.floor(i / 2) * 480;
     caption(`${k[0].toUpperCase()}${k.slice(1)}: above and below`, x, y, a.w);
-    put(fn(`a-${k}`, "allocate", { seg: (s) => { s.annots = [on(s, "self.compute_hash", "前缀 hash，一块接一块", k), on(s, "self.free_block_ids.remove", "从空闲表里拿走", k, true)]; } }), { x, y, w: a.w, h: 360 });
+    put(
+      fn(`a-${k}`, "allocate", {
+        seg: (s) => {
+          s.annots = [
+            on(s, "self.compute_hash", "前缀 hash，一块接一块", k),
+            on(s, "self.free_block_ids.remove", "从空闲表里拿走", k, true),
+          ];
+        },
+      }),
+      { x, y, w: a.w, h: 360 },
+    );
   });
   const x = 40 + 2 * (a.w + 60);
   caption("Three on one line · one being edited", x, 60, a.w);
-  const c = fn("a-many", "schedule", { seg: (s) => { s.annots = [on(s, "self.waiting", "还没跑的请求", "blue"), on(s, "len(scheduled_seqs)", "这一步已排的", "orange"), on(s, "self.max_num_seqs", "上限 512", "purple", true)]; } });
+  const c = fn("a-many", "schedule", {
+    seg: (s) => {
+      s.annots = [
+        on(s, "self.waiting", "还没跑的请求", "blue"),
+        on(s, "len(scheduled_seqs)", "这一步已排的", "orange"),
+        on(s, "self.max_num_seqs", "上限 512", "purple", true),
+      ];
+    },
+  });
   put(c, { x, y: 60, w: a.w + 80, h: 360 });
-  return { board, after: async () => { await el(`${card("a-many")} .alab`); setEditing({ kind: "annot", id: annotKey("a-many", c.segments[0].id, 1) }); } };
+  return {
+    board,
+    after: async () => {
+      await el(`${card("a-many")} .alab`);
+      setEditing({ kind: "annot", id: annotKey("a-many", c.segments[0].id, 1) });
+    },
+  };
 }
 
 const meta = {
@@ -64,7 +96,11 @@ const meta = {
     text: { control: "text", description: "The annotation on self.compute_hash" },
     color: { control: "inline-radio", options: [...HAND_COLORS] },
     below: { control: "boolean", description: "Below the line instead of above" },
-    mode: { control: "inline-radio", options: ["none", "editing", "draft", "menu"], description: "Editing it, a new draft on another line, or its right-click menu" },
+    mode: {
+      control: "inline-radio",
+      options: ["none", "editing", "draft", "menu"],
+      description: "Editing it, a new draft on another line, or its right-click menu",
+    },
     w: { control: { type: "range", min: 300, max: 900, step: 10 } },
   },
 } satisfies Meta<Args>;
@@ -74,7 +110,12 @@ type Story = StoryObj<typeof meta>;
 export const Overview: Story = {
   render: (a, ctx) => <Stage scene={() => overview(a)} globals={ctx.globals as Globals} />,
   args: { w: 520 },
-  argTypes: { text: { table: { disable: true } }, color: { table: { disable: true } }, below: { table: { disable: true } }, mode: { table: { disable: true } } },
+  argTypes: {
+    text: { table: { disable: true } },
+    color: { table: { disable: true } },
+    below: { table: { disable: true } },
+    mode: { table: { disable: true } },
+  },
 };
 export const Themes: Story = themes("above");
 export const Above: Story = {};

@@ -32,9 +32,14 @@ async function drawn(dataUrl: string): Promise<HTMLCanvasElement> {
 
 /** 剪贴板要的 PNG（浏览器的剪贴板只收 image/png）：PNG 原样，别的格式画一遍 */
 export async function pngOf(dataUrl: string): Promise<Blob> {
-  if (/^data:image\/png[;,]/.test(dataUrl)) { const b = blobOf(dataUrl); if (b) return new Blob([b], { type: "image/png" }); }
+  if (/^data:image\/png[;,]/.test(dataUrl)) {
+    const b = blobOf(dataUrl);
+    if (b) return new Blob([b], { type: "image/png" });
+  }
   const cv = await drawn(dataUrl);
-  return new Promise((ok, no) => cv.toBlob((b) => (b ? ok(b) : no(new Error("Could not encode the image"))), "image/png"));
+  return new Promise((ok, no) =>
+    cv.toBlob((b) => (b ? ok(b) : no(new Error("Could not encode the image"))), "image/png"),
+  );
 }
 
 /**

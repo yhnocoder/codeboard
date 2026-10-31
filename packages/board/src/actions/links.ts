@@ -1,4 +1,15 @@
-import { uid, isCode, cardTitle, callName, canMark, type End, type Link, type CallSpan, type LinkStyle, type LinkSide } from "@codeboard/core";
+import {
+  uid,
+  isCode,
+  cardTitle,
+  callName,
+  canMark,
+  type End,
+  type Link,
+  type CallSpan,
+  type LinkStyle,
+  type LinkSide,
+} from "@codeboard/core";
 import { varKey, type Var } from "@codeboard/analysis/basics";
 import { state, cardById, hostOf } from "../state/store";
 import { mutate } from "../state/changes";
@@ -25,7 +36,8 @@ export function callOn(from: EndRef, to: EndRef): CallSpan | undefined {
  * col 0 = 不指定是行里哪一处。两端都得是代码卡（可以不同语言）
  */
 export function manualCall(from: EndRef, to: EndRef): CallSpan | undefined {
-  const f = cardById(from.card)?.card, t = cardById(to.card)?.card;
+  const f = cardById(from.card)?.card,
+    t = cardById(to.card)?.card;
   if (!isCode(f) || !isCode(t) || hostOf(from.card) === hostOf(to.card)) return;
   const q = t.segments.find((s) => s.symbol)?.symbol?.qual;
   // 没有函数的卡（跨语言片段、自由代码）用卡名
@@ -46,7 +58,9 @@ export function addLink(from: EndRef, to: EndRef, side?: LinkSide) {
   const id = uid("l");
   // 块端的 { i, h } 是悬停、落点那边的对象：放进白板的是自己的一份（以后 rebaseBlocks 就地换它）
   const own = (e: End): End => (e.block ? { ...e, block: { ...e.block } } : { ...e });
-  mutate((b) => { b.links.push(sides ? { id, from: own(from), to: own(to), sides } : { id, from: own(from), to: own(to) }); });
+  mutate((b) => {
+    b.links.push(sides ? { id, from: own(from), to: own(to), sides } : { id, from: own(from), to: own(to) });
+  });
   return id;
 }
 /** 普通箭头能认出是调用（出发行调用了目标卡的函数）：加上 Call 标记（右键 Call Mark，或悬停时的 Call 按钮），再去问参数候选 */
@@ -66,16 +80,25 @@ export function startConnect(id: string) {
   setConnectFrom({ card: id });
   toast("Click a card to connect · Esc to cancel");
 }
-export const setLinkEditing = (id: string) => { select({ links: [id] }); setEditing({ kind: "label", id }); };
+export const setLinkEditing = (id: string) => {
+  select({ links: [id] });
+  setEditing({ kind: "label", id });
+};
 /** 悬停变量 chip：两张卡里出现这个名字的行高亮 */
 export function hiVar(L: Link, v: Var, on: boolean) {
-  setHoverVar(on ? { link: L.id, names: [v.a, v.b].filter(Boolean) as string[], from: L.from.card, to: L.to.card } : null);
+  setHoverVar(
+    on ? { link: L.id, names: [v.a, v.b].filter(Boolean) as string[], from: L.from.card, to: L.to.card } : null,
+  );
 }
 export function setLinkLabel(id: string, v: string) {
-  mutate((b) => { const l = b.links.find((k) => k.id === id); if (l) l.label = v.trim() || undefined; });
+  mutate((b) => {
+    const l = b.links.find((k) => k.id === id);
+    if (l) l.label = v.trim() || undefined;
+  });
 }
 export function openVars(id: string) {
-  const el = document.querySelector(`.vchips[data-link="${id}"]`) ?? document.querySelector(`.vplus[data-link="${id}"]`);
+  const el =
+    document.querySelector(`.vchips[data-link="${id}"]`) ?? document.querySelector(`.vplus[data-link="${id}"]`);
   openPop({ kind: "vars", link: id }, el ? { el, prefer: "below" } : lastPointer());
 }
 export function toggleVar(id: string, v: Var) {
@@ -86,7 +109,8 @@ export function toggleVar(id: string, v: Var) {
     const k = varKey(v);
     const has = (c.vars ?? []).some((x) => varKey(x) === k);
     const next = has ? c.vars!.filter((x) => varKey(x) !== k) : [...(c.vars ?? []), v];
-    if (next.length) c.vars = next; else delete c.vars;
+    if (next.length) c.vars = next;
+    else delete c.vars;
   });
 }
 
@@ -99,14 +123,21 @@ function setSides(id: string, from?: LinkSide | "auto", to?: LinkSide | "auto") 
     const l = b.links.find((k) => k.id === id);
     if (!l) return;
     const s = { ...l.sides };
-    if (from === "auto") delete s.from; else if (from) s.from = from;
-    if (to === "auto") delete s.to; else if (to) s.to = to;
-    if (s.from || s.to) l.sides = s; else delete l.sides;
+    if (from === "auto") delete s.from;
+    else if (from) s.from = from;
+    if (to === "auto") delete s.to;
+    else if (to) s.to = to;
+    if (s.from || s.to) l.sides = s;
+    else delete l.sides;
   });
 }
 const resetSides = (id: string) => setSides(id, "auto", "auto");
 
-const editLink = (id: string, f: (l: Link) => void) => mutate((b) => { const l = b.links.find((k) => k.id === id); if (l) f(l); });
+const editLink = (id: string, f: (l: Link) => void) =>
+  mutate((b) => {
+    const l = b.links.find((k) => k.id === id);
+    if (l) f(l);
+  });
 
 /** 改样子：空了的 style 不留（width 2、只有终点箭头是默认，不存） */
 export function setLinkStyle(id: string, f: (s: LinkStyle) => void) {
@@ -118,20 +149,36 @@ export function setLinkStyle(id: string, f: (s: LinkStyle) => void) {
     if (s.head && s.head.end !== false) delete s.head.end;
     if (s.head && !Object.keys(s.head).length) delete s.head;
     for (const k of Object.keys(s) as (keyof LinkStyle)[]) if (s[k] === undefined) delete s[k];
-    if (Object.keys(s).length) l.style = s; else delete l.style;
+    if (Object.keys(s).length) l.style = s;
+    else delete l.style;
   });
 }
 /** 某一端从哪边进出；undefined = Auto */
-export const setLinkSide = (id: string, end: "from" | "to", side: LinkSide | undefined) => (end === "from" ? setSides(id, side ?? "auto") : setSides(id, undefined, side ?? "auto"));
+export const setLinkSide = (id: string, end: "from" | "to", side: LinkSide | undefined) =>
+  end === "from" ? setSides(id, side ?? "auto") : setSides(id, undefined, side ?? "auto");
 export const clearLinkSides = (id: string) => resetSides(id);
 /** Call 标记开关：关掉时参数和 ↺ 跟着收起，自己写的字留着；打开时认不出调用也能手动标（manualCall） */
 export function toggleCallMark(id: string) {
   const L = state.board.links.find((l) => l.id === id);
   if (!L) return;
-  if (L.call) return editLink(id, (l) => { delete l.call; });
+  if (L.call)
+    return editLink(id, (l) => {
+      delete l.call;
+    });
   makeCall(id);
 }
-export const toggleLoopMark = (id: string) => editLink(id, (l) => { if (!l.call) return; if (l.call.loop) delete l.call.loop; else l.call.loop = true; });
-export const resetLabelPos = (id: string) => editLink(id, (l) => { delete l.at; });
+export const toggleLoopMark = (id: string) =>
+  editLink(id, (l) => {
+    if (!l.call) return;
+    if (l.call.loop) delete l.call.loop;
+    else l.call.loop = true;
+  });
+export const resetLabelPos = (id: string) =>
+  editLink(id, (l) => {
+    delete l.at;
+  });
 /** Delete Label：只删自己写的字（参数、↺ 不动） */
-export const deleteLabel = (id: string) => editLink(id, (l) => { delete l.label; });
+export const deleteLabel = (id: string) =>
+  editLink(id, (l) => {
+    delete l.label;
+  });

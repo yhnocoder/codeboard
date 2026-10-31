@@ -21,7 +21,8 @@ beforeAll(async () => {
 
 describe("name index files", () => {
   it("covers every extension of an analysed language", () => {
-    for (const e of ["py", "pyi", "cu", "cuh", "cpp", "cc", "cxx", "hpp", "hh", "hxx", "h", "inl", "c", "rs"]) expect(codeExts()).toContain(e);
+    for (const e of ["py", "pyi", "cu", "cuh", "cpp", "cc", "cxx", "hpp", "hh", "hxx", "h", "inl", "c", "rs"])
+      expect(codeExts()).toContain(e);
     expect(CODE_GLOB).toMatch(/[{,]hh[,}]/);
     expect(CODE_GLOB).toMatch(/[{,]inl[,}]/);
     expect(isCode("/w/a/kernel.hh") && isCode("/w/a/impl.inl")).toBe(true);
@@ -31,7 +32,11 @@ describe("name index files", () => {
     expect(isCode(path.join(root, "env/lib/python3.12/site-packages/pkg/core.py"))).toBe(false);
     const pkg = path.join(root, "lib/site-packages/pkg");
     useWorkspace(nodeWorkspace(pkg));
-    try { expect(isCode(path.join(pkg, "core.py"))).toBe(true); } finally { useWorkspace(nodeWorkspace(root)); }
+    try {
+      expect(isCode(path.join(pkg, "core.py"))).toBe(true);
+    } finally {
+      useWorkspace(nodeWorkspace(root));
+    }
   });
   it("finds definitions in .hh and .inl files", async () => {
     expect((await lookupName("launch_hh")).map((e) => path.basename(e.abs))).toEqual(["kernel.hh"]);

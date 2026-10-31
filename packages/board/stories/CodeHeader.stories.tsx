@@ -9,13 +9,31 @@ type Kind = "function" | "class" | "snippet" | "multi" | "github" | "generated";
 type Ver = "git" | "pkg" | "hash" | "uncommitted";
 type St = "none" | "changed" | "hidden" | "lost" | "many" | "missing" | "uncommitted";
 type Args = {
-  kind: Kind; title: string; version: Ver; stale: St; boards: number; linkedIn: number; procs: string; thread: string;
-  start: boolean; locked: boolean; notes: number; review: boolean; questions: number; desc: string; selected: boolean; w: number;
+  kind: Kind;
+  title: string;
+  version: Ver;
+  stale: St;
+  boards: number;
+  linkedIn: number;
+  procs: string;
+  thread: string;
+  start: boolean;
+  locked: boolean;
+  notes: number;
+  review: boolean;
+  questions: number;
+  desc: string;
+  selected: boolean;
+  w: number;
 };
 
 const STALE: Record<Exclude<St, "none">, Stale> = {
-  changed: { state: "changed", hiddenOnly: false, head: "f64d821" }, hidden: { state: "changed", hiddenOnly: true, head: "f64d821" },
-  lost: { state: "lost" }, many: { state: "many" }, missing: { state: "missing" }, uncommitted: { state: "uncommitted" },
+  changed: { state: "changed", hiddenOnly: false, head: "f64d821" },
+  hidden: { state: "changed", hiddenOnly: true, head: "f64d821" },
+  lost: { state: "lost" },
+  many: { state: "many" },
+  missing: { state: "missing" },
+  uncommitted: { state: "uncommitted" },
 };
 const BOARDS = ["nano-vllm · generate", "Scheduler deep dive", "KV cache", "Prefix caching", "Preemption"];
 const GEN = [
@@ -32,43 +50,126 @@ function headCard(b: Board, g: Group, id: string, a: Args, at: { x: number; y: n
   let c: CodeCard;
   if (a.kind === "multi") c = multi(id, [seg0("preempt", id), seg0("deallocate", id)]);
   else if (a.kind === "snippet") c = multi(id, [slice("schedule", 44, 52, id)]);
-  else if (a.kind === "generated") c = free(id, GEN, { lang: "cuda-cpp", card: { gen: { what: "Inductor output", run: "bench.py · max_num_seqs=256 · 14:02" } } });
+  else if (a.kind === "generated")
+    c = free(id, GEN, {
+      lang: "cuda-cpp",
+      card: { gen: { what: "Inductor output", run: "bench.py · max_num_seqs=256 · 14:02" } },
+    });
   else c = fn(id, f, { card: a.kind === "class" ? { members: { shown: [] } } : {} });
   if (a.title) c.title = a.title;
   if (a.desc) c.desc = a.desc;
-  const procs = [...a.procs.split(",").map((t) => t.trim()).filter(Boolean).map((text) => ({ text })), ...(a.thread ? [{ text: a.thread, light: true }] : [])];
+  const procs = [
+    ...a.procs
+      .split(",")
+      .map((t) => t.trim())
+      .filter(Boolean)
+      .map((text) => ({ text })),
+    ...(a.thread ? [{ text: a.thread, light: true }] : []),
+  ];
   if (procs.length) c.procs = procs;
   const s = c.segments[0];
-  if (a.kind === "github") { s.src = { kind: "github", owner: "GeeeekExplorer", name: "nano-vllm", ref: "main" }; }
+  if (a.kind === "github") {
+    s.src = { kind: "github", owner: "GeeeekExplorer", name: "nano-vllm", ref: "main" };
+  }
   if (a.kind !== "generated") {
-    if (a.version === "pkg") { s.src = { kind: "external", root: "/opt/conda/lib/python3.12/site-packages" }; s.version = { kind: "pkg", name: "nanovllm", version: "0.2.0" }; }
-    if (a.version === "hash") { s.src = { kind: "external", root: "/work/vllm-exp" }; s.version = { kind: "hash", hash: "9a41c07e" }; }
+    if (a.version === "pkg") {
+      s.src = { kind: "external", root: "/opt/conda/lib/python3.12/site-packages" };
+      s.version = { kind: "pkg", name: "nanovllm", version: "0.2.0" };
+    }
+    if (a.version === "hash") {
+      s.src = { kind: "external", root: "/work/vllm-exp" };
+      s.version = { kind: "hash", hash: "9a41c07e" };
+    }
     if (a.version === "uncommitted" && s.version.kind === "git") s.version.uncommitted = true;
   }
   g.put(c, { x: at.x, y: at.y, w: a.w, ...(a.start ? { start: true } : {}), ...(a.locked ? { locked: true } : {}) });
-  for (let i = 0; i < a.notes; i++) b.sidenotes.push({ id: `${id}-n${i}`, at: { card: id }, kind: "text", md: ["抢占的请求回到等待队列最前面", "block 全部释放，下次重新 prefill", "被抢占过的请求只补没算过的 token"][i % 3], ...(a.review && i === 0 ? { review: "f64d821" } : {}) });
-  if (a.review && !a.notes) b.sidenotes.push({ id: `${id}-rv`, at: { card: id, seg: s.id, lines: [s.start + 1, s.start + 1] }, kind: "text", md: "这一行在新版本里变了", review: "f64d821" });
-  for (let i = 0; i < a.questions; i++) b.stickers.push({ id: `${id}-q${i}`, icon: { pack: "builtin", name: "question" }, at: { kind: "line", card: id, seg: s.id, line: s.start + i }, q: { md: ["为什么抢占最后进来的请求？", "block_table 清空后 prefix cache 还在吗？", "status 改回 WAITING 之后谁来重新调度？"][i % 3] } });
-  const info: SharedInfo | undefined = a.boards > 1 || a.linkedIn
-    ? {
-      boards: (a.boards > 1 ? BOARDS.slice(0, a.boards) : [BOARDS[0]]).map((name, i) => ({ id: i ? `b${i}` : "sb", name, ...(i ? { mark: "AB"[i % 2] } : {}) })),
-      ins: Array.from({ length: a.linkedIn }, (_, i) => ({ board: `b${i + 1}`, boardName: BOARDS[(i % 4) + 1], card: `o${i}`, title: ["Scheduler.schedule", "LLMEngine.step", "BlockManager.deallocate"][i % 3], line: 70 + i, call: "preempt" })),
-    }
-    : undefined;
-  return { stale: a.stale === "none" ? {} : Object.fromEntries(c.segments.map((x) => [x.id, STALE[a.stale as Exclude<St, "none">]])), info };
+  for (let i = 0; i < a.notes; i++)
+    b.sidenotes.push({
+      id: `${id}-n${i}`,
+      at: { card: id },
+      kind: "text",
+      md: ["抢占的请求回到等待队列最前面", "block 全部释放，下次重新 prefill", "被抢占过的请求只补没算过的 token"][
+        i % 3
+      ],
+      ...(a.review && i === 0 ? { review: "f64d821" } : {}),
+    });
+  if (a.review && !a.notes)
+    b.sidenotes.push({
+      id: `${id}-rv`,
+      at: { card: id, seg: s.id, lines: [s.start + 1, s.start + 1] },
+      kind: "text",
+      md: "这一行在新版本里变了",
+      review: "f64d821",
+    });
+  for (let i = 0; i < a.questions; i++)
+    b.stickers.push({
+      id: `${id}-q${i}`,
+      icon: { pack: "builtin", name: "question" },
+      at: { kind: "line", card: id, seg: s.id, line: s.start + i },
+      q: {
+        md: [
+          "为什么抢占最后进来的请求？",
+          "block_table 清空后 prefix cache 还在吗？",
+          "status 改回 WAITING 之后谁来重新调度？",
+        ][i % 3],
+      },
+    });
+  const info: SharedInfo | undefined =
+    a.boards > 1 || a.linkedIn
+      ? {
+          boards: (a.boards > 1 ? BOARDS.slice(0, a.boards) : [BOARDS[0]]).map((name, i) => ({
+            id: i ? `b${i}` : "sb",
+            name,
+            ...(i ? { mark: "AB"[i % 2] } : {}),
+          })),
+          ins: Array.from({ length: a.linkedIn }, (_, i) => ({
+            board: `b${i + 1}`,
+            boardName: BOARDS[(i % 4) + 1],
+            card: `o${i}`,
+            title: ["Scheduler.schedule", "LLMEngine.step", "BlockManager.deallocate"][i % 3],
+            line: 70 + i,
+            call: "preempt",
+          })),
+        }
+      : undefined;
+  return {
+    stale:
+      a.stale === "none"
+        ? {}
+        : Object.fromEntries(c.segments.map((x) => [x.id, STALE[a.stale as Exclude<St, "none">]])),
+    info,
+  };
 }
 
 const base: Args = {
-  kind: "function", title: "", version: "git", stale: "none", boards: 0, linkedIn: 0, procs: "", thread: "",
-  start: false, locked: false, notes: 0, review: false, questions: 0, desc: "", selected: false, w: 440,
+  kind: "function",
+  title: "",
+  version: "git",
+  stale: "none",
+  boards: 0,
+  linkedIn: 0,
+  procs: "",
+  thread: "",
+  start: false,
+  locked: false,
+  notes: 0,
+  review: false,
+  questions: 0,
+  desc: "",
+  selected: false,
+  w: 440,
 };
 
 function single(a: Args): Scene {
   const { board, at } = scene("Code header");
   const h = headCard(board, at(0, 0), "h1", a, { x: 40, y: 80 });
   return {
-    board, stale: h.stale, sel: a.selected ? ["h1"] : undefined,
-    after: () => { if (h.info) onHost({ type: "sharedInfo", cards: { h1: h.info } }); },
+    board,
+    stale: h.stale,
+    sel: a.selected ? ["h1"] : undefined,
+    after: () => {
+      if (h.info) onHost({ type: "sharedInfo", cards: { h1: h.info } });
+    },
   };
 }
 
@@ -93,18 +194,39 @@ const CELLS: [string, Partial<Args>][] = [
   ["START · locked", { start: true, locked: true }],
   ["Sidenotes on the card · review dot", { notes: 2, review: true }],
   ["Open questions (? 2)", { questions: 2 }],
-  ["Description under the header", { desc: "**preempt**：block 不够时由 `schedule` 调用，把最后进来的请求踢回等待队列。" }],
+  [
+    "Description under the header",
+    { desc: "**preempt**：block 不够时由 `schedule` 调用，把最后进来的请求踢回等待队列。" },
+  ],
   ["Generated code (Inductor output)", { kind: "generated", w: 520 }],
   ["Selected (hover-only Copy Code shows)", { selected: true }],
-  ["Everything at once, narrow (header priorities)", { title: "Scheduler.preempt", stale: "changed", version: "uncommitted", boards: 2, linkedIn: 3, procs: "rank 0", notes: 1, questions: 1, start: true, w: 300 }],
+  [
+    "Everything at once, narrow (header priorities)",
+    {
+      title: "Scheduler.preempt",
+      stale: "changed",
+      version: "uncommitted",
+      boards: 2,
+      linkedIn: 3,
+      procs: "rank 0",
+      notes: 1,
+      questions: 1,
+      start: true,
+      w: 300,
+    },
+  ],
 ];
 
 function overview(w: number): Scene {
   const { board, at } = scene("Code headers");
   const g = at(0, 0);
-  const stale: Record<string, Stale> = {}, info: Record<string, SharedInfo> = {}, sel: string[] = [];
+  const stale: Record<string, Stale> = {},
+    info: Record<string, SharedInfo> = {},
+    sel: string[] = [];
   CELLS.forEach(([cap, o], i) => {
-    const x = 40 + (i % 4) * (w + 80), y = 80 + Math.floor(i / 4) * 400, id = `h${i}`;
+    const x = 40 + (i % 4) * (w + 80),
+      y = 80 + Math.floor(i / 4) * 400,
+      id = `h${i}`;
     const a = { ...base, ...o, w: o.w ? Math.min(o.w, w + 60) : w };
     g.caption(cap, x, y, a.w);
     const h = headCard(board, g, id, a, { x, y });
@@ -120,12 +242,26 @@ const meta = {
   render: (a, ctx) => <Stage scene={() => single(a)} globals={ctx.globals as Globals} />,
   args: base,
   argTypes: {
-    kind: { control: "inline-radio", options: ["function", "class", "snippet", "multi", "github", "generated"], description: "What the card holds (the glyph left of the title)" },
+    kind: {
+      control: "inline-radio",
+      options: ["function", "class", "snippet", "multi", "github", "generated"],
+      description: "What the card holds (the glyph left of the title)",
+    },
     title: { control: "text", description: "Card title (empty: the function's name)" },
     version: { control: "inline-radio", options: ["git", "pkg", "hash", "uncommitted"], description: "Pinned version" },
-    stale: { control: "select", options: ["none", "changed", "hidden", "lost", "many", "missing", "uncommitted"], description: "What the host says about the current code" },
-    boards: { control: { type: "range", min: 0, max: 5 }, description: "Linked card: on this many boards (2+ shows the badge)" },
-    linkedIn: { control: { type: "range", min: 0, max: 5 }, description: "Arrows into this card from other boards (← N)" },
+    stale: {
+      control: "select",
+      options: ["none", "changed", "hidden", "lost", "many", "missing", "uncommitted"],
+      description: "What the host says about the current code",
+    },
+    boards: {
+      control: { type: "range", min: 0, max: 5 },
+      description: "Linked card: on this many boards (2+ shows the badge)",
+    },
+    linkedIn: {
+      control: { type: "range", min: 0, max: 5 },
+      description: "Arrows into this card from other boards (← N)",
+    },
     procs: { control: "text", description: "Process tags, comma-separated" },
     thread: { control: "text", description: "Thread / CUDA stream tag (lighter)" },
     start: { control: "boolean", description: "Start card" },
@@ -144,7 +280,11 @@ type Story = StoryObj<typeof meta>;
 export const Overview: Story = {
   render: (a, ctx) => <Stage scene={() => overview(a.w)} globals={ctx.globals as Globals} />,
   args: { w: 440 },
-  argTypes: Object.fromEntries(Object.keys(base).filter((k) => k !== "w").map((k) => [k, { table: { disable: true } }])),
+  argTypes: Object.fromEntries(
+    Object.keys(base)
+      .filter((k) => k !== "w")
+      .map((k) => [k, { table: { disable: true } }]),
+  ),
 };
 export const Themes: Story = themes("function");
 export const Function: Story = {};
@@ -159,19 +299,35 @@ export const Uncommitted: Story = { args: { version: "uncommitted" } };
 export const NewVersion: Story = { args: { stale: "changed" } };
 export const HiddenLinesChanged: Story = { name: "New Version in Hidden Lines", args: { stale: "hidden" } };
 export const SymbolLost: Story = { name: "Symbol Not Found", args: { stale: "lost" } };
-export const FoundInSeveralPlaces: Story = { name: "Snippet Found in Several Places", args: { kind: "snippet", stale: "many" } };
+export const FoundInSeveralPlaces: Story = {
+  name: "Snippet Found in Several Places",
+  args: { kind: "snippet", stale: "many" },
+};
 export const RepoMissing: Story = { name: "Repository Missing", args: { stale: "missing" } };
 export const Shared: Story = { name: "Linked on Several Boards", args: { boards: 3, linkedIn: 2 } };
 export const ProcessTags: Story = { args: { procs: "rank 0, Scheduler × TP", thread: "CUDA stream 0" } };
 export const StartLocked: Story = { name: "Start, Locked", args: { start: true, locked: true } };
 export const Sidenotes: Story = { name: "Sidenotes and Review", args: { notes: 2, review: true } };
 export const Questions: Story = { args: { questions: 2 } };
-export const Description: Story = { args: { desc: "**preempt**：block 不够时由 `schedule` 调用，把最后进来的请求踢回等待队列。" } };
+export const Description: Story = {
+  args: { desc: "**preempt**：block 不够时由 `schedule` 调用，把最后进来的请求踢回等待队列。" },
+};
 export const Generated: Story = { args: { kind: "generated", w: 560 } };
 export const Selected: Story = { args: { selected: true } };
 export const Crowded: Story = {
   name: "Crowded and Narrow",
-  args: { title: "Scheduler.preempt", stale: "changed", version: "uncommitted", boards: 2, linkedIn: 3, procs: "rank 0", notes: 1, questions: 1, start: true, w: 300 },
+  args: {
+    title: "Scheduler.preempt",
+    stale: "changed",
+    version: "uncommitted",
+    boards: 2,
+    linkedIn: 3,
+    procs: "rank 0",
+    notes: 1,
+    questions: 1,
+    start: true,
+    w: 300,
+  },
 };
 // 悬停（CSS :hover，story 的 globals.pseudo 摆出来）：悬停卡时卡头里只在悬停时才有的按钮（Copy Code）展开；
 // 卡头上各个小按钮（步骤号、路径、版本、共享、← 来自别的白板、旁注数）被指着时的样子，一张卡上同时摆出来
@@ -179,5 +335,7 @@ export const Hover: Story = { name: "Hover (hover-only buttons open)", globals: 
 export const HoverButtons: Story = {
   name: "Hover: Header Buttons",
   args: { boards: 3, linkedIn: 2, notes: 2, w: 520 },
-  globals: { pseudo: { hover: [".card", ".chead .cpath", ".chead .rev", ".chead .shb", ".chead .linkedin", ".chead .subc"] } },
+  globals: {
+    pseudo: { hover: [".card", ".chead .cpath", ".chead .rev", ".chead .shb", ".chead .linkedin", ".chead .subc"] },
+  },
 };

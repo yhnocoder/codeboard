@@ -41,7 +41,10 @@ const MD = [
 
 function splitBoard(): Board {
   const b = emptyBoard("b1", "split");
-  const add = (c: NoteCard, x: number, y: number, w: number) => { b.cards.push(c); b.place[c.id] = { x, y, w }; };
+  const add = (c: NoteCard, x: number, y: number, w: number) => {
+    b.cards.push(c);
+    b.place[c.id] = { x, y, w };
+  };
   add({ id: "n", kind: "note", md: MD, look: "note" }, 520, 60, 300);
   // right under the Note, where the first row of the split would go
   add({ id: "other", kind: "note", md: "A card already on the board", look: "note" }, 600, 260, 300);
@@ -57,7 +60,13 @@ const openMenu = async (h: Host, id: string) => {
 };
 const item = (h: Host) => h.page.locator(".ctx button", { hasText: "Split by Headings" });
 /** Every card's box on screen, by id */
-const boxes = (h: Host) => h.page.locator(".card").evaluateAll((els) => els.map((e) => { const r = e.getBoundingClientRect(); return { id: (e as HTMLElement).dataset.id!, x: r.x, y: r.y, w: r.width, h: r.height }; }));
+const boxes = (h: Host) =>
+  h.page.locator(".card").evaluateAll((els) =>
+    els.map((e) => {
+      const r = e.getBoundingClientRect();
+      return { id: (e as HTMLElement).dataset.id!, x: r.x, y: r.y, w: r.width, h: r.height };
+    }),
+  );
 
 test("splitByHeadingsMakesTree", async () => {
   const h = await open({ board: splitBoard(), light, w: 1500, h: 1100 });
@@ -69,43 +78,97 @@ test("splitByHeadingsMakesTree", async () => {
   await idle(h);
   await shot(h, "split-headings-result");
 
-  const all = notes(h), byTitle = new Map(all.map((c) => [mdHeading(c.md), c]));
+  const all = notes(h),
+    byTitle = new Map(all.map((c) => [mdHeading(c.md), c]));
   const want = ["Warp 与 SIMT", "Warp 的划分", "控制流分歧：if-else", "Occupancy", "每个 SM 的资源上限"];
-  check("splitByHeadingsMakesTree one Note per ## and ### heading", want.every((t) => byTitle.get(t)?.look === "note"), all.map((c) => mdHeading(c.md)));
+  check(
+    "splitByHeadingsMakesTree one Note per ## and ### heading",
+    want.every((t) => byTitle.get(t)?.look === "note"),
+    all.map((c) => mdHeading(c.md)),
+  );
   const n = all.find((c) => c.id === "n")!;
-  check("splitByHeadingsMakesTree text before the first heading stays", n.md === "第 4 章 计算架构与调度 · 读书笔记（PMPP 第 4 版）。", n.md);
+  check(
+    "splitByHeadingsMakesTree text before the first heading stays",
+    n.md === "第 4 章 计算架构与调度 · 读书笔记（PMPP 第 4 版）。",
+    n.md,
+  );
   const ifelse = byTitle.get("控制流分歧：if-else")!;
-  check("splitByHeadingsMakesTree #### stays inside its card", ifelse.md.includes("#### 分歧的代价") && ifelse.md.includes("两条路径的时间相加。"), ifelse.md);
-  check("splitByHeadingsMakesTree the table goes with its heading", byTitle.get("每个 SM 的资源上限")!.md.includes("| warp | 64 |"));
+  check(
+    "splitByHeadingsMakesTree #### stays inside its card",
+    ifelse.md.includes("#### 分歧的代价") && ifelse.md.includes("两条路径的时间相加。"),
+    ifelse.md,
+  );
+  check(
+    "splitByHeadingsMakesTree the table goes with its heading",
+    byTitle.get("每个 SM 的资源上限")!.md.includes("| warp | 64 |"),
+  );
   const id = (t: string) => byTitle.get(t)!.id;
-  const edges = h.board().links.map((l) => `${l.from.card}→${l.to.card}${l.style?.dash ? " dashed" : ""}`).sort();
-  const wantEdges = [`n→${id("Warp 与 SIMT")}`, `${id("Warp 与 SIMT")}→${id("Warp 的划分")}`, `${id("Warp 与 SIMT")}→${id("控制流分歧：if-else")}`, `n→${id("Occupancy")}`, `${id("Occupancy")}→${id("每个 SM 的资源上限")}`].sort();
+  const edges = h
+    .board()
+    .links.map((l) => `${l.from.card}→${l.to.card}${l.style?.dash ? " dashed" : ""}`)
+    .sort();
+  const wantEdges = [
+    `n→${id("Warp 与 SIMT")}`,
+    `${id("Warp 与 SIMT")}→${id("Warp 的划分")}`,
+    `${id("Warp 与 SIMT")}→${id("控制流分歧：if-else")}`,
+    `n→${id("Occupancy")}`,
+    `${id("Occupancy")}→${id("每个 SM 的资源上限")}`,
+  ].sort();
   check("splitByHeadingsMakesTree solid arrows parent → child", edges.join() === wantEdges.join(), edges, wantEdges);
   const heads = await pg.locator(".card .ctitle").allTextContents();
-  check("splitByHeadingsMakesTree headings are the card titles", want.every((t) => heads.includes(t)), heads);
+  check(
+    "splitByHeadingsMakesTree headings are the card titles",
+    want.every((t) => heads.includes(t)),
+    heads,
+  );
 
   // the tree goes down: children in a row under their parent, the row centred under it; nothing overlaps
   const bx = new Map((await boxes(h)).map((r) => [r.id, r]));
-  const B = (t: string) => bx.get(id(t))!, N = bx.get("n")!;
+  const B = (t: string) => bx.get(id(t))!,
+    N = bx.get("n")!;
   const [a, a1, a2, o, o1] = want.map(B);
-  check("splitByHeadingsMakesTree first row under the Note, side by side", a.y > N.y + N.h && Math.abs(a.y - o.y) < 1 && o.x > a.x + a.w, { a, o, N });
-  check("splitByHeadingsMakesTree children under their parent, in a row", a1.y > a.y + a.h && Math.abs(a1.y - a2.y) < 1 && a2.x > a1.x + a1.w && o1.y > o.y + o.h, { a1, a2, o1 });
-  check("splitByHeadingsMakesTree parent centred over its children", Math.abs(a.x + a.w / 2 - (a1.x + a2.x + a2.w) / 2) < 2 && Math.abs(o.x - o1.x) < 2, { a, a1, a2, o, o1 });
+  check(
+    "splitByHeadingsMakesTree first row under the Note, side by side",
+    a.y > N.y + N.h && Math.abs(a.y - o.y) < 1 && o.x > a.x + a.w,
+    { a, o, N },
+  );
+  check(
+    "splitByHeadingsMakesTree children under their parent, in a row",
+    a1.y > a.y + a.h && Math.abs(a1.y - a2.y) < 1 && a2.x > a1.x + a1.w && o1.y > o.y + o.h,
+    { a1, a2, o1 },
+  );
+  check(
+    "splitByHeadingsMakesTree parent centred over its children",
+    Math.abs(a.x + a.w / 2 - (a1.x + a2.x + a2.w) / 2) < 2 && Math.abs(o.x - o1.x) < 2,
+    { a, a1, a2, o, o1 },
+  );
   const rs = [...bx.values()];
-  const hit = rs.flatMap((p, i) => rs.slice(i + 1).filter((q) => p.x < q.x + q.w && q.x < p.x + p.w && p.y < q.y + q.h && q.y < p.y + p.h).map((q) => `${p.id}×${q.id}`));
+  const hit = rs.flatMap((p, i) =>
+    rs
+      .slice(i + 1)
+      .filter((q) => p.x < q.x + q.w && q.x < p.x + p.w && p.y < q.y + q.h && q.y < p.y + p.h)
+      .map((q) => `${p.id}×${q.id}`),
+  );
   check("splitByHeadingsMakesTree no cards overlap (the existing card included)", hit.length === 0, hit);
 
   // one undo step brings the one Note back
   await pg.keyboard.press("Meta+z");
   await until(h, "undo is saved", () => notes(h).length === 3);
   await idle(h);
-  check("splitByHeadingsMakesTree ⌘Z undoes the whole split", notes(h).find((c) => c.id === "n")?.md === MD && h.board().links.length === 0, notes(h).map((c) => c.id));
+  check(
+    "splitByHeadingsMakesTree ⌘Z undoes the whole split",
+    notes(h).find((c) => c.id === "n")?.md === MD && h.board().links.length === 0,
+    notes(h).map((c) => c.id),
+  );
 });
 
 test("splitByHeadingsDisabled", async () => {
   const h = await open({ board: splitBoard(), light, w: 1500, h: 1100 });
   await openMenu(h, "plain");
-  check("splitByHeadingsDisabled greyed out without headings", (await item(h).count()) === 1 && (await item(h).isDisabled()));
+  check(
+    "splitByHeadingsDisabled greyed out without headings",
+    (await item(h).count()) === 1 && (await item(h).isDisabled()),
+  );
   await h.page.keyboard.press("Escape");
   check("splitByHeadingsDisabled nothing split", notes(h).length === 3);
 });
@@ -140,13 +203,37 @@ test("splitByHeadingsSameLevel", async () => {
   await until(h, "the split is saved", () => notes(h).length === 2);
   await idle(h);
   await shot(h, "split-headings-same-level");
-  const n = notes(h).find((c) => c.id === "n")!, other = notes(h).find((c) => c.id !== "n")!;
-  check("splitByHeadingsSameLevel the Note keeps the first section", mdHeading(n.md) === "资源划分与占用率" && n.md.includes("| 1024 | 2 |"), n.md);
-  check("splitByHeadingsSameLevel the new Note has the second section", mdHeading(other.md) === "造成 Occupancy 利用率低的情况" && other.md.includes("cudaOccupancyMaxActiveBlocksPerMultiprocessor"), other.md);
+  const n = notes(h).find((c) => c.id === "n")!,
+    other = notes(h).find((c) => c.id !== "n")!;
+  check(
+    "splitByHeadingsSameLevel the Note keeps the first section",
+    mdHeading(n.md) === "资源划分与占用率" && n.md.includes("| 1024 | 2 |"),
+    n.md,
+  );
+  check(
+    "splitByHeadingsSameLevel the new Note has the second section",
+    mdHeading(other.md) === "造成 Occupancy 利用率低的情况" &&
+      other.md.includes("cudaOccupancyMaxActiveBlocksPerMultiprocessor"),
+    other.md,
+  );
   const p = h.board().place[other.id];
-  check("splitByHeadingsSameLevel the new Note is placed under the Note", Number.isFinite(p?.x) && Number.isFinite(p?.y) && p.y > 60, p);
+  check(
+    "splitByHeadingsSameLevel the new Note is placed under the Note",
+    Number.isFinite(p?.x) && Number.isFinite(p?.y) && p.y > 60,
+    p,
+  );
   const bx = new Map((await boxes(h)).map((r) => [r.id, r]));
-  const N = bx.get("n"), O = bx.get(other.id);
-  check("splitByHeadingsSameLevel both Notes are on screen", !!N && !!O && N.h > 40 && O.h > 40 && O.y > N.y + N.h, { N, O });
-  check("splitByHeadingsSameLevel arrow Note → new Note", h.board().links.map((l) => `${l.from.card}→${l.to.card}`).join() === `n→${other.id}`);
+  const N = bx.get("n"),
+    O = bx.get(other.id);
+  check("splitByHeadingsSameLevel both Notes are on screen", !!N && !!O && N.h > 40 && O.h > 40 && O.y > N.y + N.h, {
+    N,
+    O,
+  });
+  check(
+    "splitByHeadingsSameLevel arrow Note → new Note",
+    h
+      .board()
+      .links.map((l) => `${l.from.card}→${l.to.card}`)
+      .join() === `n→${other.id}`,
+  );
 });

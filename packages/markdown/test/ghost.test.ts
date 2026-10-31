@@ -2,15 +2,26 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { GhostAsker, holdGhosts, type GhostQuery } from "../src/ui/ghost";
 
-const query = (shown: string[]): GhostQuery => ({ context: () => ["before", ""], still: () => true, show: (t) => shown.push(t) });
+const query = (shown: string[]): GhostQuery => ({
+  context: () => ["before", ""],
+  still: () => true,
+  show: (t) => shown.push(t),
+});
 
 describe("GhostAsker", () => {
-  afterEach(() => { holdGhosts(false); vi.useRealTimers(); });
+  afterEach(() => {
+    holdGhosts(false);
+    vi.useRealTimers();
+  });
 
   it("asks after the delay and shows the answer", async () => {
     vi.useFakeTimers();
     const shown: string[] = [];
-    const a = new GhostAsker(async () => " more", () => {}, 100);
+    const a = new GhostAsker(
+      async () => " more",
+      () => {},
+      100,
+    );
     a.schedule(() => query(shown));
     await vi.advanceTimersByTimeAsync(150);
     expect(shown).toEqual([" more"]);
@@ -45,7 +56,14 @@ describe("GhostAsker", () => {
     vi.useFakeTimers();
     let answer!: (t: string) => void;
     const shown: string[] = [];
-    const a = new GhostAsker(() => new Promise<string>((r) => { answer = r; }), () => {}, 100);
+    const a = new GhostAsker(
+      () =>
+        new Promise<string>((r) => {
+          answer = r;
+        }),
+      () => {},
+      100,
+    );
     a.schedule(() => query(shown));
     await vi.advanceTimersByTimeAsync(150);
     holdGhosts(true);

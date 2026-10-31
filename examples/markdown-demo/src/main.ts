@@ -11,13 +11,17 @@ import "./demo.css";
 import sample from "./sample.md?raw";
 import { highlight } from "./highlight";
 
-setCodeHighlighter(async (text, lang) => highlight(text, lang), (lang) => (lang === "py" ? "python" : lang));
+setCodeHighlighter(
+  async (text, lang) => highlight(text, lang),
+  (lang) => (lang === "py" ? "python" : lang),
+);
 const PAGES = [
   { id: "paging", title: "Paging", kind: "page" },
   { id: "eviction", title: "Eviction", kind: "page" },
   { id: "prefix-cache", title: "Prefix cache", kind: "page" },
 ];
-const findPage = (label: string) => PAGES.find((p) => p.id === label || p.title.toLowerCase() === label.trim().toLowerCase()) ?? null;
+const findPage = (label: string) =>
+  PAGES.find((p) => p.id === label || p.title.toLowerCase() === label.trim().toLowerCase()) ?? null;
 setRefResolver(findPage, { missing: "No page with this title" });
 // ![…](assets/x.svg) → ./assets/x.svg, in the static render and in the editor alike
 setAssetBase("./assets");
@@ -50,18 +54,31 @@ async function edit() {
   editor = mountEditor(note, {
     value: src,
     isMac: IS_MAC,
-    onDone: (v) => { editor = undefined; if (v !== null) src = v; show(); },
+    onDone: (v) => {
+      editor = undefined;
+      if (v !== null) src = v;
+      show();
+    },
     refs: { items: () => PAGES, menu: "Link to Page", empty: "No page with that title" },
-    openLink: (url) => { opened.textContent = `Opened link: ${url}`; },
+    openLink: (url) => {
+      opened.textContent = `Opened link: ${url}`;
+    },
   });
 }
 
 note.addEventListener("click", (e) => {
   if (editor) return;
   const handled = mdClick(e, src, {
-    openLink: (url) => { opened.textContent = `Opened link: ${url}`; },
-    openRef: (id) => { opened.textContent = `Opened page: ${id}`; },
-    onToggle: (next) => { src = next; show(); },
+    openLink: (url) => {
+      opened.textContent = `Opened link: ${url}`;
+    },
+    openRef: (id) => {
+      opened.textContent = `Opened page: ${id}`;
+    },
+    onToggle: (next) => {
+      src = next;
+      show();
+    },
   });
   if (!handled) void edit();
 });

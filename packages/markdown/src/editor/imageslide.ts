@@ -18,7 +18,11 @@ export function measureImages(view: EditorView, blocks: number[]): Before[] {
     const dom = view.nodeDOM(pos);
     const img = dom instanceof HTMLElement ? imgOf(dom) : null;
     if (!img) continue;
-    out.push({ pos, img: img.getBoundingClientRect().top, bottom: (dom as HTMLElement).getBoundingClientRect().bottom });
+    out.push({
+      pos,
+      img: img.getBoundingClientRect().top,
+      bottom: (dom as HTMLElement).getBoundingClientRect().bottom,
+    });
   }
   return out;
 }
@@ -30,9 +34,16 @@ export function slideImages(view: EditorView, before: Before[]) {
     if (!(dom instanceof HTMLElement)) continue;
     const img = imgOf(dom);
     if (!img) continue;
-    const dy = b.img - img.getBoundingClientRect().top, dBottom = b.bottom - dom.getBoundingClientRect().bottom;
+    const dy = b.img - img.getBoundingClientRect().top,
+      dBottom = b.bottom - dom.getBoundingClientRect().bottom;
     if (Math.abs(dy) < 0.5 && Math.abs(dBottom) < 0.5) continue;
-    const slide = (el: Element, d: number) => { if (Math.abs(d) >= 0.5) el.animate([{ transform: `translateY(${d}px)` }, { transform: "none" }], { duration: IMAGE_SLIDE, easing: EASE }); };
+    const slide = (el: Element, d: number) => {
+      if (Math.abs(d) >= 0.5)
+        el.animate([{ transform: `translateY(${d}px)` }, { transform: "none" }], {
+          duration: IMAGE_SLIDE,
+          easing: EASE,
+        });
+    };
     slide(img, dy);
     // what follows the paragraph, at each level up to the editor (a paragraph in a list item, a cell…)
     let n = 0;
@@ -41,7 +52,8 @@ export function slideImages(view: EditorView, before: Before[]) {
     }
     // the source line that opened: its markers and address fade in
     if (img.classList.contains("below")) {
-      for (const m of dom.querySelectorAll(".md-mk:not(.md-hide), .md-imgalt, .md-fold, .md-ell")) m.animate([{ opacity: 0 }, { opacity: 1 }], { duration: IMAGE_SLIDE, easing: "ease-out" });
+      for (const m of dom.querySelectorAll(".md-mk:not(.md-hide), .md-imgalt, .md-fold, .md-ell"))
+        m.animate([{ opacity: 0 }, { opacity: 1 }], { duration: IMAGE_SLIDE, easing: "ease-out" });
     }
   }
 }

@@ -15,7 +15,11 @@ const SIMT = [
   "第 3~5 章",
 ];
 const PASTED = SIMT.join("\n\n");
-const HL = ["warp 的执行行为通常称为单指令多线程（Single Instruction, Multiple Thread，SIMT）", "透明地使用 SIMD 硬件", "所有 CUDA 设备都使用了类似的 32 线程 warp 配置"];
+const HL = [
+  "warp 的执行行为通常称为单指令多线程（Single Instruction, Multiple Thread，SIMT）",
+  "透明地使用 SIMD 硬件",
+  "所有 CUDA 设备都使用了类似的 32 线程 warp 配置",
+];
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 /** What a browser copy of the rendered text puts on the clipboard: plain paragraphs with the == left as text, and a code span
@@ -25,19 +29,20 @@ const HTML = `<meta charset="utf-8"><div>${SIMT.map((p) => `<p>${esc(p)}</p>`).j
 const card = (id: string) => `.card[data-id="${id}"]`;
 const md = (h: Host, id: string) => (h.board().cards.find((c) => c.id === id) as NoteCard).md;
 /** Highlights, strikes and rules in a card's editor or static body, and its text outside code */
-const look = (h: Host, root: string) => h.page.evaluate((root) => {
-  const box = document.querySelector(root)!;
-  const copy = box.cloneNode(true) as HTMLElement;
-  // in the editor the source's markers are hidden (.md-hide) away from the caret
-  copy.querySelectorAll("code, pre, .md-hide").forEach((e) => e.remove());
-  return {
-    hl: [...box.querySelectorAll("mark")].map((e) => e.textContent),
-    strike: [...box.querySelectorAll("s, del")].map((e) => e.textContent),
-    hr: box.querySelectorAll("hr").length,
-    code: [...box.querySelectorAll("code")].map((e) => e.textContent),
-    text: copy.textContent ?? "",
-  };
-}, root);
+const look = (h: Host, root: string) =>
+  h.page.evaluate((root) => {
+    const box = document.querySelector(root)!;
+    const copy = box.cloneNode(true) as HTMLElement;
+    // in the editor the source's markers are hidden (.md-hide) away from the caret
+    copy.querySelectorAll("code, pre, .md-hide").forEach((e) => e.remove());
+    return {
+      hl: [...box.querySelectorAll("mark")].map((e) => e.textContent),
+      strike: [...box.querySelectorAll("s, del")].map((e) => e.textContent),
+      hr: box.querySelectorAll("hr").length,
+      code: [...box.querySelectorAll("code")].map((e) => e.textContent),
+      text: copy.textContent ?? "",
+    };
+  }, root);
 
 /** Text with ==highlights== becomes highlights as typing them would, in each way it can be pasted: text/plain into an empty
  *  paragraph and into the middle of one, text/html whose paragraphs keep the == as text (a browser copy; code spans keep
@@ -45,7 +50,15 @@ const look = (h: Host, root: string) => h.page.evaluate((root) => {
 test("pasteHighlightMarks", async () => {
   const b = emptyBoard("b1", "paste highlights");
   const ids = ["empty", "middle", "html"];
-  ids.forEach((id, i) => put(b, { id, kind: "note", md: id === "middle" ? "前面后面" : "开头", look: "note" } as NoteCard, 40 + i * 480, 40, 440));
+  ids.forEach((id, i) =>
+    put(
+      b,
+      { id, kind: "note", md: id === "middle" ? "前面后面" : "开头", look: "note" } as NoteCard,
+      40 + i * 480,
+      40,
+      440,
+    ),
+  );
   b.cam = { x: 0, y: 0, z: 0.7 };
   const h = await open({ board: b, light: true, w: 1500, h: 1100, settings: { theme: "warm-ink" } as any });
   const pg = h.page;
@@ -63,25 +76,52 @@ test("pasteHighlightMarks", async () => {
     // the browser moves the caret for these keys; Enter and the synthetic paste act where ProseMirror last read it: wait until it has
     await pg.keyboard.press("ControlOrMeta+End");
     await pmHasSelection(pg);
-    if (id === "middle") { await pg.keyboard.press("ArrowLeft"); await pg.keyboard.press("ArrowLeft"); } else await pg.keyboard.press("Enter");
+    if (id === "middle") {
+      await pg.keyboard.press("ArrowLeft");
+      await pg.keyboard.press("ArrowLeft");
+    } else await pg.keyboard.press("Enter");
     await pmHasSelection(pg);
     await pg.evaluate((d) => {
       const dt = new DataTransfer();
       for (const [k, v] of Object.entries(d)) dt.setData(k, v);
-      document.activeElement!.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true }));
+      document.activeElement!.dispatchEvent(
+        new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true }),
+      );
     }, clip[id]);
     const ed = await look(h, `${card(id)} .md-pm`);
-    check(`pasteHighlightMarks ${id} highlights in the editor`, JSON.stringify(ed.hl) === JSON.stringify(HL) && !ed.text.includes("=="), { hl: ed.hl, text: ed.text.slice(0, 300) });
-    check(`pasteHighlightMarks ${id} strike and rule in the editor`, JSON.stringify(ed.strike) === '["旧的说法"]' && ed.hr === 1 && ed.text.includes("第 3~5 章"), ed);
-    if (id === "html") check("pasteHighlightMarks html code keeps its ==", JSON.stringify(ed.code) === '["a == b","==x=="]', ed.code);
+    check(
+      `pasteHighlightMarks ${id} highlights in the editor`,
+      JSON.stringify(ed.hl) === JSON.stringify(HL) && !ed.text.includes("=="),
+      { hl: ed.hl, text: ed.text.slice(0, 300) },
+    );
+    check(
+      `pasteHighlightMarks ${id} strike and rule in the editor`,
+      JSON.stringify(ed.strike) === '["旧的说法"]' && ed.hr === 1 && ed.text.includes("第 3~5 章"),
+      ed,
+    );
+    if (id === "html")
+      check("pasteHighlightMarks html code keeps its ==", JSON.stringify(ed.code) === '["a == b","==x=="]', ed.code);
     await pg.keyboard.press("Escape");
     await until(h, "Esc saves the Note", () => md(h, id) !== was);
     await pg.waitForSelector(`${card(id)} .md-pm`, { state: "detached", timeout: 5000 });
     const saved = md(h, id);
-    check(`pasteHighlightMarks ${id} saved as Markdown`, HL.every((t) => saved.includes(`==${t}==`)) && saved.includes("~~旧的说法~~") && /\n---\n/.test(saved) && !saved.includes("\\="),
-      saved);
-    const around = id === "middle" ? ["前面同一 warp", "第 3~5 章后面"] : ["开头\n\n同一 warp", id === "html" ? "比较用 `a == b` 和 `==x==`" : "\n\n第 3~5 章"];
-    check(`pasteHighlightMarks ${id} pasted where the cursor was`, saved.startsWith(around[0]) && saved.endsWith(around[1]), saved.slice(0, 40) + " … " + saved.slice(-40));
+    check(
+      `pasteHighlightMarks ${id} saved as Markdown`,
+      HL.every((t) => saved.includes(`==${t}==`)) &&
+        saved.includes("~~旧的说法~~") &&
+        /\n---\n/.test(saved) &&
+        !saved.includes("\\="),
+      saved,
+    );
+    const around =
+      id === "middle"
+        ? ["前面同一 warp", "第 3~5 章后面"]
+        : ["开头\n\n同一 warp", id === "html" ? "比较用 `a == b` 和 `==x==`" : "\n\n第 3~5 章"];
+    check(
+      `pasteHighlightMarks ${id} pasted where the cursor was`,
+      saved.startsWith(around[0]) && saved.endsWith(around[1]),
+      saved.slice(0, 40) + " … " + saved.slice(-40),
+    );
   }
   // ⌘V on the board, nothing being edited: a new Note with the text as Markdown
   await idle(h);
@@ -91,12 +131,25 @@ test("pasteHighlightMarks", async () => {
     dt.setData("text/plain", t);
     window.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true }));
   }, PASTED);
-  const made = await until(h, "⌘V on the board adds a card", () => h.board().cards.find((c) => !ids.includes(c.id))).catch(() => undefined);
-  check("pasteHighlightMarks ⌘V on the board makes a Note", made?.kind === "note" && (made as NoteCard).md === PASTED, made);
+  const made = await until(h, "⌘V on the board adds a card", () =>
+    h.board().cards.find((c) => !ids.includes(c.id)),
+  ).catch(() => undefined);
+  check(
+    "pasteHighlightMarks ⌘V on the board makes a Note",
+    made?.kind === "note" && (made as NoteCard).md === PASTED,
+    made,
+  );
   if (made) {
     await idle(h);
     const shown = await look(h, `${card(made.id)} .nbody`);
-    check("pasteHighlightMarks ⌘V on the board shows highlights", JSON.stringify(shown.hl) === JSON.stringify(HL) && JSON.stringify(shown.strike) === '["旧的说法"]' && shown.hr === 1 && !shown.text.includes("=="), shown);
+    check(
+      "pasteHighlightMarks ⌘V on the board shows highlights",
+      JSON.stringify(shown.hl) === JSON.stringify(HL) &&
+        JSON.stringify(shown.strike) === '["旧的说法"]' &&
+        shown.hr === 1 &&
+        !shown.text.includes("=="),
+      shown,
+    );
   }
   await pg.keyboard.press("Shift+!");
   await pg.mouse.move(2, 2);

@@ -28,9 +28,15 @@ export const onDidSwitchStorage = switched.event;
 export function openStorage(): Storage {
   const at = { dir: boardDir() };
   const store = new Storage(nodeFs, {
-    dir: () => at.dir, log, cams,
+    dir: () => at.dir,
+    log,
+    cams,
     watch: (base, glob, fn) => {
-      try { mkdirSync(base, { recursive: true }); } catch (e) { log("warn", `storage: cannot create ${base}: ${e instanceof Error ? e.message : e}`); }
+      try {
+        mkdirSync(base, { recursive: true });
+      } catch (e) {
+        log("warn", `storage: cannot create ${base}: ${e instanceof Error ? e.message : e}`);
+      }
       return workspace().files.watch(base, glob, fn);
     },
   });
@@ -45,14 +51,21 @@ function boardDir(): string {
   return p && isDir(p) ? p : path.join(workspace().storage.dir(), "boards");
 }
 
-const isDir = (p: string) => { try { return statSync(p).isDirectory(); } catch { return false; } };
+const isDir = (p: string) => {
+  try {
+    return statSync(p).isDirectory();
+  } catch {
+    return false;
+  }
+};
 
 /**
  * 该用的目录变了（设置改了、.codeboard/ 出现或没了：git checkout、Move Boards into Project）就换过去：
  * 没写的改动写回它们原来的文件（reset），开着的白板之后读写新目录里同 id 的白板。换了返回 true
  */
 export async function followStorageDir(store: Storage): Promise<boolean> {
-  const at = dirs.get(store), dir = boardDir();
+  const at = dirs.get(store),
+    dir = boardDir();
   if (!at || at.dir === dir) return false;
   at.dir = dir;
   await store.reset();
@@ -82,18 +95,33 @@ const GITIGNORE = ".trash/\n*.tmp\n";
  */
 export async function moveIntoProject(store: Storage): Promise<IntoProject> {
   const to = projectDir();
-  if (!to) return { moved: false, why: "Open a folder first: boards move into a .codeboard folder in the first workspace folder." };
-  if (workspace().settings.get<string>("codeboard.storageDir")?.trim()) return { moved: false, why: "The setting codeboard.storageDir chooses where boards are stored. Clear it first to keep boards in the project." };
+  if (!to)
+    return {
+      moved: false,
+      why: "Open a folder first: boards move into a .codeboard folder in the first workspace folder.",
+    };
+  if (workspace().settings.get<string>("codeboard.storageDir")?.trim())
+    return {
+      moved: false,
+      why: "The setting codeboard.storageDir chooses where boards are stored. Clear it first to keep boards in the project.",
+    };
   const from = store.dir();
-  if (path.resolve(from) === path.resolve(to)) return { moved: false, why: `Boards are already stored in the project (${PROJECT_DIR}).` };
-  if (await hasBoards(to)) return { moved: false, why: `${PROJECT_DIR} in ${path.basename(ws0())} already has boards. Move or delete them first: boards are not merged.` };
+  if (path.resolve(from) === path.resolve(to))
+    return { moved: false, why: `Boards are already stored in the project (${PROJECT_DIR}).` };
+  if (await hasBoards(to))
+    return {
+      moved: false,
+      why: `${PROJECT_DIR} in ${path.basename(ws0())} already has boards. Move or delete them first: boards are not merged.`,
+    };
   await store.flush();
   await fs.mkdir(to, { recursive: true });
   for (const d of await fs.readdir(from, { withFileTypes: true }).catch(() => [])) {
     if (d.name.endsWith(".tmp")) continue;
     await fs.cp(path.join(from, d.name), path.join(to, d.name), { recursive: true, force: false, errorOnExist: false });
   }
-  await fs.writeFile(path.join(to, ".gitignore"), GITIGNORE, { flag: "wx" }).catch((e: NodeJS.ErrnoException) => { if (e.code !== "EEXIST") throw e; });
+  await fs.writeFile(path.join(to, ".gitignore"), GITIGNORE, { flag: "wx" }).catch((e: NodeJS.ErrnoException) => {
+    if (e.code !== "EEXIST") throw e;
+  });
   await followStorageDir(store);
   await fs.rm(from, { recursive: true, force: true });
   return { moved: true, to };
@@ -103,14 +131,20 @@ export async function moveIntoProject(store: Storage): Promise<IntoProject> {
 async function hasBoards(dir: string): Promise<boolean> {
   for (const d of await fs.readdir(dir, { withFileTypes: true }).catch(() => [])) {
     if (d.isFile() && d.name.endsWith(".json")) return true;
-    if (d.isDirectory() && !RESERVED.has(d.name) && !d.name.startsWith(".")
-      && (await fs.readdir(path.join(dir, d.name)).catch(() => [])).some((n) => n.endsWith(".json"))) return true;
+    if (
+      d.isDirectory() &&
+      !RESERVED.has(d.name) &&
+      !d.name.startsWith(".") &&
+      (await fs.readdir(path.join(dir, d.name)).catch(() => [])).some((n) => n.endsWith(".json"))
+    )
+      return true;
   }
   return false;
 }
 
 /** 镜头按白板 id 记在这台机器上（工作区状态）：平移、缩放不改白板文件。只留最近的这么多块 */
-const CAMS = "codeboard.cams", MAX_CAMS = 500;
+const CAMS = "codeboard.cams",
+  MAX_CAMS = 500;
 const cams = {
   get: (id: string) => workspace().storage.get<Record<string, Camera>>(CAMS)?.[id],
   set: (id: string, cam: Camera) => {

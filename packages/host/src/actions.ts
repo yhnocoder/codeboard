@@ -1,5 +1,15 @@
 import * as path from "node:path";
-import { allCodeCards, defaultWidth, estSize, placeCards, removeCards, type Board, type CardCopy, type CodeCard, type KeyAction } from "@codeboard/core";
+import {
+  allCodeCards,
+  defaultWidth,
+  estSize,
+  placeCards,
+  removeCards,
+  type Board,
+  type CardCopy,
+  type CodeCard,
+  type KeyAction,
+} from "@codeboard/core";
 import { analysisOf } from "./analysis";
 import { cardsFromEditor, symCard, withViews, type Built } from "./cards";
 import type { BoardHost } from "./boards";
@@ -24,19 +34,23 @@ export type Node = { kind: "board"; id: string } | { kind: "group"; name: string
 export function makeActions(panels: BoardHost, store: Storage) {
   const ui = () => workspace().ui;
   const active = () => panels.all().find((p) => p.view.active);
-  const boardArg = (a: unknown): string | undefined => (typeof a === "string" ? a : (a as Node)?.kind === "board" ? (a as { id: string }).id : undefined);
+  const boardArg = (a: unknown): string | undefined =>
+    typeof a === "string" ? a : (a as Node)?.kind === "board" ? (a as { id: string }).id : undefined;
 
   /** Add to 的目标白板：最近聚焦的；没有就第一张；一张都没有就新建 */
   // Commands that run at once share one answer: otherwise Alt+B and Open Board pressed together in a workspace without a board
   // would each find no board and each create a "New Board"
   let targeting: Promise<string> | null = null;
-  const targetId = (): Promise<string> => (targeting ??= (async () => {
-    const metas = await store.list();
-    if (panels.target && metas.some((m) => m.id === panels.target)) return panels.target;
-    const id = metas[0]?.id ?? (await store.create("New Board")).id;
-    panels.setTarget(id);
-    return id;
-  })().finally(() => { targeting = null; }));
+  const targetId = (): Promise<string> =>
+    (targeting ??= (async () => {
+      const metas = await store.list();
+      if (panels.target && metas.some((m) => m.id === panels.target)) return panels.target;
+      const id = metas[0]?.id ?? (await store.create("New Board")).id;
+      panels.setTarget(id);
+      return id;
+    })().finally(() => {
+      targeting = null;
+    }));
 
   const notify = async (b: { id: string; name: string }, n: number, undo: () => Promise<void>) => {
     const r = await ui().info(`Added ${n > 1 ? `${n} cards` : "to"} “${b.name}”`, "Open", "Undo");
@@ -46,7 +60,10 @@ export function makeActions(panels: BoardHost, store: Storage) {
 
   /** 编辑器里 ⌥B 之后接着按 ⌘Z 撤销的那次添加（焦点留在编辑器：⌥B 是边读边收集，不抢焦点） */
   let lastAdd: (() => Promise<void>) | null = null;
-  const armUndo = (f: () => Promise<void>) => { lastAdd = f; ui().undoAddKey?.(true); };
+  const armUndo = (f: () => Promise<void>) => {
+    lastAdd = f;
+    ui().undoAddKey?.(true);
+  };
 
   /**
    * 撤销一次添加：只拿掉那几张卡（还在的）。白板开着（可能是加完以后才打开的）就交给白板做，是它撤销栈里的一步；
@@ -54,7 +71,10 @@ export function makeActions(panels: BoardHost, store: Storage) {
    */
   const undoAdd = async (boardId: string, ids: string[]) => {
     const p = panels.get(boardId);
-    if (p) { p.post({ type: "undoAdd", cards: ids }); return; }
+    if (p) {
+      p.post({ type: "undoAdd", cards: ids });
+      return;
+    }
     const b = await store.update(boardId, (b) => {
       const gone = ids.filter((id) => b.cards.some((c) => c.id === id));
       if (!gone.length) return false;
@@ -72,11 +92,17 @@ export function makeActions(panels: BoardHost, store: Storage) {
       const sel = p.selection?.cards[0];
       p.post({ type: "add", cards, ask: built.ask, sel: sel ? { card: sel } : undefined });
     } else {
-      const b = await store.update(boardId, (b) => { placeCards(b, stackRight(b, built.cards), { copy: false }); });
+      const b = await store.update(boardId, (b) => {
+        placeCards(b, stackRight(b, built.cards), { copy: false });
+      });
       if (!b) return;
       name = b.name;
     }
-    const undo = () => undoAdd(boardId, built.cards.map((c) => c.id));
+    const undo = () =>
+      undoAdd(
+        boardId,
+        built.cards.map((c) => c.id),
+      );
     armUndo(undo);
     if (!p && panels.firstAdd?.()) await panels.show(boardId, { preserveFocus: true });
     else if (!p?.visible) void notify({ id: boardId, name }, cards.length, undo);
@@ -84,20 +110,37 @@ export function makeActions(panels: BoardHost, store: Storage) {
 
   const fromEditor = async (mode: "auto" | "function" | "separate" = "auto"): Promise<Built | undefined> => {
     const ed = workspace().editor.active();
-    if (!ed) { void ui().info("Open a file in the editor first."); return; }
+    if (!ed) {
+      void ui().info("Open a file in the editor first.");
+      return;
+    }
     const r = await cardsFromEditor(ed, mode);
-    if ("error" in r) { void ui().info(r.error); return; }
+    if ("error" in r) {
+      void ui().info(r.error);
+      return;
+    }
     return r;
   };
 
   /** 只导航不建卡：找含这几行的卡，在几张白板上时先选白板 */
   const reveal = async (abs: string, start: number, end: number) => {
     const hits = await findOnBoards(store, abs, start, end);
-    if (!hits.length) { void ui().info("These lines are not on any board."); return; }
+    if (!hits.length) {
+      void ui().info("These lines are not on any board.");
+      return;
+    }
     let h = hits.find((x) => x.board.id === panels.target) ?? hits[0];
     const boards = [...new Map(hits.map((x) => [x.board.id, x.board])).values()];
     if (boards.length > 1) {
-      const r = await ui().pick(boards.map((b) => ({ label: b.name, icon: "board", description: b.id === panels.target ? "target" : undefined, b })), { placeHolder: "Reveal on which board?" });
+      const r = await ui().pick(
+        boards.map((b) => ({
+          label: b.name,
+          icon: "board",
+          description: b.id === panels.target ? "target" : undefined,
+          b,
+        })),
+        { placeHolder: "Reveal on which board?" },
+      );
       if (!r) return;
       h = hits.find((x) => x.board.id === r.b.id)!;
     }
@@ -111,17 +154,34 @@ export function makeActions(panels: BoardHost, store: Storage) {
     const b = id && (await store.load(id));
     if (!b || !panels.globalState) return;
     const ps = await otherProjects(panels.globalState, store.dir());
-    if (!ps.length) { void ui().info("No other project found. Open the other project once with CodeBoard so it shows up here."); return; }
-    const r = await ui().pick(ps.map((p) => ({ label: p.name, icon: "folder", description: p.folders.join(" · ") || p.dir, p })), { placeHolder: `${move ? "Move" : "Copy"} “${b.name}” to which project?`, matchOnDescription: true });
+    if (!ps.length) {
+      void ui().info("No other project found. Open the other project once with CodeBoard so it shows up here.");
+      return;
+    }
+    const r = await ui().pick(
+      ps.map((p) => ({ label: p.name, icon: "folder", description: p.folders.join(" · ") || p.dir, p })),
+      { placeHolder: `${move ? "Move" : "Copy"} “${b.name}” to which project?`, matchOnDescription: true },
+    );
     if (!r) return;
     if (move) {
-      const ok = await ui().warn(`Move board “${b.name}” to ${r.p.name}?`, { modal: true, detail: "It is removed from this project (restorable from .trash). Sub-boards, shared cards and images go with it." }, "Move");
+      const ok = await ui().warn(
+        `Move board “${b.name}” to ${r.p.name}?`,
+        {
+          modal: true,
+          detail:
+            "It is removed from this project (restorable from .trash). Sub-boards, shared cards and images go with it.",
+        },
+        "Move",
+      );
       if (ok !== "Move") return;
     }
     const t = await copyToProject(store, b.id, r.p);
     if (!t) return;
     if (move) {
-      await removeMoved(store, t, (x) => { panels.get(x)?.view.dispose(); if (panels.target === x) panels.setTarget(undefined); });
+      await removeMoved(store, t, (x) => {
+        panels.get(x)?.view.dispose();
+        if (panels.target === x) panels.setTarget(undefined);
+      });
       await panels.pushBoards();
     }
     void ui().info(`${move ? "Moved" : "Copied"} “${b.name}” to ${r.p.name}.`);
@@ -132,34 +192,76 @@ export function makeActions(panels: BoardHost, store: Storage) {
     const metas = await store.list();
     let pick: { roots: string[]; name: string } | undefined;
     const id = boardArg(a);
-    if (id) { const m = metas.find((x) => x.id === id); if (m) pick = { roots: [m.id], name: m.name }; }
-    else if ((a as Node)?.kind === "group") { const g = (a as { name: string }).name; pick = { roots: metas.filter((m) => m.group === g).map((m) => m.id), name: g }; }
-    else {
-      if (!metas.length) { void ui().info("There are no boards to export."); return; }
+    if (id) {
+      const m = metas.find((x) => x.id === id);
+      if (m) pick = { roots: [m.id], name: m.name };
+    } else if ((a as Node)?.kind === "group") {
+      const g = (a as { name: string }).name;
+      pick = { roots: metas.filter((m) => m.group === g).map((m) => m.id), name: g };
+    } else {
+      if (!metas.length) {
+        void ui().info("There are no boards to export.");
+        return;
+      }
       const count = (n: number) => `${n} board${n === 1 ? "" : "s"}`;
       const groups = [...new Set(metas.flatMap((m) => (m.group ? [m.group] : [])))].sort();
-      pick = await ui().pick([
-        { label: "All Boards", icon: "boards" as const, description: count(metas.length), roots: metas.map((m) => m.id), name: workspace().files.name() || "Boards" },
-        ...groups.map((g) => { const ms = metas.filter((m) => m.group === g); return { label: g, icon: "folder" as const, description: count(ms.length), roots: ms.map((m) => m.id), name: g }; }),
-        ...metas.map((m) => ({ label: m.name, icon: "board" as const, description: m.group, roots: [m.id], name: m.name })),
-      ], { placeHolder: "Export which boards? Sub-boards, shared cards and images go with them.", matchOnDescription: true });
+      pick = await ui().pick(
+        [
+          {
+            label: "All Boards",
+            icon: "boards" as const,
+            description: count(metas.length),
+            roots: metas.map((m) => m.id),
+            name: workspace().files.name() || "Boards",
+          },
+          ...groups.map((g) => {
+            const ms = metas.filter((m) => m.group === g);
+            return {
+              label: g,
+              icon: "folder" as const,
+              description: count(ms.length),
+              roots: ms.map((m) => m.id),
+              name: g,
+            };
+          }),
+          ...metas.map((m) => ({
+            label: m.name,
+            icon: "board" as const,
+            description: m.group,
+            roots: [m.id],
+            name: m.name,
+          })),
+        ],
+        {
+          placeHolder: "Export which boards? Sub-boards, shared cards and images go with them.",
+          matchOnDescription: true,
+        },
+      );
     }
     if (pick?.roots.length) await exportFlow(store, pick.roots, pick.name);
   };
 
   /** Import Boards…：file = 拖到侧栏上的那个包；否则让用户选。导入后打开第一块 */
   const importBoards = async (file?: string) => {
-    file ??= await ui().openDialog({ filters: { "CodeBoard Boards": [BUNDLE_EXT, "zip"] }, label: "Import", title: "Import Boards" });
+    file ??= await ui().openDialog({
+      filters: { "CodeBoard Boards": [BUNDLE_EXT, "zip"] },
+      label: "Import",
+      title: "Import Boards",
+    });
     if (!file) return;
     let r: Awaited<ReturnType<typeof importFile>>;
-    try { r = await importFile(store, file); } catch (e) {
+    try {
+      r = await importFile(store, file);
+    } catch (e) {
       void ui().error(`Can't import ${path.basename(file)}: ${e instanceof Error ? e.message : e}`);
       return;
     }
     await panels.pushBoards();
     await panels.show(r.first);
     const from = r.manifest.folders.length ? ` from ${r.manifest.folders.join(", ")}` : "";
-    const renamed = r.renamed ? ` ${r.renamed} renamed: this project already had ${r.renamed === 1 ? "its name or id" : "their names or ids"}.` : "";
+    const renamed = r.renamed
+      ? ` ${r.renamed} renamed: this project already had ${r.renamed === 1 ? "its name or id" : "their names or ids"}.`
+      : "";
     void ui().info(`Imported ${r.boards} board${r.boards === 1 ? "" : "s"}${from}.${renamed}`);
   };
 
@@ -169,14 +271,26 @@ export function makeActions(panels: BoardHost, store: Storage) {
     "codeboard.boardKey": (action: KeyAction) => active()?.post({ type: "key", action }),
     "codeboard.openSettings": async () => {
       const p = active() ?? (panels.target ? await panels.show(panels.target) : panels.all()[0]);
-      if (!p) { void ui().info("Open a board first. CodeBoard settings are also under Settings → Extensions → CodeBoard."); return; }
+      if (!p) {
+        void ui().info("Open a board first. CodeBoard settings are also under Settings → Extensions → CodeBoard.");
+        return;
+      }
       p.view.reveal();
       p.post({ type: "key", action: "openSettings" });
     },
     // Asked on the active board (where the keyboard is when the command runs from the palette over it), else in VS Code
-    "codeboard.captureRun": async () => { const a = active(); await captureFlow(store.dir(), a ?? (panels.target ? panels.get(panels.target) : undefined), prompts(a)); },
-    "codeboard.applyRun": async () => { const a = active(); await applyFlow(store.dir(), a ?? (panels.target ? panels.get(panels.target) : undefined), prompts(a)); },
-    "codeboard.copyDiagnostics": () => { const a = active(); return copyDiagnostics(prompts(a), (a ?? (panels.target ? panels.get(panels.target) : undefined))?.board); },
+    "codeboard.captureRun": async () => {
+      const a = active();
+      await captureFlow(store.dir(), a ?? (panels.target ? panels.get(panels.target) : undefined), prompts(a));
+    },
+    "codeboard.applyRun": async () => {
+      const a = active();
+      await applyFlow(store.dir(), a ?? (panels.target ? panels.get(panels.target) : undefined), prompts(a));
+    },
+    "codeboard.copyDiagnostics": () => {
+      const a = active();
+      return copyDiagnostics(prompts(a), (a ?? (panels.target ? panels.get(panels.target) : undefined))?.board);
+    },
 
     "codeboard.addToBoard": async () => {
       const b = await fromEditor();
@@ -209,7 +323,10 @@ export function makeActions(panels: BoardHost, store: Storage) {
       const p = panels.get(id);
       const sel = p?.selection?.cards[0];
       const card = sel && p?.board ? allCodeCards(p.board).find((c) => c.id === sel) : undefined;
-      if (!p || !card) { void ui().info("Select a code card on the board first."); return; }
+      if (!p || !card) {
+        void ui().info("Select a code card on the board first.");
+        return;
+      }
       const b = await fromEditor();
       if (!b) return;
       for (const seg of b.cards.flatMap((c) => c.segments)) {
@@ -259,16 +376,22 @@ export function makeActions(panels: BoardHost, store: Storage) {
     "codeboard.openBrokenBoard": async (file: string) => {
       const metas = await store.list();
       const bad = store.broken().find((b) => b.file === file);
-      if (!bad) { // 点之前文件已经修好了
+      if (!bad) {
+        // 点之前文件已经修好了
         const m = metas.find((x) => store.fileOf(x.id) === file);
         if (m) await panels.show(m.id, { here: true });
         return;
       }
-      const r = await ui().error(`Can't open board “${bad.name}” (${path.basename(file)}): ${bad.reason}`, "Open JSON", "Reveal in Folder");
+      const r = await ui().error(
+        `Can't open board “${bad.name}” (${path.basename(file)}): ${bad.reason}`,
+        "Open JSON",
+        "Reveal in Folder",
+      );
       if (r === "Open JSON") await workspace().editor.open(file);
       else if (r === "Reveal in Folder") await ui().revealInOS(file);
     },
-    "codeboard.openQuestion": (board: string, card?: string, line?: number, sticker?: string) => openOnBoard(panels, board, card, line, sticker),
+    "codeboard.openQuestion": (board: string, card?: string, line?: number, sticker?: string) =>
+      openOnBoard(panels, board, card, line, sticker),
     "codeboard.openGithubFile": (abs: string) => workspace().editor.open(abs, { readonly: true }),
     "codeboard._shareCards": async (board: string, cards: string[]) => {
       const renamed = await store.share(board, cards);
@@ -286,7 +409,11 @@ export function makeActions(panels: BoardHost, store: Storage) {
     },
     "codeboard.newBoard": async (a?: unknown) => {
       const group = (a as Node)?.kind === "group" ? (a as { name: string }).name : undefined;
-      const name = await ui().input({ prompt: "Name of the new board", value: "New Board", placeHolder: "e.g. generate() end to end" });
+      const name = await ui().input({
+        prompt: "Name of the new board",
+        value: "New Board",
+        placeHolder: "e.g. generate() end to end",
+      });
       if (!name?.trim()) return;
       const b = await store.create(name.trim(), group);
       await panels.show(b.id);
@@ -297,7 +424,12 @@ export function makeActions(panels: BoardHost, store: Storage) {
       if (!b) return;
       // From the sidebar (a): VS Code's input box, the keyboard is there; from the palette over the board: the board's dialog
       const on = a === undefined ? active() : undefined;
-      const name = await prompts(on?.id === b.id ? on : undefined).input({ title: "Rename Board", ok: "Rename", prompt: "Rename board", value: b.name });
+      const name = await prompts(on?.id === b.id ? on : undefined).input({
+        title: "Rename Board",
+        ok: "Rename",
+        prompt: "Rename board",
+        value: b.name,
+      });
       if (!name?.trim() || name.trim() === b.name) return;
       const p = panels.get(b.id);
       if (p?.board) {
@@ -317,7 +449,11 @@ export function makeActions(panels: BoardHost, store: Storage) {
       const id = boardArg(a);
       const b = id && (await store.load(id));
       if (!b) return;
-      const ok = await ui().warn(`Delete board “${b.name}”?`, { modal: true, detail: `${b.cards.length} cards and their links will be removed. Your code is not affected.` }, "Delete");
+      const ok = await ui().warn(
+        `Delete board “${b.name}”?`,
+        { modal: true, detail: `${b.cards.length} cards and their links will be removed. Your code is not affected.` },
+        "Delete",
+      );
       if (ok !== "Delete") return;
       panels.get(b.id)?.view.dispose();
       await store.remove(b.id);
@@ -328,13 +464,29 @@ export function makeActions(panels: BoardHost, store: Storage) {
     "codeboard.moveBoardsIntoProject": async () => {
       const to = projectDir();
       if (to) {
-        const ok = await ui().warn(`Move this project's boards into ${PROJECT_DIR} in ${path.basename(ws0())}?`, { modal: true, detail: `Boards, groups, shared cards, images and run records are stored in ${to} from now on, where git can track them. Anyone who opens the repository with CodeBoard sees them. Deleted boards (.trash) are ignored by git.` }, "Move");
+        const ok = await ui().warn(
+          `Move this project's boards into ${PROJECT_DIR} in ${path.basename(ws0())}?`,
+          {
+            modal: true,
+            detail: `Boards, groups, shared cards, images and run records are stored in ${to} from now on, where git can track them. Anyone who opens the repository with CodeBoard sees them. Deleted boards (.trash) are ignored by git.`,
+          },
+          "Move",
+        );
         if (ok !== "Move") return;
       }
       const r = await moveIntoProject(store);
-      if (!r.moved) { void ui().info(r.why); return; }
+      if (!r.moved) {
+        void ui().info(r.why);
+        return;
+      }
       await panels.pushBoards();
-      if ((await ui().info(`Boards moved into ${PROJECT_DIR}. Commit it to share them with the repository.`, "Reveal in Folder")) === "Reveal in Folder") await ui().revealInOS(r.to);
+      if (
+        (await ui().info(
+          `Boards moved into ${PROJECT_DIR}. Commit it to share them with the repository.`,
+          "Reveal in Folder",
+        )) === "Reveal in Folder"
+      )
+        await ui().revealInOS(r.to);
     },
     "codeboard.copyToProject": (a?: unknown) => toProject(a, false),
     "codeboard.moveToProject": (a?: unknown) => toProject(a, true),
@@ -344,8 +496,14 @@ export function makeActions(panels: BoardHost, store: Storage) {
       const id = boardArg(a);
       if (!id) return;
       const groups = await store.groups();
-      const NONE = "(No Group)", NEW = "New Group…";
-      const r = (await ui().pick([NONE, ...groups, NEW].map((label) => ({ label, icon: label === NEW ? ("add" as const) : undefined })), { placeHolder: "Move to group" }))?.label;
+      const NONE = "(No Group)",
+        NEW = "New Group…";
+      const r = (
+        await ui().pick(
+          [NONE, ...groups, NEW].map((label) => ({ label, icon: label === NEW ? ("add" as const) : undefined })),
+          { placeHolder: "Move to group" },
+        )
+      )?.label;
       if (!r) return;
       let g: string | undefined = r === NONE ? undefined : r;
       if (r === NEW) {
@@ -363,17 +521,28 @@ export function makeActions(panels: BoardHost, store: Storage) {
     "codeboard.renameGroup": async (a?: Node) => {
       if (a?.kind !== "group") return;
       const g = (await ui().input({ prompt: "Rename group", value: a.name }))?.trim();
-      if (g && g !== a.name) { await store.renameGroup(a.name, g); await panels.pushBoards(); }
+      if (g && g !== a.name) {
+        await store.renameGroup(a.name, g);
+        await panels.pushBoards();
+      }
     },
     "codeboard.deleteGroup": async (a?: Node) => {
       if (a?.kind !== "group") return;
-      const ok = await ui().warn(`Delete group “${a.name}”?`, { modal: true, detail: "Boards in it are kept and moved out of the group." }, "Delete Group");
+      const ok = await ui().warn(
+        `Delete group “${a.name}”?`,
+        { modal: true, detail: "Boards in it are kept and moved out of the group." },
+        "Delete Group",
+      );
       if (ok !== "Delete Group") return;
       const left = await store.removeGroup(a.name);
       await panels.pushBoards();
       if (!left.length) return;
       // 读不了的白板、不是白板的文件：不删，文件夹留着
-      const reveal = await ui().warn(`Group “${a.name}” was kept: it still has files CodeBoard can't open as boards (${left.join(", ")}).`, {}, "Reveal in Folder");
+      const reveal = await ui().warn(
+        `Group “${a.name}” was kept: it still has files CodeBoard can't open as boards (${left.join(", ")}).`,
+        {},
+        "Reveal in Folder",
+      );
       if (reveal) await ui().revealInOS(path.join(store.dir(), a.name));
     },
     "codeboard.revealInFolder": async (a?: unknown) => {
@@ -394,7 +563,10 @@ export function makeActions(panels: BoardHost, store: Storage) {
 async function pickBoard(store: Storage, placeHolder: string, allowNew: boolean): Promise<string | undefined> {
   const metas = await store.list();
   const NEW = { label: "New Board…", icon: "add" as const, id: "" };
-  const items = [...metas.map((m) => ({ label: m.name, icon: "board" as const, description: m.group, detail: undefined, id: m.id })), ...(allowNew ? [NEW] : [])];
+  const items = [
+    ...metas.map((m) => ({ label: m.name, icon: "board" as const, description: m.group, detail: undefined, id: m.id })),
+    ...(allowNew ? [NEW] : []),
+  ];
   const ui = workspace().ui;
   const r = await ui.pick(items, { placeHolder });
   if (!r) return;
@@ -421,13 +593,14 @@ export type Hit = { board: Board; card: CodeCard; seg: string; lines: [number, n
 async function findOnBoards(store: Storage, abs: string, start: number, end: number): Promise<Hit[]> {
   const out: Hit[] = [];
   for (const { board } of await store.all()) {
-    for (const card of allCodeCards(board)) for (const s of card.segments) {
-      if (absOf(s) !== abs) continue;
-      const wp = await workingPlace(s);
-      if (!wp || wp.end < start || wp.start > end) continue;
-      const d = s.start - wp.start;
-      out.push({ board, card, seg: s.id, lines: [Math.max(wp.start, start) + d, Math.min(wp.end, end) + d] });
-    }
+    for (const card of allCodeCards(board))
+      for (const s of card.segments) {
+        if (absOf(s) !== abs) continue;
+        const wp = await workingPlace(s);
+        if (!wp || wp.end < start || wp.start > end) continue;
+        const d = s.start - wp.start;
+        out.push({ board, card, seg: s.id, lines: [Math.max(wp.start, start) + d, Math.min(wp.end, end) + d] });
+      }
   }
   return out;
 }

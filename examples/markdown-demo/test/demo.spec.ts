@@ -2,17 +2,23 @@ import * as path from "node:path";
 import { test, expect } from "@playwright/test";
 
 // screenshots for a look (not compared): test-out/markdown-demo/
-const shot = (name: string) => path.join(path.dirname(new URL(import.meta.url).pathname), "../../../test-out/markdown-demo", `${name}.png`);
+const shot = (name: string) =>
+  path.join(path.dirname(new URL(import.meta.url).pathname), "../../../test-out/markdown-demo", `${name}.png`);
 
 test("markdownDemo", async ({ page }) => {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(String(e)));
   // every script the page fetches, with its body: the editor chunk is the one with the editor's own class names in it
   const scripts: { url: string; body: Promise<string> }[] = [];
-  page.on("response", (r) => { if (r.request().resourceType() === "script") scripts.push({ url: r.url(), body: r.text().catch(() => "") }); });
+  page.on("response", (r) => {
+    if (r.request().resourceType() === "script") scripts.push({ url: r.url(), body: r.text().catch(() => "") });
+  });
   const editorChunks = async () => {
     const hit: string[] = [];
-    for (const s of scripts) { const b = await s.body; if (b.includes("md-bubble") || b.includes("cbcm")) hit.push(s.url); }
+    for (const s of scripts) {
+      const b = await s.body;
+      if (b.includes("md-bubble") || b.includes("cbcm")) hit.push(s.url);
+    }
     return hit;
   };
   await page.goto("./");
@@ -22,8 +28,14 @@ test("markdownDemo", async ({ page }) => {
   await expect(note.locator(".math .katex-display")).toHaveCount(1);
   await expect(note.locator(".mmd svg")).toHaveCount(1);
   await expect(note.locator("pre.md-code[data-lang=python] code span.kw").first()).toHaveText("def");
-  const kw = await note.locator("pre.md-code span.kw").first().evaluate((e) => getComputedStyle(e).color);
-  const plain = await note.locator("pre.md-code code").first().evaluate((e) => getComputedStyle(e).color);
+  const kw = await note
+    .locator("pre.md-code span.kw")
+    .first()
+    .evaluate((e) => getComputedStyle(e).color);
+  const plain = await note
+    .locator("pre.md-code code")
+    .first()
+    .evaluate((e) => getComputedStyle(e).color);
   expect(kw).not.toBe(plain);
   await expect(note.locator(".md-ref:not(.missing)")).toHaveText("Paging");
   await expect(note.locator(".md-ref.missing")).toHaveText("Nowhere");

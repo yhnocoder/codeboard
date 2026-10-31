@@ -13,18 +13,122 @@ const fs = require("fs");
 // fn = a line inside the calling function, line = the call; want = the new card's title; key = the dispatch key on the arrow;
 // alts = alternatives that must be offered (text in the alternatives column); bound = text in the arrow's label
 const ROWS = [
-  { id: "F.softmax", file: "torch/nn/functional.py", fn: 2206, line: 2243, name: "softmax", want: "at::native::softmax", key: "CompositeImplicitAutograd", alts: ["at::native::softmax_out"] },
-  { id: "at::_softmax", file: "aten/src/ATen/native/SoftMax.cpp", fn: 410, line: 416, name: "_softmax", want: "at::native::softmax_cuda_out", key: "CUDA", alts: ["CPU · at::native::softmax_cpu_out"] },
-  { id: "host_softmax", file: "aten/src/ATen/native/cuda/SoftMax.cu", fn: 1459, line: 1467, name: "host_softmax", want: "at::native::host_softmax" },
-  { id: "cunn_SoftMaxForward<<<>>>", file: "aten/src/ATen/native/cuda/SoftMax.cu", fn: 1096, line: 1206, name: "cunn_SoftMaxForward", want: /^cunn_SoftMaxForward</ },
-  { id: "_C._nn.fractional_max_pool2d", file: "torch/nn/functional.py", fn: 441, line: 514, name: "fractional_max_pool2d", want: "at::native::fractional_max_pool2d_out_cuda", key: "CUDA", alts: ["CPU · at::native::fractional_max_pool2d_out_cpu"] },
-  { id: "_C._get_cudnn_enabled", file: "torch/backends/cudnn/__init__.py", fn: 129, line: 130, name: "_get_cudnn_enabled", want: "THPModule_userEnabledCuDNN", bound: "PyMethodDef" },
-  { id: "_C._get_tracing_state", file: "torch/nn/modules/module.py", fn: 1763, line: 1764, name: "_get_tracing_state", want: /lambda$/, bound: "pybind" },
-  { id: "torch.ops.aten._upsample_bilinear2d_aa", file: "torch/_decomp/decompositions.py", fn: 4575, line: 4579, name: "_upsample_bilinear2d_aa", want: "at::native::_upsample_bilinear2d_aa_out_cuda", key: "CUDA", alts: ["CPU · ", "CompositeImplicitAutograd · "] },
-  { id: "scatter_add_stub", file: "aten/src/ATen/native/TensorAdvancedIndexing.cpp", fn: 2352, line: 2384, name: "scatter_add_stub", want: "at::native::scatter_add_cuda_kernel", key: "CUDA", alts: ["CPU · at::native::scatter_add_cpu_kernel"], bound: "REGISTER_DISPATCH" },
-  { id: "add_stub", file: "aten/src/ATen/native/BinaryOps.cpp", fn: 435, line: 438, name: "add_stub", want: "at::native::add_kernel", key: "CUDA", alts: ["CPU · at::native::add_kernel"], generated: true },
-  { id: "PaddingKernel add_stub", file: "aten/src/ATen/native/cpu/PaddingKernel.cpp", fn: 396, line: 440, name: "add_stub", want: "at::native::add_stub" },
-  { id: "torch.add", file: "torch/nn/utils/parametrizations.py", fn: 70, line: 96, name: "add", pre: "torch.", want: "at::native::ufunc_add_CUDA", key: "CUDA", alts: ["CPU · at::native::ufunc_add_CPU", "at::native::add", "MPS · at::native::add_out_mps"], generated: true },
+  {
+    id: "F.softmax",
+    file: "torch/nn/functional.py",
+    fn: 2206,
+    line: 2243,
+    name: "softmax",
+    want: "at::native::softmax",
+    key: "CompositeImplicitAutograd",
+    alts: ["at::native::softmax_out"],
+  },
+  {
+    id: "at::_softmax",
+    file: "aten/src/ATen/native/SoftMax.cpp",
+    fn: 410,
+    line: 416,
+    name: "_softmax",
+    want: "at::native::softmax_cuda_out",
+    key: "CUDA",
+    alts: ["CPU · at::native::softmax_cpu_out"],
+  },
+  {
+    id: "host_softmax",
+    file: "aten/src/ATen/native/cuda/SoftMax.cu",
+    fn: 1459,
+    line: 1467,
+    name: "host_softmax",
+    want: "at::native::host_softmax",
+  },
+  {
+    id: "cunn_SoftMaxForward<<<>>>",
+    file: "aten/src/ATen/native/cuda/SoftMax.cu",
+    fn: 1096,
+    line: 1206,
+    name: "cunn_SoftMaxForward",
+    want: /^cunn_SoftMaxForward</,
+  },
+  {
+    id: "_C._nn.fractional_max_pool2d",
+    file: "torch/nn/functional.py",
+    fn: 441,
+    line: 514,
+    name: "fractional_max_pool2d",
+    want: "at::native::fractional_max_pool2d_out_cuda",
+    key: "CUDA",
+    alts: ["CPU · at::native::fractional_max_pool2d_out_cpu"],
+  },
+  {
+    id: "_C._get_cudnn_enabled",
+    file: "torch/backends/cudnn/__init__.py",
+    fn: 129,
+    line: 130,
+    name: "_get_cudnn_enabled",
+    want: "THPModule_userEnabledCuDNN",
+    bound: "PyMethodDef",
+  },
+  {
+    id: "_C._get_tracing_state",
+    file: "torch/nn/modules/module.py",
+    fn: 1763,
+    line: 1764,
+    name: "_get_tracing_state",
+    want: /lambda$/,
+    bound: "pybind",
+  },
+  {
+    id: "torch.ops.aten._upsample_bilinear2d_aa",
+    file: "torch/_decomp/decompositions.py",
+    fn: 4575,
+    line: 4579,
+    name: "_upsample_bilinear2d_aa",
+    want: "at::native::_upsample_bilinear2d_aa_out_cuda",
+    key: "CUDA",
+    alts: ["CPU · ", "CompositeImplicitAutograd · "],
+  },
+  {
+    id: "scatter_add_stub",
+    file: "aten/src/ATen/native/TensorAdvancedIndexing.cpp",
+    fn: 2352,
+    line: 2384,
+    name: "scatter_add_stub",
+    want: "at::native::scatter_add_cuda_kernel",
+    key: "CUDA",
+    alts: ["CPU · at::native::scatter_add_cpu_kernel"],
+    bound: "REGISTER_DISPATCH",
+  },
+  {
+    id: "add_stub",
+    file: "aten/src/ATen/native/BinaryOps.cpp",
+    fn: 435,
+    line: 438,
+    name: "add_stub",
+    want: "at::native::add_kernel",
+    key: "CUDA",
+    alts: ["CPU · at::native::add_kernel"],
+    generated: true,
+  },
+  {
+    id: "PaddingKernel add_stub",
+    file: "aten/src/ATen/native/cpu/PaddingKernel.cpp",
+    fn: 396,
+    line: 440,
+    name: "add_stub",
+    want: "at::native::add_stub",
+  },
+  {
+    id: "torch.add",
+    file: "torch/nn/utils/parametrizations.py",
+    fn: 70,
+    line: 96,
+    name: "add",
+    pre: "torch.",
+    want: "at::native::ufunc_add_CUDA",
+    key: "CUDA",
+    alts: ["CPU · at::native::ufunc_add_CPU", "at::native::add", "MPS · at::native::add_out_mps"],
+    generated: true,
+  },
 ];
 
 module.exports = async (page, t) => {
@@ -49,7 +153,9 @@ module.exports = async (page, t) => {
   // group's active tab and try again
   const retry = async (what, fn) => {
     for (let k = 0; ; k++) {
-      try { return await fn(); } catch (e) {
+      try {
+        return await fn();
+      } catch (e) {
         if (k >= 2) throw e;
         console.log(`  (${what}: retry ${k + 1})`);
         await page.keyboard.press("Escape");
@@ -69,19 +175,34 @@ module.exports = async (page, t) => {
       await page.keyboard.press("Alt+b");
       await t.until(`${row.id}: Alt+B puts the caller on the board`, () => f.locator(".card").count(), 60000, 50);
       await t.idle(f, { ms: 60000 });
-      const call = await f.locator(".card").first().evaluate((c, [line, name]) => {
-        const no = [...c.querySelectorAll(".gutter .no")].find((e) => e.textContent.trim() === String(line));
-        const l = no && c.querySelector(`.src .l[data-r="${no.dataset.r}"]`);
-        const el = [...(l?.querySelectorAll(".call") ?? [])].find((e) => e.textContent === name);
-        el?.setAttribute("data-torch-click", "");
-        return !!el;
-      }, [row.line, row.name]);
+      const call = await f
+        .locator(".card")
+        .first()
+        .evaluate(
+          (c, [line, name]) => {
+            const no = [...c.querySelectorAll(".gutter .no")].find((e) => e.textContent.trim() === String(line));
+            const l = no && c.querySelector(`.src .l[data-r="${no.dataset.r}"]`);
+            const el = [...(l?.querySelectorAll(".call") ?? [])].find((e) => e.textContent === name);
+            el?.setAttribute("data-torch-click", "");
+            return !!el;
+          },
+          [row.line, row.name],
+        );
       t.check(call, `${row.id}: ${row.name} on line ${row.line} is a clickable call`);
       const el = f.locator("[data-torch-click]");
       if (!call || !(await inView(f, el))) continue;
       const t0 = Date.now();
       await el.click();
-      await t.until(`${row.id}: the kernel's card`, () => f.locator(".card").count().then((k) => k > 1), 90000, 20);
+      await t.until(
+        `${row.id}: the kernel's card`,
+        () =>
+          f
+            .locator(".card")
+            .count()
+            .then((k) => k > 1),
+        90000,
+        20,
+      );
       r.ms = Date.now() - t0;
       await t.idle(f, { ms: 60000 });
       const c = f.locator(".card").nth(1);
@@ -89,15 +210,31 @@ module.exports = async (page, t) => {
       r.label = flat((await f.locator(".vchips .vtop").allInnerTexts()).join(" | "));
       r.alts = flat((await f.locator(".altcol").allInnerTexts()).join(" | "));
       r.uncommitted = await c.locator(".chead .rev.unc").count();
-      t.check(typeof row.want === "string" ? r.title === row.want : row.want.test(r.title), `${row.id} → ${row.want}`, r.title);
-      if (row.key) t.check(new RegExp(`dispatch → ${row.key}\\b`).test(r.label), `${row.id}: dispatch key ${row.key} on the arrow`, r.label);
+      t.check(
+        typeof row.want === "string" ? r.title === row.want : row.want.test(r.title),
+        `${row.id} → ${row.want}`,
+        r.title,
+      );
+      if (row.key)
+        t.check(
+          new RegExp(`dispatch → ${row.key}\\b`).test(r.label),
+          `${row.id}: dispatch key ${row.key} on the arrow`,
+          r.label,
+        );
       if (row.bound) t.check(r.label.includes(row.bound), `${row.id}: the arrow says ${row.bound}`, r.label);
       for (const a of row.alts ?? []) t.check(r.alts.includes(a), `${row.id}: offers ${a}`, r.alts);
       t.check(!/Python · /.test(r.alts), `${row.id}: no Python functions of the same name next to kernels`, r.alts);
       // the generated file is git-ignored: pinned by its content ("not in git"), not "+ uncommitted"
-      if (row.generated) t.check(!r.uncommitted && /not in git/.test(await c.locator(".chead .rev").first().getAttribute("data-tip")), `${row.id}: the generated build/ file's card is not "+ uncommitted"`);
+      if (row.generated)
+        t.check(
+          !r.uncommitted && /not in git/.test(await c.locator(".chead .rev").first().getAttribute("data-tip")),
+          `${row.id}: the generated build/ file's card is not "+ uncommitted"`,
+        );
       await t.shot(page, `row-${n}`);
-    } catch (e) { r.error = String(e.message || e).split("\n")[0]; t.check(false, `${row.id} runs`, r.error); }
+    } catch (e) {
+      r.error = String(e.message || e).split("\n")[0];
+      t.check(false, `${row.id} runs`, r.error);
+    }
     console.log(`  ${JSON.stringify(r)}`);
     fs.writeFileSync(`${t.OUT}/torch-routing.json`, JSON.stringify(out, null, 1));
   }

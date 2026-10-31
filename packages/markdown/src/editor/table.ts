@@ -6,7 +6,18 @@ import { Extension, type AnyExtension, type Editor, type Node as TNode } from "@
 import { Plugin, PluginKey, TextSelection, type EditorState, type Transaction } from "@tiptap/pm/state";
 import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
 import type { Node as PMNode } from "@tiptap/pm/model";
-import { TableMap, addColumnAfter, addColumnBefore, addRowAfter, addRowBefore, deleteColumn, deleteRow, deleteTable, isInTable, selectionCell } from "@tiptap/pm/tables";
+import {
+  TableMap,
+  addColumnAfter,
+  addColumnBefore,
+  addRowAfter,
+  addRowBefore,
+  deleteColumn,
+  deleteRow,
+  deleteTable,
+  isInTable,
+  selectionCell,
+} from "@tiptap/pm/tables";
 import { iconEl, type IconName } from "../ui/icons";
 import { CELL_MIN } from "../layout";
 
@@ -22,14 +33,20 @@ const tablePos = (state: EditorState): number | null => {
 function cellDown(view: EditorView): boolean {
   if (!isInTable(view.state)) return false;
   const go = (st: EditorState) => {
-    const $cell = selectionCell(st), table = $cell.node(-1), start = $cell.start(-1), map = TableMap.get(table);
+    const $cell = selectionCell(st),
+      table = $cell.node(-1),
+      start = $cell.start(-1),
+      map = TableMap.get(table);
     const { top, left } = map.findCell($cell.pos - start);
     if (top + 1 >= map.height) return false;
     const pos = start + map.map[(top + 1) * map.width + left];
     view.dispatch(st.tr.setSelection(TextSelection.near(st.doc.resolve(pos + 1))).scrollIntoView());
     return true;
   };
-  if (!go(view.state)) { addRowAfter(view.state, view.dispatch); go(view.state); }
+  if (!go(view.state)) {
+    addRowAfter(view.state, view.dispatch);
+    go(view.state);
+  }
   return true;
 }
 /** Adds a row above or below; the caret stays where it is, in its cell (as the demo's prosemirror-tables commands leave it) */
@@ -41,11 +58,16 @@ function addRow(view: EditorView, below: boolean): boolean {
 function setColAlign(view: EditorView, align: "left" | "center" | "right") {
   const { state } = view;
   if (!isInTable(state)) return;
-  const $cell = selectionCell(state), table = $cell.node(-1), start = $cell.start(-1), map = TableMap.get(table);
-  const { left } = map.findCell($cell.pos - start), next = $cell.nodeAfter!.attrs.align === align ? null : align;
+  const $cell = selectionCell(state),
+    table = $cell.node(-1),
+    start = $cell.start(-1),
+    map = TableMap.get(table);
+  const { left } = map.findCell($cell.pos - start),
+    next = $cell.nodeAfter!.attrs.align === align ? null : align;
   const tr = state.tr;
   for (let r = 0; r < map.height; r++) {
-    const off = map.map[r * map.width + left], cell = table.nodeAt(off)!;
+    const off = map.map[r * map.width + left],
+      cell = table.nodeAt(off)!;
     tr.setNodeMarkup(start + off, null, { ...cell.attrs, align: next });
   }
   view.dispatch(tr);
@@ -53,16 +75,22 @@ function setColAlign(view: EditorView, align: "left" | "center" | "right") {
 
 /** Cells with content that a resize to R×C would drop */
 function doomed(table: PMNode, pos: number, R: number, C: number) {
-  const map = TableMap.get(table), out: { pos: number; node: PMNode; r: number; c: number }[] = [];
-  for (let r = 0; r < map.height; r++) for (let c = 0; c < map.width; c++) {
-    if (r < R && c < C) continue;
-    const off = map.map[r * map.width + c], n = table.nodeAt(off)!;
-    if (n.textContent.trim()) out.push({ pos: pos + 1 + off, node: n, r, c });
-  }
+  const map = TableMap.get(table),
+    out: { pos: number; node: PMNode; r: number; c: number }[] = [];
+  for (let r = 0; r < map.height; r++)
+    for (let c = 0; c < map.width; c++) {
+      if (r < R && c < C) continue;
+      const off = map.map[r * map.width + c],
+        n = table.nodeAt(off)!;
+      if (n.textContent.trim()) out.push({ pos: pos + 1 + off, node: n, r, c });
+    }
   return out;
 }
 function resizeTable(view: EditorView, pos: number, R: number, C: number) {
-  const { state } = view, table = state.doc.nodeAt(pos)!, map = TableMap.get(table), s = state.schema;
+  const { state } = view,
+    table = state.doc.nodeAt(pos)!,
+    map = TableMap.get(table),
+    s = state.schema;
   const $cell = isInTable(state) ? selectionCell(state) : null;
   const at = $cell ? map.findCell($cell.pos - pos - 1) : { top: 0, left: 0 };
   const colCell = (c: number) => (c < map.width ? table.nodeAt(map.map[c]) : null);
@@ -73,14 +101,18 @@ function resizeTable(view: EditorView, pos: number, R: number, C: number) {
       let cell = r < map.height && c < map.width ? table.nodeAt(map.map[r * map.width + c]) : null;
       if (!cell) {
         const src = colCell(c);
-        cell = (r === 0 ? s.nodes.tableHeader : s.nodes.tableCell).createAndFill({ align: src?.attrs.align ?? null, colwidth: src?.attrs.colwidth ?? null })!;
+        cell = (r === 0 ? s.nodes.tableHeader : s.nodes.tableCell).createAndFill({
+          align: src?.attrs.align ?? null,
+          colwidth: src?.attrs.colwidth ?? null,
+        })!;
       }
       cells.push(cell);
     }
     const old = r < map.height ? table.child(r) : null;
     rows.push(s.nodes.tableRow.create(old?.attrs ?? null, cells));
   }
-  const nt = s.nodes.table.create(table.attrs, rows), tr = state.tr.replaceWith(pos, pos + table.nodeSize, nt);
+  const nt = s.nodes.table.create(table.attrs, rows),
+    tr = state.tr.replaceWith(pos, pos + table.nodeSize, nt);
   const off = TableMap.get(nt).positionAt(Math.min(at.top, R - 1), Math.min(at.left, C - 1), nt);
   tr.setSelection(TextSelection.near(tr.doc.resolve(pos + 1 + off + 1)));
   view.dispatch(tr.scrollIntoView());
@@ -88,25 +120,38 @@ function resizeTable(view: EditorView, pos: number, R: number, C: number) {
 
 /** The grid picker's preview: cells a resize would drop are marked in the table */
 const PREV = new PluginKey<{ pos: number; R: number; C: number } | null>("cbTablePreview");
-const previewPlugin = () => new Plugin({
-  key: PREV,
-  state: { init: () => null, apply: (tr, v) => { const m = tr.getMeta(PREV); return m !== undefined ? m : tr.docChanged ? null : v; } },
-  props: {
-    decorations(state) {
-      const v = PREV.getState(state);
-      const t = v && state.doc.nodeAt(v.pos);
-      if (!v || t?.type.name !== "table") return null;
-      return DecorationSet.create(state.doc, doomed(t, v.pos, v.R, v.C).map((d) => Decoration.node(d.pos, d.pos + d.node.nodeSize, { class: "md-doom" })));
+const previewPlugin = () =>
+  new Plugin({
+    key: PREV,
+    state: {
+      init: () => null,
+      apply: (tr, v) => {
+        const m = tr.getMeta(PREV);
+        return m !== undefined ? m : tr.docChanged ? null : v;
+      },
     },
-  },
-});
+    props: {
+      decorations(state) {
+        const v = PREV.getState(state);
+        const t = v && state.doc.nodeAt(v.pos);
+        if (!v || t?.type.name !== "table") return null;
+        return DecorationSet.create(
+          state.doc,
+          doomed(t, v.pos, v.R, v.C).map((d) => Decoration.node(d.pos, d.pos + d.node.nodeSize, { class: "md-doom" })),
+        );
+      },
+    },
+  });
 
 /** Row heights: drag a row's bottom edge. A line marks the edge while the pointer is near it and follows the drag; the height
  *  is set on release (one step) */
 function rowEdge(view: EditorView, e: MouseEvent): HTMLTableRowElement | null {
   const cell = (e.target as Element | null)?.closest?.("td, th");
   if (!cell || !view.dom.contains(cell)) return null;
-  const tr = cell.parentElement as HTMLTableRowElement, r = tr.getBoundingClientRect(), k = tr.offsetHeight ? r.height / tr.offsetHeight : 1, d = (r.bottom - e.clientY) / k;
+  const tr = cell.parentElement as HTMLTableRowElement,
+    r = tr.getBoundingClientRect(),
+    k = tr.offsetHeight ? r.height / tr.offsetHeight : 1,
+    d = (r.bottom - e.clientY) / k;
   return d <= 4 && d >= -2 ? tr : null;
 }
 const ROW_MIN = 24;
@@ -119,8 +164,12 @@ function rowLine(tr: HTMLTableRowElement, line = document.createElement("div")) 
   return line;
 }
 const rowResize = () => {
-  let dragging = false, hover: HTMLDivElement | null = null;
-  const unhover = () => { hover?.remove(); hover = null; };
+  let dragging = false,
+    hover: HTMLDivElement | null = null;
+  const unhover = () => {
+    hover?.remove();
+    hover = null;
+  };
   return new Plugin({
     key: new PluginKey("cbRowResize"),
     view: () => ({ destroy: unhover }),
@@ -134,31 +183,44 @@ const rowResize = () => {
             if (dragging) return;
             const on = !!tr && !view.dom.classList.contains("resize-cursor");
             view.dom.classList.toggle("md-row-resize", on);
-            if (on) hover = rowLine(tr!, hover ?? undefined); else unhover();
+            if (on) hover = rowLine(tr!, hover ?? undefined);
+            else unhover();
           });
           return false;
         },
-        mouseleave: (view) => { view.dom.classList.remove("md-row-resize"); unhover(); return false; },
+        mouseleave: (view) => {
+          view.dom.classList.remove("md-row-resize");
+          unhover();
+          return false;
+        },
         mousedown: (view, e) => {
           if (e.button !== 0) return false;
           const row = rowEdge(view, e);
           if (!row || view.dom.classList.contains("resize-cursor")) return false;
           unhover();
-          const pos = view.posAtDOM(row, 0) - 1, node = view.state.doc.nodeAt(pos);
+          const pos = view.posAtDOM(row, 0) - 1,
+            node = view.state.doc.nodeAt(pos);
           if (node?.type.name !== "tableRow") return false;
           e.preventDefault();
           e.stopPropagation();
-          const r = row.getBoundingClientRect(), k = row.offsetHeight ? r.height / row.offsetHeight : 1;
+          const r = row.getBoundingClientRect(),
+            k = row.offsetHeight ? r.height / row.offsetHeight : 1;
           const line = rowLine(row);
-          const y0 = e.clientY, h0 = row.offsetHeight;
+          const y0 = e.clientY,
+            h0 = row.offsetHeight;
           let h = h0;
-          const place = () => { line.style.top = `${r.top + h * k}px`; };
+          const place = () => {
+            line.style.top = `${r.top + h * k}px`;
+          };
           place();
           const shield = document.createElement("div");
           shield.className = "md-rowshield";
           document.body.append(shield);
           dragging = true;
-          const move = (ev: MouseEvent) => { h = Math.max(ROW_MIN, h0 + (ev.clientY - y0) / k); place(); };
+          const move = (ev: MouseEvent) => {
+            h = Math.max(ROW_MIN, h0 + (ev.clientY - y0) / k);
+            place();
+          };
           const up = () => {
             window.removeEventListener("mousemove", move, true);
             window.removeEventListener("mouseup", up, true);
@@ -167,7 +229,8 @@ const rowResize = () => {
             dragging = false;
             view.dom.classList.remove("md-row-resize");
             const n = view.state.doc.nodeAt(pos);
-            if (Math.abs(h - h0) >= 1 && n?.type.name === "tableRow") view.dispatch(view.state.tr.setNodeMarkup(pos, null, { ...n.attrs, height: Math.round(h) }));
+            if (Math.abs(h - h0) >= 1 && n?.type.name === "tableRow")
+              view.dispatch(view.state.tr.setNodeMarkup(pos, null, { ...n.attrs, height: Math.round(h) }));
           };
           window.addEventListener("mousemove", move, true);
           window.addEventListener("mouseup", up, true);
@@ -178,7 +241,8 @@ const rowResize = () => {
   });
 };
 
-const GW = 10, GH = 8;
+const GW = 10,
+  GH = 8;
 type Btn = { act: string; icon: IconName; tip: string; kbd?: string; danger?: true };
 
 /** The toolbar pill and the size grid: fixed on the page (unscaled, like the selection toolbar), above the table */
@@ -192,9 +256,13 @@ class TableBar {
   private open: { pos: number } | null = null;
   private pos: number | null = null;
   private frame = 0;
-  constructor(private view: EditorView, isMac: () => boolean) {
+  constructor(
+    private view: EditorView,
+    isMac: () => boolean,
+  ) {
     const mac = isMac();
-    const K = (s: string) => (mac ? s : s.replace(/⌘/g, "Ctrl+").replace(/⇧/g, "Shift+").replace(/⌫/g, "Backspace").replace(/↵/g, "Enter"));
+    const K = (s: string) =>
+      mac ? s : s.replace(/⌘/g, "Ctrl+").replace(/⇧/g, "Shift+").replace(/⌫/g, "Backspace").replace(/↵/g, "Enter");
     this.bar = document.createElement("div");
     this.bar.className = "mdui pill md-tbar";
     const btn = (b: Btn) => {
@@ -207,15 +275,29 @@ class TableBar {
       e.append(iconEl(b.icon));
       return e;
     };
-    const sep = () => { const s = document.createElement("span"); s.className = "sep"; return s; };
+    const sep = () => {
+      const s = document.createElement("span");
+      s.className = "sep";
+      return s;
+    };
     this.count = document.createElement("span");
     this.count.className = "md-tcount";
     this.bar.append(
-      btn({ act: "grid", icon: "grid", tip: "Table size" }), this.count, sep(),
-      btn({ act: "rowAbove", icon: "rowAbove", tip: "Insert row above", kbd: "⌘⇧↵" }), btn({ act: "rowBelow", icon: "rowBelow", tip: "Insert row below", kbd: "⌘↵" }),
-      btn({ act: "colLeft", icon: "colLeft", tip: "Insert column left" }), btn({ act: "colRight", icon: "colRight", tip: "Insert column right" }), sep(),
-      btn({ act: "delRow", icon: "delRow", tip: "Delete row", kbd: "⌘⇧⌫" }), btn({ act: "delCol", icon: "delCol", tip: "Delete column" }), sep(),
-      btn({ act: "left", icon: "alignL", tip: "Align column left" }), btn({ act: "center", icon: "alignC", tip: "Align column center" }), btn({ act: "right", icon: "alignR", tip: "Align column right" }), sep(),
+      btn({ act: "grid", icon: "grid", tip: "Table size" }),
+      this.count,
+      sep(),
+      btn({ act: "rowAbove", icon: "rowAbove", tip: "Insert row above", kbd: "⌘⇧↵" }),
+      btn({ act: "rowBelow", icon: "rowBelow", tip: "Insert row below", kbd: "⌘↵" }),
+      btn({ act: "colLeft", icon: "colLeft", tip: "Insert column left" }),
+      btn({ act: "colRight", icon: "colRight", tip: "Insert column right" }),
+      sep(),
+      btn({ act: "delRow", icon: "delRow", tip: "Delete row", kbd: "⌘⇧⌫" }),
+      btn({ act: "delCol", icon: "delCol", tip: "Delete column" }),
+      sep(),
+      btn({ act: "left", icon: "alignL", tip: "Align column left" }),
+      btn({ act: "center", icon: "alignC", tip: "Align column center" }),
+      btn({ act: "right", icon: "alignR", tip: "Align column right" }),
+      sep(),
       btn({ act: "delTable", icon: "trash", tip: "Delete table", danger: true }),
     );
     this.pick = document.createElement("div");
@@ -228,17 +310,36 @@ class TableBar {
     this.inR = this.pick.querySelector("[data-r]")!;
     this.inC = this.pick.querySelector("[data-c]")!;
     for (const el of [this.bar, this.pick]) {
-      el.addEventListener("mousedown", (e) => { if (!(e.target as Element).closest("input")) e.preventDefault(); });
+      el.addEventListener("mousedown", (e) => {
+        if (!(e.target as Element).closest("input")) e.preventDefault();
+      });
       el.addEventListener("pointerdown", (e) => e.stopPropagation());
     }
-    this.bar.addEventListener("click", (e) => { const b = (e.target as Element).closest<HTMLElement>("[data-act]"); if (b) this.act(b.dataset.act!); });
+    this.bar.addEventListener("click", (e) => {
+      const b = (e.target as Element).closest<HTMLElement>("[data-act]");
+      if (b) this.act(b.dataset.act!);
+    });
     this.cells.forEach((g, i) => {
-      g.addEventListener("mouseenter", () => { this.inR.value = String(Math.floor(i / GW) + 1); this.inC.value = String((i % GW) + 1); this.preview(); });
+      g.addEventListener("mouseenter", () => {
+        this.inR.value = String(Math.floor(i / GW) + 1);
+        this.inC.value = String((i % GW) + 1);
+        this.preview();
+      });
       g.addEventListener("click", () => this.apply());
     });
     for (const inp of [this.inR, this.inC]) {
       inp.addEventListener("input", () => this.preview());
-      inp.addEventListener("keydown", (e) => { e.stopPropagation(); if (e.key === "Enter") { e.preventDefault(); this.apply(); } if (e.key === "Escape") { e.preventDefault(); this.closePick(true); } });
+      inp.addEventListener("keydown", (e) => {
+        e.stopPropagation();
+        if (e.key === "Enter") {
+          e.preventDefault();
+          this.apply();
+        }
+        if (e.key === "Escape") {
+          e.preventDefault();
+          this.closePick(true);
+        }
+      });
     }
     this.pick.querySelector(".md-gp-apply")!.addEventListener("click", () => this.apply());
     document.addEventListener("mousedown", this.onDoc, true);
@@ -248,10 +349,22 @@ class TableBar {
     document.addEventListener("scroll", this.onFocus, true);
     this.update();
   }
-  private onDoc = (e: MouseEvent) => { if (this.open && !this.pick.contains(e.target as Node) && !this.bar.contains(e.target as Node)) this.closePick(false); };
+  private onDoc = (e: MouseEvent) => {
+    if (this.open && !this.pick.contains(e.target as Node) && !this.bar.contains(e.target as Node))
+      this.closePick(false);
+  };
   // Esc while the grid is open closes only the grid: the caret, wherever it is, never sees it (it would leave edit mode)
-  private onEsc = (e: KeyboardEvent) => { if (e.key === "Escape" && this.open) { e.preventDefault(); e.stopPropagation(); this.closePick(true); } };
-  private onFocus = () => { cancelAnimationFrame(this.frame); this.frame = requestAnimationFrame(() => this.update()); };
+  private onEsc = (e: KeyboardEvent) => {
+    if (e.key === "Escape" && this.open) {
+      e.preventDefault();
+      e.stopPropagation();
+      this.closePick(true);
+    }
+  };
+  private onFocus = () => {
+    cancelAnimationFrame(this.frame);
+    this.frame = requestAnimationFrame(() => this.update());
+  };
   private owns = (el: Element | null) => !!el && (this.bar.contains(el) || this.pick.contains(el));
   update() {
     const v = this.view;
@@ -262,36 +375,72 @@ class TableBar {
     const pos = at !== null && v.dom.isConnected && v.dom.offsetParent ? at : null;
     if (pos === null && this.pos === null && !this.bar.isConnected) return;
     this.pos = pos;
-    if (pos === null) { this.bar.remove(); if (this.open) this.closePick(false); return; }
+    if (pos === null) {
+      this.bar.remove();
+      if (this.open) this.closePick(false);
+      return;
+    }
     if (!this.bar.isConnected) document.body.append(this.bar);
-    const t = v.state.doc.nodeAt(pos)!, m = TableMap.get(t);
+    const t = v.state.doc.nodeAt(pos)!,
+      m = TableMap.get(t);
     this.count.textContent = `${m.height}×${m.width}`;
     const al = isInTable(v.state) ? selectionCell(v.state).nodeAfter?.attrs.align : null;
-    for (const a of ["left", "center", "right"]) { const b = this.bar.querySelector(`[data-act=${a}]`)!; b.classList.toggle("on", al === a); b.setAttribute("aria-pressed", String(al === a)); }
+    for (const a of ["left", "center", "right"]) {
+      const b = this.bar.querySelector(`[data-act=${a}]`)!;
+      b.classList.toggle("on", al === a);
+      b.setAttribute("aria-pressed", String(al === a));
+    }
     this.place();
   }
   /** Right-aligned with the table, just above its top edge (over the margin, which every block has anyway) */
   private place() {
     if (this.pos === null) return;
-    const dom = this.view.nodeDOM(this.pos) as HTMLElement | null, table = dom?.querySelector("table") ?? null;
+    const dom = this.view.nodeDOM(this.pos) as HTMLElement | null,
+      table = dom?.querySelector("table") ?? null;
     if (!dom || !table) return;
-    const r = table.getBoundingClientRect(), d = dom.getBoundingClientRect(), right = Math.min(r.right, d.right), bw = this.bar.offsetWidth;
+    const r = table.getBoundingClientRect(),
+      d = dom.getBoundingClientRect(),
+      right = Math.min(r.right, d.right),
+      bw = this.bar.offsetWidth;
     this.bar.style.left = `${Math.max(4, right - bw)}px`;
     this.bar.style.top = `${r.top - this.bar.offsetHeight - 4}px`;
     if (this.open) this.placePick();
   }
   private act(a: string) {
-    const v = this.view, run = (c: Cmd) => { c(v.state, v.dispatch); v.focus(); };
+    const v = this.view,
+      run = (c: Cmd) => {
+        c(v.state, v.dispatch);
+        v.focus();
+      };
     switch (a) {
-      case "grid": if (this.open) this.closePick(true); else this.openPick(); return;
-      case "rowAbove": addRow(v, false); v.focus(); return;
-      case "rowBelow": addRow(v, true); v.focus(); return;
-      case "colLeft": return run(addColumnBefore);
-      case "colRight": return run(addColumnAfter);
-      case "delRow": return run(deleteRow);
-      case "delCol": return run(deleteColumn);
-      case "left": case "center": case "right": setColAlign(v, a); v.focus(); return;
-      case "delTable": return run(deleteTable);
+      case "grid":
+        if (this.open) this.closePick(true);
+        else this.openPick();
+        return;
+      case "rowAbove":
+        addRow(v, false);
+        v.focus();
+        return;
+      case "rowBelow":
+        addRow(v, true);
+        v.focus();
+        return;
+      case "colLeft":
+        return run(addColumnBefore);
+      case "colRight":
+        return run(addColumnAfter);
+      case "delRow":
+        return run(deleteRow);
+      case "delCol":
+        return run(deleteColumn);
+      case "left":
+      case "center":
+      case "right":
+        setColAlign(v, a);
+        v.focus();
+        return;
+      case "delTable":
+        return run(deleteTable);
     }
   }
   private openPick() {
@@ -307,7 +456,8 @@ class TableBar {
     this.preview();
   }
   private placePick() {
-    const b = this.bar.querySelector("[data-act=grid]")!.getBoundingClientRect(), tb = this.bar.getBoundingClientRect();
+    const b = this.bar.querySelector("[data-act=grid]")!.getBoundingClientRect(),
+      tb = this.bar.getBoundingClientRect();
     this.pick.style.left = `${Math.max(4, Math.min(b.left - 4, innerWidth - this.pick.offsetWidth - 4))}px`;
     // opens upwards: the table stays visible, with the cells that would go marked
     this.pick.style.top = `${Math.max(4, tb.top - this.pick.offsetHeight - 6)}px`;
@@ -322,23 +472,33 @@ class TableBar {
     if (refocus) this.view.focus();
   }
   private size() {
-    return { R: Math.max(1, Math.min(40, parseInt(this.inR.value, 10) || 1)), C: Math.max(1, Math.min(12, parseInt(this.inC.value, 10) || 1)) };
+    return {
+      R: Math.max(1, Math.min(40, parseInt(this.inR.value, 10) || 1)),
+      C: Math.max(1, Math.min(12, parseInt(this.inC.value, 10) || 1)),
+    };
   }
   private preview() {
     if (!this.open) return;
-    const { R, C } = this.size(), t = this.view.state.doc.nodeAt(this.open.pos)!, m = TableMap.get(t);
-    const doom = doomed(t, this.open.pos, R, C), set = new Set(doom.map((d) => d.r * 100 + d.c));
+    const { R, C } = this.size(),
+      t = this.view.state.doc.nodeAt(this.open.pos)!,
+      m = TableMap.get(t);
+    const doom = doomed(t, this.open.pos, R, C),
+      set = new Set(doom.map((d) => d.r * 100 + d.c));
     this.cells.forEach((g, i) => {
-      const r = Math.floor(i / GW), c = i % GW;
+      const r = Math.floor(i / GW),
+        c = i % GW;
       g.className = `md-gc${set.has(r * 100 + c) ? " doom" : r < R && c < C ? " in" : r < m.height && c < m.width ? " cur" : ""}`;
     });
     this.pick.querySelector(".md-gp-title")!.textContent = `${R} × ${C}`;
-    this.pick.querySelector(".md-gp-warn")!.textContent = doom.length ? `${doom.length} cell${doom.length > 1 ? "s" : ""} with content will be removed (marked in the table)` : "";
+    this.pick.querySelector(".md-gp-warn")!.textContent = doom.length
+      ? `${doom.length} cell${doom.length > 1 ? "s" : ""} with content will be removed (marked in the table)`
+      : "";
     this.view.dispatch(this.view.state.tr.setMeta(PREV, { pos: this.open.pos, R, C }));
   }
   private apply() {
     if (!this.open) return;
-    const { R, C } = this.size(), pos = this.open.pos;
+    const { R, C } = this.size(),
+      pos = this.open.pos;
     this.closePick(false);
     resizeTable(this.view, pos, R, C);
     this.view.focus();
@@ -358,18 +518,25 @@ class TableBar {
 
 /** The table node for the editor (column resizing on, cells at least CELL_MIN wide), plus the toolbar and shortcuts */
 export function tableEditing(base: TNode, isMac: () => boolean): AnyExtension[] {
-  const node = base.extend({
-    addProseMirrorPlugins() {
-      // the row handle first: tableEditing's mousedown would otherwise start a cell selection on the same press
-      return [rowResize(), ...(this.parent?.() ?? []), previewPlugin(), new Plugin({
-        key: new PluginKey("cbTableBar"),
-        view: (v) => {
-          const bar = new TableBar(v, isMac);
-          return { update: () => bar.update(), destroy: () => bar.destroy() };
-        },
-      })];
-    },
-  }).configure({ resizable: true, cellMinWidth: CELL_MIN, lastColumnResizable: true });
+  const node = base
+    .extend({
+      addProseMirrorPlugins() {
+        // the row handle first: tableEditing's mousedown would otherwise start a cell selection on the same press
+        return [
+          rowResize(),
+          ...(this.parent?.() ?? []),
+          previewPlugin(),
+          new Plugin({
+            key: new PluginKey("cbTableBar"),
+            view: (v) => {
+              const bar = new TableBar(v, isMac);
+              return { update: () => bar.update(), destroy: () => bar.destroy() };
+            },
+          }),
+        ];
+      },
+    })
+    .configure({ resizable: true, cellMinWidth: CELL_MIN, lastColumnResizable: true });
   // ahead of saving (⌘↵ outside a table) and of the paragraph rules
   const keys = Extension.create({
     name: "cbTableKeys",
@@ -387,7 +554,9 @@ export function tableEditing(base: TNode, isMac: () => boolean): AnyExtension[] 
   const enter = Extension.create({
     name: "cbTableEnter",
     priority: 99,
-    addKeyboardShortcuts() { return { Enter: () => cellDown((this.editor as Editor).view) }; },
+    addKeyboardShortcuts() {
+      return { Enter: () => cellDown((this.editor as Editor).view) };
+    },
   });
   return [node, keys, enter];
 }

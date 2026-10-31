@@ -15,34 +15,59 @@ import { put, symCard, findSym, viewOf, type Host } from "../harness";
 import { test, open, verdict, until, idle, hold } from "../fixtures";
 import { SEL_REPORT, NUDGE_HOLD, NUDGE_RAMP, NUDGE_SPEED, NUDGE_MAX } from "../../src/state/timing";
 
-const nv = (qual: string) => { const s = findSym(qual); return symCard(s.f, s.s); };
-const lineOf = (c: CodeCard, re: RegExp) => { const s = c.segments[0]; return s.start + s.text.findIndex((t) => re.test(t)); };
+const nv = (qual: string) => {
+  const s = findSym(qual);
+  return symCard(s.f, s.s);
+};
+const lineOf = (c: CodeCard, re: RegExp) => {
+  const s = c.segments[0];
+  return s.start + s.text.findIndex((t) => re.test(t));
+};
 const close = (h: Host) => h.page.context().close();
 /** The last selection the board reported to the host (hidden cards are not in the DOM, so read it from there) */
-const lastSel = (h: Host) => [...h.sent].reverse().find((m) => m.type === "selection") as { cards: string[] } | undefined;
+const lastSel = (h: Host) =>
+  [...h.sent].reverse().find((m) => m.type === "selection") as { cards: string[] } | undefined;
 const sels = (h: Host) => h.sent.filter((m) => m.type === "selection").length;
 /** After a pointer gesture that selects: a new selection report came, and no later one is still pending */
 async function reported(h: Host, n: number, what: string) {
   await until(h, what, () => sels(h) > n);
   await hold(h, SEL_REPORT + 40, "a later selection report (debounced) would come within this");
 }
-const shownIds = (h: Host) => h.page.evaluate(() => [...document.querySelectorAll(".card[data-id]")].map((e) => (e as HTMLElement).dataset.id!));
-const zoom = (h: Host) => h.page.evaluate(() => new DOMMatrix(getComputedStyle(document.querySelector(".world")!).transform).a);
+const shownIds = (h: Host) =>
+  h.page.evaluate(() => [...document.querySelectorAll(".card[data-id]")].map((e) => (e as HTMLElement).dataset.id!));
+const zoom = (h: Host) =>
+  h.page.evaluate(() => new DOMMatrix(getComputedStyle(document.querySelector(".world")!).transform).a);
 /** Click empty canvas (focus in the board, nothing selected) */
-const clickCanvas = async (h: Host, x = 20, y = 860) => { await h.page.mouse.click(x, y); await idle(h); };
+const clickCanvas = async (h: Host, x = 20, y = 860) => {
+  await h.page.mouse.click(x, y);
+  await idle(h);
+};
 const clickHead = async (h: Host, id: string) => {
   const r = await h.page.locator(`.card[data-id="${id}"] .chead .ctitle`).first().boundingBox();
   await h.page.mouse.click(r!.x + 10, r!.y + r!.height / 2);
-  await h.page.locator(`.card.sel[data-id="${id}"]`).waitFor(); await idle(h);
+  await h.page.locator(`.card.sel[data-id="${id}"]`).waitFor();
+  await idle(h);
 };
 
 /** LLMEngine.step calling schedule and postprocess (Call arrows); collapsed = the two callees are hidden */
 function callTree(collapsed: boolean) {
   const b = emptyBoard("bTree", "step");
-  const step = nv("LLMEngine.step"), sch = nv("Scheduler.schedule"), post = nv("Scheduler.postprocess");
-  put(b, step, 80, 80, 560); put(b, sch, 80, 520, 560); put(b, post, 700, 520, 560);
-  for (const [to, re, name] of [[sch, /scheduler\.schedule\(/, "schedule"], [post, /scheduler\.postprocess\(/, "postprocess"]] as const)
-    b.links.push({ id: `l-${name}`, from: { card: step.id, seg: step.segments[0].id, line: lineOf(step, re) }, to: { card: to.id }, call: { name, col: 0 } });
+  const step = nv("LLMEngine.step"),
+    sch = nv("Scheduler.schedule"),
+    post = nv("Scheduler.postprocess");
+  put(b, step, 80, 80, 560);
+  put(b, sch, 80, 520, 560);
+  put(b, post, 700, 520, 560);
+  for (const [to, re, name] of [
+    [sch, /scheduler\.schedule\(/, "schedule"],
+    [post, /scheduler\.postprocess\(/, "postprocess"],
+  ] as const)
+    b.links.push({
+      id: `l-${name}`,
+      from: { card: step.id, seg: step.segments[0].id, line: lineOf(step, re) },
+      to: { card: to.id },
+      call: { name, col: 0 },
+    });
   if (collapsed) b.place[step.id].collapsed = true;
   return { b, step, sch, post };
 }
@@ -78,18 +103,27 @@ async function tabKeepsCanvasStill(res: Record<string, unknown>) {
   cs.forEach((c, i) => put(b, c, 40 + i * 600, 60, 560));
   const h = await open({ board: b, w: 900, h: 700 });
   await clickCanvas(h, 20, 680);
-  const scrolled = () => h.page.evaluate(() => [document.getElementById("board")!, document.scrollingElement!].map((e) => e.scrollLeft + e.scrollTop).reduce((a, x) => a + x, 0));
+  const scrolled = () =>
+    h.page.evaluate(() =>
+      [document.getElementById("board")!, document.scrollingElement!]
+        .map((e) => e.scrollLeft + e.scrollTop)
+        .reduce((a, x) => a + x, 0),
+    );
   let worst = 0;
   for (let i = 0; i < 40; i++) {
-    await h.page.keyboard.press("Tab"); await idle(h); worst = Math.max(worst, await scrolled());
+    await h.page.keyboard.press("Tab");
+    await idle(h);
+    worst = Math.max(worst, await scrolled());
   }
   res.scrolled = worst;
   // box select around the first card (hit-testing in world coordinates must match what is drawn)
   await clickCanvas(h, 20, 680);
   const r = (await h.page.locator(`.card[data-id="${cs[0].id}"]`).boundingBox())!;
   const n0 = sels(h);
-  await h.page.mouse.move(r.x - 20, r.y - 20); await h.page.mouse.down();
-  await h.page.mouse.move(r.x + r.width / 2, r.y + 40, { steps: 6 }); await h.page.mouse.up();
+  await h.page.mouse.move(r.x - 20, r.y - 20);
+  await h.page.mouse.down();
+  await h.page.mouse.move(r.x + r.width / 2, r.y + 40, { steps: 6 });
+  await h.page.mouse.up();
   await reported(h, n0, "the box selection is reported");
   res.boxed = lastSel(h)?.cards;
   await close(h);
@@ -98,17 +132,25 @@ async function tabKeepsCanvasStill(res: Record<string, unknown>) {
 
 async function hiddenCardsNotSelectable(res: Record<string, unknown>) {
   const { b, step, sch, post } = callTree(true);
-  const names = (h: Host) => h.board().cards.map((c) => c.id === sch.id ? "schedule" : c.id === post.id ? "postprocess" : c.id === step.id ? "step" : c.id);
+  const names = (h: Host) =>
+    h
+      .board()
+      .cards.map((c) =>
+        c.id === sch.id ? "schedule" : c.id === post.id ? "postprocess" : c.id === step.id ? "step" : c.id,
+      );
   let h = await open({ board: structuredClone(b) });
   await idle(h);
   res.shown = (await shownIds(h)).length;
   // a box over the empty space where the hidden callees are, then Delete
   let n0 = sels(h);
-  await h.page.mouse.move(60, 480); await h.page.mouse.down();
-  await h.page.mouse.move(1380, 880, { steps: 8 }); await h.page.mouse.up();
+  await h.page.mouse.move(60, 480);
+  await h.page.mouse.down();
+  await h.page.mouse.move(1380, 880, { steps: 8 });
+  await h.page.mouse.up();
   await reported(h, n0, "the box selection is reported");
   res.boxed = lastSel(h)?.cards;
-  await h.page.keyboard.press("Delete"); await idle(h);
+  await h.page.keyboard.press("Delete");
+  await idle(h);
   res.afterBoxDelete = names(h);
   // Select All
   await clickCanvas(h);
@@ -122,31 +164,45 @@ async function hiddenCardsNotSelectable(res: Record<string, unknown>) {
   await idle(h);
   n0 = sels(h);
   const mk = (await h.page.locator(`.card[data-id="${step.id}"] .chead .step`).first().boundingBox())!;
-  await h.page.mouse.move(mk.x + mk.width / 2, mk.y + mk.height / 2); await h.page.mouse.down();
-  await h.page.mouse.move(mk.x + 60, mk.y + 40, { steps: 6 }); await h.page.mouse.up();
-  await reported(h, n0, "the dragged subtree's selection is reported"); await idle(h);
+  await h.page.mouse.move(mk.x + mk.width / 2, mk.y + mk.height / 2);
+  await h.page.mouse.down();
+  await h.page.mouse.move(mk.x + 60, mk.y + 40, { steps: 6 });
+  await h.page.mouse.up();
+  await reported(h, n0, "the dragged subtree's selection is reported");
+  await idle(h);
   res.dragSel = lastSel(h)?.cards.length;
-  await h.page.keyboard.press("Delete"); await idle(h);
+  await h.page.keyboard.press("Delete");
+  await idle(h);
   res.afterDragDelete = names(h);
   await close(h);
-  return res.shown === 1 && (res.boxed as string[]).length === 0 && JSON.stringify(res.afterBoxDelete) === JSON.stringify(["step", "schedule", "postprocess"])
-    && JSON.stringify(res.all) === JSON.stringify([step.id]) && res.dragSel === 3 && JSON.stringify(res.afterDragDelete) === JSON.stringify(["schedule", "postprocess"]);
+  return (
+    res.shown === 1 &&
+    (res.boxed as string[]).length === 0 &&
+    JSON.stringify(res.afterBoxDelete) === JSON.stringify(["step", "schedule", "postprocess"]) &&
+    JSON.stringify(res.all) === JSON.stringify([step.id]) &&
+    res.dragSel === 3 &&
+    JSON.stringify(res.afterDragDelete) === JSON.stringify(["schedule", "postprocess"])
+  );
 }
 
 async function revealShowsHiddenCard(res: Record<string, unknown>) {
   const { b, step, sch } = callTree(true);
   const h = await open({ board: b });
   // Reveal on Board (editor command / CodeLens) on the hidden callee
-  await h.post({ type: "reveal", card: sch.id }); await idle(h);
+  await h.post({ type: "reveal", card: sch.id });
+  await idle(h);
   res.revealShown = (await shownIds(h)).includes(sch.id);
   res.revealSel = await h.page.locator(`.card.sel[data-id="${sch.id}"]`).count();
   // collapse again, then click the already-expanded call in the caller
-  await h.page.keyboard.press("Meta+z"); await idle(h);
+  await h.page.keyboard.press("Meta+z");
+  await idle(h);
   res.collapsedAgain = !(await shownIds(h)).includes(sch.id);
   // the reveal brought the whole (tall) callee into view and undo leaves the camera there, with the caller above the viewport
   await clickCanvas(h);
-  await h.page.keyboard.press("Shift+Digit1"); await idle(h);
-  await h.page.locator(`.card[data-id="${step.id}"] .src .call:text-is("schedule")`).first().click(); await idle(h);
+  await h.page.keyboard.press("Shift+Digit1");
+  await idle(h);
+  await h.page.locator(`.card[data-id="${step.id}"] .src .call:text-is("schedule")`).first().click();
+  await idle(h);
   res.clickShown = (await shownIds(h)).includes(sch.id);
   res.clickSel = await h.page.locator(`.card.sel[data-id="${sch.id}"]`).count();
   await close(h);
@@ -159,10 +215,13 @@ async function fitFramesVisibleContent(res: Record<string, unknown>) {
   b.place[b.cards[1].id] = { x: 4000, y: 3000, w: 560 };
   b.place[b.cards[2].id] = { x: 5000, y: 3600, w: 560 };
   b.sections.push({ id: "sec", title: "Later", x: 700, y: 80, w: 6000, h: 5000, collapsed: true });
-  const m = nv("BlockManager.allocate"); put(b, m, 6000, 4500, 560); b.place[m.id].section = "sec";
+  const m = nv("BlockManager.allocate");
+  put(b, m, 6000, 4500, 560);
+  b.place[m.id].section = "sec";
   const h = await open({ board: b });
   await clickCanvas(h);
-  await h.page.keyboard.press("Shift+Digit1"); await idle(h);
+  await h.page.keyboard.press("Shift+Digit1");
+  await idle(h);
   res.zoom = await zoom(h);
   await close(h);
   return (res.zoom as number) > 0.6;
@@ -170,12 +229,15 @@ async function fitFramesVisibleContent(res: Record<string, unknown>) {
 
 async function nudgeHoldIsOneUndoStep(res: Record<string, unknown>) {
   const b = emptyBoard("bNudge", "nudge");
-  const a = nv("LLMEngine.step"), c = nv("Scheduler.schedule");
-  put(b, a, 80, 80, 560); put(b, c, 700, 80, 560);
+  const a = nv("LLMEngine.step"),
+    c = nv("Scheduler.schedule");
+  put(b, a, 80, 80, 560);
+  put(b, c, 700, 80, 560);
   const h = await open({ board: b });
   // an earlier step: delete the second card
   await clickHead(h, c.id);
-  await h.page.keyboard.press("Delete"); await idle(h);
+  await h.page.keyboard.press("Delete");
+  await idle(h);
   await clickHead(h, a.id);
   // hold → past NUDGE_HOLD (Playwright sends repeats for a key already down, as the browser does while a key is held)
   for (let i = 0; i < 5; i++) await h.page.keyboard.down("ArrowRight");
@@ -189,12 +251,27 @@ async function nudgeHoldIsOneUndoStep(res: Record<string, unknown>) {
   await idle(h); // each nudge is sent at once
   res.moved = at();
   const undos: number[][] = [];
-  for (let i = 0; i < 3; i++) { await h.page.keyboard.press("Meta+z"); await idle(h); undos.push(at()); }
+  for (let i = 0; i < 3; i++) {
+    await h.page.keyboard.press("Meta+z");
+    await idle(h);
+    undos.push(at());
+  }
   res.undos = undos;
-  await h.page.keyboard.press("Meta+z"); await idle(h);
+  await h.page.keyboard.press("Meta+z");
+  await idle(h);
   res.deletedBack = h.board().cards.some((k) => k.id === c.id);
   await close(h);
-  return x > 85 && JSON.stringify(res.moved) === JSON.stringify([x, 82]) && JSON.stringify(undos) === JSON.stringify([[x, 81], [x, 80], [80, 80]]) && !!res.deletedBack;
+  return (
+    x > 85 &&
+    JSON.stringify(res.moved) === JSON.stringify([x, 82]) &&
+    JSON.stringify(undos) ===
+      JSON.stringify([
+        [x, 81],
+        [x, 80],
+        [80, 80],
+      ]) &&
+    !!res.deletedBack
+  );
 }
 
 /**
@@ -212,18 +289,38 @@ async function nudgeHoldAccelerates(res: Record<string, unknown>) {
     const el = document.querySelector<HTMLElement>(`.card[data-id="${id}"]`)!;
     const w = window as unknown as { nudgeLog: { down: number; up: number; s: [number, number][] } };
     const log = (w.nudgeLog = { down: 0, up: 0, s: [] });
-    addEventListener("keydown", (e) => { if (e.key === "ArrowRight" && !log.down) log.down = performance.now(); }, true);
-    addEventListener("keyup", (e) => { if (e.key === "ArrowRight") log.up = performance.now(); }, true);
-    const tick = (t: number) => { log.s.push([t, el.getBoundingClientRect().left]); requestAnimationFrame(tick); };
+    addEventListener(
+      "keydown",
+      (e) => {
+        if (e.key === "ArrowRight" && !log.down) log.down = performance.now();
+      },
+      true,
+    );
+    addEventListener(
+      "keyup",
+      (e) => {
+        if (e.key === "ArrowRight") log.up = performance.now();
+      },
+      true,
+    );
+    const tick = (t: number) => {
+      log.s.push([t, el.getBoundingClientRect().left]);
+      requestAnimationFrame(tick);
+    };
     requestAnimationFrame(tick);
   }, a.id);
-  await until(h, "the page samples the card every frame", () => h.page.evaluate(() => (window as unknown as { nudgeLog: { s: unknown[] } }).nudgeLog.s.length > 2));
+  await until(h, "the page samples the card every frame", () =>
+    h.page.evaluate(() => (window as unknown as { nudgeLog: { s: unknown[] } }).nudgeLog.s.length > 2),
+  );
   await h.page.keyboard.down("ArrowRight");
   await hold(h, NUDGE_HOLD + NUDGE_RAMP + 500, "held through the speed-up and on at full speed");
   await h.page.keyboard.up("ArrowRight");
   await idle(h);
-  const log = await h.page.evaluate(() => (window as unknown as { nudgeLog: { down: number; up: number; s: [number, number][] } }).nudgeLog);
-  const s = log.s, x0 = s[0][1];
+  const log = await h.page.evaluate(
+    () => (window as unknown as { nudgeLog: { down: number; up: number; s: [number, number][] } }).nudgeLog,
+  );
+  const s = log.s,
+    x0 = s[0][1];
   const xAt = (t: number) => s.reduce((x, [ts, v]) => (ts <= t ? v : x), x0);
   /** Screen px per ms between two times after the key went down */
   const speed = (from: number, to: number) => (xAt(log.down + to) - xAt(log.down + from)) / (to - from);
@@ -236,13 +333,27 @@ async function nudgeHoldAccelerates(res: Record<string, unknown>) {
   res.board = h.board().place[a.id].x - 80;
   res.screen = Math.round(endX - x0);
   // gliding is smooth: at full speed no frame jumps much more than the speed allows for its time
-  res.jumps = s.filter(([t, x], i) => i > 0 && t > log.down + NUDGE_HOLD + NUDGE_RAMP && t < log.up
-    && x - s[i - 1][1] > NUDGE_SPEED * NUDGE_MAX * (t - s[i - 1][0]) * 1.5 + 1).length;
-  await h.page.keyboard.press("Meta+z"); await idle(h);
+  res.jumps = s.filter(
+    ([t, x], i) =>
+      i > 0 &&
+      t > log.down + NUDGE_HOLD + NUDGE_RAMP &&
+      t < log.up &&
+      x - s[i - 1][1] > NUDGE_SPEED * NUDGE_MAX * (t - s[i - 1][0]) * 1.5 + 1,
+  ).length;
+  await h.page.keyboard.press("Meta+z");
+  await idle(h);
   res.undone = h.board().place[a.id].x;
   await close(h);
-  return res.beforeGlide === 1 && (res.early as number) > 0 && (res.late as number) > 3 * (res.early as number)
-    && (res.late as number) > NUDGE_SPEED * (NUDGE_MAX - 1) && res.afterUp === 0 && res.board === res.screen && res.jumps === 0 && res.undone === 80;
+  return (
+    res.beforeGlide === 1 &&
+    (res.early as number) > 0 &&
+    (res.late as number) > 3 * (res.early as number) &&
+    (res.late as number) > NUDGE_SPEED * (NUDGE_MAX - 1) &&
+    res.afterUp === 0 &&
+    res.board === res.screen &&
+    res.jumps === 0 &&
+    res.undone === 80
+  );
 }
 
 /** Zoomed out to 25%, an arrow key moves a card 1 px on screen (4 px on the board), Shift 10 px; holding the key is still one undo step */
@@ -256,22 +367,37 @@ async function nudgeStepFollowsZoom(res: Record<string, unknown>) {
   const at = () => [h.board().place[a.id].x, h.board().place[a.id].y];
   const screenX = async () => (await h.page.locator(`.card[data-id="${a.id}"]`).boundingBox())!.x;
   const x0 = await screenX();
-  await h.page.keyboard.press("ArrowRight"); await idle(h);
-  res.one = at(); const x1 = await screenX();
-  await h.page.keyboard.press("Shift+ArrowRight"); await idle(h);
-  res.shift = at(); const x2 = await screenX();
+  await h.page.keyboard.press("ArrowRight");
+  await idle(h);
+  res.one = at();
+  const x1 = await screenX();
+  await h.page.keyboard.press("Shift+ArrowRight");
+  await idle(h);
+  res.shift = at();
+  const x2 = await screenX();
   res.screen = [+(x1 - x0).toFixed(2), +(x2 - x1).toFixed(2)];
   await h.page.keyboard.down("ArrowDown");
   await hold(h, NUDGE_HOLD + 300, "the held key glides the card on");
-  await h.page.keyboard.up("ArrowDown"); await idle(h);
+  await h.page.keyboard.up("ArrowDown");
+  await idle(h);
   res.held = at();
   const undos: number[][] = [];
-  for (let i = 0; i < 3; i++) { await h.page.keyboard.press("Meta+z"); await idle(h); undos.push(at()); }
+  for (let i = 0; i < 3; i++) {
+    await h.page.keyboard.press("Meta+z");
+    await idle(h);
+    undos.push(at());
+  }
   res.undos = undos;
   await close(h);
   const [hx, hy] = res.held as number[];
-  return JSON.stringify(res.one) === "[84,80]" && JSON.stringify(res.shift) === "[124,80]" && JSON.stringify(res.screen) === "[1,10]"
-    && hx === 124 && hy > 84 && JSON.stringify(undos) === "[[124,80],[84,80],[80,80]]";
+  return (
+    JSON.stringify(res.one) === "[84,80]" &&
+    JSON.stringify(res.shift) === "[124,80]" &&
+    JSON.stringify(res.screen) === "[1,10]" &&
+    hx === 124 &&
+    hy > 84 &&
+    JSON.stringify(undos) === "[[124,80],[84,80],[80,80]]"
+  );
 }
 
 async function farClicksNotDoubleClick(res: Record<string, unknown>) {
@@ -281,13 +407,17 @@ async function farClicksNotDoubleClick(res: Record<string, unknown>) {
   const notes = () => h.page.locator(".card.text, .card.note").count();
   // click, then quickly start a selection box far away
   await h.page.mouse.click(900, 700);
-  await h.page.mouse.move(200, 500); await h.page.mouse.down(); await h.page.mouse.move(400, 650, { steps: 4 }); await h.page.mouse.up();
+  await h.page.mouse.move(200, 500);
+  await h.page.mouse.down();
+  await h.page.mouse.move(400, 650, { steps: 4 });
+  await h.page.mouse.up();
   // a Text note would be made by the second click itself: the board is idle once that would have happened
   await idle(h);
   res.far = await notes();
   // a real double-click still makes a Text note
   await h.page.keyboard.press("Escape");
-  await h.page.mouse.dblclick(900, 400); await idle(h);
+  await h.page.mouse.dblclick(900, 400);
+  await idle(h);
   res.near = await notes();
   await close(h);
   return res.far === 0 && res.near === 1;
@@ -297,35 +427,52 @@ async function implPickerKeyboard(res: Record<string, unknown>) {
   const b = emptyBoard("bImpl", "impl");
   const step = nv("LLMEngine.step");
   put(b, step, 80, 80, 560);
-  const impl = (q: string) => { const s = findSym(q); return { label: s.s.qual, detail: `${s.f}:${s.s.defLine}`, path: s.f, line: s.s.defLine, qual: s.s.qual }; };
+  const impl = (q: string) => {
+    const s = findSym(q);
+    return { label: s.s.qual, detail: `${s.f}:${s.s.defLine}`, path: s.f, line: s.s.defLine, qual: s.s.qual };
+  };
   const h = await open({
     board: b,
     on: async (m, reply) => {
       if (m.type !== "expand" || m.pick || m.name !== "schedule") return false;
-      await reply(m.req!, { impls: [impl("Scheduler.schedule"), impl("Scheduler.postprocess")], base: "Scheduler.schedule" });
+      await reply(m.req!, {
+        impls: [impl("Scheduler.schedule"), impl("Scheduler.postprocess")],
+        base: "Scheduler.schedule",
+      });
       return true;
     },
   });
   await clickHead(h, step.id);
   await h.page.locator(`.card[data-id="${step.id}"] .src .call:text-is("schedule")`).first().click();
-  await h.page.locator(".pop.k-impls").waitFor(); await idle(h); // the picker comes with the host's reply
+  await h.page.locator(".pop.k-impls").waitFor();
+  await idle(h); // the picker comes with the host's reply
   res.open = await h.page.locator(".pop.k-impls").count();
-  await h.page.keyboard.press("ArrowDown"); await idle(h);
+  await h.page.keyboard.press("ArrowDown");
+  await idle(h);
   res.on = await h.page.locator(".pop.k-impls .cand.on .lb").textContent();
-  await h.page.keyboard.press("Enter"); await idle(h); // the pick goes to the host, its card comes back
+  await h.page.keyboard.press("Enter");
+  await idle(h); // the pick goes to the host, its card comes back
   res.closed = (await h.page.locator(".pop.k-impls").count()) === 0;
   res.cards = h.board().cards.map((c) => (c as CodeCard).segments?.[0]?.symbol?.qual);
   res.stepAt = [h.board().place[step.id].x, h.board().place[step.id].y];
   res.opened = h.sent.some((m) => m.type === "open");
   await close(h);
-  return res.open === 1 && res.on === "Scheduler.postprocess" && !!res.closed && (res.cards as string[]).includes("Scheduler.postprocess")
-    && JSON.stringify(res.stepAt) === "[80,80]" && !res.opened;
+  return (
+    res.open === 1 &&
+    res.on === "Scheduler.postprocess" &&
+    !!res.closed &&
+    (res.cards as string[]).includes("Scheduler.postprocess") &&
+    JSON.stringify(res.stepAt) === "[80,80]" &&
+    !res.opened
+  );
 }
 
 async function shortcutHelpComplete(res: Record<string, unknown>) {
   const h = await open({ board: emptyBoard("bKeys", "keys") });
   await clickCanvas(h);
-  await h.page.keyboard.press("Shift+Slash"); await h.page.locator(".keys tr").first().waitFor(); await idle(h);
+  await h.page.keyboard.press("Shift+Slash");
+  await h.page.locator(".keys tr").first().waitFor();
+  await idle(h);
   const rows = await h.page.locator(".keys tr").allTextContents();
   await close(h);
   const has = (k: string) => rows.some((r) => r.startsWith(k));
@@ -340,13 +487,19 @@ async function undoAddKeepsLaterWork(res: Record<string, unknown>) {
   const h = await open({ board: b });
   // the editor adds a card, then the user keeps working on the board (moves the old card)
   const add = nv("Scheduler.schedule");
-  await h.post({ type: "add", cards: [{ card: add, views: { [add.segments[0].id]: viewOf(add.segments[0]) }, w: 560 }] });
-  await until(h, "the added card is saved", () => h.board().cards.some((c) => c.id === add.id)); await idle(h);
+  await h.post({
+    type: "add",
+    cards: [{ card: add, views: { [add.segments[0].id]: viewOf(add.segments[0]) }, w: 560 }],
+  });
+  await until(h, "the added card is saved", () => h.board().cards.some((c) => c.id === add.id));
+  await idle(h);
   await clickHead(h, old.id);
-  await h.page.keyboard.press("Shift+ArrowRight"); await idle(h);
+  await h.page.keyboard.press("Shift+ArrowRight");
+  await idle(h);
   // the notification's Undo (or ⌘Z in the editor) for that add
-  await h.post({ type: "undoAdd", cards: [add.id] }); await idle(h);
-  res.cards = h.board().cards.map((c) => c.id === old.id ? "old" : c.id === add.id ? "added" : c.id);
+  await h.post({ type: "undoAdd", cards: [add.id] });
+  await idle(h);
+  res.cards = h.board().cards.map((c) => (c.id === old.id ? "old" : c.id === add.id ? "added" : c.id));
   res.oldX = h.board().place[old.id].x;
   await close(h);
   return JSON.stringify(res.cards) === JSON.stringify(["old"]) && res.oldX === 90;
@@ -358,14 +511,22 @@ async function secondCallUnderFirstCall(res: Record<string, unknown>) {
   put(b, step, 40, 560, 520);
   const h = await open({ board: b, w: 600, h: 1000 });
   await h.page.locator(`.card[data-id="${step.id}"] .src .call:text-is("schedule")`).first().click();
-  await until(h, "the first call is expanded", () => h.board().cards.length === 2); await idle(h);
+  await until(h, "the first call is expanded", () => h.board().cards.length === 2);
+  await idle(h);
   await clickCanvas(h, 10, 990);
   await h.page.locator(`.card[data-id="${step.id}"] .src .call:text-is("postprocess")`).first().click({ force: true });
-  await until(h, "the second call is expanded", () => h.board().cards.length === 3); await idle(h);
+  await until(h, "the second call is expanded", () => h.board().cards.length === 3);
+  await idle(h);
   const cards = h.board().cards as CodeCard[];
-  const at = (q: string) => { const c = cards.find((k) => k.segments?.[0]?.symbol?.qual === q); return c && h.board().place[c.id]; };
-  res.step = at("LLMEngine.step"); res.schedule = at("Scheduler.schedule"); res.postprocess = at("Scheduler.postprocess");
+  const at = (q: string) => {
+    const c = cards.find((k) => k.segments?.[0]?.symbol?.qual === q);
+    return c && h.board().place[c.id];
+  };
+  res.step = at("LLMEngine.step");
+  res.schedule = at("Scheduler.schedule");
+  res.postprocess = at("Scheduler.postprocess");
   await close(h);
-  const s = res.schedule as { x: number; y: number } | undefined, p = res.postprocess as { x: number; y: number } | undefined;
+  const s = res.schedule as { x: number; y: number } | undefined,
+    p = res.postprocess as { x: number; y: number } | undefined;
   return !!s && !!p && p.x === s.x && p.y > s.y;
 }

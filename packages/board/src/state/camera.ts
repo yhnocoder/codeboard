@@ -11,19 +11,40 @@ const motionQ = typeof matchMedia === "function" ? matchMedia("(prefers-reduced-
 export const reduceMotion = () => !!motionQ?.matches;
 
 export class Spring {
-  v: number; t: number; vel = 0;
-  constructor(v: number, public k = 170, public c = 26, public eps = 0.01) { this.v = v; this.t = v; }
-  step(dt: number) {
-    const n = 4, h = dt / n;
-    for (let i = 0; i < n; i++) { const f = -this.k * (this.v - this.t) - this.c * this.vel; this.vel += f * h; this.v += this.vel * h; }
+  v: number;
+  t: number;
+  vel = 0;
+  constructor(
+    v: number,
+    public k = 170,
+    public c = 26,
+    public eps = 0.01,
+  ) {
+    this.v = v;
+    this.t = v;
   }
-  get done() { return Math.abs(this.v - this.t) < this.eps && Math.abs(this.vel) < this.eps * 10; }
-  set(v: number) { this.v = this.t = v; this.vel = 0; }
+  step(dt: number) {
+    const n = 4,
+      h = dt / n;
+    for (let i = 0; i < n; i++) {
+      const f = -this.k * (this.v - this.t) - this.c * this.vel;
+      this.vel += f * h;
+      this.v += this.vel * h;
+    }
+  }
+  get done() {
+    return Math.abs(this.v - this.t) < this.eps && Math.abs(this.vel) < this.eps * 10;
+  }
+  set(v: number) {
+    this.v = this.t = v;
+    this.vel = 0;
+  }
 }
 
 type Anim = (dt: number, instant: boolean) => boolean;
 const anims = new Set<Anim>();
-let last = 0, rafOn = false;
+let last = 0,
+  rafOn = false;
 function tick(now: number) {
   // Debug 里的慢动作：弹簧、镜头都按比例放慢
   // 第一帧的时间戳可能比 animate() 被调的时刻还早（指针事件和这一帧在同一轮里处理）：dt 不能是负的，倒着走的弹簧会越走越快
@@ -31,15 +52,22 @@ function tick(now: number) {
   last = now;
   const instant = reduceMotion();
   // 一帧里所有动画写完再一起更新：一张卡的弹出、折叠里的十几张卡、镜头，各自写的话连着它们的线每帧要重算好几遍
-  batch(() => { for (const a of [...anims]) if (a(dt, instant)) anims.delete(a); });
-  if (anims.size) requestAnimationFrame(tick); else rafOn = false;
+  batch(() => {
+    for (const a of [...anims]) if (a(dt, instant)) anims.delete(a);
+  });
+  if (anims.size) requestAnimationFrame(tick);
+  else rafOn = false;
 }
 /** 这一帧（正在跑的 animate）的时间戳，和 requestAnimationFrame 给的同一个时钟 */
 export const frameTime = () => last;
 /** 每帧跑 fn，直到它返回 true */
 export function animate(fn: Anim) {
   anims.add(fn);
-  if (!rafOn) { rafOn = true; last = performance.now(); requestAnimationFrame(tick); }
+  if (!rafOn) {
+    rafOn = true;
+    last = performance.now();
+    requestAnimationFrame(tick);
+  }
 }
 
 const [cam, setCamStore0] = createStore({ x: 80, y: 80, z: 1 });
@@ -50,31 +78,53 @@ export { camMoving };
 let still: number | undefined;
 // 「在动」和镜头本身同一批更新：先改镜头再标「在动」的话，第一帧会把按停下比例画的东西（stillZ）多重画一遍
 function setCamStore(p: Partial<{ x: number; y: number; z: number }>) {
-  batch(() => { if (!camMoving()) setCamMoving(true); setCamStore0(p); });
+  batch(() => {
+    if (!camMoving()) setCamMoving(true);
+    setCamStore0(p);
+  });
   clearTimeout(still);
   still = window.setTimeout(() => setCamMoving(false), CAM_STILL);
 }
-const sx = new Spring(0, 120, 22, 0.05), sy = new Spring(0, 120, 22, 0.05), sz = new Spring(1, 120, 22, 0.0005);
-let running = false, gen = 0;
+const sx = new Spring(0, 120, 22, 0.05),
+  sy = new Spring(0, 120, 22, 0.05),
+  sz = new Spring(1, 120, 22, 0.0005);
+let running = false,
+  gen = 0;
 
-export const ZMIN = 0.1, ZMAX = 2.5;
+export const ZMIN = 0.1,
+  ZMAX = 2.5;
 
 // 等镜头飞完的（camRest）：飞到了、被打断（拖动、别的镜头操作接手）都算停下
 const resting: (() => void)[] = [];
-function rest() { running = false; for (const r of resting.splice(0)) r(); }
+function rest() {
+  running = false;
+  for (const r of resting.splice(0)) r();
+}
 /** 镜头这次飞行（camTo）结束；没在飞就马上 */
 export const camRest = (): Promise<void> => (running ? new Promise((r) => resting.push(r)) : Promise.resolve());
 
-export function stopCam() { gen++; rest(); }
+export function stopCam() {
+  gen++;
+  rest();
+}
 export function setCam(x: number, y: number, z: number) {
   if (running) stopCam();
   setCamStore({ x, y, z: Math.min(ZMAX, Math.max(ZMIN, z)) });
 }
 export function camTo(x: number, y: number, z: number, soft = false) {
   z = Math.min(ZMAX, Math.max(ZMIN, z));
-  if (!running) { sx.set(cam.x); sy.set(cam.y); sz.set(cam.z); }
-  for (const s of [sx, sy, sz]) { s.k = soft ? 90 : 120; s.c = soft ? 20 : 22; }
-  sx.t = x; sy.t = y; sz.t = z;
+  if (!running) {
+    sx.set(cam.x);
+    sy.set(cam.y);
+    sz.set(cam.z);
+  }
+  for (const s of [sx, sy, sz]) {
+    s.k = soft ? 90 : 120;
+    s.c = soft ? 20 : 22;
+  }
+  sx.t = x;
+  sy.t = y;
+  sz.t = z;
   if (running) return;
   running = true;
   const g = gen;
@@ -96,7 +146,8 @@ export function fling(vx: number, vy: number) {
   const g = ++gen;
   animate((dt) => {
     if (g !== gen) return true;
-    vx *= Math.pow(0.004, dt); vy *= Math.pow(0.004, dt);
+    vx *= Math.pow(0.004, dt);
+    vy *= Math.pow(0.004, dt);
     setCamStore({ x: cam.x + vx * dt, y: cam.y + vy * dt });
     return Math.hypot(vx, vy) < 8;
   });
@@ -106,7 +157,10 @@ type Rect = { x: number; y: number; w: number; h: number };
 
 let viewport = { w: 800, h: 600 };
 const [viewSig, setViewSig] = createSignal(viewport);
-export const setViewport = (w: number, h: number) => { viewport = { w, h }; setViewSig(viewport); };
+export const setViewport = (w: number, h: number) => {
+  viewport = { w, h };
+  setViewSig(viewport);
+};
 /** 同 view()，但能被跟踪（视野大小变了会重算） */
 export const viewTracked = viewSig;
 export const view = () => viewport;
@@ -119,7 +173,11 @@ export const usableH = (z: number) => (viewport.h - SAFE.t - SAFE.b) / z;
 export function fitRect(r: Rect, maxZ = 1, minZ = ZMIN) {
   const { w, h } = viewport;
   const z = Math.max(minZ, Math.min(maxZ, (w - SAFE.l - SAFE.r) / r.w, (h - SAFE.t - SAFE.b) / r.h));
-  return { z, x: SAFE.l + (w - SAFE.l - SAFE.r - r.w * z) / 2 - r.x * z, y: SAFE.t + (h - SAFE.t - SAFE.b - r.h * z) / 2 - r.y * z };
+  return {
+    z,
+    x: SAFE.l + (w - SAFE.l - SAFE.r - r.w * z) / 2 - r.x * z,
+    y: SAFE.t + (h - SAFE.t - SAFE.b - r.h * z) / 2 - r.y * z,
+  };
 }
 /** 很高的东西：保证宽度放得下，顶部对齐 */
 export function fitTop(r: Rect, maxZ = 1) {
@@ -130,13 +188,24 @@ export function fitTop(r: Rect, maxZ = 1) {
 }
 export function isVisible(r: Rect, c = camTarget()) {
   const { w, h } = viewport;
-  const x = r.x * c.z + c.x, y = r.y * c.z + c.y;
-  return x >= SAFE.l && y >= SAFE.t && x + r.w * c.z <= w - SAFE.r && y + Math.min(r.h * c.z, h - SAFE.t - SAFE.b) <= h - SAFE.b;
+  const x = r.x * c.z + c.x,
+    y = r.y * c.z + c.y;
+  return (
+    x >= SAFE.l &&
+    y >= SAFE.t &&
+    x + r.w * c.z <= w - SAFE.r &&
+    y + Math.min(r.h * c.z, h - SAFE.t - SAFE.b) <= h - SAFE.b
+  );
 }
 /** 视野（去掉四周留白）在白板坐标里的矩形 */
 export function worldView(c = camTarget()): Rect {
   const { w, h } = viewport;
-  return { x: (SAFE.l - c.x) / c.z, y: (SAFE.t - c.y) / c.z, w: (w - SAFE.l - SAFE.r) / c.z, h: (h - SAFE.t - SAFE.b) / c.z };
+  return {
+    x: (SAFE.l - c.x) / c.z,
+    y: (SAFE.t - c.y) / c.z,
+    w: (w - SAFE.l - SAFE.r) / c.z,
+    h: (h - SAFE.t - SAFE.b) / c.z,
+  };
 }
 /** 不在视野里时平移把它带进来（必要时缩小，不放大） */
 export function ensureVisible(r: Rect, also?: Rect) {
@@ -147,13 +216,15 @@ export function ensureVisible(r: Rect, also?: Rect) {
   camTo(f.x, f.y, f.z);
 }
 export const union = (a: Rect, b: Rect): Rect => {
-  const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y);
+  const x = Math.min(a.x, b.x),
+    y = Math.min(a.y, b.y);
   return { x, y, w: Math.max(a.x + a.w, b.x + b.w) - x, h: Math.max(a.y + a.h, b.y + b.h) - y };
 };
 export function zoomAt(f: number, px = viewport.w / 2, py = viewport.h / 2, smooth = true) {
   const c = camTarget();
   const z = Math.min(ZMAX, Math.max(ZMIN, c.z * f));
-  const x = px - ((px - c.x) * z) / c.z, y = py - ((py - c.y) * z) / c.z;
+  const x = px - ((px - c.x) * z) / c.z,
+    y = py - ((py - c.y) * z) / c.z;
   smooth ? camTo(x, y, z) : setCam(x, y, z);
 }
 export const toWorld = (px: number, py: number) => ({ x: (px - cam.x) / cam.z, y: (py - cam.y) / cam.z });
@@ -173,9 +244,11 @@ export const overviewZ = () => state.host.settings.zoomOverview;
 const [fullHold, setFullHold] = createSignal(false);
 /** 导出要完整的卡：临时按 100% 的档画（镜头不动，用户看到的位置不变） */
 export const holdFullDetail = setFullHold;
-export const lod = rooted(() => createMemo<Lod>(() => {
-  if (fullHold()) return "full";
-  return cam.z >= overviewZ() ? "full" : cam.z >= state.host.settings.zoomMap ? "overview" : "map";
-}));
+export const lod = rooted(() =>
+  createMemo<Lod>(() => {
+    if (fullHold()) return "full";
+    return cam.z >= overviewZ() ? "full" : cam.z >= state.host.settings.zoomMap ? "overview" : "map";
+  }),
+);
 /** 缩得很小时不弹定义预览、旁注 */
 export const quietHover = () => lod() !== "full";

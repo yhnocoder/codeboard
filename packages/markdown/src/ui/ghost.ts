@@ -38,7 +38,13 @@ export function holdGhosts(on: boolean) {
 export class GhostAsker {
   private timer: number | undefined;
   private n = 0;
-  constructor(private complete: Complete, private clear: () => void, private delay = DELAY) { askers.add(this); }
+  constructor(
+    private complete: Complete,
+    private clear: () => void,
+    private delay = DELAY,
+  ) {
+    askers.add(this);
+  }
   schedule(probe: () => GhostQuery | null) {
     this.cancel();
     const id = this.n;
@@ -51,7 +57,16 @@ export class GhostAsker {
       if (id === this.n && !held && text && q.still()) q.show(text);
     }, this.delay);
   }
-  cancel() { clearTimeout(this.timer); this.n++; }
-  drop() { this.cancel(); this.clear(); }
-  dispose() { this.cancel(); askers.delete(this); }
+  cancel() {
+    clearTimeout(this.timer);
+    this.n++;
+  }
+  drop() {
+    this.cancel();
+    this.clear();
+  }
+  dispose() {
+    this.cancel();
+    askers.delete(this);
+  }
 }

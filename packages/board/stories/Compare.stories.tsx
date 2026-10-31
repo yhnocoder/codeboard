@@ -14,14 +14,28 @@ function compare(b: Board, g: Group, id: string, a: Omit<Args, "selected">, x: n
     l = fn(`${id}-l`, "schedule");
     r = fn(`${id}-r`, "schedule");
     const s = r.segments[0];
-    r.segments[0] = edited(s, (t) => { wtEdit(t); branchEdit(t); }, { start: s.start + 7, version: { kind: "git", commit: "77aa12bcd" } });
+    r.segments[0] = edited(
+      s,
+      (t) => {
+        wtEdit(t);
+        branchEdit(t);
+      },
+      { start: s.start + 7, version: { kind: "git", commit: "77aa12bcd" } },
+    );
     register(r.segments[0]);
   } else {
     l = fn(`${id}-l`, "allocate");
     r = fn(`${id}-r`, "deallocate");
   }
   b.cards.push(l, r);
-  const k: CompareCard = { id, kind: "compare", cols: [l.id, r.id], ...(a.swap ? { swap: true } : {}), ...(a.unified ? { unified: true } : {}), ...(a.hideSame ? { hideSame: true } : {}) };
+  const k: CompareCard = {
+    id,
+    kind: "compare",
+    cols: [l.id, r.id],
+    ...(a.swap ? { swap: true } : {}),
+    ...(a.unified ? { unified: true } : {}),
+    ...(a.hideSame ? { hideSame: true } : {}),
+  };
   g.put(k, { x, y, w: a.w, ...(a.h ? { h: a.h } : {}) });
 }
 
@@ -40,9 +54,12 @@ const CELLS: [string, Partial<Args>][] = [
 
 function overview(a: Args): Scene {
   const { board, at } = scene("Compare");
-  const g = at(0, 0), sel: string[] = [];
+  const g = at(0, 0),
+    sel: string[] = [];
   CELLS.forEach(([cap, o], i) => {
-    const x = 40 + (i % 2) * (a.w + 80), y = 60 + Math.floor(i / 2) * 640, c = { ...a, ...o };
+    const x = 40 + (i % 2) * (a.w + 80),
+      y = 60 + Math.floor(i / 2) * 640,
+      c = { ...a, ...o };
     g.caption(cap, x, y, a.w);
     compare(board, g, `k${i}`, c, x, y);
     if (c.selected) sel.push(`k${i}`);
@@ -55,7 +72,11 @@ const meta = {
   render: (a, ctx) => <Stage scene={() => single(a)} globals={ctx.globals as Globals} />,
   args: { pair: "versions", unified: false, hideSame: false, swap: false, selected: false, w: 1000, h: 0 },
   argTypes: {
-    pair: { control: "inline-radio", options: ["versions", "functions"], description: "Two versions of schedule, or allocate vs deallocate" },
+    pair: {
+      control: "inline-radio",
+      options: ["versions", "functions"],
+      description: "Two versions of schedule, or allocate vs deallocate",
+    },
     unified: { control: "boolean" },
     hideSame: { control: "boolean", description: "Hide Same Lines" },
     swap: { control: "boolean" },
@@ -70,7 +91,13 @@ type Story = StoryObj<typeof meta>;
 export const Overview: Story = {
   render: (a, ctx) => <Stage scene={() => overview(a)} globals={ctx.globals as Globals} />,
   args: { w: 900, h: 520 },
-  argTypes: { pair: { table: { disable: true } }, unified: { table: { disable: true } }, hideSame: { table: { disable: true } }, swap: { table: { disable: true } }, selected: { table: { disable: true } } },
+  argTypes: {
+    pair: { table: { disable: true } },
+    unified: { table: { disable: true } },
+    hideSame: { table: { disable: true } },
+    swap: { table: { disable: true } },
+    selected: { table: { disable: true } },
+  },
 };
 export const Themes: Story = themes("side-by-side");
 export const SideBySide: Story = {};

@@ -12,22 +12,48 @@ function Chip(p: { job: AiJob }) {
   onCleanup(() => clearInterval(iv));
   return (
     <div class="aichip" data-nodrag onPointerDown={(e) => e.stopPropagation()}>
-      <i class="aispin" /><span>{p.job.label}</span><span class="ait">{s().toFixed(1)} s</span>
-      <button class="aix" aria-label="Cancel" onClick={(e) => { e.stopPropagation(); p.job.cancel(); }}>Cancel <kbd>Esc</kbd></button>
+      <i class="aispin" />
+      <span>{p.job.label}</span>
+      <span class="ait">{s().toFixed(1)} s</span>
+      <button
+        class="aix"
+        aria-label="Cancel"
+        onClick={(e) => {
+          e.stopPropagation();
+          p.job.cancel();
+        }}
+      >
+        Cancel <kbd>Esc</kbd>
+      </button>
     </div>
   );
 }
 
 export function AiBusy(p: { job: AiJob }) {
-  return <div class="aibusy" data-export="strip"><div class="aishim" /><Chip job={p.job} /></div>;
+  return (
+    <div class="aibusy" data-export="strip">
+      <div class="aishim" />
+      <Chip job={p.job} />
+    </div>
+  );
 }
 
 /** 没有卡的：剪贴板的条子；ghost 的是视口中间一张随缩放大小的空卡（新卡的默认宽，SVG 常见的 3:2） */
 export function AiClipBusy() {
   return (
-    <For each={aiJobs().filter((j) => !j.card)}>{(j) => j.ghost
-      ? <div class="aighost" style={{ width: `${Math.round(GHOST_W * cam.z)}px` }}><AiBusy job={j} /></div>
-      : <div class="over aiclip"><Chip job={j} /></div>}</For>
+    <For each={aiJobs().filter((j) => !j.card)}>
+      {(j) =>
+        j.ghost ? (
+          <div class="aighost" style={{ width: `${Math.round(GHOST_W * cam.z)}px` }}>
+            <AiBusy job={j} />
+          </div>
+        ) : (
+          <div class="over aiclip">
+            <Chip job={j} />
+          </div>
+        )
+      }
+    </For>
   );
 }
 const GHOST_W = 360;

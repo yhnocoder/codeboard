@@ -9,13 +9,22 @@ const TTL = 60_000;
 const cache = new Lru<{ p: Promise<Def[]>; at: number }>(300);
 let gen = 0;
 
-export function forgetDefs() { gen++; cache.clear(); }
+export function forgetDefs() {
+  gen++;
+  cache.clear();
+}
 
 /**
  * 这个文件、这个位置的定义：缓存里有（含正在问的）就用；没结果的不留（语言服务还在启动时会先回空）。
  * kind = "impl"：转到实现（问的是已经找到的定义处，语言服务已经在答话：没有覆盖的空结果也留着）
  */
-export async function sharedDefs(abs: string, line: number, col: number, ask: () => Promise<Def[]>, kind: "def" | "impl" = "def"): Promise<Def[]> {
+export async function sharedDefs(
+  abs: string,
+  line: number,
+  col: number,
+  ask: () => Promise<Def[]>,
+  kind: "def" | "impl" = "def",
+): Promise<Def[]> {
   const text = await readText(abs);
   if (text === null) return ask();
   const k = `${kind}\0${abs}\0${line}\0${col}\0${text.length}\0${fingerprint(text)}`;
@@ -32,4 +41,3 @@ export async function sharedDefs(abs: string, line: number, col: number, ask: ()
   if (((!r.length && !keepEmpty) || g !== gen) && cache.get(k)?.p === p) cache.delete(k);
   return g === gen ? r : ask(); // 问的时候文件改了：重新问
 }
-

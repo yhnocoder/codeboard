@@ -8,7 +8,18 @@ import { setCam } from "../src/state/camera";
 import { setDragging, setDropTarget } from "../src/state/ui";
 import { themes } from "./support/themes";
 
-type State = "default" | "long" | "tall" | "narrow" | "wide" | "selected" | "locked" | "nobg" | "mergeArmed" | "mergeHot" | "lifted";
+type State =
+  | "default"
+  | "long"
+  | "tall"
+  | "narrow"
+  | "wide"
+  | "selected"
+  | "locked"
+  | "nobg"
+  | "mergeArmed"
+  | "mergeHot"
+  | "lifted";
 type Args = { state: State; level: "toolbar" | "map"; w: number };
 
 const CELLS: Record<State, { cap: string; f: Fx; w?: number; h?: number }> = {
@@ -28,7 +39,13 @@ const STATES = Object.keys(CELLS) as State[];
 
 function put(g: ReturnType<typeof scene>, s: State, id: string, x: number, y: number, w: number) {
   const c = CELLS[s];
-  g.put(fn(id, c.f, { card: s === "nobg" ? { bg: false as const } : {} }), { x, y, w: c.w ?? w, ...(c.h ? { h: c.h } : {}), ...(s === "locked" ? { locked: true } : {}) });
+  g.put(fn(id, c.f, { card: s === "nobg" ? { bg: false as const } : {} }), {
+    x,
+    y,
+    w: c.w ?? w,
+    ...(c.h ? { h: c.h } : {}),
+    ...(s === "locked" ? { locked: true } : {}),
+  });
 }
 function apply(s: State, id: string) {
   if (s === "mergeArmed") setDropTarget({ kind: "merge", card: id, armed: false });
@@ -36,12 +53,25 @@ function apply(s: State, id: string) {
   if (s === "lifted") setDragging(new Set([id]));
 }
 // 地图档：镜头缩到 0.2（工具栏的缩放只有 100 / 60 / 30）
-const mapLevel = async (a: Args) => { if (a.level === "map") { await el(".card"); setCam(40, 40, 0.2); } };
+const mapLevel = async (a: Args) => {
+  if (a.level === "map") {
+    await el(".card");
+    setCam(40, 40, 0.2);
+  }
+};
 
 function single(a: Args): Scene {
   const g = scene("Code layout");
   put(g, a.state, "c1", 40, 80, a.w);
-  return { board: g.board, sel: a.state === "selected" ? ["c1"] : undefined, after: async () => { await el(`${card("c1")} .src .l`); apply(a.state, "c1"); await mapLevel(a); } };
+  return {
+    board: g.board,
+    sel: a.state === "selected" ? ["c1"] : undefined,
+    after: async () => {
+      await el(`${card("c1")} .src .l`);
+      apply(a.state, "c1");
+      await mapLevel(a);
+    },
+  };
 }
 
 function overview(a: Args): Scene {
@@ -49,18 +79,35 @@ function overview(a: Args): Scene {
   // 合并的两种状态只能有一个（落点只有一个）：Overview 放 Release to merge
   const shown: State[] = STATES.filter((s) => s !== "mergeArmed");
   const pos: Record<string, [number, number]> = {};
-  let x = 40, y = 80, rowH = 0;
+  let x = 40,
+    y = 80,
+    rowH = 0;
   for (const s of shown) {
-    const w = CELLS[s].w ?? a.w, h = CELLS[s].h ?? (s === "long" ? 500 : 420);
-    if (x + w > 2400) { x = 40; y += rowH + 120; rowH = 0; }
+    const w = CELLS[s].w ?? a.w,
+      h = CELLS[s].h ?? (s === "long" ? 500 : 420);
+    if (x + w > 2400) {
+      x = 40;
+      y += rowH + 120;
+      rowH = 0;
+    }
     pos[s] = [x, y];
-    x += w + 80; rowH = Math.max(rowH, h);
+    x += w + 80;
+    rowH = Math.max(rowH, h);
   }
-  shown.forEach((s, i) => { g.caption(CELLS[s].cap, pos[s][0], pos[s][1], 300); put(g, s, `c${i}`, pos[s][0], pos[s][1], a.w); });
+  shown.forEach((s, i) => {
+    g.caption(CELLS[s].cap, pos[s][0], pos[s][1], 300);
+    put(g, s, `c${i}`, pos[s][0], pos[s][1], a.w);
+  });
   const id = (s: State) => `c${shown.indexOf(s)}`;
   return {
-    board: g.board, sel: [id("selected")],
-    after: async () => { await el(".card .src .l"); apply("mergeHot", id("mergeHot")); apply("lifted", id("lifted")); await mapLevel(a); },
+    board: g.board,
+    sel: [id("selected")],
+    after: async () => {
+      await el(".card .src .l");
+      apply("mergeHot", id("mergeHot"));
+      apply("lifted", id("lifted"));
+      await mapLevel(a);
+    },
   };
 }
 
@@ -70,17 +117,37 @@ const meta = {
   args: { state: "default", level: "toolbar", w: 520 },
   argTypes: {
     state: { control: "select", options: STATES },
-    level: { control: "inline-radio", options: ["toolbar", "map"], description: "Level of detail: the toolbar's zoom (100 / 60: full, 30: overview), or the map level (20%)" },
-    w: { control: { type: "range", min: 160, max: 1400, step: 10 }, description: "Width (where the state doesn't set one)" },
+    level: {
+      control: "inline-radio",
+      options: ["toolbar", "map"],
+      description: "Level of detail: the toolbar's zoom (100 / 60: full, 30: overview), or the map level (20%)",
+    },
+    w: {
+      control: { type: "range", min: 160, max: 1400, step: 10 },
+      description: "Width (where the state doesn't set one)",
+    },
   },
 } satisfies Meta<Args>;
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-export const Overview: Story = { render: (a, ctx) => <Stage scene={() => overview(a)} globals={ctx.globals as Globals} />, argTypes: { state: { table: { disable: true } } } };
+export const Overview: Story = {
+  render: (a, ctx) => <Stage scene={() => overview(a)} globals={ctx.globals as Globals} />,
+  argTypes: { state: { table: { disable: true } } },
+};
 export const Themes: Story = themes("long");
-export const OverviewMap: Story = { name: "Overview at Map Level", render: (a, ctx) => <Stage scene={() => overview(a)} globals={ctx.globals as Globals} />, args: { level: "map" }, argTypes: { state: { table: { disable: true } } } };
-export const OverviewLevel: Story = { name: "Overview at 30% (code as bars)", render: (a, ctx) => <Stage scene={() => overview(a)} globals={ctx.globals as Globals} />, globals: { zoom: "30" }, argTypes: { state: { table: { disable: true } } } };
+export const OverviewMap: Story = {
+  name: "Overview at Map Level",
+  render: (a, ctx) => <Stage scene={() => overview(a)} globals={ctx.globals as Globals} />,
+  args: { level: "map" },
+  argTypes: { state: { table: { disable: true } } },
+};
+export const OverviewLevel: Story = {
+  name: "Overview at 30% (code as bars)",
+  render: (a, ctx) => <Stage scene={() => overview(a)} globals={ctx.globals as Globals} />,
+  globals: { zoom: "30" },
+  argTypes: { state: { table: { disable: true } } },
+};
 export const Long: Story = { args: { state: "long" } };
 export const FixedHeight: Story = { args: { state: "tall" } };
 export const Narrow: Story = { args: { state: "narrow" } };
@@ -107,4 +174,8 @@ export const HoverPorts: Story = {
     await forceHover(await el(`${card("c1")} .lport.r`));
   },
 };
-export const HoverNoBackground: Story = { name: "Hover: Background off (hairline, header)", args: { state: "nobg" }, globals: { pseudo: { hover: [".card"] } } };
+export const HoverNoBackground: Story = {
+  name: "Hover: Background off (hairline, header)",
+  args: { state: "nobg" },
+  globals: { pseudo: { hover: [".card"] } },
+};

@@ -8,11 +8,16 @@
 // 别的监听只看到转过的这一下），它的 click 也转过去：浏览器把 click 发给按下和松开两处的共同祖先，按下记在挡板上就成了整块白板
 import { WHEEL_GESTURE } from "../state/timing";
 
-let el: HTMLElement | null = null, dropT: number | undefined, at = { x: 0, y: 0 };
+let el: HTMLElement | null = null,
+  dropT: number | undefined,
+  at = { x: 0, y: 0 };
 // 转过去的这一下按在谁上、在谁上松开：click 要发给两者的共同祖先（和没有挡板时一样）
-let fwd: Element | null = null, up: Element | null = null;
+let fwd: Element | null = null,
+  up: Element | null = null;
 
-export function bindShield(e: HTMLElement) { el = e; }
+export function bindShield(e: HTMLElement) {
+  el = e;
+}
 
 function dropShield() {
   clearTimeout(dropT);
@@ -32,41 +37,75 @@ export function raiseShield(e: WheelEvent, from: Element) {
 }
 
 const MODS = new Set(["Control", "Meta", "Shift", "Alt"]);
-const common = (a: Element, b: Element) => { let p: Element | null = a; while (p && !p.contains(b)) p = p.parentElement; return p; };
+const common = (a: Element, b: Element) => {
+  let p: Element | null = a;
+  while (p && !p.contains(b)) p = p.parentElement;
+  return p;
+};
 
 /** 白板启动时最先调用一次：捕获阶段的监听按注册顺序跑，挡板上的按下要在别的监听之前转走 */
 export function installShield() {
-  window.addEventListener("pointerdown", (e) => {
-    fwd = up = null;
-    if (!el || e.target !== el) return;
-    dropShield();
-    const t = document.elementFromPoint(e.clientX, e.clientY);
-    if (!t || t === el) return;
-    e.stopImmediatePropagation();
-    t.dispatchEvent(new PointerEvent("pointerdown", e));
-    fwd = t;
-  }, true);
-  window.addEventListener("pointermove", (e) => {
-    if (e.target === el && (e.clientX !== at.x || e.clientY !== at.y)) dropShield();
-  }, { capture: true, passive: true });
+  window.addEventListener(
+    "pointerdown",
+    (e) => {
+      fwd = up = null;
+      if (!el || e.target !== el) return;
+      dropShield();
+      const t = document.elementFromPoint(e.clientX, e.clientY);
+      if (!t || t === el) return;
+      e.stopImmediatePropagation();
+      t.dispatchEvent(new PointerEvent("pointerdown", e));
+      fwd = t;
+    },
+    true,
+  );
+  window.addEventListener(
+    "pointermove",
+    (e) => {
+      if (e.target === el && (e.clientX !== at.x || e.clientY !== at.y)) dropShield();
+    },
+    { capture: true, passive: true },
+  );
   // 快捷键按指针下面是谁找卡（⌥F Fit 指针下的卡）：按键时挡板先拿掉。只按修饰键不算：按住 ⌘ / Ctrl 滚轮缩放时它一直在重发
-  window.addEventListener("keydown", (e) => { if (!MODS.has(e.key)) dropShield(); }, { capture: true, passive: true });
-  window.addEventListener("pointerup", (e) => { if (fwd) up = e.target as Element; }, { capture: true, passive: true });
+  window.addEventListener(
+    "keydown",
+    (e) => {
+      if (!MODS.has(e.key)) dropShield();
+    },
+    { capture: true, passive: true },
+  );
+  window.addEventListener(
+    "pointerup",
+    (e) => {
+      if (fwd) up = e.target as Element;
+    },
+    { capture: true, passive: true },
+  );
   // 右键：菜单事件是在按下时按挡板找的目标，挡板已经拿掉了，发给指针下面真正的元素
-  window.addEventListener("contextmenu", (e) => {
-    if (!el || e.target !== el) return;
-    const t = document.elementFromPoint(e.clientX, e.clientY);
-    if (!t || t === el) return;
-    e.stopImmediatePropagation(); e.preventDefault();
-    t.dispatchEvent(new MouseEvent("contextmenu", e));
-  }, true);
-  window.addEventListener("click", (e) => {
-    const f = fwd, u = up;
-    fwd = up = null;
-    if (!f?.isConnected || !u?.isConnected) return;
-    const want = common(f, u);
-    if (!want || want === e.target || !(e.target as Node).contains(want)) return;
-    e.stopImmediatePropagation();
-    want.dispatchEvent(new PointerEvent("click", e));
-  }, true);
+  window.addEventListener(
+    "contextmenu",
+    (e) => {
+      if (!el || e.target !== el) return;
+      const t = document.elementFromPoint(e.clientX, e.clientY);
+      if (!t || t === el) return;
+      e.stopImmediatePropagation();
+      e.preventDefault();
+      t.dispatchEvent(new MouseEvent("contextmenu", e));
+    },
+    true,
+  );
+  window.addEventListener(
+    "click",
+    (e) => {
+      const f = fwd,
+        u = up;
+      fwd = up = null;
+      if (!f?.isConnected || !u?.isConnected) return;
+      const want = common(f, u);
+      if (!want || want === e.target || !(e.target as Node).contains(want)) return;
+      e.stopImmediatePropagation();
+      want.dispatchEvent(new PointerEvent("click", e));
+    },
+    true,
+  );
 }

@@ -10,30 +10,54 @@ import { nodeWorkspace } from "./node-workspace";
 import { tempRepo } from "./helpers";
 
 const tmp: string[] = [];
-const mk = (p: string) => { const d = fs.mkdtempSync(`/tmp/codeboard-${p}-`); tmp.push(d); return d; };
+const mk = (p: string) => {
+  const d = fs.mkdtempSync(`/tmp/codeboard-${p}-`);
+  tmp.push(d);
+  return d;
+};
 /** 这个窗口的工作区（仓库 A）、目标项目的文件夹（B，里面有仓库 B/lib）、两边都不在的仓库 O */
 let A: string, B: string, O: string;
 let n = 0;
 
-const seg = (src: Source, p = "x.py"): Segment => ({ id: `s${++n}`, src, path: p, lang: "python", start: 1, end: 1, text: ["x = 1"], version: { kind: "none" } });
+const seg = (src: Source, p = "x.py"): Segment => ({
+  id: `s${++n}`,
+  src,
+  path: p,
+  lang: "python",
+  start: 1,
+  end: 1,
+  text: ["x = 1"],
+  version: { kind: "none" },
+});
 const code = (id: string, ...segs: Segment[]): CodeCard => ({ id, kind: "code", segments: segs });
-const put = (b: Board, c: Board["cards"][number], x = 0) => { b.cards.push(c); b.place[c.id] = { x, y: 0, w: 400, ...(c.kind === "board" ? { h: 300 } : {}) }; };
-const project = (folders: string | string[], dir: string): Project => { const fs = [folders].flat(); return { folders: fs, name: path.basename(fs[0]), dir, seen: 0 }; };
+const put = (b: Board, c: Board["cards"][number], x = 0) => {
+  b.cards.push(c);
+  b.place[c.id] = { x, y: 0, w: 400, ...(c.kind === "board" ? { h: 300 } : {}) };
+};
+const project = (folders: string | string[], dir: string): Project => {
+  const fs = [folders].flat();
+  return { folders: fs, name: path.basename(fs[0]), dir, seen: 0 };
+};
 const codeOf = (b: Board | null, id: string) => b?.cards.find((c) => c.id === id) as CodeCard | undefined;
 
 beforeAll(() => {
-  A = tempRepo("xa", { "x.py": "x = 1\n" }); tmp.push(A);
+  A = tempRepo("xa", { "x.py": "x = 1\n" });
+  tmp.push(A);
   B = mk("xb");
   fs.mkdirSync(path.join(B, "lib"));
   fs.writeFileSync(path.join(B, "lib/x.py"), "x = 1\n");
-  O = tempRepo("xo", { "x.py": "x = 1\n" }); tmp.push(O);
+  O = tempRepo("xo", { "x.py": "x = 1\n" });
+  tmp.push(O);
   useWorkspace(nodeWorkspace(A));
 });
-afterAll(() => { for (const d of tmp) fs.rmSync(d, { recursive: true, force: true }); });
+afterAll(() => {
+  for (const d of tmp) fs.rmSync(d, { recursive: true, force: true });
+});
 
 describe("copy to another project", () => {
   it("brings the board, its sub-board, shared card, image and run record, and loads in the target", async () => {
-    const src = mk("xsrc"), dst = mk("xdst");
+    const src = mk("xsrc"),
+      dst = mk("xdst");
     const store = new Storage(nodeFs, { dir: () => src });
     const S = emptyBoard("bSub", "Sub");
     put(S, code("k1", seg({ kind: "external", root: path.join(B, "lib") })));
@@ -59,7 +83,10 @@ describe("copy to another project", () => {
 
     const there = new Storage(nodeFs, { dir: () => dst });
     const metas = await there.list();
-    expect(metas.map((m) => [m.id, m.name, m.group]).sort()).toEqual([["bMain", "Main", "g"], ["bSub", "Sub", "g"]]);
+    expect(metas.map((m) => [m.id, m.name, m.group]).sort()).toEqual([
+      ["bMain", "Main", "g"],
+      ["bSub", "Sub", "g"],
+    ]);
     const m = await there.load("bMain");
     expect([...there.refsOf("bMain")]).toEqual(["sh"]);
     expect(fs.existsSync(path.join(dst, "cards/sh.json"))).toBe(true);
@@ -77,12 +104,23 @@ describe("copy to another project", () => {
   });
 
   it("rewrites every segment: repo inside the target folder, outside roots, variants, merged cards and code sidenotes; leaves unknown repos alone", async () => {
-    const src = mk("xsrc"), dst = mk("xdst");
+    const src = mk("xsrc"),
+      dst = mk("xdst");
     const store = new Storage(nodeFs, { dir: () => src });
     const b = emptyBoard("bV", "Variants");
     const c = code("v", seg({ kind: "external", root: B }));
-    c.variants = [{ id: "up", name: "Upstream", from: { kind: "upstream" } }, { id: "w", name: "Mine", from: { kind: "worktree" }, segs: [{ ...seg({ kind: "external", root: O }), id: c.segments[0].id }] }];
-    c.mergedFrom = [{ card: code("old", seg({ kind: "external", root: path.join(B, "lib") })), place: { x: 0, y: 0, w: 300 } }];
+    c.variants = [
+      { id: "up", name: "Upstream", from: { kind: "upstream" } },
+      {
+        id: "w",
+        name: "Mine",
+        from: { kind: "worktree" },
+        segs: [{ ...seg({ kind: "external", root: O }), id: c.segments[0].id }],
+      },
+    ];
+    c.mergedFrom = [
+      { card: code("old", seg({ kind: "external", root: path.join(B, "lib") })), place: { x: 0, y: 0, w: 300 } },
+    ];
     put(b, c);
     put(b, code("gone", seg({ kind: "repo", repo: "no-such-dir" })), 500);
     put(b, code("gh", seg({ kind: "github", owner: "o", name: "n", ref: "main" })), 900);
@@ -104,7 +142,8 @@ describe("copy to another project", () => {
   });
 
   it("writes a repo in any folder of a multi-root target relative to its first folder, as that window adds code itself", async () => {
-    const src = mk("xsrc"), dst = mk("xdst");
+    const src = mk("xsrc"),
+      dst = mk("xdst");
     const store = new Storage(nodeFs, { dir: () => src });
     const b = emptyBoard("bMR", "Multi-root");
     put(b, code("a", seg({ kind: "repo", repo: "" })));
@@ -122,14 +161,16 @@ describe("copy to another project", () => {
   });
 
   it("gives a board whose id the target already has a new id and points the parent's sub-board frame at it; keeps the target's shared card", async () => {
-    const src = mk("xsrc"), dst = mk("xdst");
+    const src = mk("xsrc"),
+      dst = mk("xdst");
     const store = new Storage(nodeFs, { dir: () => src });
     const S = emptyBoard("bSub", "Sub");
     put(S, { id: "n1", kind: "note", md: "mine", look: "note" });
     const M = emptyBoard("bTop", "Top");
     put(M, { id: "fr", kind: "board", board: "bSub" });
     put(M, code("sh", seg({ kind: "repo", repo: "" })), 500);
-    await store.save(S); await store.save(M);
+    await store.save(S);
+    await store.save(M);
     await store.share("bTop", ["sh"]);
 
     const there = new Storage(nodeFs, { dir: () => dst });
@@ -158,10 +199,13 @@ describe("copy to another project", () => {
 
 describe("move to another project", () => {
   it("puts the board in .trash, keeps sub-boards another board still embeds, and leaves shared card files", async () => {
-    const src = mk("xsrc"), dst = mk("xdst");
+    const src = mk("xsrc"),
+      dst = mk("xdst");
     const store = new Storage(nodeFs, { dir: () => src });
-    const S1 = emptyBoard("bS1", "Only here"), S2 = emptyBoard("bS2", "Also elsewhere");
-    const M = emptyBoard("bM", "Moving"), K = emptyBoard("bK", "Keeps S2");
+    const S1 = emptyBoard("bS1", "Only here"),
+      S2 = emptyBoard("bS2", "Also elsewhere");
+    const M = emptyBoard("bM", "Moving"),
+      K = emptyBoard("bK", "Keeps S2");
     put(M, { id: "f1", kind: "board", board: "bS1" });
     put(M, { id: "f2", kind: "board", board: "bS2" }, 500);
     put(M, code("sh", seg({ kind: "repo", repo: "" })), 900);
@@ -179,18 +223,24 @@ describe("move to another project", () => {
     expect(trash.some((f) => f.startsWith("bM."))).toBe(true);
     expect(trash.some((f) => f.startsWith("bS1."))).toBe(true);
     expect(fs.existsSync(path.join(src, "cards/sh.json"))).toBe(true);
-    expect((await new Storage(nodeFs, { dir: () => dst }).list()).map((m) => m.id).sort()).toEqual(["bM", "bS1", "bS2"]);
+    expect((await new Storage(nodeFs, { dir: () => dst }).list()).map((m) => m.id).sort()).toEqual([
+      "bM",
+      "bS1",
+      "bS2",
+    ]);
   });
 });
 
 describe("board names in the target", () => {
   it("suffixes a name the target already has with the first free number, across groups and boards moved together", async () => {
-    const src = mk("xsrc"), dst = mk("xdst");
+    const src = mk("xsrc"),
+      dst = mk("xdst");
     const store = new Storage(nodeFs, { dir: () => src });
     const S = emptyBoard("bS", "Engine step");
     const M = emptyBoard("bM", "Engine step");
     put(M, { id: "fr", kind: "board", board: "bS" });
-    await store.save(S); await store.save(M);
+    await store.save(S);
+    await store.save(M);
     const there = new Storage(nodeFs, { dir: () => dst });
     await there.save(emptyBoard("t1", "Engine step"));
     await there.save(emptyBoard("t3", "Engine step (3)"), { group: "Elsewhere" });
@@ -212,10 +262,19 @@ describe("board names in the target", () => {
 describe("project registry", () => {
   it("lists other projects, newest first, without this one or ones whose folder is gone", async () => {
     const mem = new Map<string, unknown>();
-    const state = { get: <T>(k: string) => mem.get(k) as T | undefined, set: async (k: string, v: unknown) => { mem.set(k, v); } };
-    const here = path.join(mk("xhere"), "boards"), here2 = path.join(mk("xhere"), "boards");
+    const state = {
+      get: <T>(k: string) => mem.get(k) as T | undefined,
+      set: async (k: string, v: unknown) => {
+        mem.set(k, v);
+      },
+    };
+    const here = path.join(mk("xhere"), "boards"),
+      here2 = path.join(mk("xhere"), "boards");
     await recordProject(state, here);
-    expect((mem.get("codeboard.projects") as Record<string, Project>)[here]).toMatchObject({ folders: [A], name: path.basename(A) });
+    expect((mem.get("codeboard.projects") as Record<string, Project>)[here]).toMatchObject({
+      folders: [A],
+      name: path.basename(A),
+    });
     mem.set("codeboard.projects", {
       ...(mem.get("codeboard.projects") as object),
       "/b": { folders: [B], name: "b", dir: "/b", seen: 2 },

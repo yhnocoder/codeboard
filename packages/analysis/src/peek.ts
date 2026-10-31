@@ -28,14 +28,21 @@ export function isModuleDef(lines: string[], line: number, col: number, word: st
 
 /** 类体里直接写的字段行（不在方法里、不是注释 / docstring / 装饰器） */
 function classFields(a: FileAnalysis, lines: string[], cls: Sym): number[] {
-  const kids = a.symbols.filter((s) => s.parent === cls.qual || (s.qual.startsWith(cls.qual + ".") && s.qual.split(".").length === cls.qual.split(".").length + 1));
+  const kids = a.symbols.filter(
+    (s) =>
+      s.parent === cls.qual ||
+      (s.qual.startsWith(cls.qual + ".") && s.qual.split(".").length === cls.qual.split(".").length + 1),
+  );
   let base = -1;
   const out: number[] = [];
   for (let l = cls.defLine + 1; l <= cls.end; l++) {
     const k = kids.find((s) => s.start <= l && l <= s.end);
-    if (k) { l = k.end; continue; }
+    if (k) {
+      l = k.end;
+      continue;
+    }
     const t = lines[l - 1] ?? "";
-    if (((a.flags[l - 1] ?? 0) & (F_BLANK | F_COMMENT | F_DOCSTRING)) || !t.trim()) continue;
+    if ((a.flags[l - 1] ?? 0) & (F_BLANK | F_COMMENT | F_DOCSTRING) || !t.trim()) continue;
     const ind = indentOf(t);
     if (base < 0) base = ind;
     if (ind !== base || /^\s*@/.test(t) || /^\s*(pass|\.\.\.)\s*$/.test(t)) continue;
@@ -52,7 +59,10 @@ function stmtEnd(lines: string[], l: number): number {
   let depth = 0;
   for (let k = l; k <= Math.min(lines.length, l + 40); k++) {
     const t = (lines[k - 1] ?? "").replace(/(["'])(?:\\.|(?!\1).)*\1/g, "").replace(/#.*$/, "");
-    for (const ch of t) { if ("([{".includes(ch)) depth++; else if (")]}".includes(ch)) depth--; }
+    for (const ch of t) {
+      if ("([{".includes(ch)) depth++;
+      else if (")]}".includes(ch)) depth--;
+    }
     if (depth <= 0 && !/\\\s*$/.test(t)) return k;
   }
   return l;
@@ -66,7 +76,12 @@ const around = (rows: number[], line: number, n = MAX_ROWS) => {
 };
 
 /** 定义在 line（col = 定义处的列）：peek 的源码部分怎么取 */
-export function peekPlan(a: FileAnalysis, lines: string[], line: number, o: { word?: string; module?: boolean } = {}): PeekPlan {
+export function peekPlan(
+  a: FileAnalysis,
+  lines: string[],
+  line: number,
+  o: { word?: string; module?: boolean } = {},
+): PeekPlan {
   const word = (o.word ?? "").split(".").pop() ?? "";
   if (o.module) return { kind: "module", rows: [], sig: `(module) ${word}`, doc: a.doc ? docToMd(a.doc) : undefined };
   const sym = a.symbols.find((s) => s.defLine === line);
@@ -80,13 +95,25 @@ export function peekPlan(a: FileAnalysis, lines: string[], line: number, o: { wo
       if (l > sym.defLine && sigDone(lines, sym, l)) body++;
     }
     const last = rows[rows.length - 1] ?? sym.end;
-    return { kind: "function", rows, more: sym.end - last || undefined, sig: `(${sym.parent ? "method" : "function"}) ${sym.sig}`, doc: sym.doc ? docToMd(sym.doc) : undefined };
+    return {
+      kind: "function",
+      rows,
+      more: sym.end - last || undefined,
+      sig: `(${sym.parent ? "method" : "function"}) ${sym.sig}`,
+      doc: sym.doc ? docToMd(sym.doc) : undefined,
+    };
   }
   if (sym?.kind === "class") {
     let rows = classFields(a, lines, sym);
     if (!rows.length) rows = a.symbols.filter((s) => s.parent === sym.qual).map((s) => s.defLine);
     const shown = around([...new Set([...range(sym.start, sym.defLine), ...rows])], line);
-    return { kind: "class", rows: shown, more: rows.length + (sym.defLine - sym.start + 1) - shown.length || undefined, sig: `(class) ${sym.sig}`, doc: sym.doc ? docToMd(sym.doc) : undefined };
+    return {
+      kind: "class",
+      rows: shown,
+      more: rows.length + (sym.defLine - sym.start + 1) - shown.length || undefined,
+      sig: `(class) ${sym.sig}`,
+      doc: sym.doc ? docToMd(sym.doc) : undefined,
+    };
   }
   const text = lines[line - 1] ?? "";
   const field = `(variable) ${text.trim().replace(/\s*#.*$/, "")}`;
@@ -102,15 +129,24 @@ export function peekPlan(a: FileAnalysis, lines: string[], line: number, o: { wo
   // __init__ 里的 self.x = …：同一个方法里所有 self.x 赋值
   const selfRe = /^\s*self\.\w+\s*(:[^=]*)?=(?!=)/;
   if (inner?.kind === "def" && selfRe.test(text)) {
-    const rows = range(inner.defLine + 1, inner.end).filter((l) => selfRe.test(lines[l - 1] ?? "") && indentOf(lines[l - 1]) === indentOf(text));
+    const rows = range(inner.defLine + 1, inner.end).filter(
+      (l) => selfRe.test(lines[l - 1] ?? "") && indentOf(lines[l - 1]) === indentOf(text),
+    );
     const shown = around(rows, line);
     return { kind: "field", rows: shown, head: inner.qual, more: rows.length - shown.length || undefined, sig: field };
   }
   // 其他（模块级的赋值等）：整条语句，前后各带一行；太长就截
   const se = stmtEnd(lines, line);
-  const s = Math.max(1, line - 1), e = Math.min(lines.length, se + 1);
-  const all = range(s, e), shown = all.slice(0, MAX_ROWS);
-  return { kind: "other", rows: shown, more: all.length - shown.length || undefined, sig: /^\s*\w[\w.]*\s*(:[^=]*)?=/.test(text) ? field : undefined };
+  const s = Math.max(1, line - 1),
+    e = Math.min(lines.length, se + 1);
+  const all = range(s, e),
+    shown = all.slice(0, MAX_ROWS);
+  return {
+    kind: "other",
+    rows: shown,
+    more: all.length - shown.length || undefined,
+    sig: /^\s*\w[\w.]*\s*(:[^=]*)?=/.test(text) ? field : undefined,
+  };
 }
 
 const range = (a: number, b: number) => Array.from({ length: Math.max(0, b - a + 1) }, (_, i) => a + i);
@@ -125,32 +161,65 @@ function sigDone(lines: string[], sym: Sym, l: number) {
  * 缩进的行（Args: 下面的参数、代码示例）保持一行一段，>>> 示例放进代码块。
  */
 export function docToMd(doc: string): string {
-  const src = doc.replace(/:[\w:]+:`~?([^`]+)`/g, "`$1`").replace(/``([^`]+)``/g, "`$1`").split("\n");
+  const src = doc
+    .replace(/:[\w:]+:`~?([^`]+)`/g, "`$1`")
+    .replace(/``([^`]+)``/g, "`$1`")
+    .split("\n");
   const out: string[] = [];
-  let para = false, code = false;
+  let para = false,
+    code = false;
   for (const raw of src) {
     const l = raw.trimEnd();
     const ex = /^\s*(>>>|\.\.\.)\s?/.test(l);
-    if (ex !== code) { out.push("```"); code = ex; para = false; }
-    if (code) { out.push(l.trim()); continue; }
-    if (!l.trim()) { out.push(""); para = false; continue; }
-    const ind = indentOf(l) > 0, item = /^\s*([-*]|\d+[.)])\s/.test(l), head = /:\s*$/.test(l) || /^[-=~]{3,}$/.test(l.trim());
-    if (/^[-=~]{3,}$/.test(l.trim()) && out.length) { const t = out.pop()!; out.push(`**${t}**`); para = false; continue; }
+    if (ex !== code) {
+      out.push("```");
+      code = ex;
+      para = false;
+    }
+    if (code) {
+      out.push(l.trim());
+      continue;
+    }
+    if (!l.trim()) {
+      out.push("");
+      para = false;
+      continue;
+    }
+    const ind = indentOf(l) > 0,
+      item = /^\s*([-*]|\d+[.)])\s/.test(l),
+      head = /:\s*$/.test(l) || /^[-=~]{3,}$/.test(l.trim());
+    if (/^[-=~]{3,}$/.test(l.trim()) && out.length) {
+      const t = out.pop()!;
+      out.push(`**${t}**`);
+      para = false;
+      continue;
+    }
     if (para && !ind && !item && !head) out[out.length - 1] += " " + l.trim();
     else out.push(item ? l.trim() : ind ? `- ${l.trim()}` : l.trim());
     para = !ind && !item && !head;
   }
   if (code) out.push("```");
-  return out.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+  return out
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 /** VS Code hover 的 Markdown → 签名（第一个代码块）+ 文档；Pylance 会把 _ 之类转义，去掉 */
 export function splitHover(md: string): { sig?: string; doc?: string } {
   const m = /^\s*```[\w-]*\n([\s\S]*?)\n```[ \t]*\n?/.exec(md);
-  let sig: string | undefined, rest = md;
-  if (m) { sig = m[1].trim(); rest = md.slice(m[0].length); }
+  let sig: string | undefined,
+    rest = md;
+  if (m) {
+    sig = m[1].trim();
+    rest = md.slice(m[0].length);
+  }
   rest = rest.replace(/^\s*(---|\*\*\*|___)[ \t]*(\n|$)/, "").replace(/&nbsp;/g, " ");
   // 代码块里不去转义
-  rest = rest.split(/(```[\s\S]*?```)/).map((p, i) => (i % 2 ? p : p.replace(/\\([\\`*_{}[\]()#+\-.!|<>])/g, "$1"))).join("").trim();
+  rest = rest
+    .split(/(```[\s\S]*?```)/)
+    .map((p, i) => (i % 2 ? p : p.replace(/\\([\\`*_{}[\]()#+\-.!|<>])/g, "$1")))
+    .join("")
+    .trim();
   return { sig: sig || undefined, doc: rest || undefined };
 }

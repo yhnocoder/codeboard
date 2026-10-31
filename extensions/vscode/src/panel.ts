@@ -9,17 +9,30 @@ export const VIEW_TYPE = "codeboard.board";
 function webviewView(panel: vscode.WebviewPanel): BoardView {
   return {
     postMessage: (m) => void panel.webview.postMessage(m),
-    get title() { return panel.title; },
-    set title(t: string) { panel.title = t; },
-    get visible() { return panel.visible; },
-    get active() { return panel.active; },
+    get title() {
+      return panel.title;
+    },
+    set title(t: string) {
+      panel.title = t;
+    },
+    get visible() {
+      return panel.visible;
+    },
+    get active() {
+      return panel.active;
+    },
     reveal: (preserveFocus) => panel.reveal(undefined, preserveFocus),
     // The board is the active editor when this is called: focusing its group focuses it
-    focus: async () => { await vscode.commands.executeCommand("workbench.action.focusActiveEditorGroup"); },
+    focus: async () => {
+      await vscode.commands.executeCommand("workbench.action.focusActiveEditorGroup");
+    },
     dispose: () => panel.dispose(),
     resourceUrl: (dir) => panel.webview.asWebviewUri(vscode.Uri.file(dir)).toString(),
     onMessage: (fn) => panel.webview.onDidReceiveMessage((m: BoardToHost) => fn(m)),
-    onDidActivate: (fn) => panel.onDidChangeViewState((e) => { if (e.webviewPanel.active) fn(); }),
+    onDidActivate: (fn) =>
+      panel.onDidChangeViewState((e) => {
+        if (e.webviewPanel.active) fn();
+      }),
     onDidDispose: (fn) => panel.onDidDispose(() => fn()),
   };
 }
@@ -28,18 +41,37 @@ export class BoardWebviews {
   private open = new Set<vscode.WebviewPanel>();
 
   /** assetsDir = 白板图片所在的目录（webview 可以读的本地目录之一） */
-  constructor(private ctx: vscode.ExtensionContext, private assetsDir: () => string) {
+  constructor(
+    private ctx: vscode.ExtensionContext,
+    private assetsDir: () => string,
+  ) {
     // 白板界面是构建出来的（npm run build）：少了就是构建坏了，激活时说清楚，不开一块没样式的白板
     const dir = path.join(ctx.extensionUri.fsPath, "media", "board");
-    for (const f of ["board.js", "board.css"]) if (!fs.existsSync(path.join(dir, f))) throw new Error(`CodeBoard: ${path.join(dir, f)} is missing (build the board with npm run build)`);
+    for (const f of ["board.js", "board.css"])
+      if (!fs.existsSync(path.join(dir, f)))
+        throw new Error(`CodeBoard: ${path.join(dir, f)} is missing (build the board with npm run build)`);
   }
 
   env(): HostEnv {
     return {
-      globalState: { get: (k) => this.ctx.globalState.get(k), set: async (k, v) => { await this.ctx.globalState.update(k, v); } },
+      globalState: {
+        get: (k) => this.ctx.globalState.get(k),
+        set: async (k, v) => {
+          await this.ctx.globalState.update(k, v);
+        },
+      },
       openView: (id, title, place) => {
-        const col = place.side ? vscode.ViewColumn.Beside : place.here ? vscode.ViewColumn.Active : this.boardColumn() ?? vscode.ViewColumn.Beside;
-        const panel = vscode.window.createWebviewPanel(VIEW_TYPE, title, { viewColumn: col, preserveFocus: place.preserveFocus }, { enableScripts: true, retainContextWhenHidden: true });
+        const col = place.side
+          ? vscode.ViewColumn.Beside
+          : place.here
+            ? vscode.ViewColumn.Active
+            : (this.boardColumn() ?? vscode.ViewColumn.Beside);
+        const panel = vscode.window.createWebviewPanel(
+          VIEW_TYPE,
+          title,
+          { viewColumn: col, preserveFocus: place.preserveFocus },
+          { enableScripts: true, retainContextWhenHidden: true },
+        );
         return this.setup(panel, id);
       },
     };
@@ -47,7 +79,10 @@ export class BoardWebviews {
 
   async restore(hub: BoardHub, panel: vscode.WebviewPanel, state: unknown) {
     const id = await hub.restoreId((state as { __board?: string } | undefined)?.__board);
-    if (!id) { panel.dispose(); return; }
+    if (!id) {
+      panel.dispose();
+      return;
+    }
     hub.attach(id, this.setup(panel, id));
   }
 

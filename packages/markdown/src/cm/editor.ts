@@ -1,10 +1,37 @@
 // 和显示时一模一样，进出编辑字的位置一点不动。着色不用 CodeMirror 自己的语言包：显示时的 HTML 拿来当装饰，
 // 打字时旧的着色跟着改动挪，新的着色回来就换上
-import { EditorState, EditorSelection, StateEffect, StateField, Prec, type Extension, type Range, type Text, type ChangeSpec } from "@codemirror/state";
-import { EditorView, Decoration, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter, tooltips, type DecorationSet, type KeyBinding } from "@codemirror/view";
+import {
+  EditorState,
+  EditorSelection,
+  StateEffect,
+  StateField,
+  Prec,
+  type Extension,
+  type Range,
+  type Text,
+  type ChangeSpec,
+} from "@codemirror/state";
+import {
+  EditorView,
+  Decoration,
+  keymap,
+  lineNumbers,
+  highlightActiveLine,
+  highlightActiveLineGutter,
+  tooltips,
+  type DecorationSet,
+  type KeyBinding,
+} from "@codemirror/view";
 import { history, historyKeymap, defaultKeymap } from "@codemirror/commands";
 import { indentUnit } from "@codemirror/language";
-import { autocompletion, completionKeymap, completionStatus, currentCompletions, acceptCompletion, closeCompletion } from "@codemirror/autocomplete";
+import {
+  autocompletion,
+  completionKeymap,
+  completionStatus,
+  currentCompletions,
+  acceptCompletion,
+  closeCompletion,
+} from "@codemirror/autocomplete";
 import { lspExtensions, dismissSig, type LspHost } from "./lsp";
 import { ghostExtension, acceptGhost, dropGhost, type GhostHost } from "./ghost";
 import { keepKey } from "../ui/editkeys";
@@ -27,49 +54,86 @@ export function parseHl(html: string): { text: string; toks: Tok[] } {
   for (let m = re.exec(html); m; m = re.exec(html)) {
     const s = m[0];
     if (s.startsWith("<span")) stack.push({ cls: /\bclass="([^"]*)"/.exec(m[1])?.[1] ?? "", from: text.length });
-    else if (s.startsWith("</span")) { const o = stack.pop(); if (o?.cls && text.length > o.from) toks.push({ from: o.from, to: text.length, cls: o.cls }); }
-    else if (s[0] === "<") continue;
-    else if (m[2] !== undefined) text += ENT[m[2]] ?? (m[2][0] === "#" ? String.fromCodePoint(m[2][1] === "x" ? parseInt(m[2].slice(2), 16) : parseInt(m[2].slice(1), 10)) : s);
+    else if (s.startsWith("</span")) {
+      const o = stack.pop();
+      if (o?.cls && text.length > o.from) toks.push({ from: o.from, to: text.length, cls: o.cls });
+    } else if (s[0] === "<") continue;
+    else if (m[2] !== undefined)
+      text +=
+        ENT[m[2]] ??
+        (m[2][0] === "#"
+          ? String.fromCodePoint(m[2][1] === "x" ? parseInt(m[2].slice(2), 16) : parseInt(m[2].slice(1), 10))
+          : s);
     else text += s;
   }
   return { text, toks };
 }
 
 const marks = new Map<string, Decoration>();
-const markOf = (cls: string) => { let d = marks.get(cls); if (!d) marks.set(cls, (d = Decoration.mark({ class: cls }))); return d; };
+const markOf = (cls: string) => {
+  let d = marks.get(cls);
+  if (!d) marks.set(cls, (d = Decoration.mark({ class: cls })));
+  return d;
+};
 
 const setHl = StateEffect.define<{ text: string; toks: Tok[] }>();
 
 /** 把一份着色按行对到现在的文字上：同一行（或插删行后对应的那一行）文字一样就用新的，对不上的行留着旧的（已跟着改动挪过） */
 function rebuild(doc: Text, old: DecorationSet, hl: { text: string; toks: Tok[] }): DecorationSet {
   const cur = doc.toString();
-  if (cur === hl.text) return Decoration.set(hl.toks.map((t) => markOf(t.cls).range(t.from, t.to)), true);
-  const lines = hl.text.split("\n"), starts: number[] = [];
+  if (cur === hl.text)
+    return Decoration.set(
+      hl.toks.map((t) => markOf(t.cls).range(t.from, t.to)),
+      true,
+    );
+  const lines = hl.text.split("\n"),
+    starts: number[] = [];
   let at = 0;
-  for (const l of lines) { starts.push(at); at += l.length + 1; }
+  for (const l of lines) {
+    starts.push(at);
+    at += l.length + 1;
+  }
   const shift = doc.lines - lines.length;
   const out: Range<Decoration>[] = [];
   const byLine: Tok[][] = lines.map(() => []);
   for (const t of hl.toks) {
     let i = upper(starts, t.from);
-    while (i < lines.length && starts[i] < t.to) { byLine[i].push(t); i++; }
+    while (i < lines.length && starts[i] < t.to) {
+      byLine[i].push(t);
+      i++;
+    }
   }
   for (let n = 1; n <= doc.lines; n++) {
-    const line = doc.line(n), i = n - 1;
+    const line = doc.line(n),
+      i = n - 1;
     const j = lines[i] === line.text ? i : lines[i - shift] === line.text ? i - shift : -1;
     if (j >= 0 && j < lines.length) {
-      const a = starts[j], b = a + lines[j].length;
-      for (const t of byLine[j]) { const f = Math.max(t.from, a), e = Math.min(t.to, b); if (e > f) out.push(markOf(t.cls).range(line.from + f - a, line.from + e - a)); }
+      const a = starts[j],
+        b = a + lines[j].length;
+      for (const t of byLine[j]) {
+        const f = Math.max(t.from, a),
+          e = Math.min(t.to, b);
+        if (e > f) out.push(markOf(t.cls).range(line.from + f - a, line.from + e - a));
+      }
     } else {
-      old.between(line.from, line.to, (f, e, d) => { const ff = Math.max(f, line.from), ee = Math.min(e, line.to); if (ee > ff) out.push(d.range(ff, ee)); });
+      old.between(line.from, line.to, (f, e, d) => {
+        const ff = Math.max(f, line.from),
+          ee = Math.min(e, line.to);
+        if (ee > ff) out.push(d.range(ff, ee));
+      });
     }
   }
   return Decoration.set(out, true);
 }
 /** starts 里最后一个 ≤ x 的下标 */
 function upper(starts: number[], x: number) {
-  let lo = 0, hi = starts.length - 1;
-  while (lo < hi) { const m = (lo + hi + 1) >> 1; if (starts[m] <= x) lo = m; else hi = m - 1; }
+  let lo = 0,
+    hi = starts.length - 1;
+  while (lo < hi) {
+    const m = (lo + hi + 1) >> 1;
+    if (starts[m] <= x) lo = m;
+    else hi = m - 1;
+  }
   return lo;
 }
 
@@ -93,7 +157,11 @@ function editLines(view: EditorView, fn: (ls: string[]) => string[]) {
     let b = state.doc.lineAt(r.to).number;
     if (r.to > r.from && state.doc.line(b).from === r.to && b > a) b--;
     const ls: string[] = [];
-    for (let n = a; n <= b; n++) if (!seen.has(n)) { seen.add(n); ls.push(state.doc.line(n).text); }
+    for (let n = a; n <= b; n++)
+      if (!seen.has(n)) {
+        seen.add(n);
+        ls.push(state.doc.line(n).text);
+      }
     if (ls.length) ranges.push({ from: state.doc.line(a).from, to: state.doc.line(a + ls.length - 1).to, lines: ls });
   }
   for (const r of ranges) {
@@ -126,13 +194,21 @@ function escKey(exit: () => void): KeyBinding {
 function keys(lang: () => string | undefined, exit: () => void, commentOf: (lang?: string) => string): KeyBinding[] {
   return [
     { key: "Mod-ArrowRight", run: (v) => acceptGhost(v, false) },
-    { key: "Mod-Enter", run: () => { exit(); return true; } },
+    {
+      key: "Mod-Enter",
+      run: () => {
+        exit();
+        return true;
+      },
+    },
     {
       key: "Tab",
       run: (v) => {
         if (menuShown(v.state)) return acceptCompletion(v);
         if (acceptGhost(v)) return true;
-        const multi = v.state.selection.ranges.some((r) => v.state.doc.lineAt(r.from).number !== v.state.doc.lineAt(r.to).number);
+        const multi = v.state.selection.ranges.some(
+          (r) => v.state.doc.lineAt(r.from).number !== v.state.doc.lineAt(r.to).number,
+        );
         if (multi) return editLines(v, (ls) => ls.map((l) => (l ? IND + l : l)));
         v.dispatch(v.state.replaceSelection(IND), { userEvent: "input", scrollIntoView: true });
         return true;
@@ -149,7 +225,10 @@ function keys(lang: () => string | undefined, exit: () => void, commentOf: (lang
           const before = line.text.slice(0, r.from - line.from);
           const ind = /^[ \t]*/.exec(before)![0] + (/[:{[(]\s*$/.test(before) ? IND : "");
           const ins = `\n${ind}`;
-          return { changes: { from: r.from, to: r.to, insert: ins }, range: EditorSelection.cursor(r.from + ins.length) };
+          return {
+            changes: { from: r.from, to: r.to, insert: ins },
+            range: EditorSelection.cursor(r.from + ins.length),
+          };
         });
         v.dispatch(state.update(changes, { userEvent: "input", scrollIntoView: true }));
         return true;
@@ -230,10 +309,24 @@ const look = EditorView.theme({
   ".cm-line": { padding: "0" },
   // 卡片上：行伸进右边 24px 的留白（和显示时的 .src .l 一样），当前行的底色到卡边
   "&.cbcm-card .cm-line": { padding: "0 24px 0 0", marginRight: "-24px" },
-  ".cm-gutters": { background: "transparent", border: "none", color: "var(--ink-3)", position: "relative", minHeight: "0" },
+  ".cm-gutters": {
+    background: "transparent",
+    border: "none",
+    color: "var(--ink-3)",
+    position: "relative",
+    minHeight: "0",
+  },
   ".cm-lineNumbers": { width: "54px" },
   // 行号格占满整个行号栏（字靠右空 22px）：当前行的底色从行号连到代码，中间不断
-  ".cm-lineNumbers .cm-gutterElement": { boxSizing: "border-box", width: "54px", minWidth: "0", padding: "0 22px 0 2px", textAlign: "right", fontVariantNumeric: "tabular-nums", color: "color-mix(in srgb, var(--ink-3) calc(var(--no-o, .65) * 100%), transparent)" },
+  ".cm-lineNumbers .cm-gutterElement": {
+    boxSizing: "border-box",
+    width: "54px",
+    minWidth: "0",
+    padding: "0 22px 0 2px",
+    textAlign: "right",
+    fontVariantNumeric: "tabular-nums",
+    color: "color-mix(in srgb, var(--ink-3) calc(var(--no-o, .65) * 100%), transparent)",
+  },
   ".cm-activeLine, .cm-activeLineGutter": { background: "var(--hlrow)" },
   ".cm-lineWrapping": { whiteSpace: "pre-wrap", wordBreak: "break-all", overflowWrap: "normal" },
   ".cm-content ::selection, .cm-line::selection": { background: "color-mix(in srgb, var(--accent) 26%, transparent)" },
@@ -242,15 +335,27 @@ const look = EditorView.theme({
 export function codeEditor(o: CodeEditorOpts): CodeEditor {
   let lang = o.lang;
   let exited = false;
-  const exit = () => { if (exited) return; exited = true; o.onExit?.(); };
+  const exit = () => {
+    if (exited) return;
+    exited = true;
+    o.onExit?.();
+  };
   // relang：换了语言以后还没着过色（新语言不会着色时要把旧语言的颜色拿掉，不是留着）
-  let hlBusy = false, hlGone = false, hlWant = false, relang = false;
+  let hlBusy = false,
+    hlGone = false,
+    hlWant = false,
+    relang = false;
   // 着色：一次只问一个，回来时字又变了再问
   const rehighlight = async () => {
     if (!o.highlight || hlGone) return;
-    if (hlBusy) { hlWant = true; return; }
-    hlBusy = true; hlWant = false;
-    const text = view.state.doc.toString(), fresh = relang;
+    if (hlBusy) {
+      hlWant = true;
+      return;
+    }
+    hlBusy = true;
+    hlWant = false;
+    const text = view.state.doc.toString(),
+      fresh = relang;
     relang = false;
     try {
       const r = o.highlight(text);
@@ -258,11 +363,20 @@ export function codeEditor(o: CodeEditorOpts): CodeEditor {
       // 和现在的文字按行对：对不上的行留着旧的（宿主回来时又打了字）
       if (html != null && !hlGone) view.dispatch({ effects: setHl.of(parseHl(html)) });
       else if (fresh && !hlGone) view.dispatch({ effects: setHl.of({ text, toks: [] }) });
-    } finally { hlBusy = false; }
+    } finally {
+      hlBusy = false;
+    }
     if (!hlGone && (hlWant || view.state.doc.toString() !== text)) void rehighlight();
   };
   let hlQueued = false;
-  const queueHl = () => { if (hlQueued) return; hlQueued = true; queueMicrotask(() => { hlQueued = false; void rehighlight(); }); };
+  const queueHl = () => {
+    if (hlQueued) return;
+    hlQueued = true;
+    queueMicrotask(() => {
+      hlQueued = false;
+      void rehighlight();
+    });
+  };
 
   const exts: Extension[] = [
     look,
@@ -274,24 +388,59 @@ export function codeEditor(o: CodeEditorOpts): CodeEditor {
     tooltips({ parent: document.body, position: "fixed" }),
     // Esc 排在补全自带的按键（也是 Prec.highest）前面：它的 Esc 连看不见的、还在问的补全也算一次
     Prec.highest(keymap.of([escKey(exit)])),
-    autocompletion({ activateOnTyping: true, activateOnTypingDelay: 60, icons: false, closeOnBlur: true, maxRenderedOptions: 80, tooltipClass: () => "cbcm-tip cbcm-ac", optionClass: (c) => `cbcm-opt${c.type ? ` k-${c.type}` : ""}` }),
-    Prec.highest(keymap.of([...(o.keys ?? []), ...keys(() => lang, exit, (l) => o.comment?.(l) ?? "//")])),
+    autocompletion({
+      activateOnTyping: true,
+      activateOnTypingDelay: 60,
+      icons: false,
+      closeOnBlur: true,
+      maxRenderedOptions: 80,
+      tooltipClass: () => "cbcm-tip cbcm-ac",
+      optionClass: (c) => `cbcm-opt${c.type ? ` k-${c.type}` : ""}`,
+    }),
+    Prec.highest(
+      keymap.of([
+        ...(o.keys ?? []),
+        ...keys(
+          () => lang,
+          exit,
+          (l) => o.comment?.(l) ?? "//",
+        ),
+      ]),
+    ),
     keymap.of([...completionKeymap, ...(o.history === false ? [] : historyKeymap), ...defaultKeymap]),
     EditorView.updateListener.of((u) => {
-      if (u.docChanged) { o.onChange?.(u.state.doc.toString()); queueHl(); }
+      if (u.docChanged) {
+        o.onChange?.(u.state.doc.toString());
+        queueHl();
+      }
       o.onUpdate?.(u);
     }),
     ...(o.wrap ? [EditorView.lineWrapping] : []),
-    ...(o.gutter ? [lineNumbers({ formatNumber: (n) => String(o.gutter!.start + n - 1) }), highlightActiveLineGutter()] : []),
+    ...(o.gutter
+      ? [lineNumbers({ formatNumber: (n) => String(o.gutter!.start + n - 1) }), highlightActiveLineGutter()]
+      : []),
     ...(o.lsp ? lspExtensions(o.lsp) : []),
     ...(o.ghost ? [ghostExtension(o.ghost)] : []),
-    ...(o.find ? findExtension({ isMac: o.find.isMac, leave: (e) => { if (!exited) o.onBlur?.(e); } }) : []),
+    ...(o.find
+      ? findExtension({
+          isMac: o.find.isMac,
+          leave: (e) => {
+            if (!exited) o.onBlur?.(e);
+          },
+        })
+      : []),
     // 根元素的 class 走 editorAttributes：CodeMirror 焦点一变就重写整个 class 属性，classList.add 加的会被抹掉
-    EditorView.editorAttributes.of({ class: ["cbcm", o.gutter ? "cbcm-card" : "", o.className ?? ""].filter(Boolean).join(" ") }),
+    EditorView.editorAttributes.of({
+      class: ["cbcm", o.gutter ? "cbcm-card" : "", o.className ?? ""].filter(Boolean).join(" "),
+    }),
     ...(o.extensions ?? []),
   ];
   const state = EditorState.create({ doc: o.text, extensions: exts });
-  const view = new EditorView({ state, parent: o.parent, dispatchTransactions: o.dispatch ? (trs, v) => o.dispatch!(trs, v) : undefined });
+  const view = new EditorView({
+    state,
+    parent: o.parent,
+    dispatchTransactions: o.dispatch ? (trs, v) => o.dispatch!(trs, v) : undefined,
+  });
   // 冒泡到这里时 CodeMirror 已经处理过（preventDefault 过的是它做了的）：按键不再往白板冒；按下不让白板当成拖卡片
   view.dom.addEventListener("keydown", keepKey);
   if (o.stopPointerDown) view.dom.addEventListener("pointerdown", (e) => e.stopPropagation());
@@ -306,9 +455,19 @@ export function codeEditor(o: CodeEditorOpts): CodeEditor {
   return {
     view,
     text: () => view.state.doc.toString(),
-    setLang: (l) => { if (l !== lang) { lang = l; relang = true; queueHl(); } },
+    setLang: (l) => {
+      if (l !== lang) {
+        lang = l;
+        relang = true;
+        queueHl();
+      }
+    },
     focus: () => view.focus(),
-    destroy: () => { hlGone = true; view.destroy(); o.lsp?.close?.(); },
+    destroy: () => {
+      hlGone = true;
+      view.destroy();
+      o.lsp?.close?.();
+    },
   };
 }
 

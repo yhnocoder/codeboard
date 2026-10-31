@@ -3,7 +3,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 type Listener<T> = (e: T) => void;
 const changes = new Set<Listener<{ document: FakeDoc }>>();
 const closes = new Set<Listener<FakeDoc>>();
-const on = <T>(set: Set<Listener<T>>) => (f: Listener<T>) => { set.add(f); return { dispose: () => set.delete(f) }; };
+const on =
+  <T>(set: Set<Listener<T>>) =>
+  (f: Listener<T>) => {
+    set.add(f);
+    return { dispose: () => set.delete(f) };
+  };
 const writes: { path: string; text: string }[] = [];
 let failWrite: Error | undefined;
 
@@ -23,20 +28,51 @@ vi.mock("vscode", () => ({
 
 class FakeDoc {
   version = 1;
-  constructor(public uri: { fsPath: string; toString(): string }, public text: string) {}
-  getText() { return this.text; }
+  constructor(
+    public uri: { fsPath: string; toString(): string },
+    public text: string,
+  ) {}
+  getText() {
+    return this.text;
+  }
   /** VS Code read the file back from disk */
-  reload(text: string) { this.text = text; this.version++; for (const f of [...changes]) f({ document: this }); }
+  reload(text: string) {
+    this.text = text;
+    this.version++;
+    for (const f of [...changes]) f({ document: this });
+  }
 }
 const uri = (p: string) => ({ fsPath: p, toString: () => `file://${p}` });
 
 const { setText, isScratch, RELOAD_LIMIT_MS } = await import("../src/vscode/scratch");
-const doc = (text = "old") => { const u = uri("/w/.codeboard-scratch-a.py"); return { uri: u, lang: "python", doc: new FakeDoc(u, text) } as any; };
-const settled = (p: Promise<unknown>) => { const s = { done: false, err: undefined as unknown }; p.then(() => { s.done = true; }, (e) => { s.err = e; }); return s; };
+const doc = (text = "old") => {
+  const u = uri("/w/.codeboard-scratch-a.py");
+  return { uri: u, lang: "python", doc: new FakeDoc(u, text) } as any;
+};
+const settled = (p: Promise<unknown>) => {
+  const s = { done: false, err: undefined as unknown };
+  p.then(
+    () => {
+      s.done = true;
+    },
+    (e) => {
+      s.err = e;
+    },
+  );
+  return s;
+};
 const tick = () => new Promise((r) => setImmediate(r));
 
-beforeEach(() => { vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] }); writes.length = 0; failWrite = undefined; });
-afterEach(() => { vi.useRealTimers(); changes.clear(); closes.clear(); });
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  writes.length = 0;
+  failWrite = undefined;
+});
+afterEach(() => {
+  vi.useRealTimers();
+  changes.clear();
+  closes.clear();
+});
 
 describe("scratch setText", () => {
   it("waits for the document to hold the new text, however late the reload comes", async () => {

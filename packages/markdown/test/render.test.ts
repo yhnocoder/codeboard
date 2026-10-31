@@ -11,7 +11,7 @@ import { hydrate } from "../src/view";
 const DOCS = [
   "# Title\n\nsome **bold** *it* ~~s~~ `code` <u>u</u> <kbd>K</kbd> ==hl== H~2~O x^2^ :tada: [[Card]]",
   "- a\n- b\n  - nested\n\n1. one\n2. two\n\n- [ ] todo\n- [x] done **too**",
-  "> quote\n\n---\n\n```python\ndef f(x):\n    return x < 1 && \"q\"\n```\n\nline  \nbreak",
+  '> quote\n\n---\n\n```python\ndef f(x):\n    return x < 1 && "q"\n```\n\nline  \nbreak',
   "| a | b |\n| - | - |\n| 1 | 2 |",
   "<details>\n<summary>More</summary>\n\nbody\n\n</details>\n\ntext[^1]\n\n[^1]: note",
 ];
@@ -43,7 +43,13 @@ describe("code blocks take the host's highlighting", () => {
   it("plain text first, coloured when the host answers, cached after", async () => {
     const asked: string[] = [];
     // 语言名换成正式 id 由用的一方给（白板用 core 的 langId）：py 和 python 是同一份缓存
-    setCodeHighlighter(async (text, lang) => { asked.push(lang); return `<span class="kw">${text}</span>`; }, (l) => (l === "py" ? "python" : l));
+    setCodeHighlighter(
+      async (text, lang) => {
+        asked.push(lang);
+        return `<span class="kw">${text}</span>`;
+      },
+      (l) => (l === "py" ? "python" : l),
+    );
     // 静态显示给的代码块（renderMd 的输出再过 DOMPurify，这里的 DOM 实现和它合不来，直接写）
     const block = (lang: string) => `<pre class="md-code" data-lang="${lang}"><code>return</code></pre>`;
     const el = document.createElement("div");

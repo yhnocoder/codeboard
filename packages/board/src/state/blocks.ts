@@ -20,7 +20,8 @@ const [bgeo, setBgeo] = createStore<Record<string, BlockGeo | undefined>>({});
 
 /** el 在 root 里的 y（按排版，不受缩放、斜贴影响）；root 要在 el 的 offsetParent 链上（.nbody 是 position: relative） */
 function offIn(el: HTMLElement, root: HTMLElement): number {
-  let y = 0, e: HTMLElement | null = el;
+  let y = 0,
+    e: HTMLElement | null = el;
   for (; e && e !== root; e = e.offsetParent as HTMLElement | null) y += e.offsetTop;
   return y;
 }
@@ -44,15 +45,20 @@ function noteDom(id: string): NoteDom | null {
   return blocks && blocks.length && blocks.length === kids.length ? { card, body, kids, blocks, editor } : null;
 }
 /** 第 k 块的中线，相对卡片顶部（未减滚动） */
-const midOf = (d: NoteDom, k: number) => offIn(d.body, d.card) + d.body.clientTop + offIn(d.kids[k], d.body) + d.kids[k].offsetHeight / 2;
+const midOf = (d: NoteDom, k: number) =>
+  offIn(d.body, d.card) + d.body.clientTop + offIn(d.kids[k], d.body) + d.kids[k].offsetHeight / 2;
 
 function readBlocks(id: string): () => void {
   const d = noteDom(id);
   if (!d) return () => setBgeo(id, undefined);
   const top = offIn(d.body, d.card) + d.body.clientTop;
   const g: BlockGeo = {
-    ys: d.kids.map((k) => top + offIn(k, d.body)), hs: d.kids.map((k) => k.offsetHeight),
-    top, bottom: top + d.body.clientHeight, scroll: d.body.scrollTop, sigs: d.blocks.map(blockSig),
+    ys: d.kids.map((k) => top + offIn(k, d.body)),
+    hs: d.kids.map((k) => k.offsetHeight),
+    top,
+    bottom: top + d.body.clientHeight,
+    scroll: d.body.scrollTop,
+    sigs: d.blocks.map(blockSig),
   };
   return () => setBgeo(id, g);
 }
@@ -67,11 +73,20 @@ export function blockY(id: string, ref: BlockRef): number | null {
 }
 
 /** 有箭头连着某一块的卡 */
-const anchored = rooted(() => createMemo(() => {
-  const s = new Set<string>();
-  for (const l of state.board.links) { if (l.from.block) s.add(l.from.card); if (l.to.block) s.add(l.to.card); }
-  return s;
-}, new Set<string>(), { equals: (a, b) => a.size === b.size && [...a].every((x) => b.has(x)) }));
+const anchored = rooted(() =>
+  createMemo(
+    () => {
+      const s = new Set<string>();
+      for (const l of state.board.links) {
+        if (l.from.block) s.add(l.from.card);
+        if (l.to.block) s.add(l.to.card);
+      }
+      return s;
+    },
+    new Set<string>(),
+    { equals: (a, b) => a.size === b.size && [...a].every((x) => b.has(x)) },
+  ),
+);
 
 /**
  * NoteBody 里调用：有箭头连着这张 Note 的某一块时，量每一块的位置并跟着变（字、宽度、主题、编辑器进出、图片加载完、滚动）。
@@ -86,7 +101,9 @@ export function trackBlocks(id: () => string, md: () => string) {
     const later = () => queueMeasure(`blocks:${cid}`, () => readBlocks(cid));
     const mo = new MutationObserver(() => watch());
     // 滚动只改 scroll（块的位置不随滚动变），和代码卡一样
-    const onScroll = (e: Event) => { if (body && e.target === body && bgeo[cid]) setBgeo(cid, "scroll", body.scrollTop); };
+    const onScroll = (e: Event) => {
+      if (body && e.target === body && bgeo[cid]) setBgeo(cid, "scroll", body.scrollTop);
+    };
     function watch() {
       for (const f of unobs) f();
       unobs = [];
@@ -102,7 +119,12 @@ export function trackBlocks(id: () => string, md: () => string) {
       for (const el of [body, ...(pm ?? body).children]) unobs.push(observeResize(el, later));
       later();
     }
-    createEffect(() => { md(); editing(); look(); queueMicrotask(watch); });
+    createEffect(() => {
+      md();
+      editing();
+      look();
+      queueMicrotask(watch);
+    });
     document.addEventListener("scroll", onScroll, { capture: true, passive: true });
     onCleanup(() => {
       for (const f of unobs) f();
@@ -121,12 +143,19 @@ const [hoverBlock, setHoverBlock] = boardSignal<BlockHover | null>(null);
 export { hoverBlock };
 let leaveT: number | undefined;
 /** 离开一会儿才收起圆点：鼠标从块移到卡边上的圆点的路上不丢。已经在等的不重新计时（指针在别处一直动也会收起） */
-export const keepBlock = () => { clearTimeout(leaveT); leaveT = undefined; };
+export const keepBlock = () => {
+  clearTimeout(leaveT);
+  leaveT = undefined;
+};
 export const leaveBlock = () => {
   if (leaveT !== undefined || !hoverBlock()) return;
-  leaveT = window.setTimeout(() => { leaveT = undefined; setHoverBlock(null); }, BLOCK_LEAVE);
+  leaveT = window.setTimeout(() => {
+    leaveT = undefined;
+    setHoverBlock(null);
+  }, BLOCK_LEAVE);
 };
-const sameHover = (a: BlockHover | null, b: BlockHover) => !!a && a.card === b.card && a.ref.i === b.ref.i && a.ref.h === b.ref.h && Math.abs(a.y - b.y) < 0.5;
+const sameHover = (a: BlockHover | null, b: BlockHover) =>
+  !!a && a.card === b.card && a.ref.i === b.ref.i && a.ref.h === b.ref.h && Math.abs(a.y - b.y) < 0.5;
 
 /** 指针在 Note（显示着、不在编辑）的正文上：最近的那一块亮出两个圆点。Canvas 里装一次 */
 export function watchBlockHover() {
@@ -136,7 +165,8 @@ export function watchBlockHover() {
     const body = t?.closest?.(".card.note > .cface > .nbody.md:not(.editing)") as HTMLElement | null;
     const card = body?.closest<HTMLElement>(".card");
     const id = card?.dataset.id;
-    if (!body || !id || e.buttons || dragging().size || card!.classList.contains("dim") || lodOf(id) !== "full") return leaveBlock();
+    if (!body || !id || e.buttons || dragging().size || card!.classList.contains("dim") || lodOf(id) !== "full")
+      return leaveBlock();
     const d = noteDom(id);
     const k = d ? nearest(d.kids, e.clientY) : -1;
     if (!d || k < 0) return leaveBlock();
@@ -147,17 +177,24 @@ export function watchBlockHover() {
   window.addEventListener("pointermove", move, { capture: true, passive: true });
   onCleanup(() => window.removeEventListener("pointermove", move, { capture: true }));
   // 进了编辑、换了缩放档：圆点收起
-  createEffect(() => { const h = hoverBlock(); if (h && (editing()?.id === h.card || lodOf(h.card) !== "full")) setHoverBlock(null); });
+  createEffect(() => {
+    const h = hoverBlock();
+    if (h && (editing()?.id === h.card || lodOf(h.card) !== "full")) setHoverBlock(null);
+  });
 }
 
 /** 离 y（屏幕坐标）最近的一块：在块上就是它，在块之间的空隙、正文上下的内边距里就是最近的那块；看不见的块（藏起来的开头标题）不算 */
 function nearest(kids: HTMLElement[], y: number): number {
-  let best = -1, dist = Infinity;
+  let best = -1,
+    dist = Infinity;
   kids.forEach((el, k) => {
     const r = el.getBoundingClientRect();
     if (!r.height) return;
     const d = y < r.top ? r.top - y : y > r.bottom ? y - r.bottom : 0;
-    if (d < dist) { best = k; dist = d; }
+    if (d < dist) {
+      best = k;
+      dist = d;
+    }
   });
   return best;
 }
@@ -190,15 +227,22 @@ export function tintBlocks(list: (BlockAim | null)[]) {
   const key = xs.map(tintKey).join(" ");
   if (key === tinted) return;
   tinted = key;
-  if (!sheet) { sheet = document.createElement("style"); sheet.dataset.export = "strip"; document.head.appendChild(sheet); }
-  sheet.textContent = xs.map((a) => {
-    const at = `${cardSel(a.card)} > .cface > .nbody${a.editor ? ".editing .md-pm" : ".md:not(.editing)"} > :nth-child(${domIndex(a.el) + 1})`;
-    return `${at} { background-image: linear-gradient(var(--btint), var(--btint)); box-shadow: 0 0 0 6px var(--btint); }\n${at}:not(pre) { border-radius: 6px; }`;
-  }).join("\n");
+  if (!sheet) {
+    sheet = document.createElement("style");
+    sheet.dataset.export = "strip";
+    document.head.appendChild(sheet);
+  }
+  sheet.textContent = xs
+    .map((a) => {
+      const at = `${cardSel(a.card)} > .cface > .nbody${a.editor ? ".editing .md-pm" : ".md:not(.editing)"} > :nth-child(${domIndex(a.el) + 1})`;
+      return `${at} { background-image: linear-gradient(var(--btint), var(--btint)); box-shadow: 0 0 0 6px var(--btint); }\n${at}:not(pre) { border-radius: 6px; }`;
+    })
+    .join("\n");
 }
 
 /** 拖着的箭头终点要滑到的地方（屏幕坐标）：落点那张卡朝着起点的那条边上、那一块的中线 */
 export function aimPoint(a: BlockAim, fromX: number): { x: number; y: number } {
-  const c = a.el.closest(".card")!.getBoundingClientRect(), r = a.el.getBoundingClientRect();
+  const c = a.el.closest(".card")!.getBoundingClientRect(),
+    r = a.el.getBoundingClientRect();
   return { x: c.left + c.width / 2 >= fromX ? c.left : c.right, y: r.top + r.height / 2 };
 }

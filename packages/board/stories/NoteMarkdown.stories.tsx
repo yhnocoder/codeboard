@@ -5,9 +5,19 @@ import { MD, ALL_MD, CODE_LANGS, codeBlock, noteAt, type MdKey } from "./support
 import { themes } from "./support/themes";
 
 const FEATURES: Record<MdKey, string> = {
-  inline: "Inline marks, emoji, kbd, link", lists: "Lists (nested, ordered)", tasks: "Task lists", table: "Table (aligned columns)",
-  quote: "Quotes and a rule", refs: "Card refs: found and missing", math: "Math: inline and block", image: "Image",
-  annot: "Annotations (four colours, below)", footnote: "Footnote", details: "Details (folded)", mermaid: "Mermaid diagram", toc: "Table of contents",
+  inline: "Inline marks, emoji, kbd, link",
+  lists: "Lists (nested, ordered)",
+  tasks: "Task lists",
+  table: "Table (aligned columns)",
+  quote: "Quotes and a rule",
+  refs: "Card refs: found and missing",
+  math: "Math: inline and block",
+  image: "Image",
+  annot: "Annotations (four colours, below)",
+  footnote: "Footnote",
+  details: "Details (folded)",
+  mermaid: "Mermaid diagram",
+  toc: "Table of contents",
 };
 type Feature = MdKey | "all" | `code:${string}`;
 type Args = { feature: Feature; md: string; w: number; h: number; selected: boolean };
@@ -27,11 +37,20 @@ function single(a: Args): Scene {
 // 按列往下排：每列记着下一张卡的 y（卡高按行数估，宁大勿小）
 function overview(a: Args): Scene {
   const s = scene("Markdown overview");
-  const W = a.w, cols = [40, 40, 40, 40];
-  const extra: Partial<Record<MdKey, number>> = { image: 140, mermaid: 170, math: 40, annot: 90, refs: 230, inline: 20 };
+  const W = a.w,
+    cols = [40, 40, 40, 40];
+  const extra: Partial<Record<MdKey, number>> = {
+    image: 140,
+    mermaid: 170,
+    math: 40,
+    annot: 90,
+    refs: 230,
+    inline: 20,
+  };
   const est = (k: MdKey) => 60 + MD[k].split("\n").length * 24 + (extra[k] ?? 0);
   (Object.keys(FEATURES) as MdKey[]).forEach((k) => {
-    const i = cols.indexOf(Math.min(...cols)), x = 40 + i * (W + 50);
+    const i = cols.indexOf(Math.min(...cols)),
+      x = 40 + i * (W + 50);
     s.caption(FEATURES[k], x, cols[i] + 34);
     s.put(noteAt(`md-${k}`, MD[k]), { x, y: cols[i] + 34, w: W });
     // 引用指向的卡放在引用那张 Note 下面
@@ -44,7 +63,8 @@ function overview(a: Args): Scene {
 function codeLangs(a: Args): Scene {
   const s = scene("Code blocks");
   Object.keys(CODE_LANGS).forEach((lang, i) => {
-    const x = 40 + (i % 3) * (a.w + 70), y = 74 + Math.floor(i / 3) * 210;
+    const x = 40 + (i % 3) * (a.w + 70),
+      y = 74 + Math.floor(i / 3) * 210;
     s.caption(lang || "No language", x, y);
     s.put(noteAt(`cb-${lang || "plain"}`, codeBlock(lang)), { x, y, w: a.w + 20 });
   });
@@ -56,7 +76,11 @@ const meta = {
   render: (a, ctx) => <Stage scene={() => single(a)} globals={ctx.globals as Globals} />,
   args: { feature: "all", md: "", w: 360, h: 0, selected: false },
   argTypes: {
-    feature: { control: "select", options: ["all", ...Object.keys(FEATURES), ...Object.keys(CODE_LANGS).map((l) => `code:${l}`)], description: "Which Markdown sample" },
+    feature: {
+      control: "select",
+      options: ["all", ...Object.keys(FEATURES), ...Object.keys(CODE_LANGS).map((l) => `code:${l}`)],
+      description: "Which Markdown sample",
+    },
     md: { control: "text", description: "Your own Markdown (overrides the sample)" },
     w: { control: { type: "range", min: 160, max: 800, step: 10 }, description: "Width" },
     h: { control: { type: "range", min: 0, max: 900, step: 10 }, description: "Fixed height (0: fits the content)" },
@@ -66,10 +90,24 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-const hide = { feature: { table: { disable: true } }, md: { table: { disable: true } }, h: { table: { disable: true } }, selected: { table: { disable: true } } };
-export const Overview: Story = { render: (a, ctx) => <Stage scene={() => overview(a)} globals={ctx.globals as Globals} />, args: { w: 330 }, argTypes: hide };
+const hide = {
+  feature: { table: { disable: true } },
+  md: { table: { disable: true } },
+  h: { table: { disable: true } },
+  selected: { table: { disable: true } },
+};
+export const Overview: Story = {
+  render: (a, ctx) => <Stage scene={() => overview(a)} globals={ctx.globals as Globals} />,
+  args: { w: 330 },
+  argTypes: hide,
+};
 export const Themes: Story = themes("all-in-one");
-export const CodeBlocks: Story = { name: "Code Blocks (every language)", render: (a, ctx) => <Stage scene={() => codeLangs(a)} globals={ctx.globals as Globals} />, args: { w: 440 }, argTypes: hide };
+export const CodeBlocks: Story = {
+  name: "Code Blocks (every language)",
+  render: (a, ctx) => <Stage scene={() => codeLangs(a)} globals={ctx.globals as Globals} />,
+  args: { w: 440 },
+  argTypes: hide,
+};
 export const AllInOne: Story = { name: "All in One Note" };
 export const AllFixedHeight: Story = { name: "All in One Note, Fixed Height", args: { h: 420 } };
 export const Inline: Story = { name: "Inline Marks", args: { feature: "inline" } };
@@ -89,4 +127,7 @@ export const Toc: Story = { name: "Table of Contents", args: { feature: "toc" } 
 export const CodePython: Story = { name: "Code: Python", args: { feature: "code:python", w: 440 } };
 export const CodeCuda: Story = { name: "Code: C++ / CUDA", args: { feature: "code:cpp", w: 440 } };
 export const CodeDiff: Story = { name: "Code: Diff", args: { feature: "code:diff", w: 440 } };
-export const CodeLongLine: Story = { name: "Code: Long Line (scrolls sideways)", args: { feature: "code:bash", w: 240 } };
+export const CodeLongLine: Story = {
+  name: "Code: Long Line (scrolls sideways)",
+  args: { feature: "code:bash", w: 240 },
+};

@@ -13,16 +13,26 @@ import { nodeWorkspace, type TestWorkspace } from "./node-workspace";
 import { git, stubView, tempRepo } from "./helpers";
 
 const tmp: string[] = [];
-afterAll(() => { for (const d of tmp) fs.rmSync(d, { recursive: true, force: true }); });
+afterAll(() => {
+  for (const d of tmp) fs.rmSync(d, { recursive: true, force: true });
+});
 
 /** A workspace on a fresh repo with its own workspace storage, workspace state and settings */
 function setup() {
   const repo = tempRepo("proj", { "x.py": "x = 1\n" });
   const wsDir = fs.mkdtempSync("/tmp/codeboard-wsstore-");
   tmp.push(repo, wsDir);
-  const state = new Map<string, unknown>(), settings = new Map<string, unknown>();
+  const state = new Map<string, unknown>(),
+    settings = new Map<string, unknown>();
   const W: TestWorkspace = nodeWorkspace(repo);
-  W.storage = { dir: () => wsDir, globalDir: () => path.join(wsDir, "global"), get: <T>(k: string) => state.get(k) as T, set: async (k, v) => { state.set(k, v); } };
+  W.storage = {
+    dir: () => wsDir,
+    globalDir: () => path.join(wsDir, "global"),
+    get: <T>(k: string) => state.get(k) as T,
+    set: async (k, v) => {
+      state.set(k, v);
+    },
+  };
   W.settings = { ...W.settings, get: <T>(k: string) => settings.get(k) as T };
   useWorkspace(W);
   return { W, repo, state, settings, outside: path.join(wsDir, "boards"), inside: path.join(repo, ".codeboard") };
@@ -31,14 +41,31 @@ const json = (f: string) => JSON.parse(fs.readFileSync(f, "utf8"));
 /** A hub with these boards open and ready, each in its own stub view */
 async function hubOn(store: Storage, ids: string[]) {
   const views = new Map<string, ReturnType<typeof stubView>>();
-  const env: HostEnv = { globalState: { get: () => undefined, set: async () => undefined }, openView: (id) => { const v = stubView(); views.set(id, v); return v.view; } };
+  const env: HostEnv = {
+    globalState: { get: () => undefined, set: async () => undefined },
+    openView: (id) => {
+      const v = stubView();
+      views.set(id, v);
+      return v.view;
+    },
+  };
   const hub = new BoardHub(env, store);
-  for (const id of ids) { const p = (await hub.show(id))!; p.board = store.peek(id); p.ready = true; }
+  for (const id of ids) {
+    const p = (await hub.show(id))!;
+    p.board = store.peek(id);
+    p.ready = true;
+  }
   return { hub, views };
 }
 const stores: Storage[] = [];
-const open = () => { const s = openStorage(); stores.push(s); return s; };
-afterAll(() => { for (const s of stores) s.dispose(); });
+const open = () => {
+  const s = openStorage();
+  stores.push(s);
+  return s;
+};
+afterAll(() => {
+  for (const s of stores) s.dispose();
+});
 
 describe("boards in the project", () => {
   it("uses .codeboard in the first folder when it exists, workspace storage otherwise; codeboard.storageDir wins", async () => {
@@ -59,12 +86,16 @@ describe("boards in the project", () => {
   it("Move Boards into Project moves boards, groups, shared cards, images and runs into .codeboard, ignores the trash and switches to it", async () => {
     const s = setup();
     const store = open();
-    const a = emptyBoard("bA", "A"), b = emptyBoard("bB", "B");
-    a.cards.push({ id: "n", kind: "note", md: "shared", look: "note" }); a.place.n = { x: 0, y: 0, w: 300 };
-    await store.save(a); await store.save(b, { group: "G" });
+    const a = emptyBoard("bA", "A"),
+      b = emptyBoard("bB", "B");
+    a.cards.push({ id: "n", kind: "note", md: "shared", look: "note" });
+    a.place.n = { x: 0, y: 0, w: 300 };
+    await store.save(a);
+    await store.save(b, { group: "G" });
     await store.share("bA", ["n"]);
     await store.saveAsset("p.png", "data:image/png;base64,iVBORw0KGgo=");
-    fs.mkdirSync(path.join(s.outside, "runs")); fs.writeFileSync(path.join(s.outside, "runs/r1.json"), "{}");
+    fs.mkdirSync(path.join(s.outside, "runs"));
+    fs.writeFileSync(path.join(s.outside, "runs/r1.json"), "{}");
     await store.remove("bB");
     const switched: string[] = [];
     const sub = onDidSwitchStorage((x) => switched.push(x.dir()));
@@ -85,11 +116,14 @@ describe("boards in the project", () => {
     // What git sees: the boards, the library, the images and runs, never the trash
     git(s.repo, "add", "-A");
     const tracked = git(s.repo, "diff", "--cached", "--name-only").split("\n");
-    expect(tracked.filter((f) => f.startsWith(".codeboard/")).every((f) => !f.startsWith(".codeboard/.trash/"))).toBe(true);
+    expect(tracked.filter((f) => f.startsWith(".codeboard/")).every((f) => !f.startsWith(".codeboard/.trash/"))).toBe(
+      true,
+    );
     expect(tracked).toContain(".codeboard/bA.json");
     // A clone of the repository sees the boards without any setting
     git(s.repo, "commit", "-qm", "boards");
-    const clone = fs.mkdtempSync("/tmp/codeboard-clone-"); tmp.push(clone);
+    const clone = fs.mkdtempSync("/tmp/codeboard-clone-");
+    tmp.push(clone);
     git(clone, "clone", "-q", s.repo, "r");
     useWorkspace(nodeWorkspace(path.join(clone, "r")));
     expect((await open().list()).map((m) => m.name)).toEqual(["A"]);
@@ -116,7 +150,8 @@ describe("boards in the project", () => {
     const store = open();
     const b = await store.create("B");
     const file = path.join(s.inside, `${b.id}.json`);
-    const before = fs.readFileSync(file, "utf8"), mtime = fs.statSync(file).mtimeMs;
+    const before = fs.readFileSync(file, "utf8"),
+      mtime = fs.statSync(file).mtimeMs;
     await store.patch(b.id, { cam: { x: -500, y: 20, z: 0.75 } });
     await store.flush();
     expect(fs.readFileSync(file, "utf8")).toBe(before);
@@ -131,13 +166,16 @@ describe("boards in the project", () => {
     fs.mkdirSync(s.inside);
     const store = open();
     const b: Board = emptyBoard("bG", "Git");
-    b.cards.push({ id: "n1", kind: "note", md: "first", look: "note" }); b.place.n1 = { x: 0, y: 0, w: 300 };
+    b.cards.push({ id: "n1", kind: "note", md: "first", look: "note" });
+    b.place.n1 = { x: 0, y: 0, w: 300 };
     await store.save(b);
-    git(s.repo, "add", "-A"); git(s.repo, "commit", "-qm", "board");
+    git(s.repo, "add", "-A");
+    git(s.repo, "commit", "-qm", "board");
     git(s.repo, "checkout", "-qb", "other");
     const f = path.join(s.inside, "bG.json");
     const changed = json(f);
-    changed.cards.push({ id: "n2", kind: "note", md: "from a teammate", look: "note" }); changed.place.n2 = { x: 400, y: 0, w: 300 };
+    changed.cards.push({ id: "n2", kind: "note", md: "from a teammate", look: "note" });
+    changed.place.n2 = { x: 400, y: 0, w: 300 };
     fs.writeFileSync(f, JSON.stringify(changed, null, 1));
     git(s.repo, "commit", "-qam", "teammate");
     git(s.repo, "checkout", "-q", "main");
@@ -146,7 +184,8 @@ describe("boards in the project", () => {
     const env: HostEnv = { globalState: { get: () => undefined, set: async () => undefined }, openView: () => v.view };
     const hub = new BoardHub(env, store);
     const p = (await hub.show("bG"))!;
-    p.board = store.peek("bG"); p.ready = true;
+    p.board = store.peek("bG");
+    p.ready = true;
 
     git(s.repo, "checkout", "-q", "other"); // what a pull or checkout does under an open board
     s.W.fire.change.fire(f); // the file watcher's event
@@ -163,8 +202,12 @@ describe("boards in the project", () => {
     await store.save(emptyBoard("bLocal", "Local"));
     git(s.repo, "checkout", "-qb", "boards");
     fs.mkdirSync(s.inside);
-    fs.writeFileSync(path.join(s.inside, "bShared.json"), JSON.stringify({ ...emptyBoard("bShared", "Shared"), cam: undefined }));
-    git(s.repo, "add", "-A"); git(s.repo, "commit", "-qm", "boards");
+    fs.writeFileSync(
+      path.join(s.inside, "bShared.json"),
+      JSON.stringify({ ...emptyBoard("bShared", "Shared"), cam: undefined }),
+    );
+    git(s.repo, "add", "-A");
+    git(s.repo, "commit", "-qm", "boards");
     expect(await followStorageDir(store)).toBe(true);
     expect((await store.list()).map((m) => m.id)).toEqual(["bShared"]);
     git(s.repo, "checkout", "-q", "main");
@@ -176,11 +219,17 @@ describe("boards in the project", () => {
   it("a move changes nothing on the open boards", async () => {
     setup();
     const store = open();
-    await store.save(emptyBoard("bA", "A")); await store.save(emptyBoard("bB", "B"));
+    await store.save(emptyBoard("bA", "A"));
+    await store.save(emptyBoard("bB", "B"));
     const { hub, views } = await hubOn(store, ["bA", "bB"]);
     expect((await moveIntoProject(store)).moved).toBe(true);
     await hub.followStorage();
-    expect(hub.all().map((p) => p.id).sort()).toEqual(["bA", "bB"]);
+    expect(
+      hub
+        .all()
+        .map((p) => p.id)
+        .sort(),
+    ).toEqual(["bA", "bB"]);
     expect([...views.values()].flatMap((v) => v.posted.filter((m) => m.type === "merged"))).toEqual([]);
     hub.dispose();
   });
@@ -189,13 +238,19 @@ describe("boards in the project", () => {
     const s = setup();
     const store = open();
     const a = emptyBoard("bA", "A");
-    a.cards.push({ id: "n1", kind: "note", md: "mine", look: "note" }); a.place.n1 = { x: 0, y: 0, w: 300 };
-    await store.save(a); await store.save(emptyBoard("bB", "B"));
+    a.cards.push({ id: "n1", kind: "note", md: "mine", look: "note" });
+    a.place.n1 = { x: 0, y: 0, w: 300 };
+    await store.save(a);
+    await store.save(emptyBoard("bB", "B"));
     git(s.repo, "checkout", "-qb", "boards");
     fs.mkdirSync(s.inside);
-    const { cam: _cam, ...file } = { ...structuredClone(a), cards: [{ id: "n1", kind: "note", md: "from the repository", look: "note" }] };
+    const { cam: _cam, ...file } = {
+      ...structuredClone(a),
+      cards: [{ id: "n1", kind: "note", md: "from the repository", look: "note" }],
+    };
     fs.writeFileSync(path.join(s.inside, "bA.json"), JSON.stringify(file, null, 1));
-    git(s.repo, "add", "-A"); git(s.repo, "commit", "-qm", "boards");
+    git(s.repo, "add", "-A");
+    git(s.repo, "commit", "-qm", "boards");
     git(s.repo, "checkout", "-q", "main");
     const { hub, views } = await hubOn(store, ["bA", "bB"]);
 

@@ -17,10 +17,21 @@ function sourceChars(text: string, base: number, cell: boolean, out: Ch[]) {
   const atoms: [number, number][] = [];
   const walk = (spans: Span[]) => {
     for (const sp of spans) {
-      if (sp.plain) { kill(sp.from, sp.to); continue; }
+      if (sp.plain) {
+        kill(sp.from, sp.to);
+        continue;
+      }
       const a = sp.atom;
-      if (a?.type === "annot" && sp.inner) { kill(sp.from, sp.inner[0]); kill(sp.inner[1], sp.to); continue; }
-      if (a) { kill(sp.from, sp.to); atoms.push([sp.from, sp.to]); continue; }
+      if (a?.type === "annot" && sp.inner) {
+        kill(sp.from, sp.inner[0]);
+        kill(sp.inner[1], sp.to);
+        continue;
+      }
+      if (a) {
+        kill(sp.from, sp.to);
+        atoms.push([sp.from, sp.to]);
+        continue;
+      }
       for (const [x, y] of sp.marks) kill(x, y);
       walk(sp.kids);
     }
@@ -28,7 +39,10 @@ function sourceChars(text: string, base: number, cell: boolean, out: Ch[]) {
   walk(info.spans);
   let ai = 0;
   for (let i = 0; i < text.length; i++) {
-    while (ai < atoms.length && atoms[ai][0] === i) { out.push({ from: base + i, to: base + atoms[ai][1], c: LEAF_CHAR }); ai++; }
+    while (ai < atoms.length && atoms[ai][0] === i) {
+      out.push({ from: base + i, to: base + atoms[ai][1], c: LEAF_CHAR });
+      ai++;
+    }
     if (!skip[i]) out.push({ from: base + i, to: base + i + 1, c: text[i] });
   }
 }
@@ -39,11 +53,15 @@ export function visibleRange(doc: PMNode, r: StaticTextRange): { from: number; t
   doc.descendants((n, pos, parent) => {
     if (n.isTextblock) {
       const text = n.textContent;
-      if (n.type.name === "paragraph") sourceChars(text, pos + 1, /cell/.test(parent?.type.spec.tableRole ?? ""), chars);
+      if (n.type.name === "paragraph")
+        sourceChars(text, pos + 1, /cell/.test(parent?.type.spec.tableRole ?? ""), chars);
       else for (let i = 0; i < text.length; i++) chars.push({ from: pos + 1 + i, to: pos + 2 + i, c: text[i] });
       return false;
     }
-    if (n.isLeaf) { chars.push({ from: pos, to: pos + n.nodeSize, c: LEAF_CHAR }); return false; }
+    if (n.isLeaf) {
+      chars.push({ from: pos, to: pos + n.nodeSize, c: LEAF_CHAR });
+      return false;
+    }
     return true;
   });
   if (r.from < 0 || r.to > chars.length || r.to <= r.from) return null;

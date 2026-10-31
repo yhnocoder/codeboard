@@ -15,7 +15,9 @@ import { editing, dragging } from "./ui";
 import { lodOf, lodBusy } from "./lodcards";
 
 // 一帧最多显示 SHOW 份：代码卡算 1 份；Note 算 1.5 份（表格、高亮的代码、勾选框、公式，画起来比一张代码卡还贵），一帧最多两张
-const SHOW = 3, HIDE = 4, NOTE_COST = 1.5;
+const SHOW = 3,
+  HIDE = 4,
+  NOTE_COST = 1.5;
 const [off, setOff] = createStore<Record<string, boolean>>({});
 /** 这张卡离屏幕很远，内容不画 */
 export const offscreen = (id: string) => !!off[id];
@@ -32,25 +34,46 @@ export const farAway = (id: string) => !!distant[id];
  * 只是几次乘加；跟踪镜头和视野大小，在 memo 里用
  */
 export function nearView(r: { x: number; y: number; w: number; h: number }, was: boolean) {
-  const { w, h } = viewTracked(), z = cam.z;
-  const L = r.x * z + cam.x, T = r.y * z + cam.y, R = L + r.w * z, B = T + r.h * z, m = was ? 0.5 : 0.25;
+  const { w, h } = viewTracked(),
+    z = cam.z;
+  const L = r.x * z + cam.x,
+    T = r.y * z + cam.y,
+    R = L + r.w * z,
+    B = T + r.h * z,
+    m = was ? 0.5 : 0.25;
   return !(R < -w * m || L > w * (1 + m) || B < -h * m || T > h * (1 + m));
 }
 
 /** Canvas 里调用一次 */
 export function trackOffscreen() {
   // 每张卡一个 memo：卡的位置、大小很少变，拖一张卡时只重算它自己的；镜头每帧变，下面只做算术
-  const rects = mapArray(placed, (c) => ({ id: c.id, r: createMemo(() => rectOf(c)), cost: c.kind === "note" ? NOTE_COST : 1 }));
+  const rects = mapArray(placed, (c) => ({
+    id: c.id,
+    r: createMemo(() => rectOf(c)),
+    cost: c.kind === "note" ? NOTE_COST : 1,
+  }));
   const [tick, setTick] = createSignal(0);
   let again = false;
   createEffect(() => {
     tick();
-    const { w, h } = viewTracked(), z = cam.z, x = cam.x, y = cam.y, moving = camMoving();
-    const ed = editing()?.id, dr = dragging(), keep = new Set(sel.cards), busy = lodBusy();
-    const show: [string, number, number][] = [], hide: string[] = [], away: [string, boolean][] = [];
+    const { w, h } = viewTracked(),
+      z = cam.z,
+      x = cam.x,
+      y = cam.y,
+      moving = camMoving();
+    const ed = editing()?.id,
+      dr = dragging(),
+      keep = new Set(sel.cards),
+      busy = lodBusy();
+    const show: [string, number, number][] = [],
+      hide: string[] = [],
+      away: [string, boolean][] = [];
     for (const { id, r: rr, cost } of rects()) {
       const r = rr();
-      const L = r.x * z + x, T = r.y * z + y, R = L + r.w * z, B = T + r.h * z;
+      const L = r.x * z + x,
+        T = r.y * z + y,
+        R = L + r.w * z,
+        B = T + r.h * z;
       const was = untrack(() => !!off[id]);
       // 显示：进到屏幕外半屏以内；隐藏：离开一整屏以外（中间这段不变，免得在边上来回切）
       const m = was ? 0.5 : 1;
@@ -62,15 +85,31 @@ export function trackOffscreen() {
       if (was && !hidden && !(free && lodOf(id) === "map")) {
         const d = R > 0 && L < w && B > 0 && T < h ? -1 : Math.hypot((L + R) / 2 - w / 2, (T + B) / 2 - h / 2);
         if (d < 0 || !busy) show.push([id, d, cost]);
-      }
-      else if (!was && hidden && !moving) hide.push(id);
+      } else if (!was && hidden && !moving) hide.push(id);
     }
     show.sort((a, b) => a[1] - b[1]);
-    let n = 0, k = 0;
-    for (const [id, d, cost] of show) { if (d >= 0 && n + cost > SHOW) break; setOff(id, false); n += cost; k++; }
+    let n = 0,
+      k = 0;
+    for (const [id, d, cost] of show) {
+      if (d >= 0 && n + cost > SHOW) break;
+      setOff(id, false);
+      n += cost;
+      k++;
+    }
     for (const id of hide.slice(0, HIDE)) setOff(id, true);
     // 不画只在镜头停下以后加（和藏内容一样）：缩放时一圈圈的卡进出半屏，每帧都换的话缩放每步多出一截重画
-    untrack(() => { for (const [id, a] of away) { const f = a && !!off[id]; if (f !== !!distant[id] && (!f || !moving)) setDistant(id, f); } });
-    if ((show.length > k || hide.length > HIDE) && !again) { again = true; requestAnimationFrame(() => { again = false; setTick((t) => t + 1); }); }
+    untrack(() => {
+      for (const [id, a] of away) {
+        const f = a && !!off[id];
+        if (f !== !!distant[id] && (!f || !moving)) setDistant(id, f);
+      }
+    });
+    if ((show.length > k || hide.length > HIDE) && !again) {
+      again = true;
+      requestAnimationFrame(() => {
+        again = false;
+        setTick((t) => t + 1);
+      });
+    }
   });
 }

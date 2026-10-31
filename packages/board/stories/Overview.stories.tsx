@@ -33,18 +33,29 @@ export const All: StoryObj<typeof meta> = {};
 // 名字（caption）也是 Text 卡，不跟着悬停
 function hover(): Scene {
   const { board, put, caption } = scene("Hover overview");
-  caption("Note", 40, 70, 300); put(noteCard("h-note", TITLED), { x: 40, y: 70, w: 300 });
-  caption("Text: selected (toolbar button) and not (dashed frame)", 40, 250, 340); put(textCard("h-text", "Scheduler：先 prefill，再 decode"), { x: 40, y: 330, w: 300 });
+  caption("Note", 40, 70, 300);
+  put(noteCard("h-note", TITLED), { x: 40, y: 70, w: 300 });
+  caption("Text: selected (toolbar button) and not (dashed frame)", 40, 250, 340);
+  put(textCard("h-text", "Scheduler：先 prefill，再 decode"), { x: 40, y: 330, w: 300 });
   put(textCard("h-text2", "BlockManager：分配、释放"), { x: 40, y: 400, w: 300 });
-  caption("Mark", 40, 480, 200); put(markCard("h-mark", ONE, "blue"), { x: 40, y: 480, w: 220 });
-  caption("Image", 40, 580, 200); put(imageCard("h-img", IMAGES.wide, { bg: true }), { x: 40, y: 580, w: 300 });
+  caption("Mark", 40, 480, 200);
+  put(markCard("h-mark", ONE, "blue"), { x: 40, y: 480, w: 220 });
+  caption("Image", 40, 580, 200);
+  put(imageCard("h-img", IMAGES.wide, { bg: true }), { x: 40, y: 580, w: 300 });
   caption("Code (arrow floats to the top)", 420, 70, 400);
   const a = put(fn("h-a", "preempt"), { x: 420, y: 70, w: 440 });
   const b = put(fn("h-b", "deallocate"), { x: 560, y: 330, w: 440 });
   arrow(board, "h-ab", ln(a, "deallocate("), whole(b));
-  caption("Code, Background off", 420, 640, 400); put(fn("h-nobg", "allocate", { card: { bg: false as const } }), { x: 420, y: 640, w: 440 });
-  caption("Web", 1100, 70, 300); put(webCard("h-web", "full"), { x: 1100, y: 70, w: 380 });
-  caption("Link List (second row)", 1100, 560, 300); put(linksCard("h-list", ["full", "noImage", "titleOnly"], { title: "KV Cache Reading" }), { x: 1100, y: 560, w: 380 });
+  caption("Code, Background off", 420, 640, 400);
+  put(fn("h-nobg", "allocate", { card: { bg: false as const } }), { x: 420, y: 640, w: 440 });
+  caption("Web", 1100, 70, 300);
+  put(webCard("h-web", "full"), { x: 1100, y: 70, w: 380 });
+  caption("Link List (second row)", 1100, 560, 300);
+  put(linksCard("h-list", ["full", "noImage", "titleOnly"], { title: "KV Cache Reading" }), {
+    x: 1100,
+    y: 560,
+    w: 380,
+  });
   return { board, sel: ["h-text"], after: () => setHoverCard("h-a") };
 }
 export const Hover: StoryObj<typeof meta> = {
@@ -52,8 +63,12 @@ export const Hover: StoryObj<typeof meta> = {
   globals: {
     pseudo: {
       hover: [
-        '.card:not([data-id^="cap-"])', '.card[data-id="h-a"] .eport.r', ".card .ttb .tbtn:last-child", '.card[data-id="h-web"] .wacts .ib:first-child',
-        '.card[data-id="h-list"] .lrow:nth-child(2)', '.card[data-id="h-list"] .lrow:nth-child(2) .ltools .lb:first-child',
+        '.card:not([data-id^="cap-"])',
+        '.card[data-id="h-a"] .eport.r',
+        ".card .ttb .tbtn:last-child",
+        '.card[data-id="h-web"] .wacts .ib:first-child',
+        '.card[data-id="h-list"] .lrow:nth-child(2)',
+        '.card[data-id="h-list"] .lrow:nth-child(2) .ltools .lb:first-child',
       ],
     },
   },

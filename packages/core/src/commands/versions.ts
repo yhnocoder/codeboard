@@ -1,5 +1,16 @@
 // Code versions: which cards have a newer version, updating to it, keeping the pinned one
-import { allCodeCards, findCard, isCode, versionLabel, viewKeyOf, UPSTREAM, type Board, type Card, type CodeCard, type Segment } from "../model";
+import {
+  allCodeCards,
+  findCard,
+  isCode,
+  versionLabel,
+  viewKeyOf,
+  UPSTREAM,
+  type Board,
+  type Card,
+  type CodeCard,
+  type Segment,
+} from "../model";
 import type { DiffData, Stale } from "../protocol";
 import type { SegView } from "../lines";
 import { unlinkCard } from "../edit";
@@ -26,17 +37,22 @@ export function cardStale(c: CodeCard, stale: (segId: string) => Stale | undefin
     const st = stale(s.id);
     if (!st) continue;
     if (st.state === "changed" && s.keep && st.head.startsWith(s.keep)) continue;
-    if (st.state === "changed") { if (!st.hiddenOnly) return "changed"; hidden = true; }
+    if (st.state === "changed") {
+      if (!st.hiddenOnly) return "changed";
+      hidden = true;
+    }
     if ((st.state === "lost" || st.state === "many") && !c.keepOld) return "lost";
     if (st.state === "missing") return "missing";
   }
   return hidden ? "hidden" : null;
 }
 
-export const uncommitted = (c: Card | undefined) => isCode(c) && c.segments.some((s) => s.version.kind === "git" && s.version.uncommitted);
+export const uncommitted = (c: Card | undefined) =>
+  isCode(c) && c.segments.some((s) => s.version.kind === "git" && s.version.uncommitted);
 
 /** How many cards on the board have a newer version */
-export const staleCount = (b: Board, stale: (segId: string) => Stale | undefined) => allCodeCards(b).filter((c) => cardStale(c, stale) === "changed").length;
+export const staleCount = (b: Board, stale: (segId: string) => Stale | undefined) =>
+  allCodeCards(b).filter((c) => cardStale(c, stale) === "changed").length;
 
 /** The next card to review in the new-version banner (changed, or only hidden lines changed), or null when all are up to date */
 export function nextToReview(b: Board, stale: (segId: string) => Stale | undefined): string | null {
@@ -65,7 +81,14 @@ export function applyVersion(env: VersionEnv, cardId: string, segId: string, dat
 export function keepVersion(env: VersionEnv, cardId: string, segId: string) {
   const st = env.stale(segId);
   const head = st?.state === "changed" ? st.head : undefined;
-  if (head) env.edit((b) => { const c = findCard(b, cardId)?.card; if (isCode(c)) { const s = upstreamSegs(c).find((q) => q.id === segId); if (s) s.keep = head; } });
+  if (head)
+    env.edit((b) => {
+      const c = findCard(b, cardId)?.card;
+      if (isCode(c)) {
+        const s = upstreamSegs(c).find((q) => q.id === segId);
+        if (s) s.keep = head;
+      }
+    });
   else env.staleOk([segId]);
 }
 
@@ -75,7 +98,9 @@ export function keepVersion(env: VersionEnv, cardId: string, segId: string) {
  */
 export async function updateAll(env: VersionEnv) {
   const todo: [string, Segment][] = [];
-  for (const c of allCodeCards(env.board())) if (cardStale(c, env.stale) === "changed") for (const s of upstreamSegs(c)) if (env.stale(s.id)?.state === "changed") todo.push([c.id, s]);
+  for (const c of allCodeCards(env.board()))
+    if (cardStale(c, env.stale) === "changed")
+      for (const s of upstreamSegs(c)) if (env.stale(s.id)?.state === "changed") todo.push([c.id, s]);
   const linked = [...new Set(todo.map(([c]) => c))].filter((c) => env.sharedOn(c) > 1);
   let scope: "all" | "this" | "skip" | "ask" = env.settings().sharedUpdate;
   if (linked.length && scope === "ask") {
@@ -88,7 +113,10 @@ export async function updateAll(env: VersionEnv) {
     scope = i === 0 ? "all" : i === 1 ? "this" : "skip";
   }
   const ren = new Map<string, string>();
-  if (scope === "this") env.edit((b) => { for (const c of linked) ren.set(c, unlinkCard(b, c)); });
+  if (scope === "this")
+    env.edit((b) => {
+      for (const c of linked) ren.set(c, unlinkCard(b, c));
+    });
   let n = 0;
   for (const [cid0, s] of todo) {
     if (scope === "skip" && linked.includes(cid0)) continue;
@@ -96,8 +124,17 @@ export async function updateAll(env: VersionEnv) {
     try {
       const k = findCard(env.board(), cid)?.card;
       const data = await env.ask("diff", { seg: s, against: isCode(k) && k.variants?.length ? "upstream" : undefined });
-      if (data.canUpdate) { applyVersion(env, cid, s.id, data); n++; }
-    } catch { /* skip this one */ }
+      if (data.canUpdate) {
+        applyVersion(env, cid, s.id, data);
+        n++;
+      }
+    } catch {
+      /* skip this one */
+    }
   }
-  env.toast(n === todo.length ? `Updated ${n} card${n === 1 ? "" : "s"}` : `Updated ${n} of ${todo.length}; open the others to review`);
+  env.toast(
+    n === todo.length
+      ? `Updated ${n} card${n === 1 ? "" : "s"}`
+      : `Updated ${n} of ${todo.length}; open the others to review`,
+  );
 }

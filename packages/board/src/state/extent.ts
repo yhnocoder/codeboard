@@ -17,7 +17,9 @@ const sizes = new Map<string, { w: number; h: number }>();
 
 export function addExtra(e: Extra) {
   extras.add(e);
-  return () => { extras.delete(e); };
+  return () => {
+    extras.delete(e);
+  };
 }
 export const extraList = () => extras;
 

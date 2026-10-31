@@ -6,7 +6,9 @@ describe("Emitter", () => {
     const e = new Emitter<number>();
     const got: string[] = [];
     const a = e.event((n) => got.push(`a${n}`));
-    e.event(() => { throw new Error("boom"); });
+    e.event(() => {
+      throw new Error("boom");
+    });
     e.event((n) => got.push(`c${n}`));
     const err = console.error;
     console.error = () => {};

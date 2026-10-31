@@ -2,11 +2,33 @@ import { createEffect } from "solid-js";
 import { rooted } from "../state/root";
 import { unwrap } from "solid-js/store";
 import {
-  uid, findCard, isCode, placeCards,
-  besideFree, findFree, bounds, removeCards, retargetCards, GAP,
-  classifyPaste, guessLang, estSize, defaultWidth, imageScale, BOX_FILLS, NEW_CARD_W,
-  type Board, type Card, type CodeCard, type ImageCard, type NoteCard, type NoteLook, type Segment, type Place,
-  type NewCard, type Rect,
+  uid,
+  findCard,
+  isCode,
+  placeCards,
+  besideFree,
+  findFree,
+  bounds,
+  removeCards,
+  retargetCards,
+  GAP,
+  classifyPaste,
+  guessLang,
+  estSize,
+  defaultWidth,
+  imageScale,
+  BOX_FILLS,
+  NEW_CARD_W,
+  type Board,
+  type Card,
+  type CodeCard,
+  type ImageCard,
+  type NoteCard,
+  type NoteLook,
+  type Segment,
+  type Place,
+  type NewCard,
+  type Rect,
 } from "@codeboard/core";
 import { state, cardById, rectOf, placeOf } from "../state/store";
 import { putViews, requestViews } from "../state/views";
@@ -32,7 +54,16 @@ function withDefaults(c: Card): Card {
 }
 
 /** 把宿主建好的卡放到白板上：有选中的卡就放旁边，没有就放视口中央。also：同一步里（一次撤销）跟着要做的别的改动 */
-export function addCards(list: NewCard[], o: { at?: { x: number; y: number }; exact?: boolean; besideSel?: boolean; section?: string; also?: (b: Board) => void } = {}) {
+export function addCards(
+  list: NewCard[],
+  o: {
+    at?: { x: number; y: number };
+    exact?: boolean;
+    besideSel?: boolean;
+    section?: string;
+    also?: (b: Board) => void;
+  } = {},
+) {
   if (!list.length) return [];
   putViews(Object.assign({}, ...list.map((n) => n.views)));
   const ids: string[] = [];
@@ -46,10 +77,15 @@ export function addCards(list: NewCard[], o: { at?: { x: number; y: number }; ex
       const size = estSize(c, { w });
       let p: { x: number; y: number };
       const others = b.cards.filter((k) => b.place[k.id]).map((k) => rectOf(k));
-      if (at && o.exact) { p = at; at = { x: at.x + 36, y: at.y + 36 }; }
-      else if (at) p = findFree({ ...at, ...size }, others);
+      if (at && o.exact) {
+        p = at;
+        at = { x: at.x + 36, y: at.y + 36 };
+      } else if (at) p = findFree({ ...at, ...size }, others);
       else if (prev) p = besideFree(prev, size, others);
-      else { const vc = viewportCenter(); p = findFree({ x: vc.x - size.w / 2, y: vc.y - Math.min(size.h, 300) / 2, ...size }, others); }
+      else {
+        const vc = viewportCenter();
+        p = findFree({ x: vc.x - size.w / 2, y: vc.y - Math.min(size.h, 300) / 2, ...size }, others);
+      }
       const place: Place = { x: Math.round(p.x), y: Math.round(p.y), w };
       placeCards(b, [{ card: c, place }], { copy: false, at: (q) => (o.section ? { ...q, section: o.section } : q) });
       if (!o.section) settleHome(b, c.id); // 没指定（跟着调用它的卡）就看落在哪个 Section 里
@@ -62,7 +98,10 @@ export function addCards(list: NewCard[], o: { at?: { x: number; y: number }; ex
   requestAnimationFrame(() => {
     const rs = ids.map((id) => hostRect(id)!).filter(Boolean);
     const u = bounds(rs);
-    if (u && !isVisible(u)) { const f = fitTop(u, camTarget().z); camTo(f.x, f.y, f.z); }
+    if (u && !isVisible(u)) {
+      const f = fitTop(u, camTarget().z);
+      camTo(f.x, f.y, f.z);
+    }
     ids.forEach((id) => popCard(id));
   });
   return ids;
@@ -83,16 +122,30 @@ export function newBox(at?: { x: number; y: number }) {
 }
 const FREE_CODE_W = NEW_CARD_W;
 function newWriting(look: NoteLook, at?: { x: number; y: number }, text = "") {
-  const w = NEW_CARD_W, h = look === "box" ? 60 : undefined;
-  const p = at ?? (() => { const v = viewportCenter(); return { x: v.x - w / 2, y: v.y - (h ?? 80) / 2 }; })();
+  const w = NEW_CARD_W,
+    h = look === "box" ? 60 : undefined;
+  const p =
+    at ??
+    (() => {
+      const v = viewportCenter();
+      return { x: v.x - w / 2, y: v.y - (h ?? 80) / 2 };
+    })();
   const id = uid("n");
   const card: NoteCard = { id, kind: "note", md: text, look };
   if (look === "text") card.size = "body";
   if (look === "box") card.fill = BOX_FILLS[0];
-  if (look === "mark") { const last = [...state.board.cards].reverse().find((c) => c.kind === "note" && c.look === "mark"); card.hand = (last?.kind === "note" && last.hand) || "blue"; }
-  const add = (b: Board) => { b.cards.push(card); b.place[id] = { x: Math.round(p.x), y: Math.round(p.y), w, ...(h ? { h } : {}) }; settleHome(b, id); };
+  if (look === "mark") {
+    const last = [...state.board.cards].reverse().find((c) => c.kind === "note" && c.look === "mark");
+    card.hand = (last?.kind === "note" && last.hand) || "blue";
+  }
+  const add = (b: Board) => {
+    b.cards.push(card);
+    b.place[id] = { x: Math.round(p.x), y: Math.round(p.y), w, ...(h ? { h } : {}) };
+    settleHome(b, id);
+  };
   // 空的 Note / Text / Mark：写了内容才进撤销栈，什么都没写就消失；空的 Box 本身就是一个框，留着
-  if (text || look === "box") mutate(add); else createFresh(id, add);
+  if (text || look === "box") mutate(add);
+  else createFresh(id, add);
   select({ cards: [id] });
   if (!text) setEditing({ kind: "note", id });
   popCard(id);
@@ -114,12 +167,29 @@ function imageCardWidth(dataUrl: string, natural: number, scale = 1): number {
   if (png) {
     // pHYs 在 IDAT 之前（前面可能有几 KB 的色彩配置 iCCP）：只解码开头 64 KB
     const b64 = dataUrl.slice(png[0].length, png[0].length + 65536);
-    try { k = imageScale(Uint8Array.from(atob(b64.slice(0, b64.length - (b64.length % 4))), (ch) => ch.charCodeAt(0)), scale); } catch { /* 不是合法的 base64：按 scale */ }
+    try {
+      k = imageScale(
+        Uint8Array.from(atob(b64.slice(0, b64.length - (b64.length % 4))), (ch) => ch.charCodeAt(0)),
+        scale,
+      );
+    } catch {
+      /* 不是合法的 base64：按 scale */
+    }
   }
   return Math.max(MIN_IMAGE_W, Math.min(NEW_CARD_W, Math.round((natural || 320) / k)));
 }
-export async function addImage(dataUrl: string, name: string, at?: { x: number; y: number }, o: { scale?: number } = {}) {
-  try { dataUrl = cleanImage(dataUrl); } catch (e) { toast((e as Error).message); return; }
+export async function addImage(
+  dataUrl: string,
+  name: string,
+  at?: { x: number; y: number },
+  o: { scale?: number } = {},
+) {
+  try {
+    dataUrl = cleanImage(dataUrl);
+  } catch (e) {
+    toast((e as Error).message);
+    return;
+  }
   const file = await ask("saveAsset", { name, dataUrl }).catch(() => null);
   const src = file ?? dataUrl;
   const img = new Image();
@@ -136,7 +206,12 @@ export async function addImage(dataUrl: string, name: string, at?: { x: number; 
  * out already: note.md is the Note's text now, note.before the text just before (with what was typed in this edit). The Note
  * without the image and the new card are one undo step; what was typed before is a step of its own before it. Ends the edit
  */
-export function dropNoteImage(d: DraggedImage, at: { x: number; y: number }, w: number, note: { id: string; before?: string; md?: string }) {
+export function dropNoteImage(
+  d: DraggedImage,
+  at: { x: number; y: number },
+  w: number,
+  note: { id: string; before?: string; md?: string },
+) {
   const n0 = cardById(note.id)?.card;
   if (note.before !== undefined && n0?.kind === "note" && n0.md !== note.before) setNoteText(note.id, note.before);
   const card: ImageCard = { id: uid("i"), kind: "image", src: d.src.startsWith("assets/") ? d.src.slice(7) : d.src };
@@ -144,15 +219,32 @@ export function dropNoteImage(d: DraggedImage, at: { x: number; y: number }, w: 
   if (d.caption) card.desc = d.caption;
   addCards([{ card, views: {}, w: w > 0 ? Math.max(MIN_IMAGE_W, Math.round(w)) : NEW_CARD_W }], {
     at,
-    also: (b) => { const c = findCard(b, note.id)?.card; if (c?.kind === "note" && note.md !== undefined) c.md = note.md; },
+    also: (b) => {
+      const c = findCard(b, note.id)?.card;
+      if (c?.kind === "note" && note.md !== undefined) c.md = note.md;
+    },
   });
   const ed = editing();
   if (ed?.kind === "note" && ed.id === note.id) setEditing(null);
   return card.id;
 }
 const IMAGE_FILE = /\.(png|jpe?g|gif|webp|svg)$/i;
-const fileUri = (p: string) => { const s = p.replace(/\\/g, "/"); return `file://${s.startsWith("/") ? "" : "/"}${encodeURI(s).replace(/[?#]/g, encodeURIComponent)}`; };
-const uriName = (u: string) => { const n = u.replace(/[?#].*$/, "").split("/").pop() ?? ""; try { return decodeURIComponent(n); } catch { return n; } };
+const fileUri = (p: string) => {
+  const s = p.replace(/\\/g, "/");
+  return `file://${s.startsWith("/") ? "" : "/"}${encodeURI(s).replace(/[?#]/g, encodeURIComponent)}`;
+};
+const uriName = (u: string) => {
+  const n =
+    u
+      .replace(/[?#].*$/, "")
+      .split("/")
+      .pop() ?? "";
+  try {
+    return decodeURIComponent(n);
+  } catch {
+    return n;
+  }
+};
 
 /**
  * Files dragged in as URIs only, without File objects. VS Code's Explorer and editor tabs put every file in
@@ -160,10 +252,26 @@ const uriName = (u: string) => { const n = u.replace(/[?#].*$/, "").split("/").p
  * text/uri-list; an OS drop may carry only text/uri-list. Web addresses (a link dragged from a page) are not files
  */
 function droppedUris(dt: DataTransfer): string[] {
-  const lines = (t: string) => dt.getData(t).split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !l.startsWith("#"));
-  const json = (t: string) => { try { const v: unknown = JSON.parse(dt.getData(t) || "[]"); return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []; } catch { return []; } };
-  const uris = [() => lines("application/vnd.code.uri-list"), () => json("resourceurls"), () => json("codefiles").map(fileUri), () => lines("text/uri-list")]
-    .reduce<string[]>((got, f) => (got.length ? got : f()), []);
+  const lines = (t: string) =>
+    dt
+      .getData(t)
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter((l) => l && !l.startsWith("#"));
+  const json = (t: string) => {
+    try {
+      const v: unknown = JSON.parse(dt.getData(t) || "[]");
+      return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+    } catch {
+      return [];
+    }
+  };
+  const uris = [
+    () => lines("application/vnd.code.uri-list"),
+    () => json("resourceurls"),
+    () => json("codefiles").map(fileUri),
+    () => lines("text/uri-list"),
+  ].reduce<string[]>((got, f) => (got.length ? got : f()), []);
   return uris.filter((u) => /^[a-z][\w+.-]*:/i.test(u) && !/^(https?|data|blob|javascript|mailto):/i.test(u));
 }
 
@@ -173,17 +281,36 @@ function droppedUris(dt: DataTransfer): string[] {
  * Returns whether the drop held any file (so it's the board's)
  */
 export function dropFiles(dt: DataTransfer, at: { x: number; y: number }): boolean {
-  const files = [...dt.files], uris = files.length ? [] : droppedUris(dt);
+  const files = [...dt.files],
+    uris = files.length ? [] : droppedUris(dt);
   if (!files.length && !uris.length) return false;
   const isImage = (f: File) => f.type.startsWith("image/") || IMAGE_FILE.test(f.name);
-  const others = [...files.filter((f) => !isImage(f)).map((f) => f.name), ...uris.map(uriName).filter((n) => !IMAGE_FILE.test(n))];
-  if (others.length) toast(`${others.length > 1 ? `${others[0]} and ${others.length - 1} more aren't images` : `${others[0]} isn't an image`}: only PNG, JPEG, GIF, WebP and SVG files can be dropped on the board`);
+  const others = [
+    ...files.filter((f) => !isImage(f)).map((f) => f.name),
+    ...uris.map(uriName).filter((n) => !IMAGE_FILE.test(n)),
+  ];
+  if (others.length)
+    toast(
+      `${others.length > 1 ? `${others[0]} and ${others.length - 1} more aren't images` : `${others[0]} isn't an image`}: only PNG, JPEG, GIF, WebP and SVG files can be dropped on the board`,
+    );
   // read all at once, add in the drop's order, in a row from the drop point
-  const read = (f: File) => new Promise<string>((ok, no) => { const rd = new FileReader(); rd.onload = () => ok(String(rd.result)); rd.onerror = () => no(rd.error); rd.readAsDataURL(f); });
-  const failed = (name: string) => (e: Error) => { toast(e?.message || `Could not add ${name}`); return null; };
+  const read = (f: File) =>
+    new Promise<string>((ok, no) => {
+      const rd = new FileReader();
+      rd.onload = () => ok(String(rd.result));
+      rd.onerror = () => no(rd.error);
+      rd.readAsDataURL(f);
+    });
+  const failed = (name: string) => (e: Error) => {
+    toast(e?.message || `Could not add ${name}`);
+    return null;
+  };
   const loads = [
     ...files.filter(isImage).map((f) => ({ name: f.name, data: read(f).catch(failed(f.name)) })),
-    ...uris.map((u) => ({ u, name: uriName(u) })).filter((x) => IMAGE_FILE.test(x.name)).map((x) => ({ name: x.name, data: ask("readImageUri", { uri: x.u }).catch(failed(x.name)) })),
+    ...uris
+      .map((u) => ({ u, name: uriName(u) }))
+      .filter((x) => IMAGE_FILE.test(x.name))
+      .map((x) => ({ name: x.name, data: ask("readImageUri", { uri: x.u }).catch(failed(x.name)) })),
   ];
   void (async () => {
     let x = at.x;
@@ -205,14 +332,32 @@ export async function newWeb(at?: { x: number; y: number }, url?: string) {
 }
 export function newFreeCode(at?: { x: number; y: number }, text = "", lang = "python", url?: string, exact = false) {
   const sid = uid("s");
-  const seg: Segment = { id: sid, src: { kind: "free", url }, path: "", lang, start: 1, end: Math.max(1, text.split("\n").length), text: text ? text.split("\n") : [""], version: { kind: "none" } };
+  const seg: Segment = {
+    id: sid,
+    src: { kind: "free", url },
+    path: "",
+    lang,
+    start: 1,
+    end: Math.max(1, text.split("\n").length),
+    text: text ? text.split("\n") : [""],
+    version: { kind: "none" },
+  };
   const id = uid("c");
   if (text) {
     addCards([{ card: { id, kind: "code", segments: [seg] }, views: {}, w: FREE_CODE_W }], { at, exact });
   } else {
     // 空卡：写了代码才进撤销栈，什么都没写就消失
-    const p = at ?? (() => { const v = viewportCenter(); return { x: v.x - FREE_CODE_W / 2, y: v.y - 60 }; })();
-    createFresh(id, (b) => { b.cards.push({ id, kind: "code", segments: [seg] }); b.place[id] = { x: Math.round(p.x), y: Math.round(p.y), w: FREE_CODE_W }; settleHome(b, id); });
+    const p =
+      at ??
+      (() => {
+        const v = viewportCenter();
+        return { x: v.x - FREE_CODE_W / 2, y: v.y - 60 };
+      })();
+    createFresh(id, (b) => {
+      b.cards.push({ id, kind: "code", segments: [seg] });
+      b.place[id] = { x: Math.round(p.x), y: Math.round(p.y), w: FREE_CODE_W };
+      settleHome(b, id);
+    });
     select({ cards: [id] });
     popCard(id);
   }
@@ -220,7 +365,6 @@ export function newFreeCode(at?: { x: number; y: number }, text = "", lang = "py
   if (!text) setEditing({ kind: "free", id });
   return id;
 }
-
 
 export async function pasteText(text: string, at?: { x: number; y: number }, exact = false) {
   if (!text.trim()) return;
@@ -234,10 +378,16 @@ export async function pasteText(text: string, at?: { x: number; y: number }, exa
   if (k.kind === "svg") return addImage(svgDataUrl(text.trim()), "pasted.svg", at);
   // 代码：先问宿主是不是工作区里的代码 / GitHub 链接
   let err = "";
-  const r = await ask("paste", { text }).catch((e) => { err = (e as Error).message; return null; });
+  const r = await ask("paste", { text }).catch((e) => {
+    err = (e as Error).message;
+    return null;
+  });
   if (r) return addCards([r], { at, exact });
   // GitHub 文件拿不到（离线、私有仓库没登录）：先留一张书签，链接不丢
-  if (k.kind === "github") { toast(`Could not fetch this GitHub file${err ? `: ${err}` : ""}`); return newWeb(at, text.trim()); }
+  if (k.kind === "github") {
+    toast(`Could not fetch this GitHub file${err ? `: ${err}` : ""}`);
+    return newWeb(at, text.trim());
+  }
   newFreeCode(at, text.replace(/\s+$/, ""), guessLang(text) ?? "python", undefined, exact);
 }
 
@@ -250,16 +400,34 @@ export function splitSnippet(id: string, merge: boolean) {
   const tops = defs.filter((d) => !defs.some((o) => o !== d && d.qual.startsWith(o.qual + ".")));
   if (tops.length < 2) return;
   const parts: Segment[] = tops.map((d, i) => {
-    const a = i === 0 ? s.start : d.line, e = i + 1 < tops.length ? tops[i + 1].line - 1 : s.end;
-    return { ...structuredClone(unwrap(s)), id: uid("s"), start: a, end: e, text: s.text.slice(a - s.start, e - s.start + 1), symbol: { qual: d.qual, kind: "function" as const }, scope: d.qual, hidden: undefined, hl: undefined };
+    const a = i === 0 ? s.start : d.line,
+      e = i + 1 < tops.length ? tops[i + 1].line - 1 : s.end;
+    return {
+      ...structuredClone(unwrap(s)),
+      id: uid("s"),
+      start: a,
+      end: e,
+      text: s.text.slice(a - s.start, e - s.start + 1),
+      symbol: { qual: d.qual, kind: "function" as const },
+      scope: d.qual,
+      hidden: undefined,
+      hl: undefined,
+    };
   });
   // 指着原来那段的行（Link、Sidenote、Sticker）跟到包含那一行的新段 / 新卡上；没有行的落在（第一张）卡上
-  const partOf = (line?: number) => Math.max(0, parts.findIndex((p) => line !== undefined && line >= p.start && line <= p.end));
+  const partOf = (line?: number) =>
+    Math.max(
+      0,
+      parts.findIndex((p) => line !== undefined && line >= p.start && line <= p.end),
+    );
   if (merge) {
     mutate((b) => {
       const k = findCard(b, id)?.card;
       if (!isCode(k)) return;
-      retargetCards(b, [id], (at) => ({ card: id, seg: at.seg === s.id && at.line ? parts[partOf(at.line)].id : undefined }));
+      retargetCards(b, [id], (at) => ({
+        card: id,
+        seg: at.seg === s.id && at.line ? parts[partOf(at.line)].id : undefined,
+      }));
       k.segments = parts;
     });
   } else {
@@ -267,7 +435,10 @@ export function splitSnippet(id: string, merge: boolean) {
     const pl = placeOf(id);
     const ids = parts.map(() => uid("c"));
     mutate((b) => {
-      retargetCards(b, [id], (at) => { const i = partOf(at.seg === s.id ? at.line : undefined); return { card: ids[i], seg: at.seg === s.id && at.line ? parts[i].id : undefined }; });
+      retargetCards(b, [id], (at) => {
+        const i = partOf(at.seg === s.id ? at.line : undefined);
+        return { card: ids[i], seg: at.seg === s.id && at.line ? parts[i].id : undefined };
+      });
       removeCards(b, [id]);
       let y = r.y;
       parts.forEach((p, i) => {
@@ -290,8 +461,13 @@ rooted(() => {
     const p = prev;
     prev = cur;
     if (!p || p === cur || !isFresh(p)) return;
-    const c = cardById(p)?.card, q = state.board.stickers.find((s) => s.id === p)?.q;
-    const empty = q ? !q.md.trim() : !c || (c.kind === "note" ? !c.md.trim() : isCode(c) ? !c.segments[0]?.text.join("").trim() : false);
-    queueMicrotask(() => { if (isFresh(p)) settleFresh(p, !empty); });
+    const c = cardById(p)?.card,
+      q = state.board.stickers.find((s) => s.id === p)?.q;
+    const empty = q
+      ? !q.md.trim()
+      : !c || (c.kind === "note" ? !c.md.trim() : isCode(c) ? !c.segments[0]?.text.join("").trim() : false);
+    queueMicrotask(() => {
+      if (isFresh(p)) settleFresh(p, !empty);
+    });
   });
 });

@@ -42,7 +42,18 @@ function turn(id: string, to: number, animate: boolean) {
 /** 卡片组件里调用一次：目标角度按 tilt 和是不是正在编辑这张卡定，变了就转过去（刚放上白板时直接到位） */
 export function trackTilt(card: () => Card) {
   const id = card().id;
-  const edited = createMemo(() => { const e = editing(); return !!e && hostOf(e.id) === id; });
-  createEffect(on(() => (card().tilt && !edited() ? TILT_DEG : 0), (to, before) => turn(id, to, before !== undefined)));
-  onCleanup(() => { runs.delete(id); setNow(id, undefined); });
+  const edited = createMemo(() => {
+    const e = editing();
+    return !!e && hostOf(e.id) === id;
+  });
+  createEffect(
+    on(
+      () => (card().tilt && !edited() ? TILT_DEG : 0),
+      (to, before) => turn(id, to, before !== undefined),
+    ),
+  );
+  onCleanup(() => {
+    runs.delete(id);
+    setNow(id, undefined);
+  });
 }

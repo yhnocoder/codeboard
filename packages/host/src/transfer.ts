@@ -5,7 +5,19 @@
 // 导出成 .codeboard、从它导入（bundle.ts）走的是同一条 transfer，只是一头换成了包里的文件。
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
-import { allCodeCards, allSegments, loadSharedCard, pruneRefs, putShared, subBoardsOf, uid, type Board, type SharedCard, type Source, type WebMeta } from "@codeboard/core";
+import {
+  allCodeCards,
+  allSegments,
+  loadSharedCard,
+  pruneRefs,
+  putShared,
+  subBoardsOf,
+  uid,
+  type Board,
+  type SharedCard,
+  type Source,
+  type WebMeta,
+} from "@codeboard/core";
 import { Storage, pasteClip, type CardClip, type Pasted } from "@codeboard/core/storage";
 import type { StateStore } from "./env";
 import { log } from "./log";
@@ -20,7 +32,8 @@ const PROJECTS = "codeboard.projects";
 
 /** 记下这个窗口的项目和它的存储目录（按存储目录记；同样的文件夹以前记的别的目录换掉） */
 export async function recordProject(state: StateStore, dir: string): Promise<void> {
-  const folders = wsRoots(), key = JSON.stringify(folders);
+  const folders = wsRoots(),
+    key = JSON.stringify(folders);
   const all = { ...(state.get<Record<string, Project>>(PROJECTS) ?? {}) };
   for (const [k, p] of Object.entries(all)) if (folders.length && JSON.stringify(p.folders) === key) delete all[k];
   all[dir] = { folders, name: workspace().files.name() || "No Folder", dir, seen: Date.now() };
@@ -34,7 +47,11 @@ export async function otherProjects(state: StateStore, dir: string): Promise<Pro
   let gone = false;
   for (const [k, p] of Object.entries(all)) {
     if (path.resolve(p.dir) === path.resolve(dir)) continue;
-    if (p.folders.length && !(await exists(p.folders[0]))) { delete all[k]; gone = true; continue; }
+    if (p.folders.length && !(await exists(p.folders[0]))) {
+      delete all[k];
+      gone = true;
+      continue;
+    }
     out.push(p);
   }
   if (gone) await state.set(PROJECTS, all);
@@ -52,7 +69,12 @@ export async function copyToProject(store: Storage, id: string, to: Project): Pr
   await store.flush();
   const target = new Storage(nodeFs, { dir: () => to.dir, log });
   try {
-    const t = await transfer({ store, files: diskFiles(store.dir()) }, [id], { store: target, files: diskFiles(to.dir) }, { folders: to.folders });
+    const t = await transfer(
+      { store, files: diskFiles(store.dir()) },
+      [id],
+      { store: target, files: diskFiles(to.dir) },
+      { folders: to.folders },
+    );
     return t.ids.has(id) ? { id: t.ids.get(id)!, boards: [...t.ids.keys()] } : null;
   } finally {
     target.dispose();
@@ -66,11 +88,17 @@ export interface Files {
 }
 
 export const diskFiles = (dir: string): Files => ({
-  read: (rel) => fs.readFile(path.join(dir, rel)).then((b) => new Uint8Array(b), () => undefined),
+  read: (rel) =>
+    fs.readFile(path.join(dir, rel)).then(
+      (b) => new Uint8Array(b),
+      () => undefined,
+    ),
   add: async (rel, data) => {
     const abs = path.join(dir, rel);
     await fs.mkdir(path.dirname(abs), { recursive: true });
-    await fs.writeFile(abs, data, { flag: "wx" }).catch((e: NodeJS.ErrnoException) => { if (e.code !== "EEXIST") throw e; });
+    await fs.writeFile(abs, data, { flag: "wx" }).catch((e: NodeJS.ErrnoException) => {
+      if (e.code !== "EEXIST") throw e;
+    });
   },
 });
 
@@ -85,9 +113,14 @@ export type Moved = { ids: Map<string, string>; renamed: number };
  * home：段的来源按这个项目改写（folders = 它的工作区文件夹，from 见 rehome）；不给 = 原样（导出）。
  * 先把要搬的白板全读出来再写：from 里读不了的白板不搬
  */
-export async function transfer(from: End, roots: string[], to: End, home?: { folders: string[]; from?: string[] }): Promise<Moved> {
+export async function transfer(
+  from: End,
+  roots: string[],
+  to: End,
+  home?: { folders: string[]; from?: string[] },
+): Promise<Moved> {
   const src = new Map<string, { board: Board; refs: Set<string>; group?: string }>();
-  for (const queue = [...roots]; queue.length;) {
+  for (const queue = [...roots]; queue.length; ) {
     const x = queue.shift()!;
     if (src.has(x)) continue;
     const b = await from.store.load(x);
@@ -116,7 +149,10 @@ export async function transfer(from: End, roots: string[], to: End, home?: { fol
       else if (sc) kept = putShared(board, sc) || kept;
     }
     if (kept) pruneRefs(board);
-    await copyFiles(from.files, to.files, [...assetsOf(board).map((a) => `assets/${a}`), ...[...runsOf(board)].map((r) => `runs/${r}.json`)]);
+    await copyFiles(from.files, to.files, [
+      ...assetsOf(board).map((a) => `assets/${a}`),
+      ...[...runsOf(board)].map((r) => `runs/${r}.json`),
+    ]);
     await to.store.save(board, { group: group ?? null, refs });
   }
   return { ids, renamed };
@@ -127,7 +163,7 @@ export function freeName(name: string, names: Set<string>): string {
   let n = name;
   if (names.has(n)) {
     const base = name.replace(/ \(\d+\)$/, "");
-    for (let i = 2; names.has(n = `${base} (${i})`); i++);
+    for (let i = 2; names.has((n = `${base} (${i})`)); i++);
   }
   names.add(n);
   return n;
@@ -137,15 +173,28 @@ export function freeName(name: string, names: Set<string>): string {
  * Move 的后半：搬走的白板从这个项目删掉（放进 .trash），子白板只删这边没有别的白板还嵌着的。close(id)：删之前关掉开着它的面板。
  * 卡库里的共享卡留着（别的白板可能也有）。返回删了的白板
  */
-export async function removeMoved(store: Storage, t: Transferred, close: (id: string) => void = () => undefined): Promise<string[]> {
+export async function removeMoved(
+  store: Storage,
+  t: Transferred,
+  close: (id: string) => void = () => undefined,
+): Promise<string[]> {
   const [root, ...subs] = t.boards;
   const gone = new Set([root]);
-  for (let more = true; more;) {
+  for (let more = true; more; ) {
     more = false;
-    const still = new Set((await store.all()).filter((x) => !gone.has(x.board.id)).flatMap((x) => subBoardsOf(x.board)));
-    for (const s of subs) if (!gone.has(s) && !still.has(s)) { gone.add(s); more = true; }
+    const still = new Set(
+      (await store.all()).filter((x) => !gone.has(x.board.id)).flatMap((x) => subBoardsOf(x.board)),
+    );
+    for (const s of subs)
+      if (!gone.has(s) && !still.has(s)) {
+        gone.add(s);
+        more = true;
+      }
   }
-  for (const x of gone) { close(x); await store.remove(x); }
+  for (const x of gone) {
+    close(x);
+    await store.remove(x);
+  }
   return [...gone];
 }
 
@@ -153,7 +202,12 @@ export async function removeMoved(store: Storage, t: Transferred, close: (id: st
  * 段的来源按目标项目改写（folders = 它的工作区文件夹，第一个是主根）；memo 按来源缓存。
  * from = 这些段原来那个项目的工作区文件夹（repo 相对其中第一个）；不给 = 就是这个窗口的项目（rootOf，含 Locate Repo… 记下的映射）
  */
-async function rehome(b: Pick<Board, "cards" | "sidenotes">, folders: string[], memo: Map<string, Source | null>, from?: string[]) {
+async function rehome(
+  b: Pick<Board, "cards" | "sidenotes">,
+  folders: string[],
+  memo: Map<string, Source | null>,
+  from?: string[],
+) {
   for (const s of allSegments(b)) {
     if (s.src.kind !== "repo" && s.src.kind !== "external") continue;
     const k = srcKey(s.src);
@@ -168,10 +222,22 @@ async function rehome(b: Pick<Board, "cards" | "sidenotes">, folders: string[], 
  * 否则 → external。找不到根返回 null（不改）
  */
 async function sourceIn(src: Source, folders: string[], from?: string[]): Promise<Source | null> {
-  const root = from === undefined ? rootOf(src) : src.kind === "repo" ? (from[0] ? path.resolve(from[0], src.repo) : null) : src.kind === "external" ? src.root : null;
+  const root =
+    from === undefined
+      ? rootOf(src)
+      : src.kind === "repo"
+        ? from[0]
+          ? path.resolve(from[0], src.repo)
+          : null
+        : src.kind === "external"
+          ? src.root
+          : null;
   if (!root || !(await exists(root))) return null;
   const abs = path.resolve(root);
-  const inside = (f: string) => { const r = path.relative(path.resolve(f), abs); return r !== ".." && !r.startsWith(`..${path.sep}`) && !path.isAbsolute(r); };
+  const inside = (f: string) => {
+    const r = path.relative(path.resolve(f), abs);
+    return r !== ".." && !r.startsWith(`..${path.sep}`) && !path.isAbsolute(r);
+  };
   if (folders.some(inside)) return { kind: "repo", repo: posix(path.relative(path.resolve(folders[0]), abs)) };
   return { kind: "external", root: abs };
 }
@@ -184,7 +250,9 @@ async function readShared(files: Files, id: string): Promise<SharedCard | "bad" 
     const sc = loadSharedCard(JSON.parse(new TextDecoder().decode(data)));
     sc.card.id = id;
     return { card: sc.card, sidenotes: sc.sidenotes };
-  } catch { return "bad"; }
+  } catch {
+    return "bad";
+  }
 }
 
 const FILE = /^[\w-][\w.-]*$/;
@@ -192,8 +260,13 @@ const FILE = /^[\w-][\w.-]*$/;
 /** 白板（或几张卡）用到的 assets/ 里的文件：图片卡、网页卡和链接列表的预览图和图标，Markdown 里的 assets/xxx */
 function assetsOf(b: Pick<Board, "cards">): string[] {
   const out = new Set<string>();
-  const add = (n?: string) => { if (n && FILE.test(n)) out.add(n); };
-  const meta = (m?: WebMeta) => { add(m?.image); add(m?.icon); };
+  const add = (n?: string) => {
+    if (n && FILE.test(n)) out.add(n);
+  };
+  const meta = (m?: WebMeta) => {
+    add(m?.image);
+    add(m?.icon);
+  };
   for (const c of b.cards) {
     if (c.kind === "image") add(c.src);
     else if (c.kind === "web") meta(c.meta);
@@ -230,7 +303,8 @@ const clipFile = () => path.join(workspace().storage.globalDir(), "clipboard.jso
 
 /** ⌘C：记下跨窗口的剪贴板（先写临时文件再改名，别的窗口读不到写了一半的） */
 export async function recordClip(dir: string, clip: CardClip): Promise<void> {
-  const file = clipFile(), tmp = `${file}.${process.pid}.tmp`;
+  const file = clipFile(),
+    tmp = `${file}.${process.pid}.tmp`;
   const far: FarClip = { ...clip, dir, folders: wsRoots(), at: Date.now() };
   await fs.mkdir(path.dirname(file), { recursive: true });
   await fs.writeFile(tmp, JSON.stringify(far));
@@ -240,15 +314,27 @@ export async function recordClip(dir: string, clip: CardClip): Promise<void> {
 async function readClip(): Promise<FarClip | null> {
   try {
     const c = JSON.parse(await fs.readFile(clipFile(), "utf8")) as FarClip;
-    return typeof c.dir === "string" && Array.isArray(c.folders) && typeof c.board === "string" && Array.isArray(c.cards) && typeof c.text === "string" ? c : null;
-  } catch { return null; }
+    return typeof c.dir === "string" &&
+      Array.isArray(c.folders) &&
+      typeof c.board === "string" &&
+      Array.isArray(c.cards) &&
+      typeof c.text === "string"
+      ? c
+      : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
  * ⌘V 时这个窗口的剪贴板对不上：看别的窗口复制的卡。同一个存储目录（同一个项目开了两个窗口）就在这边的存储里拷；
  * 别的存储目录：读那边的白板，拷成独立副本（不同项目之间没有共享卡），段的来源按这边的工作区改写，用到的图片和运行记录拷过来（这边有的不覆盖）
  */
-export async function pasteFar(store: Storage, target: string, o: { text?: string; copy: boolean }): Promise<Pasted | null> {
+export async function pasteFar(
+  store: Storage,
+  target: string,
+  o: { text?: string; copy: boolean },
+): Promise<Pasted | null> {
   const clip = await readClip();
   if (!clip || (o.text === undefined && Date.now() - clip.at > FAR_RECENT)) return null;
   if (path.resolve(clip.dir) === path.resolve(store.dir())) return pasteClip(store, clip, target, { ...o, copy: true });
@@ -256,9 +342,16 @@ export async function pasteFar(store: Storage, target: string, o: { text?: strin
   try {
     const r = await pasteClip(src, clip, "", { ...o, copy: true });
     if (!r) return null;
-    const some = { cards: r.cards.map((x) => x.card), sidenotes: r.cards.flatMap((x) => x.sidenotes ?? []), links: r.links };
+    const some = {
+      cards: r.cards.map((x) => x.card),
+      sidenotes: r.cards.flatMap((x) => x.sidenotes ?? []),
+      links: r.links,
+    };
     await rehome(some, wsRoots(), new Map(), clip.folders);
-    await copyFiles(diskFiles(clip.dir), diskFiles(store.dir()), [...assetsOf(some).map((a) => `assets/${a}`), ...[...runsOf(some)].map((x) => `runs/${x}.json`)]);
+    await copyFiles(diskFiles(clip.dir), diskFiles(store.dir()), [
+      ...assetsOf(some).map((a) => `assets/${a}`),
+      ...[...runsOf(some)].map((x) => `runs/${x}.json`),
+    ]);
     const from = clip.folders[0] ? `${r.from} (${path.basename(clip.folders[0])})` : r.from;
     return { ...r, from };
   } finally {

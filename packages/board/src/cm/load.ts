@@ -4,11 +4,22 @@ import { unwrap } from "solid-js/store";
 import { state } from "../state/store";
 import { ask, send } from "../host";
 import { renderMd } from "@yhnocoder/markdown";
-import type { LspHost, GhostHost, LspItem as EditorLspItem, LspSignature as EditorLspSignature } from "@yhnocoder/markdown/code-editor";
+import type {
+  LspHost,
+  GhostHost,
+  LspItem as EditorLspItem,
+  LspSignature as EditorLspSignature,
+} from "@yhnocoder/markdown/code-editor";
 
 type Mod = typeof import("@yhnocoder/markdown/code-editor");
 let mod: Promise<Mod> | undefined, ready: Mod | undefined;
-export const loadCm = () => (mod ??= import("@yhnocoder/markdown/code-editor").then((m) => (ready = m)).catch((e) => { mod = undefined; throw e; }));
+export const loadCm = () =>
+  (mod ??= import("@yhnocoder/markdown/code-editor")
+    .then((m) => (ready = m))
+    .catch((e) => {
+      mod = undefined;
+      throw e;
+    }));
 /** 已经加载好了就直接拿（同一帧里挂上，不等 Promise） */
 export const cmNow = () => ready;
 
@@ -23,10 +34,15 @@ export function preloadCm() {
 export function nearSeg(card: string, lang: string): Pick<Segment, "src" | "path" | "version"> | undefined {
   const b = state.board;
   const local = (s: Segment) => s.src.kind === "repo" || s.src.kind === "external";
-  const segsOf = (id: string) => { const c = b.cards.find((x) => x.id === id); return c && c.kind === "code" ? c.segments.filter(local) : []; };
+  const segsOf = (id: string) => {
+    const c = b.cards.find((x) => x.id === id);
+    return c && c.kind === "code" ? c.segments.filter(local) : [];
+  };
   const linked = b.links.flatMap((l) => (l.from.card === card ? [l.to.card] : l.to.card === card ? [l.from.card] : []));
   const pick = (ss: Segment[]) => ss.find((s) => s.lang === lang) ?? ss[0];
-  const s = pick(linked.flatMap(segsOf)) ?? b.cards.flatMap((c) => (c.kind === "code" ? c.segments.filter((x) => local(x) && x.lang === lang) : []))[0];
+  const s =
+    pick(linked.flatMap(segsOf)) ??
+    b.cards.flatMap((c) => (c.kind === "code" ? c.segments.filter((x) => local(x) && x.lang === lang) : []))[0];
   // 白板的状态是 Solid 的 store（代理对象）：发给宿主前拷成普通对象（postMessage 拷不了代理）
   return s && { src: { ...unwrap(s.src) }, path: s.path, version: { ...unwrap(s.version) } };
 }
@@ -38,21 +54,40 @@ type Assert<T extends true> = T;
 export type LspTypesAgree = [Assert<Same<LspItem, EditorLspItem>>, Assert<Same<LspSignature, EditorLspSignature>>];
 
 /** 语言服务：id = 这段编辑中的代码（宿主给它一个虚拟文档）；编辑器拆掉时 close 关掉它 */
-export function lspHost(id: string, lang: () => string, near?: () => Pick<Segment, "src" | "path" | "version"> | undefined): LspHost {
+export function lspHost(
+  id: string,
+  lang: () => string,
+  near?: () => Pick<Segment, "src" | "path" | "version"> | undefined,
+): LspHost {
   let opened = false;
-  const open = (text: string) => { opened = true; send({ type: "codeDoc", id, lang: lang(), text, near: near?.() }); };
+  const open = (text: string) => {
+    opened = true;
+    send({ type: "codeDoc", id, lang: lang(), text, near: near?.() });
+  };
   return {
     sync: (text) => open(text),
-    complete: (text, line, col, trigger) => { if (!opened) open(text); return ask("lspComplete", { id, text, line, col, trigger }); },
-    hover: (text, line, col) => { if (!opened) open(text); return ask("lspHover", { id, text, line, col }); },
-    signature: (text, line, col, trigger) => { if (!opened) open(text); return ask("lspSignature", { id, text, line, col, trigger }); },
+    complete: (text, line, col, trigger) => {
+      if (!opened) open(text);
+      return ask("lspComplete", { id, text, line, col, trigger });
+    },
+    hover: (text, line, col) => {
+      if (!opened) open(text);
+      return ask("lspHover", { id, text, line, col });
+    },
+    signature: (text, line, col, trigger) => {
+      if (!opened) open(text);
+      return ask("lspSignature", { id, text, line, col, trigger });
+    },
     md: (src) => renderMd(src),
     close: () => send({ type: "codeDocClose", id }),
   };
 }
 
 /** 灰字补全（宿主能做 AI 续写时） */
-export const ghostHost = (): GhostHost | undefined => (state.host.complete ? { complete: (before, after) => ask("complete", { before, after }).catch(() => null) } : undefined);
+export const ghostHost = (): GhostHost | undefined =>
+  state.host.complete
+    ? { complete: (before, after) => ask("complete", { before, after }).catch(() => null) }
+    : undefined;
 
 /** 着色问宿主（和代码卡同一套 views）：seg 换成这段文字，给整段的 HTML（每行之间一个 \n） */
 export async function hostHighlight(seg: Segment, text: string): Promise<string | null> {
@@ -63,4 +98,7 @@ export async function hostHighlight(seg: Segment, text: string): Promise<string 
 }
 /** Note 里的代码块当一段手写代码问着色 */
 export const noteHighlight = (text: string, lang: string) =>
-  hostHighlight({ id: "note-code", src: { kind: "free" }, path: "", lang, start: 1, end: 1, text: [], version: { kind: "none" } }, text);
+  hostHighlight(
+    { id: "note-code", src: { kind: "free" }, path: "", lang, start: 1, end: 1, text: [], version: { kind: "none" } },
+    text,
+  );

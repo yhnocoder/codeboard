@@ -18,8 +18,9 @@ async function jsonTexts(dir: string, assets: string, out: string[] = []): Promi
   const ents = await fs.readdir(dir, { withFileTypes: true });
   for (const e of ents) {
     const p = path.join(dir, e.name);
-    if (e.isDirectory()) { if (p !== assets) await jsonTexts(p, assets, out); }
-    else if (e.isFile() && e.name.endsWith(".json")) out.push(await fs.readFile(p, "utf8"));
+    if (e.isDirectory()) {
+      if (p !== assets) await jsonTexts(p, assets, out);
+    } else if (e.isFile() && e.name.endsWith(".json")) out.push(await fs.readFile(p, "utf8"));
   }
   return out;
 }
@@ -27,13 +28,16 @@ async function jsonTexts(dir: string, assets: string, out: string[] = []): Promi
 /** 走一遍，返回删掉的文件名。force = 不管一天一次 */
 export async function sweepAssets(store: Storage, o: { now?: number; force?: boolean } = {}): Promise<string[]> {
   const now = o.now ?? Date.now();
-  const dir = store.dir(), assets = store.assetsDir();
+  const dir = store.dir(),
+    assets = store.assetsDir();
   const last = workspace().storage.get<Record<string, number>>(LAST_RUN) ?? {};
   if (!o.force && last[dir] !== undefined && now - last[dir] < SWEEP_EVERY) return [];
   await workspace().storage.set(LAST_RUN, { ...last, [dir]: now });
-  const files = (await fs.readdir(assets, { withFileTypes: true }).catch(() => [])).filter((e) => e.isFile() && !e.name.startsWith(".")).map((e) => e.name);
+  const files = (await fs.readdir(assets, { withFileTypes: true }).catch(() => []))
+    .filter((e) => e.isFile() && !e.name.startsWith("."))
+    .map((e) => e.name);
   if (!files.length) return [];
-  const text = [...await jsonTexts(dir, assets), ...store.peekAll().map((b) => JSON.stringify(b))].join("\n");
+  const text = [...(await jsonTexts(dir, assets)), ...store.peekAll().map((b) => JSON.stringify(b))].join("\n");
   const gone: string[] = [];
   for (const f of files) {
     if (text.includes(f)) continue;
@@ -42,15 +46,23 @@ export async function sweepAssets(store: Storage, o: { now?: number; force?: boo
       if (now - (await fs.stat(p)).mtimeMs < ASSET_MAX_AGE) continue;
       await fs.rm(p);
       gone.push(f);
-    } catch (e) { log("warn", `assets: could not remove ${p}: ${(e as Error).message}`); }
+    } catch (e) {
+      log("warn", `assets: could not remove ${p}: ${(e as Error).message}`);
+    }
   }
-  if (gone.length) log("info", `assets: removed ${gone.length} unused image${gone.length > 1 ? "s" : ""} from ${assets}: ${gone.join(", ")}`);
+  if (gone.length)
+    log(
+      "info",
+      `assets: removed ${gone.length} unused image${gone.length > 1 ? "s" : ""} from ${assets}: ${gone.join(", ")}`,
+    );
   return gone;
 }
 
 /** 返回取消 */
 export function scheduleAssetSweep(store: Storage, delay = 60_000): () => void {
-  const t = setTimeout(() => { sweepAssets(store).catch((e) => log("warn", `assets: sweep failed: ${(e as Error).message}`)); }, delay);
+  const t = setTimeout(() => {
+    sweepAssets(store).catch((e) => log("warn", `assets: sweep failed: ${(e as Error).message}`));
+  }, delay);
   (t as { unref?: () => void }).unref?.();
   return () => clearTimeout(t);
 }

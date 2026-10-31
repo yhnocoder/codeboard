@@ -7,7 +7,15 @@ export type At = { el?: Element; x?: number; y?: number; prefer?: "below" | "rig
 
 export type Pop =
   | { kind: "notes"; card: string; ids: string[]; title: string; sel?: string }
-  | { kind: "peek"; card: string; seg: string; line: number; word: string; trail?: PeekDef[]; data?: PeekDef | { none: string; word: string } | { pick: PeekDef[] } }
+  | {
+      kind: "peek";
+      card: string;
+      seg: string;
+      line: number;
+      word: string;
+      trail?: PeekDef[];
+      data?: PeekDef | { none: string; word: string } | { pick: PeekDef[] };
+    }
   | { kind: "addNote"; at: Anchor; tab: "code" | "paste" | "text" | "link" | "card"; editing?: string }
   | { kind: "diff"; card: string; seg: string; data?: DiffData; error?: string }
   | { kind: "pick"; title: string; items: { label: string; detail: string; run: () => void }[] }
@@ -29,9 +37,19 @@ export type Pop =
   /** 三方对照：原版 / 我的 / 上游最新 */
   | { kind: "three"; card: string }
   /** Modify SVG…：写一句怎么改（图片卡，或 Note 里的一张 SVG，见 actions/imageai.ts） */
-  | { kind: "modifySvg"; ref: { card: string; note?: string } }
+  | { kind: "modifySvg"; ref: { card: string; note?: string } };
 
-export type ImplPop = { card: string; seg: string; call: CallSpan; impls: ImplPick[]; base: string; at?: { x: number; y: number }; again: boolean; link?: string; abstract?: boolean };
+export type ImplPop = {
+  card: string;
+  seg: string;
+  call: CallSpan;
+  impls: ImplPick[];
+  base: string;
+  at?: { x: number; y: number };
+  again: boolean;
+  link?: string;
+  abstract?: boolean;
+};
 export type NamesPop = { card: string; seg: string; call: CallSpan; hits?: NameHit[] };
 
 export type PopInst = { id: number; pop: Pop; at: At; pinned: boolean };
@@ -49,8 +67,14 @@ export function openPop(pop: Pop, at: At): number {
   return id;
 }
 /** Changes popover id if it is still a `kind` one (the answer it waited for may come after it was swapped or closed) */
-export function updatePop<K extends Pop["kind"]>(id: number, kind: K, f: (p: Extract<Pop, { kind: K }>) => Extract<Pop, { kind: K }>) {
-  setPops((ps) => ps.map((p) => (p.id === id && p.pop.kind === kind ? { ...p, pop: f(p.pop as Extract<Pop, { kind: K }>) } : p)));
+export function updatePop<K extends Pop["kind"]>(
+  id: number,
+  kind: K,
+  f: (p: Extract<Pop, { kind: K }>) => Extract<Pop, { kind: K }>,
+) {
+  setPops((ps) =>
+    ps.map((p) => (p.id === id && p.pop.kind === kind ? { ...p, pop: f(p.pop as Extract<Pop, { kind: K }>) } : p)),
+  );
 }
 export function pinPop(id: number) {
   setPops((ps) => ps.map((p) => (p.id === id ? { ...p, pinned: true } : p)));

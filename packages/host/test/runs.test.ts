@@ -13,17 +13,26 @@ let rec: RunRecord, head: string, before: string;
 
 beforeAll(async () => {
   fs.cpSync(path.join(__dirname, "fixtures/runtime"), FIX, { recursive: true });
-  git(FIX, "init", "-q"); git(FIX, "add", "-A"); git(FIX, "commit", "-qm", "fixture");
+  git(FIX, "init", "-q");
+  git(FIX, "add", "-A");
+  git(FIX, "commit", "-qm", "fixture");
   head = git(FIX, "rev-parse", "HEAD");
   useWorkspace(nodeWorkspace(FIX));
   before = fs.readdirSync(FIX).sort().join(",");
   rec = await captureRun({ cmd: "run.py 2", cwd: FIX, scope: [FIX], pkgs: [] });
 });
-afterAll(() => { fs.rmSync(FIX, { recursive: true, force: true }); fs.rmSync(SD, { recursive: true, force: true }); });
+afterAll(() => {
+  fs.rmSync(FIX, { recursive: true, force: true });
+  fs.rmSync(SD, { recursive: true, force: true });
+});
 
 describe("Capture Run", () => {
   it("records exit 0, the commit and the command", () => {
-    expect({ exit: rec.exit, commit: rec.commit, entry: rec.entry }).toEqual({ exit: 0, commit: head, entry: "run.py 2" });
+    expect({ exit: rec.exit, commit: rec.commit, entry: rec.entry }).toEqual({
+      exit: 0,
+      commit: head,
+      entry: "run.py 2",
+    });
   });
   it("records only function calls in scope: no <genexpr>/<module>, no class bodies, no stdlib", () => {
     const quals = new Set(rec.calls.map((c) => c.to.qual));
@@ -34,7 +43,11 @@ describe("Capture Run", () => {
   });
   it("records the call site file:line and count", () => {
     const sch = rec.calls.find((c) => c.to.qual === "Scheduler.schedule");
-    expect({ file: sch?.from.file, line: sch?.from.line, count: sch?.count }).toEqual({ file: path.join(FIX, "toyllm/engine.py"), line: 11, count: 2 });
+    expect({ file: sch?.from.file, line: sch?.from.line, count: sch?.count }).toEqual({
+      file: path.join(FIX, "toyllm/engine.py"),
+      line: 11,
+      count: 2,
+    });
   });
   it("shows tensor-like values as Type[shape] dtype and leaves self out", () => {
     const smp = rec.calls.find((c) => c.to.qual === "ModelRunner.sample");
@@ -54,7 +67,7 @@ describe("Capture Run", () => {
     expect(a.locs[path.join(FIX, "toyllm/engine.py")]?.path).toBe("toyllm/engine.py");
   });
   it("still returns a record with its exit code when the command fails", async () => {
-    const bad = await captureRun({ cmd: "-c \"raise SystemExit(3)\"", cwd: FIX, scope: [FIX], pkgs: [] });
+    const bad = await captureRun({ cmd: '-c "raise SystemExit(3)"', cwd: FIX, scope: [FIX], pkgs: [] });
     expect({ exit: bad.exit, calls: bad.calls.length }).toEqual({ exit: 3, calls: 0 });
   });
 });

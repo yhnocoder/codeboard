@@ -13,15 +13,36 @@ import { nodeWorkspace } from "./node-workspace";
 const W = nodeWorkspace();
 const dir = fs.mkdtempSync("/tmp/codeboard-broken-");
 const store = new Storage(nodeFs, { dir: () => dir });
-const shown: string[] = [], errors: string[] = [], opened: string[] = [];
-const panels = { store, target: undefined, get: () => undefined, all: () => [], setTarget: () => {}, show: async (id: string) => { shown.push(id); return undefined; } } as unknown as BoardHost;
-W.ui.error = (async (text: string) => { errors.push(text); return "Open JSON"; }) as typeof W.ui.error;
-W.editor.open = async (abs) => { opened.push(abs); };
+const shown: string[] = [],
+  errors: string[] = [],
+  opened: string[] = [];
+const panels = {
+  store,
+  target: undefined,
+  get: () => undefined,
+  all: () => [],
+  setTarget: () => {},
+  show: async (id: string) => {
+    shown.push(id);
+    return undefined;
+  },
+} as unknown as BoardHost;
+W.ui.error = (async (text: string) => {
+  errors.push(text);
+  return "Open JSON";
+}) as typeof W.ui.error;
+W.editor.open = async (abs) => {
+  opened.push(abs);
+};
 
 const file = path.join(dir, "g", "luna.json");
 const bad = JSON.stringify({ ...emptyBoard("luna", "Luna's notes"), cards: [{ kind: "nope" }] });
 
-beforeAll(() => { useWorkspace(W); fs.mkdirSync(path.dirname(file)); fs.writeFileSync(file, bad); });
+beforeAll(() => {
+  useWorkspace(W);
+  fs.mkdirSync(path.dirname(file));
+  fs.writeFileSync(file, bad);
+});
 afterAll(() => fs.rmSync(dir, { recursive: true, force: true }));
 
 describe("a board file that can't be read", () => {
@@ -30,7 +51,12 @@ describe("a board file that can't be read", () => {
     const g = treeChildren(metas, await store.groups(), undefined, store.broken()).find((n) => n.kind === "group")!;
     const kids = treeChildren(metas, [], g, store.broken());
     expect(kids).toHaveLength(1);
-    expect(kids[0].kind === "broken" && kids[0].bad).toMatchObject({ file, name: "Luna's notes", group: "g", reason: expect.stringMatching(/^Invalid board/) });
+    expect(kids[0].kind === "broken" && kids[0].bad).toMatchObject({
+      file,
+      name: "Luna's notes",
+      group: "g",
+      reason: expect.stringMatching(/^Invalid board/),
+    });
   });
 
   it("opening it shows the reason, opens the JSON and never writes the file", async () => {

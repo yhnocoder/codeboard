@@ -2,8 +2,25 @@ import { batch } from "solid-js";
 // 卡在几块白板上、谁连到它由宿主算好（state/store 的 shared），这里只读。
 import { unwrap } from "solid-js/store";
 import {
-  bounds, cardTitle, isCode, placeCards, findFree, removeCards, unlinkCard, notesOnChangedLines, versionLabel, cardCopies, makeTwin, detachTwin,
-  type Card, type CardCopy, type DiffData, type ImageCard, type Link, type PastedCards, type SegView,
+  bounds,
+  cardTitle,
+  isCode,
+  placeCards,
+  findFree,
+  removeCards,
+  unlinkCard,
+  notesOnChangedLines,
+  versionLabel,
+  cardCopies,
+  makeTwin,
+  detachTwin,
+  type Card,
+  type CardCopy,
+  type DiffData,
+  type ImageCard,
+  type Link,
+  type PastedCards,
+  type SegView,
 } from "@codeboard/core";
 import { state, cardById, hostOf, shared, sharedOn, rectOf, twinsOf } from "../state/store";
 import { putViews, copyViews } from "../state/views";
@@ -30,10 +47,17 @@ export function copyCardsSel(): boolean {
   const text = copyCards(cs);
   copied = { board: state.board.id, cards: cs.map((c) => c.id), text, n: 0 };
   const code = cs.length === 1 && isCode(cs[0]) ? text.split("\n").length : 0;
-  toast(code ? `Copied ${code} lines · paste on another board for a linked card` : `Copied ${cs.length} card${cs.length > 1 ? "s" : ""}`);
+  toast(
+    code
+      ? `Copied ${code} lines · paste on another board for a linked card`
+      : `Copied ${cs.length} card${cs.length > 1 ? "s" : ""}`,
+  );
   return true;
 }
-const selHosts = () => selCards().map((c) => cardById(c.id)?.host ?? c).filter((c, i, a) => a.indexOf(c) === i);
+const selHosts = () =>
+  selCards()
+    .map((c) => cardById(c.id)?.host ?? c)
+    .filter((c, i, a) => a.indexOf(c) === i);
 /**
  * 卡的内容进系统剪贴板，宿主记下是哪几张卡；返回文字。别的应用拿到的是卡的文字（几张卡之间空一行）；有图片卡时还有那张图（image/png，
  * 第一张），这时白板自己写剪贴板（宿主只能写文字，会把图盖掉），写不了再让宿主写文字
@@ -47,7 +71,8 @@ function copyCards(cs: Card[]): string {
   if (rich) {
     // 要在按键的这一刻调 write（用户手势），图的内容随后才有：ClipboardItem 收 Promise
     const png = imageDataUrl(unwrap(img)).then((u) => (u ? pngOf(u) : Promise.reject(new Error("No image data"))));
-    navigator.clipboard.write([new ClipboardItem({ "text/plain": new Blob([text], { type: "text/plain" }), "image/png": png })])
+    navigator.clipboard
+      .write([new ClipboardItem({ "text/plain": new Blob([text], { type: "text/plain" }), "image/png": png })])
       .catch(() => send({ type: "copyText", text }));
   } else navigator.clipboard?.writeText(text).catch(() => {});
   send({ type: "copyCards", cards: cs.map((c) => c.id), text, rich });
@@ -69,7 +94,10 @@ function pasteCopied(text: string | undefined): boolean {
   if (!box) return false;
   const k = ++c.n;
   const made = putCards(items, links, true, { x: box.x + 36 * k, y: box.y + 36 * k }, unwrap(state.views), true);
-  if (made) { toast(made.length > 1 ? `Pasted ${made.length} copies` : "Pasted a copy"); offerReference(made); }
+  if (made) {
+    toast(made.length > 1 ? `Pasted ${made.length} copies` : "Pasted a copy");
+    offerReference(made);
+  }
   return true;
 }
 
@@ -81,7 +109,11 @@ const [pasteChip, setPasteChip] = boardSignal<{ pairs: [string, string][]; ref: 
 export { pasteChip };
 let chipTimer: number | undefined;
 export function offerReference(pairs: [string, string][]) {
-  const ok = pairs.filter(([n, o]) => { const a = cardById(n)?.card, b = cardById(o)?.card; return a && b && a.kind !== "compare" && a.kind !== "board" && a.kind === b.kind; });
+  const ok = pairs.filter(([n, o]) => {
+    const a = cardById(n)?.card,
+      b = cardById(o)?.card;
+    return a && b && a.kind !== "compare" && a.kind !== "board" && a.kind === b.kind;
+  });
   setPasteChip(ok.length ? { pairs: ok, ref: false } : null);
   if (ok.length) armChip();
 }
@@ -90,15 +122,28 @@ export function armChip(hold = false) {
   clearTimeout(chipTimer);
   if (!hold) chipTimer = window.setTimeout(() => setPasteChip(null), PASTE_CHIP_IDLE);
 }
-export function closeChip() { clearTimeout(chipTimer); setPasteChip(null); }
+export function closeChip() {
+  clearTimeout(chipTimer);
+  setPasteChip(null);
+}
 /** 小条上选了 Copy / Reference：Reference = 副本变成原卡的另一处（一步撤销），再选 Copy 变回独立副本 */
 export function pasteAs(ref: boolean) {
   const c = pasteChip();
   if (!c || c.ref === ref) return;
   if (ref) {
     let n = 0;
-    if (!mutate((b) => { for (const [id, of] of c.pairs) if (makeTwin(b, id, of)) n++; }) || !n) return;
-    toast(n > 1 ? `${n} cards are now the same cards as the originals: editing one changes the other` : "Same card in 2 places: editing one changes the other");
+    if (
+      !mutate((b) => {
+        for (const [id, of] of c.pairs) if (makeTwin(b, id, of)) n++;
+      }) ||
+      !n
+    )
+      return;
+    toast(
+      n > 1
+        ? `${n} cards are now the same cards as the originals: editing one changes the other`
+        : "Same card in 2 places: editing one changes the other",
+    );
   } else detachTwins(c.pairs.map(([id]) => id));
   setPasteChip({ ...c, ref });
 }
@@ -106,9 +151,16 @@ export function pasteAs(ref: boolean) {
 /** Detach：摆在几处的同一张卡，这几处变成独立副本（一步撤销）；段换了新 id，展示数据跟过去 */
 export function detachTwins(ids: string[]) {
   const segs: Record<string, string> = {};
-  if (!mutate((b) => { for (const id of ids) Object.assign(segs, detachTwin(b, id)); })) return;
+  if (
+    !mutate((b) => {
+      for (const id of ids) Object.assign(segs, detachTwin(b, id));
+    })
+  )
+    return;
   copyViews(segs);
-  toast(ids.length > 1 ? `Detached ${ids.length} cards: each is its own copy now` : "Detached: this is its own copy now");
+  toast(
+    ids.length > 1 ? `Detached ${ids.length} cards: each is its own copy now` : "Detached: this is its own copy now",
+  );
 }
 /** 卡上「同一张卡在几处」的记号：点一下跳到下一处 */
 export function showNextTwin(id: string) {
@@ -124,7 +176,8 @@ export function twinText(id: string) {
 }
 
 /** ⌘X 剪下的卡：内容、Sidenote、连着它们的箭头。这块白板上 ⌘V（剪贴板里还是这些字）时原样放回：同一个 id，箭头接回还在的卡 */
-let cutClip: { board: string; text: string; cards: CardCopy[]; links: Link[]; views: Record<string, SegView> } | null = null;
+let cutClip: { board: string; text: string; cards: CardCopy[]; links: Link[]; views: Record<string, SegView> } | null =
+  null;
 /** ⌘X：复制 + 删除，一步撤销。看不见的卡（折叠起来的）不剪 */
 export function cutCardsSel(): boolean {
   const cs = selHosts().filter((c) => !isHidden(c.id));
@@ -133,8 +186,10 @@ export function cutCardsSel(): boolean {
   const b = unwrap(state.board);
   const cards = structuredClone(cardCopies(b, ids));
   const links = structuredClone(b.links.filter((l) => ids.has(l.from.card) || ids.has(l.to.card)));
-  const views: Record<string, SegView> = {}, all = unwrap(state.views);
-  for (const x of cards) if (x.card.kind === "code") for (const sg of x.card.segments) if (all[sg.id]) views[sg.id] = all[sg.id];
+  const views: Record<string, SegView> = {},
+    all = unwrap(state.views);
+  for (const x of cards)
+    if (x.card.kind === "code") for (const sg of x.card.segments) if (all[sg.id]) views[sg.id] = all[sg.id];
   const text = copyCards(cs);
   ghostOut(ids);
   if (!mutate((d) => removeCards(d, ids))) return true;
@@ -151,7 +206,12 @@ function pasteCut(text: string | undefined, at: { x: number; y: number }): boole
   if (text !== undefined ? norm(text) !== norm(c.text) : state.host.clip?.board !== state.board.id) return false;
   const back = c.cards.every((x) => !cardById(x.card.id));
   const ids = putCards(c.cards, c.links, !back, at, c.views)?.map(([id]) => id);
-  if (ids) toast(back ? `Pasted ${ids.length} card${ids.length > 1 ? "s" : ""}` : `Pasted ${ids.length > 1 ? `${ids.length} copies` : "a copy"}`);
+  if (ids)
+    toast(
+      back
+        ? `Pasted ${ids.length} card${ids.length > 1 ? "s" : ""}`
+        : `Pasted ${ids.length > 1 ? `${ids.length} copies` : "a copy"}`,
+    );
   return true;
 }
 function textOf(c: Card): string {
@@ -159,7 +219,13 @@ function textOf(c: Card): string {
   if (c.kind === "note") return c.md;
   if (c.kind === "web") return c.url;
   if (c.kind === "links") return c.items.map((i) => i.url).join("\n");
-  if (c.kind === "compare") return c.cols.map((k) => { const x = cardById(k)?.card; return x ? textOf(x) : ""; }).join("\n\n");
+  if (c.kind === "compare")
+    return c.cols
+      .map((k) => {
+        const x = cardById(k)?.card;
+        return x ? textOf(x) : "";
+      })
+      .join("\n\n");
   if (c.kind === "image") return imageText(c);
   return cardTitle(c, state.board);
 }
@@ -181,7 +247,11 @@ const pasteCopy = (alt: boolean) => (state.host.settings.pasteOther === "copy") 
  * 粘贴：剪贴板里是别的白板上复制的卡（宿主核对文字）就放到这块白板上，返回 true；不是返回 false（照旧按文字粘贴）。
  * text 为空 = 不核对文字（菜单、⌥⌘V）
  */
-export async function pasteFromBoard(text: string | undefined, at: { x: number; y: number }, alt = false): Promise<boolean> {
+export async function pasteFromBoard(
+  text: string | undefined,
+  at: { x: number; y: number },
+  alt = false,
+): Promise<boolean> {
   if (pasteCut(text, at) || pasteCopied(text)) return true;
   const r = await ask("pasteCards", { text, copy: pasteCopy(alt) }).catch(() => null);
   if (!r) return false;
@@ -201,20 +271,39 @@ function placePasted(r: PastedCards, at: { x: number; y: number }) {
   const ids = putCards(r.cards, r.links, !r.shared, at, r.views)?.map(([id]) => id);
   if (!ids) return;
   const n = ids.length;
-  toast(r.shared ? `Pasted as linked card${n > 1 ? "s" : ""} · also on ${r.from}` : `Pasted ${n > 1 ? `${n} copies` : "a copy"} from ${r.from}`);
+  toast(
+    r.shared
+      ? `Pasted as linked card${n > 1 ? "s" : ""} · also on ${r.from}`
+      : `Pasted ${n > 1 ? `${n} copies` : "a copy"} from ${r.from}`,
+  );
 }
 /**
  * 把卡放到指针 at 附近的空地上（一步撤销），组内的相对位置不变；落在哪个 Section 里（卡的中心，和拖卡同一个算法）就进哪个。
  * copy = 独立副本（新 id），否则原样放（同一个 id）。返回放下的卡（摆着的那几张）和各自是哪张卡的副本：[新 id, 原 id]，没有可放的返回 null
  */
-function putCards(items: CardCopy[], links: Link[], copy: boolean, at: { x: number; y: number }, views: Record<string, SegView>, exact = false): [string, string][] | null {
+function putCards(
+  items: CardCopy[],
+  links: Link[],
+  copy: boolean,
+  at: { x: number; y: number },
+  views: Record<string, SegView>,
+  exact = false,
+): [string, string][] | null {
   const tops = items.filter((x) => x.place);
   const box = bounds(tops.map((x) => ({ x: x.place!.x, y: x.place!.y, w: x.place!.w, h: (x.place!.h ?? 300) + 40 })));
   if (!box) return null;
   // exact = 就放在 at（可以压住别的卡）
-  const free = exact ? at : findFree({ ...box, x: at.x, y: at.y }, state.board.cards.filter((c) => state.board.place[c.id]).map((c) => rectOf(c)));
-  const dx = Math.round(free.x - box.x), dy = Math.round(free.y - box.y);
-  let ids: string[] = [], segs: Record<string, string> = {}, pairs: [string, string][] = [];
+  const free = exact
+    ? at
+    : findFree(
+        { ...box, x: at.x, y: at.y },
+        state.board.cards.filter((c) => state.board.place[c.id]).map((c) => rectOf(c)),
+      );
+  const dx = Math.round(free.x - box.x),
+    dy = Math.round(free.y - box.y);
+  let ids: string[] = [],
+    segs: Record<string, string> = {},
+    pairs: [string, string][] = [];
   mutate((b) => {
     const m = placeCards(b, items, { copy, links, at: (p) => ({ ...p, x: p.x + dx, y: p.y + dy }) });
     pairs = tops.filter((x) => m.cards[x.card.id]).map((x) => [m.cards[x.card.id], x.card.id]);
@@ -222,11 +311,17 @@ function putCards(items: CardCopy[], links: Link[], copy: boolean, at: { x: numb
     segs = m.segs;
     for (const id of ids) settleHome(b, id);
   });
-  batch(() => { copyViews(segs, views); putViews(Object.fromEntries(Object.entries(views).filter(([k]) => !segs[k]))); });
+  batch(() => {
+    copyViews(segs, views);
+    putViews(Object.fromEntries(Object.entries(views).filter(([k]) => !segs[k])));
+  });
   select({ cards: ids });
   requestAnimationFrame(() => {
     const u = bounds(ids.map((id) => hostRect(id)!).filter(Boolean));
-    if (u && !isVisible(u)) { const f = fitTop(u, camTarget().z); camTo(f.x, f.y, f.z); }
+    if (u && !isVisible(u)) {
+      const f = fitTop(u, camTarget().z);
+      camTo(f.x, f.y, f.z);
+    }
     ids.forEach((id) => popCard(id));
   });
   return pairs;
@@ -239,7 +334,11 @@ export function showBoardsOf(id: string, el: Element) {
 }
 /** 去另一块白板上看这张卡（line = 闪那一行） */
 export function openOnBoard(board: string, card: string, line?: number) {
-  if (board === state.board.id) { select({ cards: [hostOf(card)] }); revealCard(card); return; }
+  if (board === state.board.id) {
+    select({ cards: [hostOf(card)] });
+    revealCard(card);
+    return;
+  }
   send({ type: "openBoard", id: board, card, line });
 }
 /** 「This card is on 3 boards: A, B, C.」 */
@@ -258,13 +357,17 @@ export async function deleteEverywhere(ids = selShared()) {
   if (!c) return;
   const n = sharedOn(id);
   const ok = await choose(`Delete “${cardTitle(c, state.board)}” everywhere?`, ["Delete Everywhere", "Cancel"], {
-    text: `${boardsText(id)} Its arrows and sidenotes go too, on every board.`, def: 1,
+    text: `${boardsText(id)} Its arrows and sidenotes go too, on every board.`,
+    def: 1,
   });
   if (ok !== 0) return;
   ghostOut(new Set([id]));
   if (!mutate((b) => removeCards(b, [id]))) return;
   select({});
-  const done = await ask("deleteEverywhere", { card: id }).catch((e: Error) => { toast(`Couldn't delete everywhere: ${e.message}`); return -1; });
+  const done = await ask("deleteEverywhere", { card: id }).catch((e: Error) => {
+    toast(`Couldn't delete everywhere: ${e.message}`);
+    return -1;
+  });
   if (done >= 0) toast(`Deleted from ${Math.max(done, n)} boards`);
 }
 
@@ -272,26 +375,44 @@ export async function deleteEverywhere(ids = selShared()) {
  * 共享卡 Update：先按设置决定范围（问 / 所有白板 / 只这块白板）。只这块白板 = 先拆成副本（别的白板留在旧版本），再更新。
  * 返回 false = 用户选了 Keep 或关掉了
  */
-export async function updateScoped(cardId: string, segId: string, data: DiffData, apply: (card: string) => void, keep: () => void): Promise<boolean> {
+export async function updateScoped(
+  cardId: string,
+  segId: string,
+  data: DiffData,
+  apply: (card: string) => void,
+  keep: () => void,
+): Promise<boolean> {
   const n = sharedOn(cardId);
-  if (n < 2 || !data.newSeg) { apply(cardId); return true; }
+  if (n < 2 || !data.newSeg) {
+    apply(cardId);
+    return true;
+  }
   let scope = state.host.settings.sharedUpdate;
   if (scope === "ask") {
     const c = cardById(cardId)?.card;
     const ns = { ...data.newSeg, id: segId };
     const hit = notesOnChangedLines(unwrap(state.board), cardId, ns).length;
-    const i = await choose(`Update ${c ? cardTitle(c, state.board) : "this card"} to ${versionLabel(ns.version)}?`, ["Update on All Boards", "This Board Only", "Keep"], {
-      text: boardsText(cardId),
-      warn: hit ? `${hit} sidenote${hit > 1 ? "s are" : " is"} on a changed line` : undefined,
-      note: "This Board Only makes a copy here, so the other boards keep the old version.",
-    });
+    const i = await choose(
+      `Update ${c ? cardTitle(c, state.board) : "this card"} to ${versionLabel(ns.version)}?`,
+      ["Update on All Boards", "This Board Only", "Keep"],
+      {
+        text: boardsText(cardId),
+        warn: hit ? `${hit} sidenote${hit > 1 ? "s are" : " is"} on a changed line` : undefined,
+        note: "This Board Only makes a copy here, so the other boards keep the old version.",
+      },
+    );
     if (i === null) return false;
-    if (i === 2) { keep(); return false; }
+    if (i === 2) {
+      keep();
+      return false;
+    }
     scope = i === 0 ? "all" : "this";
   }
   if (scope === "this") {
     let to = cardId;
-    mutate((b) => { to = unlinkCard(b, cardId); });
+    mutate((b) => {
+      to = unlinkCard(b, cardId);
+    });
     apply(to);
     select({ cards: [to] });
     return true;
@@ -300,7 +421,6 @@ export async function updateScoped(cardId: string, segId: string, data: DiffData
   return true;
 }
 
-
 export function reviewToast(cardId: string) {
   const n = state.board.sidenotes.filter((x) => x.at.card === cardId && x.review).length;
   return n ? ` · ${n} sidenote${n > 1 ? "s" : ""} on changed lines, check ${n > 1 ? "them" : "it"}` : "";
@@ -308,8 +428,12 @@ export function reviewToast(cardId: string) {
 
 /** Board-only：共享卡上的这条 Sidenote 只留在这块白板（不跟着卡去别的白板），再点一次又跟着走 */
 export function toggleBoardOnly(id: string) {
-  updateSidenote(id, (n) => { n.boardOnly = n.boardOnly ? undefined : true; });
+  updateSidenote(id, (n) => {
+    n.boardOnly = n.boardOnly ? undefined : true;
+  });
 }
 export function markReviewed(id: string) {
-  updateSidenote(id, (n) => { delete n.review; });
+  updateSidenote(id, (n) => {
+    delete n.review;
+  });
 }

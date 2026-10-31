@@ -1,12 +1,46 @@
 import { describe, expect, it } from "vitest";
 import {
-  addVariant, danglingRefs, dropVariants, emptyBoard, isMine, loadBoard, placeCards, rebaseUpstream, removeVariant, segsOf, setVariantSegs, switchVariant, threeWay, upstreamSegs, variantMarks, noteShown,
-  type Board, type CodeCard, type Segment,
+  addVariant,
+  danglingRefs,
+  dropVariants,
+  emptyBoard,
+  isMine,
+  loadBoard,
+  placeCards,
+  rebaseUpstream,
+  removeVariant,
+  segsOf,
+  setVariantSegs,
+  switchVariant,
+  threeWay,
+  upstreamSegs,
+  variantMarks,
+  noteShown,
+  type Board,
+  type CodeCard,
+  type Segment,
 } from "../src";
 
 const UP = ["def forward(x):", "    a = x < 1", "    r = a.argmax()", "    out[r + 1:] = -1", "    return out"];
-const MINE = ["def forward(x):", "    a = x < 1", "    r = (~a).argmax()", "    r[a.all()] = k", "    out[r + 1:] = -1", "    return out"];
-const seg = (text: string[], start = 10, commit = "bb823b3"): Segment => ({ id: "s1", src: { kind: "repo", repo: "" }, path: "m.py", lang: "python", start, end: start + text.length - 1, text, version: { kind: "git", commit }, symbol: { qual: "forward", kind: "function" } });
+const MINE = [
+  "def forward(x):",
+  "    a = x < 1",
+  "    r = (~a).argmax()",
+  "    r[a.all()] = k",
+  "    out[r + 1:] = -1",
+  "    return out",
+];
+const seg = (text: string[], start = 10, commit = "bb823b3"): Segment => ({
+  id: "s1",
+  src: { kind: "repo", repo: "" },
+  path: "m.py",
+  lang: "python",
+  start,
+  end: start + text.length - 1,
+  text,
+  version: { kind: "git", commit },
+  symbol: { qual: "forward", kind: "function" },
+});
 
 function board(): Board {
   const b = emptyBoard("b", "B");
@@ -24,7 +58,12 @@ const card = (b: Board) => b.cards[0] as CodeCard;
 describe("variants", () => {
   it("add + switch: segments swap, arrows and sidenotes follow by content, MINE only when the code differs", () => {
     const b = board();
-    addVariant(b, "c1", { id: "v1", name: "fix-spec-bug", from: { kind: "ref", ref: "fix-spec-bug" }, segs: [seg(MINE, 20, "aaa1111")] });
+    addVariant(b, "c1", {
+      id: "v1",
+      name: "fix-spec-bug",
+      from: { kind: "ref", ref: "fix-spec-bug" },
+      segs: [seg(MINE, 20, "aaa1111")],
+    });
     expect(card(b).variants!.map((v) => v.id)).toEqual(["up", "v1"]);
     expect(isMine(card(b))).toBe(false);
     expect(switchVariant(b, "c1", "v1")).toBe(true);
@@ -49,14 +88,23 @@ describe("variants", () => {
     expect(danglingRefs(b)).toEqual([]);
     card(b).variants![1].segs = [seg(MINE)];
     card(b).variants![0].segs![0].id = "other";
-    expect(danglingRefs(b)).toEqual(["card c1: variant up segments do not match the card's", "card c1: shown variant v1 keeps its own segments"]);
+    expect(danglingRefs(b)).toEqual([
+      "card c1: variant up segments do not match the card's",
+      "card c1: shown variant v1 keeps its own segments",
+    ]);
   });
 
   it("Only-in-this-variant sidenotes stay in their variant's line numbers and only show there", () => {
     const b = board();
     addVariant(b, "c1", { id: "v1", name: "w", from: { kind: "worktree" }, segs: [seg(MINE, 20)] });
     switchVariant(b, "c1", "v1");
-    b.sidenotes.push({ id: "n2", at: { card: "c1", seg: "s1", lines: [23, 23] }, kind: "text", md: "131 TFLOPS", variant: "v1" });
+    b.sidenotes.push({
+      id: "n2",
+      at: { card: "c1", seg: "s1", lines: [23, 23] },
+      kind: "text",
+      md: "131 TFLOPS",
+      variant: "v1",
+    });
     switchVariant(b, "c1", "up");
     const n2 = b.sidenotes.find((n) => n.id === "n2")!;
     expect(n2.at.lines).toEqual([23, 23]);
@@ -106,13 +154,28 @@ describe("variants", () => {
 
   it("marks and three-way", () => {
     const m = variantMarks([seg(UP)], [seg(MINE, 20)]);
-    expect([...m.marks]).toEqual([["s1:22", "~"], ["s1:23", "+"]]);
+    expect([...m.marks]).toEqual([
+      ["s1:22", "~"],
+      ["s1:23", "+"],
+    ]);
     expect(m).toMatchObject({ changed: 1, added: 1, removed: 0 });
-    const latest = ["def forward(x):", "    a = x <= 1", "    r = a.argmax()", "    out[r + 1:] = -1", "    return out"];
+    const latest = [
+      "def forward(x):",
+      "    a = x <= 1",
+      "    r = a.argmax()",
+      "    out[r + 1:] = -1",
+      "    return out",
+    ];
     const t = threeWay(UP, MINE, latest);
     expect(t.base).toEqual(["same", "theirs", "mine", "same", "same"]);
     expect(t.conflicts).toBe(0);
-    const both = threeWay(UP, MINE, ["def forward(x):", "    a = x < 1", "    r = a.argmax(dim=-1)", "    out[r + 1:] = -1", "    return out"]);
+    const both = threeWay(UP, MINE, [
+      "def forward(x):",
+      "    a = x < 1",
+      "    r = a.argmax(dim=-1)",
+      "    out[r + 1:] = -1",
+      "    return out",
+    ]);
     expect(both.conflicts).toBe(1);
     expect(both.mine[2]).toBe("both");
     expect(both.latest[2]).toBe("both");

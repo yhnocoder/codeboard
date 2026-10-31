@@ -9,7 +9,12 @@ export type Pasted = { from: string; shared: boolean; cards: CardCopy[]; links: 
 
 const norm = (t: string) => t.replace(/\r\n/g, "\n").trim();
 
-export async function pasteClip(store: Storage, clip: CardClip | undefined, target: string, o: { text?: string; copy: boolean }): Promise<Pasted | null> {
+export async function pasteClip(
+  store: Storage,
+  clip: CardClip | undefined,
+  target: string,
+  o: { text?: string; copy: boolean },
+): Promise<Pasted | null> {
   if (!clip || clip.board === target) return null;
   if (o.text !== undefined && norm(o.text) !== norm(clip.text)) return null;
   const src = store.peek(clip.board) ?? (await store.load(clip.board));
@@ -19,6 +24,10 @@ export async function pasteClip(store: Storage, clip: CardClip | undefined, targ
   const shared = !o.copy && !(await store.wouldRename(clip.board, ids));
   if (shared) await store.share(clip.board, ids);
   const { cards, links } = store.copyOut(clip.board, ids);
-  if (shared) await store.offer(target, cards.map((c) => c.card.id));
+  if (shared)
+    await store.offer(
+      target,
+      cards.map((c) => c.card.id),
+    );
   return cards.length ? { from: src.name, shared, cards, links } : null;
 }

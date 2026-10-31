@@ -7,7 +7,8 @@ export const COMPLETE_SYSTEM = [
 ].join("\n");
 
 export function completePrompt(before: string, after: string): string {
-  const b = before.slice(-2000), a = after.slice(0, 400);
+  const b = before.slice(-2000),
+    a = after.slice(0, 400);
   return `<note_before_cursor>\n${b}\n</note_before_cursor>\n<note_after_cursor>\n${a}\n</note_after_cursor>\nText to insert at the cursor:`;
 }
 
@@ -26,7 +27,11 @@ export function cleanCompletion(raw: string, before: string, after: string): str
   if (/^(["“'`]).*\1$/.test(s.trim()) && s.trim().length > 2) s = s.trim().slice(1, -1);
   // 模型把光标前的结尾又写了一遍：去掉重叠的部分
   const tail = before.slice(-60);
-  for (let k = Math.min(tail.length, s.length); k >= 4; k--) if (tail.endsWith(s.slice(0, k))) { s = s.slice(k); break; }
+  for (let k = Math.min(tail.length, s.length); k >= 4; k--)
+    if (tail.endsWith(s.slice(0, k))) {
+      s = s.slice(k);
+      break;
+    }
   if (/\s$/.test(before)) s = s.replace(/^\s+/, "");
   s = s.replace(/\s+$/, "");
   if (s.length > 240) s = s.slice(0, 240).replace(/\s+\S*$/, "");

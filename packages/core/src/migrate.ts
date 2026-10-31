@@ -1,11 +1,30 @@
 // 旧白板文件 → 当前版本（第 10 版）。项目里唯一的兼容代码：旧版本的结构、缺省的字段、手改出来的 null 都在这里补成
 // 和 model.ts 的类型一模一样，读进来之后的代码只认当前结构。schema.ts 校验的是这里的结果。
-import { BOARD_VERSION, cornerAt, type Camera, emptyBoard, isCode, uid, type BoardFile, type Card, type Link, type LinkStyle, type Place, type Segment, type SharedCardFile, type Sidenote, type Sticker } from "./model";
+import {
+  BOARD_VERSION,
+  cornerAt,
+  type Camera,
+  emptyBoard,
+  isCode,
+  uid,
+  type BoardFile,
+  type Card,
+  type Link,
+  type LinkStyle,
+  type Place,
+  type Segment,
+  type SharedCardFile,
+  type Sidenote,
+  type Sticker,
+} from "./model";
 
 /** 读进来的白板文件（第 1–10 版）→ 第 10 版白板文件（共享卡还是引用，由宿主的存储换成内容） */
 export function migrateBoard(raw: any): BoardFile {
   // 更新的版本写的文件：读不懂就别碰（当第 1 版迁移会丢掉所有卡，下次自动保存把空白板写回去）
-  if (typeof raw?.version === "number" && raw.version > BOARD_VERSION) throw new Error(`Board file version ${raw.version} is newer than this CodeBoard (${BOARD_VERSION}). Update CodeBoard to open it.`);
+  if (typeof raw?.version === "number" && raw.version > BOARD_VERSION)
+    throw new Error(
+      `Board file version ${raw.version} is newer than this CodeBoard (${BOARD_VERSION}). Update CodeBoard to open it.`,
+    );
   const from = typeof raw?.version === "number" ? raw.version : 1;
   let b = dropNulls(raw);
   if (!(b?.version >= 3)) b = v2to3(b?.version === 2 ? b : v1to2(b));
@@ -23,7 +42,8 @@ export function migrateBoard(raw: any): BoardFile {
   // 第 8 版 → 第 9 版：镜头不再存在文件里（每台机器各记各的，见 model.ts Board.cam；旧文件里的由 fileCamera 交给宿主）
   delete b.cam;
   // 第 9 版 → 第 10 版：Text 卡不再有拖出来的高度（只能拖宽度），旧文件里留着的 h 删掉
-  if (from < 10) for (const c of b.cards) if (c.kind === "note" && c.look === "text" && b.place[c.id]) delete b.place[c.id].h;
+  if (from < 10)
+    for (const c of b.cards) if (c.kind === "note" && c.look === "text" && b.place[c.id]) delete b.place[c.id].h;
   b.version = BOARD_VERSION;
   normalize(b);
   return b;
@@ -32,12 +52,17 @@ export function migrateBoard(raw: any): BoardFile {
 /** 第 9 版以前的白板文件里存着的镜头：这台机器上还没记过这块白板的镜头时，宿主拿它当起点（见 schema.ts readBoardFile） */
 export function fileCamera(raw: any): Camera | undefined {
   const c = raw?.version < 9 ? raw.cam : undefined;
-  return c && [c.x, c.y, c.z].every((n) => typeof n === "number" && Number.isFinite(n)) && c.z > 0 ? { x: c.x, y: c.y, z: c.z } : undefined;
+  return c && [c.x, c.y, c.z].every((n) => typeof n === "number" && Number.isFinite(n)) && c.z > 0
+    ? { x: c.x, y: c.y, z: c.z }
+    : undefined;
 }
 
 /** 卡库里的文件 cards/<id>.json：和白板文件一样补齐 */
 export function migrateSharedCard(raw: any): SharedCardFile {
-  if (typeof raw?.version === "number" && raw.version > BOARD_VERSION) throw new Error(`Shared card file version ${raw.version} is newer than this CodeBoard (${BOARD_VERSION}). Update CodeBoard to open it.`);
+  if (typeof raw?.version === "number" && raw.version > BOARD_VERSION)
+    throw new Error(
+      `Shared card file version ${raw.version} is newer than this CodeBoard (${BOARD_VERSION}). Update CodeBoard to open it.`,
+    );
   const sc = dropNulls(raw);
   // 卡库从第 6 版才有
   if (sc?.version === 6) {
@@ -95,7 +120,10 @@ function normLink(l: Link) {
   delete (l.from as { sub?: string }).sub;
   if ("sub" in l.to) {
     delete (l.to as { sub?: string }).sub;
-    if (l.lost) { delete l.lost.to; if (!l.lost.from) delete l.lost; }
+    if (l.lost) {
+      delete l.lost.to;
+      if (!l.lost.from) delete l.lost;
+    }
   }
 }
 
@@ -170,23 +198,40 @@ const ESC7 = String.fromCharCode(SHIELD7 + 36); // \$
 const plain7 = (s: string) => s.replace(/[\uE300-\uE37F]/g, (c) => String.fromCharCode(c.charCodeAt(0) - SHIELD7));
 const raw7 = (s: string) => s.replace(/[\uE300-\uE37F]/g, (c) => `\\${String.fromCharCode(c.charCodeAt(0) - SHIELD7)}`);
 /** 公式里有这些：没转义的当时会断开那段字（公式就没转出来）；转义过的写进 $…$ 里会被当成记号，也不改 */
-const BREAKS7 = /[`*[\]~\n]|==|<[^>\s]*>|<[A-Za-z/!?][^>\n]*>|&(?:#\d+|#x[\da-f]+|\w+);|\^[^^\s]+\^|:[a-z0-9_+-]+:|https?:\/\/|www\./i;
+const BREAKS7 =
+  /[`*[\]~\n]|==|<[^>\s]*>|<[A-Za-z/!?][^>\n]*>|&(?:#\d+|#x[\da-f]+|\w+);|\^[^^\s]+\^|:[a-z0-9_+-]+:|https?:\/\/|www\./i;
 
 /** 一段 Markdown 里旧编辑器写下的 \$…\$ → $…$ */
 function oldMath(md: string): string {
   if (!md.includes("\\$") || /[\uE300-\uE37F]/.test(md)) return md;
   // 不动的行：围栏代码块、缩进的代码块、HTML 块（到空行为止）。其余的行连成一段段交给 oldMathText
   const out: string[] = [];
-  let run: string[] = [], fence = "", html = false;
-  const flush = () => { if (run.length) out.push(oldMathText(run.join("\n"))); run = []; };
-  const fixed = (l: string) => { flush(); out.push(l); };
+  let run: string[] = [],
+    fence = "",
+    html = false;
+  const flush = () => {
+    if (run.length) out.push(oldMathText(run.join("\n")));
+    run = [];
+  };
+  const fixed = (l: string) => {
+    flush();
+    out.push(l);
+  };
   for (const l of md.split("\n")) {
     const f = /^ {0,3}(`{3,}|~{3,})/.exec(l);
-    if (fence) { fixed(l); if (new RegExp(`^ {0,3}${fence[0]}{${fence.length},}\\s*$`).test(l)) fence = ""; }
-    else if (f) { fence = f[1]; fixed(l); }
-    else if (html) { fixed(l); html = !!l.trim(); }
-    else if (/^ {0,3}<[A-Za-z/!?]/.test(l)) { html = true; fixed(l); }
-    else if (/^( {4}|\t)/.test(l)) fixed(l);
+    if (fence) {
+      fixed(l);
+      if (new RegExp(`^ {0,3}${fence[0]}{${fence.length},}\\s*$`).test(l)) fence = "";
+    } else if (f) {
+      fence = f[1];
+      fixed(l);
+    } else if (html) {
+      fixed(l);
+      html = !!l.trim();
+    } else if (/^ {0,3}<[A-Za-z/!?]/.test(l)) {
+      html = true;
+      fixed(l);
+    } else if (/^( {4}|\t)/.test(l)) fixed(l);
     else run.push(l);
   }
   flush();
@@ -197,13 +242,23 @@ function oldMath(md: string): string {
 function oldMathText(src: string): string {
   const p = src.replace(/\\([!-/:-@[-`{-~])/g, (_, c: string) => String.fromCharCode(SHIELD7 + c.charCodeAt(0)));
   // 成对的写法（上标、高亮、下标、表情、网址、标注 {a|b}、HTML 标签和 <自动链接>）：和一对 \$ 交叉时当时就分成了几段字
-  const spans = [...p.matchAll(/\^[^^\s]+\^|==(?=[^\s=])[^\n]*?[^\s]==|~(?!~)[^~\s]+~(?!~)|:[a-z0-9_+-]+:|(?:https?:\/\/|www\.)\S+|\{[^{}\n]*\|[^{}\n]*\}|<[^>\s]*>|<[A-Za-z/!?][^>\n]*>/g)].map((x) => [x.index, x.index + x[0].length]);
+  const spans = [
+    ...p.matchAll(
+      /\^[^^\s]+\^|==(?=[^\s=])[^\n]*?[^\s]==|~(?!~)[^~\s]+~(?!~)|:[a-z0-9_+-]+:|(?:https?:\/\/|www\.)\S+|\{[^{}\n]*\|[^{}\n]*\}|<[^>\s]*>|<[A-Za-z/!?][^>\n]*>/g,
+    ),
+  ].map((x) => [x.index, x.index + x[0].length]);
   // 表格里 | 分开格子
   const table = /^ {0,3}\|?\s*:?-+:?\s*(?:\|\s*:?-+:?\s*)*\|?\s*$/m.test(p) && p.includes("|");
-  let out = "", i = 0, lone = false; // lone：这一段前面有个没配成公式的 $（改出来的 $ 会和它配成对）
-  const keep = (n: number) => { out += raw7(p.slice(i, i + n)); i += n; };
+  let out = "",
+    i = 0,
+    lone = false; // lone：这一段前面有个没配成公式的 $（改出来的 $ 会和它配成对）
+  const keep = (n: number) => {
+    out += raw7(p.slice(i, i + n));
+    i += n;
+  };
   while (i < p.length) {
-    const c = p[i], rest = p.slice(i);
+    const c = p[i],
+      rest = p.slice(i);
     if (/^\n[ \t]*\n/.test(rest)) lone = false;
     if (c === "`") {
       const n = /^`+/.exec(rest)![0].length;
@@ -211,16 +266,37 @@ function oldMathText(src: string): string {
       keep(close && !/\n[ \t]*\n/.test(p.slice(i + n, i + n + close.index)) ? n + close.index + n : n);
       continue;
     }
-    const skip = c === "]" ? /^\]\([^)\n]*\)/.exec(rest) : c === "<" ? /^<[^>\s]*>|^<[A-Za-z/!?][^>\n]*>/.exec(rest)
-      : c === "$" ? /^\$\$[^$]+?\$\$|^\$[^$\s](?:[^$]*[^$\s\\])?\$(?!\d)/.exec(rest) : null;
-    if (skip) { keep(skip[0].length); continue; }
+    const skip =
+      c === "]"
+        ? /^\]\([^)\n]*\)/.exec(rest)
+        : c === "<"
+          ? /^<[^>\s]*>|^<[A-Za-z/!?][^>\n]*>/.exec(rest)
+          : c === "$"
+            ? /^\$\$[^$]+?\$\$|^\$[^$\s](?:[^$]*[^$\s\\])?\$(?!\d)/.exec(rest)
+            : null;
+    if (skip) {
+      keep(skip[0].length);
+      continue;
+    }
     if (c === ESC7) {
       const m = /^\uE324([^$\uE324]*)\uE324/.exec(rest);
-      const t = m ? plain7(m[1]) : "", prev = i ? plain7(p[i - 1]) : "";
+      const t = m ? plain7(m[1]) : "",
+        prev = i ? plain7(p[i - 1]) : "";
       // 当时的规则认不认这一对；认的话拿得准才改，拿不准的整对留着（右边那个 \$ 也不再当开头，和当时一样）
-      if (m && prev !== "$" && prev !== "\\" && /^\S(?:[^]*[^\s\\])?$/.test(t) && !/^[\d$\uE324]/.test(p.slice(i + m[0].length))) {
+      if (
+        m &&
+        prev !== "$" &&
+        prev !== "\\" &&
+        /^\S(?:[^]*[^\s\\])?$/.test(t) &&
+        !/^[\d$\uE324]/.test(p.slice(i + m[0].length))
+      ) {
         const end = i + m[0].length;
-        const sure = !lone && !t.endsWith("\\") && !BREAKS7.test(t) && !(table && t.includes("|")) && !spans.some(([a, b]) => a < end && b > i);
+        const sure =
+          !lone &&
+          !t.endsWith("\\") &&
+          !BREAKS7.test(t) &&
+          !(table && t.includes("|")) &&
+          !spans.some(([a, b]) => a < end && b > i);
         out += sure ? `$${t}$` : raw7(m[0]);
         i = end;
         continue;
@@ -249,7 +325,14 @@ function v4to5(b: any) {
     if (l.side) o.sides = { from: l.side };
     if (l.kind === "call") {
       const t = byId.get(l.to?.card);
-      const name = l.call?.name ?? (isCode(t) ? t.segments.find((s) => s.symbol)?.symbol?.qual.split(".").pop() ?? "" : "");
+      const name =
+        l.call?.name ??
+        (isCode(t)
+          ? (t.segments
+              .find((s) => s.symbol)
+              ?.symbol?.qual.split(".")
+              .pop() ?? "")
+          : "");
       o.call = { name, col: l.call?.col ?? 0 };
       if (l.vars?.length) o.call.vars = l.vars;
       if (l.cands?.length) o.call.cands = l.cands;
@@ -279,13 +362,19 @@ function v4to5(b: any) {
     if (parent.has(r)) continue;
     const at = index.get(r)!;
     let k = 0;
-    const go = (id: string) => { if (key.has(id)) return; key.set(id, [at, k++]); (kids.get(id) ?? []).forEach(go); };
+    const go = (id: string) => {
+      if (key.has(id)) return;
+      key.set(id, [at, k++]);
+      (kids.get(id) ?? []).forEach(go);
+    };
     go(r);
   }
   const order = (b.cards as Card[]).map((c, i) => ({ id: c.id, k: key.get(c.id) ?? [i, -1] }));
   order.sort((x, y) => x.k[0] - y.k[0] || x.k[1] - y.k[1]);
   b.born = {};
-  order.forEach((x, i) => { b.born[x.id] = i; });
+  order.forEach((x, i) => {
+    b.born[x.id] = i;
+  });
   b.seq = order.length;
   b.version = 5;
 }
@@ -297,7 +386,9 @@ function v4to5(b: any) {
  */
 const V3_CODE_CHROME = 36;
 function v3to4(b: any) {
-  const fix = (c: Card | undefined, p: Place | undefined) => { if (c?.kind === "code" && p?.h) p.h = Math.max(1, p.h - V3_CODE_CHROME); };
+  const fix = (c: Card | undefined, p: Place | undefined) => {
+    if (c?.kind === "code" && p?.h) p.h = Math.max(1, p.h - V3_CODE_CHROME);
+  };
   for (const c of b.cards as Card[]) {
     fix(c, b.place[c.id]);
     if (c.kind === "code") for (const m of c.mergedFrom ?? []) fix(m.card, m.place);
@@ -311,10 +402,13 @@ function splitV2(c: any): { card: any; place: Place } {
   const place: any = {};
   const card: any = {};
   for (const [k, v] of Object.entries(c)) {
-    if ((GEO as readonly string[]).includes(k)) { if (v !== undefined) place[k] = v; }
-    else card[k] = v;
+    if ((GEO as readonly string[]).includes(k)) {
+      if (v !== undefined) place[k] = v;
+    } else card[k] = v;
   }
-  place.x ??= 0; place.y ??= 0; place.w ??= 320;
+  place.x ??= 0;
+  place.y ??= 0;
+  place.w ??= 320;
   return { card, place };
 }
 function contentV2(c: any, out: Card[], place: Record<string, Place> | null): Card {
@@ -324,7 +418,11 @@ function contentV2(c: any, out: Card[], place: Record<string, Place> | null): Ca
     delete card.pageTitle;
   }
   if (card.kind === "image") card.bg = true; // 旧图片保持原来的样子（有外框）
-  if (card.kind === "code" && card.mergedFrom) card.mergedFrom = card.mergedFrom.map((o: any) => { const s = splitV2(o); return { card: s.card, place: s.place }; });
+  if (card.kind === "code" && card.mergedFrom)
+    card.mergedFrom = card.mergedFrom.map((o: any) => {
+      const s = splitV2(o);
+      return { card: s.card, place: s.place };
+    });
   if (card.kind === "compare") {
     const cols = card.cols as any[];
     card.cols = cols.map((k) => contentV2(k, out, null).id);
@@ -351,19 +449,36 @@ function v2to3(o: any): any {
 
 /** 第 1 版白板（v1 插件）迁移到第 2 版的结构 */
 function v1to2(raw: any): any {
-  const b: any = { version: 2, id: raw?.id, name: raw?.name ?? "Board", cards: [], links: [], sections: [], sidenotes: [] };
+  const b: any = {
+    version: 2,
+    id: raw?.id,
+    name: raw?.name ?? "Board",
+    cards: [],
+    links: [],
+    sections: [],
+    sidenotes: [],
+  };
   for (const c of raw?.cards ?? []) {
     const base = { id: c.id, x: c.x, y: c.y, w: c.w };
     if (c.type === "code") {
       const s: any = {
-        id: uid("s"), src: { kind: "repo", repo: "" }, path: c.path, lang: c.lang, start: c.start, end: c.end, text: c.snapshot,
-        version: c.commit ? { kind: "git", commit: c.commit, ...(c.dirty ? { uncommitted: true } : {}) } : { kind: "none" },
+        id: uid("s"),
+        src: { kind: "repo", repo: "" },
+        path: c.path,
+        lang: c.lang,
+        start: c.start,
+        end: c.end,
+        text: c.snapshot,
+        version: c.commit
+          ? { kind: "git", commit: c.commit, ...(c.dirty ? { uncommitted: true } : {}) }
+          : { kind: "none" },
       };
       if (c.symbol) s.symbol = { qual: c.symbol, kind: "function" };
       if (c.hl) s.hl = c.hl;
       b.cards.push({ ...base, kind: "code", ...(c.title ? { title: c.title } : {}), segments: [s] });
     } else if (c.type === "note") b.cards.push({ ...base, kind: "note", md: c.text, bg: true });
-    else if (c.type === "image") b.cards.push({ ...base, kind: "image", src: c.src, ...(c.caption ? { alt: c.caption } : {}) });
+    else if (c.type === "image")
+      b.cards.push({ ...base, kind: "image", src: c.src, ...(c.caption ? { alt: c.caption } : {}) });
     else if (c.type === "link") b.cards.push({ ...base, kind: "web", url: c.url, pageTitle: c.title });
     else if (c.type === "group") b.sections.push({ id: c.id, title: c.label, x: c.x, y: c.y, w: c.w, h: c.h });
   }

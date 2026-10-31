@@ -16,7 +16,10 @@ export function upkeeper(raw: Raw) {
       else twinSeen.clear();
       followBlocks(b, blockSeen, raw);
     },
-    reset() { twinSeen.clear(); blockSeen.clear(); },
+    reset() {
+      twinSeen.clear();
+      blockSeen.clear();
+    },
   };
 }
 
@@ -26,7 +29,8 @@ export function upkeeper(raw: Raw) {
  * `born` is replaced once: a batch of cards from the host is one notification, not one per card (30 ms at 241 cards)
  */
 export function stamp(b: Board, raw: Raw) {
-  const r = raw(b), born = r.born;
+  const r = raw(b),
+    born = r.born;
   if (born && r.cards.every((c) => born[c.id] !== undefined)) return;
   const tmp = { cards: r.cards, born: { ...born }, seq: r.seq } as Board;
   stampBorn(tmp);

@@ -23,27 +23,39 @@ const NONE: Sticker[] = [];
 type Groups = Map<string, Sticker[]>;
 /** 绑在卡上的、贴在代码行上的（按卡）、绑在线上的（按线）、画布上没绑东西的 */
 type Index = { bound: Groups; lines: Groups; links: Groups; free: Sticker[] };
-const sameList = (a: readonly Sticker[], b: readonly Sticker[]) => a.length === b.length && a.every((x, i) => x === b[i]);
+const sameList = (a: readonly Sticker[], b: readonly Sticker[]) =>
+  a.length === b.length && a.every((x, i) => x === b[i]);
 /** 和上一次一样的组沿用上一次的数组：下游按引用比较就知道没变 */
 function keep(next: Groups, prev: Groups | undefined) {
-  if (prev) for (const [k, a] of next) { const p = prev.get(k); if (p && sameList(p, a)) next.set(k, p); }
+  if (prev)
+    for (const [k, a] of next) {
+      const p = prev.get(k);
+      if (p && sameList(p, a)) next.set(k, p);
+    }
   return next;
 }
-const index = rooted(() => createMemo<Index | undefined>((prev) => {
-  const m: Index = { bound: new Map(), lines: new Map(), links: new Map(), free: [] };
-  const add = (g: Groups, k: string, s: Sticker) => { const a = g.get(k); a ? a.push(s) : g.set(k, [s]); };
-  for (const s of state.board.stickers) {
-    const at = s.at;
-    if (at.kind === "line") add(m.lines, at.card, s);
-    else if (!at.on) m.free.push(s);
-    else if ("card" in at.on) add(m.bound, at.on.card, s);
-    else add(m.links, at.on.link, s);
-  }
-  return {
-    bound: keep(m.bound, prev?.bound), lines: keep(m.lines, prev?.lines), links: keep(m.links, prev?.links),
-    free: prev && sameList(prev.free, m.free) ? prev.free : m.free,
-  };
-}));
+const index = rooted(() =>
+  createMemo<Index | undefined>((prev) => {
+    const m: Index = { bound: new Map(), lines: new Map(), links: new Map(), free: [] };
+    const add = (g: Groups, k: string, s: Sticker) => {
+      const a = g.get(k);
+      a ? a.push(s) : g.set(k, [s]);
+    };
+    for (const s of state.board.stickers) {
+      const at = s.at;
+      if (at.kind === "line") add(m.lines, at.card, s);
+      else if (!at.on) m.free.push(s);
+      else if ("card" in at.on) add(m.bound, at.on.card, s);
+      else add(m.links, at.on.link, s);
+    }
+    return {
+      bound: keep(m.bound, prev?.bound),
+      lines: keep(m.lines, prev?.lines),
+      links: keep(m.links, prev?.links),
+      free: prev && sameList(prev.free, m.free) ? prev.free : m.free,
+    };
+  }),
+);
 const group = (k: "bound" | "lines" | "links") => (id: string) => index()![k].get(id) ?? NONE;
 export const freeStickers = () => index()!.free;
 export const boundStickers = group("bound");
@@ -53,9 +65,11 @@ export const linkStickers = group("links");
 export const stickerList = (f: () => Sticker[]) => createMemo(f, NONE, { equals: sameList });
 
 /** 选中的贴纸绑在哪张卡上（那张卡画一圈虚线） */
-const anchorCard = rooted(() => createMemo(() => {
-  const id = selSticker();
-  const s = id ? state.board.stickers.find((k) => k.id === id) : undefined;
-  return s?.at.kind === "canvas" && s.at.on && "card" in s.at.on ? s.at.on.card : null;
-}));
+const anchorCard = rooted(() =>
+  createMemo(() => {
+    const id = selSticker();
+    const s = id ? state.board.stickers.find((k) => k.id === id) : undefined;
+    return s?.at.kind === "canvas" && s.at.on && "card" in s.at.on ? s.at.on.card : null;
+  }),
+);
 export const isBindAnchor = rooted(() => createSelector(anchorCard));

@@ -14,12 +14,24 @@ import type { Segment } from "./model";
 // Shiki grammars by the language table's name, loaded the first time they are used
 const GRAMMAR: Record<string, LanguageInput> = {
   python: () => import("shiki/langs/python.mjs"),
-  rust: () => import("shiki/langs/rust.mjs"), typescript: () => import("shiki/langs/typescript.mjs"), javascript: () => import("shiki/langs/javascript.mjs"),
-  go: () => import("shiki/langs/go.mjs"), java: () => import("shiki/langs/java.mjs"), shellscript: () => import("shiki/langs/shellscript.mjs"),
-  json: () => import("shiki/langs/json.mjs"), yaml: () => import("shiki/langs/yaml.mjs"), toml: () => import("shiki/langs/toml.mjs"),
-  ini: () => import("shiki/langs/ini.mjs"), sql: () => import("shiki/langs/sql.mjs"), lua: () => import("shiki/langs/lua.mjs"),
-  ruby: () => import("shiki/langs/ruby.mjs"), r: () => import("shiki/langs/r.mjs"), perl: () => import("shiki/langs/perl.mjs"),
-  haskell: () => import("shiki/langs/haskell.mjs"), diff: () => import("shiki/langs/diff.mjs"), css: () => import("shiki/langs/css.mjs"),
+  rust: () => import("shiki/langs/rust.mjs"),
+  typescript: () => import("shiki/langs/typescript.mjs"),
+  javascript: () => import("shiki/langs/javascript.mjs"),
+  go: () => import("shiki/langs/go.mjs"),
+  java: () => import("shiki/langs/java.mjs"),
+  shellscript: () => import("shiki/langs/shellscript.mjs"),
+  json: () => import("shiki/langs/json.mjs"),
+  yaml: () => import("shiki/langs/yaml.mjs"),
+  toml: () => import("shiki/langs/toml.mjs"),
+  ini: () => import("shiki/langs/ini.mjs"),
+  sql: () => import("shiki/langs/sql.mjs"),
+  lua: () => import("shiki/langs/lua.mjs"),
+  ruby: () => import("shiki/langs/ruby.mjs"),
+  r: () => import("shiki/langs/r.mjs"),
+  perl: () => import("shiki/langs/perl.mjs"),
+  haskell: () => import("shiki/langs/haskell.mjs"),
+  diff: () => import("shiki/langs/diff.mjs"),
+  css: () => import("shiki/langs/css.mjs"),
   html: () => import("shiki/langs/html.mjs"),
 };
 
@@ -38,7 +50,13 @@ function shikiLang(lang: string): string | null {
 function refine(t: Tok): Tok[] {
   if (t.cls === "kw" && /^\s*[-+*/%=<>!&|^~@:?]+\s*$/.test(t.text)) return [{ text: t.text, cls: "kw op" }];
   if (t.cls !== "p" || !/[\p{L}\p{N}_$]/u.test(t.text)) return [t];
-  return t.text.split(/([\p{L}\p{N}_$]+|\s+)/u).filter(Boolean).map((x) => ({ text: x, cls: /^\s+$/.test(x) ? undefined : /[\p{L}\p{N}_$]/u.test(x) ? tokenClass(undefined, x) : "p" }));
+  return t.text
+    .split(/([\p{L}\p{N}_$]+|\s+)/u)
+    .filter(Boolean)
+    .map((x) => ({
+      text: x,
+      cls: /^\s+$/.test(x) ? undefined : /[\p{L}\p{N}_$]/u.test(x) ? tokenClass(undefined, x) : "p",
+    }));
 }
 
 /** The line in all where block starts (all of block's lines in a row), or -1 */
@@ -96,9 +114,16 @@ export class Highlighter {
   }
 
   private async shiki(sl: string): Promise<HighlighterCore> {
-    const h = await (this.hl ??= createHighlighterCore({ themes: [this.theme], langs: [], engine: createJavaScriptRegexEngine({ forgiving: true }) }));
+    const h = await (this.hl ??= createHighlighterCore({
+      themes: [this.theme],
+      langs: [],
+      engine: createJavaScriptRegexEngine({ forgiving: true }),
+    }));
     let p = this.loaded.get(sl);
-    if (!p) { p = h.loadLanguage(GRAMMAR[sl]); this.loaded.set(sl, p); }
+    if (!p) {
+      p = h.loadLanguage(GRAMMAR[sl]);
+      this.loaded.set(sl, p);
+    }
     await p;
     return h;
   }
@@ -108,18 +133,24 @@ export class Highlighter {
     let res: Tok[][];
     try {
       const h = await this.shiki(sl);
-      res = h.codeToTokens(text, { lang: sl, theme: "codeboard" }).tokens.map((line) => line.flatMap((t) => refine({ text: t.content, cls: tokenClass(t.color, t.content) })));
+      res = h
+        .codeToTokens(text, { lang: sl, theme: "codeboard" })
+        .tokens.map((line) => line.flatMap((t) => refine({ text: t.content, cls: tokenClass(t.color, t.content) })));
     } catch {
       res = lines.map((l) => [{ text: l }]);
     }
     // A decorator is one colour
-    if (sl === "python") res.forEach((toks, i) => {
-      const l = lines[i] ?? "";
-      if (!/^\s*@/.test(l)) return;
-      const end = l.search(/\(|$/);
-      let col = 0;
-      for (const t of toks) { if (col < end && t.text.trim()) t.cls = "dec"; col += t.text.length; }
-    });
+    if (sl === "python")
+      res.forEach((toks, i) => {
+        const l = lines[i] ?? "";
+        if (!/^\s*@/.test(l)) return;
+        const end = l.search(/\(|$/);
+        let col = 0;
+        for (const t of toks) {
+          if (col < end && t.text.trim()) t.cls = "dec";
+          col += t.text.length;
+        }
+      });
     return res;
   }
 }
@@ -135,7 +166,11 @@ export interface SegSource {
   /** Analysis of text; with a range, only the calls and marks inside it are needed (plus the whole file's imports) */
   analyze(lang: string, text: string, range?: { start: number; end: number }, file?: string): FileAnalysis;
   /** Which package each call goes to (shown on the call); none = no packages */
-  callPkgs?(seg: Segment, imports: FileAnalysis["imports"], file: string | null): Promise<(c: { name: string; recv?: string }) => string | undefined>;
+  callPkgs?(
+    seg: Segment,
+    imports: FileAnalysis["imports"],
+    file: string | null,
+  ): Promise<(c: { name: string; recv?: string }) => string | undefined>;
 }
 
 /** Files longer than this highlight only the segment itself */
@@ -152,7 +187,12 @@ export async function segViewOf(seg: Segment, src: SegSource, hl: Highlighter): 
   const pkgs = src.callPkgs ? await src.callPkgs(seg, fa.imports, file ?? null) : undefined;
   // A Python function / class segment starts at its def / class / decorator line, in the same lexical state as the file's start:
   // tokenise only the segment (no whole-file shiki for a big file)
-  if (shikiLang(lang) === "python" && seg.symbol && seg.symbol.kind !== "module" && fa.symbols.some((s) => s.start === seg.start && s.qual === seg.symbol!.qual)) {
+  if (
+    shikiLang(lang) === "python" &&
+    seg.symbol &&
+    seg.symbol.kind !== "module" &&
+    fa.symbols.some((s) => s.start === seg.start && s.qual === seg.symbol!.qual)
+  ) {
     const toks = await hl.tokensOf(lang, seg.text.join("\n"));
     return buildView(seg, fa, (i) => toks[i], 0, 0, pkgs);
   }
@@ -171,7 +211,11 @@ async function snippetView(seg: Segment, src: SegSource, hl: Highlighter): Promi
     // Imports are at the file's start, not in the segment: take the current file's
     const file = seg.src.kind === "free" ? null : src.fileOf(seg);
     const cur = file ? await src.currentText(seg).catch(() => null) : null;
-    pkgs = await src.callPkgs(seg, cur ? src.analyze(seg.lang, cur, { start: 1, end: 0 }, file ?? undefined).imports : fa.imports, file);
+    pkgs = await src.callPkgs(
+      seg,
+      cur ? src.analyze(seg.lang, cur, { start: 1, end: 0 }, file ?? undefined).imports : fa.imports,
+      file,
+    );
   }
   const toks = await hl.tokensOf(seg.lang, seg.text.join("\n"));
   return buildView(seg, fa, (i) => toks[i], cut, seg.start - 1, pkgs);
@@ -181,7 +225,14 @@ async function snippetView(seg: Segment, src: SegSource, hl: Highlighter): Promi
  * fa's line numbers = segment line - shift (whole file: shift = 0, fa line L is the real line L; the segment's text: fa's line 1
  * is the segment's first line, shift = seg.start - 1). colOff = the indent taken off
  */
-function buildView(seg: Segment, fa: FileAnalysis, tokAt: (i: number) => Tok[] | undefined, colOff: number, shift: number, pkgOf: (c: { name: string; recv?: string }) => string | undefined = () => undefined): SegView {
+function buildView(
+  seg: Segment,
+  fa: FileAnalysis,
+  tokAt: (i: number) => Tok[] | undefined,
+  colOff: number,
+  shift: number,
+  pkgOf: (c: { name: string; recv?: string }) => string | undefined = () => undefined,
+): SegView {
   const calls: CallSpan[] = [];
   const marks = new Map<number, Mark[]>();
   for (const c of fa.calls) {
@@ -189,12 +240,22 @@ function buildView(seg: Segment, fa: FileAnalysis, tokAt: (i: number) => Tok[] |
     if (line < seg.start || line > seg.end) continue;
     const idx = calls.length;
     const pkg = pkgOf(c);
-    calls.push({ line, col: c.col + colOff, end: c.end + colOff, name: c.name, recv: c.recv, loop: c.loop, dispatch: c.dispatch, pkg });
+    calls.push({
+      line,
+      col: c.col + colOff,
+      end: c.end + colOff,
+      name: c.name,
+      recv: c.recv,
+      loop: c.loop,
+      dispatch: c.dispatch,
+      pkg,
+    });
     const arr = marks.get(line) ?? [];
     arr.push({ col: c.col + colOff, end: c.end + colOff, idx, pkg });
     marks.set(line, arr);
   }
-  const html: string[] = [], flags: number[] = [];
+  const html: string[] = [],
+    flags: number[] = [];
   const bare: Record<number, string> = {};
   seg.text.forEach((text, i) => {
     const line = seg.start + i;
@@ -213,4 +274,9 @@ function buildView(seg: Segment, fa: FileAnalysis, tokAt: (i: number) => Tok[] |
 }
 
 /** A plain-text view: what a segment shows when its view could not be built */
-export const plainView = (seg: Segment): SegView => ({ html: seg.text.map(escHtml), flags: seg.text.map((l) => (l.trim() ? 0 : 1)), calls: [], defs: [] });
+export const plainView = (seg: Segment): SegView => ({
+  html: seg.text.map(escHtml),
+  flags: seg.text.map((l) => (l.trim() ? 0 : 1)),
+  calls: [],
+  defs: [],
+});

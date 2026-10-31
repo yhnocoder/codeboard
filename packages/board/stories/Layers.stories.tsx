@@ -20,7 +20,11 @@ function board(a: Args): Scene {
     put(codeCard("O2", "deallocate"), { x: 260, y: 500, w: 420 });
     put(noteCard("O3", "最后放的卡在最上面"), { x: 420, y: 620, w: 240 });
   }
-  return { board: b, links: a.lift === "selected arrow" ? ["AB"] : undefined, after: a.lift === "hovered card" ? () => setHoverCard("A") : undefined };
+  return {
+    board: b,
+    links: a.lift === "selected arrow" ? ["AB"] : undefined,
+    after: a.lift === "hovered card" ? () => setHoverCard("A") : undefined,
+  };
 }
 
 const meta = {
@@ -28,7 +32,11 @@ const meta = {
   render: (a, ctx) => <Stage scene={() => board(a)} globals={ctx.globals as Globals} />,
   args: { lift: "none", overlap: true },
   argTypes: {
-    lift: { control: "inline-radio", options: ["none", "selected arrow", "hovered card"], description: "What floats the arrow above the cards" },
+    lift: {
+      control: "inline-radio",
+      options: ["none", "selected arrow", "hovered card"],
+      description: "What floats the arrow above the cards",
+    },
     overlap: { control: "boolean", description: "Three overlapping cards (stacking order)" },
   },
 } satisfies Meta<Args>;

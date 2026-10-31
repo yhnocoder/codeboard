@@ -30,7 +30,9 @@ export function placePeek(id: number, p: PeekPop, def: PeekDef) {
   if (!r) return;
   const card = uid("c");
   const seg = structuredClone(unwrap(def.seg));
-  addCards([{ card: { id: card, kind: "code", segments: [seg] }, views: {}, w: 480 }], { at: { x: r.x + r.w + 48, y: r.y } });
+  addCards([{ card: { id: card, kind: "code", segments: [seg] }, views: {}, w: 480 }], {
+    at: { x: r.x + r.w + 48, y: r.y },
+  });
   requestViews([seg]);
   addLink({ card: p.card, seg: p.seg, line: p.line }, { card });
   closePop(id);
@@ -51,4 +53,6 @@ export function followPeek(id: number, def: PeekDef) {
 
 /** 加 Sidenote 的 Code 页：搜函数和文件（最多 8 个） */
 export const searchCodeForNote = (q: string): Promise<SearchItem[]> =>
-  ask("search", { q, scope: "code" }).then((r) => r.filter((x) => x.kind === "symbol" || x.kind === "file").slice(0, 8)).catch(() => []);
+  ask("search", { q, scope: "code" })
+    .then((r) => r.filter((x) => x.kind === "symbol" || x.kind === "file").slice(0, 8))
+    .catch(() => []);

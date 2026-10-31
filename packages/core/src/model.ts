@@ -121,7 +121,8 @@ export function parseViewKey(k: string): { sid: string; vid?: string } {
   return at > 0 ? { sid: k.slice(0, at), vid: k.slice(at + 1) } : { sid: k };
 }
 /** 这张卡某个 Variant 的段的展示数据存在哪：正显示着 = 段 id，否则 viewKey */
-export const viewKeyOf = (c: Pick<CodeCard, "active">, sid: string, vid: string) => (activeOf(c) === vid ? sid : viewKey(sid, vid));
+export const viewKeyOf = (c: Pick<CodeCard, "active">, sid: string, vid: string) =>
+  activeOf(c) === vid ? sid : viewKey(sid, vid);
 
 /**
  * 写在白板上的字的四种样子：Note = 卡片（卡框、「¶ 标题」栏）；Text、Box、Mark 没有卡框。
@@ -149,7 +150,10 @@ export type NoteCard = CardBase & {
    *  nth code block). Kept out of md so the Markdown stays plain GFM; same shape as @yhnocoder/markdown's MdLayout */
   mdLayout?: NoteLayout;
 };
-export type NoteLayout = { tables?: ({ cols?: (number | null)[]; rows?: (number | null)[] } | null)[]; wrap?: number[] };
+export type NoteLayout = {
+  tables?: ({ cols?: (number | null)[]; rows?: (number | null)[] } | null)[];
+  wrap?: number[];
+};
 /** 没有卡框、字直接写在画布上的（Text、Box、Mark） */
 export const frameless = (c: Card | undefined): c is NoteCard => c?.kind === "note" && c.look !== "note";
 /** 图片：默认无背景（只显示图片本身），bg = 有卡片外框 */
@@ -218,14 +222,19 @@ export type BlockRef = { i: number; h: string };
 export function blockSig(src: string): string {
   let h = 0x811c9dc5;
   const s = src.trim();
-  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193); }
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
   return (h >>> 0).toString(36);
 }
 /** 这一端现在落在第几块：第 i 块的指纹对得上就是它，否则找指纹一样、离 i 最近的那块；都没有 = -1（画在卡头，和整张卡一样） */
 export function blockAt(ref: BlockRef, sigs: readonly string[]): number {
   if (sigs[ref.i] === ref.h) return ref.i;
   let best = -1;
-  sigs.forEach((s, k) => { if (s === ref.h && (best < 0 || Math.abs(k - ref.i) < Math.abs(best - ref.i))) best = k; });
+  sigs.forEach((s, k) => {
+    if (s === ref.h && (best < 0 || Math.abs(k - ref.i) < Math.abs(best - ref.i))) best = k;
+  });
   return best;
 }
 
@@ -237,7 +246,11 @@ export type LinkSide = "left" | "right" | "top" | "bottom";
  * name / col：点的是出发行的哪个调用；vars = 勾选了的变量（默认一个都不加）；cands = 语法推出来的候选；loop = 出发行在 for / while 里（↺）
  */
 export type CallMark = {
-  name: string; col: number; vars?: Var[]; cands?: Var[]; loop?: boolean;
+  name: string;
+  col: number;
+  vars?: Var[];
+  cands?: Var[];
+  loop?: boolean;
   /** 证据：没有 = static（静态解析出来的）；manual = 手动补的（虚线）；observed = 跑出来确认过（绿色，OBSERVED） */
   ev?: CallEvidence;
   /** 跨了什么边界：pybind · deep_ep.cpp m.def、kernel[grid]、launch macro…（标签框的第一行） */
@@ -258,7 +271,17 @@ export type CallMark = {
  * via = 怎么补上的（registry、search）；cmd / log / at / commit = observed 的证据：运行命令、日志行、时间、当时的 commit；
  * count = 那次运行里调了几次，run = 运行记录的 id（<存储目录>/runs/<id>.json）
  */
-export type CallEvidence = { kind: "manual" | "observed"; via?: string; cmd?: string; log?: string[]; at?: number; commit?: string; count?: number; run?: string; base?: "manual" };
+export type CallEvidence = {
+  kind: "manual" | "observed";
+  via?: string;
+  cmd?: string;
+  log?: string[];
+  at?: number;
+  commit?: string;
+  count?: number;
+  run?: string;
+  base?: "manual";
+};
 /** 运行时的一次调用：n = 第几次（从 1 数），args = [形参名, 值的简写]（tensor 只记 shape / dtype / device） */
 export type CallSample = { n: number; args: [string, string][] };
 
@@ -301,11 +324,16 @@ export type RpcMark = { mech: string; custom?: string; msg?: string; fan?: "one"
 /** 线上的文字：RPC · shm · "run" · one → all */
 export function rpcText(r: RpcMark): string {
   const m = r.mech === "custom" ? r.custom || "custom" : r.mech;
-  return ["RPC", m, r.msg ? (/^["']/.test(r.msg) ? r.msg : `"${r.msg}"`) : "", r.fan === "all" ? "one → all ranks" : ""].filter(Boolean).join(" · ");
+  return ["RPC", m, r.msg ? (/^["']/.test(r.msg) ? r.msg : `"${r.msg}"`) : "", r.fan === "all" ? "one → all ranks" : ""]
+    .filter(Boolean)
+    .join(" · ");
 }
 
 /** 默认只有终点有箭头 */
-export const headOf = (l: Pick<Link, "style">) => ({ start: !!l.style?.head?.start, end: l.style?.head?.end !== false });
+export const headOf = (l: Pick<Link, "style">) => ({
+  start: !!l.style?.head?.start,
+  end: l.style?.head?.end !== false,
+});
 
 /** 调用图的标记：字母，或一个内置贴纸图标的名字 */
 export type GraphMark = { letter: string } | { icon: string };
@@ -363,7 +391,8 @@ export type Sticker = { id: string; icon: IconRef; color?: string; at: StickerAt
 /** 卡右上角的贴纸位置（相对卡左上角，i = 那一排里的第几个）：Update 后行没了的贴纸挪到这里 */
 export const cornerAt = (w: number, i = 0) => ({ x: w - 56 - i * 25, y: -11, size: 22 });
 /** 内置的「?」贴纸，或写了问题的贴纸 */
-export const isQuestion = (s: Pick<Sticker, "icon" | "q">) => !!s.q || (s.icon.pack === "builtin" && s.icon.name === "question");
+export const isQuestion = (s: Pick<Sticker, "icon" | "q">) =>
+  !!s.q || (s.icon.pack === "builtin" && s.icon.name === "question");
 
 export type Camera = { x: number; y: number; z: number };
 /** 新白板、这台机器上还没看过的白板的镜头 */
@@ -398,9 +427,16 @@ export type Board = {
 };
 
 /** 图例：只给样式起名字，不加规则 */
-export const LEGEND = [["call", "Call"], ["rpc", "RPC"], ["observed", "Observed"], ["gen", "Generated from"], ["see", "See also"]] as const;
+export const LEGEND = [
+  ["call", "Call"],
+  ["rpc", "RPC"],
+  ["observed", "Observed"],
+  ["gen", "Generated from"],
+  ["see", "See also"],
+] as const;
 export type LegendKey = (typeof LEGEND)[number][0];
-export const legendName = (b: Pick<Board, "legend">, k: LegendKey) => b.legend?.[k] || LEGEND.find((x) => x[0] === k)![1];
+export const legendName = (b: Pick<Board, "legend">, k: LegendKey) =>
+  b.legend?.[k] || LEGEND.find((x) => x[0] === k)![1];
 
 /** 白板文件里共享卡的位置：只有 id，内容在卡库里。在 cards 里占着叠放顺序 */
 export type SharedRef = { id: string; kind: "shared" };
@@ -417,12 +453,26 @@ export type BoardMeta = { id: string; name: string; group?: string; cards: numbe
 export type BrokenBoard = { file: string; name: string; group?: string; reason: string };
 
 export function emptyBoard(id: string, name: string): Board {
-  return { version: BOARD_VERSION, id, name, cam: homeCam(), cards: [], place: {}, links: [], sections: [], sidenotes: [], stickers: [], born: {}, seq: 0 };
+  return {
+    version: BOARD_VERSION,
+    id,
+    name,
+    cam: homeCam(),
+    cards: [],
+    place: {},
+    links: [],
+    sections: [],
+    sidenotes: [],
+    stickers: [],
+    born: {},
+    seq: 0,
+  };
 }
 
 let seq = 0;
 /** 新 id：前缀 + 时间 + 序号 + 随机（卡、段、Link、白板都用它） */
-export const uid = (p: string) => `${p}${Date.now().toString(36)}${(seq++).toString(36)}${Math.random().toString(36).slice(2, 5)}`;
+export const uid = (p: string) =>
+  `${p}${Date.now().toString(36)}${(seq++).toString(36)}${Math.random().toString(36).slice(2, 5)}`;
 
 export const isCode = (c: Card | undefined): c is CodeCard => c?.kind === "code";
 
@@ -431,13 +481,20 @@ const LOOK_NAME: Record<NoteLook, string> = { note: "Note", text: "Text", box: "
 export function cardTitle(c: Card, b?: Pick<Board, "cards">): string {
   if (c.title) return c.title;
   switch (c.kind) {
-    case "code": return codeTitle(c);
-    case "note": return firstLine(c.md) || LOOK_NAME[c.look];
-    case "image": return c.alt || "Image";
-    case "web": return c.meta?.title || domainOf(c.url);
-    case "links": return "Links";
-    case "compare": return `Compare · ${b ? compareName(c, b) : ""}`;
-    case "board": return "Board";
+    case "code":
+      return codeTitle(c);
+    case "note":
+      return firstLine(c.md) || LOOK_NAME[c.look];
+    case "image":
+      return c.alt || "Image";
+    case "web":
+      return c.meta?.title || domainOf(c.url);
+    case "links":
+      return "Links";
+    case "compare":
+      return `Compare · ${b ? compareName(c, b) : ""}`;
+    case "board":
+      return "Board";
   }
 }
 
@@ -446,7 +503,8 @@ function compareName(c: CompareCard, b: Pick<Board, "cards">) {
   if (!cols) return "";
   const [a, k] = cols.map((x) => shortName(cardTitle(x)));
   if (a === k) {
-    const va = versionLabel(cols[0].segments[0]?.version), vb = versionLabel(cols[1].segments[0]?.version);
+    const va = versionLabel(cols[0].segments[0]?.version),
+      vb = versionLabel(cols[1].segments[0]?.version);
     return `${a} · ${va} ↔ ${vb}`;
   }
   return `${a} ↔ ${k}`;
@@ -487,14 +545,30 @@ export function mdHeading(md: string): string {
     const line = md.slice(i, e < 0 ? undefined : e).trim();
     if (line) {
       const m = /^#{1,6}\s+(.*?)(?:\s+#+)?$/.exec(line);
-      return m ? m[1].replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/(\*\*|__|~~|`|\*|_)(?=\S)(.+?)(?<=\S)\1/g, "$2").replace(/\$+/g, "").trim() : "";
+      return m
+        ? m[1]
+            .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
+            .replace(/(\*\*|__|~~|`|\*|_)(?=\S)(.+?)(?<=\S)\1/g, "$2")
+            .replace(/\$+/g, "")
+            .trim()
+        : "";
     }
     if (e < 0) return "";
     i = e + 1;
   }
 }
 /** Markdown 的第一行字（标题用）：图片换成它的 alt（只有一张没 alt 的图的行跳过：粘贴的截图） */
-export const firstLine = (md: string) => md.split("\n").map((l) => l.replace(/!\[([^\]\n]*)\]\([^)\n]*\)/g, "$1").replace(/^[#>\-*\s]+/, "").replace(/\*\*|`/g, "").trim()).find(Boolean) ?? "";
+export const firstLine = (md: string) =>
+  md
+    .split("\n")
+    .map((l) =>
+      l
+        .replace(/!\[([^\]\n]*)\]\([^)\n]*\)/g, "$1")
+        .replace(/^[#>\-*\s]+/, "")
+        .replace(/\*\*|`/g, "")
+        .trim(),
+    )
+    .find(Boolean) ?? "";
 /** 深拷贝。白板在 mutate 里传进来的是 store 的代理，structuredClone 拷不了，所以走 JSON（白板数据本来就是 JSON） */
 export const clone = <T>(x: T): T => JSON.parse(JSON.stringify(x));
 
@@ -507,16 +581,23 @@ export function twinContent(c: Card): string {
 }
 /** to 的内容换成 from 的（from 是普通对象；to 可以是白板 store 里的代理）：只写变了的字段，别的字段不通知 */
 export function copyTwinContent(from: Card, to: Card, raw: <T>(x: T) => T = (x) => x): void {
-  const f = from as Record<string, unknown>, t = to as Record<string, unknown>, r = raw(to) as Record<string, unknown>;
+  const f = from as Record<string, unknown>,
+    t = to as Record<string, unknown>,
+    r = raw(to) as Record<string, unknown>;
   for (const k of Object.keys(r)) if (!OWN.has(k) && !(k in f)) delete t[k];
   for (const [k, v] of Object.entries(f)) {
     if (OWN.has(k)) continue;
-    if (typeof v !== "object" || v === null) { if (r[k] !== v) t[k] = v; }
-    else if (JSON.stringify(r[k]) !== JSON.stringify(v)) t[k] = clone(v);
+    if (typeof v !== "object" || v === null) {
+      if (r[k] !== v) t[k] = v;
+    } else if (JSON.stringify(r[k]) !== JSON.stringify(v)) t[k] = clone(v);
   }
 }
 export function domainOf(url: string) {
-  try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return url; }
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return url;
+  }
 }
 
 /** short：卡头里用，尽量短（不在 git 里的文件只显示内容哈希的前 4 位） */
@@ -524,19 +605,27 @@ export function versionLabel(v: Version | undefined, short = false): string {
   if (!v) return "";
   if (short && v.kind === "hash") return v.hash.slice(0, 4);
   switch (v.kind) {
-    case "git": return v.commit.slice(0, 7);
-    case "pkg": return `${v.name} ${v.version}`;
-    case "hash": return `Unknown version · ${v.hash.slice(0, 4)}`;
-    case "none": return "No commit";
+    case "git":
+      return v.commit.slice(0, 7);
+    case "pkg":
+      return `${v.name} ${v.version}`;
+    case "hash":
+      return `Unknown version · ${v.hash.slice(0, 4)}`;
+    case "none":
+      return "No commit";
   }
 }
 
 export function sameSource(a: Source, b: Source) {
   switch (a.kind) {
-    case "repo": return b.kind === "repo" && a.repo === b.repo;
-    case "external": return b.kind === "external" && a.root === b.root;
-    case "github": return b.kind === "github" && a.owner === b.owner && a.name === b.name && a.ref === b.ref;
-    case "free": return b.kind === "free" && a.url === b.url;
+    case "repo":
+      return b.kind === "repo" && a.repo === b.repo;
+    case "external":
+      return b.kind === "external" && a.root === b.root;
+    case "github":
+      return b.kind === "github" && a.owner === b.owner && a.name === b.name && a.ref === b.ref;
+    case "free":
+      return b.kind === "free" && a.url === b.url;
   }
 }
 
@@ -546,10 +635,14 @@ export const inRanges = (rs: [number, number][] | undefined, l: number) => rs?.f
 export function sameVersion(a: Version, b: Version) {
   if (a.kind !== b.kind) return false;
   switch (a.kind) {
-    case "git": return a.commit === (b as typeof a).commit;
-    case "pkg": return a.name === (b as typeof a).name && a.version === (b as typeof a).version;
-    case "hash": return a.hash === (b as typeof a).hash;
-    case "none": return true;
+    case "git":
+      return a.commit === (b as typeof a).commit;
+    case "pkg":
+      return a.name === (b as typeof a).name && a.version === (b as typeof a).version;
+    case "hash":
+      return a.hash === (b as typeof a).hash;
+    case "none":
+      return true;
   }
 }
 
@@ -576,7 +669,8 @@ export function allSegments(b: Pick<Board, "cards" | "sidenotes">): Segment[] {
 
 /** Compare 的两栏（按 cols 的顺序）；有一栏找不到时返回 undefined */
 export function colsOf(b: Pick<Board, "cards">, c: CompareCard): [CodeCard, CodeCard] | undefined {
-  const a = b.cards.find((k) => k.id === c.cols[0]), k = b.cards.find((x) => x.id === c.cols[1]);
+  const a = b.cards.find((k) => k.id === c.cols[0]),
+    k = b.cards.find((x) => x.id === c.cols[1]);
   return isCode(a) && isCode(k) ? [a, k] : undefined;
 }
 
@@ -616,7 +710,6 @@ export function stickerWhere(b: Pick<Board, "links">, s: Sticker): { card?: stri
   return l ? { card: l.from.card, seg: l.from.seg, line: l.from.line } : {};
 }
 
-
 export const segOf = (c: CodeCard, seg?: string) => (seg ? c.segments.find((s) => s.id === seg) : c.segments[0]);
 
 /** 段按「文件 → 行号」排序，first 指定的文件排在最前 */
@@ -630,7 +723,15 @@ export function mergeOverlapping(segs: Segment[]): Segment[] {
   const out: Segment[] = [];
   for (const s of segs) {
     const p = out[out.length - 1];
-    if (p && p.src.kind !== "free" && s.src.kind !== "free" && p.path === s.path && sameSource(p.src, s.src) && sameVersion(p.version, s.version) && s.start <= p.end + 1) {
+    if (
+      p &&
+      p.src.kind !== "free" &&
+      s.src.kind !== "free" &&
+      p.path === s.path &&
+      sameSource(p.src, s.src) &&
+      sameVersion(p.version, s.version) &&
+      s.start <= p.end + 1
+    ) {
       if (s.end > p.end) {
         p.text = [...p.text, ...s.text.slice(p.end - s.start + 1)];
         p.end = s.end;
@@ -641,7 +742,13 @@ export function mergeOverlapping(segs: Segment[]): Segment[] {
       if (p.symbol && s.symbol?.qual !== p.symbol.qual) p.symbol = undefined;
       continue;
     }
-    out.push({ ...s, text: [...s.text], hidden: s.hidden ? [...s.hidden] : undefined, hl: s.hl ? [...s.hl] : undefined, annots: s.annots?.map((a) => ({ ...a })) });
+    out.push({
+      ...s,
+      text: [...s.text],
+      hidden: s.hidden ? [...s.hidden] : undefined,
+      hl: s.hl ? [...s.hl] : undefined,
+      annots: s.annots?.map((a) => ({ ...a })),
+    });
   }
   return out;
 }
@@ -654,15 +761,19 @@ export function callName(qual: string): string {
 }
 
 /** Call 箭头是不是从这个调用点出发（同一张卡、同一段、同一行，调用的是同一个名字） */
-export const sameCallSite = (l: Pick<Link, "from" | "call">, at: { card: string; seg?: string; line?: number; name: string }) =>
-  !!l.call && l.from.card === at.card && l.from.seg === at.seg && l.from.line === at.line && l.call.name === at.name;
+export const sameCallSite = (
+  l: Pick<Link, "from" | "call">,
+  at: { card: string; seg?: string; line?: number; name: string },
+) => !!l.call && l.from.card === at.card && l.from.seg === at.seg && l.from.line === at.line && l.call.name === at.name;
 
 /**
  * 备选就是这一段的代码：qual 一样、文件也一样（备选的 path 相对工作区，段的相对仓库）。只比 qual 不够：同一个
  * DispatchStub 的 CUDA 和 CPU 注册常是两个文件里同名的 at::native::add_kernel
  */
-export const altIsSeg = (a: Pick<CallAlt, "qual" | "path">, s: Pick<Segment, "path"> & { symbol?: Pick<SymRef, "qual"> }) =>
-  !!a.qual && a.qual === s.symbol?.qual && (!a.path || a.path === s.path || a.path.endsWith(`/${s.path}`));
+export const altIsSeg = (
+  a: Pick<CallAlt, "qual" | "path">,
+  s: Pick<Segment, "path"> & { symbol?: Pick<SymRef, "qual"> },
+) => !!a.qual && a.qual === s.symbol?.qual && (!a.path || a.path === s.path || a.path.endsWith(`/${s.path}`));
 
 /** 线上显示的文字：名字相同只显示一个；不同显示 a → b；返回值 → logits */
 export const varText = (v: Var) => (v.ret ? `return → ${v.a}` : v.b ? `${v.a} → ${v.b}` : v.a);

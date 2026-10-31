@@ -13,11 +13,20 @@ let reply: AiChatResult = { text: "and more", via: "GPT-4o mini" };
 let fetches: string[] = [];
 const W = nodeWorkspace();
 W.settings = { ...W.settings, get: <T>(k: string) => conf.get(k) as T };
-const withModels = { models: async () => [], chat: async (model: string | undefined, req: AiChatRequest, o: { justification: string }) => { chats.push({ model, req, justification: o.justification }); return reply; } };
+const withModels = {
+  models: async () => [],
+  chat: async (model: string | undefined, req: AiChatRequest, o: { justification: string }) => {
+    chats.push({ model, req, justification: o.justification });
+    return reply;
+  },
+};
 const signal = () => new AbortController().signal;
 
 beforeEach(async () => {
-  conf.clear(); chats = []; fetches = []; reply = { text: "and more", via: "GPT-4o mini" };
+  conf.clear();
+  chats = [];
+  fetches = [];
+  reply = { text: "and more", via: "GPT-4o mini" };
   W.ai = withModels;
   await W.secrets.delete("codeboard.deepseekApiKey");
   resetDeepseekFim();
@@ -27,7 +36,9 @@ beforeEach(async () => {
     return new Response(JSON.stringify({ choices: [{ text: " from deepseek" }] }), { status: 200 });
   });
 });
-afterEach(() => { vi.unstubAllGlobals(); });
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 const setKey = () => W.secrets.set("codeboard.deepseekApiKey", "sk-test");
 
@@ -73,9 +84,26 @@ describe("Note completion: which model", () => {
 describe("DeepSeek key", () => {
   it("Set asks for the key (trimmed) and stores it in secret storage; an empty answer stores nothing; Clear removes it", async () => {
     const asked: string[] = [];
-    expect(await setDeepseekKey({ input: async (o) => { asked.push(o.title ?? ""); return ""; }, pick: async () => undefined })).toBe(false);
+    expect(
+      await setDeepseekKey({
+        input: async (o) => {
+          asked.push(o.title ?? "");
+          return "";
+        },
+        pick: async () => undefined,
+      }),
+    ).toBe(false);
     expect((await aiInfo()).key).toBe(false);
-    expect(await setDeepseekKey({ input: async (o) => { asked.push(o.title ?? ""); expect(o.password).toBe(true); return "  sk-new "; }, pick: async () => undefined })).toBe(true);
+    expect(
+      await setDeepseekKey({
+        input: async (o) => {
+          asked.push(o.title ?? "");
+          expect(o.password).toBe(true);
+          return "  sk-new ";
+        },
+        pick: async () => undefined,
+      }),
+    ).toBe(true);
     expect(await W.secrets.get("codeboard.deepseekApiKey")).toBe("sk-new");
     expect(asked).toEqual(["DeepSeek API Key", "DeepSeek API Key"]);
     await clearDeepseekKey();
