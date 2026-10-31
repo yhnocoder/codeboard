@@ -62,7 +62,11 @@ const scan = (file: string, text: string): Hit[] => {
 /** Each call re matches (its first group = the arguments, which may span lines), outside whole-line comments */
 const callsIn = (text: string, re: RegExp) => {
   const src = text.replace(/^[ \t]*(\/\/|\/?\*).*$/gm, (m) => " ".repeat(m.length));
-  return [...src.matchAll(re)].map((m) => ({ line: lineOf(src, m.index), args: m[1], text: m[0].replace(/\s+/g, " ").trim() }));
+  return [...src.matchAll(re)].map((m) => ({
+    line: lineOf(src, m.index),
+    args: m[1],
+    text: m[0].replace(/\s+/g, " ").trim(),
+  }));
 };
 
 describe("harness scenarios wait for state, not for time", () => {
@@ -153,7 +157,8 @@ describe("VS Code e2e scripts wait for state, not for time", () => {
         // a hold that is not awaited would wait for nothing
         holds.push(`${f}:${c.line}`);
         // hold(<a named constant, not a bare number>, "<why>")
-        if (!/^\s*[A-Za-z_][\w.]*\s*(?:[-+*]\s*[A-Za-z_][\w.]*\s*)*,\s*["'`]\s*[^"'`\s]/.test(c.args)) bare.push(`${f}:${c.line}: ${c.text}`);
+        if (!/^\s*[A-Za-z_][\w.]*\s*(?:[-+*]\s*[A-Za-z_][\w.]*\s*)*,\s*["'`]\s*[^"'`\s]/.test(c.args))
+          bare.push(`${f}:${c.line}: ${c.text}`);
       }
     }
     console.log(`fixed waits in the VS Code e2e scripts: ${holds.length} hold() sites (${holds.join(", ")})`);
