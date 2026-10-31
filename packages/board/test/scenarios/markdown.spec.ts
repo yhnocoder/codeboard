@@ -1036,3 +1036,33 @@ test("mermaidThemeFontLoads", async () => {
   check("mermaidThemeFontLoads-fitsLoadedFont", JSON.stringify(got) === JSON.stringify(want), { got, want });
   await close(h);
 });
+
+/** 表格圆角：6px 的外框（separate、0 间距），格子只画右边和下边的线，最后一列、最后一行不画；静态显示和编辑器里一样 */
+test("noteTableRoundedCorners", async () => {
+  const b = emptyBoard("b1", "rounded table");
+  put(b, { id: "nb", kind: "note", md: ["Before.", "| Memory | Scope | Latency |\n|---|---|---|\n| register | thread | 1 |\n| shared | block | 30 |", "After."].join("\n\n"), look: "note" } as NoteCard, 80, 80, 420);
+  b.cam = { x: 0, y: 0, z: 1 };
+  const h = await open({ board: b, light, w: 900, h: 600 });
+  const look = (sel: string) => h.page.evaluate((sel) => {
+    const t = document.querySelector<HTMLTableElement>(sel)!, s = getComputedStyle(t), cells = [...t.rows].map((r) => [...r.cells]);
+    const last = cells[cells.length - 1], head = cells[0];
+    const cs = (el: Element) => getComputedStyle(el);
+    return {
+      radius: s.borderTopLeftRadius, collapse: s.borderCollapse, spacing: s.borderSpacing, frame: s.borderTopWidth, scroll: s.overflowX,
+      inner: cs(head[0]).borderRightWidth, below: cs(head[0]).borderBottomWidth, top: cs(head[0]).borderTopWidth,
+      lastCol: cs(head[head.length - 1]).borderRightWidth, lastRow: cs(last[0]).borderBottomWidth, corner: cs(head[0]).borderTopLeftRadius,
+      fits: t.getBoundingClientRect().width <= t.parentElement!.getBoundingClientRect().width + 0.5,
+    };
+  }, sel);
+  const want = (x: Awaited<ReturnType<typeof look>>) => x.radius === "6px" && x.collapse === "separate" && /^0px( 0px)?$/.test(x.spacing) && x.frame === "1px"
+    && x.inner === "1px" && x.below === "1px" && x.top === "0px" && x.lastCol === "0px" && x.lastRow === "0px" && x.corner === "5px" && x.fits;
+  const stat = await look('.card[data-id="nb"] > .cface > .nbody table');
+  const tb = (await h.page.locator('.card[data-id="nb"] > .cface > .nbody table').boundingBox())!;
+  await h.page.screenshot({ path: path.join(OUT, "note-table-rounded.png"), clip: { x: tb.x - 16, y: tb.y - 16, width: tb.width + 32, height: tb.height + 32 } });
+  await h.page.mouse.dblclick(tb.x + 20, tb.y + 10);
+  await h.page.locator('.card[data-id="nb"] .md-pm table').waitFor(); await idle(h);
+  const ed = await look('.card[data-id="nb"] .md-pm table');
+  await shot(h, "note-table-rounded-editor");
+  check("table-rounded", want(stat) && want(ed) && stat.scroll === "auto", JSON.stringify({ stat, ed }));
+  await close(h);
+});
