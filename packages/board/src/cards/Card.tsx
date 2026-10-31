@@ -9,7 +9,8 @@ import { langLabel } from "@codeboard/analysis/langs";
 import { measuredHeight } from "../state/subboards";
 import { state, setSizes, isSel, flows, collapsedSet, sel, placeOf, rectOf, shared, sharedOn, twinsOf } from "../state/store";
 import { Glyph } from "../stickers/glyphs";
-import { editing, setEditing, dragging, popIn, sizeIn, walk, pingCard, dropTarget, staged, husk } from "../state/ui";
+import { editing, setEditing, dragging, popIn, sizeIn, walk, pingCard, dropTarget, staged } from "../state/ui";
+import { foldAt, toTitle, fadeAt, goneAt, skel } from "../state/fold";
 import { Icon } from "../ui/icons";
 import { isHidden } from "../state/sections";
 import { queueMeasure, observeResize } from "../state/measure";
@@ -89,12 +90,25 @@ export function CardView(p: { card: Card }) {
   };
   // 弹出、滑过去、收进 Section 的每一帧只改这几项：单独一个 effect，不把卡的整个 style 和 classList 重算一遍
   // 离屏幕很远、整张藏着的卡（state/cull.ts 的 far）动不动都看不见：不写，省下每帧每张卡的样式重算（Section 一行十几张卡大多在屏幕外）
+  const POP = ["transform", "translate", "scale", "transform-origin", "opacity", "transition"];
+  let folding = false;
   const popStyle = (e: HTMLDivElement) => createRenderEffect(() => {
-    const pi = pop(), s = e.style;
-    if (!pi || (farAway(c().id) && lodOf(c().id) === "full")) { for (const k of ["transform", "opacity", "transition"]) s.removeProperty(k); return; }
-    const x = (1 - pi.v) * pi.ox, y = (1 - pi.v) * pi.oy;
-    s.transform = pi.slide ? `translate(${x}px, ${y}px)` : `translate(${x}px, ${y}px) scale(${0.9 + 0.1 * pi.v})`;
-    s.opacity = pi.slide ? "" : String(Math.min(1, pi.v * 1.8));
+    const pi = pop(), f = foldAt(c().id), s = e.style;
+    if ((!pi && !f) || (farAway(c().id) && lodOf(c().id) === "full")) { folding = false; for (const k of POP) s.removeProperty(k); return; }
+    if (f) {
+      // 收进 Section、从 Section 里出来（state/fold.ts）：整张卡按 v 朝标题中间缩放。用 translate / scale 两个属性：斜贴的卡的 rotate 排在它们中间，
+      // 平移不跟着转。缩放的原点：斜贴的卡在中心（style()），别的在左上角
+      const r = rectOf(c()), tilt = !!tiltOf(c().id), t = toTitle(f, tilt ? r.x + r.w / 2 : r.x, tilt ? r.y + r.h / 2 : r.y);
+      // 每帧变的只有平移、缩放、透明度：别的只在第一帧写（同样的值再写一遍也会让浏览器重算这张卡的样式）
+      if (!folding) { folding = true; if (!tilt) s.transformOrigin = "0 0"; s.removeProperty("transform"); s.transition = "none"; }
+      if (goneAt(f)) { if (s.opacity !== "0") s.opacity = "0"; return; }
+      Object.assign(s, { translate: `${t.x}px ${t.y}px`, scale: String(f.v), opacity: String(fadeAt(f)) });
+      return;
+    }
+    if (folding) { folding = false; for (const k of POP) s.removeProperty(k); }
+    const x = (1 - pi!.v) * pi!.ox, y = (1 - pi!.v) * pi!.oy;
+    s.transform = pi!.slide ? `translate(${x}px, ${y}px)` : `translate(${x}px, ${y}px) scale(${0.9 + 0.1 * pi!.v})`;
+    s.opacity = pi!.slide ? "" : String(Math.min(1, pi!.v * 1.8));
     s.transition = "none";
   });
   const dim = () => {
@@ -131,7 +145,7 @@ export function CardView(p: { card: Card }) {
           "merge-hot": !!(drop() & 1), "merge-arm": !!(drop() & 2), "drop-hot": !!(drop() & 4), "drop-cand": !!(drop() & 8), "img-drop": !!(drop() & 16),
           "bind-hot": isBindHot(`card:${c().id}`),
           "bind-anchor": isBindAnchor(c().id),
-          husk: husk(c().id) === "out", "husk-in": husk(c().id) === "in",
+          skel: skel(c().id) === "out", "skel-in": skel(c().id) === "in",
         }}
         onPointerEnter={() => enterCard(c().id)} onPointerLeave={() => leaveCard(c().id)}
         onPointerDown={(e) => cardPointerDown(e, c().id)} onContextMenu={(e) => cardContextMenu(e, c().id)} onClick={(e) => cardClick(e, c().id)} onDblClick={(e) => cardDblClick(e, c().id)}>
@@ -172,10 +186,16 @@ export function CardView(p: { card: Card }) {
         <BoundStickers card={c().id} />
         {/* 地图档的名字空闲时就建好、藏着（styles.css），切到地图档只是显示出来 */}
         <Show when={(labelReady() || lodOf(c().id) === "map") && c().kind !== "board"}><MapLabel card={c()} /></Show>
+        {/* 收进 Section、从 Section 里出来时：内容换成几道骨架线（state/fold.ts skel） */}
+        <Show when={skel(c().id)}><Skeleton /></Show>
       </div>
     </Show>
   );
 }
+
+const SKEL_BARS = [100, 92, 96, 70, 88, 94, 60, 84, 90, 52];
+/** 骨架线：一道标题、十道长短不一的线，不量卡（卡矮的地方被裁掉） */
+const Skeleton = () => <div class="skl" aria-hidden="true"><span class="t" style={{ width: "55%" }} />{SKEL_BARS.map((w) => <span style={{ width: `${w}%` }} />)}</div>;
 
 export function CodeHead(p: { card: CodeCard; col?: boolean }) {
   const c = () => p.card;

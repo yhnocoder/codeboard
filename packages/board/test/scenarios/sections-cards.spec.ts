@@ -152,8 +152,10 @@ test("sectionCollapsedPill", async () => {
 });
 
 /** Folding and unfolding a Section with its animation (member cards are built and taken down over a few frames, the far-off ones
- *  after the animation): folded, no member card is left in the page; unfolded, every member is back where it was, with no pop-in
- *  transform or opacity left behind, the far-off member included; one undo folds it again */
+ *  after the animation): folded, no member card is left in the page and the Section is the same kind of frame as an open one, just
+ *  wrapping its title; the arrow from a card outside stays on the page the whole time and ends on the folded frame at the title row;
+ *  nothing jumps when the animation stops; unfolded, every member is back where it was, with nothing left of the animation, the
+ *  far-off member included; one undo folds it again */
 test("sectionFoldRoundTrip", async () => {
   const b = emptyBoard("b1", "fold round trip");
   const s = findSym("Scheduler.schedule");
@@ -164,9 +166,9 @@ test("sectionFoldRoundTrip", async () => {
   put(b, { id: "far", kind: "note", look: "note", md: "# Far away\n\nNotes." } as NoteCard, 9000, 6000, 280);
   for (const id of Object.keys(b.place)) b.place[id].section = "S";
   const ids = Object.keys(b.place);
-  // Section 外面一张卡，连着一张成员卡：折叠、展开时这条线先淡掉，完了回来
+  // Section 外面一张卡，连着一张成员卡：折叠、展开时这条线一直在，终点跟着框走；Section 里两张卡之间的线跟着卡收进去
   put(b, { id: "out", kind: "note", look: "note", md: "# Outside\n\nNotes." } as NoteCard, 9600, 140, 280);
-  b.links.push({ id: "L", from: { card: "out" }, to: { card: "n0" } });
+  b.links.push({ id: "L", from: { card: "out" }, to: { card: "n0" } }, { id: "In", from: { card: "n1" }, to: { card: "n2" } });
   b.sections.push({ id: "S", title: "Scheduling", x: 80, y: 80, w: 9400, h: 6400 });
   b.cam = { x: 0, y: 0, z: 1 };
   const h = await open({ board: b, light, w: 1400, h: 900 });
@@ -174,25 +176,79 @@ test("sectionFoldRoundTrip", async () => {
   const before = await h.page.evaluate(() => Object.fromEntries([...document.querySelectorAll<HTMLElement>(".card[data-id]")].map((e) => [e.dataset.id, e.getBoundingClientRect().toJSON()])));
   const cards = () => h.page.evaluate((ids) => ids.map((id) => {
     const e = document.querySelector<HTMLElement>(`.card[data-id="${id}"]`);
-    return e && { id, transform: e.style.transform, opacity: e.style.opacity, r: e.getBoundingClientRect().toJSON() };
+    return e && { id, anim: e.style.transform + e.style.translate + e.style.scale + e.style.opacity, skel: e.matches(".skel, .skel-in") || !!e.querySelector(".skl"), r: e.getBoundingClientRect().toJSON() };
   }), ids);
+  // 框和标题的样子：折叠后和展开时一样（同样的底色、边框，标题没有自己的底）
+  const look = () => h.page.evaluate(() => {
+    const f = document.querySelector<HTMLElement>('.sect[data-sect="S"]'), l = document.querySelector<HTMLElement>('.slabel[data-sect="S"]')!;
+    const fs = f && getComputedStyle(f), ls = getComputedStyle(l);
+    return { frame: fs && { bg: fs.backgroundColor, border: fs.borderTopColor + " " + fs.borderTopWidth + " " + fs.borderTopStyle, r: f!.getBoundingClientRect().toJSON() },
+      label: { bg: ls.backgroundColor, shadow: ls.boxShadow, weight: ls.fontWeight, r: l.getBoundingClientRect().toJSON() } };
+  });
+  // 动画的每一帧记下：框、外面连进来的线（在不在、透明度、终点）、「· N cards」
+  const record = () => h.page.evaluate(() => {
+    const w = window as any;
+    w.__rec = []; w.__recOn = true;
+    const tick = () => {
+      if (!w.__recOn) return;
+      const f = document.querySelector('.sect[data-sect="S"]')?.getBoundingClientRect(), p = document.querySelector<SVGPathElement>('g.link[data-lk="L"] path.edge');
+      let op = p ? 1 : 0;
+      for (let e: Element | null = p; e && e.tagName !== "svg"; e = e.parentElement) op *= +getComputedStyle(e).opacity;
+      const n = p?.getAttribute("d")?.match(/-?[\d.]+/g)?.map(Number) ?? [];
+      w.__rec.push({ f: f && [f.x, f.y, f.width, f.height], op, end: n.slice(-2), count: !!document.querySelector('.slabel[data-sect="S"] .scount') });
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
+  type Rec = { f: number[] | null; op: number; end: number[]; count: boolean };
+  const stop = () => h.page.evaluate(() => { const w = window as any; w.__recOn = false; return w.__rec as Rec[]; });
+  // 动画停下那一帧：框和线的终点最后一次变化不到一个半像素（弹簧收紧了才停，停下时不跳）
+  const lastStep = (rec: Rec[]) => {
+    let f = 0, e = 0;
+    for (let i = 1; i < rec.length; i++) {
+      const a = rec[i - 1], b = rec[i];
+      const df = a.f && b.f ? Math.max(...b.f.map((x, j) => Math.abs(x - a.f![j]))) : 0, de = a.end.length && b.end.length ? Math.max(Math.abs(b.end[0] - a.end[0]), Math.abs(b.end[1] - a.end[1])) : 0;
+      if (df > 0.01) f = df;
+      if (de > 0.01) e = de;
+    }
+    return { frame: f, end: e };
+  };
+  const open0 = await look();
+  await record();
   await h.page.locator('.slabel[data-sect="S"] button[aria-label="Collapse Section"]').click();
   await until(h, "the fold is saved", () => h.board().sections[0].collapsed); await idle(h);
-  const folded = await cards();
+  const recFold = await stop();
+  const folded = await cards(), shut = await look();
   check("sectionFoldRoundTrip folded: no member card left", folded.every((c) => !c), folded);
+  const lr = shut.label.r, fr = shut.frame?.r;
+  check("sectionFoldRoundTrip folded: the same frame and title as an open Section, the frame just wraps the title",
+    !!shut.frame && !!fr && shut.frame.bg === open0.frame!.bg && shut.frame.border === open0.frame!.border && shut.label.bg === open0.label.bg && shut.label.shadow === open0.label.shadow &&
+    shut.label.weight === open0.label.weight && lr.x === open0.label.r.x && lr.y === open0.label.r.y && fr.x === open0.frame!.r.x && fr.y === open0.frame!.r.y &&
+    lr.right <= fr.right && lr.right > fr.right - 16 && lr.bottom <= fr.bottom && fr.height < 40, { open0, shut });
+  const endF = recFold[recFold.length - 1].end;
+  check("sectionFoldRoundTrip folding: the outside arrow stays, ends on the folded frame at the title row, the card count shows from the start",
+    recFold.length > 10 && recFold.every((r) => r.op > 0.99) && !!fr && Math.abs(endF[0] - fr.right) < 10 && Math.abs(endF[1] - (lr.y + lr.height / 2)) < 2 &&
+    recFold.filter((r) => r.f && open0.frame && r.f[2] < open0.frame.r.width - 1).every((r) => r.count), { frames: recFold.length, ops: [...new Set(recFold.map((r) => r.op))], endF, fr, lr });
+  check("sectionFoldRoundTrip folding: nothing jumps when it stops", lastStep(recFold).frame < 1.5 && lastStep(recFold).end < 1.5, lastStep(recFold));
+  await record();
   await h.page.locator('.slabel[data-sect="S"] .chev2').click();
   await until(h, "the unfold is saved", () => !h.board().sections[0].collapsed);
-  // idle() 不够：弹出的弹簧越过终点时 v 夹在 1，样式几帧不变；等真正动完（far 也建好）
-  const open1 = await until(h, "every member card is back and done popping", async () => { const cs = await cards(); return cs.every((c) => c && !c.transform) && cs; }).catch(() => cards());
+  // idle() 不够：动画停下后还有几帧不变；等真正动完（far 也建好、内容淡回来）
+  const open1 = await until(h, "every member card is back and done moving", async () => { const cs = await cards(); return cs.every((c) => c && !c.anim && !c.skel) && cs; }).catch(() => cards());
   await idle(h);
+  const recUnfold = await stop();
   const near = (a: DOMRect, b: DOMRect) => Math.abs(a.x - b.x) < 1 && Math.abs(a.y - b.y) < 1;
-  check("sectionFoldRoundTrip unfolded: every member back, nothing left of the pop-in",
-    open1.every((c) => !!c && !c.transform && !c.opacity) && open1.filter((c) => c && before[c.id]).every((c) => near(c!.r, before[c!.id])), { open1, before });
-  // 展开完了：卡的内容、连着的线都淡回来了，不留下藏着的 class
-  const husks = () => h.page.evaluate(() => document.querySelectorAll(".husk, .husk-in, .lhusk, .lhusk-in, .whusk, .whusk-in").length);
-  const left = await until(h, "the content and the arrow fade back in", async () => (await husks()) === 0).then(() => 0, husks);
-  const arrow = await h.page.locator('g.link[data-lk="L"]').count();
-  check("sectionFoldRoundTrip unfolded: content and arrows shown again", left === 0 && arrow === 1, { left, arrow });
+  check("sectionFoldRoundTrip unfolded: every member back, nothing left of the animation",
+    open1.every((c) => !!c && !c.anim && !c.skel) && open1.filter((c) => c && before[c.id]).every((c) => near(c!.r, before[c!.id])), { open1, before });
+  const back = await look();
+  const arrow = await h.page.locator('g.link[data-lk="L"]').count(), inner = await h.page.evaluate(() => {
+    const g = document.querySelector('g.link[data-lk="In"]')?.parentElement;
+    return g ? { t: g.getAttribute("transform"), op: getComputedStyle(g).opacity } : null;
+  });
+  check("sectionFoldRoundTrip unfolded: the frame, both arrows and the title back as they were",
+    arrow === 1 && !!inner && !inner.t && inner.op === "1" && JSON.stringify(back.frame) === JSON.stringify(open0.frame) && back.label.r.width === open0.label.r.width, { arrow, inner, back, open0 });
+  check("sectionFoldRoundTrip unfolding: the outside arrow stays, nothing jumps when it stops",
+    recUnfold.every((r) => r.op > 0.99) && lastStep(recUnfold).frame < 1.5 && lastStep(recUnfold).end < 1.5, { ops: [...new Set(recUnfold.map((r) => r.op))], last: lastStep(recUnfold), tail: recUnfold.map((r) => r.end.map(Math.round).join(",")).filter((x, i, a) => x !== a[i - 1]).slice(-12) });
   await h.page.keyboard.press("Control+z");
   await until(h, "the undo is saved", () => h.board().sections[0].collapsed); await idle(h);
   const undone = await cards();

@@ -133,7 +133,7 @@
     "sections": {
       "about": "Sections (frames): drawing, membership, folding, Fit Content",
       "files": [
-        "packages/board/src/canvas/Sections.tsx", "packages/board/src/state/sections.ts", "packages/core/src/layout.ts",
+        "packages/board/src/canvas/Sections.tsx", "packages/board/src/state/sections.ts", "packages/board/src/state/fold.ts", "packages/core/src/layout.ts",
         "packages/board/test/scenarios/sections-cards.spec.ts"
       ],
       "scenarios": [
