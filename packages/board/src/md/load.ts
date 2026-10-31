@@ -75,7 +75,7 @@ function whenIdle(f: () => void) {
  * [[ / 【【 / @ 引用的候选：这块白板上和子白板里（一路往下，标上所在的子白板：子白板 › 卡）有真正标题的卡（core refTitle），
  * 再是这块白板上的 Section 和别的白板。图片、名字只是正文第一行的卡不列。别的白板上的卡在 refGroups
  */
-export function refCandidates(): { id: string; title: string; kind: string }[] {
+function refCandidates(): { id: string; title: string; kind: string }[] {
   const out: { id: string; title: string; kind: string }[] = [];
   const clean = (t: string) => t.replace(/[\[\]\n]/g, " ").slice(0, 160);
   const boardName = (id: string) => skels[id]?.name ?? state.boards.find((m) => m.id === id)?.name;

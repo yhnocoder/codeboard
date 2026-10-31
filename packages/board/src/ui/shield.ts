@@ -14,7 +14,7 @@ let fwd: Element | null = null, up: Element | null = null;
 
 export function bindShield(e: HTMLElement) { el = e; }
 
-export function dropShield() {
+function dropShield() {
   clearTimeout(dropT);
   el?.classList.remove("on");
 }

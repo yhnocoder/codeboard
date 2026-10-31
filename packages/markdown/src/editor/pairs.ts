@@ -14,7 +14,7 @@ const WORD = /[\p{L}\p{N}_]/u;
 /** 右边是这些（或什么都没有）时才补右括号：紧贴着字的时候多半是在已有的字前面加括号 */
 const OPEN_BEFORE = /^$|[\s)\]}.,;:!?'"]/;
 type Auto = { pos: number; ch: string };
-export const pairsKey = new PluginKey<Auto[]>("cbPairs");
+const pairsKey = new PluginKey<Auto[]>("cbPairs");
 
 const charAt = (view: EditorView, pos: number) => {
   const $p = view.state.doc.resolve(pos);

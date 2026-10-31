@@ -159,7 +159,7 @@ export type Geo = {
 };
 
 /** 从 Mark 出发的箭头画成手绘线：返回 Mark 的颜色，别的箭头 undefined */
-export function handOf(L: Pick<Link, "from">) {
+function handOf(L: Pick<Link, "from">) {
   const c = cardById(L.from.card)?.card;
   return c?.kind === "note" && c.look === "mark" ? c.hand : undefined;
 }
@@ -293,7 +293,7 @@ setCurveSource((id) => {
   return geoOf(L)?.pts ?? null;
 });
 /** 一条线的几何：画着的就用画着的那份（含合并、滑动）；没画的现算一份（不合并） */
-export function geoOf(L: Link): Geo | null {
+function geoOf(L: Link): Geo | null {
   const r = routes.get(L.id);
   if (r?.L === L && r.geo) return r.geo();
   const bs = baseOf(L);

@@ -29,7 +29,7 @@ export function sharedShown(cards: Card[]) {
   for (const c of cards) if (c.kind === "code") for (const s of c.segments) { if (c.variants?.length) shownView.set(s.id, activeOf(c)); else shownView.delete(s.id); }
 }
 /** 让 views[段] 对上卡上显示的 Variant（同一帧里换，不等宿主）；没有存着的就先显示纯文本，再问宿主 */
-export function ensureViews(c: CodeCard) {
+function ensureViews(c: CodeCard) {
   const act = activeOf(c);
   const put: Record<string, SegView | undefined> = {};
   const missing: Segment[] = [];
@@ -48,7 +48,7 @@ export function ensureViews(c: CodeCard) {
   if (missing.length) void ask("views", { segs: structuredClone(missing) }).then(absorbViews).catch(() => {});
 }
 /** 宿主给的 Variant 展示数据（键 viewKey(段, Variant)）：那个 Variant 正显示着就直接放到 views[段] */
-export function absorbViews(v: Record<string, SegView>) {
+function absorbViews(v: Record<string, SegView>) {
   const put: Record<string, SegView | undefined> = {};
   for (const [k, view] of Object.entries(v)) {
     const { sid, vid } = parseViewKey(k);
@@ -98,7 +98,7 @@ export async function addVariantMenu(id: string, x: number, y: number) {
   openMenu(items, x, y);
 }
 
-export async function addVariant(id: string, from: AddVariantFrom) {
+async function addVariant(id: string, from: AddVariantFrom) {
   const c = code(id);
   if (!c) return;
   const segs = structuredClone(unwrap(upstreamSegs(c)));
@@ -132,7 +132,7 @@ export function variantMenu(id: string, vid: string, x: number, y: number) {
   ], x, y);
 }
 
-export function removeVariant(id: string, vid: string) {
+function removeVariant(id: string, vid: string) {
   const c = code(id);
   if (!c) return;
   if (activeOf(c) === vid) switchVariant(id, UPSTREAM);
@@ -226,7 +226,7 @@ export function applyVariantSync(cards: Record<string, VariantSync>) {
 const setMerged = (id: string, vid: string, into: string, tip: string) => setMergedSig((m) => ({ ...m, [id]: { vid, into, tip } }));
 
 /** Convert：变回普通卡，钉在上游最新（合进去的改动就在里面） */
-export function convertMerged(id: string) {
+function convertMerged(id: string) {
   const latest = vlive[id]?.latest;
   const c = code(id);
   if (!c) return;
@@ -240,7 +240,7 @@ export function convertMerged(id: string) {
   for (const s of latest?.segs ?? []) setState("stale", s.id, { state: "ok" });
   toast(latest ? `Now a regular card pinned to ${latest.label}` : "Now a regular card");
 }
-export function keepMerged(id: string, vid: string, tip: string) {
+function keepMerged(id: string, vid: string, tip: string) {
   mutate((b) => { const c = findCard(b, id)?.card as CodeCard | undefined; const v = c?.variants?.find((x) => x.id === vid); if (v) v.merged = tip; });
   setMergedSig((m) => { const n = { ...m }; delete n[id]; return n; });
 }

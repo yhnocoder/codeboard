@@ -2,7 +2,8 @@ import { createSignal } from "solid-js";
 import { boardSignal } from "./root";
 
 /** 正在抓：key = 卡 id，或「卡 id/行 id」 */
-export const [fetchingKeys, setFetchingKeys] = boardSignal<Set<string>>(new Set());
+const [fetchingKeys, setFetchingKeys] = boardSignal<Set<string>>(new Set());
+export { setFetchingKeys };
 export const fetching = (k: string) => fetchingKeys().has(k);
 
 export type RowDrag = { card: string; item: string; index: number; out: boolean; x: number; y: number; label: string };

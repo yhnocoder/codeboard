@@ -48,6 +48,7 @@ export function openAddNote(at: Anchor, tab: "code" | "paste" | "text" | "link" 
   const el = (at.lines && document.querySelector(`.card[data-id="${host}"] .addn`)) || document.querySelector(`.card[data-id="${host}"]`);
   openPop({ kind: "addNote", at, tab }, el ? { el, prefer: "right" } : lastPointer());
 }
+/** @public run from the key table (keymap.ts) */
 export function addSidenoteUI() {
   const ls = lineSel();
   if (ls) openAddNote({ card: ls.card, seg: ls.seg, lines: [ls.start, ls.end] });

@@ -9,10 +9,10 @@ import { runJob } from "./imageai";
 import { checkFocus } from "../md/focusmarks";
 
 /** 太长的不发：回答要和原文一样长，长了既慢又容易被截断 */
-export const FOCUS_MAX = 24_000;
+const FOCUS_MAX = 24_000;
 
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
-export async function autoFocus(id: string) {
+async function autoFocus(id: string) {
   // 正在编辑：先把编辑器里的字存回去，发的是最新的
   const ed = editing();
   if (ed?.kind === "note" && ed.id === id) setEditing(null);

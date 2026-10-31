@@ -27,7 +27,7 @@ type Hidden = [number, number, boolean];
 
 /** Is this paragraph inside a table cell (no headings there) */
 const inCell = (doc: PMNode, pos: number) => /cell/.test(doc.resolve(pos).parent.type.spec.tableRole ?? "");
-export const isSource = (n: PMNode) => n.type.name === "paragraph";
+const isSource = (n: PMNode) => n.type.name === "paragraph";
 
 export const revealMeta = (tr: Transaction) => tr.setMeta(inlineKey, { reveal: true } satisfies Meta);
 const toCaret = (view: EditorView, pos: number) => placeCaret(view, pos, revealMeta);
@@ -246,7 +246,7 @@ function hiddenAt(state: EditorState, pos: number): Hidden[] {
 }
 const hi = (c: number) => c >= 0xd800 && c <= 0xdbff, lo = (c: number) => c >= 0xdc00 && c <= 0xdfff;
 /** ← →: a hidden run of markers is crossed in one press, a hidden atom (formula, image) counts as one character */
-export function moveH(view: EditorView, dir: number, shift: boolean): boolean {
+function moveH(view: EditorView, dir: number, shift: boolean): boolean {
   const { state } = view, sel = state.selection;
   if (!(sel instanceof TextSelection)) return false;
   if (!shift && !sel.empty) {

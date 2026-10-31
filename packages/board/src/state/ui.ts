@@ -7,7 +7,8 @@ import { rooted, boardSignal } from "./root";
 import type { StaticTextRange } from "@yhnocoder/markdown";
 
 // 临时展开的手动隐藏范围（Show）："seg:from"
-export const [shown, setShown] = boardSignal<Set<string>>(new Set());
+const [shown, setShown] = boardSignal<Set<string>>(new Set());
+export { shown };
 export function toggleShown(k: string) {
   const s = new Set(shown());
   s.has(k) ? s.delete(k) : s.add(k);
@@ -41,13 +42,15 @@ const notesIndex = rooted(() => createMemo(() => {
 export const notesOf = (id: string): Sidenote[] => notesIndex().get(id) ?? [];
 
 // 闪一下的行："card:seg:line"
-export const [flashRows, setFlashRows] = boardSignal<Set<string>>(new Set());
+const [flashRows, setFlashRows] = boardSignal<Set<string>>(new Set());
+export { flashRows };
 export function flash(card: string, seg: string, lines: number[]) {
   const keys = lines.map((l) => `${card}:${seg}:${l}`);
   setFlashRows(new Set([...flashRows(), ...keys]));
   setTimeout(() => { const s = new Set(flashRows()); keys.forEach((k) => s.delete(k)); setFlashRows(s); }, 700);
 }
-export const [pingCard, setPingCard] = boardSignal<{ id: string; n: number } | null>(null);
+const [pingCard, setPingCard] = boardSignal<{ id: string; n: number } | null>(null);
+export { pingCard };
 let pingN = 0;
 export const ping = (id: string) => setPingCard({ id, n: ++pingN });
 

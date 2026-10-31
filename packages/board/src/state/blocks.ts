@@ -14,8 +14,8 @@ import { boardSignal, rooted } from "./root";
 import { BLOCK_LEAVE } from "./timing";
 
 /** 一张 Note 里每块的位置（相对卡片顶部、未减滚动，和代码卡的 CardGeo 一样）；sigs = 量的那份 Markdown 每块的指纹（编辑中是编辑器里的字） */
-export type BlockGeo = { ys: number[]; hs: number[]; top: number; bottom: number; scroll: number; sigs: string[] };
-export const [bgeo, setBgeo] = createStore<Record<string, BlockGeo | undefined>>({});
+type BlockGeo = { ys: number[]; hs: number[]; top: number; bottom: number; scroll: number; sigs: string[] };
+const [bgeo, setBgeo] = createStore<Record<string, BlockGeo | undefined>>({});
 
 /** el 在 root 里的 y（按排版，不受缩放、斜贴影响）；root 要在 el 的 offsetParent 链上（.nbody 是 position: relative） */
 function offIn(el: HTMLElement, root: HTMLElement): number {
@@ -26,7 +26,7 @@ function offIn(el: HTMLElement, root: HTMLElement): number {
 
 type NoteDom = { card: HTMLElement; body: HTMLElement; kids: HTMLElement[]; blocks: string[]; editor: boolean };
 /** Note 的正文和里面一块一块的顶层元素；编辑器开着时是编辑器里的、按编辑器里眼前的字拆。对不上时 null */
-export function noteDom(id: string): NoteDom | null {
+function noteDom(id: string): NoteDom | null {
   const c = cardById(id)?.card;
   if (c?.kind !== "note" || c.look !== "note") return null;
   const card = document.querySelector<HTMLElement>(`.card[data-id="${CSS.escape(id)}"]`);
@@ -116,7 +116,8 @@ export function trackBlocks(id: () => string, md: () => string) {
 
 /** 悬停着的那一块：y = 中线相对卡片顶部（减了滚动），圆点画在卡的左右边上这个高度（canvas/Links.tsx 的 BlockPorts） */
 export type BlockHover = { card: string; ref: BlockRef; y: number };
-export const [hoverBlock, setHoverBlock] = boardSignal<BlockHover | null>(null);
+const [hoverBlock, setHoverBlock] = boardSignal<BlockHover | null>(null);
+export { hoverBlock };
 let leaveT: number | undefined;
 /** 离开一会儿才收起圆点：鼠标从块移到卡边上的圆点的路上不丢。已经在等的不重新计时（指针在别处一直动也会收起） */
 export const keepBlock = () => { clearTimeout(leaveT); leaveT = undefined; };

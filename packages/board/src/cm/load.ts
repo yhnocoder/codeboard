@@ -34,6 +34,7 @@ export function nearSeg(card: string, lang: string): Pick<Segment, "src" | "path
 // 宿主发来的补全、签名（core 的类型）原样交给编辑器（@yhnocoder/markdown 的类型）：两边要能互相赋值，哪边改了这里编译不过
 type Same<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
 type Assert<T extends true> = T;
+/** @public a compile-time check, nothing imports it */
 export type LspTypesAgree = [Assert<Same<LspItem, EditorLspItem>>, Assert<Same<LspSignature, EditorLspSignature>>];
 
 /** 语言服务：id = 这段编辑中的代码（宿主给它一个虚拟文档）；编辑器拆掉时 close 关掉它 */

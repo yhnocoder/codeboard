@@ -88,14 +88,14 @@ const nudge = (dx: number, dy: number) => (a: A, e: KeyboardEvent) => {
 const atPointer = () => worldAt(lastPointer());
 const hasCards = () => sel.cards.length > 0;
 /** ⌥F 先 Fit 正在编辑的 Note / Free code 卡，再是指针下的卡（不用先选中），都没有才是选中的卡和 Section */
-export function fitTarget(): string | null {
+function fitTarget(): string | null {
   const ed = editing();
   if ((ed?.kind === "note" || ed?.kind === "free") && cardById(ed.id)) return ed.id;
   const p = lastPointer(), el = document.elementFromPoint(p.x, p.y)?.closest<HTMLElement>("#board .card[data-id]");
   return el && cardById(el.dataset.id!) ? el.dataset.id! : null;
 }
 
-export const KEYMAP: Bind[] = [
+const KEYMAP: Bind[] = [
   { id: "newNote", keys: ["n"], label: "New Note", group: "Create", run: (a) => void a.newNote(atPointer()) },
   { id: "newText", keys: ["t"], label: "New Text", group: "Create", run: (a) => void a.newText(atPointer()) },
   { id: "newBox", keys: ["r"], label: "New Box", group: "Create", run: (a) => void a.newBox(atPointer()) },

@@ -92,8 +92,6 @@ function schedule() {
 }
 /** 把还没补上的全部渲染完（导出图片前） */
 export function flushMd() { for (const j of [...pending.values()]) run(j); }
-/** 还在排队的（测试用） */
-export const mdPending = () => pending.size;
 
 /** 渲染进 el（远处的、没缓存的排队，见上） */
 export function mdInto(el: HTMLElement, src: string, inline?: boolean, layout?: MdLayout | null) {

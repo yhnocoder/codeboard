@@ -1,4 +1,3 @@
-import { renderMd } from "./render";
 import { colorCode } from "./code";
 import { missingImage } from "./image";
 
@@ -170,4 +169,3 @@ export function toggleTask(src: string, i: number): string | null {
   return null;
 }
 
-export { renderMd };

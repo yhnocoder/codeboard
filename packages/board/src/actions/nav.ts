@@ -1,4 +1,4 @@
-import { createMemo, createSignal } from "solid-js";
+import { createMemo } from "solid-js";
 import { cardTitle, isCode, segOf, type Link } from "@codeboard/core";
 import { state, sel, select, clearSel, cardById, toast, shared } from "../state/store";
 import { send } from "../host";
@@ -52,10 +52,6 @@ export function showLinkedHere(id: string, el: Element) {
 
 type Spot = { cam: { x: number; y: number; z: number }; card?: string };
 const back: Spot[] = [], fwd: Spot[] = [];
-const [navN, setNavN] = createSignal({ back: 0, fwd: 0, at: 0 });
-/** 有没有可以后退 / 前进的；at = 最近一次跳转的时间（导航条跳完显示一会儿） */
-export const navState = navN;
-const bump = () => setNavN({ back: back.length, fwd: fwd.length, at: Date.now() });
 const here = (): Spot => ({ cam: { ...camTarget() }, card: sel.cards[0] });
 
 /** 跳到一张卡（Go to、Linked here）：先记下现在的位置，⌃- 能回来。at = 要闪一下的那一行 */
@@ -68,26 +64,25 @@ export function jumpTo(id: string, at?: { seg?: string; line?: number }) {
   select({ cards: [f.host.id] });
   revealCard(id);
   if (at?.seg && at.line !== undefined && isCode(f.card) && segOf(f.card, at.seg)) flash(id, at.seg, [at.line]);
-  bump();
 }
 function restore(s: Spot) {
   camTo(s.cam.x, s.cam.y, s.cam.z, true);
   const f = s.card ? cardById(s.card) : undefined;
   if (f) select({ cards: [f.host.id] }); else clearSel();
 }
+/** @public run from the key table (keymap.ts) */
 export function navBack() {
   const s = back.pop();
   if (!s) return toast("Nothing to go back to");
   fwd.push(here());
   restore(s);
-  bump();
 }
+/** @public run from the key table (keymap.ts) */
 export function navForward() {
   const s = fwd.pop();
   if (!s) return toast("Nothing to go forward to");
   back.push(here());
   restore(s);
-  bump();
 }
-export function resetNav() { back.length = 0; fwd.length = 0; bump(); }
+function resetNav() { back.length = 0; fwd.length = 0; }
 onBoardSwitch(resetNav);

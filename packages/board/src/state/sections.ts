@@ -74,7 +74,7 @@ export function measureShut(id: string): Shut | undefined {
   return m;
 }
 /** 折叠的 Section 的框：刚好包住标题；还没量过时是 core 的标题条大小 */
-export function pillOf(s: Section): Rect {
+function pillOf(s: Section): Rect {
   const m = shutStore[s.id];
   return m ? { x: s.x, y: s.y, w: m.w, h: m.h } : sectionPill(s);
 }
@@ -171,7 +171,7 @@ rooted(() => createComputed(on(frames, (f, prev) => {
 /** 渲染用：这个 Section 的框画在哪：拖卡时正缓动的框在半路上，别的就是 frames() 里的框。框和标签都按它画 */
 export const shownFrame = (id: string) => shownOf(id)[0]() ?? frames().get(id);
 
-export function overlapArea(a: Rect, b: Rect): number {
+function overlapArea(a: Rect, b: Rect): number {
   const w = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x), h = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
   return w > 0 && h > 0 ? w * h : 0;
 }

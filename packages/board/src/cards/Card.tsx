@@ -321,7 +321,7 @@ function CodeFoot(p: { card: CodeCard }) {
 }
 
 /** 进程标签：rank 0、Scheduler × TP；浅的是线程 / CUDA stream。点一下改或删 */
-export function Procs(p: { card: string; procs?: { text: string; light?: boolean }[] }) {
+function Procs(p: { card: string; procs?: { text: string; light?: boolean }[] }) {
   return (
     <For each={p.procs ?? []}>{(t, i) => (
       <button class={act.procCls(t)} data-tip={t.light ? "Thread / stream · click to edit" : "Process · click to edit"} data-nodrag

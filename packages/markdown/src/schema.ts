@@ -35,7 +35,7 @@ const texAttrs = (e: HTMLElement) => {
 };
 export type MathToken = { raw: string; latex: string; display: boolean };
 /** 行内公式的分词规则，解析、粘贴进来的 HTML 里的字、写回时的转义都照它：src 从一个 $ 开始，prev 是紧挨在它前面的那个字 */
-export function mathAt(src: string, prev: string): MathToken | null {
+function mathAt(src: string, prev: string): MathToken | null {
   if (prev === "\\" || prev === "$") return null;
   const m = INLINE_MATH.exec(src);
   return m && { raw: m[0], latex: (m[1] ?? m[2]).trim(), display: m[1] !== undefined };
@@ -56,7 +56,7 @@ export function splitMath(t: string, prev = ""): ({ text: string } | MathToken)[
   return out;
 }
 /** 交给 KaTeX 排的 TeX：行内的 $$…$$ 留在行内（displayMode 关着），用 \displaystyle 排成大号的；原文不改 */
-export const mathTex = (latex: string, display: boolean) => (display ? `\\displaystyle ${latex}` : latex);
+const mathTex = (latex: string, display: boolean) => (display ? `\\displaystyle ${latex}` : latex);
 const Math1 = InlineMath.extend({
   addAttributes() {
     return { ...this.parent?.(), display: { default: false, parseHTML: (e) => e.getAttribute("data-display") === "yes", renderHTML: (a) => (a.display ? { "data-display": "yes" } : {}) } };
@@ -434,7 +434,7 @@ const HtmlBlock = htmlNode("htmlBlock", "div").extend({
 });
 // 行内格式的 Markdown 记号：唯一的一份（写回、光标处显示的记号、展开成原文都按它）
 // bold / italic / strike / code / link 的写回是 TipTap 自带的（和这里的记号一样），其余的写回用这张表
-export const MARK_MD: Record<string, (attrs: Record<string, any>) => readonly [string, string]> = {
+const MARK_MD: Record<string, (attrs: Record<string, any>) => readonly [string, string]> = {
   bold: () => ["**", "**"], italic: () => ["*", "*"], strike: () => ["~~", "~~"], code: () => ["`", "`"],
   link: (a) => ["[", `](${a.href ?? ""})`],
   underline: () => ["<u>", "</u>"], kbd: () => ["<kbd>", "</kbd>"],
@@ -484,8 +484,7 @@ const Highlight = tagMark("highlight", "mark", HL_RE);
 // {字|批注}、{字|批注|purple below}：贴在字上的手写标注（注音 ruby 的写法）
 // 和 ==高亮== 是两回事，各用各的记号。第三段可选：颜色（blue purple orange green，默认 blue）和 below（标签写在字下面）。
 // 字和批注里的 { } | \ 写成 \{ \} \| \\；表格里 | 本来就要写成 \|。别的 Markdown 查看器里它原样显示成 {字|批注}，字不会丢
-export const ANNOT_COLORS = ["blue", "purple", "orange", "green"] as const;
-export type AnnotColor = (typeof ANNOT_COLORS)[number];
+const ANNOT_COLORS = ["blue", "purple", "orange", "green"] as const;
 const ANNOT_PART = "((?:\\\\.|[^{}|\\n\\\\])+)";
 const ANNOT_RE = new RegExp(`^\\{${ANNOT_PART}\\|${ANNOT_PART}(?:\\|([a-z ]*))?\\}`);
 const escAnnot = (t: string) => t.replace(/[\\{}|]/g, "\\$&");

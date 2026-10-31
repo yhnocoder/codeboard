@@ -117,7 +117,7 @@ export function gotoQuestion(q: QuestionItem) {
   if (q.board !== state.board.id) { send({ type: "openBoard", id: q.board, card: q.card, line: q.line, sticker: q.sticker }); return; }
   void revealQuestion(q.sticker, q.card, q.seg, q.line);
 }
-export async function revealQuestion(sticker: string, card?: string, seg?: string, line?: number) {
+async function revealQuestion(sticker: string, card?: string, seg?: string, line?: number) {
   const f = card ? cardById(card) : undefined;
   if (card && f) {
     select({ cards: [f.host.id] });

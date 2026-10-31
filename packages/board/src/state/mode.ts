@@ -19,7 +19,8 @@ export type Mode =
 export type ModeKind = Mode["kind"];
 
 const IDLE: Mode = { kind: "idle" };
-export const [mode, setMode] = boardSignal<Mode>(IDLE);
+const [mode, setMode] = boardSignal<Mode>(IDLE);
+export { setMode };
 export const idle = () => setMode(IDLE);
 export const modeIs = <K extends ModeKind>(k: K): Extract<Mode, { kind: K }> | null => { const m = mode(); return m.kind === k ? (m as Extract<Mode, { kind: K }>) : null; };
 
@@ -46,7 +47,8 @@ export function cancelMode(): boolean {
   return true;
 }
 
-export const [panning, setPanning] = boardSignal(false);
+const [panning, setPanning] = boardSignal(false);
+export { setPanning };
 // 按着的空格是键盘的状态，不跟白板走（换白板时还按着，松开才收到 keyup）
 export const [spaceDown, setSpaceDown] = createSignal(false);
 /** #board 的 data-mode */

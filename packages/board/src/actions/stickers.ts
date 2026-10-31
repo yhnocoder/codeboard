@@ -139,6 +139,7 @@ function rowLine(cardEl: HTMLElement, el: HTMLElement): { card: string; seg: str
   return r?.t === "line" ? { card: id, seg: r.seg, line: r.line } : null;
 }
 
+/** @public run from the key table (keymap.ts) */
 export function removeSticker(id: string) {
   mutate((b) => removeStickers(b, [id]));
   if (selSticker() === id) setSelSticker(null);

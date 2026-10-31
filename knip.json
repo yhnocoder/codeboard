@@ -2,6 +2,12 @@
   "$schema": "https://unpkg.com/knip@6/schema.json",
   "ignoreWorkspaces": ["examples/markdown-demo"],
   "ignoreBinaries": ["mkfifo"],
+  "ignoreDependencies": [
+    // the wasm is loaded by file path (packages/analysis/src/tree.ts), not imported
+    "@yhnocoder/tree-sitter-cuda",
+    // a Storybook addon, named only as a string in .storybook/main.ts
+    "storybook-addon-pseudo-states"
+  ],
   "workspaces": {
     ".": { "entry": ["tools/**/*.{mjs,cjs}", "vitest.config.mts"], "project": ["tools/**/*.{mjs,cjs}"] },
     "packages/core": { "entry": ["src/tidy.ts", "test/**/*.ts"], "project": ["src/**/*.ts"] },

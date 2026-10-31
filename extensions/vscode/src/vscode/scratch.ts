@@ -74,7 +74,7 @@ const KIND: Partial<Record<vscode.CompletionItemKind, LspKind>> = {
 
 const md = (d: string | vscode.MarkdownString | undefined) => (d === undefined ? undefined : typeof d === "string" ? d : d.value) || undefined;
 /** 代码片段 → 纯文字（${1:x} → x，$1 / $0 去掉） */
-export const unsnippet = (s: string) => s.replace(/\$\{\d+:([^}]*)\}/g, "$1").replace(/\$\{\d+\}|\$\d+/g, "").replace(/\\([$}\\])/g, "$1");
+const unsnippet = (s: string) => s.replace(/\$\{\d+:([^}]*)\}/g, "$1").replace(/\$\{\d+\}|\$\d+/g, "").replace(/\\([$}\\])/g, "$1");
 
 async function ensure(id: string, lang: string, near: string | undefined, store: string): Promise<Doc> {
   const have = docs.get(id);

@@ -11,11 +11,11 @@ declare const __CODEBOARD_BUILD__: string | undefined;
 const BUILD = typeof __CODEBOARD_BUILD__ === "string" ? __CODEBOARD_BUILD__ : "";
 
 // 历史版本的只读文档：codeboard-git:/<path>?{root, commit, path}
-export const GIT_SCHEME = "codeboard-git";
-export function gitUri(root: string, commit: string, rel: string): vscode.Uri {
+const GIT_SCHEME = "codeboard-git";
+function gitUri(root: string, commit: string, rel: string): vscode.Uri {
   return vscode.Uri.from({ scheme: GIT_SCHEME, path: `/${commit.slice(0, 7)}/${rel}`, query: JSON.stringify({ root, commit, path: rel }) });
 }
-export function parseGitUri(u: vscode.Uri): { root: string; commit: string; path: string; abs: string } | null {
+function parseGitUri(u: vscode.Uri): { root: string; commit: string; path: string; abs: string } | null {
   try {
     const q = JSON.parse(u.query);
     return { ...q, abs: path.join(q.root, q.path) };

@@ -137,6 +137,7 @@ export function fitAll() {
   const f = fitRect(b, 1);
   camTo(f.x, f.y, f.z);
 }
+/** @public run from the key table (keymap.ts) */
 export function fitSelection() {
   const hosts = new Set(sel.cards.flatMap((id) => { const f = cardById(id); return f ? [f.host.id] : []; }));
   const rs = [...[...hosts].map((id) => hostRect(id)).filter(Boolean) as Rect[], ...(hosts.size ? drawnAround(hosts) : [])];
@@ -147,7 +148,7 @@ export function fitSelection() {
 }
 
 /** 弹出的起点：离卡的位置多远（popCard 从这里开始） */
-export function popStart(id: string, from?: { x: number; y: number }) {
+function popStart(id: string, from?: { x: number; y: number }) {
   const h = cardById(id)?.host;
   const c = placeOf(h?.id ?? id);
   return { ox: from ? (from.x - c.x) * 0.7 : 0, oy: from ? (from.y - c.y) * 0.7 : 24 };

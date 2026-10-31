@@ -3,7 +3,7 @@
 // the text inside is drawn. Only the look; the document is never changed (the decorations are in inline.ts)
 import { ESC_DOLLAR, TEXT_MATH, inlineTokens, type InlineToken } from "../schema";
 
-export type Range = [number, number];
+type Range = [number, number];
 /** Something drawn in place of its source (while the caret is elsewhere the source is hidden and it counts as one character) */
 export type Atom =
   | { type: "math"; latex: string; display: boolean }
@@ -50,7 +50,7 @@ export function blockInfo(text: string, headings = true): BlockInfo {
 }
 
 /** The inline content of text from at on, as spans (before at is a heading's "## ") */
-export function inlineSpans(text: string, at = 0): Span[] {
+function inlineSpans(text: string, at = 0): Span[] {
   const body = text.slice(at);
   if (!body) return [];
   // an escaped \$ becomes a placeholder as in parseMd (the parser can't tell \$ from $); still two characters, so offsets hold
@@ -154,9 +154,6 @@ function imageAtom(t: InlineToken, raw: string, from: number): Atom {
     widthAt: w ? [from + raw.length - w[0].length, from + raw.length] : null, broken: !!t.broken,
   };
 }
-
-/** Whether the caret head (offset in the block) touches or is inside the span */
-export const touches = (sp: Span, head: number | null) => head !== null && head >= sp.from && head <= sp.to;
 
 /** All spans, nested ones included, in order */
 export function flat(spans: Span[], out: Span[] = []): Span[] {

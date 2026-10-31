@@ -99,7 +99,7 @@ const LIVE_CLASSES = ["off", "far", "sel", "lift", "hov", "editing", "lo-ov", "l
 
 /** 导出用的画布克隆：完整细节、没有选中；范围外的卡、两端不都在范围里的箭头、范围外的 Section 去掉，
  *  标了 data-export="strip" 的部件和交互状态也去掉。HTML 快照、PNG 共用 */
-export async function cloneForExport(b: Board, scope: ExportScope, order: string[]): Promise<HTMLElement> {
+async function cloneForExport(b: Board, scope: ExportScope, order: string[]): Promise<HTMLElement> {
   const prevSel = { cards: [...sel.cards], links: [...sel.links], sections: [...sel.sections] }, prevLine = lineSel();
   select({}); setLineSel(null);
   flushMd(); // 视野外还没渲染完的 Note 先补上

@@ -25,7 +25,8 @@ export const [shared, setShared] = createStore<Record<string, SharedInfo>>({});
 export const sharedOn = (id: string) => shared[id]?.boards.length ?? 0;
 
 export type Sel = { cards: string[]; links: string[]; sections: string[] };
-export const [sel, setSel] = createStore<Sel>({ cards: [], links: [], sections: [] });
+const [sel, setSel] = createStore<Sel>({ cards: [], links: [], sections: [] });
+export { sel };
 export type LineSel = { card: string; seg: string; start: number; end: number };
 export const [lineSel, setLineSel] = boardSignal<LineSel | null>(null);
 
@@ -60,7 +61,8 @@ export const flows = rooted(() => createMemo(() => computeFlows(state.board)));
 /** 因为折叠藏起来的卡（不管 Walkthrough 有没有临时展开） */
 export const collapsedSet = rooted(() => createMemo(() => hiddenByCollapse(state.board, flows())));
 /** Walkthrough 时临时展开所有折叠的卡：只影响显示，不进撤销、不存盘 */
-export const [showCollapsed, setShowCollapsed] = boardSignal(false);
+const [showCollapsed, setShowCollapsed] = boardSignal(false);
+export { setShowCollapsed };
 export const collapsedAway = rooted(() => createMemo(() => (showCollapsed() ? new Set<string>() : collapsedSet())));
 
 /** id → 卡（Compare 的栏也在里面，host 是外面的 Compare）。卡的增删、换 id 时才重建；拖动、改内容不动它 */
@@ -104,8 +106,10 @@ type Snap = { epoch: number; head: string; cards: string[]; place: string[]; lin
 export type Effect = { undo: () => void; redo: () => void };
 const undoStack: Snap[] = [];
 const redoStack: Snap[] = [];
-export const [canUndo, setCanUndo] = createSignal(false);
-export const [canRedo, setCanRedo] = createSignal(false);
+const [canUndo, setCanUndo] = createSignal(false);
+export { canUndo };
+const [canRedo, setCanRedo] = createSignal(false);
+export { canRedo };
 const last = new Map<string, string>();
 function piece(k: string, o: unknown) {
   const s = JSON.stringify(o);
@@ -446,7 +450,7 @@ export function setBoard(b: Board, crumbs: readonly string[]) {
   updUndo();
 }
 
-export function allIds(): string[] {
+function allIds(): string[] {
   return state.board.cards.map((c) => c.id);
 }
 

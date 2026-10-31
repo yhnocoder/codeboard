@@ -298,7 +298,7 @@ const BEND = 24;
  * 候选的横竖线 = 两个端点、每张卡外 clear、两张卡之间缝的正中（缝再小也走得过去）；在这张网格上找「长度 + 拐弯」最小的路。
  * 网格只有十来条线，每帧重算也很便宜。找不到（卡叠在端点上）返回 null
  */
-export function detour(p: Anchor, q: Anchor, obs: Box[], clear = CLEAR): Pt[] | null {
+function detour(p: Anchor, q: Anchor, obs: Box[], clear = CLEAR): Pt[] | null {
   const dp = axisOf(p), dq = axisOf(q);
   if (!dp || !dq) return null;
   const xs = [p.x, q.x], ys = [p.y, q.y];

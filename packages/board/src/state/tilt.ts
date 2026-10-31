@@ -10,7 +10,7 @@ import { tune } from "./tune";
 import { TILT_MS } from "./timing";
 
 /** 和便签贴纸一样的角度（逆时针） */
-export const TILT_DEG = -1.2;
+const TILT_DEG = -1.2;
 
 const [now, setNow] = createStore<Record<string, number | undefined>>({});
 /** 整张卡（Compare 的栏算整张 Compare）此刻的角度，度 */

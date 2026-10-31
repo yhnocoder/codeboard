@@ -311,7 +311,8 @@ export async function deleteFrameBoard(id: string) {
   clearSel();
 }
 
-/** Esc：没有别的可取消的时候回上一级 */
+/** Esc：没有别的可取消的时候回上一级
+ *  @public run from the key table (keymap.ts) */
 export const canLeave = () => crumbs().length > 0 && !sel.cards.length && !sel.links.length && !sel.sections.length;
 
 /** 点 [[引用]]：这块白板上的卡选中、带到眼前；子白板里的卡进那块子白板（更深的一路进去）再带到它；Section 选中、框进视口；
