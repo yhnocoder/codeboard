@@ -1654,6 +1654,65 @@ test("noteBoldStaysBoldInSource", async () => {
   await close(h);
 });
 
+/**
+ * n opens a new Note and keys typed right away, at full speed, are handled before the timers the focus started have run (on a
+ * busy or slow machine, as on CI). "**Takeaway**: rest" keeps its bold to Takeaway: the text typed after the closing ** goes
+ * after it, not into the bold (the closing ** must not be hidden at the caret while the editor already takes keys). The
+ * timers set while the editor gets focus are held until the typing is done, so this is the slow case every time
+ */
+test("noteTypedBeforeFocusTimersKeepsBoldEnd", async () => {
+  const TEXT = "**Takeaway**: schedule → run → postprocess";
+  const h = await open({ board: board() });
+  await idle(h);
+  const pg = h.page;
+  await pg.evaluate(() => {
+    const held: (() => void)[] = [];
+    let holding = false;
+    window.addEventListener(
+      "focus",
+      (e) => {
+        if (!(e.target as Element).closest?.(".md-pm")) return;
+        holding = true;
+        queueMicrotask(() => (holding = false));
+      },
+      true,
+    );
+    const real = window.setTimeout;
+    window.setTimeout = ((f: (...a: unknown[]) => void, ms?: number, ...a: unknown[]) => {
+      if (!holding) return real(f, ms, ...a);
+      held.push(() => f(...a));
+      return 0;
+    }) as typeof window.setTimeout;
+    const w = window as unknown as { heldTimers: () => number; releaseTimers: () => void };
+    w.heldTimers = () => held.length;
+    w.releaseTimers = () => {
+      for (const f of held.splice(0)) f();
+    };
+  });
+  await pg.mouse.move(700, 600);
+  await pg.keyboard.press("n");
+  await pg.locator(".card.note .md-pm:focus").waitFor();
+  const held = await pg.evaluate(() => (window as unknown as { heldTimers: () => number }).heldTimers());
+  await pg.keyboard.type(TEXT);
+  const live = await pg.evaluate(() => document.querySelector(".card.note .md-pm")?.textContent);
+  await pg.evaluate(() => (window as unknown as { releaseTimers: () => void }).releaseTimers());
+  await idle(h);
+  await pg.keyboard.press("Escape");
+  const saved = await until(
+    h,
+    "the Note is saved",
+    () => (h.board().cards.find((c) => c.kind === "note") as NoteCard | undefined)?.md,
+  );
+  await idle(h);
+  const bold = await pg.locator(".card.note .nbody strong").allTextContents();
+  check(
+    "noteTypedBeforeFocusTimersKeepsBoldEnd",
+    held > 0 && saved.trim() === TEXT && JSON.stringify(bold) === '["Takeaway"]',
+    { held, live, saved, bold },
+  );
+  await close(h);
+});
+
 /** 有序列表中间的空项按 Backspace 变成空段落，列表断成两段（下面那段从 1. 重新编号）：存下来、再显示、再打开编辑都还是这样，
  *  空段落不被去掉、两段不被连回去。无序列表、任务列表一样 */
 test("noteEmptyLineBetweenListsKept", async () => {
