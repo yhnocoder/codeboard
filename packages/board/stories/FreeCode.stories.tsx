@@ -3,6 +3,7 @@ import { Stage, scene, type Globals, type Scene } from "./support/board";
 import { el, frames } from "./support/play";
 import { free, card } from "./support/code";
 import { setEditing } from "../src/state/ui";
+import { themes } from "./support/themes";
 
 type Lang = "python" | "c" | "cuda-cpp";
 type Mode = "view" | "selected" | "editing" | "langMenu";
@@ -89,6 +90,7 @@ export const Overview: Story = {
   args: { w: 440 },
   argTypes: { lang: { table: { disable: true } }, title: { table: { disable: true } }, url: { table: { disable: true } }, wrap: { table: { disable: true } }, mode: { table: { disable: true } } },
 };
+export const Themes: Story = themes("python");
 export const Python: Story = {};
 export const Titled: Story = { args: { lang: "c", title: "vecAdd - cpu" } };
 export const WithSource: Story = { name: "Pasted with Source", args: { lang: "cuda-cpp", title: "vecAdd - kernel", url: "https://docs.nvidia.com/cuda/cuda-c-programming-guide/", w: 560 } };

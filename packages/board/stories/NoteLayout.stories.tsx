@@ -6,6 +6,7 @@ import { Stage, scene, type Globals, type Scene } from "./support/board";
 import { waitFor, $, frames } from "./support/play";
 import { LONG, TITLED, SHORT } from "./support/groups";
 import { HEADINGS, noteAt } from "./support/cards";
+import { themes } from "./support/themes";
 
 type Level = (typeof NOTE_FONT_LEVELS)[number];
 type Args = {
@@ -84,6 +85,7 @@ export const Overview: Story = {
   argTypes: { md: { table: { disable: true } }, title: { table: { disable: true } }, w: { table: { disable: true } }, h: { table: { disable: true } }, locked: { table: { disable: true } }, selected: { table: { disable: true } }, lod: { table: { disable: true } } },
   play: scrollMid("l-scroll"),
 };
+export const Themes: Story = themes("headings");
 export const Headings: Story = {};
 export const HeadingKeptInBody: Story = { name: "Heading Kept in Body (setting)", args: { headingInBody: true } };
 export const FontSizes: Story = { name: "Font Sizes (settings)", args: { fs_body: 16, fs_h1: 32, fs_h2: 24, fs_h3: 20, fs_h4: 17, fs_h5: 15, fs_h6: 13 } };

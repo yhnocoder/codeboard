@@ -3,6 +3,7 @@ import type { Board, CodeCard, SharedInfo, Stale } from "@codeboard/core";
 import { Stage, scene, type Globals, type Group, type Scene } from "./support/board";
 import { fn, free, multi, slice, seg0, type Fx } from "./support/code";
 import { onHost } from "../src/hostio";
+import { themes } from "./support/themes";
 
 type Kind = "function" | "class" | "snippet" | "multi" | "github" | "generated";
 type Ver = "git" | "pkg" | "hash" | "uncommitted";
@@ -145,6 +146,7 @@ export const Overview: Story = {
   args: { w: 440 },
   argTypes: Object.fromEntries(Object.keys(base).filter((k) => k !== "w").map((k) => [k, { table: { disable: true } }])),
 };
+export const Themes: Story = themes("function");
 export const Function: Story = {};
 export const Renamed: Story = { args: { title: "抢占：释放 block，回到队首" } };
 export const ClassCard: Story = { name: "Class Card", args: { kind: "class" } };

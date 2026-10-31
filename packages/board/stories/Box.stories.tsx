@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import { BOX_FILLS, type BoxFill } from "@codeboard/core";
 import { Stage, scene, boxCard, noteCard, textCard, markCard, type Globals, type Scene } from "./support/board";
+import { themes } from "./support/themes";
 
 type Args = { md: string; fill: BoxFill; w: number; h: number; state: "normal" | "selected" | "editing"; locked: boolean; lod: "toolbar" | "map" };
 
@@ -46,6 +47,7 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const Overview: Story = { render: (_, ctx) => <Stage scene={overview} globals={ctx.globals as Globals} />, argTypes: Object.fromEntries(["md", "fill", "w", "h", "state", "locked", "lod"].map((k) => [k, { table: { disable: true } }])) };
+export const Themes: Story = themes("default");
 export const Default: Story = {};
 export const Selected: Story = { name: "Selected (fill dots, corner handles)", args: { state: "selected" } };
 export const Editing: Story = { args: { state: "editing" } };

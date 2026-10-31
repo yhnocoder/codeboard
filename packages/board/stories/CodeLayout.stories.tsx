@@ -6,6 +6,7 @@ import { el, hover, forceHover } from "./support/play";
 import { fn, card, type Fx } from "./support/code";
 import { setCam } from "../src/state/camera";
 import { setDragging, setDropTarget } from "../src/state/ui";
+import { themes } from "./support/themes";
 
 type State = "default" | "long" | "tall" | "narrow" | "wide" | "selected" | "locked" | "nobg" | "mergeArmed" | "mergeHot" | "lifted";
 type Args = { state: State; level: "toolbar" | "map"; w: number };
@@ -77,6 +78,7 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const Overview: Story = { render: (a, ctx) => <Stage scene={() => overview(a)} globals={ctx.globals as Globals} />, argTypes: { state: { table: { disable: true } } } };
+export const Themes: Story = themes("long");
 export const OverviewMap: Story = { name: "Overview at Map Level", render: (a, ctx) => <Stage scene={() => overview(a)} globals={ctx.globals as Globals} />, args: { level: "map" }, argTypes: { state: { table: { disable: true } } } };
 export const OverviewLevel: Story = { name: "Overview at 30% (code as bars)", render: (a, ctx) => <Stage scene={() => overview(a)} globals={ctx.globals as Globals} />, globals: { zoom: "30" }, argTypes: { state: { table: { disable: true } } } };
 export const Long: Story = { args: { state: "long" } };

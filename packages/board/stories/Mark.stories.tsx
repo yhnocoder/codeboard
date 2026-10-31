@@ -3,6 +3,7 @@ import { HAND_COLORS, type HandColor } from "@codeboard/core";
 import { Stage, scene, markCard, codeCard, type Globals, type Scene } from "./support/board";
 import { ONE, MANY, markGroup } from "./support/groups";
 import { noteAt } from "./support/cards";
+import { themes } from "./support/themes";
 
 type Args = { md: string; color: HandColor; w: number; state: "normal" | "selected" | "editing"; locked: boolean; arrow: boolean; lod: "toolbar" | "map" };
 
@@ -70,6 +71,7 @@ export const Overview: Story = {
   render: (a, ctx) => <Stage scene={() => overview(a)} globals={ctx.globals as Globals} />,
   argTypes: fixed("md", "state", "locked", "arrow", "lod"),
 };
+export const Themes: Story = themes("blue");
 export const States: Story = {
   name: "Overview · More States",
   render: (a, ctx) => <Stage scene={() => states(a)} globals={ctx.globals as Globals} />,

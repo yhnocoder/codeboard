@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import type { Board, CodeCard, CompareCard } from "@codeboard/core";
 import { Stage, scene, type Globals, type Group, type Scene } from "./support/board";
 import { fn, edited, register, wtEdit, branchEdit } from "./support/code";
+import { themes } from "./support/themes";
 
 type Pair = "versions" | "functions";
 type Args = { pair: Pair; unified: boolean; hideSame: boolean; swap: boolean; selected: boolean; w: number; h: number };
@@ -71,6 +72,7 @@ export const Overview: Story = {
   args: { w: 900, h: 520 },
   argTypes: { pair: { table: { disable: true } }, unified: { table: { disable: true } }, hideSame: { table: { disable: true } }, swap: { table: { disable: true } }, selected: { table: { disable: true } } },
 };
+export const Themes: Story = themes("side-by-side");
 export const SideBySide: Story = {};
 export const HideSameLines: Story = { args: { hideSame: true } };
 export const Unified: Story = { args: { unified: true } };

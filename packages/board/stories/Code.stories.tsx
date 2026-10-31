@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import { HAND_COLORS, type HandColor } from "@codeboard/core";
 import { Stage, scene, codeCard, annotAt, type Globals, type Scene } from "./support/board";
 import { changed, codeGroup } from "./support/groups";
+import { themes } from "./support/themes";
 
 type Fixture = "schedule" | "preempt" | "canAppend";
 type Args = { code: Fixture; title: string; w: number; h: number; newVersion: boolean; annot: string; annotColor: HandColor; selected: boolean };
@@ -42,6 +43,7 @@ export const Overview: Story = {
   args: { w: 460, annot: "KV cache blocks", annotColor: "purple" },
   argTypes: { code: { table: { disable: true } }, title: { table: { disable: true } }, h: { table: { disable: true } }, newVersion: { table: { disable: true } }, selected: { table: { disable: true } } },
 };
+export const Themes: Story = themes("schedule");
 export const Schedule: Story = { name: "Scheduler.schedule" };
 export const NewVersion: Story = { args: { code: "canAppend", w: 420, newVersion: true } };
 export const Annotated: Story = { args: { annot: "KV cache blocks", annotColor: "purple", h: 320 } };

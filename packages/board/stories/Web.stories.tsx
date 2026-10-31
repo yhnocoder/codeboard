@@ -7,6 +7,7 @@ import { waitFor, $ } from "./support/play";
 import { PAGES, webCard, linksCard, type PageKey } from "./support/cards";
 import { setEditing, setDropTarget } from "../src/state/ui";
 import { setRowDrag } from "../src/state/web";
+import { themes } from "./support/themes";
 
 type Style = WebStyle | "auto";
 type Args = { page: PageKey | "none"; style: Style; w: number; title: string; desc: string; state: "normal" | "selected" | "fetching" | "editing title" | "editing description" };
@@ -98,6 +99,7 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const Overview: Story = own(overview);
+export const Themes: Story = themes("complete");
 export const Styles: Story = { name: "Styles (View ▸ …)", ...own(styles) };
 export const Complete: Story = {};
 export const SquareImage: Story = { name: "Square Image", args: { page: "square" } };
