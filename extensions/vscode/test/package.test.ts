@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 import { THEMES, EXPERIMENTAL_THEMES } from "@codeboard/core";
-import { FORWARDED_KEYS } from "@codeboard/host/boards";
+import { FORWARDED_KEYS } from "@codeboard/host";
 
 const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, "../package.json"), "utf8"));
 

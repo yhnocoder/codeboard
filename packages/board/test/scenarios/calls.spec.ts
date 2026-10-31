@@ -3,15 +3,7 @@ import * as path from "node:path";
 import { execFileSync } from "node:child_process";
 import { emptyBoard, DEFAULT_SETTINGS, type Board, type CodeCard, type SegView, type HostToBoard } from "@codeboard/core";
 import { shot, put, symCard as nvCard, findSym, OUT, REPO, type Host } from "../harness";
-import { startAnalysis, analysisOf } from "@codeboard/host/analysis";
-import { cardForFileSym } from "@codeboard/host/cards";
-import { callVars, expand, peek } from "@codeboard/host/resolve";
-import { viewsFor } from "@codeboard/host/views";
-import { searchPick } from "@codeboard/host/search";
-import { resetIndex, startNameIndex, nameIndexReady } from "@codeboard/host/nameindex";
-import { captureRun, runApply } from "@codeboard/host/runs";
-import { langOf, useWorkspace } from "@codeboard/host/ws";
-import { nodeWorkspace } from "@codeboard/host/test/node-workspace";
+import { analysisOf, callVars, captureRun, cardForFileSym, expand, langOf, nameIndexReady, nodeWorkspace, peek, resetIndex, runApply, searchPick, startAnalysis, startNameIndex, useWorkspace, viewsFor } from "@codeboard/host/testing";
 import { test, open, light, verdict, expect, until, idle } from "../fixtures";
 
 async function shotPr(h: Host, name: string) {

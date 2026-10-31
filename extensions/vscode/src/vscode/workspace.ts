@@ -1,9 +1,8 @@
 import * as vscode from "vscode";
 import * as path from "node:path";
-import { vscodeScratch, isScratch } from "./scratch";
+import { hoverAt, isScratch, vscodeScratch } from "./scratch";
 import { Emitter, type AiChatRequest, type AiChatResult, type AiModel, type PickIcon, type Workspace } from "@codeboard/core";
-import { deepseekComplete } from "@codeboard/host/deepseek";
-import { chatComplete } from "@codeboard/host/complete";
+import { chatComplete, deepseekComplete } from "@codeboard/host";
 
 const EXT_ID = "yhnocoder.codeboard-vscode";
 // esbuild.mjs 写进来的构建信息：正式版是 ""，开发版是 "dev <commit>[ dirty]"（vitest 里没有这个常量）
@@ -203,16 +202,7 @@ export function vscodeWorkspace(ctx: vscode.ExtensionContext): Workspace {
     language: {
       definitions: (abs, line, col) => locations("vscode.executeDefinitionProvider", abs, line, col),
       implementations: (abs, line, col) => locations("vscode.executeImplementationProvider", abs, line, col),
-      hover: async (abs, line, col) => {
-        const hs = await vscode.commands.executeCommand<vscode.Hover[]>("vscode.executeHoverProvider", vscode.Uri.file(abs), new vscode.Position(line - 1, col));
-        const parts: string[] = [];
-        for (const h of hs ?? []) for (const c of h.contents) {
-          if (typeof c === "string") parts.push(c);
-          else if ("language" in c) parts.push("```" + c.language + "\n" + c.value + "\n```");
-          else if (c.value) parts.push(c.value);
-        }
-        return parts;
-      },
+      hover: (abs, line, col) => hoverAt(vscode.Uri.file(abs), line - 1, col),
       scratch: vscodeScratch(() => ctx.globalStorageUri.fsPath),
     },
     settings: {

@@ -5,7 +5,7 @@ import * as fs from "node:fs";
 import { ready, openBoard, launch, symCard, files, type Host } from "./harness";
 import { emptyBoard, skeletonOf, stampBorn, uid, type Board, type BoardCard, type CodeCard, type Link, type Section, type Sidenote, type Skeleton } from "@codeboard/core";
 import type { CDPSession } from "playwright-core";
-import { faceFrames, gif } from "@codeboard/host/test/images";
+import { faceFrames, gif } from "@codeboard/host/testing";
 
 const arg = (k: string, d: string) => { const i = process.argv.indexOf(`--${k}`); return i > 0 ? process.argv[i + 1] : d; };
 const NCARDS = +arg("cards", "240"), NNOTES = +arg("notes", "0"), NFRAMES = +arg("frames", "0"), RUNS = +arg("runs", "3"), JSON_OUT = arg("json", ""), PROFILE = arg("profile", ""), THEME = arg("theme", "");

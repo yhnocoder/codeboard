@@ -15,9 +15,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { emptyBoard, mimeOf, type Board, type Card, type ImageCard, type NoteCard } from "@codeboard/core";
 import { Storage } from "@codeboard/core/storage";
-import { nodeFs } from "@codeboard/host/nodefs";
-import { readAsset, saveNoteImage } from "@codeboard/host/images";
-import { inlineFor, setMediaDir } from "@codeboard/host/exports";
+import { inlineFor, nodeFs, readAsset, saveNoteImage, setMediaDir } from "@codeboard/host/testing";
 import { OUT, REPO, put, shot, type Host } from "../harness";
 import { test, open, check, until, idle, frames, focusSettled } from "../fixtures";
 

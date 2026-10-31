@@ -5,15 +5,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { emptyBoard, DEFAULT_SETTINGS, type Board, type CodeCard, type SegView, type HostToBoard } from "@codeboard/core";
 import { shot, put, OUT, REPO, type Host } from "../harness";
-import { startAnalysis, analysisOf } from "@codeboard/host/analysis";
-import { cardForFileSym } from "@codeboard/host/cards";
-import { callVars, dispatchAt, expand, peek } from "@codeboard/host/resolve";
-import { viewsFor } from "@codeboard/host/views";
-import { forgetDefs } from "@codeboard/host/defcache";
-import { searchName, searchPick, genSource } from "@codeboard/host/search";
-import { resetIndex, startNameIndex, nameIndexReady } from "@codeboard/host/nameindex";
-import { langOf, useWorkspace } from "@codeboard/host/ws";
-import { nodeWorkspace, type TestWorkspace } from "@codeboard/host/test/node-workspace";
+import { analysisOf, callVars, cardForFileSym, dispatchAt, expand, forgetDefs, genSource, langOf, nameIndexReady, nodeWorkspace, peek, resetIndex, searchName, searchPick, startAnalysis, startNameIndex, type TestWorkspace, useWorkspace, viewsFor } from "@codeboard/host/testing";
 import { test, open, check, light, verdict, expect, until, idle } from "../fixtures";
 
 

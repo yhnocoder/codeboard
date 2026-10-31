@@ -4,7 +4,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { DEFAULT_SETTINGS, cardPath, cutCrumbs, isCode, skeletonOf, subCardOf, subBoardsOf, wouldCycle, type Board, type Camera, type Crumb, type Skeleton, type SegView, type HostToBoard } from "@codeboard/core";
 import { Storage } from "@codeboard/core/storage";
-import { nodeFs } from "@codeboard/host/nodefs";
+import { nodeFs } from "@codeboard/host/testing";
 import { viewOf, OUT, type Host } from "./harness";
 import { open, light } from "./fixtures";
 

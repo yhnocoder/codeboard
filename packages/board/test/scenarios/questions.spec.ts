@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { DEFAULT_SETTINGS, emptyBoard, type Board, type BoardToHost, type CodeCard, type HostToBoard, type QuestionItem, type SegView } from "@codeboard/core";
 import { shot, put, symCard, findSym, viewOf, OUT, REPO, type Host } from "../harness";
-import { inlineFor, setMediaDir } from "@codeboard/host/exports";
+import { inlineFor, setMediaDir } from "@codeboard/host/testing";
 import { test, open, check, light, verdict, expect, until, idle } from "../fixtures";
 import type { Page } from "@playwright/test";
 

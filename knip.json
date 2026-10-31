@@ -13,10 +13,11 @@
   "workspaces": {
     ".": { "entry": ["tools/**/*.{mjs,cjs}", "vitest.config.mts"], "project": ["tools/**/*.{mjs,cjs}"] },
     "packages/core": { "includeEntryExports": true, "entry": ["test/**/*.ts"], "project": ["src/**/*.ts"] },
-    "packages/host": { "includeEntryExports": true, "entry": ["src/*.ts", "test/**/*.ts"], "project": ["src/**/*.ts"] },
+    "packages/host": { "includeEntryExports": true, "entry": ["test/**/*.ts"], "project": ["src/**/*.ts"] },
     "packages/board": { "includeEntryExports": true, "entry": ["src/export/viewer.ts", "test/**/*.ts", "stories/**/*.tsx"], "project": ["src/**/*.{ts,tsx}"] },
     "packages/markdown": { "entry": ["src/cm/editor.ts", "src/ui/index.ts", "test/**/*.ts"], "project": ["src/**/*.{ts,tsx}"], "ignore": ["dist/**"] },
     "packages/analysis": { "includeEntryExports": true, "entry": ["test/**/*.{ts,mjs}"], "project": ["src/**/*.ts"] },
-    "extensions/vscode": { "includeEntryExports": true, "entry": ["esbuild.mjs", "test/**/*.{ts,cjs}"], "project": ["src/**/*.ts"] }
+    // the board's build lands in media/board (packages/board/vite.config.ts) and is loaded by the webview, not imported
+    "extensions/vscode": { "includeEntryExports": true, "entry": ["esbuild.mjs", "test/**/*.{ts,cjs}"], "project": ["src/**/*.ts"], "ignoreDependencies": ["@codeboard/board"] }
   }
 }

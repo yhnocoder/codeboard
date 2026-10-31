@@ -4,12 +4,12 @@
 // 内容直接写文件（vscode.workspace.fs），VS Code 从磁盘读回来：用 WorkspaceEdit 改的话（untitled 也一样），
 // VS Code 过一会儿会给未保存的文档开一个标签页，重新加载窗口时还会恢复出来。
 // 已知的副作用：编辑期间资源管理器能看到这个文件，Pylance 的问题面板也可能列出它的问题。
-// 文件名规则、心跳和崩溃后清理的规则见 ../scratchnames.ts。
+// 文件名规则、写进 info/exclude、心跳和崩溃后清理的规则见 packages/host/src/scratchnames.ts。
 import * as vscode from "vscode";
 import * as path from "node:path";
 import * as fs from "node:fs";
 import type { LspItem, LspKind, LspSignature, WorkspaceScratch } from "@codeboard/core";
-import { HEARTBEAT_MS, SCRATCH_GLOB, isScratchName, scratchName, staleScratch } from "@codeboard/host/scratchnames";
+import { HEARTBEAT_MS, excludeScratch, isScratchName, scratchName, staleScratch } from "@codeboard/host";
 
 export type Doc = { uri: vscode.Uri; lang: string; doc: vscode.TextDocument };
 const docs = new Map<string, Doc>();
@@ -20,27 +20,6 @@ export const isScratch = (u: vscode.Uri) => u.scheme === "file" && isScratchName
 
 function dirFor(near: string | undefined, store: string): string {
   return near ? path.dirname(near) : path.join(store, "scratch");
-}
-const excluded = new Set<string>();
-function exclude(dir: string) {
-  for (let d = dir; d && d !== path.dirname(d); d = path.dirname(d)) {
-    const g = path.join(d, ".git");
-    if (!fs.existsSync(g)) continue;
-    if (excluded.has(g)) return;
-    excluded.add(g);
-    try {
-      let gd = g;
-      if (!fs.statSync(g).isDirectory()) { const m = /gitdir:\s*(.+)/.exec(fs.readFileSync(g, "utf8")); if (!m) return; gd = path.resolve(d, m[1].trim()); const c = path.join(gd, "commondir"); if (fs.existsSync(c)) gd = path.resolve(gd, fs.readFileSync(c, "utf8").trim()); }
-      const f = path.join(gd, "info", "exclude");
-      const t = fs.existsSync(f) ? fs.readFileSync(f, "utf8") : "";
-      const NOTE = "# CodeBoard: code being edited on a board (deleted when editing ends)\n";
-      if (!t.split("\n").includes(SCRATCH_GLOB)) {
-        fs.mkdirSync(path.dirname(f), { recursive: true });
-        fs.appendFileSync(f, `${t && !t.endsWith("\n") ? "\n" : ""}${NOTE}${SCRATCH_GLOB}\n`);
-      }
-    } catch {}
-    return;
-  }
 }
 const cleaned = new Set<string>();
 /** 上次没删掉的（窗口被关掉、崩了）：只删名字对得上、不是这个进程的、过了 STALE_MS 的。出错就跳过 */
@@ -85,7 +64,7 @@ async function ensure(id: string, lang: string, near: string | undefined, store:
   }
   const dir = dirFor(near, store);
   fs.mkdirSync(dir, { recursive: true });
-  exclude(dir);
+  await excludeScratch(dir);
   if (!cleaned.has(dir)) { cleaned.add(dir); cleanup(dir); }
   const file = path.join(dir, scratchName(id, lang));
   if (!files.has(file)) fs.writeFileSync(file, "");
@@ -159,6 +138,18 @@ function signature(h: vscode.SignatureHelp | undefined): LspSignature | null {
   return { label: s.label, doc: md(s.documentation), params, active: active < params.length ? active : -1 };
 }
 
+/** 语言服务在这个位置的悬停说明，每段一个 Markdown（line 从 0 数） */
+export async function hoverAt(uri: vscode.Uri, line: number, col: number): Promise<string[]> {
+  const hs = await vscode.commands.executeCommand<vscode.Hover[]>("vscode.executeHoverProvider", uri, new vscode.Position(line, col));
+  const parts: string[] = [];
+  for (const h of hs ?? []) for (const c of h.contents) {
+    if (typeof c === "string") parts.push(c);
+    else if ("language" in c) parts.push("```" + c.language + "\n" + c.value + "\n```");
+    else if (c.value) parts.push(c.value);
+  }
+  return parts;
+}
+
 export function disposeScratch() {
   if (heartbeat) { clearInterval(heartbeat); heartbeat = undefined; }
   for (const f of files) fs.rmSync(f, { force: true });
@@ -187,14 +178,7 @@ export function vscodeScratch(storeDir: () => string): WorkspaceScratch {
     hover: async (id, line, col) => {
       const d = docs.get(id);
       if (!d) return [];
-      const hs = await vscode.commands.executeCommand<vscode.Hover[]>("vscode.executeHoverProvider", d.uri, new vscode.Position(line, col));
-      const parts: string[] = [];
-      for (const h of hs ?? []) for (const c of h.contents) {
-        if (typeof c === "string") parts.push(c);
-        else if ("language" in c) parts.push("```" + c.language + "\n" + c.value + "\n```");
-        else if (c.value) parts.push(c.value);
-      }
-      return parts;
+      return hoverAt(d.uri, line, col);
     },
     signature: async (id, line, col, trigger) => {
       const d = docs.get(id);

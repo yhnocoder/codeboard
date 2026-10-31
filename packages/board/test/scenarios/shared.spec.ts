@@ -4,7 +4,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { emptyBoard, sharedInfo, type Board, type Segment, type SegView } from "@codeboard/core";
 import { Storage, pasteClip, type CardClip } from "@codeboard/core/storage";
-import { nodeFs } from "@codeboard/host/nodefs";
+import { nodeFs } from "@codeboard/host/testing";
 import { shot, symCard, findSym, viewOf, put, OUT, type Host } from "../harness";
 import { test, open, check, light, expect, until, idle } from "../fixtures";
 

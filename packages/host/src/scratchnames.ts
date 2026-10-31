@@ -3,10 +3,13 @@
 // 另一个 VS Code 窗口可能正在用同一个目录（同一个仓库、同一个 Note 目录）：打开期间每分钟刷一次文件的 mtime（心跳），
 // 清理只删 mtime 超过 STALE_MS 的文件，所以别的窗口还在用的文件不会被删。
 import { LANG_TABLE, langInfo } from "@codeboard/analysis/langs";
+import { excludeFromGit } from "./git";
 
 const SCRATCH_PREFIX = ".codeboard-scratch-";
 /** .git/info/exclude 里写的那一行 */
-export const SCRATCH_GLOB = `${SCRATCH_PREFIX}*`;
+const SCRATCH_GLOB = `${SCRATCH_PREFIX}*`;
+/** 名字写进 dir 所在仓库的 info/exclude：git status 看不到编辑中的文件 */
+export const excludeScratch = (dir: string) => excludeFromGit(dir, SCRATCH_GLOB, "CodeBoard: code being edited on a board (deleted when editing ends)");
 export const HEARTBEAT_MS = 60_000;
 export const STALE_MS = 10 * 60_000;
 

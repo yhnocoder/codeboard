@@ -2,15 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { emptyBoard, DEFAULT_SETTINGS, type CodeCard, type SegView, type HostToBoard, type NameHit } from "@codeboard/core";
 import { shot, put, symCard, findSym, REPO, type Host } from "../harness";
-import { startAnalysis, analysisOf } from "@codeboard/host/analysis";
-import { cardForFileSym } from "@codeboard/host/cards";
-import { callVars, expand, peek } from "@codeboard/host/resolve";
-import { viewsFor } from "@codeboard/host/views";
-import { search, searchName, searchPick } from "@codeboard/host/search";
-import type { Storage } from "@codeboard/host/storage";
-import { resetIndex, startNameIndex, nameIndexReady } from "@codeboard/host/nameindex";
-import { langOf, useWorkspace } from "@codeboard/host/ws";
-import { nodeWorkspace } from "@codeboard/host/test/node-workspace";
+import { analysisOf, callVars, cardForFileSym, expand, langOf, nameIndexReady, nodeWorkspace, peek, resetIndex, search, searchName, searchPick, startAnalysis, startNameIndex, useWorkspace, viewsFor, type Storage } from "@codeboard/host/testing";
 import { test, open, verdict, expect, until, idle } from "../fixtures";
 
 const nv = (qual: string) => { const s = findSym(qual); return symCard(s.f, s.s); };

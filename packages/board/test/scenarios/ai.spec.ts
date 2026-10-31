@@ -9,7 +9,7 @@
 //                                   the notice says why, and there is nothing to undo
 import * as path from "node:path";
 import { emptyBoard, type AiInfo, type Board, type BoardToHost, type ImageAiOp, type NoteCard } from "@codeboard/core";
-import { runImageAi, SYS_FOCUS } from "@codeboard/host/imageai";
+import { runImageAi, SYS_FOCUS } from "@codeboard/host/testing";
 import { put, type Host } from "../harness";
 import { test, open, check, until, idle } from "../fixtures";
 
