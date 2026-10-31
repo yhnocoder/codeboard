@@ -127,12 +127,12 @@ describe("core storage", () => {
     expect(cams.get(b.id)).toEqual({ x: -300, y: 40, z: 1.5 });
     // An edit together with a camera move: the file gets the edit, still no camera
     await patchNow(store, b.id, { cam: { x: 0, y: 0, z: 2 }, head: { name: "Renamed", born: {}, seq: 0 } });
-    expect(JSON.parse(fs.files.get(file)!.data as string)).toMatchObject({ version: 9, name: "Renamed" });
+    expect(JSON.parse(fs.files.get(file)!.data as string)).toMatchObject({ version: 10, name: "Renamed" });
     expect(JSON.parse(fs.files.get(file)!.data as string)).not.toHaveProperty("cam");
     // Another window (same machine) reads the board with this machine's camera; a board never seen here starts at the default
     const other = new Storage(fs, { dir: () => ROOT, cams: { get: (id) => cams.get(id), set: () => undefined } });
     expect((await other.load(b.id))!.cam).toEqual({ x: 0, y: 0, z: 2 });
-    fs.put(`${ROOT}/fresh.json`, { version: 9, id: "fresh", name: "F", cards: [], place: {}, links: [], sections: [], sidenotes: [], stickers: [] });
+    fs.put(`${ROOT}/fresh.json`, { version: 10, id: "fresh", name: "F", cards: [], place: {}, links: [], sections: [], sidenotes: [], stickers: [] });
     expect((await other.load("fresh"))!.cam).toEqual({ x: 80, y: 80, z: 1 });
   });
 
@@ -142,7 +142,7 @@ describe("core storage", () => {
     expect((await store.load("old"))!.cam).toEqual({ x: 7, y: 8, z: 0.5 });
     await patchNow(store, "old", { head: { name: "Edited", born: {}, seq: 0 } });
     const f = JSON.parse(fs.files.get(`${ROOT}/old.json`)!.data as string);
-    expect(f.version).toBe(9);
+    expect(f.version).toBe(10);
     expect(f).not.toHaveProperty("cam");
     expect(cams.get("old")).toEqual({ x: 7, y: 8, z: 0.5 });
   });
@@ -345,7 +345,7 @@ describe("card library (shared cards)", () => {
     expect(file(fs, "A").cards).toEqual([{ id: "s", kind: "shared" }, note("la")]);
     expect(file(fs, "A").sidenotes.map((n: any) => n.id)).toEqual(["n2"]);
     const c = card(fs, "s");
-    expect(c).toMatchObject({ version: 9, card: note("s") });
+    expect(c).toMatchObject({ version: 10, card: note("s") });
     expect(c.rev).toBeUndefined();
     expect(c.sidenotes.map((n: any) => n.id)).toEqual(["n1"]);
     // Loading inflates

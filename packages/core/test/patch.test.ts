@@ -44,7 +44,7 @@ describe("applyPatch", () => {
     expect(b.name).toBe("New");
     expect(b.hideNumbers).toBeUndefined();
     expect(b.id).toBe("b");
-    expect(b.version).toBe(9);
+    expect(b.version).toBe(10);
     expect(b.cam).toEqual({ x: 1, y: 2, z: 3 });
     expect(b.cards.length).toBe(3);
   });
@@ -145,7 +145,7 @@ describe("board format v6 and v7", () => {
   };
   it("v6 → v7: an old board's \\$a\\$ becomes math once; code, half-escaped and unsure text stay as written", () => {
     const b = loadBoard(oldMath(6));
-    expect(b.version).toBe(9);
+    expect(b.version).toBe(10);
     expect((b.cards[0] as any).md).toBe("a $x^2$ b, $\\frac{a}{b}$ and ${n}$");
     expect(b.cards[1].desc).toBe("cost $O(n)$");
     expect((b.cards[3] as any).mergedFrom[0].card.desc).toBe("$y$");
@@ -170,11 +170,11 @@ describe("board format v6 and v7", () => {
   });
   it("v6 → v8 upgrades shared card files (the card and its travelling sidenotes) once, and refuses newer ones", () => {
     const sc = loadSharedCard({ version: 6, card: { ...note("s", "\\$a\\$"), desc: "\\$d\\$" }, sidenotes: [text("n", "s", { md: "\\$t\\$" } as any)] });
-    expect(sc.version).toBe(9);
+    expect(sc.version).toBe(10);
     expect(sc.card).toMatchObject({ md: "$a$", desc: "$d$" });
     expect((sc.sidenotes[0] as any).md).toBe("$t$");
     expect((loadSharedCard({ version: 8, card: note("s", "\\$a\\$"), sidenotes: [] }).card as any).md).toBe("\\$a\\$");
-    expect(() => loadSharedCard({ version: 10, card: note("s"), sidenotes: [] })).toThrow(/newer/);
+    expect(() => loadSharedCard({ version: 11, card: note("s"), sidenotes: [] })).toThrow(/newer/);
   });
 });
 
