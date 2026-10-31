@@ -53,6 +53,7 @@ It was built for studying LLM inference and training codebases such as [nano-vll
 **And more.**
 
 - Present a board card by card with `P`, then `←` `→` to move and `Esc` to leave.
+- Paste a Python traceback onto a board and it unrolls into a call chain: one card per frame in your workspace, arrows from the calling lines, the failing line highlighted and the exception in a Note.
 - Draw, label and retype arrows; drop in images and web pages; highlight lines.
 - Find and replace while editing a Note or a code card: `⌘F` (`Ctrl+F`), `⌥⌘F` (`Ctrl+Alt+F`) for replace.
 - Compare a card across branches, worktrees or pull requests, with change marks and a three-way view.

@@ -9,6 +9,7 @@ import { githubCard, ghQuery } from "./github";
 import { webMeta } from "./web";
 import { tidy } from "@codeboard/core/tidy";
 import { pasteCard } from "./paste";
+import { traceCards } from "./trace";
 import { writeSetting } from "./settings";
 import { openStickerDir, readPacks } from "./stickers";
 import { readAsset, readImageUri, saveNoteImage } from "./images";
@@ -77,6 +78,7 @@ export function makeHandler(panels: BoardHost): Handler {
     switchCommit: (_p, m) => switchCommit(m.seg, m.commit),
     resolveRef: (p, m) => resolveTyped(p, m.text),
     paste: (_p, m) => pasteCard(m.text),
+    trace: (_p, m) => traceCards(m.frames),
     github: (_p, m) => githubCard(m.url),
     saveAsset: (_p, m) => store.saveAsset(m.name, m.dataUrl),
     saveImage: (_p, m) => saveNoteImage(store, m.dataUrl),

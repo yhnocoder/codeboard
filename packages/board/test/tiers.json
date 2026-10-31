@@ -57,10 +57,10 @@
     "calls": {
       "about": "the call graph: expanding calls, call marks, the call tree, Walkthrough, runs, symbol search",
       "files": [
-        "packages/board/src/actions/{calls,flow,nav}.ts", "packages/board/src/state/calls.ts", "packages/board/src/ui/CallPanels.tsx",
+        "packages/board/src/actions/{calls,flow,nav,trace}.ts", "packages/board/src/state/calls.ts", "packages/board/src/ui/CallPanels.tsx",
         "packages/core/src/{flow,run,rank}.ts", "packages/analysis/src/{entry,vars}.ts",
-        "packages/host/src/{resolve,defcache,prefetch,nameindex,scope,runs,search}.ts", "packages/host/test/fixtures/runtime/**",
-        "packages/board/test/scenarios/{calls,ux,flows}.spec.ts"
+        "packages/host/src/{resolve,defcache,prefetch,nameindex,scope,runs,search,trace}.ts", "packages/host/test/fixtures/runtime/**",
+        "packages/board/test/scenarios/{calls,ux,flows,traceback}.spec.ts"
       ],
       "scenarios": [
         "expandCall", "calltree", "runtime", "walkthroughOrder", "constructorCall", "manualCallMark", "libcalls", "attachvars",

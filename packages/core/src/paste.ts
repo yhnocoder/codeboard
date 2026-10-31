@@ -36,6 +36,7 @@ export type PasteKind =
   | { kind: "links"; urls: string[] } // 一次贴多个链接（每行一个）→ 一张 Link List
   | { kind: "code"; lang: string }
   | { kind: "note" }
+  | { kind: "trace"; trace: Traceback } // a Python traceback → its frames as a chain of code cards
   | { kind: "svg" }; // 一整份 SVG（设计工具的 Copy as SVG、编辑器里复制的 .svg 文件内容）→ Image 卡
 
 const URL_RE = /^https?:\/\/\S+$/;
@@ -44,6 +45,8 @@ const URL_RE = /^https?:\/\/\S+$/;
 export function classifyPaste(text: string): PasteKind {
   const t = text.trim();
   if (isSvgMarkup(t)) return { kind: "svg" };
+  const trace = parseTraceback(t);
+  if (trace) return { kind: "trace", trace };
   if (URL_RE.test(t)) {
     const g = parseGithubUrl(t);
     if (g && isGithubCode(t, g)) return { kind: "github", ref: g };
@@ -104,6 +107,49 @@ export function guessLang(text: string): string | null {
   ];
   const top = ranked.reduce((a, b) => (b[1] > a[1] ? b : a));
   return top[1] > 0 ? top[0] : "cpp";
+}
+
+/** One frame of a traceback: where it ran (the path as printed, maybe from another machine) and the source line, when shown */
+export type TraceFrame = { file: string; line: number; func: string; code?: string };
+/** The frames, outermost first, and the exception at the end ("ValueError: …"; empty when the paste stops before it) */
+export type Traceback = { frames: TraceFrame[]; error: string };
+
+const TRACE_HEAD = /^(.*?)Traceback \(most recent call last\):\s*$/;
+const TRACE_FRAME = /^\s*File "([^"]+)", line (\d+), in (.+?)\s*$/;
+/** Python 3.11+ marks the failing part of a line with ~ and ^ */
+const TRACE_CARET = /^\s*[~^\s]+$/;
+
+/**
+ * A Python traceback, as printed by the interpreter or a logger. A prefix that every line carries (`[rank0]: ` from torch
+ * distributed, a log timestamp) is taken from the header line and stripped. A chained exception ("During handling of the
+ * above exception…") prints several tracebacks: the last one is the exception that was raised
+ */
+export function parseTraceback(text: string): Traceback | null {
+  const lines = text.split(/\r?\n/);
+  let head = -1, prefix = "";
+  lines.forEach((l, i) => { const m = TRACE_HEAD.exec(l); if (m) { head = i; prefix = m[1]; } });
+  if (head < 0) return null;
+  const body = lines.slice(head + 1).map((l) => (prefix && l.startsWith(prefix) ? l.slice(prefix.length) : l));
+  const frames: TraceFrame[] = [];
+  let i = 0;
+  for (; i < body.length; i++) {
+    const m = TRACE_FRAME.exec(body[i]);
+    if (!m) {
+      if (!body[i].trim() || TRACE_CARET.test(body[i])) continue;
+      // the source line under a frame is indented deeper than "File"; anything else ends the frames
+      if (frames.length && /^\s{3,}\S/.test(body[i]) && frames[frames.length - 1].code === undefined) { frames[frames.length - 1].code = body[i].trim(); continue; }
+      if (/^\s*\.\.\.|^\s*\[Previous line repeated/.test(body[i])) continue;
+      break;
+    }
+    frames.push({ file: m[1], line: +m[2], func: m[3] });
+  }
+  if (!frames.length) return null;
+  const error: string[] = [];
+  for (; i < body.length && error.length < 6; i++) {
+    if (!body[i].trim()) { if (error.length) break; continue; }
+    error.push(body[i].trimEnd());
+  }
+  return { frames, error: error.join("\n") };
 }
 
 /** Python 文件里更细的方言，用来给 Free code 的语言下拉默认值 */

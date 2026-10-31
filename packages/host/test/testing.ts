@@ -4,6 +4,7 @@ export * from "./images";
 export { nodeWorkspace, type TestWorkspace } from "./node-workspace";
 export { analysisOf, analysisReady, startAnalysis } from "../src/analysis";
 export { cardForFileSym } from "../src/cards";
+export { traceCards } from "../src/trace";
 export { forgetDefs } from "../src/defcache";
 export { deepseekComplete } from "../src/deepseek";
 export { inlineFor, setMediaDir } from "../src/exports";

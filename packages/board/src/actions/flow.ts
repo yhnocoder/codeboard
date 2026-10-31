@@ -73,8 +73,8 @@ export async function expandCall(cardId: string, segId: string, call: CallSpan, 
   if (r.dispatching && !pick) void lateDispatch(cardId, segId, call, r.card.id);
 }
 
-/** ex：并进 Call 标记的、箭头上的字、卡的名字（模板实例 dispatch<8, 768>） */
-export function placeExpanded(cardId: string, segId: string, call: CallSpan, card: CodeCard, views: Record<string, SegView>, vars: Var[], at?: { x: number; y: number }, w?: number, ex?: ExpandExtra & { title?: string }) {
+/** ex：并进 Call 标记的、箭头上的字、卡的名字（模板实例 dispatch<8, 768>）；merge = 和上一步同一个撤销步（mutate 的 merge） */
+export function placeExpanded(cardId: string, segId: string, call: CallSpan, card: CodeCard, views: Record<string, SegView>, vars: Var[], at?: { x: number; y: number }, w?: number, ex?: ExpandExtra & { title?: string; merge?: string }) {
   putViews(views);
   const host = cardById(cardId)!.host;
   const id = card.id;
@@ -130,7 +130,7 @@ export function placeExpanded(cardId: string, segId: string, call: CallSpan, car
     for (const k of Object.keys(mk) as (keyof typeof mk)[]) if (mk[k] === undefined) delete mk[k];
     removeLostCalls(b, { card: cardId, seg: segId, line: call.line }, call.name);
     b.links.push({ id: uid("l"), from: { card: cardId, seg: segId, line: call.line }, to: { card: id }, call: mk, ...(ex?.label ? { label: ex.label } : {}) });
-  });
+  }, { merge: ex?.merge });
   select({ cards: [id] });
   flash(cardId, segId, [call.line]);
   requestAnimationFrame(() => {

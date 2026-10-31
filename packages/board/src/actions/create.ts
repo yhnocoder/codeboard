@@ -20,6 +20,7 @@ import { ask } from "../host";
 import { settleHome } from "../state/sections";
 import { hostRect, popCard } from "./common";
 import { fetchMeta, newLinkList } from "./web";
+import { pasteTrace } from "./trace";
 import { setNoteText } from "./edit";
 import { cleanImage, svgDataUrl } from "../md/images";
 import { texBrackets, undoubleTex, type DraggedImage } from "@yhnocoder/markdown";
@@ -232,6 +233,8 @@ export async function pasteText(text: string, at?: { x: number; y: number }, exa
   if (k.kind === "links") return newLinkList(k.urls, at);
   if (k.kind === "note") return newNote(at, text);
   if (k.kind === "svg") return addImage(svgDataUrl(text.trim()), "pasted.svg", at);
+  // a traceback whose frames are not in this workspace stays as text
+  if (k.kind === "trace") { if (!(await pasteTrace(k.trace, text, at))) newNote(at, `\`\`\`text\n${text.trim()}\n\`\`\``); return; }
   // 代码：先问宿主是不是工作区里的代码 / GitHub 链接
   let err = "";
   const r = await ask("paste", { text }).catch((e) => { err = (e as Error).message; return null; });

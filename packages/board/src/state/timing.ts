@@ -67,3 +67,5 @@ export const SIDE_SLIDE = 120;
 export const LIFT_FADE = 140;
 /** A menu's open animation (TUNE.menuOpen's default) */
 export const MENU_OPEN = 150;
+/** A pasted traceback unrolls one frame after another: each next card pops out of its calling line this long after the last (actions/trace.ts) */
+export const TRACE_STEP = 240;
