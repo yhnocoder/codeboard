@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { handLine } from "../../src/canvas/hand";
+import { handLine } from "../src/canvas/hand";
 
 const C = [0, 0, 120, 0, 280, 200, 400, 200];
 const nums = (d: string) => d.match(/-?\d+(\.\d+)?/g)!.map(Number);

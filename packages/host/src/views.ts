@@ -1,190 +1,42 @@
-// 分析尽量在「那个版本」的整个文件上做（片段在函数中间时语法才对），拿不到整个文件就分析段文本本身。
-import { createHighlighterCore, createCssVariablesTheme, type HighlighterCore, type LanguageInput } from "shiki/core";
-import { createJavaScriptRegexEngine } from "shiki/engine/javascript";
-import { escHtml, fingerprint, renderLine, tokenClass, type CallSpan, type Mark, type Segment, type SegView, type Tok } from "@codeboard/core";
-import { grammarOf, langInfo, type Grammar } from "@codeboard/analysis/langs";
-import { highlightLines, type FileAnalysis } from "@codeboard/analysis";
+// The host's side of code highlighting: core's highlighter and segment views, reading the file at the segment's version,
+// the analysis cache and the call packages from this workspace.
+import { Highlighter, plainView, segViewOf, type SegSource } from "@codeboard/core/highlight";
+import type { Segment, SegView, Tok } from "@codeboard/core";
+import { highlightLines } from "@codeboard/analysis";
 import { analysisOf, analysisReady, segAnalysis, whenAnalysisReady } from "./analysis";
 import { absOf, versionText } from "./source";
 import { callPkgs } from "./scope";
-import { Lru, readText, splitLines } from "./ws";
+import { readText } from "./ws";
 
-// 语言表（@codeboard/analysis 的 langs.ts）里 highlight 选 shiki 的语言：语法按它的名字，第一次用到时才加载
-const GRAMMAR: Record<string, LanguageInput> = {
-  python: () => import("shiki/langs/python.mjs"),
-  rust: () => import("shiki/langs/rust.mjs"), typescript: () => import("shiki/langs/typescript.mjs"), javascript: () => import("shiki/langs/javascript.mjs"),
-  go: () => import("shiki/langs/go.mjs"), java: () => import("shiki/langs/java.mjs"), shellscript: () => import("shiki/langs/shellscript.mjs"),
-  json: () => import("shiki/langs/json.mjs"), yaml: () => import("shiki/langs/yaml.mjs"), toml: () => import("shiki/langs/toml.mjs"),
-  ini: () => import("shiki/langs/ini.mjs"), sql: () => import("shiki/langs/sql.mjs"), lua: () => import("shiki/langs/lua.mjs"),
-  ruby: () => import("shiki/langs/ruby.mjs"), r: () => import("shiki/langs/r.mjs"), perl: () => import("shiki/langs/perl.mjs"),
-  haskell: () => import("shiki/langs/haskell.mjs"), diff: () => import("shiki/langs/diff.mjs"), css: () => import("shiki/langs/css.mjs"),
-  html: () => import("shiki/langs/html.mjs"),
+const hl = new Highlighter({
+  // While the host is still starting and the grammars load, wait for them: the cache should not keep an uncoloured copy
+  async treeLines(g, text, file) {
+    await whenAnalysisReady();
+    return analysisReady() ? highlightLines(g, text, file) : null;
+  },
+});
+
+const source: SegSource = {
+  fileText: (seg) => versionText(seg),
+  currentText: (seg) => { const abs = absOf(seg); return abs ? readText(abs) : Promise.resolve(null); },
+  fileOf: (seg) => absOf(seg),
+  analyze: (lang, text, range, file) => (range ? segAnalysis(lang, text, range.start, range.end, file) : analysisOf(lang, text, file)),
+  callPkgs,
 };
-const theme = createCssVariablesTheme({ name: "codeboard", variablePrefix: "--shiki-", fontStyle: true });
-let hl: Promise<HighlighterCore> | undefined;
-const loaded = new Map<string, Promise<void>>();
-async function highlighter(sl: string): Promise<HighlighterCore> {
-  const h = await (hl ??= createHighlighterCore({ themes: [theme], langs: [], engine: createJavaScriptRegexEngine({ forgiving: true }) }));
-  let p = loaded.get(sl);
-  if (!p) { p = h.loadLanguage(GRAMMAR[sl]); loaded.set(sl, p); }
-  await p;
-  return h;
-}
 
-function shikiLang(lang: string): string | null {
-  const h = langInfo(lang)?.highlight;
-  return h?.by === "shiki" && h.lang in GRAMMAR ? h.lang : null;
-}
+/** Tokens per line (with the board's colour classes); file = text is that file's whole text at that version */
+export const tokensOf = (lang: string, text: string, file?: string): Promise<Tok[][]> => hl.tokensOf(lang, text, file);
+/** A few lines' HTML (diffs, hovered definitions, Focus popovers; no clickable calls) */
+export const highlight = (lines: string[], lang: string, context?: string): Promise<string[]> => hl.highlight(lines, lang, context);
+export const segView = (seg: Segment): Promise<SegView> => segViewOf(seg, source, hl);
 
-const tokCache = new Lru<Promise<Tok[][]>>(60);
-
-/**
- * 每行的 token（带白板的颜色 class）。缓存的是 promise：同一份文本同时被几个段要时只分词一次。
- * file = 文本是这个文件（那个版本）的全文：tree-sitter 着色的语言和分析共用这个文件的语法树
- */
-export function tokensOf(lang: string, text: string, file?: string): Promise<Tok[][]> {
-  const g = langInfo(lang)?.highlight?.by === "tree-sitter" ? grammarOf(lang) : null;
-  const sl = shikiLang(lang);
-  if (!g && !sl) return Promise.resolve(splitLines(text).map((l) => [{ text: l }]));
-  const k = `${g ? `ts:${g}` : sl}\0${text.length}\0${fingerprint(text)}`;
-  let p = tokCache.get(k);
-  if (!p) { p = g ? treeTokens(g, text, file) : tokenize(sl!, text); tokCache.set(k, p); }
-  return p;
-}
-
-async function treeTokens(g: Grammar, text: string, file?: string): Promise<Tok[][]> {
-  // 宿主刚启动、语法还在加载时先等它：缓存里别留一份没颜色的
-  await whenAnalysisReady();
-  return analysisReady() ? highlightLines(g, text, file) : splitLines(text).map((l) => [{ text: l }]);
-}
-
-/**
- * shiki's theme colours a call's arguments like its brackets, and they come merged into one token ("(a, b "): only the marks
- * stay punctuation, the names between them are plain text. Operators share the keyword colour; "op" lets a look tell them apart
- */
-function refine(t: Tok): Tok[] {
-  if (t.cls === "kw" && /^\s*[-+*/%=<>!&|^~@:?]+\s*$/.test(t.text)) return [{ text: t.text, cls: "kw op" }];
-  if (t.cls !== "p" || !/[\p{L}\p{N}_$]/u.test(t.text)) return [t];
-  return t.text.split(/([\p{L}\p{N}_$]+|\s+)/u).filter(Boolean).map((x) => ({ text: x, cls: /^\s+$/.test(x) ? undefined : /[\p{L}\p{N}_$]/u.test(x) ? tokenClass(undefined, x) : "p" }));
-}
-
-async function tokenize(sl: string, text: string): Promise<Tok[][]> {
-  const lines = splitLines(text);
-  let res: Tok[][];
-  try {
-    const h = await highlighter(sl);
-    res = h.codeToTokens(text, { lang: sl, theme: "codeboard" }).tokens.map((line) => line.flatMap((t) => refine({ text: t.content, cls: tokenClass(t.color, t.content) })));
-  } catch {
-    res = lines.map((l) => [{ text: l }]);
-  }
-  // 装饰器整体一个颜色
-  if (sl === "python") res.forEach((toks, i) => {
-    const l = lines[i] ?? "";
-    if (!/^\s*@/.test(l)) return;
-    const end = l.search(/\(|$/);
-    let col = 0;
-    for (const t of toks) { if (col < end && t.text.trim()) t.cls = "dec"; col += t.text.length; }
-  });
-  return res;
-}
-
-/** 几行代码的高亮 HTML（diff、悬停定义、Focus 浮窗用；没有可点的调用） */
-export async function highlight(lines: string[], lang: string, context?: string): Promise<string[]> {
-  if (context) {
-    const all = splitLines(context);
-    // 在整个文件里找这几行的位置，用整个文件的 token（字符串、docstring 跨行时颜色才对）
-    const idx = findIndex(all, lines);
-    if (idx >= 0) {
-      const toks = await tokensOf(lang, context);
-      return lines.map((l, i) => renderLine(toks[idx + i] ?? [{ text: l }]));
-    }
-  }
-  const toks = await tokensOf(lang, lines.join("\n"));
-  return lines.map((l, i) => renderLine(toks[i] ?? [{ text: l }]));
-}
-
-function findIndex(all: string[], block: string[]) {
-  if (!block.length) return -1;
-  outer: for (let i = 0; i + block.length <= all.length; i++) {
-    for (let k = 0; k < block.length; k++) if (all[i + k] !== block[k]) continue outer;
-    return i;
-  }
-  return -1;
-}
-
-const MAX_FULL = 6000; // 超过这么多行的文件只高亮段本身
-
-export async function segView(seg: Segment): Promise<SegView> {
-  const lang = seg.lang;
-  if (seg.src.kind === "free") return snippetView(seg);
-  const full = await versionText(seg).catch(() => null);
-  if (!full || splitLines(full).length > MAX_FULL) return snippetView(seg);
-  const fa = segAnalysis(lang, full, seg.start, seg.end, absOf(seg) ?? undefined); // 只用到段里的调用 / 标记，和整个文件的 import
-  // Python 的函数 / 类段从 def / class / 装饰器那行开始，词法状态和文件开头一样：只给段本身分词（大文件里省掉整个文件的 shiki）
-  if (shikiLang(lang) === "python" && seg.symbol && seg.symbol.kind !== "module" && fa.symbols.some((s) => s.start === seg.start && s.qual === seg.symbol!.qual)) {
-    const toks = await tokensOf(lang, seg.text.join("\n"));
-    return build(seg, fa, (i) => toks[i], 0, 0, await callPkgs(seg, fa.imports, absOf(seg)));
-  }
-  const toks = await tokensOf(lang, full, absOf(seg) ?? undefined);
-  return build(seg, fa, (i) => toks[seg.start - 1 + i], 0, 0, await callPkgs(seg, fa.imports, absOf(seg)));
-}
-
-/** 只有段文本：去掉公共缩进再分析（Python 片段在函数中间时才能解析），列号再加回来 */
-async function snippetView(seg: Segment): Promise<SegView> {
-  const ind = Math.min(...seg.text.filter((l) => l.trim()).map((l) => l.length - l.trimStart().length));
-  const cut = Number.isFinite(ind) ? ind : 0;
-  const ded = seg.text.map((l) => l.slice(Math.min(cut, l.length - l.trimStart().length)));
-  const fa = analysisOf(seg.lang, ded.join("\n"));
-  // import 在文件开头，段里没有：用当前文件的
-  const abs = seg.src.kind === "free" ? null : absOf(seg);
-  const cur = abs ? await readText(abs).catch(() => null) : null;
-  const pk = await callPkgs(seg, cur ? segAnalysis(seg.lang, cur, 1, 0, abs ?? undefined).imports : fa.imports, abs);
-  const toks = await tokensOf(seg.lang, seg.text.join("\n"));
-  return build(seg, fa, (i) => toks[i], cut, seg.start - 1, pk);
-}
-
-/**
- * fa 的行号 = 段行号 - lineOff（整个文件：lineOff = 0，fa 行 L 就是真实行 L）；
- * 段文本分析时 fa 的第 1 行是段的第一行，shift = seg.start - 1。colOff = 去掉的缩进。
- */
-function build(seg: Segment, fa: FileAnalysis, tokAt: (i: number) => Tok[] | undefined, colOff: number, shift: number, pkgOf: (c: { name: string; recv?: string }) => string | undefined = () => undefined): SegView {
-  const calls: CallSpan[] = [];
-  const marks = new Map<number, Mark[]>();
-  for (const c of fa.calls) {
-    const line = c.line + shift;
-    if (line < seg.start || line > seg.end) continue;
-    const idx = calls.length;
-    const pkg = pkgOf(c);
-    calls.push({ line, col: c.col + colOff, end: c.end + colOff, name: c.name, recv: c.recv, loop: c.loop, dispatch: c.dispatch, pkg });
-    const arr = marks.get(line) ?? [];
-    arr.push({ col: c.col + colOff, end: c.end + colOff, idx, pkg });
-    marks.set(line, arr);
-  }
-  const html: string[] = [], flags: number[] = [];
-  const bare: Record<number, string> = {};
-  seg.text.forEach((text, i) => {
-    const line = seg.start + i;
-    const toks = tokAt(i);
-    const tk = toks && toks.map((t) => t.text).join("") === text ? toks : [{ text }];
-    html.push(renderLine(tk, marks.get(line)));
-    flags.push(fa.flags[line - shift - 1] ?? (text.trim() ? 0 : 1));
-    const tr = fa.trailing[line - shift];
-    if (tr !== undefined) bare[line] = renderLine(tk, marks.get(line), tr + colOff);
-  });
-  const defs = fa.symbols
-    .map((s) => ({ ...s, defLine: s.defLine + shift }))
-    .filter((s) => s.defLine >= seg.start && s.defLine <= seg.end)
-    .map((s) => ({ line: s.defLine, name: s.name, qual: s.qual }));
-  return { html, bare: Object.keys(bare).length ? bare : undefined, flags, calls, defs };
-}
-
-/** 一批段的展示数据（失败的段给纯文本，不让整块白板出错） */
+/** A batch of segments' views (a segment that fails shows plain text, the rest of the board still works) */
 export async function viewsFor(segs: Segment[]): Promise<Record<string, SegView>> {
   const out: Record<string, SegView> = {};
   await Promise.all(segs.map(async (s) => {
     try { out[s.id] = await segView(s); } catch (e) {
       console.error("[codeboard] view", s.path, e);
-      out[s.id] = { html: s.text.map(escHtml), flags: s.text.map((l) => (l.trim() ? 0 : 1)), calls: [], defs: [] };
+      out[s.id] = plainView(s);
     }
   }));
   return out;
