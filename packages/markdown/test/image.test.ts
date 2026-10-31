@@ -62,13 +62,15 @@ describe("image width", () => {
     expect(im.classList.contains("sized")).toBe(true); // centered (markdown.css)
     expect(imgOf(renderMd("![](assets/w.png)")).hasAttribute("style")).toBe(false);
   });
-  it("keeps the paragraph around a sized image in a list item or table cell, so p:has(img.sized) centers it", () => {
+  it("keeps the paragraph around a sized image in a list item or table cell, marked p.md-psized to center it", () => {
     const host = document.createElement("div");
     host.innerHTML = renderMd("- ![](assets/w.png){width=40%}\n- ![](assets/w.png)\n\n| a |\n| - |\n| [![](assets/w.png){width=40%}](https://a.b) |");
     const [sized, full] = [...host.querySelectorAll("li")];
     expect(sized.firstElementChild!.tagName).toBe("P");
+    expect(sized.firstElementChild!.classList.contains("md-psized")).toBe(true);
     expect(full.firstElementChild!.tagName).toBe("IMG");
-    expect(host.querySelector("td > p img.sized")).not.toBeNull();
+    expect(host.querySelector("td > p.md-psized img.sized")).not.toBeNull();
+    expect(host.querySelectorAll("p.md-psized").length).toBe(2);
   });
 });
 
@@ -136,5 +138,25 @@ describe("image captions (the title)", () => {
     expect(two).toBe(md.replace("![second](<assets/a.png> 'old')", '![second](<assets/a.png> "new")'));
     expect(setImageCaption(two, "assets/a.png", 1, " ")).toBe(md.replace("![second](<assets/a.png> 'old')", "![second](<assets/a.png>)"));
     expect(setImageCaption(md, "assets/zzz.png", 0, "x")).toBe(md);
+  });
+});
+
+describe("![alt](…) whose address does not parse", () => {
+  const svg = "<svg xmlns='http://www.w3.org/2000/svg' width='36' height='15'><rect width='36' height='15' fill='%23f6f1e7'/></svg>";
+  const bad = `before ![SM 示意图](data:image/svg+xml;utf8,${svg}) after`;
+  it("draws as an image that failed to load, never as the inline <svg> it holds", () => {
+    const d = document.createElement("div");
+    d.innerHTML = renderMd(bad);
+    expect(d.querySelector(".md-imgerr")?.textContent).toBe("Image failed to load · SM 示意图");
+    expect([...d.querySelectorAll("img, svg")].filter((e) => !e.closest(".md-imgerr")).length).toBe(0);
+    expect(d.textContent).toBe("before Image failed to load · SM 示意图 after");
+  });
+  it("keeps its source as written", () => {
+    expect(rt(bad)).toBe(bad);
+  });
+  it("percent-encoded, the same address is an image", () => {
+    const ok = `![SM 示意图](data:image/svg+xml;utf8,${encodeURIComponent(decodeURIComponent(svg)).replace(/'/g, "%27")})`;
+    expect(imgOf(renderMd(ok))?.getAttribute("alt")).toBe("SM 示意图");
+    expect(rt(ok)).toBe(ok);
   });
 });

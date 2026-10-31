@@ -15,9 +15,25 @@ const P: Record<string, string> = {
   down: "M4 6l4 4 4-4", // chevron-down
   close: "M12 4 4 12M4 4l8 8", // x
   replace: "M6 12l4-4-4-4", // chevron-right
+  grid: "M2.5 2H13.5A.5 .5 0 0 1 14 2.5V13.5A.5 .5 0 0 1 13.5 14H2.5A.5 .5 0 0 1 2 13.5V2.5A.5 .5 0 0 1 2.5 2zM2 6h12M2 10h12M6 2v12M10 2v12", // grid-3x3
+  rowAbove: "M2.5 8H13.5A.5 .5 0 0 1 14 8.5V13.5A.5 .5 0 0 1 13.5 14H2.5A.5 .5 0 0 1 2 13.5V8.5A.5 .5 0 0 1 2.5 8zM2 11h12M8 1v5M5.5 3.5h5", // between-horizontal-start
+  rowBelow: "M2.5 2H13.5A.5 .5 0 0 1 14 2.5V7.5A.5 .5 0 0 1 13.5 8H2.5A.5 .5 0 0 1 2 7.5V2.5A.5 .5 0 0 1 2.5 2zM2 5h12M8 10v5M5.5 12.5h5", // between-horizontal-end
+  colLeft: "M8.5 2H13.5A.5 .5 0 0 1 14 2.5V13.5A.5 .5 0 0 1 13.5 14H8.5A.5 .5 0 0 1 8 13.5V2.5A.5 .5 0 0 1 8.5 2zM11 2v12M1 8h5M3.5 5.5v5", // between-vertical-start
+  colRight: "M2.5 2H7.5A.5 .5 0 0 1 8 2.5V13.5A.5 .5 0 0 1 7.5 14H2.5A.5 .5 0 0 1 2 13.5V2.5A.5 .5 0 0 1 2.5 2zM5 2v12M10 8h5M12.5 5.5v5", // between-vertical-end
+  delRow: "M2.5 4H13.5A.5 .5 0 0 1 14 4.5V11.5A.5 .5 0 0 1 13.5 12H2.5A.5 .5 0 0 1 2 11.5V4.5A.5 .5 0 0 1 2.5 4zM6 6l4 4M10 6l-4 4", // rows-2 x
+  delCol: "M4.5 2H11.5A.5 .5 0 0 1 12 2.5V13.5A.5 .5 0 0 1 11.5 14H4.5A.5 .5 0 0 1 4 13.5V2.5A.5 .5 0 0 1 4.5 2zM6 6l4 4M10 6l-4 4", // columns-2 x
+  alignL: "M2 4h12M2 7h7M2 10h12M2 13h7", // align-left
+  alignC: "M2 4h12M4.5 7h7M2 10h12M4.5 13h7", // align-center
+  alignR: "M2 4h12M7 7h7M2 10h12M7 13h7", // align-right
+  trash: "M2 4h12M6 7v4M10 7v4M13 4V13.5A.5 .5 0 0 1 12.5 14H3.5A.5 .5 0 0 1 3 13.5V4M6 4V2.5A.5 .5 0 0 1 6.5 2H9.5A.5 .5 0 0 1 10 2.5V4", // trash-2
+  copy: "M6.5 6H13.5A.5 .5 0 0 1 14 6.5V13.5A.5 .5 0 0 1 13.5 14H6.5A.5 .5 0 0 1 6 13.5V6.5A.5 .5 0 0 1 6.5 6zM3 10H2.5A.5 .5 0 0 1 2 9.5V2.5A.5 .5 0 0 1 2.5 2H9.5A.5 .5 0 0 1 10 2.5V3", // copy
+  check: "M13 4 6 11 3 8", // check
+  wrap: "M2 4h12M2 12h4M2 8h9.5a2.5 2.5 0 0 1 0 5H9M10.5 11.5L9 13L10.5 14.5", // wrap-text
+  dots: "M3 8h.01M8 8h.01M13 8h.01", // ellipsis
 };
 
-export type IconName = "bold" | "italic" | "strike" | "code" | "link" | "highlight" | "math" | "annot" | "up" | "down" | "close" | "replace";
+export type IconName = "bold" | "italic" | "strike" | "code" | "link" | "highlight" | "math" | "annot" | "up" | "down" | "close" | "replace"
+  | "grid" | "rowAbove" | "rowBelow" | "colLeft" | "colRight" | "delRow" | "delCol" | "alignL" | "alignC" | "alignR" | "trash" | "copy" | "check" | "wrap" | "dots";
 
 export const iconPath = (name: IconName) => P[name];
 

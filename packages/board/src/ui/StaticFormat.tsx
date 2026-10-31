@@ -37,7 +37,12 @@ export function StaticFormat() {
     window.removeEventListener("pointerup", release, true);
   });
   // 换了选中的卡、进了编辑：选区还在也不算了
-  createEffect(on(() => [sel.cards.length, sel.cards[0], editing()], check, { defer: true }));
+  // Entering edit: just drop it. Reading the selection there (staticSel) would force a layout of the editor being mounted
+  // in the same task (a long Note took 200 ms more to open)
+  createEffect(on(() => [sel.cards.length, sel.cards[0], editing()], () => {
+    if (editing()) { clearTimeout(timer); last = ""; setCur(null); return; }
+    check();
+  }, { defer: true }));
   const pos = () => {
     const s = cur();
     if (!s || !el) return;

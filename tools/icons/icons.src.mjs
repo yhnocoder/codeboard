@@ -96,6 +96,22 @@ export const MD_ICONS = {
   down: ICONS.chev,
   close: ICONS.close,
   replace: ICONS.chevR,
+  // the table toolbar and the code block pill (editor/table.ts, editor/codeblock.ts)
+  grid: [rect(2, 2, 14, 14, R) + "M2 6h12M2 10h12M6 2v12M10 2v12", "", "grid-3x3"],
+  rowAbove: [rect(2, 8, 14, 14, R) + "M2 11h12M8 1v5M5.5 3.5h5", "", "between-horizontal-start"],
+  rowBelow: [rect(2, 2, 14, 8, R) + "M2 5h12M8 10v5M5.5 12.5h5", "", "between-horizontal-end"],
+  colLeft: [rect(8, 2, 14, 14, R) + "M11 2v12M1 8h5M3.5 5.5v5", "", "between-vertical-start"],
+  colRight: [rect(2, 2, 8, 14, R) + "M5 2v12M10 8h5M12.5 5.5v5", "", "between-vertical-end"],
+  delRow: [rect(2, 4, 14, 12, R) + "M6 6l4 4M10 6l-4 4", "", "rows-2 x"],
+  delCol: [rect(4, 2, 12, 14, R) + "M6 6l4 4M10 6l-4 4", "", "columns-2 x"],
+  alignL: ["M2 4h12M2 7h7M2 10h12M2 13h7", "", "align-left"],
+  alignC: ["M2 4h12M4.5 7h7M2 10h12M4.5 13h7", "", "align-center"],
+  alignR: ["M2 4h12M7 7h7M2 10h12M7 13h7", "", "align-right"],
+  trash: ICONS.trash,
+  copy: ICONS.copy,
+  check: ICONS.check,
+  wrap: ["M2 4h12M2 12h4M2 8h9.5a2.5 2.5 0 0 1 0 5H9" + poly([[10.5, 11.5], [9, 13], [10.5, 14.5]]), "", "wrap-text"],
+  dots: ["M3 8h.01M8 8h.01M13 8h.01", "", "ellipsis"],
 };
 
 // Sticker built-ins (stickers/glyphs.tsx): white marks on a coloured disc, drawn on the same 16 grid and placed in the

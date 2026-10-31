@@ -64,9 +64,15 @@ export const [editing, setEditing] = boardSignal<Editing>(null);
  * note：静态 Markdown 上数出来的一段（staticTextRange）；free：自由代码卡的第几行第几个字（行从 0 数）。
  * 单击选着的 Note 进来的（at，屏幕坐标）：光标放在点的地方。编辑器挂上时取走（takeEditEntry）
  */
+/**
+ * Where a click on a Note's static view lands, counted in its text (one character next to the point, see staticTextRange) or
+ * "end" below its last block. The editor mounts before its layout settles (a leading heading slides in from the card's header),
+ * so the screen point alone would resolve against a layout that is still moving
+ */
+export type NoteSpot = { char: StaticTextRange; after: boolean } | "end";
 export type EditEntry = { id: string } & (
   | { kind: "note"; key: "Backspace" | "Delete"; range: StaticTextRange }
-  | { kind: "note"; at: { x: number; y: number } }
+  | { kind: "note"; at: { x: number; y: number }; spot?: NoteSpot }
   | { kind: "free"; key: "Backspace" | "Delete"; from: [line: number, col: number]; to: [line: number, col: number] }
 );
 /** 代码卡显示的代码（.src）→ 选区两头在第几段第几行第几个字（行从 0 数，按原文算）；两头不在同一段的代码行里给 null。CodeBody 挂上 */

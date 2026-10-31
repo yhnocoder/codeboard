@@ -108,7 +108,8 @@ test("noteTrailingBlockExit", async () => {
   await typeCases("noteTrailingBlockExit", [
     { name: "typed fence", seq: "```{Enter}x{ArrowDown}after", md: "```\nx\n```\n\nafter" },
     { name: "slash menu", seq: "/code{Enter}y{ArrowDown}after", md: "```\ny\n```\n\nafter" },
-    { name: "existing code", init: "```\nz\n```", seq: "{Control+End}{ArrowUp}{ArrowDown}after", md: "```\nz\n```\n\nafter" },
+    // the double-click lands in the block or below it; Ctrl+End then puts the caret at the code's end or after the block
+    { name: "existing code", init: "```\nz\n```", seq: "{ArrowDown}after", md: "```\nz\n```\n\nafter" },
   ]);
 });
 
@@ -344,7 +345,9 @@ test("headingMarkerTypedAtHeadingSize", async () => {
   await editNote(h, "n0");
   const line = () => h.page.evaluate(() => {
     const c = document.querySelector('.card[data-id="n0"]')!, e = c.querySelector(".md-pm")!.firstElementChild as HTMLElement;
-    return { tag: e.tagName, fs: getComputedStyle(e).fontSize, mk: getComputedStyle(e, "::before").fontSize, mkText: getComputedStyle(e, "::before").content, lh: Math.round(e.getBoundingClientRect().height), card: Math.round(c.getBoundingClientRect().height) };
+    // the heading's "## " is its own source text, drawn as a marker while the caret is in the line
+    const mk = e.querySelector(".md-mkh") as HTMLElement | null;
+    return { tag: e.tagName, fs: getComputedStyle(e).fontSize, mk: mk ? getComputedStyle(mk).fontSize : "", mkText: mk?.textContent ?? "", lh: Math.round(e.getBoundingClientRect().height), card: Math.round(c.getBoundingClientRect().height) };
   });
   await keys(h.page, "## ");
   await idle(h);
@@ -354,7 +357,7 @@ test("headingMarkerTypedAtHeadingSize", async () => {
   await idle(h);
   const typed = await line();
   await shot(h, "headingMarkerTypedAtHeadingSize-typed");
-  check("headingMarkerTypedAtHeadingSize", space.tag === "H2" && space.mkText === '"## "' && space.mk === space.fs && typed.lh === space.lh && typed.card === space.card, { space, typed });
+  check("headingMarkerTypedAtHeadingSize", space.tag === "H2" && space.mkText === "## " && space.mk === space.fs && typed.lh === space.lh && typed.card === space.card, { space, typed });
   await close(h);
 });
 
@@ -399,7 +402,7 @@ test("noteTitleHeadingHiddenInBody", async () => {
   await h.page.waitForFunction(() => (window as any).__hsDone, null, { timeout: 5000 }); // the heights recorded over 1.5 s
   const hs: number[] = await h.page.evaluate(() => (window as any).__hs);
   const steps = hs.slice(1).map((v, i) => v - hs[i]), grow = hs[hs.length - 1] - hs[0], jump = Math.max(...steps);
-  const edit = await h.page.evaluate(() => { const e = document.querySelector('.card[data-id="n0"] .md-pm h1') as HTMLElement | null; return { text: e?.textContent, op: e ? getComputedStyle(e).opacity : "" }; });
+  const edit = await h.page.evaluate(() => { const e = document.querySelector('.card[data-id="n0"] .md-pm h1') as HTMLElement | null; return { text: e?.innerText, op: e ? getComputedStyle(e).opacity : "" }; }); // innerText: the hidden "# " of the source is not shown
   check("note-heading-editable", edit.text === "KV cache budget" && edit.op === "1", edit);
   check("note-heading-slides-in", hs.length > 5 && Math.abs(grow) <= 0.5 && Math.max(...steps.map(Math.abs)) <= 0.5, { grow, jump, frames: hs.length });
   // leave: hidden again, card back to its height; while it slides out, the part above the body's top edge is clipped (never over the card header)
@@ -430,7 +433,7 @@ test("mathSourceInPlace", async () => {
   const pg = h.page, card = '.card[data-id="n0"]';
   await idle(h);
   const blockH = () => pg.evaluate((card) => Math.round(document.querySelector(`${card} :is(.math, [data-type=block-math])`)!.getBoundingClientRect().height), card);
-  const tex = () => pg.evaluate((card) => [...document.querySelectorAll(`${card} annotation`)].map((a) => a.textContent), card);
+  const tex = () => pg.evaluate((card) => [...document.querySelectorAll(`${card} .katex[data-latex]`)].map((a) => a.getAttribute("data-latex")), card);
   const shownH = await blockH();
   await pg.locator(`${card} .nbody p`).last().dblclick();
   await pg.waitForSelector(`${card} .md-pm`, { timeout: 5000 });
@@ -466,6 +469,26 @@ test("mathSourceInPlace", async () => {
   check("mathSourceInPlace", inline.text.includes("$x^2$") && inline.math === 0 && open1.open && open1.focus && open1.value === "\\frac{1}{2}" && open1.above && open1.inline === 1
     && live.includes("\\frac{3}{4}") && closed.open === 0 && closed.inEditor && closedH === shownH && after.includes("\\frac{3}{4}") && undone.includes("\\frac{1}{2}")
     && text === "a $x^2+1$ b\n\n$$\n\\frac{1}{2}\n$$\n\nend" && pops === 0, r);
+  await close(h);
+});
+
+/** ↓ from an open inline formula into a formula block: the inline one is drawn again as the block opens, not only once the
+ *  editor's blur is handled (a timer; held back here so that the order can't hide it) */
+test("mathBlockArrowClosesInlineSource", async () => {
+  const h = await open({ board: board(["a $x^2$ b\n\n$$\n\\frac{1}{2}\n$$\n\nend"]), light });
+  const pg = h.page, card = '.card[data-id="n0"]';
+  await idle(h);
+  await pg.locator(`${card} .nbody p`).last().dblclick();
+  await pg.waitForSelector(`${card} .md-pm`, { timeout: 5000 });
+  const b = (await pg.locator(`${card} .md-pm [data-type=inline-math] .katex-base`).boundingBox())!;
+  await pg.mouse.click(b.x + b.width / 2, b.y + b.height / 2);
+  await until(h, "the clicked formula opens as its source", async () => !(await pg.locator(`${card} .md-pm [data-type=inline-math]`).count()));
+  await pg.evaluate(() => { const w = window as any; w.__setTimeout = window.setTimeout; (window as any).setTimeout = (f: TimerHandler, ms?: number, ...a: unknown[]) => w.__setTimeout(f, (ms ?? 0) + 2000, ...a); });
+  await keys(pg, "{ArrowDown}");
+  await pg.locator(`${card} [data-type=block-math].is-open textarea:focus`).waitFor();
+  const inline = await pg.locator(`${card} .md-pm [data-type=inline-math]`).count();
+  await pg.evaluate(() => { const w = window as any; window.setTimeout = w.__setTimeout; });
+  check("mathBlockArrowClosesInlineSource the inline formula is drawn as the block opens", inline === 1, { inline });
   await close(h);
 });
 
@@ -658,7 +681,10 @@ test("noteRefChipOnBaseline", async () => {
         ctx.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
         return r.getClientRects()[0].top + ctx.measureText(t.textContent!).fontBoundingBoxAscent;
       };
-      const label = [...chip.childNodes].find((n) => n.nodeType === Node.TEXT_NODE)!, next = chip.nextSibling!;
+      // the text after the chip (in the editor, past its hidden [[…]] source)
+      let next = chip.nextSibling!;
+      while (next.nodeType === 1 && (next as Element).classList.contains("md-hide")) next = next.nextSibling!;
+      const label = [...chip.childNodes].find((n) => n.nodeType === Node.TEXT_NODE)!;
       const lh = parseFloat(getComputedStyle(p).lineHeight), ph = p.getBoundingClientRect().height, lines = Math.round(ph / lh);
       return { chip: +base(label).toFixed(2), text: +base(next).toFixed(2), chipH: +chip.getBoundingClientRect().height.toFixed(2), lh, ph: +ph.toFixed(2), lines,
         missing: chip.classList.contains("missing") };
@@ -715,6 +741,27 @@ test("noteEndingInCodeBlockNoExtraSpace", async () => {
 /** Note 代码块右上角的语言名（照 Typora）：光标在块里时淡淡地显示（Plain text、Python），右上角、没有底色和边框；
  *  悬停时出现 ▾。点它在下面打开列表，筛选框里打字筛出语言，↵ 定下来（马上换着色，一次撤销回去），Esc 不改，点列表里的一项也行，
  *  Plain text 那一行 = 纯文字；列表开着时点了别处：照筛出的定下来，保存退出。写回成 ```语言 */
+// Picking another language colours the block by that language: a line starting with # is a comment in Python, not in Rust
+test("noteCodeBlockLanguageRecolor", async () => {
+  const h = await open({ board: board(["```python\n# per SM\nthreads = 2048  # trailing\n```\n\nafter"]), light });
+  await idle(h);
+  const pg = h.page, n0 = '.card[data-id="n0"]';
+  const label = pg.locator(`${n0} .md-pm pre .md-lang`), filter = pg.locator(".md-langbox .md-langq");
+  const coms = () => pg.locator(`${n0} .md-pm pre .cm-content .com`).count();
+  await editNote(h, "n0");
+  await pg.locator(`${n0} .md-pm pre .cm-content`).click();
+  await until(h, "python comments coloured", async () => (await coms()) === 2);
+  await label.click();
+  await expect(filter).toBeFocused();
+  await pg.keyboard.type("rust");
+  await pg.keyboard.press("Enter");
+  await expect(pg.locator(".md-langbox")).toHaveCount(0);
+  await until(h, "the block is coloured as Rust", async () => (await label.innerText()) === "Rust" && (await pg.locator(`${n0} .md-pm pre .cm-content .num`).count()) > 0 && (await coms()) === 0).catch(() => undefined);
+  const r = { name: await label.innerText(), coms: await coms(), nums: await pg.locator(`${n0} .md-pm pre .cm-content .num`).count() };
+  check("noteCodeBlockLanguageRecolor no Python comment colour left after switching to Rust", r.name === "Rust" && r.coms === 0 && r.nums > 0, r);
+  await shot(h, "noteCodeBlockLanguageRecolor");
+});
+
 test("noteCodeBlockLanguagePicker", async () => {
   const CODE = "def f():\n    return 1";
   const h = await open({ board: board([`Intro\n\n\`\`\`\n${CODE}\n\`\`\`\n\nafter`, "other note"]), light });
@@ -724,7 +771,8 @@ test("noteCodeBlockLanguagePicker", async () => {
   const list = pg.locator(".md-langbox .md-lo"), filter = pg.locator(".md-langbox .md-langq");
   const kws = () => pg.locator(`${n0} .md-pm pre .cm-content .kw`).count();
   const style = (sel: string, k: string) => pg.locator(sel).first().evaluate((e, k) => getComputedStyle(e).getPropertyValue(k), k);
-  const opacity = () => style(`${n0} .md-pm pre .md-lang`, "opacity");
+  // the label is the first item of the block's pill (language, copy, wrap, menu), which shows while wanted
+  const opacity = () => style(`${n0} .md-pm pre .md-cbpill`, "opacity");
   const chevron = () => style(`${n0} .md-pm pre .md-lang .md-lang-v`, "opacity");
   const name = () => label.innerText();
   const inCode = () => pg.evaluate(() => !!document.activeElement?.closest(".cm-content"));
@@ -737,22 +785,20 @@ test("noteCodeBlockLanguagePicker", async () => {
   };
   const res: Record<string, unknown> = { inDisplay: await pg.locator(`${n0} .md-lang`).count() }; // 只在编辑时有
   await editNote(h, "n0");
-  // 光标在代码里：显示 Plain text（纯文字）；鼠标不在块上：没有 ▾
+  // caret in the code: Plain text (no colouring); the ▾ shows even without the mouse on the block
   await pg.locator(`${n0} .md-pm pre .cm-content`).click();
   await pg.mouse.move(2, 2);
   await until(h, "the language label shows while the caret is in the block", async () => (await opacity()) === "1");
   await idle(h);
   res.plain = { name: await name(), kw: await kws(), chevron: await chevron() };
-  // 右上角（离右边 10px、上边 6px），一行淡色小字：没有底色、边框、阴影
-  const [lr, pr] = [(await label.boundingBox())!, (await pre.boundingBox())!];
+  // the pill in the top-right corner (8px in, the label 3px further in), the label in it plain 13px text: no background, border, shadow
+  const [lr, pr, pl] = [(await label.boundingBox())!, (await pre.boundingBox())!, (await pg.locator(`${n0} .md-pm pre .md-cbpill`).boundingBox())!];
   const look = await label.evaluate((e) => { const s = getComputedStyle(e); return { bg: s.backgroundColor, border: s.borderTopWidth + s.borderTopStyle, shadow: s.boxShadow, font: s.fontSize }; });
-  res.place = { right: +(pr.x + pr.width - lr.x - lr.width).toFixed(1), top: +(lr.y - pr.y).toFixed(1), ...look };
-  check("noteCodeBlockLanguagePicker label at the top right, plain text", Math.abs((res.place as any).right - 10) <= 1 && Math.abs((res.place as any).top - 6) <= 1
-    && look.bg === "rgba(0, 0, 0, 0)" && /^0px/.test(look.border) && look.shadow === "none" && look.font === "11px", res.place);
+  res.place = { right: +(pr.x + pr.width - pl.x - pl.width).toFixed(1), top: +(lr.y - pr.y).toFixed(1), ...look };
+  check("noteCodeBlockLanguagePicker label at the top right, plain text", Math.abs((res.place as any).right - 8) <= 1 && Math.abs((res.place as any).top - 11) <= 1
+    && look.bg === "rgba(0, 0, 0, 0)" && /^0px/.test(look.border) && look.shadow === "none" && look.font === "13px", res.place);
   await snap("rest");
-  // 悬停：▾ 淡入
   await pre.hover();
-  await until(h, "the chevron fades in on hover", async () => +(await chevron()) > 0.5);
   await snap("hover");
   // 点开：筛选框拿到焦点，现在的（Plain text）打 ✓、选中
   await label.click();
@@ -819,7 +865,7 @@ test("noteCodeBlockLanguagePicker", async () => {
   await idle(h);
   res.away = { md: md(h, "n0"), editing: await editing(h, "n0"), list: await pg.locator(".md-langbox").count() };
   const ok = res.inDisplay === 0
-    && JSON.stringify(res.plain) === JSON.stringify({ name: "Plain text", kw: 0, chevron: "0" })
+    && JSON.stringify(res.plain) === JSON.stringify({ name: "Plain text", kw: 0, chevron: "0.8" })
     && JSON.stringify(res.open) === JSON.stringify({ placeholder: "Filter languages", sel: "Plain text", ck: "✓" })
     && /^Python\s+python$/.test(String((res.list as any).first)) && /Python/.test(String((res.list as any).sel))
     && JSON.stringify(res.python) === JSON.stringify({ name: "Python", inCode: true })
@@ -857,7 +903,7 @@ test("noteLanguagePickerOpenWhenBoardChanges", async () => {
   await close(h);
 });
 
-/** #41：光标走进 **粗体**（方向键）展开成原文时，照 Typora 记号淡色、中间的字还是粗体（紧挨中文和中文标点的也一样）；
+/** #41：光标走进 **粗体**（方向键）时显出 ** 记号（原文里的字，淡色），中间的字还是粗体（紧挨中文和中文标点的也一样）；
  *  不在编辑时也是粗体，退出后存的字不变 */
 test("noteBoldStaysBoldInSource", async () => {
   const P = "GPU 的资源有限，而且**每个 SM 能同时分配的 thread block** 数量也**有限**，所以设备能够**同时执行的 thread block 总数存在上限**。但是，一个 grid 可以远多于该上限的 thread block。";
@@ -867,28 +913,49 @@ test("noteBoldStaysBoldInSource", async () => {
   const pg = h.page;
   const tags = (sel: string) => pg.evaluate((sel) => [...document.querySelectorAll(sel)].map((e) => `${e.tagName.toLowerCase()}:${e.textContent}`), sel);
   const shown = await tags('.card[data-id="n0"] .nbody strong');
-  /** 点进第 i 个粗体，再按一下右方向键：展开成原文 */
+  /** 点进第 i 个粗体，再按一下右方向键：记号显出来 */
   const into = async (id: string, i: number) => {
     await editNote(h, id);
     // 粗体可能折行：点它第一行的中间
     const r = await pg.locator(`.card[data-id="${id}"] .md-pm strong`).nth(i).evaluate((e) => { const q = e.getClientRects()[0]; return { x: q.x + q.width / 2, y: q.y + q.height / 2 }; });
     await pg.mouse.click(r.x, r.y);
     await keys(pg, "{ArrowRight}");
-    await until(h, "the bold opened as source", async () => (await pg.locator(`.card[data-id="${id}"] .md-pm .md-src`).count()) > 0);
+    await until(h, "the bold shows its markers", async () => (await pg.locator(`.card[data-id="${id}"] .md-pm .md-mk:not(.md-hide)`).count()) > 0);
+    await idle(h);
   };
+  /** 显出来的记号，和第一个到最后一个记号之间看得见的字：是不是都是粗体、斜体的是哪些 */
+  const opened = (id: string) => pg.evaluate((id) => {
+    const p = document.querySelector(`.card[data-id="${id}"] .md-pm .md-mk:not(.md-hide)`)!.closest("p")!;
+    const w = document.createTreeWalker(p, NodeFilter.SHOW_TEXT), marks: string[] = [];
+    let on = false, text = "", bold = true, em = "";
+    const visible = [...document.querySelectorAll(`.card[data-id="${id}"] .md-pm .md-mk:not(.md-hide)`)];
+    const last = visible[visible.length - 1];
+    for (let n = w.nextNode(); n; n = w.nextNode()) {
+      const el = n.parentElement!;
+      if (el.closest(".md-hide")) continue;
+      const mk = el.closest(".md-mk");
+      if (mk) { marks.push(n.textContent!); on = mk !== last; continue; }
+      if (!on) continue;
+      text += n.textContent;
+      if (!el.closest("strong")) bold = false;
+      if (el.closest("em")) em += n.textContent;
+    }
+    const weight = getComputedStyle(visible[0]).fontWeight;
+    return { marks, text, bold, em, faint: getComputedStyle(visible[0]).color !== getComputedStyle(p).color, weight };
+  }, id);
   await into("n0", 2);
-  const src = await tags('.card[data-id="n0"] .md-pm .md-src :is(strong, em)');
-  const marks = await tags('.card[data-id="n0"] .md-pm .md-src .md-mkc');
+  const src = await opened("n0");
   await shot(h, "noteBoldStaysBoldInSource");
   await exitEdit(h);
   await into("n1", 0);
-  const nested = await tags('.card[data-id="n1"] .md-pm .md-src :is(strong, em)');
+  const nested = await opened("n1");
   await exitEdit(h);
   await idle(h);
-  const r = { shown, src, marks, nested, md: [md(h, "n0"), md(h, "n1")] };
+  const r = { shown, src, nested, md: [md(h, "n0"), md(h, "n1")] };
   check("noteBoldStaysBoldInSource", JSON.stringify(shown) === JSON.stringify(["strong:每个 SM 能同时分配的 thread block", "strong:有限", "strong:同时执行的 thread block 总数存在上限"])
-    && JSON.stringify(src) === '["strong:同时执行的 thread block 总数存在上限"]' && JSON.stringify(marks) === '["span:**","span:**"]'
-    && JSON.stringify(nested) === '["strong:a ","strong:b","em:b","strong: c"]' && r.md[0] === P && r.md[1] === NEST, r);
+    && JSON.stringify(src.marks) === '["**","**"]' && src.text === "同时执行的 thread block 总数存在上限" && src.bold && src.faint
+    && nested.marks[0] === "**" && nested.marks[nested.marks.length - 1] === "**" && nested.text.replace(/\*/g, "") === "a b c" && nested.bold && nested.em === "b"
+    && r.md[0] === P && r.md[1] === NEST, r);
   await close(h);
 });
 

@@ -8,7 +8,8 @@ import {
 import { tune } from "./state/tune";
 import { WHEEL_GESTURE } from "./state/timing";
 import { cam, setCam, stopCam, camTo, fling, toWorld, view, ZMIN, ZMAX, lod } from "./state/camera";
-import { setGuides, setSizeHint, setDropTarget, dropTarget, setDragging, setMarquee, setRubber, setEditing, editing, setEditEntry } from "./state/ui";
+import { setGuides, setSizeHint, setDropTarget, dropTarget, setDragging, setMarquee, setRubber, setEditing, editing, setEditEntry, type NoteSpot } from "./state/ui";
+import { staticTextRange } from "@yhnocoder/markdown";
 import { frames, deepestAt, hiddenByAncestor, homeFor, partlyIn, frameOf, sec, descSections, allMembers, visibleCards, setMovingHome } from "./state/sections";
 import { geo } from "./state/geo";
 import { pops, closeAllPops, pinPop } from "./state/pop";
@@ -114,7 +115,7 @@ function clickEditKind(c: Card, t: HTMLElement): "note" | "free" | null {
 }
 /** first：这是单击（可能是双击的第一下）；双击的第二下进来的不用再拦下一下 */
 function clickEdit(kind: "note" | "free", id: string, at: { x: number; y: number }, first = false) {
-  if (kind === "note") setEditEntry({ kind: "note", id, at }); // 手写代码卡的编辑器自己按最近一次按下的地方放光标（lastDown）
+  if (kind === "note") setEditEntry({ kind: "note", id, at, spot: staticSpot(id, at) }); // 手写代码卡的编辑器自己按最近一次按下的地方放光标（lastDown）
   setEditing({ kind, id });
   if (!first) return;
   // 这一下是双击的第一下时，第二下落在刚挂上的编辑器里：只放光标，不让浏览器 / 编辑器选中一个词
@@ -124,6 +125,32 @@ function clickEdit(kind: "note" | "free", id: string, at: { x: number; y: number
     if (performance.now() - t0 < tune("dblClick") && Math.hypot(e.clientX - at.x, e.clientY - at.y) <= DBL_SLOP) e.preventDefault();
   };
   addEventListener("pointerdown", second, true);
+}
+/** The click on the Note's static view as a place in its text (NoteSpot); undefined where the point maps to no character */
+function staticSpot(id: string, at: { x: number; y: number }): NoteSpot | undefined {
+  const md = document.querySelector<HTMLElement>(`.card[data-id="${CSS.escape(id)}"] .md:is(.nbody, .tx):not(.editing)`);
+  const last = md?.lastElementChild;
+  if (!md || !last) return undefined;
+  if (at.y >= last.getBoundingClientRect().bottom) return "end";
+  const c = document.caretRangeFromPoint?.(at.x, at.y);
+  if (!c || !md.contains(c.startContainer)) return undefined;
+  // the character before the point, inside the same text (a point past a line's end is after its last character, not before the
+  // next block's first); at a text's start the one after it
+  const before = () => {
+    const all = document.createRange();
+    all.selectNodeContents(md);
+    all.setEnd(c.startContainer, c.startOffset);
+    const b = staticTextRange(md, all);
+    return b && { char: { from: b.to - 1, to: b.to, text: b.text[b.text.length - 1] }, after: true };
+  };
+  const after = () => {
+    const rest = document.createRange();
+    rest.setStart(c.startContainer, c.startOffset);
+    rest.setEnd(md, md.childNodes.length);
+    const r = staticTextRange(md, rest);
+    return r && { char: { from: r.from, to: r.from + 1, text: r.text[0] }, after: false };
+  };
+  return (c.startContainer.nodeType === 3 && c.startOffset > 0 ? before() ?? after() : after() ?? before()) ?? undefined;
 }
 // 按在只选着的这一张的正文上（Note、手写代码）：按下时不知道是点还是选字（原生文本选择），等 click 再看
 let armed: { id: string; kind: "note" | "free"; x: number; y: number } | null = null;

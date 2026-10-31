@@ -4,8 +4,8 @@ import type { EditorState } from "@tiptap/pm/state";
 import { Plugin, PluginKey, TextSelection } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
 import { place, virtual } from "../ui/place";
-import { defsIn, mathMacros, mathPreambleDefs, type MathDef } from "../math";
-import { srcRuns } from "./source";
+import { defsIn, mathMacros, mathPreambleDefs, withTex, type MathDef } from "../math";
+import { blockInfo, flat } from "./spans";
 
 /** 一条补全：snip 里的 | 是插入后光标的位置；pv 是排出来给人看的样子 */
 export type MathCmd = { name: string; snip: string; pv: string; desc: string; tag?: "预设" | "本式" };
@@ -106,7 +106,7 @@ function braces(src: string) {
 
 /** 排一次：排得出给 HTML；排不出给大白话的说明（还在打命令名时 problem 是 null：先不报错） */
 export function checkMath(src: string, display: boolean, caret = src.length): MathCheck {
-  try { return { html: katex.renderToString(src, { displayMode: display, throwOnError: true, macros: mathMacros() }) }; }
+  try { return { html: withTex(katex.renderToString(src, { displayMode: display, throwOnError: true, output: "html", macros: mathMacros() }), src) }; }
   catch (e) {
     const t = tokenAt(src, caret);
     const rest = /^[A-Za-z]*/.exec(src.slice(caret))![0];
@@ -170,7 +170,7 @@ function cmdPreview(x: MathCmd, src: string): string {
   if (h === undefined) {
     const macros = mathMacros();
     for (const d of defsIn(src)) if (!(`\\${d.name}` in macros)) macros[`\\${d.name}`] = d.body;
-    try { h = katex.renderToString(x.pv, { throwOnError: true, macros }); } catch { h = ""; }
+    try { h = katex.renderToString(x.pv, { throwOnError: true, output: "html", macros }); } catch { h = ""; }
     if (pvCache.size > 500) pvCache.clear();
     pvCache.set(key, h);
   }
@@ -362,22 +362,7 @@ export class MathHints {
 
   private showProblem(p: MathProblem | null, src: string) {
     if (!p) { this.err?.remove(); this.err = null; return; }
-    const msg = el("div", "");
-    for (const x of p.parts) {
-      if (typeof x === "string") msg.append(x);
-      else if ("code" in x) msg.append(el("code", "", x.code));
-      else {
-        const b = el("button", "fix", x.fix);
-        b.type = "button";
-        Object.assign(b.dataset, { from: String(x.from), to: String(x.to), text: x.text });
-        msg.append(b);
-      }
-    }
-    if (p.at !== null) {
-      const a = Math.max(0, p.at - 18), ch = src[p.at] ?? " ";
-      msg.append(el("span", "where", a > 0 ? "…" : "", src.slice(a, p.at), el("u", "", ch === " " ? "␣" : ch), src.slice(p.at + 1, p.at + 12)));
-    }
-    const box = el("div", "md-matherr", el("span", "dot", "!"), msg);
+    const box = problemBox(p, src, true);
     // 气泡自己接着点击；公式块的说明在卡片里，自己接（按下不拿走原文框的焦点）
     if (!this.tip) {
       box.addEventListener("mousedown", (e) => e.preventDefault());
@@ -396,6 +381,28 @@ export class MathHints {
     const from = +b.dataset.from!, to = +b.dataset.to!, text = b.dataset.text!;
     this.host.replace(from, to, text, from + text.length);
   }
+}
+
+/** What is wrong with a formula, and where (.md-matherr). fixes: its one-click fixes as buttons (the caller handles their clicks);
+ *  without, the fix is shown as the text it would write */
+export function problemBox(p: MathProblem, src: string, fixes: boolean): HTMLElement {
+  const msg = el("div", "");
+  for (const x of p.parts) {
+    if (typeof x === "string") msg.append(x);
+    else if ("code" in x) msg.append(el("code", "", x.code));
+    else if (!fixes) msg.append(el("code", "", x.text));
+    else {
+      const b = el("button", "fix", x.fix);
+      b.type = "button";
+      Object.assign(b.dataset, { from: String(x.from), to: String(x.to), text: x.text });
+      msg.append(b);
+    }
+  }
+  if (p.at !== null) {
+    const a = Math.max(0, p.at - 18), ch = src[p.at] ?? " ";
+    msg.append(el("span", "where", a > 0 ? "…" : "", src.slice(a, p.at), el("u", "", ch === " " ? "␣" : ch), src.slice(p.at + 1, p.at + 12)));
+  }
+  return el("div", "md-matherr", el("span", "dot", "!"), msg);
 }
 
 /** 文本框里第 i 个字前面的光标在屏幕上的位置：照它的样式摆一个看不见的副本量（框可能被白板的镜头缩放：按显示的比例换算） */
@@ -423,15 +430,17 @@ export function inlineMathAt(state: EditorState): Region | null {
   const $h = sel.$head, p = $h.parent;
   if (!p.isTextblock || p.type.spec.code) return null;
   const base = $h.start(), off = $h.parentOffset;
-  for (const r of srcRuns(p)) {
-    if (off < r.from || off > r.to) continue;
-    if (r.text.length < 2 || r.text[0] !== "$" || !r.text.endsWith("$")) continue;
-    const d = r.text.length >= 4 && r.text.startsWith("$$") && r.text.endsWith("$$") ? 2 : 1;
+  const text = p.textContent;
+  for (const r of flat(blockInfo(text, false).spans)) {
+    if (r.atom?.type !== "math" || off < r.from || off > r.to) continue;
+    const d = r.marks[0] ? r.marks[0][1] - r.marks[0][0] : 1;
     const a = r.from + d, b = r.to - d;
     if (off < a || off > b) return null;
-    return { from: base + a, to: base + b, text: r.text.slice(d, r.text.length - d), caret: off - a, d };
+    return { from: base + a, to: base + b, text: text.slice(a, b), caret: off - a, d };
   }
   // 还没打完的：光标前有落单的 $（成对的、代码里的、转义的不算）
+  const codes = flat(blockInfo(text, false).spans).filter((sp) => sp.tag?.nodeName === "code");
+  const inCode = (i: number) => codes.some((sp) => i >= sp.from && i < sp.to);
   const before = p.textBetween(0, off, undefined, "\ufffc");
   let open = -1, d = 0;
   for (let i = 0; i < before.length; i++) {
@@ -439,7 +448,7 @@ export function inlineMathAt(state: EditorState): Region | null {
     if (ch === "\\") { i++; continue; }
     if (ch !== "$") continue;
     const n = before[i + 1] === "$" ? 2 : 1;
-    if (p.childAfter(i).node?.marks.some((m) => m.type.spec.code)) { i += n - 1; continue; }
+    if (inCode(i)) { i += n - 1; continue; }
     if (open < 0) { open = i; d = n; } else open = -1;
     i += n - 1;
   }
@@ -473,7 +482,8 @@ export function mathHintsPlugin() {
   };
   const update = (v: EditorView, typing: boolean) => {
     region = v.composing ? region : inlineMathAt(v.state);
-    if (!region || !v.hasFocus()) { hints?.close(); return; }
+    // a closed $$…$$ in a paragraph already shows its typeset preview right under the source; a tip would cover it
+    if (!region || region.d === 2 || !v.hasFocus()) { hints?.close(); return; }
     hints ??= new MathHints(host);
     hints.refresh(typing);
   };

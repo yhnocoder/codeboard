@@ -1,32 +1,34 @@
 // 解析 / 写回用 ../schema 里唯一的那一个 MarkdownManager；这里只加编辑专用的
 import { keepKey } from "../ui/editkeys";
-import { Editor, Extension, Mark as TMark, Node as TNode, mergeAttributes, posToDOMRect, type AnyExtension, type JSONContent, type MarkViewRendererProps, type Range } from "@tiptap/core";
+import { Editor, Extension, Node as TNode, posToDOMRect, type AnyExtension, type Range } from "@tiptap/core";
 import Suggestion, { type SuggestionProps, type SuggestionKeyDownProps } from "@tiptap/suggestion";
 import { EditorState, NodeSelection, Plugin, PluginKey, Selection, TextSelection, type Transaction } from "@tiptap/pm/state";
-import { Slice, type Node as PMNode } from "@tiptap/pm/model";
+import { Fragment, Slice, type Node as PMNode } from "@tiptap/pm/model";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { Placeholder } from "@tiptap/extensions";
 import DragHandle from "@tiptap/extension-drag-handle";
 import { render } from "solid-js/web";
 import { createEffect, createSignal, For, onCleanup, Show, type Accessor } from "solid-js";
-import { baseExtensions, parseMd, pastedMd, serializeMd } from "../schema";
-import { annotNoteHtml } from "../render";
-import { paintRef } from "../view";
+import { pastedMd, sourceExtensions, texBrackets } from "../schema";
 import { Ghost } from "./ghost";
 import { Icon, type IconName } from "./icons";
-import { clipboardText } from "./clipboard";
-import { mathInSlice } from "./pastemath";
-import { marksInSlice } from "./pastemarks";
+import { clipboardHtml, clipboardText } from "./clipboard";
+import type { DOMSerializer } from "@tiptap/pm/model";
+import { htmlSource } from "./pastemarks";
 import { undoubleTex } from "../doubled";
 import { EMOJI, EMOJI_NAMES } from "../emoji";
+import type { MdLayout } from "../layout";
+import { layoutOf, sameLayout, sourceDoc, sourceMd } from "./srcdoc";
+import { ParaView, isWrapped, revealMeta, toggleWrap } from "./inline";
+import { blockInfo, flat, type Span } from "./spans";
+import { tableEditing } from "./table";
+import { sourceMode, type SourceMode } from "./srcmode";
 import { CodeBlockView, codeGapClick } from "./codeblock";
 import type { CodeLang } from "./codelang";
 import { MathBlockView } from "./mathblock";
 import { mathHintsPlugin } from "./mathhints";
-import { mathMacros } from "../math";
 import { imageEditing, insertImageUrl, pastedImages, type SaveImage } from "./image";
-import { Typora, reconvert } from "./typora";
-import { sourceKey } from "./source";
+import { Typora, setHeading } from "./typora";
 import { place, virtual } from "../ui/place";
 import { revealIn, scroller } from "../ui/reveal";
 import { TOOLBAR_SETTLE } from "../ui/timing";
@@ -40,7 +42,12 @@ export type MdEditorOpts = {
   /** ⌘ 还是 Ctrl+（提示里写的）；不给就看浏览器的平台 */
   isMac?: boolean;
   /** 结束编辑：改过给新的原文，没改给 null */
-  onDone: (v: string | null) => void;
+  onDone: (v: string | null, layout?: MdLayout | null) => void;
+  /** Table column widths, row heights and code wrap of this Markdown (kept by the caller, not in the Markdown; see layout.ts).
+   *  onDone gets the new one as its second argument only when it changed (null = all automatic again) */
+  layout?: MdLayout | null;
+  /** The ⌘/ Markdown source mode turned on or off (the caller shows its toggle pressed) */
+  onSourceMode?: (on: boolean) => void;
   /** [[ 引用：候选（kind 显示在右边）、/ 菜单里那一项的名字、没有对得上的候选时的提示。不给就没有 [[ 菜单。
    *  groups = 别处（白板：别的白板）的候选，一组一处，排在本地的后面：组头那一行本身能选（引用那一处），没打字时每组露 3 个、多的收进「N more in 组」；
    *  recent = 没打字时排在最前的最近选过的（group 不给 = 本地的）；here = 有 groups 或 recent 时本地那组的名字；foot = 列表下面的一行字；
@@ -62,12 +69,21 @@ export type MdEditorOpts = {
   dragHandle?: boolean;
 };
 export type { CodeLang } from "./codelang";
+export { visibleRange } from "./visible";
+export type MdEditorHandle = {
+  value(): string | null;
+  /** The layout as it is now (see MdEditorOpts.layout) */
+  layout(): MdLayout | null;
+  destroy(): void;
+  editor(): Editor;
+  /** Switch the whole Note between rich editing and its Markdown source (⌘/) */
+  toggleSource(): void;
+};
 /** [[ 的一个候选：label = 写进 [[…]] 的（不给就是 title），crumb = 标在标题后面的小字（白板：所在的 Section） */
 export type RefItem = { id: string; title: string; kind: string; label?: string; crumb?: string };
 /** 别处的一组候选：title = 那一处的名字，label = 引用那一处本身时写进 [[…]] 的，note = 组头右边的字 */
 export type RefGroup = { id: string; title: string; label?: string; note?: string; items: RefItem[] };
 export type RefPick = { group?: string; id: string };
-export type MdEditorHandle = { value(): string | null; destroy(): void; editor(): Editor };
 
 /**
  * 菜单的一项。crumb = 标题后面的灰色小字；cls = 样子（brow：别处那一组的组头，child：组里的，more：「N more」）；
@@ -76,9 +92,9 @@ export type MdEditorHandle = { value(): string | null; destroy(): void; editor()
 type MenuItem = { title: string; hint?: string; key: string; run: (e: Editor, r: Range) => void; ref?: true; crumb?: string; cls?: "brow" | "child" | "more"; head?: { text: string; cur?: boolean }; sep?: true; expand?: () => void };
 
 const SLASH: MenuItem[] = [
-  { title: "Heading 1", key: "h1 title", hint: "#", run: (e, r) => e.chain().focus().deleteRange(r).setNode("heading", { level: 1 }).run() },
-  { title: "Heading 2", key: "h2 subtitle", hint: "##", run: (e, r) => e.chain().focus().deleteRange(r).setNode("heading", { level: 2 }).run() },
-  { title: "Heading 3", key: "h3", hint: "###", run: (e, r) => e.chain().focus().deleteRange(r).setNode("heading", { level: 3 }).run() },
+  { title: "Heading 1", key: "h1 title", hint: "#", run: (e, r) => { e.chain().focus().deleteRange(r).run(); setHeading(e, 1); } },
+  { title: "Heading 2", key: "h2 subtitle", hint: "##", run: (e, r) => { e.chain().focus().deleteRange(r).run(); setHeading(e, 2); } },
+  { title: "Heading 3", key: "h3", hint: "###", run: (e, r) => { e.chain().focus().deleteRange(r).run(); setHeading(e, 3); } },
   { title: "Bullet List", key: "ul unordered", hint: "-", run: (e, r) => e.chain().focus().deleteRange(r).toggleBulletList().run() },
   { title: "Numbered List", key: "ol ordered", hint: "1.", run: (e, r) => e.chain().focus().deleteRange(r).toggleOrderedList().run() },
   { title: "Task List", key: "todo checkbox", hint: "[ ]", run: (e, r) => e.chain().focus().deleteRange(r).toggleTaskList().run() },
@@ -91,7 +107,7 @@ const SLASH: MenuItem[] = [
   { title: "Details", key: "collapsible toggle fold", run: (e, r) => e.chain().focus().deleteRange(r).setDetails().run() },
   // 名字是 refs.menu（白板：Link to Card）；没给 refs 时没有这一项
   { title: "", ref: true, key: "ref reference [[", hint: "[[", run: (e, r) => e.chain().focus().deleteRange(r).insertContent("[[").run() },
-  { title: "Footnote", key: "note reference", hint: "[^1]", run: (e, r) => e.chain().focus().deleteRange(r).addFootnote().run() },
+  { title: "Footnote", key: "note reference", hint: "[^1]", run: (e, r) => { e.chain().focus().deleteRange(r).run(); addFootnote(e); } },
   { title: "Divider", key: "hr rule line", hint: "---", run: (e, r) => e.chain().focus().deleteRange(r).setHorizontalRule().run() },
 ];
 
@@ -117,15 +133,24 @@ function emptyMathNear(e: Editor) {
   e.state.doc.descendants((n, pos) => { if (n.type.name === "blockMath" && !n.attrs.latex && (best < 0 || Math.abs(pos - at) < Math.abs(best - at))) best = pos; });
   return best;
 }
-/**
- * 在原处展开公式的 LaTeX 原文（Typora 一样）：选中它——公式块自己展开（mathblock.ts），行内公式由 source.ts 换成 $…$ 原文
- * （check：和鼠标点完松开一样，让它看这一次选区）
- */
+/** Opens a formula block's LaTeX source in place (as in Typora): selecting it opens it (mathblock.ts) */
 function openMathAt(e: Editor, pos: number) {
   const n = e.state.doc.nodeAt(pos);
-  if (!n || (n.type.name !== "inlineMath" && n.type.name !== "blockMath")) return;
-  e.view.dispatch(e.state.tr.setSelection(NodeSelection.create(e.state.doc, pos)).setMeta(sourceKey, { check: true }));
-  if (n.type.name === "inlineMath") e.view.focus();
+  if (n?.type.name !== "blockMath") return;
+  e.view.dispatch(e.state.tr.setSelection(NodeSelection.create(e.state.doc, pos)));
+}
+/**
+ * A footnote: `[^n]` at the caret (n one past the highest number used) and its definition paragraph `[^n]: ` at the end,
+ * where the caret goes to write it
+ */
+function addFootnote(e: Editor) {
+  let n = 0;
+  e.state.doc.descendants((p) => { if (p.isTextblock) for (const m of p.textContent.matchAll(/\[\^(\d+)\]/g)) n = Math.max(n, +m[1]); return !p.isTextblock; });
+  const k = n + 1, tr = e.state.tr.insertText(`[^${k}]`);
+  const def = `[^${k}]: `, end = tr.doc.content.size;
+  tr.insert(end, e.schema.nodes.paragraph.create(null, e.schema.text(def)));
+  tr.setSelection(TextSelection.create(tr.doc, end + 1 + def.length));
+  e.view.dispatch(revealMeta(tr).scrollIntoView());
 }
 async function insertPickedImage(e: Editor) {
   const ui = uiOf.get(e);
@@ -141,7 +166,9 @@ function menuSuggestion(editor: Editor, kind: "slash" | "ref" | "emoji", o: { ch
     char: o.char, allowSpaces: o.allowSpaces, allowedPrefixes: o.allowedPrefixes,
     items: ({ query }) => o.items(query),
     command: ({ editor, range, props }) => props.run(editor, range),
-    allow: ({ state, range }) => (o.on?.() ?? true) && !state.doc.resolve(range.from).parent.type.spec.code,
+    // a [[…]] already closed is a reference written in the source, not one being typed
+    allow: ({ state, range }) => (o.on?.() ?? true) && !state.doc.resolve(range.from).parent.type.spec.code
+      && !(kind === "ref" && state.doc.textBetween(range.from, range.to).includes("]]")),
     render: () => {
       let box: HTMLDivElement | undefined, unmount: (() => void) | undefined;
       let last: SuggestionProps<MenuItem, MenuItem> | undefined;
@@ -301,77 +328,115 @@ function Bubble(p: { editor: Editor; tick: Accessor<number>; ui: Ui }) {
   const mod = (p.ui.opts.isMac ?? /Mac|iPhone|iPad/.test(navigator.platform)) ? "⌘" : "Ctrl+";
   const shift = mod === "⌘" ? "⇧" : "Shift+";
   let busy = false;
+  // Formatting is source: the buttons add or remove markers around the selection (toggleWrap), the pressed state is
+  // "the selection is wrapped in them"
+  const W = (open: string, close = open) => ({ on: () => isWrapped(e.state, open, close), run: () => { toggleWrap(e.state, e.view.dispatch, open, close); e.view.focus(); } });
+  /** The [text](url) around the selection, if any */
+  const linkAt = (): Span | null => {
+    const { from, to, $from } = e.state.selection, p = $from.parent;
+    if (!p.isTextblock || !$from.sameParent(e.state.selection.$to)) return null;
+    const base = $from.start();
+    return flat(blockInfo(p.textContent, false).spans).find((sp) => sp.tag?.nodeName === "a" && sp.from <= from - base && sp.to >= to - base && sp.marks.length === 2) ?? null;
+  };
   const applyLink = (v: string, stay = true) => {
     if (link() === null || busy) return;
     const url = v.trim();
-    busy = true; // 下面 focus 会同步触发 blur，别再插一次
-    if (stay) e.view.focus(); // 先同步把焦点还给编辑器再拿掉输入框（见 toggleRaw）
+    busy = true; // focus below fires blur synchronously: do not insert twice
+    if (stay) e.view.focus();
     setLink(null);
     busy = false;
-    const href = /^[a-z][\w+.-]*:/i.test(url) ? url : `https://${url}`;
-    // 没选字、光标也不在链接上（⌘K）：把网址当字插进去
-    if (e.state.selection.empty && !e.isActive("link")) {
-      if (url) (stay ? e.chain().focus() : e.chain()).insertContent({ type: "text", text: url, marks: [{ type: "link", attrs: { href } }] }).unsetMark("link").run();
-      if (!stay) e.view.dom.dispatchEvent(new FocusEvent("blur"));
-      return;
+    const href = !url || /^[a-z][\w+.-]*:/i.test(url) ? url : `https://${url}`;
+    const st = e.state, { from, to, $from } = st.selection, base = $from.start(), sp = linkAt(), tr = st.tr;
+    if (sp) {
+      // change the address of the link the selection is in; an empty address unlinks it (keeps the text)
+      const text = $from.parent.textContent.slice(sp.inner![0], sp.inner![1]);
+      tr.insertText(href ? `[${text}](${href})` : text, base + sp.from, base + sp.to);
+    } else if (href) {
+      const text = st.doc.textBetween(from, to);
+      // nothing selected (⌘K): the address itself; a web address is a link as it is (GFM), others go in <…>
+      tr.insertText(text ? `[${text}](${href})` : /^(https?:\/\/|www\.)\S+$/i.test(href) ? href : `<${href}>`, from, to);
     }
-    const c = (stay ? e.chain().focus() : e.chain()).extendMarkRange("link");
-    if (url) c.setLink({ href }).run(); else c.unsetLink().run();
-    if (!stay) e.view.dom.dispatchEvent(new FocusEvent("blur")); // 点到了外面：照样保存退出
+    if (tr.docChanged) e.view.dispatch(revealMeta(tr));
+    if (!stay) e.view.dom.dispatchEvent(new FocusEvent("blur")); // clicked outside: save and leave as usual
   };
-  // 选中的字原来的批注（改一个已有的）：预览、取消时回到它
-  let annotAt: { from: number; to: number; was: Record<string, any> | null } | null = null;
-  const markAnnot = (tr: Transaction, note: string) => {
-    const r = annotAt!, type = e.schema.marks.annot;
-    tr.removeMark(r.from, r.to, type);
-    if (note) tr.addMark(r.from, r.to, type.create({ ...(r.was ?? {}), note }));
-    else if (r.was) tr.addMark(r.from, r.to, type.create(r.was));
-    return tr;
+  /** The {text|note} the selection is in, if any */
+  const annotAtSel = (): Span | null => {
+    const { from, to, $from } = e.state.selection, p = $from.parent;
+    if (!p.isTextblock) return null;
+    const base = $from.start();
+    return flat(blockInfo(p.textContent, false).spans).find((sp) => sp.atom?.type === "annot" && sp.from <= from - base && sp.to >= to - base) ?? null;
   };
+  let annotAt: { from: number; to: number; sp: Span | null } | null = null;
+  // the note being typed is shown in place as it is typed: those steps stay out of the history, and applying first puts the
+  // original text back, so the whole annotation is one undo step
+  let live: { from: number; to: number; orig: string } | null = null;
   const openAnnot = () => {
-    const { from, to } = e.state.selection;
-    const was = e.isActive("annot") ? { ...e.getAttributes("annot") } : null;
-    annotAt = { from, to, was };
-    setAnnot(was?.note ?? "");
+    const { from, to } = e.state.selection, sp = annotAtSel();
+    annotAt = { from, to, sp };
+    live = null;
+    setAnnot(sp?.atom?.type === "annot" ? sp.atom.note : "");
   };
-  const previewAnnot = (v: string) => { if (annotAt) e.view.dispatch(markAnnot(e.state.tr, v.trim()).setMeta("addToHistory", false)); };
+  const escAnnot = (t: string) => t.replace(/(?<!\\)[{}|]/g, "\\$&");
+  /** The source the annotation range becomes for this note, and the range it replaces */
+  const annotEdit = (note: string, st = e.state) => {
+    const r = annotAt!, base = st.doc.resolve(r.from).start();
+    if (r.sp?.atom?.type === "annot") {
+      // change the note of the existing one (keeps its colour and side); an empty note takes it off
+      const a = r.sp.atom, opts = [a.color !== "blue" ? a.color : "", a.below ? "below" : ""].filter(Boolean).join(" ");
+      return { from: base + r.sp.from, to: base + r.sp.to, text: note ? `{${a.text}|${escAnnot(note)}${opts ? `|${opts}` : ""}}` : a.text, inner: a.text };
+    }
+    const text = st.doc.textBetween(r.from, r.to);
+    return { from: r.from, to: r.to, text: note && r.to > r.from ? `{${escAnnot(text)}|${escAnnot(note)}}` : text, inner: escAnnot(text) };
+  };
+  const unpreview = () => {
+    if (!live) return;
+    const tr = e.state.tr.insertText(live.orig, live.from, live.to).setMeta("addToHistory", false);
+    live = null;
+    e.view.dispatch(tr);
+  };
+  const previewAnnot = (v: string) => {
+    if (!annotAt || (!annotAt.sp && annotAt.to <= annotAt.from)) return;
+    unpreview();
+    const ed = annotEdit(v.trim()), orig = e.state.doc.textBetween(ed.from, ed.to);
+    if (ed.text === orig) return;
+    live = { from: ed.from, to: ed.from + ed.text.length, orig };
+    e.view.dispatch(e.state.tr.insertText(ed.text, ed.from, ed.to).setMeta("addToHistory", false));
+  };
   const applyAnnot = (v: string | null, stay = true) => {
     if (annot() === null || busy || !annotAt) return;
     busy = true;
     if (stay) e.view.focus();
     setAnnot(null);
     busy = false;
-    const note = v?.trim() ?? "", r = annotAt;
-    // 先撤掉预览（不进撤销），再一步写上：撤销一次回到加批注之前；Esc（v = null）只撤掉预览。清空了字再回车：去掉批注
-    e.view.dispatch(markAnnot(e.state.tr, "").setMeta("addToHistory", false));
-    if (v !== null && (note || r.was)) {
-      const tr = e.state.tr;
-      tr.removeMark(r.from, r.to, e.schema.marks.annot);
-      if (note) tr.addMark(r.from, r.to, e.schema.marks.annot.create({ ...(r.was ?? {}), note }));
-      e.view.dispatch(tr.setSelection(TextSelection.create(tr.doc, r.from, r.to)));
+    unpreview();
+    const note = v?.trim() ?? "";
+    if (v !== null) {
+      const ed = annotEdit(note), tr = e.state.tr;
+      if (ed.text !== e.state.doc.textBetween(ed.from, ed.to)) {
+        tr.insertText(ed.text, ed.from, ed.to);
+        // the annotated words stay selected (the toolbar comes back with the button on)
+        const k = ed.text.startsWith("{") ? 1 : 0;
+        tr.setSelection(TextSelection.create(tr.doc, ed.from + k, ed.from + k + ed.inner.length));
+        e.view.dispatch(tr);
+      }
     }
     annotAt = null;
-    if (!stay) e.view.dom.dispatchEvent(new FocusEvent("blur")); // 点到了外面：照样保存退出
-  };
-  const toMath = () => {
-    const { from, to } = e.state.selection;
-    const latex = e.state.doc.textBetween(from, to, " ");
-    e.chain().focus().insertContentAt({ from, to }, { type: "inlineMath", attrs: { latex } }).run();
+    if (!stay) e.view.dom.dispatchEvent(new FocusEvent("blur")); // clicked outside: save and leave as usual
   };
   return (
     <Show when={shown()}>
       {(pos(), null)}
       <div ref={el} class="pill md-bubble" onMouseDown={(ev) => { if (!(ev.target as HTMLElement).closest("input")) ev.preventDefault(); }} onPointerDown={(ev) => ev.stopPropagation()}>
         <Show when={link() !== null || annot() !== null} fallback={<>
-          {B({ icon: "bold", tip: "Bold", kbd: `${mod}B`, on: () => e.isActive("bold"), run: () => e.chain().focus().toggleBold().run() })}
-          {B({ icon: "italic", tip: "Italic", kbd: `${mod}I`, on: () => e.isActive("italic"), run: () => e.chain().focus().toggleItalic().run() })}
-          {B({ icon: "strike", tip: "Strikethrough", kbd: `${mod}${shift}S`, on: () => e.isActive("strike"), run: () => e.chain().focus().toggleStrike().run() })}
-          {B({ icon: "highlight", tip: "Highlight", kbd: `${mod}${shift}H`, on: () => e.isActive("highlight"), run: () => e.chain().focus().toggleMark("highlight").run() })}
-          {B({ icon: "code", tip: "Inline Code", kbd: `${mod}E`, on: () => e.isActive("code"), run: () => e.chain().focus().toggleCode().run() })}
+          {B({ icon: "bold", tip: "Bold", kbd: `${mod}B`, ...W("**") })}
+          {B({ icon: "italic", tip: "Italic", kbd: `${mod}I`, ...W("*") })}
+          {B({ icon: "strike", tip: "Strikethrough", kbd: `${mod}${shift}S`, ...W("~~") })}
+          {B({ icon: "highlight", tip: "Highlight", kbd: `${mod}${shift}H`, ...W("==") })}
+          {B({ icon: "code", tip: "Inline Code", kbd: `${mod}E`, ...W("`") })}
           <span class="sep" />
-          {B({ icon: "link", tip: "Link", kbd: `${mod}K`, on: () => e.isActive("link"), run: () => setLink(e.getAttributes("link").href ?? "") })}
-          {B({ icon: "math", tip: "Inline Math", on: () => false, run: toMath })}
-          {B({ icon: "annot", tip: "Handwritten Note", on: () => e.isActive("annot"), run: openAnnot })}
+          {B({ icon: "link", tip: "Link", kbd: `${mod}K`, on: () => !!linkAt(), run: () => { const sp = linkAt(), m = sp && /\]\((\S*)/.exec(e.state.selection.$from.parent.textContent.slice(sp.from, sp.to)); setLink(m?.[1] ?? ""); } })}
+          {B({ icon: "math", tip: "Inline Math", ...W("$") })}
+          {B({ icon: "annot", tip: "Handwritten Note", on: () => !!annotAtSel(), run: openAnnot })}
         </>}>
           <Show when={annot() !== null} fallback={<input class="md-linkin" placeholder="Paste or type a link…" value={link() ?? ""} spellcheck={false}
             ref={(i) => queueMicrotask(() => { i.focus(); i.select(); })}
@@ -389,42 +454,11 @@ function Bubble(p: { editor: Editor; tick: Accessor<number>; ui: Ui }) {
   );
 }
 
-/**
- * {字|批注}：和静态显示一样，标签是被标的字前面的一个真节点（批注按行内 Markdown 画，见 render.ts），不能编辑、选不到；
- * 批注在工具条的输入框里按原文改，改了这个标注就换一个新的视图
- */
-function annotView({ mark, HTMLAttributes }: MarkViewRendererProps) {
-  const dom = document.createElement("span"), label = document.createElement("span"), body = document.createElement("span");
-  for (const [k, v] of Object.entries(mergeAttributes(HTMLAttributes, { class: "md-annot" }))) if (v != null) dom.setAttribute(k, String(v));
-  label.className = "md-annot-n";
-  label.contentEditable = "false";
-  label.innerHTML = annotNoteHtml(mark.attrs.note ?? "");
-  dom.append(label, body);
-  return { dom, contentDOM: body, ignoreMutation: (m: { target: Node }) => label.contains(m.target) };
-}
-
-/** 编辑时的 [[引用]] 和静态的画法一样（paintRef：标题、badge、找不到的样子） */
-function refView(node: PMNode) {
-  const dom = document.createElement("span");
-  dom.className = "md-ref";
-  dom.dataset.ref = node.attrs.label;
-  dom.textContent = node.attrs.label;
-  paintRef(dom);
-  return { dom };
-}
-
-// 每次排版时读：公式预设换了也跟上，公式里的 \newcommand 不漏到别的公式
-const mathOptions = { throwOnError: false, get macros() { return mathMacros(); } };
-
 function editorExtensions(o: MdEditorOpts, ed: () => Editor, handle: HTMLElement | null, exit: () => void, complete: (b: string, a: string) => Promise<string | null>): AnyExtension[] {
-  const onMath = (_n: PMNode, pos: number) => openMathAt(ed(), pos);
-  // 公式：点一下在原处展开原文（行内的由 source.ts 换成 $…$，公式块自己的节点视图展开，见 mathblock.ts）
-  const base = baseExtensions.map((x) => (x.name === "inlineMath" ? x.configure({ onClick: onMath, katexOptions: mathOptions })
-    : x.name === "blockMath" ? (x as TNode).extend({ addNodeView: () => ({ node, view, getPos }) => new MathBlockView(node, view, getPos as () => number | undefined) })
-    : x.name === "annot" ? (x as TMark).extend({ addMarkView: () => annotView })
-    : x.name === "wikiRef" ? (x as TNode).extend({ addNodeView: () => ({ node }) => refView(node) })
-    : x.name === "image" ? imageEditing(x as TNode, ed, () => saveImage(o))
+  const base = sourceExtensions.flatMap((x): AnyExtension | AnyExtension[] => (x.name === "blockMath" ? (x as TNode).extend({ addNodeView: () => ({ node, view, getPos }) => new MathBlockView(node, view, getPos as () => number | undefined) })
+    : x.name === "paragraph" ? imageEditing((x as TNode).extend({ addNodeView: () => ({ node, view, getPos }) => new ParaView(node, view, getPos as () => number | undefined) }), ed, () => saveImage(o))
     : x.name === "codeBlock" ? (x as TNode).extend({ addProseMirrorPlugins: () => [codeGapClick()], addNodeView: () => ({ node, view, getPos }) => new CodeBlockView(node, view, getPos as () => number | undefined, { editor: ed, exit: () => { if (!uiOf.get(ed())?.closeFind()) exit(); }, complete, comment: (l) => o.code?.comment?.(l), lsp: (l) => o.code?.lsp?.(l), stopPointerDown: o.code?.stopPointerDown, langs: () => o.code?.langs ?? [] }) })
+    : x.name === "table" ? tableEditing(x as TNode, () => o.isMac)
     : x));
   const Slash = Extension.create({
     name: "cbSlash",
@@ -443,7 +477,7 @@ function editorExtensions(o: MdEditorOpts, ed: () => Editor, handle: HTMLElement
     const insert = (label: string, pick: RefPick) => (e: Editor, r: Range) => {
       // 自动配对补上的 ]]（pairs.ts）或手打的 】】 也一起换掉
       const to = close && e.state.doc.textBetween(r.to, Math.min(r.to + close.length, e.state.doc.content.size), "", "￼") === close ? r.to + close.length : r.to;
-      e.chain().focus().insertContentAt({ from: r.from, to }, [{ type: "wikiRef", attrs: { label } }, { type: "text", text: " " }]).run();
+      e.chain().focus().insertContentAt({ from: r.from, to }, `[[${label}]] `).run();
       o.refs?.picked?.(pick);
     };
     const row = (c: RefItem, g?: RefGroup, more: Partial<MenuItem> = {}): MenuItem =>
@@ -504,7 +538,6 @@ function editorExtensions(o: MdEditorOpts, ed: () => Editor, handle: HTMLElement
       ];
     },
   });
-  // 打完 :名字: 直接变是 schema.ts 的输入规则
   const Emo = Extension.create({
     name: "cbEmoji",
     addProseMirrorPlugins() {
@@ -515,7 +548,7 @@ function editorExtensions(o: MdEditorOpts, ed: () => Editor, handle: HTMLElement
           if (s.length < 2 || !/^[a-z0-9_+-]+$/.test(s)) return [];
           const w = (n: string) => (n.startsWith(s) ? 3 : n.includes(`_${s}`) ? 2 : n.includes(s) ? 1 : 0);
           return EMOJI_NAMES.map((n) => ({ n, w: w(n) })).filter((x) => x.w).sort((a, b) => b.w - a.w || a.n.length - b.n.length).slice(0, 30)
-            .map(({ n }) => ({ title: `${EMOJI[n]}  ${n}`, key: n, run: (e: Editor, r: Range) => { e.chain().focus().insertContentAt(r, { type: "emoji", attrs: { name: n } }).run(); } }));
+            .map(({ n }) => ({ title: `${EMOJI[n]}  ${n}`, key: n, run: (e: Editor, r: Range) => { e.chain().focus().insertContentAt(r, `:${n}:`).run(); } }));
         },
       })];
     },
@@ -524,8 +557,13 @@ function editorExtensions(o: MdEditorOpts, ed: () => Editor, handle: HTMLElement
     name: "cbRules",
     addKeyboardShortcuts() {
       return {
-        // ⌘↵ 保存退出在外层处理；Shift+↵ 段内换行（写回成 Markdown 的硬换行）
-        "Shift-Enter": () => this.editor.commands.setHardBreak(),
+        // Shift+↵: a line break inside the paragraph or cell, written as <br> (the source shows it)
+        "Shift-Enter": () => {
+          const { $from } = this.editor.state.selection;
+          if (!$from.parent.isTextblock || $from.parent.type.spec.code) return false;
+          this.editor.view.dispatch(revealMeta(this.editor.state.tr.insertText("<br>")).scrollIntoView());
+          return true;
+        },
       };
     },
   });
@@ -547,7 +585,11 @@ function editorExtensions(o: MdEditorOpts, ed: () => Editor, handle: HTMLElement
           if (at === null) return null;
           const end = at + st.doc.nodeAt(at)!.nodeSize, { $head } = st.selection;
           const inside = st.selection.empty && $head.pos > at && $head.pos < end;
-          return DecorationSet.create(st.doc, [Decoration.node(at, end, { class: inside ? "md-pad at" : "md-pad" })]);
+          // the block before it ends the Note's content (markdown.css: no bottom margin); a class, not a sibling :has() rule,
+          // which would restyle every block of the Note on each change
+          const prev = st.doc.resolve(at).nodeBefore, ds = [Decoration.node(at, end, { class: inside ? "md-pad at" : "md-pad" })];
+          if (prev) ds.push(Decoration.node(at - prev.nodeSize, at, { class: "md-prepad" }));
+          return DecorationSet.create(st.doc, ds);
         },
       },
     })],
@@ -565,30 +607,46 @@ function editorExtensions(o: MdEditorOpts, ed: () => Editor, handle: HTMLElement
   ];
 }
 
-function handlePaste(e: Editor, o: MdEditorOpts, ev: ClipboardEvent, slice: Slice): boolean {
+/** Markdown → editor blocks (source paragraphs) as a slice open at a paragraph on either end, so the first joins the
+ *  text before the caret and the last the text after it */
+function sourceSlice(e: Editor, md: string): Slice {
+  const d = e.state.schema.nodeFromJSON(sourceDoc(md));
+  const open = (n: PMNode | null) => (n?.type.name === "paragraph" ? 1 : 0);
+  return new Slice(d.content, open(d.firstChild), open(d.lastChild));
+}
+/** Plain lines, each its own paragraph (text that is not Markdown is still source: it reads back as the same text) */
+function linesSlice(e: Editor, text: string): Slice {
+  const ps = text.split(/\n+/).filter((l, k, a) => l || (k > 0 && k < a.length - 1)).map((l) => e.schema.nodes.paragraph.create(null, l ? e.schema.text(l) : null));
+  return new Slice(Fragment.from(ps), 1, 1);
+}
+function handlePaste(e: Editor, _o: MdEditorOpts, ev: ClipboardEvent): boolean {
   const cd = ev.clipboardData;
   if (!cd) return false;
   const raw = cd.getData("text/plain").replace(/\r\n?/g, "\n");
   const $f = e.state.selection.$from;
-  if ($f.parent.type.spec.code) return false; // 代码块里原样粘贴
-  if (pastedImages(cd).length) return false; // 图片（和整段 SVG 文字）交给 imageEditing 的粘贴，不当 Markdown 读
+  if ($f.parent.type.spec.code) return false; // pasted as is into a code block
+  if (pastedImages(cd).length) return false; // images (and a whole SVG as text) go to imageEditing's paste
   const html = cd.getData("text/html");
-  // 只有纯文字时（电子书、网页里排好的公式）"显示的字 + TeX" 只留 $TeX$；HTML 里的在 mathInSlice 里认
+  // only plain text (e-books, typeset formulas on web pages): "shown text + TeX" keeps only $TeX$; HTML is handled in mathInSlice
   const text = html || cd.getData("vscode-editor-data") ? raw : undoubleTex(raw);
-  // 表格格子里只能有一段（GFM 存不下别的）：几行字用硬换行连起来（写回成 <br>），不变成代码块、列表
+  const put = (slice: Slice) => { e.view.dispatch(revealMeta(e.state.tr.replaceSelection(slice)).scrollIntoView().setMeta("paste", true).setMeta("uiEvent", "paste")); return true; };
+  // a table cell holds one paragraph (GFM cannot hold more): lines joined with <br>
   if ($f.depth && /cell/.test($f.node(-1).type.spec.tableRole ?? "") && text.includes("\n")) {
-    const lines = text.replace(/\n$/, "").split("\n");
-    e.chain().focus().insertContent(lines.flatMap((l, i): JSONContent[] => [...(i ? [{ type: "hardBreak" }] : []), ...(l ? [{ type: "text", text: l }] : [])])).run();
+    e.view.dispatch(revealMeta(e.state.tr.insertText(text.replace(/\n$/, "").split("\n").join("<br>"))).scrollIntoView());
     return true;
   }
-  // 从 VS Code 复制的代码：保留缩进，多行的变成代码块（语言用 VS Code 给的）
+  // code copied from VS Code: indentation kept; several lines become a code block (in VS Code's language)
   const vs = cd.getData("vscode-editor-data");
   if (vs && text) {
     let lang = "";
     try { lang = JSON.parse(vs).mode ?? ""; } catch { /* ignore */ }
-    if (!text.includes("\n")) { e.chain().focus().insertContent({ type: "text", text, marks: [{ type: "code" }] }).insertContent(" ").run(); return true; }
+    if (!text.includes("\n")) {
+      const ticks = "`".repeat(Math.max(0, ...[...text.matchAll(/`+/g)].map((m) => m[0].length)) + 1), pad = /^`|`$/.test(text) ? " " : "";
+      e.view.dispatch(e.state.tr.insertText(`${ticks}${pad}${text}${pad}${ticks} `));
+      return true;
+    }
     e.chain().focus().insertContent({ type: "codeBlock", attrs: { language: lang && lang !== "plaintext" ? lang : null }, content: [{ type: "text", text: dedent(text.replace(/\n$/, "")) }] })
-      // 光标落到代码块后面（后面没有段落就补一个），接着打字不会进代码里
+      // the caret lands after the code block (adding a paragraph when there is none), so typing goes on outside the code
       .command(({ tr, state }) => {
         const $p = tr.selection.$from;
         if (!$p.parent.type.spec.code) return true;
@@ -600,29 +658,18 @@ function handlePaste(e: Editor, o: MdEditorOpts, ev: ClipboardEvent, slice: Slic
       }).run();
     return true;
   }
-  // 别处的 HTML（不是从编辑器里复制的：那里字面的 $ == 是转义过的）：字里原样留着的 ==…==、~~…~~、---、$…$ 变成格式、分隔线、公式。
-  // 先认格式：==a $x$ b== 里的公式跟着带上高亮
-  if (html && !html.includes("data-pm-slice")) {
-    const marked = marksInSlice(slice, e.state.schema) ?? slice;
-    const fixed = mathInSlice(marked, e.state.schema) ?? (marked !== slice ? marked : null);
-    if (fixed) { e.view.dispatch(e.state.tr.replaceSelection(fixed).scrollIntoView().setMeta("paste", true).setMeta("uiEvent", "paste")); return true; }
+  // a copy from an editor of this board carries data-pm-slice, and its text/plain is the Markdown source: pasted as that
+  const own = !!html && html.includes("data-pm-slice");
+  // HTML from elsewhere (or ours without its text/plain): read with the full schema (formatting, links, typeset formulas), then written
+  // as Markdown source
+  if (html && (!own || !text)) {
+    const md = htmlSource(new DOMParser().parseFromString(html, "text/html").body);
+    return md ? put(sourceSlice(e, md)) : false;
   }
-  // 纯文字解析器读得出 Markdown：按 Markdown 粘贴（HTML 的交给 ProseMirror 按 schema 解析，写回时自然是干净的 Markdown）
-  // 之后把光标所在的这一段再当 Markdown 解析一遍：粘进来的字补完了前面打了一半的记号（打了 $\frac{，粘贴 a}{b}$）也能变
-  const doc = text && !html ? pastedMd(text) : null;
-  if (doc) {
-    // 和别的粘贴一样，两头的段落是敞开的：头一段接在光标前的字后面，末一段接上光标后的字（只有一段就插在光标处，不另起一段）
-    const d = e.state.schema.nodeFromJSON(doc);
-    const open = (n: PMNode | null) => (n?.type.name === "paragraph" ? 1 : 0);
-    const tr = e.state.tr.replaceSelection(new Slice(d.content, open(d.firstChild), open(d.lastChild)));
-    e.view.dispatch(reconvert(tr).scrollIntoView().setMeta("paste", true).setMeta("uiEvent", "paste"));
-    return true;
-  }
-  if (text && !html && !text.includes("\n") && /[$*`~\]>=^]/.test(text)) {
-    e.view.dispatch(reconvert(e.state.tr.insertText(text)));
-    return true;
-  }
-  return false;
+  if (!text) return false;
+  if (!text.includes("\n")) { e.view.dispatch(revealMeta(e.state.tr.insertText(text)).scrollIntoView().setMeta("paste", true)); return true; }
+  if (own) return put(sourceSlice(e, text));
+  return put(pastedMd(text) ? sourceSlice(e, texBrackets(text)) : linesSlice(e, text));
 }
 function dedent(s: string) {
   const ls = s.split("\n");
@@ -633,7 +680,7 @@ function dedent(s: string) {
 // 编辑器只建一次（空闲时预热好），每次编辑把它挪进这张卡、换一个新的 EditorState（文档、撤销、各插件状态都是新的）：
 // 不用每次重建 schema、扩展、插件和视图，进入编辑只剩把这份文档画出来
 type Sess = { o: MdEditorOpts; onTx: (tr: Transaction) => void; onFocus: () => void; onBlur: (ev: FocusEvent) => void; finish: () => void };
-type Inst = { editor: Editor; box: HTMLElement; dragHandle: boolean; sess: Sess | null; prepared?: string };
+type Inst = { editor: Editor; box: HTMLElement; dragHandle: boolean; sess: Sess | null; prepared?: string; host?: HTMLElement };
 let pool: Inst | undefined;
 
 /** dragHandle：带不带拖动把手（扩展在建编辑器时就定下了，带和不带的是两个编辑器） */
@@ -659,8 +706,9 @@ function makeInst(dragHandle = false): Inst {
     injectCSS: false, // 基础样式在 markdown.css
     editorProps: {
       attributes: { class: "md-pm", spellcheck: "false" },
-      handlePaste: (_v, ev, slice) => (inst.sess ? handlePaste(inst.editor, inst.sess.o, ev, slice) : false),
+      handlePaste: (_v, ev) => (inst.sess ? handlePaste(inst.editor, inst.sess.o, ev) : false),
       clipboardTextSerializer: clipboardText,
+      clipboardSerializer: clipboardHtml(() => inst.editor.view) as unknown as DOMSerializer,
       // 白板上的 Note 一般不滚动（卡片跟着内容长高），白板本身也不滚（靠镜头）：不让 ProseMirror 去滚所有祖先。
       // 定了高度的 Note 正文自己会滚（overflow: auto）：光标只在正文里滚进来。找能滚的祖先先看样式，自动高度的卡不量排版。
       // 代码块（横向能滚）和不在卡片上的（浮层里可能能滚）照常
@@ -683,8 +731,8 @@ function makeInst(dragHandle = false): Inst {
   return inst;
 }
 const freshState = (prev: EditorState, doc: PMNode) => EditorState.create({ doc, plugins: prev.plugins });
-/** 正文的末尾（脚注列表前面） */
-const bodyEnd = (d: PMNode) => d.content.size - (d.lastChild?.type.name === "footnotes" ? d.lastChild.nodeSize : 0);
+/** End of the body */
+const bodyEnd = (d: PMNode) => d.content.size;
 const TYPABLE = /^(paragraph|heading|bulletList|orderedList|taskList)$/;
 /** 最后一块是代码、公式、表格、折叠块这类时补一个空段落（不写进文件）。补了返回 true */
 function padEnd(tr: Transaction): boolean {
@@ -701,8 +749,8 @@ function padAt(doc: PMNode): number | null {
   return before && !TYPABLE.test(before.type.name) ? at : null;
 }
 /** 一次编辑的初始状态：文档、撤销栈、各插件都从头来。光标放到正文末尾；垫的空段落不算改动（没打字就不保存） */
-function stateFor(editor: Editor, value: string): EditorState {
-  const st = freshState(editor.state, editor.schema.nodeFromJSON(parseMd(value)));
+function stateFor(editor: Editor, value: string, layout?: MdLayout | null): EditorState {
+  const st = freshState(editor.state, editor.schema.nodeFromJSON(sourceDoc(value, layout)));
   const tr = st.tr;
   if (padEnd(tr)) tr.setMeta("addToHistory", false);
   tr.setSelection(Selection.near(tr.doc.resolve(bodyEnd(tr.doc)), -1));
@@ -712,13 +760,26 @@ function stateFor(editor: Editor, value: string): EditorState {
  * 预备：鼠标停在一张 Note 上（多半接着要双击）时，在页面外把它的文档画进那一个编辑器（先拿下来再换：挂在页面上换的话，
  * ProseMirror 读 DOM 选区会强制整页排版一次）。双击时只剩挂上去、拿焦点。编辑器正在用时不做
  */
-export function prepare(value: string) {
-  const inst = pool;
-  if (!inst || inst.sess || inst.prepared === value) return;
+const prepKey = (value: string, layout?: MdLayout | null) => (layout ? `${JSON.stringify(layout)}\n${value}` : value);
+/**
+ * The caret at pos, or where a caret can be nearest to it: a point between blocks, at a table cell's edge or past the last
+ * block resolves to no text, and a text selection there is invalid (ProseMirror warns and the caret goes nowhere visible)
+ */
+export function placeCaret(e: Editor, pos: number) {
+  const doc = e.state.doc, $p = doc.resolve(Math.max(0, Math.min(pos, doc.content.size)));
+  if ($p.parent.inlineContent) { e.view.dispatch(e.state.tr.setSelection(TextSelection.create(doc, $p.pos))); return; }
+  // the nearer text of the two sides: a cell's start goes into that cell, the end of a row into its last cell
+  const back = Selection.findFrom($p, -1, true), fwd = Selection.findFrom($p, 1, true);
+  const near = back && fwd ? ($p.pos - back.head <= fwd.head - $p.pos ? back : fwd) : back ?? fwd ?? Selection.near($p, -1);
+  e.view.dispatch(e.state.tr.setSelection(near));
+}
+export function prepare(value: string, layout?: MdLayout | null) {
+  const inst = pool, key = prepKey(value, layout);
+  if (!inst || inst.sess || inst.prepared === key) return;
   try {
     inst.box.remove();
-    inst.editor.view.updateState(stateFor(inst.editor, value));
-    inst.prepared = value;
+    inst.editor.view.updateState(stateFor(inst.editor, value, layout));
+    inst.prepared = key;
   } catch { inst.prepared = undefined; }
 }
 const SAMPLE = "## a\n\ntext **b** `c` $x$ [[d]][^1]\n\n- [ ] t\n\n```python\ndef f(): pass\n```\n\n$$\nx\n$$\n\n| a | b |\n| - | - |\n| 1 | 2 |\n\n<details>\n<summary>s</summary>\n\nb\n\n</details>\n\n[^1]: n";
@@ -734,8 +795,8 @@ export function warmUp(extra?: string) {
     const e = inst.editor;
     // 样例里各种节点都有；再画一遍白板上真有的一张 Note（真实内容走到的路径更多）
     for (const md of extra ? [SAMPLE, extra] : [SAMPLE]) {
-      e.view.updateState(freshState(e.state, e.schema.nodeFromJSON(parseMd(md))));
-      serializeMd(e.getJSON());
+      e.view.updateState(freshState(e.state, e.schema.nodeFromJSON(sourceDoc(md))));
+      sourceMd(e.getJSON());
     }
     // ProseMirror 第一次 focus 时要先探测浏览器支不支持 preventScroll（会读一遍所有祖先的滚动位置，强制整页排版）：
     // 在这里探测掉。宿主是 visibility:hidden，拿不到焦点，不会把焦点从白板上抢走
@@ -747,11 +808,11 @@ export function warmUp(extra?: string) {
 }
 
 export function mountEditor(host: HTMLElement, o: MdEditorOpts): MdEditorHandle {
-  let changed = false, raw: HTMLTextAreaElement | null = null, rawStart = "", done = false;
+  let changed = false, done = false, src: SourceMode | null = null, doc0: PMNode | null = null;
   let find: ReturnType<typeof noteFind> | undefined;
   const [tick, setTick] = createSignal(0);
   const [menu, setMenu] = createSignal<ReturnType<Ui["menu"]>>(null);
-  // 那一个正被别的 Note 用着（两次编辑交接的那一下），或者要不要拖动把手和它不一样：这次单独建一个，用完拆掉
+  // the shared editor is busy (the hand-over between two sessions), or its drag handle differs: build one for this session
   const dragHandle = !!o.dragHandle;
   if (!pool) pool = makeInst(dragHandle);
   const inst = pool.sess || pool.dragHandle !== dragHandle ? makeInst(dragHandle) : pool;
@@ -759,26 +820,26 @@ export function mountEditor(host: HTMLElement, o: MdEditorOpts): MdEditorHandle 
   const editor = inst.editor;
   const sess: Sess = {
     o,
-    onTx: (tr) => { if (tr.docChanged) changed = true; setTick((t) => t + 1); find?.refresh(); },
+    onTx: (tr) => { if (tr.docChanged) { doc0 ??= tr.before; changed = true; } setTick((t) => t + 1); find?.refresh(); },
     onFocus: () => setTick((t) => t + 1),
     onBlur: (ev) => { setTick((t) => t + 1); blurred(ev); },
     finish: () => finish(),
   };
   inst.sess = sess;
   editor.view.dom.style.display = "";
-  // 新的状态（见 stateFor）。鼠标停在这张 Note 上时多半已经在页面外准备好了（prepare），这里只剩挂上去
-  if (!pooled || inst.prepared !== o.value) {
+  // a fresh state (stateFor); when the pointer rested on this Note it was usually prepared off-page already
+  if (!pooled || inst.prepared !== prepKey(o.value, o.layout)) {
     inst.box.remove();
-    inst.editor.view.updateState(stateFor(editor, o.value));
+    inst.editor.view.updateState(stateFor(editor, o.value, o.layout));
   }
   inst.prepared = undefined;
   host.append(inst.box);
   {
-    // 这一个任务里就拿焦点（不等 TipTap 的下一帧），光标和编辑器同一帧出现。放进微任务：双击是在 pointerdown 里进来的，
-    // 同一个事件冒泡到画布时会把焦点 blur 掉；从菜单进来时菜单关掉会把焦点放回 body，下一帧再补一次
+    // focus within this task (not TipTap's next frame), so the caret appears with the editor. In a microtask: a double-click
+    // enters from pointerdown and the same event bubbling to the canvas blurs; entering from a menu returns focus to body
     queueMicrotask(() => { if (inst.sess === sess && !editor.view.hasFocus()) editor.view.focus(); });
-    // 下一帧那次只补"焦点掉到了 body"的情况：慢机器上第一帧可能来得很晚，那时已经打了 $$⏎ / ⌘K，焦点在公式块的原文、链接框里，
-    // 不能抢回编辑器（公式原文失焦就收起，空公式块被删掉，接着打的字落进正文）。TipTap 的 focus() 是无条件在下一帧抢
+    // the next frame only repairs "focus fell to body": on a slow machine $$⏎ or ⌘K may already have moved focus into the
+    // formula source or the link box, which must not be taken back
     requestAnimationFrame(() => {
       const a = document.activeElement;
       if (inst.sess === sess && !editor.isDestroyed && !editor.view.hasFocus() && (!a || a === document.body)) editor.view.focus();
@@ -788,70 +849,59 @@ export function mountEditor(host: HTMLElement, o: MdEditorOpts): MdEditorHandle 
   const layer = document.createElement("div");
   layer.className = "mdui";
   document.body.append(layer);
-  // 查找条在 host 里（编辑器右上角）：焦点在它和编辑器之间来回不算离开
+  // the find bar is in host (top right of the editor): focus moving between it and the editor is not leaving
   find = noteFind(editor.view, host, { isMac: o.isMac, owns: (n) => host.contains(n) || layer.contains(n), leave: (ev) => blurred(ev) });
   const ui: Ui = { menu, setMenu, link, setLink, closeFind: () => !!find?.close(), follow: false, opts: o };
   uiOf.set(editor, ui);
   const disposeUi = render(() => <Bubble editor={editor} tick={tick} ui={ui} />, layer);
 
   const value = (): string | null => {
-    if (raw) return raw.value !== rawStart || changed ? raw.value.replace(/\s+$/, "") : null;
-    return changed ? serializeMd(editor.getJSON()) : null;
+    if (src?.changed()) return src.text().replace(/\s+$/, "");
+    if (!changed) return null;
+    // changes that write the same Markdown (a column width, kept as layout) leave the text as the user wrote it
+    const md = sourceMd(editor.getJSON());
+    return doc0 && sourceMd(doc0.toJSON()) === md ? null : md;
   };
+  const layout = (): MdLayout | null => layoutOf(editor.state.doc);
   const finish = () => {
     if (done) return;
     done = true;
     const v = value();
+    // in source mode the text is saved as written; the layout (nth table, nth code block) is carried onto it by applying it
+    if (src) { const s0 = src; src = null; if (s0.close(true, false)) changed = true; o.onSourceMode?.(false); }
+    const l = layout();
     destroy();
-    o.onDone(v);
+    if (sameLayout(l, o.layout)) o.onDone(v); else o.onDone(v, l);
   };
-  // 焦点离开编辑器和它的浮层：保存退出（点工具条、链接输入框时不算）
+  // focus leaving the editor and its overlays: save and leave (the toolbar, the link box do not count)
   function blurred(ev?: FocusEvent) {
-    const inside = (n: EventTarget | null | undefined) => n instanceof Node && (host.contains(n) || layer.contains(n) || !!(n as Element).closest?.(".mdui, .mdui-anchor, .md-handle"));
+    const inside = (n: EventTarget | null | undefined) => n instanceof Node && (host.contains(n) || layer.contains(n) || !!(n as Element).closest?.(".mdui, .mdui-anchor, .md-handle, [data-md-keep]"));
     if (inside(ev?.relatedTarget)) return;
-    setTimeout(() => { if (!done && !inside(document.activeElement) && document.activeElement !== raw) finish(); }, 0);
+    setTimeout(() => { if (!done && !inside(document.activeElement)) finish(); }, 0);
   }
-  // ⌘/：原文模式（直接改 Markdown），再按一次回到所见即所得
-  const toggleRaw = () => {
-    if (!raw) {
-      const md = serializeMd(editor.getJSON());
-      raw = document.createElement("textarea");
-      raw.className = "md-raw";
-      raw.spellcheck = false;
-      raw.value = rawStart = md;
-      editor.view.dom.style.display = "none";
-      host.append(raw);
-      const grow = () => { raw!.style.height = "auto"; raw!.style.height = `${raw!.scrollHeight}px`; };
-      raw.addEventListener("input", grow);
-      raw.addEventListener("blur", (ev) => blurred(ev));
-      grow();
-      raw.focus();
-      raw.setSelectionRange(raw.value.length, raw.value.length);
+  // ⌘/: the whole Note as Markdown source (CodeMirror), and back; the caret keeps its place both ways
+  const toggleSource = () => {
+    if (done) return;
+    if (!src) {
+      src = sourceMode(editor, host, { isMac: o.isMac, back: () => toggleSource(), exit: () => finish(), blur: (ev) => blurred(ev) });
+      o.onSourceMode?.(true);
     } else {
-      const v = raw.value;
-      if (v !== rawStart) { editor.commands.setContent(parseMd(v), { emitUpdate: true }); changed = true; }
-      // 先同步把焦点交给编辑器再拿掉原文框：否则拿掉的那一下焦点落到 body（TipTap 的 focus 要等下一帧），
-      // 慢的机器上失焦检查会先跑，或者紧接着的按键（Esc）落到白板上
-      editor.view.dom.style.display = "";
-      editor.view.dispatch(editor.state.tr.setSelection(Selection.atEnd(editor.state.doc)));
-      editor.view.focus();
-      const r = raw;
-      raw = null;
-      r.remove();
+      const s0 = src;
+      src = null;
+      if (s0.close(true, true)) changed = true;
+      o.onSourceMode?.(false);
     }
   };
   const onKey = (ev: KeyboardEvent) => {
     const mod = ev.metaKey || ev.ctrlKey;
     if (ev.isComposing || ev.key === "Process") return;
-    if (mod && !ev.shiftKey && !ev.altKey && (ev.key === "/" || ev.code === "Slash")) { ev.preventDefault(); toggleRaw(); return; }
-    // 所见即所得模式的 Esc / ⌘↵ 在编辑器的键表里（最后才轮到，菜单、灰字先处理 Esc）；这里只管原文模式
-    if (!raw) return;
-    if (ev.key === "Escape" || (ev.key === "Enter" && mod)) { ev.preventDefault(); finish(); }
+    // a code block's CodeMirror keeps ⌘/ for line comments (it stops the key there); everywhere else it is source mode
+    if (mod && !ev.shiftKey && !ev.altKey && (ev.key === "/" || ev.code === "Slash")) { ev.preventDefault(); toggleSource(); }
   };
-  // ⌘F / ⌥⌘F 在捕获阶段拿：光标在代码块（CodeMirror，自己不往外冒按键）里也是查整篇 Note
+  // ⌘F / ⌥⌘F in the capture phase: also from inside a code block (CodeMirror stops its keys), it searches the whole Note
   const onFind = (ev: KeyboardEvent) => {
     const k = findKey(ev);
-    if (!k || raw) return;
+    if (!k || src) return;
     ev.preventDefault();
     ev.stopPropagation();
     find?.open(k === "replace");
@@ -863,20 +913,23 @@ export function mountEditor(host: HTMLElement, o: MdEditorOpts): MdEditorHandle 
     host.removeEventListener("keydown", onFind, true);
     find?.destroy();
     inst.sess = null;
-    // 收尾放到这一帧画完以后：退出那一帧只做换回静态内容（卡片那边会把整个编辑框连同编辑器一起拿掉）
+    const s0 = src;
+    src = null;
+    if (s0) o.onSourceMode?.(false);
+    // cleanup after this frame is drawn: the frame that leaves only swaps the static content back
     requestAnimationFrame(() => setTimeout(() => {
       disposeUi();
       layer.remove();
-      raw?.remove();
-      if (inst.sess) return; // 已经被下一次编辑拿去用了
-      // 有焦点的元素被拿掉时不会触发 blur，ProseMirror 会以为自己还有焦点：补一个
+      s0?.destroy();
+      if (inst.sess) return; // already taken by the next session
+      // a focused element taken out of the page fires no blur, and ProseMirror would think it still has focus
       const focused = editor.view.hasFocus();
       inst.box.remove();
       if (focused) editor.view.dom.dispatchEvent(new FocusEvent("blur"));
       if (!pooled) { if (!editor.isDestroyed) editor.destroy(); return; }
-      // 留着的那一个也不留这次的文档：节点视图跟着拆掉（代码块关掉宿主那边的语言服务文档）
+      // the kept one does not keep this document: node views go too (code blocks close their language-service documents)
       editor.view.updateState(stateFor(editor, ""));
     }));
   };
-  return { value, editor: () => editor, destroy: () => { if (!done) { done = true; destroy(); } } };
+  return { value, layout, editor: () => editor, toggleSource, destroy: () => { if (!done) { done = true; destroy(); } } };
 }

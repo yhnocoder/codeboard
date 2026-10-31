@@ -12,6 +12,10 @@
   --inote: rgba(60,45,20,.05);
   --hlrow: rgba(60,45,20,.07); --hlbar: #6a655c;
   --chg: rgba(196,138,31,.13); --chg-strong: rgba(196,138,31,.34); --del: rgba(181,85,45,.09); --add: rgba(74,117,54,.10);
+  /* what an edit would delete (the table size grid's doomed cells, @yhnocoder/markdown) */
+  --doom: rgba(205,70,45,.16); --doom-line: rgba(205,70,45,.55); --doom-ink: #b23a22;
+  /* a Note's code blocks (Warm Ink only, the demo's colours; other looks reset these below and use their --k-* colours) */
+  --nc-bg: #f5f3ef; --nc-pill: #ffffff; --nc-kw: #1f6fa8; --nc-fn: #d03b5c; --nc-num: #a3166b; --nc-com: #66758a; --nc-str: #4a7a2c; --nc-op: #9a6a2c; --nc-p: #8a857c; --nc-com-i: normal;
   --hatch: rgba(60,45,20,.07);
   --edge: #9a958b;
   --s-sand: rgba(206,170,110,.16); --s-blue: rgba(96,145,205,.12); --s-green: rgba(110,165,95,.13); --s-pink: rgba(215,120,145,.12);
@@ -54,6 +58,9 @@
   --inote: rgba(255,240,220,.05);
   --hlrow: rgba(255,240,220,.07); --hlbar: #aca79d;
   --chg: rgba(224,176,85,.12); --chg-strong: rgba(224,176,85,.32); --del: rgba(227,137,95,.12); --add: rgba(163,201,140,.12);
+  --doom: rgba(240,110,90,.22); --doom-line: rgba(240,120,95,.6); --doom-ink: #f08a74;
+  --md-float-ring: 0 0 0 1px rgba(255,240,220,.15);
+  --nc-bg: #2b2a27; --nc-pill: #34332f; --nc-kw: #7db4e4; --nc-fn: #f07c95; --nc-num: #e08cc0; --nc-com: #8b95a5; --nc-str: #a3c98c; --nc-op: #d6a86a; --nc-p: #8f8a80;
   --hatch: rgba(255,240,220,.06);
   --edge: #78746c;
   --s-sand: rgba(214,180,120,.10); --s-blue: rgba(120,165,225,.09); --s-green: rgba(140,195,120,.09); --s-pink: rgba(230,140,165,.09);
@@ -67,6 +74,8 @@
   --sh-float: 0 0 0 .5px var(--hair), 0 2px 6px -1px rgba(0,0,0,.35), 0 10px 28px -8px rgba(0,0,0,.55);
   --sect-border: .5px solid var(--hair); --sect-fill: color-mix(in srgb, var(--ink) 2.5%, transparent); --sect-sh: inset 0 1px 0 rgba(255,245,230,.025);
 }
+/* the Note code block colours above are Warm Ink's alone: another look (the board's or a preview's) falls back to its own */
+[data-look]:not([data-look="warm-ink"]) { --nc-bg: initial; --nc-pill: initial; --nc-kw: initial; --nc-fn: initial; --nc-num: initial; --nc-com: initial; --nc-str: initial; --nc-op: initial; --nc-p: initial; --nc-com-i: initial; }
 :root, [data-look] { --row: color-mix(in srgb, var(--accent) 9%, transparent); }
 /* 卡片阴影分两半：--sh-ring = 细边和内高光（不模糊），--sh-soft = 模糊的那几层。卡上两半分开画（.card::before / ::after）：
    squircle 外面的模糊阴影是一条路径的模糊，GPU 栅格化时每块瓦片都要按整张卡那么大的蒙版重算，圆角矩形的是便宜的解析模糊；
@@ -94,6 +103,8 @@ body { background: var(--canvas); color: var(--ink); font: 13px/1.5 var(--sys); 
 :where(.chrome .pcode, .chrome .pcode *) { user-select: text; -webkit-user-select: text; cursor: text; }
 :where(.chrome .nbody, .chrome .nbody *, .chrome .cdesc, .chrome .cdesc *, .chrome .tx, .chrome .tx *, .chrome .inote, .chrome .inote *, .chrome .sn-text, .chrome .sn-text *, .chrome .fld, .chrome .pin) { user-select: text; -webkit-user-select: text; }
 :where(.chrome .nbody, .chrome .cdesc, .chrome .tx) { cursor: default; }
+/* the open Note editor sets its cursor on its root (text, or a table edge's col-resize / row-resize): its content takes it from there */
+:where(.chrome .md-pm *) { cursor: inherit; }
 :where(.chrome .pk-top, .chrome .pk-top *) { user-select: text; -webkit-user-select: text; }
 :where(.chrome .src .gap, .chrome .src .gap *, .chrome .src .inote, .chrome .src .inote *) { user-select: none; -webkit-user-select: none; cursor: default; }
 :where(.chrome .src .arail, .chrome .src .arail *) { user-select: none; -webkit-user-select: none; cursor: default; }
@@ -234,6 +245,8 @@ input, textarea { font: inherit; color: var(--ink); }
 .ib:hover, .tbtn:hover { background: color-mix(in srgb, var(--ink) 7%, transparent); color: var(--ink); }
 .ib:active, .tbtn:active { background: color-mix(in srgb, var(--ink) 12%, transparent); transition: none; scale: .96; }
 .ib[disabled] { opacity: .35; }
+.ib.mdsrc { width: auto; padding: 0 6px; font: 600 11.5px/1 var(--mono, ui-monospace, monospace); letter-spacing: -.02em; }
+.ib.mdsrc.on { background: color-mix(in srgb, var(--accent, var(--ink)) 14%, transparent); color: var(--accent, var(--ink)); }
 /* 图标（ui/icons.tsx）横竖线画在整数坐标上：2px 描边正好盖满两行像素；1px 描边整组平移 (-.5, -.5) 落到半像素中心上。
    线宽只能是 1px 或 2px（1.4 / 1.5 在 1x 和 2x 屏上都会糊）。轻量主题 1px；繁复主题（Classic、Colorful、Newspaper、Poster、City）
    在 themes.css 里设 --ico-w: 2。.f 是填色的小方块（⋯ 的点），本身在整像素上，不平移 */
@@ -399,18 +412,20 @@ input, textarea { font: inherit; color: var(--ink); }
 
 .cmp .colh { display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid var(--line); flex: none; background: var(--head); }
 .cmp .colh > div { display: flex; align-items: center; gap: 6px; min-width: 0; white-space: nowrap; transition: opacity .2s; }
-.cmp .colh > div + div { border-left: 1px solid var(--line); }
+/* the two columns are .coll / .colr, not div + div: a sibling rule with descendants after it (.colr .chead > :not(.rev))
+   made Chrome restyle the whole of any element a child was inserted into, e.g. every Enter in a long Note */
+.cmp .colh > .colr { border-left: 1px solid var(--line); }
 /* Unified：一个卡头。左栏的头照常（标题、路径、版本），右栏只留它的版本接在后面：fc778a4 → bb823b3；两个版本用删 / 加的底色标出 */
 .cmpwrap.unified .colh { display: flex; }
-.cmpwrap.unified .colh > div:first-child { flex: 1 1 auto; }
-.cmpwrap.unified .colh > div:first-child .ib { display: none; }
-.cmpwrap.unified .colh > div + div { flex: none; border-left: 0; gap: 4px; }
-.cmpwrap.unified .colh > div + div::before { content: "→"; color: var(--ink-3); font: 11px var(--mono); margin-right: 2px; }
-.cmpwrap.unified .colh > div + div .chead > :not(.rev) { display: none; }
+.cmpwrap.unified .colh > .coll { flex: 1 1 auto; }
+.cmpwrap.unified .colh > .coll .ib { display: none; }
+.cmpwrap.unified .colh > .colr { flex: none; border-left: 0; gap: 4px; }
+.cmpwrap.unified .colh > .colr::before { content: "→"; color: var(--ink-3); font: 11px var(--mono); margin-right: 2px; }
+.cmpwrap.unified .colh > .colr .chead > :not(.rev) { display: none; }
 /* 比的是两个不同的函数：右边的名字也留着 */
-.cmpwrap.unified.difffn .colh > div + div .chead > .ctitle { display: block; }
-.cmpwrap.unified .colh > div:first-child .rev:not(.unc) { background: var(--del); color: var(--ink-2); }
-.cmpwrap.unified .colh > div + div .rev:not(.unc) { background: var(--add); color: var(--ink-2); }
+.cmpwrap.unified.difffn .colh > .colr .chead > .ctitle { display: block; }
+.cmpwrap.unified .colh > .coll .rev:not(.unc) { background: var(--del); color: var(--ink-2); }
+.cmpwrap.unified .colh > .colr .rev:not(.unc) { background: var(--add); color: var(--ink-2); }
 .cmp .tools { display: inline-flex; gap: 2px; }
 .seg2 { font-size: 11.5px; padding: 3px 8px; border-radius: 8.5px; color: var(--ink-2); }
 .seg2:hover { background: color-mix(in srgb, var(--ink) 7%, transparent); color: var(--ink); }
@@ -709,12 +724,25 @@ kbd { font: 10.5px var(--mono); }
 .nbody > :first-child, .tx > :first-child, .nbody .md-pm > :first-child, .tx .md-pm > :first-child { margin-top: 0; }
 /* Note whose leading heading is already its title (Settings → Notes): not shown again in the body; the editor shows it. The same for a Note in a sub-board preview (.pmd, cards/SubPreviews.tsx) */
 :is(.nbody, .pmd).hidehead.md:not(.editing) > :is(h1, h2, h3, h4, h5, h6):first-child { display: none; }
-:is(.nbody, .pmd).hidehead.md:not(.editing) > :is(h1, h2, h3, h4, h5, h6):first-child + * { margin-top: 0; }
+:is(.nbody, .pmd).hidehead.md:not(.editing) > :nth-child(2) { margin-top: 0; }
 .nbody.hidehead.editing > .md-loading > :is(h1, h2, h3, h4, h5, h6):first-child { display: none; } /* still hidden while the editor loads (NoteBody foldHeader) */
-.nbody.hidehead.editing > .md-loading > :is(h1, h2, h3, h4, h5, h6):first-child + * { margin-top: 0; }
+.nbody.hidehead.editing > .md-loading > :nth-child(2) { margin-top: 0; }
 .nbody ul, .nbody ol, .cdesc ul, .cdesc ol, .tx ul, .tx ol, .inote ul, .sn-text ul, .sn-text ol { margin: 2px 0; padding-left: 1.3em; }
 .nbody blockquote, .cdesc blockquote, .tx blockquote, .sn-text blockquote { margin: 2px 0; padding-left: 8px; border-left: 2px solid var(--hair); color: var(--ink-2); }
 .nbody pre, .cdesc pre, .tx pre, .sn-text pre { margin: 4px 0; padding: 6px 8px; background: var(--hlrow); border-radius: 7px; font: 11px/1.5 var(--mono); overflow-x: auto; white-space: pre; }
+/* a Note's code block, static and in the editor: a soft panel with room around the code (the demo's look) */
+.nbody pre.md-code { margin: .8em 0; padding: 18px 22px; background: var(--nc-bg, var(--hlrow)); border-radius: 12px; font: 12.5px/1.7 var(--mono); }
+/* a long line is cut off at rest and scrolls only on the card being pointed at, selected or edited: a block that can scroll is a
+   composited layer of its own, and a board of Notes with code then spends most of a zoom or pan frame compositing. Hidden keeps
+   the scroll offset, and the scrollbar is not drawn, so switching takes no room and nothing moves */
+.nbody pre.md-code { overflow: hidden; scrollbar-width: none; }
+.card:is(:hover, .sel, .editing) .nbody pre.md-code { overflow-x: auto; }
+/* the Note's last block has no margin below it (markdown.css .md > :last-child, the editor's .md-prepad), a code block too */
+.nbody > pre.md-code:last-child, .md-pm > pre.md-code.md-prepad { margin-bottom: 0; }
+.nbody pre.md-code .kw { color: var(--nc-kw, var(--k-kw)); } .nbody pre.md-code .fn { color: var(--nc-fn, var(--k-fn)); }
+.nbody pre.md-code .kw.op { color: var(--nc-op, var(--k-kw)); }
+.nbody pre.md-code :is(.num, .dec) { color: var(--nc-num, var(--k-num)); } .nbody pre.md-code .str { color: var(--nc-str, var(--k-str)); }
+.nbody pre.md-code .com { color: var(--nc-com, var(--k-com)); font-style: var(--nc-com-i, var(--com-i, italic)); } .nbody pre.md-code .p { color: var(--nc-p, var(--k-p)); }
 .sp { height: .6em; }
 /* Markdown 本身的样式（.md、编辑器、代码编辑器）在 @yhnocoder/markdown 的 markdown.css（index.tsx 接在这一份后面）；这里只有白板这边的 */
 .md-pend { visibility: hidden; } /* md/lazy.ts：还没渲染的 Note 只占位，不露原文 */
@@ -924,7 +952,7 @@ mark.wdiff { background: var(--chg-strong); color: inherit; border-radius: 2px; 
 .lastc { padding: 5px 12px; font-size: 11.5px; color: var(--ink-3); border-bottom: 1px solid var(--line); }
 .colh.dh { display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid var(--line); background: var(--head); font-size: 11.5px; }
 .colh.dh > div { display: flex; gap: 8px; padding: 5px 12px; white-space: nowrap; overflow: hidden; }
-.colh.dh > div + div { border-left: 1px solid var(--line); }
+.colh.dh > .colr { border-left: 1px solid var(--line); }
 .colh.dh span { font: 10.5px var(--mono); color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; }
 .dbody { overflow: auto; min-height: 0; flex: 1 1 auto; }
 .crows.dt .crow { grid-template-columns: 1fr 1fr; }

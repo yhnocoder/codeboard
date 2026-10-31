@@ -22,7 +22,14 @@ function board(): Board {
 const cards = (h: Host) => h.board().cards.map((c) => c.id);
 const noteMd = (h: Host) => ((h.board().cards.find((c) => c.id === "n0") as NoteCard | undefined)?.md ?? "").trim();
 const freeText = (h: Host) => ((h.board().cards.find((c) => c.id === "c1") as CodeCard | undefined)?.segments[0].text ?? []).join("\n");
-const pmText = (pg: Page) => pg.evaluate(() => document.querySelector('.card[data-id="n0"] .md-pm')?.textContent ?? null);
+/** The editor's text as shown: the source's markers away from the caret are hidden (.md-hide) */
+const pmText = (pg: Page) => pg.evaluate(() => {
+  const e = document.querySelector('.card[data-id="n0"] .md-pm');
+  if (!e) return null;
+  const c = e.cloneNode(true) as HTMLElement;
+  c.querySelectorAll(".md-hide").forEach((x) => x.remove());
+  return c.textContent;
+});
 const cmText = (pg: Page) => pg.evaluate(() => [...document.querySelectorAll('.card[data-id="c1"] .cm-line')].map((l) => l.textContent).join("\n"));
 
 /** 用鼠标拖选 root 里的 word（第一个出现的地方）：先点卡头只选中这张卡（没选中的卡按在内容上是拖卡），再从它第一个字的左边拖到最后一个字的右边 */

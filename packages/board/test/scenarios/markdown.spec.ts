@@ -322,9 +322,10 @@ test("markdownEdit", async () => {
   await pg.keyboard.press("ControlOrMeta+z");
   const italicAfterUndo = await pg.locator('.card[data-id="n1"] .md-pm em', { hasText: "words" }).count();
   const stillEditing = await pg.locator('.card[data-id="n1"] .md-pm').count();
-  // ⌘/ 原文模式
+  // ⌘/ 原文模式（整篇 Markdown 在 CodeMirror 里）
   await pg.keyboard.press("Control+/");
-  const rawVal = await pg.locator(".md-raw").inputValue({ timeout: 5000 });
+  await pg.locator('.card[data-id="n1"] .md-srcmode .cm-content').waitFor({ timeout: 5000 });
+  const rawVal = await pg.evaluate(() => [...document.querySelectorAll('.card[data-id="n1"] .md-srcmode .cm-line')].map((l) => l.textContent).join("\n"));
   await pg.keyboard.type("\nraw line");
   // 切回来时焦点要立刻（同一个按键里）回到编辑器，不然紧接着的 Esc 会落到白板上
   await pg.keyboard.press("Control+/");
@@ -360,6 +361,9 @@ test("markdownHighlight", async () => {
   const marks = () => pg.locator(`${pm} mark`).allTextContents();
   await pg.locator('.card[data-id="n1"] .nbody').dblclick({ position: { x: 300, y: 12 } });
   await pg.waitForSelector(pm, { timeout: 5000 });
+  // ProseMirror's focus timers put the double-click's caret back over a key pressed within them
+  await pg.locator(`${pm}:focus`).waitFor();
+  await focusSettled(pg);
   await pg.keyboard.press("ControlOrMeta+End");
   // 打字：==hi== 打完收尾的 = 就变高亮
   await pg.keyboard.type(" and ==hi=");
@@ -370,7 +374,8 @@ test("markdownHighlight", async () => {
   const sel = async (phrase: string) => {
     await pg.evaluate(([root, w]) => {
       const walk = document.createTreeWalker(document.querySelector(root)!, NodeFilter.SHOW_TEXT), ns: Text[] = [];
-      for (let n = walk.nextNode(); n; n = walk.nextNode()) ns.push(n as Text);
+      // hidden source (the markers away from the caret) is not on screen
+      for (let n = walk.nextNode(); n; n = walk.nextNode()) if (!n.parentElement?.closest(".md-hide")) ns.push(n as Text);
       const all = ns.map((n) => n.data).join(""), i = all.indexOf(w);
       if (i < 0) return;
       const at = (k: number): [Text, number] => { for (const n of ns) { if (k <= n.data.length) return [n, k]; k -= n.data.length; } return [ns[ns.length - 1], ns[ns.length - 1].data.length]; };
@@ -381,7 +386,7 @@ test("markdownHighlight", async () => {
   /** 一段高亮的字在屏幕上是不是一整条底色：每一行上，<mark> 的框首尾相接盖满这段字，中间没有缝，也没有叠在一起（半透明叠两层会更深） */
   const band = (root: string, phrase: string) => pg.evaluate(([root, w]) => {
     const el = document.querySelector(root)!, walk = document.createTreeWalker(el, NodeFilter.SHOW_TEXT), ns: Text[] = [];
-    for (let n = walk.nextNode(); n; n = walk.nextNode()) ns.push(n as Text);
+    for (let n = walk.nextNode(); n; n = walk.nextNode()) if (!n.parentElement?.closest(".md-hide")) ns.push(n as Text);
     const all = ns.map((n) => n.data).join(""), i = all.indexOf(w);
     if (i < 0) return { found: false, gaps: [], overlaps: [] };
     const at = (k: number): [Text, number] => { for (const n of ns) { if (k <= n.data.length) return [n, k]; k -= n.data.length; } return [ns[ns.length - 1], ns[ns.length - 1].data.length]; };
@@ -436,12 +441,10 @@ test("markdownHighlight", async () => {
   await pg.evaluate((root) => { const ms = document.querySelectorAll(`${root} mark`); const t = ms[ms.length - 1].firstChild!; const r = document.createRange(); r.setStart(t, 1); r.collapse(true); getSelection()!.removeAllRanges(); getSelection()!.addRange(r); }, pm);
   await pmHasSelection(pg);
   await idle(h); // the markers around the caret show
-  // 开头的记号在 .md-mka 上，收尾的在 .md-mkb 上
-  const reveal = await pg.evaluate((root) => {
-    const q = (c: string, k: "mka" | "mkb") => [...document.querySelectorAll(`${root} .${c}`)].map((e) => (e as HTMLElement).dataset[k]).join("");
-    return `${q("md-mka", "mka")}|${q("md-mkb", "mkb")}`;
-  }, pm);
-  const look = (q: string) => pg.evaluate((q) => [...document.querySelectorAll(q)].map((e) => { const c = getComputedStyle(e); return `${c.backgroundImage} ${c.borderRadius} ${c.paddingLeft} ${c.color}`; }), q);
+  // the markers are the source's own characters, shown (not .md-hide) only around the caret
+  const reveal = await pg.evaluate((root) => [...document.querySelectorAll(`${root} .md-mk:not(.md-hide)`)].map((e) => e.textContent).join("|"), pm);
+  // the highlight's own look: a marker shown inside it (the caret is next to **) is drawn muted, as every marker is
+  const look = (q: string) => pg.evaluate((q) => [...document.querySelectorAll(q)].filter((e) => !e.closest(".md-mk")).map((e) => { const c = getComputedStyle(e); return `${c.backgroundImage} ${c.borderRadius} ${c.paddingLeft} ${c.color}`; }), q);
   const editLook = await look(`${pm} mark`);
   const editBand = { phrase: await band(pm, "Plain words"), bold: await band(pm, "note with bold") };
   await pg.locator('.card[data-id="n1"]').screenshot({ path: path.join(SHOTS, "md-highlight-edit-card.png") }).catch(() => {});
@@ -458,7 +461,8 @@ test("markdownHighlight", async () => {
   const r = { before, typed, icons, labels, onBefore, added, onAfter, removed, onOff, keyed, reveal, editLook, showLook, shown, saved, editBand, showBand };
   check("markdownHighlight-typing", before.length === 0 && typed.join() === "hi", r);
   check("markdownHighlight-toolbar", icons === 8 && labels.some((l) => /^Highlight \((⌘⇧|Ctrl\+Shift\+)H\)$/.test(l)) && !onBefore && added.includes("Plain words") && onAfter && !removed.includes("Plain words") && !onOff, r);
-  check("markdownHighlight-shortcut", keyed.includes("note with bold"), r);
+  // the caret ends next to the bold, so its ** show inside the highlight
+  check("markdownHighlight-shortcut", keyed.join("").includes("note with **bold**") && saved.includes("==note with **bold**=="), r);
   check("markdownHighlight-reveal", reveal.includes("==|=="), r);
   check("markdownHighlight-saved", saved === "==Plain words== in a ==note with **bold**== inside and ==hi==", r);
   check("markdownHighlight-display", shown.join() === "Plain words,note with bold,hi" && showLook.length === 3 && [...showLook, ...editLook].every((l) => l === editLook[0]) && (editLook[0] ?? "").startsWith("linear-gradient("), r);
@@ -496,7 +500,10 @@ test("markdownHighlightBand", async () => {
         const t = [...m.childNodes].find((n) => n.nodeType === 3) as Text, i = t.data.indexOf(" band");
         const r = document.createRange(); r.setStart(t, i); r.setEnd(t, i + 1);
         const sp = r.getBoundingClientRect();
-        const after = m.nextSibling as Text, r2 = document.createRange(); r2.setStart(after, 0); r2.setEnd(after, 1);
+        // the text after the mark (in the editor, past the hidden closing == of the source)
+        let next = m.nextSibling;
+        while (next && next.nodeType === 1 && (next as Element).classList.contains("md-hide")) next = next.nextSibling;
+        const after = (next?.nodeType === 3 ? next : next?.firstChild) as Text, r2 = document.createRange(); r2.setStart(after, 0); r2.setEnd(after, 1);
         const sp2 = r2.getBoundingClientRect();
         return { left: box.left, top: box.top, right: box.right, bottom: box.bottom, space: (sp.left + sp.right) / 2, after: (sp2.left + sp2.right) / 2 };
       }, root);
@@ -658,6 +665,7 @@ test("copyPartialMarkBalanced", async () => {
     const p = document.querySelector(root)!.querySelector("p")!, pts: [Node, number][] = [];
     let flat = "";
     const visit = (n: Node) => {
+      if (n instanceof Element && n.matches(".md-hide")) return; // hidden source: markers away from the caret, a formula's TeX
       if (n instanceof Element && n.matches('[data-type="inline-math"], .katex')) { pts.push([n.parentNode!, [...n.parentNode!.childNodes].indexOf(n as ChildNode)]); flat += "\u0000"; return; }
       if (n.nodeType === 3) { for (let i = 0; i < n.textContent!.length; i++) { pts.push([n, i]); flat += n.textContent![i]; } return; }
       n.childNodes.forEach(visit);
@@ -675,7 +683,7 @@ test("copyPartialMarkBalanced", async () => {
     ["ain wor", "==ain wor==", /<mark>ain wor<\/mark>/, "mark ain wor"], ["old wor", "**old wor**", /<strong>old wor<\/strong>/, "strong old wor"],
     ["tal wor", "*tal wor*", /<em>tal wor<\/em>/, "em tal wor"], ["one wor", "~~one wor~~", /<s>one wor<\/s>/, "s one wor"],
     ["ode wor", "`ode wor`", /<code>ode wor<\/code>/, "code ode wor"], ["ink wor", "[ink wor](https://e.com/p)", /<a [^>]*href="https:\/\/e\.com\/p"[^>]*>ink wor<\/a>/, "a ink wor https://e.com/p"],
-    ["a \u0000 b", "==a $x$ b==", /<mark>a <span[^>]*data-type="inline-math"[\s\S]*<\/mark>/, "mark a $x$ b"],
+    ["a \u0000 b", "==a $x$ b==", /<mark>a <span[^>]*class="katex"[\s\S]*<\/mark>/, "mark a $x$ b"],
   ];
   const out: { sel: string; selected: boolean; plain?: string; html: boolean; pasted?: string }[] = [];
   for (const [sel, plain, html, want] of cases) {
@@ -702,7 +710,14 @@ test("copyPartialMarkBalanced", async () => {
     }, [pm, paras] as const, { timeout: 5000 });
     // 光标处的记号装饰不算：只看格式元素和里面的字（公式写成 $latex$）
     const pasted = await pg.evaluate((root) => {
-      const ps = document.querySelector(root)!.querySelectorAll(":scope > p"), p = ps[ps.length - 1], el = p.firstElementChild;
+      const ps = document.querySelector(root)!.querySelectorAll(":scope > p"), p = ps[ps.length - 1].cloneNode(true) as Element;
+      p.querySelectorAll(".md-mk, .md-hide").forEach((m) => m.remove());
+      // the editor draws a span in pieces (the formula is a widget in its own <mark>): one element per run of the same tag
+      for (let k = p.firstChild; k; k = k.nextSibling) {
+        while (k instanceof Element && k.nextSibling instanceof Element && k.nextSibling.tagName === k.tagName) { const nx = k.nextSibling; k.append(...nx.childNodes); nx.remove(); }
+      }
+      p.normalize();
+      const el = p.firstElementChild;
       if (!el || p.childNodes.length !== 1) return p.innerHTML;
       let t = "";
       const visit = (n: Node) => { if (n instanceof Element && n.matches('[data-type="inline-math"]')) { t += `$${n.getAttribute("data-latex")}$`; return; } if (n.nodeType === 3) t += n.textContent; else n.childNodes.forEach(visit); };
@@ -717,6 +732,63 @@ test("copyPartialMarkBalanced", async () => {
   await idle(h);
   const saved = (h.board().cards.find((c) => c.id === "n1") as NoteCard).md;
   check("copyPartialMarkBalanced-saved", saved === [src, ...cases.map((c) => c[1])].join("\n\n"), { saved, out });
+  await close(h);
+});
+
+/** Copying from a source that shows (an image's opened source line, an inline formula's TeX, a link's address, in a paragraph
+ *  and in a table cell): the selection is native, so the clipboard gets exactly the selected characters, as text/plain and as
+ *  text/html; only a selection over the whole source copies the whole image */
+test("copyInsideShownSource", async () => {
+  const b = emptyBoard("b1", "copy");
+  const src = `Intro\n\n![](https://e.com/p.png "Fig 5.1: memory types"){width=60%}\n\nSum $a+b+c$ and [the link](https://e.com/page) end\n\n| k | v |\n| - | - |\n| one | $x+y$ |`;
+  put(b, { id: "n1", kind: "note", md: src, look: "note" } as NoteCard, 60, 60, 760);
+  b.cam = { x: 0, y: 0, z: 1 };
+  const h = await open({ board: b, light, w: 1100, h: 700 });
+  const pg = h.page, pm = '.card[data-id="n1"] .md-pm';
+  await pg.locator('.card[data-id="n1"] .nbody p').first().dblclick();
+  await pg.locator(`${pm}:focus`).waitFor();
+  await focusSettled(pg);
+  await pg.evaluate(() => { const w = window as any; w.__clip = []; document.addEventListener("copy", (e) => w.__clip.push([e.clipboardData?.getData("text/plain"), e.clipboardData?.getData("text/html")])); });
+  // the caret into the source first (so it shows), then the characters selected natively, as a drag does
+  const copyOf = async (inside: string, sel: string) => {
+    const at = await pg.evaluate(([root, inside, sel]) => {
+      const ed = (document.querySelector(root) as any).editor;
+      let found: [number, number] | null = null;
+      ed.state.doc.descendants((n: any, pos: number) => {
+        if (found || !n.isTextblock) return !found;
+        const i = n.textContent.indexOf(inside);
+        if (i >= 0) { const j = inside.indexOf(sel); found = [pos + 1 + i + j, pos + 1 + i + j + sel.length]; }
+        return false;
+      });
+      if (found) ed.commands.setTextSelection(found[0] + 1);
+      return found;
+    }, [pm, inside, sel] as const);
+    if (!at) return { sel, missing: true };
+    await idle(h);
+    await pg.evaluate(([root, [from, to]]) => {
+      const view = (document.querySelector(root) as any).editor.view, a = view.domAtPos(from), z = view.domAtPos(to), r = document.createRange();
+      r.setStart(a.node, a.offset); r.setEnd(z.node, z.offset);
+      getSelection()!.removeAllRanges(); getSelection()!.addRange(r);
+    }, [pm, at] as const);
+    await pg.waitForFunction(([root, [from, to]]) => { const s = (document.querySelector(root) as any)?.editor?.state.selection; return !!s && s.from === from && s.to === to; }, [pm, at] as const, { timeout: 5000 });
+    await idle(h);
+    const shown = await pg.evaluate((root) => getSelection()!.toString(), pm);
+    await pg.keyboard.press("ControlOrMeta+c");
+    const [plain, html] = await pg.evaluate(() => (window as any).__clip.pop() ?? []) as [string, string];
+    return { sel, shown, plain, html: (html ?? "").replace(/data:[^"]+/g, "…") };
+  };
+  const cases: [string, string, string, RegExp][] = [
+    ['p.png "Fig 5.1: memory types"', "memory types", "memory types", /^(?![\s\S]*<img)[\s\S]*memory types/],
+    ["(https://e.com/p.png", "e.com/p", "e.com/p", /^(?![\s\S]*<img)[\s\S]*e\.com\/p/],
+    ["$a+b+c$", "b+c", "b+c", /^(?![\s\S]*katex)[\s\S]*b\+c/],
+    ["(https://e.com/page)", "e.com/pa", "e.com/pa", /^(?![\s\S]*<a )[\s\S]*e\.com\/pa/],
+    ["$x+y$", "+y", "+y", /^(?![\s\S]*katex)[\s\S]*\+y/],
+    ['![](https://e.com/p.png "Fig 5.1: memory types"){width=60%}', '![](https://e.com/p.png "Fig 5.1: memory types"){width=60%}', '![](https://e.com/p.png "Fig 5.1: memory types"){width=60%}', /<img[^>]*src="https:\/\/e\.com\/p\.png"/],
+  ];
+  for (const [inside, sel, plain, html] of cases) {
+    const r = await copyOf(inside, sel);
+    check(`copyInsideShownSource ${sel}`, "plain" in r && r.plain === plain && html.test(r.html ?? ""), r);
+  }
   await close(h);
 });
 

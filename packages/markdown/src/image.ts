@@ -33,6 +33,21 @@ export function setAssetBase(b: string) {
 /** 图注：Markdown 里图的 title（![a](u "图注")），空白的不算 */
 export const captionOf = (title: unknown): string => (typeof title === "string" ? title.trim() : "");
 
+const MISSING_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="3" width="11" height="10" rx="1.8"/><path d="M2.5 11l3.2-3.2 2.6 2.6 1.7-1.7 3.5 3.5M10.2 6.2h.01"/></svg>';
+/** An image there is nothing to show for: one that failed to load, or ![alt](…) whose address the parser could not read.
+ *  A quiet line naming it (the alt text, or the address), with the address as its tooltip */
+export function missingImage(alt: string, src: string): HTMLElement {
+  const box = document.createElement("span"), t = document.createElement("span");
+  box.className = "md-imgerr";
+  box.title = src;
+  box.innerHTML = MISSING_ICON;
+  t.textContent = `Image failed to load · ${alt || src}`;
+  box.append(t);
+  return box;
+}
+/** The same as HTML text (the static render) */
+export const missingImageHtml = (alt: string, src: string, esc: (s: string) => string) =>
+  `<span class="md-imgerr" title="${esc(src)}">${MISSING_ICON}<span>Image failed to load · ${esc(alt || src)}</span></span>`;
 /** 一张图的 <img> 属性（值为 null 的不写） */
 export function imageAttrs(a: { src?: string | null; alt?: string | null; title?: string | null; width?: number | null }): Record<string, string | null> {
   const raw = a.src ?? "";

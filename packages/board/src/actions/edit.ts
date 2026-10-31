@@ -5,7 +5,7 @@ import {
   bounds, removeCards, SECTION_PAD, GAP,
   copyText, cardRows, guessLang, pythonDialect, defaultWidth,
   type Arrange, type Board, type Card, type CodeCard, type CompareCard, type Section, type Segment,
-  type Rect,
+  type Rect, type NoteCard, type NoteLayout,
 } from "@codeboard/core";
 import { LANGS, langLabel } from "@codeboard/analysis/langs";
 import {
@@ -215,13 +215,15 @@ export function renameCard(id: string, v: string) {
 export function setDesc(id: string, v: string) {
   mutate((b) => { const c = findCard(b, id)?.card; if (c) c.desc = v.trim() || undefined; });
 }
-/** 改 Note 的字；字删光了这张 Note 就删掉（同一步，一次撤销就回来） */
-export function setNoteText(id: string, v: string) {
+/** 改 Note 的字；字删光了这张 Note 就删掉（同一步，一次撤销就回来）。layout: the editor changed table widths, row
+ *  heights or code wrap (null = all automatic again); left out = unchanged */
+export function setNoteText(id: string, v: string, layout?: NoteLayout | null) {
   // 写空了的 Note / Text / Mark 删掉；空的 Box 还是一个框
   const c0 = cardById(id)?.card;
   const keep = !!v.trim() || (c0?.kind === "note" && c0.look === "box");
-  if (isFresh(id)) return settleFresh(id, keep, (b) => { const c = findCard(b, id)?.card; if (c?.kind === "note") c.md = v; });
-  mutate((b) => { const c = findCard(b, id)?.card; if (c?.kind !== "note") return; if (keep) c.md = v; else removeCards(b, [id]); });
+  const set = (c: NoteCard) => { c.md = v; if (layout !== undefined) c.mdLayout = layout ?? undefined; };
+  if (isFresh(id)) return settleFresh(id, keep, (b) => { const c = findCard(b, id)?.card; if (c?.kind === "note") set(c); });
+  mutate((b) => { const c = findCard(b, id)?.card; if (c?.kind !== "note") return; if (keep) set(c); else removeCards(b, [id]); });
 }
 export function setFreeCode(id: string, text: string) {
   let seg: Segment | undefined;
