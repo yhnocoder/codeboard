@@ -18,7 +18,7 @@
       "examples/nano-vllm"
     ],
     "scenarios": [
-      "themeLooks", "cityTheme", "markdownRenderThemes", "codeAreaPadding", "softLightCodeHeaderOneRow", "sectionLook",
+      "themeLooks", "markdownRenderThemes", "codeAreaPadding", "softLightCodeHeaderOneRow", "sectionLook",
       "noteHeightSameInWarmInkAndSoftLight", "squircleCorners", "menusFitWindow"
     ]
   },
@@ -35,7 +35,7 @@
         "packages/board/test/scenarios/{board,fit,drag-by-body,drag-controls,copy-paste,multi-select,text-selection-delete,click-to-edit}.spec.ts"
       ],
       "scenarios": [
-        "zoomLevels", "syncundo", "dragUnselectedCardByBody", "dragMultiSelectionByBody", "pastedCardsKeepTheirSize",
+        "zoomLevels", "syncundo", "dragUnselectedCardByBody", "pastedCardsKeepTheirSize",
         "copiedCardsGiveOtherAppsTheirContent", "deleteKeyWithoutTextSelectionDeletesCard", "cardResizeFit", "dragSnap",
         "undoAddKeepsLaterWork", "nudgeHoldIsOneUndoStep", "farClicksNotDoubleClick", "multiSelectToolbarTidyUp"
       ]

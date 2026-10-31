@@ -45,7 +45,9 @@ export function leaveBoard(depth?: number, walkHop?: WalkHop) {
  * 这个请求随着换白板作废（reject），转场已经交给 switchGate；宿主出错也收回来
  */
 function switched(r: Promise<string | null>) {
-  r.then((why) => { if (why) { refused(); toast(why); } }, refused);
+  // the transition this request started: a late answer (or the ask timing out) must not pull back a later one
+  const t = transit;
+  r.then((why) => { if (why) { refused(t); toast(why); } }, () => refused(t));
 }
 
 // 换白板是宿主发来新的 init（整块白板换掉），两块白板不会同时在页面上：先把这一块淡出（同时名字开始飞），淡出完之前收到的 init 先压着
@@ -161,9 +163,8 @@ function finish(t: Transit) {
   setCrumbMorph(false);
 }
 
-function refused() {
-  const t = transit;
-  if (t && !t.gated) { clearTimeout(t.timer); giveUp(t); }
+function refused(t: Transit | null) {
+  if (t && transit === t && !t.gated) { clearTimeout(t.timer); giveUp(t); }
 }
 /**
  * hostio.ts 收到 init 时问：正在进出子白板、旧白板还没淡出完，就返回淡出完的时候（init 和后面的消息先压着，到时再按顺序处理）。
