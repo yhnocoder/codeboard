@@ -472,6 +472,26 @@ test("mathSourceInPlace", async () => {
   await close(h);
 });
 
+/** ↓ from an open inline formula into a formula block: the inline one is drawn again as the block opens, not only once the
+ *  editor's blur is handled (a timer; held back here so that the order can't hide it) */
+test("mathBlockArrowClosesInlineSource", async () => {
+  const h = await open({ board: board(["a $x^2$ b\n\n$$\n\\frac{1}{2}\n$$\n\nend"]), light });
+  const pg = h.page, card = '.card[data-id="n0"]';
+  await idle(h);
+  await pg.locator(`${card} .nbody p`).last().dblclick();
+  await pg.waitForSelector(`${card} .md-pm`, { timeout: 5000 });
+  const b = (await pg.locator(`${card} .md-pm [data-type=inline-math] .katex-base`).boundingBox())!;
+  await pg.mouse.click(b.x + b.width / 2, b.y + b.height / 2);
+  await until(h, "the clicked formula opens as its source", async () => !(await pg.locator(`${card} .md-pm [data-type=inline-math]`).count()));
+  await pg.evaluate(() => { const w = window as any; w.__setTimeout = window.setTimeout; (window as any).setTimeout = (f: TimerHandler, ms?: number, ...a: unknown[]) => w.__setTimeout(f, (ms ?? 0) + 2000, ...a); });
+  await keys(pg, "{ArrowDown}");
+  await pg.locator(`${card} [data-type=block-math].is-open textarea:focus`).waitFor();
+  const inline = await pg.locator(`${card} .md-pm [data-type=inline-math]`).count();
+  await pg.evaluate(() => { const w = window as any; window.setTimeout = w.__setTimeout; });
+  check("mathBlockArrowClosesInlineSource the inline formula is drawn as the block opens", inline === 1, { inline });
+  await close(h);
+});
+
 /** 编辑时没有块左边的拖动把手（⋮⋮）：白板不开 dragHandle */
 test("noteEditorHasNoDragHandle", async () => {
   const h = await open({ board: board(["# Title\n\nfirst\n\nsecond"]), light });

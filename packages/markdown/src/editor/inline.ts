@@ -3,7 +3,7 @@
 // the caret is. Moving the caret never changes the document. The decorations stay frozen while the mouse is down, while
 // a selection is non-empty, during IME composition and for a moment after a single click (a double-click must land on
 // the same layout as the first click).
-import { Plugin, PluginKey, TextSelection, type EditorState, type Transaction } from "@tiptap/pm/state";
+import { NodeSelection, Plugin, PluginKey, TextSelection, type EditorState, type Transaction } from "@tiptap/pm/state";
 import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { REVEAL_AFTER_CLICK } from "../ui/timing";
@@ -175,7 +175,9 @@ export function inlinePlugin() {
         // While composing only map: never touch the DOM the IME is writing into
         if (ui.composing && !meta.reveal) return tr.docChanged ? { ...prev, head: prev.head === null ? null : tr.mapping.map(prev.head), expand, decos: prev.decos.map(tr.mapping, tr.doc) } : prev;
         let head: number | null;
-        if (meta.blur) head = null;
+        // a block selected as a whole (a formula block the arrow keys walked into, which then takes the keyboard): the caret has
+        // left the text, so every source closes now, not when the blur that follows reaches here
+        if (meta.blur || (st.selection instanceof NodeSelection && st.selection.node.isBlock)) head = null;
         else if (settled(st, focused) || (meta.reveal && st.selection.empty && !ui.mouseDown)) head = st.selection.head;
         else head = prev.head === null ? null : tr.mapping.map(prev.head);
         // the open address closes once the caret leaves its image
