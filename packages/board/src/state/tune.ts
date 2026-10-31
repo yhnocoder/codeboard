@@ -1,6 +1,6 @@
 // 调试用的常量：平时用默认值；VS Code 设置 codeboard.debug 打开后，设置页多一节 Debug 可以现调（存在 codeboard.debug.tune）
 import { state } from "./store";
-import { DBL_CLICK, LIFT_FADE, LINK_LEAVE, MENU_OPEN, PEEK_DELAY, PEEK_HIDE, SIDE_SLIDE } from "./timing";
+import { DBL_CLICK, LIFT_FADE, LINK_LEAVE, MENU_OPEN, PEEK_DELAY, PEEK_HIDE, SIDE_SLIDE, SNAP_SPEED } from "./timing";
 
 export const TUNE = {
   peekDelay: { def: PEEK_DELAY, label: "Peek: hover delay", unit: "ms", min: 100, max: 3000 },
@@ -9,7 +9,7 @@ export const TUNE = {
   linkLeave: { def: LINK_LEAVE, label: "Arrow hover: keep after leaving", unit: "ms", min: 0, max: 2000 },
   dblClick: { def: DBL_CLICK, label: "Double-click window", unit: "ms", min: 150, max: 800 },
   snap: { def: 6, label: "Snap distance", unit: "px", min: 0, max: 30 },
-  snapSpeed: { def: 700, label: "No snapping while dragging faster than", unit: "px/s", min: 100, max: 5000 },
+  snapSpeed: { def: SNAP_SPEED, label: "No snapping while dragging faster than", unit: "px/s", min: 100, max: 5000 },
   sideBuffer: { def: 16, label: "Arrows: distance before an end switches sides", unit: "px", min: 0, max: 80 },
   sideSlide: { def: SIDE_SLIDE, label: "Arrows: end slide when switching sides", unit: "ms", min: 0, max: 1000 },
   liftFade: {

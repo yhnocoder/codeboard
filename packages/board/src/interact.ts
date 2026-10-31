@@ -19,7 +19,7 @@ import { live } from "./state/changes";
 import { sel, select, toggleSel, clearSel, setLineSel, isSel } from "./state/selection";
 import { toast } from "./state/toast";
 import { tune } from "./state/tune";
-import { WHEEL_GESTURE, BLOCK_GLIDE } from "./state/timing";
+import { WHEEL_GESTURE, BLOCK_GLIDE, SNAP_SETTLE } from "./state/timing";
 import { cam, setCam, stopCam, camTo, fling, toWorld, view, ZMIN, ZMAX, lod, reduceMotion } from "./state/camera";
 import {
   setGuides,
@@ -94,7 +94,7 @@ function snapPace(e: PointerEvent, again: (ev: PointerEvent, still: boolean) => 
   return {
     fast(ev: PointerEvent, still: boolean) {
       clearTimeout(settleT);
-      if (!still) settleT = window.setTimeout(() => again(ev, true), 110);
+      if (!still) settleT = window.setTimeout(() => again(ev, true), SNAP_SETTLE);
       const now = performance.now(),
         dt = Math.max(1, now - vt);
       speed = still ? 0 : speed * 0.6 + (Math.hypot(ev.clientX - vx, ev.clientY - vy) / dt) * 1000 * 0.4;

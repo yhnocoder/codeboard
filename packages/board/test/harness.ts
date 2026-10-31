@@ -561,13 +561,14 @@ export async function shot(h: Host, name: string, at: "idle" | "now" = "idle") {
  * Waits until the board has settled: no board message still being handled by the host (window.__inflight, counted in the page
  * file above until the handler returns, i.e. after its reply was posted), the camera at rest (.world neither .moving nor
  * .settle), no finite Web Animation or CSS transition running (infinite ones, like spinners and animated stickers, don't count),
- * fonts loaded, and no card moved or resized (their inline styles: the pop-in, slide, fold and grow springs) for `frames` frames
- * in a row. Throws after `ms`, saying what was still busy.
+ * fonts loaded, no card moved or resized (their inline styles: the pop-in, slide, fold and grow springs) and no arrow moved (its
+ * path: an end switching sides slides over in rAF steps, Links.tsx, which is no Web Animation) for `frames` frames in a row.
+ * Throws after `ms`, saying what was still busy.
  */
 export async function idle(h: Host, ms = 5000, frames = 3) {
   const t0 = Date.now();
   await h.page.evaluate(() => {
-    (window as any).__quiet = { n: 0, key: "\0", busy: [] };
+    (window as any).__quiet = { n: 0, key: "\0", arrows: "\0", busy: [] };
   });
   try {
     await h.page.waitForFunction(
@@ -589,8 +590,12 @@ export async function idle(h: Host, ms = 5000, frames = 3) {
         for (const el of document.querySelectorAll<HTMLElement>(".card, .carea, .sect, .slabel"))
           key += "|" + el.style.cssText;
         if (key !== q.key) q.busy.push("cards moving");
+        let arrows = "";
+        for (const el of document.querySelectorAll("path.lhit[data-link]")) arrows += "|" + el.getAttribute("d");
+        if (arrows !== q.arrows) q.busy.push("arrows moving");
         q.n = q.busy.length ? 0 : q.n + 1;
         q.key = key;
+        q.arrows = arrows;
         return q.n >= need;
       },
       frames,
