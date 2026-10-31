@@ -331,6 +331,15 @@ async function once() {
     }
     await h.page.context().browser()!.close(); return res;
   }
+  if (arg("stop", "") === "collapse") {
+    // Collapse and expand the Section of the row in view (12 cards: its inner Section and 6 direct members), from the toolbar caret
+    const b = h.board(), row = b.sections.find((x) => !x.parent && b.sections.some((y) => y.parent === x.id))!;
+    await h.post({ type: "reveal", card: Object.entries(b.place).find(([, p]) => p.section === row.id)![0] });
+    await h.page.waitForTimeout(1200);
+    const chev = h.page.locator(`.slabel[data-sect="${row.id}"] .chev2`);
+    res.collapse = sum(await steps(h, cdp, 6, async () => { await chev.evaluate((e) => (e as HTMLElement).click()); await h.page.waitForTimeout(900); }, "collapse"));
+    await h.page.context().browser()!.close(); return res;
+  }
   if (arg("stop", "") === "settle") {
     // One small zoom step, then wait until the camera has stopped and the world is redrawn at the new scale: what one stop costs, per LOD level
     const spot = await h.page.evaluate(() => { for (let y = 120; y < 860; y += 20) for (let x = 80; x < 1350; x += 20) { const e = document.elementFromPoint(x, y); if (e && (e.classList.contains("board") || e.classList.contains("world"))) return [x, y]; } return [700, 450]; });
