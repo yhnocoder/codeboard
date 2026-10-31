@@ -38,3 +38,8 @@ export const CLICK_KEEPS_KEYS = 1000;
 export const BLOCK_GLIDE = 90;
 /** The ports on a Note's block stay this long after the pointer leaves it, so they can be reached on the card's edge (state/blocks.ts) */
 export const BLOCK_LEAVE = 200;
+/** Folding a Section: the member cards' content and their arrows fade out over this long before the blank cards fly into the
+ *  title (styles.css .husk uses the same value) */
+export const HUSK_OUT = 80;
+/** Unfolding: a card's content and its arrows fade back in over this long once the card has landed (styles.css .husk-in) */
+export const HUSK_IN = 100;

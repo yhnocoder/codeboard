@@ -9,7 +9,7 @@ import { langLabel } from "@codeboard/analysis/langs";
 import { measuredHeight } from "../state/subboards";
 import { state, setSizes, isSel, flows, collapsedSet, sel, placeOf, rectOf, shared, sharedOn, twinsOf } from "../state/store";
 import { Glyph } from "../stickers/glyphs";
-import { editing, setEditing, dragging, popIn, sizeIn, walk, pingCard, dropTarget, staged } from "../state/ui";
+import { editing, setEditing, dragging, popIn, sizeIn, walk, pingCard, dropTarget, staged, husk } from "../state/ui";
 import { Icon } from "../ui/icons";
 import { isHidden } from "../state/sections";
 import { queueMeasure, observeResize } from "../state/measure";
@@ -131,6 +131,7 @@ export function CardView(p: { card: Card }) {
           "merge-hot": !!(drop() & 1), "merge-arm": !!(drop() & 2), "drop-hot": !!(drop() & 4), "drop-cand": !!(drop() & 8), "img-drop": !!(drop() & 16),
           "bind-hot": isBindHot(`card:${c().id}`),
           "bind-anchor": isBindAnchor(c().id),
+          husk: husk(c().id) === "out", "husk-in": husk(c().id) === "in",
         }}
         onPointerEnter={() => enterCard(c().id)} onPointerLeave={() => leaveCard(c().id)}
         onPointerDown={(e) => cardPointerDown(e, c().id)} onContextMenu={(e) => cardContextMenu(e, c().id)} onClick={(e) => cardClick(e, c().id)} onDblClick={(e) => cardDblClick(e, c().id)}>

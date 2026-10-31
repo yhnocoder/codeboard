@@ -163,9 +163,12 @@ test("sectionFoldRoundTrip", async () => {
   // 离屏幕很远的一张：展开时动画放完才建
   put(b, { id: "far", kind: "note", look: "note", md: "# Far away\n\nNotes." } as NoteCard, 9000, 6000, 280);
   for (const id of Object.keys(b.place)) b.place[id].section = "S";
+  const ids = Object.keys(b.place);
+  // Section 外面一张卡，连着一张成员卡：折叠、展开时这条线先淡掉，完了回来
+  put(b, { id: "out", kind: "note", look: "note", md: "# Outside\n\nNotes." } as NoteCard, 9600, 140, 280);
+  b.links.push({ id: "L", from: { card: "out" }, to: { card: "n0" } });
   b.sections.push({ id: "S", title: "Scheduling", x: 80, y: 80, w: 9400, h: 6400 });
   b.cam = { x: 0, y: 0, z: 1 };
-  const ids = Object.keys(b.place);
   const h = await open({ board: b, light, w: 1400, h: 900 });
   await idle(h);
   const before = await h.page.evaluate(() => Object.fromEntries([...document.querySelectorAll<HTMLElement>(".card[data-id]")].map((e) => [e.dataset.id, e.getBoundingClientRect().toJSON()])));
@@ -185,6 +188,11 @@ test("sectionFoldRoundTrip", async () => {
   const near = (a: DOMRect, b: DOMRect) => Math.abs(a.x - b.x) < 1 && Math.abs(a.y - b.y) < 1;
   check("sectionFoldRoundTrip unfolded: every member back, nothing left of the pop-in",
     open1.every((c) => !!c && !c.transform && !c.opacity) && open1.filter((c) => c && before[c.id]).every((c) => near(c!.r, before[c!.id])), { open1, before });
+  // 展开完了：卡的内容、连着的线都淡回来了，不留下藏着的 class
+  const husks = () => h.page.evaluate(() => document.querySelectorAll(".husk, .husk-in, .lhusk, .lhusk-in, .whusk, .whusk-in").length);
+  const left = await until(h, "the content and the arrow fade back in", async () => (await husks()) === 0).then(() => 0, husks);
+  const arrow = await h.page.locator('g.link[data-lk="L"]').count();
+  check("sectionFoldRoundTrip unfolded: content and arrows shown again", left === 0 && arrow === 1, { left, arrow });
   await h.page.keyboard.press("Control+z");
   await until(h, "the undo is saved", () => h.board().sections[0].collapsed); await idle(h);
   const undone = await cards();

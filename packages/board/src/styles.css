@@ -1101,6 +1101,10 @@ mark.wdiff { background: var(--chg-strong); color: inherit; border-radius: 2px; 
    别写成 .card > :not(...) 再用会继承的 visibility：最右边没有类名，切档时浏览器只能把整块白板 3 万个节点全重算一遍 */
 .card.off > .cface { visibility: hidden; } /* state/cull.ts：离屏幕很远的卡不画内容 */
 .card.far { visibility: hidden; } /* state/cull.ts：内容藏着、又不在屏幕附近的卡，连卡片本身也不画 */
+/* 折叠、展开 Section（actions/edit.ts toggleSection，state/ui.ts husk）：成员卡只剩空白的卡身飞进飞出，内容、连着的线淡掉。
+   透明度只写在卡下面一层的这几块上（不继承；卡的 class 下没有 "> *"，切换时不用把卡里的节点都重算）；时长同 state/timing.ts 的 HUSK_OUT / HUSK_IN */
+.card.husk > .cface, .card.husk > .twinmk, .card.husk > .maplabel, .lyr g.lhusk, .lyr .lw.whusk > * { opacity: 0; transition: opacity 80ms ease-out; }
+.card.husk-in > .cface, .card.husk-in > .twinmk, .card.husk-in > .maplabel, .lyr g.lhusk-in, .lyr .lw.whusk-in > * { transition: opacity 100ms ease-in; }
 .cface { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; min-width: 0; }
 /* 代码卡卡头 / 色带 / 底栏之间的内容区（说明、代码、Source）：手动定了高度的代码卡，Place.h 就是它的高度，卡头 / 底栏由主题自己撑开 */
 .carea { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; min-width: 0; }

@@ -8,7 +8,7 @@ import { geo, lineY, setCurveSource, HEAD_H } from "../state/geo";
 import { blockY, hoverBlock, keepBlock, leaveBlock, watchBlockHover } from "../state/blocks";
 import { portStyle } from "../state/hover";
 import { frames, collapsedHome } from "../state/sections";
-import { dragLink, setDragLink, rubber, popIn } from "../state/ui";
+import { dragLink, setDragLink, rubber, popIn, husk, type Husk } from "../state/ui";
 import { hoverLink, hoverCard, enterLink, leaveLink, watchHover } from "../state/hover";
 import { cam, toWorld, stillZ, lod, reduceMotion, animate, frameTime } from "../state/camera";
 import { lodOf } from "../state/lodcards";
@@ -29,6 +29,20 @@ import { tiltOf } from "../state/tilt";
 
 import { clamp } from "./geom";
 
+/** 卡这一帧的弹出偏移。折叠、展开 Section 时线藏着（husk），不跟着卡每帧重新走线：不读 popIn，停在卡的终点 */
+const popOf = (host: string) => (husk(host) ? undefined : popIn()[host]);
+/** 线跟着两端的卡藏起来、淡回来（state/ui.ts husk）：一端藏着就藏着 */
+function linkHusk(L: Link): Husk | undefined {
+  const a = cardById(L.from.card)?.host.id, b = cardById(L.to.card)?.host.id;
+  const ha = a ? husk(a) : undefined, hb = b ? husk(b) : undefined;
+  return ha === "out" || hb === "out" ? "out" : ha ?? hb;
+}
+// 线（SVG 的 g）和标签框各用自己的 class：同一个 class 名下有 "> *" 的规则时，浏览器给每个带它的节点都把整棵子树重算一遍
+const huskEls = (els: Element[], h: () => Husk | undefined) => createRenderEffect(() => {
+  const v = h();
+  for (const el of els) { const k = el instanceof HTMLElement ? "whusk" : "lhusk"; el.classList.toggle(k, v === "out"); el.classList.toggle(`${k}-in`, v === "in"); }
+});
+
 /** 在折叠的 Section 里时是那个标题条 */
 function endRect(id: string): { r: Rect; pill: boolean } | null {
   const f = cardById(id);
@@ -36,7 +50,7 @@ function endRect(id: string): { r: Rect; pill: boolean } | null {
   const home = collapsedHome(placeOf(f.host.id).section);
   if (home) { const r = frames().get(home.id); return r ? { r, pill: true } : null; }
   const r = rectOf(f.host);
-  const pi = popIn()[f.host.id];
+  const pi = popOf(f.host.id);
   const base = pi ? { ...r, x: r.x + (1 - pi.v) * pi.ox, y: r.y + (1 - pi.v) * pi.oy } : r;
   const g = geo[id];
   if (f.host.id !== id && g?.colX !== undefined) return { r: { x: base.x + g.colX, y: base.y, w: g.colW ?? base.w / 2, h: base.h }, pill: false };
@@ -77,13 +91,13 @@ function endOf(e: Link["from"]): End | null {
   else if (line && !er.pill) {
     const p = lineY(e.card, e.seg, e.line);
     const row = p?.row !== undefined ? geo[e.card]?.rows[p.row] : undefined;
-    if (p && row?.t === "line" && row.line === e.line) { const pi = popIn()[f.host.id]; y = p.y + (pi ? (1 - pi.v) * pi.oy : 0); }
+    if (p && row?.t === "line" && row.line === e.line) { const pi = popOf(f.host.id); y = p.y + (pi ? (1 - pi.v) * pi.oy : 0); }
   }
   let col: End["col"];
   const g = geo[e.card];
   if (!er.pill && f.host.id !== e.card && g?.colX !== undefined && (g.colW ?? 0) < rectOf(f.host).w - 1) col = g.colX > 1 ? "right" : "left";
   let outer = r;
-  if (col) { const h = rectOf(f.host), pi = popIn()[f.host.id]; outer = pi ? { ...h, x: h.x + (1 - pi.v) * pi.ox, y: h.y + (1 - pi.v) * pi.oy } : h; }
+  if (col) { const h = rectOf(f.host), pi = popOf(f.host.id); outer = pi ? { ...h, x: h.x + (1 - pi.v) * pi.ox, y: h.y + (1 - pi.v) * pi.oy } : h; }
   return { box: r, outer, line, y, hy, col, host: f.host.id, card: e.card, pill: er.pill };
 }
 
@@ -618,6 +632,7 @@ function linkDom(r: Route, g: Accessor<Geo | null>, merged: Accessor<boolean>, c
   const casing = <g><Show when={city() && !gutter() && !hand() && g()}>{(gg) => <path class={`casing${L.call ? "" : " plain"}${widthCls(L)}`} d={gg().d} />}</Show></g> as SVGGElement;
   const kerb = <g><Show when={city() && L.call && !gutter() && !hand() && g()}>{(gg) => <path class={`kerb${widthCls(L)}`} d={gg().d} />}</Show></g> as SVGGElement;
   const label = <div class="lw"><LinkLabel L={L} g={g} /><LinkStickers link={L.id} /></div> as HTMLDivElement;
+  huskEls([line, casing, kerb, port, label], createMemo(() => linkHusk(L)));
   return { line, casing, kerb, port, label };
 }
 
@@ -645,7 +660,12 @@ type Stub = ReturnType<typeof stubOf>;
 function mergeDom(key: string, st: Stub, city: () => boolean): Dom {
   const casing = <g><Show when={city() && st.g()}><path class={`casing${st.members().every((L) => !L.call) ? " plain" : ""}`} d={st.g()!.d} /></Show></g> as SVGGElement;
   const kerb = <g><Show when={city() && st.g() && st.members().some((L) => L.call)}><path class="kerb" d={st.g()!.d} /></Show></g> as SVGGElement;
-  return { line: <g><Merge key={key} st={st} /></g> as SVGGElement, casing, kerb };
+  const line = <g><Merge key={key} st={st} /></g> as SVGGElement;
+  huskEls([line, casing, kerb], createMemo(() => {
+    const hs = st.members().map(linkHusk);
+    return hs.length && hs.every((h) => h === "out") ? "out" : hs.length && hs.every(Boolean) ? "in" : undefined;
+  }));
+  return { line, casing, kerb };
 }
 
 function Merge(p: { key: string; st: Stub }) {

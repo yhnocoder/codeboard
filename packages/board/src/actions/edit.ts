@@ -13,8 +13,9 @@ import {
   type LineSel,
 } from "../state/store";
 import { animate, Spring, reduceMotion } from "../state/camera";
-import { setEditing, setPopIn, popIn, setEditEntry, codeTextRange, staged, setStaged } from "../state/ui";
+import { setEditing, setPopIn, popIn, setEditEntry, codeTextRange, staged, setStaged, setHusk, unhusk } from "../state/ui";
 import { farAway } from "../state/cull";
+import { HUSK_OUT } from "../state/timing";
 import { lodOf } from "../state/lodcards";
 import { staticTextRange } from "@yhnocoder/markdown";
 import { openMenu, type Item } from "../ui/Menu";
@@ -465,6 +466,8 @@ export function toggleSection(id: string) {
     // 离屏幕很远的（整张藏着，看不见）先不建，弹完了再一帧一张地建；连着它们的线照样从标题条弹出来（popIn 不要 DOM）
     const far = new Set(members.filter((m) => farAway(m) && lodOf(m) === "full"));
     const near = members.filter((m) => !far.has(m));
+    // 卡先空白着弹出来（连着的线先淡掉、不跟着走线），落到位了内容和线再淡回来
+    for (const m of members) setHusk(m, "out");
     for (const m of near) setPopIn(m, { ...popStart(m, pt), v: 0 });
     let i = 0;
     animate(() => {
@@ -474,6 +477,14 @@ export function toggleSection(id: string) {
       apply();
       // 先清掉：中间被删了的卡 popCard 不管，留着的 popIn 会让下面一直等
       for (const m of members) { if (!far.has(m)) setStaged(m, undefined); setPopIn(m, undefined); popCard(m, pt); }
+      let wait = members;
+      animate(() => {
+        // 到位了（popCard 的进度只增不减，弹簧第一次冲到头就是 1，后面的余震不画）就淡回来；又折叠起来了（中间再点）就交给那边
+        if (staging.has(id)) return true;
+        const landed = wait.filter((m) => (popIn()[m]?.v ?? 1) >= 0.99);
+        if (landed.length) { unhusk(landed); wait = wait.filter((m) => !landed.includes(m)); }
+        return !wait.length;
+      });
       if (far.size) animate(() => {
         // 正在折叠：那边收完会把还没建的这些一起清掉。已经折叠了（撤销）：藏着的不用建，标记清掉
         if (staging.has(id)) return true;
@@ -490,7 +501,9 @@ export function toggleSection(id: string) {
   // 折叠：卡片收进标题条（往标签缩、变淡），收完再真正折叠；折叠后成员卡停在收完的那一帧（透明）留着，一帧几张拆掉
   const offs = new Map(members.map((m) => { const p = placeOf(m); return [m, { ox: pt.x - p.x, oy: pt.y - p.y }]; }));
   const sp = new Spring(1, 200, 26, 0.02); sp.t = 0;
-  let i = -1;
+  // 先把内容和连着的线淡掉，剩下空白的卡身再收进去（字叠在一起、线跟着甩很乱）
+  for (const m of members) setHusk(m, "out");
+  let i = -1, t = 0;
   animate((dt) => {
     if (i >= 0) {
       for (const m of members.slice(i, (i += STAGE_OUT))) { setStaged(m, undefined); setPopIn(m, undefined); }
@@ -498,10 +511,12 @@ export function toggleSection(id: string) {
       staging.delete(id);
       return true;
     }
+    if ((t += dt * 1000) < HUSK_OUT) return false;
     sp.step(dt);
     const done = sp.v < 0.05;
     for (const [m, o] of offs) setPopIn(m, { ...o, v: done ? 0 : Math.max(0, sp.v) });
-    if (done) { for (const m of members) if (staged(m) !== "out") setStaged(m, "in"); apply(); i = 0; }
+    // 折叠好了：线改连到标题条，淡回来（卡已经透明、随后拆掉）
+    if (done) { for (const m of members) if (staged(m) !== "out") setStaged(m, "in"); apply(); unhusk(members); i = 0; }
     return false;
   });
 }

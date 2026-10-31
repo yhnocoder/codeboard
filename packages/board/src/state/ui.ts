@@ -4,6 +4,7 @@ import { createStore } from "solid-js/store";
 import { noteShown, type CodeCard, type Guide, type Link, type Sidenote } from "@codeboard/core";
 import { state } from "./store";
 import { rooted, boardSignal } from "./root";
+import { HUSK_IN } from "./timing";
 import type { StaticTextRange } from "@yhnocoder/markdown";
 
 // 临时展开的手动隐藏范围（Show）："seg:from"
@@ -118,6 +119,17 @@ export type Staged = "in" | "out";
 const [stagedStore, setStagedStore] = createStore<Record<string, Staged | undefined>>({});
 export const staged = (id: string) => stagedStore[id];
 export const setStaged = (id: string, s: Staged | undefined) => setStagedStore(id, s);
+// 折叠、展开 Section 时成员卡只剩空白的卡身（内容淡掉）、连着的线也淡掉、不跟着每帧重新走线：十几张满是字的卡半透明地叠在一起很乱。
+// "out" = 内容和线藏着（淡出 HUSK_OUT）；"in" = 正在淡回来（HUSK_IN），完了清掉
+export type Husk = "out" | "in";
+const [huskStore, setHuskStore] = createStore<Record<string, Husk | undefined>>({});
+export const husk = (id: string) => huskStore[id];
+export const setHusk = (id: string, h: Husk | undefined) => setHuskStore(id, h);
+/** 这几张卡的内容和线淡回来，淡完清掉（中间又藏起来的不动） */
+export function unhusk(ids: string[]) {
+  for (const id of ids) if (huskStore[id] === "out") setHuskStore(id, "in");
+  setTimeout(() => { for (const id of ids) if (huskStore[id] === "in") setHuskStore(id, undefined); }, HUSK_IN + 50);
+}
 // 卡的大小变过去的动画（Fit Content）：id → 这一帧画出来的宽、高（高是存着高度的那一块：代码卡的内容区，别的卡整张）。
 // 白板里已经是新的大小；同样存成 store，每帧只重算在变的卡
 export type SizeAnim = { w: number; h: number };
