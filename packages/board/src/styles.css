@@ -512,7 +512,7 @@ input, textarea { font: inherit; color: var(--ink); }
 @keyframes imgdrop-caret { from { transform: scaleX(0); opacity: 0; } to { transform: scaleX(1); opacity: 1; } }
 @keyframes imgdrop-pulse { from { opacity: 1; } to { opacity: .45; } }
 @keyframes imgdrop-label { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
-.board:has(.card.img-drop) .card.lift { opacity: .72; } /* the picture lets the caret under it show through */
+.board.img-drop .card.lift { opacity: .72; } /* the picture lets the caret under it show through. 不用 .board:has(.card.img-drop)：拖着的卡每动一下都要重算样式，:has 每次把整块白板扫一遍（每步 ~4 ms） */
 .tex { font-family: var(--mono); font-size: .95em; color: var(--ink-2); }
 .lockb { flex: none; width: 18px; height: 18px; display: grid; place-items: center; border-radius: 5.5px; color: var(--ib-ink, var(--ink-2)); }
 .lockb:hover { background: var(--hlrow); color: var(--accent); }

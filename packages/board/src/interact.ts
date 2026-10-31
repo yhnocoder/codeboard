@@ -3,7 +3,7 @@ import {
   type Board, type Card, type CallSpan, type Rect, type Anchor, type LinkSide,
 } from "@codeboard/core";
 import {
-  state, sel, select, toggleSel, clearSel, setLineSel, isSel, cardById, hostOf, rectOf, live, beginGesture, isFresh, toast, placeOf,
+  state, sel, select, toggleSel, clearSel, setLineSel, isSel, cardById, hostOf, rectOf, live, beginGesture, isFresh, toast, placeOf, placed,
 } from "./state/store";
 import { tune } from "./state/tune";
 import { WHEEL_GESTURE } from "./state/timing";
@@ -212,6 +212,13 @@ function startCardDrag(e: PointerEvent, grabbed: string, onClick?: () => void) {
   const box = bounds(ids.map((i) => rectOf(cardById(i)!.host)))!;
   const targets = [...visibleCards().filter((c) => !skip.has(c.id)).map((c) => rectOf(c)), ...[...frames().entries()].map(([, r]) => r)];
   const fr = new Map(frames());
+  // 别的卡占的地方（世界坐标）：指针不在哪张附近时不用问浏览器指针下面是什么。elementsFromPoint 要把指针下面每一层都找出来，
+  // 241 张卡的白板每次 3–6 ms，是拖动每帧最大的一块。外面留一圈：浮在卡上方的卡头、斜贴的卡角、卡边上的贴纸
+  const others = placed().filter((c) => !skip.has(c.id)).map((c) => rectOf(c));
+  const nearOther = (ev: PointerEvent) => {
+    const p = worldOf(ev), pad = Math.max(64, 24 / cam.z);
+    return others.some((r) => p.x >= r.x - pad && p.x <= r.x + r.w + pad && p.y >= r.y - pad && p.y <= r.y + r.h + pad);
+  };
   const { end, moving, drop: dropGesture } = cardGesture(ids);
   const sx = e.clientX, sy = e.clientY;
   let mergeT: number | undefined, mergeTgt: string | undefined;
@@ -227,7 +234,7 @@ function startCardDrag(e: PointerEvent, grabbed: string, onClick?: () => void) {
     let dx = (ev.clientX - sx) / z, dy = (ev.clientY - sy) / z;
     const fast = pace.fast(ev, still);
     // 合并 / 变成 Sidenote 的落点
-    const under = document.elementsFromPoint(ev.clientX, ev.clientY).find((n) => (n as HTMLElement).closest?.(".card") && !skip.has(((n as HTMLElement).closest(".card") as HTMLElement).dataset.id!)) as HTMLElement | undefined;
+    const under = !nearOther(ev) ? undefined : document.elementsFromPoint(ev.clientX, ev.clientY).find((n) => (n as HTMLElement).closest?.(".card") && !skip.has(((n as HTMLElement).closest(".card") as HTMLElement).dataset.id!)) as HTMLElement | undefined;
     const uc = under?.closest(".card") as HTMLElement | undefined;
     const uid = uc?.dataset.id;
     const head = under?.closest(".chead");

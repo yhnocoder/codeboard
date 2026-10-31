@@ -82,7 +82,7 @@ export function Canvas() {
     onCleanup(() => { ro.disconnect(); el.removeEventListener("wheel", canvasWheel); });
   });
   return (
-    <div ref={el} id="board" class="board" data-mode={boardMode()} classList={{ walking: !!walk(), dragging: dragging().size > 0, "lod-overview": lod() === "overview", "lod-map": lod() === "map" }}
+    <div ref={el} id="board" class="board" data-mode={boardMode()} classList={{ walking: !!walk(), dragging: dragging().size > 0, "img-drop": dropTarget()?.kind === "note", "lod-overview": lod() === "overview", "lod-map": lod() === "map" }}
       onPointerDown={canvasPointerDown} onContextMenu={canvasContextMenu}>
       <div ref={world} class="world" classList={{ moving: camMoving(), settle: settle() }} style={{ transform: `translate(${cam.x}px, ${cam.y}px) scale(${cam.z})`, "--izmap": String(izMap()) }}>
         <SectionFrames />
