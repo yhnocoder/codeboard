@@ -1,5 +1,5 @@
 import { send } from "../host";
-import { createMemo, createSignal, Show, Switch, Match, onMount, onCleanup, createEffect, For, type JSX, type Component } from "solid-js";
+import { createMemo, createSignal, Show, Switch, Match, onMount, onCleanup, createEffect, createRenderEffect, For, type JSX, type Component } from "solid-js";
 import { Dynamic } from "solid-js/web";
 import {
   cardTitle, frameless, hiddenLang, codeGlyph, versionLabel, fileCount, mixedVersions, descendants, isMine, onVariant, upstreamSegs, activeOf, variantTitle, UPSTREAM,
@@ -9,7 +9,7 @@ import { langLabel } from "@codeboard/analysis/langs";
 import { measuredHeight } from "../state/subboards";
 import { state, setSizes, isSel, flows, collapsedSet, sel, placeOf, rectOf, shared, sharedOn, twinsOf } from "../state/store";
 import { Glyph } from "../stickers/glyphs";
-import { editing, setEditing, dragging, popIn, sizeIn, walk, pingCard, dropTarget } from "../state/ui";
+import { editing, setEditing, dragging, popIn, sizeIn, walk, pingCard, dropTarget, staged } from "../state/ui";
 import { Icon } from "../ui/icons";
 import { isHidden } from "../state/sections";
 import { queueMeasure, observeResize } from "../state/measure";
@@ -57,7 +57,7 @@ export function CardView(p: { card: Card }) {
     return () => { setSizes(id, { w, h }); measuredHeight(id); };
   };
   // 藏起来再显示（折叠、展开）时卡的元素是新建的：在 ref 里接上尺寸监听，随这个元素一起拆掉
-  const mount = (e: HTMLDivElement) => { el = e; onCleanup(observeResize(e, () => queueMeasure(read, read))); };
+  const mount = (e: HTMLDivElement) => { el = e; onCleanup(observeResize(e, () => queueMeasure(read, read))); popStyle(e); };
   createEffect(() => {
     const pg = pingCard();
     if (pg?.id === c().id && el) { el.classList.remove("ping"); void el.offsetWidth; el.classList.add("ping"); }
@@ -85,11 +85,18 @@ export function CardView(p: { card: Card }) {
     // 斜贴：绕卡的中心转（箭头的端点按同一个中心转，Links.tsx）
     const a = tiltOf(k.id);
     if (a) Object.assign(s, { rotate: `${a}deg`, "transform-origin": "50% 50%" });
-    const pi = pop();
-    if (pi?.slide) { s.transform = `translate(${(1 - pi.v) * pi.ox}px, ${(1 - pi.v) * pi.oy}px)`; s.transition = "none"; }
-    else if (pi) { s.transform = `translate(${(1 - pi.v) * pi.ox}px, ${(1 - pi.v) * pi.oy}px) scale(${0.9 + 0.1 * pi.v})`; s.opacity = String(Math.min(1, pi.v * 1.8)); s.transition = "none"; }
     return s;
   };
+  // 弹出、滑过去、收进 Section 的每一帧只改这几项：单独一个 effect，不把卡的整个 style 和 classList 重算一遍
+  // 离屏幕很远、整张藏着的卡（state/cull.ts 的 far）动不动都看不见：不写，省下每帧每张卡的样式重算（Section 一行十几张卡大多在屏幕外）
+  const popStyle = (e: HTMLDivElement) => createRenderEffect(() => {
+    const pi = pop(), s = e.style;
+    if (!pi || (farAway(c().id) && lodOf(c().id) === "full")) { for (const k of ["transform", "opacity", "transition"]) s.removeProperty(k); return; }
+    const x = (1 - pi.v) * pi.ox, y = (1 - pi.v) * pi.oy;
+    s.transform = pi.slide ? `translate(${x}px, ${y}px)` : `translate(${x}px, ${y}px) scale(${0.9 + 0.1 * pi.v})`;
+    s.opacity = pi.slide ? "" : String(Math.min(1, pi.v * 1.8));
+    s.transition = "none";
+  });
   const dim = () => {
     const w = walk();
     if (!w) return false;
@@ -114,7 +121,7 @@ export function CardView(p: { card: Card }) {
     return (m && d.armed ? 1 : 0) | (m && !d.armed ? 2 : 0) | (d.kind === "card" && d.card === id ? 4 : 0) | (d.cands?.includes(id) ? 8 : 0) | (d.kind === "note" && d.card === id ? 16 : 0);
   });
   return (
-    <Show when={!isHidden(c().id)}>
+    <Show when={staged(c().id) === "in" || (staged(c().id) !== "out" && !isHidden(c().id))}>
       <div ref={mount} class={`card ${kindClass()}`} data-id={c().id} data-fc={c().kind === "code" ? fileHue((c() as CodeCard).segments[0]?.path) : undefined} style={style()}
         classList={{
           sel: isSel(c().id), solo: sel.cards.length === 1, lift: lift(), dim: dim(), locked: !!pl().locked, autoh: !pl().h, nobg: act.noBg(c()),

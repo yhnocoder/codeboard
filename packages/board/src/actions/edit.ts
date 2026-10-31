@@ -13,12 +13,14 @@ import {
   type LineSel,
 } from "../state/store";
 import { animate, Spring, reduceMotion } from "../state/camera";
-import { setEditing, setPopIn, setEditEntry, codeTextRange } from "../state/ui";
+import { setEditing, setPopIn, popIn, setEditEntry, codeTextRange, staged, setStaged } from "../state/ui";
+import { farAway } from "../state/cull";
+import { lodOf } from "../state/lodcards";
 import { staticTextRange } from "@yhnocoder/markdown";
 import { openMenu, type Item } from "../ui/Menu";
 import { ghostOut } from "../state/ghost";
 import { frameOf, fitFrame, setFitting, allMembers, isHidden } from "../state/sections";
-import { popCard, revealCard, sectionById, sectionLocked, selCards, isLocked, slideFrom } from "./common";
+import { popCard, popStart, revealCard, sectionById, sectionLocked, selCards, isLocked, slideFrom } from "./common";
 import { requestViews } from "./create";
 import { offerReference } from "./shared";
 import { kbd } from "../keymap";
@@ -444,10 +446,11 @@ export function toggleSection(id: string) {
   const s0 = sectionById(id);
   if (!s0) return;
   // 折叠前把实际框存下来：标题条放在框的左上角，展开后框不变
-  const f = s0.collapsed ? null : frameOf(s0);
+  const was = !!s0.collapsed, f = was ? null : frameOf(s0);
+  // 动画放完（展开时成员卡建好）才真正改：中间别处已经改过（撤销、Reveal 展开）就不再翻回去
   const apply = () => mutate((b) => {
     const s = b.sections.find((q) => q.id === id);
-    if (!s) return;
+    if (!s || !!s.collapsed !== was) return;
     if (f) Object.assign(s, { x: Math.round(f.x), y: Math.round(f.y), w: Math.round(f.w), h: Math.round(f.h) });
     s.collapsed = !s.collapsed || undefined;
   });
@@ -455,23 +458,57 @@ export function toggleSection(id: string) {
   const at = f ?? { x: s0.x, y: s0.y };
   const pt = { x: at.x + 10, y: at.y };
   if (reduceMotion() || !members.length) return apply();
-  if (s0.collapsed) {
-    // 展开：卡片从标题条里弹出来
-    apply();
-    requestAnimationFrame(() => members.forEach((m) => popCard(m, pt)));
+  if (staging.has(id)) return;
+  staging.add(id);
+  if (was) {
+    // 展开：屏幕附近的成员卡先在标题条那里透明地建好（state/ui.ts staged），一帧几张，都建好了再真正展开、弹出来。
+    // 离屏幕很远的（整张藏着，看不见）先不建，弹完了再一帧一张地建；连着它们的线照样从标题条弹出来（popIn 不要 DOM）
+    const far = new Set(members.filter((m) => farAway(m) && lodOf(m) === "full"));
+    const near = members.filter((m) => !far.has(m));
+    for (const m of near) setPopIn(m, { ...popStart(m, pt), v: 0 });
+    let i = 0;
+    animate(() => {
+      if (i < near.length) { for (const m of near.slice(i, (i += STAGE_IN))) setStaged(m, "in"); return false; }
+      staging.delete(id);
+      for (const m of far) setStaged(m, "out");
+      apply();
+      // 先清掉：中间被删了的卡 popCard 不管，留着的 popIn 会让下面一直等
+      for (const m of members) { if (!far.has(m)) setStaged(m, undefined); setPopIn(m, undefined); popCard(m, pt); }
+      if (far.size) animate(() => {
+        // 正在折叠：那边收完会把还没建的这些一起清掉。已经折叠了（撤销）：藏着的不用建，标记清掉
+        if (staging.has(id)) return true;
+        const left = [...far].filter((m) => staged(m) === "out");
+        if (sectionById(id)?.collapsed) { for (const m of left) setStaged(m, undefined); return true; }
+        if (members.some((m) => popIn()[m])) return false;
+        if (left[0]) setStaged(left[0], undefined);
+        return left.length <= 1;
+      });
+      return true;
+    });
     return;
   }
-  // 折叠：卡片收进标题条（往标签缩、变淡），收完再真正折叠
+  // 折叠：卡片收进标题条（往标签缩、变淡），收完再真正折叠；折叠后成员卡停在收完的那一帧（透明）留着，一帧几张拆掉
   const offs = new Map(members.map((m) => { const p = placeOf(m); return [m, { ox: pt.x - p.x, oy: pt.y - p.y }]; }));
   const sp = new Spring(1, 200, 26, 0.02); sp.t = 0;
+  let i = -1;
   animate((dt) => {
+    if (i >= 0) {
+      for (const m of members.slice(i, (i += STAGE_OUT))) { setStaged(m, undefined); setPopIn(m, undefined); }
+      if (i < members.length) return false;
+      staging.delete(id);
+      return true;
+    }
     sp.step(dt);
     const done = sp.v < 0.05;
-    setPopIn((p) => { const n = { ...p }; for (const [m, o] of offs) { if (done) delete n[m]; else n[m] = { ...o, v: Math.max(0, sp.v) }; } return n; });
-    if (done) apply();
-    return done;
+    for (const [m, o] of offs) setPopIn(m, { ...o, v: done ? 0 : Math.max(0, sp.v) });
+    if (done) { for (const m of members) if (staged(m) !== "out") setStaged(m, "in"); apply(); i = 0; }
+    return false;
   });
 }
+// 正在折叠、展开的 Section：动画和分帧建、拆卡片的这几帧里再点一下不管
+const staging = new Set<string>();
+// 一帧建几张、拆几张成员卡：建一张代码卡要 5–10ms（建节点、排版、量行），拆便宜得多
+const STAGE_IN = 1, STAGE_OUT = 4;
 /** Section 的 Fit Content：框收到刚好包住成员卡和子 Section（标准边距）；缓动过去，一步撤销。折叠的、锁着的、空的不动 */
 export function fitSections(ids: string[]) {
   const fits = new Map<string, Rect>();

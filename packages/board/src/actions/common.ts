@@ -146,26 +146,26 @@ export function fitSelection() {
   camTo(f.x, f.y, f.z);
 }
 
+/** 弹出的起点：离卡的位置多远（popCard 从这里开始） */
+export function popStart(id: string, from?: { x: number; y: number }) {
+  const h = cardById(id)?.host;
+  const c = placeOf(h?.id ?? id);
+  return { ox: from ? (from.x - c.x) * 0.7 : 0, oy: from ? (from.y - c.y) * 0.7 : 24 };
+}
 /** 新卡弹出来：从 from 点（世界坐标）放大淡入。透明度只增不减。 */
 export function popCard(id: string, from?: { x: number; y: number }) {
-  const h = cardById(id)?.host;
-  if (!h) return;
-  const c = placeOf(h.id);
-  const ox = from ? (from.x - c.x) * 0.7 : 0, oy = from ? (from.y - c.y) * 0.7 : 24;
+  if (!cardById(id)) return;
+  const { ox, oy } = popStart(id, from);
   const sp = new Spring(0, 260, 26, 0.002);
   sp.t = 1;
-  setPopIn((p) => ({ ...p, [id]: { ox, oy, v: 0 } }));
+  setPopIn(id, { ox, oy, v: 0 });
   const start = performance.now();
   animate((dt, instant) => {
     if (performance.now() - start < (reduceMotion() ? 0 : 20)) return false;
     instant ? sp.set(1) : sp.step(dt);
     const v = Math.min(1, Math.max(popIn()[id]?.v ?? 0, sp.v));
     const done = sp.done || instant;
-    setPopIn((p) => {
-      const n = { ...p };
-      if (done) delete n[id]; else n[id] = { ox, oy, v };
-      return n;
-    });
+    setPopIn(id, done ? undefined : { ox, oy, v });
     return done;
   });
 }
@@ -174,11 +174,11 @@ export function popCard(id: string, from?: { x: number; y: number }) {
 export function slideFrom(list: { id: string; ox: number; oy: number }[]) {
   if (reduceMotion()) return;
   const sp = new Spring(0, 170, 26, 0.002); sp.t = 1;
-  setPopIn((p) => { const n = { ...p }; for (const q of list) n[q.id] = { ox: q.ox, oy: q.oy, v: 0, slide: true } as any; return n; });
+  for (const q of list) setPopIn(q.id, { ox: q.ox, oy: q.oy, v: 0, slide: true });
   animate((dt) => {
     sp.step(dt);
     const done = sp.done;
-    setPopIn((p) => { const n = { ...p }; for (const q of list) { if (done) delete n[q.id]; else n[q.id] = { ...(n[q.id] as any), v: sp.v }; } return n; });
+    for (const q of list) setPopIn(q.id, done ? undefined : { ox: q.ox, oy: q.oy, v: sp.v, slide: true });
     return done;
   });
 }

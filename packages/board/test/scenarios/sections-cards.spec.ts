@@ -151,6 +151,47 @@ test("sectionCollapsedPill", async () => {
   await close(h);
 });
 
+/** Folding and unfolding a Section with its animation (member cards are built and taken down over a few frames, the far-off ones
+ *  after the animation): folded, no member card is left in the page; unfolded, every member is back where it was, with no pop-in
+ *  transform or opacity left behind, the far-off member included; one undo folds it again */
+test("sectionFoldRoundTrip", async () => {
+  const b = emptyBoard("b1", "fold round trip");
+  const s = findSym("Scheduler.schedule");
+  const code = symCard(s.f, s.s);
+  put(b, code, 120, 140, 480);
+  ["Prefill", "Decode", "Preemption"].forEach((t, i) => put(b, { id: `n${i}`, kind: "note", look: "note", md: `# ${t}\n\nNotes.` } as NoteCard, 680, 140 + i * 180, 280));
+  // 离屏幕很远的一张：展开时动画放完才建
+  put(b, { id: "far", kind: "note", look: "note", md: "# Far away\n\nNotes." } as NoteCard, 9000, 6000, 280);
+  for (const id of Object.keys(b.place)) b.place[id].section = "S";
+  b.sections.push({ id: "S", title: "Scheduling", x: 80, y: 80, w: 9400, h: 6400 });
+  b.cam = { x: 0, y: 0, z: 1 };
+  const ids = Object.keys(b.place);
+  const h = await open({ board: b, light, w: 1400, h: 900 });
+  await idle(h);
+  const before = await h.page.evaluate(() => Object.fromEntries([...document.querySelectorAll<HTMLElement>(".card[data-id]")].map((e) => [e.dataset.id, e.getBoundingClientRect().toJSON()])));
+  const cards = () => h.page.evaluate((ids) => ids.map((id) => {
+    const e = document.querySelector<HTMLElement>(`.card[data-id="${id}"]`);
+    return e && { id, transform: e.style.transform, opacity: e.style.opacity, r: e.getBoundingClientRect().toJSON() };
+  }), ids);
+  await h.page.locator('.slabel[data-sect="S"] button[aria-label="Collapse Section"]').click();
+  await until(h, "the fold is saved", () => h.board().sections[0].collapsed); await idle(h);
+  const folded = await cards();
+  check("sectionFoldRoundTrip folded: no member card left", folded.every((c) => !c), folded);
+  await h.page.locator('.slabel[data-sect="S"] .chev2').click();
+  await until(h, "the unfold is saved", () => !h.board().sections[0].collapsed);
+  // idle() 不够：弹出的弹簧越过终点时 v 夹在 1，样式几帧不变；等真正动完（far 也建好）
+  const open1 = await until(h, "every member card is back and done popping", async () => { const cs = await cards(); return cs.every((c) => c && !c.transform) && cs; }).catch(() => cards());
+  await idle(h);
+  const near = (a: DOMRect, b: DOMRect) => Math.abs(a.x - b.x) < 1 && Math.abs(a.y - b.y) < 1;
+  check("sectionFoldRoundTrip unfolded: every member back, nothing left of the pop-in",
+    open1.every((c) => !!c && !c.transform && !c.opacity) && open1.filter((c) => c && before[c.id]).every((c) => near(c!.r, before[c!.id])), { open1, before });
+  await h.page.keyboard.press("Control+z");
+  await until(h, "the undo is saved", () => h.board().sections[0].collapsed); await idle(h);
+  const undone = await cards();
+  check("sectionFoldRoundTrip undo folds again", undone.every((c) => !c), undone);
+  await close(h);
+});
+
 /** A Note grows while its Section is collapsed (a larger Note font in the settings); revealing it expands the Section and frames the
  *  Note by its new height, not the one measured before the collapse */
 test("revealFramesRegrownCard", async () => {
