@@ -6,7 +6,7 @@ import { mdSchema, parseMd, pastedMd, serializeMd } from "../src/schema";
 import { marksInSlice } from "../src/editor/pastemarks";
 import { htmlSource } from "../src/editor/pastemarks";
 
-// From usage feedback #53: notes with three ==highlights== in CJK text, one closing right before 。
+// Notes with three ==highlights== in CJK text, one closing right before 。
 const SIMT = [
   "同一 warp 中的线程会被分配到同一个处理分区。由于 CUDA 线程调度机制把 warp 映射到处理分区，因此 ==warp 的执行行为通常称为单指令多线程（Single Instruction, Multiple Thread，SIMT）==。",
   "SIMT 的一个重要优点是，之后由 SM 把线程分组为 warp，==透明地使用 SIMD 硬件==。这不同于传统 CPU SIMD 编程：增加了另一层编程复杂度。3",

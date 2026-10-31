@@ -57,7 +57,7 @@ const caret = (h: Host) => h.page.evaluate(() => {
 });
 const focusIn = (h: Host, id: string) => h.page.evaluate((id) => !!document.activeElement?.closest(`.card[data-id="${id}"]`), id);
 
-/** ⌥F while editing (usage feedback #62): fits the Note being edited and the Free code card being edited, with no "ƒ" typed, the editor
+/** ⌥F while editing: fits the Note being edited and the Free code card being edited, with no "ƒ" typed, the editor
  *  still open with the caret where it was (typing goes on there); one undo step like ⌥F on a selected card */
 test("fitContentKeyWhileEditing", async () => {
   const b = emptyBoard("bFitEd", "fit while editing");

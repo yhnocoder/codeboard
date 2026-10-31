@@ -5,7 +5,7 @@ import type { JSONContent } from "@tiptap/core";
 import { mdSchema, parseMd, pastedMd, serializeMd, texBrackets } from "../src/schema";
 import { mathInSlice } from "../src/editor/pastemath";
 
-// From usage feedback #19: a chat app's answer with formulas next to CJK text and punctuation, \text{…} with dots,
+// A chat app's answer with formulas next to CJK text and punctuation, \text{…} with dots,
 // single letters, and "(1,2)" between two formulas
 const PARA = "偏移为 $\\text{threadIdx.y} \\times 4 + \\text{threadIdx.x}$。例如，元素 (1,2) 的偏移是 $1 \\times 4 + 2 = 6$。相比之下，偏移变为 $\\text{threadIdx.x} \\times 3 + \\text{threadIdx.y}$，同一个元素 (1,2) 的偏移就是 $2 \\times 3 + 1 = 7$。";
 const PARA_TEX = ["\\text{threadIdx.y} \\times 4 + \\text{threadIdx.x}", "1 \\times 4 + 2 = 6", "\\text{threadIdx.x} \\times 3 + \\text{threadIdx.y}", "2 \\times 3 + 1 = 7"];
@@ -89,7 +89,7 @@ describe("pasting HTML with formulas", () => {
   });
 });
 
-// From usage feedback #54: an H100 occupancy explanation whose display formulas are LaTeX's \[ … \] on their own lines, with spaces
+// An H100 occupancy explanation whose display formulas are LaTeX's \[ … \] on their own lines, with spaces
 const OCCUPANCY = [
   "个线程。此时 occupancy 为", "", "\\[", " 1024/2048 = 50\\% ", "\\]", "",
   "因此，要充分利用线程槽位并达到最大 occupancy，每个 thread block 至少需要 64 个线程。", "",

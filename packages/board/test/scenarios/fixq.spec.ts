@@ -23,7 +23,7 @@ const lineOf = (c: CodeCard, re: RegExp) => { const s = c.segments[0]; return s.
 test("qpop", () => verdict("qpop", qpop));
 
 /** The question's text starts right at the top of its box: no browser paragraph margin above it, while editing (the placeholder)
- *  and when shown (usage feedback #88) */
+ *  and when shown */
 test("questionTextNoTopGap", async () => {
   const b = emptyBoard("bQ", "q");
   const alloc = nv("BlockManager.allocate");

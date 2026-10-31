@@ -452,7 +452,7 @@ test("headPortHidden", async () => {
   await close(h);
 });
 
-/** Zoomed out, a card's edge port keeps its 100% size on screen, drawn and to hit (feedback #14: at 30% it was a 3 px target) */
+/** Zoomed out, a card's edge port keeps its 100% size on screen, drawn and to hit (at 30% it was a 3 px target) */
 test("portSizeWhenZoomedOut", async () => {
   const b = emptyBoard("b1", "portsize");
   b.cards.push({ id: "n0", kind: "note", md: "A note to drag an arrow out of", look: "note" } as NoteCard);
@@ -525,7 +525,7 @@ test("lineNumberHoverShowsPorts", async () => {
 });
 
 /**
- * Two cards close together (feedback #65): an arrow dragged from the left card's right port to the right card, 20 px away,
+ * Two cards close together: an arrow dragged from the left card's right port to the right card, 20 px away,
  * and an automatic arrow between two cards side by side 10 px apart, in Warm Ink (curves) and Drafting (right-angle lines).
  * Neither arrow runs through a card, each ends on the target's edge and its last stretch points into the target.
  * Before: in Drafting the dragged arrow went round the outside of the target and ended inside it, pointing left;

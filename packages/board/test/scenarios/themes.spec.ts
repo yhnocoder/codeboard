@@ -512,7 +512,7 @@ test("draftingHighlightUnderline", async () => {
   check("draftingHighlightUnderline", ok && warm.length === 2 && warm.every((m) => m.bg.startsWith("linear-gradient(") && m.line === "none"), res);
 });
 
-/** Drafting (usage feedback #57): bold in a Note's body only gets heavier, in the body's font (DM Mono) and spacing, in the static
+/** Drafting: bold in a Note's body only gets heavier, in the body's font (DM Mono) and spacing, in the static
  *  Note and in its editor; headings keep the heading font */
 test("draftingBoldKeepsBodyFont", async () => {
   const b = emptyBoard("b1", "drafting bold");
@@ -558,7 +558,7 @@ test("inkWashBoldStandsOut", async () => {
   check("inkWashBoldStandsOut", ok(shown) && ok(edit), { shown, edit });
 });
 
-/** Ink Wash (usage feedback #85): ==highlight== is a vermilion brush stroke under the words instead of the yellow marker, light and dark,
+/** Ink Wash: ==highlight== is a vermilion brush stroke under the words instead of the yellow marker, light and dark,
  *  static and while editing, each wrapped line with its own stroke; other themes keep the marker */
 test("inkWashHighlightBrush", async () => {
   const b = emptyBoard("b1", "ink wash highlight");
@@ -593,7 +593,7 @@ test("inkWashHighlightBrush", async () => {
   check("inkWashHighlightBrush", ok && warm.length === 3 && warm.every((m) => m.bg.startsWith("linear-gradient(")), res);
 });
 
-/** Switching themes keeps card sizes (usage feedback #89: cards overlapped after switching to Ink Wash, or back from Drafting): every
+/** Switching themes keeps card sizes (cards overlapped after switching to Ink Wash, or back from Drafting): every
  *  theme has Warm Ink's line height for Note and Text bodies, its header plus top padding and its side padding; only the fonts differ,
  *  so a card's height changes by at most a re-wrapped line or two */
 test("themesKeepCardHeights", async () => {

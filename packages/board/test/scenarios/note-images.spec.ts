@@ -196,7 +196,7 @@ async function dragBy(h: Host, at: { x: number; y: number }, dx: number, steps =
   await h.page.mouse.up();
 }
 
-/** #17: a Note's image shrinks by dragging the grip on its corner while it is selected: the width goes into the Markdown as a
+/** A Note's image shrinks by dragging the grip on its corner while it is selected: the width goes into the Markdown as a
  *  percentage of the body ({width=N%}), centered, the same in the static render, scales with the card, one undo step per drag;
  *  either side's grip changes the width around the centre, and a double-click on a grip gives the full width back */
 test("noteImageResize", async () => {
@@ -281,7 +281,7 @@ const frameOf = (h: Host, id: string, sel: string) => h.page.locator(`.card[data
 type Look = { shadow: string; border: string; padding: string; bg: string; filter: string; outline: string };
 const bare = (l: Look | null) => !l || (l.shadow === "none" && l.border === "0px0px0px0px" && l.padding === "0px" && l.bg === "rgba(0, 0, 0, 0)" && l.filter === "none");
 
-/** #22: an image in a Note is drawn bare, with no hairline frame, shadow, padding or background around it, the same in the
+/** An image in a Note is drawn bare, with no hairline frame, shadow, padding or background around it, the same in the
  *  static view and in the editor; clicked, it opens its source with the image under it, the image itself bare inside its
  *  selection frame (the frame hugs the image, not its caption) with its resize grips */
 test("noteImageNoFrame", async () => {
@@ -401,7 +401,7 @@ const paras = (h: Host, id: string) => h.page.locator(`.card[data-id="${id}"] .m
   return (c.textContent ?? "") + (p.querySelector(".md-img") ? "[img]" : "");
 }));
 
-/** #24: while editing a Note, pressing on an image and dragging it moves it (not a copy) to where it is released, inside a
+/** While editing a Note, pressing on an image and dragging it moves it (not a copy) to where it is released, inside a
  *  paragraph too, with the drop cursor showing where; the paragraph it left goes away; the card stays put; one undo step puts it
  *  back; a click still opens the image's source and its resize grips still work */
 test("noteImageDragMoves", async () => {
@@ -456,7 +456,7 @@ test("noteImageDragMoves", async () => {
   await done();
 });
 
-/** #95: while editing a Note, an image dragged out of it and released on the board moves out of the Note into an image card
+/** While editing a Note, an image dragged out of it and released on the board moves out of the Note into an image card
  *  there (the same file in assets/, its alt text and caption, as wide as it was drawn): the Note's Markdown loses the image and
  *  the paragraph it stood in, nothing else; ⌘Z puts it back and takes the card away in one step (what was typed before is a
  *  step of its own). Released back on its own Note outside the text, or cancelled with Esc, nothing changes. The same from the

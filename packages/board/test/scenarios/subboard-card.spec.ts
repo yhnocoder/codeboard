@@ -206,7 +206,7 @@ test("subboardShrinkKeepsSize", async () => {
 });
 
 /**
- * The approved design (feedback demo #66, option B "缩略地图"): the title 16px above the frame as before; inside, Sections are tinted
+ * The approved design: the title 16px above the frame as before; inside, Sections are tinted
  * regions with their name and count in a fixed 11px label, notes are paper-white blocks with grey lines, code cards have a blue-grey
  * header band, arrows are thin lines at 75%; a hovered block gets an accent outline; the tooltip is the dark tip pill. Warm Ink, light, zoom 100%
  */

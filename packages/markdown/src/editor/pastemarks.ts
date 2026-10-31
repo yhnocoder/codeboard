@@ -1,5 +1,5 @@
-// 粘贴的 HTML 里没排出来的 ==高亮==、~~删除线~~ 和单独一段的 ---：不认这些写法的网页、聊天应用、阅读器把它们原样当字放进 <p>
-// （usage feedback #53）。ProseMirror 按 schema 读 HTML 时它们只是字；这里交给解析器按 Markdown 读，和打字、粘贴纯文字一样。
+// 粘贴的 HTML 里没排出来的 ==高亮==、~~删除线~~ 和单独一段的 ---：不认这些写法的网页、聊天应用、阅读器把它们原样当字放进 <p>。
+// ProseMirror 按 schema 读 HTML 时它们只是字；这里交给解析器按 Markdown 读，和打字、粘贴纯文字一样。
 // 字里别的 ASCII 标点先藏起来再解析：HTML 里的 * _ [ ] $ # 之类本来就是字（要的格式 HTML 自己带着），单个的 ~ 也是（3~5 是范围，不当下标）
 import { DOMParser as PMDOMParser, Fragment, Slice, type Mark, type Node as PMNode, type Schema } from "@tiptap/pm/model";
 import { mdSchema, parseSource, serializeMd } from "../schema";

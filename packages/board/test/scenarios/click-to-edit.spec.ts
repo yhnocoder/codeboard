@@ -1,6 +1,6 @@
-// A single click on the body of the only selected card edits it, with the caret where the click was (#30): a Note's text,
+// A single click on the body of the only selected card edits it, with the caret where the click was: a Note's text,
 // a Text's text, a Free code card's lines. A click on an unselected card only selects it, a click on one card of a
-// multi-selection only leaves that card selected, dragging over the selected Note's text still selects text (#15) and
+// multi-selection only leaves that card selected, dragging over the selected Note's text still selects text and
 // dragging a selected Text still moves it, none of them editing. A double click on an unselected Note still edits it.
 // Usage: npm run harness -- clickSelectedCardEdits
 import { emptyBoard, type Board, type CodeCard, type NoteCard } from "@codeboard/core";
@@ -96,7 +96,7 @@ test("clickSelectedCardEdits", async () => {
   await apart(h);
   check("clickMultiSelectionSelectsOneNoEdit", (await editors(pg)) === 0, await editors(pg));
 
-  // dragging over the selected Note's text selects that text (#15): no editor, the card stays
+  // dragging over the selected Note's text selects that text: no editor, the card stays
   const p0 = placeOf(h, "n0");
   const a = await wordAt(pg, '.card[data-id="n0"] .nbody', "alpha"), z = await wordAt(pg, '.card[data-id="n0"] .nbody', "brave");
   await pg.mouse.move(a.x, a.y);
