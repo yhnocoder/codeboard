@@ -206,8 +206,29 @@ export type Place = {
 };
 
 // Link 在界面上叫 Arrow
-/** Link 的一端：整张卡，或卡里某一段的某一行（子白板框只能整张连：框里的小卡片只是预览） */
-export type End = { card: string; seg?: string; line?: number };
+/** Link 的一端：整张卡，或卡里某一段的某一行，或 Note 的某一块（子白板框只能整张连：框里的小卡片只是预览） */
+export type End = { card: string; seg?: string; line?: number; block?: BlockRef };
+
+/**
+ * Note 的一个顶层块（段落、标题、整个列表、代码块、公式、图、表格、引用；和 @yhnocoder/markdown 的 mdBlockStarts 一块一块对上）。
+ * i = 第几块（0 起），h = 那一块 Markdown 原文的指纹（blockSig）。只记下标的话前面插一段就指错了，只记指纹的话改一个字就丢了：
+ * 两样都记，Note 的字一变 edit.ts 的 rebaseBlocks 按指纹把没改的块对上，再把改过的配给它原来那块（Markdown 由白板拆块，core 不解析）
+ */
+export type BlockRef = { i: number; h: string };
+/** 一块 Markdown 原文的指纹（FNV-1a，36 进制）：首尾空白不算 */
+export function blockSig(src: string): string {
+  let h = 0x811c9dc5;
+  const s = src.trim();
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193); }
+  return (h >>> 0).toString(36);
+}
+/** 这一端现在落在第几块：第 i 块的指纹对得上就是它，否则找指纹一样、离 i 最近的那块；都没有 = -1（画在卡头，和整张卡一样） */
+export function blockAt(ref: BlockRef, sigs: readonly string[]): number {
+  if (sigs[ref.i] === ref.h) return ref.i;
+  let best = -1;
+  sigs.forEach((s, k) => { if (s === ref.h && (best < 0 || Math.abs(k - ref.i) < Math.abs(best - ref.i))) best = k; });
+  return best;
+}
 
 /** 箭头的一端从卡的哪一边进出（没有 = 自动） */
 export type LinkSide = "left" | "right" | "top" | "bottom";

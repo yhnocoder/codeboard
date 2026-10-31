@@ -1,8 +1,9 @@
 // 改白板时要一起维护的引用：删卡要带走挂在它上面的 Link / Sidenote；
 // 一段代码换了行号（新版本、挪了位置、Relocate）时，指着这段的行号都要跟着走。
 // 纯函数，直接改传进来的 board（白板里在 mutate 的 produce 里调用）。
+import { diffArrays } from "diff";
 import { mapLines } from "./diff";
-import { activeOf, clone, copyTwinContent, twinContent, cornerAt, findCard, mdHeading, sameVersion, UPSTREAM, withCols, sortSegments, mergeOverlapping, uid, type Board, type Card, type CodeCard, type End, type Link, type Place, type Segment, type Sidenote, type Sticker, type StickerAt } from "./model";
+import { activeOf, blockAt, blockSig, clone, copyTwinContent, twinContent, cornerAt, findCard, mdHeading, sameVersion, UPSTREAM, withCols, sortSegments, mergeOverlapping, uid, type Board, type Card, type CodeCard, type End, type Link, type Place, type Segment, type Sidenote, type Sticker, type StickerAt } from "./model";
 import { escapeRegExp, type BoundVal, type CallAlt } from "@codeboard/analysis/basics";
 import { estSize, type Rect } from "./layout";
 import { headingTree, splitHeadings } from "./split";
@@ -220,6 +221,14 @@ export function danglingRefs(b: Board): string[] {
     return !seg || (c.kind === "code" && c.segments.some((s) => s.id === seg));
   };
   for (const l of b.links) for (const e of [l.from, l.to]) if (!segOk(e.card, e.seg)) out.push(`link ${l.id} → missing ${e.card}${e.seg ? `/${e.seg}` : ""}`);
+  // Note 的块：只能在 Note 上，和行不能同时有；块还在不在由白板拆 Markdown 时看（blockAt 找不到就画在卡头）
+  for (const l of b.links) for (const e of [l.from, l.to]) {
+    if (!e.block) continue;
+    const c = cards.get(e.card);
+    if (c && c.kind !== "note") out.push(`link ${l.id} → block on ${e.card}, which is not a Note`);
+    if (e.seg !== undefined || e.line !== undefined) out.push(`link ${l.id} → both a block and a line on ${e.card}`);
+    if (!Number.isInteger(e.block.i) || e.block.i < 0 || !e.block.h) out.push(`link ${l.id} → bad block ${JSON.stringify(e.block)} on ${e.card}`);
+  }
   // 标记的组合（LinkMarks）：类型挡住了写法，这里挡住从别处来的数据
   for (const l of b.links as { id: string; gen?: true; call?: unknown; rpc?: unknown; back?: true }[]) {
     const extra = (["call", "rpc", "back"] as const).filter((k) => l[k]);
@@ -475,7 +484,7 @@ export function placeCards(b: Board, items: CardCopy[], o: { copy: boolean; at?:
   }
   const on = (id: string) => cards[id] ?? (!o.copy && have.has(id) ? id : undefined);
   const end = (e: End, card: string): End => ({ ...e, card, ...(e.seg ? { seg: segsOf.get(e.card)?.[e.seg] ?? e.seg } : {}) });
-  const key = (l: Link) => JSON.stringify([l.from.card, l.from.seg, l.from.line, l.to.card, l.to.seg, l.to.line]);
+  const key = (l: Link) => JSON.stringify([l.from.card, l.from.seg, l.from.line, l.from.block?.i, l.to.card, l.to.seg, l.to.line, l.to.block?.i]);
   const there = new Set(b.links.map(key));
   for (const l of o.links ?? []) {
     const from = on(l.from.card), to = on(l.to.card);
@@ -844,4 +853,69 @@ export function splitNoteByHeadings(b: Board, id: string, o: { heights?: { root:
     b.links.push({ id: uid("l"), from: { card: q.parent < 0 ? id : ids[q.parent] }, to: { card: ids[i] } });
   });
   return ids;
+}
+
+/** 一块 Markdown 大致是哪一类：一换一的改写只在同类之间直接配上 */
+function blockKind(src: string): string {
+  const t = src.trimStart();
+  const m = /^(#{1,6}\s|```|~~~|\$\$|>|[-*+]\s|\d+[.)]\s|\||!\[)/.exec(t);
+  return m ? m[1].replace(/\d+/, "1").replace(/\s$/, "") : "p";
+}
+/** 两块字有多像（字符二元组的 Dice 系数，中文没有空格也能比）：0..1 */
+function likeness(x: string, y: string): number {
+  const grams = (s: string) => { const t = s.toLowerCase().replace(/\s+/g, " ").trim(), m = new Map<string, number>(); for (let i = 0; i + 1 < t.length; i++) { const g = t.slice(i, i + 2); m.set(g, (m.get(g) ?? 0) + 1); } return m; };
+  const a = grams(x), c = grams(y);
+  let both = 0, na = 0, nc = 0;
+  for (const v of a.values()) na += v;
+  for (const [g, v] of c) { nc += v; both += Math.min(v, a.get(g) ?? 0); }
+  return na + nc ? (2 * both) / (na + nc) : x.trim() === y.trim() ? 1 : 0;
+}
+/** 改写后还算同一块：字至少这么像 */
+const LIKE = 0.3;
+
+/**
+ * Note 的块 旧 → 新（下标；-1 = 这一块没了）。没改的块按指纹对上（Myers）；夹在两处没改的之间的一段改动里，
+ * 一块换一块、还是同一类的（段落还是段落）算改写；别的配给字最像的那块，够像（LIKE）才算
+ */
+export function blockMap(old: readonly string[], now: readonly string[]): number[] {
+  const out = old.map(() => -1);
+  const parts = diffArrays(old.map(blockSig), now.map(blockSig));
+  let i = 0, j = 0;
+  for (let k = 0; k < parts.length; k++) {
+    if (!parts[k].added && !parts[k].removed) { for (let n = 0; n < parts[k].count; n++) out[i++] = j++; continue; }
+    const dels: number[] = [], adds: number[] = [];
+    for (; k < parts.length && (parts[k].added || parts[k].removed); k++) for (let n = 0; n < parts[k].count; n++) parts[k].removed ? dels.push(i++) : adds.push(j++);
+    k--;
+    if (dels.length === 1 && adds.length === 1 && blockKind(old[dels[0]]) === blockKind(now[adds[0]])) { out[dels[0]] = adds[0]; continue; }
+    const used = new Set<number>();
+    for (const d of dels) {
+      let best = -1, score = LIKE;
+      for (const a of adds) { if (used.has(a)) continue; const s = likeness(old[d], now[a]); if (s >= score) { best = a; score = s; } }
+      if (best >= 0) { out[d] = best; used.add(best); }
+    }
+  }
+  return out;
+}
+
+/**
+ * Note card 的 Markdown 改了（old → now，白板拆好的块原文；拆不开时 null）：连着它某一块的箭头端点跟着那一块走（blockMap），
+ * 那一块删掉了就退到整张卡。端点的指纹和 old 里那一块对不上的（连的时候 Note 正开着编辑器、按编辑器里的字连的）直接按指纹在 now 里找。
+ * moved：这次改动里新出现的 Note（Split by Headings 拆出来的）和它们的块：删掉的块原样到了那里，端点跟着搬过去
+ */
+export function rebaseBlocks(b: Board, card: string, old: readonly string[] | null, now: readonly string[] | null, moved: readonly { card: string; blocks: readonly string[] }[] = []): void {
+  const ends = b.links.flatMap((l) => [l.from, l.to].filter((e) => e.card === card && e.block).map((e) => ({ l, e })));
+  if (!ends.length) return;
+  const map = old && now ? blockMap(old, now) : null;
+  const sigs = now?.map(blockSig) ?? [];
+  const away = new Set<Link>();
+  for (const { l, e } of ends) {
+    const ref = e.block!;
+    const k = map && old && blockSig(old[ref.i] ?? "") === ref.h ? map[ref.i] : blockAt(ref, sigs);
+    if (k >= 0 && now) { e.block = { i: k, h: sigs[k] }; continue; }
+    const to = moved.map((m) => ({ card: m.card, i: blockAt({ i: 0, h: ref.h }, m.blocks.map(blockSig)) })).find((m) => m.i >= 0);
+    if (to) { e.card = to.card; e.block = { i: to.i, h: ref.h }; away.add(l); } else delete e.block;
+  }
+  // 搬过去以后两端落在同一张卡上的箭头删掉（和换卡时一样）
+  const same = [...away].filter((l) => l.from.card === l.to.card).map((l) => l.id);
+  if (same.length) removeLinks(b, same);
 }
