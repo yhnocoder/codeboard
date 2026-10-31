@@ -228,3 +228,29 @@ test("codeBlockLabelClear", async () => {
   await pg.keyboard.press("Escape");
   await idle(h);
 });
+
+/** A code block whose long line runs past the Note: at rest it does not scroll (a block that can scroll is a composited layer
+ *  of its own, and a board of such Notes is slow to zoom and pan); on the card pointed at, selected or edited it scrolls
+ *  sideways, with no change in its size or where its text sits */
+test("noteCodeBlockScrollsOnlyWhenActive", async () => {
+  const long = `x = compute(${Array.from({ length: 30 }, (_, i) => `arg_${i}`).join(", ")})`;
+  const h = await open({ board: board([{ id: "a", md: `Code:\n\n\`\`\`python\n${long}\nprint(x)\n\`\`\`\n\nAfter.`, w: 420 }, { id: "b", md: "Other note", w: 300 }]), light });
+  const pg = h.page, pre = pg.locator(`${card("a")} .nbody pre.md-code`).first();
+  await pg.mouse.move(2, 2);
+  await idle(h);
+  const look = () => pre.evaluate((el) => { const r = el.getBoundingClientRect(), t = el.querySelector("code")!.getBoundingClientRect(); return { ox: getComputedStyle(el).overflowX, oy: getComputedStyle(el).overflowY, h: r.height, w: r.width, textY: t.y, over: el.scrollWidth > el.clientWidth + 20 }; });
+  const rest = await look();
+  const r = (await pre.boundingBox())!;
+  await pg.mouse.move(r.x + r.width / 2, r.y + r.height / 2);
+  await idle(h);
+  const hover = await look();
+  await pg.locator(`${card("b")} .nbody`).click();
+  await pg.locator(`${card("a")} .chead`).click();
+  await pg.mouse.move(2, 2);
+  await idle(h);
+  const selected = await look();
+  check("noteCodeBlockScrollsOnlyWhenActive not a scroller at rest", rest.over && rest.ox !== "auto" && rest.ox !== "scroll" && rest.oy !== "auto" && rest.oy !== "scroll", rest);
+  check("noteCodeBlockScrollsOnlyWhenActive scrolls when pointed at or selected", hover.ox === "auto" && selected.ox === "auto", { hover, selected });
+  check("noteCodeBlockScrollsOnlyWhenActive nothing moves", hover.h === rest.h && hover.w === rest.w && hover.textY === rest.textY && selected.h === rest.h, { rest, hover, selected });
+  await h.page.context().close();
+});

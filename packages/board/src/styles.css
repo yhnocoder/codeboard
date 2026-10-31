@@ -732,6 +732,11 @@ kbd { font: 10.5px var(--mono); }
 .nbody pre, .cdesc pre, .tx pre, .sn-text pre { margin: 4px 0; padding: 6px 8px; background: var(--hlrow); border-radius: 7px; font: 11px/1.5 var(--mono); overflow-x: auto; white-space: pre; }
 /* a Note's code block, static and in the editor: a soft panel with room around the code (the demo's look) */
 .nbody pre.md-code { margin: .8em 0; padding: 18px 22px; background: var(--nc-bg, var(--hlrow)); border-radius: 12px; font: 12.5px/1.7 var(--mono); }
+/* a long line is cut off at rest and scrolls only on the card being pointed at, selected or edited: a block that can scroll is a
+   composited layer of its own, and a board of Notes with code then spends most of a zoom or pan frame compositing. Hidden keeps
+   the scroll offset, and the scrollbar is not drawn, so switching takes no room and nothing moves */
+.nbody pre.md-code { overflow: hidden; scrollbar-width: none; }
+.card:is(:hover, .sel, .editing) .nbody pre.md-code { overflow-x: auto; }
 /* the Note's last block has no margin below it (markdown.css .md > :last-child, the editor's .md-prepad), a code block too */
 .nbody > pre.md-code:last-child, .md-pm > pre.md-code.md-prepad { margin-bottom: 0; }
 .nbody pre.md-code .kw { color: var(--nc-kw, var(--k-kw)); } .nbody pre.md-code .fn { color: var(--nc-fn, var(--k-fn)); }
