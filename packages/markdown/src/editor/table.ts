@@ -101,7 +101,8 @@ const previewPlugin = () => new Plugin({
   },
 });
 
-/** Row heights: drag a row's bottom edge. Only a line is drawn while dragging; the height is set on release (one step) */
+/** Row heights: drag a row's bottom edge. A line marks the edge while the pointer is near it and follows the drag; the height
+ *  is set on release (one step) */
 function rowEdge(view: EditorView, e: MouseEvent): HTMLTableRowElement | null {
   const cell = (e.target as Element | null)?.closest?.("td, th");
   if (!cell || !view.dom.contains(cell)) return null;
@@ -109,37 +110,50 @@ function rowEdge(view: EditorView, e: MouseEvent): HTMLTableRowElement | null {
   return d <= 4 && d >= -2 ? tr : null;
 }
 const ROW_MIN = 24;
+/** The line on a row's bottom edge (fixed on the page, outside the editor's DOM), at the table's width */
+function rowLine(tr: HTMLTableRowElement, line = document.createElement("div")) {
+  const tb = tr.closest("table")!.getBoundingClientRect();
+  line.className = "md-rowline";
+  line.style.cssText = `left:${tb.left}px;width:${tb.width}px;top:${tr.getBoundingClientRect().bottom}px`;
+  if (!line.isConnected) document.body.append(line);
+  return line;
+}
 const rowResize = () => {
-  let dragging = false;
+  let dragging = false, hover: HTMLDivElement | null = null;
+  const unhover = () => { hover?.remove(); hover = null; };
   return new Plugin({
     key: new PluginKey("cbRowResize"),
+    view: () => ({ destroy: unhover }),
     props: {
       handleDOMEvents: {
         // after this event's other handlers: prosemirror-tables' column handle, which wins at a corner, updates its class then
         mousemove: (view, e) => {
           if (dragging) return false;
-          const edge = !!rowEdge(view, e);
-          queueMicrotask(() => { if (!dragging) view.dom.classList.toggle("md-row-resize", edge && !view.dom.classList.contains("resize-cursor")); });
+          const tr = rowEdge(view, e);
+          queueMicrotask(() => {
+            if (dragging) return;
+            const on = !!tr && !view.dom.classList.contains("resize-cursor");
+            view.dom.classList.toggle("md-row-resize", on);
+            if (on) hover = rowLine(tr!, hover ?? undefined); else unhover();
+          });
           return false;
         },
-        mouseleave: (view) => { view.dom.classList.remove("md-row-resize"); return false; },
+        mouseleave: (view) => { view.dom.classList.remove("md-row-resize"); unhover(); return false; },
         mousedown: (view, e) => {
           if (e.button !== 0) return false;
           const row = rowEdge(view, e);
           if (!row || view.dom.classList.contains("resize-cursor")) return false;
+          unhover();
           const pos = view.posAtDOM(row, 0) - 1, node = view.state.doc.nodeAt(pos);
           if (node?.type.name !== "tableRow") return false;
           e.preventDefault();
           e.stopPropagation();
-          const r = row.getBoundingClientRect(), k = row.offsetHeight ? r.height / row.offsetHeight : 1, tb = row.closest("table")!.getBoundingClientRect();
-          const line = document.createElement("div");
-          line.className = "md-rowline";
-          line.style.cssText = `left:${tb.left}px;width:${tb.width}px`;
+          const r = row.getBoundingClientRect(), k = row.offsetHeight ? r.height / row.offsetHeight : 1;
+          const line = rowLine(row);
           const y0 = e.clientY, h0 = row.offsetHeight;
           let h = h0;
           const place = () => { line.style.top = `${r.top + h * k}px`; };
           place();
-          document.body.append(line);
           const shield = document.createElement("div");
           shield.className = "md-rowshield";
           document.body.append(shield);

@@ -325,11 +325,12 @@ math { font-size: 1.05em; }
 /* cells a smaller size would drop: red, like a delete */
 .md-pm .md-doom { background: var(--doom, rgba(205, 70, 45, .16)); box-shadow: inset 0 0 0 1px var(--doom-line, rgba(205, 70, 45, .55)); }
 /* column widths: prosemirror-tables' handle; row heights: the bottom edge of a row (editor/table.ts) */
-.md-pm .column-resize-handle { position: absolute; right: -2px; top: 0; bottom: -2px; width: 4px; z-index: 3; background: var(--accent); pointer-events: none; }
+/* a thin line on the border, only while near it or dragging: quiet, like the platform's own split lines */
+.md-pm .column-resize-handle { position: absolute; right: -1px; top: 0; bottom: -1px; width: 2px; z-index: 3; background: color-mix(in srgb, var(--accent) 45%, transparent); pointer-events: none; }
 .md-pm.resize-cursor { cursor: col-resize; }
 .md-pm.md-row-resize { cursor: row-resize; }
 .md-pm td, .md-pm th { position: relative; }
-.md-rowline { position: fixed; z-index: 57; height: 2px; margin-top: -1px; background: var(--accent); pointer-events: none; }
+.md-rowline { position: fixed; z-index: 57; height: 2px; margin-top: -1px; background: color-mix(in srgb, var(--accent) 45%, transparent); pointer-events: none; }
 /* over the whole page while a row is dragged, for the cursor (a `body.x *` rule would be matched against every element on
    every style recalc of the board) */
 .md-rowshield { position: fixed; inset: 0; z-index: 56; cursor: row-resize; }

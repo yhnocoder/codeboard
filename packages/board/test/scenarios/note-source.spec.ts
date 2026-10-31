@@ -309,6 +309,14 @@ test("noteTableShortcuts", async () => {
  *  layout next to the Markdown (which doesn't change) and drawn the same in the static render */
 /** The cursor the page shows at a point: that of the element under it */
 const cursorAt = (pg: Page, x: number, y: number) => pg.evaluate(([x, y]) => getComputedStyle(document.elementFromPoint(x, y)!).cursor, [x, y] as const);
+/** The resize line on a table edge: its size, where it is and how opaque its colour is (null while there is none) */
+const lineLook = (pg: Page, sel: string) => pg.evaluate((sel) => {
+  const el = document.querySelector(sel);
+  if (!el) return null;
+  const r = el.getBoundingClientRect(), bg = getComputedStyle(el).backgroundColor;
+  const a = /\/\s*([\d.]+)\s*\)$/.exec(bg) ?? /^rgba\(.*,\s*([\d.]+)\)$/.exec(bg);
+  return { w: r.width, h: r.height, y: r.y + r.height / 2, bg, alpha: a ? +a[1] : 1 };
+}, sel);
 test("noteTableResizePersists", async () => {
   const h = await open({ board: board([TABLE]), light });
   const pg = h.page;
@@ -323,6 +331,7 @@ test("noteTableResizePersists", async () => {
   await pg.mouse.move(th.x + th.width - 2, th.y + th.height / 2);
   await until(h, "the column handle shows", async () => (await pg.locator(`${card("n0")} .md-pm.resize-cursor, ${card("n0")} .md-pm .resize-cursor`).count()) > 0);
   const colCursor = await cursorAt(pg, th.x + th.width - 2, th.y + th.height / 2);
+  const colLine = await lineLook(pg, ".md-pm .column-resize-handle");
   await pg.mouse.down();
   for (let i = 1; i <= 6; i++) await pg.mouse.move(th.x + th.width - 2 + i * 10, th.y + th.height / 2);
   await pg.mouse.up();
@@ -333,6 +342,7 @@ test("noteTableResizePersists", async () => {
   await pg.mouse.move(tr.x + tr.width / 2, tr.y + tr.height - 1);
   await until(h, "the row edge is marked", async () => (await pg.locator(`${card("n0")} .md-pm.md-row-resize`).count()) > 0);
   const rowCursor = await cursorAt(pg, tr.x + tr.width / 2, tr.y + tr.height - 1);
+  const rowLine = await until(h, "the row edge shows its line", () => lineLook(pg, ".md-rowline"));
   await pg.mouse.down();
   for (let i = 1; i <= 5; i++) await pg.mouse.move(tr.x + tr.width / 2, tr.y + tr.height - 1 + i * 8);
   await pg.mouse.up();
@@ -351,6 +361,8 @@ test("noteTableResizePersists", async () => {
   const shown = await pg.evaluate(() => ({ col: document.querySelector(".nbody th")!.getBoundingClientRect().width, row: document.querySelectorAll(".nbody tr")[1].getBoundingClientRect().height }));
   await shot(h, "noteTableResizePersists");
   check("noteTableResizePersists resize cursors on the edges", colCursor === "col-resize" && rowCursor === "row-resize" && textCursor === "text", { colCursor, rowCursor, textCursor });
+  check("noteTableResizePersists edge lines thin and quiet", !!colLine && colLine.w <= 2 && colLine.alpha < 0.8 && !!rowLine && rowLine.h <= 2 && rowLine.alpha < 0.8
+    && Math.abs(rowLine.y - (tr.y + tr.height)) <= 2, { colLine, rowLine });
   check("noteTableResizePersists caret stays", caret1 === caret0, { caret0, caret1 });
   check("noteTableResizePersists one step each", colAfterOne > colW0 + 40, { colAfterOne, colW0 });
   check("noteTableResizePersists saved as layout", md(h, "n0") === TABLE && (l.cols?.[0] ?? 0) > colW0 + 40 && (l.rows?.[1] ?? 0) > rowH0 + 30, { md: md(h, "n0"), l });
