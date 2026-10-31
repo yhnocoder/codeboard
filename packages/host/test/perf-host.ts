@@ -101,8 +101,8 @@ void (async () => {
       return { shown: Math.round(shown), filled: Math.round(filled), done: Math.round(performance.now() - t0) };
     };
     for (let r = 0; r < Math.min(RUNS, BOARDS); r++) {
-      const enter = await send({ type: "enterBoard", id: `bK${r}`, frame: `f${r}`, cam: { x: 0, y: 0, z: 1 } }, `bK${r}`);
-      const leave = await send({ type: "leaveBoard" }, "bTop");
+      const enter = await send({ type: "enterBoard", req: 1, id: `bK${r}`, frame: `f${r}`, cam: { x: 0, y: 0, z: 1 } }, `bK${r}`);
+      const leave = await send({ type: "leaveBoard", req: 1 }, "bTop");
       console.log(JSON.stringify({ boards: BOARDS + 1, enter, leave }));
     }
     hub.dispose();

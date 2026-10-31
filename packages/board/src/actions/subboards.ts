@@ -9,6 +9,7 @@ import { revealCard, selectCard } from "./common";
 import { paintRef } from "@yhnocoder/markdown";
 import { walk, setWalk } from "../state/ui";
 import { settleHome, frames as sectionFrames } from "../state/sections";
+import { animScale } from "../state/ghost";
 import { ask, send } from "../host";
 import { promptText } from "../ui/Menu";
 
@@ -27,7 +28,7 @@ export function enterFrame(id: string, walkHop?: WalkHop, reveal?: string) {
   const back = { ...camTarget() };
   flushSave();
   morphIn(id, skelOf(id)?.name ?? nameOf(f.board));
-  send({ type: "enterBoard", id: f.board, frame: id, cam: back, ...(walkHop ? { walk: walkHop } : {}), ...(reveal ? { reveal } : {}) });
+  switched(ask("enterBoard", { id: f.board, frame: id, cam: back, ...(walkHop ? { walk: walkHop } : {}), ...(reveal ? { reveal } : {}) }));
 }
 /** 面包屑 / ← / Esc：回到第 depth 层（缺省 = 上一级）；名字从面包屑飞回框上，回到进去前的镜头 */
 export function leaveBoard(depth?: number, walkHop?: WalkHop) {
@@ -36,7 +37,14 @@ export function leaveBoard(depth?: number, walkHop?: WalkHop) {
   flushSave();
   const d = Math.max(0, Math.min(cs.length - 1, depth ?? cs.length - 1));
   morphOut(cs[d].id, cs[d].frame);
-  send({ type: "leaveBoard", ...(depth !== undefined ? { depth } : {}), ...(walkHop ? { walk: walkHop } : {}) });
+  switched(ask("leaveBoard", { ...(depth !== undefined ? { depth } : {}), ...(walkHop ? { walk: walkHop } : {}) }));
+}
+/**
+ * 宿主换不了白板（成环、白板在别的标签页开着）：回原因，不等 GIVE_UP 马上收回来。换成了时新的 init 先到，
+ * 这个请求随着换白板作废（reject），转场已经交给 switchGate；宿主出错也收回来
+ */
+function switched(r: Promise<string | null>) {
+  r.then((why) => { if (why) { refused(); toast(why); } }, refused);
 }
 
 // 换白板是宿主发来新的 init（整块白板换掉），两块白板不会同时在页面上：先把这一块淡出（同时名字开始飞），淡出完之前收到的 init 先压着
@@ -48,11 +56,10 @@ const ENTER_MS = 280, LEAVE_MS = 220, FADE_IN_MIN = 140;
 const EASE_OUT = "cubic-bezier(.215,.61,.355,1)", EASE_IN_OUT = "cubic-bezier(.645,.045,.355,1)";
 /** 淡入的子白板从 1.03 倍缩到 1（出来时淡出的子白板放大到 1.03），绕视口中心 */
 const ZOOM = 1.03;
-/** 等不到 init（宿主没换：成环、白板在别的标签页开着）就把动画收回来 */
+/** 宿主一直没换白板也没回（出错、重载了）就把动画收回来；说了换不了时马上收（switched） */
 const GIVE_UP = 2500;
 /** 面包屑一格的左右留白（styles.css .crumbs .crumb） */
 const CRUMB_PAD = 6;
-const slow = () => parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--t")) || 1;
 const worldEl = () => document.querySelector<HTMLElement>(".board > .world");
 type Spot = { r: DOMRect; font: number };
 type Transit = {
@@ -99,7 +106,7 @@ function crumbSpot(names: string[], cur: string): Spot | undefined {
 }
 
 function morphIn(frame: string, name: string) {
-  const ms = ENTER_MS * slow(), world = worldEl(), src = titleEl(frame);
+  const ms = ENTER_MS * animScale(), world = worldEl(), src = titleEl(frame);
   const to = crumbSpot([...crumbs().map((c) => c.name), state.board.name], name);
   const t: Transit = { enter: true, t0: performance.now(), ms, out: null, gated: false, timer: 0, ghost: null, fly: null, hidden: [], navOut: null, to };
   if (src && to) {
@@ -115,7 +122,7 @@ function morphIn(frame: string, name: string) {
 }
 
 function morphOut(board: string, frame: string) {
-  const ms = LEAVE_MS * slow(), world = worldEl(), cur = document.querySelector<HTMLElement>(".crumbs .cur"), nav = cur?.closest<HTMLElement>(".crumbs");
+  const ms = LEAVE_MS * animScale(), world = worldEl(), cur = document.querySelector<HTMLElement>(".crumbs .cur"), nav = cur?.closest<HTMLElement>(".crumbs");
   const t: Transit = { enter: false, t0: performance.now(), ms, out: null, gated: false, timer: 0, ghost: null, fly: null, hidden: [], navOut: null, back: { board, frame } };
   if (cur) {
     const from = spotOf(cur);
@@ -141,7 +148,7 @@ function start(t: Transit) {
 /** 宿主没换白板：淡出的白板淡回来，名字回到原处 */
 function giveUp(t: Transit) {
   transit = null;
-  worldEl()?.animate([{ opacity: 0 }, { opacity: 1 }], { duration: FADE_IN_MIN * slow(), easing: EASE_OUT });
+  worldEl()?.animate([{ opacity: 0 }, { opacity: 1 }], { duration: FADE_IN_MIN * animScale(), easing: EASE_OUT });
   t.out?.cancel();
   t.navOut?.cancel();
   finish(t);
@@ -153,8 +160,7 @@ function finish(t: Transit) {
   setCrumbMorph(false);
 }
 
-/** 宿主说换不了（hostio.ts 收到 toast：成环、白板在别的标签页开着）：不等 GIVE_UP，马上收回来 */
-export function switchRefused() {
+function refused() {
   const t = transit;
   if (t && !t.gated) { clearTimeout(t.timer); giveUp(t); }
 }
@@ -176,7 +182,7 @@ export function boardShown() {
   transit = null;
   clearTimeout(t.timer);
   const world = worldEl();
-  const left = Math.max(FADE_IN_MIN * slow(), t.ms - (performance.now() - t.t0));
+  const left = Math.max(FADE_IN_MIN * animScale(), t.ms - (performance.now() - t.t0));
   const fadeIn = t.enter
     ? world?.animate([{ opacity: 0, scale: String(ZOOM), translate: zoomAround(ZOOM) }, { opacity: 1, scale: "1", translate: "0px 0px" }], { duration: left, easing: EASE_OUT })
     : world?.animate([{ opacity: 0 }, { opacity: 1 }], { duration: left, easing: EASE_OUT });

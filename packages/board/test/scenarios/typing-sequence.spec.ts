@@ -4,7 +4,7 @@ import * as path from "node:path";
 import { REPO, put } from "../harness";
 import { emptyBoard, type Board, type NoteCard } from "@codeboard/core";
 import type { Page } from "playwright-core";
-import { test, open, check, light, idle } from "../fixtures";
+import { test, open, check, idle } from "../fixtures";
 
 const FIXTURE = path.join(REPO, "packages/board/test/typing-sequence.json");
 const SEQS: Record<string, string> = {

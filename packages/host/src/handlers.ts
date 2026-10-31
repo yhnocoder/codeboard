@@ -1,7 +1,7 @@
 // 白板发来的消息：带 req 的请求，处理函数的返回值就是回答（类型按 core 的 ReplyOf 检查；BoardHub 包成 reply）。
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
-import { BOARD_VERSION, COMPLETE_SYSTEM, cardPath, sniffImage, sniffSvg, cleanCompletion, spaceChatReply, loadBoard, subCardOf, wouldCycle, completePrompt, findCard, isCode, locateSeg, mapLineTo, segOf, versionLabel, type AskType, type BoardToHost, type Commit, type DiffData, type ReplyOf, type Segment, type SegView } from "@codeboard/core";
+import { BOARD_VERSION, cardPath, sniffImage, sniffSvg, cleanCompletion, loadBoard, subCardOf, wouldCycle, findCard, isCode, locateSeg, mapLineTo, segOf, versionLabel, type AskType, type BoardToHost, type Commit, type DiffData, type ReplyOf, type Segment, type SegView } from "@codeboard/core";
 import { analysisOf } from "./analysis";
 import { codeDoc, codeDocClose, lspComplete, lspHover, lspSignature } from "./codeedit";
 import { commitInfo, headOf, logLines, repoRootOf, resolveRef, showFile, upstreamRef } from "./git";
@@ -31,6 +31,7 @@ import { highlight, segView, viewsFor } from "./views";
 import { fromHostPath, hostPath, langOf, readText, splitLines, workspace, ws0 } from "./ws";
 import { lookupName } from "./nameindex";
 import { aiInfo, imageAiJob } from "./imageai";
+import { chatComplete } from "./complete";
 
 const SAFE_BOARD_ID = /^[\w-]{1,80}$/;
 
@@ -172,7 +173,7 @@ export function makeHandler(panels: BoardHost): Handler {
       // 不能套成环：子白板里（一路往下）有这块白板
       const metas = await store.list();
       const subs = (id: string) => metas.find((x) => x.id === id)?.subs;
-      if (m.id === p.id || wouldCycle(subs, p.id, m.id)) { p.toast("Can't open a board inside itself."); return; }
+      if (m.id === p.id || wouldCycle(subs, p.id, m.id)) return "Can't open a board inside itself.";
       const name = p.board?.name ?? metas.find((x) => x.id === p.id)?.name ?? "";
       const crumbs = [...p.crumbs, { id: p.id, name, frame: m.frame }], cams = [...p.cams, m.cam];
       // 要带到的卡在更深的子白板里（[[ 链接）：一路进去，每一层都进面包屑，回去时落在那一层存着的镜头上
@@ -185,14 +186,14 @@ export function makeHandler(panels: BoardHost): Handler {
       }
       const ok = await panels.switchBoard(p, to, { crumbs, cams, walk: m.walk });
       if (m.reveal) (ok ? p : panels.get(to))?.post({ type: "reveal", card: m.reveal });
-      if (!ok) p.toast("That board is already open in another tab.");
+      return ok ? null : "That board is already open in another tab.";
     },
     leaveBoard: async (p, m) => {
-      if (!p.crumbs.length) return;
+      if (!p.crumbs.length) return "There is no parent board to go back to.";
       const depth = Math.max(0, Math.min(p.crumbs.length - 1, m.depth ?? p.crumbs.length - 1));
       const to = p.crumbs[depth];
       const ok = await panels.switchBoard(p, to.id, { crumbs: p.crumbs.slice(0, depth), cams: p.cams.slice(0, depth), walk: m.walk, cam: p.cams[depth] });
-      if (!ok) p.toast("That board is already open in another tab.");
+      return ok ? null : "That board is already open in another tab.";
     },
     dropBoard: async (p, m) => {
       if ((await store.list()).some((x) => x.id !== p.id && x.subs?.includes(m.id))) return false;
@@ -479,7 +480,7 @@ async function complete(p: BoardPanel, before: string, after: string): Promise<s
   inflight.set(p, ac);
   const raw = ai.complete
     ? await ai.complete(before, after, { signal: ac.signal })
-    : await ai.ask(COMPLETE_SYSTEM, completePrompt(before, after), { signal: ac.signal, maxChars: 600 }).then((r) => r === undefined ? r : spaceChatReply(r, before));
+    : await chatComplete(ai.ask, before, after, ac.signal);
   if (ac.signal.aborted || raw === undefined) return null;
   return cleanCompletion(raw, before, after) || null;
 }

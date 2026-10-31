@@ -4,7 +4,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { Disposable } from "@codeboard/core";
-import { forgetIgnored, gitDirOf, headOf, repoRootOf } from "./git";
+import { forgetIgnored, forgetRepos, gitDirOf, headOf, repoRootOf } from "./git";
 import type { BoardHost } from "./boards";
 import { absOf, hasLocalFile } from "./source";
 import type { Storage } from "./storage";
@@ -41,7 +41,7 @@ export function watchVersions(panels: BoardHost, store: Storage): Disposable & {
     lastHead.set(root, await headOf(root));
     const gd = await gitDirOf(root);
     if (!gd) return;
-    subs.push(files.watch(gd, "{HEAD,packed-refs,refs/heads/**}", () => onGit()));
+    subs.push(files.watch(gd, "{HEAD,config,packed-refs,refs/heads/**,refs/remotes/origin/HEAD}", () => onGit()));
     // 忽略规则变了（保存、在 VS Code 外面改、checkout 都算）：check-ignore 记下的回答作废。
     // 工作区里的仓库整棵树都看（VS Code 本来就在监听它），别的仓库只看根上的 .gitignore（不为它起递归的监听）
     subs.push(files.watch(path.join(gd, "info"), "exclude", () => forgetIgnored()));
@@ -61,6 +61,7 @@ export function watchVersions(panels: BoardHost, store: Storage): Disposable & {
   };
 
   const onGit = debounce(async () => {
+    forgetRepos();
     let changed = false;
     for (const r of watched) {
       const h = await headOf(r);

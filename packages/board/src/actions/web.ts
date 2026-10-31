@@ -12,7 +12,7 @@ import { openLink, popCard } from "./common";
 import { boardOffset } from "../state/measure";
 import { setFetchingKeys, rowDrag, setRowDrag, setGhPicker, type RowDrag } from "../state/web";
 import { settleHome } from "../state/sections";
-import { holdPointer } from "../ui/guard";
+import { track } from "../gesture";
 
 /** 图片地址：assets/ 下的文件名 → webview 能读的 URL */
 export const assetSrc = (name?: string) => (!name ? undefined : /^(data:|https?:|blob:)/.test(name) ? name : `${state.host.assetBase}/${name}`);
@@ -165,8 +165,6 @@ export function rowGripDown(e: PointerEvent, id: string, item: string) {
   const it = itemOf(id, item);
   if (!cardEl || !it) return;
   if (!sel.cards.includes(id)) select({ cards: [id] });
-  const sx = e.clientX, sy = e.clientY;
-  let moved = false;
   const label = it.title || it.meta?.title || it.url;
   const calc = (ev: PointerEvent): RowDrag => {
     const cr = cardEl.getBoundingClientRect();
@@ -177,16 +175,7 @@ export function rowGripDown(e: PointerEvent, id: string, item: string) {
     for (let i = 0; i < rows.length; i++) { const r = rows[i].getBoundingClientRect(); if (ev.clientY < r.top + r.height / 2) { index = i; break; } }
     return { card: id, item, index, out, x: ev.clientX, y: ev.clientY, label };
   };
-  const onMove = (ev: PointerEvent) => {
-    if (!moved && Math.hypot(ev.clientX - sx, ev.clientY - sy) < 3) return;
-    moved = true;
-    setRowDrag(calc(ev));
-  };
-  holdPointer(e);
-  const onUp = (ev: PointerEvent) => {
-    window.removeEventListener("pointermove", onMove, true);
-    window.removeEventListener("pointerup", onUp, true);
-    window.removeEventListener("pointercancel", onUp, true);
+  track(e, (ev) => setRowDrag(calc(ev)), (ev, moved) => {
     const d = rowDrag();
     setRowDrag(null);
     if (!moved || !d || ev.type === "pointercancel") return;
@@ -196,10 +185,7 @@ export function rowGripDown(e: PointerEvent, id: string, item: string) {
       return moveItemOut(id, item, { x: w.x - 20, y: w.y - 16 });
     }
     reorderItem(id, item, d.index);
-  };
-  window.addEventListener("pointermove", onMove, true);
-  window.addEventListener("pointerup", onUp, true);
-  window.addEventListener("pointercancel", onUp, true);
+  });
 }
 
 export function openGitHubPicker(repo?: string) { setGhPicker({ repo }); }

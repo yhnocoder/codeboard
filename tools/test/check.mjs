@@ -1,6 +1,6 @@
 // npm run check: the local test run, about 90 seconds. See TESTING.md.
 //   1. the @yhnocoder/markdown build (packages/markdown/dist, a few seconds), which the board, its typecheck, the package's own
-//      tests and the demo all use; then typecheck, unit tests (core, markdown, board, host, extension) and the Markdown demo
+//      tests and the demo all use; then typecheck, lint (Biome and knip), unit tests (core, markdown, board, host, extension) and the Markdown demo
 //      (examples/markdown-demo, built and run in Chromium) side by side with the board build, which runs only when its
 //      sources changed since the last one
 //   2. as soon as the board is built (the scenarios need nothing else), the harness scenarios this change needs
@@ -10,10 +10,10 @@
 // Usage: npm run check [-- <scenario…>] [-- --all] [-- --base=<ref>] [-- --budget=<seconds of harness, for the warning>]
 //   scenario names are always run (the problem being worked on); --all runs every scenario, with no time limit
 import { spawn, execFileSync } from "node:child_process";
-import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { buildHash } from "./buildhash.mjs";
 
 const REPO = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../..");
 const args = process.argv.slice(2);
@@ -36,24 +36,18 @@ function run(name, cmd, a, env = {}) {
   });
 }
 
-// The board build takes most of a minute: skip it when nothing it is built from changed since the last one
-function buildHash() {
-  const h = createHash("sha1");
-  const files = execFileSync("git", ["ls-files", "-co", "--exclude-standard", "packages/board/src", "packages/board/vite.config.ts", "packages/board/package.json", "packages/markdown/src", "packages/markdown/package.json", "packages/markdown/vite.config.ts", "packages/markdown/tsconfig.json", "packages/markdown/tsconfig.build.json", "packages/analysis/src", "packages/core/src", "package-lock.json"], { cwd: REPO, encoding: "utf8" }).split("\n").filter(Boolean);
-  for (const f of files.sort()) { h.update(f); try { h.update(fs.readFileSync(path.join(REPO, f))); } catch { /* deleted */ } }
-  return h.digest("hex");
-}
 // first and alone: everything below reads packages/markdown/dist, and the build empties it before writing
 if (!(await run("build @yhnocoder/markdown", "npm", ["run", "build", "-w", "@yhnocoder/markdown"]))) { console.log("markdown build failed: nothing else run"); process.exit(1); }
 
 const stamp = path.join(REPO, "extensions/vscode/media/board/.build-hash");
-const hash = buildHash();
+const hash = buildHash(REPO); // the board build takes most of a minute: skipped when nothing it is built from changed since the last one
 const fresh = fs.existsSync(path.join(REPO, "extensions/vscode/media/board/board.js")) && fs.existsSync(stamp) && fs.readFileSync(stamp, "utf8") === hash;
 const build = fresh ? run("build (extension only; board unchanged)", "npm", ["run", "build", "-w", "codeboard-vscode"])
   : run("build", "sh", ["-c", "npm run build -w @codeboard/board && npm run build -w codeboard-vscode"]).then((ok) => { if (ok) fs.writeFileSync(stamp, hash); return ok; });
 
 const first = Promise.all([
   run("typecheck", "npm", ["run", "typecheck"]),
+  run("lint", "npm", ["run", "lint"]),
   run("unit tests", "npm", ["test"]),
   run("markdown demo", "npm", ["test", "-w", "@codeboard/markdown-demo"]),
 ]);

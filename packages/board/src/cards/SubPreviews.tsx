@@ -7,6 +7,7 @@ import { createStore } from "solid-js/store";
 import { escHtml, isCode, type BoardCard, type Card, type SkelCard, type SubCard } from "@codeboard/core";
 import { observeResize } from "@yhnocoder/markdown/ui";
 import { cam } from "../state/camera";
+import { track } from "../gesture";
 import { frames, skels, pvs, pvPeek, setPvPeek, pvHot, setPvHot, pvCols, pvLayout, pvObstacles, frameRect, blockRect, subCard, togglePreview, dropRight, dropTitles,
   PV_W, PV_GAP, TIT_W, TIT_H, TIT_GAP, type PvBox } from "../state/subboards";
 import { assetSrc } from "../actions/web";
@@ -59,24 +60,18 @@ function FramePreviews(p: { frame: BoardCard }) {
     e.stopPropagation();
     const box = lay().boxes.get(id);
     if (!box) return;
-    const el = e.currentTarget as HTMLElement, x0 = e.clientX, y0 = e.clientY, fromRight = !isTit(id);
-    el.setPointerCapture(e.pointerId);
-    let moved = false;
+    const fromRight = !isTit(id);
     const zoneOf = (x: number, y: number): Drag["zone"] => {
       const l = lay(), cx = x + (fromRight ? PV_W : TIT_W) / 2, t = l.titles;
       if (fromRight && y + TIT_H / 2 > t.y - PV_GAP && cx > t.x - PV_GAP && cx < t.x + t.w + PV_GAP) return "tit";
       return cx > l.right.x - PV_GAP ? "right" : null;
     };
-    const move = (ev: PointerEvent) => {
-      if (!moved && Math.hypot(ev.clientX - x0, ev.clientY - y0) < DRAG_SLOP) return;
-      if (!moved) { moved = true; if (peek()) setPvPeek(null); }
-      const x = box.x + (ev.clientX - x0) / cam.z, y = box.y + (ev.clientY - y0) / cam.z;
+    let started = false;
+    track(e, (ev) => {
+      if (!started) { started = true; if (peek()) setPvPeek(null); }
+      const x = box.x + (ev.clientX - e.clientX) / cam.z, y = box.y + (ev.clientY - e.clientY) / cam.z;
       setDrag({ id, x, y, zone: zoneOf(x, y), fromRight });
-    };
-    const up = () => {
-      el.removeEventListener("pointermove", move);
-      el.removeEventListener("pointerup", up);
-      el.removeEventListener("pointercancel", up);
+    }, (ev, moved) => {
       const d = drag();
       setDrag(null);
       if (!moved) { if (!fromRight) setPvPeek(peek() === id ? null : { f: fid(), id }); return; }
@@ -86,10 +81,7 @@ function FramePreviews(p: { frame: BoardCard }) {
         const l = lay(), cx = d.x + TIT_W / 2 - l.titles.x, cy = d.y + TIT_H / 2 - l.titles.y;
         dropTitles(fid(), id, Math.max(0, Math.floor(cy / (TIT_H + TIT_GAP))), Math.max(0, Math.min(l.per - 1, Math.floor(cx / (TIT_W + PV_GAP)))), l.per);
       }
-    };
-    el.addEventListener("pointermove", move);
-    el.addEventListener("pointerup", up);
-    el.addEventListener("pointercancel", up);
+    }, DRAG_SLOP, () => setDrag(null));
   };
 
   // 悬停的预览连到它那一块：块的中心 → 预览的标题行（右边的从左边出，标题行从上边出）

@@ -10,7 +10,7 @@ import { DEFAULT_SETTINGS, THEMES, emptyBoard, type CodeCard } from "@codeboard/
 import { shot, put, symCard, findSym, files, ready, OUT, REPO, type Host } from "../harness";
 import { analyze } from "@codeboard/analysis";
 import { uid, type Segment } from "@codeboard/core";
-import { test, open, light, verdict, expect, until, idle, check } from "../fixtures";
+import { test, open, verdict, expect, until, idle, check } from "../fixtures";
 
 async function shotTo(h: Host, name: string) {
   await shot(h, name);

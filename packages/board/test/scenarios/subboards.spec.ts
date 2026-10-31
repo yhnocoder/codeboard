@@ -2,9 +2,9 @@
 // the panel between boards like BoardHub.switchBoard (crumbs, cameras, walkthrough hops), pushes skeletons after saves.
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { DEFAULT_SETTINGS, emptyBoard, subBoardsOf, type Board } from "@codeboard/core";
+import { DEFAULT_SETTINGS, emptyBoard, subBoardsOf } from "@codeboard/core";
 import { subHost } from "../subhost";
-import { shot, symCard, findSym, viewOf, put, OUT, type Host } from "../harness";
+import { shot, symCard, findSym, put, OUT, type Host } from "../harness";
 import { test, open, check, light, verdict, expect, until, idle, hold } from "../fixtures";
 import { DBL_CLICK } from "../../src/state/timing";
 
@@ -100,6 +100,34 @@ test("turnIntoBoardUndo", async () => {
     return res.entered && res.back && res.parentBack && JSON.stringify(res.childKept) === JSON.stringify([c.id]) && res.relinked && res.stillKept && res.trashed && res.restored;
   });
   await h.page.context().close();
+});
+
+/** A toast from the host while the board is mid-transition into a sub-board (a save retry, "Running …") is only a message: the name
+ *  keeps flying to the breadcrumbs and the sub-board opens with its fade-in, instead of the transition being pulled back */
+test("toastKeepsBoardTransition", async () => {
+  const C = emptyBoard("bTtChild", "Child"), P = emptyBoard("bTtParent", "Parent");
+  put(C, card("BlockManager.allocate"), 60, 60, 560);
+  P.cards.push({ id: "frTt", kind: "board", board: C.id });
+  P.place.frTt = { x: 100, y: 80, w: 480, h: 360 };
+  const mid: { toast?: string; flying?: number } = {};
+  let t: Sub | undefined;
+  t = await subHost(P, [C], {
+    beforeSwitch: async () => {
+      const page = t!.h.page;
+      await t!.h.post({ type: "toast", text: "The board is saved again." });
+      await expect(page.locator(".toast")).toContainText("saved again");
+      mid.toast = (await page.locator(".toast").textContent()) ?? "";
+      mid.flying = await page.locator(".sbmorph").count();
+    },
+  });
+  const n = t.inits.length;
+  await t.h.page.locator(`.card[data-id="frTt"] .sbname`).dblclick();
+  await switched(t, n, "entering Child opens its board");
+  check("toastKeepsBoardTransition-flying", mid.flying === 1, "the name still flies to the breadcrumbs after the toast", mid);
+  await expect(t.h.page.locator(".sbmorph")).toHaveCount(0);
+  const end = await t.h.page.evaluate(() => ({ crumbs: [...document.querySelectorAll(".crumbs .crumb:not(.back)")].map((e) => e.textContent), opacity: getComputedStyle(document.querySelector(".world")!).opacity }));
+  check("toastKeepsBoardTransition-opened", end.crumbs.join() === "Parent,Child" && end.opacity === "1", "the sub-board is shown, fully faded in", end);
+  await t.h.page.context().close();
 });
 
 /** Lines selected on a sub-board, then back to the parent: the line selection was the sub-board's, so S on the parent has no lines to

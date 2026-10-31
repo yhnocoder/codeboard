@@ -16,15 +16,19 @@ const SHA = /^[0-9a-f]{40}$/;
 
 const roots = new Map<string, Promise<string | null>>();
 
-/** 文件所在的 git 仓库根（子模块里的文件返回子模块自己的根） */
-export function repoRootOfDir(dir: string): Promise<string | null> {
-  let p = roots.get(dir);
+/** 只记下有答案的：不在仓库里（还没 git init）、git 出错时下次再问 */
+function remember<T>(m: Map<string, Promise<T | null>>, k: string, ask: () => Promise<T | null>): Promise<T | null> {
+  let p = m.get(k);
   if (!p) {
-    p = git(dir, ["rev-parse", "--show-toplevel"]).then((s) => (s?.trim() ? path.normalize(s.trim()) : null));
-    roots.set(dir, p);
+    const q = ask().then((v) => { if (v === null && m.get(k) === q) m.delete(k); return v; });
+    m.set(k, (p = q));
   }
   return p;
 }
+
+/** 文件所在的 git 仓库根（子模块里的文件返回子模块自己的根） */
+export const repoRootOfDir = (dir: string): Promise<string | null> =>
+  remember(roots, dir, () => git(dir, ["rev-parse", "--show-toplevel"]).then((s) => (s?.trim() ? path.normalize(s.trim()) : null)));
 export const repoRootOf = (file: string) => repoRootOfDir(path.dirname(file));
 
 /** The repo's HEAD commit, read every time: a cached HEAD outlives a commit until the .git watcher's debounce has run, and a version
@@ -78,11 +82,7 @@ export async function commitInfo(root: string, commit: string): Promise<LogEntry
 
 const gitDirs = new Map<string, Promise<string | null>>();
 /** .git 目录的绝对路径（子模块是外层仓库的 .git/modules/x） */
-export function gitDirOf(root: string) {
-  let p = gitDirs.get(root);
-  if (!p) { p = git(root, ["rev-parse", "--absolute-git-dir"]).then((s) => s?.trim() || null); gitDirs.set(root, p); }
-  return p;
-}
+export const gitDirOf = (root: string) => remember(gitDirs, root, () => git(root, ["rev-parse", "--absolute-git-dir"]).then((s) => s?.trim() || null));
 
 const anc = new Lru<Promise<boolean>>(500);
 /**
@@ -104,6 +104,8 @@ export function isAncestor(root: string, a: string, b: string): Promise<boolean>
 }
 
 const ups = new Map<string, Promise<string>>();
+/** 仓库变了（git 事件：checkout、新建 / 删了分支、改了 origin、git init）：记下的仓库根、.git 目录、上游分支作废，下次再问 */
+export function forgetRepos() { roots.clear(); gitDirs.clear(); ups.clear(); }
 /** 上游分支：origin/HEAD 指的分支，没有就本地 main / master，都没有 = HEAD */
 export function upstreamRef(root: string): Promise<string> {
   let p = ups.get(root);

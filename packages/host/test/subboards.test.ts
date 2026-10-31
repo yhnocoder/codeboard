@@ -14,7 +14,6 @@ const dir = fs.mkdtempSync("/tmp/codeboard-sub-");
 const store = new Storage(nodeFs, { dir: () => dir });
 const switches: { to: string; crumbs: Crumb[]; cams: Camera[]; walk?: WalkHop; cam?: Camera }[] = [];
 const { view, posted } = stubView();
-const toasts = () => posted.flatMap((m) => (m.type === "toast" ? [m.text] : []));
 const panels: BoardHost = {
   store, target: undefined, clip: undefined,
   get: () => undefined, all: () => [], metas: () => store.list(), show: async () => undefined, setTarget: () => undefined, broadcast: () => undefined,
@@ -44,7 +43,7 @@ describe("sub-boards", () => {
     expect(sk.nope).toBeNull();
   });
   it("enters the child in the same panel with a breadcrumb, the parent camera and the walkthrough hop", async () => {
-    await send({ type: "enterBoard", id: "bS", frame: "f", cam: { x: 1, y: 2, z: 0.5 }, walk: { into: { root: "r", i: 2 } } });
+    await send({ type: "enterBoard", req: 1, id: "bS", frame: "f", cam: { x: 1, y: 2, z: 0.5 }, walk: { into: { root: "r", i: 2 } } });
     expect(p.id).toBe("bS");
     expect(switches[0].crumbs).toEqual([{ id: "bE", name: "Engine", frame: "f" }]);
     expect(switches[0].cams[0].z).toBe(0.5);
@@ -53,12 +52,11 @@ describe("sub-boards", () => {
   it("refuses to enter a cycle", async () => {
     // the parent placed inside the child: the board refuses first, the host checks again on entering
     S.cards.push({ id: "g", kind: "board", board: "bE" }); S.place.g = { x: 0, y: 400, w: 560, h: 360 };
-    await send({ type: "enterBoard", id: "bE", frame: "g", cam: { x: 0, y: 0, z: 1 } });
+    expect(await send({ type: "enterBoard", req: 1, id: "bE", frame: "g", cam: { x: 0, y: 0, z: 1 } })).toMatch(/inside itself/);
     expect(switches).toHaveLength(1);
-    expect(toasts().at(-1)).toMatch(/inside itself/);
   });
   it("leaves back to the parent with its camera and the walkthrough resume", async () => {
-    await send({ type: "leaveBoard", walk: { resume: { root: "r", i: 3 } } });
+    await send({ type: "leaveBoard", req: 1, walk: { resume: { root: "r", i: 3 } } });
     expect(p.id).toBe("bE");
     expect(switches[1].crumbs).toEqual([]);
     expect(switches[1].cam?.z).toBe(0.5);
@@ -73,7 +71,7 @@ describe("sub-boards", () => {
     const q = new BoardPanel("bT", view, panels);
     q.ready = true; q.board = store.peek("bT");
     const before = posted.length;
-    await makeHandler(panels)(q, { type: "enterBoard", id: "bU", frame: "fu", cam: { x: 1, y: 2, z: 1 }, reveal: "v1" });
+    await makeHandler(panels)(q, { type: "enterBoard", req: 1, id: "bU", frame: "fu", cam: { x: 1, y: 2, z: 1 }, reveal: "v1" });
     expect(switches.at(-1)).toMatchObject({ to: "bV", crumbs: [{ id: "bT", name: "Top", frame: "fu" }, { id: "bU", name: "Mid", frame: "fv" }] });
     expect(switches.at(-1)!.cams).toEqual([{ x: 1, y: 2, z: 1 }, { x: 7, y: 8, z: 0.75 }]);
     expect(posted.slice(before)).toContainEqual({ type: "reveal", card: "v1" });

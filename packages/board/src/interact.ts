@@ -3,7 +3,7 @@ import {
   type Board, type Card, type CallSpan, type Rect, type Anchor, type End, type LinkSide,
 } from "@codeboard/core";
 import {
-  state, sel, select, toggleSel, clearSel, setLineSel, isSel, cardById, hostOf, rectOf, live, beginGesture, isFresh, toast, placeOf, placed,
+  state, sel, select, toggleSel, clearSel, setLineSel, isSel, cardById, hostOf, rectOf, live, toast, placeOf, placed,
 } from "./state/store";
 import { tune } from "./state/tune";
 import { WHEEL_GESTURE, BLOCK_GLIDE } from "./state/timing";
@@ -20,59 +20,16 @@ import { ghostOut } from "./state/ghost";
 import { overNote, leaveNote, noteDropAt } from "./notedrop";
 import { boardPoint, worldAt, lastPointer, trackPointer, naturalSize, chromeOf } from "./state/measure";
 import { installOverlays, modalOpen, typing } from "./ui/overlay";
-import { NODRAG, CARD_CONTROL, OWNS_POINTER, BOARD_CHROME, holdPointer } from "./ui/guard";
+import { NODRAG, CARD_CONTROL, OWNS_POINTER, BOARD_CHROME } from "./ui/guard";
 import { dispatch, matches } from "./keymap";
-import { holdGhosts } from "@yhnocoder/markdown/ui";
 import { installShield, raiseShield } from "./ui/shield";
 import * as A from "./actions";
-import { onBoardSwitch } from "./state/root";
+import { track, undoGesture } from "./gesture";
 import { togglePreview } from "./state/subboards";
 
 const pt = (e: { clientX: number; clientY: number }) => ({ x: e.clientX, y: e.clientY });
 const local = (e: { clientX: number; clientY: number }) => boardPoint(pt(e));
 const worldOf = (e: { clientX: number; clientY: number }) => worldAt(pt(e));
-
-// 进行中的拖动：拖到一半宿主换了白板（进子白板、打开别的白板），监听去掉、什么都不提交（没松手就不算数）。
-// 拖动中的界面状态（参考线、落点……）是 boardSignal，自己会清；drop 收拾别的（计时器、撤销栈的快照、停掉的补全）
-const gestures = new Set<{ ctl: AbortController; drop?: () => void }>();
-onBoardSwitch(() => { for (const g of gestures) { g.ctl.abort(); g.drop?.(); } gestures.clear(); });
-
-function track(e: PointerEvent, move: (ev: PointerEvent) => void, up: (ev: PointerEvent, moved: boolean) => void, threshold = 3, drop?: () => void) {
-  const sx = e.clientX, sy = e.clientY;
-  let moved = false;
-  holdPointer(e);
-  const g = { ctl: new AbortController(), drop };
-  const o = { capture: true, signal: g.ctl.signal };
-  const onMove = (ev: PointerEvent) => {
-    if (!moved && Math.hypot(ev.clientX - sx, ev.clientY - sy) < threshold) return;
-    moved = true;
-    move(ev);
-  };
-  const onUp = (ev: PointerEvent) => {
-    g.ctl.abort();
-    gestures.delete(g);
-    up(ev, moved);
-  };
-  window.addEventListener("pointermove", onMove, o);
-  window.addEventListener("pointerup", onUp, o);
-  window.addEventListener("pointercancel", onUp, o);
-  gestures.add(g);
-}
-
-/** 拖卡、改卡的大小：一次撤销（beginGesture）；真动起来以后 AI 灰字补全先停（显示着的清掉、不再问），松手再照常 */
-// 拖的全是新建、还没写内容的卡（createFresh）：不单独进撤销栈。写了内容时「新建 + 内容」那一步里已经是挪过的位置；
-// 空着结束编辑就整个消失，撤销栈里也不留一张空卡
-function cardGesture(ids: string[]) {
-  const done = beginGesture();
-  const fresh = ids.length > 0 && ids.every(isFresh);
-  let held = false;
-  return {
-    moving: () => { if (!held) { held = true; holdGhosts(true); } },
-    end: () => { if (held) holdGhosts(false); done(!(fresh && ids.every(isFresh))); },
-    /** 作废（换了白板）：不进撤销栈 */
-    drop: () => { if (held) holdGhosts(false); done(false); },
-  };
-}
 
 /**
  * 拖卡、拖 Section 时吸不吸附：拖得快时不吸附（顺滑），慢下来才对齐。屏幕上的速度，指数平滑。
@@ -248,7 +205,7 @@ function startCardDrag(e: PointerEvent, grabbed: string, onClick?: () => void) {
     const p = worldOf(ev), pad = Math.max(64, 24 / cam.z);
     return others.some((r) => p.x >= r.x - pad && p.x <= r.x + r.w + pad && p.y >= r.y - pad && p.y <= r.y + r.h + pad);
   };
-  const { end, moving, drop: dropGesture } = cardGesture(ids);
+  const { end, moving, drop: dropGesture } = undoGesture(ids);
   const sx = e.clientX, sy = e.clientY;
   let mergeT: number | undefined, mergeTgt: string | undefined;
   const g = cardById(grabbed)!.host;
@@ -397,7 +354,7 @@ export function resizeDown(e: PointerEvent, id: string, edges: { left?: boolean;
   A.selectCard(id);
   const r0 = rectOf(c);
   const targets = visibleCards().filter((k) => k.id !== id).map((k) => rectOf(k));
-  const { end, moving, drop } = cardGesture([c.id]);
+  const { end, moving, drop } = undoGesture([c.id]);
   const sx = e.clientX, sy = e.clientY;
   const text = frameless(c), box = c.kind === "note" && c.look === "box";
   // 最矮 = 头部 + 一行；拉到内容本来的高度附近就回到自动高度（Box 的高度就是框的大小，一直存着）
@@ -714,7 +671,7 @@ export function sectionLabelDown(e: PointerEvent, id: string) {
   const outer = new Set<string>();
   for (let p = sec(s.parent); p && !outer.has(p.id); p = sec(p.parent)) outer.add(p.id);
   const targets = [...fr.entries()].filter(([k]) => !skip.has(k) && !outer.has(k)).map(([, r]) => r);
-  const end = beginGesture();
+  const g = undoGesture();
   const sx = e.clientX, sy = e.clientY;
   const pace = snapPace(e, (ev, still) => onMove(ev, still));
   const onMove = (ev: PointerEvent, still = false) => {
@@ -744,8 +701,8 @@ export function sectionLabelDown(e: PointerEvent, id: string) {
         toast(np ? `Moved into ${np.title}` : "Moved out of the section");
       }
     }
-    end();
-  }, 3, () => { pace.stop(); end(false); });
+    g.end();
+  }, 3, () => { pace.stop(); g.drop(); });
 }
 /** 拖 Section 的边改大小（框只会比内容大） */
 export function sectionEdgeDown(e: PointerEvent, id: string) {
@@ -755,12 +712,12 @@ export function sectionEdgeDown(e: PointerEvent, id: string) {
   const s = sec(id);
   if (!s || A.sectionLocked(s)) return;
   const f0 = frameOf(s);
-  const end = beginGesture();
+  const g = undoGesture();
   const sx = e.clientX, sy = e.clientY;
   track(e, (ev) => {
     const w = Math.max(120, f0.w + (ev.clientX - sx) / cam.z), h = Math.max(80, f0.h + (ev.clientY - sy) / cam.z);
     live((b) => { const q = b.sections.find((x) => x.id === id); if (q) { q.x = f0.x; q.y = f0.y; q.w = Math.round(w); q.h = Math.round(h); } });
-  }, () => end(), 3, () => end(false));
+  }, g.end, 3, g.drop);
 }
 
 export function installKeys() {

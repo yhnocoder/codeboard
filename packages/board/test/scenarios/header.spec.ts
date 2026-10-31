@@ -6,7 +6,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { DEFAULT_SETTINGS, emptyBoard, type CodeCard } from "@codeboard/core";
 import { shot, put, symCard, findSym, OUT, type Host } from "../harness";
-import { test, open, check, light, idle, until } from "../fixtures";
+import { test, open, check, idle, until } from "../fixtures";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { audit } = require("../../../../tools/review/audit.cjs") as { audit: (t: unknown, step: string) => Promise<{ issues: { rule: string; what: string }[] }> };
 

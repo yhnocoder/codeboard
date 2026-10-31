@@ -11,6 +11,7 @@ import { BoardHub } from "@codeboard/host/hub";
 import { watchNameIndex } from "@codeboard/host/nameindex";
 import { BoardsTree, GithubTree, QuestionsTree } from "./sidebar";
 import { questionsMarkdown } from "@codeboard/core";
+import { analyzedEditorLangs } from "@codeboard/analysis/langs";
 import { openOnBoard } from "@codeboard/host/handlers";
 import { setMediaDir } from "@codeboard/host/exports";
 import { initSource } from "@codeboard/host/source";
@@ -69,7 +70,7 @@ export async function activate(ctx: vscode.ExtensionContext) {
   sub(vscode.commands.registerCommand("codeboard.openQuestion", (board: string, card?: string, line?: number, sticker?: string) => openOnBoard(panels, board, card, line, sticker)));
 
   const marks = new EditorMarks(ctx, store, panels);
-  sub(vscode.languages.registerCodeLensProvider([{ scheme: "file", language: "python" }, { scheme: "file", language: "cpp" }, { scheme: "file", language: "cuda-cpp" }, { scheme: "file", language: "c" }], marks));
+  sub(vscode.languages.registerCodeLensProvider(analyzedEditorLangs().map((language) => ({ scheme: "file", language })), marks));
 
   sub(registerVersionDocs(showFile));
 

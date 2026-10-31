@@ -3,7 +3,7 @@
 // 汇到同一处（同一张卡的卡头 / 同一行、同一侧）的几条线：合并点到终点的那一小段和箭头只画一次（<g class="merge">）。
 import { Show, createComputed, createEffect, createMemo, createRenderEffect, createSignal, mapArray, on, onCleanup, untrack, type Accessor, type Signal } from "solid-js";
 import { headOf, type Link, type LinkSide, type Rect } from "@codeboard/core";
-import { state, sel, select, rectOf, cardById, hostOf, collapsedAway, placeOf, placed, live, beginGesture } from "../state/store";
+import { state, sel, select, rectOf, cardById, hostOf, collapsedAway, placeOf, placed, live } from "../state/store";
 import { geo, lineY, setCurveSource, HEAD_H } from "../state/geo";
 import { blockY, hoverBlock, keepBlock, leaveBlock, watchBlockHover } from "../state/blocks";
 import { portStyle } from "../state/hover";
@@ -20,7 +20,7 @@ import { isDbl, linkPortDown } from "../interact";
 import * as A from "../actions";
 import { LinkLabel } from "./Labels";
 import { LinkStickers } from "../stickers/Picker";
-import { holdPointer } from "../ui/guard";
+import { track, undoGesture } from "../gesture";
 import { isBindHot } from "../state/stickers";
 import { chooseMode, sidesOf, anchorOn, turnAnchor, slide, connect, selfArc, gutterLine, headPath, type Anchor, type Box, type Mode, type Side, type Shape } from "./route";
 import { handLine } from "./hand";
@@ -327,17 +327,13 @@ function portDrag(e: PointerEvent, id: string) {
   if (!L || !subEnd(L.from)) return;
   const a = endRect(L.from.card)?.r;
   if (!a) return;
-  const end = beginGesture();
+  const g = undoGesture();
   setDragLink(id);
-  holdPointer(e);
-  const move = (ev: PointerEvent) => {
+  track(e, (ev) => {
     const o = boardOffset(), w = toWorld(ev.clientX - o.x, ev.clientY - o.y);
     const side = w.x >= a.x + a.w / 2 ? "right" : "left";
     live((b) => { const k = b.links.find((l) => l.id === id); if (k && k.sides?.from !== side) k.sides = { ...k.sides, from: side }; });
-  };
-  const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); setDragLink(null); end(); };
-  window.addEventListener("pointermove", move);
-  window.addEventListener("pointerup", up);
+  }, () => { setDragLink(null); g.end(); }, 0, g.drop);
 }
 
 /**

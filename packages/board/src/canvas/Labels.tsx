@@ -1,7 +1,7 @@
 import { For, Show, createMemo, createRenderEffect, createSignal, onCleanup, type Accessor } from "solid-js";
 import { callText, varGone, loopLine, segOf, isCode, type Link, type Rect } from "@codeboard/core";
 import { varKey } from "@codeboard/analysis/basics";
-import { state, sel, select, live, beginGesture, cardById, rectOf } from "../state/store";
+import { state, sel, select, live, cardById, rectOf } from "../state/store";
 import { editing, setDragLink } from "../state/ui";
 import { hoverLink, enterLink, leaveLink } from "../state/hover";
 import { toWorld } from "../state/camera";
@@ -12,7 +12,8 @@ import * as A from "../actions";
 import { visible, type Geo } from "./Links";
 import { dragT, placeT, type Box } from "./labelpos";
 import { bezAt } from "./geom";
-import { NODRAG, holdPointer } from "../ui/guard";
+import { NODRAG } from "../ui/guard";
+import { track, undoGesture } from "../gesture";
 import { addExtra, keepSize, keptSize } from "../state/extent";
 
 // 框的大小（世界坐标）：一个共用的 ResizeObserver，只在框的内容变了时回调，平移 / 缩放 / 拖卡时不读布局
@@ -36,16 +37,13 @@ function watchSize(el: HTMLElement, cb: (b: Box) => void) {
  * 框的大小和两张卡的位置在开始拖时量一次，拖的过程中不读布局
  */
 function labelDrag(e: PointerEvent, id: string, el: HTMLElement, pts: () => number[] | undefined, at: () => { x: number; y: number } | null, ends: () => Rect[]) {
-  const sx = e.clientX, sy = e.clientY;
-  const o0 = boardOffset(), w0 = toWorld(sx - o0.x, sy - o0.y), c0 = at();
+  const o0 = boardOffset(), w0 = toWorld(e.clientX - o0.x, e.clientY - o0.y), c0 = at();
   const grab = c0 ? { x: w0.x - c0.x, y: w0.y - c0.y } : { x: 0, y: 0 };
-  let end: (() => void) | null = null;
+  let g: ReturnType<typeof undoGesture> | null = null;
   let box: Box = { w: 0, h: 0 }, rs: Rect[] = [];
-  holdPointer(e);
-  const move = (ev: PointerEvent) => {
-    if (!end) {
-      if (Math.hypot(ev.clientX - sx, ev.clientY - sy) < 4) return;
-      end = beginGesture();
+  track(e, (ev) => {
+    if (!g) {
+      g = undoGesture();
       setDragLink(id);
       box = { w: el.offsetWidth, h: el.offsetHeight };
       rs = ends();
@@ -55,10 +53,7 @@ function labelDrag(e: PointerEvent, id: string, el: HTMLElement, pts: () => numb
     const o = boardOffset(), w = toWorld(ev.clientX - o.x, ev.clientY - o.y);
     const t = dragT(p, w.x - grab.x, w.y - grab.y, box, rs);
     live((b) => { const k = b.links.find((l) => l.id === id); if (k && k.at !== t) k.at = t; });
-  };
-  const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); if (end) setDragLink(null); end?.(); };
-  window.addEventListener("pointermove", move);
-  window.addEventListener("pointerup", up);
+  }, () => { if (g) { setDragLink(null); g.end(); } }, 4, () => g?.drop());
 }
 
 const NONE = new Set<string>();

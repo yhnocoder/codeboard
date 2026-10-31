@@ -9,6 +9,7 @@
     "package": "npm run build && npm run package -w codeboard-vscode",
     "test": "vitest run",
     "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "biome lint && node tools/test/knip.mjs",
     "e2e": "npm run e2e -w codeboard-vscode",
     "check": "node tools/test/check.mjs",
     "harness": "node tools/test/harness.mjs",
@@ -19,5 +20,9 @@
   "allowScripts": {
     "esbuild": true,
     "fsevents": false
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.6.4",
+    "knip": "6.44.1"
   }
 }

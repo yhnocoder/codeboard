@@ -2,7 +2,7 @@
 import * as fs from "node:fs";
 import { symCard, findSym, put, OUT, type Host } from "../harness";
 import * as path from "node:path";
-import { emptyBoard, type Board, type CodeCard, type Link } from "@codeboard/core";
+import { emptyBoard, type CodeCard, type Link } from "@codeboard/core";
 import { test, open, check, light, until, idle } from "../fixtures";
 
 const SHOTS = process.env.LABEL_SHOTS ?? path.join(OUT, "arrow-labels");
