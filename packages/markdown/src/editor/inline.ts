@@ -152,7 +152,10 @@ function update(prev: St, tr: Transaction, head: number | null, expand: number |
   }
   const out: Decoration[] = [];
   for (const [pos, n] of blocks) {
-    set = set.remove(set.find(pos, pos + n.nodeSize));
+    // only this block's own decorations: find() also returns the ones that touch its edges, such as the previous or next
+    // paragraph's node decoration (md-psized), which would be lost with the block's layout
+    const end = pos + n.nodeSize;
+    set = set.remove(set.find(pos, end).filter((d) => d.from >= pos && d.to <= end && d.to !== pos && d.from !== end));
     layout(n, pos, inCell(doc, pos), head, expand, out, null);
   }
   return set.add(doc, out);
