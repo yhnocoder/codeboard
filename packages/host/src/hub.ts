@@ -226,7 +226,8 @@ export class BoardHub implements BoardHost, Disposable {
   async switchBoard(p: BoardPanel, to: string, o: { crumbs: Crumb[]; cams: Camera[]; walk?: WalkHop; cam?: Camera }): Promise<boolean> {
     const other = this.panels.get(to);
     if (other && other !== p) { other.view.reveal(); return false; }
-    if (!(await this.store.load(to))) throw new Error("Board not found.");
+    const b = await this.store.load(to);
+    if (!b) throw new Error("Board not found.");
     const was = p.id;
     this.panels.delete(was);
     p.id = to;
@@ -240,7 +241,7 @@ export class BoardHub implements BoardHost, Disposable {
     if (this.refsSent.has(p)) this.refsSent.set(p, "");
     this.saveOpen();
     if (this.target === was) this.setTarget(to);
-    await p.init();
+    await p.init(b);
     return true;
   }
 

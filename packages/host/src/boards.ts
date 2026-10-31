@@ -122,11 +122,15 @@ export class BoardPanel {
   answer(id: number, v: string | number | null) { this.asks.get(id)?.(v); this.asks.delete(id); }
   dropAsks() { for (const r of this.asks.values()) r(null); this.asks.clear(); }
 
-  /** webview 说 ready：读白板、算所有段的展示数据和版本状态，发 init */
-  async init() {
+  /** 第几次 init：换了白板，上一块的版本状态就不发了 */
+  private gen = 0;
+
+  /** webview 说 ready：读白板（loaded = 调用方刚读过的）、算所有段的展示数据，发 init；版本状态随后发 */
+  async init(loaded?: Board) {
     this.dropAsks(); // a reloaded webview has no dialogs open
-    const b = await this.mgr.store.load(this.id);
+    const b = loaded ?? (await this.mgr.store.load(this.id));
     if (!b) { this.view.dispose(); return; }
+    const gen = ++this.gen;
     const next = this.next;
     this.next = {};
     if (next.cam) b.cam = next.cam;
@@ -134,11 +138,13 @@ export class BoardPanel {
     this.view.title = b.name;
     const segs = boardSegments(b);
     const ss = staleSegments(b);
-    const [views, stale, boards] = await Promise.all([viewsFor([...segs, ...variantSegments(b)]), staleFor(ss.segs, ss.up), this.mgr.metas()]);
-    this.stale = stale;
-    this.readonly = await this.readonlyNote(b);
+    // 版本状态要跑 git、在新版本里重新找段，常常比高亮还慢：白板不等它（卡上的提示晚一点出来）。高亮要等：注释折叠决定卡的高度
+    const staleP = staleFor(ss.segs, ss.up);
+    const [views, boards, readonly] = await Promise.all([viewsFor([...segs, ...variantSegments(b)]), this.mgr.metas(), this.readonlyNote(b)]);
+    this.stale = {};
+    this.readonly = readonly;
     const host = this.host();
-    const init: HostToBoard = { type: "init", board: b, boards, views, stale, host };
+    const init: HostToBoard = { type: "init", board: b, boards, views, stale: {}, host };
     if (this.crumbs.length) init.crumbs = this.crumbs;
     // 进出子白板不算「回来」
     if (!this.crumbs.length && !next.walk) { const w = welcomeOf(b, this.mgr.lastOpened?.(b.id), host.settings.welcomeBack); if (w) init.welcome = w; }
@@ -152,7 +158,14 @@ export class BoardPanel {
     this.mgr.refreshShared(true, this.id);
     this.mgr.refreshSkeletons(true, this.id);
     this.mgr.refreshBoardRefs(true, this.id);
-    this.mgr.staleChanged(this.id, countStale(b, stale));
+    // 排进版本检查的队列：之后的 refreshStale 在它后面（旧的结果不盖掉新的）
+    const first = this.staleRun.then(() => staleP).then((stale) => {
+      if (gen !== this.gen) return;
+      this.stale = stale;
+      if (Object.keys(stale).length) this.post({ type: "stale", stale });
+      this.mgr.staleChanged(this.id, countStale(b, stale));
+    });
+    this.staleRun = first.catch((e) => workspace().log("warn", `stale: ${e instanceof Error ? e.message : e}`));
     this.variantSent.clear();
     void this.refreshVariants(true);
     // 白板已经出来了：后台让语言服务先热起来
@@ -177,8 +190,9 @@ export class BoardPanel {
 
   /** 仓库找不到时的提示（只读快照） */
   private async readonlyNote(b: Board): Promise<string | undefined> {
-    const miss = new Set<string>();
-    for (const s of boardSegments(b)) if (s.src.kind !== "free" && s.src.kind !== "github" && !(await present(s))) miss.add(srcLabel(s.src));
+    const segs = boardSegments(b).filter((s) => s.src.kind !== "free" && s.src.kind !== "github");
+    const here = await Promise.all(segs.map((s) => present(s)));
+    const miss = new Set(segs.filter((_, i) => !here[i]).map((s) => srcLabel(s.src)));
     if (!miss.size) return undefined;
     const names = [...miss].map((n) => `“${n}”`).join(", ");
     return `Repo ${names} not found in this workspace. Showing saved code, read-only.`;

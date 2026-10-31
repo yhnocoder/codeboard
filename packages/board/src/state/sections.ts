@@ -1,9 +1,10 @@
 // Section 的实际框：自己存的框 ∪ 成员卡（含边距）∪ 子 Section（core layout.sectionFrame，和子白板骨架同一套算法），框随内容自动撑大，也能拖边改大。
-// 拖动中先预演（movingHome）：卡离开的 Section 回到没有它的框，要进的撑开、亮起来（.drop），松手时才真的改 place.section。
-import { createMemo, createSignal, mapArray } from "solid-js";
+// 拖动中先预演（setMovingHome）：卡离开的 Section 回到没有它的框，要进的撑开、亮起来（.drop），松手时才真的改 place.section。
+import { batch, createComputed, createMemo, createSignal, mapArray, on, untrack, type Signal } from "solid-js";
 import { sectionFrame, sectionFit, sectionPill, estSize, type Board, type Rect, type Section } from "@codeboard/core";
 import { state, rectOf, placed, hostOf, collapsedAway } from "./store";
-import { rooted, boardSignal } from "./root";
+import { rooted, boardSignal, onBoardSwitch } from "./root";
+import { Spring, animate, reduceMotion, cam } from "./camera";
 
 const byId = rooted(() => createMemo(() => new Map(state.board.sections.map((s) => [s.id, s]))));
 export const sec = (id?: string) => (id ? byId().get(id) : undefined);
@@ -24,7 +25,7 @@ const kids = rooted(() => createMemo(() => groupBy(state.board.sections, (s) => 
 const [moving, setMoving] = boardSignal<ReadonlyMap<string, string | undefined> | null>(null, {
   equals: (a, b) => a === b || (!!a && !!b && a.size === b.size && [...a].every(([k, v]) => b.has(k) && b.get(k) === v)),
 });
-export { moving as movingHome, setMoving as setMovingHome };
+export { setMoving as setMovingHome };
 /** 拖动中的卡要进的、和它现在不同的 Section：画成 .drop */
 export const dropSections = rooted(() => createMemo(() => {
   const out = new Set<string>();
@@ -85,6 +86,58 @@ export const frames = rooted(() => createMemo<Map<string, Rect>>((prev) => {
   }
   return same && m.size === prev.size ? prev : m;
 }, new Map()));
+
+// 拖卡时框的目标每一步都变：CSS transition 每步重新开始、每帧排版。改成弹簧追目标（接着上一步的速度），每帧只写一次框。
+// 弹簧接近临界阻尼，和原来 .16s 的 --out 差不多快；只有拖动中（或还没停下的）框才缓动，别的改动（Section 自己的拖动、
+// 改大小、撤销）照旧直接到位，Fit Content 走自己的 .fit transition。判断落点（homeFor 等）一律用 frames()，不用画出来的框
+const EASE_K = 2500, EASE_C = 100, EASE_EPS = 0.05;
+type Ease = { x: Spring; y: Spring; w: Spring; h: Spring };
+const easing = new Map<string, Ease>();
+// 每个 Section 一个 signal：一帧只通知正在缓动的那几个框和标签。画出来的框和卡一样取整到世界坐标的整像素（缩小时到
+// 设备像素），没变一个像素的帧不写：带小数的框每帧都要重排、重画，拖得慢时目标每步只差一两像素，这是拖动每步最贵的一块
+const sameRect = (a?: Rect, b?: Rect) => a === b || (!!a && !!b && a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h);
+const shown = new Map<string, Signal<Rect | undefined>>();
+const shownOf = (id: string) => { let q = shown.get(id); if (!q) shown.set(id, (q = createSignal<Rect | undefined>(undefined, { equals: sameRect }))); return q; };
+const show = (id: string, r?: Rect) => shownOf(id)[1](() => r);
+function easedRect(e: Ease): Rect {
+  const q = Math.min(1, cam.z * devicePixelRatio), px = (v: number) => Math.round(v * q) / q;
+  return { x: px(e.x.v), y: px(e.y.v), w: px(e.w.v), h: px(e.h.v) };
+}
+function stopEasing() { batch(() => { for (const id of easing.keys()) show(id); }); easing.clear(); }
+onBoardSwitch(stopEasing);
+function easeStep(dt: number, instant: boolean) {
+  batch(() => {
+    for (const [id, e] of easing) {
+      const sp = [e.x, e.y, e.w, e.h];
+      for (const s of sp) instant ? s.set(s.t) : s.step(dt);
+      if (sp.every((s) => s.done)) { easing.delete(id); show(id); } else show(id, easedRect(e));
+    }
+  });
+  return !easing.size;
+}
+rooted(() => createComputed(on(frames, (f, prev) => {
+  if (!prev) return;
+  if (reduceMotion() || !(moving() || easing.size)) return stopEasing();
+  for (const [id, r] of f) {
+    const p = prev.get(id);
+    if (p === r) continue;
+    if (!p || fitting().has(id)) { if (easing.delete(id)) show(id); continue; }
+    let e = easing.get(id);
+    if (!e) {
+      const from = untrack(shownOf(id)[0]) ?? p;
+      const mk = (v: number) => new Spring(v, EASE_K, EASE_C, EASE_EPS);
+      e = { x: mk(from.x), y: mk(from.y), w: mk(from.w), h: mk(from.h) };
+      if (!easing.size) animate(easeStep);
+      easing.set(id, e);
+      // 这一次就画在弹簧现在的位置（不然先闪到目标，下一帧再退回来）
+      show(id, easedRect(e));
+    }
+    e.x.t = r.x; e.y.t = r.y; e.w.t = r.w; e.h.t = r.h;
+  }
+  for (const id of [...easing.keys()]) if (!f.has(id)) { easing.delete(id); show(id); }
+})));
+/** 渲染用：这个 Section 的框画在哪：拖卡时正缓动的框在半路上，别的就是 frames() 里的框。框和标签都按它画 */
+export const shownFrame = (id: string) => shownOf(id)[0]() ?? frames().get(id);
 
 export function overlapArea(a: Rect, b: Rect): number {
   const w = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x), h = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);

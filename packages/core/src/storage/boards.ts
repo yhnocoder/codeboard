@@ -169,25 +169,31 @@ export class Storage {
     const files: { file: string; group?: string }[] = [];
     let names: Awaited<ReturnType<Fs["readdir"]>> = [];
     try { names = await fs.readdir(root); } catch { /* 还没有目录 */ }
-    for (const d of names) {
+    // 组目录、每个文件的 stat 一起发（每次开白板、进子白板都要扫一遍，逐个等的话白板越多越慢）；处理仍按顺序
+    const subs = await Promise.all(names.map(async (d) => {
+      if (!d.isDir || RESERVED.has(d.name) || d.name.startsWith(".")) return [];
+      this.emptyGroups.add(d.name);
+      try { return (await fs.readdir(fs.join(root, d.name))).map((x) => x.name); } catch { return []; }
+    }));
+    names.forEach((d, i) => {
       if (d.isFile && d.name.endsWith(".json")) files.push({ file: fs.join(root, d.name) });
-      else if (d.isDir && !RESERVED.has(d.name) && !d.name.startsWith(".")) {
-        this.emptyGroups.add(d.name);
-        let sub: string[] = [];
-        try { sub = (await fs.readdir(fs.join(root, d.name))).map((x) => x.name); } catch {}
-        for (const n of sub) if (n.endsWith(".json")) files.push({ file: fs.join(root, d.name, n), group: d.name });
-      }
-    }
+      for (const n of subs[i]) if (n.endsWith(".json")) files.push({ file: fs.join(root, d.name, n), group: d.name });
+    });
+    const stats = await Promise.all(files.map((f) => fs.stat(f.file).catch((e: Error) => e)));
+    const byFile = new Map([...this.cache.values()].map((x) => [x.file, x]));
+    const pulled = new Set<string>();
     const seen = new Set<string>();
     const out: Entry[] = [];
     const idOf = (file: string) => baseName(file).slice(0, -".json".length);
-    for (const f of files) {
+    for (const [i, f] of files.entries()) {
       let st: Awaited<ReturnType<Fs["stat"]>> | undefined, text: string | undefined;
       try {
-        st = await fs.stat(f.file);
+        const s = stats[i];
+        if (s instanceof Error) throw s;
+        st = s;
         const b = this.bad.get(f.file);
         if (b && b.mtime === st.mtimeMs) { b.group = f.group; continue; }
-        let e = [...this.cache.values()].find((x) => x.file === f.file);
+        let e = byFile.get(f.file);
         // 另一个窗口改了文件：三方合并进缓存（没写盘的改动留着），开着的面板跟着换上
         if (e && e.mtime !== st.mtimeMs) await this.pull(e);
         if (!e) {
@@ -207,8 +213,8 @@ export class Storage {
           e = { id: board.id, file: f.file, group: f.group, mtime: st.mtimeMs, birth: st.birthtimeMs || st.ctimeMs, board: r.board, refs: new Set(r.refs), held: new Set(r.refs), used, text };
           this.cache.set(board.id, e);
         } else {
-          // 卡库里的卡可能在外面改了
-          for (const id of [...e.refs]) await this.pullShared(id);
+          // 卡库里的卡可能在外面改了（在几块白板上的卡一次扫描只看一遍）
+          for (const id of [...e.refs]) if (!pulled.has(id)) { pulled.add(id); await this.pullShared(id); }
         }
         e.group = f.group;
         seen.add(e.id);

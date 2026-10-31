@@ -24,7 +24,7 @@ import { BoardBody } from "./BoardBody";
 import { Editable } from "../ui/Editable";
 import { openMenuAt, below } from "../ui/Menu";
 import * as act from "../actions";
-import { offscreen } from "../state/cull";
+import { offscreen, farAway } from "../state/cull";
 import { lodOf, izOf } from "../state/lodcards";
 import { whenIdle } from "../state/idle";
 import { landed } from "../canvas/Links";
@@ -118,7 +118,7 @@ export function CardView(p: { card: Card }) {
       <div ref={mount} class={`card ${kindClass()}`} data-id={c().id} data-fc={c().kind === "code" ? fileHue((c() as CodeCard).segments[0]?.path) : undefined} style={style()}
         classList={{
           sel: isSel(c().id), solo: sel.cards.length === 1, lift: lift(), dim: dim(), locked: !!pl().locked, autoh: !pl().h, nobg: act.noBg(c()),
-          editing: ed(), off: offscreen(c().id), "lo-ov": lodOf(c().id) === "overview", "lo-map": lodOf(c().id) === "map",
+          editing: ed(), off: offscreen(c().id), far: farAway(c().id), "lo-ov": lodOf(c().id) === "overview", "lo-map": lodOf(c().id) === "map",
           lost: c().kind === "code" && act.cardStale(c() as CodeCard) === "lost",
           gen: c().kind === "code" && !!(c() as CodeCard).gen,
           "merge-hot": !!(drop() & 1), "merge-arm": !!(drop() & 2), "drop-hot": !!(drop() & 4), "drop-cand": !!(drop() & 8), "img-drop": !!(drop() & 16),

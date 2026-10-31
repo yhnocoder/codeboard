@@ -2,10 +2,11 @@
 // dragPassesOverCardControls: moving a card, a marquee and dragging an arrow out of a card's edge port across another card's
 // ··· (More Actions) button, its resize grip and its edge port keep following the pointer to where they are released, no
 // tooltip shows and none of those controls shows hover. panKeepsGoingOverCards: a wheel (two-finger) pan and a middle-button
-// drag pan keep moving the canvas while a card's edge and body come under the pointer.
+// drag pan keep moving the canvas while a card's edge and body come under the pointer. pressRightAfterPan: a click, a right click
+// and a drag that come right after a wheel pan, with the pointer still, reach the card the pan brought under the pointer.
 import { emptyBoard, type Board, type NoteCard } from "@codeboard/core";
 import { type Host } from "../harness";
-import { test, open, check, light, idle, hold, frames } from "../fixtures";
+import { test, open, check, light, idle, hold, frames, until } from "../fixtures";
 
 function board(): Board {
   const b = emptyBoard("b1", "drag over controls");
@@ -180,4 +181,74 @@ test("panKeepsGoingOverCards", async () => {
     dragRuns.push({ steps, moved: { x: Math.round(c1.x - c0.x), y: Math.round(c1.y - c0.y) }, want: { x: Math.round(to.x - from.x), y: Math.round(to.y - from.y) } });
   }
   check("panKeepsGoingOverCards drag pan follows the pointer", dragRuns.every((d) => d.moved.x === d.want.x && d.moved.y === d.want.y), dragRuns);
+});
+
+/** A press right after a wheel pan, with the pointer still where the pan left it: while the pan goes on, a shield lies over the
+ *  canvas (ui/shield.ts), so the press lands on the shield and is passed on to what is really under the pointer. Each time a pan
+ *  brings a part of n0 under the resting pointer and the press comes at once, within the wheel gesture: a click on the body
+ *  selects n0, a click on its ··· opens its menu, a right click opens its menu (not the canvas menu), a drag by its header moves
+ *  it; and the pointer's first move after the pan gives the card under it hover */
+test("pressRightAfterPan", async () => {
+  const h = await open({ board: board(), light, w: 1100, h: 700 });
+  const pg = h.page;
+  const D = 240; // n0 (y 400–560) comes 240 px up, under the pointer resting on the empty canvas above it
+  // Rests the pointer D above `sel`, wheels n0 up under it, and says whether the shield was still up when the pan stopped
+  const panOnto = async (sel: string) => {
+    await idle(h);
+    const s = await box(h, sel);
+    const at = { x: s.x, y: s.y - D };
+    await pg.mouse.move(at.x, at.y);
+    await hold(h, WHEEL_GESTURE + 200, "a new wheel gesture: longer than the gap that ends one");
+    for (let i = 0; i < D / 40; i++) { await pg.mouse.wheel(0, 40); await frames(pg); }
+    return { at, shield: await pg.evaluate(() => !!document.querySelector(".pshield.on")) };
+  };
+  // the camera back where it was, as a separate gesture from a spot of empty canvas
+  const back = async () => {
+    await idle(h);
+    const free = await pg.evaluate(() => { for (let y = 40; y < innerHeight - 40; y += 20) for (let x = innerWidth - 40; x > 40; x -= 20) if (document.elementFromPoint(x, y)?.matches(".board, .world")) return { x, y }; throw new Error("no empty canvas"); });
+    await pg.mouse.move(free.x, free.y);
+    await hold(h, WHEEL_GESTURE + 200, "a new wheel gesture: longer than the gap that ends one");
+    await pg.mouse.wheel(0, -D);
+    await idle(h);
+  };
+  const menu = () => pg.evaluate(() => document.querySelector(".ctx.open")?.textContent ?? "");
+
+  const a = await panOnto(`${N0} .nbody`);
+  await pg.mouse.down(); await pg.mouse.up();
+
+  await idle(h);
+  const selected = await pg.evaluate((sel) => !!document.querySelector(sel)?.matches(".sel"), N0);
+  check("pressRightAfterPan click selects the card", a.shield && selected, { ...a, selected });
+  await back();
+
+  const b = await panOnto(`${N0} .ib[data-tip="More Actions"]`);
+  await pg.mouse.down(); await pg.mouse.up();
+  const more = await until(h, "the card menu", menu, 2000).catch(() => "");
+  check("pressRightAfterPan click on ··· opens the card menu", b.shield && more.includes("Fit Content"), { ...b, more });
+  await pg.keyboard.press("Escape");
+  await back();
+
+  const c = await panOnto(`${N0} .nbody`);
+  await pg.mouse.down({ button: "right" }); await pg.mouse.up({ button: "right" });
+  const ctx = await until(h, "a context menu", menu, 2000).catch(() => "");
+  check("pressRightAfterPan right click opens the card menu", c.shield && ctx.includes("Fit Content") && !ctx.includes("New Text"), { ...c, ctx });
+  await pg.keyboard.press("Escape");
+  await back();
+
+  const p0 = { ...h.board().place.n0 };
+  const g = await panOnto(`${N0} .chead`);
+  await pg.mouse.down();
+  for (let i = 1; i <= 4; i++) { await pg.mouse.move(g.at.x + 20 * i, g.at.y + 10 * i); await frames(pg); }
+  await pg.mouse.up();
+  await idle(h);
+  const p1 = h.board().place.n0;
+  check("pressRightAfterPan drag by the header moves the card", g.shield && Math.abs(p1.x - p0.x - 80) <= 6 && Math.abs(p1.y - p0.y - 40) <= 6, { ...g, p0, p1 });
+  await back();
+
+  // (Chromium does not give hover to what slides under a still pointer, with or without the shield: it waits for the pointer to move)
+  const e = await panOnto(`${N0} .nbody`);
+  await pg.mouse.move(e.at.x + 2, e.at.y + 1);
+  const hover = await until(h, "hover on the card under the pointer", () => pg.evaluate((sel) => !!document.querySelector(sel)?.matches(":hover"), N0), 2000).catch(() => false);
+  const gone = await pg.evaluate(() => !document.querySelector(".pshield.on"));
+  check("pressRightAfterPan the card under the pointer gets hover at its first move", e.shield && hover && gone, { ...e, hover, gone });
 });
