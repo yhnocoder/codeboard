@@ -441,8 +441,6 @@ input, textarea { font: inherit; color: var(--ink); }
 .sect.sel { border-color: color-mix(in srgb, var(--accent) 70%, transparent); box-shadow: var(--sect-sh), 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent); }
 .sect.drop { border-color: color-mix(in srgb, var(--ink) 42%, transparent); background-color: color-mix(in srgb, var(--ink) 6.5%, transparent); box-shadow: var(--sect-sh), 0 0 0 4px color-mix(in srgb, var(--ink) 7%, transparent); }
 .sect.sel.drop { border-color: color-mix(in srgb, var(--accent) 70%, transparent); }
-/* a card moving into or out of a Section: the frames ease to their new size instead of jumping */
-.sect.moving { transition: border-color .15s var(--out), background-color .15s var(--out), box-shadow .15s var(--out), left .16s var(--out), top .16s var(--out), width .16s var(--out), height .16s var(--out); }
 /* Fit Content: the frame and its title ease to the new rect */
 .sect.fit { transition: left .26s var(--out), top .26s var(--out), width .26s var(--out), height .26s var(--out); }
 .slabel.fit { transition: color .15s var(--out), left .26s var(--out), top .26s var(--out); }
@@ -483,8 +481,6 @@ input, textarea { font: inherit; color: var(--ink); }
 .spv-i .ico { flex: none; width: 13px; height: 13px; color: var(--ink-3); }
 .spv-t { overflow: hidden; text-overflow: ellipsis; }
 .spv-more { padding: 0 6px; color: var(--ink-3); }
-.slabel.moving:not(.collapsed) { transition: color .15s var(--out), left .16s var(--out), top .16s var(--out); }
-
 
 .edge.lc-orange, .ahead.lc-orange { stroke: var(--lk-orange); }
 .edge.lc-blue, .ahead.lc-blue { stroke: var(--lk-blue); }

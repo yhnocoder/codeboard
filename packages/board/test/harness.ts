@@ -318,7 +318,7 @@ export async function idle(h: Host, ms = 5000, frames = 3) {
         anims.length > 0 && `animations: ${anims.map((a) => (a as CSSTransition).transitionProperty ?? (a as CSSAnimation).animationName ?? "?").join(", ")}`,
       ].filter(Boolean);
       let key = world?.style.transform ?? "";
-      for (const el of document.querySelectorAll<HTMLElement>(".card, .carea")) key += "|" + el.style.cssText;
+      for (const el of document.querySelectorAll<HTMLElement>(".card, .carea, .sect, .slabel")) key += "|" + el.style.cssText;
       if (key !== q.key) q.busy.push("cards moving");
       q.n = q.busy.length ? 0 : q.n + 1;
       q.key = key;
