@@ -197,7 +197,7 @@ export type CodeEditorOpts = {
   onChange?: (text: string) => void;
   onBlur?: (e: FocusEvent) => void;
   /** ⌘F 查找、⌥⌘F 替换（ui/find.ts 的查找条，浮在右上角）。Note 里的代码块不要：查的是整篇 Note */
-  find?: { isMac?: boolean };
+  find?: { isMac: boolean };
   /** 额外的按键（优先），比如 Note 里方向键走出代码块 */
   keys?: KeyBinding[];
   /** 自己的撤销（Note 里的代码块用 ProseMirror 的撤销：false） */

@@ -93,7 +93,7 @@
       "files": [
         "packages/board/src/cards/NoteBody.tsx", "packages/board/src/ui/{Md,Editable}.tsx", "packages/board/src/ui/pops/notes.tsx",
         "packages/board/src/md/{lazy,load,refs}.ts", "packages/board/src/actions/notes.ts", "packages/board/src/ui/vscodekeys.ts",
-        "packages/markdown/src/{index,render,schema,selmap,view,diagram,emoji,emoji-data,layout,platform}.ts", "packages/markdown/src/markdown.css",
+        "packages/markdown/src/{index,render,schema,selmap,view,diagram,emoji,emoji-data,layout}.ts", "packages/markdown/src/markdown.css",
         "packages/markdown/src/editor/{index,icons}.tsx",
         "packages/markdown/src/editor/{clipboard,codeblock,codelang,find,ghost,pairs,pastemarks,typora,inline,spans,srcdoc,srcmode,table,visible,widgets}.ts", "packages/markdown/src/ui/**",
         "packages/core/src/complete.ts", "packages/host/src/{deepseek,complete}.ts", "packages/board/test/typing-sequence.json",

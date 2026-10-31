@@ -9,7 +9,6 @@ import type { Node as PMNode } from "@tiptap/pm/model";
 import { TableMap, addColumnAfter, addColumnBefore, addRowAfter, addRowBefore, deleteColumn, deleteRow, deleteTable, isInTable, selectionCell } from "@tiptap/pm/tables";
 import { iconEl, type IconName } from "../ui/icons";
 import { CELL_MIN } from "../layout";
-import { IS_MAC } from "../platform";
 
 type Cmd = (state: EditorState, dispatch?: (tr: Transaction) => void) => boolean;
 
@@ -193,8 +192,8 @@ class TableBar {
   private open: { pos: number } | null = null;
   private pos: number | null = null;
   private frame = 0;
-  constructor(private view: EditorView, isMac: () => boolean | undefined) {
-    const mac = isMac() ?? IS_MAC;
+  constructor(private view: EditorView, isMac: () => boolean) {
+    const mac = isMac();
     const K = (s: string) => (mac ? s : s.replace(/⌘/g, "Ctrl+").replace(/⇧/g, "Shift+").replace(/⌫/g, "Backspace").replace(/↵/g, "Enter"));
     this.bar = document.createElement("div");
     this.bar.className = "mdui pill md-tbar";
@@ -358,7 +357,7 @@ class TableBar {
 }
 
 /** The table node for the editor (column resizing on, cells at least CELL_MIN wide), plus the toolbar and shortcuts */
-export function tableEditing(base: TNode, isMac: () => boolean | undefined): AnyExtension[] {
+export function tableEditing(base: TNode, isMac: () => boolean): AnyExtension[] {
   const node = base.extend({
     addProseMirrorPlugins() {
       // the row handle first: tableEditing's mousedown would otherwise start a cell selection on the same press
