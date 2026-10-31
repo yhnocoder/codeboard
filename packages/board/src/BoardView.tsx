@@ -58,8 +58,8 @@ export function BoardView(p: { children?: JSX.Element }) {
     <div class="app chrome" style={{ "--font": state.host.fontFamily ? `${state.host.fontFamily}, var(--mono0)` : undefined }}>
       <style>{A.libCallCss()}</style>
       <Canvas />
-      {/* 报头 / 海报标题：只有 Newspaper、Poster、Soft Light、Drafting 显示（themes.css），默认 display: none */}
-      <div class="mast" aria-hidden="true"><span class="mn">{state.board.name}</span></div>
+      {/* 报头 / 海报标题：只有部分主题显示（themes.css），默认 display: none。子白板里面包屑已经写着白板名，又占着左上角，不再显示报头 */}
+      <Show when={!crumbs().length}><div class="mast" aria-hidden="true"><span class="mn">{state.board.name}</span></div></Show>
       <Show when={crumbs().length}><Crumbs /></Show>
       <Show when={banner() && A.staleCount() > 0 && !walk()}><Banner /></Show>
       {p.children}

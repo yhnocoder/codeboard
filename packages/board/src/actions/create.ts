@@ -5,7 +5,7 @@ import {
   uid, findCard, isCode, placeCards,
   besideFree, findFree, bounds, removeCards, retargetCards, GAP,
   classifyPaste, guessLang, estSize, defaultWidth, imageScale, BOX_FILLS, NEW_CARD_W,
-  type Board, type Card, type CodeCard, type NoteCard, type NoteLook, type Segment, type Place,
+  type Board, type Card, type CodeCard, type ImageCard, type NoteCard, type NoteLook, type Segment, type Place,
   type NewCard, type Rect,
 } from "@codeboard/core";
 import { state, setState, mutate, createFresh, isFresh, settleFresh, sel, select, cardById, rectOf, toast, placeOf } from "../state/store";
@@ -16,8 +16,9 @@ import { ask } from "../host";
 import { settleHome } from "../state/sections";
 import { hostRect, popCard } from "./common";
 import { fetchMeta, newLinkList } from "./web";
+import { setNoteText } from "./edit";
 import { cleanImage, svgDataUrl } from "../md/images";
-import { texBrackets, undoubleTex } from "@yhnocoder/markdown";
+import { texBrackets, undoubleTex, type DraggedImage } from "@yhnocoder/markdown";
 
 /** 新代码卡按设置默认隐藏注释 / 文档字符串 / 空行（卡上已经有设定的不动） */
 function withDefaults(c: Card): Card {
@@ -124,6 +125,26 @@ export async function addImage(dataUrl: string, name: string, at?: { x: number; 
   const id = uid("i");
   addCards([{ card: { id, kind: "image", src }, views: {}, w }], { at });
   return id;
+}
+/**
+ * An image dragged out of the Note being edited and released on the board: it moves out of the Note into an image card there
+ * (the same file in assets/, its alt text and caption, as wide as it was drawn in the Note). The editor has taken its source
+ * out already: note.md is the Note's text now, note.before the text just before (with what was typed in this edit). The Note
+ * without the image and the new card are one undo step; what was typed before is a step of its own before it. Ends the edit
+ */
+export function dropNoteImage(d: DraggedImage, at: { x: number; y: number }, w: number, note: { id: string; before?: string; md?: string }) {
+  const n0 = cardById(note.id)?.card;
+  if (note.before !== undefined && n0?.kind === "note" && n0.md !== note.before) setNoteText(note.id, note.before);
+  const card: ImageCard = { id: uid("i"), kind: "image", src: d.src.startsWith("assets/") ? d.src.slice(7) : d.src };
+  if (d.alt) card.alt = d.alt;
+  if (d.caption) card.desc = d.caption;
+  addCards([{ card, views: {}, w: w > 0 ? Math.max(MIN_IMAGE_W, Math.round(w)) : NEW_CARD_W }], {
+    at,
+    also: (b) => { const c = findCard(b, note.id)?.card; if (c?.kind === "note" && note.md !== undefined) c.md = note.md; },
+  });
+  const ed = editing();
+  if (ed?.kind === "note" && ed.id === note.id) setEditing(null);
+  return card.id;
 }
 const IMAGE_FILE = /\.(png|jpe?g|gif|webp|svg)$/i;
 const fileUri = (p: string) => { const s = p.replace(/\\/g, "/"); return `file://${s.startsWith("/") ? "" : "/"}${encodeURI(s).replace(/[?#]/g, encodeURIComponent)}`; };

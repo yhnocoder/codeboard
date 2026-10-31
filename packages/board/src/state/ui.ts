@@ -1,6 +1,6 @@
 // 界面状态（不持久化、不进撤销栈）
-import { createSignal, createMemo } from "solid-js";
-import { createStore, reconcile, unwrap } from "solid-js/store";
+import { createSignal, createMemo, untrack } from "solid-js";
+import { createStore } from "solid-js/store";
 import { noteShown, type CodeCard, type Guide, type Link, type Sidenote } from "@codeboard/core";
 import { state } from "./store";
 import { rooted, boardSignal } from "./root";
@@ -104,11 +104,20 @@ export const [hoverVar, setHoverVar] = boardSignal<{ link: string; names: string
 // 新卡弹出动画：id → 起点偏移
 // 存成 store：卡和线只订阅自己那一项，动画每帧只重算正在弹出的卡，而不是整块白板
 export type PopAnim = { ox: number; oy: number; v: number; slide?: boolean };
-const [popStore, setPopStore] = createStore<Record<string, PopAnim>>({});
+const [popStore, setPopStore] = createStore<Record<string, PopAnim | undefined>>({});
 export const popIn = () => popStore;
-export function setPopIn(f: (p: Record<string, PopAnim>) => Record<string, PopAnim>) {
-  setPopStore(reconcile(f({ ...unwrap(popStore) })));
+/** 一张卡这一帧的动画（undefined = 动完了）。起点没变时只写进度：每帧不用把整个表比一遍，也不换掉那一项 */
+export function setPopIn(id: string, a: PopAnim | undefined) {
+  const cur = untrack(() => popStore[id]);
+  if (a && cur && cur.ox === a.ox && cur.oy === a.oy && !!cur.slide === !!a.slide) setPopStore(id, "v", a.v);
+  else setPopStore(id, a);
 }
+// 展开、折叠 Section 时成员卡分几帧建、拆（actions/edit.ts 的 toggleSection）：一次建好、拆掉十几张代码卡要 50–100ms，那一帧卡住。
+// "in" = 藏着（在折叠的 Section 里）也先建着（透明：弹出动画停在开头 / 收完的那一帧）；"out" = 不藏也先不建（离屏幕很远、反正看不见的卡，动画完了再建）
+export type Staged = "in" | "out";
+const [stagedStore, setStagedStore] = createStore<Record<string, Staged | undefined>>({});
+export const staged = (id: string) => stagedStore[id];
+export const setStaged = (id: string, s: Staged | undefined) => setStagedStore(id, s);
 // 卡的大小变过去的动画（Fit Content）：id → 这一帧画出来的宽、高（高是存着高度的那一块：代码卡的内容区，别的卡整张）。
 // 白板里已经是新的大小；同样存成 store，每帧只重算在变的卡
 export type SizeAnim = { w: number; h: number };

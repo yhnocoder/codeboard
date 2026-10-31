@@ -362,6 +362,8 @@ test("subboardEnterLeaveMorph", async () => {
         from: !!firstGhost && Math.abs(firstGhost.y - tb.y) < 24 && Math.abs(firstGhost.x - tb.x) < 30,
         to: f.some((x) => !!x.ghost && Math.abs(x.ghost.x - cur.x) < 4 && Math.abs(x.ghost.y - cur.y) < 4),
         settled: (await page.evaluate(() => [+getComputedStyle(document.querySelector(".world")!).opacity, !!document.querySelector(".sbmorph")])).join(),
+        // the breadcrumb already names the board and sits where the masthead would be
+        noMast: (await page.locator(".mast").count()) === 0,
       };
       if (how === "Escape") await shotPr(h, "subboardcard-entered");
       n = t.inits.length;
@@ -376,11 +378,12 @@ test("subboardEnterLeaveMorph", async () => {
         ghost: g.some((x) => x.ghost?.text === "异构数据并行计算"), faded: Math.min(...g.map((x) => x.op)) < 0.5,
         lands: g.some((x) => !!x.ghost && Math.abs(x.ghost.x - tb2.x) < 12 && Math.abs(x.ghost.y - tb2.y) < 12), camera: (await cam()) === c0,
         titleShown: await title.evaluate((e) => getComputedStyle(e).visibility === "visible"),
+        mast: (await page.locator(".mast").count()) === 1,
       };
     }
     return (["Escape", "crumb", "back"] as const).every((k) => {
       const i = res[`in-${k}`] as Record<string, unknown>, o = res[`out-${k}`] as Record<string, unknown>;
-      return i.cameraStill && i.faded && i.ghost === "异构数据并行计算" && i.from && i.to && i.settled === "1,false" && o.ghost && o.faded && o.lands && o.camera && o.titleShown;
+      return i.cameraStill && i.faded && i.ghost === "异构数据并行计算" && i.from && i.to && i.settled === "1,false" && i.noMast && o.ghost && o.faded && o.lands && o.camera && o.titleShown && o.mast;
     });
   });
   // a picture half way through entering (played 8× slower)

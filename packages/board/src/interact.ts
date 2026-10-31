@@ -8,8 +8,8 @@ import {
 import { tune } from "./state/tune";
 import { WHEEL_GESTURE, BLOCK_GLIDE } from "./state/timing";
 import { cam, setCam, stopCam, camTo, fling, toWorld, view, ZMIN, ZMAX, lod, reduceMotion } from "./state/camera";
-import { setGuides, setSizeHint, setDropTarget, dropTarget, setDragging, setMarquee, setRubber, setEditing, editing, setEditEntry, type NoteSpot } from "./state/ui";
-import { staticTextRange } from "@yhnocoder/markdown";
+import { setGuides, setSizeHint, setDropTarget, dropTarget, setDragging, setMarquee, setRubber, setEditing, editing, setEditEntry, liveNoteMd, type NoteSpot } from "./state/ui";
+import { staticTextRange, draggedImage, IMAGE_DRAG_TYPE, type DraggedImage } from "@yhnocoder/markdown";
 import { frames, deepestAt, hiddenByAncestor, homeFor, partlyIn, frameOf, sec, descSections, allMembers, visibleCards, setMovingHome } from "./state/sections";
 import { geo } from "./state/geo";
 import { aimBlock, aimPoint, blockOf, tintBlocks, type BlockAim } from "./state/blocks";
@@ -822,9 +822,41 @@ export function installKeys() {
   // webview wrapper cancels every dragover and drop on this window, before the board's own listeners run: listen on the document,
   // which the drop passes first, so defaultPrevented still says only whether a Note being edited took it
   const FILE_TYPES = ["Files", "text/uri-list", "application/vnd.code.uri-list", "resourceurls", "codefiles"];
-  document.addEventListener("dragover", (e) => { if (e.dataTransfer?.types.some((t) => FILE_TYPES.includes(t))) e.preventDefault(); });
+  // An image dragged in a Note being edited: released in that editor, the editor moves it there; anywhere else on the board but
+  // that Note it moves out of the Note into an image card there (the drop says "move", the editor then takes its source out,
+  // and at the drag's end the board makes both one change). Which Note and how wide the image is drawn are read when it starts
+  let outOf: { card: string; w: number; drop?: { img: DraggedImage; at: { x: number; y: number }; before?: string } } | null = null;
+  const fromNote = (e: DragEvent) => (e.target instanceof Element ? e.target.closest<HTMLElement>(".card[data-id]")?.dataset.id : undefined) === outOf?.card;
+  document.addEventListener("dragstart", (e) => {
+    const t = e.target instanceof Element ? e.target : null, card = t?.closest<HTMLElement>(".card[data-id]");
+    const img = t?.querySelector("img") ?? t?.closest("img");
+    outOf = card && img && draggedImage(e.dataTransfer) ? { card: card.dataset.id!, w: img.getBoundingClientRect().width / cam.z } : null;
+  });
+  // after the editor's own dragend (on the image, before this one): its source is out of the editor's text by now
+  document.addEventListener("dragend", () => {
+    const o = outOf;
+    outOf = null;
+    if (o?.drop) A.dropNoteImage(o.drop.img, o.drop.at, o.w, { id: o.card, before: o.drop.before, md: liveNoteMd(o.card) });
+  });
+  document.addEventListener("dragover", (e) => {
+    const dt = e.dataTransfer;
+    if (!dt || e.defaultPrevented) return; // an editor under the pointer took it
+    if (outOf && dt.types.includes(IMAGE_DRAG_TYPE)) {
+      if (fromNote(e)) { dt.dropEffect = "none"; return; } // back on its own Note, outside the text: refused, nothing changes
+      e.preventDefault();
+      dt.dropEffect = "move";
+      return;
+    }
+    if (dt.types.some((t) => FILE_TYPES.includes(t))) e.preventDefault();
+  });
   document.addEventListener("drop", (e) => {
     if (e.defaultPrevented || !e.dataTransfer) return;
+    const img = outOf && !fromNote(e) && draggedImage(e.dataTransfer);
+    if (img) {
+      e.preventDefault();
+      outOf!.drop = { img, at: worldOf(e), before: liveNoteMd(outOf!.card) };
+      return;
+    }
     if (A.dropFiles(e.dataTransfer, worldOf(e))) e.preventDefault();
   });
 }

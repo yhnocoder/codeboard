@@ -1,7 +1,7 @@
 // 走线规则见 route.ts。每条线按条建 memo，只在它两端的卡变了时重算：
 // base（两端的矩形和行的 y）→ sides（走哪一侧，带缓冲）→ ends（端点，换边时滑过去）→ geo（路径、箭头）。
 // 汇到同一处（同一张卡的卡头 / 同一行、同一侧）的几条线：合并点到终点的那一小段和箭头只画一次（<g class="merge">）。
-import { Show, batch, createEffect, createMemo, createRenderEffect, createSelector, createSignal, mapArray, on, onCleanup, type Accessor } from "solid-js";
+import { Show, createComputed, createEffect, createMemo, createRenderEffect, createSignal, mapArray, on, onCleanup, untrack, type Accessor, type Signal } from "solid-js";
 import { headOf, type Link, type LinkSide, type Rect } from "@codeboard/core";
 import { state, sel, select, rectOf, cardById, hostOf, collapsedAway, placeOf, placed, live, beginGesture } from "../state/store";
 import { geo, lineY, setCurveSource, HEAD_H } from "../state/geo";
@@ -9,8 +9,9 @@ import { blockY, hoverBlock, keepBlock, leaveBlock, watchBlockHover } from "../s
 import { portStyle } from "../state/hover";
 import { frames, collapsedHome } from "../state/sections";
 import { dragLink, setDragLink, rubber, popIn } from "../state/ui";
+import { foldAt, foldHome, foldOf, frameAt, lerp, linkFadeAt, type Fold } from "../state/fold";
 import { hoverLink, hoverCard, enterLink, leaveLink, watchHover } from "../state/hover";
-import { cam, toWorld, stillZ, lod, reduceMotion } from "../state/camera";
+import { cam, toWorld, stillZ, lod, reduceMotion, animate, frameTime } from "../state/camera";
 import { lodOf } from "../state/lodcards";
 import { boardOffset } from "../state/measure";
 import { shape, fileHue, look } from "../state/look";
@@ -25,10 +26,26 @@ import { chooseMode, sidesOf, anchorOn, turnAnchor, slide, connect, selfArc, gut
 import { handLine } from "./hand";
 import { carAt, type CarPose, type Road } from "./city";
 import { Car, Lane, trackTraffic } from "./Traffic";
-import { rooted } from "../state/root";
 import { tiltOf } from "../state/tilt";
 
 import { clamp } from "./geom";
+
+const popOf = (host: string) => popIn()[host];
+/** 两端都在同一个正在折叠、展开的 Section 里的线：那个 Section（这条线不重新走线，整条跟着卡缩放，Links 的 foldLink） */
+function innerFold(L: Link): string | undefined {
+  const a = foldHome(hostOf(L.from.card));
+  return a && a === foldHome(hostOf(L.to.card)) ? a : undefined;
+}
+/** 折叠、展开中，外面连进来的线在成员卡这一端落在哪：先从卡边滑到 Section 框的边上（v 从 0.95 到 0.7，开始折叠后很快），贴着框跟框一起收；
+ *  端点的高度平滑地滑到标题那一行（smoothstep）。v = 0 时就是折叠后的框（落在标题那一行），和折叠后连在 Section 上的线一样。
+ *  两头都是平的（v 在 0.95 以上就在卡边上）：弹簧停下时差的那一点点不会被放大成终点的一跳 */
+const smooth = (a: number, b: number, v: number) => { const t = Math.max(0, Math.min(1, (v - a) / (b - a))); return t * t * (3 - 2 * t); };
+function foldBox(f: Fold, r: Rect): Rect {
+  const F = frameAt(f), k = smooth(0.7, 0.95, f.v);
+  const x = lerp(F.x, r.x, k), y = lerp(F.y, r.y, k);
+  return { x, y, w: lerp(F.x + F.w, r.x + r.w, k) - x, h: lerp(F.y + F.h, r.y + r.h, k) - y };
+}
+const foldY = (f: Fold, y: number) => lerp(f.shut.y + f.shut.h / 2, y, smooth(0, 1, f.v));
 
 /** 在折叠的 Section 里时是那个标题条 */
 function endRect(id: string): { r: Rect; pill: boolean } | null {
@@ -37,7 +54,7 @@ function endRect(id: string): { r: Rect; pill: boolean } | null {
   const home = collapsedHome(placeOf(f.host.id).section);
   if (home) { const r = frames().get(home.id); return r ? { r, pill: true } : null; }
   const r = rectOf(f.host);
-  const pi = popIn()[f.host.id];
+  const pi = popOf(f.host.id);
   const base = pi ? { ...r, x: r.x + (1 - pi.v) * pi.ox, y: r.y + (1 - pi.v) * pi.oy } : r;
   const g = geo[id];
   if (f.host.id !== id && g?.colX !== undefined) return { r: { x: base.x + g.colX, y: base.y, w: g.colW ?? base.w / 2, h: base.h }, pill: false };
@@ -61,7 +78,8 @@ const subEnd = (e: Link["from"]) => e.line !== undefined || !!e.block;
 /** 行端、块端的那张卡在地图档（看不到行和块）：端点落到卡头 */
 const mapHides = (e: Link["from"]) => { if (!subEnd(e)) return false; const f = cardById(e.card); return !!f && lodOf(f.host.id) === "map"; };
 
-function endOf(e: Link["from"]): End | null {
+/** moving：这一端的卡在正在折叠、展开的 Section 里时跟着动（外面连进来的线；两端都在里面的线整条缩放，不动端点） */
+function endOf(e: Link["from"], moving = true): End | null {
   const er = endRect(e.card);
   if (!er) return null;
   const f = cardById(e.card)!;
@@ -78,18 +96,23 @@ function endOf(e: Link["from"]): End | null {
   else if (line && !er.pill) {
     const p = lineY(e.card, e.seg, e.line);
     const row = p?.row !== undefined ? geo[e.card]?.rows[p.row] : undefined;
-    if (p && row?.t === "line" && row.line === e.line) { const pi = popIn()[f.host.id]; y = p.y + (pi ? (1 - pi.v) * pi.oy : 0); }
+    if (p && row?.t === "line" && row.line === e.line) { const pi = popOf(f.host.id); y = p.y + (pi ? (1 - pi.v) * pi.oy : 0); }
   }
   let col: End["col"];
   const g = geo[e.card];
   if (!er.pill && f.host.id !== e.card && g?.colX !== undefined && (g.colW ?? 0) < rectOf(f.host).w - 1) col = g.colX > 1 ? "right" : "left";
   let outer = r;
-  if (col) { const h = rectOf(f.host), pi = popIn()[f.host.id]; outer = pi ? { ...h, x: h.x + (1 - pi.v) * pi.ox, y: h.y + (1 - pi.v) * pi.oy } : h; }
+  if (col) { const h = rectOf(f.host), pi = popOf(f.host.id); outer = pi ? { ...h, x: h.x + (1 - pi.v) * pi.ox, y: h.y + (1 - pi.v) * pi.oy } : h; }
+  const fo = moving ? foldAt(f.host.id) : undefined;
+  if (fo) { const b = foldBox(fo, r); return { box: b, outer: col ? foldBox(fo, outer) : b, line, y: foldY(fo, y), hy: foldY(fo, hy), col, host: f.host.id, card: e.card, pill: er.pill }; }
   return { box: r, outer, line, y, hy, col, host: f.host.id, card: e.card, pill: er.pill };
 }
 
 function baseOf(L: Link): Base | null {
-  const a = endOf(L.from), b = endOf(L.to);
+  const still = !innerFold(L);
+  return baseFrom(endOf(L.from, still), endOf(L.to, still));
+}
+function baseFrom(a: End | null, b: End | null): Base | null {
   if (!a || !b) return null;
   if (a.host === b.host && !a.pill) {
     // 同一张 Compare 的两栏之间、行对行：中缝的对照线
@@ -198,17 +221,22 @@ type Route = {
 };
 const routes = new Map<string, Route>();
 
-// 换边时端点滑过去：只有正在换边的那几条线跟着 rAF 重算，别的线不动
+// 换边时端点滑过去：只有正在换边的那几条线每帧重算，别的线不动。
+// 和卡的弹出、收进 Section 在同一个 animate 的同一批里：一端在动的线又在换边时，一帧只重算一遍（单独一个 rAF 时要两遍）
 const sliding = new Map<string, (t: number) => void>();
-let slideRaf = 0;
-function tickSlides(now: number) {
-  slideRaf = 0;
-  batch(() => { for (const f of [...sliding.values()]) f(now); });
-  if (sliding.size) slideRaf = requestAnimationFrame(tickSlides);
+let slideOn = false;
+function tickSlides() {
+  const now = frameTime();
+  for (const f of [...sliding.values()]) f(now);
+  slideOn = sliding.size > 0;
+  return !slideOn;
 }
 
 function makeRoute(L: Link): Route {
-  const base = createMemo(() => baseOf(L));
+  // 两端各一个 memo：一端的卡在动（收进 Section）时，另一端不用每帧重算
+  const still = createMemo(() => !innerFold(L));
+  const ea = createMemo(() => endOf(L.from, still())), eb = createMemo(() => endOf(L.to, still()));
+  const base = createMemo(() => baseFrom(ea(), eb()));
   // 卡的缩放分档一批批换（lodcards.ts）：只有进出地图档会挪行端（落到卡头）。每端一个布尔 memo，只接到 ends 上：
   // 别的换档不碰这条线，进出地图档也只重算端点和路径，两端的矩形、走哪一侧（base / sides）不重算
   const mapA = createMemo(() => mapHides(L.from)), mapB = createMemo(() => mapHides(L.to));
@@ -227,9 +255,17 @@ function makeRoute(L: Link): Route {
       const p = Math.min(1, (t - t0) / dur);
       if (p >= 1) { sliding.delete(L.id); setSl(null); } else setSl({ from, p: 1 - (1 - p) ** 3 });
     });
-    if (!slideRaf) slideRaf = requestAnimationFrame(tickSlides);
+    if (!slideOn) { slideOn = true; animate(tickSlides); }
   }, { defer: true }));
   onCleanup(() => { sliding.delete(L.id); modes.delete(L.id); });
+  createComputed(() => {
+    const s = sides();
+    if (!s) return;
+    const [a, b] = s.split("|");
+    const ks = [...(!subEnd(L.from) ? [`${L.from.card}|${a}`] : []), ...(!subEnd(L.to) ? [`${L.to.card}|${b}`] : [])];
+    untrack(() => land(ks, 1));
+    onCleanup(() => untrack(() => land(ks, -1)));
+  });
   const ends = createMemo<[Anchor, Anchor] | null>(() => {
     const bs = base(), s = sides();
     if (!bs || !s) return null;
@@ -304,27 +340,18 @@ function portDrag(e: PointerEvent, id: string) {
   window.addEventListener("pointerup", up);
 }
 
-/** 画着的线的走线状态（City 的车流要读） */
-const [roads, setRoads] = createSignal<Accessor<Route[]>>(() => []);
-
 /**
  * 卡端（不连行）落在哪张卡的哪一边：「卡 id|边」。那一边的圆点（.eport）就不画了，线头已经标出那个位置（圆点盖在箭头上很难看），
- * 鼠标移上去照样能拖。只读每条线的 sides memo：拖卡片时不重算，只在换边、增删线时变；createSelector 只通知结果变了的那几个圆点
+ * 鼠标移上去照样能拖。每条画着的线自己记下它落在哪（makeRoute），只在它换边、改端点时增减，每个「卡|边」一个信号：
+ * 卡在动（弹出、收进 Section）时几乎每帧都有线换边，不能每次都把所有线扫一遍
  */
-export const landed = rooted(() => {
-  const keys = createMemo(() => {
-    const out = new Set<string>();
-    for (const r of roads()()) {
-      const s = r.sides();
-      if (!s) continue;
-      const [a, b] = s.split("|");
-      if (!subEnd(r.L.from)) out.add(`${r.L.from.card}|${a}`);
-      if (!subEnd(r.L.to)) out.add(`${r.L.to.card}|${b}`);
-    }
-    return out;
-  }, new Set<string>(), { equals: (x, y) => x.size === y.size && [...x].every((k) => y.has(k)) });
-  return createSelector(keys, (k: string, set) => set.has(k));
-});
+const landN = new Map<string, number>();
+const landSig = new Map<string, Signal<boolean>>();
+const landOf = (k: string) => { let q = landSig.get(k); if (!q) landSig.set(k, (q = createSignal(false))); return q; };
+function land(ks: string[], d: 1 | -1) {
+  for (const k of ks) { const n = (landN.get(k) ?? 0) + d; if (n) landN.set(k, n); else landN.delete(k); landOf(k)[1](n > 0); }
+}
+export const landed = (k: string) => landOf(k)[0]();
 
 // ---------- 图层 ----------
 // 所有的线画在所有卡下面那一层（BOTTOM，Section 框上面、第一张卡前面），全白板共用一个 SVG：卡盖得住线，线不压任何卡。
@@ -411,7 +438,6 @@ export function trackLinks() {
     onCleanup(() => { if (r.geo === g) r.geo = undefined; dom.line.remove(); dom.casing.remove(); dom.kerb.remove(); dom.port?.remove(); dom.label?.remove(); });
     return r;
   }));
-  setRoads(() => views);
   const mviews = createMemo(mapArray(() => (merges() ? merges().split("\n") : []), (key) => {
     const st = stubOf(key, groups, byId);
     const dom = mergeDom(key, st, city);
@@ -578,14 +604,18 @@ const isOn = (id: string) => sel.links.includes(id) || hoverLink() === id || isB
 function linkDom(r: Route, g: Accessor<Geo | null>, merged: Accessor<boolean>, city: () => boolean): Dom {
   const L = r.L;
   const on = () => isOn(L.id);
-  const toHue = () => { const t = cardById(L.to.card)?.card; return t?.kind === "code" ? fileHue(t.segments[0]?.path) : 0; };
+  // class 都做成 memo：一端的卡在动时线每帧都要重画，路径变了 class 没变，不用每帧重新拼一遍
+  const toHue = createMemo(() => { const t = cardById(L.to.card)?.card; return t?.kind === "code" ? fileHue(t.segments[0]?.path) : 0; });
   // 证据（manual 虚线、observed 绿）、Generated from（点线）：同一层，只换样式
   // RPC（跨进程）：点划线；↩ back to：淡一点
-  const hand = () => handOf(L);
-  const style = () => `${hand() ? ` hand hc-${hand()}` : colorCls(L)}${widthCls(L)}${L.call?.ev ? ` ev-${L.call.ev.kind}` : ""}${L.gen ? " gen" : ""}${L.rpc ? " rpc" : ""}${L.back ? " back" : ""}`;
-  const gutter = () => r.base()?.kind === "gutter";
+  const hand = createMemo(() => handOf(L));
+  const style = createMemo(() => `${hand() ? ` hand hc-${hand()}` : colorCls(L)}${widthCls(L)}${L.call?.ev ? ` ev-${L.call.ev.kind}` : ""}${L.gen ? " gen" : ""}${L.rpc ? " rpc" : ""}${L.back ? " back" : ""}`);
+  const gutter = createMemo(() => r.base()?.kind === "gutter");
   const road: Road = L.call ? "main" : "street";
-  const cls = () => `edge${L.call ? "" : " plain"}${L.style?.dash ? " dashed" : ""}${style()}${L.lost ? " lost" : ""}${gutter() ? " cmpline" : ""}${on() ? " on" : ""}`;
+  const cls = createMemo(() => `edge${L.call ? "" : " plain"}${L.style?.dash ? " dashed" : ""}${style()}${L.lost ? " lost" : ""}${gutter() ? " cmpline" : ""}${on() ? " on" : ""}`);
+  const headCls = createMemo(() => `ahead end ${hand() ? "chevron" : shape().head}${style()}${L.lost?.to ? " lost" : ""}${on() ? " on" : ""}`);
+  const tailCls = createMemo(() => `ahead start ${hand() ? "chevron" : shape().head}${style()}${L.lost?.from ? " lost" : ""}${on() ? " on" : ""}`);
+  const portCls = createMemo(() => `port fc-${toHue()}${L.lost?.from ? " lost" : ""}`);
   const line = (
     <g>
       <Show when={g()}>
@@ -593,8 +623,8 @@ function linkDom(r: Route, g: Accessor<Geo | null>, merged: Accessor<boolean>, c
           <path class={cls()} d={g()!.d} />
           <Show when={g()!.d2}><path class={`${cls()} p2`} d={g()!.d2} /></Show>
           <Show when={city() && !gutter() && !hand()}><Lane d={g()!.d} road={road} s={headScale(L)} start={!!g()!.tail} end={!!g()!.head} /></Show>
-          <Show when={g()!.head}><Head cls={`ahead end ${hand() ? "chevron" : shape().head}${style()}${L.lost?.to ? " lost" : ""}${on() ? " on" : ""}`} d={g()!.head!} road={road} hand={!!hand()} /></Show>
-          <Show when={g()!.tail}><Head cls={`ahead start ${hand() ? "chevron" : shape().head}${style()}${L.lost?.from ? " lost" : ""}${on() ? " on" : ""}`} d={g()!.tail!} road={road} hand={!!hand()} /></Show>
+          <Show when={g()!.head}><Head cls={headCls()} d={g()!.head!} road={road} hand={!!hand()} /></Show>
+          <Show when={g()!.tail}><Head cls={tailCls()} d={g()!.tail!} road={road} hand={!!hand()} /></Show>
           <path class="lhit" data-link={L.id} d={g()!.d} ref={hitWidth}
             onPointerEnter={() => enterLink(L.id)} onPointerLeave={leaveLink}
             onPointerDown={(e) => { if (e.button !== 0) return; e.stopPropagation(); e.preventDefault(); if (isDbl(`l${L.id}`, e)) return A.setLinkEditing(L.id); select({ links: [L.id] }, e.shiftKey); }} />
@@ -606,7 +636,7 @@ function linkDom(r: Route, g: Accessor<Geo | null>, merged: Accessor<boolean>, c
   const port = (
     <g data-lk={L.id}>
       <Show when={g()}>
-        <Show when={g()!.port}><path class={`port fc-${toHue()}${L.lost?.from ? " lost" : ""}`} data-x={g()!.port!.x} d={portPath(g()!.port!.x, g()!.port!.y)} />
+        <Show when={g()!.port}><path class={portCls()} data-x={g()!.port!.x} d={portPath(g()!.port!.x, g()!.port!.y)} />
           <Show when={on() && subEnd(L.from) && r.base()?.kind === "normal"}><circle class="porthit" data-export="strip" onPointerEnter={() => enterLink(L.id)} onPointerLeave={leaveLink} data-tip="Drag to the other end of the line" r={7 / stillZ()} cx={g()!.port!.x} cy={g()!.port!.y} onPointerDown={(e) => portDrag(e, L.id)} /></Show></Show>
         <Show when={g()!.port2}><path class={`port fc-${toHue()}`} d={portPath(g()!.port2!.x, g()!.port2!.y)} /></Show>
       </Show>
@@ -615,6 +645,7 @@ function linkDom(r: Route, g: Accessor<Geo | null>, merged: Accessor<boolean>, c
   const casing = <g><Show when={city() && !gutter() && !hand() && g()}>{(gg) => <path class={`casing${L.call ? "" : " plain"}${widthCls(L)}`} d={gg().d} />}</Show></g> as SVGGElement;
   const kerb = <g><Show when={city() && L.call && !gutter() && !hand() && g()}>{(gg) => <path class={`kerb${widthCls(L)}`} d={gg().d} />}</Show></g> as SVGGElement;
   const label = <div class="lw"><LinkLabel L={L} g={g} /><LinkStickers link={L.id} /></div> as HTMLDivElement;
+  foldLink([line, casing, kerb, port], label, createMemo(() => innerFold(L)));
   return { line, casing, kerb, port, label };
 }
 
@@ -639,10 +670,41 @@ function stubOf(key: string, groups: Accessor<Map<string, Link[]>>, byId: Access
 }
 type Stub = ReturnType<typeof stubOf>;
 
+/**
+ * 两端都在正在折叠、展开的 Section 里的线：不重新走线，整条跟着卡一起朝标题中间缩放（同一个变换，p → t + v·(p − t)），
+ * v 从 0.85 到 0.45 淡掉。每帧只写 transform 属性和透明度
+ */
+function foldLink(els: SVGGElement[], label: HTMLElement | undefined, sid: Accessor<string | undefined>) {
+  // 标签框里面要淡掉的元素：动画开始时找一次
+  let parts: HTMLElement[] | null = null;
+  createRenderEffect(() => {
+    const s = sid(), f = s ? foldOf(s) : undefined;
+    if (!f) {
+      for (const el of els) { el.removeAttribute("transform"); el.style.removeProperty("opacity"); }
+      if (parts) { for (const k of parts) k.style.removeProperty("opacity"); parts = null; }
+      return;
+    }
+    const m = `matrix(${f.v} 0 0 ${f.v} ${(1 - f.v) * f.tx} ${(1 - f.v) * f.ty})`, o = String(linkFadeAt(f));
+    // 空着的（不是 City 时的路沿、白边线）不写；淡没了以后不再每帧写
+    for (const el of els) if (el.firstChild && !(o === "0" && el.style.opacity === "0")) { el.setAttribute("transform", m); el.style.opacity = o; }
+    // 标签不跟着缩放（量好的标签框不重排），比线早一点淡掉。透明度写在标签框里面的元素上（外面那层是 display: contents）
+    if (label) {
+      parts ??= [...label.querySelectorAll<HTMLElement>(":scope > :not(.lw), :scope > .lw > *")];
+      const o = String(Math.max(0, Math.min(1, (f.v - 0.7) / 0.2)));
+      for (const k of parts) if (k.style.opacity !== o) k.style.opacity = o;
+    }
+  });
+}
+
 function mergeDom(key: string, st: Stub, city: () => boolean): Dom {
   const casing = <g><Show when={city() && st.g()}><path class={`casing${st.members().every((L) => !L.call) ? " plain" : ""}`} d={st.g()!.d} /></Show></g> as SVGGElement;
   const kerb = <g><Show when={city() && st.g() && st.members().some((L) => L.call)}><path class="kerb" d={st.g()!.d} /></Show></g> as SVGGElement;
-  return { line: <g><Merge key={key} st={st} /></g> as SVGGElement, casing, kerb };
+  const line = <g><Merge key={key} st={st} /></g> as SVGGElement;
+  foldLink([line, casing, kerb], undefined, createMemo(() => {
+    const ss = st.members().map(innerFold);
+    return ss.length && ss.every((x) => x && x === ss[0]) ? ss[0] : undefined;
+  }));
+  return { line, casing, kerb };
 }
 
 function Merge(p: { key: string; st: Stub }) {

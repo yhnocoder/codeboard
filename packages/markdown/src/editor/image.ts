@@ -67,6 +67,9 @@ export function insertImageUrl(editor: Editor, save: SaveImage, dataUrl: string,
   });
 }
 
+/** Transaction meta: an image's source taken out because the image was dragged out of the editor (widgets.ts dragEnd) */
+export const DRAGGED_OUT = "imageDraggedOut";
+
 /** A paragraph holding only images (and line breaks): what is left empty after its image is dragged away */
 const imageOnly = (p: PMNode) => {
   const t = p.textContent;
@@ -83,9 +86,10 @@ export function imageEditing(base: TNode, editor: () => Editor, save: () => Save
     addProseMirrorPlugins() {
       return [...(this.parent?.() ?? []), new Plugin({
         key: new PluginKey("cbImage"),
-        // An image dragged out of a paragraph of its own leaves it empty: take that paragraph away too, in the same undo step
+        // An image dragged out of a paragraph of its own (to elsewhere in the editor, or out of it) leaves it empty: take that
+        // paragraph away too, in the same undo step
         appendTransaction: (trs, old, now) => {
-          if (!trs.some((t) => t.docChanged && t.getMeta("uiEvent") === "drop")) return null;
+          if (!trs.some((t) => t.docChanged && (t.getMeta("uiEvent") === "drop" || t.getMeta(DRAGGED_OUT)))) return null;
           const map = new Mapping(trs.flatMap((t) => t.mapping.maps));
           const empty: number[] = [];
           old.doc.descendants((n, pos) => {

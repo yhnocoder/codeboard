@@ -1,6 +1,7 @@
 // Section 的实际框：自己存的框 ∪ 成员卡（含边距）∪ 子 Section（core layout.sectionFrame，和子白板骨架同一套算法），框随内容自动撑大，也能拖边改大。
 // 拖动中先预演（setMovingHome）：卡离开的 Section 回到没有它的框，要进的撑开、亮起来（.drop），松手时才真的改 place.section。
 import { batch, createComputed, createMemo, createSignal, mapArray, on, untrack, type Signal } from "solid-js";
+import { createStore } from "solid-js/store";
 import { sectionFrame, sectionFit, sectionPill, estSize, type Board, type Rect, type Section } from "@codeboard/core";
 import { state, rectOf, placed, hostOf, collapsedAway } from "./store";
 import { rooted, boardSignal, onBoardSwitch } from "./root";
@@ -52,16 +53,47 @@ export const allMembers = (id: string) => {
   return placed().filter((c) => { const s = state.board.place[c.id]?.section; return !!s && ids.has(s); });
 };
 
+// 折叠的 Section 还是一个 Section 的框，只是缩到刚好包住标题（标题在框里的位置和展开时一样）：框的大小、标题文字的中间
+// 按标题量（canvas/Sections.tsx 在标题显示「· N cards」时量，折叠动画开始时也量一次）。相对框的左上角
+export type Shut = { w: number; h: number; tx: number; ty: number };
+const [shutStore, setShutStore] = createStore<Record<string, Shut | undefined>>({});
+/** 标题右边到框的右边 */
+const SHUT_PAD_R = 8;
+const labelEls = new Map<string, HTMLElement>();
+/** canvas/Sections.tsx：这个 Section 的标题元素（拆掉时 undefined） */
+export function setLabelEl(id: string, el: HTMLElement | undefined) { if (el) labelEls.set(id, el); else if (labelEls.has(id)) labelEls.delete(id); }
+/** 量一下折叠后的框（标题这时要显示着折叠的样子）。量不到（标题不在页面上）时是上一次量的 */
+export function measureShut(id: string): Shut | undefined {
+  const el = labelEls.get(id), nm = el?.querySelector<HTMLElement>(".sname");
+  if (!el || !nm || !el.isConnected) return untrack(() => shutStore[id]);
+  // 标题的 left / top 就是框的左上角，offsetLeft / offsetTop 多出来的是标题的外边距（都是世界坐标，不受镜头缩放影响）
+  const l = el.offsetLeft - parseFloat(el.style.left), t = el.offsetTop - parseFloat(el.style.top);
+  const m: Shut = { w: Math.ceil(l + el.offsetWidth + SHUT_PAD_R), h: Math.ceil(2 * t + el.offsetHeight), tx: l + nm.offsetLeft + nm.offsetWidth / 2, ty: t + nm.offsetTop + nm.offsetHeight / 2 };
+  const o = untrack(() => shutStore[id]);
+  if (!o || o.w !== m.w || o.h !== m.h || o.tx !== m.tx || o.ty !== m.ty) setShutStore(id, m);
+  return m;
+}
+/** 折叠的 Section 的框：刚好包住标题；还没量过时是 core 的标题条大小 */
+export function pillOf(s: Section): Rect {
+  const m = shutStore[s.id];
+  return m ? { x: s.x, y: s.y, w: m.w, h: m.h } : sectionPill(s);
+}
+/** 卡 / 子 Section（在 sectionId 里）在 top 展开时看得见：中间隔着的 Section 都没折叠 */
+export function openUnder(sectionId: string | undefined, top: string): boolean {
+  for (let q = sec(sectionId), i = 0; q && q.id !== top && i < 50; q = sec(q.parent), i++) if (q.collapsed) return false;
+  return true;
+}
+
 /** 展开着的 Section 的框（世界坐标）；skip = 拖动中的卡不算 */
 export function frameOf(s: Section, skip?: Set<string>, seen = new Set<string>()): Rect {
   if (seen.has(s.id)) return { x: s.x, y: s.y, w: s.w, h: s.h };
   seen.add(s.id);
   const cards = directMembers(s.id).filter((c) => !skip?.has(c.id)).map(rectOf);
-  return sectionFrame(s, [...cards, ...childrenOf(s.id).map((ch) => (ch.collapsed ? sectionPill(ch) : frameOf(ch, skip, seen)))]);
+  return sectionFrame(s, [...cards, ...childrenOf(s.id).map((ch) => (ch.collapsed ? pillOf(ch) : frameOf(ch, skip, seen)))]);
 }
 /** Fit Content 的框：刚好包住直属卡和子 Section（各加边距）；里面没东西 = undefined */
 export function fitFrame(s: Section): Rect | undefined {
-  return sectionFit([...directMembers(s.id).map(rectOf), ...childrenOf(s.id).map((ch) => (ch.collapsed ? sectionPill(ch) : frameOf(ch)))]);
+  return sectionFit([...directMembers(s.id).map(rectOf), ...childrenOf(s.id).map((ch) => (ch.collapsed ? pillOf(ch) : frameOf(ch)))]);
 }
 /** 正在缓动到新框的 Section（Fit Content）：框和标签这一会儿带 transition（.fit） */
 const [fitting, setFitting] = createSignal<ReadonlySet<string>>(new Set());
@@ -71,7 +103,7 @@ export { fitting, setFitting };
 // 子 Section 的 memo 还没建好（或者父子关系成了环，不该发生）时退回它自己存的框
 const frameMemos = rooted(() => mapArray(() => state.board.sections, (s) => [s.id, createMemo<Rect | undefined>(() => sectionFrame(s, [
   ...directMembers(s.id).map(rectOf),
-  ...childrenOf(s.id).map((ch): Rect => (ch.collapsed ? sectionPill(ch) : memoById().get(ch.id)?.() ?? ch)),
+  ...childrenOf(s.id).map((ch): Rect => (ch.collapsed ? pillOf(ch) : memoById().get(ch.id)?.() ?? ch)),
 ]), undefined, { equals: (a, b) => !!a && !!b && a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h })] as const));
 const memoById = rooted(() => createMemo((): Map<string, () => Rect | undefined> => new Map(frameMemos())));
 /** 渲染用：每个可见的 Section 的框（折叠的是标题条）。没变的框还是上一次的对象，全都没变就还是上一次的 Map */
@@ -80,7 +112,7 @@ export const frames = rooted(() => createMemo<Map<string, Rect>>((prev) => {
   let same = true;
   for (const s of state.board.sections) {
     if (hiddenByAncestor(s)) continue;
-    const r = s.collapsed ? sectionPill(s) : ms.get(s.id)?.() ?? frameOf(s);
+    const r = s.collapsed ? pillOf(s) : ms.get(s.id)?.() ?? frameOf(s);
     const p = prev.get(s.id);
     if (p && p.x === r.x && p.y === r.y && p.w === r.w && p.h === r.h) m.set(s.id, p); else { m.set(s.id, r); same = false; }
   }

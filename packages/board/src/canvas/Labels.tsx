@@ -1,4 +1,4 @@
-import { For, Show, createMemo, createSignal, onCleanup, type Accessor } from "solid-js";
+import { For, Show, createMemo, createRenderEffect, createSignal, onCleanup, type Accessor } from "solid-js";
 import { callText, varGone, loopLine, segOf, isCode, type Link, type Rect } from "@codeboard/core";
 import { varKey } from "@codeboard/analysis/basics";
 import { state, sel, select, live, beginGesture, cardById, rectOf } from "../state/store";
@@ -169,26 +169,31 @@ export function LinkLabel(p: { L: Link; g: Accessor<Geo | null> }) {
     const bx = box();
     return bezAt(gg.pts, bx ? placeT(gg.pts, L.at, bx, ends()) : L.at);
   });
-  const style = () => { const q = pos()!; return { left: `${q.x}px`, top: `${q.y}px` }; };
+  // 位置单独一个 effect，用 translate 摆：线的一端在动（弹出、收进 Section、拖卡）时标签每帧跟着走，
+  // 只改这一项，不把框的 class 重算一遍；改 left / top 每帧要从整个文档排一遍版（~0.7ms），translate 不用排版
+  const at = (el: HTMLElement) => {
+    el.style.left = el.style.top = "0px";
+    createRenderEffect(() => { const q = pos(); if (q) el.style.translate = `${q.x}px ${q.y}px`; });
+  };
   const key = `label:${L.id}`;
   onCleanup(addExtra({ kind: "label", link: L.id, rect: () => {
     const q = has() ? pos() : null, s = keptSize(key);
     return q && s ? { x: q.x - s.w / 2, y: q.y - s.h / 2, w: s.w, h: s.h } : null;
   } }));
   const plusBtn = (inside: boolean) => (
-    <button class="vplus" classList={{ in: inside }} data-link={inside ? undefined : L.id} style={inside ? undefined : style()} data-tip="Arguments" aria-label="Arguments"
+    <button class="vplus" classList={{ in: inside }} data-link={inside ? undefined : L.id} ref={(el) => { if (!inside) at(el); }} data-tip="Arguments" aria-label="Arguments"
       onPointerEnter={() => enterLink(L.id)} onPointerLeave={leaveLink} data-nodrag onClick={() => A.openVars(L.id)}>+</button>
   );
   const callBtn = (inside: boolean) => (
-    <button class="mkcall" classList={{ solo: !inside }} data-link={inside ? undefined : L.id} style={inside ? undefined : style()} data-tip="This line calls the target. Add the Call mark."
+    <button class="mkcall" classList={{ solo: !inside }} data-link={inside ? undefined : L.id} ref={(el) => { if (!inside) at(el); }} data-tip="This line calls the target. Add the Call mark."
       onPointerEnter={() => enterLink(L.id)} onPointerLeave={leaveLink} data-nodrag onClick={() => A.makeCall(L.id)}>+ Call</button>
   );
 
   return (
     <Show when={pos()}>
       <Show when={has()} fallback={<><Show when={plus()}>{plusBtn(false)}</Show><Show when={mk() && hov()}>{callBtn(false)}</Show></>}>
-        <div class="vchips" classList={{ user: !L.call && !L.gen && !L.rpc && !L.back, rpc: !!L.rpc, on: sel.links.includes(L.id), argsonly: !head() && !top(), gen: !!L.gen, [`ev-${ev()?.kind}`]: !!ev() }} data-link={L.id} style={style()}
-          ref={(el) => watchSize(el, (b) => { keepSize(key, b); setBox(b); })}
+        <div class="vchips" classList={{ user: !L.call && !L.gen && !L.rpc && !L.back, rpc: !!L.rpc, on: sel.links.includes(L.id), argsonly: !head() && !top(), gen: !!L.gen, [`ev-${ev()?.kind}`]: !!ev() }} data-link={L.id}
+          ref={(el) => { at(el); watchSize(el, (b) => { keepSize(key, b); setBox(b); }); }}
           onPointerEnter={() => enterLink(L.id)} onPointerLeave={leaveLink}
           onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); A.labelMenu(L.id, e.clientX, e.clientY); }}
           onPointerDown={(e) => {

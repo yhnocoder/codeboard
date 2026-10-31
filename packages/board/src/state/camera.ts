@@ -6,7 +6,9 @@ import { rooted } from "./root";
 import { state } from "./store";
 import { CAM_STILL } from "./timing";
 
-export const reduceMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+// 只建一次：.matches 跟着系统设置（和 emulateMedia）变。每次现建一个 MediaQueryList，动画每帧要调几十次
+const motionQ = typeof matchMedia === "function" ? matchMedia("(prefers-reduced-motion: reduce)") : null;
+export const reduceMotion = () => !!motionQ?.matches;
 
 export class Spring {
   v: number; t: number; vel = 0;
@@ -28,9 +30,12 @@ function tick(now: number) {
   const dt = Math.max(0, Math.min(0.032, (now - last) / 1000)) * (tune("animSpeed") / 100);
   last = now;
   const instant = reduceMotion();
-  for (const a of [...anims]) if (a(dt, instant)) anims.delete(a);
+  // 一帧里所有动画写完再一起更新：一张卡的弹出、折叠里的十几张卡、镜头，各自写的话连着它们的线每帧要重算好几遍
+  batch(() => { for (const a of [...anims]) if (a(dt, instant)) anims.delete(a); });
   if (anims.size) requestAnimationFrame(tick); else rafOn = false;
 }
+/** 这一帧（正在跑的 animate）的时间戳，和 requestAnimationFrame 给的同一个时钟 */
+export const frameTime = () => last;
 /** 每帧跑 fn，直到它返回 true */
 export function animate(fn: Anim) {
   anims.add(fn);

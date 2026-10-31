@@ -450,6 +450,9 @@ input, textarea { font: inherit; color: var(--ink); }
 /* Sections: a quiet tray behind the cards (hairline, faint fill, card-like corners); the title is plain text in the top
    padding, aligned with the cards; drag handle and caret show on hover; accent only when selected; a card dragged over
    another Section lights that Section up (.drop). Themes change the tokens (--sect-border, --sect-fill, --sect-sh) and the label font. */
+/* the frames' own layout root (size and layout containment, no paint containment: nothing is clipped), so that resizing one frame each
+   frame (folding a Section) lays out only the frames, not the hundreds of cards next to them in .world */
+.sframes { position: absolute; left: 0; top: 0; width: 0; height: 0; contain: size layout style; }
 .sect { position: absolute; z-index: 0; border: var(--sect-border); border-radius: calc(var(--r-card) + 1px); pointer-events: none; box-shadow: var(--sect-sh);
   transition: border-color .15s var(--out), background-color .15s var(--out), box-shadow .15s var(--out); }
 .sect:not([class*=" c-"]) { background: var(--sect-fill); }
@@ -461,7 +464,7 @@ input, textarea { font: inherit; color: var(--ink); }
 .slabel.fit { transition: color .15s var(--out), left .26s var(--out), top .26s var(--out); }
 .sect .sgrip { position: absolute; right: -4px; bottom: -4px; width: 14px; height: 14px; pointer-events: auto; cursor: nwse-resize; }
 #slabels { position: absolute; left: 0; top: 0; z-index: 4; }
-.slabel { position: absolute; z-index: 4; display: flex; align-items: center; gap: 2px; width: max-content; margin: 6px 0 0 16px; padding: 1px 2px 1px 6px; border-radius: 8.5px;
+.slabel { position: absolute; z-index: 4; display: flex; align-items: center; gap: 2px; width: max-content; --ml: 16px; --mt: 6px; margin: var(--mt) 0 0 var(--ml); padding: 1px 2px 1px 6px; border-radius: 8.5px;
   font: 600 12.5px/20px var(--label-font); letter-spacing: -.005em; color: var(--ink-2); pointer-events: auto; white-space: nowrap; transform-origin: 0 50%;
   transition: color .15s var(--out); }
 .slabel:hover, .slabel.drop { color: var(--ink); }
@@ -478,11 +481,9 @@ input, textarea { font: inherit; color: var(--ink); }
 .slabel .sname { min-width: 20px; }
 .slabel .sname.editing { white-space: pre; min-width: 60px; display: inline-block; }
 .slabel .scount { flex: none; margin-left: 5px; color: var(--ink-3); font-weight: 400; font-variant-numeric: tabular-nums; }
-/* collapsed: a compact pill, bold title · grey card count · caret */
-.slabel.collapsed { z-index: 3; margin: 0; gap: 3px; padding: 4px 6px 4px 12px; border-radius: 11px; color: var(--ink); background: var(--surface); box-shadow: var(--sh-card); transition: color .15s var(--out), box-shadow .15s var(--out); }
-.slabel.collapsed .sname { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.slabel.collapsed.sel { box-shadow: 0 0 0 1.5px var(--accent), var(--sh-card); }
-.slabel.c-sand.collapsed { background: color-mix(in srgb, var(--surface) 80%, #d6b478); }
+/* collapsed: the same frame and title as an open Section, the frame just wraps the title, its card count and the caret
+   (state/sections.ts measureShut); the corners get a little tighter on the small frame */
+.sect.shut { border-radius: min(calc(var(--r-card) + 1px), 10px); }
 /* hovering a collapsed Section: a few of its cards in two columns (kind icon, title) and "+N more" */
 .spv { position: absolute; left: 0; top: calc(100% + 6px); width: 320px; display: grid; grid-template-columns: 1fr 1fr; column-gap: 8px; padding: 6px;
   border-radius: 12px; background: var(--surface); box-shadow: var(--sh-float); color: var(--ink-2); cursor: default;
@@ -1101,6 +1102,16 @@ mark.wdiff { background: var(--chg-strong); color: inherit; border-radius: 2px; 
    别写成 .card > :not(...) 再用会继承的 visibility：最右边没有类名，切档时浏览器只能把整块白板 3 万个节点全重算一遍 */
 .card.off > .cface { visibility: hidden; } /* state/cull.ts：离屏幕很远的卡不画内容 */
 .card.far { visibility: hidden; } /* state/cull.ts：内容藏着、又不在屏幕附近的卡，连卡片本身也不画 */
+/* 折叠、展开 Section（actions/edit.ts toggleSection，state/fold.ts skel）：卡飞的时候内容换成几道骨架线（.skl，Card.tsx）。
+   透明度只写在卡下面一层的这几块上（不继承；卡的 class 下没有 "> *"，切换时不用把卡里的节点都重算）；时长同 state/timing.ts 的 SKEL_OUT / SKEL_IN */
+.card.skel > .cface, .card.skel > .twinmk, .card.skel > .maplabel { opacity: 0; transition: opacity 80ms ease-out; }
+.card.skel-in > .cface, .card.skel-in > .twinmk, .card.skel-in > .maplabel { transition: opacity 100ms ease-in; }
+.card > .skl { position: absolute; inset: 0; z-index: 1; display: grid; align-content: start; gap: 7px; padding: 12px; overflow: hidden; border-radius: inherit; pointer-events: none;
+  animation: skl-in 80ms ease-out backwards; }
+.card.skel-in > .skl { opacity: 0; transition: opacity 100ms ease-in; }
+.skl > span { display: block; height: 6px; border-radius: 3px; background: color-mix(in srgb, var(--ink) 11%, transparent); }
+.skl > .t { height: 9px; margin-bottom: 6px; }
+@keyframes skl-in { from { opacity: 0; } }
 .cface { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; min-width: 0; }
 /* 代码卡卡头 / 色带 / 底栏之间的内容区（说明、代码、Source）：手动定了高度的代码卡，Place.h 就是它的高度，卡头 / 底栏由主题自己撑开 */
 .carea { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; min-width: 0; }

@@ -1,3 +1,4 @@
+import { untrack } from "solid-js";
 import { unwrap } from "solid-js/store";
 import {
   arrangeCards, makeCompare, overlaps, removeSections as removeSectionsIn, renameTitleRefs, replaceCards, removeLinks, placeCards, mergeCodeCards, unmergeCard, unlinkCard,
@@ -9,15 +10,19 @@ import {
 } from "@codeboard/core";
 import { LANGS, langLabel } from "@codeboard/analysis/langs";
 import {
-  state, setState, mutate, isFresh, settleFresh, sel, select, clearSel, setLineSel, cardById, hostOf, rectOf, toast, placeOf, sharedOn,
+  state, setState, mutate, isFresh, settleFresh, sel, select, clearSel, setLineSel, cardById, hostOf, rectOf, toast, placeOf, sharedOn, collapsedAway,
   type LineSel,
 } from "../state/store";
 import { animate, Spring, reduceMotion } from "../state/camera";
-import { setEditing, setPopIn, setEditEntry, codeTextRange } from "../state/ui";
+import { setEditing, setEditEntry, codeTextRange, staged, setStaged } from "../state/ui";
+import { foldOf, setFold, setFoldV, setFoldHome, setSkel, unskel, type Fold } from "../state/fold";
+import { farAway } from "../state/cull";
+import { SKEL_OUT } from "../state/timing";
+import { lodOf } from "../state/lodcards";
 import { staticTextRange } from "@yhnocoder/markdown";
 import { openMenu, type Item } from "../ui/Menu";
 import { ghostOut } from "../state/ghost";
-import { frameOf, fitFrame, setFitting, allMembers, isHidden } from "../state/sections";
+import { frameOf, fitFrame, setFitting, allMembers, isHidden, descSections, openUnder, measureShut } from "../state/sections";
 import { popCard, revealCard, sectionById, sectionLocked, selCards, isLocked, slideFrom } from "./common";
 import { requestViews } from "./create";
 import { offerReference } from "./shared";
@@ -441,37 +446,114 @@ function freeIn(f: Rect, box: Rect, others: Rect[]): { x: number; y: number } {
   return { x: x0, y: Math.max(y0, ...inside.map((o) => o.y + o.h + GAP)) };
 }
 export function toggleSection(id: string) {
+  // 正在动：收、放的弹簧还在走时再点一下就从现在的位置掉头；建、拆卡片的那几帧里不管
+  const run = running.get(id);
+  if (run) return run();
   const s0 = sectionById(id);
   if (!s0) return;
-  // 折叠前把实际框存下来：标题条放在框的左上角，展开后框不变
-  const f = s0.collapsed ? null : frameOf(s0);
-  const apply = () => mutate((b) => {
-    const s = b.sections.find((q) => q.id === id);
-    if (!s) return;
-    if (f) Object.assign(s, { x: Math.round(f.x), y: Math.round(f.y), w: Math.round(f.w), h: Math.round(f.h) });
-    s.collapsed = !s.collapsed || undefined;
-  });
+  const was = !!s0.collapsed, open = frameOf(s0);
+  // 真正改：折叠前把实际框存下来（折叠后的框在它的左上角，展开后框不变）。动画放完（展开时成员卡建好）才改；
+  // 中间别处已经改过（撤销、Reveal 展开）就不再翻回去：only = 现在应该是的样子
+  let now = was;
+  const commit = (shut: boolean) => {
+    if (now === shut) return;
+    const only = now;
+    now = shut;
+    mutate((b) => {
+      const s = b.sections.find((q) => q.id === id);
+      if (!s || !!s.collapsed !== only) return;
+      if (shut) Object.assign(s, { x: Math.round(open.x), y: Math.round(open.y), w: Math.round(open.w), h: Math.round(open.h) });
+      s.collapsed = shut || undefined;
+    });
+  };
+  // 跟着收的：所有成员卡（折叠的子 Section 里的也算：连着它们的线要跟着走）；画出来的：展开时看得见的卡、子 Section
   const members = allMembers(id).map((c) => c.id);
-  const at = f ?? { x: s0.x, y: s0.y };
-  const pt = { x: at.x + 10, y: at.y };
-  if (reduceMotion() || !members.length) return apply();
-  if (s0.collapsed) {
-    // 展开：卡片从标题条里弹出来
-    apply();
-    requestAnimationFrame(() => members.forEach((m) => popCard(m, pt)));
-    return;
-  }
-  // 折叠：卡片收进标题条（往标签缩、变淡），收完再真正折叠
-  const offs = new Map(members.map((m) => { const p = placeOf(m); return [m, { ox: pt.x - p.x, oy: pt.y - p.y }]; }));
-  const sp = new Spring(1, 200, 26, 0.02); sp.t = 0;
-  animate((dt) => {
-    sp.step(dt);
-    const done = sp.v < 0.05;
-    setPopIn((p) => { const n = { ...p }; for (const [m, o] of offs) { if (done) delete n[m]; else n[m] = { ...o, v: Math.max(0, sp.v) }; } return n; });
-    if (done) apply();
-    return done;
+  const shown = members.filter((m) => openUnder(placeOf(m).section, id) && !collapsedAway().has(m));
+  const kids = descSections(id).filter((k) => openUnder(k.parent, id)).map((k) => k.id);
+  if (reduceMotion() || !members.length) return commit(!was);
+  // 动画（state/fold.ts）：框、卡、线都跟着同一个弹簧 v 走（1 = 展开着，0 = 折叠好）。先显示折叠的样子（「· N cards」），再量折叠后的框
+  const at = was ? { x: s0.x, y: s0.y } : open;
+  let fold: Fold = { v: was ? 0 : 1, open, shut: { x: at.x, y: at.y, w: open.w, h: open.h }, tx: at.x, ty: at.y, shutting: !was };
+  setFold(id, fold);
+  const m = measureShut(id);
+  if (m) setFold(id, (fold = { ...fold, shut: { x: at.x, y: at.y, w: m.w, h: m.h }, tx: at.x + m.tx, ty: at.y + m.ty }));
+  for (const k of [...members, ...kids]) setFoldHome(k, id);
+  for (const k of shown) setSkel(k, "out");
+  // 弹簧收得很紧才停（|v − 终点| < 0.001、速度 < 0.01；大的 Section 收到框差不到半个像素）：停下那一帧不跳
+  const sp = new Spring(fold.v, 200, 26, Math.min(0.001, 0.5 / Math.max(open.w, open.h)));
+  sp.t = was ? 1 : 0;
+  // 每帧只在画出来的东西差得出四分之一个像素时才写（框最大的那一边算）：弹簧最后那一段很慢，看不出的变化不用每帧重排、重画
+  const q = 0.25 / Math.max(open.w, open.h);
+  let drawn = fold.v, back = false;
+  const write = (v: number, end: boolean) => { if (end || Math.abs(v - drawn) >= q) { drawn = v; setFoldV(id, v); } };
+  // 展开：屏幕附近的成员卡先建好（state/ui.ts staged；v = 0，看不见），一帧几张，都建好了再真正展开、放出来。
+  // 离屏幕很远的（整张藏着，看不见）先不建，放完了再一帧一张地建；连着它们的线照样跟着动（不要 DOM）
+  const far = new Set(was ? shown.filter((k) => farAway(k) && lodOf(k) === "full") : []);
+  const near = shown.filter((k) => !far.has(k));
+  // 阶段：建卡（展开）→ 内容换成骨架线（折叠，SKEL_OUT）→ 弹簧 → 拆卡（折叠好了）
+  let phase: "build" | "fade" | "spring" | "down" = was ? "build" : "fade";
+  let i = 0, t = 0;
+  running.set(id, () => {
+    if (phase !== "fade" && phase !== "spring") return;
+    // 掉头：弹簧接着现在的速度往另一头走；往回折叠的卡重新换成骨架线，往回展开的落到位时内容淡回来
+    sp.t = 1 - sp.t;
+    const shutting = sp.t === 0;
+    setFold(id, { ...untrack(() => foldOf(id))!, shutting });
+    if (shutting) { back = false; for (const k of shown) setSkel(k, "out"); }
+  });
+  const finish = () => {
+    for (const k of [...members, ...kids]) setFoldHome(k, undefined);
+    setFold(id, undefined);
+    running.delete(id);
+  };
+  animate((dt, instant) => {
+    if (phase === "build") {
+      if (i < near.length) { for (const k of near.slice(i, (i += STAGE_IN))) setStaged(k, "in"); return false; }
+      for (const k of far) setStaged(k, "out");
+      commit(false);
+      for (const k of near) setStaged(k, undefined);
+      phase = "spring";
+    }
+    if (phase === "fade") {
+      if ((t += dt * 1000) < SKEL_OUT && !instant) return false;
+      phase = "spring";
+    }
+    if (phase === "spring") {
+      instant ? sp.set(sp.t) : sp.step(dt);
+      write(sp.done ? sp.t : sp.v, sp.done);
+      // 展开快到位了：内容从骨架线淡回来
+      if (sp.t === 1 && !back && (sp.v >= 0.97 || sp.done)) { back = true; unskel(shown); }
+      if (!sp.done) return false;
+      if (sp.t === 1) {
+        commit(false);
+        finish();
+        if (far.size) animate(() => {
+          // 已经又折叠了（撤销）：藏着的不用建，标记清掉；不然一帧建一张
+          const left = [...far].filter((k) => staged(k) === "out");
+          if (sectionById(id)?.collapsed) { for (const k of left) setStaged(k, undefined); return true; }
+          if (left[0]) setStaged(left[0], undefined);
+          return left.length <= 1;
+        });
+        return true;
+      }
+      // 折叠好了：成员卡停在收完的那一帧（看不见）留着，真正折叠以后一帧几张拆掉
+      for (const k of near) setStaged(k, "in");
+      commit(true);
+      for (const k of far) if (staged(k) === "out") setStaged(k, undefined);
+      phase = "down"; i = 0;
+      return false;
+    }
+    for (const k of near.slice(i, (i += STAGE_OUT))) { setStaged(k, undefined); setSkel(k, undefined); }
+    if (i < near.length) return false;
+    for (const k of far) setSkel(k, undefined);
+    finish();
+    return true;
   });
 }
+// 正在折叠、展开的 Section：再点一下时做什么（掉头，或者建、拆卡片的那几帧里不管）
+const running = new Map<string, () => void>();
+// 一帧建几张、拆几张成员卡：建一张代码卡要 5–10ms（建节点、排版、量行），拆便宜得多
+const STAGE_IN = 1, STAGE_OUT = 4;
 /** Section 的 Fit Content：框收到刚好包住成员卡和子 Section（标准边距）；缓动过去，一步撤销。折叠的、锁着的、空的不动 */
 export function fitSections(ids: string[]) {
   const fits = new Map<string, Rect>();
