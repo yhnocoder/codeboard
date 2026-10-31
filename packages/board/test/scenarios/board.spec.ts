@@ -1,7 +1,7 @@
 import { shot, symCard, findSym, put, type Host } from "../harness";
 import { cornerAt, emptyBoard, DEFAULT_SETTINGS, type Board, type CodeCard, type NoteCard } from "@codeboard/core";
 import { test, open, check, light, expect, until, idle, hold } from "../fixtures";
-import { DBL_CLICK, LINK_LEAVE, LIVE_DELAY } from "../../src/state/timing";
+import { DBL_CLICK, LINK_LEAVE, LIVE_DELAY, SNAP_SPEED, SNAP_SETTLE } from "../../src/state/timing";
 
 const card = (q: string) => { const s = findSym(q); return symCard(s.f, s.s); };
 const lineOf = (c: CodeCard, re: RegExp) => { const s = c.segments[0]; return s.start + s.text.findIndex((t) => re.test(t)); };
@@ -462,29 +462,52 @@ test("debugSettings", async () => {
   await close(h);
 });
 
-/** Fast drag: no snapping; slow drag with a pause: alignment snap (left edge to another card) */
+/**
+ * Fast drag: no snapping; slow drag, or a fast one held still before the drop: alignment snap (left edge to another card). Whether a drag snaps depends on its
+ * speed (SNAP_SPEED, measured with performance.now() between pointer moves) and on a pause (no move for SNAP_SETTLE = speed 0), so
+ * the drags run on Playwright's clock: paused, and moved on by exactly `ms` per step. A busy machine then can't make the fast drag
+ * slow (or pause it) between two moves; with the real clock it did.
+ */
 test("dragSnap", async () => {
   const b = emptyBoard("b1", "snap");
   b.cards.push({ id: "a", kind: "note", md: "A", look: "note" }, { id: "m", kind: "note", md: "moving", look: "note" });
   b.place.a = { x: 100, y: 100, w: 260 }; b.place.m = { x: 500, y: 400, w: 260 };
   const h = await open({ board: b, light, w: 1200, h: 800 });
-  const hd = h.page.locator('.card[data-id="m"] .chead');
-  const drag = async (to: number, slow: boolean) => {
+  const pg = h.page, hd = pg.locator('.card[data-id="m"] .chead');
+  await pg.clock.install();
+  // `steps` moves of `to / steps` px each, `ms` of the page's clock apart; then `rest` ms without a move before the drop
+  const drag = async (to: number, steps: number, ms: number, rest: number) => {
     const r = (await hd.boundingBox())!;
-    await h.page.mouse.move(r.x + 40, r.y + 10); await h.page.mouse.down();
-    const x0 = r.x + 40, tx = x0 + to;
-    // the drag's speed is what this checks (no snapping faster than TUNE.snapSpeed): the steps are timed on purpose
-    if (slow) { for (let i = 1; i <= 30; i++) { await h.page.mouse.move(x0 + (to * i) / 30, r.y + 10); await hold(h, 25, "a slow drag"); } await hold(h, 250, "a pause before the drop"); }
-    else { for (let i = 1; i <= 4; i++) { await h.page.mouse.move(x0 + (to * i) / 4, r.y + 10); await hold(h, 8, "a fast drag"); } }
-    await h.page.mouse.move(tx, r.y + 10); await h.page.mouse.up(); await idle(h); // the drop is sent at once
+    const x0 = r.x + 40, y = r.y + 10;
+    await pg.mouse.move(x0, y);
+    // pauseAt only goes forward, and the clock runs on after it is read: pause a minute ahead (timers due by then just fire)
+    await pg.clock.pauseAt((await pg.evaluate(() => Date.now())) + 60e3);
+    await pg.mouse.down();
+    for (let i = 1; i <= steps; i++) {
+      await pg.clock.runFor(ms);
+      await pg.mouse.move(x0 + (to * i) / steps, y);
+    }
+    if (rest) await pg.clock.runFor(rest);
+    await pg.mouse.up();
+    await pg.clock.resume();
+    await idle(h); // the drop is sent at once
+    return Math.abs(to / steps) / ms * 1000;
   };
-  await drag(-397, false); // stops at x = 103, only 3px from 100
+  const back = async () => {
+    await pg.keyboard.press("Meta+z");
+    await until(h, "undo puts the card back", () => h.board().place.m.x === 500); await idle(h);
+  };
+  // each drag stops at x = 103, only 3px from the other card's left edge at 100
+  const fastSpeed = await drag(-397, 4, 16, 0); // dropped while still fast: stays at 103
   const fastX = h.board().place.m.x;
-  await h.page.keyboard.press("Meta+z");
-  await until(h, "undo puts the card back", () => h.board().place.m.x === 500); await idle(h);
-  await drag(-397, true);
+  await back();
+  await drag(-397, 4, 16, 2 * SNAP_SETTLE); // fast, then held still before the drop: snaps
+  const stoppedX = h.board().place.m.x;
+  await back();
+  const slowSpeed = await drag(-397, 30, 50, 0); // slow all the way, dropped at once: snaps
   const slowX = h.board().place.m.x;
-  check("snap-only-when-slow", fastX === 103 && slowX === 100, JSON.stringify({ fastX, slowX }));
+  check("snap-only-when-slow", fastSpeed > SNAP_SPEED && slowSpeed < SNAP_SPEED && fastX === 103 && stoppedX === 100 && slowX === 100,
+    JSON.stringify({ fastX, stoppedX, slowX, fastSpeed, slowSpeed }));
   await close(h);
 });
 

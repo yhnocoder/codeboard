@@ -915,7 +915,7 @@ test("markdownPaste", async () => {
   await until(h, "Esc saves the Note", () => (h.board().cards.find((c) => c.id === "t1") as NoteCard).md !== "# Reading notes\nTwo lines, old style\n- a list\n- with block_manager");
   await idle(h);
   const md = (h.board().cards.find((c) => c.id === "t1") as NoteCard).md;
-  const r = { html: /### From web\n\na \*\*bold\*\* word and \[link\]\(https:\/\/x\.y\/a_b\)\n\n- one\n- two/.test(md), noStyle: !/style=|<span/.test(md),
+  const r = { html: /- with block_manager\n\n### From web\n\na \*\*bold\*\* word and \[link\]\(https:\/\/x\.y\/a_b\)\n\n- one\n- two/.test(md), noStyle: !/style=|<span/.test(md),
     code: md.includes("```python\ndef f(x):\n    return x * 2\n```"), inline: md.includes("`seq_len`"), tasks: md.includes("- [ ] pasted task\n- [x] done **too**") };
   check("markdownPaste", Object.values(r).every(Boolean), { ...r, md: md.slice(-260) });
   await close(h);
