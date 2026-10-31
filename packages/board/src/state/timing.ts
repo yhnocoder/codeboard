@@ -11,6 +11,11 @@ export const LIVE_DELAY = 800;
 export const RESEND_DELAY = 2000;
 /** Two clicks on the same thing within this long (and 6 px) are a double-click (interact.ts isDbl; TUNE.dblClick's default) */
 export const DBL_CLICK = 420;
+/** Dragging cards or a Section faster than this (screen px/s, smoothed over the pointer moves) does not snap (interact.ts snapPace;
+ *  TUNE.snapSpeed's default) */
+export const SNAP_SPEED = 700;
+/** A drag that has not moved for this long counts as stopped (speed 0), and snaps where it is (interact.ts snapPace) */
+export const SNAP_SETTLE = 110;
 /** Hovering a word in code this long shows its definition (TUNE.peekDelay's default) */
 export const PEEK_DELAY = 800;
 /** After the pointer leaves an arrow or a card, its hover (the + on the arrow, the arrow lifted above the cards) lasts this long
