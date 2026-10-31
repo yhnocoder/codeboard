@@ -140,3 +140,23 @@ describe("image captions (the title)", () => {
     expect(setImageCaption(md, "assets/zzz.png", 0, "x")).toBe(md);
   });
 });
+
+describe("![alt](…) whose address does not parse", () => {
+  const svg = "<svg xmlns='http://www.w3.org/2000/svg' width='36' height='15'><rect width='36' height='15' fill='%23f6f1e7'/></svg>";
+  const bad = `before ![SM 示意图](data:image/svg+xml;utf8,${svg}) after`;
+  it("draws as an image that failed to load, never as the inline <svg> it holds", () => {
+    const d = document.createElement("div");
+    d.innerHTML = renderMd(bad);
+    expect(d.querySelector(".md-imgerr")?.textContent).toBe("Image failed to load · SM 示意图");
+    expect([...d.querySelectorAll("img, svg")].filter((e) => !e.closest(".md-imgerr")).length).toBe(0);
+    expect(d.textContent).toBe("before Image failed to load · SM 示意图 after");
+  });
+  it("keeps its source as written", () => {
+    expect(rt(bad)).toBe(bad);
+  });
+  it("percent-encoded, the same address is an image", () => {
+    const ok = `![SM 示意图](data:image/svg+xml;utf8,${encodeURIComponent(decodeURIComponent(svg)).replace(/'/g, "%27")})`;
+    expect(imgOf(renderMd(ok))?.getAttribute("alt")).toBe("SM 示意图");
+    expect(rt(ok)).toBe(ok);
+  });
+});

@@ -351,6 +351,15 @@ function imageWidthAt(s: string): { width: number; raw: string } | undefined {
   const m = IMG_WIDTH.exec(s), w = m ? Number(m[1]) : 0;
   return m && w > 0 && w <= 100 ? { width: w, raw: m[0] } : undefined;
 }
+/**
+ * ![alt](…) whose address CommonMark does not accept (spaces, an unencoded <svg> in a data: URL): still an image, one that is
+ * never loaded and shows as an image that failed to load. Its source stays as written
+ */
+const BROKEN_IMAGE = /^!\[((?:\\.|[^\]\\\n])*)\]\(([^)\n]*)\)/;
+function brokenImage(src: string) {
+  const m = BROKEN_IMAGE.exec(src);
+  return m ? { type: "image", raw: m[0], href: m[2].trim(), title: null, text: m[1], tokens: [], broken: true } : undefined;
+}
 const pct = (v: string) => { const m = /^(\d+(?:\.\d+)?)%$/.exec(v.trim()); const w = m ? Number(m[1]) : 0; return w > 0 && w <= 100 ? w : null; };
 const Img = Image.extend({
   addAttributes() {
@@ -358,9 +367,11 @@ const Img = Image.extend({
       ...this.parent?.(),
       // TipTap 自带的 width 是像素，这里是百分比（null = 占满）；HTML 里是 style 的 width（复制粘贴时跟着走）
       width: { default: null, parseHTML: (e) => pct(e.style.width), renderHTML: (a) => (a.width ? { style: `width: ${a.width}%` } : {}) },
+      // an address the parser could not read (brokenImage): drawn as a failed image, never loaded
+      broken: { default: false, parseHTML: () => false, renderHTML: () => ({}) },
     };
   },
-  parseMarkdown: (t, h) => h.createNode("image", { src: t.href, title: t.title, alt: t.text, width: t.width ?? null }),
+  parseMarkdown: (t, h) => h.createNode("image", { src: t.href, title: t.title, alt: t.text, width: t.width ?? null, broken: !!t.broken }),
   // title 是图注（显示在图下面）：TipTap 自己写的 "title" 不转义引号，这里转义 \ 和 "，换行并成空格（标题只能一行）
   renderMarkdown(n) {
     const a = n.attrs ?? {}, t = String(a.title ?? "").replace(/\s*\n\s*/g, " ").trim();
@@ -676,7 +687,7 @@ const mm = new MarkdownManager({
       emStrong(src: string) { return src[0] === "_" ? undefined : false; },
       // 图片后面紧跟的 {width=…%} 是它的宽度（见 Img），连同图片一起读掉
       link(this: Tokenizer, src: string) {
-        const t = Tokenizer.prototype.link.call(this, src), w = t?.type === "image" ? imageWidthAt(src.slice(t.raw.length)) : undefined;
+        const t = Tokenizer.prototype.link.call(this, src) ?? brokenImage(src), w = t?.type === "image" ? imageWidthAt(src.slice(t.raw.length)) : undefined;
         return w ? { ...t!, raw: t!.raw + w.raw, width: w.width } : t ?? false;
       },
     } as any });

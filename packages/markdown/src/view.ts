@@ -1,5 +1,6 @@
 import { renderMd } from "./render";
 import { colorCode } from "./code";
+import { missingImage } from "./image";
 
 /** [[标题]] 指向的东西（白板上是卡）。badge = 标在标题后面的小字（白板：在别的白板上的卡写那块白板的名字），place = 它在哪（点的时候交给 openRef） */
 export type RefTarget = { id: string; title: string; badge?: string; place?: string };
@@ -29,20 +30,13 @@ export function paintRef(r: HTMLElement) {
   r.replaceChildren(a, b);
 }
 
-const IMG_ERR = '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="3" width="11" height="10" rx="1.8"/><path d="M2.5 11l3.2-3.2 2.6 2.6 1.7-1.7 3.5 3.5M10.2 6.2h.01"/></svg>';
 /** Addresses that failed to load: drawn as the placeholder at once next time (no broken image in between) */
 const failedImages = new Set<string>();
 /** An image that could not load: a quiet line in its place (the alt text, or the address), not the browser's broken icon */
 export function imageFailed(img: HTMLImageElement) {
   const src = img.getAttribute("src") ?? "";
   if (src) failedImages.add(src);
-  const box = document.createElement("span"), t = document.createElement("span");
-  box.className = "md-imgerr";
-  box.title = src;
-  box.innerHTML = IMG_ERR;
-  t.textContent = `Image failed to load · ${img.alt || src}`;
-  box.append(t);
-  img.replaceWith(box);
+  img.replaceWith(missingImage(img.alt, src));
 }
 export const imageFailedBefore = (src: string | null) => !!src && failedImages.has(src);
 const onImageError = (e: Event) => { if (e.target instanceof HTMLImageElement && e.target.closest(".md")) imageFailed(e.target); };

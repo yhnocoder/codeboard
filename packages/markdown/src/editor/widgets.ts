@@ -5,7 +5,7 @@ import { TextSelection } from "@tiptap/pm/state";
 import { closeHistory } from "@tiptap/pm/history";
 import type { EditorView } from "@tiptap/pm/view";
 import { markTex, mathMacros } from "../math";
-import { captionOf, imageAttrs } from "../image";
+import { captionOf, imageAttrs, missingImage } from "../image";
 import { renderMd } from "../render";
 import { imageFailed, imageFailedBefore, paintRef } from "../view";
 import { holdGhosts } from "../ui/ghost";
@@ -108,7 +108,10 @@ const MIN_W = 24; // narrowest an image can be dragged to, in px
 
 /** An image as drawn: `below` is the copy under the source while the caret is in it, the one with the resize grips */
 function imageEl(a: Extract<Atom, { type: "image" }>, below: boolean): HTMLElement {
-  const el = span(`md-img${below ? " below" : ""}`), img = document.createElement("img");
+  const el = span(`md-img${below ? " below" : ""}`);
+  // an address the parser could not read: nothing to load, drawn as a failed image
+  if (a.broken) { el.append(missingImage(a.alt, a.src)); return el; }
+  const img = document.createElement("img");
   const at = imageAttrs(a);
   for (const [k, v] of Object.entries(at)) if (v != null && k !== "style" && k !== "class") img.setAttribute(k, v);
   // the width of a sized image is on this box (below); an unsized one keeps its height cap

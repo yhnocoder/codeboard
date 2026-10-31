@@ -7,7 +7,7 @@ export type Range = [number, number];
 /** Something drawn in place of its source (while the caret is elsewhere the source is hidden and it counts as one character) */
 export type Atom =
   | { type: "math"; latex: string; display: boolean }
-  | { type: "image"; src: string; alt: string; title: string; width: number | null; altTo: number; url: Range; widthAt: Range | null }
+  | { type: "image"; src: string; alt: string; title: string; width: number | null; altTo: number; url: Range; widthAt: Range | null; broken: boolean }
   | { type: "emoji"; name: string }
   | { type: "ref"; label: string }
   | { type: "fn"; label: string }
@@ -151,7 +151,7 @@ function imageAtom(t: InlineToken, raw: string, from: number): Atom {
   return {
     type: "image", src: String(t.href ?? ""), alt: String(t.text ?? ""), title: String(t.title ?? ""),
     width: width && width > 0 && width <= 100 ? width : null, altTo: from + altTo, url: [from + urlFrom, from + urlTo],
-    widthAt: w ? [from + raw.length - w[0].length, from + raw.length] : null,
+    widthAt: w ? [from + raw.length - w[0].length, from + raw.length] : null, broken: !!t.broken,
   };
 }
 

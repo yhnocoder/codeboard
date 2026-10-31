@@ -4,7 +4,7 @@ import { Fragment, type DOMOutputSpec, type Mark, type Node as PMNode } from "@t
 import katex from "katex";
 import DOMPurify from "dompurify";
 import { isHtmlComment, mdSchema, parseMd, tocEntries, tocHtml } from "./schema";
-import { captionOf, imageAttrs, onImagesChanged } from "./image";
+import { captionOf, imageAttrs, missingImageHtml, onImagesChanged } from "./image";
 import { mathMacros, withTex } from "./math";
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -58,6 +58,7 @@ const DISPLAY: Record<string, (n: PMNode, cx: Cx) => string | undefined> = {
   // 不让浏览器拖图（拖的是卡片）
   // 有图注（title）的图包一层 .md-fig，图注在图下面；缩小了的宽度写在这一层上（和编辑器里的 .md-img 一样）
   image: (n) => {
+    if (n.attrs.broken) return missingImageHtml(String(n.attrs.alt ?? ""), String(n.attrs.src ?? ""), escA);
     const a: Record<string, string | null> = { ...imageAttrs(n.attrs), draggable: "false" }, cap = captionOf(n.attrs.title);
     return cap ? specHtml(["span", { class: `md-fig${a.class ? " sized" : ""}`, style: a.style }, ["img", { ...a, class: null, style: null }], ["span", { class: "md-cap" }, cap]], "") : specHtml(["img", a], "");
   },

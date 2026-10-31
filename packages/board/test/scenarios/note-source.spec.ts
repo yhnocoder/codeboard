@@ -541,6 +541,34 @@ test("noteImageSizing", async () => {
   await close(h);
 });
 
+/** ![alt](…) whose address the parser can't read (an unencoded <svg> in a data: URL) shows as an image that failed to load, in the
+ *  static view and the editor: never as its text with the <svg> drawn as a black box; percent-encoded, it is an image */
+test("noteUnreadableImage", async () => {
+  const svg = "<svg xmlns='http://www.w3.org/2000/svg' width='360' height='150'><rect width='360' height='150' rx='10' fill='%23f6f1e7'/><text x='22' y='29'>SM</text></svg>";
+  const good = encodeURIComponent(decodeURIComponent(svg)).replace(/'/g, "%27");
+  const h = await open({ board: board([`Diagram:\n\n![SM 示意图](data:image/svg+xml;utf8,${svg})\n\nend`, `![SM 示意图](data:image/svg+xml;utf8,${good})\n\nend`]), light });
+  const pg = h.page;
+  await idle(h);
+  const look = (root: string) => pg.evaluate((root) => {
+    const r = document.querySelector(root)!;
+    return { err: r.querySelector(".md-imgerr")?.textContent ?? null, drawn: [...r.querySelectorAll("img, svg")].filter((e) => !e.closest(".md-imgerr")).length, html: r.querySelectorAll(".md-html").length, text: (r as HTMLElement).innerText.includes("data:image") };
+  }, root);
+  const stat = await look(`${card("n0")} .nbody`);
+  await shot(h, "noteUnreadableImage-static");
+  await pg.locator(`${card("n0")} .nbody p`).last().dblclick();
+  await pg.locator(`${card("n0")} .md-pm:focus`).waitFor();
+  await focusSettled(pg);
+  const edit = await look(`${card("n0")} .md-pm`);
+  await shot(h, "noteUnreadableImage-edit");
+  await exitEdit(h);
+  await until(h, "the encoded one decodes", () => pg.evaluate((c) => { const i = document.querySelector<HTMLImageElement>(`${c} .nbody img`); return !!i?.complete && i.naturalWidth === 360; }, card("n1")));
+  const ok = (l: typeof stat) => l.err === "Image failed to load · SM 示意图" && l.drawn === 0 && l.html === 0 && !l.text;
+  check("noteUnreadableImage static: a failed image, no drawn <svg>", ok(stat), stat);
+  check("noteUnreadableImage editor: the same", ok(edit), edit);
+  check("noteUnreadableImage source kept", md(h, "n0") === `Diagram:\n\n![SM 示意图](data:image/svg+xml;utf8,${svg})\n\nend`, md(h, "n0"));
+  await close(h);
+});
+
 /** $$…$$ inside a paragraph or a cell is a display formula: centred on a line of its own, the same in the static view and the editor;
  *  with the caret in its source, the preview box under it is the only hint */
 test("noteInlineDisplayMath", async () => {
