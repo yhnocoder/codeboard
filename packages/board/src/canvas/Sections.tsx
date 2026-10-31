@@ -49,7 +49,7 @@ export function SectionLabels() {
               onPointerDown={(e) => { if (!(e.target as Element).closest(".spv")) { clearTimeout(t); setPeek(0); } sectionLabelDown(e, s.id); }}
               onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setPeek(0); A.sectionMenu(s.id, e.clientX, e.clientY); }}>
               <Show when={!s.collapsed}><span class="dots">⋮⋮</span></Show>
-              {/* 一个小箭头：折叠时在名字前面朝右，展开时在名字后面朝下（转过去，CSS） */}
+              {/* 一个小箭头，总在最右边：折叠时朝右（在卡片数后面），展开时朝下（转过去，CSS） */}
               <button class="chev2" aria-label={s.collapsed ? "Expand Section" : "Collapse Section"} data-nodrag onClick={() => { setPeek(0); A.toggleSection(s.id); }}><Icon name="chevR" /></button>
               <Show when={s.locked}><button class="lockb" data-tip="Unlock Section" data-nodrag onClick={() => A.toggleLock([], [s.id])}><Icon name="lock" size={12} /></button></Show>
               <Editable class="sname" kind="section" id={s.id} value={s.title} onCommit={(v) => A.renameSection(s.id, v)} />

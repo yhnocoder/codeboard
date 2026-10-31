@@ -90,7 +90,7 @@ test("sectionFitContent", async () => {
   await close(h);
 });
 
-/** A collapsed Section is a compact pill: a small caret, the title in bold, "· N cards" in grey. Hovering it shows a few of its cards
+/** A collapsed Section is a compact pill: the title in bold, "· N cards" in grey and a small caret at the right end. Hovering it shows a few of its cards
  *  (kind icon and title, two columns) and "+N more". The caret is one small icon that turns when the Section expands */
 test("sectionCollapsedPill", async () => {
   const b = emptyBoard("b1", "collapsed section");
@@ -139,13 +139,15 @@ test("sectionCollapsedPill", async () => {
     return { deg: Math.round(rot + (Math.atan2(m.b, m.a) * 180) / Math.PI), size: Math.min(i.getBoundingClientRect().width, i.getBoundingClientRect().height) };
   }, pill);
   const a0 = await angle();
+  // collapsed or not, the caret is at the right end: after the card count (usage feedback #92: it jumped to the left on collapsing)
+  const right = await h.page.evaluate((sel) => { const n = document.querySelector(`${sel} .scount`)!.getBoundingClientRect(), c = document.querySelector(`${sel} .chev2`)!.getBoundingClientRect(); return c.left - n.right; }, pill);
   await h.page.locator(`${pill} .chev2`).click();
   await until(h, "expanding is saved", () => !h.board().sections[0].collapsed); await idle(h);
   await h.page.locator(`${pill} .sname`).hover(); await idle(h);
   const a1 = await angle();
   const gap = await h.page.evaluate((sel) => { const n = document.querySelector(`${sel} .sname`)!.getBoundingClientRect(), c = document.querySelector(`${sel} .chev2`)!.getBoundingClientRect(); return c.left - n.right; }, pill);
   await shot(h, "sect-pill-03-expanded-hover");
-  check("sectionCollapsedPill caret turns", !!a0 && !!a1 && a0.size <= 12 && Math.abs(a1.deg - a0.deg) === 90 && gap >= 0 && gap < 10, { a0, a1, gap });
+  check("sectionCollapsedPill caret turns", !!a0 && !!a1 && a0.size <= 12 && Math.abs(a1.deg - a0.deg) === 90 && gap >= 0 && gap < 10 && right >= 0 && right < 10, { a0, a1, gap, right });
   await close(h);
 });
 

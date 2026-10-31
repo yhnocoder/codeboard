@@ -469,18 +469,17 @@ input, textarea { font: inherit; color: var(--ink); }
 .slabel .dots { position: absolute; right: 100%; top: 1px; padding-right: 1px; color: var(--ink-3); font-size: 11px; letter-spacing: -2px; }
 .slabel .dots, .slabel:not(.collapsed) .chev2 { opacity: 0; transition: opacity .15s var(--out); }
 .slabel:hover .dots, .slabel:hover .chev2, .slabel.sel .dots, .slabel.sel .chev2 { opacity: 1; }
-/* the collapse caret: one thin chevron, right of the title and pointing down while open; before the title and pointing right
-   when collapsed. It turns between the two */
+/* the collapse caret: one thin chevron at the right end, pointing down while open and right when collapsed (after the card count).
+   It turns between the two */
 .slabel .chev2 { order: 1; flex: none; width: 16px; height: 16px; display: grid; place-items: center; border-radius: 5px; color: var(--ink-3); transition: opacity .15s var(--out), background-color .15s var(--out), color .15s var(--out); }
 .slabel .chev2 .ico { width: 10px; height: 10px; --ico-w: 2; rotate: 90deg; transition: rotate .2s var(--out); }
-.slabel.collapsed .chev2 { order: 0; }
 .slabel.collapsed .chev2 .ico { rotate: 0deg; }
 .slabel .chev2:hover { background: var(--hlrow); color: var(--ink); }
 .slabel .sname { min-width: 20px; }
 .slabel .sname.editing { white-space: pre; min-width: 60px; display: inline-block; }
 .slabel .scount { flex: none; margin-left: 5px; color: var(--ink-3); font-weight: 400; font-variant-numeric: tabular-nums; }
-/* collapsed: a compact pill, caret · bold title · grey card count */
-.slabel.collapsed { z-index: 3; margin: 0; gap: 3px; padding: 4px 12px 4px 6px; border-radius: 11px; color: var(--ink); background: var(--surface); box-shadow: var(--sh-card); transition: color .15s var(--out), box-shadow .15s var(--out); }
+/* collapsed: a compact pill, bold title · grey card count · caret */
+.slabel.collapsed { z-index: 3; margin: 0; gap: 3px; padding: 4px 6px 4px 12px; border-radius: 11px; color: var(--ink); background: var(--surface); box-shadow: var(--sh-card); transition: color .15s var(--out), box-shadow .15s var(--out); }
 .slabel.collapsed .sname { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .slabel.collapsed.sel { box-shadow: 0 0 0 1.5px var(--accent), var(--sh-card); }
 .slabel.c-sand.collapsed { background: color-mix(in srgb, var(--surface) 80%, #d6b478); }
