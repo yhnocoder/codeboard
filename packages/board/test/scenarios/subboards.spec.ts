@@ -2,9 +2,9 @@
 // the panel between boards like BoardHub.switchBoard (crumbs, cameras, walkthrough hops), pushes skeletons after saves.
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { DEFAULT_SETTINGS, emptyBoard, subBoardsOf, type Board } from "@codeboard/core";
+import { DEFAULT_SETTINGS, emptyBoard, subBoardsOf } from "@codeboard/core";
 import { subHost } from "../subhost";
-import { shot, symCard, findSym, viewOf, put, OUT, type Host } from "../harness";
+import { shot, symCard, findSym, put, OUT, type Host } from "../harness";
 import { test, open, check, light, verdict, expect, until, idle, hold } from "../fixtures";
 import { DBL_CLICK } from "../../src/state/timing";
 

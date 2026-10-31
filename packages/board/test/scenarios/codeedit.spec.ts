@@ -6,7 +6,7 @@ import * as path from "node:path";
 import { emptyBoard, type Board, type NoteCard } from "@codeboard/core";
 import type { Page } from "playwright-core";
 import { put, OUT, type Host, type OnMsg } from "../harness";
-import { test, open, check, light, until, idle } from "../fixtures";
+import { test, open, check, until, idle } from "../fixtures";
 
 const close = (h: Host) => h.page.context().close();
 const CODE = ["def f(x):", "    y = x + 1  # one", "    return y", "", "print(f(2))"];

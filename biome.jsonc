@@ -1,0 +1,39 @@
+// Biome: lint only (npm run lint, part of npm run check). Two rules: no unused imports, no `any`. Formatting is not checked.
+{
+  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+  "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
+  "files": {
+    "includes": [
+      "packages/*/src/**", "packages/*/test/**", "packages/board/stories/**", "extensions/vscode/src/**", "extensions/vscode/test/**",
+      "tools/**", "examples/markdown-demo/**", "!**/fixtures/**", "!**/dist/**"
+    ]
+  },
+  "formatter": { "enabled": false },
+  "assist": { "enabled": false },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "preset": "none",
+      "correctness": { "noUnusedImports": "error" },
+      "suspicious": { "noExplicitAny": "error" }
+    }
+  },
+  "overrides": [
+    // Old board files are untyped JSON until they are upgraded; tests, stories and scripts poke at internals
+    {
+      "includes": ["packages/core/src/migrate.ts", "**/test/**", "packages/board/stories/**", "tools/**", "examples/**"],
+      "linter": { "rules": { "suspicious": { "noExplicitAny": "off" } } }
+    },
+    // Source files that still have an `any`: the cleanup PR narrows them and takes each file off this list
+    {
+      "includes": [
+        "extensions/vscode/src/commands.ts", "extensions/vscode/src/vscode/workspace.ts",
+        "packages/board/src/actions/{notes,stickers,variants,versions}.ts", "packages/board/src/cards/CodeBody.tsx",
+        "packages/board/src/{cm,md}/load.ts", "packages/board/src/host.ts", "packages/board/src/state/store.ts",
+        "packages/board/src/ui/{Editable,Md,Palette,Settings}.tsx", "packages/board/src/ui/pops/{notes,versions}.tsx",
+        "packages/host/src/stickers.ts", "packages/markdown/src/{math,schema}.ts"
+      ],
+      "linter": { "rules": { "suspicious": { "noExplicitAny": "off" } } }
+    }
+  ]
+}

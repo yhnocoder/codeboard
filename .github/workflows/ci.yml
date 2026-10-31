@@ -24,6 +24,7 @@ jobs:
       - run: git submodule update --init examples/nano-vllm # the other examples (sglang, DeepEP) are large manual testbeds
       - uses: ./.github/actions/setup
       - run: npm run typecheck
+      - run: npm run lint # Biome (unused imports, any) and knip (dead code, against tools/test/knip-known.txt)
       - run: npm test
       - uses: ./.github/actions/chromium
       - name: Markdown demo (@yhnocoder/markdown on its own, built and driven in Chromium)

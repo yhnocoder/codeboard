@@ -4,7 +4,7 @@ import { shot, symCard, findSym, put, OUT, REPO, type Host } from "../harness";
 import type { Page } from "@playwright/test";
 import { emptyBoard, type Board, type NoteCard } from "@codeboard/core";
 import { TOOLBAR_SETTLE } from "@yhnocoder/markdown/ui";
-import { test, open, check, light, expect, until, idle, hold, frames, pmHasSelection, focusSettled } from "../fixtures";
+import { test, open, check, light, until, idle, hold, frames, pmHasSelection, focusSettled } from "../fixtures";
 
 const card = (q: string) => { const s = findSym(q); return symCard(s.f, s.s); };
 const close = (h: Host) => h.page.context().close();

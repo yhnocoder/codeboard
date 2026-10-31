@@ -1,6 +1,6 @@
 // npm run check: the local test run, about 90 seconds. See TESTING.md.
 //   1. the @yhnocoder/markdown build (packages/markdown/dist, a few seconds), which the board, its typecheck, the package's own
-//      tests and the demo all use; then typecheck, unit tests (core, markdown, board, host, extension) and the Markdown demo
+//      tests and the demo all use; then typecheck, lint (Biome and knip), unit tests (core, markdown, board, host, extension) and the Markdown demo
 //      (examples/markdown-demo, built and run in Chromium) side by side with the board build, which runs only when its
 //      sources changed since the last one
 //   2. as soon as the board is built (the scenarios need nothing else), the harness scenarios this change needs
@@ -47,6 +47,7 @@ const build = fresh ? run("build (extension only; board unchanged)", "npm", ["ru
 
 const first = Promise.all([
   run("typecheck", "npm", ["run", "typecheck"]),
+  run("lint", "npm", ["run", "lint"]),
   run("unit tests", "npm", ["test"]),
   run("markdown demo", "npm", ["test", "-w", "@codeboard/markdown-demo"]),
 ]);

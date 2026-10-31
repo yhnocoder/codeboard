@@ -12,7 +12,7 @@ import { resetIndex, startNameIndex, nameIndexReady } from "@codeboard/host/name
 import { captureRun, runApply } from "@codeboard/host/runs";
 import { langOf, useWorkspace } from "@codeboard/host/ws";
 import { nodeWorkspace } from "@codeboard/host/test/node-workspace";
-import { test, open, check, light, verdict, expect, until, idle } from "../fixtures";
+import { test, open, light, verdict, expect, until, idle } from "../fixtures";
 
 async function shotPr(h: Host, name: string) {
   await shot(h, name);
