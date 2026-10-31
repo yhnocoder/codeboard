@@ -7,6 +7,7 @@ import { state, cardById } from "./store";
 import { shown } from "./ui";
 import { toWorld } from "./camera";
 import { cmNow } from "../cm/load";
+import { cardSel } from "../cardsel";
 
 // 先读后写的一轮测量和共用的 ResizeObserver 在 @yhnocoder/markdown 里（Mermaid 图的重排也排在同一轮里）：写回包在 batch 里
 setMeasureBatch(batch);
@@ -62,13 +63,13 @@ export function monoWidth(el: Element) {
 
 /** 代码卡的卡头 / 色带 / 底栏一共多高：主题决定，直接量布局。代码卡的 Place.h 存的是中间内容区（.carea）的高度，不含这些 */
 export function chromeOf(id: string): number {
-  const el = document.querySelector<HTMLElement>(`.card[data-id="${id}"]`);
+  const el = document.querySelector<HTMLElement>(`${cardSel(id)}`);
   const a = el?.querySelector<HTMLElement>(":scope > .cface > .carea");
   return el && a ? el.offsetHeight - a.offsetHeight : 0;
 }
 /** 卡片内容刚好装下的宽高；minH = 头部 + 一行 */
 export function naturalSize(id: string): { w?: number; h: number; minH: number; body?: number } | null {
-  const el = document.querySelector<HTMLElement>(`.card[data-id="${id}"]`);
+  const el = document.querySelector<HTMLElement>(`${cardSel(id)}`);
   if (!el) return null;
   const f = cardById(id);
   const body = el.querySelector<HTMLElement>(".cbody");

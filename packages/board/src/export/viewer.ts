@@ -55,7 +55,7 @@ function start(d: ViewerData) {
     wi = Math.max(0, Math.min(d.walk.length - 1, wi + k));
     const s = d.walk[wi];
     document.querySelectorAll(".xv-cur").forEach((e) => e.classList.remove("xv-cur"));
-    document.querySelector(`.card[data-id="${s.id}"]`)?.classList.add("xv-cur");
+    document.querySelector(`.card[data-id="${CSS.escape(s.id)}"]`)?.classList.add("xv-cur");
     q(".xv-wt").textContent = `${s.mark ? `${s.mark} · ` : ""}${s.title}`;
     q(".xv-walk .cnt").textContent = `${wi + 1} / ${d.walk.length}`;
     fit(s.r);

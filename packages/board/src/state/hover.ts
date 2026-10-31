@@ -4,6 +4,7 @@ import { state, hostOf } from "./store";
 import { camMoving, stillZ } from "./camera";
 import { tune } from "./tune";
 import { boardSignal, rooted } from "./root";
+import { cardSel } from "../cardsel";
 
 export const [hoverLink, setHoverLink] = boardSignal<string | null>(null);
 export const [hoverCard, setHoverCard] = boardSignal<string | null>(null);
@@ -31,7 +32,7 @@ export const leaveCard = (id: string) => { if (hovNow === id) hovNow = null; set
 // 所以指针每动一下都核对一次：落点已经不在悬停的那张卡里 → 当它离开了；卡重排之后指针不动也在下一帧按指针下面是什么核对一次。
 // 走的还是 leaveCard → settleHover，落回去照样过 linkLeave、照样淡出
 let ptr: { x: number; y: number } | null = null;
-const inHovered = (el: EventTarget | Element | null) => !!hovNow && el instanceof Element && !!el.closest(`.card[data-id="${CSS.escape(hovNow)}"]`);
+const inHovered = (el: EventTarget | Element | null) => !!hovNow && el instanceof Element && !!el.closest(`${cardSel(hovNow)}`);
 const checkHover = (el: EventTarget | Element | null) => { if (hovNow && !inHovered(el)) leaveCard(hovNow); };
 /** trackLinks 里调用一次 */
 export function watchHover() {

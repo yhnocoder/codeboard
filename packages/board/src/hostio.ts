@@ -4,7 +4,7 @@ import { loadBoard, findCard, isCode, allCodeCards, rebaseUpstream, upstreamSegs
 import { state, setState, markSaved, setBoard, select, clearSel, toast, mutate, sync, syncShared, syncGone, syncMerged, setShared, setLineSel, lineSel, sel, flows } from "./state/store";
 import { setCam } from "./state/camera";
 import { cardsMeasured } from "./state/measure";
-import { resetSubboards, putSkels, setCrumbs, setWalkBack } from "./state/subboards";
+import { putSkels, setCrumbs, setWalkBack } from "./state/subboards";
 import { boardSwitched } from "./state/root";
 import * as A from "./actions";
 import { runKey } from "./keymap";
@@ -46,11 +46,10 @@ function handle(m: HostToBoard) {
         setState("stale", reconcile(m.stale));
         setBoard(b, (m.crumbs ?? []).map((c) => c.id));
         A.resetShownViews();
-        setShared(reconcile({}));
         setState("loaded", true);
-        // 换了一块白板（进入 / 离开子白板）：讲解、模式、拖动、弹出的面板、骨架、面包屑都是上一块白板的
+        // 换了一块白板（进入 / 离开子白板）：讲解、模式、拖动、弹出的面板、骨架、共享卡的情况都是上一块白板的（onBoardSwitch / boardSignal）
         boardSwitched();
-        resetSubboards(m.crumbs);
+        setCrumbs(m.crumbs ?? []);
         setWelcome(m.welcome ?? null);
         clearSel();
       });

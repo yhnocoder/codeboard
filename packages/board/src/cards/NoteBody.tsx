@@ -9,6 +9,7 @@ import * as A from "../actions";
 import { below, ownMenu } from "../ui/Menu";
 import { sourceModeOf, toggleNoteSource } from "../md/load";
 import { trackBlocks } from "../state/blocks";
+import { cardSel } from "../cardsel";
 
 /**
  * 卡头的名字就是 Markdown 开头的标题时，正文里藏起那一行（正文元素加 hidehead，styles.css 藏掉第一个标题）：没自己起名字、开头是标题、
@@ -74,7 +75,7 @@ const block = (e: HTMLElement) => { const r = e.getBoundingClientRect(); return 
  * 三样一起用同一条缓动走（WAAPI，不改 DOM 属性，ProseMirror 看不到），每一帧加起来一样高；减弱动效时直接到位
  */
 function foldHeader(id: string, entering: boolean, setFolded: (v: boolean) => void, done: () => void) {
-  const face = document.querySelector<HTMLElement>(`.card[data-id="${CSS.escape(id)}"] > .cface`);
+  const face = document.querySelector<HTMLElement>(`${cardSel(id)} > .cface`);
   const head = face?.querySelector<HTMLElement>(":scope > .chead"), body = face?.querySelector<HTMLElement>(":scope > .nbody");
   if (!face || !head || !body) { setFolded(entering); return done(); }
   // 编辑器还在加载（先显示 .md-loading，标题照样藏着）：等编辑器出来（画出来之前）再开始，标题的动画只走在编辑器的标题上

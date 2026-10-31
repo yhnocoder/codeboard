@@ -13,6 +13,7 @@ import { send, ask } from "../host";
 import { renderMd, renderMdInline, type RefBroken, type RefTarget } from "@yhnocoder/markdown";
 import { crossRef } from "../md/refs";
 import { mathRev } from "../md/math";
+import { cardSel } from "../cardsel";
 
 const isMac = () => state.host.isMac;
 /** 说明文字里的修饰键（「⌥-click」「⌘↵ to save」）；有绑定的快捷键用 keymap 的 kbd(id) */
@@ -209,7 +210,7 @@ export function openWorktreeDiff(id: string) {
   const c = cardById(id)?.card;
   if (!isCode(c)) return;
   const s = c.segments[0];
-  const el = document.querySelector(`.card[data-id="${hostOf(id)}"] .rev`) ?? undefined;
+  const el = document.querySelector(`${cardSel(hostOf(id))} .rev`) ?? undefined;
   const pid = openPop({ kind: "diff", card: id, seg: s.id }, el ? { el, prefer: "below" } : lastPointer());
   ask("diff", { seg: s, against: "worktree" })
     .then((data) => updatePop(pid, "diff", (p) => ({ ...p, data })))
@@ -239,7 +240,7 @@ export function fitContent(ids: string[]) {
 
 /** 卡画出来的宽和存着高度的那一块的高（代码卡是内容区 .carea，别的卡整张） */
 function shownSize(id: string): SizeAnim | null {
-  const el = document.querySelector<HTMLElement>(`.card[data-id="${id}"]`);
+  const el = document.querySelector<HTMLElement>(`${cardSel(id)}`);
   if (!el) return null;
   const box = el.querySelector<HTMLElement>(":scope > .cface > .carea") ?? el;
   return { w: el.offsetWidth, h: box.offsetHeight };

@@ -3,6 +3,7 @@ import { Icon } from "./icons";
 import { place, virtual, scrollIntoBox } from "@yhnocoder/markdown/ui";
 import { useOverlay } from "./overlay";
 import { useListNav } from "./hooks";
+import { TIP_DELAY } from "../state/timing";
 
 export type Item =
   | { label: string; kbd?: string; run?: () => void; disabled?: boolean | string; checked?: boolean; danger?: boolean; sub?: Item[]; hint?: string; head?: true; keep?: true; inset?: true }
@@ -269,7 +270,7 @@ export function TooltipLayer() {
     const b = (e.target as HTMLElement).closest?.("[data-tip]") as HTMLElement | null;
     if (!b) return;
     clearTimeout(timer);
-    if (tip() || performance.now() < warmUntil) show(b); else timer = window.setTimeout(() => show(b), 500);
+    if (tip() || performance.now() < warmUntil) show(b); else timer = window.setTimeout(() => show(b), TIP_DELAY);
   };
   const out = (e: PointerEvent) => {
     const b = (e.target as HTMLElement).closest?.("[data-tip]");

@@ -10,6 +10,7 @@ import { below, ownMenu } from "../ui/Menu";
 import * as A from "../actions";
 import "./web.css";
 import { fetching, rowDrag } from "../state/web";
+import { WEB_PEEK_DELAY } from "../state/timing";
 
 /** favicon；拿不到用域名首字母方块 */
 function Fav(p: { meta?: WebMeta; url: string; big?: boolean }) {
@@ -134,7 +135,7 @@ function LinkRow(p: { card: LinksCard; item: LinkItem; dropBefore: boolean; drop
   const enter = () => {
     if (rich() || rowDrag()) return;
     clearTimeout(t);
-    t = window.setTimeout(() => { if (el?.isConnected && !rowDrag() && !editing()) setPeek(true); }, 550);
+    t = window.setTimeout(() => { if (el?.isConnected && !rowDrag() && !editing()) setPeek(true); }, WEB_PEEK_DELAY);
   };
   // 卡片右边、和这一行齐平（右边放不下翻到左边）：锚点是卡片在这一行高度上的那一条
   const placePeek = (pe: HTMLElement) => {

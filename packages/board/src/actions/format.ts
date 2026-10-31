@@ -3,10 +3,11 @@
 import { findCard } from "@codeboard/core";
 import { staticTextRange, staticDomRange, toggleStaticMark, staticMarkActive, type StaticMark, type StaticTextRange } from "@yhnocoder/markdown";
 import { mutate, sel, cardById, hostOf } from "../state/store";
+import { cardSel } from "../cardsel";
 
 export type StaticSel = { id: string; body: HTMLElement; range: StaticTextRange; dom: Range };
 
-const bodyOf = (id: string) => document.querySelector<HTMLElement>(`.card[data-id="${CSS.escape(id)}"] :is(.nbody, .tx).md:not(.editing)`);
+const bodyOf = (id: string) => document.querySelector<HTMLElement>(`${cardSel(id)} :is(.nbody, .tx).md:not(.editing)`);
 
 /** 现在的原生选区：两头都在只选着的那一张 Note 的静态正文里、数得出是哪一段字时 */
 export function staticSel(): StaticSel | null {

@@ -12,6 +12,7 @@ import { look } from "./look";
 import { queueMeasure, observeResize } from "./measure";
 import { boardSignal, rooted } from "./root";
 import { BLOCK_LEAVE } from "./timing";
+import { cardSel } from "../cardsel";
 
 /** 一张 Note 里每块的位置（相对卡片顶部、未减滚动，和代码卡的 CardGeo 一样）；sigs = 量的那份 Markdown 每块的指纹（编辑中是编辑器里的字） */
 type BlockGeo = { ys: number[]; hs: number[]; top: number; bottom: number; scroll: number; sigs: string[] };
@@ -29,7 +30,7 @@ type NoteDom = { card: HTMLElement; body: HTMLElement; kids: HTMLElement[]; bloc
 function noteDom(id: string): NoteDom | null {
   const c = cardById(id)?.card;
   if (c?.kind !== "note" || c.look !== "note") return null;
-  const card = document.querySelector<HTMLElement>(`.card[data-id="${CSS.escape(id)}"]`);
+  const card = document.querySelector<HTMLElement>(`${cardSel(id)}`);
   const body = card?.querySelector<HTMLElement>(":scope > .cface > .nbody");
   if (!card || !body) return null;
   const editor = body.classList.contains("editing");
@@ -90,7 +91,7 @@ export function trackBlocks(id: () => string, md: () => string) {
       for (const f of unobs) f();
       unobs = [];
       mo.disconnect();
-      const face = document.querySelector<HTMLElement>(`.card[data-id="${CSS.escape(cid)}"] > .cface`);
+      const face = document.querySelector<HTMLElement>(`${cardSel(cid)} > .cface`);
       body = face?.querySelector<HTMLElement>(":scope > .nbody") ?? null;
       if (!face || !body) return later();
       const pm = body.querySelector<HTMLElement>(".md-pm");
@@ -191,7 +192,7 @@ export function tintBlocks(list: (BlockAim | null)[]) {
   tinted = key;
   if (!sheet) { sheet = document.createElement("style"); sheet.dataset.export = "strip"; document.head.appendChild(sheet); }
   sheet.textContent = xs.map((a) => {
-    const at = `.card[data-id="${CSS.escape(a.card)}"] > .cface > .nbody${a.editor ? ".editing .md-pm" : ".md:not(.editing)"} > :nth-child(${domIndex(a.el) + 1})`;
+    const at = `${cardSel(a.card)} > .cface > .nbody${a.editor ? ".editing .md-pm" : ".md:not(.editing)"} > :nth-child(${domIndex(a.el) + 1})`;
     return `${at} { background-image: linear-gradient(var(--btint), var(--btint)); box-shadow: 0 0 0 6px var(--btint); }\n${at}:not(pre) { border-radius: 6px; }`;
   }).join("\n");
 }

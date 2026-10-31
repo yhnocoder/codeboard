@@ -17,7 +17,7 @@ import { animate, Spring, reduceMotion } from "../state/camera";
 import { setEditing, setEditEntry, codeTextRange, staged, setStaged } from "../state/ui";
 import { foldOf, setFold, setFoldV, setFoldHome, setSkel, unskel, type Fold } from "../state/fold";
 import { farAway } from "../state/cull";
-import { SKEL_OUT } from "../state/timing";
+import { SKEL_OUT, SECTION_FIT } from "../state/timing";
 import { lodOf } from "../state/lodcards";
 import { staticTextRange } from "@yhnocoder/markdown";
 import { openMenu, type Item } from "../ui/Menu";
@@ -570,7 +570,7 @@ export function fitSections(ids: string[]) {
   if (!reduceMotion()) {
     const me = new Set(fits.keys());
     setFitting(me);
-    setTimeout(() => setFitting((f) => (f === me ? new Set<string>() : f)), 320);
+    setTimeout(() => setFitting((f) => (f === me ? new Set<string>() : f)), SECTION_FIT);
   }
   mutate((b) => {
     for (const [id, r] of fits) { const s = b.sections.find((q) => q.id === id); if (s) Object.assign(s, { x: r.x, y: r.y, w: r.w, h: r.h }); }

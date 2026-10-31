@@ -12,13 +12,14 @@ import { K, hostRect, popCard } from "./common";
 import { lastPointer } from "../state/measure";
 import { callMark, expandCall, placeExpanded, isLibCall } from "./flow";
 import { linksInto } from "./nav";
+import { cardSel } from "../cardsel";
 
 /** 调用处那个名字的元素（浮层挂在它下面） */
 function callEl(cardId: string, segId: string, call: CallSpan): Element | null {
   const host = hostOf(cardId);
   const calls = state.views[segId]?.calls ?? [];
   const i = calls.findIndex((c) => c.line === call.line && c.col === call.col);
-  return i < 0 ? null : document.querySelector(`.card[data-id="${host}"] [data-seg="${segId}"] .call[data-c="${i}"]`) ?? document.querySelector(`.card[data-id="${host}"] .call[data-c="${i}"]`);
+  return i < 0 ? null : document.querySelector(`${cardSel(host)} [data-seg="${segId}"] .call[data-c="${i}"]`) ?? document.querySelector(`${cardSel(host)} .call[data-c="${i}"]`);
 }
 
 export function openImplPicker(cardId: string, segId: string, call: CallSpan, r: { impls: ImplPick[]; base: string }, at?: { x: number; y: number }, again = false, late?: { link: string; abstract?: boolean }) {

@@ -13,7 +13,7 @@ import { visible, type Geo } from "./Links";
 import { dragT, placeT, type Box } from "./labelpos";
 import { bezAt } from "./geom";
 import { NODRAG } from "../ui/guard";
-import { track, undoGesture } from "../gesture";
+import { DRAG_SLOP, track, undoGesture } from "../gesture";
 import { addExtra, keepSize, keptSize } from "../state/extent";
 
 // 框的大小（世界坐标）：一个共用的 ResizeObserver，只在框的内容变了时回调，平移 / 缩放 / 拖卡时不读布局
@@ -53,7 +53,7 @@ function labelDrag(e: PointerEvent, id: string, el: HTMLElement, pts: () => numb
     const o = boardOffset(), w = toWorld(ev.clientX - o.x, ev.clientY - o.y);
     const t = dragT(p, w.x - grab.x, w.y - grab.y, box, rs);
     live((b) => { const k = b.links.find((l) => l.id === id); if (k && k.at !== t) k.at = t; });
-  }, () => { if (g) { setDragLink(null); g.end(); } }, 4, () => g?.drop());
+  }, () => { if (g) { setDragLink(null); g.end(); } }, DRAG_SLOP, () => g?.drop());
 }
 
 const NONE = new Set<string>();

@@ -22,6 +22,7 @@ import { align } from "@codeboard/core";
 import { boardMode } from "../state/mode";
 import { kbd } from "../keymap";
 import { observeResize, queueMeasure } from "@yhnocoder/markdown/ui";
+import { cardSel } from "../cardsel";
 
 const EXT = 2048;
 
@@ -38,7 +39,7 @@ export function Canvas() {
   createEffect(on(editing, (e) => {
     if (e?.kind !== "note") return;
     requestAnimationFrame(() => {
-      const el = world.querySelector(`.card[data-id="${e.id}"] :is(.nbody, .tx)`), f = cardById(e.id);
+      const el = world.querySelector(`${cardSel(e.id)} :is(.nbody, .tx)`), f = cardById(e.id);
       if (!el || !f) return;
       const fs = parseFloat(getComputedStyle(el).fontSize), c = camTarget();
       if (!fs || fs * c.z >= READ_PX) return;

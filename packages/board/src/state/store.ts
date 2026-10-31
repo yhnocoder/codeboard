@@ -6,7 +6,7 @@ import {
 } from "@codeboard/core";
 import { ask, send } from "../host";
 import { ghostOut } from "./ghost";
-import { rooted, boardSignal } from "./root";
+import { rooted, boardSignal, onBoardSwitch } from "./root";
 import { trimLru } from "./lru";
 import { followBlocks } from "../md/blocks";
 import { LIVE_DELAY, RESEND_DELAY, SEL_REPORT } from "./timing";
@@ -22,6 +22,7 @@ export const [state, setState] = createStore({
 
 /** 共享卡在几块白板上、别的白板上谁连到它。宿主存盘后算好整个发来；只有在两块以上白板上的卡才有；不进撤销栈、不存盘 */
 export const [shared, setShared] = createStore<Record<string, SharedInfo>>({});
+onBoardSwitch(() => setShared(reconcile({})));
 export const sharedOn = (id: string) => shared[id]?.boards.length ?? 0;
 
 export type Sel = { cards: string[]; links: string[]; sections: string[] };

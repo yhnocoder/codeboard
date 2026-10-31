@@ -12,6 +12,7 @@ import { settleHome, frames as sectionFrames } from "../state/sections";
 import { animScale } from "../state/ghost";
 import { ask, send } from "../host";
 import { promptText } from "../ui/Menu";
+import { cardSel } from "../cardsel";
 
 const subsOf = (id: string) => state.boards.find((m) => m.id === id)?.subs;
 const nameOf = (id: string) => state.boards.find((m) => m.id === id)?.name ?? "Board";
@@ -75,7 +76,7 @@ let transit: Transit | null = null;
 const titleAt = new Map<string, Spot>();
 
 const spotOf = (el: HTMLElement): Spot => { const r = el.getBoundingClientRect(); return { r, font: parseFloat(getComputedStyle(el).fontSize) * (r.height / (el.offsetHeight || r.height || 1)) }; };
-const titleEl = (frame: string) => document.querySelector<HTMLElement>(`.card[data-id="${CSS.escape(frame)}"] .sbname`);
+const titleEl = (frame: string) => document.querySelector<HTMLElement>(`${cardSel(frame)} .sbname`);
 /** 替身放在框上名字的位置时的 transform（替身的盒子在面包屑那一格上，transform-origin 左上角） */
 function onTitle(title: Spot, crumb: Spot): string {
   const k = title.font / crumb.font;

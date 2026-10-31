@@ -5,6 +5,7 @@ import { noteShown, type CodeCard, type Guide, type Link, type Sidenote } from "
 import { state } from "./store";
 import { rooted, boardSignal } from "./root";
 import type { StaticTextRange } from "@yhnocoder/markdown";
+import { FLASH_MS } from "./timing";
 
 // 临时展开的手动隐藏范围（Show）："seg:from"
 const [shown, setShown] = boardSignal<Set<string>>(new Set());
@@ -47,7 +48,7 @@ export { flashRows };
 export function flash(card: string, seg: string, lines: number[]) {
   const keys = lines.map((l) => `${card}:${seg}:${l}`);
   setFlashRows(new Set([...flashRows(), ...keys]));
-  setTimeout(() => { const s = new Set(flashRows()); keys.forEach((k) => s.delete(k)); setFlashRows(s); }, 700);
+  setTimeout(() => { const s = new Set(flashRows()); keys.forEach((k) => s.delete(k)); setFlashRows(s); }, FLASH_MS);
 }
 const [pingCard, setPingCard] = boardSignal<{ id: string; n: number } | null>(null);
 export { pingCard };

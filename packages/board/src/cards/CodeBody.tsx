@@ -20,6 +20,7 @@ import * as act from "../actions";
 import { callPointerDown, cardWheel, linkPortDown } from "../interact";
 import { Editable } from "../ui/Editable";
 import { annotDraft, annotKey, annotMenu, commitDraft, setAnnotText, startAnnot } from "../actions/annots";
+import { ROW_LEAVE } from "../state/timing";
 
 /** 第 i 个字前面占几个等宽的格（Tab 跳到下一个 4 的倍数，和 .src 的 tab-size 一样） */
 function vcol(t: string, i: number) {
@@ -314,7 +315,7 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
   };
   const clearPeek = () => { if (peekKey) { peekKey = ""; clearTimeout(peekTimer); act.scheduleHidePeek(); } };
   let leaveT: number | undefined;
-  const onLeave = () => { clearPeek(); clearTimeout(leaveT); leaveT = window.setTimeout(() => setHoverRow(-1), 200); };
+  const onLeave = () => { clearPeek(); clearTimeout(leaveT); leaveT = window.setTimeout(() => setHoverRow(-1), ROW_LEAVE); };
   const keepRow = () => clearTimeout(leaveT);
   /** A line number hovered: that line's ports show, as on its code */
   const hoverNo = (e: PointerEvent, row: number) => {

@@ -18,6 +18,7 @@ import { jumpTo } from "./nav";
 import { walkIntoFrame, walkOut } from "./subboards";
 import { walkBack, setWalkBack } from "../state/subboards";
 import { lateDispatch, openImplPicker, unresolvedMenu, searchAllLangs } from "./chains";
+import { cardSel } from "../cardsel";
 
 const pending = new Set<string>();
 
@@ -279,7 +280,7 @@ export function setGraphMark(cardId: string, mark: GraphMark | null) {
 export function openMarkPicker(cardId: string, el?: Element) {
   if (!flows().byId.has(cardId)) return;
   const host = hostOf(cardId);
-  const at = el ?? document.querySelector(`.card[data-id="${host}"] .step`) ?? document.querySelector(`.card[data-id="${host}"]`);
+  const at = el ?? document.querySelector(`${cardSel(host)} .step`) ?? document.querySelector(`${cardSel(host)}`);
   openPop({ kind: "mark", card: cardId }, at ? { el: at, prefer: "below" } : lastPointer());
 }
 

@@ -12,6 +12,8 @@ import { updateScoped, reviewToast } from "./shared";
 import { choose } from "../ui/Menu";
 import { unlinkCard, versionLabel } from "@codeboard/core";
 import { sharedOn } from "../state/store";
+import { COMMITS_WAIT } from "../state/timing";
+import { cardSel } from "../cardsel";
 
 /** 卡片标题上的版本点：changed = 黄点；hidden = 只有隐藏的行变了（空心点） */
 export function cardStale(c: CodeCard): "changed" | "hidden" | "lost" | "missing" | null {
@@ -35,7 +37,7 @@ export async function openDiff(id: string, segId?: string) {
   const ups = upstreamSegs(c);
   const s = segId ? ups.find((q) => q.id === segId) : ups.find((q) => state.stale[q.id]?.state === "changed") ?? ups[0];
   if (!s) return;
-  const el = document.querySelector(`.card[data-id="${hostOf(id)}"] .rev`) ?? undefined;
+  const el = document.querySelector(`${cardSel(hostOf(id))} .rev`) ?? undefined;
   const pid = openPop({ kind: "diff", card: id, seg: s.id }, el ? { el, prefer: "below" } : lastPointer());
   try {
     const data = await ask("diff", { seg: s, against: c.variants?.length ? "upstream" : undefined });
@@ -113,7 +115,7 @@ export async function commitMenu(id: string, el: Element) {
   // 先拿列表再开弹窗：弹窗不会先以 Loading 打开再变大、换位置；拿得慢才先开
   const seg = structuredClone(unwrap(s));
   const req = ask("commits", { seg }).catch(() => [] as Commit[]);
-  const quick = await Promise.race([req, new Promise<null>((r) => setTimeout(() => r(null), 250))]);
+  const quick = await Promise.race([req, new Promise<null>((r) => setTimeout(() => r(null), COMMITS_WAIT))]);
   if (quick) return void openPop({ kind: "commits", card: id, seg, list: quick }, { el, prefer: "below" });
   const pid = openPop({ kind: "commits", card: id, seg }, { el, prefer: "below" });
   const list = await req;

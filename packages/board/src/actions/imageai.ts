@@ -18,6 +18,7 @@ import { imageDataUrl } from "./imagedata";
 import { addCards } from "./create";
 import { hostRect, openLink } from "./common";
 import { openSettings, setSetting } from "./settings";
+import { cardSel } from "../cardsel";
 
 /** 一张图：图片卡本身，或 Note 里的一张（note = Markdown 里写的地址：assets/…、data:、网址） */
 export type ImgRef = { card: string; note?: string };
@@ -259,7 +260,7 @@ async function convertToSvg(ref: ImgRef) {
 }
 
 function openModifySvg(ref: ImgRef) {
-  const el = document.querySelector(`.card[data-id="${CSS.escape(ref.card)}"]`) ?? undefined;
+  const el = document.querySelector(`${cardSel(ref.card)}`) ?? undefined;
   openPop({ kind: "modifySvg", ref }, { el, prefer: "below" });
 }
 
@@ -338,7 +339,7 @@ export async function newSvgFromText() {
 export function noteSelText(card: string): string {
   const s = window.getSelection();
   if (!s || s.isCollapsed || !s.rangeCount || cardById(card)?.card.kind !== "note") return "";
-  const face = document.querySelector(`.card[data-id="${CSS.escape(card)}"] .cface`);
+  const face = document.querySelector(`${cardSel(card)} .cface`);
   const r = s.getRangeAt(0);
   return face && face.contains(r.startContainer) && face.contains(r.endContainer) ? s.toString().trim() : "";
 }
