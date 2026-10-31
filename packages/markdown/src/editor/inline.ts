@@ -350,6 +350,10 @@ export function inlinePlugin() {
           reveal(view);
         }
         if (e.isComposing || e.keyCode === 229) return false;
+        // a key before the focus handler's timer has run (typed at once after the editor got focus, on a busy page): the
+        // editor has the keyboard, so the markers follow the caret from this key on. Otherwise they stay hidden, and the
+        // browser puts what is typed after a hidden closing ** before it, into the bold
+        if (!ui.composing && !inlineKey.getState(view.state)!.focused && view.hasFocus()) reveal(view);
         if ((e.key === "ArrowLeft" || e.key === "ArrowRight") && !e.altKey && !e.ctrlKey && !e.metaKey)
           return moveH(view, e.key === "ArrowRight" ? 1 : -1, e.shiftKey);
         return false;

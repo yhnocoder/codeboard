@@ -1820,6 +1820,8 @@ const finish = async (browser, errors) => {
   await until("the new Note's editor has the keyboard", () =>
     f.evaluate(() => !!document.activeElement?.closest(".card.note .md-pm")),
   );
+  // keys typed within ProseMirror's first 20 ms of focus can land before its selection is put back (as newNote)
+  await focusSettled(f);
   await page.keyboard.type("**Takeaway**: schedule → run → postprocess");
   await page.keyboard.press("Escape");
   check(
