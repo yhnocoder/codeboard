@@ -520,6 +520,8 @@ const gap = (a, b) => Math.hypot(Math.max(0, a.l - b.r, b.l - a.r), Math.max(0, 
       };
       for (const p of paths) {
         await blank(f, page); await open(); await page.keyboard.press("Escape"); await closed(); // right-click selects the card, so let the selection into the "before" picture
+        // a toast left by the item before (an AI item without a model shows the same one for 9 s) would be in both pictures and hide this item's own
+        await until("the previous item's toast is gone", async () => !(await f.locator(".toast").count()), 15000);
         const a = await look(), j0 = JSON.stringify(boardJson()), p0 = await sent(f, "patch");
         if (!(await pick(p))) continue;
         await idle(f);
