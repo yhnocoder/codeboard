@@ -9,6 +9,7 @@ import type { Node as PMNode } from "@tiptap/pm/model";
 import { REVEAL_AFTER_CLICK } from "../ui/timing";
 import { blockInfo, flat, type Span } from "./spans";
 import { atomWidget, ellipsis, foldButton, foldRange, imageBelow, mathBelow, placeCaret } from "./widgets";
+import { measureImages, slideImages } from "./imageslide";
 
 type Tag = NonNullable<Span["tag"]>;
 
@@ -18,6 +19,8 @@ export const inlineKey = new PluginKey<St>("cbInline");
 
 /** Input state shared by the plugin's handlers (only one editor takes input at a time) */
 const ui = { mouseDown: false, pending: false, composing: false, timer: 0 as ReturnType<typeof setTimeout> | 0 };
+/** The editor whose images slide (one editor is open at a time), and what was measured before the redraw (imageslide.ts) */
+let slideView: EditorView | null = null, slideFrom: ReturnType<typeof measureImages> | null = null;
 
 /** A range the caret crosses in one step: [from, to, counts as one character] */
 type Hidden = [number, number, boolean];
@@ -186,6 +189,11 @@ export function inlinePlugin() {
         // the open address closes once the caret leaves its image
         if (expand !== null && head !== null) { const b = blockAt(st.doc, expand); if (!b || head < b[0] || head > b[1]) expand = null; }
         if (head === prev.head && !tr.docChanged && expand === prev.expand && focused === prev.focused) return prev;
+        // the caret moving into or out of an image's source (not typing): the image is measured before the redraw, to slide
+        if (head !== prev.head && !tr.docChanged && slideView) {
+          const blocks = [prev.head, head].map((p) => blockAt(st.doc, p)?.[0]).filter((p): p is number => p !== undefined && /!\[/.test(st.doc.nodeAt(p)?.textContent ?? ""));
+          if (blocks.length) slideFrom = measureImages(slideView, [...new Set(blocks)]);
+        }
         return { head, focused, expand, decos: update(prev, tr, head, expand, st.doc) };
       },
     },
@@ -212,6 +220,7 @@ export function inlinePlugin() {
       },
     },
     view(view) {
+      slideView = view;
       const up = () => {
         if (!ui.mouseDown) return;
         ui.mouseDown = false;
@@ -221,7 +230,10 @@ export function inlinePlugin() {
         ui.timer = setTimeout(() => { ui.pending = false; reveal(view); }, REVEAL_AFTER_CLICK);
       };
       window.addEventListener("mouseup", up, true);
-      return { destroy: () => { window.removeEventListener("mouseup", up, true); clearTimeout(ui.timer); ui.pending = false; ui.mouseDown = false; } };
+      return {
+        update: (v) => { if (slideFrom) { const b = slideFrom; slideFrom = null; slideImages(v, b); } },
+        destroy: () => { window.removeEventListener("mouseup", up, true); clearTimeout(ui.timer); ui.pending = false; ui.mouseDown = false; if (slideView === view) slideView = null; },
+      };
     },
   });
 }

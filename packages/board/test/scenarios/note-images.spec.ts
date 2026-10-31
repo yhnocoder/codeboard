@@ -275,14 +275,15 @@ const PAGE_SRC = `data:image/png;base64,${screenshot(320, 180).toString("base64"
 /** The image's own box and the wrapper the editor puts around it: everything that could draw a frame, padding or shadow */
 const frameOf = (h: Host, id: string, sel: string) => h.page.locator(`.card[data-id="${id}"] ${sel} img:not(.ProseMirror-separator)`).first().evaluate((el) => {
   const look = (e: Element) => { const cs = getComputedStyle(e); return { shadow: cs.boxShadow, border: cs.borderTopWidth + cs.borderRightWidth + cs.borderBottomWidth + cs.borderLeftWidth, padding: cs.padding, bg: cs.backgroundColor, filter: cs.filter, outline: cs.outlineStyle }; };
-  const r = el.getBoundingClientRect();
-  return { img: look(el), wrap: el.parentElement!.classList.contains("md-img") ? look(el.parentElement!) : null, box: { x: Math.round(r.x * 10) / 10, y: Math.round(r.y * 10) / 10, w: Math.round(r.width * 10) / 10, h: Math.round(r.height * 10) / 10 } };
+  const r = el.getBoundingClientRect(), frame = el.closest(".md-imgframe"), wrap = el.closest(".md-img");
+  return { img: look(el), frame: frame ? look(frame) : null, wrap: wrap ? look(wrap) : null, box: { x: Math.round(r.x * 10) / 10, y: Math.round(r.y * 10) / 10, w: Math.round(r.width * 10) / 10, h: Math.round(r.height * 10) / 10 } };
 });
 type Look = { shadow: string; border: string; padding: string; bg: string; filter: string; outline: string };
 const bare = (l: Look | null) => !l || (l.shadow === "none" && l.border === "0px0px0px0px" && l.padding === "0px" && l.bg === "rgba(0, 0, 0, 0)" && l.filter === "none");
 
 /** #22: an image in a Note is drawn bare, with no hairline frame, shadow, padding or background around it, the same in the
- *  static view and in the editor; clicked, it opens its source with the image under it, still bare, with its resize grips */
+ *  static view and in the editor; clicked, it opens its source with the image under it, the image itself bare inside its
+ *  selection frame (the frame hugs the image, not its caption) with its resize grips */
 test("noteImageNoFrame", async () => {
   const { h, done } = await imageHost([`Pages the scheduler hands out:\n\n![](${PAGE_SRC})\n\nOne block per sequence.`]);
   const pg = h.page;
@@ -302,7 +303,80 @@ test("noteImageNoFrame", async () => {
   await h.page.locator('.card[data-id="n0"] .md-pm img:not(.ProseMirror-separator)').first().click();
   await pg.locator('.card[data-id="n0"] .md-pm .md-img.below .md-imgrip.r').waitFor({ state: "visible" });
   const picked = await frameOf(h, "n0", ".md-pm .md-img.below");
-  check("noteImageNoFrame opened: bare, with grips", bare(picked.img) && picked.wrap?.shadow === "none", picked);
+  check("noteImageNoFrame opened: bare, with grips", bare(picked.img) && picked.wrap?.shadow === "none" && !!picked.frame && picked.frame.shadow !== "none", picked);
+  await exitEdit(h);
+  await done();
+});
+
+/** Records every animation started on the page: the element's classes and the keyframes' transform or opacity */
+const recordAnimations = (pg: Page) => pg.evaluate(() => {
+  const w = window as unknown as { __anims: string[][] }, orig = Element.prototype.animate;
+  w.__anims = [];
+  Element.prototype.animate = function (this: Element, k: Keyframe[] | PropertyIndexedKeyframes | null, o?: number | KeyframeAnimationOptions) {
+    w.__anims.push([this.className, (Array.isArray(k) ? k : []).map((f) => String(f.transform ?? f.opacity)).join(">")]);
+    return orig.call(this, k, o);
+  };
+});
+const animations = (pg: Page) => pg.evaluate(() => (window as unknown as { __anims: string[][] }).__anims.splice(0));
+const imgSel = (open: boolean) => `.card[data-id="n0"] .md-pm .md-img${open ? ".below" : ":not(.below)"} img:not(.ProseMirror-separator)`;
+const centreOf = (r: { x: number; y: number; width: number; height: number }) => ({ x: r.x + r.width / 2, y: r.y + r.height / 2 });
+
+/** A narrowed image in the editor: centred where the static render draws it, also with the caret in the paragraph after it;
+ *  clicked, its source line opens with a slide (the image and what follows move instead of jumping, the source fades in) and it
+ *  shows a frame on the image with the width grips centred on its sides; it can still be dragged to move it; closing slides
+ *  back; with reduced motion nothing animates */
+test("noteImageOpenSlidesFramed", async () => {
+  const { h, done } = await imageHost([`Text above the image.\n\n![](${PAGE_SRC}){width=60%}\n\nEnd text.`]);
+  const pg = h.page, card = pg.locator('.card[data-id="n0"]');
+  await idle(h);
+  const disp = await frameOf(h, "n0", ".nbody");
+  await card.locator(".nbody p").last().dblclick();
+  await card.locator(".md-pm:focus").waitFor();
+  await imgBox(h, "n0", ".md-pm");
+  const edit = await frameOf(h, "n0", ".md-pm");
+  await recordAnimations(pg);
+  await pg.locator(imgSel(false)).click();
+  await pg.locator(imgSel(true)).waitFor();
+  await idle(h);
+  const opened = await animations(pg);
+  await shot(h, "noteImageOpenSlidesFramed-selected");
+  const look = await card.locator(".md-pm .md-img.below").evaluate((el) => {
+    const img = el.querySelector("img")!.getBoundingClientRect(), f = el.querySelector(".md-imgframe");
+    const g = [...el.querySelectorAll(".md-imgrip")].map((e) => { const r = e.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; });
+    return { frame: f ? getComputedStyle(f).boxShadow : null, img: { l: img.left, r: img.right, y: img.top + img.height / 2 }, g };
+  });
+  check("noteImageOpenSlidesFramed centred as in the static render", Math.abs(edit.box.x - disp.box.x) < 0.6 && Math.abs(edit.box.w - disp.box.w) < 0.6, { disp: disp.box, edit: edit.box });
+  check("noteImageOpenSlidesFramed opening slides", opened.some(([c, k]) => /md-img below/.test(c) && /^translateY\(-?[\d.]+px\)>none$/.test(k))
+    && opened.some(([c, k]) => /md-mk/.test(c) && k === "0>1"), opened);
+  check("noteImageOpenSlidesFramed frame and grips", !!look.frame && look.frame !== "none" && look.g.length === 2
+    && look.g.every((p) => Math.abs(p.y - look.img.y) < 1) && Math.abs(look.g[0].x - look.img.l) < 1.5 && Math.abs(look.g[1].x - look.img.r) < 1.5, look);
+  // pressed and dragged while its source is open: the image moves to the end of the last paragraph
+  const from = centreOf((await pg.locator(imgSel(true)).boundingBox())!), to = await afterWord(h, "n0", "text.");
+  await pg.mouse.move(from.x, from.y);
+  await pg.mouse.down();
+  for (let i = 1; i <= 12; i++) { await pg.mouse.move(from.x + ((to.x + 1 - from.x) * i) / 12, from.y + ((to.y - from.y) * i) / 12); await frames(pg); }
+  await pg.mouse.up();
+  await until(h, "the opened image moves to the end", async () => (await paras(h, "n0")).join("|") === "Text above the image.|End text.[img]").catch(() => null);
+  const moved = await paras(h, "n0");
+  check("noteImageOpenSlidesFramed opened image drags", moved.join("|") === "Text above the image.|End text.[img]", moved);
+  await pg.keyboard.press("Control+z");
+  await until(h, "undo puts it back", async () => (await card.locator(".md-pm > p").count()) === 3);
+  // closing: the caret leaves the source, the image slides back up
+  await pg.locator(imgSel(false)).click();
+  await pg.locator(imgSel(true)).waitFor();
+  await idle(h);
+  await animations(pg);
+  await pg.keyboard.press("Control+Home");
+  await pg.locator(imgSel(true)).waitFor({ state: "detached" });
+  await idle(h);
+  const closed = await animations(pg);
+  check("noteImageOpenSlidesFramed closing slides", closed.some(([c, k]) => /^md-img(?! below)/.test(c) && /^translateY\(-?[\d.]+px\)>none$/.test(k)), closed);
+  await pg.emulateMedia({ reducedMotion: "reduce" });
+  await pg.locator(imgSel(false)).click();
+  await pg.locator(imgSel(true)).waitFor();
+  await idle(h);
+  const reduced = await animations(pg);
+  check("noteImageOpenSlidesFramed reduced motion", reduced.length === 0, reduced);
   await exitEdit(h);
   await done();
 });

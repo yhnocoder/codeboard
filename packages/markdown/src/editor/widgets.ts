@@ -134,7 +134,9 @@ const loaded = new Set<string>();
 export function imageBelow(a: Extract<Atom, { type: "image" }>): ToDOM {
   return (view, getPos) => {
     const el = imageEl(a, true), img = el.querySelector("img");
-    el.addEventListener("mousedown", (ev) => ev.preventDefault());
+    // a press keeps the caret in the source; on the image itself it may start a drag (below), which needs the press's default
+    el.addEventListener("mousedown", (ev) => { if (ev.target !== img) ev.preventDefault(); });
+    const frame = span("md-imgframe");
     // an address that failed before is its placeholder already: nothing to size
     if (!img) return el;
     const src = img.getAttribute("src");
@@ -142,12 +144,28 @@ export function imageBelow(a: Extract<Atom, { type: "image" }>): ToDOM {
       img.removeAttribute("src");
       setTimeout(() => { if (el.isConnected) { loaded.add(src); img.setAttribute("src", src); } }, IMAGE_SETTLE);
     }
+    // dragging the image moves its source, as it does before the source is opened
+    frame.draggable = true;
+    frame.addEventListener("dragstart", (ev) => {
+      const at = imageSourceEnding(view, getPos());
+      if (!at || !ev.dataTransfer) return;
+      const st = view.state, raw = st.doc.textBetween(at[0], at[1]);
+      view.dispatch(st.tr.setSelection(TextSelection.create(st.doc, at[0], at[1])));
+      view.dragging = { slice: view.state.doc.slice(at[0], at[1]), move: true };
+      ev.dataTransfer.effectAllowed = "copyMove";
+      ev.dataTransfer.setData("text/plain", raw);
+      ev.dataTransfer.setDragImage(img, 0, 0);
+    });
+    frame.addEventListener("dragend", () => { view.dragging = null; });
+    // the selected image: a frame on the image itself (not around its caption), the grips on the frame's sides
+    img.replaceWith(frame);
+    frame.append(img);
     for (const side of [-1, 1]) {
       const g = span(`md-imgrip ${side < 0 ? "l" : "r"}`);
       g.setAttribute("data-tip", "Drag to resize · Double-click for full width");
       g.addEventListener("pointerdown", (ev) => grip(ev, g, side, el, view, getPos, a.width));
       g.addEventListener("dblclick", (ev) => { ev.preventDefault(); ev.stopPropagation(); setWidth(view, getPos(), null); });
-      el.append(g);
+      frame.append(g);
     }
     return el;
   };
@@ -191,19 +209,31 @@ function blockOf(el: HTMLElement): HTMLElement {
   return p;
 }
 
-/** Rewrites the width suffix of the image whose source ends at `end` (the below widget sits there) */
-function setWidth(view: EditorView, end: number | undefined, w: number | null) {
-  if (end == null) return;
+/** The image whose source ends at `end` (the below widget sits there): its span and where its paragraph's text starts */
+function imageEnding(view: EditorView, end: number | undefined): { sp: Span; base: number } | null {
+  if (end == null) return null;
   const $e = view.state.doc.resolve(end), p = $e.parent;
-  if (!p.isTextblock) return;
+  if (!p.isTextblock) return null;
   const base = $e.start(), off = end - base;
   const sp = flat(blockInfo(p.textContent, true).spans).find((s) => s.atom?.type === "image" && s.to === off)
     ?? flat(blockInfo(p.textContent, false).spans).find((s) => s.atom?.type === "image" && s.to === off);
-  if (sp?.atom?.type !== "image") return;
+  return sp?.atom?.type === "image" ? { sp, base } : null;
+}
+const imageSourceEnding = (view: EditorView, end: number | undefined): [number, number] | null => {
+  const r = imageEnding(view, end);
+  return r ? [r.base + r.sp.from, r.base + r.sp.to] : null;
+};
+
+/** Rewrites the width suffix of the image whose source ends at `end` */
+function setWidth(view: EditorView, end: number | undefined, w: number | null) {
+  const r = imageEnding(view, end);
+  if (!r) return;
+  const { sp, base } = r;
+  if (sp.atom?.type !== "image") return;
   const at = sp.atom.widthAt, text = w ? `{width=${w}%}` : "";
   const tr = closeHistory(view.state.tr);
   if (at) { if (text) tr.insertText(text, base + at[0], base + at[1]); else tr.delete(base + at[0], base + at[1]); }
-  else if (text) tr.insertText(text, end);
+  else if (text) tr.insertText(text, base + sp.to);
   else return;
   view.dispatch(tr);
   view.dispatch(closeHistory(view.state.tr));

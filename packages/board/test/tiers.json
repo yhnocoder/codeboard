@@ -218,7 +218,7 @@
       "about": "images: Image cards, images in Notes (paste, drop, resize), SVG, the asset store, the DeepSeek image tools (Extract Text, Convert to SVG, Modify SVG, Paste Image Text, Draw as SVG)",
       "files": [
         "packages/board/src/md/images.ts", "packages/board/src/notedrop.ts", "packages/board/src/actions/{imagedata,imageai}.ts", "packages/markdown/src/image.ts",
-        "packages/markdown/src/editor/image.ts", "packages/core/src/image.ts", "packages/host/src/{images,assetsweep,imageai}.ts",
+        "packages/markdown/src/editor/{image,imageslide}.ts", "packages/core/src/image.ts", "packages/host/src/{images,assetsweep,imageai}.ts",
         "packages/board/src/state/imageai.ts", "packages/board/src/ui/AiBusy.tsx",
         "packages/board/test/scenarios/{image-cards,note-images,svg-images,file-drops,image-ai,image-width,note-captions}.spec.ts", "packages/markdown/src/caption.ts"
       ],

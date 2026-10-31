@@ -197,12 +197,14 @@ math { font-size: 1.05em; }
 .md-pm .md-img[draggable="true"] { -webkit-user-drag: element; cursor: pointer; }
 /* drop line (ProseMirror's drop cursor, added to the editor's offsetParent, not under .md-pm) */
 .md-dropcursor { background: var(--accent); border-radius: 1px; }
-/* width grips on the two bottom corners of the image under its source (like the board's sticker grips) */
-/* z-index: above the card's own edge handles (a grip at the card's bottom edge is still the image's) */
-.md-pm .md-imgrip { display: none; position: absolute; bottom: -6px; width: 10px; height: 10px; border-radius: 3px; background: var(--surface); box-shadow: 0 0 0 1.5px var(--accent); touch-action: none; }
-.md-pm .md-imgrip.l { left: -6px; cursor: nesw-resize; }
-.md-pm .md-imgrip.r { right: -6px; cursor: nwse-resize; }
-.md-pm .md-img.below > .md-imgrip { display: block; }
+/* the selected image (the copy under its source): a thin accent frame with a soft shadow on the image itself, and the width
+   grips on the frame's two sides, centred (the width changes symmetrically about the centre) */
+.md-pm .md-imgframe { display: block; position: relative; border-radius: 5px; box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--accent) 75%, transparent), 0 6px 18px -8px rgba(0, 0, 0, .28); }
+.md-pm .md-imgframe > img { display: block; width: 100%; border-radius: 5px; }
+.md-pm .md-imgframe[draggable="true"] { -webkit-user-drag: element; }
+.md-pm .md-imgrip { position: absolute; top: 50%; width: 6px; height: 26px; margin-top: -13px; border-radius: 3px; background: var(--surface); box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--accent) 75%, transparent), 0 1px 3px rgba(0, 0, 0, .18); cursor: ew-resize; touch-action: none; }
+.md-pm .md-imgrip.l { left: -3.75px; }
+.md-pm .md-imgrip.r { right: -3.75px; }
 .md-pm .md-imgalt { color: var(--ink-2); }
 /* a long image address folds to its head and tail; the button opens it */
 .md-pm .md-ell { color: var(--ink-3); font-family: var(--mono); font-size: .85em; }

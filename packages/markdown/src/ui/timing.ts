@@ -6,3 +6,5 @@ export const REVEAL_AFTER_CLICK = 450;
 /** How long an image address must stay unchanged before the image under its source loads (typing `](https://…` would
  *  otherwise request every prefix: h, ht, htt…) */
 export const IMAGE_SETTLE = 400;
+/** How long an image takes to slide, and its source line to fade in, when the caret opens or closes the image's source */
+export const IMAGE_SLIDE = 150;
