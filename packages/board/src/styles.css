@@ -1045,6 +1045,9 @@ mark.wdiff { background: var(--chg-strong); color: inherit; border-radius: 2px; 
 .board { --bar: color-mix(in srgb, var(--ink) 13%, transparent); }
 .card.lo-ov .crows .cmpl, .card.lo-ov .cno,
 .card.lo-ov .cpath, .card.lo-ov .rev, .card.lo-ov .chead .ib, .card.lo-ov .lport { visibility: hidden; }
+/* 卡头的 ⋯ 平时不显示，悬停 / 选中卡、键盘聚焦到它、它的菜单开着时淡入；位置照留，出现时卡头不动 */
+.cmenu { opacity: 0; transition: opacity calc(var(--t) * 140ms) ease, background .1s, color .1s, scale .12s; }
+.card:hover .cmenu, .card.sel .cmenu, .cmenu:focus-visible, .cmenu.on { opacity: 1; }
 /* 缩小看全局：参数收起，留 ↺ 和自己写的字；只有参数的框整个不画 */
 .lyr.lod-overview .vbox, .lyr.lod-overview .vchips.argsonly, .lyr.lod-overview .vplus, .lyr.lod-overview .mkcall { display: none; }
 .lyr.lod-overview .vcard.split .vhead { border-bottom: 0; }

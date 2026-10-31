@@ -6,7 +6,7 @@ import { reduceMotion } from "../state/camera";
 import { Editable } from "../ui/Editable";
 import { Icon } from "../ui/icons";
 import * as A from "../actions";
-import { below } from "../ui/Menu";
+import { below, ownMenu } from "../ui/Menu";
 
 /**
  * 卡头的名字就是 Markdown 开头的标题时，正文里藏起那一行（正文元素加 hidehead，styles.css 藏掉第一个标题）：没自己起名字、开头是标题、
@@ -16,6 +16,7 @@ export const hidesHeading = (c: NoteCard, heading = c.look === "note" ? mdHeadin
 
 export function NoteBody(p: { card: NoteCard }) {
   const c = () => p.card;
+  const more = ownMenu();
   // 卡头：用户改过的名字 → Markdown 开头的标题 → Note。只在 md 变了时重算（只看第一行非空的）
   const heading = createMemo(() => (c().look === "note" ? mdHeading(c().md) : ""));
   // 卡头的名字就是开头的标题时，正文里不再显示它（设置 noteHeadingInBody 可以留着）：只是显示上藏起来，Markdown 里还在，编辑时照常出现。
@@ -45,7 +46,7 @@ export function NoteBody(p: { card: NoteCard }) {
       <div class="chead" classList={{ fold: folded() }} data-drag>
         <Show when={placeOf(c().id).locked}><button class="lockb" data-tip="Unlock" data-nodrag onClick={() => A.toggleLock([c().id])}><Icon name="lock" /></button></Show>
         <span class="kind">¶</span><span class="ctitle sys" classList={{ untitled: !c().title && !heading() }}>{c().title || heading() || "Note"}</span><span class="grow" />
-        <button class="ib" aria-label="Note Menu" data-tip="More Actions" data-nodrag onClick={(e) => A.cardMenu(c().id, ...below(e.currentTarget))}><Icon name="more" /></button>
+        <button class="ib cmenu" classList={{ on: more.open() }} aria-label="Note Menu" data-tip="More Actions" data-nodrag onClick={(e) => { A.cardMenu(c().id, ...below(e.currentTarget)); more.opened(); }}><Icon name="more" /></button>
       </div>
       <Editable class={`nbody${hideHead() && !sliding() ? " hidehead" : ""}${folded() ? " fold" : ""}`} kind="note" id={c().id} value={c().md} multiline md placeholder="Write a note… Markdown and $math$ work" onCommit={(v) => A.setNoteText(c().id, v)} />
       </Match>

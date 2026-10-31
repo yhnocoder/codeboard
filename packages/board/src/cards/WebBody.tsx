@@ -6,7 +6,7 @@ import { editing, setEditing } from "../state/ui";
 import { Editable } from "../ui/Editable";
 import { Icon } from "../ui/icons";
 import { place, virtual } from "@yhnocoder/markdown/ui";
-import { below } from "../ui/Menu";
+import { below, ownMenu } from "../ui/Menu";
 import * as A from "../actions";
 import "./web.css";
 import { fetching, rowDrag } from "../state/web";
@@ -98,6 +98,7 @@ export function WebBody(p: { card: WebCard }) {
 export function LinksBody(p: { card: LinksCard }) {
   const c = () => p.card;
   const menu = (e: MouseEvent) => A.cardMenu(c().id, ...below(e.currentTarget as Element));
+  const more = ownMenu();
   const drag = () => { const d = rowDrag(); return d?.card === c().id ? d : null; };
   return (
     <>
@@ -106,7 +107,7 @@ export function LinksBody(p: { card: LinksCard }) {
         <Editable class="ctitle sys" kind="title" id={c().id} value={cardTitle(c())} onCommit={(v) => A.renameCard(c().id, v)} />
         <span class="lcount">{c().items.length}</span>
         <span class="grow" />
-        <button class="ib" aria-label="Card Menu" data-tip="More Actions" data-nodrag data-export="strip" onClick={menu}><Icon name="more" /></button>
+        <button class="ib cmenu" classList={{ on: more.open() }} aria-label="Card Menu" data-tip="More Actions" data-nodrag data-export="strip" onClick={(e) => { menu(e); more.opened(); }}><Icon name="more" /></button>
       </div>
       <div class="lrows" classList={{ dragging: !!drag() }}>
         <For each={c().items}>{(it, i) => (
