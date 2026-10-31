@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import * as path from "node:path";
 import { vscodeScratch, isScratch } from "./scratch";
-import { Emitter, type AiChatRequest, type AiChatResult, type AiModel, type Workspace } from "@codeboard/core";
+import { Emitter, type AiChatRequest, type AiChatResult, type AiModel, type PickIcon, type Workspace } from "@codeboard/core";
 import { deepseekComplete } from "@codeboard/host/deepseek";
 import { chatComplete } from "@codeboard/host/complete";
 
@@ -85,6 +85,8 @@ async function copilotAsk(system: string, prompt: string, o?: { signal?: AbortSi
 
 type LmModel = vscode.LanguageModelChat & { capabilities?: { supportsImageToText?: boolean } };
 /** A small, quick model (for completions) */
+/** The codicon for each PickItem icon */
+const CODICON: Record<PickIcon, string> = { board: "layout", boards: "files", folder: "folder", file: "folder-opened", add: "add", class: "symbol-class", function: "symbol-method" };
 const FAST_MODEL = /mini|haiku|flash|nano|small|fast/i;
 const isFast = (m: vscode.LanguageModelChat) => FAST_MODEL.test(m.family) || FAST_MODEL.test(m.id);
 const lmApi = () => (vscode as any).lm as typeof vscode.lm | undefined;
@@ -238,7 +240,10 @@ export function vscodeWorkspace(ctx: vscode.ExtensionContext): Workspace {
       info: async (text, ...actions) => vscode.window.showInformationMessage(text, ...actions),
       warn: async (text, o, ...actions) => vscode.window.showWarningMessage(text, { modal: o.modal, detail: o.detail }, ...actions),
       error: async (text, ...actions) => vscode.window.showErrorMessage(text, ...actions),
-      pick: async (items, o) => vscode.window.showQuickPick(items, o),
+      pick: async (items, o) => {
+        const shown = items.map((it) => ({ label: it.icon ? `$(${CODICON[it.icon]}) ${it.label}` : it.label, description: it.description, detail: it.detail, it }));
+        return (await vscode.window.showQuickPick(shown, o))?.it;
+      },
       // A secret is pasted from elsewhere: going to copy it must not close the box
       input: async (o) => vscode.window.showInputBox({ title: o.title, prompt: o.prompt, value: o.value, placeHolder: o.placeHolder, password: o.password, ignoreFocusOut: o.password }),
       openDialog: async (o) => {

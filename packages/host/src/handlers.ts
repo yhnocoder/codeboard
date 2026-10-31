@@ -420,9 +420,9 @@ async function relocate(p: BoardPanel, cardId: string) {
   const old = absOf(seg);
   const spots = [...(name ? await lookupName(name) : []), ...(old ? await spotsIn(old) : [])]
     .filter((s, i, all) => all.findIndex((o) => o.abs === s.abs && o.start === s.start) === i);
-  const item = (s: Spot) => ({ label: `${s.kind === "class" ? "$(symbol-class)" : "$(symbol-method)"} ${s.qual}`, description: `${hostPath(s.abs)}:${s.defLine}`, s });
+  const item = (s: Spot) => ({ label: s.qual, icon: s.kind === "class" ? ("class" as const) : ("function" as const), description: `${hostPath(s.abs)}:${s.defLine}`, s });
   const where = `Where is ${seg.symbol?.qual ?? "this code"} now?`;
-  const pick = await ask.pick([...spots.map(item), { label: "$(folder-opened) Choose File…", description: "", s: undefined }], { placeHolder: where, matchOnDescription: true });
+  const pick = await ask.pick([...spots.map(item), { label: "Choose File…", icon: "file" as const, description: "", s: undefined }], { placeHolder: where, matchOnDescription: true });
   if (!pick) return;
   let to = pick.s;
   if (!to) {

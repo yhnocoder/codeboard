@@ -94,7 +94,7 @@ export function makeActions(panels: BoardHost, store: Storage) {
     let h = hits.find((x) => x.board.id === panels.target) ?? hits[0];
     const boards = [...new Map(hits.map((x) => [x.board.id, x.board])).values()];
     if (boards.length > 1) {
-      const r = await ui().pick(boards.map((b) => ({ label: `$(layout) ${b.name}`, description: b.id === panels.target ? "target" : undefined, b })), { placeHolder: "Reveal on which board?" });
+      const r = await ui().pick(boards.map((b) => ({ label: b.name, icon: "board", description: b.id === panels.target ? "target" : undefined, b })), { placeHolder: "Reveal on which board?" });
       if (!r) return;
       h = hits.find((x) => x.board.id === r.b.id)!;
     }
@@ -109,7 +109,7 @@ export function makeActions(panels: BoardHost, store: Storage) {
     if (!b || !panels.globalState) return;
     const ps = await otherProjects(panels.globalState, store.dir());
     if (!ps.length) { void ui().info("No other project found. Open the other project once with CodeBoard so it shows up here."); return; }
-    const r = await ui().pick(ps.map((p) => ({ label: `$(folder) ${p.name}`, description: p.folders.join(" · ") || p.dir, p })), { placeHolder: `${move ? "Move" : "Copy"} “${b.name}” to which project?`, matchOnDescription: true });
+    const r = await ui().pick(ps.map((p) => ({ label: p.name, icon: "folder", description: p.folders.join(" · ") || p.dir, p })), { placeHolder: `${move ? "Move" : "Copy"} “${b.name}” to which project?`, matchOnDescription: true });
     if (!r) return;
     if (move) {
       const ok = await ui().warn(`Move board “${b.name}” to ${r.p.name}?`, { modal: true, detail: "It is removed from this project (restorable from .trash). Sub-boards, shared cards and images go with it." }, "Move");
@@ -136,9 +136,9 @@ export function makeActions(panels: BoardHost, store: Storage) {
       const count = (n: number) => `${n} board${n === 1 ? "" : "s"}`;
       const groups = [...new Set(metas.flatMap((m) => (m.group ? [m.group] : [])))].sort();
       pick = await ui().pick([
-        { label: "$(files) All Boards", description: count(metas.length), roots: metas.map((m) => m.id), name: workspace().files.name() || "Boards" },
-        ...groups.map((g) => { const ms = metas.filter((m) => m.group === g); return { label: `$(folder) ${g}`, description: count(ms.length), roots: ms.map((m) => m.id), name: g }; }),
-        ...metas.map((m) => ({ label: `$(layout) ${m.name}`, description: m.group, roots: [m.id], name: m.name })),
+        { label: "All Boards", icon: "boards" as const, description: count(metas.length), roots: metas.map((m) => m.id), name: workspace().files.name() || "Boards" },
+        ...groups.map((g) => { const ms = metas.filter((m) => m.group === g); return { label: g, icon: "folder" as const, description: count(ms.length), roots: ms.map((m) => m.id), name: g }; }),
+        ...metas.map((m) => ({ label: m.name, icon: "board" as const, description: m.group, roots: [m.id], name: m.name })),
       ], { placeHolder: "Export which boards? Sub-boards, shared cards and images go with them.", matchOnDescription: true });
     }
     if (pick?.roots.length) await exportFlow(store, pick.roots, pick.name);
@@ -329,8 +329,8 @@ export function makeActions(panels: BoardHost, store: Storage) {
       const id = boardArg(a);
       if (!id) return;
       const groups = await store.groups();
-      const NONE = "(No Group)", NEW = "$(add) New Group…";
-      const r = (await ui().pick([NONE, ...groups, NEW].map((label) => ({ label })), { placeHolder: "Move to group" }))?.label;
+      const NONE = "(No Group)", NEW = "New Group…";
+      const r = (await ui().pick([NONE, ...groups, NEW].map((label) => ({ label, icon: label === NEW ? ("add" as const) : undefined })), { placeHolder: "Move to group" }))?.label;
       if (!r) return;
       let g: string | undefined = r === NONE ? undefined : r;
       if (r === NEW) {
@@ -376,8 +376,8 @@ export function makeActions(panels: BoardHost, store: Storage) {
 
 async function pickBoard(store: Storage, placeHolder: string, allowNew: boolean): Promise<string | undefined> {
   const metas = await store.list();
-  const NEW = { label: "$(add) New Board…", id: "" };
-  const items = [...metas.map((m) => ({ label: `$(layout) ${m.name}`, description: m.group, detail: undefined, id: m.id })), ...(allowNew ? [NEW] : [])];
+  const NEW = { label: "New Board…", icon: "add" as const, id: "" };
+  const items = [...metas.map((m) => ({ label: m.name, icon: "board" as const, description: m.group, detail: undefined, id: m.id })), ...(allowNew ? [NEW] : [])];
   const ui = workspace().ui;
   const r = await ui.pick(items, { placeHolder });
   if (!r) return;

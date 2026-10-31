@@ -10,9 +10,6 @@ export type Prompts = {
   pick<T extends PickItem>(items: T[], o?: PickOpts): Promise<T | undefined>;
 };
 
-// The board has no codicons
-const plain = (s: string | undefined) => s?.replace(/\$\([\w-]+\)\s*/g, "");
-
 /** p: the board the question comes from (its own request, or a command run on it while it is the active editor) */
 export function prompts(p: BoardPanel | undefined): Prompts {
   if (!p) return workspace().ui;
@@ -26,7 +23,7 @@ export function prompts(p: BoardPanel | undefined): Prompts {
       return typeof v === "string" ? v : undefined;
     },
     pick: async (items, o) => {
-      const v = await ask({ kind: "pick", title: o?.title ?? o?.placeHolder ?? "", items: items.map((x) => ({ label: plain(x.label)!, description: plain(x.description), detail: plain(x.detail) })) });
+      const v = await ask({ kind: "pick", title: o?.title ?? o?.placeHolder ?? "", items: items.map((x) => ({ label: x.label, description: x.description, detail: x.detail })) });
       return typeof v === "number" ? items[v] : undefined;
     },
   };
