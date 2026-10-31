@@ -130,6 +130,8 @@ input, textarea { font: inherit; color: var(--ink); }
    只在动的时候才升层的话，每段手势的第一帧都要把整层重画一遍（~25ms，掉一帧） */
 .world { will-change: transform; rotate: x 0deg; }
 .world.settle { will-change: auto; }
+.pshield { position: absolute; inset: 0; display: none; } /* ui/shield.ts */
+.pshield.on { display: block; }
 .wext { position: absolute; pointer-events: none; } /* 见 Canvas.tsx：只占一块范围，不画东西，把线那个合成层撑到整块白板 */
 .edges { position: absolute; left: 0; top: 0; overflow: visible; width: 1px; height: 1px; pointer-events: none; }
 /* 实线。不要用 stroke-dasharray 画实线：1px 的虚线段要逐段栅格化，一条线变成几千段，改一条线整层都慢 */
@@ -173,7 +175,9 @@ input, textarea { font: inherit; color: var(--ink); }
 /* 模糊的那层只在没卡框、地图档、拿起来时整层去掉，不渐变：渐变的话缩放换到地图档那一下每张卡要多算一个动画 */
 /* 圆角取卡的一半：同样的半径，圆弧在 squircle 里面，阴影会画进卡的四个角里（底色上一道细边）；半径 ≤ 0.54 倍的圆弧整个在 squircle 外面 */
 .card::before { corner-shape: round; border-radius: calc(var(--cr) * .5); box-shadow: var(--sh-soft); }
-.card::after { box-shadow: var(--ring); transition: box-shadow calc(var(--t) * 160ms) var(--out); }
+/* --ring 注册成不继承，只有卡和 ::after 读它：会继承的话，换档、选中、悬停每改一次，卡里几百个节点都要跟着重算样式（241 张卡换地图档 ~250ms） */
+@property --ring { syntax: "*"; inherits: false; }
+.card::after { --ring: inherit; box-shadow: var(--ring); transition: box-shadow calc(var(--t) * 160ms) var(--out); }
 /* 没有卡框的、地图档的、拿起来的（--sh-lift 自己带着阴影）不画模糊的那层 */
 .card:is(.text, .nobg, .lo-map, .lift)::before { box-shadow: none; }
 .card.lift::after { transition-duration: calc(var(--t) * 120ms); }
@@ -452,8 +456,6 @@ input, textarea { font: inherit; color: var(--ink); }
 .sect.sel { border-color: color-mix(in srgb, var(--accent) 70%, transparent); box-shadow: var(--sect-sh), 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent); }
 .sect.drop { border-color: color-mix(in srgb, var(--ink) 42%, transparent); background-color: color-mix(in srgb, var(--ink) 6.5%, transparent); box-shadow: var(--sect-sh), 0 0 0 4px color-mix(in srgb, var(--ink) 7%, transparent); }
 .sect.sel.drop { border-color: color-mix(in srgb, var(--accent) 70%, transparent); }
-/* a card moving into or out of a Section: the frames ease to their new size instead of jumping */
-.sect.moving { transition: border-color .15s var(--out), background-color .15s var(--out), box-shadow .15s var(--out), left .16s var(--out), top .16s var(--out), width .16s var(--out), height .16s var(--out); }
 /* Fit Content: the frame and its title ease to the new rect */
 .sect.fit { transition: left .26s var(--out), top .26s var(--out), width .26s var(--out), height .26s var(--out); }
 .slabel.fit { transition: color .15s var(--out), left .26s var(--out), top .26s var(--out); }
@@ -494,8 +496,6 @@ input, textarea { font: inherit; color: var(--ink); }
 .spv-i .ico { flex: none; width: 13px; height: 13px; color: var(--ink-3); }
 .spv-t { overflow: hidden; text-overflow: ellipsis; }
 .spv-more { padding: 0 6px; color: var(--ink-3); }
-.slabel.moving:not(.collapsed) { transition: color .15s var(--out), left .16s var(--out), top .16s var(--out); }
-
 
 .edge.lc-orange, .ahead.lc-orange { stroke: var(--lk-orange); }
 .edge.lc-blue, .ahead.lc-blue { stroke: var(--lk-blue); }
@@ -525,7 +525,7 @@ input, textarea { font: inherit; color: var(--ink); }
 @keyframes imgdrop-caret { from { transform: scaleX(0); opacity: 0; } to { transform: scaleX(1); opacity: 1; } }
 @keyframes imgdrop-pulse { from { opacity: 1; } to { opacity: .45; } }
 @keyframes imgdrop-label { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
-.board:has(.card.img-drop) .card.lift { opacity: .72; } /* the picture lets the caret under it show through */
+.board.img-drop .card.lift { opacity: .72; } /* the picture lets the caret under it show through. 不用 .board:has(.card.img-drop)：拖着的卡每动一下都要重算样式，:has 每次把整块白板扫一遍（每步 ~4 ms） */
 .tex { font-family: var(--mono); font-size: .95em; color: var(--ink-2); }
 .lockb { flex: none; width: 18px; height: 18px; display: grid; place-items: center; border-radius: 5.5px; color: var(--ib-ink, var(--ink-2)); }
 .lockb:hover { background: var(--hlrow); color: var(--accent); }
@@ -1086,13 +1086,15 @@ mark.wdiff { background: var(--chg-strong); color: inherit; border-radius: 2px; 
 /* 卡的内容（除了名字、贴纸）都在 .cface 里，跟卡一样是竖排 flex；地图档整块用 clip-path 藏起来（不继承，里面的节点不用重算样式，也挡住指针）。
    别写成 .card > :not(...) 再用会继承的 visibility：最右边没有类名，切档时浏览器只能把整块白板 3 万个节点全重算一遍 */
 .card.off > .cface { visibility: hidden; } /* state/cull.ts：离屏幕很远的卡不画内容 */
+.card.far { visibility: hidden; } /* state/cull.ts：内容藏着、又不在屏幕附近的卡，连卡片本身也不画 */
 .cface { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; min-width: 0; }
 /* 代码卡卡头 / 色带 / 底栏之间的内容区（说明、代码、Source）：手动定了高度的代码卡，Place.h 就是它的高度，卡头 / 底栏由主题自己撑开 */
 .carea { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; min-width: 0; }
 .card.lo-map > .cface { clip-path: inset(50%); }
 .card.lo-map { background: color-mix(in srgb, var(--surface) 92%, var(--accent)); --ring: 0 0 0 calc(1px * var(--iz, 1)) var(--hair); }
-/* 地图档的描边每一步缩放都跟着 --iz 变：不给 box-shadow 过渡，不然每一步给 241 张卡各起一段 160ms 的动画（其余过渡跟 .card 一样） */
+/* 地图档的描边（::after）每一步缩放都跟着 --iz 变：不给 box-shadow 过渡，不然每一步给 241 张卡各起一段 160ms 的动画（其余过渡跟 .card 一样） */
 .card.lo-map { transition: scale calc(var(--t) * 260ms) cubic-bezier(.3, 1.35, .5, 1), opacity calc(var(--t) * 240ms) var(--out), filter calc(var(--t) * 240ms); }
+.card.lo-map::after { transition: none; }
 .card.lo-map.note { background: color-mix(in srgb, var(--surface) 70%, var(--mark)); }
 .card.lo-map.text { background: transparent; }
 .card.lo-map.sel { --ring: 0 0 0 calc(2px * var(--iz, 1)) var(--accent); }
@@ -1260,7 +1262,8 @@ mark.wdiff { background: var(--chg-strong); color: inherit; border-radius: 2px; 
   background: color-mix(in srgb, var(--surface) 88%, transparent); font: 700 calc(12px * var(--iz, 1))/1.25 var(--sys); color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; z-index: 1; --iz: inherit; }
 .card.board.lo-map > .cface { clip-path: none; --iz: inherit; }
 .card.board.lo-map .sbfar { visibility: visible; }
-.card.board.lo-map .sbhead, .card.board.lo-map .sbhead > *, .card.board.lo-map .sbgone { visibility: hidden; }
+/* 标题行里的几样逐个写出来：最右边是 * 的话，任何一张卡换 .lo-map 都要把整棵子树的样式重算一遍 */
+.card.board.lo-map .sbhead, .card.board.lo-map .sbhead > :is(.step, .sbname, .sbmeta), .card.board.lo-map .sbgone { visibility: hidden; }
 /* 地图档：Section 名、提示、按钮都不画，地图本身照样（已经是缩略的） */
 .card.board.lo-map .sblab, .card.board.lo-map .sbtip, .card.board.lo-map .sbacts { visibility: hidden; }
 /* 面包屑：进入子白板后在左上角，点上一级回去 */

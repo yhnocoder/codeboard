@@ -1,5 +1,5 @@
 import { shot, symCard, findSym, put, type Host } from "../harness";
-import { DEFAULT_SETTINGS, emptyBoard, type Board, type NoteCard } from "@codeboard/core";
+import { DEFAULT_SETTINGS, emptyBoard, sectionFrame, type Board, type NoteCard, type Rect } from "@codeboard/core";
 import { test, open, check, light, until, idle, hold } from "../fixtures";
 
 const close = (h: Host) => h.page.context().close();
@@ -314,6 +314,58 @@ test("sectionMembershipByOverlap", async () => {
   const w = await move("w1", 740, 250, "27-third-03-wide-card-over-section");
   await shot(h, "27-third-04-wide-card-joined");
   check("overlap-under-half-joins", w.p.section === "S" && w.s > 0.4 && w.s < 0.5 && w.lit.length === 1 && w.lit[0] === "S", w);
+  await close(h);
+});
+
+/** Dragging a card inside a Section: the frame eases toward its new size (a spring the board drives, no CSS transition on its rect),
+ *  its title stays on the drawn frame, and once the drag is over the frame ends exactly on its target. With reduced motion it snaps */
+test("sectionFrameEasesToTarget", async () => {
+  const b = emptyBoard("b1", "section easing");
+  put(b, { id: "a", kind: "note", look: "note", md: "Prefill" } as NoteCard, 200, 210, 220);
+  b.sections.push({ id: "S1", title: "Scheduling", x: 160, y: 160, w: 400, h: 300 });
+  b.place.a.section = "S1";
+  b.cam = { x: 0, y: 0, z: 1 };
+  const h = await open({ board: b, light, settings: { theme: "warm-ink" } as any });
+  await idle(h);
+  const rectNow = () => h.page.evaluate(() => {
+    const f = document.querySelector<HTMLElement>('.sect[data-sect="S1"]')!, l = document.querySelector<HTMLElement>('.slabel[data-sect="S1"]')!;
+    const c = document.querySelector<HTMLElement>('.card[data-id="a"]')!;
+    const rects = document.getAnimations().filter((a) => a instanceof CSSTransition && /^(left|top|width|height)$/.test(a.transitionProperty) && (a.effect as KeyframeEffect).target?.closest(".sect, .slabel"));
+    return { x: parseFloat(f.style.left), y: parseFloat(f.style.top), w: parseFloat(f.style.width), h: parseFloat(f.style.height),
+      lx: parseFloat(l.style.left), ly: parseFloat(l.style.top), rectTransitions: rects.length,
+      card: { x: c.offsetLeft, y: c.offsetTop, w: c.offsetWidth, h: c.offsetHeight } };
+  });
+  // the frame on the next frame after one pointer step: drawn once per animation frame, so read it after a rAF
+  const afterFrame = () => h.page.evaluate(() => new Promise<void>((r) => requestAnimationFrame(() => r())));
+  const want = (r: { card: Rect }) => sectionFrame(b.sections[0], [r.card]);
+  const head = (await h.page.locator('.card[data-id="a"] .chead').boundingBox())!;
+  const grab = { x: head.x + 30, y: head.y + head.height / 2 };
+  const r0 = await rectNow();
+  await h.page.mouse.move(grab.x, grab.y); await h.page.mouse.down();
+  await h.page.mouse.move(grab.x, grab.y + 20, { steps: 4 });
+  // one long step up and left, the card still mostly inside: the Section's target grows about 60 up and left at once
+  await h.page.mouse.move(grab.x - 80, grab.y - 50); await afterFrame();
+  const mid = await rectNow(), midWant = want(mid);
+  await shot(h, "sect-ease-01-mid-drag");
+  const between = (v: number, a: number, z: number) => v < Math.max(a, z) - 1 && v > Math.min(a, z) + 1;
+  check("section-ease-mid-drag", between(mid.x, r0.x, midWant.x) && between(mid.y, r0.y, midWant.y) && between(mid.h, r0.h, midWant.h) && mid.rectTransitions === 0, { r0, mid, midWant });
+  // the title sits on the drawn frame, not on the target
+  check("section-ease-label-follows", mid.lx === mid.x && mid.ly === mid.y, mid);
+  await h.page.mouse.up();
+  await until(h, "the drag is saved", () => h.board().place.a.y !== 210); await idle(h);
+  const end = await rectNow(), p = h.board().place.a, endWant = want(end);
+  await shot(h, "sect-ease-02-dropped");
+  check("section-ease-ends-on-target", p.section === "S1" && end.y < r0.y - 20 && end.x === endWant.x && end.y === endWant.y && end.w === endWant.w && end.h === endWant.h && end.card.x === p.x && end.card.y === p.y && end.lx === end.x && end.ly === end.y, { end, endWant, p });
+  // reduced motion: the frame is on its target right after the step
+  await h.page.emulateMedia({ reducedMotion: "reduce" });
+  const hd2 = (await h.page.locator('.card[data-id="a"] .chead').boundingBox())!;
+  const g2 = { x: hd2.x + 30, y: hd2.y + hd2.height / 2 };
+  await h.page.mouse.move(g2.x, g2.y); await h.page.mouse.down();
+  await h.page.mouse.move(g2.x, g2.y + 20, { steps: 4 });
+  await h.page.mouse.move(g2.x, g2.y + 60); await afterFrame();
+  const snap = await rectNow(), snapWant = want(snap);
+  await h.page.mouse.up(); await idle(h);
+  check("section-ease-reduced-motion-snaps", snap.x === snapWant.x && snap.y === snapWant.y && snap.w === snapWant.w && snap.h === snapWant.h && snap.y > end.y + 20, { snap, snapWant });
   await close(h);
 });
 

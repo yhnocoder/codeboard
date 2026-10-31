@@ -80,3 +80,23 @@ describe("Math preamble", () => {
     expect(scopes.get("codeboard.theme")).toBe("user");
   });
 });
+
+describe("Changes made in a row", () => {
+  it("read back as the last value the board sent while the writes before it finish", async () => {
+    // each write finishes when the test lets it; the change event of the first one reads the settings before the second is written
+    const done: (() => void)[] = [];
+    const set = W.settings.set;
+    W.settings.set = (k, v) => new Promise<void>((r) => done.push(() => { conf.set(k, v); r(); }));
+    const a = writeSetting("theme", "graphite"), b = writeSetting("theme", "city");
+    done[0]();
+    await a;
+    expect(conf.get("codeboard.theme")).toBe("graphite");
+    expect(readSettings().theme).toBe("city");
+    done[1]();
+    await b;
+    W.settings.set = set;
+    expect(readSettings().theme).toBe("city");
+    conf.set("codeboard.theme", "poster"); // edited in settings.json afterwards
+    expect(readSettings().theme).toBe("poster");
+  });
+});

@@ -15,6 +15,7 @@ import { AltBoxes } from "./Labels";
 import { SectionFrames, SectionLabels } from "./Sections";
 import { frames } from "../state/sections";
 import { canvasPointerDown, canvasWheel, canvasContextMenu } from "../interact";
+import { bindShield } from "../ui/shield";
 import { Icon } from "../ui/icons";
 import * as A from "../actions";
 import { align } from "@codeboard/core";
@@ -82,7 +83,7 @@ export function Canvas() {
     onCleanup(() => { ro.disconnect(); el.removeEventListener("wheel", canvasWheel); });
   });
   return (
-    <div ref={el} id="board" class="board" data-mode={boardMode()} classList={{ walking: !!walk(), dragging: dragging().size > 0, "lod-overview": lod() === "overview", "lod-map": lod() === "map" }}
+    <div ref={el} id="board" class="board" data-mode={boardMode()} classList={{ walking: !!walk(), dragging: dragging().size > 0, "img-drop": dropTarget()?.kind === "note", "lod-overview": lod() === "overview", "lod-map": lod() === "map" }}
       onPointerDown={canvasPointerDown} onContextMenu={canvasContextMenu}>
       <div ref={world} class="world" classList={{ moving: camMoving(), settle: settle() }} style={{ transform: `translate(${cam.x}px, ${cam.y}px) scale(${cam.z})`, "--izmap": String(izMap()) }}>
         <SectionFrames />
@@ -111,6 +112,8 @@ export function Canvas() {
           <DropHint />
         </div>
       </div>
+      {/* ui/shield.ts：滚轮平移、缩放的手势里盖在世界层上，命中测试不用把世界层里的东西一个个问过去 */}
+      <div ref={bindShield} class="pshield" />
       <Show when={marquee()}>{(m) => <div class="marquee" style={{ left: `${m().x}px`, top: `${m().y}px`, width: `${m().w}px`, height: `${m().h}px`, display: "block" }} />}</Show>
       <AlignBar />
       <Show when={!placed().length && state.loaded}><EmptyHint /></Show>
