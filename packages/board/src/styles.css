@@ -382,7 +382,7 @@ input, textarea { font: inherit; color: var(--ink); }
 /* Note 的字号走 Markdown 包的 --md-fs / --md-h1…h6。设置 → Notes 里改的（App 挂在根上的 --note-fs、--note-fs-h1…h6）优先；
    没改 = 主题的字号（这里和 themes.css 给），标题按正文的比例（没设的 --note-fs-hN 让 --md-hN 无效，回到包里的默认比例） */
 .card.note .nbody { --md-fs: var(--note-fs, 13.5px); --md-h1: var(--note-fs-h1); --md-h2: var(--note-fs-h2); --md-h3: var(--note-fs-h3); --md-h4: var(--note-fs-h4); --md-h5: var(--note-fs-h5); --md-h6: var(--note-fs-h6); }
-.card.note .nbody { padding: 10px 14px 12px; line-height: 1.6; color: var(--ink); white-space: pre-wrap; word-break: break-word; outline: none; }
+.card.note .nbody { position: relative; padding: 10px 14px 12px; line-height: 1.6; color: var(--ink); white-space: pre-wrap; word-break: break-word; outline: none; } /* relative: 块的位置按正文量（state/blocks.ts） */
 /* 定了高度的 Note（用户拖过下边 / 角）：放不下的内容在正文里滚，和代码卡的 .cbody 一样，不跑出卡外；放得下时下面留空。
    不拉伸（flex-grow 0）：正文只有内容那么高，Fit Content、改大小时量的是内容。
    Text 没有框，不裁：从 Note 换过来带着的高度用 Fit Content 去掉 */
@@ -797,6 +797,13 @@ kbd { font: 10.5px var(--mono); }
 .lport { opacity: 1; }
 .card:hover .lport { opacity: 1; }
 .lport:hover { box-shadow: 0 0 0 1.5px var(--accent); background: var(--accent); }
+/* Note 的一块（state/blocks.ts）：圆点在所有卡和线上面一层，中心落在卡边上那一块的中线高度（Links.tsx BlockPorts） */
+.bports { position: absolute; left: 0; top: 0; z-index: 6; pointer-events: none; }
+.bport { position: absolute; width: 9px; height: 9px; margin: -4.5px 0 0 -4.5px; border-radius: var(--port-r, 50%); corner-shape: round; rotate: var(--port-rot, none); background: var(--port-bg, var(--surface)); box-shadow: 0 0 0 var(--port-ring, 1.5px) var(--port-ring-c, var(--edge)); cursor: crosshair; pointer-events: auto; scale: var(--uv, 1); }
+.bport::after { content: ""; position: absolute; inset: var(--port-hit, 0); border-radius: 50%; }
+.bport:hover { box-shadow: 0 0 0 1.5px var(--accent); background: var(--accent); }
+/* 拖箭头指着 Note 的某一块时，落点和起点那两块的淡色底（样式表由 state/blocks.ts 按块写，颜色在这里） */
+.board { --btint: color-mix(in srgb, var(--accent) 9%, transparent); }
 .cbody.wrap .code { min-width: 0; }
 .cbody.wrap .src { white-space: pre-wrap; word-break: break-all; }
 .cbody.wrap .src .l { height: auto; min-height: 20px; }

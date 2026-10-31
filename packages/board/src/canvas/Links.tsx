@@ -5,6 +5,8 @@ import { Show, batch, createEffect, createMemo, createRenderEffect, createSelect
 import { headOf, type Link, type LinkSide, type Rect } from "@codeboard/core";
 import { state, sel, select, rectOf, cardById, hostOf, collapsedAway, placeOf, placed, live, beginGesture } from "../state/store";
 import { geo, lineY, setCurveSource, HEAD_H } from "../state/geo";
+import { blockY, hoverBlock, keepBlock, leaveBlock, watchBlockHover } from "../state/blocks";
+import { portStyle } from "../state/hover";
 import { frames, collapsedHome } from "../state/sections";
 import { dragLink, setDragLink, rubber, popIn } from "../state/ui";
 import { hoverLink, hoverCard, enterLink, leaveLink, watchHover } from "../state/hover";
@@ -13,7 +15,7 @@ import { lodOf } from "../state/lodcards";
 import { boardOffset } from "../state/measure";
 import { shape, fileHue, look } from "../state/look";
 import { tune } from "../state/tune";
-import { isDbl } from "../interact";
+import { isDbl, linkPortDown } from "../interact";
 import * as A from "../actions";
 import { LinkLabel } from "./Labels";
 import { LinkStickers } from "../stickers/Picker";
@@ -54,19 +56,26 @@ type End = {
 };
 type Base = { a: End; b: End; kind: "normal" | "self" | "gutter"; gx?: number };
 
-/** 行端的那张卡在地图档（看不到行）：端点落到卡头 */
-const mapHides = (e: Link["from"]) => { if (e.line === undefined) return false; const f = cardById(e.card); return !!f && lodOf(f.host.id) === "map"; };
+/** 连着一行 / Note 的一块（不是整张卡）：只从左右两边进出 */
+const subEnd = (e: Link["from"]) => e.line !== undefined || !!e.block;
+/** 行端、块端的那张卡在地图档（看不到行和块）：端点落到卡头 */
+const mapHides = (e: Link["from"]) => { if (!subEnd(e)) return false; const f = cardById(e.card); return !!f && lodOf(f.host.id) === "map"; };
 
 function endOf(e: Link["from"]): End | null {
   const er = endRect(e.card);
   if (!er) return null;
   const f = cardById(e.card)!;
   const r = er.r;
-  const line = e.line !== undefined;
+  const line = subEnd(e);
   const hy = er.pill ? r.y + r.h / 2 : headY(e.card, r);
   let y = hy;
+  // 块端：那一块的中线（state/blocks.ts 量的）；块没了、量不到时落到卡头，和行端一样
+  if (e.block && !er.pill) {
+    const by = blockY(e.card, e.block);
+    if (by !== null) y = r.y + by;
+  }
   // 行端：那一行的 y；行被折叠 / 藏起来时落到卡头，线的样子不变。卡在地图档（看不到行）时也落到卡头：那个在 ends 里挑（hy）
-  if (line && !er.pill) {
+  else if (line && !er.pill) {
     const p = lineY(e.card, e.seg, e.line);
     const row = p?.row !== undefined ? geo[e.card]?.rows[p.row] : undefined;
     if (p && row?.t === "line" && row.line === e.line) { const pi = popIn()[f.host.id]; y = p.y + (pi ? (1 - pi.v) * pi.oy : 0); }
@@ -239,7 +248,7 @@ function makeRoute(L: Link): Route {
   return { L, base, sides, ends, sig };
 }
 
-const toKey = (L: Link) => `${L.to.card}|${L.to.seg ?? ""}|${L.to.line ?? ""}`;
+const toKey = (L: Link) => `${L.to.card}|${L.to.seg ?? ""}|${L.to.line ?? (L.to.block ? `b${L.to.block.i}` : "")}`;
 
 // 线的三次贝塞尔控制点（贴纸、标签沿线走时用）：登记给 state/geo 的 linkCurve
 setCurveSource((id) => {
@@ -279,7 +288,7 @@ function portDrag(e: PointerEvent, id: string) {
   if (e.button !== 0) return;
   e.stopPropagation(); e.preventDefault();
   const L = state.board.links.find((l) => l.id === id);
-  if (!L || L.from.line === undefined) return;
+  if (!L || !subEnd(L.from)) return;
   const a = endRect(L.from.card)?.r;
   if (!a) return;
   const end = beginGesture();
@@ -309,8 +318,8 @@ export const landed = rooted(() => {
       const s = r.sides();
       if (!s) continue;
       const [a, b] = s.split("|");
-      if (r.L.from.line === undefined) out.add(`${r.L.from.card}|${a}`);
-      if (r.L.to.line === undefined) out.add(`${r.L.to.card}|${b}`);
+      if (!subEnd(r.L.from)) out.add(`${r.L.from.card}|${a}`);
+      if (!subEnd(r.L.to)) out.add(`${r.L.to.card}|${b}`);
     }
     return out;
   }, new Set<string>(), { equals: (x, y) => x.size === y.size && [...x].every((k) => y.has(k)) });
@@ -456,6 +465,7 @@ export function trackLinks() {
     }
   });
   watchHover();
+  watchBlockHover();
   // City 的车流：挑哪几条路只在镜头停下时算一次（Traffic.tsx）
   trackTraffic(views);
 }
@@ -532,6 +542,29 @@ function Rubber() {
 }
 
 /**
+ * 悬停 Note 的一块：卡左右边上、那一块中线高度的两个圆点（哪一块由 state/blocks.ts 定），拖出去就是从这一块连箭头。
+ * 在所有卡和线上面（.bports，比浮上来的线那层还高）：盖在连着这一块的线头上。斜贴的卡跟着边转过去，和线的端点一样
+ */
+export function BlockPorts() {
+  const at = createMemo(() => {
+    const h = hoverBlock();
+    if (!h || rubber() || !cardById(h.card)) return null;
+    const r = rectOf(h.card), rad = (tiltOf(h.card) * Math.PI) / 180, y = r.y + h.y;
+    const pt = (side: Side) => { const a = anchorOn(r, side, y); return rad ? turnAnchor(a, r, rad) : a; };
+    return { h, left: pt("left"), right: pt("right") };
+  });
+  return (
+    <div class="bports" data-export="strip">
+      <Show when={at()}>{(a) => (["left", "right"] as const).map((side) => (
+        <span class={`bport ${side === "left" ? "l" : "r"}`} data-nodrag data-tip="Drag to link this block" style={{ left: `${a()[side].x}px`, top: `${a()[side].y}px`, ...portStyle(a().h.card) }}
+          onPointerEnter={keepBlock} onPointerLeave={leaveBlock}
+          onPointerDown={(e) => { const b = e.currentTarget.getBoundingClientRect(), h = a().h; linkPortDown(e, { card: h.card, block: h.ref }, b.left + b.width / 2, b.top + b.height / 2, side); }} />
+      ))}</Show>
+    </div>
+  );
+}
+
+/**
  * 点击区的粗细（屏幕上 12px）：单独一个 effect。写在 JSX 的 style 里会和这条线的其它属性编进同一个 effect，
  * 镜头每次停下（stillZ 变）196 条线都要把 class、合并、路径整个重算一遍
  */
@@ -574,7 +607,7 @@ function linkDom(r: Route, g: Accessor<Geo | null>, merged: Accessor<boolean>, c
     <g data-lk={L.id}>
       <Show when={g()}>
         <Show when={g()!.port}><path class={`port fc-${toHue()}${L.lost?.from ? " lost" : ""}`} data-x={g()!.port!.x} d={portPath(g()!.port!.x, g()!.port!.y)} />
-          <Show when={on() && L.from.line !== undefined && r.base()?.kind === "normal"}><circle class="porthit" data-export="strip" onPointerEnter={() => enterLink(L.id)} onPointerLeave={leaveLink} data-tip="Drag to the other end of the line" r={7 / stillZ()} cx={g()!.port!.x} cy={g()!.port!.y} onPointerDown={(e) => portDrag(e, L.id)} /></Show></Show>
+          <Show when={on() && subEnd(L.from) && r.base()?.kind === "normal"}><circle class="porthit" data-export="strip" onPointerEnter={() => enterLink(L.id)} onPointerLeave={leaveLink} data-tip="Drag to the other end of the line" r={7 / stillZ()} cx={g()!.port!.x} cy={g()!.port!.y} onPointerDown={(e) => portDrag(e, L.id)} /></Show></Show>
         <Show when={g()!.port2}><path class={`port fc-${toHue()}`} d={portPath(g()!.port2!.x, g()!.port2!.y)} /></Show>
       </Show>
     </g>

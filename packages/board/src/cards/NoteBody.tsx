@@ -8,6 +8,7 @@ import { Icon } from "../ui/icons";
 import * as A from "../actions";
 import { below, ownMenu } from "../ui/Menu";
 import { sourceModeOf, toggleNoteSource } from "../md/load";
+import { trackBlocks } from "../state/blocks";
 
 /**
  * 卡头的名字就是 Markdown 开头的标题时，正文里藏起那一行（正文元素加 hidehead，styles.css 藏掉第一个标题）：没自己起名字、开头是标题、
@@ -26,6 +27,8 @@ export function NoteBody(p: { card: NoteCard }) {
   const [sliding, setSliding] = createSignal(false);
   const [folded, setFolded] = createSignal(false);
   const isEditing = () => editing()?.kind === "note" && editing()?.id === c().id;
+  // 有箭头连着这张 Note 的某一块：量每一块的位置（线的端点）
+  trackBlocks(() => c().id, () => c().md);
   createEffect(on(isEditing, (now, was) => {
     if (was === undefined || now === was || (now && !hideHead()) || (!now && !folded())) return;
     if (!now) setSliding(true);

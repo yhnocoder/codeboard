@@ -123,7 +123,7 @@
       "files": [
         "packages/board/src/canvas/{Links,Labels}.tsx", "packages/board/src/canvas/{labelpos,route,hand}.ts",
         "packages/board/src/actions/{links,annots}.ts", "packages/core/src/linklabel.ts", "packages/host/src/marks.ts",
-        "packages/board/test/scenarios/{arrows,labels,layers,marks}.spec.ts"
+        "packages/board/src/state/blocks.ts", "packages/board/src/md/blocks.ts", "packages/board/test/scenarios/{arrows,labels,layers,marks,note-block-arrows}.spec.ts"
       ],
       "scenarios": [
         "linkMergeSection", "arrowShapeUpRight", "linkLabelBoxes", "labelDragAlongArrow", "dragLinkSide", "lineToLineLink",

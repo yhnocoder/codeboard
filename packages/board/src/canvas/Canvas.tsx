@@ -9,7 +9,7 @@ import { guides, sizeHint, marquee, dragging, dropTarget, walk, editing } from "
 import { CardView } from "../cards/Card";
 import { SubPreviews } from "../cards/SubPreviews";
 import { CanvasStickers } from "../stickers/Picker";
-import { trackLinks, LinkLayer } from "./Links";
+import { trackLinks, LinkLayer, BlockPorts } from "./Links";
 import { Traffic } from "./Traffic";
 import { AltBoxes } from "./Labels";
 import { SectionFrames, SectionLabels } from "./Sections";
@@ -97,6 +97,7 @@ export function Canvas() {
         {/* 灰色备选：在所有卡上面、浮上来的线下面 */}
         <div class="alts" classList={{ "lod-overview": lod() === "overview" }}><Show when={lod() !== "map"}><AltBoxes /></Show></div>
         <LinkLayer top />
+        <BlockPorts />
         {/* 子白板框外点开的预览：在卡和线上面 */}
         <SubPreviews />
         {/* Walkthrough 的步数：卡上方的小号码（算出来的，不存；走过的卡不再走），在卡外面一层，变暗的卡也看得清 */}
