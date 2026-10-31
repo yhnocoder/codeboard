@@ -6,6 +6,7 @@
 import type { KeyAction } from "@codeboard/core";
 import type * as Actions from "./actions";
 import { state, sel, lineSel, undo, redo, live, beginGesture, toast, clearSel, hostOf, cardById } from "./state/store";
+import { holdGesture } from "./gesture";
 import { NUDGE_HOLD, NUDGE_RAMP, NUDGE_SPEED, NUDGE_MAX } from "./state/timing";
 import { camTarget, zoomAt } from "./state/camera";
 import { walk, keysOpen, setKeysOpen, setPaletteOpen, setEditing, editing } from "./state/ui";
@@ -33,7 +34,7 @@ export type Bind = {
  * the key is held (the OS key repeat would move in uneven jumps at one fixed speed, so its repeats are ignored). From the first
  * arrow down to the last one up is one gesture: one undo step, however long it was held
  */
-let held: { dirs: Map<string, [number, number]>; shift: boolean; t0: number; last: number; acc: [number, number]; a: A; end: (record?: boolean) => void; raf: number } | null = null;
+let held: { dirs: Map<string, [number, number]>; shift: boolean; t0: number; last: number; acc: [number, number]; a: A; end: (record?: boolean) => void; release: () => void; raf: number } | null = null;
 const moveSel = (a: A, dx: number, dy: number) =>
   live((b) => { for (const id of sel.cards) { const c = b.place[hostOf(id)]; if (c && !a.isLocked(id)) { c.x += dx; c.y += dy; } } });
 const glide = (now: number) => {
@@ -60,22 +61,25 @@ const nudgeKeys = (e: KeyboardEvent) => {
   if (e.key === "Shift") h.shift = e.type === "keydown";
   if (e.type === "keyup" && h.dirs.delete(e.key) && !h.dirs.size) stopNudge();
 };
-function stopNudge() {
+// record = false: the board switched while an arrow key was held, so the nudge so far is not an undo step on the new board
+function stopNudge(record = true) {
   const h = held;
   if (!h) return;
   held = null;
   cancelAnimationFrame(h.raf);
-  window.removeEventListener("keydown", nudgeKeys, true); window.removeEventListener("keyup", nudgeKeys, true); window.removeEventListener("blur", stopNudge);
-  h.end();
+  window.removeEventListener("keydown", nudgeKeys, true); window.removeEventListener("keyup", nudgeKeys, true); window.removeEventListener("blur", blurNudge);
+  h.release();
+  h.end(record);
 }
+const blurNudge = () => stopNudge();
 const nudge = (dx: number, dy: number) => (a: A, e: KeyboardEvent) => {
   if (e.repeat && held) return;
   // The step is on screen (1 px, Shift 10 px), so zoomed out a press still moves visibly; whole world pixels like every other placement
   const d = Math.max(1, Math.round((e.shiftKey ? 10 : 1) / camTarget().z));
   const now = performance.now();
   if (!held) {
-    held = { dirs: new Map(), shift: e.shiftKey, t0: now, last: now, acc: [0, 0], a, end: beginGesture(), raf: requestAnimationFrame(glide) };
-    window.addEventListener("keydown", nudgeKeys, true); window.addEventListener("keyup", nudgeKeys, true); window.addEventListener("blur", stopNudge);
+    held = { dirs: new Map(), shift: e.shiftKey, t0: now, last: now, acc: [0, 0], a, end: beginGesture(), release: holdGesture(() => stopNudge(false)), raf: requestAnimationFrame(glide) };
+    window.addEventListener("keydown", nudgeKeys, true); window.addEventListener("keyup", nudgeKeys, true); window.addEventListener("blur", blurNudge);
   }
   // another arrow joining the hold (a diagonal) starts the speed-up over
   held.dirs.set(e.key, [dx, dy]); held.shift = e.shiftKey; held.t0 = now; held.acc = [0, 0];

@@ -87,4 +87,6 @@ export const langId = (name: string) => langInfo(name)?.id ?? name;
 export const grammarOf = (lang: string): Grammar | null => langInfo(lang)?.grammar ?? null;
 export const grammarOfFile = (file: string): Grammar | null => langOfExt(file)?.grammar ?? null;
 /** 有语法的语言的扩展名（只这一个语法的，或全部）：建名字索引、找工作区代码的文件 */
+/** The editor's language ids of every language the analysis reads (the editor shows board marks on their files) */
+export const analyzedEditorLangs = (): string[] => [...new Set(LANG_TABLE.filter((l) => l.grammar).map((l) => l.vscodeId))];
 export const codeExts = (g?: Grammar): string[] => LANG_TABLE.filter((l) => l.grammar && (!g || l.grammar === g)).flatMap((l) => l.ext);

@@ -1,6 +1,6 @@
 import { uid, removeStickers, isQuestion, type IconRef, type Sticker, type StickerAt } from "@codeboard/core";
 import { openQuestion, setAnswered, linkAnswer, setStickerDragged } from "./questions";
-import { state, mutate, live, beginGesture, toast, rectOf } from "../state/store";
+import { state, mutate, live, toast, rectOf } from "../state/store";
 import { linkCurve } from "../state/geo";
 import { bezAt, nearestT } from "../canvas/geom";
 import { cam, toWorld } from "../state/camera";
@@ -10,7 +10,7 @@ import { STICKER_COLORS, BUILTIN, defaultColor, loadPacks } from "../stickers/gl
 import { geo } from "../state/geo";
 import { stickerPick, setStickerPick, stickerColor, selSticker, setSelSticker, setBindHot, type BindTarget } from "../state/stickers";
 import { setMode, placing, idle } from "../state/mode";
-import { holdPointer } from "../ui/guard";
+import { track, undoGesture } from "../gesture";
 
 export function stickerPicker(el: HTMLElement) {
   if (stickerPick()) return setStickerPick(null);
@@ -56,20 +56,32 @@ export function placeStickerAt(e: PointerEvent): boolean {
  * 离卡边 40px、离箭头 24px（屏幕距离）以内都算，像贴在卡角外面也能绑上
  */
 const MAG_CARD = 40, MAG_LINK = 24;
-/** 画布上看得见的卡（折叠起来的不在 DOM 里）。一次拖动里不会变：拖之前量一次，不要每次 pointermove 对每张卡各查一次 DOM */
-const shownCards = () => new Set([...document.querySelectorAll<HTMLElement>(".card[data-id]")].map((e) => e.dataset.id!));
+/**
+ * 画布上看得见的卡（折叠起来的不在 DOM 里）和它们占的地方。一次拖动里不会变：拖之前量一次，不要每次 pointermove 对每张卡各查一次 DOM。
+ * near：指针不在哪张卡附近时不用问浏览器指针下面是什么（同拖卡的 nearOther）：elementsFromPoint 在几百张卡的白板上每次几毫秒，
+ * 箭头离得近由下面的吸附算出来。外面留一圈：浮在卡上方的卡头、斜贴的卡角
+ */
+function shownCards() {
+  const ids = new Set([...document.querySelectorAll<HTMLElement>(".card[data-id]")].map((e) => e.dataset.id!));
+  const rs = [...ids].filter((id) => state.board.place[id]).map((id) => rectOf(id));
+  const near = (w: { x: number; y: number }, z: number) => {
+    const pad = Math.max(64, 24 / z);
+    return rs.some((r) => w.x >= r.x - pad && w.x <= r.x + r.w + pad && w.y >= r.y - pad && w.y <= r.y + r.h + pad);
+  };
+  return { ids, near };
+}
 function targetAt(cx: number, cy: number, shown = shownCards()): BindTarget | null {
-  for (const el of document.elementsFromPoint(cx, cy) as HTMLElement[]) {
+  const o = boardOffset(), w = toWorld(cx - o.x, cy - o.y), z = cam.z;
+  if (shown.near(w, z)) for (const el of document.elementsFromPoint(cx, cy) as HTMLElement[]) {
     if (el.closest?.(".stk, .ctx, .toolbar, .bbar")) continue;
     const l = (el as HTMLElement).dataset?.link ?? el.closest?.("[data-link]")?.getAttribute("data-link");
     if (l && state.board.links.some((k) => k.id === l)) return { link: l };
     const c = el.closest?.(".card[data-id]") as HTMLElement | null;
     if (c && state.board.place[c.dataset.id!]) return { card: c.dataset.id! };
   }
-  const o = boardOffset(), w = toWorld(cx - o.x, cy - o.y), z = cam.z;
   let best: BindTarget | null = null, bd = Infinity;
   for (const id of Object.keys(state.board.place)) {
-    if (!shown.has(id)) continue;
+    if (!shown.ids.has(id)) continue;
     const r = rectOf(id);
     const dx = Math.max(r.x - w.x, 0, w.x - (r.x + r.w)), dy = Math.max(r.y - w.y, 0, w.y - (r.y + r.h));
     const d = Math.hypot(dx, dy) * z;
@@ -167,17 +179,15 @@ export function stickerDown(e: PointerEvent, id: string, resize = false) {
   const w0 = stickerWorld(s);
   if (!w0) return;
   const a0 = { ...s.at }, size = a0.size ?? 32, sx = e.clientX, sy = e.clientY;
-  const end = beginGesture();
-  let moved = false, shown: Set<string> | undefined;
+  const g = undoGesture();
+  let moved = false, shown: ReturnType<typeof shownCards> | undefined;
   setStickerDragged(false);
-  holdPointer(e);
-  const move = (ev: PointerEvent) => {
+  track(e, (ev) => {
     const dx = (ev.clientX - sx) / cam.z, dy = (ev.clientY - sy) / cam.z;
     if (resize) {
       live((b) => { const k = b.stickers.find((q) => q.id === id); if (k?.at.kind === "canvas") k.at.size = Math.round(Math.max(16, Math.min(240, size + Math.max(dx, dy)))); });
       return;
     }
-    if (!moved && Math.hypot(ev.clientX - sx, ev.clientY - sy) < 3) return;
     // 拖的时候先放到最上层（画布层），松手再决定绑到哪。只在第一下换 at（解绑），之后只改 x、y：
     // 换掉 at 会通知所有按卡分组的贴纸列表，只改坐标只通知这一枚贴纸自己
     const x = Math.round(w0.x + dx), y = Math.round(w0.y + dy);
@@ -188,9 +198,7 @@ export function stickerDown(e: PointerEvent, id: string, resize = false) {
     });
     moved = true;
     setBindHot(ev.altKey ? null : targetAt(ev.clientX, ev.clientY, (shown ??= shownCards())));
-  };
-  const up = (ev: PointerEvent) => {
-    window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up);
+  }, (ev) => {
     if (moved) {
       const t = ev.altKey ? null : targetAt(ev.clientX, ev.clientY, shown);
       const w = { x: w0.x + (ev.clientX - sx) / cam.z, y: w0.y + (ev.clientY - sy) / cam.z };
@@ -200,8 +208,6 @@ export function stickerDown(e: PointerEvent, id: string, resize = false) {
     }
     setStickerDragged(moved); // 拖过的不算点一下（不打开问题）
     setBindHot(null);
-    end();
-  };
-  window.addEventListener("pointermove", move);
-  window.addEventListener("pointerup", up);
+    g.end();
+  }, resize ? 0 : 3, g.drop);
 }

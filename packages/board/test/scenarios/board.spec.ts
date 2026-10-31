@@ -170,6 +170,30 @@ test("stickerPlace", async () => {
   await close(h);
 });
 
+// A drag still held when the host switches boards (into a sub-board, another board opened) is dropped: releasing it afterwards
+// changes nothing, and the old board's snapshot never reaches the new board's undo stack (⌘Z there must not bring old cards back)
+test("dragDroppedOnBoardSwitch", async () => {
+  const res: Record<string, number> = {};
+  for (const [kind, sel] of [["sticker", '[data-sticker="k4"]'], ["label", '.vchips[data-link="L1"]'], ["section", '.slabel[data-sect="gD"]']] as const) {
+    const b = richBoard();
+    b.sections.push({ id: "gD", title: "Drag me", x: 1500, y: 60, w: 300, h: 200 });
+    b.cam = { x: 0, y: 0, z: 0.8 };
+    const h = await open({ board: b, light, w: 1500, h: 950 });
+    const box = (await h.page.locator(sel).first().boundingBox())!;
+    const x = box.x + box.width / 2, y = box.y + box.height / 2;
+    await h.page.mouse.move(x, y); await h.page.mouse.down();
+    await h.page.mouse.move(x + 30, y + 20, { steps: 4 });
+    const b2 = emptyBoard("b2", "other");
+    await h.post({ type: "init", board: b2, boards: [{ id: "b2", name: "other", cards: 0 }], views: {}, stale: {}, host: { isMac: true, assetBase: "", target: true, settings: { ...DEFAULT_SETTINGS } } });
+    await h.page.locator(".card").first().waitFor({ state: "detached" }); await idle(h);
+    await h.page.mouse.move(x + 60, y + 40, { steps: 4 }); await h.page.mouse.up(); await idle(h);
+    await h.page.keyboard.press("Meta+z"); await idle(h);
+    res[kind] = await h.page.locator(".card, [data-sticker], .slabel").count(); // the old board's cards, stickers and Sections
+    await close(h);
+  }
+  check("dragDroppedOnBoardSwitch", Object.values(res).every((n) => n === 0), "nothing of the old board after the release and ⌘Z", res);
+});
+
 // 自定义贴纸包的 SVG 由白板用 DOMPurify 清洗：脚本、事件属性、javascript: 链接（包括实体编码的）、foreignObject、<style> 都去掉
 test("stickerSvgSanitize", async () => {
   const bad: Record<string, string> = {

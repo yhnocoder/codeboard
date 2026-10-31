@@ -9,7 +9,7 @@ vi.mock("node:child_process", async (orig) => {
   const cp = await orig<typeof import("node:child_process")>();
   return { ...cp, execFile: ((...a: Parameters<typeof cp.execFile>) => { if ((a[1] as string[] | undefined)?.includes("--is-ancestor")) runs.n++; return (cp.execFile as (...x: unknown[]) => unknown)(...a); }) as typeof cp.execFile };
 });
-const { isAncestor } = await import("../src/git");
+const { isAncestor, repoRootOfDir, forgetRepos, upstreamRef } = await import("../src/git");
 
 let R: string, C: string, c1: string, c2: string, later: string;
 beforeAll(() => {
@@ -46,5 +46,28 @@ describe("isAncestor", () => {
     expect(await isAncestor(R, c1.slice(0, 7), c2)).toBe(true);
     expect(await isAncestor(R, c1.slice(0, 7), c2)).toBe(true);
     expect(runs.n).toBe(2);
+  });
+});
+
+// The repo lookups are remembered, but only answers: a folder that becomes a repo later (git init) is found without a reload, and
+// after a git event (forgetRepos, watch.ts) a new origin is the upstream
+describe("repo lookups", () => {
+  it("finds a repo made after a lookup that found none", async () => {
+    const d = fs.realpathSync(fs.mkdtempSync("/tmp/codeboard-noinit-"));
+    try {
+      expect(await repoRootOfDir(d)).toBeNull();
+      sh(d, "init", "-q");
+      expect(await repoRootOfDir(d)).toBe(d);
+    } finally { fs.rmSync(d, { recursive: true, force: true }); }
+  });
+  it("takes a new origin as the upstream after a git event", async () => {
+    const d = tempRepo("upstream", { "f.py": "x = 1\n" });
+    try {
+      expect(await upstreamRef(d)).toBe("main");
+      sh(d, "update-ref", "refs/remotes/origin/dev", "HEAD");
+      sh(d, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/dev");
+      forgetRepos();
+      expect(await upstreamRef(d)).toBe("origin/dev");
+    } finally { fs.rmSync(d, { recursive: true, force: true }); }
   });
 });

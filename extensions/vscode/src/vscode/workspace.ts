@@ -1,8 +1,9 @@
 import * as vscode from "vscode";
 import * as path from "node:path";
 import { vscodeScratch, isScratch } from "./scratch";
-import { COMPLETE_SYSTEM, Emitter, completePrompt, type AiChatRequest, type AiChatResult, type AiModel, type Workspace } from "@codeboard/core";
+import { Emitter, type AiChatRequest, type AiChatResult, type AiModel, type Workspace } from "@codeboard/core";
 import { deepseekComplete } from "@codeboard/host/deepseek";
+import { chatComplete } from "@codeboard/host/complete";
 
 const EXT_ID = "yhnocoder.codeboard-vscode";
 // esbuild.mjs 写进来的构建信息：正式版是 ""，开发版是 "dev <commit>[ dirty]"（vitest 里没有这个常量）
@@ -265,7 +266,7 @@ export function vscodeWorkspace(ctx: vscode.ExtensionContext): Workspace {
           if (key) return deepseekComplete({ key, model: cfg.get<string>("deepseekModel") || undefined, baseUrl: cfg.get<string>("deepseekBaseUrl") || undefined, signal: o?.signal }, before, after);
           if (provider === "deepseek") return undefined;
         }
-        return copilotAsk(COMPLETE_SYSTEM, completePrompt(before, after), { signal: o?.signal, maxChars: 600 });
+        return chatComplete(copilotAsk, before, after, o?.signal);
       },
       deepseekKey: async () => (await ctx.secrets.get(DEEPSEEK_SECRET)) || undefined,
       setDeepseekKey: async () => {

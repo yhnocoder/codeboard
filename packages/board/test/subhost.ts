@@ -14,8 +14,11 @@ const viewsOf = (b: Board): Record<string, SegView> => {
   return v;
 };
 
-/** o.light: this scenario's theme whatever HARNESS_LIGHT says (for one that compares colours with a light design) */
-export async function subHost(start: Board, others: Board[], o: { light?: boolean } = {}) {
+/**
+ * o.light: this scenario's theme whatever HARNESS_LIGHT says (for one that compares colours with a light design).
+ * o.beforeSwitch: runs after an enterBoard is accepted and before the next board's init is sent (the board is mid-transition)
+ */
+export async function subHost(start: Board, others: Board[], o: { light?: boolean; beforeSwitch?: () => Promise<void> } = {}) {
   const dir = path.join(OUT, `subboards-store-${process.pid}-${start.id}`); // one per worker and start board: workers run side by side
   fs.rmSync(dir, { recursive: true, force: true });
   const store = new Storage(nodeFs, { dir: () => dir });
@@ -93,7 +96,7 @@ export async function subHost(start: Board, others: Board[], o: { light?: boolea
         case "confirm": await reply(m.req, true); return true;
         case "enterBoard": {
           const metas = await store.list();
-          if (wouldCycle((id) => metas.find((x) => x.id === id)?.subs, cur, m.id)) return true;
+          if (wouldCycle((id) => metas.find((x) => x.id === id)?.subs, cur, m.id)) { await reply(m.req, "Can't open a board inside itself."); return true; }
           crumbs = [...crumbs, { id: cur, name: store.peek(cur)!.name, frame: m.frame }]; cams = [...cams, m.cam];
           cur = m.id;
           // like the host's enterBoard: a card further down is reached through every board on the way (each one on the crumbs)
@@ -102,16 +105,18 @@ export async function subHost(start: Board, others: Board[], o: { light?: boolea
             crumbs = [...crumbs, { id: cur, name: at.name, frame: hop.frame }]; cams = [...cams, at.cam];
             cur = hop.board;
           }
+          await o.beforeSwitch?.();
           await init(m.walk);
           if (m.reveal) await h.post({ type: "reveal", card: m.reveal });
+          await reply(m.req, null);
           return true;
         }
         case "leaveBoard": {
-          if (!crumbs.length) return true;
+          if (!crumbs.length) { await reply(m.req, "There is no parent board to go back to."); return true; }
           const d = m.depth ?? crumbs.length - 1;
           const to = crumbs[d], cam = cams[d];
           crumbs = crumbs.slice(0, d); cams = cams.slice(0, d); cur = to.id;
-          await init(m.walk, cam); return true;
+          await init(m.walk, cam); await reply(m.req, null); return true;
         }
         default: return false;
       }

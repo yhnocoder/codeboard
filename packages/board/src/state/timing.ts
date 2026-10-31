@@ -43,3 +43,5 @@ export const BLOCK_LEAVE = 200;
 export const SKEL_OUT = 80;
 /** Unfolding: the cards' content cross-fades back from the skeleton over this long as they land (styles.css .skel-in) */
 export const SKEL_IN = 100;
+/** A deleted card's fade-out (styles.css .card.ghost-out, its longest transition), times the animation speed (--t) */
+export const GHOST_OUT = 200;

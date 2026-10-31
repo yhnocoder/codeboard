@@ -137,7 +137,7 @@ function handle(m: HostToBoard) {
     case "key": runKey(A, m.action); break;
     case "rename": if (m.name.trim()) mutate((b) => { b.name = m.name.trim(); }); break;
     case "replaceSegment": A.replaceSegment(m.card, m.seg, m.view); break;
-    case "toast": A.switchRefused(); toast(m.text); break;
+    case "toast": toast(m.text); break;
     case "run": A.applyRunMsg(m.apply); break;
     case "variants": A.applyVariantSync(m.cards); break;
     case "githubPicker": A.openGitHubPicker(m.repo); break;
