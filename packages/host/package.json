@@ -22,7 +22,7 @@
     "vitest": "^5.0.4"
   },
   "exports": {
-    "./*": "./src/*.ts",
-    "./test/*": "./test/*.ts"
+    ".": "./src/index.ts",
+    "./testing": "./test/testing.ts"
   }
 }

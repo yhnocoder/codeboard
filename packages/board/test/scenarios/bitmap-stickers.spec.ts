@@ -2,7 +2,7 @@
 // at full detail and in the picker under the pointer
 import { shot, symCard, findSym, put, type Host } from "../harness";
 import { cornerAt, emptyBoard, type Board, type StickerPack } from "@codeboard/core";
-import { animWebp, apng, faceFrames, gif, png, type Paint, type Rgba } from "@codeboard/host/test/images";
+import { animWebp, apng, faceFrames, gif, type Paint, png, type Rgba } from "@codeboard/host/testing";
 import type { Browser, Page } from "@playwright/test";
 import { test, open, check, light, until, idle, hold, frames } from "../fixtures";
 

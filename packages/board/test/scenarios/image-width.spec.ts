@@ -5,7 +5,7 @@
 //   imageCardWidthFollowsShownSize   ⌘V of a 300 px and a 1000 px PNG, a 600 px Retina screenshot (144 dpi), the same picture
 //                                    without pHYs at devicePixelRatio 2 (screenshot) and from a web page, and two dropped files
 import * as path from "node:path";
-import { png } from "@codeboard/host/test/images";
+import { png } from "@codeboard/host/testing";
 import { emptyBoard, type ImageCard } from "@codeboard/core";
 import { OUT, type Host } from "../harness";
 import { test, open, check, light, until, idle } from "../fixtures";

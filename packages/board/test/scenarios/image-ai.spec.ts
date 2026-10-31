@@ -25,9 +25,7 @@ import * as path from "node:path";
 import { crc32, deflateSync } from "node:zlib";
 import { emptyBoard, mimeOf, type Board, type BoardToHost, type ImageAiOp, type ImageCard, type NoteCard } from "@codeboard/core";
 import { Storage } from "@codeboard/core/storage";
-import { nodeFs } from "@codeboard/host/nodefs";
-import { readAsset, saveNoteImage } from "@codeboard/host/images";
-import { resetImageAiCache, runImageAi } from "@codeboard/host/imageai";
+import { nodeFs, readAsset, resetImageAiCache, runImageAi, saveNoteImage } from "@codeboard/host/testing";
 import { OUT, put, type Host } from "../harness";
 import { test, open, check, until, idle } from "../fixtures";
 

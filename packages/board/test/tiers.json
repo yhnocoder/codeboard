@@ -251,7 +251,7 @@
       "files": [
         "packages/board/src/{host,hostio}.ts", "packages/board/src/actions/shared.ts",
         "packages/core/src/{protocol,patch,schema,migrate,shared,workspace,diagnostics}.ts", "packages/core/src/storage/**",
-        "packages/host/src/{hub,handlers,boards,storage,env,ws,nodefs,log,actions,diagnostics}.ts",
+        "packages/host/src/{hub,handlers,boards,storage,env,ws,nodefs,log,actions,diagnostics,start,index}.ts",
         "packages/board/test/scenarios/{shared,boards}.spec.ts"
       ],
       "scenarios": ["patchsave", "sharedsync", "syncundo", "changesreachhost", "newTextReachesHostWhenShown", "sharedcards"]

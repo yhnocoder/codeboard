@@ -879,6 +879,7 @@
     "@codeboard/host": "^0.1.0"
   },
   "devDependencies": {
+    "@codeboard/board": "^0.1.0",
     "@types/node": "^20.19.43",
     "@types/vscode": "^1.90.0",
     "@vscode/tree-sitter-wasm": "^0.3.1",

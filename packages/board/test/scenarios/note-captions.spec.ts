@@ -3,7 +3,7 @@
 // editing. Each change is one undo step.
 //   noteImageCaption   add, render (static and editing), edit, undo, remove
 import { emptyBoard, type Board, type NoteCard } from "@codeboard/core";
-import { png } from "@codeboard/host/test/images";
+import { png } from "@codeboard/host/testing";
 import { put, shot, type Host } from "../harness";
 import { test, open, check, light, until, idle } from "../fixtures";
 

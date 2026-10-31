@@ -1,13 +1,7 @@
 // 子白板缩进在父白板下面（一块白板可以在几块父白板下面各出现一次）；有父白板的不再列在顶层。
 import * as vscode from "vscode";
-import { workspaceGithubFiles } from "@codeboard/host/github";
-import type { BoardHub } from "@codeboard/host/hub";
-import type { Storage } from "@codeboard/host/storage";
-import { debounce } from "@codeboard/host/ws";
-import { treeChildren, type TreeNode } from "@codeboard/host/boardtree";
+import { allQuestions, BUNDLE_EXT, debounce, treeChildren, workspaceGithubFiles, type BoardHub, type Storage, type TreeNode } from "@codeboard/host";
 import { firstLine, type QuestionItem } from "@codeboard/core";
-import { allQuestions } from "@codeboard/host/exports";
-import { BUNDLE_EXT } from "@codeboard/host/bundle";
 
 type BNode = TreeNode;
 

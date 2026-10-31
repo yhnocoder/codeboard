@@ -9,6 +9,7 @@ import { workingPlace } from "./versions";
 import { viewsFor } from "./views";
 import { copyDiagnostics } from "./diagnostics";
 import { applyFlow, captureFlow } from "./runs";
+import { openOnBoard } from "./handlers";
 import { prompts } from "./prompts";
 import { copyToProject, otherProjects, removeMoved } from "./transfer";
 import { BUNDLE_EXT, exportFlow, importFile } from "./bundle";
@@ -264,6 +265,19 @@ export function makeActions(panels: BoardHost, store: Storage) {
       const r = await ui().error(`Can't open board “${bad.name}” (${path.basename(file)}): ${bad.reason}`, "Open JSON", "Reveal in Folder");
       if (r === "Open JSON") await workspace().editor.open(file);
       else if (r === "Reveal in Folder") await ui().revealInOS(file);
+    },
+    "codeboard.openQuestion": (board: string, card?: string, line?: number, sticker?: string) => openOnBoard(panels, board, card, line, sticker),
+    "codeboard.openGithubFile": (abs: string) => workspace().editor.open(abs, { readonly: true }),
+    // 共享卡还没有界面，这两个命令是测试用的入口
+    "codeboard._shareCards": async (board: string, cards: string[]) => {
+      const renamed = await store.share(board, cards);
+      if (Object.keys(renamed).length) await panels.get(board)?.init();
+      return renamed;
+    },
+    "codeboard._unshareCard": async (board: string, card: string) => {
+      const to = await store.unshare(board, card);
+      if (to) await panels.get(board)?.init(); // 卡换了 id：白板重新载入
+      return to;
     },
     "codeboard.openBoardToSide": async (a?: unknown) => {
       const id = boardArg(a);

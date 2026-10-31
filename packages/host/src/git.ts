@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { appendFile, mkdir, readFile } from "node:fs/promises";
 import * as path from "node:path";
 import { parseGitLog } from "@codeboard/core";
 import { Lru } from "./ws";
@@ -157,4 +158,25 @@ export async function githubRemote(root: string): Promise<{ owner: string; name:
   const u = (await git(root, ["remote", "get-url", "origin"]))?.trim() ?? "";
   const m = /github\.com[:/]([^/]+)\/([^/]+?)(?:\.git)?\/?$/.exec(u);
   return m ? { owner: m[1], name: m[2] } : null;
+}
+
+const excluded = new Map<string, Promise<void>>();
+/**
+ * 在 dir 所在仓库的 info/exclude 里加一行 pattern（只在本机，不进提交）；note 是加在它上面的注释。
+ * worktree 和子模块的 info/exclude 在共用的 git 目录里（--git-common-dir）。不在仓库里、git 出错就什么都不做，每个目录只问一次
+ */
+export function excludeFromGit(dir: string, pattern: string, note: string): Promise<void> {
+  let p = excluded.get(dir);
+  if (!p) excluded.set(dir, (p = (async () => {
+    const common = (await git(dir, ["rev-parse", "--path-format=absolute", "--git-common-dir"]))?.trim();
+    if (!common) return;
+    const f = path.join(common, "info", "exclude");
+    try {
+      const t = await readFile(f, "utf8").catch(() => "");
+      if (t.split(/\r?\n/).includes(pattern)) return;
+      await mkdir(path.dirname(f), { recursive: true });
+      await appendFile(f, `${t && !t.endsWith("\n") ? "\n" : ""}# ${note}\n${pattern}\n`);
+    } catch { /* 写不了：git status 里会看到它 */ }
+  })()));
+  return p;
 }

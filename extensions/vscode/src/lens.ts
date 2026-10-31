@@ -1,8 +1,5 @@
 import * as vscode from "vscode";
-import { BoardMarks } from "@codeboard/host/marks";
-import type { BoardHub } from "@codeboard/host/hub";
-import type { Storage } from "@codeboard/host/storage";
-import { debounce } from "@codeboard/host/ws";
+import { BoardMarks, debounce, type BoardHub, type Storage } from "@codeboard/host";
 
 type Mode = "all" | "lens" | "off";
 const mode = (): Mode => { const m = vscode.workspace.getConfiguration("codeboard").get<string>("editorMarks"); return m === "lens" || m === "off" ? m : "all"; };

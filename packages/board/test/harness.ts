@@ -6,8 +6,7 @@ import { uid, emptyBoard, loadBoard, applyPatch, DEFAULT_SETTINGS, renderLine, t
 import { F_BLANK } from "@codeboard/analysis/basics";
 import { tidy } from "@codeboard/core/tidy";
 import { analyze, varCandidates, importPkg, peekPlan, type FileAnalysis, type Sym } from "@codeboard/analysis";
-import { highlight } from "@codeboard/host/views";
-import { analysisReady, startAnalysis } from "@codeboard/host/analysis";
+import { analysisReady, highlight, startAnalysis } from "@codeboard/host/testing";
 
 /** The repo's root, defined by the builds that bundle this file (playwright.config.ts, run-perf.mjs) */
 declare const REPO_ROOT: string;

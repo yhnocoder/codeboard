@@ -2,10 +2,7 @@ import * as vscode from "vscode";
 import * as path from "node:path";
 import * as fs from "node:fs";
 import type { BoardToHost } from "@codeboard/core";
-import type { BoardView } from "@codeboard/host/boards";
-import type { HostEnv } from "@codeboard/host/env";
-import type { BoardHub } from "@codeboard/host/hub";
-import type { Storage } from "@codeboard/host/storage";
+import type { BoardHub, BoardView, HostEnv } from "@codeboard/host";
 
 export const VIEW_TYPE = "codeboard.board";
 
@@ -30,7 +27,12 @@ function webviewView(panel: vscode.WebviewPanel): BoardView {
 export class BoardWebviews {
   private open = new Set<vscode.WebviewPanel>();
 
-  constructor(private ctx: vscode.ExtensionContext, private store: Storage) {}
+  /** assetsDir = 白板图片所在的目录（webview 可以读的本地目录之一） */
+  constructor(private ctx: vscode.ExtensionContext, private assetsDir: () => string) {
+    // 白板界面是构建出来的（npm run build）：少了就是构建坏了，激活时说清楚，不开一块没样式的白板
+    const dir = path.join(ctx.extensionUri.fsPath, "media", "board");
+    for (const f of ["board.js", "board.css"]) if (!fs.existsSync(path.join(dir, f))) throw new Error(`CodeBoard: ${path.join(dir, f)} is missing (build the board with npm run build)`);
+  }
 
   env(): HostEnv {
     return {
@@ -55,7 +57,7 @@ export class BoardWebviews {
 
   private setup(panel: vscode.WebviewPanel, id: string): BoardView {
     const media = vscode.Uri.joinPath(this.ctx.extensionUri, "media");
-    panel.webview.options = { enableScripts: true, localResourceRoots: [media, vscode.Uri.file(this.store.assetsDir())] };
+    panel.webview.options = { enableScripts: true, localResourceRoots: [media, vscode.Uri.file(this.assetsDir())] };
     panel.iconPath = vscode.Uri.joinPath(media, "icon.svg");
     panel.webview.html = this.html(panel.webview, id);
     this.open.add(panel);
@@ -65,9 +67,7 @@ export class BoardWebviews {
 
   private html(w: vscode.Webview, id: string) {
     const nonce = Array.from({ length: 24 }, () => Math.random().toString(36)[2]).join("");
-    const dir = path.join(this.ctx.extensionUri.fsPath, "media", "board");
     const u = (f: string) => w.asWebviewUri(vscode.Uri.joinPath(this.ctx.extensionUri, "media", "board", f));
-    const css = fs.existsSync(path.join(dir, "board.css")) ? `<link rel="stylesheet" href="${u("board.css")}">` : "";
     const csp = [
       "default-src 'none'",
       `img-src ${w.cspSource} data: blob: https: http:`,
@@ -80,7 +80,7 @@ export class BoardWebviews {
     const keep = `(function(){var a=acquireVsCodeApi(),id=${JSON.stringify(id)};var w={postMessage:function(m){a.postMessage(m)},getState:function(){var s=a.getState();if(s&&typeof s==="object"){s=Object.assign({},s);delete s.__board}return s},setState:function(s){a.setState(Object.assign({},s||{},{__board:id}));return s}};var s0=a.getState();a.setState(Object.assign({},s0||{},{__board:id}));window.acquireVsCodeApi=function(){return w}})();`;
     return `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="${csp}">
-<meta name="viewport" content="width=device-width, initial-scale=1">${css}<title>CodeBoard</title></head>
+<meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="${u("board.css")}"><title>CodeBoard</title></head>
 <body><div id="root"></div><script nonce="${nonce}">${keep}</script><script type="module" nonce="${nonce}" src="${u("board.js")}"></script></body></html>`;
   }
 }

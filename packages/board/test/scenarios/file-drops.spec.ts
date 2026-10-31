@@ -15,11 +15,7 @@ import * as path from "node:path";
 import { pathToFileURL } from "node:url";
 import { emptyBoard, mimeOf, sniffImage, type Board, type ImageCard } from "@codeboard/core";
 import { Storage } from "@codeboard/core/storage";
-import { nodeFs } from "@codeboard/host/nodefs";
-import { readImageUri } from "@codeboard/host/images";
-import { useWorkspace } from "@codeboard/host/ws";
-import { nodeWorkspace } from "@codeboard/host/test/node-workspace";
-import { png } from "@codeboard/host/test/images";
+import { nodeFs, nodeWorkspace, png, readImageUri, useWorkspace } from "@codeboard/host/testing";
 import { OUT, shot, type Host } from "../harness";
 import { test, open, check, until, idle } from "../fixtures";
 
