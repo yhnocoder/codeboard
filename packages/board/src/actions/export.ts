@@ -99,7 +99,7 @@ const LIVE_CLASSES = ["off", "far", "sel", "lift", "hov", "editing", "lo-ov", "l
 
 /** 导出用的画布克隆：完整细节、没有选中；范围外的卡、两端不都在范围里的箭头、范围外的 Section 去掉，
  *  标了 data-export="strip" 的部件和交互状态也去掉。HTML 快照、PNG 共用 */
-export async function cloneForExport(b: Board, scope: ExportScope, order: string[]): Promise<HTMLElement> {
+async function cloneForExport(b: Board, scope: ExportScope, order: string[]): Promise<HTMLElement> {
   const prevSel = { cards: [...sel.cards], links: [...sel.links], sections: [...sel.sections] }, prevLine = lineSel();
   select({}); setLineSel(null);
   flushMd(); // 视野外还没渲染完的 Note 先补上
@@ -211,14 +211,13 @@ function collectCss(): string {
 }
 
 function noteHtml(n: Sidenote): string {
-  const esc = escHtml;
-  const where = n.at.lines ? `<div class="xv-w">${n.at.lines[0] === n.at.lines[1] ? `line ${n.at.lines[0]}` : `lines ${n.at.lines[0]}–${n.at.lines[1]}`}${n.why ? ` · ${esc(n.why)}` : ""}</div>` : "";
+  const where = n.at.lines ? `<div class="xv-w">${n.at.lines[0] === n.at.lines[1] ? `line ${n.at.lines[0]}` : `lines ${n.at.lines[0]}–${n.at.lines[1]}`}${n.why ? ` · ${escHtml(n.why)}` : ""}</div>` : "";
   switch (n.kind) {
     case "text": return `${where}<div class="md">${renderMd(n.md)}</div>`;
-    case "link": return `${where}<a href="${esc(n.url)}" target="_blank" rel="noopener">${esc(n.title || n.url)}</a>`;
-    case "card": { const c = findCard(state.board, n.card)?.card; return `${where}See “${esc(c ? cardTitle(c, state.board) : n.card)}”`; }
-    case "paste": return `${where}<pre>${esc(n.text)}</pre>`;
-    case "code": return `${where}<div class="xv-w">${esc(n.code.path)}:${n.code.start}–${n.code.end}</div><pre>${esc(n.code.text.join("\n"))}</pre>`;
+    case "link": return `${where}<a href="${escHtml(n.url)}" target="_blank" rel="noopener">${escHtml(n.title || n.url)}</a>`;
+    case "card": { const c = findCard(state.board, n.card)?.card; return `${where}See “${escHtml(c ? cardTitle(c, state.board) : n.card)}”`; }
+    case "paste": return `${where}<pre>${escHtml(n.text)}</pre>`;
+    case "code": return `${where}<div class="xv-w">${escHtml(n.code.path)}:${n.code.start}–${n.code.end}</div><pre>${escHtml(n.code.text.join("\n"))}</pre>`;
   }
 }
 
@@ -268,18 +267,17 @@ async function snapshotHtml(b: Board, order: string[], o: ExportOpts, links: Rec
   const html = document.documentElement, body = document.body;
   const attrs = (el: Element) => [...el.attributes].map((a) => ` ${a.name}="${escHtml(a.value)}"`).join("");
   const app = document.querySelector(".app") as HTMLElement | null;
-  const esc = escHtml;
   const json = JSON.stringify(data).replace(/</g, "\\u003c");
   return `<!doctype html>
 <html${attrs(html)}>
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${esc(b.name)}</title>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escHtml(b.name)}</title>
 <style>${collectCss().replace(/<\/style/gi, "<\\/style")}</style>
 <style>${VIEWER_CSS}</style>
 </head>
 <body${attrs(body)}>
 <div class="app chrome xv"${app?.getAttribute("style") ? ` style="${escHtml(app.getAttribute("style")!)}"` : ""}>
 <div id="board" class="board">${world.outerHTML}</div>
-<div class="xv-top pill"><b>${esc(b.name)}</b><span class="xv-info"></span></div>
+<div class="xv-top pill"><b>${escHtml(b.name)}</b><span class="xv-info"></span></div>
 <div class="xv-dock pill"><button class="ib" data-z="out" aria-label="Zoom Out">−</button><span class="xv-zoom">100%</span><button class="ib" data-z="in" aria-label="Zoom In">+</button><span class="sep"></span><button class="ib" data-z="fit" aria-label="Fit to Window">Fit</button></div>
 <div class="xv-walk pill" hidden><button class="ib" data-w="prev" aria-label="Previous Step">‹</button><span class="xv-wt"></span><span class="cnt"></span><button class="ib" data-w="next" aria-label="Next Step">›</button></div>
 <div class="xv-tip pop open" hidden></div>

@@ -18,6 +18,7 @@ import { imageDataUrl } from "./imagedata";
 import { addCards } from "./create";
 import { hostRect, openLink } from "./common";
 import { openSettings, setSetting } from "./settings";
+import { cardSel } from "../cardsel";
 
 /** 一张图：图片卡本身，或 Note 里的一张（note = Markdown 里写的地址：assets/…、data:、网址） */
 export type ImgRef = { card: string; note?: string };
@@ -26,7 +27,6 @@ const NOTE_W = 380;
 const remote = (src: string) => /^https?:/i.test(src);
 const isSvgSrc = (src: string) => /\.svg$/i.test(src) || /^data:image\/svg\+xml[;,]/i.test(src);
 const srcOf = (r: ImgRef) => r.note ?? (cardById(r.card)?.card as ImageCard | undefined)?.src ?? "";
-export const isSvgImage = (r: ImgRef) => isSvgSrc(srcOf(r));
 
 /** 右键落在 Note 里的一张图上（静态显示或编辑中）：那张图；显示的地址换回 Markdown 里写的（assets/…） */
 export function noteImageAt(t: Element, card: string): ImgRef | null {
@@ -100,7 +100,7 @@ function parseColor(v: string | null | undefined): number[] | null {
  * 去底色：模型常常还是先铺一块满画布的 rect（白色、近白或原图的纸色）：开头这样的 rect 去掉，<svg> 自己的背景样式也去掉。
  * 第一个画东西的元素不是这样的 rect 就停（后面的格子、框是图的一部分）
  */
-export function dropBackground(svgText: string, paper: number[] | null): string {
+function dropBackground(svgText: string, paper: number[] | null): string {
   const doc = new DOMParser().parseFromString(svgText, "image/svg+xml"), svg = doc.documentElement;
   const vb = (svg.getAttribute("viewBox") ?? "").trim().split(/[\s,]+/).map(Number);
   const [x0, y0, W, H] = vb.length === 4 && vb[2] > 0 && vb[3] > 0 ? vb : [0, 0, parseFloat(svg.getAttribute("width") ?? "") || 0, parseFloat(svg.getAttribute("height") ?? "") || 0];
@@ -144,7 +144,8 @@ let jobN = 0;
 const live = new Map<number, (quiet?: boolean) => void>();
 // 换了白板：还在等的都取消（回来的结果说的是上一块白板的卡）
 onBoardSwitch(() => { for (const c of [...live.values()]) c(true); });
-/** Esc：取消最近开始的那个；没有在等的回 false */
+/** Esc：取消最近开始的那个；没有在等的回 false
+ *  @public run from the key table (keymap.ts) */
 export function cancelImageJob(): boolean {
   const last = [...live.values()].at(-1);
   if (!last) return false;
@@ -204,7 +205,7 @@ function placeBeside(from: string, card: NoteCard | ImageCard, w: number) {
 }
 
 const lineCount = (s: string) => s.split("\n").length;
-export async function extractText(ref: ImgRef, to: "note" | "clip") {
+async function extractText(ref: ImgRef, to: "note" | "clip") {
   const r = await runJob(ref.card, "Reading image…", async () => {
     const d = await need(ref);
     return d ? { kind: "extract", image: (await forModel(d)).url } : null;
@@ -219,7 +220,7 @@ export async function extractText(ref: ImgRef, to: "note" | "clip") {
   toast(r.cut ? "Created a Note from the image; the text was cut off at the length limit" : "Created a Note from the image");
 }
 
-export async function convertToSvg(ref: ImgRef) {
+async function convertToSvg(ref: ImgRef) {
   const { svgNoBg: noBg, svgThink: think } = state.host.settings;
   let sent: { url: string; w: number; h: number } | undefined;
   const r = await runJob(ref.card, think ? "Thinking, then redrawing as SVG…" : "Redrawing as SVG…", async () => {
@@ -258,8 +259,8 @@ export async function convertToSvg(ref: ImgRef) {
   toast("Converted to SVG");
 }
 
-export function openModifySvg(ref: ImgRef) {
-  const el = document.querySelector(`.card[data-id="${CSS.escape(ref.card)}"]`) ?? undefined;
+function openModifySvg(ref: ImgRef) {
+  const el = document.querySelector(`${cardSel(ref.card)}`) ?? undefined;
   openPop({ kind: "modifySvg", ref }, { el, prefer: "below" });
 }
 
@@ -292,7 +293,7 @@ export async function modifySvg(ref: ImgRef, instruction: string) {
   toast(`Modified the SVG: “${short.length > 28 ? `${short.slice(0, 27)}…` : short}”. ${state.host.isMac ? "⌘Z" : "Ctrl+Z"} undoes it`);
 }
 
-export async function copySvgSource(ref: ImgRef) {
+async function copySvgSource(ref: ImgRef) {
   const d = await need(ref);
   const svg = d && svgText(d);
   if (!svg) return void (d && toast("Couldn't read the SVG source of this image"));
@@ -302,7 +303,7 @@ export async function copySvgSource(ref: ImgRef) {
 }
 
 /** 照字画的描述最长多少字：一段说明，不是整篇文档 */
-export const DRAW_MAX = 8000;
+const DRAW_MAX = 8000;
 /** 画出来的图片卡的宽：照 viewBox 的宽，限在常见卡宽之间 */
 function drawnWidth(svg: string): number {
   const vb = /\bviewBox\s*=\s*["']\s*[-\d.]+[\s,]+[-\d.]+[\s,]+([\d.]+)/i.exec(svg);
@@ -313,7 +314,7 @@ function drawnWidth(svg: string): number {
  * 照一段字画一张 SVG：from = 字所在的卡（等的时候它盖着忙碌层；画好的图放它右边、从它连一条箭头，一步改动）；
  * 没有 from（New SVG from Text…）就在视口中间摆一张空卡等，画好放在那里
  */
-export async function drawSvg(text: string, from?: string) {
+async function drawSvg(text: string, from?: string) {
   const desc = text.trim();
   if (!desc) return toast("Nothing to draw: the text is empty");
   if (desc.length > DRAW_MAX) return toast(`Too long to draw (${desc.length.toLocaleString()} characters; up to ${DRAW_MAX.toLocaleString()}). Select a part of it`, undefined, 6000);
@@ -338,7 +339,7 @@ export async function newSvgFromText() {
 export function noteSelText(card: string): string {
   const s = window.getSelection();
   if (!s || s.isCollapsed || !s.rangeCount || cardById(card)?.card.kind !== "note") return "";
-  const face = document.querySelector(`.card[data-id="${CSS.escape(card)}"] .cface`);
+  const face = document.querySelector(`${cardSel(card)} .cface`);
   const r = s.getRangeAt(0);
   return face && face.contains(r.startContainer) && face.contains(r.endContainer) ? s.toString().trim() : "";
 }

@@ -109,7 +109,9 @@ export interface WorkspaceEditor {
   openVersion(v: { root: string; commit: string; path: string }, line?: number): Promise<void>;
 }
 
-export type PickItem = { label: string; description?: string; detail?: string };
+/** An icon before a pick's label, where the picker draws them (VS Code's quick pick; the board's own list doesn't) */
+export type PickIcon = "board" | "boards" | "folder" | "file" | "add" | "class" | "function";
+export type PickItem = { label: string; description?: string; detail?: string; icon?: PickIcon };
 export type PickOpts = { placeHolder?: string; title?: string; matchOnDescription?: boolean };
 /** title: what is asked (the dialog's title on a board); ok: the button that accepts it there; password: the text is a secret */
 export type InputOpts = { prompt: string; value?: string; placeHolder?: string; title?: string; ok?: string; password?: boolean };

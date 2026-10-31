@@ -58,7 +58,7 @@ export function classifyPaste(text: string): PasteKind {
 // 和 @yhnocoder/markdown 编辑器里粘贴 SVG 的判断一样（那个包不依赖 core）
 const SVG_DOC = /^\uFEFF?\s*(?:<\?xml[^>]*\?>\s*)?(?:(?:<!--[\s\S]*?-->|<!DOCTYPE\s+svg\b(?:[^>[]|\[[\s\S]*?\])*>)\s*)*<svg(?=[\s/>])(?:[^>]*\/>|[\s\S]*<\/svg>)\s*$/;
 /** 整段文字是一份 SVG（从开头的 <svg> 到结尾） */
-export const isSvgMarkup = (text: string) => SVG_DOC.test(text);
+const isSvgMarkup = (text: string) => SVG_DOC.test(text);
 
 /** 像不像代码；像的话猜语言：python / shellscript，或花括号家族里的 c / cpp / cuda-cpp / javascript / typescript / rust / go
  *  （Triton、TileLang 归 python，由 pythonDialect 单独标出）。按行打分：花括号、分号结尾这类家族共有的特征记在 c 里，

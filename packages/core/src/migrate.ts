@@ -1,8 +1,8 @@
-// 旧白板文件 → 当前版本（第 9 版）。项目里唯一的兼容代码：旧版本的结构、缺省的字段、手改出来的 null 都在这里补成
+// 旧白板文件 → 当前版本（第 10 版）。项目里唯一的兼容代码：旧版本的结构、缺省的字段、手改出来的 null 都在这里补成
 // 和 model.ts 的类型一模一样，读进来之后的代码只认当前结构。schema.ts 校验的是这里的结果。
 import { BOARD_VERSION, cornerAt, type Camera, emptyBoard, isCode, uid, type BoardFile, type Card, type Link, type LinkStyle, type Place, type Segment, type SharedCardFile, type Sidenote, type Sticker } from "./model";
 
-/** 读进来的白板文件（第 1–9 版）→ 第 9 版白板文件（共享卡还是引用，由宿主的存储换成内容） */
+/** 读进来的白板文件（第 1–10 版）→ 第 10 版白板文件（共享卡还是引用，由宿主的存储换成内容） */
 export function migrateBoard(raw: any): BoardFile {
   // 更新的版本写的文件：读不懂就别碰（当第 1 版迁移会丢掉所有卡，下次自动保存把空白板写回去）
   if (typeof raw?.version === "number" && raw.version > BOARD_VERSION) throw new Error(`Board file version ${raw.version} is newer than this CodeBoard (${BOARD_VERSION}). Update CodeBoard to open it.`);
@@ -22,12 +22,14 @@ export function migrateBoard(raw: any): BoardFile {
   if (from < 8) for (const c of b.cards) if (c.kind !== "shared") v7to8Card(c);
   // 第 8 版 → 第 9 版：镜头不再存在文件里（每台机器各记各的，见 model.ts Board.cam；旧文件里的由 fileCamera 交给宿主）
   delete b.cam;
+  // 第 9 版 → 第 10 版：Text 卡不再有拖出来的高度（只能拖宽度），旧文件里留着的 h 删掉
+  if (from < 10) for (const c of b.cards) if (c.kind === "note" && c.look === "text" && b.place[c.id]) delete b.place[c.id].h;
   b.version = BOARD_VERSION;
   normalize(b);
   return b;
 }
 
-/** 第 9 版以前的白板文件里存着的镜头：这台机器上还没记过这块白板的镜头时，宿主拿它当起点 */
+/** 第 9 版以前的白板文件里存着的镜头：这台机器上还没记过这块白板的镜头时，宿主拿它当起点（见 schema.ts readBoardFile） */
 export function fileCamera(raw: any): Camera | undefined {
   const c = raw?.version < 9 ? raw.cam : undefined;
   return c && [c.x, c.y, c.z].every((n) => typeof n === "number" && Number.isFinite(n)) && c.z > 0 ? { x: c.x, y: c.y, z: c.z } : undefined;
@@ -43,7 +45,7 @@ export function migrateSharedCard(raw: any): SharedCardFile {
     (sc.sidenotes ?? []).forEach(v6to7Note);
   }
   if (sc?.version === 6 || sc?.version === 7) if (sc.card) v7to8Card(sc.card);
-  // 第 9 版的卡文件和第 8 版一样（变的只是白板文件的镜头）
+  // 第 9、10 版的卡文件和第 8 版一样（变的只是白板文件的镜头和摆放）
   if (sc?.version >= 6 && sc.version < BOARD_VERSION) sc.version = BOARD_VERSION;
   if (sc?.card) normCard(sc.card);
   for (const n of sc?.sidenotes ?? []) normNote(n);

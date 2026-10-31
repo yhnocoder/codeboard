@@ -1,9 +1,9 @@
 import * as path from "node:path";
-import { allCodeCards, locateSeg, sameLines, storedSegs, trackSeg, upstreamSegs, versionLabel, viewKey, type Board, type Segment, type Stale, type SymRef } from "@codeboard/core";
+import { allCodeCards, locateSeg, sameLines, storedSegs, trackSeg, uid, upstreamSegs, viewKey, type Board, type Segment, type Stale, type SymRef } from "@codeboard/core";
 import { headOf, isAncestor, repoRootOf, resolveRef, showFile, upstreamRef } from "./git";
 import { analysisOf } from "./analysis";
 import { currentVersion, currentVersionLabel, hasLocalFile, rootOf, versionFor, type Loc } from "./source";
-import { exists, langOf, mkUid, readText, splitLines } from "./ws";
+import { exists, langOf, readText, splitLines } from "./ws";
 
 /** 白板上所有的段：代码卡（含 Compare 的两栏）和 Code sidenote */
 export function boardSegments(b: Pick<Board, "cards" | "sidenotes">): Segment[] {
@@ -35,14 +35,14 @@ export async function makeSegment(loc: Loc, lines: string[], start: number, end:
   const text = lines.slice(start - 1, end);
   const v = await versionFor(loc, { start, end, text, symbol: opts.symbol }, lang);
   return {
-    id: mkUid("s"), src: loc.src, path: loc.path, lang, start: v.start, end: v.end, text,
+    id: uid("s"), src: loc.src, path: loc.path, lang, start: v.start, end: v.end, text,
     version: v.version, symbol: opts.symbol, scope: opts.scope,
   };
 }
 
 const symsOf = (lang: string, text: string) => analysisOf(lang, text).symbols;
 
-export async function staleOf(seg: Segment, o: { upstream?: boolean; head?: (root: string) => Promise<string | null> } = {}): Promise<Stale> {
+async function staleOf(seg: Segment, o: { upstream?: boolean; head?: (root: string) => Promise<string | null> } = {}): Promise<Stale> {
   if (!hasLocalFile(seg.src)) return { state: "ok" };
   const root = rootOf(seg.src, seg.version);
   if (!root || !(await exists(root))) return { state: "missing" };
@@ -125,7 +125,4 @@ export async function workingPlace(seg: Segment): Promise<{ abs: string; start: 
   return { abs, start: at.start, end: at.end, lines, exact: sameLines(lines.slice(at.start - 1, at.end), seg.text) };
 }
 
-/** 段钉的版本就是工作区现在的内容（可以直接在编辑器里跳转、问语言服务） */
-export const isWorkingCopy = (p: Awaited<ReturnType<typeof workingPlace>>) => !!p?.exact;
 
-export const versionName = versionLabel;

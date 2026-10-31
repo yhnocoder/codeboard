@@ -72,7 +72,7 @@ export interface BoardHost {
 
 const DAY = 864e5;
 /** 「回来接上」：设置 welcomeBack 允许、隔得够久、这块白板上还有没解决的问题时才提示 */
-export function welcomeOf(b: Board, last: number | undefined, mode: Settings["welcomeBack"], now = Date.now()): { days: number; open: number } | undefined {
+function welcomeOf(b: Board, last: number | undefined, mode: Settings["welcomeBack"], now = Date.now()): { days: number; open: number } | undefined {
   if (mode === "off" || last === undefined) return undefined;
   const days = Math.floor((now - last) / DAY);
   if (mode !== "always" && now - last < 2 * DAY) return undefined;

@@ -7,14 +7,13 @@ import type { Sym } from "@codeboard/analysis";
 import { symbolsOf, whenAnalysisReady } from "./analysis";
 import { resetScope } from "./scope";
 import { log } from "./log";
-import { CODE_EXCLUDE, CODE_GLOB, inExcludedDir, langOf, readText, workspace } from "./ws";
+import { CODE_EXCLUDE, CODE_GLOB, inExcludedDir, langOf, readText, sleep, workspace } from "./ws";
 
 export type IndexEntry = { name: string; qual: string; kind: Sym["kind"]; abs: string; start: number; end: number; defLine: number; sig: string };
 
 const MAX_FILES = 500_000; // 只防意外（几十万个代码文件的仓库）
 const MAX_TEXT = 2_000_000; // 更大的文件（生成的代码）不分析
 const PARALLEL = 16; // 按名字查时同时读几个文件
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** 建索引（含后台）的文件：和 CODE_GLOB / CODE_EXCLUDE 一样的规则（语言表里有语法的扩展名） */
 export const isCode = (abs: string) => !!grammarOfFile(abs) && !inExcludedDir(abs);
@@ -231,7 +230,7 @@ export async function entriesOf(abs: string): Promise<IndexEntry[]> {
 }
 
 /** 文件改了（保存、新建、在外面改了）：重新排进待分析 */
-export function changedFile(abs: string) {
+function changedFile(abs: string) {
   follower?.changed(abs);
   if (!isCode(abs) || !listing) return; // 还没列过：列的时候自然会读到
   drop(abs);
@@ -241,7 +240,7 @@ export function changedFile(abs: string) {
   if (wanted) void drain();
 }
 
-export function removedPath(p: string) {
+function removedPath(p: string) {
   follower?.removed(p);
   for (const abs of [...order.keys()]) if (abs === p || abs.startsWith(p + path.sep)) { drop(abs); todo.delete(abs); sigs.delete(abs); order.delete(abs); stamps.set(abs, (stamps.get(abs) ?? 0) + 1); }
 }

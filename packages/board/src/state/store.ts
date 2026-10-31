@@ -6,7 +6,7 @@ import {
 } from "@codeboard/core";
 import { ask, send } from "../host";
 import { ghostOut } from "./ghost";
-import { rooted, boardSignal } from "./root";
+import { rooted, boardSignal, onBoardSwitch } from "./root";
 import { trimLru } from "./lru";
 import { followBlocks } from "../md/blocks";
 import { LIVE_DELAY, RESEND_DELAY, SEL_REPORT } from "./timing";
@@ -17,15 +17,17 @@ export const [state, setState] = createStore({
   boards: [] as BoardMeta[],
   host: { isMac: true, assetBase: "", target: true, settings: DEFAULT_SETTINGS } as HostInfo,
   views: {} as Record<string, SegView>,
-  stale: {} as Record<string, Stale>,
+  stale: {} as Record<string, Stale | undefined>,
 });
 
 /** 共享卡在几块白板上、别的白板上谁连到它。宿主存盘后算好整个发来；只有在两块以上白板上的卡才有；不进撤销栈、不存盘 */
 export const [shared, setShared] = createStore<Record<string, SharedInfo>>({});
+onBoardSwitch(() => setShared(reconcile({})));
 export const sharedOn = (id: string) => shared[id]?.boards.length ?? 0;
 
 export type Sel = { cards: string[]; links: string[]; sections: string[] };
-export const [sel, setSel] = createStore<Sel>({ cards: [], links: [], sections: [] });
+const [sel, setSel] = createStore<Sel>({ cards: [], links: [], sections: [] });
+export { sel };
 export type LineSel = { card: string; seg: string; start: number; end: number };
 export const [lineSel, setLineSel] = boardSignal<LineSel | null>(null);
 
@@ -60,7 +62,8 @@ export const flows = rooted(() => createMemo(() => computeFlows(state.board)));
 /** 因为折叠藏起来的卡（不管 Walkthrough 有没有临时展开） */
 export const collapsedSet = rooted(() => createMemo(() => hiddenByCollapse(state.board, flows())));
 /** Walkthrough 时临时展开所有折叠的卡：只影响显示，不进撤销、不存盘 */
-export const [showCollapsed, setShowCollapsed] = boardSignal(false);
+const [showCollapsed, setShowCollapsed] = boardSignal(false);
+export { setShowCollapsed };
 export const collapsedAway = rooted(() => createMemo(() => (showCollapsed() ? new Set<string>() : collapsedSet())));
 
 /** id → 卡（Compare 的栏也在里面，host 是外面的 Compare）。卡的增删、换 id 时才重建；拖动、改内容不动它 */
@@ -104,8 +107,10 @@ type Snap = { epoch: number; head: string; cards: string[]; place: string[]; lin
 export type Effect = { undo: () => void; redo: () => void };
 const undoStack: Snap[] = [];
 const redoStack: Snap[] = [];
-export const [canUndo, setCanUndo] = createSignal(false);
-export const [canRedo, setCanRedo] = createSignal(false);
+const [canUndo, setCanUndo] = createSignal(false);
+export { canUndo };
+const [canRedo, setCanRedo] = createSignal(false);
+export { canRedo };
 const last = new Map<string, string>();
 function piece(k: string, o: unknown) {
   const s = JSON.stringify(o);
@@ -398,7 +403,9 @@ function patch(now: Snap, s: Snap): boolean {
       else { if (a.id !== b.id) return false; ops.push([k, i, b]); }
     }
   }
-  batch(() => { for (const [k, at, v] of ops) setState("board", k as any, at as any, reconcile(v as any)); });
+  // a path the store's typed setter can't spell (collection k, index or place key at)
+  const setAt = setState as unknown as (b: "board", k: string, at: number | string, v: ReturnType<typeof reconcile>) => void;
+  batch(() => { for (const [k, at, v] of ops) setAt("board", k, at, reconcile(v)); });
   return true;
 }
 export function undo() {
@@ -446,7 +453,7 @@ export function setBoard(b: Board, crumbs: readonly string[]) {
   updUndo();
 }
 
-export function allIds(): string[] {
+function allIds(): string[] {
   return state.board.cards.map((c) => c.id);
 }
 

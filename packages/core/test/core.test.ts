@@ -6,7 +6,8 @@ import {
   cardRows, rowIndexOf, copyText, parseGithubUrl, classifyPaste, guessLang, migrateBoard, mergeOverlapping, sortSegments, emptyBoard, estSize, mdHeading,
   type Board, type CodeCard, type Link, type Segment, type SegView,
 } from "../src";
-import { initAnalysis, analyze, BLANK, COMMENT, DOCSTRING, type FileAnalysis } from "@codeboard/analysis";
+import { initAnalysis, analyze, type FileAnalysis } from "@codeboard/analysis";
+import { F_BLANK, F_COMMENT, F_DOCSTRING } from "@codeboard/analysis/basics";
 
 // Uses the repo's nano-vllm submodule as test data
 const repo = fileURLToPath(new URL("../../../examples/nano-vllm", import.meta.url));
@@ -160,7 +161,7 @@ describe("snapping and align", () => {
 
 describe("cardRows", () => {
   const s: Segment = { ...seg("s1", 10, 16), text: ["def f():", '    """d"""', "    # c", "", "    x = 1", "    y = 2", "    return x"], hidden: [[15, 15]] };
-  const v: SegView = { html: [], flags: [0, DOCSTRING, COMMENT, BLANK, 0, 0, 0], calls: [], defs: [{ line: 10, name: "f", qual: "f" }] };
+  const v: SegView = { html: [], flags: [0, F_DOCSTRING, F_COMMENT, F_BLANK, 0, 0, 0], calls: [], defs: [{ line: 10, name: "f", qual: "f" }] };
   it("hides by flags with a dashed gutter, and manual hides become a gap bar", () => {
     const rows = cardRows({ segments: [s], hide: { comments: true, docstrings: true, blank: true } }, { views: { s1: v } });
     expect(rows).toEqual([
@@ -260,7 +261,7 @@ describe("migrateBoard", () => {
     const b = migrateBoard({ id: "b", name: "x", cam: { x: 0, y: 0, z: 1 }, version: 1,
       cards: [{ id: "c1", type: "code", x: 0, y: 0, w: 500, path: "a.py", start: 1, end: 2, lang: "python", snapshot: ["a", "b"], commit: "abc", hl: [2], symbol: "f" }],
       edges: [{ id: "e", from: { card: "c1", line: 2 }, to: { card: "c1" }, kind: "call" }] });
-    expect(b.version).toBe(9);
+    expect(b.version).toBe(10);
     expect(b.links[0].call).toEqual({ name: "f", col: 0 });
     const c = b.cards[0] as CodeCard;
     expect(c.segments[0]).toMatchObject({ path: "a.py", start: 1, end: 2, hl: [2], symbol: { qual: "f" } });
@@ -320,17 +321,30 @@ describe("migrateBoard", () => {
     const a = { id: "a", kind: "code", segments: [seg("sa")], mergedFrom: [{ card: { id: "m", kind: "code", segments: [seg("sm")] }, place: { x: 0, y: 0, w: 300, h: 200 } }] };
     const raw = {
       version: 3, id: "b", name: "x", cam: { x: 0, y: 0, z: 1 },
-      cards: [a, { id: "z", kind: "code", segments: [seg("sz")] }, { id: "n", kind: "note", md: "x" }],
+      cards: [a, { id: "z", kind: "code", segments: [seg("sz")] }, { id: "n", kind: "note", md: "x", bg: true }],
       place: { a: { x: 0, y: 0, w: 400, h: 300 }, z: { x: 0, y: 0, w: 400 }, n: { x: 0, y: 0, w: 300, h: 120 } },
     };
     const b = migrateBoard(structuredClone(raw));
-    expect(b.version).toBe(9);
+    expect(b.version).toBe(10);
     expect(b.place.a.h).toBe(264);
     expect(b.place.z.h).toBeUndefined();
     expect(b.place.n.h).toBe(120);
     expect((b.cards[0] as CodeCard).mergedFrom![0].place.h).toBe(164);
     expect(migrateBoard(structuredClone(b))).toEqual(b); // v8 is read as is
     expect(estSize(b.cards[0] as CodeCard, b.place.a).h).toBe(300); // estimates still count the header
+  });
+  it("v9 → v10: a Text card's fixed height is dropped, a Note's and a Box's stay", () => {
+    const raw = {
+      version: 9, id: "b", name: "x", links: [], sections: [], sidenotes: [], stickers: [],
+      cards: [{ id: "t", kind: "note", md: "x", look: "text" }, { id: "n", kind: "note", md: "x", look: "note" }, { id: "x", kind: "note", md: "", look: "box" }],
+      place: { t: { x: 0, y: 0, w: 300, h: 40 }, n: { x: 0, y: 0, w: 300, h: 120 }, x: { x: 0, y: 0, w: 300, h: 200 } },
+    };
+    const b = migrateBoard(structuredClone(raw));
+    expect(b.version).toBe(10);
+    expect(b.place.t).toEqual({ x: 0, y: 0, w: 300 });
+    expect(b.place.n.h).toBe(120);
+    expect(b.place.x.h).toBe(200);
+    expect(migrateBoard(structuredClone(b))).toEqual(b);
   });
   it("v4 → v5: call links become Call-marked arrows, plain links keep their look", () => {
     const raw = {
@@ -345,7 +359,7 @@ describe("migrateBoard", () => {
       ],
     };
     const b = loadBoard(structuredClone(raw));
-    expect(b.version).toBe(9);
+    expect(b.version).toBe(10);
     expect(b.links).toEqual([
       { id: "c", from: { card: "a", seg: "sa", line: 3 }, to: { card: "b" }, label: "hot", at: 0.3, sides: { from: "left" }, call: { name: "g", col: 8, vars: [{ a: "x", b: "y" }], cands: [{ a: "x", b: "y" }, { a: "r", ret: true }], loop: true } },
       { id: "p1", from: { card: "n" }, to: { card: "a", seg: "sa", line: 2 }, style: { dash: true, head: { start: true }, color: "blue" } },
@@ -398,6 +412,6 @@ describe("migrateBoard", () => {
     expect(b.stickers[0].q).toEqual({ md: "" });
   });
   it("refuses a board written by a newer CodeBoard", () => {
-    expect(() => migrateBoard({ version: 10, id: "b", name: "x", cards: [] })).toThrow(/newer/);
+    expect(() => migrateBoard({ version: 11, id: "b", name: "x", cards: [] })).toThrow(/newer/);
   });
 });

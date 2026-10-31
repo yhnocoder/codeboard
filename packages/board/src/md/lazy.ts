@@ -6,12 +6,12 @@
 import { createEffect, createRoot, on, untrack } from "solid-js";
 import { cam, camMoving } from "../state/camera";
 import { renderMd, renderMdInline, mdCached, hydrate, applyMdLayout, type MdLayout } from "@yhnocoder/markdown";
+import { escHtml } from "@codeboard/core";
 
 type Job = { el: HTMLElement; src: string; inline?: boolean; layout?: MdLayout | null };
 const pending = new Map<HTMLElement, Job>();
 let idleOn = false, frameOn = false;
 const FRAME_MS = 4;
-const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
 /** 卡片中心离视野中心多远（屏幕像素）；在视野外一圈以内或不在卡片上（浮层、批注）返回 -1 */
 function offView(el: HTMLElement): number {
@@ -92,8 +92,6 @@ function schedule() {
 }
 /** 把还没补上的全部渲染完（导出图片前） */
 export function flushMd() { for (const j of [...pending.values()]) run(j); }
-/** 还在排队的（测试用） */
-export const mdPending = () => pending.size;
 
 /** 渲染进 el（远处的、没缓存的排队，见上） */
 export function mdInto(el: HTMLElement, src: string, inline?: boolean, layout?: MdLayout | null) {
@@ -103,7 +101,7 @@ export function mdInto(el: HTMLElement, src: string, inline?: boolean, layout?: 
   if (!inline && !mdCached(src) && src.trim() && untrack(() => offView(el)) >= 0) {
     // 占位：原文撑出差不多的高度，但藏着
     el.classList.add("md-pend");
-    el.innerHTML = `<p>${esc(src)}</p>`;
+    el.innerHTML = `<p>${escHtml(src)}</p>`;
     pending.set(el, j);
     schedule();
     return;

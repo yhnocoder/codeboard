@@ -628,7 +628,7 @@ test("noteEditKeepsHeightWithHeaderFolded", async () => {
 });
 
 /** Ink Wash draws a brush line under the card header. Editing a Note whose header is its leading heading folds the header and slides
- *  the heading up to where the line was: the line fades with the header (usage feedback #87) and comes back after editing */
+ *  the heading up to where the line was: the line fades with the header and comes back after editing */
 test("inkWashFoldHidesHeaderLine", async () => {
   const b = emptyBoard("b1", "ink wash fold");
   put(b, { id: "n0", kind: "note", md: FOLD_NOTES[0], look: "note" } as NoteCard, 60, 60, 420);
@@ -930,7 +930,7 @@ test("noteLanguagePickerOpenWhenBoardChanges", async () => {
   await close(h);
 });
 
-/** #41：光标走进 **粗体**（方向键）时显出 ** 记号（原文里的字，淡色），中间的字还是粗体（紧挨中文和中文标点的也一样）；
+/** 光标走进 **粗体**（方向键）时显出 ** 记号（原文里的字，淡色），中间的字还是粗体（紧挨中文和中文标点的也一样）；
  *  不在编辑时也是粗体，退出后存的字不变 */
 test("noteBoldStaysBoldInSource", async () => {
   const P = "GPU 的资源有限，而且**每个 SM 能同时分配的 thread block** 数量也**有限**，所以设备能够**同时执行的 thread block 总数存在上限**。但是，一个 grid 可以远多于该上限的 thread block。";
@@ -986,7 +986,7 @@ test("noteBoldStaysBoldInSource", async () => {
   await close(h);
 });
 
-/** #43：有序列表中间的空项按 Backspace 变成空段落，列表断成两段（下面那段从 1. 重新编号）：存下来、再显示、再打开编辑都还是这样，
+/** 有序列表中间的空项按 Backspace 变成空段落，列表断成两段（下面那段从 1. 重新编号）：存下来、再显示、再打开编辑都还是这样，
  *  空段落不被去掉、两段不被连回去。无序列表、任务列表一样 */
 test("noteEmptyLineBetweenListsKept", async () => {
   const cases = [

@@ -2,8 +2,8 @@
 // 校验的是迁移之后的结果，结构和 model.ts 的类型一一对应；旧文件的样子（缺省、null）由迁移负责。
 // 只拦会让白板读坏的东西（类型不对、缺必填字段、kind 不认得），不认得的字段原样保留。
 import * as v from "valibot";
-import { BOARD_VERSION, BOX_FILLS, HAND_COLORS, NOTE_LOOKS, type Board, type BoardFile, type SharedCardFile } from "./model";
-import { migrateBoard, migrateSharedCard } from "./migrate";
+import { BOARD_VERSION, BOX_FILLS, HAND_COLORS, NOTE_LOOKS, type Board, type BoardFile, type Camera, type SharedCardFile } from "./model";
+import { fileCamera, migrateBoard, migrateSharedCard } from "./migrate";
 
 const str = v.string(), num = v.number(), bool = v.boolean(), yes = v.literal(true);
 const opt = <T extends v.GenericSchema>(s: T) => v.optional(s);
@@ -158,6 +158,11 @@ export function loadBoardFile(raw: unknown): BoardFile {
   const b = migrateBoard(raw);
   check(BoardFileSchema, b, "Invalid board");
   return b;
+}
+
+/** 存储读到的白板文件：校验过的当前版本，和第 9 版以前的文件里存着的镜头（这台机器还没记过这块白板的镜头时从那里开始） */
+export function readBoardFile(raw: unknown): { file: BoardFile; cam?: Camera } {
+  return { file: loadBoardFile(raw), cam: fileCamera(raw) };
 }
 
 /** 卡库里的文件 cards/<id>.json → 校验过的共享卡 */

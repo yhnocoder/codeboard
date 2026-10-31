@@ -26,7 +26,7 @@ export function storedSegs(c: Pick<CodeCard, "variants" | "active">): { vid: str
 }
 
 /** 标签上的小字：branch、worktree、file、PR */
-export function fromLabel(f: VariantFrom): string {
+function fromLabel(f: VariantFrom): string {
   switch (f.kind) {
     case "upstream": return "";
     case "ref": return /^[0-9a-f]{7,40}$/.test(f.ref) ? "commit" : "branch";

@@ -4,32 +4,30 @@ import { createStore, produce, reconcile } from "solid-js/store";
 import { estSize, mapFit, type BoardCard, type Card, type Place, type Crumb, type Rect, type Skeleton, type SubCard } from "@codeboard/core";
 import { ask } from "../host";
 import { cardById, placeOf, placed, rectOf, sizes, state, sync } from "./store";
-import { rooted } from "./root";
+import { boardSignal, onBoardSwitch, rooted } from "./root";
 
 /** 子白板 id → 骨架；null = 那块白板没了；没有这一项 = 还没拿到 */
-export const [skels, setSkels] = createStore<Record<string, Skeleton | null>>({});
+const [skels, setSkels] = createStore<Record<string, Skeleton | null>>({});
+export { skels };
 /** 面包屑（从最外层到上一级）；顶层白板是空的 */
 export const [crumbs, setCrumbs] = createSignal<Crumb[]>([]);
 /** 进子白板时名字正飞向面包屑：面包屑上「当前」那一格先不显示 */
 export const [crumbMorph, setCrumbMorph] = createSignal(false);
 /** 从父白板的讲解进来的：讲完（→ 走过最后一步 / ← 退过第一步）回到父白板，从这里接着讲 */
-export const [walkBack, setWalkBack] = createSignal<{ root: string; i: number } | null>(null);
+export const [walkBack, setWalkBack] = boardSignal<{ root: string; i: number } | null>(null);
 
 export const frames = rooted(() => createMemo(() => state.board.cards.filter((c): c is BoardCard => c.kind === "board")));
 const frameById = rooted(() => createMemo(() => new Map(frames().map((c) => [c.id, c]))));
 export const frameOf = (id: string) => frameById().get(id);
 export const skelOf = (frame: string): Skeleton | null | undefined => { const f = frameOf(frame); return f ? skels[f.board] : undefined; };
 
-export function resetSubboards(c: Crumb[] | undefined) {
+// skeletons, previews and their cards are the last board's (the crumbs come with the new board's init)
+onBoardSwitch(() => {
   setSkels(reconcile({}));
   setPvs(reconcile({}));
-  setPvPeek(null);
-  setPvHot(null);
   setSubCards(reconcile({}));
-  setCrumbs(c ?? []);
-  setWalkBack(null);
   asked.clear();
-}
+});
 
 export function putSkels(m: Record<string, Skeleton | null>) {
   batch(() => {
@@ -118,14 +116,16 @@ export function blockRect(frame: string, id: string): Rect | null {
 
 /** 一个框点开的预览：open = 点开的先后（编号 = 下标 + 1），exp = 右边展开着的（摆放的先后），tit = 框下面只显示标题的，fold = 收起了 */
 export type Pv = { open: string[]; exp: string[]; tit: string[]; fold: boolean };
-export const [pvs, setPvs] = createStore<Record<string, Pv>>({});
+const [pvs, setPvs] = createStore<Record<string, Pv>>({});
+export { pvs };
 /** 临时展开的那行标题（点别处收回） */
-export const [pvPeek, setPvPeek] = createSignal<{ f: string; id: string } | null>(null);
+export const [pvPeek, setPvPeek] = boardSignal<{ f: string; id: string } | null>(null);
 /** 指针停着的预览：画一道虚线连到它在地图上的那一块 */
-export const [pvHot, setPvHot] = createSignal<{ f: string; id: string } | null>(null);
+export const [pvHot, setPvHot] = boardSignal<{ f: string; id: string } | null>(null);
 
 /** 右边最多展开几张；预览宽、间距；标题行宽、高、行距；预览离框的距离（都是世界坐标，和 styles.css 的 .sbpv 一套） */
-export const PV_MAX = 3, PV_W = 260, PV_GAP = 10, TIT_W = 200, TIT_H = 30, TIT_GAP = 6, PV_OFF = 14;
+export const PV_W = 260, PV_GAP = 10, TIT_W = 200, TIT_H = 30, TIT_GAP = 6;
+const PV_MAX = 3, PV_OFF = 14;
 export const pvCols = (frame: string): 1 | 2 => (frameOf(frame)?.pcols === 2 ? 2 : 1);
 
 export type PvBox = { id: string; x: number; y: number; w: number; h: number };

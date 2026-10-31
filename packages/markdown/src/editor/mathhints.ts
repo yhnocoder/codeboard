@@ -14,7 +14,7 @@ const sym = (name: string, desc: string, pv = `\\${name}`) => c(name, `\\${name}
 const arg = (name: string, pv: string, desc: string) => c(name, `\\${name}{|}`, pv, desc);
 
 /** 常用的 KaTeX 命令（排在前面的先出） */
-export const MATH_CMDS: readonly MathCmd[] = [
+const MATH_CMDS: readonly MathCmd[] = [
   c("frac", "\\frac{|}{}", "\\frac{a}{b}", "分数"), sym("times", "乘号", "a\\times b"), arg("text", "\\text{abc}", "正文字体"),
   c("sum", "\\sum_{|}^{}", "\\sum_{i=0}^{n}", "求和"), sym("cdot", "点乘", "a\\cdot b"), arg("sqrt", "\\sqrt{x}", "根号"),
   c("lceil", "\\lceil | \\rceil", "\\lceil x\\rceil", "向上取整"), c("lfloor", "\\lfloor | \\rfloor", "\\lfloor x\\rfloor", "向下取整"),
@@ -82,7 +82,7 @@ function lev(a: string, b: string) {
   return d[a.length][b.length];
 }
 /** 离 name 最近的已知命令（编辑距离 ≤ 2）；没有给 null */
-export function nearest(name: string, src: string): string | null {
+function nearest(name: string, src: string): string | null {
   let best: string | null = null, bd = 3;
   for (const x of [...userCmds(src), ...MATH_CMDS]) { const d = lev(name, x.name); if (d < bd) { bd = d; best = x.name; } }
   return best;
@@ -424,7 +424,7 @@ export function textareaCaret(ta: HTMLTextAreaElement, i: number): DOMRect {
 // 行内公式：编辑器里展开成 $…$ 原文的那一段，或刚打了开头的 $、还没打结尾的
 type Region = { from: number; to: number; text: string; caret: number; d: number };
 /** 光标所在的行内公式原文：LaTeX 在文档里的 [from, to)、字、光标在字里的位置、两头的 $ 有几个 */
-export function inlineMathAt(state: EditorState): Region | null {
+function inlineMathAt(state: EditorState): Region | null {
   const sel = state.selection;
   if (!sel.empty) return null;
   const $h = sel.$head, p = $h.parent;
@@ -458,7 +458,7 @@ export function inlineMathAt(state: EditorState): Region | null {
   return { from: base + a, to: base + b, text: before.slice(a) + after.slice(0, b - off), caret: off - a, d: 0 };
 }
 
-export const mathHintsKey = new PluginKey("cbMathHints");
+const mathHintsKey = new PluginKey("cbMathHints");
 /** 编辑器里行内公式的提示 */
 export function mathHintsPlugin() {
   let hints: MathHints | null = null, region: Region | null = null, view: EditorView | null = null;

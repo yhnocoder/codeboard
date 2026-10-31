@@ -6,7 +6,7 @@ import { spawn } from "node:child_process";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { loadRun, type CallSample, type RunCall, type RunLoc, type RunRecord } from "@codeboard/core";
+import { loadRun, uid, type CallSample, type RunCall, type RunLoc, type RunRecord } from "@codeboard/core";
 import { git } from "./git";
 import { log } from "./log";
 import { readSettings } from "./settings";
@@ -18,7 +18,7 @@ import type { Prompts } from "./prompts";
 const FIRST = 3;
 
 /** 抓取器（装在临时目录的 sitecustomize.py 里）。只看 call 事件、被调函数的文件在 scope 里（或在 pkgs 列的包里）才记 */
-export const TRACER = String.raw`# CodeBoard Capture Run: installed only for this run (PYTHONPATH), records calls into Study Scope.
+const TRACER = String.raw`# CodeBoard Capture Run: installed only for this run (PYTHONPATH), records calls into Study Scope.
 import os, sys
 
 def _codeboard_install():
@@ -143,7 +143,7 @@ del _codeboard_install
 `;
 
 /** 命令行按空格切开（单双引号里的空格不切） */
-export function splitCmd(s: string): string[] {
+function splitCmd(s: string): string[] {
   const out: string[] = [];
   const re = /"((?:\\.|[^"\\])*)"|'([^']*)'|(\S+)/g;
   let m: RegExpExecArray | null;
@@ -152,7 +152,7 @@ export function splitCmd(s: string): string[] {
 }
 
 /** 用户给的入口 → 要跑的 argv：python … 原样；脚本 / -m / -c 前面补解释器；别的命令（pytest、torchrun）原样（它们自己起 Python，同样带上抓取器） */
-export function toArgv(cmd: string, python: string): string[] {
+function toArgv(cmd: string, python: string): string[] {
   const a = splitCmd(cmd.trim());
   if (!a.length) return [];
   if (/^python[\d.]*(\.exe)?$/i.test(path.basename(a[0]))) return a;
@@ -172,7 +172,7 @@ export type CaptureOpts = {
 type Trace = { pid: number; calls: RunCall[]; truncated?: boolean };
 
 /** 几个进程的记录合成一份：同一对 from → to 次数相加，实参留前 FIRST 次 + 最后一次 */
-export function mergeTraces(ts: Trace[]): { calls: RunCall[]; truncated: boolean } {
+function mergeTraces(ts: Trace[]): { calls: RunCall[]; truncated: boolean } {
   const m = new Map<string, RunCall>();
   for (const t of ts) for (const c of t.calls) {
     const k = `${c.from.file}:${c.from.line}>${c.to.file}:${c.to.line}:${c.to.qual}`;
@@ -186,7 +186,6 @@ export function mergeTraces(ts: Trace[]): { calls: RunCall[]; truncated: boolean
   return { calls: [...m.values()].sort((a, b) => b.count - a.count), truncated: ts.some((t) => t.truncated) };
 }
 
-const rid = () => `r${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
 /** 跑一次入口，回运行记录（还没存）。命令起不来时抛出；退出码不是 0 也回记录（exit 里记着），抓到多少算多少 */
 export async function captureRun(o: CaptureOpts): Promise<RunRecord> {
@@ -219,7 +218,7 @@ export async function captureRun(o: CaptureOpts): Promise<RunRecord> {
     }
     const m = mergeTraces(ts);
     const commit = (await git(o.cwd, ["rev-parse", "HEAD"]))?.trim() || null;
-    const rec: RunRecord = { version: 1, id: rid(), entry: o.cmd.trim(), cwd: o.cwd, commit, at: t0, ms: Date.now() - t0, exit, scope: o.scope, pkgs: o.pkgs, calls: m.calls };
+    const rec: RunRecord = { version: 1, id: uid("r"), entry: o.cmd.trim(), cwd: o.cwd, commit, at: t0, ms: Date.now() - t0, exit, scope: o.scope, pkgs: o.pkgs, calls: m.calls };
     if (m.truncated) rec.truncated = true;
     return loadRun(rec);
   } finally {
@@ -250,7 +249,7 @@ export async function listRuns(storageDir: string): Promise<RunRecord[]> {
 }
 
 /** 运行记录里出现的文件 → 白板上的位置（来源 + 相对路径），白板拿它对箭头 */
-export async function runLocs(r: RunRecord): Promise<Record<string, RunLoc>> {
+async function runLocs(r: RunRecord): Promise<Record<string, RunLoc>> {
   const files = new Set<string>();
   for (const c of r.calls) { files.add(c.from.file); files.add(c.to.file); }
   const out: Record<string, RunLoc> = {};
@@ -262,7 +261,7 @@ export async function runLocs(r: RunRecord): Promise<Record<string, RunLoc>> {
   return out;
 }
 
-export function runLabel(r: RunRecord): { label: string; description: string; detail: string } {
+function runLabel(r: RunRecord): { label: string; description: string; detail: string } {
   const d = new Date(r.at);
   const when = `${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
   const n = r.calls.reduce((s, c) => s + c.count, 0);

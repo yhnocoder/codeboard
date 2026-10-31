@@ -1,7 +1,7 @@
 import * as path from "node:path";
-import { allCodeCards, estSize, placeCards, removeCards, type Board, type CardCopy, type CodeCard, type KeyAction } from "@codeboard/core";
+import { allCodeCards, defaultWidth, estSize, placeCards, removeCards, type Board, type CardCopy, type CodeCard, type KeyAction } from "@codeboard/core";
 import { analysisOf } from "./analysis";
-import { cardsFromEditor, symCard, widthFor, withViews, type Built } from "./cards";
+import { cardsFromEditor, symCard, withViews, type Built } from "./cards";
 import type { BoardHost } from "./boards";
 import { absOf, locOfFile } from "./source";
 import { moveIntoProject, projectDir, PROJECT_DIR, type Storage } from "./storage";
@@ -94,7 +94,7 @@ export function makeActions(panels: BoardHost, store: Storage) {
     let h = hits.find((x) => x.board.id === panels.target) ?? hits[0];
     const boards = [...new Map(hits.map((x) => [x.board.id, x.board])).values()];
     if (boards.length > 1) {
-      const r = await ui().pick(boards.map((b) => ({ label: `$(layout) ${b.name}`, description: b.id === panels.target ? "target" : undefined, b })), { placeHolder: "Reveal on which board?" });
+      const r = await ui().pick(boards.map((b) => ({ label: b.name, icon: "board", description: b.id === panels.target ? "target" : undefined, b })), { placeHolder: "Reveal on which board?" });
       if (!r) return;
       h = hits.find((x) => x.board.id === r.b.id)!;
     }
@@ -109,7 +109,7 @@ export function makeActions(panels: BoardHost, store: Storage) {
     if (!b || !panels.globalState) return;
     const ps = await otherProjects(panels.globalState, store.dir());
     if (!ps.length) { void ui().info("No other project found. Open the other project once with CodeBoard so it shows up here."); return; }
-    const r = await ui().pick(ps.map((p) => ({ label: `$(folder) ${p.name}`, description: p.folders.join(" · ") || p.dir, p })), { placeHolder: `${move ? "Move" : "Copy"} “${b.name}” to which project?`, matchOnDescription: true });
+    const r = await ui().pick(ps.map((p) => ({ label: p.name, icon: "folder", description: p.folders.join(" · ") || p.dir, p })), { placeHolder: `${move ? "Move" : "Copy"} “${b.name}” to which project?`, matchOnDescription: true });
     if (!r) return;
     if (move) {
       const ok = await ui().warn(`Move board “${b.name}” to ${r.p.name}?`, { modal: true, detail: "It is removed from this project (restorable from .trash). Sub-boards, shared cards and images go with it." }, "Move");
@@ -136,9 +136,9 @@ export function makeActions(panels: BoardHost, store: Storage) {
       const count = (n: number) => `${n} board${n === 1 ? "" : "s"}`;
       const groups = [...new Set(metas.flatMap((m) => (m.group ? [m.group] : [])))].sort();
       pick = await ui().pick([
-        { label: "$(files) All Boards", description: count(metas.length), roots: metas.map((m) => m.id), name: workspace().files.name() || "Boards" },
-        ...groups.map((g) => { const ms = metas.filter((m) => m.group === g); return { label: `$(folder) ${g}`, description: count(ms.length), roots: ms.map((m) => m.id), name: g }; }),
-        ...metas.map((m) => ({ label: `$(layout) ${m.name}`, description: m.group, roots: [m.id], name: m.name })),
+        { label: "All Boards", icon: "boards" as const, description: count(metas.length), roots: metas.map((m) => m.id), name: workspace().files.name() || "Boards" },
+        ...groups.map((g) => { const ms = metas.filter((m) => m.group === g); return { label: g, icon: "folder" as const, description: count(ms.length), roots: ms.map((m) => m.id), name: g }; }),
+        ...metas.map((m) => ({ label: m.name, icon: "board" as const, description: m.group, roots: [m.id], name: m.name })),
       ], { placeHolder: "Export which boards? Sub-boards, shared cards and images go with them.", matchOnDescription: true });
     }
     if (pick?.roots.length) await exportFlow(store, pick.roots, pick.name);
@@ -329,8 +329,8 @@ export function makeActions(panels: BoardHost, store: Storage) {
       const id = boardArg(a);
       if (!id) return;
       const groups = await store.groups();
-      const NONE = "(No Group)", NEW = "$(add) New Group…";
-      const r = (await ui().pick([NONE, ...groups, NEW].map((label) => ({ label })), { placeHolder: "Move to group" }))?.label;
+      const NONE = "(No Group)", NEW = "New Group…";
+      const r = (await ui().pick([NONE, ...groups, NEW].map((label) => ({ label, icon: label === NEW ? ("add" as const) : undefined })), { placeHolder: "Move to group" }))?.label;
       if (!r) return;
       let g: string | undefined = r === NONE ? undefined : r;
       if (r === NEW) {
@@ -374,10 +374,10 @@ export function makeActions(panels: BoardHost, store: Storage) {
   };
 }
 
-export async function pickBoard(store: Storage, placeHolder: string, allowNew: boolean): Promise<string | undefined> {
+async function pickBoard(store: Storage, placeHolder: string, allowNew: boolean): Promise<string | undefined> {
   const metas = await store.list();
-  const NEW = { label: "$(add) New Board…", id: "" };
-  const items = [...metas.map((m) => ({ label: `$(layout) ${m.name}`, description: m.group, detail: undefined, id: m.id })), ...(allowNew ? [NEW] : [])];
+  const NEW = { label: "New Board…", icon: "add" as const, id: "" };
+  const items = [...metas.map((m) => ({ label: m.name, icon: "board" as const, description: m.group, detail: undefined, id: m.id })), ...(allowNew ? [NEW] : [])];
   const ui = workspace().ui;
   const r = await ui.pick(items, { placeHolder });
   if (!r) return;
@@ -387,12 +387,12 @@ export async function pickBoard(store: Storage, placeHolder: string, allowNew: b
 }
 
 /** 白板关着时新卡摆在哪：已有卡片的右边，一张接一张往下排（放进白板用 core placeCards） */
-export function stackRight(b: Board, cards: CodeCard[]): CardCopy[] {
+function stackRight(b: Board, cards: CodeCard[]): CardCopy[] {
   const ps = Object.values(b.place);
   const right = ps.length ? Math.max(...ps.map((p) => p.x + p.w)) + 80 : b.cam.x > 0 ? 80 : -b.cam.x + 80;
   let y = ps.length ? Math.min(...ps.map((p) => p.y)) : 80;
   return cards.map((card) => {
-    const place = { x: right, y, w: widthFor(card.segments) };
+    const place = { x: right, y, w: defaultWidth(card) };
     y += estSize(card, place).h + 40;
     return { card, place };
   });
@@ -401,7 +401,7 @@ export function stackRight(b: Board, cards: CodeCard[]): CardCopy[] {
 export type Hit = { board: Board; card: CodeCard; seg: string; lines: [number, number] };
 
 /** 所有白板上含有这个文件这几行的卡（按段在工作区里的位置算） */
-export async function findOnBoards(store: Storage, abs: string, start: number, end: number): Promise<Hit[]> {
+async function findOnBoards(store: Storage, abs: string, start: number, end: number): Promise<Hit[]> {
   const out: Hit[] = [];
   for (const { board } of await store.all()) {
     for (const card of allCodeCards(board)) for (const s of card.segments) {

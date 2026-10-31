@@ -1,4 +1,4 @@
-import { uid, type CodeCard, type EditorState, type NewCard, type Segment } from "@codeboard/core";
+import { defaultWidth, uid, type CodeCard, type EditorState, type NewCard, type Segment } from "@codeboard/core";
 import { listsMembers, planSelection, symbolAtCursor, type Plan, type Range, type Sel, type Sym } from "@codeboard/analysis";
 import * as path from "node:path";
 import { analysisOf } from "./analysis";
@@ -7,17 +7,12 @@ import { makeSegment } from "./versions";
 import { viewsFor } from "./views";
 import { langOf, readText, splitLines } from "./ws";
 
-export function widthFor(segs: Segment[]): number {
-  const longest = Math.max(20, ...segs.flatMap((s) => s.text.map((l) => l.replace(/\t/g, "    ").length)));
-  return Math.round(Math.min(760, Math.max(380, longest * 7.4 + 70)));
-}
-
 export function newCodeCard(segs: Segment[], extra: Partial<CodeCard> = {}): CodeCard {
   return { id: uid("c"), kind: "code", segments: segs, ...extra };
 }
 
 export async function withViews(cards: CodeCard[]): Promise<NewCard[]> {
-  return Promise.all(cards.map(async (card) => ({ card, views: await viewsFor(card.segments), w: widthFor(card.segments) })));
+  return Promise.all(cards.map(async (card) => ({ card, views: await viewsFor(card.segments), w: defaultWidth(card) })));
 }
 
 /** 一个符号 → 函数卡 / 类卡（类卡只列成员签名，shown = 显示哪些成员；没有方法的类照普通代码卡显示源码） */
@@ -58,7 +53,7 @@ export async function cardsFromPlan(loc: Loc, lines: string[], plan: Plan, lang:
 }
 
 /** 编辑器 → 白板位置。没保存的新文件、不在磁盘上的文档 → null（建 Free code） */
-export async function locOfEditor(ed: EditorState): Promise<Loc | null> {
+async function locOfEditor(ed: EditorState): Promise<Loc | null> {
   if (ed.file) return locOfFile(ed.path);
   if (ed.version) {
     const loc = await locOfFile(path.join(ed.version.root, ed.version.path));

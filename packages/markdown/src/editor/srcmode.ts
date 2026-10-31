@@ -107,7 +107,7 @@ const srcHighlight = ViewPlugin.fromClass(class {
 const HEAD = Decoration.mark({ class: "md-s-h" }), MARK = Decoration.mark({ class: "md-s-mk" }), CODE = Decoration.mark({ class: "md-s-code" });
 const MATH = Decoration.mark({ class: "md-s-math" }), LINK = Decoration.mark({ class: "md-s-link" });
 
-export function sourceMode(editor: Editor, host: HTMLElement, o: { isMac?: boolean; back: () => void; exit: () => void; blur: (ev: FocusEvent) => void }): SourceMode {
+export function sourceMode(editor: Editor, host: HTMLElement, o: { back: () => void; exit: () => void; blur: (ev: FocusEvent) => void }): SourceMode {
   const { md, at } = mdAt(editor.state.doc, editor.state.selection.head);
   const box = document.createElement("div");
   box.className = "md-srcmode";

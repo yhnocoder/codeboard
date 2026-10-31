@@ -192,8 +192,8 @@ class TableBar {
   private open: { pos: number } | null = null;
   private pos: number | null = null;
   private frame = 0;
-  constructor(private view: EditorView, isMac: () => boolean | undefined) {
-    const mac = isMac() ?? /Mac|iPhone|iPad/.test(navigator.platform);
+  constructor(private view: EditorView, isMac: () => boolean) {
+    const mac = isMac();
     const K = (s: string) => (mac ? s : s.replace(/⌘/g, "Ctrl+").replace(/⇧/g, "Shift+").replace(/⌫/g, "Backspace").replace(/↵/g, "Enter"));
     this.bar = document.createElement("div");
     this.bar.className = "mdui pill md-tbar";
@@ -357,7 +357,7 @@ class TableBar {
 }
 
 /** The table node for the editor (column resizing on, cells at least CELL_MIN wide), plus the toolbar and shortcuts */
-export function tableEditing(base: TNode, isMac: () => boolean | undefined): AnyExtension[] {
+export function tableEditing(base: TNode, isMac: () => boolean): AnyExtension[] {
   const node = base.extend({
     addProseMirrorPlugins() {
       // the row handle first: tableEditing's mousedown would otherwise start a cell selection on the same press

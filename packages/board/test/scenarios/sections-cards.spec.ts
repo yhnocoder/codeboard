@@ -139,7 +139,7 @@ test("sectionCollapsedPill", async () => {
     return { deg: Math.round(rot + (Math.atan2(m.b, m.a) * 180) / Math.PI), size: Math.min(i.getBoundingClientRect().width, i.getBoundingClientRect().height) };
   }, pill);
   const a0 = await angle();
-  // collapsed or not, the caret is at the right end: after the card count (usage feedback #92: it jumped to the left on collapsing)
+  // collapsed or not, the caret is at the right end: after the card count (it jumped to the left on collapsing)
   const right = await h.page.evaluate((sel) => { const n = document.querySelector(`${sel} .scount`)!.getBoundingClientRect(), c = document.querySelector(`${sel} .chev2`)!.getBoundingClientRect(); return c.left - n.right; }, pill);
   await h.page.locator(`${pill} .chev2`).click();
   await until(h, "expanding is saved", () => !h.board().sections[0].collapsed); await idle(h);

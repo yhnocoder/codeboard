@@ -21,7 +21,7 @@ export type SkelSec = { x: number; y: number; w: number; h: number; color?: stri
 export type Skeleton = { id: string; name: string; n: number; commit?: string; w: number; h: number; cards: SkelCard[]; secs: SkelSec[]; ln: [number, number][]; refs: SkelRef[] };
 
 /** 框里地图的留白（世界坐标）：左右下 MAP_PAD，上 MAP_TOP（最上面的 Section 名一半在区域外，要留出来）；很小的子白板也最多缩到 MAP_MAX（一两张卡不放成一大块） */
-export const MAP_PAD = 14, MAP_TOP = 20, MAP_MAX = 0.5;
+const MAP_PAD = 14, MAP_TOP = 20, MAP_MAX = 0.5;
 export type MapFit = { s: number; ox: number; oy: number };
 /** 骨架（w × h）等比放进 W × H 的框：比例 s，左上角在框里的 (ox, oy)，居中 */
 export function mapFit(sk: { w: number; h: number }, W: number, H: number): MapFit {

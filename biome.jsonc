@@ -24,15 +24,9 @@
       "includes": ["packages/core/src/migrate.ts", "**/test/**", "packages/board/stories/**", "tools/**", "examples/**"],
       "linter": { "rules": { "suspicious": { "noExplicitAny": "off" } } }
     },
-    // Source files that still have an `any`: the cleanup PR narrows them and takes each file off this list
+    // The VS Code language model API is probed (vscode.lm, LanguageModelDataPart) until engines.vscode is raised
     {
-      "includes": [
-        "extensions/vscode/src/commands.ts", "extensions/vscode/src/vscode/workspace.ts",
-        "packages/board/src/actions/{notes,stickers,variants,versions}.ts", "packages/board/src/cards/CodeBody.tsx",
-        "packages/board/src/{cm,md}/load.ts", "packages/board/src/host.ts", "packages/board/src/state/store.ts",
-        "packages/board/src/ui/{Editable,Md,Palette,Settings}.tsx", "packages/board/src/ui/pops/{notes,versions}.tsx",
-        "packages/host/src/stickers.ts", "packages/markdown/src/{math,schema}.ts"
-      ],
+      "includes": ["extensions/vscode/src/vscode/workspace.ts"],
       "linter": { "rules": { "suspicious": { "noExplicitAny": "off" } } }
     }
   ]

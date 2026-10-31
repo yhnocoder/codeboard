@@ -11,7 +11,7 @@ import { workspace } from "./ws";
 
 export const MAX_NOTE_IMAGE = 10 * 1024 * 1024;
 /** Markdown 里写的地址的前缀（相对存储目录） */
-export const ASSET_PREFIX = "assets/";
+const ASSET_PREFIX = "assets/";
 
 /** 存一张 data: URL 的图，回 Markdown 里写的地址（assets/<sha1 前 16 位>-<宽>x<高>.<扩展名>）；不是这几种图、太大时抛错（消息给用户看） */
 export async function saveNoteImage(store: Storage, dataUrl: string): Promise<string> {

@@ -4,7 +4,6 @@ import { setState, state, placed, rectOf, sync } from "../state/store";
 import { settingsOpen, setSettingsOpen, setKeysOpen } from "../state/ui";
 import { send } from "../host";
 
-export { settingsOpen };
 
 /** 打开 Settings 页；section = "shortcuts" 等直接滚到那一节 */
 export function openSettings(section?: string) {
@@ -12,6 +11,7 @@ export function openSettings(section?: string) {
   setSettingsOpen({ section });
 }
 export const closeSettings = () => setSettingsOpen(false);
+/** @public run from the key table (keymap.ts) */
 export const toggleSettings = () => (settingsOpen() ? closeSettings() : openSettings());
 
 export function setSetting<K extends keyof Settings>(key: K, value: Settings[K]) {

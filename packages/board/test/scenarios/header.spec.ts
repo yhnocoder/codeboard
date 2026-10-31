@@ -93,7 +93,7 @@ test("headnarrow", async () => {
 });
 
 /** A card's ⋯ menu button (code card, Note) is hidden until the card is hovered or selected, keeps its place so the header does not
- *  move when it appears, and stays while its menu is open even with the pointer over the menu (usage feedback #90) */
+ *  move when it appears, and stays while its menu is open even with the pointer over the menu */
 test("cardMenuDotsOnHover", async () => {
   const b = emptyBoard("b1", "menu dots");
   put(b, symCard(findSym("Scheduler.schedule").f, findSym("Scheduler.schedule").s), 60, 60, 480);

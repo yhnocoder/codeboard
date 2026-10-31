@@ -45,3 +45,25 @@ export const SKEL_OUT = 80;
 export const SKEL_IN = 100;
 /** A deleted card's fade-out (styles.css .card.ghost-out, its longest transition), times the animation speed (--t) */
 export const GHOST_OUT = 200;
+/** Resting the pointer on something with a tip (data-tip) shows the tip after this long; right after a tip was shown, at once (ui/Menu.tsx) */
+export const TIP_DELAY = 500;
+/** Fit to Content on a Section: its frame glides (styles.css .sect.fit, 260 ms) and the glide class comes off after this long (actions/edit.ts) */
+export const SECTION_FIT = 320;
+/** Commits for the version menu: if they arrive within this long the menu opens with them, else it opens loading (actions/versions.ts) */
+export const COMMITS_WAIT = 250;
+/** A code line stays hovered this long after the pointer leaves it (cards/CodeBody.tsx) */
+export const ROW_LEAVE = 200;
+/** Resting the pointer on a Web card shows its page preview after this long (cards/WebBody.tsx) */
+export const WEB_PEEK_DELAY = 550;
+/** A folded Section's member preview fades out over this long when the pointer leaves (canvas/Sections.tsx) */
+export const SECTION_PEEK_OUT = 140;
+/** Lines that flash (a jump to a line, a call's target) stay lit this long (state/ui.ts flash) */
+export const FLASH_MS = 700;
+/** A peek closes this long after the pointer leaves the word and the peek (TUNE.peekHide's default) */
+export const PEEK_HIDE = 260;
+/** An arrow's end slides to the other side of its card over this long (TUNE.sideSlide's default) */
+export const SIDE_SLIDE = 120;
+/** An arrow fades over this long as it lifts above the cards or drops below them (TUNE.liftFade's default) */
+export const LIFT_FADE = 140;
+/** A menu's open animation (TUNE.menuOpen's default) */
+export const MENU_OPEN = 150;

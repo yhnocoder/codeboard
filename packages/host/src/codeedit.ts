@@ -64,13 +64,13 @@ async function withDoc<T>(id: string, op: string, text: string, empty: T, fn: ()
 }
 
 /** 光标前的词（补全按它先筛一遍：语言服务给的太多，全发给白板没必要） */
-export function wordBefore(text: string, line: number, col: number): string {
+function wordBefore(text: string, line: number, col: number): string {
   const l = text.split("\n")[line] ?? "";
   return /[\w$]*$/.exec(l.slice(0, col))?.[0] ?? "";
 }
 
 /** 按光标前的词筛、截断：开头一样的在前（语言服务原来的顺序），只是包含这些字母的在后 */
-export function narrow(items: LspItem[], word: string, max = MAX_ITEMS): LspItem[] {
+function narrow(items: LspItem[], word: string, max = MAX_ITEMS): LspItem[] {
   if (!word) return items.slice(0, max);
   const w = word.toLowerCase();
   const sub = (s: string) => { let i = 0; for (const ch of s.toLowerCase()) if (ch === w[i]) i++; return i === w.length; };

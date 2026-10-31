@@ -28,7 +28,7 @@ export type RunRecord = {
 
 const str = v.string(), num = v.number();
 const Sample = v.looseObject({ n: num, args: v.array(v.tuple([str, str])) });
-export const RunRecordSchema = v.looseObject({
+const RunRecordSchema = v.looseObject({
   version: v.literal(1), id: str, entry: str, cwd: str, commit: v.nullable(str),
   at: num, ms: num, exit: num, scope: v.array(str), pkgs: v.array(str),
   calls: v.array(v.looseObject({

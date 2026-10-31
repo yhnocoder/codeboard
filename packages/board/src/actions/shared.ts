@@ -72,7 +72,8 @@ function pasteCopied(text: string | undefined): boolean {
  * 粘贴 / ⌘D 出来的副本右下角的小条：Copy ✓ | Reference。pairs = [副本, 原卡]；ref = 现在是 Reference。
  * 指针不在上面 PASTE_CHIP_IDLE 后、点了别处、副本挪了或改了（Canvas.tsx PasteChip 看着）就收起
  */
-export const [pasteChip, setPasteChip] = boardSignal<{ pairs: [string, string][]; ref: boolean } | null>(null);
+const [pasteChip, setPasteChip] = boardSignal<{ pairs: [string, string][]; ref: boolean } | null>(null);
+export { pasteChip };
 let chipTimer: number | undefined;
 export function offerReference(pairs: [string, string][]) {
   const ok = pairs.filter(([n, o]) => { const a = cardById(n)?.card, b = cardById(o)?.card; return a && b && a.kind !== "compare" && a.kind !== "board" && a.kind === b.kind; });
@@ -184,7 +185,7 @@ export async function pasteFromBoard(text: string | undefined, at: { x: number; 
 }
 
 /** 贴过来的卡放在 at：几张卡之间的相对位置不变 */
-export function placePasted(r: PastedCards, at: { x: number; y: number }) {
+function placePasted(r: PastedCards, at: { x: number; y: number }) {
   const tops = r.cards.filter((x) => x.place);
   if (r.shared && tops.length && tops.every((x) => cardById(x.card.id))) {
     const id = tops[0].card.id;
@@ -237,12 +238,12 @@ export function openOnBoard(board: string, card: string, line?: number) {
   send({ type: "openBoard", id: board, card, line });
 }
 /** 「This card is on 3 boards: A, B, C.」 */
-export function boardsText(id: string) {
+function boardsText(id: string) {
   const bs = shared[id]?.boards ?? [];
   return `This card is on ${bs.length} boards: ${bs.map((b) => b.name).join(", ")}.`;
 }
 
-export const selShared = () => sel.cards.map(hostOf).filter((id) => sharedOn(id) > 1);
+const selShared = () => sel.cards.map(hostOf).filter((id) => sharedOn(id) > 1);
 
 /** Delete Everywhere…（⌘⌫）：问一下，从所有白板上删掉（这块白板上这一步能撤销，撤销回来是一份独立副本） */
 export async function deleteEverywhere(ids = selShared()) {
@@ -294,8 +295,6 @@ export async function updateScoped(cardId: string, segId: string, data: DiffData
   return true;
 }
 
-/** Update 时用的复查标签：新版本的短名 */
-export const reviewLabel = (data: DiffData) => (data.newSeg ? versionLabel(data.newSeg.version) : "");
 
 export function reviewToast(cardId: string) {
   const n = state.board.sidenotes.filter((x) => x.at.card === cardId && x.review).length;

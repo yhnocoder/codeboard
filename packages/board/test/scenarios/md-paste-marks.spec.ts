@@ -3,7 +3,7 @@ import { OUT, put, type Host } from "../harness";
 import { emptyBoard, type NoteCard } from "@codeboard/core";
 import { test, open, check, until, idle, focusSettled, pmHasSelection } from "../fixtures";
 
-// Usage feedback #53: notes copied from a reading tool, three ==highlights== in CJK text (one closing right before 。),
+// Notes copied from a reading tool, three ==highlights== in CJK text (one closing right before 。),
 // pasted into a Note; the == stayed literal. Plus a ~~strike~~ and a --- rule, which the same paste paths handle
 const SIMT = [
   "同一 warp 中的线程会被分配到同一个处理分区，该分区为 warp 取出指令，并让 warp 中所有线程执行这条指令。由于 CUDA 线程调度机制把 warp 映射到处理分区，实际上限制了 warp 中所有线程在任意时刻执行相同指令，因此 ==warp 的执行行为通常称为单指令多线程（Single Instruction, Multiple Thread，SIMT）==。",

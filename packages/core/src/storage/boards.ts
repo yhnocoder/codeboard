@@ -8,8 +8,7 @@
 import { allCodeCards, baseName, BOARD_VERSION, emptyBoard, homeCam, uid, withCols, type Board, type BoardFile, type BoardMeta, type BrokenBoard, type Camera, type Link, type SharedCard, type SharedCardFile } from "../model";
 import { Emitter, type Disposable } from "../emitter";
 import type { WorkspaceFiles } from "../workspace";
-import { loadBoardFile, loadSharedCard } from "../schema";
-import { fileCamera } from "../migrate";
+import { loadBoardFile, loadSharedCard, readBoardFile } from "../schema";
 import { applyPatch, applySharedUpdate, cardCopies, deflate, diffBoards, inflate, mergeById, mergeFile, putShared, same, sharedOf, travels, type BoardPatch, type SharedUpdate } from "../patch";
 import { pruneRefs, removeCards, renameCard, unlinkCard, type CardCopy } from "../edit";
 import { subBoardsOf } from "../subboard";
@@ -198,8 +197,7 @@ export class Storage {
         if (e && e.mtime !== st.mtimeMs) await this.pull(e);
         if (!e) {
           text = await fs.readFile(f.file);
-          const raw = JSON.parse(text);
-          const board = loadBoardFile(raw);
+          const { file: board, cam } = readBoardFile(JSON.parse(text));
           // id 决定存盘的文件名：只认安全的 id；和别的文件重了（Finder 里复制出来的）就换一个新的，免得两份互相覆盖
           const base = idOf(f.file);
           if (!SAFE_ID.test(board.id ?? "")) board.id = SAFE_ID.test(base) ? base : uid("b");
@@ -208,7 +206,7 @@ export class Storage {
           // 共享卡：引用换成卡库里的内容
           const used = new Map<string, SharedCardFile>();
           for (const c of board.cards) if (c.kind === "shared") { const sc = await this.readShared(c.id); if (sc) used.set(c.id, sc); }
-          const r = inflate(board, this.opts.cams?.get(board.id) ?? fileCamera(raw) ?? homeCam(), (id) => { const sc = used.get(id); return sc && structuredClone({ card: sc.card, sidenotes: sc.sidenotes }); });
+          const r = inflate(board, this.opts.cams?.get(board.id) ?? cam ?? homeCam(), (id) => { const sc = used.get(id); return sc && structuredClone({ card: sc.card, sidenotes: sc.sidenotes }); });
           if (r.missing.length) this.opts.log?.("warn", `storage: board ${f.file} refers to missing shared cards ${r.missing.join(", ")}`);
           e = { id: board.id, file: f.file, group: f.group, mtime: st.mtimeMs, birth: st.birthtimeMs || st.ctimeMs, board: r.board, refs: new Set(r.refs), held: new Set(r.refs), used, text };
           this.cache.set(board.id, e);
@@ -778,7 +776,7 @@ export class Storage {
  * 返回要写的文件（和磁盘上一样时 null）、这块白板改了的项（mine）、和磁盘上比变了的项（items，发给别的白板）、和 view 比变了的项（back，这块白板自己要换上）。
  * Sidenote 的先后不算（每块白板上可能不一样）
  */
-export function merged(base: SharedCard | undefined, disk: SharedCard | undefined, view: SharedCard): { file: SharedCardFile | null; mine: string[]; items: string[]; back: string[] } {
+function merged(base: SharedCard | undefined, disk: SharedCard | undefined, view: SharedCard): { file: SharedCardFile | null; mine: string[]; items: string[]; back: string[] } {
   const c = mergeById(base && [base.card], disk ? [disk.card] : [], [view.card]);
   const n = mergeById(base?.sidenotes, disk?.sidenotes ?? [], view.sidenotes);
   const now: SharedCard = { card: c.items[0] ?? view.card, sidenotes: n.items };

@@ -38,7 +38,7 @@ export function balancedSource(text: string, a: number, b: number, headings: boo
 }
 
 /** The Markdown of the current selection */
-export function selectionMd(state: EditorState): string {
+function selectionMd(state: EditorState): string {
   const { from, to, $from, $to } = state.selection;
   if ($from.sameParent($to) && $from.parent.type.name === "paragraph") {
     const p = $from.parent, cell = $from.depth > 0 && /cell|header/.test($from.node(-1).type.spec.tableRole ?? "");

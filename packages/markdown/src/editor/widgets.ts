@@ -30,7 +30,7 @@ const span = (cls: string) => { const e = document.createElement("span"); e.clas
 
 /** HTML only, as in the static render: MathML on the page turns on Chrome's MathML stylesheet, whose :nth-child rules make
  *  every inserted paragraph restyle all the blocks after it (Enter in a long Note took 150–200 ms) */
-export function renderTex(el: HTMLElement, latex: string, display: boolean) {
+function renderTex(el: HTMLElement, latex: string, display: boolean) {
   try { katex.render(latex, el, { displayMode: display, throwOnError: false, output: "html", macros: mathMacros() }); markTex(el, latex); }
   catch { el.textContent = latex; }
 }

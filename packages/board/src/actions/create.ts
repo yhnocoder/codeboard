@@ -104,7 +104,7 @@ const MIN_IMAGE_W = 24;
  * 新图片卡的宽度：图在屏幕上看到的宽（像素 ÷ 倍数，见 core 的 imageScale），最宽 NEW_CARD_W，高度跟着比例。
  * scale = PNG 里没记分辨率时按几倍算：剪贴板里的截图传窗口的 devicePixelRatio，别的（网页上复制的、文件）是 1
  */
-export function imageCardWidth(dataUrl: string, natural: number, scale = 1): number {
+function imageCardWidth(dataUrl: string, natural: number, scale = 1): number {
   const png = /^data:image\/png;base64,/.exec(dataUrl);
   let k = scale;
   if (png) {
@@ -155,7 +155,7 @@ const uriName = (u: string) => { const n = u.replace(/[?#].*$/, "").split("/").p
  * application/vnd.code.uri-list, the same list as JSON in ResourceURLs, the file paths in CodeFiles, and only the first file in
  * text/uri-list; an OS drop may carry only text/uri-list. Web addresses (a link dragged from a page) are not files
  */
-export function droppedUris(dt: DataTransfer): string[] {
+function droppedUris(dt: DataTransfer): string[] {
   const lines = (t: string) => dt.getData(t).split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !l.startsWith("#"));
   const json = (t: string) => { try { const v: unknown = JSON.parse(dt.getData(t) || "[]"); return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []; } catch { return []; } };
   const uris = [() => lines("application/vnd.code.uri-list"), () => json("resourceurls"), () => json("codefiles").map(fileUri), () => lines("text/uri-list")]
@@ -220,7 +220,7 @@ export function newFreeCode(at?: { x: number; y: number }, text = "", lang = "py
 /** 白板自己生成的段（合并、Free code 改动）找宿主要高亮 */
 export async function requestViews(segs: Segment[]) {
   if (!segs.length) return;
-  const v = await ask("views", { segs: unwrap(segs).map((s) => structuredClone(unwrap(s))) }).catch(() => null);
+  const v = await ask("views", { segs }).catch(() => null);
   if (v) setState("views", (o) => ({ ...o, ...v }));
 }
 

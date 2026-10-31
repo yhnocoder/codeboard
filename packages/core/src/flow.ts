@@ -32,10 +32,10 @@ export type Flows = {
 type G = Pick<Board, "cards" | "links"> & Partial<Pick<Board, "born" | "marks">>;
 
 const LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-export const treeLetter = (i: number) => (i < 26 ? LETTERS[i] : LETTERS[Math.floor(i / 26) - 1] + LETTERS[i % 26]);
+const treeLetter = (i: number) => (i < 26 ? LETTERS[i] : LETTERS[Math.floor(i / 26) - 1] + LETTERS[i % 26]);
 
 /** 创建顺序：born 里的号；还没编号的（刚建的、宿主写进来的）排在最后，按 cards 里的先后 */
-export function bornRank(b: Pick<Board, "cards"> & Partial<Pick<Board, "born">>): (id: string) => number {
+function bornRank(b: Pick<Board, "cards"> & Partial<Pick<Board, "born">>): (id: string) => number {
   const index = new Map<string, number>();
   b.cards.forEach((c, i) => index.set(c.id, i));
   return (id) => b.born?.[id] ?? 1e9 + (index.get(id) ?? 0);

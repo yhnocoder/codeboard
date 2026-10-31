@@ -24,8 +24,9 @@ import { NODRAG, CARD_CONTROL, OWNS_POINTER, BOARD_CHROME } from "./ui/guard";
 import { dispatch, matches } from "./keymap";
 import { installShield, raiseShield } from "./ui/shield";
 import * as A from "./actions";
-import { track, undoGesture } from "./gesture";
+import { CALL_DRAG_SLOP, DRAG_SLOP, track, undoGesture } from "./gesture";
 import { togglePreview } from "./state/subboards";
+import { cardSel } from "./cardsel";
 
 const pt = (e: { clientX: number; clientY: number }) => ({ x: e.clientX, y: e.clientY });
 const local = (e: { clientX: number; clientY: number }) => boardPoint(pt(e));
@@ -86,7 +87,7 @@ function clickEdit(kind: "note" | "free", id: string, at: { x: number; y: number
 }
 /** The click on the Note's static view as a place in its text (NoteSpot); undefined where the point maps to no character */
 function staticSpot(id: string, at: { x: number; y: number }): NoteSpot | undefined {
-  const md = document.querySelector<HTMLElement>(`.card[data-id="${CSS.escape(id)}"] .md:is(.nbody, .tx):not(.editing)`);
+  const md = document.querySelector<HTMLElement>(`${cardSel(id)} .md:is(.nbody, .tx):not(.editing)`);
   const last = md?.lastElementChild;
   if (!md || !last) return undefined;
   if (at.y >= last.getBoundingClientRect().bottom) return "end";
@@ -117,7 +118,7 @@ export function cardClick(e: MouseEvent, id: string) {
   armed = null;
   if (!a || a.id !== id || e.shiftKey || e.metaKey || e.ctrlKey) return;
   // 拖着选了字的不算；任务勾选框、引用的点击 MdStatic 自己处理了（停止冒泡，到不了这里）
-  if (Math.hypot(e.clientX - a.x, e.clientY - a.y) >= 3 || !window.getSelection()?.isCollapsed) return;
+  if (Math.hypot(e.clientX - a.x, e.clientY - a.y) >= DRAG_SLOP || !window.getSelection()?.isCollapsed) return;
   if ((e.target as HTMLElement).closest(OWN_CLICK) || !(isSel(id) && sel.cards.length === 1) || editing()?.id === id) return;
   clickEdit(a.kind, id, a, true);
 }
@@ -306,7 +307,7 @@ function startCardDrag(e: PointerEvent, grabbed: string, onClick?: () => void) {
     });
     end();
     void ev;
-  }, 3, () => { pace.stop(); clearTimeout(mergeT); leaveNote(); dropGesture(); });
+  }, DRAG_SLOP, () => { pace.stop(); clearTimeout(mergeT); leaveNote(); dropGesture(); });
 }
 
 function rowAnchor(row: HTMLElement, hostId: string): Anchor | null {
@@ -386,7 +387,7 @@ export function resizeDown(e: PointerEvent, id: string, edges: { left?: boolean;
     // 拉到内容本来的高度附近（±8 屏幕像素）= 回到跟着内容的自动高度；别的高度照存（Note 可以比内容高，也可以矮了在正文里滚）
     const auto = bottom && nat && Math.abs(h - nat.h) < 8 / z;
     live((b) => { const k = hostPlace(b, id)!; k.w = Math.round(w); k.x = Math.round(x); if (edges.top) k.y = Math.round(y); if (bottom || edges.top) k.h = auto ? undefined : Math.round(h - hx); });
-  }, () => { setGuides([]); setSizeHint(null); end(); }, 3, drop);
+  }, () => { setGuides([]); setSizeHint(null); end(); }, DRAG_SLOP, drop);
 }
 
 // 一次滚动手势从哪开始就一直归谁：画布上开始 → 一路平移，经过卡片也不停；停 ~200ms 才算结束。
@@ -445,7 +446,7 @@ export function callPointerDown(e: PointerEvent, cardId: string, seg: string, ca
     }
     const w = worldOf(ev);
     A.expandCall(cardId, seg, call, { x: w.x + 8, y: w.y - 18 });
-  }, 6);
+  }, CALL_DRAG_SLOP);
 }
 
 /**
@@ -502,7 +503,7 @@ export function linkPortDown(e: PointerEvent, from: End, sx: number, sy: number,
     setRubber(null);
     setDropTarget(null);
     if (moved && to) A.addLink(from, to, side);
-  }, 4, stop);
+  }, DRAG_SLOP, stop);
 }
 
 function finishConnect(e: PointerEvent, id: string) {
@@ -702,7 +703,7 @@ export function sectionLabelDown(e: PointerEvent, id: string) {
       }
     }
     g.end();
-  }, 3, () => { pace.stop(); g.drop(); });
+  }, DRAG_SLOP, () => { pace.stop(); g.drop(); });
 }
 /** 拖 Section 的边改大小（框只会比内容大） */
 export function sectionEdgeDown(e: PointerEvent, id: string) {

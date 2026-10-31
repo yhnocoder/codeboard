@@ -1,7 +1,8 @@
 // 旧的分析实现（JS 逐节点遍历），留作对比测试的基准：新实现的结果必须和它逐字段一致。
 import TS from "@vscode/tree-sitter-wasm";
 import type { Parser as TSParser, Node } from "@vscode/tree-sitter-wasm";
-import { BLANK, COMMENT, DOCSTRING, grammarOf, cleanDoc, languageOf, type FileAnalysis, type Sym, type Param, type Arg, type CallSite } from "../../src";
+import { grammarOf, cleanDoc, languageOf, type FileAnalysis, type Sym, type Param, type Arg, type CallSite } from "../../src";
+import { F_BLANK, F_COMMENT, F_DOCSTRING } from "../../src/basics";
 
 type Grammar = "python" | "cpp" | "rust";
 const parsers = new Map<Grammar, TSParser>();
@@ -14,7 +15,7 @@ function parse(g: Grammar, text: string) {
 /** 分析一个文件（或一段代码）。不认识的语言只给空行标记 */
 export function analyzeOld(lang: string, text: string): FileAnalysis {
   const lines = text.split(/\r?\n/);
-  const flags = lines.map((l) => (l.trim() === "" ? BLANK : 0));
+  const flags = lines.map((l) => (l.trim() === "" ? F_BLANK : 0));
   const out: FileAnalysis = { lang, symbols: [], flags, trailing: {}, calls: [], mainBlocks: [], imports: [] };
   const g = grammarOf(lang);
   if (!g || !languageOf(g)) return out;
@@ -35,7 +36,7 @@ function walk(n: Node, fn: (n: Node) => boolean | void) {
   for (const c of n.namedChildren) if (c) walk(c, fn);
 }
 
-/** 注释：整行都是注释的标 COMMENT，行尾注释记列号 */
+/** 注释：整行都是注释的标 F_COMMENT，行尾注释记列号 */
 function comments(root: Node, lines: string[], out: FileAnalysis) {
   const cmt: { r0: number; c0: number; r1: number; c1: number }[] = [];
   walk(root, (n) => {
@@ -46,7 +47,7 @@ function comments(root: Node, lines: string[], out: FileAnalysis) {
       const line = lines[r] ?? "";
       const s = r === c.r0 ? c.c0 : 0, e = r === c.r1 ? c.c1 : line.length;
       const before = line.slice(0, s).trim(), after = line.slice(e).trim();
-      if (!before && !after) out.flags[r] |= COMMENT;
+      if (!before && !after) out.flags[r] |= F_COMMENT;
       else if (before && r === c.r0 && !(r + 1 in out.trailing)) out.trailing[r + 1] = colOfByte(line, s);
     }
   }
@@ -63,7 +64,7 @@ function python(root: Node, lines: string[], out: FileAnalysis) {
   const docstring = (body: Node | null): string | undefined => {
     const first = body?.namedChildren.find((x) => x?.type !== "comment");
     if (first?.type === "expression_statement" && first.namedChildren.length === 1 && first.namedChildren[0]?.type === "string") {
-      for (let r = first.startPosition.row; r <= first.endPosition.row; r++) out.flags[r] |= DOCSTRING;
+      for (let r = first.startPosition.row; r <= first.endPosition.row; r++) out.flags[r] |= F_DOCSTRING;
       return cleanDoc(first.namedChildren[0].text) || undefined;
     }
   };

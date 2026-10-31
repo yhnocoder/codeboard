@@ -42,9 +42,11 @@ export function animate(fn: Anim) {
   if (!rafOn) { rafOn = true; last = performance.now(); requestAnimationFrame(tick); }
 }
 
-export const [cam, setCamStore0] = createStore({ x: 80, y: 80, z: 1 });
+const [cam, setCamStore0] = createStore({ x: 80, y: 80, z: 1 });
+export { cam };
 /** 镜头在动（最后一次变化后 180ms 内）。这时 .world.moving 让浏览器把世界层当位图缩放；停下后按新比例重新清晰绘制 */
-export const [camMoving, setCamMoving] = createSignal(false);
+const [camMoving, setCamMoving] = createSignal(false);
+export { camMoving };
 let still: number | undefined;
 // 「在动」和镜头本身同一批更新：先改镜头再标「在动」的话，第一帧会把按停下比例画的东西（stillZ）多重画一遍
 function setCamStore(p: Partial<{ x: number; y: number; z: number }>) {

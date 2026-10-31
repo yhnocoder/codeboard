@@ -3,7 +3,7 @@ import { OUT, put, type Host } from "../harness";
 import { emptyBoard, type NoteCard } from "@codeboard/core";
 import { test, open, check, until, idle, focusSettled, pmHasSelection } from "../fixtures";
 
-// A Markdown answer copied from a chat app (usage feedback #19): inline formulas right next to CJK text and punctuation,
+// A Markdown answer copied from a chat app: inline formulas right next to CJK text and punctuation,
 // with \text{…} and dots, single letters, "(1,2)" between two formulas, a display block, code spans and a rule
 const PASTED = [
   "**Row-major 和 Col-major**",
@@ -200,7 +200,7 @@ test("pasteDoubledFormulas", async () => {
   await pg.screenshot({ path: path.join(OUT, "md-paste-doubled-warm-ink.png") });
 });
 
-// From usage feedback #54: display formulas written as LaTeX's \[ … \] on their own lines with spaces, plus an inline \( … \) and one in code
+// Display formulas written as LaTeX's \[ … \] on their own lines with spaces, plus an inline \( … \) and one in code
 const BRACKETS = [
   "个线程。此时 occupancy 为", "", "\\[", " 1024/2048 = 50\\% ", "\\]", "",
   "因此，要充分利用线程槽位并达到最大 occupancy，每个 thread block 至少需要 64 个线程。", "",

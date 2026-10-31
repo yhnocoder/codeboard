@@ -39,8 +39,8 @@ import { findKey } from "../ui/find";
 export type MdEditorOpts = {
   value: string;
   placeholder?: string;
-  /** ⌘ 还是 Ctrl+（提示里写的）；不给就看浏览器的平台 */
-  isMac?: boolean;
+  /** Mac shortcuts and key names (⌘, ⌥) or Ctrl+ / Alt+ ones: the caller knows the platform it runs on */
+  isMac: boolean;
   /** 结束编辑：改过给新的原文，没改给 null */
   onDone: (v: string | null, layout?: MdLayout | null) => void;
   /** Table column widths, row heights and code wrap of this Markdown (kept by the caller, not in the Markdown; see layout.ts).
@@ -325,7 +325,7 @@ function Bubble(p: { editor: Editor; tick: Accessor<number>; ui: Ui }) {
       </button>
     );
   };
-  const mod = (p.ui.opts.isMac ?? /Mac|iPhone|iPad/.test(navigator.platform)) ? "⌘" : "Ctrl+";
+  const mod = p.ui.opts.isMac ? "⌘" : "Ctrl+";
   const shift = mod === "⌘" ? "⇧" : "Shift+";
   let busy = false;
   // Formatting is source: the buttons add or remove markers around the selection (toggleWrap), the pressed state is
@@ -600,7 +600,7 @@ function editorExtensions(o: MdEditorOpts, ed: () => Editor, handle: HTMLElement
     // ⌘↵ 要抢在换行（hardBreak 也绑了 Mod-Enter）前面
     Extension.create({ name: "cbSave", priority: 200, addKeyboardShortcuts() { return { "Mod-Enter": () => { exit(); return true; } }; } }),
     MathHintsExt, ...base, Slash, Ref, Emo, Rules, Last, Tail, FindExt(() => uiOf.get(ed())?.closeFind() ?? false),
-    Typora.configure({ openMath: openMathAt, openLink: (e) => uiOf.get(e)?.setLink(e.getAttributes("link").href ?? "") }),
+    Typora.configure({ isMac: o.isMac, openMath: openMathAt, openLink: (e) => uiOf.get(e)?.setLink(e.getAttributes("link").href ?? "") }),
     Placeholder.configure({ placeholder: () => o.placeholder ?? "Type / for blocks", showOnlyCurrent: true }),
     ...(handle ? [DragHandle.configure({ render: () => handle, computePositionConfig: { placement: "left-start", strategy: "fixed" } })] : []),
     Ghost.configure({ complete }),
@@ -883,7 +883,7 @@ export function mountEditor(host: HTMLElement, o: MdEditorOpts): MdEditorHandle 
   const toggleSource = () => {
     if (done) return;
     if (!src) {
-      src = sourceMode(editor, host, { isMac: o.isMac, back: () => toggleSource(), exit: () => finish(), blur: (ev) => blurred(ev) });
+      src = sourceMode(editor, host, { back: () => toggleSource(), exit: () => finish(), blur: (ev) => blurred(ev) });
       o.onSourceMode?.(true);
     } else {
       const s0 = src;

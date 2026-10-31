@@ -41,9 +41,9 @@ export function followPeek(id: number, def: PeekDef) {
   if (!f) return;
   const word = f.label.split(".").pop()!;
   const none = { none: "No definition found", word: f.label };
-  const set = (data: PeekPop["data"]) => updatePop(id, (q) => (q.kind === "peek" ? { ...q, data } : q));
-  updatePop(id, (q) => (q.kind === "peek" ? { ...q, trail: [...(q.trail ?? []), def], data: undefined } : q));
-  ask("peek", { seg: structuredClone(unwrap(def.seg)), line: f.line, col: f.col, word, at: { path: f.path, line: f.line, col: f.col } })
+  const set = (data: PeekPop["data"]) => updatePop(id, "peek", (q) => ({ ...q, data }));
+  updatePop(id, "peek", (q) => ({ ...q, trail: [...(q.trail ?? []), def], data: undefined }));
+  ask("peek", { seg: def.seg, line: f.line, col: f.col, word, at: { path: f.path, line: f.line, col: f.col } })
     .then((r) => set(r ?? none))
     .catch(() => set(none));
 }

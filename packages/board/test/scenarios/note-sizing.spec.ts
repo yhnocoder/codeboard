@@ -1,6 +1,6 @@
 import * as path from "node:path";
 import { OUT, type Host } from "../harness";
-import { emptyBoard, type Board, type NoteCard } from "@codeboard/core";
+import { emptyBoard, migrateBoard, type Board, type NoteCard } from "@codeboard/core";
 import { test, open, check, light, until, idle, hold } from "../fixtures";
 
 const LONG = [
@@ -111,9 +111,11 @@ test("noteGhostStaysInCard", async () => {
   check("noteGhostStaysInCard ghost visible in body", !!gh && gh.bottom <= Math.min(body.bottom, c.bottom) + 0.5 && gh.top >= body.top - 0.5, { gh, body, card: c });
 });
 
-/** Fit Content is in the menu of a Note and of a Text with a fixed height (an old board's); it grows the card to its content, animated, in one undo step */
+/** Fit Content is in a Note's menu; it grows the card to its content, animated, in one undo step. A Text has no height to fit:
+ *  an old board's (v9) Text with a fixed height loads without it, and its menu has no Fit Content */
 test("noteTextFitContent", async () => {
-  const h = await open({ board: board([{ md: LONG, h: 150 }, { md: "A Text card that was a Note with a fixed height.\n\nSecond paragraph.\n\nThird.", h: 40, look: "text" }]), light, w: 1100, h: 700 });
+  const old = board([{ md: LONG, h: 150 }, { md: "A Text card that was a Note with a fixed height.\n\nSecond paragraph.\n\nThird.", h: 40, look: "text" }]);
+  const h = await open({ board: { ...migrateBoard(JSON.parse(JSON.stringify({ ...old, version: 9 }))), cam: old.cam }, light, w: 1100, h: 700 });
   const pg = h.page;
   await idle(h);
   await cardShot(h, "n0", "05-fit-content-before");
@@ -147,14 +149,10 @@ test("noteTextFitContent", async () => {
   await idle(h);
   check("noteTextFitContent one undo step", placeH(h, "n0") === 150, { h: placeH(h, "n0") });
 
-  const textMenu = await items(`${card("n1")} .tx`);
-  check("noteTextFitContent text menu", textMenu.some((t) => t.includes("Fit Content")), { textMenu });
-  if (!textMenu.some((t) => t.includes("Fit Content"))) return;
-  await pg.locator(".ctx button", { hasText: "Fit Content" }).click();
-  await idle(h);
   const tc = await rect(h, card("n1")), tx = await rect(h, `${card("n1")} .tx`);
-  await cardShot(h, "n1", "05-fit-content-text-after");
-  check("noteTextFitContent text grows to content", placeH(h, "n1") === undefined && tx.bottom <= tc.bottom + 0.5, { h: placeH(h, "n1"), tc, tx });
+  check("noteTextFitContent old text loads without its height", placeH(h, "n1") === undefined && tx.bottom <= tc.bottom + 0.5, { h: placeH(h, "n1"), tc, tx });
+  const textMenu = await items(`${card("n1")} .tx`);
+  check("noteTextFitContent text menu has no Fit Content", textMenu.length > 0 && !textMenu.some((t) => t.includes("Fit Content")), { textMenu });
 });
 
 /** Moving or resizing a card hides a ghost completion that is showing, and none appears until the gesture ends */

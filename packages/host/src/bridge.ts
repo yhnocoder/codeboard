@@ -137,7 +137,7 @@ export async function viaOps(t: OpTable, op: string, overload?: string): Promise
  * DispatchStub：stub(device, …) → REGISTER_DISPATCH(stub, &fn) 注册的各个设备的 fn（CUDA 在前；含 build/ 里生成的 Ufunc*）；
  * 一个注册都找不到、而 stub 是 ufunc 算子的（add_stub，没构建过）→ ufunc::add
  */
-export async function viaStub(stub: string, t: OpTable): Promise<Crossed[]> {
+async function viaStub(stub: string, t: OpTable): Promise<Crossed[]> {
   const out: Crossed[] = [];
   for (const r of await stubRegs(t, stub)) {
     const key = stubDevice(r.how, r.abs);

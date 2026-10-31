@@ -40,7 +40,7 @@ export function toggleBack(id: string) {
   mutate((b) => { const l = b.links.find((k) => k.id === id); if (!l || !canMark(l)) return; if (l.back) delete l.back; else l.back = true; });
 }
 
-export const isMsg = (id: string) => { const c = cardById(id)?.card; return c?.kind === "note" && !!c.msg; };
+const isMsg = (id: string) => { const c = cardById(id)?.card; return c?.kind === "note" && !!c.msg; };
 
 /** 这条 RPC 箭头两段中间的消息卡（发送点 → 消息 → 接收处）：有就回消息卡 id 和另一段 */
 export function msgOf(id: string): { card: string; other: Link; first: boolean } | undefined {
@@ -121,7 +121,7 @@ export function toggleStart(cardId: string) {
   mutate((b) => { const p = b.place[host]; if (!p) return; if (p.start) delete p.start; else p.start = true; });
 }
 /** 起点卡（按创建顺序）：只读 Place.start，拖动不重算 */
-export const starts = rooted(() => createMemo(() => startCards(state.board)));
+const starts = rooted(() => createMemo(() => startCards(state.board)));
 
 /** Walkthrough 时每张卡是第几步（算出来的，不存；走过的卡不再走） */
 export const walkSteps = rooted(() => createMemo(() => {

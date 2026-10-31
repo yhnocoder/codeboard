@@ -114,17 +114,6 @@ function noteInline(note: string, trusted: string[]): string {
     return esc(note);
   }
 }
-const notes = new Map<string, string>();
-/** 编辑器里批注标签的 HTML（和静态显示画的一样） */
-export function annotNoteHtml(note: string): string {
-  let h = notes.get(note);
-  if (h !== undefined) return h;
-  const trusted: string[] = [];
-  h = untrust(purify(noteInline(note, trusted)), trusted);
-  if (notes.size >= MAX) notes.delete(notes.keys().next().value!);
-  notes.set(note, h);
-  return h;
-}
 
 function nodeHtml(n: PMNode, cx: Cx | null): string {
   if (n.isText) return esc(n.text!);
@@ -156,7 +145,7 @@ export function renderMd(src: string): string {
   cache.set(src, h);
   return h;
 }
-export const clearMdCache = () => { cache.clear(); notes.clear(); };
+export const clearMdCache = () => cache.clear();
 export const mdCached = (src: string) => cache.has(src);
 
 function render(src: string): string {

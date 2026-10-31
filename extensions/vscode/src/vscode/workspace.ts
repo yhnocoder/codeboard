@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import * as path from "node:path";
 import { vscodeScratch, isScratch } from "./scratch";
-import { Emitter, type AiChatRequest, type AiChatResult, type AiModel, type Workspace } from "@codeboard/core";
+import { Emitter, type AiChatRequest, type AiChatResult, type AiModel, type PickIcon, type Workspace } from "@codeboard/core";
 import { deepseekComplete } from "@codeboard/host/deepseek";
 import { chatComplete } from "@codeboard/host/complete";
 
@@ -11,11 +11,11 @@ declare const __CODEBOARD_BUILD__: string | undefined;
 const BUILD = typeof __CODEBOARD_BUILD__ === "string" ? __CODEBOARD_BUILD__ : "";
 
 // 历史版本的只读文档：codeboard-git:/<path>?{root, commit, path}
-export const GIT_SCHEME = "codeboard-git";
-export function gitUri(root: string, commit: string, rel: string): vscode.Uri {
+const GIT_SCHEME = "codeboard-git";
+function gitUri(root: string, commit: string, rel: string): vscode.Uri {
   return vscode.Uri.from({ scheme: GIT_SCHEME, path: `/${commit.slice(0, 7)}/${rel}`, query: JSON.stringify({ root, commit, path: rel }) });
 }
-export function parseGitUri(u: vscode.Uri): { root: string; commit: string; path: string; abs: string } | null {
+function parseGitUri(u: vscode.Uri): { root: string; commit: string; path: string; abs: string } | null {
   try {
     const q = JSON.parse(u.query);
     return { ...q, abs: path.join(q.root, q.path) };
@@ -72,8 +72,7 @@ async function copilotAsk(system: string, prompt: string, o?: { signal?: AbortSi
     const all = await lm.selectChatModels();
     if (!all.length) return undefined;
     // 补全要快：优先小模型
-    const fast = /mini|haiku|flash|nano|small|fast/i;
-    const m = all.find((x) => fast.test(x.family) || fast.test(x.id)) ?? all[0];
+    const m = all.find(isFast) ?? all[0];
     const cts = new vscode.CancellationTokenSource();
     o?.signal?.addEventListener("abort", () => cts.cancel());
     if (o?.signal?.aborted) return undefined;
@@ -85,6 +84,11 @@ async function copilotAsk(system: string, prompt: string, o?: { signal?: AbortSi
 }
 
 type LmModel = vscode.LanguageModelChat & { capabilities?: { supportsImageToText?: boolean } };
+/** A small, quick model (for completions) */
+/** The codicon for each PickItem icon */
+const CODICON: Record<PickIcon, string> = { board: "layout", boards: "files", folder: "folder", file: "folder-opened", add: "add", class: "symbol-class", function: "symbol-method" };
+const FAST_MODEL = /mini|haiku|flash|nano|small|fast/i;
+const isFast = (m: vscode.LanguageModelChat) => FAST_MODEL.test(m.family) || FAST_MODEL.test(m.id);
 const lmApi = () => (vscode as any).lm as typeof vscode.lm | undefined;
 // 1.143 的模型有 capabilities.supportsImageToText（@types/vscode 1.90 里还没有）
 const aiModel = (m: LmModel): AiModel => ({ id: m.id, name: m.name || m.family || m.id, vendor: m.vendor, vision: !!m.capabilities?.supportsImageToText });
@@ -109,8 +113,7 @@ async function lmChat(model: string | undefined, req: AiChatRequest, o: { signal
     if (req.image && !m.capabilities?.supportsImageToText) return { fail: "nomodel", message: `${aiModel(m).name} can't read images. Pick another model in CodeBoard Settings › AI`, via: aiModel(m).name };
   } else {
     const ok = all.filter((x) => !req.image || x.capabilities?.supportsImageToText);
-    const fast = /mini|haiku|flash|nano|small|fast/i;
-    m = (req.fast ? ok.find((x) => fast.test(x.family) || fast.test(x.id)) : ok.find((x) => !fast.test(x.family) && !fast.test(x.id))) ?? ok[0];
+    m = (req.fast ? ok.find(isFast) : ok.find((x) => !isFast(x))) ?? ok[0];
     if (!m) return { fail: "nomodel", message: all.length ? "No VS Code language model here reads images" : undefined };
   }
   const via = aiModel(m).name;
@@ -237,7 +240,10 @@ export function vscodeWorkspace(ctx: vscode.ExtensionContext): Workspace {
       info: async (text, ...actions) => vscode.window.showInformationMessage(text, ...actions),
       warn: async (text, o, ...actions) => vscode.window.showWarningMessage(text, { modal: o.modal, detail: o.detail }, ...actions),
       error: async (text, ...actions) => vscode.window.showErrorMessage(text, ...actions),
-      pick: async (items, o) => vscode.window.showQuickPick(items, o),
+      pick: async (items, o) => {
+        const shown = items.map((it) => ({ label: it.icon ? `$(${CODICON[it.icon]}) ${it.label}` : it.label, description: it.description, detail: it.detail, it }));
+        return (await vscode.window.showQuickPick(shown, o))?.it;
+      },
       // A secret is pasted from elsewhere: going to copy it must not close the box
       input: async (o) => vscode.window.showInputBox({ title: o.title, prompt: o.prompt, value: o.value, placeHolder: o.placeHolder, password: o.password, ignoreFocusOut: o.password }),
       openDialog: async (o) => {

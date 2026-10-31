@@ -6,8 +6,8 @@ import { prompts } from "@codeboard/host/prompts";
 import { DEEPSEEK_SECRET } from "./vscode/workspace";
 
 export function registerCommands(ctx: vscode.ExtensionContext, panels: BoardHub, store: Storage) {
-  const cmd = (id: string, fn: (...a: any[]) => unknown) => ctx.subscriptions.push(vscode.commands.registerCommand(id, fn));
-  for (const [id, fn] of Object.entries(makeActions(panels, store))) cmd(id, fn as (...a: any[]) => unknown);
+  const cmd = (id: string, fn: Parameters<typeof vscode.commands.registerCommand>[1]) => ctx.subscriptions.push(vscode.commands.registerCommand(id, fn));
+  for (const [id, fn] of Object.entries(makeActions(panels, store))) cmd(id, fn);
   cmd("codeboard.setDeepseekKey", async () => {
     const key = await prompts(panels.all().find((p) => p.view.active)).input({ title: "DeepSeek API Key", ok: "Save", prompt: "Used for gray inline completions in Notes and for the AI tools (Extract Text, Convert to SVG, Auto Focus). Stored in VS Code's secret storage.", password: true, placeHolder: "sk-…" });
     if (!key?.trim()) return;

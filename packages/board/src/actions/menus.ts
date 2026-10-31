@@ -168,9 +168,10 @@ function cardItems(id: string, x: number, y: number): Item[] {
     ];
     // Box 不和别的互转（底色在选中时的工具条上）
     if (c.look === "box") return [drawSvgItem(id), autoFocusItem(id), edit, ...tail];
-    // Note 只定高度（宽度是折行用的，不动）：Fit Content = 回到跟着内容长高。Text 没有改高度的把手，只有旧白板里定了高度的才需要它
+    // Text 没有改高度的把手（只拖宽度），所以也没有 Fit Content
+    if (c.look === "text") return [{ label: "Turn into Note", run: () => turnNote(id, "note") }, drawSvgItem(id), autoFocusItem(id), edit, ...tail];
+    // Note 只定高度（宽度是折行用的，不动）：Fit Content = 回到跟着内容长高
     const fit: Item = { label: "Fit Content", kbd: kbd("fitContent"), disabled: placeOf(id).h ? false : "Already as tall as its content", run: () => fitContent([id]) };
-    if (c.look === "text") return [{ label: "Turn into Note", run: () => turnNote(id, "note") }, ...(placeOf(id).h ? [fit] : []), drawSvgItem(id), autoFocusItem(id), edit, ...tail];
     const parts = headingSplitCount(id);
     const split: Item = { label: "Split by Headings", hint: parts ? `${parts + 1} cards, linked by arrows` : undefined, disabled: parts ? false : "No headings to split at", run: () => void splitByHeadings(id) };
     return [{ label: "Turn into Text", run: () => turnNote(id, "text") }, split, fit, drawSvgItem(id), autoFocusItem(id), edit, ...tail];

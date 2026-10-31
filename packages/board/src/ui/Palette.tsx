@@ -60,7 +60,7 @@ export function Palette() {
                 return (
                   <button class="cand" classList={{ on: idx() === i() }} onPointerMove={(e) => { if (e.movementX || e.movementY) setI(idx()); }} onClick={(e) => run(it, e.altKey)}>
                     <span class="kind">{icon(it)}</span>
-                    <Show when={it.kind === "card" && it.num}><span class="step sm">{(it as any).num}</span></Show>
+                    <Show when={it.kind === "card" ? it.num : undefined}>{(n) => <span class="step sm">{n()}</span>}</Show>
                     <span class="lb">{it.label}</span><small>{it.detail}</small>
                   </button>
                 );

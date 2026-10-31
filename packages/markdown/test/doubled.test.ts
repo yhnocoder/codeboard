@@ -5,7 +5,7 @@ import { mdSchema, parseMd } from "../src/schema";
 import { mathInSlice } from "../src/editor/pastemath";
 import { undoubleTex } from "../src/doubled";
 
-// Copied as text from a web page and an e-book (usage feedback #29): each typeset formula comes out as the shown text
+// Copied as text from a web page and an e-book: each typeset formula comes out as the shown text
 // followed by its TeX ("N×N" + "N\times N")
 const DOUBLED: [string, string][] = [
   ["本章采用一种简化方法：取围绕目标像素并包含目标像素在内的 N×NN\\times N 像素块的简单平均值。",

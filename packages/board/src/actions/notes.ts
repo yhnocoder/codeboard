@@ -14,6 +14,7 @@ import { addCards, requestViews } from "./create";
 import { tune } from "../state/tune";
 import { hostRect, popCard, revealCard } from "./common";
 import { lastPointer } from "../state/measure";
+import { cardSel } from "../cardsel";
 
 let hoverT: number | undefined, leaveT: number | undefined;
 export function hoverMarker(el: Element, ids: string[]) {
@@ -45,9 +46,10 @@ function showNotes(el: Element, ids: string[], pin: boolean) {
 
 export function openAddNote(at: Anchor, tab: "code" | "paste" | "text" | "link" | "card" = "code") {
   const host = hostOf(at.card);
-  const el = (at.lines && document.querySelector(`.card[data-id="${host}"] .addn`)) || document.querySelector(`.card[data-id="${host}"]`);
+  const el = (at.lines && document.querySelector(`${cardSel(host)} .addn`)) || document.querySelector(`${cardSel(host)}`);
   openPop({ kind: "addNote", at, tab }, el ? { el, prefer: "right" } : lastPointer());
 }
+/** @public run from the key table (keymap.ts) */
 export function addSidenoteUI() {
   const ls = lineSel();
   if (ls) openAddNote({ card: ls.card, seg: ls.seg, lines: [ls.start, ls.end] });
@@ -140,9 +142,9 @@ export async function showPeek(el: Element, cardId: string, segId: string, line:
   const pid = openPop({ kind: "peek", card: cardId, seg: segId, line, word }, { el, prefer: "below" });
   if (pin) pinPop(pid);
   try {
-    const r = await ask("peek", { seg: structuredClone(unwrap(s)), line, col, word, at });
-    updatePop(pid, (p) => ({ ...(p as any), data: r ?? { none: "No definition found", word } }));
-  } catch { updatePop(pid, (p) => ({ ...(p as any), data: { none: "No definition found", word } })); }
+    const r = await ask("peek", { seg: s, line, col, word, at });
+    updatePop(pid, "peek", (p) => ({ ...p, data: r ?? { none: "No definition found", word } }));
+  } catch { updatePop(pid, "peek", (p) => ({ ...p, data: { none: "No definition found", word } })); }
 }
 
 /** Mark 的颜色（它的箭头跟着变） */
@@ -176,7 +178,7 @@ function topIn(el: HTMLElement, card: HTMLElement): number {
  * （新卡的标题进了卡头，正文少了标题那一块）。量不到（不在画面上、标题对不上）回 null，按估计摆
  */
 function measureSplit(id: string, cut: number, n: number): { tops: number[]; root: number; parts: number[] } | null {
-  const card = document.querySelector<HTMLElement>(`.card[data-id="${CSS.escape(id)}"]`);
+  const card = document.querySelector<HTMLElement>(`${cardSel(id)}`);
   const body = card?.querySelector<HTMLElement>(".nbody.md:not(.editing)");
   if (!card || !body) return null;
   const hs = [...body.children].filter((e): e is HTMLElement => /^H[1-6]$/.test(e.tagName) && +e.tagName[1] <= cut);

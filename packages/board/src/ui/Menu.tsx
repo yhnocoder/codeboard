@@ -3,6 +3,7 @@ import { Icon } from "./icons";
 import { place, virtual, scrollIntoBox } from "@yhnocoder/markdown/ui";
 import { useOverlay } from "./overlay";
 import { useListNav } from "./hooks";
+import { TIP_DELAY } from "../state/timing";
 
 export type Item =
   | { label: string; kbd?: string; run?: () => void; disabled?: boolean | string; checked?: boolean; danger?: boolean; sub?: Item[]; hint?: string; head?: true; keep?: true; inset?: true }
@@ -25,7 +26,7 @@ export function openMenu(items: Item[], x: number, y: number, o: { up?: boolean 
 /** 元素正下方、左对齐：卡头的 ⋯、版本号之类的按钮弹菜单的位置 */
 export const below = (el: Element) => { const r = el.getBoundingClientRect(); return [r.left, r.bottom + 4] as const; };
 export const openMenuAt = (items: Item[], el: Element) => openMenu(items, ...below(el));
-export const closeMenu = () => setMenu(null);
+const closeMenu = () => setMenu(null);
 export const menuOpen = () => !!menu();
 /** 按钮自己弹出的菜单是不是还开着：卡头的 ⋯ 平时藏着（styles.css .cmenu），它的菜单开着时鼠标移进菜单也得留着 */
 export function ownMenu() {
@@ -269,7 +270,7 @@ export function TooltipLayer() {
     const b = (e.target as HTMLElement).closest?.("[data-tip]") as HTMLElement | null;
     if (!b) return;
     clearTimeout(timer);
-    if (tip() || performance.now() < warmUntil) show(b); else timer = window.setTimeout(() => show(b), 500);
+    if (tip() || performance.now() < warmUntil) show(b); else timer = window.setTimeout(() => show(b), TIP_DELAY);
   };
   const out = (e: PointerEvent) => {
     const b = (e.target as HTMLElement).closest?.("[data-tip]");

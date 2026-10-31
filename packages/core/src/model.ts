@@ -7,7 +7,7 @@
 
 import type { BoundVal, CallAlt, Var } from "@codeboard/analysis/basics";
 
-export const BOARD_VERSION = 9;
+export const BOARD_VERSION = 10;
 
 /** 一段代码钉在哪个版本上 */
 export type Version =
@@ -189,7 +189,6 @@ export type CompareCard = CardBase & {
 export type BoardCard = CardBase & { kind: "board"; board: string; pcols?: 2 };
 
 export type Card = CodeCard | NoteCard | ImageCard | WebCard | LinksCard | CompareCard | BoardCard;
-export type CardKind = Card["kind"];
 
 export type Place = {
   x: number;
@@ -343,7 +342,6 @@ export type Sidenote = {
   | { kind: "link"; url: string; title?: string }
   | { kind: "card"; card: string }
 );
-export type SidenoteKind = Sidenote["kind"];
 
 /** 图标：包名 + 图标名。builtin = 内置的十几个；emoji = 系统 emoji（name 就是那个字符）；其余是 Sticker Packs 目录里的包 */
 export type IconRef = { pack: string; name: string };
@@ -372,7 +370,7 @@ export type Camera = { x: number; y: number; z: number };
 export const homeCam = (): Camera => ({ x: 80, y: 80, z: 1 });
 
 export type Board = {
-  version: 9;
+  version: 10;
   id: string;
   name: string;
   /** 镜头：不写进白板文件（光是平移、缩放就改了文件，项目里用 git 管白板时全是噪音），每台机器各记各的（宿主的工作区状态，按白板 id） */
@@ -411,7 +409,7 @@ export type BoardFile = Omit<Board, "cards" | "cam"> & { cards: (Card | SharedRe
 /** 一张共享卡的内容：卡本身 + 跟着它走的 Sidenote（挂在它上面、不是 boardOnly、不是 kind card） */
 export type SharedCard = { card: Card; sidenotes: Sidenote[] };
 /** 卡库里的文件 cards/<id>.json。写盘时按项（卡、每条 Sidenote）和磁盘上的合并（storage/boards.ts merged） */
-export type SharedCardFile = SharedCard & { version: 9 };
+export type SharedCardFile = SharedCard & { version: 10 };
 
 /** subs = 这块白板上嵌着的子白板（去重，按出现的先后；侧栏按它缩进成树） */
 export type BoardMeta = { id: string; name: string; group?: string; cards: number; stale?: number; subs?: string[] };
@@ -455,7 +453,7 @@ function compareName(c: CompareCard, b: Pick<Board, "cards">) {
 }
 const shortName = (s: string) => s.split(".").pop() ?? s;
 
-export function codeTitle(c: CodeCard): string {
+function codeTitle(c: CodeCard): string {
   const s = c.segments[0];
   if (!s) return "Empty";
   if (s.src.kind === "free") return "Code";
@@ -618,8 +616,6 @@ export function stickerWhere(b: Pick<Board, "links">, s: Sticker): { card?: stri
   return l ? { card: l.from.card, seg: l.from.seg, line: l.from.line } : {};
 }
 
-/** 画布上摆着的卡（有 Place 的），按叠放顺序 */
-export const placedCards = (b: Pick<Board, "cards" | "place">): Card[] => b.cards.filter((c) => b.place[c.id]);
 
 export const segOf = (c: CodeCard, seg?: string) => (seg ? c.segments.find((s) => s.id === seg) : c.segments[0]);
 

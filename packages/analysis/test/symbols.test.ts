@@ -2,7 +2,8 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { initAnalysis, analyze, planSelection, listsMembers, varCandidates, symbolAt, pyprojectScripts, initExports, BLANK, COMMENT, DOCSTRING, type FileAnalysis } from "../src";
+import { initAnalysis, analyze, planSelection, listsMembers, varCandidates, symbolAt, pyprojectScripts, initExports, type FileAnalysis } from "../src";
+import { F_BLANK, F_COMMENT, F_DOCSTRING } from "../src/basics";
 
 const repo = fileURLToPath(new URL("../../../examples/nano-vllm", import.meta.url));
 const show = (rev: string, path: string) => execFileSync("git", ["-C", repo, "show", `${rev}:${path}`], { encoding: "utf8" });
@@ -26,10 +27,10 @@ describe("analyze (python)", () => {
   it("flags comments, docstrings, blank lines and trailing comments", () => {
     const src = 'def f(a):\n    """doc\n    more"""\n    # note\n\n    x = 1  # tail\n    return x\n';
     const a = analyze("python", src);
-    expect(a.flags[1] & DOCSTRING).toBeTruthy();
-    expect(a.flags[2] & DOCSTRING).toBeTruthy();
-    expect(a.flags[3] & COMMENT).toBeTruthy();
-    expect(a.flags[4] & BLANK).toBeTruthy();
+    expect(a.flags[1] & F_DOCSTRING).toBeTruthy();
+    expect(a.flags[2] & F_DOCSTRING).toBeTruthy();
+    expect(a.flags[3] & F_COMMENT).toBeTruthy();
+    expect(a.flags[4] & F_BLANK).toBeTruthy();
     expect(a.flags[5]).toBe(0);
     expect(a.trailing[6]).toBe(11);
   });

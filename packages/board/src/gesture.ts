@@ -16,11 +16,16 @@ export function holdGesture(drop: () => void): () => void {
   return () => { open.delete(drop); };
 }
 
+/** How far (screen px) a press moves before it is a drag, not a click */
+export const DRAG_SLOP = 3;
+/** A call in code is clicked (expand) far more often than dragged (to a card): it needs a longer move */
+export const CALL_DRAG_SLOP = 6;
+
 /**
  * A pointer drag: `move` from the first move past `threshold` screen pixels on, `up` once on release or cancel (moved = it got
  * past the threshold). Pointer capture is taken on the target, so the drag keeps going outside the window
  */
-export function track(e: PointerEvent, move: (ev: PointerEvent) => void, up: (ev: PointerEvent, moved: boolean) => void, threshold = 3, drop?: () => void) {
+export function track(e: PointerEvent, move: (ev: PointerEvent) => void, up: (ev: PointerEvent, moved: boolean) => void, threshold = DRAG_SLOP, drop?: () => void) {
   const sx = e.clientX, sy = e.clientY;
   let moved = false;
   holdPointer(e);

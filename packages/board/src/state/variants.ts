@@ -6,7 +6,7 @@ import { boardSignal, onBoardSwitch } from "./root";
 export type VLive = { latest?: { label: string; segs: Segment[]; views: Record<string, SegView> }; behind?: Record<string, number> };
 export const [vlive, setVlive] = createStore<Record<string, VLive>>({});
 /** 对比基准（卡 id → "up" | "latest" | Variant id）；默认上游。只是看的方式，不存盘 */
-export const [vbase, setVbase] = createStore<Record<string, string>>({});
+export const [vbase, setVbase] = createStore<Record<string, string | undefined>>({});
 /** 合进上游的 Variant（卡头的提示点，Convert / Keep Variants） */
 export const [merged, setMergedSig] = boardSignal<Record<string, { vid: string; into: string; tip: string }>>({});
 

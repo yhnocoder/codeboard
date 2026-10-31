@@ -10,6 +10,7 @@ import { Editable } from "../ui/Editable";
 import { Icon } from "../ui/icons";
 import { sectionLabelDown, sectionEdgeDown } from "../interact";
 import * as A from "../actions";
+import { SECTION_PEEK_OUT } from "../state/timing";
 
 const ordered = () => state.board.sections.filter((s) => !hiddenByAncestor(s)).sort((a, b) => depthOf(a) - depthOf(b));
 
@@ -67,7 +68,7 @@ export function SectionLabels() {
         const [peek, setPeek] = createSignal<0 | 1 | 2>(0);
         let t: ReturnType<typeof setTimeout> | undefined;
         const enter = () => { clearTimeout(t); if (s.collapsed && peek() !== 1) t = setTimeout(() => setPeek(1), peek() ? 0 : PEEK_DELAY); };
-        const leave = () => { clearTimeout(t); if (peek() !== 1) return setPeek(0); setPeek(2); t = setTimeout(() => setPeek(0), 140); };
+        const leave = () => { clearTimeout(t); if (peek() !== 1) return setPeek(0); setPeek(2); t = setTimeout(() => setPeek(0), SECTION_PEEK_OUT); };
         onCleanup(() => clearTimeout(t));
         // 折叠的样子（「· N cards」、朝右的小箭头）：折叠动画一开始就显示，展开到一半收起（state/fold.ts）
         const shut = createMemo(() => { const f = foldOf(s.id); return f ? shutLook(f) : !!s.collapsed; });

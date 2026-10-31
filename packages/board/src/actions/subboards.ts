@@ -12,6 +12,7 @@ import { settleHome, frames as sectionFrames } from "../state/sections";
 import { animScale } from "../state/ghost";
 import { ask, send } from "../host";
 import { promptText } from "../ui/Menu";
+import { cardSel } from "../cardsel";
 
 const subsOf = (id: string) => state.boards.find((m) => m.id === id)?.subs;
 const nameOf = (id: string) => state.boards.find((m) => m.id === id)?.name ?? "Board";
@@ -44,7 +45,9 @@ export function leaveBoard(depth?: number, walkHop?: WalkHop) {
  * 这个请求随着换白板作废（reject），转场已经交给 switchGate；宿主出错也收回来
  */
 function switched(r: Promise<string | null>) {
-  r.then((why) => { if (why) { refused(); toast(why); } }, refused);
+  // the transition this request started: a late answer (or the ask timing out) must not pull back a later one
+  const t = transit;
+  r.then((why) => { if (why) { refused(t); toast(why); } }, () => refused(t));
 }
 
 // 换白板是宿主发来新的 init（整块白板换掉），两块白板不会同时在页面上：先把这一块淡出（同时名字开始飞），淡出完之前收到的 init 先压着
@@ -75,7 +78,7 @@ let transit: Transit | null = null;
 const titleAt = new Map<string, Spot>();
 
 const spotOf = (el: HTMLElement): Spot => { const r = el.getBoundingClientRect(); return { r, font: parseFloat(getComputedStyle(el).fontSize) * (r.height / (el.offsetHeight || r.height || 1)) }; };
-const titleEl = (frame: string) => document.querySelector<HTMLElement>(`.card[data-id="${CSS.escape(frame)}"] .sbname`);
+const titleEl = (frame: string) => document.querySelector<HTMLElement>(`${cardSel(frame)} .sbname`);
 /** 替身放在框上名字的位置时的 transform（替身的盒子在面包屑那一格上，transform-origin 左上角） */
 function onTitle(title: Spot, crumb: Spot): string {
   const k = title.font / crumb.font;
@@ -160,9 +163,8 @@ function finish(t: Transit) {
   setCrumbMorph(false);
 }
 
-function refused() {
-  const t = transit;
-  if (t && !t.gated) { clearTimeout(t.timer); giveUp(t); }
+function refused(t: Transit | null) {
+  if (t && transit === t && !t.gated) { clearTimeout(t.timer); giveUp(t); }
 }
 /**
  * hostio.ts 收到 init 时问：正在进出子白板、旧白板还没淡出完，就返回淡出完的时候（init 和后面的消息先压着，到时再按顺序处理）。
@@ -311,7 +313,8 @@ export async function deleteFrameBoard(id: string) {
   clearSel();
 }
 
-/** Esc：没有别的可取消的时候回上一级 */
+/** Esc：没有别的可取消的时候回上一级
+ *  @public run from the key table (keymap.ts) */
 export const canLeave = () => crumbs().length > 0 && !sel.cards.length && !sel.links.length && !sel.sections.length;
 
 /** 点 [[引用]]：这块白板上的卡选中、带到眼前；子白板里的卡进那块子白板（更深的一路进去）再带到它；Section 选中、框进视口；

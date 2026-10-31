@@ -138,7 +138,7 @@ export function CommitsPop(p: PopProps<"commits">) {
         </div>
       </Show>
       <div class="an-body"><input class="fld" placeholder="Enter commit, branch or tag" value={ref()} onInput={(e) => setRef(e.currentTarget.value)} onKeyDown={(e) => { keepKey(e); if (e.key === "Enter") go(); if (e.key === "Escape") closePop(p.inst.id); }} /></div>
-      <Show when={A.uncommitted(cardById(p.pop.card)?.card as any) || state.stale[p.pop.seg.id]?.state === "uncommitted"}>
+      <Show when={A.uncommitted(cardById(p.pop.card)?.card) || state.stale[p.pop.seg.id]?.state === "uncommitted"}>
         <button class="cand" onClick={() => { closePop(p.inst.id); A.openWorktreeDiff(p.pop.card); }}><span class="lb">Show Uncommitted Changes</span><small>HEAD vs Working Tree</small></button>
       </Show>
     </>

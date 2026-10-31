@@ -3,6 +3,7 @@
 import { mdBlockStarts } from "@yhnocoder/markdown";
 import { worldAt } from "./state/measure";
 import { cardById } from "./state/store";
+import { cardSel } from "./cardsel";
 
 type Slots = {
   card: string;
@@ -22,7 +23,7 @@ function blocksOf(body: HTMLElement | null, md: string): HTMLElement[] | null {
 }
 
 function measure(id: string): Slots | null {
-  const el = document.querySelector<HTMLElement>(`.card[data-id="${CSS.escape(id)}"]`);
+  const el = document.querySelector<HTMLElement>(`${cardSel(id)}`);
   const face = el?.querySelector<HTMLElement>(":scope > .cface");
   const c = cardById(id)?.card;
   if (!el || !face || c?.kind !== "note") return null;

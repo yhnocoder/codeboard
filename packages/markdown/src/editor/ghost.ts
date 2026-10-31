@@ -9,7 +9,7 @@ import { revealIn, scroller } from "../ui/reveal";
 
 const CARET = "\uE000";
 /** 问 Markdown 原文：模型看到 **b**、`c`、$x$、[[Ref]]、# 才知道该写 Markdown */
-export function mdAround(s: EditorState, pos: number): [string, string] {
+function mdAround(s: EditorState, pos: number): [string, string] {
   try {
     const md = sourceMd(s.tr.insertText(CARET, pos).doc.toJSON());
     const i = md.indexOf(CARET);
@@ -18,7 +18,7 @@ export function mdAround(s: EditorState, pos: number): [string, string] {
   return [s.doc.textBetween(0, pos, "\n", " "), s.doc.textBetween(pos, s.doc.content.size, "\n", " ")];
 }
 
-export const ghostKey = new PluginKey<G>("cbGhost");
+const ghostKey = new PluginKey<G>("cbGhost");
 
 /** 编辑器在自己会滚的框里时：灰字整段滚进来，光标那一行不滚出去 */
 function reveal(view: EditorView, pos: number) {

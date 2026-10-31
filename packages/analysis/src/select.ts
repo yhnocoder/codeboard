@@ -1,4 +1,5 @@
-import { BLANK, symbolAt, type FileAnalysis, type Sym } from "./index";
+import { symbolAt, type FileAnalysis, type Sym } from "./index";
+import { F_BLANK } from "./basics";
 
 export type Sel = { startLine: number; startCol: number; endLine: number; endCol: number }; // 1-based 行，0-based 列
 
@@ -13,14 +14,14 @@ export type Plan =
 /** 拆分选区的一块：一个完整定义，或定义之间 / 前后的其余代码（模块级语句、半个函数） */
 export type Part = { sym: Sym } | { range: Range };
 
-export const UPGRADE = 0.9;
+const UPGRADE = 0.9;
 
 /** 一个选区收成整行：停在下一行行首的不算那一行；首尾空行去掉 */
-export function normalize(sel: Sel, a: FileAnalysis): { start: number; end: number } | null {
+function normalize(sel: Sel, a: FileAnalysis): { start: number; end: number } | null {
   let start = sel.startLine, end = sel.endLine;
   if (end > start && sel.endCol === 0) end--;
-  while (start <= end && (a.flags[start - 1] ?? BLANK) & BLANK) start++;
-  while (end >= start && (a.flags[end - 1] ?? BLANK) & BLANK) end--;
+  while (start <= end && (a.flags[start - 1] ?? F_BLANK) & F_BLANK) start++;
+  while (end >= start && (a.flags[end - 1] ?? F_BLANK) & F_BLANK) end--;
   return start <= end ? { start, end } : null;
 }
 
@@ -89,7 +90,6 @@ export function symbolAtCursor(a: FileAnalysis, line: number): Sym | undefined {
   return symbolAt(a.symbols, line, "def") ?? symbolAt(a.symbols, line, "class");
 }
 
-export const membersOf = (a: FileAnalysis, cls: Sym) => a.symbols.filter((s) => s.parent === cls.qual && s.kind === "def");
 
 /** 类卡要不要列成员：有方法 / 嵌套类才列；只有字段的类（dataclass 等）列出来是空的，做成普通代码卡 */
 export const listsMembers = (a: FileAnalysis, cls: Sym) => cls.kind === "class" && a.symbols.some((s) => s.parent === cls.qual);

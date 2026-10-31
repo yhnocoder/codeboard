@@ -47,8 +47,6 @@ export function enterBlock(state: EditorState, dispatch?: (tr: Transaction) => v
   return true;
 }
 
-const IS_MAC = typeof navigator !== "undefined" && /Mac|iP(hone|[oa]d)/.test(navigator.platform);
-
 /** Sets the heading level of the caret's paragraph by rewriting its `#` prefix (0 = plain paragraph) */
 export function setHeading(e: Editor, level: number | ((cur: number) => number)): boolean {
   const $h = e.state.selection.$head, p = $h.parent;
@@ -92,11 +90,11 @@ function selectWord(e: Editor) {
 }
 const wrap = (e: Editor, open: string, close = open) => toggleWrap(e.state, e.view.dispatch, open, close);
 
-export const Typora = Extension.create<{ openMath: (e: Editor, pos: number) => void; openLink: (e: Editor) => void }>({
+export const Typora = Extension.create<{ isMac: boolean; openMath: (e: Editor, pos: number) => void; openLink: (e: Editor) => void }>({
   name: "cbTypora",
   // ahead of TipTap's own rules (code block, task); ghost text still takes Tab / Esc first (1000)
   priority: 900,
-  addOptions() { return { openMath: () => {}, openLink: () => {} }; },
+  addOptions() { return { isMac: false, openMath: () => {}, openLink: () => {} }; },
 
   addInputRules() {
     const s = this.editor.schema;
@@ -253,7 +251,7 @@ export const Typora = Extension.create<{ openMath: (e: Editor, pos: number) => v
       "Mod-e": () => wrap(e, "`"),
       // ⌘⇧` inline code; on a Mac ⌃⇧` strikethrough (on Windows / Linux both are the same key, which goes to code)
       "Mod-Shift-`": () => wrap(e, "`"),
-      ...(IS_MAC ? { "Ctrl-Shift-`": () => wrap(e, "~~") } : {}),
+      ...(this.options.isMac ? { "Ctrl-Shift-`": () => wrap(e, "~~") } : {}),
       "Mod-Shift-s": () => wrap(e, "~~"),
       "Mod-Shift-x": () => wrap(e, "~~"),
       "Mod-Shift-h": () => wrap(e, "=="),

@@ -60,7 +60,7 @@ export function closeFind(view: EditorView) {
 }
 
 /** leave：焦点从查找条去了编辑器外面（和编辑器失焦一样） */
-export function findExtension(o: { isMac?: boolean; leave: (e: FocusEvent) => void }): Extension[] {
+export function findExtension(o: { isMac: boolean; leave: (e: FocusEvent) => void }): Extension[] {
   return [
     search({
       top: true,

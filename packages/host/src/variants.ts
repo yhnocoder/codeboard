@@ -32,7 +32,7 @@ export async function variantSources(seg: Segment): Promise<VariantSources> {
   };
 }
 /** worktree 目录的短写法：仓库旁边 / 里面的写相对路径（../vllm-exp），远的用 ~ 缩写的绝对路径 */
-export function shortDir(here: string, dir: string, home = os.homedir()) {
+function shortDir(here: string, dir: string, home = os.homedir()) {
   const r = path.relative(path.dirname(here), dir);
   if (!path.isAbsolute(r) && !r.startsWith("..")) return `../${r.split(path.sep).join("/")}`;
   return home && (dir === home || dir.startsWith(home + path.sep)) ? `~${dir.slice(home.length).split(path.sep).join("/")}` : dir;

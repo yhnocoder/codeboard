@@ -17,7 +17,7 @@ import { animate, Spring, reduceMotion } from "../state/camera";
 import { setEditing, setEditEntry, codeTextRange, staged, setStaged } from "../state/ui";
 import { foldOf, setFold, setFoldV, setFoldHome, setSkel, unskel, type Fold } from "../state/fold";
 import { farAway } from "../state/cull";
-import { SKEL_OUT } from "../state/timing";
+import { SKEL_OUT, SECTION_FIT } from "../state/timing";
 import { lodOf } from "../state/lodcards";
 import { staticTextRange } from "@yhnocoder/markdown";
 import { openMenu, type Item } from "../ui/Menu";
@@ -40,6 +40,7 @@ export function pasteNear(text: string): { x: number; y: number } | null {
   return { x: r.x + 36 * k, y: r.y + 36 * k };
 }
 export const remember = (card: string, text: string) => { lastCopy = { card, text, n: 0 }; };
+/** @public run from the key table (keymap.ts) */
 export function copyLines(ls: LineSel) {
   const f = cardById(ls.card);
   if (!f || !isCode(f.card)) return;
@@ -94,6 +95,7 @@ export function deleteSel() {
  * 显示时在一张卡里选中了一段字再按 ⌫ / Delete：不删卡。Note / Text / Mark 和自由代码卡进入编辑，选上同一段，
  * 再把这个键交给编辑器（和在编辑器里按一样：删掉这段字，编辑器里一步撤销；退出编辑时照常存成一步）。
  * 文件里的代码改不了：什么都不做。没选字、两头不在同一张卡的正文 / 代码里：返回 false（照旧删选中的卡）
+ *  @public run from the key table (keymap.ts)
  */
 export function editTextSel(key: "Backspace" | "Delete"): boolean {
   const s = window.getSelection();
@@ -129,7 +131,8 @@ export function deleteLinks(ids: string[]) {
 }
 export function removeSections(ids: string[]) { mutate((b) => removeSectionsIn(b, ids)); select({}); }
 
-/** 图层：卡的叠放顺序就是 b.cards 的顺序（core arrangeCards）。上移 / 下移一层只越过跟它重叠的卡（不重叠的换了也看不出来） */
+/** 图层：卡的叠放顺序就是 b.cards 的顺序（core arrangeCards）。上移 / 下移一层只越过跟它重叠的卡（不重叠的换了也看不出来）
+ *  @public run from the key table (keymap.ts) */
 export function arrange(ids: string[], how: Arrange) {
   const set = new Set(ids.map(hostOf));
   if (!set.size) return;
@@ -567,7 +570,7 @@ export function fitSections(ids: string[]) {
   if (!reduceMotion()) {
     const me = new Set(fits.keys());
     setFitting(me);
-    setTimeout(() => setFitting((f) => (f === me ? new Set<string>() : f)), 320);
+    setTimeout(() => setFitting((f) => (f === me ? new Set<string>() : f)), SECTION_FIT);
   }
   mutate((b) => {
     for (const [id, r] of fits) { const s = b.sections.find((q) => q.id === id); if (s) Object.assign(s, { x: r.x, y: r.y, w: r.w, h: r.h }); }

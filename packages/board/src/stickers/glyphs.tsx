@@ -39,7 +39,7 @@ export function loadPacks(force = false) {
 }
 export { packs };
 /** 自定义包里的图标；包还没读过就去读（白板上有自定义贴纸时，不用先打开选图标面板） */
-export const iconOf = (i: IconRef): StickerIcon | undefined => {
+const iconOf = (i: IconRef): StickerIcon | undefined => {
   const ps = packs();
   if (!ps) { void loadPacks(); return undefined; }
   return ps.find((p) => p.id === i.pack)?.icons.find((x) => x.name === i.name);

@@ -54,7 +54,7 @@ describe("prompts", () => {
     await answer(a.id, "b.py --steps 2");
     expect(await typed).toBe("b.py --steps 2");
 
-    const picked = prompts(p).pick([{ label: "$(layout) One", k: 1 }, { label: "Two", description: "$(folder) here", k: 2 }], { placeHolder: "Which?" });
+    const picked = prompts(p).pick([{ label: "One", icon: "board" as const, k: 1 }, { label: "Two", description: "here", k: 2 }], { placeHolder: "Which?" });
     const b = await nextAsk(2);
     expect(b.ask).toEqual({ kind: "pick", title: "Which?", items: [{ label: "One", description: undefined, detail: undefined }, { label: "Two", description: "here", detail: undefined }] });
     await answer(b.id, 1);

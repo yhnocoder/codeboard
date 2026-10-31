@@ -119,7 +119,7 @@ export type Shape = { d: string; pts: number[]; mx: number; my: number; /** 终�
 export function connect(p: Anchor, q: Anchor, route: "curve" | "elbow", tilt: { start: boolean; end: boolean } = { start: true, end: true }, boxes: { a?: Box; b?: Box } = {}, clear = CLEAR): Shape {
   const sh = direct(p, q, route, tilt, boxes, clear);
   // 上面的走法只看两个端点（加上「同侧绕过去」那一种）：两张卡挨得近、中间放不下出头和弯，或指定的边朝着另一张卡时，
-  // 会穿过卡、箭头落在卡里（#65）。这时按两张卡找一条绕开的折线，最后一段一定从卡外朝着卡进来；曲线主题把拐角倒圆
+  // 会穿过卡、箭头落在卡里。这时按两张卡找一条绕开的折线，最后一段一定从卡外朝着卡进来；曲线主题把拐角倒圆
   const obs = [boxes.a, boxes.b].filter((b): b is Box => !!b);
   if (!obs.length || !pathHits(sh.d, obs, route === "curve" ? 4 : 0.5)) return sh;
   const way = detour(p, q, obs, clear);
@@ -298,7 +298,7 @@ const BEND = 24;
  * 候选的横竖线 = 两个端点、每张卡外 clear、两张卡之间缝的正中（缝再小也走得过去）；在这张网格上找「长度 + 拐弯」最小的路。
  * 网格只有十来条线，每帧重算也很便宜。找不到（卡叠在端点上）返回 null
  */
-export function detour(p: Anchor, q: Anchor, obs: Box[], clear = CLEAR): Pt[] | null {
+function detour(p: Anchor, q: Anchor, obs: Box[], clear = CLEAR): Pt[] | null {
   const dp = axisOf(p), dq = axisOf(q);
   if (!dp || !dq) return null;
   const xs = [p.x, q.x], ys = [p.y, q.y];

@@ -212,7 +212,7 @@ test("imageCardDropsIntoNote", async () => {
   await done();
 });
 
-/** #25: an image card dragged over a Note shows a line between the two blocks under the pointer, following it, and releasing puts
+/** An image card dragged over a Note shows a line between the two blocks under the pointer, following it, and releasing puts
  *  the image there (its own paragraph), not at the end; while it hovers, the board reads no layout per pointer move */
 test("imageCardDropsAtPointerInNote", async () => {
   const b = emptyBoard("b1", "drop");

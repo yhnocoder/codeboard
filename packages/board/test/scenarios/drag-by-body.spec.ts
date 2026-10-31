@@ -1,4 +1,4 @@
-// Pressing on a card's body (Note text, code lines) and dragging (#15): a card that is not selected, or a multi-selection
+// Pressing on a card's body (Note text, code lines) and dragging: a card that is not selected, or a multi-selection
 // grabbed by any of its cards, moves like when grabbed by the header, with no text selected; the only selected card keeps
 // native text selection in its body. A plain click still selects (a multi-selection becomes the clicked card), a double
 // click on a Note still edits it. Grabbing an unselected card while others are selected selects and moves just that card.

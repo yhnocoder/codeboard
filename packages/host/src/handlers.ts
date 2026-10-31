@@ -17,7 +17,7 @@ import { copyDiagnostics } from "./diagnostics";
 import type { BoardHost, BoardPanel } from "./boards";
 import { callVars, dispatchAt, expand, peek } from "./resolve";
 import { search, searchPick, entryPoints, searchName, genSource } from "./search";
-import { pasteClip } from "@codeboard/core/storage";
+import { SAFE_ID, pasteClip } from "@codeboard/core/storage";
 import { pasteFar, recordClip } from "./transfer";
 import { prefetchCall } from "./prefetch";
 import { applyFlow, captureFlow } from "./runs";
@@ -33,7 +33,6 @@ import { lookupName } from "./nameindex";
 import { aiInfo, imageAiJob } from "./imageai";
 import { chatComplete } from "./complete";
 
-const SAFE_BOARD_ID = /^[\w-]{1,80}$/;
 
 type Msg<T extends BoardToHost["type"]> = Extract<BoardToHost, { type: T }>;
 type Out<T extends BoardToHost["type"]> = T extends AskType ? ReplyOf<T> : unknown;
@@ -164,7 +163,7 @@ export function makeHandler(panels: BoardHost): Handler {
     newBoard: async (p, m) => {
       // Turn into Board：白板拆好的新白板（schema 校验一遍）。共享卡在新白板上还是共享卡；放在父白板的组里
       const b = loadBoard(structuredClone({ ...m.board, version: BOARD_VERSION }));
-      if (!SAFE_BOARD_ID.test(b.id) || (await store.load(b.id))) throw new Error("Bad board id.");
+      if (!SAFE_ID.test(b.id) || (await store.load(b.id))) throw new Error("Bad board id.");
       const refs = [...store.refsOf(p.id)].filter((id) => b.cards.some((c) => c.id === id));
       await store.save(b, { group: store.groupOf(p.id) ?? null, refs });
       return true;
@@ -230,10 +229,10 @@ export function makeHandler(panels: BoardHost): Handler {
   return async (p, m) => (h[m.type] as ((p: BoardPanel, m: BoardToHost) => unknown) | undefined)?.(p, m); // 不认识的消息（更新的白板）不理
 }
 
-export const openAt = (abs: string, line?: number) => workspace().editor.open(abs, { line });
+const openAt = (abs: string, line?: number) => workspace().editor.open(abs, { line });
 
 /** Open in Editor：钉的版本就是当前代码时开工作区文件，否则开那个 commit 的只读版本 */
-export async function openSeg(seg: Segment, line?: number) {
+async function openSeg(seg: Segment, line?: number) {
   if (seg.src.kind === "free") throw new Error("Free code has no source file.");
   const ed = workspace().editor;
   const abs = absOf(seg);
@@ -421,9 +420,9 @@ async function relocate(p: BoardPanel, cardId: string) {
   const old = absOf(seg);
   const spots = [...(name ? await lookupName(name) : []), ...(old ? await spotsIn(old) : [])]
     .filter((s, i, all) => all.findIndex((o) => o.abs === s.abs && o.start === s.start) === i);
-  const item = (s: Spot) => ({ label: `${s.kind === "class" ? "$(symbol-class)" : "$(symbol-method)"} ${s.qual}`, description: `${hostPath(s.abs)}:${s.defLine}`, s });
+  const item = (s: Spot) => ({ label: s.qual, icon: s.kind === "class" ? ("class" as const) : ("function" as const), description: `${hostPath(s.abs)}:${s.defLine}`, s });
   const where = `Where is ${seg.symbol?.qual ?? "this code"} now?`;
-  const pick = await ask.pick([...spots.map(item), { label: "$(folder-opened) Choose File…", description: "", s: undefined }], { placeHolder: where, matchOnDescription: true });
+  const pick = await ask.pick([...spots.map(item), { label: "Choose File…", icon: "file" as const, description: "", s: undefined }], { placeHolder: where, matchOnDescription: true });
   if (!pick) return;
   let to = pick.s;
   if (!to) {

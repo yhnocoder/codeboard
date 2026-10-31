@@ -1,4 +1,5 @@
 import type { AskType, BoardToHost, HostToBoard, ReplyOf } from "@codeboard/core";
+import { unwrap } from "solid-js/store";
 import { onBoardSwitch } from "./state/root";
 
 type Api = { postMessage(m: unknown): void };
@@ -8,12 +9,13 @@ declare global {
 
 const api: Api = window.acquireVsCodeApi?.() ?? { postMessage: (m) => (window.__cbSent ??= []).push(m) };
 
+/** Store proxies can't be posted (DataCloneError): every message is unwrapped here, so callers pass store values as they are */
 export function send(m: BoardToHost) {
-  api.postMessage(m);
+  api.postMessage(unwrap(m));
 }
 
 let req = 0;
-type Pending = { ok: (v: any) => void; fail: (e: Error) => void; timer?: number };
+type Pending = { ok: (v: unknown) => void; fail: (e: Error) => void; timer?: number };
 const pending = new Map<number, Pending>();
 /** 宿主一直不回（出错、重载了）时多久算失败；等用户操作的请求（确认框、选文件、保存对话框、GitHub 登录、输密钥）不限时。
  *  imageAi 也不限：宿主自己按操作限时（重画 SVG 最多 6 分钟），第一次用 Copilot 的模型还要等用户同意 */
@@ -37,8 +39,8 @@ export function ask<T extends AskType>(type: T, body: Req<T>): Promise<ReplyOf<T
   const id = ++req;
   return new Promise<ReplyOf<T>>((ok, fail) => {
     const timer = WAITS_ON_USER.has(type) ? undefined : window.setTimeout(() => settle(id)?.fail(new Error(`No reply from the editor (${type})`)), TIMEOUT);
-    pending.set(id, { ok, fail, timer });
-    api.postMessage({ type, req: id, ...body });
+    pending.set(id, { ok: ok as (v: unknown) => void, fail, timer });
+    api.postMessage(unwrap({ type, req: id, ...body }));
   });
 }
 

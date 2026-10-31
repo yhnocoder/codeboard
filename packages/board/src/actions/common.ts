@@ -1,4 +1,3 @@
-import { unwrap } from "solid-js/store";
 import { cardTitle, isCode, segOf, bounds, type Card, type Section, type Rect } from "@codeboard/core";
 import { state, mutate, sel, select, isSel, cardById, hostOf, rectOf, placeOf, placed, flows } from "../state/store";
 import { frames, isHidden, visibleCards } from "../state/sections";
@@ -14,6 +13,7 @@ import { send, ask } from "../host";
 import { renderMd, renderMdInline, type RefBroken, type RefTarget } from "@yhnocoder/markdown";
 import { crossRef } from "../md/refs";
 import { mathRev } from "../md/math";
+import { cardSel } from "../cardsel";
 
 const isMac = () => state.host.isMac;
 /** 说明文字里的修饰键（「⌥-click」「⌘↵ to save」）；有绑定的快捷键用 keymap 的 kbd(id) */
@@ -137,6 +137,7 @@ export function fitAll() {
   const f = fitRect(b, 1);
   camTo(f.x, f.y, f.z);
 }
+/** @public run from the key table (keymap.ts) */
 export function fitSelection() {
   const hosts = new Set(sel.cards.flatMap((id) => { const f = cardById(id); return f ? [f.host.id] : []; }));
   const rs = [...[...hosts].map((id) => hostRect(id)).filter(Boolean) as Rect[], ...(hosts.size ? drawnAround(hosts) : [])];
@@ -147,7 +148,7 @@ export function fitSelection() {
 }
 
 /** 弹出的起点：离卡的位置多远（popCard 从这里开始） */
-export function popStart(id: string, from?: { x: number; y: number }) {
+function popStart(id: string, from?: { x: number; y: number }) {
   const h = cardById(id)?.host;
   const c = placeOf(h?.id ?? id);
   return { ox: from ? (from.x - c.x) * 0.7 : 0, oy: from ? (from.y - c.y) * 0.7 : 24 };
@@ -209,11 +210,11 @@ export function openWorktreeDiff(id: string) {
   const c = cardById(id)?.card;
   if (!isCode(c)) return;
   const s = c.segments[0];
-  const el = document.querySelector(`.card[data-id="${hostOf(id)}"] .rev`) ?? undefined;
+  const el = document.querySelector(`${cardSel(hostOf(id))} .rev`) ?? undefined;
   const pid = openPop({ kind: "diff", card: id, seg: s.id }, el ? { el, prefer: "below" } : lastPointer());
-  ask("diff", { seg: structuredClone(unwrap(s)), against: "worktree" })
-    .then((data) => updatePop(pid, (p) => (p.kind === "diff" ? { ...p, data } : p)))
-    .catch((e) => updatePop(pid, (p) => (p.kind === "diff" ? { ...p, error: (e as Error).message } : p)));
+  ask("diff", { seg: s, against: "worktree" })
+    .then((data) => updatePop(pid, "diff", (p) => ({ ...p, data })))
+    .catch((e) => updatePop(pid, "diff", (p) => ({ ...p, error: (e as Error).message })));
 }
 
 /** Fit Content：宽 = 最长行，高 = 所有可见行；多选时各自适配。
@@ -239,7 +240,7 @@ export function fitContent(ids: string[]) {
 
 /** 卡画出来的宽和存着高度的那一块的高（代码卡是内容区 .carea，别的卡整张） */
 function shownSize(id: string): SizeAnim | null {
-  const el = document.querySelector<HTMLElement>(`.card[data-id="${id}"]`);
+  const el = document.querySelector<HTMLElement>(`${cardSel(id)}`);
   if (!el) return null;
   const box = el.querySelector<HTMLElement>(":scope > .cface > .carea") ?? el;
   return { w: el.offsetWidth, h: box.offsetHeight };

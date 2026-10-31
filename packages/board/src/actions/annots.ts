@@ -36,7 +36,7 @@ export function commitDraft(d: AnnotDraft, text: string) {
 function edit(card: string, seg: string, i: number, f: (a: CodeAnnot) => void) {
   mutate((b) => { const a = segIn(b, card, seg)?.annots?.[i]; if (a) f(a); });
 }
-export function removeAnnot(card: string, seg: string, i: number) {
+function removeAnnot(card: string, seg: string, i: number) {
   mutate((b) => {
     const s = segIn(b, card, seg);
     if (!s?.annots?.[i]) return;
@@ -50,8 +50,8 @@ export function setAnnotText(card: string, seg: string, i: number, text: string)
   if (!t) return removeAnnot(card, seg, i);
   edit(card, seg, i, (a) => { a.text = t; });
 }
-export const setAnnotColor = (card: string, seg: string, i: number, color: HandColor) => edit(card, seg, i, (a) => { if (color === "blue") delete a.color; else a.color = color; });
-export const setAnnotBelow = (card: string, seg: string, i: number, below: boolean) => edit(card, seg, i, (a) => { if (below) a.below = true; else delete a.below; });
+const setAnnotColor = (card: string, seg: string, i: number, color: HandColor) => edit(card, seg, i, (a) => { if (color === "blue") delete a.color; else a.color = color; });
+const setAnnotBelow = (card: string, seg: string, i: number, below: boolean) => edit(card, seg, i, (a) => { if (below) a.below = true; else delete a.below; });
 
 export function annotMenu(card: string, seg: string, i: number, a: CodeAnnot, x: number, y: number) {
   const cap = (k: string) => k[0].toUpperCase() + k.slice(1);
