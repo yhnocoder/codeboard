@@ -21,6 +21,7 @@ import { installOverlays, modalOpen, typing } from "./ui/overlay";
 import { NODRAG, CARD_CONTROL, OWNS_POINTER, BOARD_CHROME, holdPointer } from "./ui/guard";
 import { dispatch, matches } from "./keymap";
 import { holdGhosts } from "@yhnocoder/markdown/ui";
+import { installShield, raiseShield } from "./ui/shield";
 import * as A from "./actions";
 import { onBoardSwitch } from "./state/root";
 import { togglePreview } from "./state/subboards";
@@ -610,6 +611,8 @@ export function canvasWheel(e: WheelEvent) {
   e.preventDefault();
   if (!t.closest(".cbody, .nbody, .tx")) ownerFor(e, null); // 卡片里的已经在 cardWheel 里记过
   stopCam();
+  // 编辑中不盖：点回编辑器里放光标靠原生的 mousedown，挡板转不过去
+  if (!editing()) raiseShield(e, t);
   const p = local(e);
   if (e.ctrlKey || e.metaKey) {
     const z0 = cam.z, z = Math.min(ZMAX, Math.max(ZMIN, z0 * Math.exp(-e.deltaY * (e.deltaMode ? 0.05 : 0.01))));
@@ -704,6 +707,7 @@ export function sectionEdgeDown(e: PointerEvent, id: string) {
 }
 
 export function installKeys() {
+  installShield();
   installOverlays();
   trackPointer();
   // 点白板任何地方都要拿到键盘焦点。卡片标题、画布、连线等的 pointerdown 调了 preventDefault（拖动时不选字），这也取消了

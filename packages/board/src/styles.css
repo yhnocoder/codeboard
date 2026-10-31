@@ -119,6 +119,8 @@ input, textarea { font: inherit; color: var(--ink); }
    只在动的时候才升层的话，每段手势的第一帧都要把整层重画一遍（~25ms，掉一帧） */
 .world { will-change: transform; rotate: x 0deg; }
 .world.settle { will-change: auto; }
+.pshield { position: absolute; inset: 0; display: none; } /* ui/shield.ts */
+.pshield.on { display: block; }
 .wext { position: absolute; pointer-events: none; } /* 见 Canvas.tsx：只占一块范围，不画东西，把线那个合成层撑到整块白板 */
 .edges { position: absolute; left: 0; top: 0; overflow: visible; width: 1px; height: 1px; pointer-events: none; }
 /* 实线。不要用 stroke-dasharray 画实线：1px 的虚线段要逐段栅格化，一条线变成几千段，改一条线整层都慢 */
