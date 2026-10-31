@@ -1,17 +1,18 @@
 import {
   findCard, frameless, isCode, snapMove, snapResize, bounds, center,
-  type Board, type Card, type CallSpan, type Rect, type Anchor, type LinkSide,
+  type Board, type Card, type CallSpan, type Rect, type Anchor, type End, type LinkSide,
 } from "@codeboard/core";
 import {
   state, sel, select, toggleSel, clearSel, setLineSel, isSel, cardById, hostOf, rectOf, live, beginGesture, isFresh, toast, placeOf, placed,
 } from "./state/store";
 import { tune } from "./state/tune";
-import { WHEEL_GESTURE } from "./state/timing";
-import { cam, setCam, stopCam, camTo, fling, toWorld, view, ZMIN, ZMAX, lod } from "./state/camera";
+import { WHEEL_GESTURE, BLOCK_GLIDE } from "./state/timing";
+import { cam, setCam, stopCam, camTo, fling, toWorld, view, ZMIN, ZMAX, lod, reduceMotion } from "./state/camera";
 import { setGuides, setSizeHint, setDropTarget, dropTarget, setDragging, setMarquee, setRubber, setEditing, editing, setEditEntry, type NoteSpot } from "./state/ui";
 import { staticTextRange } from "@yhnocoder/markdown";
 import { frames, deepestAt, hiddenByAncestor, homeFor, partlyIn, frameOf, sec, descSections, allMembers, visibleCards, setMovingHome } from "./state/sections";
 import { geo } from "./state/geo";
+import { aimBlock, aimPoint, blockOf, tintBlocks, type BlockAim } from "./state/blocks";
 import { pops, closeAllPops, pinPop } from "./state/pop";
 import { connectFrom, modeIs, idle, takePick, endDraw, cancelMode, placing, spaceDown, setSpaceDown, setPanning } from "./state/mode";
 import { selSticker, setSelSticker } from "./state/stickers";
@@ -490,32 +491,61 @@ export function callPointerDown(e: PointerEvent, cardId: string, seg: string, ca
   }, 6);
 }
 
-/** side：用户从哪个圆点拖出来，起点就固定在那一侧（不再按位置自动推） */
-export function linkPortDown(e: PointerEvent, from: { card: string; seg?: string; line?: number }, sx: number, sy: number, side?: LinkSide) {
+/**
+ * side：用户从哪个圆点拖出来，起点就固定在那一侧（不再按位置自动推）。
+ * 落点：代码行（行号）→ 那一行；Note 的卡身（卡头以外：块上、块之间的空隙、上下内边距）→ 最近的那一块；别的地方 → 整张卡。
+ * 指着 Note 的一块时那一块和起点那一块（从块拖出来的）上淡色底，终点滑到那一块在卡边上的位置（换一块时滑过去，不跳）
+ */
+export function linkPortDown(e: PointerEvent, from: End, sx: number, sy: number, side?: LinkSide) {
   if (e.button !== 0) return;
   e.preventDefault();
   e.stopPropagation();
-  let to: { card: string; seg?: string; line?: number } | null = null;
+  let to: End | null = null;
+  const src = from.block ? blockOf(from.card, from.block) : null;
+  // 终点（白板坐标）：指着一块时朝那一块的位置滑过去（BLOCK_GLIDE，缓出），否则就在指针上
+  let shown: { x: number; y: number } | null = null, glide: { a: { x: number; y: number }; b: { x: number; y: number }; t0: number } | null = null, raf = 0, aimKey = "";
+  const a = local({ clientX: sx, clientY: sy });
+  const draw = () => { if (shown) setRubber({ x1: a.x, y1: a.y, x2: shown.x, y2: shown.y, plain: true }); };
+  const step = (now: number) => {
+    raf = 0;
+    if (!glide) return;
+    const p = Math.min(1, (now - glide.t0) / BLOCK_GLIDE), k = 1 - (1 - p) ** 3;
+    shown = { x: glide.a.x + (glide.b.x - glide.a.x) * k, y: glide.a.y + (glide.b.y - glide.a.y) * k };
+    draw();
+    if (p < 1) raf = requestAnimationFrame(step); else glide = null;
+  };
+  const stop = () => { cancelAnimationFrame(raf); raf = 0; glide = null; tintBlocks([]); };
   track(e, (ev) => {
-    const a = local({ clientX: sx, clientY: sy }), b = local(ev);
-    setRubber({ x1: a.x, y1: a.y, x2: b.x, y2: b.y, plain: true });
+    const b = local(ev);
     const under = document.elementFromPoint(ev.clientX, ev.clientY) as HTMLElement | null;
     const ce = under?.closest(".card") as HTMLElement | null;
     to = null;
+    let aim: BlockAim | null = null;
     if (ce && cardById(ce.dataset.id!)) {
-      // 松在代码行上或行号上 → 连到那一行；松在卡的其它地方 → 连到整张卡
+      // 松在代码行上或行号上 → 连到那一行；Note 卡头以外 → 最近的那一块；松在卡的其它地方 → 连到整张卡
       const row = under?.closest(".src > .l, .gutter .no") as HTMLElement | null;
       const at = row ? rowAnchor(row, ce.dataset.id!) : null;
       const colEl = under?.closest("[data-col]") as HTMLElement | null;
-      to = at ? { card: at.card, seg: at.seg, line: at.lines![0] } : { card: colEl?.dataset.col ?? ce.dataset.id! };
-      if (hostOf(to.card) === hostOf(from.card) && !to.line) to = null;
+      aim = !at && !under?.closest(".chead") ? aimBlock(ce.dataset.id!, ev.clientY) : null;
+      to = at ? { card: at.card, seg: at.seg, line: at.lines![0] } : aim ? { card: aim.card, block: aim.ref } : { card: colEl?.dataset.col ?? ce.dataset.id! };
+      if (hostOf(to.card) === hostOf(from.card) && !to.line) { to = null; aim = null; }
     }
-    setDropTarget(to ? { kind: to.line ? "line" : "card", card: hostOf(to.card), seg: to.seg, line: to.line } : null);
+    setDropTarget(to ? { kind: to.line ? "line" : to.block ? "block" : "card", card: hostOf(to.card), seg: to.seg, line: to.line } : null);
+    tintBlocks(aim ? [aim, src] : to ? [src] : []); // 起点那段：对准了任何落点（一段、一行、卡头）都上色
+    const key = aim ? `${aim.card}:${aim.k}` : "";
+    if (!aim) { cancelAnimationFrame(raf); raf = 0; glide = null; aimKey = ""; shown = b; return draw(); }
+    if (key === aimKey) return;
+    aimKey = key;
+    const goal = boardPoint(aimPoint(aim, sx));
+    if (!shown || reduceMotion()) { shown = goal; return draw(); }
+    glide = { a: shown, b: goal, t0: performance.now() };
+    if (!raf) raf = requestAnimationFrame(step);
   }, (_ev, moved) => {
+    stop();
     setRubber(null);
     setDropTarget(null);
     if (moved && to) A.addLink(from, to, side);
-  }, 4);
+  }, 4, stop);
 }
 
 function finishConnect(e: PointerEvent, id: string) {

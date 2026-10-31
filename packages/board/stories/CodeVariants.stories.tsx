@@ -6,6 +6,7 @@ import { fn, edited, viewFor, withVariants, wtEdit, branchEdit, latestEdit, card
 import { onHost } from "../src/hostio";
 import { setEditing } from "../src/state/ui";
 import { setVbase } from "../src/state/variants";
+import { themes } from "./support/themes";
 
 type Shown = "upstream" | "worktree" | "branch";
 type Extra = "none" | "noteEditing" | "baseLatest" | "merged" | "threeWay" | "baseMenu" | "addMenu" | "tabMenu";
@@ -101,6 +102,7 @@ export const Overview: Story = {
   args: { w: 560 },
   argTypes: { shown: { table: { disable: true } }, note: { table: { disable: true } }, behind: { table: { disable: true } }, extra: { table: { disable: true } } },
 };
+export const Themes: Story = themes("upstream-shown");
 export const UpstreamShown: Story = { args: { shown: "upstream", note: "" } };
 export const Mine: Story = { name: "Mine (Worktree)" };
 export const BranchVsLatest: Story = { name: "Branch vs Upstream Latest", args: { shown: "branch", extra: "baseLatest" } };

@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import { Stage, scene, noteCard, type Globals, type Scene } from "./support/board";
 import { SHORT, LONG, TITLED, RICH, noteGroup } from "./support/groups";
+import { themes } from "./support/themes";
 
 type Args = { md: string; title: string; w: number; h: number; state: "normal" | "selected" | "editing" };
 
@@ -36,6 +37,7 @@ export const Overview: Story = {
   args: { w: 300, h: 260 },
   argTypes: { md: { table: { disable: true } }, title: { table: { disable: true } }, state: { table: { disable: true } } },
 };
+export const Themes: Story = themes("rich");
 export const Empty: Story = { args: { md: "" } };
 export const Short: Story = {};
 export const Long: Story = { args: { md: LONG, h: 260 } };

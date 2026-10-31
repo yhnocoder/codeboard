@@ -382,7 +382,7 @@ input, textarea { font: inherit; color: var(--ink); }
 /* Note 的字号走 Markdown 包的 --md-fs / --md-h1…h6。设置 → Notes 里改的（App 挂在根上的 --note-fs、--note-fs-h1…h6）优先；
    没改 = 主题的字号（这里和 themes.css 给），标题按正文的比例（没设的 --note-fs-hN 让 --md-hN 无效，回到包里的默认比例） */
 .card.note .nbody { --md-fs: var(--note-fs, 13.5px); --md-h1: var(--note-fs-h1); --md-h2: var(--note-fs-h2); --md-h3: var(--note-fs-h3); --md-h4: var(--note-fs-h4); --md-h5: var(--note-fs-h5); --md-h6: var(--note-fs-h6); }
-.card.note .nbody { padding: 10px 14px 12px; line-height: 1.6; color: var(--ink); white-space: pre-wrap; word-break: break-word; outline: none; }
+.card.note .nbody { position: relative; padding: 10px 14px 12px; line-height: 1.6; color: var(--ink); white-space: pre-wrap; word-break: break-word; outline: none; } /* relative: 块的位置按正文量（state/blocks.ts） */
 /* 定了高度的 Note（用户拖过下边 / 角）：放不下的内容在正文里滚，和代码卡的 .cbody 一样，不跑出卡外；放得下时下面留空。
    不拉伸（flex-grow 0）：正文只有内容那么高，Fit Content、改大小时量的是内容。
    Text 没有框，不裁：从 Note 换过来带着的高度用 Fit Content 去掉 */
@@ -469,18 +469,17 @@ input, textarea { font: inherit; color: var(--ink); }
 .slabel .dots { position: absolute; right: 100%; top: 1px; padding-right: 1px; color: var(--ink-3); font-size: 11px; letter-spacing: -2px; }
 .slabel .dots, .slabel:not(.collapsed) .chev2 { opacity: 0; transition: opacity .15s var(--out); }
 .slabel:hover .dots, .slabel:hover .chev2, .slabel.sel .dots, .slabel.sel .chev2 { opacity: 1; }
-/* the collapse caret: one thin chevron, right of the title and pointing down while open; before the title and pointing right
-   when collapsed. It turns between the two */
+/* the collapse caret: one thin chevron at the right end, pointing down while open and right when collapsed (after the card count).
+   It turns between the two */
 .slabel .chev2 { order: 1; flex: none; width: 16px; height: 16px; display: grid; place-items: center; border-radius: 5px; color: var(--ink-3); transition: opacity .15s var(--out), background-color .15s var(--out), color .15s var(--out); }
 .slabel .chev2 .ico { width: 10px; height: 10px; --ico-w: 2; rotate: 90deg; transition: rotate .2s var(--out); }
-.slabel.collapsed .chev2 { order: 0; }
 .slabel.collapsed .chev2 .ico { rotate: 0deg; }
 .slabel .chev2:hover { background: var(--hlrow); color: var(--ink); }
 .slabel .sname { min-width: 20px; }
 .slabel .sname.editing { white-space: pre; min-width: 60px; display: inline-block; }
 .slabel .scount { flex: none; margin-left: 5px; color: var(--ink-3); font-weight: 400; font-variant-numeric: tabular-nums; }
-/* collapsed: a compact pill, caret · bold title · grey card count */
-.slabel.collapsed { z-index: 3; margin: 0; gap: 3px; padding: 4px 12px 4px 6px; border-radius: 11px; color: var(--ink); background: var(--surface); box-shadow: var(--sh-card); transition: color .15s var(--out), box-shadow .15s var(--out); }
+/* collapsed: a compact pill, bold title · grey card count · caret */
+.slabel.collapsed { z-index: 3; margin: 0; gap: 3px; padding: 4px 6px 4px 12px; border-radius: 11px; color: var(--ink); background: var(--surface); box-shadow: var(--sh-card); transition: color .15s var(--out), box-shadow .15s var(--out); }
 .slabel.collapsed .sname { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .slabel.collapsed.sel { box-shadow: 0 0 0 1.5px var(--accent), var(--sh-card); }
 .slabel.c-sand.collapsed { background: color-mix(in srgb, var(--surface) 80%, #d6b478); }
@@ -712,7 +711,7 @@ textarea.fld { min-height: 86px; line-height: 1.5; }
 .lnk:hover { text-decoration-color: var(--k-fn); }
 kbd { font: 10.5px var(--mono); }
 
-.nbody p, .cdesc p, .tx p, .inote p, .sn-text p, .pdesc p { margin: 0; }
+.nbody p, .cdesc p, .tx p, .inote p, .sn-text p, .pdesc p, .k-question .qtext p { margin: 0; }
 .cdesc h1, .cdesc h2, .cdesc h3, .tx h1, .tx h2, .tx h3, .sn-text h1, .sn-text h2, .sn-text h3 { margin: 2px 0 4px; font: 600 1.05em/1.4 var(--note-h); color: var(--ink); }
 .nbody h1, .nbody h2, .nbody h3 { margin: 2px 0 4px; font-weight: 600; line-height: 1.4; font-family: var(--note-h); color: var(--ink); } /* 字号：--md-h1…h3（上面） */
 /* Note / Text 里的 Markdown 标题要有层级（# 大标题、## 小标题、### 加粗正文）；Text 用自己的字号档，按比例 */
@@ -798,6 +797,13 @@ kbd { font: 10.5px var(--mono); }
 .lport { opacity: 1; }
 .card:hover .lport { opacity: 1; }
 .lport:hover { box-shadow: 0 0 0 1.5px var(--accent); background: var(--accent); }
+/* Note 的一块（state/blocks.ts）：圆点在所有卡和线上面一层，中心落在卡边上那一块的中线高度（Links.tsx BlockPorts） */
+.bports { position: absolute; left: 0; top: 0; z-index: 6; pointer-events: none; }
+.bport { position: absolute; width: 9px; height: 9px; margin: -4.5px 0 0 -4.5px; border-radius: var(--port-r, 50%); corner-shape: round; rotate: var(--port-rot, none); background: var(--port-bg, var(--surface)); box-shadow: 0 0 0 var(--port-ring, 1.5px) var(--port-ring-c, var(--edge)); cursor: crosshair; pointer-events: auto; scale: var(--uv, 1); }
+.bport::after { content: ""; position: absolute; inset: var(--port-hit, 0); border-radius: 50%; }
+.bport:hover { box-shadow: 0 0 0 1.5px var(--accent); background: var(--accent); }
+/* 拖箭头指着 Note 的某一块时，落点和起点那两块的淡色底（样式表由 state/blocks.ts 按块写，颜色在这里） */
+.board { --btint: color-mix(in srgb, var(--accent) 9%, transparent); }
 .cbody.wrap .code { min-width: 0; }
 .cbody.wrap .src { white-space: pre-wrap; word-break: break-all; }
 .cbody.wrap .src .l { height: auto; min-height: 20px; }
@@ -1073,6 +1079,9 @@ mark.wdiff { background: var(--chg-strong); color: inherit; border-radius: 2px; 
 .board { --bar: color-mix(in srgb, var(--ink) 13%, transparent); }
 .card.lo-ov .crows .cmpl, .card.lo-ov .cno,
 .card.lo-ov .cpath, .card.lo-ov .rev, .card.lo-ov .chead .ib, .card.lo-ov .lport { visibility: hidden; }
+/* 卡头的 ⋯ 平时不显示，悬停 / 选中卡、键盘聚焦到它、它的菜单开着时淡入；位置照留，出现时卡头不动 */
+.cmenu { opacity: 0; transition: opacity calc(var(--t) * 140ms) ease, background .1s, color .1s, scale .12s; }
+.card:hover .cmenu, .card.sel .cmenu, .cmenu:focus-visible, .cmenu.on { opacity: 1; }
 /* 缩小看全局：参数收起，留 ↺ 和自己写的字；只有参数的框整个不画 */
 .lyr.lod-overview .vbox, .lyr.lod-overview .vchips.argsonly, .lyr.lod-overview .vplus, .lyr.lod-overview .mkcall { display: none; }
 .lyr.lod-overview .vcard.split .vhead { border-bottom: 0; }

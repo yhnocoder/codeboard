@@ -2,6 +2,7 @@
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import { Stage, scene, codeCard, type Globals, type Scene } from "./support/board";
 import { MD, ALL_MD, CODE_LANGS, codeBlock, noteAt, type MdKey } from "./support/cards";
+import { themes } from "./support/themes";
 
 const FEATURES: Record<MdKey, string> = {
   inline: "Inline marks, emoji, kbd, link", lists: "Lists (nested, ordered)", tasks: "Task lists", table: "Table (aligned columns)",
@@ -67,6 +68,7 @@ type Story = StoryObj<typeof meta>;
 
 const hide = { feature: { table: { disable: true } }, md: { table: { disable: true } }, h: { table: { disable: true } }, selected: { table: { disable: true } } };
 export const Overview: Story = { render: (a, ctx) => <Stage scene={() => overview(a)} globals={ctx.globals as Globals} />, args: { w: 330 }, argTypes: hide };
+export const Themes: Story = themes("all-in-one");
 export const CodeBlocks: Story = { name: "Code Blocks (every language)", render: (a, ctx) => <Stage scene={() => codeLangs(a)} globals={ctx.globals as Globals} />, args: { w: 440 }, argTypes: hide };
 export const AllInOne: Story = { name: "All in One Note" };
 export const AllFixedHeight: Story = { name: "All in One Note, Fixed Height", args: { h: 420 } };

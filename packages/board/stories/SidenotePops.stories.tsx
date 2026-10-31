@@ -6,6 +6,7 @@ import { Stage, scene, codeCard, type Globals, type Scene } from "./support/boar
 import { waitFor, $, frames } from "./support/play";
 import { noteAt } from "./support/cards";
 import { openPop, pinPop } from "../src/state/pop";
+import { themes } from "./support/themes";
 
 type Kind = Sidenote["kind"];
 type Args = { why: string; review: boolean; lineRemoved: boolean; boardOnly: boolean; first: Kind };
@@ -84,6 +85,7 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const Overview: Story = { render: (a, ctx) => <Stage scene={() => overview(a)} globals={ctx.globals as Globals} />, args: { review: true, why: "decode 前要看" } };
+export const Themes: Story = themes("list");
 export const List: Story = { name: "Sidenotes (every kind)" };
 export const Flags: Story = { name: "Review, Line Removed, Board-only", args: { review: true, lineRemoved: true, boardOnly: true, why: "decode 前要看" } };
 export const CodeFirst: Story = { name: "Code Sidenote Selected", args: { first: "code" } };

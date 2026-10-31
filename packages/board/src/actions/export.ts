@@ -10,6 +10,7 @@ import { setExportOpen, exportBusy, setExportBusy, type ExportOpts } from "../st
 import { ask, send } from "../host";
 import { flushMd } from "../md/lazy";
 import { renderMd } from "@yhnocoder/markdown";
+import { noteBlocks } from "../md/blocks";
 import type { ViewerData } from "../export/viewer";
 import VIEWER_JS from "../export/viewer.ts?script";
 import { bitmapOf } from "../stickers/glyphs";
@@ -57,7 +58,7 @@ export async function runExport(o: ExportOpts) {
     const segs = order.flatMap((id) => segsOf(b, id));
     const links = (await ask("permalinks", { segs }).catch(() => null)) ?? {};
     const text = o.format === "md"
-      ? boardMarkdown(b, { order, questions: o.questions, boardOnly: o.boardOnly, links, boardName: (id) => state.boards.find((m) => m.id === id)?.name })
+      ? boardMarkdown(b, { order, questions: o.questions, boardOnly: o.boardOnly, links, boardName: (id) => state.boards.find((m) => m.id === id)?.name, blocks: noteBlocks })
       : await snapshotHtml(b, order, o, links);
     const ok = await ask("exportFile", { kind: o.format === "md" ? "md" : "html", name: fileName(), text });
     if (ok) setExportOpen(null);

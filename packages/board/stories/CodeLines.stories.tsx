@@ -4,6 +4,7 @@ import { Stage, scene, noteCard, type Globals, type Group, type Scene } from "./
 import { fn, multi, slice, seg0, lineOf } from "./support/code";
 import { setLineSel } from "../src/state/store";
 import { setDropTarget, setHoverVar, toggleShown } from "../src/state/ui";
+import { themes } from "./support/themes";
 
 type State =
   | "highlight" | "selection" | "hidden" | "hiddenShown" | "hideComments" | "dedent" | "wrap" | "segments" | "fnBar"
@@ -135,6 +136,7 @@ export const Overview: Story = {
   render: (a, ctx) => <Stage scene={() => overview(a)} globals={ctx.globals as Globals} />,
   argTypes: { state: { table: { disable: true } }, h: { table: { disable: true } } },
 };
+export const Themes: Story = themes("highlighted");
 export const Highlighted: Story = { args: { state: "highlight" } };
 export const LineSelection: Story = { args: { state: "selection" } };
 export const HiddenLines: Story = { args: { state: "hidden" } };

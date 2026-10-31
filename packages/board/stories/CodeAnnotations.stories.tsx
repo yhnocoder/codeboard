@@ -5,6 +5,7 @@ import { el, frames, rightClick } from "./support/play";
 import { fn, card } from "./support/code";
 import { setEditing } from "../src/state/ui";
 import { annotKey, startAnnot } from "../src/actions/annots";
+import { themes } from "./support/themes";
 
 type Mode = "none" | "editing" | "draft" | "menu";
 type Args = { text: string; color: HandColor; below: boolean; mode: Mode; w: number };
@@ -75,6 +76,7 @@ export const Overview: Story = {
   args: { w: 520 },
   argTypes: { text: { table: { disable: true } }, color: { table: { disable: true } }, below: { table: { disable: true } }, mode: { table: { disable: true } } },
 };
+export const Themes: Story = themes("above");
 export const Above: Story = {};
 export const Below: Story = { args: { below: true, color: "orange" } };
 export const Editing: Story = { args: { mode: "editing" } };

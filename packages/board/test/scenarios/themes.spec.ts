@@ -592,3 +592,40 @@ test("inkWashHighlightBrush", async () => {
   res.warm = warm;
   check("inkWashHighlightBrush", ok && warm.length === 3 && warm.every((m) => m.bg.startsWith("linear-gradient(")), res);
 });
+
+/** Switching themes keeps card sizes (usage feedback #89: cards overlapped after switching to Ink Wash, or back from Drafting): every
+ *  theme has Warm Ink's line height for Note and Text bodies, its header plus top padding and its side padding; only the fonts differ,
+ *  so a card's height changes by at most a re-wrapped line or two */
+test("themesKeepCardHeights", async () => {
+  const b = emptyBoard("b1", "theme sizes");
+  const notes = [
+    "## 寄存器与 shared memory\n\n寄存器是每个线程私有的片上存储，访问延迟最低；shared memory 由同一个 block 的线程共享，适合放 tile 数据。kernel 里用 `__shared__` 声明的变量放在 shared memory。",
+    "### 计算强度\n\n每从 global memory 读一个字节能做多少次浮点运算（FLOP/B）。比值越高，kernel 越不受内存带宽限制。\n\n1. 读入 M、N 的 tile\n2. `__syncthreads()` 等所有线程读完\n3. 累加部分点积",
+    "Roofline 模型把应用画在一张图上：横轴是计算强度，纵轴是吞吐量。左边的斜线是内存带宽的上限，右边的水平线是峰值算力。",
+  ];
+  notes.forEach((md, i) => { b.cards.push({ id: `n${i}`, kind: "note", look: "note", md } as any); b.place[`n${i}`] = { x: 40 + i * 420, y: 40, w: 380 }; });
+  b.cards.push({ id: "t1", kind: "note", look: "text", size: "body", md: "本章讨论 GPU 的片上内存架构，以及如何组织和放置数据，使大量线程能够高效访问。" } as any);
+  b.place.t1 = { x: 40, y: 600, w: 380 };
+  b.cam = { x: 0, y: 0, z: 1 };
+  const ids = [...notes.map((_, i) => `n${i}`), "t1"];
+  const res: Record<string, { metrics: number[]; heights: number[] }> = {};
+  for (const theme of ["warm-ink", "graphite", "soft-light", "drafting", "ink-wash"]) {
+    const h = await open({ board: b, light: true, w: 1400, h: 820, settings: { theme } as never });
+    await h.page.evaluate(() => document.fonts.ready);
+    await idle(h);
+    res[theme] = await h.page.evaluate((ids) => {
+      const card = (id: string) => document.querySelector<HTMLElement>(`.card[data-id="${id}"]`)!;
+      const body = card("n0").querySelector<HTMLElement>(".nbody")!, bs = getComputedStyle(body);
+      const lh = (e: Element) => parseFloat(getComputedStyle(e).lineHeight);
+      const metrics = [lh(body.querySelector("p")!), card("n0").querySelector<HTMLElement>(".chead")!.offsetHeight + parseFloat(bs.paddingTop),
+        parseFloat(bs.paddingLeft), parseFloat(bs.paddingRight), lh(card("t1").querySelector(".tx p")!)].map((v) => +v.toFixed(1));
+      return { metrics, heights: ids.map((id) => card(id).offsetHeight) };
+    }, ids);
+    if (theme !== "warm-ink" && theme !== "graphite") await shot(h, `theme-heights-${theme}`);
+    await h.page.context().close();
+  }
+  const base = res["warm-ink"];
+  const off = Object.fromEntries(Object.entries(res).map(([t, r]) => [t, r.heights.map((v, i) => v - base.heights[i])]));
+  check("themesKeepCardHeights", Object.values(res).every((r) => r.metrics.every((v, i) => Math.abs(v - base.metrics[i]) < .5))
+    && Object.values(off).every((d) => d.every((v) => Math.abs(v) <= 2 * base.metrics[0] + 1)), { res, off });
+});

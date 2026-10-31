@@ -1,4 +1,4 @@
-import { uid, isCode, cardTitle, callName, canMark, type Link, type CallSpan, type LinkStyle, type LinkSide } from "@codeboard/core";
+import { uid, isCode, cardTitle, callName, canMark, type End, type Link, type CallSpan, type LinkStyle, type LinkSide } from "@codeboard/core";
 import { varKey, type Var } from "@codeboard/analysis/basics";
 import { state, mutate, select, cardById, hostOf, toast } from "../state/store";
 import { setEditing, setHoverVar } from "../state/ui";
@@ -7,7 +7,7 @@ import { openPop } from "../state/pop";
 import { lastPointer } from "../state/measure";
 import { askCands, attachCall, calleeMatches, callMark } from "./flow";
 
-type EndRef = { card: string; seg?: string; line?: number };
+type EndRef = End;
 
 /** 这条箭头其实是调用：从代码行连到「这一行调用的函数」所在的卡（只有一种 Arrow，是不是调用自动判断） */
 export function callOn(from: EndRef, to: EndRef): CallSpan | undefined {
@@ -41,7 +41,9 @@ export function addLink(from: EndRef, to: EndRef, side?: LinkSide) {
   const call = callOn(from, to);
   if (call) return void attachCall(from.card, from.seg!, call, to.card, sides);
   const id = uid("l");
-  mutate((b) => { b.links.push(sides ? { id, from, to, sides } : { id, from, to }); });
+  // 块端的 { i, h } 是悬停、落点那边的对象：放进白板的是自己的一份（以后 rebaseBlocks 就地换它）
+  const own = (e: End): End => (e.block ? { ...e, block: { ...e.block } } : { ...e });
+  mutate((b) => { b.links.push(sides ? { id, from: own(from), to: own(to), sides } : { id, from: own(from), to: own(to) }); });
   return id;
 }
 /** 普通箭头能认出是调用（出发行调用了目标卡的函数）：加上 Call 标记（右键 Call Mark，或悬停时的 Call 按钮），再去问参数候选 */

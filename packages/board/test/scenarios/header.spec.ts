@@ -6,7 +6,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { DEFAULT_SETTINGS, emptyBoard, type CodeCard } from "@codeboard/core";
 import { shot, put, symCard, findSym, OUT, type Host } from "../harness";
-import { test, open, check, light, idle } from "../fixtures";
+import { test, open, check, light, idle, until } from "../fixtures";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { audit } = require("../../../../tools/review/audit.cjs") as { audit: (t: unknown, step: string) => Promise<{ issues: { rule: string; what: string }[] }> };
 
@@ -90,4 +90,39 @@ test("headnarrow", async () => {
   await shot(h, "head-last");
   check("headnarrow", ok);
   await h.page.context().close();
+});
+
+/** A card's ⋯ menu button (code card, Note) is hidden until the card is hovered or selected, keeps its place so the header does not
+ *  move when it appears, and stays while its menu is open even with the pointer over the menu (usage feedback #90) */
+test("cardMenuDotsOnHover", async () => {
+  const b = emptyBoard("b1", "menu dots");
+  put(b, symCard(findSym("Scheduler.schedule").f, findSym("Scheduler.schedule").s), 60, 60, 480);
+  b.cards.push({ id: "n1", kind: "note", look: "note", md: "现在考察第三章图 3.11 中的具体矩阵乘法 kernel。" } as any);
+  b.place.n1 = { x: 620, y: 60, w: 400 };
+  b.cam = { x: 0, y: 0, z: 1 };
+  const h = await open({ board: b, light: true, w: 1100, h: 700 });
+  const pg = h.page;
+  await idle(h);
+  const dots = () => pg.evaluate(async () => Promise.all([...document.querySelectorAll<HTMLElement>(".chead .cmenu")].map(async (e) => {
+    await Promise.all(e.getAnimations().map((a) => a.finished));
+    return { card: e.closest<HTMLElement>(".card")!.dataset.id, opacity: +getComputedStyle(e).opacity, x: Math.round(e.getBoundingClientRect().x) };
+  })));
+  await pg.mouse.move(1080, 680);
+  const rest = await dots();
+  await pg.locator('.card[data-id="n1"] .nbody').hover();
+  const hover = await dots();
+  await shot(h, "card-menu-dots-hover");
+  await pg.locator('.card[data-id="n1"] .cmenu').click();
+  await pg.locator(".ctx.open").waitFor();
+  await pg.locator(".ctx.open button").last().hover();
+  const menu = await dots();
+  await pg.keyboard.press("Escape");
+  await pg.locator(".ctx").waitFor({ state: "detached" });
+  await pg.mouse.click(800, 600); // the click on ⋯ selected the card, which keeps it shown
+  await until(h, "card deselected", () => pg.evaluate(() => !document.querySelector(".card.sel")));
+  const after = await dots();
+  const op = (r: typeof rest, id: string) => r.find((d) => d.card === id)?.opacity;
+  const code = rest.find((d) => d.card !== "n1")?.card ?? "";
+  check("cardMenuDotsOnHover", rest.length === 2 && rest.every((d) => d.opacity === 0) && op(hover, "n1") === 1 && op(hover, code) === 0
+    && op(menu, "n1") === 1 && after.every((d) => d.opacity === 0) && hover.every((d, i) => d.x === rest[i].x), { rest, hover, menu, after });
 });

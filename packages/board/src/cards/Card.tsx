@@ -22,7 +22,7 @@ import { NoteBody, WritingToolbar } from "./NoteBody";
 import { WebBody, LinksBody } from "./WebBody";
 import { BoardBody } from "./BoardBody";
 import { Editable } from "../ui/Editable";
-import { openMenuAt, below } from "../ui/Menu";
+import { openMenuAt, below, ownMenu } from "../ui/Menu";
 import * as act from "../actions";
 import { offscreen, farAway } from "../state/cull";
 import { lodOf, izOf } from "../state/lodcards";
@@ -171,6 +171,7 @@ export function CardView(p: { card: Card }) {
 
 export function CodeHead(p: { card: CodeCard; col?: boolean }) {
   const c = () => p.card;
+  const more = ownMenu();
   const node = createMemo(() => flows().byId.get(c().id));
   // 折叠后因为它藏起来的卡（别的路径还能走到的不算）
   const hiddenKids = createMemo(() => (placeOf(c().id).collapsed && node() ? descendants(flows(), c().id).filter((k) => collapsedSet().has(k)).length : 0));
@@ -242,7 +243,7 @@ export function CodeHead(p: { card: CodeCard; col?: boolean }) {
       <Show when={!c().variants?.length && (act.uncommitted(c()) || c().segments.some((s) => state.stale[s.id]?.state === "uncommitted"))}>
         <button class="rev unc fold" data-tip="+ uncommitted · HEAD vs Working Tree" data-nodrag onClick={() => act.openWorktreeDiff(c().id)}><span class="rw"><span class="rl">+ uncommitted</span></span></button>
       </Show>
-      <Show when={!p.col}><button class="ib" aria-label="Card Menu" data-tip="More Actions" data-nodrag data-export="strip" onClick={(e) => act.cardMenu(c().id, ...below(e.currentTarget))}><Icon name="more" /></button></Show>
+      <Show when={!p.col}><button class="ib cmenu" classList={{ on: more.open() }} aria-label="Card Menu" data-tip="More Actions" data-nodrag data-export="strip" onClick={(e) => { act.cardMenu(c().id, ...below(e.currentTarget)); more.opened(); }}><Icon name="more" /></button></Show>
     </div>
   );
 }

@@ -27,6 +27,11 @@ export const below = (el: Element) => { const r = el.getBoundingClientRect(); re
 export const openMenuAt = (items: Item[], el: Element) => openMenu(items, ...below(el));
 export const closeMenu = () => setMenu(null);
 export const menuOpen = () => !!menu();
+/** 按钮自己弹出的菜单是不是还开着：卡头的 ⋯ 平时藏着（styles.css .cmenu），它的菜单开着时鼠标移进菜单也得留着 */
+export function ownMenu() {
+  const [n, setN] = createSignal(-1);
+  return { open: () => menu()?.n === n(), opened: () => setN(menu()?.n ?? -1) };
+}
 
 /** 开着的各级菜单，外层在前：键盘（↑↓ 选、→ 开二级、← / Esc 关二级、↵ 执行）只作用在最里面那一级 */
 type Level = { move: (d: 1 | -1) => void; enter: () => void; activate: () => boolean; closeSub: () => void; kbSub: () => boolean };

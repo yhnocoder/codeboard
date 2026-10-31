@@ -5,6 +5,7 @@ import { emptyBoard, type Skeleton } from "@codeboard/core";
 import { Stage, scene, codeCard, type Globals, type Scene } from "./support/board";
 import { subBoard, skelOfBoard, boardFrame } from "./support/cards";
 import { setDropTarget } from "../src/state/ui";
+import { themes } from "./support/themes";
 
 /** 框外名字的高度：框的说明文字摆在名字上面 */
 const T = 50;
@@ -75,6 +76,7 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const Overview: Story = own(overview);
+export const Themes: Story = themes("skeleton-preview");
 export const SkeletonPreview: Story = { name: "Skeleton" };
 export const Nested: Story = { args: { kind: "nested" } };
 export const Empty: Story = { name: "Empty Board", args: { kind: "empty", w: 300, h: 180 } };

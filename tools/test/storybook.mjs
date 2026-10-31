@@ -55,7 +55,10 @@ function watch(page) {
   // "Failed to load resource" repeats a response the handlers below report with its URL (and let the favicon through)
   page.on("console", (m) => { if (m.type() === "error" && !/^Failed to load resource/.test(m.text())) errors.push(`console.error: ${m.text()}`); });
   page.on("pageerror", (e) => errors.push(`page error: ${e.message}`));
-  page.on("requestfailed", (r) => { if (!IGNORE_REQUEST.test(r.url())) errors.push(`request failed: ${r.url()} (${r.failure()?.errorText})`); });
+  // A story's own story iframes (Themes: one per theme) are taken away with it when the next story replaces it, abandoning what they
+  // were still loading (the editor preloads after a pause): not an error. The stories in them are checked on their own
+  const nested = (f) => /\/iframe\.html/.test(f.url()) && /\/iframe\.html/.test(f.parentFrame()?.url() ?? "");
+  page.on("requestfailed", (r) => { if (!IGNORE_REQUEST.test(r.url()) && !(r.failure()?.errorText === "net::ERR_ABORTED" && nested(r.frame()))) errors.push(`request failed: ${r.url()} (${r.failure()?.errorText})`); });
   page.on("response", (r) => { if (r.status() >= 400 && !IGNORE_REQUEST.test(r.url())) errors.push(`HTTP ${r.status()} ${r.url()}`); });
   return { take: () => { const e = errors; errors = []; return e; } };
 }

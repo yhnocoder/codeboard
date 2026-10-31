@@ -9,7 +9,7 @@ import { Icon } from "../ui/icons";
 import { CodeHead } from "./Card";
 import * as A from "../actions";
 import { callPointerDown, cardWheel } from "../interact";
-import { below } from "../ui/Menu";
+import { below, ownMenu } from "../ui/Menu";
 
 type L = { seg: string; line: number; text: string; html: string };
 const norm = (s: string) => s.trim().replace(/\s+/g, " ");
@@ -51,6 +51,7 @@ export function markHtml(html: string, ranges: [number, number][]): string {
 
 export function CompareBody(p: { card: CompareCard }) {
   const k = () => p.card;
+  const more = ownMenu();
   const cols = createMemo(() => (k().swap ? [k().cols[1], k().cols[0]] : [k().cols[0], k().cols[1]]).map((id) => cardById(id)?.card) as [CodeCard, CodeCard]);
   const data = createMemo(() => {
     const [a, b] = cols();
@@ -141,7 +142,7 @@ export function CompareBody(p: { card: CompareCard }) {
           <button class="seg2" classList={{ on: !!k().unified }} onClick={() => set((c) => { c.unified = !c.unified; })}>Unified</button>
           <button class="seg2" classList={{ on: !!k().hideSame }} onClick={() => set((c) => { c.hideSame = !c.hideSame; })}>Hide Same Lines</button>
         </span>
-        <button class="ib" aria-label="Compare Menu" data-tip="More Actions" data-nodrag onClick={(e) => A.cardMenu(k().id, ...below(e.currentTarget))}><Icon name="more" /></button>
+        <button class="ib cmenu" classList={{ on: more.open() }} aria-label="Compare Menu" data-tip="More Actions" data-nodrag onClick={(e) => { A.cardMenu(k().id, ...below(e.currentTarget)); more.opened(); }}><Icon name="more" /></button>
       </div>
       <div class="colh">
         <For each={cols()}>{(c, i) => <div class={i() ? "colr" : "coll"} data-col={c.id}><CodeHead card={c} col /></div>}</For>

@@ -3,6 +3,7 @@ import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import { Stage, scene, type Globals, type Scene } from "./support/board";
 import { IMAGES, imageCard, noteAt, type ImageKey } from "./support/cards";
 import { setEditing, setDropTarget } from "../src/state/ui";
+import { themes } from "./support/themes";
 
 type Args = { image: ImageKey; w: number; frame: boolean; desc: string; state: "normal" | "selected" | "editing caption"; locked: boolean; lod: "toolbar" | "map" };
 
@@ -59,6 +60,7 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const Overview: Story = { render: (_, ctx) => <Stage scene={overview} globals={ctx.globals as Globals} />, argTypes: hideAll };
+export const Themes: Story = themes("frame-and-caption");
 export const Wide: Story = {};
 export const Square: Story = { args: { image: "square", w: 260 } };
 export const Tall: Story = { args: { image: "tall", w: 200 } };

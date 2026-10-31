@@ -1036,3 +1036,48 @@ test("mermaidThemeFontLoads", async () => {
   check("mermaidThemeFontLoads-fitsLoadedFont", JSON.stringify(got) === JSON.stringify(want), { got, want });
   await close(h);
 });
+
+/** 表格圆角：6px 的外框（separate、0 间距），格子只画右边和下边的线，最后一列、最后一行不画；静态显示和编辑器里一样，宽度和每列宽度也一样（用户拖过的列宽照样生效）*/
+test("noteTableRoundedCorners", async () => {
+  const b = emptyBoard("b1", "rounded table");
+  const md = ["Before.", "| Memory | Scope | Latency |\n|---|---|---|\n| register | thread | 1 |\n| shared | block | 30 |", "After."].join("\n\n");
+  put(b, { id: "nb", kind: "note", md, look: "note" } as NoteCard, 80, 80, 420);
+  // the same table with column widths the user dragged (mdLayout)
+  put(b, { id: "nw", kind: "note", md, look: "note", mdLayout: { tables: [{ cols: [150, null, 120] }] } } as NoteCard, 80, 360, 420);
+  b.cam = { x: 0, y: 0, z: 1 };
+  const h = await open({ board: b, light, w: 900, h: 600 });
+  const look = (sel: string) => h.page.evaluate((sel) => {
+    const t = document.querySelector<HTMLTableElement>(sel)!, s = getComputedStyle(t), cells = [...t.rows].map((r) => [...r.cells]);
+    const last = cells[cells.length - 1], head = cells[0];
+    const cs = (el: Element) => getComputedStyle(el);
+    return {
+      radius: s.borderTopLeftRadius, collapse: s.borderCollapse, spacing: s.borderSpacing, frame: s.borderTopWidth, scroll: s.overflowX,
+      inner: cs(head[0]).borderRightWidth, below: cs(head[0]).borderBottomWidth, top: cs(head[0]).borderTopWidth,
+      lastCol: cs(head[head.length - 1]).borderRightWidth, lastRow: cs(last[0]).borderBottomWidth, corner: cs(head[0]).borderTopLeftRadius,
+      fits: t.getBoundingClientRect().width <= t.parentElement!.getBoundingClientRect().width + 0.5,
+    };
+  }, sel);
+  const want = (x: Awaited<ReturnType<typeof look>>) => x.radius === "6px" && x.collapse === "separate" && /^0px( 0px)?$/.test(x.spacing) && x.frame === "1px"
+    && x.inner === "1px" && x.below === "1px" && x.top === "0px" && x.lastCol === "0px" && x.lastRow === "0px" && x.corner === "5px" && x.fits;
+  const stat = await look('.card[data-id="nb"] > .cface > .nbody table');
+  const tb = (await h.page.locator('.card[data-id="nb"] > .cface > .nbody table').boundingBox())!;
+  await h.page.screenshot({ path: path.join(OUT, "note-table-rounded.png"), clip: { x: tb.x - 16, y: tb.y - 16, width: tb.width + 32, height: tb.height + 32 } });
+  await h.page.mouse.dblclick(tb.x + 20, tb.y + 10);
+  await h.page.locator('.card[data-id="nb"] .md-pm table').waitFor(); await idle(h);
+  const ed = await look('.card[data-id="nb"] .md-pm table');
+  await shot(h, "note-table-rounded-editor");
+  check("table-rounded", want(stat) && want(ed) && stat.scroll === "auto", JSON.stringify({ stat, ed }));
+  // read-only and editing: the same table width and column widths, with and without user column widths
+  const widths = (sel: string) => h.page.evaluate((sel) => { const t = document.querySelector<HTMLTableElement>(sel)!; return { table: Math.round(t.getBoundingClientRect().width), cols: [...t.rows[0].cells].map((c) => Math.round(c.getBoundingClientRect().width)) }; }, sel);
+  const edW = await widths('.card[data-id="nb"] .md-pm table');
+  await h.page.keyboard.press("Escape"); await h.page.locator('.card[data-id="nb"] .md-pm').waitFor({ state: "detached" }); await idle(h);
+  const statW = await widths('.card[data-id="nb"] > .cface > .nbody table');
+  const statL = await widths('.card[data-id="nw"] > .cface > .nbody table');
+  const tw = (await h.page.locator('.card[data-id="nw"] > .cface > .nbody table').boundingBox())!;
+  await h.page.mouse.dblclick(tw.x + 20, tw.y + 10);
+  await h.page.locator('.card[data-id="nw"] .md-pm table').waitFor(); await idle(h);
+  const edL = await widths('.card[data-id="nw"] .md-pm table');
+  const same = (a: typeof edW, b: typeof edW) => Math.abs(a.table - b.table) <= 1 && a.cols.length === b.cols.length && a.cols.every((w, i) => Math.abs(w - b.cols[i]) <= 1);
+  check("table-width-same-reading-and-editing", same(statW, edW) && same(statL, edL) && Math.abs(statL.cols[0] - 150) <= 1 && Math.abs(statL.cols[2] - 120) <= 1, JSON.stringify({ statW, edW, statL, edL }));
+  await close(h);
+});

@@ -6,8 +6,9 @@ import { reduceMotion } from "../state/camera";
 import { Editable } from "../ui/Editable";
 import { Icon } from "../ui/icons";
 import * as A from "../actions";
-import { below } from "../ui/Menu";
+import { below, ownMenu } from "../ui/Menu";
 import { sourceModeOf, toggleNoteSource } from "../md/load";
+import { trackBlocks } from "../state/blocks";
 
 /**
  * 卡头的名字就是 Markdown 开头的标题时，正文里藏起那一行（正文元素加 hidehead，styles.css 藏掉第一个标题）：没自己起名字、开头是标题、
@@ -17,6 +18,7 @@ export const hidesHeading = (c: NoteCard, heading = c.look === "note" ? mdHeadin
 
 export function NoteBody(p: { card: NoteCard }) {
   const c = () => p.card;
+  const more = ownMenu();
   // 卡头：用户改过的名字 → Markdown 开头的标题 → Note。只在 md 变了时重算（只看第一行非空的）
   const heading = createMemo(() => (c().look === "note" ? mdHeading(c().md) : ""));
   // 卡头的名字就是开头的标题时，正文里不再显示它（设置 noteHeadingInBody 可以留着）：只是显示上藏起来，Markdown 里还在，编辑时照常出现。
@@ -25,6 +27,8 @@ export function NoteBody(p: { card: NoteCard }) {
   const [sliding, setSliding] = createSignal(false);
   const [folded, setFolded] = createSignal(false);
   const isEditing = () => editing()?.kind === "note" && editing()?.id === c().id;
+  // 有箭头连着这张 Note 的某一块：量每一块的位置（线的端点）
+  trackBlocks(() => c().id, () => c().md);
   createEffect(on(isEditing, (now, was) => {
     if (was === undefined || now === was || (now && !hideHead()) || (!now && !folded())) return;
     if (!now) setSliding(true);
@@ -52,7 +56,7 @@ export function NoteBody(p: { card: NoteCard }) {
             data-tip="Markdown Source" data-kbd={state.host.isMac ? "⌘/" : "Ctrl+/"} data-nodrag data-md-keep
             onMouseDown={(e) => e.preventDefault()} onClick={() => toggleNoteSource(c().id)}>M↓</button>
         </Show>
-        <button class="ib" aria-label="Note Menu" data-tip="More Actions" data-nodrag onClick={(e) => A.cardMenu(c().id, ...below(e.currentTarget))}><Icon name="more" /></button>
+        <button class="ib cmenu" classList={{ on: more.open() }} aria-label="Note Menu" data-tip="More Actions" data-nodrag onClick={(e) => { A.cardMenu(c().id, ...below(e.currentTarget)); more.opened(); }}><Icon name="more" /></button>
       </div>
       <Editable class={`nbody${hideHead() && !sliding() ? " hidehead" : ""}${folded() ? " fold" : ""}`} kind="note" id={c().id} value={c().md} layout={c().mdLayout} multiline md placeholder="Write a note… Markdown and $math$ work" onCommit={(v, l) => A.setNoteText(c().id, v, l)} />
       </Match>
@@ -85,6 +89,8 @@ function foldHeader(id: string, entering: boolean, setFolded: (v: boolean) => vo
   if (entering) {
     H = head.offsetHeight; p0 = parseFloat(getComputedStyle(body).paddingTop);
     face.style.setProperty("--fold-h", `${H}px`); face.style.setProperty("--fold-p0", `${p0}px`);
+    // 主题画在卡头下的线（Ink Wash 的墨线）收起时淡掉（themes.css）：记下它没收起时的透明度，进出都从这里淡
+    face.dataset.foldLine = getComputedStyle(head, "::after").opacity;
     setFolded(true);
   } else {
     H = parseFloat(face.style.getPropertyValue("--fold-h")) || head.offsetHeight;
@@ -102,6 +108,7 @@ function foldHeader(id: string, entering: boolean, setFolded: (v: boolean) => vo
   const anims = [pad,
     head.animate(dir({ marginBottom: "0px", backgroundColor: hs.backgroundColor, borderBottomColor: hs.borderBottomColor }, { marginBottom: `${-H}px`, backgroundColor: "transparent", borderBottomColor: "transparent" }) as Keyframe[], opts),
     ...[...head.children].filter((e) => !e.classList.contains("ib")).map((e) => e.animate(dir({ opacity: 1, transform: "none" }, { opacity: 0, transform: "translateY(-30%)" }) as Keyframe[], opts)),
+    head.animate(dir({ opacity: +(face.dataset.foldLine ?? 1) }, { opacity: 0 }) as Keyframe[], { ...opts, pseudoElement: "::after" }),
     // 滑动时标题在正文上沿外面的那部分剪掉（只剪上边，下面和两侧照常溢出）
     body.animate([{ clipPath: "inset(0 -100vmax -100vmax -100vmax)" }, { clipPath: "inset(0 -100vmax -100vmax -100vmax)" }], opts),
   ];

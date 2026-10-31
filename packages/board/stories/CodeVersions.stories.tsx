@@ -4,6 +4,7 @@ import { Stage, scene, type Globals, type Scene } from "./support/board";
 import { COMMITS } from "./support/host";
 import { el, frames } from "./support/play";
 import { fn, edited, latestEdit, diffOf, DIFFS, popAt, card, lineOf } from "./support/code";
+import { themes } from "./support/themes";
 
 type Pop = "diff" | "commits" | "loading" | "error";
 type Args = { pop: Pop; title: string; notes: boolean; w: number };
@@ -82,6 +83,7 @@ export const Overview: Story = {
   render: (a, ctx) => <Stage scene={() => overview(a)} globals={ctx.globals as Globals} />,
   argTypes: { pop: { table: { disable: true } } },
 };
+export const Themes: Story = themes("diff");
 export const Diff: Story = { name: "New Version Diff" };
 export const Commits: Story = { name: "Pick a Commit", args: { pop: "commits" } };
 export const DiffLoading: Story = { args: { pop: "loading" } };

@@ -34,3 +34,7 @@ export const NUDGE_SPEED = 0.04;
 export const NUDGE_MAX = 6;
 /** After a press on the board, how long the board takes the keyboard back if the webview's host page takes it from its frame (focus.ts) */
 export const CLICK_KEEPS_KEYS = 1000;
+/** Dragging an arrow: when the block of a Note it points at changes, its end glides to the new block over this long (interact.ts linkPortDown) */
+export const BLOCK_GLIDE = 90;
+/** The ports on a Note's block stay this long after the pointer leaves it, so they can be reached on the card's edge (state/blocks.ts) */
+export const BLOCK_LEAVE = 200;

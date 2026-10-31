@@ -70,7 +70,7 @@ const Card = v.variant("kind", [
   obj({ ...base, kind: v.literal("board"), board: str, pcols: opt(v.literal(2)) }),
 ]);
 
-const End = obj({ card: str, seg: opt(str), line: opt(num) });
+const End = obj({ card: str, seg: opt(str), line: opt(num), block: opt(obj({ i: num, h: str })) });
 const Var = obj({ a: str, b: opt(str), ret: opt(bool), custom: opt(bool) });
 const Side = v.picklist(["left", "right", "top", "bottom"]);
 const BoundVal = obj({ name: str, value: str, opts: opt(v.array(str)), from: opt(str) });

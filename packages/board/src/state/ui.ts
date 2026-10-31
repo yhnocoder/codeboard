@@ -94,7 +94,7 @@ export function takeEditEntry<K extends EditEntry["kind"]>(kind: K, id: string):
 // 拖动中：吸附参考线、合并目标、落点行、图片卡要放进的 Note（note）……
 export const [guides, setGuides] = boardSignal<Guide[]>([]);
 export const [sizeHint, setSizeHint] = boardSignal<{ x: number; y: number; text: string } | null>(null);
-export const [dropTarget, setDropTarget] = boardSignal<{ kind: "merge" | "line" | "card" | "cand" | "note"; card: string; seg?: string; line?: number; armed?: boolean; cands?: string[] } | null>(null);
+export const [dropTarget, setDropTarget] = boardSignal<{ kind: "merge" | "line" | "block" | "card" | "cand" | "note"; card: string; seg?: string; line?: number; armed?: boolean; cands?: string[] } | null>(null);
 export const [dragging, setDragging] = boardSignal<Set<string>>(new Set());
 export const [marquee, setMarquee] = boardSignal<{ x: number; y: number; w: number; h: number } | null>(null);
 export const [rubber, setRubber] = boardSignal<{ x1: number; y1: number; x2: number; y2: number; plain?: boolean } | null>(null);

@@ -8,6 +8,7 @@ import { ask, send } from "../host";
 import { ghostOut } from "./ghost";
 import { rooted, boardSignal } from "./root";
 import { trimLru } from "./lru";
+import { followBlocks } from "../md/blocks";
 import { LIVE_DELAY, RESEND_DELAY, SEL_REPORT } from "./timing";
 
 export const [state, setState] = createStore({
@@ -175,9 +176,18 @@ function twins(b: Board) {
   if (unwrap(b).cards.some((c) => c.same)) syncTwins(b, twinSeen, unwrap);
   else twinSeen.clear();
 }
+// Note 的字变了：连着它某一块的箭头端点跟着那一块走（md/blocks.ts → core rebaseBlocks），和这次修改算同一步。
+// blockSeen = 上次看到的每张 Note 的 md；撤销 / 换白板之后按那时的白板重记（快照里箭头和字本来就是对得上的）
+const blockSeen = new Map<string, string>();
+/** 每次改完白板都要做的：摆在几处的同一张卡抄一遍内容、块端点跟着字走 */
+function upkeep(b: Board) {
+  twins(b);
+  followBlocks(b, blockSeen, unwrap);
+}
 function reseeTwins() {
   twinSeen.clear();
-  setState("board", produce(twins));
+  blockSeen.clear();
+  setState("board", produce(upkeep));
 }
 /** 和 id 是同一张卡的几处（含它自己，按叠放顺序）；不是的话空 */
 const twinIndex = rooted(() => createMemo(() => {
@@ -199,7 +209,7 @@ export const twinsOf = (id: string): string[] => {
 export function mutate(fn: (b: Board) => void, opts: { merge?: string; fx?: Effect } = {}): boolean {
   const before = snap();
   cur = null;
-  try { setState("board", produce((b: Board) => { fn(b); twins(b); stamp(b); })); }
+  try { setState("board", produce((b: Board) => { fn(b); upkeep(b); stamp(b); })); }
   catch (e) {
     // 改到一半抛错：produce 已经改了一部分，整次撤回，别留下半截的白板
     restore(before);
@@ -268,7 +278,7 @@ const held = new Set<Snap>();
 /** 拖动中的修改（不进撤销栈） */
 export function live(fn: (b: Board) => void) {
   cur = null;
-  setState("board", produce((b: Board) => { fn(b); twins(b); }));
+  setState("board", produce((b: Board) => { fn(b); upkeep(b); }));
   changedLive();
 }
 /** 镜头停下来时记进白板（不进撤销栈）。快照里没有镜头，所以快照缓存还能用，自动保存只发镜头 */
@@ -288,7 +298,7 @@ const SYNC_MAX = 2000;
  */
 export function sync(fn: (b: Board) => void, shared?: string[]) {
   cur = null;
-  setState("board", produce((b: Board) => { fn(b); twins(b); stamp(b); }));
+  setState("board", produce((b: Board) => { fn(b); upkeep(b); stamp(b); }));
   syncLog.push({ n: ++syncN, fn, shared });
   trimSync();
   changed();
@@ -337,7 +347,7 @@ function replaySync(s: Snap): { any: boolean; shared: Set<string> } {
   const xs = syncLog.filter((x) => x.n > s.epoch);
   const shared = new Set(xs.flatMap((x) => x.shared ?? []));
   if (!xs.length) return { any: false, shared };
-  setState("board", produce((b: Board) => { for (const x of xs) x.fn(b); twins(b); }));
+  setState("board", produce((b: Board) => { for (const x of xs) x.fn(b); upkeep(b); }));
   return { any: true, shared };
 }
 

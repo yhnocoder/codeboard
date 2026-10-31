@@ -1,5 +1,5 @@
 // Markdown 原样写出用户的文字和标识符：不做转义（block_manager 不会变成 block\_manager）
-import { cardAndCols, cardTitle, colsOf, hostOf, stickerWhere, domainOf, findCard, isQuestion, rpcText, versionLabel, type Board, type Card, type CodeCard, type Segment, type Sidenote, type Link } from "./model";
+import { blockAt, blockSig, cardAndCols, cardTitle, firstLine, colsOf, hostOf, stickerWhere, domainOf, findCard, isQuestion, rpcText, versionLabel, type Board, type Card, type CodeCard, type Segment, type Sidenote, type Link } from "./model";
 import { computeFlows, isCall, startCards, walkOrder } from "./flow";
 import { langInfo } from "@codeboard/analysis/langs";
 
@@ -50,6 +50,8 @@ export type MdOpts = {
   /** 段的 GitHub 永久链接（宿主按 remote 算；没有就只写路径和 commit） */
   links?: Record<string, string>;
   boardName?: (id: string) => string | undefined;
+  /** Note 拆成顶层块（白板用 @yhnocoder/markdown 拆；core 不解析 Markdown）：连着某一块的箭头写出那一块的头几个字 */
+  blocks?: (md: string) => string[] | null;
 };
 
 /** 代码块的围栏：比代码里最长的一串反引号还长 */
@@ -111,15 +113,27 @@ function noteMd(b: Board, n: Sidenote, links?: Record<string, string>): string {
 }
 
 /** 一条出去的箭头：→ 目标 · 第几行 · 调用 / RPC / 标签 */
-function arrowMd(b: Board, l: Link): string {
+function arrowMd(b: Board, l: Link, o: MdOpts): string {
   const to = findCard(b, l.to.card)?.card;
-  const bits = [`→ ${to ? cardTitle(to, b) : l.to.card}`];
+  const bits = [`→ ${to ? cardTitle(to, b) : l.to.card}${blockMd(b, l.to, o, " at ")}`];
   if (l.from.line !== undefined) bits.push(`from line ${l.from.line}`);
+  const fb = blockMd(b, l.from, o, "from ");
+  if (fb) bits.push(fb);
   if (l.rpc) bits.push(rpcText(l.rpc));
   else if (l.call) bits.push(`calls ${l.call.name}()`);
   if (l.back) bits.push("back to start");
   if (l.label) bits.push(`“${l.label}”`);
   return bits.join(" · ");
+}
+
+/** 箭头连着 Note 的某一块：那一块的头几个字（拆不开、块没了时空） */
+function blockMd(b: Board, e: Link["from"], o: MdOpts, pre: string): string {
+  const c = e.block && findCard(b, e.card)?.card;
+  const bs = c && c.kind === "note" ? o.blocks?.(c.md) : null;
+  const k = bs ? blockAt(e.block!, bs.map(blockSig)) : -1;
+  if (k < 0) return "";
+  const t = firstLine(bs![k]);
+  return t ? `${pre}“${t.length > 40 ? `${t.slice(0, 40)}…` : t}”` : "";
 }
 
 function bodyMd(b: Board, c: Card, o: MdOpts): string[] {
@@ -174,7 +188,7 @@ export function boardMarkdown(b: Board, o: MdOpts): string {
       if (qs.length) out.push("");
     }
     const outs = b.links.filter((l) => ids.includes(l.from.card) && !ids.includes(l.to.card) && !l.gen).sort((x, y) => Number(!isCall(x)) - Number(!isCall(y)) || (x.from.line ?? 0) - (y.from.line ?? 0));
-    if (outs.length) out.push(...outs.map((l) => `- ${arrowMd(b, l)}`), "");
+    if (outs.length) out.push(...outs.map((l) => `- ${arrowMd(b, l, o)}`), "");
   }
   return `${out.join("\n").replace(/\n{3,}/g, "\n\n").trimEnd()}\n`;
 }
