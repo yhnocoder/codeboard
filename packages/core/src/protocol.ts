@@ -112,7 +112,7 @@ export type HostInfo = {
   settings: Settings;
   /** 这些快捷键（⌘ + 键）被宿主拦下后以 {type:"key"} 转回来，白板自己不再处理（免得做两次） */
   forwardedKeys?: string[];
-  /** 宿主能做 AI 续写（VS Code 的语言模型）：Note 编辑时的灰字补全 */
+  /** Note 编辑时的灰字补全开着（codeboard.ai.provider 不是 off） */
   complete?: boolean;
   /** ⌘C 复制的卡在哪块白板上、几张（画布菜单的 Paste as Linked Card / Paste as Copy 用） */
   clip?: { board: string; n: number };
@@ -340,11 +340,9 @@ export type BoardToHost =
   | { type: "imageAi"; req: number; job: number; op: ImageAiOp }
   /** 取消还在等的 imageAi（卡上的 Cancel、Esc）：宿主中止请求，那个请求回 { fail: "canceled" } */
   | { type: "imageAiCancel"; job: number }
-  /** 没有密钥、密钥被拒时提示里的 Set DeepSeek API Key…：和命令 CodeBoard: Set DeepSeek API Key 一样 */
-  | { type: "setDeepseekKey" }
   /** Settings 的 AI 一节：密钥设了没有、有哪些 VS Code 语言模型。回 AiInfo */
   | { type: "aiInfo"; req: number }
-  /** Settings 里的 Set Key… / Clear：set 弹 VS Code 的密码输入框（存进密钥存储），clear 删掉；回之后的 AiInfo。密钥本身不进白板 */
+  /** Settings 里的 Set Key… / Clear 和 AI 功能提示里的 Set DeepSeek API Key…：set 在白板上问密钥（存进密钥存储），clear 删掉；回之后的 AiInfo。密钥本身不进白板 */
   | { type: "aiKey"; req: number; action: "set" | "clear" }
   /** Add Variant 菜单：这段代码所在仓库的其他 worktree、本地分支。回 VariantSources */
   | { type: "variantSources"; req: number; seg: Segment }

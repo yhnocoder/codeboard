@@ -30,8 +30,8 @@ import { addVariant, variantSources } from "./variants";
 import { highlight, segView, viewsFor } from "./views";
 import { fromHostPath, hostPath, langOf, readText, splitLines, workspace, ws0 } from "./ws";
 import { lookupName } from "./nameindex";
-import { aiInfo, imageAiJob } from "./imageai";
-import { chatComplete } from "./complete";
+import { imageAiJob } from "./imageai";
+import { aiInfo, clearDeepseekKey, completeNote, setDeepseekKey } from "./ai";
 
 
 type Msg<T extends BoardToHost["type"]> = Extract<BoardToHost, { type: T }>;
@@ -134,12 +134,10 @@ export function makeHandler(panels: BoardHost): Handler {
     copyText: (_p, m) => workspace().ui.copy(m.text),
     imageAi: (p, m) => imageAiJob(jobsOf(p), m.job, m.op),
     imageAiCancel: (p, m) => { jobsOf(p).get(m.job)?.abort(); },
-    setDeepseekKey: async () => { await workspace().ai?.setDeepseekKey?.(); },
     aiInfo: () => aiInfo(),
-    aiKey: async (_p, m) => {
-      const ai = workspace().ai;
-      if (m.action === "set") await ai?.setDeepseekKey?.();
-      else await ai?.clearDeepseekKey?.();
+    aiKey: async (p, m) => {
+      if (m.action === "set") await setDeepseekKey(prompts(p));
+      else await clearDeepseekKey();
       return aiInfo();
     },
     variantSources: (_p, m) => variantSources(m.seg),
@@ -472,14 +470,10 @@ const jobsOf = (p: BoardPanel) => { let m = imageJobs.get(p); if (!m) imageJobs.
 /** Note 的灰字补全：同一块面板新的请求来了就取消旧的；没有模型回 null */
 const inflight = new WeakMap<BoardPanel, AbortController>();
 async function complete(p: BoardPanel, before: string, after: string): Promise<string | null> {
-  const ai = workspace().ai;
-  if (!ai) return null;
   inflight.get(p)?.abort();
   const ac = new AbortController();
   inflight.set(p, ac);
-  const raw = ai.complete
-    ? await ai.complete(before, after, { signal: ac.signal })
-    : await chatComplete(ai.ask, before, after, ac.signal);
+  const raw = await completeNote(before, after, ac.signal);
   if (ac.signal.aborted || raw === undefined) return null;
   return cleanCompletion(raw, before, after) || null;
 }

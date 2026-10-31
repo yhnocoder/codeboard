@@ -1,8 +1,8 @@
 import * as vscode from "vscode";
 import * as path from "node:path";
-import { hoverAt, isScratch, vscodeScratch } from "./scratch";
+import { hoverAt, locations } from "./lsp";
+import { isScratch, vscodeScratch } from "./scratch";
 import { Emitter, type AiChatRequest, type AiChatResult, type AiModel, type PickIcon, type Workspace } from "@codeboard/core";
-import { chatComplete, deepseekComplete } from "@codeboard/host";
 
 const EXT_ID = "yhnocoder.codeboard-vscode";
 // esbuild.mjs 写进来的构建信息：正式版是 ""，开发版是 "dev <commit>[ dirty]"（vitest 里没有这个常量）
@@ -60,51 +60,24 @@ const splitKey = (k: string) => { const i = k.indexOf("."); return [k.slice(0, i
 
 const fileOrUndef = (u: vscode.Uri) => (u.scheme === "file" ? u.fsPath : undefined);
 
-/** DeepSeek 的 API 密钥在 SecretStorage 里的名字（不进设置、不进白板文件、不写日志） */
-export const DEEPSEEK_SECRET = "codeboard.deepseekApiKey";
-
-// 用户装了 Copilot 之类提供模型的扩展才有；第一次用时 VS Code 会问用户同不同意。任何失败都静默回 undefined
-async function copilotAsk(system: string, prompt: string, o?: { signal?: AbortSignal; maxChars?: number }): Promise<string | undefined> {
-  const lm = (vscode as any).lm as typeof vscode.lm | undefined;
-  if (!lm?.selectChatModels) return undefined;
-  try {
-    const all = await lm.selectChatModels();
-    if (!all.length) return undefined;
-    // 补全要快：优先小模型
-    const m = all.find(isFast) ?? all[0];
-    const cts = new vscode.CancellationTokenSource();
-    o?.signal?.addEventListener("abort", () => cts.cancel());
-    if (o?.signal?.aborted) return undefined;
-    const r = await m.sendRequest([vscode.LanguageModelChatMessage.User(`${system}\n\n${prompt}`)], { justification: "CodeBoard suggests gray inline completions while you write a Note." }, cts.token);
-    let out = "";
-    for await (const t of r.text) { out += t; if (o?.maxChars && out.length > o.maxChars) { cts.cancel(); break; } }
-    return out;
-  } catch { return undefined; }
-}
-
-type LmModel = vscode.LanguageModelChat & { capabilities?: { supportsImageToText?: boolean } };
-/** A small, quick model (for completions) */
 /** The codicon for each PickItem icon */
 const CODICON: Record<PickIcon, string> = { board: "layout", boards: "files", folder: "folder", file: "folder-opened", add: "add", class: "symbol-class", function: "symbol-method" };
+
+// 第一次用时 VS Code 会问用户同不同意。capabilities.supportsImageToText 运行时有，@types/vscode 里还没写
+type LmModel = vscode.LanguageModelChat & { capabilities?: { supportsImageToText?: boolean } };
+/** A small, quick model (for completions and reading text) */
 const FAST_MODEL = /mini|haiku|flash|nano|small|fast/i;
 const isFast = (m: vscode.LanguageModelChat) => FAST_MODEL.test(m.family) || FAST_MODEL.test(m.id);
-const lmApi = () => (vscode as any).lm as typeof vscode.lm | undefined;
-// 1.143 的模型有 capabilities.supportsImageToText（@types/vscode 1.90 里还没有）
 const aiModel = (m: LmModel): AiModel => ({ id: m.id, name: m.name || m.family || m.id, vendor: m.vendor, vision: !!m.capabilities?.supportsImageToText });
 
 async function lmModels(): Promise<AiModel[]> {
-  try { return ((await lmApi()?.selectChatModels()) ?? []).map((m) => aiModel(m as LmModel)); } catch { return []; }
+  try { return (await vscode.lm.selectChatModels()).map((m) => aiModel(m as LmModel)); } catch { return []; }
 }
 
-/**
- * AI 功能问 VS Code 的语言模型（Copilot…）。model 不给 = 自动挑：有图时只挑收图的，fast 时先挑小模型。
- * 没有 system 角色：system 并进那条 User。图用 LanguageModelDataPart（1.143 有，@types/vscode 1.90 里没有，按运行时的取）
- */
+/** 问 VS Code 的语言模型（Copilot…）。model 不给 = 自动挑：有图时只挑收图的，fast 时先挑小模型。没有 system 角色：system 并进那条 User */
 async function lmChat(model: string | undefined, req: AiChatRequest, o: { signal: AbortSignal; justification: string }): Promise<AiChatResult> {
-  const lm = lmApi(), V = vscode as any;
-  if (!lm?.selectChatModels) return { fail: "nomodel", message: "This version of VS Code has no language model API" };
   let all: LmModel[];
-  try { all = (await lm.selectChatModels()) as LmModel[]; } catch (e) { return { fail: "nomodel", message: (e as Error)?.message }; }
+  try { all = (await vscode.lm.selectChatModels()) as LmModel[]; } catch (e) { return { fail: "nomodel", message: (e as Error)?.message }; }
   let m: LmModel | undefined;
   if (model) {
     m = all.find((x) => x.id === model);
@@ -116,10 +89,8 @@ async function lmChat(model: string | undefined, req: AiChatRequest, o: { signal
     if (!m) return { fail: "nomodel", message: all.length ? "No VS Code language model here reads images" : undefined };
   }
   const via = aiModel(m).name;
-  if (req.image && !(V.LanguageModelDataPart?.image && V.LanguageModelTextPart)) return { fail: "nomodel", message: "This version of VS Code can't send images to language models", via };
   const text = `${req.system}\n\n${req.user}`;
-  // @types/vscode 1.90 的 User() 只写了 string；运行时（1.143）收 TextPart / DataPart 的数组
-  const content: string = req.image ? [new V.LanguageModelTextPart(text), V.LanguageModelDataPart.image(req.image.data, req.image.mime)] as any : text;
+  const content = req.image ? [new vscode.LanguageModelTextPart(text), vscode.LanguageModelDataPart.image(req.image.data, req.image.mime)] : text;
   const cts = new vscode.CancellationTokenSource();
   const stop = () => cts.cancel();
   o.signal.addEventListener("abort", stop);
@@ -127,7 +98,10 @@ async function lmChat(model: string | undefined, req: AiChatRequest, o: { signal
     if (o.signal.aborted) return { fail: "canceled" };
     const r = await m.sendRequest([vscode.LanguageModelChatMessage.User(content)], { justification: o.justification }, cts.token);
     let out = "";
-    for await (const t of r.text) out += t;
+    for await (const t of r.text) {
+      out += t;
+      if (req.maxChars && out.length > req.maxChars) { cts.cancel(); break; }
+    }
     return { text: out, via };
   } catch (e) {
     if (o.signal.aborted) return { fail: "canceled" };
@@ -251,27 +225,11 @@ export function vscodeWorkspace(ctx: vscode.ExtensionContext): Workspace {
       undoAddKey: (on) => undoAddKey(on),
       boardFocusKey: async (on) => { await vscode.commands.executeCommand("setContext", "codeboard.boardFocused", on); },
     },
-    ai: {
-      ask: copilotAsk,
-      complete: async (before, after, o) => {
-        const cfg = vscode.workspace.getConfiguration("codeboard.ai");
-        const provider = cfg.get<string>("provider", "auto");
-        if (provider === "off") return undefined;
-        if (provider === "deepseek" || provider === "auto") {
-          const key = await ctx.secrets.get(DEEPSEEK_SECRET);
-          if (key) return deepseekComplete({ key, model: cfg.get<string>("deepseekModel") || undefined, baseUrl: cfg.get<string>("deepseekBaseUrl") || undefined, signal: o?.signal }, before, after);
-          if (provider === "deepseek") return undefined;
-        }
-        return chatComplete(copilotAsk, before, after, o?.signal);
-      },
-      deepseekKey: async () => (await ctx.secrets.get(DEEPSEEK_SECRET)) || undefined,
-      setDeepseekKey: async () => {
-        await vscode.commands.executeCommand("codeboard.setDeepseekKey");
-        return !!(await ctx.secrets.get(DEEPSEEK_SECRET));
-      },
-      clearDeepseekKey: async () => { await ctx.secrets.delete(DEEPSEEK_SECRET); },
-      models: lmModels,
-      chat: lmChat,
+    ai: { models: lmModels, chat: lmChat },
+    secrets: {
+      get: async (k) => (await ctx.secrets.get(k)) || undefined,
+      set: async (k, v) => { await ctx.secrets.store(k, v); },
+      delete: async (k) => { await ctx.secrets.delete(k); },
     },
     // CODEBOARD_GITHUB_TOKEN（CI、无界面环境）优先于 VS Code 的 GitHub 登录
     githubToken: async (ask) => process.env.CODEBOARD_GITHUB_TOKEN || (await vscode.authentication.getSession("github", ["repo"], ask ? { createIfNone: true } : { silent: true }))?.accessToken,
@@ -279,23 +237,12 @@ export function vscodeWorkspace(ctx: vscode.ExtensionContext): Workspace {
     about: {
       app: vscode.version,
       get ext() {
-        const v = (vscode.extensions.getExtension(EXT_ID) ?? vscode.extensions.all.find((e) => e.packageJSON?.name === "codeboard-vscode"))?.packageJSON?.version ?? "?";
+        const v = vscode.extensions.getExtension(EXT_ID)?.packageJSON?.version ?? "?";
         return BUILD ? `${v} · ${BUILD}` : v;
       },
       hasExtension: (id) => !!vscode.extensions.getExtension(id),
     },
   };
-}
-
-async function locations(cmd: string, abs: string, line: number, col: number): Promise<{ abs: string; line: number; col: number }[]> {
-  const r = await vscode.commands.executeCommand<(vscode.Location | vscode.LocationLink)[]>(cmd, vscode.Uri.file(abs), new vscode.Position(line - 1, col));
-  const out: { abs: string; line: number; col: number }[] = [];
-  for (const d of r ?? []) {
-    const uri = "targetUri" in d ? d.targetUri : d.uri;
-    const range = "targetUri" in d ? (d.targetSelectionRange ?? d.targetRange) : d.range;
-    if (uri.scheme === "file") out.push({ abs: uri.fsPath, line: range.start.line + 1, col: range.start.character });
-  }
-  return out;
 }
 
 /** codeboard.canUndoAdd：⌥B 之后编辑器里的 ⌘Z 撤销那次添加（package.json 的 codeboard.undoAdd 键）。

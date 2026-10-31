@@ -23,11 +23,6 @@
     {
       "includes": ["packages/core/src/migrate.ts", "**/test/**", "packages/board/stories/**", "tools/**", "examples/**"],
       "linter": { "rules": { "suspicious": { "noExplicitAny": "off" } } }
-    },
-    // The VS Code language model API is probed (vscode.lm, LanguageModelDataPart) until engines.vscode is raised
-    {
-      "includes": ["extensions/vscode/src/vscode/workspace.ts"],
-      "linter": { "rules": { "suspicious": { "noExplicitAny": "off" } } }
     }
   ]
 }

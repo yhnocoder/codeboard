@@ -3,7 +3,8 @@
 // Auto Focus request; the key status the Settings page gets. No network
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AiChatRequest, AiChatResult, AiModel } from "@codeboard/core";
-import { aiInfo, focusUser, imageAiJob, imageAiRequest, resetImageAiCache, SYS_FOCUS } from "../src/imageai";
+import { aiInfo } from "../src/ai";
+import { focusUser, imageAiJob, imageAiRequest, resetImageAiCache, SYS_FOCUS } from "../src/imageai";
 import { makeHandler } from "../src/handlers";
 import { useWorkspace } from "../src/ws";
 import { nodeWorkspace } from "./node-workspace";
@@ -26,11 +27,9 @@ const fetchFake = (async (url: string, init: RequestInit) => {
 const W = nodeWorkspace();
 W.settings = { ...W.settings, get: <T>(k: string) => conf.get(k) as T };
 let cleared = 0;
+W.secrets = { get: async () => key, set: async (_k, v) => { key = v; }, delete: async () => { cleared++; key = undefined; } };
+W.ui = { ...W.ui, input: async () => " sk-new " };
 W.ai = {
-  ask: async () => undefined,
-  deepseekKey: async () => key,
-  setDeepseekKey: async () => { key = "sk-new"; return true; },
-  clearDeepseekKey: async () => { cleared++; key = undefined; },
   models: async () => MODELS,
   chat: (model, req, o) => { const c = { model, req, signal: o.signal, justification: o.justification }; chats.push(c); return chatReply(c); },
 };
@@ -147,15 +146,16 @@ describe("Auto Focus request", () => {
 });
 
 describe("Settings › AI", () => {
-  it("tells the board only whether a key is set, and the models; Set Key… and Clear go through the editor", async () => {
+  it("tells the board only whether a key is set, and the models; Set Key… asks for the key and stores it, Clear removes it", async () => {
     const info = await aiInfo();
     expect(info).toEqual({ key: true, models: MODELS });
     expect(JSON.stringify(info)).not.toContain(KEY);
     const h = makeHandler({ store: {} } as never);
-    expect(await h({} as never, { type: "aiKey", req: 1, action: "clear" })).toEqual({ key: false, models: MODELS });
+    expect(await h(undefined as never, { type: "aiKey", req: 1, action: "clear" })).toEqual({ key: false, models: MODELS });
     expect(cleared).toBe(1);
-    const after = await h({} as never, { type: "aiKey", req: 2, action: "set" });
+    const after = await h(undefined as never, { type: "aiKey", req: 2, action: "set" });
     expect(after).toEqual({ key: true, models: MODELS });
+    expect(key).toBe("sk-new");
     expect(JSON.stringify(after)).not.toContain("sk-new");
   });
 });

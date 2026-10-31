@@ -4,7 +4,8 @@
 // 和 Auto Focus 的核对在白板里做（要 DOM、要 Markdown 解析器）。
 // 读字：同一张图（同一个模型、同样的内容）只问一次，Extract to Note 之后再 Extract to Clipboard 不再花钱；被截断的不记
 import { createHash } from "node:crypto";
-import type { AiChatRequest, AiInfo, AiChatResult, ImageAiFail, ImageAiOp, ImageAiResult, WorkspaceAi } from "@codeboard/core";
+import type { AiChatRequest, AiChatResult, ImageAiFail, ImageAiOp, ImageAiResult, WorkspaceAi } from "@codeboard/core";
+import { deepseekKey, deepseekTarget } from "./ai";
 import { DEEPSEEK_MODEL, type DeepseekRequest } from "./deepseek";
 import { log } from "./log";
 import { workspace } from "./ws";
@@ -218,7 +219,7 @@ function imageBytes(url: string): AiChatRequest["image"] {
   return { mime: m[1], data: m[2] ? new Uint8Array(Buffer.from(m[3], "base64")) : new TextEncoder().encode(decodeURIComponent(m[3])) };
 }
 /** 问编辑器提供的语言模型（model 不给 = 自动挑）。思考、长度上限只有 DeepSeek 有，这里不用 */
-async function runChatAi(chat: NonNullable<WorkspaceAi["chat"]>, model: string | undefined, op: ImageAiOp, o: { signal?: AbortSignal; timeoutMs?: number } = {}): Promise<ImageAiResult> {
+async function runChatAi(chat: WorkspaceAi["chat"], model: string | undefined, op: ImageAiOp, o: { signal?: AbortSignal; timeoutMs?: number } = {}): Promise<ImageAiResult> {
   const a = askOf(op);
   const image = a.image ? imageBytes(a.image) : undefined;
   if (a.image && !image) return { fail: "http", message: "The image couldn't be sent" };
@@ -245,12 +246,12 @@ export async function imageAiJob(jobs: Map<number, AbortController>, job: number
   try {
     const ws = workspace(), s = ws.settings;
     const choice = (s.get<string>(AI_SETTING[featureOf(op)]) || "auto").trim();
-    const key = choice === "auto" || choice === "deepseek" ? await ws.ai?.deepseekKey?.() : undefined;
+    const key = choice === "auto" || choice === "deepseek" ? await deepseekKey() : undefined;
     if (ac.signal.aborted) return { fail: "canceled" };
     let r: ImageAiResult;
     if (key || choice === "deepseek") {
-      r = await runImageAi({ key: key ?? "", model: s.get<string>("codeboard.ai.deepseekModel") || undefined, baseUrl: s.get<string>("codeboard.ai.deepseekBaseUrl") || undefined, signal: ac.signal, fetch: f }, op);
-    } else if (!ws.ai?.chat) {
+      r = await runImageAi({ key: key ?? "", ...deepseekTarget(), signal: ac.signal, fetch: f }, op);
+    } else if (!ws.ai) {
       r = choice === "auto" ? { fail: "nokey", via: "DeepSeek" } : { fail: "nomodel", message: "This editor has no language models" };
     } else {
       r = await runChatAi(ws.ai.chat, choice === "auto" ? undefined : choice, op, { signal: ac.signal });
@@ -260,11 +261,4 @@ export async function imageAiJob(jobs: Map<number, AbortController>, job: number
     if ("fail" in r && r.fail !== "canceled") log("warn", `ai ${op.kind}: ${r.via ?? "model"} ${r.fail}${r.message ? `: ${r.message}` : ""}`);
     return r;
   } finally { jobs.delete(job); }
-}
-
-/** Settings 的 AI 一节：DeepSeek 的密钥设了没有（只回这一位）、编辑器现在有哪些语言模型 */
-export async function aiInfo(): Promise<AiInfo> {
-  const ai = workspace().ai;
-  const [key, models] = await Promise.all([ai?.deepseekKey?.().catch(() => undefined), ai?.models?.().catch(() => []) ?? []]);
-  return { key: !!key, models: models ?? [] };
 }

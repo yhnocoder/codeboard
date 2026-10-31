@@ -137,28 +137,23 @@ export interface WorkspaceUi {
   boardFocusKey?(on: boolean): Promise<void>;
 }
 
-/** 语言模型（VS Code 的 Language Model API 之类）：可选，宿主没有就不给 */
+/** 编辑器提供的语言模型（VS Code 的 Language Model API：Copilot 等扩展给的）。可选：编辑器没有就不给。用哪个模型、DeepSeek 都在宿主的 ai.ts */
 export interface WorkspaceAi {
-  /** 发一次提示，回模型的文字；没有可用模型、用户没同意或被取消时回 undefined（不抛出） */
-  ask(system: string, prompt: string, opts?: { signal?: AbortSignal; maxChars?: number }): Promise<string | undefined>;
-  /** 灰字补全：光标前后的文字 → 模型的原话（清理交给 cleanCompletion）。宿主按设置选模型（Copilot、DeepSeek…）；不给时用 ask */
-  complete?(before: string, after: string, opts?: { signal?: AbortSignal }): Promise<string | undefined>;
-  /** DeepSeek 的 API 密钥（编辑器的密钥存储里，不进设置、白板文件、日志）；没设回 undefined */
-  deepseekKey?(): Promise<string | undefined>;
-  /** 请用户设 DeepSeek 的密钥（和命令 Set DeepSeek API Key 一样）；回设好了没有 */
-  setDeepseekKey?(): Promise<boolean>;
-  /** 删掉 DeepSeek 的密钥 */
-  clearDeepseekKey?(): Promise<void>;
-  /** 编辑器提供的语言模型（VS Code：Copilot 等扩展给的） */
-  models?(): Promise<AiModel[]>;
+  models(): Promise<AiModel[]>;
   /**
-   * 问一个编辑器提供的语言模型（AI 功能不用 DeepSeek 时）。model = AiModel 的 id，不给 = 自动挑一个（有图时只挑收图的）；
-   * image = 附上的一张图。不抛出：没有模型、用户没同意、取消都折成 fail（ImageAiResult 的那几种）
+   * 问一个语言模型。model = AiModel 的 id，不给 = 自动挑一个（有图时只挑收图的，fast 时先挑小模型）。
+   * 不抛出：没有模型、用户没同意、取消都折成 fail（ImageAiResult 的那几种）
    */
-  chat?(model: string | undefined, req: AiChatRequest, opts: { signal: AbortSignal; justification: string }): Promise<AiChatResult>;
+  chat(model: string | undefined, req: AiChatRequest, opts: { signal: AbortSignal; justification: string }): Promise<AiChatResult>;
 }
-/** 发给编辑器的语言模型的一次请求：system 和 user 两段字，可带一张图（编辑器的接口没有 system 角色时并进第一条） */
-export type AiChatRequest = { system: string; user: string; image?: { mime: string; data: Uint8Array }; fast?: boolean };
+/** 编辑器的密钥存储（VS Code 的 SecretStorage）：不进设置、白板文件、日志 */
+export interface WorkspaceSecrets {
+  get(key: string): Promise<string | undefined>;
+  set(key: string, value: string): Promise<void>;
+  delete(key: string): Promise<void>;
+}
+/** 发给编辑器的语言模型的一次请求：system 和 user 两段字，可带一张图（编辑器的接口没有 system 角色时并进第一条）；maxChars = 回答读到这么长就停 */
+export type AiChatRequest = { system: string; user: string; image?: { mime: string; data: Uint8Array }; fast?: boolean; maxChars?: number };
 export type AiChatResult = { text: string; via: string } | { fail: "nomodel" | "noconsent" | "canceled" | "http"; message?: string; via?: string };
 
 export interface Workspace {
@@ -169,6 +164,7 @@ export interface Workspace {
   editor: WorkspaceEditor;
   ui: WorkspaceUi;
   ai?: WorkspaceAi;
+  secrets: WorkspaceSecrets;
   /** GitHub 登录的 token：ask = 没登录时请用户登录（取消时抛出）；否则只静默拿已有的 */
   githubToken(ask: boolean): Promise<string | undefined>;
   log(level: LogLevel, text: string): void;
