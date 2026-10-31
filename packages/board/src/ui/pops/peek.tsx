@@ -33,7 +33,7 @@ export function PeekPop(p: PopProps<"peek">) {
               <div class="sn-acts"><button class="tbtn" onClick={() => { closePop(p.inst.id); A.searchWorkspace(p.pop.word); }}>Search Workspace</button></div>
             </>}>
             <PopHead title={<>{picks()!.length} definitions · <code>{p.pop.word}</code></>} inst={p.inst} />
-            <For each={picks()!}>{(x) => <button class="cand" onClick={() => updatePop(p.inst.id, (q) => (q.kind === "peek" ? { ...q, data: x } : q))}><span class="lb">{x.path}:{x.line}</span></button>}</For>
+            <For each={picks()!}>{(x) => <button class="cand" onClick={() => updatePop(p.inst.id, "peek", (q) => ({ ...q, data: x }))}><span class="lb">{x.path}:{x.line}</span></button>}</For>
           </Show>
         </Show>
       }>

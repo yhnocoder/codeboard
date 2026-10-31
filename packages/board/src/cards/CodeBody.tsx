@@ -279,9 +279,9 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
     clearTimeout(leaveT);
     setHoverRow(rowE ? +rowE.dataset.r! : -1);
     act.hoverCall(c().id, (rowE && (rows()[+rowE.dataset.r!] as { seg?: string } | undefined))?.seg, e.target);
-    const doc = document as any;
-    const pos = doc.caretPositionFromPoint?.(e.clientX, e.clientY);
-    const rng: Range | null = pos ? (() => { const r = document.createRange(); r.setStart(pos.offsetNode, pos.offset); return r; })() : doc.caretRangeFromPoint?.(e.clientX, e.clientY);
+    // caretPositionFromPoint is the standard one; engines without it have caretRangeFromPoint
+    const pos = "caretPositionFromPoint" in document ? document.caretPositionFromPoint(e.clientX, e.clientY) : null;
+    const rng: Range | null = pos ? (() => { const r = document.createRange(); r.setStart(pos.offsetNode, pos.offset); return r; })() : document.caretRangeFromPoint?.(e.clientX, e.clientY) ?? null;
     const r = rowE && rows()[+rowE.dataset.r!];
     if (!rng || !rowE || !r || r.t !== "line" || !rowE.contains(rng.startContainer)) return clearPeek();
     const pre = document.createRange();

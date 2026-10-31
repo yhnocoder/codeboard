@@ -35,6 +35,7 @@ import { TOOLBAR_SETTLE } from "../ui/timing";
 import type { LspHost } from "../cm/editor";
 import { FindExt, noteFind } from "./find";
 import { findKey } from "../ui/find";
+import { IS_MAC } from "../platform";
 
 export type MdEditorOpts = {
   value: string;
@@ -325,7 +326,7 @@ function Bubble(p: { editor: Editor; tick: Accessor<number>; ui: Ui }) {
       </button>
     );
   };
-  const mod = (p.ui.opts.isMac ?? /Mac|iPhone|iPad/.test(navigator.platform)) ? "⌘" : "Ctrl+";
+  const mod = (p.ui.opts.isMac ?? IS_MAC) ? "⌘" : "Ctrl+";
   const shift = mod === "⌘" ? "⇧" : "Shift+";
   let busy = false;
   // Formatting is source: the buttons add or remove markers around the selection (toggleWrap), the pressed state is

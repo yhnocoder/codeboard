@@ -4,6 +4,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as os from "node:os";
 import { sniffImage, type StickerIcon, type StickerPack } from "@codeboard/core";
+import * as v from "valibot";
 import { readSettings } from "./settings";
 import { log } from "./log";
 import { settingDir, workspace } from "./ws";
@@ -35,10 +36,21 @@ const MAX_JSON = 64 * 1024 * 1024;
 const BITMAP_EXT = /\.(png|webp|gif)$/i;
 const ICON_EXT = /\.(svg|png|webp|gif)$/i;
 
-function iconifyPack(id: string, j: any): StickerPack | null {
-  if (!j || typeof j.icons !== "object") return null;
-  const W = j.width ?? 16, H = j.height ?? 16;
-  const icons = Object.entries<any>(j.icons).map(([name, ic]) => ({
+// An Iconify icon set (the part we read): https://iconify.design/docs/types/iconify-json.html
+const Box = { left: v.optional(v.number()), top: v.optional(v.number()), width: v.optional(v.number()), height: v.optional(v.number()) };
+const IconifyJson = v.object({
+  prefix: v.optional(v.string()),
+  info: v.optional(v.object({ name: v.optional(v.string()) })),
+  width: v.optional(v.number()),
+  height: v.optional(v.number()),
+  icons: v.record(v.string(), v.object({ body: v.optional(v.string()), ...Box })),
+});
+
+function iconifyPack(id: string, raw: unknown): StickerPack | null {
+  const r = v.safeParse(IconifyJson, raw);
+  if (!r.success) return null;
+  const j = r.output, W = j.width ?? 16, H = j.height ?? 16;
+  const icons = Object.entries(j.icons).map(([name, ic]) => ({
     name, svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${ic.left ?? 0} ${ic.top ?? 0} ${ic.width ?? W} ${ic.height ?? H}">${ic.body ?? ""}</svg>`,
   })).filter((ic) => ic.svg.length <= MAX_SVG);
   return { id, name: j.info?.name ?? j.prefix ?? id, icons };

@@ -29,7 +29,7 @@ export function NotesPop(p: PopProps<"notes">) {
         <button class="tbtn" onClick={() => { const n = notes()[0]; if (n) { closePop(p.inst.id); A.openAddNote(n.at); } }}>+ Add</button>
         <Show when={curNote()?.kind === "text"}>
           <button class="tbtn" onClick={() => editText(curNote()!)}>Edit</button>
-          <button class="tbtn" classList={{ on: !!(curNote() as any)?.alwaysShow }} onClick={() => A.updateSidenote(curNote()!.id, (n) => { if (n.kind === "text") n.alwaysShow = !n.alwaysShow || undefined; })}>Always Show</button>
+          <button class="tbtn" classList={{ on: !!kindOf(curNote(), "text")?.alwaysShow }} onClick={() => A.updateSidenote(curNote()!.id, (n) => { if (n.kind === "text") n.alwaysShow = !n.alwaysShow || undefined; })}>Always Show</button>
         </Show>
         <Show when={curNote() && curNote()!.kind !== "card"}><button class="tbtn" onClick={() => A.placeSidenote(curNote()!.id)}>Place on Board</button></Show>
         <Show when={curNote() && curNote()!.kind !== "card" && sharedOn(curNote()!.at.card) > 1}>
@@ -44,6 +44,9 @@ export function NotesPop(p: PopProps<"notes">) {
     </>
   );
 }
+
+/** The sidenote if it is a `k` one (narrows the kind inside a <Match>) */
+const kindOf = <K extends Sidenote["kind"]>(n: Sidenote | undefined, k: K) => (n?.kind === k ? (n as Extract<Sidenote, { kind: K }>) : undefined);
 
 function NoteItem(p: { n: Sidenote }) {
   const n = () => p.n;
@@ -65,23 +68,24 @@ function NoteItem(p: { n: Sidenote }) {
             <Code start={1} html={q().text.split("\n").map(escHtml)} />
           </>;
         })()}</Match>
-        <Match when={n().kind === "text"}>
-          <Show when={snEditing() === n().id} fallback={<MdStatic class="sn-text" tip="Double-click to edit" src={(n() as any).md} onDblClick={() => editText(n())}
-            onToggle={(v) => A.updateSidenote(n().id, (k) => { if (k.kind === "text") k.md = v; })} />}>
-            <SidenoteEditor n={n() as Extract<Sidenote, { kind: "text" }>} />
+        <Match when={kindOf(n(), "text")}>{(t) =>
+          <Show when={snEditing() === t().id} fallback={<MdStatic class="sn-text" tip="Double-click to edit" src={t().md} onDblClick={() => editText(t())}
+            onToggle={(v) => A.updateSidenote(t().id, (k) => { if (k.kind === "text") k.md = v; })} />}>
+            <SidenoteEditor n={t()} />
           </Show>
-        </Match>
-        <Match when={n().kind === "link"}>
+        }</Match>
+        <Match when={kindOf(n(), "link")}>{(l) => <>
           <div class="sn-head"><b>Link</b></div>
-          <div class="sn-text"><a class="lnk" onClick={() => A.openLink((n() as any).url)}>{(n() as any).title || (n() as any).url}</a></div>
-        </Match>
-        <Match when={n().kind === "card"}>{(() => {
-          const t = () => cardById((n() as any).card)?.card;
+          <div class="sn-text"><a class="lnk" onClick={() => A.openLink(l().url)}>{l().title || l().url}</a></div>
+        </>}</Match>
+        <Match when={kindOf(n(), "card")}>{(k) => {
+          const t = () => cardById(k().card)?.card;
+          const code = () => { const c = t(); return isCode(c) ? c : undefined; };
           return <>
-            <div class="sn-head"><b>Card · {t() ? cardTitle(t()!) : "deleted"}</b><span class="grow" /><Show when={t()}><button class="tbtn" onClick={() => A.revealCard((n() as any).card)}>Go to Card</button></Show></div>
-            <Show when={t() && isCode(t()!)}>{(() => { const s = (t() as any).segments[0]; const v = state.views[s.id]; return <Code start={s.start} html={(v?.html ?? s.text.map(escHtml)).slice(0, 12)} />; })()}</Show>
+            <div class="sn-head"><b>Card · {t() ? cardTitle(t()!) : "deleted"}</b><span class="grow" /><Show when={t()}><button class="tbtn" onClick={() => A.revealCard(k().card)}>Go to Card</button></Show></div>
+            <Show when={code()}>{(c) => { const s = c().segments[0]; const v = state.views[s.id]; return <Code start={s.start} html={(v?.html ?? s.text.map(escHtml)).slice(0, 12)} />; }}</Show>
           </>;
-        })()}</Match>
+        }}</Match>
       </Switch>
       <Show when={n().why}><div class="sn-why">{n().why}</div></Show>
       <Show when={n().lineRemoved}><div class="sn-why warn">Line removed in the new version · attached to the whole card</div></Show>

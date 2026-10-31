@@ -1,5 +1,5 @@
 // 快捷键清单和 ? 浮层都从 keymap.ts 的表生成。
-import { For, Show, createEffect, createSignal, onMount } from "solid-js";
+import { For, Show, createEffect, createSignal, onMount, type JSX } from "solid-js";
 import { THEMES, EXPERIMENTAL_THEMES, NOTE_FONT_LEVELS, NOTE_FONT_RANGE, type AiInfo, type HideFlags, type NoteFontLevel, type Settings as S } from "@codeboard/core";
 import { state } from "../state/store";
 import { settingsOpen } from "../state/ui";
@@ -173,7 +173,7 @@ function SettingsPage(p: { section?: string }) {
   );
 }
 
-function Sec(p: { id: string; title: string; hint?: string; children: any }) {
+function Sec(p: { id: string; title: string; hint?: string; children: JSX.Element }) {
   return (
     <section class="st-sec" data-sec={p.id}>
       <div class="st-h"><h3>{p.title}</h3><Show when={p.hint}><p>{p.hint}</p></Show></div>

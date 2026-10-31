@@ -1,4 +1,3 @@
-import { unwrap } from "solid-js/store";
 import {
   uid, isCode, segOf, cardTitle, instName, genWhat, rankByReceiver, sameCallSite, altIsSeg, baseName, swapCallTarget,
   type CallSpan, type CodeCard, type DispatchResult, type ExpandResult, type ImplPick, type Link, type NameHit, type Segment, type SearchItem,
@@ -36,7 +35,7 @@ export async function lateDispatch(cardId: string, segId: string, call: CallSpan
   const seg = f && isCode(f.card) ? segOf(f.card, segId) : undefined;
   if (!seg) return;
   let r: DispatchResult;
-  try { r = await ask("dispatch", { seg: structuredClone(unwrap(seg)), line: call.line, col: call.col, name: call.name }); } catch { return; }
+  try { r = await ask("dispatch", { seg, line: call.line, col: call.col, name: call.name }); } catch { return; }
   if (!r) return;
   const L = state.board.links.find((l) => sameCallSite(l, { card: cardId, seg: segId, line: call.line, name: call.name }) && l.to.card === placed);
   if (!L) return;
@@ -144,7 +143,7 @@ export async function swapAlt(linkId: string, k: number, o: { label?: string; dr
   if (libBlocked(a.lib) && !altDown) { toast(`${a.label} is library code (${a.lib}). ${K.alt}-click to swap it in.`); return; }
   let r: ExpandResult;
   try {
-    r = await ask("expand", { seg: structuredClone(unwrap(seg)), line: L.from.line, col: L.call.col, name: L.call.name, pick: { path: a.path, line: a.line ?? 1, qual: a.qual } });
+    r = await ask("expand", { seg, line: L.from.line, col: L.call.col, name: L.call.name, pick: { path: a.path, line: a.line ?? 1, qual: a.qual } });
   } catch (e) { toast(`Could not swap in ${a.label}: ${(e as Error).message}`); return; }
   if (!("card" in r)) { toast(`Could not swap in ${a.label}.`); return; }
   const old = cardById(L.to.card)?.card;
@@ -210,8 +209,8 @@ export function searchAllLangs(cardId: string, segId: string, call: CallSpan) {
   const el = callEl(cardId, segId, call);
   const id = openPop({ kind: "names", data: { card: cardId, seg: segId, call } }, el ? { el, prefer: "below" } : lastPointer());
   ask("searchName", { name: searchedName(call) })
-    .then((hits) => updatePop(id, (q) => (q.kind === "names" ? { ...q, data: { ...q.data, hits: byReceiver(hits, cardId, segId, call) } } : q)))
-    .catch(() => updatePop(id, (q) => (q.kind === "names" ? { ...q, data: { ...q.data, hits: [] } } : q)));
+    .then((hits) => updatePop(id, "names", (q) => ({ ...q, data: { ...q.data, hits: byReceiver(hits, cardId, segId, call) } })))
+    .catch(() => updatePop(id, "names", (q) => ({ ...q, data: { ...q.data, hits: [] } })));
 }
 
 /** 按名字搜到的一处 → 卡 + 虚线 Call 箭头（via registry · manual） */

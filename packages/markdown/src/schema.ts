@@ -1,6 +1,8 @@
 // MarkdownManager 只建一个，用自己的 marked 实例（@tiptap/markdown 默认往全局 marked 上挂规则，建几个就叠几层，解析会越来越慢）。
 import { Mark, Node, getSchema, mergeAttributes, markInputRule, markPasteRule, parseIndentedBlocks, InputRule, type AnyExtension, type JSONContent } from "@tiptap/core";
-import type { Schema } from "@tiptap/pm/model";
+// @tiptap/markdown's hooks get these (token, helpers, lexer)
+import type { MarkdownLexerConfiguration as Lexer, MarkdownParseHelpers as ParseH, MarkdownRendererHelpers as RenderH, MarkdownToken as Token } from "@tiptap/core";
+import type { Attrs, Node as PMNode, Schema } from "@tiptap/pm/model";
 import StarterKit from "@tiptap/starter-kit";
 import Bold, { starPasteRegex } from "@tiptap/extension-bold";
 import Italic, { underscoreInputRegex } from "@tiptap/extension-italic";
@@ -13,7 +15,7 @@ import CodeMark from "@tiptap/extension-code";
 import Document from "@tiptap/extension-document";
 import Paragraph from "@tiptap/extension-paragraph";
 import { MarkdownManager } from "@tiptap/markdown";
-import { Marked, Tokenizer } from "marked";
+import { Marked, Tokenizer, type MarkedExtension, type marked } from "marked";
 import { TaskList, TaskItem, ListItem, OrderedList } from "@tiptap/extension-list";
 import Image from "@tiptap/extension-image";
 import { Details, DetailsSummary, DetailsContent } from "@tiptap/extension-details";
@@ -204,7 +206,7 @@ const DetBody = DetailsContent.extend({ parseMarkdown: undefined, renderMarkdown
 const TOC_RE = /^ {0,3}\[toc\][ \t]*(?:\n|$)/i;
 // the editor keeps headings as paragraphs of source ("## text", editor/srcdoc.ts): those count too (never in a table cell)
 const HEAD_SRC = /^ {0,3}(#{1,6})(?:[ \t]+|$)/;
-export const tocEntries = (doc: { descendants: (f: (n: any, pos: number, parent: any) => boolean | void) => void }) => {
+export const tocEntries = (doc: PMNode) => {
   const out: { level: number; text: string }[] = [];
   doc.descendants((n, _pos, parent) => {
     if (n.type.name === "heading") { out.push({ level: n.attrs.level, text: n.textContent }); return false; }
@@ -434,7 +436,7 @@ const HtmlBlock = htmlNode("htmlBlock", "div").extend({
 });
 // 行内格式的 Markdown 记号：唯一的一份（写回、光标处显示的记号、展开成原文都按它）
 // bold / italic / strike / code / link 的写回是 TipTap 自带的（和这里的记号一样），其余的写回用这张表
-const MARK_MD: Record<string, (attrs: Record<string, any>) => readonly [string, string]> = {
+const MARK_MD: Record<string, (attrs: Attrs) => readonly [string, string]> = {
   bold: () => ["**", "**"], italic: () => ["*", "*"], strike: () => ["~~", "~~"], code: () => ["`", "`"],
   link: (a) => ["[", `](${a.href ?? ""})`],
   underline: () => ["<u>", "</u>"], kbd: () => ["<kbd>", "</kbd>"],
@@ -449,12 +451,12 @@ function mdSyntax(name: string, re: RegExp) {
   const [open, close] = MARK_MD[name]({}), tok = `x_${name}`;
   return {
     markdownTokenName: tok,
-    parseMarkdown: (t: any, h: any) => h.applyMark(name, h.parseInline(t.tokens ?? [])),
-    renderMarkdown: (n: JSONContent, h: any) => `${open}${h.renderChildren(n)}${close}`,
+    parseMarkdown: (t: Token, h: ParseH) => h.applyMark(name, h.parseInline(t.tokens ?? [])),
+    renderMarkdown: (n: JSONContent, h: RenderH) => `${open}${h.renderChildren(n)}${close}`,
     markdownTokenizer: {
       name: tok, level: "inline" as const,
       start: (src: string) => src.indexOf(open),
-      tokenize: (src: string, prev: { raw?: string }[], lx: any) => {
+      tokenize: (src: string, prev: Token[], lx: Lexer) => {
         // 紧跟在同样的记号后面的不开头（~~ 是删除线；==、^ 同理）
         if (prev[prev.length - 1]?.raw?.endsWith(open[0])) return;
         const m = re.exec(src);
@@ -488,7 +490,7 @@ const ANNOT_COLORS = ["blue", "purple", "orange", "green"] as const;
 const ANNOT_PART = "((?:\\\\.|[^{}|\\n\\\\])+)";
 const ANNOT_RE = new RegExp(`^\\{${ANNOT_PART}\\|${ANNOT_PART}(?:\\|([a-z ]*))?\\}`);
 const escAnnot = (t: string) => t.replace(/[\\{}|]/g, "\\$&");
-const annotOpts = (a: Record<string, any>) => { const o = [a.color && a.color !== "blue" ? a.color : "", a.below ? "below" : ""].filter(Boolean).join(" "); return o ? `|${o}` : ""; };
+const annotOpts = (a: Attrs) => { const o = [a.color && a.color !== "blue" ? a.color : "", a.below ? "below" : ""].filter(Boolean).join(" "); return o ? `|${o}` : ""; };
 const Annot = Mark.create({
   name: "annot",
   inclusive: false,
@@ -503,12 +505,12 @@ const Annot = Mark.create({
   parseHTML: () => [{ tag: "span.md-annot-n", ignore: true }, { tag: "span.md-annot" }],
   renderHTML: ({ HTMLAttributes }) => ["span", mergeAttributes(HTMLAttributes, { class: "md-annot" }), 0],
   markdownTokenName: "x_annot",
-  parseMarkdown: (t: any, h: any) => h.applyMark("annot", h.parseInline(t.tokens ?? []), { note: t.note, color: t.color, below: t.below }),
-  renderMarkdown: (n: JSONContent, h: any) => { const [a, b] = MARK_MD.annot(n.attrs ?? {}); return `${a}${h.renderChildren(n)}${b}`; },
+  parseMarkdown: (t: Token, h: ParseH) => h.applyMark("annot", h.parseInline(t.tokens ?? []), { note: t.note, color: t.color, below: t.below }),
+  renderMarkdown: (n: JSONContent, h: RenderH) => { const [a, b] = MARK_MD.annot(n.attrs ?? {}); return `${a}${h.renderChildren(n)}${b}`; },
   markdownTokenizer: {
     name: "x_annot", level: "inline",
     start: (src: string) => src.indexOf("{"),
-    tokenize: (src: string, _prev: unknown, lx: any) => {
+    tokenize: (src: string, _prev: unknown, lx: Lexer) => {
       const m = ANNOT_RE.exec(src);
       if (!m) return;
       const un = (t: string) => t.replace(/\\([\\{}|])/g, "$1"), opts = (m[3] ?? "").split(/\s+/);
@@ -543,7 +545,7 @@ const Task = TaskItem.extend({
 }).configure({ nested: true, HTMLAttributes: { "data-type": "taskItem" } });
 // 勾选列表照 TipTap 的规则，只是空的勾选项（行里只有 "- [ ]"）也认
 const TASK_ITEM = /^(\s*)([-+*])\s+\[([ xX])\](?:[ \t]+(.*))?$/;
-const taskBlocks = (src: string, lx: any) => parseIndentedBlocks(src, {
+const taskBlocks = (src: string, lx: Lexer) => parseIndentedBlocks(src, {
   itemPattern: TASK_ITEM,
   extractItemData: (m) => ({ indentLevel: m[1].length, mainContent: m[4] ?? "", checked: m[3].toLowerCase() === "x" }),
   createToken: (d, nestedTokens) => ({ type: "taskItem", raw: "", mainContent: d.mainContent, indentLevel: d.indentLevel, checked: d.checked, text: d.mainContent, tokens: lx.inlineTokens(d.mainContent), nestedTokens }),
@@ -689,8 +691,9 @@ const mm = new MarkdownManager({
         const t = Tokenizer.prototype.link.call(this, src) ?? brokenImage(src), w = t?.type === "image" ? imageWidthAt(src.slice(t.raw.length)) : undefined;
         return w ? { ...t!, raw: t!.raw + w.raw, width: w.width } : t ?? false;
       },
-    } as any });
-    return m as any;
+    } as MarkedExtension["tokenizer"] });
+    // MarkdownManager is typed for the marked module; it only calls what an instance has too (lexer, parser, use)
+    return m as unknown as typeof marked;
   })(),
   extensions: baseExtensions,
 });
@@ -702,7 +705,7 @@ export const mdSchema = () => (schema ??= getSchema(baseExtensions));
 // 节点就没了外面的格式；写回时它又在每个非文字节点前把格式全关掉。两头都在这里补：读的时候行内原子节点也带上格式，
 // 写的时候带格式的原子节点先写成自己的 Markdown 字（见 toMd），和两边的字一起被同一对记号包住
 const isMarkableLeaf = (type: string | undefined) => { const t = type ? mdSchema().nodes[type] : undefined; return !!t && t.isInline && t.isLeaf && type !== "hardBreak"; };
-type ApplyMark = (mark: string, content: JSONContent[], attrs?: Record<string, any>) => JSONContent[];
+type ApplyMark = (mark: string, content: JSONContent[], attrs?: Attrs) => JSONContent[];
 const textMarks = (mm as unknown as { applyMarkToContent: ApplyMark }).applyMarkToContent.bind(mm);
 (mm as unknown as { applyMarkToContent: ApplyMark }).applyMarkToContent = (mark, content, attrs) => content.flatMap((n) =>
   isMarkableLeaf(n.type) ? [{ ...n, marks: [...(n.marks ?? []), attrs ? { type: mark, attrs } : { type: mark }] }] : textMarks(mark, [n], attrs));
@@ -770,7 +773,7 @@ export function mdBlockStarts(src: string): number[] | null {
 export function pastedMd(text: string): JSONContent | null {
   const doc = parseMd(texBrackets(text));
   let md = false, indented = false;
-  const plainMark = (m: { type: string; attrs?: Record<string, any> }, n: JSONContent) =>
+  const plainMark = (m: { type: string; attrs?: Attrs }, n: JSONContent) =>
     m.type === "subscript" || m.type === "superscript" || (m.type === "link" && !!n.text && String(m.attrs?.href ?? "").endsWith(n.text));
   walk(doc.content, (n) => {
     if (n.type === "codeBlock") indented = true;

@@ -14,7 +14,7 @@ export const cmNow = () => ready;
 
 /** 白板打开后空闲时预加载（编辑器包加载完之后） */
 export function preloadCm() {
-  const ric = (window as any).requestIdleCallback as ((cb: (d: IdleDeadline) => void) => void) | undefined;
+  const ric = "requestIdleCallback" in window ? (cb: IdleRequestCallback) => window.requestIdleCallback(cb) : undefined;
   const go = () => void loadCm().catch(() => undefined);
   setTimeout(() => (ric ? ric((d) => (d.timeRemaining() > 20 ? go() : setTimeout(go, 500))) : go()), 4000);
 }

@@ -48,8 +48,9 @@ export function openPop(pop: Pop, at: At): number {
   setPops((ps) => [...ps.filter((p) => p.pinned), { id, pop, at, pinned: false }]);
   return id;
 }
-export function updatePop(id: number, f: (p: Pop) => Pop) {
-  setPops((ps) => ps.map((p) => (p.id === id ? { ...p, pop: f(p.pop) } : p)));
+/** Changes popover id if it is still a `kind` one (the answer it waited for may come after it was swapped or closed) */
+export function updatePop<K extends Pop["kind"]>(id: number, kind: K, f: (p: Extract<Pop, { kind: K }>) => Extract<Pop, { kind: K }>) {
+  setPops((ps) => ps.map((p) => (p.id === id && p.pop.kind === kind ? { ...p, pop: f(p.pop as Extract<Pop, { kind: K }>) } : p)));
 }
 export function pinPop(id: number) {
   setPops((ps) => ps.map((p) => (p.id === id ? { ...p, pinned: true } : p)));

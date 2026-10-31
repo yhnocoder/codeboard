@@ -3,6 +3,7 @@
 // 浮在编辑器右上角，不占排版（进出查找时字不动）；样子借用外面的 .pill（浮条）和 .tbtn（按钮），和选中工具条一样
 import { keepKey } from "./editkeys";
 import { iconEl, type IconName } from "./icons";
+import { IS_MAC } from "../platform";
 
 export type FindSpec = { search: string; replace: string; caseSensitive: boolean };
 
@@ -53,7 +54,7 @@ export class FindBar {
   private closing = false;
 
   constructor(private t: FindTarget, private o: FindBarOpts) {
-    const mod = (o.isMac ?? /Mac|iPhone|iPad/.test(navigator.platform)) ? "⌘" : "Ctrl+", alt = mod === "⌘" ? "⌥" : "Alt+";
+    const mod = (o.isMac ?? IS_MAC) ? "⌘" : "Ctrl+", alt = mod === "⌘" ? "⌥" : "Alt+";
     this.el = div("md-find");
     this.el.dataset.nodrag = "";
     this.bar = div("pill md-findbar");

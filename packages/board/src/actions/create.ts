@@ -220,7 +220,7 @@ export function newFreeCode(at?: { x: number; y: number }, text = "", lang = "py
 /** 白板自己生成的段（合并、Free code 改动）找宿主要高亮 */
 export async function requestViews(segs: Segment[]) {
   if (!segs.length) return;
-  const v = await ask("views", { segs: unwrap(segs).map((s) => structuredClone(unwrap(s))) }).catch(() => null);
+  const v = await ask("views", { segs }).catch(() => null);
   if (v) setState("views", (o) => ({ ...o, ...v }));
 }
 

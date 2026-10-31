@@ -17,7 +17,7 @@ export const [state, setState] = createStore({
   boards: [] as BoardMeta[],
   host: { isMac: true, assetBase: "", target: true, settings: DEFAULT_SETTINGS } as HostInfo,
   views: {} as Record<string, SegView>,
-  stale: {} as Record<string, Stale>,
+  stale: {} as Record<string, Stale | undefined>,
 });
 
 /** 共享卡在几块白板上、别的白板上谁连到它。宿主存盘后算好整个发来；只有在两块以上白板上的卡才有；不进撤销栈、不存盘 */
@@ -402,7 +402,9 @@ function patch(now: Snap, s: Snap): boolean {
       else { if (a.id !== b.id) return false; ops.push([k, i, b]); }
     }
   }
-  batch(() => { for (const [k, at, v] of ops) setState("board", k as any, at as any, reconcile(v as any)); });
+  // a path the store's typed setter can't spell (collection k, index or place key at)
+  const setAt = setState as unknown as (b: "board", k: string, at: number | string, v: ReturnType<typeof reconcile>) => void;
+  batch(() => { for (const [k, at, v] of ops) setAt("board", k, at, reconcile(v)); });
   return true;
 }
 export function undo() {

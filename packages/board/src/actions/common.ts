@@ -1,4 +1,3 @@
-import { unwrap } from "solid-js/store";
 import { cardTitle, isCode, segOf, bounds, type Card, type Section, type Rect } from "@codeboard/core";
 import { state, mutate, sel, select, isSel, cardById, hostOf, rectOf, placeOf, placed, flows } from "../state/store";
 import { frames, isHidden, visibleCards } from "../state/sections";
@@ -212,9 +211,9 @@ export function openWorktreeDiff(id: string) {
   const s = c.segments[0];
   const el = document.querySelector(`.card[data-id="${hostOf(id)}"] .rev`) ?? undefined;
   const pid = openPop({ kind: "diff", card: id, seg: s.id }, el ? { el, prefer: "below" } : lastPointer());
-  ask("diff", { seg: structuredClone(unwrap(s)), against: "worktree" })
-    .then((data) => updatePop(pid, (p) => (p.kind === "diff" ? { ...p, data } : p)))
-    .catch((e) => updatePop(pid, (p) => (p.kind === "diff" ? { ...p, error: (e as Error).message } : p)));
+  ask("diff", { seg: s, against: "worktree" })
+    .then((data) => updatePop(pid, "diff", (p) => ({ ...p, data })))
+    .catch((e) => updatePop(pid, "diff", (p) => ({ ...p, error: (e as Error).message })));
 }
 
 /** Fit Content：宽 = 最长行，高 = 所有可见行；多选时各自适配。

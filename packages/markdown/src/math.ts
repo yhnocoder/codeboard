@@ -1,6 +1,8 @@
 // 公式预设（preamble）：一段 \newcommand / \def，所有公式共用。用 KaTeX 自己读一遍（globalGroup 时定义写进传进去的 macros），
 // 每次排版给一份新的拷贝：公式里自己写的 \newcommand 只在那一个公式里有效，不会漏到别的公式
-import katex from "katex";
+import katex, { type KatexOptions } from "katex";
+
+type Macros = NonNullable<KatexOptions["macros"]>;
 import { clearMdCache } from "./render";
 
 /** The TeX source on KaTeX's HTML output (data-latex on its .katex element): it draws no MathML, whose <annotation> is where
@@ -13,12 +15,12 @@ export const markTex = (el: Element, latex: string) => { el.querySelector(".kate
 export type MathDef = { name: string; args: number; body: string };
 
 let text = "";
-let macros: Record<string, any> = {};
+let macros: Macros = {};
 let defs: MathDef[] = [];
 let errors: string[] = [];
 
 /** 排版公式时传给 KaTeX 的 macros：每次一份新的 */
-export const mathMacros = (): Record<string, any> => ({ ...macros });
+export const mathMacros = (): Macros => ({ ...macros });
 /** 预设里定义的命令（补全、纠错用） */
 export const mathPreambleDefs = (): readonly MathDef[] => defs;
 /** 预设里排不出来的几段（KaTeX 的原话），设置页提示用 */
@@ -28,7 +30,7 @@ export const mathPreambleErrors = (): readonly string[] => errors;
 export function setMathPreamble(src: string): boolean {
   if (src === text) return false;
   text = src;
-  const m: Record<string, any> = {}, errs: string[] = [];
+  const m: Macros = {}, errs: string[] = [];
   // 一段一段读：一段写错了不连累后面的
   for (const part of chunks(src)) {
     const run = (s: string) => katex.renderToString(s, { macros: m, globalGroup: true, throwOnError: true });

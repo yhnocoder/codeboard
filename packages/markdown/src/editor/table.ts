@@ -9,6 +9,7 @@ import type { Node as PMNode } from "@tiptap/pm/model";
 import { TableMap, addColumnAfter, addColumnBefore, addRowAfter, addRowBefore, deleteColumn, deleteRow, deleteTable, isInTable, selectionCell } from "@tiptap/pm/tables";
 import { iconEl, type IconName } from "../ui/icons";
 import { CELL_MIN } from "../layout";
+import { IS_MAC } from "../platform";
 
 type Cmd = (state: EditorState, dispatch?: (tr: Transaction) => void) => boolean;
 
@@ -193,7 +194,7 @@ class TableBar {
   private pos: number | null = null;
   private frame = 0;
   constructor(private view: EditorView, isMac: () => boolean | undefined) {
-    const mac = isMac() ?? /Mac|iPhone|iPad/.test(navigator.platform);
+    const mac = isMac() ?? IS_MAC;
     const K = (s: string) => (mac ? s : s.replace(/⌘/g, "Ctrl+").replace(/⇧/g, "Shift+").replace(/⌫/g, "Backspace").replace(/↵/g, "Enter"));
     this.bar = document.createElement("div");
     this.bar.className = "mdui pill md-tbar";

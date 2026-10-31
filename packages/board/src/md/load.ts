@@ -65,7 +65,7 @@ function sampleNote() {
 }
 // 真空闲才做（这一段空闲 ≥ 40ms、镜头没在动、没在编辑）：加载和预热各要几十毫秒，不能挤进平移、缩放的帧里
 function whenIdle(f: () => void) {
-  const ric = (window as any).requestIdleCallback as ((cb: (d: IdleDeadline) => void) => void) | undefined;
+  const ric = "requestIdleCallback" in window ? (cb: IdleRequestCallback) => window.requestIdleCallback(cb) : undefined;
   if (!ric) return void setTimeout(f, 0);
   const tryIt = (d: IdleDeadline) => { if (d.timeRemaining() >= 40 && !camMoving() && !editing()) f(); else setTimeout(() => ric(tryIt), 100); };
   ric(tryIt);

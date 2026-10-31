@@ -6,6 +6,7 @@ import * as path from "node:path";
 import * as fs from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { strFromU8, strToU8, unzipSync, zipSync, type Zippable } from "fflate";
+import * as v from "valibot";
 import { loadBoardFile, loadRun, loadSharedCard, subBoardsOf } from "@codeboard/core";
 import { Storage, SAFE_ID, groupName, type DirEnt, type Fs } from "@codeboard/core/storage";
 import { log } from "./log";
@@ -196,23 +197,26 @@ export function readBundle(data: Uint8Array): { mem: MemFs; manifest: Manifest }
   return { mem, manifest };
 }
 
+const ManifestSchema = v.object({
+  format: v.pipe(v.number(), v.integer()),
+  codeboard: v.string(),
+  exported: v.string(),
+  folders: v.array(v.string()),
+  boards: v.pipe(v.array(v.object({
+    id: v.pipe(v.string(), v.regex(SAFE_ID, "not a board id")),
+    name: v.string(),
+    group: v.optional(v.pipe(v.string(), v.check((g) => groupName(g) === g, "not a group folder name"))),
+    sub: v.optional(v.boolean()),
+  })), v.minLength(1, "lists no boards")),
+  groups: v.array(v.string()),
+});
+
 function checkManifest(m: unknown): Manifest {
-  const o = m as Partial<Manifest> | null;
-  if (!o || typeof o !== "object" || !Number.isInteger(o.format)) throw new Error("not a CodeBoard manifest");
-  if (o.format! > BUNDLE_FORMAT) throw new Error(`made by a newer CodeBoard (package format ${o.format}). Update CodeBoard to import it.`);
-  const str = (x: unknown) => typeof x === "string";
-  if (!Array.isArray(o.boards) || !o.boards.length) throw new Error("lists no boards");
-  for (const b of o.boards) {
-    if (!b || !str(b.id) || !SAFE_ID.test(b.id) || !str(b.name) || (b.group !== undefined && (!str(b.group) || groupName(b.group) !== b.group)) || (b.sub !== undefined && typeof b.sub !== "boolean")) throw new Error(`bad board entry ${JSON.stringify(b).slice(0, 120)}`);
-  }
-  return {
-    format: o.format!,
-    codeboard: str(o.codeboard) ? o.codeboard! : "?",
-    exported: str(o.exported) ? o.exported! : "",
-    folders: Array.isArray(o.folders) ? o.folders.filter(str) : [],
-    boards: o.boards.map((b) => ({ id: b.id, name: b.name, ...(b.group ? { group: b.group } : {}), ...(b.sub ? { sub: true } : {}) })),
-    groups: Array.isArray(o.groups) ? o.groups.filter(str) : [],
-  };
+  const format = (m as { format?: unknown } | null)?.format;
+  if (typeof format === "number" && format > BUNDLE_FORMAT) throw new Error(`made by a newer CodeBoard (package format ${format}). Update CodeBoard to import it.`);
+  const r = v.safeParse(ManifestSchema, m);
+  if (!r.success) throw new Error(r.issues.slice(0, 3).map((i) => `${v.getDotPath(i) ?? "(root)"}: ${i.message}`).join("; "));
+  return r.output;
 }
 
 /** 导入的结果：first = 第一块导入的白板（这边的 id）；boards = 导入了几块（含子白板）；renamed = 其中换了 id 或名字的 */

@@ -13,6 +13,7 @@ import { pairsPlugin } from "./pairs";
 import { blockInfo, spanEdgeOut } from "./spans";
 import { inlinePlugin, revealMeta, toggleWrap } from "./inline";
 import { sourceBlock } from "./srcdoc";
+import { IS_MAC } from "../platform";
 
 /** The block a paragraph's source parses as, when it is exactly one (what saving and reloading would make of it) */
 function soleBlock(p: PMNode, schema: EditorState["schema"]): PMNode | null {
@@ -46,8 +47,6 @@ export function enterBlock(state: EditorState, dispatch?: (tr: Transaction) => v
   dispatch?.(tr);
   return true;
 }
-
-const IS_MAC = typeof navigator !== "undefined" && /Mac|iP(hone|[oa]d)/.test(navigator.platform);
 
 /** Sets the heading level of the caret's paragraph by rewriting its `#` prefix (0 = plain paragraph) */
 export function setHeading(e: Editor, level: number | ((cur: number) => number)): boolean {

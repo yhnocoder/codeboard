@@ -1,4 +1,3 @@
-import { unwrap } from "solid-js/store";
 import {
   uid, findCard, isCode, cardTitle, segOf, allCodeCards,
   placeChild, walkOrder, descendants, startCards, SIB_GAP, COL_GAP,
@@ -52,7 +51,7 @@ export async function expandCall(cardId: string, segId: string, call: CallSpan, 
   pending.add(key);
   let r: ExpandResult;
   try {
-    r = await ask("expand", { seg: structuredClone(unwrap(seg)), line: call.line, col: call.col, name: call.name, recv: call.recv, pick });
+    r = await ask("expand", { seg, line: call.line, col: call.col, name: call.name, recv: call.recv, pick });
   } catch (e) {
     toast(`Could not expand ${call.name}(): ${(e as Error).message}`);
     return;
@@ -193,7 +192,7 @@ export function askCands(lid: string, cardId: string, segId: string, call: CallS
   const seg = segOf(f, segId);
   const tseg = t.segments.find((s) => s.symbol) ?? t.segments[0];
   if (!seg || !tseg) return;
-  ask("callVars", { seg: structuredClone(unwrap(seg)), line: call.line, col: call.col, name: call.name, target: structuredClone(unwrap(tseg)) })
+  ask("callVars", { seg, line: call.line, col: call.col, name: call.name, target: tseg })
     .then((vs) => { if (vs?.length) sync((b) => { const l = b.links.find((x) => x.id === lid); if (l?.call) l.call.cands = vs; }); })
     .catch(() => {});
 }
@@ -222,7 +221,7 @@ export function hoverCall(cardId: string, segId: string | undefined, target: Eve
     if (now - (sent.get(k) ?? 0) < 20_000) return;
     if (sent.size > 200) sent.clear();
     sent.set(k, now);
-    send({ type: "prefetch", seg: structuredClone(unwrap(seg)), line: call.line, col: call.col, name: call.name });
+    send({ type: "prefetch", seg, line: call.line, col: call.col, name: call.name });
   }, PREFETCH_DWELL);
 }
 

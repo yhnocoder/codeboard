@@ -141,9 +141,9 @@ export async function showPeek(el: Element, cardId: string, segId: string, line:
   const pid = openPop({ kind: "peek", card: cardId, seg: segId, line, word }, { el, prefer: "below" });
   if (pin) pinPop(pid);
   try {
-    const r = await ask("peek", { seg: structuredClone(unwrap(s)), line, col, word, at });
-    updatePop(pid, (p) => ({ ...(p as any), data: r ?? { none: "No definition found", word } }));
-  } catch { updatePop(pid, (p) => ({ ...(p as any), data: { none: "No definition found", word } })); }
+    const r = await ask("peek", { seg: s, line, col, word, at });
+    updatePop(pid, "peek", (p) => ({ ...p, data: r ?? { none: "No definition found", word } }));
+  } catch { updatePop(pid, "peek", (p) => ({ ...p, data: { none: "No definition found", word } })); }
 }
 
 /** Mark 的颜色（它的箭头跟着变） */

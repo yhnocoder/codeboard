@@ -104,7 +104,7 @@ function stickerWorld(s: Sticker): { x: number; y: number } | null {
   if (s.at.kind !== "canvas") return null;
   const on = s.at.on;
   if (!on) return { x: s.at.x, y: s.at.y };
-  if ("card" in on) { const r = rectOf({ id: on.card } as any); return { x: r.x + s.at.x, y: r.y + s.at.y }; }
+  if ("card" in on) { const r = rectOf(on.card); return { x: r.x + s.at.x, y: r.y + s.at.y }; }
   const c = linkCurve(on.link);
   if (!c) return null;
   const q = bezAt(c, on.t);
@@ -112,7 +112,7 @@ function stickerWorld(s: Sticker): { x: number; y: number } | null {
 }
 
 function bindAt(w: { x: number; y: number }, size: number, t: BindTarget | null): StickerAt {
-  if (t && "card" in t) { const r = rectOf({ id: t.card } as any); return { kind: "canvas", x: Math.round(w.x - r.x), y: Math.round(w.y - r.y), size, on: { card: t.card } }; }
+  if (t && "card" in t) { const r = rectOf(t.card); return { kind: "canvas", x: Math.round(w.x - r.x), y: Math.round(w.y - r.y), size, on: { card: t.card } }; }
   if (t && "link" in t) {
     const c = linkCurve(t.link);
     if (c) {
@@ -161,7 +161,7 @@ export function stickerMenu(id: string, x: number, y: number) {
   const items: Item[] = [
     ...qi,
     ...(s.icon.pack === "emoji" ? [] : [{ label: "Color", sub: [{ label: "Default", checked: !s.color, run: () => setStickerColorOf(id, undefined) } as Item, ...STICKER_COLORS.map((c, i) => ({ label: names[i], checked: s.color === c, run: () => setStickerColorOf(id, c) }))] } as Item]),
-    ...(s.at.kind === "canvas" ? [{ label: "Size", sub: [24, 32, 48, 72].map((n) => ({ label: `${n}px`, checked: (s.at as any).size === n, run: () => mutate((b) => { const k = b.stickers.find((q) => q.id === id); if (k?.at.kind === "canvas") k.at.size = n; }) })) } as Item] : []),
+    ...(s.at.kind === "canvas" ? [{ label: "Size", sub: [24, 32, 48, 72].map((n) => ({ label: `${n}px`, checked: s.at.kind === "canvas" && s.at.size === n, run: () => mutate((b) => { const k = b.stickers.find((q) => q.id === id); if (k?.at.kind === "canvas") k.at.size = n; }) })) } as Item] : []),
     ...(s.at.kind === "canvas" && s.at.on ? [{ label: "card" in s.at.on ? "Detach from Card" : "Detach from Arrow", hint: "Keep it here on the canvas", run: () => detachSticker(id) } as Item] : []),
     null,
     { label: "Delete", kbd: "⌫", run: () => removeSticker(id) },
@@ -204,7 +204,7 @@ export function stickerDown(e: PointerEvent, id: string, resize = false) {
       const t = ev.altKey ? null : targetAt(ev.clientX, ev.clientY, shown);
       const w = { x: w0.x + (ev.clientX - sx) / cam.z, y: w0.y + (ev.clientY - sy) / cam.z };
       const at = bindAt(w, size, t);
-      if (a0.size === undefined) delete (at as any).size;
+      if (a0.size === undefined && at.kind === "canvas") delete at.size;
       live((b) => { const k = b.stickers.find((q) => q.id === id); if (k) k.at = at; });
     }
     setStickerDragged(moved); // 拖过的不算点一下（不打开问题）

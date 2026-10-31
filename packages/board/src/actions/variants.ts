@@ -78,7 +78,7 @@ export async function addVariantMenu(id: string, x: number, y: number) {
   if (!c) return;
   const up = upstreamSegs(c).find((s) => s.src.kind !== "free" && s.src.kind !== "github");
   if (!up) return void toast("Only code from a repo or a file can have variants");
-  const src: VariantSources = await ask("variantSources", { seg: structuredClone(unwrap(up)) }).catch(() => ({ worktrees: [], branches: [] }));
+  const src: VariantSources = await ask("variantSources", { seg: up }).catch(() => ({ worktrees: [], branches: [] }));
   const have = new Set((c.variants ?? []).map((v) => JSON.stringify(v.from)));
   const add = (from: AddVariantFrom) => () => void addVariant(id, from);
   const items: Item[] = [
@@ -138,7 +138,7 @@ function removeVariant(id: string, vid: string) {
   if (activeOf(c) === vid) switchVariant(id, UPSTREAM);
   if ((c.variants?.length ?? 0) <= 2) for (const s of c.segments) shownView.delete(s.id); // 只剩上游：变回普通卡
   mutate((b) => removeV(b, id, vid));
-  if (vbase[id] === vid) setVbase(id, undefined as any);
+  if (vbase[id] === vid) setVbase(id, undefined);
 }
 async function removeAll(id: string) {
   const i = await choose("Remove all variants?", ["Remove", "Cancel"], { text: "The card goes back to the upstream code. Variant notes are removed too." });
