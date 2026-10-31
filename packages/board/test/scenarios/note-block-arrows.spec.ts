@@ -138,7 +138,7 @@ test("noteBlockDragLinksBlockToBlock", async () => {
   await close(h);
 });
 
-/** 拖到块之间的空隙、正文上下的内边距：连最近的那一块（不是整张卡）；只有卡头连整张卡、什么都不上底色 */
+/** 拖到块之间的空隙、正文上下的内边距：连最近的那一块（不是整张卡）；只有卡头连整张卡（落点不上底色，起点那段照样上）*/
 test("noteBlockGapPicksNearestHeaderPicksCard", async () => {
   const h = await openBoard(board());
   const got: Record<string, unknown> = {};
@@ -151,7 +151,7 @@ test("noteBlockGapPicksNearestHeaderPicksCard", async () => {
   const head = await dragFrom(h, "na", 1, "r", async () => { const r = await headBox(h.page, "nb"); return { x: r.x + r.w / 2, y: r.y + r.h / 2 }; }, async () => { got.headTint = await tinted(h.page); got.ring = await h.page.locator('.card.drop-hot[data-id="nb"]').count(); });
   const end = await arrowEnd(h.page, head.id), hb = await headBox(h.page, "nb");
   const ok = gap.to.block?.i === 2 && topPad.to.block?.i === 0 && botPad.to.block?.i === 4 && head.to.card === "nb" && !head.to.block && Math.abs(end.y - (hb.y + hb.h / 2)) <= 3
-    && (got.gapTint as string[]).join(" ") === "na:2 nb:2" && (got.headTint as string[]).length === 0 && got.ring === 1;
+    && (got.gapTint as string[]).join(" ") === "na:2 nb:2" && (got.headTint as string[]).join(" ") === "na:1" && got.ring === 1;
   check("block-gap-nearest", ok, JSON.stringify({ gap: gap.to, topPad: topPad.to, botPad: botPad.to, head: head.to, end, head0: hb.y + hb.h / 2, got }));
   await close(h);
 });

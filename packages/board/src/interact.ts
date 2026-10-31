@@ -531,7 +531,7 @@ export function linkPortDown(e: PointerEvent, from: End, sx: number, sy: number,
       if (hostOf(to.card) === hostOf(from.card) && !to.line) { to = null; aim = null; }
     }
     setDropTarget(to ? { kind: to.line ? "line" : to.block ? "block" : "card", card: hostOf(to.card), seg: to.seg, line: to.line } : null);
-    tintBlocks(aim ? [aim, src] : []);
+    tintBlocks(aim ? [aim, src] : to ? [src] : []); // 起点那段：对准了任何落点（一段、一行、卡头）都上色
     const key = aim ? `${aim.card}:${aim.k}` : "";
     if (!aim) { cancelAnimationFrame(raf); raf = 0; glide = null; aimKey = ""; shown = b; return draw(); }
     if (key === aimKey) return;
