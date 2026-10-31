@@ -1,5 +1,5 @@
 // Biome (npm run lint, part of npm run check): the formatter (line width 120) and two lint rules, no unused imports and no `any`.
-// npm run format rewrites the files; a commit that only formats goes in .git-blame-ignore-revs
+// npm run format rewrites the files
 {
   "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
   "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
