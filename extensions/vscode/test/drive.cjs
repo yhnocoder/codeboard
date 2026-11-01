@@ -116,11 +116,113 @@ const boardNamed = (name) => {
     : undefined;
 };
 const editorFocused = (page) => page.locator(".editor-group-container .monaco-editor.focused").count();
+/**
+ * A click on the board that CI has seen get lost: Playwright reports it done, yet the board gets no selection and no keyboard, which
+ * it does when no mouse event reaches the frame. In the closeStep hits the press reached only the workbench, on the webview's <iframe>
+ * element: the browser asked the workbench where the point is, the workbench hit the <iframe>, and the browser still sent the events to
+ * the workbench in its own coordinates. Chromium does that when the webview-local point the workbench answers does not map back to the
+ * press through the frame the window drew last: the webview moved, as when VS Code's box around it scrolls (webviewBoxes). In keyscope,
+ * clickBoard after the Rename Board dialog closed also left the board without the keyboard (Regular run 41245352675), with nothing
+ * recorded to tell whether the press or the keyboard went elsewhere.
+ * Runs click(), then waits for done(); when done() does not come true it records the browser's input routing trace
+ * (<label>-trace.json), which documents got the moves and the press, the <iframe>'s state as the workbench saw it before the click
+ * and at the press, and where the keyboard is in the workbench, the webview's host page and the board (<label>-click.png), and throws.
+ */
+async function watchClick(page, f, label, what, click, done) {
+  const pressed = (kind) => {
+    const r = (window.__e2eClick = { press: null, moves: 0, lastMove: null });
+    window.__e2ePress = null;
+    const T = () => Date.now() % 100000;
+    const iframeState = () =>
+      [...document.querySelectorAll("iframe.webview")]
+        .filter((x) => x.isConnected && x.checkVisibility())
+        .map((x) => {
+          const b = x.getBoundingClientRect(),
+            cs = getComputedStyle(x),
+            box = x.closest(".webview-overlay-content");
+          return `${Math.round(b.x)},${Math.round(b.y)} ${Math.round(b.width)}x${Math.round(b.height)} pointer-events ${cs.pointerEvents} visibility ${cs.visibility}${x.closest("[inert]") ? " inert" : ""} box scrollTop ${box?.scrollTop}`;
+        });
+    r.before = iframeState();
+    const move = (e) => {
+      r.moves++;
+      r.lastMove = `${e.target.tagName}.${String(e.target.className).slice(0, 30)} at ${T()}`;
+    };
+    document.addEventListener(kind === "mousedown" ? "mousemove" : "pointermove", move, true);
+    document.addEventListener(
+      kind,
+      (e) => {
+        window.__e2ePress = r.press = `${e.target.tagName}.${String(e.target.className).slice(0, 40)} at ${T()}`;
+        if (kind === "mousedown") r.atPress = iframeState();
+        document.removeEventListener(kind === "mousedown" ? "mousemove" : "pointermove", move, true);
+      },
+      { capture: true, once: true },
+    );
+  };
+  await f.evaluate(pressed, "pointerdown");
+  await page.evaluate(pressed, "mousedown");
+  const focusNow = async () => ({
+    board: await f.evaluate(() => document.hasFocus()).catch(() => "?"),
+    host: await f
+      .parentFrame()
+      .evaluate(() => document.hasFocus())
+      .catch(() => "?"),
+    workbench: await page.evaluate(
+      () =>
+        `${document.hasFocus()} ${document.activeElement?.tagName}.${String(document.activeElement?.className).slice(0, 30)}`,
+    ),
+  });
+  const focusBefore = await focusNow();
+  const tracer = await page.context().browser().newBrowserCDPSession();
+  const traced = [];
+  tracer.on("Tracing.dataCollected", (d) => traced.push(...d.value));
+  const traceDone = new Promise((r) => tracer.once("Tracing.tracingComplete", r));
+  await tracer.send("Tracing.start", {
+    transferMode: "ReportEvents",
+    traceConfig: {
+      includedCategories: ["input", "viz", "benchmark", "blink", "disabled-by-default-viz.hit_testing_flow"],
+    },
+  });
+  const stopTrace = async (keep) => {
+    await tracer.send("Tracing.end");
+    await traceDone;
+    await tracer.detach();
+    if (keep) fs.writeFileSync(path.join(OUT, `${label}-trace.json`), JSON.stringify({ traceEvents: traced }));
+  };
+  const clickAt = Date.now() % 100000;
+  await click();
+  await until(what, done).then(
+    () => stopTrace(false),
+    async (e) => {
+      await stopTrace(true);
+      const board = await f.evaluate(() => ({
+        focus: document.hasFocus(),
+        active: `${document.activeElement?.tagName}.${document.activeElement?.className}`,
+        click: window.__e2eClick,
+      }));
+      const host = await f.parentFrame().evaluate(() => ({
+        focus: document.hasFocus(),
+        active: `${document.activeElement?.tagName}#${document.activeElement?.id}`,
+      }));
+      const workbench = await page.evaluate(() => ({
+        focus: document.hasFocus(),
+        active: `${document.activeElement?.tagName}.${String(document.activeElement?.className).slice(0, 40)}`,
+        click: window.__e2eClick,
+      }));
+      await page.screenshot({ path: path.join(OUT, `${label}-click.png`) });
+      throw new Error(`${e.message}: ${JSON.stringify({ clickAt, focusBefore, board, host, workbench })}`);
+    },
+  );
+}
 /** Click on the board's canvas, then wait until its webview has the keyboard (keys pressed next go to the board) */
-const clickBoard = async (f, opts = { position: { x: 30, y: 300 } }) => {
-  await f.locator("#board").click(opts);
-  await until("the board has the keyboard", () => boardHasKeyboard(f));
-};
+const clickBoard = (f, opts = { position: { x: 30, y: 300 } }) =>
+  watchClick(
+    f.page(),
+    f,
+    "board",
+    "the board has the keyboard",
+    () => f.locator("#board").click(opts),
+    () => boardHasKeyboard(f),
+  );
 /** Alt+B in the code editor: resolves once the board on screen shows the card */
 async function altB(page, title, keys = "Alt+b") {
   await page.keyboard.press(keys);
@@ -603,101 +705,14 @@ async function closeStep(page) {
   check(!!code, "closeStep: the open board has a code card", name);
   if (!code) return;
   const el = f.locator(`.card[data-id="${code.id}"]`);
-  // CI has seen this click leave the board as it was (no selection, no keyboard) while Playwright reported it done, which it does
-  // when no mouse event reaches the frame. In the hits the press reached only the workbench, on the webview's <iframe> element: the
-  // browser asked the workbench where the point is, the workbench hit the <iframe>, and the browser still sent the events to the
-  // workbench in its own coordinates. Chromium does that when the webview-local point the workbench answers does not map back to the
-  // press through the frame the window drew last: the webview moved, as when VS Code's box around it scrolls (webviewBoxes). In case
-  // it comes back, record the browser's input routing trace (saved as close-trace.json), which documents got the moves and the press,
-  // and the <iframe>'s state as the workbench saw it at the press and before the click
-  const pressed = (kind) => {
-    const r = (window.__e2eClick = { press: null, moves: 0, lastMove: null });
-    window.__e2ePress = null;
-    const T = () => Date.now() % 100000;
-    const iframeState = () =>
-      [...document.querySelectorAll("iframe.webview")]
-        .filter((x) => x.isConnected && x.checkVisibility())
-        .map((x) => {
-          const b = x.getBoundingClientRect(),
-            cs = getComputedStyle(x),
-            box = x.closest(".webview-overlay-content");
-          return `${Math.round(b.x)},${Math.round(b.y)} ${Math.round(b.width)}x${Math.round(b.height)} pointer-events ${cs.pointerEvents} visibility ${cs.visibility}${x.closest("[inert]") ? " inert" : ""} box scrollTop ${box?.scrollTop}`;
-        });
-    r.before = iframeState();
-    const move = (e) => {
-      r.moves++;
-      r.lastMove = `${e.target.tagName}.${String(e.target.className).slice(0, 30)} at ${T()}`;
-    };
-    document.addEventListener(kind === "mousedown" ? "mousemove" : "pointermove", move, true);
-    document.addEventListener(
-      kind,
-      (e) => {
-        window.__e2ePress = r.press = `${e.target.tagName}.${String(e.target.className).slice(0, 40)} at ${T()}`;
-        if (kind === "mousedown") r.atPress = iframeState();
-        document.removeEventListener(kind === "mousedown" ? "mousemove" : "pointermove", move, true);
-      },
-      { capture: true, once: true },
-    );
-  };
-  await f.evaluate(pressed, "pointerdown");
-  await page.evaluate(pressed, "mousedown");
-  const focusNow = async () => ({
-    board: await f.evaluate(() => document.hasFocus()).catch(() => "?"),
-    host: await f
-      .parentFrame()
-      .evaluate(() => document.hasFocus())
-      .catch(() => "?"),
-    workbench: await page.evaluate(
-      () =>
-        `${document.hasFocus()} ${document.activeElement?.tagName}.${String(document.activeElement?.className).slice(0, 30)}`,
-    ),
-  });
-  const focusBefore = await focusNow();
-  const tracer = await page.context().browser().newBrowserCDPSession();
-  const traced = [];
-  tracer.on("Tracing.dataCollected", (d) => traced.push(...d.value));
-  const traceDone = new Promise((r) => tracer.once("Tracing.tracingComplete", r));
-  await tracer.send("Tracing.start", {
-    transferMode: "ReportEvents",
-    traceConfig: {
-      includedCategories: ["input", "viz", "benchmark", "blink", "disabled-by-default-viz.hit_testing_flow"],
-    },
-  });
-  const stopTrace = async (keep) => {
-    await tracer.send("Tracing.end");
-    await traceDone;
-    await tracer.detach();
-    if (keep) fs.writeFileSync(path.join(OUT, "close-trace.json"), JSON.stringify({ traceEvents: traced }));
-  };
-  const clickAt = Date.now() % 100000;
   // select it by its title: the file path next to it opens the code in the editor (and the keys would go there)
-  await el.locator(".chead .ctitle").first().click();
-  await until(
+  await watchClick(
+    page,
+    f,
+    "close",
     "the code card is selected and the board has the keyboard",
+    () => el.locator(".chead .ctitle").first().click(),
     async () => /\bsel\b/.test(await el.getAttribute("class")) && (await boardHasKeyboard(f)),
-  ).then(
-    () => stopTrace(false),
-    async (e) => {
-      await stopTrace(true);
-      const board = await f.evaluate(() => ({
-        focus: document.hasFocus(),
-        active: `${document.activeElement?.tagName}.${document.activeElement?.className}`,
-        click: window.__e2eClick,
-      }));
-      const host = await f.parentFrame().evaluate(() => ({
-        focus: document.hasFocus(),
-        active: `${document.activeElement?.tagName}#${document.activeElement?.id}`,
-      }));
-      const workbench = await page.evaluate(() => ({
-        focus: document.hasFocus(),
-        active: `${document.activeElement?.tagName}.${String(document.activeElement?.className).slice(0, 40)}`,
-        click: window.__e2eClick,
-      }));
-      await page.screenshot({ path: path.join(OUT, "close-click.png") });
-      throw new Error(
-        `${e.message}: ${JSON.stringify({ clickAt, card: await el.getAttribute("class"), focusBefore, board, host, workbench })}`,
-      );
-    },
   );
   await page.keyboard.press("Alt+z");
   // close the tab as soon as the card shows the change: the board has sent it, the host has not necessarily written it yet
