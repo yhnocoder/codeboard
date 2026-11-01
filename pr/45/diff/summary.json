@@ -1,0 +1,92 @@
+[
+ {
+  "name": "1-first-card.png",
+  "status": "new",
+  "ratio": 0.9963
+ },
+ {
+  "name": "10-pick-impl.png",
+  "status": "new",
+  "ratio": 0.9981
+ },
+ {
+  "name": "11-capture-run.png",
+  "status": "new",
+  "ratio": 0.9955
+ },
+ {
+  "name": "16-addsel-one-card.png",
+  "status": "new",
+  "ratio": 0.9965
+ },
+ {
+  "name": "17-addsel-separate.png",
+  "status": "new",
+  "ratio": 0.9966
+ },
+ {
+  "name": "18-cardfocus-code.png",
+  "status": "new",
+  "ratio": 0.9965
+ },
+ {
+  "name": "18-cardfocus-header.png",
+  "status": "new",
+  "ratio": 0.9965
+ },
+ {
+  "name": "2-flow.png",
+  "status": "new",
+  "ratio": 0.9858
+ },
+ {
+  "name": "3-peek.png",
+  "status": "new",
+  "ratio": 0.9875
+ },
+ {
+  "name": "4-sidenote.png",
+  "status": "new",
+  "ratio": 0.9857
+ },
+ {
+  "name": "5-search.png",
+  "status": "new",
+  "ratio": 0.9857
+ },
+ {
+  "name": "6-board.png",
+  "status": "new",
+  "ratio": 0.9988
+ },
+ {
+  "name": "7-uncommitted.png",
+  "status": "new",
+  "ratio": 0.9987
+ },
+ {
+  "name": "7a-settings.png",
+  "status": "new",
+  "ratio": 0.994
+ },
+ {
+  "name": "7b-diagnostics.png",
+  "status": "new",
+  "ratio": 0.9984
+ },
+ {
+  "name": "8-shared.png",
+  "status": "new",
+  "ratio": 0.9928
+ },
+ {
+  "name": "9-subboard.png",
+  "status": "new",
+  "ratio": 0.999
+ },
+ {
+  "name": "9b-sidebar-nesting.png",
+  "status": "new",
+  "ratio": 0.9943
+ }
+]
