@@ -1,7 +1,6 @@
 // Rules on the board's state and gestures, checked by shape:
 // - the board is written only in state/changes.ts, segment views and version states (`state.views`, `state.stale`) only in
 //   state/views.ts: those two are the only ones to import the store's setState, by name or through a namespace import
-// - the undo engine, snapshots and saving (and what they import from the board) do not import Solid
 // - drags go through gesture.ts: no other file listens on the window or the document for pointer moves (but the listed trackers,
 //   which never listen for a release there), and an undo step for a gesture (beginGesture) is always held with holdGesture, so a
 //   board switch drops it
@@ -55,28 +54,6 @@ describe("board state", () => {
       .sort();
     expect(importers).toEqual(["state/changes.ts", "state/views.ts"]);
   });
-
-  it("keeps the undo engine, snapshots and saving free of Solid", () => {
-    const seen = new Set<string>(),
-      bad: string[] = [];
-    const visit = (f: string, from: string) => {
-      if (seen.has(f)) return;
-      seen.add(f);
-      const text = fs.readFileSync(f, "utf8");
-      for (const m of text.matchAll(/^import\s+(?!type\b)[^;]*?from\s+["']([^"']+)["']/gm)) {
-        const spec = m[1];
-        if (spec.startsWith("solid-js")) bad.push(`${rel(f)} (from ${from})`);
-        if (!spec.startsWith(".")) continue;
-        const base = path.resolve(path.dirname(f), spec);
-        const next = [".ts", ".tsx", "/index.ts"].map((x) => base + x).find((x) => fs.existsSync(x));
-        if (next) visit(next, rel(f));
-      }
-    };
-    for (const f of ["state/history.ts", "state/snap.ts", "state/save.ts", "state/upkeep.ts"])
-      visit(path.join(SRC, f), f);
-    expect(bad).toEqual([]);
-    expect(seen.size).toBeGreaterThanOrEqual(4);
-  });
 });
 
 describe("board gestures", () => {
@@ -103,7 +80,7 @@ describe("board gestures", () => {
 
   it("hold their undo step with holdGesture, so a board switch drops it", () => {
     const loose = walk(SRC)
-      .filter((f) => !["gesture.ts", "state/history.ts", "state/changes.ts"].includes(rel(f)))
+      .filter((f) => !["gesture.ts", "state/changes.ts"].includes(rel(f)))
       .filter((f) => {
         const t = fs.readFileSync(f, "utf8");
         return /\bbeginGesture\(/.test(t) && !/\bholdGesture\(/.test(t);

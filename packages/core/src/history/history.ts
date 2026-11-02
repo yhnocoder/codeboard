@@ -1,10 +1,11 @@
-// The board's change and undo engine, on plain objects (no Solid): the board itself lives behind `Doc`, so the same engine runs on
-// a Solid store (state/changes.ts) and on a plain object (test/unit/history.test.ts).
+// The board's change and undo engine, on plain objects (no Solid, no DOM): the board itself lives behind `Doc`, so the same engine
+// runs on the board UI's Solid store (packages/board/src/state/changes.ts) and on a plain object (test/history.test.ts).
 // Three kinds of change: mutate = the user's edits (undo steps); sync = what the host synced or the view derived (saved, not undo
 // steps, replayed after undo / redo); live = changes during a drag (the whole gesture becomes one undo step when it ends).
-import { danglingRefs, removeCards, type Board } from "@codeboard/core";
+import type { Board } from "../model";
+import { danglingRefs, removeCards } from "../edit";
 import { itemOps, NOT_UNDONE, parse, same, snapper, touched, type Effect, type ItemOp, type Snap } from "./snap";
-import { stamp, upkeeper, type Raw } from "./upkeep";
+import { stamp, upkeeper, type NoteBlocks, type Raw } from "./upkeep";
 import { trimLru } from "./lru";
 
 /** Where the board lives */
@@ -37,9 +38,15 @@ const SYNC_MAX = 2000;
 /** Boards whose undo history is kept besides the breadcrumbs */
 const RECENT_HISTORIES = 4;
 
-export function createHistory(doc: Doc, hooks: Hooks) {
+/** What the shell gives the engine besides the board */
+export interface HistoryPorts {
+  /** Splits a Note into its blocks (arrow ends on a block follow it) */
+  noteBlocks: NoteBlocks;
+}
+
+export function createHistory(doc: Doc, hooks: Hooks, ports: HistoryPorts) {
   const snaps = snapper();
-  const upkeep = upkeeper(doc.raw);
+  const upkeep = upkeeper(doc.raw, ports.noteBlocks);
   const undoStack: Snap[] = [];
   const redoStack: Snap[] = [];
   // The current board's snapshot: the one a mutate took after its change is the next mutate's "before". Every write drops it,

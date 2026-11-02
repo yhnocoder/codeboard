@@ -1,10 +1,8 @@
 // The undo engine and saving on a plain board (no Solid, no DOM): snapshots, undo / redo, merged steps, syncs replayed after undo,
 // drags, fresh cards, per-board histories, and the patches sent to the host
 import { describe, expect, it } from "vitest";
-import { emptyBoard, type Board, type BoardPatch, type Card } from "@codeboard/core";
-import { createHistory, type Doc } from "../../src/state/history";
-import { NOT_UNDONE } from "../../src/state/snap";
-import { createSave } from "../../src/state/save";
+import { emptyBoard, type Board, type BoardPatch, type Card } from "../src";
+import { createHistory, createSave, NOT_UNDONE, type Doc } from "../src/history";
 
 const note = (id: string, md = ""): Card => ({ id, kind: "note", md }) as Card;
 
@@ -25,23 +23,27 @@ function setup(start = emptyBoard("b1", "B1")) {
     raw: (x) => x,
   };
   const log = { changed: 0, live: 0, restored: 0, toasts: [] as string[], stacks: [false, false] };
-  const h = createHistory(doc, {
-    changed: () => {
-      log.changed++;
+  const h = createHistory(
+    doc,
+    {
+      changed: () => {
+        log.changed++;
+      },
+      changedLive: () => {
+        log.live++;
+      },
+      stacks: (u, r) => {
+        log.stacks = [u, r];
+      },
+      restored: () => {
+        log.restored++;
+      },
+      toast: (t) => {
+        log.toasts.push(t);
+      },
     },
-    changedLive: () => {
-      log.live++;
-    },
-    stacks: (u, r) => {
-      log.stacks = [u, r];
-    },
-    restored: () => {
-      log.restored++;
-    },
-    toast: (t) => {
-      log.toasts.push(t);
-    },
-  });
+    { noteBlocks: (md) => md.split(/\n{2,}/) },
+  );
   h.setBoard(board, []);
   const add = (id: string, md = "", x = 0) =>
     h.mutate((b) => {

@@ -22,6 +22,7 @@
   "exports": {
     "./commands": "./src/commands/index.ts",
     "./canvas": "./src/canvas/index.ts",
+    "./history": "./src/history/index.ts",
     ".": "./src/index.ts",
     "./settings": "./src/settings.ts",
     "./tidy": "./src/tidy.ts"

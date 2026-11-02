@@ -629,7 +629,7 @@ describe("guard: reference upkeep only in core/src/edit.ts", () => {
       "the user sets a call graph's mark: that is the edit itself",
     ],
     [
-      "board/src/state/upkeep.ts",
+      "core/src/history/upkeep.ts",
       "b.born = tmp.born;",
       "mutate stamps creation order on new cards (core stampBorn on a plain copy)",
     ],

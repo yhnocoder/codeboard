@@ -5,7 +5,8 @@
 // ids = the ids of each collection (one per piece; saving diffs by id). When they match the previous snapshot it reuses that array.
 // step = on an undo-stack snapshot: what changed from it to the next step ("c" / "n" + id; undo checks whether another board
 // changed a shared card since). fx = what that step did outside the board (the host made a board): undone / redone with it
-import type { Board, BoardPatch, ListPatch, Place } from "@codeboard/core";
+import type { Board, Place } from "../model";
+import type { BoardPatch, ListPatch } from "../patch";
 
 export const KEYS = ["cards", "place", "links", "sections", "sidenotes", "stickers"] as const;
 export type Key = (typeof KEYS)[number];

@@ -5,7 +5,8 @@
 // an edit would lose it. Live changes during a drag and the camera coming to rest wait LIVE_DELAY (no whole-board snapshot every
 // frame); closing the tab within LIVE_DELAY loses only the camera.
 // The patch = the current snapshot against the one sent last, by id: changed items, deleted ids, changed board fields, the camera.
-import type { Board, BoardPatch } from "@codeboard/core";
+import type { Board } from "../model";
+import type { BoardPatch } from "../patch";
 import { camKey, diff, NOT_UNDONE, type Sent, type Snap } from "./snap";
 
 export interface SaveDeps {

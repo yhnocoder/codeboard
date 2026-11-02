@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { trimLru } from "../../src/state/lru";
+import { trimLru } from "../src/history/lru";
 
 describe("trimLru (per-board undo histories)", () => {
   const m = (...ks: string[]) => new Map(ks.map((k) => [k, k]));
