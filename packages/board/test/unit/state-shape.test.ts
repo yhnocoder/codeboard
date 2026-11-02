@@ -92,6 +92,8 @@ const OUTLIVES_BOARD: Record<string, string> = {
   "hostio.ts:held": "messages held while the old board fades out in a switch",
   "ui/shield.ts:el": "the pan shield element",
   "ui/shield.ts:fwd": "where the pan shield forwards to",
+  "host.ts:transport": "the way to the host, given once at boot",
+  "host.ts:req": "a request id counter",
   "ui/Menu.tsx:menuN": "an id counter",
   "state/pop.ts:n": "an id counter",
   "state/ui.ts:pingN": "an id counter",
@@ -116,7 +118,6 @@ const OUTLIVES_BOARD: Record<string, string> = {
     "each merge into upstream asked about once in this window (the host resends them on every init)",
   // reset on a board switch by their own onBoardSwitch, which does more than emptying them
   "host.ts:pending": "requests: each one fails on a switch",
-  "host.ts:req": "a request id counter",
   "gesture.ts:open": "gestures: each one is dropped on a switch",
   "actions/imageai.ts:live": "image jobs: each one is cancelled on a switch",
   "actions/variants.ts:shownView": "rebuilt from the new board on a switch",

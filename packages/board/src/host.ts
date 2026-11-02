@@ -2,19 +2,21 @@ import type { AskType, BoardToHost, HostToBoard, ReplyOf } from "@codeboard/core
 import { unwrap } from "solid-js/store";
 import { onBoardSwitch } from "./state/root";
 
-type Api = { postMessage(m: unknown): void };
-declare global {
-  interface Window {
-    acquireVsCodeApi?: () => Api;
-    __cbSent?: unknown[];
-  }
-}
-
-const api: Api = window.acquireVsCodeApi?.() ?? { postMessage: (m) => (window.__cbSent ??= []).push(m) };
+/** How the board and its host reach each other: the shell that boots the board hands it one (VS Code's webview API, a test's own) */
+export type Transport = {
+  post(m: BoardToHost): void;
+  /** fn gets every message the host sends (checked here, not by the transport) */
+  listen(fn: (m: unknown) => void): void;
+};
+let transport: Transport | undefined;
+const post = (m: BoardToHost) => {
+  if (!transport) throw new Error("The board is not connected to a host (connectHost)");
+  transport.post(m);
+};
 
 /** Store proxies can't be posted (DataCloneError): every message is unwrapped here, so callers pass store values as they are */
 export function send(m: BoardToHost) {
-  api.postMessage(unwrap(m));
+  post(unwrap(m));
 }
 
 let req = 0;
@@ -58,7 +60,7 @@ export function ask<T extends AskType>(type: T, body: Req<T>): Promise<ReplyOf<T
       ? undefined
       : window.setTimeout(() => settle(id)?.fail(new Error(`No reply from the editor (${type})`)), TIMEOUT);
     pending.set(id, { ok: ok as (v: unknown) => void, fail, timer });
-    api.postMessage(unwrap({ type, req: id, ...body }));
+    post(unwrap({ type, req: id, ...body }) as BoardToHost);
   });
 }
 
@@ -97,9 +99,11 @@ export function forwardErrors() {
   });
 }
 
-export function listen(fn: (m: HostToBoard) => void) {
-  window.addEventListener("message", (e) => {
-    const m = e.data as HostToBoard;
+/** Boot: the board talks to its host through t from now on; fn gets the host's messages (replies to ask go to their askers) */
+export function connectHost(t: Transport, fn: (m: HostToBoard) => void) {
+  transport = t;
+  t.listen((x) => {
+    const m = x as HostToBoard;
     if (!m || typeof m !== "object" || !("type" in m)) return;
     if (m.type === "reply") {
       const p = settle(m.req);

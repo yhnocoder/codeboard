@@ -189,12 +189,16 @@ if (against) {
       if (r.status) die(`--against: ${cmd} failed at ${sha.slice(0, 7)}:\n${(r.stdout + r.stderr).slice(-3000)}`);
     }
   }
+  if (!fs.existsSync(path.join(built(), "boot.js")))
+    die(
+      `--against: the board of ${sha.slice(0, 7)} has no boot.js (built before the board took its host transport at boot)`,
+    );
   env.HARNESS_BOARD = built();
   console.log(`on the board of ${against} (${sha.slice(0, 7)}), not the current build`);
 }
 
-if (!against && !fs.existsSync(path.join(REPO, "packages/board/dist/board.js")))
-  die("the board is not built (packages/board/dist/board.js): run npm run build first");
+if (!against && !fs.existsSync(path.join(REPO, "packages/board/dist/boot.js")))
+  die("the board is not built (packages/board/dist/boot.js): run npm run build first");
 
 const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const strip = (s) => s.replace(/\x1b\[[0-9;]*m/g, "");

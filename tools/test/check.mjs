@@ -52,7 +52,7 @@ if (!(await run("extension package.json", "npm", ["run", "contributes", "-w", "c
 const stamp = path.join(REPO, "packages/board/dist/.build-hash");
 const hash = buildHash(REPO); // the board build takes most of a minute: skipped when nothing it is built from changed since the last one
 const fresh =
-  fs.existsSync(path.join(REPO, "packages/board/dist/board.js")) &&
+  fs.existsSync(path.join(REPO, "packages/board/dist/boot.js")) &&
   fs.existsSync(stamp) &&
   fs.readFileSync(stamp, "utf8") === hash;
 const build = fresh

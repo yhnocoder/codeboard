@@ -1,9 +1,10 @@
-// 没有 VS Code 时 src/host.ts 把消息 push 进 window.__cbSent：先放一个改了 push 的数组，就能不改 host.ts 当宿主回 ask。
+// 小样的宿主：preview.tsx 把 transport 交给 wireBoard，白板发的消息都到这里，ask 在这里回答。
 // 只有这一个假宿主：回答是一条链，先问挂着的 story 自己的（Stage 的 replies、usePacks，卸下就撤掉），
 // 再问各块小样登记的（reply()，按段 id、按词各管各的，互不重叠），最后是这里的默认回答。
 // 哪一层返回 PASS 就问下一层；所以回答不看之前点过哪些 story、加载过哪些模块
 import { onCleanup } from "solid-js";
 import type { AskType, BoardToHost, Commit, SegView } from "@codeboard/core";
+import type { Transport } from "../../src/host";
 import code from "../fixtures/code.json";
 import NOTE_HTML from "../fixtures/notecode.json";
 import { noteCodeKey } from "../fixtures/notecode";
@@ -93,11 +94,11 @@ function answer(q: { type: AskType }): unknown {
   return null;
 }
 
-const sent: unknown[] = [];
-sent.push = (...ms: unknown[]) => {
-  for (const m of ms) {
+/** How the stories' board reaches this host: the replies come back as window messages, like the stories' own (Stage) */
+export const transport: Transport = {
+  post(m) {
     const q = m as BoardToHost & { req?: number };
-    if (typeof q.req !== "number") continue;
+    if (typeof q.req !== "number") return;
     const req = q.req;
     void (async () => {
       try {
@@ -107,7 +108,6 @@ sent.push = (...ms: unknown[]) => {
         window.postMessage({ type: "reply", req, error: (e as Error).message }, "*");
       }
     })();
-  }
-  return Array.prototype.push.apply(sent, ms);
+  },
+  listen: (fn) => window.addEventListener("message", (e) => fn(e.data)),
 };
-window.__cbSent = sent;

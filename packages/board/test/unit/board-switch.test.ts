@@ -16,6 +16,7 @@ import { dropTarget, setDropTarget, editing, setEditing, settingsOpen, setSettin
 import { traffic, setTraffic } from "../../src/state/look";
 import { pushLayer, closeOverlays } from "../../src/ui/overlay";
 import { choose, promptText } from "../../src/ui/Menu";
+import { sent } from "./host";
 import { boardMap, boardRef, boardSet, boardSignal, boardStore, boardTimer } from "../../src/state/root";
 
 const HOST: HostInfo = { assetBase: "", target: true, settings: DEFAULT_SETTINGS };
@@ -40,15 +41,12 @@ const settled = <T>(p: Promise<T>) =>
 // A board switch clears the selection, and the board reports the selection to the host a moment after it changes (a timer): the
 // last report goes out before jsdom is torn down, or it fires on a window that is gone (an uncaught error in the run)
 afterAll(async () => {
-  const before = window.__cbSent?.length ?? 0;
+  const before = sent.length;
   reportSelection();
-  await vi.waitFor(
-    () =>
-      expect((window.__cbSent ?? []).slice(before).some((m) => (m as { type: string }).type === "selection")).toBe(
-        true,
-      ),
-    { timeout: 5000, interval: 5 },
-  );
+  await vi.waitFor(() => expect(sent.slice(before).some((m) => m.type === "selection")).toBe(true), {
+    timeout: 5000,
+    interval: 5,
+  });
 });
 
 describe("board switch", () => {

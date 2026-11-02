@@ -1,6 +1,5 @@
 // 样式顺序照抄 src/index.tsx、接线用同一个 wireBoard，不然样子和插件里不一样；不 render、不发 ready，白板由 story 的 Stage 挂上、喂数据
-// 假宿主要在白板的模块发第一条消息之前装好
-import "../stories/support/host";
+import { transport } from "../stories/support/host";
 import type { Preview, Decorator } from "storybook-solidjs-vite";
 import { addons, useGlobals } from "storybook/preview-api";
 import { STORY_CHANGED, UPDATE_GLOBALS } from "storybook/internal/core-events";
@@ -16,7 +15,7 @@ import "@yhnocoder/markdown/style.css";
 import "../src/themes.css";
 import "../src/settings.css";
 
-wireBoard();
+wireBoard(transport, { selfCheck: import.meta.env.DEV });
 
 // 亮暗挂在 body 的 class 上，和 VS Code 一样，由 followHostTheme 换成 html[data-theme]
 const scheme = createJSXDecorator((Story, ctx) => {

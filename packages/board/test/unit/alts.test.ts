@@ -6,6 +6,7 @@ import { DEFAULT_SETTINGS, emptyBoard, type BoardToHost, type Card, type HostInf
 import { onHost } from "../../src/hostio";
 import { state } from "../../src/state/store";
 import { altsOf, pickImpl } from "../../src/actions/chains";
+import { sent } from "./host";
 
 const HOST: HostInfo = { assetBase: "", target: true, settings: DEFAULT_SETTINGS };
 const CUDA = "build/aten/src/ATen/UfuncCUDA_add.cu",
@@ -63,7 +64,6 @@ function load(links: Link[], cards: Card[]) {
   });
 }
 const link = (id: string) => state.board.links.find((l) => l.id === id)!;
-const sent = () => (window.__cbSent ?? []) as BoardToHost[];
 
 // the swap's request to the host is never answered here: switching boards drops it
 afterAll(() => load([], []));
@@ -92,7 +92,7 @@ describe("pickImpl", () => {
       qual: "at::native::add_kernel",
     };
     load([arrow("l", "cuda", [mps, cpuAlt])], [code("cuda", "at::native::add_kernel", CUDA)]);
-    const before = sent().length;
+    const before = sent.length;
     const impls = [
       { ...cpuAlt, label: "CPU" },
       { label: "CUDA", detail: `${CUDA}:66`, path: CUDA, line: 66, qual: "at::native::add_kernel" },
@@ -113,9 +113,9 @@ describe("pickImpl", () => {
         false,
       ),
     ).toBe(true);
-    const req = sent()
-      .slice(before)
-      .find((m) => m.type === "expand") as Extract<BoardToHost, { type: "expand" }> | undefined;
+    const req = sent.slice(before).find((m) => m.type === "expand") as
+      | Extract<BoardToHost, { type: "expand" }>
+      | undefined;
     expect(req?.pick).toEqual({ path: CPU, line: 16, qual: "at::native::add_kernel" });
   });
 });
