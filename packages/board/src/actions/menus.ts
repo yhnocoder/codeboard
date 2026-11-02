@@ -15,6 +15,8 @@ import {
 } from "@codeboard/core";
 import { state, flows, cardById, hostOf, placeOf, sharedOn, twinsOf } from "../state/store";
 import { mutate } from "../state/changes";
+import * as C from "@codeboard/core/commands";
+import { commandEnv } from "./env";
 import { sel, select, lineSel, isSel, type LineSel } from "../state/selection";
 import { toast } from "../state/toast";
 import { hiddenByAncestor, fitFrame } from "../state/sections";
@@ -484,11 +486,7 @@ function cardItems(id: string, x: number, y: number): Item[] {
     {
       label: "Show All Hidden Lines",
       disabled: !anyHidden,
-      run: () =>
-        mutate((b) => {
-          const k = findCard(b, c.id)!.card as CodeCard;
-          k.segments.forEach((s) => (s.hidden = undefined));
-        }),
+      run: () => C.showAllLines(commandEnv, c.id),
     },
     null,
     { label: "Wrap Lines", kbd: kbd("wrap"), checked: !!c.wrap, run: () => toggleWrap([c.id]) },

@@ -15,7 +15,8 @@ import {
   type NoteCard,
 } from "@codeboard/core";
 import { state, cardById, placeOf } from "../state/store";
-import { mutate } from "../state/changes";
+import * as C from "@codeboard/core/commands";
+import { commandEnv } from "./env";
 import { toast } from "../state/toast";
 import { IS_MAC } from "@yhnocoder/markdown/ui";
 import { ask, send } from "../host";
@@ -434,21 +435,14 @@ export async function modifySvg(ref: ImgRef, instruction: string) {
   if (ref.note === undefined) {
     const file = await ask("saveAsset", { name: "image.svg", dataUrl: url }).catch(() => null);
     if (!file) return toast("Couldn't save the SVG");
-    mutate((b) => {
-      const c = findCard(b, ref.card)?.card;
-      if (c?.kind === "image") c.src = file;
-    });
+    C.replaceImage(commandEnv, { card: ref.card }, file);
   } else {
     const src = await ask("saveImage", { dataUrl: url }).catch(() => null);
     if (!src) return toast("Couldn't save the SVG");
     // 正在编辑这张 Note：先存下编辑器里的字，再换图（编辑器里的文档不跟着外面的改动走）
     const ed = editing();
     if (ed?.kind === "note" && ed.id === ref.card) setEditing(null);
-    const old = ref.note;
-    mutate((b) => {
-      const c = findCard(b, ref.card)?.card;
-      if (c?.kind === "note") c.md = c.md.split(old).join(src);
-    });
+    C.replaceImage(commandEnv, { card: ref.card, note: ref.note }, src);
   }
   const short = instruction.trim().replace(/\s+/g, " ");
   toast(

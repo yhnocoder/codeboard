@@ -1,6 +1,18 @@
-// Notes and sidenotes: sidenote ↔ card, an image into a Note, Note ↔ Text, Split by Headings
-import { findCard, isCode, uid, type Anchor, type Board, type Card, type Sidenote } from "../model";
-import type { Rect } from "../layout";
+// Notes and sidenotes: new Notes, Text, Marks and Boxes, sidenotes added and sidenote ↔ card, images in a Note, Note ↔ Text,
+// Split by Headings
+import {
+  BOX_FILLS,
+  findCard,
+  isCode,
+  uid,
+  type Anchor,
+  type Board,
+  type Card,
+  type NoteCard,
+  type NoteLook,
+  type Sidenote,
+} from "../model";
+import { NEW_CARD_W, type Rect } from "../layout";
 import {
   cardIntoSidenote,
   imageIntoNote,
@@ -89,4 +101,57 @@ export function splitByHeadings(
   })
     ? ids
     : null;
+}
+
+/**
+ * A new Note, Text, Mark or Box with `text`: a Text is body-sized, a Box gets the first fill and a fixed height, a Mark the colour
+ * of the last Mark on the board (blue for the first). Written empty (a Box aside) it is fresh (env.fresh): no undo step until
+ * something is written. at(size) = where it goes, for its size (the shell's layout); settle(b, id) files it in the Section it
+ * landed in. Its id
+ */
+export function newWriting(
+  env: CommandEnv,
+  look: NoteLook,
+  text: string,
+  o: { at: (size: { w: number; h?: number }) => { x: number; y: number }; settle: (b: Board, id: string) => void },
+): string {
+  const w = NEW_CARD_W,
+    h = look === "box" ? 60 : undefined;
+  const p = o.at({ w, h });
+  const id = uid("n");
+  const card: NoteCard = { id, kind: "note", md: text, look };
+  if (look === "text") card.size = "body";
+  if (look === "box") card.fill = BOX_FILLS[0];
+  if (look === "mark") {
+    const last = [...env.board().cards].reverse().find((c) => c.kind === "note" && c.look === "mark");
+    card.hand = (last?.kind === "note" && last.hand) || "blue";
+  }
+  const add = (b: Board) => {
+    b.cards.push(card);
+    b.place[id] = { x: Math.round(p.x), y: Math.round(p.y), w, ...(h ? { h } : {}) };
+    o.settle(b, id);
+  };
+  if (text || look === "box") env.edit(add);
+  else env.fresh.add(id, add);
+  return id;
+}
+
+/** Add sidenotes in one step; their new ids, in order */
+export function addSidenotes(env: CommandEnv, list: Omit<Sidenote, "id">[]): string[] {
+  const sns = list.map((n) => ({ ...n, id: uid("n") }) as Sidenote);
+  env.edit((b) => {
+    b.sidenotes.push(...sns);
+  });
+  return sns.map((n) => n.id);
+}
+
+/** An image replaced by the one stored at `src`: an image card's (note left out), or the one at `note` in a Note's Markdown */
+export function replaceImage(env: CommandEnv, ref: { card: string; note?: string }, src: string) {
+  const old = ref.note;
+  env.edit((b) => {
+    const c = findCard(b, ref.card)?.card;
+    if (old === undefined) {
+      if (c?.kind === "image") c.src = src;
+    } else if (c?.kind === "note") c.md = c.md.split(old).join(src);
+  });
 }

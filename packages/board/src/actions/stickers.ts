@@ -1,5 +1,5 @@
-import { uid, isQuestion, type IconRef, type Sticker, type StickerAt } from "@codeboard/core";
-import { deleteItems } from "@codeboard/core/commands";
+import { isQuestion, type IconRef, type Sticker, type StickerAt } from "@codeboard/core";
+import * as C from "@codeboard/core/commands";
 import { commandEnv } from "./env";
 import { openQuestion, setAnswered, linkAnswer, setStickerDragged } from "./questions";
 import { state, rectOf } from "../state/store";
@@ -58,19 +58,8 @@ export function placeStickerAt(e: PointerEvent): boolean {
       e.altKey ? null : targetAt(e.clientX, e.clientY),
     );
   }
-  const id = uid("k");
-  const st: Sticker = {
-    id,
-    icon: p.icon,
-    color: p.color && p.color !== defaultColor(p.icon) ? p.color : undefined,
-    at,
-  };
   // 「?」贴纸：放下就写问题
-  const q = isQuestion(st);
-  if (q) st.q = { md: "", at: Date.now() };
-  mutate((b) => {
-    b.stickers.push(st);
-  });
+  const { id, q } = C.addSticker(commandEnv, p.icon, at, { pick: p.color, def: defaultColor(p.icon) });
   setSelSticker(id);
   if (q) requestAnimationFrame(() => openQuestion(id, undefined, true));
   return true;
@@ -195,14 +184,12 @@ function rowLine(cardEl: HTMLElement, el: HTMLElement): { card: string; seg: str
 
 /** @public run from the key table (keymap.ts) */
 export function removeSticker(id: string) {
-  deleteItems(commandEnv, { stickers: [id] });
+  C.deleteItems(commandEnv, { stickers: [id] });
   if (selSticker() === id) setSelSticker(null);
 }
 function setStickerColorOf(id: string, color: string | undefined) {
-  mutate((b) => {
-    const s = b.stickers.find((k) => k.id === id);
-    if (s) s.color = color && color !== defaultColor(s.icon) ? color : undefined;
-  });
+  const s = state.board.stickers.find((k) => k.id === id);
+  if (s) C.setStickerColor(commandEnv, id, color, defaultColor(s.icon));
 }
 export function stickerMenu(id: string, x: number, y: number) {
   const s = state.board.stickers.find((k) => k.id === id);

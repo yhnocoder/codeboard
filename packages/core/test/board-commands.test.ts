@@ -1,6 +1,15 @@
 // Board commands on a plain board with a scripted env: what each changes, what it asks, and that the board stays consistent
 import { describe, expect, it } from "vitest";
-import { DEFAULT_SETTINGS, danglingRefs, emptyBoard, type Board, type Card, type Segment } from "../src";
+import {
+  DEFAULT_SETTINGS,
+  danglingRefs,
+  emptyBoard,
+  removeCards,
+  removeStickers,
+  type Board,
+  type Card,
+  type Segment,
+} from "../src";
 import {
   cardToSidenote,
   compare,
@@ -30,12 +39,31 @@ function setup(cards: Card[], o: { answer?: number | null; boards?: Record<strin
     b.place[c.id] = { x: 500 * i, y: 0, w: 400 };
   });
   const log = { edits: 0, asked: [] as Choice[], toasts: [] as string[] };
+  // a fresh item is on the board without an undo step; settled, it is one (kept) or gone
+  const fresh = new Set<string>();
   const env: CommandEnv = {
     board: () => b,
     edit: (fn) => {
       fn(b);
       log.edits++;
       return true;
+    },
+    fresh: {
+      add: (id, fn) => {
+        fn(b);
+        fresh.add(id);
+      },
+      is: (id) => fresh.has(id),
+      settle: (id, keep, fn) => {
+        if (!fresh.delete(id)) return;
+        if (!keep) {
+          if (b.stickers.some((s) => s.id === id)) removeStickers(b, [id]);
+          else removeCards(b, [id]);
+          return;
+        }
+        fn?.(b);
+        log.edits++;
+      },
     },
     ask: (async () => null) as CommandEnv["ask"],
     choose: async (q) => {

@@ -377,17 +377,7 @@ export function selectFlow(id: string) {
 /** 改调用图的标记（null = 回到自动分配的字母）。存在图里最早建的那张卡名下 */
 export function setGraphMark(cardId: string, mark: GraphMark | null) {
   const g = flows().byId.get(cardId);
-  if (!g) return;
-  mutate((b) => {
-    if (!mark) {
-      if (b.marks) {
-        delete b.marks[g.id];
-        if (!Object.keys(b.marks).length) delete b.marks;
-      }
-      return;
-    }
-    (b.marks ??= {})[g.id] = mark;
-  });
+  if (g) C.setGraphMark(commandEnv, g.id, mark);
 }
 
 /** 点调用图标记：小选择框（字母 A–Z、几个图标、Auto） */

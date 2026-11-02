@@ -1,7 +1,6 @@
 import { For, Show, onMount, onCleanup, createMemo, createEffect, createSignal, on } from "solid-js";
 import { bounds, twinContent, type AlignOp } from "@codeboard/core";
 import { state, rectOf, cardById, hostOf, placed, placeOf } from "../state/store";
-import { mutate } from "../state/changes";
 import { sel } from "../state/selection";
 import { cam, setViewport, viewTracked, lod, camMoving, stillZ, camTarget, camTo, fitRect } from "../state/camera";
 import { trackOffscreen } from "../state/cull";
@@ -20,7 +19,6 @@ import { canvasPointerDown, canvasWheel, canvasContextMenu } from "../interact";
 import { bindShield } from "../ui/shield";
 import { Icon } from "../ui/icons";
 import * as A from "../actions";
-import { align } from "@codeboard/core";
 import { boardMode } from "../state/mode";
 import { kbd } from "../keymap";
 import { observeResize, queueMeasure } from "@yhnocoder/markdown/ui";
@@ -470,15 +468,7 @@ function AlignBar() {
       document.removeEventListener("keydown", key, true);
     });
   });
-  const run = (op: AlignOp) => {
-    const m = align(rs(), op);
-    mutate((b) => {
-      for (const [id, p] of m) {
-        const c = b.place[id];
-        if (c && !A.isLocked(id)) Object.assign(c, p);
-      }
-    });
-  };
+  const run = (op: AlignOp) => A.alignCards(rs(), op);
   const tip = (label: string, id?: string) => {
     const k = id && kbd(id);
     return k ? `${label} (${k})` : label;

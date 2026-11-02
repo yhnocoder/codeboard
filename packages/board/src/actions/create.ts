@@ -14,12 +14,10 @@ import {
   estSize,
   defaultWidth,
   imageScale,
-  BOX_FILLS,
   NEW_CARD_W,
   type Board,
   type Card,
   type ImageCard,
-  type NoteCard,
   type NoteLook,
   type Segment,
   type Place,
@@ -30,7 +28,7 @@ import * as C from "@codeboard/core/commands";
 import { commandEnv } from "./env";
 import { state, cardById, rectOf, placeOf } from "../state/store";
 import { putViews, requestViews } from "../state/views";
-import { mutate, createFresh, isFresh, settleFresh } from "../state/changes";
+import { isFresh } from "../state/changes";
 import { sel, select } from "../state/selection";
 import { toast } from "../state/toast";
 import { camTo, camTarget, fitTop, isVisible, viewportCenter } from "../state/camera";
@@ -120,30 +118,15 @@ export function newBox(at?: { x: number; y: number }) {
 }
 const FREE_CODE_W = NEW_CARD_W;
 function newWriting(look: NoteLook, at?: { x: number; y: number }, text = "") {
-  const w = NEW_CARD_W,
-    h = look === "box" ? 60 : undefined;
-  const p =
-    at ??
-    (() => {
+  // 空的 Note / Text / Mark：写了内容才进撤销栈，什么都没写就消失；空的 Box 本身就是一个框，留着（core newWriting）
+  const id = C.newWriting(commandEnv, look, text, {
+    at: ({ w, h }) => {
+      if (at) return at;
       const v = viewportCenter();
       return { x: v.x - w / 2, y: v.y - (h ?? 80) / 2 };
-    })();
-  const id = uid("n");
-  const card: NoteCard = { id, kind: "note", md: text, look };
-  if (look === "text") card.size = "body";
-  if (look === "box") card.fill = BOX_FILLS[0];
-  if (look === "mark") {
-    const last = [...state.board.cards].reverse().find((c) => c.kind === "note" && c.look === "mark");
-    card.hand = (last?.kind === "note" && last.hand) || "blue";
-  }
-  const add = (b: Board) => {
-    b.cards.push(card);
-    b.place[id] = { x: Math.round(p.x), y: Math.round(p.y), w, ...(h ? { h } : {}) };
-    settleHome(b, id);
-  };
-  // 空的 Note / Text / Mark：写了内容才进撤销栈，什么都没写就消失；空的 Box 本身就是一个框，留着
-  if (text || look === "box") mutate(add);
-  else createFresh(id, add);
+    },
+    settle: settleHome,
+  });
   select({ cards: [id] });
   if (!text) setEditing({ kind: "note", id });
   popCard(id);
@@ -351,11 +334,7 @@ export function newFreeCode(at?: { x: number; y: number }, text = "", lang = "py
         const v = viewportCenter();
         return { x: v.x - FREE_CODE_W / 2, y: v.y - 60 };
       })();
-    createFresh(id, (b) => {
-      b.cards.push({ id, kind: "code", segments: [seg] });
-      b.place[id] = { x: Math.round(p.x), y: Math.round(p.y), w: FREE_CODE_W };
-      settleHome(b, id);
-    });
+    C.newBlankCode(commandEnv, id, seg, { ...p, w: FREE_CODE_W }, settleHome);
     select({ cards: [id] });
     popCard(id);
   }
@@ -429,13 +408,7 @@ export const wireFreshCards = () =>
       const p = prev;
       prev = cur;
       if (!p || p === cur || !isFresh(p)) return;
-      const c = cardById(p)?.card,
-        q = state.board.stickers.find((s) => s.id === p)?.q;
-      const empty = q
-        ? !q.md.trim()
-        : !c || (c.kind === "note" ? !c.md.trim() : isCode(c) ? !c.segments[0]?.text.join("").trim() : false);
-      queueMicrotask(() => {
-        if (isFresh(p)) settleFresh(p, !empty);
-      });
+      // the editor closing may still write it first (setNoteText / setFreeCode / setQuestionText settle it then)
+      queueMicrotask(() => C.settleUnwritten(commandEnv, p));
     });
   });

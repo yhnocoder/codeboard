@@ -6,8 +6,6 @@ import {
   findFree,
   callTree,
   startCards,
-  matchRun,
-  applyRun,
   callName,
   legendName,
   rpcText,
@@ -44,24 +42,12 @@ const linkById = (id: string) => state.board.links.find((l) => l.id === id);
 export function markRpc(id: string, el?: Element) {
   const L = linkById(id);
   if (!L || !canMark(L)) return;
-  if (!L.rpc)
-    mutate((b) => {
-      const l = b.links.find((k) => k.id === id);
-      if (l && canMark(l)) l.rpc = { mech: "shm" };
-    });
+  C.markRpc(commandEnv, id);
   select({ links: [id] });
   const lab = el ?? document.querySelector(`.vchips[data-link="${id}"]`);
   openPop({ kind: "rpc", link: id }, lab ? { el: lab, prefer: "below" } : lastPointer());
 }
-export function setRpc(id: string, f: (r: RpcMark) => void) {
-  mutate((b) => {
-    const l = b.links.find((k) => k.id === id);
-    if (!l?.rpc) return;
-    f(l.rpc);
-    for (const k of Object.keys(l.rpc) as (keyof RpcMark)[])
-      if (l.rpc[k] === undefined || l.rpc[k] === "") delete l.rpc[k];
-  });
-}
+export const setRpc = (id: string, f: (r: RpcMark) => void) => C.editRpc(commandEnv, id, f);
 export function clearRpc(id: string) {
   mutate((b) => {
     const l = b.links.find((k) => k.id === id);
@@ -69,14 +55,7 @@ export function clearRpc(id: string) {
   });
 }
 /** ↩ back to：回到起点的线，Walkthrough 走到这里停 */
-export function toggleBack(id: string) {
-  mutate((b) => {
-    const l = b.links.find((k) => k.id === id);
-    if (!l || !canMark(l)) return;
-    if (l.back) delete l.back;
-    else l.back = true;
-  });
-}
+export const toggleBack = (id: string) => C.toggleBack(commandEnv, id);
 
 const isMsg = (id: string) => {
   const c = cardById(id)?.card;
@@ -144,41 +123,19 @@ export async function addProc(cardId: string, light = false) {
     "Add",
   );
   if (!t) return;
-  mutate((b) => {
-    const c = b.cards.find((k) => k.id === cardId);
-    if (c) c.procs = [...(c.procs ?? []), light ? { text: t, light: true } : { text: t }];
-  });
+  C.addProcTag(commandEnv, cardId, t, light);
 }
 export async function editProc(cardId: string, i: number) {
   const p = cardById(cardId)?.card.procs?.[i];
   if (!p) return;
   const t = await promptText(p.light ? "Thread / Stream Tag" : "Process Tag", p.text, "", "Save");
   if (!t) return;
-  mutate((b) => {
-    const c = b.cards.find((k) => k.id === cardId);
-    const q = c?.procs?.[i];
-    if (q) q.text = t;
-  });
+  C.editProcTag(commandEnv, cardId, i, t);
 }
-export function removeProc(cardId: string, i: number) {
-  mutate((b) => {
-    const c = b.cards.find((k) => k.id === cardId);
-    if (!c?.procs) return;
-    c.procs = c.procs.filter((_, k) => k !== i);
-    if (!c.procs.length) delete c.procs;
-  });
-}
+export const removeProc = (cardId: string, i: number) => C.removeProcTag(commandEnv, cardId, i);
 export const procCls = (p: ProcTag) => `proc${p.light ? " light" : ""}`;
 
-export function toggleStart(cardId: string) {
-  const host = hostOf(cardId);
-  mutate((b) => {
-    const p = b.place[host];
-    if (!p) return;
-    if (p.start) delete p.start;
-    else p.start = true;
-  });
-}
+export const toggleStart = (cardId: string) => C.toggleStart(commandEnv, cardId);
 /** 起点卡（按创建顺序）：只读 Place.start，拖动不重算 */
 const starts = rooted(() => createMemo(() => startCards(state.board)));
 
@@ -204,15 +161,7 @@ export async function renameLegend(k: LegendKey) {
     "Save",
   );
   if (v === null) return;
-  mutate((b) => {
-    const def = LEGEND.find((x) => x[0] === k)![1];
-    if (!v || v === def) {
-      if (b.legend) {
-        delete b.legend[k];
-        if (!Object.keys(b.legend).length) delete b.legend;
-      }
-    } else b.legend = { ...b.legend, [k]: v };
-  });
+  C.renameLegend(commandEnv, k, v);
 }
 /** 一条箭头在图例里算哪一种（只是样式的名字） */
 export function legendOf(L: Link): LegendKey {
@@ -255,11 +204,7 @@ export function pickRun() {
 
 /** 宿主发来一次运行：对上的 Call 箭头挂 observed 证据和实参（一步撤销），没对上的列出来 */
 export function applyRunMsg(a: RunApply, quiet = false) {
-  const m = matchRun(state.board, a);
-  if (m.hits.length)
-    mutate((b) => {
-      applyRun(b, a, m);
-    });
+  const m = C.observeRun(commandEnv, a);
   setRunState({ apply: a, misses: m.misses, callers: m.callers, hits: new Set(m.hits.map((h) => h.link)).size });
   if (!quiet) {
     const n = new Set(m.hits.map((h) => h.link)).size;

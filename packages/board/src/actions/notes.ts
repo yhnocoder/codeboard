@@ -1,6 +1,5 @@
 import { unwrap } from "solid-js/store";
 import {
-  uid,
   findCard,
   isCode,
   cardTitle,
@@ -99,22 +98,12 @@ export function addSidenoteUI() {
   else toast("Select lines in a card first");
 }
 export function addSidenote(n: Omit<Sidenote, "id">, view?: SegView) {
-  const id = uid("n");
-  const sn = { ...n, id } as Sidenote;
+  const sn = n as Sidenote;
   if (sn.kind === "code" && view) putViews({ [sn.code.id]: view });
-  mutate((b) => {
-    b.sidenotes.push(sn);
-  });
-  return id;
+  return C.addSidenotes(commandEnv, [n])[0];
 }
 /** 一次加好几条（一个撤销步骤），返回新 id */
-export function addSidenotes(list: Omit<Sidenote, "id">[]) {
-  const sns = list.map((n) => ({ ...n, id: uid("n") }) as Sidenote);
-  mutate((b) => {
-    b.sidenotes.push(...sns);
-  });
-  return sns.map((n) => n.id);
-}
+export const addSidenotes = (list: Omit<Sidenote, "id">[]) => C.addSidenotes(commandEnv, list);
 export function updateSidenote(id: string, f: (n: Sidenote) => void) {
   mutate((b) => {
     const n = b.sidenotes.find((k) => k.id === id);

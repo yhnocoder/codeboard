@@ -18,6 +18,16 @@ export interface CommandEnv {
    * merge (held keys). fx: what the step does outside the board, undone and redone with it
    */
   edit(fn: (b: Board) => void, opts?: { merge?: string; fx?: { undo(): void; redo(): void } }): boolean;
+  /**
+   * A new card or question with nothing written yet: on the board, but no undo step until its first edit ends. add puts it there
+   * (fn); settle ends that edit: keep = something was written (fn writes it; one undo step with the adding), else it goes as if
+   * it never was
+   */
+  fresh: {
+    add(id: string, fn: (b: Board) => void): void;
+    is(id: string): boolean;
+    settle(id: string, keep: boolean, fn?: (b: Board) => void): void;
+  };
   /** A request to the host; the reply's type is ReplyOf */
   ask<T extends AskType>(type: T, body: AskBody<T>): Promise<ReplyOf<T>>;
   /** Ask the user; the option's index, or null when the question was dismissed */

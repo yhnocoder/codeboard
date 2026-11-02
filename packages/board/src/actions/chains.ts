@@ -3,7 +3,6 @@ import {
   isCode,
   segOf,
   cardTitle,
-  instName,
   genWhat,
   sameCallSite,
   altIsSeg,
@@ -16,12 +15,11 @@ import {
   type Segment,
   type SearchItem,
 } from "@codeboard/core";
-import type { CallAlt, BoundVal } from "@codeboard/analysis/basics";
+import type { CallAlt } from "@codeboard/analysis/basics";
 import * as C from "@codeboard/core/commands";
 import { commandEnv } from "./env";
-import { state, cardById, hostOf, placeOf } from "../state/store";
+import { state, cardById } from "../state/store";
 import { putViews } from "../state/views";
-import { mutate } from "../state/changes";
 import { select } from "../state/selection";
 import { toast } from "../state/toast";
 import { openPop, type ImplPop, type NamesPop } from "../state/pop";
@@ -54,16 +52,7 @@ export function pickImpl(p: ImplPop, i: number, why: string, alt: boolean): bool
     }
     // 这个实现从同一个调用点已经展开过（另一条分支）：照常再建一张
   }
-  const alts: CallAlt[] = p.impls
-    .filter((_, k) => k !== i)
-    .map((x) => ({
-      label: x.label,
-      detail: x.detail,
-      path: x.path,
-      line: x.line,
-      qual: x.qual,
-      ...(x.lib ? { lib: x.lib } : {}),
-    }));
+  const alts = C.implAlts(p.impls.filter((_, k) => k !== i));
   void expandCall(p.card, p.seg, p.call, p.at, { path: it.path, line: it.line, qual: it.qual }, p.again, {
     mark: { impls: p.impls.length, ...(alts.length ? { alts } : {}) },
     label: why.trim() || undefined,
@@ -109,13 +98,6 @@ function hostPathOf(s: Segment): string | undefined {
   return undefined;
 }
 
-/** 模板实例的卡名跟着取值走：只在卡名还是自动起的那个时改 */
-function retitle(c: CodeCard, before: BoundVal[] | undefined, after: BoundVal[]) {
-  const name = c.segments[0]?.symbol?.qual.split(/::|\./).pop();
-  if (!name || !before?.length || c.title !== instName(name, before)) return;
-  c.title = instName(name, after);
-}
-
 /** 点灰色备选：换成它，原来的变灰。取值的备选只改箭头；别的实现要宿主建卡，原来的卡没有别的箭头就拿掉，有就留着（成了第二条分支） */
 export async function swapAlt(linkId: string, k: number, o: { label?: string; dropOld?: boolean } = {}) {
   const L = state.board.links.find((l) => l.id === linkId);
@@ -123,26 +105,7 @@ export async function swapAlt(linkId: string, k: number, o: { label?: string; dr
   if (!L?.call || !item) return;
   const a = item.alt;
   if (!a.path) {
-    mutate((b) => {
-      const l = b.links.find((x) => x.id === linkId);
-      if (!l?.call || !a.vals) return;
-      const before = l.call.vals;
-      const t = cardById(l.to.card)?.card;
-      if (item.opt) {
-        l.call.vals = a.vals.map((v) => ({ ...v }));
-      } else {
-        const alts = [...(l.call.alts ?? [])];
-        const old: CallAlt = {
-          label: `config · ${(before ?? []).map((v) => `${v.name}=${v.value}`).join(" ")}`,
-          vals: before ?? [],
-        };
-        alts.splice(item.i!, 1, old);
-        l.call.alts = alts;
-        l.call.vals = a.vals.map((v) => ({ ...v }));
-      }
-      const tc = b.cards.find((c) => c.id === t?.id);
-      if (isCode(tc)) retitle(tc, before, l.call.vals!);
-    });
+    if (a.vals) C.swapValues(commandEnv, linkId, a.vals, item.opt ? undefined : item.i);
     return;
   }
   const from = cardById(L.from.card)?.card;
@@ -206,17 +169,7 @@ export const setAltDown = (v: boolean) => {
 export function openValPicker(linkId: string, vi: number, el: Element) {
   openPop({ kind: "vals", link: linkId, val: vi }, { el, prefer: "below" });
 }
-export function setVal(linkId: string, vi: number, value: string) {
-  mutate((b) => {
-    const l = b.links.find((x) => x.id === linkId);
-    const v = l?.call?.vals?.[vi];
-    if (!l?.call || !v) return;
-    const before = l.call.vals!.map((x) => ({ ...x }));
-    v.value = value;
-    const tc = b.cards.find((c) => c.id === l.to.card);
-    if (isCode(tc)) retitle(tc, before, l.call.vals!);
-  });
-}
+export const setVal = (linkId: string, vi: number, value: string) => C.setCallValue(commandEnv, linkId, vi, value);
 
 /** 按名字搜到的一处 → 卡 + 虚线 Call 箭头（via registry · manual） */
 export async function placeNameHit(p: NamesPop, h: NameHit) {
@@ -235,19 +188,10 @@ export async function placeNameHit(p: NamesPop, h: NameHit) {
 
 /** 连接模式点到了卡：手动的 Call 箭头（虚线，证据 manual） */
 export function manualCallTo(from: { card: string; seg?: string; line?: number; call: CallSpan }, to: string) {
-  const t = cardById(to);
-  if (!t) return;
-  if (t.host.id === hostOf(from.card)) return toast("A card cannot call itself.");
-  const id = uid("l");
-  mutate((b) => {
-    b.links.push({
-      id,
-      from: { card: from.card, seg: from.seg, line: from.line },
-      to: { card: to },
-      call: { ...C.callMark(from.call), ev: { kind: "manual" } },
-    });
-  });
-  toast(`Linked to ${cardTitle(t.card)} (manual)`);
+  const r = C.manualCall(commandEnv, from, to);
+  if (!r) return;
+  if ("why" in r) return toast(r.why);
+  toast(`Linked to ${cardTitle(cardById(to)!.card)} (manual)`);
 }
 
 const hhmm = () => {
@@ -280,36 +224,17 @@ export async function addGenerated(at: { card: string; seg?: string; line?: numb
   const views = await ask("views", { segs: [seg] }).catch(() => ({}));
   putViews(views);
   const r = hostRect(at.card);
-  const pl = placeOf(hostOf(at.card));
-  mutate((b) => {
-    b.cards.push(card);
-    // 放在来源卡下面（右边是灰色备选的位置）
-    b.place[card.id] = {
-      x: Math.round((r?.x ?? 0) + 40),
-      y: Math.round((r?.y ?? 0) + (r?.h ?? 200) + 80),
-      w: 520,
-      ...(pl.section ? { section: pl.section } : {}),
-    };
-    b.links.push({
-      id: uid("l"),
-      from: { card: card.id },
-      to: at.line !== undefined ? { card: at.card, seg: at.seg, line: at.line } : { card: at.card },
-      gen: true,
-    });
+  // 放在来源卡下面（右边是灰色备选的位置）
+  C.addGenerated(commandEnv, card, at, {
+    x: Math.round((r?.x ?? 0) + 40),
+    y: Math.round((r?.y ?? 0) + (r?.h ?? 200) + 80),
+    w: 520,
   });
   select({ cards: [card.id] });
   requestAnimationFrame(() => popCard(card.id));
 }
 
-export function setGenRun(id: string, v: string) {
-  mutate((b) => {
-    const c = b.cards.find((k) => k.id === id);
-    if (isCode(c) && c.gen) {
-      if (v.trim()) c.gen.run = v.trim();
-      else delete c.gen.run;
-    }
-  });
-}
+export const setGenRun = (id: string, v: string) => C.setGenRun(commandEnv, id, v);
 
 /** 动态分发选出来的卡：「1 of N」 */
 export function dispatchOf(id: string): number {

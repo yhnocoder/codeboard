@@ -94,17 +94,37 @@ export function renameCard(env: CommandEnv, id: string, v: string) {
 }
 
 /** A Note, Text or Mark written empty goes away; an empty Box is still a box */
-export const noteKept = (c: Card | undefined, md: string) => !!md.trim() || (c?.kind === "note" && c.look === "box");
+const noteKept = (c: Card | undefined, md: string) => !!md.trim() || (c?.kind === "note" && c.look === "box");
 /**
  * Write a Note's Markdown, and the layout its editor changed (table widths, row heights, code wrap; null = all automatic again,
- * left out = unchanged). Written empty it goes away (noteKept), in the same step
+ * left out = unchanged). Written empty it goes away (noteKept), in the same step; a new one written empty goes as if it never
+ * was (env.fresh)
  */
-export function writeNote(b: Board, id: string, md: string, layout?: NoteLayout | null) {
-  const c = findCard(b, id)?.card;
-  if (c?.kind !== "note") return;
-  if (!noteKept(c, md)) return removeCards(b, [id]);
-  c.md = md;
-  if (layout !== undefined) (c as NoteCard).mdLayout = layout ?? undefined;
+export function writeNote(env: CommandEnv, id: string, md: string, layout?: NoteLayout | null) {
+  const write = (b: Board) => {
+    const c = findCard(b, id)?.card;
+    if (c?.kind !== "note") return;
+    if (!noteKept(c, md)) return removeCards(b, [id]);
+    c.md = md;
+    if (layout !== undefined) (c as NoteCard).mdLayout = layout ?? undefined;
+  };
+  if (env.fresh.is(id)) env.fresh.settle(id, noteKept(findCard(env.board(), id)?.card, md), write);
+  else env.edit(write);
+}
+
+/**
+ * The first edit of a new card or question ended without anything written through writeNote, writeFreeCode or writeQuestion
+ * (the editor closed unchanged): it stays when it has content after all (a Box, text put in another way), else it goes
+ */
+export function settleUnwritten(env: CommandEnv, id: string) {
+  if (!env.fresh.is(id)) return;
+  const b = env.board();
+  const c = findCard(b, id)?.card,
+    q = b.stickers.find((s) => s.id === id)?.q;
+  const empty = q
+    ? !q.md.trim()
+    : !c || (c.kind === "note" ? !c.md.trim() : isCode(c) ? !c.segments[0]?.text.join("").trim() : false);
+  env.fresh.settle(id, !empty);
 }
 
 /** Can these cards make a Compare: exactly two code cards */

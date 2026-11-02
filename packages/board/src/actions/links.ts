@@ -1,5 +1,4 @@
 import {
-  uid,
   isCode,
   cardTitle,
   callName,
@@ -10,7 +9,7 @@ import {
   type LinkStyle,
   type LinkSide,
 } from "@codeboard/core";
-import { varKey, type Var } from "@codeboard/analysis/basics";
+import { type Var } from "@codeboard/analysis/basics";
 import { state, cardById, hostOf } from "../state/store";
 import { mutate } from "../state/changes";
 import { select } from "../state/selection";
@@ -20,7 +19,8 @@ import { setConnectFrom } from "../state/mode";
 import { openPop } from "../state/pop";
 import { lastPointer } from "../state/measure";
 import { askCands, attachCall, calleeMatches } from "./flow";
-import { callMark } from "@codeboard/core/commands";
+import * as C from "@codeboard/core/commands";
+import { commandEnv } from "./env";
 
 type EndRef = End;
 
@@ -52,17 +52,9 @@ export function manualCall(from: EndRef, to: EndRef): CallSpan | undefined {
  * 连到别的（Note、某一行）就是普通箭头。两端可以是整张卡或某一行，数量不限；只有同一张卡的同一处连自己不行
  */
 export function addLink(from: EndRef, to: EndRef, side?: LinkSide) {
-  if (hostOf(from.card) === hostOf(to.card) && from.line === to.line) return;
-  const sides = side ? { from: side } : undefined;
   const call = callOn(from, to);
-  if (call) return void attachCall(from.card, from.seg!, call, to.card, sides);
-  const id = uid("l");
-  // 块端的 { i, h } 是悬停、落点那边的对象：放进白板的是自己的一份（以后 rebaseBlocks 就地换它）
-  const own = (e: End): End => (e.block ? { ...e, block: { ...e.block } } : { ...e });
-  mutate((b) => {
-    b.links.push(sides ? { id, from: own(from), to: own(to), sides } : { id, from: own(from), to: own(to) });
-  });
-  return id;
+  if (call) return void attachCall(from.card, from.seg!, call, to.card, side ? { from: side } : undefined);
+  return C.addLink(commandEnv, from, to, side) ?? undefined;
 }
 /** 普通箭头能认出是调用（出发行调用了目标卡的函数）：加上 Call 标记（右键 Call Mark，或悬停时的 Call 按钮），再去问参数候选 */
 export function makeCall(id: string) {
@@ -71,10 +63,7 @@ export function makeCall(id: string) {
   const found = callOn(L.from, L.to);
   const call = found ?? manualCall(L.from, L.to);
   if (!call) return;
-  mutate((b) => {
-    const l = b.links.find((k) => k.id === id);
-    if (l && canMark(l)) l.call = callMark(call);
-  });
+  C.markCall(commandEnv, id, call);
   if (found) askCands(id, L.from.card, L.from.seg!, call, L.to.card);
 }
 export function startConnect(id: string) {
@@ -102,36 +91,10 @@ export function openVars(id: string) {
     document.querySelector(`.vchips[data-link="${id}"]`) ?? document.querySelector(`.vplus[data-link="${id}"]`);
   openPop({ kind: "vars", link: id }, el ? { el, prefer: "below" } : lastPointer());
 }
-export function toggleVar(id: string, v: Var) {
-  mutate((b) => {
-    const l = b.links.find((k) => k.id === id);
-    const c = l?.call;
-    if (!c) return;
-    const k = varKey(v);
-    const has = (c.vars ?? []).some((x) => varKey(x) === k);
-    const next = has ? c.vars!.filter((x) => varKey(x) !== k) : [...(c.vars ?? []), v];
-    if (next.length) c.vars = next;
-    else delete c.vars;
-  });
-}
+export const toggleVar = (id: string, v: Var) => C.toggleCallVar(commandEnv, id, v);
 
-/**
- * 固定起点 / 终点走哪一侧。每一端：不传（undefined）= 不变；"auto" = 回到自动；left / right / top / bottom = 固定。
- * 行端只能左右（固定成上下会被忽略、照自动走）
- */
-function setSides(id: string, from?: LinkSide | "auto", to?: LinkSide | "auto") {
-  mutate((b) => {
-    const l = b.links.find((k) => k.id === id);
-    if (!l) return;
-    const s = { ...l.sides };
-    if (from === "auto") delete s.from;
-    else if (from) s.from = from;
-    if (to === "auto") delete s.to;
-    else if (to) s.to = to;
-    if (s.from || s.to) l.sides = s;
-    else delete l.sides;
-  });
-}
+const setSides = (id: string, from?: LinkSide | "auto", to?: LinkSide | "auto") =>
+  C.setLinkSides(commandEnv, id, from, to);
 const resetSides = (id: string) => setSides(id, "auto", "auto");
 
 const editLink = (id: string, f: (l: Link) => void) =>
@@ -140,20 +103,7 @@ const editLink = (id: string, f: (l: Link) => void) =>
     if (l) f(l);
   });
 
-/** 改样子：空了的 style 不留（width 2、只有终点箭头是默认，不存） */
-export function setLinkStyle(id: string, f: (s: LinkStyle) => void) {
-  editLink(id, (l) => {
-    const s: LinkStyle = { ...l.style, head: l.style?.head ? { ...l.style.head } : undefined };
-    f(s);
-    if (s.width === 2) delete s.width;
-    if (s.head && s.head.start !== true) delete s.head.start;
-    if (s.head && s.head.end !== false) delete s.head.end;
-    if (s.head && !Object.keys(s.head).length) delete s.head;
-    for (const k of Object.keys(s) as (keyof LinkStyle)[]) if (s[k] === undefined) delete s[k];
-    if (Object.keys(s).length) l.style = s;
-    else delete l.style;
-  });
-}
+export const setLinkStyle = (id: string, f: (s: LinkStyle) => void) => C.setLinkStyle(commandEnv, id, f);
 /** 某一端从哪边进出；undefined = Auto */
 export const setLinkSide = (id: string, end: "from" | "to", side: LinkSide | undefined) =>
   end === "from" ? setSides(id, side ?? "auto") : setSides(id, undefined, side ?? "auto");

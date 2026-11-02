@@ -607,25 +607,25 @@ describe("guard: reference upkeep only in core/src/edit/", () => {
     ["core/src/patch.ts", "out.place = Object.fromEntries(", "mergeFile: three-way merge of whole files, item by item"],
     ["core/src/patch.ts", "p.place = {", "diffBoards builds a patch object, not a board"],
     ["core/src/questions.ts", "it.answer = a.card.id;", "a row of the derived questions list, not a board sticker"],
-    ["board/src/actions/questions.ts", "delete q.answer;", "the user reopens a question: that is the edit itself"],
+    ["core/src/commands/stickers.ts", "delete q.answer;", "the user reopens a question: that is the edit itself"],
     [
-      "board/src/actions/questions.ts",
+      "core/src/commands/stickers.ts",
       's.q = { ...(s.q ?? { md: "" }), done: true, answer: card }',
       "the user links the answer card: that is the edit itself",
     ],
     [
-      "board/src/actions/flow.ts",
-      "delete b.marks[g.id];",
+      "core/src/commands/calls.ts",
+      "delete b.marks[graphId];",
       "the user clears a call graph's mark: that is the edit itself",
     ],
     [
-      "board/src/actions/flow.ts",
+      "core/src/commands/calls.ts",
       "if (!Object.keys(b.marks).length) delete b.marks;",
       "the user clears the last call graph mark: that is the edit itself",
     ],
     [
-      "board/src/actions/flow.ts",
-      "(b.marks ??= {})[g.id] = mark;",
+      "core/src/commands/calls.ts",
+      "(b.marks ??= {})[graphId] = mark;",
       "the user sets a call graph's mark: that is the edit itself",
     ],
     [
