@@ -18,27 +18,35 @@ import { NODRAG } from "../ui/guard";
 import { DRAG_SLOP, track, undoGesture } from "../gesture";
 import { addExtra, keepSize, keptSize } from "../state/extent";
 
-// 框的大小（世界坐标）：一个共用的 ResizeObserver，只在框的内容变了时回调，平移 / 缩放 / 拖卡时不读布局
-const sizeCbs = new WeakMap<Element, (b: LabelBox) => void>();
-let ro: ResizeObserver | undefined;
-function watchSize(el: HTMLElement, cb: (b: LabelBox) => void) {
-  if (typeof ResizeObserver === "undefined") return;
-  ro ??= new ResizeObserver((es) => {
-    for (const e of es) {
-      const s = e.borderBoxSize?.[0];
-      sizeCbs.get(e.target)?.(
-        s
-          ? { w: s.inlineSize, h: s.blockSize }
-          : { w: (e.target as HTMLElement).offsetWidth, h: (e.target as HTMLElement).offsetHeight },
-      );
-    }
-  });
-  sizeCbs.set(el, cb);
-  ro.observe(el);
-  onCleanup(() => {
-    ro?.unobserve(el);
-    sizeCbs.delete(el);
-  });
+/** Watches an element's box (world size) until the caller's owner is cleaned up */
+export type WatchSize = (el: HTMLElement, cb: (b: LabelBox) => void) => void;
+/**
+ * 框的大小（世界坐标）：建它的地方（trackLinks 的标签、AltBoxes）的框共用一个 ResizeObserver，只在框的内容变了时回调，
+ * 平移 / 缩放 / 拖卡时不读布局。建它的 owner 拆掉时一起断开
+ */
+export function sizeWatcher(): WatchSize {
+  const cbs = new WeakMap<Element, (b: LabelBox) => void>();
+  let ro: ResizeObserver | undefined;
+  onCleanup(() => ro?.disconnect());
+  return (el, cb) => {
+    if (typeof ResizeObserver === "undefined") return;
+    ro ??= new ResizeObserver((es) => {
+      for (const e of es) {
+        const s = e.borderBoxSize?.[0];
+        cbs.get(e.target)?.(
+          s
+            ? { w: s.inlineSize, h: s.blockSize }
+            : { w: (e.target as HTMLElement).offsetWidth, h: (e.target as HTMLElement).offsetHeight },
+        );
+      }
+    });
+    cbs.set(el, cb);
+    ro.observe(el);
+    onCleanup(() => {
+      ro?.unobserve(el);
+      cbs.delete(el);
+    });
+  };
 }
 
 /**
@@ -106,9 +114,10 @@ export function AltBoxes() {
       (l) => l.call && (l.call.alts?.length || l.call.vals?.some((v) => (v.opts?.length ?? 0) > 1)) && linkVisible(l),
     ),
   );
-  return <For each={links()}>{(L) => <AltsOf L={L} />}</For>;
+  const watchSize = sizeWatcher();
+  return <For each={links()}>{(L) => <AltsOf L={L} watchSize={watchSize} />}</For>;
 }
-function AltsOf(p: { L: Link }) {
+function AltsOf(p: { L: Link; watchSize: WatchSize }) {
   const items = createMemo(() => A.altsOf(p.L));
   const r = () => {
     const t = cardById(p.L.to.card);
@@ -139,7 +148,7 @@ function AltsOf(p: { L: Link }) {
         class="altcol"
         data-link={p.L.id}
         style={{ left: `${at()!.x}px`, top: `${at()!.y}px` }}
-        ref={(el) => watchSize(el, (b) => keepSize(key, b))}
+        ref={(el) => p.watchSize(el, (b) => keepSize(key, b))}
       >
         <div class="alt-h">
           {p.L.call!.impls
@@ -178,7 +187,7 @@ function AltsOf(p: { L: Link }) {
 }
 
 /** 线中间的标签框（HTML，在这一层的 SVG 上面；Links.tsx 给每条线建一个，g 是那条线画出来的几何） */
-export function LinkLabel(p: { L: Link; g: Accessor<Geo | null> }) {
+export function LinkLabel(p: { L: Link; g: Accessor<Geo | null>; watchSize: WatchSize }) {
   const L = p.L;
   const g = p.g;
   // 参数和 ↺ 只在有 Call 标记的线上；自己写的字任何线都能有
@@ -326,7 +335,7 @@ export function LinkLabel(p: { L: Link; g: Accessor<Geo | null> }) {
           data-link={L.id}
           ref={(el) => {
             at(el);
-            watchSize(el, (b) => {
+            p.watchSize(el, (b) => {
               keepSize(key, b);
               setBox(b);
             });

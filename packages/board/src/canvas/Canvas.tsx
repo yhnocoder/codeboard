@@ -11,7 +11,7 @@ import { guides, sizeHint, marquee, dragging, dropTarget, walk, editing } from "
 import { CardView } from "../cards/Card";
 import { SubPreviews } from "../cards/SubPreviews";
 import { CanvasStickers } from "../stickers/Picker";
-import { trackLinks, LinkLayer, BlockPorts } from "./Links";
+import { trackLinks, BlockPorts } from "./Links";
 import { Traffic } from "./Traffic";
 import { AltBoxes } from "./Labels";
 import { SectionFrames, SectionLabels } from "./Sections";
@@ -35,7 +35,7 @@ export function Canvas() {
   let el!: HTMLDivElement, world!: HTMLDivElement;
   trackOffscreen();
   trackCardLod();
-  trackLinks();
+  const links = trackLinks();
   trackSkeletons();
   // 开始写 Note / Text 时字太小（缩得很小时按 N、双击）：镜头放大到看得清（最多 100%），卡放得下就整张放进来。退出编辑不缩回去
   createEffect(
@@ -141,7 +141,7 @@ export function Canvas() {
         style={{ transform: `translate(${cam.x}px, ${cam.y}px) scale(${cam.z})`, "--izmap": String(izMap()) }}
       >
         <SectionFrames />
-        <LinkLayer bottom />
+        <links.Layer bottom />
         <div
           class="wext"
           style={(() => {
@@ -150,8 +150,8 @@ export function Canvas() {
           })()}
         />
         <For each={placed()}>{(c) => <CardView card={c} />}</For>
-        <Traffic />
-        <LinkLayer ports />
+        <Traffic ways={links.ways} />
+        <links.Layer ports />
         <CanvasStickers />
         <SectionLabels />
         {/* 灰色备选：在所有卡上面、浮上来的线下面 */}
@@ -160,7 +160,7 @@ export function Canvas() {
             <AltBoxes />
           </Show>
         </div>
-        <LinkLayer top />
+        <links.Layer top />
         <BlockPorts />
         {/* 子白板框外点开的预览：在卡和线上面 */}
         <SubPreviews />

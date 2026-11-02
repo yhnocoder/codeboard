@@ -27,7 +27,7 @@ import { shape, fileHue, look } from "../state/look";
 import { tune } from "../state/tune";
 import { isDbl, linkPortDown } from "../interact";
 import * as A from "../actions";
-import { LinkLabel } from "./Labels";
+import { LinkLabel, sizeWatcher, type WatchSize } from "./Labels";
 import { LinkStickers } from "../stickers/Picker";
 import { track, undoGesture } from "../gesture";
 import { isBindHot } from "../state/stickers";
@@ -46,7 +46,7 @@ import {
   headOrCar,
   geoFrom,
   type Route,
-  routes,
+  drawRoute,
   makeRoute,
   toKey,
   type Dom,
@@ -130,10 +130,8 @@ type Slot = {
 };
 /** pt：圆点放在 PORTS 层的线（没浮上来的） */
 type Plan = { m: Map<string, { rs: Route[]; ms: MergeV[] }>; pt: Route[] };
-const NO_PLAN: Plan = { m: new Map(), pt: [] };
-const slots = new Map<string, Slot>();
-const [slotTick, setSlotTick] = createSignal(0);
-let plan: Accessor<Plan> = () => NO_PLAN;
+/** A layer of trackLinks: its slot is registered while the layer is mounted */
+type Layers = { add(k: string, s: Slot): () => void };
 
 const same = <T,>(a: readonly T[], b: readonly T[]) => a.length === b.length && a.every((x, i) => x === b[i]);
 /**
@@ -150,17 +148,31 @@ function order(p: Element, ns: Element[]) {
   }
 }
 
-/** Canvas 里调用一次：每条线的走线、几何、节点，和它画在哪一层 */
+/**
+ * Canvas 里调用一次：每条线的走线、几何、节点，和它画在哪一层。Layer = 线的一层（bottom = 所有卡下面那一层；ports = 没浮上来的线的圆点；
+ * top = 临时浮上来的线和正在连的线），ways = 车流开的那几条路（Traffic）
+ */
 export function trackLinks() {
+  // 画着的层（Layer 挂上时登记）：换了层的节点搬过去
+  const slots = new Map<string, Slot>();
+  const [slotTick, setSlotTick] = createSignal(0);
+  const layers: Layers = {
+    add(k, s) {
+      slots.set(k, s);
+      setSlotTick((t) => t + 1);
+      return () => {
+        if (slots.get(k) === s) slots.delete(k);
+      };
+    },
+  };
+  // 标签框的大小：这些线的标签共用一个 ResizeObserver
+  const watchSize = sizeWatcher();
   const links = createMemo(() => state.board.links.filter(linkVisible));
   // 每条线的走线状态先全建好（合并要读别的线走哪一侧），再算几何
   const list = createMemo(
     mapArray(links, (L) => {
       const r = makeRoute(L);
-      routes.set(L.id, r);
-      onCleanup(() => {
-        if (routes.get(L.id) === r) routes.delete(L.id);
-      });
+      onCleanup(drawRoute(r));
       return r;
     }),
   );
@@ -217,7 +229,7 @@ export function trackLinks() {
           ib = b ? (k.get(b) ?? -1) : -1;
         return ia < 0 && ib < 0 ? "" : ia >= ib ? a! : b!;
       });
-      const dom = linkDom(r, g, merged, city);
+      const dom = linkDom(r, g, merged, city, watchSize);
       r.dom = dom;
       onCleanup(() => {
         if (r.geo === g) r.geo = undefined;
@@ -260,7 +272,7 @@ export function trackLinks() {
   );
   // 每一层画哪些线、哪些合并段：浮上来的在最上面那层（合并段的成员里有浮上来的，合并段也一起浮上来）。
   // 同一层里按线所属的卡的叠放次序排，同一张卡的线保持 links 里的先后
-  plan = createMemo<Plan>(() => {
+  const plan = createMemo<Plan>(() => {
     const lf = lifted(),
       rk = rank(),
       m: Plan["m"] = new Map();
@@ -282,6 +294,7 @@ export function trackLinks() {
   });
   // 把节点搬到它该在的那一层：只动内容变了的层，层里已经在位置上的节点不动
   const was = new WeakMap<object, string>();
+  const fading = new Map<object, () => void>();
   createEffect(() => {
     const { m, pt } = plan();
     slotTick();
@@ -290,11 +303,11 @@ export function trackLinks() {
       if (k !== TOP && k !== BOTTOM) continue;
       for (const r of x.rs) {
         const d = r.dom!;
-        if (was.has(r) && was.get(r) !== k) crossfade(r, [d.casing, d.kerb, d.line, d.label!], k === TOP);
+        if (was.has(r) && was.get(r) !== k) crossfade(fading, r, [d.casing, d.kerb, d.line, d.label!], k === TOP);
         was.set(r, k);
       }
       for (const v of x.ms) {
-        if (was.has(v) && was.get(v) !== k) crossfade(v, [v.dom.casing, v.dom.kerb, v.dom.line], k === TOP);
+        if (was.has(v) && was.get(v) !== k) crossfade(fading, v, [v.dom.casing, v.dom.kerb, v.dom.line], k === TOP);
         was.set(v, k);
       }
     }
@@ -330,14 +343,19 @@ export function trackLinks() {
   });
   watchHover();
   watchBlockHover();
-  // City 的车流：挑哪几条路只在镜头停下时算一次（Traffic.tsx）
-  trackTraffic(views);
+  return {
+    Layer: (p: { top?: boolean; bottom?: boolean; ports?: boolean }) => (
+      <Layer k={p.top ? TOP : p.bottom ? BOTTOM : PORTS} layers={layers} />
+    ),
+    // City 的车流：挑哪几条路只在镜头停下时算一次（Traffic.tsx）
+    ways: trackTraffic(views),
+  };
 }
 
 // 线浮上来、落回去时不硬切：原来那层留一份影子，浮上来的那份从透明淡入（影子在卡下面垫着，没被卡盖住的那段一直在）；
 // 落回去时影子留在上面一层淡出。影子只是拷贝的几条 path，去掉 data-lk / data-link，不接事件，动画完就删
-const fading = new Map<object, () => void>();
-function crossfade(key: object, els: Element[], up: boolean) {
+// fading: the crossfades running (trackLinks'), by line or merge: a new one ends the last one of the same key
+function crossfade(fading: Map<object, () => void>, key: object, els: Element[], up: boolean) {
   fading.get(key)?.();
   const ms = tune("liftFade") * (100 / tune("animSpeed"));
   if (ms <= 0 || reduceMotion()) return;
@@ -374,11 +392,7 @@ function crossfade(key: object, els: Element[], up: boolean) {
   else done();
 }
 
-/** 线的一层：bottom = 所有卡下面那一层；ports = 没浮上来的线的圆点；top = 临时浮上来的线和正在连的线 */
-export function LinkLayer(p: { top?: boolean; bottom?: boolean; ports?: boolean }) {
-  return <Layer k={p.top ? TOP : p.bottom ? BOTTOM : PORTS} />;
-}
-function Layer(p: { k: string }) {
+function Layer(p: { k: string; layers: Layers }) {
   const top = p.k === TOP;
   const s = { rs: [], ms: [], pt: [] } as unknown as Slot;
   const el = (
@@ -406,11 +420,7 @@ function Layer(p: { k: string }) {
       <div class="lw" ref={s.labels} />
     </div>
   );
-  slots.set(p.k, s);
-  setSlotTick((t) => t + 1);
-  onCleanup(() => {
-    if (slots.get(p.k) === s) slots.delete(p.k);
-  });
+  onCleanup(p.layers.add(p.k, s));
   return el;
 }
 
@@ -492,7 +502,13 @@ const widthCls = (L: Link) => (L.style?.width === 1 ? " w1" : L.style?.width ===
 const isOn = (id: string) => sel.links.includes(id) || hoverLink() === id || isBindHot(`link:${id}`);
 
 /** 一条线的节点：线本身、City 的路沿和白边线、标签框和贴纸。外面各包一层不变的节点，换层时整块搬 */
-function linkDom(r: Route, g: Accessor<Geo | null>, merged: Accessor<boolean>, city: () => boolean): Dom {
+function linkDom(
+  r: Route,
+  g: Accessor<Geo | null>,
+  merged: Accessor<boolean>,
+  city: () => boolean,
+  watchSize: WatchSize,
+): Dom {
   const L = r.L;
   const on = () => isOn(L.id);
   // class 都做成 memo：一端的卡在动时线每帧都要重画，路径变了 class 没变，不用每帧重新拼一遍
@@ -607,7 +623,7 @@ function linkDom(r: Route, g: Accessor<Geo | null>, merged: Accessor<boolean>, c
   ) as SVGGElement;
   const label = (
     <div class="lw">
-      <LinkLabel L={L} g={g} />
+      <LinkLabel L={L} g={g} watchSize={watchSize} />
       <LinkStickers link={L.id} />
     </div>
   ) as HTMLDivElement;

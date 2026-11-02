@@ -339,7 +339,15 @@ export type Route = {
   /** 这条线的节点：只建一次，换层时整块搬过去 */
   dom?: Dom;
 };
-export const routes = new Map<string, Route>();
+// The links drawn now (trackLinks), so that a link's curve (linkCurve) is the drawn one, merged or sliding
+const drawn = new Map<string, Route>();
+/** trackLinks: this link is drawn with r until the returned function is called */
+export function drawRoute(r: Route): () => void {
+  drawn.set(r.L.id, r);
+  return () => {
+    if (drawn.get(r.L.id) === r) drawn.delete(r.L.id);
+  };
+}
 
 // 换边时端点滑过去：只有正在换边的那几条线每帧重算，别的线不动。
 // 和卡的弹出、收进 Section 在同一个 animate 的同一批里：一端在动的线又在换边时，一帧只重算一遍（单独一个 rAF 时要两遍）
@@ -431,7 +439,7 @@ export const toKey = (L: Link) =>
 
 /** 一条线的几何：画着的就用画着的那份（含合并、滑动）；没画的现算一份（不合并） */
 function geoOf(L: Link): Geo | null {
-  const r = routes.get(L.id);
+  const r = drawn.get(L.id);
   if (r?.L === L && r.geo) return r.geo();
   const bs = baseOf(L);
   if (!bs) return null;
