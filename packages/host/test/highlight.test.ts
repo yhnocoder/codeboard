@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Highlighter, plainView, segViewOf, type SegSource } from "../src/highlight";
 import type { FileAnalysis } from "@codeboard/analysis";
-import type { Segment } from "../src";
+import type { Segment } from "@codeboard/core";
 
 const fa = (calls: FileAnalysis["calls"] = []): FileAnalysis =>
   ({ symbols: [], calls, imports: [], flags: [], trailing: {} }) as unknown as FileAnalysis;

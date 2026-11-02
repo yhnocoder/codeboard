@@ -6,10 +6,17 @@ import { createHighlighterCore, createCssVariablesTheme, type HighlighterCore, t
 import { createJavaScriptRegexEngine } from "shiki/engine/javascript";
 import { grammarOf, langInfo, type Grammar } from "@codeboard/analysis/langs";
 import type { FileAnalysis } from "@codeboard/analysis";
-import { escHtml, renderLine, tokenClass, type Mark, type Tok } from "./render";
-import { fingerprint } from "./diff";
-import type { CallSpan, SegView } from "./lines";
-import type { Segment } from "./model";
+import {
+  escHtml,
+  fingerprint,
+  renderLine,
+  tokenClass,
+  type CallSpan,
+  type Mark,
+  type Segment,
+  type SegView,
+  type Tok,
+} from "@codeboard/core";
 
 // Shiki grammars by the language table's name, loaded the first time they are used
 const GRAMMAR: Record<string, LanguageInput> = {

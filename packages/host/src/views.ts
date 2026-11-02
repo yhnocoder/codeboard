@@ -1,6 +1,6 @@
 // The host's side of code highlighting: core's highlighter and segment views, reading the file at the segment's version,
 // the analysis cache and the call packages from this workspace.
-import { Highlighter, plainView, segViewOf, type SegSource } from "@codeboard/core/highlight";
+import { Highlighter, plainView, segViewOf, type SegSource } from "./highlight";
 import type { Segment, SegView, Tok } from "@codeboard/core";
 import { highlightLines } from "@codeboard/analysis";
 import { analysisOf, analysisReady, segAnalysis, whenAnalysisReady } from "./analysis";
