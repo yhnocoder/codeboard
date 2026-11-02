@@ -1,12 +1,14 @@
 #!/bin/bash
 # For the regular CI run: merge the harness results of all shards into the impact map that tools/test/pick.mjs reads, and push it
-# to the ci-screenshots branch under impact/ (harness.json: each scenario's time and the source files it ran; failing.json).
+# to the ci-screenshots branch under impact/ (harness.json: each scenario's time and the source files it ran; failing.json; alone.json:
+# how many regular runs in a row each scenario passed only when run alone, tools/test/alone.mjs).
 # Usage: tools/test/publish-impact.sh <dir with harness-*/result.json>
 # Needs: run from the repo root with a pushable origin. Keeps the old map when a shard has no results.
 set -e
 DIR=$1; NEW=$(pwd)/test-out/impact-new
 mkdir -p "$NEW"
-node - "$DIR" "$NEW" <<'JS'
+PREV_ALONE=$( (git fetch -q --depth 1 origin ci-screenshots && git show FETCH_HEAD:impact/alone.json) 2>/dev/null || echo "{}")
+PREV_ALONE=$PREV_ALONE node - "$DIR" "$NEW" <<'JS'
 const fs = require("fs"), path = require("path");
 const [dir, out] = process.argv.slice(2);
 const shards = fs.readdirSync(dir).filter((d) => /^harness-\d+$/.test(d)).map((d) => path.join(dir, d, "result.json"));
@@ -18,6 +20,11 @@ for (const r of results) { scenarios[r.name] = { ms: r.ms, files: r.files ?? [] 
 const map = { generated: new Date().toISOString().slice(0, 16) + "Z", commit: process.env.GITHUB_SHA ?? "", scenarios };
 fs.writeFileSync(path.join(out, "harness.json"), JSON.stringify(map));
 fs.writeFileSync(path.join(out, "failing.json"), JSON.stringify(results.filter((r) => !r.ok).map((r) => r.name).sort()));
+import(require("url").pathToFileURL(path.resolve("tools/test/alone.mjs"))).then(({ aloneStreaks }) => {
+  const streaks = aloneStreaks(JSON.parse(process.env.PREV_ALONE || "{}"), results);
+  fs.writeFileSync(path.join(out, "alone.json"), JSON.stringify(streaks));
+  console.log(`passed only alone: ${Object.entries(streaks).map(([n, k]) => `${n} (${k} in a row)`).join(", ") || "none"}`);
+});
 console.log(`impact map: ${results.length} scenarios, ${files.size} source files, ${results.filter((r) => !r.ok).length} failing`);
 JS
 [ -f "$NEW/harness.json" ] || exit 0

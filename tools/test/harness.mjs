@@ -14,13 +14,15 @@
 //          since <commit> (tools/test/pick.mjs repeatPick), each run N times (Playwright --repeat-each), within a wall-time cap
 //          (default 15 min). No second run alone: any failed repetition fails the scenario. A missing or unknown <commit> is an
 //          error, written to --json as { error } (no fallback to some other set of scenarios).
-// --json: { wall, workers, planned (estimated scenario seconds), results: [{ name, why, ok, ms, fails, known, alone, files, runs, failed }], deferred, forCI, notes, base, repeat, error }
+// --json: { wall, workers, planned (estimated scenario seconds), results: [{ name, why, ok, ms, fails, known, alone, parallelFails, files, runs, failed }], deferred, forCI, notes, base, repeat, error }
+//   alone: failed beside other scenarios, passed when run again on its own (parallelFails: the failures beside them)
 //   runs and failed (how many repetitions ran and failed) only with --repeat
 import { spawn, spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { pick, repeatPick, shard, loadImpact, changes, testsLine, msOf as estimate } from "./pick.mjs";
+import { ALONE_LIMIT, noAloneRetry } from "./alone.mjs";
 
 const REPO = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../..");
 const PW = [
@@ -276,17 +278,25 @@ const results = await run(
   workers,
   "parallel",
 );
-// A scenario that failed while others ran beside it gets one more run alone: some measure timing (reveal lag, frame times)
-// and lose to the CPU load of the other scenarios. Passing alone counts as passing, and the report says so.
-// Not in the flake repeat: there a failure beside others is what it looks for.
-const retry = workers > 1 && repeat === 1 ? results.filter((r) => !r.ok).map((r) => r.name) : [];
+// A scenario that failed while others ran beside it gets one more run alone: some lose to the CPU load of the other scenarios.
+// Passing alone counts as passing, with the failure beside others kept (parallelFails) and reported: in the run's summary, as a
+// warning annotation in CI, in the PR report and the regular report. Bounded (tools/test/alone.mjs): a scenario that passed only
+// alone in ALONE_LIMIT regular runs in a row gets no retry. Not in the flake repeat: there a failure beside others is what it looks for.
+const strict = new Set(noAloneRetry(impact.alone));
+const failedBeside = workers > 1 && repeat === 1 ? results.filter((r) => !r.ok).map((r) => r.name) : [];
+const retry = failedBeside.filter((n) => !strict.has(n));
+for (const r of results)
+  if (failedBeside.includes(r.name) && strict.has(r.name))
+    r.fails.push(
+      `not run again alone: it passed only alone in ${impact.alone[r.name]} regular runs in a row (limit ${ALONE_LIMIT}, tools/test/alone.mjs); make it pass beside other scenarios`,
+    );
 if (solo.length || retry.length) {
   console.log(`\nalone: ${[...solo.map((n) => `${n} (solo)`), ...retry].join(", ")}`);
   const again = await run([...solo, ...retry], 1, "alone");
   for (const r of again) {
     const i = results.findIndex((x) => x.name === r.name);
     if (i < 0) results.push(r);
-    else results[i] = { ...r, ...(r.ok ? { alone: true } : {}) };
+    else results[i] = { ...r, ...(r.ok ? { alone: true, parallelFails: results[i].fails } : {}) };
   }
 }
 
@@ -300,6 +310,15 @@ console.log(
     (alone.length ? `; passed only when run alone: ${alone.join(", ")}` : ""),
 );
 for (const r of failed) for (const f of r.fails.slice(0, 3)) console.log(`  ${r.name}: ${f.split("\n")[0]}`);
+for (const r of results.filter((x) => x.alone)) {
+  const why = (r.parallelFails[0] ?? "?").split("\n")[0];
+  console.log(`  ${r.name} (passed alone): beside others: ${why}`);
+  // a warning on the run's summary page, so a race that only shows under load isn't lost in a green run
+  if (process.env.GITHUB_ACTIONS)
+    console.log(
+      `::warning title=Passed only when run alone::${r.name} failed beside other scenarios: ${why.replace(/[\r\n%]/g, " ")}`,
+    );
+}
 if (plan?.deferred.length) console.log(`${left}: ${plan.deferred.join(", ")}`);
 if (plan?.forCI?.length) console.log(`edited, run in CI: ${plan.forCI.join(", ")}`);
 writeJson({

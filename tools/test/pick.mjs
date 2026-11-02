@@ -55,8 +55,9 @@ export function msOf(impact) {
 }
 
 /**
- * Regular-run results stored on the ci-screenshots branch: impact/harness.json { commit, generated, scenarios: { name: { ms, files: [paths] } } }
- * and impact/failing.json [scenario names]. Cached for 6 hours in test-out/impact/. IMPACT_DIR=<dir> reads them from a local dir instead.
+ * Regular-run results stored on the ci-screenshots branch: impact/harness.json { commit, generated, scenarios: { name: { ms, files: [paths] } } },
+ * impact/failing.json [scenario names] and impact/alone.json { name: regular runs in a row it passed only alone } (tools/test/alone.mjs).
+ * Cached for 6 hours in test-out/impact/. IMPACT_DIR=<dir> reads them from a local dir instead.
  */
 export function loadImpact() {
   const dir = process.env.IMPACT_DIR || path.join(REPO, "test-out/impact");
@@ -66,8 +67,15 @@ export function loadImpact() {
     try {
       git("fetch", "-q", "--depth", "1", "origin", "ci-screenshots");
       fs.mkdirSync(dir, { recursive: true });
-      for (const n of ["harness.json", "failing.json"])
-        fs.writeFileSync(path.join(dir, n), git("show", `FETCH_HEAD:impact/${n}`));
+      for (const n of ["harness.json", "failing.json", "alone.json"]) {
+        let text;
+        try {
+          text = git("show", `FETCH_HEAD:impact/${n}`);
+        } catch {
+          continue; // not written by the regular runs yet
+        }
+        fs.writeFileSync(path.join(dir, n), text);
+      }
     } catch {
       /* no regular-run results yet, or offline: what is cached */
     }
@@ -79,7 +87,7 @@ export function loadImpact() {
       return d;
     }
   };
-  return { map: read("harness.json", null), failing: read("failing.json", []) };
+  return { map: read("harness.json", null), failing: read("failing.json", []), alone: read("alone.json", {}) };
 }
 
 /**

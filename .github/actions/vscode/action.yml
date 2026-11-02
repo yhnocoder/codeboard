@@ -1,14 +1,30 @@
 name: VS Code
 description: Official VS Code build plus the Python and Pylance extensions (both cached between runs), and the X server libraries it needs
+inputs:
+  # The one place the e2e, replay and release-shot runs take their VS Code version and extensions from
+  version:
+    description: VS Code version
+    default: "1.142.0"
+  extensions:
+    description: Extensions installed beside CodeBoard (run.sh reads E2E_EXTENSIONS)
+    default: "ms-python.python@2026.10.0 ms-python.vscode-pylance@2026.4.1"
 runs:
   using: composite
   steps:
+    # the job's later steps (npm run e2e, run.sh) read them from the environment
+    - shell: bash
+      env:
+        V: ${{ inputs.version }}
+        X: ${{ inputs.extensions }}
+      run: |
+        echo "VSCODE_VERSION=$V" >> $GITHUB_ENV
+        echo "E2E_EXTENSIONS=$X" >> $GITHUB_ENV
     - uses: actions/cache@v5
       with:
         path: |
           .vscode-test
           /tmp/codeboard-ext-cache
-        key: vscode-${{ env.VSCODE_VERSION }}-${{ env.E2E_EXTENSIONS }}
+        key: vscode-${{ inputs.version }}-${{ inputs.extensions }}
     - shell: bash
       run: |
         # The runner image has most of these: install only what is missing (apt-get install costs ~40 s even when nothing is new)

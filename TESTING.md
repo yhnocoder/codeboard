@@ -5,7 +5,7 @@
 | 层 | 什么时候 | 时间上限 | 跑什么 |
 |---|---|---|---|
 | 1 本地 | 每次改完：`npm run check` | 90 秒 | 先构建 `@yhnocoder/markdown`（几秒）；typecheck、lint（Biome 和 knip，几秒）、单元测试（analysis、core、markdown、board、host、插件，一次 vitest 并行跑完）、Markdown 示例；这次改动需要的 harness 场景（白板构建完就开始，和前面这些同时跑） |
-| 2 CI | 每次 push、每个 PR（`ci.yml`） | 5 分钟 | 第 1 层的全部，加上所有改过的场景；harness 先由一个小 job 挑场景、按估计用时定要几个 job（每个约 3 分钟，2–6 个），再并行跑；e2e 拆两段并行；perf（只在改了被测代码时跑） |
+| 2 CI | 每次 push、每个 PR（`ci.yml`） | 5 分钟 | 第 1 层的全部，加上所有改过的场景；harness 先由一个小 job 挑场景、按估计用时定要几个 job（每个约 3 分钟，2–6 个），再并行跑；e2e 拆两段并行；perf（只在改了 benchmark 跑的代码时跑：`tiers.json` 的 `perf`，`tools/test/perf-need.mjs` 判断） |
 | 3 定时全量 | 每 6 小时：北京时间 02:30、08:30、14:30、20:30（`regular.yml`）；replay 每天一次，北京时间 03:00（`replay.yml`） | 不限 | 全部 harness 场景、整套 e2e（包括平时不跑的 export / variants / noteimage / stickerfolder / notesettings / codeedit）、完整 perf（另加一轮白板上 100 个动图贴纸的，`run-perf.mjs --anim`）、Storybook（构建后每个 story 都打开一遍）、study-task replay；harness 全量跑完后再做一轮 flaky 重复（见下） |
 
 ## 一定会测到的
@@ -31,7 +31,13 @@
 
 harness 场景是 Playwright Test 的测试（`packages/board/test/scenarios/*.spec.ts`，配置在 `packages/board/playwright.config.ts`）。`check(名字, 条件, 细节…)` 不成立、`expect` 不成立、抛异常、超时，都算失败，CI 会变红。`check` 不成立时场景接着跑完，最后一起算失败（`expect.soft`）。白板自检（`dangling references`）和宿主收到的每个版本过不了 schema 也是失败。
 
-`tools/test/harness.mjs` 分两轮调 Playwright：先在几个 worker 上一起跑，再一个一个单独跑。一起跑时挂了的场景会在第二轮单独再跑一次，单独跑过了就算过（报告里标"alone"）。对 CPU 负载敏感、并行时必挂的场景登记在 `tiers.json` 的 `solo`，放在第二轮单独跑（和 perf 一样）。
+`tools/test/harness.mjs` 分两轮调 Playwright：先在几个 worker 上一起跑，再一个一个单独跑。一起跑时挂了的场景会在第二轮单独再跑一次，单独跑过了就算过（报告里标"alone"）。
+
+"alone" 可能藏着只在并行负载下才出的竞态，所以它看得见、有上限：
+- 看得见：一起跑时的报错留在结果里（`parallelFails`），`harness.mjs` 的总结、CI 的 warning 注释（run 的 summary 页）、PR 描述里的 CI 报告（`tools/test/ci-report.mjs`）、#19 的定时报告都逐个列出来，带上一起跑时的第一条报错。
+- 有上限：定时全量记下每个场景连续几次"只有单独跑才过"（`tools/test/alone.mjs`，存在 `ci-screenshots` 分支的 `impact/alone.json`，由 `publish-impact.sh` 写）。连续 3 次（`ALONE_LIMIT`）以后，这个场景在哪儿都不再单独重跑（本地 `npm run check`、PR CI、定时全量）：一起跑挂了就是挂了，计数一直留着，直到它在并行下也能过才清零。
+
+对 CPU 负载敏感、并行时必挂的场景登记在 `tiers.json` 的 `solo`，放在第二轮单独跑（和 perf 一样）。
 
 每次定时全量还有两件事单独报在 #19 的评论里（各自一节，不进 `regular-failures`，所以不算"正在修的问题"、不带到 PR 上，也不让定时全量变红）。#19 只在有变化时才评论：失败、只有单独跑才过的、超了时间上限的组，这几样的集合变了，或者 flaky 重复发现了 flaky、它的报错变了，才发一条；每 6 小时一次也不会刷屏：
 - **Flaky**：harness 全量跑完后，`repeat` job 把上一次跑完的定时全量（`regular.yml` 运行列表里 `event=schedule` 的那次的 `head_sha`，大约 6 小时前）以来新增和改过的场景（同上）各跑 3 遍，新增的排在前面（从没和别的场景一起跑过，最可能 flaky），各自快的在前（`harness.mjs --changed-since=<commit> --repeat=3`，4 个 worker 并行，`solo` 的仍一个一个跑，按估计用时最多 15 分钟，放不下的报出来），任何一遍挂了就算 flaky；全量里本来就挂的不重复算。每个改动只在它之后的第一次定时全量里重复，所以一个 flaky 只报一次。这期间 main 没变就什么都不重复。找不到上一次定时全量或它的提交时报错（同样的报错只报一次），不拿别的场景凑合。

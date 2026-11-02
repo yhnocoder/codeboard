@@ -1,5 +1,5 @@
 {
-  "_doc": "Test tiers, see TESTING.md. smoke: always run by npm run check and PR CI (one quick scenario per main feature). areas: feature areas, each with the files that belong to it (globs, source and scenario specs) and a hand-picked group of scenarios that runs whole when a change touches one of them; broad: the same for changes no area holds. limits: seconds of scenario time for a group beside smoke (area), for smoke, and for smoke with the three largest groups (local). manual: left out of every default run, run them by name. known: checks failing on main that are tracked elsewhere; their FAIL lines are reported but don't fail a run (remove the entry with the fix).",
+  "_doc": "Test tiers, see TESTING.md. smoke: always run by npm run check and PR CI (one quick scenario per main feature). areas: feature areas, each with the files that belong to it (globs, source and scenario specs) and a hand-picked group of scenarios that runs whole when a change touches one of them; broad: the same for changes no area holds. limits: seconds of scenario time for a group beside smoke (area), for smoke, and for smoke with the three largest groups (local). perf: the files the perf benchmarks run (CI's perf job runs only when a change touches one). manual: left out of every default run, run them by name. known: checks failing on main that are tracked elsewhere; their FAIL lines are reported but don't fail a run (remove the entry with the fix).",
   "smoke": [
     "expandCall",
     "peek",
@@ -37,6 +37,18 @@
   ],
   "known": {},
   "limits": { "area": 30, "smoke": 90, "local": 180 },
+  "perf": {
+    "about": "code the perf benchmarks (packages/board/test/perf.ts, packages/host/test/perf-*.ts, tools/review/perf-ab.sh) run or build: a change touching none of it skips the perf job in PR CI; the regular run measures every time",
+    "files": [
+      "packages/{analysis,board,core,host,markdown}/src/**",
+      "packages/{analysis,board,core,host,markdown}/package.json",
+      "packages/*/vite.config.*",
+      "packages/board/test/{perf,harness}.ts",
+      "packages/host/test/perf-*",
+      "package-lock.json",
+      "tools/review/perf*"
+    ]
+  },
   "broad": {
     "about": "changes no area holds: the board's shared stylesheet and fonts, build and test config, the lockfile, the harness, the example repository. They can break any look, so the group is looks across themes",
     "files": [
