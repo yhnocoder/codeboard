@@ -132,7 +132,7 @@
         "packages/board/src/ui/CallPanels.tsx",
         "packages/core/src/{flow,run,rank}.ts",
         "packages/analysis/src/{entry,vars}.ts",
-        "packages/host/src/{resolve,defcache,prefetch,nameindex,scope,runs,search}.ts",
+        "packages/host/src/{resolve,lsp,sched,defcache,prefetch,nameindex,scope,runs,search}.ts",
         "packages/host/test/fixtures/runtime/**",
         "packages/board/test/scenarios/{calls,ux,flows}.spec.ts"
       ],

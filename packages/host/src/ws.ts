@@ -90,8 +90,6 @@ export const inExcludedDir = (abs: string) => {
   return NOT_PROJECT_DIR.test(path.sep + (root ? path.relative(root, abs) : abs));
 };
 
-export const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
-
 export function debounce<A extends unknown[]>(fn: (...a: A) => void, ms: number) {
   let t: NodeJS.Timeout | undefined;
   return (...a: A) => {

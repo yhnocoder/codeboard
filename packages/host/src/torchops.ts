@@ -25,18 +25,10 @@ import { analysisOf, symbolsOf, whenAnalysisReady } from "./analysis";
 import { entriesOf, followIndex, indexedFiles, isCode, type IndexEntry } from "./nameindex";
 import { exists, langOf, readText, workspace } from "./ws";
 import { log } from "./log";
+import { slicer } from "./sched";
 
-// 这里的一切都和白板一起跑在 extension host 的线程上：长循环每几毫秒让出一次事件循环。
+// 这里的一切都和白板一起跑在 extension host 的线程上：长循环用 slicer 每几毫秒让出一次事件循环。
 // （worker 线程要单独打包，读不到编辑器里没保存的内容，也共享不了名字索引；活儿主要是读文件和正则，切得开。）
-const SLICE_MS = 8;
-function slicer() {
-  let t = performance.now();
-  return async () => {
-    if (performance.now() - t < SLICE_MS) return;
-    await new Promise((r) => setImmediate(r));
-    t = performance.now();
-  };
-}
 
 const OPS_YAML = "aten/src/ATen/native/native_functions.yaml";
 

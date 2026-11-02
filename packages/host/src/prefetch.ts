@@ -3,41 +3,23 @@
 import type { Segment } from "@codeboard/core";
 import { segAnalysis } from "./analysis";
 import { cardForFileSym } from "./cards";
-import { dispatchOf, lspDefs, symAtDef } from "./resolve";
+import { dispatchOf, symAtDef } from "./resolve";
+import { lspDefs, lspReady } from "./lsp";
+import { Prio, sched, sleep } from "./sched";
 import { workingPlace } from "./versions";
 import { log } from "./log";
-import { readText, sleep } from "./ws";
+import { readText } from "./ws";
 import { hasLocalFile } from "./source";
 
 type PrefetchReq = { seg: Segment; line: number; col: number; name: string };
 
-const MAX_RUN = 2;
-const MAX_WAIT = 4; // 排队的只留最新的几个（鼠标扫过一串调用时，旧的没用了）
-let running = 0;
-const queue: (() => Promise<void>)[] = [];
-
-/** 测试用：悬停预取没有在跑、也没有在排队的 */
-export const prefetchIdle = () => running === 0 && queue.length === 0;
-
-function pump() {
-  while (running < MAX_RUN && queue.length) {
-    const job = queue.shift()!;
-    running++;
-    void job()
-      .catch(() => undefined)
-      .finally(() => {
-        running--;
-        pump();
-      });
-  }
-}
+// At most 2 hovers ask at a time; only the newest 4 wait (when the mouse sweeps over a row of calls, the older ones are moot)
+const hover = sched.lane(Prio.Hover, 2, 4);
 
 /** 悬停在调用上：问定义 → 读目标、做分析和分词（结果只进缓存，不发给白板） */
 export function prefetchCall(m: PrefetchReq) {
   if (!hasLocalFile(m.seg.src)) return;
-  queue.unshift(() => warmCall(m.seg, m.line, m.col, m.name));
-  if (queue.length > MAX_WAIT) queue.length = MAX_WAIT;
-  pump();
+  hover(() => warmCall(m.seg, m.line, m.col, m.name));
 }
 
 async function warmCall(seg: Segment, line: number, col: number, name: string) {
@@ -52,8 +34,9 @@ async function warmCall(seg: Segment, line: number, col: number, name: string) {
 
 export const WARM_DELAY = 1500,
   WARM_GAP = 200;
-const WARM_FILES = 6,
-  WARM_RETRY = 6;
+const WARM_FILES = 6;
+/** How long the first file waits for a language service that is still starting */
+const WARM_LSP_WAIT = 9000;
 const warmed = new Map<string, number>(); // 文件 → 上次预热的时间
 
 /** 白板上每个文件（最多几个）挑一个调用问一次定义，一个接一个、在悬停预取之后；alive = 白板还开着 */
@@ -79,22 +62,23 @@ export function warmBoard(segs: Segment[], alive: () => boolean) {
             );
             const c = calls.find((x) => x.recv === "self") ?? calls[0];
             if (!c) continue;
-            while (running) await sleep(100); // 让悬停预取先走
+            await sched.clear(Prio.Warm); // 让点击和悬停预取先走
             warmed.set(wp.abs, Date.now());
             n++;
-            const t0 = performance.now();
-            // 第一个文件：语言服务可能还在启动（先回空），隔一会儿再问几次，直到它真的答上来
-            let d = await lspDefs(wp.abs, c.line, c.col);
-            for (let k = 0; n === 1 && !d.length && k < WARM_RETRY && alive(); k++) {
-              await sleep(1500);
-              d = await lspDefs(wp.abs, c.line, c.col);
-            }
-            log(
-              "info",
-              `warm ${seg.path}:${c.line} ${c.name} → ${d.length} def(s), ${Math.round(performance.now() - t0)} ms`,
-            );
-            // 定义是类里的方法：点它时 expand 还要问转到实现（Pylance 第一次要在整个工作区里找子类），也先问掉
-            if (d.length === 1) await dispatchOf(d[0], c.name);
+            const first = n === 1;
+            await sched.run(Prio.Warm, async () => {
+              const t0 = performance.now();
+              // 第一个文件：语言服务可能还在启动（先回空），等它真的答上来
+              const ask = () => lspDefs(wp.abs, c.line, c.col);
+              let d = await ask();
+              if (first) d = await lspReady(d, ask, WARM_LSP_WAIT, alive);
+              log(
+                "info",
+                `warm ${seg.path}:${c.line} ${c.name} → ${d.length} def(s), ${Math.round(performance.now() - t0)} ms`,
+              );
+              // 定义是类里的方法：点它时 expand 还要问转到实现（Pylance 第一次要在整个工作区里找子类），也先问掉
+              if (d.length === 1) await dispatchOf(d[0], c.name);
+            });
             await sleep(WARM_GAP);
           } catch {
             /* 预热失败不影响什么 */

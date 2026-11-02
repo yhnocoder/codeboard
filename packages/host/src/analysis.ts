@@ -3,24 +3,22 @@ import { analyze, clipAnalysis, initAnalysis, type FileAnalysis } from "@codeboa
 import { Lru } from "./ws";
 
 let ready = false;
-let started: Promise<void> | undefined;
+let settle!: () => void;
+// Settles once startAnalysis has finished (or failed); work that needs the parsers may ask before it is called
+const started = new Promise<void>((r) => (settle = r));
 /** dir = 放全部 wasm 的目录（插件的 dist/）；Node 下不给，从 npm 包里找 */
 export async function startAnalysis(dir?: string) {
-  return (started = (async () => {
-    try {
-      await initAnalysis(dir);
-      ready = true;
-    } catch (e) {
-      console.error("[codeboard] tree-sitter init failed", e);
-    }
-  })());
+  try {
+    await initAnalysis(dir);
+    ready = true;
+  } catch (e) {
+    console.error("[codeboard] tree-sitter init failed", e);
+  }
+  settle();
 }
 export const analysisReady = () => ready;
 /** tree-sitter 准备好（或者失败了）之后 */
-export async function whenAnalysisReady() {
-  while (!started) await new Promise((r) => setTimeout(r, 50));
-  await started;
-}
+export const whenAnalysisReady = () => started;
 
 const cache = new Lru<FileAnalysis>(80);
 const segCache = new Lru<FileAnalysis>(200);

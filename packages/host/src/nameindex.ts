@@ -7,7 +7,8 @@ import type { Sym } from "@codeboard/analysis";
 import { symbolsOf, whenAnalysisReady } from "./analysis";
 import { resetScope } from "./scope";
 import { log } from "./log";
-import { CODE_EXCLUDE, CODE_GLOB, inExcludedDir, langOf, readText, sleep, workspace } from "./ws";
+import { Prio, sched, sleep } from "./sched";
+import { CODE_EXCLUDE, CODE_GLOB, inExcludedDir, langOf, readText, workspace } from "./ws";
 
 export type IndexEntry = {
   name: string;
@@ -151,37 +152,6 @@ async function indexFile(abs: string, text?: string | null) {
   for (const e of ents) (byName.get(e.name) ?? byName.set(e.name, []).get(e.name)!).push(e);
 }
 
-// 点击和索引在同一个线程上等：点击解析期间索引不开始新文件（正在解析的文件照样做完）。
-// 一次暂停最多 PAUSE_MAX：卡在语言服务上的点击之后索引照常建完，直到下一次点击再停。
-// 点击数记在各自的暂停上：卡住的那个只算它那一次暂停的，之后的点击做完就放开
-let pause: { done: Promise<void>; open: () => void; clicks: number } | undefined;
-export const PAUSE_MAX = 5000;
-export async function pausingIndex<T>(fn: () => Promise<T>): Promise<T> {
-  if (!pause) {
-    let open!: () => void;
-    const done = new Promise<void>((r) => (open = r));
-    const timer = setTimeout(() => p.open(), PAUSE_MAX);
-    const p = {
-      done,
-      clicks: 0,
-      open: () => {
-        clearTimeout(timer);
-        if (pause === p) pause = undefined;
-        open();
-      },
-    };
-    pause = p;
-  }
-  const p = pause;
-  p.clicks++;
-  try {
-    return await fn();
-  } finally {
-    if (--p.clicks === 0) p.open();
-  }
-}
-const unpaused = () => pause?.done;
-
 /** 后台把 todo 里的文件都分析完（一次只跑一个；每个文件之间让出事件循环） */
 function drain(): Promise<void> {
   return (running ??= (async () => {
@@ -189,11 +159,8 @@ function drain(): Promise<void> {
     try {
       await list();
       while (todo.size && g === gen) {
-        const wait = unpaused();
-        if (wait) {
-          await wait;
-          continue;
-        }
+        await sched.clear(Prio.Index); // 点击、预取、预热先走（正在解析的文件照样做完）
+        if (!todo.size || g !== gen) break;
         const abs = todo.values().next().value!;
         await indexFile(abs); // 分析到一半文件又改了：还留在 todo 里，下一轮再做
         await sleep(0);

@@ -5,17 +5,16 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { Disposable } from "@codeboard/core";
 import { analysisOf } from "../src/analysis";
 import {
-  PAUSE_MAX,
   allNames,
   indexedFiles,
   lookupName,
   nameIndexReady,
-  pausingIndex,
   resetIndex,
   startNameIndex,
   watchNameIndex,
   type IndexEntry,
 } from "../src/nameindex";
+import { HOLD_MAX, Prio, sched } from "../src/sched";
 import { useWorkspace } from "../src/ws";
 import { WS, nodeWorkspace } from "./node-workspace";
 import { startTreeSitter } from "./helpers";
@@ -24,6 +23,7 @@ import { startTreeSitter } from "./helpers";
 const ROOT = fs.mkdtempSync("/tmp/codeboard-nameindex-");
 execFileSync("git", ["clone", "-q", WS, ROOT]);
 const W = nodeWorkspace(ROOT);
+const click = <T>(fn: () => Promise<T>) => sched.run(Prio.Click, fn);
 const key = (es: IndexEntry[]) => es.map((e) => `${e.abs}:${e.qual}:${e.defLine}`);
 const probe = path.join(ROOT, "nanovllm/zz_index_probe.py");
 let full: Map<string, string[]>, finds: number, watch: Disposable;
@@ -93,7 +93,7 @@ describe("name index", () => {
     const done = async () => (await indexedFiles()).filter((f) => f.ents).length;
     startNameIndex();
     while (!(await done())) await new Promise((r) => setImmediate(r));
-    const during = await pausingIndex(async () => {
+    const during = await click(async () => {
       const first = await done();
       // as many file reads as the build would need to analyze several files
       for (let i = 0; i < 30; i++) {
@@ -107,7 +107,7 @@ describe("name index", () => {
     await nameIndexReady();
     expect((await indexedFiles()).every((f) => f.ents)).toBe(true);
   });
-  it("pauses for a click that never finishes only PAUSE_MAX, then builds to the end; the next click pauses it again until it is done", async () => {
+  it("pauses for a click that never finishes only HOLD_MAX, then builds to the end; the next click pauses it again until it is done", async () => {
     resetIndex();
     const done = async () => (await indexedFiles()).filter((f) => f.ents).length;
     const turns = async (n: number) => {
@@ -117,12 +117,12 @@ describe("name index", () => {
     while (!(await done())) await turns(1);
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     let unstick!: () => void;
-    const stuck = pausingIndex(() => new Promise<void>((r) => (unstick = r))); // a language server that never answers
+    const stuck = click(() => new Promise<void>((r) => (unstick = r))); // a language server that never answers
     const first = await done();
     await vi.advanceTimersByTimeAsync(0); // the index's own zero-delay yields
     await turns(30);
     expect((await done()) - first).toBeLessThanOrEqual(1);
-    vi.advanceTimersByTime(PAUSE_MAX - 1);
+    vi.advanceTimersByTime(HOLD_MAX - 1);
     await turns(30);
     expect((await done()) - first).toBeLessThanOrEqual(1);
     vi.advanceTimersByTime(1);
@@ -131,7 +131,7 @@ describe("name index", () => {
     expect((await indexedFiles()).every((f) => f.ents)).toBe(true);
     // a new click pauses it again while the first is still stuck
     let second!: () => void;
-    const next = pausingIndex(() => new Promise<void>((r) => (second = r)));
+    const next = click(() => new Promise<void>((r) => (second = r)));
     fs.writeFileSync(probe, "def probe_paused():\n    pass\n");
     W.fire.create.fire([probe]);
     await turns(30);

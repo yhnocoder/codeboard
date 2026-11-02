@@ -5,7 +5,8 @@ import type { ExpandResult, Segment } from "@codeboard/core";
 import { analysisOf } from "../src/analysis";
 import { expand } from "../src/resolve";
 import { forgetDefs } from "../src/defcache";
-import { WARM_DELAY, WARM_GAP, prefetchCall, prefetchIdle, warmBoard } from "../src/prefetch";
+import { WARM_DELAY, WARM_GAP, prefetchCall, warmBoard } from "../src/prefetch";
+import { Prio, sched } from "../src/sched";
 import { useWorkspace } from "../src/ws";
 import { WS, nodeWorkspace } from "./node-workspace";
 import { at, card, startTreeSitter } from "./helpers";
@@ -26,7 +27,7 @@ const held: (() => void)[] = [];
 const release = () => {
   for (const r of held.splice(0)) r();
 };
-const idle = () => vi.waitFor(() => expect(prefetchIdle()).toBe(true), { timeout: 10000, interval: 5 });
+const idle = () => vi.waitFor(() => expect(sched.idle(Prio.Hover)).toBe(true), { timeout: 10000, interval: 5 });
 const isSchedule = (r: ExpandResult) => "card" in r && r.card.segments[0].symbol?.qual === "Scheduler.schedule";
 const orig = W.language.definitions;
 

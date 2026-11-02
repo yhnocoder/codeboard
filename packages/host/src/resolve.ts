@@ -38,13 +38,15 @@ import {
 } from "./bridge";
 import { opTableFor, pyOpEntry } from "./torchops";
 import { analysisOf, cachedAnalysis, segAnalysis } from "./analysis";
-import { sharedDefs, type Def } from "./defcache";
+import type { Def } from "./defcache";
+import { clickDefs, lspDefs, lspImpls } from "./lsp";
+import { Prio, sched } from "./sched";
 import { cardForFileSym, symCard } from "./cards";
 import { absOf, locOfFile, versionText, hasLocalFile } from "./source";
 import { makeSegment, workingPlace } from "./versions";
 import { highlight, tokensOf } from "./views";
 import { libOf } from "./scope";
-import { entriesOf, indexedFiles, knownEntries, lookupName, pausingIndex, type IndexEntry } from "./nameindex";
+import { entriesOf, indexedFiles, knownEntries, lookupName, type IndexEntry } from "./nameindex";
 import { log } from "./log";
 import {
   exists,
@@ -55,76 +57,10 @@ import {
   langOf,
   readText,
   recentFiles,
-  sleep,
   splitLines,
   workspace,
   wsRoots,
 } from "./ws";
-
-/** 问语言服务（同一个文件、位置、内容的请求共用：悬停时可能已经在问了） */
-export const lspDefs = (abs: string, line: number, col: number): Promise<Def[]> =>
-  sharedDefs(abs, line, col, () => askDefs(abs, line, col));
-/** 定义处的「转到实现」（Pylance 要在整个工作区里找子类，冷的时候要好几秒）：悬停预取、打开白板的预热、点击、peek 共用一个请求 */
-const lspImpls = (d: Def): Promise<Def[]> =>
-  sharedDefs(
-    d.abs,
-    d.line,
-    d.col,
-    async () => {
-      const t0 = performance.now();
-      const r = await workspace().language.implementations(d.abs, d.line, d.col);
-      log(
-        "info",
-        `implementations at ${hostPath(d.abs)}:${d.line} → ${r.length}, ${Math.round(performance.now() - t0)} ms`,
-      );
-      return r;
-    },
-    "impl",
-  );
-
-// Pylance 刚启动时会先回空：还没见它答过话时，空的回答隔一会儿再问几次，再退到名字索引
-export const RETRY_GAP = 600;
-const RETRY = 3,
-  RETRY_CLICKS = 3;
-let lspSeen = false,
-  retryClicks = 0;
-/** 测试用：当作语言服务还没答过话 */
-export const forgetLspSeen = () => {
-  lspSeen = false;
-  retryClicks = 0;
-};
-
-/** 点击时问定义：语言服务像是还在启动（装了 Pylance、还没答过）就重试 */
-async function clickDefs(abs: string, line: number, col: number): Promise<Def[]> {
-  let d = await lspDefs(abs, line, col);
-  if (
-    d.length ||
-    lspSeen ||
-    retryClicks >= RETRY_CLICKS ||
-    langOf(abs) !== "python" ||
-    !workspace().about.hasExtension("ms-python.vscode-pylance")
-  )
-    return d;
-  retryClicks++;
-  for (let k = 0; k < RETRY && !d.length && !lspSeen; k++) {
-    await sleep(RETRY_GAP);
-    d = await lspDefs(abs, line, col);
-  }
-  if (d.length)
-    log("info", `definition at ${hostPath(abs)}:${line}:${col} answered after retry (language server starting)`);
-  return d;
-}
-
-async function askDefs(abs: string, line: number, col: number): Promise<Def[]> {
-  try {
-    const r = await workspace().language.definitions(abs, line, col);
-    if (r.length) lspSeen = true;
-    return r.filter((d) => !(d.abs === abs && d.line === line)); // 指回调用处自己
-  } catch (e) {
-    log("warn", `definition provider failed at ${hostPath(abs)}:${line}:${col}: ${e instanceof Error ? e.message : e}`);
-    return [];
-  }
-}
 
 export async function symAtDef(d: Def, name?: string, qual?: string): Promise<{ abs: string; sym: Sym } | null> {
   const text = await readText(d.abs);
@@ -161,8 +97,8 @@ const pickAbs = (seg: Segment, p: ExpandPick) => (p.rel ? absOf({ ...seg, path: 
 
 const none = (reason: string): ExpandResult => ({ none: true, reason });
 
-/** 点击解析时后台的名字索引先等着 */
-export const expand = (m: ExpandReq): Promise<ExpandResult> => pausingIndex(() => expandNow(m));
+/** 点击解析时后台的活（预取、预热、名字索引）先等着 */
+export const expand = (m: ExpandReq): Promise<ExpandResult> => sched.run(Prio.Click, () => expandNow(m));
 
 async function expandNow(m: ExpandReq): Promise<ExpandResult> {
   const seg = m.seg;
