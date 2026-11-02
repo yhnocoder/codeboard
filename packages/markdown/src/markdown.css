@@ -606,7 +606,7 @@ math {
     visibility: hidden;
   }
 }
-/* 编辑器里最后一块后面垫着的空段落（editor/index.tsx padEnd）还空着时是 .md-pad：不占高度（进出编辑时卡片一样高），
+/* 编辑器里最后一块后面垫着的空段落（editor/pad.ts padEnd）还空着时是 .md-pad：不占高度（进出编辑时卡片一样高），
    光标在里面（.at）时画成一条短横线（和 gapcursor 一样） */
 .md > :last-child,
 .md-pm > :last-child,
