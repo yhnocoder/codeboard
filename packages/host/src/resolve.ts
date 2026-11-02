@@ -36,7 +36,8 @@ import {
   type Crossed,
   type Target,
 } from "./bridge";
-import { opTableFor, pyOpEntry } from "./torchops";
+import { opTableFor } from "./torchops";
+import { pyOpEntry } from "./torchentry";
 import { analysisOf, cachedAnalysis, segAnalysis } from "./analysis";
 import type { Def } from "./defcache";
 import { clickDefs, lspDefs, lspImpls } from "./lsp";

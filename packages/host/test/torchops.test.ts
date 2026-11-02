@@ -8,17 +8,10 @@ import { dispatchOf, expand } from "../src/resolve";
 import { nameIndexReady, resetIndex, startNameIndex } from "../src/nameindex";
 import { forgetDefs } from "../src/defcache";
 import { useWorkspace } from "../src/ws";
-import {
-  cppOpEntry,
-  genDirOf,
-  kernelEntry,
-  kernelsOf,
-  opTable,
-  opTables,
-  parseOps,
-  scanOf,
-  ufuncDir,
-} from "../src/torchops";
+import { kernelEntry, opTables, scanOf } from "../src/torchops";
+import { cppOpEntry } from "../src/torchentry";
+import { genDirOf, ufuncDir } from "../src/torchcdb";
+import { kernelsOf, opTable, parseOps } from "../src/torchyaml";
 import { nodeWorkspace } from "./node-workspace";
 import { at, card, startTreeSitter } from "./helpers";
 

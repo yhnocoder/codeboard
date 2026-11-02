@@ -31,22 +31,10 @@ import {
 import { analysisOf } from "./analysis";
 import { entriesOf, grepWord, knownEntries, lookupName, type IndexEntry } from "./nameindex";
 import { libOf } from "./scope";
-import {
-  cppOpEntry,
-  defsOf,
-  entryTable,
-  isStubCall,
-  keyRank,
-  kernelsOf,
-  kernelTarget,
-  opTableFor,
-  pyDefInTorch,
-  pyOpEntry,
-  pyRegs,
-  stubRegs,
-  type OpTable,
-  type Reg,
-} from "./torchops";
+import { defsOf, entryTable, kernelTarget, opTableFor, pyRegs, stubRegs } from "./torchops";
+import { cppOpEntry, isStubCall, pyDefInTorch, pyOpEntry } from "./torchentry";
+import type { Reg } from "./torchscan";
+import { keyRank, kernelsOf, type OpTable } from "./torchyaml";
 import { hostPath, langOf, readText, splitLines } from "./ws";
 import { log } from "./log";
 

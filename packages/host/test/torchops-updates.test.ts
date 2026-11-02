@@ -7,7 +7,8 @@ import type { Disposable, ExpandResult, Segment } from "@codeboard/core";
 import { expand } from "../src/resolve";
 import { resetIndex, watchNameIndex } from "../src/nameindex";
 import { useWorkspace } from "../src/ws";
-import { opTables, parseOps, scanOf, warmOps } from "../src/torchops";
+import { opTables, scanOf, warmOps } from "../src/torchops";
+import { parseOps } from "../src/torchyaml";
 import { nodeWorkspace } from "./node-workspace";
 import { at, card, startTreeSitter } from "./helpers";
 

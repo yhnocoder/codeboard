@@ -156,9 +156,9 @@
       "files": [
         "packages/board/src/actions/{chains,callpops}.ts",
         "packages/board/src/ui/pops/chains.tsx",
-        "packages/analysis/src/bridge.ts",
+        "packages/analysis/src/{bridge,torch}.ts",
         "packages/host/src/bridge.ts",
-        "packages/host/src/torchops.ts",
+        "packages/host/src/{torchops,torchyaml,torchscan,torchcdb,torchentry}.ts",
         "packages/host/test/fixtures/crosslang/**",
         "packages/board/test/scenarios/chains.spec.ts"
       ],
