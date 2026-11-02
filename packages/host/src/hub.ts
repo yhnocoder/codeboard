@@ -74,7 +74,6 @@ export class BoardHub implements BoardHost, Disposable {
     readonly store: Storage,
     handler: (hub: BoardHub) => Handler,
   ) {
-    this.handler = handler(this);
     this.target = this.cx.ws.storage.get<string>(TARGET);
     // 共享卡写进了卡库：开着同一张卡的别的白板换上（存储里的那份已经换好了）。卡本身变了（新版本、改段）时带上段的展示数据
     this.subs.push(
@@ -168,6 +167,8 @@ export class BoardHub implements BoardHost, Disposable {
         this.refreshBoardRefs();
       }),
     );
+    // Last: the handler may read the hub's fields
+    this.handler = handler(this);
   }
 
   /** 面板换上宿主这边变了的白板（patch = 从它现在的样子到存储里的样子）；新来的代码卡带上段的展示数据 */

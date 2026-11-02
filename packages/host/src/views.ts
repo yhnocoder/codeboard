@@ -3,7 +3,7 @@
 import { Highlighter, plainView, segViewOf, type SegSource } from "./highlight";
 import type { Segment, SegView, Tok } from "@codeboard/core";
 import { highlightLines } from "@codeboard/analysis";
-import { analysisOf, analysisReady, segAnalysis, whenAnalysisReady } from "./analysis";
+import { analysisOf, analysisReady, segAnalysis, treeAt, whenAnalysisReady } from "./analysis";
 import { callPkgs } from "./scope";
 import type { HostContext } from "./context";
 
@@ -23,7 +23,7 @@ const sourceOf = (cx: HostContext): SegSource => ({
     return abs ? cx.readText(abs) : Promise.resolve(null);
   },
   fileOf: (seg) => cx.sources.absOf(seg),
-  treeAt: (file) => ({ cache: cx.trees, key: file }),
+  treeAt: (file) => treeAt(cx, file),
   analyze: (lang, text, range, tree) =>
     range ? segAnalysis(lang, text, range.start, range.end, tree) : analysisOf(lang, text, tree),
   callPkgs: (seg, imports, abs) => callPkgs(cx, seg, imports, abs),

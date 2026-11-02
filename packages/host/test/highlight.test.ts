@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { Highlighter, plainView, segViewOf, type SegSource } from "../src/highlight";
-import type { FileAnalysis } from "@codeboard/analysis";
+import { TreeCache, type FileAnalysis } from "@codeboard/analysis";
 import type { Segment } from "@codeboard/core";
 
 const fa = (calls: FileAnalysis["calls"] = []): FileAnalysis =>
@@ -51,6 +51,8 @@ describe("highlighter", () => {
 
 describe("segment views", () => {
   const hl = new Highlighter({ treeLines: async () => null });
+  const trees = new TreeCache();
+  const treeAt = (file: string | null) => (file ? { cache: trees, key: file } : undefined);
 
   it("builds a segment's view from its own text when the file is not there, with calls at the real columns", async () => {
     const analysed: string[] = [];
@@ -58,6 +60,7 @@ describe("segment views", () => {
       fileText: async () => null,
       currentText: async () => null,
       fileOf: () => null,
+      treeAt,
       analyze: (_l, text) => {
         analysed.push(text);
         return fa([{ line: 1, col: 4, end: 7, name: "run", loop: false } as FileAnalysis["calls"][number]]);
@@ -78,6 +81,7 @@ describe("segment views", () => {
       fileText: async () => file,
       currentText: async () => file,
       fileOf: () => "/r/m.py",
+      treeAt,
       analyze: (_l, _t, range) => {
         ranges.push(range);
         return fa();

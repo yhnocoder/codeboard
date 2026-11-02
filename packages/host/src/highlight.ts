@@ -170,8 +170,8 @@ export interface SegSource {
   currentText(seg: Segment): Promise<string | null>;
   /** The segment's file on disk */
   fileOf(seg: Segment): string | null;
-  /** Where the analysis and tree-sitter keep the tree of a file's text; none = each text is parsed afresh */
-  treeAt?(file: string): TreeAt;
+  /** Where the analysis and tree-sitter keep the tree of a file's text; none without a file */
+  treeAt(file: string | null): TreeAt | undefined;
   /** Analysis of text; with a range, only the calls and marks inside it are needed (plus the whole file's imports) */
   analyze(lang: string, text: string, range?: { start: number; end: number }, tree?: TreeAt): FileAnalysis;
   /** Which package each call goes to (shown on the call); none = no packages */
@@ -192,7 +192,7 @@ export async function segViewOf(seg: Segment, src: SegSource, hl: Highlighter): 
   const full = await src.fileText(seg).catch(() => null);
   if (!full || splitLines(full).length > MAX_FULL) return snippetView(seg, src, hl);
   const file = src.fileOf(seg);
-  const tree = file ? src.treeAt?.(file) : undefined;
+  const tree = src.treeAt(file);
   const fa = src.analyze(lang, full, { start: seg.start, end: seg.end }, tree);
   const pkgs = src.callPkgs ? await src.callPkgs(seg, fa.imports, file) : undefined;
   // A Python function / class segment starts at its def / class / decorator line, in the same lexical state as the file's start:
@@ -221,7 +221,7 @@ async function snippetView(seg: Segment, src: SegSource, hl: Highlighter): Promi
     // Imports are at the file's start, not in the segment: take the current file's
     const file = seg.src.kind === "free" ? null : src.fileOf(seg);
     const cur = file ? await src.currentText(seg).catch(() => null) : null;
-    const tree = file ? src.treeAt?.(file) : undefined;
+    const tree = src.treeAt(file);
     pkgs = await src.callPkgs(
       seg,
       cur ? src.analyze(seg.lang, cur, { start: 1, end: 0 }, tree).imports : fa.imports,
