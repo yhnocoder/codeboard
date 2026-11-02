@@ -1,6 +1,6 @@
 // Split by Headings：Note 按标题拆成几张卡。只认行首的 ATX 标题（# …），代码块、$$ 公式块里的不算。
 // 规则：第一个标题是第 L 级，级别 ≤ L+1 的标题各开一张卡（比 L 浅的也开），更深的留在所在的卡里；第一个标题前的字留在原卡。
-// 拆的改动本身（放卡、连箭头、改原卡）在 edit.ts 的 splitNoteByHeadings
+// 拆的改动本身（放卡、连箭头、改原卡）在 edit/notes.ts 的 splitNoteByHeadings
 import { overlaps, type Rect } from "./layout";
 
 /** 拆出来的一段：标题行连同下面的内容（到下一个要拆的标题为止）；parent = 上一级那段的下标，-1 = 原卡 */
