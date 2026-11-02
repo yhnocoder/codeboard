@@ -236,41 +236,43 @@ function easeStep(dt: number, instant: boolean) {
   });
   return !easing.size;
 }
-rooted(() =>
-  createComputed(
-    on(frames, (f, prev) => {
-      if (!prev) return;
-      if (reduceMotion() || !(moving() || easing.size)) return stopEasing();
-      for (const [id, r] of f) {
-        const p = prev.get(id);
-        if (p === r) continue;
-        if (!p || fitting().has(id)) {
-          if (easing.delete(id)) show(id);
-          continue;
+/** 拖卡时框缓动过去（上面的 easing）：启动时接一次 */
+export const wireSectionEasing = () =>
+  rooted(() =>
+    createComputed(
+      on(frames, (f, prev) => {
+        if (!prev) return;
+        if (reduceMotion() || !(moving() || easing.size)) return stopEasing();
+        for (const [id, r] of f) {
+          const p = prev.get(id);
+          if (p === r) continue;
+          if (!p || fitting().has(id)) {
+            if (easing.delete(id)) show(id);
+            continue;
+          }
+          let e = easing.get(id);
+          if (!e) {
+            const from = untrack(shownOf(id)[0]) ?? p;
+            const mk = (v: number) => new Spring(v, EASE_K, EASE_C, EASE_EPS);
+            e = { x: mk(from.x), y: mk(from.y), w: mk(from.w), h: mk(from.h) };
+            if (!easing.size) animate(easeStep);
+            easing.set(id, e);
+            // 这一次就画在弹簧现在的位置（不然先闪到目标，下一帧再退回来）
+            show(id, easedRect(e));
+          }
+          e.x.t = r.x;
+          e.y.t = r.y;
+          e.w.t = r.w;
+          e.h.t = r.h;
         }
-        let e = easing.get(id);
-        if (!e) {
-          const from = untrack(shownOf(id)[0]) ?? p;
-          const mk = (v: number) => new Spring(v, EASE_K, EASE_C, EASE_EPS);
-          e = { x: mk(from.x), y: mk(from.y), w: mk(from.w), h: mk(from.h) };
-          if (!easing.size) animate(easeStep);
-          easing.set(id, e);
-          // 这一次就画在弹簧现在的位置（不然先闪到目标，下一帧再退回来）
-          show(id, easedRect(e));
-        }
-        e.x.t = r.x;
-        e.y.t = r.y;
-        e.w.t = r.w;
-        e.h.t = r.h;
-      }
-      for (const id of [...easing.keys()])
-        if (!f.has(id)) {
-          easing.delete(id);
-          show(id);
-        }
-    }),
-  ),
-);
+        for (const id of [...easing.keys()])
+          if (!f.has(id)) {
+            easing.delete(id);
+            show(id);
+          }
+      }),
+    ),
+  );
 /** 渲染用：这个 Section 的框画在哪：拖卡时正缓动的框在半路上，别的就是 frames() 里的框。框和标签都按它画 */
 export const shownFrame = (id: string) => shownOf(id)[0]() ?? frames().get(id);
 

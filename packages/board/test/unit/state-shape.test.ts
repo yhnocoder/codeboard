@@ -159,6 +159,17 @@ describe("board state per board", () => {
   });
 });
 
+describe("board wiring", () => {
+  // what the board does is wired by the entries (index.tsx's wireBoard, the stories), not by importing a module: the only top-level
+  // calls elsewhere reset a module's own state on a board switch (onBoardSwitch) or make the shared root (state/root.ts)
+  const ENTRIES = ["index.tsx", "export/viewer.ts"];
+  it("starts nothing by importing a module", () => {
+    expect(
+      lines(/^(?!onBoardSwitch\()[A-Za-z_$][\w$.]*\(/, ENTRIES).filter((l) => !l.startsWith("state/root.ts:")),
+    ).toEqual([]);
+  });
+});
+
 describe("board gestures", () => {
   // a drag listens for the moves on the window (or the document): only track() in gesture.ts does that. Besides it, these follow
   // the pointer with no button held, and none of them listens for a release there

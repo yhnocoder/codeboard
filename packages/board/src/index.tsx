@@ -1,15 +1,10 @@
 import { render } from "solid-js/web";
 import { App } from "./App";
-import { onHost } from "./hostio";
-import { installKeys } from "./interact";
+import { wireBoard } from "./wire";
 import { reportFocus } from "./focus";
-import { listen, send, followHostTheme, forwardErrors } from "./host";
-import { setRefResolver, setCodeHighlighter } from "@yhnocoder/markdown";
+import { send, forwardErrors } from "./host";
 import { setKeyPassThrough } from "@yhnocoder/markdown/ui";
 import { vscodeKey } from "./ui/vscodekeys";
-import { langId } from "@codeboard/analysis/langs";
-import { noteHighlight } from "./cm/load";
-import { resolveCardRef } from "./actions";
 import "@yhnocoder/markdown/katex.css";
 import "./fonts.css";
 import "./styles.css";
@@ -19,12 +14,8 @@ import "./themes.css";
 import "./settings.css";
 
 forwardErrors();
-listen(onHost);
-installKeys();
+wireBoard();
 reportFocus();
 setKeyPassThrough(vscodeKey); // 输入框里的剪贴板、撤销、命令面板之类交给 VS Code
-setRefResolver(resolveCardRef, { missing: "Nothing with this title on the board" });
-setCodeHighlighter(noteHighlight, langId);
-followHostTheme();
 render(() => <App />, document.getElementById("root")!);
 send({ type: "ready" });

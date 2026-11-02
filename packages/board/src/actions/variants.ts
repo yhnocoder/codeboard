@@ -100,16 +100,17 @@ function absorbViews(v: Record<string, SegView>) {
   }
   putViews(put as Record<string, SegView>);
 }
-// 撤销 / 重做、同步都可能换掉显示的 Variant：盯着每张有 Variant 的卡的 active
-rooted(() =>
-  createEffect(() => {
-    for (const c of state.board.cards)
-      if (c.kind === "code" && c.variants?.length) {
-        void c.active;
-        untrack(() => ensureViews(c));
-      }
-  }),
-);
+/** 撤销 / 重做、同步都可能换掉显示的 Variant：盯着每张有 Variant 的卡的 active。启动时接一次 */
+export const wireVariantViews = () =>
+  rooted(() =>
+    createEffect(() => {
+      for (const c of state.board.cards)
+        if (c.kind === "code" && c.variants?.length) {
+          void c.active;
+          untrack(() => ensureViews(c));
+        }
+    }),
+  );
 
 /** 切到一个 Variant：换段（Link、Sidenote 行号跟过去），同一批里换展示数据 */
 export function switchVariant(id: string, vid: string) {
