@@ -82,5 +82,6 @@ E2E_WS=/path/to/repo E2E_FLOW=my-flow.cjs npm run e2e    # 同上，打开的是
 - 真得等一段固定时间的（检查某个产品定时器到点前什么都不发生、悬停延迟、测量）用 `hold(h, 毫秒, 原因)`，毫秒取产品里有名字的常量（`packages/board/src/state/timing.ts`，Markdown 编辑器的在 `@yhnocoder/markdown/ui`），原因写清这段时间里不该发生什么。
 - 一个场景单独跑最好在 20 秒以内；更长的，考虑拆开。
 - 只记录、不判对错的场景放进 `tiers.json` 的 `manual`，默认不跑。
+- 场景默认开在 `open()` 的 fixture 宿主上（`harness.ts`：nano-vllm 的固定数据，粗糙的高亮、按名字找定义、编出来的新版本），测的是白板自己。要测宿主对白板做的事（存储、子白板和面包屑、共享卡、调用解析、跨语言）就用 `hostBoards()`（`fixtures.ts`，`realhost.ts`）：真的宿主（`@codeboard/host` 的 `startHost`，Node 版 Workspace，存储在临时目录），它开的每个白板是一个页面，`run.open(id)` 打开、`run.card(文件, 符号)` 按 Add Function 的做法建卡、`run.ask(…)` 不经页面问宿主；场景自己要假的部分（语言服务、剪贴板）改 `run.ws`，要改宿主的回复用 `reply`。不要再手写模仿宿主行为的消息处理。
 - 量耗时的场景见上面"怎么算失败"：量 CPU 时间或用页面时钟，不量墙钟；不要新加 `solo`。
 - 改了很基础的东西（store、渲染）又想在本地多跑一些：`npm run check -- --all`。

@@ -655,11 +655,12 @@ test("subboardLinkPicker", async () => {
     res.missing = want.filter((w) => !all.includes(w));
     res.banned = all.filter((x) => banned.some((b) => x === b || x.endsWith(` › ${b}`)));
     await page.keyboard.type("深处");
+    // the host also lists the cards of the project's other boards below this board's (boardRefs): Deep is one of them
     await until(
       h,
       "the picker narrows to the deep card",
       async () =>
-        (await page.locator(".md-menu button .lb").allTextContents()).join() === "nano-vllm 调度器 › Deep › 深处的笔记",
+        (await page.locator(".md-menu button .lb").allTextContents())[0] === "nano-vllm 调度器 › Deep › 深处的笔记",
     );
     await page.keyboard.press("Enter");
     await page.keyboard.press("Escape");

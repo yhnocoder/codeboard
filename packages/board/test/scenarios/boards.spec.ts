@@ -68,7 +68,7 @@ async function undoTurnIntoBoard(res: Record<string, unknown>) {
   const boards = async () => (await t.store.list()).map((m) => m.id).filter((id) => id !== "bParent");
   const frame = () => t.store.peek("bParent")!.cards.find((c) => c.kind === "board");
   await page.locator(`.card[data-id="${post.id}"] .chead`).click({ position: { x: 120, y: 10 } });
-  await page.keyboard.press("Meta+Shift+b");
+  await page.keyboard.press("ControlOrMeta+Shift+b");
   await page.locator(".dialog input").fill("Post");
   await page.locator(".dialog button", { hasText: "Create Board" }).click();
   await until(h, "Turn into Board makes the board and its frame", async () => (await boards()).length && frame());

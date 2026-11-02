@@ -1,105 +1,36 @@
-// Shared cards: two boards in two browsers, a host built on the real core Storage (temp dir) relaying
-// patches, shared updates, the card clipboard, Delete Everywhere and the "⧉ N boards" / "← N" info, like packages/host/src/hub.ts.
+// Shared cards: two boards in two browsers on the real host (realhost.ts) relaying patches, shared updates, the card clipboard,
+// Delete Everywhere and the "⧉ N boards" / "← N" info
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { emptyBoard, sharedInfo, type Board, type Segment, type SegView } from "@codeboard/core";
-import { nodeFs, pasteClip, Storage, type CardClip } from "@codeboard/host/testing";
-import { shot, symCard, findSym, viewOf, put, OUT, type Host } from "../harness";
-import { test, open, check, light, expect, until, idle } from "../fixtures";
+import { emptyBoard, type Board } from "@codeboard/core";
+import { shot, symCard, findSym, put, newerVersion, type Host } from "../harness";
+import { test, check, light, expect, until, idle, hostBoards } from "../fixtures";
 
-const views = (segs: Segment[]): Record<string, SegView> => Object.fromEntries(segs.map((s) => [s.id, viewOf(s)]));
-
-/** One browser per board; the host side is core Storage on a temp dir, routed like BoardHub / handlers in packages/host */
+/** One browser per board, both open on the real host; the diff of an update comes from the harness (a made-up newer version) */
 async function sharedHost(boards: Board[]) {
-  const dir = path.join(OUT, `shared-store-${process.pid}`); // one per worker: repeats of this scenario run side by side
-  fs.rmSync(dir, { recursive: true, force: true });
-  const store = new Storage(nodeFs, { dir: () => dir });
-  for (const b of boards) await store.save(b);
-  const hosts = new Map<string, Host>();
   const opened: { id: string; card?: string; line?: number }[] = [];
-  let clip: CardClip | undefined;
-  const sentInfo = new Map<string, string>();
-  const pushInfo = async () => {
-    for (const [id, h] of hosts) {
-      const cards = sharedInfo(store.cached(), id);
-      const k = JSON.stringify(cards);
-      if (sentInfo.get(id) === k) continue;
-      sentInfo.set(id, k);
-      await h.post({ type: "sharedInfo", cards });
-    }
-  };
-  let infoT: ReturnType<typeof setTimeout> | undefined;
-  store.onDidSave(() => {
-    clearTimeout(infoT);
-    infoT = setTimeout(() => void pushInfo(), 60);
-  });
-  store.onDidShare((e) => {
-    for (const [id, h] of hosts) {
-      if (id === e.from) continue;
-      const refs = store.refsOf(id);
-      const cards = e.cards.filter((sc) => refs.has(sc.card.id));
-      if (!cards.length) continue;
-      const segs = cards.flatMap((sc) =>
-        sc.items.includes(sc.card.id) && sc.card.kind === "code" ? sc.card.segments : [],
-      );
-      void h.post({ type: "shared", cards, views: segs.length ? views(segs) : undefined });
-    }
-  });
-  store.onDidRemoveShared((e) => {
-    for (const [id, h] of hosts)
-      if (id !== e.from && e.boards.includes(id)) void h.post({ type: "sharedGone", cards: [e.card] });
-  });
-  for (const b of boards) {
-    const id = b.id;
-    const h = await open({
-      board: (await store.load(id))!,
+  const run = await hostBoards(boards, {
+    page: {
       light,
       w: 1200,
       h: 800,
       on: async (m, reply) => {
-        switch (m.type) {
-          case "patch": {
-            const skipped = await store.patch(id, m.patch, { undo: m.undo });
-            if (skipped.length) await hosts.get(id)!.post({ type: "shared", cards: skipped });
-            await reply(m.req, { skipped: skipped.length });
-            return true;
-          }
-          case "copyCards":
-            clip = { board: id, cards: m.cards, text: m.text };
-            for (const x of hosts.values())
-              await x.post({ type: "host", host: { clip: { board: id, n: m.cards.length } } });
-            return true;
-          case "pasteCards": {
-            const r = await pasteClip(store, clip, id, { text: m.text, copy: !!m.copy });
-            const segs = (r?.cards ?? []).flatMap((x) => (x.card.kind === "code" ? x.card.segments : []));
-            await reply(m.req, r && { ...r, views: views(segs) });
-            return true;
-          }
-          case "deleteEverywhere":
-            await reply(m.req, (await store.deleteEverywhere(m.card, id)).length);
-            return true;
-          case "openBoard": {
-            opened.push({ id: m.id, card: m.card, line: m.line });
-            if (m.card) await hosts.get(m.id)?.post({ type: "reveal", card: m.card });
-            return true;
-          }
-          case "confirm":
-            await reply(m.req, true);
-            return true;
-          default:
-            return false;
-        }
+        if (m.type === "openBoard") opened.push({ id: m.id, card: m.card, line: m.line });
+        if (m.type !== "diff") return false;
+        await reply(m.req, newerVersion(m.seg));
+        return true;
       },
-    });
-    hosts.set(id, h);
-  }
-  await pushInfo();
+    },
+  });
+  const hosts = new Map<string, Host>();
+  for (const b of boards) hosts.set(b.id, await run.open(b.id));
+  const store = run.host.store;
   return {
     store,
-    dir,
+    dir: store.dir(),
     hosts,
     opened,
-    clip: () => clip,
+    clip: () => run.host.hub.clip,
     close: async () => {
       for (const h of hosts.values()) await h.page.context().close();
     },

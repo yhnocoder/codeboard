@@ -1,33 +1,6 @@
-import * as fs from "node:fs";
-import * as path from "node:path";
-import {
-  emptyBoard,
-  DEFAULT_SETTINGS,
-  type CodeCard,
-  type SegView,
-  type HostToBoard,
-  type NameHit,
-} from "@codeboard/core";
-import { shot, put, symCard, findSym, REPO, type Host } from "../harness";
-import {
-  analysisOf,
-  callVars,
-  cardForFileSym,
-  expand,
-  nodeWorkspace,
-  peek,
-  search,
-  searchName,
-  searchPick,
-  startAnalysis,
-  viewsFor,
-  type Storage,
-  HostContext,
-} from "@codeboard/host/testing";
-import { test, open, verdict, expect, until, idle } from "../fixtures";
-
-/** The host the scenario talks to (each setup makes a new one) */
-let cx: HostContext;
+import { emptyBoard, type CodeCard, type NameHit } from "@codeboard/core";
+import { shot, put, symCard, findSym, type Host } from "../harness";
+import { test, open, verdict, expect, until, idle, hostBoards } from "../fixtures";
 
 const nv = (qual: string) => {
   const s = findSym(qual);
@@ -193,73 +166,24 @@ async function expandColumns(res: Record<string, unknown>) {
   return right(step.id, sched) && right(sched, alloc) && r(post).x === r(sched).x && r(post).y > r(sched).y && z >= 0.6;
 }
 
-/** 真的宿主（resolve.ts、名字索引）读 examples/nano-vllm */
+/** 真的宿主（realhost.ts：resolve.ts、名字索引）读 examples/nano-vllm；names 改宿主回的按名字搜到的定义 */
 async function nanoHost(
   cards: { rel: string; qual: string; x: number; y: number }[],
   o: { w?: number; h?: number; names?: (hs: NameHit[]) => NameHit[] } = {},
 ) {
-  const NV = path.join(REPO, "examples/nano-vllm");
-  cx = new HostContext(nodeWorkspace(NV));
-  await startAnalysis();
-  cx.index.start();
-  await cx.index.ready();
+  const run = await hostBoards([], {
+    page: { w: o.w ?? 1400, h: o.h ?? 900 },
+    reply: (ask, data) => (ask.type === "searchName" && o.names ? o.names(data as NameHit[]) : data),
+  });
   const B = emptyBoard("bNv", "nano-vllm");
   const ids: string[] = [];
   for (const c of cards) {
-    const abs = path.join(NV, c.rel);
-    const sym = analysisOf(cx.langOf(abs), fs.readFileSync(abs, "utf8")).symbols.find((s) => s.qual === c.qual)!;
-    const card = (await cardForFileSym(cx, abs, sym))!.card as CodeCard;
+    const card = await run.card(c.rel, c.qual);
     put(B, card, c.x, c.y, 560);
     ids.push(card.id);
   }
-  const views: Record<string, SegView> = await viewsFor(
-    cx,
-    B.cards.flatMap((c) => (c.kind === "code" ? c.segments : [])),
-  );
-  const h = await open({
-    board: B,
-    w: o.w ?? 1400,
-    h: o.h ?? 900,
-    on: async (m, reply) => {
-      switch (m.type) {
-        case "ready":
-          return true;
-        case "expand":
-          await reply(m.req, await expand(cx, m));
-          return true;
-        case "peek":
-          await reply(m.req, await peek(cx, m));
-          return true;
-        case "views":
-          await reply(m.req, await viewsFor(cx, m.segs));
-          return true;
-        case "callVars":
-          await reply(m.req, await callVars(cx, m));
-          return true;
-        case "searchName": {
-          const hs = await searchName(cx, m.name);
-          await reply(m.req, o.names ? o.names(hs) : hs);
-          return true;
-        }
-        case "searchPick":
-          await reply(m.req, await searchPick(cx, m.item));
-          return true;
-        case "prefetch":
-          return true;
-        default:
-          return false;
-      }
-    },
-  });
-  const init: HostToBoard = {
-    type: "init",
-    board: B,
-    boards: [{ id: B.id, name: B.name, cards: B.cards.length }],
-    views,
-    stale: {},
-    host: { assetBase: "", target: true, settings: { ...DEFAULT_SETTINGS } },
-  };
-  await h.post(init);
+  await run.host.store.save(B);
+  const h = await run.open(B.id);
   await h.page.locator(".card").first().waitFor();
   await idle(h);
   return { h, ids };
@@ -450,11 +374,9 @@ async function readableNote(res: Record<string, unknown>) {
 
 /** ⌘K 在 nano-vllm 里搜 step：只列名字 / 全名里有 step 的符号（不列 main、Context、get_context、…__init__） */
 async function searchStep(res: Record<string, unknown>) {
-  cx = new HostContext(nodeWorkspace(path.join(REPO, "examples/nano-vllm")));
-  await startAnalysis();
-  cx.index.start();
-  await cx.index.ready();
-  const items = await search(cx, null as unknown as Storage, "step", "symbols");
+  const run = await hostBoards([emptyBoard("bS", "search")]);
+  await run.open("bS");
+  const items = await run.ask<"search">({ type: "search", q: "step", scope: "symbols" });
   res.labels = items.map((i) => i.label);
   return (
     items.length > 0 && items.every((i) => i.label.toLowerCase().includes("step")) && items[0].label.endsWith(".step")

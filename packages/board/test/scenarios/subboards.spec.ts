@@ -78,7 +78,7 @@ test("turnIntoBoardUndo", async () => {
       await page
         .locator(`.card[data-id="${id}"] .chead`)
         .click({ position: { x: 120, y: 10 }, modifiers: i ? ["Shift"] : [] });
-    await page.keyboard.press("Meta+Shift+b");
+    await page.keyboard.press("ControlOrMeta+Shift+b");
     await page.locator(".dialog input").fill(name);
     const made = () =>
       t.store
@@ -438,7 +438,7 @@ async function run(res: Record<string, unknown>) {
       await page
         .locator(`.card[data-id="${c.id}"] .chead`)
         .click({ position: { x: 120, y: 10 }, modifiers: i ? ["Shift"] : [] });
-    await page.keyboard.press("Meta+Shift+b");
+    await page.keyboard.press("ControlOrMeta+Shift+b");
     await page.locator(".dialog input").fill("Scheduler");
     await page.locator(".dialog button", { hasText: "Create Board" }).click();
     await until(h, "Turn into Board makes the frame", () =>
