@@ -43,7 +43,7 @@ export class BoardWebviews {
   constructor(private ctx: vscode.ExtensionContext) {
     // 白板界面是构建出来的（npm run build）：少了就是构建坏了，激活时说清楚，不开一块没样式的白板
     const dir = path.join(ctx.extensionUri.fsPath, "media", "board");
-    for (const f of ["board.js", "board.css"])
+    for (const f of ["board.js", "boot.js", "board.css"])
       if (!fs.existsSync(path.join(dir, f)))
         throw new Error(`CodeBoard: ${path.join(dir, f)} is missing (build the board with npm run build)`);
   }

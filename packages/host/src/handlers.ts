@@ -194,7 +194,7 @@ export function makeHandler(cx: HostContext, panels: BoardHost, mediaDir: string
       return { ...r, views: segs.length ? await viewsFor(cx, segs) : {} };
     },
     newBoard: async (p, m) => {
-      // Turn into Board：白板拆好的新白板（schema 校验一遍）。共享卡在新白板上还是共享卡；放在父白板的组里
+      // Turn into Board：白板拆好的新白板（schema 校验一遍；存的就是收到的这个对象，消息是宿主自己的一份）。共享卡在新白板上还是共享卡；放在父白板的组里
       const b = checkBoard(m.board);
       if (!SAFE_ID.test(b.id) || (await store.load(b.id))) throw new Error("Bad board id.");
       const refs = [...store.refsOf(p.id)].filter((id) => b.cards.some((c) => c.id === id));
