@@ -4,8 +4,8 @@
 // - module-level mutable state (a store, an empty Map or Set, a let) is the current board's and declared with state/root.ts's
 //   board* helpers, which reset it on a board switch, unless it is listed below as outliving a board
 // - drags go through gesture.ts: no other file listens on the window or the document for pointer moves (but the listed trackers,
-//   which never listen for a release there), and an undo step for a gesture (beginGesture) is always held with holdGesture, so a
-//   board switch drops it
+//   which never listen for a release there), a release is waited for there only while holding the gesture, and an undo step for a
+//   gesture (beginGesture) is always held with holdGesture, so a board switch drops it
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -178,7 +178,6 @@ describe("board gestures", () => {
     "state/hover.ts", // which card or link the pointer is over
     "state/measure.ts", // the last pointer position
     "state/blocks.ts", // the Note block under the pointer
-    "stickers/Picker.tsx", // the sticker that follows the pointer until a click places it
   ]);
   const SHIELD = "ui/shield.ts"; // the pan shield: page-long passive listeners that take it away on any move or release, no drag
   const listens = (t: string, kinds: string) =>
@@ -191,6 +190,17 @@ describe("board gestures", () => {
     // a tracker that stopped listening comes off the list
     expect(moves.sort()).toEqual([...TRACKERS].sort());
     expect(moves.filter((f) => listens(fs.readFileSync(path.join(SRC, f), "utf8"), "up|cancel|end"))).toEqual([]);
+  });
+
+  it("wait for a release on the window only while holding the gesture, so a board switch drops it", () => {
+    const loose = walk(SRC)
+      .filter((f) => !["gesture.ts", SHIELD].includes(rel(f)))
+      .filter((f) => {
+        const t = fs.readFileSync(f, "utf8");
+        return listens(t, "up|cancel|end") && !/\bholdGesture\(/.test(t);
+      })
+      .map(rel);
+    expect(loose).toEqual([]);
   });
 
   it("hold their undo step with holdGesture, so a board switch drops it", () => {

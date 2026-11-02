@@ -9,13 +9,14 @@ import { sel } from "../state/selection";
 import { editing } from "../state/ui";
 import { cam } from "../state/camera";
 import { kbd } from "../keymap";
+import { holdGesture } from "../gesture";
 
 const keyOf = (s: StaticSel | null) => (s ? `${s.id}:${s.range.from}:${s.range.to}` : "");
 
 export function StaticFormat() {
   let el: HTMLDivElement | undefined,
     timer: ReturnType<typeof setTimeout> | undefined,
-    down = false,
+    down: (() => void) | null = null,
     last = "";
   const [cur, setCur] = createSignal<StaticSel | null>(null);
   const arm = () => {
@@ -42,12 +43,18 @@ export function StaticFormat() {
     setCur(null);
     arm();
   };
+  // a press selecting text (the browser's own drag, so not track()): the toolbar waits for its release. A board switch halfway drops it
   const press = (e: PointerEvent) => {
-    if (e.button === 0 && !(e.target as Element).closest?.(".md-bubble")) down = true;
+    if (e.button !== 0 || (e.target as Element).closest?.(".md-bubble")) return;
+    down?.();
+    down = holdGesture(() => {
+      down = null;
+    });
   };
   const release = () => {
     if (!down) return;
-    down = false;
+    down();
+    down = null;
     if (staticSel()) {
       setCur(null);
       arm();
@@ -61,6 +68,7 @@ export function StaticFormat() {
     document.removeEventListener("selectionchange", check);
     window.removeEventListener("pointerdown", press, true);
     window.removeEventListener("pointerup", release, true);
+    down?.();
   });
   // 换了选中的卡、进了编辑：选区还在也不算了
   // Entering edit: just drop it. Reading the selection there (staticSel) would force a layout of the editor being mounted

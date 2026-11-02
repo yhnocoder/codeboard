@@ -24,6 +24,7 @@ import { send } from "../host";
 import { cam, camMoving, lod } from "../state/camera";
 import { shownIcon, stickerClick } from "../actions/questions";
 import { useOverlay } from "../ui/overlay";
+import { followPointer } from "../gesture";
 
 const MAX = 240; // 大图标包只画前这么多个（搜索缩小范围）
 
@@ -147,9 +148,7 @@ export function PlacingGhost() {
     <Show when={placing()}>
       {(p) => {
         const [pt, setPt] = createSignal({ x: -100, y: -100 });
-        const mv = (e: PointerEvent) => setPt({ x: e.clientX, y: e.clientY });
-        window.addEventListener("pointermove", mv, true);
-        onCleanup(() => window.removeEventListener("pointermove", mv, true));
+        onCleanup(followPointer((e) => setPt({ x: e.clientX, y: e.clientY })));
         return (
           <div class="stkghost" style={{ left: `${pt().x}px`, top: `${pt().y}px` }}>
             <Glyph icon={p().icon} color={p().color} size={28} />
