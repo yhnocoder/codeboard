@@ -332,3 +332,82 @@ export function splitSegment(
     });
   });
 }
+
+/** Rename Board */
+export function renameBoard(env: CommandEnv, name: string) {
+  env.edit((b) => {
+    b.name = name;
+  });
+}
+
+/** A card's description; blank clears it */
+export function setCardDesc(env: CommandEnv, id: string, v: string) {
+  env.edit((b) => {
+    const c = findCard(b, id)?.card;
+    if (c) c.desc = v.trim() || undefined;
+  });
+}
+
+/** Fold or unfold a card */
+export function toggleCollapsed(env: CommandEnv, id: string) {
+  env.edit((b) => {
+    const p = b.place[id];
+    if (p) p.collapsed = !p.collapsed || undefined;
+  });
+}
+
+/**
+ * Lock or unlock cards (a Compare's column: the Compare) and Sections together: all locked already unlocks them, else all lock.
+ * Whether they are locked now, or null when there was nothing to lock
+ */
+export function toggleLock(env: CommandEnv, cards: string[], sections: string[] = []): boolean | null {
+  const b0 = env.board();
+  const cs = [...new Set(cards.map((i) => findCard(b0, i)?.host.id).filter((i): i is string => !!i))];
+  const ss = sections.filter((id) => b0.sections.some((s) => s.id === id));
+  if (!cs.length && !ss.length) return null;
+  const on = !(cs.every((c) => b0.place[c]?.locked) && ss.every((id) => b0.sections.find((s) => s.id === id)?.locked));
+  env.edit((b) => {
+    for (const c of cs) {
+      const k = b.place[c];
+      if (k) k.locked = on || undefined;
+    }
+    for (const id of ss) {
+      const k = b.sections.find((q) => q.id === id);
+      if (k) k.locked = on || undefined;
+    }
+  });
+  return on;
+}
+
+/** Tilt cards (a Compare's column: the Compare): all tilted already straightens them, else all tilt */
+export function toggleTilt(env: CommandEnv, ids: string[]) {
+  const b0 = env.board();
+  const cs = [...new Set(ids.map((i) => findCard(b0, i)?.host.id).filter((i): i is string => !!i))];
+  if (!cs.length) return;
+  const on = !cs.every((i) => findCard(b0, i)?.card.tilt);
+  env.edit((b) => {
+    for (const i of cs) {
+      const k = findCard(b, i)?.card;
+      if (k) k.tilt = on || undefined;
+    }
+  });
+}
+
+/** A Compare's Swap, Unified or Hide Same Lines switched */
+export function toggleCompareView(env: CommandEnv, id: string, k: "swap" | "unified" | "hideSame") {
+  env.edit((b) => {
+    const c = findCard(b, id)?.card;
+    if (c?.kind === "compare") c[k] = !c[k];
+  });
+}
+
+/**
+ * Delete Everywhere from another board, already done by the host: the cards it took that are on this board go, with what refers
+ * to them. Applied as a sync to the board as it is, not a user's edit
+ */
+export function dropGone(b: Board, ids: string[]) {
+  removeCards(
+    b,
+    ids.filter((id) => b.cards.some((c) => c.id === id)),
+  );
+}

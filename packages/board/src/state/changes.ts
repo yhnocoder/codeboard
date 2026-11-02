@@ -4,7 +4,6 @@ import { produce, reconcile, unwrap } from "solid-js/store";
 import {
   applyPatch,
   applySharedUpdate,
-  removeCards,
   type Board,
   type BoardPatch,
   type SegView,
@@ -12,6 +11,7 @@ import {
 } from "@codeboard/core";
 import { ask } from "../host";
 import { createHistory, createSave, type Doc, type HistoryPorts } from "@codeboard/core/history";
+import { dropGone } from "@codeboard/core/commands";
 import { noteBlocks } from "../md/blocks";
 import { setState, state } from "./store";
 import { keepOn, unselectCard } from "./selection";
@@ -107,12 +107,7 @@ export function syncShared(cards: SharedUpdate[], views?: Record<string, SegView
 /** Another board's Delete Everywhere removed these shared cards (the host already did) */
 export function syncGone(ids: string[]) {
   flushSave();
-  sync((b) =>
-    removeCards(
-      b,
-      ids.filter((id) => b.cards.some((c) => c.id === id)),
-    ),
-  );
+  sync((b) => dropGone(b, ids));
   save.alignSent();
 }
 /** Another window changed this board's file and the host merged it in when writing */

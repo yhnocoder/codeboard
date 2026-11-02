@@ -1,5 +1,14 @@
 // Web cards and Link Lists: merging into a list, taking a link out of one, removing, renaming and reordering its rows
-import { findCard, uid, type Card, type LinkItem, type LinksCard, type Place, type WebCard } from "../model";
+import {
+  findCard,
+  uid,
+  type Card,
+  type LinkItem,
+  type LinksCard,
+  type Place,
+  type WebCard,
+  type WebStyle,
+} from "../model";
 import { defaultWidth } from "../layout";
 import { removeCards } from "../edit";
 import type { CommandEnv } from "./env";
@@ -118,6 +127,17 @@ export function toggleItemRich(env: CommandEnv, id: string, item: string) {
   });
 }
 
+/**
+ * A Link List's rich / compact default. Rows set apart keep their look; those it now matches are no longer kept apart, as
+ * toggleItemRich does not keep a row's choice equal to the list's
+ */
+export function setListRich(env: CommandEnv, id: string, rich: boolean) {
+  editList(env, id, (c) => {
+    c.rich = rich || undefined;
+    for (const it of c.items) if (it.rich === rich) it.rich = undefined;
+  });
+}
+
 /** A Link List's row renamed; empty, or the page's own title, shows the page's title again */
 export function renameLinkItem(env: CommandEnv, id: string, item: string, v: string) {
   editList(env, id, (c) => {
@@ -133,5 +153,13 @@ export function moveLinkItem(env: CommandEnv, id: string, item: string, to: numb
     if (i < 0) return;
     const [it] = c.items.splice(i, 1);
     c.items.splice(Math.max(0, Math.min(c.items.length, to > i ? to - 1 : to)), 0, it);
+  });
+}
+
+/** A Web card's look (compact, rich…); none = automatic */
+export function setWebStyle(env: CommandEnv, id: string, style: WebStyle | undefined) {
+  env.edit((b) => {
+    const c = findCard(b, id)?.card;
+    if (c?.kind === "web") c.style = style;
   });
 }

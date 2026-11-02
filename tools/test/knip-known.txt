@@ -1,2 +1,0 @@
-# knip findings to clear (tools/test/knip.mjs): <kind> <file> <name>
-

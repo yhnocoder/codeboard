@@ -356,3 +356,11 @@ export function setGenRun(env: CommandEnv, id: string, v: string) {
     }
   });
 }
+
+/** An arrow's RPC mark taken off */
+export function removeRpc(env: CommandEnv, id: string) {
+  env.edit((b) => {
+    const l = b.links.find((k) => k.id === id);
+    if (l) delete l.rpc;
+  });
+}

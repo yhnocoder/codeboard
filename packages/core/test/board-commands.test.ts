@@ -14,9 +14,17 @@ import {
   cardToSidenote,
   compare,
   deleteItems,
+  dropGone,
   mergeCards,
   mergeIntoLinkList,
+  moveOutOfParent,
   separate,
+  setListRich,
+  toggleItemRich,
+  toggleLock,
+  toggleTilt,
+  toggleWrap,
+  writeSidenote,
   type Choice,
   type CommandEnv,
 } from "../src/commands";
@@ -146,5 +154,93 @@ describe("board commands", () => {
     const l = b.cards.find((c) => c.id === "w2");
     expect(l?.kind === "links" && l.items.map((i) => i.url)).toEqual(["https://w2.example", "https://w1.example"]);
     expect(b.cards.some((c) => c.id === "w1")).toBe(false);
+  });
+
+  it("moves a Section out of its parent one level up", () => {
+    const { b, env, log } = setup([]);
+    const sec = (id: string, parent?: string) => ({ id, title: id, x: 0, y: 0, w: 100, h: 100, parent });
+    b.sections.push(sec("top"), sec("mid", "top"), sec("low", "mid"));
+    moveOutOfParent(env, "low");
+    expect(b.sections.find((s) => s.id === "low")?.parent).toBe("top");
+    moveOutOfParent(env, "mid");
+    expect(b.sections.find((s) => s.id === "mid")?.parent).toBeUndefined();
+    expect(log.edits).toBe(2);
+    expect(danglingRefs(b)).toEqual([]);
+  });
+
+  it("writes a Text sidenote, removes it written empty, and makes no step when unchanged", () => {
+    const { b, env, log } = setup([code("a")]);
+    b.sidenotes.push({ id: "n", at: { card: "a" }, kind: "text", md: "x" });
+    writeSidenote(env, "n", "x");
+    expect(log.edits).toBe(0);
+    writeSidenote(env, "n", "y");
+    expect(b.sidenotes).toMatchObject([{ id: "n", md: "y" }]);
+    writeSidenote(env, "n", "  ");
+    expect(b.sidenotes).toEqual([]);
+    expect(log.edits).toBe(2);
+  });
+
+  it("drops a Link List row's own look once the list's default matches it", () => {
+    const { b, env } = setup([
+      {
+        id: "l",
+        kind: "links",
+        items: [
+          { id: "a", url: "https://a.example" },
+          { id: "b", url: "https://b.example" },
+        ],
+      },
+    ]);
+    const list = () => b.cards[0] as Extract<Card, { kind: "links" }>;
+    toggleItemRich(env, "l", "a");
+    expect(list().items[0].rich).toBe(true);
+    setListRich(env, "l", true);
+    expect(list().rich).toBe(true);
+    expect(list().items.map((i) => i.rich)).toEqual([undefined, undefined]);
+    toggleItemRich(env, "l", "b");
+    expect(list().items[1].rich).toBe(false);
+    setListRich(env, "l", false);
+    expect(list().rich).toBeUndefined();
+    expect(list().items.map((i) => i.rich)).toEqual([undefined, undefined]);
+  });
+
+  it("locks cards and Sections together, a Compare's column as the Compare, and unlocks them once all are locked", () => {
+    const { b, env } = setup([code("a"), code("b")]);
+    const id = compare(env, ["a", "b"])!;
+    b.sections.push({ id: "s", title: "S", x: 0, y: 0, w: 100, h: 100 });
+    expect(toggleLock(env, ["nope"], ["gone"])).toBeNull();
+    expect(toggleLock(env, ["a"], ["s"])).toBe(true);
+    expect(b.place[id].locked).toBe(true);
+    expect(b.sections[0].locked).toBe(true);
+    b.sections[0].locked = undefined;
+    expect(toggleLock(env, [id], ["s"])).toBe(true);
+    expect(toggleLock(env, [id], ["s"])).toBe(false);
+    expect(b.place[id].locked).toBeUndefined();
+    expect(b.sections[0].locked).toBeUndefined();
+  });
+
+  it("tilts and wraps all the cards unless all are already", () => {
+    const { b, env } = setup([code("a"), code("b"), note("n", "x")]);
+    const card = (id: string) => b.cards.find((c) => c.id === id) as Card & { wrap?: boolean };
+    card("a").tilt = true;
+    toggleTilt(env, ["a", "b"]);
+    expect([card("a").tilt, card("b").tilt]).toEqual([true, true]);
+    toggleTilt(env, ["a", "b"]);
+    expect([card("a").tilt, card("b").tilt]).toEqual([undefined, undefined]);
+    toggleWrap(env, ["a", "n"]);
+    expect([card("a").wrap, card("n").wrap]).toEqual([true, undefined]);
+    toggleWrap(env, ["a", "b"]);
+    expect([card("a").wrap, card("b").wrap]).toEqual([true, true]);
+    toggleWrap(env, ["a", "b"]);
+    expect([card("a").wrap, card("b").wrap]).toEqual([undefined, undefined]);
+  });
+
+  it("drops the cards another board deleted everywhere, with their arrows", () => {
+    const { b } = setup([code("a"), code("b")]);
+    b.links.push({ id: "l", from: { card: "a" }, to: { card: "b" } });
+    dropGone(b, ["a", "elsewhere"]);
+    expect(b.cards.map((c) => c.id)).toEqual(["b"]);
+    expect(b.links).toEqual([]);
+    expect(danglingRefs(b)).toEqual([]);
   });
 });

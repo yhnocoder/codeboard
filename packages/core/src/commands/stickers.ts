@@ -71,3 +71,19 @@ export function linkAnswer(env: CommandEnv, id: string, card: string) {
     if (s) s.q = { ...(s.q ?? { md: "" }), done: true, answer: card };
   });
 }
+
+/** A sticker unpinned from what it is on: it stays where it is drawn (`at`, the shell's world position), on the canvas */
+export function detachSticker(env: CommandEnv, id: string, at: { x: number; y: number }) {
+  env.edit((b) => {
+    const k = b.stickers.find((q) => q.id === id);
+    if (k?.at.kind === "canvas") k.at = { kind: "canvas", x: Math.round(at.x), y: Math.round(at.y), size: k.at.size };
+  });
+}
+
+/** A canvas sticker's size */
+export function setStickerSize(env: CommandEnv, id: string, size: number) {
+  env.edit((b) => {
+    const k = b.stickers.find((q) => q.id === id);
+    if (k?.at.kind === "canvas") k.at.size = size;
+  });
+}

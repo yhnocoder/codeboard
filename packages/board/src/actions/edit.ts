@@ -1,7 +1,6 @@
 import { untrack } from "solid-js";
 import {
   overlaps,
-  findCard,
   isCode,
   cardTitle,
   segOf,
@@ -14,7 +13,6 @@ import {
   type Card,
   type CodeCard,
   type CompareCard,
-  type Section,
   type Rect,
   type NoteLayout,
 } from "@codeboard/core";
@@ -22,7 +20,6 @@ import * as C from "@codeboard/core/commands";
 import { commandEnv } from "./env";
 import { LANGS, langLabel } from "@codeboard/analysis/langs";
 import { state, cardById, hostOf, rectOf, placeOf, collapsedAway } from "../state/store";
-import { mutate } from "../state/changes";
 import { sel, select, clearSel, setLineSel, type LineSel } from "../state/selection";
 import { toast } from "../state/toast";
 import { animate, Spring } from "../state/camera";
@@ -224,12 +221,7 @@ export function copyCard(c: CodeCard) {
 
 export const compareTitle = (c: CompareCard) => cardTitle(c, state.board);
 export const renameCard = (id: string, v: string) => C.renameCard(commandEnv, id, v);
-export function setDesc(id: string, v: string) {
-  mutate((b) => {
-    const c = findCard(b, id)?.card;
-    if (c) c.desc = v.trim() || undefined;
-  });
-}
+export const setDesc = (id: string, v: string) => C.setCardDesc(commandEnv, id, v);
 /** 改 Note 的字；字删光了这张 Note 就删掉（同一步，一次撤销就回来）。layout: the editor changed table widths, row
  *  heights or code wrap (null = all automatic again); left out = unchanged */
 export const setNoteText = (id: string, v: string, layout?: NoteLayout | null) =>
@@ -268,44 +260,12 @@ export function langMenu(id: string, el: Element) {
     r.bottom + 4,
   );
 }
-export function toggleHide(id: string, k: "comments" | "docstrings" | "blank") {
-  mutate((b) => {
-    const c = findCard(b, id)?.card;
-    if (isCode(c)) c.hide = { ...c.hide, [k]: !c.hide?.[k] };
-  });
-}
-export function toggleWrap(ids: string[]) {
-  const cs = ids.map((i) => cardById(i)?.card).filter(isCode);
-  if (!cs.length) return;
-  const on = !cs.every((c) => c.wrap);
-  mutate((b) => {
-    for (const c of cs) {
-      const k = findCard(b, c.id)?.card;
-      if (isCode(k)) k.wrap = on || undefined;
-    }
-  });
-}
-export function toggleCollapse(id: string) {
-  mutate((b) => {
-    const p = b.place[id];
-    if (p) p.collapsed = !p.collapsed || undefined;
-  });
-}
+export const toggleHide = (id: string, k: "comments" | "docstrings" | "blank") => C.toggleCodeHide(commandEnv, id, k);
+export const toggleWrap = (ids: string[]) => C.toggleWrap(commandEnv, ids);
+export const toggleCollapse = (id: string) => C.toggleCollapsed(commandEnv, id);
 export function toggleLock(cards: string[], sections: string[] = []) {
-  const cs = [...new Set(cards.map((i) => cardById(i)?.host.id).filter(Boolean) as string[])];
-  const ss = sections.map(sectionById).filter(Boolean) as Section[];
-  if (!cs.length && !ss.length) return;
-  const on = !(cs.every((c) => placeOf(c).locked) && ss.every((s) => s.locked));
-  mutate((b) => {
-    for (const c of cs) {
-      const k = b.place[c];
-      if (k) k.locked = on || undefined;
-    }
-    for (const s of ss) {
-      const k = b.sections.find((q) => q.id === s.id);
-      if (k) k.locked = on || undefined;
-    }
-  });
+  const on = C.toggleLock(commandEnv, cards, sections);
+  if (on === null) return;
   toast(on ? "Locked. It stays put; code inside still works." : "Unlocked");
 }
 /** 符号找不到时选 Keep Old Version：就当成一张钉死的卡，不再提示 */
@@ -317,10 +277,7 @@ export function keepLost(cardId: string) {
       .filter((s) => state.stale[s.id]?.state === "lost" || state.stale[s.id]?.state === "many")
       .map((s) => s.id),
   );
-  mutate((b) => {
-    const k = findCard(b, cardId)?.card;
-    if (isCode(k)) k.keepOld = true;
-  });
+  C.keepOldVersion(commandEnv, cardId);
 }
 export function missingNote(c: CodeCard): string | null {
   const st = c.segments.map((s) => state.stale[s.id]?.state);
@@ -601,25 +558,14 @@ export function fitSections(ids: string[]) {
     },
   );
 }
-export function renameSection(id: string, v: string) {
-  mutate((b) => {
-    const s = b.sections.find((q) => q.id === id);
-    if (s) s.title = v.trim() || "Untitled Section";
-  });
-}
+export const renameSection = (id: string, v: string) => C.renameSection(commandEnv, id, v);
+export const setSectionColor = (id: string, color: string | undefined) => C.setSectionColor(commandEnv, id, color);
+export const moveOutOfParent = (id: string) => C.moveOutOfParent(commandEnv, id);
+/** A Compare's Swap, Unified, Hide Same Lines, from its menu or its toolbar */
+export const toggleCompare = (id: string, k: "swap" | "unified" | "hideSame") => C.toggleCompareView(commandEnv, id, k);
 
 export const noBg = (c: Card) => (c.kind === "image" && !c.bg) || (c.kind === "code" && c.bg === false);
 /** 倾斜：选中的几张卡里有没斜的就都斜，都斜着就都放正（Compare 的栏算整张 Compare） */
-export function toggleTilt(ids: string[]) {
-  const cs = [...new Set(ids.map((i) => cardById(i)?.host.id).filter(Boolean) as string[])];
-  if (!cs.length) return;
-  const on = !cs.every((i) => cardById(i)?.card.tilt);
-  mutate((b) => {
-    for (const i of cs) {
-      const k = findCard(b, i)?.card;
-      if (k) k.tilt = on || undefined;
-    }
-  });
-}
+export const toggleTilt = (ids: string[]) => C.toggleTilt(commandEnv, ids);
 /** 卡框开关：图片默认没有，代码卡默认有 */
 export const toggleBg = (id: string) => C.toggleBackground(commandEnv, id);

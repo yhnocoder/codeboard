@@ -11,7 +11,6 @@ import {
 } from "@codeboard/core";
 import { type Var } from "@codeboard/analysis/basics";
 import { state, cardById, hostOf } from "../state/store";
-import { mutate } from "../state/changes";
 import { select } from "../state/selection";
 import { toast } from "../state/toast";
 import { setEditing, setHoverVar } from "../state/ui";
@@ -80,12 +79,7 @@ export function hiVar(L: Link, v: Var, on: boolean) {
     on ? { link: L.id, names: [v.a, v.b].filter(Boolean) as string[], from: L.from.card, to: L.to.card } : null,
   );
 }
-export function setLinkLabel(id: string, v: string) {
-  mutate((b) => {
-    const l = b.links.find((k) => k.id === id);
-    if (l) l.label = v.trim() || undefined;
-  });
-}
+export const setLinkLabel = (id: string, v: string) => C.setLinkLabel(commandEnv, id, v);
 export function openVars(id: string) {
   const el =
     document.querySelector(`.vchips[data-link="${id}"]`) ?? document.querySelector(`.vplus[data-link="${id}"]`);
@@ -97,12 +91,6 @@ const setSides = (id: string, from?: LinkSide | "auto", to?: LinkSide | "auto") 
   C.setLinkSides(commandEnv, id, from, to);
 const resetSides = (id: string) => setSides(id, "auto", "auto");
 
-const editLink = (id: string, f: (l: Link) => void) =>
-  mutate((b) => {
-    const l = b.links.find((k) => k.id === id);
-    if (l) f(l);
-  });
-
 export const setLinkStyle = (id: string, f: (s: LinkStyle) => void) => C.setLinkStyle(commandEnv, id, f);
 /** 某一端从哪边进出；undefined = Auto */
 export const setLinkSide = (id: string, end: "from" | "to", side: LinkSide | undefined) =>
@@ -112,24 +100,10 @@ export const clearLinkSides = (id: string) => resetSides(id);
 export function toggleCallMark(id: string) {
   const L = state.board.links.find((l) => l.id === id);
   if (!L) return;
-  if (L.call)
-    return editLink(id, (l) => {
-      delete l.call;
-    });
+  if (L.call) return C.removeCallMark(commandEnv, id);
   makeCall(id);
 }
-export const toggleLoopMark = (id: string) =>
-  editLink(id, (l) => {
-    if (!l.call) return;
-    if (l.call.loop) delete l.call.loop;
-    else l.call.loop = true;
-  });
-export const resetLabelPos = (id: string) =>
-  editLink(id, (l) => {
-    delete l.at;
-  });
+export const toggleLoopMark = (id: string) => C.toggleLoopMark(commandEnv, id);
+export const resetLabelPos = (id: string) => C.resetLabelPos(commandEnv, id);
 /** Delete Label：只删自己写的字（参数、↺ 不动） */
-export const deleteLabel = (id: string) =>
-  editLink(id, (l) => {
-    delete l.label;
-  });
+export const deleteLabel = (id: string) => C.deleteLinkLabel(commandEnv, id);

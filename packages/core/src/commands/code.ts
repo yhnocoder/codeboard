@@ -174,3 +174,44 @@ export function newBlankCode(
     settle(b, id);
   });
 }
+
+/** What a code card hides (comments, docstrings, blank lines) switched */
+export function toggleCodeHide(env: CommandEnv, id: string, k: "comments" | "docstrings" | "blank") {
+  env.edit((b) => {
+    const c = findCard(b, id)?.card;
+    if (isCode(c)) c.hide = { ...c.hide, [k]: !c.hide?.[k] };
+  });
+}
+
+/** Line wrap of code cards: all wrapped already unwraps them, else all wrap */
+export function toggleWrap(env: CommandEnv, ids: string[]) {
+  const b0 = env.board();
+  const cs = ids.filter((i) => isCode(findCard(b0, i)?.card));
+  if (!cs.length) return;
+  const on = !cs.every((i) => {
+    const c = findCard(b0, i)?.card;
+    return isCode(c) && c.wrap;
+  });
+  env.edit((b) => {
+    for (const i of cs) {
+      const k = findCard(b, i)?.card;
+      if (isCode(k)) k.wrap = on || undefined;
+    }
+  });
+}
+
+/** Keep Old Version on a card whose symbol is gone: it stays as saved and is not flagged again */
+export function keepOldVersion(env: CommandEnv, id: string) {
+  env.edit((b) => {
+    const c = findCard(b, id)?.card;
+    if (isCode(c)) c.keepOld = true;
+  });
+}
+
+/** A class card's member list shown in full */
+export function showAllMembers(env: CommandEnv, id: string) {
+  env.edit((b) => {
+    const c = findCard(b, id)?.card;
+    if (isCode(c) && c.members) c.members.shown = [];
+  });
+}

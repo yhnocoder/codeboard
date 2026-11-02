@@ -1,9 +1,9 @@
 // Auto Focus：右键 Note / Text / Box → 模型给正文加 ==概念== 和 **强调**。模型只许加记号：回来的字去掉加的记号必须正好是原文，
 // 按 Markdown 解析后（去掉粗体、高亮）也必须和原文一样（代码、公式、链接、结构一个字都没动），否则整份不用。
 // 写回是一步改动（⌘Z 撤）；等的时候卡上盖着忙碌层，能取消（和图片的 AI 操作同一套）
-import { findCard } from "@codeboard/core";
 import { cardById } from "../state/store";
-import { mutate } from "../state/changes";
+import * as C from "@codeboard/core/commands";
+import { commandEnv } from "./env";
 import { toast } from "../state/toast";
 import { IS_MAC } from "@yhnocoder/markdown/ui";
 import { editing, setEditing } from "../state/ui";
@@ -42,10 +42,7 @@ async function autoFocus(id: string) {
   }
   const cur = editing();
   if (cur?.kind === "note" && cur.id === id) setEditing(null);
-  mutate((b) => {
-    const c = findCard(b, id)?.card;
-    if (c?.kind === "note") c.md = v.md;
-  });
+  C.setNoteMarkdown(commandEnv, id, v.md);
   const parts = [v.hl && plural(v.hl, "highlight"), v.bold && plural(v.bold, "bold mark")]
     .filter(Boolean)
     .join(" and ");

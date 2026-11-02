@@ -78,3 +78,45 @@ export function setLinkStyle(env: CommandEnv, id: string, f: (s: LinkStyle) => v
     else delete l.style;
   });
 }
+
+/** An arrow's label text; blank clears it */
+export function setLinkLabel(env: CommandEnv, id: string, v: string) {
+  env.edit((b) => {
+    const l = b.links.find((k) => k.id === id);
+    if (l) l.label = v.trim() || undefined;
+  });
+}
+
+/** An arrow's Call mark taken off, its argument chips and loop mark with it; its label stays */
+export function removeCallMark(env: CommandEnv, id: string) {
+  env.edit((b) => {
+    const l = b.links.find((k) => k.id === id);
+    if (l) delete l.call;
+  });
+}
+
+/** A Call arrow's loop mark (↺) switched */
+export function toggleLoopMark(env: CommandEnv, id: string) {
+  env.edit((b) => {
+    const l = b.links.find((k) => k.id === id);
+    if (!l?.call) return;
+    if (l.call.loop) delete l.call.loop;
+    else l.call.loop = true;
+  });
+}
+
+/** An arrow's label back to its automatic place */
+export function resetLabelPos(env: CommandEnv, id: string) {
+  env.edit((b) => {
+    const l = b.links.find((k) => k.id === id);
+    if (l) delete l.at;
+  });
+}
+
+/** Delete Label: only the text written on the arrow (its arguments and ↺ stay) */
+export function deleteLinkLabel(env: CommandEnv, id: string) {
+  env.edit((b) => {
+    const l = b.links.find((k) => k.id === id);
+    if (l) delete l.label;
+  });
+}

@@ -24,7 +24,6 @@ import {
 import * as C from "@codeboard/core/commands";
 import { commandEnv } from "./env";
 import { state, flows, cardById, hostOf, rectOf, placeOf, placed } from "../state/store";
-import { mutate } from "../state/changes";
 import { select, sel } from "../state/selection";
 import { toast } from "../state/toast";
 import { openPop } from "../state/pop";
@@ -48,12 +47,7 @@ export function markRpc(id: string, el?: Element) {
   openPop({ kind: "rpc", link: id }, lab ? { el: lab, prefer: "below" } : lastPointer());
 }
 export const setRpc = (id: string, f: (r: RpcMark) => void) => C.editRpc(commandEnv, id, f);
-export function clearRpc(id: string) {
-  mutate((b) => {
-    const l = b.links.find((k) => k.id === id);
-    if (l) delete l.rpc;
-  });
-}
+export const clearRpc = (id: string) => C.removeRpc(commandEnv, id);
 /** ↩ back to：回到起点的线，Walkthrough 走到这里停 */
 export const toggleBack = (id: string) => C.toggleBack(commandEnv, id);
 

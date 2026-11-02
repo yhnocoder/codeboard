@@ -34,6 +34,14 @@ export function moveIntoSection(env: CommandEnv, ids: string[], section: string,
   });
 }
 
+/** Move Out of Parent Section: it goes one level up, into the Section its parent is in (none: on the board) */
+export function moveOutOfParent(env: CommandEnv, id: string) {
+  env.edit((b) => {
+    const s = b.sections.find((q) => q.id === id);
+    if (s) s.parent = b.sections.find((q) => q.id === s.parent)?.parent;
+  });
+}
+
 /**
  * Fold or unfold a Section. Folding keeps its open frame (`open`, as drawn) to unfold to; the folded one sits at its top left.
  * Only while it is still folded as `was` (an undo or a reveal meanwhile changed it: left as it is)
@@ -150,5 +158,21 @@ export function fitCardSizes(
           ? undefined
           : Math.round(n.h - (code ? n.chrome : 0));
     }
+  });
+}
+
+/** A Section's title; blank is "Untitled Section" */
+export function renameSection(env: CommandEnv, id: string, v: string) {
+  env.edit((b) => {
+    const s = b.sections.find((q) => q.id === id);
+    if (s) s.title = v.trim() || "Untitled Section";
+  });
+}
+
+/** A Section's colour; none = uncoloured */
+export function setSectionColor(env: CommandEnv, id: string, color: string | undefined) {
+  env.edit((b) => {
+    const s = b.sections.find((q) => q.id === id);
+    if (s) s.color = color;
   });
 }

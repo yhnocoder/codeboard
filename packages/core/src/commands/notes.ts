@@ -2,6 +2,8 @@
 // Split by Headings
 import {
   BOX_FILLS,
+  type BoxFill,
+  type HandColor,
   findCard,
   isCode,
   uid,
@@ -16,6 +18,7 @@ import { NEW_CARD_W, type Rect } from "../layout";
 import {
   cardIntoSidenote,
   imageIntoNote,
+  removeSidenotes,
   sidenoteCard,
   sidenoteToCard,
   splitNoteByHeadings,
@@ -145,6 +148,17 @@ export function addSidenotes(env: CommandEnv, list: Omit<Sidenote, "id">[]): str
   return sns.map((n) => n.id);
 }
 
+/** A Text sidenote's Markdown written; written empty it goes, as a Text sidenote is only its text. Unchanged: no step */
+export function writeSidenote(env: CommandEnv, id: string, md: string) {
+  const n0 = env.board().sidenotes.find((k) => k.id === id);
+  if (n0?.kind !== "text" || n0.md === md) return;
+  env.edit((b) => {
+    if (!md.trim()) return removeSidenotes(b, [id]);
+    const n = b.sidenotes.find((k) => k.id === id);
+    if (n?.kind === "text") n.md = md;
+  });
+}
+
 /** An image replaced by the one stored at `src`: an image card's (note left out), or the one at `note` in a Note's Markdown */
 export function replaceImage(env: CommandEnv, ref: { card: string; note?: string }, src: string) {
   const old = ref.note;
@@ -153,5 +167,53 @@ export function replaceImage(env: CommandEnv, ref: { card: string; note?: string
     if (old === undefined) {
       if (c?.kind === "image") c.src = src;
     } else if (c?.kind === "note") c.md = c.md.split(old).join(src);
+  });
+}
+
+/** A Note's Markdown replaced as given (a mark toggled, a caption set, Auto Focus's markup); unlike writeNote it never goes */
+export function setNoteMarkdown(env: CommandEnv, id: string, md: string) {
+  env.edit((b) => {
+    const c = findCard(b, id)?.card;
+    if (c?.kind === "note") c.md = md;
+  });
+}
+
+/** A Mark's colour (its arrows follow it) */
+export function setMarkColor(env: CommandEnv, id: string, hand: HandColor) {
+  env.edit((b) => {
+    const c = findCard(b, id)?.card;
+    if (c?.kind === "note" && c.look === "mark") c.hand = hand;
+  });
+}
+
+/** A Box's fill */
+export function setBoxFill(env: CommandEnv, id: string, fill: BoxFill) {
+  env.edit((b) => {
+    const c = findCard(b, id)?.card;
+    if (c?.kind === "note" && c.look === "box") c.fill = fill;
+  });
+}
+
+/** A Text sidenote's Always Show */
+export function toggleAlwaysShow(env: CommandEnv, id: string) {
+  env.edit((b) => {
+    const n = b.sidenotes.find((k) => k.id === id);
+    if (n?.kind === "text") n.alwaysShow = !n.alwaysShow || undefined;
+  });
+}
+
+/** Board-only: a sidenote on a shared card stays on this board only, or goes along with the card again */
+export function toggleBoardOnly(env: CommandEnv, id: string) {
+  env.edit((b) => {
+    const n = b.sidenotes.find((k) => k.id === id);
+    if (n) n.boardOnly = n.boardOnly ? undefined : true;
+  });
+}
+
+/** A sidenote on changed lines marked as checked */
+export function markReviewed(env: CommandEnv, id: string) {
+  env.edit((b) => {
+    const n = b.sidenotes.find((k) => k.id === id);
+    if (n) delete n.review;
   });
 }

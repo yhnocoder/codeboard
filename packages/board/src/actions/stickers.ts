@@ -3,7 +3,7 @@ import * as C from "@codeboard/core/commands";
 import { commandEnv } from "./env";
 import { openQuestion, setAnswered, linkAnswer, setStickerDragged } from "./questions";
 import { state, rectOf } from "../state/store";
-import { mutate, live } from "../state/changes";
+import { live } from "../state/changes";
 import { toast } from "../state/toast";
 import { linkCurve } from "../canvas/routes";
 import { bezAt, nearestT } from "@codeboard/core/canvas";
@@ -168,11 +168,7 @@ function detachSticker(id: string) {
   const s = state.board.stickers.find((k) => k.id === id);
   const w = s && stickerWorld(s);
   if (!s || !w || s.at.kind !== "canvas") return;
-  const size = s.at.size;
-  mutate((b) => {
-    const k = b.stickers.find((q) => q.id === id);
-    if (k) k.at = { kind: "canvas", x: Math.round(w.x), y: Math.round(w.y), size };
-  });
+  C.detachSticker(commandEnv, id, w);
 }
 
 /** 行号栏或代码行 → 卡、段、行（data-r 是 CodeBody 量好的行序号） */
@@ -234,11 +230,7 @@ export function stickerMenu(id: string, x: number, y: number) {
             sub: [24, 32, 48, 72].map((n) => ({
               label: `${n}px`,
               checked: s.at.kind === "canvas" && s.at.size === n,
-              run: () =>
-                mutate((b) => {
-                  const k = b.stickers.find((q) => q.id === id);
-                  if (k?.at.kind === "canvas") k.at.size = n;
-                }),
+              run: () => C.setStickerSize(commandEnv, id, n),
             })),
           } as Item,
         ]

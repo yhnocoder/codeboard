@@ -11,7 +11,7 @@ import {
 import * as C from "@codeboard/core/commands";
 import { commandEnv } from "./env";
 import { state, cardById, rectOf } from "../state/store";
-import { mutate, sync } from "../state/changes";
+import { sync } from "../state/changes";
 import { select, sel } from "../state/selection";
 import { toast } from "../state/toast";
 import { toWorld, viewportCenter } from "../state/camera";
@@ -97,28 +97,15 @@ export function mergeIntoLinkList(ids: string[] = sel.cards, target?: string) {
   toast(`Merged into a Link List · ${r.links} links`);
 }
 
-const setList = (id: string, f: (c: LinksCard) => void) =>
-  mutate((b) => {
-    const c = findCard(b, id)?.card;
-    if (c?.kind === "links") f(c);
-  });
 const itemOf = (id: string, item: string) => {
   const c = cardById(id)?.card;
   return c?.kind === "links" ? c.items.find((x) => x.id === item) : undefined;
 };
 export const isRich = C.isRich;
 
-/** ⋯ → View ▸ Compact / Rich：整张卡的默认（单独设过的行不变） */
-export function setWebStyle(id: string, style: WebStyle | undefined) {
-  mutate((b) => {
-    const c = findCard(b, id)?.card;
-    if (c?.kind === "web") c.style = style;
-  });
-}
-export const setListRich = (id: string, rich: boolean) =>
-  setList(id, (c) => {
-    c.rich = rich || undefined;
-  });
+export const setWebStyle = (id: string, style: WebStyle | undefined) => C.setWebStyle(commandEnv, id, style);
+/** ⋯ → View ▸ Compact / Rich：整张卡的默认（单独设过的行不变，和新默认一样的不再单独记） */
+export const setListRich = (id: string, rich: boolean) => C.setListRich(commandEnv, id, rich);
 export const toggleItemRich = (id: string, item: string) => C.toggleItemRich(commandEnv, id, item);
 export const renameItem = (id: string, item: string, v: string) => C.renameLinkItem(commandEnv, id, item, v);
 export const removeItem = (id: string, item: string) => C.removeLinkItem(commandEnv, id, item);

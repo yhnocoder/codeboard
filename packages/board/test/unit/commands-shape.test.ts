@@ -1,7 +1,7 @@
-// The board's actions are UI glue; the rules another shell would need too live in core's command layer. Checked by shape: the
-// board never imports core's structural edits (every function in core/src/edit/ that takes a board to change, and the variant and
-// sub-board ones), only the commands in @codeboard/core/commands that use them; and it calls mutate() itself only for the plain
-// field changes listed in PLAIN, every other user edit is a command
+// The board's actions are UI glue; every rule and every user edit is a command in @codeboard/core/commands, so another shell
+// gets the same behaviour. Checked by shape: the board never imports core's structural edits (every function in core/src/edit/
+// that takes a board to change, and the variant and sub-board ones), and the only mutate() outside state/changes.ts (which
+// defines it) is the command env's edit, which every command's env.edit runs
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -39,51 +39,8 @@ const GUARDED = new Set([
   "dropVariants",
   "extractBoard",
 ]);
-/** [file, op, why]: the board's own wiring that applies what the host already decided, not a user's command */
-const ALLOW: [string, string, string][] = [
-  ["state/changes.ts", "removeCards", "syncGone: another board's Delete Everywhere, already done by the host"],
-];
-
-/**
- * [file, top-level function, how many mutate() calls, what they change]: the board's own mutate() calls. Each sets or toggles
- * plain fields of the objects it names, with nothing decided from the rest of the board (no item goes or moves elsewhere, no
- * default derived from content, nothing asked first). Anything more is a command in core/src/commands
- */
-const PLAIN: [string, string, number, string][] = [
-  ["actions/env.ts", "commandEnv", 1, "the command env's edit: what every command's env.edit runs"],
-  ["Chrome.tsx", "Toolbar", 1, "Rename Board: the board's name"],
-  ["hostio.ts", "handle", 1, "the board renamed in the editor: its name"],
-  [
-    "actions/autofocus.ts",
-    "autoFocus",
-    1,
-    "a Note's Markdown, as the model marked it up (checked unchanged otherwise)",
-  ],
-  ["actions/format.ts", "formatStaticSel", 1, "a Note's Markdown with a mark toggled on the selected text"],
-  ["actions/notes.ts", "setCaption", 1, "a Note's Markdown with an image caption set"],
-  ["actions/notes.ts", "setMarkColor", 1, "a Mark's colour"],
-  ["actions/notes.ts", "setBoxFill", 1, "a Box's fill"],
-  ["actions/notes.ts", "updateSidenote", 1, "one sidenote's fields: its text, Always Show, Board-only, reviewed"],
-  ["actions/calls.ts", "clearRpc", 1, "an arrow's RPC mark off"],
-  ["actions/links.ts", "setLinkLabel", 1, "an arrow's label text"],
-  ["actions/links.ts", "editLink", 1, "an arrow's fields: Call mark off, loop mark, label position, label"],
-  ["actions/edit.ts", "setDesc", 1, "a card's description"],
-  ["actions/edit.ts", "toggleHide", 1, "what a code card hides: comments, docstrings, blank lines"],
-  ["actions/edit.ts", "toggleWrap", 1, "line wrap of the selected code cards"],
-  ["actions/edit.ts", "toggleCollapse", 1, "a card folded"],
-  ["actions/edit.ts", "toggleLock", 1, "the lock of the selected cards and Sections"],
-  ["actions/edit.ts", "toggleTilt", 1, "the tilt of the selected cards"],
-  ["actions/edit.ts", "keepLost", 1, "Keep Old Version on a card whose symbol is gone"],
-  ["actions/edit.ts", "renameSection", 1, "a Section's title"],
-  ["actions/menus.ts", "cardItems", 3, "a Compare's Swap, Unified, Hide Same Lines"],
-  ["cards/CompareBody.tsx", "CompareBody", 1, "the same Compare switches, from its own toolbar"],
-  ["actions/menus.ts", "sectionMenu", 1, "a Section's colour, or its parent one level up"],
-  ["actions/flow.ts", "showAllMembers", 1, "a class card's member list shown in full"],
-  ["actions/stickers.ts", "detachSticker", 1, "a sticker's place: on the canvas where it is drawn"],
-  ["actions/stickers.ts", "stickerMenu", 1, "a canvas sticker's size"],
-  ["actions/web.ts", "setList", 1, "a Link List's rich / compact default"],
-  ["actions/web.ts", "setWebStyle", 1, "a Web card's compact / rich look"],
-];
+/** The one mutate() call outside state/changes.ts: the command env's edit */
+const ENV_EDIT = "edit: (fn, opts) => mutate(fn, opts),";
 
 describe("command layer", () => {
   it("finds the structural edits it guards", () => {
@@ -104,31 +61,25 @@ describe("command layer", () => {
       const t = fs.readFileSync(f, "utf8");
       for (const m of t.matchAll(/import\s*\{([^}]*)\}\s*from\s*["']@codeboard\/core["']/g))
         for (const name of m[1].split(",").map((x) => x.trim().split(/\s+as\s+/)[0]))
-          if (GUARDED.has(name) && !ALLOW.some(([file, op]) => file === rel(f) && op === name))
-            hits.push(`${rel(f)}: ${name}`);
+          if (GUARDED.has(name)) hits.push(`${rel(f)}: ${name}`);
       if (/import\s*\*\s*as\s+\w+\s*from\s*["']@codeboard\/core["']/.test(t))
         hits.push(`${rel(f)}: import * from core`);
     }
     expect(hits).toEqual([]);
   });
 
-  it("the board calls mutate() itself only for the plain field changes in PLAIN", () => {
-    const seen = new Map<string, number>();
+  it("the board edits only through commands: mutate() is the command env's edit and nothing else", () => {
+    const calls: string[] = [];
+    const importers: string[] = [];
     for (const f of walk(SRC)) {
+      if (rel(f) === "state/changes.ts") continue;
       const t = fs.readFileSync(f, "utf8");
-      for (const m of t.matchAll(/\bmutate\(/g)) {
-        // the top-level function or const it is in
-        const defs = [
-          ...t
-            .slice(0, m.index)
-            .matchAll(/^(?:export\s+)?(?:default\s+)?(?:async\s+)?(?:function\s+(\w+)|const\s+(\w+))/gm),
-        ];
-        const d = defs.at(-1);
-        const k = `${rel(f)} ${d ? (d[1] ?? d[2]) : "(top level)"}`;
-        seen.set(k, (seen.get(k) ?? 0) + 1);
-      }
+      for (const m of t.matchAll(/^.*\bmutate\(.*$/gm)) calls.push(`${rel(f)}: ${m[0].trim()}`);
+      // an alias or a namespace import would hide a call from the search above
+      for (const m of t.matchAll(/import\s*(\{[^}]*\}|\*\s*as\s+\w+)\s*from\s*["'][./]*state\/changes["']/g))
+        if (m[1].startsWith("*") || /\bmutate\b/.test(m[1])) importers.push(`${rel(f)}: ${m[1].replace(/\s+/g, " ")}`);
     }
-    const want = new Map(PLAIN.map(([f, fn, n]) => [`${f} ${fn}`, n]));
-    expect(Object.fromEntries(seen)).toEqual(Object.fromEntries(want));
+    expect(calls).toEqual([`actions/env.ts: ${ENV_EDIT}`]);
+    expect(importers).toEqual(["actions/env.ts: { mutate, createFresh, isFresh, settleFresh }"]);
   });
 });

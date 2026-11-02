@@ -1,5 +1,4 @@
 import {
-  findCard,
   isCode,
   cardTitle,
   segOf,
@@ -41,7 +40,7 @@ import {
   placed,
 } from "../state/store";
 import { putViews } from "../state/views";
-import { mutate, sync } from "../state/changes";
+import { sync } from "../state/changes";
 import { sel, select, clearSel } from "../state/selection";
 import { toast } from "../state/toast";
 import { camTo, camTarget, fitRect, usableW, usableH, fitTop, isVisible, union, overviewZ } from "../state/camera";
@@ -442,9 +441,4 @@ export function expandMember(cardId: string, d: { line: number; name: string; qu
     qual: d.qual,
   });
 }
-export function showAllMembers(id: string) {
-  mutate((b) => {
-    const c = findCard(b, id)?.card;
-    if (isCode(c) && c.members) c.members.shown = [];
-  });
-}
+export const showAllMembers = (id: string) => C.showAllMembers(commandEnv, id);

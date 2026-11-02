@@ -1,5 +1,4 @@
 import {
-  findCard,
   isCode,
   cardTitle,
   segOf,
@@ -8,13 +7,11 @@ import {
   headOf,
   canMark,
   type CodeCard,
-  type CompareCard,
   type LinkSide,
   type Section,
   type CallSpan,
 } from "@codeboard/core";
 import { state, flows, cardById, hostOf, placeOf, sharedOn, twinsOf } from "../state/store";
-import { mutate } from "../state/changes";
 import * as C from "@codeboard/core/commands";
 import { commandEnv } from "./env";
 import { sel, select, lineSel, isSel, type LineSel } from "../state/selection";
@@ -102,7 +99,7 @@ import {
 } from "./notes";
 import { mergeIntoLinkList, retryMeta, setListRich, setWebStyle } from "./web";
 import { canLinkList } from "@codeboard/core/commands";
-import { unlinkShared } from "./edit";
+import { moveOutOfParent, setSectionColor, toggleCompare, unlinkShared } from "./edit";
 import { deleteEverywhere, pasteFromBoard, copyCardsSel, cutCardsSel, detachTwins } from "./shared";
 import { enterFrame, turnIntoBoard, insertBoard, insertable, deleteFrameBoard } from "./subboards";
 import { addProc, clearRpc, legendOf, markRpc, toggleBack, toggleStart } from "./calls";
@@ -430,29 +427,17 @@ function cardItems(id: string, x: number, y: number): Item[] {
     return [
       {
         label: "Swap",
-        run: () =>
-          mutate((b) => {
-            const k = findCard(b, id)!.card as CompareCard;
-            k.swap = !k.swap;
-          }),
+        run: () => toggleCompare(id, "swap"),
       },
       {
         label: "Unified",
         checked: !!c.unified,
-        run: () =>
-          mutate((b) => {
-            const k = findCard(b, id)!.card as CompareCard;
-            k.unified = !k.unified;
-          }),
+        run: () => toggleCompare(id, "unified"),
       },
       {
         label: "Hide Same Lines",
         checked: !!c.hideSame,
-        run: () =>
-          mutate((b) => {
-            const k = findCard(b, id)!.card as CompareCard;
-            k.hideSame = !k.hideSame;
-          }),
+        run: () => toggleCompare(id, "hideSame"),
       },
       null,
       { label: "Separate", run: () => separate(id) },
@@ -953,11 +938,6 @@ export function sectionMenu(id: string, x: number, y: number) {
   const s = sectionById(id);
   if (!s) return;
   if (!sel.sections.includes(id)) select({ sections: [id] });
-  const set = (f: (q: Section) => void) =>
-    mutate((b) => {
-      const q = b.sections.find((k) => k.id === id);
-      if (q) f(q);
-    });
   openMenu(
     [
       { label: "Rename", kbd: "Double-click", run: () => setEditing({ kind: "section", id }) },
@@ -979,10 +959,7 @@ export function sectionMenu(id: string, x: number, y: number) {
         ? [
             {
               label: "Move Out of Parent Section",
-              run: () =>
-                set((q) => {
-                  q.parent = sectionById(q.parent)?.parent;
-                }),
+              run: () => moveOutOfParent(id),
             } as Item,
           ]
         : []),
@@ -991,10 +968,7 @@ export function sectionMenu(id: string, x: number, y: number) {
         sub: SECTION_COLORS.map(([v, lb]) => ({
           label: lb,
           checked: (s.color ?? "none") === v,
-          run: () =>
-            set((q) => {
-              q.color = v === "none" ? undefined : v;
-            }),
+          run: () => setSectionColor(id, v === "none" ? undefined : v),
         })),
       },
       null,
