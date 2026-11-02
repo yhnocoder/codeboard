@@ -1,7 +1,8 @@
 // 粘贴的 HTML 里没排出来的公式：聊天应用、网页常把 $…$ 原样当字放进 <p>，电子书常把"显示的字 + TeX"连着放（doubled.ts）。ProseMirror 按 schema 读 HTML 时它们只是字，
-// 这里照解析器的行内公式规则（schema.ts 的 mathAt）把它们变成公式，和打字、粘贴纯文字的 Markdown 一样；LaTeX 的 \( … \)、\[ … \] 也是（brackets.ts）
+// 这里照解析器的行内公式规则（schema-nodes.ts 的 mathAt）把它们变成公式，和打字、粘贴纯文字的 Markdown 一样；LaTeX 的 \( … \)、\[ … \] 也是（brackets.ts）
 import { Fragment, Slice, type Node as PMNode, type Schema } from "@tiptap/pm/model";
-import { parseSource, splitMath, type MathToken } from "../schema";
+import { parseSource } from "../schema";
+import { splitMath, type MathToken } from "../schema-nodes";
 import { dollarBrackets, pairBrackets } from "../brackets";
 import { undoubleTex } from "../doubled";
 

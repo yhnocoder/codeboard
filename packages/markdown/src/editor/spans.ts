@@ -1,7 +1,8 @@
 // How the editor draws one paragraph's source (paragraph, heading, cell): the parser (schema.ts inlineTokens, the same rules
 // parseMd reads it with) splits it into tokens, and for each: where it is in the source, which characters are markers, and how
 // the text inside is drawn. Only the look; the document is never changed (the decorations are in inline.ts)
-import { ESC_DOLLAR, TEXT_MATH, inlineTokens, type InlineToken } from "../schema";
+import { TEXT_MATH, inlineTokens, type InlineToken } from "../schema";
+import { ESC_DOLLAR } from "../schema-escape";
 
 type Range = [number, number];
 /** Something drawn in place of its source (while the caret is elsewhere the source is hidden and it counts as one character) */

@@ -198,7 +198,7 @@
         "packages/board/src/actions/notes.ts",
         "packages/core/src/commands/notes.ts",
         "packages/board/src/ui/vscodekeys.ts",
-        "packages/markdown/src/{index,render,schema,selmap,view,diagram,emoji,emoji-data,layout}.ts",
+        "packages/markdown/src/{index,render,schema,schema-nodes,schema-marks,schema-escape,tiptap-markdown-patch,selmap,view,diagram,emoji,emoji-data,layout}.ts",
         "packages/markdown/src/markdown.css",
         "packages/markdown/src/editor/{index,icons,menu,bubble}.tsx",
         "packages/markdown/src/editor/{clipboard,codeblock,codelang,find,ghost,pairs,pastemarks,typora,inline,spans,srcdoc,srcmode,table,visible,widgets,types,ui,extensions,paste,pad,session}.ts",

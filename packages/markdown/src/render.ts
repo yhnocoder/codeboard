@@ -3,7 +3,8 @@
 import { Fragment, type DOMOutputSpec, type Mark, type Node as PMNode } from "@tiptap/pm/model";
 import katex from "katex";
 import DOMPurify from "dompurify";
-import { escHtml, isHtmlComment, mdSchema, parseMd, tocEntries, tocHtml } from "./schema";
+import { mdSchema, parseMd } from "./schema";
+import { escHtml, isHtmlComment, tocEntries, tocHtml } from "./schema-nodes";
 import { captionOf, imageAttrs, missingImageHtml, onImagesChanged } from "./image";
 import { mathMacros, mathPreambleVersion, withTex } from "./math";
 
