@@ -77,6 +77,7 @@ import * as A from "./actions";
 import { CALL_DRAG_SLOP, DRAG_SLOP, track, undoGesture } from "./gesture";
 import { togglePreview } from "./state/subboards";
 import { cardSel } from "./cardsel";
+import { boardRef } from "./state/root";
 
 const pt = (e: { clientX: number; clientY: number }) => ({ x: e.clientX, y: e.clientY });
 const local = (e: { clientX: number; clientY: number }) => boardPoint(pt(e));
@@ -177,10 +178,10 @@ function staticSpot(id: string, at: { x: number; y: number }): NoteSpot | undefi
   );
 }
 // 按在只选着的这一张的正文上（Note、手写代码）：按下时不知道是点还是选字（原生文本选择），等 click 再看
-let armed: { id: string; kind: "note" | "free"; x: number; y: number } | null = null;
+const armed = boardRef<{ id: string; kind: "note" | "free"; x: number; y: number } | null>(null);
 export function cardClick(e: MouseEvent, id: string) {
-  const a = armed;
-  armed = null;
+  const a = armed.v;
+  armed.v = null;
   if (!a || a.id !== id || e.shiftKey || e.metaKey || e.ctrlKey) return;
   // 拖着选了字的不算；任务勾选框、引用的点击 MdStatic 自己处理了（停止冒泡，到不了这里）
   if (Math.hypot(e.clientX - a.x, e.clientY - a.y) >= DRAG_SLOP || !window.getSelection()?.isCollapsed) return;
@@ -190,11 +191,11 @@ export function cardClick(e: MouseEvent, id: string) {
 }
 
 /** 右键按下那一刻 Note 里选中的字：macOS 的右键会先选中光标下的词，菜单弹出时的选区不是用户选的 */
-let ctxSel: { id: string; text: string } | null = null;
+const ctxSel = boardRef<{ id: string; text: string } | null>(null);
 export function cardPointerDown(e: PointerEvent, id: string) {
-  armed = null;
+  armed.v = null;
   const t = e.target as HTMLElement;
-  if (e.button === 2) ctxSel = { id, text: A.noteSelText(id) };
+  if (e.button === 2) ctxSel.v = { id, text: A.noteSelText(id) };
   if (e.button === 1 || (e.button === 0 && spaceDown())) return startPan(e);
   if (e.button !== 0) return;
   if (t.closest(CARD_CONTROL)) return;
@@ -232,7 +233,7 @@ export function cardPointerDown(e: PointerEvent, id: string) {
       return clickEdit(editKind!, id, { x: e.clientX, y: e.clientY });
     }
     if (solo) {
-      if (editKind && !second) armed = { id, kind: editKind, x: e.clientX, y: e.clientY };
+      if (editKind && !second) armed.v = { id, kind: editKind, x: e.clientX, y: e.clientY };
       return;
     }
   }
@@ -293,8 +294,8 @@ const hostPlace = (b: Board, id: string) => {
 };
 
 /** 卡头上能点也能拖的东西（文件路径、版本号）：刚拖完松手时浏览器还会补一个 click，这时不算点 */
-let dragEndAt = -1e9;
-export const justDragged = () => performance.now() - dragEndAt < 250;
+const dragEndAt = boardRef(-1e9);
+export const justDragged = () => performance.now() - dragEndAt.v < 250;
 function startCardDrag(e: PointerEvent, grabbed: string, onClick?: () => void) {
   const ids = sel.cards.filter((i) => cardById(i) && !A.isLocked(i));
   if (!ids.length) return onClick?.();
@@ -456,7 +457,7 @@ function startCardDrag(e: PointerEvent, grabbed: string, onClick?: () => void) {
         onClick?.();
         return;
       }
-      dragEndAt = performance.now();
+      dragEndAt.v = performance.now();
       if (drop?.kind === "merge" && drop.armed) {
         putBack();
         end();
@@ -520,8 +521,8 @@ export function cardContextMenu(e: MouseEvent, id: string) {
   const img = A.noteImageAt(t, id);
   if (img) return A.noteImageMenu(img, e.clientX, e.clientY);
   // Note 里选中了一段字：照这段字画 SVG 的菜单（编辑器里没选字时照旧不弹菜单）
-  const picked = ctxSel?.id === id ? ctxSel.text : A.noteSelText(id);
-  ctxSel = null;
+  const picked = ctxSel.v?.id === id ? ctxSel.v.text : A.noteSelText(id);
+  ctxSel.v = null;
   if (picked) return A.noteTextMenu(id, picked, e.clientX, e.clientY);
   if (t.closest("[contenteditable], input, textarea")) return;
   const colEl = t.closest("[data-col]") as HTMLElement | null;
@@ -636,20 +637,20 @@ export function resizeDown(
 
 // 一次滚动手势从哪开始就一直归谁：画布上开始 → 一路平移，经过卡片也不停；停 ~200ms 才算结束。
 // 卡片里滚代码只在：卡片已选中，或者不是紧跟着一次画布平移开始的滚动
-let wheelOwner: HTMLElement | "canvas" | null = null,
-  wheelLast = 0,
-  panEnd = 0;
+const wheelOwner = boardRef<HTMLElement | "canvas" | null>(null),
+  wheelLast = boardRef(0),
+  panEnd = boardRef(0);
 function ownerFor(e: WheelEvent, el: HTMLElement | null): HTMLElement | "canvas" {
   const now = performance.now();
-  if (now - wheelLast > WHEEL_GESTURE) {
-    if (wheelOwner === "canvas") panEnd = wheelLast;
+  if (now - wheelLast.v > WHEEL_GESTURE) {
+    if (wheelOwner.v === "canvas") panEnd.v = wheelLast.v;
     const card = el?.closest(".card") as HTMLElement | null;
     const can = !!el && (el.scrollHeight > el.clientHeight + 1 || el.scrollWidth > el.clientWidth + 1);
     const selected = !!card && isSel(card.dataset.id!);
-    wheelOwner = can && !e.ctrlKey && !e.metaKey && (selected || now - panEnd > 500) ? el! : "canvas";
+    wheelOwner.v = can && !e.ctrlKey && !e.metaKey && (selected || now - panEnd.v > 500) ? el! : "canvas";
   }
-  wheelLast = now;
-  return wheelOwner!;
+  wheelLast.v = now;
+  return wheelOwner.v!;
 }
 /** 卡里滚动：这次手势归这张卡就原生滚动，否则交给画布 */
 export function cardWheel(e: WheelEvent, el: HTMLElement) {
@@ -955,7 +956,7 @@ const ownsWheel = (t: HTMLElement) =>
 export function canvasWheel(e: WheelEvent) {
   const t = e.target as HTMLElement;
   // 正在平移画布的这次滚动手势一路平移下去：画布带着卡移到指针下面，指针落到卡边的圆点、把手上也不停
-  const panning = wheelOwner === "canvas" && performance.now() - wheelLast <= WHEEL_GESTURE;
+  const panning = wheelOwner.v === "canvas" && performance.now() - wheelLast.v <= WHEEL_GESTURE;
   if (!panning && ownsWheel(t)) return;
   e.preventDefault();
   if (!t.closest(".cbody, .nbody, .tx")) ownerFor(e, null); // 卡片里的已经在 cardWheel 里记过

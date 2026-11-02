@@ -1,7 +1,6 @@
 // Section 的实际框：自己存的框 ∪ 成员卡（含边距）∪ 子 Section（core layout.sectionFrame，和子白板骨架同一套算法），框随内容自动撑大，也能拖边改大。
 // 拖动中先预演（setMovingHome）：卡离开的 Section 回到没有它的框，要进的撑开、亮起来（.drop），松手时才真的改 place.section。
 import { batch, createComputed, createMemo, createSignal, mapArray, on, untrack, type Signal } from "solid-js";
-import { createStore } from "solid-js/store";
 import {
   sectionFrame,
   sectionFit,
@@ -13,7 +12,7 @@ import {
   type Section,
 } from "@codeboard/core";
 import { state, rectOf, placed, hostOf, collapsedAway, cardById, placeOf } from "./store";
-import { rooted, boardSignal, onBoardSwitch } from "./root";
+import { rooted, boardSignal, boardStore, onBoardSwitch } from "./root";
 import { Spring, animate, cam } from "./camera";
 import { reduceMotion } from "./motion";
 
@@ -86,7 +85,11 @@ export const allMembers = (id: string) => {
 // 折叠的 Section 还是一个 Section 的框，只是缩到刚好包住标题（标题在框里的位置和展开时一样）：框的大小、标题文字的中间
 // 按标题量（canvas/Sections.tsx 在标题显示「· N cards」时量，折叠动画开始时也量一次）。相对框的左上角
 export type Shut = { w: number; h: number; tx: number; ty: number };
-const [shutStore, setShutStore] = createStore<Record<string, Shut | undefined>>({});
+// 换白板时留下新白板上还有的 Section 的（画着它们的标题不重建，不会再量一次）
+const [shutStore, setShutStore] = boardStore<Record<string, Shut | undefined>>(
+  () => ({}),
+  (id) => state.board.sections.some((s) => s.id === id),
+);
 /** 标题右边到框的右边 */
 const SHUT_PAD_R = 8;
 const labelEls = new Map<string, HTMLElement>();
@@ -145,7 +148,7 @@ export function fitFrame(s: Section): Rect | undefined {
   ]);
 }
 /** 正在缓动到新框的 Section（Fit Content）：框和标签这一会儿带 transition（.fit） */
-const [fitting, setFitting] = createSignal<ReadonlySet<string>>(new Set());
+const [fitting, setFitting] = boardSignal<ReadonlySet<string>>(new Set());
 export { fitting, setFitting };
 
 // 渲染用：每个 Section 一个 memo（子 Section 用它自己的 memo）：拖一张卡时只重算它所在的 Section 和上面几层，不是 42 个全算。

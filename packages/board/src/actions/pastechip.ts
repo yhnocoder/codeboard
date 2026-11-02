@@ -1,5 +1,5 @@
 import { cardById } from "../state/store";
-import { boardSignal } from "../state/root";
+import { boardSignal, boardTimer } from "../state/root";
 import { PASTE_CHIP_IDLE } from "../state/timing";
 
 /**
@@ -7,7 +7,7 @@ import { PASTE_CHIP_IDLE } from "../state/timing";
  * 指针不在上面 PASTE_CHIP_IDLE 后、点了别处、副本挪了或改了（Canvas.tsx PasteChip 看着）就收起
  */
 export const [pasteChip, setPasteChip] = boardSignal<{ pairs: [string, string][]; ref: boolean } | null>(null);
-let chipTimer: number | undefined;
+const chipTimer = boardTimer();
 export function offerReference(pairs: [string, string][]) {
   const ok = pairs.filter(([n, o]) => {
     const a = cardById(n)?.card,
@@ -19,10 +19,10 @@ export function offerReference(pairs: [string, string][]) {
 }
 /** 指针离开小条后重新计时；hold = 指针在上面，不收 */
 export function armChip(hold = false) {
-  clearTimeout(chipTimer);
-  if (!hold) chipTimer = window.setTimeout(() => setPasteChip(null), PASTE_CHIP_IDLE);
+  chipTimer.stop();
+  if (!hold) chipTimer.start(() => setPasteChip(null), PASTE_CHIP_IDLE);
 }
 export function closeChip() {
-  clearTimeout(chipTimer);
+  chipTimer.stop();
   setPasteChip(null);
 }

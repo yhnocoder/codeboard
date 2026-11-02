@@ -1,14 +1,17 @@
 // What is selected on the board (cards, links, Sections, a range of lines). The host hears of it a moment after it changes
 import { batch } from "solid-js";
-import { createStore } from "solid-js/store";
 import type { Board } from "@codeboard/core";
 import { send } from "../host";
-import { boardSignal, onBoardSwitch } from "./root";
+import { boardSignal, boardStore, boardTimer, onBoardSwitch } from "./root";
 import { SEL_REPORT } from "./timing";
 
 export type Sel = { cards: string[]; links: string[]; sections: string[] };
-const [sel, setSel] = createStore<Sel>({ cards: [], links: [], sections: [] });
+const [sel, setSel] = boardStore<Sel>(() => ({ cards: [], links: [], sections: [] }));
 export { sel };
+// what was selected is the last board's: the selection resets with the board, and the host hears that nothing is selected (a report
+// still waiting is the last board's: its timer is cancelled before, being declared first)
+const selTimer = boardTimer();
+onBoardSwitch(() => reportSelection());
 export type LineSel = { card: string; seg: string; start: number; end: number };
 export const [lineSel, setLineSel] = boardSignal<LineSel | null>(null);
 
@@ -30,8 +33,6 @@ export const clearSel = () => {
   select({});
   setLineSel(null);
 };
-// what was selected is the last board's
-onBoardSwitch(clearSel);
 export const isSel = (id: string) => sel.cards.includes(id);
 /** A card went away (a fresh card left empty) */
 export const unselectCard = (id: string) => setSel("cards", (c) => c.filter((x) => x !== id));
@@ -46,10 +47,8 @@ export function keepOn(b: Board) {
   setSel("sections", (l) => keep(l, (x) => b.sections.some((k) => k.id === x)));
 }
 
-let selTimer: number | undefined;
 export function reportSelection() {
-  clearTimeout(selTimer);
-  selTimer = window.setTimeout(() => {
+  selTimer.start(() => {
     const ls = lineSel();
     send({ type: "selection", cards: [...sel.cards], lines: ls ?? undefined });
   }, SEL_REPORT);

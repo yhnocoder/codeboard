@@ -1,6 +1,6 @@
 // 骨架画在框里（cards/BoardBody.tsx）：一张静态的缩略地图，不滚动，箭头只连到整个框；点开的预览在框外（cards/SubPreviews.tsx）。
 import { batch, createEffect, createMemo, createSignal, untrack } from "solid-js";
-import { createStore, produce, reconcile } from "solid-js/store";
+import { produce, reconcile } from "solid-js/store";
 import {
   estSize,
   mapFit,
@@ -15,10 +15,11 @@ import {
 import { ask } from "../host";
 import { cardById, placeOf, placed, rectOf, sizes, state } from "./store";
 import { sync } from "./changes";
-import { boardSignal, onBoardSwitch, rooted } from "./root";
+import { boardSet, boardSignal, boardStore, boardTimer, rooted } from "./root";
 
+// 骨架、点开的预览和它们的卡都是这块白板的（面包屑跟着新白板的 init 来）
 /** 子白板 id → 骨架；null = 那块白板没了；没有这一项 = 还没拿到 */
-const [skels, setSkels] = createStore<Record<string, Skeleton | null>>({});
+const [skels, setSkels] = boardStore<Record<string, Skeleton | null>>(() => ({}));
 export { skels };
 /** 面包屑（从最外层到上一级）；顶层白板是空的 */
 export const [crumbs, setCrumbs] = createSignal<Crumb[]>([]);
@@ -37,14 +38,6 @@ export const skelOf = (frame: string): Skeleton | null | undefined => {
   return f ? skels[f.board] : undefined;
 };
 
-// skeletons, previews and their cards are the last board's (the crumbs come with the new board's init)
-onBoardSwitch(() => {
-  setSkels(reconcile({}));
-  setPvs(reconcile({}));
-  setSubCards(reconcile({}));
-  asked.clear();
-});
-
 export function putSkels(m: Record<string, Skeleton | null>) {
   batch(() => {
     for (const [id, s] of Object.entries(m)) {
@@ -61,7 +54,7 @@ export function putSkels(m: Record<string, Skeleton | null>) {
 }
 
 // 白板上出现了还没有骨架的框（新加的、Turn into Board 拆出来的）：问宿主要一次。宿主之后在子白板存盘时自己推
-const asked = new Set<string>();
+const asked = boardSet<string>();
 export function trackSkeletons() {
   // 打开的白板（又）嵌在别的白板上了：把量到的高写一遍
   createEffect(() => {
@@ -94,14 +87,13 @@ export function trackSkeletons() {
 // 和现在按什么画（存过的 mh，或者估计的）差不到 MH_SLACK 的不写，免得每次量都存盘；定了高度（Place.h）的卡不写：estSize 本来就用 h
 const MH_SLACK = 8,
   MH_WAIT = 1000;
-const mhDirty = new Set<string>();
-let mhTimer: ReturnType<typeof setTimeout> | undefined;
+const mhDirty = boardSet<string>();
+const mhTimer = boardTimer();
 /** 这块白板嵌在别的白板上（侧栏的子白板树） */
 const framedHere = () => state.boards.some((m) => m.subs?.includes(state.board.id));
 export function measuredHeight(id: string) {
   mhDirty.add(id);
-  clearTimeout(mhTimer);
-  mhTimer = setTimeout(writeHeights, MH_WAIT);
+  mhTimer.start(writeHeights, MH_WAIT);
 }
 /** 这张卡该存的 mh：量到了、没定高度、和现在按什么画差得够多；否则 undefined */
 export function heightToKeep(c: Card, p: Place): number | undefined {
@@ -154,7 +146,7 @@ export function blockRect(frame: string, id: string): Rect | null {
 
 /** 一个框点开的预览：open = 点开的先后（编号 = 下标 + 1），exp = 右边展开着的（摆放的先后），tit = 框下面只显示标题的，fold = 收起了 */
 export type Pv = { open: string[]; exp: string[]; tit: string[]; fold: boolean };
-const [pvs, setPvs] = createStore<Record<string, Pv>>({});
+const [pvs, setPvs] = boardStore<Record<string, Pv>>(() => ({}));
 export { pvs };
 /** 临时展开的那行标题（点别处收回） */
 export const [pvPeek, setPvPeek] = boardSignal<{ f: string; id: string } | null>(null);
@@ -317,8 +309,8 @@ export function dropTitles(frame: string, id: string, row: number, col: number, 
 }
 
 // 预览的内容：点开时才问宿主要那一张卡（subCard），按子白板 / 卡缓存；子白板的骨架换了（存过盘）就作废那块子白板的，再开时重新要
-const [subCards, setSubCards] = createStore<Record<string, SubCard | null>>({});
-const asking = new Set<string>();
+const [subCards, setSubCards] = boardStore<Record<string, SubCard | null>>(() => ({}));
+const asking = boardSet<string>();
 /** 子白板 board 上卡 card 的完整内容：还没拿到是 undefined（顺手去要），卡已经不在了是 null */
 export function subCard(board: string, card: string): SubCard | null | undefined {
   const k = `${board}/${card}`,

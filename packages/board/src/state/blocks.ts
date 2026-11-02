@@ -2,21 +2,20 @@
 // 拖箭头时指着哪一块（块之间的空隙、上下内边距算最近的那块，只有卡头算整张卡），以及落点和起点那两块的淡色底。
 // 块和 Markdown 对不上（有脚注、HTML 注释、还没渲染完）时这张 Note 只能整张连
 import { createEffect, createMemo, onCleanup } from "solid-js";
-import { createStore } from "solid-js/store";
 import { blockSig, blockAt, type BlockRef } from "@codeboard/core";
 import { noteBlocks } from "../md/blocks";
-import { state, cardById } from "./store";
+import { state, cardById, onBoard } from "./store";
 import { editing, liveNoteMd, dragging } from "./ui";
 import { lodOf } from "./lodcards";
 import { look } from "./look";
 import { queueMeasure, observeResize } from "./measure";
-import { boardSignal, rooted } from "./root";
+import { boardSignal, boardStore, boardTimer, rooted } from "./root";
 import { BLOCK_LEAVE } from "./timing";
 import { cardSel } from "../cardsel";
 
 /** 一张 Note 里每块的位置（相对卡片顶部、未减滚动，和代码卡的 CardGeo 一样）；sigs = 量的那份 Markdown 每块的指纹（编辑中是编辑器里的字） */
 type BlockGeo = { ys: number[]; hs: number[]; top: number; bottom: number; scroll: number; sigs: string[] };
-const [bgeo, setBgeo] = createStore<Record<string, BlockGeo | undefined>>({});
+const [bgeo, setBgeo] = boardStore<Record<string, BlockGeo | undefined>>(() => ({}), onBoard);
 
 /** el 在 root 里的 y（按排版，不受缩放、斜贴影响）；root 要在 el 的 offsetParent 链上（.nbody 是 position: relative） */
 function offIn(el: HTMLElement, root: HTMLElement): number {
@@ -141,18 +140,12 @@ export function trackBlocks(id: () => string, md: () => string) {
 export type BlockHover = { card: string; ref: BlockRef; y: number };
 const [hoverBlock, setHoverBlock] = boardSignal<BlockHover | null>(null);
 export { hoverBlock };
-let leaveT: number | undefined;
+const leaveT = boardTimer();
 /** 离开一会儿才收起圆点：鼠标从块移到卡边上的圆点的路上不丢。已经在等的不重新计时（指针在别处一直动也会收起） */
-export const keepBlock = () => {
-  clearTimeout(leaveT);
-  leaveT = undefined;
-};
+export const keepBlock = () => leaveT.stop();
 export const leaveBlock = () => {
-  if (leaveT !== undefined || !hoverBlock()) return;
-  leaveT = window.setTimeout(() => {
-    leaveT = undefined;
-    setHoverBlock(null);
-  }, BLOCK_LEAVE);
+  if (leaveT.pending || !hoverBlock()) return;
+  leaveT.start(() => setHoverBlock(null), BLOCK_LEAVE);
 };
 const sameHover = (a: BlockHover | null, b: BlockHover) =>
   !!a && a.card === b.card && a.ref.i === b.ref.i && a.ref.h === b.ref.h && Math.abs(a.y - b.y) < 0.5;

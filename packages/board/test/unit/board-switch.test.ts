@@ -16,7 +16,7 @@ import { dropTarget, setDropTarget, editing, setEditing, settingsOpen, setSettin
 import { traffic, setTraffic } from "../../src/state/look";
 import { pushLayer, closeOverlays } from "../../src/ui/overlay";
 import { choose, promptText } from "../../src/ui/Menu";
-import { boardSignal } from "../../src/state/root";
+import { boardMap, boardRef, boardSet, boardSignal, boardStore, boardTimer } from "../../src/state/root";
 
 const HOST: HostInfo = { assetBase: "", target: true, settings: DEFAULT_SETTINGS };
 function init(
@@ -58,6 +58,33 @@ describe("board switch", () => {
     setN(7);
     onHost(init("b"));
     expect(n()).toBe(3);
+  });
+
+  it("resets the board's stores, Maps, Sets, values and timers declared with the board* helpers", () => {
+    onHost(init("a"));
+    const [s, setS] = boardStore<Record<string, number>>(() => ({}));
+    const [kept, setKept] = boardStore<Record<string, number>>(
+      () => ({}),
+      (k) => k === "stays",
+    );
+    const m = boardMap<string, number>(),
+      set = boardSet<string>(),
+      r = boardRef(0),
+      t = boardTimer();
+    const fired = vi.fn();
+    setS("x", 1);
+    setKept({ stays: 1, goes: 2 });
+    m.set("x", 1);
+    set.add("x");
+    r.v = 5;
+    t.start(fired, 0);
+    onHost(init("b"));
+    expect({ ...s }).toEqual({});
+    // what the new board still has stays (a mounted card's measured size)
+    expect({ ...kept }).toEqual({ stays: 1 });
+    expect(m.size + set.size).toBe(0);
+    expect(r.v).toBe(0);
+    expect(t.pending).toBe(false);
   });
 
   it("resets the board's selection, drag, editing and traffic state but keeps Settings open", () => {

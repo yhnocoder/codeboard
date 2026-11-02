@@ -3,6 +3,8 @@
 // last size their ResizeObserver reported, so a fit reads no layout. The last non-zero size is kept: zoomed out to the
 // map level these are hidden (0 × 0 or not rendered), and a fit from there lands on a zoom where they show again.
 import type { Rect } from "@codeboard/core";
+import { state } from "./store";
+import { boardMap } from "./root";
 
 export type Extra = {
   /** label = the box on the line; alts = the column beside the target card */
@@ -13,7 +15,11 @@ export type Extra = {
 };
 
 const extras = new Set<Extra>();
-const sizes = new Map<string, { w: number; h: number }>();
+// 换白板时留下新白板上还有的线的（画着它们的组件不重建，不会再报一次）
+const sizes = boardMap<string, { w: number; h: number }>((key) => {
+  const link = key.slice(key.indexOf(":") + 1);
+  return state.board.links.some((l) => l.id === link);
+});
 
 export function addExtra(e: Extra) {
   extras.add(e);

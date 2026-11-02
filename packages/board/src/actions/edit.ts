@@ -55,6 +55,7 @@ import { offerReference } from "./pastechip";
 import { cardText, remember } from "./clipboard";
 import { kbd } from "../keymap";
 import { ask } from "../host";
+import { boardMap } from "../state/root";
 
 /** @public run from the key table (keymap.ts) */
 export function copyLines(ls: LineSel) {
@@ -660,7 +661,7 @@ export function toggleSection(id: string) {
   });
 }
 // 正在折叠、展开的 Section：再点一下时做什么（掉头，或者建、拆卡片的那几帧里不管）
-const running = new Map<string, () => void>();
+const running = boardMap<string, () => void>();
 // 一帧建几张、拆几张成员卡：建一张代码卡要 5–10ms（建节点、排版、量行），拆便宜得多
 const STAGE_IN = 1,
   STAGE_OUT = 4;

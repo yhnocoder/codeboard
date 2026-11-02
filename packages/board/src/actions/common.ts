@@ -18,6 +18,7 @@ import { crossRef } from "../md/refs";
 import { mathRev } from "../md/math";
 import { cardSel } from "../cardsel";
 import { IS_MAC } from "@yhnocoder/markdown/ui";
+import { boardMap } from "../state/root";
 
 /** 说明文字里的修饰键（「⌥-click」「⌘↵ to save」）；有绑定的快捷键用 keymap 的 kbd(id) */
 export const K = { mod: IS_MAC ? "⌘" : "Ctrl+", alt: IS_MAC ? "⌥" : "Alt+" };
@@ -353,4 +354,4 @@ function growFrom(from: Map<string, SizeAnim>) {
     return false;
   });
 }
-const growing = new Map<string, object>();
+const growing = boardMap<string, object>();

@@ -3,7 +3,7 @@ import { createEffect, createMemo, createSelector, on, onCleanup, untrack } from
 import { state, hostOf } from "./store";
 import { camMoving, stillZ } from "./camera";
 import { tune } from "./tune";
-import { boardSignal, rooted } from "./root";
+import { boardRef, boardSignal, boardTimer, rooted } from "./root";
 import { cardSel } from "../cardsel";
 
 export const [hoverLink, setHoverLink] = boardSignal<string | null>(null);
@@ -27,21 +27,20 @@ const portZoom = rooted(() =>
 export const portStyle = (card: string) => (isHovered(card) ? portZoom() : undefined);
 
 // 指针下的卡：离开后过 linkLeave 才算离开，鼠标从卡移到它的线上时线不掉下去。镜头动的时候不换（内容从指针下滑过也会进出卡），停下再按最后的那张算
-let hovNow: string | null = null,
-  cardT: number | undefined;
+const hovNow = boardRef<string | null>(null),
+  cardT = boardTimer();
 const settleHover = () => {
-  clearTimeout(cardT);
-  cardT = window.setTimeout(() => {
-    if (!camMoving()) setHoverCard(hovNow);
+  cardT.start(() => {
+    if (!camMoving()) setHoverCard(hovNow.v);
   }, tune("linkLeave"));
 };
 export const enterCard = (id: string) => {
-  hovNow = id;
-  clearTimeout(cardT);
+  hovNow.v = id;
+  cardT.stop();
   if (!camMoving()) setHoverCard(id);
 };
 export const leaveCard = (id: string) => {
-  if (hovNow === id) hovNow = null;
+  if (hovNow.v === id) hovNow.v = null;
   settleHover();
 };
 // 不只靠 pointerleave：它会丢（卡在指针下被挪位置 / 重排、指针捕获刚释放、慢机器上事件挤在一起），丢了那张卡就一直算悬停，它的线一直浮在所有卡上面。
@@ -49,9 +48,9 @@ export const leaveCard = (id: string) => {
 // 走的还是 leaveCard → settleHover，落回去照样过 linkLeave、照样淡出
 let ptr: { x: number; y: number } | null = null;
 const inHovered = (el: EventTarget | Element | null) =>
-  !!hovNow && el instanceof Element && !!el.closest(`${cardSel(hovNow)}`);
+  !!hovNow.v && el instanceof Element && !!el.closest(`${cardSel(hovNow.v)}`);
 const checkHover = (el: EventTarget | Element | null) => {
-  if (hovNow && !inHovered(el)) leaveCard(hovNow);
+  if (hovNow.v && !inHovered(el)) leaveCard(hovNow.v);
 };
 /** trackLinks 里调用一次 */
 export function watchHover() {
@@ -73,7 +72,7 @@ export function watchHover() {
         if (!k || !prev || k === prev || k.split(" ")[0] !== prev.split(" ")[0]) return;
         cancelAnimationFrame(raf);
         raf = requestAnimationFrame(() => {
-          if (hovNow && ptr) checkHover(document.elementFromPoint(ptr.x, ptr.y));
+          if (hovNow.v && ptr) checkHover(document.elementFromPoint(ptr.x, ptr.y));
         });
       },
     ),
@@ -84,7 +83,7 @@ export function watchHover() {
     on(
       camMoving,
       (mv) => {
-        if (!mv) setHoverCard(hovNow);
+        if (!mv) setHoverCard(hovNow.v);
       },
       { defer: true },
     ),
@@ -92,17 +91,16 @@ export function watchHover() {
 }
 
 // 离开连线后过 linkLeave 才算离开：鼠标从线移到 "+" 或变量框的路上不丢悬停。移到指针下那张卡的线上时，那张卡也还算悬停着
-let leaveT: number | undefined;
+const leaveT = boardTimer();
 export const enterLink = (id: string) => {
-  clearTimeout(leaveT);
+  leaveT.stop();
   setHoverLink(id);
   const hc = untrack(hoverCard);
   if (!hc) return;
   const L = state.board.links.find((l) => l.id === id);
-  if (L && (hostOf(L.from.card) === hc || hostOf(L.to.card) === hc)) clearTimeout(cardT);
+  if (L && (hostOf(L.from.card) === hc || hostOf(L.to.card) === hc)) cardT.stop();
 };
 export const leaveLink = () => {
-  clearTimeout(leaveT);
-  leaveT = window.setTimeout(() => setHoverLink(null), tune("linkLeave"));
-  if (untrack(hoverCard) !== hovNow) settleHover();
+  leaveT.start(() => setHoverLink(null), tune("linkLeave"));
+  if (untrack(hoverCard) !== hovNow.v) settleHover();
 };

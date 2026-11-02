@@ -29,6 +29,7 @@ import { ask } from "../host";
 import { K, hostRect, popCard } from "./common";
 import { expandCall, placeExpanded, isLibCall } from "./flow";
 import { linksInto } from "./nav";
+import { boardRef } from "../state/root";
 
 /** library 包在不在 Study Scope 里：不在的要 ⌥ 才展开 */
 const libBlocked = (lib?: string) => !!lib && isLibCall({ pkg: lib });
@@ -147,7 +148,7 @@ export async function swapAlt(linkId: string, k: number, o: { label?: string; dr
   const from = cardById(L.from.card)?.card;
   const seg = isCode(from) && L.from.seg ? segOf(from, L.from.seg) : undefined;
   if (!seg || L.from.line === undefined) return;
-  if (libBlocked(a.lib) && !altDown) {
+  if (libBlocked(a.lib) && !altDown.v) {
     toast(`${a.label} is library code (${a.lib}). ${K.alt}-click to swap it in.`);
     return;
   }
@@ -197,9 +198,9 @@ export async function swapAlt(linkId: string, k: number, o: { label?: string; dr
 }
 
 // ⌥ 按着没有（点灰色备选时）：备选框是 HTML 元素，点击事件里读
-let altDown = false;
+const altDown = boardRef(false);
 export const setAltDown = (v: boolean) => {
-  altDown = v;
+  altDown.v = v;
 };
 
 export function openValPicker(linkId: string, vi: number, el: Element) {

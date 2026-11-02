@@ -7,9 +7,9 @@
 // 地图档的卡内容整块被 clip-path 藏着（styles.css 的 .lo-map > .cface），显示了也看不见：先不显示，换出地图档的那一帧再显示（lodcards.ts 把它算进那一帧的量）。
 // 用 visibility：布局不变，measure.ts 照常能量到行的位置
 import { createEffect, createMemo, createSignal, mapArray, untrack } from "solid-js";
-import { createStore } from "solid-js/store";
 import { cam, camMoving, viewTracked } from "./camera";
-import { placed, rectOf } from "./store";
+import { onBoard, placed, rectOf } from "./store";
+import { boardStore } from "./root";
 import { sel } from "./selection";
 import { editing, dragging } from "./ui";
 import { lodOf, lodBusy } from "./lodcards";
@@ -23,7 +23,7 @@ const SHOW = 3,
 // 范围是屏幕外 4000px，里面上百张空卡的底色、阴影占了重画的四成（Paint）和分层的四分之一（Layerize）。
 // 进到半屏以内马上显示（只是卡片自己和它直接的几个子节点重算样式：里面的内容本来就藏着，值不变，浏览器不往下传），内容照旧按 SHOW 排队。
 // 地图档的卡在屏幕附近时内容藏着、卡片照常画（off 但不 far）
-const [distant, setDistant] = createStore<Record<string, boolean>>({});
+const [distant, setDistant] = boardStore<Record<string, boolean>>(() => ({}), onBoard);
 /** 这张卡藏着内容、离屏幕半屏以外：整张不画 */
 export const farAway = (id: string) => !!distant[id];
 

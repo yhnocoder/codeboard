@@ -56,8 +56,10 @@ import { walkIntoFrame, walkOut } from "./subboards";
 import { walkBack, setWalkBack } from "../state/subboards";
 import { lateDispatch, openImplPicker, unresolvedMenu, searchAllLangs } from "./callpops";
 import { cardSel } from "../cardsel";
+import { boardRef, boardSet, boardTimer } from "../state/root";
 
-const pending = new Set<string>();
+// 正在问宿主的展开（换白板时那些请求都作废了）
+const pending = boardSet<string>();
 
 /** 这一行的这个调用已经连到哪张卡（点过展开，或自己连到了这个函数的卡）：有就返回那张卡。连到的卡没了的（lost）不算 */
 export function expandedTo(cardId: string, segId: string, call: CallSpan): string | undefined {
@@ -297,21 +299,21 @@ export function askCands(lid: string, cardId: string, segId: string, call: CallS
 }
 
 const PREFETCH_DWELL = 150; // 停这么久才算（鼠标扫过去的不算）
-let preKey = "",
-  preTimer: number | undefined;
+const preKey = boardRef(""),
+  preTimer = boardTimer();
 const sent = new Map<string, number>(); // 已经发过的调用 → 时间（宿主有缓存，短时间内不再发）
 
 /** target 在 .call 上停稳了就发 prefetch（不等回答） */
 export function hoverCall(cardId: string, segId: string | undefined, target: EventTarget | null) {
   const x = (target as Element | null)?.closest?.(".call") as HTMLElement | null;
   const key = x && segId ? `${cardId}:${segId}:${x.dataset.c}` : "";
-  if (key === preKey) return;
-  preKey = key;
-  clearTimeout(preTimer);
+  if (key === preKey.v) return;
+  preKey.v = key;
+  preTimer.stop();
   if (!key) return;
-  preTimer = window.setTimeout(() => {
-    if (preKey !== key) return;
-    preKey = ""; // 离开再回来还能再触发
+  preTimer.start(() => {
+    if (preKey.v !== key) return;
+    preKey.v = ""; // 离开再回来还能再触发
     if (!x!.isConnected || !x!.matches(":hover")) return;
     const call = state.views[segId!]?.calls[+x!.dataset.c!];
     const f = cardById(cardId);
