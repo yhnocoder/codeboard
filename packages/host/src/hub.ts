@@ -6,6 +6,7 @@ import {
   diffBoards,
   sharedInfo,
   skeletonOf,
+  subBoardTree,
   subBoardsOf,
   type AskType,
   type BoardRef,
@@ -271,8 +272,11 @@ export class BoardHub implements BoardHost, Disposable {
   /** 面板 p 的 [[ 能选的别的白板（除了它显示的这块）：最近打开的在前，没打开过的按建的先后；和这个工作区最近选过的引用 */
   boardRefs(p: BoardPanel): BoardRefs {
     if (!this.refsSent.has(p)) this.refsSent.set(p, "");
-    const all = this.store.cached().filter((e) => e.id !== p.id);
     const nameOf = (id: string) => this.store.peek(id)?.name;
+    // the sub-boards this board's frames lead into list their cards among this board's own (skeleton refs, with the frames on the way)
+    const here = this.store.peek(p.id);
+    const inside = here ? subBoardTree(here, (id) => this.store.peek(id)) : new Set<string>();
+    const all = this.store.cached().filter((e) => e.id !== p.id && !inside.has(e.id));
     const seen = new Map(all.map((e, i) => [e.id, [this.lastOpened(e.id) ?? 0, i]]));
     all.sort((a, b) => seen.get(b.id)![0] - seen.get(a.id)![0] || seen.get(a.id)![1] - seen.get(b.id)![1]);
     const boards = all.map((e) => {
