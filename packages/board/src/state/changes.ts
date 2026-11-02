@@ -38,6 +38,13 @@ const doc: Doc = {
   raw: unwrap,
 };
 
+declare global {
+  interface Window {
+    /** Set by the test harness: run the engine's self-check in a production build too (see HistoryPorts.selfCheck) */
+    __cbSelfCheck?: boolean;
+  }
+}
+
 const [canUndo, setCanUndo] = createSignal(false);
 const [canRedo, setCanRedo] = createSignal(false);
 export { canUndo, canRedo };
@@ -58,7 +65,7 @@ const history = createHistory(
     },
     toast,
   },
-  { noteBlocks },
+  { noteBlocks, selfCheck: import.meta.env.DEV || window.__cbSelfCheck === true },
 );
 const save = createSave({
   loaded: () => state.loaded,

@@ -42,6 +42,11 @@ const RECENT_HISTORIES = 4;
 export interface HistoryPorts {
   /** Splits a Note into its blocks (arrow ends on a block follow it) */
   noteBlocks: NoteBlocks;
+  /**
+   * Check every user edit for references to items that are gone (danglingRefs) and warn about any. On in dev builds, tests and the
+   * harness, which fails a scenario on the warning; off for users: it walks the whole board on every edit
+   */
+  selfCheck?: boolean;
 }
 
 export function createHistory(doc: Doc, hooks: Hooks, ports: HistoryPorts) {
@@ -85,8 +90,10 @@ export function createHistory(doc: Doc, hooks: Hooks, ports: HistoryPorts) {
       hooks.toast("Something went wrong; the change was undone.");
       return false;
     }
-    const bad = danglingRefs(doc.read());
-    if (bad.length) console.warn("[codeboard] dangling references after a change:", bad); // self-check: always empty, the harness fails on it
+    if (ports.selfCheck) {
+      const bad = danglingRefs(doc.read());
+      if (bad.length) console.warn("[codeboard] dangling references after a change:", bad);
+    }
     const after = snapNow();
     if (same(after, before)) {
       cur = before;

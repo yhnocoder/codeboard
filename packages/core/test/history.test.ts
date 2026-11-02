@@ -1,12 +1,12 @@
 // The undo engine and saving on a plain board (no Solid, no DOM): snapshots, undo / redo, merged steps, syncs replayed after undo,
 // drags, fresh cards, per-board histories, and the patches sent to the host
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { emptyBoard, type Board, type BoardPatch, type Card } from "../src";
 import { createHistory, createSave, NOT_UNDONE, type Doc } from "../src/history";
 
 const note = (id: string, md = ""): Card => ({ id, kind: "note", md }) as Card;
 
-function setup(start = emptyBoard("b1", "B1")) {
+function setup(start = emptyBoard("b1", "B1"), selfCheck = false) {
   let board: Board = structuredClone(start);
   const doc: Doc = {
     read: () => board,
@@ -42,7 +42,7 @@ function setup(start = emptyBoard("b1", "B1")) {
         log.toasts.push(t);
       },
     },
-    { noteBlocks: (md) => md.split(/\n{2,}/) },
+    { noteBlocks: (md) => md.split(/\n{2,}/), selfCheck },
   );
   h.setBoard(board, []);
   const add = (id: string, md = "", x = 0) =>
@@ -321,5 +321,26 @@ describe("saving", () => {
     expect(sent.length).toBe(0);
     await Promise.resolve();
     expect(sent.length).toBe(1);
+  });
+});
+
+describe("self-check", () => {
+  const dangle = (b: Board) => {
+    b.links.push({ id: "l1", from: { card: "a" }, to: { card: "gone" } } as Board["links"][number]);
+  };
+  it("warns about references to items that are gone only when it is on", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const off = setup();
+      off.add("a");
+      off.h.mutate(dangle);
+      expect(warn).not.toHaveBeenCalled();
+      const on = setup(undefined, true);
+      on.add("a");
+      on.h.mutate(dangle);
+      expect(warn).toHaveBeenCalledWith("[codeboard] dangling references after a change:", expect.anything());
+    } finally {
+      warn.mockRestore();
+    }
   });
 });
