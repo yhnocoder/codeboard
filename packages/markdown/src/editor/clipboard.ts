@@ -4,7 +4,7 @@
 import type { Slice } from "@tiptap/pm/model";
 import type { EditorState } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
-import { renderMd } from "../render";
+import { mdOf } from "./md";
 import { texForCopy } from "../view";
 import { sourceMd } from "./srcdoc";
 import { blockInfo, flat } from "./spans";
@@ -93,7 +93,7 @@ export function clipboardHtml(view: () => EditorView) {
         md = clipboardText(v.state.selection.content(), v);
       const doc = opts.document ?? document,
         box = doc.createElement("div");
-      box.innerHTML = renderMd(md);
+      box.innerHTML = mdOf(v.state).render(md);
       texForCopy(box);
       const out = target ?? doc.createDocumentFragment();
       while (box.firstChild) out.appendChild(box.firstChild);

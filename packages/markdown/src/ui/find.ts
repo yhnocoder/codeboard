@@ -1,7 +1,7 @@
 // 编辑时的查找 / 替换条：Note 的编辑器（ProseMirror，editor/find.ts）和代码编辑器（CodeMirror，cm/find.ts）共用这一个样子和按键，
 // 查、选、换由各自的搜索库做（prosemirror-search、@codemirror/search），这里只管条本身。
 // 浮在编辑器右上角，不占排版（进出查找时字不动）；样子跟选中工具条一样：md-bar（浮条）和 md-btn（按钮），加上用的一方的 classes
-import { keepKey } from "./editkeys";
+import { keepKey, type PassKeys } from "./editkeys";
 import { iconEl, type IconName } from "./icons";
 import { IS_MAC } from "./platform";
 import { kindClass, type MdClasses } from "./classes";
@@ -30,6 +30,7 @@ export type FindBarOpts = {
   /** 焦点从查找条去了编辑器外面：和编辑器失焦一样（保存退出） */
   leave: (ev: FocusEvent) => void;
   classes?: MdClasses;
+  passKeys?: PassKeys;
 };
 
 /** ⌘F / Ctrl+F：打开查找；⌥⌘F（Ctrl+Alt+F）或 ⌘H（Ctrl+H）：连替换一起打开。字母按 e.code（⌥ 在 mac 上会改 e.key） */
@@ -190,7 +191,7 @@ export class FindBar {
     const mod = e.metaKey || e.ctrlKey,
       k = findKey(e);
     if (e.isComposing || e.key === "Process") {
-      keepKey(e);
+      keepKey(e, this.o.passKeys);
       return;
     }
     if (k) {
@@ -214,7 +215,7 @@ export class FindBar {
       e.preventDefault();
       this.toggleCase();
     }
-    keepKey(e);
+    keepKey(e, this.o.passKeys);
   }
 }
 

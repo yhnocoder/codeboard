@@ -11,7 +11,7 @@ export type TableLayout = { cols?: (number | null)[]; rows?: (number | null)[] }
 /** As in the editor's tables (prosemirror-tables column widths): a column without a width is at least 25px */
 export const CELL_MIN = 25;
 
-/** Call after renderMd's HTML is put into el (again after each re-render): sizes the tables, wraps the code blocks */
+/** Call after a Markdown instance's render is put into el (again after each re-render): sizes the tables, wraps the code blocks */
 export function applyMdLayout(el: HTMLElement, layout: MdLayout | null | undefined) {
   if (!layout && !el.querySelector("table[data-md-style], pre.md-code.wrap")) return;
   el.querySelectorAll("table").forEach((t, i) => sizeTable(t, layout?.tables?.[i] ?? null));

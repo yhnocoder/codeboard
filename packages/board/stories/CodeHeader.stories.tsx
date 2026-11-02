@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import type { Board, CodeCard, SharedInfo, Stale } from "@codeboard/core";
 import { Stage, scene, type Globals, type Group, type Scene } from "./support/board";
 import { fn, free, multi, slice, seg0, type Fx } from "./support/code";
-import { onHost } from "../src/hostio";
+import { fromHost } from "./support/host";
 import { themes } from "./support/themes";
 
 type Kind = "function" | "class" | "snippet" | "multi" | "github" | "generated";
@@ -168,7 +168,7 @@ function single(a: Args): Scene {
     stale: h.stale,
     sel: a.selected ? ["h1"] : undefined,
     after: () => {
-      if (h.info) onHost({ type: "sharedInfo", cards: { h1: h.info } });
+      if (h.info) fromHost({ type: "sharedInfo", cards: { h1: h.info } });
     },
   };
 }
@@ -234,7 +234,7 @@ function overview(w: number): Scene {
     if (h.info) info[id] = h.info;
     if (a.selected) sel.push(id);
   });
-  return { board, stale, sel, after: () => onHost({ type: "sharedInfo", cards: info }) };
+  return { board, stale, sel, after: () => fromHost({ type: "sharedInfo", cards: info }) };
 }
 
 const meta = {

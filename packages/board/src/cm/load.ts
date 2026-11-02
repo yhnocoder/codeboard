@@ -3,7 +3,8 @@ import { completionsOn, type Segment, type SegView, type LspItem, type LspSignat
 import { unwrap } from "solid-js/store";
 import { state } from "../state/store";
 import { ask, send } from "../host";
-import { renderMd } from "@yhnocoder/markdown";
+import type { Markdown } from "@yhnocoder/markdown";
+import { ghosts } from "../gesture";
 import type {
   MdClasses,
   LspHost,
@@ -59,6 +60,7 @@ export type LspTypesAgree = [Assert<Same<LspItem, EditorLspItem>>, Assert<Same<L
 
 /** 语言服务：id = 这段编辑中的代码（宿主给它一个虚拟文档）；编辑器拆掉时 close 关掉它 */
 export function lspHost(
+  md: Markdown,
   id: string,
   lang: () => string,
   near?: () => Pick<Segment, "src" | "path" | "version"> | undefined,
@@ -82,7 +84,7 @@ export function lspHost(
       if (!opened) open(text);
       return ask("lspSignature", { id, text, line, col, trigger });
     },
-    md: (src) => renderMd(src),
+    md: (src) => md.render(src),
     close: () => send({ type: "codeDocClose", id }),
   };
 }
@@ -90,7 +92,7 @@ export function lspHost(
 /** 灰字补全（宿主能做 AI 续写时） */
 export const ghostHost = (): GhostHost | undefined =>
   completionsOn(state.host.settings)
-    ? { complete: (before, after) => ask("complete", { before, after }).catch(() => null) }
+    ? { complete: (before, after) => ask("complete", { before, after }).catch(() => null), hold: ghosts }
     : undefined;
 
 /** 着色问宿主（和代码卡同一套 views）：seg 换成这段文字，给整段的 HTML（每行之间一个 \n） */

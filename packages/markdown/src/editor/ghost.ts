@@ -6,6 +6,7 @@ import { sourceMd } from "./srcdoc";
 import { autoClosersAt } from "./pairs";
 import { GhostAsker, eatGhost, nextWord, wantGhost, type Complete, type Ghost as G } from "../ui/ghost";
 import { revealIn, scroller } from "../ui/reveal";
+import { mdOf } from "./md";
 
 const CARET = "\uE000";
 /** 问 Markdown 原文：模型看到 **b**、`c`、$x$、[[Ref]]、# 才知道该写 Markdown */
@@ -119,9 +120,13 @@ export const Ghost = Extension.create<{ complete?: Complete }>({
           },
         },
         view: (v) => {
-          const asker = new GhostAsker(complete, () => {
-            if (!v.isDestroyed && ghostKey.getState(v.state)) v.dispatch(v.state.tr.setMeta(ghostKey, null));
-          });
+          const asker = new GhostAsker(
+            complete,
+            () => {
+              if (!v.isDestroyed && ghostKey.getState(v.state)) v.dispatch(v.state.tr.setMeta(ghostKey, null));
+            },
+            mdOf(v.state).ghosts,
+          );
           return {
             update(view, prev) {
               const g = ghostKey.getState(view.state);

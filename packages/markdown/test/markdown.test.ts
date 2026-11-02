@@ -3,11 +3,13 @@
 import { sourceMd } from "../src/editor/srcdoc";
 import { describe, expect, it } from "vitest";
 import { parseMd, serializeMd } from "../src/schema";
-import { renderMd } from "../src/render";
+import { createMarkdown } from "../src/markdown";
 import { toggleTask } from "../src/view";
 import { getSchema, type JSONContent } from "@tiptap/core";
 import { DOMParser, Node as PMNode } from "@tiptap/pm/model";
 import { baseExtensions } from "../src/schema";
+
+const markdown = createMarkdown();
 
 const schema = getSchema(baseExtensions);
 
@@ -142,7 +144,7 @@ describe("static render", () => {
   it("renders a note written for the old hand-written renderer sensibly", () => {
     const old =
       "## Scheduler\nprefill first, then decode\n- waiting → running\n- block_manager.can_allocate(seq)\n\n> note\n\n$$\nE = mc^2\n$$\ncost $O(n)$ for $5 and $10, see https://x.y/a_b and **bold** *it*";
-    const h = renderMd(old);
+    const h = markdown.render(old);
     expect(h).toContain("<h2>Scheduler</h2>");
     expect(h).toContain("prefill first, then decode");
     expect(h.match(/<li>/g)?.length).toBe(2);
@@ -156,10 +158,10 @@ describe("static render", () => {
     expect(h).not.toMatch(/ href="/);
   });
   it("keeps soft line breaks as written (old notes were one line per paragraph)", () => {
-    expect(renderMd("line one\nline two")).toBe("<p>line one\nline two</p>");
+    expect(markdown.render("line one\nline two")).toBe("<p>line one\nline two</p>");
   });
   it("renders code for the host highlighter, chips, tasks, footnotes", () => {
-    const h = renderMd("```python\ndef f(): return 1\n```\n\n- [x] done\n\nsee [[Card]][^1]\n\n[^1]: n");
+    const h = markdown.render("```python\ndef f(): return 1\n```\n\n- [x] done\n\nsee [[Card]][^1]\n\n[^1]: n");
     expect(h).toContain('<pre class="md-code" data-lang="python"><code>def f(): return 1</code></pre>');
     expect(h).toContain('data-type="taskItem"');
     expect(h).toContain('checked="checked"');
@@ -168,20 +170,22 @@ describe("static render", () => {
     expect(h).toContain('<ol class="md-gap footnotes">');
   });
   it("draws no footnote list while no footnote has a definition", () => {
-    expect(renderMd("claim[^1] and more[^2]")).not.toContain("footnotes");
-    expect(renderMd("claim[^1] and more[^2]\n\n[^2]: only this")).toContain('<ol class="md-gap footnotes">');
+    expect(markdown.render("claim[^1] and more[^2]")).not.toContain("footnotes");
+    expect(markdown.render("claim[^1] and more[^2]\n\n[^2]: only this")).toContain('<ol class="md-gap footnotes">');
   });
   it("leaves mermaid source for the lazy renderer", () => {
-    expect(renderMd("```mermaid\ngraph TD; A-->B\n```")).toContain('<div class="mmd" data-src="graph TD; A-->B">');
+    expect(markdown.render("```mermaid\ngraph TD; A-->B\n```")).toContain(
+      '<div class="mmd" data-src="graph TD; A-->B">',
+    );
   });
   it("shows raw HTML through DOMPurify: harmless tags stay, scripts and handlers go", () => {
-    const h = renderMd("<script>alert(1)</script>\n\n<img src=x onerror=alert(1)>");
+    const h = markdown.render("<script>alert(1)</script>\n\n<img src=x onerror=alert(1)>");
     expect(h).not.toMatch(/<script|onerror/);
     expect(h).toContain('<img src="x">');
-    expect(renderMd("a <u>b</u> <kbd>K</kbd> <!-- hidden --> c")).toBe("<p>a <u>b</u> <kbd>K</kbd>  c</p>");
+    expect(markdown.render("a <u>b</u> <kbd>K</kbd> <!-- hidden --> c")).toBe("<p>a <u>b</u> <kbd>K</kbd>  c</p>");
   });
   it("caches by content", () => {
-    expect(renderMd("cache **me**")).toBe(renderMd("cache **me**"));
+    expect(markdown.render("cache **me**")).toBe(markdown.render("cache **me**"));
   });
 });
 
@@ -200,7 +204,7 @@ describe("typed math and block source", () => {
     const d = parseMd("a \\$\\frac{a}{b}\\$ b");
     expect(JSON.stringify(d)).not.toContain('"inlineMath"');
     expect(d.content![0].content).toEqual([{ type: "text", text: "a $\\frac{a}{b}$ b" }]);
-    expect(renderMd("a \\$\\frac{a}{b}\\$ b")).toBe("<p>a $\\frac{a}{b}$ b</p>");
+    expect(markdown.render("a \\$\\frac{a}{b}\\$ b")).toBe("<p>a $\\frac{a}{b}$ b</p>");
   });
   it("an escaped \\$a\\$ stays literal after load → save → load", () => {
     const has = (s: string) => JSON.stringify(parseMd(s)).includes('"inlineMath"');
@@ -219,7 +223,7 @@ describe("typed math and block source", () => {
     const has = (s: string) => JSON.stringify(parseMd(s)).includes('"inlineMath"');
     expect(has("a \\$x$ b")).toBe(false);
     same("a \\$x$ b");
-    expect(renderMd("a \\$x$ b")).toBe("<p>a $x$ b</p>");
+    expect(markdown.render("a \\$x$ b")).toBe("<p>a $x$ b</p>");
     // 同一段里别的公式照常
     expect(has("a \\$x$ b $y$")).toBe(true);
     same("a \\$x$ b $y$");
@@ -270,7 +274,7 @@ describe("typed math and block source", () => {
     // 字面的：写回稳定，读回来还是字
     const lit = stable("H\\~2\\~O and x\\^2\\^ and \\==no==");
     expect(JSON.stringify(parseMd(lit))).not.toMatch(/subscript|superscript|highlight/);
-    expect(renderMd("==a== b~2~ c^3^")).toBe("<p><mark>a</mark> b<sub>2</sub> c<sup>3</sup></p>");
+    expect(markdown.render("==a== b~2~ c^3^")).toBe("<p><mark>a</mark> b<sub>2</sub> c<sup>3</sup></p>");
   });
   it("==highlight== parses to the highlight mark and serializes back with other marks inside and around it", () => {
     for (const md of [
@@ -312,7 +316,7 @@ describe("typed math and block source", () => {
     // not highlights: spaces just inside the markers, a lone ==, ===
     for (const md of ["a == b == c", "x == y", "== spaced =="]) expect(marks(md), md).toEqual([]);
     // the static render uses the same <mark> the editor draws
-    expect(renderMd("a ==two **b**== c")).toBe("<p>a <mark>two <strong>b</strong></mark> c</p>");
+    expect(markdown.render("a ==two **b**== c")).toBe("<p>a <mark>two <strong>b</strong></mark> c</p>");
   });
   it("formatting around an inline formula, emoji, image or [[ref]] wraps it and is written back around it", () => {
     for (const md of [
@@ -351,10 +355,10 @@ describe("typed math and block source", () => {
     expect(marksOf("==*:tada:*==", "emoji")).toEqual(["highlight", "italic"]);
     expect(marksOf("[a $x$](https://e.com)", "inlineMath")).toEqual(["link"]);
     expect(marksOf("a $x$", "inlineMath")).toEqual([]);
-    expect(renderMd("**a $x$ :tada:**")).toMatch(
+    expect(markdown.render("**a $x$ :tada:**")).toMatch(
       /^<p><strong>a <span class="katex" data-latex="x">.*<span class="md-emoji"[^>]*>🎉<\/span><\/strong><\/p>$/,
     );
-    expect(renderMd("==:tada:==")).toMatch(/^<p><mark><span class="md-emoji"[^>]*>🎉<\/span><\/mark><\/p>$/);
+    expect(markdown.render("==:tada:==")).toMatch(/^<p><mark><span class="md-emoji"[^>]*>🎉<\/span><\/mark><\/p>$/);
     // a mark made in the editor over text and a formula is written as one span
     const d: JSONContent = {
       type: "doc",
@@ -375,10 +379,10 @@ describe("typed math and block source", () => {
   it("[toc] is a table of contents", () => {
     same("[toc]\n\n# A\n\n## B");
     expect(JSON.stringify(parseMd("[TOC]\n\n# A"))).toContain('"toc"');
-    const h = renderMd("[toc]\n\n# A\n\n## B \\<i>\n\ntext");
+    const h = markdown.render("[toc]\n\n# A\n\n## B \\<i>\n\ntext");
     expect(h).toContain('<div class="l1">A</div><div class="l2">B &lt;i&gt;</div>');
-    expect(renderMd("[toc]")).toContain("No headings yet");
-    expect(renderMd("[toc]\n\n# Cost $1 and $& x")).toContain('<div class="l1">Cost $1 and $&amp; x</div>');
+    expect(markdown.render("[toc]")).toContain("No headings yet");
+    expect(markdown.render("[toc]\n\n# Cost $1 and $& x")).toContain('<div class="l1">Cost $1 and $&amp; x</div>');
     same("see [toc] here");
     const lit = stable("\\[toc]");
     expect(JSON.stringify(parseMd(lit))).not.toContain('"toc"');
@@ -387,13 +391,15 @@ describe("typed math and block source", () => {
   it(":name: is an emoji", () => {
     same("hi :smile: and :+1:");
     expect(JSON.stringify(parseMd("hi :smile:"))).toContain('"emoji"');
-    expect(renderMd("hi :tada:")).toBe('<p>hi <span class="md-emoji" data-emoji="tada" title=":tada:">🎉</span></p>');
+    expect(markdown.render("hi :tada:")).toBe(
+      '<p>hi <span class="md-emoji" data-emoji="tada" title=":tada:">🎉</span></p>',
+    );
     for (const t of ["a :nosuchname: b", "ratio 1:100: x", "`:smile:`", "at 10:30:00"]) {
       same(t);
       expect(JSON.stringify(parseMd(t))).not.toContain('"emoji"');
     }
     // every GitHub shortcode, not only the common ones
-    expect(renderMd(":white_check_mark: :rotating_light:")).toContain(">✅</span>");
+    expect(markdown.render(":white_check_mark: :rotating_light:")).toContain(">✅</span>");
     same(":hourglass_flowing_sand: :jack_o_lantern:");
     const lit = stable("\\:smile:");
     expect(JSON.stringify(parseMd(lit))).not.toContain('"emoji"');
@@ -514,7 +520,7 @@ describe("HTML written in a note", () => {
     expect(() => PMNode.fromJSON(schema, parseMd("<div>x</div>\n\na <i>b</i> <!-- c -->")).check()).not.toThrow();
   });
   it("comments are not shown in the static view", () => {
-    expect(renderMd("a <!-- secret --> b\n\n<!-- block secret -->")).not.toContain("secret");
+    expect(markdown.render("a <!-- secret --> b\n\n<!-- block secret -->")).not.toContain("secret");
   });
 });
 
@@ -611,7 +617,7 @@ describe("annotations {text|note}", () => {
     same("==hl== and {t|n|orange}");
   });
   it("renders a span with the note in data attributes", () => {
-    const h = renderMd("see {Scheduler|决定谁先跑|purple below}");
+    const h = markdown.render("see {Scheduler|决定谁先跑|purple below}");
     expect(h).toContain('class="md-annot"');
     expect(h).toContain('data-note="决定谁先跑"');
     expect(h).toContain('data-color="purple"');
@@ -620,7 +626,7 @@ describe("annotations {text|note}", () => {
   });
   it("draws the note as inline Markdown: $…$ is a formula, **bold** and `code` are formatted", () => {
     const d = document.createElement("div");
-    d.innerHTML = renderMd("称为 {==wave count==|$a$#num_total/#num_concurrent}。");
+    d.innerHTML = markdown.render("称为 {==wave count==|$a$#num_total/#num_concurrent}。");
     const a = d.querySelector<HTMLElement>(".md-annot")!,
       n = a.querySelector(":scope > .md-annot-n")!;
     expect(a.dataset.note).toBe("$a$#num_total/#num_concurrent");
@@ -629,14 +635,14 @@ describe("annotations {text|note}", () => {
     expect(n.textContent).not.toContain("$");
     expect(a.querySelector("mark")?.textContent).toBe("wave count");
     const f = document.createElement("div");
-    f.innerHTML = renderMd("{x|**b** and `c`}");
+    f.innerHTML = markdown.render("{x|**b** and `c`}");
     expect(f.querySelector(".md-annot-n strong")?.textContent).toBe("b");
     expect(f.querySelector(".md-annot-n code")?.textContent).toBe("c");
   });
   it("a note that does not read as one line of text is shown as written; an annotation inside a note keeps only its words", () => {
     const label = (s: string) => {
       const d = document.createElement("div");
-      d.innerHTML = renderMd(s);
+      d.innerHTML = markdown.render(s);
       return d.querySelector(".md-annot-n")!;
     };
     expect(label("{x|- not a list}").textContent).toBe("- not a list");
@@ -653,7 +659,7 @@ describe("annotations {text|note}", () => {
     ]) {
       same(s);
       const dom = document.createElement("div");
-      dom.innerHTML = renderMd(s);
+      dom.innerHTML = markdown.render(s);
       const back = DOMParser.fromSchema(schema).parse(dom);
       expect(back.toJSON()).toEqual(schema.nodeFromJSON(parseMd(s)).toJSON());
     }

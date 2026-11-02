@@ -10,6 +10,7 @@ import { sourceDoc } from "./srcdoc";
 import { revealMeta } from "./inline";
 import { pastedImages } from "./image";
 import type { MdEditorOpts } from "./types";
+import { mdOf } from "./md";
 
 /** Markdown → editor blocks (source paragraphs) as a slice open at a paragraph on either end, so the first joins the
  *  text before the caret and the last the text after it */
@@ -35,7 +36,8 @@ export function handlePaste(e: Editor, _o: MdEditorOpts, ev: ClipboardEvent): bo
   if (pastedImages(cd).length) return false; // images (and a whole SVG as text) go to imageEditing's paste
   const html = cd.getData("text/html");
   // only plain text (e-books, typeset formulas on web pages): "shown text + TeX" keeps only $TeX$; HTML is handled in mathInSlice
-  const text = html || cd.getData("vscode-editor-data") ? raw : undoubleTex(raw);
+  const tex = mdOf(e.state).math;
+  const text = html || cd.getData("vscode-editor-data") ? raw : undoubleTex(raw, tex);
   const put = (slice: Slice) => {
     e.view.dispatch(
       revealMeta(e.state.tr.replaceSelection(slice))
@@ -92,7 +94,7 @@ export function handlePaste(e: Editor, _o: MdEditorOpts, ev: ClipboardEvent): bo
   // HTML from elsewhere (or ours without its text/plain): read with the full schema (formatting, links, typeset formulas), then written
   // as Markdown source
   if (html && (!own || !text)) {
-    const md = htmlSource(new DOMParser().parseFromString(html, "text/html").body);
+    const md = htmlSource(new DOMParser().parseFromString(html, "text/html").body, tex);
     return md ? put(sourceSlice(e, md)) : false;
   }
   if (!text) return false;

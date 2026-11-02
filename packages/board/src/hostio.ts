@@ -1,4 +1,5 @@
 import { batch } from "solid-js";
+import type { Markdown } from "@yhnocoder/markdown";
 import { checkBoard, findCard, walkOrder, type HostToBoard, type Sidenote } from "@codeboard/core";
 import { appendSegment, deleteItems, followMoved, renameBoard } from "@codeboard/core/commands";
 import { commandEnv } from "./actions/env";
@@ -25,7 +26,8 @@ import { questionsOpen, setWelcome } from "./state/questions";
 let preloaded = false;
 /** 进出子白板、旧白板还在淡出时收到的 init 和它后面的消息：淡出完再按顺序处理（actions/subboards.ts switchGate） */
 let held: HostToBoard[] | null = null;
-export function onHost(m: HostToBoard) {
+/** A message from the host; md: the board's Markdown instance, which follows the host's preamble, asset address and refs */
+export function onHost(m: HostToBoard, md: Markdown) {
   if (held) {
     held.push(m);
     return;
@@ -36,25 +38,25 @@ export function onHost(m: HostToBoard) {
     void gate.then(() => {
       const q = held!;
       held = null;
-      for (const x of q) onHost(x);
+      for (const x of q) onHost(x, md);
     });
     return;
   }
-  handle(m);
+  handle(m, md);
 }
 
-function handle(m: HostToBoard) {
+function handle(m: HostToBoard, md: Markdown) {
   switch (m.type) {
     case "init": {
       const b = checkBoard(m.board);
       batch(() => {
         // the host state and the segments' views and version states are replaced, not merged (the last board's would stay)
         setHost(m.host);
-        setNoteAssets(m.host.assetBase);
-        applyMathPreamble(m.host.settings.mathPreamble);
+        setNoteAssets(md, m.host.assetBase);
+        applyMathPreamble(md, m.host.settings.mathPreamble);
         if (!preloaded) {
           preloaded = true;
-          preloadEditor();
+          preloadEditor(md);
           preloadCm();
         }
         setBoards(m.boards);
@@ -78,10 +80,10 @@ function handle(m: HostToBoard) {
     }
     case "skeletons":
       putSkels(m.boards);
-      refreshRefs();
+      refreshRefs(md);
       break;
     case "boardRefs":
-      putBoardRefs(m.refs);
+      putBoardRefs(md, m.refs);
       break;
     case "crumbs":
       setCrumbs(m.crumbs);
@@ -106,7 +108,7 @@ function handle(m: HostToBoard) {
       break;
     case "host":
       mergeHost(m.host);
-      if (m.host.assetBase !== undefined) setNoteAssets(m.host.assetBase);
+      if (m.host.assetBase !== undefined) setNoteAssets(md, m.host.assetBase);
       break;
     case "add": {
       const ids = A.addCards(m.cards);

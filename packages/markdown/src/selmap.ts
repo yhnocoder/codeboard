@@ -14,7 +14,7 @@ const EXTRA = "md-annot-n";
 export type StaticTextRange = { from: number; to: number; text: string };
 
 /**
- * root 是一篇静态 Markdown（renderMd 的 HTML 放进去的元素）；range 两头都要在 root 里，否则给 null。
+ * root 是一篇静态 Markdown（Markdown 实例 render 的 HTML 放进去的元素）；range 两头都要在 root 里，否则给 null。
  * 一头落在公式这类叶子里面：开头算到它前面，结尾算到它后面（整个叶子都选上）
  */
 export function staticTextRange(root: HTMLElement, range: Range): StaticTextRange | null {

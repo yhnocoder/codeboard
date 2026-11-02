@@ -36,7 +36,7 @@ import {
   liveNoteMd,
   type NoteSpot,
 } from "./state/ui";
-import { staticTextRange, draggedImage, IMAGE_DRAG_TYPE, type DraggedImage } from "@yhnocoder/markdown";
+import { staticTextRange, draggedImage, IMAGE_DRAG_TYPE, type DraggedImage, type Markdown } from "@yhnocoder/markdown";
 import {
   frames,
   deepestAt,
@@ -978,7 +978,7 @@ export function canvasWheel(e: WheelEvent) {
   }
 }
 
-export function canvasContextMenu(e: MouseEvent) {
+export function canvasContextMenu(e: MouseEvent, md: Markdown) {
   e.preventDefault();
   const t = e.target as HTMLElement;
   if (t.closest(`.card, ${NODRAG}`)) return;
@@ -986,7 +986,7 @@ export function canvasContextMenu(e: MouseEvent) {
   if (lk) return A.linkMenu(lk.dataset.link!, e.clientX, e.clientY);
   const sl = t.closest("[data-sect]") as HTMLElement | null;
   if (sl) return A.sectionMenu(sl.dataset.sect!, e.clientX, e.clientY);
-  A.canvasMenu(e.clientX, e.clientY);
+  A.canvasMenu(md, e.clientX, e.clientY);
 }
 
 // Section 标签：拖动整体移动（卡片、子 Section 一起走）
@@ -1104,7 +1104,8 @@ export function sectionEdgeDown(e: PointerEvent, id: string) {
   );
 }
 
-export function installKeys() {
+/** md: the board's Markdown instance (a paste reads text with it) */
+export function installKeys(md: Markdown) {
   installShield();
   installOverlays();
   trackPointer();
@@ -1173,14 +1174,14 @@ export function installKeys() {
       rd.onload = () => A.addImage(String(rd.result), f.name || "pasted.png", w, { scale });
       rd.readAsDataURL(f);
     };
-    if (!text && svg) return void A.pasteText(svg, w);
+    if (!text && svg) return void A.pasteText(md, svg, w);
     if (!text) return image(file!);
     // 先看是不是白板上复制的卡（这块白板的，或者问宿主：别的白板上的就贴卡），否则照旧按图 / 文字粘贴
     void A.pasteFromBoard(text, w).then((done) => {
       if (done) return;
       if (file) return image(file);
       const near = A.pasteNear(text);
-      A.pasteText(text, near ?? w, !!near);
+      A.pasteText(md, text, near ?? w, !!near);
     });
   });
   // Files dragged in from the OS (Finder) or from VS Code's Explorer (both only reach the board with Shift held). VS Code's

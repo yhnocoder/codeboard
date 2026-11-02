@@ -21,8 +21,11 @@ import { padAt, padEnd } from "./pad";
 import { gapsPlugin } from "./gaps";
 import { saveImage, uiOf } from "./ui";
 import type { MdEditorOpts, RefGroup, RefItem, RefPick } from "./types";
+import type { Md } from "../markdown";
+import { mdPlugin } from "./md";
 
 export function editorExtensions(
+  md: Md,
   o: MdEditorOpts,
   ed: () => Editor,
   handle: HTMLElement | null,
@@ -306,9 +309,11 @@ export function editorExtensions(
   const MathHintsExt = Extension.create({
     name: "cbMathHints",
     priority: 300,
-    addProseMirrorPlugins: () => [mathHintsPlugin()],
+    addProseMirrorPlugins: () => [mathHintsPlugin(md.math)],
   });
   return [
+    // first: every node view and widget reads its instance from the state (md.ts)
+    Extension.create({ name: "cbMd", priority: 1000, addProseMirrorPlugins: () => [mdPlugin(md)] }),
     // ⌘↵ 要抢在换行（hardBreak 也绑了 Mod-Enter）前面
     Extension.create({
       name: "cbSave",

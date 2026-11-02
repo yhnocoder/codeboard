@@ -18,6 +18,7 @@ import {
 } from "@codemirror/search";
 import { FindBar, findKey, seedText, type FindSpec, type FindTarget } from "../ui/find";
 import type { MdClasses } from "../ui/classes";
+import type { PassKeys } from "../ui/editkeys";
 
 const bars = new WeakMap<EditorView, FindBar>();
 /** 数到这么多就不往下数了（显示 n+） */
@@ -97,7 +98,11 @@ export function closeFind(view: EditorView) {
 }
 
 /** leave：焦点从查找条去了编辑器外面（和编辑器失焦一样） */
-export function findExtension(o: { leave: (e: FocusEvent) => void; classes?: MdClasses }): Extension[] {
+export function findExtension(o: {
+  leave: (e: FocusEvent) => void;
+  classes?: MdClasses;
+  passKeys?: PassKeys;
+}): Extension[] {
   return [
     search({
       top: true,
@@ -106,7 +111,7 @@ export function findExtension(o: { leave: (e: FocusEvent) => void; classes?: MdC
         const origin = view.state.selection.main.from;
         const bar = new FindBar(
           target(view, () => origin),
-          { owns: (n) => view.dom.contains(n), leave: o.leave, classes: o.classes },
+          { owns: (n) => view.dom.contains(n), leave: o.leave, classes: o.classes, passKeys: o.passKeys },
         );
         bars.set(view, bar);
         return {

@@ -1,5 +1,6 @@
 // 只读入口：不带编辑器（@yhnocoder/markdown/editor，懒加载），不碰 Solid。
 // The API for npm users (README); an export the board itself does not use is marked @public for the dead-code check
+export { createMarkdown, type Markdown, type MarkdownOptions } from "./markdown";
 export {
   parseMd,
   /** @public */
@@ -7,11 +8,7 @@ export {
   mdBlockStarts,
   texBrackets,
 } from "./schema";
-export { renderMd, renderMdInline, mdCached } from "./render";
 export {
-  /** @public */
-  setAssetBase,
-  setImageResolver,
   IMAGE_DRAG_TYPE,
   draggedImage,
   type DraggedImage,
@@ -22,17 +19,16 @@ export {
 } from "./image";
 export { imageCaption, setImageCaption } from "./caption";
 export {
-  hydrate,
-  mdClick,
   /** @public */
   toggleTask,
-  setRefResolver,
-  paintRef,
   type RefTarget,
   type RefBroken,
+  /** @public */
+  type Refs,
+  /** @public */
+  type ClickOpts,
 } from "./view";
 export {
-  setCodeHighlighter,
   /** @public */
   type CodeHighlighter,
 } from "./code";
@@ -45,12 +41,9 @@ export {
 } from "./selmap";
 export { toggleStaticMark, staticMarkActive, type StaticMark } from "./marks";
 export {
-  setMathPreamble,
   /** @public */
-  mathMacros,
-  mathPreambleErrors,
+  type MathMacros,
 } from "./math";
-export { undoubleTex } from "./doubled";
 export {
   applyMdLayout,
   type MdLayout,

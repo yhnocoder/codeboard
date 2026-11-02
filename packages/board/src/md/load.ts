@@ -12,7 +12,7 @@ import { BOARD_CLASSES, lspHost } from "../cm/load";
 import { saveNoteImage } from "./images";
 import { boardsGrouped, refFoot, refGroups, refPicked, refRecent, wantBoardRefs } from "./refs";
 import type { MdEditorOpts, MdEditorHandle } from "@yhnocoder/markdown/editor";
-import type { MdLayout } from "@yhnocoder/markdown";
+import type { Markdown, MdLayout } from "@yhnocoder/markdown";
 import { boardRef, boardSignal, boardTimer } from "../state/root";
 
 export type { MdEditorHandle };
@@ -23,13 +23,13 @@ export const loadEditor = () => (mod ??= import("@yhnocoder/markdown/editor").th
 export const editorNow = () => ready;
 
 /** 白板打开后空闲时预加载，再预热（建好那一个编辑器），第一次双击就不用等 */
-export function preloadEditor() {
+export function preloadEditor(md: Markdown) {
   setTimeout(
     () =>
       whenIdle(
         () =>
           void loadEditor()
-            .then((m) => whenIdle(() => m.warmUp(sampleNote())))
+            .then((m) => whenIdle(() => m.warmUp(md, sampleNote())))
             .catch(() => {
               mod = undefined;
             }),
@@ -39,7 +39,7 @@ export function preloadEditor() {
 }
 // 鼠标停在一张能编辑的 Markdown 上 120ms（或按下第一下），或者只选中了一张 Note：在页面外把它画进编辑器，
 // 双击时只剩挂上去（见 editor 的 prepare）。鼠标下面的优先，其次是选中的；镜头在动、在拖时等停下，正在编辑时不做
-type Prep = { src: string; layout?: MdLayout | null };
+type Prep = { md: Markdown; src: string; layout?: MdLayout | null };
 const prepT = boardTimer(),
   hov = boardRef<Prep | undefined>(undefined),
   selP = boardRef<Prep | undefined>(undefined);
@@ -52,12 +52,12 @@ function schedule(now = false) {
       if (++tries < 16) prepT.start(run, 120);
       return;
     }
-    ready.prepare(p.src, p.layout);
+    ready.prepare(p.md, p.src, p.layout);
   };
   prepT.start(run, now ? 0 : 120);
 }
-export function prepareHover(src: string, layout?: MdLayout | null, now = false) {
-  hov.v = { src, layout };
+export function prepareHover(md: Markdown, src: string, layout?: MdLayout | null, now = false) {
+  hov.v = { md, src, layout };
   schedule(now);
 }
 /** 鼠标离开这一张（别的卡在它之后进来的不动） */
@@ -67,8 +67,8 @@ export function prepareLeave(src: string) {
     schedule();
   }
 }
-export function prepareSelected(src: string | undefined, layout?: MdLayout | null) {
-  selP.v = src === undefined ? undefined : { src, layout };
+export function prepareSelected(md: Markdown, src: string | undefined, layout?: MdLayout | null) {
+  selP.v = src === undefined ? undefined : { md, src, layout };
   schedule();
 }
 
@@ -134,10 +134,10 @@ export const NOTE_PLACEHOLDER = "Type / for blocks, [[ to link a card";
 
 let seq = 0;
 /** Note 里一个代码块的语言服务：宿主给它一个虚拟文档（.codeboard-note-code-* 隐藏文件），代码块拆掉时关掉 */
-function codeLsp(lang: () => string) {
+function codeLsp(md: Markdown, lang: () => string) {
   if (!langInfo(lang())?.lsp) return undefined;
   const id = `note-code-${Math.random().toString(36).slice(2, 8)}${++seq}`;
-  return lspHost(id, () => langInfo(lang())?.vscodeId ?? lang());
+  return lspHost(md, id, () => langInfo(lang())?.vscodeId ?? lang());
 }
 
 /** Note 代码块语言框里的语言：着色认得的（语言表里有 highlight 的）。写进围栏的是 GitHub 认的名字（cuda、bash），它指的不是这种语言时（Triton 的是 python）写 id */
@@ -148,8 +148,8 @@ const CODE_LANGS = LANG_TABLE.filter((l) => l.highlight).map((l) => ({
 }));
 
 /** 编辑器要的白板能力：[[ 引用卡片、存图、AI 补全（宿主没有就什么都不做）、代码块的注释记号和语言服务 */
-export function editorOpts(): Omit<MdEditorOpts, "value" | "onDone" | "placeholder"> {
-  wantBoardRefs();
+export function editorOpts(md: Markdown): Omit<MdEditorOpts, "value" | "onDone" | "placeholder"> {
+  wantBoardRefs(md);
   return {
     refs: {
       items: refCandidates,
@@ -167,7 +167,12 @@ export function editorOpts(): Omit<MdEditorOpts, "value" | "onDone" | "placehold
     complete: completionsOn(state.host.settings)
       ? (before: string, after: string) => ask("complete", { before, after }).catch(() => null)
       : undefined,
-    code: { comment: (l) => langInfo(l)?.comment, lsp: codeLsp, stopPointerDown: true, langs: CODE_LANGS },
+    code: {
+      comment: (l) => langInfo(l)?.comment,
+      lsp: (lang) => codeLsp(md, lang),
+      stopPointerDown: true,
+      langs: CODE_LANGS,
+    },
     classes: BOARD_CLASSES,
   };
 }

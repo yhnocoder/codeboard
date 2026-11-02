@@ -4,7 +4,7 @@ import { Stage, scene, codeCard, noteCard, type Globals, type Scene } from "./su
 import { el } from "./support/play";
 import { arrow, ln, whole } from "./support/canvas";
 import { fn, callLink, lineOf, popAt, card, FX } from "./support/code";
-import { onHost } from "../src/hostio";
+import { fromHost } from "./support/host";
 import { setLegendOpen, setTreeOpen } from "../src/state/calls";
 import { startWalk } from "../src/actions";
 
@@ -144,7 +144,7 @@ function single(a: Args): Scene {
       await el(`${card("step")} .src .l`);
       if (a.panel === "tree") setTreeOpen(true);
       if (a.panel === "legend") setLegendOpen(true);
-      if (a.panel === "run") onHost({ type: "run", apply: runApply(step, sch) });
+      if (a.panel === "run") fromHost({ type: "run", apply: runApply(step, sch) });
       if (a.panel === "markPop") await popAt({ kind: "mark", card: "sch" }, `${card("sch")} .chead .step`);
       if (a.panel === "varsPop") await popAt({ kind: "vars", link: "l-post" }, '.vchips[data-link="l-post"]');
       if (a.walk) startWalk("step", { at: 2 });
@@ -161,7 +161,7 @@ function overview(a: Args): Scene {
       await el(`${card("step")} .src .l`);
       setTreeOpen(true);
       setLegendOpen(true);
-      onHost({ type: "run", apply: runApply(step, sch) });
+      fromHost({ type: "run", apply: runApply(step, sch) });
     },
   };
 }

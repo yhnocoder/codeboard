@@ -1,5 +1,5 @@
 import katex from "katex";
-import { mathMacros } from "./math";
+import type { MathPreamble } from "./math";
 
 // 网页上 KaTeX / MathJax 排好的公式按纯文字复制出来是"显示的字 + TeX 原文"（N×NN\times N）：MathML 里的字和 annotation 连在一起。
 // 认法：从一个 TeX 记号（\ ^ _）往两边找 TeX 的范围，让 KaTeX 排一遍，前面紧挨着的字正好是排出来的字才算，留下 TeX
@@ -8,12 +8,13 @@ const ANCHOR = /\\[A-Za-z]+|\\[{}|,;!]|[\^_]/g;
 const INVISIBLE = /[\s⁡-⁤​]/;
 // 粘贴一整篇 TeX 源码时每个 \\ 都要试：KaTeX 排一次约 0.1 ms，一次粘贴最多排这么多次
 const MAX_RENDERS = 1500;
-const shown = new Map<string, string | null>();
-function shownText(tex: string): string | null {
+/** What KaTeX shows for tex under the preamble math (cached on it) */
+function shownText(tex: string, math: MathPreamble): string | null {
+  const shown = math.shown;
   let s = shown.get(tex);
   if (s === undefined) {
     try {
-      const html = katex.renderToString(tex, { output: "mathml", throwOnError: true, macros: mathMacros() });
+      const html = katex.renderToString(tex, { output: "mathml", throwOnError: true, macros: math.macrosCopy() });
       s = html
         .replace(/<annotation[\s\S]*?<\/annotation>/, "")
         .replace(/<[^>]+>/g, "")
@@ -43,8 +44,8 @@ function endsWith(t: string, end: number, r: string): number {
   }
   return i;
 }
-/** 纯文字里"显示的字 + TeX"连着的公式换成 $TeX$；没有的原样返回 */
-export function undoubleTex(t: string): string {
+/** 纯文字里"显示的字 + TeX"连着的公式换成 $TeX$（按 math 的预设排）；没有的原样返回 */
+export function undoubleTex(t: string, math: MathPreamble): string {
   let out = "",
     last = 0,
     budget = MAX_RENDERS;
@@ -63,7 +64,7 @@ export function undoubleTex(t: string): string {
         if (t[s] === " ") continue;
         budget--;
         const tex = t.slice(s, e),
-          r = shownText(tex);
+          r = shownText(tex, math);
         const from = r ? endsWith(t, s, r) : -1;
         if (from >= last) {
           hit = [from, s, e];

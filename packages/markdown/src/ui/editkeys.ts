@@ -1,13 +1,13 @@
-let passThrough: (e: KeyboardEvent) => boolean = () => false;
-/** 输入框里哪些没处理过的按键照样冒泡出去（交给外面的快捷键）。默认一个都不放：普通网页里剪切、复制、撤销是浏览器自己做的，
- *  不靠冒泡；放在 VS Code 的 webview 里时，剪贴板、撤销、命令面板这些要交给 VS Code */
-export const setKeyPassThrough = (f: (e: KeyboardEvent) => boolean) => {
-  passThrough = f;
-};
+/** Which unhandled keys inside an input still bubble out to the page's own shortcuts */
+export type PassKeys = (e: KeyboardEvent) => boolean;
 
-/** 输入框里收到按键时调用（代替 e.stopPropagation()）。自己已经处理了的（preventDefault 过，比如 ProseMirror 的撤销、全选，
- *  编辑器的 ⌘⇧V）不再交出去；没处理的照 setKeyPassThrough 定 */
-export function keepKey(e: KeyboardEvent) {
-  if (!e.defaultPrevented && passThrough(e)) return;
+/**
+ * Call on a key inside an input instead of e.stopPropagation(). A key handled already (defaultPrevented: ProseMirror's undo
+ * and select all, the editor's ⌘⇧V) stays in; another one bubbles out only when pass says so. Without pass none does: on a
+ * plain page the browser cuts, copies and undoes by itself, not by bubbling; in VS Code's webview the clipboard, undo and the
+ * command palette are VS Code's and have to reach it
+ */
+export function keepKey(e: KeyboardEvent, pass?: PassKeys) {
+  if (!e.defaultPrevented && pass?.(e)) return;
   e.stopPropagation();
 }

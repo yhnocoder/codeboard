@@ -43,9 +43,11 @@ import { useLineMarks } from "./code/marks";
 import { AnnotRail, useAnnots } from "./code/Annots";
 import { GapRow } from "./code/GapRow";
 import { freeEditBlur } from "./code/freeblur";
+import { useMd } from "../md/context";
 
 export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; dim?: () => boolean }) {
   let codeEl!: HTMLDivElement, srcEl!: HTMLDivElement, scrollEl!: HTMLDivElement;
+  const md = useMd();
   const c = () => p.card;
   const rows = createMemo<Row[]>(() =>
     cardRows(c(), { views: state.views, shown: shown(), versionOf: (s) => versionChip(c(), s) }),
@@ -487,7 +489,7 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
                             {(as) => <AnnotRail cx={cx} l={l()} list={as()} below={true} shift={shift()} />}
                           </Show>
                           <For each={alwaysNotes(l().seg, l().line)}>
-                            {(n) => <div class="inote" data-note={n.id} innerHTML={act.mdInline(n.md)} />}
+                            {(n) => <div class="inote" data-note={n.id} innerHTML={act.mdInline(md, n.md)} />}
                           </For>
                         </>
                       )}

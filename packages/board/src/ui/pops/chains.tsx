@@ -1,4 +1,4 @@
-import { keepKey } from "@yhnocoder/markdown/ui";
+import { keepKey } from "../vscodekeys";
 import { For, Show, createSignal, createMemo, createEffect } from "solid-js";
 import { varText, RPC_MECHS, type GraphMark } from "@codeboard/core";
 import { langLabel } from "@codeboard/analysis/langs";

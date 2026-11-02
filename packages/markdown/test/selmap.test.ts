@@ -1,12 +1,14 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
 import { mdSchema, parseMd } from "../src/schema";
-import { renderMd } from "../src/render";
+import { createMarkdown } from "../src/markdown";
 import { staticTextRange, docRange } from "../src/selmap";
+
+const markdown = createMarkdown();
 
 function setup(md: string) {
   const root = document.createElement("div");
-  root.innerHTML = renderMd(md);
+  root.innerHTML = markdown.render(md);
   document.body.append(root);
   return { root, doc: mdSchema().nodeFromJSON(parseMd(md)) };
 }

@@ -13,6 +13,7 @@ import { Bubble } from "./bubble";
 import { caretAt, prepKey, stateFor, takeInst, type Sess } from "./session";
 import { uiOf, type Ui } from "./ui";
 import type { MdEditorHandle, MdEditorOpts } from "./types";
+import { coreOf, type Markdown } from "../markdown";
 
 // The API for npm users (README); an export the board itself does not use is marked @public for the dead-code check
 export type {
@@ -33,8 +34,12 @@ export {
   warmUp,
 } from "./session";
 
-/** @public */
-export function mountEditor(host: HTMLElement, o: MdEditorOpts): MdEditorHandle {
+/**
+ * Edit o.value in host with md's settings (its resolvers, highlighter, preamble, images)
+ * @public
+ */
+export function mountEditor(md: Markdown, host: HTMLElement, o: MdEditorOpts): MdEditorHandle {
+  const core = coreOf(md);
   let changed = false,
     done = false,
     src: SourceMode | null = null,
@@ -44,7 +49,7 @@ export function mountEditor(host: HTMLElement, o: MdEditorOpts): MdEditorHandle 
   const [menu, setMenu] = createSignal<ReturnType<Ui["menu"]>>(null);
   // the shared editor is busy (the hand-over between two sessions), or its drag handle differs: build one for this session
   const dragHandle = !!o.dragHandle;
-  const { inst, pooled } = takeInst(dragHandle);
+  const { inst, pooled } = takeInst(core, dragHandle);
   const editor = inst.editor;
   const sess: Sess = {
     o,
@@ -95,6 +100,7 @@ export function mountEditor(host: HTMLElement, o: MdEditorOpts): MdEditorHandle 
     owns: (n) => host.contains(n) || layer.contains(n),
     leave: (ev) => blurred(ev),
     classes: o.classes,
+    passKeys: core.passKeys,
   });
   const ui: Ui = { menu, setMenu, link, setLink, closeFind: () => !!find?.close(), follow: false, opts: o };
   uiOf.set(editor, ui);

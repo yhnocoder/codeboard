@@ -1,10 +1,9 @@
 // @vitest-environment jsdom
 // Images in Markdown: ![alt](path) round-trips unchanged; the static render asks the page's resolver for the displayed address and
 // size (width / height reserve the space before the image decodes) and decodes lazily
-import { afterEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { parseMd, serializeMd } from "../src/schema";
-import { renderMd } from "../src/render";
-import { setAssetBase, setImageResolver } from "../src/image";
+import { createMarkdown, type Markdown } from "../src/markdown";
 import { imageCaption, setImageCaption } from "../src/caption";
 
 const rt = (s: string) => serializeMd(parseMd(s));
@@ -14,7 +13,10 @@ const imgOf = (html: string) => {
   return d.querySelector("img")!;
 };
 
-afterEach(() => setImageResolver(null));
+let markdown: Markdown;
+beforeEach(() => {
+  markdown = createMarkdown();
+});
 
 describe("image Markdown round trip", () => {
   it("keeps ![alt](path) as typed: relative, absolute, with a title, next to text", () => {
@@ -109,14 +111,14 @@ describe("image width", () => {
     ]);
   });
   it("renders the width as a percentage of the body, centered", () => {
-    const im = imgOf(renderMd("![](assets/w.png){width=40%}"));
+    const im = imgOf(markdown.render("![](assets/w.png){width=40%}"));
     expect(im.style.width).toBe("40%");
     expect(im.classList.contains("sized")).toBe(true); // centered (markdown.css)
-    expect(imgOf(renderMd("![](assets/w.png)")).hasAttribute("style")).toBe(false);
+    expect(imgOf(markdown.render("![](assets/w.png)")).hasAttribute("style")).toBe(false);
   });
   it("keeps the paragraph around a sized image in a list item or table cell, marked p.md-psized to center it", () => {
     const host = document.createElement("div");
-    host.innerHTML = renderMd(
+    host.innerHTML = markdown.render(
       "- ![](assets/w.png){width=40%}\n- ![](assets/w.png)\n\n| a |\n| - |\n| [![](assets/w.png){width=40%}](https://a.b) |",
     );
     const [sized, full] = [...host.querySelectorAll("li")];
@@ -130,7 +132,7 @@ describe("image width", () => {
 
 describe("image render", () => {
   it("leaves the address alone without a resolver, and decodes lazily", () => {
-    const im = imgOf(renderMd("![cat](assets/c.png)"));
+    const im = imgOf(markdown.render("![cat](assets/c.png)"));
     expect(im.getAttribute("src")).toBe("assets/c.png");
     expect(im.getAttribute("alt")).toBe("cat");
     expect(im.getAttribute("loading")).toBe("lazy");
@@ -139,31 +141,37 @@ describe("image render", () => {
     expect(im.hasAttribute("width")).toBe(false);
   });
   it("uses the resolver's address and size, so the space is reserved before the image loads", () => {
-    setImageResolver((src) => {
+    markdown.setImageResolver((src) => {
       const m = /^assets\/(.*-(\d+)x(\d+)\.\w+)$/.exec(src);
       return m ? { src: `https://res.test/a/${m[1]}`, width: +m[2], height: +m[3] } : undefined;
     });
-    const im = imgOf(renderMd("![](assets/0123456789abcdef-640x480.png)"));
+    const im = imgOf(markdown.render("![](assets/0123456789abcdef-640x480.png)"));
     expect(im.getAttribute("src")).toBe("https://res.test/a/0123456789abcdef-640x480.png");
     expect([im.getAttribute("width"), im.getAttribute("height")]).toEqual(["640", "480"]);
-    const ext = imgOf(renderMd("![](https://a.b/c.png)"));
+    const ext = imgOf(markdown.render("![](https://a.b/c.png)"));
     expect(ext.getAttribute("src")).toBe("https://a.b/c.png");
     expect(ext.hasAttribute("width")).toBe(false);
   });
   it("renders again when the resolver changes (no stale address from the cache)", () => {
-    setAssetBase("assets", "https://one.test");
-    expect(imgOf(renderMd("![](assets/k.png)")).getAttribute("src")).toBe("https://one.test/k.png");
-    setAssetBase("assets/", "https://two.test");
-    expect(imgOf(renderMd("![](assets/k.png)")).getAttribute("src")).toBe("https://two.test/k.png");
-    setAssetBase("assets", "");
-    expect(imgOf(renderMd("![](assets/k.png)")).getAttribute("src")).toBe("assets/k.png");
+    markdown.setAssetBase("assets", "https://one.test");
+    expect(imgOf(markdown.render("![](assets/k.png)")).getAttribute("src")).toBe("https://one.test/k.png");
+    markdown.setAssetBase("assets/", "https://two.test");
+    expect(imgOf(markdown.render("![](assets/k.png)")).getAttribute("src")).toBe("https://two.test/k.png");
+    markdown.setAssetBase("assets", "");
+    expect(imgOf(markdown.render("![](assets/k.png)")).getAttribute("src")).toBe("assets/k.png");
   });
   it("resolves only addresses under the folder it is given", () => {
-    setAssetBase("media/img", "/static");
-    expect(imgOf(renderMd("![](media/img/k.png)")).getAttribute("src")).toBe("/static/k.png");
-    expect(imgOf(renderMd("![](assets/k.png)")).getAttribute("src")).toBe("assets/k.png");
-    expect(imgOf(renderMd("![](media/imgs.png)")).getAttribute("src")).toBe("media/imgs.png");
-    setAssetBase("media/img", "");
+    markdown.setAssetBase("media/img", "/static");
+    expect(imgOf(markdown.render("![](media/img/k.png)")).getAttribute("src")).toBe("/static/k.png");
+    expect(imgOf(markdown.render("![](assets/k.png)")).getAttribute("src")).toBe("assets/k.png");
+    expect(imgOf(markdown.render("![](media/imgs.png)")).getAttribute("src")).toBe("media/imgs.png");
+    markdown.setAssetBase("media/img", "");
+  });
+  it("keeps each instance's addresses to itself", () => {
+    const other = createMarkdown({ images: (src) => ({ src: `/other/${src}` }) });
+    markdown.setAssetBase("assets", "/one");
+    expect(imgOf(markdown.render("![](assets/k.png)")).getAttribute("src")).toBe("/one/k.png");
+    expect(imgOf(other.render("![](assets/k.png)")).getAttribute("src")).toBe("/other/assets/k.png");
   });
 });
 
@@ -190,14 +198,14 @@ describe("image captions (the title)", () => {
   });
   it("renders the caption under the image (static), with the width on the figure, and none for an empty title", () => {
     const d = document.createElement("div");
-    d.innerHTML = renderMd('![a](assets/a.png "Figure 1"){width=40%}');
+    d.innerHTML = markdown.render('![a](assets/a.png "Figure 1"){width=40%}');
     const fig = d.querySelector(".md-fig")!;
     expect(fig.querySelector(".md-cap")!.textContent).toBe("Figure 1");
     expect(fig.classList.contains("sized")).toBe(true);
     expect((fig as HTMLElement).style.width).toBe("40%");
     expect(fig.querySelector("img")!.hasAttribute("title")).toBe(false);
     expect(fig.querySelector("img")!.hasAttribute("style")).toBe(false);
-    d.innerHTML = renderMd('![a](assets/a.png "  ")');
+    d.innerHTML = markdown.render('![a](assets/a.png "  ")');
     expect(d.querySelector(".md-fig")).toBeNull();
     expect(d.querySelector("img")).not.toBeNull();
   });
@@ -225,7 +233,7 @@ describe("![alt](…) whose address does not parse", () => {
   const bad = `before ![SM 示意图](data:image/svg+xml;utf8,${svg}) after`;
   it("draws as an image that failed to load, never as the inline <svg> it holds", () => {
     const d = document.createElement("div");
-    d.innerHTML = renderMd(bad);
+    d.innerHTML = markdown.render(bad);
     expect(d.querySelector(".md-imgerr")?.textContent).toBe("Image failed to load · SM 示意图");
     expect([...d.querySelectorAll("img, svg")].filter((e) => !e.closest(".md-imgerr")).length).toBe(0);
     expect(d.textContent).toBe("before Image failed to load · SM 示意图 after");
@@ -235,7 +243,7 @@ describe("![alt](…) whose address does not parse", () => {
   });
   it("percent-encoded, the same address is an image", () => {
     const ok = `![SM 示意图](data:image/svg+xml;utf8,${encodeURIComponent(decodeURIComponent(svg)).replace(/'/g, "%27")})`;
-    expect(imgOf(renderMd(ok))?.getAttribute("alt")).toBe("SM 示意图");
+    expect(imgOf(markdown.render(ok))?.getAttribute("alt")).toBe("SM 示意图");
     expect(rt(ok)).toBe(ok);
   });
 });

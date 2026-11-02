@@ -5,7 +5,7 @@ import type { SharedInfo } from "@codeboard/core";
 import { Stage, scene, noteCard, codeCard, type Globals, type Scene } from "./support/board";
 import { settled, click, el, frames } from "./support/play";
 import { SHORT, TITLED } from "./support/groups";
-import { onHost } from "../src/hostio";
+import { fromHost } from "./support/host";
 import { pops, pinPop } from "../src/state/pop";
 
 type Args = { boards: number; marks: boolean; here: number; far: number };
@@ -55,7 +55,7 @@ function shared(a: Args) {
     })),
     ins: FAR.slice(0, a.far),
   };
-  onHost({ type: "sharedInfo", cards: { c1: info, c2: { boards: info.boards, ins: [] } } });
+  fromHost({ type: "sharedInfo", cards: { c1: info, c2: { boards: info.boards, ins: [] } } });
 }
 
 const meta = {

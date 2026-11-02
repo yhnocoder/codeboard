@@ -4,6 +4,7 @@ import { DOMParser as PMParser, type Node as PMNode } from "@tiptap/pm/model";
 import type { JSONContent } from "@tiptap/core";
 import { mdSchema, parseMd, pastedMd, serializeMd, texBrackets } from "../src/schema";
 import { mathInSlice } from "../src/editor/pastemath";
+import { MathPreamble } from "../src/math";
 
 // A chat app's answer with formulas next to CJK text and punctuation, \text{…} with dots,
 // single letters, and "(1,2)" between two formulas
@@ -75,7 +76,7 @@ function pasteHtml(html: string): PMNode {
   const box = document.createElement("div");
   box.innerHTML = html;
   const slice = PMParser.fromSchema(schema).parseSlice(box);
-  const fixed = mathInSlice(slice, schema) ?? slice;
+  const fixed = mathInSlice(slice, schema, new MathPreamble()) ?? slice;
   return schema.nodes.doc.create(null, fixed.content);
 }
 const nodes = (doc: PMNode) => {

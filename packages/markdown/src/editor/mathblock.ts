@@ -4,7 +4,9 @@ import type { Node as PMNode } from "@tiptap/pm/model";
 import { NodeSelection, TextSelection } from "@tiptap/pm/state";
 import type { EditorView, NodeView } from "@tiptap/pm/view";
 import { keepKey } from "../ui/editkeys";
-import { markTex, mathMacros } from "../math";
+import { markTex } from "../math";
+import type { Md } from "../markdown";
+import { mdOf } from "./md";
 import { MathHints, textareaCaret } from "./mathhints";
 
 export class MathBlockView implements NodeView {
@@ -16,12 +18,14 @@ export class MathBlockView implements NodeView {
   private leaving = false;
   private width: ResizeObserver;
   private hints: MathHints;
+  private md: Md;
 
   constructor(
     private node: PMNode,
     private view: EditorView,
     private getPos: () => number | undefined,
   ) {
+    this.md = mdOf(view.state);
     this.dom = document.createElement("div");
     this.dom.className = "tiptap-mathematics-render";
     this.dom.dataset.type = "block-math";
@@ -57,6 +61,7 @@ export class MathBlockView implements NodeView {
           this.hints.refresh(false);
         },
         display: true,
+        math: this.md.math,
       },
       { preview: this.preview },
     );
@@ -84,7 +89,12 @@ export class MathBlockView implements NodeView {
   }
 
   private render(latex: string) {
-    katex.render(latex, this.preview, { displayMode: true, throwOnError: false, output: "html", macros: mathMacros() });
+    katex.render(latex, this.preview, {
+      displayMode: true,
+      throwOnError: false,
+      output: "html",
+      macros: this.md.math.macrosCopy(),
+    });
     markTex(this.preview, latex);
     if (!latex.trim()) this.preview.textContent = "";
   }
@@ -146,7 +156,7 @@ export class MathBlockView implements NodeView {
       e.stopPropagation();
       this.commit(dir);
     };
-    if (e.isComposing) return keepKey(e);
+    if (e.isComposing) return keepKey(e, this.md.passKeys);
     if (this.hints.key(e)) return e.stopPropagation();
     if (e.key === "Escape" || (e.key === "Enter" && mod)) return leave(1);
     if (a === b && !e.shiftKey && !e.altKey && !mod) {
@@ -156,7 +166,7 @@ export class MathBlockView implements NodeView {
         return leave(1);
       if (e.key === "Backspace" && !v) return leave(-1);
     }
-    keepKey(e);
+    keepKey(e, this.md.passKeys);
   }
 
   update(node: PMNode) {

@@ -5,8 +5,8 @@ import katex from "katex";
 import DOMPurify from "dompurify";
 import { mdSchema, parseMd } from "./schema";
 import { escHtml, isHtmlComment, tocEntries, tocHtml } from "./schema-nodes";
-import { captionOf, imageAttrs, missingImageHtml, onImagesChanged } from "./image";
-import { mathMacros, mathPreambleVersion, withTex } from "./math";
+import { captionOf, missingImageHtml, type Images } from "./image";
+import { withTex, type MathPreamble } from "./math";
 import { gapClass, htmlGapKind, withClass, type GapKind } from "./gaps";
 
 const escA = (s: string) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
@@ -30,8 +30,10 @@ function specHtml(spec: DOMOutputSpec, hole: string): string {
   return `<${tag}${attrs}>${inner}</${tag}>`;
 }
 
+/** What a render reads from its Markdown instance: how images resolve, the math preamble */
+export type RenderEnv = { images: Images; math: MathPreamble };
 /** trusted：不过 DOMPurify 的 HTML（KaTeX 生成的，很大；Mermaid 的占位。字都转义过） */
-type Cx = { doc: PMNode; trusted: string[] };
+type Cx = RenderEnv & { doc: PMNode; trusted: string[] };
 const trust = (cx: Cx, html: string) => `<span data-cbr="${cx.trusted.push(html) - 1}"></span>`;
 const untrust = (html: string, t: string[]) => html.replace(/<span data-cbr="(\d+)"><\/span>/g, (_, i) => t[+i] ?? "");
 function tex(cx: Cx, src: string, display: boolean) {
@@ -39,7 +41,12 @@ function tex(cx: Cx, src: string, display: boolean) {
     return trust(
       cx,
       withTex(
-        katex.renderToString(src, { displayMode: display, throwOnError: false, output: "html", macros: mathMacros() }),
+        katex.renderToString(src, {
+          displayMode: display,
+          throwOnError: false,
+          output: "html",
+          macros: cx.math.macrosCopy(),
+        }),
         src,
       ),
     );
@@ -47,12 +54,6 @@ function tex(cx: Cx, src: string, display: boolean) {
     return `<code>${escHtml(src)}</code>`;
   }
 }
-
-// 解析换了全部重画；一张图学到了大小，带着它的那几篇重画（下次画时先留好位置）
-onImagesChanged((raw) => {
-  if (raw === undefined) return cache.clear();
-  for (const k of [...cache.keys()]) if (k.includes(raw)) cache.delete(k);
-});
 
 /** 原样写着的 HTML：注释不显示；其余照放，整篇最后过 DOMPurify */
 const userHtml = (h: string) => (isHtmlComment(h) ? "" : h);
@@ -75,9 +76,9 @@ const DISPLAY: Record<string, (n: PMNode, cx: Cx) => string | undefined> = {
   toc: (_n, cx) => `<nav data-type="toc" class="md-toc">${tocHtml(tocEntries(cx.doc))}</nav>`,
   // 不让浏览器拖图（拖的是卡片）
   // 有图注（title）的图包一层 .md-fig，图注在图下面；缩小了的宽度写在这一层上（和编辑器里的 .md-img 一样）
-  image: (n) => {
+  image: (n, cx) => {
     if (n.attrs.broken) return missingImageHtml(String(n.attrs.alt ?? ""), String(n.attrs.src ?? ""), escA);
-    const a: Record<string, string | null> = { ...imageAttrs(n.attrs), draggable: "false" },
+    const a: Record<string, string | null> = { ...cx.images.attrs(n.attrs), draggable: "false" },
       cap = captionOf(n.attrs.title);
     return cap
       ? specHtml(
@@ -131,8 +132,7 @@ function inlineHtml(f: Fragment, cx: Cx | null): string {
     for (const m of n.marks.slice(keep)) {
       const [a, b] = markParts(m, !!cx);
       out += a;
-      if (cx && m.type.name === "annot")
-        out += `<span class="md-annot-n">${noteInline(m.attrs.note ?? "", cx.trusted)}</span>`;
+      if (cx && m.type.name === "annot") out += `<span class="md-annot-n">${noteInline(m.attrs.note ?? "", cx)}</span>`;
       open.push({ m, close: b });
     }
     out += nodeHtml(n, cx);
@@ -144,7 +144,7 @@ function inlineHtml(f: Fragment, cx: Cx | null): string {
  * {字|批注} 的批注：当一段行内 Markdown 画（$公式$、粗体、代码…）。读出来不是一段的（"- x" 读成了列表、"# x" 读成了标题）照原文显示；
  * 批注里再写的 {字|批注} 只留字，不再画标签
  */
-function noteInline(note: string, trusted: string[]): string {
+function noteInline(note: string, cx: Cx): string {
   try {
     const doc = mdSchema().nodeFromJSON(parseMd(note)),
       p = doc.childCount === 1 ? doc.firstChild! : null;
@@ -153,7 +153,7 @@ function noteInline(note: string, trusted: string[]): string {
     p.content.forEach((k) => {
       kids.push(k.mark(k.marks.filter((m) => m.type.name !== "annot")));
     });
-    return inlineHtml(Fragment.from(kids), { doc, trusted });
+    return inlineHtml(Fragment.from(kids), { images: cx.images, math: cx.math, doc, trusted: cx.trusted });
   } catch {
     return escHtml(note);
   }
@@ -189,35 +189,14 @@ function contentHtml(n: PMNode, cx: Cx | null): string {
 /** 不带显示时的那几处不同：和编辑器的 getHTML 对照用 */
 export const schemaHtml = (doc: PMNode) => contentHtml(doc, null);
 
-const cache = new Map<string, string>();
-const MAX = 4000;
-let cachedFor = mathPreambleVersion();
-/** The cache as of the current math preamble: renders made under an older one are dropped */
-function current() {
-  if (cachedFor !== mathPreambleVersion()) {
-    cache.clear();
-    cachedFor = mathPreambleVersion();
-  }
-  return cache;
-}
-export function renderMd(src: string): string {
-  current();
-  let h = cache.get(src);
-  if (h !== undefined) return h;
-  h = render(src);
-  if (cache.size >= MAX) cache.delete(cache.keys().next().value!);
-  cache.set(src, h);
-  return h;
-}
-export const mdCached = (src: string) => current().has(src);
-
-function render(src: string): string {
+/** Markdown → HTML as env resolves images and typesets formulas (not cached: the instance caches it) */
+export function renderHtml(src: string, env: RenderEnv): string {
   if (!src.trim()) return "";
   let html: string,
     trusted: string[] = [];
   try {
     const doc = mdSchema().nodeFromJSON(parseMd(src));
-    const cx: Cx = { doc, trusted };
+    const cx: Cx = { images: env.images, math: env.math, doc, trusted };
     html = contentHtml(doc, cx);
   } catch (e) {
     console.warn("markdown render failed", e);
@@ -252,8 +231,7 @@ function purify(html: string) {
 }
 
 /** 只有一段时不要外面的 <p>（给单行的说明用），别的照块渲染 */
-export function renderMdInline(src: string): string {
-  const h = renderMd(src);
+export function unwrapParagraph(h: string): string {
   const m = /^<p>([\s\S]*)<\/p>$/.exec(h);
   return m && !/<p[\s>]/.test(m[1]) ? m[1] : h;
 }

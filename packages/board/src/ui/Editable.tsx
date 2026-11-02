@@ -1,6 +1,6 @@
 // 原地编辑的文字：平时是普通文字（或渲染后的 Markdown），进入编辑后是纯文本可编辑框（md 的是所见即所得的 Markdown 编辑器）。
 // ↵ 提交（多行时 ⌘↵），点别处提交。Esc：单行取消，多行（Note 正文）保存后退出。
-import { keepKey } from "@yhnocoder/markdown/ui";
+import { keepKey } from "./vscodekeys";
 import { Show, batch, createEffect, onMount, type JSX } from "solid-js";
 import { useFinish } from "./hooks";
 import { editing, setEditing, setLiveNote, takeEditEntry, type Editing } from "../state/ui";
@@ -17,6 +17,7 @@ import {
   type MdEditorHandle,
 } from "../md/load";
 import { sel } from "../state/selection";
+import { useMd } from "../md/context";
 
 export function Editable(p: {
   class?: string;
@@ -32,11 +33,12 @@ export function Editable(p: {
   onCommit: (v: string, layout?: MdLayout | null) => void;
   style?: JSX.CSSProperties | string;
 }) {
+  const md = useMd();
   const on = () => editing()?.kind === p.kind && editing()?.id === p.id;
   // 只选中了这一张 Note、镜头停下：先在页面外准备好编辑器（双击多半跟着来）
   if (p.md && p.kind === "note")
     createEffect(() => {
-      if (sel.cards.length === 1 && sel.cards[0] === p.id && !on()) prepareSelected(p.value, p.layout);
+      if (sel.cards.length === 1 && sel.cards[0] === p.id && !on()) prepareSelected(md, p.value, p.layout);
     });
   return (
     <Show
@@ -130,6 +132,7 @@ function PlainEdit(p: P) {
 
 /** Markdown 编辑：编辑器代码第一次用到时才加载（单独一个 chunk），加载完之前先显示静态内容 */
 function MdEdit(p: P) {
+  const md = useMd();
   let el!: HTMLDivElement;
   let ed: MdEditorHandle | undefined;
   const { finish, done } = useFinish(
@@ -157,8 +160,8 @@ function MdEdit(p: P) {
   const mount = (m: NonNullable<ReturnType<typeof editorNow>>) => {
     if (done() || !el.isConnected) return;
     el.textContent = "";
-    ed = m.mountEditor(el, {
-      ...editorOpts(),
+    ed = m.mountEditor(md, el, {
+      ...editorOpts(md),
       value: start,
       layout: p.layout,
       placeholder: p.placeholder ?? NOTE_PLACEHOLDER,

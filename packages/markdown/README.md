@@ -2,8 +2,8 @@
 
 A Typora-style WYSIWYG Markdown editor and a fast static renderer that share one schema.
 
-- **Static render**: `renderMd(src)` turns Markdown into an HTML string (cached, no editor, no Solid), and `hydrate(el, html)` adds what needs the page: code highlighting, `[[wiki link]]` targets, Mermaid diagrams.
-- **Editor**: `mountEditor(el, opts)` edits the same Markdown in place, Typora style: you type Markdown and it turns into formatting as you go, with a `/` menu, a selection toolbar, math, tables, task lists, footnotes, emoji, images and code blocks edited with CodeMirror. It is built on [TipTap](https://tiptap.dev) (ProseMirror) with a [SolidJS](https://www.solidjs.com) UI.
+- **Static render**: `createMarkdown(options)` makes a configured instance; its `render(src)` turns Markdown into an HTML string (cached, no editor, no Solid), and `hydrate(el, html)` adds what needs the page: code highlighting, `[[wiki link]]` targets, Mermaid diagrams.
+- **Editor**: `mountEditor(md, el, opts)` edits the same Markdown in place, Typora style: you type Markdown and it turns into formatting as you go, with a `/` menu, a selection toolbar, math, tables, task lists, footnotes, emoji, images and code blocks edited with CodeMirror. It is built on [TipTap](https://tiptap.dev) (ProseMirror) with a [SolidJS](https://www.solidjs.com) UI.
 - **Find and replace** while editing: `⌘F` / `Ctrl+F` opens a small bar in the editor's top-right corner (every match highlighted, `Enter` / `Shift+Enter` to step, match case), `⌥⌘F` / `Ctrl+Alt+F` adds the replace field (`Enter` replaces one, `⌘↵` all, one undo step), `Esc` closes it. The code editor (`codeEditor({ find: true })`) has the same bar. Shortcuts and their labels follow the platform the page runs on (`⌘` / `⌥` on a Mac, `Ctrl+` / `Alt+` elsewhere); `IS_MAC` from `@yhnocoder/markdown/ui` is that same check, for labels of your own. Matches in the Markdown editor are drawn with the CSS Custom Highlight API (`::highlight(md-find)`, `::highlight(md-find-cur)`).
 - Both sides read and write Markdown through one schema, so a note looks the same before, during and after editing, and what the editor saves is plain Markdown.
 
@@ -29,10 +29,10 @@ npm i @yhnocoder/markdown solid-js
 
 | Import | What |
 |---|---|
-| `@yhnocoder/markdown` | Read-only: `parseMd`, `serializeMd`, `renderMd`, `renderMdInline`, `hydrate`, `mdClick`, `toggleTask`, `staticTextRange` / `docRange` (text selected in the static render → the same range in the editor's document) and `staticDomRange` (back to a DOM range), `toggleStaticMark` / `staticMarkActive` (bold or highlight text selected in the static render straight in the source, without the editor), `mdBlockStarts` (where each top-level block starts in the source, to insert Markdown between two blocks), `imageCaption` / `setImageCaption` (an image's caption, its title), `IMAGE_DRAG_TYPE` / `draggedImage(dataTransfer)` (an image dragged in the editor carries `{ src, alt, caption }` under this type, so a drop outside the editor can tell which image it was; a drop target that sets `dropEffect = "move"` moves it: its source leaves the editor's text), and the setters `setCodeHighlighter`, `setRefResolver`, `setImageResolver` / `setAssetBase(dir, base)` (addresses under the folder `dir`, as written in the Markdown, are served from `base`), `setMathPreamble` (see [Math](#math)). No Solid, no editor. |
-| `@yhnocoder/markdown/editor` | The editor: `mountEditor`, plus `prepare` / `warmUp` to parse ahead of time. Load it with `import()` on first edit to keep it out of your initial bundle. |
-| `@yhnocoder/markdown/code-editor` | The CodeMirror 6 code editor the editor uses for code blocks, on its own: `codeEditor`. With `gutter` (line numbers) its root has the class `cbcm-gutter`, to size the number column (`.cm-lineNumbers`) to your layout. |
-| `@yhnocoder/markdown/ui` | Small helpers the editor uses that a host may share: key handling inside inputs (`keepKey`, `setKeyPassThrough`), popover placement (`place`, `virtual`), scrolling an item into view inside its own list or panel only, not the pages that embed this one (`scrollIntoBox`), batched DOM measuring (`queueMeasure`, `observeResize`), the editor's fixed delays (`TOOLBAR_SETTLE`: how long a selection holds still before its toolbar shows), and the selection toolbar's icons (`Icon`, a Solid component). |
+| `@yhnocoder/markdown` | Read-only: `createMarkdown` (see [The instance](#the-instance)), `parseMd`, `serializeMd`, `toggleTask`, `staticTextRange` / `docRange` (text selected in the static render → the same range in the editor's document) and `staticDomRange` (back to a DOM range), `toggleStaticMark` / `staticMarkActive` (bold or highlight text selected in the static render straight in the source, without the editor), `mdBlockStarts` (where each top-level block starts in the source, to insert Markdown between two blocks), `imageCaption` / `setImageCaption` (an image's caption, its title), `IMAGE_DRAG_TYPE` / `draggedImage(dataTransfer)` (an image dragged in the editor carries `{ src, alt, caption }` under this type, so a drop outside the editor can tell which image it was; a drop target that sets `dropEffect = "move"` moves it: its source leaves the editor's text). No Solid, no editor. |
+| `@yhnocoder/markdown/editor` | The editor: `mountEditor(md, el, opts)`, plus `prepare(md, value)` / `warmUp(md)` to parse ahead of time (one editor is kept per instance and reused). Load it with `import()` on first edit to keep it out of your initial bundle. |
+| `@yhnocoder/markdown/code-editor` | The CodeMirror 6 code editor the editor uses for code blocks, on its own: `codeEditor` (its `passKeys` and `ghost.hold` work as the instance's options below). With `gutter` (line numbers) its root has the class `cbcm-gutter`, to size the number column (`.cm-lineNumbers`) to your layout. |
+| `@yhnocoder/markdown/ui` | Small helpers the editor uses that a host may share: key handling inside inputs (`keepKey(e, passKeys?)`: stops the key unless it was handled or `passKeys` lets it out), popover placement (`place`, `virtual`), scrolling an item into view inside its own list or panel only, not the pages that embed this one (`scrollIntoBox`), a page's batched DOM measuring (`createMeasure(batch?)` → `{ queue, observe }`) and hold on AI completions (`createGhostHold()` → `{ hold(on) }`), both to share with an instance, the editor's fixed delays (`TOOLBAR_SETTLE`: how long a selection holds still before its toolbar shows), and the selection toolbar's icons (`Icon`, a Solid component). |
 | `@yhnocoder/markdown/katex.css` | KaTeX's stylesheet (imported from the `katex` package, so its fonts load from there). Import it before `style.css`. |
 | `@yhnocoder/markdown/style.css` | The stylesheet for the static render (`.md`), the editor and the code editor. |
 
@@ -41,33 +41,35 @@ npm i @yhnocoder/markdown solid-js
 Render statically, and switch to the editor on click:
 
 ```ts
-import { renderMd, hydrate, mdClick, setCodeHighlighter, setRefResolver, setAssetBase } from "@yhnocoder/markdown";
+import { createMarkdown } from "@yhnocoder/markdown";
 import type { MdEditorHandle } from "@yhnocoder/markdown/editor";
 import "@yhnocoder/markdown/katex.css";
 import "@yhnocoder/markdown/style.css";
 
-// Optional hooks: your code highlighter (text → HTML with token classes), [[wiki link]] targets, the base for relative images
-setCodeHighlighter(async (text, lang) => myHighlighter(text, lang));
-setRefResolver((label) => findPage(label), { missing: "No page with this title" });
-setAssetBase("assets", "./assets"); // ![](assets/a.png) shows ./assets/a.png
+// All options are optional: your code highlighter (text → HTML with token classes), [[wiki link]] targets, …
+const md = createMarkdown({
+  highlight: async (text, lang) => myHighlighter(text, lang),
+  refs: { resolve: (label) => findPage(label), missing: "No page with this title" },
+});
+md.setAssetBase("assets", "./assets"); // ![](assets/a.png) shows ./assets/a.png
 // or resolve every image yourself, with its size if you know it (width / height reserve the space before it decodes):
-// setImageResolver((src) => ({ src: myUrl(src), width: 640, height: 480 }));
+// md.setImageResolver((src) => ({ src: myUrl(src), width: 640, height: 480 }));
 
 const note = document.getElementById("note")!; // give it class="md"
 let src = "# Hello\n\nSome **Markdown** with $e^{i\\pi} = -1$.";
 let editor: MdEditorHandle | undefined;
 
 function show() {
-  const html = renderMd(src);
+  const html = md.render(src);
   note.innerHTML = html;
-  hydrate(note, html);
+  md.hydrate(note, html);
 }
 
 async function edit() {
   if (editor) return;
   const { mountEditor } = await import("@yhnocoder/markdown/editor"); // loaded on first use
   note.textContent = "";
-  editor = mountEditor(note, {
+  editor = mountEditor(md, note, {
     value: src,
     // Esc or ⌘↵ ends the edit: the new Markdown, or null when nothing changed
     onDone: (v) => { editor = undefined; if (v !== null) src = v; show(); },
@@ -78,7 +80,7 @@ async function edit() {
 note.addEventListener("click", (e) => {
   if (editor) return;
   // links, [[refs]] and task checkboxes in the static render; anything else starts editing
-  const handled = mdClick(e, src, {
+  const handled = md.click(e, src, {
     openLink: (url) => window.open(url),
     openRef: (id) => openPage(id),
     onToggle: (next) => { src = next; show(); },
@@ -89,24 +91,37 @@ note.addEventListener("click", (e) => {
 show();
 ```
 
-`value` and `onDone` are required. `mountEditor` takes more options, all optional: `placeholder`, `refs` (the `[[` menu's candidates; optionally `groups` of candidates from other places, each listed under its own selectable header with three items and a "+ N more" row, `recent` picks shown first, a `foot` line and a `picked` callback. The resolver given to `setRefResolver` may return a `badge` shown after the title, or `{ broken: "item" | "place", title }` for a target that is gone; `paintRef(el)` repaints one chip when its data arrives later), `saveImage` / `pickImage` (where pasted, dropped and picked images go, SVG markup pasted as text included: `saveImage(dataUrl, name)` resolves to the path written into the Markdown, or `null` to insert nothing; by default they stay inline as `data:` URLs), `complete` (inline AI completion), `code` (comment tokens and language services for code blocks, and `langs`: the languages listed when the language name at a code block's top right is clicked, as `{ name, label, aliases }` where `label` is what the block shows and `name` is what goes into the fence), `dragHandle` (a ⋮⋮ handle left of the hovered block for dragging it; off by default), `classes` (your own classes added to the editor's menus, floating bars and buttons, next to the package's, as `{ menu, bar, button }`: for example `{ menu: "ctx", button: "btn" }` to reuse your page's menu and button styles; `codeEditor` takes it too, for its find bar) and `scrollOwnBox` (keeping the caret in view scrolls only the nearest scrolling box around the text, never the page or further ancestors: for an editor on a surface that does not scroll). The handle has `value()`, `layout()`, `destroy()`, `toggleSource()` (rich text ↔ Markdown source), `placeCaret(at)` (at `"end"`, next to characters counted as the static render shows them, `{ visible: staticTextRange(…), after }`, or at a point on the page, `{ x, y }`), `selectVisible(range)` (select characters counted the same way) and `press(key)` (`Backspace` or `Delete`, as if typed in the editor). Together with `staticTextRange` they carry a click or a selection in the static render over into the editor.
+`value` and `onDone` are required. `mountEditor` takes more options, all optional: `placeholder`, `refs` (the `[[` menu's candidates; optionally `groups` of candidates from other places, each listed under its own selectable header with three items and a "+ N more" row, `recent` picks shown first, a `foot` line and a `picked` callback. The instance's `refs.resolve` may return a `badge` shown after the title, or `{ broken: "item" | "place", title }` for a target that is gone; `md.paintRef(el)` repaints one chip when its data arrives later), `saveImage` / `pickImage` (where pasted, dropped and picked images go, SVG markup pasted as text included: `saveImage(dataUrl, name)` resolves to the path written into the Markdown, or `null` to insert nothing; by default they stay inline as `data:` URLs), `complete` (inline AI completion), `code` (comment tokens and language services for code blocks, and `langs`: the languages listed when the language name at a code block's top right is clicked, as `{ name, label, aliases }` where `label` is what the block shows and `name` is what goes into the fence), `dragHandle` (a ⋮⋮ handle left of the hovered block for dragging it; off by default), `classes` (your own classes added to the editor's menus, floating bars and buttons, next to the package's, as `{ menu, bar, button }`: for example `{ menu: "ctx", button: "btn" }` to reuse your page's menu and button styles; `codeEditor` takes it too, for its find bar) and `scrollOwnBox` (keeping the caret in view scrolls only the nearest scrolling box around the text, never the page or further ancestors: for an editor on a surface that does not scroll). The handle has `value()`, `layout()`, `destroy()`, `toggleSource()` (rich text ↔ Markdown source), `placeCaret(at)` (at `"end"`, next to characters counted as the static render shows them, `{ visible: staticTextRange(…), after }`, or at a point on the page, `{ x, y }`), `selectVisible(range)` (select characters counted the same way) and `press(key)` (`Backspace` or `Delete`, as if typed in the editor). Together with `staticTextRange` they carry a click or a selection in the static render over into the editor.
 
 A complete page using only this package is in [examples/markdown-demo](https://github.com/yhnocoder/codeboard/tree/main/examples/markdown-demo).
+
+## The instance
+
+`createMarkdown(options)` returns a `Markdown`: everything that depends on configuration (the static render and its cache, `hydrate`, clicks, the editor and its code blocks) goes through it, so two instances on one page keep their own settings. They share only the editors' input state (where a drag or an IME composition is), since one editor takes input at a time. Options, all optional:
+
+| Option | What |
+|---|---|
+| `refs: { resolve, missing? }` | `[[wiki link]]` targets: `resolve(label)` returns `{ id, title, badge?, place? }`, `{ broken, title, … }` or `null`; `missing` is the tooltip of one not found |
+| `highlight(text, lang)`, `langId(lang)` | Code highlighting (a `Promise` of HTML with token classes, or `null`); `langId` maps a language name to the id it is cached and asked under |
+| `images(src)` | Resolve image addresses (or `setAssetBase` / `setImageResolver` later) |
+| `mathPreamble` | Definitions every formula can use (or `setMathPreamble` later) |
+| `passKeys(e)` | Unhandled keys inside the editors' inputs that still bubble out to your page's shortcuts (by default none) |
+| `measure`, `ghosts` | Your page's `createMeasure()` and `createGhostHold()` (`/ui`), to share one measuring round and one hold on AI completions with your own code; by default the instance has its own |
+
+Its methods: `render(src)`, `renderInline(src)` (without the outer `<p>` when it is one paragraph), `isCached(src)`, `hydrate(el, html)`, `click(e, src, { openLink, openRef, onToggle? })`, `paintRef(el)`, `setMathPreamble(src)`, `mathPreambleErrors()`, `mathMacros()`, `setAssetBase(dir, base)` (addresses under the folder `dir`, as written in the Markdown, are served from `base`), `setImageResolver(r)` and `undoubleTex(text)` (plain text where a formula copied from a web page reads as its glyphs followed by its TeX → `$TeX$`). A change of preamble or image addresses clears the instance's render cache; HTML already on the page stays as it was, so render it again. Its caches are bounded (renders, highlighted code, Mermaid diagrams, image sizes and failed addresses).
 
 ## Math
 
 Formulas are typeset with [KaTeX](https://katex.org): `$…$` inline, `$$…$$` on its own line as a block.
 
-**Preamble.** `setMathPreamble(src)` sets `\newcommand`, `\renewcommand` and `\def` lines that every formula can use, in the static render, the editor and anything you build with `renderMd`, for example:
+**Preamble.** `md.setMathPreamble(src)` sets `\newcommand`, `\renewcommand` and `\def` lines that every formula can use, in the instance's static render and editor, for example:
 
 ```ts
-import { setMathPreamble, mathPreambleErrors } from "@yhnocoder/markdown";
-
-setMathPreamble("\\newcommand{\\R}{\\mathbb{R}}\n\\newcommand{\\norm}[1]{\\lVert #1 \\rVert}");
-mathPreambleErrors(); // KaTeX's message for each definition it could not read, [] when all are fine
+md.setMathPreamble("\\newcommand{\\R}{\\mathbb{R}}\n\\newcommand{\\norm}[1]{\\lVert #1 \\rVert}");
+md.mathPreambleErrors(); // KaTeX's message for each definition it could not read, [] when all are fine
 ```
 
-It returns `true` when the preamble changed. A change clears `renderMd`'s cache; HTML you already put on the page stays as it was, so render it again. Each formula gets a fresh copy of the definitions, so a `\newcommand` written inside one formula stays in that formula. A definition may span several lines; one with a mistake is skipped and the others still apply. `mathMacros()` returns the definitions as KaTeX `macros` (a new object each call) for your own `katex.render` calls.
+It returns `true` when the preamble changed. A change clears the instance's render cache; HTML you already put on the page stays as it was, so render it again. Each formula gets a fresh copy of the definitions, so a `\newcommand` written inside one formula stays in that formula. A definition may span several lines; one with a mistake is skipped and the others still apply. `md.mathMacros()` returns the definitions as KaTeX `macros` (a new object each call) for your own `katex.render` calls.
 
 **Hints while editing a formula.** In the editor, typing `\` inside a formula (a math block's source, or an inline formula opened as `$…$`) lists matching commands, each with how it looks and a short description; preamble commands are tagged 预设 and those defined in the same formula 本式. ↑↓ choose, Enter or Tab insert (the caret lands in the first `{}`), Esc closes the list. While you type, a live preview shows the result (a small bubble under an inline formula). When the formula does not typeset, the last good result stays, dimmed, with a short explanation of what is wrong, the place marked, and a one-click fix for the common cases (a misspelled command → the nearest known one, preamble commands included; a missing `}`). Nothing is reported while you are still typing a command name that can complete. The hints use these classes, styled by `style.css`: `.md-mathac` (the list), `.md-mathtip` (the inline preview bubble), `.md-matherr` (the explanation) and `.md-mathstale` (the dimmed last good result).
 

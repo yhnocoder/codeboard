@@ -2,6 +2,7 @@ import { keepKey } from "../ui/editkeys";
 import { place } from "../ui/place";
 import { scrollIntoBox } from "../ui/reveal";
 import { kindClass, type MdClasses } from "../ui/classes";
+import type { PassKeys } from "../ui/editkeys";
 
 /** 一种语言：name 是写进围栏的名字，label 显示的名字，aliases 打这些也算它（不分大小写） */
 export type CodeLang = { name: string; label: string; aliases?: string[] };
@@ -53,6 +54,7 @@ export type LangBoxHost = {
   left: (to: EventTarget | null) => void;
   langs: () => readonly CodeLang[];
   classes?: MdClasses;
+  passKeys?: PassKeys;
 };
 
 const CHEVRON = `<svg class="md-lang-v" width="8" height="8" viewBox="0 0 8 8" aria-hidden="true"><path d="M1.5 3 4 5.5 6.5 3" fill="none" stroke="currentColor" stroke-width="1"/></svg>`;
@@ -206,7 +208,7 @@ export class LangBox {
   }
 
   private key(e: KeyboardEvent) {
-    if (e.isComposing) return keepKey(e);
+    if (e.isComposing) return keepKey(e, this.host.passKeys);
     const n = this.items.length;
     if ((e.key === "ArrowDown" || e.key === "ArrowUp") && n) {
       e.preventDefault();
@@ -220,7 +222,7 @@ export class LangBox {
       e.preventDefault();
       this.leave();
     }
-    keepKey(e);
+    keepKey(e, this.host.passKeys);
   }
 
   /** 定下来：选中的那一项，没有时照筛选框里打的字（空 = 不改）；back：回到代码里 */

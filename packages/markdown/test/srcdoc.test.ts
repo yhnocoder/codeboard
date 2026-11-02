@@ -2,10 +2,12 @@
 import { describe, expect, it } from "vitest";
 import { getSchema } from "@tiptap/core";
 import { parseMd, serializeMd, sourceExtensions } from "../src/schema";
-import { renderMd } from "../src/render";
+import { createMarkdown } from "../src/markdown";
 import { applyMdLayout } from "../src/layout";
 import { layoutOf, sameLayout, sourceDoc, sourceMd } from "../src/editor/srcdoc";
 import { docAt, mdAt } from "../src/editor/srcmode";
+
+const markdown = createMarkdown();
 
 const schema = getSchema(sourceExtensions);
 const SAMPLES = [
@@ -40,7 +42,7 @@ describe("source document round trips", () => {
   it("a hard break is written as <br>, which renders the same", () => {
     const md = sourceMd(sourceDoc("a  \nb"));
     expect(md).toBe("a<br>b");
-    expect(renderMd(md)).toBe(renderMd("a  \nb"));
+    expect(markdown.render(md)).toBe(markdown.render("a  \nb"));
   });
 });
 
@@ -56,7 +58,7 @@ describe("layout: column widths, row heights and code wrap as card data", () => 
   });
   it("the static render applies it, and honours column alignment", () => {
     const el = document.createElement("div");
-    el.innerHTML = `<div>${renderMd(md)}</div>`;
+    el.innerHTML = `<div>${markdown.render(md)}</div>`;
     applyMdLayout(el, { tables: [{ cols: [120, 80], rows: [null, 48] }], wrap: [0] });
     const t = el.querySelector("table")!;
     expect([...t.querySelectorAll("colgroup col")].map((c) => (c as HTMLElement).style.width)).toEqual([
@@ -69,7 +71,7 @@ describe("layout: column widths, row heights and code wrap as card data", () => 
     applyMdLayout(el, null);
     expect([...t.querySelectorAll("colgroup col")].map((c) => (c as HTMLElement).style.width)).toEqual(["", ""]);
     expect(el.querySelector("pre")!.classList.contains("wrap")).toBe(false);
-    expect(renderMd("| a | b | c |\n| :- | :-: | -: |\n| 1 | 2 | 3 |")).toMatch(
+    expect(markdown.render("| a | b | c |\n| :- | :-: | -: |\n| 1 | 2 | 3 |")).toMatch(
       /text-align: ?left[\s\S]*text-align: ?center[\s\S]*text-align: ?right/,
     );
   });

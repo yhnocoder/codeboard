@@ -1,7 +1,7 @@
 // @yhnocoder/markdown stands on its own: its code and the example that uses it (examples/markdown-demo) import only npm packages and
 // their own files, never the board, the host, core, the VS Code extension or vscode, and depend on no other package of this repo. This is
 // the one check for the package (packages/host/test/boundary.test.ts covers host and board). What the board adds comes in through
-// options and setters
+// the options of its Markdown instance and its editors
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";

@@ -11,7 +11,7 @@
    由用的一方配的样子：菜单 .md-menu（打开的带 .open）、浮条 .md-bar、按钮 .md-btn（开着的是 .on），链接 .md-link 的颜色；
    mountEditor / codeEditor 的 classes 可以再加上用的一方自己的 class（比如它的菜单、按钮），这里只管大小和排版；
    工具条按钮的提示（名字在 data-tip，快捷键在 data-kbd）也由用的一方显示。代码块着色的 class
-   （.kw .fn …）由给着色的一方（setCodeHighlighter）配样式 */
+   （.kw .fn …）由给着色的一方（Markdown 实例的 highlight）配样式 */
 .katex {
   font-size: 1.08em;
 }

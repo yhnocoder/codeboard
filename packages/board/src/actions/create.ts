@@ -40,7 +40,7 @@ import { hostRect, popCard } from "./common";
 import { fetchMeta, newLinkList } from "./web";
 import { setNoteText } from "./edit";
 import { cleanImage, svgDataUrl } from "../md/images";
-import { texBrackets, undoubleTex, type DraggedImage } from "@yhnocoder/markdown";
+import { texBrackets, type DraggedImage, type Markdown } from "@yhnocoder/markdown";
 
 /** 新代码卡按设置默认隐藏注释 / 文档字符串 / 空行（卡上已经有设定的不动） */
 function withDefaults(c: Card): Card {
@@ -343,10 +343,11 @@ export function newFreeCode(at?: { x: number; y: number }, text = "", lang = "py
   return id;
 }
 
-export async function pasteText(text: string, at?: { x: number; y: number }, exact = false) {
+/** md: the board's Markdown instance, whose preamble reads formulas copied as their glyphs + TeX */
+export async function pasteText(md: Markdown, text: string, at?: { x: number; y: number }, exact = false) {
   if (!text.trim()) return;
   // 网页、电子书里排好的公式按纯文字复制出来是"显示的字 + TeX"，留下 TeX 当公式；LaTeX 的 \( … \)、\[ … \] 写成 $…$、$$…$$。认出了就是 Note
-  const tex = texBrackets(undoubleTex(text));
+  const tex = texBrackets(md.undoubleTex(text));
   if (tex !== text && classifyPaste(tex).kind === "note") return newNote(at, tex);
   const k = classifyPaste(text);
   if (k.kind === "web") return newWeb(at, k.url);

@@ -5,8 +5,10 @@ import * as A from "../actions";
 import type { ExportOpts } from "../state/export";
 import { exportBusy, exportOpen, setExportOpen } from "../state/export";
 import { useOverlay } from "./overlay";
+import { useMd } from "../md/context";
 
 export function ExportDialog() {
+  const md = useMd();
   const o = () => exportOpen()!;
   const set = (p: Partial<ExportOpts>) => setExportOpen({ ...o(), ...p });
   const start = () => A.walkStart();
@@ -32,7 +34,7 @@ export function ExportDialog() {
       e.key === "Enter" &&
       !e.isComposing &&
       !(e.target as HTMLElement).closest?.("button") &&
-      (void A.runExport(o()), true),
+      (void A.runExport(md, o()), true),
   });
   const fmts = [
     ["html", "HTML Snapshot"],
@@ -160,7 +162,7 @@ export function ExportDialog() {
           <button
             class="def"
             disabled={exportBusy() || (!png() && o().scope === "sections" && !o().sections.length)}
-            onClick={() => void A.runExport(o())}
+            onClick={() => void A.runExport(md, o())}
           >
             {exportBusy() ? "Exporting…" : "Export"}
           </button>

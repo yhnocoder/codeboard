@@ -26,35 +26,48 @@ export type GhostQuery = {
   show(text: string): void;
 };
 
-let held = false;
-const askers = new Set<GhostAsker>();
-/** on = 先别补（比如拖动、改大小时）：每个编辑器的灰字清掉、排着的问作废，放开前不再问；off = 照常（不补问，下次打字时再问） */
-export function holdGhosts(on: boolean) {
-  held = on;
-  if (on) for (const a of askers) a.drop();
+/** Holding AI completions on a page: while held (a drag, a resize) every editor that shares it clears its grey text and drops
+ *  a pending ask, and asks nothing until released; released, it asks again on the next keystroke */
+export type GhostHold = { hold(on: boolean): void };
+type Hold = GhostHold & { held: boolean; askers: Set<GhostAsker> };
+
+export function createGhostHold(): GhostHold {
+  const h: Hold = {
+    held: false,
+    askers: new Set(),
+    hold(on) {
+      h.held = on;
+      if (on) for (const a of h.askers) a.drop();
+    },
+  };
+  return h;
 }
 
 /** 防抖地问：probe 能问时给一次问（不能就 null），排上时和到点时各看一次 */
 export class GhostAsker {
   private timer: number | undefined;
   private n = 0;
+  private hold: Hold;
+  /** hold: the page's (createGhostHold); without one this asker is never held */
   constructor(
     private complete: Complete,
     private clear: () => void,
+    hold: GhostHold = createGhostHold(),
     private delay = DELAY,
   ) {
-    askers.add(this);
+    this.hold = hold as Hold;
+    this.hold.askers.add(this);
   }
   schedule(probe: () => GhostQuery | null) {
     this.cancel();
     const id = this.n;
-    if (held || !probe()) return;
+    if (this.hold.held || !probe()) return;
     this.timer = window.setTimeout(async () => {
-      const q = held ? null : probe();
+      const q = this.hold.held ? null : probe();
       if (id !== this.n || !q) return;
       const [before, after] = q.context();
       const text = await this.complete(before, after).catch(() => null);
-      if (id === this.n && !held && text && q.still()) q.show(text);
+      if (id === this.n && !this.hold.held && text && q.still()) q.show(text);
     }, this.delay);
   }
   cancel() {
@@ -67,6 +80,6 @@ export class GhostAsker {
   }
   dispose() {
     this.cancel();
-    askers.delete(this);
+    this.hold.askers.delete(this);
   }
 }

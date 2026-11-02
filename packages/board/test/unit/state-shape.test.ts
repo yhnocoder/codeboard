@@ -70,6 +70,8 @@ const OUTLIVES_BOARD: Record<string, string> = {
   "state/camera.ts:running": "the camera's flight",
   "state/camera.ts:viewport": "the window's size",
   "state/camera.ts:heldZ": "the camera's zoom held while it moves",
+  "state/measure.ts:measure": "the page's read-then-write measuring and its shared ResizeObserver",
+  "gesture.ts:ghosts": "the page's hold on AI completions: a gesture's drop releases it",
   "state/lodcards.ts:held": "the map level's zoom held while the camera moves",
   "state/measure.ts:lastPtr": "the pointer",
   "state/measure.ts:down": "the pointer's last press",
@@ -138,9 +140,10 @@ const OUTLIVES_BOARD: Record<string, string> = {
 };
 
 describe("board state per board", () => {
-  // a store, an empty Map / Set (a table built from constants is not state) or a let at the top of a module
+  // a store, the Markdown package's page-wide measuring or completion hold, an empty Map / Set (a table built from constants is not
+  // state) or a let at the top of a module
   const DECL =
-    /^(?:export\s+)?(?:let\s+(\w+)|const\s+(?:\[\s*(\w+)[^\]]*\]|(\w+))\s*(?::[^=]+)?=\s*(?:createStore\b|new\s+(?:Map|Set)\b(?:<.*>)?\(\)))/;
+    /^(?:export\s+)?(?:let\s+(\w+)|const\s+(?:\[\s*(\w+)[^\]]*\]|(\w+))\s*(?::[^=]+)?=\s*(?:createStore\b|createMeasure\b|createGhostHold\b|new\s+(?:Map|Set)\b(?:<.*>)?\(\)))/;
   const found = walk(SRC).flatMap((f) =>
     fs
       .readFileSync(f, "utf8")

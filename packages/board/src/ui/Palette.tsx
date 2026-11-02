@@ -1,6 +1,7 @@
 // 鼠标只有真的移动才改高亮项：结果刷新时停在原地的鼠标不该抢走键盘选中的那项。
 // 没输入时列出入口（pyproject scripts、__init__ 导出、__main__、examples）。
-import { keepKey, scrollIntoBox } from "@yhnocoder/markdown/ui";
+import { scrollIntoBox } from "@yhnocoder/markdown/ui";
+import { keepKey } from "./vscodekeys";
 import { Icon } from "./icons";
 import { useOverlay } from "./overlay";
 import { useListNav, useDebouncedAsk } from "./hooks";

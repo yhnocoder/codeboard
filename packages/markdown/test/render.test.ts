@@ -4,9 +4,8 @@
 import { describe, expect, it } from "vitest";
 import { getHTMLFromFragment } from "@tiptap/core";
 import { mdSchema, parseMd } from "../src/schema";
-import { renderMd, schemaHtml } from "../src/render";
-import { colorCode, setCodeHighlighter } from "../src/code";
-import { hydrate } from "../src/view";
+import { schemaHtml } from "../src/render";
+import { createMarkdown } from "../src/markdown";
 
 const DOCS = [
   "# Title\n\nsome **bold** *it* ~~s~~ `code` <u>u</u> <kbd>K</kbd> ==hl== H~2~O x^2^ :tada: [[Card]]",
@@ -31,7 +30,7 @@ describe("static render = editor HTML", () => {
     });
   }
   it("display differs only where documented", () => {
-    const h = renderMd("- one\n\n[t](https://a.b)\n\n```mermaid\ngraph TD\n```\n\n[toc]\n\n## H");
+    const h = createMarkdown().render("- one\n\n[t](https://a.b)\n\n```mermaid\ngraph TD\n```\n\n[toc]\n\n## H");
     expect(h).toContain("<li>one</li>");
     expect(h).toContain('<a class="md-link" data-href="https://a.b">t</a>');
     expect(h).toContain('<div class="mmd" data-src="graph TD">');
@@ -43,18 +42,18 @@ describe("code blocks take the host's highlighting", () => {
   it("plain text first, coloured when the host answers, cached after", async () => {
     const asked: string[] = [];
     // 语言名换成正式 id 由用的一方给（白板用 core 的 langId）：py 和 python 是同一份缓存
-    setCodeHighlighter(
-      async (text, lang) => {
+    const md = createMarkdown({
+      highlight: async (text, lang) => {
         asked.push(lang);
         return `<span class="kw">${text}</span>`;
       },
-      (l) => (l === "py" ? "python" : l),
-    );
-    // 静态显示给的代码块（renderMd 的输出再过 DOMPurify，这里的 DOM 实现和它合不来，直接写）
+      langId: (l) => (l === "py" ? "python" : l),
+    });
+    // 静态显示给的代码块（render 的输出再过 DOMPurify，这里的 DOM 实现和它合不来，直接写）
     const block = (lang: string) => `<pre class="md-code" data-lang="${lang}"><code>return</code></pre>`;
     const el = document.createElement("div");
     el.innerHTML = block("py");
-    hydrate(el, el.innerHTML);
+    md.hydrate(el, el.innerHTML);
     expect(el.querySelector("code")!.innerHTML).toBe("return");
     await new Promise((r) => setTimeout(r, 0));
     expect(el.querySelector("code")!.innerHTML).toBe('<span class="kw">return</span>');
@@ -62,7 +61,7 @@ describe("code blocks take the host's highlighting", () => {
     // 再画一遍：缓存里有，马上换，不再问
     const el2 = document.createElement("div");
     el2.innerHTML = block("python");
-    colorCode(el2);
+    md.hydrate(el2, el2.innerHTML);
     expect(el2.querySelector("code")!.innerHTML).toBe('<span class="kw">return</span>');
     expect(asked).toEqual(["python"]);
   });

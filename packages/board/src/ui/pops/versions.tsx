@@ -1,4 +1,4 @@
-import { keepKey } from "@yhnocoder/markdown/ui";
+import { keepKey } from "../vscodekeys";
 import { For, Show, createSignal, createMemo } from "solid-js";
 import {
   alignRows,

@@ -3,6 +3,7 @@
 import katex, { type KatexOptions } from "katex";
 
 type Macros = NonNullable<KatexOptions["macros"]>;
+export type MathMacros = Macros;
 
 /** The TeX source on KaTeX's HTML output (data-latex on its .katex element): it draws no MathML, whose <annotation> is where
  *  a paste of a typeset formula reads its TeX from (schema-nodes.ts texAttrs) */
@@ -18,55 +19,62 @@ export const markTex = (el: Element, latex: string) => {
 /** 一条用户定义的命令：name 不带 \，args = 参数个数，body = 定义的原文（补全里当说明） */
 export type MathDef = { name: string; args: number; body: string };
 
-let text = "";
-let macros: Macros = {};
-let defs: MathDef[] = [];
-let errors: string[] = [];
-let version = 0;
-/** Goes up with every new preamble: a render cached under another version is stale */
-export const mathPreambleVersion = () => version;
+/** One Markdown instance's preamble: its definitions, what KaTeX could not read, and what was typeset under it */
+export class MathPreamble {
+  private text = "";
+  private macros: Macros = {};
+  private defs: MathDef[] = [];
+  private errors: string[] = [];
+  /** TeX → the text KaTeX shows for it (doubled.ts) */
+  readonly shown = new Map<string, string | null>();
+  /** A completion's look in the editor's hints (editor/mathhints.ts) */
+  readonly previews = new Map<string, string>();
+  /** The editor's hints have typeset their first completions ahead (editor/mathhints.ts) */
+  warmed = false;
 
-/** 排版公式时传给 KaTeX 的 macros：每次一份新的 */
-export const mathMacros = (): Macros => ({ ...macros });
-/** 预设里定义的命令（补全、纠错用） */
-export const mathPreambleDefs = (): readonly MathDef[] => defs;
-/** 预设里排不出来的几段（KaTeX 的原话），设置页提示用 */
-export const mathPreambleErrors = (): readonly string[] => errors;
+  /** 排版公式时传给 KaTeX 的 macros：每次一份新的 */
+  macrosCopy = (): Macros => ({ ...this.macros });
+  /** 预设里定义的命令（补全、纠错用） */
+  definitions = (): readonly MathDef[] => this.defs;
+  /** 预设里排不出来的几段（KaTeX 的原话），设置页提示用 */
+  problems = (): readonly string[] => this.errors;
 
-/** 换预设：之后排的公式都认它；静态渲染的缓存清掉（已经显示着的由用的一方重画）。没变返回 false */
-export function setMathPreamble(src: string): boolean {
-  if (src === text) return false;
-  text = src;
-  const m: Macros = {},
-    errs: string[] = [];
-  // 一段一段读：一段写错了不连累后面的
-  for (const part of chunks(src)) {
-    const run = (s: string) => katex.renderToString(s, { macros: m, globalGroup: true, throwOnError: true });
-    try {
-      run(part);
-    } catch (e) {
-      // 预设里 \newcommand 一个 KaTeX 自带的命令（\R 之类）：照用户的意思改写它，不算错
-      const msg = String((e as Error).message ?? e);
+  /** 换预设：之后排的公式都认它。没变返回 false */
+  set(src: string): boolean {
+    if (src === this.text) return false;
+    this.text = src;
+    const m: Macros = {},
+      errs: string[] = [];
+    // 一段一段读：一段写错了不连累后面的
+    for (const part of chunks(src)) {
+      const run = (s: string) => katex.renderToString(s, { macros: m, globalGroup: true, throwOnError: true });
       try {
-        if (/attempting to redefine/.test(msg)) run(part.replace(/\\newcommand\b/g, "\\renewcommand"));
-        else throw e;
-      } catch {
-        errs.push(msg);
+        run(part);
+      } catch (e) {
+        // 预设里 \newcommand 一个 KaTeX 自带的命令（\R 之类）：照用户的意思改写它，不算错
+        const msg = String((e as Error).message ?? e);
+        try {
+          if (/attempting to redefine/.test(msg)) run(part.replace(/\\newcommand\b/g, "\\renewcommand"));
+          else throw e;
+        } catch {
+          errs.push(msg);
+        }
       }
     }
+    this.macros = m;
+    this.errors = errs;
+    const body = new Map(defsIn(src).map((d) => [d.name, d.body]));
+    this.defs = Object.entries(m)
+      .filter(([k]) => /^\\[A-Za-z]+$/.test(k))
+      .map(([k, v]) => ({
+        name: k.slice(1),
+        args: typeof v === "object" && v && "numArgs" in v ? Number((v as { numArgs: number }).numArgs) || 0 : 0,
+        body: body.get(k.slice(1)) ?? "",
+      }));
+    this.shown.clear();
+    this.previews.clear();
+    return true;
   }
-  macros = m;
-  errors = errs;
-  const body = new Map(defsIn(src).map((d) => [d.name, d.body]));
-  defs = Object.entries(m)
-    .filter(([k]) => /^\\[A-Za-z]+$/.test(k))
-    .map(([k, v]) => ({
-      name: k.slice(1),
-      args: typeof v === "object" && v && "numArgs" in v ? Number((v as { numArgs: number }).numArgs) || 0 : 0,
-      body: body.get(k.slice(1)) ?? "",
-    }));
-  version++;
-  return true;
 }
 
 const DEF_START = /^\s*\\(?:(?:re|provide)?newcommand|g?def|let)\b/;

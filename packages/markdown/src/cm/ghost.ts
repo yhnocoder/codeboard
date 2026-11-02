@@ -2,9 +2,10 @@
 import { StateField, StateEffect, type Extension } from "@codemirror/state";
 import { EditorView, Decoration, WidgetType, ViewPlugin, type ViewUpdate } from "@codemirror/view";
 import { completionStatus } from "@codemirror/autocomplete";
-import { GhostAsker, eatGhost, nextWord, wantGhost, type Complete, type Ghost } from "../ui/ghost";
+import { GhostAsker, eatGhost, nextWord, wantGhost, type Complete, type Ghost, type GhostHold } from "../ui/ghost";
 
-export type GhostHost = { complete: Complete };
+/** hold: the page's hold on completions (createGhostHold), shared with whatever else pauses them */
+export type GhostHost = { complete: Complete; hold?: GhostHold };
 
 const setGhost = StateEffect.define<Ghost>();
 
@@ -73,7 +74,7 @@ export function dropGhost(v: EditorView): boolean {
 export function ghostExtension(host: GhostHost): Extension {
   const plugin = ViewPlugin.fromClass(
     class {
-      asker = new GhostAsker(host.complete, () => dropGhost(this.view));
+      asker = new GhostAsker(host.complete, () => dropGhost(this.view), host.hold);
       constructor(readonly view: EditorView) {}
       update(u: ViewUpdate) {
         if (!u.docChanged && !u.selectionSet && !u.focusChanged) return;

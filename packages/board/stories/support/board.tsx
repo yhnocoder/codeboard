@@ -1,4 +1,4 @@
-// 白板数据、主题、缩放都照宿主和用户的路从外面喂进去（onHost、setCam、select、setEditing），不为小样改组件：
+// 白板数据、主题、缩放都照宿主和用户的路从外面喂进去（fromHost、setCam、select、setEditing），不为小样改组件：
 // 这样小样里看到的和插件里一样
 import { createEffect, createMemo, on, onCleanup, onMount, untrack } from "solid-js";
 import {
@@ -21,7 +21,6 @@ import {
 } from "@codeboard/core";
 import { App } from "../../src/App";
 import { BoardView } from "../../src/BoardView";
-import { onHost } from "../../src/hostio";
 import { state, setLoaded } from "../../src/state/store";
 import { select } from "../../src/state/selection";
 import { setToastMsg } from "../../src/state/toast";
@@ -32,7 +31,7 @@ import { setFetchingKeys } from "../../src/state/web";
 import { setExportBusy } from "../../src/state/export";
 import { setQuestionsOpen, setQTab } from "../../src/state/questions";
 import { closeOverlays } from "../../src/ui/overlay";
-import { VIEWS, useReplies, type Replies } from "./host";
+import { VIEWS, fromHost, useReplies, type Replies } from "./host";
 import code from "../fixtures/code.json";
 
 export type Globals = { theme: ThemeId; scheme: "light" | "dark"; zoom: "100" | "60" | "30" };
@@ -97,7 +96,7 @@ export function Stage(p: { scene: () => Scene; globals: Globals; replies?: Repli
     cancelAnimationFrame(raf);
     const b: Board = { ...s.board, cam: { x: ORIGIN, y: ORIGIN, z: s.zoom ?? untrack(z) } };
     // 宿主的消息是 postMessage 来的（结构化克隆）：store 会就地改它收下的对象（reconcile），小样之间共用的常量不能直接交出去
-    onHost(
+    fromHost(
       structuredClone({
         type: "init",
         board: b,
@@ -112,9 +111,9 @@ export function Stage(p: { scene: () => Scene; globals: Globals; replies?: Repli
       } satisfies HostToBoard),
     );
     // init 会把设置、骨架、共享都重置：紧跟着补上
-    if (s.settings) onHost({ type: "host", host: { settings: { ...state.host.settings, ...s.settings } } });
-    if (s.skels) onHost({ type: "skeletons", boards: s.skels });
-    if (s.shared) onHost({ type: "sharedInfo", cards: s.shared });
+    if (s.settings) fromHost({ type: "host", host: { settings: { ...state.host.settings, ...s.settings } } });
+    if (s.skels) fromHost({ type: "skeletons", boards: s.skels });
+    if (s.shared) fromHost({ type: "sharedInfo", cards: s.shared });
     setFetchingKeys(new Set(s.fetching ?? []));
     if (s.sel) select({ cards: s.sel });
     // 卡画出来以后再进编辑：NoteBody 的卡头收起只在「进入」那一刻做，挂上时就在编辑的话标题会出现两遍
@@ -140,7 +139,7 @@ export function Stage(p: { scene: () => Scene; globals: Globals; replies?: Repli
   createEffect(
     on(
       () => g.theme,
-      (theme) => onHost({ type: "host", host: { settings: { ...state.host.settings, theme } } }),
+      (theme) => fromHost({ type: "host", host: { settings: { ...state.host.settings, theme } } }),
       { defer: true },
     ),
   );

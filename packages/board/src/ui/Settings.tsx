@@ -20,18 +20,19 @@ import { promptText } from "./Menu";
 import { helpRows, matches } from "../keymap";
 import { useOverlay } from "./overlay";
 import { TUNE, tune, type TuneKey } from "../state/tune";
-import { mathPreambleErrors } from "@yhnocoder/markdown";
 import { applyMathPreamble, mathRev } from "../md/math";
+import { useMd } from "../md/context";
 
 const cur = (): S => state.host.settings;
 
 /** 主题同步 + 设置页本身；BoardView 里挂一次 */
 export function SettingsLayer() {
+  const md = useMd();
   createEffect(() => A.applyLook(state.host.settings.theme));
   createEffect(() => A.applyVscodeBg(state.host.settings.vscodeBg));
   createEffect(() => A.applyNoteFonts(state.host.settings.noteFontSize));
   // 设置页里改了马上生效（宿主那边改了也走这里；hostio 在白板画出来前先给一次）
-  createEffect(() => applyMathPreamble(state.host.settings.mathPreamble));
+  createEffect(() => applyMathPreamble(md, state.host.settings.mathPreamble));
   return (
     <Show when={settingsOpen()} keyed>
       {(o) => <SettingsPage section={o.section} />}
@@ -645,12 +646,13 @@ function NoteFonts() {
 
 /** 公式预设：离开输入框（或 ⌘↵）时写回；排不出来的定义列在下面 */
 function Preamble() {
+  const md = useMd();
   const commit = (v: string) => {
     if (v !== cur().mathPreamble) A.setSetting("mathPreamble", v);
   };
   const errs = () => {
     void mathRev();
-    return mathPreambleErrors();
+    return md.mathPreambleErrors();
   };
   return (
     <>

@@ -1,7 +1,7 @@
 // 量 DOM（卡片尺寸、卡里每行的位置）：先把这一轮要量的都读完，再一起写回 store。
 // 一边读一边写会让浏览器每张卡都重新排一次版，打开大白板时几百张卡就是几百次排版。
 import { batch } from "solid-js";
-import { queueMeasure, observeResize, setMeasureBatch } from "@yhnocoder/markdown/ui";
+import { createMeasure } from "@yhnocoder/markdown/ui";
 import { isCode, cardRows, shownText, commonIndent } from "@codeboard/core";
 import { state, cardById } from "./store";
 import { shown } from "./ui";
@@ -9,9 +9,10 @@ import { toWorld } from "./camera";
 import { cmNow } from "../cm/load";
 import { cardSel } from "../cardsel";
 
-// 先读后写的一轮测量和共用的 ResizeObserver 在 @yhnocoder/markdown 里（Mermaid 图的重排也排在同一轮里）：写回包在 batch 里（启动时接上）
-export const wireMeasure = () => setMeasureBatch(batch);
-export { queueMeasure, observeResize };
+// 先读后写的一轮测量和共用的 ResizeObserver（@yhnocoder/markdown/ui 的 createMeasure）：一页一个，写回包在 batch 里。
+// 白板的 Markdown 实例也用它（wireBoard 给它），Mermaid 图的重排排在同一轮里
+export const measure = createMeasure(batch);
+export const { queue: queueMeasure, observe: observeResize } = measure;
 
 /**
  * 刚画出来的卡（Solid 在调用前已同步画好）都量好了：ResizeObserver 在下一帧排版之后报新元素（在那一帧的 rAF 回调之后、绘制之前），

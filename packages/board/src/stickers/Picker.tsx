@@ -1,5 +1,5 @@
 // 白板上的贴纸：每张卡、每条线只读 state/stickers 里自己那一组
-import { keepKey } from "@yhnocoder/markdown/ui";
+import { keepKey } from "../ui/vscodekeys";
 import { createMemo, createSignal, For, Show, onCleanup } from "solid-js";
 import { firstLine, type IconRef, type Sticker } from "@codeboard/core";
 import { linkCurve } from "../canvas/routes";
