@@ -4,10 +4,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AiChatRequest, AiChatResult, AiModel } from "@codeboard/core";
 import { aiInfo } from "../src/ai";
-import { focusUser, imageAiJob, imageAiRequest, resetImageAiCache, SYS_FOCUS } from "../src/imageai";
+import { focusUser, imageAiJob, imageAiRequest, SYS_FOCUS } from "../src/imageai";
 import { makeHandler } from "../src/handlers";
-import { useWorkspace } from "../src/ws";
 import { nodeWorkspace } from "./node-workspace";
+import { HostContext } from "../src/context";
+
+let cx: HostContext;
 
 const KEY = "sk-test-models";
 const PNG =
@@ -58,8 +60,7 @@ beforeEach(() => {
   chats = [];
   fetches = [];
   cleared = 0;
-  resetImageAiCache();
-  useWorkspace(W);
+  cx = new HostContext(W);
   chatReply = async () => ({ text: "from copilot", via: "GPT-4o" });
 });
 
@@ -68,12 +69,12 @@ const svg = { kind: "svg", image: PNG, size: { w: 1, h: 1 }, noBg: true, think: 
 
 describe("AI tools: which model", () => {
   it("Auto asks DeepSeek when a key is set, and a VS Code model when none is", async () => {
-    expect(await imageAiJob(new Map(), 1, extract, fetchFake)).toEqual({ text: "from deepseek" });
+    expect(await imageAiJob(cx, new Map(), 1, extract, fetchFake)).toEqual({ text: "from deepseek" });
     expect(fetches.length).toBe(1);
     expect(chats.length).toBe(0);
     key = undefined;
-    resetImageAiCache();
-    expect(await imageAiJob(new Map(), 2, extract, fetchFake)).toEqual({ text: "from copilot" });
+    cx.imageText.clear();
+    expect(await imageAiJob(cx, new Map(), 2, extract, fetchFake)).toEqual({ text: "from copilot" });
     expect(chats.length).toBe(1);
     expect(chats[0].model).toBeUndefined();
     expect(fetches.length).toBe(1);
@@ -81,7 +82,7 @@ describe("AI tools: which model", () => {
 
   it("sends the image to the VS Code model as bytes with its type, and the prompt as system + user", async () => {
     key = undefined;
-    await imageAiJob(new Map(), 1, extract, fetchFake);
+    await imageAiJob(cx, new Map(), 1, extract, fetchFake);
     const r = chats[0].req;
     expect(r.image?.mime).toBe("image/png");
     expect(Buffer.from(r.image!.data).toString("base64")).toBe(PNG.split(",")[1]);
@@ -94,15 +95,19 @@ describe("AI tools: which model", () => {
   it("each tool has its own choice: a picked model is used even with a key, DeepSeek without a key says so", async () => {
     conf.set("codeboard.ai.svgModel", "gpt-4o");
     conf.set("codeboard.ai.focusModel", "deepseek");
-    expect(await imageAiJob(new Map(), 1, svg, fetchFake)).toEqual({ text: "from copilot" });
+    expect(await imageAiJob(cx, new Map(), 1, svg, fetchFake)).toEqual({ text: "from copilot" });
     expect(chats.map((c) => c.model)).toEqual(["gpt-4o"]);
     // Think First is DeepSeek's: the VS Code model gets the same prompt, with no thinking flags
     expect(chats[0].req.fast).toBe(false);
     expect(fetches.length).toBe(0);
-    expect(await imageAiJob(new Map(), 2, { kind: "focus", md: "a b" }, fetchFake)).toEqual({ text: "from deepseek" });
+    expect(await imageAiJob(cx, new Map(), 2, { kind: "focus", md: "a b" }, fetchFake)).toEqual({
+      text: "from deepseek",
+    });
     expect(fetches.length).toBe(1);
     key = undefined;
-    expect(await imageAiJob(new Map(), 3, { kind: "focus", md: "a b" }, fetchFake)).toMatchObject({ fail: "nokey" });
+    expect(await imageAiJob(cx, new Map(), 3, { kind: "focus", md: "a b" }, fetchFake)).toMatchObject({
+      fail: "nokey",
+    });
     expect(fetches.length).toBe(1);
     expect(chats.length).toBe(1);
   });
@@ -110,41 +115,41 @@ describe("AI tools: which model", () => {
   it("Draw as SVG uses the SVG tool's model and sends the VS Code model only text", async () => {
     conf.set("codeboard.ai.svgModel", "o3-mini");
     const draw = { kind: "draw", text: "a pipeline", noBg: true, think: false } as const;
-    expect(await imageAiJob(new Map(), 1, draw, fetchFake)).toEqual({ text: "from copilot" });
+    expect(await imageAiJob(cx, new Map(), 1, draw, fetchFake)).toEqual({ text: "from copilot" });
     expect(chats.map((c) => c.model)).toEqual(["o3-mini"]);
     expect(chats[0].req.image).toBeUndefined();
     expect(chats[0].req.user).toContain("<text>\na pipeline\n</text>");
     expect(chats[0].justification).toMatch(/Draw as SVG/);
     conf.set("codeboard.ai.svgModel", "auto");
-    expect(await imageAiJob(new Map(), 2, draw, fetchFake)).toEqual({ text: "from deepseek" });
+    expect(await imageAiJob(cx, new Map(), 2, draw, fetchFake)).toEqual({ text: "from deepseek" });
     expect(fetches[0].body.messages[1].content).toContain("a pipeline");
   });
 
   it("caches text read by each model on its own", async () => {
     conf.set("codeboard.ai.textModel", "gpt-4o");
-    expect(await imageAiJob(new Map(), 1, extract, fetchFake)).toEqual({ text: "from copilot" });
-    expect(await imageAiJob(new Map(), 2, extract, fetchFake)).toEqual({ text: "from copilot", reused: true });
+    expect(await imageAiJob(cx, new Map(), 1, extract, fetchFake)).toEqual({ text: "from copilot" });
+    expect(await imageAiJob(cx, new Map(), 2, extract, fetchFake)).toEqual({ text: "from copilot", reused: true });
     expect(chats.length).toBe(1);
     conf.set("codeboard.ai.textModel", "auto");
-    expect(await imageAiJob(new Map(), 3, extract, fetchFake)).toEqual({ text: "from deepseek" });
+    expect(await imageAiJob(cx, new Map(), 3, extract, fetchFake)).toEqual({ text: "from deepseek" });
   });
 
   it("passes on the VS Code model's failures with its name: no consent, model gone; Auto with nothing at all says what to do", async () => {
     conf.set("codeboard.ai.svgModel", "gpt-4o");
     chatReply = async () => ({ fail: "noconsent", message: "denied", via: "GPT-4o" });
-    expect(await imageAiJob(new Map(), 1, svg, fetchFake)).toEqual({
+    expect(await imageAiJob(cx, new Map(), 1, svg, fetchFake)).toEqual({
       fail: "noconsent",
       message: "denied",
       via: "GPT-4o",
     });
     chatReply = async () => ({ fail: "nomodel", message: "The language model “gpt-4o” isn't available" });
-    expect(await imageAiJob(new Map(), 2, svg, fetchFake)).toMatchObject({
+    expect(await imageAiJob(cx, new Map(), 2, svg, fetchFake)).toMatchObject({
       fail: "nomodel",
       message: "The language model “gpt-4o” isn't available",
     });
     key = undefined;
     chatReply = async () => ({ fail: "nomodel" });
-    const r = await imageAiJob(new Map(), 3, extract, fetchFake);
+    const r = await imageAiJob(cx, new Map(), 3, extract, fetchFake);
     expect(r).toMatchObject({ fail: "nomodel" });
     expect((r as { message: string }).message).toMatch(/No DeepSeek API key, and no VS Code language model/);
   });
@@ -153,7 +158,7 @@ describe("AI tools: which model", () => {
     key = undefined;
     chatReply = (c) => new Promise((ok) => c.signal.addEventListener("abort", () => ok({ fail: "canceled" })));
     const jobs = new Map<number, AbortController>();
-    const p = imageAiJob(jobs, 9, extract, fetchFake);
+    const p = imageAiJob(cx, jobs, 9, extract, fetchFake);
     await vi.waitFor(() => expect(chats.length).toBe(1));
     jobs.get(9)!.abort();
     expect(await p).toEqual({ fail: "canceled" });
@@ -176,16 +181,16 @@ describe("Auto Focus request", () => {
     expect(SYS_FOCUS).toMatch(/Never touch code or formulas/);
     key = undefined;
     chatReply = async () => ({ text: md, via: "GPT-4o" });
-    expect(await imageAiJob(new Map(), 1, { kind: "focus", md }, fetchFake)).toEqual({ text: md });
+    expect(await imageAiJob(cx, new Map(), 1, { kind: "focus", md }, fetchFake)).toEqual({ text: md });
   });
 });
 
 describe("Settings › AI", () => {
   it("tells the board only whether a key is set, and the models; Set Key… asks for the key and stores it, Clear removes it", async () => {
-    const info = await aiInfo();
+    const info = await aiInfo(cx);
     expect(info).toEqual({ key: true, models: MODELS });
     expect(JSON.stringify(info)).not.toContain(KEY);
-    const h = makeHandler({ store: {} } as never);
+    const h = makeHandler(cx, { store: {} } as never);
     expect(await h(undefined as never, { type: "aiKey", req: 1, action: "clear" })).toEqual({
       key: false,
       models: MODELS,

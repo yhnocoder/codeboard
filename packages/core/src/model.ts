@@ -215,7 +215,7 @@ export type End = { card: string; seg?: string; line?: number; block?: BlockRef 
 /**
  * Note 的一个顶层块（段落、标题、整个列表、代码块、公式、图、表格、引用；和 @yhnocoder/markdown 的 mdBlockStarts 一块一块对上）。
  * i = 第几块（0 起），h = 那一块 Markdown 原文的指纹（blockSig）。只记下标的话前面插一段就指错了，只记指纹的话改一个字就丢了：
- * 两样都记，Note 的字一变 edit.ts 的 rebaseBlocks 按指纹把没改的块对上，再把改过的配给它原来那块（Markdown 由白板拆块，core 不解析）
+ * 两样都记，Note 的字一变 edit/blocks.ts 的 rebaseBlocks 按指纹把没改的块对上，再把改过的配给它原来那块（Markdown 由白板拆块，core 不解析）
  */
 export type BlockRef = { i: number; h: string };
 /** 一块 Markdown 原文的指纹（FNV-1a，36 进制）：首尾空白不算 */

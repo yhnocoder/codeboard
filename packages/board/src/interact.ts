@@ -333,6 +333,18 @@ function startCardDrag(e: PointerEvent, grabbed: string, onClick?: () => void) {
   }); // Web 卡拖到另一张的标题上 → Link List
   const noteOk = ids.length === 1 && g.kind === "note" && g.look === "note";
   const imageOk = ids.length === 1 && g.kind === "image"; // 图片卡拖到 Note / Text 上 → 放进它的 Markdown
+  /** The cards back where the drag started: what goes on instead (merge, sidenote, image into a Note) starts from there, and its
+   *  undo step brings them back there */
+  const putBack = () =>
+    live((b) => {
+      for (const it of items) {
+        const c = hostPlace(b, it.id);
+        if (c) {
+          c.x = it.ox;
+          c.y = it.oy;
+        }
+      }
+    });
   setDragging(new Set(ids));
   const pace = snapPace(e, (ev, still) => onMove(ev, still));
   const onMove = (ev: PointerEvent, still = false) => {
@@ -446,15 +458,7 @@ function startCardDrag(e: PointerEvent, grabbed: string, onClick?: () => void) {
       }
       dragEndAt = performance.now();
       if (drop?.kind === "merge" && drop.armed) {
-        live((b) => {
-          for (const it of items) {
-            const c = hostPlace(b, it.id);
-            if (c) {
-              c.x = it.ox;
-              c.y = it.oy;
-            }
-          }
-        });
+        putBack();
         end();
         return webOk
           ? A.mergeIntoLinkList([drop.card, ...ids], drop.card)
@@ -468,30 +472,14 @@ function startCardDrag(e: PointerEvent, grabbed: string, onClick?: () => void) {
           if (src) ghostOut([ids[0]]);
           setDropTarget(null);
           leaveNote();
-          live((b) => {
-            for (const it of items) {
-              const c = hostPlace(b, it.id);
-              if (c) {
-                c.x = it.ox;
-                c.y = it.oy;
-              }
-            }
-          });
+          putBack();
           end();
           if (src) A.putImageInNote(ids[0], drop.card, src, noteAt);
         });
         return;
       }
       if (drop?.kind === "line") {
-        live((b) => {
-          for (const it of items) {
-            const c = hostPlace(b, it.id);
-            if (c) {
-              c.x = it.ox;
-              c.y = it.oy;
-            }
-          }
-        });
+        putBack();
         end();
         return A.cardToSidenote(ids[0], { card: drop.card, seg: drop.seg, lines: [drop.line!, drop.line!] });
       }

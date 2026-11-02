@@ -9,20 +9,25 @@ import {
   type Crumb,
   type WalkHop,
 } from "@codeboard/core";
-import { Storage } from "@codeboard/core/storage";
-import { nodeFs } from "../src/nodefs";
+import { Storage } from "../src/storage/boards";
+import { nodeFs } from "../src/storage/nodefs";
 import { makeHandler } from "../src/handlers";
 import { BoardPanel, type BoardHost } from "../src/boards";
 import { treeChildren } from "../src/boardtree";
-import { useWorkspace } from "../src/ws";
 import { nodeWorkspace } from "./node-workspace";
 import { stubView } from "./helpers";
+import { HostContext } from "../src/context";
+
+let cx: HostContext;
 
 const dir = fs.mkdtempSync("/tmp/codeboard-sub-");
 const store = new Storage(nodeFs, { dir: () => dir });
 const switches: { to: string; crumbs: Crumb[]; cams: Camera[]; walk?: WalkHop; cam?: Camera }[] = [];
 const { view, posted } = stubView();
 const panels: BoardHost = {
+  get cx() {
+    return cx;
+  },
   store,
   target: undefined,
   clip: undefined,
@@ -54,11 +59,11 @@ const panels: BoardHost = {
   },
 };
 const p = new BoardPanel("bE", view, panels);
-const send = (m: BoardToHost) => makeHandler(panels)(p, m);
+const send = (m: BoardToHost) => makeHandler(cx, panels)(p, m);
 let E: Board, S: Board, X: Board;
 
 beforeAll(async () => {
-  useWorkspace(nodeWorkspace());
+  cx = new HostContext(nodeWorkspace());
   E = emptyBoard("bE", "Engine");
   S = emptyBoard("bS", "Scheduler");
   X = emptyBoard("bX", "Other");
@@ -126,7 +131,7 @@ describe("sub-boards", () => {
     q.ready = true;
     q.board = store.peek("bT");
     const before = posted.length;
-    await makeHandler(panels)(q, {
+    await makeHandler(cx, panels)(q, {
       type: "enterBoard",
       req: 1,
       id: "bU",

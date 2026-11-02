@@ -10,13 +10,14 @@ import {
   type Segment,
   type Source,
 } from "@codeboard/core";
-import { Storage, type Pasted } from "@codeboard/core/storage";
-import { nodeFs } from "../src/nodefs";
-import { useWorkspace } from "../src/ws";
+import { Storage } from "../src/storage/boards";
+import { type Pasted } from "../src/storage/clip";
+import { nodeFs } from "../src/storage/nodefs";
 import { makeHandler } from "../src/handlers";
 import type { BoardHost, BoardPanel } from "../src/boards";
 import { nodeWorkspace } from "./node-workspace";
 import { tempRepo } from "./helpers";
+import { HostContext } from "../src/context";
 
 const tmp: string[] = [];
 const mk = (p: string) => {
@@ -52,13 +53,18 @@ function windowOf(folder: string, more: string[] = []) {
   ws.storage = { ...ws.storage, globalDir: () => G };
   const dir = mk("pdir");
   const store = new Storage(nodeFs, { dir: () => dir });
-  const host = { store, clip: undefined, broadcast: () => undefined } as unknown as BoardHost;
-  const h = makeHandler(host);
+  const cx = new HostContext(ws);
+  const host = {
+    cx,
+    store,
+    clip: undefined,
+    broadcast: () => undefined,
+  } as unknown as BoardHost;
+  const h = makeHandler(cx, host);
   const send = (board: string, m: Record<string, unknown>) => {
-    useWorkspace(ws);
     return h({ id: board } as BoardPanel, { req: 1, ...m } as BoardToHost);
   };
-  return { dir, store, host, send };
+  return { dir, store, host, send, cx };
 }
 
 beforeAll(() => {
@@ -181,12 +187,13 @@ describe("paste cards from another window", () => {
     await copied(a, "same folder");
     // 同一个项目的第二个窗口：同一个存储目录，自己的剪贴板是空的
     const ws2 = {
+      cx: a.cx,
       store: new Storage(nodeFs, { dir: () => a.dir }),
       clip: undefined,
       broadcast: () => undefined,
     } as unknown as BoardHost;
     await ws2.store.save(emptyBoard("bOther", "Other"));
-    const r = (await makeHandler(ws2)(
+    const r = (await makeHandler(a.cx, ws2)(
       { id: "bOther" } as BoardPanel,
       { type: "pasteCards", req: 1, text: "same folder", copy: false } as BoardToHost,
     )) as Pasted | null;

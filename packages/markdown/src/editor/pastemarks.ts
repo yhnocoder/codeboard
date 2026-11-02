@@ -12,7 +12,7 @@ import {
 import { mdSchema, parseSource, serializeMd } from "../schema";
 import { mathInSlice } from "./pastemath";
 
-// 藏成私用区的字（和 schema.ts 的 SHIELD、PAIR0 错开）：解析器当普通字，位置、长度不变，读完再换回来
+// 藏成私用区的字（和 tiptap-markdown-patch.ts 的 SHIELD 错开）：解析器当普通字，位置、长度不变，读完再换回来
 const HIDE = 0xe400;
 const hide = (s: string) =>
   s

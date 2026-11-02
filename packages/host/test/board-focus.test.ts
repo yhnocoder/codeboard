@@ -2,14 +2,16 @@
 import * as fs from "node:fs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { emptyBoard } from "@codeboard/core";
-import { Storage } from "@codeboard/core/storage";
-import { nodeFs } from "../src/nodefs";
+import { Storage } from "../src/storage/boards";
+import { nodeFs } from "../src/storage/nodefs";
 import { BoardHub } from "../src/hub";
 import { makeHandler } from "../src/handlers";
 import type { HostEnv } from "../src/env";
-import { useWorkspace } from "../src/ws";
 import { nodeWorkspace } from "./node-workspace";
 import { stubView } from "./helpers";
+import { HostContext } from "../src/context";
+
+let cx: HostContext;
 
 const W = nodeWorkspace();
 const keyContext: boolean[] = [];
@@ -34,10 +36,10 @@ let hub: BoardHub;
 const focus = (has: boolean) => hub.handler(hub.get("bF")!, { type: "focus", has });
 
 beforeAll(async () => {
-  useWorkspace(W);
+  cx = new HostContext(W);
   await store.save(emptyBoard("bF", "F"));
-  hub = new BoardHub(env, store);
-  hub.handler = makeHandler(hub);
+  hub = new BoardHub(cx, env, store);
+  hub.handler = makeHandler(cx, hub);
   (await hub.show("bF"))!.ready = true;
 });
 afterAll(() => {

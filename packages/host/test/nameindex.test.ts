@@ -4,9 +4,11 @@ import * as path from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
 import { codeExts } from "@codeboard/analysis/langs";
 import { startAnalysis } from "../src/analysis";
-import { CODE_GLOB, useWorkspace } from "../src/ws";
-import { isCode, lookupName, resetIndex } from "../src/nameindex";
+import { CODE_GLOB } from "../src/ws";
 import { nodeWorkspace } from "./node-workspace";
+import { HostContext } from "../src/context";
+
+let cx: HostContext;
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "cb-nameindex-"));
 
@@ -14,8 +16,7 @@ beforeAll(async () => {
   fs.writeFileSync(path.join(root, "kernel.hh"), "namespace k {\nint launch_hh(int n) {\n  return n;\n}\n}\n");
   fs.writeFileSync(path.join(root, "impl.inl"), "template <typename T>\nT scale_inl(T x) {\n  return x * 2;\n}\n");
   fs.writeFileSync(path.join(root, "notes.txt"), "int not_code(int n) { return n; }\n");
-  useWorkspace(nodeWorkspace(root));
-  resetIndex();
+  cx = new HostContext(nodeWorkspace(root));
   await startAnalysis();
 });
 
@@ -25,22 +26,22 @@ describe("name index files", () => {
       expect(codeExts()).toContain(e);
     expect(CODE_GLOB).toMatch(/[{,]hh[,}]/);
     expect(CODE_GLOB).toMatch(/[{,]inl[,}]/);
-    expect(isCode("/w/a/kernel.hh") && isCode("/w/a/impl.inl")).toBe(true);
-    expect(isCode("/w/a/notes.txt") || isCode("/w/node_modules/x/kernel.hh")).toBe(false);
+    expect(cx.index.isCode("/w/a/kernel.hh") && cx.index.isCode("/w/a/impl.inl")).toBe(true);
+    expect(cx.index.isCode("/w/a/notes.txt") || cx.index.isCode("/w/node_modules/x/kernel.hh")).toBe(false);
   });
   it("leave out installed packages, by the folders under the workspace root only", () => {
-    expect(isCode(path.join(root, "env/lib/python3.12/site-packages/pkg/core.py"))).toBe(false);
+    expect(cx.index.isCode(path.join(root, "env/lib/python3.12/site-packages/pkg/core.py"))).toBe(false);
     const pkg = path.join(root, "lib/site-packages/pkg");
-    useWorkspace(nodeWorkspace(pkg));
+    cx = new HostContext(nodeWorkspace(pkg));
     try {
-      expect(isCode(path.join(pkg, "core.py"))).toBe(true);
+      expect(cx.index.isCode(path.join(pkg, "core.py"))).toBe(true);
     } finally {
-      useWorkspace(nodeWorkspace(root));
+      cx = new HostContext(nodeWorkspace(root));
     }
   });
   it("finds definitions in .hh and .inl files", async () => {
-    expect((await lookupName("launch_hh")).map((e) => path.basename(e.abs))).toEqual(["kernel.hh"]);
-    expect((await lookupName("scale_inl")).map((e) => path.basename(e.abs))).toEqual(["impl.inl"]);
-    expect(await lookupName("not_code")).toEqual([]);
+    expect((await cx.index.lookupName("launch_hh")).map((e) => path.basename(e.abs))).toEqual(["kernel.hh"]);
+    expect((await cx.index.lookupName("scale_inl")).map((e) => path.basename(e.abs))).toEqual(["impl.inl"]);
+    expect(await cx.index.lookupName("not_code")).toEqual([]);
   });
 });

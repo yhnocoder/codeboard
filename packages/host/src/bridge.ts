@@ -29,26 +29,13 @@ import {
   type Sym,
 } from "@codeboard/analysis";
 import { analysisOf } from "./analysis";
-import { entriesOf, grepWord, knownEntries, lookupName, type IndexEntry } from "./nameindex";
+import { type IndexEntry } from "./nameindex";
 import { libOf } from "./scope";
-import {
-  cppOpEntry,
-  defsOf,
-  entryTable,
-  isStubCall,
-  keyRank,
-  kernelsOf,
-  kernelTarget,
-  opTableFor,
-  pyDefInTorch,
-  pyOpEntry,
-  pyRegs,
-  stubRegs,
-  type OpTable,
-  type Reg,
-} from "./torchops";
-import { hostPath, langOf, readText, splitLines } from "./ws";
-import { log } from "./log";
+import { cppOpEntry, isStubCall, pyDefInTorch, pyOpEntry } from "./torchentry";
+import type { Reg } from "./torchscan";
+import { keyRank, kernelsOf, type OpTable } from "./torchyaml";
+import { splitLines } from "./ws";
+import type { HostContext } from "./context";
 
 export type Target = { abs: string; sym: Sym };
 /** 跨过去的结果：目标、边界和取值（title = 模板实例名，dispatch<8, 768>；label = 当备选时的标签，没有就用 title / qual） */
@@ -72,11 +59,12 @@ const toSym = (e: IndexEntry): Sym => ({
  * 带上完整分析的参数
  */
 async function symByQual(
+  cx: HostContext,
   qual: string,
   grammar: Grammar,
   prefer?: (e: IndexEntry, text: string) => boolean,
   near?: string,
-  cands: (name: string) => Promise<IndexEntry[]> = lookupName,
+  cands: (name: string) => Promise<IndexEntry[]> = (name) => cx.index.lookupName(name),
 ): Promise<Target | null> {
   const parts = qual.split("::").filter(Boolean);
   const name = parts[parts.length - 1];
@@ -95,11 +83,11 @@ async function symByQual(
     .filter((x) => x.s >= Math.min(parts.length, 2) || (parts.length === 1 && x.s === 1))
     .sort((a, b) => b.s - a.s || (a.e.abs === near ? 0 : 1) - (b.e.abs === near ? 0 : 1));
   for (const { e } of ranked) {
-    const text = await readText(e.abs);
+    const text = await cx.readText(e.abs);
     if (text === null) continue;
     if (prefer && !prefer(e, text) && ranked.length > 1) continue;
     const sym =
-      analysisOf(langOf(e.abs), text).symbols.find((s) => s.qual === e.qual && s.defLine === e.defLine) ?? toSym(e);
+      analysisOf(cx.langOf(e.abs), text).symbols.find((s) => s.qual === e.qual && s.defLine === e.defLine) ?? toSym(e);
     return { abs: e.abs, sym };
   }
   return null;
@@ -109,21 +97,21 @@ async function symByQual(
  * PyTorch 里一处注册的目标：注册所在的文件优先（目标通常就在那里，而且只要算子索引的第 1 遍），再找算子索引扫过的文件；
  * 扫描之后编辑加上的目标只有名字索引已经分析过的文件知道（不为它扫工作区）
  */
-async function regSym(t: OpTable, r: Reg): Promise<Target | null> {
+async function regSym(cx: HostContext, t: OpTable, r: Reg): Promise<Target | null> {
   return (
-    (await symByQual(r.target!, "cpp", undefined, r.abs, () => entriesOf(r.abs))) ??
-    (await symByQual(r.target!, "cpp", undefined, r.abs, async (name) => [
-      ...(await defsOf(t, name)),
-      ...knownEntries(name),
+    (await symByQual(cx, r.target!, "cpp", undefined, r.abs, () => cx.index.entriesOf(r.abs))) ??
+    (await symByQual(cx, r.target!, "cpp", undefined, r.abs, async (name) => [
+      ...(await cx.ops.defsOf(t, name)),
+      ...cx.index.knownEntries(name),
     ]))
   );
 }
 
 /** 注册在 lambda 里：目标是那一行所在的 lambda（当成一段，用包着它的符号或那一行） */
-async function lambdaTarget(abs: string, line: number): Promise<Target | null> {
-  const text = await readText(abs);
+async function lambdaTarget(cx: HostContext, abs: string, line: number): Promise<Target | null> {
+  const text = await cx.readText(abs);
   if (text === null) return null;
-  const a = analysisOf(langOf(abs), text);
+  const a = analysisOf(cx.langOf(abs), text);
   const sym = symbolAt(a.symbols, line);
   const l = splitLines(text)[line - 1] ?? "";
   return {
@@ -146,31 +134,31 @@ async function lambdaTarget(abs: string, line: number): Promise<Target | null> {
  * PyTorch 里的文件只查算子索引扫过的绑定（torch/csrc、functorch/csrc…）：不扫工作区（索引建好之前要读每个 C++ 文件），
  * third_party 里别的库的测试注册的同名方法也不是它
  */
-export async function viaRegistry(name: string, here?: string): Promise<Crossed[]> {
+export async function viaRegistry(cx: HostContext, name: string, here?: string): Promise<Crossed[]> {
   const out: Crossed[] = [];
-  const ops = await opTableFor(here);
+  const ops = await cx.ops.opTableFor(here);
   if (ops) {
-    for (const r of await pyRegs(ops, name)) {
-      const t = r.lambda ? await lambdaTarget(r.abs, r.line) : await regSym(ops, r);
+    for (const r of await cx.ops.pyRegs(ops, name)) {
+      const t = r.lambda ? await lambdaTarget(cx, r.abs, r.line) : await regSym(cx, ops, r);
       if (t) out.push({ t, mark: { bound: r.how } });
     }
     return out;
   }
-  for (const { abs, text } of await grepWord(name, "cpp")) {
+  for (const { abs, text } of await cx.index.grepWord(name, "cpp")) {
     for (const r of pybindDefs(text, name)) {
       const t = r.lambda
-        ? await lambdaTarget(abs, r.line)
+        ? await lambdaTarget(cx, abs, r.line)
         : r.target
-          ? await symByQual(r.target, "cpp", undefined, abs)
+          ? await symByQual(cx, r.target, "cpp", undefined, abs)
           : null;
       if (t) out.push({ t, mark: { bound: `pybind · ${path.basename(abs)} ${r.how}` } });
     }
     for (const r of pyMethodDefs(text, name)) {
-      const t = r.target ? await symByQual(r.target, "cpp", undefined, abs) : null;
+      const t = r.target ? await symByQual(cx, r.target, "cpp", undefined, abs) : null;
       if (t) out.push({ t, mark: { bound: `PyMethodDef · ${path.basename(abs)}` } });
     }
   }
-  for (const { abs, text } of await grepWord(name, "rust")) {
+  for (const { abs, text } of await cx.index.grepWord(name, "rust")) {
     for (const s of pyo3Defs(text, analysisOf("rust", text).symbols, name))
       out.push({
         t: { abs, sym: s },
@@ -183,13 +171,13 @@ export async function viaRegistry(name: string, here?: string): Promise<Crossed[
 }
 
 /** torch.ops.ns.op(…)：TORCH_LIBRARY 里注册的 C++ 函数 */
-async function viaTorchOps(site: CallSite): Promise<Crossed[]> {
+async function viaTorchOps(cx: HostContext, site: CallSite): Promise<Crossed[]> {
   const op = torchOpOf(site);
   if (!op) return [];
   const out: Crossed[] = [];
-  for (const { abs, text } of await grepWord(op.op, "cpp")) {
+  for (const { abs, text } of await cx.index.grepWord(op.op, "cpp")) {
     for (const r of torchLibDefs(text, op.op)) {
-      const t = r.lambda ? await lambdaTarget(abs, r.line) : r.target ? await symByQual(r.target, "cpp") : null;
+      const t = r.lambda ? await lambdaTarget(cx, abs, r.line) : r.target ? await symByQual(cx, r.target, "cpp") : null;
       if (t && !out.some((x) => x.t.abs === t.abs && x.t.sym.qual === t.sym.qual))
         out.push({ t, mark: { bound: `torch.ops · ${path.basename(abs)} ${r.how}` } });
     }
@@ -201,10 +189,10 @@ async function viaTorchOps(site: CallSite): Promise<Crossed[]> {
  * PyTorch 算子 → native_functions.yaml 的 dispatch 表 → 每个键的 kernel：一个设备一个候选（CUDA 在前，然后 CPU、Composite）。
  * 边界写 yaml 里的那条 func（经 structured_delegate 的写 a via b：箭头上的 → 是取值），dispatch key 放在取值里（换备选时跟着换）
  */
-export async function viaOps(t: OpTable, op: string, overload?: string): Promise<Crossed[]> {
+export async function viaOps(cx: HostContext, t: OpTable, op: string, overload?: string): Promise<Crossed[]> {
   const out: Crossed[] = [];
   for (const k of kernelsOf(t, op, overload)) {
-    const tg = await kernelTarget(t, k);
+    const tg = await cx.ops.kernelTarget(t, k);
     if (!tg) continue;
     const same = out.find(
       (x) => x.t.abs === tg.abs && x.t.sym.qual === tg.sym.qual && x.t.sym.defLine === tg.sym.defLine,
@@ -222,7 +210,7 @@ export async function viaOps(t: OpTable, op: string, overload?: string): Promise
       label: `${k.key} · ${tg.sym.qual}`,
     });
   }
-  if (out.length) log("info", `op ${op}${overload ? `.${overload}` : ""} → ${out.map((x) => x.label).join("; ")}`);
+  if (out.length) cx.log("info", `op ${op}${overload ? `.${overload}` : ""} → ${out.map((x) => x.label).join("; ")}`);
   return out;
 }
 
@@ -230,11 +218,11 @@ export async function viaOps(t: OpTable, op: string, overload?: string): Promise
  * DispatchStub：stub(device, …) → REGISTER_DISPATCH(stub, &fn) 注册的各个设备的 fn（CUDA 在前；含 build/ 里生成的 Ufunc*）；
  * 一个注册都找不到、而 stub 是 ufunc 算子的（add_stub，没构建过）→ ufunc::add
  */
-async function viaStub(stub: string, t: OpTable): Promise<Crossed[]> {
+async function viaStub(cx: HostContext, stub: string, t: OpTable): Promise<Crossed[]> {
   const out: Crossed[] = [];
-  for (const r of await stubRegs(t, stub)) {
+  for (const r of await cx.ops.stubRegs(t, stub)) {
     const key = stubDevice(r.how, r.abs);
-    const tg = await regSym(t, r);
+    const tg = await regSym(cx, t, r);
     if (!tg) continue;
     const same = out.find((o) => o.t.abs === tg.abs && o.t.sym.qual === tg.sym.qual);
     if (same) {
@@ -250,7 +238,7 @@ async function viaStub(stub: string, t: OpTable): Promise<Crossed[]> {
   if (!out.length) {
     const op = stub.replace(/_stub$/, "");
     if (op !== stub && t.byName.get(op)?.some((d) => d.ufunc)) {
-      const ufunc = (await viaOps(t, op)).filter((c) => /ufunc/.test(c.mark.bound ?? ""));
+      const ufunc = (await viaOps(cx, t, op)).filter((c) => /ufunc/.test(c.mark.bound ?? ""));
       for (const c of ufunc) c.mark.bound = `DispatchStub · ${stub} (registered by generated code) · ufunc ${op}`;
       return ufunc;
     }
@@ -268,6 +256,7 @@ const GENERATED_OP =
  * 都不是回空（照常用语言服务的定义）
  */
 export async function crossAfterDefs(
+  cx: HostContext,
   site: CallSite | undefined,
   lang: string,
   defs: { abs: string; line: number }[],
@@ -275,7 +264,7 @@ export async function crossAfterDefs(
 ): Promise<Crossed[]> {
   if (!site || !isCpp(lang) || !defs.length) return [];
   try {
-    const ops = await entryTable(here, async () => defs.map((d) => d.abs));
+    const ops = await cx.ops.entryTable(here, async () => defs.map((d) => d.abs));
     if (!ops) return [];
     if (defs.some((d) => GENERATED_OP.test(d.abs))) {
       const fromFile = defs
@@ -287,37 +276,38 @@ export async function crossAfterDefs(
         )
         .find((n) => n && ops.byName.has(n));
       const op = ops.byName.has(site.name) ? site.name : fromFile;
-      if (op) return await viaOps(ops, op);
+      if (op) return await viaOps(cx, ops, op);
     }
     for (const d of defs) {
-      const line = splitLines((await readText(d.abs)) ?? "")[d.line - 1] ?? "";
+      const line = splitLines((await cx.readText(d.abs)) ?? "")[d.line - 1] ?? "";
       const stub = /\b(?:DEFINE|DECLARE)_DISPATCH\s*\((?:[^,()]*,\s*)?(\w+)\s*\)/.exec(line)?.[1];
-      if (stub) return await viaStub(stub, ops);
+      if (stub) return await viaStub(cx, stub, ops);
     }
   } catch (e) {
-    log("warn", `cross-language after definition ${site.name}: ${e instanceof Error ? e.message : e}`);
+    cx.log("warn", `cross-language after definition ${site.name}: ${e instanceof Error ? e.message : e}`);
   }
   return [];
 }
 
 /** kernel 的定义：同名、__global__ 的那个（同一个文件的优先） */
 async function kernelSym(
+  cx: HostContext,
   name: string,
   near?: string,
   file?: (abs: string) => boolean,
 ): Promise<{ t: Target; head: string } | null> {
-  const ents = (await lookupName(name)).filter(
+  const ents = (await cx.index.lookupName(name)).filter(
     (e) => grammarOfFile(e.abs) === "cpp" && e.kind === "def" && (!file || file(e.abs)),
   );
   ents.sort((a, b) => (a.abs === near ? -1 : 0) - (b.abs === near ? -1 : 0));
   let fallback: { t: Target; head: string } | null = null;
   for (const e of ents) {
-    const text = await readText(e.abs);
+    const text = await cx.readText(e.abs);
     if (text === null) continue;
     const lines = splitLines(text);
     const head = lines.slice(e.start - 1, e.defLine).join("\n");
     const sym =
-      analysisOf(langOf(e.abs), text).symbols.find((s) => s.qual === e.qual && s.defLine === e.defLine) ?? toSym(e);
+      analysisOf(cx.langOf(e.abs), text).symbols.find((s) => s.qual === e.qual && s.defLine === e.defLine) ?? toSym(e);
     const hit = { t: { abs: e.abs, sym }, head };
     if (/__global__/.test(head)) return hit;
     fallback ??= hit;
@@ -326,14 +316,14 @@ async function kernelSym(
 }
 
 /** 调用处是 SWITCH_X(CASE_MACRO) / CASE_MACRO(8) / LAUNCH_KERNEL(&cfg, k<…>, …)：展开到实际启动的 kernel 和模板取值 */
-async function viaLaunchMacro(site: CallSite, abs: string, text: string): Promise<Crossed[]> {
+async function viaLaunchMacro(cx: HostContext, site: CallSite, abs: string, text: string): Promise<Crossed[]> {
   const defs = macroDefs(text);
   const argMacro = site.args.some((a) => defs.has(a.text.trim()));
   if (!argMacro && !defs.has(site.name) && !/LAUNCH/.test(site.name)) return [];
   // SWITCH_X 的定义可能在别的头文件里
   let switches = new Map<string, { params: string[]; body: string }>();
   if (argMacro && !defs.has(site.name))
-    for (const f of await grepWord(site.name, "cpp")) {
+    for (const f of await cx.index.grepWord(site.name, "cpp")) {
       const m = macroDefs(f.text);
       if (m.has(site.name)) {
         switches = m;
@@ -342,9 +332,9 @@ async function viaLaunchMacro(site: CallSite, abs: string, text: string): Promis
     }
   const lm = launchMacro(site, defs, switches);
   if (!lm) return [];
-  const k = await kernelSym(lm.kernel, abs);
+  const k = await kernelSym(cx, lm.kernel, abs);
   if (!k) return [];
-  const a = analysisOf(langOf(abs), text);
+  const a = analysisOf(cx.langOf(abs), text);
   const fn = symbolAt(
     a.symbols.filter((s) => s.kind === "def"),
     site.line,
@@ -359,7 +349,7 @@ async function viaLaunchMacro(site: CallSite, abs: string, text: string): Promis
 }
 
 /** jit->compile("…", std::format(R"(#include <…/{}.cuh> … &ns::{})", header, func))：编译、启动的是哪个 kernel；if / else 的另一个是备选 */
-async function viaJit(site: CallSite, abs: string, text: string): Promise<Crossed[]> {
+async function viaJit(cx: HostContext, site: CallSite, abs: string, text: string): Promise<Crossed[]> {
   const lines = splitLines(text);
   // 调用的整段文本：从调用名字到配对的括号
   const at = lines.slice(0, site.line - 1).reduce((n, l) => n + l.length + 1, 0) + site.col;
@@ -368,7 +358,7 @@ async function viaJit(site: CallSite, abs: string, text: string): Promise<Crosse
   if (close < 0) return [];
   const callText = text.slice(at, close + 1);
   if (!/#include/.test(callText)) return [];
-  const a = analysisOf(langOf(abs), text);
+  const a = analysisOf(cx.langOf(abs), text);
   const fn = symbolAt(
     a.symbols.filter((s) => s.kind === "def"),
     site.line,
@@ -377,7 +367,7 @@ async function viaJit(site: CallSite, abs: string, text: string): Promise<Crosse
   const ks = jitKernels(callText, fnText);
   const out: Crossed[] = [];
   for (const j of ks) {
-    const k = await kernelSym(j.kernel, undefined, (f) => f.replace(/\\/g, "/").endsWith(j.header));
+    const k = await kernelSym(cx, j.kernel, undefined, (f) => f.replace(/\\/g, "/").endsWith(j.header));
     if (!k) continue;
     const params = templateParams(k.head);
     const vals = j.targs.map((x, i) => ({
@@ -394,6 +384,7 @@ async function viaJit(site: CallSite, abs: string, text: string): Promise<Crosse
  * defs = 语言服务的定义所在的文件（工作区里有几个 PyTorch 时，项目自己的代码调的是哪个）。认不出回空
  */
 export async function crossBefore(
+  cx: HostContext,
   site: CallSite | undefined,
   lang: string,
   here: { abs: string; text: string } | null,
@@ -402,59 +393,60 @@ export async function crossBefore(
   if (!site) return [];
   try {
     if (!isCpp(lang)) {
-      const ops = lang === "python" && here ? await entryTable(here.abs, defs) : undefined;
+      const ops = lang === "python" && here ? await cx.ops.entryTable(here.abs, defs) : undefined;
       const e = ops ? pyOpEntry(ops, site, here!.text) : null;
       if (e && (e.how === "torch" || e.how === "functional")) {
-        const py = await pyDefInTorch(ops!, e.op, e.how);
+        const py = await pyDefInTorch(cx, ops!, e.op, e.how);
         if (py) return [{ t: py, mark: {} }];
       }
       if (e && (e.how === "explicit" || e.how === "torch" || e.how === "functional")) {
-        const r = await viaOps(ops!, e.op, e.overload);
+        const r = await viaOps(cx, ops!, e.op, e.overload);
         // yaml 认识的 torch.ops.aten.X 不再去找 TORCH_LIBRARY_IMPL(aten, …) 里同名的 m.impl（batch rule、autocast）
         if (r.length || site.recv?.includes("torch.ops")) return r;
       }
-      return site.recv?.includes("torch.ops") ? await viaTorchOps(site) : [];
+      return site.recv?.includes("torch.ops") ? await viaTorchOps(cx, site) : [];
     }
-    const ops = await entryTable(here?.abs, defs);
+    const ops = await cx.ops.entryTable(here?.abs, defs);
     const e = ops && cppOpEntry(ops, site);
     // at::native::X 是直接调用：索引里有这个函数就照常找
     if (
       e &&
       !(
         site.recv?.endsWith("native") &&
-        (await defsOf(ops, site.name)).some((x) => x.kind === "def" && x.qual.endsWith(`native::${site.name}`))
+        (await cx.ops.defsOf(ops, site.name)).some((x) => x.kind === "def" && x.qual.endsWith(`native::${site.name}`))
       )
     ) {
-      const r = await viaOps(ops, e.op, e.overload);
+      const r = await viaOps(cx, ops, e.op, e.overload);
       if (r.length) return r;
     }
     // DispatchStub 只在 PyTorch 自己的代码里
-    const inner = await opTableFor(here?.abs);
+    const inner = await cx.ops.opTableFor(here?.abs);
     if (inner && isStubCall(site)) {
-      const r = await viaStub(site.name, inner);
+      const r = await viaStub(cx, site.name, inner);
       if (r.length) return r;
     }
     if (!here) return [];
-    const lm = await viaLaunchMacro(site, here.abs, here.text);
+    const lm = await viaLaunchMacro(cx, site, here.abs, here.text);
     if (lm.length) return lm;
-    if (/^(compile|build|jit_compile)$/.test(site.name)) return await viaJit(site, here.abs, here.text);
+    if (/^(compile|build|jit_compile)$/.test(site.name)) return await viaJit(cx, site, here.abs, here.text);
   } catch (e) {
-    log("warn", `cross-language ${site.name}: ${e instanceof Error ? e.message : e}`);
+    cx.log("warn", `cross-language ${site.name}: ${e instanceof Error ? e.message : e}`);
   }
   return [];
 }
 
 /** 目标找到了：Triton 的 [grid] 启动补上 constexpr / config；CUDA 的 <<<>>> 补模板取值；TileLang 工厂换成里面的 prim_func */
 export async function decorate(
+  cx: HostContext,
   site: CallSite | undefined,
   t: Target,
   caller?: { lang: string; line: string; fnText: string },
 ): Promise<Crossed> {
   const plain: Crossed = { t, mark: {} };
-  const text = await readText(t.abs);
+  const text = await cx.readText(t.abs);
   if (text === null || !site) return plain;
   const lines = splitLines(text);
-  const lang = langOf(t.abs);
+  const lang = cx.langOf(t.abs);
   if (site.launch === "grid" && lang === "python") {
     const info = tritonInfo(lines, t.sym);
     const full =
@@ -495,18 +487,18 @@ export async function decorate(
 }
 
 /** 几个结果：第一个是选中的，其余进 alts（灰色虚框） */
-export async function withAlts(list: Crossed[]): Promise<Crossed> {
+export async function withAlts(cx: HostContext, list: Crossed[]): Promise<Crossed> {
   const [first, ...rest] = list;
   if (!rest.length) return first;
   const alts: CallAlt[] = [...(first.mark.alts ?? [])];
   for (const r of rest)
     alts.push({
       label: r.label ?? r.title ?? r.t.sym.qual,
-      detail: `${hostPath(r.t.abs)}:${r.t.sym.defLine}`,
-      path: hostPath(r.t.abs),
+      detail: `${cx.hostPath(r.t.abs)}:${r.t.sym.defLine}`,
+      path: cx.hostPath(r.t.abs),
       line: r.t.sym.defLine,
       qual: r.t.sym.qual,
-      lib: await libOf(r.t.abs),
+      lib: await libOf(cx, r.t.abs),
       vals: r.mark.vals,
     });
   return { ...first, mark: { ...first.mark, alts } };

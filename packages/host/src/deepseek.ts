@@ -8,6 +8,8 @@ export interface DeepseekOpts {
   signal?: AbortSignal;
   timeoutMs?: number;
   fetch?: typeof fetch;
+  /** Endpoints and models that turned FIM down (the host's, so a refusal is remembered while it runs; none: not remembered) */
+  noFim?: Set<string>;
 }
 
 export const DEEPSEEK_MODEL = "deepseek-flash";
@@ -62,10 +64,7 @@ export function deepseekChatRequest(o: DeepseekOpts, before: string, after: stri
   };
 }
 
-const noFim = new Set<string>();
 const fimKey = (o: DeepseekOpts) => `${base(o)} ${o.model || DEEPSEEK_MODEL}`;
-/** 测试用：忘掉 FIM 被拒绝过的记录 */
-export const resetDeepseekFim = () => noFim.clear();
 
 /** 补全光标处的文字（模型的原话，清理交给 cleanCompletion）；取消、超时、没网、接口出错都回 undefined（不抛出） */
 export async function deepseekComplete(o: DeepseekOpts, before: string, after: string): Promise<string | undefined> {
@@ -83,7 +82,7 @@ export async function deepseekComplete(o: DeepseekOpts, before: string, after: s
   };
   const fk = fimKey(o);
   try {
-    if (!noFim.has(fk)) {
+    if (!o.noFim?.has(fk)) {
       let status = 0;
       const fim = await send(deepseekFimRequest(o, before, after), (s) => (status = s)).catch((e) => {
         if (ac.signal.aborted) throw e;
@@ -93,7 +92,7 @@ export async function deepseekComplete(o: DeepseekOpts, before: string, after: s
       if (typeof text === "string") return text;
       if (ac.signal.aborted) return undefined;
       // 接口明确拒绝（4xx，比如这个模型不支持 FIM）：这个会话里以后直接走对话；超时、5xx、没网下次还试 FIM
-      if (status >= 400 && status < 500 && status !== 401 && status !== 429) noFim.add(fk);
+      if (status >= 400 && status < 500 && status !== 401 && status !== 429) o.noFim?.add(fk);
     }
     const chat = await send(deepseekChatRequest(o, before, after));
     const c = chat?.choices?.[0]?.message?.content;

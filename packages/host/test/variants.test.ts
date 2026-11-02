@@ -11,9 +11,11 @@ import {
 } from "@codeboard/core";
 import { addVariant, syncVariants, variantSources } from "../src/variants";
 import { staleFor, staleSegments } from "../src/versions";
-import { useWorkspace } from "../src/ws";
 import { nodeWorkspace } from "./node-workspace";
 import { card, git, startTreeSitter } from "./helpers";
+import { HostContext } from "../src/context";
+
+let cx: HostContext;
 
 const uncommitted = (v: unknown) => (v as { uncommitted?: boolean }).uncommitted;
 
@@ -50,8 +52,8 @@ describe("variants", () => {
     git(R, "worktree", "add", "-q", WT, "-b", "exp-overlap");
     fs.writeFileSync(path.join(WT, "sampler.py"), MINE.join("\n"));
     git(WT, "commit", "-qam", "fix all-accepted rows");
-    useWorkspace(nodeWorkspace(R));
-    ({ card: c, seg } = await card(path.join(R, "sampler.py"), "RejectionSampler.forward"));
+    cx = new HostContext(nodeWorkspace(R));
+    ({ card: c, seg } = await card(cx, path.join(R, "sampler.py"), "RejectionSampler.forward"));
   });
   afterAll(() => {
     git(R, "worktree", "remove", "--force", WT);
@@ -67,7 +69,7 @@ describe("variants", () => {
     expect(seg.version).toEqual({ kind: "git", commit: base });
   });
   it("lists the other worktree (git worktree list) and local branches", async () => {
-    const src = await variantSources(seg);
+    const src = await variantSources(cx, seg);
     expect(src.worktrees.map((w) => ({ dir: w.dir, branch: w.branch, label: w.label }))).toEqual([
       { dir: WT, branch: "exp-overlap", label: "exp-overlap · ../vllm-exp" },
     ]);
@@ -75,7 +77,7 @@ describe("variants", () => {
     expect(src.current).toBe("main");
   });
   it("reads a worktree variant from the other worktree's file, with views for the switch", async () => {
-    wt = await addVariant([seg], { kind: "wt", dir: WT, branch: "exp-overlap" });
+    wt = await addVariant(cx, [seg], { kind: "wt", dir: WT, branch: "exp-overlap" });
     expect(wt?.name).toBe("vllm-exp");
     expect(wt?.segs[0].src.kind).toBe("external");
     expect(wt?.segs[0].text).toContain("        first[accepted.all(-1)] = k");
@@ -84,27 +86,27 @@ describe("variants", () => {
     expect(wt!.views[seg.id].html).toHaveLength(wt!.segs[0].text.length);
   });
   it("reads a branch variant from the branch tip", async () => {
-    br = await addVariant([seg], { kind: "ref", ref: "exp-overlap" });
+    br = await addVariant(cx, [seg], { kind: "ref", ref: "exp-overlap" });
     expect(br?.segs[0].text).toHaveLength(MINE.slice(4, 10).length);
     expect(br?.segs[0].version).toEqual({ kind: "git", commit: git(R, "rev-parse", "exp-overlap") });
   });
   it("finds a file variant by function name in the copied file", async () => {
     const CP = path.join(FIX, "mla_v2_stage3.py");
     fs.writeFileSync(CP, ["# copied", "BLOCK_N = 64", "", ...MINE].join("\n"));
-    const fv = await addVariant([seg], { kind: "file", abs: CP });
+    const fv = await addVariant(cx, [seg], { kind: "file", abs: CP });
     expect(fv?.name).toBe("mla_v2_stage3.py");
     expect(fv?.segs[0].start).toBe(seg.start + 3);
     expect(fv?.segs[0].version.kind).toBe("hash");
   });
   it("includes uncommitted changes in a working-tree variant", async () => {
     fs.writeFileSync(path.join(R, "sampler.py"), F.join("\n").replace("return out", "return out  # wip"));
-    const wk = await addVariant([seg], { kind: "worktree" });
+    const wk = await addVariant(cx, [seg], { kind: "worktree" });
     expect(wk?.segs[0].text.some((l) => l.includes("# wip"))).toBe(true);
     expect(uncommitted(wk?.segs[0].version)).toBe(true);
     fs.writeFileSync(path.join(R, "sampler.py"), F.join("\n"));
   });
   it("gives a clear error for an unknown branch", async () => {
-    await expect(addVariant([seg], { kind: "ref", ref: "nope" })).rejects.toThrow(/not in/);
+    await expect(addVariant(cx, [seg], { kind: "ref", ref: "nope" })).rejects.toThrow(/not in/);
   });
   it("syncs: nothing changed yet, upstream latest = main; nothing sent the second time", async () => {
     b.cards.push(c);
@@ -112,20 +114,20 @@ describe("variants", () => {
     addV(b, c.id, { id: "vw", name: wt!.name, from: wt!.from, segs: wt!.segs });
     addV(b, c.id, { id: "vb", name: br!.name, from: br!.from, segs: br!.segs });
     switchVariant(b, c.id, "vw");
-    const r = (await syncVariants(b, sent))[c.id];
+    const r = (await syncVariants(cx, b, sent))[c.id];
     expect(r?.segs).toBeUndefined();
     expect(r?.latest?.label).toBe(`main ${base.slice(0, 7)}`);
     expect(r?.latest?.segs[0].text).toEqual(seg.text);
-    expect(await syncVariants(b, sent)).toEqual({});
+    expect(await syncVariants(cx, b, sent)).toEqual({});
   });
   it("refreshes the worktree variant when the other worktree saves (views keyed by variant)", async () => {
     fs.writeFileSync(path.join(WT, "sampler.py"), MINE.join("\n").replace("return out", "return out  # tuned"));
-    const r = (await syncVariants(b, sent))[c.id];
+    const r = (await syncVariants(cx, b, sent))[c.id];
     expect(r?.segs?.vw?.[0].text.some((l) => l.includes("# tuned"))).toBe(true);
     expect(uncommitted(r?.segs?.vw?.[0].version)).toBe(true);
     expect(r?.views?.[`${seg.id}@vw`]).toBeTruthy();
     fs.writeFileSync(path.join(WT, "sampler.py"), MINE.join("\n"));
-    await syncVariants(b, sent);
+    await syncVariants(cx, b, sent);
   });
   it("tells the branch is behind main, and compares upstream staleness with main", async () => {
     // main gets a commit with lines above the function
@@ -134,16 +136,16 @@ describe("variants", () => {
       ["import torch", "import math", "", "SCALE = 1", ...F.slice(1)].join("\n"),
     );
     git(R, "commit", "-qam", "upstream: imports");
-    const r = (await syncVariants(b, sent))[c.id];
+    const r = (await syncVariants(cx, b, sent))[c.id];
     expect(r?.behind?.vb).toBe(1);
     expect(r?.latest?.segs[0].start).toBe(seg.start + 3);
     const s = ss();
     expect(s.up.has(seg.id)).toBe(true);
-    expect((await staleFor(s.segs, s.up))[seg.id]?.state).toBe("moved");
+    expect((await staleFor(cx, s.segs, s.up))[seg.id]?.state).toBe("moved");
   });
   it("re-anchors the variants by function name after a rebase", async () => {
     git(WT, "rebase", "-q", "main");
-    const r = (await syncVariants(b, sent))[c.id];
+    const r = (await syncVariants(cx, b, sent))[c.id];
     expect(r?.rebased).toEqual(expect.arrayContaining(["vb", "vw"]));
     expect(r?.segs?.vb?.[0].start).toBe(seg.start + 3);
     expect(r?.segs?.vb?.[0].text).toContain("        first[accepted.all(-1)] = k");
@@ -151,13 +153,16 @@ describe("variants", () => {
   it("offers to turn back into a normal card once merged into main, and shows main's new version", async () => {
     const main2 = git(R, "rev-parse", "HEAD");
     git(R, "merge", "-q", "--ff-only", "exp-overlap");
-    const r = (await syncVariants(b, sent))[c.id];
+    const r = (await syncVariants(cx, b, sent))[c.id];
     const tip = git(R, "rev-parse", "HEAD");
     expect(tip).not.toBe(main2);
     expect(r?.merged?.vb?.into).toBe(`main ${tip.slice(0, 7)}`);
     expect(r?.merged?.vw?.tip).toBe(tip);
     const s = ss();
-    expect((await staleFor(s.segs, s.up))[seg.id]).toMatchObject({ state: "changed", head: `main ${tip.slice(0, 7)}` });
+    expect((await staleFor(cx, s.segs, s.up))[seg.id]).toMatchObject({
+      state: "changed",
+      head: `main ${tip.slice(0, 7)}`,
+    });
   });
 });
 
@@ -178,18 +183,18 @@ describe("variants in a submodule", () => {
     git(SUP, "init", "-q", "-b", "main");
     git(SUP, "submodule", "add", "-q", LIB, "examples/lib");
     git(SUP, "commit", "-qm", "sub");
-    useWorkspace(nodeWorkspace(SUP));
-    ({ seg } = await card(path.join(SUB, "m.py"), "f"));
+    cx = new HostContext(nodeWorkspace(SUP));
+    ({ seg } = await card(cx, path.join(SUB, "m.py"), "f"));
   });
   afterAll(() => fs.rmSync(FIX, { recursive: true, force: true }));
 
   it("doesn't count the submodule's own checkout (reported as .git/modules/…) as another worktree", async () => {
-    expect((await variantSources(seg)).worktrees).toEqual([]);
+    expect((await variantSources(cx, seg)).worktrees).toEqual([]);
   });
   it("lists a real extra worktree of the submodule once, branch first, short path", async () => {
     const EXP = path.join(SUP, "examples/lib-exp");
     git(SUB, "worktree", "add", "-q", EXP, "-b", "exp");
-    expect((await variantSources(seg)).worktrees.map((w) => ({ dir: w.dir, label: w.label }))).toEqual([
+    expect((await variantSources(cx, seg)).worktrees.map((w) => ({ dir: w.dir, label: w.label }))).toEqual([
       { dir: EXP, label: "exp · ../lib-exp" },
     ]);
   });

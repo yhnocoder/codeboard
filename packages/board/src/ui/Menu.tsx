@@ -1,4 +1,4 @@
-import { createSignal, For, Show, onCleanup, onMount, createEffect, createMemo, on } from "solid-js";
+import { createRoot, createSignal, For, Show, onCleanup, onMount, createEffect, createMemo, on } from "solid-js";
 import { Icon } from "./icons";
 import { place, virtual, scrollIntoBox } from "@yhnocoder/markdown/ui";
 import { useOverlay } from "./overlay";
@@ -40,7 +40,23 @@ export const below = (el: Element) => {
 };
 export const openMenuAt = (items: Item[], el: Element) => openMenu(items, ...below(el));
 const closeMenu = () => setMenu(null);
-export const menuOpen = () => !!menu();
+/** Runs fn once no menu is open and the click that closed it has been handled; at once when none is open */
+export function afterMenu(fn: () => void) {
+  if (!menu()) return fn();
+  createRoot((dispose) =>
+    createEffect(
+      on(
+        menu,
+        (m) => {
+          if (m) return;
+          dispose();
+          setTimeout(fn, 0);
+        },
+        { defer: true },
+      ),
+    ),
+  );
+}
 /** 按钮自己弹出的菜单是不是还开着：卡头的 ⋯ 平时藏着（styles.css .cmenu），它的菜单开着时鼠标移进菜单也得留着 */
 export function ownMenu() {
   const [n, setN] = createSignal(-1);

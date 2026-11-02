@@ -2,13 +2,15 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { emptyBoard, type Board } from "@codeboard/core";
-import { Storage } from "@codeboard/core/storage";
-import { nodeFs } from "../src/nodefs";
+import { Storage } from "../src/storage/boards";
+import { nodeFs } from "../src/storage/nodefs";
 import { BoardHub } from "../src/hub";
 import type { HostEnv } from "../src/env";
-import { useWorkspace } from "../src/ws";
 import { WS, nodeWorkspace } from "./node-workspace";
 import { card, startTreeSitter, stubView } from "./helpers";
+import { HostContext } from "../src/context";
+
+let cx: HostContext;
 
 const W = nodeWorkspace();
 const wsState = new Map<string, unknown>(),
@@ -39,11 +41,11 @@ const store = new Storage(nodeFs, { dir: () => dir });
 let hub: BoardHub;
 
 beforeAll(async () => {
-  useWorkspace(W);
+  cx = new HostContext(W);
   await startTreeSitter();
   await store.save(emptyBoard("bA", "A"));
   await store.save(emptyBoard("bB", "B"));
-  hub = new BoardHub(env, store);
+  hub = new BoardHub(cx, env, store);
 });
 afterAll(() => {
   hub.dispose();
@@ -108,9 +110,9 @@ describe("version re-check after a file change", () => {
   let A: Board, B: Board;
   beforeAll(async () => {
     // board A holds scheduler.py and sequence.py, board B holds llm_engine.py
-    const a1 = (await card(schAbs, "Scheduler.schedule")).card,
-      a2 = (await card(seqAbs, "Sequence.__init__")).card,
-      b1 = (await card(llmAbs, "LLMEngine.step")).card;
+    const a1 = (await card(cx, schAbs, "Scheduler.schedule")).card,
+      a2 = (await card(cx, seqAbs, "Sequence.__init__")).card,
+      b1 = (await card(cx, llmAbs, "LLMEngine.step")).card;
     A = {
       ...emptyBoard("bA", "A"),
       cards: [a1, a2],
@@ -158,7 +160,7 @@ describe("opening a board", () => {
     W.open.delete(blockAbs);
   });
   it("posts the board with its highlighting before the version status, then the status; a re-check runs after it", async () => {
-    const c = (await card(blockAbs, "BlockManager.allocate")).card;
+    const c = (await card(cx, blockAbs, "BlockManager.allocate")).card;
     const seg = c.segments[0];
     // an unsaved edit inside the function: the version check says "uncommitted"
     const text = fs.readFileSync(blockAbs, "utf8").split("\n");

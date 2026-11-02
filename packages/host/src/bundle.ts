@@ -8,10 +8,11 @@ import { createHash } from "node:crypto";
 import { strFromU8, strToU8, unzipSync, zipSync, type Zippable } from "fflate";
 import * as v from "valibot";
 import { loadBoardFile, loadRun, loadSharedCard, subBoardsOf } from "@codeboard/core";
-import { Storage, SAFE_ID, groupName, type DirEnt, type Fs } from "@codeboard/core/storage";
-import { log } from "./log";
+import { Storage } from "./storage/boards";
+import { SAFE_ID, groupName } from "./storage/names";
+import { type DirEnt, type Fs } from "./storage/fs";
 import { diskFiles, transfer, type Files } from "./transfer";
-import { workspace, ws0, wsRoots } from "./ws";
+import type { HostContext } from "./context";
 
 export const BUNDLE_EXT = "codeboard";
 /** 包格式的版本：只在包的布局或 manifest 变了时加；白板文件自己的版本由白板文件带着（导入时照常迁移） */
@@ -120,21 +121,22 @@ export class MemFs implements Fs, Files {
   }
 }
 
-const memStorage = (mem: MemFs) => new Storage(mem, { dir: () => "/", log });
+const memStorage = (cx: HostContext, mem: MemFs) => new Storage(mem, { dir: () => "/", log: cx.log });
 
 /**
  * 把白板 roots（和它们嵌着的子白板、共享卡、图片、运行记录）打成 .codeboard 的字节。来源原样带上（导入的那边再按它的工作区改写）。
  * 一块都没有返回 null
  */
 export async function packBoards(
+  cx: HostContext,
   store: Storage,
   roots: string[],
 ): Promise<{ data: Uint8Array; manifest: Manifest } | null> {
   await store.flush();
   const mem = new MemFs(),
-    out = memStorage(mem);
+    out = memStorage(cx, mem);
   try {
-    const moved = await transfer({ store, files: diskFiles(store.dir()) }, roots, { store: out, files: mem });
+    const moved = await transfer(cx, { store, files: diskFiles(store.dir()) }, roots, { store: out, files: mem });
     if (!moved.ids.size) return null;
     const metas = new Map((await out.list()).map((m) => [m.id, m]));
     const boards = [...moved.ids.values()].map((id) => {
@@ -143,9 +145,9 @@ export async function packBoards(
     });
     const manifest: Manifest = {
       format: BUNDLE_FORMAT,
-      codeboard: workspace().about.ext,
+      codeboard: cx.ws.about.ext,
       exported: new Date().toISOString(),
-      folders: wsRoots().map((f) => path.basename(f)),
+      folders: cx.roots().map((f) => path.basename(f)),
       boards,
       groups: [...new Set(boards.flatMap((b) => (b.group ? [b.group] : [])))].sort(),
     };
@@ -296,9 +298,9 @@ export type Imported = { first: string; boards: number; renamed: number; manifes
  * 来源按这个工作区改写：包里只有导出那边的文件夹名字，repo 来源原样（相对这边的主根），external 的根在这台机器上找得到才改写。
  * 校验不过抛 BundleError，什么都不写
  */
-export async function importBundle(store: Storage, data: Uint8Array): Promise<Imported> {
+export async function importBundle(cx: HostContext, store: Storage, data: Uint8Array): Promise<Imported> {
   const { mem, manifest } = readBundle(data);
-  const src = memStorage(mem);
+  const src = memStorage(cx, mem);
   try {
     const listed = new Set((await src.list()).map((m) => m.id));
     const missing = manifest.boards.find((b) => !listed.has(b.id));
@@ -309,12 +311,13 @@ export async function importBundle(store: Storage, data: Uint8Array): Promise<Im
     // 嵌着的子白板也要在包里：不然导入后框是空的
     for (const id of roots)
       for (const s of subBoardsOf((await src.load(id))!))
-        if (!listed.has(s)) log("warn", `import: board ${id} embeds ${s}, which is not in the package`);
+        if (!listed.has(s)) cx.log("warn", `import: board ${id} embeds ${s}, which is not in the package`);
     const moved = await transfer(
+      cx,
       { store: src, files: mem },
       roots,
       { store, files: diskFiles(store.dir()) },
-      { folders: wsRoots(), from: [] },
+      { folders: cx.roots(), from: [] },
     );
     return { first: moved.ids.get(roots[0])!, boards: moved.ids.size, renamed: moved.renamed, manifest };
   } finally {
@@ -323,21 +326,26 @@ export async function importBundle(store: Storage, data: Uint8Array): Promise<Im
 }
 
 /** 从磁盘读一个包导入（先看大小再读，太大的不读进内存） */
-export async function importFile(store: Storage, file: string): Promise<Imported> {
+export async function importFile(cx: HostContext, store: Storage, file: string): Promise<Imported> {
   const st = await fs.stat(file);
   if (st.size > LIMITS.file) throw new BundleError(`The file is larger than ${LIMITS.file >> 20} MB.`);
-  return importBundle(store, new Uint8Array(await fs.readFile(file)));
+  return importBundle(cx, store, new Uint8Array(await fs.readFile(file)));
 }
 
 /** 问存到哪、打包、写下去，说一声（name = 默认文件名用的白板 / 组 / 工作区的名字） */
-export async function exportFlow(store: Storage, roots: string[], name: string): Promise<string | undefined> {
-  const ui = workspace().ui;
+export async function exportFlow(
+  cx: HostContext,
+  store: Storage,
+  roots: string[],
+  name: string,
+): Promise<string | undefined> {
+  const ui = cx.ws.ui;
   const file = await ui.saveDialog({
-    defaultPath: path.join(ws0() || store.dir(), bundleName(name)),
+    defaultPath: path.join(cx.root0() || store.dir(), bundleName(name)),
     filters: { "CodeBoard Boards": [BUNDLE_EXT] },
   });
   if (!file) return;
-  const r = await packBoards(store, roots);
+  const r = await packBoards(cx, store, roots);
   if (!r) return;
   await fs.writeFile(file, r.data);
   const n = r.manifest.boards.length;

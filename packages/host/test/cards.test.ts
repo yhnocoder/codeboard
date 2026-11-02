@@ -5,9 +5,11 @@ import * as path from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
 import type { CodeCard } from "@codeboard/core";
 import { cardsFromEditor } from "../src/cards";
-import { useWorkspace } from "../src/ws";
 import { WS, nodeWorkspace } from "./node-workspace";
 import { card, startTreeSitter } from "./helpers";
+import { HostContext } from "../src/context";
+
+let cx: HostContext;
 
 const abs = path.join(WS, "nanovllm/utils/context.py");
 const ed = () => ({
@@ -23,18 +25,18 @@ const ranges = (c: CodeCard) => c.segments.map((sg) => `${sg.symbol?.qual ?? sg.
 const want = ["Context:5-14", "<module>:16-16", "get_context:18-19", "set_context:21-23", "reset_context:25-27"];
 
 beforeAll(async () => {
-  useWorkspace(nodeWorkspace());
+  cx = new HostContext(nodeWorkspace());
   await startTreeSitter();
 });
 
 describe("cards from a selection over several definitions", () => {
   it("⌥B: one card, a segment per definition plus the module line between", async () => {
-    const one = await cardsFromEditor(ed());
+    const one = await cardsFromEditor(cx, ed());
     expect("cards" in one && one.cards.map(ranges)).toEqual([want]);
     expect("cards" in one && (one.cards[0].members || one.ask)).toBeFalsy();
   });
   it("⇧⌥B: one card per definition, the module line as its own card; the fields-only dataclass is a plain card with decorator and fields", async () => {
-    const sep = await cardsFromEditor(ed(), "separate");
+    const sep = await cardsFromEditor(cx, ed(), "separate");
     expect("cards" in sep && sep.cards.map((c) => ranges(c)[0])).toEqual(want);
     const ctx = "cards" in sep ? sep.cards[0] : undefined;
     expect(ctx?.members).toBeFalsy();
@@ -42,7 +44,7 @@ describe("cards from a selection over several definitions", () => {
     expect(ctx?.segments[0].text).toHaveLength(10);
   });
   it("from a symbol (search, Add Function at Cursor): no empty member list; a class with methods is still a member-list card", async () => {
-    expect((await card(abs, "Context")).card.members).toBeFalsy();
-    expect((await card(path.join(WS, "nanovllm/engine/scheduler.py"), "Scheduler")).card.members).toBeTruthy();
+    expect((await card(cx, abs, "Context")).card.members).toBeFalsy();
+    expect((await card(cx, path.join(WS, "nanovllm/engine/scheduler.py"), "Scheduler")).card.members).toBeTruthy();
   });
 });

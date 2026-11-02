@@ -1,20 +1,17 @@
-import { unwrap } from "solid-js/store";
 import {
   uid,
   findCard,
-  removeCards,
   estSize,
   defaultWidth,
   findFree,
   type Board,
-  type Card,
   type LinkItem,
   type LinksCard,
-  type WebCard,
   type WebStyle,
-  type Place,
 } from "@codeboard/core";
-import { state, cardById, rectOf, placeOf } from "../state/store";
+import * as C from "@codeboard/core/commands";
+import { commandEnv } from "./env";
+import { state, cardById, rectOf } from "../state/store";
 import { mutate, sync } from "../state/changes";
 import { select, sel } from "../state/selection";
 import { toast } from "../state/toast";
@@ -64,15 +61,6 @@ export async function retryMeta(id: string, item?: string) {
     ]);
 }
 
-const asItem = (c: WebCard): LinkItem => {
-  const meta = c.meta ? { ...structuredClone(unwrap(c.meta)) } : undefined;
-  if (meta && c.desc) meta.desc = c.desc;
-  return { id: uid("l"), url: c.url, title: c.title, meta };
-};
-const itemsOf = (c: Card): LinkItem[] =>
-  c.kind === "web" ? [asItem(c)] : c.kind === "links" ? structuredClone(unwrap(c.items)) : [];
-export const canLinkList = (cs: Card[]) => cs.length >= 2 && cs.every((c) => c.kind === "web" || c.kind === "links");
-
 /** 一次贴多个链接 → 一张 Link List */
 export function newLinkList(urls: string[], at?: { x: number; y: number }) {
   const id = uid("k");
@@ -103,32 +91,10 @@ export function newLinkList(urls: string[], at?: { x: number; y: number }) {
 /** 几张 Web 卡 / Link List 合成一张 Link List（Multi-select → Merge into Link List，或拖到另一张的标题栏上）。
  *  target 留在原地、保留 id（连着它的箭头不断）；其余的行按顺序接在后面 */
 export function mergeIntoLinkList(ids: string[] = sel.cards, target?: string) {
-  const cs = [...new Set(ids)].map((i) => cardById(i)?.host).filter(Boolean) as Card[];
-  if (!canLinkList(cs)) return toast("Only Web cards and Link Lists can be merged into a Link List");
-  // 默认合到最上面（再最左）那张
-  const T =
-    (target && cs.find((c) => c.id === target)) ||
-    [...cs].sort((a, b) => placeOf(a.id).y - placeOf(b.id).y || placeOf(a.id).x - placeOf(b.id).x)[0];
-  const rest = cs.filter((c) => c !== T);
-  const n = cs.reduce((s, c) => s + itemsOf(c).length, 0);
-  mutate((b) => {
-    const i = b.cards.findIndex((c) => c.id === T.id);
-    const t = b.cards[i];
-    const items = [...itemsOf(t), ...rest.flatMap(itemsOf)];
-    const next: LinksCard = t.kind === "links" ? { ...t, items } : { id: t.id, kind: "links", items };
-    b.cards[i] = next;
-    const p = b.place[t.id];
-    if (p) {
-      p.w = Math.max(p.w, defaultWidth(next));
-      delete p.h;
-    }
-    removeCards(
-      b,
-      rest.map((c) => c.id),
-    );
-  });
-  select({ cards: [T.id] });
-  toast(`Merged into a Link List · ${n} links`);
+  const r = C.mergeIntoLinkList(commandEnv, ids, target);
+  if ("why" in r) return toast(r.why);
+  select({ cards: [r.id] });
+  toast(`Merged into a Link List · ${r.links} links`);
 }
 
 const setList = (id: string, f: (c: LinksCard, b: Board) => void) =>
@@ -165,12 +131,7 @@ export const renameItem = (id: string, item: string, v: string) =>
     const it = c.items.find((x) => x.id === item);
     if (it) it.title = v.trim() && v.trim() !== it.meta?.title ? v.trim() : undefined;
   });
-export function removeItem(id: string, item: string) {
-  setList(id, (c, b) => {
-    c.items = c.items.filter((x) => x.id !== item);
-    if (!c.items.length) removeCards(b, [id]);
-  });
-}
+export const removeItem = (id: string, item: string) => C.removeLinkItem(commandEnv, id, item);
 const reorderItem = (id: string, item: string, to: number) =>
   setList(id, (c) => {
     const i = c.items.findIndex((x) => x.id === item);
@@ -180,38 +141,16 @@ const reorderItem = (id: string, item: string, to: number) =>
   });
 /** 一行拆出来成为单独的 Web 卡（at = 世界坐标；缺省放在卡右边） */
 function moveItemOut(id: string, item: string, at?: { x: number; y: number }) {
-  const it = itemOf(id, item);
-  if (!it) return;
-  const nid = uid("w");
-  const card: WebCard = {
-    id: nid,
-    kind: "web",
-    url: it.url,
-    title: it.title,
-    meta: it.meta ? structuredClone(unwrap(it.meta)) : undefined,
-  };
   const r = rectOf(id);
-  mutate((b) => {
-    const c = findCard(b, id)?.card;
-    if (c?.kind !== "links") return;
-    c.items = c.items.filter((x) => x.id !== item);
-    const size = estSize(card);
-    const p0 = at ?? { x: r.x + r.w + 40, y: r.y };
-    const p = at
-      ? p0
-      : findFree(
-          { ...p0, ...size },
-          b.cards.filter((k) => b.place[k.id] && k.id !== nid).map((k) => rectOf(k)),
-        );
-    b.cards.push(card);
-    b.place[nid] = {
-      x: Math.round(p.x),
-      y: Math.round(p.y),
-      w: defaultWidth(card),
-      section: b.place[id]?.section,
-    } as Place;
-    if (!c.items.length) removeCards(b, [id]);
+  const nid = C.linkItemOut(commandEnv, id, item, (card) => {
+    if (at) return at;
+    const p0 = { x: r.x + r.w + 40, y: r.y };
+    return findFree(
+      { ...p0, ...estSize(card) },
+      state.board.cards.filter((k) => state.board.place[k.id] && k.id !== card.id).map((k) => rectOf(k)),
+    );
   });
+  if (!nid) return;
   select({ cards: [nid] });
   popCard(nid);
 }

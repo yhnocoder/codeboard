@@ -2,18 +2,23 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { BoardToHost } from "@codeboard/core";
-import { Storage } from "@codeboard/core/storage";
-import { nodeFs } from "../src/nodefs";
+import { Storage } from "../src/storage/boards";
+import { nodeFs } from "../src/storage/nodefs";
 import { makeHandler } from "../src/handlers";
 import type { BoardHost, BoardPanel } from "../src/boards";
-import { useWorkspace } from "../src/ws";
 import { WS, nodeWorkspace } from "./node-workspace";
+import { HostContext } from "../src/context";
 
 const W = nodeWorkspace();
+const cx = new HostContext(W);
 const dir = fs.mkdtempSync("/tmp/codeboard-ce-");
-const h = makeHandler({ store: new Storage(nodeFs, { dir: () => dir }) } as unknown as BoardHost);
+const h = makeHandler(cx, {
+  get cx() {
+    return cx;
+  },
+  store: new Storage(nodeFs, { dir: () => dir }),
+} as unknown as BoardHost);
 const send = (m: BoardToHost) => h({} as BoardPanel, m);
-beforeAll(() => useWorkspace(W));
 afterAll(() => fs.rmSync(dir, { recursive: true, force: true }));
 
 describe("code editing without a language service", () => {

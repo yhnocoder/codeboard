@@ -18,12 +18,13 @@ import {
   type Source,
   type WebMeta,
 } from "@codeboard/core";
-import { Storage, pasteClip, type CardClip, type Pasted } from "@codeboard/core/storage";
+import { Storage } from "./storage/boards";
+import { pasteClip, type CardClip, type Pasted } from "./storage/clip";
 import type { StateStore } from "./env";
-import { log } from "./log";
-import { nodeFs } from "./nodefs";
-import { rootOf, srcKey } from "./source";
-import { exists, posix, workspace, wsRoots } from "./ws";
+import { nodeFs } from "./storage/nodefs";
+import { srcKey } from "./source";
+import { exists, posix } from "./ws";
+import type { HostContext } from "./context";
 
 /** 登记过的一个项目：folders = 工作区文件夹（第一个是主根，Source.repo 相对它；没打开文件夹的窗口是 []），name = 工作区的名字，dir = 它的白板存储目录，seen = 上次记下的时间 */
 export type Project = { folders: string[]; name: string; dir: string; seen: number };
@@ -31,12 +32,12 @@ export type Project = { folders: string[]; name: string; dir: string; seen: numb
 const PROJECTS = "codeboard.projects";
 
 /** 记下这个窗口的项目和它的存储目录（按存储目录记；同样的文件夹以前记的别的目录换掉） */
-export async function recordProject(state: StateStore, dir: string): Promise<void> {
-  const folders = wsRoots(),
+export async function recordProject(cx: HostContext, state: StateStore, dir: string): Promise<void> {
+  const folders = cx.roots(),
     key = JSON.stringify(folders);
   const all = { ...(state.get<Record<string, Project>>(PROJECTS) ?? {}) };
   for (const [k, p] of Object.entries(all)) if (folders.length && JSON.stringify(p.folders) === key) delete all[k];
-  all[dir] = { folders, name: workspace().files.name() || "No Folder", dir, seen: Date.now() };
+  all[dir] = { folders, name: cx.ws.files.name() || "No Folder", dir, seen: Date.now() };
   await state.set(PROJECTS, all);
 }
 
@@ -65,11 +66,17 @@ export type Transferred = { id: string; boards: string[] };
  * 把白板 id 和它（一层层）嵌着的子白板拷到项目 to 的存储目录。用存储缓存里的那份（先 flush，没写盘的改动也算）。
  * 那边已经有同 id 的白板：换新 id，父白板上的子白板框跟着改。白板没了返回 null
  */
-export async function copyToProject(store: Storage, id: string, to: Project): Promise<Transferred | null> {
+export async function copyToProject(
+  cx: HostContext,
+  store: Storage,
+  id: string,
+  to: Project,
+): Promise<Transferred | null> {
   await store.flush();
-  const target = new Storage(nodeFs, { dir: () => to.dir, log });
+  const target = new Storage(nodeFs, { dir: () => to.dir, log: cx.log });
   try {
     const t = await transfer(
+      cx,
       { store, files: diskFiles(store.dir()) },
       [id],
       { store: target, files: diskFiles(to.dir) },
@@ -114,6 +121,7 @@ export type Moved = { ids: Map<string, string>; renamed: number };
  * 先把要搬的白板全读出来再写：from 里读不了的白板不搬
  */
 export async function transfer(
+  cx: HostContext,
   from: End,
   roots: string[],
   to: End,
@@ -140,7 +148,7 @@ export async function transfer(
     board.id = ids.get(board.id)!;
     board.name = name;
     for (const c of board.cards) if (c.kind === "board" && ids.has(c.board)) c.board = ids.get(c.board)!;
-    if (home) await rehome(board, home.folders, memo, home.from);
+    if (home) await rehome(cx, board, home.folders, memo, home.from);
     // 那边卡库里已经有的共享卡：用那边的（同一张卡）；读不了的那张在这块白板上留成普通卡，不去盖掉那边的文件
     let kept = false;
     for (const r of [...refs]) {
@@ -203,6 +211,7 @@ export async function removeMoved(
  * from = 这些段原来那个项目的工作区文件夹（repo 相对其中第一个）；不给 = 就是这个窗口的项目（rootOf，含 Locate Repo… 记下的映射）
  */
 async function rehome(
+  cx: HostContext,
   b: Pick<Board, "cards" | "sidenotes">,
   folders: string[],
   memo: Map<string, Source | null>,
@@ -211,7 +220,7 @@ async function rehome(
   for (const s of allSegments(b)) {
     if (s.src.kind !== "repo" && s.src.kind !== "external") continue;
     const k = srcKey(s.src);
-    if (!memo.has(k)) memo.set(k, await sourceIn(s.src, folders, from));
+    if (!memo.has(k)) memo.set(k, await sourceIn(cx, s.src, folders, from));
     const n = memo.get(k);
     if (n) s.src = { ...n };
   }
@@ -221,10 +230,10 @@ async function rehome(
  * 这个来源在目标项目里怎么写：根在它的任何一个文件夹里 → repo（相对第一个文件夹，和 locOfFile 一样，第二个根是 "../xxx"），
  * 否则 → external。找不到根返回 null（不改）
  */
-async function sourceIn(src: Source, folders: string[], from?: string[]): Promise<Source | null> {
+async function sourceIn(cx: HostContext, src: Source, folders: string[], from?: string[]): Promise<Source | null> {
   const root =
     from === undefined
-      ? rootOf(src)
+      ? cx.sources.rootOf(src)
       : src.kind === "repo"
         ? from[0]
           ? path.resolve(from[0], src.repo)
@@ -299,21 +308,21 @@ export type FarClip = CardClip & { dir: string; folders: string[]; at: number };
 
 /** 不核对文字的粘贴（菜单、⌥⌘V）只认这么久以内复制的 */
 const FAR_RECENT = 5 * 60_000;
-const clipFile = () => path.join(workspace().storage.globalDir(), "clipboard.json");
+const clipFile = (cx: HostContext) => path.join(cx.ws.storage.globalDir(), "clipboard.json");
 
 /** ⌘C：记下跨窗口的剪贴板（先写临时文件再改名，别的窗口读不到写了一半的） */
-export async function recordClip(dir: string, clip: CardClip): Promise<void> {
-  const file = clipFile(),
+export async function recordClip(cx: HostContext, dir: string, clip: CardClip): Promise<void> {
+  const file = clipFile(cx),
     tmp = `${file}.${process.pid}.tmp`;
-  const far: FarClip = { ...clip, dir, folders: wsRoots(), at: Date.now() };
+  const far: FarClip = { ...clip, dir, folders: cx.roots(), at: Date.now() };
   await fs.mkdir(path.dirname(file), { recursive: true });
   await fs.writeFile(tmp, JSON.stringify(far));
   await fs.rename(tmp, file);
 }
 
-async function readClip(): Promise<FarClip | null> {
+async function readClip(cx: HostContext): Promise<FarClip | null> {
   try {
-    const c = JSON.parse(await fs.readFile(clipFile(), "utf8")) as FarClip;
+    const c = JSON.parse(await fs.readFile(clipFile(cx), "utf8")) as FarClip;
     return typeof c.dir === "string" &&
       Array.isArray(c.folders) &&
       typeof c.board === "string" &&
@@ -331,14 +340,15 @@ async function readClip(): Promise<FarClip | null> {
  * 别的存储目录：读那边的白板，拷成独立副本（不同项目之间没有共享卡），段的来源按这边的工作区改写，用到的图片和运行记录拷过来（这边有的不覆盖）
  */
 export async function pasteFar(
+  cx: HostContext,
   store: Storage,
   target: string,
   o: { text?: string; copy: boolean },
 ): Promise<Pasted | null> {
-  const clip = await readClip();
+  const clip = await readClip(cx);
   if (!clip || (o.text === undefined && Date.now() - clip.at > FAR_RECENT)) return null;
   if (path.resolve(clip.dir) === path.resolve(store.dir())) return pasteClip(store, clip, target, { ...o, copy: true });
-  const src = new Storage(nodeFs, { dir: () => clip.dir, log });
+  const src = new Storage(nodeFs, { dir: () => clip.dir, log: cx.log });
   try {
     const r = await pasteClip(src, clip, "", { ...o, copy: true });
     if (!r) return null;
@@ -347,7 +357,7 @@ export async function pasteFar(
       sidenotes: r.cards.flatMap((x) => x.sidenotes ?? []),
       links: r.links,
     };
-    await rehome(some, wsRoots(), new Map(), clip.folders);
+    await rehome(cx, some, cx.roots(), new Map(), clip.folders);
     await copyFiles(diskFiles(clip.dir), diskFiles(store.dir()), [
       ...assetsOf(some).map((a) => `assets/${a}`),
       ...[...runsOf(some)].map((x) => `runs/${x}.json`),

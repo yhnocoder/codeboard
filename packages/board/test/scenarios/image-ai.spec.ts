@@ -32,8 +32,7 @@ import {
   type ImageCard,
   type NoteCard,
 } from "@codeboard/core";
-import { Storage } from "@codeboard/core/storage";
-import { nodeFs, readAsset, resetImageAiCache, runImageAi, saveNoteImage } from "@codeboard/host/testing";
+import { nodeFs, readAsset, runImageAi, saveNoteImage, Storage } from "@codeboard/host/testing";
 import { OUT, put, type Host } from "../harness";
 import { test, open, check, until, idle, onMac } from "../fixtures";
 
@@ -91,7 +90,7 @@ async function aiHost(
   fs.writeFileSync(path.join(store.assetsDir(), PNG_FILE), png(320, 200));
   for (const [f, v] of Object.entries(o.seed ?? {})) fs.writeFileSync(path.join(store.assetsDir(), f), v);
   const fake: Fake = { calls: [], answer };
-  resetImageAiCache(); // the host's memory of images read lives in this worker across scenarios
+  const cache = new Map<string, string>(); // the host's memory of images read
   const jobs = new Map<number, AbortController>();
   // the op being asked (the fake DeepSeek only sees the request; a reused answer never reaches it)
   let asking: ImageAiOp | undefined;
@@ -152,7 +151,7 @@ async function aiHost(
           jobs.set(m.job, ac);
           asking = m.op;
           try {
-            return await runImageAi({ key, fetch: fetchFake, signal: ac.signal }, m.op);
+            return await runImageAi({ key, fetch: fetchFake, signal: ac.signal, cache }, m.op);
           } finally {
             jobs.delete(m.job);
           }

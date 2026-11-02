@@ -10,23 +10,25 @@ import {
 } from "@codeboard/analysis";
 import * as path from "node:path";
 import { analysisOf } from "./analysis";
-import { locOfFile, type Loc } from "./source";
+import { type Loc } from "./source";
 import { makeSegment } from "./versions";
 import { viewsFor } from "./views";
-import { langOf, readText, splitLines } from "./ws";
+import { splitLines } from "./ws";
+import type { HostContext } from "./context";
 
 export function newCodeCard(segs: Segment[], extra: Partial<CodeCard> = {}): CodeCard {
   return { id: uid("c"), kind: "code", segments: segs, ...extra };
 }
 
-export async function withViews(cards: CodeCard[]): Promise<NewCard[]> {
+export async function withViews(cx: HostContext, cards: CodeCard[]): Promise<NewCard[]> {
   return Promise.all(
-    cards.map(async (card) => ({ card, views: await viewsFor(card.segments), w: defaultWidth(card) })),
+    cards.map(async (card) => ({ card, views: await viewsFor(cx, card.segments), w: defaultWidth(card) })),
   );
 }
 
 /** 一个符号 → 函数卡 / 类卡（类卡只列成员签名，shown = 显示哪些成员；没有方法的类照普通代码卡显示源码） */
 export async function symCard(
+  cx: HostContext,
   loc: Loc,
   lines: string[],
   sym: Sym,
@@ -34,24 +36,24 @@ export async function symCard(
   shown: string[] = [],
 ): Promise<CodeCard> {
   const cls = sym.kind === "class";
-  const seg = await makeSegment(loc, lines, sym.start, sym.end, {
+  const seg = await makeSegment(cx, loc, lines, sym.start, sym.end, {
     symbol: { qual: sym.qual, kind: cls ? "class" : "function" },
     lang,
   });
   return newCodeCard([seg], cls && listsMembers(analysisOf(lang, lines.join("\n")), sym) ? { members: { shown } } : {});
 }
 
-export async function cardForFileSym(abs: string, sym: Sym): Promise<NewCard | null> {
-  const text = await readText(abs);
+export async function cardForFileSym(cx: HostContext, abs: string, sym: Sym): Promise<NewCard | null> {
+  const text = await cx.readText(abs);
   if (text === null) return null;
-  const card = await symCard(await locOfFile(abs), splitLines(text), sym, langOf(abs));
-  return (await withViews([card]))[0];
+  const card = await symCard(cx, await cx.sources.locOfFile(abs), splitLines(text), sym, cx.langOf(abs));
+  return (await withViews(cx, [card]))[0];
 }
 
 export type Built = { cards: CodeCard[]; ask?: "split" };
 
-const rangeSeg = (loc: Loc, lines: string[], r: Range, lang: string) =>
-  makeSegment(loc, lines, r.start, r.end, {
+const rangeSeg = (cx: HostContext, loc: Loc, lines: string[], r: Range, lang: string) =>
+  makeSegment(cx, loc, lines, r.start, r.end, {
     lang,
     scope: r.scope,
     symbol: r.module ? { qual: "<module>", kind: "module" } : undefined,
@@ -60,6 +62,7 @@ const rangeSeg = (loc: Loc, lines: string[], r: Range, lang: string) =>
 /** 按选区计划建卡。选中几个完整定义（split）：默认一张多段卡（每个定义一段，中间的模块级代码也各成一段）；
  *  separate = 一个定义一张卡，中间的代码各成一张小卡。两种都不丢选中的行 */
 export async function cardsFromPlan(
+  cx: HostContext,
   loc: Loc,
   lines: string[],
   plan: Plan,
@@ -68,40 +71,42 @@ export async function cardsFromPlan(
 ): Promise<Built> {
   switch (plan.kind) {
     case "function":
-      return { cards: [await symCard(loc, lines, plan.sym, lang)] };
+      return { cards: [await symCard(cx, loc, lines, plan.sym, lang)] };
     case "class":
-      return { cards: [await symCard(loc, lines, plan.sym, lang, plan.members ?? [])] };
+      return { cards: [await symCard(cx, loc, lines, plan.sym, lang, plan.members ?? [])] };
     case "split": {
       if (o.separate)
         return {
           cards: await Promise.all(
             plan.parts.map(async (p) =>
-              "sym" in p ? symCard(loc, lines, p.sym, lang) : newCodeCard([await rangeSeg(loc, lines, p.range, lang)]),
+              "sym" in p
+                ? symCard(cx, loc, lines, p.sym, lang)
+                : newCodeCard([await rangeSeg(cx, loc, lines, p.range, lang)]),
             ),
           ),
         };
       const segs = await Promise.all(
         plan.parts.map((p) =>
           "sym" in p
-            ? makeSegment(loc, lines, p.sym.start, p.sym.end, {
+            ? makeSegment(cx, loc, lines, p.sym.start, p.sym.end, {
                 lang,
                 symbol: { qual: p.sym.qual, kind: p.sym.kind === "class" ? "class" : "function" },
               })
-            : rangeSeg(loc, lines, p.range, lang),
+            : rangeSeg(cx, loc, lines, p.range, lang),
         ),
       );
       return { cards: [newCodeCard(segs)] };
     }
     case "segments":
-      return { cards: [newCodeCard(await Promise.all(plan.ranges.map((r) => rangeSeg(loc, lines, r, lang))))] };
+      return { cards: [newCodeCard(await Promise.all(plan.ranges.map((r) => rangeSeg(cx, loc, lines, r, lang))))] };
   }
 }
 
 /** 编辑器 → 白板位置。没保存的新文件、不在磁盘上的文档 → null（建 Free code） */
-async function locOfEditor(ed: EditorState): Promise<Loc | null> {
-  if (ed.file) return locOfFile(ed.path);
+async function locOfEditor(cx: HostContext, ed: EditorState): Promise<Loc | null> {
+  if (ed.file) return cx.sources.locOfFile(ed.path);
   if (ed.version) {
-    const loc = await locOfFile(path.join(ed.version.root, ed.version.path));
+    const loc = await cx.sources.locOfFile(path.join(ed.version.root, ed.version.path));
     return { ...loc, fixed: { kind: "git", commit: ed.version.commit } };
   }
   return null;
@@ -109,13 +114,14 @@ async function locOfEditor(ed: EditorState): Promise<Loc | null> {
 
 /** 编辑器里的选区 → 卡片；没有选区 = 光标所在的函数 */
 export async function cardsFromEditor(
+  cx: HostContext,
   ed: EditorState,
   mode: "auto" | "function" | "separate" = "auto",
 ): Promise<Built | { error: string }> {
   const text = ed.text;
   const lines = splitLines(text);
   const lang = ed.lang;
-  const loc = await locOfEditor(ed);
+  const loc = await locOfEditor(cx, ed);
   const a = analysisOf(lang, text);
   const isEmpty = (s: Sel) => s.startLine === s.endLine && s.startCol === s.endCol;
   const empty = ed.selections.every(isEmpty);
@@ -127,12 +133,12 @@ export async function cardsFromEditor(
   if (empty || mode === "function") {
     const sym = symbolAtCursor(a, ed.cursorLine);
     if (!sym) return { error: "The cursor is not inside a function or class. Select some lines first." };
-    return { cards: [await symCard(loc, lines, sym, lang)] };
+    return { cards: [await symCard(cx, loc, lines, sym, lang)] };
   }
   const sels: Sel[] = ed.selections.filter((s) => !isEmpty(s));
   const plan = planSelection(sels, a);
   if (!plan) return { error: "The selection only has blank lines." };
-  return cardsFromPlan(loc, lines, plan, lang, { separate: mode === "separate" });
+  return cardsFromPlan(cx, loc, lines, plan, lang, { separate: mode === "separate" });
 }
 
 export function freeCard(text: string, lang: string, url?: string): CodeCard {

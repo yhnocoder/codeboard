@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanCompletion, spaceChatReply, COMPLETE_SYSTEM } from "@codeboard/core";
-import { deepseekChatRequest, deepseekComplete, deepseekFimRequest, resetDeepseekFim } from "../src/deepseek";
+import { deepseekChatRequest, deepseekComplete, deepseekFimRequest } from "../src/deepseek";
 
 type Call = { url: string; body: any; headers: Record<string, string>; signal?: AbortSignal };
 // 假的 fetch：按顺序回给定的回答，记下每次请求（不连网）
@@ -23,7 +23,10 @@ function fakeFetch(replies: (((c: Call) => Promise<Response>) | { status: number
 const KEY = "sk-test-123";
 
 describe("DeepSeek completion", () => {
-  beforeEach(() => resetDeepseekFim());
+  let noFim = new Set<string>();
+  beforeEach(() => {
+    noFim = new Set();
+  });
 
   it("builds the FIM request from the text around the cursor", () => {
     const r = deepseekFimRequest({ key: KEY, baseUrl: "https://api.deepseek.com/" }, "before ", " after");
@@ -56,7 +59,7 @@ describe("DeepSeek completion", () => {
   it("returns the FIM text, which cleanCompletion trims like the Copilot reply", async () => {
     const { f, calls } = fakeFetch([{ status: 200, json: { choices: [{ text: "uses the KV cache. And more" }] } }]);
     const before = "The scheduler ";
-    const raw = await deepseekComplete({ key: KEY, fetch: f }, before, "");
+    const raw = await deepseekComplete({ key: KEY, fetch: f, noFim }, before, "");
     expect(calls.length).toBe(1);
     expect(raw).toBe("uses the KV cache. And more");
     expect(cleanCompletion("The scheduler uses the cache\nsecond line", before, "")).toBe("uses the cache");
@@ -67,7 +70,7 @@ describe("DeepSeek completion", () => {
       { status: 400, json: { error: "x" } },
       { status: 200, json: { choices: [{ message: { content: "hello" } }] } },
     ]);
-    expect(await deepseekComplete({ key: KEY, fetch: f }, "a ", "b")).toBe("hello");
+    expect(await deepseekComplete({ key: KEY, fetch: f, noFim }, "a ", "b")).toBe("hello");
     expect(calls.map((c) => c.url)).toEqual([
       "https://api.deepseek.com/beta/completions",
       "https://api.deepseek.com/chat/completions",
@@ -79,9 +82,9 @@ describe("DeepSeek completion", () => {
       { status: 400 },
       { status: 200, json: { choices: [{ message: { content: "fixed-size blocks." } }] } },
     ]);
-    resetDeepseekFim();
+    noFim = new Set();
     const before = "the block manager allocates";
-    const raw = await deepseekComplete({ key: KEY, fetch: f }, before, "");
+    const raw = await deepseekComplete({ key: KEY, fetch: f, noFim }, before, "");
     expect(cleanCompletion(raw!, before, "")).toBe(" fixed-size blocks.");
     expect(spaceChatReply("x", "a ")).toBe("x");
     expect(spaceChatReply("分配块", "管理器")).toBe("分配块");
@@ -95,8 +98,8 @@ describe("DeepSeek completion", () => {
       { status: 200, json: { choices: [{ message: { content: "one" } }] } },
       { status: 200, json: { choices: [{ message: { content: "two" } }] } },
     ]);
-    expect(await deepseekComplete({ key: KEY, fetch: f }, "a ", "b")).toBe("one");
-    expect(await deepseekComplete({ key: KEY, fetch: f }, "a ", "b")).toBe("two");
+    expect(await deepseekComplete({ key: KEY, fetch: f, noFim }, "a ", "b")).toBe("one");
+    expect(await deepseekComplete({ key: KEY, fetch: f, noFim }, "a ", "b")).toBe("two");
     expect(calls.map((c) => c.url.replace(/^.*\.com/, ""))).toEqual([
       "/beta/completions",
       "/chat/completions",
@@ -110,15 +113,15 @@ describe("DeepSeek completion", () => {
       { status: 503 },
       { status: 200, json: { choices: [{ text: "x" }] } },
     ]);
-    expect(await deepseekComplete({ key: KEY, fetch: f }, "a", "b")).toBeUndefined();
-    expect(await deepseekComplete({ key: KEY, fetch: f }, "a ", "b")).toBe("x");
+    expect(await deepseekComplete({ key: KEY, fetch: f, noFim }, "a", "b")).toBeUndefined();
+    expect(await deepseekComplete({ key: KEY, fetch: f, noFim }, "a ", "b")).toBe("x");
     expect(calls[2].url).toMatch(/beta\/completions$/);
   });
 
   it("returns undefined on errors and without a key, without calling the network", async () => {
     const { f, calls } = fakeFetch([{ status: 500 }, { status: 500 }]);
-    expect(await deepseekComplete({ key: KEY, fetch: f }, "a", "b")).toBeUndefined();
-    expect(await deepseekComplete({ key: "", fetch: f }, "a", "b")).toBeUndefined();
+    expect(await deepseekComplete({ key: KEY, fetch: f, noFim }, "a", "b")).toBeUndefined();
+    expect(await deepseekComplete({ key: "", fetch: f, noFim }, "a", "b")).toBeUndefined();
     expect(calls.length).toBe(2);
   });
 
@@ -129,7 +132,7 @@ describe("DeepSeek completion", () => {
       );
     const a = fakeFetch([hang, hang]);
     const ac = new AbortController();
-    const p = deepseekComplete({ key: KEY, fetch: a.f, signal: ac.signal }, "a", "b");
+    const p = deepseekComplete({ key: KEY, fetch: a.f, signal: ac.signal, noFim }, "a", "b");
     ac.abort();
     expect(await p).toBeUndefined();
     expect(a.calls.length).toBe(1);
@@ -138,7 +141,7 @@ describe("DeepSeek completion", () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     try {
       let done = false;
-      const q = deepseekComplete({ key: KEY, fetch: b.f, timeoutMs: 50 }, "a", "b").finally(() => {
+      const q = deepseekComplete({ key: KEY, fetch: b.f, timeoutMs: 50, noFim }, "a", "b").finally(() => {
         done = true;
       });
       await vi.advanceTimersByTimeAsync(49);

@@ -1,6 +1,6 @@
 // Package boundaries: host code works with any editor (never imports vscode; editor access goes through Workspace and HostEnv),
 // neither host nor the board reaches into the VS Code extension's files, and analysis sits below core (core imports it, so it imports
-// no other CodeBoard package), and everything outside packages/host goes through its entries: the VS Code extension's code only through
+// no other CodeBoard package; core no UI framework and nothing but analysis), and everything outside packages/host goes through its entries: the VS Code extension's code only through
 // @codeboard/host, the board's tests, harness and stories and the extension's tests through @codeboard/host or @codeboard/host/testing,
 // the board's own code not at all
 import * as fs from "node:fs";
@@ -41,6 +41,12 @@ describe("package boundaries", () => {
     expect(
       matching(["host/src", "host/test", "board/src", "board/test", "analysis/src", "analysis/test"], IMPORT_EXTENSION),
     ).toEqual([]);
+  });
+  it("packages/core imports no UI framework and no CodeBoard package but analysis", () => {
+    // its undo engine, saving and commands run in any shell: the board wires them to its Solid store
+    const SOLID_OR_PKG =
+      /(?:\bfrom\s*|\bimport\s*\(\s*|^\s*import\s+)["'](?:solid-js|@codeboard\/(?!analysis\b)|@yhnocoder\/)/m;
+    expect(matching(["core/src"], SOLID_OR_PKG)).toEqual([]);
   });
   it("packages/analysis imports no other CodeBoard package", () => {
     expect(matching(["analysis/src", "analysis/test"], IMPORT_CODEBOARD)).toEqual([]);

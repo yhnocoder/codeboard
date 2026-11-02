@@ -1,14 +1,16 @@
 import * as fs from "node:fs";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { emptyBoard, type Board, type BoardRefs, type HostToBoard } from "@codeboard/core";
-import { Storage } from "@codeboard/core/storage";
-import { nodeFs } from "../src/nodefs";
+import { Storage } from "../src/storage/boards";
+import { nodeFs } from "../src/storage/nodefs";
 import { BoardHub } from "../src/hub";
 import { makeHandler } from "../src/handlers";
 import type { HostEnv } from "../src/env";
-import { useWorkspace } from "../src/ws";
 import { nodeWorkspace } from "./node-workspace";
 import { stubView } from "./helpers";
+import { HostContext } from "../src/context";
+
+let cx: HostContext;
 
 const W = nodeWorkspace();
 const wsState = new Map<string, unknown>(),
@@ -56,7 +58,7 @@ const pushes = (v: ReturnType<typeof stubView>) =>
   v.posted.filter((m): m is Extract<HostToBoard, { type: "boardRefs" }> => m.type === "boardRefs");
 
 beforeAll(async () => {
-  useWorkspace(W);
+  cx = new HostContext(W);
   await store.save(board("bA", "Alpha", [{ id: "a1", md: "# Alpha card" }]));
   await store.save(
     board(
@@ -71,8 +73,8 @@ beforeAll(async () => {
   );
   await store.save(board("bC", "Gamma", [{ id: "c1", md: "## Roofline" }]));
   globalState.set("codeboard.opened", { bB: 1, bC: 2 });
-  hub = new BoardHub(env, store);
-  hub.handler = makeHandler(hub);
+  hub = new BoardHub(cx, env, store);
+  hub.handler = makeHandler(cx, hub);
 });
 afterAll(() => {
   hub.dispose();

@@ -11,10 +11,11 @@ import {
   type Stale,
   type SymRef,
 } from "@codeboard/core";
-import { headOf, isAncestor, repoRootOf, resolveRef, showFile, upstreamRef } from "./git";
+import { headOf, resolveRef } from "./git";
 import { analysisOf } from "./analysis";
-import { currentVersion, currentVersionLabel, hasLocalFile, rootOf, versionFor, type Loc } from "./source";
-import { exists, langOf, readText, splitLines } from "./ws";
+import { currentVersion, currentVersionLabel, hasLocalFile, type Loc } from "./source";
+import { exists, splitLines } from "./ws";
+import type { HostContext } from "./context";
 
 /**
  * 版本状态要看的段：代码卡按上游的段（有 Variant 的卡显示的可能是我的分支，新版本提示和它无关），加上 Code sidenote。
@@ -35,15 +36,16 @@ export function staleSegments(b: Pick<Board, "cards" | "sidenotes">): { segs: Se
 }
 
 export async function makeSegment(
+  cx: HostContext,
   loc: Loc,
   lines: string[],
   start: number,
   end: number,
   opts: { symbol?: SymRef; scope?: string; lang?: string } = {},
 ): Promise<Segment> {
-  const lang = opts.lang ?? langOf(loc.abs);
+  const lang = opts.lang ?? cx.langOf(loc.abs);
   const text = lines.slice(start - 1, end);
-  const v = await versionFor(loc, { start, end, text, symbol: opts.symbol }, lang);
+  const v = await cx.sources.versionFor(loc, { start, end, text, symbol: opts.symbol }, lang);
   return {
     id: uid("s"),
     src: loc.src,
@@ -61,22 +63,23 @@ export async function makeSegment(
 const symsOf = (lang: string, text: string) => analysisOf(lang, text).symbols;
 
 async function staleOf(
+  cx: HostContext,
   seg: Segment,
   o: { upstream?: boolean; head?: (root: string) => Promise<string | null> } = {},
 ): Promise<Stale> {
   if (!hasLocalFile(seg.src)) return { state: "ok" };
-  const root = rootOf(seg.src, seg.version);
+  const root = cx.sources.rootOf(seg.src, seg.version);
   if (!root || !(await exists(root))) return { state: "missing" };
   const abs = path.join(root, seg.path);
   const v = seg.version;
   if (v.kind === "git" && o.upstream && !v.uncommitted) {
     // 有 Variant 的卡：上游新版本 = 上游分支上的这段变了（我的分支、工作区的改动不算）
-    const gr = await repoRootOf(abs);
-    const ref = gr && (await upstreamRef(gr));
+    const gr = await cx.git.repoRootOf(abs);
+    const ref = gr && (await cx.git.upstreamRef(gr));
     const sha = gr && ref && (await resolveRef(gr, ref));
     if (gr && sha) {
       if (sha.startsWith(v.commit) || v.commit.startsWith(sha)) return { state: "ok" };
-      const t = await showFile(gr, sha, path.relative(gr, abs).split(path.sep).join("/"));
+      const t = await cx.git.showFile(gr, sha, path.relative(gr, abs).split(path.sep).join("/"));
       if (t === null) return { state: "lost" };
       const { at: _a, ...r } = trackSeg(seg, splitLines(t), symsOf(seg.lang, t), {
         label: `${ref.replace(/^origin\//, "")} ${sha.slice(0, 7)}`,
@@ -88,8 +91,8 @@ async function staleOf(
   if (v.kind === "git") {
     const head = await (o.head ?? headOf)(root);
     if (!head) return { state: "missing" };
-    const headText = await showFile(root, head, seg.path);
-    const work = await readText(abs);
+    const headText = await cx.git.showFile(root, head, seg.path);
+    const work = await cx.readText(abs);
     if (v.uncommitted) {
       // 钉的是工作区内容（用户自己的改动）：跟工作区比，一样 = ok，不一样 = 新版本
       if (work === null) return { state: "lost" };
@@ -111,7 +114,7 @@ async function staleOf(
       return { state: "ok" };
     }
     // 新版本 = 钉的 commit 之后的代码。检出的是更早的 commit（HEAD 在钉的 commit 之前）：没有新版本
-    if (await isAncestor(root, head, v.commit)) return { state: "ok" };
+    if (await cx.git.isAncestor(root, head, v.commit)) return { state: "ok" };
     if (headText === null) return { state: "lost" };
     const { at: _at, ...t } = trackSeg(seg, splitLines(headText), symsOf(seg.lang, headText), {
       label: head.slice(0, 7),
@@ -120,7 +123,7 @@ async function staleOf(
     return t;
   }
   // 仓库外：包版本 / 内容指纹，拿现在的文件比
-  const work = await readText(abs);
+  const work = await cx.readText(abs);
   if (work === null) return { state: "missing" };
   const { at: _at, ...t } = trackSeg(seg, splitLines(work), symsOf(seg.lang, work), {
     label: await currentVersionLabel(abs, v),
@@ -129,7 +132,7 @@ async function staleOf(
   return t;
 }
 
-export async function staleFor(segs: Segment[], up?: Set<string>): Promise<Record<string, Stale>> {
+export async function staleFor(cx: HostContext, segs: Segment[], up?: Set<string>): Promise<Record<string, Stale>> {
   const out: Record<string, Stale> = {};
   // One HEAD per repo for the whole check
   const heads = new Map<string, Promise<string | null>>();
@@ -141,7 +144,7 @@ export async function staleFor(segs: Segment[], up?: Set<string>): Promise<Recor
   await Promise.all(
     segs.map(async (s) => {
       try {
-        out[s.id] = await staleOf(s, { upstream: up?.has(s.id), head });
+        out[s.id] = await staleOf(cx, s, { upstream: up?.has(s.id), head });
       } catch {
         out[s.id] = { state: "ok" };
       }
@@ -157,13 +160,14 @@ export function countStale(b: Board, st: Record<string, Stale>): number {
 }
 
 export async function workingPlace(
+  cx: HostContext,
   seg: Segment,
 ): Promise<{ abs: string; start: number; end: number; lines: string[]; exact: boolean } | null> {
   if (seg.src.kind === "free") return null;
-  const root = rootOf(seg.src, seg.version);
+  const root = cx.sources.rootOf(seg.src, seg.version);
   if (!root) return null;
   const abs = path.join(root, seg.path);
-  const text = await readText(abs);
+  const text = await cx.readText(abs);
   if (text === null) return null;
   const lines = splitLines(text);
   const at = locateSeg(seg, lines, symsOf(seg.lang, text));

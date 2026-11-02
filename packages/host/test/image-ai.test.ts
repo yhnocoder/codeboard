@@ -8,7 +8,6 @@ import {
   IMAGE_AI_TIMEOUT,
   imageAiJob,
   imageAiRequest,
-  resetImageAiCache,
   runImageAi,
   stripFence,
   SYS_DRAW,
@@ -18,8 +17,10 @@ import {
   SVG_BG_OFF,
   SVG_BG_ON,
 } from "../src/imageai";
-import { useWorkspace } from "../src/ws";
 import { nodeWorkspace } from "./node-workspace";
+import { HostContext } from "../src/context";
+
+let cx: HostContext;
 
 type Call = { url: string; body: any; headers: Record<string, string>; signal?: AbortSignal };
 type Reply = ((c: Call) => Promise<Response>) | { status: number; json?: unknown };
@@ -53,7 +54,10 @@ const hang = (c: Call) =>
     c.signal!.addEventListener("abort", () => rej(new DOMException("aborted", "AbortError"))),
   );
 
-beforeEach(() => resetImageAiCache());
+let cache = new Map<string, string>();
+beforeEach(() => {
+  cache = new Map();
+});
 
 describe("image tools: requests", () => {
   it("Extract Text sends the image as vision content with thinking disabled", () => {
@@ -134,9 +138,9 @@ describe("image tools: requests", () => {
         hang,
       ]);
       const op = { kind: "draw", text: "a box", noBg: true, think: false } as const;
-      expect(await runImageAi({ key: KEY, fetch: f }, op)).toEqual({ fail: "cut", via: "DeepSeek" });
-      expect(await runImageAi({ key: KEY, fetch: f }, op)).toEqual({ text: "<svg/>" });
-      const late = runImageAi({ key: KEY, fetch: f }, op);
+      expect(await runImageAi({ key: KEY, fetch: f, cache }, op)).toEqual({ fail: "cut", via: "DeepSeek" });
+      expect(await runImageAi({ key: KEY, fetch: f, cache }, op)).toEqual({ text: "<svg/>" });
+      const late = runImageAi({ key: KEY, fetch: f, cache }, op);
       await vi.advanceTimersByTimeAsync(IMAGE_AI_TIMEOUT.svg);
       expect(await late).toMatchObject({ fail: "timeout", via: "DeepSeek" });
       expect(calls.length).toBe(3);
@@ -155,26 +159,30 @@ describe("image tools: requests", () => {
 describe("image tools: answers", () => {
   it("reads an image once: the same image again is answered without a call, another image is asked", async () => {
     const { f, calls } = fakeFetch([answer("```markdown\n# Wave count\n\n$x$\n```"), answer("other")]);
-    expect(await runImageAi({ key: KEY, fetch: f }, { kind: "extract", image: PNG })).toEqual({
+    expect(await runImageAi({ key: KEY, fetch: f, cache }, { kind: "extract", image: PNG })).toEqual({
       text: "# Wave count\n\n$x$",
     });
-    expect(await runImageAi({ key: KEY, fetch: f }, { kind: "extract", image: PNG })).toEqual({
+    expect(await runImageAi({ key: KEY, fetch: f, cache }, { kind: "extract", image: PNG })).toEqual({
       text: "# Wave count\n\n$x$",
       reused: true,
     });
     expect(calls.length).toBe(1);
-    expect(await runImageAi({ key: KEY, fetch: f }, { kind: "extract", image: PNG2 })).toEqual({ text: "other" });
+    expect(await runImageAi({ key: KEY, fetch: f, cache }, { kind: "extract", image: PNG2 })).toEqual({
+      text: "other",
+    });
     // another model reads it anew
     expect(calls.length).toBe(2);
   });
 
   it("does not keep a cut-off transcription, and asks again next time", async () => {
     const { f, calls } = fakeFetch([answer("# Half", "length"), answer("# Whole")]);
-    expect(await runImageAi({ key: KEY, fetch: f }, { kind: "extract", image: PNG })).toEqual({
+    expect(await runImageAi({ key: KEY, fetch: f, cache }, { kind: "extract", image: PNG })).toEqual({
       text: "# Half",
       cut: true,
     });
-    expect(await runImageAi({ key: KEY, fetch: f }, { kind: "extract", image: PNG })).toEqual({ text: "# Whole" });
+    expect(await runImageAi({ key: KEY, fetch: f, cache }, { kind: "extract", image: PNG })).toEqual({
+      text: "# Whole",
+    });
     expect(calls.length).toBe(2);
   });
 
@@ -185,9 +193,9 @@ describe("image tools: answers", () => {
       answer("<svg/>"),
     ]);
     const op = { kind: "svg", image: PNG, size: { w: 1, h: 1 }, noBg: true, think: false } as const;
-    expect(await runImageAi({ key: KEY, fetch: f }, op)).toEqual({ fail: "cut", via: "DeepSeek" });
-    expect(await runImageAi({ key: KEY, fetch: f }, op)).toEqual({ text: "<svg/>" });
-    expect(await runImageAi({ key: KEY, fetch: f }, op)).toEqual({ text: "<svg/>" });
+    expect(await runImageAi({ key: KEY, fetch: f, cache }, op)).toEqual({ fail: "cut", via: "DeepSeek" });
+    expect(await runImageAi({ key: KEY, fetch: f, cache }, op)).toEqual({ text: "<svg/>" });
+    expect(await runImageAi({ key: KEY, fetch: f, cache }, op)).toEqual({ text: "<svg/>" });
     expect(calls.length).toBe(3);
   });
 
@@ -202,33 +210,33 @@ describe("image tools: answers", () => {
       },
       answer(""),
     ]);
-    expect(await runImageAi({ key: KEY, fetch: f }, op)).toEqual({
+    expect(await runImageAi({ key: KEY, fetch: f, cache }, op)).toEqual({
       fail: "badkey",
       message: "Authentication Fails",
       via: "DeepSeek",
     });
-    expect(await runImageAi({ key: KEY, fetch: f }, op)).toEqual({
+    expect(await runImageAi({ key: KEY, fetch: f, cache }, op)).toEqual({
       fail: "balance",
       message: "Insufficient Balance",
       via: "DeepSeek",
     });
-    expect(await runImageAi({ key: KEY, fetch: f }, op)).toEqual({
+    expect(await runImageAi({ key: KEY, fetch: f, cache }, op)).toEqual({
       fail: "http",
       message: "image too large",
       via: "DeepSeek",
     });
-    expect(await runImageAi({ key: KEY, fetch: f }, op)).toEqual({
+    expect(await runImageAi({ key: KEY, fetch: f, cache }, op)).toEqual({
       fail: "network",
       message: "fetch failed",
       via: "DeepSeek",
     });
-    expect(((await runImageAi({ key: KEY, fetch: f }, op)) as { fail: string }).fail).toBe("http");
+    expect(((await runImageAi({ key: KEY, fetch: f, cache }, op)) as { fail: string }).fail).toBe("http");
   });
 
   it("is canceled by the caller's signal and gives up at its time limit", async () => {
     const a = fakeFetch([hang]);
     const ac = new AbortController();
-    const p = runImageAi({ key: KEY, fetch: a.f, signal: ac.signal }, { kind: "extract", image: PNG });
+    const p = runImageAi({ key: KEY, fetch: a.f, signal: ac.signal, cache }, { kind: "extract", image: PNG });
     await vi.waitFor(() => expect(a.calls.length).toBe(1));
     ac.abort();
     expect(await p).toEqual({ fail: "canceled" });
@@ -236,9 +244,11 @@ describe("image tools: answers", () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     try {
       let done = false;
-      const q = runImageAi({ key: KEY, fetch: b.f, timeoutMs: 80 }, { kind: "extract", image: PNG }).finally(() => {
-        done = true;
-      });
+      const q = runImageAi({ key: KEY, fetch: b.f, timeoutMs: 80, cache }, { kind: "extract", image: PNG }).finally(
+        () => {
+          done = true;
+        },
+      );
       await vi.advanceTimersByTimeAsync(79);
       expect(done).toBe(false);
       await vi.advanceTimersByTimeAsync(1);
@@ -258,13 +268,13 @@ describe("image tools: the host's job", () => {
   beforeEach(() => {
     conf.clear();
     key = KEY;
-    useWorkspace(W);
+    cx = new HostContext(W);
   });
 
   it("says there is no key without calling the network", async () => {
     key = undefined;
     const { f, calls } = fakeFetch([]);
-    expect(await imageAiJob(new Map(), 1, { kind: "extract", image: PNG }, f)).toMatchObject({ fail: "nokey" });
+    expect(await imageAiJob(cx, new Map(), 1, { kind: "extract", image: PNG }, f)).toMatchObject({ fail: "nokey" });
     expect(calls.length).toBe(0);
   });
 
@@ -272,7 +282,7 @@ describe("image tools: the host's job", () => {
     conf.set("codeboard.ai.deepseekModel", "deepseek-vision-x");
     conf.set("codeboard.ai.deepseekBaseUrl", "http://proxy.local/v1/");
     const { f, calls } = fakeFetch([answer("hi")]);
-    expect(await imageAiJob(new Map(), 1, { kind: "extract", image: PNG }, f)).toEqual({ text: "hi" });
+    expect(await imageAiJob(cx, new Map(), 1, { kind: "extract", image: PNG }, f)).toEqual({ text: "hi" });
     expect(calls[0].url).toBe("http://proxy.local/v1/chat/completions");
     expect(calls[0].headers.Authorization).toBe(`Bearer ${KEY}`);
     expect(calls[0].body.model).toBe("deepseek-vision-x");
@@ -281,7 +291,7 @@ describe("image tools: the host's job", () => {
   it("is canceled by its job number, and forgets the job when it ends", async () => {
     const jobs = new Map<number, AbortController>();
     const { f, calls } = fakeFetch([hang]);
-    const p = imageAiJob(jobs, 7, { kind: "svg", image: PNG, size: { w: 1, h: 1 }, noBg: true, think: true }, f);
+    const p = imageAiJob(cx, jobs, 7, { kind: "svg", image: PNG, size: { w: 1, h: 1 }, noBg: true, think: true }, f);
     await vi.waitFor(() => expect(calls.length).toBe(1));
     jobs.get(7)!.abort();
     expect(await p).toEqual({ fail: "canceled" });

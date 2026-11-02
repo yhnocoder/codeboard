@@ -2,31 +2,19 @@
 // commit's check must compare with the new HEAD (it used to get the HEAD cached by the older check, so the card stayed "+ uncommitted")
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import { emptyBoard } from "@codeboard/core";
-import { Storage } from "@codeboard/core/storage";
-import { nodeFs } from "../src/nodefs";
+import { Storage } from "../src/storage/boards";
+import { nodeFs } from "../src/storage/nodefs";
 import { BoardPanel, type BoardHost } from "../src/boards";
-import { useWorkspace } from "../src/ws";
 import { nodeWorkspace } from "./node-workspace";
 import { card, git, startTreeSitter, stubView, tempRepo } from "./helpers";
+import { HostContext } from "../src/context";
+
+let cx: HostContext;
 
 // Holds the next `git show` until released: the edited file's check is still running when the commit lands
 const gate: { armed: boolean; reached?: () => void; release?: Promise<void> } = { armed: false };
-vi.mock("../src/git", async (orig) => {
-  const m = await orig<typeof import("../src/git")>();
-  return {
-    ...m,
-    showFile: async (...a: Parameters<typeof m.showFile>) => {
-      if (gate.armed) {
-        gate.armed = false;
-        gate.reached?.();
-        await gate.release;
-      }
-      return m.showFile(...a);
-    },
-  };
-});
 
 beforeAll(startTreeSitter);
 
@@ -35,10 +23,22 @@ describe("version re-checks of one board", () => {
     const src = (body: string) => ["def g(x):", `    return ${body}`, ""].join("\n");
     const R = tempRepo("order", { "f.py": src("x") });
     try {
-      useWorkspace(nodeWorkspace(R));
+      cx = new HostContext(nodeWorkspace(R));
+      const show = cx.git.showFile;
+      cx.git.showFile = async (...a) => {
+        if (gate.armed) {
+          gate.armed = false;
+          gate.reached?.();
+          await gate.release;
+        }
+        return show(...a);
+      };
       const abs = path.join(R, "f.py");
-      const { card: c } = await card(abs, "g");
+      const { card: c } = await card(cx, abs, "g");
       const host = {
+        get cx() {
+          return cx;
+        },
         store: new Storage(nodeFs, { dir: () => path.join(R, ".boards") }),
         staleChanged: () => undefined,
       } as unknown as BoardHost;

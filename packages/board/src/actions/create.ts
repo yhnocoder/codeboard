@@ -5,12 +5,9 @@ import {
   uid,
   findCard,
   isCode,
-  placeCards,
   besideFree,
   findFree,
   bounds,
-  removeCards,
-  retargetCards,
   GAP,
   classifyPaste,
   guessLang,
@@ -21,7 +18,6 @@ import {
   NEW_CARD_W,
   type Board,
   type Card,
-  type CodeCard,
   type ImageCard,
   type NoteCard,
   type NoteLook,
@@ -30,6 +26,8 @@ import {
   type NewCard,
   type Rect,
 } from "@codeboard/core";
+import * as C from "@codeboard/core/commands";
+import { commandEnv } from "./env";
 import { state, cardById, rectOf, placeOf } from "../state/store";
 import { putViews, requestViews } from "../state/views";
 import { mutate, createFresh, isFresh, settleFresh } from "../state/changes";
@@ -68,32 +66,32 @@ export function addCards(
   putViews(Object.assign({}, ...list.map((n) => n.views)));
   const ids: string[] = [];
   const anchor = o.besideSel !== false && sel.cards.length ? hostRect(sel.cards[sel.cards.length - 1]) : null;
-  mutate((b) => {
-    let prev: Rect | null = anchor;
-    let at = o.at;
-    for (const n of list) {
-      const c = withDefaults(structuredClone(n.card) as Card);
-      const w = n.w ?? defaultWidth(c);
-      const size = estSize(c, { w });
-      let p: { x: number; y: number };
-      const others = b.cards.filter((k) => b.place[k.id]).map((k) => rectOf(k));
-      if (at && o.exact) {
-        p = at;
-        at = { x: at.x + 36, y: at.y + 36 };
-      } else if (at) p = findFree({ ...at, ...size }, others);
-      else if (prev) p = besideFree(prev, size, others);
-      else {
-        const vc = viewportCenter();
-        p = findFree({ x: vc.x - size.w / 2, y: vc.y - Math.min(size.h, 300) / 2, ...size }, others);
-      }
-      const place: Place = { x: Math.round(p.x), y: Math.round(p.y), w };
-      placeCards(b, [{ card: c, place }], { copy: false, at: (q) => (o.section ? { ...q, section: o.section } : q) });
-      if (!o.section) settleHome(b, c.id); // 没指定（跟着调用它的卡）就看落在哪个 Section 里
-      ids.push(c.id);
-      prev = { x: place.x, y: place.y, ...size };
+  const cards = list.map((n) => withDefaults(structuredClone(n.card) as Card));
+  let prev: Rect | null = anchor;
+  let at = o.at;
+  // where each goes: at the pointer (exact: stacked 36 px apart), beside the one before or the selection, else mid-screen;
+  // the cards placed before it are in `b`
+  const place = (c: Card, b: Board): Place => {
+    const w = list[ids.length].w ?? defaultWidth(c);
+    const size = estSize(c, { w });
+    let p: { x: number; y: number };
+    const others = b.cards.filter((k) => b.place[k.id]).map((k) => rectOf(k));
+    if (at && o.exact) {
+      p = at;
+      at = { x: at.x + 36, y: at.y + 36 };
+    } else if (at) p = findFree({ ...at, ...size }, others);
+    else if (prev) p = besideFree(prev, size, others);
+    else {
+      const vc = viewportCenter();
+      p = findFree({ x: vc.x - size.w / 2, y: vc.y - Math.min(size.h, 300) / 2, ...size }, others);
     }
-    o.also?.(b);
-  });
+    const pl: Place = { x: Math.round(p.x), y: Math.round(p.y), w };
+    ids.push(c.id);
+    prev = { x: pl.x, y: pl.y, ...size };
+    return pl;
+  };
+  // 没指定 Section（跟着调用它的卡）就看落在哪个 Section 里
+  C.addCards(commandEnv, cards, { place, section: o.section, settle: settleHome, also: o.also });
   select({ cards: ids });
   requestAnimationFrame(() => {
     const rs = ids.map((id) => hostRect(id)!).filter(Boolean);
@@ -415,40 +413,7 @@ export function splitSnippet(id: string, merge: boolean) {
     };
   });
   // 指着原来那段的行（Link、Sidenote、Sticker）跟到包含那一行的新段 / 新卡上；没有行的落在（第一张）卡上
-  const partOf = (line?: number) =>
-    Math.max(
-      0,
-      parts.findIndex((p) => line !== undefined && line >= p.start && line <= p.end),
-    );
-  if (merge) {
-    mutate((b) => {
-      const k = findCard(b, id)?.card;
-      if (!isCode(k)) return;
-      retargetCards(b, [id], (at) => ({
-        card: id,
-        seg: at.seg === s.id && at.line ? parts[partOf(at.line)].id : undefined,
-      }));
-      k.segments = parts;
-    });
-  } else {
-    const r = hostRect(id)!;
-    const pl = placeOf(id);
-    const ids = parts.map(() => uid("c"));
-    mutate((b) => {
-      retargetCards(b, [id], (at) => {
-        const i = partOf(at.seg === s.id ? at.line : undefined);
-        return { card: ids[i], seg: at.seg === s.id && at.line ? parts[i].id : undefined };
-      });
-      removeCards(b, [id]);
-      let y = r.y;
-      parts.forEach((p, i) => {
-        const k: CodeCard = { id: ids[i], kind: "code", segments: [p] };
-        b.cards.push(k);
-        b.place[k.id] = { x: r.x, y, w: r.w, section: pl.section };
-        y += estSize(k, { w: r.w }).h + GAP;
-      });
-    });
-  }
+  C.splitSegment(commandEnv, id, parts, merge ? { merge } : { merge, at: hostRect(id)! });
   requestViews(parts);
 }
 

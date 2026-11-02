@@ -3,9 +3,11 @@
 import { Fragment, type DOMOutputSpec, type Mark, type Node as PMNode } from "@tiptap/pm/model";
 import katex from "katex";
 import DOMPurify from "dompurify";
-import { escHtml, isHtmlComment, mdSchema, parseMd, tocEntries, tocHtml } from "./schema";
+import { mdSchema, parseMd } from "./schema";
+import { escHtml, isHtmlComment, tocEntries, tocHtml } from "./schema-nodes";
 import { captionOf, imageAttrs, missingImageHtml, onImagesChanged } from "./image";
 import { mathMacros, mathPreambleVersion, withTex } from "./math";
+import { gapClass, htmlGapKind, withClass, type GapKind } from "./gaps";
 
 const escA = (s: string) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
 const VOID = new Set(["img", "br", "hr", "input", "col", "wbr"]);
@@ -172,9 +174,15 @@ function contentHtml(n: PMNode, cx: Cx | null): string {
   const one = n.childCount === 1 ? n.firstChild! : null;
   if (cx && one && SLIM.has(n.type.name) && one.type.name === "paragraph" && one.content.size && !sizedImg(one))
     return inlineHtml(one.content, cx);
-  let s = "";
+  let s = "",
+    prev: GapKind = null;
   n.forEach((c) => {
-    s += nodeHtml(c, cx);
+    const h = nodeHtml(c, cx);
+    if (!h) return; // nothing drawn (an HTML comment, footnotes without text): not an element between its neighbours
+    const kind = htmlGapKind(h),
+      cls = cx && gapClass(prev, kind);
+    s += cls ? withClass(h, cls) : h;
+    prev = kind;
   });
   return s;
 }
@@ -247,5 +255,5 @@ function purify(html: string) {
 export function renderMdInline(src: string): string {
   const h = renderMd(src);
   const m = /^<p>([\s\S]*)<\/p>$/.exec(h);
-  return m && !m[1].includes("<p>") ? m[1] : h;
+  return m && !/<p[\s>]/.test(m[1]) ? m[1] : h;
 }

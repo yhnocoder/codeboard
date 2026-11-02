@@ -5,37 +5,40 @@ import { boardSegments, variantSegments } from "@codeboard/core";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { Disposable } from "@codeboard/core";
-import { forgetIgnored, forgetRepos, gitDirOf, headOf, repoRootOf } from "./git";
+import { headOf } from "./git";
 import type { BoardHost } from "./boards";
-import { absOf, hasLocalFile } from "./source";
-import type { Storage } from "./storage";
+import { hasLocalFile } from "./source";
+import type { Storage } from "./storage/boards";
 import { countStale, staleFor, staleSegments } from "./versions";
-import { debounce, inWorkspace, workspace, wsRoots } from "./ws";
-import { forgetDefs } from "./defcache";
-import { log } from "./log";
+import { debounce } from "./ws";
+import type { HostContext } from "./context";
 
 /** 攒多久的 git 事件再查 HEAD、攒多久的文件改动再重查（ms） */
 const GIT_PAUSE = 600;
 export const RECHECK_PAUSE = 500;
 
 /** ready：开始时的监听都挂好、关着的白板数过一遍之后（测试等它，不靠等一段时间） */
-export function watchVersions(panels: BoardHost, store: Storage): Disposable & { ready: Promise<void> } {
-  const files = workspace().files;
+export function watchVersions(
+  cx: HostContext,
+  panels: BoardHost,
+  store: Storage,
+): Disposable & { ready: Promise<void> } {
+  const files = cx.ws.files;
   const subs: Disposable[] = [];
   const watched = new Set<string>();
   const lastHead = new Map<string, string | null>();
 
   const roots = async () => {
     const out = new Set<string>();
-    for (const f of wsRoots()) {
-      const r = await repoRootOf(path.join(f, "x"));
+    for (const f of cx.roots()) {
+      const r = await cx.git.repoRootOf(path.join(f, "x"));
       if (r) out.add(r);
     }
     for (const { board } of await store.all())
       for (const s of boardSegments(board)) {
         if (s.version.kind !== "git" || !hasLocalFile(s.src)) continue;
-        const a = absOf(s);
-        const r = a && (await repoRootOf(a));
+        const a = cx.sources.absOf(s);
+        const r = a && (await cx.git.repoRootOf(a));
         if (r) out.add(r);
       }
     return [...out];
@@ -45,13 +48,13 @@ export function watchVersions(panels: BoardHost, store: Storage): Disposable & {
     if (watched.has(root)) return;
     watched.add(root);
     lastHead.set(root, await headOf(root));
-    const gd = await gitDirOf(root);
+    const gd = await cx.git.gitDirOf(root);
     if (!gd) return;
     subs.push(files.watch(gd, "{HEAD,config,packed-refs,refs/heads/**,refs/remotes/origin/HEAD}", () => onGit()));
     // 忽略规则变了（保存、在 VS Code 外面改、checkout 都算）：check-ignore 记下的回答作废。
     // 工作区里的仓库整棵树都看（VS Code 本来就在监听它），别的仓库只看根上的 .gitignore（不为它起递归的监听）
-    subs.push(files.watch(path.join(gd, "info"), "exclude", () => forgetIgnored()));
-    subs.push(files.watch(root, inWorkspace(root) ? "**/.gitignore" : ".gitignore", () => forgetIgnored()));
+    subs.push(files.watch(path.join(gd, "info"), "exclude", () => cx.git.forgetIgnored()));
+    subs.push(files.watch(root, cx.inWorkspace(root) ? "**/.gitignore" : ".gitignore", () => cx.git.forgetIgnored()));
   };
 
   /**
@@ -63,9 +66,9 @@ export function watchVersions(panels: BoardHost, store: Storage): Disposable & {
       if (panels.get(board.id)?.ready) continue;
       try {
         const ss = staleSegments(board);
-        panels.staleChanged(board.id, countStale(board, await staleFor(ss.segs, ss.up)));
+        panels.staleChanged(board.id, countStale(board, await staleFor(cx, ss.segs, ss.up)));
       } catch (e) {
-        log(
+        cx.log(
           "warn",
           `versions: could not count new versions on closed board ${board.id}: ${e instanceof Error ? e.message : e}`,
         );
@@ -74,7 +77,7 @@ export function watchVersions(panels: BoardHost, store: Storage): Disposable & {
   };
 
   const onGit = debounce(async () => {
-    forgetRepos();
+    cx.git.forgetRepos();
     let changed = false;
     for (const r of watched) {
       const h = await headOf(r);
@@ -84,8 +87,8 @@ export function watchVersions(panels: BoardHost, store: Storage): Disposable & {
       }
     }
     if (!changed) return;
-    forgetDefs(); // checkout 之类：文件可能整批换了
-    forgetIgnored();
+    cx.defs.forget(); // checkout 之类：文件可能整批换了
+    cx.git.forgetIgnored();
     await panels.refreshStale();
     await countClosed();
   }, GIT_PAUSE);
@@ -98,7 +101,7 @@ export function watchVersions(panels: BoardHost, store: Storage): Disposable & {
   // a folder added to the workspace: repo lookups made before (its files "not in a repo") are asked again, its repo watched
   subs.push(
     files.onDidChangeRoots(() => {
-      forgetRepos();
+      cx.git.forgetRepos();
       void watchRoots();
     }),
   );
@@ -158,7 +161,7 @@ export function watchVersions(panels: BoardHost, store: Storage): Disposable & {
     for (const { board } of await store.all())
       for (const s of [...boardSegments(board), ...variantSegments(board)]) {
         if (!hasLocalFile(s.src)) continue;
-        const a = absOf(s);
+        const a = cx.sources.absOf(s);
         if (!a || watchedFiles.has(a) || !watchFile(a)) continue;
         watchedFiles.add(a);
         // The file was read when its card or Variant was added, before this watch existed: a change made in between fires no event

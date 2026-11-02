@@ -2,13 +2,15 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import type { ExpandResult, PeekDef, Segment } from "@codeboard/core";
-import { RETRY_GAP, callVars, expand, forgetLspSeen, peek } from "../src/resolve";
-import { forgetDefs } from "../src/defcache";
+import { callVars, expand, peek } from "../src/resolve";
+import { RETRY_GAP } from "../src/lsp";
 import { analysisOf } from "../src/analysis";
 import { viewsFor } from "../src/views";
-import { useWorkspace } from "../src/ws";
 import { WS, nodeWorkspace } from "./node-workspace";
 import { at, card, startTreeSitter } from "./helpers";
+import { HostContext } from "../src/context";
+
+let cx: HostContext;
 
 const W = nodeWorkspace();
 const EXT = "/tmp/codeboard-perf/ext/multiprocessing"; // not git, not in site-packages: external root = this folder
@@ -17,13 +19,13 @@ let shm: Awaited<ReturnType<typeof card>>, mr: Awaited<ReturnType<typeof card>>;
 const qualOf = (r: ExpandResult) => ("card" in r ? r.card.segments[0].symbol?.qual : undefined);
 
 beforeAll(async () => {
-  useWorkspace(W);
+  cx = new HostContext(W);
   fs.mkdirSync(EXT, { recursive: true });
   fs.writeFileSync(path.join(EXT, "__init__.py"), "");
   fs.writeFileSync(path.join(EXT, "shared_memory.py"), SHM);
   await startTreeSitter();
-  shm = await card(path.join(EXT, "shared_memory.py"), "SharedMemory");
-  mr = await card(path.join(WS, "nanovllm/engine/model_runner.py"), "ModelRunner.__init__");
+  shm = await card(cx, path.join(EXT, "shared_memory.py"), "SharedMemory");
+  mr = await card(cx, path.join(WS, "nanovllm/engine/model_runner.py"), "ModelRunner.__init__");
 });
 
 describe("class card outside the workspace", () => {
@@ -33,10 +35,10 @@ describe("class card outside the workspace", () => {
   });
   it("expands a member through a pick relative to the card's root, found by qual when the line moved", async () => {
     const pick = { path: shm.seg.path, line: 9 };
-    expect("none" in (await expand({ seg: shm.seg, line: 9, col: 0, name: "__init__", pick }))).toBe(true); // read as a workspace path: not found
+    expect("none" in (await expand(cx, { seg: shm.seg, line: 9, col: 0, name: "__init__", pick }))).toBe(true); // read as a workspace path: not found
     expect(
       qualOf(
-        await expand({
+        await expand(cx, {
           seg: shm.seg,
           line: 9,
           col: 0,
@@ -47,7 +49,7 @@ describe("class card outside the workspace", () => {
     ).toBe("SharedMemory.__init__");
     expect(
       "card" in
-        (await expand({
+        (await expand(cx, {
           seg: shm.seg,
           line: 3,
           col: 0,
@@ -66,7 +68,7 @@ describe("variable candidates", () => {
   const click = () => at(mr.seg, /Qwen3ForCausalLM\(hf_config\)/, "Qwen3ForCausalLM");
 
   it("come with a class card expanded by click", async () => {
-    const r = await expand({ ...click(), name: "Qwen3ForCausalLM" });
+    const r = await expand(cx, { ...click(), name: "Qwen3ForCausalLM" });
     expect(qualOf(r)).toBe("Qwen3ForCausalLM");
     expect("card" in r && r.vars).toEqual(want);
   });
@@ -76,15 +78,19 @@ describe("variable candidates", () => {
       version: { kind: "hash" as const, hash: "x" },
       text: mr.seg.text.map((t, i) => (i === 0 ? t + "  " : t)),
     };
-    const r = await expand({ ...click(), seg: snip, name: "Qwen3ForCausalLM" });
+    const r = await expand(cx, { ...click(), seg: snip, name: "Qwen3ForCausalLM" });
     expect("card" in r && r.vars).toHaveLength(2);
   });
   it("come with a drag onto an existing class or function card", async () => {
-    const q = await card(path.join(WS, "nanovllm/models/qwen3.py"), "Qwen3ForCausalLM");
-    expect(await callVars({ ...click(), name: "Qwen3ForCausalLM", target: q.seg })).toEqual(want);
-    const lm = await card(path.join(WS, "nanovllm/utils/loader.py"), "load_model");
+    const q = await card(cx, path.join(WS, "nanovllm/models/qwen3.py"), "Qwen3ForCausalLM");
+    expect(await callVars(cx, { ...click(), name: "Qwen3ForCausalLM", target: q.seg })).toEqual(want);
+    const lm = await card(cx, path.join(WS, "nanovllm/utils/loader.py"), "load_model");
     expect(
-      await callVars({ ...at(mr.seg, /load_model\(self\.model/, "load_model"), name: "load_model", target: lm.seg }),
+      await callVars(cx, {
+        ...at(mr.seg, /load_model\(self\.model/, "load_model"),
+        name: "load_model",
+        target: lm.seg,
+      }),
     ).toEqual([
       { a: "self.model", b: "model" },
       { a: "config.model", b: "path" },
@@ -93,9 +99,10 @@ describe("variable candidates", () => {
 });
 
 describe("preview fallbacks", () => {
-  const pk = async (seg: Segment, re: RegExp, word: string) => (await peek({ ...at(seg, re, word), word })) as PeekDef;
+  const pk = async (seg: Segment, re: RegExp, word: string) =>
+    (await peek(cx, { ...at(seg, re, word), word })) as PeekDef;
   it("shows all fields of the class for a field", async () => {
-    const eng = await card(path.join(WS, "nanovllm/engine/llm_engine.py"), "LLMEngine.__init__");
+    const eng = await card(cx, path.join(WS, "nanovllm/engine/llm_engine.py"), "LLMEngine.__init__");
     const fld = await pk(eng.seg, /config\.kvcache_block_size/, "kvcache_block_size");
     expect({ kind: fld.kind, rows: fld.rows?.length, head: fld.head, line: fld.line }).toEqual({
       kind: "field",
@@ -112,7 +119,7 @@ describe("preview fallbacks", () => {
     expect(fn.lib).toBeFalsy();
   });
   it("shows only the signature and docs for a library module", async () => {
-    const eng = await card(path.join(WS, "nanovllm/engine/llm_engine.py"), "LLMEngine.__init__");
+    const eng = await card(cx, path.join(WS, "nanovllm/engine/llm_engine.py"), "LLMEngine.__init__");
     const mod = await pk(eng.seg, /mp\.get_context/, "mp");
     expect({ kind: mod.kind, html: mod.html.length, lib: mod.lib, title: mod.title }).toEqual({
       kind: "module",
@@ -122,7 +129,7 @@ describe("preview fallbacks", () => {
     });
   });
   it("shows all self assignments in __init__ for self.x", async () => {
-    const sch = await card(path.join(WS, "nanovllm/engine/scheduler.py"), "Scheduler.schedule");
+    const sch = await card(cx, path.join(WS, "nanovllm/engine/scheduler.py"), "Scheduler.schedule");
     const self = await pk(sch.seg, /self\.max_num_seqs/, "self.max_num_seqs");
     expect(self.kind).toBe("field");
     expect(self.rows?.length).toBeGreaterThan(2);
@@ -131,7 +138,7 @@ describe("preview fallbacks", () => {
 
 describe("library calls", () => {
   it("carry the package name; project calls don't", async () => {
-    const v = (await viewsFor([mr.seg]))[mr.seg.id];
+    const v = (await viewsFor(cx, [mr.seg]))[mr.seg.id];
     const pkg = (n: string) => v.calls.find((c) => c.name === n)?.pkg;
     expect([pkg("set_device"), pkg("init_process_group"), pkg("SharedMemory")]).toEqual([
       "torch",
@@ -146,7 +153,7 @@ describe("library calls", () => {
     expect(v.html.some((h) => h.includes('data-p="torch"'))).toBe(true);
   });
   it("are all calls in a file outside the workspace", async () => {
-    const ve = (await viewsFor([shm.seg]))[shm.seg.id];
+    const ve = (await viewsFor(cx, [shm.seg]))[shm.seg.id];
     expect(ve.calls.length).toBeGreaterThan(0);
     expect(ve.calls.map((c) => c.pkg).filter((p) => p !== "multiprocessing" && p !== "os")).toEqual([]);
   });
@@ -154,7 +161,7 @@ describe("library calls", () => {
 
 describe("while Pylance starts", () => {
   it("retries empty answers, and stops retrying once Pylance has answered", async () => {
-    const step = await card(path.join(WS, "nanovllm/engine/llm_engine.py"), "LLMEngine.step");
+    const step = await card(cx, path.join(WS, "nanovllm/engine/llm_engine.py"), "LLMEngine.step");
     const req = { ...at(step.seg, /self\.scheduler\.schedule\(\)/, "schedule("), name: "schedule" };
     const schAbs = path.join(WS, "nanovllm/engine/scheduler.py");
     const defLine = analysisOf("python", fs.readFileSync(schAbs, "utf8")).symbols.find(
@@ -181,18 +188,18 @@ describe("while Pylance starts", () => {
       return p;
     };
     try {
-      forgetLspSeen();
+      cx = new HostContext(W); // a host whose language service has not answered yet
       W.language.definitions = async () => (++asks < 3 ? [] : [{ abs: schAbs, line: defLine, col: 8 }]);
-      forgetDefs();
-      expect(qualOf(await settle(expand(req)))).toBe("Scheduler.schedule");
+      cx.defs.forget();
+      expect(qualOf(await settle(expand(cx, req)))).toBe("Scheduler.schedule");
       expect(asks).toBe(3);
       asks = 0;
       W.language.definitions = async () => {
         asks++;
         return [];
       };
-      forgetDefs();
-      await settle(expand(req));
+      cx.defs.forget();
+      await settle(expand(cx, req));
       expect(asks).toBe(1);
     } finally {
       vi.useRealTimers();

@@ -565,8 +565,8 @@ describe("renumberBorn", () => {
   });
 });
 
-describe("guard: reference upkeep only in core/src/edit.ts", () => {
-  // 删卡、删线、换卡、删 Section / Sidenote / Sticker、改叠放顺序都得走 edit.ts 里的操作（removeCards、replaceCards、removeSections、arrangeCards……），
+describe("guard: reference upkeep only in core/src/edit/", () => {
+  // 删卡、删线、换卡、删 Section / Sidenote / Sticker、改叠放顺序都得走 edit/ 里的操作（removeCards、replaceCards、removeSections、arrangeCards……），
   // 它们一起维护指着这些东西的引用（Link 两端、Sidenote、贴纸、问题的解答、Compare 的栏、创建顺序、调用图标记）。
   // 规则按「改动的形状」查，不按写法：在 core、白板、宿主、插件四处源码里（去掉整行注释后，跨行匹配）找
   //   1. 整个换掉一类东西：x.cards / links / sections / sidenotes / stickers / place = …（含 filter 之后的临时变量再赋回去、换顺序），x["links"] = …，
@@ -578,11 +578,11 @@ describe("guard: reference upkeep only in core/src/edit.ts", () => {
   //   6. 创建顺序、调用图标记：x.born / x.marks（[…]）= / ??= …，delete x.born / x.marks（[…]）
   // 不拦：push / unshift（加新东西不会让别的引用悬空；新东西自己的引用由每次 mutate 之后的 danglingRefs 自检、harness 守着），
   // 同一个 id 原地换内容（b.cards[i] = …），以及改单个对象别的字段。
-  // 不查的文件：edit.ts（引用维护）、migrate.ts（旧文件升级）。别处合理的、不是在维护引用的写法逐行列在 ALLOW 里，写明理由
-  const EXEMPT = new Set(["core/src/edit.ts", "core/src/migrate.ts"]);
+  // 不查的文件：edit/ 下的（引用维护）、migrate.ts（旧文件升级）。别处合理的、不是在维护引用的写法逐行列在 ALLOW 里，写明理由
+  const EXEMPT = (rel: string) => rel.startsWith("core/src/edit/") || rel === "core/src/migrate.ts";
   /** [文件, 命中那一行里的一段原文, 为什么可以]：每一条都必须还命中（删了那行代码就删这一条） */
   const ALLOW: [string, string, string][] = [
-    ["core/src/patch.ts", "if (p.full) b.place = {", "transport: applyPatch replays a diff edit.ts already computed"],
+    ["core/src/patch.ts", "if (p.full) b.place = {", "transport: applyPatch replays a diff edit/ already computed"],
     [
       "core/src/patch.ts",
       "for (const id of p.place.del ?? []) delete b.place[id];",
@@ -629,7 +629,7 @@ describe("guard: reference upkeep only in core/src/edit.ts", () => {
       "the user sets a call graph's mark: that is the edit itself",
     ],
     [
-      "board/src/state/upkeep.ts",
+      "core/src/history/upkeep.ts",
       "b.born = tmp.born;",
       "mutate stamps creation order on new cards (core stampBorn on a plain copy)",
     ],
@@ -686,7 +686,7 @@ describe("guard: reference upkeep only in core/src/edit.ts", () => {
           .split(path.sep)
           .join("/")
           .replace(/^packages\//, "");
-        if (EXEMPT.has(rel)) continue;
+        if (EXEMPT(rel)) continue;
         for (const h of scan(rel, fs.readFileSync(f, "utf8"))) {
           const i = allowed(rel, h);
           if (i < 0) bad.push(`${h.at}: ${h.match}`);

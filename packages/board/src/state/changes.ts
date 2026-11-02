@@ -1,4 +1,4 @@
-// Every change to the board goes through here: the undo engine (history.ts) and saving (save.ts) wired to the Solid store
+// Every change to the board goes through here: core's undo engine and saving (@codeboard/core/history) wired to the Solid store
 import { batch, createSignal } from "solid-js";
 import { produce, reconcile, unwrap } from "solid-js/store";
 import {
@@ -11,8 +11,8 @@ import {
   type SharedUpdate,
 } from "@codeboard/core";
 import { ask } from "../host";
-import { createHistory, type Doc } from "./history";
-import { createSave } from "./save";
+import { createHistory, createSave, type Doc } from "@codeboard/core/history";
+import { noteBlocks } from "../md/blocks";
 import { setState, state } from "./store";
 import { keepOn, unselectCard } from "./selection";
 import { putViews, requestMissing } from "./views";
@@ -38,24 +38,35 @@ const doc: Doc = {
   raw: unwrap,
 };
 
+declare global {
+  interface Window {
+    /** Set by the test harness: run the engine's self-check in a production build too (see HistoryPorts.selfCheck) */
+    __cbSelfCheck?: boolean;
+  }
+}
+
 const [canUndo, setCanUndo] = createSignal(false);
 const [canRedo, setCanRedo] = createSignal(false);
 export { canUndo, canRedo };
 
-const history = createHistory(doc, {
-  changed: () => save.changed(),
-  changedLive: () => save.changedLive(),
-  stacks: (u, r) =>
-    batch(() => {
-      setCanUndo(u);
-      setCanRedo(r);
-    }),
-  restored: () => {
-    keepOn(state.board);
-    requestMissing(state.board);
+const history = createHistory(
+  doc,
+  {
+    changed: () => save.changed(),
+    changedLive: () => save.changedLive(),
+    stacks: (u, r) =>
+      batch(() => {
+        setCanUndo(u);
+        setCanRedo(r);
+      }),
+    restored: () => {
+      keepOn(state.board);
+      requestMissing(state.board);
+    },
+    toast,
   },
-  toast,
-});
+  { noteBlocks, selfCheck: import.meta.env.DEV || window.__cbSelfCheck === true },
+);
 const save = createSave({
   loaded: () => state.loaded,
   snap: history.snap,

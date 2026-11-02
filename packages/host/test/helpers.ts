@@ -6,20 +6,21 @@ import { Emitter, type CodeCard, type HostToBoard, type Segment } from "@codeboa
 import { analysisOf, startAnalysis } from "../src/analysis";
 import { cardForFileSym } from "../src/cards";
 import type { BoardView } from "../src/boards";
-import { langOf } from "../src/ws";
+import type { HostContext } from "../src/context";
 
 export const REPO = path.resolve(__dirname, "../../..");
 export const startTreeSitter = () => startAnalysis();
 
 /** A card for the symbol `qual` in a file (as Add Function would make it) and its first segment */
 export async function card(
+  cx: HostContext,
   abs: string,
   qual: string,
   text = fs.readFileSync(abs, "utf8"),
 ): Promise<{ card: CodeCard; seg: Segment }> {
-  const sym = analysisOf(langOf(abs), text).symbols.find((s) => s.qual === qual);
+  const sym = analysisOf(cx.langOf(abs), text).symbols.find((s) => s.qual === qual);
   if (!sym) throw new Error(`${qual} not in ${abs}`);
-  const c = (await cardForFileSym(abs, sym))!.card as CodeCard;
+  const c = (await cardForFileSym(cx, abs, sym))!.card as CodeCard;
   return { card: c, seg: c.segments[0] };
 }
 /** The file line of the first segment line matching re */

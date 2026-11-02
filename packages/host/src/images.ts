@@ -6,8 +6,8 @@ import { createHash } from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { IMAGE_EXT, sniffImage, sniffSvg } from "@codeboard/core";
-import type { Storage } from "./storage";
-import { workspace } from "./ws";
+import type { Storage } from "./storage/boards";
+import type { HostContext } from "./context";
 
 export const MAX_NOTE_IMAGE = 10 * 1024 * 1024;
 /** Markdown 里写的地址的前缀（相对存储目录） */
@@ -51,18 +51,16 @@ export async function readAsset(store: Storage, file: string): Promise<string> {
  * 拖到白板上、只给了 URI 的图片文件（VS Code 资源管理器里拖来的，或系统拖放只带 URI 的）读成 data: URL，交给白板照粘贴的图存。
  * 经编辑器读（工作区外的 file:、远程的 vscode-remote: 都行）；认不出、太大时抛错（消息给用户看）
  */
-export async function readImageUri(uri: string): Promise<string> {
+export async function readImageUri(cx: HostContext, uri: string): Promise<string> {
   const name = decodeURIComponent(
     uri
       .replace(/[?#].*$/, "")
       .split("/")
       .pop() || uri,
   );
-  const bytes = await workspace()
-    .files.readBytes(uri, MAX_NOTE_IMAGE)
-    .catch(() => {
-      throw new Error(`Could not read ${name}`);
-    });
+  const bytes = await cx.ws.files.readBytes(uri, MAX_NOTE_IMAGE).catch(() => {
+    throw new Error(`Could not read ${name}`);
+  });
   if (!bytes) throw new Error(`${name} is larger than ${MAX_NOTE_IMAGE >> 20} MB`);
   const buf = Buffer.from(bytes);
   const mime = sniffImage(buf)?.mime ?? (sniffSvg(buf) ? "image/svg+xml" : null);

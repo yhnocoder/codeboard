@@ -2,24 +2,21 @@
 // 编辑器的壳（VS Code 插件、以后的 Node sidecar）只调这一个函数，再把自己的界面（侧栏、CodeLens、状态栏）挂到返回的事件上
 import type { Disposable, Event, Workspace } from "@codeboard/core";
 import { HOST_SETTINGS } from "@codeboard/core/settings";
-import type { Storage } from "@codeboard/core/storage";
+import type { Storage } from "./storage/boards";
 import { makeActions } from "./actions";
 import { startAnalysis } from "./analysis";
 import { scheduleAssetSweep } from "./assetsweep";
-import { forgetDefs } from "./defcache";
 import type { HostEnv } from "./env";
-import { setMediaDir } from "./exports";
-import { onDidOpenGithubFile } from "./github";
+import { allQuestions } from "./exports";
+import { workspaceGithubFiles } from "./github";
 import { makeHandler } from "./handlers";
 import { BoardHub } from "./hub";
-import { watchNameIndex } from "./nameindex";
 import { affectsSettings, readSettings } from "./settings";
-import { scratchFiles } from "./scratchfiles";
-import { initSource } from "./source";
-import { followStorageDir, githubDir, onDidSwitchStorage, openStorage, watchProjectDir } from "./storage";
+import { BoardPlace, githubDir, watchProjectDir } from "./storage/place";
 import { recordProject } from "./transfer";
 import { watchVersions } from "./watch";
-import { useWorkspace } from "./ws";
+import { HostContext } from "./context";
+import { BoardMarks } from "./marks";
 
 export type HostOptions = {
   /** 放 tree-sitter wasm 的目录；不给 = 从 npm 包里找（Node 下） */
@@ -41,36 +38,44 @@ export type Host = Disposable & {
   onDidOpenGithubFile: Event<void>;
   /** 把没写盘的白板改动写完（退出时） */
   flush(): Promise<void>;
+  /** A file at a commit (git show), for the editor's read-only version documents */
+  showFile(root: string, commit: string, rel: string): Promise<string | null>;
+  /** Where boards have code in the workspace's files (CodeLens, line marks) */
+  marks: BoardMarks;
+  /** GitHub files this workspace opened or has on its boards (sidebar) */
+  githubFiles(): ReturnType<typeof workspaceGithubFiles>;
+  /** The questions on all boards (sidebar) */
+  questions(): ReturnType<typeof allQuestions>;
 };
 
 export function startHost(ws: Workspace, env: HostEnv, o: HostOptions = {}): Host {
-  useWorkspace(ws);
-  const subs: Disposable[] = [];
+  const cx = new HostContext(ws, { mediaDir: o.mediaDir });
+  const subs: Disposable[] = [cx];
   const on = (d: Disposable) => void subs.push(d);
   const analysis = startAnalysis(o.wasmDir);
-  if (o.mediaDir) setMediaDir(o.mediaDir);
-  const store = openStorage();
-  on(store);
-  initSource(githubDir());
-  const hub = new BoardHub(env, store);
+  const place = new BoardPlace(cx);
+  const store = place.store;
+  on(place);
+  cx.sources.init(githubDir(cx));
+  const hub = new BoardHub(cx, env, store);
   on(hub);
-  hub.handler = makeHandler(hub);
+  hub.handler = makeHandler(cx, hub);
 
   // 跨工作区记下这个项目的存储目录：别的窗口的 Copy / Move to Another Project… 在里面找
-  const record = () => void recordProject(hub.globalState, store.dir());
+  const record = () => void recordProject(cx, hub.globalState, store.dir());
   record();
-  let unsweep = scheduleAssetSweep(store);
+  let unsweep = scheduleAssetSweep(cx, store);
   on({ dispose: () => unsweep() });
   on(
-    onDidSwitchStorage(() => {
+    place.onDidSwitch(() => {
       void hub.followStorage();
       unsweep();
-      unsweep = scheduleAssetSweep(store);
+      unsweep = scheduleAssetSweep(cx, store);
       record();
     }),
   );
-  const follow = () => void followStorageDir(store);
-  on(watchProjectDir(follow));
+  const follow = () => void place.follow();
+  on(watchProjectDir(cx, follow));
   on(ws.files.onDidChangeRoots(follow));
 
   on(store.onDidChange(() => void hub.pushBoards()));
@@ -80,24 +85,23 @@ export function startHost(ws: Workspace, env: HostEnv, o: HostOptions = {}): Hos
   const files = ws.files;
   on(
     files.onDidEdit((abs) => {
-      if (abs) forgetDefs();
+      if (abs) cx.defs.forget();
     }),
   );
   on(
     files.onDidSave((abs) => {
-      if (abs) forgetDefs();
+      if (abs) cx.defs.forget();
     }),
   );
-  on(files.onDidCreate(() => forgetDefs()));
-  on(files.onDidDelete(() => forgetDefs()));
-  on(files.onDidRename(() => forgetDefs()));
-  on(watchNameIndex());
-  on(scratchFiles());
+  on(files.onDidCreate(() => cx.defs.forget()));
+  on(files.onDidDelete(() => cx.defs.forget()));
+  on(files.onDidRename(() => cx.defs.forget()));
+  on(cx.index.watch());
 
   on(
     ws.settings.onDidChange((e) => {
       if (e.affects(`codeboard.${HOST_SETTINGS.storageDir.key}`)) follow();
-      if (affectsSettings(e)) hub.broadcast({ type: "host", host: { settings: readSettings() } });
+      if (affectsSettings(e)) hub.broadcast({ type: "host", host: { settings: readSettings(cx) } });
       if (e.affects("editor.fontFamily"))
         hub.broadcast({ type: "host", host: { fontFamily: ws.settings.get<string>("editor.fontFamily") } });
     }),
@@ -105,17 +109,21 @@ export function startHost(ws: Workspace, env: HostEnv, o: HostOptions = {}): Hos
 
   let disposed = false;
   const ready = analysis.then(() => {
-    if (!disposed) on(watchVersions(hub, store));
+    if (!disposed) on(watchVersions(cx, hub, store));
   });
 
   return {
     hub,
     store,
     ready,
-    actions: makeActions(hub, store),
-    onDidSwitchStorage,
-    onDidOpenGithubFile,
+    actions: makeActions(cx, hub, store, () => place.follow()),
+    onDidSwitchStorage: place.onDidSwitch,
+    onDidOpenGithubFile: cx.githubOpened.event,
     flush: () => store.flush(),
+    showFile: cx.git.showFile,
+    marks: new BoardMarks(cx),
+    githubFiles: () => workspaceGithubFiles(cx, store),
+    questions: () => allQuestions(store),
     dispose() {
       disposed = true;
       for (const d of subs.splice(0).reverse()) d.dispose();

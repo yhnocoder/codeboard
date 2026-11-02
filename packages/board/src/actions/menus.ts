@@ -60,6 +60,7 @@ import {
   startWalk,
 } from "./flow";
 import { jumpTo } from "./nav";
+import { mergeCheck } from "@codeboard/core/commands";
 import { addGenerated } from "./chains";
 import { searchAllLangs, drawManual } from "./callpops";
 import {
@@ -70,7 +71,6 @@ import {
   duplicateSel,
   hideLines,
   mergeCards,
-  mergeCheck,
   moveToNewSection,
   moveToSection,
   removeSections,
@@ -98,7 +98,8 @@ import {
   splitByHeadings,
   turnNote,
 } from "./notes";
-import { canLinkList, mergeIntoLinkList, retryMeta, setListRich, setWebStyle } from "./web";
+import { mergeIntoLinkList, retryMeta, setListRich, setWebStyle } from "./web";
+import { canLinkList } from "@codeboard/core/commands";
 import { unlinkShared } from "./edit";
 import { deleteEverywhere, pasteFromBoard, copyCardsSel, cutCardsSel, detachTwins } from "./shared";
 import { enterFrame, turnIntoBoard, insertBoard, insertable, deleteFrameBoard } from "./subboards";

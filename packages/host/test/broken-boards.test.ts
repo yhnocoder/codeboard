@@ -2,13 +2,15 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { emptyBoard } from "@codeboard/core";
-import { Storage } from "@codeboard/core/storage";
-import { nodeFs } from "../src/nodefs";
+import { Storage } from "../src/storage/boards";
+import { nodeFs } from "../src/storage/nodefs";
 import { makeActions } from "../src/actions";
 import { treeChildren } from "../src/boardtree";
 import type { BoardHost } from "../src/boards";
-import { useWorkspace } from "../src/ws";
 import { nodeWorkspace } from "./node-workspace";
+import { HostContext } from "../src/context";
+
+let cx: HostContext;
 
 const W = nodeWorkspace();
 const dir = fs.mkdtempSync("/tmp/codeboard-broken-");
@@ -17,6 +19,9 @@ const shown: string[] = [],
   errors: string[] = [],
   opened: string[] = [];
 const panels = {
+  get cx() {
+    return cx;
+  },
   store,
   target: undefined,
   get: () => undefined,
@@ -39,7 +44,7 @@ const file = path.join(dir, "g", "luna.json");
 const bad = JSON.stringify({ ...emptyBoard("luna", "Luna's notes"), cards: [{ kind: "nope" }] });
 
 beforeAll(() => {
-  useWorkspace(W);
+  cx = new HostContext(W);
   fs.mkdirSync(path.dirname(file));
   fs.writeFileSync(file, bad);
 });
@@ -61,7 +66,7 @@ describe("a board file that can't be read", () => {
 
   it("opening it shows the reason, opens the JSON and never writes the file", async () => {
     const before = fs.statSync(file).mtimeMs;
-    const acts = makeActions(panels, store);
+    const acts = makeActions(cx, panels, store, async () => false);
     await acts["codeboard.openBrokenBoard"](file);
     await acts["codeboard.openBoard"]("luna", { here: true });
     await store.flush();
@@ -78,7 +83,7 @@ describe("a board file that can't be read", () => {
     fs.writeFileSync(file, JSON.stringify(emptyBoard("luna", "Luna's notes")));
     expect((await store.list()).map((m) => m.name)).toEqual(["Luna's notes"]);
     expect(store.broken()).toEqual([]);
-    await makeActions(panels, store)["codeboard.openBrokenBoard"](file);
+    await makeActions(cx, panels, store, async () => false)["codeboard.openBrokenBoard"](file);
     expect(shown.at(-1)).toBe("luna");
   });
 });

@@ -8,10 +8,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { loadRun, uid, type CallSample, type RunCall, type RunLoc, type RunRecord } from "@codeboard/core";
 import { git } from "./git";
-import { log } from "./log";
 import { readSettings } from "./settings";
-import { locOfFile } from "./source";
-import { hostPath, workspace, ws0, wsRoots } from "./ws";
 import type { Prompts } from "./prompts";
 
 /** 每个调用对留几次实参：前 FIRST 次 + 最后一次 */
@@ -141,6 +138,7 @@ def _codeboard_install():
 _codeboard_install()
 del _codeboard_install
 `;
+import type { HostContext } from "./context";
 
 /** 命令行按空格切开（单双引号里的空格不切） */
 function splitCmd(s: string): string[] {
@@ -293,7 +291,7 @@ export async function listRuns(storageDir: string): Promise<RunRecord[]> {
 }
 
 /** 运行记录里出现的文件 → 白板上的位置（来源 + 相对路径），白板拿它对箭头 */
-async function runLocs(r: RunRecord): Promise<Record<string, RunLoc>> {
+async function runLocs(cx: HostContext, r: RunRecord): Promise<Record<string, RunLoc>> {
   const files = new Set<string>();
   for (const c of r.calls) {
     files.add(c.from.file);
@@ -302,8 +300,8 @@ async function runLocs(r: RunRecord): Promise<Record<string, RunLoc>> {
   const out: Record<string, RunLoc> = {};
   for (const f of files) {
     if (!path.isAbsolute(f)) continue;
-    const l = await locOfFile(f);
-    out[f] = { src: l.src, path: l.path, hp: hostPath(f) };
+    const l = await cx.sources.locOfFile(f);
+    out[f] = { src: l.src, path: l.path, hp: cx.hostPath(f) };
   }
   return out;
 }
@@ -320,8 +318,8 @@ function runLabel(r: RunRecord): { label: string; description: string; detail: s
 }
 
 /** 发给白板的那一份（白板只要记录 + 路径对照） */
-export async function runApply(r: RunRecord) {
-  return { run: r, locs: await runLocs(r) };
+export async function runApply(cx: HostContext, r: RunRecord) {
+  return { run: r, locs: await runLocs(cx, r) };
 }
 
 type Target = {
@@ -330,11 +328,12 @@ type Target = {
 
 /** 问入口、跑一次、存下来、发给白板（没有白板就只存） */
 export async function captureFlow(
+  cx: HostContext,
   storageDir: string,
   p: Target | undefined,
   ask: Prompts,
 ): Promise<RunRecord | undefined> {
-  const w = workspace();
+  const w = cx.ws;
   const last = w.storage.get<string>("codeboard.lastRun");
   const cmd = await ask.input({
     title: "Capture Run",
@@ -347,16 +346,16 @@ export async function captureFlow(
   await w.storage.set("codeboard.lastRun", cmd.trim());
   const interp = w.settings.get<string>("python.defaultInterpreterPath");
   p?.post({ type: "toast", text: `Running ${cmd.trim()} …` });
-  log("info", `Capture Run: ${cmd.trim()}`);
+  cx.log("info", `Capture Run: ${cmd.trim()}`);
   let rec: RunRecord;
   try {
     rec = await captureRun({
       cmd,
-      cwd: ws0(),
-      scope: wsRoots(),
-      pkgs: readSettings().studyScope,
+      cwd: cx.root0(),
+      scope: cx.roots(),
+      pkgs: readSettings(cx).studyScope,
       python: interp && interp !== "python" ? interp : undefined,
-      out: (s) => log("info", s.replace(/\n$/, "")),
+      out: (s) => cx.log("info", s.replace(/\n$/, "")),
     });
   } catch (e) {
     void w.ui.info(`Capture Run failed: ${(e as Error).message}`);
@@ -367,12 +366,12 @@ export async function captureFlow(
     void w.ui.info(
       `The run finished (exit ${rec.exit}) but recorded no calls into Study Scope. See Output › CodeBoard.`,
     );
-  if (p) p.post({ type: "run", apply: await runApply(rec) });
+  if (p) p.post({ type: "run", apply: await runApply(cx, rec) });
   return rec;
 }
 
-export async function applyFlow(storageDir: string, p: Target | undefined, ask: Prompts) {
-  const w = workspace();
+export async function applyFlow(cx: HostContext, storageDir: string, p: Target | undefined, ask: Prompts) {
+  const w = cx.ws;
   if (!p) {
     void w.ui.info("Open a board first.");
     return;
@@ -386,5 +385,5 @@ export async function applyFlow(storageDir: string, p: Target | undefined, ask: 
     rs.map((x) => ({ ...runLabel(x), r: x })),
     { placeHolder: "Apply which run to this board?" },
   );
-  if (r) p.post({ type: "run", apply: await runApply(r.r) });
+  if (r) p.post({ type: "run", apply: await runApply(cx, r.r) });
 }

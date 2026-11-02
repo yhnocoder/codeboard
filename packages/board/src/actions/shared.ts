@@ -5,26 +5,20 @@ import {
   bounds,
   cardTitle,
   isCode,
-  placeCards,
   findFree,
-  removeCards,
-  unlinkCard,
-  notesOnChangedLines,
-  versionLabel,
   cardCopies,
-  makeTwin,
-  detachTwin,
   type Card,
   type CardCopy,
-  type DiffData,
   type ImageCard,
   type Link,
   type PastedCards,
   type SegView,
 } from "@codeboard/core";
-import { state, cardById, hostOf, shared, sharedOn, rectOf, twinsOf } from "../state/store";
+import * as C from "@codeboard/core/commands";
+import { commandEnv } from "./env";
+import { state, cardById, hostOf, sharedOn, rectOf, twinsOf } from "../state/store";
 import { putViews, copyViews } from "../state/views";
-import { mutate, flushSave } from "../state/changes";
+import { flushSave } from "../state/changes";
 import { sel, select, clearSel } from "../state/selection";
 import { toast } from "../state/toast";
 import { isHidden, settleHome } from "../state/sections";
@@ -105,14 +99,8 @@ export function pasteAs(ref: boolean) {
   const c = pasteChip();
   if (!c || c.ref === ref) return;
   if (ref) {
-    let n = 0;
-    if (
-      !mutate((b) => {
-        for (const [id, of] of c.pairs) if (makeTwin(b, id, of)) n++;
-      }) ||
-      !n
-    )
-      return;
+    const n = C.makeReferences(commandEnv, c.pairs);
+    if (!n) return;
     toast(
       n > 1
         ? `${n} cards are now the same cards as the originals: editing one changes the other`
@@ -124,13 +112,8 @@ export function pasteAs(ref: boolean) {
 
 /** Detach：摆在几处的同一张卡，这几处变成独立副本（一步撤销）；段换了新 id，展示数据跟过去 */
 export function detachTwins(ids: string[]) {
-  const segs: Record<string, string> = {};
-  if (
-    !mutate((b) => {
-      for (const id of ids) Object.assign(segs, detachTwin(b, id));
-    })
-  )
-    return;
+  const segs = C.detachTwins(commandEnv, ids);
+  if (!segs) return;
   copyViews(segs);
   toast(
     ids.length > 1 ? `Detached ${ids.length} cards: each is its own copy now` : "Detached: this is its own copy now",
@@ -166,7 +149,7 @@ export function cutCardsSel(): boolean {
     if (x.card.kind === "code") for (const sg of x.card.segments) if (all[sg.id]) views[sg.id] = all[sg.id];
   const text = copyCards(cs);
   ghostOut(ids);
-  if (!mutate((d) => removeCards(d, ids))) return true;
+  if (!C.deleteItems(commandEnv, { cards: ids })) return true;
   cutClip = { board: state.board.id, text, cards, links, views };
   clearSel();
   toast(`Cut ${cs.length} card${cs.length > 1 ? "s" : ""}`);
@@ -275,16 +258,10 @@ function putCards(
       );
   const dx = Math.round(free.x - box.x),
     dy = Math.round(free.y - box.y);
-  let ids: string[] = [],
-    segs: Record<string, string> = {},
-    pairs: [string, string][] = [];
-  mutate((b) => {
-    const m = placeCards(b, items, { copy, links, at: (p) => ({ ...p, x: p.x + dx, y: p.y + dy }) });
-    pairs = tops.filter((x) => m.cards[x.card.id]).map((x) => [m.cards[x.card.id], x.card.id]);
+  const r = C.pasteCards(commandEnv, items, links, { copy, dx, dy, settle: settleHome });
+  const pairs = r?.pairs ?? [],
+    segs = r?.segs ?? {},
     ids = pairs.map(([id]) => id);
-    segs = m.segs;
-    for (const id of ids) settleHome(b, id);
-  });
   batch(() => {
     copyViews(segs, views);
     putViews(Object.fromEntries(Object.entries(views).filter(([k]) => !segs[k])));
@@ -315,11 +292,6 @@ export function openOnBoard(board: string, card: string, line?: number) {
   }
   send({ type: "openBoard", id: board, card, line });
 }
-/** 「This card is on 3 boards: A, B, C.」 */
-function boardsText(id: string) {
-  const bs = shared[id]?.boards ?? [];
-  return `This card is on ${bs.length} boards: ${bs.map((b) => b.name).join(", ")}.`;
-}
 
 const selShared = () => sel.cards.map(hostOf).filter((id) => sharedOn(id) > 1);
 
@@ -331,68 +303,18 @@ export async function deleteEverywhere(ids = selShared()) {
   if (!c) return;
   const n = sharedOn(id);
   const ok = await choose(`Delete “${cardTitle(c, state.board)}” everywhere?`, ["Delete Everywhere", "Cancel"], {
-    text: `${boardsText(id)} Its arrows and sidenotes go too, on every board.`,
+    text: `${C.boardsText(commandEnv, id)} Its arrows and sidenotes go too, on every board.`,
     def: 1,
   });
   if (ok !== 0) return;
   ghostOut(new Set([id]));
-  if (!mutate((b) => removeCards(b, [id]))) return;
+  if (!C.deleteItems(commandEnv, { cards: [id] })) return;
   select({});
   const done = await ask("deleteEverywhere", { card: id }).catch((e: Error) => {
     toast(`Couldn't delete everywhere: ${e.message}`);
     return -1;
   });
   if (done >= 0) toast(`Deleted from ${Math.max(done, n)} boards`);
-}
-
-/**
- * 共享卡 Update：先按设置决定范围（问 / 所有白板 / 只这块白板）。只这块白板 = 先拆成副本（别的白板留在旧版本），再更新。
- * 返回 false = 用户选了 Keep 或关掉了
- */
-export async function updateScoped(
-  cardId: string,
-  segId: string,
-  data: DiffData,
-  apply: (card: string) => void,
-  keep: () => void,
-): Promise<boolean> {
-  const n = sharedOn(cardId);
-  if (n < 2 || !data.newSeg) {
-    apply(cardId);
-    return true;
-  }
-  let scope = state.host.settings.sharedUpdate;
-  if (scope === "ask") {
-    const c = cardById(cardId)?.card;
-    const ns = { ...data.newSeg, id: segId };
-    const hit = notesOnChangedLines(unwrap(state.board), cardId, ns).length;
-    const i = await choose(
-      `Update ${c ? cardTitle(c, state.board) : "this card"} to ${versionLabel(ns.version)}?`,
-      ["Update on All Boards", "This Board Only", "Keep"],
-      {
-        text: boardsText(cardId),
-        warn: hit ? `${hit} sidenote${hit > 1 ? "s are" : " is"} on a changed line` : undefined,
-        note: "This Board Only makes a copy here, so the other boards keep the old version.",
-      },
-    );
-    if (i === null) return false;
-    if (i === 2) {
-      keep();
-      return false;
-    }
-    scope = i === 0 ? "all" : "this";
-  }
-  if (scope === "this") {
-    let to = cardId;
-    mutate((b) => {
-      to = unlinkCard(b, cardId);
-    });
-    apply(to);
-    select({ cards: [to] });
-    return true;
-  }
-  apply(cardId);
-  return true;
 }
 
 export function reviewToast(cardId: string) {

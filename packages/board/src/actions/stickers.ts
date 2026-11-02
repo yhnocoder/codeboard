@@ -1,4 +1,6 @@
-import { uid, removeStickers, isQuestion, type IconRef, type Sticker, type StickerAt } from "@codeboard/core";
+import { uid, isQuestion, type IconRef, type Sticker, type StickerAt } from "@codeboard/core";
+import { deleteItems } from "@codeboard/core/commands";
+import { commandEnv } from "./env";
 import { openQuestion, setAnswered, linkAnswer, setStickerDragged } from "./questions";
 import { state, rectOf } from "../state/store";
 import { mutate, live } from "../state/changes";
@@ -193,7 +195,7 @@ function rowLine(cardEl: HTMLElement, el: HTMLElement): { card: string; seg: str
 
 /** @public run from the key table (keymap.ts) */
 export function removeSticker(id: string) {
-  mutate((b) => removeStickers(b, [id]));
+  deleteItems(commandEnv, { stickers: [id] });
   if (selSticker() === id) setSelSticker(null);
 }
 function setStickerColorOf(id: string, color: string | undefined) {

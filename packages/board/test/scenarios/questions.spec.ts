@@ -11,7 +11,7 @@ import {
   type SegView,
 } from "@codeboard/core";
 import { shot, put, symCard, findSym, viewOf, OUT, REPO, type Host } from "../harness";
-import { inlineFor, setMediaDir } from "@codeboard/host/testing";
+import { inlineFor } from "@codeboard/host/testing";
 import { test, open, check, light, verdict, expect, until, idle } from "../fixtures";
 import type { Page } from "@playwright/test";
 
@@ -425,10 +425,9 @@ function schedBoard() {
 }
 
 async function exportScenario(res: Record<string, unknown>) {
-  setMediaDir(MEDIA);
   const { b, ids } = schedBoard();
   const files: Record<string, string> = {};
-  const store = { assetsDir: () => path.join(OUT, "no-assets") } as unknown as Parameters<typeof inlineFor>[0];
+  const store = { assetsDir: () => path.join(OUT, "no-assets") } as unknown as Parameters<typeof inlineFor>[1];
   const h = await open({
       board: b,
       light,
@@ -450,7 +449,7 @@ async function exportScenario(res: Record<string, unknown>) {
           return true;
         }
         if (m.type === "exportFile") {
-          const text = m.kind === "html" ? await inlineFor(store, m.text) : m.text;
+          const text = m.kind === "html" ? await inlineFor(MEDIA, store, m.text) : m.text;
           const f = path.join(OUT, `export-${m.name.toLowerCase().replace(/\W+/g, "-")}.${m.kind}`);
           fs.writeFileSync(f, text);
           files[m.kind] = f;

@@ -556,7 +556,7 @@ export class ParaView {
     return true;
   }
 }
-const tagOf = (n: PMNode, cell: boolean) => {
+export const tagOf = (n: PMNode, cell: boolean) => {
   const l = cell ? 0 : blockInfo(n.textContent, true).level;
   return l ? `h${l}` : "p";
 };

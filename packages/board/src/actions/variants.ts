@@ -4,15 +4,9 @@ import { onBoardSwitch, rooted } from "../state/root";
 import { unwrap } from "solid-js/store";
 import {
   activeOf,
-  addVariant as addV,
-  dropVariants,
-  findCard,
   isCode,
   isMine,
-  removeVariant as removeV,
   segsOf,
-  setVariantSegs,
-  switchVariant as switchV,
   upstreamSegs,
   variantMarks,
   variantTitle,
@@ -28,9 +22,11 @@ import {
   type VariantMarks,
   type VariantSync,
 } from "@codeboard/core";
+import * as C from "@codeboard/core/commands";
+import { commandEnv } from "./env";
 import { state, cardById } from "../state/store";
 import { putViews, staleOk } from "../state/views";
-import { mutate, sync } from "../state/changes";
+import { sync } from "../state/changes";
 import { toast } from "../state/toast";
 import { ask } from "../host";
 import { openMenu, promptText, choose, type Item } from "../ui/Menu";
@@ -120,9 +116,7 @@ export function switchVariant(id: string, vid: string) {
   const c = code(id);
   if (!c?.variants || activeOf(c) === vid) return;
   batch(() => {
-    mutate((b) => {
-      switchV(b, id, vid);
-    });
+    C.showVariant(commandEnv, id, vid);
     const k = code(id);
     if (k) ensureViews(k);
   });
@@ -208,14 +202,14 @@ async function addVariant(id: string, from: AddVariantFrom) {
     return void toast((e as Error).message);
   }
   if (!nv || !code(id)) return;
-  const vid = `v${Date.now().toString(36)}`;
   const cur = code(id)!;
   for (const s of cur.segments) shownView.set(s.id, activeOf(cur));
+  let vid = "";
   batch(() => {
+    vid = C.addVariant(commandEnv, id, nv);
     putViews(
       Object.fromEntries(nv.segs.flatMap((s) => (nv.views[s.id] ? [[viewKey(s.id, vid), nv.views[s.id]]] : []))),
     );
-    mutate((b) => addV(b, id, { id: vid, name: nv.name, from: nv.from, segs: nv.segs }));
   });
   switchVariant(id, vid);
   toast(isMine(code(id)!) ? `Added variant ${nv.name}` : `Added variant ${nv.name}: same code as upstream`);
@@ -233,13 +227,7 @@ export function variantMenu(id: string, vid: string, x: number, y: number) {
         label: "Rename…",
         run: () =>
           void promptText("Rename Variant", v.name, "", "Rename").then(
-            (n) =>
-              n &&
-              mutate((b) => {
-                const k = findCard(b, id)?.card as CodeCard | undefined;
-                const x = k?.variants?.find((q) => q.id === vid);
-                if (x) x.name = n;
-              }),
+            (n) => n && C.renameVariant(commandEnv, id, vid, n),
           ),
       },
       {
@@ -265,7 +253,7 @@ function removeVariant(id: string, vid: string) {
   if (!c) return;
   if (activeOf(c) === vid) switchVariant(id, UPSTREAM);
   if ((c.variants?.length ?? 0) <= 2) for (const s of c.segments) shownView.delete(s.id); // 只剩上游：变回普通卡
-  mutate((b) => removeV(b, id, vid));
+  C.removeVariant(commandEnv, id, vid);
   if (vbase[id] === vid) setVbase(id, undefined);
 }
 async function removeAll(id: string) {
@@ -275,19 +263,10 @@ async function removeAll(id: string) {
   if (i !== 0) return;
   if (code(id) && activeOf(code(id)!) !== UPSTREAM) switchVariant(id, UPSTREAM);
   for (const s of code(id)?.segments ?? []) shownView.delete(s.id);
-  mutate((b) => dropVariants(b, id));
+  C.dropAllVariants(commandEnv, id);
 }
 
-export function setVariantNote(id: string, text: string) {
-  mutate((b) => {
-    const c = findCard(b, id)?.card as CodeCard | undefined;
-    const v = c?.variants?.find((k) => k.id === activeOf(c));
-    if (v) {
-      if (text.trim()) v.note = text.trim();
-      else delete v.note;
-    }
-  });
-}
+export const setVariantNote = (id: string, text: string) => C.setVariantNote(commandEnv, id, text);
 
 export function baseOf(c: CodeCard): { key: string; label: string; segs?: Segment[] } {
   const k = vbase[c.id] ?? UPSTREAM;
@@ -368,10 +347,7 @@ export function applyVariantSync(cards: Record<string, VariantSync>) {
       if (r.latest || r.behind) setVlive(id, { latest: r.latest, behind: r.behind });
       if (r.views) absorbViews(r.views);
       const segs = r.segs;
-      if (segs && Object.keys(segs).length)
-        sync((b) => {
-          for (const [vid, ss] of Object.entries(segs)) setVariantSegs(b, id, vid, ss);
-        });
+      if (segs && Object.keys(segs).length) sync((b) => C.syncVariantSegs(b, id, segs));
     }
   });
   for (const [id, r] of Object.entries(cards)) {
@@ -409,7 +385,7 @@ function convertMerged(id: string) {
         ),
       );
     for (const s of c.segments) shownView.delete(s.id);
-    mutate((b) => dropVariants(b, id, latest ? structuredClone(unwrap(latest.segs)) : undefined));
+    C.dropAllVariants(commandEnv, id, latest ? structuredClone(unwrap(latest.segs)) : undefined);
     setMergedSig((m) => {
       const n = { ...m };
       delete n[id];
@@ -420,11 +396,7 @@ function convertMerged(id: string) {
   toast(latest ? `Now a regular card pinned to ${latest.label}` : "Now a regular card");
 }
 function keepMerged(id: string, vid: string, tip: string) {
-  mutate((b) => {
-    const c = findCard(b, id)?.card as CodeCard | undefined;
-    const v = c?.variants?.find((x) => x.id === vid);
-    if (v) v.merged = tip;
-  });
+  C.keepMergedVariant(commandEnv, id, vid, tip);
   setMergedSig((m) => {
     const n = { ...m };
     delete n[id];
@@ -446,13 +418,5 @@ export function mergedPrompt(id: string) {
 }
 
 /** 「只在这个 Variant」：挂在有 Variant 的卡上的 Sidenote 才有 */
-export function toggleVariantOnly(noteId: string) {
-  mutate((b) => {
-    const n = b.sidenotes.find((k) => k.id === noteId);
-    const c = n && (findCard(b, n.at.card)?.card as CodeCard | undefined);
-    if (!n || !c?.variants?.length) return;
-    if (n.variant) delete n.variant;
-    else n.variant = activeOf(c);
-  });
-}
+export const toggleVariantOnly = (noteId: string) => C.toggleVariantOnly(commandEnv, noteId);
 export const variantName = (id: string, vid: string) => code(id)?.variants?.find((v) => v.id === vid)?.name;

@@ -3,14 +3,16 @@ import * as path from "node:path";
 import { createHash } from "node:crypto";
 import { afterAll, describe, expect, it } from "vitest";
 import { sniffImage, type BoardToHost } from "@codeboard/core";
-import { Storage } from "@codeboard/core/storage";
-import { nodeFs } from "../src/nodefs";
+import { Storage } from "../src/storage/boards";
+import { nodeFs } from "../src/storage/nodefs";
 import { makeHandler } from "../src/handlers";
 import { MAX_NOTE_IMAGE, saveNoteImage } from "../src/images";
 import type { BoardHost, BoardPanel } from "../src/boards";
-import { useWorkspace } from "../src/ws";
 import { gif, png, WEBP_1PX } from "./images";
 import { nodeWorkspace } from "./node-workspace";
+import { HostContext } from "../src/context";
+
+let cx: HostContext;
 
 const tmp = fs.mkdtempSync("/tmp/codeboard-img-");
 afterAll(() => fs.rmSync(tmp, { recursive: true, force: true }));
@@ -18,7 +20,12 @@ let n = 0;
 function setup() {
   const dir = path.join(tmp, `s${++n}`);
   const store = new Storage(nodeFs, { dir: () => dir });
-  const h = makeHandler({ store } as unknown as BoardHost);
+  const h = makeHandler(cx, {
+    get cx() {
+      return cx;
+    },
+    store,
+  } as unknown as BoardHost);
   const save = (dataUrl: string) =>
     h({} as BoardPanel, { type: "saveImage", req: 1, dataUrl } as BoardToHost) as Promise<string>;
   const assets = () => (fs.existsSync(path.join(dir, "assets")) ? fs.readdirSync(path.join(dir, "assets")).sort() : []);
@@ -170,10 +177,12 @@ describe("saving a pasted image", () => {
 
 describe("reading an image card's picture", () => {
   const read = (s: ReturnType<typeof setup>, file: string) =>
-    makeHandler({ store: s.store } as unknown as BoardHost)(
-      {} as BoardPanel,
-      { type: "readAsset", req: 1, file } as BoardToHost,
-    ) as Promise<string>;
+    makeHandler(cx, {
+      get cx() {
+        return cx;
+      },
+      store: s.store,
+    } as unknown as BoardHost)({} as BoardPanel, { type: "readAsset", req: 1, file } as BoardToHost) as Promise<string>;
 
   it("answers the file in assets/ as a data URL typed by its bytes, which saves into a Note like a pasted image", async () => {
     const s = setup();
@@ -200,7 +209,13 @@ describe("adding an image card's picture", () => {
   const SVG = Buffer.from(
     `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><rect width="120" height="80"/></svg>`,
   );
-  const handler = (s: ReturnType<typeof setup>) => makeHandler({ store: s.store } as unknown as BoardHost);
+  const handler = (s: ReturnType<typeof setup>) =>
+    makeHandler(cx, {
+      get cx() {
+        return cx;
+      },
+      store: s.store,
+    } as unknown as BoardHost);
 
   it("stores it under the extension its content gives, whatever name the board sends (webviews type a file by its extension)", async () => {
     const s = setup();
@@ -221,7 +236,7 @@ describe("adding an image card's picture", () => {
       warned.push(text);
       return undefined;
     };
-    useWorkspace(W);
+    cx = new HostContext(W);
     const pick = () =>
       handler(s)({} as BoardPanel, { type: "pickFile", req: 1, kind: "image" } as BoardToHost) as Promise<
         string | null

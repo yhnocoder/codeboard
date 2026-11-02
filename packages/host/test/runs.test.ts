@@ -3,9 +3,11 @@ import * as path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { RunRecord } from "@codeboard/core";
 import { captureRun, listRuns, runApply, saveRun } from "../src/runs";
-import { useWorkspace } from "../src/ws";
 import { nodeWorkspace } from "./node-workspace";
 import { git } from "./helpers";
+import { HostContext } from "../src/context";
+
+let cx: HostContext;
 
 const FIX = fs.mkdtempSync("/tmp/codeboard-run-");
 const SD = fs.mkdtempSync("/tmp/codeboard-store-");
@@ -17,7 +19,7 @@ beforeAll(async () => {
   git(FIX, "add", "-A");
   git(FIX, "commit", "-qm", "fixture");
   head = git(FIX, "rev-parse", "HEAD");
-  useWorkspace(nodeWorkspace(FIX));
+  cx = new HostContext(nodeWorkspace(FIX));
   before = fs.readdirSync(FIX).sort().join(",");
   rec = await captureRun({ cmd: "run.py 2", cwd: FIX, scope: [FIX], pkgs: [] });
 });
@@ -63,7 +65,7 @@ describe("Capture Run", () => {
     expect((await listRuns(SD))[0]?.id).toBe(rec.id);
   });
   it("maps absolute files to workspace-relative paths", async () => {
-    const a = await runApply(rec);
+    const a = await runApply(cx, rec);
     expect(a.locs[path.join(FIX, "toyllm/engine.py")]?.path).toBe("toyllm/engine.py");
   });
   it("still returns a record with its exit code when the command fails", async () => {

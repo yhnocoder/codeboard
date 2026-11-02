@@ -14,21 +14,20 @@ import {
   callVars,
   cardForFileSym,
   expand,
-  langOf,
-  nameIndexReady,
   nodeWorkspace,
   peek,
-  resetIndex,
   search,
   searchName,
   searchPick,
   startAnalysis,
-  startNameIndex,
-  useWorkspace,
   viewsFor,
   type Storage,
+  HostContext,
 } from "@codeboard/host/testing";
 import { test, open, verdict, expect, until, idle } from "../fixtures";
+
+/** The host the scenario talks to (each setup makes a new one) */
+let cx: HostContext;
 
 const nv = (qual: string) => {
   const s = findSym(qual);
@@ -200,21 +199,23 @@ async function nanoHost(
   o: { w?: number; h?: number; names?: (hs: NameHit[]) => NameHit[] } = {},
 ) {
   const NV = path.join(REPO, "examples/nano-vllm");
-  useWorkspace(nodeWorkspace(NV));
+  cx = new HostContext(nodeWorkspace(NV));
   await startAnalysis();
-  resetIndex();
-  startNameIndex();
-  await nameIndexReady();
+  cx.index.start();
+  await cx.index.ready();
   const B = emptyBoard("bNv", "nano-vllm");
   const ids: string[] = [];
   for (const c of cards) {
     const abs = path.join(NV, c.rel);
-    const sym = analysisOf(langOf(abs), fs.readFileSync(abs, "utf8")).symbols.find((s) => s.qual === c.qual)!;
-    const card = (await cardForFileSym(abs, sym))!.card as CodeCard;
+    const sym = analysisOf(cx.langOf(abs), fs.readFileSync(abs, "utf8")).symbols.find((s) => s.qual === c.qual)!;
+    const card = (await cardForFileSym(cx, abs, sym))!.card as CodeCard;
     put(B, card, c.x, c.y, 560);
     ids.push(card.id);
   }
-  const views: Record<string, SegView> = await viewsFor(B.cards.flatMap((c) => (c.kind === "code" ? c.segments : [])));
+  const views: Record<string, SegView> = await viewsFor(
+    cx,
+    B.cards.flatMap((c) => (c.kind === "code" ? c.segments : [])),
+  );
   const h = await open({
     board: B,
     w: o.w ?? 1400,
@@ -224,24 +225,24 @@ async function nanoHost(
         case "ready":
           return true;
         case "expand":
-          await reply(m.req, await expand(m));
+          await reply(m.req, await expand(cx, m));
           return true;
         case "peek":
-          await reply(m.req, await peek(m));
+          await reply(m.req, await peek(cx, m));
           return true;
         case "views":
-          await reply(m.req, await viewsFor(m.segs));
+          await reply(m.req, await viewsFor(cx, m.segs));
           return true;
         case "callVars":
-          await reply(m.req, await callVars(m));
+          await reply(m.req, await callVars(cx, m));
           return true;
         case "searchName": {
-          const hs = await searchName(m.name);
+          const hs = await searchName(cx, m.name);
           await reply(m.req, o.names ? o.names(hs) : hs);
           return true;
         }
         case "searchPick":
-          await reply(m.req, await searchPick(m.item));
+          await reply(m.req, await searchPick(cx, m.item));
           return true;
         case "prefetch":
           return true;
@@ -449,12 +450,11 @@ async function readableNote(res: Record<string, unknown>) {
 
 /** ⌘K 在 nano-vllm 里搜 step：只列名字 / 全名里有 step 的符号（不列 main、Context、get_context、…__init__） */
 async function searchStep(res: Record<string, unknown>) {
-  useWorkspace(nodeWorkspace(path.join(REPO, "examples/nano-vllm")));
+  cx = new HostContext(nodeWorkspace(path.join(REPO, "examples/nano-vllm")));
   await startAnalysis();
-  resetIndex();
-  startNameIndex();
-  await nameIndexReady();
-  const items = await search(null as unknown as Storage, "step", "symbols");
+  cx.index.start();
+  await cx.index.ready();
+  const items = await search(cx, null as unknown as Storage, "step", "symbols");
   res.labels = items.map((i) => i.label);
   return (
     items.length > 0 && items.every((i) => i.label.toLowerCase().includes("step")) && items[0].label.endsWith(".step")

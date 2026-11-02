@@ -19,16 +19,14 @@ import {
   type Stale,
   type WalkHop,
 } from "@codeboard/core";
-import type { CardClip, Storage } from "@codeboard/core/storage";
+import type { CardClip } from "./storage/clip";
+import type { Storage } from "./storage/boards";
 import { countStale, staleFor, staleSegments } from "./versions";
 import { syncVariants } from "./variants";
 import { viewsFor } from "./views";
-import { absOf, present, srcLabel } from "./source";
 import { readSettings } from "./settings";
-import { warmBoard } from "./prefetch";
-import { startNameIndex } from "./nameindex";
-import { workspace } from "./ws";
 import type { StateStore, ViewPlace } from "./env";
+import type { HostContext } from "./context";
 
 /** 宿主转发的 ⌘ / Ctrl 键（webview 里不自己处理）：与 package.json 里 codeboard.boardKey 的键一致（"+" 是 "=" 那个键按了 Shift）；board 的 lists.test.ts 会核对 */
 export const FORWARDED_KEYS = ["k", "d", "0", "1", "=", "+", "-", "shift+l", "shift+b", ","];
@@ -52,6 +50,7 @@ export interface BoardView {
 }
 
 export interface BoardHost {
+  readonly cx: HostContext;
   readonly store: Storage;
   /** 编辑器里 Add to 的目标白板 */
   readonly target: string | undefined;
@@ -110,8 +109,8 @@ function welcomeOf(
 
 const INDEX_DELAY = 4000;
 
-const inPaths = (s: Segment, paths: ReadonlySet<string>) => {
-  const a = absOf(s);
+const inPaths = (cx: HostContext, s: Segment, paths: ReadonlySet<string>) => {
+  const a = cx.sources.absOf(s);
   return !!a && paths.has(a);
 };
 
@@ -131,6 +130,10 @@ export class BoardPanel {
 
   /** What the board last said about the keyboard (its "focus" messages) */
   hasKeyboard = false;
+  /** 图片的 AI 操作还在等的请求（白板给的 job 号 → 取消用的） */
+  readonly imageJobs = new Map<number, AbortController>();
+  /** The Note completion in flight (a newer one cancels it) */
+  completing: AbortController | undefined;
   private asks = new Map<number, (v: string | number | null) => void>();
   private askN = 0;
 
@@ -140,6 +143,10 @@ export class BoardPanel {
     readonly view: BoardView,
     private mgr: BoardHost,
   ) {}
+
+  private get cx() {
+    return this.mgr.cx;
+  }
 
   get visible() {
     return this.view.visible;
@@ -190,9 +197,9 @@ export class BoardPanel {
     const segs = boardSegments(b);
     const ss = staleSegments(b);
     // 版本状态要跑 git、在新版本里重新找段，常常比高亮还慢：白板不等它（卡上的提示晚一点出来）。高亮要等：注释折叠决定卡的高度
-    const staleP = staleFor(ss.segs, ss.up);
+    const staleP = staleFor(this.cx, ss.segs, ss.up);
     const [views, boards, readonly] = await Promise.all([
-      viewsFor([...segs, ...variantSegments(b)]),
+      viewsFor(this.cx, [...segs, ...variantSegments(b)]),
       this.mgr.metas(),
       this.readonlyNote(b),
     ]);
@@ -225,22 +232,22 @@ export class BoardPanel {
         if (Object.keys(stale).length) this.post({ type: "stale", stale });
         this.mgr.staleChanged(this.id, countStale(b, stale));
       });
-    this.staleRun = first.catch((e) => workspace().log("warn", `stale: ${e instanceof Error ? e.message : e}`));
+    this.staleRun = first.catch((e) => this.cx.ws.log("warn", `stale: ${e instanceof Error ? e.message : e}`));
     this.variantSent.clear();
     void this.refreshVariants(true);
     // 白板已经出来了：后台让语言服务先热起来
-    warmBoard(segs, () => this.mgr.get(this.id) === this);
+    this.cx.prefetch.warmBoard(segs, () => this.mgr.get(this.id) === this);
     // 名字索引也在后台建（语言服务给不出定义时用），等白板和预热先跑一会儿
-    startNameIndex(INDEX_DELAY);
+    this.cx.index.start(INDEX_DELAY);
   }
 
   host(): HostInfo {
     return {
-      fontFamily: workspace().settings.get<string>("editor.fontFamily"),
+      fontFamily: this.cx.ws.settings.get<string>("editor.fontFamily"),
       forwardedKeys: FORWARDED_KEYS,
       assetBase: this.view.resourceUrl(this.mgr.store.assetsDir()),
       readonly: this.readonly,
-      settings: readSettings(),
+      settings: readSettings(this.cx),
       target: this.mgr.target === this.id,
       clip: this.mgr.clip && { board: this.mgr.clip.board, n: this.mgr.clip.cards.length },
     };
@@ -249,8 +256,8 @@ export class BoardPanel {
   /** 仓库找不到时的提示（只读快照） */
   private async readonlyNote(b: Board): Promise<string | undefined> {
     const segs = boardSegments(b).filter((s) => s.src.kind !== "free" && s.src.kind !== "github");
-    const here = await Promise.all(segs.map((s) => present(s)));
-    const miss = new Set(segs.filter((_, i) => !here[i]).map((s) => srcLabel(s.src)));
+    const here = await Promise.all(segs.map((s) => this.cx.sources.present(s)));
+    const miss = new Set(segs.filter((_, i) => !here[i]).map((s) => this.cx.sources.srcLabel(s.src)));
     if (!miss.size) return undefined;
     const names = [...miss].map((n) => `“${n}”`).join(", ");
     return `Repo ${names} not found in this workspace. Showing saved code, read-only.`;
@@ -262,16 +269,17 @@ export class BoardPanel {
   async refreshVariants(net = false) {
     if (!this.board || !this.ready) return;
     try {
-      const cards = await syncVariants(this.board, this.variantSent, { net });
+      const cards = await syncVariants(this.cx, this.board, this.variantSent, { net });
       if (Object.keys(cards).length) this.post({ type: "variants", cards });
     } catch (e) {
-      workspace().log("warn", `variants: ${e instanceof Error ? e.message : e}`);
+      this.cx.ws.log("warn", `variants: ${e instanceof Error ? e.message : e}`);
     }
   }
 
   holds(paths: ReadonlySet<string>): boolean {
     return (
-      !!this.board && [...boardSegments(this.board), ...variantSegments(this.board)].some((s) => inPaths(s, paths))
+      !!this.board &&
+      [...boardSegments(this.board), ...variantSegments(this.board)].some((s) => inPaths(this.cx, s, paths))
     );
   }
 
@@ -287,7 +295,7 @@ export class BoardPanel {
     if (!this.board || !this.ready) return;
     void this.refreshVariants();
     const ss = staleSegments(this.board);
-    const fresh = await staleFor(paths ? ss.segs.filter((s) => inPaths(s, paths)) : ss.segs, ss.up);
+    const fresh = await staleFor(this.cx, paths ? ss.segs.filter((s) => inPaths(this.cx, s, paths)) : ss.segs, ss.up);
     let st = fresh;
     if (paths) {
       st = {};
@@ -307,7 +315,7 @@ export class BoardPanel {
     if (!this.board) return;
     const segs = boardSegments(this.board);
     this.readonly = await this.readonlyNote(this.board);
-    this.post({ type: "views", views: await viewsFor([...segs, ...variantSegments(this.board)]) });
+    this.post({ type: "views", views: await viewsFor(this.cx, [...segs, ...variantSegments(this.board)]) });
     this.post({ type: "host", host: { readonly: this.readonly } });
     await this.refreshStale();
   }

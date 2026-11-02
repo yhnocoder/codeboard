@@ -41,10 +41,15 @@ math {
 .md-pm ::selection {
   background: color-mix(in srgb, var(--accent) 26%, transparent);
 }
-/* 公式块在静态显示里是 .math，在编辑器里是 [data-type="block-math"]：两边同一套间距，进出编辑时不跳 */
-.md p + p,
-.md p + :is(ul, ol, pre, table, blockquote, details, .math, [data-type="block-math"]),
-.md :is(ul, ol, pre, table, blockquote, details, .math, [data-type="block-math"]) + p {
+/* 公式块在静态显示里是 .math，在编辑器里是 [data-type="block-math"]：两边同一套间距，进出编辑时不跳。
+   A paragraph after a paragraph (md-pp), a block after a paragraph and a paragraph after a block (md-gap): classes the static
+   render and the editor give (gaps.ts), not sibling rules (p + p), which made Chrome restyle every later block of a long Note
+   on each Enter. Each selector has the specificity of the sibling rule it replaces (.md p + p; .md p + :is(…) and
+   .md :is(…) + p), so the rules it wins and loses against are the same: .md li > p still takes back a list item's second
+   paragraph, .md ol.footnotes keeps its own margin */
+.md p:where(.md-pp):is(p),
+.md :is(p, ul, ol, pre, table, blockquote, details).md-gap,
+.md :is(.math, [data-type="block-math"]).md-gap {
   margin-top: 0.5em;
 }
 .md p:empty::before {
@@ -606,7 +611,7 @@ math {
     visibility: hidden;
   }
 }
-/* 编辑器里最后一块后面垫着的空段落（editor/index.tsx padEnd）还空着时是 .md-pad：不占高度（进出编辑时卡片一样高），
+/* 编辑器里最后一块后面垫着的空段落（editor/pad.ts padEnd）还空着时是 .md-pad：不占高度（进出编辑时卡片一样高），
    光标在里面（.at）时画成一条短横线（和 gapcursor 一样） */
 .md > :last-child,
 .md-pm > :last-child,

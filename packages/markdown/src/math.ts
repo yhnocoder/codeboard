@@ -5,7 +5,7 @@ import katex, { type KatexOptions } from "katex";
 type Macros = NonNullable<KatexOptions["macros"]>;
 
 /** The TeX source on KaTeX's HTML output (data-latex on its .katex element): it draws no MathML, whose <annotation> is where
- *  a paste of a typeset formula reads its TeX from (schema.ts texAttrs) */
+ *  a paste of a typeset formula reads its TeX from (schema-nodes.ts texAttrs) */
 export const withTex = (html: string, latex: string) =>
   html.replace(
     '<span class="katex">',
