@@ -105,6 +105,7 @@
       "about": "code cards: lines, highlighting, hidden lines, Fit Content, the code card header, Free code editing",
       "files": [
         "packages/board/src/cards/{CodeBody,CodeHead,FreeEdit}.tsx",
+        "packages/board/src/cards/code/*.{ts,tsx}",
         "packages/board/src/cm/**",
         "packages/board/src/actions/create.ts",
         "packages/markdown/src/cm/**",
