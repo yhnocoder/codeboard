@@ -112,7 +112,7 @@ export function hydrate(el: HTMLElement, html: string) {
         imageFailed(img);
   }
   if (html.includes('class="md-ref"')) for (const r of el.querySelectorAll<HTMLElement>(".md-ref")) paintRef(r);
-  if (html.includes('class="md-code" data-lang')) colorCode(el);
+  if (html.includes(" data-lang=")) colorCode(el);
   if (html.includes('class="mmd"')) void import("./diagram").then((m) => m.renderAll(el));
   if (html.includes('class="md-annot"')) fitAnnots(el);
 }

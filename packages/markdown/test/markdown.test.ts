@@ -165,11 +165,11 @@ describe("static render", () => {
     expect(h).toContain('checked="checked"');
     expect(h).toContain('<span class="md-ref" data-ref="Card">Card</span>');
     expect(h).toContain('<sup class="fnref">1</sup>');
-    expect(h).toContain('<ol class="footnotes">');
+    expect(h).toContain('<ol class="md-gap footnotes">');
   });
   it("draws no footnote list while no footnote has a definition", () => {
     expect(renderMd("claim[^1] and more[^2]")).not.toContain("footnotes");
-    expect(renderMd("claim[^1] and more[^2]\n\n[^2]: only this")).toContain('<ol class="footnotes">');
+    expect(renderMd("claim[^1] and more[^2]\n\n[^2]: only this")).toContain('<ol class="md-gap footnotes">');
   });
   it("leaves mermaid source for the lazy renderer", () => {
     expect(renderMd("```mermaid\ngraph TD; A-->B\n```")).toContain('<div class="mmd" data-src="graph TD; A-->B">');

@@ -1458,3 +1458,37 @@ test("noteFormulaCopyKeepsTex", async () => {
   );
   await close(h);
 });
+
+/** The spacing between paragraphs and the blocks next to them (md-pp / md-gap classes, not sibling rules) is the same in the
+ *  static Note and in its editor: 0.5em after a paragraph and between a block and a paragraph, none after a heading, a list
+ *  item's second paragraph still tight (.md li > p), a code block after a paragraph 0.5em of its own font */
+test("noteParagraphSpacingBothModes", async () => {
+  const src =
+    "# T\n\nfirst\n\nsecond\n\n- a\n\nafter list\n\n## H\n\nafter heading\n\n```py\nx = 1\n```\n\n- loose one\n\n  loose two\n\nlast";
+  const h = await open({ board: board([src]), light, w: 900, h: 800 });
+  const marks = (root: string) =>
+    h.page.evaluate((root) => {
+      const r = document.querySelector(root)!;
+      const mt = (e: Element | null | undefined) => (e ? parseFloat(getComputedStyle(e).marginTop) : null);
+      const fs = (e: Element | null | undefined) => (e ? parseFloat(getComputedStyle(e).fontSize) : null);
+      const ps = [...r.querySelectorAll(":scope > p")];
+      const byText = (t: string) => ps.find((p) => p.textContent?.trim().startsWith(t));
+      const pre = r.querySelector(":scope > pre");
+      return {
+        second: mt(byText("second")) === fs(byText("second"))! / 2,
+        list: mt(r.querySelector(":scope > ul")) === fs(r.querySelector(":scope > ul"))! / 2,
+        afterList: mt(byText("after list")) === fs(byText("after list"))! / 2,
+        afterHeading: mt(byText("after heading")),
+        looseTwo: mt(r.querySelectorAll(":scope > ul")[1]?.querySelectorAll("li > p")[1]),
+        code: mt(pre) === fs(pre)! / 2,
+        last: mt(byText("last")) === fs(byText("last"))! / 2,
+      };
+    }, root);
+  const shown = await marks(`${card("n0")} .nbody`);
+  await editNote(h, "n0");
+  const editing = await marks(".md-pm");
+  const want = { second: true, list: true, afterList: true, afterHeading: 0, looseTwo: 0, code: true, last: true };
+  check("noteParagraphSpacingBothModes static", JSON.stringify(shown) === JSON.stringify(want), shown);
+  check("noteParagraphSpacingBothModes editor", JSON.stringify(editing) === JSON.stringify(want), editing);
+  await close(h);
+});

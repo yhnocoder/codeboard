@@ -18,6 +18,7 @@ import { Typora } from "./typora";
 import { FindExt } from "./find";
 import { menuSuggestion, openMathAt, SLASH, type MenuItem } from "./menu";
 import { padAt, padEnd } from "./pad";
+import { gapsPlugin } from "./gaps";
 import { saveImage, uiOf } from "./ui";
 import type { MdEditorOpts, RefGroup, RefItem, RefPick } from "./types";
 
@@ -301,6 +302,7 @@ export function editorExtensions(
     ],
   });
   // 行内公式的补全、预览：抢在列表、灰字、Esc 退出前面拿 ↑↓ 回车 Tab Esc
+  const Gaps = Extension.create({ name: "cbGaps", addProseMirrorPlugins: () => [gapsPlugin()] });
   const MathHintsExt = Extension.create({
     name: "cbMathHints",
     priority: 300,
@@ -328,6 +330,7 @@ export function editorExtensions(
     Rules,
     Last,
     Tail,
+    Gaps,
     FindExt(() => uiOf.get(ed())?.closeFind() ?? false),
     Typora.configure({
       openMath: openMathAt,
