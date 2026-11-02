@@ -62,7 +62,7 @@ export function makeActions(panels: BoardHost, store: Storage) {
   let lastAdd: (() => Promise<void>) | null = null;
   const armUndo = (f: () => Promise<void>) => {
     lastAdd = f;
-    ui().undoAddKey?.(true);
+    ui().undoAddChanged?.(true);
   };
 
   /**
@@ -299,7 +299,7 @@ export function makeActions(panels: BoardHost, store: Storage) {
     "codeboard.undoAdd": async () => {
       const f = lastAdd;
       lastAdd = null;
-      ui().undoAddKey?.(false);
+      ui().undoAddChanged?.(false);
       await f?.();
     },
     "codeboard.addSeparateCards": async () => {

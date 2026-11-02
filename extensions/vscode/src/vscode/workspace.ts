@@ -371,8 +371,9 @@ export function vscodeWorkspace(ctx: vscode.ExtensionContext): Workspace {
       revealInOS: async (abs) => void (await vscode.commands.executeCommand("revealFileInOS", vscode.Uri.file(abs))),
       copy: async (text) => vscode.env.clipboard.writeText(text),
       clipboard: async () => vscode.env.clipboard.readText(),
-      undoAddKey: (on) => undoAddKey(on),
-      boardFocusKey: async (on) => {
+      undoAddChanged: (on) => undoAddKey(on),
+      // the board's own keys are bound on this context key (package.json keybindings)
+      boardFocusChanged: async (on) => {
         await vscode.commands.executeCommand("setContext", "codeboard.boardFocused", on);
       },
     },

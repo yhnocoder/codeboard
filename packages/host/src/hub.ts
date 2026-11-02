@@ -375,20 +375,20 @@ export class BoardHub implements BoardHost, Disposable {
     });
   }
 
-  private keyOn = false;
-  private keyApplied: Promise<unknown> = Promise.resolve();
+  private anyFocused = false;
+  private focusApplied: Promise<unknown> = Promise.resolve();
   async boardFocus(p: BoardPanel, has: boolean) {
     p.hasKeyboard = has;
     const on = this.all().some((x) => x.hasKeyboard);
-    if (on !== this.keyOn) {
-      this.keyOn = on;
-      const set = workspace().ui.boardFocusKey;
+    if (on !== this.anyFocused) {
+      this.anyFocused = on;
+      const set = workspace().ui.boardFocusChanged;
       if (set)
-        this.keyApplied = this.keyApplied
+        this.focusApplied = this.focusApplied
           .then(() => set(on))
-          .catch((e) => log("warn", `boardFocused: ${e instanceof Error ? e.message : e}`));
+          .catch((e) => log("warn", `boardFocusChanged: ${e instanceof Error ? e.message : e}`));
     }
-    await this.keyApplied;
+    await this.focusApplied;
   }
 
   get(id: string) {

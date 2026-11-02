@@ -15,7 +15,7 @@ const W = nodeWorkspace();
 const keyContext: boolean[] = [];
 W.ui = {
   ...W.ui,
-  boardFocusKey: async (on) => {
+  boardFocusChanged: async (on) => {
     keyContext.push(on);
   },
 };

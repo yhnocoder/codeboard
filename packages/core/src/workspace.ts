@@ -172,10 +172,11 @@ export interface WorkspaceUi {
   revealInOS(abs: string): Promise<void>;
   copy(text: string): Promise<void>;
   clipboard(): Promise<string>;
-  /** 编辑器里接着按 ⌘Z 撤销刚加到白板上的卡（codeboard.undoAdd）：打开后，编辑器里一改字、动光标、换编辑器就自己关掉 */
-  undoAddKey?(on: boolean): void;
-  /** The editor's key context for "a board has the keyboard" (the board's own keys are bound on it); resolves once it applies */
-  boardFocusKey?(on: boolean): Promise<void>;
+  /** Whether ⌘Z in the editor can now undo the cards just added to a board (codeboard.undoAdd). Once on, the editor turns it
+   *  off by itself when the user types, moves the cursor or switches editors there */
+  undoAddChanged?(available: boolean): void;
+  /** Whether some board has the keyboard now (the editor sends the board's own keys to it); resolves once that applies */
+  boardFocusChanged?(focused: boolean): Promise<void>;
 }
 
 /** 编辑器提供的语言模型（VS Code 的 Language Model API：Copilot 等扩展给的）。可选：编辑器没有就不给。用哪个模型、DeepSeek 都在宿主的 ai.ts */
