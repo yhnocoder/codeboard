@@ -3,7 +3,7 @@
 import { shot, symCard, findSym, put, type Host } from "../harness";
 import { cornerAt, emptyBoard, type Board, type StickerPack } from "@codeboard/core";
 import { animWebp, apng, faceFrames, gif, type Paint, png, type Rgba } from "@codeboard/host/testing";
-import { createRequire } from "node:module";
+import { PNG } from "pngjs";
 import type { Browser, Page } from "@playwright/test";
 import { test, open, check, light, until, idle, hold, frames } from "../fixtures";
 
@@ -126,11 +126,6 @@ const imgs = (page: Page) =>
         }),
       ) as Record<string, ImgState>,
   );
-// playwright-core's own PNG decoder (pngjs): the screencast frames are decoded here, not in the page whose timing is under test
-const { PNG } = createRequire(import.meta.url)("playwright-core/lib/utilsBundle") as {
-  PNG: { sync: { read(b: Buffer): { width: number; height: number; data: Buffer } } };
-};
-
 type Played = { pictures: number; back: boolean };
 /**
  * What each sticker shows in the frames Chromium presents (a CDP screencast sends one each time the page's picture changes): an
@@ -156,6 +151,7 @@ async function playing(h: Host, ids: string[]): Promise<{ played: Record<string,
   let done = 0;
   await until(h, "each animated sticker comes back to a frame it showed", () => {
     for (; done < shown.length; done++) {
+      // decoded here in Node, not in the page whose timing is under test
       const img = PNG.sync.read(Buffer.from(shown[done].png, "base64"));
       const s = img.width / (shown[done].cssWidth || img.width);
       boxes.forEach((b, i) => {
