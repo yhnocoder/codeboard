@@ -5,7 +5,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { emptyBoard, type Board, type NoteCard } from "@codeboard/core";
 import type { Page } from "playwright-core";
-import { put, OUT, type Host, type OnMsg } from "../harness";
+import { cpuSpans, put, OUT, type Host, type OnMsg } from "../harness";
 import { test, open, check, until, idle } from "../fixtures";
 
 const close = (h: Host) => h.page.context().close();
@@ -629,25 +629,28 @@ test("codeEditKeystrokeLatency", async () => {
   await pg.locator('.card[data-id="c1"] .src .l').nth(0).dblclick();
   await editing(pg);
   await pg.keyboard.press("Control+End");
-  // 每次按键编辑器自己花的时间：插入一个字（含 CodeMirror 读 DOM、更新视图）到排版完，不等宿主
-  const lat = await pg.evaluate(async () => {
-    const el = document.querySelector('.card[data-id="c1"] .cm-content') as HTMLElement;
-    const ts: number[] = [];
-    for (let i = 0; i < 40; i++) {
-      await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
-      const t0 = performance.now();
-      document.execCommand("insertText", false, "x");
-      await Promise.resolve();
-      el.getBoundingClientRect();
-      ts.push(performance.now() - t0);
-    }
-    ts.sort((a, b) => a - b);
-    return { p50: +ts[20].toFixed(2), p90: +ts[36].toFixed(2), max: +ts[39].toFixed(2) };
-  });
+  // 每次按键编辑器自己花的 CPU 时间：插入一个字（含 CodeMirror 读 DOM、更新视图）到排版完，不等宿主
+  const ts = await cpuSpans(pg, () =>
+    pg.evaluate(async () => {
+      const el = document.querySelector('.card[data-id="c1"] .cm-content') as HTMLElement;
+      for (let i = 0; i < 40; i++) {
+        await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
+        performance.mark("cpu:start");
+        document.execCommand("insertText", false, "x");
+        await Promise.resolve();
+        el.getBoundingClientRect();
+        performance.mark("cpu:end");
+      }
+    }),
+  );
+  ts.sort((a, b) => a - b);
+  // a trace that missed marks has fewer spans: NaN there, so the check below fails with the count instead of a TypeError here
+  const at = (i: number) => Number(ts[i]?.toFixed(2));
+  const lat = { n: ts.length, p50: at(20), p90: at(36), max: at(39) };
   const typed = (await text(pg)).endsWith("x".repeat(40));
   check(
     "codeEditKeystrokeLatency one keystroke in the editor (insert + layout) well inside a frame",
-    typed && lat.p90 < 8,
+    typed && lat.n === 40 && lat.p90 < 8,
     { typed, ...lat },
   );
   await close(h);

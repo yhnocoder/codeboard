@@ -37,7 +37,11 @@ harness 场景是 Playwright Test 的测试（`packages/board/test/scenarios/*.s
 - 看得见：一起跑时的报错留在结果里（`parallelFails`），`harness.mjs` 的总结、CI 的 warning 注释（run 的 summary 页）、PR 描述里的 CI 报告（`tools/test/ci-report.mjs`）、#19 的定时报告都逐个列出来，带上一起跑时的第一条报错。
 - 有上限：定时全量记下每个场景连续几次"只有单独跑才过"（`tools/test/alone.mjs`，存在 `ci-screenshots` 分支的 `impact/alone.json`，由 `publish-impact.sh` 写）。连续 3 次（`ALONE_LIMIT`）以后，这个场景在哪儿都不再单独重跑（本地 `npm run check`、PR CI、定时全量）：一起跑挂了就是挂了，计数一直留着，直到它在并行下也能过才清零。
 
-对 CPU 负载敏感、并行时必挂的场景登记在 `tiers.json` 的 `solo`，放在第二轮单独跑（和 perf 一样）。
+量耗时的场景不量墙钟（`performance.now()` 的差、Node 这边的 `Date.now()`）：机器忙的时候墙钟会被别的进程拉长。按键、点击自己花了多少，量页面主线程的 CPU 时间（`harness.ts` 的 `cpuSpans`：页面里 `performance.mark("cpu:start")` / `"cpu:end"` 之间，Chrome trace 记的线程时钟）；跟定时器、动画帧有关的（防抖多久发出去、按住多久加速），用 Playwright 的页面时钟（`page.clock.install()`、`fixtures.ts` 的 `pauseClock`、`page.clock.runFor`），时间只按白板要的走。
+
+还做不到的登记在 `tiers.json` 的 `solo`，放在第二轮单独跑（和 perf 一样），原因写在这里：
+- `markdownLazyRender`：量的是平移时 Note 的懒渲染队列跟不跟得上帧——队列在每帧的空闲时间里跑，别的场景占了 CPU，空闲时间就少，这正是它要量的东西，换成 CPU 时间或假时钟就量不到了。
+- `noteLongNoteKeysScale`：长 Note 和短 Note 里按键耗时之比，阈值（3 倍、至少 12 ms）是按墙钟定的。换成 CPU 时间后短 Note 少了等帧的那段固定开销，比值变成 4 倍左右（长的约 30–50 ms CPU），会挂：要先看长 Note 按键到底该多快，再换量法。
 
 每次定时全量还有两件事单独报在 #19 的评论里（各自一节，不进 `regular-failures`，所以不算"正在修的问题"、不带到 PR 上，也不让定时全量变红）。#19 只在有变化时才评论：失败、只有单独跑才过的、超了时间上限的组，这几样的集合变了，或者 flaky 重复发现了 flaky、它的报错变了，才发一条；每 6 小时一次也不会刷屏：
 - **Flaky**：harness 全量跑完后，`repeat` job 把上一次跑完的定时全量（`regular.yml` 运行列表里 `event=schedule` 的那次的 `head_sha`，大约 6 小时前）以来新增和改过的场景（同上）各跑 3 遍，新增的排在前面（从没和别的场景一起跑过，最可能 flaky），各自快的在前（`harness.mjs --changed-since=<commit> --repeat=3`，4 个 worker 并行，`solo` 的仍一个一个跑，按估计用时最多 15 分钟，放不下的报出来），任何一遍挂了就算 flaky；全量里本来就挂的不重复算。每个改动只在它之后的第一次定时全量里重复，所以一个 flaky 只报一次。这期间 main 没变就什么都不重复。找不到上一次定时全量或它的提交时报错（同样的报错只报一次），不拿别的场景凑合。
@@ -78,4 +82,5 @@ E2E_WS=/path/to/repo E2E_FLOW=my-flow.cjs npm run e2e    # 同上，打开的是
 - 真得等一段固定时间的（检查某个产品定时器到点前什么都不发生、悬停延迟、测量）用 `hold(h, 毫秒, 原因)`，毫秒取产品里有名字的常量（`packages/board/src/state/timing.ts`，Markdown 编辑器的在 `@yhnocoder/markdown/ui`），原因写清这段时间里不该发生什么。
 - 一个场景单独跑最好在 20 秒以内；更长的，考虑拆开。
 - 只记录、不判对错的场景放进 `tiers.json` 的 `manual`，默认不跑。
+- 量耗时的场景见上面"怎么算失败"：量 CPU 时间或用页面时钟，不量墙钟；不要新加 `solo`。
 - 改了很基础的东西（store、渲染）又想在本地多跑一些：`npm run check -- --all`。

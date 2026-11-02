@@ -550,6 +550,48 @@ export function peekMock(seg: Segment, word: string): any {
   };
 }
 
+/**
+ * The page's main-thread CPU time (ms) between each performance.mark("cpu:start") and the next performance.mark("cpu:end") it
+ * sets while `run` runs. Chrome's trace records the thread's clock at each mark: time the thread spent waiting for a CPU (other
+ * scenarios beside this one, a busy machine) doesn't count, as it does in a performance.now() span. For checks that the board's
+ * own work for a keystroke or a click stays small
+ */
+export async function cpuSpans(page: Page, run: () => Promise<unknown>): Promise<number[]> {
+  const cdp = await page.context().newCDPSession(page);
+  const done = new Promise<{ stream?: string }>((r) => cdp.once("Tracing.tracingComplete", r));
+  await cdp.send("Tracing.start", {
+    traceConfig: { includedCategories: ["blink.user_timing"], excludedCategories: ["*"] },
+    transferMode: "ReturnAsStream",
+  });
+  try {
+    await run();
+  } finally {
+    await cdp.send("Tracing.end");
+  }
+  const { stream } = await done;
+  let text = "";
+  for (;;) {
+    const r = await cdp.send("IO.read", { handle: stream! });
+    text += r.base64Encoded ? Buffer.from(r.data, "base64").toString() : r.data;
+    if (r.eof) break;
+  }
+  await cdp.send("IO.close", { handle: stream! });
+  await cdp.detach();
+  const parsed = JSON.parse(text);
+  const marks = ((Array.isArray(parsed) ? parsed : parsed.traceEvents) as { name: string; ts: number; tts?: number }[])
+    .filter((e) => (e.name === "cpu:start" || e.name === "cpu:end") && e.tts !== undefined)
+    .sort((a, b) => a.ts - b.ts);
+  const out: number[] = [];
+  let start: number | undefined;
+  for (const m of marks)
+    if (m.name === "cpu:start") start = m.tts;
+    else if (start !== undefined) {
+      out.push((m.tts! - start) / 1000);
+      start = undefined;
+    }
+  return out;
+}
+
 /** A screenshot into test-out/harness/, once the board is idle(). `at: "now"` takes it at once: a picture of something on its
  *  way (mid-animation), the moment chosen by the caller */
 export async function shot(h: Host, name: string, at: "idle" | "now" = "idle") {

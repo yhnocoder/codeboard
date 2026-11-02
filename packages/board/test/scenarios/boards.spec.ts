@@ -1,7 +1,7 @@
 import { emptyBoard, type Board } from "@codeboard/core";
 import { put, symCard, findSym, type Host } from "../harness";
 import { subHost } from "../subhost";
-import { test, open, verdict, expect, until, idle, hold } from "../fixtures";
+import { test, open, verdict, expect, until, idle, hold, pauseClock } from "../fixtures";
 import { CAM_SETTLE, LIVE_DELAY } from "../../src/state/timing";
 
 type Sub = Awaited<ReturnType<typeof subHost>>;
@@ -241,11 +241,11 @@ async function saveBoard() {
   const b: Board = emptyBoard("bSave", "Save");
   const step = nv("LLMEngine.step");
   put(b, step, 60, 80, 600);
-  const got: { t: number; patch: any }[] = [];
+  const got: { patch: any }[] = [];
   const h = await open({
     board: b,
     on: (m) => {
-      if (m.type === "patch") got.push({ t: Date.now(), patch: m.patch });
+      if (m.type === "patch") got.push({ patch: m.patch });
       return false;
     },
   });
@@ -255,30 +255,33 @@ async function saveBoard() {
   return { h, page: h.page, step, got };
 }
 
-/** Wrap Lines on the selected card, then a new Text card typed and closed with Esc: each reaches the host. Returns how long each took */
+/** Clicks the empty canvas under the card: nothing is selected after it */
+async function clickBelow(page: Host["page"], card: string) {
+  const b = (await page.locator(`.card[data-id="${card}"]`).boundingBox())!;
+  await page.mouse.click(b.x + b.width / 2, b.y + b.height + 80);
+}
+
+/** Wrap Lines on the selected card, then a new Text card typed and closed with Esc: each reaches the host */
 async function wrapAndText(
   { h, page, step, got }: Awaited<ReturnType<typeof saveBoard>>,
   res: Record<string, unknown>,
 ) {
-  let t0 = Date.now();
   await page.keyboard.press("Alt+z");
-  const wrapped = () => got.find((g) => g.patch.cards?.set?.some((c: any) => c.id === step.id && c.wrap === true));
-  await until(h, "Wrap Lines reaches the host", wrapped);
-  const wrapMs = wrapped()!.t - t0;
+  await until(h, "Wrap Lines reaches the host", () =>
+    got.find((g) => g.patch.cards?.set?.some((c: any) => c.id === step.id && c.wrap === true)),
+  );
   res.wrapSent = true;
-  await page.mouse.click(900, 600);
+  await clickBelow(page, step.id);
   await idle(h);
   got.length = 0;
   await page.keyboard.press("t");
   await page.locator(".md-pm:focus").waitFor();
   await page.keyboard.type("typed then closed");
-  t0 = Date.now();
   await page.keyboard.press("Escape");
-  const typed = () =>
-    got.find((g) => g.patch.cards?.set?.some((c: any) => c.kind === "note" && c.md === "typed then closed"));
-  await until(h, "the closed Text card reaches the host", typed);
+  await until(h, "the closed Text card reaches the host", () =>
+    got.find((g) => g.patch.cards?.set?.some((c: any) => c.kind === "note" && c.md === "typed then closed")),
+  );
   res.textSent = true;
-  return { wrapMs, textMs: typed()!.t - t0 };
 }
 
 /** Wrap Lines, a closed Text card and a settled camera reach the host; the camera only once, LIVE_DELAY after it settled */
@@ -303,10 +306,36 @@ async function changesReachHost(res: Record<string, unknown>) {
   );
 }
 
-/** The same edits reach the host at once: within 300 ms each (no debounce in the way) */
+/**
+ * Wrap Lines, then a Text card closed with Esc: each change leaves the board within 300 ms. Timed on the page's clock (Playwright's,
+ * paused before the key and run 300 ms on), so it is the board's own delays that count, not how busy the machine is
+ */
 async function changesReachHostTime(res: Record<string, unknown>) {
-  const s = await saveBoard();
-  Object.assign(res, await wrapAndText(s, res));
-  await s.page.context().close();
-  return (res.wrapMs as number) < 300 && (res.textMs as number) < 300;
+  const { h, page, step, got } = await saveBoard();
+  await page.clock.install();
+  const within300 = async (key: string, what: string, sent: () => unknown) => {
+    await pauseClock(page);
+    await page.keyboard.press(key);
+    await page.clock.runFor(300);
+    // the clock stays paused: a change the board holds back longer never leaves it
+    res[what] = await until(h, `${what} within 300 ms of page time`, sent).then(
+      () => true,
+      () => false,
+    );
+    await page.clock.resume();
+  };
+  await within300("Alt+z", "wrapSent", () =>
+    got.find((g) => g.patch.cards?.set?.some((c: any) => c.id === step.id && c.wrap === true)),
+  );
+  await clickBelow(page, step.id);
+  await idle(h);
+  got.length = 0;
+  await page.keyboard.press("t");
+  await page.locator(".md-pm:focus").waitFor();
+  await page.keyboard.type("typed then closed");
+  await within300("Escape", "textSent", () =>
+    got.find((g) => g.patch.cards?.set?.some((c: any) => c.kind === "note" && c.md === "typed then closed")),
+  );
+  await page.context().close();
+  return res.wrapSent && res.textSent;
 }

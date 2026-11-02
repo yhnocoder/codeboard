@@ -62,6 +62,21 @@ export const hold = (h: { page: Page }, ms: number, _why: string) => h.page.wait
  *  the browser, so a scenario expects the labels of the platform it runs on */
 export const onMac = (pg: Page) => pg.evaluate(() => /Mac|iP(hone|[oa]d)/.test(navigator.platform));
 
+/**
+ * Pauses the page's clock (Playwright's, page.clock.install() first) a moment from now: from then on only clock.runFor() moves
+ * time, so timers and frames come exactly when the board asks for them, however busy the machine is. A busy machine can let that
+ * moment pass before the pause arrives: then it picks a new one
+ */
+export async function pauseClock(pg: Page) {
+  for (;;)
+    try {
+      await pg.clock.pauseAt((await pg.evaluate(() => Date.now())) + 100);
+      return;
+    } catch (e) {
+      if (!/to the past/.test(String(e))) throw e;
+    }
+}
+
 /** n rendered frames of the page, through its own requestAnimationFrame (so a page that makes frames late makes these late too):
  *  each pointer move of a drag landing in a frame of its own, as a real one does */
 export const frames = (pg: Page, n = 1) =>

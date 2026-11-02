@@ -1,5 +1,5 @@
 import * as path from "node:path";
-import { put, shot, OUT, type Host } from "../harness";
+import { cpuSpans, put, shot, OUT, type Host } from "../harness";
 import { DEFAULT_SETTINGS, emptyBoard, type Board, type NoteCard } from "@codeboard/core";
 import type { Page } from "playwright-core";
 import { test, open, check, light, until, idle, frames } from "../fixtures";
@@ -420,37 +420,38 @@ test("mathHintsKeystrokeTime", async () => {
   const pg = h.page;
   await idle(h);
   await openBlock(h);
-  const lat = await pg.evaluate(async () => {
-    const t = document.querySelector<HTMLTextAreaElement>("[data-type=block-math].is-open textarea")!;
-    const ts: number[] = [];
-    const chars = " + \\sum_{i}^{n} x_i".split("");
-    for (let i = 0; i < 40; i++) {
-      await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
-      // the frame's work: our rAF runs between a and b (callbacks run in the order they were asked for)
-      let a = 0;
-      requestAnimationFrame(() => {
-        a = performance.now();
-      });
-      const t0 = performance.now();
-      document.execCommand("insertText", false, chars[i % chars.length]);
-      t.getBoundingClientRect();
-      const sync = performance.now() - t0;
-      const frame = await new Promise<number>((r) =>
-        requestAnimationFrame(() => {
-          document.body.getBoundingClientRect();
-          r(performance.now() - a);
-        }),
-      );
-      ts.push(sync + frame);
-    }
-    ts.sort((x, y) => x - y);
-    return { p50: +ts[20].toFixed(2), p80: +ts[32].toFixed(2), p90: +ts[36].toFixed(2), max: +ts[39].toFixed(2) };
-  });
+  // per keystroke, the page's main-thread CPU time (cpuSpans) of the insert and of the frame's work after it
+  const spans = await cpuSpans(pg, () =>
+    pg.evaluate(async () => {
+      const t = document.querySelector<HTMLTextAreaElement>("[data-type=block-math].is-open textarea")!;
+      const chars = " + \\sum_{i}^{n} x_i".split("");
+      for (let i = 0; i < 40; i++) {
+        await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
+        // the frame's work: our rAF runs between the two marks (callbacks run in the order they were asked for)
+        requestAnimationFrame(() => performance.mark("cpu:start"));
+        performance.mark("cpu:start");
+        document.execCommand("insertText", false, chars[i % chars.length]);
+        t.getBoundingClientRect();
+        performance.mark("cpu:end");
+        await new Promise<void>((r) =>
+          requestAnimationFrame(() => {
+            document.body.getBoundingClientRect();
+            performance.mark("cpu:end");
+            r();
+          }),
+        );
+      }
+    }),
+  );
+  const ts = Array.from({ length: spans.length / 2 }, (_, i) => spans[2 * i] + spans[2 * i + 1]).sort((x, y) => x - y);
+  // a trace that missed marks has fewer spans: NaN there, so the check below fails with the count instead of a TypeError here
+  const at = (i: number) => Number(ts[i]?.toFixed(2));
+  const lat = { keys: ts.length, p50: at(20), p80: at(32), p90: at(36), max: at(39) };
   const pv = await pg.locator("[data-type=block-math] .block-math-inner .katex").count();
   // 大公式的预览攒着排（停手或每 400ms 一次）：排的那几帧会长，其余的按键都在一帧里
   check(
     "mathHintsKeystrokeTime keystrokes in a long formula (insert + hints + preview) stay inside a frame",
-    pv > 0 && lat.p50 < 8 && lat.p80 < 16,
+    pv > 0 && lat.keys === 40 && lat.p50 < 8 && lat.p80 < 16,
     lat,
   );
   await close(h);
