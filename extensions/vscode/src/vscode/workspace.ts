@@ -285,7 +285,7 @@ export function vscodeWorkspace(ctx: vscode.ExtensionContext): Workspace {
       definitions: (abs, line, col) => locations("vscode.executeDefinitionProvider", abs, line, col),
       implementations: (abs, line, col) => locations("vscode.executeImplementationProvider", abs, line, col),
       hover: (abs, line, col) => hoverAt(vscode.Uri.file(abs), line - 1, col),
-      scratch: vscodeScratch(() => ctx.globalStorageUri.fsPath),
+      scratch: vscodeScratch(),
     },
     settings: {
       get: (key, scope) => {

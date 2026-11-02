@@ -11,6 +11,6 @@ export { workspaceGithubFiles } from "./github";
 export { allQuestions } from "./exports";
 export { BUNDLE_EXT } from "./bundle";
 export { showFile } from "./git";
-export { HEARTBEAT_MS, excludeScratch, isScratchName, scratchName, staleScratch } from "./scratchnames";
+export { isScratchName } from "./scratchnames";
 export { debounce } from "./ws";
 export { COMMANDS, type CommandDecl, type CommandIcon, type CommandId } from "./commands";

@@ -1,4 +1,4 @@
-// 白板里编辑中的代码（Free code 卡、Note 里的代码块）的语言功能：每段编辑中的代码对应一个隐藏的虚拟文档（Workspace.language.scratch），
+// 白板里编辑中的代码（Free code 卡、Note 里的代码块）的语言功能：每段编辑中的代码对应一个隐藏的文件（scratchfiles.ts）和它的文档（Workspace.language.scratch），
 // 补全、悬停、签名提示都问语言服务（Python 一般是 Pylance）。没有语言服务（或宿主不给 scratch）时都回空，白板照常编辑。
 // 请求带着全文：先把虚拟文档同步成这段文字再问，补全和内容永远对得上。同一段代码的同一种请求来了新的就作废旧的
 // （VS Code 的 executeXxxProvider 没法取消：排队时就丢掉，回来晚了的也丢掉，白板那边同样只认最新的）。
@@ -7,6 +7,7 @@ import type { LspItem, LspSignature, Segment } from "@codeboard/core";
 import { workspace, ws0 } from "./ws";
 import { absOf } from "./source";
 import { log } from "./log";
+import { dropScratchFile, scratchFile, scratchFileOf } from "./scratchfiles";
 
 type Near = Pick<Segment, "src" | "path" | "version">;
 type Doc = { lang: string; near?: string; text: string; chain: Promise<unknown> };
@@ -33,9 +34,14 @@ function queue<T>(d: Doc, fn: () => Promise<T>): Promise<T> {
   return p;
 }
 
+/** Write the text into the document, creating its file the first time */
+async function sync(id: string, d: Doc, text: string) {
+  await scratch()!.sync(await scratchFile(id, d.lang, d.near), d.lang, text);
+  d.text = text;
+}
+
 export function codeDoc(id: string, lang: string, text: string, near?: Near) {
-  const s = scratch();
-  if (!s) return;
+  if (!scratch()) return;
   let d = docs.get(id);
   const n = nearAbs(near);
   if (!d) {
@@ -45,11 +51,7 @@ export function codeDoc(id: string, lang: string, text: string, near?: Near) {
   d.lang = lang;
   d.near = n ?? d.near;
   const dd = d;
-  void queue(dd, () =>
-    s.sync(id, dd.lang, text, dd.near).then(() => {
-      dd.text = text;
-    }),
-  ).catch((e) => log("warn", `codeDoc: ${e}`));
+  void queue(dd, () => sync(id, dd, text)).catch((e) => log("warn", `codeDoc: ${e}`));
 }
 
 export function codeDocClose(id: string) {
@@ -57,25 +59,32 @@ export function codeDocClose(id: string) {
     d = docs.get(id);
   docs.delete(id);
   if (!s || !d) return;
-  void queue(d, () => s.close(id)).catch(() => undefined);
+  void queue(d, async () => {
+    const f = scratchFileOf(id);
+    if (f) s.close(f);
+    dropScratchFile(id);
+  }).catch(() => undefined);
 }
 
-async function withDoc<T>(id: string, op: string, text: string, empty: T, fn: () => Promise<T>): Promise<T> {
-  const s = scratch(),
-    d = docs.get(id);
-  if (!s || !d) return empty;
+async function withDoc<T>(
+  id: string,
+  op: string,
+  text: string,
+  empty: T,
+  fn: (file: string) => Promise<T>,
+): Promise<T> {
+  const d = docs.get(id);
+  if (!scratch() || !d) return empty;
   const k = `${id}|${op}`,
     g = (gen.get(k) ?? 0) + 1;
   gen.set(k, g);
   const stale = () => gen.get(k) !== g;
   return queue(d, async () => {
     if (stale()) return empty;
-    if (d.text !== text) {
-      await s.sync(id, d.lang, text, d.near);
-      d.text = text;
-    }
-    if (stale()) return empty;
-    const r = await fn();
+    if (d.text !== text) await sync(id, d, text);
+    const f = scratchFileOf(id);
+    if (stale() || !f) return empty;
+    const r = await fn(f);
     return stale() ? empty : r;
   }).catch((e) => {
     log("warn", `${op}: ${e}`);
@@ -109,12 +118,12 @@ function narrow(items: LspItem[], word: string, max = MAX_ITEMS): LspItem[] {
 }
 
 export function lspComplete(id: string, text: string, line: number, col: number, trigger?: string): Promise<LspItem[]> {
-  return withDoc(id, "complete", text, [] as LspItem[], async () =>
-    narrow(await scratch()!.completions(id, line, col, trigger), wordBefore(text, line, col)),
+  return withDoc(id, "complete", text, [] as LspItem[], async (f) =>
+    narrow(await scratch()!.completions(f, line, col, trigger), wordBefore(text, line, col)),
   );
 }
 export function lspHover(id: string, text: string, line: number, col: number): Promise<string[]> {
-  return withDoc(id, "hover", text, [] as string[], () => scratch()!.hover(id, line, col));
+  return withDoc(id, "hover", text, [] as string[], (f) => workspace().language.hover(f, line + 1, col));
 }
 export function lspSignature(
   id: string,
@@ -123,7 +132,7 @@ export function lspSignature(
   col: number,
   trigger?: string,
 ): Promise<LspSignature | null> {
-  return withDoc(id, "signature", text, null as LspSignature | null, () =>
-    scratch()!.signature(id, line, col, trigger),
+  return withDoc(id, "signature", text, null as LspSignature | null, (f) =>
+    scratch()!.signature(f, line, col, trigger),
   );
 }

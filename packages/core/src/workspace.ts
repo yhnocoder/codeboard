@@ -89,14 +89,18 @@ export type LspSignature = {
   active: number;
 };
 
-/** 白板里编辑中的代码的虚拟文档（不在编辑器里显示）：语言服务照它回答。行列从 0 开始 */
+/**
+ * Documents (not shown in the editor) for the files behind code being edited on a board: the language service answers from
+ * them. The host creates and deletes the files (next to the source file they belong to); lines and columns count from 0
+ */
 export interface WorkspaceScratch {
-  /** 建或更新：near = 放在这个文件旁边（同目录，Python 的 import 才找得到）；没给就放在工作区根 */
-  sync(id: string, lang: string, text: string, near?: string): Promise<void>;
-  close(id: string): Promise<void>;
-  completions(id: string, line: number, col: number, trigger?: string): Promise<LspItem[]>;
-  hover(id: string, line: number, col: number): Promise<string[]>;
-  signature(id: string, line: number, col: number, trigger?: string): Promise<LspSignature | null>;
+  /** Open the file as a document in this language (again if it was closed), write text into it and resolve once the document
+   *  holds it; fails rather than leave the document with other text */
+  sync(file: string, lang: string, text: string): Promise<void>;
+  /** The host deletes the file next: forget its document */
+  close(file: string): void;
+  completions(file: string, line: number, col: number, trigger?: string): Promise<LspItem[]>;
+  signature(file: string, line: number, col: number, trigger?: string): Promise<LspSignature | null>;
 }
 
 /** 用户设置，键是完整的点分名字（codeboard.theme、editor.fontFamily） */
