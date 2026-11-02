@@ -122,8 +122,8 @@ const editorFocused = (page) => page.locator(".editor-group-container .monaco-ed
  * element: the browser asked the workbench where the point is, the workbench hit the <iframe>, and the browser still sent the events to
  * the workbench in its own coordinates. Chromium does that when the webview-local point the workbench answers does not map back to the
  * press through the frame the window drew last: the webview moved, as when VS Code's box around it scrolls (webviewBoxes). In keyscope,
- * clickBoard after the Rename Board dialog closed also left the board without the keyboard (Regular run 41245352675), with nothing
- * recorded to tell whether the press or the keyboard went elsewhere.
+ * clickBoard after the Rename Board dialog closed went to the workbench without the browser asking it where the point is: after a
+ * window zoom and reset, the window's hit-test data had no region for the webview at all (winzoomStep).
  * Runs click(), then waits for done(); when done() does not come true it records the browser's input routing trace
  * (<label>-trace.json), which documents got the moves and the press, the <iframe>'s state as the workbench saw it before the click
  * and at the press, and where the keyboard is in the workbench, the webview's host page and the board (<label>-click.png), and throws.
@@ -825,21 +825,6 @@ async function keyscopeStep(page) {
     await page.evaluate(() => document.querySelector(".editor-group-container.active .tab.active")?.textContent ?? ""),
     "keyscope: the board is still the active editor",
   );
-  const camZoom = () => text(f.locator(".zoom"));
-  const [z0, dpr0] = [await camZoom(), await page.evaluate(() => window.devicePixelRatio)];
-  await page.keyboard.press("Control+=");
-  const dpr = await soon(
-    () => page.evaluate(() => window.devicePixelRatio),
-    (d) => d > dpr0,
-  );
-  check(dpr > dpr0, "keyscope: Ctrl+= with the keyboard in the Explorer zooms the window", { dpr0, dpr });
-  await idle(f);
-  check((await camZoom()) === z0, "keyscope: and leaves the board's zoom alone", {
-    before: z0,
-    after: await camZoom(),
-  });
-  await command(page, "View: Reset Zoom");
-  await until("the window is back at 100%", async () => (await page.evaluate(() => window.devicePixelRatio)) === dpr0);
   // A command run from the palette with the keyboard in the Explorer asks on the active board, which then gets the keyboard
   await command(page, "File: Focus on Files Explorer");
   await until("the Explorer has the keyboard again", () =>
@@ -876,6 +861,45 @@ async function keyscopeStep(page) {
   );
   await page.keyboard.press("Escape");
   await until("Escape closes the board's Settings page", async () => !(await f.locator(".settings").count()));
+}
+// Ctrl+= is one of the board's shortcuts too: with the keyboard in the Explorer it zooms the window and leaves the board's zoom alone.
+// This step comes after every other step that uses this window. After the window zooms in and back, Chromium in VS Code 1.142 sometimes
+// keeps no hit-test region for the board's webview: every press on the board then goes to the workbench, onto the webview's
+// <iframe>, until the webview is laid out again (once in about 15 zoom round trips locally; it was what failed the click after Rename
+// Board in keyscope). E2E_ONLY=winzoom runs only this step
+async function winzoomStep(page) {
+  await openFile(page, SCHED, 26);
+  await page.keyboard.press("Alt+b");
+  await openBoard(page);
+  const f = await boardFrame(page);
+  check(
+    (await soon(
+      () => f.locator(".card").count(),
+      (n) => n >= 1,
+      20000,
+    )) >= 1,
+    "winzoom: Alt+B puts a card on the board",
+  );
+  await idle(f);
+  await command(page, "File: Focus on Files Explorer");
+  await until("the Explorer has the keyboard", () =>
+    page.evaluate(() => !!document.activeElement?.closest(".explorer-folders-view")),
+  );
+  const camZoom = () => text(f.locator(".zoom"));
+  const [z0, dpr0] = [await camZoom(), await page.evaluate(() => window.devicePixelRatio)];
+  await page.keyboard.press("Control+=");
+  const dpr = await soon(
+    () => page.evaluate(() => window.devicePixelRatio),
+    (d) => d > dpr0,
+  );
+  check(dpr > dpr0, "winzoom: Ctrl+= with the keyboard in the Explorer zooms the window", { dpr0, dpr });
+  await idle(f);
+  check((await camZoom()) === z0, "winzoom: and leaves the board's zoom alone", {
+    before: z0,
+    after: await camZoom(),
+  });
+  await command(page, "View: Reset Zoom");
+  await until("the window is back at 100%", async () => (await page.evaluate(() => window.devicePixelRatio)) === dpr0);
 }
 // Clicking a card takes keyboard focus from a file editor: select text in context.py, click a card (its header, then its code),
 // press Backspace. The card is deleted and the file is untouched. E2E_ONLY=cardfocus runs only this step
@@ -1607,6 +1631,7 @@ const finish = async (browser, errors) => {
     addsel: addselStep,
     cardfocus: cardfocusStep,
     keyscope: keyscopeStep,
+    winzoom: winzoomStep,
     close: closeStep,
     noteimage: noteimageStep,
     notepaste: notepasteStep,
@@ -1616,7 +1641,7 @@ const finish = async (browser, errors) => {
   };
   // Part 3 holds the slow steps (each 20 s or more on its own board); codeedit reloads the window, so it goes last
   const PARTS = {
-    2: "capture,addsel,cardfocus,keyscope,close,notepaste,projects",
+    2: "capture,addsel,cardfocus,keyscope,close,notepaste,projects,winzoom",
     3: "export,variants,noteimage,stickerfolder,notesettings,codeedit",
   };
   // E2E_FLOW=<file.cjs> runs a flow of your own after the E2E_ONLY steps (or alone): the file exports async (page, t) => { … }, t holds
@@ -1664,7 +1689,12 @@ const finish = async (browser, errors) => {
       });
   const only = [process.env.E2E_ONLY || PARTS[process.env.E2E_PART], flow && "flow"].filter(Boolean).join(",");
   // the next step's clicks land where the board is drawn only if this step left VS Code's box around the webview where it was
+  let zoomed = false;
   const runStep = async (k) => {
+    // after winzoom a press on the board may never reach it (winzoomStep); a flow of your own may still follow
+    if (zoomed && k !== "flow")
+      check(false, `${k} runs before winzoom, which comes after every other step in this window`);
+    zoomed ||= k === "winzoom";
     const t0 = Date.now();
     await STEPS[k](page);
     console.log(`- ${k}: ${((Date.now() - t0) / 1000).toFixed(1)} s`);
@@ -2258,7 +2288,7 @@ const finish = async (browser, errors) => {
   } else console.log("- skip pick-implementation step (no Pylance in E2E_EXTENSIONS)");
 
   if (process.env.E2E_PART !== "1")
-    for (const k of ["capture", "addsel", "cardfocus", "keyscope", "close", "projects"]) await runStep(k);
+    for (const k of ["capture", "addsel", "cardfocus", "keyscope", "close", "projects", "winzoom"]) await runStep(k);
   await finish(browser, errors);
 })().catch((e) => {
   console.error(e);
