@@ -97,7 +97,7 @@ A complete page using only this package is in [examples/markdown-demo](https://g
 
 ## The instance
 
-`createMarkdown(options)` returns a `Markdown`: everything that depends on configuration (the static render and its cache, `hydrate`, clicks, the editor and its code blocks) goes through it, so two instances on one page keep their own settings. Options, all optional:
+`createMarkdown(options)` returns a `Markdown`: everything that depends on configuration (the static render and its cache, `hydrate`, clicks, the editor and its code blocks) goes through it, so two instances on one page keep their own settings. They share only the editors' input state (where a drag or an IME composition is), since one editor takes input at a time. Options, all optional:
 
 | Option | What |
 |---|---|
