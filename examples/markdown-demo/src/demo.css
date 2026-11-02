@@ -1,6 +1,6 @@
 /* The demo page: the theme variables @yhnocoder/markdown's stylesheet reads (light, and dark on html[data-theme=dark]), the page
-   layout, and the few outside styles the package borrows (.ctx menu, .pill bar, .tbtn button and its tooltip, the .md-link look, the highlighter's token
-   classes). Heading sizes, lists, quotes and the code block box are the container's call, so they are set here for .note */
+   layout, and the looks the package leaves to the page (.md-menu menu, .md-bar floating bar, .md-btn button and its tooltip, the
+   .md-link look, the highlighter's token classes). Heading sizes, lists, quotes and the code block box are the container's call, so they are set here for .note */
 :root {
   color-scheme: light;
   --bg: #eeece6;
@@ -211,7 +211,7 @@ main {
 .self {
   color: var(--k-self);
 }
-.pill {
+.md-bar {
   display: inline-flex;
   align-items: center;
   gap: 2px;
@@ -220,7 +220,7 @@ main {
   padding: 4px;
   box-shadow: var(--sh-float);
 }
-.tbtn {
+.md-btn {
   height: 28px;
   padding: 0 10px;
   display: inline-flex;
@@ -229,7 +229,7 @@ main {
   color: var(--ink-2);
   font-size: 12.5px;
 }
-.tbtn.on {
+.md-btn.on {
   color: var(--accent);
   background: var(--row);
 }
@@ -251,7 +251,7 @@ main {
 .md-bubble [data-tip] {
   position: relative;
 }
-.ctx {
+.md-menu {
   z-index: 40;
   overflow-y: auto;
   min-width: 210px;
@@ -261,7 +261,7 @@ main {
   background: var(--glass);
   box-shadow: var(--sh-float);
 }
-.ctx button {
+.md-menu button {
   display: flex;
   width: 100%;
   align-items: center;
@@ -272,13 +272,13 @@ main {
   color: var(--ink);
   text-align: left;
 }
-.ctx button .lb {
+.md-menu button .lb {
   flex: 1 0 auto;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.ctx button small {
+.md-menu button small {
   margin-left: auto;
   font: 10.5px var(--mono);
   color: var(--ink-3);

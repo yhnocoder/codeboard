@@ -5,6 +5,7 @@ import { state } from "../state/store";
 import { ask, send } from "../host";
 import { renderMd } from "@yhnocoder/markdown";
 import type {
+  MdClasses,
   LspHost,
   GhostHost,
   LspItem as EditorLspItem,
@@ -12,6 +13,9 @@ import type {
 } from "@yhnocoder/markdown/code-editor";
 
 type Mod = typeof import("@yhnocoder/markdown/code-editor");
+
+/** The editors' menus, floating bars and buttons in the board's own .ctx / .pill / .tbtn look */
+export const BOARD_CLASSES: MdClasses = { menu: "ctx", bar: "pill", button: "tbtn" };
 let mod: Promise<Mod> | undefined, ready: Mod | undefined;
 export const loadCm = () =>
   (mod ??= import("@yhnocoder/markdown/code-editor")

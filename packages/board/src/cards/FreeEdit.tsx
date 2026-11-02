@@ -5,7 +5,7 @@ import { escHtml } from "@codeboard/core";
 import { langInfo } from "@codeboard/analysis/langs";
 import type { CodeCard, SegView } from "@codeboard/core";
 import { state } from "../state/store";
-import { loadCm, cmNow, lspHost, ghostHost, nearSeg, hostHighlight } from "../cm/load";
+import { loadCm, cmNow, lspHost, ghostHost, nearSeg, hostHighlight, BOARD_CLASSES } from "../cm/load";
 import type { CodeEditor } from "@yhnocoder/markdown/code-editor";
 import { lastDown } from "../state/measure";
 import { takeEditEntry } from "../state/ui";
@@ -48,6 +48,7 @@ export function FreeEdit(p: {
       stopPointerDown: true, // 按下不让白板当成拖卡片
       ghost: ghostHost(),
       find: true, // ⌘F 查找、⌥⌘F 替换
+      classes: BOARD_CLASSES,
       onExit: () => p.onExit(e.text()),
       onBlur: (ev) => p.onBlur(ev, { text: () => e.text(), focus: () => e.view.focus(), el: e.view.contentDOM }),
     });

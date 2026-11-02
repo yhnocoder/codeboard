@@ -8,7 +8,7 @@ import { ask } from "../host";
 import { editing, dragging } from "../state/ui";
 import { camMoving } from "../state/camera";
 import { openLink } from "../actions/common";
-import { lspHost } from "../cm/load";
+import { BOARD_CLASSES, lspHost } from "../cm/load";
 import { saveNoteImage } from "./images";
 import { boardsGrouped, refFoot, refGroups, refPicked, refRecent, wantBoardRefs } from "./refs";
 import type { MdEditorOpts, MdEditorHandle } from "@yhnocoder/markdown/editor";
@@ -167,5 +167,6 @@ export function editorOpts(): Omit<MdEditorOpts, "value" | "onDone" | "placehold
       ? (before: string, after: string) => ask("complete", { before, after }).catch(() => null)
       : undefined,
     code: { comment: (l) => langInfo(l)?.comment, lsp: codeLsp, stopPointerDown: true, langs: CODE_LANGS },
+    classes: BOARD_CLASSES,
   };
 }

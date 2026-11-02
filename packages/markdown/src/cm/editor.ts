@@ -36,6 +36,7 @@ import { lspExtensions, dismissSig, type LspHost } from "./lsp";
 import { ghostExtension, acceptGhost, dropGhost, type GhostHost } from "./ghost";
 import { keepKey } from "../ui/editkeys";
 import { closeFind, findExtension } from "./find";
+import type { MdClasses } from "../ui/classes";
 
 export type { LspHost, GhostHost };
 export type { LspItem, LspSignature } from "./lsp";
@@ -277,6 +278,8 @@ export type CodeEditorOpts = {
   onBlur?: (e: FocusEvent) => void;
   /** ⌘F 查找、⌥⌘F 替换（ui/find.ts 的查找条，浮在右上角）。Note 里的代码块不要：查的是整篇 Note */
   find?: boolean;
+  /** The page's classes for the find bar and its buttons (MdClasses) */
+  classes?: MdClasses;
   /** 额外的按键（优先），比如 Note 里方向键走出代码块 */
   keys?: KeyBinding[];
   /** 自己的撤销（Note 里的代码块用 ProseMirror 的撤销：false） */
@@ -424,6 +427,7 @@ export function codeEditor(o: CodeEditorOpts): CodeEditor {
           leave: (e) => {
             if (!exited) o.onBlur?.(e);
           },
+          classes: o.classes,
         })
       : []),
     // 根元素的 class 走 editorAttributes：CodeMirror 焦点一变就重写整个 class 属性，classList.add 加的会被抹掉
@@ -470,3 +474,4 @@ export function codeEditor(o: CodeEditorOpts): CodeEditor {
 
 // the board builds its own decorations and views on the same CodeMirror the editor runs
 export { EditorView, Decoration };
+export type { MdClasses } from "../ui/classes";

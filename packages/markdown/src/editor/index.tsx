@@ -44,6 +44,7 @@ import type { LspHost } from "../cm/editor";
 import { FindExt, noteFind } from "./find";
 import { findKey } from "../ui/find";
 import { IS_MAC } from "../ui/platform";
+import { kindClass, type MdClasses } from "../ui/classes";
 import { visibleRange } from "./visible";
 import type { StaticTextRange } from "../selmap";
 
@@ -93,8 +94,11 @@ export type MdEditorOpts = {
    * scrolls whatever it needs to
    */
   scrollOwnBox?: boolean;
+  /** The page's classes for the editor's menus, floating bars and buttons (MdClasses) */
+  classes?: MdClasses;
 };
 export type { CodeLang } from "./codelang";
+export type { MdClasses } from "../ui/classes";
 export type MdEditorHandle = {
   value(): string | null;
   /** The layout as it is now (see MdEditorOpts.layout) */
@@ -459,7 +463,7 @@ function MenuView(p: { ui: Ui; pick: (it: MenuItem) => void }) {
         });
         return (
           <div
-            class="ctx open md-menu md-pick"
+            class={`${kindClass(p.ui.opts.classes, "menu")} open md-pick`}
             classList={{ "md-refs": m().kind === "ref" }}
             role="listbox"
             onMouseDown={(e) => e.preventDefault()}
@@ -611,7 +615,7 @@ function Bubble(p: { editor: Editor; tick: Accessor<number>; ui: Ui }) {
     const on = () => (p.tick(), q.on());
     return (
       <button
-        class="tbtn md-ib"
+        class={`${kindClass(p.ui.opts.classes, "button")} md-ib`}
         classList={{ on: on() }}
         aria-pressed={on()}
         aria-label={q.kbd ? `${q.tip} (${q.kbd})` : q.tip}
@@ -765,7 +769,7 @@ function Bubble(p: { editor: Editor; tick: Accessor<number>; ui: Ui }) {
       {(pos(), null)}
       <div
         ref={el}
-        class="pill md-bubble"
+        class={`${kindClass(p.ui.opts.classes, "bar")} md-bubble`}
         onMouseDown={(ev) => {
           if (!(ev.target as HTMLElement).closest("input")) ev.preventDefault();
         }}
@@ -908,10 +912,11 @@ function editorExtensions(
                     lsp: (l) => o.code?.lsp?.(l),
                     stopPointerDown: o.code?.stopPointerDown,
                     langs: () => o.code?.langs ?? [],
+                    classes: o.classes,
                   }),
             })
           : x.name === "table"
-            ? tableEditing(x as TNode)
+            ? tableEditing(x as TNode, o.classes)
             : x,
   );
   const Slash = Extension.create({
@@ -1525,6 +1530,7 @@ export function mountEditor(host: HTMLElement, o: MdEditorOpts): MdEditorHandle 
   find = noteFind(editor.view, host, {
     owns: (n) => host.contains(n) || layer.contains(n),
     leave: (ev) => blurred(ev),
+    classes: o.classes,
   });
   const ui: Ui = { menu, setMenu, link, setLink, closeFind: () => !!find?.close(), follow: false, opts: o };
   uiOf.set(editor, ui);

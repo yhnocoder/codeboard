@@ -21,6 +21,7 @@ import {
 import { iconEl, type IconName } from "../ui/icons";
 import { CELL_MIN } from "../layout";
 import { IS_MAC } from "../ui/platform";
+import { kindClass, type MdClasses } from "../ui/classes";
 
 type Cmd = (state: EditorState, dispatch?: (tr: Transaction) => void) => boolean;
 
@@ -257,14 +258,17 @@ class TableBar {
   private open: { pos: number } | null = null;
   private pos: number | null = null;
   private frame = 0;
-  constructor(private view: EditorView) {
+  constructor(
+    private view: EditorView,
+    classes?: MdClasses,
+  ) {
     const K = (s: string) =>
       IS_MAC ? s : s.replace(/⌘/g, "Ctrl+").replace(/⇧/g, "Shift+").replace(/⌫/g, "Backspace").replace(/↵/g, "Enter");
     this.bar = document.createElement("div");
-    this.bar.className = "mdui pill md-tbar";
+    this.bar.className = `mdui ${kindClass(classes, "bar")} md-tbar`;
     const btn = (b: Btn) => {
       const e = document.createElement("button");
-      e.className = `tbtn md-ib${b.danger ? " danger" : ""}`;
+      e.className = `${kindClass(classes, "button")} md-ib${b.danger ? " danger" : ""}`;
       e.dataset.act = b.act;
       e.dataset.tip = b.tip;
       if (b.kbd) e.dataset.kbd = K(b.kbd);
@@ -514,7 +518,7 @@ class TableBar {
 }
 
 /** The table node for the editor (column resizing on, cells at least CELL_MIN wide), plus the toolbar and shortcuts */
-export function tableEditing(base: TNode): AnyExtension[] {
+export function tableEditing(base: TNode, classes?: MdClasses): AnyExtension[] {
   const node = base
     .extend({
       addProseMirrorPlugins() {
@@ -526,7 +530,7 @@ export function tableEditing(base: TNode): AnyExtension[] {
           new Plugin({
             key: new PluginKey("cbTableBar"),
             view: (v) => {
-              const bar = new TableBar(v);
+              const bar = new TableBar(v, classes);
               return { update: () => bar.update(), destroy: () => bar.destroy() };
             },
           }),

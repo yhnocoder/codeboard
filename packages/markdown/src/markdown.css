@@ -8,7 +8,8 @@
      字号   --md-fs（正文）--md-h1 … --md-h6（各级标题；都有默认值，见下面）
      其他   --md-radius（圆角，Mermaid 用一半，默认 10px）--t（动画时长的倍数，1 = 正常）--ico-w（工具条图标的描边，1 或 2 px，默认 1）
    公式还要 KaTeX 自己的样式（@yhnocoder/markdown/katex.css，放在这一份前面）。
-   借用外面的样式（由用的一方给）：菜单、选中工具条、公式框的 .ctx（菜单）、.pill（浮条）、.tbtn（按钮，开着的是 .on），链接 .md-link 的颜色；
+   由用的一方配的样子：菜单 .md-menu（打开的带 .open）、浮条 .md-bar、按钮 .md-btn（开着的是 .on），链接 .md-link 的颜色；
+   mountEditor / codeEditor 的 classes 可以再加上用的一方自己的 class（比如它的菜单、按钮），这里只管大小和排版；
    工具条按钮的提示（名字在 data-tip，快捷键在 data-kbd）也由用的一方显示。代码块着色的 class
    （.kw .fn …）由给着色的一方（setCodeHighlighter）配样式 */
 .katex {
@@ -1144,13 +1145,13 @@ math {
     scale: 0.96;
   }
 }
-.md-bubble .tbtn {
+.md-bubble .md-btn {
   height: 26px;
   padding: 0 8px;
   min-width: 26px;
   justify-content: center;
 }
-.md-bubble .tbtn.md-ib {
+.md-bubble .md-btn.md-ib {
   width: 28px;
   padding: 0;
   transition:
@@ -1315,13 +1316,13 @@ math {
   gap: 1px;
   padding: 2px;
 }
-.md-tbar .tbtn.md-ib {
+.md-tbar .md-btn.md-ib {
   width: 26px;
   height: 24px;
   padding: 0;
   justify-content: center;
 }
-.md-tbar .tbtn.md-ib.danger:hover {
+.md-tbar .md-btn.md-ib.danger:hover {
   color: var(--warn);
 }
 /* --md-float-ring: a page can draw a firmer edge where its float shadow alone doesn't show (the board's dark theme) */
@@ -1518,7 +1519,7 @@ math {
 .md-langbox .md-langs .md-lo .ck {
   width: 10px;
 }
-/* .md-lo 写三遍：盖过 .ctx 和各主题的悬停色 */
+/* .md-lo 写三遍：盖过用的一方的菜单样式和各主题的悬停色 */
 .md-langbox .md-langs .md-lo.md-lo.md-lo:not([disabled]):is(:hover, .kb, .sel) {
   background: transparent;
   color: var(--ink);
@@ -1605,13 +1606,13 @@ math {
 .md-findn.none {
   color: var(--warn);
 }
-.md-findbar .tbtn {
+.md-findbar .md-btn {
   height: 24px;
   padding: 0 7px;
   border-radius: 7px;
   font-size: 12px;
 }
-.md-findbar .tbtn.md-ib {
+.md-findbar .md-btn.md-ib {
   width: 24px;
   padding: 0;
   justify-content: center;
