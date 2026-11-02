@@ -5,7 +5,7 @@
 ```bash
 npm run examples  # the repository the tests run on, examples/nano-vllm (under a second; in a git worktree it comes from the main checkout, nothing fetched); sglang and DeepEP are only for trying things by hand: npm run examples -- sglang DeepEP
 npm install
-npm run build      # @yhnocoder/markdown (packages/markdown/dist), board UI + extension, compiled into extensions/vscode/dist (no .vsix)
+npm run build      # the extension after the workspaces it depends on (tools/build.mjs): @yhnocoder/markdown (packages/markdown/dist), the board UI (packages/board/dist, which the extension build copies into its media/board) and the extension (extensions/vscode/dist; no .vsix)
 npm test           # unit tests (analysis, core, markdown, board, host, extension)
 npm run check      # local test tier: typecheck, lint, unit tests and affected harness scenarios (~90 s)
 npm run lint       # Biome (formatting at 120 columns, no unused imports, no `any`; biome.jsonc) and knip (dead code against tools/test/knip-known.txt); part of check and CI

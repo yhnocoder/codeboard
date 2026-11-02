@@ -1774,7 +1774,7 @@ test("mermaidThemes", async () => {
 /** A theme whose font is not loaded yet: the Mermaid diagrams are laid out again only once that font has loaded, so their boxes
  *  fit the real glyphs and not the fallback font's (the font is served late here, and the fallback is much wider) */
 test("mermaidThemeFontLoads", async () => {
-  const FONT = path.join(REPO, "extensions/vscode/media/board/fonts/OldStandardTT-400.woff2");
+  const FONT = path.join(REPO, "packages/board/dist/fonts/OldStandardTT-400.woff2");
   const CSS = `@font-face { font-family: "SlowTest"; src: url("http://fonts.test/slow.woff2") format("woff2"); }
     :root.look-newspaper { --sys: "SlowTest", monospace !important; }`;
   /** The theme's font from a server that answers once `gate` resolves; `seen.requested` once the page asked for it */

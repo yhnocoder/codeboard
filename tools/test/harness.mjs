@@ -165,9 +165,13 @@ if (against) {
   const git = (...a) => spawnSync("git", a, { cwd: REPO, encoding: "utf8" });
   const sha = git("rev-parse", "--verify", "-q", `${against}^{commit}`).stdout.trim();
   if (!sha) die(`--against: ${against} is not a commit in this clone`);
-  const dir = path.join(REPO, "test-out/against", sha),
-    media = path.join(dir, "extensions/vscode/media/board");
-  if (!fs.existsSync(path.join(media, "board.js"))) {
+  const dir = path.join(REPO, "test-out/against", sha);
+  // where that commit's board build lands: packages/board/dist, or the extension's media/board in older commits
+  const built = () =>
+    ["packages/board/dist", "extensions/vscode/media/board"]
+      .map((d) => path.join(dir, d))
+      .find((d) => fs.existsSync(path.join(d, "board.js")));
+  if (!built()) {
     console.log(`building the board at ${sha.slice(0, 7)} in ${path.relative(REPO, dir)}`);
     git("worktree", "remove", "--force", dir);
     fs.rmSync(dir, { recursive: true, force: true });
@@ -183,12 +187,12 @@ if (against) {
       if (r.status) die(`--against: ${cmd} failed at ${sha.slice(0, 7)}:\n${(r.stdout + r.stderr).slice(-3000)}`);
     }
   }
-  env.HARNESS_BOARD = media;
+  env.HARNESS_BOARD = built();
   console.log(`on the board of ${against} (${sha.slice(0, 7)}), not the current build`);
 }
 
-if (!against && !fs.existsSync(path.join(REPO, "extensions/vscode/media/board/board.js")))
-  die("the board is not built (extensions/vscode/media/board/board.js): run npm run build first");
+if (!against && !fs.existsSync(path.join(REPO, "packages/board/dist/board.js")))
+  die("the board is not built (packages/board/dist/board.js): run npm run build first");
 
 const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const strip = (s) => s.replace(/\x1b\[[0-9;]*m/g, "");

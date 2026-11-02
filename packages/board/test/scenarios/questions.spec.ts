@@ -15,7 +15,7 @@ import { inlineFor, setMediaDir } from "@codeboard/host/testing";
 import { test, open, check, light, verdict, expect, until, idle } from "../fixtures";
 import type { Page } from "@playwright/test";
 
-const MEDIA = path.join(REPO, "extensions/vscode/media/board");
+const MEDIA = path.join(REPO, "packages/board/dist");
 async function shotPr(h: Host, name: string) {
   await shot(h, name);
   const d = process.env.SHOTS_DIR;

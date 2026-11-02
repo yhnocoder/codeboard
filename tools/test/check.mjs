@@ -49,10 +49,10 @@ if (!(await run("extension package.json", "npm", ["run", "contributes", "-w", "c
   process.exit(1);
 }
 
-const stamp = path.join(REPO, "extensions/vscode/media/board/.build-hash");
+const stamp = path.join(REPO, "packages/board/dist/.build-hash");
 const hash = buildHash(REPO); // the board build takes most of a minute: skipped when nothing it is built from changed since the last one
 const fresh =
-  fs.existsSync(path.join(REPO, "extensions/vscode/media/board/board.js")) &&
+  fs.existsSync(path.join(REPO, "packages/board/dist/board.js")) &&
   fs.existsSync(stamp) &&
   fs.readFileSync(stamp, "utf8") === hash;
 const build = fresh
