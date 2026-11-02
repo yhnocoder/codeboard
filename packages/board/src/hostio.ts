@@ -15,7 +15,7 @@ import {
 import { state, setHost, mergeHost, setBoards, setLoaded, setSharedInfo, flows } from "./state/store";
 import { putViews, putStale, resetSegs } from "./state/views";
 import { markSaved, setBoard, mutate, sync, syncShared, syncGone, syncMerged } from "./state/changes";
-import { select, clearSel, setLineSel, lineSel, sel } from "./state/selection";
+import { select, setLineSel, lineSel, sel } from "./state/selection";
 import { toast } from "./state/toast";
 import { setCam } from "./state/camera";
 import { cardsMeasured } from "./state/measure";
@@ -73,13 +73,11 @@ function handle(m: HostToBoard) {
           b,
           (m.crumbs ?? []).map((c) => c.id),
         );
-        A.resetShownViews();
         setLoaded(true);
         // 换了一块白板（进入 / 离开子白板）：讲解、模式、拖动、弹出的面板、骨架、共享卡的情况都是上一块白板的（onBoardSwitch / boardSignal）
         boardSwitched();
         setCrumbs(m.crumbs ?? []);
         setWelcome(m.welcome ?? null);
-        clearSel();
       });
       if (questionsOpen()) A.refreshQuestions();
       setCam(b.cam.x, b.cam.y, b.cam.z);

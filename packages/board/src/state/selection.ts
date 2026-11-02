@@ -3,7 +3,7 @@ import { batch } from "solid-js";
 import { createStore } from "solid-js/store";
 import type { Board } from "@codeboard/core";
 import { send } from "../host";
-import { boardSignal } from "./root";
+import { boardSignal, onBoardSwitch } from "./root";
 import { SEL_REPORT } from "./timing";
 
 export type Sel = { cards: string[]; links: string[]; sections: string[] };
@@ -30,6 +30,8 @@ export const clearSel = () => {
   select({});
   setLineSel(null);
 };
+// what was selected is the last board's
+onBoardSwitch(clearSel);
 export const isSel = (id: string) => sel.cards.includes(id);
 /** A card went away (a fresh card left empty) */
 export const unselectCard = (id: string) => setSel("cards", (c) => c.filter((x) => x !== id));
