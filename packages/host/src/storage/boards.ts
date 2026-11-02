@@ -223,7 +223,8 @@ export class Storage {
    * Our own write into these folders moves their mtimes; the cached listing already has what it wrote (commit puts the entry in
    * the cache), so it takes the new mtimes instead of reading the folders again on the next listing. Only when each folder was
    * as listed just before the write: otherwise someone else changed it too, and the next listing reads it. A whole-second mtime
-   * may come from a coarse clock (see MTIME_GRAIN), on which a change right after ours could keep the same mtime: read again then
+   * may come from a coarse clock (see MTIME_GRAIN), on which a change right after ours could keep the same mtime: read again then.
+   * An outside change that lands between the two stats, during our write, is taken in with ours and shows only on the next scan
    */
   private async ownWrite(dirs: string[], write: () => Promise<void>) {
     const before = await Promise.all(dirs.map((d) => this.mtimeOf(d)));
