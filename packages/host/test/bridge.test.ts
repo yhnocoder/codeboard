@@ -1,6 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { CodeCard, ExpandPick, ExpandResult, PeekDef, Segment } from "@codeboard/core";
 import { analysisOf } from "../src/analysis";
 import { cardForFileSym } from "../src/cards";
@@ -151,11 +151,26 @@ describe("dynamic dispatch", () => {
     cx.defs.forget();
   });
   const site = () => at(lay, /self\.impl\.forward/, "forward");
+  /**
+   * A click or hover gives Go to Implementation DISPATCH_WAIT before it goes on without it. On a busy machine that wall-clock window
+   * must not decide a test about what the implementations show, so its timer stays still and they are waited for
+   */
+  const noWaitWindow = async (fn: () => Promise<void>) => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      await fn();
+    } finally {
+      vi.useRealTimers();
+    }
+  };
 
   it("lists all implementations (abstract base left out), and picking one expands it", async () => {
     W.language.implementations = impls;
     cx.defs.forget();
-    const r = await click(lay, /self\.impl\.forward/, "forward");
+    let r!: Awaited<ReturnType<typeof click>>;
+    await noWaitWindow(async () => {
+      r = await click(lay, /self\.impl\.forward/, "forward");
+    });
     expect(r).toMatchObject({ base: "AttentionImpl.forward" });
     expect("impls" in r && r.impls.map((i) => i.qual)).toEqual([
       "FlashAttentionImpl.forward",
@@ -165,8 +180,10 @@ describe("dynamic dispatch", () => {
     expect(qualOf(await click(lay, /self\.impl\.forward/, "forward", pick))).toBe("TritonAttentionImpl.forward");
   });
   it("shows Dynamic dispatch · 2 implementations on hover", async () => {
-    const pv = (await peek(cx, { ...site(), word: "self.impl.forward" })) as PeekDef;
-    expect(pv.dispatch).toMatchObject({ n: 2, base: "AttentionImpl", abstract: true });
+    await noWaitWindow(async () => {
+      const pv = (await peek(cx, { ...site(), word: "self.impl.forward" })) as PeekDef;
+      expect(pv.dispatch).toMatchObject({ n: 2, base: "AttentionImpl", abstract: true });
+    });
   });
   it("expands the definition at once when Go to Implementation is slow, and gives the implementations once they arrive", async () => {
     // Go to Implementation answers only when the test lets it: the click must not wait for it
