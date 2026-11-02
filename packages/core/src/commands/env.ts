@@ -13,12 +13,20 @@ export type Choice = { title: string; options: string[]; text?: string; warn?: s
 export interface CommandEnv {
   /** The board as it is now. Read only: change it through edit */
   board(): Board;
-  /** A user edit: one undo step */
-  edit(fn: (b: Board) => void): void;
+  /**
+   * A user edit: one undo step; false when it threw (then nothing changed). merge: folded into the last step when that had the same
+   * merge (held keys). fx: what the step does outside the board, undone and redone with it
+   */
+  edit(fn: (b: Board) => void, opts?: { merge?: string; fx?: { undo(): void; redo(): void } }): boolean;
   /** A request to the host; the reply's type is ReplyOf */
   ask<T extends AskType>(type: T, body: AskBody<T>): Promise<ReplyOf<T>>;
   /** Ask the user; the option's index, or null when the question was dismissed */
   choose(q: Choice): Promise<number | null>;
   toast(text: string): void;
   settings(): Settings;
+  /** The names of the boards a shared card is on, this one included (empty: on this board only) */
+  boardsOf(cardId: string): string[];
 }
+
+/** How many boards a card is on (0 or 1: only this one) */
+export const sharedOn = (env: Pick<CommandEnv, "boardsOf">, cardId: string) => env.boardsOf(cardId).length;

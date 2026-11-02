@@ -1,17 +1,7 @@
 import { batch } from "solid-js";
-import {
-  loadBoard,
-  findCard,
-  isCode,
-  allCodeCards,
-  rebaseUpstream,
-  upstreamSegs,
-  shiftBy,
-  walkOrder,
-  removeCards,
-  type HostToBoard,
-  type Sidenote,
-} from "@codeboard/core";
+import { loadBoard, findCard, isCode, walkOrder, type HostToBoard, type Sidenote } from "@codeboard/core";
+import { deleteItems, followMoved } from "@codeboard/core/commands";
+import { commandEnv } from "./actions/env";
 import { state, setHost, mergeHost, setBoards, setLoaded, setSharedInfo, flows } from "./state/store";
 import { putViews, putStale, resetSegs } from "./state/views";
 import { markSaved, setBoard, mutate, sync, syncShared, syncGone, syncMerged } from "./state/changes";
@@ -102,28 +92,10 @@ function handle(m: HostToBoard) {
     case "stale": {
       // moved：只是挪了位置，白板静默跟上（行号、Link、Sidenote 一起平移，钉的版本换成找到它的那个版本）。
       // 这是跟宿主同步，不是用户的操作，所以走 sync：不进撤销栈，⌘Z 回到更早的快照后会再平移一次（按段现在的位置算到目标行，不会平移两遍）
-      const moved = Object.entries(m.stale).filter(([, s]) => s.state === "moved");
-      if (moved.length) {
-        sync((b) => {
-          for (const [sid, s] of moved) {
-            if (s.state !== "moved") continue;
-            for (const k of allCodeCards(b)) {
-              // 有 Variant 的卡：版本状态说的是上游的段（显示的可能是我的分支）
-              const seg = upstreamSegs(k).find((q) => q.id === sid);
-              if (seg)
-                rebaseUpstream(
-                  b,
-                  k.id,
-                  { ...seg, start: s.start, end: s.end, version: s.version },
-                  shiftBy(s.start - seg.start),
-                );
-            }
-            for (const n of b.sidenotes)
-              if (n.kind === "code" && n.code.id === sid)
-                n.code = { ...n.code, start: s.start, end: s.end, version: s.version };
-          }
-        });
-      }
+      const moved = Object.entries(m.stale).flatMap(([sid, s]) =>
+        s.state === "moved" ? [[sid, s] as [string, typeof s]] : [],
+      );
+      if (moved.length) sync((b) => followMoved(b, moved));
       putStale(
         Object.fromEntries(Object.entries(m.stale).map(([k, v]) => [k, v.state === "moved" ? { state: "ok" } : v])),
       );
@@ -148,7 +120,7 @@ function handle(m: HostToBoard) {
         toast("Those cards are no longer on the board");
         break;
       }
-      mutate((b) => removeCards(b, gone));
+      deleteItems(commandEnv, { cards: gone });
       if (sel.cards.some((id) => gone.has(id))) select({ cards: sel.cards.filter((id) => !gone.has(id)) });
       toast(`Removed the ${gone.size > 1 ? `${gone.size} cards` : "card"} just added`);
       break;

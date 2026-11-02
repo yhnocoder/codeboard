@@ -1,7 +1,6 @@
 import { createMemo } from "solid-js";
 import { rooted } from "../state/root";
 import {
-  uid,
   isCode,
   cardTitle,
   findFree,
@@ -15,19 +14,17 @@ import {
   LEGEND,
   sameSource,
   baseName,
-  joinLinks,
-  splitLink,
-  placeCards,
   canMark,
   type Link,
   type LegendKey,
-  type NoteCard,
   type ProcTag,
   type RpcMark,
   type RunApply,
   type CallSpan,
   type TreeRow,
 } from "@codeboard/core";
+import * as C from "@codeboard/core/commands";
+import { commandEnv } from "./env";
 import { state, flows, cardById, hostOf, rectOf, placeOf, placed } from "../state/store";
 import { mutate } from "../state/changes";
 import { select, sel } from "../state/selection";
@@ -118,7 +115,7 @@ export function toggleMsgCard(id: string) {
   if (m) {
     const L = linkById(id)!;
     const [a, b] = m.first ? [L, m.other] : [m.other, L];
-    mutate((bd) => joinLinks(bd, a.id, b.id, m.card));
+    C.removeMessage(commandEnv, a.id, b.id, m.card);
     return;
   }
   const L = linkById(id);
@@ -133,19 +130,8 @@ export function toggleMsgCard(id: string) {
     cy = (ra.y + 24 + rb.y + 24) / 2;
   const others = placed().map((k) => rectOf(k));
   const at = findFree({ x: cx - w / 2, y: cy - 20, w, h: 56 }, others);
-  const mid = uid("n"),
-    l2 = uid("l");
-  const card: NoteCard = { id: mid, kind: "note", md: name, look: "note", msg: {} };
   const sec = placeOf(hostOf(L.from.card)).section;
-  mutate((b) => {
-    if (!b.links.some((k) => k.id === id && k.rpc)) return;
-    placeCards(b, [{ card, place: { x: Math.round(at.x), y: Math.round(at.y), w } }], {
-      copy: false,
-      at: (q) => (sec ? { ...q, section: sec } : q),
-    });
-    // 第一段（发送点 → 消息）没有箭头，第二段（消息 → 接收处）接着原来的终点
-    splitLink(b, id, mid, l2);
-  });
+  const mid = C.insertMessage(commandEnv, id, name, { x: Math.round(at.x), y: Math.round(at.y), w }, sec);
   requestAnimationFrame(() => popCard(mid));
 }
 

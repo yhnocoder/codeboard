@@ -3,7 +3,7 @@
 // Three kinds of change: mutate = the user's edits (undo steps); sync = what the host synced or the view derived (saved, not undo
 // steps, replayed after undo / redo); live = changes during a drag (the whole gesture becomes one undo step when it ends).
 import type { Board } from "../model";
-import { danglingRefs, removeCards } from "../edit";
+import { danglingRefs, removeCards, removeStickers } from "../edit";
 import { itemOps, NOT_UNDONE, parse, same, snapper, touched, type Effect, type ItemOp, type Snap } from "./snap";
 import { stamp, upkeeper, type NoteBlocks, type Raw } from "./upkeep";
 import { trimLru } from "./lru";
@@ -127,9 +127,11 @@ export function createHistory(doc: Doc, hooks: Hooks, ports: HistoryPorts) {
   // A new Note / Text / Code / question with nothing written yet: making it is not an undo step yet. Content written → "new +
   // content" is one undo step; blurred with nothing written → it goes away (drop), as if it never was
   const fresh = new Map<string, { before: Snap; drop: (b: Board) => void }>();
-  function createFresh(id: string, fn: (b: Board) => void, drop = (b: Board) => removeCards(b, [id])) {
+  function createFresh(id: string, fn: (b: Board) => void) {
     const before = snap();
     live(fn);
+    // a new question is a sticker, anything else a card
+    const drop = (b: Board) => (b.stickers.some((s) => s.id === id) ? removeStickers(b, [id]) : removeCards(b, [id]));
     fresh.set(id, { before, drop });
   }
   /** The first edit of a new card ends: keep = content was written (`fn` writes it) */

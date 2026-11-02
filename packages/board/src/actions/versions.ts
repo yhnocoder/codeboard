@@ -3,11 +3,7 @@ import { unwrap } from "solid-js/store";
 import {
   uid,
   isCode,
-  rebaseSegment,
-  rebaseUpstream,
   upstreamSegs,
-  viewKeyOf,
-  UPSTREAM,
   type CodeCard,
   type Segment,
   type DiffData,
@@ -16,8 +12,7 @@ import {
 } from "@codeboard/core";
 import * as V from "@codeboard/core/commands";
 import { state, cardById, hostOf } from "../state/store";
-import { putViews, staleOf, staleOk, putStale } from "../state/views";
-import { mutate } from "../state/changes";
+import { staleOf } from "../state/views";
 import { select } from "../state/selection";
 import { toast } from "../state/toast";
 import { openPop, updatePop } from "../state/pop";
@@ -25,7 +20,7 @@ import { send, ask } from "../host";
 import { addCards } from "./create";
 import { hostRect, revealCard } from "./common";
 import { lastPointer } from "../state/measure";
-import { updateScoped, reviewToast } from "./shared";
+import { reviewToast } from "./shared";
 import { versionEnv } from "./env";
 import { COMMITS_WAIT } from "../state/timing";
 import { cardSel } from "../cardsel";
@@ -48,19 +43,14 @@ export async function openDiff(id: string, segId?: string) {
     updatePop(pid, "diff", (p) => ({ ...p, error: (e as Error).message }));
   }
 }
-/** Update：换成新版本；Sidenote 跟着行走，那一行被删了改挂整卡，挂着的行变了的标上复查。共享卡先问范围（shared.updateScoped） */
+/** Update：换成新版本；Sidenote 跟着行走，那一行被删了改挂整卡，挂着的行变了的标上复查。共享卡先问范围（core updateScope） */
 export async function applyNewVersion(cardId: string, segId: string, data: DiffData) {
   if (!data.newSeg) return;
-  await updateScoped(
-    cardId,
-    segId,
-    data,
-    (id) => {
-      V.applyVersion(versionEnv, id, segId, data);
-      toast(`Updated to the new version${reviewToast(id)}`);
-    },
-    () => V.keepVersion(versionEnv, cardId, segId),
-  );
+  const id = await V.updateScope(versionEnv, cardId, segId, data, () => V.keepVersion(versionEnv, cardId, segId));
+  if (!id) return;
+  batch(() => V.applyVersion(versionEnv, id, segId, data));
+  toast(`Updated to the new version${reviewToast(id)}`);
+  if (id !== cardId) select({ cards: [id] });
 }
 export async function duplicateNewVersion(cardId: string, segId: string, data: DiffData) {
   if (!data.newSeg) return;
@@ -107,24 +97,14 @@ export async function switchCommit(id: string, commit: string) {
       return toast((e as Error).message);
     }
   }
-  // 走 rebaseSegment：段上的隐藏 / 高亮，Link、Sidenote、Sticker 的行号按内容跟到那个 commit 的行上
-  mutate((b) => {
-    for (const r of segs) rebaseSegment(b, id, r.seg);
-  });
-  batch(() => {
-    putViews(Object.fromEntries(segs.map((r) => [r.seg.id, r.view])));
-    putStale(Object.fromEntries(segs.map((r) => [r.seg.id, undefined])));
-  });
+  batch(() => V.switchCommit(versionEnv, id, segs));
   send({ type: "checkVersions" });
   toast(`Switched to ${commit.slice(0, 7)}`);
 }
 
 /** Relocate 之后宿主送来新段（同一个 id）：换掉旧段，行号跟过去，状态回到正常 */
 export function replaceSegment(cardId: string, seg: Segment, view: SegView) {
-  const c = cardById(cardId)?.card;
-  if (isCode(c)) putViews({ [viewKeyOf(c, seg.id, UPSTREAM)]: view });
-  staleOk([seg.id]);
-  mutate((b) => rebaseUpstream(b, cardId, seg));
+  batch(() => V.putUpstream(versionEnv, cardId, seg, view));
 }
 
 /** Review in the new-version banner: open the diffs one by one */

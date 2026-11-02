@@ -4,7 +4,6 @@ import {
   boardQuestions,
   isQuestion,
   questionsMarkdown,
-  removeStickers,
   uid,
   type Board,
   type IconRef,
@@ -110,13 +109,9 @@ export function askQuestionOnCard(card: string) {
 
 /** 新问题和新卡一样：写了问题才进撤销栈，什么都没写就关掉 = 没提过 */
 function newQuestion(s: Sticker) {
-  createFresh(
-    s.id,
-    (b) => {
-      b.stickers.push(s);
-    },
-    (b) => removeStickers(b, [s.id]),
-  );
+  createFresh(s.id, (b) => {
+    b.stickers.push(s);
+  });
   requestAnimationFrame(() => openQuestion(s.id, undefined, true));
 }
 

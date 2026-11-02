@@ -67,6 +67,7 @@ function env(o: {
     edit: (fn) => {
       fn(b);
       log.edits++;
+      return true;
     },
     ask: (async (type: string, body: { seg: Segment }) => {
       expect(type).toBe("diff");
@@ -86,7 +87,10 @@ function env(o: {
       for (const id of ids) stale[id] = { state: "ok" };
     },
     putViews: (v) => Object.assign(log.views, v),
-    sharedOn: (id) => o.shared?.[id] ?? 1,
+    dropStale: (ids) => {
+      for (const id of ids) delete stale[id];
+    },
+    boardsOf: (id) => Array.from({ length: o.shared?.[id] ?? 1 }, (_, i) => `Board ${i + 1}`),
   };
   return { b, e, log, stale };
 }

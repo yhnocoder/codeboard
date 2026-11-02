@@ -196,6 +196,21 @@ describe("drags and fresh cards", () => {
     expect(h.undo()).toBe(false);
   });
 
+  it("drops a fresh question left empty: it is a sticker, not a card", () => {
+    const { h, board, add } = setup();
+    add("a");
+    h.createFresh("q", (b) => {
+      b.stickers.push({
+        id: "q",
+        icon: { pack: "q", name: "q" },
+        at: { kind: "canvas", x: 0, y: 0, size: 28, on: { card: "a" } },
+      } as Board["stickers"][number]);
+    });
+    h.settleFresh("q", false);
+    expect(board().stickers).toEqual([]);
+    expect(board().cards.map((c) => c.id)).toEqual(["a"]);
+  });
+
   it("makes a fresh card and its content one step; left empty, it is gone with no step", () => {
     const { h, md, board } = setup();
     h.createFresh("a", (b) => {

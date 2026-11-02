@@ -8,7 +8,6 @@ import {
   sameCallSite,
   altIsSeg,
   baseName,
-  swapCallTarget,
   type CallSpan,
   type CodeCard,
   type ExpandResult,
@@ -18,6 +17,8 @@ import {
   type SearchItem,
 } from "@codeboard/core";
 import type { CallAlt, BoundVal } from "@codeboard/analysis/basics";
+import * as C from "@codeboard/core/commands";
+import { commandEnv } from "./env";
 import { state, cardById, hostOf, placeOf } from "../state/store";
 import { putViews } from "../state/views";
 import { mutate } from "../state/changes";
@@ -26,7 +27,7 @@ import { toast } from "../state/toast";
 import { openPop, type ImplPop, type NamesPop } from "../state/pop";
 import { ask } from "../host";
 import { K, hostRect, popCard } from "./common";
-import { callMark, expandCall, placeExpanded, isLibCall } from "./flow";
+import { expandCall, placeExpanded, isLibCall } from "./flow";
 import { linksInto } from "./nav";
 
 /** library 包在不在 Study Scope 里：不在的要 ⌥ 才展开 */
@@ -182,18 +183,13 @@ export async function swapAlt(linkId: string, k: number, o: { label?: string; dr
       : undefined;
   const newId = r.card.id;
   putViews(r.views);
-  let kept = false;
-  mutate((b) => {
-    const nc = structuredClone(r.card) as CodeCard;
-    if (r.title) nc.title = r.title;
-    kept =
-      swapCallTarget(b, linkId, nc, {
-        alt: item.i!,
-        oldAlt: o.dropOld ? undefined : oldAlt,
-        w: r.w ?? 560,
-        label: o.label,
-        vals: a.vals ?? r.mark?.vals,
-      })?.kept ?? false;
+  const kept = C.swapCall(commandEnv, linkId, r.card as CodeCard, {
+    title: r.title,
+    alt: item.i!,
+    oldAlt: o.dropOld ? undefined : oldAlt,
+    w: r.w ?? 560,
+    label: o.label,
+    vals: a.vals ?? r.mark?.vals,
   });
   if (kept) toast(`Kept ${old ? cardTitle(old) : "the previous card"}: it has its own arrows`);
   select({ cards: [newId] });
@@ -247,7 +243,7 @@ export function manualCallTo(from: { card: string; seg?: string; line?: number; 
       id,
       from: { card: from.card, seg: from.seg, line: from.line },
       to: { card: to },
-      call: { ...callMark(from.call), ev: { kind: "manual" } },
+      call: { ...C.callMark(from.call), ev: { kind: "manual" } },
     });
   });
   toast(`Linked to ${cardTitle(t.card)} (manual)`);

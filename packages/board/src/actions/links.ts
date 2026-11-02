@@ -19,7 +19,8 @@ import { setEditing, setHoverVar } from "../state/ui";
 import { setConnectFrom } from "../state/mode";
 import { openPop } from "../state/pop";
 import { lastPointer } from "../state/measure";
-import { askCands, attachCall, calleeMatches, callMark } from "./flow";
+import { askCands, attachCall, calleeMatches } from "./flow";
+import { callMark } from "@codeboard/core/commands";
 
 type EndRef = End;
 

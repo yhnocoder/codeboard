@@ -5,14 +5,7 @@ import {
   isCode,
   cardTitle,
   segOf,
-  cardIntoSidenote,
-  imageIntoNote,
-  removeSidenotes,
-  sidenoteCard,
-  sidenoteToCard,
   splitHeadings,
-  splitNoteByHeadings,
-  turnNoteInto,
   NEW_CARD_W,
   type Sidenote,
   type SegView,
@@ -20,6 +13,8 @@ import {
   type BoxFill,
   type HandColor,
 } from "@codeboard/core";
+import * as C from "@codeboard/core/commands";
+import { commandEnv } from "./env";
 import { state, cardById, hostOf, rectOf, placeOf } from "../state/store";
 import { mutate } from "../state/changes";
 import { sel, select, clearSel, lineSel } from "../state/selection";
@@ -29,7 +24,7 @@ import { editing, liveNoteMd, setEditing } from "../state/ui";
 import { cardsMeasured } from "../state/measure";
 import { noteImageOf } from "./imagedata";
 import { quietHover } from "../state/camera";
-import { choose, promptText, type Item } from "../ui/Menu";
+import { promptText, type Item } from "../ui/Menu";
 import { imageCaption, setImageCaption } from "@yhnocoder/markdown";
 import { noteImageAt, type ImgRef } from "./imageai";
 import { openPop, closePop, pops, updatePop, pinPop } from "../state/pop";
@@ -127,7 +122,7 @@ export function updateSidenote(id: string, f: (n: Sidenote) => void) {
   });
 }
 export function deleteSidenote(id: string) {
-  mutate((b) => removeSidenotes(b, [id]));
+  C.deleteItems(commandEnv, { sidenotes: [id] });
 }
 /** Place on Board：Sidenote 变成卡，放在源卡旁边，自动连一条箭头（从原来挂的那一行连出） */
 export function placeSidenote(id: string) {
@@ -135,42 +130,24 @@ export function placeSidenote(id: string) {
   if (!n) return;
   if (n.kind === "card") return revealCard(n.card);
   const r = hostRect(n.at.card);
-  const card = sidenoteCard(unwrap(n));
-  if (!r || !card) return;
-  const views: Record<string, SegView> = {};
-  if (n.kind === "code" && isCode(card) && state.views[n.code.id]) views[card.segments[0].id] = state.views[n.code.id];
+  if (!r) return;
   // 放卡、去掉 Sidenote、连箭头是同一步（一次撤销）
-  addCards(
-    [{ card, views, w: card.kind === "note" || n.kind === "paste" ? NEW_CARD_W : card.kind === "web" ? 300 : 480 }],
-    { at: { x: r.x + r.w + 48, y: r.y + 20 }, also: (b) => sidenoteToCard(b, id, card.id) },
-  );
+  const card = C.sidenoteOnBoard(commandEnv, id, (card, n, also) => {
+    const views: Record<string, SegView> = {};
+    if (n.kind === "code" && isCode(card) && state.views[n.code.id])
+      views[card.segments[0].id] = state.views[n.code.id];
+    addCards(
+      [{ card, views, w: card.kind === "note" || n.kind === "paste" ? NEW_CARD_W : card.kind === "web" ? 300 : 480 }],
+      { at: { x: r.x + r.w + 48, y: r.y + 20 }, also },
+    );
+  });
+  if (!card) return;
   if (isCode(card) && card.segments[0].src.kind === "free") requestViews(card.segments);
   closePop();
 }
 /** Note 拖到某一行 → Text sidenote；⌥ 拖代码卡到某一行 → Code sidenote */
 export async function cardToSidenote(cardId: string, at: Anchor) {
-  const c = cardById(cardId)?.card;
-  if (!c) return;
-  const links = state.board.links.filter((l) => l.from.card === cardId || l.to.card === cardId).length;
-  if (links) {
-    const ok = await choose(`Turn into a Sidenote?`, ["Turn into Sidenote", "Cancel"], {
-      text: `${links} link${links > 1 ? "s" : ""} on this card will be deleted.`,
-    });
-    if (ok !== 0) return;
-  }
-  // 多段卡：挂成 Card sidenote，卡留着
-  const id = uid("n");
-  const n: Sidenote | null =
-    isCode(c) && c.segments.length > 1
-      ? { id, at, kind: "card", card: cardId }
-      : c.kind === "note"
-        ? { id, at, kind: "text", md: c.md }
-        : isCode(c)
-          ? { id, at, kind: "code", code: structuredClone(unwrap(c.segments[0])), why: c.desc }
-          : null;
-  if (!n) return;
-  const ok = mutate((b) => cardIntoSidenote(b, cardId, n));
-  if (!ok) return;
+  if (!(await C.cardToSidenote(commandEnv, cardId, at))) return;
   clearSel();
   toast("Added as Sidenote");
 }
@@ -182,14 +159,7 @@ export async function noteImageFor(imageId: string): Promise<string | null> {
 }
 /** 图放进 Note 的 Markdown（at = 第几个字，一块的开头；不给 = 末尾），图片卡删掉：一步撤销 */
 export function putImageInNote(imageId: string, noteId: string, src: string, at?: number) {
-  let ok = false;
-  if (
-    !mutate((b) => {
-      ok = imageIntoNote(b, imageId, noteId, src, at);
-    }) ||
-    !ok
-  )
-    return;
+  if (!C.putImageInNote(commandEnv, imageId, noteId, src, at)) return;
   select({ cards: [noteId] });
   toast("Added the image to the Note");
 }
@@ -242,9 +212,7 @@ export function setBoxFill(id: string, fill: BoxFill) {
   });
 }
 
-export function turnNote(id: string, look: "note" | "text") {
-  mutate((b) => turnNoteInto(b, id, look));
-}
+export const turnNote = (id: string, look: "note" | "text") => C.turnNote(commandEnv, id, look);
 
 /** Split by Headings 能拆成几张卡（0 = 没有可拆的标题，菜单项灰掉） */
 export function headingSplitCount(id: string): number {
@@ -297,15 +265,11 @@ export async function splitByHeadings(id: string) {
   const m = measureSplit(id, sp.cut, sp.parts.length);
   const p0 = { ...placeOf(id) };
   const others = state.board.cards.filter((k) => k.id !== id && state.board.place[k.id]).map((k) => rectOf(k));
-  let ids: string[] | null = null;
-  if (
-    !mutate((b) => {
-      ids = splitNoteByHeadings(b, id, { heights: m ? { root: m.root, parts: m.parts } : undefined, others });
-    }) ||
-    !ids
-  )
-    return;
-  const made: string[] = ids;
+  const made = C.splitByHeadings(commandEnv, id, {
+    heights: m ? { root: m.root, parts: m.parts } : undefined,
+    others,
+  });
+  if (!made) return;
   select({ cards: [id, ...made] });
   made.forEach((k, i) => popCard(k, { x: p0.x, y: p0.y + (m?.tops[i] ?? 40) }));
   toast(`Split into ${made.length} card${made.length > 1 ? "s" : ""}. ${IS_MAC ? "⌘Z" : "Ctrl+Z"} undoes it`);

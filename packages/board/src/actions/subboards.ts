@@ -1,16 +1,7 @@
 import { batch } from "solid-js";
-import { unwrap } from "solid-js/store";
-import {
-  cardTitle,
-  descendants,
-  escHtml,
-  extractBoard,
-  removeCards,
-  uid,
-  wouldCycle,
-  type BoardCard,
-  type WalkHop,
-} from "@codeboard/core";
+import { cardTitle, descendants, escHtml, uid, wouldCycle, type BoardCard, type WalkHop } from "@codeboard/core";
+import * as C from "@codeboard/core/commands";
+import { commandEnv } from "./env";
 import { state, cardById, hostOf, rectOf, flows } from "../state/store";
 import { mutate, flushSave } from "../state/changes";
 import { sel, select, clearSel } from "../state/selection";
@@ -404,58 +395,10 @@ export async function turnIntoBoard() {
   const def = secs[0] || (first ? cardTitle(first, state.board).split(/[ (]/)[0] : "") || "New Board";
   const name = (await promptText("Turn into Board", def, "Name of the new board", "Create Board"))?.trim();
   if (!name) return;
-  const id = uid("b"),
-    frame = uid("c");
-  const rects = (k: string) => rectOf(k);
-  // 先在一份拷贝上拆出新白板交给宿主存；存好了再改这块白板（同一个 id，结果一样）
-  const copy = structuredClone(unwrap(state.board));
-  const r = extractBoard(copy, ids, rects, { id, name, frame });
-  if (!r) return;
-  // 新白板上的卡带着在这里量到的高（Place.mh）：框里的地图一开始就按真实大小画
-  for (const c of r.child.cards) {
-    const p = r.child.place[c.id],
-      mh = p && heightToKeep(c, p);
-    if (mh) p.mh = mh;
-  }
-  try {
-    await ask("newBoard", { board: r.child });
-  } catch (e) {
-    return toast(`Couldn't create the board: ${(e as Error).message}`);
-  }
-  // 撤销 = 新白板也不要了（宿主放进 .trash；建好以后改过、别的白板也放着它的框就留着），重做 = 把放进 .trash 的那份放回来
-  let dropped = false;
-  const ok = mutate(
-    (b) => {
-      extractBoard(b, ids, rects, { id, name, frame });
-    },
-    {
-      fx: {
-        undo: () => {
-          void ask("dropBoard", { id, made: r.child }).then(
-            (d) => {
-              dropped = d;
-            },
-            () => {},
-          );
-        },
-        redo: () => {
-          if (!dropped) return;
-          void ask("restoreBoard", { id })
-            .then((back) => (back ? true : ask("newBoard", { board: r.child })))
-            .then(
-              () => {
-                dropped = false;
-              },
-              (e: Error) => toast(`Couldn't create the board: ${e.message}`),
-            );
-        },
-      },
-    },
-  );
-  if (ok) {
-    batch(() => select({ cards: [frame] }));
-    toast(`Made “${name}” · double-click to open it`);
-  }
+  const frame = await C.turnIntoBoard(commandEnv, ids, name, (k) => rectOf(k), heightToKeep);
+  if (!frame) return;
+  batch(() => select({ cards: [frame] }));
+  toast(`Made “${name}” · double-click to open it`);
 }
 
 /** 画布菜单 Insert Board ▸：把一块已有的白板作为子白板放在 at；会套成环的不行 */
@@ -492,12 +435,7 @@ export async function deleteFrameBoard(id: string) {
   if (!f) return;
   const done = await ask("deleteBoard", { id: f.board }).catch(() => false);
   if (!done) return;
-  mutate((b) =>
-    removeCards(
-      b,
-      b.cards.filter((c) => c.kind === "board" && c.board === f.board).map((c) => c.id),
-    ),
-  );
+  C.removeBoardFrames(commandEnv, f.board);
   clearSel();
 }
 

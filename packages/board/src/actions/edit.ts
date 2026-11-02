@@ -1,30 +1,17 @@
 import { untrack } from "solid-js";
 import { unwrap } from "solid-js/store";
 import {
-  arrangeCards,
-  makeCompare,
   overlaps,
-  removeSections as removeSectionsIn,
-  renameTitleRefs,
-  replaceCards,
-  removeLinks,
-  placeCards,
-  mergeCodeCards,
-  unmergeCard,
-  unlinkCard,
-  uid,
   findCard,
   isCode,
   cardTitle,
   segOf,
   bounds,
-  removeCards,
   SECTION_PAD,
   GAP,
   copyText,
   guessLang,
   pythonDialect,
-  defaultWidth,
   type Arrange,
   type Board,
   type Card,
@@ -33,11 +20,12 @@ import {
   type Section,
   type Segment,
   type Rect,
-  type NoteCard,
   type NoteLayout,
 } from "@codeboard/core";
+import * as C from "@codeboard/core/commands";
+import { commandEnv } from "./env";
 import { LANGS, langLabel } from "@codeboard/analysis/langs";
-import { state, cardById, hostOf, rectOf, placeOf, sharedOn, collapsedAway } from "../state/store";
+import { state, cardById, hostOf, rectOf, placeOf, collapsedAway } from "../state/store";
 import { mutate, isFresh, settleFresh } from "../state/changes";
 import { sel, select, clearSel, setLineSel, type LineSel } from "../state/selection";
 import { toast } from "../state/toast";
@@ -115,12 +103,7 @@ export function deleteSel() {
   const secs = new Set(sel.sections);
   if (!ids.size && !links.size && !secs.size) return;
   ghostOut(ids);
-  const ok = mutate((b) => {
-    removeCards(b, ids);
-    removeLinks(b, links);
-    removeSectionsIn(b, secs);
-  });
-  if (ok) clearSel();
+  if (C.deleteItems(commandEnv, { cards: ids, links, sections: secs })) clearSel();
 }
 /**
  * 显示时在一张卡里选中了一段字再按 ⌫ / Delete：不删卡。Note / Text / Mark 和自由代码卡进入编辑，选上同一段，
@@ -166,11 +149,10 @@ export function editTextSel(key: "Backspace" | "Delete"): boolean {
   return true;
 }
 export function deleteLinks(ids: string[]) {
-  const s = new Set(ids);
-  if (mutate((b) => removeLinks(b, s))) select({});
+  if (C.deleteItems(commandEnv, { links: new Set(ids) })) select({});
 }
 export function removeSections(ids: string[]) {
-  mutate((b) => removeSectionsIn(b, ids));
+  C.deleteItems(commandEnv, { sections: ids });
   select({});
 }
 
@@ -180,12 +162,10 @@ export function arrange(ids: string[], how: Arrange) {
   const set = new Set(ids.map(hostOf));
   if (!set.size) return;
   const rs = [...set].filter((id) => state.board.place[id]).map((id) => rectOf(id));
-  mutate((b) =>
-    arrangeCards(b, set, how, (id) => {
-      const r = rectOf(id);
-      return rs.some((m) => overlaps(m, r));
-    }),
-  );
+  C.arrange(commandEnv, set, how, (id) => {
+    const r = rectOf(id);
+    return rs.some((m) => overlaps(m, r));
+  });
 }
 /** Forward / Backward with nothing overlapping go all the way, so they change nothing exactly when Front / Back don't */
 function atEdge(ids: string[], top: boolean) {
@@ -254,17 +234,12 @@ export async function tidyUp(ids = sel.cards) {
 export function duplicateSel() {
   const cs = selCards().filter((c) => c.kind !== "compare");
   if (!cs.length) return toast("Select a card to duplicate");
-  let made: string[] = [];
-  mutate((b) => {
-    // core placeCards：卡、段换新 id；摆放错开 48，不带折叠、锁定
-    const r = placeCards(
-      b,
-      cs.map((c) => ({ card: unwrap(c), place: unwrap(b.place[c.id]) })),
-      { copy: true, at: (p) => ({ ...p, x: p.x + 48, y: p.y + 48 }) },
-    );
-    made = cs.map((c) => r.cards[c.id]);
-    copyViews(r.segs);
-  });
+  const r = C.duplicateCards(
+    commandEnv,
+    cs.map((c) => c.id),
+  );
+  const made = r?.made ?? [];
+  if (r) copyViews(r.segs);
   select({ cards: made });
   made.forEach((id) => popCard(id));
   toast(made.length > 1 ? `Duplicated ${made.length} cards (no arrows)` : "Duplicated. The copy has no arrows.");
@@ -279,15 +254,7 @@ export function copyCard(c: CodeCard) {
 }
 
 export const compareTitle = (c: CompareCard) => cardTitle(c, state.board);
-export function renameCard(id: string, v: string) {
-  mutate((b) => {
-    const c = findCard(b, id)?.card;
-    if (!c) return;
-    const old = cardTitle(c, b).trim();
-    c.title = v.trim() && v.trim() !== cardTitle({ ...c, title: undefined } as Card) ? v.trim() : undefined;
-    renameTitleRefs(b, old, cardTitle(c, b).trim()); // 白板上写着 [[旧名]] 的引用跟着改
-  });
-}
+export const renameCard = (id: string, v: string) => C.renameCard(commandEnv, id, v);
 export function setDesc(id: string, v: string) {
   mutate((b) => {
     const c = findCard(b, id)?.card;
@@ -297,24 +264,10 @@ export function setDesc(id: string, v: string) {
 /** 改 Note 的字；字删光了这张 Note 就删掉（同一步，一次撤销就回来）。layout: the editor changed table widths, row
  *  heights or code wrap (null = all automatic again); left out = unchanged */
 export function setNoteText(id: string, v: string, layout?: NoteLayout | null) {
-  // 写空了的 Note / Text / Mark 删掉；空的 Box 还是一个框
-  const c0 = cardById(id)?.card;
-  const keep = !!v.trim() || (c0?.kind === "note" && c0.look === "box");
-  const set = (c: NoteCard) => {
-    c.md = v;
-    if (layout !== undefined) c.mdLayout = layout ?? undefined;
-  };
-  if (isFresh(id))
-    return settleFresh(id, keep, (b) => {
-      const c = findCard(b, id)?.card;
-      if (c?.kind === "note") set(c);
-    });
-  mutate((b) => {
-    const c = findCard(b, id)?.card;
-    if (c?.kind !== "note") return;
-    if (keep) set(c);
-    else removeCards(b, [id]);
-  });
+  const write = (b: Board) => C.writeNote(b, id, v, layout);
+  // a new Note left empty is dropped (no undo step), as if it never was
+  if (isFresh(id)) return settleFresh(id, C.noteKept(cardById(id)?.card, v), write);
+  mutate(write);
 }
 export function setFreeCode(id: string, text: string) {
   let seg: Segment | undefined;
@@ -440,77 +393,34 @@ export function missingNote(c: CodeCard): string | null {
   return null;
 }
 
-export function compareCheck(): { ok: true } | { ok: false; why: string } {
-  const cs = selCards();
-  if (cs.length !== 2 || !cs.every((c) => c.kind === "code"))
-    return { ok: false, why: "Select exactly two code cards" };
-  return { ok: true };
-}
+export const compareCheck = () => C.compareCheck(selCards());
 export function doCompare() {
-  const chk = compareCheck();
+  const cs = selCards();
+  const chk = C.compareCheck(cs);
   if (!chk.ok) return toast(chk.why);
-  const [p, q] = (selCards() as CodeCard[]).sort((a, b) => placeOf(a.id).x - placeOf(b.id).x);
-  const id = uid("k");
-  mutate((b) => {
-    const pa = b.place[p.id],
-      pc = b.place[q.id];
-    const section = pa.section ?? pc.section;
-    makeCompare(b, id, [p.id, q.id], {
-      x: pa.x,
-      y: pa.y,
-      w: Math.min(1280, Math.max(760, pa.w + pc.w)),
-      ...(section ? { section } : {}),
-    });
-  });
+  const id = C.compare(commandEnv, [cs[0].id, cs[1].id]);
+  if (!id) return;
   select({ cards: [id] });
   requestAnimationFrame(() => revealCard(id));
 }
 export function separate(id: string) {
-  const k = cardById(id)?.card;
-  if (k?.kind !== "compare") return;
-  const ids = [...k.cols];
-  mutate((b) => {
-    const kp = b.place[id];
-    const [a, c] = ids.map((i) => b.cards.find((x) => x.id === i)!);
-    // 拆回：左栏在原位，右栏放在它右边
-    const wa = defaultWidth(a),
-      wc = defaultWidth(c);
-    b.place[a.id] = { x: kp.x, y: kp.y, w: wa, section: kp.section };
-    b.place[c.id] = { x: kp.x + wa + 40, y: kp.y, w: wc, section: kp.section };
-    // 两栏拆回来时和 Compare 斜得一样
-    const tilt = b.cards.find((x) => x.id === id)?.tilt;
-    a.tilt = c.tilt = tilt;
-    // 连在 Compare 上的箭头、贴在它上面的 Sticker 改到左栏
-    replaceCards(b, [id], () => ({ card: a.id }));
-  });
-  select({ cards: ids });
+  const ids = C.separate(commandEnv, id);
+  if (ids) select({ cards: ids });
 }
 
-export function mergeCheck(cs: Card[]): { ok: true } | { ok: false; why: string } {
-  if (cs.length < 2) return { ok: false, why: "Select two or more code cards" };
-  // 类卡也能合：合出来的卡按行号排段、显示源码（不再只列成员），拆开时还原成类卡
-  if (!cs.every((c) => c.kind === "code"))
-    return { ok: false, why: "Only code cards can be merged (not Note, Image, Web or Compare cards)" };
-  return { ok: true };
-}
-/** 合并：target 是被拖到的那张卡（标题、说明、文件顺序以它为准）。共享卡先在这块白板上拆成副本，别的白板不受影响（core mergeCodeCards） */
+/** 合并：target 是被拖到的那张卡（标题、说明、文件顺序以它为准）。共享卡先在这块白板上拆成副本，别的白板不受影响（core mergeCards） */
 export function mergeCards(ids: string[], target?: string) {
   const cs = ids.map((i) => cardById(i)?.card).filter(Boolean) as Card[];
-  const chk = mergeCheck(cs);
+  const chk = C.mergeCheck(cs);
   if (!chk.ok) return toast(chk.why);
   const tgt = cs.find((c) => c.id === target) ?? cs[0];
-  const linked = cs.filter((c) => sharedOn(c.id) > 1).length;
-  let r: ReturnType<typeof mergeCodeCards> = null;
-  const ok = mutate((b) => {
-    r = mergeCodeCards(
-      b,
-      cs.map((c) => c.id),
-      tgt.id,
-      { unlink: (id) => sharedOn(id) > 1 },
-    );
-  });
-  const m = r as ReturnType<typeof mergeCodeCards>;
-  if (!ok || !m) return;
+  const m = C.mergeCards(
+    commandEnv,
+    cs.map((c) => c.id),
+    tgt.id,
+  );
+  if (!m) return;
+  const linked = m.linked;
   // 段 id 没变的直接沿用展示数据；合出来的新段（范围变了）找宿主要
   const fresh = m.segments.filter((s) => {
     const v = state.views[s.id];
@@ -526,16 +436,8 @@ export function mergeCards(ids: string[], target?: string) {
 
 /** 拆开：有合并记录就拆回原来的卡（放回原位、Link 回到各自的卡）；没有就按段拆（core unmergeCard） */
 export function unmerge(id: string) {
-  const M = cardById(id)?.card;
-  if (!isCode(M)) return;
-  if (!M.mergedFrom && M.segments.length < 2) return;
-  if (!state.board.place[id]) return toast("Separate the Compare first");
-  let r: ReturnType<typeof unmergeCard> = null;
-  const ok = mutate((b) => {
-    r = unmergeCard(b, id);
-  });
-  const u = r as ReturnType<typeof unmergeCard>;
-  if (!ok || !u) return;
+  const u = C.unmerge(commandEnv, id);
+  if (!u) return;
   requestViews(u.segments.filter((s) => !state.views[s.id]));
   select({ cards: u.made });
   toast(`Split into ${u.made.length} cards`);
@@ -543,14 +445,8 @@ export function unmerge(id: string) {
 
 /** 共享卡在这块白板上变成独立副本（Unlink）：换新 id，别的白板和卡库不动 */
 export function unlinkShared(id: string) {
-  const h = hostOf(id);
-  let to = "";
-  if (
-    !mutate((b) => {
-      to = unlinkCard(b, h);
-    })
-  )
-    return;
+  const to = C.unlink(commandEnv, hostOf(id));
+  if (!to) return;
   select({ cards: [to] });
   toast("Unlinked. This board now has its own copy; the other boards keep the linked card.");
 }
@@ -559,25 +455,12 @@ export function moveToNewSection(rect?: Rect, parentId?: string) {
   const ids = sel.cards.map((i) => cardById(i)?.host.id).filter(Boolean) as string[];
   const subs = sel.sections.slice();
   if (!ids.length && !subs.length && !rect) return;
-  const id = uid("g");
-  mutate((b) => {
-    const homes = [...new Set(ids.map((i) => b.place[i]?.section))];
-    const parent = rect ? parentId : homes.length === 1 ? homes[0] : undefined;
-    const r = rect ?? bounds(ids.map((i) => rectOf(i))) ?? { x: 0, y: 0, w: 200, h: 120 };
-    b.sections.push({ id, title: "Untitled Section", x: r.x, y: r.y, w: r.w, h: r.h, parent });
-    for (const i of ids) if (b.place[i]) b.place[i].section = id;
-    for (const q of subs) {
-      // 不能把祖先放进自己里面
-      let ok = true;
-      for (
-        let a: Section | undefined = b.sections.find((s) => s.id === id);
-        a;
-        a = b.sections.find((s) => s.id === a!.parent)
-      )
-        if (a.id === q) ok = false;
-      const s = b.sections.find((x) => x.id === q);
-      if (ok && s) s.parent = id;
-    }
+  const id = C.newSection(commandEnv, {
+    cards: ids,
+    sections: subs,
+    rect: rect ?? bounds(ids.map((i) => rectOf(i))) ?? { x: 0, y: 0, w: 200, h: 120 },
+    drawn: !!rect,
+    parent: parentId,
   });
   select({ sections: [id] });
   setEditing({ kind: "section", id });

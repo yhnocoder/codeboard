@@ -1,5 +1,4 @@
 import {
-  uid,
   findCard,
   isCode,
   cardTitle,
@@ -13,7 +12,6 @@ import {
   COL_GAP,
   estSize,
   defaultWidth,
-  removeLostCalls,
   callName,
   sameCallSite,
   type Card,
@@ -29,6 +27,8 @@ import {
   type CrossMark,
 } from "@codeboard/core";
 import type { Var } from "@codeboard/analysis/basics";
+import * as C from "@codeboard/core/commands";
+import { commandEnv } from "./env";
 import {
   state,
   setHostSetting,
@@ -157,82 +157,65 @@ export function placeExpanded(
   const id = card.id;
   const size = estSize(card, { w: w ?? defaultWidth(card) });
   const pushed: { id: string; dy: number }[] = [];
-  mutate((b) => {
-    const nc = structuredClone(card) as CodeCard;
-    const np: Place = { x: 0, y: 0, w: size.w };
-    if (at) {
-      np.x = Math.round(at.x);
-      np.y = Math.round(at.y);
-    } else {
-      const f = flows();
-      // 出发行在它前面的 Call 箭头连着的卡（及它们往下调用的）：新卡放在它们下面
-      const before: Rect[] = [];
-      const beforeIds = new Set<string>();
-      for (const kl of f.kids.get(cardId) ?? []) {
-        const kseg = kl.from.seg === segId ? 0 : 1;
-        if (kseg === 0 && (kl.from.line ?? 0) > call.line) continue;
-        for (const d of [kl.to.card, ...descendants(f, kl.to.card)]) {
-          const h = hostOf(d);
-          if (h === host.id || beforeIds.has(h)) continue;
-          const r = hostRect(d);
-          if (r) before.push(r);
-          beforeIds.add(h);
-        }
-      }
-      // 同一张调用图里排在后面的卡给新卡让位（整体下移），不让新卡被挤到图的最底下；往上调用到这张卡的那些不动
-      const chain = new Set<string>([host.id]);
-      const up = [cardId];
-      while (up.length)
-        for (const l of f.parents.get(up.pop()!) ?? [])
-          if (!chain.has(hostOf(l.from.card))) {
-            chain.add(hostOf(l.from.card));
-            up.push(l.from.card);
-          }
-      const tree = new Set((f.byId.get(cardId)?.cards ?? []).map(hostOf));
-      const hb = rectOf(host);
-      // 白板够宽（父卡和新卡并排时缩放不低于概览）就放右边一列，新卡头对着出发行、箭头基本是平的；
-      // 窄（放在编辑器旁边）就缩进放在父卡下面，Fit 时代码还能读
-      const side = hb.w + COL_GAP + size.w <= usableW(overviewZ());
-      const top = side ? (lineY(cardId, segId, call.line)?.y ?? hb.y) - 18 : hb.y + hb.h;
-      // 别的子树的卡也可能在这一列：在新卡上方的挡住它，下方的给它让位（下面整体下移）
-      const fixed = placed()
-        .filter((k) => !tree.has(k.id) || (!chain.has(k.id) && b.place[k.id].y < top))
-        .map((k) => rectOf(k));
-      const p = placeChild(hb, size, before, fixed, { side, top });
-      np.x = Math.round(p.x);
-      np.y = Math.round(p.y);
-      const want = { x: p.x, y: p.y, w: size.w, h: size.h };
-      const below = placed().filter(
-        (k) => tree.has(k.id) && !chain.has(k.id) && !beforeIds.has(k.id) && b.place[k.id].y >= top - 1,
-      );
-      const hit = below.some((k) => {
-        const r = rectOf(k);
-        return r.x < want.x + want.w && want.x < r.x + r.w && r.y < want.y + want.h + SIB_GAP;
-      });
-      if (hit) {
-        const dy = size.h + SIB_GAP;
-        for (const k of below) {
-          b.place[k.id].y += dy;
-          pushed.push({ id: k.id, dy });
-        }
+  const b = state.board;
+  const np: Place = { x: 0, y: 0, w: size.w };
+  if (at) {
+    np.x = Math.round(at.x);
+    np.y = Math.round(at.y);
+  } else {
+    const f = flows();
+    // 出发行在它前面的 Call 箭头连着的卡（及它们往下调用的）：新卡放在它们下面
+    const before: Rect[] = [];
+    const beforeIds = new Set<string>();
+    for (const kl of f.kids.get(cardId) ?? []) {
+      const kseg = kl.from.seg === segId ? 0 : 1;
+      if (kseg === 0 && (kl.from.line ?? 0) > call.line) continue;
+      for (const d of [kl.to.card, ...descendants(f, kl.to.card)]) {
+        const h = hostOf(d);
+        if (h === host.id || beforeIds.has(h)) continue;
+        const r = hostRect(d);
+        if (r) before.push(r);
+        beforeIds.add(h);
       }
     }
-    const hp = b.place[host.id];
-    if (hp?.section) np.section = hp.section;
-    if (hp?.collapsed) hp.collapsed = undefined;
-    if (ex?.title) nc.title = ex.title;
-    b.cards.push(nc);
-    b.place[id] = np;
-    const mk = { ...callMark(call, vars), ...ex?.mark };
-    for (const k of Object.keys(mk) as (keyof typeof mk)[]) if (mk[k] === undefined) delete mk[k];
-    removeLostCalls(b, { card: cardId, seg: segId, line: call.line }, call.name);
-    b.links.push({
-      id: uid("l"),
-      from: { card: cardId, seg: segId, line: call.line },
-      to: { card: id },
-      call: mk,
-      ...(ex?.label ? { label: ex.label } : {}),
+    // 同一张调用图里排在后面的卡给新卡让位（整体下移），不让新卡被挤到图的最底下；往上调用到这张卡的那些不动
+    const chain = new Set<string>([host.id]);
+    const up = [cardId];
+    while (up.length)
+      for (const l of f.parents.get(up.pop()!) ?? [])
+        if (!chain.has(hostOf(l.from.card))) {
+          chain.add(hostOf(l.from.card));
+          up.push(l.from.card);
+        }
+    const tree = new Set((f.byId.get(cardId)?.cards ?? []).map(hostOf));
+    const hb = rectOf(host);
+    // 白板够宽（父卡和新卡并排时缩放不低于概览）就放右边一列，新卡头对着出发行、箭头基本是平的；
+    // 窄（放在编辑器旁边）就缩进放在父卡下面，Fit 时代码还能读
+    const side = hb.w + COL_GAP + size.w <= usableW(overviewZ());
+    const top = side ? (lineY(cardId, segId, call.line)?.y ?? hb.y) - 18 : hb.y + hb.h;
+    // 别的子树的卡也可能在这一列：在新卡上方的挡住它，下方的给它让位（下面整体下移）
+    const fixed = placed()
+      .filter((k) => !tree.has(k.id) || (!chain.has(k.id) && b.place[k.id].y < top))
+      .map((k) => rectOf(k));
+    const p = placeChild(hb, size, before, fixed, { side, top });
+    np.x = Math.round(p.x);
+    np.y = Math.round(p.y);
+    const want = { x: p.x, y: p.y, w: size.w, h: size.h };
+    const below = placed().filter(
+      (k) => tree.has(k.id) && !chain.has(k.id) && !beforeIds.has(k.id) && b.place[k.id].y >= top - 1,
+    );
+    const hit = below.some((k) => {
+      const r = rectOf(k);
+      return r.x < want.x + want.w && want.x < r.x + r.w && r.y < want.y + want.h + SIB_GAP;
     });
+    if (hit) for (const k of below) pushed.push({ id: k.id, dy: size.h + SIB_GAP });
+  }
+  C.addCallCard(commandEnv, { card: cardId, seg: segId, call }, card, np, {
+    vars,
+    push: pushed,
+    mark: ex?.mark,
+    label: ex?.label,
+    title: ex?.title,
   });
   select({ cards: [id] });
   flash(cardId, segId, [call.line]);
@@ -273,38 +256,23 @@ function followExpanded(cardId: string, segId: string, call: CallSpan, id: strin
 const CODE_LEFT = 52,
   CHAR_W = 7.4; // 代码卡里代码左边距、一个字的宽（和 defaultWidth 的估计一致）
 
-export function callMark(call: CallSpan, cands?: Var[]): NonNullable<Link["call"]> {
-  const m: NonNullable<Link["call"]> = { name: call.name, col: call.col };
-  if (call.loop) m.loop = true;
-  if (cands?.length) m.cands = cands;
-  return m;
-}
-
 /**
  * 把调用接到白板上已有的卡（拖过去，或右键 Link to Existing Card…）：一条带 Call 标记的箭头。
  * 一张卡可以被好几处调用；同一个调用已经连到这张卡了就只是跳过去
  */
 export function attachCall(cardId: string, segId: string, call: CallSpan, target: string, sides?: Link["sides"]) {
   const t = cardById(target);
-  if (!t || !isCode(t.card)) return toast("Only code cards can be the target of a call.");
-  if (t.host.id === hostOf(cardId)) return toast("A card cannot call itself.");
   const dup = state.board.links.some(
     (l) => sameCallSite(l, { card: cardId, seg: segId, line: call.line, name: call.name }) && l.to.card === target,
   );
-  if (dup) {
+  if (t && isCode(t.card) && t.host.id !== hostOf(cardId) && dup) {
     ping(t.host.id);
     return toast(`Already linked to ${cardTitle(t.card)}`);
   }
-  const lid = uid("l");
-  mutate((b) => {
-    b.links.push({
-      id: lid,
-      from: { card: cardId, seg: segId, line: call.line },
-      to: { card: target },
-      call: callMark(call),
-      ...(sides ? { sides } : {}),
-    });
-  });
+  const r = C.linkCall(commandEnv, { card: cardId, seg: segId, call }, target, sides);
+  if ("why" in r) return toast(r.why);
+  const lid = r.id;
+  if (!t) return;
   toast(`Linked to ${cardTitle(t.card)}`);
   ping(t.host.id);
   askCands(lid, cardId, segId, call, target);

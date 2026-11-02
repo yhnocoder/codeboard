@@ -82,6 +82,7 @@
         "packages/core/src/edit/*.ts",
         "packages/host/src/storage/clip.ts",
         "packages/core/src/commands/{index,env}.ts",
+        "packages/core/src/commands/cards.ts",
         "packages/host/src/paste.ts",
         "packages/board/test/scenarios/{board,fit,drag-by-body,drag-controls,copy-paste,multi-select,text-selection-delete,click-to-edit}.spec.ts"
       ],
@@ -130,6 +131,7 @@
       "about": "the call graph: expanding calls, call marks, the call tree, Walkthrough, runs, symbol search",
       "files": [
         "packages/board/src/actions/{calls,flow,nav}.ts",
+        "packages/core/src/commands/calls.ts",
         "packages/board/src/state/calls.ts",
         "packages/board/src/ui/CallPanels.tsx",
         "packages/core/src/{flow,run,rank}.ts",
@@ -193,6 +195,7 @@
         "packages/board/src/ui/pops/notes.tsx",
         "packages/board/src/md/{lazy,load,refs}.ts",
         "packages/board/src/actions/notes.ts",
+        "packages/core/src/commands/notes.ts",
         "packages/board/src/ui/vscodekeys.ts",
         "packages/markdown/src/{index,render,schema,selmap,view,diagram,emoji,emoji-data,layout}.ts",
         "packages/markdown/src/markdown.css",
@@ -350,6 +353,7 @@
         "packages/board/src/cards/CompareBody.tsx",
         "packages/board/src/state/variants.ts",
         "packages/board/src/actions/variants.ts",
+        "packages/core/src/commands/variants.ts",
         "packages/core/src/{variants,diff}.ts",
         "packages/host/src/variants.ts",
         "packages/board/test/scenarios/variants.spec.ts"
@@ -374,6 +378,7 @@
         "packages/board/src/cards/{BoardBody,SubPreviews}.tsx",
         "packages/board/src/state/subboards.ts",
         "packages/board/src/actions/subboards.ts",
+        "packages/core/src/commands/subboards.ts",
         "packages/core/src/subboard.ts",
         "packages/host/src/{boardtree,transfer,bundle}.ts",
         "packages/board/test/scenarios/{subboards,subboard-card,boards}.spec.ts"
@@ -472,6 +477,7 @@
         "packages/board/src/cards/web.css",
         "packages/board/src/state/web.ts",
         "packages/board/src/actions/web.ts",
+        "packages/core/src/commands/web.ts",
         "packages/board/src/ui/GitHubPicker.tsx",
         "packages/board/src/ui/github.css",
         "packages/core/src/web.ts",
@@ -485,6 +491,7 @@
       "files": [
         "packages/board/src/{host,hostio}.ts",
         "packages/board/src/actions/shared.ts",
+        "packages/core/src/commands/shared.ts",
         "packages/core/src/{protocol,patch,schema,migrate,shared,workspace,diagnostics}.ts",
         "packages/host/src/storage/**",
         "packages/host/src/{hub,handlers,boards,env,ws,context,actions,commands,diagnostics,start,index}.ts",
