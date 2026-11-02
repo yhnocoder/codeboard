@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { DEFAULT_SETTINGS } from "@codeboard/core";
 import { affectsSettings, readSettings, validSetting, writeSetting } from "../src/settings";
-import { useWorkspace } from "../src/ws";
 import { nodeWorkspace } from "./node-workspace";
+import { HostContext } from "../src/context";
+
+let cx: HostContext;
 
 const conf = new Map<string, unknown>();
 const W = nodeWorkspace();
@@ -16,18 +18,26 @@ W.settings = {
 
 beforeEach(() => {
   conf.clear();
-  useWorkspace(W);
+  cx = new HostContext(W);
 });
 
 describe("Note font sizes", () => {
   it("default to the theme's sizes", () => {
-    expect(readSettings().noteFontSize).toEqual(DEFAULT_SETTINGS.noteFontSize);
-    expect(Object.values(readSettings().noteFontSize).every((v) => v === null)).toBe(true);
+    expect(readSettings(cx).noteFontSize).toEqual(DEFAULT_SETTINGS.noteFontSize);
+    expect(Object.values(readSettings(cx).noteFontSize).every((v) => v === null)).toBe(true);
   });
 
   it("fill levels left out of settings.json with the theme's size", () => {
     conf.set("codeboard.notes.fontSize", { body: 15, h1: 28 });
-    expect(readSettings().noteFontSize).toEqual({ body: 15, h1: 28, h2: null, h3: null, h4: null, h5: null, h6: null });
+    expect(readSettings(cx).noteFontSize).toEqual({
+      body: 15,
+      h1: 28,
+      h2: null,
+      h3: null,
+      h4: null,
+      h5: null,
+      h6: null,
+    });
   });
 
   it("accept sizes in range and null, and refuse the rest", () => {
@@ -41,31 +51,31 @@ describe("Note font sizes", () => {
 
   it("are written as codeboard.notes.fontSize", async () => {
     const v = { ...DEFAULT_SETTINGS.noteFontSize, body: 16 };
-    await writeSetting("noteFontSize", v);
-    await writeSetting("noteFontSize", { body: 200 });
+    await writeSetting(cx, "noteFontSize", v);
+    await writeSetting(cx, "noteFontSize", { body: 200 });
     expect(conf.get("codeboard.notes.fontSize")).toEqual(v);
   });
 });
 
 describe("VS Code background", () => {
   it("is off by default and read from codeboard.useVSCodeBackground", () => {
-    expect(readSettings().vscodeBg).toBe(false);
+    expect(readSettings(cx).vscodeBg).toBe(false);
     conf.set("codeboard.useVSCodeBackground", true);
-    expect(readSettings().vscodeBg).toBe(true);
+    expect(readSettings(cx).vscodeBg).toBe(true);
   });
 
   it("accepts only booleans", async () => {
-    await writeSetting("vscodeBg", true);
-    await writeSetting("vscodeBg", "yes" as never);
+    await writeSetting(cx, "vscodeBg", true);
+    await writeSetting(cx, "vscodeBg", "yes" as never);
     expect(conf.get("codeboard.useVSCodeBackground")).toBe(true);
   });
 });
 
 describe("Math preamble", () => {
   it("is empty by default and read from codeboard.math.preamble", () => {
-    expect(readSettings().mathPreamble).toBe("");
+    expect(readSettings(cx).mathPreamble).toBe("");
     conf.set("codeboard.math.preamble", "\\newcommand{\\R}{\\mathbb{R}}");
-    expect(readSettings().mathPreamble).toBe("\\newcommand{\\R}{\\mathbb{R}}");
+    expect(readSettings(cx).mathPreamble).toBe("\\newcommand{\\R}{\\mathbb{R}}");
   });
 
   it("is reported as a CodeBoard setting change, so open boards get it", () => {
@@ -73,8 +83,8 @@ describe("Math preamble", () => {
   });
 
   it("accepts only text", async () => {
-    await writeSetting("mathPreamble", "\\def\\x{y}");
-    await writeSetting("mathPreamble", 3 as never);
+    await writeSetting(cx, "mathPreamble", "\\def\\x{y}");
+    await writeSetting(cx, "mathPreamble", 3 as never);
     expect(conf.get("codeboard.math.preamble")).toBe("\\def\\x{y}");
   });
 
@@ -85,8 +95,8 @@ describe("Math preamble", () => {
       scopes.set(k, scope);
       await set(k, v);
     };
-    await writeSetting("mathPreamble", "\\def\\x{y}");
-    await writeSetting("theme", DEFAULT_SETTINGS.theme);
+    await writeSetting(cx, "mathPreamble", "\\def\\x{y}");
+    await writeSetting(cx, "theme", DEFAULT_SETTINGS.theme);
     W.settings.set = set;
     expect(scopes.get("codeboard.math.preamble")).toBe("workspace");
     expect(scopes.get("codeboard.theme")).toBe("user");
@@ -105,17 +115,17 @@ describe("Changes made in a row", () => {
           r();
         }),
       );
-    const a = writeSetting("theme", "graphite"),
-      b = writeSetting("theme", "city");
+    const a = writeSetting(cx, "theme", "graphite"),
+      b = writeSetting(cx, "theme", "city");
     done[0]();
     await a;
     expect(conf.get("codeboard.theme")).toBe("graphite");
-    expect(readSettings().theme).toBe("city");
+    expect(readSettings(cx).theme).toBe("city");
     done[1]();
     await b;
     W.settings.set = set;
-    expect(readSettings().theme).toBe("city");
+    expect(readSettings(cx).theme).toBe("city");
     conf.set("codeboard.theme", "poster"); // edited in settings.json afterwards
-    expect(readSettings().theme).toBe("poster");
+    expect(readSettings(cx).theme).toBe("poster");
   });
 });

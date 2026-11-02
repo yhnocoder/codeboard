@@ -14,9 +14,12 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { emptyBoard, mimeOf, type Board, type Card, type ImageCard, type NoteCard } from "@codeboard/core";
-import { inlineFor, nodeFs, readAsset, saveNoteImage, setMediaDir, Storage } from "@codeboard/host/testing";
+import { inlineFor, nodeFs, readAsset, saveNoteImage, Storage } from "@codeboard/host/testing";
 import { OUT, REPO, put, shot, type Host } from "../harness";
 import { test, open, check, until, idle, frames, focusSettled } from "../fixtures";
+
+/** The board's media folder (CSS, fonts), inlined into exported HTML */
+const MEDIA = path.join(REPO, "packages/board/dist");
 
 const BASE = "https://cb-assets.test/res";
 
@@ -94,7 +97,7 @@ async function svgHost(b: Board, seed: Record<string, string> = {}) {
       if (m.type === "pasteCards") return answer(reply, m.req!, async () => null);
       if (m.type === "exportFile")
         return answer(reply, m.req!, async () => {
-          exported.push(await inlineFor(store, m.text));
+          exported.push(await inlineFor(MEDIA, store, m.text));
           return true;
         });
       return false;
@@ -392,7 +395,6 @@ test("svgImageCardDropsIntoNoteStaysSvg", async () => {
 });
 
 test("svgImagesInHtmlExport", async () => {
-  setMediaDir(path.join(REPO, "packages/board/dist"));
   const md0 = "**Prefill, then decode.**";
   const { h, exported, done } = await svgHost(withNote(md0));
   const pg = h.page;

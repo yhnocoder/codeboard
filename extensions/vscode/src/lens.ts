@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { BoardMarks, debounce, type BoardHub, type Storage } from "@codeboard/host";
+import { debounce, type BoardHub, type BoardMarks, type Storage } from "@codeboard/host";
 
 type Mode = "all" | "lens" | "off";
 const mode = (): Mode => {
@@ -8,13 +8,13 @@ const mode = (): Mode => {
 };
 
 export class EditorMarks implements vscode.CodeLensProvider {
-  private marks = new BoardMarks();
   private emitter = new vscode.EventEmitter<void>();
   readonly onDidChangeCodeLenses = this.emitter.event;
   private bar: vscode.TextEditorDecorationType;
 
   constructor(
     ctx: vscode.ExtensionContext,
+    private marks: BoardMarks,
     private store: Storage,
     private panels: BoardHub,
   ) {

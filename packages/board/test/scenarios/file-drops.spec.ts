@@ -14,9 +14,12 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { pathToFileURL } from "node:url";
 import { emptyBoard, mimeOf, sniffImage, type Board, type ImageCard } from "@codeboard/core";
-import { nodeFs, nodeWorkspace, png, readImageUri, useWorkspace, Storage } from "@codeboard/host/testing";
+import { nodeFs, nodeWorkspace, png, readImageUri, Storage, HostContext } from "@codeboard/host/testing";
 import { OUT, shot, type Host } from "../harness";
 import { test, open, check, until, idle } from "../fixtures";
+
+/** The host the scenario talks to (each setup makes a new one) */
+let cx: HostContext;
 
 const BASE = "https://cb-assets.test/res";
 
@@ -53,7 +56,7 @@ async function dropHost(b: Board = emptyAt()) {
   fs.writeFileSync(path.join(ws, "docs/chart.png"), PNG);
   fs.writeFileSync(path.join(ws, "model.py"), "def forward(x):\n    return x\n");
   fs.writeFileSync(path.join(outside, "screen shot.png"), PNG);
-  useWorkspace(nodeWorkspace(ws));
+  cx = new HostContext(nodeWorkspace(ws));
   const store = new Storage(nodeFs, { dir: () => path.join(tmp, "storage") });
   fs.mkdirSync(store.assetsDir(), { recursive: true });
   const reads: string[] = [];
@@ -88,7 +91,7 @@ async function dropHost(b: Board = emptyAt()) {
       if (m.type === "saveAsset") return answer(reply, m.req!, () => store.saveAsset(m.name, m.dataUrl));
       if (m.type === "readImageUri") {
         reads.push(m.uri);
-        return answer(reply, m.req!, () => readImageUri(m.uri));
+        return answer(reply, m.req!, () => readImageUri(cx, m.uri));
       }
       if (m.type === "pasteCards") return answer(reply, m.req!, async () => null);
       return false;

@@ -13,10 +13,12 @@ import {
 } from "@codeboard/core";
 import { Storage } from "../src/storage/boards";
 import { nodeFs } from "../src/storage/nodefs";
-import { useWorkspace } from "../src/ws";
 import { BundleError, LIMITS, importBundle, importFile, packBoards, readBundle, type Manifest } from "../src/bundle";
 import { nodeWorkspace } from "./node-workspace";
 import { tempRepo } from "./helpers";
+import { HostContext } from "../src/context";
+
+let cx: HostContext;
 
 const tmp: string[] = [];
 const mk = (p: string) => {
@@ -126,9 +128,9 @@ afterAll(() => {
 
 describe("export boards", () => {
   it("writes a zip with a manifest, the board and its sub-board in their group, the shared card, used images and run records", async () => {
-    useWorkspace(nodeWorkspace(A));
+    cx = new HostContext(nodeWorkspace(A));
     const store = await source();
-    const r = (await packBoards(store, ["bMain"]))!;
+    const r = (await packBoards(cx, store, ["bMain"]))!;
     const z = unzipSync(r.data);
     expect(Object.keys(z).sort()).toEqual([
       "assets/abc123.png",
@@ -157,15 +159,15 @@ describe("export boards", () => {
   });
 
   it("leaves out images that are missing on disk and still imports the board", async () => {
-    useWorkspace(nodeWorkspace(A));
+    cx = new HostContext(nodeWorkspace(A));
     const store = await source();
     fs.rmSync(path.join(store.dir(), "assets/abc123.png"));
-    const r = (await packBoards(store, ["bMain"]))!;
+    const r = (await packBoards(cx, store, ["bMain"]))!;
     expect(Object.keys(unzipSync(r.data))).not.toContain("assets/abc123.png");
-    useWorkspace(nodeWorkspace(B));
+    cx = new HostContext(nodeWorkspace(B));
     const dstDir = mk("bdst"),
       dst = new Storage(nodeFs, { dir: () => dstDir });
-    const got = await importBundle(dst, r.data);
+    const got = await importBundle(cx, dst, r.data);
     expect(got.boards).toBe(2);
     expect((await dst.load("bMain"))?.cards.find((c) => c.id === "img")).toMatchObject({
       kind: "image",
@@ -177,15 +179,15 @@ describe("export boards", () => {
 
 describe("import boards", () => {
   it("round-trips into another workspace: boards in their group, sub-board frame, shared card, images, runs; sources rewritten to this workspace", async () => {
-    useWorkspace(nodeWorkspace(A));
-    const r = (await packBoards(await source(), ["bMain"]))!;
+    cx = new HostContext(nodeWorkspace(A));
+    const r = (await packBoards(cx, await source(), ["bMain"]))!;
     const file = path.join(mk("bfile"), "Main.codeboard");
     fs.writeFileSync(file, r.data);
 
-    useWorkspace(nodeWorkspace(B));
+    cx = new HostContext(nodeWorkspace(B));
     const dstDir = mk("bdst");
     const dst = new Storage(nodeFs, { dir: () => dstDir });
-    const got = await importFile(dst, file);
+    const got = await importFile(cx, dst, file);
     expect(got).toMatchObject({ first: "bMain", boards: 2, renamed: 0 });
     expect(files(dstDir)).toEqual([
       "assets/abc123.png",
@@ -214,10 +216,10 @@ describe("import boards", () => {
   });
 
   it("gives boards whose id this project has a new id, points the parent's frame at it, and keeps this project's shared cards, images and names", async () => {
-    useWorkspace(nodeWorkspace(A));
-    const r = (await packBoards(await source(), ["bMain"]))!;
+    cx = new HostContext(nodeWorkspace(A));
+    const r = (await packBoards(cx, await source(), ["bMain"]))!;
 
-    useWorkspace(nodeWorkspace(B));
+    cx = new HostContext(nodeWorkspace(B));
     const dstDir = mk("bdst");
     const dst = new Storage(nodeFs, { dir: () => dstDir });
     await dst.save(emptyBoard("bSub", "Their Sub"));
@@ -230,7 +232,7 @@ describe("import boards", () => {
     fs.writeFileSync(path.join(dstDir, "assets/abc123.png"), "theirs");
     const card = fs.readFileSync(path.join(dstDir, "cards/sh.json"), "utf8");
 
-    const got = await importBundle(dst, r.data);
+    const got = await importBundle(cx, dst, r.data);
     expect(got.first).toBe("bMain");
     expect(got.renamed).toBe(2);
     const after = new Storage(nodeFs, { dir: () => dstDir });
@@ -246,7 +248,7 @@ describe("import boards", () => {
     expect(fs.readFileSync(path.join(dstDir, "assets/abc123.png"), "utf8")).toBe("theirs");
 
     // 再导入一次：又是一份新的
-    const again = await importBundle(dst, r.data);
+    const again = await importBundle(cx, dst, r.data);
     expect(again.first).not.toBe("bMain");
     expect((await dst.load(again.first))?.name).toBe("Main (3)");
   });
@@ -336,11 +338,11 @@ describe("import boards", () => {
     ];
     for (const [what, make, msg] of bad) {
       it(what, async () => {
-        useWorkspace(nodeWorkspace(B));
+        cx = new HostContext(nodeWorkspace(B));
         const dstDir = mk("bdst");
         const dst = new Storage(nodeFs, { dir: () => dstDir });
-        await expect(importBundle(dst, make())).rejects.toThrow(msg);
-        await expect(importBundle(dst, make())).rejects.toBeInstanceOf(BundleError);
+        await expect(importBundle(cx, dst, make())).rejects.toThrow(msg);
+        await expect(importBundle(cx, dst, make())).rejects.toBeInstanceOf(BundleError);
         expect(files(dstDir)).toEqual([]);
       });
     }
@@ -363,12 +365,12 @@ describe("import boards", () => {
   });
 
   it("a package renamed to .zip and one with folder entries imports the same", async () => {
-    useWorkspace(nodeWorkspace(B));
+    cx = new HostContext(nodeWorkspace(B));
     const data = zip({ "manifest.json": manifest(), "bX.json": boardFile("bX"), "assets/": new Uint8Array(0) });
     const file = path.join(mk("bfile"), "X.zip");
     fs.writeFileSync(file, data);
     const dstDir = mk("bdst"),
       dst = new Storage(nodeFs, { dir: () => dstDir });
-    expect((await importFile(dst, file)).first).toBe("bX");
+    expect((await importFile(cx, dst, file)).first).toBe("bX");
   });
 });

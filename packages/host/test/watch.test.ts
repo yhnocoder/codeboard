@@ -9,10 +9,11 @@ import { cardForFileSym } from "../src/cards";
 import type { BoardHost } from "../src/boards";
 import { staleFor } from "../src/versions";
 import { RECHECK_PAUSE, watchVersions } from "../src/watch";
-import { useWorkspace } from "../src/ws";
-import { recentLog } from "../src/log";
 import { WS, nodeWorkspace } from "./node-workspace";
 import { card, startTreeSitter } from "./helpers";
+import { HostContext } from "../src/context";
+
+let cx: HostContext;
 
 const W = nodeWorkspace();
 const dir = fs.mkdtempSync("/tmp/codeboard-watch-");
@@ -24,6 +25,9 @@ const seqAbs = path.join(WS, "nanovllm/engine/sequence.py"),
 /** what the watcher asked the boards to re-check: one entry per call, the paths sorted (undefined = everything) */
 const rechecks: (string[] | undefined)[] = [];
 const panels = {
+  get cx() {
+    return cx;
+  },
   refreshStale: async (paths?: ReadonlySet<string>) => {
     rechecks.push(paths && [...paths].sort());
   },
@@ -33,20 +37,20 @@ const panels = {
 let off: Disposable & { ready: Promise<void> }, typed: CodeCard;
 
 beforeAll(async () => {
-  useWorkspace(W);
+  cx = new HostContext(W);
   await startTreeSitter();
   // a function typed but not saved ("+ uncommitted") and a committed one, on one board
   const text = fs.readFileSync(seqAbs, "utf8") + "\n\ndef added_here():\n    return 1\n";
   W.open.set(seqAbs, text);
-  typed = (await cardForFileSym(seqAbs, analysisOf("python", text).symbols.find((x) => x.qual === "added_here")!))!
+  typed = (await cardForFileSym(cx, seqAbs, analysisOf("python", text).symbols.find((x) => x.qual === "added_here")!))!
     .card as CodeCard;
-  const sch = (await card(schAbs, "Scheduler.schedule")).card;
+  const sch = (await card(cx, schAbs, "Scheduler.schedule")).card;
   const b = emptyBoard("bW", "Watch");
   b.cards.push(typed, sch);
   b.place[typed.id] = { x: 0, y: 0, w: 500 };
   b.place[sch.id] = { x: 600, y: 0, w: 500 };
   await store.save(b);
-  off = watchVersions(panels, store);
+  off = watchVersions(cx, panels, store);
   await off.ready;
 });
 afterAll(() => {
@@ -95,11 +99,11 @@ describe("version re-checks", () => {
     W.open.set(seqAbs, fs.readFileSync(seqAbs, "utf8")); // File: Revert File
     onePause(() => W.fire.edit.fire(seqAbs));
     expect(rechecks).toEqual([[seqAbs]]);
-    expect((await staleFor([seg]))[seg.id]?.state).toBe("lost");
+    expect((await staleFor(cx, [seg]))[seg.id]?.state).toBe("lost");
   });
   it("a file newly on a board is re-checked once its watch is in place: a change made before then fires nothing", async () => {
     const b = (await store.load("bW"))!;
-    const bm = (await card(bmAbs, "BlockManager.allocate")).card;
+    const bm = (await card(cx, bmAbs, "BlockManager.allocate")).card;
     b.cards.push(bm);
     b.place[bm.id] = { x: 0, y: 600, w: 500 };
     rechecks.length = 0;
@@ -117,6 +121,9 @@ describe("files changed outside the editor", () => {
   const st = new Storage(nodeFs, { dir: () => boards });
   const seen: string[] = [];
   const host = {
+    get cx() {
+      return cx;
+    },
     refreshStale: async (paths?: ReadonlySet<string>) => {
       seen.push(...(paths ?? []));
     },
@@ -126,7 +133,7 @@ describe("files changed outside the editor", () => {
   let w: Disposable & { ready: Promise<void> };
   beforeAll(async () => {
     fs.writeFileSync(modAbs, "def f():\n    return 1\n");
-    w = watchVersions(host, st);
+    w = watchVersions(cx, host, st);
     await w.ready;
   });
   afterAll(() => {
@@ -136,7 +143,7 @@ describe("files changed outside the editor", () => {
 
   it("a change right after the card is saved is re-checked from the disk, however late the editor's watcher starts", async () => {
     const b = emptyBoard("bX", "Outside");
-    const c = (await card(modAbs, "f")).card;
+    const c = (await card(cx, modAbs, "f")).card;
     b.cards.push(c);
     b.place[c.id] = { x: 0, y: 0, w: 500 };
     expect(c.segments[0].src).toEqual({ kind: "external", root: ext });
@@ -163,6 +170,9 @@ describe("new-version counts for closed boards", () => {
     await st.save(emptyBoard("bOk", "Ok"));
     const counted: string[] = [];
     const failing = {
+      get cx() {
+        return cx;
+      },
       refreshStale: async () => {},
       get: () => undefined,
       staleChanged: (id: string) => {
@@ -170,11 +180,11 @@ describe("new-version counts for closed boards", () => {
         counted.push(id);
       },
     } as unknown as BoardHost;
-    const w = watchVersions(failing, st);
+    const w = watchVersions(cx, failing, st);
     try {
       await w.ready;
       const logged = () =>
-        recentLog().find((l) => l.includes("[warn]") && l.includes("bBad") && l.includes("sidebar is gone"));
+        cx.recentLog().find((l) => l.includes("[warn]") && l.includes("bBad") && l.includes("sidebar is gone"));
       expect(logged()).toMatch(/versions: could not count new versions on closed board bBad: sidebar is gone/);
       expect(counted).toContain("bOk");
     } finally {

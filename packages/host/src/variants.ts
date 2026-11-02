@@ -23,36 +23,26 @@ import {
   type Version,
 } from "@codeboard/core";
 import { analysisOf } from "./analysis";
-import {
-  branches,
-  git,
-  githubRemote,
-  headOf,
-  isAncestor,
-  repoRootOf,
-  resolveRef,
-  showFile,
-  upstreamRef,
-  worktrees,
-} from "./git";
+import { branches, git, githubRemote, headOf, resolveRef, worktrees } from "./git";
 import { fetchFile, pullRequest } from "./github";
-import { absOf, locOfFile, hasLocalFile } from "./source";
+import { hasLocalFile } from "./source";
 import { viewsFor } from "./views";
-import { posix, readText, splitLines, workspace } from "./ws";
+import { posix, splitLines } from "./ws";
+import type { HostContext } from "./context";
 
-async function repoOf(seg: Segment): Promise<{ root: string; rel: string; abs: string } | null> {
+async function repoOf(cx: HostContext, seg: Segment): Promise<{ root: string; rel: string; abs: string } | null> {
   if (!hasLocalFile(seg.src)) return null;
-  const abs = absOf(seg);
-  const root = abs && (await repoRootOf(abs));
+  const abs = cx.sources.absOf(seg);
+  const root = abs && (await cx.git.repoRootOf(abs));
   return abs && root ? { root, rel: posix(path.relative(root, abs)), abs } : null;
 }
 
 /** Add Variant 菜单要的：其他 worktree、本地分支、能不能加 PR */
-export async function variantSources(seg: Segment): Promise<VariantSources> {
-  const r = await repoOf(seg);
+export async function variantSources(cx: HostContext, seg: Segment): Promise<VariantSources> {
+  const r = await repoOf(cx, seg);
   if (!r) return { worktrees: [], branches: [] };
   const [wts, bs, gh, cur] = await Promise.all([
-    worktrees(r.root),
+    worktrees(cx.git, r.root),
     branches(r.root),
     githubRemote(r.root),
     git(r.root, ["rev-parse", "--abbrev-ref", "HEAD"]),
@@ -82,30 +72,30 @@ function shortDir(here: string, dir: string, home = os.homedir()) {
 
 type Read = { text: string; src: Source; path: string; version: Version; tip?: string };
 
-async function readFrom(up: Segment, from: VariantFrom, net = true): Promise<Read | null> {
+async function readFrom(cx: HostContext, up: Segment, from: VariantFrom, net = true): Promise<Read | null> {
   if (from.kind === "file") {
-    const text = await readText(from.abs);
+    const text = await cx.readText(from.abs);
     if (text === null) return null;
-    const loc = await locOfFile(from.abs);
+    const loc = await cx.sources.locOfFile(from.abs);
     return { text, src: loc.src, path: loc.path, version: { kind: "hash", hash: fingerprint(text) } };
   }
-  const r = await repoOf(up);
+  const r = await repoOf(cx, up);
   if (!r) return null;
   switch (from.kind) {
     case "upstream":
       return null;
     case "ref": {
       const sha = await resolveRef(r.root, from.ref);
-      const text = sha && (await showFile(r.root, sha, r.rel));
+      const text = sha && (await cx.git.showFile(r.root, sha, r.rel));
       return sha && text != null
         ? { text, src: up.src, path: up.path, version: { kind: "git", commit: sha }, tip: sha }
         : null;
     }
     case "worktree": {
-      const text = await readText(r.abs);
+      const text = await cx.readText(r.abs);
       if (text === null) return null;
       const head = await headOf(r.root);
-      const committed = head ? await showFile(r.root, head, r.rel) : null;
+      const committed = head ? await cx.git.showFile(r.root, head, r.rel) : null;
       return {
         text,
         src: up.src,
@@ -116,10 +106,10 @@ async function readFrom(up: Segment, from: VariantFrom, net = true): Promise<Rea
     }
     case "wt": {
       const abs = path.join(from.dir, r.rel);
-      const text = await readText(abs);
+      const text = await cx.readText(abs);
       if (text === null) return null;
       const head = (await git(from.dir, ["rev-parse", "HEAD"]))?.trim();
-      const committed = head ? await showFile(from.dir, head, r.rel) : null;
+      const committed = head ? await cx.git.showFile(from.dir, head, r.rel) : null;
       return {
         text,
         src: { kind: "external", root: from.dir },
@@ -130,8 +120,8 @@ async function readFrom(up: Segment, from: VariantFrom, net = true): Promise<Rea
     }
     case "pr": {
       if (!net) return null;
-      const pr = await pullRequest(from.owner, from.name, from.num);
-      const text = await fetchFile(from.owner, from.name, pr.head, r.rel, pr.branch);
+      const pr = await pullRequest(cx, from.owner, from.name, from.num);
+      const text = await fetchFile(cx, from.owner, from.name, pr.head, r.rel, pr.branch);
       return {
         text,
         src: { kind: "github", owner: from.owner, name: from.name, ref: pr.branch },
@@ -159,32 +149,32 @@ function locateIn(seg: Segment, rd: Read): Segment | null {
 }
 
 /** Add Variant：宿主把来源补全（PR 的仓库、选文件），在那里找每一段 */
-export async function addVariant(segs: Segment[], f: AddVariantFrom): Promise<NewVariant | null> {
+export async function addVariant(cx: HostContext, segs: Segment[], f: AddVariantFrom): Promise<NewVariant | null> {
   const up = segs.find((s) => s.src.kind !== "free" && s.src.kind !== "github");
   if (!up) throw new Error("Only code from a repo or a file can have variants.");
   let from: VariantFrom;
   if (f.kind === "file" && !f.abs) {
-    const abs = await workspace().ui.openDialog({ label: "Add as Variant", title: "Pick the copied file" });
+    const abs = await cx.ws.ui.openDialog({ label: "Add as Variant", title: "Pick the copied file" });
     if (!abs) return null;
     from = { kind: "file", abs };
   } else if (f.kind === "pr" && !("owner" in f)) {
-    const r = await repoOf(up);
+    const r = await repoOf(cx, up);
     const gh = r && (await githubRemote(r.root));
     if (!gh) throw new Error("This repo's origin is not on GitHub.");
-    const pr = await pullRequest(gh.owner, gh.name, f.num);
+    const pr = await pullRequest(cx, gh.owner, gh.name, f.num);
     from = { kind: "pr", owner: gh.owner, name: gh.name, num: f.num, branch: pr.branch };
   } else from = f as VariantFrom;
   const out: Segment[] = [];
   let found = 0;
   for (const s of segs) {
-    const rd = hasLocalFile(s.src) ? await readFrom(s, from) : null;
+    const rd = hasLocalFile(s.src) ? await readFrom(cx, s, from) : null;
     const ns = rd && locateIn(s, rd);
     if (ns) found++;
     out.push(ns ?? s); // 没找到的段留着上游的代码
   }
   const name = nameOf(from);
   if (!found) throw new Error(`${up.symbol?.qual ?? "This code"} is not in ${name}.`);
-  return { name, from, segs: out, views: await viewsFor(out) };
+  return { name, from, segs: out, views: await viewsFor(cx, out) };
 }
 
 function nameOf(f: VariantFrom): string {
@@ -217,6 +207,7 @@ const tipOf = (s: Segment | undefined) => (s?.version.kind === "git" ? s.version
  * sent = 每张卡上次发的（同样的不再发）；net = 也问 GitHub
  */
 export async function syncVariants(
+  cx: HostContext,
   b: Board,
   sent: Map<string, string>,
   o: { net?: boolean } = {},
@@ -224,7 +215,7 @@ export async function syncVariants(
   const out: Record<string, VariantSync> = {};
   for (const c of b.cards) {
     if (!isCode(c) || !c.variants?.length) continue;
-    const r = await syncCard(c, !!o.net);
+    const r = await syncCard(cx, c, !!o.net);
     // 只比内容：展示数据跟着段走
     const key = JSON.stringify({ ...r, views: undefined, latest: r.latest && { ...r.latest, views: undefined } });
     if (sent.get(c.id) === key) continue;
@@ -234,25 +225,25 @@ export async function syncVariants(
   return out;
 }
 
-async function syncCard(c: CodeCard, net: boolean): Promise<VariantSync> {
+async function syncCard(cx: HostContext, c: CodeCard, net: boolean): Promise<VariantSync> {
   const r: VariantSync = {};
   const ups = upstreamSegs(c);
-  const repo = ups[0] && (await repoOf(ups[0]));
+  const repo = ups[0] && (await repoOf(cx, ups[0]));
   const views: Segment[] = [];
   let upSha: string | null = null,
     upLabel = "";
   if (repo) {
-    const ref = await upstreamRef(repo.root);
+    const ref = await cx.git.upstreamRef(repo.root);
     upSha = await resolveRef(repo.root, ref);
     upLabel = `${ref.replace(/^origin\//, "")} ${upSha?.slice(0, 7) ?? ""}`.trim();
     // 上游最新：对比基准、三方对照、Convert 用
     if (upSha) {
       const latest: Segment[] = [];
       for (const s of ups) {
-        const rd = await readFrom(s, { kind: "ref", ref: upSha });
+        const rd = await readFrom(cx, s, { kind: "ref", ref: upSha });
         latest.push((rd && locateIn(s, rd)) ?? s);
       }
-      r.latest = { label: upLabel, segs: latest, views: await viewsFor(latest) };
+      r.latest = { label: upLabel, segs: latest, views: await viewsFor(cx, latest) };
     }
   }
   const pinned = tipOf(ups[0]);
@@ -263,7 +254,7 @@ async function syncCard(c: CodeCard, net: boolean): Promise<VariantSync> {
     let changed = false,
       tip: string | undefined;
     for (const s of cur) {
-      const rd = s.src.kind === "free" ? null : await readFrom(s, v.from, net).catch(() => null);
+      const rd = s.src.kind === "free" ? null : await readFrom(cx, s, v.from, net).catch(() => null);
       if (rd?.tip) tip = rd.tip;
       const ns = rd && locateIn(s, rd);
       if (ns && !sameSeg(ns, s)) changed = true;
@@ -282,7 +273,7 @@ async function syncCard(c: CodeCard, net: boolean): Promise<VariantSync> {
         now &&
         old !== now &&
         (v.from.kind === "ref" || v.from.kind === "wt") &&
-        !(await isAncestor(repo.root, old, now))
+        !(await cx.git.isAncestor(repo.root, old, now))
       )
         (r.rebased ??= []).push(v.id);
     }
@@ -294,8 +285,8 @@ async function syncCard(c: CodeCard, net: boolean): Promise<VariantSync> {
       ((v.from.kind === "ref" && !/^[0-9a-f]{7,40}$/.test(v.from.ref)) || v.from.kind === "wt")
     ) {
       tip ??= tipOf(fresh[0]);
-      if (tip && tip !== pinned && !(await isAncestor(repo.root, tip, pinned))) {
-        if (await isAncestor(repo.root, tip, upSha)) {
+      if (tip && tip !== pinned && !(await cx.git.isAncestor(repo.root, tip, pinned))) {
+        if (await cx.git.isAncestor(repo.root, tip, upSha)) {
           if (v.merged !== tip) (r.merged ??= {})[v.id] = { into: upLabel, tip };
         } else {
           const n = Number((await git(repo.root, ["rev-list", "--count", `${tip}..${upSha}`]))?.trim());
@@ -304,10 +295,10 @@ async function syncCard(c: CodeCard, net: boolean): Promise<VariantSync> {
       }
     }
     if (v.from.kind === "pr" && net) {
-      const pr = await pullRequest(v.from.owner, v.from.name, v.from.num).catch(() => null);
+      const pr = await pullRequest(cx, v.from.owner, v.from.name, v.from.num).catch(() => null);
       if (pr?.merged && v.merged !== pr.head) (r.merged ??= {})[v.id] = { into: upLabel || pr.base, tip: pr.head };
     }
   }
-  if (views.length) r.views = await viewsFor(views);
+  if (views.length) r.views = await viewsFor(cx, views);
   return r;
 }

@@ -28,9 +28,8 @@ import type { Storage } from "./storage/boards";
 import { BoardPanel, type BoardHost, type BoardView } from "./boards";
 import type { HostEnv, ViewPlace } from "./env";
 import type { Handler } from "./handlers";
-import { log } from "./log";
 import { viewsFor } from "./views";
-import { workspace } from "./ws";
+import type { HostContext } from "./context";
 
 /** How long pushes to open boards (skeletons, [[ refs, shared cards) wait for more changes */
 const PUSH_PAUSE = 120;
@@ -68,10 +67,11 @@ export class BoardHub implements BoardHost, Disposable {
   private subs: Disposable[] = [];
 
   constructor(
+    readonly cx: HostContext,
     private env: HostEnv,
     readonly store: Storage,
   ) {
-    this.target = workspace().storage.get<string>(TARGET);
+    this.target = this.cx.ws.storage.get<string>(TARGET);
     // 共享卡写进了卡库：开着同一张卡的别的白板换上（存储里的那份已经换好了）。卡本身变了（新版本、改段）时带上段的展示数据
     this.subs.push(
       store.onDidShare((e) => {
@@ -90,13 +90,13 @@ export class BoardHub implements BoardHost, Disposable {
                   ? [...sc.card.segments, ...variantSegments({ cards: [sc.card] })]
                   : [],
               );
-              const views = segs.length ? await viewsFor(segs) : undefined;
+              const views = segs.length ? await viewsFor(this.cx, segs) : undefined;
               p.board = store.peek(p.id);
               p.post({ type: "shared", cards, views });
               if (segs.length) void p.refreshStale();
             }
           })
-          .catch((err) => log("error", `shared: ${err instanceof Error ? err.message : err}`));
+          .catch((err) => this.cx.log("error", `shared: ${err instanceof Error ? err.message : err}`));
       }),
     );
     // 写盘时合并进了另一个窗口的改动：开着这块白板的面板跟着换上（新来的代码卡带上段的展示数据）
@@ -107,7 +107,7 @@ export class BoardHub implements BoardHost, Disposable {
             const p = this.get(e.id);
             if (p) await this.postMerged(p, e.patch);
           })
-          .catch((err) => log("error", `merged: ${err instanceof Error ? err.message : err}`));
+          .catch((err) => this.cx.log("error", `merged: ${err instanceof Error ? err.message : err}`));
       }),
     );
     // Delete Everywhere：开着的别的白板跟着删
@@ -171,7 +171,7 @@ export class BoardHub implements BoardHost, Disposable {
     const segs = (patch.cards?.set ?? []).flatMap((c) =>
       c.kind === "code" ? [...c.segments, ...variantSegments({ cards: [c] })] : [],
     );
-    const views = segs.length ? await viewsFor(segs) : undefined;
+    const views = segs.length ? await viewsFor(this.cx, segs) : undefined;
     p.board = this.store.peek(p.id);
     p.post({ type: "merged", patch, views });
   }
@@ -195,7 +195,7 @@ export class BoardHub implements BoardHost, Disposable {
           else p.board = this.store.peek(p.id);
         }
       })
-      .catch((err) => log("error", `storage switch: ${err instanceof Error ? err.message : err}`)));
+      .catch((err) => this.cx.log("error", `storage switch: ${err instanceof Error ? err.message : err}`)));
     await this.pushBoards();
   }
 
@@ -280,7 +280,7 @@ export class BoardHub implements BoardHost, Disposable {
       if (!refs) this.refsOf.set(e.id, (refs = boardRefsOf(e.board, nameOf)));
       return { id: e.id, name: e.board.name, refs };
     });
-    return { boards, recent: workspace().storage.get<RecentRef[]>(REF_RECENT) ?? [] };
+    return { boards, recent: this.cx.ws.storage.get<RecentRef[]>(REF_RECENT) ?? [] };
   }
   /** 要过 boardRefs 的面板里变了的重推（防抖 120ms）；fresh = 刚 init 的面板（换了白板，之前发的不算） */
   refreshBoardRefs(now = false, fresh?: string) {
@@ -298,8 +298,8 @@ export class BoardHub implements BoardHost, Disposable {
   }
   /** [[ 引用选了一项：记进最近选过的（新的在前，最多 3 个），要过的面板跟着更新 */
   refPicked(b: string, id: string) {
-    const was = workspace().storage.get<RecentRef[]>(REF_RECENT) ?? [];
-    void workspace().storage.set(REF_RECENT, [{ b, id }, ...was.filter((r) => r.b !== b || r.id !== id)].slice(0, 3));
+    const was = this.cx.ws.storage.get<RecentRef[]>(REF_RECENT) ?? [];
+    void this.cx.ws.storage.set(REF_RECENT, [{ b, id }, ...was.filter((r) => r.b !== b || r.id !== id)].slice(0, 3));
     this.refreshBoardRefs();
   }
 
@@ -317,8 +317,8 @@ export class BoardHub implements BoardHost, Disposable {
   }
 
   firstAdd(): boolean {
-    if (workspace().storage.get<boolean>(ADDED)) return false;
-    void workspace().storage.set(ADDED, true);
+    if (this.cx.ws.storage.get<boolean>(ADDED)) return false;
+    void this.cx.ws.storage.set(ADDED, true);
     return true;
   }
 
@@ -383,11 +383,11 @@ export class BoardHub implements BoardHost, Disposable {
     const on = this.all().some((x) => x.hasKeyboard);
     if (on !== this.anyFocused) {
       this.anyFocused = on;
-      const set = workspace().ui.boardFocusChanged;
+      const set = this.cx.ws.ui.boardFocusChanged;
       if (set)
         this.focusApplied = this.focusApplied
           .then(() => set(on))
-          .catch((e) => log("warn", `boardFocusChanged: ${e instanceof Error ? e.message : e}`));
+          .catch((e) => this.cx.log("warn", `boardFocusChanged: ${e instanceof Error ? e.message : e}`));
     }
     await this.focusApplied;
   }
@@ -419,7 +419,7 @@ export class BoardHub implements BoardHost, Disposable {
   async restoreId(remembered: string | undefined): Promise<string | undefined> {
     let id = remembered;
     if (!id || this.panels.has(id) || !(await this.store.load(id)))
-      id = (workspace().storage.get<string[]>(OPEN) ?? []).find((x) => !this.panels.has(x));
+      id = (this.cx.ws.storage.get<string[]>(OPEN) ?? []).find((x) => !this.panels.has(x));
     return id && (await this.store.load(id)) ? id : undefined;
   }
 
@@ -454,25 +454,25 @@ export class BoardHub implements BoardHost, Disposable {
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       console.error("[codeboard]", m.type, e);
-      log("error", `${m.type}: ${msg}${e instanceof Error && e.stack ? `\n${e.stack}` : ""}`);
+      this.cx.log("error", `${m.type}: ${msg}${e instanceof Error && e.stack ? `\n${e.stack}` : ""}`);
       if (req !== undefined) p.post({ type: "reply", req, error: msg });
       else p.toast(`Error: ${msg}`);
     } finally {
       // 慢的请求记一笔（Copy Diagnostics 里能看到），方便对照白板那边的耗时。要等用户在对话框里选的不算（量到的是用户想了多久）
       const ms = performance.now() - t0;
       if (ms > 150 && m.type !== "confirm" && m.type !== "pickFile" && m.type !== "copyDiagnostics")
-        log("info", `slow ${m.type}: ${Math.round(ms)} ms`);
+        this.cx.log("info", `slow ${m.type}: ${Math.round(ms)} ms`);
     }
   }
 
   private saveOpen() {
-    void workspace().storage.set(OPEN, [...this.panels.keys()]);
+    void this.cx.ws.storage.set(OPEN, [...this.panels.keys()]);
   }
 
   setTarget(id: string | undefined) {
     if (this.target === id) return;
     this.target = id;
-    void workspace().storage.set(TARGET, id);
+    void this.cx.ws.storage.set(TARGET, id);
     for (const p of this.all()) p.post({ type: "host", host: { target: p.id === id } });
     this.targetEmitter.fire();
   }

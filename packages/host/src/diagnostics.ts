@@ -1,9 +1,8 @@
 import * as os from "node:os";
 import { formatDiagnostics, type Board, type DiagInfo } from "@codeboard/core";
 import { git } from "./git";
-import { recentLog } from "./log";
-import { workspace, wsRoots } from "./ws";
 import type { Prompts } from "./prompts";
+import type { HostContext } from "./context";
 
 async function folderInfo(p: string): Promise<DiagInfo["folders"][number]> {
   const head = (await git(p, ["rev-parse", "HEAD"]))?.trim();
@@ -13,7 +12,7 @@ async function folderInfo(p: string): Promise<DiagInfo["folders"][number]> {
 }
 
 /** board 给了就带上规模；attach = undefined 时问一次要不要附上白板 JSON */
-export async function copyDiagnostics(ask: Prompts, board?: Board, attach?: boolean) {
+export async function copyDiagnostics(cx: HostContext, ask: Prompts, board?: Board, attach?: boolean) {
   if (board && attach === undefined) {
     const pick = await ask.pick(
       [
@@ -25,21 +24,21 @@ export async function copyDiagnostics(ask: Prompts, board?: Board, attach?: bool
     if (!pick) return;
     attach = pick.attach;
   }
-  const w = workspace();
+  const w = cx.ws;
   const yes = (id: string) => (w.about.hasExtension(id) ? "yes" : "no");
   const info: DiagInfo = {
     ext: w.about.ext,
     app: `VS Code ${w.about.app}`,
     os: `${process.platform} ${os.release()} ${process.arch}`,
     env: [`Python ext: ${yes("ms-python.python")} · Pylance: ${yes("ms-python.vscode-pylance")}`],
-    folders: await Promise.all(wsRoots().map(folderInfo)),
+    folders: await Promise.all(cx.roots().map(folderInfo)),
     board: board && {
       name: board.name,
       cards: board.cards.length,
       arrows: board.links.length,
       sections: board.sections.length,
     },
-    log: recentLog(),
+    log: cx.recentLog(),
     boardJson: board && attach ? JSON.stringify(board, null, 1) : undefined,
   };
   await w.ui.copy(formatDiagnostics(info, os.homedir()));

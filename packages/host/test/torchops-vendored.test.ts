@@ -5,12 +5,11 @@ import * as path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { ExpandResult, Segment } from "@codeboard/core";
 import { expand } from "../src/resolve";
-import { resetIndex } from "../src/nameindex";
-import { forgetDefs } from "../src/defcache";
-import { useWorkspace } from "../src/ws";
-import { opTables } from "../src/torchops";
 import { nodeWorkspace } from "./node-workspace";
 import { at, card, startTreeSitter, tempRepo } from "./helpers";
+import { HostContext } from "../src/context";
+
+let cx: HostContext;
 
 const ROOT = tempRepo("vendored-torch", {
   "csrc/fast.cpp":
@@ -35,24 +34,23 @@ const W = nodeWorkspace(ROOT);
 const target = (r: ExpandResult) =>
   "card" in r ? `${r.card.segments[0].path} ${r.card.segments[0].symbol?.qual} · ${r.mark?.bound}` : r;
 const key = (r: ExpandResult) => ("card" in r ? r.mark?.vals?.find((v) => v.name === "dispatch")?.value : undefined);
-const click = (s: Segment, re: RegExp, name: string) => expand({ ...at(s, re, name), name });
-const step = async () => (await card(path.join(ROOT, "app/main.py"), "step")).seg;
+const click = (s: Segment, re: RegExp, name: string) => expand(cx, { ...at(s, re, name), name });
+const step = async () => (await card(cx, path.join(ROOT, "app/main.py"), "step")).seg;
 
 beforeAll(async () => {
-  useWorkspace(W);
-  resetIndex();
+  cx = new HostContext(W);
   await startTreeSitter();
 });
 afterAll(() => fs.rmSync(ROOT, { recursive: true, force: true }));
 
 describe("a vendored PyTorch next to the project's own extension", () => {
   it("has its op table, and the project's pybind .def calls and lambdas are still found", async () => {
-    expect((await opTables()).map((t) => path.relative(ROOT, t.root))).toEqual(["third_party/pytorch"]);
-    const run = (await card(path.join(ROOT, "main.py"), "run")).seg;
-    expect(target(await expand({ ...at(run, /fast\.fast_sum/, "fast_sum"), name: "fast_sum" }))).toBe(
+    expect((await cx.ops.opTables()).map((t) => path.relative(ROOT, t.root))).toEqual(["third_party/pytorch"]);
+    const run = (await card(cx, path.join(ROOT, "main.py"), "run")).seg;
+    expect(target(await expand(cx, { ...at(run, /fast\.fast_sum/, "fast_sum"), name: "fast_sum" }))).toBe(
       "csrc/fast.cpp fast_sum · pybind · fast.cpp m.def",
     );
-    expect(target(await expand({ ...at(run, /fast\.lam/, "lam"), name: "lam" }))).toBe(
+    expect(target(await expand(cx, { ...at(run, /fast\.lam/, "lam"), name: "lam" }))).toBe(
       "csrc/fast.cpp PYBIND11_MODULE · lambda · pybind · fast.cpp m.def",
     );
   });
@@ -70,7 +68,7 @@ describe("a vendored PyTorch next to the project's own extension", () => {
     );
   });
   it("routes the project's C++ at::X to that PyTorch's kernels", async () => {
-    const ext = (await card(path.join(ROOT, "csrc/ext.cpp"), "scaled")).seg;
+    const ext = (await card(cx, path.join(ROOT, "csrc/ext.cpp"), "scaled")).seg;
     expect(target(await click(ext, /at::_softmax/, "_softmax"))).toBe(
       "third_party/pytorch/aten/src/ATen/native/cuda/SoftMax.cu at::native::softmax_cuda_out · native_functions.yaml · _softmax via _softmax.out",
     );
@@ -80,7 +78,7 @@ describe("a vendored PyTorch next to the project's own extension", () => {
       { abs: path.join(ROOT, "third_party/pytorch/torch/_C/__init__.pyi"), line: 2, col: 4 },
     ];
     try {
-      forgetDefs();
+      cx.defs.forget();
       const add = await click(await step(), /torch\.add/, "add");
       expect(target(add)).toBe(
         "third_party/pytorch/build/aten/src/ATen/UfuncCUDA_add.cu at::native::ufunc_add_CUDA · native_functions.yaml · add.Tensor via add.out ufunc (generated)",
@@ -88,14 +86,14 @@ describe("a vendored PyTorch next to the project's own extension", () => {
       expect(key(add)).toBe("CUDA");
     } finally {
       W.language.definitions = async () => [];
-      forgetDefs();
+      cx.defs.forget();
     }
   });
 });
 
 describe("two PyTorch copies next to the project", () => {
   const add = async () => {
-    forgetDefs();
+    cx.defs.forget();
     return target(await click(await step(), /torch\.add/, "add"));
   };
   const stubIn = (copy: string) => {
@@ -105,14 +103,14 @@ describe("two PyTorch copies next to the project", () => {
     fs.cpSync(path.join(__dirname, "fixtures/torchops"), path.join(ROOT, "third_party/pytorch-fork"), {
       recursive: true,
     });
-    resetIndex();
+    cx.index.reset();
   });
   afterAll(() => {
     W.language.definitions = async () => [];
-    forgetDefs();
+    cx.defs.forget();
   });
   it("routes the project's torch.add into the copy the language server's stub is in, and into neither without one", async () => {
-    expect((await opTables()).map((t) => path.relative(ROOT, t.root)).sort()).toEqual([
+    expect((await cx.ops.opTables()).map((t) => path.relative(ROOT, t.root)).sort()).toEqual([
       "third_party/pytorch",
       "third_party/pytorch-fork",
     ]);

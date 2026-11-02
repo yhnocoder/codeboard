@@ -16,7 +16,8 @@ vi.mock("node:child_process", async (orig) => {
     }) as typeof cp.execFile,
   };
 });
-const { excludeFromGit, isAncestor, repoRootOfDir, forgetRepos, upstreamRef } = await import("../src/git");
+const { GitCache } = await import("../src/git");
+const cache = new GitCache();
 
 let R: string, C: string, c1: string, c2: string, later: string;
 beforeAll(() => {
@@ -40,23 +41,23 @@ afterAll(() => {
 describe("isAncestor", () => {
   it("answers and remembers both yes and no for full shas", async () => {
     runs.n = 0;
-    expect(await isAncestor(R, c1, c2)).toBe(true);
-    expect(await isAncestor(R, c2, c1)).toBe(false);
-    expect(await isAncestor(R, c1, c2)).toBe(true);
-    expect(await isAncestor(R, c2, c1)).toBe(false);
+    expect(await cache.isAncestor(R, c1, c2)).toBe(true);
+    expect(await cache.isAncestor(R, c2, c1)).toBe(false);
+    expect(await cache.isAncestor(R, c1, c2)).toBe(true);
+    expect(await cache.isAncestor(R, c2, c1)).toBe(false);
     expect(runs.n).toBe(2);
   });
   it("asks again after git failed, and gets the real answer once the commit is fetched", async () => {
     runs.n = 0;
-    expect(await isAncestor(C, c2, later)).toBe(false); // bad object in the clone: exit 128
+    expect(await cache.isAncestor(C, c2, later)).toBe(false); // bad object in the clone: exit 128
     sh(C, "fetch", "-q", "origin");
-    expect(await isAncestor(C, c2, later)).toBe(true);
+    expect(await cache.isAncestor(C, c2, later)).toBe(true);
     expect(runs.n).toBe(2);
   });
   it("doesn't remember answers for abbreviated commits", async () => {
     runs.n = 0;
-    expect(await isAncestor(R, c1.slice(0, 7), c2)).toBe(true);
-    expect(await isAncestor(R, c1.slice(0, 7), c2)).toBe(true);
+    expect(await cache.isAncestor(R, c1.slice(0, 7), c2)).toBe(true);
+    expect(await cache.isAncestor(R, c1.slice(0, 7), c2)).toBe(true);
     expect(runs.n).toBe(2);
   });
 });
@@ -68,12 +69,12 @@ describe("repo lookups", () => {
     const d = fs.realpathSync(fs.mkdtempSync("/tmp/codeboard-noinit-"));
     try {
       runs.top = 0;
-      expect(await repoRootOfDir(d)).toBeNull();
-      expect(await repoRootOfDir(d)).toBeNull();
+      expect(await cache.repoRootOfDir(d)).toBeNull();
+      expect(await cache.repoRootOfDir(d)).toBeNull();
       expect(runs.top).toBe(1);
       sh(d, "init", "-q");
-      forgetRepos();
-      expect(await repoRootOfDir(d)).toBe(d);
+      cache.forgetRepos();
+      expect(await cache.repoRootOfDir(d)).toBe(d);
     } finally {
       fs.rmSync(d, { recursive: true, force: true });
     }
@@ -82,10 +83,10 @@ describe("repo lookups", () => {
     const d = path.join(fs.realpathSync(fs.mkdtempSync("/tmp/codeboard-gone-")), "repo");
     try {
       runs.top = 0;
-      expect(await repoRootOfDir(d)).toBeNull(); // no cwd: git never ran
+      expect(await cache.repoRootOfDir(d)).toBeNull(); // no cwd: git never ran
       fs.mkdirSync(d);
       sh(d, "init", "-q");
-      expect(await repoRootOfDir(d)).toBe(d); // no git event in between
+      expect(await cache.repoRootOfDir(d)).toBe(d); // no git event in between
       expect(runs.top).toBe(2);
     } finally {
       fs.rmSync(path.dirname(d), { recursive: true, force: true });
@@ -94,11 +95,11 @@ describe("repo lookups", () => {
   it("takes a new origin as the upstream after a git event", async () => {
     const d = tempRepo("upstream", { "f.py": "x = 1\n" });
     try {
-      expect(await upstreamRef(d)).toBe("main");
+      expect(await cache.upstreamRef(d)).toBe("main");
       sh(d, "update-ref", "refs/remotes/origin/dev", "HEAD");
       sh(d, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/dev");
-      forgetRepos();
-      expect(await upstreamRef(d)).toBe("origin/dev");
+      cache.forgetRepos();
+      expect(await cache.upstreamRef(d)).toBe("origin/dev");
     } finally {
       fs.rmSync(d, { recursive: true, force: true });
     }
@@ -114,9 +115,9 @@ describe("excludeFromGit", () => {
   it("adds the line once, from a subfolder too", async () => {
     const d = tempRepo("exclude", { "sub/f.py": "x = 1\n" });
     try {
-      await excludeFromGit(path.join(d, "sub"), PAT, "scratch");
-      forgetRepos();
-      await excludeFromGit(d, PAT, "scratch");
+      await cache.excludeFromGit(path.join(d, "sub"), PAT, "scratch");
+      cache.forgetRepos();
+      await cache.excludeFromGit(d, PAT, "scratch");
       expect(count(exclude(path.join(d, ".git")))).toBe(1);
       expect(exclude(path.join(d, ".git"))).toContain("# scratch\n");
     } finally {
@@ -129,7 +130,7 @@ describe("excludeFromGit", () => {
     const w = `${d}-wt`;
     try {
       sh(d, "worktree", "add", "-q", "-b", "side", w);
-      await excludeFromGit(w, PAT, "scratch");
+      await cache.excludeFromGit(w, PAT, "scratch");
       expect(count(exclude(path.join(d, ".git")))).toBe(1);
     } finally {
       fs.rmSync(w, { recursive: true, force: true });
@@ -140,14 +141,14 @@ describe("excludeFromGit", () => {
   it("does nothing outside a repo, and adds the line once the folder became one and a git event came", async () => {
     const d = fs.realpathSync(fs.mkdtempSync("/tmp/codeboard-exclude-none-"));
     try {
-      await excludeFromGit(d, PAT, "scratch");
+      await cache.excludeFromGit(d, PAT, "scratch");
       sh(d, "init", "-q");
-      await excludeFromGit(d, PAT, "scratch");
+      await cache.excludeFromGit(d, PAT, "scratch");
       expect(
         fs.existsSync(path.join(d, ".git", "info", "exclude")) && count(exclude(path.join(d, ".git"))),
       ).toBeFalsy();
-      forgetRepos();
-      await excludeFromGit(d, PAT, "scratch");
+      cache.forgetRepos();
+      await cache.excludeFromGit(d, PAT, "scratch");
       expect(count(exclude(path.join(d, ".git")))).toBe(1);
     } finally {
       fs.rmSync(d, { recursive: true, force: true });

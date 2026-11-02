@@ -2,8 +2,10 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 import { openStickerDir, readPacks } from "../src/stickers";
-import { useWorkspace } from "../src/ws";
 import { WS, nodeWorkspace } from "./node-workspace";
+import { HostContext } from "../src/context";
+
+let cx: HostContext;
 
 describe("sticker folder", () => {
   it("relative to the workspace root: Open Folder opens <workspace>/<folder> and its packs are loaded", async () => {
@@ -21,7 +23,7 @@ describe("sticker folder", () => {
     );
     const W = nodeWorkspace(),
       opened: string[] = [];
-    useWorkspace({
+    cx = new HostContext({
       ...W,
       settings: { ...W.settings, get: <T>(k: string) => (k === "codeboard.stickerFolder" ? rel : undefined) as T },
       ui: {
@@ -32,9 +34,9 @@ describe("sticker folder", () => {
       },
     });
     try {
-      await openStickerDir();
+      await openStickerDir(cx);
       expect(opened).toEqual([dir]);
-      expect((await readPacks()).map((p) => p.name)).toContain("MyPack");
+      expect((await readPacks(cx)).map((p) => p.name)).toContain("MyPack");
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }

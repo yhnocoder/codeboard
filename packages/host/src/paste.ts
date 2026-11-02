@@ -5,34 +5,35 @@ import { planSelection } from "@codeboard/analysis";
 import { analysisOf } from "./analysis";
 import { cardsFromPlan, freeCard, withViews } from "./cards";
 import { githubCard } from "./github";
-import { locOfFile } from "./source";
-import { CODE_EXCLUDE, CODE_GLOB, langOf, readText, splitLines, workspace } from "./ws";
+import { CODE_EXCLUDE, CODE_GLOB, splitLines } from "./ws";
+import type { HostContext } from "./context";
 
-export async function pasteCard(text: string): Promise<NewCard | null> {
+export async function pasteCard(cx: HostContext, text: string): Promise<NewCard | null> {
   const k = classifyPaste(text);
-  if (k.kind === "github") return githubCard(text.trim());
+  if (k.kind === "github") return githubCard(cx, text.trim());
   if (k.kind === "web") return null;
-  const hit = await findInWorkspace(text);
+  const hit = await findInWorkspace(cx, text);
   if (hit) {
     const lines = splitLines(hit.text);
-    const lang = langOf(hit.abs);
+    const lang = cx.langOf(hit.abs);
     const plan = planSelection(
       [{ startLine: hit.start, startCol: 0, endLine: hit.end, endCol: lines[hit.end - 1].length }],
       analysisOf(lang, hit.text),
     );
     if (plan) {
       const built = await cardsFromPlan(
-        await locOfFile(hit.abs),
+        cx,
+        await cx.sources.locOfFile(hit.abs),
         lines,
         plan.kind === "split" ? { kind: "segments", ranges: [plan.range] } : plan,
         lang,
       );
-      return (await withViews(built.cards))[0];
+      return (await withViews(cx, built.cards))[0];
     }
   }
   if (k.kind === "code") {
     const lang = k.lang === "python" ? pythonDialect(text) : k.lang;
-    return (await withViews([freeCard(text.replace(/\s+$/, ""), lang)]))[0];
+    return (await withViews(cx, [freeCard(text.replace(/\s+$/, ""), lang)]))[0];
   }
   return null;
 }
@@ -41,6 +42,7 @@ const norm = (l: string) => l.replace(/\s+$/, "");
 
 /** 在打开的文档和工作区代码文件里找这段文本（第一行可以只是行尾一部分：从行中间开始复制的） */
 async function findInWorkspace(
+  cx: HostContext,
   text: string,
 ): Promise<{ abs: string; text: string; start: number; end: number } | null> {
   const block = splitLines(text).map(norm);
@@ -59,13 +61,13 @@ async function findInWorkspace(
     }
     return null;
   };
-  for (const d of workspace().files.openFiles()) {
+  for (const d of cx.ws.files.openFiles()) {
     const r = match(d.abs, d.text());
     if (r) return r;
   }
-  const files = await workspace().files.findFiles(CODE_GLOB, CODE_EXCLUDE, 4000);
+  const files = await cx.ws.files.findFiles(CODE_GLOB, CODE_EXCLUDE, 4000);
   for (const f of files) {
-    const t = await readText(f);
+    const t = await cx.readText(f);
     const r = t && match(f, t);
     if (r) return r;
   }

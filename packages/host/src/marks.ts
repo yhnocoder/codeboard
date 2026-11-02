@@ -1,8 +1,8 @@
 import { allCodeCards, type Segment } from "@codeboard/core";
 import { analysisOf } from "./analysis";
-import { absOf } from "./source";
 import type { Storage } from "./storage/boards";
 import { workingPlace } from "./versions";
+import type { HostContext } from "./context";
 
 type Entry = { board: string; card: string; seg: Segment };
 /** 一个 CodeLens：line 从 1 开始；args 是命令参数 */
@@ -11,12 +11,14 @@ export type Lens = { line: number; title: string; tooltip: string; command: stri
 export class BoardMarks {
   private byFile = new Map<string, Entry[]>();
 
+  constructor(private cx: HostContext) {}
+
   async rebuild(store: Storage) {
     const m = new Map<string, Entry[]>();
     for (const { board } of await store.all()) {
       for (const c of allCodeCards(board))
         for (const s of c.segments) {
-          const abs = s.src.kind === "free" ? null : absOf(s);
+          const abs = s.src.kind === "free" ? null : this.cx.sources.absOf(s);
           if (abs) (m.get(abs) ?? m.set(abs, []).get(abs)!).push({ board: board.id, card: c.id, seg: s });
         }
     }
@@ -27,7 +29,7 @@ export class BoardMarks {
   async lines(abs: string, target: string | undefined): Promise<[number, number][]> {
     const out: [number, number][] = [];
     for (const e of (this.byFile.get(abs) ?? []).filter((x) => x.board === target)) {
-      const wp = await workingPlace(e.seg);
+      const wp = await workingPlace(this.cx, e.seg);
       if (wp) out.push([wp.start, wp.end]);
     }
     return out;

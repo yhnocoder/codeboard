@@ -1,12 +1,11 @@
 // 子白板缩进在父白板下面（一块白板可以在几块父白板下面各出现一次）；有父白板的不再列在顶层。
 import * as vscode from "vscode";
 import {
-  allQuestions,
   BUNDLE_EXT,
   debounce,
   treeChildren,
-  workspaceGithubFiles,
   type BoardHub,
+  type Host,
   type Storage,
   type TreeNode,
 } from "@codeboard/host";
@@ -102,10 +101,10 @@ export class GithubTree implements vscode.TreeDataProvider<GNode> {
   private emitter = new vscode.EventEmitter<void>();
   readonly onDidChangeTreeData = this.emitter.event;
   readonly refresh = debounce(() => this.emitter.fire(), 300);
-  constructor(private store: Storage) {}
+  constructor(private files: Host["githubFiles"]) {}
 
   async getChildren(n?: GNode): Promise<GNode[]> {
-    if (!n) return (await workspaceGithubFiles(this.store)).map((r) => ({ kind: "repo", ...r }));
+    if (!n) return (await this.files()).map((r) => ({ kind: "repo", ...r }));
     return n.kind === "repo" ? n.files.map((f) => ({ kind: "file", ...f })) : [];
   }
 
@@ -134,7 +133,7 @@ export class QuestionsTree implements vscode.TreeDataProvider<QNode> {
   readonly refresh = debounce(() => this.emitter.fire(), 400);
   /** 列出解决了的 */
   all = false;
-  constructor(private store: Storage) {}
+  constructor(private questions: Host["questions"]) {}
 
   setAll(v: boolean) {
     this.all = v;
@@ -143,7 +142,7 @@ export class QuestionsTree implements vscode.TreeDataProvider<QNode> {
   }
 
   async shown(): Promise<QuestionItem[]> {
-    const qs = await allQuestions(this.store);
+    const qs = await this.questions();
     return this.all ? qs : qs.filter((q) => !q.done);
   }
 

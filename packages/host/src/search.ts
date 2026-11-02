@@ -16,17 +16,17 @@ import { escapeRegExp } from "@codeboard/analysis/basics";
 import { initExports, moduleFiles, pyprojectScripts } from "@codeboard/analysis";
 import { analysisOf } from "./analysis";
 import { cardForFileSym, freeCard, newCodeCard, withViews } from "./cards";
-import { locOfFile } from "./source";
-import { allNames, grepWord, lookupName } from "./nameindex";
 import type { Storage } from "./storage/boards";
 import { makeSegment } from "./versions";
-import { CODE_EXCLUDE, exists, fromHostPath, hostPath, langOf, readText, splitLines, workspace, wsRoots } from "./ws";
+import { CODE_EXCLUDE, exists, splitLines } from "./ws";
+import type { HostContext } from "./context";
 
 /**
  * ⌘K：所有白板上的卡和 Sidenote（here = 发起搜索的白板，排在前面），工作区的符号和文件。
  * 共享卡在几块白板上只列一次：在这块白板上就跳这里，否则跳第一块；detail 写出它在哪几块白板上。跟着共享卡走的 Sidenote 也只列一次
  */
 export async function search(
+  cx: HostContext,
   store: Storage,
   q: string,
   scope: "all" | "code" | "symbols" = "all",
@@ -106,7 +106,7 @@ export async function search(
     }
   }
   if (q.trim()) {
-    for (const ents of await allNames())
+    for (const ents of await cx.index.allNames())
       for (const e of ents) {
         // 子串（名字或带类名的全名里）排前面；子序列只配名字本身，而且要配得紧（fuzzy）
         const n = fuzzy(q, e.name),
@@ -117,8 +117,8 @@ export async function search(
           item: {
             kind: "symbol",
             label: e.qual,
-            detail: `${hostPath(e.abs)}:${e.defLine}`,
-            path: hostPath(e.abs),
+            detail: `${cx.hostPath(e.abs)}:${e.defLine}`,
+            path: cx.hostPath(e.abs),
             line: e.defLine,
             sym: e.qual,
             glyph: e.kind === "class" ? "C" : "ƒ",
@@ -126,9 +126,9 @@ export async function search(
         });
       }
     if (scope !== "symbols") {
-      const files = await workspace().files.findFiles(`**/*${q.replace(/[^\w.-]/g, "")}*`, CODE_EXCLUDE, 200);
+      const files = await cx.ws.files.findFiles(`**/*${q.replace(/[^\w.-]/g, "")}*`, CODE_EXCLUDE, 200);
       for (const f of files) {
-        const rel = hostPath(f);
+        const rel = cx.hostPath(f);
         const s = fuzzy(q, path.basename(rel));
         if (s >= 0)
           scored.push({ s: s - 5, item: { kind: "file", label: path.basename(rel), detail: rel, path: rel } });
@@ -142,54 +142,54 @@ export async function search(
 }
 
 /** 选中一条结果：符号 / 文件 / 入口 → 新卡（Sidenote 还是卡由白板决定）；卡和 Sidenote 白板自己处理 */
-export async function searchPick(item: SearchItem): Promise<NewCard | null> {
+export async function searchPick(cx: HostContext, item: SearchItem): Promise<NewCard | null> {
   if (item.kind === "symbol" || (item.kind === "entry" && item.sym)) {
-    const abs = fromHostPath(item.path);
-    const text = await readText(abs);
+    const abs = cx.fromHostPath(item.path);
+    const text = await cx.readText(abs);
     if (text === null) return null;
-    const syms = analysisOf(langOf(abs), text).symbols;
+    const syms = analysisOf(cx.langOf(abs), text).symbols;
     const sym =
       syms.find((s) => s.qual === item.sym && s.defLine === item.line) ?? syms.find((s) => s.qual === item.sym);
-    return sym ? cardForFileSym(abs, sym) : null;
+    return sym ? cardForFileSym(cx, abs, sym) : null;
   }
-  if (item.kind === "entry") return fileRangeCard(fromHostPath(item.path), item.line, item.end ?? item.line);
-  if (item.kind === "file") return fileTopCard(fromHostPath(item.path));
+  if (item.kind === "entry") return fileRangeCard(cx, cx.fromHostPath(item.path), item.line, item.end ?? item.line);
+  if (item.kind === "file") return fileTopCard(cx, cx.fromHostPath(item.path));
   return null;
 }
 
-async function fileRangeCard(abs: string, start: number, end: number): Promise<NewCard | null> {
-  const text = await readText(abs);
+async function fileRangeCard(cx: HostContext, abs: string, start: number, end: number): Promise<NewCard | null> {
+  const text = await cx.readText(abs);
   if (text === null) return null;
   const lines = splitLines(text);
-  const lang = langOf(abs);
+  const lang = cx.langOf(abs);
   const syms = analysisOf(lang, text).symbols;
   const scope = syms
     .filter((s) => s.start <= start && end <= s.end)
     .sort((a, b) => a.end - a.start - (b.end - b.start))[0]?.qual;
-  const seg = await makeSegment(await locOfFile(abs), lines, start, Math.min(end, lines.length), {
+  const seg = await makeSegment(cx, await cx.sources.locOfFile(abs), lines, start, Math.min(end, lines.length), {
     lang,
     scope,
     symbol: scope ? undefined : { qual: "<module>", kind: "module" },
   });
-  return (await withViews([newCodeCard([seg])]))[0];
+  return (await withViews(cx, [newCodeCard([seg])]))[0];
 }
 
 /** 文件 → 模块顶部（第一个函数 / 类之前）；没有符号的短文件整个放上来 */
-async function fileTopCard(abs: string): Promise<NewCard | null> {
-  const text = await readText(abs);
+async function fileTopCard(cx: HostContext, abs: string): Promise<NewCard | null> {
+  const text = await cx.readText(abs);
   if (text === null) return null;
   const lines = splitLines(text);
-  const lang = langOf(abs);
-  if (lang === "plaintext") return (await withViews([freeCard(lines.slice(0, 200).join("\n"), "plaintext")]))[0];
+  const lang = cx.langOf(abs);
+  if (lang === "plaintext") return (await withViews(cx, [freeCard(lines.slice(0, 200).join("\n"), "plaintext")]))[0];
   const first = analysisOf(lang, text).symbols[0];
   let end = first ? first.start - 1 : Math.min(lines.length, 200);
   while (end > 1 && !lines[end - 1].trim()) end--;
   if (end < 1) end = Math.min(lines.length, first ? first.end : 200);
-  return fileRangeCard(abs, 1, end);
+  return fileRangeCard(cx, abs, 1, end);
 }
 
 /** Start from Entry Point…（只做 Python）：pyproject 脚本、包 __init__ 导出、__main__ 块 */
-export async function entryPoints(): Promise<SearchItem[]> {
+export async function entryPoints(cx: HostContext): Promise<SearchItem[]> {
   const out: SearchItem[] = [];
   const seen = new Set<string>();
   const add = (it: SearchItem & { kind: "entry" }) => {
@@ -200,12 +200,12 @@ export async function entryPoints(): Promise<SearchItem[]> {
     }
   };
   const symIn = async (abs: string, qual: string) => {
-    const t = await readText(abs);
+    const t = await cx.readText(abs);
     return t === null ? undefined : analysisOf("python", t).symbols.find((s) => s.qual === qual);
   };
-  for (const root of wsRoots()) {
+  for (const root of cx.roots()) {
     // pyproject [project.scripts]
-    const toml = await readText(path.join(root, "pyproject.toml"));
+    const toml = await cx.readText(path.join(root, "pyproject.toml"));
     if (toml)
       for (const s of pyprojectScripts(toml)) {
         for (const cand of moduleFiles(s.module)) {
@@ -216,7 +216,7 @@ export async function entryPoints(): Promise<SearchItem[]> {
               kind: "entry",
               label: sym.qual,
               detail: `script “${s.name}” · pyproject.toml`,
-              path: hostPath(abs),
+              path: cx.hostPath(abs),
               line: sym.defLine,
               sym: sym.qual,
             });
@@ -226,13 +226,9 @@ export async function entryPoints(): Promise<SearchItem[]> {
       }
   }
   // 包 __init__.py 里导出的公共 API（浅层包）
-  const inits = await workspace().files.findFiles(
-    "{*/__init__.py,*/*/__init__.py,src/*/__init__.py}",
-    CODE_EXCLUDE,
-    50,
-  );
+  const inits = await cx.ws.files.findFiles("{*/__init__.py,*/*/__init__.py,src/*/__init__.py}", CODE_EXCLUDE, 50);
   for (const u of inits) {
-    const text = await readText(u);
+    const text = await cx.readText(u);
     if (!text) continue;
     const dir = path.dirname(u);
     for (const ex of initExports(text)) {
@@ -245,8 +241,8 @@ export async function entryPoints(): Promise<SearchItem[]> {
           add({
             kind: "entry",
             label: sym.qual,
-            detail: `exported from ${hostPath(u)}`,
-            path: hostPath(abs),
+            detail: `exported from ${cx.hostPath(u)}`,
+            path: cx.hostPath(abs),
             line: sym.defLine,
             sym: sym.qual,
           });
@@ -255,30 +251,30 @@ export async function entryPoints(): Promise<SearchItem[]> {
     }
   }
   // __main__ 块和示例脚本
-  const scripts = await workspace().files.findFiles(
+  const scripts = await cx.ws.files.findFiles(
     "{*.py,examples/**/*.py,example/**/*.py,scripts/*.py,*/__main__.py}",
     CODE_EXCLUDE,
     200,
   );
   for (const u of scripts) {
-    const text = await readText(u);
+    const text = await cx.readText(u);
     if (!text) continue;
     const a = analysisOf("python", text);
     for (const b of a.mainBlocks)
       add({
         kind: "entry",
         label: path.basename(u),
-        detail: `${hostPath(u)} · if __name__ == "__main__"`,
-        path: hostPath(u),
+        detail: `${cx.hostPath(u)} · if __name__ == "__main__"`,
+        path: cx.hostPath(u),
         line: b.start,
         end: b.end,
       });
     if (!a.mainBlocks.length && path.basename(u) === "__main__.py")
       add({
         kind: "entry",
-        label: hostPath(u),
+        label: cx.hostPath(u),
         detail: "python -m",
-        path: hostPath(u),
+        path: cx.hostPath(u),
         line: 1,
         end: Math.min(splitLines(text).length, 80),
       });
@@ -286,8 +282,8 @@ export async function entryPoints(): Promise<SearchItem[]> {
   // __main__ 块里调用的 main() 之类
   for (const it of [...out]) {
     if (it.kind !== "entry" || it.sym || !it.end) continue;
-    const abs = fromHostPath(it.path);
-    const text = await readText(abs);
+    const abs = cx.fromHostPath(it.path);
+    const text = await cx.readText(abs);
     if (!text) continue;
     const a = analysisOf("python", text);
     const main = a.calls.find(
@@ -308,14 +304,14 @@ export async function entryPoints(): Promise<SearchItem[]> {
 }
 
 /** 叫这个名字的定义（名字索引，所有语言）+ 字符串里的这个名字（"unified_attention"：注册表、绑定），按语言排 */
-export async function searchName(name: string): Promise<NameHit[]> {
+export async function searchName(cx: HostContext, name: string): Promise<NameHit[]> {
   const out: NameHit[] = [];
-  for (const e of await lookupName(name)) {
+  for (const e of await cx.index.lookupName(name)) {
     out.push({
-      lang: langOf(e.abs),
+      lang: cx.langOf(e.abs),
       label: e.sig,
-      detail: `${hostPath(e.abs)}:${e.defLine}`,
-      path: hostPath(e.abs),
+      detail: `${cx.hostPath(e.abs)}:${e.defLine}`,
+      path: cx.hostPath(e.abs),
       line: e.defLine,
       def: true,
       qual: e.qual,
@@ -323,16 +319,16 @@ export async function searchName(name: string): Promise<NameHit[]> {
   }
   const re = new RegExp(`["']${escapeRegExp(name)}["(.']`);
   let refs = 0;
-  for (const { abs, text } of await grepWord(name)) {
+  for (const { abs, text } of await cx.index.grepWord(name)) {
     const lines = splitLines(text);
     for (let i = 0; i < lines.length && refs < 40; i++) {
       if (!re.test(lines[i])) continue;
       refs++;
       out.push({
-        lang: langOf(abs),
+        lang: cx.langOf(abs),
         label: lines[i].trim().slice(0, 120),
-        detail: `${hostPath(abs)}:${i + 1}`,
-        path: hostPath(abs),
+        detail: `${cx.hostPath(abs)}:${i + 1}`,
+        path: cx.hostPath(abs),
         line: i + 1,
         def: false,
       });
@@ -353,8 +349,8 @@ export async function searchName(name: string): Promise<NameHit[]> {
 const GEN_EXT = [...codeExts(), "ptx", "ll", "mlir", "txt", "log"];
 
 /** 剪贴板或选一个文件：文本、语言（按扩展名，认不出按内容猜）、文件名 */
-export async function genSource(from: "clipboard" | "file"): Promise<GenSource | null> {
-  const ui = workspace().ui;
+export async function genSource(cx: HostContext, from: "clipboard" | "file"): Promise<GenSource | null> {
+  const ui = cx.ws.ui;
   if (from === "clipboard") {
     const text = await ui.clipboard();
     return text.trim() ? { text, lang: guessLang(text) ?? "plaintext", name: "" } : null;
@@ -365,8 +361,8 @@ export async function genSource(from: "clipboard" | "file"): Promise<GenSource |
     title: "Choose generated code (Inductor output, CUDA source, PTX…)",
   });
   if (!f) return null;
-  const text = await readText(f, false);
+  const text = await cx.readText(f, false);
   if (text === null) return null;
-  const l = langOf(f);
+  const l = cx.langOf(f);
   return { text, lang: l === "plaintext" ? (guessLang(text) ?? "plaintext") : l, name: f };
 }

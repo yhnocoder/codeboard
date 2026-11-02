@@ -10,9 +10,11 @@ import { makeHandler } from "../src/handlers";
 import { makeActions } from "../src/actions";
 import { prompts } from "../src/prompts";
 import type { HostEnv } from "../src/env";
-import { useWorkspace } from "../src/ws";
 import { nodeWorkspace } from "./node-workspace";
 import { stubView } from "./helpers";
+import { HostContext } from "../src/context";
+
+let cx: HostContext;
 
 type Ask = Extract<HostToBoard, { type: "ask" }>;
 const W = nodeWorkspace();
@@ -52,10 +54,10 @@ const nextAsk = (n: number) =>
 const order: string[] = [];
 
 beforeAll(async () => {
-  useWorkspace(W);
+  cx = new HostContext(W);
   await store.save(emptyBoard("bP", "Prompts"));
-  hub = new BoardHub(env, store);
-  hub.handler = makeHandler(hub);
+  hub = new BoardHub(cx, env, store);
+  hub.handler = makeHandler(cx, hub);
   const p = (await hub.show("bP"))!;
   p.ready = true;
   p.view.focus = async () => {
@@ -75,7 +77,7 @@ afterAll(() => {
 describe("prompts", () => {
   it("asks in a board dialog and resolves with the board's answer", async () => {
     const p = hub.get("bP")!;
-    const typed = prompts(p).input({
+    const typed = prompts(cx, p).input({
       title: "Capture Run",
       prompt: "Run a Python entry once",
       ok: "Run",
@@ -94,7 +96,7 @@ describe("prompts", () => {
     await answer(a.id, "b.py --steps 2");
     expect(await typed).toBe("b.py --steps 2");
 
-    const picked = prompts(p).pick(
+    const picked = prompts(cx, p).pick(
       [
         { label: "One", icon: "board" as const, k: 1 },
         { label: "Two", description: "here", k: 2 },
@@ -119,20 +121,20 @@ describe("prompts", () => {
     const p = hub.get("bP")!;
     order.length = 0;
     await hub.handler(p, { type: "focus", has: false });
-    const r = prompts(p).input({ prompt: "Name" });
+    const r = prompts(cx, p).input({ prompt: "Name" });
     const a = await nextAsk(3);
     expect(order).toEqual(["focus", "ask"]);
     await answer(a.id, null);
     expect(await r).toBeUndefined();
     await hub.handler(p, { type: "focus", has: true });
-    const r2 = prompts(p).input({ prompt: "Name" });
+    const r2 = prompts(cx, p).input({ prompt: "Name" });
     await answer((await nextAsk(4)).id, null);
     await r2;
     expect(order).toEqual(["focus", "ask", "ask"]);
   });
 
   it("Rename Board from the palette over the board asks the board; from the sidebar it asks VS Code", async () => {
-    const actions = makeActions(hub, store);
+    const actions = makeActions(cx, hub, store, async () => false);
     const n = asks().length;
     const fromPalette = actions["codeboard.renameBoard"]();
     const a = await nextAsk(n + 1);
@@ -148,7 +150,7 @@ describe("prompts", () => {
   });
 
   it("an open question is cancelled when the board closes", async () => {
-    const r = prompts(hub.get("bP")!).input({ prompt: "Name" });
+    const r = prompts(cx, hub.get("bP")!).input({ prompt: "Name" });
     await nextAsk(asks().length);
     views[0].dispose.fire();
     expect(await r).toBeUndefined();

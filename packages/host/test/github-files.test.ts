@@ -5,11 +5,12 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { emptyBoard, type CodeCard } from "@codeboard/core";
 import { Storage } from "../src/storage/boards";
 import { nodeFs } from "../src/storage/nodefs";
-import { ghQuery, onDidOpenGithubFile, workspaceGithubFiles } from "../src/github";
-import { githubFileDir, initSource } from "../src/source";
-import { useWorkspace } from "../src/ws";
-import { nodeWorkspace } from "./node-workspace";
+import { ghQuery, workspaceGithubFiles } from "../src/github";
+import { nodeWorkspace, type TestWorkspace } from "./node-workspace";
 import { startTreeSitter } from "./helpers";
+import { HostContext } from "../src/context";
+
+let cx: HostContext;
 
 const C1 = "a".repeat(40),
   C2 = "b".repeat(40),
@@ -31,10 +32,17 @@ function workspaceAt(name: string) {
   return { w, store: new Storage(nodeFs, { dir: () => path.join(tmp, name) }) };
 }
 const cached = (owner: string, name: string, commit: string, rel: string, ref: string) => {
-  const dir = githubFileDir(owner, name, commit);
+  const dir = path.join(cache, owner, name, commit);
   fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true });
   fs.writeFileSync(path.join(dir, rel), "# hi\n");
   fs.writeFileSync(path.join(dir, ".codeboard-ref"), ref);
+};
+
+/** A host on w; every host shares the GitHub cache */
+const hostOn = (w: TestWorkspace) => {
+  const h = new HostContext(w);
+  h.sources.init(cache);
+  return h;
 };
 
 describe("GitHub Files per workspace", () => {
@@ -42,8 +50,6 @@ describe("GitHub Files per workspace", () => {
     B = workspaceAt("b");
   beforeAll(async () => {
     await startTreeSitter();
-    useWorkspace(A.w);
-    initSource(cache);
     cached("yhnocoder", "tongtu", C1, "CLAUDE.md", "main");
     cached("owner", "repo", C2, "src/x.md", "v1");
     cached("owner", "repo", C2, "src/y.md", "v1");
@@ -53,24 +59,30 @@ describe("GitHub Files per workspace", () => {
 
   it("lists a file only in the workspace that opened it", async () => {
     let fired = 0;
-    const sub = onDidOpenGithubFile(() => fired++);
-    useWorkspace(A.w);
-    expect(await workspaceGithubFiles(A.store)).toEqual([]);
+    cx = hostOn(A.w);
+    const sub = cx.githubOpened.event(() => fired++);
+    expect(await workspaceGithubFiles(cx, A.store)).toEqual([]);
     const q = { op: "file", owner: "yhnocoder", name: "tongtu", commit: C1, ref: "main", path: "CLAUDE.md" } as const;
-    await Promise.all([ghQuery(q), ghQuery(q)]);
+    await Promise.all([ghQuery(cx, q), ghQuery(cx, q)]);
     sub.dispose();
     expect(fired).toBe(1);
-    expect(await workspaceGithubFiles(A.store)).toEqual([
+    expect(await workspaceGithubFiles(cx, A.store)).toEqual([
       {
         owner: "yhnocoder",
         name: "tongtu",
         commit: C1,
         ref: "main",
-        files: [{ abs: path.join(githubFileDir("yhnocoder", "tongtu", C1), "CLAUDE.md"), rel: "CLAUDE.md", cards: 0 }],
+        files: [
+          {
+            abs: path.join(cx.sources.githubFileDir("yhnocoder", "tongtu", C1), "CLAUDE.md"),
+            rel: "CLAUDE.md",
+            cards: 0,
+          },
+        ],
       },
     ]);
-    useWorkspace(B.w);
-    expect(await workspaceGithubFiles(B.store)).toEqual([]);
+    cx = hostOn(B.w);
+    expect(await workspaceGithubFiles(cx, B.store)).toEqual([]);
   });
 
   it("keeps remembering opened files after one write fails", async () => {
@@ -87,15 +99,15 @@ describe("GitHub Files per workspace", () => {
         await set(k, v);
       },
     };
-    useWorkspace(C.w);
+    cx = hostOn(C.w);
     const q = { op: "file", owner: "yhnocoder", name: "tongtu", commit: C1, ref: "main", path: "CLAUDE.md" } as const;
-    await expect(ghQuery(q)).rejects.toThrow("disk full");
-    await ghQuery(q);
-    expect((await workspaceGithubFiles(C.store)).map((r) => r.files.map((f) => f.rel))).toEqual([["CLAUDE.md"]]);
+    await expect(ghQuery(cx, q)).rejects.toThrow("disk full");
+    await ghQuery(cx, q);
+    expect((await workspaceGithubFiles(cx, C.store)).map((r) => r.files.map((f) => f.rel))).toEqual([["CLAUDE.md"]]);
   });
 
   it("lists files that the workspace's boards have cards for, with the card count", async () => {
-    useWorkspace(B.w);
+    cx = hostOn(B.w);
     const b = emptyBoard("b1", "B");
     const seg = (rel: string, commit = C2, ref = "v1") => ({
       src: { kind: "github", owner: "owner", name: "repo", ref },
@@ -122,7 +134,7 @@ describe("GitHub Files per workspace", () => {
       }),
     );
     await B.store.save(b);
-    const rs = await workspaceGithubFiles(B.store);
+    const rs = await workspaceGithubFiles(cx, B.store);
     expect(rs).toHaveLength(2);
     expect(rs.find((r) => r.commit === C2)).toMatchObject({
       ref: "v1",

@@ -9,9 +9,10 @@ import type { CodeCard, ExpandResult, Segment } from "@codeboard/core";
 import { startAnalysis, analysisOf } from "../src/analysis";
 import { cardForFileSym } from "../src/cards";
 import * as R from "../src/resolve";
-import { nameIndexReady, resetIndex } from "../src/nameindex";
-import { useWorkspace } from "../src/ws";
 import { WS, nodeWorkspace } from "./node-workspace";
+import { HostContext } from "../src/context";
+
+let cx: HostContext;
 
 const arg = (k: string, d: string) => {
   const i = process.argv.indexOf(`--${k}`);
@@ -73,24 +74,24 @@ void (async () => {
   if (!fs.existsSync(WS)) execFileSync("git", ["clone", "-q", path.join(REPO, "examples/nano-vllm"), WS]);
   makeRepo();
   const W = nodeWorkspace(BIG);
-  useWorkspace(W);
+  cx = new HostContext(W);
   await startAnalysis();
   const main = path.join(BIG, "app/main.py");
   const text = fs.readFileSync(main, "utf8");
   const sym = analysisOf("python", text).symbols.find((s) => s.qual === "main")!;
-  const seg = ((await cardForFileSym(main, sym))!.card as CodeCard).segments[0] as Segment;
+  const seg = ((await cardForFileSym(cx, main, sym))!.card as CodeCard).segments[0] as Segment;
   const line = 5,
     col = text.split("\n")[4].indexOf("very_late_function");
-  const click = () => R.expand({ seg, line, col, name: "very_late_function" });
+  const click = () => R.expand(cx, { seg, line, col, name: "very_late_function" });
   const found = (r: ExpandResult) => "card" in r && r.card.segments[0].symbol?.qual === "very_late_function";
   // A common name (Scheduler is defined in every copy): pick list of up to 20
   const sch = path.join(BIG, "r0000/nanovllm/engine/llm_engine.py");
   const st = fs.readFileSync(sch, "utf8");
   const ssym = analysisOf("python", st).symbols.find((s) => s.qual === "LLMEngine.__init__")!;
-  const sseg = ((await cardForFileSym(sch, ssym))!.card as CodeCard).segments[0] as Segment;
+  const sseg = ((await cardForFileSym(cx, sch, ssym))!.card as CodeCard).segments[0] as Segment;
   const sl = st.split("\n").findIndex((l) => /Scheduler\(config\)/.test(l)) + 1;
   const click2 = () =>
-    R.expand({ seg: sseg, line: sl, col: st.split("\n")[sl - 1].indexOf("Scheduler"), name: "Scheduler" });
+    R.expand(cx, { seg: sseg, line: sl, col: st.split("\n")[sl - 1].indexOf("Scheduler"), name: "Scheduler" });
 
   const bg = (R as { startNameIndex?: () => void }).startNameIndex;
   const t0 = performance.now();
@@ -105,11 +106,11 @@ void (async () => {
   let bgMs: number | undefined, bgStall: number | undefined;
   if (bg) {
     // after: the whole index built in the background (fresh index), worst stall while it runs
-    resetIndex();
+    cx.index.reset();
     const t3 = performance.now();
     [bgStall] = await stall(async () => {
       bg();
-      await nameIndexReady();
+      await cx.index.ready();
     });
     bgMs = Math.round(performance.now() - t3);
   }

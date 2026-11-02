@@ -4,9 +4,11 @@ import * as path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { sniffImage, type StickerPack } from "@codeboard/core";
 import { MAX_BITMAP, MAX_SVG, readPacks } from "../src/stickers";
-import { useWorkspace } from "../src/ws";
 import { nodeWorkspace } from "./node-workspace";
 import { animWebp, apng, faceFrames, gif, png, WEBP_1PX } from "./images";
+import { HostContext } from "../src/context";
+
+let cx: HostContext;
 
 const [open, wink] = faceFrames(16, [240, 190, 60, 255]);
 const PAL: [number, number, number][] = [
@@ -72,14 +74,14 @@ describe("bitmap sticker packs", () => {
       "huge.svg": `<svg xmlns='http://www.w3.org/2000/svg'>${" ".repeat(MAX_SVG)}</svg>`,
     };
     for (const [f, b] of Object.entries(files)) fs.writeFileSync(path.join(p, f), b);
-    useWorkspace({
+    cx = new HostContext({
       ...W,
       settings: { ...W.settings, get: <T>(k: string) => (k === "codeboard.stickerFolder" ? dir : undefined) as T },
     });
-    packs = await readPacks();
+    packs = await readPacks(cx);
   });
   afterAll(() => {
-    useWorkspace(W);
+    cx = new HostContext(W);
     fs.rmSync(dir, { recursive: true, force: true });
   });
 

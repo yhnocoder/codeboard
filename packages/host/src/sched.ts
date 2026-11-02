@@ -110,5 +110,3 @@ export class Scheduler {
     return !this.busy[p] && !this.queued[p];
   }
 }
-
-export const sched = new Scheduler();

@@ -3,31 +3,27 @@
 import { COMPLETE_SYSTEM, completePrompt, spaceChatReply, type AiInfo } from "@codeboard/core";
 import { deepseekComplete } from "./deepseek";
 import type { Prompts } from "./prompts";
+import type { HostContext } from "./context";
 import { readHostSetting, readSetting } from "./settings";
-import { workspace } from "./ws";
 
 /** DeepSeek 的 API 密钥在密钥存储里的名字 */
 const DEEPSEEK_SECRET = "codeboard.deepseekApiKey";
 
 /** DeepSeek 的密钥；没设、密钥存储出错都回 undefined */
-export async function deepseekKey(): Promise<string | undefined> {
-  return (
-    (await workspace()
-      .secrets.get(DEEPSEEK_SECRET)
-      .catch(() => undefined)) || undefined
-  );
+export async function deepseekKey(cx: HostContext): Promise<string | undefined> {
+  return (await cx.ws.secrets.get(DEEPSEEK_SECRET).catch(() => undefined)) || undefined;
 }
 
 /** DeepSeek 的模型名和地址（设置 codeboard.ai.deepseekModel / deepseekBaseUrl，空 = 默认） */
-export function deepseekTarget(): { model?: string; baseUrl?: string } {
+export function deepseekTarget(cx: HostContext): { model?: string; baseUrl?: string } {
   return {
-    model: readSetting("deepseekModel") || undefined,
-    baseUrl: readHostSetting<string>("deepseekBaseUrl") || undefined,
+    model: readSetting(cx, "deepseekModel") || undefined,
+    baseUrl: readHostSetting<string>(cx, "deepseekBaseUrl") || undefined,
   };
 }
 
 /** 命令 Set DeepSeek API Key 和白板上的 Set Key…：在 ask 的地方（白板的对话框或编辑器的输入框）问密钥，存进密钥存储；回设好了没有 */
-export async function setDeepseekKey(ask: Prompts): Promise<boolean> {
+export async function setDeepseekKey(cx: HostContext, ask: Prompts): Promise<boolean> {
   const key = (
     await ask.input({
       title: "DeepSeek API Key",
@@ -39,14 +35,14 @@ export async function setDeepseekKey(ask: Prompts): Promise<boolean> {
     })
   )?.trim();
   if (!key) return false;
-  await workspace().secrets.set(DEEPSEEK_SECRET, key);
-  void workspace().ui.info("DeepSeek API key saved.");
+  await cx.ws.secrets.set(DEEPSEEK_SECRET, key);
+  void cx.ws.ui.info("DeepSeek API key saved.");
   return true;
 }
 
-export async function clearDeepseekKey(): Promise<void> {
-  await workspace().secrets.delete(DEEPSEEK_SECRET);
-  void workspace().ui.info("DeepSeek API key cleared.");
+export async function clearDeepseekKey(cx: HostContext): Promise<void> {
+  await cx.ws.secrets.delete(DEEPSEEK_SECRET);
+  void cx.ws.ui.info("DeepSeek API key cleared.");
 }
 
 const NOTE_JUSTIFY = "CodeBoard suggests gray inline completions while you write a Note.";
@@ -56,15 +52,20 @@ const NOTE_JUSTIFY = "CodeBoard suggests gray inline completions while you write
  * deepseek / copilot 只用那一个；off 什么都不问。对话模型的回答不带前导空格，按光标前的文字补回来（DeepSeek 的对话回退也这样）。
  * undefined = 没有模型、没同意、取消、出错
  */
-export async function completeNote(before: string, after: string, signal: AbortSignal): Promise<string | undefined> {
-  const p = readSetting("aiProvider");
+export async function completeNote(
+  cx: HostContext,
+  before: string,
+  after: string,
+  signal: AbortSignal,
+): Promise<string | undefined> {
+  const p = readSetting(cx, "aiProvider");
   if (p === "off") return undefined;
   if (p === "deepseek" || p === "auto") {
-    const key = await deepseekKey();
-    if (key) return deepseekComplete({ key, ...deepseekTarget(), signal }, before, after);
+    const key = await deepseekKey(cx);
+    if (key) return deepseekComplete({ key, ...deepseekTarget(cx), signal, noFim: cx.noFim }, before, after);
     if (p === "deepseek") return undefined;
   }
-  const ai = workspace().ai;
+  const ai = cx.ws.ai;
   if (!ai || signal.aborted) return undefined;
   const r = await ai.chat(
     undefined,
@@ -75,12 +76,7 @@ export async function completeNote(before: string, after: string, signal: AbortS
 }
 
 /** Settings 的 AI 一节：DeepSeek 的密钥设了没有（只回这一位）、编辑器现在有哪些语言模型 */
-export async function aiInfo(): Promise<AiInfo> {
-  const [key, models] = await Promise.all([
-    deepseekKey(),
-    workspace()
-      .ai?.models()
-      .catch(() => []) ?? [],
-  ]);
+export async function aiInfo(cx: HostContext): Promise<AiInfo> {
+  const [key, models] = await Promise.all([deepseekKey(cx), cx.ws.ai?.models().catch(() => []) ?? []]);
   return { key: !!key, models };
 }

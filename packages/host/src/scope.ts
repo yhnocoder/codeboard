@@ -3,25 +3,23 @@
 import * as path from "node:path";
 import { importPkg, type FileAnalysis } from "@codeboard/analysis";
 import type { Segment } from "@codeboard/core";
-import { exists, inWorkspace, wsRoots } from "./ws";
+import type { HostContext } from "./context";
+import { exists } from "./ws";
 import { hasLocalFile } from "./source";
 
-const wsPkg = new Map<string, Promise<boolean>>();
-export const resetScope = () => wsPkg.clear();
-
 /** 顶层包名在不在工作区里：某个根下有 <pkg>/、<pkg>.py 或 src/<pkg>/ */
-function isWorkspacePkg(pkg: string): Promise<boolean> {
-  let p = wsPkg.get(pkg);
+function isWorkspacePkg(cx: HostContext, pkg: string): Promise<boolean> {
+  let p = cx.wsPkgs.get(pkg);
   if (!p) {
     p = (async () => {
-      for (const r of wsRoots()) {
+      for (const r of cx.roots()) {
         if (path.basename(r) === pkg) return true;
         for (const c of [path.join(r, pkg), path.join(r, `${pkg}.py`), path.join(r, "src", pkg)])
           if (await exists(c)) return true;
       }
       return false;
     })();
-    wsPkg.set(pkg, p);
+    cx.wsPkgs.set(pkg, p);
   }
   return p;
 }
@@ -45,8 +43,8 @@ async function topPkgOf(abs: string): Promise<string> {
   return top || path.basename(abs).replace(/\.\w+$/, "");
 }
 
-export async function libOf(abs: string): Promise<string | undefined> {
-  return inWorkspace(abs) ? undefined : topPkgOf(abs);
+export async function libOf(cx: HostContext, abs: string): Promise<string | undefined> {
+  return cx.inWorkspace(abs) ? undefined : topPkgOf(abs);
 }
 
 /**
@@ -54,6 +52,7 @@ export async function libOf(abs: string): Promise<string | undefined> {
  * imports 取自段那个版本的整个文件（拿不到就用当前文件）。
  */
 export async function callPkgs(
+  cx: HostContext,
   seg: Segment,
   imports: FileAnalysis["imports"],
   abs: string | null,
@@ -63,7 +62,7 @@ export async function callPkgs(
   const lib = new Map<string, boolean>();
   for (const im of imports) {
     const p = importPkg({ imports: [im] }, { name: im.name });
-    if (p && !lib.has(p)) lib.set(p, !(await isWorkspacePkg(p)));
+    if (p && !lib.has(p)) lib.set(p, !(await isWorkspacePkg(cx, p)));
   }
   return (c) => {
     const p = importPkg({ imports }, c);

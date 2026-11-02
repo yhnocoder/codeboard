@@ -1,8 +1,9 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
-import { dropScratchFile, scratchFile, scratchFiles } from "../src/scratchfiles";
+import { HostContext } from "../src/context";
 import { HEARTBEAT_MS, STALE_MS } from "../src/scratchnames";
+import { nodeWorkspace } from "./node-workspace";
 
 const dir = fs.mkdtempSync("/tmp/codeboard-scratch-");
 const near = path.join(dir, "engine.py");
@@ -23,6 +24,7 @@ vi.mock("node:fs", async (orig) => {
   };
   return { ...m, rmSync };
 });
+const cx = new HostContext(nodeWorkspace());
 afterEach(() => vi.useRealTimers());
 afterAll(() => fs.rmSync(dir, { recursive: true, force: true }));
 
@@ -31,12 +33,12 @@ describe("scratch files", () => {
     const crashed = put(".codeboard-scratch-old.py", STALE_MS + 60_000);
     const otherWindow = put(".codeboard-scratch-busy.py", HEARTBEAT_MS);
     const user = put(".codeboard-notes.md", STALE_MS + 60_000);
-    const f = await scratchFile("c:1", "python", near);
+    const f = await cx.scratch.file("c:1", "python", near);
     expect(f).toBe(path.join(dir, ".codeboard-scratch-c_1.py"));
     expect(fs.readFileSync(f, "utf8")).toBe("");
     expect([crashed, otherWindow, user].map((x) => fs.existsSync(x))).toEqual([false, true, true]);
-    expect(await scratchFile("c:1", "python", near)).toBe(f); // the same editor keeps its file
-    dropScratchFile("c:1");
+    expect(await cx.scratch.file("c:1", "python", near)).toBe(f); // the same editor keeps its file
+    cx.scratch.drop("c:1");
     expect(fs.existsSync(f)).toBe(false);
   });
   it("sweeps the rest when one stale file cannot be deleted", async () => {
@@ -45,18 +47,18 @@ describe("scratch files", () => {
     const olds = ["aa", "mm", "zz"].map((n) =>
       put(path.join(path.basename(sub), `.codeboard-scratch-${n}.py`), STALE_MS + 60_000),
     );
-    const f = await scratchFile("c:3", "python", path.join(sub, "engine.py"));
+    const f = await cx.scratch.file("c:3", "python", path.join(sub, "engine.py"));
     expect([locked, ...olds, f].map((x) => fs.existsSync(x))).toEqual([true, false, false, false, true]);
-    dropScratchFile("c:3");
+    cx.scratch.drop("c:3");
   });
   it("keeps its open files fresh for other windows, and deletes them when the host stops", async () => {
     vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"] });
-    const f = await scratchFile("c:2", "cuda-cpp", near);
+    const f = await cx.scratch.file("c:2", "cuda-cpp", near);
     const old = new Date(Date.now() - STALE_MS);
     fs.utimesSync(f, old, old);
     vi.advanceTimersByTime(HEARTBEAT_MS);
     expect(Date.now() - fs.statSync(f).mtimeMs).toBeLessThan(STALE_MS);
-    scratchFiles().dispose();
+    cx.dispose();
     expect(fs.existsSync(f)).toBe(false);
   });
 });

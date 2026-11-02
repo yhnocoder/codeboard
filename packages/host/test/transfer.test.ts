@@ -4,10 +4,12 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { emptyBoard, type Board, type CodeCard, type Segment, type Source } from "@codeboard/core";
 import { Storage } from "../src/storage/boards";
 import { nodeFs } from "../src/storage/nodefs";
-import { useWorkspace } from "../src/ws";
 import { copyToProject, freeName, otherProjects, recordProject, removeMoved, type Project } from "../src/transfer";
 import { nodeWorkspace } from "./node-workspace";
 import { tempRepo } from "./helpers";
+import { HostContext } from "../src/context";
+
+let cx: HostContext;
 
 const tmp: string[] = [];
 const mk = (p: string) => {
@@ -48,7 +50,7 @@ beforeAll(() => {
   fs.writeFileSync(path.join(B, "lib/x.py"), "x = 1\n");
   O = tempRepo("xo", { "x.py": "x = 1\n" });
   tmp.push(O);
-  useWorkspace(nodeWorkspace(A));
+  cx = new HostContext(nodeWorkspace(A));
 });
 afterAll(() => {
   for (const d of tmp) fs.rmSync(d, { recursive: true, force: true });
@@ -78,7 +80,7 @@ describe("copy to another project", () => {
     fs.mkdirSync(path.join(src, "runs"));
     fs.writeFileSync(path.join(src, "runs/r1.json"), "{}");
 
-    const t = await copyToProject(store, "bMain", project(B, dst));
+    const t = await copyToProject(cx, store, "bMain", project(B, dst));
     expect(t).toEqual({ id: "bMain", boards: ["bMain", "bSub"] });
 
     const there = new Storage(nodeFs, { dir: () => dst });
@@ -127,7 +129,7 @@ describe("copy to another project", () => {
     b.sidenotes.push({ id: "sn", kind: "code", at: { card: "v" }, code: seg({ kind: "repo", repo: "" }) });
     await store.save(b);
 
-    await copyToProject(store, "bV", project(B, dst));
+    await copyToProject(cx, store, "bV", project(B, dst));
     const got = await new Storage(nodeFs, { dir: () => dst }).load("bV");
     const v = codeOf(got, "v")!;
     expect(v.segments[0].src).toEqual({ kind: "repo", repo: "" });
@@ -152,7 +154,7 @@ describe("copy to another project", () => {
     await store.save(b);
 
     // 目标窗口的文件夹：[B, A]，仓库 A 是第二个根
-    await copyToProject(store, "bMR", project([B, A], dst));
+    await copyToProject(cx, store, "bMR", project([B, A], dst));
     const got = await new Storage(nodeFs, { dir: () => dst }).load("bMR");
     expect(codeOf(got, "a")?.segments[0].src).toEqual({ kind: "repo", repo: path.relative(B, A) });
     expect(path.relative(B, A).startsWith("../")).toBe(true);
@@ -182,7 +184,7 @@ describe("copy to another project", () => {
     await there.share("bOwn", ["sh"]);
     const card = fs.readFileSync(path.join(dst, "cards/sh.json"), "utf8");
 
-    const t = await copyToProject(store, "bTop", project(B, dst));
+    const t = await copyToProject(cx, store, "bTop", project(B, dst));
     expect(t?.id).toBe("bTop");
     const after = new Storage(nodeFs, { dir: () => dst });
     const metas = await after.list();
@@ -213,7 +215,7 @@ describe("move to another project", () => {
     for (const b of [S1, S2, M, K]) await store.save(b);
     await store.share("bM", ["sh"]);
 
-    const t = (await copyToProject(store, "bM", project(B, dst)))!;
+    const t = (await copyToProject(cx, store, "bM", project(B, dst)))!;
     const closed: string[] = [];
     const gone = await removeMoved(store, t, (id) => closed.push(id));
     expect(gone.sort()).toEqual(["bM", "bS1"]);
@@ -246,13 +248,13 @@ describe("board names in the target", () => {
     await there.save(emptyBoard("t3", "Engine step (3)"), { group: "Elsewhere" });
     await there.save(emptyBoard("t4", "Other"));
 
-    await copyToProject(store, "bM", project(B, dst));
+    await copyToProject(cx, store, "bM", project(B, dst));
     const after = new Storage(nodeFs, { dir: () => dst });
     expect((await after.load("bM"))?.name).toBe("Engine step (2)");
     expect((await after.load("bS"))?.name).toBe("Engine step (4)");
     // 这边的名字不动；再拷一次接着往后数
     expect((await store.load("bM"))?.name).toBe("Engine step");
-    const t = await copyToProject(store, "bM", project(B, dst));
+    const t = await copyToProject(cx, store, "bM", project(B, dst));
     expect((await new Storage(nodeFs, { dir: () => dst }).load(t!.id))?.name).toBe("Engine step (5)");
     expect(freeName("Other (2)", new Set(["Other (2)", "Other"]))).toBe("Other (3)");
     expect(freeName("New", new Set(["Old"]))).toBe("New");
@@ -270,7 +272,7 @@ describe("project registry", () => {
     };
     const here = path.join(mk("xhere"), "boards"),
       here2 = path.join(mk("xhere"), "boards");
-    await recordProject(state, here);
+    await recordProject(cx, state, here);
     expect((mem.get("codeboard.projects") as Record<string, Project>)[here]).toMatchObject({
       folders: [A],
       name: path.basename(A),
@@ -284,7 +286,7 @@ describe("project registry", () => {
     expect((await otherProjects(state, here)).map((p) => p.dir)).toEqual(["/o", "/b"]);
     expect(Object.keys(mem.get("codeboard.projects") as object).sort()).toEqual(["/b", "/o", here].sort());
     // 同一个文件夹换了存储目录：旧的那条换掉
-    await recordProject(state, here2);
+    await recordProject(cx, state, here2);
     expect(Object.keys(mem.get("codeboard.projects") as object).sort()).toEqual(["/b", "/o", here2].sort());
   });
 });

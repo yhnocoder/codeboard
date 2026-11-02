@@ -2,16 +2,16 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { slicer } from "./sched";
-import { readText, workspace } from "./ws";
+import type { HostContext } from "./context";
 
 /**
  * 构建生成的 ATen 目录，从 clangd 用的 compile_commands.json 找：clangd 的 --compile-commands-dir 指的目录，
  * 没有就是 <root>、<root>/build、<root>/build/* 里第一个有它的。它的条目写着编译的是哪个生成的 Ufunc*.cpp，
  * 所以文件是源码根目录下的一份副本时（PyTorch 的 setup.py 会拷一份过去）也能找到真正的目录
  */
-export async function genDirOf(root: string): Promise<string | undefined> {
-  const args = workspace().settings.get<unknown>("clangd.arguments", root);
-  const ws = workspace().files.rootOf(root) ?? root;
+export async function genDirOf(cx: HostContext, root: string): Promise<string | undefined> {
+  const args = cx.ws.settings.get<unknown>("clangd.arguments", root);
+  const ws = cx.ws.files.rootOf(root) ?? root;
   const dirs: string[] = [];
   if (Array.isArray(args)) {
     const i = args.findIndex((a) => typeof a === "string" && /^--compile-commands-dir(=|$)/.test(a));
@@ -29,7 +29,7 @@ export async function genDirOf(root: string): Promise<string | undefined> {
     /* no build/ */
   }
   for (const d of dirs) {
-    const text = await readText(path.join(d, "compile_commands.json"), false);
+    const text = await cx.readText(path.join(d, "compile_commands.json"), false);
     if (text === null) continue;
     if (d === root) return await ufuncDir(text, d); // 源码根目录下的副本：只信它的条目
     return (await ufuncDir(text, d)) ?? editorPath(path.join(d, "aten", "src", "ATen")); // 没有编译 Ufunc 文件的条目：按通常的布局

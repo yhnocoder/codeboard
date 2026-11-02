@@ -3,7 +3,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { emptyBoard, type CodeCard, type Stale } from "@codeboard/core";
 import { BoardPanel, type BoardHost } from "../src/boards";
+import { HostContext } from "../src/context";
 import { stubView } from "./helpers";
+import { nodeWorkspace } from "./node-workspace";
 
 const calls: { resolve: (st: Record<string, Stale>) => void }[] = [];
 vi.mock("../src/versions", async (orig) => ({
@@ -29,7 +31,10 @@ const turn = () => new Promise((r) => setImmediate(r));
 
 describe("version checks of one board", () => {
   it("end in the order they started, so the newer result stays", async () => {
-    const p = new BoardPanel("b", stubView().view, { staleChanged: () => undefined } as unknown as BoardHost);
+    const p = new BoardPanel("b", stubView().view, {
+      cx: new HostContext(nodeWorkspace()),
+      staleChanged: () => undefined,
+    } as unknown as BoardHost);
     p.ready = true;
     p.board = { ...emptyBoard("b", "B"), cards: [c], place: { c1: { x: 0, y: 0, w: 500 } } };
     const older = p.refreshStale(new Set(["f.py"])),

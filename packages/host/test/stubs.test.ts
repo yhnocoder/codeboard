@@ -5,11 +5,11 @@ import * as path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { ExpandResult, Segment } from "@codeboard/core";
 import { expand } from "../src/resolve";
-import { resetIndex } from "../src/nameindex";
-import { forgetDefs } from "../src/defcache";
-import { useWorkspace } from "../src/ws";
 import { nodeWorkspace } from "./node-workspace";
 import { at, card, startTreeSitter, tempRepo } from "./helpers";
+import { HostContext } from "../src/context";
+
+let cx: HostContext;
 
 const ROOT = tempRepo("stubs", {
   "pkg/shapes.py": "class Shape:\n    def area(self):\n        return 0\n\n\ndef make(kind):\n    return Shape()\n",
@@ -32,7 +32,7 @@ fs.writeFileSync(path.join(TYPESHED, "builtins.pyi"), "class dict:\n    def get(
 const W = nodeWorkspace(ROOT);
 const abs = (rel: string) => path.join(ROOT, rel);
 const answer = (rel: string, line: number) => {
-  forgetDefs();
+  cx.defs.forget();
   W.language.definitions = async () => [{ abs: abs(rel), line, col: 4 }];
 };
 const target = (r: ExpandResult) =>
@@ -44,10 +44,9 @@ const target = (r: ExpandResult) =>
 let run: Segment;
 
 beforeAll(async () => {
-  useWorkspace(W);
-  resetIndex();
+  cx = new HostContext(W);
   await startTreeSitter();
-  run = (await card(abs("main.py"), "run")).seg;
+  run = (await card(cx, abs("main.py"), "run")).seg;
 });
 afterAll(() => {
   fs.rmSync(ROOT, { recursive: true, force: true });
@@ -57,7 +56,7 @@ afterAll(() => {
 describe("a .pyi stub from the language server", () => {
   it("stands for the definition in the .py beside it", async () => {
     answer("pkg/shapes.pyi", 4);
-    expect(target(await expand({ ...at(run, /shapes\.make/, "make"), name: "make" }))).toBe("pkg/shapes.py make");
+    expect(target(await expand(cx, { ...at(run, /shapes\.make/, "make"), name: "make" }))).toBe("pkg/shapes.py make");
   });
   it("keeps dynamic dispatch, asking Go to Implementation at the .py", async () => {
     answer("pkg/shapes.pyi", 2);
@@ -66,7 +65,7 @@ describe("a .pyi stub from the language server", () => {
       asked.push(`${path.relative(ROOT, a)}:${line}`);
       return a === abs("pkg/shapes.py") ? [{ abs: abs("pkg/circle.py"), line: 5, col: 8 }] : [];
     };
-    expect(target(await expand({ ...at(run, /s\.area/, "area"), name: "area" }))).toEqual([
+    expect(target(await expand(cx, { ...at(run, /s\.area/, "area"), name: "area" }))).toEqual([
       "Shape.area",
       "Circle.area",
     ]);
@@ -75,18 +74,18 @@ describe("a .pyi stub from the language server", () => {
   });
   it("of compiled code gives way to the pybind registration and stays as an alternative; alone, it is the answer", async () => {
     answer("pkg/fast.pyi", 1);
-    const r = await expand({ ...at(run, /fast\.fast_sum/, "fast_sum"), name: "fast_sum" });
+    const r = await expand(cx, { ...at(run, /fast\.fast_sum/, "fast_sum"), name: "fast_sum" });
     expect(target(r)).toBe("csrc/fast.cpp fast_sum");
     expect("card" in r && r.mark?.alts?.map((a) => a.label)).toEqual(["stub · fast.pyi fast_sum"]);
     answer("pkg/fast.pyi", 2);
-    expect(target(await expand({ ...at(run, /fast\.only_stub/, "only_stub"), name: "only_stub" }))).toBe(
+    expect(target(await expand(cx, { ...at(run, /fast\.only_stub/, "only_stub"), name: "only_stub" }))).toBe(
       "pkg/fast.pyi only_stub",
     );
   });
   it("outside the workspace stays the answer: a pybind .def of the same name in the workspace is not it", async () => {
-    forgetDefs();
+    cx.defs.forget();
     W.language.definitions = async () => [{ abs: path.join(TYPESHED, "builtins.pyi"), line: 2, col: 8 }];
-    const r = await expand({ ...at(run, /d\.get/, "get"), name: "get" });
+    const r = await expand(cx, { ...at(run, /d\.get/, "get"), name: "get" });
     expect("card" in r && `${r.card.segments[0].symbol?.qual}`).toBe("dict.get");
     expect("card" in r && r.card.segments[0].path).toMatch(/builtins\.pyi$/);
     expect("card" in r && r.mark?.alts).toBeFalsy();
@@ -94,7 +93,7 @@ describe("a .pyi stub from the language server", () => {
 
   it("of a library in an in-repo virtual environment stays the answer: a pybind .def of the same name in the project is not it", async () => {
     answer(".venv/lib/python3.12/site-packages/cfglib/__init__.pyi", 2);
-    const r = await expand({ ...at(run, /d\.get/, "get"), name: "get" });
+    const r = await expand(cx, { ...at(run, /d\.get/, "get"), name: "get" });
     expect(target(r)).toBe(".venv/lib/python3.12/site-packages/cfglib/__init__.pyi Cfg.get");
     expect("card" in r && r.mark?.alts).toBeFalsy();
   });
@@ -108,7 +107,7 @@ describe("dynamic dispatch", () => {
       asked.push(`${path.relative(ROOT, a)}:${line}`);
       return [];
     };
-    expect(target(await expand({ ...at(run, /ns\.anything/, "anything"), name: "anything" }))).toBe(
+    expect(target(await expand(cx, { ...at(run, /ns\.anything/, "anything"), name: "anything" }))).toBe(
       "pkg/ns.py Namespace.__getattr__",
     );
     expect(asked).toEqual([]);

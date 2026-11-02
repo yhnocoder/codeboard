@@ -36,37 +36,28 @@ import {
   type Crossed,
   type Target,
 } from "./bridge";
-import { opTableFor } from "./torchops";
 import { pyOpEntry } from "./torchentry";
 import { analysisOf, cachedAnalysis, segAnalysis } from "./analysis";
 import type { Def } from "./defcache";
-import { clickDefs, lspDefs, lspImpls } from "./lsp";
-import { Prio, sched } from "./sched";
+import { Prio } from "./sched";
 import { cardForFileSym, symCard } from "./cards";
-import { absOf, locOfFile, versionText, hasLocalFile } from "./source";
+import { hasLocalFile } from "./source";
 import { makeSegment, workingPlace } from "./versions";
 import { highlight, tokensOf } from "./views";
 import { libOf } from "./scope";
-import { entriesOf, indexedFiles, knownEntries, lookupName, type IndexEntry } from "./nameindex";
-import { log } from "./log";
-import {
-  exists,
-  fromHostPath,
-  hostPath,
-  inExcludedDir,
-  inWorkspace,
-  langOf,
-  readText,
-  recentFiles,
-  splitLines,
-  workspace,
-  wsRoots,
-} from "./ws";
+import { type IndexEntry } from "./nameindex";
+import { exists, splitLines } from "./ws";
+import type { HostContext } from "./context";
 
-export async function symAtDef(d: Def, name?: string, qual?: string): Promise<{ abs: string; sym: Sym } | null> {
-  const text = await readText(d.abs);
+export async function symAtDef(
+  cx: HostContext,
+  d: Def,
+  name?: string,
+  qual?: string,
+): Promise<{ abs: string; sym: Sym } | null> {
+  const text = await cx.readText(d.abs);
   if (text === null) return null;
-  const syms = analysisOf(langOf(d.abs), text).symbols;
+  const syms = analysisOf(cx.langOf(d.abs), text).symbols;
   const sym =
     syms.find((s) => s.defLine === d.line && (!name || s.name === name)) ??
     (qual ? syms.find((s) => s.qual === qual) : undefined) ??
@@ -94,12 +85,14 @@ const toSym = (e: IndexEntry): Sym => ({
 type ExpandReq = { seg: Segment; line: number; col: number; name: string; recv?: string; pick?: ExpandPick };
 
 /** pick 的文件：rel = 相对段自己的来源根（工作区外的类卡点成员），否则是 hostPath */
-const pickAbs = (seg: Segment, p: ExpandPick) => (p.rel ? absOf({ ...seg, path: p.path }) : fromHostPath(p.path));
+const pickAbs = (cx: HostContext, seg: Segment, p: ExpandPick) =>
+  p.rel ? cx.sources.absOf({ ...seg, path: p.path }) : cx.fromHostPath(p.path);
 
 const none = (reason: string): ExpandResult => ({ none: true, reason });
 
 /** 点击解析时后台的活（预取、预热、名字索引）先等着 */
-export const expand = (m: ExpandReq): Promise<ExpandResult> => sched.run(Prio.Click, () => expandNow(m));
+export const expand = (cx: HostContext, m: ExpandReq): Promise<ExpandResult> =>
+  cx.sched.run(Prio.Click, () => expandNow(cx, m));
 
 /** What one click asks, shared read-only by the resolvers; the language service's answer is asked at most once */
 type Click = {
@@ -124,7 +117,7 @@ type LspAnswer = {
 };
 /** A resolver's answer: the targets (cross-language ones with their marks), or a reply as it is (a list to pick from) */
 type Hit = { crossed: Crossed[] } | { targets: Target[] } | { reply: ExpandResult };
-type Resolver = (c: Click) => Promise<Hit | null>;
+type Resolver = (cx: HostContext, c: Click) => Promise<Hit | null>;
 
 /** The language service gave nothing that is a definition here: a Python call may go to an extension or a kernel */
 const pyWithoutLsp = async (c: Click) => c.seg.lang === "python" && !(await c.lsp())?.defs.length;
@@ -136,76 +129,81 @@ const pyWithoutLsp = async (c: Click) => c.seg.lang === "python" && !(await c.ls
  */
 const RESOLVERS: Resolver[] = [
   // a pick from an earlier reply: only that
-  async ({ m, seg }) => {
+  async (cx, { m, seg }) => {
     if (!m.pick) return null;
-    const abs = pickAbs(seg, m.pick);
-    const t = abs && (await symAtDef({ abs, line: m.pick.line, col: 0 }, m.pick.rel ? m.name : undefined, m.pick.qual));
+    const abs = pickAbs(cx, seg, m.pick);
+    const t =
+      abs && (await symAtDef(cx, { abs, line: m.pick.line, col: 0 }, m.pick.rel ? m.name : undefined, m.pick.qual));
     return { targets: t ? [t] : [] };
   },
   // the language service is asked only to tell apart several PyTorch checkouts in the workspace (the same request goes on)
-  async (c) => {
+  async (cx, c) => {
     const lspAt = async () => {
       const p = await c.place();
-      return p?.exact ? (await lspDefs(p.abs, p.start + (c.m.line - c.seg.start), c.m.col)).map((d) => d.abs) : [];
+      return p?.exact ? (await cx.lsp.defs(p.abs, p.start + (c.m.line - c.seg.start), c.m.col)).map((d) => d.abs) : [];
     };
-    const crossed = await crossBefore(c.site, c.seg.lang, c.here, lspAt);
+    const crossed = await crossBefore(cx, c.site, c.seg.lang, c.here, lspAt);
     return crossed.length ? { crossed } : null;
   },
-  async (c) => {
+  async (_cx, c) => {
     const l = await c.lsp();
     return l?.crossed.length ? { crossed: l.crossed } : null;
   },
-  async (c) => {
+  async (_cx, c) => {
     const d = (await c.lsp())?.dispatch;
     return d && d !== true ? { reply: d.result } : null;
   },
-  async (c) => {
+  async (cx, c) => {
     const targets: Target[] = [];
     for (const d of (await c.lsp())?.defs ?? []) {
-      const t = await symAtDef(d, c.m.name);
+      const t = await symAtDef(cx, d, c.m.name);
       if (t && !targets.some((x) => x.abs === t.abs && x.sym.qual === t.sym.qual)) targets.push(t);
     }
     return targets.length ? { targets } : null;
   },
   // PyTorch's x.X(…): x may be a Tensor and X an operator with a method variant, so the yaml's kernels are candidates.
   // Before the registrations: Tensor methods all have generated PyMethodDef bindings (THPVariable_softmax), only glue
-  async (c) => {
+  async (cx, c) => {
     if (!c.site || !c.here || !(await pyWithoutLsp(c))) return null;
-    const crossed = await tensorMethod(c.site, c.here);
+    const crossed = await tensorMethod(cx, c.site, c.here);
     return crossed.length ? { crossed } : null;
   },
   // Python calling into C / C++ / Rust: the pybind / PyO3 registrations, unless the name index has a Python definition of
   // that name (self.model.forward is not the C++ .def("forward")). With PyTorch's operator index only already analysed
   // files count: no workspace scan for this
-  async (c) => {
+  async (cx, c) => {
     if (!(await pyWithoutLsp(c))) return null;
     const { m, here } = c;
-    const torch = !!(await opTableFor(here?.abs));
-    if ((torch ? knownEntries(m.name) : await lookupName(m.name)).some((e) => /\.py$/.test(e.abs))) return null;
-    const crossed = await viaRegistry(m.name, here?.abs);
+    const torch = !!(await cx.ops.opTableFor(here?.abs));
+    if ((torch ? cx.index.knownEntries(m.name) : await cx.index.lookupName(m.name)).some((e) => /\.py$/.test(e.abs)))
+      return null;
+    const crossed = await viaRegistry(cx, m.name, here?.abs);
     return crossed.length ? { crossed } : null;
   },
-  async (c) => {
+  async (cx, c) => {
     const targets: Target[] = [];
     for (const d of (await c.lsp())?.stubs ?? []) {
-      const t = await symAtDef(d, c.m.name);
+      const t = await symAtDef(cx, d, c.m.name);
       if (t && !targets.some((x) => x.abs === t.abs && x.sym.qual === t.sym.qual)) targets.push(t);
     }
     return targets.length ? { targets } : null;
   },
   // By name. When the language service gave a definition that is not a function or class (a variable, attribute,
   // parameter), only the current file and files already analysed: no workspace scan (tens of seconds in big repositories)
-  async ({ m, seg, site, place, lsp }) => {
+  async (cx, { m, seg, site, place, lsp }) => {
     let ents = (await lsp())?.defs.length
-      ? await nearbyEntries(m.name, (await place())?.abs)
-      : await lookupName(m.name);
-    if (grammarOf(seg.lang) === "cpp") ents = await cppCands(ents, site);
-    const cands = ents.map((e) => ({ ...e, path: hostPath(e.abs), line: e.defLine }));
+      ? await nearbyEntries(cx, m.name, (await place())?.abs)
+      : await cx.index.lookupName(m.name);
+    if (grammarOf(seg.lang) === "cpp") ents = await cppCands(cx, ents, site);
+    const cands = ents.map((e) => ({ ...e, path: cx.hostPath(e.abs), line: e.defLine }));
     if (!cands.length) return null;
     const selfClass =
       (seg.symbol?.kind === "class" ? seg.symbol.qual : seg.symbol?.qual.split(".").slice(0, -1).join(".")) ||
       seg.scope?.split(".").slice(0, -1).join(".");
-    const { ranked, best } = rankByReceiver(cands, m.recv ?? site?.recv, { path: await currentFile(seg), selfClass });
+    const { ranked, best } = rankByReceiver(cands, m.recv ?? site?.recv, {
+      path: await currentFile(cx, seg),
+      selfClass,
+    });
     if (best) return { targets: [{ abs: best.abs, sym: toSym(best) }] };
     return {
       reply: {
@@ -224,21 +222,21 @@ const RESOLVERS: Resolver[] = [
  * outside the workspace or under .venv) are answers as usual: a pybind .def("get") of the same name has nothing to do
  * with dict.get
  */
-async function askLsp(c: Omit<Click, "lsp">): Promise<LspAnswer | null> {
+async function askLsp(cx: HostContext, c: Omit<Click, "lsp">): Promise<LspAnswer | null> {
   const wp = await c.place();
   if (!wp?.exact) return null;
   const { m, seg } = c;
   let defs: Def[] = [];
   let stubs: Def[] = [];
-  for (const d of await clickDefs(wp.abs, wp.start + (m.line - seg.start), m.col)) {
+  for (const d of await cx.lsp.clickDefs(wp.abs, wp.start + (m.line - seg.start), m.col)) {
     const impl = isStub(d)
-      ? ((await stubImpl(d, m.name)) ?? (inWorkspace(d.abs) && !inExcludedDir(d.abs) ? null : d))
+      ? ((await stubImpl(cx, d, m.name)) ?? (cx.inWorkspace(d.abs) && !cx.inExcludedDir(d.abs) ? null : d))
       : d;
     if (!impl) stubs.push(d);
     else if (!defs.some((x) => x.abs === impl.abs && x.line === impl.line)) defs.push(impl);
   }
   if (defs.length) stubs = [];
-  const crossed = await crossAfterDefs(c.site, seg.lang, defs, c.here?.abs);
+  const crossed = await crossAfterDefs(cx, c.site, seg.lang, defs, c.here?.abs);
   if (crossed.length) defs = [];
   // Dynamic dispatch: the definition is a base class's method that subclasses override → all implementations to pick
   // from. Go to Implementation makes Pylance search the whole workspace for subclasses (seconds when cold, on slow
@@ -246,49 +244,49 @@ async function askLsp(c: Omit<Click, "lsp">): Promise<LspAnswer | null> {
   // definition and the reply says dispatching, so the board asks again (dispatchAt) and offers the overrides then
   let dispatch: LspAnswer["dispatch"] = false;
   if (defs.length === 1) {
-    const dsp = dispatchOf(defs[0], m.name);
+    const dsp = dispatchOf(cx, defs[0], m.name);
     const quick = await within(dsp, DISPATCH_WAIT);
     if (quick === LATE) {
       dsp.catch(() => null);
-      dispatch = await mayDispatch(defs[0], m.name);
+      dispatch = await mayDispatch(cx, defs[0], m.name);
     } else dispatch = quick ?? false;
   }
   return { defs, stubs, crossed, dispatch };
 }
 
-async function expandNow(m: ExpandReq): Promise<ExpandResult> {
+async function expandNow(cx: HostContext, m: ExpandReq): Promise<ExpandResult> {
   const seg = m.seg;
   if (seg.src.kind === "free") return none("Free code has no source to follow.");
   if (seg.src.kind === "github") return none("Expanding calls in GitHub code is not supported yet.");
-  const full = await versionText(seg);
-  const site = callSite(seg, full, m);
+  const full = await cx.sources.versionText(seg);
+  const site = callSite(cx, seg, full, m);
   if (!site)
-    log(
+    cx.log(
       "warn",
       `vars ${m.name} → callSite miss path=${seg.path}:${m.line}:${m.col}${full ? "" : " (file text unavailable, used saved lines)"}`,
     );
-  const here = full ? { abs: absOf(seg) ?? seg.path, text: full } : null;
+  const here = full ? { abs: cx.sources.absOf(seg) ?? seg.path, text: full } : null;
   let place: ReturnType<typeof workingPlace> | undefined;
   let lsp: Promise<LspAnswer | null> | undefined;
-  const base = { m, seg, site, here, place: () => (place ??= workingPlace(seg)) };
-  const c: Click = { ...base, lsp: () => (lsp ??= askLsp(base)) };
+  const base = { m, seg, site, here, place: () => (place ??= workingPlace(cx, seg)) };
+  const c: Click = { ...base, lsp: () => (lsp ??= askLsp(cx, base)) };
 
   let hit: Hit | null = null;
-  for (const r of RESOLVERS) if ((hit = await r(c))) break;
+  for (const r of RESOLVERS) if ((hit = await r(cx, c))) break;
   if (hit && "reply" in hit) return hit.reply;
   let crossed = hit && "crossed" in hit ? hit.crossed : [];
   const targets = hit && "targets" in hit ? hit.targets : [];
   const l = lsp && (await lsp);
   // a cross-language answer still offers the compiled code's stubs as alternatives
-  if (crossed.length && l?.stubs.length) crossed = await withStubs(crossed, l.stubs, m.name);
+  if (crossed.length && l?.stubs.length) crossed = await withStubs(cx, crossed, l.stubs, m.name);
 
   if (!crossed.length && !targets.length) {
     const why = site?.dispatch ? "Dynamic dispatch: not resolved" : `No definition found for “${m.name}”.`;
     const wp = place && (await place);
     const resolved = wp
-      ? `${hostPath(wp.abs)}:${wp.start + (m.line - seg.start)}${wp.exact ? "" : " (inexact)"}`
+      ? `${cx.hostPath(wp.abs)}:${wp.start + (m.line - seg.start)}${wp.exact ? "" : " (inexact)"}`
       : "none";
-    log(
+    cx.log(
       "warn",
       `expand ${m.name} → ${why} path=${seg.path}:${m.line}:${m.col} resolved=${resolved} lsp=${l?.defs.length ?? 0}${m.pick ? ` pick=${m.pick.path}:${m.pick.line}` : ""}`,
     );
@@ -298,33 +296,33 @@ async function expandNow(m: ExpandReq): Promise<ExpandResult> {
     return {
       pick: targets.map((t) => ({
         label: t.sym.qual,
-        detail: `${hostPath(t.abs)}:${t.sym.defLine}`,
-        path: hostPath(t.abs),
+        detail: `${cx.hostPath(t.abs)}:${t.sym.defLine}`,
+        path: cx.hostPath(t.abs),
         line: t.sym.defLine,
       })),
     };
 
   // 目标找到了：Triton 的 [grid]、CUDA 的 <<<>>>、TileLang 工厂补上边界和取值
   const x = crossed.length
-    ? await withAlts(crossed)
-    : await decorate(site, targets[0], full ? callerOf(seg.lang, full, m.line) : undefined);
+    ? await withAlts(cx, crossed)
+    : await decorate(cx, site, targets[0], full ? callerOf(seg.lang, full, m.line) : undefined);
   const t = x.t;
   if (crossed.length)
-    log(
+    cx.log(
       "info",
-      `expand ${m.name} → ${x.mark.bound ?? "definition"} → ${t.sym.qual} (${hostPath(t.abs)}:${t.sym.defLine})${crossed.length > 1 ? ` +${crossed.length - 1} alternatives` : ""}`,
+      `expand ${m.name} → ${x.mark.bound ?? "definition"} → ${t.sym.qual} (${cx.hostPath(t.abs)}:${t.sym.defLine})${crossed.length > 1 ? ` +${crossed.length - 1} alternatives` : ""}`,
     );
-  const nc = await cardForFileSym(t.abs, t.sym);
+  const nc = await cardForFileSym(cx, t.abs, t.sym);
   if (!nc) {
-    log("error", `expand ${m.name} → cannot read ${hostPath(t.abs)}`);
-    return none(`Cannot read ${hostPath(t.abs)}.`);
+    cx.log("error", `expand ${m.name} → cannot read ${cx.hostPath(t.abs)}`);
+    return none(`Cannot read ${cx.hostPath(t.abs)}.`);
   }
   const mark = Object.keys(x.mark).length ? x.mark : undefined;
   return {
     card: nc.card as CodeCard,
     views: nc.views,
     w: nc.w,
-    vars: site && !t.sym.name.startsWith("<") ? await varsFor(site, t) : [],
+    vars: site && !t.sym.name.startsWith("<") ? await varsFor(cx, site, t) : [],
     ...(mark ? { mark } : {}),
     ...(x.title ? { title: x.title } : {}),
     ...(l?.dispatch === true && !crossed.length ? { dispatching: true as const } : {}),
@@ -332,10 +330,10 @@ async function expandNow(m: ExpandReq): Promise<ExpandResult> {
 }
 
 /** The stubs' definitions added to a cross-language answer as alternatives */
-async function withStubs(crossed: Crossed[], stubs: Def[], name: string): Promise<Crossed[]> {
+async function withStubs(cx: HostContext, crossed: Crossed[], stubs: Def[], name: string): Promise<Crossed[]> {
   const out = [...crossed];
   for (const d of stubs) {
-    const t = await symAtDef(d, name);
+    const t = await symAtDef(cx, d, name);
     if (t && !out.some((x) => x.t.abs === t.abs && x.t.sym.qual === t.sym.qual))
       out.push({ t, mark: {}, label: `stub · ${path.basename(t.abs)} ${t.sym.qual}` });
   }
@@ -346,11 +344,12 @@ async function withStubs(crossed: Crossed[], stubs: Def[], name: string): Promis
  * recv.X(…) 而 X 是有 method 变体的 PyTorch 算子：它的 kernel。名字索引里已有的同名 Python 方法只在 recv 明显是它们的类时接手；
  * 它们从不和 kernel 一起当备选（索引建的过程中有哪些会变，同名的模块级函数、包括调用处自己，也不是方法）
  */
-async function tensorMethod(site: CallSite, here: { abs: string; text: string }): Promise<Crossed[]> {
-  const t = await opTableFor(here.abs);
+async function tensorMethod(cx: HostContext, site: CallSite, here: { abs: string; text: string }): Promise<Crossed[]> {
+  const t = await cx.ops.opTableFor(here.abs);
   const e = t && pyOpEntry(t, site, here.text);
   if (!t || e?.how !== "method") return [];
-  const methods = knownEntries(site.name)
+  const methods = cx.index
+    .knownEntries(site.name)
     .filter(
       (x) =>
         /\.py$/.test(x.abs) &&
@@ -358,16 +357,16 @@ async function tensorMethod(site: CallSite, here: { abs: string; text: string })
         x.qual.includes(".") &&
         !(x.abs === here.abs && site.line >= x.start && site.line <= x.end),
     )
-    .map((x) => ({ ...x, path: hostPath(x.abs), line: x.defLine })); // 不为这个扫工作区
-  if (methods.length > 1 && rankByReceiver(methods, site.recv, { path: hostPath(here.abs) }).best) return [];
-  return viaOps(t, e.op);
+    .map((x) => ({ ...x, path: cx.hostPath(x.abs), line: x.defLine })); // 不为这个扫工作区
+  if (methods.length > 1 && rankByReceiver(methods, site.recv, { path: cx.hostPath(here.abs) }).best) return [];
+  return viaOps(cx, t, e.op);
 }
 
 /**
  * C++ 里按名字找到的候选：只要 C / C++ / CUDA 的；ns::f(…) 要 qual 以 ns::f 结尾的；普通调用不会是 __global__ kernel（那要 <<<>>> 或 launch）。
  * 筛完一个都不剩就照原样
  */
-async function cppCands(ents: IndexEntry[], site: CallSite | undefined): Promise<IndexEntry[]> {
+async function cppCands(cx: HostContext, ents: IndexEntry[], site: CallSite | undefined): Promise<IndexEntry[]> {
   const keep = (xs: IndexEntry[], f: (e: IndexEntry) => boolean | Promise<boolean>) =>
     Promise.all(xs.map(async (e) => [e, await f(e)] as const)).then((r) => {
       const k = r.filter(([, ok]) => ok).map(([e]) => e);
@@ -378,7 +377,7 @@ async function cppCands(ents: IndexEntry[], site: CallSite | undefined): Promise
     out = await keep(out, (e) => e.qual.endsWith(`${site.recv}::${e.name}`));
   if (!site?.launch)
     out = await keep(out, async (e) => {
-      const t = await readText(e.abs);
+      const t = await cx.readText(e.abs);
       return (
         !t ||
         !/__global__/.test(
@@ -416,10 +415,10 @@ const within = <T>(p: Promise<T>, ms: number): Promise<T | typeof LATE> => {
 const isStub = (d: Def) => /\.pyi$/.test(d.abs);
 
 /** .pyi 存根声明的定义在旁边 .py 里的位置（typeshed 式的 Python 代码存根）；编译代码的存根返回 null */
-async function stubImpl(d: Def, name?: string): Promise<Def | null> {
+async function stubImpl(cx: HostContext, d: Def, name?: string): Promise<Def | null> {
   const py = d.abs.replace(/\.pyi$/, ".py");
-  const stub = await symAtDef(d, name);
-  const text = stub && (await readText(py, false));
+  const stub = await symAtDef(cx, d, name);
+  const text = stub && (await cx.readText(py, false));
   if (!stub || !text) return null;
   const sym = analysisOf("python", text).symbols.find((s) => s.qual === stub.sym.qual && s.kind === stub.sym.kind);
   if (!sym) return null;
@@ -431,17 +430,17 @@ async function stubImpl(d: Def, name?: string): Promise<Def | null> {
  * 对一个定义去哪里问 Go to Implementation：存根的 .py；PyTorch 编译代码的存根不问，算子路由代替它
  * （Pylance 在那里搜整个工作区 ~24 s，什么也找不到）
  */
-async function implSite(d: Def, name: string): Promise<Def | null> {
+async function implSite(cx: HostContext, d: Def, name: string): Promise<Def | null> {
   if (!isStub(d)) return d;
-  const impl = await stubImpl(d, name);
+  const impl = await stubImpl(cx, d, name);
   if (impl) return impl;
-  return (await opTableFor(d.abs)) ? null : d;
+  return (await cx.ops.opTableFor(d.abs)) ? null : d;
 }
 
 /** dispatchOf 会去问转到实现的那种定义：Python 类里的方法 */
-async function mayDispatch(d: Def, name: string): Promise<boolean> {
-  if (langOf(d.abs) !== "python") return false;
-  const b = await symAtDef(d, name);
+async function mayDispatch(cx: HostContext, d: Def, name: string): Promise<boolean> {
+  if (cx.langOf(d.abs) !== "python") return false;
+  const b = await symAtDef(cx, d, name);
   return overridable(b, name);
 }
 /**
@@ -452,18 +451,21 @@ const overridable = (b: Target | null, name: string): b is Target & { sym: { par
   !!b && !!b.sym.parent && b.sym.kind === "def" && b.sym.name === name;
 
 /** expand 回了 dispatching 之后白板来问：同一个调用点的定义处有没有被覆盖（定义、转到实现都走缓存，和 expand 发出去的是同一个请求） */
-export async function dispatchAt(m: {
-  seg: Segment;
-  line: number;
-  col: number;
-  name: string;
-}): Promise<DispatchResult> {
+export async function dispatchAt(
+  cx: HostContext,
+  m: {
+    seg: Segment;
+    line: number;
+    col: number;
+    name: string;
+  },
+): Promise<DispatchResult> {
   if (!hasLocalFile(m.seg.src)) return null;
-  const wp = await workingPlace(m.seg);
+  const wp = await workingPlace(cx, m.seg);
   if (!wp?.exact) return null;
-  const defs = await clickDefs(wp.abs, wp.start + (m.line - m.seg.start), m.col);
+  const defs = await cx.lsp.clickDefs(wp.abs, wp.start + (m.line - m.seg.start), m.col);
   if (defs.length !== 1) return null;
-  const d = await dispatchOf(defs[0], m.name);
+  const d = await dispatchOf(cx, defs[0], m.name);
   return d ? { ...d.result, ...(d.abstract ? { abstract: true as const } : {}) } : null;
 }
 
@@ -472,24 +474,25 @@ export async function dispatchAt(m: {
  * 列出全部实现（基类自己不是抽象的也算一个），library 里的标上包名（⌥ 才展开）
  */
 export async function dispatchOf(
+  cx: HostContext,
   def: Def,
   name: string,
 ): Promise<{ result: Extract<ExpandResult, { impls: unknown }>; n: number; base: string; abstract: boolean } | null> {
-  if (langOf(def.abs) !== "python") return null;
-  const d = await implSite(def, name);
+  if (cx.langOf(def.abs) !== "python") return null;
+  const d = await implSite(cx, def, name);
   if (!d) return null;
-  const b = await symAtDef(d, name);
+  const b = await symAtDef(cx, d, name);
   if (!overridable(b, name)) return null;
   let locs: Def[] = [];
   try {
-    locs = await lspImpls(d);
+    locs = await cx.lsp.impls(d);
   } catch {
     return null;
   }
   const impls: Target[] = [];
   for (const l of locs) {
     if (l.abs === d.abs && l.line === d.line) continue;
-    const t = await symAtDef(l, name);
+    const t = await symAtDef(cx, l, name);
     if (
       t &&
       !(t.abs === b.abs && t.sym.qual === b.sym.qual) &&
@@ -498,14 +501,14 @@ export async function dispatchOf(
       impls.push(t);
   }
   if (!impls.length) return null;
-  const text = await readText(b.abs);
+  const text = await cx.readText(b.abs);
   const abstract = text !== null && isAbstractBody(splitLines(text), b.sym);
   const pick = async (t: Target, base?: true): Promise<ImplPick> => {
-    const lib = await libOf(t.abs);
+    const lib = await libOf(cx, t.abs);
     return {
       label: t.sym.qual,
-      detail: `${hostPath(t.abs)}:${t.sym.defLine}`,
-      path: hostPath(t.abs),
+      detail: `${cx.hostPath(t.abs)}:${t.sym.defLine}`,
+      path: cx.hostPath(t.abs),
       line: t.sym.defLine,
       qual: t.sym.qual,
       ...(lib ? { lib } : {}),
@@ -513,18 +516,18 @@ export async function dispatchOf(
     };
   };
   const list = [...(abstract ? [] : [await pick(b, true)]), ...(await Promise.all(impls.map((t) => pick(t))))];
-  log("info", `dynamic dispatch ${b.sym.qual} → ${list.length} implementations`);
+  cx.log("info", `dynamic dispatch ${b.sym.qual} → ${list.length} implementations`);
   return { result: { impls: list, base: b.sym.qual }, n: list.length, base: b.sym.parent, abstract };
 }
 
 /** 不扫工作区的名字查找：当前文件 + 最近读过、分析还在缓存里的文件 */
-async function nearbyEntries(name: string, here?: string): Promise<IndexEntry[]> {
+async function nearbyEntries(cx: HostContext, name: string, here?: string): Promise<IndexEntry[]> {
   const out: IndexEntry[] = [];
-  const files = [...new Set([...(here ? [here] : []), ...recentFiles()])];
+  const files = [...new Set([...(here ? [here] : []), ...cx.recentFiles()])];
   for (const abs of files) {
-    const text = await readText(abs);
+    const text = await cx.readText(abs);
     if (text === null) continue;
-    const a = abs === here ? analysisOf(langOf(abs), text) : cachedAnalysis(langOf(abs), text);
+    const a = abs === here ? analysisOf(cx.langOf(abs), text) : cachedAnalysis(cx.langOf(abs), text);
     for (const s of a?.symbols ?? [])
       if (s.name === name)
         out.push({
@@ -541,16 +544,16 @@ async function nearbyEntries(name: string, here?: string): Promise<IndexEntry[]>
   return out;
 }
 
-async function currentFile(seg: Segment) {
-  const loc = (await workingPlace(seg))?.abs;
-  return loc ? hostPath(loc) : seg.path;
+async function currentFile(cx: HostContext, seg: Segment) {
+  const loc = (await workingPlace(cx, seg))?.abs;
+  return loc ? cx.hostPath(loc) : seg.path;
 }
 
-function callSite(seg: Segment, full: string | null, m: ExpandReq): CallSite | undefined {
+function callSite(cx: HostContext, seg: Segment, full: string | null, m: ExpandReq): CallSite | undefined {
   let calls: CallSite[];
   let shift = 0,
     colOff = 0;
-  if (full) calls = segAnalysis(seg.lang, full, m.line, m.line, absOf(seg) ?? undefined).calls;
+  if (full) calls = segAnalysis(seg.lang, full, m.line, m.line, cx.sources.absOf(seg) ?? undefined).calls;
   else {
     const ind = Math.min(...seg.text.filter((l) => l.trim()).map((l) => l.length - l.trimStart().length));
     colOff = Number.isFinite(ind) ? ind : 0;
@@ -565,9 +568,9 @@ function callSite(seg: Segment, full: string | null, m: ExpandReq): CallSite | u
 }
 
 /** 带 Call 标记的箭头的变量候选：类的话用 __init__ 的参数 */
-async function varsFor(site: CallSite, t: { abs: string; sym: Sym }): Promise<Var[]> {
-  const text = t.sym.kind === "class" || !t.sym.params.length ? await readText(t.abs) : null;
-  return varCandidates(site, calleeOf(t.sym, text ? analysisOf(langOf(t.abs), text).symbols : []));
+async function varsFor(cx: HostContext, site: CallSite, t: { abs: string; sym: Sym }): Promise<Var[]> {
+  const text = t.sym.kind === "class" || !t.sym.params.length ? await cx.readText(t.abs) : null;
+  return varCandidates(site, calleeOf(t.sym, text ? analysisOf(cx.langOf(t.abs), text).symbols : []));
 }
 /** 被调的函数：类 → __init__；索引里来的 Sym 没有参数，按 qual 在分析结果里补 */
 function calleeOf(sym: Sym, syms: Sym[]): Sym {
@@ -580,12 +583,12 @@ function calleeOf(sym: Sym, syms: Sym[]): Sym {
 type CallVarsReq = { seg: Segment; line: number; col: number; name: string; target: Segment };
 
 /** 调用接到已有的卡上（拖过去 / Link to Existing Card）：按目标卡的符号算变量候选 */
-export async function callVars(m: CallVarsReq): Promise<Var[]> {
+export async function callVars(cx: HostContext, m: CallVarsReq): Promise<Var[]> {
   if (m.seg.src.kind === "free") return [];
-  const site = callSite(m.seg, await versionText(m.seg), m);
+  const site = callSite(cx, m.seg, await cx.sources.versionText(m.seg), m);
   if (!site) return [];
   const t = m.target;
-  const full = t.src.kind === "free" ? null : await versionText(t);
+  const full = t.src.kind === "free" ? null : await cx.sources.versionText(t);
   let syms: Sym[];
   if (full) syms = analysisOf(t.lang, full).symbols;
   else {
@@ -622,9 +625,9 @@ type PeekReq = {
 type Hover = { sig?: string; doc?: string };
 
 /** VS Code 的 hover（Pylance：签名代码块 + Markdown 文档）；没有语言服务时为 null */
-async function hoverAt(abs: string, line: number, col: number): Promise<Hover | null> {
+async function hoverAt(cx: HostContext, abs: string, line: number, col: number): Promise<Hover | null> {
   try {
-    const parts = await workspace().language.hover(abs, line, col);
+    const parts = await cx.ws.language.hover(abs, line, col);
     // Pylance 在文档末尾带 <!--moduleHash:...--> 之类的 HTML 注释，Markdown 渲染时会原样显示，先去掉
     const r = splitHover(
       parts
@@ -638,70 +641,71 @@ async function hoverAt(abs: string, line: number, col: number): Promise<Hover | 
   }
 }
 
-export async function peek(m: PeekReq): Promise<PeekResult> {
+export async function peek(cx: HostContext, m: PeekReq): Promise<PeekResult> {
   let defs: Def[] = [];
   let use: { abs: string; line: number; col: number } | undefined;
-  if (m.at) use = { abs: fromHostPath(m.at.path), line: m.at.line, col: m.at.col };
+  if (m.at) use = { abs: cx.fromHostPath(m.at.path), line: m.at.line, col: m.at.col };
   else if (m.seg.src.kind !== "free") {
-    const wp = await workingPlace(m.seg);
+    const wp = await workingPlace(cx, m.seg);
     if (wp?.exact) use = { abs: wp.abs, line: wp.start + (m.line - m.seg.start), col: m.col };
   }
-  if (use) defs = await clickDefs(use.abs, use.line, use.col);
+  if (use) defs = await cx.lsp.clickDefs(use.abs, use.line, use.col);
   if (defs.length) {
     // hover 在使用处问（Pylance 给的类型更具体），没有再问定义处
     const hov =
-      (use && (await hoverAt(use.abs, use.line, use.col))) || (await hoverAt(defs[0].abs, defs[0].line, defs[0].col));
+      (use && (await hoverAt(cx, use.abs, use.line, use.col))) ||
+      (await hoverAt(cx, defs[0].abs, defs[0].line, defs[0].col));
     // 动态分发的提示也不让 peek 等转到实现：等不到这次就不显示（请求还在跑，进了缓存下次就有）
-    const dp = defs.length === 1 ? dispatchOf(defs[0], m.word.split(".").pop()!) : null;
-    const [out, q] = await Promise.all([peekAt(defs[0], m.word, hov), dp ? within(dp, DISPATCH_WAIT) : null]);
+    const dp = defs.length === 1 ? dispatchOf(cx, defs[0], m.word.split(".").pop()!) : null;
+    const [out, q] = await Promise.all([peekAt(cx, defs[0], m.word, hov), dp ? within(dp, DISPATCH_WAIT) : null]);
     if (q === LATE) dp!.catch(() => null);
     const dsp = q === LATE ? null : q;
     if (out && dsp) out.dispatch = { n: dsp.n, base: dsp.base, ...(dsp.abstract ? { abstract: true } : {}) };
     return out;
   }
   // 兜底 1：import 进来的模块（mp → torch.multiprocessing）
-  const mod = await importedModule(m);
+  const mod = await importedModule(cx, m);
   if (mod) return mod;
   // 兜底 2：同一个函数里的赋值 / 参数（按那个版本的文本）
-  const local = await localDef(m);
+  const local = await localDef(cx, m);
   if (local) return local;
   // 兜底 3：名字索引里的函数 / 类
   const word = m.word.split(".").pop()!;
-  const hits = await lookupName(word);
+  const hits = await cx.index.lookupName(word);
   if (hits?.length) {
     const e =
       hits.length === 1
         ? hits[0]
         : rankByReceiver(
-            hits.map((h) => ({ ...h, path: hostPath(h.abs), line: h.defLine })),
+            hits.map((h) => ({ ...h, path: cx.hostPath(h.abs), line: h.defLine })),
             m.word.includes(".") ? m.word.split(".").slice(0, -1).join(".") : undefined,
             { path: m.seg.path },
           ).ranked[0];
-    return peekAt({ abs: e.abs, line: e.defLine, col: 0 }, word);
+    return peekAt(cx, { abs: e.abs, line: e.defLine, col: 0 }, word);
   }
   // 兜底 4：x.field → 有类的文件里找类体字段 field: … = …（只看前 400 个文件）
-  const f = await classField(word);
-  return f ? peekAt(f, word) : null;
+  const f = await classField(cx, word);
+  return f ? peekAt(cx, f, word) : null;
 }
 
-async function classField(word: string): Promise<Def | null> {
+async function classField(cx: HostContext, word: string): Promise<Def | null> {
   if (!/^[A-Za-z_]\w*$/.test(word)) return null;
   const re = new RegExp(`^\\s+${word}\\s*(:[^=]*)?=(?!=)`);
   let n = 0;
-  for (const { abs, ents: known } of await indexedFiles()) {
+  for (const { abs, ents: known } of await cx.index.indexedFiles()) {
     let ents = known,
       text: string | null | undefined;
     if (!ents) {
       // 还没分析过：文本里没有这个词就不用分析
-      text = await readText(abs);
+      text = await cx.readText(abs);
       if (!text || !text.includes(word)) continue;
-      ents = await entriesOf(abs);
+      ents = await cx.index.entriesOf(abs);
     }
     if (!ents.some((e) => e.kind === "class") || n++ > 400) continue;
-    text ??= await readText(abs);
+    text ??= await cx.readText(abs);
     if (!text || !text.includes(word)) continue;
     const lines = splitLines(text);
-    const a = analysisOf(langOf(abs), text);
+    const a = analysisOf(cx.langOf(abs), text);
     for (let i = 0; i < lines.length; i++)
       if (re.test(lines[i]) && symbolAt(a.symbols, i + 1)?.kind === "class")
         return { abs, line: i + 1, col: lines[i].indexOf(word) };
@@ -729,26 +733,32 @@ async function topOf(plan: { sig?: string; doc?: string }, hov: Hover | null | u
 const modTitle = (p: string) => p.replace(/\/__init__\.pyi?$/, "").replace(/\.pyi?$/, "");
 
 /** 定义的那几行（按定义类型取）+ hover + Pin / Place 用的段 + 下一跳 */
-async function peekAt(d: Def, word: string, hov?: Hover | null, forceModule = false): Promise<PeekDef | null> {
-  const text = await readText(d.abs);
+async function peekAt(
+  cx: HostContext,
+  d: Def,
+  word: string,
+  hov?: Hover | null,
+  forceModule = false,
+): Promise<PeekDef | null> {
+  const text = await cx.readText(d.abs);
   if (text === null) return null;
   const lines = splitLines(text);
-  const lang = langOf(d.abs);
+  const lang = cx.langOf(d.abs);
   const a = analysisOf(lang, text);
   const module = forceModule || /^\(module\)/.test(hov?.sig ?? "") || isModuleDef(lines, d.line, d.col, word);
   const plan = peekPlan(a, lines, d.line, { word, module });
   const sym = a.symbols.find((s) => s.defLine === d.line);
-  const loc = await locOfFile(d.abs);
+  const loc = await cx.sources.locOfFile(d.abs);
   const rows = plan.rows;
   let seg: Segment;
-  if (sym && !module) seg = (await symCard(loc, lines, sym, lang)).segments[0];
+  if (sym && !module) seg = (await symCard(cx, loc, lines, sym, lang)).segments[0];
   else {
     const s = rows[0] ?? 1,
       e = rows[rows.length - 1] ?? Math.min(lines.length, 1);
-    seg = await makeSegment(loc, lines, s, e, { lang, scope: symbolAt(a.symbols, d.line)?.qual });
+    seg = await makeSegment(cx, loc, lines, s, e, { lang, scope: symbolAt(a.symbols, d.line)?.qual });
   }
   const out: PeekDef = {
-    path: hostPath(d.abs),
+    path: cx.hostPath(d.abs),
     line: d.line,
     start: rows[0] ?? d.line,
     text: rows.map((l) => lines[l - 1] ?? ""),
@@ -759,14 +769,14 @@ async function peekAt(d: Def, word: string, hov?: Hover | null, forceModule = fa
     head: plan.head,
     more: plan.more,
     ...(await topOf(plan, hov, lang)),
-    lib: await libOf(d.abs),
-    title: module ? modTitle(loc.src.kind === "repo" ? hostPath(d.abs) : loc.path) : undefined,
+    lib: await libOf(cx, d.abs),
+    title: module ? modTitle(loc.src.kind === "repo" ? cx.hostPath(d.abs) : loc.path) : undefined,
   };
   const f = !module && followOf(lines[d.line - 1] ?? "", word);
   if (f) {
-    const next = await lspDefs(d.abs, d.line, f.col);
+    const next = await cx.lsp.defs(d.abs, d.line, f.col);
     const where = next[0] ? ` · ${path.basename(next[0].abs)}:${next[0].line}` : "";
-    out.follow = { label: `${f.expr}${where}`, line: d.line, col: f.col, path: hostPath(d.abs) };
+    out.follow = { label: `${f.expr}${where}`, line: d.line, col: f.col, path: cx.hostPath(d.abs) };
   }
   return out;
 }
@@ -780,17 +790,17 @@ function followOf(line: string, word: string): { expr: string; col: number } | n
 }
 
 /** 没有语言服务：悬停的名字是 import 进来的模块（import torch.multiprocessing as mp）。工作区里的模块读它的 docstring，library 只给签名 */
-async function importedModule(m: PeekReq): Promise<PeekDef | null> {
+async function importedModule(cx: HostContext, m: PeekReq): Promise<PeekDef | null> {
   const seg = m.seg;
   if (seg.src.kind === "free" || m.word.includes(".")) return null;
-  const full = await versionText(seg);
-  const a: FileAnalysis | null = full ? segAnalysis(seg.lang, full, 1, 0, absOf(seg) ?? undefined) : null; // 只用 import
+  const full = await cx.sources.versionText(seg);
+  const a: FileAnalysis | null = full ? segAnalysis(seg.lang, full, 1, 0, cx.sources.absOf(seg) ?? undefined) : null; // 只用 import
   const im = a?.imports.find((i) => i.name === m.word && !i.from);
   if (!a || !im || !full) return null;
   const rel = im.module.split(".");
-  for (const f of wsRoots())
+  for (const f of cx.roots())
     for (const c of [path.join(f, ...rel, "__init__.py"), path.join(f, ...rel) + ".py"])
-      if (await exists(c)) return peekAt({ abs: c, line: 1, col: 0 }, m.word, null, true);
+      if (await exists(c)) return peekAt(cx, { abs: c, line: 1, col: 0 }, m.word, null, true);
   const lines = splitLines(full);
   const pseg: Segment = {
     id: uid("s"),
@@ -802,9 +812,9 @@ async function importedModule(m: PeekReq): Promise<PeekDef | null> {
     text: [lines[im.line - 1] ?? ""],
     version: seg.version,
   };
-  const abs = absOf(seg);
+  const abs = cx.sources.absOf(seg);
   return {
-    path: hostPath(abs ?? seg.path),
+    path: cx.hostPath(abs ?? seg.path),
     line: im.line,
     start: im.line,
     text: [],
@@ -819,9 +829,9 @@ async function importedModule(m: PeekReq): Promise<PeekDef | null> {
 }
 
 /** 没有语言服务：在段所在的函数里往上找 word = … / 参数 */
-async function localDef(m: PeekReq): Promise<PeekDef | null> {
+async function localDef(cx: HostContext, m: PeekReq): Promise<PeekDef | null> {
   const seg = m.seg;
-  const full = await versionText(seg);
+  const full = await cx.sources.versionText(seg);
   if (!full) return null;
   const lines = splitLines(full);
   const name = m.word.replace(/^self\./, "");
@@ -832,7 +842,7 @@ async function localDef(m: PeekReq): Promise<PeekDef | null> {
       ? `^\\s*self\\.${esc}\\s*(:[^=]*)?=(?!=)`
       : `^\\s*${esc}\\s*(:[^=]*)?=(?!=)|^\\s*(?:async\\s+)?def\\s+\\w+\\(.*\\b${esc}\\b`,
   );
-  const a = analysisOf(seg.lang, full, absOf(seg) ?? undefined);
+  const a = analysisOf(seg.lang, full, cx.sources.absOf(seg) ?? undefined);
   const fn = symbolAt(a.symbols, m.line, "def");
   const cls = isSelf ? a.symbols.find((s) => s.kind === "class" && fn?.parent === s.qual) : undefined;
   const lo = cls?.start ?? fn?.start ?? 1,
@@ -863,9 +873,9 @@ async function localDef(m: PeekReq): Promise<PeekDef | null> {
     version: seg.version,
     scope: symbolAt(a.symbols, hit)?.qual,
   };
-  const abs = absOf(seg);
+  const abs = cx.sources.absOf(seg);
   const out: PeekDef = {
-    path: hostPath(abs ?? seg.path),
+    path: cx.hostPath(abs ?? seg.path),
     line: hit,
     start,
     text: rows.map((l) => lines[l - 1] ?? ""),
@@ -876,9 +886,9 @@ async function localDef(m: PeekReq): Promise<PeekDef | null> {
     head: plan.kind === "function" ? undefined : plan.head,
     more: plan.kind === "function" ? undefined : plan.more,
     ...(plan.kind === "field" ? await topOf(plan, null, seg.lang) : {}),
-    lib: abs ? await libOf(abs) : undefined,
+    lib: abs ? await libOf(cx, abs) : undefined,
   };
   const f = followOf(lines[hit - 1], name);
-  if (f) out.follow = { label: f.expr, line: hit, col: f.col, path: hostPath(abs ?? seg.path) };
+  if (f) out.follow = { label: f.expr, line: hit, col: f.col, path: cx.hostPath(abs ?? seg.path) };
   return out;
 }

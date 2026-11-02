@@ -6,8 +6,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { Storage } from "./storage/boards";
-import { log } from "./log";
-import { workspace } from "./ws";
+import type { HostContext } from "./context";
 
 export const ASSET_MAX_AGE = 7 * 24 * 3600 * 1000;
 export const SWEEP_EVERY = 24 * 3600 * 1000;
@@ -26,13 +25,17 @@ async function jsonTexts(dir: string, assets: string, out: string[] = []): Promi
 }
 
 /** 走一遍，返回删掉的文件名。force = 不管一天一次 */
-export async function sweepAssets(store: Storage, o: { now?: number; force?: boolean } = {}): Promise<string[]> {
+export async function sweepAssets(
+  cx: HostContext,
+  store: Storage,
+  o: { now?: number; force?: boolean } = {},
+): Promise<string[]> {
   const now = o.now ?? Date.now();
   const dir = store.dir(),
     assets = store.assetsDir();
-  const last = workspace().storage.get<Record<string, number>>(LAST_RUN) ?? {};
+  const last = cx.ws.storage.get<Record<string, number>>(LAST_RUN) ?? {};
   if (!o.force && last[dir] !== undefined && now - last[dir] < SWEEP_EVERY) return [];
-  await workspace().storage.set(LAST_RUN, { ...last, [dir]: now });
+  await cx.ws.storage.set(LAST_RUN, { ...last, [dir]: now });
   const files = (await fs.readdir(assets, { withFileTypes: true }).catch(() => []))
     .filter((e) => e.isFile() && !e.name.startsWith("."))
     .map((e) => e.name);
@@ -47,11 +50,11 @@ export async function sweepAssets(store: Storage, o: { now?: number; force?: boo
       await fs.rm(p);
       gone.push(f);
     } catch (e) {
-      log("warn", `assets: could not remove ${p}: ${(e as Error).message}`);
+      cx.log("warn", `assets: could not remove ${p}: ${(e as Error).message}`);
     }
   }
   if (gone.length)
-    log(
+    cx.log(
       "info",
       `assets: removed ${gone.length} unused image${gone.length > 1 ? "s" : ""} from ${assets}: ${gone.join(", ")}`,
     );
@@ -59,9 +62,9 @@ export async function sweepAssets(store: Storage, o: { now?: number; force?: boo
 }
 
 /** 返回取消 */
-export function scheduleAssetSweep(store: Storage, delay = 60_000): () => void {
+export function scheduleAssetSweep(cx: HostContext, store: Storage, delay = 60_000): () => void {
   const t = setTimeout(() => {
-    sweepAssets(store).catch((e) => log("warn", `assets: sweep failed: ${(e as Error).message}`));
+    sweepAssets(cx, store).catch((e) => cx.log("warn", `assets: sweep failed: ${(e as Error).message}`));
   }, delay);
   (t as { unref?: () => void }).unref?.();
   return () => clearTimeout(t);

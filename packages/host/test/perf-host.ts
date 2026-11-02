@@ -14,10 +14,12 @@ import { stubView } from "./helpers";
 import { startAnalysis } from "../src/analysis";
 import { staleFor } from "../src/versions";
 import { viewsFor } from "../src/views";
-import { useWorkspace } from "../src/ws";
 import { WS, nodeWorkspace } from "./node-workspace";
+import { HostContext } from "../src/context";
 
-useWorkspace(nodeWorkspace());
+let cx: HostContext;
+
+cx = new HostContext(nodeWorkspace());
 
 const arg = (k: string, d: string) => {
   const i = process.argv.indexOf(`--${k}`);
@@ -106,8 +108,8 @@ void (async () => {
   if (process.argv.includes("--switch")) {
     const { dir, store } = await boardStore(head, old);
     const env = { globalState: { get: () => undefined, set: async () => {} }, openView: () => stubView().view };
-    const hub = new BoardHub(env, store);
-    hub.handler = makeHandler(hub);
+    const hub = new BoardHub(cx, env, store);
+    hub.handler = makeHandler(cx, hub);
     const v = stubView();
     const p = hub.attach("bTop", v.view);
     await p.init();
@@ -154,11 +156,11 @@ void (async () => {
     // A fresh process per run would be fairest (caches); approximated here with fresh snippets (new ids)
     const atHead = segments(head, N),
       atOld = segments(old, N);
-    const [coldCheck] = r === 0 ? await time(() => staleFor(atOld)) : [0];
-    const [open] = await time(() => Promise.all([viewsFor(atHead), staleFor(atHead)]));
-    const [check] = await time(() => staleFor(atHead));
-    const [openOld] = await time(() => Promise.all([viewsFor(atOld), staleFor(atOld)]));
-    const [checkOld, st] = await time(() => staleFor(atOld));
+    const [coldCheck] = r === 0 ? await time(() => staleFor(cx, atOld)) : [0];
+    const [open] = await time(() => Promise.all([viewsFor(cx, atHead), staleFor(cx, atHead)]));
+    const [check] = await time(() => staleFor(cx, atHead));
+    const [openOld] = await time(() => Promise.all([viewsFor(cx, atOld), staleFor(cx, atOld)]));
+    const [checkOld, st] = await time(() => staleFor(cx, atOld));
     const changed = Object.values(st).filter((s) => s.state !== "ok").length;
     console.log(
       JSON.stringify({

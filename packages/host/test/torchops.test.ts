@@ -5,15 +5,14 @@ import * as path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { ExpandResult, Segment } from "@codeboard/core";
 import { dispatchOf, expand } from "../src/resolve";
-import { nameIndexReady, resetIndex, startNameIndex } from "../src/nameindex";
-import { forgetDefs } from "../src/defcache";
-import { useWorkspace } from "../src/ws";
-import { kernelEntry, opTables, scanOf } from "../src/torchops";
 import { cppOpEntry } from "../src/torchentry";
 import { genDirOf, ufuncDir } from "../src/torchcdb";
 import { kernelsOf, opTable, parseOps } from "../src/torchyaml";
 import { nodeWorkspace } from "./node-workspace";
 import { at, card, startTreeSitter } from "./helpers";
+import { HostContext } from "../src/context";
+
+let cx: HostContext;
 
 const FIX = fs.mkdtempSync("/tmp/codeboard-torchops-");
 fs.cpSync(path.join(__dirname, "fixtures/torchops"), FIX, { recursive: true });
@@ -40,8 +39,8 @@ fs.writeFileSync(
   'struct Foo {};\n\nPYBIND11_MODULE(t, m) {\n  py::class_<Foo>(m, "Foo").def("fetch", [](Foo& f, int k) { return k; });\n}\n',
 );
 const YAML = "aten/src/ATen/native/native_functions.yaml";
-const seg = async (rel: string, qual: string) => (await card(path.join(FIX, rel), qual)).seg;
-const click = (s: Segment, re: RegExp, name: string) => expand({ ...at(s, re, name), name });
+const seg = async (rel: string, qual: string) => (await card(cx, path.join(FIX, rel), qual)).seg;
+const click = (s: Segment, re: RegExp, name: string) => expand(cx, { ...at(s, re, name), name });
 const qualOf = (r: ExpandResult) => ("card" in r ? r.card.segments[0].symbol?.qual : undefined);
 const fileOf = (r: ExpandResult) => ("card" in r ? r.card.segments[0].path : undefined);
 const markOf = (r: ExpandResult) => ("card" in r ? r.mark : undefined);
@@ -50,8 +49,7 @@ const alts = (r: ExpandResult) => markOf(r)?.alts?.map((a) => a.label) ?? [];
 
 const W = nodeWorkspace(FIX);
 beforeAll(async () => {
-  useWorkspace(W);
-  resetIndex();
+  cx = new HostContext(W);
   await startTreeSitter();
 });
 afterAll(() => fs.rmSync(FIX, { recursive: true, force: true }));
@@ -201,7 +199,7 @@ describe("native_functions.yaml", () => {
     expect(e("at::_ops::add_Tensor", "schema")).toBeNull();
   });
   it("finds the yaml in the workspace", async () => {
-    expect((await opTables()).map((x) => x.root)).toEqual([FIX]);
+    expect((await cx.ops.opTables()).map((x) => x.root)).toEqual([FIX]);
   });
 });
 
@@ -265,8 +263,8 @@ describe("clicks into PyTorch ops", () => {
     expect(markOf(a)?.bound).toBe("pybind · Module.cpp m.def");
   });
   it("a kernel of a CUDA layout key (SparseCUDA) is the one in the .cu file", async () => {
-    const [t] = await opTables();
-    const e = await kernelEntry(t, { key: "SparseCUDA", kernel: "add_out_sparse_cuda", decl: "add.out" });
+    const [t] = await cx.ops.opTables();
+    const e = await cx.ops.kernelEntry(t, { key: "SparseCUDA", kernel: "add_out_sparse_cuda", decl: "add.out" });
     expect(e && path.relative(FIX, e.abs)).toBe("aten/src/ATen/native/sparse/cuda/SparseCUDATensorMath.cu");
   });
   it("a PyMethodDef table outside torch/csrc (functorch/csrc) is found from PyTorch's Python; a documentation example in a header is not a registration", async () => {
@@ -275,7 +273,7 @@ describe("clicks into PyTorch ops", () => {
     expect(fileOf(r)).toBe("functorch/csrc/dim/dim.cpp");
     expect(markOf(r)?.bound).toBe("PyMethodDef · dim.cpp");
     // a documentation example in a header is not a registration
-    expect(scanOf((await opTables())[0]).pyRegs.has("fetch")).toBe(false);
+    expect(cx.ops.scanOf((await cx.ops.opTables())[0]).pyRegs.has("fetch")).toBe(false);
   });
   it("a name PyTorch does not register is not looked for in the registrations of the rest of the workspace", async () => {
     const r = await click(await seg("torch/cache.py", "lookup"), /c\.fetch/, "fetch");
@@ -334,8 +332,8 @@ describe("clicks into PyTorch ops", () => {
 
 describe("with the name index built", () => {
   it("x.softmax offers the kernels only: no Python functions or methods of that name, never the calling function itself", async () => {
-    startNameIndex();
-    await nameIndexReady();
+    cx.index.start();
+    await cx.index.ready();
     const m = await click(await seg("torch/nn/functional.py", "softmax"), /input\.softmax/, "softmax");
     expect(qualOf(m)).toBe("at::native::softmax");
     expect(alts(m)).toEqual(["CompositeExplicitAutograd · at::native::softmax_out"]);
@@ -348,7 +346,7 @@ describe("with a language server that answers with stubs and generated headers",
   };
   afterAll(() => {
     W.language.definitions = async () => [];
-    forgetDefs();
+    cx.defs.forget();
   });
   it("Pylance's .pyi stub for input.softmax: the kernels first, the stub as an alternative", async () => {
     set("torch/_C/__init__.pyi", 5);
@@ -362,19 +360,21 @@ describe("with a language server that answers with stubs and generated headers",
       asked.push(line);
       return [];
     };
-    expect(await dispatchOf({ abs: path.join(FIX, "torch/_C/__init__.pyi"), line: 5, col: 8 }, "softmax")).toBeNull();
+    expect(
+      await dispatchOf(cx, { abs: path.join(FIX, "torch/_C/__init__.pyi"), line: 5, col: 8 }, "softmax"),
+    ).toBeNull();
     expect(asked).toEqual([]);
     W.language.implementations = async () => [];
   });
   it("Pylance's stub for torch._C._get_cudnn_enabled: the PyMethodDef target first, the stub as an alternative", async () => {
-    forgetDefs();
+    cx.defs.forget();
     set("torch/_C/__init__.pyi", 2);
     const c = await click(await seg("model.py", "run"), /_get_cudnn_enabled/, "_get_cudnn_enabled");
     expect(qualOf(c)).toBe("THPModule_userEnabledCuDNN");
     expect(alts(c)).toEqual(["stub · __init__.pyi _get_cudnn_enabled"]);
   });
   it("clangd's generated ops/_softmax.h → the yaml kernels, not the dispatcher", async () => {
-    forgetDefs();
+    cx.defs.forget();
     set("build/aten/src/ATen/ops/_softmax.h", 4);
     const s = await click(
       await seg("aten/src/ATen/native/SoftMax.cpp", "at::native::plain_call"),
@@ -384,7 +384,7 @@ describe("with a language server that answers with stubs and generated headers",
     expect(qualOf(s)).toBe("at::native::softmax_cuda_out");
   });
   it("clangd's DECLARE_DISPATCH line → the REGISTER_DISPATCH targets", async () => {
-    forgetDefs();
+    cx.defs.forget();
     set("aten/src/ATen/native/TensorAdvancedIndexing.h", 5);
     const s = await click(
       await seg("aten/src/ATen/native/SoftMax.cpp", "at::native::scatter_on"),
@@ -425,7 +425,7 @@ describe("the build folder", () => {
         "/elsewhere/out/aten/src/ATen/UfuncCPU_add.cpp",
       ),
     });
-    expect(await genDirOf(r)).toBe("/elsewhere/out/aten/src/ATen");
+    expect(await genDirOf(cx, r)).toBe("/elsewhere/out/aten/src/ATen");
   });
   it("follows clangd's --compile-commands-dir, with ${workspaceFolder}, before build/", async () => {
     const r = tree({
@@ -436,13 +436,13 @@ describe("the build folder", () => {
       (k === "clangd.arguments"
         ? ["--background-index", "--compile-commands-dir=${workspaceFolder}/cmake-out"]
         : undefined) as T;
-    expect(await genDirOf(r)).toBe(path.join(r, "cmake-out", "aten", "src", "ATen"));
+    expect(await genDirOf(cx, r)).toBe(path.join(r, "cmake-out", "aten", "src", "ATen"));
     // multi-root: the setting of the folder this PyTorch is in
     W.settings.get = <T>(k: string, scope?: string) =>
       (k === "clangd.arguments" && scope === r ? ["--compile-commands-dir", "cmake-out"] : undefined) as T;
-    expect(await genDirOf(r)).toBe(path.join(r, "cmake-out", "aten", "src", "ATen"));
+    expect(await genDirOf(cx, r)).toBe(path.join(r, "cmake-out", "aten", "src", "ATen"));
     W.settings.get = () => undefined;
-    expect(await genDirOf(r)).toBe(path.join(r, "build", "aten", "src", "ATen"));
+    expect(await genDirOf(cx, r)).toBe(path.join(r, "build", "aten", "src", "ATen"));
   });
   it("on Windows is written with the lower-case drive letter of VS Code's file events, from backslash and forward-slash entries", async () => {
     const win = (file: string) =>
@@ -458,11 +458,11 @@ describe("the build folder", () => {
     );
   });
   it("is found in build/<preset>/, and is none without compile_commands.json or with only a root one that names no Ufunc file", async () => {
-    expect(await genDirOf(tree({ "build/Release/compile_commands.json": cdb("/a/b.cpp") }))).toMatch(
+    expect(await genDirOf(cx, tree({ "build/Release/compile_commands.json": cdb("/a/b.cpp") }))).toMatch(
       /build\/Release\/aten\/src\/ATen$/,
     );
-    expect(await genDirOf(tree({ "build/aten/src/ATen/UfuncCPU_add.cpp": "" }))).toBeUndefined();
-    expect(await genDirOf(tree({ "compile_commands.json": cdb("/a/b.cpp") }))).toBeUndefined();
+    expect(await genDirOf(cx, tree({ "build/aten/src/ATen/UfuncCPU_add.cpp": "" }))).toBeUndefined();
+    expect(await genDirOf(cx, tree({ "compile_commands.json": cdb("/a/b.cpp") }))).toBeUndefined();
   });
 });
 
@@ -475,7 +475,7 @@ describe("without generated files", () => {
     );
     expect(qualOf(c)).toBe("at::native::softmax_cuda_out");
     fs.rmSync(path.join(FIX, "build"), { recursive: true, force: true });
-    resetIndex();
+    cx.index.reset();
     const r = await click(await seg("model.py", "run"), /torch\.add/, "add");
     expect(qualOf(r)).toBe("at::native::ufunc::add");
     expect(markOf(r)?.bound).toBe("native_functions.yaml · add.Tensor via add.out ufunc_inner_loop");

@@ -7,10 +7,12 @@ import { emptyBoard, type Board, type HostToBoard } from "@codeboard/core";
 import type { Storage } from "../src/storage/boards";
 import { BoardHub } from "../src/hub";
 import type { HostEnv } from "../src/env";
-import { useWorkspace } from "../src/ws";
-import { followStorageDir, moveIntoProject, onDidSwitchStorage, openStorage } from "../src/storage/place";
+import { BoardPlace, moveIntoProject } from "../src/storage/place";
 import { nodeWorkspace, type TestWorkspace } from "./node-workspace";
 import { git, stubView, tempRepo } from "./helpers";
+import { HostContext } from "../src/context";
+
+let cx: HostContext;
 
 const tmp: string[] = [];
 afterAll(() => {
@@ -34,7 +36,7 @@ function setup() {
     },
   };
   W.settings = { ...W.settings, get: <T>(k: string) => settings.get(k) as T };
-  useWorkspace(W);
+  cx = new HostContext(W);
   return { W, repo, state, settings, outside: path.join(wsDir, "boards"), inside: path.join(repo, ".codeboard") };
 }
 const json = (f: string) => JSON.parse(fs.readFileSync(f, "utf8"));
@@ -49,7 +51,7 @@ async function hubOn(store: Storage, ids: string[]) {
       return v.view;
     },
   };
-  const hub = new BoardHub(env, store);
+  const hub = new BoardHub(cx, env, store);
   for (const id of ids) {
     const p = (await hub.show(id))!;
     p.board = store.peek(id);
@@ -57,14 +59,16 @@ async function hubOn(store: Storage, ids: string[]) {
   }
   return { hub, views };
 }
-const stores: Storage[] = [];
+const places = new Map<Storage, BoardPlace>();
+/** The board storage of the current host */
 const open = () => {
-  const s = openStorage();
-  stores.push(s);
-  return s;
+  const p = new BoardPlace(cx);
+  places.set(p.store, p);
+  return p.store;
 };
+const follow = (store: Storage) => places.get(store)!.follow();
 afterAll(() => {
-  for (const s of stores) s.dispose();
+  for (const p of places.values()) p.dispose();
 });
 
 describe("boards in the project", () => {
@@ -75,12 +79,12 @@ describe("boards in the project", () => {
     const store = open();
     expect(store.dir()).toBe(s.inside);
     s.settings.set("codeboard.storageDir", "notes");
-    expect(await followStorageDir(store)).toBe(true);
+    expect(await follow(store)).toBe(true);
     expect(store.dir()).toBe(path.join(s.repo, "notes"));
     s.settings.delete("codeboard.storageDir");
-    expect(await followStorageDir(store)).toBe(true);
+    expect(await follow(store)).toBe(true);
     expect(store.dir()).toBe(s.inside);
-    expect(await followStorageDir(store)).toBe(false);
+    expect(await follow(store)).toBe(false);
   });
 
   it("Move Boards into Project moves boards, groups, shared cards, images and runs into .codeboard, ignores the trash and switches to it", async () => {
@@ -98,9 +102,9 @@ describe("boards in the project", () => {
     fs.writeFileSync(path.join(s.outside, "runs/r1.json"), "{}");
     await store.remove("bB");
     const switched: string[] = [];
-    const sub = onDidSwitchStorage((x) => switched.push(x.dir()));
+    const sub = places.get(store)!.onDidSwitch((x) => switched.push(x.dir()));
 
-    expect(await moveIntoProject(store)).toEqual({ moved: true, to: s.inside });
+    expect(await moveIntoProject(cx, store, () => follow(store))).toEqual({ moved: true, to: s.inside });
     sub.dispose();
     expect(switched).toEqual([s.inside]);
     expect(store.dir()).toBe(s.inside);
@@ -125,7 +129,7 @@ describe("boards in the project", () => {
     const clone = fs.mkdtempSync("/tmp/codeboard-clone-");
     tmp.push(clone);
     git(clone, "clone", "-q", s.repo, "r");
-    useWorkspace(nodeWorkspace(path.join(clone, "r")));
+    cx = new HostContext(nodeWorkspace(path.join(clone, "r")));
     expect((await open().list()).map((m) => m.name)).toEqual(["A"]);
   });
 
@@ -135,13 +139,13 @@ describe("boards in the project", () => {
     await store.save(emptyBoard("bA", "A"));
     fs.mkdirSync(path.join(s.inside, "G"), { recursive: true });
     fs.writeFileSync(path.join(s.inside, "G/other.json"), JSON.stringify(emptyBoard("other", "Other")));
-    const r = await moveIntoProject(store);
+    const r = await moveIntoProject(cx, store, () => follow(store));
     expect(r.moved).toBe(false);
     expect(r.moved === false && r.why).toMatch(/already has boards/);
     expect(fs.existsSync(path.join(s.outside, "bA.json"))).toBe(true);
 
     s.W.files.roots = () => [];
-    expect((await moveIntoProject(store)).moved).toBe(false);
+    expect((await moveIntoProject(cx, store, () => follow(store))).moved).toBe(false);
   });
 
   it("panning a board changes no file: the camera is kept in this machine's workspace state", async () => {
@@ -182,7 +186,7 @@ describe("boards in the project", () => {
 
     const v = stubView();
     const env: HostEnv = { globalState: { get: () => undefined, set: async () => undefined }, openView: () => v.view };
-    const hub = new BoardHub(env, store);
+    const hub = new BoardHub(cx, env, store);
     const p = (await hub.show("bG"))!;
     p.board = store.peek("bG");
     p.ready = true;
@@ -208,11 +212,11 @@ describe("boards in the project", () => {
     );
     git(s.repo, "add", "-A");
     git(s.repo, "commit", "-qm", "boards");
-    expect(await followStorageDir(store)).toBe(true);
+    expect(await follow(store)).toBe(true);
     expect((await store.list()).map((m) => m.id)).toEqual(["bShared"]);
     git(s.repo, "checkout", "-q", "main");
     expect(fs.existsSync(s.inside)).toBe(false);
-    expect(await followStorageDir(store)).toBe(true);
+    expect(await follow(store)).toBe(true);
     expect((await store.list()).map((m) => m.id)).toEqual(["bLocal"]);
   });
 
@@ -222,7 +226,7 @@ describe("boards in the project", () => {
     await store.save(emptyBoard("bA", "A"));
     await store.save(emptyBoard("bB", "B"));
     const { hub, views } = await hubOn(store, ["bA", "bB"]);
-    expect((await moveIntoProject(store)).moved).toBe(true);
+    expect((await moveIntoProject(cx, store, () => follow(store))).moved).toBe(true);
     await hub.followStorage();
     expect(
       hub
@@ -255,7 +259,7 @@ describe("boards in the project", () => {
     const { hub, views } = await hubOn(store, ["bA", "bB"]);
 
     git(s.repo, "checkout", "-q", "boards");
-    expect(await followStorageDir(store)).toBe(true);
+    expect(await follow(store)).toBe(true);
     await hub.followStorage();
     expect(hub.all().map((p) => p.id)).toEqual(["bA"]);
     const m = views.get("bA")!.posted.find((x): x is Extract<HostToBoard, { type: "merged" }> => x.type === "merged");

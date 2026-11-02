@@ -8,8 +8,9 @@ import { Emitter, type HostToBoard } from "@codeboard/core";
 import type { Storage } from "../src/storage/boards";
 import type { HostEnv } from "../src/env";
 import { startHost, type Host } from "../src/start";
+import { GitCache } from "../src/git";
 import { excludeScratch, scratchName } from "../src/scratchnames";
-import { sharedDefs } from "../src/defcache";
+import type { HostContext } from "../src/context";
 import { nodeWorkspace } from "./node-workspace";
 import { git, stubView, tempRepo } from "./helpers";
 
@@ -17,12 +18,25 @@ import { git, stubView, tempRepo } from "./helpers";
 const sweeps = vi.hoisted(() => ({ scheduled: [] as string[], cancelled: [] as string[] }));
 vi.mock("../src/assetsweep", async (orig) => ({
   ...(await orig<typeof import("../src/assetsweep")>()),
-  scheduleAssetSweep: (store: Storage) => {
+  scheduleAssetSweep: (_cx: HostContext, store: Storage) => {
     const dir = store.dir();
     sweeps.scheduled.push(dir);
     return () => void sweeps.cancelled.push(dir);
   },
 }));
+
+// the host's context, to reach its definition cache
+const made = vi.hoisted(() => ({ cx: undefined as HostContext | undefined }));
+vi.mock("../src/context", async (orig) => {
+  const m = await orig<typeof import("../src/context")>();
+  class Recorded extends m.HostContext {
+    constructor(...a: ConstructorParameters<typeof m.HostContext>) {
+      super(...a);
+      made.cx = this;
+    }
+  }
+  return { ...m, HostContext: Recorded };
+});
 
 const tmp = fs.mkdtempSync("/tmp/codeboard-start-");
 const root = path.join(tmp, "ws"),
@@ -123,7 +137,7 @@ describe("startHost", () => {
     fs.writeFileSync(f, "x = 1\n");
     let asks = 0;
     const defs = () =>
-      sharedDefs(f, 1, 0, async () => {
+      made.cx!.defs.shared(f, 1, 0, async () => {
         asks++;
         return [{ abs: f, line: 1, col: 0 }];
       });
@@ -198,8 +212,9 @@ describe("scratch files and git", () => {
     const wt = path.join(tmp, "wt");
     git(repo, "worktree", "add", "-q", wt);
     fs.mkdirSync(path.join(wt, "pkg"));
-    await excludeScratch(path.join(wt, "pkg"));
-    await excludeScratch(repo);
+    const cache = new GitCache();
+    await excludeScratch(cache, path.join(wt, "pkg"));
+    await excludeScratch(cache, repo);
     const exclude = fs.readFileSync(path.join(repo, ".git", "info", "exclude"), "utf8");
     expect(exclude.split("\n").filter((l) => l === ".codeboard-scratch-*")).toHaveLength(1);
     fs.writeFileSync(path.join(wt, "pkg", scratchName("c1", "python")), "");
@@ -207,6 +222,6 @@ describe("scratch files and git", () => {
     fs.rmSync(repo, { recursive: true, force: true });
   });
   it("leave a directory outside any repo alone", async () => {
-    await expect(excludeScratch(tmp)).resolves.toBeUndefined();
+    await expect(excludeScratch(new GitCache(), tmp)).resolves.toBeUndefined();
   });
 });

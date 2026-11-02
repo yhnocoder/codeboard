@@ -4,26 +4,21 @@
 // （VS Code 的 executeXxxProvider 没法取消：排队时就丢掉，回来晚了的也丢掉，白板那边同样只认最新的）。
 import * as path from "node:path";
 import type { LspItem, LspSignature, Segment } from "@codeboard/core";
-import { workspace, ws0 } from "./ws";
-import { absOf } from "./source";
-import { log } from "./log";
-import { dropScratchFile, scratchFile, scratchFileOf } from "./scratchfiles";
+import type { HostContext } from "./context";
 
 type Near = Pick<Segment, "src" | "path" | "version">;
 type Doc = { lang: string; near?: string; text: string; chain: Promise<unknown> };
-const docs = new Map<string, Doc>();
-const gen = new Map<string, number>();
 /** 补全最多回多少项（Pylance 在空前缀时会给几千个） */
 const MAX_ITEMS = 300;
 
-const scratch = () => workspace().language.scratch;
+const scratch = (cx: HostContext) => cx.ws.language.scratch;
 
-function nearAbs(near?: Near): string | undefined {
+function nearAbs(cx: HostContext, near?: Near): string | undefined {
   if (near && near.src.kind !== "free" && near.src.kind !== "github") {
-    const a = absOf(near);
+    const a = cx.sources.absOf(near);
     if (a) return a;
   }
-  const r = ws0();
+  const r = cx.root0();
   return r ? path.join(r, "__codeboard__") : undefined; // 工作区根下面（文件名不用，只看目录）
 }
 
@@ -35,59 +30,60 @@ function queue<T>(d: Doc, fn: () => Promise<T>): Promise<T> {
 }
 
 /** Write the text into the document, creating its file the first time */
-async function sync(id: string, d: Doc, text: string) {
-  await scratch()!.sync(await scratchFile(id, d.lang, d.near), d.lang, text);
+async function sync(cx: HostContext, id: string, d: Doc, text: string) {
+  await scratch(cx)!.sync(await cx.scratch.file(id, d.lang, d.near), d.lang, text);
   d.text = text;
 }
 
-export function codeDoc(id: string, lang: string, text: string, near?: Near) {
-  if (!scratch()) return;
-  let d = docs.get(id);
-  const n = nearAbs(near);
+export function codeDoc(cx: HostContext, id: string, lang: string, text: string, near?: Near) {
+  if (!scratch(cx)) return;
+  let d = cx.codeDocs.get(id);
+  const n = nearAbs(cx, near);
   if (!d) {
     d = { lang, near: n, text: "", chain: Promise.resolve() };
-    docs.set(id, d);
+    cx.codeDocs.set(id, d);
   }
   d.lang = lang;
   d.near = n ?? d.near;
   const dd = d;
-  void queue(dd, () => sync(id, dd, text)).catch((e) => log("warn", `codeDoc: ${e}`));
+  void queue(dd, () => sync(cx, id, dd, text)).catch((e) => cx.log("warn", `codeDoc: ${e}`));
 }
 
-export function codeDocClose(id: string) {
-  const s = scratch(),
-    d = docs.get(id);
-  docs.delete(id);
+export function codeDocClose(cx: HostContext, id: string) {
+  const s = scratch(cx),
+    d = cx.codeDocs.get(id);
+  cx.codeDocs.delete(id);
   if (!s || !d) return;
   void queue(d, async () => {
-    const f = scratchFileOf(id);
+    const f = cx.scratch.fileOf(id);
     if (f) s.close(f);
-    dropScratchFile(id);
+    cx.scratch.drop(id);
   }).catch(() => undefined);
 }
 
 async function withDoc<T>(
+  cx: HostContext,
   id: string,
   op: string,
   text: string,
   empty: T,
   fn: (file: string) => Promise<T>,
 ): Promise<T> {
-  const d = docs.get(id);
-  if (!scratch() || !d) return empty;
+  const d = cx.codeDocs.get(id);
+  if (!scratch(cx) || !d) return empty;
   const k = `${id}|${op}`,
-    g = (gen.get(k) ?? 0) + 1;
-  gen.set(k, g);
-  const stale = () => gen.get(k) !== g;
+    g = (cx.codeGen.get(k) ?? 0) + 1;
+  cx.codeGen.set(k, g);
+  const stale = () => cx.codeGen.get(k) !== g;
   return queue(d, async () => {
     if (stale()) return empty;
-    if (d.text !== text) await sync(id, d, text);
-    const f = scratchFileOf(id);
+    if (d.text !== text) await sync(cx, id, d, text);
+    const f = cx.scratch.fileOf(id);
     if (stale() || !f) return empty;
     const r = await fn(f);
     return stale() ? empty : r;
   }).catch((e) => {
-    log("warn", `${op}: ${e}`);
+    cx.log("warn", `${op}: ${e}`);
     return empty;
   });
 }
@@ -117,22 +113,30 @@ function narrow(items: LspItem[], word: string, max = MAX_ITEMS): LspItem[] {
   return [...head, ...rest].slice(0, max);
 }
 
-export function lspComplete(id: string, text: string, line: number, col: number, trigger?: string): Promise<LspItem[]> {
-  return withDoc(id, "complete", text, [] as LspItem[], async (f) =>
-    narrow(await scratch()!.completions(f, line, col, trigger), wordBefore(text, line, col)),
+export function lspComplete(
+  cx: HostContext,
+  id: string,
+  text: string,
+  line: number,
+  col: number,
+  trigger?: string,
+): Promise<LspItem[]> {
+  return withDoc(cx, id, "complete", text, [] as LspItem[], async (f) =>
+    narrow(await scratch(cx)!.completions(f, line, col, trigger), wordBefore(text, line, col)),
   );
 }
-export function lspHover(id: string, text: string, line: number, col: number): Promise<string[]> {
-  return withDoc(id, "hover", text, [] as string[], (f) => workspace().language.hover(f, line + 1, col));
+export function lspHover(cx: HostContext, id: string, text: string, line: number, col: number): Promise<string[]> {
+  return withDoc(cx, id, "hover", text, [] as string[], (f) => cx.ws.language.hover(f, line + 1, col));
 }
 export function lspSignature(
+  cx: HostContext,
   id: string,
   text: string,
   line: number,
   col: number,
   trigger?: string,
 ): Promise<LspSignature | null> {
-  return withDoc(id, "signature", text, null as LspSignature | null, (f) =>
-    scratch()!.signature(f, line, col, trigger),
+  return withDoc(cx, id, "signature", text, null as LspSignature | null, (f) =>
+    scratch(cx)!.signature(f, line, col, trigger),
   );
 }

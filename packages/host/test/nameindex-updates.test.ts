@@ -4,35 +4,28 @@ import { execFileSync } from "node:child_process";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { Disposable } from "@codeboard/core";
 import { analysisOf } from "../src/analysis";
-import {
-  allNames,
-  indexedFiles,
-  lookupName,
-  nameIndexReady,
-  resetIndex,
-  startNameIndex,
-  watchNameIndex,
-  type IndexEntry,
-} from "../src/nameindex";
-import { HOLD_MAX, Prio, sched } from "../src/sched";
-import { useWorkspace } from "../src/ws";
+import { type IndexEntry } from "../src/nameindex";
+import { HOLD_MAX, Prio } from "../src/sched";
 import { WS, nodeWorkspace } from "./node-workspace";
 import { startTreeSitter } from "./helpers";
+import { HostContext } from "../src/context";
+
+let cx: HostContext;
 
 // its own copy of nano-vllm: the probe file it creates would show up in the other files' scans of WS, which run alongside
 const ROOT = fs.mkdtempSync("/tmp/codeboard-nameindex-");
 execFileSync("git", ["clone", "-q", WS, ROOT]);
 const W = nodeWorkspace(ROOT);
-const click = <T>(fn: () => Promise<T>) => sched.run(Prio.Click, fn);
+const click = <T>(fn: () => Promise<T>) => cx.sched.run(Prio.Click, fn);
 const key = (es: IndexEntry[]) => es.map((e) => `${e.abs}:${e.qual}:${e.defLine}`);
 const probe = path.join(ROOT, "nanovllm/zz_index_probe.py");
 let full: Map<string, string[]>, finds: number, watch: Disposable;
 
 beforeAll(async () => {
-  useWorkspace(W);
+  cx = new HostContext(W);
   await startTreeSitter();
-  watch = watchNameIndex();
-  resetIndex();
+  watch = cx.index.watch();
+  cx.index.reset();
   finds = W.finds;
   full = new Map();
   for (const f of await W.files.findFiles("**/*.{py,pyi,cu,cuh,cc,cpp,cxx,c,h,hpp}"))
@@ -47,51 +40,51 @@ afterAll(() => {
 
 describe("name index", () => {
   it("finds a name before the index is built, the same definitions as a full scan", async () => {
-    expect(key(await lookupName("Scheduler"))).toEqual(full.get("Scheduler"));
+    expect(key(await cx.index.lookupName("Scheduler"))).toEqual(full.get("Scheduler"));
   });
   it("matches the full scan for every name, reading the workspace file list once", async () => {
     const differ: string[] = [];
     for (const [name, want] of full)
-      if (JSON.stringify(key(await lookupName(name))) !== JSON.stringify(want)) differ.push(name);
+      if (JSON.stringify(key(await cx.index.lookupName(name))) !== JSON.stringify(want)) differ.push(name);
     expect(differ).toEqual([]);
     expect(W.finds - finds).toBe(2); // the index's scan and the test's own
   });
   it("has every entry once in allNames", async () => {
-    await nameIndexReady();
-    const all = await allNames();
+    await cx.index.ready();
+    const all = await cx.index.allNames();
     expect(all.reduce((n, l) => n + l.length, 0)).toBe([...full.values()].reduce((n, l) => n + l.length, 0));
   });
   it("follows created, changed, saved and deleted files without a rescan", async () => {
     fs.writeFileSync(probe, "def probe_one():\n    pass\n");
     W.fire.create.fire([probe]);
-    expect(await lookupName("probe_one")).toHaveLength(1);
+    expect(await cx.index.lookupName("probe_one")).toHaveLength(1);
     fs.writeFileSync(probe, "def probe_two():\n    pass\n");
     W.fire.change.fire(probe);
-    expect(await lookupName("probe_one")).toHaveLength(0);
-    expect(await lookupName("probe_two")).toHaveLength(1);
+    expect(await cx.index.lookupName("probe_one")).toHaveLength(0);
+    expect(await cx.index.lookupName("probe_two")).toHaveLength(1);
     W.open.set(probe, "def probe_three():\n    pass\n");
     W.fire.save.fire(probe);
-    expect(await lookupName("probe_three")).toHaveLength(1);
+    expect(await cx.index.lookupName("probe_three")).toHaveLength(1);
     W.open.clear();
     fs.rmSync(probe);
     W.fire.delete.fire([probe]);
-    expect(await lookupName("probe_two")).toHaveLength(0);
-    expect(await lookupName("probe_three")).toHaveLength(0);
+    expect(await cx.index.lookupName("probe_two")).toHaveLength(0);
+    expect(await cx.index.lookupName("probe_three")).toHaveLength(0);
     expect(W.finds - finds).toBe(2);
   });
   it("lets timers run while building in the background", async () => {
-    resetIndex();
+    cx.index.reset();
     let ticks = 0;
     const t = setInterval(() => ticks++, 1);
-    startNameIndex();
-    await nameIndexReady();
+    cx.index.start();
+    await cx.index.ready();
     clearInterval(t);
     expect(ticks).toBeGreaterThan(3);
   });
   it("starts no new file while a click resolves, and finishes after it", async () => {
-    resetIndex();
-    const done = async () => (await indexedFiles()).filter((f) => f.ents).length;
-    startNameIndex();
+    cx.index.reset();
+    const done = async () => (await cx.index.indexedFiles()).filter((f) => f.ents).length;
+    cx.index.start();
     while (!(await done())) await new Promise((r) => setImmediate(r));
     const during = await click(async () => {
       const first = await done();
@@ -103,17 +96,17 @@ describe("name index", () => {
       return [first, await done()];
     });
     expect(during[1] - during[0]).toBeLessThanOrEqual(1); // the file being parsed when the click came
-    expect(during[1]).toBeLessThan((await indexedFiles()).length);
-    await nameIndexReady();
-    expect((await indexedFiles()).every((f) => f.ents)).toBe(true);
+    expect(during[1]).toBeLessThan((await cx.index.indexedFiles()).length);
+    await cx.index.ready();
+    expect((await cx.index.indexedFiles()).every((f) => f.ents)).toBe(true);
   });
   it("pauses for a click that never finishes only HOLD_MAX, then builds to the end; the next click pauses it again until it is done", async () => {
-    resetIndex();
-    const done = async () => (await indexedFiles()).filter((f) => f.ents).length;
+    cx.index.reset();
+    const done = async () => (await cx.index.indexedFiles()).filter((f) => f.ents).length;
     const turns = async (n: number) => {
       for (let i = 0; i < n; i++) await new Promise((r) => setImmediate(r));
     };
-    startNameIndex();
+    cx.index.start();
     while (!(await done())) await turns(1);
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     let unstick!: () => void;
@@ -127,20 +120,22 @@ describe("name index", () => {
     expect((await done()) - first).toBeLessThanOrEqual(1);
     vi.advanceTimersByTime(1);
     vi.useRealTimers();
-    await nameIndexReady();
-    expect((await indexedFiles()).every((f) => f.ents)).toBe(true);
+    await cx.index.ready();
+    expect((await cx.index.indexedFiles()).every((f) => f.ents)).toBe(true);
     // a new click pauses it again while the first is still stuck
     let second!: () => void;
     const next = click(() => new Promise<void>((r) => (second = r)));
     fs.writeFileSync(probe, "def probe_paused():\n    pass\n");
     W.fire.create.fire([probe]);
     await turns(30);
-    expect((await indexedFiles()).find((f) => f.abs === probe)?.ents).toBeUndefined();
+    expect((await cx.index.indexedFiles()).find((f) => f.abs === probe)?.ents).toBeUndefined();
     // and only until that click is done, though the first one is still stuck
     second();
     await next;
     await vi.waitFor(async () =>
-      expect((await indexedFiles()).find((f) => f.abs === probe)?.ents?.map((e) => e.name)).toEqual(["probe_paused"]),
+      expect((await cx.index.indexedFiles()).find((f) => f.abs === probe)?.ents?.map((e) => e.name)).toEqual([
+        "probe_paused",
+      ]),
     );
     unstick();
     await stuck;

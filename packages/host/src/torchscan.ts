@@ -18,12 +18,11 @@ import {
   type Paster,
 } from "@codeboard/analysis";
 import { symbolsOf, whenAnalysisReady } from "./analysis";
-import { indexedFiles, isCode, type IndexEntry } from "./nameindex";
-import { log } from "./log";
+import type { HostContext } from "./context";
+import type { IndexEntry } from "./nameindex";
 import { slicer } from "./sched";
 import { genDirOf } from "./torchcdb";
 import { declKernels, type OpTable } from "./torchyaml";
-import { langOf, readText } from "./ws";
 
 // 扫描：aten/src/ATen（yaml 往上两层）下的代码文件找 kernel 和 DispatchStub 注册；PyTorch 里别处的 C / C++ 文件找 Python 绑定
 // （torch/csrc，还有 functorch/csrc、torch/nativert 这样的目录：不列目录，第三方库、测试、代码生成的模板除外）；
@@ -47,6 +46,7 @@ type FileRec = {
   pasted: [string, MacroSite][];
 };
 export type Scan = {
+  cx: HostContext;
   t: OpTable;
   aten: string;
   root: string;
@@ -93,7 +93,9 @@ const isBindings = (x: Scan, abs: string) =>
   grammarOfFile(abs) === "cpp" &&
   !NOT_BINDINGS.test(abs.slice(x.root.length - 1));
 export const inScan = (x: Scan, abs: string) =>
-  isGen(x, abs) ? UFUNC_FILE.test(path.basename(abs)) : isCode(abs) && (abs.startsWith(x.aten) || isBindings(x, abs));
+  isGen(x, abs)
+    ? UFUNC_FILE.test(path.basename(abs))
+    : x.cx.index.isCode(abs) && (abs.startsWith(x.aten) || isBindings(x, abs));
 
 /** 一个文件注册了什么、它的宏调用定义了哪些 kernel、哪些要找的名字可能定义在这里。生成的文件有几 MB：长循环里也让出 */
 async function scanText(x: Scan, abs: string, text: string, turn = slicer()): Promise<FileRec> {
@@ -147,7 +149,7 @@ async function scanText(x: Scan, abs: string, text: string, turn = slicer()): Pr
         ]);
   }
   if (isGen(x, abs)) {
-    for (const s of symbolsOf(langOf(abs), text))
+    for (const s of symbolsOf(x.cx.langOf(abs), text))
       if (s.kind === "def")
         rec.gen.push({
           name: own(s.name),
@@ -250,12 +252,12 @@ async function genFiles(x: Scan): Promise<string[]> {
 async function scanHead(x: Scan) {
   const t0 = performance.now(),
     turn = slicer();
-  const files = (await indexedFiles()).map((f) => f.abs).filter((a) => inScan(x, a));
-  x.genDir = await genDirOf(x.t.root);
+  const files = (await x.cx.index.indexedFiles()).map((f) => f.abs).filter((a) => inScan(x, a));
+  x.genDir = await genDirOf(x.cx, x.t.root);
   const gen = await genFiles(x);
   for (const abs of [...gen, ...files]) {
     if (x.dead) return;
-    const text = await readText(abs, false);
+    const text = await x.cx.readText(abs, false);
     if (text !== null) {
       const rec = await scanText(x, abs, text, turn);
       if (x.dead) return;
@@ -305,7 +307,7 @@ async function scanTargets(x: Scan): Promise<number> {
   for (const [abs, rec] of [...x.files]) {
     if (x.dead) break;
     if (isGen(x, abs) || x.files.get(abs) !== rec) continue; // 这期间文件事件已经重做过了
-    const text = await readText(abs, false);
+    const text = await x.cx.readText(abs, false);
     if (text !== null && x.files.get(abs) === rec) await targetsIn(x, abs, rec, text, turn);
     await turn();
   }
@@ -334,7 +336,7 @@ function updateNow(x: Scan, abs: string): Promise<void> {
   const p = (async () => {
     await busy;
     if (x.dead) return;
-    const text = await readText(abs, false);
+    const text = await x.cx.readText(abs, false);
     const rec = text === null ? null : await scanText(x, abs, text);
     if (x.dead) return;
     const mine = () => JSON.stringify(x.files.get(abs)?.pasters ?? []);
@@ -349,7 +351,7 @@ function updateNow(x: Scan, abs: string): Promise<void> {
     // 这里加、删、改了拼名字的宏，别的文件里的调用拼出来的东西也变了：重做第 2 遍
     if (!x.dead && mine() !== before) retarget(x);
   })()
-    .catch((e) => log("warn", `op index: cannot update ${abs}: ${e instanceof Error ? e.message : e}`))
+    .catch((e) => x.cx.log("warn", `op index: cannot update ${abs}: ${e instanceof Error ? e.message : e}`))
     .finally(() => {
       if (x.updating.get(abs) === p) x.updating.delete(abs);
     });
@@ -369,9 +371,9 @@ function retarget(x: Scan) {
       x.retarget = undefined;
       if (x.dead) return;
       const ms = await scanTargets(x);
-      log("info", `op index: second pass again after a macro changed, ${ms} ms`);
+      x.cx.log("info", `op index: second pass again after a macro changed, ${ms} ms`);
     })
-    .catch((e) => log("warn", `op index: cannot redo the second pass: ${e instanceof Error ? e.message : e}`));
+    .catch((e) => x.cx.log("warn", `op index: cannot redo the second pass: ${e instanceof Error ? e.message : e}`));
 }
 
 /**
@@ -382,12 +384,13 @@ function retarget(x: Scan) {
 export const settled = (x: Scan, head?: "head") => (head ? x.head : x.ready);
 
 /** A new scan of the PyTorch whose table this is: the first pass starts once the parsers are ready */
-export function newScan(t: OpTable): Scan {
+export function newScan(cx: HostContext, t: OpTable): Scan {
   const wanted = new Map<string, string>();
   for (const d of t.decls)
     for (const k of declKernels(t, d))
       for (const n of [k.kernel, k.inner]) if (n && !wanted.has(n)) wanted.set(n, own(n));
   const s: Scan = {
+    cx,
     t,
     aten: path.dirname(path.dirname(t.yaml)) + path.sep,
     root: t.root + path.sep,
@@ -406,13 +409,13 @@ export function newScan(t: OpTable): Scan {
     pending: new Set(),
     updating: new Map(),
   };
-  const fail = (e: unknown) => log("warn", `op index: scan failed: ${e instanceof Error ? e.message : e}`);
+  const fail = (e: unknown) => cx.log("warn", `op index: scan failed: ${e instanceof Error ? e.message : e}`);
   const first = whenAnalysisReady().then(() => scanHead(s));
   s.head = first.then(() => undefined, fail);
   s.ready = first
     .then(async (a) => {
       const b = await scanTargets(s);
-      if (!s.dead) log("info", `op index: ${counts(s)}, ${a} + ${b} ms`);
+      if (!s.dead) cx.log("info", `op index: ${counts(s)}, ${a} + ${b} ms`);
     })
     .catch(fail);
   return s;
@@ -423,9 +426,9 @@ export async function rescanGen(x: Scan) {
   await x.ready;
   if (x.dead) return;
   for (const abs of [...x.files.keys()]) if (isGen(x, abs)) dropRec(x, abs);
-  x.genDir = await genDirOf(x.t.root);
+  x.genDir = await genDirOf(x.cx, x.t.root);
   for (const abs of await genFiles(x)) {
-    const text = await readText(abs, false);
+    const text = await x.cx.readText(abs, false);
     const rec = text === null ? null : await scanText(x, abs, text);
     if (rec && !x.dead) {
       dropRec(x, abs);

@@ -18,22 +18,20 @@ import {
   cardForFileSym,
   dispatchAt,
   expand,
-  forgetDefs,
   genSource,
-  langOf,
-  nameIndexReady,
   nodeWorkspace,
   peek,
-  resetIndex,
   searchName,
   searchPick,
   startAnalysis,
-  startNameIndex,
   type TestWorkspace,
-  useWorkspace,
   viewsFor,
+  HostContext,
 } from "@codeboard/host/testing";
 import { test, open, check, light, verdict, expect, until, idle } from "../fixtures";
+
+/** The host the scenario talks to (each setup makes a new one) */
+let cx: HostContext;
 
 /** Screenshot also into the PR shots folder when SHOTS_DIR is set */
 async function shotPr(h: Host, name: string) {
@@ -52,23 +50,22 @@ async function fixture() {
   FIX = fs.mkdtempSync("/tmp/codeboard-chains-");
   fs.cpSync(path.join(REPO, "packages/host/test/fixtures/crosslang"), FIX, { recursive: true });
   W = nodeWorkspace(FIX);
-  useWorkspace(W);
+  cx = new HostContext(W);
   await startAnalysis();
-  resetIndex();
-  startNameIndex();
-  await nameIndexReady();
+  cx.index.start();
+  await cx.index.ready();
 }
 async function symCard(rel: string, qual: string, last = false): Promise<CodeCard> {
   const abs = path.join(FIX, rel);
-  const syms = analysisOf(langOf(abs), fs.readFileSync(abs, "utf8")).symbols.filter((s) => s.qual === qual);
+  const syms = analysisOf(cx.langOf(abs), fs.readFileSync(abs, "utf8")).symbols.filter((s) => s.qual === qual);
   const sym = last ? syms[syms.length - 1] : syms[0];
-  return (await cardForFileSym(abs, sym))!.card as CodeCard;
+  return (await cardForFileSym(cx, abs, sym))!.card as CodeCard;
 }
 
 /** The board with the real host behind it (only the messages these scenarios use; the rest fall back to the harness mock) */
 async function chainsHost(b: Board): Promise<Host> {
   const segs = b.cards.flatMap((c) => (c.kind === "code" ? c.segments : []));
-  const views: Record<string, SegView> = await viewsFor(segs);
+  const views: Record<string, SegView> = await viewsFor(cx, segs);
   let h!: Host;
   h = await open({
     board: b,
@@ -80,28 +77,28 @@ async function chainsHost(b: Board): Promise<Host> {
         case "ready":
           return true; // init below, once open() has returned the page
         case "expand":
-          await reply(m.req, await expand(m));
+          await reply(m.req, await expand(cx, m));
           return true;
         case "dispatch":
-          await reply(m.req, await dispatchAt(m));
+          await reply(m.req, await dispatchAt(cx, m));
           return true;
         case "peek":
-          await reply(m.req, await peek(m));
+          await reply(m.req, await peek(cx, m));
           return true;
         case "views":
-          await reply(m.req, await viewsFor(m.segs));
+          await reply(m.req, await viewsFor(cx, m.segs));
           return true;
         case "callVars":
-          await reply(m.req, await callVars(m));
+          await reply(m.req, await callVars(cx, m));
           return true;
         case "searchName":
-          await reply(m.req, await searchName(m.name));
+          await reply(m.req, await searchName(cx, m.name));
           return true;
         case "searchPick":
-          await reply(m.req, await searchPick(m.item));
+          await reply(m.req, await searchPick(cx, m.item));
           return true;
         case "genSource":
-          await reply(m.req, await genSource(m.from));
+          await reply(m.req, await genSource(cx, m.from));
           return true;
         case "prefetch":
           return true;
@@ -186,7 +183,7 @@ async function pickimpl(res: Record<string, unknown>) {
           { abs: implAbs, line: 10, col: 8 },
         ]
       : [];
-  forgetDefs();
+  cx.defs.forget();
   const B = emptyBoard("bPick", "vLLM · attention");
   const lay = await symCard("vllm/layer.py", "Attention.forward");
   put(B, lay, 80, 160, 620);
@@ -316,7 +313,7 @@ async function pickimpl(res: Record<string, unknown>) {
         ]
       : [];
   };
-  forgetDefs();
+  cx.defs.forget();
   await h.page.context().close();
   const B8 = emptyBoard("bPickLate", "vLLM · attention (cold language server)");
   const lay8 = await symCard("vllm/layer.py", "Attention.forward");
@@ -376,7 +373,7 @@ async function pickimpl(res: Record<string, unknown>) {
   check("pickimpl", ok, JSON.stringify(res));
   W.language.definitions = async () => [];
   W.language.implementations = async () => [];
-  forgetDefs();
+  cx.defs.forget();
   await h8.page.context().close();
 }
 
@@ -498,7 +495,7 @@ async function crosslang(res: Record<string, unknown>) {
 
   // 4. Triton kernel[grid] and the sglang-style autotune configs as grey alternatives (no screenshot)
   const inv = await symCard("ops/kern.py", "invoke_fused_moe_kernel");
-  const r = await expand({
+  const r = await expand(cx, {
     seg: inv.segments[0],
     line: inv.segments[0].start + inv.segments[0].text.findIndex((t) => /fused_moe_kernel\[grid\]/.test(t)),
     col: inv.segments[0].text.find((t) => /fused_moe_kernel\[grid\]/.test(t))!.indexOf("fused_moe_kernel"),

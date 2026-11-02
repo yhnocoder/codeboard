@@ -7,9 +7,8 @@ import { createHash } from "node:crypto";
 import type { AiChatRequest, AiChatResult, ImageAiFail, ImageAiOp, ImageAiResult, WorkspaceAi } from "@codeboard/core";
 import { deepseekKey, deepseekTarget } from "./ai";
 import { DEEPSEEK_MODEL, type DeepseekRequest } from "./deepseek";
-import { log } from "./log";
+import type { HostContext } from "./context";
 import { readSetting } from "./settings";
-import { workspace } from "./ws";
 
 export const SYS_EXTRACT = [
   "You transcribe images into Markdown.",
@@ -129,6 +128,8 @@ export type ImageAiOpts = {
   signal?: AbortSignal;
   fetch?: typeof fetch;
   timeoutMs?: number;
+  /** Text read from images, by image and model (the host's, so one image is read once; none: not kept) */
+  cache?: Map<string, string>;
 };
 
 const base = (o: { baseUrl?: string }) => (o.baseUrl || "https://api.deepseek.com").replace(/\/+$/, "");
@@ -211,10 +212,7 @@ export const stripFence = (s: string) => {
   return m ? m[1] : s.trim();
 };
 
-const extracted = new Map<string, string>();
 const EXTRACT_CACHE = 64;
-/** 测试用：忘掉识别过的图 */
-export const resetImageAiCache = () => extracted.clear();
 const cacheKey = (who: string, image: string) =>
   createHash("sha1").update(`${who}\n${SYS_EXTRACT}\n`).update(image).digest("hex");
 const limitOf = (op: ImageAiOp) =>
@@ -233,12 +231,13 @@ async function run(
   op: ImageAiOp,
   who: string,
   via: string,
-  o: { signal?: AbortSignal; timeoutMs?: number },
+  o: { signal?: AbortSignal; timeoutMs?: number; cache?: Map<string, string> },
   send: (signal: AbortSignal) => Promise<Raw>,
 ): Promise<ImageAiResult> {
   const key = op.kind === "extract" ? cacheKey(who, op.image) : "";
-  const hit = key && extracted.get(key);
-  if (hit) {
+  const extracted = o.cache;
+  const hit = key && extracted?.get(key);
+  if (hit && extracted) {
     extracted.delete(key);
     extracted.set(key, hit);
     return { text: hit, reused: true };
@@ -268,7 +267,7 @@ async function run(
     // 截断的 SVG 是半张图、截断的 Auto Focus 少了后半篇：不给
     if (r.cut && op.kind !== "extract") return { fail: "cut", via };
     if (!text) return { fail: "http", message: `${via} returned an empty answer`, via };
-    if (key && !r.cut) {
+    if (key && !r.cut && extracted) {
       extracted.set(key, text);
       if (extracted.size > EXTRACT_CACHE) extracted.delete(extracted.keys().next().value!);
     }
@@ -324,7 +323,7 @@ async function runChatAi(
   chat: WorkspaceAi["chat"],
   model: string | undefined,
   op: ImageAiOp,
-  o: { signal?: AbortSignal; timeoutMs?: number } = {},
+  o: { signal?: AbortSignal; timeoutMs?: number; cache?: Map<string, string> },
 ): Promise<ImageAiResult> {
   const a = askOf(op);
   const image = a.image ? imageBytes(a.image) : undefined;
@@ -350,6 +349,7 @@ const settingOf = (op: ImageAiOp) => (op.kind === "extract" ? "aiText" : op.kind
  * jobs = 这块面板还在等的（取消时按 job 号中止）；失败写进日志（不带密钥）
  */
 export async function imageAiJob(
+  cx: HostContext,
   jobs: Map<number, AbortController>,
   job: number,
   op: ImageAiOp,
@@ -358,20 +358,26 @@ export async function imageAiJob(
   const ac = new AbortController();
   jobs.set(job, ac);
   try {
-    const ws = workspace();
-    const choice = (readSetting(settingOf(op)) || "auto").trim();
-    const key = choice === "auto" || choice === "deepseek" ? await deepseekKey() : undefined;
+    const ws = cx.ws;
+    const choice = (readSetting(cx, settingOf(op)) || "auto").trim();
+    const key = choice === "auto" || choice === "deepseek" ? await deepseekKey(cx) : undefined;
     if (ac.signal.aborted) return { fail: "canceled" };
     let r: ImageAiResult;
     if (key || choice === "deepseek") {
-      r = await runImageAi({ key: key ?? "", ...deepseekTarget(), signal: ac.signal, fetch: f }, op);
+      r = await runImageAi(
+        { key: key ?? "", ...deepseekTarget(cx), signal: ac.signal, fetch: f, cache: cx.imageText },
+        op,
+      );
     } else if (!ws.ai) {
       r =
         choice === "auto"
           ? { fail: "nokey", via: "DeepSeek" }
           : { fail: "nomodel", message: "This editor has no language models" };
     } else {
-      r = await runChatAi(ws.ai.chat, choice === "auto" ? undefined : choice, op, { signal: ac.signal });
+      r = await runChatAi(ws.ai.chat, choice === "auto" ? undefined : choice, op, {
+        signal: ac.signal,
+        cache: cx.imageText,
+      });
       // 自动挑也没有模型：先设 DeepSeek 的密钥是最直接的出路（提示里给 Set DeepSeek API Key…）
       if ("fail" in r && r.fail === "nomodel" && choice === "auto")
         r = {
@@ -380,7 +386,7 @@ export async function imageAiJob(
         };
     }
     if ("fail" in r && r.fail !== "canceled")
-      log("warn", `ai ${op.kind}: ${r.via ?? "model"} ${r.fail}${r.message ? `: ${r.message}` : ""}`);
+      cx.log("warn", `ai ${op.kind}: ${r.via ?? "model"} ${r.fail}${r.message ? `: ${r.message}` : ""}`);
     return r;
   } finally {
     jobs.delete(job);

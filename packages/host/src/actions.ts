@@ -13,7 +13,6 @@ import {
 import { analysisOf } from "./analysis";
 import { cardsFromEditor, symCard, withViews, type Built } from "./cards";
 import type { BoardHost } from "./boards";
-import { absOf, locOfFile } from "./source";
 import { moveIntoProject, projectDir, PROJECT_DIR } from "./storage/place";
 import { type Storage } from "./storage/boards";
 import { workingPlace } from "./versions";
@@ -26,14 +25,16 @@ import { clearDeepseekKey, setDeepseekKey } from "./ai";
 import type { CommandId } from "./commands";
 import { copyToProject, otherProjects, removeMoved } from "./transfer";
 import { BUNDLE_EXT, exportFlow, importFile } from "./bundle";
-import { langOf, readText, splitLines, workspace, ws0 } from "./ws";
+import { splitLines } from "./ws";
+import type { HostContext } from "./context";
 
 /** 侧栏的节点（命令参数） */
 export type Node = { kind: "board"; id: string } | { kind: "group"; name: string } | undefined;
 
 /** 命令 id → 做什么（参数是 VS Code 命令收到的参数，文件已经换成绝对路径） */
-export function makeActions(panels: BoardHost, store: Storage) {
-  const ui = () => workspace().ui;
+/** follow = switch to the storage folder the settings and the project now ask for (BoardPlace.follow) */
+export function makeActions(cx: HostContext, panels: BoardHost, store: Storage, follow: () => Promise<boolean>) {
+  const ui = () => cx.ws.ui;
   const active = () => panels.all().find((p) => p.view.active);
   const boardArg = (a: unknown): string | undefined =>
     typeof a === "string" ? a : (a as Node)?.kind === "board" ? (a as { id: string }).id : undefined;
@@ -86,7 +87,7 @@ export function makeActions(panels: BoardHost, store: Storage) {
 
   /** 把卡送到白板：开着就发给白板（它决定位置）；没开就直接写进 JSON，这个工作区第一次时在旁边打开白板（焦点留在编辑器） */
   const deliver = async (boardId: string, built: Built) => {
-    const cards = await withViews(built.cards);
+    const cards = await withViews(cx, built.cards);
     const p = panels.get(boardId);
     let name = p?.board?.name ?? "board";
     if (p) {
@@ -110,12 +111,12 @@ export function makeActions(panels: BoardHost, store: Storage) {
   };
 
   const fromEditor = async (mode: "auto" | "function" | "separate" = "auto"): Promise<Built | undefined> => {
-    const ed = workspace().editor.active();
+    const ed = cx.ws.editor.active();
     if (!ed) {
       void ui().info("Open a file in the editor first.");
       return;
     }
-    const r = await cardsFromEditor(ed, mode);
+    const r = await cardsFromEditor(cx, ed, mode);
     if ("error" in r) {
       void ui().info(r.error);
       return;
@@ -125,7 +126,7 @@ export function makeActions(panels: BoardHost, store: Storage) {
 
   /** 只导航不建卡：找含这几行的卡，在几张白板上时先选白板 */
   const reveal = async (abs: string, start: number, end: number) => {
-    const hits = await findOnBoards(store, abs, start, end);
+    const hits = await findOnBoards(cx, store, abs, start, end);
     if (!hits.length) {
       void ui().info("These lines are not on any board.");
       return;
@@ -176,7 +177,7 @@ export function makeActions(panels: BoardHost, store: Storage) {
       );
       if (ok !== "Move") return;
     }
-    const t = await copyToProject(store, b.id, r.p);
+    const t = await copyToProject(cx, store, b.id, r.p);
     if (!t) return;
     if (move) {
       await removeMoved(store, t, (x) => {
@@ -213,7 +214,7 @@ export function makeActions(panels: BoardHost, store: Storage) {
             icon: "boards" as const,
             description: count(metas.length),
             roots: metas.map((m) => m.id),
-            name: workspace().files.name() || "Boards",
+            name: cx.ws.files.name() || "Boards",
           },
           ...groups.map((g) => {
             const ms = metas.filter((m) => m.group === g);
@@ -239,7 +240,7 @@ export function makeActions(panels: BoardHost, store: Storage) {
         },
       );
     }
-    if (pick?.roots.length) await exportFlow(store, pick.roots, pick.name);
+    if (pick?.roots.length) await exportFlow(cx, store, pick.roots, pick.name);
   };
 
   /** Import Boards…：file = 拖到侧栏上的那个包；否则让用户选。导入后打开第一块 */
@@ -252,7 +253,7 @@ export function makeActions(panels: BoardHost, store: Storage) {
     if (!file) return;
     let r: Awaited<ReturnType<typeof importFile>>;
     try {
-      r = await importFile(store, file);
+      r = await importFile(cx, store, file);
     } catch (e) {
       void ui().error(`Can't import ${path.basename(file)}: ${e instanceof Error ? e.message : e}`);
       return;
@@ -282,15 +283,15 @@ export function makeActions(panels: BoardHost, store: Storage) {
     // Asked on the active board (where the keyboard is when the command runs from the palette over it), else in VS Code
     "codeboard.captureRun": async () => {
       const a = active();
-      await captureFlow(store.dir(), a ?? (panels.target ? panels.get(panels.target) : undefined), prompts(a));
+      await captureFlow(cx, store.dir(), a ?? (panels.target ? panels.get(panels.target) : undefined), prompts(cx, a));
     },
     "codeboard.applyRun": async () => {
       const a = active();
-      await applyFlow(store.dir(), a ?? (panels.target ? panels.get(panels.target) : undefined), prompts(a));
+      await applyFlow(cx, store.dir(), a ?? (panels.target ? panels.get(panels.target) : undefined), prompts(cx, a));
     },
     "codeboard.copyDiagnostics": () => {
       const a = active();
-      return copyDiagnostics(prompts(a), (a ?? (panels.target ? panels.get(panels.target) : undefined))?.board);
+      return copyDiagnostics(cx, prompts(cx, a), (a ?? (panels.target ? panels.get(panels.target) : undefined))?.board);
     },
 
     "codeboard.addToBoard": async () => {
@@ -314,7 +315,7 @@ export function makeActions(panels: BoardHost, store: Storage) {
     "codeboard.addToAnotherBoard": async () => {
       const b = await fromEditor();
       if (!b) return;
-      const id = await pickBoard(store, "Add to which board?", true);
+      const id = await pickBoard(cx, store, "Add to which board?", true);
       if (!id) return;
       panels.setTarget(id);
       await deliver(id, b);
@@ -331,7 +332,7 @@ export function makeActions(panels: BoardHost, store: Storage) {
       const b = await fromEditor();
       if (!b) return;
       for (const seg of b.cards.flatMap((c) => c.segments)) {
-        const views = await viewsFor([seg]);
+        const views = await viewsFor(cx, [seg]);
         p.post({ type: "appendSegment", card: card.id, seg, view: views[seg.id] });
       }
     },
@@ -341,22 +342,22 @@ export function makeActions(panels: BoardHost, store: Storage) {
       const seg = b.cards[0].segments[0];
       const p = await panels.show(await targetId(), { preserveFocus: true });
       if (!p) return;
-      p.post({ type: "addSidenote", seg, view: (await viewsFor([seg]))[seg.id] });
+      p.post({ type: "addSidenote", seg, view: (await viewsFor(cx, [seg]))[seg.id] });
     },
 
     // CodeLens「+ Card」：把这个符号加到目标白板
     "codeboard.addSymbol": async (abs: string, qual: string) => {
-      const text = await readText(abs);
+      const text = await cx.readText(abs);
       if (text === null) return;
-      const lang = langOf(abs);
+      const lang = cx.langOf(abs);
       const sym = analysisOf(lang, text).symbols.find((s) => s.qual === qual);
       if (!sym) return;
-      const card = await symCard(await locOfFile(abs), splitLines(text), sym, lang);
+      const card = await symCard(cx, await cx.sources.locOfFile(abs), splitLines(text), sym, lang);
       await deliver(await targetId(), { cards: [card] });
     },
 
     "codeboard.revealOnBoard": async () => {
-      const ed = workspace().editor.active();
+      const ed = cx.ws.editor.active();
       if (!ed) return;
       const s = ed.selections[0];
       await reveal(ed.path, s.startLine, s.endLine - (s.endCol === 0 && s.endLine > s.startLine ? 1 : 0));
@@ -365,7 +366,7 @@ export function makeActions(panels: BoardHost, store: Storage) {
     "codeboard.revealSymbol": async (abs: string, line: number, end: number) => reveal(abs, line, end),
 
     "codeboard.switchTarget": async () => {
-      const id = await pickBoard(store, "Add to which board from the editor?", true);
+      const id = await pickBoard(cx, store, "Add to which board from the editor?", true);
       if (id) panels.setTarget(id);
     },
 
@@ -388,12 +389,12 @@ export function makeActions(panels: BoardHost, store: Storage) {
         "Open JSON",
         "Reveal in Folder",
       );
-      if (r === "Open JSON") await workspace().editor.open(file);
+      if (r === "Open JSON") await cx.ws.editor.open(file);
       else if (r === "Reveal in Folder") await ui().revealInOS(file);
     },
     "codeboard.openQuestion": (board: string, card?: string, line?: number, sticker?: string) =>
-      openOnBoard(panels, board, card, line, sticker),
-    "codeboard.openGithubFile": (abs: string) => workspace().editor.open(abs, { readonly: true }),
+      openOnBoard(cx, panels, board, card, line, sticker),
+    "codeboard.openGithubFile": (abs: string) => cx.ws.editor.open(abs, { readonly: true }),
     "codeboard._shareCards": async (board: string, cards: string[]) => {
       const renamed = await store.share(board, cards);
       if (Object.keys(renamed).length) await panels.get(board)?.init();
@@ -425,7 +426,7 @@ export function makeActions(panels: BoardHost, store: Storage) {
       if (!b) return;
       // From the sidebar (a): VS Code's input box, the keyboard is there; from the palette over the board: the board's dialog
       const on = a === undefined ? active() : undefined;
-      const name = await prompts(on?.id === b.id ? on : undefined).input({
+      const name = await prompts(cx, on?.id === b.id ? on : undefined).input({
         title: "Rename Board",
         ok: "Rename",
         prompt: "Rename board",
@@ -463,10 +464,10 @@ export function makeActions(panels: BoardHost, store: Storage) {
     },
     // 白板搬进项目的 .codeboard/（git 能管，克隆了仓库的人看得到）；之后这个项目一直用它
     "codeboard.moveBoardsIntoProject": async () => {
-      const to = projectDir();
+      const to = projectDir(cx);
       if (to) {
         const ok = await ui().warn(
-          `Move this project's boards into ${PROJECT_DIR} in ${path.basename(ws0())}?`,
+          `Move this project's boards into ${PROJECT_DIR} in ${path.basename(cx.root0())}?`,
           {
             modal: true,
             detail: `Boards, groups, shared cards, images and run records are stored in ${to} from now on, where git can track them. Anyone who opens the repository with CodeBoard sees them. Deleted boards (.trash) are ignored by git.`,
@@ -475,7 +476,7 @@ export function makeActions(panels: BoardHost, store: Storage) {
         );
         if (ok !== "Move") return;
       }
-      const r = await moveIntoProject(store);
+      const r = await moveIntoProject(cx, store, follow);
       if (!r.moved) {
         void ui().info(r.why);
         return;
@@ -556,19 +557,24 @@ export function makeActions(panels: BoardHost, store: Storage) {
       const p = await panels.show(await targetId());
       p?.post({ type: "githubPicker" });
     },
-    "codeboard.setDeepseekKey": () => setDeepseekKey(prompts(active())),
-    "codeboard.clearDeepseekKey": () => clearDeepseekKey(),
+    "codeboard.setDeepseekKey": () => setDeepseekKey(cx, prompts(cx, active())),
+    "codeboard.clearDeepseekKey": () => clearDeepseekKey(cx),
   } satisfies Record<CommandId, (...a: never[]) => unknown>;
 }
 
-async function pickBoard(store: Storage, placeHolder: string, allowNew: boolean): Promise<string | undefined> {
+async function pickBoard(
+  cx: HostContext,
+  store: Storage,
+  placeHolder: string,
+  allowNew: boolean,
+): Promise<string | undefined> {
   const metas = await store.list();
   const NEW = { label: "New Board…", icon: "add" as const, id: "" };
   const items = [
     ...metas.map((m) => ({ label: m.name, icon: "board" as const, description: m.group, detail: undefined, id: m.id })),
     ...(allowNew ? [NEW] : []),
   ];
-  const ui = workspace().ui;
+  const ui = cx.ws.ui;
   const r = await ui.pick(items, { placeHolder });
   if (!r) return;
   if (r.id) return r.id;
@@ -591,13 +597,13 @@ function stackRight(b: Board, cards: CodeCard[]): CardCopy[] {
 export type Hit = { board: Board; card: CodeCard; seg: string; lines: [number, number] };
 
 /** 所有白板上含有这个文件这几行的卡（按段在工作区里的位置算） */
-async function findOnBoards(store: Storage, abs: string, start: number, end: number): Promise<Hit[]> {
+async function findOnBoards(cx: HostContext, store: Storage, abs: string, start: number, end: number): Promise<Hit[]> {
   const out: Hit[] = [];
   for (const { board } of await store.all()) {
     for (const card of allCodeCards(board))
       for (const s of card.segments) {
-        if (absOf(s) !== abs) continue;
-        const wp = await workingPlace(s);
+        if (cx.sources.absOf(s) !== abs) continue;
+        const wp = await workingPlace(cx, s);
         if (!wp || wp.end < start || wp.start > end) continue;
         const d = s.start - wp.start;
         out.push({ board, card, seg: s.id, lines: [Math.max(wp.start, start) + d, Math.min(wp.end, end) + d] });

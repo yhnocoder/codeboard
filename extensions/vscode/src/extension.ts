@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import * as path from "node:path";
-import { debounce, showFile, startHost, type Host } from "@codeboard/host";
+import { debounce, startHost, type Host } from "@codeboard/host";
 import { questionsMarkdown } from "@codeboard/core";
 import { analyzedEditorLangs } from "@codeboard/analysis/langs";
 import { registerCommands } from "./commands";
@@ -37,10 +37,10 @@ export async function activate(ctx: vscode.ExtensionContext) {
   registerCommands(ctx, h);
 
   const tree = new BoardsTree(store, hub);
-  const gh = new GithubTree(store);
+  const gh = new GithubTree(h.githubFiles);
   sub(vscode.window.createTreeView("codeboard.boards", { treeDataProvider: tree, dragAndDropController: tree }));
   sub(vscode.window.registerTreeDataProvider("codeboard.github", gh));
-  const qtree = new QuestionsTree(store);
+  const qtree = new QuestionsTree(h.questions);
   sub(vscode.window.registerTreeDataProvider("codeboard.questions", qtree));
   const sidebarCommands = {
     "codeboard.questions.showAll": () => qtree.setAll(true),
@@ -56,7 +56,7 @@ export async function activate(ctx: vscode.ExtensionContext) {
   } satisfies Record<SidebarCommand, () => unknown>;
   for (const [id, fn] of Object.entries(sidebarCommands)) sub(vscode.commands.registerCommand(id, fn));
 
-  const marks = new EditorMarks(ctx, store, hub);
+  const marks = new EditorMarks(ctx, h.marks, store, hub);
   sub(
     vscode.languages.registerCodeLensProvider(
       analyzedEditorLangs().map((language) => ({ scheme: "file", language })),
@@ -64,7 +64,7 @@ export async function activate(ctx: vscode.ExtensionContext) {
     ),
   );
 
-  sub(registerVersionDocs(showFile));
+  sub(registerVersionDocs(h.showFile));
 
   const status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 50);
   status.command = "codeboard.switchTarget";

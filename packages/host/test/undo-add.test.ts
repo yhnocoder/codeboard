@@ -6,15 +6,20 @@ import { Storage } from "../src/storage/boards";
 import { nodeFs } from "../src/storage/nodefs";
 import { makeActions } from "../src/actions";
 import { BoardPanel, type BoardHost } from "../src/boards";
-import { useWorkspace } from "../src/ws";
 import { WS, nodeWorkspace } from "./node-workspace";
 import { startTreeSitter, stubView } from "./helpers";
+import { HostContext } from "../src/context";
+
+let cx: HostContext;
 
 const W = nodeWorkspace();
 const dir = fs.mkdtempSync("/tmp/codeboard-undoadd-");
 const store = new Storage(nodeFs, { dir: () => dir });
 let open: BoardPanel | undefined;
 const panels = {
+  get cx() {
+    return cx;
+  },
   store,
   target: "bU",
   get: (id: string) => (id === "bU" ? open : undefined),
@@ -35,10 +40,10 @@ const quals = async () =>
 const sched = path.join(WS, "nanovllm/engine/scheduler.py");
 
 beforeAll(async () => {
-  useWorkspace(W);
+  cx = new HostContext(W);
   await startTreeSitter();
   await store.save(emptyBoard("bU", "Undo Add"));
-  const acts = makeActions(panels, store);
+  const acts = makeActions(cx, panels, store, async () => false);
   await acts["codeboard.addSymbol"](sched, "Scheduler.postprocess"); // board closed: written to the file
   await acts["codeboard.addSymbol"](sched, "Scheduler.schedule");
   // later work on the board (saved while it was open)

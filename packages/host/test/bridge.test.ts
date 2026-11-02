@@ -5,26 +5,26 @@ import type { CodeCard, ExpandPick, ExpandResult, PeekDef, Segment } from "@code
 import { analysisOf } from "../src/analysis";
 import { cardForFileSym } from "../src/cards";
 import { dispatchAt, expand, peek } from "../src/resolve";
-import { forgetDefs } from "../src/defcache";
 import { searchName } from "../src/search";
-import { resetIndex } from "../src/nameindex";
-import { useWorkspace } from "../src/ws";
 import { nodeWorkspace } from "./node-workspace";
 import { at, card, startTreeSitter } from "./helpers";
+import { HostContext } from "../src/context";
+
+let cx: HostContext;
 
 const FIX = fs.mkdtempSync("/tmp/codeboard-cross-");
 fs.cpSync(path.join(__dirname, "fixtures/crosslang"), FIX, { recursive: true });
 const W = nodeWorkspace(FIX);
-const seg = async (rel: string, qual: string) => (await card(path.join(FIX, rel), qual)).seg;
-const click = (s: Segment, re: RegExp, name: string, pick?: ExpandPick) => expand({ ...at(s, re, name), name, pick });
+const seg = async (rel: string, qual: string) => (await card(cx, path.join(FIX, rel), qual)).seg;
+const click = (s: Segment, re: RegExp, name: string, pick?: ExpandPick) =>
+  expand(cx, { ...at(s, re, name), name, pick });
 const qualOf = (r: ExpandResult) => ("card" in r ? r.card.segments[0].symbol?.qual : undefined);
 const markOf = (r: ExpandResult) => ("card" in r ? r.mark : undefined);
 const vals = (r: ExpandResult) =>
   "card" in r ? (r.mark?.vals ?? []).map((v) => `${v.name}=${v.value}`).join(" ") : "";
 
 beforeAll(async () => {
-  useWorkspace(W);
-  resetIndex();
+  cx = new HostContext(W);
   await startTreeSitter();
 });
 afterAll(() => fs.rmSync(FIX, { recursive: true, force: true }));
@@ -45,7 +45,7 @@ describe("cross-language bridges", () => {
       (s) => s.qual === "deep_ep::intranode::dispatch",
     );
     const segs = await Promise.all(
-      syms.map(async (s) => ((await cardForFileSym(abs, s))!.card as CodeCard).segments[0]),
+      syms.map(async (s) => ((await cardForFileSym(cx, abs, s))!.card as CodeCard).segments[0]),
     );
     const host = segs.find((s) => s.text.some((l) => /SWITCH_RANKS\(DISPATCH/.test(l)))!;
     const r = await click(host, /SWITCH_RANKS\(DISPATCH/, "SWITCH_RANKS");
@@ -107,7 +107,7 @@ describe("cross-language bridges", () => {
 describe("unresolvable calls", () => {
   it("come back as none with the name to search", async () => {
     const lay = await seg("vllm/layer.py", "Attention.forward");
-    const r = await expand({
+    const r = await expand(cx, {
       ...at(lay, /unified_attention/, "unified_attention"),
       seg: { ...lay, text: lay.text.map((l) => l.replace("unified_attention", "missing_op")) },
       name: "missing_op",
@@ -115,7 +115,7 @@ describe("unresolvable calls", () => {
     expect(r).toMatchObject({ none: expect.anything(), name: "missing_op" });
   });
   it("Search in All Languages finds the def and the string registration", async () => {
-    const hits = await searchName("unified_attention");
+    const hits = await searchName(cx, "unified_attention");
     expect(hits.map((h) => [h.lang, !!h.def, h.def ? h.qual : undefined])).toEqual([
       ["python", true, "unified_attention"],
       [hits[1]?.lang, false, undefined],
@@ -123,7 +123,7 @@ describe("unresolvable calls", () => {
     expect(hits[1].label).toMatch(/direct_register_custom_op\("unified_attention"/);
   });
   it("Search in All Languages groups Python before C++, registrations included", async () => {
-    const hits = await searchName("rms_norm");
+    const hits = await searchName(cx, "rms_norm");
     expect(hits.some((h) => h.lang === "python" && h.def)).toBe(true);
     expect(hits.some((h) => h.lang === "cpp" && !h.def && /m\.impl\("rms_norm"/.test(h.label))).toBe(true);
   });
@@ -148,13 +148,13 @@ describe("dynamic dispatch", () => {
   afterAll(() => {
     W.language.definitions = async () => [];
     W.language.implementations = async () => [];
-    forgetDefs();
+    cx.defs.forget();
   });
   const site = () => at(lay, /self\.impl\.forward/, "forward");
 
   it("lists all implementations (abstract base left out), and picking one expands it", async () => {
     W.language.implementations = impls;
-    forgetDefs();
+    cx.defs.forget();
     const r = await click(lay, /self\.impl\.forward/, "forward");
     expect(r).toMatchObject({ base: "AttentionImpl.forward" });
     expect("impls" in r && r.impls.map((i) => i.qual)).toEqual([
@@ -165,7 +165,7 @@ describe("dynamic dispatch", () => {
     expect(qualOf(await click(lay, /self\.impl\.forward/, "forward", pick))).toBe("TritonAttentionImpl.forward");
   });
   it("shows Dynamic dispatch · 2 implementations on hover", async () => {
-    const pv = (await peek({ ...site(), word: "self.impl.forward" })) as PeekDef;
+    const pv = (await peek(cx, { ...site(), word: "self.impl.forward" })) as PeekDef;
     expect(pv.dispatch).toMatchObject({ n: 2, base: "AttentionImpl", abstract: true });
   });
   it("expands the definition at once when Go to Implementation is slow, and gives the implementations once they arrive", async () => {
@@ -182,21 +182,21 @@ describe("dynamic dispatch", () => {
       answered = true;
       return impls(abs, line);
     };
-    forgetDefs();
+    cx.defs.forget();
     const r = await click(lay, /self\.impl\.forward/, "forward");
     expect(asked).toBe(1);
     expect(answered).toBe(false); // the card came before the implementations
     expect(qualOf(r)).toBe("AttentionImpl.forward");
     expect("card" in r && r.dispatching).toBe(true);
     answer();
-    const da = await dispatchAt({ ...site(), name: "forward" });
+    const da = await dispatchAt(cx, { ...site(), name: "forward" });
     expect(asked).toBe(1); // the board's follow-up shares the click's request
     expect(da).toMatchObject({ base: "AttentionImpl.forward", abstract: true });
     expect(da?.impls.map((i) => i.qual)).toEqual(["FlashAttentionImpl.forward", "TritonAttentionImpl.forward"]);
   });
   it("expands a method with no overrides as a plain method", async () => {
     W.language.implementations = async () => [];
-    forgetDefs();
+    cx.defs.forget();
     expect(qualOf(await click(lay, /self\.impl\.forward/, "forward"))).toBe("AttentionImpl.forward");
   });
 });

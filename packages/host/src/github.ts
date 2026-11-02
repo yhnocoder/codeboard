@@ -4,7 +4,6 @@
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
 import {
-  Emitter,
   parseGithubUrl,
   renderLine,
   type ReplyOf,
@@ -19,36 +18,36 @@ import {
 import { planSelection } from "@codeboard/analysis";
 import { analysisOf } from "./analysis";
 import { cardsFromPlan, newCodeCard, withViews } from "./cards";
-import { log } from "./log";
-import { githubFileDir, type Loc } from "./source";
+import { type Loc } from "./source";
 import { makeSegment } from "./versions";
 import { highlight } from "./views";
-import { langOf, splitLines, workspace } from "./ws";
+import { splitLines } from "./ws";
 import type { Storage } from "./storage/boards";
+import type { HostContext } from "./context";
 
 const API = "https://api.github.com";
 
-async function token(ask: boolean): Promise<string | undefined> {
+async function token(cx: HostContext, ask: boolean): Promise<string | undefined> {
   try {
-    return await workspace().githubToken(ask);
+    return await cx.ws.githubToken(ask);
   } catch {
     return undefined;
   } // 用户取消登录
 }
 
 /** GET；ask = 被拒时请用户登录 GitHub 再试一次 */
-async function get(url: string, accept?: string, ask = true): Promise<Response> {
+async function get(cx: HostContext, url: string, accept?: string, ask = true): Promise<Response> {
   const go = (t?: string) => {
     const headers: Record<string, string> = { "User-Agent": "codeboard-vscode", "X-GitHub-Api-Version": "2022-11-28" };
     if (accept) headers.Accept = accept;
     if (t) headers.Authorization = `Bearer ${t}`;
     return fetch(url, { headers, redirect: "follow" });
   };
-  const t0 = await token(false);
+  const t0 = await token(cx, false);
   const r = await go(t0);
   if (r.ok || t0 || !ask || ![401, 403, 404].includes(r.status)) return r;
-  log("info", `GitHub ${r.status} for ${url}: asking to sign in`);
-  const t1 = await token(true);
+  cx.log("info", `GitHub ${r.status} for ${url}: asking to sign in`);
+  const t1 = await token(cx, true);
   return t1 ? go(t1) : r;
 }
 
@@ -59,8 +58,8 @@ async function fail(r: Response, what: string): Promise<never> {
   throw new Error(`GitHub: ${r.status} ${r.statusText}`);
 }
 
-async function json<T>(url: string, what: string, ask = true): Promise<T> {
-  const r = await get(url, "application/vnd.github+json", ask);
+async function json<T>(cx: HostContext, url: string, what: string, ask = true): Promise<T> {
+  const r = await get(cx, url, "application/vnd.github+json", ask);
   if (!r.ok) return fail(r, what);
   return (await r.json()) as T;
 }
@@ -68,7 +67,7 @@ async function json<T>(url: string, what: string, ask = true): Promise<T> {
 const repoUrl = (o: string, n: string) => `${API}/repos/${o}/${n}`;
 
 /** ref（分支 / tag / sha）→ 完整 commit；分支名带 / 时，把 path 的前几段挪进 ref 再试 */
-async function resolve(g: GithubRef): Promise<{ commit: string; ref: string; path: string }> {
+async function resolve(cx: HostContext, g: GithubRef): Promise<{ commit: string; ref: string; path: string }> {
   const parts = [g.ref, ...g.path.split("/")];
   let checked = false;
   for (let k = 1; k < parts.length; k++) {
@@ -76,6 +75,7 @@ async function resolve(g: GithubRef): Promise<{ commit: string; ref: string; pat
       p = parts.slice(k).join("/");
     if (/^[0-9a-f]{40}$/.test(ref)) return { commit: ref, ref, path: p };
     const r = await get(
+      cx,
       `${repoUrl(g.owner, g.name)}/commits/${encodeURIComponent(ref)}`,
       "application/vnd.github.sha",
       false,
@@ -85,7 +85,7 @@ async function resolve(g: GithubRef): Promise<{ commit: string; ref: string; pat
     // 第一次 404：先确认仓库看得见（私有仓库这时才请用户登录），再接着试带 / 的分支名
     if (!checked) {
       checked = true;
-      await json(repoUrl(g.owner, g.name), `Repo ${g.owner}/${g.name}`);
+      await json(cx, repoUrl(g.owner, g.name), `Repo ${g.owner}/${g.name}`);
       k--;
     }
   }
@@ -93,13 +93,14 @@ async function resolve(g: GithubRef): Promise<{ commit: string; ref: string; pat
 }
 
 export async function fetchFile(
+  cx: HostContext,
   owner: string,
   name: string,
   commit: string,
   rel: string,
   ref?: string,
 ): Promise<string> {
-  const dir = githubFileDir(owner, name, commit);
+  const dir = cx.sources.githubFileDir(owner, name, commit);
   const file = path.join(dir, rel);
   try {
     return await fs.readFile(file, "utf8");
@@ -108,8 +109,8 @@ export async function fetchFile(
   }
   const enc = rel.split("/").map(encodeURIComponent).join("/");
   // raw 不占 API 次数；私有仓库 raw 不认时走 contents API
-  let r = await get(`https://raw.githubusercontent.com/${owner}/${name}/${commit}/${enc}`, undefined, false);
-  if (!r.ok) r = await get(`${repoUrl(owner, name)}/contents/${enc}?ref=${commit}`, "application/vnd.github.raw");
+  let r = await get(cx, `https://raw.githubusercontent.com/${owner}/${name}/${commit}/${enc}`, undefined, false);
+  if (!r.ok) r = await get(cx, `${repoUrl(owner, name)}/contents/${enc}?ref=${commit}`, "application/vnd.github.raw");
   if (!r.ok) return fail(r, rel);
   const text = await r.text();
   await fs.mkdir(path.dirname(file), { recursive: true });
@@ -120,6 +121,7 @@ export async function fetchFile(
 
 /** Pull Request 的 head（Variant 跟着它走）、分支名、合没合、合进哪个分支 */
 export async function pullRequest(
+  cx: HostContext,
   owner: string,
   name: string,
   num: number,
@@ -129,12 +131,13 @@ export async function pullRequest(
     base: { ref: string };
     merged?: boolean;
     merged_at?: string | null;
-  }>(`${repoUrl(owner, name)}/pulls/${num}`, `Pull request #${num}`);
+  }>(cx, `${repoUrl(owner, name)}/pulls/${num}`, `Pull request #${num}`);
   return { head: pr.head.sha, branch: pr.head.ref, merged: !!(pr.merged || pr.merged_at), base: pr.base.ref };
 }
 
 /** 某个 commit 的文件 → 卡（有行范围就按选区规则建卡，没有就文件开头 60 行） */
 async function cardAt(
+  cx: HostContext,
   owner: string,
   name: string,
   commit: string,
@@ -143,12 +146,12 @@ async function cardAt(
   s?: number,
   e?: number,
 ): Promise<NewCard> {
-  const text = await fetchFile(owner, name, commit, rel, ref);
-  await remember(owner, name, commit, rel);
+  const text = await fetchFile(cx, owner, name, commit, rel, ref);
+  await remember(cx, owner, name, commit, rel);
   const lines = splitLines(text);
-  const root = githubFileDir(owner, name, commit);
+  const root = cx.sources.githubFileDir(owner, name, commit);
   const abs = path.join(root, rel);
-  const lang = langOf(abs);
+  const lang = cx.langOf(abs);
   const loc: Loc = { src: { kind: "github", owner, name, ref }, path: rel, root, abs, fixed: { kind: "git", commit } };
   const start = Math.max(1, Math.min(lines.length, s ?? 1)),
     end = Math.max(start, Math.min(lines.length, e ?? (s ? s : Math.min(lines.length, 60))));
@@ -156,19 +159,20 @@ async function cardAt(
     [{ startLine: start, startCol: 0, endLine: end, endCol: (lines[end - 1] ?? "").length }],
     analysisOf(lang, text),
   );
-  if (plan && plan.kind !== "split") return (await withViews((await cardsFromPlan(loc, lines, plan, lang)).cards))[0];
-  const seg = await makeSegment(loc, lines, start, end, { lang });
-  return (await withViews([newCodeCard([seg])]))[0];
+  if (plan && plan.kind !== "split")
+    return (await withViews(cx, (await cardsFromPlan(cx, loc, lines, plan, lang)).cards))[0];
+  const seg = await makeSegment(cx, loc, lines, start, end, { lang });
+  return (await withViews(cx, [newCodeCard([seg])]))[0];
 }
 
-export async function githubCard(url: string): Promise<NewCard> {
+export async function githubCard(cx: HostContext, url: string): Promise<NewCard> {
   const g = parseGithubUrl(url);
   if (!g) throw new Error("Not a GitHub file link.");
-  const { commit, ref, path: rel } = await resolve(g);
-  return cardAt(g.owner, g.name, commit, ref, rel, g.start, g.end);
+  const { commit, ref, path: rel } = await resolve(cx, g);
+  return cardAt(cx, g.owner, g.name, commit, ref, rel, g.start, g.end);
 }
 
-export async function ghQuery(q: GhQuery): Promise<ReplyOf<"gh">> {
+export async function ghQuery(cx: HostContext, q: GhQuery): Promise<ReplyOf<"gh">> {
   const base = repoUrl(q.owner, q.name);
   switch (q.op) {
     case "repo": {
@@ -178,9 +182,9 @@ export async function ghQuery(q: GhQuery): Promise<ReplyOf<"gh">> {
         description?: string;
         owner: { login: string };
         name: string;
-      }>(base, `Repo ${q.owner}/${q.name}`);
+      }>(cx, base, `Repo ${q.owner}/${q.name}`);
       const names = async (kind: "branches" | "tags") =>
-        (await json<{ name: string }[]>(`${base}/${kind}?per_page=100`, kind, false).catch(() => [])).map(
+        (await json<{ name: string }[]>(cx, `${base}/${kind}?per_page=100`, kind, false).catch(() => [])).map(
           (x) => x.name,
         );
       const [branches, tags] = await Promise.all([names("branches"), names("tags")]);
@@ -199,7 +203,7 @@ export async function ghQuery(q: GhQuery): Promise<ReplyOf<"gh">> {
       const c = await json<{
         sha: string;
         commit: { message: string; committer?: { date?: string }; author?: { date?: string } };
-      }>(`${base}/commits/${encodeURIComponent(q.ref)}`, `“${q.ref}”`);
+      }>(cx, `${base}/commits/${encodeURIComponent(q.ref)}`, `“${q.ref}”`);
       return {
         commit: c.sha,
         msg: c.commit.message.split("\n")[0],
@@ -208,6 +212,7 @@ export async function ghQuery(q: GhQuery): Promise<ReplyOf<"gh">> {
     }
     case "tree": {
       const t = await json<{ sha: string; tree: { path: string; type: string }[]; truncated?: boolean }>(
+        cx,
         `${base}/git/trees/${q.commit}?recursive=1`,
         "File tree",
       );
@@ -220,16 +225,16 @@ export async function ghQuery(q: GhQuery): Promise<ReplyOf<"gh">> {
       } satisfies GhTree;
     }
     case "file": {
-      const text = await fetchFile(q.owner, q.name, q.commit, q.path, q.ref);
+      const text = await fetchFile(cx, q.owner, q.name, q.commit, q.path, q.ref);
       if (text.includes("\u0000")) throw new Error(`${path.basename(q.path)} is a binary file.`);
-      await remember(q.owner, q.name, q.commit, q.path);
+      await remember(cx, q.owner, q.name, q.commit, q.path);
       const lines = splitLines(text);
-      const lang = langOf(path.join(githubFileDir(q.owner, q.name, q.commit), q.path));
+      const lang = cx.langOf(path.join(cx.sources.githubFileDir(q.owner, q.name, q.commit), q.path));
       const html = lines.length > 8000 ? lines.map((l) => renderLine([{ text: l }])) : await highlight(lines, lang);
       return { path: q.path, lang, text: lines, html } satisfies GhFile;
     }
     case "card":
-      return cardAt(q.owner, q.name, q.commit, q.ref, q.path, q.start, q.end);
+      return cardAt(cx, q.owner, q.name, q.commit, q.ref, q.path, q.start, q.end);
   }
 }
 
@@ -238,25 +243,22 @@ export async function ghQuery(q: GhQuery): Promise<ReplyOf<"gh">> {
 
 const OPENED = "codeboard.githubFiles";
 const fileKey = (owner: string, name: string, commit: string, rel: string) => `${owner}/${name}/${commit}/${rel}`;
-const opened = new Emitter<void>();
-export const onDidOpenGithubFile = opened.event;
-
-let remembering = Promise.resolve();
 /** 一个接一个记：几个文件同时打开时，后写的不会盖掉先写的 */
-function remember(owner: string, name: string, commit: string, rel: string): Promise<void> {
-  const run = remembering.then(async () => {
-    const st = workspace().storage,
+function remember(cx: HostContext, owner: string, name: string, commit: string, rel: string): Promise<void> {
+  const run = cx.githubRecording.then(async () => {
+    const st = cx.ws.storage,
       keys = st.get<string[]>(OPENED) ?? [],
       k = fileKey(owner, name, commit, rel);
     if (keys.includes(k)) return;
     await st.set(OPENED, [...keys, k]);
-    opened.fire();
+    cx.githubOpened.fire();
   });
-  remembering = run.catch(() => {}); // 一次写失败不挡住后面的
+  cx.githubRecording = run.catch(() => {}); // 一次写失败不挡住后面的
   return run;
 }
 
 export async function workspaceGithubFiles(
+  cx: HostContext,
   store: Storage,
 ): Promise<
   { owner: string; name: string; commit: string; ref: string; files: { abs: string; rel: string; cards: number }[] }[]
@@ -279,11 +281,11 @@ export async function workspaceGithubFiles(
     string,
     { owner: string; name: string; commit: string; ref: string; files: { abs: string; rel: string; cards: number }[] }
   >();
-  for (const k of new Set([...(workspace().storage.get<string[]>(OPENED) ?? []), ...cards.keys()])) {
+  for (const k of new Set([...(cx.ws.storage.get<string[]>(OPENED) ?? []), ...cards.keys()])) {
     const [owner, name, commit, ...p] = k.split("/"),
       rel = p.join("/"),
       at = fileKey(owner, name, commit, "");
-    const abs = path.join(githubFileDir(owner, name, commit), rel);
+    const abs = path.join(cx.sources.githubFileDir(owner, name, commit), rel);
     if (
       !(await fs.stat(abs).then(
         () => true,
@@ -295,7 +297,7 @@ export async function workspaceGithubFiles(
     if (!r) {
       const ref =
         refs.get(at) ??
-        (await fs.readFile(path.join(githubFileDir(owner, name, commit), ".codeboard-ref"), "utf8").then(
+        (await fs.readFile(path.join(cx.sources.githubFileDir(owner, name, commit), ".codeboard-ref"), "utf8").then(
           (t) => t.trim(),
           () => "",
         ));

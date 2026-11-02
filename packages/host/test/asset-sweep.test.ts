@@ -5,15 +5,17 @@ import { emptyBoard, type NoteCard } from "@codeboard/core";
 import { Storage } from "../src/storage/boards";
 import { nodeFs } from "../src/storage/nodefs";
 import { ASSET_MAX_AGE, SWEEP_EVERY, sweepAssets } from "../src/assetsweep";
-import { useWorkspace } from "../src/ws";
 import { nodeWorkspace } from "./node-workspace";
+import { HostContext } from "../src/context";
+
+let cx: HostContext;
 
 const tmp = fs.mkdtempSync("/tmp/codeboard-sweep-");
 afterAll(() => fs.rmSync(tmp, { recursive: true, force: true }));
 const state = new Map<string, unknown>();
 beforeEach(() => {
   state.clear();
-  useWorkspace({
+  cx = new HostContext({
     ...nodeWorkspace(),
     storage: {
       dir: () => tmp,
@@ -62,7 +64,7 @@ describe("sweeping unused images", () => {
         { id: "i", kind: "image", src: "dddddddddddddddd.png" },
       ],
     });
-    expect(await sweepAssets(store, { now: NOW })).toEqual(["bbbbbbbbbbbbbbbb-10x10.png"]);
+    expect(await sweepAssets(cx, store, { now: NOW })).toEqual(["bbbbbbbbbbbbbbbb-10x10.png"]);
     expect(left()).toEqual(["aaaaaaaaaaaaaaaa-10x10.png", "cccccccccccccccc-10x10.png", "dddddddddddddddd.png"]);
   });
 
@@ -79,20 +81,20 @@ describe("sweeping unused images", () => {
     await store.save(b);
     await store.load("b4");
     (store.peek("b4")!.cards[0] as NoteCard).md = "![](assets/4444444444444444-1x1.png)"; // edited, not written yet
-    expect(await sweepAssets(store, { now: NOW })).toEqual([]);
+    expect(await sweepAssets(cx, store, { now: NOW })).toEqual([]);
     expect(left()).toHaveLength(4);
   });
 
   it("runs at most once a day per storage folder", async () => {
     const { store, asset } = setup();
-    expect(await sweepAssets(store, { now: NOW })).toEqual([]);
+    expect(await sweepAssets(cx, store, { now: NOW })).toEqual([]);
     asset("eeeeeeeeeeeeeeee-1x1.png", 30);
-    expect(await sweepAssets(store, { now: NOW + SWEEP_EVERY - 1000 })).toEqual([]); // too soon
-    expect(await sweepAssets(store, { now: NOW + SWEEP_EVERY + 1000 })).toEqual(["eeeeeeeeeeeeeeee-1x1.png"]);
+    expect(await sweepAssets(cx, store, { now: NOW + SWEEP_EVERY - 1000 })).toEqual([]); // too soon
+    expect(await sweepAssets(cx, store, { now: NOW + SWEEP_EVERY + 1000 })).toEqual(["eeeeeeeeeeeeeeee-1x1.png"]);
     // another storage folder has its own day
     const other = setup();
     other.asset("ffffffffffffffff-1x1.png", 30);
-    expect(await sweepAssets(other.store, { now: NOW + SWEEP_EVERY + 2000 })).toEqual(["ffffffffffffffff-1x1.png"]);
+    expect(await sweepAssets(cx, other.store, { now: NOW + SWEEP_EVERY + 2000 })).toEqual(["ffffffffffffffff-1x1.png"]);
   });
 
   it("deletes nothing when a board file can't be read", async () => {
@@ -108,7 +110,7 @@ describe("sweeping unused images", () => {
         return false;
       }
     })();
-    await sweepAssets(store, { now: NOW }).catch(() => []);
+    await sweepAssets(cx, store, { now: NOW }).catch(() => []);
     fs.chmodSync(path.join(dir, "b1.json"), 0o644);
     if (!readable) expect(left()).toEqual(["gggggggggggggggg-1x1.png"]); // as root every file is readable: nothing to check
     expect(ASSET_MAX_AGE).toBe(7 * 24 * 3600 * 1000);

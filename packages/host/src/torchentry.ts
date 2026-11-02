@@ -4,7 +4,7 @@ import type { CallSite, Sym } from "@codeboard/analysis";
 import { escapeRegExp } from "@codeboard/analysis/basics";
 import { analysisOf } from "./analysis";
 import type { OpTable } from "./torchyaml";
-import { readText } from "./ws";
+import type { HostContext } from "./context";
 
 export type OpEntry = { op: string; overload?: string; how: "explicit" | "torch" | "functional" | "method" | "at" };
 
@@ -72,13 +72,14 @@ export function cppOpEntry(t: OpTable, site: Pick<CallSite, "name" | "recv">): O
  * 所以 vendored 的 PyTorch 不在 Python 路径上、语言服务找不到时也对
  */
 export async function pyDefInTorch(
+  cx: HostContext,
   t: OpTable,
   name: string,
   how: OpEntry["how"],
 ): Promise<{ abs: string; sym: Sym } | null> {
   for (const f of how === "functional" ? ["torch/nn/functional.py"] : ["torch/functional.py", "torch/__init__.py"]) {
     const abs = path.join(t.root, f);
-    const text = await readText(abs, false);
+    const text = await cx.readText(abs, false);
     const sym =
       text === null ? undefined : analysisOf("python", text).symbols.find((s) => s.qual === name && s.kind === "def");
     if (sym) return { abs, sym };
