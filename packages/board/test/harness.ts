@@ -5,7 +5,7 @@ import { launch } from "./chromium";
 import {
   uid,
   emptyBoard,
-  loadBoard,
+  checkBoard,
   applyPatch,
   DEFAULT_SETTINGS,
   renderLine,
@@ -246,8 +246,8 @@ export async function openBoard(
 <body class="${o.light ? "vscode-light" : "vscode-dark"}"><div id="root"></div>
 <script>addEventListener("message", (e) => { if (e.data?.type === "init") window.__tInit = performance.now(); }, true); addEventListener("pointerdown", () => { window.__tDown = performance.now(); }, true);</script>
 <script>addEventListener("dragover", (e) => e.preventDefault()); addEventListener("drop", (e) => e.preventDefault());</script>
-<script>window.__cbSelfCheck = true; window.__inflight = 0; window.acquireVsCodeApi = () => ({ postMessage: (m) => { window.__inflight++; window.__host(JSON.stringify(m)).finally(() => window.__inflight--); } });</script>
-<script type="module" src="file://${MEDIA}/board.js"></script></body></html>`,
+<script type="module">import { boot } from "file://${MEDIA}/boot.js"; window.__inflight = 0;
+boot({ post: (m) => { window.__inflight++; window.__host(JSON.stringify(m)).finally(() => window.__inflight--); }, listen: (fn) => addEventListener("message", (e) => fn(e.data)) }, { selfCheck: true });</script></body></html>`,
   );
   const context = await browser.newContext({
     viewport: { width: o.w ?? 1400, height: o.h ?? 900 },
@@ -276,7 +276,7 @@ export async function openBoard(
   const reply = (req: number, data?: unknown, error?: string) => post({ type: "reply", req, data, error });
   page.on("console", async (m) => {
     const text = m.text();
-    // mutate's self-check (core danglingRefs, on in the harness through __cbSelfCheck): any hit is a failure in every scenario
+    // mutate's self-check (core danglingRefs, on in the harness through boot's selfCheck): any hit is a failure in every scenario
     if (text.includes("dangling references")) return watch.fail("dangling-refs", text);
     if (m.type() !== "error" && m.type() !== "warning") return;
     const url = m.location().url;
@@ -319,11 +319,11 @@ export async function openBoard(
         break;
       }
       case "patch": {
-        // The host's copy follows the patches; every version must load back through loadBoard (schema check)
+        // The host's copy follows the patches; every version must pass the schema the board checks a board from the host with (checkBoard)
         const next = structuredClone(board);
         applyPatch(next, m.patch);
         try {
-          loadBoard(structuredClone(next));
+          checkBoard(structuredClone(next));
         } catch (e) {
           watch.fail("board-schema", (e as Error).message);
         }

@@ -11,7 +11,7 @@ import {
   type SharedUpdate,
 } from "@codeboard/core";
 import { ask } from "../host";
-import { createHistory, createSave, type Doc } from "@codeboard/core/history";
+import { createHistory, createSave, type Doc, type HistoryPorts } from "@codeboard/core/history";
 import { noteBlocks } from "../md/blocks";
 import { setState, state } from "./store";
 import { keepOn, unselectCard } from "./selection";
@@ -38,12 +38,12 @@ const doc: Doc = {
   raw: unwrap,
 };
 
-declare global {
-  interface Window {
-    /** Set by the test harness: run the engine's self-check in a production build too (see HistoryPorts.selfCheck) */
-    __cbSelfCheck?: boolean;
-  }
-}
+// the engine reads selfCheck on every edit: on in dev builds and unit tests, and where the shell booting the board asks for it
+const ports: HistoryPorts = { noteBlocks, selfCheck: import.meta.env.DEV };
+/** Boot: run the engine's self-check (HistoryPorts.selfCheck) after every edit, in a production build too (the harness) */
+export const checkEdits = (on: boolean) => {
+  ports.selfCheck = on;
+};
 
 const [canUndo, setCanUndo] = createSignal(false);
 const [canRedo, setCanRedo] = createSignal(false);
@@ -65,7 +65,7 @@ const history = createHistory(
     },
     toast,
   },
-  { noteBlocks, selfCheck: import.meta.env.DEV || window.__cbSelfCheck === true },
+  ports,
 );
 const save = createSave({
   loaded: () => state.loaded,

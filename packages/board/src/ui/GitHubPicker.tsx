@@ -19,6 +19,7 @@ import { useOverlay, Overlay } from "./overlay";
 import * as A from "../actions";
 import "./github.css";
 import { ghPicker, setGhPicker } from "../state/web";
+import { track } from "../gesture";
 
 type Mode = "branch" | "tag" | "commit";
 type Node = { dirs: string[]; files: string[] };
@@ -249,25 +250,27 @@ export function GitHubPicker() {
 
   // 选行：按下拖过行号 / 代码选范围，⇧ 点击扩展
 
-  let anchor = 0,
-    down = false;
+  let anchor = 0;
   const lineDown = (e: PointerEvent, l: number) => {
     if (e.button !== 0) return;
     e.preventDefault();
-    down = true;
     if (e.shiftKey && sel()) {
       const [a, b] = sel()!;
       anchor = Math.abs(l - a) > Math.abs(l - b) ? a : b;
     } else anchor = l;
     setSel([Math.min(anchor, l), Math.max(anchor, l)]);
-    const up = () => {
-      down = false;
-      window.removeEventListener("pointerup", up, true);
-    };
-    window.addEventListener("pointerup", up, true);
-  };
-  const lineOver = (l: number) => {
-    if (down) setSel([Math.min(anchor, l), Math.max(anchor, l)]);
+    // the row pressed holds the pointer while it drags: the row under the pointer is looked up, the others get no pointer events
+    track(
+      e,
+      (ev) => {
+        const row = document.elementFromPoint(ev.clientX, ev.clientY)?.closest<HTMLElement>(".gl[data-l]");
+        if (!row || !codeEl?.contains(row)) return;
+        const k = +row.dataset.l!;
+        setSel([Math.min(anchor, k), Math.max(anchor, k)]);
+      },
+      () => {},
+      0,
+    );
   };
   const inSel = (l: number) => {
     const s = sel();
@@ -488,7 +491,6 @@ export function GitHubPicker() {
                         classList={{ on: inSel(i() + 1) }}
                         data-l={i() + 1}
                         onPointerDown={(e) => lineDown(e, i() + 1)}
-                        onPointerEnter={() => lineOver(i() + 1)}
                       >
                         <span class="no">{i() + 1}</span>
                         <span class="t" innerHTML={h || "​"} />

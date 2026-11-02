@@ -9,8 +9,8 @@ import { toWorld } from "./camera";
 import { cmNow } from "../cm/load";
 import { cardSel } from "../cardsel";
 
-// 先读后写的一轮测量和共用的 ResizeObserver 在 @yhnocoder/markdown 里（Mermaid 图的重排也排在同一轮里）：写回包在 batch 里
-setMeasureBatch(batch);
+// 先读后写的一轮测量和共用的 ResizeObserver 在 @yhnocoder/markdown 里（Mermaid 图的重排也排在同一轮里）：写回包在 batch 里（启动时接上）
+export const wireMeasure = () => setMeasureBatch(batch);
 export { queueMeasure, observeResize };
 
 /**

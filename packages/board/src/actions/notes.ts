@@ -35,30 +35,30 @@ import { tune } from "../state/tune";
 import { hostRect, popCard, revealCard } from "./common";
 import { lastPointer } from "../state/measure";
 import { cardSel } from "../cardsel";
+import { boardTimer } from "../state/root";
 
-let hoverT: number | undefined, leaveT: number | undefined;
+const hoverT = boardTimer(),
+  leaveT = boardTimer();
 export function hoverMarker(el: Element, ids: string[]) {
   if (quietHover()) return;
-  clearTimeout(leaveT);
-  clearTimeout(hoverT);
-  hoverT = window.setTimeout(() => showNotes(el, ids, false), 120);
+  leaveT.stop();
+  hoverT.start(() => showNotes(el, ids, false), 120);
   el.addEventListener(
     "pointerleave",
     () => {
-      clearTimeout(hoverT);
+      hoverT.stop();
       scheduleHideNotes();
     },
     { once: true },
   );
 }
 export function scheduleHideNotes() {
-  clearTimeout(leaveT);
-  leaveT = window.setTimeout(() => {
+  leaveT.start(() => {
     const p = pops().find((q) => !q.pinned && q.pop.kind === "notes");
     if (p && !document.querySelector(`.pop[data-pop="${p.id}"]:hover`)) closePop(p.id);
   }, 260);
 }
-export const cancelHideNotes = () => clearTimeout(leaveT);
+export const cancelHideNotes = () => leaveT.stop();
 export function pinMarker(el: Element, ids: string[]) {
   showNotes(el, ids, true);
 }
@@ -164,15 +164,14 @@ export function putImageInNote(imageId: string, noteId: string, src: string, at?
   toast("Added the image to the Note");
 }
 
-let peekLeave: number | undefined;
+const peekLeave = boardTimer();
 export function scheduleHidePeek() {
-  clearTimeout(peekLeave);
-  peekLeave = window.setTimeout(() => {
+  peekLeave.start(() => {
     const p = pops().find((q) => !q.pinned && q.pop.kind === "peek");
     if (p && !document.querySelector(`.pop[data-pop="${p.id}"]:hover`)) closePop(p.id);
   }, tune("peekHide"));
 }
-export const cancelHidePeek = () => clearTimeout(peekLeave);
+export const cancelHidePeek = () => peekLeave.stop();
 export async function showPeek(
   el: Element,
   cardId: string,

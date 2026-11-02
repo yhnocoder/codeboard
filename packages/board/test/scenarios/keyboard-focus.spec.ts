@@ -8,11 +8,11 @@ test("hostPageKeysReachBoard", async () => {
   const h = await open({ light });
   await idle(h);
   // A second copy of the board in an iframe of this page: the page plays the webview's host page, the iframe the board's frame
-  const page = await h.page.evaluate(() => ({
-    js: document.querySelector<HTMLScriptElement>("script[type=module]")!.src,
-    css: document.querySelector<HTMLLinkElement>("link[rel=stylesheet]")!.href,
-    theme: document.body.className,
-  }));
+  const page = await h.page.evaluate(() => {
+    const css = document.querySelector<HTMLLinkElement>("link[rel=stylesheet]")!.href;
+    // the build's boot.js sits next to its board.css
+    return { js: new URL("boot.js", css).href, css, theme: document.body.className };
+  });
   await h.page.evaluate(
     (p) =>
       new Promise<void>((loaded) => {
@@ -20,7 +20,7 @@ test("hostPageKeysReachBoard", async () => {
         f.style.cssText = "position:fixed;left:0;top:0;width:700px;height:500px;z-index:9;border:0";
         f.srcdoc =
           `<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="${p.css}"></head><body class="${p.theme}"><div id="root"></div>` +
-          `<script>window.acquireVsCodeApi = () => ({ postMessage() {} });</script><script type="module" src="${p.js}"></script></body></html>`;
+          `<script type="module">import { boot } from "${p.js}"; boot({ post() {}, listen() {} }, { selfCheck: true });</script></body></html>`;
         f.onload = () => loaded();
         document.body.appendChild(f);
       }),

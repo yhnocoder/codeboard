@@ -4,6 +4,7 @@ import { mdBlockStarts } from "@yhnocoder/markdown";
 import { worldAt } from "./state/measure";
 import { cardById } from "./state/store";
 import { cardSel } from "./cardsel";
+import { boardRef } from "./state/root";
 
 type Slots = {
   card: string;
@@ -13,7 +14,8 @@ type Slots = {
   /** 当前的落点 */
   cur: number;
 };
-let on: Slots | null = null;
+// the image drag over a Note (a gesture): its measured slots are the last board's after a switch
+const on = boardRef<Slots | null>(null);
 
 /** Note 的正文里显示着的顶层块，和 Markdown 的块一一对上时给出它们；正在编辑、没渲染完、对不上时给 null（图放在末尾） */
 function blocksOf(body: HTMLElement | null, md: string): HTMLElement[] | null {
@@ -49,30 +51,30 @@ function measure(id: string): Slots | null {
 
 /** 拖着图片卡在 Note id 上移动（pointer：屏幕坐标） */
 export function overNote(id: string, pointer: { x: number; y: number }) {
-  if (on?.card !== id) {
+  if (on.v?.card !== id) {
     leaveNote();
-    on = measure(id);
+    on.v = measure(id);
   }
-  if (!on) return;
+  if (!on.v) return;
   const wy = worldAt(pointer).y;
-  const j = on.slots.findIndex((s) => wy < s.wy);
-  if (j === on.cur) return;
-  on.cur = j;
-  on.el.style.setProperty("--drop-y", `${on.slots[j].y}px`);
+  const j = on.v.slots.findIndex((s) => wy < s.wy);
+  if (j === on.v.cur) return;
+  on.v.cur = j;
+  on.v.el.style.setProperty("--drop-y", `${on.v.slots[j].y}px`);
 }
 
 /** 拖出了 Note、松手、作废：落点线的位置去掉 */
 export function leaveNote() {
-  on?.el.style.removeProperty("--drop-y");
-  on = null;
+  on.v?.el.style.removeProperty("--drop-y");
+  on.v = null;
 }
 
 /**
  * 松手时图放在 Markdown 的第几个字（undefined = 末尾）：按当前的 Markdown 重新对一遍块（量的时候以后 Markdown 可能变了）
  */
 export function noteDropAt(id: string): number | undefined {
-  if (on?.card !== id || on.cur < 0) return undefined;
-  const block = on.slots[on.cur].block,
+  if (on.v?.card !== id || on.v.cur < 0) return undefined;
+  const block = on.v.slots[on.v.cur].block,
     c = cardById(id)?.card;
   if (c?.kind !== "note") return undefined;
   const starts = mdBlockStarts(c.md);

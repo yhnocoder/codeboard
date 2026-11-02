@@ -22,6 +22,17 @@ export function holdGesture(drop: () => void): () => void {
   };
 }
 
+/** Follows the pointer with no button held (a sticker being placed) until the returned function is called or the board switches */
+export function followPointer(move: (e: PointerEvent) => void): () => void {
+  const ctl = new AbortController();
+  const done = holdGesture(() => ctl.abort());
+  window.addEventListener("pointermove", move, { capture: true, signal: ctl.signal });
+  return () => {
+    ctl.abort();
+    done();
+  };
+}
+
 /** How far (screen px) a press moves before it is a drag, not a click */
 export const DRAG_SLOP = 3;
 /** A call in code is clicked (expand) far more often than dragged (to a card): it needs a longer move */

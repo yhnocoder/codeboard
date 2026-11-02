@@ -36,14 +36,13 @@ type Way = { L: Link; base: Accessor<{ kind: string } | null>; geo?: Accessor<{ 
  * 关键帧只有 transform 和 opacity，整段交给合成器跑，主线程每帧什么都不做；只在路变了（拖卡片）时重建那条路上的两段动画。
  * 车不跟着路分到各张卡的那一层，全在一层（.movers，在所有卡上面）：分开的话每层车都要另起合成层，拖、改动时慢一倍以上。
  * 停着的车（.ahead.car）和路一起在路的那一层。
- * 红灯、别的材质、系统开了「减少动态效果」时整层不存在（没有动画、没有计时器）。挑哪几条路只在镜头停下时算一次（trackTraffic 的 pick）
+ * 红灯、别的材质、系统开了「减少动态效果」时整层不存在（没有动画、没有计时器）。挑哪几条路只在镜头停下时算一次（trackTraffic）
  */
 const MAX_ROADS = 16;
-let pick: Accessor<Way[]> = () => [];
-/** 挑车流开哪几条路：Links.tsx 的 trackLinks 在它的 root 里调一次，views = 画着的线 */
-export function trackTraffic(views: Accessor<Way[]>) {
+/** 挑车流开哪几条路：Links.tsx 的 trackLinks 在它的 root 里调一次，views = 画着的线；给 Traffic 的 ways */
+export function trackTraffic(views: Accessor<Way[]>): Accessor<Way[]> {
   const trafficOn = () => look() === "city" && traffic() && !reduceMotion();
-  pick = createMemo(
+  return createMemo(
     on([camMoving, views, trafficOn], ([moving, rs, ok], _, prev?: Way[]) => {
       if (!ok) return [];
       if (moving && prev?.length) return prev;
@@ -72,17 +71,17 @@ export function trackTraffic(views: Accessor<Way[]>) {
     }),
   );
 }
-export function Traffic() {
+export function Traffic(p: { ways: Accessor<Way[]> }) {
   return (
     <Show when={look() === "city" && traffic() && !reduceMotion()}>
-      <Movers />
+      <Movers ways={p.ways} />
     </Show>
   );
 }
-function Movers() {
+function Movers(p: { ways: Accessor<Way[]> }) {
   return (
     <div class="movers">
-      <For each={pick()}>
+      <For each={p.ways()}>
         {(r, i) => {
           const d = () => r.geo?.()?.d ?? "";
           return <Index each={[0, 1]}>{(k) => <Mover d={d} k={(i() + k()) % 3} phase={k() / 2 + i() * 0.17} />}</Index>;

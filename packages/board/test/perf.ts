@@ -4,6 +4,7 @@
 import * as fs from "node:fs";
 import { ready, openBoard, launch, symCard, files, type Host } from "./harness";
 import {
+  cornerAt,
   emptyBoard,
   skeletonOf,
   stampBorn,
@@ -108,7 +109,11 @@ export function bigBoard(n: number): Board {
         at: { kind: "line", card: c.id, seg: s.id, line: s.start + 1 },
       });
     if (i % 6 === 2)
-      b.stickers.push({ id: uid("k"), icon: { pack: "builtin", name: "flag" }, at: { kind: "card", card: c.id } });
+      b.stickers.push({
+        id: uid("k"),
+        icon: { pack: "builtin", name: "flag" },
+        at: { kind: "canvas", ...cornerAt(b.place[c.id].w ?? 560), on: { card: c.id } },
+      });
   });
   b.cam = { x: 80, y: 80, z: 1 };
   // Creation order, like every saved or migrated board: without it the first edit numbers all 241 cards at once

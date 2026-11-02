@@ -18,7 +18,7 @@ import {
   type Settings,
   type Stale,
 } from "@codeboard/core";
-import { rooted, boardSignal, onBoardSwitch } from "./root";
+import { rooted, boardSignal, boardStore } from "./root";
 
 const [state, setState] = createStore({
   loaded: false,
@@ -42,10 +42,9 @@ export const setBoards = (boards: BoardMeta[]) => setState("boards", boards);
 export const setLoaded = (on: boolean) => setState("loaded", on);
 
 /** 共享卡在几块白板上、别的白板上谁连到它。宿主存盘后算好整个发来；只有在两块以上白板上的卡才有；不进撤销栈、不存盘 */
-const [shared, setShared] = createStore<Record<string, SharedInfo>>({});
+const [shared, setShared] = boardStore<Record<string, SharedInfo>>(() => ({}));
 export { shared };
 export const setSharedInfo = (cards: Record<string, SharedInfo>) => setShared(reconcile(cards));
-onBoardSwitch(() => setSharedInfo({}));
 export const sharedOn = (id: string) => shared[id]?.boards.length ?? 0;
 
 /** 只读卡的 id / 段、线的两端和 Call 标记、born / marks：拖动卡片不会让它重算 */
@@ -72,6 +71,8 @@ const cardIndex = rooted(() =>
   }),
 );
 export const cardById = (id: string) => cardIndex().get(id);
+/** 这块白板上有这张卡（Compare 的栏也算）：按卡 id 存的实测状态换白板时留下这些（boardStore 的 keep） */
+export const onBoard = (id: string) => cardIndex().has(id);
 export const hostOf = (id: string) => cardById(id)?.host.id ?? id;
 /** 按叠放顺序 */
 export const placed = rooted(() => createMemo(() => state.board.cards.filter((c) => state.board.place[c.id])));
@@ -82,7 +83,7 @@ export function placeOf(id: string): Place {
 }
 
 // 卡片实测尺寸（世界坐标）；Section 实际框
-const [sizes, setSizes] = createStore<Record<string, { w: number; h: number }>>({});
+const [sizes, setSizes] = boardStore<Record<string, { w: number; h: number }>>(() => ({}), onBoard);
 export { sizes };
 /** A card's measured size (Card.tsx measures it) */
 export const setSize = (id: string, s: { w: number; h: number }) => setSizes(id, s);

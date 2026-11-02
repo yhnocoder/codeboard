@@ -13,7 +13,7 @@ import { saveNoteImage } from "./images";
 import { boardsGrouped, refFoot, refGroups, refPicked, refRecent, wantBoardRefs } from "./refs";
 import type { MdEditorOpts, MdEditorHandle } from "@yhnocoder/markdown/editor";
 import type { MdLayout } from "@yhnocoder/markdown";
-import { createSignal } from "solid-js";
+import { boardRef, boardSignal, boardTimer } from "../state/root";
 
 export type { MdEditorHandle };
 type Mod = typeof import("@yhnocoder/markdown/editor");
@@ -40,40 +40,41 @@ export function preloadEditor() {
 // 鼠标停在一张能编辑的 Markdown 上 120ms（或按下第一下），或者只选中了一张 Note：在页面外把它画进编辑器，
 // 双击时只剩挂上去（见 editor 的 prepare）。鼠标下面的优先，其次是选中的；镜头在动、在拖时等停下，正在编辑时不做
 type Prep = { src: string; layout?: MdLayout | null };
-let prepT: number | undefined, hov: Prep | undefined, selP: Prep | undefined;
+const prepT = boardTimer(),
+  hov = boardRef<Prep | undefined>(undefined),
+  selP = boardRef<Prep | undefined>(undefined);
 function schedule(now = false) {
-  clearTimeout(prepT);
   let tries = 0;
   const run = () => {
-    const p = hov ?? selP;
+    const p = hov.v ?? selP.v;
     if (!ready || editing() || p === undefined) return;
     if (camMoving() || dragging().size) {
-      if (++tries < 16) prepT = window.setTimeout(run, 120);
+      if (++tries < 16) prepT.start(run, 120);
       return;
     }
     ready.prepare(p.src, p.layout);
   };
-  prepT = window.setTimeout(run, now ? 0 : 120);
+  prepT.start(run, now ? 0 : 120);
 }
 export function prepareHover(src: string, layout?: MdLayout | null, now = false) {
-  hov = { src, layout };
+  hov.v = { src, layout };
   schedule(now);
 }
 /** 鼠标离开这一张（别的卡在它之后进来的不动） */
 export function prepareLeave(src: string) {
-  if (hov?.src === src) {
-    hov = undefined;
+  if (hov.v?.src === src) {
+    hov.v = undefined;
     schedule();
   }
 }
 export function prepareSelected(src: string | undefined, layout?: MdLayout | null) {
-  selP = src === undefined ? undefined : { src, layout };
+  selP.v = src === undefined ? undefined : { src, layout };
   schedule();
 }
 
 // The Note being edited and whether it shows its Markdown source (⌘/): the card header's M↓ toggle reads and drives it
 let current: { id: string; ed: MdEditorHandle } | null = null;
-const [srcNote, setSrcNote] = createSignal<string | null>(null);
+const [srcNote, setSrcNote] = boardSignal<string | null>(null);
 export function setCurrentEditor(id: string, ed: MdEditorHandle | null) {
   if (ed) current = { id, ed };
   else if (current?.id === id) {

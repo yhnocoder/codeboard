@@ -6,7 +6,6 @@ import {
   homeCam,
   mergeById,
   inflate,
-  loadBoard,
   loadBoardFile,
   loadSharedCard,
   putShared,
@@ -19,6 +18,7 @@ import {
   type Card,
   type Sidenote,
 } from "../src";
+import { upgraded } from "./upgrade";
 
 const note = (id: string, md = id): Card => ({ id, kind: "note", md, look: "note" });
 const text = (id: string, card: string, extra: Partial<Sidenote> = {}): Sidenote =>
@@ -100,7 +100,7 @@ describe("shared cards: inflate / deflate / putShared", () => {
     expect(file.cards.map((c) => c.kind)).toEqual(["note", "shared", "note"]);
     expect(file.sidenotes.map((n) => n.id)).toEqual(["n1", "n3", "n4"]); // board-only and card-kind sidenotes stay on the board
     expect(shared).toEqual([{ card: b.cards[1], sidenotes: [b.sidenotes[1]] }]);
-    expect(() => loadBoard(structuredClone(file))).toThrow(); // a board with refs is not a full board
+    expect(() => upgraded(structuredClone(file))).toThrow(); // a board with refs is not a full board
     const f = loadBoardFile(JSON.parse(JSON.stringify(file)));
     const r = inflate(f, b.cam, (id) => (id === "b" ? structuredClone(shared[0]) : undefined));
     expect(r.refs).toEqual(["b"]);
@@ -166,11 +166,11 @@ describe("board format v6 and v7", () => {
       version: 5,
       cards: board().cards.map(({ look: _, ...c }: any) => ({ ...c, bg: true })),
     } as any;
-    const b = loadBoard(structuredClone(v5));
+    const b = upgraded(structuredClone(v5));
     expect(b).toEqual(board());
     const c = board();
     c.sidenotes[0].boardOnly = true;
-    expect(loadBoard(structuredClone(c)).sidenotes[0].boardOnly).toBe(true);
+    expect(upgraded(structuredClone(c)).sidenotes[0].boardOnly).toBe(true);
   });
 
   // Board files v5 and v6 may hold formulas the old editor wrote as \$…\$; \$ is now always a literal $, so v6 → v7 rewrites them to $…$ once.
@@ -204,7 +204,7 @@ describe("board format v6 and v7", () => {
     return b;
   };
   it("v6 → v7: an old board's \\$a\\$ becomes math once; code, half-escaped and unsure text stay as written", () => {
-    const b = loadBoard(oldMath(6));
+    const b = upgraded(oldMath(6));
     expect(b.version).toBe(10);
     expect((b.cards[0] as any).md).toBe("a $x^2$ b, $\\frac{a}{b}$ and ${n}$");
     expect(b.cards[1].desc).toBe("cost $O(n)$");
@@ -213,20 +213,20 @@ describe("board format v6 and v7", () => {
     expect(b.stickers[0].q!.md).toBe("why $k$?");
     expect((b.cards[2] as any).md).toBe(oldMath(6).cards[2].md);
     // once: the upgraded board is read as is
-    expect(loadBoard(structuredClone(b))).toEqual(b);
+    expect(upgraded(structuredClone(b))).toEqual(b);
     // v5 files were written by the same editor
-    expect((loadBoard(oldMath(5)).cards[0] as any).md).toBe("a $x^2$ b, $\\frac{a}{b}$ and ${n}$");
+    expect((upgraded(oldMath(5)).cards[0] as any).md).toBe("a $x^2$ b, $\\frac{a}{b}$ and ${n}$");
   });
   it("v6 → v7 leaves boards from before the WYSIWYG editor alone: their \\$ was always literal", () => {
     const raw = { ...oldMath(6), version: 4 };
     delete raw.born;
     delete raw.seq;
-    expect((loadBoard(raw).cards[0] as any).md).toBe(oldMath(6).cards[0].md);
+    expect((upgraded(raw).cards[0] as any).md).toBe(oldMath(6).cards[0].md);
   });
   it("a v8 board's escaped \\$a\\$ is literal text and stays as written", () => {
     const b = board();
     (b.cards[0] as any).md = "\\$a\\$";
-    const again = loadBoard(structuredClone(loadBoard(structuredClone(b))));
+    const again = upgraded(structuredClone(upgraded(structuredClone(b))));
     expect((again.cards[0] as any).md).toBe("\\$a\\$");
   });
   it("v6 → v8 upgrades shared card files (the card and its travelling sidenotes) once, and refuses newer ones", () => {

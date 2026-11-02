@@ -30,6 +30,7 @@ import {
 } from "../state/questions";
 import { ask, send } from "../host";
 import { revealCard } from "./common";
+import { boardRef } from "../state/root";
 
 const QICON: IconRef = { pack: "builtin", name: "question" };
 const DONE: IconRef = { pack: "builtin", name: "check" };
@@ -76,13 +77,13 @@ export function openQuestion(id: string, el?: Element, edit = false) {
 }
 
 /** 贴纸点一下：是问题就打开（拖过的不算） */
-let dragged = false;
+const dragged = boardRef(false);
 export const setStickerDragged = (v: boolean) => {
-  dragged = v;
+  dragged.v = v;
 };
 export function stickerClick(id: string, el: Element) {
-  if (dragged) {
-    dragged = false;
+  if (dragged.v) {
+    dragged.v = false;
     return;
   }
   const s = state.board.stickers.find((k) => k.id === id);

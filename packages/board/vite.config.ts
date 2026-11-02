@@ -27,7 +27,7 @@ function inputSourcemaps(): Plugin {
   };
 }
 
-// 白板界面打包成一个入口 js（ES module）+ 一个 css，放在 dist/，由宿主（VS Code webview）加载：插件的构建把它拷进 media/board；
+// 白板界面打包成入口 js（ES module：board.js 给 VS Code，boot.js 给自带通道的页面）+ 一个 css，放在 dist/，由宿主（VS Code webview）加载：插件的构建把它拷进 media/board；
 // Markdown 编辑器、Mermaid 图（pele）这些用到时才 import() 的放在 chunks/ 里
 export default defineConfig({
   plugins: [solid(), scriptString(), ...(process.env.BOARD_SOURCEMAP ? [inputSourcemaps()] : [])],
@@ -40,8 +40,9 @@ export default defineConfig({
     // BOARD_SOURCEMAP=1 (the regular CI runs): source maps let the harness map each scenario's coverage back to source files
     sourcemap: !!process.env.BOARD_SOURCEMAP,
     rolldownOptions: {
-      input: "src/index.tsx",
-      output: { entryFileNames: "board.js", assetFileNames: (a) => (a.names?.[0] ?? a.name ?? "").endsWith(".css") ? "board.css" : "fonts/[name][extname]", chunkFileNames: "chunks/[name]-[hash].js", format: "es" },
+      // board.js: the VS Code webview's entry; boot.js: boot() for pages that bring their own way to the host (the harness)
+      input: { board: "src/index.tsx", boot: "src/boot.tsx" },
+      output: { entryFileNames: "[name].js", assetFileNames: (a) => (a.names?.[0] ?? a.name ?? "").endsWith(".css") ? "board.css" : "fonts/[name][extname]", chunkFileNames: "chunks/[name]-[hash].js", format: "es" },
     },
   },
 });

@@ -3,18 +3,19 @@
 // --iz（地图档 = 1/z，让名字和描边在屏幕上大小不变）：镜头动的时候定住，名字跟着整层一起缩放；停下再一批批换成准确的值。
 // 每一步都改的话，每一步都要把所有名字重新排版（241 张卡每步 ~60ms）
 import { batch, createEffect, createMemo, createSignal } from "solid-js";
-import { createStore, unwrap } from "solid-js/store";
+import { unwrap } from "solid-js/store";
 import { cam, camMoving, lod, view, type Lod } from "./camera";
-import { placed, rectOf, sizes, state } from "./store";
+import { onBoard, placed, rectOf, sizes, state } from "./store";
 import { offscreen } from "./offscreen";
-import { rooted } from "./root";
+import { boardStore, rooted } from "./root";
 
 const PER = 12;
 // 正在一批批换档（还没换完）：cull.ts 这时先不显示屏幕外的卡
 const [busy, setBusy] = createSignal(false);
 export const lodBusy = busy;
-const [cardLod, setCardLod] = createStore<Record<string, Lod>>({});
-const [cardIz, setCardIz] = createStore<Record<string, number>>({});
+// 换白板时留下新白板上还有的卡的（它们的组件不重建，样式还是这一档）
+const [cardLod, setCardLod] = boardStore<Record<string, Lod>>(() => ({}), onBoard);
+const [cardIz, setCardIz] = boardStore<Record<string, number>>(() => ({}), onBoard);
 /** 进地图档那一刻的 --iz（地图档门槛的倒数）：提前建好的名字按它排版 */
 export const izMap = () => 1 / state.host.settings.zoomMap;
 let held: number | undefined;

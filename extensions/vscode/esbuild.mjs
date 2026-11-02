@@ -22,7 +22,8 @@ copyFileSync(join(dirname(cudaWasm), "LICENSE"), join("dist", "LICENSE-tree-sitt
 copyFileSync(fromCore.resolve("elkjs/lib/elk.bundled.js"), join("dist", "elk.js"));
 // The webview loads the board's build from media/board (npm run build builds @codeboard/board first)
 const boardDist = join(dirname(require.resolve("@codeboard/board/package.json")), "dist");
-if (!existsSync(join(boardDist, "board.js"))) throw new Error(`${boardDist}/board.js is missing: build @codeboard/board first`);
+for (const f of ["board.js", "boot.js"])
+  if (!existsSync(join(boardDist, f))) throw new Error(`${boardDist}/${f} is missing: build @codeboard/board first`);
 rmSync("media/board", { recursive: true, force: true });
 cpSync(boardDist, "media/board", { recursive: true });
 const elkApart = { name: "elk-apart", setup: (b) => b.onResolve({ filter: /^elkjs\// }, () => ({ path: "./elk.js", external: true })) };

@@ -1,9 +1,9 @@
 // 斜贴的卡（card.tilt）此刻转了多少度。卡片（Card.tsx 的 rotate）和箭头的端点（Links.tsx）读同一个值，
 // 所以转动中箭头每一帧都贴着转过去的边走。编辑时回正，编辑完再斜回去
 import { batch, createEffect, createMemo, on, onCleanup } from "solid-js";
-import { createStore } from "solid-js/store";
 import type { Card } from "@codeboard/core";
-import { hostOf } from "./store";
+import { hostOf, onBoard } from "./store";
+import { boardMap, boardStore } from "./root";
 import { editing } from "./ui";
 import { reduceMotion } from "./motion";
 import { tune } from "./tune";
@@ -12,11 +12,11 @@ import { TILT_MS } from "./timing";
 /** 和便签贴纸一样的角度（逆时针） */
 const TILT_DEG = -1.2;
 
-const [now, setNow] = createStore<Record<string, number | undefined>>({});
+const [now, setNow] = boardStore<Record<string, number | undefined>>(() => ({}), onBoard);
 /** 整张卡（Compare 的栏算整张 Compare）此刻的角度，度 */
 export const tiltOf = (host: string) => now[host] ?? 0;
 
-const runs = new Map<string, { from: number; to: number; t0: number; dur: number }>();
+const runs = boardMap<string, { from: number; to: number; t0: number; dur: number }>(onBoard);
 let raf = 0;
 function tick(t: number) {
   raf = 0;

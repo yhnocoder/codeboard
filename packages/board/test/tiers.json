@@ -72,7 +72,7 @@
       "about": "the board itself: camera, zoom, pan, drag, select, resize, copy / paste, undo, the store and measuring",
       "files": [
         "packages/board/src/{App,BoardView}.tsx",
-        "packages/board/src/{index.tsx,interact.ts,gesture.ts,cardsel.ts,focus.ts,env.d.ts}",
+        "packages/board/src/{index.tsx,boot.tsx,wire.ts,interact.ts,gesture.ts,cardsel.ts,focus.ts,env.d.ts}",
         "packages/board/src/canvas/Canvas.tsx",
         "packages/core/src/canvas/{index,geom}.ts",
         "packages/board/src/cards/Card.tsx",

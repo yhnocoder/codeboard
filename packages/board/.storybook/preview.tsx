@@ -1,19 +1,12 @@
-// 样式顺序和初始化照抄 src/index.tsx，不然样子和插件里不一样；不 render、不发 ready，白板由 story 的 Stage 挂上、喂数据
-// 假宿主要在白板的模块发第一条消息之前装好
-import "../stories/support/host";
+// 样式顺序照抄 src/index.tsx、接线用同一个 wireBoard，不然样子和插件里不一样；不 render、不发 ready，白板由 story 的 Stage 挂上、喂数据
+import { transport } from "../stories/support/host";
 import type { Preview, Decorator } from "storybook-solidjs-vite";
 import { addons, useGlobals } from "storybook/preview-api";
 import { STORY_CHANGED, UPDATE_GLOBALS } from "storybook/internal/core-events";
 import { createJSXDecorator } from "storybook-solidjs-vite";
 import { createEffect } from "solid-js";
-import { onHost } from "../src/hostio";
-import { installKeys } from "../src/interact";
-import { listen, followHostTheme } from "../src/host";
-import { setRefResolver, setCodeHighlighter } from "@yhnocoder/markdown";
+import { wireBoard } from "../src/wire";
 import { THEMES, EXPERIMENTAL_THEMES } from "@codeboard/core";
-import { langId } from "@codeboard/analysis/langs";
-import { noteHighlight } from "../src/cm/load";
-import { resolveCardRef } from "../src/actions";
 import { storyChrome, type Globals } from "../stories/support/board";
 import "@yhnocoder/markdown/katex.css";
 import "../src/fonts.css";
@@ -22,11 +15,7 @@ import "@yhnocoder/markdown/style.css";
 import "../src/themes.css";
 import "../src/settings.css";
 
-listen(onHost);
-installKeys();
-setRefResolver(resolveCardRef, { missing: "Nothing with this title on the board" });
-setCodeHighlighter(noteHighlight, langId);
-followHostTheme();
+wireBoard(transport, { selfCheck: import.meta.env.DEV });
 
 // 亮暗挂在 body 的 class 上，和 VS Code 一样，由 followHostTheme 换成 html[data-theme]
 const scheme = createJSXDecorator((Story, ctx) => {

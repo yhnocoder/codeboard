@@ -6,7 +6,7 @@
 // - 外面连进来的线终点从卡边滑到框边、再到标题那一行，折好时就是连在折叠的 Section 上的那条线（Links.tsx endOf）
 // - 飞的时候卡里的内容换成几道骨架线（skel）
 import { createSignal, untrack, type Signal } from "solid-js";
-import { createStore } from "solid-js/store";
+import { boardStore, onBoardSwitch } from "./root";
 import type { Rect } from "@codeboard/core";
 import { SKEL_IN } from "./timing";
 
@@ -25,6 +25,10 @@ const foldSig = (sid: string) => {
   if (!q) folds.set(sid, (q = createSignal<Fold | undefined>(undefined)));
   return q;
 };
+// 换白板：值回到 undefined，信号留着（画着的 Section 读的就是它）
+onBoardSwitch(() => {
+  for (const [, set] of folds.values()) set(undefined);
+});
 export const foldOf = (sid: string) => foldSig(sid)[0]();
 export const setFold = (sid: string, f: Fold | undefined) => {
   foldSig(sid)[1](() => f);
@@ -36,7 +40,7 @@ export function setFoldV(sid: string, v: number) {
 }
 
 // 跟着收的卡（宿主卡 id，折叠的子 Section 里藏着的也算：连着它们的线也要跟着走）和子 Section → 正在折叠、展开的那个 Section
-const [homes, setHomes] = createStore<Record<string, string | undefined>>({});
+const [homes, setHomes] = boardStore<Record<string, string | undefined>>(() => ({}));
 export const foldHome = (id: string) => homes[id];
 export const setFoldHome = (id: string, sid: string | undefined) => setHomes(id, sid);
 /** 跟着收的这张卡 / 子 Section 这一帧的动画 */
@@ -70,7 +74,7 @@ export const shutLook = (f: Fold) => f.shutting || f.v < 0.5;
 // 飞的时候卡里的内容换成骨架线（styles.css .skel、Card.tsx 的 .skl）：十几张满是字的卡缩小、叠在一起很乱。
 // "out" = 骨架线（内容淡出 SKEL_OUT）；"in" = 内容正在淡回来、骨架线淡掉（SKEL_IN），完了清掉
 export type Skel = "out" | "in";
-const [skels, setSkels] = createStore<Record<string, Skel | undefined>>({});
+const [skels, setSkels] = boardStore<Record<string, Skel | undefined>>(() => ({}));
 export const skel = (id: string) => skels[id];
 export const setSkel = (id: string, s: Skel | undefined) => setSkels(id, s);
 /** 这几张卡的内容淡回来，淡完清掉（中间又换成骨架线的不动） */

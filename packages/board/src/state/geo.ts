@@ -1,7 +1,7 @@
 // 卡片里每一行的位置（实测）
-import { createStore } from "solid-js/store";
 import { rowIndexOf, type Row } from "@codeboard/core";
-import { rectOf, cardById } from "./store";
+import { rectOf, cardById, onBoard } from "./store";
+import { boardStore } from "./root";
 
 export type CardGeo = {
   rows: Row[];
@@ -14,7 +14,7 @@ export type CardGeo = {
   colX?: number; // Compare 卡里这一栏的左边（相对 Compare 卡）
   colW?: number;
 };
-export const [geo, setGeo] = createStore<Record<string, CardGeo>>({});
+export const [geo, setGeo] = boardStore<Record<string, CardGeo>>(() => ({}), onBoard);
 /** 没量过卡头的卡（不是代码卡）按这个卡头高度算 */
 export const HEAD_H = 34;
 

@@ -3,6 +3,7 @@
 // one skipped) gives the keyboard back to the board; a blur to elsewhere in VS Code, or one long after the press, is left alone
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { reportFocus } from "../../src/focus";
+import "./host"; // reportFocus tells the host
 import { CLICK_KEEPS_KEYS } from "../../src/state/timing";
 
 const body = {} as HTMLElement;

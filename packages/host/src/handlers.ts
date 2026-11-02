@@ -3,12 +3,11 @@ import * as path from "node:path";
 import * as fs from "node:fs/promises";
 import {
   boardSegments,
-  BOARD_VERSION,
   cardPath,
   sniffImage,
   sniffSvg,
   cleanCompletion,
-  loadBoard,
+  checkBoard,
   subCardOf,
   wouldCycle,
   findCard,
@@ -195,8 +194,8 @@ export function makeHandler(cx: HostContext, panels: BoardHost, mediaDir: string
       return { ...r, views: segs.length ? await viewsFor(cx, segs) : {} };
     },
     newBoard: async (p, m) => {
-      // Turn into Board：白板拆好的新白板（schema 校验一遍）。共享卡在新白板上还是共享卡；放在父白板的组里
-      const b = loadBoard(structuredClone({ ...m.board, version: BOARD_VERSION }));
+      // Turn into Board：白板拆好的新白板（schema 校验一遍；存的就是收到的这个对象，消息是宿主自己的一份）。共享卡在新白板上还是共享卡；放在父白板的组里
+      const b = checkBoard(m.board);
       if (!SAFE_ID.test(b.id) || (await store.load(b.id))) throw new Error("Bad board id.");
       const refs = [...store.refsOf(p.id)].filter((id) => b.cards.some((c) => c.id === id));
       await store.save(b, { group: store.groupOf(p.id) ?? null, refs });
@@ -238,8 +237,7 @@ export function makeHandler(cx: HostContext, panels: BoardHost, mediaDir: string
     dropBoard: async (p, m) => {
       if ((await store.list()).some((x) => x.id !== p.id && x.subs?.includes(m.id))) return false;
       // 和存下来时一样校验一遍再比（newBoard 存的是校验过的那份）
-      if (!(await store.dropIfUnchanged(m.id, loadBoard(structuredClone({ ...m.made, version: BOARD_VERSION })))))
-        return false;
+      if (!(await store.dropIfUnchanged(m.id, checkBoard(m.made)))) return false;
       closeOthers(p, m.id);
       return true;
     },
