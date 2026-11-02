@@ -1,4 +1,4 @@
-// @vitest-environment happy-dom
+// @vitest-environment jsdom
 // A deleted card's fade-out copy is removed when its animation is over, at whatever speed animations run (the slow-motion setting
 // sets --t on the root; the CSS durations are multiplied by it)
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -9,6 +9,9 @@ function cardOnBoard() {
   document.body.innerHTML = `<div class="world"><div class="card" data-id="c1">x</div></div>`;
 }
 const ghosts = () => document.querySelectorAll(".ghost-out").length;
+
+// jsdom has no matchMedia: motion is not reduced
+vi.stubGlobal("matchMedia", (media: string) => ({ media, matches: false }));
 
 afterEach(() => {
   vi.useRealTimers();

@@ -1,4 +1,4 @@
-// @vitest-environment happy-dom
+// @vitest-environment jsdom
 // Gray inline completions follow the AI provider setting: the host's settings message turns them on or off with the board open
 import { describe, expect, it } from "vitest";
 import { DEFAULT_SETTINGS, emptyBoard, type HostInfo, type Settings } from "@codeboard/core";

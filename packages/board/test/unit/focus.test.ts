@@ -1,4 +1,4 @@
-// @vitest-environment happy-dom
+// @vitest-environment jsdom
 // The board tells the host when its frame gets or loses the keyboard
 import { beforeAll, describe, expect, it } from "vitest";
 import type { BoardToHost } from "@codeboard/core";
