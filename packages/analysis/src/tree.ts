@@ -1,4 +1,5 @@
-// 带 key（通常是文件路径）解析时留着上次的树：文本变了就 tree.edit + 增量解析，没变就直接复用。
+// The parsers, languages and queries are loaded once per process. A TreeCache keeps the last tree of each key (usually a file
+// path): when the text changed it is edited and parsed incrementally, when it did not it is reused.
 import TS from "@vscode/tree-sitter-wasm";
 import type { Parser as TSParser, Language as TSLanguage, Tree, Edit, Query } from "@vscode/tree-sitter-wasm";
 
@@ -60,31 +61,6 @@ export function query(g: Grammar, name: string, src: string): Query {
   return q;
 }
 
-type Entry = { g: Grammar; text: string; tree: Tree };
-const trees = new Map<string, Entry>();
-let maxTrees = 16;
-
-/** 最多留多少棵树（每棵大约是源码的几倍内存） */
-export function setTreeCacheSize(n: number) {
-  maxTrees = Math.max(0, n);
-  trim();
-}
-function trim() {
-  while (trees.size > maxTrees) {
-    const k = trees.keys().next().value!;
-    trees.get(k)!.tree.delete();
-    trees.delete(k);
-  }
-}
-export function forgetTree(key?: string) {
-  for (const [k, e] of trees)
-    if (key === undefined || k === key) {
-      e.tree.delete();
-      trees.delete(k);
-    }
-}
-export const cachedTrees = () => [...trees.keys()];
-
 /** 两段文本的差别 → 一次 tree-sitter 编辑（公共前缀 / 后缀之外的部分，下标是 UTF-16） */
 export function diffEdit(a: string, b: string): Edit {
   const n = Math.min(a.length, b.length);
@@ -129,30 +105,67 @@ function fits(a: string, b: string, e: Edit) {
   );
 }
 
+type Entry = { g: Grammar; text: string; tree: Tree };
+
 /**
- * 解析出一棵树。没有 key：用完由调用方 delete（owned = true）。
- * 有 key：树留在缓存里（owned = false，别 delete）；上次的文本和这次不同时增量解析，edit 不给就按前后缀算。
+ * The trees kept between parses of the same key (usually a file path), least recently used first out. Keyed by path, not by
+ * content, so each host keeps its own: one host's files must not evict or forget another's.
  */
-export function treeOf(g: Grammar, text: string, key?: string, edit?: Edit): { tree: Tree; owned: boolean } {
-  if (key === undefined || maxTrees === 0) return { tree: parser(g).parse(text)!, owned: true };
-  const old = trees.get(key);
-  let tree: Tree;
-  if (old && old.g === g) {
-    trees.delete(key);
-    if (old.text === text) tree = old.tree;
-    else {
-      old.tree.edit(edit && fits(old.text, text, edit) ? edit : diffEdit(old.text, text));
-      tree = parser(g).parse(text, old.tree)!;
-      old.tree.delete();
+export class TreeCache {
+  private trees = new Map<string, Entry>();
+
+  /** max = how many trees to keep (each takes a few times the source's memory) */
+  constructor(readonly max = 16) {}
+
+  /**
+   * The tree of text, kept under key: parsed incrementally when the key's last text differs (by edit, or by the common prefix
+   * and suffix when edit is missing or does not fit). The cache owns it: the caller must not delete it.
+   */
+  tree(g: Grammar, text: string, key: string, edit?: Edit): Tree {
+    const old = this.trees.get(key);
+    let tree: Tree;
+    if (old && old.g === g) {
+      this.trees.delete(key);
+      if (old.text === text) tree = old.tree;
+      else {
+        old.tree.edit(edit && fits(old.text, text, edit) ? edit : diffEdit(old.text, text));
+        tree = parser(g).parse(text, old.tree)!;
+        old.tree.delete();
+      }
+    } else {
+      if (old) {
+        old.tree.delete();
+        this.trees.delete(key);
+      }
+      tree = parser(g).parse(text)!;
     }
-  } else {
-    if (old) {
-      old.tree.delete();
-      trees.delete(key);
-    }
-    tree = parser(g).parse(text)!;
+    this.trees.set(key, { g, text, tree });
+    while (this.trees.size > this.max) this.drop(this.trees.keys().next().value!);
+    return tree;
   }
-  trees.set(key, { g, text, tree });
-  trim();
-  return { tree, owned: false };
+
+  /** Let go of key's tree, or of all of them */
+  forget(key?: string) {
+    for (const k of [...this.trees.keys()]) if (key === undefined || k === key) this.drop(k);
+  }
+
+  keys = () => [...this.trees.keys()];
+
+  dispose() {
+    this.forget();
+  }
+
+  private drop(k: string) {
+    this.trees.get(k)!.tree.delete();
+    this.trees.delete(k);
+  }
+}
+
+/** Where a parse keeps its tree: the cache, the key, and optionally the edit from the key's last text to this one */
+export type TreeAt = { cache: TreeCache; key: string; edit?: Edit };
+
+/** A tree of text: kept in at's cache (owned = false, do not delete), or, without at, the caller's to delete (owned = true) */
+export function treeOf(g: Grammar, text: string, at?: TreeAt): { tree: Tree; owned: boolean } {
+  if (!at || at.cache.max === 0) return { tree: parser(g).parse(text)!, owned: true };
+  return { tree: at.cache.tree(g, text, at.key, at.edit), owned: false };
 }

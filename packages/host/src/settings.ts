@@ -12,10 +12,28 @@ export const validSetting = (k: string, v: unknown): k is keyof Settings =>
  * 白板改了、还没写完的设置（写一次 settings.json 要一两百毫秒）。连着改（点两个主题、按住字号的箭头）时，前一次写完的改动事件
  * 广播出去的设置里这一项还是前一个值，白板会先跳回去再跳回来：这期间读设置用最后要写的值
  */
+export class SettingWrites {
+  private writes = new Map<string, { v: unknown }>();
+
+  /** The value last asked to be written for k, while that write is still going */
+  pending(k: string): { v: unknown } | undefined {
+    return this.writes.get(k);
+  }
+
+  async run(k: string, v: unknown, write: () => Promise<void>) {
+    const w = { v };
+    this.writes.set(k, w);
+    try {
+      await write();
+    } finally {
+      if (this.writes.get(k) === w) this.writes.delete(k);
+    }
+  }
+}
 
 /** One setting, the way the board gets it in readSettings */
 export function readSetting<K extends keyof Settings>(cx: HostContext, k: K): Settings[K] {
-  const w = cx.settingWrites.get(k);
+  const w = cx.settingWrites.pending(k);
   const v = w ? w.v : cx.ws.settings.get(`codeboard.${KEY[k]}`);
   const d: unknown = DEFAULT_SETTINGS[k];
   if (v === undefined || v === null) return d as Settings[K];
@@ -42,13 +60,9 @@ export async function writeSetting(cx: HostContext, k: keyof Settings, v: unknow
     cx.log("warn", `setSetting: ignored bad value for ${k}: ${JSON.stringify(v)?.slice(0, 200)}`);
     return;
   }
-  const w = { v };
-  cx.settingWrites.set(k, w);
-  try {
-    await cx.ws.settings.set(`codeboard.${KEY[k]}`, v, PROJECT.has(k) ? "workspace" : "user");
-  } finally {
-    if (cx.settingWrites.get(k) === w) cx.settingWrites.delete(k);
-  }
+  await cx.settingWrites.run(k, v, () =>
+    cx.ws.settings.set(`codeboard.${KEY[k]}`, v, PROJECT.has(k) ? "workspace" : "user"),
+  );
 }
 
 export const affectsSettings = (e: { affects(key: string): boolean }) =>

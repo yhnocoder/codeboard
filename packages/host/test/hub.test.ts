@@ -39,13 +39,18 @@ const env: HostEnv = {
 const dir = fs.mkdtempSync("/tmp/codeboard-hub-");
 const store = new Storage(nodeFs, { dir: () => dir });
 let hub: BoardHub;
+/** The message types the hub handed to its handler */
+const seen: string[] = [];
 
 beforeAll(async () => {
   cx = new HostContext(W);
   await startTreeSitter();
   await store.save(emptyBoard("bA", "A"));
   await store.save(emptyBoard("bB", "B"));
-  hub = new BoardHub(cx, env, store);
+  hub = new BoardHub(cx, env, store, () => async (_p, m) => {
+    seen.push(m.type);
+    return { ok: 1 } as never;
+  });
 });
 afterAll(() => {
   hub.dispose();
@@ -86,11 +91,6 @@ describe("BoardHub", () => {
     expect(await hub.restoreId("bB")).toBe("bB");
   });
   it("hands the view's messages to the handler and replies to requests", async () => {
-    const seen: string[] = [];
-    hub.handler = async (_p, m) => {
-      seen.push(m.type);
-      return { ok: 1 } as never;
-    };
     const p = hub.get("bA")!;
     p.ready = true;
     views[0].message.fire({ type: "skeletons", req: 7, ids: [] });

@@ -10,7 +10,7 @@ import { Storage } from "../src/storage/boards";
 import { nodeFs } from "../src/storage/nodefs";
 import { BoardHub } from "../src/hub";
 import { makeHandler } from "../src/handlers";
-import { stubView } from "./helpers";
+import { stubView, MEDIA } from "./helpers";
 import { startAnalysis } from "../src/analysis";
 import { staleFor } from "../src/versions";
 import { viewsFor } from "../src/views";
@@ -108,8 +108,7 @@ void (async () => {
   if (process.argv.includes("--switch")) {
     const { dir, store } = await boardStore(head, old);
     const env = { globalState: { get: () => undefined, set: async () => {} }, openView: () => stubView().view };
-    const hub = new BoardHub(cx, env, store);
-    hub.handler = makeHandler(cx, hub);
+    const hub = new BoardHub(cx, env, store, (h) => makeHandler(cx, h, MEDIA));
     const v = stubView();
     const p = hub.attach("bTop", v.view);
     await p.init();

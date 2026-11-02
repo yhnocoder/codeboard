@@ -1,5 +1,5 @@
 import { allCodeCards, type Segment } from "@codeboard/core";
-import { analysisOf } from "./analysis";
+import { analysisOf, treeAt } from "./analysis";
 import type { Storage } from "./storage/boards";
 import { workingPlace } from "./versions";
 import type { HostContext } from "./context";
@@ -40,7 +40,7 @@ export class BoardMarks {
     const ents = this.byFile.get(abs);
     if (!ents?.length) return [];
     const out: Lens[] = [];
-    for (const s of analysisOf(lang, text(), abs).symbols) {
+    for (const s of analysisOf(lang, text(), treeAt(this.cx, abs)).symbols) {
       const on = ents.filter((e) => e.seg.symbol?.qual === s.qual);
       if (!on.length) continue;
       const boards = new Set(on.map((e) => e.board));

@@ -1,20 +1,29 @@
 // One host's state: the Workspace it serves and everything it remembers about it (caches, indexes, background work,
 // what it logged). startHost makes one and every part of the host gets it explicitly, so two hosts can run side by side
 // in one process, and dispose() lets go of all of it.
+// Each feature keeps its own state in a class of its module; the context only holds one of each.
 // The parsers and the content-addressed analysis and highlighting caches stay per process (analysis.ts, views.ts):
-// tree-sitter's runtime is loaded once per process, and a cache keyed by content gives every host the same answer.
+// tree-sitter's runtime is loaded once per process, and a cache keyed by content gives every host the same answer. The syntax
+// trees kept for incremental parsing are keyed by file, so they are per host (trees).
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { Emitter, type Disposable, type Workspace } from "@codeboard/core";
+import type { Disposable, Workspace } from "@codeboard/core";
+import { TreeCache } from "@codeboard/analysis";
 import { langOfExt } from "@codeboard/analysis/langs";
+import { AiMemory } from "./ai";
+import { CodeEdit } from "./codeedit";
 import { DefCache } from "./defcache";
+import { Remotes } from "./exports";
 import { GitCache } from "./git";
+import { OpenedGithubFiles } from "./github";
 import { Lsp } from "./lsp";
 import { NameIndex } from "./nameindex";
 import { Prefetch } from "./prefetch";
 import { ScratchFiles } from "./scratchfiles";
 import { Scheduler } from "./sched";
+import { WorkspacePkgs } from "./scope";
+import { SettingWrites } from "./settings";
 import { Sources } from "./source";
 import { OpIndex } from "./torchops";
 import { Lru, notProject, posix } from "./ws";
@@ -28,50 +37,35 @@ const RECENT_FILES = 80;
 export class HostContext implements Disposable {
   readonly sched = new Scheduler();
   readonly git = new GitCache();
+  /** This host's syntax trees, kept by file for incremental parsing */
+  readonly trees = new TreeCache();
   readonly defs = new DefCache(this);
   readonly lsp = new Lsp(this);
   readonly index = new NameIndex(this);
   readonly ops = new OpIndex(this);
   readonly prefetch = new Prefetch(this);
   readonly sources = new Sources(this);
-  /** Top-level package names and whether they are in the workspace (scope.ts) */
-  readonly wsPkgs = new Map<string, Promise<boolean>>();
-  /** Settings the board changed that are still being written (settings.ts) */
-  readonly settingWrites = new Map<string, { v: unknown }>();
-  /** The board's media folder (CSS, fonts), inlined into exported HTML (exports.ts) */
-  readonly mediaDir: string;
-  /** A repository's origin URL (exports.ts) */
-  readonly remotes = new Map<string, Promise<string | undefined>>();
-  /** Endpoints and models that turned DeepSeek's FIM completion down (deepseek.ts) */
-  readonly noFim = new Set<string>();
-  /** Text read from images, by image and model (imageai.ts) */
-  readonly imageText = new Map<string, string>();
-  /** A GitHub file was opened (github.ts) */
-  readonly githubOpened = new Emitter<void>();
-  /** Recording opened GitHub files one after another (github.ts) */
-  githubRecording: Promise<void> = Promise.resolve();
-  /** Edited code's hidden documents for the language service (codeedit.ts) */
-  readonly codeDocs = new Map<string, { lang: string; near?: string; text: string; chain: Promise<unknown> }>();
-  readonly codeGen = new Map<string, number>();
+  readonly pkgs = new WorkspacePkgs(this);
+  readonly settingWrites = new SettingWrites();
+  readonly remotes = new Remotes();
+  readonly ai = new AiMemory();
+  readonly githubFiles = new OpenedGithubFiles(this);
+  readonly codeEdit = new CodeEdit(this);
   /** The hidden files behind code being edited on a board */
   readonly scratch = new ScratchFiles(this);
 
   private recent = new Lru<true>(RECENT_FILES);
   private logs: string[] = [];
 
-  constructor(
-    readonly ws: Workspace,
-    o: { mediaDir?: string } = {},
-  ) {
-    this.mediaDir = o.mediaDir ?? path.resolve(__dirname, "../media/board");
-  }
+  constructor(readonly ws: Workspace) {}
 
   dispose() {
     this.index.dispose();
     this.prefetch.dispose();
     this.ops.dispose();
-    this.githubOpened.dispose();
+    this.githubFiles.dispose();
     this.scratch.dispose();
+    this.trees.dispose();
   }
 
   log = (level: LogLevel, text: string) => {

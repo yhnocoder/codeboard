@@ -365,7 +365,7 @@ export async function imageAiJob(
     let r: ImageAiResult;
     if (key || choice === "deepseek") {
       r = await runImageAi(
-        { key: key ?? "", ...deepseekTarget(cx), signal: ac.signal, fetch: f, cache: cx.imageText },
+        { key: key ?? "", ...deepseekTarget(cx), signal: ac.signal, fetch: f, cache: cx.ai.imageText },
         op,
       );
     } else if (!ws.ai) {
@@ -376,7 +376,7 @@ export async function imageAiJob(
     } else {
       r = await runChatAi(ws.ai.chat, choice === "auto" ? undefined : choice, op, {
         signal: ac.signal,
-        cache: cx.imageText,
+        cache: cx.ai.imageText,
       });
       // 自动挑也没有模型：先设 DeepSeek 的密钥是最直接的出路（提示里给 Set DeepSeek API Key…）
       if ("fail" in r && r.fail === "nomodel" && choice === "auto")

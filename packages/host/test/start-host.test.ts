@@ -12,7 +12,7 @@ import { GitCache } from "../src/git";
 import { excludeScratch, scratchName } from "../src/scratchnames";
 import type { HostContext } from "../src/context";
 import { nodeWorkspace } from "./node-workspace";
-import { git, stubView, tempRepo } from "./helpers";
+import { git, stubView, tempRepo, MEDIA } from "./helpers";
 
 // the asset cleanup runs a minute after a storage directory opens: what is scheduled for which directory, and what is cancelled
 const sweeps = vi.hoisted(() => ({ scheduled: [] as string[], cancelled: [] as string[] }));
@@ -97,7 +97,7 @@ const posted = (type: HostToBoard["type"]) => views.flatMap((v) => v.posted).fil
 
 let host: Host;
 beforeAll(async () => {
-  host = startHost(W, env);
+  host = startHost(W, env, { mediaDir: MEDIA });
   await host.ready;
 });
 afterAll(() => {

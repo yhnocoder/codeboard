@@ -26,7 +26,6 @@ import {
   type SegView,
 } from "@codeboard/core";
 import { analysisOf } from "./analysis";
-import { codeDoc, codeDocClose, lspComplete, lspHover, lspSignature } from "./codeedit";
 import { commitInfo, headOf, logLines, resolveRef } from "./git";
 import { githubCard, ghQuery } from "./github";
 import { webMeta } from "./web";
@@ -60,7 +59,8 @@ type Out<T extends BoardToHost["type"]> = T extends AskType ? ReplyOf<T> : unkno
 type Handlers = { [T in BoardToHost["type"]]: (p: BoardPanel, m: Msg<T>) => Promise<Out<T>> | Out<T> };
 export type Handler = (p: BoardPanel, m: BoardToHost) => Promise<unknown>;
 
-export function makeHandler(cx: HostContext, panels: BoardHost): Handler {
+/** mediaDir = the board's media folder (CSS, fonts), inlined into exported HTML */
+export function makeHandler(cx: HostContext, panels: BoardHost, mediaDir: string): Handler {
   const store = panels.store;
   const h: Handlers = {
     ready: () => undefined, // BoardHub 自己处理
@@ -154,17 +154,17 @@ export function makeHandler(cx: HostContext, panels: BoardHost): Handler {
     searchName: (_p, m) => searchName(cx, m.name),
     genSource: (_p, m) => genSource(cx, m.from),
     complete: (p, m) => complete(cx, p, m.before, m.after),
-    codeDoc: (_p, m) => codeDoc(cx, m.id, m.lang, m.text, m.near),
-    codeDocClose: (_p, m) => codeDocClose(cx, m.id),
-    lspComplete: (_p, m) => lspComplete(cx, m.id, m.text, m.line, m.col, m.trigger),
-    lspHover: (_p, m) => lspHover(cx, m.id, m.text, m.line, m.col),
-    lspSignature: (_p, m) => lspSignature(cx, m.id, m.text, m.line, m.col, m.trigger),
+    codeDoc: (_p, m) => cx.codeEdit.open(m.id, m.lang, m.text, m.near),
+    codeDocClose: (_p, m) => cx.codeEdit.close(m.id),
+    lspComplete: (_p, m) => cx.codeEdit.complete(m.id, m.text, m.line, m.col, m.trigger),
+    lspHover: (_p, m) => cx.codeEdit.hover(m.id, m.text, m.line, m.col),
+    lspSignature: (_p, m) => cx.codeEdit.signature(m.id, m.text, m.line, m.col, m.trigger),
     captureRun: (p) => void captureFlow(cx, store.dir(), p, prompts(cx, p)),
     exportBoards: (p) => void exportFlow(cx, store, [p.id], p.board?.name ?? "Board"),
     applyRun: (p) => void applyFlow(cx, store.dir(), p, prompts(cx, p)),
     questions: () => allQuestions(store),
     permalinks: (_p, m) => permalinks(cx, m.segs),
-    exportFile: (_p, m) => exportFile(cx, store, m.kind, m.name, m.text),
+    exportFile: (_p, m) => exportFile(cx, store, mediaDir, m.kind, m.name, m.text),
     copyText: (_p, m) => cx.ws.ui.copy(m.text),
     imageAi: (p, m) => imageAiJob(cx, p.imageJobs, m.job, m.op),
     imageAiCancel: (p, m) => {

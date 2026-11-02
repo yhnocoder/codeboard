@@ -11,8 +11,6 @@ import type { LspItem, LspKind, LspSignature, WorkspaceScratch } from "@codeboar
 import { isScratchName } from "@codeboard/host";
 
 export type Doc = { uri: vscode.Uri; doc: vscode.TextDocument };
-/** file → its document */
-const docs = new Map<string, Doc>();
 /** Skipped by the document and file listeners. By name: a notice that comes after the file is deleted, or for another window's
  *  file, is skipped too */
 export const isScratch = (u: vscode.Uri) => u.scheme === "file" && isScratchName(path.basename(u.fsPath));
@@ -47,7 +45,8 @@ const unsnippet = (s: string) =>
     .replace(/\$\{\d+\}|\$\d+/g, "")
     .replace(/\\([$}\\])/g, "$1");
 
-async function ensure(file: string, lang: string): Promise<Doc> {
+/** docs = file → its document */
+async function ensure(docs: Map<string, Doc>, file: string, lang: string): Promise<Doc> {
   const have = docs.get(file);
   if (have && !have.doc.isClosed) {
     if (have.doc.languageId !== lang) have.doc = await vscode.languages.setTextDocumentLanguage(have.doc, lang);
@@ -145,9 +144,11 @@ function signature(h: vscode.SignatureHelp | undefined): LspSignature | null {
 }
 
 export function vscodeScratch(): WorkspaceScratch {
+  /** file → its document */
+  const docs = new Map<string, Doc>();
   return {
     sync: async (file, lang, text) => {
-      await setText(await ensure(file, lang), text);
+      await setText(await ensure(docs, file, lang), text);
     },
     // a document that is not open in an editor and has no unsaved changes VS Code lets go by itself
     close: (file) => void docs.delete(file),

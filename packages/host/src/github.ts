@@ -4,10 +4,12 @@
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
 import {
+  Emitter,
   parseGithubUrl,
   renderLine,
   type ReplyOf,
   type Commit,
+  type Disposable,
   type GhFile,
   type GhQuery,
   type GhRepo,
@@ -147,7 +149,7 @@ async function cardAt(
   e?: number,
 ): Promise<NewCard> {
   const text = await fetchFile(cx, owner, name, commit, rel, ref);
-  await remember(cx, owner, name, commit, rel);
+  await cx.githubFiles.remember(owner, name, commit, rel);
   const lines = splitLines(text);
   const root = cx.sources.githubFileDir(owner, name, commit);
   const abs = path.join(root, rel);
@@ -227,7 +229,7 @@ export async function ghQuery(cx: HostContext, q: GhQuery): Promise<ReplyOf<"gh"
     case "file": {
       const text = await fetchFile(cx, q.owner, q.name, q.commit, q.path, q.ref);
       if (text.includes("\u0000")) throw new Error(`${path.basename(q.path)} is a binary file.`);
-      await remember(cx, q.owner, q.name, q.commit, q.path);
+      await cx.githubFiles.remember(q.owner, q.name, q.commit, q.path);
       const lines = splitLines(text);
       const lang = cx.langOf(path.join(cx.sources.githubFileDir(q.owner, q.name, q.commit), q.path));
       const html = lines.length > 8000 ? lines.map((l) => renderLine([{ text: l }])) : await highlight(lines, lang);
@@ -243,18 +245,31 @@ export async function ghQuery(cx: HostContext, q: GhQuery): Promise<ReplyOf<"gh"
 
 const OPENED = "codeboard.githubFiles";
 const fileKey = (owner: string, name: string, commit: string, rel: string) => `${owner}/${name}/${commit}/${rel}`;
-/** 一个接一个记：几个文件同时打开时，后写的不会盖掉先写的 */
-function remember(cx: HostContext, owner: string, name: string, commit: string, rel: string): Promise<void> {
-  const run = cx.githubRecording.then(async () => {
-    const st = cx.ws.storage,
-      keys = st.get<string[]>(OPENED) ?? [],
-      k = fileKey(owner, name, commit, rel);
-    if (keys.includes(k)) return;
-    await st.set(OPENED, [...keys, k]);
-    cx.githubOpened.fire();
-  });
-  cx.githubRecording = run.catch(() => {}); // 一次写失败不挡住后面的
-  return run;
+/** The GitHub files one host's workspace opened */
+export class OpenedGithubFiles implements Disposable {
+  private emitter = new Emitter<void>();
+  readonly onDidOpen = this.emitter.event;
+  private recording: Promise<void> = Promise.resolve();
+
+  constructor(private cx: HostContext) {}
+
+  /** 一个接一个记：几个文件同时打开时，后写的不会盖掉先写的 */
+  remember(owner: string, name: string, commit: string, rel: string): Promise<void> {
+    const run = this.recording.then(async () => {
+      const st = this.cx.ws.storage,
+        keys = st.get<string[]>(OPENED) ?? [],
+        k = fileKey(owner, name, commit, rel);
+      if (keys.includes(k)) return;
+      await st.set(OPENED, [...keys, k]);
+      this.emitter.fire();
+    });
+    this.recording = run.catch(() => {}); // 一次写失败不挡住后面的
+    return run;
+  }
+
+  dispose() {
+    this.emitter.dispose();
+  }
 }
 
 export async function workspaceGithubFiles(

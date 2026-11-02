@@ -8,16 +8,21 @@ import { makeHandler } from "../src/handlers";
 import type { BoardHost, BoardPanel } from "../src/boards";
 import { WS, nodeWorkspace } from "./node-workspace";
 import { HostContext } from "../src/context";
+import { MEDIA } from "./helpers";
 
 const W = nodeWorkspace();
 const cx = new HostContext(W);
 const dir = fs.mkdtempSync("/tmp/codeboard-ce-");
-const h = makeHandler(cx, {
-  get cx() {
-    return cx;
-  },
-  store: new Storage(nodeFs, { dir: () => dir }),
-} as unknown as BoardHost);
+const h = makeHandler(
+  cx,
+  {
+    get cx() {
+      return cx;
+    },
+    store: new Storage(nodeFs, { dir: () => dir }),
+  } as unknown as BoardHost,
+  MEDIA,
+);
 const send = (m: BoardToHost) => h({} as BoardPanel, m);
 afterAll(() => fs.rmSync(dir, { recursive: true, force: true }));
 

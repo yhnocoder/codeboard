@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import * as path from "node:path";
-import { debounce, startHost, type Host } from "@codeboard/host";
+import { debounce, startHost } from "@codeboard/host";
 import { questionsMarkdown } from "@codeboard/core";
 import { analyzedEditorLangs } from "@codeboard/analysis/langs";
 import { registerCommands } from "./commands";
@@ -10,19 +10,23 @@ import { BoardWebviews, VIEW_TYPE } from "./panel";
 import { BoardsTree, GithubTree, QuestionsTree } from "./sidebar";
 import { registerVersionDocs, vscodeWorkspace } from "./vscode/workspace";
 
-/** 退出时要把没写盘的白板改动写完 */
-let host: Host | undefined;
+/**
+ * 退出时要把没写盘的白板改动写完。deactivate() 拿不到 ExtensionContext，而 VS Code 只等 deactivate 返回的 promise
+ * （ctx.subscriptions 是不等就 dispose 的），所以写完的入口只能放在模块里
+ */
+let flushOnExit: (() => Promise<void>) | undefined;
 
 export async function activate(ctx: vscode.ExtensionContext) {
   const sub = (d: vscode.Disposable) => ctx.subscriptions.push(d);
   const ws = vscodeWorkspace(ctx);
   const webviews = new BoardWebviews(ctx);
   // tree-sitter 的 wasm 由 esbuild 脚本拷进 dist/
-  const h = (host = startHost(ws, webviews.env(), {
+  const h = startHost(ws, webviews.env(), {
     wasmDir: path.join(ctx.extensionUri.fsPath, "dist"),
     mediaDir: path.join(ctx.extensionUri.fsPath, "media", "board"),
-  }));
+  });
   sub(h);
+  flushOnExit = h.flush;
   const { hub, store } = h;
 
   // 先注册恢复面板，再等 tree-sitter（恢复时的 ready 消息会等 init 里的分析）
@@ -119,5 +123,5 @@ export async function activate(ctx: vscode.ExtensionContext) {
 }
 
 export async function deactivate() {
-  await host?.flush();
+  await flushOnExit?.();
 }

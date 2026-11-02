@@ -7,7 +7,7 @@ import { BoardHub } from "../src/hub";
 import { makeHandler } from "../src/handlers";
 import type { HostEnv } from "../src/env";
 import { nodeWorkspace } from "./node-workspace";
-import { stubView } from "./helpers";
+import { stubView, MEDIA } from "./helpers";
 import { HostContext } from "../src/context";
 
 let cx: HostContext;
@@ -73,8 +73,7 @@ beforeAll(async () => {
   );
   await store.save(board("bC", "Gamma", [{ id: "c1", md: "## Roofline" }]));
   globalState.set("codeboard.opened", { bB: 1, bC: 2 });
-  hub = new BoardHub(cx, env, store);
-  hub.handler = makeHandler(cx, hub);
+  hub = new BoardHub(cx, env, store, (h) => makeHandler(cx, h, MEDIA));
 });
 afterAll(() => {
   hub.dispose();

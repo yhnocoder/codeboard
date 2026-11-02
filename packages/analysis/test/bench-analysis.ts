@@ -3,7 +3,7 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import TS from "@vscode/tree-sitter-wasm";
-import { initAnalysis, analyze, languageOf, forgetTree, setTreeCacheSize } from "../src";
+import { initAnalysis, analyze, languageOf, TreeCache } from "../src";
 import { analyzeOld } from "./oracle/analysis-old";
 
 const dir = process.argv[2] ?? new URL("../../../examples/sglang", import.meta.url).pathname;
@@ -15,7 +15,7 @@ const files = execFileSync("bash", ["-c", `find ${dir} -name '*.py' -printf '%s 
   .map((l) => l.split(" ")[1]);
 const texts = files.map((f) => readFileSync(f, "utf8"));
 await initAnalysis();
-setTreeCacheSize(2 * files.length + 4); // 每个文件一棵树，不让 LRU 挤掉
+const cache = new TreeCache(2 * files.length + 4); // 每个文件一棵树，不让 LRU 挤掉
 const p = new TS.Parser();
 p.setLanguage(languageOf("python")!);
 
@@ -62,10 +62,10 @@ const newFull = time(() => {
 });
 // 增量：树已在缓存里（key = 文件），一行改动后再分析
 let flip = false;
-texts.forEach((t, i) => analyze("python", t, { key: files[i] }));
+texts.forEach((t, i) => analyze("python", t, { tree: { cache, key: files[i] } }));
 const incr = time(() => {
   flip = !flip;
-  texts.forEach((t, i) => analyze("python", flip ? edited[i] : t, { key: files[i] }));
+  texts.forEach((t, i) => analyze("python", flip ? edited[i] : t, { tree: { cache, key: files[i] } }));
 }, 6);
 const incrParse = time(() => {
   flip = !flip;
@@ -75,10 +75,12 @@ const incrParse = time(() => {
   });
 }, 6);
 // 按行：树在缓存里（同一个文件的第二张卡 / 再次渲染）；树不在（第一次）
-const segWarm = time(() => texts.forEach((t, i) => analyze("python", t, { key: files[i], lines: segs[i] })));
-forgetTree();
+const segWarm = time(() =>
+  texts.forEach((t, i) => analyze("python", t, { tree: { cache, key: files[i] }, lines: segs[i] })),
+);
+cache.forget();
 const segCold = time(() => texts.forEach((t, i) => analyze("python", t, { lines: segs[i] })));
-const fullWarm = time(() => texts.forEach((t, i) => analyze("python", t, { key: "w" + files[i] })));
+const fullWarm = time(() => texts.forEach((t, i) => analyze("python", t, { tree: { cache, key: "w" + files[i] } })));
 const r = (x: number) => `${Math.round(x)} ms`;
 console.log(
   JSON.stringify(

@@ -8,6 +8,7 @@ import { focusUser, imageAiJob, imageAiRequest, SYS_FOCUS } from "../src/imageai
 import { makeHandler } from "../src/handlers";
 import { nodeWorkspace } from "./node-workspace";
 import { HostContext } from "../src/context";
+import { MEDIA } from "./helpers";
 
 let cx: HostContext;
 
@@ -73,7 +74,7 @@ describe("AI tools: which model", () => {
     expect(fetches.length).toBe(1);
     expect(chats.length).toBe(0);
     key = undefined;
-    cx.imageText.clear();
+    cx.ai.imageText.clear();
     expect(await imageAiJob(cx, new Map(), 2, extract, fetchFake)).toEqual({ text: "from copilot" });
     expect(chats.length).toBe(1);
     expect(chats[0].model).toBeUndefined();
@@ -190,7 +191,7 @@ describe("Settings › AI", () => {
     const info = await aiInfo(cx);
     expect(info).toEqual({ key: true, models: MODELS });
     expect(JSON.stringify(info)).not.toContain(KEY);
-    const h = makeHandler(cx, { store: {} } as never);
+    const h = makeHandler(cx, { store: {} } as never, MEDIA);
     expect(await h(undefined as never, { type: "aiKey", req: 1, action: "clear" })).toEqual({
       key: false,
       models: MODELS,

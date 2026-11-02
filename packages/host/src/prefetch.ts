@@ -1,7 +1,7 @@
 // 预取：鼠标停在调用上就先问定义、读好目标文件（分析、分词），点下去时只剩建卡；
 // 打开白板后在后台给白板上的文件各问一次定义，让语言服务先热起来（第一次点不用等它冷启动）。
 import type { Disposable, Segment } from "@codeboard/core";
-import { segAnalysis } from "./analysis";
+import { segAnalysis, treeAt } from "./analysis";
 import { cardForFileSym } from "./cards";
 import { dispatchOf, symAtDef } from "./resolve";
 import type { HostContext } from "./context";
@@ -65,7 +65,7 @@ export class Prefetch implements Disposable {
               const text = await this.cx.readText(wp.abs);
               if (text === null) continue;
               // 段里的第一个调用（self.xxx() 优先：多半是本仓库的代码，语言服务要把 import 都解析一遍）
-              const calls = segAnalysis(seg.lang, text, wp.start, wp.end, wp.abs).calls.filter(
+              const calls = segAnalysis(seg.lang, text, wp.start, wp.end, treeAt(this.cx, wp.abs)).calls.filter(
                 (c) => c.line >= wp.start && c.line <= wp.end && !c.dispatch,
               );
               const c = calls.find((x) => x.recv === "self") ?? calls[0];

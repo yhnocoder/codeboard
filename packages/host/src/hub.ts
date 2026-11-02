@@ -60,7 +60,8 @@ export class BoardHub implements BoardHost, Disposable {
   readonly onDidChangeTarget = this.targetEmitter.event;
   private staleEmitter = new Emitter<void>();
   readonly onDidChangeStale = this.staleEmitter.event;
-  handler: Handler = async () => undefined;
+  /** What the boards' messages do */
+  readonly handler: Handler;
   /** ⌘C 复制的卡（贴到别的白板时用） */
   clip: CardClip | undefined;
   /** 共享卡的改动按顺序转发（段的展示数据要先算好） */
@@ -71,6 +72,7 @@ export class BoardHub implements BoardHost, Disposable {
     readonly cx: HostContext,
     private env: HostEnv,
     readonly store: Storage,
+    handler: (hub: BoardHub) => Handler,
   ) {
     this.target = this.cx.ws.storage.get<string>(TARGET);
     // 共享卡写进了卡库：开着同一张卡的别的白板换上（存储里的那份已经换好了）。卡本身变了（新版本、改段）时带上段的展示数据
@@ -165,6 +167,8 @@ export class BoardHub implements BoardHost, Disposable {
         this.refreshBoardRefs();
       }),
     );
+    // Last: the handler may read the hub's fields
+    this.handler = handler(this);
   }
 
   /** 面板换上宿主这边变了的白板（patch = 从它现在的样子到存储里的样子）；新来的代码卡带上段的展示数据 */

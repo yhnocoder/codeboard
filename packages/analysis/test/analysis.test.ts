@@ -4,8 +4,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { initAnalysis, analyze, clipAnalysis, diffEdit, forgetTree, setTreeCacheSize, type FileAnalysis } from "../src";
-import { cachedTrees } from "../src/tree";
+import { initAnalysis, analyze, clipAnalysis, diffEdit, TreeCache, type FileAnalysis } from "../src";
 import { analyzeOld } from "./oracle/analysis-old";
 
 const repo = fileURLToPath(new URL("../../../examples/nano-vllm", import.meta.url));
@@ -297,9 +296,11 @@ describe("segment analysis", () => {
 describe("incremental parsing", () => {
   it("edits on a kept tree give the same result as a fresh parse", () => {
     const f = PY.find((x) => x.name.endsWith("scheduler.py"))!;
+    const cache = new TreeCache();
     const key = "test:scheduler";
+    const tree = { cache, key };
     let text = f.text;
-    same(analyze("python", text, { key }), analyze("python", text));
+    same(analyze("python", text, { tree }), analyze("python", text));
     const steps: ((t: string) => string)[] = [
       (t) => t.replace("def schedule(self)", "def schedule(self, budget=1)"), // 改一行
       (t) => t.replace("\n", "\nimport json\n"), // 加一行
@@ -311,38 +312,50 @@ describe("incremental parsing", () => {
     for (const step of steps) {
       const prev = text;
       text = step(text);
-      same(analyze("python", text, { key }), analyze("python", text));
+      same(analyze("python", text, { tree }), analyze("python", text));
       // 调用方给出编辑
-      forgetTree(key);
-      analyze("python", prev, { key });
-      same(analyze("python", text, { key, edit: diffEdit(prev, text) }), analyze("python", text));
+      cache.forget(key);
+      analyze("python", prev, { tree });
+      same(analyze("python", text, { tree: { ...tree, edit: diffEdit(prev, text) } }), analyze("python", text));
     }
     // 给错的编辑：退回按前后缀算
     same(
       analyze("python", f.text, {
-        key,
-        edit: {
-          startIndex: 0,
-          oldEndIndex: 1,
-          newEndIndex: 1,
-          startPosition: { row: 0, column: 0 },
-          oldEndPosition: { row: 0, column: 1 },
-          newEndPosition: { row: 0, column: 1 },
+        tree: {
+          ...tree,
+          edit: {
+            startIndex: 0,
+            oldEndIndex: 1,
+            newEndIndex: 1,
+            startPosition: { row: 0, column: 0 },
+            oldEndPosition: { row: 0, column: 1 },
+            newEndPosition: { row: 0, column: 1 },
+          },
         },
       }),
       analyze("python", f.text),
     );
     // 换语言：重新解析
-    same(analyze("cuda-cpp", CPP[0].text, { key }), analyze("cuda-cpp", CPP[0].text));
-    forgetTree(key);
+    same(analyze("cuda-cpp", CPP[0].text, { tree }), analyze("cuda-cpp", CPP[0].text));
+    cache.dispose();
   });
   it("the tree cache is bounded", () => {
-    setTreeCacheSize(3);
-    for (let i = 0; i < 6; i++) analyze("python", `x = ${i}\n`, { key: `k${i}` });
-    expect(cachedTrees()).toEqual(["k3", "k4", "k5"]);
-    forgetTree();
-    expect(cachedTrees()).toEqual([]);
-    setTreeCacheSize(16);
+    const cache = new TreeCache(3);
+    for (let i = 0; i < 6; i++) analyze("python", `x = ${i}\n`, { tree: { cache, key: `k${i}` } });
+    expect(cache.keys()).toEqual(["k3", "k4", "k5"]);
+    cache.forget();
+    expect(cache.keys()).toEqual([]);
+  });
+  it("two tree caches keep the same key apart", () => {
+    const a = new TreeCache(1),
+      b = new TreeCache(1);
+    analyze("python", "x = 1\n", { tree: { cache: a, key: "f.py" } });
+    analyze("python", "y = 2\n", { tree: { cache: b, key: "f.py" } });
+    analyze("python", "z = 3\n", { tree: { cache: b, key: "g.py" } });
+    expect([a.keys(), b.keys()]).toEqual([["f.py"], ["g.py"]]);
+    b.forget();
+    expect(a.keys()).toEqual(["f.py"]);
+    a.dispose();
   });
   it("diffEdit covers the changed span", () => {
     expect(diffEdit("ab\ncd\nef", "ab\ncXd\nef")).toEqual({

@@ -44,9 +44,14 @@ export function registerVersionDocs(
   });
 }
 
-let flashDeco: vscode.TextEditorDecorationType | undefined;
-
-async function show(uri: vscode.Uri, line: number | undefined, end?: number, readonly = false) {
+/** flash = the decoration the opened lines light up with for a moment */
+async function show(
+  flash: vscode.TextEditorDecorationType,
+  uri: vscode.Uri,
+  line: number | undefined,
+  end?: number,
+  readonly = false,
+) {
   const doc = await vscode.workspace.openTextDocument(uri);
   const ed = await vscode.window.showTextDocument(doc, {
     viewColumn: codeColumn(),
@@ -63,12 +68,8 @@ async function show(uri: vscode.Uri, line: number | undefined, end?: number, rea
     ed.selection = new vscode.Selection(pos, pos);
     ed.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenterIfOutsideViewport);
     const r = new vscode.Range(l, 0, Math.max(l, Math.min(doc.lineCount - 1, (end ?? line) - 1)), 0);
-    const deco = (flashDeco ??= vscode.window.createTextEditorDecorationType({
-      backgroundColor: new vscode.ThemeColor("editor.rangeHighlightBackground"),
-      isWholeLine: true,
-    }));
-    ed.setDecorations(deco, [r]);
-    setTimeout(() => ed.setDecorations(deco, []), 1200);
+    ed.setDecorations(flash, [r]);
+    setTimeout(() => ed.setDecorations(flash, []), 1200);
   }
 }
 
@@ -191,6 +192,12 @@ async function lmChat(
 
 export function vscodeWorkspace(ctx: vscode.ExtensionContext): Workspace {
   let ch: vscode.LogOutputChannel | undefined;
+  const flash = vscode.window.createTextEditorDecorationType({
+    backgroundColor: new vscode.ThemeColor("editor.rangeHighlightBackground"),
+    isWholeLine: true,
+  });
+  ctx.subscriptions.push(flash);
+  const undoAddKey = undoAddContext(ctx);
 
   // VS Code 自带的 git 插件（有的话）：checkout、commit、pull 都会触发；第一次有人订阅时才接上
   const git = new Emitter<void>();
@@ -328,8 +335,8 @@ export function vscodeWorkspace(ctx: vscode.ExtensionContext): Workspace {
           selectionText: doc.getText(ed.selection),
         };
       },
-      open: (abs, o = {}) => show(vscode.Uri.file(abs), o.line, o.end, o.readonly),
-      openVersion: (v, line) => show(gitUri(v.root, v.commit, v.path), line),
+      open: (abs, o = {}) => show(flash, vscode.Uri.file(abs), o.line, o.end, o.readonly),
+      openVersion: (v, line) => show(flash, gitUri(v.root, v.commit, v.path), line),
     },
     ui: {
       info: async (text, ...actions) => vscode.window.showInformationMessage(text, ...actions),
@@ -393,7 +400,8 @@ export function vscodeWorkspace(ctx: vscode.ExtensionContext): Workspace {
       (await vscode.authentication.getSession("github", ["repo"], ask ? { createIfNone: true } : { silent: true }))
         ?.accessToken,
     log: (level, text) => {
-      (ch ??= vscode.window.createOutputChannel("CodeBoard", { log: true }))[level](text);
+      if (!ch) ctx.subscriptions.push((ch = vscode.window.createOutputChannel("CodeBoard", { log: true })));
+      ch[level](text);
     },
     about: {
       app: vscode.version,
@@ -408,18 +416,25 @@ export function vscodeWorkspace(ctx: vscode.ExtensionContext): Workspace {
 
 /** codeboard.canUndoAdd：⌥B 之后编辑器里的 ⌘Z 撤销那次添加（package.json 的 codeboard.undoAdd 键）。
  *  编辑器里一改字、动光标、换编辑器就关掉，⌘Z 回到编辑器自己的撤销 */
-let undoAddOff: vscode.Disposable[] = [];
-function undoAddKey(on: boolean) {
-  for (const d of undoAddOff) d.dispose();
-  undoAddOff = [];
-  void vscode.commands.executeCommand("setContext", "codeboard.canUndoAdd", on);
-  if (!on) return;
-  const off = () => undoAddKey(false);
-  undoAddOff = [
-    vscode.workspace.onDidChangeTextDocument((e) => {
-      if (e.contentChanges.length) off();
-    }),
-    vscode.window.onDidChangeTextEditorSelection(off),
-    vscode.window.onDidChangeActiveTextEditor(off),
-  ];
+function undoAddContext(ctx: vscode.ExtensionContext): (on: boolean) => void {
+  let listening: vscode.Disposable[] = [];
+  const stop = () => {
+    for (const d of listening) d.dispose();
+    listening = [];
+  };
+  ctx.subscriptions.push({ dispose: stop });
+  const set = (on: boolean) => {
+    stop();
+    void vscode.commands.executeCommand("setContext", "codeboard.canUndoAdd", on);
+    if (!on) return;
+    const off = () => set(false);
+    listening = [
+      vscode.workspace.onDidChangeTextDocument((e) => {
+        if (e.contentChanges.length) off();
+      }),
+      vscode.window.onDidChangeTextEditorSelection(off),
+      vscode.window.onDidChangeActiveTextEditor(off),
+    ];
+  };
+  return set;
 }

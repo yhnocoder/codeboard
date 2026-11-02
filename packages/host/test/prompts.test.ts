@@ -11,7 +11,7 @@ import { makeActions } from "../src/actions";
 import { prompts } from "../src/prompts";
 import type { HostEnv } from "../src/env";
 import { nodeWorkspace } from "./node-workspace";
-import { stubView } from "./helpers";
+import { stubView, MEDIA } from "./helpers";
 import { HostContext } from "../src/context";
 
 let cx: HostContext;
@@ -56,8 +56,7 @@ const order: string[] = [];
 beforeAll(async () => {
   cx = new HostContext(W);
   await store.save(emptyBoard("bP", "Prompts"));
-  hub = new BoardHub(cx, env, store);
-  hub.handler = makeHandler(cx, hub);
+  hub = new BoardHub(cx, env, store, (h) => makeHandler(cx, h, MEDIA));
   const p = (await hub.show("bP"))!;
   p.ready = true;
   p.view.focus = async () => {

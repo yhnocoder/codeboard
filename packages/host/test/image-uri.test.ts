@@ -11,6 +11,7 @@ import type { BoardHost, BoardPanel } from "../src/boards";
 import { png } from "./images";
 import { nodeWorkspace } from "./node-workspace";
 import { HostContext } from "../src/context";
+import { MEDIA } from "./helpers";
 
 let cx: HostContext;
 
@@ -82,11 +83,15 @@ describe("reading a dropped image by URI", () => {
   });
 
   it("answers the board's readImageUri message", async () => {
-    const h = makeHandler(cx, {
-      get cx() {
-        return cx;
-      },
-    } as unknown as BoardHost);
+    const h = makeHandler(
+      cx,
+      {
+        get cx() {
+          return cx;
+        },
+      } as unknown as BoardHost,
+      MEDIA,
+    );
     const url = await (h(
       {} as BoardPanel,
       { type: "readImageUri", req: 1, uri: file(ws, "a.png", PNG) } as BoardToHost,

@@ -5,11 +5,12 @@ import * as path from "node:path";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { emptyBoard, type Board, type HostToBoard } from "@codeboard/core";
 import type { Storage } from "../src/storage/boards";
+import { makeHandler } from "../src/handlers";
 import { BoardHub } from "../src/hub";
 import type { HostEnv } from "../src/env";
 import { BoardPlace, moveIntoProject } from "../src/storage/place";
 import { nodeWorkspace, type TestWorkspace } from "./node-workspace";
-import { git, stubView, tempRepo } from "./helpers";
+import { git, MEDIA, stubView, tempRepo } from "./helpers";
 import { HostContext } from "../src/context";
 
 let cx: HostContext;
@@ -51,7 +52,7 @@ async function hubOn(store: Storage, ids: string[]) {
       return v.view;
     },
   };
-  const hub = new BoardHub(cx, env, store);
+  const hub = new BoardHub(cx, env, store, (h) => makeHandler(cx, h, MEDIA));
   for (const id of ids) {
     const p = (await hub.show(id))!;
     p.board = store.peek(id);
@@ -186,7 +187,7 @@ describe("boards in the project", () => {
 
     const v = stubView();
     const env: HostEnv = { globalState: { get: () => undefined, set: async () => undefined }, openView: () => v.view };
-    const hub = new BoardHub(cx, env, store);
+    const hub = new BoardHub(cx, env, store, (h) => makeHandler(cx, h, MEDIA));
     const p = (await hub.show("bG"))!;
     p.board = store.peek("bG");
     p.ready = true;

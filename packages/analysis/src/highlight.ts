@@ -4,7 +4,7 @@
 // 捕获名直接对到白板的颜色 class（render.ts 的 kw / fn / str / com / num / self / p），颜色和 shiki 的 css-variables 主题给的一样，主题不用加颜色：
 // 关键字、运算符、内建类型（int、size_t…）是 kw，类型名和函数名是 fn（shiki 的 entity.name.type 也是 function 色），常量字面量是 num。
 import type { Node } from "@vscode/tree-sitter-wasm";
-import { languageOf, query, treeOf, type Grammar } from "./tree";
+import { languageOf, query, treeOf, type Grammar, type TreeAt } from "./tree";
 
 export type HlTok = { text: string; cls?: string };
 
@@ -72,12 +72,12 @@ const SRC: Record<Grammar, string | undefined> = { cpp: CPP, python: undefined, 
 
 type Span = { s: number; e: number; cls: string; pat: number };
 
-/** 每行的 token。key = 文件路径：和分析共用那棵树（同样的文本不再解析）。tree-sitter 没准备好时整行一个 token */
-export function highlightLines(g: Grammar, text: string, key?: string): HlTok[][] {
+/** 每行的 token。at = 分析留着树的地方：和分析共用那棵树（同样的文本不再解析）。tree-sitter 没准备好时整行一个 token */
+export function highlightLines(g: Grammar, text: string, at?: TreeAt): HlTok[][] {
   const lines = text.split(/\r?\n/);
   const src = SRC[g];
   if (!src || !languageOf(g)) return lines.map((l) => [{ text: l }]);
-  const { tree, owned } = treeOf(g, text, key);
+  const { tree, owned } = treeOf(g, text, at);
   try {
     const spans: Span[] = [];
     collect(g, src, tree.rootNode, 0, spans);

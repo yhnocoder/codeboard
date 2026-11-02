@@ -7,21 +7,33 @@ import type { HostContext } from "./context";
 import { exists } from "./ws";
 import { hasLocalFile } from "./source";
 
-/** 顶层包名在不在工作区里：某个根下有 <pkg>/、<pkg>.py 或 src/<pkg>/ */
-function isWorkspacePkg(cx: HostContext, pkg: string): Promise<boolean> {
-  let p = cx.wsPkgs.get(pkg);
-  if (!p) {
-    p = (async () => {
-      for (const r of cx.roots()) {
-        if (path.basename(r) === pkg) return true;
-        for (const c of [path.join(r, pkg), path.join(r, `${pkg}.py`), path.join(r, "src", pkg)])
-          if (await exists(c)) return true;
-      }
-      return false;
-    })();
-    cx.wsPkgs.set(pkg, p);
+/** One host's answers to whether a top-level package name is in its workspace */
+export class WorkspacePkgs {
+  private known = new Map<string, Promise<boolean>>();
+
+  constructor(private cx: HostContext) {}
+
+  /** 顶层包名在不在工作区里：某个根下有 <pkg>/、<pkg>.py 或 src/<pkg>/ */
+  has(pkg: string): Promise<boolean> {
+    let p = this.known.get(pkg);
+    if (!p) {
+      p = (async () => {
+        for (const r of this.cx.roots()) {
+          if (path.basename(r) === pkg) return true;
+          for (const c of [path.join(r, pkg), path.join(r, `${pkg}.py`), path.join(r, "src", pkg)])
+            if (await exists(c)) return true;
+        }
+        return false;
+      })();
+      this.known.set(pkg, p);
+    }
+    return p;
   }
-  return p;
+
+  /** Files or roots changed: ask again */
+  forget() {
+    this.known.clear();
+  }
 }
 
 const SITE = /[\\/](site-packages|dist-packages)[\\/]/;
@@ -62,7 +74,7 @@ export async function callPkgs(
   const lib = new Map<string, boolean>();
   for (const im of imports) {
     const p = importPkg({ imports: [im] }, { name: im.name });
-    if (p && !lib.has(p)) lib.set(p, !(await isWorkspacePkg(cx, p)));
+    if (p && !lib.has(p)) lib.set(p, !(await cx.pkgs.has(p)));
   }
   return (c) => {
     const p = importPkg({ imports }, c);

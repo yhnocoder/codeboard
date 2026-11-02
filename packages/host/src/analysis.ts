@@ -1,5 +1,6 @@
 import { fingerprint } from "@codeboard/core";
-import { analyze, clipAnalysis, initAnalysis, type FileAnalysis } from "@codeboard/analysis";
+import { analyze, clipAnalysis, initAnalysis, type FileAnalysis, type TreeAt } from "@codeboard/analysis";
+import type { HostContext } from "./context";
 import { Lru } from "./ws";
 
 let ready = false;
@@ -32,13 +33,13 @@ export function cachedAnalysis(lang: string, text: string): FileAnalysis | undef
 
 /**
  * 分析一份文本（按语言 + 内容指纹缓存）；tree-sitter 没准备好时只有空行标记。
- * file = 文本来自哪个文件：留着这个文件的语法树，文件改了再分析时增量解析
+ * tree = 文本来自哪个文件（treeAt）：留着这个文件的语法树，文件改了再分析时增量解析
  */
-export function analysisOf(lang: string, text: string, file?: string): FileAnalysis {
+export function analysisOf(lang: string, text: string, tree?: TreeAt): FileAnalysis {
   const k = keyOf(lang, text);
   let a = cache.get(k);
   if (!a) {
-    a = analyze(lang, text, { key: file });
+    a = analyze(lang, text, { tree });
     if (ready) cache.set(k, a);
   }
   return a;
@@ -46,16 +47,16 @@ export function analysisOf(lang: string, text: string, file?: string): FileAnaly
 
 /**
  * 只要 start..end 这几行（卡片的段）：calls、注释 / docstring 标记只算这几行，symbols 只有和这几行相交的，imports 是整个文件的。
- * 整个文件分析过就直接裁剪；否则只查这几行（同一个 file 的语法树留着，同一文件的多张卡只解析一次）
+ * 整个文件分析过就直接裁剪；否则只查这几行（同一个文件的语法树留着，同一文件的多张卡只解析一次）
  */
-export function segAnalysis(lang: string, text: string, start: number, end: number, file?: string): FileAnalysis {
+export function segAnalysis(lang: string, text: string, start: number, end: number, tree?: TreeAt): FileAnalysis {
   const k = keyOf(lang, text);
   const full = cache.has(k) ? cache.get(k) : undefined;
   if (full) return clipAnalysis(full, start, end);
   const sk = `${k}\0${start}\0${end}`;
   let a = segCache.get(sk);
   if (!a) {
-    a = analyze(lang, text, { key: file, lines: { start, end } });
+    a = analyze(lang, text, { tree, lines: { start, end } });
     if (ready) segCache.set(sk, a);
   }
   return a;
@@ -65,3 +66,7 @@ export function segAnalysis(lang: string, text: string, start: number, end: numb
 export function symbolsOf(lang: string, text: string) {
   return (cachedAnalysis(lang, text) ?? analyze(lang, text)).symbols;
 }
+
+/** Where the analysis keeps this host's tree of file; none without a file */
+export const treeAt = (cx: HostContext, file: string | null | undefined): TreeAt | undefined =>
+  file ? { cache: cx.trees, key: file } : undefined;

@@ -15,7 +15,7 @@ import { makeHandler } from "../src/handlers";
 import { BoardPanel, type BoardHost } from "../src/boards";
 import { treeChildren } from "../src/boardtree";
 import { nodeWorkspace } from "./node-workspace";
-import { stubView } from "./helpers";
+import { stubView, MEDIA } from "./helpers";
 import { HostContext } from "../src/context";
 
 let cx: HostContext;
@@ -59,7 +59,7 @@ const panels: BoardHost = {
   },
 };
 const p = new BoardPanel("bE", view, panels);
-const send = (m: BoardToHost) => makeHandler(cx, panels)(p, m);
+const send = (m: BoardToHost) => makeHandler(cx, panels, MEDIA)(p, m);
 let E: Board, S: Board, X: Board;
 
 beforeAll(async () => {
@@ -131,7 +131,11 @@ describe("sub-boards", () => {
     q.ready = true;
     q.board = store.peek("bT");
     const before = posted.length;
-    await makeHandler(cx, panels)(q, {
+    await makeHandler(
+      cx,
+      panels,
+      MEDIA,
+    )(q, {
       type: "enterBoard",
       req: 1,
       id: "bU",
