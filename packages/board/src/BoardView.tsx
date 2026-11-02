@@ -1,4 +1,5 @@
 import { AiClipBusy } from "./ui/AiBusy";
+import { IS_MAC } from "@yhnocoder/markdown/ui";
 import { Show, For, createEffect, on, type JSX } from "solid-js";
 import { tune } from "./state/tune";
 import { CAM_SETTLE } from "./state/timing";
@@ -20,6 +21,9 @@ import { MenuLayer, DialogLayer, TooltipLayer } from "./ui/Menu";
 import { Icon } from "./ui/icons";
 import { cardTitle } from "@codeboard/core";
 import * as A from "./actions";
+import { staleCount, updateAll } from "@codeboard/core/commands";
+import { versionEnv } from "./actions/env";
+import { staleOf } from "./state/views";
 import { flows, cardById } from "./state/store";
 import { MarkView } from "./cards/Card";
 import { crumbs, crumbMorph, walkBack } from "./state/subboards";
@@ -81,7 +85,7 @@ export function BoardView(p: { children?: JSX.Element }) {
       <Show when={crumbs().length}>
         <Crumbs />
       </Show>
-      <Show when={banner() && A.staleCount() > 0 && !walk()}>
+      <Show when={banner() && staleCount(state.board, staleOf) > 0 && !walk()}>
         <Banner />
       </Show>
       {p.children}
@@ -164,7 +168,7 @@ function Crumbs() {
 }
 
 function Banner() {
-  const n = () => A.staleCount();
+  const n = () => staleCount(state.board, staleOf);
   return (
     <div class="banner pill">
       <i class="ndot" />
@@ -174,7 +178,7 @@ function Banner() {
       <button class="tbtn" onClick={() => A.reviewNext()}>
         Review One by One
       </button>
-      <button class="tbtn" onClick={() => A.updateAll()}>
+      <button class="tbtn" onClick={() => updateAll(versionEnv)}>
         Update All
       </button>
       <button class="ib" aria-label="Dismiss" onClick={() => setBanner(false)}>
@@ -281,7 +285,7 @@ function Keys() {
           <Icon name="close" size={14} />
         </button>
       </h3>
-      <For each={helpRows(state.host.isMac)}>
+      <For each={helpRows(IS_MAC)}>
         {([h, rows]) => (
           <>
             <h4>{h}</h4>

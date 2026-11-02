@@ -3,6 +3,7 @@
 import {
   BOARD_VERSION,
   cornerAt,
+  type Board,
   type Camera,
   emptyBoard,
   isCode,
@@ -55,6 +56,20 @@ export function fileCamera(raw: any): Camera | undefined {
   return c && [c.x, c.y, c.z].every((n) => typeof n === "number" && Number.isFinite(n)) && c.z > 0
     ? { x: c.x, y: c.y, z: c.z }
     : undefined;
+}
+
+/**
+ * v9 → v10 for Text cards from the card library: the board file keeps their place but not their look (that is in cards/<id>.json),
+ * so migrateBoard cannot tell them apart. Their fixed heights go once Storage has put the shared cards in (schema.ts readBoardFile)
+ */
+export function sharedTextHeights(raw: any): ((b: Board) => void) | undefined {
+  if (!(raw?.version >= 6 && raw.version < 10) || !Array.isArray(raw.cards)) return undefined;
+  const ids = new Set<string>(raw.cards.filter((c: any) => c?.kind === "shared").map((c: any) => c.id));
+  if (!ids.size) return undefined;
+  return (b) => {
+    for (const c of b.cards)
+      if (ids.has(c.id) && c.kind === "note" && c.look === "text" && b.place[c.id]) delete b.place[c.id].h;
+  };
 }
 
 /** 卡库里的文件 cards/<id>.json：和白板文件一样补齐 */

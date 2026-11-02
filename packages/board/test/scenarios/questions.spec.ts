@@ -166,7 +166,7 @@ const initOf = (b: Board, extra: Partial<Extract<HostToBoard, { type: "init" }>>
     boards: [{ id: b.id, name: b.name, cards: b.cards.length }],
     views,
     stale: {},
-    host: { isMac: true, assetBase: "", target: true, settings: DEFAULT_SETTINGS },
+    host: { assetBase: "", target: true, settings: DEFAULT_SETTINGS },
     ...extra,
   };
 };

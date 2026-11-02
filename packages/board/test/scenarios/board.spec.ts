@@ -279,7 +279,7 @@ test("stickerPlace", async () => {
     boards: [{ id: "b2", name: "other", cards: 0 }],
     views: {},
     stale: {},
-    host: { isMac: true, assetBase: "", target: true, settings: { ...DEFAULT_SETTINGS } },
+    host: { assetBase: "", target: true, settings: { ...DEFAULT_SETTINGS } },
   });
   await h.page.locator(".card").first().waitFor({ state: "detached" });
   await idle(h); // the other board is shown
@@ -322,7 +322,7 @@ test("dragDroppedOnBoardSwitch", async () => {
       boards: [{ id: "b2", name: "other", cards: 0 }],
       views: {},
       stale: {},
-      host: { isMac: true, assetBase: "", target: true, settings: { ...DEFAULT_SETTINGS } },
+      host: { assetBase: "", target: true, settings: { ...DEFAULT_SETTINGS } },
     });
     await h.page.locator(".card").first().waitFor({ state: "detached" });
     await idle(h);

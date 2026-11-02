@@ -8,6 +8,9 @@ import { boardSegments, variantSegments, type Board, type Segment, type SegView,
 import { ask } from "../host";
 import { setState, state } from "./store";
 
+/** A segment's version state */
+export const staleOf = (segId: string): Stale | undefined => state.stale[segId];
+
 /** Add or replace views */
 export function putViews(v: Record<string, SegView>) {
   if (Object.keys(v).length) setState("views", v);

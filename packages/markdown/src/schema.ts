@@ -199,7 +199,8 @@ const Code = CodeBlock.extend({
   },
 }).configure({ defaultLanguage: null, enableTabIndentation: true });
 
-const escHtml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+/** Text into HTML: & < > escaped */
+export const escHtml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 const unHtml = (s: string) =>
   s
     .replace(/&lt;/g, "<")

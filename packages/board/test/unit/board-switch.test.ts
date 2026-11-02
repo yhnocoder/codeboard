@@ -18,7 +18,7 @@ import { pushLayer, closeOverlays } from "../../src/ui/overlay";
 import { choose, promptText } from "../../src/ui/Menu";
 import { boardSignal } from "../../src/state/root";
 
-const HOST: HostInfo = { isMac: true, assetBase: "", target: true, settings: DEFAULT_SETTINGS };
+const HOST: HostInfo = { assetBase: "", target: true, settings: DEFAULT_SETTINGS };
 function init(
   id: string,
   o: { stale?: Record<string, Stale>; views?: Record<string, SegView>; host?: Partial<HostInfo> } = {},

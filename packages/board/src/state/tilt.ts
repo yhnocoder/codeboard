@@ -5,7 +5,7 @@ import { createStore } from "solid-js/store";
 import type { Card } from "@codeboard/core";
 import { hostOf } from "./store";
 import { editing } from "./ui";
-import { reduceMotion } from "./camera";
+import { reduceMotion } from "./motion";
 import { tune } from "./tune";
 import { TILT_MS } from "./timing";
 

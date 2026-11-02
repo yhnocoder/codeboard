@@ -16,7 +16,7 @@ import {
 } from "@codeboard/core";
 import * as V from "@codeboard/core/commands";
 import { state, cardById, hostOf } from "../state/store";
-import { putViews, staleOk, putStale } from "../state/views";
+import { putViews, staleOf, staleOk, putStale } from "../state/views";
 import { mutate } from "../state/changes";
 import { select } from "../state/selection";
 import { toast } from "../state/toast";
@@ -29,13 +29,6 @@ import { updateScoped, reviewToast } from "./shared";
 import { versionEnv } from "./env";
 import { COMMITS_WAIT } from "../state/timing";
 import { cardSel } from "../cardsel";
-
-const staleOf = (id: string) => state.stale[id];
-export const cardStale = (c: CodeCard) => V.cardStale(c, staleOf);
-export const uncommitted = V.uncommitted;
-export const staleCount = () => V.staleCount(state.board, staleOf);
-export const updateAll = () => V.updateAll(versionEnv);
-export const keepVersion = (cardId: string, segId: string) => V.keepVersion(versionEnv, cardId, segId);
 
 export async function openDiff(id: string, segId?: string) {
   const c = cardById(id)?.card;
@@ -66,7 +59,7 @@ export async function applyNewVersion(cardId: string, segId: string, data: DiffD
       V.applyVersion(versionEnv, id, segId, data);
       toast(`Updated to the new version${reviewToast(id)}`);
     },
-    () => keepVersion(cardId, segId),
+    () => V.keepVersion(versionEnv, cardId, segId),
   );
 }
 export async function duplicateNewVersion(cardId: string, segId: string, data: DiffData) {

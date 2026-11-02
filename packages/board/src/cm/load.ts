@@ -1,5 +1,5 @@
 // 代码编辑器（CodeMirror，@yhnocoder/markdown/code-editor）单独打包，第一次编辑代码前才要；白板打开后空闲时先悄悄加载好。
-import type { Segment, SegView, LspItem, LspSignature } from "@codeboard/core";
+import { completionsOn, type Segment, type SegView, type LspItem, type LspSignature } from "@codeboard/core";
 import { unwrap } from "solid-js/store";
 import { state } from "../state/store";
 import { ask, send } from "../host";
@@ -85,7 +85,7 @@ export function lspHost(
 
 /** 灰字补全（宿主能做 AI 续写时） */
 export const ghostHost = (): GhostHost | undefined =>
-  state.host.complete
+  completionsOn(state.host.settings)
     ? { complete: (before, after) => ask("complete", { before, after }).catch(() => null) }
     : undefined;
 

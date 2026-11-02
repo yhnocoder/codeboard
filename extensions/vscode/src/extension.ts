@@ -4,6 +4,7 @@ import { debounce, showFile, startHost, type Host } from "@codeboard/host";
 import { questionsMarkdown } from "@codeboard/core";
 import { analyzedEditorLangs } from "@codeboard/analysis/langs";
 import { registerCommands } from "./commands";
+import type { SidebarCommand } from "./contributes";
 import { EditorMarks } from "./lens";
 import { BoardWebviews, VIEW_TYPE } from "./panel";
 import { BoardsTree, GithubTree, QuestionsTree } from "./sidebar";
@@ -16,7 +17,7 @@ let host: Host | undefined;
 export async function activate(ctx: vscode.ExtensionContext) {
   const sub = (d: vscode.Disposable) => ctx.subscriptions.push(d);
   const ws = vscodeWorkspace(ctx);
-  const webviews = new BoardWebviews(ctx, () => h.store.assetsDir());
+  const webviews = new BoardWebviews(ctx);
   // tree-sitter 的 wasm 由 esbuild 脚本拷进 dist/
   const h = (host = startHost(ws, webviews.env(), {
     wasmDir: path.join(ctx.extensionUri.fsPath, "dist"),
@@ -42,18 +43,19 @@ export async function activate(ctx: vscode.ExtensionContext) {
   sub(vscode.window.registerTreeDataProvider("codeboard.github", gh));
   const qtree = new QuestionsTree(store);
   sub(vscode.window.registerTreeDataProvider("codeboard.questions", qtree));
-  sub(vscode.commands.registerCommand("codeboard.questions.showAll", () => qtree.setAll(true)));
-  sub(vscode.commands.registerCommand("codeboard.questions.showOpen", () => qtree.setAll(false)));
-  sub(
-    vscode.commands.registerCommand("codeboard.copyQuestions", async () => {
+  const sidebarCommands = {
+    "codeboard.questions.showAll": () => qtree.setAll(true),
+    "codeboard.questions.showOpen": () => qtree.setAll(false),
+    "codeboard.copyQuestions": async () => {
       const qs = await qtree.shown();
       if (!qs.length) return void vscode.window.showInformationMessage("No questions to copy.");
       await vscode.env.clipboard.writeText(questionsMarkdown(qs));
       void vscode.window.showInformationMessage(
         `Copied ${qs.length} question${qs.length > 1 ? "s" : ""} as a Markdown list.`,
       );
-    }),
-  );
+    },
+  } satisfies Record<SidebarCommand, () => unknown>;
+  for (const [id, fn] of Object.entries(sidebarCommands)) sub(vscode.commands.registerCommand(id, fn));
 
   const marks = new EditorMarks(ctx, store, hub);
   sub(

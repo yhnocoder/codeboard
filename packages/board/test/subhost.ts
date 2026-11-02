@@ -118,7 +118,7 @@ export async function subHost(
       boards: await store.list(),
       views: viewsOf(b),
       stale: {},
-      host: { isMac: true, assetBase: "", target: true, settings: DEFAULT_SETTINGS },
+      host: { assetBase: "", target: true, settings: DEFAULT_SETTINGS },
     };
     if (crumbs.length) m.crumbs = crumbs;
     if (walk) m.walk = walk as any;

@@ -3,19 +3,20 @@ import * as path from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { git as sh, tempRepo } from "./helpers";
 
-// count the `git merge-base --is-ancestor` processes isAncestor starts
-const runs = vi.hoisted(() => ({ n: 0 }));
+// count the `git merge-base --is-ancestor` processes isAncestor starts, and the repo root lookups
+const runs = vi.hoisted(() => ({ n: 0, top: 0 }));
 vi.mock("node:child_process", async (orig) => {
   const cp = await orig<typeof import("node:child_process")>();
   return {
     ...cp,
     execFile: ((...a: Parameters<typeof cp.execFile>) => {
       if ((a[1] as string[] | undefined)?.includes("--is-ancestor")) runs.n++;
+      if ((a[1] as string[] | undefined)?.includes("--show-toplevel")) runs.top++;
       return (cp.execFile as (...x: unknown[]) => unknown)(...a);
     }) as typeof cp.execFile,
   };
 });
-const { isAncestor, repoRootOfDir, forgetRepos, upstreamRef } = await import("../src/git");
+const { excludeFromGit, isAncestor, repoRootOfDir, forgetRepos, upstreamRef } = await import("../src/git");
 
 let R: string, C: string, c1: string, c2: string, later: string;
 beforeAll(() => {
@@ -60,17 +61,34 @@ describe("isAncestor", () => {
   });
 });
 
-// The repo lookups are remembered, but only answers: a folder that becomes a repo later (git init) is found without a reload, and
-// after a git event (forgetRepos, watch.ts) a new origin is the upstream
+// The repo lookups are remembered, "no repo" too, until a git event or a change of workspace folders (forgetRepos, watch.ts):
+// a folder that becomes a repo later (git init) is found then, and a new origin is the upstream
 describe("repo lookups", () => {
-  it("finds a repo made after a lookup that found none", async () => {
+  it("asks git once for a folder that is no repo, and finds the repo made there after a git event", async () => {
     const d = fs.realpathSync(fs.mkdtempSync("/tmp/codeboard-noinit-"));
     try {
+      runs.top = 0;
       expect(await repoRootOfDir(d)).toBeNull();
+      expect(await repoRootOfDir(d)).toBeNull();
+      expect(runs.top).toBe(1);
       sh(d, "init", "-q");
+      forgetRepos();
       expect(await repoRootOfDir(d)).toBe(d);
     } finally {
       fs.rmSync(d, { recursive: true, force: true });
+    }
+  });
+  it("doesn't remember a lookup that failed for another reason: a folder that isn't there yet is asked again", async () => {
+    const d = path.join(fs.realpathSync(fs.mkdtempSync("/tmp/codeboard-gone-")), "repo");
+    try {
+      runs.top = 0;
+      expect(await repoRootOfDir(d)).toBeNull(); // no cwd: git never ran
+      fs.mkdirSync(d);
+      sh(d, "init", "-q");
+      expect(await repoRootOfDir(d)).toBe(d); // no git event in between
+      expect(runs.top).toBe(2);
+    } finally {
+      fs.rmSync(path.dirname(d), { recursive: true, force: true });
     }
   });
   it("takes a new origin as the upstream after a git event", async () => {
@@ -81,6 +99,56 @@ describe("repo lookups", () => {
       sh(d, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/dev");
       forgetRepos();
       expect(await upstreamRef(d)).toBe("origin/dev");
+    } finally {
+      fs.rmSync(d, { recursive: true, force: true });
+    }
+  });
+});
+
+// Scratch files are kept out of git status with a line in the repo's own info/exclude (local, never committed)
+describe("excludeFromGit", () => {
+  const PAT = ".cb-scratch-*";
+  const exclude = (gitDir: string) => fs.readFileSync(path.join(gitDir, "info", "exclude"), "utf8");
+  const count = (t: string) => t.split("\n").filter((l) => l === PAT).length;
+
+  it("adds the line once, from a subfolder too", async () => {
+    const d = tempRepo("exclude", { "sub/f.py": "x = 1\n" });
+    try {
+      await excludeFromGit(path.join(d, "sub"), PAT, "scratch");
+      forgetRepos();
+      await excludeFromGit(d, PAT, "scratch");
+      expect(count(exclude(path.join(d, ".git")))).toBe(1);
+      expect(exclude(path.join(d, ".git"))).toContain("# scratch\n");
+    } finally {
+      fs.rmSync(d, { recursive: true, force: true });
+    }
+  });
+
+  it("writes a worktree's line into the git directory the worktrees share", async () => {
+    const d = tempRepo("exclude-main", { "f.py": "x = 1\n" });
+    const w = `${d}-wt`;
+    try {
+      sh(d, "worktree", "add", "-q", "-b", "side", w);
+      await excludeFromGit(w, PAT, "scratch");
+      expect(count(exclude(path.join(d, ".git")))).toBe(1);
+    } finally {
+      fs.rmSync(w, { recursive: true, force: true });
+      fs.rmSync(d, { recursive: true, force: true });
+    }
+  });
+
+  it("does nothing outside a repo, and adds the line once the folder became one and a git event came", async () => {
+    const d = fs.realpathSync(fs.mkdtempSync("/tmp/codeboard-exclude-none-"));
+    try {
+      await excludeFromGit(d, PAT, "scratch");
+      sh(d, "init", "-q");
+      await excludeFromGit(d, PAT, "scratch");
+      expect(
+        fs.existsSync(path.join(d, ".git", "info", "exclude")) && count(exclude(path.join(d, ".git"))),
+      ).toBeFalsy();
+      forgetRepos();
+      await excludeFromGit(d, PAT, "scratch");
+      expect(count(exclude(path.join(d, ".git")))).toBe(1);
     } finally {
       fs.rmSync(d, { recursive: true, force: true });
     }

@@ -618,7 +618,7 @@ test("aiCompletionAccept", async () => {
     board: board(6),
     w: 1400,
     h: 900,
-    host: { complete: true },
+    settings: { aiProvider: "auto" },
     on: (m, r) => {
       if (m.type !== "complete") return false;
       void r(m.req!, reply((m as any).before));

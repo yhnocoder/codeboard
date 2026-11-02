@@ -20,6 +20,7 @@ import {
 } from "@tiptap/pm/tables";
 import { iconEl, type IconName } from "../ui/icons";
 import { CELL_MIN } from "../layout";
+import { IS_MAC } from "../ui/platform";
 
 type Cmd = (state: EditorState, dispatch?: (tr: Transaction) => void) => boolean;
 
@@ -256,13 +257,9 @@ class TableBar {
   private open: { pos: number } | null = null;
   private pos: number | null = null;
   private frame = 0;
-  constructor(
-    private view: EditorView,
-    isMac: () => boolean,
-  ) {
-    const mac = isMac();
+  constructor(private view: EditorView) {
     const K = (s: string) =>
-      mac ? s : s.replace(/⌘/g, "Ctrl+").replace(/⇧/g, "Shift+").replace(/⌫/g, "Backspace").replace(/↵/g, "Enter");
+      IS_MAC ? s : s.replace(/⌘/g, "Ctrl+").replace(/⇧/g, "Shift+").replace(/⌫/g, "Backspace").replace(/↵/g, "Enter");
     this.bar = document.createElement("div");
     this.bar.className = "mdui pill md-tbar";
     const btn = (b: Btn) => {
@@ -517,7 +514,7 @@ class TableBar {
 }
 
 /** The table node for the editor (column resizing on, cells at least CELL_MIN wide), plus the toolbar and shortcuts */
-export function tableEditing(base: TNode, isMac: () => boolean): AnyExtension[] {
+export function tableEditing(base: TNode): AnyExtension[] {
   const node = base
     .extend({
       addProseMirrorPlugins() {
@@ -529,7 +526,7 @@ export function tableEditing(base: TNode, isMac: () => boolean): AnyExtension[] 
           new Plugin({
             key: new PluginKey("cbTableBar"),
             view: (v) => {
-              const bar = new TableBar(v, isMac);
+              const bar = new TableBar(v);
               return { update: () => bar.update(), destroy: () => bar.destroy() };
             },
           }),

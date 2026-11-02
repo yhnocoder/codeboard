@@ -1536,7 +1536,7 @@ test("noteLanguagePickerOpenWhenBoardChanges", async () => {
     boards: [{ id: "b2", name: "other", cards: 1 }],
     views: {},
     stale: {},
-    host: { isMac: true, assetBase: "", target: true, settings: { ...DEFAULT_SETTINGS } },
+    host: { assetBase: "", target: true, settings: { ...DEFAULT_SETTINGS } },
   });
   await pg.locator('.card[data-id="n0"]').waitFor({ state: "detached" });
   await idle(h);

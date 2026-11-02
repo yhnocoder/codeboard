@@ -24,6 +24,7 @@ import { state, cardById, hostOf, rectOf, placeOf } from "../state/store";
 import { mutate } from "../state/changes";
 import { sel, select, clearSel, lineSel } from "../state/selection";
 import { toast } from "../state/toast";
+import { IS_MAC } from "@yhnocoder/markdown/ui";
 import { editing, liveNoteMd, setEditing } from "../state/ui";
 import { cardsMeasured } from "../state/measure";
 import { noteImageOf } from "./imagedata";
@@ -307,7 +308,7 @@ export async function splitByHeadings(id: string) {
   const made: string[] = ids;
   select({ cards: [id, ...made] });
   made.forEach((k, i) => popCard(k, { x: p0.x, y: p0.y + (m?.tops[i] ?? 40) }));
-  toast(`Split into ${made.length} card${made.length > 1 ? "s" : ""}. ${state.host.isMac ? "⌘Z" : "Ctrl+Z"} undoes it`);
+  toast(`Split into ${made.length} card${made.length > 1 ? "s" : ""}. ${IS_MAC ? "⌘Z" : "Ctrl+Z"} undoes it`);
 }
 
 /** 右键的这张图是 Note 里同一个地址的图里的第几张（按显示的先后，和 Markdown 里的先后一样） */

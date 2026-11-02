@@ -13,6 +13,8 @@ export type Ids = Record<Key, string[]>;
 /** What one step did outside the board */
 export type Effect = { undo: () => void; redo: () => void };
 export type Snap = { epoch: number; head: string } & Record<Key, string[]> & { ids: Ids; step?: string[]; fx?: Effect };
+/** An undo step's shared item that another board changed since stays as that board left it (undo, and the host's save) */
+export const NOT_UNDONE = "Changed on another board; not undone.";
 
 /** Takes snapshots that share unchanged pieces (and id arrays) with the ones before */
 export function snapper() {

@@ -73,7 +73,7 @@
         "packages/board/src/canvas/Canvas.tsx",
         "packages/core/src/canvas/{index,geom}.ts",
         "packages/board/src/cards/Card.tsx",
-        "packages/board/src/state/{camera,changes,cull,extent,geo,ghost,history,hover,idle,lodcards,lru,measure,mode,root,save,selection,snap,store,timing,toast,tune,ui,upkeep,views}.ts",
+        "packages/board/src/state/{camera,changes,cull,extent,geo,ghost,history,hover,idle,lodcards,lru,measure,mode,motion,root,save,selection,snap,store,timing,toast,tune,ui,upkeep,views}.ts",
         "packages/board/src/actions/{index,common,edit,create,env}.ts",
         "packages/board/src/ui/{guard,hooks,overlay,shield}.ts",
         "packages/board/src/ui/icons.tsx",
@@ -301,7 +301,7 @@
         "packages/board/src/ui/QuestionsPanel.tsx",
         "packages/core/src/questions.ts",
         "packages/host/src/stickers.ts",
-        "packages/board/test/scenarios/{bitmap-stickers,questions}.spec.ts"
+        "packages/board/test/scenarios/{bitmap-stickers,questions,sticker-drag}.spec.ts"
       ],
       "scenarios": [
         "stickerBitmapsPicker",

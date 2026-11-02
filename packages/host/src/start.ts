@@ -1,6 +1,7 @@
 // 宿主的组合根：给一个 Workspace 和 HostEnv，接好存储、白板协调、分析、索引、版本检查和它们之间的事件。
 // 编辑器的壳（VS Code 插件、以后的 Node sidecar）只调这一个函数，再把自己的界面（侧栏、CodeLens、状态栏）挂到返回的事件上
 import type { Disposable, Event, Workspace } from "@codeboard/core";
+import { HOST_SETTINGS } from "@codeboard/core/settings";
 import type { Storage } from "@codeboard/core/storage";
 import { makeActions } from "./actions";
 import { startAnalysis } from "./analysis";
@@ -93,7 +94,7 @@ export function startHost(ws: Workspace, env: HostEnv, o: HostOptions = {}): Hos
 
   on(
     ws.settings.onDidChange((e) => {
-      if (e.affects("codeboard.storageDir")) follow();
+      if (e.affects(`codeboard.${HOST_SETTINGS.storageDir.key}`)) follow();
       if (affectsSettings(e)) hub.broadcast({ type: "host", host: { settings: readSettings() } });
       if (e.affects("editor.fontFamily"))
         hub.broadcast({ type: "host", host: { fontFamily: ws.settings.get<string>("editor.fontFamily") } });

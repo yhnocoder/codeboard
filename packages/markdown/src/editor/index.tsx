@@ -43,12 +43,11 @@ import { TOOLBAR_SETTLE } from "../ui/timing";
 import type { LspHost } from "../cm/editor";
 import { FindExt, noteFind } from "./find";
 import { findKey } from "../ui/find";
+import { IS_MAC } from "../ui/platform";
 
 export type MdEditorOpts = {
   value: string;
   placeholder?: string;
-  /** Mac shortcuts and key names (⌘, ⌥) or Ctrl+ / Alt+ ones: the caller knows the platform it runs on */
-  isMac: boolean;
   /** 结束编辑：改过给新的原文，没改给 null */
   onDone: (v: string | null, layout?: MdLayout | null) => void;
   /** Table column widths, row heights and code wrap of this Markdown (kept by the caller, not in the Markdown; see layout.ts).
@@ -608,7 +607,7 @@ function Bubble(p: { editor: Editor; tick: Accessor<number>; ui: Ui }) {
       </button>
     );
   };
-  const mod = p.ui.opts.isMac ? "⌘" : "Ctrl+";
+  const mod = IS_MAC ? "⌘" : "Ctrl+";
   const shift = mod === "⌘" ? "⇧" : "Shift+";
   let busy = false;
   // Formatting is source: the buttons add or remove markers around the selection (toggleWrap), the pressed state is
@@ -896,7 +895,7 @@ function editorExtensions(
                   }),
             })
           : x.name === "table"
-            ? tableEditing(x as TNode, () => o.isMac)
+            ? tableEditing(x as TNode)
             : x,
   );
   const Slash = Extension.create({
@@ -1159,7 +1158,6 @@ function editorExtensions(
     Tail,
     FindExt(() => uiOf.get(ed())?.closeFind() ?? false),
     Typora.configure({
-      isMac: o.isMac,
       openMath: openMathAt,
       openLink: (e) => uiOf.get(e)?.setLink(e.getAttributes("link").href ?? ""),
     }),
@@ -1507,7 +1505,6 @@ export function mountEditor(host: HTMLElement, o: MdEditorOpts): MdEditorHandle 
   document.body.append(layer);
   // the find bar is in host (top right of the editor): focus moving between it and the editor is not leaving
   find = noteFind(editor.view, host, {
-    isMac: o.isMac,
     owns: (n) => host.contains(n) || layer.contains(n),
     leave: (ev) => blurred(ev),
   });

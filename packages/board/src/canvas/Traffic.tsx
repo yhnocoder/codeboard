@@ -1,7 +1,8 @@
 import { For, Index, Show, createEffect, createMemo, on, onCleanup, untrack, type Accessor } from "solid-js";
 import type { Link } from "@codeboard/core";
 import { look, traffic } from "../state/look";
-import { reduceMotion, camMoving, worldView } from "../state/camera";
+import { camMoving, worldView } from "../state/camera";
+import { reduceMotion } from "../state/motion";
 import { carPaths, laneOf, zebraBack, driveFrames, type CarPose, type Road } from "./city";
 
 /** 停着的车：同一份位置烤成三条 path（车身、车顶、车灯 + 人行横道） */

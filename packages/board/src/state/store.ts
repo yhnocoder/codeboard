@@ -15,22 +15,37 @@ import {
   type Place,
   type SegView,
   type SharedInfo,
+  type Settings,
   type Stale,
 } from "@codeboard/core";
 import { rooted, boardSignal, onBoardSwitch } from "./root";
 
-export const [state, setState] = createStore({
+const [state, setState] = createStore({
   loaded: false,
   board: emptyBoard("", "") as Board,
   boards: [] as BoardMeta[],
-  host: { isMac: true, assetBase: "", target: true, settings: DEFAULT_SETTINGS } as HostInfo,
+  host: { assetBase: "", target: true, settings: DEFAULT_SETTINGS } as HostInfo,
   views: {} as Record<string, SegView>,
   stale: {} as Record<string, Stale | undefined>,
 });
+// setState: only state/changes.ts (the board) and state/views.ts (views, version states) write through it; the rest of the
+// state through the setters below (test/unit/state-shape.test.ts checks)
+export { state, setState };
+/** The host's info for a new board: replaced, not merged (the last board's would stay) */
+export const setHost = (h: HostInfo) => setState("host", reconcile(h));
+/** Some of the host's info changed (settings, the editor font, the target board…) */
+export const mergeHost = (h: Partial<HostInfo>) => setState("host", (o) => ({ ...o, ...h }));
+/** A setting changed on the board, ahead of the host writing it and sending the settings back */
+export const setHostSetting = <K extends keyof Settings>(k: K, v: Settings[K]) =>
+  setState("host", "settings", k, v as never);
+export const setBoards = (boards: BoardMeta[]) => setState("boards", boards);
+export const setLoaded = (on: boolean) => setState("loaded", on);
 
 /** 共享卡在几块白板上、别的白板上谁连到它。宿主存盘后算好整个发来；只有在两块以上白板上的卡才有；不进撤销栈、不存盘 */
-export const [shared, setShared] = createStore<Record<string, SharedInfo>>({});
-onBoardSwitch(() => setShared(reconcile({})));
+const [shared, setShared] = createStore<Record<string, SharedInfo>>({});
+export { shared };
+export const setSharedInfo = (cards: Record<string, SharedInfo>) => setShared(reconcile(cards));
+onBoardSwitch(() => setSharedInfo({}));
 export const sharedOn = (id: string) => shared[id]?.boards.length ?? 0;
 
 /** 只读卡的 id / 段、线的两端和 Call 标记、born / marks：拖动卡片不会让它重算 */
@@ -67,7 +82,10 @@ export function placeOf(id: string): Place {
 }
 
 // 卡片实测尺寸（世界坐标）；Section 实际框
-export const [sizes, setSizes] = createStore<Record<string, { w: number; h: number }>>({});
+const [sizes, setSizes] = createStore<Record<string, { w: number; h: number }>>({});
+export { sizes };
+/** A card's measured size (Card.tsx measures it) */
+export const setSize = (id: string, s: { w: number; h: number }) => setSizes(id, s);
 /** 宽高优先用实测；量到 0 的不算（卡被藏起来时量到的） */
 export function rectOf(c: { id: string } | string) {
   const id = typeof c === "string" ? c : c.id;

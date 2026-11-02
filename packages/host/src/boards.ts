@@ -25,7 +25,6 @@ import { syncVariants } from "./variants";
 import { viewsFor } from "./views";
 import { absOf, present, srcLabel } from "./source";
 import { readSettings } from "./settings";
-import { completionsOn } from "./ai";
 import { warmBoard } from "./prefetch";
 import { startNameIndex } from "./nameindex";
 import { workspace } from "./ws";
@@ -238,13 +237,11 @@ export class BoardPanel {
   host(): HostInfo {
     return {
       fontFamily: workspace().settings.get<string>("editor.fontFamily"),
-      isMac: process.platform === "darwin",
       forwardedKeys: FORWARDED_KEYS,
       assetBase: this.view.resourceUrl(this.mgr.store.assetsDir()),
       readonly: this.readonly,
       settings: readSettings(),
       target: this.mgr.target === this.id,
-      complete: completionsOn(),
       clip: this.mgr.clip && { board: this.mgr.clip.board, n: this.mgr.clip.cards.length },
     };
   }

@@ -3,7 +3,7 @@
 // Three kinds of change: mutate = the user's edits (undo steps); sync = what the host synced or the view derived (saved, not undo
 // steps, replayed after undo / redo); live = changes during a drag (the whole gesture becomes one undo step when it ends).
 import { danglingRefs, removeCards, type Board } from "@codeboard/core";
-import { itemOps, parse, same, snapper, touched, type Effect, type ItemOp, type Snap } from "./snap";
+import { itemOps, NOT_UNDONE, parse, same, snapper, touched, type Effect, type ItemOp, type Snap } from "./snap";
 import { stamp, upkeeper, type Raw } from "./upkeep";
 import { trimLru } from "./lru";
 
@@ -32,7 +32,6 @@ export interface Hooks {
   toast(text: string): void;
 }
 
-export const NOT_UNDONE = "Changed on another board; not undone.";
 const UNDO_MAX = 300;
 const SYNC_MAX = 2000;
 /** Boards whose undo history is kept besides the breadcrumbs */
@@ -261,6 +260,9 @@ export function createHistory(doc: Doc, hooks: Hooks) {
     reseeTwins();
     cur = null;
     topMerge = undefined;
+    // a new card still unsettled stays on the board it was made on, as it is: settled after the switch, its "before" (the old
+    // board) would land on this board's undo stack
+    fresh.clear();
     snaps.reset();
     const h = histories.get(b.id);
     histories.delete(b.id);

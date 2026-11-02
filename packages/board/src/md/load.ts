@@ -1,6 +1,6 @@
 // 编辑器那一块（@yhnocoder/markdown/editor：TipTap 的视图、菜单、补全）单独打包，第一次编辑时才加载；白板打开后空闲时先悄悄加载好。
 // 编辑器要的白板能力（[[ 引用的候选、存图、AI 补全、代码块的语言服务）在 editorOpts 里接上
-import { isCode, refTitle } from "@codeboard/core";
+import { completionsOn, isCode, refTitle } from "@codeboard/core";
 import { LANG_TABLE, langInfo } from "@codeboard/analysis/langs";
 import { frameName, skels, subRefs } from "../state/subboards";
 import { state, placed } from "../state/store";
@@ -150,7 +150,6 @@ const CODE_LANGS = LANG_TABLE.filter((l) => l.highlight).map((l) => ({
 export function editorOpts(): Omit<MdEditorOpts, "value" | "onDone" | "placeholder"> {
   wantBoardRefs();
   return {
-    isMac: state.host.isMac,
     refs: {
       items: refCandidates,
       menu: "Link to Card",
@@ -164,7 +163,7 @@ export function editorOpts(): Omit<MdEditorOpts, "value" | "onDone" | "placehold
     openLink,
     pickImage: () => ask("pickFile", { kind: "image" }).catch(() => null),
     saveImage: saveNoteImage,
-    complete: state.host.complete
+    complete: completionsOn(state.host.settings)
       ? (before: string, after: string) => ask("complete", { before, after }).catch(() => null)
       : undefined,
     code: { comment: (l) => langInfo(l)?.comment, lsp: codeLsp, stopPointerDown: true, langs: CODE_LANGS },

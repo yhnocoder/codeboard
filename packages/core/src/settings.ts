@@ -10,7 +10,7 @@ import {
   type Settings,
 } from "./protocol";
 
-/** 编辑器设置页用的一项设置的说明（VS Code configuration 的 JSON Schema 子集） */
+/** One setting as an editor's settings page describes it: a JSON Schema subset, with the enumDescriptions, markdownDescription and editPresentation a settings page may show */
 export type SettingSchema = {
   type: "string" | "boolean" | "number" | "object" | "array" | ("number" | "null")[];
   default?: unknown;
@@ -49,7 +49,7 @@ const choices = (pairs: [string, string][]) => ({
 });
 
 const AI_CHOICE_TAIL =
-  "`auto` (DeepSeek if an API key is set, otherwise a VS Code language model such as GitHub Copilot), `deepseek`, or the id of a VS Code language model. Pick it in CodeBoard Settings › AI, which lists the models you have.";
+  "`auto` (DeepSeek if an API key is set, otherwise a language model the editor provides, such as GitHub Copilot), `deepseek`, or the id of one of the editor's language models. Pick it in CodeBoard Settings › AI, which lists the models you have.";
 const fontLevel = (name: string, [lo, hi]: readonly [number, number]): SettingSchema => ({
   type: ["number", "null"],
   minimum: lo,
@@ -64,13 +64,13 @@ export const SETTINGS: { [K in keyof Settings]-?: SettingDecl } = {
     schema: {
       type: "string",
       ...choices([
-        ["auto", "DeepSeek if an API key is set, otherwise a VS Code language model such as Copilot."],
-        ["copilot", "A VS Code language model (for example GitHub Copilot)."],
+        ["auto", "DeepSeek if an API key is set, otherwise a language model the editor provides, such as Copilot."],
+        ["copilot", "A language model the editor provides (for example GitHub Copilot)."],
         ["deepseek", 'DeepSeek. Set the key with "CodeBoard: Set DeepSeek API Key".'],
         ["off", "No gray inline completions."],
       ]),
       markdownDescription:
-        "Model for the gray inline completions while you write a Note. The DeepSeek API key is kept in VS Code's secret storage: use **CodeBoard: Set DeepSeek API Key**.",
+        "Model for the gray inline completions while you write a Note. The DeepSeek API key is kept in the editor's secret storage: use **CodeBoard: Set DeepSeek API Key**.",
     },
   },
   deepseekModel: {
@@ -130,7 +130,8 @@ export const SETTINGS: { [K in keyof Settings]-?: SettingDecl } = {
     schema: {
       type: "string",
       ...choices(THEMES.map(([id, name]) => [id, EXPERIMENTAL_THEMES.includes(id) ? `${name} (Experimental)` : name])),
-      description: "Board theme. Each theme has a light and a dark variant that follows VS Code. City is experimental.",
+      description:
+        "Board theme. Each theme has a light and a dark variant that follows the editor's color theme. City is experimental.",
     },
   },
   hideOnNew: {
@@ -240,7 +241,7 @@ export const SETTINGS: { [K in keyof Settings]-?: SettingDecl } = {
     schema: {
       type: "boolean",
       description:
-        "Use VS Code's editor background as the board background in every theme. Cards, text and accent colors stay the theme's; patterns such as grids stay on top.",
+        "Use the editor's background as the board background in every theme. Cards, text and accent colors stay the theme's; patterns such as grids stay on top.",
     },
   },
   // not "theme.reflow": codeboard.theme is a string, so VS Code ignores keys under it
@@ -355,16 +356,23 @@ export const SETTINGS: { [K in keyof Settings]-?: SettingDecl } = {
   },
 };
 
-/** 只有宿主读的设置（白板不读也不改） */
-const HOST_SETTINGS: Record<string, SettingSchema> = {
-  "ai.deepseekBaseUrl": { type: "string", default: "https://api.deepseek.com", description: "DeepSeek API base URL." },
-  storageDir: {
-    type: "string",
-    default: "",
-    markdownDescription:
-      "Folder for board files. Leave empty to use the `.codeboard` folder in the first workspace folder when there is one (see **Move Boards into Project…**), otherwise VS Code workspace storage (outside the repo). Absolute, `~/…`, or relative to the first workspace folder, e.g. `~/notes/codeboard`.",
+/** Settings only the host reads (the board neither reads nor changes them): key = the name after codeboard. */
+export const HOST_SETTINGS = {
+  deepseekBaseUrl: {
+    key: "ai.deepseekBaseUrl",
+    schema: { type: "string", default: "https://api.deepseek.com", description: "DeepSeek API base URL." },
   },
-};
+  storageDir: {
+    key: "storageDir",
+    schema: {
+      type: "string",
+      default: "",
+      markdownDescription:
+        "Folder for board files. Leave empty to use the `.codeboard` folder in the first workspace folder when there is one (see **Move Boards into Project…**), otherwise the editor's workspace storage (outside the repo). Absolute, `~/…`, or relative to the first workspace folder, e.g. `~/notes/codeboard`.",
+    },
+  },
+} satisfies Record<string, { key: string; schema: SettingSchema }>;
+export type HostSetting = keyof typeof HOST_SETTINGS;
 
 /** 所有设置的完整名字（codeboard.…）→ 说明，default 填好 */
 export function settingsSchema(): Record<string, SettingSchema> {
@@ -373,6 +381,6 @@ export function settingsSchema(): Record<string, SettingSchema> {
     const { type, ...rest } = d.schema;
     out[`codeboard.${d.key}`] = { type, default: DEFAULT_SETTINGS[k], ...rest };
   }
-  for (const [k, s] of Object.entries(HOST_SETTINGS)) out[`codeboard.${k}`] = s;
+  for (const d of Object.values(HOST_SETTINGS)) out[`codeboard.${d.key}`] = d.schema;
   return out;
 }

@@ -29,8 +29,6 @@ setAssetBase("./assets");
 const note = document.getElementById("note")!;
 const source = document.getElementById("source")!;
 const mode = document.getElementById("mode")!;
-/** ⌘ / ⌥ shortcuts on a Mac, Ctrl+ / Alt+ elsewhere: the editor takes the platform from its caller */
-const IS_MAC = /Mac|iP(hone|[oa]d)/.test(navigator.platform);
 const opened = document.getElementById("opened")!;
 let src = sample.trim();
 let editor: MdEditorHandle | undefined;
@@ -53,7 +51,6 @@ async function edit() {
   mode.textContent = "Editing · Esc or ⌘↵ saves";
   editor = mountEditor(note, {
     value: src,
-    isMac: IS_MAC,
     onDone: (v) => {
       editor = undefined;
       if (v !== null) src = v;

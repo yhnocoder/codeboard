@@ -5,7 +5,8 @@ import { createStore } from "solid-js/store";
 import { sectionFrame, sectionFit, sectionPill, estSize, type Board, type Rect, type Section } from "@codeboard/core";
 import { state, rectOf, placed, hostOf, collapsedAway } from "./store";
 import { rooted, boardSignal, onBoardSwitch } from "./root";
-import { Spring, animate, reduceMotion, cam } from "./camera";
+import { Spring, animate, cam } from "./camera";
+import { reduceMotion } from "./motion";
 
 const byId = rooted(() => createMemo(() => new Map(state.board.sections.map((s) => [s.id, s]))));
 export const sec = (id?: string) => (id ? byId().get(id) : undefined);

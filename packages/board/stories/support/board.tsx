@@ -22,7 +22,7 @@ import {
 import { App } from "../../src/App";
 import { BoardView } from "../../src/BoardView";
 import { onHost } from "../../src/hostio";
-import { state, setState } from "../../src/state/store";
+import { state, setLoaded } from "../../src/state/store";
 import { select } from "../../src/state/selection";
 import { setToastMsg } from "../../src/state/toast";
 import { setEditing, setSettingsOpen } from "../../src/state/ui";
@@ -105,7 +105,6 @@ export function Stage(p: { scene: () => Scene; globals: Globals; replies?: Repli
         views: { ...VIEWS },
         stale: s.stale ?? {},
         host: {
-          isMac: true,
           assetBase: ASSETS,
           target: true,
           settings: { ...DEFAULT_SETTINGS, theme: untrack(() => g.theme) },
@@ -158,7 +157,7 @@ export function Stage(p: { scene: () => Scene; globals: Globals; replies?: Repli
     cancelAnimationFrame(raf);
     // 卸下时编辑器把正在编辑的交上去（mutate → 存盘的 patch），假宿主的回答要等下一个任务：下一个 story 的 init 先到，
     // 请求作废，那边弹「Couldn't save the board」。标成没加载，这一下就不存了（init 再标回来）
-    setState("loaded", false);
+    setLoaded(false);
   });
   const app = (p.chrome ?? chromeDefault) ? <App /> : <BoardView />;
   // 上一个 story 开着的菜单、对话框、浮层：它的 App 卸下时已经出栈，信号还在，新 App 一挂上又画出来（init 那时还没有栈可关）。

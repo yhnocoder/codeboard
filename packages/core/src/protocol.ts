@@ -108,6 +108,8 @@ export type Settings = {
 };
 /** AI 功能用哪个模型："auto" = 有 DeepSeek 密钥用 DeepSeek，没有用 VS Code 的语言模型（Copilot…）；"deepseek"；别的 = 某个 VS Code 语言模型的 id */
 export type AiChoice = string;
+/** Gray inline completions while a Note is edited: read from the settings, so a settings change turns them on or off at once */
+export const completionsOn = (s: Pick<Settings, "aiProvider">) => s.aiProvider !== "off";
 export const DEFAULT_SETTINGS: Settings = {
   theme: "warm-ink",
   vscodeBg: false,
@@ -149,15 +151,12 @@ export type StickerPack = { id: string; name: string; icons: StickerIcon[] };
 
 export type HostInfo = {
   fontFamily?: string; // 跟随 VS Code 编辑器字体
-  isMac: boolean;
   assetBase: string; // assets/ 目录的 webview URI，图片卡用
   readonly?: string; // 仓库找不到时的提示
   target: boolean; // 编辑器里 Add to 的目标白板是不是这块
   settings: Settings;
   /** 这些快捷键（⌘ + 键）被宿主拦下后以 {type:"key"} 转回来，白板自己不再处理（免得做两次） */
   forwardedKeys?: string[];
-  /** Note 编辑时的灰字补全开着（codeboard.ai.provider 不是 off） */
-  complete?: boolean;
   /** ⌘C 复制的卡在哪块白板上、几张（画布菜单的 Paste as Linked Card / Paste as Copy 用） */
   clip?: { board: string; n: number };
 };

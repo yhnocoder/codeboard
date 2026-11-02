@@ -1,5 +1,5 @@
 import { DEFAULT_SETTINGS, type Settings } from "@codeboard/core";
-import { SETTINGS } from "@codeboard/core/settings";
+import { HOST_SETTINGS, SETTINGS, type HostSetting } from "@codeboard/core/settings";
 import { log } from "./log";
 import { workspace } from "./ws";
 
@@ -15,19 +15,25 @@ export const validSetting = (k: string, v: unknown): k is keyof Settings =>
  */
 const writing = new Map<keyof Settings, { v: unknown }>();
 
+/** One setting, the way the board gets it in readSettings */
+export function readSetting<K extends keyof Settings>(k: K): Settings[K] {
+  const w = writing.get(k);
+  const v = w ? w.v : workspace().settings.get(`codeboard.${KEY[k]}`);
+  const d: unknown = DEFAULT_SETTINGS[k];
+  if (v === undefined || v === null) return d as Settings[K];
+  // 对象设置（newCards.hide、notes.fontSize）：settings.json 里只写了几项时，其余的取默认值，白板拿到的总是每项都在的完整对象
+  return (isObj(d) && isObj(v) ? { ...d, ...v } : v) as Settings[K];
+}
+
 export function readSettings(): Settings {
-  const s = workspace().settings;
-  const out = { ...DEFAULT_SETTINGS } as Record<string, unknown>;
-  for (const k of Object.keys(KEY) as (keyof Settings)[]) {
-    const w = writing.get(k);
-    const v = w ? w.v : s.get(`codeboard.${KEY[k]}`);
-    if (v === undefined || v === null) continue;
-    // 对象设置（newCards.hide、notes.fontSize）：settings.json 里只写了几项时，其余的取默认值，白板拿到的总是每项都在的完整对象
-    const d = DEFAULT_SETTINGS[k];
-    out[k] = isObj(d) && isObj(v) ? { ...d, ...v } : v;
-  }
+  const out = {} as Record<keyof Settings, unknown>;
+  for (const k of Object.keys(KEY) as (keyof Settings)[]) out[k] = readSetting(k);
   return out as Settings;
 }
+
+/** A setting only the host reads (core's HOST_SETTINGS); undefined when not set */
+export const readHostSetting = <T>(k: HostSetting): T | undefined =>
+  workspace().settings.get<T>(`codeboard.${HOST_SETTINGS[k].key}`);
 
 /** 跟着项目走的设置：从白板改时写进工作区设置，不写用户设置（公式预设里的命令通常是这个项目的记号） */
 const PROJECT = new Set<keyof Settings>(["mathPreamble"]);

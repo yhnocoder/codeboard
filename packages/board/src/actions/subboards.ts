@@ -31,7 +31,7 @@ import { revealCard, selectCard } from "./common";
 import { paintRef } from "@yhnocoder/markdown";
 import { walk, setWalk } from "../state/ui";
 import { settleHome, frames as sectionFrames } from "../state/sections";
-import { animScale } from "../state/ghost";
+import { animScale } from "../state/motion";
 import { ask, send } from "../host";
 import { promptText } from "../ui/Menu";
 import { cardSel } from "../cardsel";

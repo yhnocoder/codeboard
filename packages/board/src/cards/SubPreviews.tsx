@@ -7,7 +7,7 @@ import { createStore } from "solid-js/store";
 import { escHtml, isCode, type BoardCard, type Card, type SkelCard, type SubCard } from "@codeboard/core";
 import { observeResize } from "@yhnocoder/markdown/ui";
 import { cam } from "../state/camera";
-import { track } from "../gesture";
+import { DRAG_SLOP, track } from "../gesture";
 import {
   frames,
   skels,
@@ -38,8 +38,6 @@ import { MdStatic } from "../ui/Md";
 import { skelIcon, skelName } from "./BoardBody";
 import { hidesHeading } from "./NoteBody";
 
-/** 拖动多远（屏幕 px）才算拖，不算点 */
-const DRAG_SLOP = 4;
 /** 代码预览最多排几行（正文最高 ~170px，再多也看不见） */
 const CODE_LINES = 16;
 

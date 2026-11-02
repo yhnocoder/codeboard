@@ -5,10 +5,7 @@ import { tune } from "./tune";
 import { rooted } from "./root";
 import { state } from "./store";
 import { CAM_STILL } from "./timing";
-
-// 只建一次：.matches 跟着系统设置（和 emulateMedia）变。每次现建一个 MediaQueryList，动画每帧要调几十次
-const motionQ = typeof matchMedia === "function" ? matchMedia("(prefers-reduced-motion: reduce)") : null;
-export const reduceMotion = () => !!motionQ?.matches;
+import { reduceMotion } from "./motion";
 
 export class Spring {
   v: number;

@@ -7,7 +7,8 @@ import { subRef } from "../state/subboards";
 import { linkCurve } from "../state/geo";
 import { extraList } from "../state/extent";
 import { bezAt, bezBox } from "@codeboard/core/canvas";
-import { camTo, camRest, ensureVisible, fitRect, animate, Spring, reduceMotion } from "../state/camera";
+import { camTo, camRest, ensureVisible, fitRect, animate, Spring } from "../state/camera";
+import { reduceMotion } from "../state/motion";
 import { notesOf, ping, setPopIn, popIn, setPaletteOpen, setSizeIn, type SizeAnim } from "../state/ui";
 import { openPop, updatePop } from "../state/pop";
 import { lastPointer, naturalSize, chromeOf, cardsMeasured, CODE_MAX } from "../state/measure";
@@ -16,17 +17,10 @@ import { renderMd, renderMdInline, type RefBroken, type RefTarget } from "@yhnoc
 import { crossRef } from "../md/refs";
 import { mathRev } from "../md/math";
 import { cardSel } from "../cardsel";
+import { IS_MAC } from "@yhnocoder/markdown/ui";
 
-const isMac = () => state.host.isMac;
 /** 说明文字里的修饰键（「⌥-click」「⌘↵ to save」）；有绑定的快捷键用 keymap 的 kbd(id) */
-export const K = {
-  get mod() {
-    return isMac() ? "⌘" : "Ctrl+";
-  },
-  get alt() {
-    return isMac() ? "⌥" : "Alt+";
-  },
-};
+export const K = { mod: IS_MAC ? "⌘" : "Ctrl+", alt: IS_MAC ? "⌥" : "Alt+" };
 
 export function selectCard(id: string, add = false) {
   const f = cardById(id);

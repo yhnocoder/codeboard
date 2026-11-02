@@ -1,5 +1,4 @@
 import { batch } from "solid-js";
-import { reconcile } from "solid-js/store";
 import {
   loadBoard,
   findCard,
@@ -13,7 +12,7 @@ import {
   type HostToBoard,
   type Sidenote,
 } from "@codeboard/core";
-import { state, setState, setShared, flows } from "./state/store";
+import { state, setHost, mergeHost, setBoards, setLoaded, setSharedInfo, flows } from "./state/store";
 import { putViews, putStale, resetSegs } from "./state/views";
 import { markSaved, setBoard, mutate, sync, syncShared, syncGone, syncMerged } from "./state/changes";
 import { select, clearSel, setLineSel, lineSel, sel } from "./state/selection";
@@ -59,8 +58,8 @@ function handle(m: HostToBoard) {
     case "init": {
       const b = loadBoard(m.board);
       batch(() => {
-        // the host state and the segments' views and version states are replaced (store setState merges: the last board's would stay)
-        setState("host", reconcile(m.host));
+        // the host state and the segments' views and version states are replaced, not merged (the last board's would stay)
+        setHost(m.host);
         setNoteAssets(m.host.assetBase);
         applyMathPreamble(m.host.settings.mathPreamble);
         if (!preloaded) {
@@ -68,14 +67,14 @@ function handle(m: HostToBoard) {
           preloadEditor();
           preloadCm();
         }
-        setState("boards", m.boards);
+        setBoards(m.boards);
         resetSegs(m.views, m.stale);
         setBoard(
           b,
           (m.crumbs ?? []).map((c) => c.id),
         );
         A.resetShownViews();
-        setState("loaded", true);
+        setLoaded(true);
         // 换了一块白板（进入 / 离开子白板）：讲解、模式、拖动、弹出的面板、骨架、共享卡的情况都是上一块白板的（onBoardSwitch / boardSignal）
         boardSwitched();
         setCrumbs(m.crumbs ?? []);
@@ -133,10 +132,10 @@ function handle(m: HostToBoard) {
       break;
     }
     case "boards":
-      setState("boards", m.boards);
+      setBoards(m.boards);
       break;
     case "host":
-      setState("host", (h) => ({ ...h, ...m.host }));
+      mergeHost(m.host);
       if (m.host.assetBase !== undefined) setNoteAssets(m.host.assetBase);
       break;
     case "add": {
@@ -232,7 +231,7 @@ function handle(m: HostToBoard) {
       syncShared(m.cards, m.views);
       break;
     case "sharedInfo":
-      setShared(reconcile(m.cards));
+      setSharedInfo(m.cards);
       break;
     case "merged":
       syncMerged(m.patch, m.views);

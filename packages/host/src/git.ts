@@ -23,24 +23,37 @@ const SHA = /^[0-9a-f]{40}$/;
 
 const roots = new Map<string, Promise<string | null>>();
 
-/** 只记下有答案的：不在仓库里（还没 git init）、git 出错时下次再问 */
-function remember<T>(m: Map<string, Promise<T | null>>, k: string, ask: () => Promise<T | null>): Promise<T | null> {
-  let p = m.get(k);
+/** git rev-parse outside any repo: exit 128 saying so (in English: LC_ALL=C) */
+const NOT_A_REPO = /not a git repository/i;
+
+/**
+ * A repo lookup: rev-parse's output read with `read`, remembered until forgetRepos (a git event, the workspace folders changed),
+ * "not in a repo" included: in a workspace that is no repo every lookup would start a git process otherwise, and a later git init
+ * comes with a git event. Any other failure (the folder is gone, git is missing or failed) is null but asked again next time
+ */
+function lookup<T>(m: Map<string, Promise<T | null>>, dir: string, args: string[], read: (out: string) => T | null) {
+  let p = m.get(dir);
   if (!p) {
-    const q = ask().then((v) => {
-      if (v === null && m.get(k) === q) m.delete(k);
-      return v;
-    });
-    m.set(k, (p = q));
+    const q = new Promise<T | null>((res) =>
+      execFile(
+        "git",
+        args,
+        { cwd: dir, encoding: "utf8", env: { ...process.env, LC_ALL: "C" } },
+        (err, out, errOut) => {
+          if (!err) return res(read(out));
+          if (!(err.code === 128 && NOT_A_REPO.test(errOut)) && m.get(dir) === q) m.delete(dir);
+          res(null);
+        },
+      ),
+    );
+    m.set(dir, (p = q));
   }
   return p;
 }
 
 /** 文件所在的 git 仓库根（子模块里的文件返回子模块自己的根） */
 export const repoRootOfDir = (dir: string): Promise<string | null> =>
-  remember(roots, dir, () =>
-    git(dir, ["rev-parse", "--show-toplevel"]).then((s) => (s?.trim() ? path.normalize(s.trim()) : null)),
-  );
+  lookup(roots, dir, ["rev-parse", "--show-toplevel"], (s) => (s.trim() ? path.normalize(s.trim()) : null));
 export const repoRootOf = (file: string) => repoRootOfDir(path.dirname(file));
 
 /** The repo's HEAD commit, read every time: a cached HEAD outlives a commit until the .git watcher's debounce has run, and a version
@@ -103,7 +116,7 @@ export async function commitInfo(root: string, commit: string): Promise<LogEntry
 const gitDirs = new Map<string, Promise<string | null>>();
 /** .git 目录的绝对路径（子模块是外层仓库的 .git/modules/x） */
 export const gitDirOf = (root: string) =>
-  remember(gitDirs, root, () => git(root, ["rev-parse", "--absolute-git-dir"]).then((s) => s?.trim() || null));
+  lookup(gitDirs, root, ["rev-parse", "--absolute-git-dir"], (s) => s.trim() || null);
 
 const anc = new Lru<Promise<boolean>>(500);
 /**
@@ -124,12 +137,22 @@ export function isAncestor(root: string, a: string, b: string): Promise<boolean>
   return p;
 }
 
+const commons = new Map<string, Promise<string | null>>();
+/** The git directory a repo's worktrees and submodule checkouts share (info/exclude is there). Asked from the repo root, so the
+ *  relative path git before 2.31 gives (no --path-format) is relative to it */
+const commonDirOf = (root: string) =>
+  lookup(commons, root, ["rev-parse", "--git-common-dir"], (s) => (s.trim() ? path.resolve(root, s.trim()) : null));
+
 const ups = new Map<string, Promise<string>>();
-/** 仓库变了（git 事件：checkout、新建 / 删了分支、改了 origin、git init）：记下的仓库根、.git 目录、上游分支作废，下次再问 */
+const excluded = new Map<string, Promise<void>>();
+/** The repos changed (a git event: checkout, a branch made or deleted, a new origin, git init; the workspace folders changed): the
+ *  remembered repo roots, git directories, upstream branches and info/exclude lines written are asked again */
 export function forgetRepos() {
   roots.clear();
   gitDirs.clear();
+  commons.clear();
   ups.clear();
+  excluded.clear();
 }
 /** 上游分支：origin/HEAD 指的分支，没有就本地 main / master，都没有 = HEAD */
 export function upstreamRef(root: string): Promise<string> {
@@ -150,10 +173,7 @@ export type Worktree = { dir: string; head?: string; branch?: string };
 /** git worktree list：同一仓库的所有 worktree（含 root 自己）。bare / 已删掉目录（prunable）的不算；
  *  子模块的主 worktree 被报成它的 git 目录（.git/modules/…）：换成 core.worktree 指的真正的目录，找不到就不算 */
 export async function worktrees(root: string): Promise<Worktree[]> {
-  const [out, common] = await Promise.all([
-    git(root, ["worktree", "list", "--porcelain"]),
-    git(root, ["rev-parse", "--path-format=absolute", "--git-common-dir"]),
-  ]);
+  const [out, gd] = await Promise.all([git(root, ["worktree", "list", "--porcelain"]), commonDirOf(root)]);
   const list: (Worktree & { skip?: boolean })[] = [];
   let cur: (Worktree & { skip?: boolean }) | null = null;
   for (const l of (out ?? "").split("\n")) {
@@ -168,7 +188,6 @@ export async function worktrees(root: string): Promise<Worktree[]> {
         .replace(/^refs\/heads\//, "");
     else if (cur && (l === "bare" || l.startsWith("prunable"))) cur.skip = true;
   }
-  const gd = common?.trim() ? path.normalize(common.trim()) : null;
   const res: Worktree[] = [];
   for (const w of list) {
     if (w.skip) continue;
@@ -202,18 +221,20 @@ export async function githubRemote(root: string): Promise<{ owner: string; name:
   return m ? { owner: m[1], name: m[2] } : null;
 }
 
-const excluded = new Map<string, Promise<void>>();
 /**
- * 在 dir 所在仓库的 info/exclude 里加一行 pattern（只在本机，不进提交）；note 是加在它上面的注释。
- * worktree 和子模块的 info/exclude 在共用的 git 目录里（--git-common-dir）。不在仓库里、git 出错就什么都不做，每个目录只问一次
+ * Adds the line `pattern` to the info/exclude of the repo dir is in (local only, never committed), under the comment `note`.
+ * Worktrees and submodules have theirs in the git directory they share (--git-common-dir). Outside a repo or when git fails it
+ * does nothing; once per folder until forgetRepos (a folder git init made a repo of gets the line then)
  */
 export function excludeFromGit(dir: string, pattern: string, note: string): Promise<void> {
-  let p = excluded.get(dir);
+  const k = `${dir}\0${pattern}`;
+  let p = excluded.get(k);
   if (!p)
     excluded.set(
-      dir,
+      k,
       (p = (async () => {
-        const common = (await git(dir, ["rev-parse", "--path-format=absolute", "--git-common-dir"]))?.trim();
+        const root = await repoRootOfDir(dir);
+        const common = root && (await commonDirOf(root));
         if (!common) return;
         const f = path.join(common, "info", "exclude");
         try {
