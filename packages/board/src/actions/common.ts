@@ -1,6 +1,7 @@
 import { cardTitle, isCode, segOf, bounds, type Card, type Section, type Rect } from "@codeboard/core";
 import { state, cardById, hostOf, rectOf, placeOf, placed, flows } from "../state/store";
-import { mutate } from "../state/changes";
+import * as C from "@codeboard/core/commands";
+import { commandEnv } from "./env";
 import { sel, select, isSel } from "../state/selection";
 import { frames, isHidden, visibleCards } from "../state/sections";
 import { subRef } from "../state/subboards";
@@ -82,10 +83,7 @@ function sectionOf(id: string): Section | undefined {
   return sid ? state.board.sections.find((s) => s.id === sid) : undefined;
 }
 export const sectionById = (id?: string) => (id ? state.board.sections.find((s) => s.id === id) : undefined);
-export function sectionLocked(s?: Section): boolean {
-  for (let q = s, i = 0; q && i < 50; q = sectionById(q.parent), i++) if (q.locked) return true;
-  return false;
-}
+export const sectionLocked = (s?: Section) => C.sectionLocked(state.board, s);
 export function isLocked(id: string) {
   const f = cardById(id);
   if (!f) return false;
@@ -117,18 +115,7 @@ function unhide(id: string): boolean {
         todo.push(l.from.card);
       }
     }
-  return mutate((b) => {
-    for (const k of up) if (b.place[k]?.collapsed) b.place[k].collapsed = undefined;
-    const seen = new Set<string>();
-    for (
-      let s = b.sections.find((q) => q.id === b.place[h]?.section);
-      s && !seen.has(s.id);
-      s = b.sections.find((q) => q.id === s!.parent)
-    ) {
-      seen.add(s.id);
-      if (s.collapsed) s.collapsed = undefined;
-    }
-  });
+  return C.unfoldTo(commandEnv, h, up);
 }
 /**
  * What is drawn outside the cards for these host cards (null = every visible card): the lines between them (a curve can
@@ -284,36 +271,21 @@ export function openWorktreeDiff(id: string) {
 /** Fit Content：宽 = 最长行，高 = 所有可见行；多选时各自适配。
  *  高度不存（Note、代码卡和新卡一样跟着内容：加行变高、删行变矮），只有代码比没存高度时的上限（CODE_MAX）还高的代码卡存下内容区的高度 */
 export function fitContent(ids: string[]) {
-  const sz = new Map<string, { w?: number; h: number; body?: number }>();
+  const sz = new Map<string, { w?: number; h: number; body?: number; chrome: number }>();
   for (const id of ids) {
     const h = cardById(id)?.host.id;
     const n = h && naturalSize(h);
-    if (h && n) sz.set(h, n);
+    if (h && n) sz.set(h, { w: n.w, h: n.h, body: n.body, chrome: 0 });
   }
   if (!sz.size) return;
-  const chrome = new Map([...sz.keys()].map((id) => [id, chromeOf(id)]));
+  for (const [id, n] of sz) n.chrome = chromeOf(id);
   const from = new Map(
     [...sz.keys()].flatMap((id) => {
       const s = shownSize(id);
       return s ? [[id, s] as const] : [];
     }),
   );
-  mutate((b) => {
-    for (const [id, n] of sz) {
-      const p = b.place[id];
-      if (!p) continue;
-      if (n.w) p.w = Math.max(240, Math.min(1600, n.w));
-      const c = b.cards.find((k) => k.id === id);
-      const code = c?.kind === "code";
-      p.h =
-        c?.kind === "note" ||
-        c?.kind === "web" ||
-        c?.kind === "image" ||
-        (code && n.body !== undefined && n.body <= CODE_MAX)
-          ? undefined
-          : Math.round(n.h - (code ? chrome.get(id)! : 0));
-    }
-  });
+  C.fitCardSizes(commandEnv, sz, CODE_MAX);
   growFrom(from);
 }
 

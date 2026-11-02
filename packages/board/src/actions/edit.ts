@@ -1,8 +1,6 @@
 import { untrack } from "solid-js";
-import { unwrap } from "solid-js/store";
 import {
   overlaps,
-  findCard,
   isCode,
   cardTitle,
   segOf,
@@ -10,15 +8,11 @@ import {
   SECTION_PAD,
   GAP,
   copyText,
-  guessLang,
-  pythonDialect,
+  type AlignOp,
   type Arrange,
-  type Board,
   type Card,
   type CodeCard,
   type CompareCard,
-  type Section,
-  type Segment,
   type Rect,
   type NoteLayout,
 } from "@codeboard/core";
@@ -26,7 +20,6 @@ import * as C from "@codeboard/core/commands";
 import { commandEnv } from "./env";
 import { LANGS, langLabel } from "@codeboard/analysis/langs";
 import { state, cardById, hostOf, rectOf, placeOf, collapsedAway } from "../state/store";
-import { mutate, isFresh, settleFresh } from "../state/changes";
 import { sel, select, clearSel, setLineSel, type LineSel } from "../state/selection";
 import { toast } from "../state/toast";
 import { animate, Spring } from "../state/camera";
@@ -49,7 +42,7 @@ import {
   openUnder,
   measureShut,
 } from "../state/sections";
-import { popCard, revealCard, sectionById, sectionLocked, selCards, isLocked, slideFrom } from "./common";
+import { popCard, revealCard, sectionById, selCards, isLocked, slideFrom } from "./common";
 import { requestViews, copyViews, staleOk } from "../state/views";
 import { offerReference } from "./pastechip";
 import { cardText, remember } from "./clipboard";
@@ -68,31 +61,14 @@ export function copyLines(ls: LineSel) {
   toast(`Copied ${ls.end - ls.start + 1} line${ls.end > ls.start ? "s" : ""}`);
 }
 export function hideLines(ls: LineSel) {
-  mutate((b) => {
-    const c = findCard(b, ls.card)?.card;
-    if (!isCode(c)) return;
-    const s = segOf(c, ls.seg)!;
-    let r: [number, number] = [ls.start, ls.end];
-    const keep = (s.hidden ?? []).filter((h) => {
-      if (h[1] < r[0] - 1 || h[0] > r[1] + 1) return true;
-      r = [Math.min(h[0], r[0]), Math.max(h[1], r[1])];
-      return false;
-    });
-    s.hidden = [...keep, r].sort((a, c2) => a[0] - c2[0]);
-  });
+  C.hideLines(commandEnv, ls);
   window.getSelection()?.removeAllRanges();
   setLineSel(null);
 }
-export function toggleHl(ls: LineSel) {
-  mutate((b) => {
-    const c = findCard(b, ls.card)?.card;
-    if (!isCode(c)) return;
-    const s = segOf(c, ls.seg)!;
-    const ln = Array.from({ length: ls.end - ls.start + 1 }, (_, i) => ls.start + i);
-    const all = ln.every((l) => s.hl?.includes(l));
-    s.hl = all ? (s.hl ?? []).filter((l) => l < ls.start || l > ls.end) : [...new Set([...(s.hl ?? []), ...ln])];
-  });
-}
+export const toggleHl = (ls: LineSel) => C.toggleHighlight(commandEnv, ls);
+
+/** Align / distribute the selected cards (their frames as drawn); locked ones stay */
+export const alignCards = (rs: (Rect & { id: string })[], op: AlignOp) => C.alignCards(commandEnv, rs, op);
 
 export function deleteSel() {
   const ids = new Set<string>();
@@ -217,18 +193,7 @@ export async function tidyUp(ids = sel.cards) {
     if (ox || oy) moved.push({ id, ox, oy });
   }
   if (!moved.length) return;
-  if (
-    !mutate((b) => {
-      for (const [id, p] of Object.entries(m)) {
-        const c = b.place[id];
-        if (c) {
-          c.x = p.x;
-          c.y = p.y;
-        }
-      }
-    })
-  )
-    return;
+  if (!C.moveCards(commandEnv, m)) return;
   slideFrom(moved);
 }
 
@@ -256,52 +221,18 @@ export function copyCard(c: CodeCard) {
 
 export const compareTitle = (c: CompareCard) => cardTitle(c, state.board);
 export const renameCard = (id: string, v: string) => C.renameCard(commandEnv, id, v);
-export function setDesc(id: string, v: string) {
-  mutate((b) => {
-    const c = findCard(b, id)?.card;
-    if (c) c.desc = v.trim() || undefined;
-  });
-}
+export const setDesc = (id: string, v: string) => C.setCardDesc(commandEnv, id, v);
 /** 改 Note 的字；字删光了这张 Note 就删掉（同一步，一次撤销就回来）。layout: the editor changed table widths, row
  *  heights or code wrap (null = all automatic again); left out = unchanged */
-export function setNoteText(id: string, v: string, layout?: NoteLayout | null) {
-  const write = (b: Board) => C.writeNote(b, id, v, layout);
-  // a new Note left empty is dropped (no undo step), as if it never was
-  if (isFresh(id)) return settleFresh(id, C.noteKept(cardById(id)?.card, v), write);
-  mutate(write);
-}
+export const setNoteText = (id: string, v: string, layout?: NoteLayout | null) =>
+  C.writeNote(commandEnv, id, v, layout);
 export function setFreeCode(id: string, text: string) {
-  let seg: Segment | undefined;
-  const set = (b: Board) => {
-    const c = findCard(b, id)?.card;
-    if (!isCode(c)) return;
-    const s = c.segments[0];
-    s.text = text.split("\n");
-    s.end = s.start + s.text.length - 1;
-    // 语言没手选过就跟着内容走（认不出来时不动）
-    if (s.src.kind === "free" && !s.src.langPicked) s.lang = detectLang(text) ?? s.lang;
-    seg = structuredClone(unwrap(s));
-  };
-  if (isFresh(id)) settleFresh(id, !!text.trim(), set);
-  else mutate(set);
+  const seg = C.writeFreeCode(commandEnv, id, text);
   if (seg) requestViews([seg]);
 }
-/** Free code 按内容认语言：Python 再细分 Triton / TileLang */
-const detectLang = (text: string) => {
-  const g = guessLang(text);
-  return g === "python" ? pythonDialect(text) : g;
-};
 /** lang = null：回到按内容自动识别 */
 function setLang(id: string, lang: string | null) {
-  let seg: Segment | undefined;
-  mutate((b) => {
-    const c = findCard(b, id)?.card;
-    if (!isCode(c)) return;
-    const s = c.segments[0];
-    if (s.src.kind === "free") s.src.langPicked = lang ? true : undefined;
-    s.lang = lang ?? detectLang(s.text.join("\n")) ?? s.lang;
-    seg = structuredClone(unwrap(s));
-  });
+  const seg = C.setCodeLang(commandEnv, id, lang);
   if (seg) requestViews([seg]);
 }
 export function langMenu(id: string, el: Element) {
@@ -309,7 +240,7 @@ export function langMenu(id: string, el: Element) {
   const c = cardById(id)?.card;
   if (!isCode(c)) return;
   const s = c.segments[0];
-  const auto = s.src.kind === "free" ? detectLang(s.text.join("\n")) : null;
+  const auto = s.src.kind === "free" ? C.freeLang(s.text.join("\n")) : null;
   const picked = s.src.kind !== "free" || !!s.src.langPicked;
   openMenu(
     [
@@ -329,44 +260,12 @@ export function langMenu(id: string, el: Element) {
     r.bottom + 4,
   );
 }
-export function toggleHide(id: string, k: "comments" | "docstrings" | "blank") {
-  mutate((b) => {
-    const c = findCard(b, id)?.card;
-    if (isCode(c)) c.hide = { ...c.hide, [k]: !c.hide?.[k] };
-  });
-}
-export function toggleWrap(ids: string[]) {
-  const cs = ids.map((i) => cardById(i)?.card).filter(isCode);
-  if (!cs.length) return;
-  const on = !cs.every((c) => c.wrap);
-  mutate((b) => {
-    for (const c of cs) {
-      const k = findCard(b, c.id)?.card;
-      if (isCode(k)) k.wrap = on || undefined;
-    }
-  });
-}
-export function toggleCollapse(id: string) {
-  mutate((b) => {
-    const p = b.place[id];
-    if (p) p.collapsed = !p.collapsed || undefined;
-  });
-}
+export const toggleHide = (id: string, k: "comments" | "docstrings" | "blank") => C.toggleCodeHide(commandEnv, id, k);
+export const toggleWrap = (ids: string[]) => C.toggleWrap(commandEnv, ids);
+export const toggleCollapse = (id: string) => C.toggleCollapsed(commandEnv, id);
 export function toggleLock(cards: string[], sections: string[] = []) {
-  const cs = [...new Set(cards.map((i) => cardById(i)?.host.id).filter(Boolean) as string[])];
-  const ss = sections.map(sectionById).filter(Boolean) as Section[];
-  if (!cs.length && !ss.length) return;
-  const on = !(cs.every((c) => placeOf(c).locked) && ss.every((s) => s.locked));
-  mutate((b) => {
-    for (const c of cs) {
-      const k = b.place[c];
-      if (k) k.locked = on || undefined;
-    }
-    for (const s of ss) {
-      const k = b.sections.find((q) => q.id === s.id);
-      if (k) k.locked = on || undefined;
-    }
-  });
+  const on = C.toggleLock(commandEnv, cards, sections);
+  if (on === null) return;
   toast(on ? "Locked. It stays put; code inside still works." : "Unlocked");
 }
 /** 符号找不到时选 Keep Old Version：就当成一张钉死的卡，不再提示 */
@@ -378,10 +277,7 @@ export function keepLost(cardId: string) {
       .filter((s) => state.stale[s.id]?.state === "lost" || state.stale[s.id]?.state === "many")
       .map((s) => s.id),
   );
-  mutate((b) => {
-    const k = findCard(b, cardId)?.card;
-    if (isCode(k)) k.keepOld = true;
-  });
+  C.keepOldVersion(commandEnv, cardId);
 }
 export function missingNote(c: CodeCard): string | null {
   const st = c.segments.map((s) => state.stale[s.id]?.state);
@@ -488,14 +384,7 @@ export function moveToSection(id: string) {
       return [i, { x: r.x + r.w / 2, y: r.y + r.h / 2 }];
     }),
   );
-  mutate((b) => {
-    for (const i of ids) {
-      const p = b.place[i];
-      p.x += dx;
-      p.y += dy;
-      p.section = id;
-    }
-  });
+  C.moveIntoSection(commandEnv, ids, id, dx, dy);
   requestAnimationFrame(() => {
     ids.forEach((i) => popCard(i, from.get(i)));
     revealCard(ids[0], false);
@@ -529,18 +418,7 @@ export function toggleSection(id: string) {
     if (now === shut) return;
     const only = now;
     now = shut;
-    mutate((b) => {
-      const s = b.sections.find((q) => q.id === id);
-      if (!s || !!s.collapsed !== only) return;
-      if (shut)
-        Object.assign(s, {
-          x: Math.round(open.x),
-          y: Math.round(open.y),
-          w: Math.round(open.w),
-          h: Math.round(open.h),
-        });
-      s.collapsed = shut || undefined;
-    });
+    C.setSectionFolded(commandEnv, id, shut, { was: only, open });
   };
   // 跟着收的：所有成员卡（折叠的子 Section 里的也算：连着它们的线要跟着走）；画出来的：展开时看得见的卡、子 Section
   const members = allMembers(id).map((c) => c.id);
@@ -667,51 +545,27 @@ const STAGE_IN = 1,
   STAGE_OUT = 4;
 /** Section 的 Fit Content：框收到刚好包住成员卡和子 Section（标准边距）；缓动过去，一步撤销。折叠的、锁着的、空的不动 */
 export function fitSections(ids: string[]) {
-  const fits = new Map<string, Rect>();
-  for (const id of ids) {
-    const s = sectionById(id);
-    if (!s || s.collapsed || sectionLocked(s)) continue;
-    const r = fitFrame(s);
-    if (r) fits.set(id, r);
-  }
-  if (!fits.size) return;
-  if (!reduceMotion()) {
-    const me = new Set(fits.keys());
-    setFitting(me);
-    setTimeout(() => setFitting((f) => (f === me ? new Set<string>() : f)), SECTION_FIT);
-  }
-  mutate((b) => {
-    for (const [id, r] of fits) {
-      const s = b.sections.find((q) => q.id === id);
-      if (s) Object.assign(s, { x: r.x, y: r.y, w: r.w, h: r.h });
-    }
-  });
+  // the frames ease to their new size (state/sections fitting) from just before they change
+  C.fitSections(
+    commandEnv,
+    ids,
+    (s) => fitFrame(s) ?? null,
+    (fitted) => {
+      if (reduceMotion()) return;
+      const me = new Set(fitted);
+      setFitting(me);
+      setTimeout(() => setFitting((f) => (f === me ? new Set<string>() : f)), SECTION_FIT);
+    },
+  );
 }
-export function renameSection(id: string, v: string) {
-  mutate((b) => {
-    const s = b.sections.find((q) => q.id === id);
-    if (s) s.title = v.trim() || "Untitled Section";
-  });
-}
+export const renameSection = (id: string, v: string) => C.renameSection(commandEnv, id, v);
+export const setSectionColor = (id: string, color: string | undefined) => C.setSectionColor(commandEnv, id, color);
+export const moveOutOfParent = (id: string) => C.moveOutOfParent(commandEnv, id);
+/** A Compare's Swap, Unified, Hide Same Lines, from its menu or its toolbar */
+export const toggleCompare = (id: string, k: "swap" | "unified" | "hideSame") => C.toggleCompareView(commandEnv, id, k);
 
 export const noBg = (c: Card) => (c.kind === "image" && !c.bg) || (c.kind === "code" && c.bg === false);
 /** 倾斜：选中的几张卡里有没斜的就都斜，都斜着就都放正（Compare 的栏算整张 Compare） */
-export function toggleTilt(ids: string[]) {
-  const cs = [...new Set(ids.map((i) => cardById(i)?.host.id).filter(Boolean) as string[])];
-  if (!cs.length) return;
-  const on = !cs.every((i) => cardById(i)?.card.tilt);
-  mutate((b) => {
-    for (const i of cs) {
-      const k = findCard(b, i)?.card;
-      if (k) k.tilt = on || undefined;
-    }
-  });
-}
+export const toggleTilt = (ids: string[]) => C.toggleTilt(commandEnv, ids);
 /** 卡框开关：图片默认没有，代码卡默认有 */
-export function toggleBg(id: string) {
-  mutate((b) => {
-    const c = findCard(b, id)?.card;
-    if (c?.kind === "image") c.bg = !c.bg || undefined;
-    else if (c?.kind === "code") c.bg = c.bg === false ? undefined : false;
-  });
-}
+export const toggleBg = (id: string) => C.toggleBackground(commandEnv, id);

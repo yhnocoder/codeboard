@@ -69,6 +69,7 @@ function env(o: {
       log.edits++;
       return true;
     },
+    fresh: { add: () => {}, is: () => false, settle: () => {} },
     ask: (async (type: string, body: { seg: Segment }) => {
       expect(type).toBe("diff");
       log.diffs.push(body.seg.id);

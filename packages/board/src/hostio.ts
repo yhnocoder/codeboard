@@ -1,10 +1,10 @@
 import { batch } from "solid-js";
-import { checkBoard, findCard, isCode, walkOrder, type HostToBoard, type Sidenote } from "@codeboard/core";
-import { deleteItems, followMoved } from "@codeboard/core/commands";
+import { checkBoard, findCard, walkOrder, type HostToBoard, type Sidenote } from "@codeboard/core";
+import { appendSegment, deleteItems, followMoved, renameBoard } from "@codeboard/core/commands";
 import { commandEnv } from "./actions/env";
 import { state, setHost, mergeHost, setBoards, setLoaded, setSharedInfo, flows } from "./state/store";
 import { putViews, putStale, resetSegs } from "./state/views";
-import { markSaved, setBoard, mutate, sync, syncShared, syncGone, syncMerged } from "./state/changes";
+import { markSaved, setBoard, sync, syncShared, syncGone, syncMerged } from "./state/changes";
 import { select, setLineSel, lineSel, sel } from "./state/selection";
 import { toast } from "./state/toast";
 import { setCam } from "./state/camera";
@@ -127,11 +127,7 @@ function handle(m: HostToBoard) {
     }
     case "appendSegment": {
       putViews({ [m.seg.id]: m.view });
-      mutate((b) => {
-        const c = findCard(b, m.card)?.card;
-        if (!isCode(c)) return;
-        c.segments.push(m.seg);
-      });
+      appendSegment(commandEnv, m.card, m.seg);
       A.revealCard(m.card);
       toast("Added a segment to the card");
       break;
@@ -167,10 +163,7 @@ function handle(m: HostToBoard) {
       runKey(A, m.action);
       break;
     case "rename":
-      if (m.name.trim())
-        mutate((b) => {
-          b.name = m.name.trim();
-        });
+      if (m.name.trim()) renameBoard(commandEnv, m.name.trim());
       break;
     case "replaceSegment":
       A.replaceSegment(m.card, m.seg, m.view);

@@ -30,7 +30,6 @@ import { ask, send } from "../host";
 import { hostRect, popCard, revealCard, selCards } from "./common";
 import { cardText, remember } from "./clipboard";
 import { offerReference, pasteChip, setPasteChip } from "./pastechip";
-import { updateSidenote } from "./notes";
 import { imageDataUrl, pngOf } from "./imagedata";
 
 /** ⌘C：选中的卡记到宿主（贴到别的白板时用），卡的内容写进剪贴板（代码卡 = 看得见的行，Note / Text = Markdown，图片卡 = 图 + Markdown 的图） */
@@ -323,13 +322,5 @@ export function reviewToast(cardId: string) {
 }
 
 /** Board-only：共享卡上的这条 Sidenote 只留在这块白板（不跟着卡去别的白板），再点一次又跟着走 */
-export function toggleBoardOnly(id: string) {
-  updateSidenote(id, (n) => {
-    n.boardOnly = n.boardOnly ? undefined : true;
-  });
-}
-export function markReviewed(id: string) {
-  updateSidenote(id, (n) => {
-    delete n.review;
-  });
-}
+export const toggleBoardOnly = (id: string) => C.toggleBoardOnly(commandEnv, id);
+export const markReviewed = (id: string) => C.markReviewed(commandEnv, id);

@@ -4,14 +4,14 @@ import {
   boardQuestions,
   isQuestion,
   questionsMarkdown,
-  uid,
-  type Board,
   type IconRef,
   type QuestionItem,
   type Sticker,
+  type StickerAt,
 } from "@codeboard/core";
 import { state, cardById, rectOf } from "../state/store";
-import { mutate, createFresh, isFresh, settleFresh } from "../state/changes";
+import * as C from "@codeboard/core/commands";
+import { commandEnv } from "./env";
 import { select, setLineSel } from "../state/selection";
 import { toast } from "../state/toast";
 import { openPop, closePop, pops } from "../state/pop";
@@ -92,60 +92,29 @@ export function stickerClick(id: string, el: Element) {
 
 /** 右键一行 → Ask a Question：在那一行贴「?」，直接写问题 */
 export function askQuestion(at: { card: string; seg: string; line: number }) {
-  const id = uid("k");
-  newQuestion({ id, icon: QICON, at: { kind: "line", ...at }, q: { md: "", at: Date.now() } });
+  newQuestion({ kind: "line", ...at });
 }
 
 /** 问整张卡：「?」绑在卡的右上角外面 */
 export function askQuestionOnCard(card: string) {
-  const id = uid("k");
   const w = rectOf(card).w;
-  newQuestion({
-    id,
-    icon: QICON,
-    at: { kind: "canvas", x: Math.round(w - 14), y: -14, size: 28, on: { card } },
-    q: { md: "", at: Date.now() },
-  });
+  newQuestion({ kind: "canvas", x: Math.round(w - 14), y: -14, size: 28, on: { card } });
 }
 
 /** 新问题和新卡一样：写了问题才进撤销栈，什么都没写就关掉 = 没提过 */
-function newQuestion(s: Sticker) {
-  createFresh(s.id, (b) => {
-    b.stickers.push(s);
-  });
-  requestAnimationFrame(() => openQuestion(s.id, undefined, true));
+function newQuestion(at: StickerAt) {
+  const id = C.newQuestion(commandEnv, QICON, at);
+  requestAnimationFrame(() => openQuestion(id, undefined, true));
 }
 
-export function setQuestionText(id: string, md: string) {
-  const set = (b: Board) => {
-    const s = b.stickers.find((k) => k.id === id);
-    if (s) s.q = { ...(s.q ?? { at: Date.now() }), md: md.trim() };
-  };
-  if (isFresh(id)) settleFresh(id, !!md.trim(), set);
-  else mutate(set);
-}
-export function setAnswered(id: string, done: boolean) {
-  mutate((b) => {
-    const s = b.stickers.find((k) => k.id === id);
-    if (!s) return;
-    const q = { ...(s.q ?? { md: "" }) };
-    if (done) q.done = true;
-    else {
-      delete q.done;
-      delete q.answer;
-    }
-    s.q = q;
-  });
-}
+export const setQuestionText = (id: string, md: string) => C.writeQuestion(commandEnv, id, md);
+export const setAnswered = (id: string, done: boolean) => C.setAnswered(commandEnv, id, done);
 /** 挂上解答它的卡：点一张卡（Note 或别的卡），同时标成已解决 */
 export function linkAnswer(id: string) {
   toast("Click the card or Note that answers it · Esc to cancel");
   pickCardThen((card) => {
     if (!cardById(card)) return;
-    mutate((b) => {
-      const s = b.stickers.find((k) => k.id === id);
-      if (s) s.q = { ...(s.q ?? { md: "" }), done: true, answer: card };
-    });
+    C.linkAnswer(commandEnv, id, card);
     requestAnimationFrame(() => openQuestion(id));
   });
 }

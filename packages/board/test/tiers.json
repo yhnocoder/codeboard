@@ -25,7 +25,7 @@
     "notePastedImageSameSizeInBothModes"
   ],
   "manual": ["markdownRecord"],
-  "solo": ["markdownLazyRender", "noteLongNoteKeysScale"],
+  "solo": ["markdownLazyRender"],
   "known": {},
   "limits": { "area": 30, "smoke": 90, "local": 180 },
   "perf": {
@@ -111,6 +111,7 @@
         "packages/board/src/cards/code/*.{ts,tsx}",
         "packages/board/src/cm/**",
         "packages/board/src/actions/create.ts",
+        "packages/core/src/commands/code.ts",
         "packages/markdown/src/cm/**",
         "packages/markdown/src/code.ts",
         "packages/analysis/src/{index,syms,tree,highlight,langs,select,basics}.ts",
@@ -260,6 +261,7 @@
         "packages/board/src/canvas/routes.ts",
         "packages/core/src/canvas/{labelpos,route,hand}.ts",
         "packages/board/src/actions/{links,annots}.ts",
+        "packages/core/src/commands/links.ts",
         "packages/core/src/linklabel.ts",
         "packages/host/src/marks.ts",
         "packages/board/src/state/blocks.ts",
@@ -288,6 +290,7 @@
         "packages/board/src/state/sections.ts",
         "packages/board/src/state/fold.ts",
         "packages/core/src/layout.ts",
+        "packages/core/src/commands/sections.ts",
         "packages/board/test/scenarios/sections-cards.spec.ts"
       ],
       "scenarios": [
@@ -308,6 +311,7 @@
         "packages/board/src/stickers/**",
         "packages/board/src/state/{stickers,questions}.ts",
         "packages/board/src/actions/{stickers,questions}.ts",
+        "packages/core/src/commands/stickers.ts",
         "packages/board/src/ui/QuestionsPanel.tsx",
         "packages/core/src/questions.ts",
         "packages/host/src/stickers.ts",

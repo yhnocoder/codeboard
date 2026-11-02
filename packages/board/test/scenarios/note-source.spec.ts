@@ -1,5 +1,5 @@
 import type { Page } from "playwright-core";
-import { put, shot, type Host } from "../harness";
+import { cpuSpans, put, shot, type Host } from "../harness";
 import { emptyBoard, type Board, type NoteCard } from "@codeboard/core";
 import { test, open, check, light, until, idle, focusSettled, pmHasSelection } from "../fixtures";
 
@@ -842,7 +842,8 @@ test("noteSourceModeRoundTrip", async () => {
 });
 
 /** Enter and Backspace (joining paragraphs) in a 200-paragraph Note cost about what they cost in a short one: nothing on the
- *  page restyles every block of the Note when one is inserted or removed (each key's time: keydown to the frame after it) */
+ *  page restyles every block of the Note when one is inserted or removed (each key's time: the page's main-thread CPU time,
+ *  cpuSpans, from its keydown to the layout of the frame after it) */
 test("noteLongNoteKeysScale", async () => {
   const para = (i: number) =>
     `Para ${i}: the SM also has ==registers==, **shared memory**, \`code ${i}\` and $x_{${i}} = ${i}$, *italic* and [a link](https://example.com/${i}), long enough to wrap onto a second line of the Note.`;
@@ -853,12 +854,16 @@ test("noteLongNoteKeysScale", async () => {
   await idle(h);
   await pg.evaluate(() => {
     const w = window as any;
-    w.__lat = [];
+    w.__lat = 0;
     document.addEventListener(
       "keydown",
       () => {
-        const t = performance.now();
-        requestAnimationFrame(() => setTimeout(() => w.__lat.push(performance.now() - t), 0));
+        performance.mark("cpu:start");
+        requestAnimationFrame(() => {
+          document.body.getBoundingClientRect();
+          performance.mark("cpu:end");
+          w.__lat++;
+        });
       },
       true,
     );
@@ -885,14 +890,17 @@ test("noteLongNoteKeysScale", async () => {
       ["Backspace", 7],
     ] as const) {
       await pg.evaluate(() => {
-        (window as any).__lat = [];
+        (window as any).__lat = 0;
       });
-      for (let i = 0; i < n; i++) {
-        await pg.keyboard.press(k);
-        await pg.waitForFunction((i) => (window as any).__lat.length > i, i);
-      }
-      const l = await pg.evaluate(() => ((window as any).__lat as number[]).slice(1).sort((a, b) => a - b));
-      out[k] = +l[Math.floor(l.length / 2)].toFixed(1);
+      const spans = await cpuSpans(pg, async () => {
+        for (let i = 0; i < n; i++) {
+          await pg.keyboard.press(k);
+          await pg.waitForFunction((i) => (window as any).__lat > i, i);
+        }
+      });
+      // the first key also opens the editor's lazy parts; a trace that missed marks gives NaN, failing the check below
+      const l = spans.slice(1).sort((a, b) => a - b);
+      out[k] = spans.length === n ? +l[Math.floor(l.length / 2)].toFixed(1) : Number.NaN;
     }
     // MathML (KaTeX's default) turns on Chrome's MathML stylesheet, whose :nth-child rules restyle all later blocks on each insert
     out.mathml = await pg.locator(".md-pm math").count();
@@ -901,8 +909,9 @@ test("noteLongNoteKeysScale", async () => {
   };
   const s = await timed("n1", "Para 3: the SM"),
     l = await timed("n0", "Para 100: the SM");
-  // a few ms of noise on a fast machine is not a regression: compare with at least 12 ms
-  const ok = (k: "Enter" | "Backspace") => l[k] <= 3 * Math.max(s[k], 12);
+  // measured: short 2.5–7 ms, long 6–16 ms, at most 3.7 times the short one (when that is 3 ms); restyling all 200 blocks would
+  // be tens of times. Under 6 ms the short one is mostly noise, so compare with at least that
+  const ok = (k: "Enter" | "Backspace") => l[k] <= 4 * Math.max(s[k], 6);
   check("noteLongNoteKeysScale", ok("Enter") && ok("Backspace"), { short: s, long: l });
   check("noteLongNoteKeysScale no MathML in the editor", l.mathml === 0, l.mathml);
   await close(h);

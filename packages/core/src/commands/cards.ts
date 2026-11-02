@@ -94,17 +94,37 @@ export function renameCard(env: CommandEnv, id: string, v: string) {
 }
 
 /** A Note, Text or Mark written empty goes away; an empty Box is still a box */
-export const noteKept = (c: Card | undefined, md: string) => !!md.trim() || (c?.kind === "note" && c.look === "box");
+const noteKept = (c: Card | undefined, md: string) => !!md.trim() || (c?.kind === "note" && c.look === "box");
 /**
  * Write a Note's Markdown, and the layout its editor changed (table widths, row heights, code wrap; null = all automatic again,
- * left out = unchanged). Written empty it goes away (noteKept), in the same step
+ * left out = unchanged). Written empty it goes away (noteKept), in the same step; a new one written empty goes as if it never
+ * was (env.fresh)
  */
-export function writeNote(b: Board, id: string, md: string, layout?: NoteLayout | null) {
-  const c = findCard(b, id)?.card;
-  if (c?.kind !== "note") return;
-  if (!noteKept(c, md)) return removeCards(b, [id]);
-  c.md = md;
-  if (layout !== undefined) (c as NoteCard).mdLayout = layout ?? undefined;
+export function writeNote(env: CommandEnv, id: string, md: string, layout?: NoteLayout | null) {
+  const write = (b: Board) => {
+    const c = findCard(b, id)?.card;
+    if (c?.kind !== "note") return;
+    if (!noteKept(c, md)) return removeCards(b, [id]);
+    c.md = md;
+    if (layout !== undefined) (c as NoteCard).mdLayout = layout ?? undefined;
+  };
+  if (env.fresh.is(id)) env.fresh.settle(id, noteKept(findCard(env.board(), id)?.card, md), write);
+  else env.edit(write);
+}
+
+/**
+ * The first edit of a new card or question ended without anything written through writeNote, writeFreeCode or writeQuestion
+ * (the editor closed unchanged): it stays when it has content after all (a Box, text put in another way), else it goes
+ */
+export function settleUnwritten(env: CommandEnv, id: string) {
+  if (!env.fresh.is(id)) return;
+  const b = env.board();
+  const c = findCard(b, id)?.card,
+    q = b.stickers.find((s) => s.id === id)?.q;
+  const empty = q
+    ? !q.md.trim()
+    : !c || (c.kind === "note" ? !c.md.trim() : isCode(c) ? !c.segments[0]?.text.join("").trim() : false);
+  env.fresh.settle(id, !empty);
 }
 
 /** Can these cards make a Compare: exactly two code cards */
@@ -311,4 +331,83 @@ export function splitSegment(
       y += estSize(k, { w: r.w }).h + GAP;
     });
   });
+}
+
+/** Rename Board */
+export function renameBoard(env: CommandEnv, name: string) {
+  env.edit((b) => {
+    b.name = name;
+  });
+}
+
+/** A card's description; blank clears it */
+export function setCardDesc(env: CommandEnv, id: string, v: string) {
+  env.edit((b) => {
+    const c = findCard(b, id)?.card;
+    if (c) c.desc = v.trim() || undefined;
+  });
+}
+
+/** Fold or unfold a card */
+export function toggleCollapsed(env: CommandEnv, id: string) {
+  env.edit((b) => {
+    const p = b.place[id];
+    if (p) p.collapsed = !p.collapsed || undefined;
+  });
+}
+
+/**
+ * Lock or unlock cards (a Compare's column: the Compare) and Sections together: all locked already unlocks them, else all lock.
+ * Whether they are locked now, or null when there was nothing to lock
+ */
+export function toggleLock(env: CommandEnv, cards: string[], sections: string[] = []): boolean | null {
+  const b0 = env.board();
+  const cs = [...new Set(cards.map((i) => findCard(b0, i)?.host.id).filter((i): i is string => !!i))];
+  const ss = sections.filter((id) => b0.sections.some((s) => s.id === id));
+  if (!cs.length && !ss.length) return null;
+  const on = !(cs.every((c) => b0.place[c]?.locked) && ss.every((id) => b0.sections.find((s) => s.id === id)?.locked));
+  env.edit((b) => {
+    for (const c of cs) {
+      const k = b.place[c];
+      if (k) k.locked = on || undefined;
+    }
+    for (const id of ss) {
+      const k = b.sections.find((q) => q.id === id);
+      if (k) k.locked = on || undefined;
+    }
+  });
+  return on;
+}
+
+/** Tilt cards (a Compare's column: the Compare): all tilted already straightens them, else all tilt */
+export function toggleTilt(env: CommandEnv, ids: string[]) {
+  const b0 = env.board();
+  const cs = [...new Set(ids.map((i) => findCard(b0, i)?.host.id).filter((i): i is string => !!i))];
+  if (!cs.length) return;
+  const on = !cs.every((i) => findCard(b0, i)?.card.tilt);
+  env.edit((b) => {
+    for (const i of cs) {
+      const k = findCard(b, i)?.card;
+      if (k) k.tilt = on || undefined;
+    }
+  });
+}
+
+/** A Compare's Swap, Unified or Hide Same Lines switched */
+export function toggleCompareView(env: CommandEnv, id: string, k: "swap" | "unified" | "hideSame") {
+  env.edit((b) => {
+    const c = findCard(b, id)?.card;
+    if (c?.kind === "compare") c[k] = !c[k];
+  });
+}
+
+/**
+ * Delete Everywhere from another board, already done by the host: the cards it took that are on this board go, with what refers
+ * to them. Applied as a sync to the board as it is, not a user's edit
+ */
+export function dropGone(b: Board, ids: string[]) {
+  removeCards(
+    b,
+    ids.filter((id) => b.cards.some((c) => c.id === id)),
+  );
 }

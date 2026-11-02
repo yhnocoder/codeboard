@@ -1,6 +1,7 @@
-// The board's actions are UI glue; the rules another shell would need too live in core's command layer. Checked by shape: the
-// board never imports core's structural edits (every function in core/src/edit/ that takes a board to change, and the variant and
-// sub-board ones), only the commands in @codeboard/core/commands that use them
+// The board's actions are UI glue; every rule and every user edit is a command in @codeboard/core/commands, so another shell
+// gets the same behaviour. Checked by shape: the board never imports core's structural edits (every function in core/src/edit/
+// that takes a board to change, and the variant and sub-board ones), and the only mutate() outside state/changes.ts (which
+// defines it) is the command env's edit, which every command's env.edit runs
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -38,10 +39,8 @@ const GUARDED = new Set([
   "dropVariants",
   "extractBoard",
 ]);
-/** [file, op, why]: the board's own wiring that applies what the host already decided, not a user's command */
-const ALLOW: [string, string, string][] = [
-  ["state/changes.ts", "removeCards", "syncGone: another board's Delete Everywhere, already done by the host"],
-];
+/** The one mutate() call outside state/changes.ts: the command env's edit */
+const ENV_EDIT = "edit: (fn, opts) => mutate(fn, opts),";
 
 describe("command layer", () => {
   it("finds the structural edits it guards", () => {
@@ -62,11 +61,25 @@ describe("command layer", () => {
       const t = fs.readFileSync(f, "utf8");
       for (const m of t.matchAll(/import\s*\{([^}]*)\}\s*from\s*["']@codeboard\/core["']/g))
         for (const name of m[1].split(",").map((x) => x.trim().split(/\s+as\s+/)[0]))
-          if (GUARDED.has(name) && !ALLOW.some(([file, op]) => file === rel(f) && op === name))
-            hits.push(`${rel(f)}: ${name}`);
+          if (GUARDED.has(name)) hits.push(`${rel(f)}: ${name}`);
       if (/import\s*\*\s*as\s+\w+\s*from\s*["']@codeboard\/core["']/.test(t))
         hits.push(`${rel(f)}: import * from core`);
     }
     expect(hits).toEqual([]);
+  });
+
+  it("the board edits only through commands: mutate() is the command env's edit and nothing else", () => {
+    const calls: string[] = [];
+    const importers: string[] = [];
+    for (const f of walk(SRC)) {
+      if (rel(f) === "state/changes.ts") continue;
+      const t = fs.readFileSync(f, "utf8");
+      for (const m of t.matchAll(/^.*\bmutate\(.*$/gm)) calls.push(`${rel(f)}: ${m[0].trim()}`);
+      // an alias or a namespace import would hide a call from the search above
+      for (const m of t.matchAll(/import\s*(\{[^}]*\}|\*\s*as\s+\w+)\s*from\s*["'][./]*state\/changes["']/g))
+        if (m[1].startsWith("*") || /\bmutate\b/.test(m[1])) importers.push(`${rel(f)}: ${m[1].replace(/\s+/g, " ")}`);
+    }
+    expect(calls).toEqual([`actions/env.ts: ${ENV_EDIT}`]);
+    expect(importers).toEqual(["actions/env.ts: { mutate, createFresh, isFresh, settleFresh }"]);
   });
 });

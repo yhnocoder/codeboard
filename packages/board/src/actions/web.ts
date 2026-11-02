@@ -4,7 +4,6 @@ import {
   estSize,
   defaultWidth,
   findFree,
-  type Board,
   type LinkItem,
   type LinksCard,
   type WebStyle,
@@ -12,7 +11,7 @@ import {
 import * as C from "@codeboard/core/commands";
 import { commandEnv } from "./env";
 import { state, cardById, rectOf } from "../state/store";
-import { mutate, sync } from "../state/changes";
+import { sync } from "../state/changes";
 import { select, sel } from "../state/selection";
 import { toast } from "../state/toast";
 import { toWorld, viewportCenter } from "../state/camera";
@@ -73,14 +72,15 @@ export function newLinkList(urls: string[], at?: { x: number; y: number }) {
       const v = viewportCenter();
       return { x: v.x - size.w / 2, y: v.y - size.h / 2 };
     })();
-  mutate((b) => {
-    const p = findFree(
-      { ...p0, ...size },
-      b.cards.filter((k) => b.place[k.id]).map((k) => rectOf(k)),
-    );
-    b.cards.push(card);
-    b.place[id] = { x: Math.round(p.x), y: Math.round(p.y), w: defaultWidth(card) };
-    settleHome(b, id);
+  C.addCards(commandEnv, [card], {
+    place: (_, b) => {
+      const p = findFree(
+        { ...p0, ...size },
+        b.cards.filter((k) => b.place[k.id]).map((k) => rectOf(k)),
+      );
+      return { x: Math.round(p.x), y: Math.round(p.y), w: defaultWidth(card) };
+    },
+    settle: settleHome,
   });
   select({ cards: [id] });
   popCard(id);
@@ -97,48 +97,19 @@ export function mergeIntoLinkList(ids: string[] = sel.cards, target?: string) {
   toast(`Merged into a Link List · ${r.links} links`);
 }
 
-const setList = (id: string, f: (c: LinksCard, b: Board) => void) =>
-  mutate((b) => {
-    const c = findCard(b, id)?.card;
-    if (c?.kind === "links") f(c, b);
-  });
 const itemOf = (id: string, item: string) => {
   const c = cardById(id)?.card;
   return c?.kind === "links" ? c.items.find((x) => x.id === item) : undefined;
 };
-export const isRich = (c: LinksCard, it: LinkItem) => it.rich ?? !!c.rich;
+export const isRich = C.isRich;
 
-/** ⋯ → View ▸ Compact / Rich：整张卡的默认（单独设过的行不变） */
-export function setWebStyle(id: string, style: WebStyle | undefined) {
-  mutate((b) => {
-    const c = findCard(b, id)?.card;
-    if (c?.kind === "web") c.style = style;
-  });
-}
-export const setListRich = (id: string, rich: boolean) =>
-  setList(id, (c) => {
-    c.rich = rich || undefined;
-  });
-export const toggleItemRich = (id: string, item: string) =>
-  setList(id, (c) => {
-    const it = c.items.find((x) => x.id === item);
-    if (!it) return;
-    const r = !isRich(c, it);
-    it.rich = r === !!c.rich ? undefined : r; // 跟整张卡一样就不单独记
-  });
-export const renameItem = (id: string, item: string, v: string) =>
-  setList(id, (c) => {
-    const it = c.items.find((x) => x.id === item);
-    if (it) it.title = v.trim() && v.trim() !== it.meta?.title ? v.trim() : undefined;
-  });
+export const setWebStyle = (id: string, style: WebStyle | undefined) => C.setWebStyle(commandEnv, id, style);
+/** ⋯ → View ▸ Compact / Rich：整张卡的默认（单独设过的行不变，和新默认一样的不再单独记） */
+export const setListRich = (id: string, rich: boolean) => C.setListRich(commandEnv, id, rich);
+export const toggleItemRich = (id: string, item: string) => C.toggleItemRich(commandEnv, id, item);
+export const renameItem = (id: string, item: string, v: string) => C.renameLinkItem(commandEnv, id, item, v);
 export const removeItem = (id: string, item: string) => C.removeLinkItem(commandEnv, id, item);
-const reorderItem = (id: string, item: string, to: number) =>
-  setList(id, (c) => {
-    const i = c.items.findIndex((x) => x.id === item);
-    if (i < 0) return;
-    const [it] = c.items.splice(i, 1);
-    c.items.splice(Math.max(0, Math.min(c.items.length, to > i ? to - 1 : to)), 0, it);
-  });
+const reorderItem = (id: string, item: string, to: number) => C.moveLinkItem(commandEnv, id, item, to);
 /** 一行拆出来成为单独的 Web 卡（at = 世界坐标；缺省放在卡右边） */
 function moveItemOut(id: string, item: string, at?: { x: number; y: number }) {
   const r = rectOf(id);

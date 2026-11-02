@@ -1,5 +1,14 @@
-// Web cards and Link Lists: merging into a list, taking a link out of one, removing one
-import { findCard, uid, type Card, type LinkItem, type LinksCard, type Place, type WebCard } from "../model";
+// Web cards and Link Lists: merging into a list, taking a link out of one, removing, renaming and reordering its rows
+import {
+  findCard,
+  uid,
+  type Card,
+  type LinkItem,
+  type LinksCard,
+  type Place,
+  type WebCard,
+  type WebStyle,
+} from "../model";
 import { defaultWidth } from "../layout";
 import { removeCards } from "../edit";
 import type { CommandEnv } from "./env";
@@ -97,4 +106,60 @@ export function linkItemOut(
     if (!c.items.length) removeCards(b, [id]);
   });
   return nid;
+}
+
+const editList = (env: CommandEnv, id: string, f: (c: LinksCard) => void) =>
+  env.edit((b) => {
+    const c = findCard(b, id)?.card;
+    if (c?.kind === "links") f(c);
+  });
+
+/** Is a Link List's row shown rich: its own choice, else the list's */
+export const isRich = (c: LinksCard, it: LinkItem) => it.rich ?? !!c.rich;
+
+/** A Link List's row shown rich or compact; the same as the whole list is not kept for the row */
+export function toggleItemRich(env: CommandEnv, id: string, item: string) {
+  editList(env, id, (c) => {
+    const it = c.items.find((x) => x.id === item);
+    if (!it) return;
+    const r = !isRich(c, it);
+    it.rich = r === !!c.rich ? undefined : r;
+  });
+}
+
+/**
+ * A Link List's rich / compact default. Rows set apart keep their look; those it now matches are no longer kept apart, as
+ * toggleItemRich does not keep a row's choice equal to the list's
+ */
+export function setListRich(env: CommandEnv, id: string, rich: boolean) {
+  editList(env, id, (c) => {
+    c.rich = rich || undefined;
+    for (const it of c.items) if (it.rich === rich) it.rich = undefined;
+  });
+}
+
+/** A Link List's row renamed; empty, or the page's own title, shows the page's title again */
+export function renameLinkItem(env: CommandEnv, id: string, item: string, v: string) {
+  editList(env, id, (c) => {
+    const it = c.items.find((x) => x.id === item);
+    if (it) it.title = v.trim() && v.trim() !== it.meta?.title ? v.trim() : undefined;
+  });
+}
+
+/** A Link List's row dragged to before the row at index `to` (the rows' order before the move; past the end = last) */
+export function moveLinkItem(env: CommandEnv, id: string, item: string, to: number) {
+  editList(env, id, (c) => {
+    const i = c.items.findIndex((x) => x.id === item);
+    if (i < 0) return;
+    const [it] = c.items.splice(i, 1);
+    c.items.splice(Math.max(0, Math.min(c.items.length, to > i ? to - 1 : to)), 0, it);
+  });
+}
+
+/** A Web card's look (compact, rich…); none = automatic */
+export function setWebStyle(env: CommandEnv, id: string, style: WebStyle | undefined) {
+  env.edit((b) => {
+    const c = findCard(b, id)?.card;
+    if (c?.kind === "web") c.style = style;
+  });
 }

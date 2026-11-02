@@ -1,9 +1,9 @@
 import { batch } from "solid-js";
-import { cardTitle, descendants, escHtml, uid, wouldCycle, type BoardCard, type WalkHop } from "@codeboard/core";
+import { cardTitle, descendants, escHtml, wouldCycle, type WalkHop } from "@codeboard/core";
 import * as C from "@codeboard/core/commands";
 import { commandEnv } from "./env";
 import { state, cardById, hostOf, rectOf, flows } from "../state/store";
-import { mutate, flushSave } from "../state/changes";
+import { flushSave } from "../state/changes";
 import { sel, select, clearSel } from "../state/selection";
 import { toast } from "../state/toast";
 import { camTarget, camTo, fitRect, viewportCenter } from "../state/camera";
@@ -403,19 +403,12 @@ export async function turnIntoBoard() {
 
 /** 画布菜单 Insert Board ▸：把一块已有的白板作为子白板放在 at；会套成环的不行 */
 export function insertBoard(child: string, at = viewportCenter()) {
-  const here = state.board.id;
-  if (child === here || wouldCycle(subsOf, here, child)) {
+  const id = C.insertBoard(commandEnv, child, at, { subs: subsOf, settle: settleHome });
+  if (id === "cycle")
     return toast(
       `Can’t put ${nameOf(child)} inside ${state.board.name}: ${state.board.name} is already inside ${nameOf(child)}.`,
     );
-  }
-  const id = uid("c");
-  const ok = mutate((b) => {
-    b.cards.push({ id, kind: "board", board: child } satisfies BoardCard);
-    b.place[id] = { x: Math.round(at.x), y: Math.round(at.y), w: 560, h: 360 };
-    settleHome(b, id);
-  });
-  if (ok) select({ cards: [id] });
+  if (id) select({ cards: [id] });
 }
 /** 能插进来的白板（不含自己），会成环的标出原因 */
 export function insertable(): { id: string; name: string; why?: string }[] {

@@ -10,9 +10,9 @@ import {
   type ImplPick,
   type NameHit,
 } from "@codeboard/core";
-import type { CallAlt } from "@codeboard/analysis/basics";
 import { state, cardById, hostOf } from "../state/store";
-import { mutate } from "../state/changes";
+import * as C from "@codeboard/core/commands";
+import { commandEnv } from "./env";
 import { toast } from "../state/toast";
 import { setConnectFrom } from "../state/mode";
 import { openPop, updatePop } from "../state/pop";
@@ -67,24 +67,7 @@ export async function lateDispatch(cardId: string, segId: string, call: CallSpan
     (l) => sameCallSite(l, { card: cardId, seg: segId, line: call.line, name: call.name }) && l.to.card === placed,
   );
   if (!L) return;
-  const alts: CallAlt[] = r.impls
-    .filter((x) => !x.base)
-    .map((x) => ({
-      label: x.label,
-      detail: x.detail,
-      path: x.path,
-      line: x.line,
-      qual: x.qual,
-      ...(x.lib ? { lib: x.lib } : {}),
-    }));
-  mutate((b) => {
-    const l = b.links.find((x) => x.id === L.id);
-    if (!l?.call) return;
-    const have = new Set((l.call.alts ?? []).map((a) => a.qual));
-    l.call.impls = r!.impls.length;
-    const add = alts.filter((a) => !have.has(a.qual));
-    if (add.length) l.call.alts = [...(l.call.alts ?? []), ...add];
-  });
+  C.addCallAlts(commandEnv, L.id, r.impls);
   openImplPicker(cardId, segId, call, r, undefined, false, { link: L.id, ...(r.abstract ? { abstract: true } : {}) });
 }
 

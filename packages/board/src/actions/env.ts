@@ -3,7 +3,7 @@ import type { CommandEnv, VersionEnv } from "@codeboard/core/commands";
 import { unwrap } from "solid-js/store";
 import { state, shared } from "../state/store";
 import { putStale, putViews, staleOf, staleOk } from "../state/views";
-import { mutate } from "../state/changes";
+import { mutate, createFresh, isFresh, settleFresh } from "../state/changes";
 import { toast } from "../state/toast";
 import { ask } from "../host";
 import { choose } from "../ui/Menu";
@@ -11,6 +11,7 @@ import { choose } from "../ui/Menu";
 export const commandEnv: CommandEnv = {
   board: () => unwrap(state.board),
   edit: (fn, opts) => mutate(fn, opts),
+  fresh: { add: createFresh, is: isFresh, settle: settleFresh },
   ask,
   choose: ({ title, options, ...o }) => choose(title, options, o),
   toast,

@@ -10,7 +10,7 @@
 
 ## 一定会测到的
 
-**大问题**：typecheck、lint（`npm run lint`：Biome 查格式（行宽 120）、没用的 import 和 `any`，knip 查死代码，新出的才算，已有的在 `tools/test/knip-known.txt`）、单元测试（analysis、core、markdown、board、host、插件，都是 vitest；markdown 的包括 npm 包里装了什么的检查）、Markdown 示例（`examples/markdown-demo`：只用 `@yhnocoder/markdown` 的页面，构建后在 Chromium 里显示、编辑、保存走一遍，几秒）、e2e 主流程每次都跑。`packages/board/test/tiers.json` 里的 `smoke` 列表也每次都跑，每个主要功能一个跑得快的场景。
+**大问题**：typecheck、lint（`npm run lint`：Biome 查格式（行宽 120）、没用的 import 和 `any`，knip 查死代码，查出任何一条都算失败）、单元测试（analysis、core、markdown、board、host、插件，都是 vitest；markdown 的包括 npm 包里装了什么的检查）、Markdown 示例（`examples/markdown-demo`：只用 `@yhnocoder/markdown` 的页面，构建后在 Chromium 里显示、编辑、保存走一遍，几秒）、e2e 主流程每次都跑。`packages/board/test/tiers.json` 里的 `smoke` 列表也每次都跑，每个主要功能一个跑得快的场景。
 
 **正在修的问题**：下面这几类场景本地和 CI 每次都跑：
 - 这次改动新增的场景：基准版本的文件里没有、上一次定时全量也没跑过的（只是挪到别的文件、或者文件改了名的不算新增，算改过）
@@ -41,7 +41,6 @@ harness 场景是 Playwright Test 的测试（`packages/board/test/scenarios/*.s
 
 还做不到的登记在 `tiers.json` 的 `solo`，放在第二轮单独跑（和 perf 一样），原因写在这里：
 - `markdownLazyRender`：量的是平移时 Note 的懒渲染队列跟不跟得上帧——队列在每帧的空闲时间里跑，别的场景占了 CPU，空闲时间就少，这正是它要量的东西，换成 CPU 时间或假时钟就量不到了。
-- `noteLongNoteKeysScale`：长 Note 和短 Note 里按键耗时之比，阈值（3 倍、至少 12 ms）是按墙钟定的。换成 CPU 时间后短 Note 少了等帧的那段固定开销，比值变成 4 倍左右（长的约 30–50 ms CPU），会挂：要先看长 Note 按键到底该多快，再换量法。
 
 每次定时全量还有两件事单独报在 #19 的评论里（各自一节，不进 `regular-failures`，所以不算"正在修的问题"、不带到 PR 上，也不让定时全量变红）。#19 只在有变化时才评论：失败、只有单独跑才过的、超了时间上限的组，这几样的集合变了，或者 flaky 重复发现了 flaky、它的报错变了，才发一条；每 6 小时一次也不会刷屏：
 - **Flaky**：harness 全量跑完后，`repeat` job 把上一次跑完的定时全量（`regular.yml` 运行列表里 `event=schedule` 的那次的 `head_sha`，大约 6 小时前）以来新增和改过的场景（同上）各跑 3 遍，新增的排在前面（从没和别的场景一起跑过，最可能 flaky），各自快的在前（`harness.mjs --changed-since=<commit> --repeat=3`，4 个 worker 并行，`solo` 的仍一个一个跑，按估计用时最多 15 分钟，放不下的报出来），任何一遍挂了就算 flaky；全量里本来就挂的不重复算。每个改动只在它之后的第一次定时全量里重复，所以一个 flaky 只报一次。这期间 main 没变就什么都不重复。找不到上一次定时全量或它的提交时报错（同样的报错只报一次），不拿别的场景凑合。

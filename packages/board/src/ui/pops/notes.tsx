@@ -75,11 +75,7 @@ export function NotesPop(p: PopProps<"notes">) {
           <button
             class="tbtn"
             classList={{ on: !!kindOf(curNote(), "text")?.alwaysShow }}
-            onClick={() =>
-              A.updateSidenote(curNote()!.id, (n) => {
-                if (n.kind === "text") n.alwaysShow = !n.alwaysShow || undefined;
-              })
-            }
+            onClick={() => A.toggleAlwaysShow(curNote()!.id)}
           >
             Always Show
           </button>
@@ -180,11 +176,7 @@ function NoteItem(p: { n: Sidenote }) {
                   tip="Double-click to edit"
                   src={t().md}
                   onDblClick={() => editText(t())}
-                  onToggle={(v) =>
-                    A.updateSidenote(t().id, (k) => {
-                      if (k.kind === "text") k.md = v;
-                    })
-                  }
+                  onToggle={(v) => A.writeSidenote(t().id, v)}
                 />
               }
             >
@@ -317,13 +309,7 @@ function SidenoteEditor(p: { n: Extract<Sidenote, { kind: "text" }> }) {
   const { finish } = useFinish(
     (save: boolean) => {
       setSnEditing(null);
-      const t = v().trim();
-      if (!save || t === p.n.md) return;
-      if (t)
-        A.updateSidenote(p.n.id, (k) => {
-          if (k.kind === "text") k.md = t;
-        });
-      else A.deleteSidenote(p.n.id);
+      if (save) A.writeSidenote(p.n.id, v().trim());
     },
     (f) => f(true),
   ); // 弹窗被关掉了（点了白板）

@@ -1,18 +1,8 @@
 // Compare：两张代码卡原地并成两栏。相同的行对齐在同一水平线，改了的行标词级差异，
 // 只有一边有的行另一边留斜纹空位。两栏还是原来的卡（编号、Link 都在）。
 import { createMemo, For, Show, onMount, onCleanup, createEffect } from "solid-js";
-import {
-  alignRows,
-  wordDiff,
-  findCard,
-  cardTitle,
-  escHtml,
-  type CompareCard,
-  type CodeCard,
-  type Row,
-} from "@codeboard/core";
+import { alignRows, wordDiff, cardTitle, escHtml, type CompareCard, type CodeCard, type Row } from "@codeboard/core";
 import { state, cardById, placeOf } from "../state/store";
-import { mutate } from "../state/changes";
 import { setGeo } from "../state/geo";
 import { queueMeasure, observeResize } from "../state/measure";
 import { Icon } from "../ui/icons";
@@ -129,11 +119,6 @@ export function CompareBody(p: { card: CompareCard }) {
     }
     return out;
   });
-  const set = (f: (c: CompareCard) => void) =>
-    mutate((b) => {
-      const c = findCard(b, k().id)?.card;
-      if (c?.kind === "compare") f(c);
-    });
 
   // 每一栏的行位置（Link 端点、Sidenote 用）
   let rowsEl!: HTMLDivElement, scrollEl!: HTMLDivElement, rootEl!: HTMLDivElement;
@@ -234,36 +219,13 @@ export function CompareBody(p: { card: CompareCard }) {
         <span class="ctitle">{A.compareTitle(k())}</span>
         <span class="grow" />
         <span class="tools" data-nodrag>
-          <button
-            class="seg2"
-            onClick={() =>
-              set((c) => {
-                c.swap = !c.swap;
-              })
-            }
-          >
+          <button class="seg2" onClick={() => A.toggleCompare(k().id, "swap")}>
             Swap
           </button>
-          <button
-            class="seg2"
-            classList={{ on: !!k().unified }}
-            onClick={() =>
-              set((c) => {
-                c.unified = !c.unified;
-              })
-            }
-          >
+          <button class="seg2" classList={{ on: !!k().unified }} onClick={() => A.toggleCompare(k().id, "unified")}>
             Unified
           </button>
-          <button
-            class="seg2"
-            classList={{ on: !!k().hideSame }}
-            onClick={() =>
-              set((c) => {
-                c.hideSame = !c.hideSame;
-              })
-            }
-          >
+          <button class="seg2" classList={{ on: !!k().hideSame }} onClick={() => A.toggleCompare(k().id, "hideSame")}>
             Hide Same Lines
           </button>
         </span>

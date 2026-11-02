@@ -1,7 +1,5 @@
 import { unwrap } from "solid-js/store";
 import {
-  uid,
-  findCard,
   isCode,
   cardTitle,
   segOf,
@@ -16,7 +14,6 @@ import {
 import * as C from "@codeboard/core/commands";
 import { commandEnv } from "./env";
 import { state, cardById, hostOf, rectOf, placeOf } from "../state/store";
-import { mutate } from "../state/changes";
 import { sel, select, clearSel, lineSel } from "../state/selection";
 import { toast } from "../state/toast";
 import { IS_MAC } from "@yhnocoder/markdown/ui";
@@ -99,28 +96,15 @@ export function addSidenoteUI() {
   else toast("Select lines in a card first");
 }
 export function addSidenote(n: Omit<Sidenote, "id">, view?: SegView) {
-  const id = uid("n");
-  const sn = { ...n, id } as Sidenote;
+  const sn = n as Sidenote;
   if (sn.kind === "code" && view) putViews({ [sn.code.id]: view });
-  mutate((b) => {
-    b.sidenotes.push(sn);
-  });
-  return id;
+  return C.addSidenotes(commandEnv, [n])[0];
 }
 /** 一次加好几条（一个撤销步骤），返回新 id */
-export function addSidenotes(list: Omit<Sidenote, "id">[]) {
-  const sns = list.map((n) => ({ ...n, id: uid("n") }) as Sidenote);
-  mutate((b) => {
-    b.sidenotes.push(...sns);
-  });
-  return sns.map((n) => n.id);
-}
-export function updateSidenote(id: string, f: (n: Sidenote) => void) {
-  mutate((b) => {
-    const n = b.sidenotes.find((k) => k.id === id);
-    if (n) f(n);
-  });
-}
+export const addSidenotes = (list: Omit<Sidenote, "id">[]) => C.addSidenotes(commandEnv, list);
+/** A Text sidenote's Markdown; written empty it goes */
+export const writeSidenote = (id: string, md: string) => C.writeSidenote(commandEnv, id, md);
+export const toggleAlwaysShow = (id: string) => C.toggleAlwaysShow(commandEnv, id);
 export function deleteSidenote(id: string) {
   C.deleteItems(commandEnv, { sidenotes: [id] });
 }
@@ -197,19 +181,8 @@ export async function showPeek(
 }
 
 /** Mark 的颜色（它的箭头跟着变） */
-export function setMarkColor(id: string, hand: HandColor) {
-  mutate((b) => {
-    const n = findCard(b, id)?.card;
-    if (n?.kind === "note" && n.look === "mark") n.hand = hand;
-  });
-}
-
-export function setBoxFill(id: string, fill: BoxFill) {
-  mutate((b) => {
-    const n = findCard(b, id)?.card;
-    if (n?.kind === "note" && n.look === "box") n.fill = fill;
-  });
-}
+export const setMarkColor = (id: string, hand: HandColor) => C.setMarkColor(commandEnv, id, hand);
+export const setBoxFill = (id: string, fill: BoxFill) => C.setBoxFill(commandEnv, id, fill);
 
 export const turnNote = (id: string, look: "note" | "text") => C.turnNote(commandEnv, id, look);
 
@@ -304,8 +277,6 @@ async function editCaption(card: string, src: string, nth: number, cap: string) 
 function setCaption(card: string, src: string, nth: number, cap: string) {
   // 正在编辑这张 Note：先存下编辑器里的字，再改图注（编辑器里的文档不跟着外面的改动走）
   if (editing()?.kind === "note" && editing()?.id === card) setEditing(null);
-  mutate((b) => {
-    const n = findCard(b, card)?.card;
-    if (n?.kind === "note") n.md = setImageCaption(n.md, src, nth, cap);
-  });
+  const n = cardById(card)?.card;
+  if (n?.kind === "note") C.setNoteMarkdown(commandEnv, card, setImageCaption(n.md, src, nth, cap));
 }

@@ -1,6 +1,8 @@
 import { Show, For } from "solid-js";
 import { state } from "./state/store";
-import { mutate, canUndo, canRedo, undo, redo } from "./state/changes";
+import { canUndo, canRedo, undo, redo } from "./state/changes";
+import * as C from "@codeboard/core/commands";
+import { commandEnv } from "./actions/env";
 import { sel } from "./state/selection";
 import { toast } from "./state/toast";
 import { cam, camTarget, zoomAt, viewTracked } from "./state/camera";
@@ -162,14 +164,7 @@ function Toolbar() {
         null,
         {
           label: "Rename Board…",
-          run: () =>
-            promptText("Rename Board", state.board.name).then(
-              (v) =>
-                v &&
-                mutate((b) => {
-                  b.name = v;
-                }),
-            ),
+          run: () => promptText("Rename Board", state.board.name).then((v) => v && C.renameBoard(commandEnv, v)),
         },
         { label: "Export…", hint: "HTML snapshot, Markdown or PNG", run: () => A.openExport() },
         {

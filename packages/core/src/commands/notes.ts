@@ -1,9 +1,24 @@
-// Notes and sidenotes: sidenote ↔ card, an image into a Note, Note ↔ Text, Split by Headings
-import { findCard, isCode, uid, type Anchor, type Board, type Card, type Sidenote } from "../model";
-import type { Rect } from "../layout";
+// Notes and sidenotes: new Notes, Text, Marks and Boxes, sidenotes added and sidenote ↔ card, images in a Note, Note ↔ Text,
+// Split by Headings
+import {
+  BOX_FILLS,
+  type BoxFill,
+  type HandColor,
+  findCard,
+  isCode,
+  uid,
+  type Anchor,
+  type Board,
+  type Card,
+  type NoteCard,
+  type NoteLook,
+  type Sidenote,
+} from "../model";
+import { NEW_CARD_W, type Rect } from "../layout";
 import {
   cardIntoSidenote,
   imageIntoNote,
+  removeSidenotes,
   sidenoteCard,
   sidenoteToCard,
   splitNoteByHeadings,
@@ -89,4 +104,116 @@ export function splitByHeadings(
   })
     ? ids
     : null;
+}
+
+/**
+ * A new Note, Text, Mark or Box with `text`: a Text is body-sized, a Box gets the first fill and a fixed height, a Mark the colour
+ * of the last Mark on the board (blue for the first). Written empty (a Box aside) it is fresh (env.fresh): no undo step until
+ * something is written. at(size) = where it goes, for its size (the shell's layout); settle(b, id) files it in the Section it
+ * landed in. Its id
+ */
+export function newWriting(
+  env: CommandEnv,
+  look: NoteLook,
+  text: string,
+  o: { at: (size: { w: number; h?: number }) => { x: number; y: number }; settle: (b: Board, id: string) => void },
+): string {
+  const w = NEW_CARD_W,
+    h = look === "box" ? 60 : undefined;
+  const p = o.at({ w, h });
+  const id = uid("n");
+  const card: NoteCard = { id, kind: "note", md: text, look };
+  if (look === "text") card.size = "body";
+  if (look === "box") card.fill = BOX_FILLS[0];
+  if (look === "mark") {
+    const last = [...env.board().cards].reverse().find((c) => c.kind === "note" && c.look === "mark");
+    card.hand = (last?.kind === "note" && last.hand) || "blue";
+  }
+  const add = (b: Board) => {
+    b.cards.push(card);
+    b.place[id] = { x: Math.round(p.x), y: Math.round(p.y), w, ...(h ? { h } : {}) };
+    o.settle(b, id);
+  };
+  if (text || look === "box") env.edit(add);
+  else env.fresh.add(id, add);
+  return id;
+}
+
+/** Add sidenotes in one step; their new ids, in order */
+export function addSidenotes(env: CommandEnv, list: Omit<Sidenote, "id">[]): string[] {
+  const sns = list.map((n) => ({ ...n, id: uid("n") }) as Sidenote);
+  env.edit((b) => {
+    b.sidenotes.push(...sns);
+  });
+  return sns.map((n) => n.id);
+}
+
+/** A Text sidenote's Markdown written; written empty it goes, as a Text sidenote is only its text. Unchanged: no step */
+export function writeSidenote(env: CommandEnv, id: string, md: string) {
+  const n0 = env.board().sidenotes.find((k) => k.id === id);
+  if (n0?.kind !== "text" || n0.md === md) return;
+  env.edit((b) => {
+    if (!md.trim()) return removeSidenotes(b, [id]);
+    const n = b.sidenotes.find((k) => k.id === id);
+    if (n?.kind === "text") n.md = md;
+  });
+}
+
+/** An image replaced by the one stored at `src`: an image card's (note left out), or the one at `note` in a Note's Markdown */
+export function replaceImage(env: CommandEnv, ref: { card: string; note?: string }, src: string) {
+  const old = ref.note;
+  env.edit((b) => {
+    const c = findCard(b, ref.card)?.card;
+    if (old === undefined) {
+      if (c?.kind === "image") c.src = src;
+    } else if (c?.kind === "note") c.md = c.md.split(old).join(src);
+  });
+}
+
+/** A Note's Markdown replaced as given (a mark toggled, a caption set, Auto Focus's markup); unlike writeNote it never goes */
+export function setNoteMarkdown(env: CommandEnv, id: string, md: string) {
+  env.edit((b) => {
+    const c = findCard(b, id)?.card;
+    if (c?.kind === "note") c.md = md;
+  });
+}
+
+/** A Mark's colour (its arrows follow it) */
+export function setMarkColor(env: CommandEnv, id: string, hand: HandColor) {
+  env.edit((b) => {
+    const c = findCard(b, id)?.card;
+    if (c?.kind === "note" && c.look === "mark") c.hand = hand;
+  });
+}
+
+/** A Box's fill */
+export function setBoxFill(env: CommandEnv, id: string, fill: BoxFill) {
+  env.edit((b) => {
+    const c = findCard(b, id)?.card;
+    if (c?.kind === "note" && c.look === "box") c.fill = fill;
+  });
+}
+
+/** A Text sidenote's Always Show */
+export function toggleAlwaysShow(env: CommandEnv, id: string) {
+  env.edit((b) => {
+    const n = b.sidenotes.find((k) => k.id === id);
+    if (n?.kind === "text") n.alwaysShow = !n.alwaysShow || undefined;
+  });
+}
+
+/** Board-only: a sidenote on a shared card stays on this board only, or goes along with the card again */
+export function toggleBoardOnly(env: CommandEnv, id: string) {
+  env.edit((b) => {
+    const n = b.sidenotes.find((k) => k.id === id);
+    if (n) n.boardOnly = n.boardOnly ? undefined : true;
+  });
+}
+
+/** A sidenote on changed lines marked as checked */
+export function markReviewed(env: CommandEnv, id: string) {
+  env.edit((b) => {
+    const n = b.sidenotes.find((k) => k.id === id);
+    if (n) delete n.review;
+  });
 }
