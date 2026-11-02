@@ -100,6 +100,161 @@ const none = (reason: string): ExpandResult => ({ none: true, reason });
 /** 点击解析时后台的活（预取、预热、名字索引）先等着 */
 export const expand = (m: ExpandReq): Promise<ExpandResult> => sched.run(Prio.Click, () => expandNow(m));
 
+/** What one click asks, shared read-only by the resolvers; the language service's answer is asked at most once */
+type Click = {
+  m: ExpandReq;
+  seg: Segment;
+  site: CallSite | undefined;
+  here: { abs: string; text: string } | null;
+  /** where the segment's lines are in the working copy */
+  place: () => ReturnType<typeof workingPlace>;
+  /** Go to Definition at the call, sorted out (see askLsp); null when the segment is not the working copy's content */
+  lsp: () => Promise<LspAnswer | null>;
+};
+type LspAnswer = {
+  /** definitions, .pyi stubs of Python code already replaced by the code */
+  defs: Def[];
+  /** stubs of compiled code (torch._C.*, Tensor.X, extensions): only an answer when nothing else is found */
+  stubs: Def[];
+  /** C++ landing on generated operator files or DEFINE_DISPATCH: routed through the yaml / REGISTER_DISPATCH */
+  crossed: Crossed[];
+  /** a method that subclasses may override: the implementations if they came quickly, otherwise true (ask again later) */
+  dispatch: Awaited<ReturnType<typeof dispatchOf>> | boolean;
+};
+/** A resolver's answer: the targets (cross-language ones with their marks), or a reply as it is (a list to pick from) */
+type Hit = { crossed: Crossed[] } | { targets: Target[] } | { reply: ExpandResult };
+type Resolver = (c: Click) => Promise<Hit | null>;
+
+/** The language service gave nothing that is a definition here: a Python call may go to an extension or a kernel */
+const pyWithoutLsp = async (c: Click) => c.seg.lang === "python" && !(await c.lsp())?.defs.length;
+
+/**
+ * Where a click goes, in order; the first hit wins. Cross-language routes the language service cannot answer
+ * (torch.ops, launch macros, JIT compiles) come first, then the language service, then the routes for what it answered
+ * with nothing, last the name index
+ */
+const RESOLVERS: Resolver[] = [
+  // a pick from an earlier reply: only that
+  async ({ m, seg }) => {
+    if (!m.pick) return null;
+    const abs = pickAbs(seg, m.pick);
+    const t = abs && (await symAtDef({ abs, line: m.pick.line, col: 0 }, m.pick.rel ? m.name : undefined, m.pick.qual));
+    return { targets: t ? [t] : [] };
+  },
+  // the language service is asked only to tell apart several PyTorch checkouts in the workspace (the same request goes on)
+  async (c) => {
+    const lspAt = async () => {
+      const p = await c.place();
+      return p?.exact ? (await lspDefs(p.abs, p.start + (c.m.line - c.seg.start), c.m.col)).map((d) => d.abs) : [];
+    };
+    const crossed = await crossBefore(c.site, c.seg.lang, c.here, lspAt);
+    return crossed.length ? { crossed } : null;
+  },
+  async (c) => {
+    const l = await c.lsp();
+    return l?.crossed.length ? { crossed: l.crossed } : null;
+  },
+  async (c) => {
+    const d = (await c.lsp())?.dispatch;
+    return d && d !== true ? { reply: d.result } : null;
+  },
+  async (c) => {
+    const targets: Target[] = [];
+    for (const d of (await c.lsp())?.defs ?? []) {
+      const t = await symAtDef(d, c.m.name);
+      if (t && !targets.some((x) => x.abs === t.abs && x.sym.qual === t.sym.qual)) targets.push(t);
+    }
+    return targets.length ? { targets } : null;
+  },
+  // PyTorch's x.X(…): x may be a Tensor and X an operator with a method variant, so the yaml's kernels are candidates.
+  // Before the registrations: Tensor methods all have generated PyMethodDef bindings (THPVariable_softmax), only glue
+  async (c) => {
+    if (!c.site || !c.here || !(await pyWithoutLsp(c))) return null;
+    const crossed = await tensorMethod(c.site, c.here);
+    return crossed.length ? { crossed } : null;
+  },
+  // Python calling into C / C++ / Rust: the pybind / PyO3 registrations, unless the name index has a Python definition of
+  // that name (self.model.forward is not the C++ .def("forward")). With PyTorch's operator index only already analysed
+  // files count: no workspace scan for this
+  async (c) => {
+    if (!(await pyWithoutLsp(c))) return null;
+    const { m, here } = c;
+    const torch = !!(await opTableFor(here?.abs));
+    if ((torch ? knownEntries(m.name) : await lookupName(m.name)).some((e) => /\.py$/.test(e.abs))) return null;
+    const crossed = await viaRegistry(m.name, here?.abs);
+    return crossed.length ? { crossed } : null;
+  },
+  async (c) => {
+    const targets: Target[] = [];
+    for (const d of (await c.lsp())?.stubs ?? []) {
+      const t = await symAtDef(d, c.m.name);
+      if (t && !targets.some((x) => x.abs === t.abs && x.sym.qual === t.sym.qual)) targets.push(t);
+    }
+    return targets.length ? { targets } : null;
+  },
+  // By name. When the language service gave a definition that is not a function or class (a variable, attribute,
+  // parameter), only the current file and files already analysed: no workspace scan (tens of seconds in big repositories)
+  async ({ m, seg, site, place, lsp }) => {
+    let ents = (await lsp())?.defs.length
+      ? await nearbyEntries(m.name, (await place())?.abs)
+      : await lookupName(m.name);
+    if (grammarOf(seg.lang) === "cpp") ents = await cppCands(ents, site);
+    const cands = ents.map((e) => ({ ...e, path: hostPath(e.abs), line: e.defLine }));
+    if (!cands.length) return null;
+    const selfClass =
+      (seg.symbol?.kind === "class" ? seg.symbol.qual : seg.symbol?.qual.split(".").slice(0, -1).join(".")) ||
+      seg.scope?.split(".").slice(0, -1).join(".");
+    const { ranked, best } = rankByReceiver(cands, m.recv ?? site?.recv, { path: await currentFile(seg), selfClass });
+    if (best) return { targets: [{ abs: best.abs, sym: toSym(best) }] };
+    return {
+      reply: {
+        pick: ranked
+          .slice(0, 20)
+          .map((e) => ({ label: e.qual, detail: `${e.path}:${e.defLine}`, path: e.path, line: e.defLine })),
+      },
+    };
+  },
+];
+
+/**
+ * Go to Definition at the call in the working copy. A .pyi stub next to a .py stands for the definition in that .py.
+ * Stubs with no .py next to them in the project (torch._C.*, Tensor.X, compiled extensions) are not the code: they are
+ * kept aside and become the answer only when nothing else is found. Library stubs (typeshed's builtins.pyi, packages
+ * outside the workspace or under .venv) are answers as usual: a pybind .def("get") of the same name has nothing to do
+ * with dict.get
+ */
+async function askLsp(c: Omit<Click, "lsp">): Promise<LspAnswer | null> {
+  const wp = await c.place();
+  if (!wp?.exact) return null;
+  const { m, seg } = c;
+  let defs: Def[] = [];
+  let stubs: Def[] = [];
+  for (const d of await clickDefs(wp.abs, wp.start + (m.line - seg.start), m.col)) {
+    const impl = isStub(d)
+      ? ((await stubImpl(d, m.name)) ?? (inWorkspace(d.abs) && !inExcludedDir(d.abs) ? null : d))
+      : d;
+    if (!impl) stubs.push(d);
+    else if (!defs.some((x) => x.abs === impl.abs && x.line === impl.line)) defs.push(impl);
+  }
+  if (defs.length) stubs = [];
+  const crossed = await crossAfterDefs(c.site, seg.lang, defs, c.here?.abs);
+  if (crossed.length) defs = [];
+  // Dynamic dispatch: the definition is a base class's method that subclasses override → all implementations to pick
+  // from. Go to Implementation makes Pylance search the whole workspace for subclasses (seconds when cold, on slow
+  // machines): a click waits only a moment (a prefetch may have it cached already); otherwise the card is built from the
+  // definition and the reply says dispatching, so the board asks again (dispatchAt) and offers the overrides then
+  let dispatch: LspAnswer["dispatch"] = false;
+  if (defs.length === 1) {
+    const dsp = dispatchOf(defs[0], m.name);
+    const quick = await within(dsp, DISPATCH_WAIT);
+    if (quick === LATE) {
+      dsp.catch(() => null);
+      dispatch = await mayDispatch(defs[0], m.name);
+    } else dispatch = quick ?? false;
+  }
+  return { defs, stubs, crossed, dispatch };
+}
+
 async function expandNow(m: ExpandReq): Promise<ExpandResult> {
   const seg = m.seg;
   if (seg.src.kind === "free") return none("Free code has no source to follow.");
@@ -111,114 +266,30 @@ async function expandNow(m: ExpandReq): Promise<ExpandResult> {
       "warn",
       `vars ${m.name} → callSite miss path=${seg.path}:${m.line}:${m.col}${full ? "" : " (file text unavailable, used saved lines)"}`,
     );
-  let resolved: string | undefined,
-    lspN = 0,
-    dispatching = false;
   const here = full ? { abs: absOf(seg) ?? seg.path, text: full } : null;
-  const caller = full ? callerOf(seg.lang, full, m.line) : undefined;
+  let place: ReturnType<typeof workingPlace> | undefined;
+  let lsp: Promise<LspAnswer | null> | undefined;
+  const base = { m, seg, site, here, place: () => (place ??= workingPlace(seg)) };
+  const c: Click = { ...base, lsp: () => (lsp ??= askLsp(base)) };
 
-  let targets: Target[] = [];
-  let crossed: Crossed[] = [];
-  let stubs: Def[] = [];
-  if (m.pick) {
-    const abs = pickAbs(seg, m.pick);
-    const t = abs && (await symAtDef({ abs, line: m.pick.line, col: 0 }, m.pick.rel ? m.name : undefined, m.pick.qual));
-    if (t) targets = [t];
-  } else {
-    // 跨语言：torch.ops、launch macro、JIT 编译点下去之前就认得出（语言服务答不了）。语言服务只在要分清工作区里几个 PyTorch 时才问（同一个请求，后面接着用）
-    let place: ReturnType<typeof workingPlace> | undefined;
-    const lspAt = async () => {
-      const p = await (place ??= workingPlace(seg));
-      return p?.exact ? (await lspDefs(p.abs, p.start + (m.line - seg.start), m.col)).map((d) => d.abs) : [];
-    };
-    crossed = await crossBefore(site, seg.lang, here, lspAt);
-    const wp = crossed.length ? null : await (place ??= workingPlace(seg));
-    resolved = wp ? `${hostPath(wp.abs)}:${wp.start + (m.line - seg.start)}${wp.exact ? "" : " (inexact)"}` : undefined;
-    if (wp?.exact) {
-      const line = wp.start + (m.line - seg.start);
-      // 旁边有 .py 的 .pyi 存根代表那个 .py 里的定义。项目里旁边没有 .py 的（torch._C.*、Tensor.X、编译出来的扩展）不是实现：
-      // 跨语言注册和算子在前，存根留作备选，什么都找不到时才是答案。库的存根（typeshed 的 builtins.pyi、工作区外或仓库里 .venv 下的包）
-      // 照常是答案：同名的 pybind .def("get") 和 dict.get 无关
-      let defs: Def[] = [];
-      for (const d of await clickDefs(wp.abs, line, m.col)) {
-        const impl = isStub(d)
-          ? ((await stubImpl(d, m.name)) ?? (inWorkspace(d.abs) && !inExcludedDir(d.abs) ? null : d))
-          : d;
-        if (!impl) stubs.push(d);
-        else if (!defs.some((x) => x.abs === impl.abs && x.line === impl.line)) defs.push(impl);
-      }
-      if (defs.length) stubs = [];
-      // C++ 落在生成的算子文件（at::_softmax → ops/_softmax.h）或 DEFINE_DISPATCH 上：走 yaml / REGISTER_DISPATCH
-      crossed = await crossAfterDefs(site, seg.lang, defs, here?.abs);
-      if (crossed.length) defs = [];
-      lspN = defs.length;
-      // 动态分发：定义处是基类的方法、有子类覆盖它 → 列出全部实现让人选
-      // 转到实现在 Pylance 那边要在整个工作区里找子类（冷的时候、慢机器上要好几秒）：点击只等一小会儿（预取过的话已经在缓存里），
-      // 等不到就先按定义建卡，回 dispatching，白板再单独问（dispatchAt），有覆盖再给选
-      if (defs.length === 1) {
-        const dsp = dispatchOf(defs[0], m.name);
-        const quick = await within(dsp, DISPATCH_WAIT);
-        if (quick === LATE) {
-          dsp.catch(() => null);
-          dispatching = await mayDispatch(defs[0], m.name);
-        } else if (quick) return quick.result;
-      }
-      for (const d of defs) {
-        const t = await symAtDef(d, m.name);
-        if (t && !targets.some((x) => x.abs === t.abs && x.sym.qual === t.sym.qual)) targets.push(t);
-      }
-    }
-    // Python 调到 C / C++ / Rust 扩展：语言服务找不到定义，先看 pybind / PyO3 的注册（再退到名字索引）
-    // 名字索引里有同名的 Python 定义就不算（self.model.forward 不去找 C++ 的 .def("forward")）；.pyi 存根不算定义
-    // PyTorch（有算子索引）：只看已经分析过的文件，不为这个判断扫工作区
-    // PyTorch 的 x.X(…)：静态看不出 x 是不是 Tensor。X 是算子、又没有真的定义时，yaml 的 kernel 也是候选。
-    // 排在注册之前：Tensor 方法都有生成的 PyMethodDef 绑定（THPVariable_softmax），那只是胶水；而且先查注册时结果要看名字索引建到哪了
-    if (!crossed.length && !targets.length && !lspN && seg.lang === "python" && site && here)
-      crossed = await tensorMethod(site, here);
-    const torch = seg.lang === "python" && !!(await opTableFor(here?.abs));
-    if (
-      !crossed.length &&
-      !targets.length &&
-      !lspN &&
-      seg.lang === "python" &&
-      !(torch ? knownEntries(m.name) : await lookupName(m.name)).some((e) => /\.py$/.test(e.abs))
-    )
-      crossed = await viaRegistry(m.name, here?.abs);
-    for (const d of targets.length ? [] : stubs) {
-      const t = await symAtDef(d, m.name);
-      if (!t) continue;
-      if (crossed.length) {
-        if (!crossed.some((x) => x.t.abs === t.abs && x.t.sym.qual === t.sym.qual))
-          crossed.push({ t, mark: {}, label: `stub · ${path.basename(t.abs)} ${t.sym.qual}` });
-      } else if (!targets.some((x) => x.abs === t.abs && x.sym.qual === t.sym.qual)) targets.push(t);
-    }
-    // 语言服务给了定义、只是那里不是函数 / 类（变量、属性、参数）：不扫工作区（大仓库建名字索引要几十秒），
-    // 只在当前文件和已经分析过的文件里按名字找
-    if (!crossed.length && !targets.length) {
-      let ents = lspN ? await nearbyEntries(m.name, wp?.abs) : await lookupName(m.name);
-      if (grammarOf(seg.lang) === "cpp") ents = await cppCands(ents, site);
-      const cands = ents.map((e) => ({ ...e, path: hostPath(e.abs), line: e.defLine }));
-      if (cands.length) {
-        const selfClass =
-          (seg.symbol?.kind === "class" ? seg.symbol.qual : seg.symbol?.qual.split(".").slice(0, -1).join(".")) ||
-          seg.scope?.split(".").slice(0, -1).join(".");
-        const here = await currentFile(seg);
-        const { ranked, best } = rankByReceiver(cands, m.recv ?? site?.recv, { path: here, selfClass });
-        if (best) targets = [{ abs: best.abs, sym: toSym(best) }];
-        else
-          return {
-            pick: ranked
-              .slice(0, 20)
-              .map((e) => ({ label: e.qual, detail: `${e.path}:${e.defLine}`, path: e.path, line: e.defLine })),
-          };
-      }
-    }
-  }
+  let hit: Hit | null = null;
+  for (const r of RESOLVERS) if ((hit = await r(c))) break;
+  if (hit && "reply" in hit) return hit.reply;
+  let crossed = hit && "crossed" in hit ? hit.crossed : [];
+  const targets = hit && "targets" in hit ? hit.targets : [];
+  const l = lsp && (await lsp);
+  // a cross-language answer still offers the compiled code's stubs as alternatives
+  if (crossed.length && l?.stubs.length) crossed = await withStubs(crossed, l.stubs, m.name);
+
   if (!crossed.length && !targets.length) {
     const why = site?.dispatch ? "Dynamic dispatch: not resolved" : `No definition found for “${m.name}”.`;
+    const wp = place && (await place);
+    const resolved = wp
+      ? `${hostPath(wp.abs)}:${wp.start + (m.line - seg.start)}${wp.exact ? "" : " (inexact)"}`
+      : "none";
     log(
       "warn",
-      `expand ${m.name} → ${why} path=${seg.path}:${m.line}:${m.col} resolved=${resolved ?? "none"} lsp=${lspN}${m.pick ? ` pick=${m.pick.path}:${m.pick.line}` : ""}`,
+      `expand ${m.name} → ${why} path=${seg.path}:${m.line}:${m.col} resolved=${resolved} lsp=${l?.defs.length ?? 0}${m.pick ? ` pick=${m.pick.path}:${m.pick.line}` : ""}`,
     );
     return { ...none(why), name: m.name };
   }
@@ -233,7 +304,9 @@ async function expandNow(m: ExpandReq): Promise<ExpandResult> {
     };
 
   // 目标找到了：Triton 的 [grid]、CUDA 的 <<<>>>、TileLang 工厂补上边界和取值
-  const x = crossed.length ? await withAlts(crossed) : await decorate(site, targets[0], caller);
+  const x = crossed.length
+    ? await withAlts(crossed)
+    : await decorate(site, targets[0], full ? callerOf(seg.lang, full, m.line) : undefined);
   const t = x.t;
   if (crossed.length)
     log(
@@ -253,8 +326,19 @@ async function expandNow(m: ExpandReq): Promise<ExpandResult> {
     vars: site && !t.sym.name.startsWith("<") ? await varsFor(site, t) : [],
     ...(mark ? { mark } : {}),
     ...(x.title ? { title: x.title } : {}),
-    ...(dispatching && !crossed.length ? { dispatching: true as const } : {}),
+    ...(l?.dispatch === true && !crossed.length ? { dispatching: true as const } : {}),
   };
+}
+
+/** The stubs' definitions added to a cross-language answer as alternatives */
+async function withStubs(crossed: Crossed[], stubs: Def[], name: string): Promise<Crossed[]> {
+  const out = [...crossed];
+  for (const d of stubs) {
+    const t = await symAtDef(d, name);
+    if (t && !out.some((x) => x.t.abs === t.abs && x.t.sym.qual === t.sym.qual))
+      out.push({ t, mark: {}, label: `stub · ${path.basename(t.abs)} ${t.sym.qual}` });
+  }
+  return out;
 }
 
 /**
