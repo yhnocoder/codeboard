@@ -78,6 +78,19 @@ describe("repo lookups", () => {
       fs.rmSync(d, { recursive: true, force: true });
     }
   });
+  it("doesn't remember a lookup that failed for another reason: a folder that isn't there yet is asked again", async () => {
+    const d = path.join(fs.realpathSync(fs.mkdtempSync("/tmp/codeboard-gone-")), "repo");
+    try {
+      runs.top = 0;
+      expect(await repoRootOfDir(d)).toBeNull(); // no cwd: git never ran
+      fs.mkdirSync(d);
+      sh(d, "init", "-q");
+      expect(await repoRootOfDir(d)).toBe(d); // no git event in between
+      expect(runs.top).toBe(2);
+    } finally {
+      fs.rmSync(path.dirname(d), { recursive: true, force: true });
+    }
+  });
   it("takes a new origin as the upstream after a git event", async () => {
     const d = tempRepo("upstream", { "f.py": "x = 1\n" });
     try {

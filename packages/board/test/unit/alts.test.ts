@@ -7,7 +7,7 @@ import { onHost } from "../../src/hostio";
 import { state } from "../../src/state/store";
 import { altsOf, pickImpl } from "../../src/actions/chains";
 
-const HOST: HostInfo = { isMac: true, assetBase: "", target: true, settings: DEFAULT_SETTINGS };
+const HOST: HostInfo = { assetBase: "", target: true, settings: DEFAULT_SETTINGS };
 const CUDA = "build/aten/src/ATen/UfuncCUDA_add.cu",
   CPU = "build/aten/src/ATen/UfuncCPUKernel_add.cpp";
 const code = (id: string, qual: string, path: string): Card => ({

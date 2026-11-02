@@ -12,7 +12,7 @@
 //  secondCallUnderFirstCall   — in a short panel the second expanded call still goes in the caller's column, under the first call
 import { emptyBoard, type Board, type CodeCard } from "@codeboard/core";
 import { put, symCard, findSym, viewOf, type Host } from "../harness";
-import { test, open, verdict, until, idle, hold } from "../fixtures";
+import { test, open, verdict, until, idle, hold, onMac } from "../fixtures";
 import { SEL_REPORT, NUDGE_HOLD, NUDGE_RAMP, NUDGE_SPEED, NUDGE_MAX } from "../../src/state/timing";
 
 const nv = (qual: string) => {
@@ -474,9 +474,10 @@ async function shortcutHelpComplete(res: Record<string, unknown>) {
   await h.page.locator(".keys tr").first().waitFor();
   await idle(h);
   const rows = await h.page.locator(".keys tr").allTextContents();
+  const mac = await onMac(h.page);
   await close(h);
   const has = (k: string) => rows.some((r) => r.startsWith(k));
-  res.missing = ["⌥F", "⇧⌘B", "⌘↵"].filter((k) => !has(k));
+  res.missing = (mac ? ["⌥F", "⇧⌘B", "⌘↵"] : ["Alt+F", "Ctrl+Shift+B", "Ctrl+↵"]).filter((k) => !has(k));
   return rows.length > 10 && !(res.missing as string[]).length;
 }
 

@@ -105,7 +105,6 @@ export function Stage(p: { scene: () => Scene; globals: Globals; replies?: Repli
         views: { ...VIEWS },
         stale: s.stale ?? {},
         host: {
-          isMac: true,
           assetBase: ASSETS,
           target: true,
           settings: { ...DEFAULT_SETTINGS, theme: untrack(() => g.theme) },

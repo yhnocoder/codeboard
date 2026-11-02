@@ -15,7 +15,7 @@ import { settingsOpen } from "../state/ui";
 import { ask, send } from "../host";
 import * as A from "../actions";
 import { Icon } from "./icons";
-import { scrollIntoBox } from "@yhnocoder/markdown/ui";
+import { IS_MAC, scrollIntoBox } from "@yhnocoder/markdown/ui";
 import { promptText } from "./Menu";
 import { helpRows, matches } from "../keymap";
 import { useOverlay } from "./overlay";
@@ -875,8 +875,7 @@ function Pct(p: { label: string; k: "zoomOverview" | "zoomMap"; min: number; max
 
 function Shortcuts() {
   const [q, setQ] = createSignal("");
-  const mac = () => state.host.isMac;
-  const groups = () => helpRows(mac(), q());
+  const groups = () => helpRows(IS_MAC, q());
   return (
     <section class="st-sec wide" data-sec="shortcuts">
       <div class="st-h row">

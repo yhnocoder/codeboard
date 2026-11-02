@@ -237,7 +237,6 @@ export class BoardPanel {
   host(): HostInfo {
     return {
       fontFamily: workspace().settings.get<string>("editor.fontFamily"),
-      isMac: process.platform === "darwin",
       forwardedKeys: FORWARDED_KEYS,
       assetBase: this.view.resourceUrl(this.mgr.store.assetsDir()),
       readonly: this.readonly,

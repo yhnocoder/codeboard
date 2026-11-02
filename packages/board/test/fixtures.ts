@@ -58,6 +58,10 @@ export const hold = (h: { page: Page }, ms: number, _why: string) => h.page.wait
 // Every fixed wait in a scenario goes through hold() (or focusSettled() below, which holds through it): test/unit/scenario-waits.test.ts
 // fails on any other sleep in scenarios/ and prints how many hold sites there are
 
+/** Whether the board writes its shortcuts the Mac way (⌘, ⌥) or as Ctrl+ / Alt+: IS_MAC of @yhnocoder/markdown/ui, read from
+ *  the browser, so a scenario expects the labels of the platform it runs on */
+export const onMac = (pg: Page) => pg.evaluate(() => /Mac|iP(hone|[oa]d)/.test(navigator.platform));
+
 /** n rendered frames of the page, through its own requestAnimationFrame (so a page that makes frames late makes these late too):
  *  each pointer move of a drag landing in a frame of its own, as a real one does */
 export const frames = (pg: Page, n = 1) =>

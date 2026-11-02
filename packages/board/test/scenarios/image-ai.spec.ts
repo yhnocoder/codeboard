@@ -35,7 +35,7 @@ import {
 import { Storage } from "@codeboard/core/storage";
 import { nodeFs, readAsset, resetImageAiCache, runImageAi, saveNoteImage } from "@codeboard/host/testing";
 import { OUT, put, type Host } from "../harness";
-import { test, open, check, until, idle } from "../fixtures";
+import { test, open, check, until, idle, onMac } from "../fixtures";
 
 const BASE = "https://cb-assets.test/res";
 const SHOTS = process.env.IMAGE_AI_SHOTS;
@@ -459,7 +459,8 @@ test("imageAiPasteImageText", async () => {
   const kbd = await h.page.locator(".ctx.open button", { hasText: "Paste Image Text" }).locator("small").innerText();
   check(
     "imageAiPasteImageText the Image button is a dropdown",
-    items.join("|") === "New Image|Paste Image Text|New SVG from Text…" && kbd === "⇧⌘V",
+    items.join("|") === "New Image|Paste Image Text|New SVG from Text…" &&
+      kbd === ((await onMac(h.page)) ? "⇧⌘V" : "Ctrl+Shift+V"),
     { items, kbd },
   );
   await shoot(h, "52-toolbar-image.png");

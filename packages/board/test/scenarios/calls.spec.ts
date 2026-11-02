@@ -471,7 +471,7 @@ async function runtime(res: Record<string, unknown>) {
     boards: [{ id: B.id, name: B.name, cards: B.cards.length }],
     views,
     stale: {},
-    host: { isMac: true, assetBase: "", target: true, settings: { ...DEFAULT_SETTINGS } },
+    host: { assetBase: "", target: true, settings: { ...DEFAULT_SETTINGS } },
   };
   await h.post(init);
   await idle(h);

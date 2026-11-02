@@ -151,7 +151,6 @@ export type StickerPack = { id: string; name: string; icons: StickerIcon[] };
 
 export type HostInfo = {
   fontFamily?: string; // 跟随 VS Code 编辑器字体
-  isMac: boolean;
   assetBase: string; // assets/ 目录的 webview URI，图片卡用
   readonly?: string; // 仓库找不到时的提示
   target: boolean; // 编辑器里 Add to 的目标白板是不是这块

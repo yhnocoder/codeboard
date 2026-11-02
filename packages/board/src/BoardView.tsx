@@ -1,4 +1,5 @@
 import { AiClipBusy } from "./ui/AiBusy";
+import { IS_MAC } from "@yhnocoder/markdown/ui";
 import { Show, For, createEffect, on, type JSX } from "solid-js";
 import { tune } from "./state/tune";
 import { CAM_SETTLE } from "./state/timing";
@@ -284,7 +285,7 @@ function Keys() {
           <Icon name="close" size={14} />
         </button>
       </h3>
-      <For each={helpRows(state.host.isMac)}>
+      <For each={helpRows(IS_MAC)}>
         {([h, rows]) => (
           <>
             <h4>{h}</h4>

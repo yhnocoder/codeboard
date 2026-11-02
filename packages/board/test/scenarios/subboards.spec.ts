@@ -284,7 +284,7 @@ test("walkHopWaitsForMeasure", async () => {
     ],
     views,
     stale: {},
-    host: { isMac: true, assetBase: "", target: true, settings: DEFAULT_SETTINGS } as never,
+    host: { assetBase: "", target: true, settings: DEFAULT_SETTINGS } as never,
     crumbs: [{ id: P.id, name: P.name }],
     walk: { into: { root: "x", i: 0 } },
   } as never);
@@ -347,7 +347,7 @@ test("walkHopSkipsUnmeasuredCard", async () => {
     ],
     views: {},
     stale: {},
-    host: { isMac: true, assetBase: "", target: true, settings: DEFAULT_SETTINGS } as never,
+    host: { assetBase: "", target: true, settings: DEFAULT_SETTINGS } as never,
     crumbs: [{ id: P.id, name: P.name }],
     walk: { into: { root: "x", i: 0 } },
   } as never);

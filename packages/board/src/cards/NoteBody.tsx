@@ -1,4 +1,5 @@
 import { For, Match, Show, Switch, createEffect, createMemo, createSignal, on } from "solid-js";
+import { IS_MAC } from "@yhnocoder/markdown/ui";
 import { mdHeading, BOX_FILLS, HAND_COLORS, type NoteCard } from "@codeboard/core";
 import { state, placeOf } from "../state/store";
 import { isSel, sel } from "../state/selection";
@@ -106,7 +107,7 @@ export function NoteBody(p: { card: NoteCard }) {
               aria-pressed={sourceModeOf(c().id)}
               aria-label="Markdown Source"
               data-tip="Markdown Source"
-              data-kbd={state.host.isMac ? "⌘/" : "Ctrl+/"}
+              data-kbd={IS_MAC ? "⌘/" : "Ctrl+/"}
               data-nodrag
               data-md-keep
               onMouseDown={(e) => e.preventDefault()}

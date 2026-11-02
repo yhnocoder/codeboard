@@ -24,7 +24,7 @@ const [state, setState] = createStore({
   loaded: false,
   board: emptyBoard("", "") as Board,
   boards: [] as BoardMeta[],
-  host: { isMac: true, assetBase: "", target: true, settings: DEFAULT_SETTINGS } as HostInfo,
+  host: { assetBase: "", target: true, settings: DEFAULT_SETTINGS } as HostInfo,
   views: {} as Record<string, SegView>,
   stale: {} as Record<string, Stale | undefined>,
 });

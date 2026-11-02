@@ -23,21 +23,37 @@ const SHA = /^[0-9a-f]{40}$/;
 
 const roots = new Map<string, Promise<string | null>>();
 
+/** git rev-parse outside any repo: exit 128 saying so (in English: LC_ALL=C) */
+const NOT_A_REPO = /not a git repository/i;
+
 /**
- * Repo lookups are remembered until forgetRepos (a git event, the workspace folders changed), "not in a repo" included: in a
- * workspace that is no repo every lookup would start a git process otherwise. A later git init comes with a git event
+ * A repo lookup: rev-parse's output read with `read`, remembered until forgetRepos (a git event, the workspace folders changed),
+ * "not in a repo" included: in a workspace that is no repo every lookup would start a git process otherwise, and a later git init
+ * comes with a git event. Any other failure (the folder is gone, git is missing or failed) is null but asked again next time
  */
-function remember<T>(m: Map<string, Promise<T>>, k: string, ask: () => Promise<T>): Promise<T> {
-  let p = m.get(k);
-  if (!p) m.set(k, (p = ask()));
+function lookup<T>(m: Map<string, Promise<T | null>>, dir: string, args: string[], read: (out: string) => T | null) {
+  let p = m.get(dir);
+  if (!p) {
+    const q = new Promise<T | null>((res) =>
+      execFile(
+        "git",
+        args,
+        { cwd: dir, encoding: "utf8", env: { ...process.env, LC_ALL: "C" } },
+        (err, out, errOut) => {
+          if (!err) return res(read(out));
+          if (!(err.code === 128 && NOT_A_REPO.test(errOut)) && m.get(dir) === q) m.delete(dir);
+          res(null);
+        },
+      ),
+    );
+    m.set(dir, (p = q));
+  }
   return p;
 }
 
 /** 文件所在的 git 仓库根（子模块里的文件返回子模块自己的根） */
 export const repoRootOfDir = (dir: string): Promise<string | null> =>
-  remember(roots, dir, () =>
-    git(dir, ["rev-parse", "--show-toplevel"]).then((s) => (s?.trim() ? path.normalize(s.trim()) : null)),
-  );
+  lookup(roots, dir, ["rev-parse", "--show-toplevel"], (s) => (s.trim() ? path.normalize(s.trim()) : null));
 export const repoRootOf = (file: string) => repoRootOfDir(path.dirname(file));
 
 /** The repo's HEAD commit, read every time: a cached HEAD outlives a commit until the .git watcher's debounce has run, and a version
@@ -100,7 +116,7 @@ export async function commitInfo(root: string, commit: string): Promise<LogEntry
 const gitDirs = new Map<string, Promise<string | null>>();
 /** .git 目录的绝对路径（子模块是外层仓库的 .git/modules/x） */
 export const gitDirOf = (root: string) =>
-  remember(gitDirs, root, () => git(root, ["rev-parse", "--absolute-git-dir"]).then((s) => s?.trim() || null));
+  lookup(gitDirs, root, ["rev-parse", "--absolute-git-dir"], (s) => s.trim() || null);
 
 const anc = new Lru<Promise<boolean>>(500);
 /**
@@ -125,9 +141,7 @@ const commons = new Map<string, Promise<string | null>>();
 /** The git directory a repo's worktrees and submodule checkouts share (info/exclude is there). Asked from the repo root, so the
  *  relative path git before 2.31 gives (no --path-format) is relative to it */
 const commonDirOf = (root: string) =>
-  remember(commons, root, () =>
-    git(root, ["rev-parse", "--git-common-dir"]).then((s) => (s?.trim() ? path.resolve(root, s.trim()) : null)),
-  );
+  lookup(commons, root, ["rev-parse", "--git-common-dir"], (s) => (s.trim() ? path.resolve(root, s.trim()) : null));
 
 const ups = new Map<string, Promise<string>>();
 const excluded = new Map<string, Promise<void>>();

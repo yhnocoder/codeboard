@@ -297,7 +297,6 @@ export async function openBoard(
           views,
           stale: {},
           host: {
-            isMac: true,
             assetBase: "",
             target: true,
             // no AI here unless a scenario plays it (settings: { aiProvider: "auto" } and an `on` for "complete")

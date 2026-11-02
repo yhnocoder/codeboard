@@ -17,6 +17,7 @@ import {
 import { state, cardById, placeOf } from "../state/store";
 import { mutate } from "../state/changes";
 import { toast } from "../state/toast";
+import { IS_MAC } from "@yhnocoder/markdown/ui";
 import { ask, send } from "../host";
 import { editing, setEditing } from "../state/ui";
 import { openPop } from "../state/pop";
@@ -451,7 +452,7 @@ export async function modifySvg(ref: ImgRef, instruction: string) {
   }
   const short = instruction.trim().replace(/\s+/g, " ");
   toast(
-    `Modified the SVG: “${short.length > 28 ? `${short.slice(0, 27)}…` : short}”. ${state.host.isMac ? "⌘Z" : "Ctrl+Z"} undoes it`,
+    `Modified the SVG: “${short.length > 28 ? `${short.slice(0, 27)}…` : short}”. ${IS_MAC ? "⌘Z" : "Ctrl+Z"} undoes it`,
   );
 }
 

@@ -5,10 +5,11 @@
 // 动作拿到的 A 是 actions 的命名空间（类型 import，运行时不引用 actions：菜单要 import 这里拿快捷键文字）
 import type { KeyAction } from "@codeboard/core";
 import type * as Actions from "./actions";
-import { state, hostOf, cardById } from "./state/store";
+import { hostOf, cardById } from "./state/store";
 import { undo, redo, live, beginGesture } from "./state/changes";
 import { sel, lineSel, clearSel } from "./state/selection";
 import { toast } from "./state/toast";
+import { IS_MAC } from "@yhnocoder/markdown/ui";
 import { holdGesture } from "./gesture";
 import { NUDGE_HOLD, NUDGE_RAMP, NUDGE_SPEED, NUDGE_MAX } from "./state/timing";
 import { camTarget, zoomAt } from "./state/camera";
@@ -494,10 +495,9 @@ const parse = (s: string): Combo => {
 /** 符号键（? ! +）：Shift 是打出这个字要按的，不比 */
 const symbol = (k: string) => k.length === 1 && !/[a-z0-9 ]/i.test(k);
 function hit(c: Combo, e: KeyboardEvent): boolean {
-  const mac = state.host.isMac;
   // ⌃：Mac 上是 Control（不带 ⌘）；别的系统上是 Ctrl+Alt（Ctrl+- 是缩小）
   if (c.ctrl) {
-    if (!(e.ctrlKey && !e.metaKey && (mac || e.altKey))) return false;
+    if (!(e.ctrlKey && !e.metaKey && (IS_MAC || e.altKey))) return false;
   } else if ((e.metaKey || e.ctrlKey) !== c.mod || e.altKey !== c.alt) return false;
   if (!symbol(c.key) && e.shiftKey !== c.shift) return false;
   return CODE.test(c.key) ? e.code === c.key : e.key.toLowerCase() === c.key.toLowerCase();
@@ -565,7 +565,7 @@ const showOf = (b: Bind) => b.show ?? (b.keys ? macText(b.keys[0]) : "");
 /** 菜单、按钮提示里的快捷键（当前系统的写法） */
 export const kbd = (id: string) => {
   const b = byId.get(id);
-  return b ? keyText(showOf(b), state.host.isMac) : undefined;
+  return b ? keyText(showOf(b), IS_MAC) : undefined;
 };
 
 export type HelpRow = [keys: string, label: string];

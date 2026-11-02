@@ -1,9 +1,10 @@
 // Rules on the board's state and gestures, checked by shape:
 // - the board is written only in state/changes.ts, segment views and version states (`state.views`, `state.stale`) only in
-//   state/views.ts: those two are the only ones to import the store's setState
+//   state/views.ts: those two are the only ones to import the store's setState, by name or through a namespace import
 // - the undo engine, snapshots and saving (and what they import from the board) do not import Solid
-// - drags go through gesture.ts: no other file listens on the window for both a pointer move and its release, and an undo step
-//   for a gesture (beginGesture) is always held with holdGesture, so a board switch drops it
+// - drags go through gesture.ts: no other file listens on the window or the document for pointer moves (but the listed trackers,
+//   which never listen for a release there), and an undo step for a gesture (beginGesture) is always held with holdGesture, so a
+//   board switch drops it
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -38,10 +39,18 @@ describe("board state", () => {
   });
 
   it("lets only state/changes.ts and state/views.ts import the store's setState", () => {
+    const STORE = String.raw`from\s*["'](?:\.\.?\/)+(?:state\/)?store["']`;
+    const named = new RegExp(String.raw`import\s*\{[^}]*\bsetState\b[^}]*\}\s*${STORE}`);
+    const spaces = new RegExp(String.raw`import\s*(?:type\s+)?(?:\w+\s*,\s*)?\*\s*as\s+(\w+)\s*${STORE}`, "g");
     const importers = walk(SRC)
-      .filter((f) =>
-        /import\s*\{[^}]*\bsetState\b[^}]*\}\s*from\s*["'][./]*(state\/)?store["']/.test(fs.readFileSync(f, "utf8")),
-      )
+      .filter((f) => {
+        const t = fs.readFileSync(f, "utf8");
+        // import * as S from "./store", then S.setState
+        const viaSpace = [...t.matchAll(spaces)].some((m) =>
+          new RegExp(String.raw`\b${m[1]}\s*\.\s*setState\b`).test(t),
+        );
+        return named.test(t) || viaSpace;
+      })
       .map(rel)
       .sort();
     expect(importers).toEqual(["state/changes.ts", "state/views.ts"]);
@@ -71,23 +80,25 @@ describe("board state", () => {
 });
 
 describe("board gestures", () => {
-  // a drag listens on the window for the moves and for the release: only track() in gesture.ts does both
-  const NOT_DRAGS = new Set([
-    "gesture.ts",
-    "ui/shield.ts", // the pan shield: page-long passive listeners that take it away on any move, no drag
+  // a drag listens for the moves on the window (or the document): only track() in gesture.ts does that. Besides it, these follow
+  // the pointer with no button held, and none of them listens for a release there
+  const TRACKERS = new Set([
+    "state/hover.ts", // which card or link the pointer is over
+    "state/measure.ts", // the last pointer position
+    "state/blocks.ts", // the Note block under the pointer
+    "stickers/Picker.tsx", // the sticker that follows the pointer until a click places it
   ]);
+  const SHIELD = "ui/shield.ts"; // the pan shield: page-long passive listeners that take it away on any move or release, no drag
+  const listens = (t: string, kinds: string) =>
+    new RegExp(
+      String.raw`\b(?:window|document|globalThis)\s*\.\s*(?:addEventListener\(\s*["'](?:pointer|mouse|touch)(?:${kinds})["']|on(?:pointer|mouse|touch)(?:${kinds})\s*=)`,
+    ).test(t);
   it("are tracked only in gesture.ts", () => {
-    const both = walk(SRC)
-      .filter((f) => !NOT_DRAGS.has(rel(f)))
-      .filter((f) => {
-        const t = fs.readFileSync(f, "utf8");
-        return (
-          /window\.addEventListener\(\s*["']pointermove["']/.test(t) &&
-          /window\.addEventListener\(\s*["'](pointerup|pointercancel)["']/.test(t)
-        );
-      })
-      .map(rel);
-    expect(both).toEqual([]);
+    const sources = walk(SRC).filter((f) => !["gesture.ts", SHIELD].includes(rel(f)));
+    const moves = sources.filter((f) => listens(fs.readFileSync(f, "utf8"), "move")).map(rel);
+    // a tracker that stopped listening comes off the list
+    expect(moves.sort()).toEqual([...TRACKERS].sort());
+    expect(moves.filter((f) => listens(fs.readFileSync(path.join(SRC, f), "utf8"), "up|cancel|end"))).toEqual([]);
   });
 
   it("hold their undo step with holdGesture, so a board switch drops it", () => {

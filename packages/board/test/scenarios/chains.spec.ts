@@ -116,7 +116,7 @@ async function chainsHost(b: Board): Promise<Host> {
     boards: [{ id: b.id, name: b.name, cards: b.cards.length }],
     views,
     stale: {},
-    host: { isMac: true, assetBase: "", target: true, settings: { ...DEFAULT_SETTINGS } },
+    host: { assetBase: "", target: true, settings: { ...DEFAULT_SETTINGS } },
   };
   await h.post(init);
   await h.page.locator(".card").first().waitFor();

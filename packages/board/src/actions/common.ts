@@ -17,17 +17,10 @@ import { renderMd, renderMdInline, type RefBroken, type RefTarget } from "@yhnoc
 import { crossRef } from "../md/refs";
 import { mathRev } from "../md/math";
 import { cardSel } from "../cardsel";
+import { IS_MAC } from "@yhnocoder/markdown/ui";
 
-const isMac = () => state.host.isMac;
 /** 说明文字里的修饰键（「⌥-click」「⌘↵ to save」）；有绑定的快捷键用 keymap 的 kbd(id) */
-export const K = {
-  get mod() {
-    return isMac() ? "⌘" : "Ctrl+";
-  },
-  get alt() {
-    return isMac() ? "⌥" : "Alt+";
-  },
-};
+export const K = { mod: IS_MAC ? "⌘" : "Ctrl+", alt: IS_MAC ? "⌥" : "Alt+" };
 
 export function selectCard(id: string, add = false) {
   const f = cardById(id);
