@@ -13,15 +13,9 @@
 //   svgImageInPngExport                  a PNG export draws an SVG image card (the board's assets/ pictures are inlined first)
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { emptyBoard, mimeOf, type Board, type Card, type ImageCard, type NoteCard } from "@codeboard/core";
-import { inlineFor, nodeFs, readAsset, saveNoteImage, Storage } from "@codeboard/host/testing";
-import { OUT, REPO, put, shot, type Host } from "../harness";
-import { test, open, check, until, idle, frames, focusSettled } from "../fixtures";
-
-/** The board's media folder (CSS, fonts), inlined into exported HTML */
-const MEDIA = path.join(REPO, "packages/board/dist");
-
-const BASE = "https://cb-assets.test/res";
+import { emptyBoard, type Board, type Card, type ImageCard, type NoteCard } from "@codeboard/core";
+import { OUT, put, shot, type Host } from "../harness";
+import { test, check, until, idle, frames, focusSettled, hostBoards } from "../fixtures";
 
 /** A 240 × 160 vector diagram, as a design tool exports it (XML prolog, a comment). Its script must never run: it would set a flag */
 const SVG = `<?xml version="1.0" encoding="UTF-8"?>
@@ -48,74 +42,25 @@ const isCleanSvg = (text: string) =>
   />prefill<\/text>/.test(text) &&
   />decode<\/text>/.test(text);
 
-/** The board in Warm Ink with a host that runs the host's own code for images: assets/ in a temp storage folder, served at BASE
- *  with the type its extension gives (as VS Code serves webview resources), saveAsset / saveImage / readAsset, and the Image
- *  button's file dialog answering the picked .svg the way the host reads it */
+/** The board in Warm Ink on the real host (realhost.ts), with `seed` in its storage's assets/. The editor's file dialogs: Add
+ *  Image picks a .svg with only a viewBox, Export saves into a temp file (exported: what was written, once it is) */
 async function svgHost(b: Board, seed: Record<string, string> = {}) {
-  const dir = path.join(OUT, `svg-images-${process.pid}-${Math.random().toString(36).slice(2, 8)}`);
-  const store = new Storage(nodeFs, { dir: () => dir });
-  fs.mkdirSync(store.assetsDir(), { recursive: true });
-  for (const [f, text] of Object.entries(seed)) fs.writeFileSync(path.join(store.assetsDir(), f), text);
-  const exported: string[] = [];
-  const answer = async (
-    reply: (req: number, data?: unknown, error?: string) => Promise<void>,
-    req: number,
-    f: () => Promise<unknown>,
-  ) => {
-    try {
-      await reply(req, await f());
-    } catch (e) {
-      await reply(req, undefined, (e as Error).message);
-    }
-    return true;
-  };
-  const h = await open({
-    board: b,
-    light: true,
-    w: 1240,
-    h: 820,
-    settings: { theme: "warm-ink" } as any,
-    host: { assetBase: BASE },
-    beforeLoad: (p) =>
-      p.route(`${BASE}/**`, (r) => {
-        const name = decodeURIComponent(new URL(r.request().url()).pathname.split("/").pop()!),
-          f = path.join(store.assetsDir(), name);
-        return fs.existsSync(f)
-          ? r.fulfill({ body: fs.readFileSync(f), contentType: mimeOf(name) })
-          : r.fulfill({ status: 404 });
-      }),
-    on: async (m, reply) => {
-      if (m.type === "saveAsset") return answer(reply, m.req!, () => store.saveAsset(m.name, m.dataUrl));
-      if (m.type === "saveImage") return answer(reply, m.req!, () => saveNoteImage(store, m.dataUrl));
-      if (m.type === "readAsset") return answer(reply, m.req!, () => readAsset(store, m.file));
-      if (m.type === "pickFile")
-        return answer(
-          reply,
-          m.req!,
-          async () => `data:image/svg+xml;base64,${Buffer.from(SVG_VIEWBOX).toString("base64")}`,
-        );
-      if (m.type === "pasteCards") return answer(reply, m.req!, async () => null);
-      if (m.type === "exportFile")
-        return answer(reply, m.req!, async () => {
-          exported.push(await inlineFor(MEDIA, store, m.text));
-          return true;
-        });
-      return false;
-    },
-  });
+  const run = await hostBoards([b], { page: { light: true, w: 1240, h: 820, settings: { theme: "warm-ink" } } });
+  const dir = run.host.store.assetsDir(),
+    tmp = path.join(run.host.store.dir(), "files");
+  fs.mkdirSync(dir, { recursive: true });
+  fs.mkdirSync(tmp, { recursive: true });
+  for (const [f, text] of Object.entries(seed)) fs.writeFileSync(path.join(dir, f), text);
+  const picked = path.join(tmp, "picked.svg"),
+    saved = path.join(tmp, "export.html");
+  fs.writeFileSync(picked, SVG_VIEWBOX);
+  run.ws.ui = { ...run.ws.ui, openDialog: async () => picked, saveDialog: async () => saved };
+  const h = await run.open(b.id);
   await idle(h);
-  const assets = () => fs.readdirSync(store.assetsDir()).sort();
-  const asset = (f: string) => fs.readFileSync(path.join(store.assetsDir(), f), "utf8");
-  return {
-    h,
-    assets,
-    asset,
-    exported,
-    done: async () => {
-      await h.close();
-      fs.rmSync(dir, { recursive: true, force: true });
-    },
-  };
+  const assets = () => fs.readdirSync(dir).sort();
+  const asset = (f: string) => fs.readFileSync(path.join(dir, f), "utf8");
+  const exported = () => (fs.existsSync(saved) ? fs.readFileSync(saved, "utf8") : undefined);
+  return { h, assets, asset, exported, done: () => run.close() };
 }
 
 const emptyAt = () => {
@@ -420,7 +365,7 @@ test("svgImagesInHtmlExport", async () => {
   await pg.locator(".xdlg .seg button", { hasText: "HTML Snapshot" }).click();
   await pg.locator(".xdlg .seg button", { hasText: "Whole Board" }).click();
   await pg.locator(".xdlg button.def").click();
-  const html = await until(h, "the snapshot is written", () => exported[0], 20000);
+  const html = await until(h, "the snapshot is written", exported, 20000);
   const svgs = (html.match(/<img\b[^>]*src="data:image\/svg\+xml;base64,/g) ?? []).length;
   check("svgImagesInHtmlExport both pictures are SVG data", svgs === 2 && !html.includes("cbres:"), {
     svgs,

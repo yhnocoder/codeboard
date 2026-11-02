@@ -11,13 +11,8 @@ import type { HostContext } from "../src/context";
 export { animWebp, apng, faceFrames, gif, png, type Paint, type Rgba } from "./images";
 export { nodeWorkspace, type TestWorkspace } from "./node-workspace";
 export { analysisReady, startAnalysis } from "../src/analysis";
-export { HostContext } from "../src/context";
 export { deepseekComplete } from "../src/deepseek";
-export { inlineFor } from "../src/exports";
-export { readAsset, readImageUri, saveNoteImage } from "../src/images";
 export { runImageAi, SYS_FOCUS } from "../src/imageai";
-export { nodeFs } from "../src/storage/nodefs";
-export { Storage } from "../src/storage/boards";
 export { captureRun, runApply } from "../src/runs";
 export { highlight } from "../src/views";
 

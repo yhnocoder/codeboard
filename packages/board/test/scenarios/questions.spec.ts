@@ -1,21 +1,10 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import {
-  DEFAULT_SETTINGS,
-  emptyBoard,
-  type Board,
-  type BoardToHost,
-  type CodeCard,
-  type HostToBoard,
-  type QuestionItem,
-  type SegView,
-} from "@codeboard/core";
-import { shot, put, symCard, findSym, viewOf, OUT, REPO, type Host } from "../harness";
-import { inlineFor } from "@codeboard/host/testing";
-import { test, open, check, light, verdict, expect, until, idle } from "../fixtures";
+import { emptyBoard, type BoardToHost, type CodeCard } from "@codeboard/core";
+import { shot, put, symCard, findSym, OUT, type Host } from "../harness";
+import { test, open, check, light, verdict, expect, until, idle, hostBoards } from "../fixtures";
 import type { Page } from "@playwright/test";
 
-const MEDIA = path.join(REPO, "packages/board/dist");
 async function shotPr(h: Host, name: string) {
   await shot(h, name);
   const d = process.env.SHOTS_DIR;
@@ -76,14 +65,10 @@ test("questionOpensAfterFlight", async () => {
     q: { md: "far away question" },
   });
   b.cam = { x: 0, y: 0, z: 1 };
-  const h = await open({
-    board: b,
-    light,
-    w: 1400,
-    h: 900,
-    settings: { tune: { animSpeed: 40 } } as never,
-    on: (m, reply) => (m.type === "questions" ? (void reply(m.req!, []), true) : false),
+  const run = await hostBoards([b], {
+    page: { light, w: 1400, h: 900, settings: { tune: { animSpeed: 40 } } as never },
   });
+  const h = await run.open(b.id);
   const pg = h.page;
   /** The world's transform when the question popover appeared */
   const watchPop = () =>
@@ -142,7 +127,7 @@ test("questionOpensAfterFlight", async () => {
   await pg.mouse.wheel(-6000, -4000);
   await idle(h);
   const home = await watchPop();
-  await h.post({ type: "reveal", card: far.id, seg: far.segments[0].id, lines: [line, line], sticker: "kF" });
+  await run.tell({ type: "openBoard", id: b.id, card: far.id, line, sticker: "kF" });
   await pg.locator(".pop.k-question .qtext").waitFor({ timeout: 15000 });
   await idle(h, 15000);
   const host = { before: home, popAt: await popAt(), after: await world(), next: await nextToSticker() };
@@ -156,20 +141,6 @@ test("questionOpensAfterFlight", async () => {
 test("export", () => verdict("export", exportScenario));
 
 test("settingsPage", () => verdict("settingsPage", settings));
-
-const initOf = (b: Board, extra: Partial<Extract<HostToBoard, { type: "init" }>> = {}): HostToBoard => {
-  const views: Record<string, SegView> = {};
-  for (const k of b.cards) if (k.kind === "code") for (const sg of k.segments) views[sg.id] = viewOf(sg);
-  return {
-    type: "init",
-    board: b,
-    boards: [{ id: b.id, name: b.name, cards: b.cards.length }],
-    views,
-    stale: {},
-    host: { assetBase: "", target: true, settings: DEFAULT_SETTINGS },
-    ...extra,
-  };
-};
 
 /** Right-click a code line and pick a line-menu item */
 async function lineMenu(h: Host, card: string, line: number, label: string) {
@@ -202,55 +173,33 @@ async function questions(res: Record<string, unknown>) {
   };
   b.cards.push(note);
   b.place[note.id] = { x: 760, y: 80, w: 360 };
-  const other: QuestionItem[] = [
-    {
-      board: "bMR",
-      boardName: "nano-vllm · ModelRunner",
-      sticker: "k1",
-      card: "c1",
-      title: "ModelRunner.capture_cudagraph",
-      file: "model_runner.py",
-      line: 216,
-      md: "CUDA graph 为什么只在 decode 用？",
-      done: false,
-    },
-    {
-      board: "bMR",
-      boardName: "nano-vllm · ModelRunner",
-      sticker: "k2",
-      card: "c2",
-      title: "ModelRunner.prepare_prefill",
-      file: "model_runner.py",
-      line: 130,
-      md: "prepare_prefill 里 cu_seqlens 是什么 shape？",
-      done: false,
-    },
-    {
-      board: "bEP",
-      boardName: "DeepEP",
-      sticker: "k3",
-      card: "c3",
-      title: "intranode::dispatch",
-      file: "intranode.cu",
-      line: 88,
-      md: "sm_id % 2 决定 sender，为什么？",
-      done: true,
-    },
-    {
-      board: "bQ",
-      boardName: "nano-vllm · Scheduler",
-      sticker: "stale",
-      md: "stale copy from disk (must be replaced by the live board)",
-      done: false,
-    },
-  ];
-  const h = await open({
-      board: b,
-      light,
-      w: 1500,
-      h: 900,
-      on: (m, reply) => (m.type === "questions" ? (void reply(m.req!, other), true) : false),
-    }),
+  // the project's other boards, in the host's storage: two open questions on ModelRunner, a resolved one on DeepEP
+  const mr = emptyBoard("bMR", "nano-vllm · ModelRunner");
+  const cap = nv("ModelRunner.capture_cudagraph"),
+    pre = nv("ModelRunner.prepare_prefill");
+  put(mr, cap, 60, 80, 640);
+  put(mr, pre, 760, 80, 640);
+  const ask = (id: string, c: CodeCard, re: RegExp, md: string) => ({
+    id,
+    icon: { pack: "builtin" as const, name: "question" },
+    at: { kind: "line" as const, card: c.id, seg: c.segments[0].id, line: lineOf(c, re) },
+    q: { md },
+  });
+  mr.stickers.push(
+    ask("k1", cap, /def capture_cudagraph/, "CUDA graph 为什么只在 decode 用？"),
+    ask("k2", pre, /cu_seqlens_q/, "prepare_prefill 里 cu_seqlens 是什么 shape？"),
+  );
+  const ep = emptyBoard("bEP", "DeepEP");
+  ep.cards.push({ id: "c3", kind: "note", md: "**intranode::dispatch**", look: "note" });
+  ep.place.c3 = { x: 60, y: 80, w: 360 };
+  ep.stickers.push({
+    id: "k3",
+    icon: { pack: "builtin", name: "question" },
+    at: { kind: "canvas", x: 380, y: 90, on: { card: "c3" } },
+    q: { md: "sm_id % 2 决定 sender，为什么？", done: true },
+  });
+  const run = await hostBoards([b, mr, ep], { page: { light, w: 1500, h: 900 } });
+  const h = await run.open(b.id),
     page = h.page;
   await page.keyboard.press("Shift+Digit1");
   await idle(h);
@@ -304,7 +253,6 @@ async function questions(res: Record<string, unknown>) {
   await idle(h); // the other boards come with the host's reply
   res.openRows = await page.locator(".qpanel .qrow").count();
   res.groups = await page.locator(".qpanel .qg").allTextContents();
-  res.staleShown = await page.locator(".qpanel .qrow", { hasText: "stale copy" }).count();
   await shotPr(h, "questions-3-panel");
   await page.locator(".qpanel .qtabs button", { hasText: "All" }).click();
   await idle(h);
@@ -330,7 +278,10 @@ async function questions(res: Record<string, unknown>) {
   // 7. Welcome back: the host says this board was last opened 5 days ago
   await page.locator('.qpanel [aria-label="Close Questions"]').click();
   await idle(h);
-  await h.post(initOf(h.board(), { welcome: { days: 5, open: 1 } }));
+  // back five days later: the window reloads the board, and the host's init says when it was last opened
+  const opened = run.host.hub.globalState.get<Record<string, number>>("codeboard.opened") ?? {};
+  await run.host.hub.globalState.set("codeboard.opened", { ...opened, bQ: Date.now() - 5 * 864e5 - 6e4 });
+  await page.reload();
   await page.locator(".welcome").waitFor();
   await idle(h);
   res.welcome = await page.locator(".welcome").textContent();
@@ -350,7 +301,6 @@ async function questions(res: Record<string, unknown>) {
     String(res.ansText).includes("prefix caching") &&
     res.headCount2 === "? 1" &&
     res.openRows === 3 &&
-    res.staleShown === 0 &&
     res.allRows === 5 &&
     (res.openBoard as { id?: string; sticker?: string })?.id === "bMR" &&
     (res.openBoard as { sticker?: string }).sticker === "k2" &&
@@ -427,38 +377,40 @@ function schedBoard() {
 async function exportScenario(res: Record<string, unknown>) {
   const { b, ids } = schedBoard();
   const files: Record<string, string> = {};
-  const store = { assetsDir: () => path.join(OUT, "no-assets") } as unknown as Parameters<typeof inlineFor>[1];
-  const h = await open({
-      board: b,
+  const run = await hostBoards([b], {
+    page: {
       light,
       w: 1500,
       h: 900,
+      // GitHub permalinks need the repository's origin on GitHub, which a checkout here may not have: the links come from here
       on: async (m, reply) => {
-        if (m.type === "permalinks") {
-          await reply(
-            m.req!,
-            Object.fromEntries(
-              m.segs
-                .filter((s) => s.src.kind === "repo")
-                .map((s) => [
-                  s.id,
-                  `https://github.com/GeeeekExplorer/nano-vllm/blob/bb823b3c0ffee/${s.path}#L${s.start}-L${s.end}`,
-                ]),
-            ),
-          );
-          return true;
-        }
-        if (m.type === "exportFile") {
-          const text = m.kind === "html" ? await inlineFor(MEDIA, store, m.text) : m.text;
-          const f = path.join(OUT, `export-${m.name.toLowerCase().replace(/\W+/g, "-")}.${m.kind}`);
-          fs.writeFileSync(f, text);
-          files[m.kind] = f;
-          await reply(m.req!, true);
-          return true;
-        }
-        return false;
+        if (m.type !== "permalinks") return false;
+        await reply(
+          m.req!,
+          Object.fromEntries(
+            m.segs
+              .filter((s) => s.src.kind === "repo")
+              .map((s) => [
+                s.id,
+                `https://github.com/GeeeekExplorer/nano-vllm/blob/bb823b3c0ffee/${s.path}#L${s.start}-L${s.end}`,
+              ]),
+          ),
+        );
+        return true;
       },
-    }),
+    },
+  });
+  // the editor's Save dialog: into test-out/; its "Exported …" notice comes once the file is written
+  let saving = "";
+  run.ws.ui = {
+    ...run.ws.ui,
+    saveDialog: async (o) => (saving = path.join(OUT, `export-${process.pid}-${path.basename(o.defaultPath)}`)),
+    info: async (text) => {
+      if (text.startsWith("Exported ")) files[path.extname(saving).slice(1)] = saving;
+      return undefined;
+    },
+  };
+  const h = await run.open(b.id),
     page = h.page;
   await page.keyboard.press("Shift+Digit1");
   await idle(h);

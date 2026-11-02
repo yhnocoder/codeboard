@@ -29,7 +29,7 @@ declare const REPO_ROOT: string;
 export const REPO = REPO_ROOT;
 const NV = path.join(REPO, "examples/nano-vllm");
 // HARNESS_BOARD: another build of the board (harness.mjs --against=<ref> runs the scenarios on the build of an older commit)
-const MEDIA = process.env.HARNESS_BOARD || path.join(REPO, "packages/board/dist");
+export const MEDIA = process.env.HARNESS_BOARD || path.join(REPO, "packages/board/dist");
 export const OUT = path.join(REPO, "test-out/harness");
 
 export const files = new Map<string, { text: string[]; a: FileAnalysis }>();

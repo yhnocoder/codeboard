@@ -4,9 +4,11 @@
 // The fixture host in harness.ts stays for the scenarios about the board itself on canned data.
 import * as fs from "node:fs";
 import * as path from "node:path";
+import type { Page } from "playwright-core";
 import {
   Emitter,
   loadBoard,
+  mimeOf,
   type AskType,
   type Board,
   type BoardToHost,
@@ -14,14 +16,18 @@ import {
   type HostToBoard,
   type ReplyOf,
 } from "@codeboard/core";
+import { SETTINGS } from "@codeboard/core/settings";
 import { startHost, type BoardView, type Host as RealHost, type HostEnv } from "@codeboard/host";
 import { nodeWorkspace, symbolCard, type TestWorkspace } from "@codeboard/host/testing";
-import { OUT, REPO, type Host, type OpenOptions } from "./harness";
+import { MEDIA, OUT, REPO, type Host, type OpenOptions } from "./harness";
 
 export type RealHostOptions = {
   /** The workspace root (default examples/nano-vllm) */
   root?: string;
-  /** The page options of every board the host opens (theme, size, a scenario's own replies in front of the host: `on`) */
+  /**
+   * The page options of every board the host opens (theme, size, a scenario's own replies in front of the host: `on`). Its
+   * `settings` are the editor's settings the host reads (codeboard.*), as a user's settings.json would hold them
+   */
   page?: Omit<OpenOptions, "board" | "via">;
   /** A modal warning (a confirm, Delete Board…): the button the user picks; by default the first one (OK) */
   warn?: (text: string, actions: string[]) => string | undefined;
@@ -46,11 +52,28 @@ export type RealHostRun = {
   card(rel: string, qual: string, nth?: number): Promise<CodeCard>;
   /** A request the first open board could make, answered by the host's message handler without a page round trip */
   ask<T extends AskType>(m: Omit<Extract<BoardToHost, { type: T }>, "req">): Promise<ReplyOf<T>>;
+  /** Where the pages load the storage's assets/ from (host.assetBase: a resource URL, as a webview's) */
+  assetBase: string;
+  /** A message the first open board could send without asking (Open Board from its Questions panel…), handled by the host */
+  tell(m: Exclude<BoardToHost, { req: number }>): Promise<void>;
   /** Disposes the host and writes what its storage still holds (also done after the scenario) */
   close(): Promise<void>;
 };
 
 let runs = 0;
+/**
+ * A webview's resource URLs (VS Code: https://file+.vscode-resource…): an https address for a file on disk, which the page fetches
+ * like any other; the harness page answers it from the disk (resourceRoute)
+ */
+const RESOURCE = "https://file.resource.test";
+const fileUrl = (dir: string) => `${RESOURCE}${dir.split("/").map(encodeURIComponent).join("/")}`;
+const resourceRoute = (page: Page) =>
+  page.route(`${RESOURCE}/**`, (r) => {
+    const f = decodeURIComponent(new URL(r.request().url()).pathname);
+    return fs.existsSync(f) && fs.statSync(f).isFile()
+      ? r.fulfill({ body: fs.readFileSync(f), contentType: mimeOf(f) })
+      : r.fulfill({ status: 404 });
+  });
 
 /**
  * The editor's keybindings for keys the board forwards to its host (FORWARDED_KEYS): the chord of this platform ("ctrl+shift+b",
@@ -93,6 +116,22 @@ export async function realHost(boards: Board[], t: Harness, o: RealHostOptions =
     set: async (k, v) => void state.set(k, v),
   };
   ws.ui = { ...ws.ui, warn: async (text, _o, ...actions) => (o.warn ? o.warn(text, actions) : actions[0]) };
+  // the editor's settings: what the scenario starts with, and what the board writes (a theme picked, a font size) comes back
+  const conf = new Map<string, unknown>(
+    Object.entries(o.page?.settings ?? {}).map(([k, v]) => [
+      `codeboard.${SETTINGS[k as keyof typeof SETTINGS].key}`,
+      v,
+    ]),
+  );
+  const confChanged = new Emitter<{ affects(key: string): boolean }>();
+  ws.settings = {
+    get: <T>(k: string) => conf.get(k) as T | undefined,
+    set: async (k, v) => {
+      conf.set(k, v);
+      confChanged.fire({ affects: (x) => k === x || k.startsWith(`${x}.`) });
+    },
+    onDidChange: confChanged.event,
+  };
 
   const views: PageView[] = [];
   /** The page last pressed or opened: the editor's active board (the one a keybinding runs on) */
@@ -111,6 +150,7 @@ export async function realHost(boards: Board[], t: Harness, o: RealHostOptions =
           via: { send: (m, post) => v.receive(m, post), board: () => host.store.peek(panelOf(v)?.id ?? "")! },
           // like VS Code's webview, which hands every keydown to the workbench: a chord the extension binds runs its command
           beforeLoad: async (page) => {
+            await resourceRoute(page);
             await page.exposeFunction("__key", (chord: string) => {
               const action = BOARD_KEYS[chord];
               front = v;
@@ -129,10 +169,13 @@ export async function realHost(boards: Board[], t: Harness, o: RealHostOptions =
           },
         })
         .then((h) => (v.h = h));
+      // a board the host opens late in the scenario (from a click on another board) may still be loading when the scenario ends
+      v.opened.catch(() => {});
       return v;
     },
   };
-  const host = startHost(ws, env);
+  // the board build the pages load, as the extension passes its media folder (HTML snapshots inline its fonts and styles)
+  const host = startHost(ws, env, { mediaDir: MEDIA });
   // the name index complete before the first board opens (the host builds it in the background): a call resolves the same every run
   host.hub.cx.index.start();
   await host.hub.cx.index.ready();
@@ -218,7 +261,7 @@ export async function realHost(boards: Board[], t: Harness, o: RealHostOptions =
       this.disposed.fire();
     }
     resourceUrl(dir: string) {
-      return `file://${dir}`;
+      return fileUrl(dir);
     }
   }
 
@@ -250,6 +293,12 @@ export async function realHost(boards: Board[], t: Harness, o: RealHostOptions =
       if (!p) throw new Error("realHost: ask needs an open board");
       return (await host.hub.handler(p, { ...m, req: 0 } as BoardToHost)) as never;
     },
+    async tell(m) {
+      const p = host.hub.all()[0];
+      if (!p) throw new Error("realHost: tell needs an open board");
+      await host.hub.handler(p, m);
+    },
+    assetBase: fileUrl(host.store.assetsDir()),
     card: (rel, qual, nth) => symbolCard(host.hub.cx, path.join(ws.files.roots()[0], rel), qual, nth),
     close,
   };
