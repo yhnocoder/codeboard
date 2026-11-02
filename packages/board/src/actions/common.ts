@@ -4,7 +4,7 @@ import { mutate } from "../state/changes";
 import { sel, select, isSel } from "../state/selection";
 import { frames, isHidden, visibleCards } from "../state/sections";
 import { subRef } from "../state/subboards";
-import { linkCurve } from "../state/geo";
+import { linkCurve } from "../canvas/routes";
 import { extraList } from "../state/extent";
 import { bezAt, bezBox } from "@codeboard/core/canvas";
 import { camTo, camRest, ensureVisible, fitRect, animate, Spring } from "../state/camera";

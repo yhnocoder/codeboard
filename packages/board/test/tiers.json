@@ -73,8 +73,8 @@
         "packages/board/src/canvas/Canvas.tsx",
         "packages/core/src/canvas/{index,geom}.ts",
         "packages/board/src/cards/Card.tsx",
-        "packages/board/src/state/{camera,changes,cull,extent,geo,ghost,history,hover,idle,lodcards,lru,measure,mode,motion,root,save,selection,snap,store,timing,toast,tune,ui,upkeep,views}.ts",
-        "packages/board/src/actions/{index,common,edit,create,env}.ts",
+        "packages/board/src/state/{camera,changes,cull,extent,geo,ghost,history,hover,idle,lodcards,lru,measure,mode,motion,offscreen,root,save,selection,snap,store,timing,toast,tune,ui,upkeep,views}.ts",
+        "packages/board/src/actions/{index,common,edit,create,env,clipboard,pastechip}.ts",
         "packages/board/src/ui/{guard,hooks,overlay,shield}.ts",
         "packages/board/src/ui/icons.tsx",
         "packages/core/src/{index,model,edit,layout,tidy,emitter,paste}.ts",
@@ -101,12 +101,12 @@
     "code": {
       "about": "code cards: lines, highlighting, hidden lines, Fit Content, the code card header, Free code editing",
       "files": [
-        "packages/board/src/cards/{CodeBody,FreeEdit}.tsx",
+        "packages/board/src/cards/{CodeBody,CodeHead,FreeEdit}.tsx",
         "packages/board/src/cm/**",
         "packages/board/src/actions/create.ts",
         "packages/markdown/src/cm/**",
         "packages/markdown/src/code.ts",
-        "packages/analysis/src/{index,tree,highlight,langs,select,basics}.ts",
+        "packages/analysis/src/{index,syms,tree,highlight,langs,select,basics}.ts",
         "packages/core/src/{render,lines,chip,highlight}.ts",
         "packages/host/src/{cards,source,views,analysis,codeedit,scratchnames}.ts",
         "packages/board/test/scenarios/{code-cards,code-card-header,codeedit,fixq,text-selection-delete,code-line-band,find}.spec.ts"
@@ -154,7 +154,7 @@
     "chains": {
       "about": "broken call chains (picking the implementation) and calls across languages (pybind, torch.ops, kernels)",
       "files": [
-        "packages/board/src/actions/chains.ts",
+        "packages/board/src/actions/{chains,callpops}.ts",
         "packages/board/src/ui/pops/chains.tsx",
         "packages/analysis/src/bridge.ts",
         "packages/host/src/bridge.ts",
@@ -248,6 +248,7 @@
       "about": "arrows and their labels, ports and routing; Marks and hand-drawn annotations",
       "files": [
         "packages/board/src/canvas/{Links,Labels}.tsx",
+        "packages/board/src/canvas/routes.ts",
         "packages/core/src/canvas/{labelpos,route,hand}.ts",
         "packages/board/src/actions/{links,annots}.ts",
         "packages/core/src/linklabel.ts",

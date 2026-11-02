@@ -1,6 +1,6 @@
 // 只读入口：不带编辑器（@yhnocoder/markdown/editor，懒加载），不碰 Solid
 export { parseMd, serializeMd, mdSchema, baseExtensions, mdBlockStarts, texBrackets } from "./schema";
-export { renderMd, renderMdInline, clearMdCache, mdCached } from "./render";
+export { renderMd, renderMdInline, mdCached } from "./render";
 export {
   setAssetBase,
   setImageResolver,

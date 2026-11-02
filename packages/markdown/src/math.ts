@@ -3,7 +3,6 @@
 import katex, { type KatexOptions } from "katex";
 
 type Macros = NonNullable<KatexOptions["macros"]>;
-import { clearMdCache } from "./render";
 
 /** The TeX source on KaTeX's HTML output (data-latex on its .katex element): it draws no MathML, whose <annotation> is where
  *  a paste of a typeset formula reads its TeX from (schema.ts texAttrs) */
@@ -23,6 +22,11 @@ let text = "";
 let macros: Macros = {};
 let defs: MathDef[] = [];
 let errors: string[] = [];
+let changed = () => {};
+/** render.ts registers here: a new preamble makes every cached render stale */
+export const onPreambleChanged = (f: () => void) => {
+  changed = f;
+};
 
 /** 排版公式时传给 KaTeX 的 macros：每次一份新的 */
 export const mathMacros = (): Macros => ({ ...macros });
@@ -63,7 +67,7 @@ export function setMathPreamble(src: string): boolean {
       args: typeof v === "object" && v && "numArgs" in v ? Number((v as { numArgs: number }).numArgs) || 0 : 0,
       body: body.get(k.slice(1)) ?? "",
     }));
-  clearMdCache();
+  changed();
   return true;
 }
 

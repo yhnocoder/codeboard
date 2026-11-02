@@ -28,7 +28,6 @@ import {
   heightToKeep,
 } from "../state/subboards";
 import { revealCard, selectCard } from "./common";
-import { paintRef } from "@yhnocoder/markdown";
 import { walk, setWalk } from "../state/ui";
 import { settleHome, frames as sectionFrames } from "../state/sections";
 import { animScale } from "../state/motion";
@@ -525,9 +524,4 @@ export function openCardRef(id: string, place?: string) {
     return;
   }
   if (state.boards.some((m) => m.id === id)) send({ type: "openBoard", id });
-}
-/** 骨架、别的白板的卡到了以后，静态 Note 里的 [[引用]] 再认一遍（指向它们的，没到时显示成找不到） */
-export function refreshRefs() {
-  for (const r of document.querySelectorAll<HTMLElement>(".md .md-ref"))
-    if (!r.closest("[contenteditable=true]")) paintRef(r);
 }

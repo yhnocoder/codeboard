@@ -5,7 +5,7 @@ import katex from "katex";
 import DOMPurify from "dompurify";
 import { escHtml, isHtmlComment, mdSchema, parseMd, tocEntries, tocHtml } from "./schema";
 import { captionOf, imageAttrs, missingImageHtml, onImagesChanged } from "./image";
-import { mathMacros, withTex } from "./math";
+import { mathMacros, onPreambleChanged, withTex } from "./math";
 
 const escA = (s: string) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
 const VOID = new Set(["img", "br", "hr", "input", "col", "wbr"]);
@@ -191,7 +191,7 @@ export function renderMd(src: string): string {
   cache.set(src, h);
   return h;
 }
-export const clearMdCache = () => cache.clear();
+onPreambleChanged(() => cache.clear());
 export const mdCached = (src: string) => cache.has(src);
 
 function render(src: string): string {

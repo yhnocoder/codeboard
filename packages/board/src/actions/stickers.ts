@@ -3,7 +3,7 @@ import { openQuestion, setAnswered, linkAnswer, setStickerDragged } from "./ques
 import { state, rectOf } from "../state/store";
 import { mutate, live } from "../state/changes";
 import { toast } from "../state/toast";
-import { linkCurve } from "../state/geo";
+import { linkCurve } from "../canvas/routes";
 import { bezAt, nearestT } from "@codeboard/core/canvas";
 import { cam, toWorld } from "../state/camera";
 import { boardOffset } from "../state/measure";

@@ -16,7 +16,7 @@ import { mutate } from "../state/changes";
 import { setGeo } from "../state/geo";
 import { queueMeasure, observeResize } from "../state/measure";
 import { Icon } from "../ui/icons";
-import { CodeHead } from "./Card";
+import { CodeHead } from "./CodeHead";
 import * as A from "../actions";
 import { callPointerDown, cardWheel } from "../interact";
 import { below, ownMenu } from "../ui/Menu";

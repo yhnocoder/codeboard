@@ -58,7 +58,7 @@ Rules to keep when changing code (from the v0.1 and v0.1.5 architecture reviews)
 - **No compatibility code outside migration.** Old board files are upgraded to the current format in one migration step; there are no shims, fallbacks, legacy aliases or dual code paths elsewhere. Fix root causes and replace old behavior outright.
 - **Every UI operation runs at 60 fps.**
 - **Every board gesture goes through `packages/board/src/gesture.ts`.** A pointer drag uses `track()` (and `undoGesture()` for its undo step), a gesture that is not a drag `holdGesture()`: a board switch halfway drops it, so nothing of the old board is committed or reaches the new board's undo stack. Don't add window pointer listeners of your own for a drag; `test/unit/state-shape.test.ts` checks both by shape.
-- **No new circular imports.** `packages/host/test/cycles.test.ts` lists the cycles inside each package (runtime imports; `import type` and lazy `import()` don't count); the list may only shrink.
+- **No circular imports.** `packages/host/test/cycles.test.ts` fails on any cycle inside a package (runtime imports; `import type` and lazy `import()` don't count). When two modules need each other, move what they share into a third module both import, or the code into the layer it belongs to; don't break a cycle with a lazy `import()`, a type-only trick or a setter that injects a function at load time.
 
 ## Pull requests
 

@@ -1,6 +1,6 @@
 // 只给候选，默认一个都不加。推不出来（*args 转手、按字符串转发、不知道被调的是谁）时为空。
 import { varKey, type Var } from "./basics";
-import type { CallSite, Sym } from "./index";
+import type { CallSite, Sym } from "./syms";
 
 const short = (s: string, n = 28) => (s.length > n ? s.slice(0, n - 1) + "…" : s);
 

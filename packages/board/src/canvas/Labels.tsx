@@ -8,10 +8,11 @@ import { editing, setDragLink } from "../state/ui";
 import { hoverLink, enterLink, leaveLink } from "../state/hover";
 import { toWorld } from "../state/camera";
 import { boardOffset } from "../state/measure";
+import { linkVisible } from "../state/sections";
 import { Editable } from "../ui/Editable";
 import { isDbl } from "../interact";
 import * as A from "../actions";
-import { visible, type Geo } from "./Links";
+import type { Geo } from "./routes";
 import { dragT, placeT, type LabelBox, bezAt } from "@codeboard/core/canvas";
 import { NODRAG } from "../ui/guard";
 import { DRAG_SLOP, track, undoGesture } from "../gesture";
@@ -102,7 +103,7 @@ const ALT_GAP = 28,
 export function AltBoxes() {
   const links = createMemo(() =>
     state.board.links.filter(
-      (l) => l.call && (l.call.alts?.length || l.call.vals?.some((v) => (v.opts?.length ?? 0) > 1)) && visible(l),
+      (l) => l.call && (l.call.alts?.length || l.call.vals?.some((v) => (v.opts?.length ?? 0) > 1)) && linkVisible(l),
     ),
   );
   return <For each={links()}>{(L) => <AltsOf L={L} />}</For>;

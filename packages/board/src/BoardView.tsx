@@ -25,7 +25,7 @@ import { staleCount, updateAll } from "@codeboard/core/commands";
 import { versionEnv } from "./actions/env";
 import { staleOf } from "./state/views";
 import { flows, cardById } from "./state/store";
-import { MarkView } from "./cards/Card";
+import { MarkView } from "./cards/CodeHead";
 import { crumbs, crumbMorph, walkBack } from "./state/subboards";
 import { LegendPanel, CallTreePanel, RunPanel } from "./ui/CallPanels";
 import { QuestionsPanel, WelcomeHint } from "./ui/QuestionsPanel";

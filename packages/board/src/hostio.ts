@@ -28,7 +28,7 @@ import { choose, pickOne, promptText } from "./ui/Menu";
 import { setNoteAssets } from "./md/images";
 import { applyMathPreamble } from "./md/math";
 import { preloadEditor } from "./md/load";
-import { putBoardRefs } from "./md/refs";
+import { putBoardRefs, refreshRefs } from "./md/refs";
 import { preloadCm } from "./cm/load";
 import { questionsOpen, setWelcome } from "./state/questions";
 
@@ -90,7 +90,7 @@ function handle(m: HostToBoard) {
     }
     case "skeletons":
       putSkels(m.boards);
-      A.refreshRefs();
+      refreshRefs();
       break;
     case "boardRefs":
       putBoardRefs(m.refs);
