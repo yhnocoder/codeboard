@@ -123,7 +123,8 @@ const editorFocused = (page) => page.locator(".editor-group-container .monaco-ed
  * the workbench in its own coordinates. Chromium does that when the webview-local point the workbench answers does not map back to the
  * press through the frame the window drew last: the webview moved, as when VS Code's box around it scrolls (webviewBoxes). In keyscope,
  * clickBoard after the Rename Board dialog closed went to the workbench without the browser asking it where the point is: after a
- * window zoom and reset, the window's hit-test data had no region for the webview at all (winzoomStep).
+ * window zoom and reset, the window's hit-test data had no region for the webview at all (winzoomStep; Regular run 41245352675,
+ * PR #132's runs 41409139858 and 41415809774).
  * Runs click(), then waits for done(); when done() does not come true it records the browser's input routing trace
  * (<label>-trace.json), which documents got the moves and the press, the <iframe>'s state as the workbench saw it before the click
  * and at the press, and where the keyboard is in the workbench, the webview's host page and the board (<label>-click.png), and throws.
