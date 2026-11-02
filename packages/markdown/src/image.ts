@@ -25,12 +25,18 @@ export function setImageResolver(r: ImageResolver | null) {
   rawOf.clear();
   changed();
 }
-let base = "";
-/** 常见的一种解析：assets/ 开头的地址放到 b 下面（b 为空 = 照原样） */
-export function setAssetBase(b: string) {
-  if (b === base) return;
-  base = b;
-  setImageResolver(b ? (src) => (src.startsWith("assets/") ? { src: `${b}/${src.slice(7)}` } : undefined) : null);
+let asset = "";
+/**
+ * The common resolver: an address under the folder dir (relative, as written in the Markdown: "assets") is served from base,
+ * so dir/a.png shows base/a.png; other addresses stay as written. An empty base removes the resolver
+ */
+export function setAssetBase(dir: string, base: string) {
+  const prefix = `${dir.replace(/\/+$/, "")}/`;
+  if (`${prefix}\n${base}` === asset) return;
+  asset = `${prefix}\n${base}`;
+  setImageResolver(
+    base ? (src) => (src.startsWith(prefix) ? { src: `${base}/${src.slice(prefix.length)}` } : undefined) : null,
+  );
 }
 
 /**

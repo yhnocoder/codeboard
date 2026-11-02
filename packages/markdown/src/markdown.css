@@ -4,11 +4,11 @@
             --accent --accent-ink（强调色和压在它上面的字）--warn（出错）--k-fn（链接、引用、脚注）
             --k-kw --k-num --k-self --k-str --lk-blue --lk-orange --lk-green（Mermaid 的系列色）--sh-float（浮层阴影）
             --md-hl（==高亮== 的荧光笔底色，半透明的淡暖黄，只涂字的下半截）
-     字体   --sys（正文、Mermaid）--mono（代码、记号）--note-h（小标题）
+     字体   --sys（正文、Mermaid）--mono（代码、记号）--md-heading-font（小标题，默认 --sys）
      字号   --md-fs（正文）--md-h1 … --md-h6（各级标题；都有默认值，见下面）
-     其他   --r-card（圆角，Mermaid 用一半）--t（动画时长的倍数，1 = 正常）--ico-w（工具条图标的描边，1 或 2 px，默认 1）
+     其他   --md-radius（圆角，Mermaid 用一半，默认 10px）--t（动画时长的倍数，1 = 正常）--ico-w（工具条图标的描边，1 或 2 px，默认 1）
    公式还要 KaTeX 自己的样式（@yhnocoder/markdown/katex.css，放在这一份前面）。
-   借用外面的样式（由用的一方给）：菜单、选中工具条、公式框的 .ctx（菜单）、.pill（浮条）、.tbtn（按钮，开着的是 .on），静态显示的链接 .lnk；
+   借用外面的样式（由用的一方给）：菜单、选中工具条、公式框的 .ctx（菜单）、.pill（浮条）、.tbtn（按钮，开着的是 .on），链接 .md-link 的颜色；
    工具条按钮的提示（名字在 data-tip，快捷键在 data-kbd）也由用的一方显示。代码块着色的 class
    （.kw .fn …）由给着色的一方（setCodeHighlighter）配样式 */
 .katex {
@@ -77,7 +77,7 @@ math {
   margin: 2px 0 2px;
   font-weight: 600;
   line-height: 1.4;
-  font-family: var(--note-h);
+  font-family: var(--md-heading-font, var(--sys));
   color: var(--ink);
 }
 .md hr {
@@ -320,14 +320,6 @@ math {
   box-shadow: inset 0 0 0 1px var(--hair);
   cursor: default;
 }
-/* Note 里的调用点不能点，不画成链接 */
-.md pre.md-code .call {
-  text-decoration: none;
-  cursor: inherit;
-}
-.md pre.md-code .call:hover {
-  background: none;
-}
 .md ul[data-type="taskList"] {
   list-style: none;
   padding-left: 2px;
@@ -542,7 +534,7 @@ math {
   --pele-error: var(--warn);
   --pele-font: var(--sys);
   --pele-font-mono: var(--mono);
-  --pele-radius: calc(var(--r-card) * 0.5);
+  --pele-radius: calc(var(--md-radius, 10px) * 0.5);
   --pele-series-1: var(--lk-blue);
   --pele-series-2: var(--lk-orange);
   --pele-series-3: var(--lk-green);
@@ -1653,12 +1645,6 @@ math {
   background-color: color-mix(in srgb, var(--accent) 45%, transparent);
 }
 /* 代码编辑器（cm/editor.ts） */
-.cbcm .cm-content .call {
-  cursor: text;
-}
-.cbcm .cm-content .call:hover {
-  background: none;
-}
 .cbcm .cm-gutters {
   cursor: default;
 }

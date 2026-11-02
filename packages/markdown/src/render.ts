@@ -100,7 +100,7 @@ const DISPLAY: Record<string, (n: PMNode, cx: Cx) => string | undefined> = {
 };
 /** 链接不放 href：点了由 mdClick 交给用的一方打开，webview 自己不跳转 */
 const DISPLAY_MARKS: Record<string, (m: Mark) => DOMOutputSpec> = {
-  link: (m) => ["a", { class: "lnk", "data-href": m.attrs.href }, 0],
+  link: (m) => ["a", { class: "md-link", "data-href": m.attrs.href }, 0],
 };
 /** 只有一段（非空）的列表项、脚注、表格格子不画那层 <p>：外观一样（它本来就没有边距），少画一些节点 */
 const SLIM = new Set(["listItem", "footnote", "tableCell", "tableHeader"]);

@@ -13,7 +13,6 @@ export const setRefResolver = (f: (label: string) => Ref, o: { missing?: string 
   resolve = f;
   if (o.missing) missing = o.missing;
 };
-export const resolveRef = (label: string) => resolve(label);
 
 /** 按现在能找到的把一个 [[引用]]（.md-ref）画出来：标题（和 badge），找不到时的样子和提示。数据晚到（别的白板的卡）时用的一方再调一次 */
 export function paintRef(r: HTMLElement) {
@@ -177,7 +176,7 @@ export function mdClick(
   o: { openLink: (u: string) => void; openRef: (id: string, to: RefTarget) => void; onToggle?: (next: string) => void },
 ): boolean {
   const t = e.target as HTMLElement;
-  const a = t.closest?.("a.lnk") as HTMLElement | null;
+  const a = t.closest?.("a.md-link") as HTMLElement | null;
   if (a?.dataset.href) {
     e.preventDefault();
     e.stopPropagation();

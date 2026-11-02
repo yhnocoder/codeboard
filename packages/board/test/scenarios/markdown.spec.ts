@@ -148,7 +148,7 @@ async function renderIn(themes: string[]) {
       () => (h.board().cards.find((c) => c.id === "n1") as NoteCard).md !== RICH,
     );
     const md = (h.board().cards.find((c) => c.id === "n1") as NoteCard).md;
-    await h.page.locator('.card[data-id="n1"] a.lnk').first().click();
+    await h.page.locator('.card[data-id="n1"] a.md-link').first().click();
     await until(h, "the link goes to the host", () => h.sent.some((m) => m.type === "openLink"));
     const opened = h.sent.some((m) => m.type === "openLink");
     await h.page.locator('.card[data-id="n1"] .md-ref').first().click();

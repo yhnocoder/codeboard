@@ -3253,14 +3253,16 @@ textarea.fld {
 .ctitle.untitled {
   color: var(--ink-3);
 } /* Note without a title or a leading heading: the placeholder recedes */
-.lnk {
+.lnk,
+.md-link {
   color: var(--k-fn);
   text-decoration: underline;
   text-decoration-color: color-mix(in srgb, var(--k-fn) 40%, transparent);
   text-underline-offset: 2px;
   cursor: pointer;
 }
-.lnk:hover {
+.lnk:hover,
+.md-link:hover {
   text-decoration-color: var(--k-fn);
 }
 kbd {
@@ -3390,6 +3392,12 @@ kbd {
 }
 .card:is(:hover, .sel, .editing) .nbody pre.md-code {
   overflow-x: auto;
+}
+/* @yhnocoder/markdown's theme variables from the board's own, which each theme sets (themes.css): declared on .md, so they
+   resolve against the theme around that note */
+.md {
+  --md-radius: var(--r-card);
+  --md-heading-font: var(--note-h);
 }
 /* the Note's last block has no margin below it (markdown.css .md > :last-child, the editor's .md-prepad), a code block too */
 .nbody > pre.md-code:last-child,
@@ -3597,21 +3605,35 @@ kbd {
   width: calc(var(--nd, 3) * 1ch);
   cursor: pointer;
 }
-/* 编辑代码卡（CodeMirror）时同一套几何：进出编辑字不动（@yhnocoder/markdown 自己的默认是 54px 的行号栏，卡上用这里的） */
-.card .code .cbcm-card .cm-content {
+/* 编辑代码卡（CodeMirror）时同一套几何：进出编辑字不动（@yhnocoder/markdown 的行号栏有自己的默认宽度，卡上用这里的） */
+.card .code .cbcm-gutter .cm-content {
   padding-right: var(--code-pr);
 }
-.card .code .cbcm-card .cm-line {
+.card .code .cbcm-gutter .cm-line {
   padding-right: var(--code-pr);
   margin-right: calc(-1 * var(--code-pr));
 }
-.card .code .cbcm-card .cm-lineNumbers {
+.card .code .cbcm-gutter .cm-lineNumbers {
   width: var(--gutter);
 }
-.card .code .cbcm-card .cm-lineNumbers .cm-gutterElement {
+.card .code .cbcm-gutter .cm-lineNumbers .cm-gutterElement {
   width: var(--gutter);
   padding: 0 22px 0 var(--code-pl);
 } /* 格子占满行号栏、数字右边空 22px：当前行的底色从卡边连到代码 */
+/* the calls in code (core's highlighting) are links on a code card, but not in a Note's code block or while the code is edited */
+.md pre.md-code .call {
+  text-decoration: none;
+  cursor: inherit;
+}
+.md pre.md-code .call:hover {
+  background: none;
+}
+.cbcm .cm-content .call {
+  cursor: text;
+}
+.cbcm .cm-content .call:hover {
+  background: none;
+}
 .lport {
   position: absolute;
   width: 9px;
@@ -5258,7 +5280,7 @@ mark.wdiff {
   font: 600 1em / 1.4 var(--sys);
   color: var(--ink);
 }
-.pk-doc a.lnk {
+.pk-doc a.md-link {
   color: var(--k-fn);
   cursor: pointer;
 }

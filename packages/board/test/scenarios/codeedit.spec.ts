@@ -222,7 +222,7 @@ async function looks() {
       const cls = await pg.evaluate(() => document.querySelector('.card[data-id="c1"] .cm-editor')?.className ?? "");
       check(
         `codeedit ${light ? "light" : "dark"} focused editor keeps cbcm classes`,
-        /\bcm-focused\b/.test(cls) && /\bcbcm\b/.test(cls) && /\bcbcm-card\b/.test(cls),
+        /\bcm-focused\b/.test(cls) && /\bcbcm\b/.test(cls) && /\bcbcm-gutter\b/.test(cls),
         { cls },
       );
     }

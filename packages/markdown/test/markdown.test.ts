@@ -151,7 +151,7 @@ describe("static render", () => {
     expect(h).toContain('class="math"');
     expect(h).toContain('class="katex');
     expect(h).toContain("for $5 and $10");
-    expect(h).toContain('<a class="lnk" data-href="https://x.y/a_b">');
+    expect(h).toContain('<a class="md-link" data-href="https://x.y/a_b">');
     expect(h).toContain("<strong>bold</strong>");
     expect(h).not.toMatch(/ href="/);
   });

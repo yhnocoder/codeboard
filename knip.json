@@ -14,8 +14,18 @@
     ".": { "entry": ["tools/**/*.{mjs,cjs}", "vitest.config.mts"], "project": ["tools/**/*.{mjs,cjs}"] },
     "packages/core": { "includeEntryExports": true, "entry": ["test/**/*.ts"], "project": ["src/**/*.ts"] },
     "packages/host": { "includeEntryExports": true, "entry": ["test/**/*.ts"], "project": ["src/**/*.ts"] },
-    "packages/board": { "includeEntryExports": true, "entry": ["src/export/viewer.ts", "test/**/*.ts", "stories/**/*.tsx"], "project": ["src/**/*.{ts,tsx}"] },
-    "packages/markdown": { "entry": ["src/cm/editor.ts", "src/ui/index.ts", "test/**/*.ts"], "project": ["src/**/*.{ts,tsx}"], "ignore": ["dist/**"] },
+    "packages/board": {
+      "includeEntryExports": true,
+      "entry": ["src/export/viewer.ts", "test/**/*.ts", "stories/**/*.tsx"],
+      "project": ["src/**/*.{ts,tsx}"]
+    },
+    // the package's public API is its four entries; an export only npm users need (README) carries @public
+    "packages/markdown": {
+      "includeEntryExports": true,
+      "entry": ["src/index.ts", "src/editor/index.tsx", "src/cm/editor.ts", "src/ui/index.ts", "test/**/*.ts"],
+      "project": ["src/**/*.{ts,tsx}"],
+      "ignore": ["dist/**"]
+    },
     "packages/analysis": { "includeEntryExports": true, "entry": ["test/**/*.{ts,mjs}"], "project": ["src/**/*.ts"] },
     "extensions/vscode": { "includeEntryExports": true, "entry": ["esbuild.mjs", "test/**/*.{ts,cjs}"], "project": ["src/**/*.ts"] }
   }

@@ -33,7 +33,7 @@ describe("static render = editor HTML", () => {
   it("display differs only where documented", () => {
     const h = renderMd("- one\n\n[t](https://a.b)\n\n```mermaid\ngraph TD\n```\n\n[toc]\n\n## H");
     expect(h).toContain("<li>one</li>");
-    expect(h).toContain('<a class="lnk" data-href="https://a.b">t</a>');
+    expect(h).toContain('<a class="md-link" data-href="https://a.b">t</a>');
     expect(h).toContain('<div class="mmd" data-src="graph TD">');
     expect(h).toContain('<nav data-type="toc" class="md-toc"><div class="l2">H</div></nav>');
   });

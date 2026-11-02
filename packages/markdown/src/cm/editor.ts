@@ -38,7 +38,7 @@ import { keepKey } from "../ui/editkeys";
 import { closeFind, findExtension } from "./find";
 
 export type { LspHost, GhostHost };
-export type { LspItem, LspKind, LspSignature } from "./lsp";
+export type { LspItem, LspSignature } from "./lsp";
 
 const IND = "    ";
 
@@ -46,7 +46,7 @@ const IND = "    ";
 type Tok = { from: number; to: number; cls: string };
 const ENT: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', "#39": "'", "#x27": "'", nbsp: " " };
 /** 解析着好色的 HTML（只有 span 和转义的字）：每一层 span 一段，嵌套的（.call 套着 .kw）各是一段 */
-export function parseHl(html: string): { text: string; toks: Tok[] } {
+function parseHl(html: string): { text: string; toks: Tok[] } {
   const toks: Tok[] = [];
   const stack: { cls: string; from: number }[] = [];
   let text = "";
@@ -259,7 +259,7 @@ export type CodeEditorOpts = {
   text: string;
   lang?: string;
   wrap?: boolean;
-  /** 行号栏：第一行的行号（和显示时一样画在左边 54px 里）；不给就没有行号栏（Note 里的代码块） */
+  /** 行号栏：第一行的行号；不给就没有行号栏（Note 里的代码块）。The editor root then has the class cbcm-gutter, for the page to size it */
   gutter?: { start: number };
   /** 一开始的着色（显示时的那份 HTML，进编辑时不闪） */
   html?: string;
@@ -283,7 +283,7 @@ export type CodeEditorOpts = {
   history?: boolean;
   /** 当前行底色（Note 里的代码块本来就有底色：false） */
   activeLine?: boolean;
-  /** 编辑器根元素再加的 class（比如 Note 里的代码块 cbcm-md）；cbcm 和有行号栏时的 cbcm-card 总会有 */
+  /** 编辑器根元素再加的 class（比如 Note 里的代码块 cbcm-md）；cbcm 和有行号栏时的 cbcm-gutter 总会有 */
   className?: string;
   extensions?: Extension[];
   /** 改动先给它（Note 里转成 ProseMirror 的改动）；不给就直接改 */
@@ -300,15 +300,13 @@ export type CodeEditor = {
   destroy(): void;
 };
 
-/** 和显示时一样的排版：字体、行高从外面继承，没有内边距；行号栏和显示时的 .gutter .no 一样（左 2px、宽 30px、右对齐，再空 22px 到代码） */
+/** The surrounding text's look: font and line height inherited, no padding; line numbers right-aligned in a column the page can size (.cbcm-gutter) */
 const look = EditorView.theme({
   "&": { font: "inherit", color: "inherit", background: "transparent" },
   "&.cm-focused": { outline: "none" },
   ".cm-scroller": { font: "inherit", lineHeight: "inherit", overflow: "visible", fontFamily: "inherit" },
   ".cm-content": { padding: "0 24px 0 0", caretColor: "var(--ink)", fontVariantLigatures: "inherit" },
   ".cm-line": { padding: "0" },
-  // 卡片上：行伸进右边 24px 的留白（和显示时的 .src .l 一样），当前行的底色到卡边
-  "&.cbcm-card .cm-line": { padding: "0 24px 0 0", marginRight: "-24px" },
   ".cm-gutters": {
     background: "transparent",
     border: "none",
@@ -316,13 +314,13 @@ const look = EditorView.theme({
     position: "relative",
     minHeight: "0",
   },
-  ".cm-lineNumbers": { width: "54px" },
-  // 行号格占满整个行号栏（字靠右空 22px）：当前行的底色从行号连到代码，中间不断
+  ".cm-lineNumbers": { width: "4em" },
+  // 行号格占满整个行号栏（字靠右，和代码之间空一段）：当前行的底色从行号连到代码，中间不断
   ".cm-lineNumbers .cm-gutterElement": {
     boxSizing: "border-box",
-    width: "54px",
+    width: "4em",
     minWidth: "0",
-    padding: "0 22px 0 2px",
+    padding: "0 1.5em 0 2px",
     textAlign: "right",
     fontVariantNumeric: "tabular-nums",
     color: "color-mix(in srgb, var(--ink-3) calc(var(--no-o, .65) * 100%), transparent)",
@@ -430,7 +428,7 @@ export function codeEditor(o: CodeEditorOpts): CodeEditor {
       : []),
     // 根元素的 class 走 editorAttributes：CodeMirror 焦点一变就重写整个 class 属性，classList.add 加的会被抹掉
     EditorView.editorAttributes.of({
-      class: ["cbcm", o.gutter ? "cbcm-card" : "", o.className ?? ""].filter(Boolean).join(" "),
+      class: ["cbcm", o.gutter ? "cbcm-gutter" : "", o.className ?? ""].filter(Boolean).join(" "),
     }),
     ...(o.extensions ?? []),
   ];
@@ -470,4 +468,5 @@ export function codeEditor(o: CodeEditorOpts): CodeEditor {
   };
 }
 
-export { EditorView, EditorSelection, Decoration, keymap };
+// the board builds its own decorations and views on the same CodeMirror the editor runs
+export { EditorView, Decoration };

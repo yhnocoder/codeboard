@@ -164,47 +164,24 @@ function MdEdit(p: P) {
       placeholder: p.placeholder ?? NOTE_PLACEHOLDER,
       onDone: finish,
       onSourceMode: (on) => setSourceMode(p.id, on),
+      // a Note on a card grows with its text and the board moves by its camera: only a fixed-height body scrolls
+      scrollOwnBox: !!el.closest(".card"),
     });
     setCurrentEditor(p.id, ed);
-    if (p.kind === "note") {
-      const h = ed;
-      setLiveNote({ id: p.id, value: () => h.value() });
-    }
-    const e = ed.editor();
+    const h = ed;
+    if (p.kind === "note") setLiveNote({ id: p.id, value: () => h.value() });
     if (entry && "at" in entry) {
-      // counted in the text on the static view: independent of where the editor's layout is at this moment
-      if (entry.spot === "end") {
-        m.placeCaret(e, e.state.doc.content.size);
-        return;
-      }
-      const c = entry.spot && m.visibleRange(e.state.doc, entry.spot.char);
-      if (c) {
-        m.placeCaret(e, entry.spot!.after ? c.to : c.from);
-        return;
-      }
-      // 编辑器和静态内容排得一样：点在静态内容哪个字上，编辑器里同一个地方就是那个字。
-      // 点在内容外面（卡比内容高时下面的空白、两边的边距）：下面 → 最后一段的末尾；旁边 → 收进内容里最近的地方
-      const r = e.view.dom.getBoundingClientRect();
-      if (entry.at.y >= r.bottom) {
-        m.placeCaret(e, e.state.doc.content.size);
-        return;
-      }
-      const x = Math.min(Math.max(entry.at.x, r.left + 1), r.right - 1),
-        y = Math.max(entry.at.y, r.top + 1);
-      const at = e.view.posAtCoords({ left: x, top: y });
-      if (at) m.placeCaret(e, at.pos);
+      // counted in the text on the static view: independent of where the editor's layout is at this moment. Clicked outside
+      // the content (the empty space below it on a card taller than its content, the margins beside it): below → the end of
+      // the last block; beside → the nearest place inside the content
+      const spot = entry.spot;
+      if (spot === "end") h.placeCaret("end");
+      else if (!spot || !h.placeCaret({ visible: spot.char, after: spot.after })) h.placeCaret(entry.at);
       return;
     }
-    const r = entry && m.visibleRange(e.state.doc, entry.range);
-    if (!r) return;
-    e.commands.setTextSelection(r);
+    if (!entry || !h.selectVisible(entry.range)) return;
     // 编辑器拿到焦点（mountEditor 放进了微任务）以后，和在编辑器里按这个键一样走它的键表；键表没接（不会发生）就直接删
-    queueMicrotask(() => {
-      if (e.isDestroyed) return;
-      const ev = new KeyboardEvent("keydown", { key: entry.key, code: entry.key, bubbles: true, cancelable: true });
-      e.view.dom.dispatchEvent(ev);
-      if (!ev.defaultPrevented) e.commands.deleteSelection();
-    });
+    queueMicrotask(() => h.press(entry.key));
   };
   // 预加载过的：元素挂到页面上后立刻挂编辑器（同一个任务里，不闪静态内容）；否则等加载完
   const now = editorNow();
