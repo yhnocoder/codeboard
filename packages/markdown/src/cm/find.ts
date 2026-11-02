@@ -96,7 +96,7 @@ export function closeFind(view: EditorView) {
 }
 
 /** leave：焦点从查找条去了编辑器外面（和编辑器失焦一样） */
-export function findExtension(o: { isMac: boolean; leave: (e: FocusEvent) => void }): Extension[] {
+export function findExtension(o: { leave: (e: FocusEvent) => void }): Extension[] {
   return [
     search({
       top: true,
@@ -105,7 +105,7 @@ export function findExtension(o: { isMac: boolean; leave: (e: FocusEvent) => voi
         const origin = view.state.selection.main.from;
         const bar = new FindBar(
           target(view, () => origin),
-          { isMac: o.isMac, owns: (n) => view.dom.contains(n), leave: o.leave },
+          { owns: (n) => view.dom.contains(n), leave: o.leave },
         );
         bars.set(view, bar);
         return {

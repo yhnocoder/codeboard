@@ -1,7 +1,7 @@
 // The board's side of core's command layer: the env a command gets is this board's store, host and dialogs
 import type { CommandEnv, VersionEnv } from "@codeboard/core/commands";
 import { state, sharedOn } from "../state/store";
-import { putViews, staleOk } from "../state/views";
+import { putViews, staleOf, staleOk } from "../state/views";
 import { mutate } from "../state/changes";
 import { toast } from "../state/toast";
 import { ask } from "../host";
@@ -18,7 +18,7 @@ const commandEnv: CommandEnv = {
 
 export const versionEnv: VersionEnv = {
   ...commandEnv,
-  stale: (id) => state.stale[id],
+  stale: staleOf,
   staleOk,
   putViews,
   sharedOn,

@@ -1,14 +1,28 @@
 // startHost wires a host from a Workspace and a HostEnv alone (what the VS Code extension and a Node sidecar both call): commands,
-// views, settings broadcasts, following the storage directory, and dispose that unhooks all of it
+// views, settings broadcasts, following the storage directory and the workspace folders, the asset cleanup, cached definitions
+// dropped on code changes, the board list sent again on new versions, the version watcher, and dispose that unhooks all of it
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { Emitter, type HostToBoard } from "@codeboard/core";
+import type { Storage } from "@codeboard/core/storage";
 import type { HostEnv } from "../src/env";
 import { startHost, type Host } from "../src/start";
 import { excludeScratch, scratchName } from "../src/scratchnames";
+import { sharedDefs } from "../src/defcache";
 import { nodeWorkspace } from "./node-workspace";
 import { git, stubView, tempRepo } from "./helpers";
+
+// the asset cleanup runs a minute after a storage directory opens: what is scheduled for which directory, and what is cancelled
+const sweeps = vi.hoisted(() => ({ scheduled: [] as string[], cancelled: [] as string[] }));
+vi.mock("../src/assetsweep", async (orig) => ({
+  ...(await orig<typeof import("../src/assetsweep")>()),
+  scheduleAssetSweep: (store: Storage) => {
+    const dir = store.dir();
+    sweeps.scheduled.push(dir);
+    return () => void sweeps.cancelled.push(dir);
+  },
+}));
 
 const tmp = fs.mkdtempSync("/tmp/codeboard-start-");
 const root = path.join(tmp, "ws"),
@@ -16,6 +30,25 @@ const root = path.join(tmp, "ws"),
   moved = path.join(tmp, "moved");
 fs.mkdirSync(root);
 const W = nodeWorkspace(root);
+let roots = [root];
+const rootsChanged = new Emitter<void>();
+const gitChanged = new Emitter<void>();
+let gitListeners = 0;
+W.files = {
+  ...W.files,
+  roots: () => roots,
+  onDidChangeRoots: rootsChanged.event,
+  onDidChangeGit: (fn) => {
+    gitListeners++;
+    const d = gitChanged.event(fn);
+    return {
+      dispose: () => {
+        gitListeners--;
+        d.dispose();
+      },
+    };
+  },
+};
 const settings = new Map<string, unknown>();
 const changed = new Emitter<{ affects(key: string): boolean }>();
 W.storage = { ...W.storage, dir: () => storage, globalDir: () => path.join(tmp, "global") };
@@ -71,6 +104,9 @@ describe("startHost", () => {
       Object.values(global.get("codeboard.projects") as Record<string, { dir: string }>).map((p) => p.dir),
     ).toEqual([path.join(storage, "boards")]);
   });
+  it("schedules the asset cleanup for the storage directory", () => {
+    expect(sweeps.scheduled).toEqual([path.join(storage, "boards")]);
+  });
   it("sends changed CodeBoard settings and the editor font to open boards", () => {
     change("codeboard.studyScope", ["nanovllm"]);
     change("editor.fontFamily", "Iosevka");
@@ -78,6 +114,55 @@ describe("startHost", () => {
       { type: "host", host: { settings: expect.objectContaining({ studyScope: ["nanovllm"] }) } },
       { type: "host", host: { fontFamily: "Iosevka" } },
     ]);
+  });
+  it("starts the version watcher once ready", () => {
+    expect(gitListeners).toBe(1);
+  });
+  it("forgets cached definitions when code is edited, saved, created, deleted or renamed", async () => {
+    const f = path.join(root, "defs.py");
+    fs.writeFileSync(f, "x = 1\n");
+    let asks = 0;
+    const defs = () =>
+      sharedDefs(f, 1, 0, async () => {
+        asks++;
+        return [{ abs: f, line: 1, col: 0 }];
+      });
+    await defs();
+    await defs();
+    expect(asks).toBe(1);
+    const events = [
+      () => W.fire.edit.fire(f),
+      () => W.fire.save.fire(f),
+      () => W.fire.create.fire([f]),
+      () => W.fire.delete.fire([f]),
+      () => W.fire.rename.fire([{ from: f, to: f }]),
+    ];
+    for (const [i, ev] of events.entries()) {
+      ev();
+      await defs();
+      expect(asks).toBe(i + 2);
+    }
+  });
+  it("sends the board list again when a board's count of new versions changes", async () => {
+    const id = host.hub.all()[0].id;
+    const before = posted("boards").length;
+    host.hub.staleChanged(id, 2);
+    await vi.waitFor(() => expect(posted("boards").length).toBeGreaterThan(before));
+    const last = posted("boards").at(-1) as Extract<HostToBoard, { type: "boards" }>;
+    expect(last.boards.find((b) => b.id === id)?.stale).toBe(2);
+  });
+  it("follows the workspace folders to another folder's .codeboard", async () => {
+    const other = path.join(tmp, "other");
+    fs.mkdirSync(path.join(other, ".codeboard"), { recursive: true });
+    const switched = new Promise<string>((r) => {
+      const d = host.onDidSwitchStorage((s) => {
+        d.dispose();
+        r(s.dir());
+      });
+    });
+    roots = [other];
+    rootsChanged.fire();
+    expect(await switched).toBe(path.join(other, ".codeboard"));
   });
   it("follows codeboard.storageDir to another directory", async () => {
     const switched = new Promise<string>((r) => {
@@ -89,6 +174,9 @@ describe("startHost", () => {
     change("codeboard.storageDir", moved);
     expect(await switched).toBe(moved);
     expect(host.store.dir()).toBe(moved);
+    // the cleanup is scheduled again for the directory switched to, the one scheduled before is cancelled
+    expect(sweeps.scheduled.at(-1)).toBe(moved);
+    expect(sweeps.cancelled.at(-1)).toBe(sweeps.scheduled.at(-2));
     expect(
       Object.values(global.get("codeboard.projects") as Record<string, { dir: string }>).map((p) => p.dir),
     ).toContain(moved);
@@ -98,6 +186,8 @@ describe("startHost", () => {
     const before = posted("host").length;
     change("editor.fontFamily", "Menlo");
     expect(posted("host")).toHaveLength(before);
+    expect(gitListeners).toBe(0);
+    expect(sweeps.cancelled.at(-1)).toBe(moved);
   });
 });
 

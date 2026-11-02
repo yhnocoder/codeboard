@@ -1299,7 +1299,7 @@ async function runProbe(pr: Probe): Promise<Record<string, unknown>> {
           boards: [{ id: b.id, name: b.name, cards: b.cards.length }],
           views: {},
           stale: {},
-          host: { isMac: false, assetBase: "", target: true, complete: true, settings: DEFAULT_SETTINGS },
+          host: { isMac: false, assetBase: "", target: true, settings: DEFAULT_SETTINGS },
         };
         await P.evaluate((s) => window.postMessage(JSON.parse(s), "*"), JSON.stringify(init));
         return true;

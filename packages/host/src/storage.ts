@@ -7,6 +7,7 @@ import { Emitter, type Camera, type Disposable } from "@codeboard/core";
 import { RESERVED, Storage } from "@codeboard/core/storage";
 import { nodeFs } from "./nodefs";
 import { log } from "./log";
+import { readHostSetting } from "./settings";
 import { debounce, settingDir, workspace, ws0 } from "./ws";
 
 export type { Storage };
@@ -45,7 +46,7 @@ export function openStorage(): Storage {
 }
 
 function boardDir(): string {
-  const set = workspace().settings.get<string>("codeboard.storageDir")?.trim();
+  const set = readHostSetting<string>("storageDir")?.trim();
   if (set) return settingDir(set);
   const p = projectDir();
   return p && isDir(p) ? p : path.join(workspace().storage.dir(), "boards");
@@ -100,7 +101,7 @@ export async function moveIntoProject(store: Storage): Promise<IntoProject> {
       moved: false,
       why: "Open a folder first: boards move into a .codeboard folder in the first workspace folder.",
     };
-  if (workspace().settings.get<string>("codeboard.storageDir")?.trim())
+  if (readHostSetting<string>("storageDir")?.trim())
     return {
       moved: false,
       why: "The setting codeboard.storageDir chooses where boards are stored. Clear it first to keep boards in the project.",

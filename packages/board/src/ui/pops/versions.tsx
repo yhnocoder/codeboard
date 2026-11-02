@@ -22,6 +22,8 @@ import { vlive } from "../../state/variants";
 import { markHtml } from "../../cards/CompareBody";
 import { ask } from "../../host";
 import * as A from "../../actions";
+import { keepVersion, uncommitted } from "@codeboard/core/commands";
+import { versionEnv } from "../../actions/env";
 import { PopHead, type PopProps } from "./common";
 
 // 版本 diff：和 Compare 同一套对齐
@@ -161,7 +163,7 @@ export function DiffPop(p: PopProps<"diff">) {
           <span class="grow" />
           <button
             onClick={() => {
-              A.keepVersion(p.pop.card, p.pop.seg);
+              keepVersion(versionEnv, p.pop.card, p.pop.seg);
               closePop(p.inst.id);
             }}
           >
@@ -323,7 +325,7 @@ export function CommitsPop(p: PopProps<"commits">) {
           }}
         />
       </div>
-      <Show when={A.uncommitted(cardById(p.pop.card)?.card) || state.stale[p.pop.seg.id]?.state === "uncommitted"}>
+      <Show when={uncommitted(cardById(p.pop.card)?.card) || state.stale[p.pop.seg.id]?.state === "uncommitted"}>
         <button
           class="cand"
           onClick={() => {

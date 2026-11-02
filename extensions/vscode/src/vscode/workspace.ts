@@ -203,7 +203,13 @@ export function vscodeWorkspace(ctx: vscode.ExtensionContext): Workspace {
       const hook = (repo: { state: { onDidChange: vscode.Event<void> } }) =>
         ctx.subscriptions.push(repo.state.onDidChange(() => git.fire()));
       api.repositories.forEach(hook);
-      ctx.subscriptions.push(api.onDidOpenRepository(hook));
+      // a repo found later (git init, a folder added): the host's "not in a repo" answers are asked again
+      ctx.subscriptions.push(
+        api.onDidOpenRepository((r: { state: { onDidChange: vscode.Event<void> } }) => {
+          hook(r);
+          git.fire();
+        }),
+      );
     } catch {
       /* 没有 git 插件 */
     }

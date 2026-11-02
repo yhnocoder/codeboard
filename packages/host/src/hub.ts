@@ -409,7 +409,7 @@ export class BoardHub implements BoardHost, Disposable {
     }
     const b = await this.store.load(id);
     if (!b) return undefined;
-    const p = this.attach(id, this.env.openView(id, b.name, place));
+    const p = this.attach(id, this.env.openView(id, b.name, place, this.store.assetsDir()));
     if (!place.preserveFocus) this.setTarget(id);
     return p;
   }

@@ -29,7 +29,17 @@ import {
   type CrossMark,
 } from "@codeboard/core";
 import type { Var } from "@codeboard/analysis/basics";
-import { state, setState, flows, cardById, hostOf, rectOf, setShowCollapsed, placeOf, placed } from "../state/store";
+import {
+  state,
+  setHostSetting,
+  flows,
+  cardById,
+  hostOf,
+  rectOf,
+  setShowCollapsed,
+  placeOf,
+  placed,
+} from "../state/store";
 import { putViews } from "../state/views";
 import { mutate, sync } from "../state/changes";
 import { sel, select, clearSel } from "../state/selection";
@@ -357,7 +367,7 @@ export function addToStudyScope(pkg: string) {
   const cur = state.host.settings.studyScope;
   if (cur.includes(pkg)) return;
   const next = [...cur, pkg];
-  setState("host", "settings", "studyScope", next);
+  setHostSetting("studyScope", next);
   send({ type: "setSetting", key: "studyScope", value: next });
   toast(`Added “${pkg}” to Study Scope`);
 }

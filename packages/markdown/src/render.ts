@@ -3,17 +3,16 @@
 import { Fragment, type DOMOutputSpec, type Mark, type Node as PMNode } from "@tiptap/pm/model";
 import katex from "katex";
 import DOMPurify from "dompurify";
-import { isHtmlComment, mdSchema, parseMd, tocEntries, tocHtml } from "./schema";
+import { escHtml, isHtmlComment, mdSchema, parseMd, tocEntries, tocHtml } from "./schema";
 import { captionOf, imageAttrs, missingImageHtml, onImagesChanged } from "./image";
 import { mathMacros, withTex } from "./math";
 
-const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 const escA = (s: string) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
 const VOID = new Set(["img", "br", "hr", "input", "col", "wbr"]);
 
 /** hole 是内容（spec 里 0 的位置） */
 function specHtml(spec: DOMOutputSpec, hole: string): string {
-  if (typeof spec === "string") return esc(spec);
+  if (typeof spec === "string") return escHtml(spec);
   if (!Array.isArray(spec)) throw new Error("static render: renderHTML returned a DOM node");
   const [tag, ...rest] = spec as readonly [string, ...unknown[]];
   let attrs = "",
@@ -43,7 +42,7 @@ function tex(cx: Cx, src: string, display: boolean) {
       ),
     );
   } catch {
-    return `<code>${esc(src)}</code>`;
+    return `<code>${escHtml(src)}</code>`;
   }
 }
 
@@ -68,7 +67,7 @@ const DISPLAY: Record<string, (n: PMNode, cx: Cx) => string | undefined> = {
     n.attrs.language === "mermaid"
       ? trust(
           cx,
-          `<div class="mmd" data-src="${escA(n.textContent)}"><pre class="md-code"><code>${esc(n.textContent)}</code></pre></div>`,
+          `<div class="mmd" data-src="${escA(n.textContent)}"><pre class="md-code"><code>${escHtml(n.textContent)}</code></pre></div>`,
         )
       : undefined,
   toc: (_n, cx) => `<nav data-type="toc" class="md-toc">${tocHtml(tocEntries(cx.doc))}</nav>`,
@@ -147,19 +146,19 @@ function noteInline(note: string, trusted: string[]): string {
   try {
     const doc = mdSchema().nodeFromJSON(parseMd(note)),
       p = doc.childCount === 1 ? doc.firstChild! : null;
-    if (p?.type.name !== "paragraph") return esc(note);
+    if (p?.type.name !== "paragraph") return escHtml(note);
     const kids: PMNode[] = [];
     p.content.forEach((k) => {
       kids.push(k.mark(k.marks.filter((m) => m.type.name !== "annot")));
     });
     return inlineHtml(Fragment.from(kids), { doc, trusted });
   } catch {
-    return esc(note);
+    return escHtml(note);
   }
 }
 
 function nodeHtml(n: PMNode, cx: Cx | null): string {
-  if (n.isText) return esc(n.text!);
+  if (n.isText) return escHtml(n.text!);
   const d = cx && DISPLAY[n.type.name]?.(n, cx);
   if (d != null) return d;
   // a narrowed image is centred in its line: a class on its paragraph (markdown.css), not a p:has() rule, which Chrome
@@ -205,7 +204,7 @@ function render(src: string): string {
     html = contentHtml(doc, cx);
   } catch (e) {
     console.warn("markdown render failed", e);
-    html = `<p>${esc(src)}</p>`;
+    html = `<p>${escHtml(src)}</p>`;
     trusted = [];
   }
   return untrust(purify(html), trusted);

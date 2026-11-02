@@ -445,6 +445,37 @@ describe("card library (shared cards)", () => {
     expect(sorted(await again.load("A"))).toEqual(sorted(a));
   });
 
+  it("v9 → v10: a shared Text card's fixed height in the board file is dropped once the card is read from the library", async () => {
+    const { fs, store } = setup();
+    const v9 = (id: string, cards: unknown[], place: Record<string, unknown>) => ({
+      ...emptyBoard(id, id),
+      version: 9,
+      cards,
+      place,
+    });
+    fs.put(`${ROOT}/cards/t.json`, {
+      version: 9,
+      card: { id: "t", kind: "note", md: "text", look: "text" },
+      sidenotes: [],
+    });
+    fs.put(`${ROOT}/cards/n.json`, { version: 9, card: note("n"), sidenotes: [] });
+    const at = { x: 0, y: 0, w: 300 };
+    fs.put(
+      `${ROOT}/old.json`,
+      v9(
+        "old",
+        [
+          { id: "t", kind: "shared" },
+          { id: "n", kind: "shared" },
+        ],
+        { t: { ...at, h: 40 }, n: { ...at, h: 120 } },
+      ),
+    );
+    const old = (await store.load("old"))!;
+    expect(old.place.t).toEqual(at);
+    expect(old.place.n.h).toBe(120);
+  });
+
   it("a patch to a shared card writes the card file, updates the other board and reports it once", async () => {
     const { fs, store, B, shared } = await two();
     const before = file(fs, B);

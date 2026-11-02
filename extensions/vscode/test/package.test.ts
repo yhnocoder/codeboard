@@ -7,7 +7,7 @@ import { contributes } from "../src/contributes";
 const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, "../package.json"), "utf8"));
 
 describe("package.json", () => {
-  it("commands and settings are the ones generated from the host's command table and core's settings (npm run build writes them)", () => {
+  it("commands and settings are the ones generated from the host's command table and core's settings (a local build writes them, a CI build fails on a difference)", () => {
     const gen = contributes();
     expect(pkg.contributes.commands).toEqual(gen.commands);
     expect(pkg.contributes.configuration).toEqual(gen.configuration);

@@ -291,7 +291,7 @@ export class Storage {
         if (e && e.mtime !== st.mtimeMs) await this.pull(e);
         if (!e) {
           text = await fs.readFile(f.file);
-          const { file: board, cam } = readBoardFile(JSON.parse(text));
+          const { file: board, cam, inflated } = readBoardFile(JSON.parse(text));
           // id 决定存盘的文件名：只认安全的 id；和别的文件重了（Finder 里复制出来的）就换一个新的，免得两份互相覆盖
           const base = idOf(f.file);
           if (!SAFE_ID.test(board.id ?? "")) board.id = SAFE_ID.test(base) ? base : uid("b");
@@ -308,6 +308,7 @@ export class Storage {
             const sc = used.get(id);
             return sc && structuredClone({ card: sc.card, sidenotes: sc.sidenotes });
           });
+          inflated?.(r.board);
           if (r.missing.length)
             this.opts.log?.("warn", `storage: board ${f.file} refers to missing shared cards ${r.missing.join(", ")}`);
           e = {
@@ -603,10 +604,10 @@ export class Storage {
       return undefined;
     }
     if (st.mtimeMs === e.mtime) return undefined;
-    let text: string, disk: BoardFile;
+    let text: string, disk: BoardFile, inflated: ((b: Board) => void) | undefined;
     try {
       text = await this.fs.readFile(e.file);
-      disk = loadBoardFile(JSON.parse(text));
+      ({ file: disk, inflated } = readBoardFile(JSON.parse(text)));
     } catch {
       return undefined;
     }
@@ -621,6 +622,7 @@ export class Storage {
       const sc = this.lib.get(id)?.sc;
       return sc && withPending(e, sc);
     });
+    inflated?.(r.board);
     // 按项合并不管引用（那边删了卡、这边往它上面连了线）：按删卡的规矩带走悬空的
     pruneRefs(r.board);
     const file = deflate(r.board, new Set(r.refs)).file;

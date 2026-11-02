@@ -567,7 +567,7 @@ async function ghost() {
     light: true,
     w: 1000,
     h: 700,
-    host: { complete: true },
+    settings: { aiProvider: "auto" },
     on: async (m, reply) => {
       if (m.type === "complete") {
         await reply(m.req!, /print\(f$/.test(m.before) && m.after === "" ? "(3))" : null);

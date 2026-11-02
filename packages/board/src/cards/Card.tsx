@@ -38,7 +38,7 @@ import {
 } from "@codeboard/core";
 import { langLabel } from "@codeboard/analysis/langs";
 import { measuredHeight } from "../state/subboards";
-import { state, setSizes, flows, collapsedSet, placeOf, rectOf, shared, sharedOn, twinsOf } from "../state/store";
+import { state, setSize, flows, collapsedSet, placeOf, rectOf, shared, sharedOn, twinsOf } from "../state/store";
 import { isSel, sel } from "../state/selection";
 import { Glyph } from "../stickers/glyphs";
 import { editing, setEditing, dragging, popIn, sizeIn, walk, pingCard, dropTarget, staged } from "../state/ui";
@@ -57,6 +57,8 @@ import { BoardBody } from "./BoardBody";
 import { Editable } from "../ui/Editable";
 import { openMenuAt, below, ownMenu } from "../ui/Menu";
 import * as act from "../actions";
+import { cardStale, uncommitted } from "@codeboard/core/commands";
+import { staleOf } from "../state/views";
 import { offscreen, farAway } from "../state/cull";
 import { lodOf, izOf } from "../state/lodcards";
 import { whenIdle } from "../state/idle";
@@ -103,7 +105,7 @@ export function CardView(p: { card: Card }) {
       w = el.offsetWidth,
       h = el.offsetHeight;
     return () => {
-      setSizes(id, { w, h });
+      setSize(id, { w, h });
       measuredHeight(id);
     };
   };
@@ -246,7 +248,7 @@ export function CardView(p: { card: Card }) {
           far: farAway(c().id),
           "lo-ov": lodOf(c().id) === "overview",
           "lo-map": lodOf(c().id) === "map",
-          lost: c().kind === "code" && act.cardStale(c() as CodeCard) === "lost",
+          lost: c().kind === "code" && cardStale(c() as CodeCard, staleOf) === "lost",
           gen: c().kind === "code" && !!(c() as CodeCard).gen,
           "merge-hot": !!(drop() & 1),
           "merge-arm": !!(drop() & 2),
@@ -440,7 +442,7 @@ export function CodeHead(p: { card: CodeCard; col?: boolean }) {
   const onBoards = () => sharedOn(c().id);
   const review = createMemo(() => act.sidenotesOf(c().id).some((n) => n.review));
   const s0 = () => c().segments[0];
-  const stale = createMemo(() => act.cardStale(c()));
+  const stale = createMemo(() => cardStale(c(), staleOf));
   const mixed = () => mixedVersions(c());
   const multi = () => c().segments.length > 1;
   const free = () => s0()?.src.kind === "free";
@@ -675,7 +677,7 @@ export function CodeHead(p: { card: CodeCard; col?: boolean }) {
       <Show
         when={
           !c().variants?.length &&
-          (act.uncommitted(c()) || c().segments.some((s) => state.stale[s.id]?.state === "uncommitted"))
+          (uncommitted(c()) || c().segments.some((s) => state.stale[s.id]?.state === "uncommitted"))
         }
       >
         <button
@@ -717,7 +719,7 @@ function CodeBand(p: { card: CodeCard }) {
   const s0 = () => c().segments[0];
   const label = () => (state.host.settings.hideNumbers ? "" : (flows().byId.get(c().id)?.label ?? ""));
   const big = () => (/^\d$/.test(label()) ? `0${label()}` : label());
-  const stale = () => act.cardStale(c());
+  const stale = () => cardStale(c(), staleOf);
   const isNew = () => stale() === "changed" || stale() === "hidden";
   return (
     <>
@@ -757,7 +759,7 @@ function CodeFoot(p: { card: CodeCard }) {
   const c = () => p.card;
   const s0 = () => c().segments[0];
   const isNew = () => {
-    const s = act.cardStale(c());
+    const s = cardStale(c(), staleOf);
     return s === "changed" || s === "hidden";
   };
   return (
@@ -880,11 +882,11 @@ function CodeCardView(p: { card: CodeCard }) {
         <Show when={act.missingNote(c())}>
           <div class="cmiss" data-nodrag>
             <span>{act.missingNote(c())}</span>
-            <Show when={act.cardStale(c()) === "lost"}>
+            <Show when={cardStale(c(), staleOf) === "lost"}>
               <button onClick={() => send({ type: "relocate", card: c().id })}>Relocate…</button>
               <button onClick={() => act.keepLost(c().id)}>Keep Old Version</button>
             </Show>
-            <Show when={act.cardStale(c()) === "missing"}>
+            <Show when={cardStale(c(), staleOf) === "missing"}>
               <button onClick={() => send({ type: "locateRepo" })}>Locate Repo…</button>
             </Show>
           </div>

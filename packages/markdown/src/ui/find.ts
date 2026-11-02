@@ -3,6 +3,7 @@
 // 浮在编辑器右上角，不占排版（进出查找时字不动）；样子借用外面的 .pill（浮条）和 .tbtn（按钮），和选中工具条一样
 import { keepKey } from "./editkeys";
 import { iconEl, type IconName } from "./icons";
+import { IS_MAC } from "./platform";
 
 export type FindSpec = { search: string; replace: string; caseSensitive: boolean };
 
@@ -23,7 +24,6 @@ export type FindTarget = {
 };
 
 export type FindBarOpts = {
-  isMac: boolean;
   /** 焦点离开查找条去了这里时还在编辑（编辑器自己、它的浮层） */
   owns: (n: Node) => boolean;
   /** 焦点从查找条去了编辑器外面：和编辑器失焦一样（保存退出） */
@@ -56,7 +56,7 @@ export class FindBar {
     private t: FindTarget,
     private o: FindBarOpts,
   ) {
-    const mod = o.isMac ? "⌘" : "Ctrl+",
+    const mod = IS_MAC ? "⌘" : "Ctrl+",
       alt = mod === "⌘" ? "⌥" : "Alt+";
     this.el = div("md-find");
     this.el.dataset.nodrag = "";

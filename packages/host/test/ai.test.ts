@@ -1,8 +1,9 @@
 // Which model a Note's gray completion asks (codeboard.ai.provider: auto / deepseek / copilot / off), on a fake DeepSeek (global fetch)
 // and a fake editor language model (Workspace.ai.chat); and the DeepSeek key commands. No network
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { AiChatRequest, AiChatResult } from "@codeboard/core";
-import { aiInfo, clearDeepseekKey, completeNote, completionsOn, setDeepseekKey } from "../src/ai";
+import { completionsOn, type AiChatRequest, type AiChatResult } from "@codeboard/core";
+import { aiInfo, clearDeepseekKey, completeNote, setDeepseekKey } from "../src/ai";
+import { readSettings } from "../src/settings";
 import { resetDeepseekFim } from "../src/deepseek";
 import { useWorkspace } from "../src/ws";
 import { nodeWorkspace } from "./node-workspace";
@@ -66,10 +67,10 @@ describe("Note completion: which model", () => {
     conf.set("codeboard.ai.provider", "copilot");
     expect(await completeNote("done.", "", signal())).toBe(" and more");
     expect(fetches).toEqual([]);
-    expect(completionsOn()).toBe(true);
+    expect(completionsOn(readSettings())).toBe(true);
     conf.set("codeboard.ai.provider", "off");
     expect(await completeNote("a", "b", signal())).toBeUndefined();
-    expect(completionsOn()).toBe(false);
+    expect(completionsOn(readSettings())).toBe(false);
     expect(chats.length).toBe(1);
   });
 

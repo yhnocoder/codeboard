@@ -12,7 +12,7 @@ import {
   type Camera,
   type SharedCardFile,
 } from "./model";
-import { fileCamera, migrateBoard, migrateSharedCard } from "./migrate";
+import { fileCamera, migrateBoard, migrateSharedCard, sharedTextHeights } from "./migrate";
 
 const str = v.string(),
   num = v.number(),
@@ -334,9 +334,13 @@ export function loadBoardFile(raw: unknown): BoardFile {
   return b;
 }
 
-/** 存储读到的白板文件：校验过的当前版本，和第 9 版以前的文件里存着的镜头（这台机器还没记过这块白板的镜头时从那里开始） */
-export function readBoardFile(raw: unknown): { file: BoardFile; cam?: Camera } {
-  return { file: loadBoardFile(raw), cam: fileCamera(raw) };
+/**
+ * A board file Storage read: checked and at the current version; the camera a pre-v9 file kept (where this machine starts when it
+ * has none of its own for the board); inflated = the part of the upgrade that needs the shared cards' content, which Storage
+ * runs on the board once it has put them in
+ */
+export function readBoardFile(raw: unknown): { file: BoardFile; cam?: Camera; inflated?: (b: Board) => void } {
+  return { file: loadBoardFile(raw), cam: fileCamera(raw), inflated: sharedTextHeights(raw) };
 }
 
 /** 卡库里的文件 cards/<id>.json → 校验过的共享卡 */

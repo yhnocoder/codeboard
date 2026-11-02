@@ -25,7 +25,6 @@ import { syncVariants } from "./variants";
 import { viewsFor } from "./views";
 import { absOf, present, srcLabel } from "./source";
 import { readSettings } from "./settings";
-import { completionsOn } from "./ai";
 import { warmBoard } from "./prefetch";
 import { startNameIndex } from "./nameindex";
 import { workspace } from "./ws";
@@ -244,7 +243,6 @@ export class BoardPanel {
       readonly: this.readonly,
       settings: readSettings(),
       target: this.mgr.target === this.id,
-      complete: completionsOn(),
       clip: this.mgr.clip && { board: this.mgr.clip.board, n: this.mgr.clip.cards.length },
     };
   }

@@ -20,7 +20,8 @@ import { sel, select, toggleSel, clearSel, setLineSel, isSel } from "./state/sel
 import { toast } from "./state/toast";
 import { tune } from "./state/tune";
 import { WHEEL_GESTURE, BLOCK_GLIDE, SNAP_SETTLE } from "./state/timing";
-import { cam, setCam, stopCam, camTo, fling, toWorld, view, ZMIN, ZMAX, lod, reduceMotion } from "./state/camera";
+import { cam, setCam, stopCam, camTo, fling, toWorld, view, ZMIN, ZMAX, lod } from "./state/camera";
+import { reduceMotion } from "./state/motion";
 import {
   setGuides,
   setSizeHint,
@@ -427,7 +428,7 @@ function startCardDrag(e: PointerEvent, grabbed: string, onClick?: () => void) {
       moving();
       onMove(ev);
     },
-    (ev, moved) => {
+    (_ev, moved) => {
       pace.stop();
       clearTimeout(mergeT);
       setGuides([]);
@@ -503,7 +504,6 @@ function startCardDrag(e: PointerEvent, grabbed: string, onClick?: () => void) {
         }
       });
       end();
-      void ev;
     },
     DRAG_SLOP,
     () => {

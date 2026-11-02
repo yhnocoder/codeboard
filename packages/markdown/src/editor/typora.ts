@@ -13,6 +13,7 @@ import { pairsPlugin } from "./pairs";
 import { blockInfo, spanEdgeOut } from "./spans";
 import { inlinePlugin, revealMeta, toggleWrap } from "./inline";
 import { sourceBlock } from "./srcdoc";
+import { IS_MAC } from "../ui/platform";
 
 /** The block a paragraph's source parses as, when it is exactly one (what saving and reloading would make of it) */
 function soleBlock(p: PMNode, schema: EditorState["schema"]): PMNode | null {
@@ -109,7 +110,6 @@ function selectWord(e: Editor) {
 const wrap = (e: Editor, open: string, close = open) => toggleWrap(e.state, e.view.dispatch, open, close);
 
 export const Typora = Extension.create<{
-  isMac: boolean;
   openMath: (e: Editor, pos: number) => void;
   openLink: (e: Editor) => void;
 }>({
@@ -117,7 +117,7 @@ export const Typora = Extension.create<{
   // ahead of TipTap's own rules (code block, task); ghost text still takes Tab / Esc first (1000)
   priority: 900,
   addOptions() {
-    return { isMac: false, openMath: () => {}, openLink: () => {} };
+    return { openMath: () => {}, openLink: () => {} };
   },
 
   addInputRules() {
@@ -343,7 +343,7 @@ export const Typora = Extension.create<{
       "Mod-e": () => wrap(e, "`"),
       // ⌘⇧` inline code; on a Mac ⌃⇧` strikethrough (on Windows / Linux both are the same key, which goes to code)
       "Mod-Shift-`": () => wrap(e, "`"),
-      ...(this.options.isMac ? { "Ctrl-Shift-`": () => wrap(e, "~~") } : {}),
+      ...(IS_MAC ? { "Ctrl-Shift-`": () => wrap(e, "~~") } : {}),
       "Mod-Shift-s": () => wrap(e, "~~"),
       "Mod-Shift-x": () => wrap(e, "~~"),
       "Mod-Shift-h": () => wrap(e, "=="),

@@ -3,7 +3,7 @@ import { mdHeading, BOX_FILLS, HAND_COLORS, type NoteCard } from "@codeboard/cor
 import { state, placeOf } from "../state/store";
 import { isSel, sel } from "../state/selection";
 import { editing } from "../state/ui";
-import { reduceMotion } from "../state/camera";
+import { reduceMotion } from "../state/motion";
 import { Editable } from "../ui/Editable";
 import { Icon } from "../ui/icons";
 import * as A from "../actions";

@@ -2,7 +2,8 @@
 // drags, fresh cards, per-board histories, and the patches sent to the host
 import { describe, expect, it } from "vitest";
 import { emptyBoard, type Board, type BoardPatch, type Card } from "@codeboard/core";
-import { createHistory, NOT_UNDONE, type Doc } from "../../src/state/history";
+import { createHistory, type Doc } from "../../src/state/history";
+import { NOT_UNDONE } from "../../src/state/snap";
 import { createSave } from "../../src/state/save";
 
 const note = (id: string, md = ""): Card => ({ id, kind: "note", md }) as Card;
@@ -231,6 +232,23 @@ describe("per-board histories", () => {
     h.setBoard(emptyBoard("b2", "B2"), ["b1"]);
     h.setBoard({ ...left, name: "renamed elsewhere" }, []);
     expect(log.stacks).toEqual([false, false]);
+  });
+
+  it("drops a fresh card left unsettled by a board switch: settling it later puts nothing on the new board's undo stack", () => {
+    const { h, board, log } = setup();
+    h.createFresh("a", (b) => {
+      b.cards.push(note("a"));
+      b.place.a = { x: 0, y: 0, w: 320 };
+    });
+    h.setBoard(emptyBoard("b2", "B2"), ["b1"]);
+    expect(h.isFresh("a")).toBe(false);
+    h.settleFresh("a", true, (b) => {
+      for (const c of b.cards) if (c.id === "a") (c as { md: string }).md = "hi";
+    });
+    expect(log.stacks).toEqual([false, false]);
+    expect(h.undo()).toBe(false);
+    expect(board().id).toBe("b2");
+    expect(board().cards).toEqual([]);
   });
 });
 

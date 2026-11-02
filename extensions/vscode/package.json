@@ -603,12 +603,12 @@
             "off"
           ],
           "enumDescriptions": [
-            "DeepSeek if an API key is set, otherwise a VS Code language model such as Copilot.",
-            "A VS Code language model (for example GitHub Copilot).",
+            "DeepSeek if an API key is set, otherwise a language model the editor provides, such as Copilot.",
+            "A language model the editor provides (for example GitHub Copilot).",
             "DeepSeek. Set the key with \"CodeBoard: Set DeepSeek API Key\".",
             "No gray inline completions."
           ],
-          "markdownDescription": "Model for the gray inline completions while you write a Note. The DeepSeek API key is kept in VS Code's secret storage: use **CodeBoard: Set DeepSeek API Key**."
+          "markdownDescription": "Model for the gray inline completions while you write a Note. The DeepSeek API key is kept in the editor's secret storage: use **CodeBoard: Set DeepSeek API Key**."
         },
         "codeboard.ai.deepseekModel": {
           "type": "string",
@@ -628,17 +628,17 @@
         "codeboard.ai.textModel": {
           "type": "string",
           "default": "auto",
-          "markdownDescription": "Model for reading text from images (Extract Text, Paste Image Text): `auto` (DeepSeek if an API key is set, otherwise a VS Code language model such as GitHub Copilot), `deepseek`, or the id of a VS Code language model. Pick it in CodeBoard Settings › AI, which lists the models you have."
+          "markdownDescription": "Model for reading text from images (Extract Text, Paste Image Text): `auto` (DeepSeek if an API key is set, otherwise a language model the editor provides, such as GitHub Copilot), `deepseek`, or the id of one of the editor's language models. Pick it in CodeBoard Settings › AI, which lists the models you have."
         },
         "codeboard.ai.svgModel": {
           "type": "string",
           "default": "auto",
-          "markdownDescription": "Model for Convert to SVG, Modify SVG and Draw as SVG: `auto` (DeepSeek if an API key is set, otherwise a VS Code language model such as GitHub Copilot), `deepseek`, or the id of a VS Code language model. Pick it in CodeBoard Settings › AI, which lists the models you have. Think First applies to DeepSeek only."
+          "markdownDescription": "Model for Convert to SVG, Modify SVG and Draw as SVG: `auto` (DeepSeek if an API key is set, otherwise a language model the editor provides, such as GitHub Copilot), `deepseek`, or the id of one of the editor's language models. Pick it in CodeBoard Settings › AI, which lists the models you have. Think First applies to DeepSeek only."
         },
         "codeboard.ai.focusModel": {
           "type": "string",
           "default": "auto",
-          "markdownDescription": "Model for Auto Focus (highlights the key concepts and bolds what matters in a Note): `auto` (DeepSeek if an API key is set, otherwise a VS Code language model such as GitHub Copilot), `deepseek`, or the id of a VS Code language model. Pick it in CodeBoard Settings › AI, which lists the models you have."
+          "markdownDescription": "Model for Auto Focus (highlights the key concepts and bolds what matters in a Note): `auto` (DeepSeek if an API key is set, otherwise a language model the editor provides, such as GitHub Copilot), `deepseek`, or the id of one of the editor's language models. Pick it in CodeBoard Settings › AI, which lists the models you have."
         },
         "codeboard.theme": {
           "type": "string",
@@ -667,7 +667,7 @@
             "Ink Wash",
             "City (Experimental)"
           ],
-          "description": "Board theme. Each theme has a light and a dark variant that follows VS Code. City is experimental."
+          "description": "Board theme. Each theme has a light and a dark variant that follows the editor's color theme. City is experimental."
         },
         "codeboard.newCards.hide": {
           "type": "object",
@@ -817,7 +817,7 @@
         "codeboard.useVSCodeBackground": {
           "type": "boolean",
           "default": false,
-          "description": "Use VS Code's editor background as the board background in every theme. Cards, text and accent colors stay the theme's; patterns such as grids stay on top."
+          "description": "Use the editor's background as the board background in every theme. Cards, text and accent colors stay the theme's; patterns such as grids stay on top."
         },
         "codeboard.themeReflow": {
           "type": "string",
@@ -935,7 +935,7 @@
         "codeboard.storageDir": {
           "type": "string",
           "default": "",
-          "markdownDescription": "Folder for board files. Leave empty to use the `.codeboard` folder in the first workspace folder when there is one (see **Move Boards into Project…**), otherwise VS Code workspace storage (outside the repo). Absolute, `~/…`, or relative to the first workspace folder, e.g. `~/notes/codeboard`."
+          "markdownDescription": "Folder for board files. Leave empty to use the `.codeboard` folder in the first workspace folder when there is one (see **Move Boards into Project…**), otherwise the editor's workspace storage (outside the repo). Absolute, `~/…`, or relative to the first workspace folder, e.g. `~/notes/codeboard`."
         },
         "codeboard.editorMarks": {
           "type": "string",
@@ -957,6 +957,7 @@
   },
   "scripts": {
     "build": "node esbuild.mjs",
+    "contributes": "node esbuild.mjs --contributes",
     "watch": "node esbuild.mjs --watch",
     "typecheck": "tsc --noEmit",
     "e2e": "bash test/run.sh",

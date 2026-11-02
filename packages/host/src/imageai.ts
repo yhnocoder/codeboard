@@ -8,6 +8,7 @@ import type { AiChatRequest, AiChatResult, ImageAiFail, ImageAiOp, ImageAiResult
 import { deepseekKey, deepseekTarget } from "./ai";
 import { DEEPSEEK_MODEL, type DeepseekRequest } from "./deepseek";
 import { log } from "./log";
+import { readSetting } from "./settings";
 import { workspace } from "./ws";
 
 export const SYS_EXTRACT = [
@@ -340,14 +341,8 @@ async function runChatAi(
   }).then((r) => ("fail" in r && r.fail !== "canceled" ? { ...r, via } : r));
 }
 
-/** 每种功能用哪个模型的设置 */
-const AI_SETTING = {
-  text: "codeboard.ai.textModel",
-  svg: "codeboard.ai.svgModel",
-  focus: "codeboard.ai.focusModel",
-} as const;
-const featureOf = (op: ImageAiOp): keyof typeof AI_SETTING =>
-  op.kind === "extract" ? "text" : op.kind === "focus" ? "focus" : "svg";
+/** 这种功能用哪个模型的设置 */
+const settingOf = (op: ImageAiOp) => (op.kind === "extract" ? "aiText" : op.kind === "focus" ? "aiFocus" : "aiSvg");
 
 /**
  * 白板的一个 imageAi 请求。用哪个模型按这项功能的设置：auto = 有 DeepSeek 密钥用 DeepSeek，没有用编辑器的语言模型；deepseek；
@@ -363,9 +358,8 @@ export async function imageAiJob(
   const ac = new AbortController();
   jobs.set(job, ac);
   try {
-    const ws = workspace(),
-      s = ws.settings;
-    const choice = (s.get<string>(AI_SETTING[featureOf(op)]) || "auto").trim();
+    const ws = workspace();
+    const choice = (readSetting(settingOf(op)) || "auto").trim();
     const key = choice === "auto" || choice === "deepseek" ? await deepseekKey() : undefined;
     if (ac.signal.aborted) return { fail: "canceled" };
     let r: ImageAiResult;

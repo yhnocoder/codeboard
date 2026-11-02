@@ -3,6 +3,7 @@
 import { COMPLETE_SYSTEM, completePrompt, spaceChatReply, type AiInfo } from "@codeboard/core";
 import { deepseekComplete } from "./deepseek";
 import type { Prompts } from "./prompts";
+import { readHostSetting, readSetting } from "./settings";
 import { workspace } from "./ws";
 
 /** DeepSeek 的 API 密钥在密钥存储里的名字 */
@@ -19,10 +20,9 @@ export async function deepseekKey(): Promise<string | undefined> {
 
 /** DeepSeek 的模型名和地址（设置 codeboard.ai.deepseekModel / deepseekBaseUrl，空 = 默认） */
 export function deepseekTarget(): { model?: string; baseUrl?: string } {
-  const s = workspace().settings;
   return {
-    model: s.get<string>("codeboard.ai.deepseekModel") || undefined,
-    baseUrl: s.get<string>("codeboard.ai.deepseekBaseUrl") || undefined,
+    model: readSetting("deepseekModel") || undefined,
+    baseUrl: readHostSetting<string>("deepseekBaseUrl") || undefined,
   };
 }
 
@@ -35,7 +35,7 @@ export async function setDeepseekKey(ask: Prompts): Promise<boolean> {
       password: true,
       placeHolder: "sk-…",
       prompt:
-        "Used for gray inline completions in Notes and for the AI tools (Extract Text, Convert to SVG, Auto Focus). Stored in VS Code's secret storage.",
+        "Used for gray inline completions in Notes and for the AI tools (Extract Text, Convert to SVG, Auto Focus). Stored in the editor's secret storage.",
     })
   )?.trim();
   if (!key) return false;
@@ -49,10 +49,6 @@ export async function clearDeepseekKey(): Promise<void> {
   void workspace().ui.info("DeepSeek API key cleared.");
 }
 
-const provider = () => workspace().settings.get<string>("codeboard.ai.provider") || "auto";
-/** Note 的灰字补全开着没有（codeboard.ai.provider 不是 off） */
-export const completionsOn = () => provider() !== "off";
-
 const NOTE_JUSTIFY = "CodeBoard suggests gray inline completions while you write a Note.";
 
 /**
@@ -61,7 +57,7 @@ const NOTE_JUSTIFY = "CodeBoard suggests gray inline completions while you write
  * undefined = 没有模型、没同意、取消、出错
  */
 export async function completeNote(before: string, after: string, signal: AbortSignal): Promise<string | undefined> {
-  const p = provider();
+  const p = readSetting("aiProvider");
   if (p === "off") return undefined;
   if (p === "deepseek" || p === "auto") {
     const key = await deepseekKey();

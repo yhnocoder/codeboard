@@ -2,13 +2,10 @@
 // 数据立刻删，撤销、存盘都不用等动画。
 import { GHOST_OUT } from "./timing";
 import { cardSel } from "../cardsel";
-
-/** 动画的快慢（styles.css 的 --t：慢动作设置、系统「减少动态效果」）：CSS 里的时长都乘它，JS 里等动画的计时器也要乘 */
-export const animScale = () => parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--t")) || 1;
+import { animScale, reduceMotion } from "./motion";
 
 export function ghostOut(ids: Iterable<string>) {
-  // 不引 camera.ts：store 引这个文件，camera 又引 store，会循环依赖
-  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  if (reduceMotion()) return;
   const ms = GHOST_OUT * animScale() + 40; // 加两帧：动画在两次 requestAnimationFrame 之后才开始
   for (const id of ids) {
     const el = document.querySelector<HTMLElement>(`${cardSel(id)}`);

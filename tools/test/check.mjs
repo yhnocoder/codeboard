@@ -1,6 +1,6 @@
 // npm run check: the local test run, about 90 seconds. See TESTING.md.
 //   1. the @yhnocoder/markdown build (packages/markdown/dist, a few seconds), which the board, its typecheck, the package's own
-//      tests and the demo all use; then typecheck, lint (Biome and knip), unit tests (core, markdown, board, host, extension) and the Markdown demo
+//      tests and the demo all use, and the extension's generated package.json contributes; then typecheck, lint (Biome and knip), unit tests (core, markdown, board, host, extension) and the Markdown demo
 //      (examples/markdown-demo, built and run in Chromium) side by side with the board build, which runs only when its
 //      sources changed since the last one
 //   2. as soon as the board is built (the scenarios need nothing else), the harness scenarios this change needs
@@ -41,6 +41,11 @@ function run(name, cmd, a, env = {}) {
 // first and alone: everything below reads packages/markdown/dist, and the build empties it before writing
 if (!(await run("build @yhnocoder/markdown", "npm", ["run", "build", "-w", "@yhnocoder/markdown"]))) {
   console.log("markdown build failed: nothing else run");
+  process.exit(1);
+}
+// before the unit tests start: the extension's package.json is regenerated here, not by the build below while they read it
+if (!(await run("extension package.json", "npm", ["run", "contributes", "-w", "codeboard-vscode"]))) {
+  console.log("generating the extension's package.json failed: nothing else run");
   process.exit(1);
 }
 

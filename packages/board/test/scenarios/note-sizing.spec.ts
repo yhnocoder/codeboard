@@ -114,7 +114,7 @@ test("noteGhostStaysInCard", async () => {
     light,
     w: 1000,
     h: 700,
-    host: { complete: true },
+    settings: { aiProvider: "auto" },
     on: (m, r) => {
       if (m.type !== "complete") return false;
       void r(m.req!, GHOST);
@@ -238,7 +238,7 @@ test("noGhostDuringCardGesture", async () => {
     light,
     w: 1000,
     h: 700,
-    host: { complete: true },
+    settings: { aiProvider: "auto" },
     on: (m, r) => {
       if (m.type !== "complete") return false;
       asked++;

@@ -40,11 +40,7 @@ function webviewView(panel: vscode.WebviewPanel): BoardView {
 export class BoardWebviews {
   private open = new Set<vscode.WebviewPanel>();
 
-  /** assetsDir = 白板图片所在的目录（webview 可以读的本地目录之一） */
-  constructor(
-    private ctx: vscode.ExtensionContext,
-    private assetsDir: () => string,
-  ) {
+  constructor(private ctx: vscode.ExtensionContext) {
     // 白板界面是构建出来的（npm run build）：少了就是构建坏了，激活时说清楚，不开一块没样式的白板
     const dir = path.join(ctx.extensionUri.fsPath, "media", "board");
     for (const f of ["board.js", "board.css"])
@@ -60,7 +56,7 @@ export class BoardWebviews {
           await this.ctx.globalState.update(k, v);
         },
       },
-      openView: (id, title, place) => {
+      openView: (id, title, place, assets) => {
         const col = place.side
           ? vscode.ViewColumn.Beside
           : place.here
@@ -72,7 +68,7 @@ export class BoardWebviews {
           { viewColumn: col, preserveFocus: place.preserveFocus },
           { enableScripts: true, retainContextWhenHidden: true },
         );
-        return this.setup(panel, id);
+        return this.setup(panel, id, assets);
       },
     };
   }
@@ -83,16 +79,17 @@ export class BoardWebviews {
       panel.dispose();
       return;
     }
-    hub.attach(id, this.setup(panel, id));
+    hub.attach(id, this.setup(panel, id, hub.store.assetsDir()));
   }
 
   private boardColumn() {
     return [...this.open].map((p) => p.viewColumn).find((c) => c);
   }
 
-  private setup(panel: vscode.WebviewPanel, id: string): BoardView {
+  /** assets = the folder of the board's images: the webview may read it */
+  private setup(panel: vscode.WebviewPanel, id: string, assets: string): BoardView {
     const media = vscode.Uri.joinPath(this.ctx.extensionUri, "media");
-    panel.webview.options = { enableScripts: true, localResourceRoots: [media, vscode.Uri.file(this.assetsDir())] };
+    panel.webview.options = { enableScripts: true, localResourceRoots: [media, vscode.Uri.file(assets)] };
     panel.iconPath = vscode.Uri.joinPath(media, "icon.svg");
     panel.webview.html = this.html(panel.webview, id);
     this.open.add(panel);

@@ -92,8 +92,19 @@ export function watchVersions(panels: BoardHost, store: Storage): Disposable & {
 
   subs.push(files.onDidChangeGit(() => onGit()));
 
-  const start = async () => {
+  const watchRoots = async () => {
     for (const r of await roots()) await watchRoot(r);
+  };
+  // a folder added to the workspace: repo lookups made before (its files "not in a repo") are asked again, its repo watched
+  subs.push(
+    files.onDidChangeRoots(() => {
+      forgetRepos();
+      void watchRoots();
+    }),
+  );
+
+  const start = async () => {
+    await watchRoots();
     await countClosed();
   };
   const started = start();

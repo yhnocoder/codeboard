@@ -42,7 +42,8 @@ import { state, cardById, hostOf, rectOf, placeOf, sharedOn, collapsedAway } fro
 import { mutate, isFresh, settleFresh } from "../state/changes";
 import { sel, select, clearSel, setLineSel, type LineSel } from "../state/selection";
 import { toast } from "../state/toast";
-import { animate, Spring, reduceMotion } from "../state/camera";
+import { animate, Spring } from "../state/camera";
+import { reduceMotion } from "../state/motion";
 import { setEditing, setEditEntry, codeTextRange, staged, setStaged } from "../state/ui";
 import { foldOf, setFold, setFoldV, setFoldHome, setSkel, unskel, type Fold } from "../state/fold";
 import { farAway } from "../state/cull";

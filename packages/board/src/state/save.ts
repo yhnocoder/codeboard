@@ -6,8 +6,7 @@
 // frame); closing the tab within LIVE_DELAY loses only the camera.
 // The patch = the current snapshot against the one sent last, by id: changed items, deleted ids, changed board fields, the camera.
 import type { Board, BoardPatch } from "@codeboard/core";
-import { camKey, diff, type Sent, type Snap } from "./snap";
-import { NOT_UNDONE } from "./history";
+import { camKey, diff, NOT_UNDONE, type Sent, type Snap } from "./snap";
 
 export interface SaveDeps {
   /** Is there a board yet (nothing is sent before the host's first board) */

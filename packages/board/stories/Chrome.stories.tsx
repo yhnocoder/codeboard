@@ -6,7 +6,7 @@ import { Stage, scene, noteCard, codeCard, type Globals, type Scene } from "./su
 import { settled, hover, key, el, frames, click } from "./support/play";
 import { SHORT, TITLED, changed } from "./support/groups";
 import { onHost } from "../src/hostio";
-import { setState } from "../src/state/store";
+import { setLoaded } from "../src/state/store";
 import { select } from "../src/state/selection";
 import { toast } from "../src/state/toast";
 import { onCleanup } from "solid-js";
@@ -96,8 +96,8 @@ export const Overview: Story = {
 export const Loading: Story = {
   render: (_, ctx) => {
     const s = () => ({ board: emptyBoard("sb", "Loading") });
-    queueMicrotask(() => setState("loaded", false));
-    onCleanup(() => setState("loaded", true));
+    queueMicrotask(() => setLoaded(false));
+    onCleanup(() => setLoaded(true));
     return <Stage scene={s} globals={ctx.globals as Globals} />;
   },
   argTypes: {
