@@ -29,7 +29,11 @@ function sweep(dir: string) {
       }
     }
     for (const name of staleScratch(entries, Date.now(), (n) => mine.has(path.join(dir, n))))
-      fs.rmSync(path.join(dir, name), { force: true });
+      try {
+        fs.rmSync(path.join(dir, name), { force: true });
+      } catch {
+        /* one file we may not delete (EPERM): the rest are still swept */
+      }
   } catch {
     /* a folder we cannot read or clean: leave it */
   }

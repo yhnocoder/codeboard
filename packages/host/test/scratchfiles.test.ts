@@ -13,6 +13,16 @@ const put = (name: string, ageMs: number) => {
   fs.utimesSync(f, t, t);
   return f;
 };
+// a file named "locked" cannot be deleted, as with EPERM on a file another user owns
+vi.mock("node:fs", async (orig) => {
+  const m = await orig<typeof import("node:fs")>();
+  const rmSync: typeof m.rmSync = (p, o) => {
+    if (String(p).includes("locked"))
+      throw Object.assign(new Error("EPERM: operation not permitted"), { code: "EPERM" });
+    m.rmSync(p, o);
+  };
+  return { ...m, rmSync };
+});
 afterEach(() => vi.useRealTimers());
 afterAll(() => fs.rmSync(dir, { recursive: true, force: true }));
 
@@ -28,6 +38,16 @@ describe("scratch files", () => {
     expect(await scratchFile("c:1", "python", near)).toBe(f); // the same editor keeps its file
     dropScratchFile("c:1");
     expect(fs.existsSync(f)).toBe(false);
+  });
+  it("sweeps the rest when one stale file cannot be deleted", async () => {
+    const sub = fs.mkdtempSync(path.join(dir, "sub-"));
+    const locked = put(path.join(path.basename(sub), ".codeboard-scratch-locked.py"), STALE_MS + 60_000);
+    const olds = ["aa", "mm", "zz"].map((n) =>
+      put(path.join(path.basename(sub), `.codeboard-scratch-${n}.py`), STALE_MS + 60_000),
+    );
+    const f = await scratchFile("c:3", "python", path.join(sub, "engine.py"));
+    expect([locked, ...olds, f].map((x) => fs.existsSync(x))).toEqual([true, false, false, false, true]);
+    dropScratchFile("c:3");
   });
   it("keeps its open files fresh for other windows, and deletes them when the host stops", async () => {
     vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"] });
