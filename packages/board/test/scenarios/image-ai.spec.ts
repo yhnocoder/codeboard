@@ -21,8 +21,6 @@
 //   imageAiBusyCancelAndNoKey       waiting shows a busy layer on the card that Esc cancels (the host is told); without a key the
 //                                   notice offers Set DeepSeek API Key…
 import * as fs from "node:fs";
-import * as http from "node:http";
-import type { AddressInfo } from "node:net";
 import * as path from "node:path";
 import { crc32, deflateSync } from "node:zlib";
 import {
@@ -34,10 +32,9 @@ import {
   type NoteCard,
 } from "@codeboard/core";
 import { put, type Host } from "../harness";
+import { fakeDeepseek, type DeepseekAnswer } from "../deepseek";
 import { test, check, until, idle, hostBoards, onMac } from "../fixtures";
 
-/** Where the host keeps the DeepSeek key (the editor's secret storage), as Set DeepSeek API Key… stores it */
-const DEEPSEEK_SECRET = "codeboard.deepseekApiKey";
 const SHOTS = process.env.IMAGE_AI_SHOTS;
 
 /** A w × h PNG: a light page with a dark bar (a stand-in for a screenshot) */
@@ -75,11 +72,10 @@ const MD = "# Wave count\n\nA kernel launches $N$ blocks:\n\n$$\\lceil N / C \\r
 const SVG_SRC = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 160"><rect x="0" y="0" width="240" height="160" fill="#ffffff"/><rect x="20" y="30" width="120" height="40" fill="#e8a33d"/><text x="80" y="56" text-anchor="middle" font-size="14">prefill</text></svg>`;
 const SVG_BLUE = SVG_SRC.replace('fill="#e8a33d"', 'fill="#3d7be8"');
 
-type Fake = { calls: { op: ImageAiOp; body: any }[]; answer: (op: ImageAiOp) => string | "hang" | number };
+type Fake = { calls: { op: ImageAiOp; body: any }[]; answer: (op: ImageAiOp) => DeepseekAnswer };
 /**
- * The board in Warm Ink, light, on the real host (realhost.ts): images in its storage's assets/ (PNG_FILE and `seed`), DeepSeek at
- * a local HTTP server (the codeboard.ai.deepseekBaseUrl setting) that answers with `answer` for the op the board asked: an answer,
- * a status code, or "hang" until the host gives up the request. key: the DeepSeek key in the editor's secret storage; null = none
+ * The board in Warm Ink, light, on the real host (realhost.ts): images in its storage's assets/ (PNG_FILE and `seed`), DeepSeek a
+ * local fake (deepseek.ts) answering `answer` for the op the board asked. key: the DeepSeek key stored; null = none
  */
 async function aiHost(
   b: Board,
@@ -89,25 +85,6 @@ async function aiHost(
   const fake: Fake = { calls: [], answer };
   // the op being asked (the fake DeepSeek only sees the request; a reused answer never reaches it)
   let asking: ImageAiOp | undefined;
-  const server = http.createServer((req, res) => {
-    let text = "";
-    req.on("data", (d) => (text += d));
-    req.on("end", () => {
-      const op = asking!;
-      fake.calls.push({ op, body: JSON.parse(text) });
-      const a = fake.answer(op);
-      if (a === "hang") return; // until the host aborts it
-      res.writeHead(typeof a === "number" ? a : 200, { "content-type": "application/json" });
-      res.end(
-        JSON.stringify(
-          typeof a === "number"
-            ? { error: { message: `status ${a}` } }
-            : { choices: [{ finish_reason: "stop", message: { content: a } }] },
-        ),
-      );
-    });
-  });
-  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
   const run = await hostBoards([b], {
     page: {
       light: true,
@@ -120,9 +97,14 @@ async function aiHost(
       },
     },
   });
-  const { port } = server.address() as AddressInfo;
-  await run.ws.settings.set("codeboard.ai.deepseekBaseUrl", `http://127.0.0.1:${port}`);
-  if (o.key !== null) await run.ws.secrets.set(DEEPSEEK_SECRET, o.key ?? "sk-fake");
+  await fakeDeepseek(
+    run,
+    (body) => {
+      fake.calls.push({ op: asking!, body });
+      return fake.answer(asking!);
+    },
+    { key: o.key },
+  );
   const dir = run.host.store.assetsDir();
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, PNG_FILE), png(320, 200));
@@ -131,17 +113,7 @@ async function aiHost(
   await idle(h);
   const assets = () => fs.readdirSync(dir).sort();
   const asset = (f: string) => fs.readFileSync(path.join(dir, f), "utf8");
-  return {
-    h,
-    fake,
-    assets,
-    asset,
-    done: async () => {
-      await run.close();
-      server.closeAllConnections();
-      server.close();
-    },
-  };
+  return { h, fake, assets, asset, done: () => run.close() };
 }
 
 const board = (f: (b: Board) => void) => {

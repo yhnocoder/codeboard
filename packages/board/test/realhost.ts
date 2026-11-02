@@ -56,6 +56,8 @@ export type RealHostRun = {
   assetBase: string;
   /** A message the first open board could send without asking (Open Board from its Questions panel…), handled by the host */
   tell(m: Exclude<BoardToHost, { req: number }>): Promise<void>;
+  /** Runs fn when the host is closed (a fake service the scenario started beside it) */
+  afterClose(fn: () => Promise<void>): void;
   /** Disposes the host and writes what its storage still holds (also done after the scenario) */
   close(): Promise<void>;
 };
@@ -268,12 +270,14 @@ export async function realHost(boards: Board[], t: Harness, o: RealHostOptions =
   for (const b of boards) await host.store.save(b);
 
   let closed = false;
+  const closing: (() => Promise<void>)[] = [];
   const close = async () => {
     if (closed) return;
     closed = true;
     for (const v of views) v.dispose();
     host.dispose();
     await host.flush();
+    for (const fn of closing) await fn();
   };
   t.afterTest(close);
   await host.ready;
@@ -293,6 +297,7 @@ export async function realHost(boards: Board[], t: Harness, o: RealHostOptions =
       if (!p) throw new Error("realHost: ask needs an open board");
       return (await host.hub.handler(p, { ...m, req: 0 } as BoardToHost)) as never;
     },
+    afterClose: (fn) => void closing.push(fn),
     async tell(m) {
       const p = host.hub.all()[0];
       if (!p) throw new Error("realHost: tell needs an open board");

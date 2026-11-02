@@ -3,10 +3,10 @@
 // npm run harness -- markdownReviewIssues [MDREVIEW_ONLY=a,b]   Review 列出的问题（#编号）逐条判对错，进 CI
 import * as fs from "node:fs";
 import { OUT, type Host } from "../harness";
-import { emptyBoard, cleanCompletion, DEFAULT_SETTINGS, type NoteCard } from "@codeboard/core";
-import { deepseekComplete } from "@codeboard/host/testing";
+import { emptyBoard, type NoteCard } from "@codeboard/core";
+import { fakeDeepseek } from "../deepseek";
 import type { Page } from "playwright-core";
-import { test, open, check, until, idle, pmHasSelection, focusSettled } from "../fixtures";
+import { test, check, until, idle, pmHasSelection, focusSettled, hostBoards } from "../fixtures";
 
 type Ctx = { pg: Page; h: Host; info: Record<string, unknown> };
 type Probe = { name: string; start?: string; run: (c: Ctx) => Promise<void>; ai?: string | "real"; keepOpen?: boolean };
@@ -1262,13 +1262,6 @@ async function pasteData(pg: Page, d: Record<string, string>) {
   }, d);
 }
 
-async function realComplete(before: string, after: string) {
-  const key = process.env.DEEPSEEK_API_KEY;
-  if (!key) return null;
-  const raw = await deepseekComplete({ key, model: "deepseek-flash", timeoutMs: 3000 }, before, after);
-  return raw === undefined ? null : cleanCompletion(raw, before, after) || null;
-}
-
 async function runProbe(pr: Probe): Promise<Record<string, unknown>> {
   const b = emptyBoard("b1", "review");
   const note: NoteCard = { id: "n1", kind: "note", md: pr.start ?? "seed", look: "note" };
@@ -1277,44 +1270,39 @@ async function runProbe(pr: Probe): Promise<Record<string, unknown>> {
   b.cards.push({ id: "n2", kind: "note", md: "## Scheduler.schedule", look: "note" } as NoteCard);
   b.place.n2 = { x: 700, y: 60, w: 300 };
   b.cam = { x: 0, y: 0, z: 1 };
-  let lastAsk: unknown;
-  let P!: Page;
-  const h = await open({
-    board: b,
-    w: 1300,
-    h: 800,
-    beforeLoad: async (p) => {
-      P = p;
-      await p
-        .context()
-        .grantPermissions(["clipboard-read", "clipboard-write"], { origin: "file://" })
-        .catch(() => {});
+  let lastAsk: { before: string; after: string; answer?: unknown } | undefined;
+  // completions as the real host makes them (codeboard.ai.provider): off without pr.ai; DeepSeek answering pr.ai (a local fake,
+  // deepseek.ts); or, for "real", DeepSeek itself with the key in DEEPSEEK_API_KEY (none: no completions)
+  const run = await hostBoards([b], {
+    page: {
+      w: 1300,
+      h: 800,
+      settings: pr.ai ? {} : { aiProvider: "off" },
+      beforeLoad: async (p) => {
+        await p
+          .context()
+          .grantPermissions(["clipboard-read", "clipboard-write"], { origin: "file://" })
+          .catch(() => {});
+      },
+      on: (m) => {
+        if (m.type === "complete") lastAsk = { before: m.before, after: m.after };
+        return false;
+      },
     },
-    on: async (m, reply) => {
-      if (m.type === "ready" && pr.ai) {
-        // 同 harness 的 init，只是打开补全
-        const init = {
-          type: "init",
-          board: b,
-          boards: [{ id: b.id, name: b.name, cards: b.cards.length }],
-          views: {},
-          stale: {},
-          host: { assetBase: "", target: true, settings: DEFAULT_SETTINGS },
-        };
-        await P.evaluate((s) => window.postMessage(JSON.parse(s), "*"), JSON.stringify(init));
-        return true;
-      }
-      if ((m as any).type === "complete") {
-        const q = m as any;
-        lastAsk = { before: q.before, after: q.after };
-        const text = pr.ai === "real" ? await realComplete(q.before, q.after) : pr.ai!;
-        if (pr.ai === "real") lastAsk = { ...(lastAsk as object), answer: text };
-        await reply(q.req, text);
-        return true;
-      }
-      return false;
+    reply: (ask, data) => {
+      if (ask.type === "complete" && pr.ai === "real" && lastAsk) lastAsk.answer = data;
+      return data;
     },
   });
+  if (pr.ai === "real") {
+    if (process.env.DEEPSEEK_API_KEY)
+      await run.ws.secrets.set("codeboard.deepseekApiKey", process.env.DEEPSEEK_API_KEY);
+    await run.ws.settings.set("codeboard.ai.deepseekModel", "deepseek-flash");
+  } else if (pr.ai) {
+    const text = pr.ai;
+    await fakeDeepseek(run, () => text);
+  }
+  const h = await run.open(b.id);
   const pg = h.page;
   const info: Record<string, unknown> = {};
   try {

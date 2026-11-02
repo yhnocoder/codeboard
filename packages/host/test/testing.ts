@@ -11,8 +11,7 @@ import type { HostContext } from "../src/context";
 export { animWebp, apng, faceFrames, gif, png, type Paint, type Rgba } from "./images";
 export { nodeWorkspace, type TestWorkspace } from "./node-workspace";
 export { analysisReady, startAnalysis } from "../src/analysis";
-export { deepseekComplete } from "../src/deepseek";
-export { runImageAi, SYS_FOCUS } from "../src/imageai";
+export { SYS_FOCUS } from "../src/imageai";
 export { captureRun, runApply } from "../src/runs";
 export { highlight } from "../src/views";
 
