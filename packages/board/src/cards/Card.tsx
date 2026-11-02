@@ -40,6 +40,7 @@ import { CodeBody } from "./CodeBody";
 import { BoundStickers } from "../stickers/Picker";
 import { isBindHot, isBindAnchor } from "../state/stickers";
 import { fileHue, shape } from "../state/look";
+import { inkDark, paperOf } from "../state/ink";
 import { CompareBody } from "./CompareBody";
 import { NoteBody, WritingToolbar } from "./NoteBody";
 import { WebBody, LinksBody } from "./WebBody";
@@ -104,6 +105,7 @@ export function CardView(p: { card: Card }) {
     el = e;
     onCleanup(observeResize(e, () => queueMeasure(read, read)));
     popStyle(e);
+    paperStyle(e);
   };
   createEffect(() => {
     const pg = pingCard();
@@ -185,6 +187,20 @@ export function CardView(p: { card: Card }) {
       s.transform = pi!.slide ? `translate(${x}px, ${y}px)` : `translate(${x}px, ${y}px) scale(${0.9 + 0.1 * pi!.v})`;
       s.opacity = pi!.slide ? "" : String(Math.min(1, pi!.v * 1.8));
       s.transition = "none";
+    });
+  // 毛边宣纸（look.ts 的 paper，Ink Wash）：卡的 ::before 画一张按这张卡的尺寸画的纸（state/ink.ts，同尺寸的卡共用一张）。
+  // 只在尺寸（取整后）、明暗变了时换图；没有卡框的（Text、Box、Mark、无背景）不画
+  const paper = createMemo(() => {
+    const k = c();
+    if (shape().paper !== "deckle" || (k.kind === "note" && k.look !== "note") || act.noBg(k)) return "";
+    const r = rectOf(k);
+    return paperOf(r.w, r.h, k.id, inkDark());
+  });
+  const paperStyle = (e: HTMLDivElement) =>
+    createRenderEffect(() => {
+      const u = paper();
+      if (u) e.style.setProperty("--deckle", u);
+      else e.style.removeProperty("--deckle");
     });
   const dim = () => {
     const w = walk();

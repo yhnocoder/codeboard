@@ -1,12 +1,13 @@
-// 卡片被删掉时的消失动画：先复制一份当前的 DOM 留在原地（不可交互），缩小淡出后移除。
+// 卡片被删掉时的消失动画：先复制一份当前的 DOM 留在原地（不可交互），缩小淡出后移除（多长看主题：look.ts 的 ghost）。
 // 数据立刻删，撤销、存盘都不用等动画。
 import { GHOST_OUT } from "./timing";
 import { cardSel } from "../cardsel";
 import { animScale, reduceMotion } from "./motion";
+import { shape } from "./look";
 
 export function ghostOut(ids: Iterable<string>) {
   if (reduceMotion()) return;
-  const ms = GHOST_OUT * animScale() + 40; // 加两帧：动画在两次 requestAnimationFrame 之后才开始
+  const ms = (shape().ghost ?? GHOST_OUT) * animScale() + 40; // 加两帧：动画在两次 requestAnimationFrame 之后才开始
   for (const id of ids) {
     const el = document.querySelector<HTMLElement>(`${cardSel(id)}`);
     if (!el?.parentElement) continue;

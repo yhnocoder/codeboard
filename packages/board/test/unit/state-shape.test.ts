@@ -104,6 +104,7 @@ const OUTLIVES_BOARD: Record<string, string> = {
   "canvas/Labels.tsx:NONE": "a shared empty value, never written",
   // caches and loaders keyed by content
   "md/blocks.ts:cache": "Markdown blocks by source text",
+  "state/ink.ts:papers": "Ink Wash's card paper images, by size",
   "md/load.ts:mod": "the editor module",
   "cm/load.ts:mod": "the code editor module",
   "stickers/glyphs.tsx:loading": "the sticker packs, loaded once",

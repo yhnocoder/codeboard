@@ -4,6 +4,8 @@ export type Tok = { text: string; cls?: string };
 /** 一行里的调用：[col, end) 是 UTF-16 下标，idx = SegView.calls 里的下标 */
 export type Mark = { col: number; end: number; idx: number; pkg?: string }; // pkg：library 调用，写成 data-p
 
+import { fnv } from "./canvas/brush";
+
 export const escHtml = (s: string) =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
@@ -53,7 +55,10 @@ export function renderLine(toks: Tok[], marks: Mark[] = [], cut?: number): strin
     const m = ms.find((x) => x.col <= a && a < x.end);
     if (m !== open) {
       if (open) out += "</span>";
-      if (m) out += `<span class="call" data-c="${m.idx}"${m.pkg ? ` data-p="${escHtml(m.pkg)}"` : ""}>`;
+      // cv0–cv4: one of five brush strokes under the call (Ink Wash, themes.css), picked by the called word, so the same word
+      // always gets the same stroke
+      if (m)
+        out += `<span class="call cv${fnv(line.slice(m.col, m.end)) % 5}" data-c="${m.idx}"${m.pkg ? ` data-p="${escHtml(m.pkg)}"` : ""}>`;
       open = m;
     }
     const piece = escHtml(line.slice(a, b));

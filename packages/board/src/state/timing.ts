@@ -50,6 +50,8 @@ export const SKEL_OUT = 80;
 export const SKEL_IN = 100;
 /** A deleted card's fade-out (styles.css .card.ghost-out, its longest transition), times the animation speed (--t) */
 export const GHOST_OUT = 200;
+/** Ink Wash: a deleted card's ink disperses towards its centre over this long instead (themes.css .card.ghost-out; look.ts ghost) */
+export const GHOST_DISPERSE = 300;
 /** Resting the pointer on something with a tip (data-tip) shows the tip after this long; right after a tip was shown, at once (ui/Menu.tsx) */
 export const TIP_DELAY = 500;
 /** Fit to Content on a Section: its frame glides (styles.css .sect.fit, 260 ms) and the glide class comes off after this long (actions/edit.ts) */
@@ -64,6 +66,9 @@ export const WEB_PEEK_DELAY = 550;
 export const SECTION_PEEK_OUT = 140;
 /** Lines that flash (a jump to a line, a call's target) stay lit this long (state/ui.ts flash) */
 export const FLASH_MS = 700;
+/** Ink Wash: a vermilion brush stroke sweeps under the line's text and fades over this long instead (themes.css .rowbg.flash;
+ *  look.ts flash) */
+export const FLASH_BRUSH = 1100;
 /** A peek closes this long after the pointer leaves the word and the peek (TUNE.peekHide's default) */
 export const PEEK_HIDE = 260;
 /** An arrow's end slides to the other side of its card over this long (TUNE.sideSlide's default) */
