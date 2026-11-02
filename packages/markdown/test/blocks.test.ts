@@ -5,17 +5,19 @@ import { GapCursor } from "@tiptap/pm/gapcursor";
 import type { ResolvedPos } from "@tiptap/pm/model";
 import katex from "katex";
 import { parseMd, serializeMd, baseExtensions, mdSchema } from "../src/schema";
-import { renderMd } from "../src/render";
+import { createMarkdown } from "../src/markdown";
+
+const markdown = createMarkdown();
 
 describe("$$…$$ in the middle of a line", () => {
   it("renders as a display formula centred on a line of its own (md-dmath), and the source stays as typed", () => {
-    const h = renderMd("3 $$\\sum_i x_i$$ end");
+    const h = markdown.render("3 $$\\sum_i x_i$$ end");
     expect(h).toMatch(/^<p>3 <span class="md-dmath"><span class="katex-display">/);
     expect(h.replace(' data-latex="\\sum_i x_i"', "")).toContain(
       katex.renderToString("\\sum_i x_i", { displayMode: true, throwOnError: false, output: "html" }),
     );
     expect(h).toMatch(/<\/span> end<\/p>$/);
-    expect(renderMd("$$\n\\sum_i x_i\n$$")).toContain("katex-display");
+    expect(markdown.render("$$\n\\sum_i x_i\n$$")).toContain("katex-display");
     expect(serializeMd(parseMd("3 $$\\sum_i x_i$$ end"))).toBe("3 $$\\sum_i x_i$$ end");
   });
 });
@@ -81,8 +83,8 @@ describe("empty list items", () => {
     expect(items(parseMd("1. a\n2."))).toEqual(["a", ""]);
     expect(items(parseMd("1. a\n2. \n3. c"))).toEqual(["a", "", "c"]);
     expect(items(parseMd("- [ ] a\n- [ ]"))).toEqual(["a", ""]);
-    expect(renderMd("1. a\n2.")).not.toContain("2.");
-    expect(renderMd("1. a\n2.").match(/<li>/g)).toHaveLength(2);
+    expect(markdown.render("1. a\n2.")).not.toContain("2.");
+    expect(markdown.render("1. a\n2.").match(/<li>/g)).toHaveLength(2);
   });
   it("keeps ordered lists that are not empty as they were", () => {
     for (const s of ["1. a\n2. b", "3. a\n4. b", "1. a\n   1. b\n2. c", "- [x] a\n  - [ ] b\n- [ ] c", "- a\n  1. b"])
@@ -96,7 +98,7 @@ describe("pasting a typeset formula", () => {
   it("reads the TeX back from the static render's KaTeX HTML (data-latex: no MathML annotation is drawn)", async () => {
     const { DOMParser } = await import("@tiptap/pm/model");
     const host = document.createElement("div");
-    host.innerHTML = renderMd("a $x^2$ b\n\n$$\n\\sum_i y_i\n$$");
+    host.innerHTML = markdown.render("a $x^2$ b\n\n$$\n\\sum_i y_i\n$$");
     expect(host.querySelector("annotation")).toBeNull();
     const doc = DOMParser.fromSchema(mdSchema()).parse(host).toJSON();
     const found: string[] = [];

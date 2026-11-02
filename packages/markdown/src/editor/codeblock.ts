@@ -16,7 +16,7 @@ import {
 import { Compartment, StateEffect, StateField } from "@codemirror/state";
 import { completionStatus } from "@codemirror/autocomplete";
 import { codeEditor, type CodeEditor, type LspHost } from "../cm/editor";
-import { cachedCode, highlightCode } from "../code";
+import { mdOf } from "./md";
 import { LangBox, type CodeLang } from "./codelang";
 import { iconEl, type IconName } from "../ui/icons";
 import { kindClass, type MdClasses } from "../ui/classes";
@@ -123,6 +123,7 @@ export class CodeBlockView implements NodeView {
     host: CodeBlockHost,
   ) {
     const lang = () => (this.node.attrs.language as string | null) ?? "";
+    const md = mdOf(view.state);
     this.classes = host.classes;
     this.dom = document.createElement("pre");
     this.dom.className = "md-code";
@@ -142,15 +143,16 @@ export class CodeBlockView implements NodeView {
       parent: this.dom,
       text: node.textContent,
       lang: l,
-      html: cachedCode(node.textContent, l),
-      highlight: (t) => highlightCode(t, lang()),
+      html: md.code.cached(node.textContent, l),
+      highlight: (t) => md.code.highlight(t, lang()),
       history: false,
       activeLine: false,
       keys,
       comment: host.comment,
       lsp: host.lsp?.(lang),
       stopPointerDown: host.stopPointerDown,
-      ghost: { complete: host.complete },
+      ghost: { complete: host.complete, hold: md.ghosts },
+      passKeys: md.passKeys,
       onExit: () => host.exit(),
       // 焦点从代码直接去了编辑器外面：ProseMirror 只听它自己根元素的 blur，代码编辑器是它里面另一个可编辑的元素（stopEvent），
       // 收不到，替它发一个，用的一方照常保存退出（和公式块的原文一样）
@@ -168,6 +170,7 @@ export class CodeBlockView implements NodeView {
       lang,
       langs: () => host.langs?.() ?? [],
       classes: host.classes,
+      passKeys: md.passKeys,
       // 一步（自己一步撤销，不和前面打的字连在一起）；着色跟着换（update）
       set: (language) => {
         const pos = this.getPos();

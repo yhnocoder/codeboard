@@ -3,7 +3,7 @@ import { type Board, type CodeCard, type Segment } from "@codeboard/core";
 import { Stage, scene, type Globals, type Group, type Scene } from "./support/board";
 import { el, frames, rightClick } from "./support/play";
 import { fn, edited, viewFor, withVariants, wtEdit, branchEdit, latestEdit, card } from "./support/code";
-import { onHost } from "../src/hostio";
+import { fromHost } from "./support/host";
 import { setEditing } from "../src/state/ui";
 import { setVbase } from "../src/state/variants";
 import { themes } from "./support/themes";
@@ -62,7 +62,7 @@ function variantCard(b: Board, g: Group, id: string, a: Pick<Args, "shown" | "no
   return { s, latest };
 }
 const sync = (id: string, latest: Segment, o: { behind?: number; merged?: boolean } = {}) =>
-  onHost({
+  fromHost({
     type: "variants",
     cards: {
       [id]: {

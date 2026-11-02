@@ -35,6 +35,7 @@ import { stickerPick } from "./state/stickers";
 import { questionsOpen, welcome } from "./state/questions";
 import { exportOpen } from "./state/export";
 import { legendOpen, runState, treeOpen } from "./state/calls";
+import { useMd } from "./md/context";
 
 /**
  * 白板本身：画布和卡、它自己的提示（面包屑、新版本横幅、讲解条、toast）、侧栏、浮层、菜单、对话框。
@@ -189,6 +190,7 @@ function Banner() {
 }
 
 function WalkBar() {
+  const md = useMd();
   const w = () => walk()!;
   const cur = () => w().order[w().i];
   const node = () => flows().byId.get(cur());
@@ -239,7 +241,7 @@ function WalkBar() {
           <Icon name="close" />
         </button>
         <Show when={desc()}>
-          <div class="pdesc" innerHTML={A.mdBlock(desc()!)} />
+          <div class="pdesc" innerHTML={A.mdBlock(md, desc()!)} />
         </Show>
       </div>
     </div>

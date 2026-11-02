@@ -9,14 +9,13 @@ import {
   type SegView,
   type Stale,
 } from "@codeboard/core";
-import { onHost } from "../../src/hostio";
 import { state } from "../../src/state/store";
 import { lineSel, setLineSel, reportSelection } from "../../src/state/selection";
 import { dropTarget, setDropTarget, editing, setEditing, settingsOpen, setSettingsOpen } from "../../src/state/ui";
 import { traffic, setTraffic } from "../../src/state/look";
 import { pushLayer, closeOverlays } from "../../src/ui/overlay";
 import { choose, promptText } from "../../src/ui/Menu";
-import { sent } from "./host";
+import { fromHost, sent } from "./host";
 import { boardMap, boardRef, boardSet, boardSignal, boardStore, boardTimer } from "../../src/state/root";
 
 const HOST: HostInfo = { assetBase: "", target: true, settings: DEFAULT_SETTINGS };
@@ -51,15 +50,15 @@ afterAll(async () => {
 
 describe("board switch", () => {
   it("resets a signal declared with boardSignal to its initial value", () => {
-    onHost(init("a"));
+    fromHost(init("a"));
     const [n, setN] = boardSignal(3);
     setN(7);
-    onHost(init("b"));
+    fromHost(init("b"));
     expect(n()).toBe(3);
   });
 
   it("resets the board's stores, Maps, Sets, values and timers declared with the board* helpers", () => {
-    onHost(init("a"));
+    fromHost(init("a"));
     const [s, setS] = boardStore<Record<string, number>>(() => ({}));
     const [kept, setKept] = boardStore<Record<string, number>>(
       () => ({}),
@@ -76,7 +75,7 @@ describe("board switch", () => {
     set.add("x");
     r.v = 5;
     t.start(fired, 0);
-    onHost(init("b"));
+    fromHost(init("b"));
     expect({ ...s }).toEqual({});
     // what the new board still has stays (a mounted card's measured size)
     expect({ ...kept }).toEqual({ stays: 1 });
@@ -86,13 +85,13 @@ describe("board switch", () => {
   });
 
   it("resets the board's selection, drag, editing and traffic state but keeps Settings open", () => {
-    onHost(init("a"));
+    fromHost(init("a"));
     setLineSel({ card: "c1", seg: "s1", start: 1, end: 2 });
     setDropTarget({ kind: "merge", card: "c1" });
     setEditing({ kind: "note", id: "c1" });
     setTraffic(true);
     setSettingsOpen({});
-    onHost(init("b"));
+    fromHost(init("b"));
     // 上一块白板选中的行留着的话，⌥S 会在新白板上建一条指向不存在的卡的 Sidenote
     expect(lineSel()).toBeNull();
     // 拖到一半换白板：落点指着上一块白板的卡（DropHint 在新白板上找不到卡）
@@ -105,14 +104,14 @@ describe("board switch", () => {
   });
 
   it("replaces the host info and version states instead of merging them", () => {
-    onHost(
+    fromHost(
       init("a", {
         stale: { s1: { state: "ok" } },
         host: { readonly: "Repository not found", clip: { board: "a", n: 1 } },
       }),
     );
     expect(state.stale.s1).toBeDefined();
-    onHost(init("b", { stale: { s2: { state: "ok" } } }));
+    fromHost(init("b", { stale: { s2: { state: "ok" } } }));
     expect(Object.keys(state.stale)).toEqual(["s2"]);
     expect(state.host.readonly).toBeUndefined();
     expect(state.host.clip).toBeUndefined();
@@ -120,8 +119,8 @@ describe("board switch", () => {
 
   it("keeps only the new board's segment views", () => {
     const v = (t: string): SegView => ({ html: [t], flags: [0], calls: [], defs: [] });
-    onHost(init("a", { views: { s1: v("one"), s2: v("two") } }));
-    onHost(init("b", { views: { s2: v("two again"), s3: v("three") } }));
+    fromHost(init("a", { views: { s1: v("one"), s2: v("two") } }));
+    fromHost(init("b", { views: { s2: v("two again"), s3: v("three") } }));
     expect(Object.keys(state.views).sort()).toEqual(["s2", "s3"]);
     expect(state.views.s2.html).toEqual(["two again"]);
   });
@@ -146,7 +145,7 @@ describe("board switch", () => {
     closed.length = 0;
     // 换白板时也一样
     layer("pop");
-    onHost(init("c"));
+    fromHost(init("c"));
     expect(closed).toEqual(["pop"]);
   });
 

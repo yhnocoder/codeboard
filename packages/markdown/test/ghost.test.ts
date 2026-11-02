@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { GhostAsker, holdGhosts, type GhostQuery } from "../src/ui/ghost";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { GhostAsker, createGhostHold, type GhostHold, type GhostQuery } from "../src/ui/ghost";
 
 const query = (shown: string[]): GhostQuery => ({
   context: () => ["before", ""],
@@ -9,8 +9,11 @@ const query = (shown: string[]): GhostQuery => ({
 });
 
 describe("GhostAsker", () => {
+  let hold: GhostHold;
+  beforeEach(() => {
+    hold = createGhostHold();
+  });
   afterEach(() => {
-    holdGhosts(false);
     vi.useRealTimers();
   });
 
@@ -20,6 +23,7 @@ describe("GhostAsker", () => {
     const a = new GhostAsker(
       async () => " more",
       () => {},
+      hold,
       100,
     );
     a.schedule(() => query(shown));
@@ -31,8 +35,8 @@ describe("GhostAsker", () => {
   it("does not ask while held", async () => {
     vi.useFakeTimers();
     const complete = vi.fn(async () => " more");
-    const a = new GhostAsker(complete, () => {}, 100);
-    holdGhosts(true);
+    const a = new GhostAsker(complete, () => {}, hold, 100);
+    hold.hold(true);
     a.schedule(() => query([]));
     await vi.advanceTimersByTimeAsync(150);
     expect(complete).not.toHaveBeenCalled();
@@ -43,9 +47,9 @@ describe("GhostAsker", () => {
     vi.useFakeTimers();
     const complete = vi.fn(async () => " more");
     const clear = vi.fn();
-    const a = new GhostAsker(complete, clear, 100);
+    const a = new GhostAsker(complete, clear, hold, 100);
     a.schedule(() => query([]));
-    holdGhosts(true);
+    hold.hold(true);
     expect(clear).toHaveBeenCalledTimes(1);
     await vi.advanceTimersByTimeAsync(150);
     expect(complete).not.toHaveBeenCalled();
@@ -62,11 +66,12 @@ describe("GhostAsker", () => {
           answer = r;
         }),
       () => {},
+      hold,
       100,
     );
     a.schedule(() => query(shown));
     await vi.advanceTimersByTimeAsync(150);
-    holdGhosts(true);
+    hold.hold(true);
     answer(" more");
     await vi.advanceTimersByTimeAsync(0);
     expect(shown).toEqual([]);
@@ -75,8 +80,16 @@ describe("GhostAsker", () => {
 
   it("a disposed asker is not cleared any more", () => {
     const clear = vi.fn();
-    new GhostAsker(async () => null, clear).dispose();
-    holdGhosts(true);
+    new GhostAsker(async () => null, clear, hold).dispose();
+    hold.hold(true);
     expect(clear).not.toHaveBeenCalled();
+  });
+
+  it("holding one page's hold leaves askers on another alone", () => {
+    const clear = vi.fn();
+    const a = new GhostAsker(async () => null, clear, createGhostHold());
+    hold.hold(true);
+    expect(clear).not.toHaveBeenCalled();
+    a.dispose();
   });
 });

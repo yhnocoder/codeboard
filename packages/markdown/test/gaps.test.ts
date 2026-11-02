@@ -6,16 +6,18 @@ import { getSchema } from "@tiptap/core";
 import { EditorState, TextSelection, type Transaction } from "@tiptap/pm/state";
 import type { DecorationSet } from "@tiptap/pm/view";
 import { sourceExtensions } from "../src/schema";
-import { renderMd, renderMdInline } from "../src/render";
+import { createMarkdown } from "../src/markdown";
 import { sourceDoc } from "../src/editor/srcdoc";
 import { gapsPlugin } from "../src/editor/gaps";
+
+const markdown = createMarkdown();
 
 const MD = "a\n\nb\n\n- l\n\nc\n\n## h\n\nd\n\n> e\n>\n> f\n\n```\ncode\n```\ng";
 
 /** Each top-level block's first characters (or element) with the class it got */
 function staticClasses(md: string) {
   const d = document.createElement("div");
-  d.innerHTML = renderMd(md);
+  d.innerHTML = markdown.render(md);
   return [...d.children].map((e) => `${e.tagName.toLowerCase()}:${e.className}`);
 }
 function editorClasses(md: string) {
@@ -58,7 +60,7 @@ describe("paragraph spacing classes", () => {
   });
   it("a paragraph inside a quote is spaced from the one before it", () => {
     const d = document.createElement("div");
-    d.innerHTML = renderMd("> e\n>\n> f");
+    d.innerHTML = markdown.render("> e\n>\n> f");
     expect([...d.querySelectorAll("blockquote > p")].map((p) => p.className)).toEqual(["", "md-pp"]);
   });
   it("something drawn as nothing (an HTML comment) leaves its neighbours next to each other", () => {
@@ -119,7 +121,7 @@ describe("paragraph spacing classes", () => {
     }
   });
   it("one paragraph still renders inline; two stay blocks", () => {
-    expect(renderMdInline("a *b*")).toBe("a <em>b</em>");
-    expect(renderMdInline("a\n\nb")).toBe('<p>a</p><p class="md-pp">b</p>');
+    expect(markdown.renderInline("a *b*")).toBe("a <em>b</em>");
+    expect(markdown.renderInline("a\n\nb")).toBe('<p>a</p><p class="md-pp">b</p>');
   });
 });

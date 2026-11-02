@@ -3,7 +3,9 @@ import { describe, expect, it } from "vitest";
 import { DOMParser as PMParser, type Node as PMNode } from "@tiptap/pm/model";
 import { mdSchema, parseMd } from "../src/schema";
 import { mathInSlice } from "../src/editor/pastemath";
-import { undoubleTex } from "../src/doubled";
+import { coreOf, createMarkdown } from "../src/markdown";
+
+const markdown = createMarkdown();
 
 // Copied as text from a web page and an e-book: each typeset formula comes out as the shown text
 // followed by its TeX ("N×N" + "N\times N")
@@ -28,12 +30,12 @@ const DOUBLED: [string, string][] = [
 
 describe("formulas copied as shown text + TeX", () => {
   it("keeps only the TeX, as $…$, in text from a web page or an e-book", () => {
-    for (const [pasted, want] of DOUBLED) expect(undoubleTex(pasted)).toBe(want);
+    for (const [pasted, want] of DOUBLED) expect(markdown.undoubleTex(pasted)).toBe(want);
   });
 
   it("handles fractions, scripts, Greek letters and English text after the formula", () => {
-    expect(undoubleTex("面积 x2x^2 与 ab\\frac{a}{b}")).toBe("面积 $x^2$ 与 $\\frac{a}{b}$");
-    expect(undoubleTex("the N×NN\\times N pixels and αβ\\alpha\\beta here")).toBe(
+    expect(markdown.undoubleTex("面积 x2x^2 与 ab\\frac{a}{b}")).toBe("面积 $x^2$ 与 $\\frac{a}{b}$");
+    expect(markdown.undoubleTex("the N×NN\\times N pixels and αβ\\alpha\\beta here")).toBe(
       "the $N\\times N$ pixels and $\\alpha\\beta$ here",
     );
   });
@@ -47,7 +49,7 @@ describe("formulas copied as shown text + TeX", () => {
       "a_b and x^y",
       "\\frac{a}{b}",
     ])
-      expect(undoubleTex(t)).toBe(t);
+      expect(markdown.undoubleTex(t)).toBe(t);
   });
 
   it("stays fast on a whole pasted TeX source", () => {
@@ -56,7 +58,7 @@ describe("formulas copied as shown text + TeX", () => {
         200,
       );
     const t0 = process.cpuUsage();
-    expect(undoubleTex(src)).toBe(src);
+    expect(markdown.undoubleTex(src)).toBe(src);
     const u = process.cpuUsage(t0);
     expect((u.user + u.system) / 1000).toBeLessThan(1000);
   });
@@ -65,7 +67,7 @@ describe("formulas copied as shown text + TeX", () => {
     const schema = mdSchema();
     for (const [pasted, want] of DOUBLED) {
       const tex = [...want.matchAll(/\$([^$]+)\$/g)].map((m) => m[1]);
-      const md = parseMd(undoubleTex(pasted));
+      const md = parseMd(markdown.undoubleTex(pasted));
       const fromMd: string[] = [];
       JSON.stringify(md, (k, v) => {
         if (v?.type === "inlineMath") fromMd.push(v.attrs.latex);
@@ -74,7 +76,7 @@ describe("formulas copied as shown text + TeX", () => {
       expect(fromMd).toEqual(tex);
       const box = document.createElement("div");
       box.innerHTML = `<p>${pasted}</p>`;
-      const fixed = mathInSlice(PMParser.fromSchema(schema).parseSlice(box), schema)!;
+      const fixed = mathInSlice(PMParser.fromSchema(schema).parseSlice(box), schema, coreOf(markdown).math)!;
       const nodes: PMNode[] = [];
       fixed.content.descendants((n) => {
         nodes.push(n);

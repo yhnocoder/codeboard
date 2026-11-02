@@ -41,7 +41,7 @@ export type LspHost = {
   complete(text: string, line: number, col: number, trigger?: string): Promise<LspItem[] | null>;
   hover(text: string, line: number, col: number): Promise<string[] | null>;
   signature(text: string, line: number, col: number, trigger?: string): Promise<LspSignature | null>;
-  /** Markdown → HTML（悬停、文档说明；一般就是 renderMd） */
+  /** Markdown → HTML（悬停、文档说明；一般就是 Markdown 实例的 render） */
   md(src: string): string;
   /** 编辑器拆掉时调（宿主关掉这段代码的虚拟文档） */
   close?(): void;

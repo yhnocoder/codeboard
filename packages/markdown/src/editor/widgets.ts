@@ -4,11 +4,10 @@ import katex from "katex";
 import { TextSelection } from "@tiptap/pm/state";
 import { closeHistory } from "@tiptap/pm/history";
 import type { EditorView } from "@tiptap/pm/view";
-import { markTex, mathMacros } from "../math";
-import { captionOf, imageAttrs, missingImage, IMAGE_DRAG_TYPE, type DraggedImage } from "../image";
-import { renderMd } from "../render";
-import { imageFailed, imageFailedBefore, paintRef } from "../view";
-import { holdGhosts } from "../ui/ghost";
+import { markTex, type MathPreamble } from "../math";
+import { captionOf, missingImage, IMAGE_DRAG_TYPE, type DraggedImage, type Images } from "../image";
+import type { Md } from "../markdown";
+import { mdOf } from "./md";
 import { IMAGE_SETTLE } from "../ui/timing";
 import { blockInfo, flat, type Atom, type Span } from "./spans";
 import { checkMath, problemBox } from "./mathhints";
@@ -35,9 +34,9 @@ const span = (cls: string) => {
 
 /** HTML only, as in the static render: MathML on the page turns on Chrome's MathML stylesheet, whose :nth-child rules make
  *  every inserted paragraph restyle all the blocks after it (Enter in a long Note took 150–200 ms) */
-function renderTex(el: HTMLElement, latex: string, display: boolean) {
+function renderTex(el: HTMLElement, latex: string, display: boolean, math: MathPreamble) {
   try {
-    katex.render(latex, el, { displayMode: display, throwOnError: false, output: "html", macros: mathMacros() });
+    katex.render(latex, el, { displayMode: display, throwOnError: false, output: "html", macros: math.macrosCopy() });
     markTex(el, latex);
   } catch {
     el.textContent = latex;
@@ -45,8 +44,8 @@ function renderTex(el: HTMLElement, latex: string, display: boolean) {
 }
 
 /** The static render of a piece of inline Markdown (emoji, [[ref]], {text|note}, inline HTML): same DOM as outside the editor */
-function staticInline(raw: string): string {
-  const h = renderMd(raw).trim();
+function staticInline(raw: string, md: Md): string {
+  const h = md.render(raw).trim();
   return h.startsWith("<p>") && h.endsWith("</p>") ? h.slice(3, -4) : h;
 }
 
@@ -63,16 +62,17 @@ export function atomWidget(
   wrap: Tag[] = [],
 ): ToDOM {
   return (view, getPos) => {
+    const md = mdOf(view.state);
     let el: HTMLElement;
     if (a.type === "math") {
       // $$…$$ inside a line is a display formula, centred on a line of its own (md-dmath), as in the static render
       el = span(`tiptap-mathematics-render${a.display ? " md-dmath" : ""}`);
       el.dataset.type = "inline-math";
       el.dataset.latex = a.latex;
-      renderTex(el, a.latex, a.display);
+      renderTex(el, a.latex, a.display, md.math);
     } else if (a.type === "image") {
       let dragged: [number, number] | null = null;
-      el = imageEl(a, false);
+      el = imageEl(a, false, md.images);
       el.draggable = true;
       el.addEventListener("dragstart", (ev) => {
         const from = getPos();
@@ -100,9 +100,9 @@ export function atomWidget(
       el.textContent = a.label;
     } else {
       el = span(`md-atom md-atom-${a.type}`);
-      el.innerHTML = staticInline(raw);
+      el.innerHTML = staticInline(raw, md);
       // a ref chip drawn as outside the editor: its title, board badge, missing / gone look
-      if (a.type === "ref") el.querySelectorAll<HTMLElement>(".md-ref").forEach(paintRef);
+      if (a.type === "ref") el.querySelectorAll<HTMLElement>(".md-ref").forEach((r) => md.paintRef(r));
       // one element (a ref chip, an emoji): that element itself, laid out exactly as in the static render
       const only = el.childNodes.length === 1 ? (el.firstElementChild as HTMLElement | null) : null;
       if (only) {
@@ -162,7 +162,7 @@ function carryImage(dt: DataTransfer, a: Extract<Atom, { type: "image" }>) {
 const MIN_W = 24; // narrowest an image can be dragged to, in px
 
 /** An image as drawn: `below` is the copy under the source while the caret is in it, the one with the resize grips */
-function imageEl(a: Extract<Atom, { type: "image" }>, below: boolean): HTMLElement {
+function imageEl(a: Extract<Atom, { type: "image" }>, below: boolean, images: Images): HTMLElement {
   const el = span(`md-img${below ? " below" : ""}`);
   // an address the parser could not read: nothing to load, drawn as a failed image
   if (a.broken) {
@@ -170,17 +170,17 @@ function imageEl(a: Extract<Atom, { type: "image" }>, below: boolean): HTMLEleme
     return el;
   }
   const img = document.createElement("img");
-  const at = imageAttrs(a);
+  const at = images.attrs(a);
   for (const [k, v] of Object.entries(at)) if (v != null && k !== "style" && k !== "class") img.setAttribute(k, v);
   // the width of a sized image is on this box (below); an unsized one keeps its height cap
   if (!a.width && at.style) img.setAttribute("style", at.style);
   img.draggable = false;
-  if (!below && img.src) loaded.add(img.getAttribute("src")!);
+  if (!below && img.src) images.sawLoad(img.getAttribute("src")!);
   el.append(img);
-  if (imageFailedBefore(img.getAttribute("src"))) imageFailed(img);
+  if (images.failedBefore(img.getAttribute("src"))) images.fail(img);
   else
     img.addEventListener("error", () => {
-      if (img.getAttribute("src")) imageFailed(img);
+      if (img.getAttribute("src")) images.fail(img);
     });
   const cap = captionOf(a.title);
   if (cap) {
@@ -195,13 +195,11 @@ function imageEl(a: Extract<Atom, { type: "image" }>, below: boolean): HTMLEleme
   return el;
 }
 
-/** Addresses already shown under a source: those load at once (editing the alt text or width rebuilds the widget) */
-const loaded = new Set<string>();
-
 /** The image under its source; dragging a grip rewrites the {width=N%} after it in one undo step */
 export function imageBelow(a: Extract<Atom, { type: "image" }>): ToDOM {
   return (view, getPos) => {
-    const el = imageEl(a, true),
+    const images = mdOf(view.state).images;
+    const el = imageEl(a, true, images),
       img = el.querySelector("img");
     // a press keeps the caret in the source; on the image itself it may start a drag (below), which needs the press's default
     el.addEventListener("mousedown", (ev) => {
@@ -211,11 +209,12 @@ export function imageBelow(a: Extract<Atom, { type: "image" }>): ToDOM {
     // an address that failed before is its placeholder already: nothing to size
     if (!img) return el;
     const src = img.getAttribute("src");
-    if (src && !loaded.has(src)) {
+    // addresses already shown under a source load at once (editing the alt text or width rebuilds the widget)
+    if (src && !images.loadedBefore(src)) {
       img.removeAttribute("src");
       setTimeout(() => {
         if (el.isConnected) {
-          loaded.add(src);
+          images.sawLoad(src);
           img.setAttribute("src", src);
         }
       }, IMAGE_SETTLE);
@@ -284,7 +283,8 @@ function grip(
     moved = false;
   g.setPointerCapture(e.pointerId);
   el.classList.add("resizing");
-  holdGhosts(true);
+  const ghosts = mdOf(view.state).ghosts;
+  ghosts.hold(true);
   const show = () => {
     el.style.width = w ? `${w}%` : "";
     el.classList.toggle("sized", !!w);
@@ -305,7 +305,7 @@ function grip(
       g.removeEventListener(t, t === "pointermove" ? (move as EventListener) : up);
     cancelAnimationFrame(frame);
     el.classList.remove("resizing");
-    holdGhosts(false);
+    ghosts.hold(false);
     if (moved && w !== w0pct) setWidth(view, getPos(), w);
     else {
       w = w0pct;
@@ -386,13 +386,14 @@ export function foldButton(expanded: boolean, toggle: (view: EditorView) => void
 
 /** The drawn display formula under its source while the caret is in it (like an image's), framed */
 export function mathBelow(latex: string): ToDOM {
-  return () => {
+  return (view) => {
+    const math = mdOf(view.state).math;
     const el = span("md-dmath below");
     // as the formula block does: a formula that does not typeset says what is wrong under its red source
-    const r = checkMath(latex, true);
+    const r = checkMath(latex, true, math);
     if (r.html) el.innerHTML = r.html;
     else {
-      renderTex(el, latex, true);
+      renderTex(el, latex, true, math);
       if (r.problem) el.append(problemBox(r.problem, latex, false));
     }
     el.addEventListener("mousedown", (e) => e.preventDefault());

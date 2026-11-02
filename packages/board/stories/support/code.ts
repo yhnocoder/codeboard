@@ -1,5 +1,5 @@
 // 代码卡、Compare、调用图、版本、Peek 小样共用：段和展示数据的拼法、假宿主多回答的几种请求、开浮层。
-// 状态还是照宿主和用户的路从外面喂（onHost、store / ui / pop 的 setter），不为小样改组件
+// 状态还是照宿主和用户的路从外面喂（fromHost、store / ui / pop 的 setter），不为小样改组件
 import {
   renderLine,
   viewKey,

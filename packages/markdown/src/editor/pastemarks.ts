@@ -11,6 +11,7 @@ import {
 } from "@tiptap/pm/model";
 import { mdSchema, parseSource, serializeMd } from "../schema";
 import { mathInSlice } from "./pastemath";
+import type { MathPreamble } from "../math";
 
 // 藏成私用区的字（和 tiptap-markdown-patch.ts 的 SHIELD 错开）：解析器当普通字，位置、长度不变，读完再换回来
 const HIDE = 0xe400;
@@ -88,11 +89,11 @@ function marksInBlock(b: PMNode, schema: Schema): PMNode {
  * or web page's paragraphs become formatting, rules and formulas (as typing them would); other punctuation in the text
  * stays literal (escaped)
  */
-export function htmlSource(dom: HTMLElement): string {
+export function htmlSource(dom: HTMLElement, tex: MathPreamble): string {
   const schema = mdSchema(),
     s0 = PMDOMParser.fromSchema(schema).parseSlice(dom);
   const s1 = marksInSlice(s0, schema) ?? s0,
-    s2 = mathInSlice(s1, schema) ?? s1;
+    s2 = mathInSlice(s1, schema, tex) ?? s1;
   const json = s2.content.toJSON() ?? [];
   return serializeMd({
     type: "doc",

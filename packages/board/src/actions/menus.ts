@@ -110,6 +110,7 @@ import { LEGEND, legendName, HAND_COLORS, type Link } from "@codeboard/core";
 import { kbd } from "../keymap";
 import { drawSvgItem, imageAiItems, type ImgRef } from "./imageai";
 import { autoFocusItem } from "./autofocus";
+import type { Markdown } from "@yhnocoder/markdown";
 
 /**
  * 删除那一组：共享卡（在别的白板上也有）分成「从这块白板移除」（⌫）和「全部删掉」（⌘⌫，要确认），再加 Unlink；
@@ -643,7 +644,8 @@ function multiItems(): Item[] {
   ];
 }
 
-export function canvasMenu(x: number, y: number) {
+/** md: the board's Markdown instance (Paste reads the text with it) */
+export function canvasMenu(md: Markdown, x: number, y: number) {
   const w = toWorld(x - boardOffset().x, y - boardOffset().y);
   openMenu(
     [
@@ -673,7 +675,7 @@ export function canvasMenu(x: number, y: number) {
                 navigator.clipboard
                   ?.readText()
                   .then(async (t) => {
-                    if (!(await pasteFromBoard(t, w))) await pasteText(t, w);
+                    if (!(await pasteFromBoard(t, w))) await pasteText(md, t, w);
                   })
                   .catch(() => toast("Clipboard not available here. Press ⌘V instead.")),
             } as Item,

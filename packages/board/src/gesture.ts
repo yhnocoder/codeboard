@@ -5,7 +5,7 @@
 import { beginGesture, isFresh } from "./state/changes";
 import { onBoardSwitch } from "./state/root";
 import { holdPointer } from "./ui/guard";
-import { holdGhosts } from "@yhnocoder/markdown/ui";
+import { createGhostHold } from "@yhnocoder/markdown/ui";
 
 const open = new Set<() => void>();
 onBoardSwitch(() => {
@@ -13,6 +13,10 @@ onBoardSwitch(() => {
   open.clear();
   for (const drop of all) drop();
 });
+
+/** The page's hold on AI completions: a card moving or resizing pauses them in every Note and code editor (wireBoard gives it to
+ *  the board's Markdown instance, cm/load.ts to the code editors) */
+export const ghosts = createGhostHold();
 
 /** A gesture that is not a pointer drag: `drop` runs if the board switches before the returned `done` is called */
 export function holdGesture(drop: () => void): () => void {
@@ -87,16 +91,16 @@ export function undoGesture(ids: string[] = []) {
     moving: () => {
       if (!held) {
         held = true;
-        holdGhosts(true);
+        ghosts.hold(true);
       }
     },
     end: () => {
-      if (held) holdGhosts(false);
+      if (held) ghosts.hold(false);
       done(!(fresh && ids.every(isFresh)));
     },
     /** dropped (the board switched): no undo step */
     drop: () => {
-      if (held) holdGhosts(false);
+      if (held) ghosts.hold(false);
       done(false);
     },
   };

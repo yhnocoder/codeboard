@@ -21,8 +21,9 @@ import { Icon } from "../ui/icons";
 import * as A from "../actions";
 import { boardMode } from "../state/mode";
 import { kbd } from "../keymap";
-import { observeResize, queueMeasure } from "@yhnocoder/markdown/ui";
+import { observeResize, queueMeasure } from "../state/measure";
 import { cardSel } from "../cardsel";
+import { useMd } from "../md/context";
 
 const EXT = 2048;
 
@@ -30,6 +31,7 @@ const EXT = 2048;
 const READ_PX = 11;
 
 export function Canvas() {
+  const md = useMd();
   let el!: HTMLDivElement, world!: HTMLDivElement;
   trackOffscreen();
   trackCardLod();
@@ -130,7 +132,7 @@ export function Canvas() {
         "lod-map": lod() === "map",
       }}
       onPointerDown={canvasPointerDown}
-      onContextMenu={canvasContextMenu}
+      onContextMenu={(e) => canvasContextMenu(e, md)}
     >
       <div
         ref={world}

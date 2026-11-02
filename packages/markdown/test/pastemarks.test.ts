@@ -5,6 +5,7 @@ import type { JSONContent } from "@tiptap/core";
 import { mdSchema, parseMd, pastedMd, serializeMd } from "../src/schema";
 import { marksInSlice } from "../src/editor/pastemarks";
 import { htmlSource } from "../src/editor/pastemarks";
+import { MathPreamble } from "../src/math";
 
 // Notes with three ==highlights== in CJK text, one closing right before 。
 const SIMT = [
@@ -70,7 +71,7 @@ describe("pasted text/plain read as Markdown", () => {
 function pasteHtml(html: string): PMNode {
   const box = document.createElement("div");
   box.innerHTML = html;
-  const md = htmlSource(box),
+  const md = htmlSource(box, new MathPreamble()),
     first = parseMd(md).content?.[0]?.type;
   // pasted at the end of a paragraph 开头: a first paragraph joins it, a first block of another kind follows it
   return mdSchema().nodeFromJSON(parseMd(first === "paragraph" ? `开头${md}` : `开头\n\n${md}`));

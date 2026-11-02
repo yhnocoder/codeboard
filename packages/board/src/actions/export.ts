@@ -27,7 +27,7 @@ import { lodBusy, lodOf } from "../state/lodcards";
 import { setExportOpen, exportBusy, setExportBusy, type ExportOpts } from "../state/export";
 import { ask, send } from "../host";
 import { flushMd } from "../md/lazy";
-import { renderMd } from "@yhnocoder/markdown";
+import type { Markdown } from "@yhnocoder/markdown";
 import { noteBlocks } from "../md/blocks";
 import type { ViewerData } from "../export/viewer";
 import VIEWER_JS from "../export/viewer.ts?script";
@@ -79,7 +79,8 @@ function scopeOf(o: ExportOpts): ExportScope {
   return { kind: "board" };
 }
 
-export async function runExport(o: ExportOpts) {
+/** md: the board's Markdown instance, which renders the Sidenotes and questions of an HTML snapshot */
+export async function runExport(md: Markdown, o: ExportOpts) {
   if (exportBusy()) return;
   if (o.format === "png") {
     setExportOpen(null);
@@ -105,7 +106,7 @@ export async function runExport(o: ExportOpts) {
             boardName: (id) => state.boards.find((m) => m.id === id)?.name,
             blocks: noteBlocks,
           })
-        : await snapshotHtml(b, order, o, links);
+        : await snapshotHtml(md, b, order, o, links);
     const ok = await ask("exportFile", { kind: o.format === "md" ? "md" : "html", name: fileName(), text });
     if (ok) setExportOpen(null);
   } catch (e) {
@@ -361,13 +362,13 @@ function collectCss(): string {
   return out.join("\n");
 }
 
-function noteHtml(n: Sidenote): string {
+function noteHtml(md: Markdown, n: Sidenote): string {
   const where = n.at.lines
     ? `<div class="xv-w">${n.at.lines[0] === n.at.lines[1] ? `line ${n.at.lines[0]}` : `lines ${n.at.lines[0]}–${n.at.lines[1]}`}${n.why ? ` · ${escHtml(n.why)}` : ""}</div>`
     : "";
   switch (n.kind) {
     case "text":
-      return `${where}<div class="md">${renderMd(n.md)}</div>`;
+      return `${where}<div class="md">${md.render(n.md)}</div>`;
     case "link":
       return `${where}<a href="${escHtml(n.url)}" target="_blank" rel="noopener">${escHtml(n.title || n.url)}</a>`;
     case "card": {
@@ -381,7 +382,13 @@ function noteHtml(n: Sidenote): string {
   }
 }
 
-async function snapshotHtml(b: Board, order: string[], o: ExportOpts, links: Record<string, string>): Promise<string> {
+async function snapshotHtml(
+  md: Markdown,
+  b: Board,
+  order: string[],
+  o: ExportOpts,
+  links: Record<string, string>,
+): Promise<string> {
   const keep = new Set(order);
   const whole = o.scope === "board";
   // 放进一个不显示的文档里再改 <img> 的地址：这个页面里的克隆一改 src 就会去加载（cbres: 加载不了，控制台报错）
@@ -430,13 +437,14 @@ async function snapshotHtml(b: Board, order: string[], o: ExportOpts, links: Rec
   const rs = order.map((id) => ({ id, ...rectOf(id) }));
   const box = bounds(rs) ?? { x: 0, y: 0, w: 800, h: 600 };
   const notes: Record<string, string> = {};
-  for (const n of b.sidenotes) if (keep.has(hostOf(n.at.card)) && !hidden.has(n.id)) notes[n.id] = imgRefs(noteHtml(n));
+  for (const n of b.sidenotes)
+    if (keep.has(hostOf(n.at.card)) && !hidden.has(n.id)) notes[n.id] = imgRefs(noteHtml(md, n));
   const questions: Record<string, string> = {};
   if (o.questions)
     for (const s of b.stickers)
       if (qs.has(s.id))
         questions[s.id] = imgRefs(
-          `<div class="xv-w">${s.q?.done ? "Answered" : "Question"}</div><div class="md">${renderMd(s.q?.md || "(no text)")}</div>`,
+          `<div class="xv-w">${s.q?.done ? "Answered" : "Question"}</div><div class="md">${md.render(s.q?.md || "(no text)")}</div>`,
         );
   const cardLinks: Record<string, string> = {};
   for (const id of order) {

@@ -6,6 +6,7 @@ import { STORY_CHANGED, UPDATE_GLOBALS } from "storybook/internal/core-events";
 import { createJSXDecorator } from "storybook-solidjs-vite";
 import { createEffect } from "solid-js";
 import { wireBoard } from "../src/wire";
+import { MdContext } from "../src/md/context";
 import { THEMES, EXPERIMENTAL_THEMES } from "@codeboard/core";
 import { storyChrome, type Globals } from "../stories/support/board";
 import "@yhnocoder/markdown/katex.css";
@@ -15,7 +16,14 @@ import "@yhnocoder/markdown/style.css";
 import "../src/themes.css";
 import "../src/settings.css";
 
-wireBoard(transport, { selfCheck: import.meta.env.DEV });
+const md = wireBoard(transport, { selfCheck: import.meta.env.DEV });
+
+// the board's Markdown instance, as boot.tsx provides it around the App
+const markdown = createJSXDecorator((Story) => (
+  <MdContext.Provider value={md}>
+    <Story />
+  </MdContext.Provider>
+));
 
 // 亮暗挂在 body 的 class 上，和 VS Code 一样，由 followHostTheme 换成 html[data-theme]
 const scheme = createJSXDecorator((Story, ctx) => {
@@ -58,7 +66,7 @@ const chrome: Decorator = (Story, ctx) => {
 addons.getChannel().on(STORY_CHANGED, () => addons.getChannel().emit(UPDATE_GLOBALS, { globals: { pseudo: false } }));
 
 const preview: Preview = {
-  decorators: [chrome, scheme, viewport],
+  decorators: [chrome, scheme, viewport, markdown],
   parameters: {
     layout: "fullscreen",
     viewport: { options: { narrow: { name: "Beside the editor (600px)", styles: { width: "600px", height: "800px" } } } },

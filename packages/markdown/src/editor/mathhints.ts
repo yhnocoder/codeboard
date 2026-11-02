@@ -4,7 +4,7 @@ import type { EditorState } from "@tiptap/pm/state";
 import { Plugin, PluginKey, TextSelection } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
 import { place, virtual } from "../ui/place";
-import { defsIn, mathMacros, mathPreambleDefs, withTex, type MathDef } from "../math";
+import { defsIn, withTex, type MathDef, type MathPreamble } from "../math";
 import { blockInfo, flat } from "./spans";
 
 /** 一条补全：snip 里的 | 是插入后光标的位置；pv 是排出来给人看的样子 */
@@ -114,8 +114,8 @@ const userCmd = (d: MathDef, tag: "预设" | "本式"): MathCmd => ({
   tag,
 });
 /** 用户自己的命令：预设里的，再是这个公式里定义的 */
-function userCmds(src: string): MathCmd[] {
-  const pre = mathPreambleDefs().map((d) => userCmd(d, "预设"));
+function userCmds(src: string, math: MathPreamble): MathCmd[] {
+  const pre = math.definitions().map((d) => userCmd(d, "预设"));
   const own = defsIn(src)
     .filter((d) => !pre.some((p) => p.name === d.name))
     .map((d) => userCmd(d, "本式"));
@@ -132,8 +132,8 @@ export function tokenAt(src: string, caret: number): { q: string; from: number }
   return k % 2 ? null : { q: m[1], from: m.index };
 }
 /** 打着 \q 时列出来的命令：开头对得上的在前，名字里含着的在后 */
-export function completions(q: string, src: string): MathCmd[] {
-  const user = userCmds(src),
+export function completions(q: string, src: string, math: MathPreamble): MathCmd[] {
+  const user = userCmds(src, math),
     all = [...user, ...MATH_CMDS];
   if (!q) return [...user, ...MATH_CMDS].slice(0, Math.max(MAX, user.length));
   const l = q.toLowerCase();
@@ -154,10 +154,10 @@ function lev(a: string, b: string) {
   return d[a.length][b.length];
 }
 /** 离 name 最近的已知命令（编辑距离 ≤ 2）；没有给 null */
-function nearest(name: string, src: string): string | null {
+function nearest(name: string, src: string, math: MathPreamble): string | null {
   let best: string | null = null,
     bd = 3;
-  for (const x of [...userCmds(src), ...MATH_CMDS]) {
+  for (const x of [...userCmds(src, math), ...MATH_CMDS]) {
     const d = lev(name, x.name);
     if (d < bd) {
       bd = d;
@@ -191,21 +191,31 @@ function braces(src: string) {
 }
 
 /** 排一次：排得出给 HTML；排不出给大白话的说明（还在打命令名时 problem 是 null：先不报错） */
-export function checkMath(src: string, display: boolean, caret = src.length): MathCheck {
+export function checkMath(src: string, display: boolean, math: MathPreamble, caret = src.length): MathCheck {
   try {
     return {
       html: withTex(
-        katex.renderToString(src, { displayMode: display, throwOnError: true, output: "html", macros: mathMacros() }),
+        katex.renderToString(src, {
+          displayMode: display,
+          throwOnError: true,
+          output: "html",
+          macros: math.macrosCopy(),
+        }),
         src,
       ),
     };
   } catch (e) {
     const t = tokenAt(src, caret);
     const rest = /^[A-Za-z]*/.exec(src.slice(caret))![0];
-    if (t && t.q && !rest && [...userCmds(src), ...MATH_CMDS].some((x) => x.name.startsWith(t.q) && x.name !== t.q))
+    if (
+      t &&
+      t.q &&
+      !rest &&
+      [...userCmds(src, math), ...MATH_CMDS].some((x) => x.name.startsWith(t.q) && x.name !== t.q)
+    )
       return { problem: null };
     return {
-      problem: explain(e as { rawMessage?: string; message?: string; position?: number; length?: number }, src),
+      problem: explain(e as { rawMessage?: string; message?: string; position?: number; length?: number }, src, math),
     };
   }
 }
@@ -213,6 +223,7 @@ export function checkMath(src: string, display: boolean, caret = src.length): Ma
 function explain(
   e: { rawMessage?: string; message?: string; position?: number; length?: number },
   src: string,
+  math: MathPreamble,
 ): MathProblem {
   const raw = e.rawMessage ?? e.message ?? "";
   let at = typeof e.position === "number" ? e.position : null;
@@ -222,7 +233,7 @@ function explain(
   if ((m = /Undefined control sequence: (\\[A-Za-z]+)/.exec(raw))) {
     const name = m[1];
     parts.push("不认识 ", { code: name }, " 这个命令。");
-    const best = nearest(name.slice(1), src);
+    const best = nearest(name.slice(1), src, math);
     let from = at !== null && src.startsWith(name, at) ? at : src.indexOf(name);
     if (from >= 0 && /[A-Za-z]/.test(src[from + name.length] ?? "")) from = -1;
     if (best && from >= 0) {
@@ -293,19 +304,22 @@ export type HintHost = {
   display: boolean;
   /** 行内：整段原文在屏幕上的范围；不给 = 公式块，预览画在 o.preview 里 */
   anchor?: () => DOMRect | null;
+  /** The editor's Markdown instance's preamble */
+  math: MathPreamble;
 };
 
-const pvCache = new Map<string, string>();
-/** 补全里每条的样子：排过的缓存（预设一改，用户命令的样子跟着变：键里带上预设） */
-function cmdPreview(x: MathCmd, src: string): string {
+/** 补全里每条的样子：排过的缓存（预设的；预设一改就清掉。键里带上预设，本式的再带上公式） */
+function cmdPreview(x: MathCmd, src: string, math: MathPreamble): string {
+  const pvCache = math.previews;
   const key = x.tag
-    ? `${x.tag}\0${x.pv}\0${mathPreambleDefs()
+    ? `${x.tag}\0${x.pv}\0${math
+        .definitions()
         .map((d) => `${d.name}=${d.body}`)
         .join("\n")}${x.tag === "本式" ? `\0${src}` : ""}`
     : x.pv;
   let h = pvCache.get(key);
   if (h === undefined) {
-    const macros = mathMacros();
+    const macros = math.macrosCopy();
     for (const d of defsIn(src)) if (!(`\\${d.name}` in macros)) macros[`\\${d.name}`] = d.body;
     try {
       h = katex.renderToString(x.pv, { throwOnError: true, output: "html", macros });
@@ -331,12 +345,11 @@ const HEAVY = 20000,
   HEAVY_MAX = 400;
 
 /** 第一次编辑公式时，空闲里先把补全最先出的那几条排好（第一次打 \ 不卡一下） */
-let warmed = false;
-function warm(src: string) {
-  if (warmed || typeof requestIdleCallback !== "function") return;
-  warmed = true;
+function warm(src: string, math: MathPreamble) {
+  if (math.warmed || typeof requestIdleCallback !== "function") return;
+  math.warmed = true;
   requestIdleCallback(() => {
-    for (const x of completions("", src)) cmdPreview(x, src);
+    for (const x of completions("", src, math)) cmdPreview(x, src, math);
   });
 }
 
@@ -370,7 +383,7 @@ export class MathHints {
       this.live = true;
       // 公式块：展开时预览里已经是排好的样子，从它算起（大公式第一下打字就攒着）
       if (this.o.preview && !this.last) this.last = this.o.preview.innerHTML;
-      warm(this.host.text());
+      warm(this.host.text(), this.host.math);
     }
     if (typing || this.ac) this.complete();
     else this.closeList();
@@ -431,7 +444,7 @@ export class MathHints {
   private complete() {
     const src = this.host.text(),
       t = tokenAt(src, this.host.caret());
-    const list = t ? completions(t.q, src) : [];
+    const list = t ? completions(t.q, src, this.host.math) : [];
     if (!t || !list.length) return this.closeList();
     const same = this.ac && list.length === this.items.length && list.every((x, k) => x === this.items[k]);
     this.items = list;
@@ -457,7 +470,7 @@ export class MathHints {
     this.ac.replaceChildren(
       ...list.map((x, k) => {
         const pv = el("span", "pv");
-        pv.innerHTML = cmdPreview(x, src);
+        pv.innerHTML = cmdPreview(x, src, this.host.math);
         const head = q && x.name.startsWith(q);
         const name = el(
           "b",
@@ -533,7 +546,7 @@ export class MathHints {
       pv.classList.toggle("md-mathempty", inline);
     } else {
       pv.classList.remove("md-mathempty");
-      const r = checkMath(src, this.host.display, caret);
+      const r = checkMath(src, this.host.display, this.host.math, caret);
       if (r.html !== undefined) {
         if (r.html !== this.last || !pv.firstChild) pv.innerHTML = r.html;
         this.last = r.html;
@@ -724,7 +737,7 @@ function inlineMathAt(state: EditorState): Region | null {
 
 const mathHintsKey = new PluginKey("cbMathHints");
 /** 编辑器里行内公式的提示 */
-export function mathHintsPlugin() {
+export function mathHintsPlugin(math: MathPreamble) {
   let hints: MathHints | null = null,
     region: Region | null = null,
     view: EditorView | null = null;
@@ -732,6 +745,7 @@ export function mathHintsPlugin() {
     text: () => region?.text ?? "",
     caret: () => region?.caret ?? 0,
     display: false,
+    math,
     caretRect: () => {
       if (!view) return null;
       const c = view.coordsAtPos(view.state.selection.head);

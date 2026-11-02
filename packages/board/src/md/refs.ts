@@ -3,7 +3,7 @@
 import { createMemo, untrack } from "solid-js";
 import { createStore, reconcile } from "solid-js/store";
 import type { BoardRefs, RefBoard } from "@codeboard/core";
-import { paintRef, type RefBroken, type RefTarget } from "@yhnocoder/markdown";
+import type { Markdown, RefBroken, RefTarget } from "@yhnocoder/markdown";
 import type { RefGroup, RefPick } from "@yhnocoder/markdown/editor";
 import { ask, send } from "../host";
 import { state } from "../state/store";
@@ -13,27 +13,27 @@ import { REF_SEP, frameName, frames } from "../state/subboards";
 const [xrefs, setXrefs] = createStore<BoardRefs & { loaded: boolean }>({ boards: [], recent: [], loaded: false });
 let asked = false;
 
-/** 要别的白板上的卡（只问一次；之后宿主自己推） */
-export function wantBoardRefs() {
+/** 要别的白板上的卡（只问一次；之后宿主自己推）：到了以后 md 画的 Note 里的引用再认一遍 */
+export function wantBoardRefs(md: Markdown) {
   if (asked) return;
   asked = true;
   void ask("boardRefs", {}).then(
-    (r) => putBoardRefs(r),
+    (r) => putBoardRefs(md, r),
     () => {
       asked = false;
     },
   );
 }
 /** 骨架、别的白板的卡到了以后，静态 Note 里的 [[引用]] 再认一遍（指向它们的，没到时显示成找不到） */
-export function refreshRefs() {
+export function refreshRefs(md: Markdown) {
   for (const r of document.querySelectorAll<HTMLElement>(".md .md-ref"))
-    if (!r.closest("[contenteditable=true]")) paintRef(r);
+    if (!r.closest("[contenteditable=true]")) md.paintRef(r);
 }
 /** 宿主给的（回答或推过来的）：换上，静态 Note 里的引用再认一遍 */
-export function putBoardRefs(r: BoardRefs | null) {
+export function putBoardRefs(md: Markdown, r: BoardRefs | null) {
   if (!r) return;
   setXrefs(reconcile({ ...r, loaded: true }));
-  refreshRefs();
+  refreshRefs(md);
 }
 
 const cardsWord = (n: number) => `${n} card${n === 1 ? "" : "s"}`;
@@ -79,12 +79,16 @@ const low = (s: string) => s.trim().toLowerCase();
  * 宿主给的白板里没有这个名字：broken place。还没拿到别的白板时问宿主要，先当找不到（到了再认一遍）。
  * 写的是这块白板的名字：按 here 在这块白板上找；名字是这块白板上一个子白板框的：交给子白板那边（骨架还没到）
  */
-export function crossRef(label: string, here: (title: string) => RefTarget | null): RefTarget | RefBroken | null {
+export function crossRef(
+  label: string,
+  md: Markdown,
+  here: (title: string) => RefTarget | null,
+): RefTarget | RefBroken | null {
   const parts = label.split(/\s*›\s*/).map((x) => x.trim());
   if (parts.length < 2 || parts.some((x) => !x)) return null;
   return untrack(() => {
     if (!xrefs.loaded) {
-      wantBoardRefs();
+      wantBoardRefs(md);
       return null;
     }
     for (let k = parts.length - 1; k >= 1; k--) {

@@ -1,8 +1,9 @@
 // 静态 Markdown：缓存好的 HTML 直接放进去，挂上以后补引用 / 图表；点链接、[[引用]]、勾选框
 import { createEffect, onCleanup, type JSX } from "solid-js";
-import { mdClick, type MdLayout, type RefTarget } from "@yhnocoder/markdown";
+import type { MdLayout, RefTarget } from "@yhnocoder/markdown";
 import { mdInto, mdForget } from "../md/lazy";
 import { mathRev } from "../md/math";
+import { useMd } from "../md/context";
 import { prepareHover, prepareLeave } from "../md/load";
 import * as A from "../actions";
 
@@ -21,10 +22,11 @@ export function MdStatic(p: {
   /** 能双击编辑的：鼠标停上来就先在页面外准备好编辑器 */
   prep?: boolean;
 }) {
+  const md = useMd();
   let el!: HTMLDivElement;
   createEffect(() => {
     mathRev();
-    mdInto(el, p.src, p.inline, p.layout);
+    mdInto(md, el, p.src, p.inline, p.layout);
   });
   onCleanup(() => mdForget(el));
   return (
@@ -34,11 +36,11 @@ export function MdStatic(p: {
       style={p.style}
       data-ph={p.ph}
       data-tip={p.tip}
-      onClick={(e) => mdClick(e, p.src, { openLink: A.openLink, openRef, onToggle: p.onToggle })}
+      onClick={(e) => md.click(e, p.src, { openLink: A.openLink, openRef, onToggle: p.onToggle })}
       onDblClick={p.onDblClick}
-      onPointerEnter={p.prep ? () => prepareHover(p.src, p.layout) : undefined}
+      onPointerEnter={p.prep ? () => prepareHover(md, p.src, p.layout) : undefined}
       onPointerLeave={p.prep ? () => prepareLeave(p.src) : undefined}
-      onPointerDown={p.prep ? () => prepareHover(p.src, p.layout, true) : undefined}
+      onPointerDown={p.prep ? () => prepareHover(md, p.src, p.layout, true) : undefined}
     />
   );
 }

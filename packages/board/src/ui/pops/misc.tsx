@@ -1,5 +1,5 @@
 import { For, Show, createEffect, createSignal, onMount } from "solid-js";
-import { keepKey } from "@yhnocoder/markdown/ui";
+import { keepKey } from "../vscodekeys";
 import { cardTitle } from "@codeboard/core";
 import { state, cardById, shared } from "../../state/store";
 import { closePop } from "../../state/pop";

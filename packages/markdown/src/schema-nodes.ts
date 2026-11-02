@@ -364,7 +364,7 @@ export const Emoji = Node.create({
   },
 });
 
-// 存成 [[标题]]：可读，复制到别处也能按标题找。指向什么由用的一方定（setRefResolver、编辑器的 refs）。
+// 存成 [[标题]]：可读，复制到别处也能按标题找。指向什么由用的一方定（Markdown 实例的 refs、编辑器的 refs）。
 export const WikiRef = Node.create({
   name: "wikiRef",
   group: "inline",

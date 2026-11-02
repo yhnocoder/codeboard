@@ -9,6 +9,8 @@ import { loadCm, cmNow, lspHost, ghostHost, nearSeg, hostHighlight, BOARD_CLASSE
 import type { CodeEditor } from "@yhnocoder/markdown/code-editor";
 import { lastDown } from "../state/measure";
 import { takeEditEntry } from "../state/ui";
+import { useMd } from "../md/context";
+import { vscodeKey } from "../ui/vscodekeys";
 
 export type FreeEditCtl = { text(): string; focus(): void; el: HTMLElement };
 
@@ -19,6 +21,7 @@ export function FreeEdit(p: {
   onExit: (text: string) => void;
 }) {
   let box!: HTMLDivElement;
+  const md = useMd();
   const seg = () => p.card().segments[0];
   const v0: SegView | undefined = state.views[seg().id];
   const [ed, setEd] = createSignal<CodeEditor | null>(null);
@@ -30,6 +33,7 @@ export function FreeEdit(p: {
   const make = (m: typeof import("@yhnocoder/markdown/code-editor")) => {
     if (gone) return;
     const lsp = lspHost(
+      md,
       id,
       () => seg().lang,
       () => nearSeg(p.card().id, seg().lang),
@@ -49,6 +53,7 @@ export function FreeEdit(p: {
       ghost: ghostHost(),
       find: true, // ⌘F 查找、⌥⌘F 替换
       classes: BOARD_CLASSES,
+      passKeys: vscodeKey,
       onExit: () => p.onExit(e.text()),
       onBlur: (ev) => p.onBlur(ev, { text: () => e.text(), focus: () => e.view.focus(), el: e.view.contentDOM }),
     });

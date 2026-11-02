@@ -5,15 +5,17 @@ import { parseSource } from "../schema";
 import { splitMath, type MathToken } from "../schema-nodes";
 import { dollarBrackets, pairBrackets } from "../brackets";
 import { undoubleTex } from "../doubled";
+import type { MathPreamble } from "../math";
 
-/** slice 里字中的 $…$ / $$…$$、\( … \) / \[ … \] 变成公式；一段只有一个 $$…$$（或几行 $$ … $$、\[ … \]）的变成公式块。没变返回 null */
-export function mathInSlice(slice: Slice, schema: Schema): Slice | null {
+/** slice 里字中的 $…$ / $$…$$、\( … \) / \[ … \] 变成公式；一段只有一个 $$…$$（或几行 $$ … $$、\[ … \]）的变成公式块（"显示的字 + TeX" 按 tex 的预设认）。
+ *  没变返回 null */
+export function mathInSlice(slice: Slice, schema: Schema, tex: MathPreamble): Slice | null {
   let changed = false;
   const walk = (f: Fragment, cell: boolean): Fragment => {
     const out: PMNode[] = [];
     f.forEach((n) => {
       if (n.isTextblock) {
-        const m = n.type.spec.code ? n : mathInBlock(n, schema, cell);
+        const m = n.type.spec.code ? n : mathInBlock(n, schema, cell, tex);
         if (m !== n) changed = true;
         out.push(m);
       } else out.push(n.isLeaf ? n : n.copy(walk(n.content, cell || /cell/.test(n.type.spec.tableRole ?? ""))));
@@ -24,7 +26,7 @@ export function mathInSlice(slice: Slice, schema: Schema): Slice | null {
   return changed ? new Slice(content, slice.openStart, slice.openEnd) : null;
 }
 
-function mathInBlock(b: PMNode, schema: Schema, cell: boolean): PMNode {
+function mathInBlock(b: PMNode, schema: Schema, cell: boolean, tex: MathPreamble): PMNode {
   if (!/[$\\^_]/.test(b.textContent)) return b;
   const math = schema.nodes.inlineMath,
     block = schema.nodes.blockMath;
@@ -44,7 +46,7 @@ function mathInBlock(b: PMNode, schema: Schema, cell: boolean): PMNode {
   let prev = "",
     changed = false;
   b.forEach((c) => {
-    const src = c.isText && !c.marks.some((m) => m.type.spec.code) ? undoubleTex(c.text!) : "";
+    const src = c.isText && !c.marks.some((m) => m.type.spec.code) ? undoubleTex(c.text!, tex) : "";
     if (!src.includes("$") && !src.includes("\\")) {
       out.push(c);
       prev = c.isText ? c.text!.slice(-1) : "";

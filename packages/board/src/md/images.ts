@@ -2,16 +2,16 @@
 // 显示、编辑时换成宿主给的 webview 资源地址（host.assetBase，和 Image 卡同一个目录）；文件名里的宽高交给渲染器先留好位置。
 // 别的地址（网址、手打的别处的路径）照原样
 import DOMPurify from "dompurify";
-import { setImageResolver } from "@yhnocoder/markdown";
+import type { Markdown } from "@yhnocoder/markdown";
 import { ask } from "../host";
 import { toast } from "../state/toast";
 
 const SIZED = /-(\d{1,5})x(\d{1,5})\.(?:png|jpg|webp|gif|svg)$/;
 let base: string | undefined;
-export function setNoteAssets(b: string) {
+export function setNoteAssets(md: Markdown, b: string) {
   if (b === base) return;
   base = b;
-  setImageResolver((src) => {
+  md.setImageResolver((src) => {
     if (!src.startsWith("assets/")) return undefined;
     const name = src.slice(7),
       m = SIZED.exec(name);

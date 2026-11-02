@@ -12,6 +12,7 @@ import { codeEditor, Decoration, EditorView } from "../cm/editor";
 import { layoutOf, sourceDoc, sourceMd, withLayout } from "./srcdoc";
 import { blockInfo, flat } from "./spans";
 import { revealMeta } from "./inline";
+import { mdOf } from "./md";
 
 export type SourceMode = {
   text(): string;
@@ -186,6 +187,7 @@ export function sourceMode(
     onExit: () => o.exit(),
     onBlur: (e) => o.blur(e),
     extensions: [srcHighlight],
+    passKeys: mdOf(editor.state).passKeys,
   });
   cm.view.dispatch({ selection: { anchor: Math.min(at, md.length) }, scrollIntoView: true });
   cm.focus();

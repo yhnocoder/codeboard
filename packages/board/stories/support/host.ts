@@ -3,7 +3,7 @@
 // 再问各块小样登记的（reply()，按段 id、按词各管各的，互不重叠），最后是这里的默认回答。
 // 哪一层返回 PASS 就问下一层；所以回答不看之前点过哪些 story、加载过哪些模块
 import { onCleanup } from "solid-js";
-import type { AskType, BoardToHost, Commit, SegView } from "@codeboard/core";
+import type { AskType, BoardToHost, Commit, HostToBoard, SegView } from "@codeboard/core";
 import type { Transport } from "../../src/host";
 import code from "../fixtures/code.json";
 import NOTE_HTML from "../fixtures/notecode.json";
@@ -109,5 +109,11 @@ export const transport: Transport = {
       }
     })();
   },
-  listen: (fn) => window.addEventListener("message", (e) => fn(e.data)),
+  listen: (fn) => {
+    toBoard = fn;
+    window.addEventListener("message", (e) => fn(e.data));
+  },
 };
+let toBoard: ((m: unknown) => void) | undefined;
+/** The host says m: handed to the board at once, the way the transport passes a message on */
+export const fromHost = (m: HostToBoard) => toBoard?.(m);

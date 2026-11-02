@@ -1,5 +1,6 @@
 // 数据都由宿主走 GitHub REST API 拿（私有仓库用 VS Code 的 GitHub 登录，被拒时才请用户登录）。
-import { keepKey, scrollIntoBox } from "@yhnocoder/markdown/ui";
+import { scrollIntoBox } from "@yhnocoder/markdown/ui";
+import { keepKey } from "./vscodekeys";
 import { For, Show, createMemo, createSignal, onMount, batch } from "solid-js";
 import {
   baseName,

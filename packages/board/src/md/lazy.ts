@@ -5,10 +5,10 @@
 // - 空闲时：其余的由近到远补完（镜头在动时每段最多 3ms，免得挤进平移、缩放的帧）
 import { createEffect, createRoot, on, untrack } from "solid-js";
 import { cam, camMoving } from "../state/camera";
-import { renderMd, renderMdInline, mdCached, hydrate, applyMdLayout, type MdLayout } from "@yhnocoder/markdown";
+import { applyMdLayout, type Markdown, type MdLayout } from "@yhnocoder/markdown";
 import { escHtml } from "@codeboard/core";
 
-type Job = { el: HTMLElement; src: string; inline?: boolean; layout?: MdLayout | null };
+type Job = { md: Markdown; el: HTMLElement; src: string; inline?: boolean; layout?: MdLayout | null };
 const pending = new Map<HTMLElement, Job>();
 let idleOn = false,
   frameOn = false;
@@ -44,10 +44,10 @@ function inView(el: HTMLElement) {
   return l + w * cam.z > 0 && l < window.innerWidth && t + hh * cam.z > 0 && t < window.innerHeight;
 }
 function paint(j: Job) {
-  const h = j.inline ? renderMdInline(j.src) : renderMd(j.src);
+  const h = j.inline ? j.md.renderInline(j.src) : j.md.render(j.src);
   j.el.classList.remove("md-pend");
   j.el.innerHTML = h;
-  hydrate(j.el, h);
+  j.md.hydrate(j.el, h);
   // table widths, row heights and code wrap are card data, not Markdown: put onto the shared cached HTML here
   if (!j.inline) applyMdLayout(j.el, j.layout);
 }
@@ -143,12 +143,12 @@ export function flushMd() {
   for (const j of [...pending.values()]) run(j);
 }
 
-/** 渲染进 el（远处的、没缓存的排队，见上） */
-export function mdInto(el: HTMLElement, src: string, inline?: boolean, layout?: MdLayout | null) {
-  const j: Job = { el, src, inline, layout };
+/** md 渲染进 el（远处的、没缓存的排队，见上） */
+export function mdInto(md: Markdown, el: HTMLElement, src: string, inline?: boolean, layout?: MdLayout | null) {
+  const j: Job = { md, el, src, inline, layout };
   pending.delete(el);
   // 不跟踪镜头：镜头动了不该让每个 Note 的 effect 重跑
-  if (!inline && !mdCached(src) && src.trim() && untrack(() => offView(el)) >= 0) {
+  if (!inline && !md.isCached(src) && src.trim() && untrack(() => offView(el)) >= 0) {
     // 占位：原文撑出差不多的高度，但藏着
     el.classList.add("md-pend");
     el.innerHTML = `<p>${escHtml(src)}</p>`;

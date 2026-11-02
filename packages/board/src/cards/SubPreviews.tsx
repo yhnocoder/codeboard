@@ -5,7 +5,7 @@
 import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "solid-js";
 import { createStore } from "solid-js/store";
 import { escHtml, isCode, type BoardCard, type Card, type SkelCard, type SubCard } from "@codeboard/core";
-import { observeResize } from "@yhnocoder/markdown/ui";
+import { observeResize } from "../state/measure";
 import { cam } from "../state/camera";
 import { DRAG_SLOP, track } from "../gesture";
 import {

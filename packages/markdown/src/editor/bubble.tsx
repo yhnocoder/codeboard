@@ -10,6 +10,7 @@ import { place, virtual } from "../ui/place";
 import { TOOLBAR_SETTLE } from "../ui/timing";
 import { IS_MAC } from "../ui/platform";
 import { kindClass } from "../ui/classes";
+import { mdOf } from "./md";
 import type { Ui } from "./ui";
 
 const isInside = (e: Editor, t: EventTarget | null) =>
@@ -305,7 +306,7 @@ export function Bubble(p: { editor: Editor; tick: Accessor<number>; ui: Ui }) {
                   })
                 }
                 onKeyDown={(ev) => {
-                  keepKey(ev);
+                  keepKey(ev, mdOf(e.state).passKeys);
                   if (ev.key === "Enter") {
                     ev.preventDefault();
                     applyLink(ev.currentTarget.value);
@@ -338,7 +339,7 @@ export function Bubble(p: { editor: Editor; tick: Accessor<number>; ui: Ui }) {
                 previewAnnot(ev.currentTarget.value);
               }}
               onKeyDown={(ev) => {
-                keepKey(ev);
+                keepKey(ev, mdOf(e.state).passKeys);
                 if (ev.key === "Enter" && !ev.isComposing) {
                   ev.preventDefault();
                   applyAnnot(ev.currentTarget.value);

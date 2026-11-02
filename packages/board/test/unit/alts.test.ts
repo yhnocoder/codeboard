@@ -3,10 +3,9 @@
 // decided by its file as well as its qual (a DispatchStub's CUDA and CPU kernels are often both at::native::add_kernel)
 import { afterAll, describe, expect, it } from "vitest";
 import { DEFAULT_SETTINGS, emptyBoard, type BoardToHost, type Card, type HostInfo, type Link } from "@codeboard/core";
-import { onHost } from "../../src/hostio";
 import { state } from "../../src/state/store";
 import { altsOf, pickImpl } from "../../src/actions/chains";
-import { sent } from "./host";
+import { sent, fromHost } from "./host";
 
 const HOST: HostInfo = { assetBase: "", target: true, settings: DEFAULT_SETTINGS };
 const CUDA = "build/aten/src/ATen/UfuncCUDA_add.cu",
@@ -54,7 +53,7 @@ function load(links: Link[], cards: Card[]) {
   }
   board.seq = cards.length + 1;
   board.links.push(...links);
-  onHost({
+  fromHost({
     type: "init",
     board,
     boards: [{ id: "alts", name: "alts", cards: board.cards.length }],

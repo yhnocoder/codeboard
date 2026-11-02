@@ -5,7 +5,7 @@ import { emptyBoard } from "@codeboard/core";
 import { Stage, scene, noteCard, codeCard, type Globals, type Scene } from "./support/board";
 import { settled, hover, key, el, frames, click } from "./support/play";
 import { SHORT, TITLED, changed } from "./support/groups";
-import { onHost } from "../src/hostio";
+import { fromHost } from "./support/host";
 import { setLoaded } from "../src/state/store";
 import { select } from "../src/state/selection";
 import { toast } from "../src/state/toast";
@@ -38,7 +38,7 @@ function board(a: Args): Scene {
 }
 
 // 面包屑由宿主在 init 里带来；Stage 的 init 不带，所以紧跟着发一条 crumbs
-const crumbs = (n: number) => onHost({ type: "crumbs", crumbs: PARENTS.slice(0, n) });
+const crumbs = (n: number) => fromHost({ type: "crumbs", crumbs: PARENTS.slice(0, n) });
 
 const meta = {
   title: "UI/Chrome",

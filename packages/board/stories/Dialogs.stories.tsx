@@ -2,11 +2,10 @@
 // 能走真路径的都走真路径（菜单、横幅、宿主发来的消息）；Custom 直接调 choose，用 Controls 调标题、说明、提醒、按钮数
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import { Stage, scene, noteCard, codeCard, type Globals, type Scene } from "./support/board";
-import { VIEWS } from "./support/host";
+import { VIEWS, fromHost } from "./support/host";
 import { settled, click, frames } from "./support/play";
 import { SHORT, changed } from "./support/groups";
 import { toolbar, menuItem, menu, cardMenu } from "./support/ui";
-import { onHost } from "../src/hostio";
 import { choose } from "../src/ui/Menu";
 import type { BoardAsk } from "@codeboard/core";
 
@@ -20,7 +19,7 @@ function board(): Scene {
 }
 // c1 是共享卡：在三块白板上
 const shared = () =>
-  onHost({
+  fromHost({
     type: "sharedInfo",
     cards: {
       c1: {
@@ -129,7 +128,11 @@ export const SplitSelection: Story = {
   play: async () => {
     await settled();
     const c = codeCard("add1", "schedule");
-    onHost({ type: "add", cards: [{ card: c, views: { [c.segments[0].id]: VIEWS[c.segments[0].id] } }], ask: "split" });
+    fromHost({
+      type: "add",
+      cards: [{ card: c, views: { [c.segments[0].id]: VIEWS[c.segments[0].id] } }],
+      ask: "split",
+    });
   },
 };
 
@@ -137,7 +140,7 @@ export const SplitSelection: Story = {
 let askN = 0;
 const ask = (a: BoardAsk) => async () => {
   await settled();
-  onHost({ type: "ask", id: ++askN, ask: a });
+  fromHost({ type: "ask", id: ++askN, ask: a });
 };
 export const CaptureRun: Story = {
   name: "Capture Run (Text, From the Host)",

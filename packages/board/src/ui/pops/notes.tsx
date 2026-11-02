@@ -1,4 +1,4 @@
-import { keepKey } from "@yhnocoder/markdown/ui";
+import { keepKey } from "../vscodekeys";
 import { For, Show, Switch, Match, createSignal, createEffect } from "solid-js";
 import {
   cardTitle,

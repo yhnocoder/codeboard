@@ -1,12 +1,14 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
-import { renderMd } from "../src/render";
+import { createMarkdown } from "../src/markdown";
 import { staticTextRange, staticDomRange } from "../src/selmap";
 import { toggleStaticMark, staticMarkActive } from "../src/marks";
 
+const markdown = createMarkdown();
+
 function rangeOf(md: string, word: string, i = 0) {
   const root = document.createElement("div");
-  root.innerHTML = renderMd(md);
+  root.innerHTML = markdown.render(md);
   document.body.append(root);
   const text = root.textContent!;
   let at = -1;
@@ -51,7 +53,7 @@ describe("marks on a static selection", () => {
     const { r } = rangeOf(md, "brave", 0);
     const next = toggleStaticMark(md, r, "bold")!;
     const root = document.createElement("div");
-    root.innerHTML = renderMd(next);
+    root.innerHTML = markdown.render(next);
     const dom = staticDomRange(root, r.from, r.to)!;
     expect(dom.toString()).toBe("brave");
     expect(staticTextRange(root, dom)).toEqual(r);

@@ -12,6 +12,7 @@ import { editorExtensions } from "./extensions";
 import { handlePaste } from "./paste";
 import { bodyEnd, padEnd } from "./pad";
 import type { MdEditorOpts } from "./types";
+import { coreOf, type Markdown, type Md } from "../markdown";
 
 export type Sess = {
   o: MdEditorOpts;
@@ -28,18 +29,19 @@ type Inst = {
   prepared?: string;
   host?: HTMLElement;
 };
-let pool: Inst | undefined;
+/** The instance's kept editor (one per Markdown instance: its extensions read that instance) */
+const poolOf = (md: Md) => md.editorPool as Inst | undefined;
 
 /** The editor for a new session: the kept one, unless it is busy (the hand-over between two sessions) or its drag handle
  *  differs, then one built for this session (pooled = it is the kept one) */
-export function takeInst(dragHandle: boolean): { inst: Inst; pooled: boolean } {
-  if (!pool) pool = makeInst(dragHandle);
-  const inst = pool.sess || pool.dragHandle !== dragHandle ? makeInst(dragHandle) : pool;
+export function takeInst(md: Md, dragHandle: boolean): { inst: Inst; pooled: boolean } {
+  const pool = poolOf(md) ?? (md.editorPool = makeInst(md, dragHandle));
+  const inst = pool.sess || pool.dragHandle !== dragHandle ? makeInst(md, dragHandle) : pool;
   return { inst, pooled: inst === pool };
 }
 
 /** dragHandle：带不带拖动把手（扩展在建编辑器时就定下了，带和不带的是两个编辑器） */
-function makeInst(dragHandle = false): Inst {
+function makeInst(md: Md, dragHandle = false): Inst {
   const box = document.createElement("div");
   box.style.display = "contents";
   let handle: HTMLElement | null = null;
@@ -58,6 +60,7 @@ function makeInst(dragHandle = false): Inst {
   inst.editor = new Editor({
     element: box,
     extensions: editorExtensions(
+      md,
       o,
       () => inst.editor,
       handle,
@@ -133,8 +136,9 @@ export function caretAt(e: Editor, pos: number) {
     back && fwd ? ($p.pos - back.head <= fwd.head - $p.pos ? back : fwd) : (back ?? fwd ?? Selection.near($p, -1));
   e.view.dispatch(e.state.tr.setSelection(near));
 }
-export function prepare(value: string, layout?: MdLayout | null) {
-  const inst = pool,
+/** Prepare md's kept editor for value (see above) */
+export function prepare(md: Markdown, value: string, layout?: MdLayout | null) {
+  const inst = poolOf(coreOf(md)),
     key = prepKey(value, layout);
   if (!inst || inst.sess || inst.prepared === key) return;
   try {
@@ -147,11 +151,12 @@ export function prepare(value: string, layout?: MdLayout | null) {
 }
 const SAMPLE =
   "## a\n\ntext **b** `c` $x$ [[d]][^1]\n\n- [ ] t\n\n```python\ndef f(): pass\n```\n\n$$\nx\n$$\n\n| a | b |\n| - | - |\n| 1 | 2 |\n\n<details>\n<summary>s</summary>\n\nb\n\n</details>\n\n[^1]: n";
-/** 预热：空闲时建好那一个编辑器，屏幕外画一遍各种节点（编译、各插件第一次初始化） */
-export function warmUp(extra?: string) {
-  if (pool) return;
+/** 预热：空闲时建好 md 的那一个编辑器，屏幕外画一遍各种节点（编译、各插件第一次初始化） */
+export function warmUp(md: Markdown, extra?: string) {
+  const core = coreOf(md);
+  if (poolOf(core)) return;
   try {
-    const inst = makeInst();
+    const inst = makeInst(core);
     const host = document.createElement("div");
     host.style.cssText = "position:fixed;left:-10000px;top:0;width:400px;visibility:hidden;contain:strict";
     document.body.append(host);
@@ -167,7 +172,7 @@ export function warmUp(extra?: string) {
     e.view.focus();
     inst.box.remove();
     host.remove();
-    pool = inst;
+    core.editorPool = inst;
   } catch {
     /* 预热失败不要紧，第一次编辑时再建 */
   }

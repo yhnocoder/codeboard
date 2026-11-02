@@ -34,7 +34,7 @@ import {
 } from "@codemirror/autocomplete";
 import { lspExtensions, dismissSig, type LspHost } from "./lsp";
 import { ghostExtension, acceptGhost, dropGhost, type GhostHost } from "./ghost";
-import { keepKey } from "../ui/editkeys";
+import { keepKey, type PassKeys } from "../ui/editkeys";
 import { closeFind, findExtension } from "./find";
 import type { MdClasses } from "../ui/classes";
 
@@ -280,6 +280,8 @@ export type CodeEditorOpts = {
   find?: boolean;
   /** The page's classes for the find bar and its buttons (MdClasses) */
   classes?: MdClasses;
+  /** Unhandled keys that still bubble out of the editor to the page (keepKey) */
+  passKeys?: PassKeys;
   /** 额外的按键（优先），比如 Note 里方向键走出代码块 */
   keys?: KeyBinding[];
   /** 自己的撤销（Note 里的代码块用 ProseMirror 的撤销：false） */
@@ -428,6 +430,7 @@ export function codeEditor(o: CodeEditorOpts): CodeEditor {
             if (!exited) o.onBlur?.(e);
           },
           classes: o.classes,
+          passKeys: o.passKeys,
         })
       : []),
     // 根元素的 class 走 editorAttributes：CodeMirror 焦点一变就重写整个 class 属性，classList.add 加的会被抹掉
@@ -443,7 +446,7 @@ export function codeEditor(o: CodeEditorOpts): CodeEditor {
     dispatchTransactions: o.dispatch ? (trs, v) => o.dispatch!(trs, v) : undefined,
   });
   // 冒泡到这里时 CodeMirror 已经处理过（preventDefault 过的是它做了的）：按键不再往白板冒；按下不让白板当成拖卡片
-  view.dom.addEventListener("keydown", keepKey);
+  view.dom.addEventListener("keydown", (e) => keepKey(e, o.passKeys));
   if (o.stopPointerDown) view.dom.addEventListener("pointerdown", (e) => e.stopPropagation());
   view.contentDOM.addEventListener("blur", (e) => {
     if (completionStatus(view.state)) closeCompletion(view);

@@ -16,7 +16,7 @@ import {
 import { settled, rightClick, rightClickLink, key, el, forceHover } from "./support/play";
 import { SHORT, ONE } from "./support/groups";
 import { cardMenu, menuItem, menuButton, menu } from "./support/ui";
-import { onHost } from "../src/hostio";
+import { fromHost } from "./support/host";
 
 type Args = { locked: boolean; fixedHeight: boolean; shared: boolean; clip: boolean; boards: boolean };
 
@@ -102,7 +102,7 @@ function board(a: Args): Scene {
 // 共享卡（⧉ N boards）、别的白板上复制的卡（Paste as Linked Card）、侧栏里的别的白板（Insert Board ▸）：都是宿主发来的
 function extras(a: Args) {
   if (a.shared)
-    onHost({
+    fromHost({
       type: "sharedInfo",
       cards: {
         code: {
@@ -115,9 +115,9 @@ function extras(a: Args) {
         },
       },
     });
-  if (a.clip) onHost({ type: "host", host: { clip: { board: "b-engine", n: 2 } } });
-  else onHost({ type: "host", host: { clip: undefined } });
-  onHost({
+  if (a.clip) fromHost({ type: "host", host: { clip: { board: "b-engine", n: 2 } } });
+  else fromHost({ type: "host", host: { clip: undefined } });
+  fromHost({
     type: "boards",
     boards: [
       { id: "sb", name: "KV cache 调度", cards: 12 },

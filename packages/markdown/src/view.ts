@@ -1,22 +1,15 @@
-import { colorCode } from "./code";
-import { missingImage } from "./image";
-
 /** [[标题]] 指向的东西（白板上是卡）。badge = 标在标题后面的小字（白板：在别的白板上的卡写那块白板的名字），place = 它在哪（点的时候交给 openRef） */
 export type RefTarget = { id: string; title: string; badge?: string; place?: string };
 /** 认得出指的是哪儿、但已经找不到了：item = 那里已经没有这一项（灰、划掉），place = 那个地方本身没了（警告色）。why = 悬停的提示 */
 export type RefBroken = { broken: "item" | "place"; title: string; badge?: string; why?: string };
-type Ref = RefTarget | RefBroken | null;
-let resolve: (label: string) => Ref = () => null;
-let missing = "Nothing with this title";
-/** 接上 [[标题]] 怎么找目标；missing：找不到时的提示 */
-export const setRefResolver = (f: (label: string) => Ref, o: { missing?: string } = {}) => {
-  resolve = f;
-  if (o.missing) missing = o.missing;
-};
+/** [[标题]] 怎么找目标；missing：找不到时的提示 */
+export type Refs = { resolve: (label: string) => RefTarget | RefBroken | null; missing?: string };
+const MISSING = "Nothing with this title";
 
-/** 按现在能找到的把一个 [[引用]]（.md-ref）画出来：标题（和 badge），找不到时的样子和提示。数据晚到（别的白板的卡）时用的一方再调一次 */
-export function paintRef(r: HTMLElement) {
-  const hit = resolve(r.dataset.ref ?? "");
+/** 按现在能找到的把一个 [[引用]]（.md-ref）画出来：标题（和 badge），找不到时的样子和提示 */
+export function paintRef(r: HTMLElement, refs: Refs) {
+  const hit = refs.resolve(r.dataset.ref ?? ""),
+    missing = refs.missing || MISSING;
   const broken = hit && "broken" in hit ? hit.broken : undefined;
   r.classList.toggle("missing", !hit || broken === "item");
   r.classList.toggle("gone", broken === "place");
@@ -42,21 +35,6 @@ export function paintRef(r: HTMLElement) {
   r.replaceChildren(a, b);
 }
 
-/** Addresses that failed to load: drawn as the placeholder at once next time (no broken image in between) */
-const failedImages = new Set<string>();
-/** An image that could not load: a quiet line in its place (the alt text, or the address), not the browser's broken icon */
-export function imageFailed(img: HTMLImageElement) {
-  const src = img.getAttribute("src") ?? "";
-  if (src) failedImages.add(src);
-  img.replaceWith(missingImage(img.alt, src));
-}
-export const imageFailedBefore = (src: string | null) => !!src && failedImages.has(src);
-const onImageError = (e: Event) => {
-  if (e.target instanceof HTMLImageElement && e.target.closest(".md")) imageFailed(e.target);
-};
-const watched = new WeakSet<HTMLElement>();
-
-/** renderMd 的 HTML 用 innerHTML 放进 el 以后调用：认 [[引用]]、代码块着色、Mermaid 换成图、摆批注标签 */
 /**
  * A copy's formulas as their TeX: each typeset formula in root (a copied fragment, never the page) becomes its $TeX$ ($$TeX$$ for a
  * display one) inside the same .katex element, which keeps data-latex. Another app gets the TeX as text; our paste reads data-latex.
@@ -69,7 +47,7 @@ export function texForCopy(root: ParentNode) {
   }
 }
 /** A copy from the static render: a selection that cuts into a formula takes all of it, and every formula goes as its TeX */
-function copyTex(e: ClipboardEvent) {
+export function copyTex(e: ClipboardEvent) {
   const sel = getSelection(),
     el = e.currentTarget as HTMLElement;
   if (!sel?.rangeCount || !e.clipboardData) return;
@@ -94,87 +72,68 @@ function plainOf(box: HTMLElement) {
     b.after(/^(LI|TR)$/.test(b.tagName) ? "\n" : "\n\n");
   return (box.textContent ?? "").replace(/\n{3,}/g, "\n\n").trim();
 }
-const copying = new WeakSet<HTMLElement>();
-
-export function hydrate(el: HTMLElement, html: string) {
-  if (html.includes("data-latex") && !copying.has(el)) {
-    copying.add(el);
-    el.addEventListener("copy", copyTex);
-  }
-  if (html.includes("<img")) {
-    // error does not bubble: caught on the way down
-    if (!watched.has(el)) {
-      watched.add(el);
-      el.addEventListener("error", onImageError, true);
-    }
-    for (const img of el.querySelectorAll("img"))
-      if (imageFailedBefore(img.getAttribute("src")) || (img.complete && !img.naturalWidth && img.getAttribute("src")))
-        imageFailed(img);
-  }
-  if (html.includes('class="md-ref"')) for (const r of el.querySelectorAll<HTMLElement>(".md-ref")) paintRef(r);
-  if (html.includes(" data-lang=")) colorCode(el);
-  if (html.includes('class="mmd"')) void import("./diagram").then((m) => m.renderAll(el));
-  if (html.includes('class="md-annot"')) fitAnnots(el);
-}
-
 /*
  * {字|批注} 的标签（.md-annot-n）靠 CSS 居中在被标的字上面；这里只把居中后超出所在块（段落、列表项、格子）左右的挪回块里（--ax，左边优先）。
  * 宽度、位置都用 offset* 量（不受镜头缩放、滚动和 --ax 的 transform 影响）。先全部量完再一起写，不来回排版。
  * 字体（中文字体按 unicode-range 才下载）、公式的字体到得晚，标签变宽时 ResizeObserver 再量一次；块变宽变窄（卡片改宽）也一样
  */
-let sized: ResizeObserver | undefined;
-const rootOf = new WeakMap<Element, HTMLElement>();
 const BLOCK = "p, li, td, th, h1, h2, h3, h4, h5, h6, summary";
-function fitAnnots(el: HTMLElement) {
-  if (!el.isConnected) {
-    if (typeof requestAnimationFrame === "function")
-      requestAnimationFrame(() => {
-        if (el.isConnected) fitAnnots(el);
-      });
-    return;
-  }
-  if (typeof ResizeObserver === "function")
-    sized ??= new ResizeObserver((es) => {
-      const todo = new Set<HTMLElement>();
-      for (const e of es) {
-        const t = e.target as HTMLElement,
-          root = rootOf.get(t) ?? t;
-        if (!t.isConnected || !root.isConnected || !root.querySelector(".md-annot")) sized!.unobserve(t);
-        else todo.add(root);
-      }
-      for (const r of todo) fitAnnots(r);
-    });
-  sized?.observe(el);
-  const out: [HTMLElement, number][] = [];
-  for (const a of el.querySelectorAll<HTMLElement>(".md-annot")) {
-    const n = a.querySelector<HTMLElement>(":scope > .md-annot-n");
-    if (!n) continue;
-    if (rootOf.get(n) !== el) {
-      rootOf.set(n, el);
-      sized?.observe(n);
+/** The annotations' fitting of one Markdown instance: one ResizeObserver for all its roots */
+export class AnnotFit {
+  private sized: ResizeObserver | undefined;
+  private rootOf = new WeakMap<Element, HTMLElement>();
+  fit(el: HTMLElement) {
+    if (!el.isConnected) {
+      if (typeof requestAnimationFrame === "function")
+        requestAnimationFrame(() => {
+          if (el.isConnected) this.fit(el);
+        });
+      return;
     }
-    const block = a.parentElement?.closest<HTMLElement>(BLOCK) ?? el;
-    if (a.offsetParent !== block.offsetParent && a.offsetParent !== block) continue;
-    const left = a.offsetParent === block ? a.offsetLeft : a.offsetLeft - block.offsetLeft;
-    const w = n.offsetWidth,
-      from = left + (a.offsetWidth - w) / 2; // 居中时标签左边在块里的位置
-    const room = block.clientWidth;
-    let ax = from + w > room ? room - (from + w) : 0;
-    if (from + ax < 0) ax = -from;
-    out.push([a, Math.round(ax * 2) / 2]);
+    if (typeof ResizeObserver === "function")
+      this.sized ??= new ResizeObserver((es) => {
+        const todo = new Set<HTMLElement>();
+        for (const e of es) {
+          const t = e.target as HTMLElement,
+            root = this.rootOf.get(t) ?? t;
+          if (!t.isConnected || !root.isConnected || !root.querySelector(".md-annot")) this.sized!.unobserve(t);
+          else todo.add(root);
+        }
+        for (const r of todo) this.fit(r);
+      });
+    this.sized?.observe(el);
+    const out: [HTMLElement, number][] = [];
+    for (const a of el.querySelectorAll<HTMLElement>(".md-annot")) {
+      const n = a.querySelector<HTMLElement>(":scope > .md-annot-n");
+      if (!n) continue;
+      if (this.rootOf.get(n) !== el) {
+        this.rootOf.set(n, el);
+        this.sized?.observe(n);
+      }
+      const block = a.parentElement?.closest<HTMLElement>(BLOCK) ?? el;
+      if (a.offsetParent !== block.offsetParent && a.offsetParent !== block) continue;
+      const left = a.offsetParent === block ? a.offsetLeft : a.offsetLeft - block.offsetLeft;
+      const w = n.offsetWidth,
+        from = left + (a.offsetWidth - w) / 2; // 居中时标签左边在块里的位置
+      const room = block.clientWidth;
+      let ax = from + w > room ? room - (from + w) : 0;
+      if (from + ax < 0) ax = -from;
+      out.push([a, Math.round(ax * 2) / 2]);
+    }
+    for (const [a, ax] of out) a.style.setProperty("--ax", `${ax}px`);
   }
-  for (const [a, ax] of out) a.style.setProperty("--ax", `${ax}px`);
 }
 
 /**
  * 静态 Markdown 上的点击：链接交给 openLink（页面自己不跳转），引用交给 openRef，勾选框改原文交给 onToggle（不给就勾不了）。
  * 处理了返回 true
  */
-export function mdClick(
-  e: MouseEvent,
-  src: string,
-  o: { openLink: (u: string) => void; openRef: (id: string, to: RefTarget) => void; onToggle?: (next: string) => void },
-): boolean {
+export type ClickOpts = {
+  openLink: (u: string) => void;
+  openRef: (id: string, to: RefTarget) => void;
+  onToggle?: (next: string) => void;
+};
+export function mdClick(e: MouseEvent, src: string, o: ClickOpts, refs: Refs): boolean {
   const t = e.target as HTMLElement;
   const a = t.closest?.("a.md-link") as HTMLElement | null;
   if (a?.dataset.href) {
@@ -187,7 +146,7 @@ export function mdClick(
   if (r) {
     e.preventDefault();
     e.stopPropagation();
-    const hit = resolve(r.dataset.ref ?? "");
+    const hit = refs.resolve(r.dataset.ref ?? "");
     if (hit && !("broken" in hit)) o.openRef(hit.id, hit);
     return true;
   }
