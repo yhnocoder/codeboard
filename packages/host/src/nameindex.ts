@@ -309,7 +309,7 @@ export class NameIndex implements Disposable {
     this.sigs.clear();
     this.listing = undefined;
     this.running = undefined;
-    this.cx.wsPkgs.clear();
+    this.cx.pkgs.forget();
     this.cx.ops.reset();
     if (this.wanted) this.start(1000);
   }
@@ -322,11 +322,11 @@ export class NameIndex implements Disposable {
         if (abs) this.changedFile(abs);
       }),
       files.onDidCreate((ps) => {
-        this.cx.wsPkgs.clear();
+        this.cx.pkgs.forget();
         for (const p of ps) this.changedFile(p);
       }),
       files.onDidDelete((ps) => {
-        this.cx.wsPkgs.clear();
+        this.cx.pkgs.forget();
         for (const p of ps) this.removedPath(p);
       }),
       files.onDidRename((rs) => {

@@ -2,18 +2,16 @@
 // 纯语法判断，不依赖语言服务；「转到定义」由宿主问 VS Code。
 // Python 系（含 Triton、TileLang）用 python 语法；C / C++ / CUDA 用 cpp 语法，载入的是 tree-sitter-cuda（C++ 加上 <<<>>>、__global__ 等）。
 import type { Node, QueryCapture } from "@vscode/tree-sitter-wasm";
-import { languageOf, query, treeOf, type Edit, type Grammar } from "./tree";
+import { languageOf, query, treeOf, type Grammar, type TreeAt } from "./tree";
 import { grammarOf } from "./langs";
 import { F_BLANK, F_COMMENT, F_DOCSTRING } from "./basics";
 import type { Arg, CallSite, FileAnalysis, Param, Sym } from "./syms";
 export { grammarOf } from "./langs";
-export { initAnalysis, languageOf, diffEdit, forgetTree, setTreeCacheSize, type Edit } from "./tree";
+export { initAnalysis, languageOf, diffEdit, TreeCache, type Edit, type TreeAt } from "./tree";
 
 export type AnalyzeOpts = {
-  /** 文件的 key（通常是路径）：留着语法树，下次同一个 key 的文本变了就增量解析，没变就不再解析 */
-  key?: string;
-  /** 上次（同一个 key）的文本 → 这次文本的编辑；不给就按公共前后缀算 */
-  edit?: Edit;
+  /** 留着语法树的地方：下次同一个 key 的文本变了就增量解析，没变就不再解析 */
+  tree?: TreeAt;
   /**
    * 只要这几行（1-based，含两头）：calls、F_COMMENT / F_DOCSTRING 标记、trailing 只算这段，symbols 只给和这段相交的；
    * imports、mainBlocks、doc、F_BLANK 标记仍是整个文件的。结果等于 clipAnalysis(整文件分析, start, end)
@@ -28,7 +26,7 @@ export function analyze(lang: string, text: string, o: AnalyzeOpts = {}): FileAn
   const out: FileAnalysis = { lang, symbols: [], flags, trailing: {}, calls: [], mainBlocks: [], imports: [] };
   const g = grammarOf(lang);
   if (!g || !languageOf(g)) return out;
-  const { tree, owned } = treeOf(g, text, o.key, o.edit);
+  const { tree, owned } = treeOf(g, text, o.tree);
   const r = o.lines;
   try {
     const cx: Cx = { text, lines, out, r0: r ? r.start - 1 : 0, r1: r ? r.end - 1 : Infinity };

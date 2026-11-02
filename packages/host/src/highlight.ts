@@ -5,7 +5,7 @@
 import { createHighlighterCore, createCssVariablesTheme, type HighlighterCore, type LanguageInput } from "shiki/core";
 import { createJavaScriptRegexEngine } from "shiki/engine/javascript";
 import { grammarOf, langInfo, type Grammar } from "@codeboard/analysis/langs";
-import type { FileAnalysis } from "@codeboard/analysis";
+import type { FileAnalysis, TreeAt } from "@codeboard/analysis";
 import {
   escHtml,
   fingerprint,
@@ -78,7 +78,7 @@ function findIndex(all: string[], block: string[]) {
 
 export interface HighlightPort {
   /** Tree-sitter colours for a grammar the language table colours with tree-sitter; null when the parsers are not available */
-  treeLines(g: Grammar, text: string, file?: string): Promise<Tok[][] | null>;
+  treeLines(g: Grammar, text: string, tree?: TreeAt): Promise<Tok[][] | null>;
 }
 
 const TOK_CACHE = 60;
@@ -92,15 +92,15 @@ export class Highlighter {
 
   constructor(private port: HighlightPort) {}
 
-  /** Tokens per line. file = text is that file's whole text (at that version): tree-sitter reuses the analysis's tree of it */
-  tokensOf(lang: string, text: string, file?: string): Promise<Tok[][]> {
+  /** Tokens per line. tree = where the analysis keeps the tree of the file text is the whole of (at that version): tree-sitter reuses it */
+  tokensOf(lang: string, text: string, tree?: TreeAt): Promise<Tok[][]> {
     const g = langInfo(lang)?.highlight?.by === "tree-sitter" ? grammarOf(lang) : null;
     const sl = shikiLang(lang);
     if (!g && !sl) return Promise.resolve(plain(text));
     const k = `${g ? `ts:${g}` : sl}\0${text.length}\0${fingerprint(text)}`;
     let p = this.cache.get(k);
     if (p) this.cache.delete(k);
-    else p = g ? this.port.treeLines(g, text, file).then((t) => t ?? plain(text)) : this.tokenize(sl!, text);
+    else p = g ? this.port.treeLines(g, text, tree).then((t) => t ?? plain(text)) : this.tokenize(sl!, text);
     this.cache.set(k, p);
     if (this.cache.size > TOK_CACHE) this.cache.delete(this.cache.keys().next().value!);
     return p;
@@ -168,10 +168,12 @@ export interface SegSource {
   fileText(seg: Segment): Promise<string | null>;
   /** The file as it is now (a snippet's imports come from it); null = none */
   currentText(seg: Segment): Promise<string | null>;
-  /** The segment's file on disk, the analysis's and tree-sitter's cache key */
+  /** The segment's file on disk */
   fileOf(seg: Segment): string | null;
+  /** Where the analysis and tree-sitter keep the tree of a file's text; none = each text is parsed afresh */
+  treeAt?(file: string): TreeAt;
   /** Analysis of text; with a range, only the calls and marks inside it are needed (plus the whole file's imports) */
-  analyze(lang: string, text: string, range?: { start: number; end: number }, file?: string): FileAnalysis;
+  analyze(lang: string, text: string, range?: { start: number; end: number }, tree?: TreeAt): FileAnalysis;
   /** Which package each call goes to (shown on the call); none = no packages */
   callPkgs?(
     seg: Segment,
@@ -189,9 +191,10 @@ export async function segViewOf(seg: Segment, src: SegSource, hl: Highlighter): 
   if (seg.src.kind === "free") return snippetView(seg, src, hl);
   const full = await src.fileText(seg).catch(() => null);
   if (!full || splitLines(full).length > MAX_FULL) return snippetView(seg, src, hl);
-  const file = src.fileOf(seg) ?? undefined;
-  const fa = src.analyze(lang, full, { start: seg.start, end: seg.end }, file);
-  const pkgs = src.callPkgs ? await src.callPkgs(seg, fa.imports, file ?? null) : undefined;
+  const file = src.fileOf(seg);
+  const tree = file ? src.treeAt?.(file) : undefined;
+  const fa = src.analyze(lang, full, { start: seg.start, end: seg.end }, tree);
+  const pkgs = src.callPkgs ? await src.callPkgs(seg, fa.imports, file) : undefined;
   // A Python function / class segment starts at its def / class / decorator line, in the same lexical state as the file's start:
   // tokenise only the segment (no whole-file shiki for a big file)
   if (
@@ -203,7 +206,7 @@ export async function segViewOf(seg: Segment, src: SegSource, hl: Highlighter): 
     const toks = await hl.tokensOf(lang, seg.text.join("\n"));
     return buildView(seg, fa, (i) => toks[i], 0, 0, pkgs);
   }
-  const toks = await hl.tokensOf(lang, full, file);
+  const toks = await hl.tokensOf(lang, full, tree);
   return buildView(seg, fa, (i) => toks[seg.start - 1 + i], 0, 0, pkgs);
 }
 
@@ -218,9 +221,10 @@ async function snippetView(seg: Segment, src: SegSource, hl: Highlighter): Promi
     // Imports are at the file's start, not in the segment: take the current file's
     const file = seg.src.kind === "free" ? null : src.fileOf(seg);
     const cur = file ? await src.currentText(seg).catch(() => null) : null;
+    const tree = file ? src.treeAt?.(file) : undefined;
     pkgs = await src.callPkgs(
       seg,
-      cur ? src.analyze(seg.lang, cur, { start: 1, end: 0 }, file ?? undefined).imports : fa.imports,
+      cur ? src.analyze(seg.lang, cur, { start: 1, end: 0 }, tree).imports : fa.imports,
       file,
     );
   }

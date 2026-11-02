@@ -8,7 +8,7 @@ import { BoardHub } from "../src/hub";
 import { makeHandler } from "../src/handlers";
 import type { HostEnv } from "../src/env";
 import { nodeWorkspace } from "./node-workspace";
-import { stubView } from "./helpers";
+import { stubView, MEDIA } from "./helpers";
 import { HostContext } from "../src/context";
 
 let cx: HostContext;
@@ -38,8 +38,7 @@ const focus = (has: boolean) => hub.handler(hub.get("bF")!, { type: "focus", has
 beforeAll(async () => {
   cx = new HostContext(W);
   await store.save(emptyBoard("bF", "F"));
-  hub = new BoardHub(cx, env, store);
-  hub.handler = makeHandler(cx, hub);
+  hub = new BoardHub(cx, env, store, (h) => makeHandler(cx, h, MEDIA));
   (await hub.show("bF"))!.ready = true;
 });
 afterAll(() => {

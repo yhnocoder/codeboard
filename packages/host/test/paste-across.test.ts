@@ -16,7 +16,7 @@ import { nodeFs } from "../src/storage/nodefs";
 import { makeHandler } from "../src/handlers";
 import type { BoardHost, BoardPanel } from "../src/boards";
 import { nodeWorkspace } from "./node-workspace";
-import { tempRepo } from "./helpers";
+import { tempRepo, MEDIA } from "./helpers";
 import { HostContext } from "../src/context";
 
 const tmp: string[] = [];
@@ -60,7 +60,7 @@ function windowOf(folder: string, more: string[] = []) {
     clip: undefined,
     broadcast: () => undefined,
   } as unknown as BoardHost;
-  const h = makeHandler(cx, host);
+  const h = makeHandler(cx, host, MEDIA);
   const send = (board: string, m: Record<string, unknown>) => {
     return h({ id: board } as BoardPanel, { req: 1, ...m } as BoardToHost);
   };
@@ -193,7 +193,11 @@ describe("paste cards from another window", () => {
       broadcast: () => undefined,
     } as unknown as BoardHost;
     await ws2.store.save(emptyBoard("bOther", "Other"));
-    const r = (await makeHandler(a.cx, ws2)(
+    const r = (await makeHandler(
+      a.cx,
+      ws2,
+      MEDIA,
+    )(
       { id: "bOther" } as BoardPanel,
       { type: "pasteCards", req: 1, text: "same folder", copy: false } as BoardToHost,
     )) as Pasted | null;

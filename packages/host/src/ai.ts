@@ -6,6 +6,14 @@ import type { Prompts } from "./prompts";
 import type { HostContext } from "./context";
 import { readHostSetting, readSetting } from "./settings";
 
+/** What one host's AI features remember for the session */
+export class AiMemory {
+  /** Endpoints and models that turned DeepSeek's FIM completion down (deepseek.ts) */
+  readonly noFim = new Set<string>();
+  /** Text read from images, by image and model (imageai.ts) */
+  readonly imageText = new Map<string, string>();
+}
+
 /** DeepSeek 的 API 密钥在密钥存储里的名字 */
 const DEEPSEEK_SECRET = "codeboard.deepseekApiKey";
 
@@ -62,7 +70,7 @@ export async function completeNote(
   if (p === "off") return undefined;
   if (p === "deepseek" || p === "auto") {
     const key = await deepseekKey(cx);
-    if (key) return deepseekComplete({ key, ...deepseekTarget(cx), signal, noFim: cx.noFim }, before, after);
+    if (key) return deepseekComplete({ key, ...deepseekTarget(cx), signal, noFim: cx.ai.noFim }, before, after);
     if (p === "deepseek") return undefined;
   }
   const ai = cx.ws.ai;

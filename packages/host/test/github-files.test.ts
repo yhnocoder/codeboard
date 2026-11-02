@@ -60,7 +60,7 @@ describe("GitHub Files per workspace", () => {
   it("lists a file only in the workspace that opened it", async () => {
     let fired = 0;
     cx = hostOn(A.w);
-    const sub = cx.githubOpened.event(() => fired++);
+    const sub = cx.githubFiles.onDidOpen(() => fired++);
     expect(await workspaceGithubFiles(cx, A.store)).toEqual([]);
     const q = { op: "file", owner: "yhnocoder", name: "tongtu", commit: C1, ref: "main", path: "CLAUDE.md" } as const;
     await Promise.all([ghQuery(cx, q), ghQuery(cx, q)]);

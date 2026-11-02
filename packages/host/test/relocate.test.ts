@@ -7,7 +7,7 @@ import { nodeFs } from "../src/storage/nodefs";
 import { makeHandler } from "../src/handlers";
 import { BoardPanel, type BoardHost } from "../src/boards";
 import { nodeWorkspace } from "./node-workspace";
-import { card, git, startTreeSitter, stubView, tempRepo } from "./helpers";
+import { card, git, startTreeSitter, stubView, tempRepo, MEDIA } from "./helpers";
 import { HostContext } from "../src/context";
 
 let cx: HostContext;
@@ -59,7 +59,7 @@ describe("relocate", () => {
       };
       p.ready = true;
       p.board = { ...emptyBoard("b", "B"), cards: [c], place: { [c.id]: { x: 0, y: 0, w: 500 } } };
-      await makeHandler(cx, host)(p, { type: "relocate", card: c.id });
+      await makeHandler(cx, host, MEDIA)(p, { type: "relocate", card: c.id });
       const opts = offered[0] ?? [];
       expect(opts.some((d) => d.startsWith("engine/cx.sched.py"))).toBe(true);
       expect(opts.some((d) => d.startsWith("engine/scheduler.py"))).toBe(false);

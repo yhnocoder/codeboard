@@ -9,9 +9,9 @@ import type { HostContext } from "./context";
 
 const hl = new Highlighter({
   // While the host is still starting and the grammars load, wait for them: the cache should not keep an uncoloured copy
-  async treeLines(g, text, file) {
+  async treeLines(g, text, tree) {
     await whenAnalysisReady();
-    return analysisReady() ? highlightLines(g, text, file) : null;
+    return analysisReady() ? highlightLines(g, text, tree) : null;
   },
 });
 
@@ -23,13 +23,14 @@ const sourceOf = (cx: HostContext): SegSource => ({
     return abs ? cx.readText(abs) : Promise.resolve(null);
   },
   fileOf: (seg) => cx.sources.absOf(seg),
-  analyze: (lang, text, range, file) =>
-    range ? segAnalysis(lang, text, range.start, range.end, file) : analysisOf(lang, text, file),
+  treeAt: (file) => ({ cache: cx.trees, key: file }),
+  analyze: (lang, text, range, tree) =>
+    range ? segAnalysis(lang, text, range.start, range.end, tree) : analysisOf(lang, text, tree),
   callPkgs: (seg, imports, abs) => callPkgs(cx, seg, imports, abs),
 });
 
-/** Tokens per line (with the board's colour classes); file = text is that file's whole text at that version */
-export const tokensOf = (lang: string, text: string, file?: string): Promise<Tok[][]> => hl.tokensOf(lang, text, file);
+/** Tokens per line (with the board's colour classes) */
+export const tokensOf = (lang: string, text: string): Promise<Tok[][]> => hl.tokensOf(lang, text);
 /** A few lines' HTML (diffs, hovered definitions, Focus popovers; no clickable calls) */
 export const highlight = (lines: string[], lang: string, context?: string): Promise<string[]> =>
   hl.highlight(lines, lang, context);

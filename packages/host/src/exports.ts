@@ -18,14 +18,19 @@ export async function allQuestions(store: Storage): Promise<QuestionItem[]> {
   return collectQuestions(store.cached().map((e) => ({ ...e, group: store.groupOf(e.id) })));
 }
 
-const remoteOf = (cx: HostContext, root: string) => {
-  let p = cx.remotes.get(root);
-  if (!p) {
-    p = git(root, ["remote", "get-url", "origin"]).then((s) => s?.trim() || undefined);
-    cx.remotes.set(root, p);
+/** One host's repositories' origin URLs */
+export class Remotes {
+  private urls = new Map<string, Promise<string | undefined>>();
+
+  of(root: string): Promise<string | undefined> {
+    let p = this.urls.get(root);
+    if (!p) {
+      p = git(root, ["remote", "get-url", "origin"]).then((s) => s?.trim() || undefined);
+      this.urls.set(root, p);
+    }
+    return p;
   }
-  return p;
-};
+}
 
 /** 段的 GitHub 永久链接（仓库的 origin 是 GitHub 时；GitHub Code 段直接有） */
 export async function permalinks(cx: HostContext, segs: Segment[]): Promise<Record<string, string>> {
@@ -35,7 +40,7 @@ export async function permalinks(cx: HostContext, segs: Segment[]): Promise<Reco
     if (s.src.kind === "repo") {
       const a = cx.sources.absOf(s);
       const r = a ? await cx.git.repoRootOf(a) : null;
-      remote = r ? await remoteOf(cx, r) : undefined;
+      remote = r ? await cx.remotes.of(r) : undefined;
     }
     const u = segPermalink(s, () => remote);
     if (u) out[s.id] = u;
@@ -49,6 +54,7 @@ const SAFE_NAME = (n: string) => n.replace(/[\\/:*?"<>|]+/g, "-").trim() || "boa
 export async function exportFile(
   cx: HostContext,
   store: Storage,
+  mediaDir: string,
   kind: "html" | "md",
   name: string,
   text: string,
@@ -60,14 +66,14 @@ export async function exportFile(
     filters: kind === "html" ? { "HTML Snapshot": ["html"] } : { Markdown: ["md"] },
   });
   if (!file) return false;
-  const out = kind === "html" ? await inlineFor(cx.mediaDir, store, text) : text;
+  const out = kind === "html" ? await inlineFor(mediaDir, store, text) : text;
   await fs.writeFile(file, out);
   cx.log("info", `export: wrote ${kind} ${out.length} bytes`);
   void ui.info(`Exported ${path.basename(file)}`, "Reveal").then((r) => (r ? ui.revealInOS(file) : undefined));
   return true;
 }
 
-/** mediaDir = the board's media folder (HostContext.mediaDir). 只读这两个目录里的文件（路径里有 .. 的一律不读） */
+/** mediaDir = the board's media folder. 只读这两个目录里的文件（路径里有 .. 的一律不读） */
 function inlineFor(mediaDir: string, store: Storage, html: string): Promise<string> {
   return inlineSnapshot(html, async (kind, rel) => {
     const base = kind === "media" ? mediaDir : store.assetsDir();

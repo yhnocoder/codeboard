@@ -4,10 +4,11 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { HostEnv } from "../src/env";
+import { analysisOf, treeAt } from "../src/analysis";
 import { HostContext } from "../src/context";
 import { startHost, type Host } from "../src/start";
 import { nodeWorkspace, type TestWorkspace } from "./node-workspace";
-import { startTreeSitter, stubView } from "./helpers";
+import { startTreeSitter, stubView, MEDIA } from "./helpers";
 
 const tmp = fs.mkdtempSync("/tmp/codeboard-two-");
 /** A workspace with one Python file defining name, and its own workspace storage */
@@ -36,7 +37,7 @@ beforeAll(startTreeSitter);
 afterAll(() => fs.rmSync(tmp, { recursive: true, force: true }));
 
 describe("two hosts in one process", () => {
-  it("keep their own name index, definition cache, log and settings writes", async () => {
+  it("keep their own name index, definition cache, log, AI memory and syntax trees", async () => {
     const A = workspace("a", "alpha"),
       B = workspace("b", "beta");
     const a = new HostContext(A),
@@ -62,9 +63,14 @@ describe("two hosts in one process", () => {
     a.log("info", "only in a");
     expect(a.recentLog().some((l) => l.includes("only in a"))).toBe(true);
     expect(b.recentLog().some((l) => l.includes("only in a"))).toBe(false);
-    a.noFim.add("x");
-    a.imageText.set("k", "v");
-    expect([b.noFim.size, b.imageText.size]).toEqual([0, 0]);
+    a.ai.noFim.add("x");
+    a.ai.imageText.set("k", "v");
+    expect([b.ai.noFim.size, b.ai.imageText.size]).toEqual([0, 0]);
+    analysisOf("python", "x = 1\n", treeAt(a, fileA));
+    analysisOf("python", "y = 2\n", treeAt(b, fileA));
+    expect([a.trees.keys(), b.trees.keys()]).toEqual([[fileA], [fileA]]);
+    b.trees.forget();
+    expect(a.trees.keys()).toEqual([fileA]); // one host's syntax trees stay when the other's go
     a.dispose();
     b.dispose();
   });
@@ -72,8 +78,8 @@ describe("two hosts in one process", () => {
   it("started side by side, store boards in their own folders, and one's dispose leaves the other working", async () => {
     const A = workspace("c", "gamma"),
       B = workspace("d", "delta");
-    const ha: Host = startHost(A, env()),
-      hb: Host = startHost(B, env());
+    const ha: Host = startHost(A, env(), { mediaDir: MEDIA }),
+      hb: Host = startHost(B, env(), { mediaDir: MEDIA });
     await Promise.all([ha.ready, hb.ready]);
     expect(ha.store.dir()).not.toBe(hb.store.dir());
     await ha.actions["codeboard.openBoard"]();

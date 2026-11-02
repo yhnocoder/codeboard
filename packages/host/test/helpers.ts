@@ -10,6 +10,8 @@ import type { HostContext } from "../src/context";
 
 export const REPO = path.resolve(__dirname, "../../..");
 export const startTreeSitter = () => startAnalysis();
+/** The board's build: the media folder a host inlines into exported HTML */
+export const MEDIA = path.join(REPO, "packages/board/dist");
 
 /** A card for the symbol `qual` in a file (as Add Function would make it) and its first segment */
 export async function card(

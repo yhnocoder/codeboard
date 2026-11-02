@@ -22,7 +22,7 @@ export type HostOptions = {
   /** 放 tree-sitter wasm 的目录；不给 = 从 npm 包里找（Node 下） */
   wasmDir?: string;
   /** 白板页面的资源目录（导出 HTML 时内联字体和图标） */
-  mediaDir?: string;
+  mediaDir: string;
 };
 
 export type Host = Disposable & {
@@ -48,8 +48,8 @@ export type Host = Disposable & {
   questions(): ReturnType<typeof allQuestions>;
 };
 
-export function startHost(ws: Workspace, env: HostEnv, o: HostOptions = {}): Host {
-  const cx = new HostContext(ws, { mediaDir: o.mediaDir });
+export function startHost(ws: Workspace, env: HostEnv, o: HostOptions): Host {
+  const cx = new HostContext(ws);
   const subs: Disposable[] = [cx];
   const on = (d: Disposable) => void subs.push(d);
   const analysis = startAnalysis(o.wasmDir);
@@ -57,9 +57,8 @@ export function startHost(ws: Workspace, env: HostEnv, o: HostOptions = {}): Hos
   const store = place.store;
   on(place);
   cx.sources.init(githubDir(cx));
-  const hub = new BoardHub(cx, env, store);
+  const hub = new BoardHub(cx, env, store, (h) => makeHandler(cx, h, o.mediaDir));
   on(hub);
-  hub.handler = makeHandler(cx, hub);
 
   // 跨工作区记下这个项目的存储目录：别的窗口的 Copy / Move to Another Project… 在里面找
   const record = () => void recordProject(cx, hub.globalState, store.dir());
@@ -118,7 +117,7 @@ export function startHost(ws: Workspace, env: HostEnv, o: HostOptions = {}): Hos
     ready,
     actions: makeActions(cx, hub, store, () => place.follow()),
     onDidSwitchStorage: place.onDidSwitch,
-    onDidOpenGithubFile: cx.githubOpened.event,
+    onDidOpenGithubFile: cx.githubFiles.onDidOpen,
     flush: () => store.flush(),
     showFile: cx.git.showFile,
     marks: new BoardMarks(cx),

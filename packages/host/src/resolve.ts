@@ -37,7 +37,7 @@ import {
   type Target,
 } from "./bridge";
 import { pyOpEntry } from "./torchentry";
-import { analysisOf, cachedAnalysis, segAnalysis } from "./analysis";
+import { analysisOf, cachedAnalysis, segAnalysis, treeAt } from "./analysis";
 import type { Def } from "./defcache";
 import { Prio } from "./sched";
 import { cardForFileSym, symCard } from "./cards";
@@ -553,7 +553,7 @@ function callSite(cx: HostContext, seg: Segment, full: string | null, m: ExpandR
   let calls: CallSite[];
   let shift = 0,
     colOff = 0;
-  if (full) calls = segAnalysis(seg.lang, full, m.line, m.line, cx.sources.absOf(seg) ?? undefined).calls;
+  if (full) calls = segAnalysis(seg.lang, full, m.line, m.line, treeAt(cx, cx.sources.absOf(seg))).calls;
   else {
     const ind = Math.min(...seg.text.filter((l) => l.trim()).map((l) => l.length - l.trimStart().length));
     colOff = Number.isFinite(ind) ? ind : 0;
@@ -794,7 +794,7 @@ async function importedModule(cx: HostContext, m: PeekReq): Promise<PeekDef | nu
   const seg = m.seg;
   if (seg.src.kind === "free" || m.word.includes(".")) return null;
   const full = await cx.sources.versionText(seg);
-  const a: FileAnalysis | null = full ? segAnalysis(seg.lang, full, 1, 0, cx.sources.absOf(seg) ?? undefined) : null; // 只用 import
+  const a: FileAnalysis | null = full ? segAnalysis(seg.lang, full, 1, 0, treeAt(cx, cx.sources.absOf(seg))) : null; // 只用 import
   const im = a?.imports.find((i) => i.name === m.word && !i.from);
   if (!a || !im || !full) return null;
   const rel = im.module.split(".");
@@ -842,7 +842,7 @@ async function localDef(cx: HostContext, m: PeekReq): Promise<PeekDef | null> {
       ? `^\\s*self\\.${esc}\\s*(:[^=]*)?=(?!=)`
       : `^\\s*${esc}\\s*(:[^=]*)?=(?!=)|^\\s*(?:async\\s+)?def\\s+\\w+\\(.*\\b${esc}\\b`,
   );
-  const a = analysisOf(seg.lang, full, cx.sources.absOf(seg) ?? undefined);
+  const a = analysisOf(seg.lang, full, treeAt(cx, cx.sources.absOf(seg)));
   const fn = symbolAt(a.symbols, m.line, "def");
   const cls = isSelf ? a.symbols.find((s) => s.kind === "class" && fn?.parent === s.qual) : undefined;
   const lo = cls?.start ?? fn?.start ?? 1,
