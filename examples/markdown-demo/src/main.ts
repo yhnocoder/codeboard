@@ -24,7 +24,7 @@ const findPage = (label: string) =>
   PAGES.find((p) => p.id === label || p.title.toLowerCase() === label.trim().toLowerCase()) ?? null;
 setRefResolver(findPage, { missing: "No page with this title" });
 // ![…](assets/x.svg) → ./assets/x.svg, in the static render and in the editor alike
-setAssetBase("./assets");
+setAssetBase("assets", "./assets");
 
 const note = document.getElementById("note")!;
 const source = document.getElementById("source")!;

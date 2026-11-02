@@ -22,7 +22,6 @@ import {
   SECTION_PAD,
   GAP,
   copyText,
-  cardRows,
   guessLang,
   pythonDialect,
   defaultWidth,
@@ -64,23 +63,11 @@ import {
 } from "../state/sections";
 import { popCard, revealCard, sectionById, sectionLocked, selCards, isLocked, slideFrom } from "./common";
 import { requestViews, copyViews, staleOk } from "../state/views";
-import { offerReference } from "./shared";
+import { offerReference } from "./pastechip";
+import { cardText, remember } from "./clipboard";
 import { kbd } from "../keymap";
 import { ask } from "../host";
 
-/** 最近一次 ⌘C 复制的是哪张卡的哪段字：⌘V 粘回来时放在那张卡旁边（错开一点，允许重叠），不去找空地 */
-let lastCopy: { card: string; text: string; n: number } | null = null;
-export function pasteNear(text: string): { x: number; y: number } | null {
-  if (!lastCopy || lastCopy.text.trim() !== text.trim()) return null;
-  const h = cardById(lastCopy.card)?.host;
-  if (!h || !state.board.place[h.id]) return null;
-  const r = rectOf(h);
-  const k = ++lastCopy.n;
-  return { x: r.x + 36 * k, y: r.y + 36 * k };
-}
-export const remember = (card: string, text: string) => {
-  lastCopy = { card, text, n: 0 };
-};
 /** @public run from the key table (keymap.ts) */
 export function copyLines(ls: LineSel) {
   const f = cardById(ls.card);
@@ -282,16 +269,6 @@ export function duplicateSel() {
   made.forEach((id) => popCard(id));
   toast(made.length > 1 ? `Duplicated ${made.length} cards (no arrows)` : "Duplicated. The copy has no arrows.");
   offerReference(made.map((id, i) => [id, cs[i].id]));
-}
-/** 代码卡上看得见的行（复制用） */
-export function cardText(c: CodeCard): string[] {
-  const lines: string[] = [];
-  for (const r of cardRows(c, { views: state.views }))
-    if (r.t === "line") {
-      const s = c.segments.find((q) => q.id === r.seg)!;
-      lines.push(s.text[r.line - s.start] ?? "");
-    }
-  return lines;
 }
 export function copyCard(c: CodeCard) {
   const lines = cardText(c);

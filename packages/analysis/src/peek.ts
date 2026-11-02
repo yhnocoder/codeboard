@@ -1,6 +1,6 @@
 // 定义预览（peek）的源码部分按定义类型取：字段 → 所在类的所有字段；函数 → 开头几行；模块 → 不放源码。
 // 没有语言服务的 hover 时，签名和文档也从这里出（docstring 转成 Markdown）。
-import { symbolAt, type FileAnalysis, type Sym } from "./index";
+import { symbolAt, type FileAnalysis, type Sym } from "./syms";
 import { F_BLANK, F_COMMENT, F_DOCSTRING } from "./basics";
 
 export type PeekKind = "field" | "function" | "class" | "module" | "other";

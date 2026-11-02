@@ -27,13 +27,13 @@ function inputSourcemaps(): Plugin {
   };
 }
 
-// 白板界面打包成一个入口 js（ES module）+ 一个 css，由宿主（VS Code webview）加载；
+// 白板界面打包成一个入口 js（ES module）+ 一个 css，放在 dist/，由宿主（VS Code webview）加载：插件的构建把它拷进 media/board；
 // Markdown 编辑器、Mermaid 图（pele）这些用到时才 import() 的放在 chunks/ 里
 export default defineConfig({
   plugins: [solid(), scriptString(), ...(process.env.BOARD_SOURCEMAP ? [inputSourcemaps()] : [])],
   base: "./", // 字体用相对 css 的路径：webview 里没有站点根
   build: {
-    outDir: "../../extensions/vscode/media/board",
+    outDir: "dist",
     emptyOutDir: true,
     cssCodeSplit: false,
     modulePreload: false,

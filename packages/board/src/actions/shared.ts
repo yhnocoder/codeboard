@@ -27,8 +27,6 @@ import { putViews, copyViews } from "../state/views";
 import { mutate, flushSave } from "../state/changes";
 import { sel, select, clearSel } from "../state/selection";
 import { toast } from "../state/toast";
-import { boardSignal } from "../state/root";
-import { PASTE_CHIP_IDLE } from "../state/timing";
 import { isHidden, settleHome } from "../state/sections";
 import { camTo, camTarget, fitTop, isVisible } from "../state/camera";
 import { ghostOut } from "../state/ghost";
@@ -36,7 +34,8 @@ import { openPop } from "../state/pop";
 import { choose } from "../ui/Menu";
 import { ask, send } from "../host";
 import { hostRect, popCard, revealCard, selCards } from "./common";
-import { cardText, remember } from "./edit";
+import { cardText, remember } from "./clipboard";
+import { offerReference, pasteChip, setPasteChip } from "./pastechip";
 import { updateSidenote } from "./notes";
 import { imageDataUrl, pngOf } from "./imagedata";
 
@@ -101,31 +100,6 @@ function pasteCopied(text: string | undefined): boolean {
   return true;
 }
 
-/**
- * 粘贴 / ⌘D 出来的副本右下角的小条：Copy ✓ | Reference。pairs = [副本, 原卡]；ref = 现在是 Reference。
- * 指针不在上面 PASTE_CHIP_IDLE 后、点了别处、副本挪了或改了（Canvas.tsx PasteChip 看着）就收起
- */
-const [pasteChip, setPasteChip] = boardSignal<{ pairs: [string, string][]; ref: boolean } | null>(null);
-export { pasteChip };
-let chipTimer: number | undefined;
-export function offerReference(pairs: [string, string][]) {
-  const ok = pairs.filter(([n, o]) => {
-    const a = cardById(n)?.card,
-      b = cardById(o)?.card;
-    return a && b && a.kind !== "compare" && a.kind !== "board" && a.kind === b.kind;
-  });
-  setPasteChip(ok.length ? { pairs: ok, ref: false } : null);
-  if (ok.length) armChip();
-}
-/** 指针离开小条后重新计时；hold = 指针在上面，不收 */
-export function armChip(hold = false) {
-  clearTimeout(chipTimer);
-  if (!hold) chipTimer = window.setTimeout(() => setPasteChip(null), PASTE_CHIP_IDLE);
-}
-export function closeChip() {
-  clearTimeout(chipTimer);
-  setPasteChip(null);
-}
 /** 小条上选了 Copy / Reference：Reference = 副本变成原卡的另一处（一步撤销），再选 Copy 变回独立副本 */
 export function pasteAs(ref: boolean) {
   const c = pasteChip();

@@ -13,14 +13,12 @@ import { placed, rectOf } from "./store";
 import { sel } from "./selection";
 import { editing, dragging } from "./ui";
 import { lodOf, lodBusy } from "./lodcards";
+import { offscreen, setOffscreen } from "./offscreen";
 
 // 一帧最多显示 SHOW 份：代码卡算 1 份；Note 算 1.5 份（表格、高亮的代码、勾选框、公式，画起来比一张代码卡还贵），一帧最多两张
 const SHOW = 3,
   HIDE = 4,
   NOTE_COST = 1.5;
-const [off, setOff] = createStore<Record<string, boolean>>({});
-/** 这张卡离屏幕很远，内容不画 */
-export const offscreen = (id: string) => !!off[id];
 // 藏着内容、又在屏幕外半屏以外的卡，连卡片本身（底色、阴影）也不画：镜头动的时候世界层每隔几百 px 按新范围重画一遍，
 // 范围是屏幕外 4000px，里面上百张空卡的底色、阴影占了重画的四成（Paint）和分层的四分之一（Layerize）。
 // 进到半屏以内马上显示（只是卡片自己和它直接的几个子节点重算样式：里面的内容本来就藏着，值不变，浏览器不往下传），内容照旧按 SHOW 排队。
@@ -74,7 +72,7 @@ export function trackOffscreen() {
         T = r.y * z + y,
         R = L + r.w * z,
         B = T + r.h * z;
-      const was = untrack(() => !!off[id]);
+      const was = untrack(() => offscreen(id));
       // 显示：进到屏幕外半屏以内；隐藏：离开一整屏以外（中间这段不变，免得在边上来回切）
       const m = was ? 0.5 : 1;
       const far = R < -w * m || L > w * (1 + m) || B < -h * m || T > h * (1 + m);
@@ -92,15 +90,15 @@ export function trackOffscreen() {
       k = 0;
     for (const [id, d, cost] of show) {
       if (d >= 0 && n + cost > SHOW) break;
-      setOff(id, false);
+      setOffscreen(id, false);
       n += cost;
       k++;
     }
-    for (const id of hide.slice(0, HIDE)) setOff(id, true);
+    for (const id of hide.slice(0, HIDE)) setOffscreen(id, true);
     // 不画只在镜头停下以后加（和藏内容一样）：缩放时一圈圈的卡进出半屏，每帧都换的话缩放每步多出一截重画
     untrack(() => {
       for (const [id, a] of away) {
-        const f = a && !!off[id];
+        const f = a && offscreen(id);
         if (f !== !!distant[id] && (!f || !moving)) setDistant(id, f);
       }
     });

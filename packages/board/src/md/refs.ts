@@ -3,13 +3,12 @@
 import { createMemo, untrack } from "solid-js";
 import { createStore, reconcile } from "solid-js/store";
 import type { BoardRefs, RefBoard } from "@codeboard/core";
-import type { RefBroken, RefTarget } from "@yhnocoder/markdown";
+import { paintRef, type RefBroken, type RefTarget } from "@yhnocoder/markdown";
 import type { RefGroup, RefPick } from "@yhnocoder/markdown/editor";
 import { ask, send } from "../host";
 import { state } from "../state/store";
 import { rooted } from "../state/root";
 import { REF_SEP, frameName, frames } from "../state/subboards";
-import { refreshRefs } from "../actions/subboards";
 
 const [xrefs, setXrefs] = createStore<BoardRefs & { loaded: boolean }>({ boards: [], recent: [], loaded: false });
 let asked = false;
@@ -24,6 +23,11 @@ export function wantBoardRefs() {
       asked = false;
     },
   );
+}
+/** 骨架、别的白板的卡到了以后，静态 Note 里的 [[引用]] 再认一遍（指向它们的，没到时显示成找不到） */
+export function refreshRefs() {
+  for (const r of document.querySelectorAll<HTMLElement>(".md .md-ref"))
+    if (!r.closest("[contenteditable=true]")) paintRef(r);
 }
 /** 宿主给的（回答或推过来的）：换上，静态 Note 里的引用再认一遍 */
 export function putBoardRefs(r: BoardRefs | null) {

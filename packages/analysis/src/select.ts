@@ -1,4 +1,4 @@
-import { symbolAt, type FileAnalysis, type Sym } from "./index";
+import { symbolAt, type FileAnalysis, type Sym } from "./syms";
 import { F_BLANK } from "./basics";
 
 export type Sel = { startLine: number; startCol: number; endLine: number; endCol: number }; // 1-based 行，0-based 列

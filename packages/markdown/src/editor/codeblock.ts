@@ -19,6 +19,7 @@ import { codeEditor, type CodeEditor, type LspHost } from "../cm/editor";
 import { cachedCode, highlightCode } from "../code";
 import { LangBox, type CodeLang } from "./codelang";
 import { iconEl, type IconName } from "../ui/icons";
+import { kindClass, type MdClasses } from "../ui/classes";
 
 /** GapCursor.valid 是 prosemirror-gapcursor 自己的箭头键用的判断，有，只是类型里没写 */
 const gapAt = ($p: ResolvedPos) => (GapCursor as unknown as { valid($p: ResolvedPos): boolean }).valid($p);
@@ -101,6 +102,7 @@ export type CodeBlockHost = {
   stopPointerDown?: boolean;
   /** 语言框里列出的语言（着色认得的）；不给就只有 Mermaid，打别的照打的写 */
   langs?: () => readonly CodeLang[];
+  classes?: MdClasses;
 };
 
 export class CodeBlockView implements NodeView {
@@ -113,6 +115,7 @@ export class CodeBlockView implements NodeView {
   private pill: HTMLElement;
   private wrapBtn: HTMLButtonElement;
   private menu: HTMLElement | null = null;
+  private classes?: MdClasses;
   constructor(
     public node: PMNode,
     public view: PMView,
@@ -120,6 +123,7 @@ export class CodeBlockView implements NodeView {
     host: CodeBlockHost,
   ) {
     const lang = () => (this.node.attrs.language as string | null) ?? "";
+    this.classes = host.classes;
     this.dom = document.createElement("pre");
     this.dom.className = "md-code";
     if (lang()) this.dom.dataset.lang = lang();
@@ -163,6 +167,7 @@ export class CodeBlockView implements NodeView {
     this.langBox = new LangBox({
       lang,
       langs: () => host.langs?.() ?? [],
+      classes: host.classes,
       // 一步（自己一步撤销，不和前面打的字连在一起）；着色跟着换（update）
       set: (language) => {
         const pos = this.getPos();
@@ -233,7 +238,7 @@ export class CodeBlockView implements NodeView {
   }
   private openMenu(anchor: HTMLElement) {
     const m = (this.menu = document.createElement("div"));
-    m.className = "ctx open md-menu md-cbmenu";
+    m.className = `${kindClass(this.classes, "menu")} open md-cbmenu`;
     const item = (label: string, run: () => void, danger = false) => {
       const b = document.createElement("button");
       b.className = danger ? "danger" : "";

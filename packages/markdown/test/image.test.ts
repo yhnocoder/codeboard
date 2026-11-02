@@ -151,12 +151,19 @@ describe("image render", () => {
     expect(ext.hasAttribute("width")).toBe(false);
   });
   it("renders again when the resolver changes (no stale address from the cache)", () => {
-    setAssetBase("https://one.test");
+    setAssetBase("assets", "https://one.test");
     expect(imgOf(renderMd("![](assets/k.png)")).getAttribute("src")).toBe("https://one.test/k.png");
-    setAssetBase("https://two.test");
+    setAssetBase("assets/", "https://two.test");
     expect(imgOf(renderMd("![](assets/k.png)")).getAttribute("src")).toBe("https://two.test/k.png");
-    setAssetBase("");
+    setAssetBase("assets", "");
     expect(imgOf(renderMd("![](assets/k.png)")).getAttribute("src")).toBe("assets/k.png");
+  });
+  it("resolves only addresses under the folder it is given", () => {
+    setAssetBase("media/img", "/static");
+    expect(imgOf(renderMd("![](media/img/k.png)")).getAttribute("src")).toBe("/static/k.png");
+    expect(imgOf(renderMd("![](assets/k.png)")).getAttribute("src")).toBe("assets/k.png");
+    expect(imgOf(renderMd("![](media/imgs.png)")).getAttribute("src")).toBe("media/imgs.png");
+    setAssetBase("media/img", "");
   });
 });
 

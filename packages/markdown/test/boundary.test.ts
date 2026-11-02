@@ -86,4 +86,20 @@ describe("markdown package boundaries", () => {
     ).toEqual([]);
     expect(repoDeps("examples/markdown-demo")).toEqual(["@yhnocoder/markdown"]);
   });
+  it("styles and sets no class of the board's own UI (.ctx, .pill, .tbtn): a page adds its own through the classes option", () => {
+    // a class token inside a string in the code; a class selector in the stylesheets
+    const IN_CODE = /(["'`])(?:[^"'`\n]*\s)?(ctx|pill|tbtn)(?:\s[^"'`\n]*)?\1/;
+    const IN_CSS = /\.(ctx|pill|tbtn)\b/;
+    expect(IN_CODE.test('el.className = "mdui pill md-tbar";')).toBe(true);
+    expect(IN_CODE.test("const word = ctx.matchBefore(/x/);")).toBe(false);
+    expect(IN_CSS.test(".md-findbar .tbtn {")).toBe(true);
+    const hits = files(path.join(REPO, "packages/markdown/src")).flatMap((f) =>
+      fs
+        .readFileSync(f, "utf8")
+        .split("\n")
+        .filter((l) => !/^\s*(\/\/|\/?\*)/.test(l) && (f.endsWith(".css") ? IN_CSS : IN_CODE).test(l))
+        .map((l) => `${path.relative(REPO, f)}: ${l.trim()}`),
+    );
+    expect(hits).toEqual([]);
+  });
 });

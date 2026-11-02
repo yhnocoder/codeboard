@@ -844,7 +844,7 @@ const Lnk = Link.extend({
   openOnClick: false,
   autolink: true,
   linkOnPaste: true,
-  HTMLAttributes: { class: "lnk", rel: null, target: null },
+  HTMLAttributes: { class: "md-link", rel: null, target: null },
 });
 
 /** 打字规则：匹配到的那一段里有行内代码时不算（规则的正则看的是整行的字，代码里的记号也在里面） */

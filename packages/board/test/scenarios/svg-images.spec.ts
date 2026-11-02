@@ -393,7 +393,7 @@ test("svgImageCardDropsIntoNoteStaysSvg", async () => {
 });
 
 test("svgImagesInHtmlExport", async () => {
-  setMediaDir(path.join(REPO, "extensions/vscode/media/board"));
+  setMediaDir(path.join(REPO, "packages/board/dist"));
   const md0 = "**Prefill, then decode.**";
   const { h, exported, done } = await svgHost(withNote(md0));
   const pg = h.page;

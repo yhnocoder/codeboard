@@ -1,6 +1,6 @@
 // 切换只在白板里换段和展示数据（宿主事先把每个 Variant 的代码和高亮都给了），一帧之内完成。
 import { batch, createEffect, untrack } from "solid-js";
-import { rooted } from "../state/root";
+import { onBoardSwitch, rooted } from "../state/root";
 import { unwrap } from "solid-js/store";
 import {
   activeOf,
@@ -49,11 +49,11 @@ const code = (id: string) => {
  */
 const shownView = new Map<string, string>();
 /** 白板刚读进来：views[段] 就是各卡显示着的那个 Variant 的 */
-export function resetShownViews() {
+onBoardSwitch(() => {
   shownView.clear();
   for (const c of state.board.cards)
     if (c.kind === "code" && c.variants?.length) for (const s of c.segments) shownView.set(s.id, activeOf(c));
-}
+});
 /** 别的白板改了共享卡：宿主按那张卡显示的 Variant 算好了展示数据 */
 export function sharedShown(cards: Card[]) {
   for (const c of cards)

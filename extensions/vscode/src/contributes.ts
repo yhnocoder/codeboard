@@ -10,7 +10,7 @@ const CODICON: Record<CommandIcon, string> = {
   edit: "edit",
   close: "close",
 };
-/** 命令要开着的条件（VS Code 的 when 子句；codeboard.canUndoAdd 由 Workspace.ui.undoAddKey 设） */
+/** 命令要开着的条件（VS Code 的 when 子句；codeboard.canUndoAdd 跟着 Workspace.ui.undoAddChanged） */
 const ENABLEMENT: Partial<Record<CommandId, string>> = { "codeboard.undoAdd": "codeboard.canUndoAdd" };
 
 type Command = { command: string; title: string; category: "CodeBoard"; icon?: string; enablement?: string };

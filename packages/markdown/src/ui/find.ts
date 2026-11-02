@@ -1,9 +1,10 @@
 // 编辑时的查找 / 替换条：Note 的编辑器（ProseMirror，editor/find.ts）和代码编辑器（CodeMirror，cm/find.ts）共用这一个样子和按键，
 // 查、选、换由各自的搜索库做（prosemirror-search、@codemirror/search），这里只管条本身。
-// 浮在编辑器右上角，不占排版（进出查找时字不动）；样子借用外面的 .pill（浮条）和 .tbtn（按钮），和选中工具条一样
+// 浮在编辑器右上角，不占排版（进出查找时字不动）；样子跟选中工具条一样：md-bar（浮条）和 md-btn（按钮），加上用的一方的 classes
 import { keepKey } from "./editkeys";
 import { iconEl, type IconName } from "./icons";
 import { IS_MAC } from "./platform";
+import { kindClass, type MdClasses } from "./classes";
 
 export type FindSpec = { search: string; replace: string; caseSensitive: boolean };
 
@@ -28,6 +29,7 @@ export type FindBarOpts = {
   owns: (n: Node) => boolean;
   /** 焦点从查找条去了编辑器外面：和编辑器失焦一样（保存退出） */
   leave: (ev: FocusEvent) => void;
+  classes?: MdClasses;
 };
 
 /** ⌘F / Ctrl+F：打开查找；⌥⌘F（Ctrl+Alt+F）或 ⌘H（Ctrl+H）：连替换一起打开。字母按 e.code（⌥ 在 mac 上会改 e.key） */
@@ -58,31 +60,32 @@ export class FindBar {
   ) {
     const mod = IS_MAC ? "⌘" : "Ctrl+",
       alt = mod === "⌘" ? "⌥" : "Alt+";
+    const btn = kindClass(o.classes, "button");
     this.el = div("md-find");
     this.el.dataset.nodrag = "";
-    this.bar = div("pill md-findbar");
+    this.bar = div(`${kindClass(o.classes, "bar")} md-findbar`);
     this.el.append(this.bar);
     const row1 = div("md-findrow"),
       row2 = div("md-findrow md-replrow");
-    const tog = button("replace", "Toggle Replace", `${alt}${mod}F`, "md-tog", () =>
+    const tog = button(btn, "replace", "Toggle Replace", `${alt}${mod}F`, "md-tog", () =>
       this.showReplace(!this.bar.classList.contains("repl")),
     );
     this.q = input("md-findq", "Find");
     this.n = div("md-findn");
-    this.caseBtn = button(null, "Match Case", `${alt}C`, "md-case", () => this.toggleCase());
+    this.caseBtn = button(btn, null, "Match Case", `${alt}C`, "md-case", () => this.toggleCase());
     this.caseBtn.textContent = "Aa";
     row1.append(
       tog,
       this.q,
       this.n,
       this.caseBtn,
-      button("up", "Previous Match", "⇧Enter", "", () => this.go(-1)),
-      button("down", "Next Match", "Enter", "", () => this.go(1)),
-      button("close", "Close", "Esc", "", () => this.close()),
+      button(btn, "up", "Previous Match", "⇧Enter", "", () => this.go(-1)),
+      button(btn, "down", "Next Match", "Enter", "", () => this.go(1)),
+      button(btn, "close", "Close", "Esc", "", () => this.close()),
     );
     this.r = input("md-findr", "Replace");
-    const one = button(null, "Replace", "Enter", "md-txt", () => this.replace()),
-      all = button(null, "Replace All", `${mod}Enter`, "md-txt", () => this.replaceAll());
+    const one = button(btn, null, "Replace", "Enter", "md-txt", () => this.replace()),
+      all = button(btn, null, "Replace All", `${mod}Enter`, "md-txt", () => this.replaceAll());
     one.textContent = "Replace";
     all.textContent = "All";
     row2.append(div("md-findpad"), this.r, one, all);
@@ -229,10 +232,10 @@ function input(cls: string, ph: string) {
   return i;
 }
 /** data-tip / data-kbd 给用的一方的提示条（和选中工具条一样） */
-function button(icon: IconName | null, tip: string, kbd: string, cls: string, run: () => void) {
+function button(base: string, icon: IconName | null, tip: string, kbd: string, cls: string, run: () => void) {
   const b = document.createElement("button");
   b.type = "button";
-  b.className = `tbtn${icon ? " md-ib" : ""}${cls ? ` ${cls}` : ""}`;
+  b.className = `${base}${icon ? " md-ib" : ""}${cls ? ` ${cls}` : ""}`;
   b.dataset.tip = tip;
   b.dataset.kbd = kbd;
   b.setAttribute("aria-label", `${tip} (${kbd})`);

@@ -54,7 +54,7 @@ import { lastPointer } from "../state/measure";
 import { jumpTo } from "./nav";
 import { walkIntoFrame, walkOut } from "./subboards";
 import { walkBack, setWalkBack } from "../state/subboards";
-import { lateDispatch, openImplPicker, unresolvedMenu, searchAllLangs } from "./chains";
+import { lateDispatch, openImplPicker, unresolvedMenu, searchAllLangs } from "./callpops";
 import { cardSel } from "../cardsel";
 
 const pending = new Set<string>();

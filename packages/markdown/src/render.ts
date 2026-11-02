@@ -5,7 +5,7 @@ import katex from "katex";
 import DOMPurify from "dompurify";
 import { escHtml, isHtmlComment, mdSchema, parseMd, tocEntries, tocHtml } from "./schema";
 import { captionOf, imageAttrs, missingImageHtml, onImagesChanged } from "./image";
-import { mathMacros, withTex } from "./math";
+import { mathMacros, mathPreambleVersion, withTex } from "./math";
 
 const escA = (s: string) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
 const VOID = new Set(["img", "br", "hr", "input", "col", "wbr"]);
@@ -100,7 +100,7 @@ const DISPLAY: Record<string, (n: PMNode, cx: Cx) => string | undefined> = {
 };
 /** 链接不放 href：点了由 mdClick 交给用的一方打开，webview 自己不跳转 */
 const DISPLAY_MARKS: Record<string, (m: Mark) => DOMOutputSpec> = {
-  link: (m) => ["a", { class: "lnk", "data-href": m.attrs.href }, 0],
+  link: (m) => ["a", { class: "md-link", "data-href": m.attrs.href }, 0],
 };
 /** 只有一段（非空）的列表项、脚注、表格格子不画那层 <p>：外观一样（它本来就没有边距），少画一些节点 */
 const SLIM = new Set(["listItem", "footnote", "tableCell", "tableHeader"]);
@@ -183,7 +183,17 @@ export const schemaHtml = (doc: PMNode) => contentHtml(doc, null);
 
 const cache = new Map<string, string>();
 const MAX = 4000;
+let cachedFor = mathPreambleVersion();
+/** The cache as of the current math preamble: renders made under an older one are dropped */
+function current() {
+  if (cachedFor !== mathPreambleVersion()) {
+    cache.clear();
+    cachedFor = mathPreambleVersion();
+  }
+  return cache;
+}
 export function renderMd(src: string): string {
+  current();
   let h = cache.get(src);
   if (h !== undefined) return h;
   h = render(src);
@@ -191,8 +201,7 @@ export function renderMd(src: string): string {
   cache.set(src, h);
   return h;
 }
-export const clearMdCache = () => cache.clear();
-export const mdCached = (src: string) => cache.has(src);
+export const mdCached = (src: string) => current().has(src);
 
 function render(src: string): string {
   if (!src.trim()) return "";

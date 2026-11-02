@@ -63,12 +63,12 @@ test("markdownDemo", async ({ page }) => {
   await expect(pm.locator("strong", { hasText: "here" })).toHaveCount(1);
   expect(await editorChunks(), "the editor chunk came with the first click").toHaveLength(1);
 
-  // the selection bar, drawn with the borrowed .pill / .tbtn styles
+  // the selection bar, drawn with the page's .md-bar / .md-btn styles
   await page.keyboard.press("Shift+Home");
-  const bubble = page.locator(".md-bubble.pill");
+  const bubble = page.locator(".md-bubble.md-bar");
   await expect(bubble).toBeVisible();
-  await expect(bubble.locator(".tbtn").first()).toBeVisible();
-  expect(await bubble.evaluate((e) => getComputedStyle(e).borderRadius), "the page's .pill style").toBe("10px");
+  await expect(bubble.locator(".md-btn").first()).toBeVisible();
+  expect(await bubble.evaluate((e) => getComputedStyle(e).borderRadius), "the page's .md-bar style").toBe("10px");
   await page.screenshot({ path: shot("editing-light") });
   await page.keyboard.press("End");
   await expect(bubble).toHaveCount(0);

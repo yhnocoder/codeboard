@@ -128,7 +128,7 @@ function spanOf(t: InlineToken, raw: string, src: string, at: number, from: numb
       const i = inner ? raw.indexOf(inner) : raw.startsWith("[") ? 1 : 0;
       const href = String(t.href ?? "");
       if (i < 0) return null;
-      const sp = mk([], [from + i, from + i + inner.length], { tag: { nodeName: "a", class: "lnk", href } });
+      const sp = mk([], [from + i, from + i + inner.length], { tag: { nodeName: "a", class: "md-link", href } });
       if (i > 0) sp.marks.push([from, from + i]);
       if (i + inner.length < raw.length) sp.marks.push([from + i + inner.length, to]);
       walk(kids, src.slice(at + i, at + i + inner.length), from + i, sp.kids);

@@ -6,7 +6,7 @@ import { batch, createEffect, createMemo, createSignal } from "solid-js";
 import { createStore, unwrap } from "solid-js/store";
 import { cam, camMoving, lod, view, type Lod } from "./camera";
 import { placed, rectOf, sizes, state } from "./store";
-import { offscreen } from "./cull";
+import { offscreen } from "./offscreen";
 import { rooted } from "./root";
 
 const PER = 12;

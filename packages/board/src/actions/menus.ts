@@ -60,7 +60,8 @@ import {
   startWalk,
 } from "./flow";
 import { jumpTo } from "./nav";
-import { searchAllLangs, drawManual, addGenerated } from "./chains";
+import { addGenerated } from "./chains";
+import { searchAllLangs, drawManual } from "./callpops";
 import {
   compareCheck,
   deleteLinks,

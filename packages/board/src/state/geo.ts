@@ -43,11 +43,3 @@ export function lineY(
   }
   return { y: r.y + y, clamped, row: i };
 }
-
-// 画着的线的几何归 canvas/Links.tsx（建线时登记进来）；贴纸、沿线走的东西从这里读，不 import 组件
-let curveOf: (id: string) => number[] | null = () => null;
-export const setCurveSource = (f: typeof curveOf) => {
-  curveOf = f;
-};
-/** 线的三次贝塞尔控制点 [x1 y1 c1x c1y c2x c2y x2 y2]；线没画出来时是 null */
-export const linkCurve = (id: string) => curveOf(id);

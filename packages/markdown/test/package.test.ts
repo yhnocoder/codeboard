@@ -55,11 +55,12 @@ describe("the published @yhnocoder/markdown package", () => {
     }
   });
 
-  it("packs dist (JS, declarations, stylesheets) and the README, never src or tests", () => {
+  it("packs dist (JS, declarations, stylesheets), the README and the changelog, never src or tests", () => {
     expect(packed).toEqual(
       expect.arrayContaining([
         "package.json",
         "README.md",
+        "CHANGELOG.md",
         "dist/style.css",
         "dist/katex.css",
         "dist/index.js",
@@ -68,7 +69,7 @@ describe("the published @yhnocoder/markdown package", () => {
         "dist/editor/index.d.ts",
       ]),
     );
-    expect(packed.filter((f) => !/^(dist\/|package\.json$|README\.md$|LICENSE$)/.test(f))).toEqual([]);
+    expect(packed.filter((f) => !/^(dist\/|package\.json$|README\.md$|CHANGELOG\.md$|LICENSE$)/.test(f))).toEqual([]);
     expect(
       packed.filter((f) => /(^|\/)(src|test)\//.test(f) || (/\.(tsx?|spec\.\w+)$/.test(f) && !f.endsWith(".d.ts"))),
     ).toEqual([]);

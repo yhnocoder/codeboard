@@ -2,7 +2,7 @@
 // 以及跨过去之后「实际跑哪个函数、参数取几」。纯文本 / 语法判断，不读文件；找文件、找符号由宿主做。
 // 宏和模板只展开到「实际跑哪个 kernel、参数取几」，不做完整的预处理。
 import { escapeRegExp, type BoundVal, type CallAlt } from "./basics";
-import type { Arg, CallSite, Sym } from "./index";
+import type { Arg, CallSite, Sym } from "./syms";
 
 const lineAt = (text: string, i: number) => text.slice(0, i).split("\n").length;
 /** 同一份文本里查很多次行号：先记下每行的开头，二分 */

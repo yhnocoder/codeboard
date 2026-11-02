@@ -14,6 +14,7 @@ import { makeHandler } from "./handlers";
 import { BoardHub } from "./hub";
 import { watchNameIndex } from "./nameindex";
 import { affectsSettings, readSettings } from "./settings";
+import { scratchFiles } from "./scratchfiles";
 import { initSource } from "./source";
 import { followStorageDir, githubDir, onDidSwitchStorage, openStorage, watchProjectDir } from "./storage";
 import { recordProject } from "./transfer";
@@ -91,6 +92,7 @@ export function startHost(ws: Workspace, env: HostEnv, o: HostOptions = {}): Hos
   on(files.onDidDelete(() => forgetDefs()));
   on(files.onDidRename(() => forgetDefs()));
   on(watchNameIndex());
+  on(scratchFiles());
 
   on(
     ws.settings.onDidChange((e) => {

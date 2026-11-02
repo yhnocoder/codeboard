@@ -89,14 +89,18 @@ export type LspSignature = {
   active: number;
 };
 
-/** 白板里编辑中的代码的虚拟文档（不在编辑器里显示）：语言服务照它回答。行列从 0 开始 */
+/**
+ * Documents (not shown in the editor) for the files behind code being edited on a board: the language service answers from
+ * them. The host creates and deletes the files (next to the source file they belong to); lines and columns count from 0
+ */
 export interface WorkspaceScratch {
-  /** 建或更新：near = 放在这个文件旁边（同目录，Python 的 import 才找得到）；没给就放在工作区根 */
-  sync(id: string, lang: string, text: string, near?: string): Promise<void>;
-  close(id: string): Promise<void>;
-  completions(id: string, line: number, col: number, trigger?: string): Promise<LspItem[]>;
-  hover(id: string, line: number, col: number): Promise<string[]>;
-  signature(id: string, line: number, col: number, trigger?: string): Promise<LspSignature | null>;
+  /** Open the file as a document in this language (again if it was closed), write text into it and resolve once the document
+   *  holds it; fails rather than leave the document with other text */
+  sync(file: string, lang: string, text: string): Promise<void>;
+  /** The host deletes the file next: forget its document */
+  close(file: string): void;
+  completions(file: string, line: number, col: number, trigger?: string): Promise<LspItem[]>;
+  signature(file: string, line: number, col: number, trigger?: string): Promise<LspSignature | null>;
 }
 
 /** 用户设置，键是完整的点分名字（codeboard.theme、editor.fontFamily） */
@@ -168,10 +172,11 @@ export interface WorkspaceUi {
   revealInOS(abs: string): Promise<void>;
   copy(text: string): Promise<void>;
   clipboard(): Promise<string>;
-  /** 编辑器里接着按 ⌘Z 撤销刚加到白板上的卡（codeboard.undoAdd）：打开后，编辑器里一改字、动光标、换编辑器就自己关掉 */
-  undoAddKey?(on: boolean): void;
-  /** The editor's key context for "a board has the keyboard" (the board's own keys are bound on it); resolves once it applies */
-  boardFocusKey?(on: boolean): Promise<void>;
+  /** Whether ⌘Z in the editor can now undo the cards just added to a board (codeboard.undoAdd). Once on, the editor turns it
+   *  off by itself when the user types, moves the cursor or switches editors there */
+  undoAddChanged?(available: boolean): void;
+  /** Whether some board has the keyboard now (the editor sends the board's own keys to it); resolves once that applies */
+  boardFocusChanged?(focused: boolean): Promise<void>;
 }
 
 /** 编辑器提供的语言模型（VS Code 的 Language Model API：Copilot 等扩展给的）。可选：编辑器没有就不给。用哪个模型、DeepSeek 都在宿主的 ai.ts */

@@ -5,7 +5,7 @@
 ```bash
 npm run examples  # the repository the tests run on, examples/nano-vllm (under a second; in a git worktree it comes from the main checkout, nothing fetched); sglang and DeepEP are only for trying things by hand: npm run examples -- sglang DeepEP
 npm install
-npm run build      # @yhnocoder/markdown (packages/markdown/dist), board UI + extension, compiled into extensions/vscode/dist (no .vsix)
+npm run build      # the extension after the workspaces it depends on (tools/build.mjs): @yhnocoder/markdown (packages/markdown/dist), the board UI (packages/board/dist, which the extension build copies into its media/board) and the extension (extensions/vscode/dist; no .vsix)
 npm test           # unit tests (analysis, core, markdown, board, host, extension)
 npm run check      # local test tier: typecheck, lint, unit tests and affected harness scenarios (~90 s)
 npm run lint       # Biome (formatting at 120 columns, no unused imports, no `any`; biome.jsonc) and knip (dead code against tools/test/knip-known.txt); part of check and CI
@@ -24,7 +24,7 @@ One-time setup for the stores: create the Marketplace publisher `yhnocoder`; add
 
 ### Releasing @yhnocoder/markdown
 
-`packages/markdown` is published to npm as `@yhnocoder/markdown` by `.github/workflows/markdown-release.yml`, with npm Trusted Publishing (no token; the package gets a provenance statement). Bump `version` in `packages/markdown/package.json` in a PR and merge it, then push the tag `markdown-v<that version>`: the workflow checks the tag against the version, builds, runs the package's unit tests and the demo, and stages the version on npm (`npm stage publish`; the Trusted Publisher allows only staging). The owner then approves it with 2FA on npmjs.com, or with `npm stage list @yhnocoder/markdown` and `npm stage approve <stage-id>`, and only then is it published. The very first version was published by hand once (`npm publish -w @yhnocoder/markdown --provenance=false` from a clean checkout of main after `npm ci`, signed in to npm as the package owner; provenance needs CI), so that the package exists and `markdown-release.yml` can be added as its Trusted Publisher on npmjs.com (package settings, GitHub Actions, repository `yhnocoder/codeboard`).
+`packages/markdown` is published to npm as `@yhnocoder/markdown` by `.github/workflows/markdown-release.yml`, with npm Trusted Publishing (no token; the package gets a provenance statement). Bump `version` in `packages/markdown/package.json` in a PR (with its entry in `packages/markdown/CHANGELOG.md`, which is published with the package) and merge it, then push the tag `markdown-v<that version>`: the workflow checks the tag against the version, builds, runs the package's unit tests and the demo, and stages the version on npm (`npm stage publish`; the Trusted Publisher allows only staging). The owner then approves it with 2FA on npmjs.com, or with `npm stage list @yhnocoder/markdown` and `npm stage approve <stage-id>`, and only then is it published. The very first version was published by hand once (`npm publish -w @yhnocoder/markdown --provenance=false` from a clean checkout of main after `npm ci`, signed in to npm as the package owner; provenance needs CI), so that the package exists and `markdown-release.yml` can be added as its Trusted Publisher on npmjs.com (package settings, GitHub Actions, repository `yhnocoder/codeboard`).
 
 To debug the extension, open this repository in VS Code, press `F5` and pick **CodeBoard：在 nano-vllm 上调试插件**. A new window opens with the extension installed and `examples/nano-vllm` loaded.
 
@@ -58,7 +58,7 @@ Rules to keep when changing code (from the v0.1 and v0.1.5 architecture reviews)
 - **No compatibility code outside migration.** Old board files are upgraded to the current format in one migration step; there are no shims, fallbacks, legacy aliases or dual code paths elsewhere. Fix root causes and replace old behavior outright.
 - **Every UI operation runs at 60 fps.**
 - **Every board gesture goes through `packages/board/src/gesture.ts`.** A pointer drag uses `track()` (and `undoGesture()` for its undo step), a gesture that is not a drag `holdGesture()`: a board switch halfway drops it, so nothing of the old board is committed or reaches the new board's undo stack. Don't add window pointer listeners of your own for a drag; `test/unit/state-shape.test.ts` checks both by shape.
-- **No new circular imports.** `packages/host/test/cycles.test.ts` lists the cycles inside each package (runtime imports; `import type` and lazy `import()` don't count); the list may only shrink.
+- **No circular imports.** `packages/host/test/cycles.test.ts` fails on any cycle inside a package (runtime imports; `import type` and lazy `import()` don't count). When two modules need each other, move what they share into a third module both import, or the code into the layer it belongs to; don't break a cycle with a lazy `import()`, a type-only trick or a setter that injects a function at load time.
 
 ## Pull requests
 

@@ -44,6 +44,9 @@ import type { LspHost } from "../cm/editor";
 import { FindExt, noteFind } from "./find";
 import { findKey } from "../ui/find";
 import { IS_MAC } from "../ui/platform";
+import { kindClass, type MdClasses } from "../ui/classes";
+import { visibleRange } from "./visible";
+import type { StaticTextRange } from "../selmap";
 
 export type MdEditorOpts = {
   value: string;
@@ -85,15 +88,32 @@ export type MdEditorOpts = {
   };
   /** 块左边的拖动把手（⋮⋮，拖着移动整块）。默认没有 */
   dragHandle?: boolean;
+  /**
+   * The editor sits where nothing around it should scroll (a card on a canvas that moves by its camera): keeping the caret in
+   * view scrolls only the nearest scrolling box around the text, never further ancestors or the page. By default the browser
+   * scrolls whatever it needs to
+   */
+  scrollOwnBox?: boolean;
+  /** The page's classes for the editor's menus, floating bars and buttons (MdClasses) */
+  classes?: MdClasses;
 };
 export type { CodeLang } from "./codelang";
-export { visibleRange } from "./visible";
+export type { MdClasses } from "../ui/classes";
 export type MdEditorHandle = {
   value(): string | null;
   /** The layout as it is now (see MdEditorOpts.layout) */
   layout(): MdLayout | null;
   destroy(): void;
-  editor(): Editor;
+  /**
+   * Put the caret at the end, next to characters counted as the static render shows them (staticTextRange: before them, or
+   * after them with after), or at a point on the page (moved into the text when it is beside it; below the text = the end).
+   * False when the characters are not in the document
+   */
+  placeCaret(at: "end" | { visible: StaticTextRange; after?: boolean } | { x: number; y: number }): boolean;
+  /** Select characters counted as the static render shows them (staticTextRange); false when they are not in the document */
+  selectVisible(r: StaticTextRange): boolean;
+  /** Press a key as if typed in the editor (its key bindings run); a key nothing handles deletes the selection */
+  press(key: "Backspace" | "Delete"): void;
   /** Switch the whole Note between rich editing and its Markdown source (⌘/) */
   toggleSource(): void;
 };
@@ -443,7 +463,7 @@ function MenuView(p: { ui: Ui; pick: (it: MenuItem) => void }) {
         });
         return (
           <div
-            class="ctx open md-menu md-pick"
+            class={`${kindClass(p.ui.opts.classes, "menu")} open md-pick`}
             classList={{ "md-refs": m().kind === "ref" }}
             role="listbox"
             onMouseDown={(e) => e.preventDefault()}
@@ -595,7 +615,7 @@ function Bubble(p: { editor: Editor; tick: Accessor<number>; ui: Ui }) {
     const on = () => (p.tick(), q.on());
     return (
       <button
-        class="tbtn md-ib"
+        class={`${kindClass(p.ui.opts.classes, "button")} md-ib`}
         classList={{ on: on() }}
         aria-pressed={on()}
         aria-label={q.kbd ? `${q.tip} (${q.kbd})` : q.tip}
@@ -749,7 +769,7 @@ function Bubble(p: { editor: Editor; tick: Accessor<number>; ui: Ui }) {
       {(pos(), null)}
       <div
         ref={el}
-        class="pill md-bubble"
+        class={`${kindClass(p.ui.opts.classes, "bar")} md-bubble`}
         onMouseDown={(ev) => {
           if (!(ev.target as HTMLElement).closest("input")) ev.preventDefault();
         }}
@@ -892,10 +912,11 @@ function editorExtensions(
                     lsp: (l) => o.code?.lsp?.(l),
                     stopPointerDown: o.code?.stopPointerDown,
                     langs: () => o.code?.langs ?? [],
+                    classes: o.classes,
                   }),
             })
           : x.name === "table"
-            ? tableEditing(x as TNode)
+            ? tableEditing(x as TNode, o.classes)
             : x,
   );
   const Slash = Extension.create({
@@ -1325,11 +1346,11 @@ function makeInst(dragHandle = false): Inst {
       handlePaste: (_v, ev) => (inst.sess ? handlePaste(inst.editor, inst.sess.o, ev) : false),
       clipboardTextSerializer: clipboardText,
       clipboardSerializer: clipboardHtml(() => inst.editor.view) as unknown as DOMSerializer,
-      // 白板上的 Note 一般不滚动（卡片跟着内容长高），白板本身也不滚（靠镜头）：不让 ProseMirror 去滚所有祖先。
-      // 定了高度的 Note 正文自己会滚（overflow: auto）：光标只在正文里滚进来。找能滚的祖先先看样式，自动高度的卡不量排版。
-      // 代码块（横向能滚）和不在卡片上的（浮层里可能能滚）照常
+      // scrollOwnBox: the caret is brought into view only inside the nearest scrolling box (a fixed-height body scrolls with
+      // overflow: auto); finding it reads styles first, so an auto-height editor measures no layout. Code blocks (they scroll
+      // sideways) as usual
       handleScrollToSelection: (v) => {
-        if (v.state.selection.$head.parent.type.spec.code || !v.dom.closest(".card")) return false;
+        if (v.state.selection.$head.parent.type.spec.code || !inst.sess?.o.scrollOwnBox) return false;
         const box = scroller(v.dom);
         if (box) {
           const c = v.coordsAtPos(v.state.selection.head);
@@ -1391,7 +1412,7 @@ const prepKey = (value: string, layout?: MdLayout | null) => (layout ? `${JSON.s
  * The caret at pos, or where a caret can be nearest to it: a point between blocks, at a table cell's edge or past the last
  * block resolves to no text, and a text selection there is invalid (ProseMirror warns and the caret goes nowhere visible)
  */
-export function placeCaret(e: Editor, pos: number) {
+function caretAt(e: Editor, pos: number) {
   const doc = e.state.doc,
     $p = doc.resolve(Math.max(0, Math.min(pos, doc.content.size)));
   if ($p.parent.inlineContent) {
@@ -1405,6 +1426,7 @@ export function placeCaret(e: Editor, pos: number) {
     back && fwd ? ($p.pos - back.head <= fwd.head - $p.pos ? back : fwd) : (back ?? fwd ?? Selection.near($p, -1));
   e.view.dispatch(e.state.tr.setSelection(near));
 }
+/** @public */
 export function prepare(value: string, layout?: MdLayout | null) {
   const inst = pool,
     key = prepKey(value, layout);
@@ -1445,6 +1467,7 @@ export function warmUp(extra?: string) {
   }
 }
 
+/** @public */
 export function mountEditor(host: HTMLElement, o: MdEditorOpts): MdEditorHandle {
   let changed = false,
     done = false,
@@ -1507,6 +1530,7 @@ export function mountEditor(host: HTMLElement, o: MdEditorOpts): MdEditorHandle 
   find = noteFind(editor.view, host, {
     owns: (n) => host.contains(n) || layer.contains(n),
     leave: (ev) => blurred(ev),
+    classes: o.classes,
   });
   const ui: Ui = { menu, setMenu, link, setLink, closeFind: () => !!find?.close(), follow: false, opts: o };
   uiOf.set(editor, ui);
@@ -1611,7 +1635,37 @@ export function mountEditor(host: HTMLElement, o: MdEditorOpts): MdEditorHandle 
   return {
     value,
     layout,
-    editor: () => editor,
+    placeCaret: (at) => {
+      const end = () => {
+        caretAt(editor, editor.state.doc.content.size);
+        return true;
+      };
+      if (at === "end") return end();
+      if ("visible" in at) {
+        const c = visibleRange(editor.state.doc, at.visible);
+        if (c) caretAt(editor, at.after ? c.to : c.from);
+        return !!c;
+      }
+      const r = editor.view.dom.getBoundingClientRect();
+      if (at.y >= r.bottom) return end();
+      const p = editor.view.posAtCoords({
+        left: Math.min(Math.max(at.x, r.left + 1), r.right - 1),
+        top: Math.max(at.y, r.top + 1),
+      });
+      if (p) caretAt(editor, p.pos);
+      return !!p;
+    },
+    selectVisible: (r) => {
+      const c = visibleRange(editor.state.doc, r);
+      if (c) editor.commands.setTextSelection(c);
+      return !!c;
+    },
+    press: (key) => {
+      if (editor.isDestroyed) return;
+      const ev = new KeyboardEvent("keydown", { key, code: key, bubbles: true, cancelable: true });
+      editor.view.dom.dispatchEvent(ev);
+      if (!ev.defaultPrevented) editor.commands.deleteSelection();
+    },
     toggleSource,
     destroy: () => {
       if (!done) {

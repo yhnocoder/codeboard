@@ -9,7 +9,6 @@ import { EditorMarks } from "./lens";
 import { BoardWebviews, VIEW_TYPE } from "./panel";
 import { BoardsTree, GithubTree, QuestionsTree } from "./sidebar";
 import { registerVersionDocs, vscodeWorkspace } from "./vscode/workspace";
-import { disposeScratch } from "./vscode/scratch";
 
 /** 退出时要把没写盘的白板改动写完 */
 let host: Host | undefined;
@@ -120,6 +119,5 @@ export async function activate(ctx: vscode.ExtensionContext) {
 }
 
 export async function deactivate() {
-  disposeScratch();
   await host?.flush();
 }

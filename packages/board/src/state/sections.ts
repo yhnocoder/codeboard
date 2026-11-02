@@ -2,8 +2,17 @@
 // 拖动中先预演（setMovingHome）：卡离开的 Section 回到没有它的框，要进的撑开、亮起来（.drop），松手时才真的改 place.section。
 import { batch, createComputed, createMemo, createSignal, mapArray, on, untrack, type Signal } from "solid-js";
 import { createStore } from "solid-js/store";
-import { sectionFrame, sectionFit, sectionPill, estSize, type Board, type Rect, type Section } from "@codeboard/core";
-import { state, rectOf, placed, hostOf, collapsedAway } from "./store";
+import {
+  sectionFrame,
+  sectionFit,
+  sectionPill,
+  estSize,
+  type Board,
+  type Link,
+  type Rect,
+  type Section,
+} from "@codeboard/core";
+import { state, rectOf, placed, hostOf, collapsedAway, cardById, placeOf } from "./store";
 import { rooted, boardSignal, onBoardSwitch } from "./root";
 import { Spring, animate, cam } from "./camera";
 import { reduceMotion } from "./motion";
@@ -333,6 +342,18 @@ export function isHidden(id: string): boolean {
 }
 /** 画布上看得见的卡，按叠放顺序 */
 export const visibleCards = rooted(() => createMemo(() => placed().filter((c) => !isHidden(c.id))));
+
+/** Both ends of the arrow are on the canvas: neither card is folded away, and they are not folded into the same Section */
+export function linkVisible(L: Link) {
+  const a = cardById(L.from.card),
+    b = cardById(L.to.card);
+  if (!a || !b) return false;
+  if (collapsedAway().has(a.host.id) || collapsedAway().has(b.host.id)) return false;
+  const ha = collapsedHome(placeOf(a.host.id).section),
+    hb = collapsedHome(placeOf(b.host.id).section);
+  if (ha && ha === hb) return false;
+  return true;
+}
 
 /** 卡片被藏起来了吗（在折叠的 Section 里）；返回最外层折叠的那个 */
 export function collapsedHome(cardSection?: string): Section | undefined {

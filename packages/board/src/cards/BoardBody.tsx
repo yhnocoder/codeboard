@@ -8,7 +8,7 @@ import { flows, placeOf, state } from "../state/store";
 import { skels, FRAME_H, pvs, pvCols, clearPreviews, foldPreviews, setPreviewCols } from "../state/subboards";
 import { assetSrc } from "../actions/web";
 import { Icon } from "../ui/icons";
-import { MarkView } from "./Card";
+import { MarkView } from "./CodeHead";
 
 /** 地图上一块的种类图标（提示、预览的标题行用） */
 export function skelIcon(c: Pick<SkelCard, "k" | "lk">): string {

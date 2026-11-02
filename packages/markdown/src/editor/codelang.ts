@@ -1,6 +1,7 @@
 import { keepKey } from "../ui/editkeys";
 import { place } from "../ui/place";
 import { scrollIntoBox } from "../ui/reveal";
+import { kindClass, type MdClasses } from "../ui/classes";
 
 /** 一种语言：name 是写进围栏的名字，label 显示的名字，aliases 打这些也算它（不分大小写） */
 export type CodeLang = { name: string; label: string; aliases?: string[] };
@@ -51,6 +52,7 @@ export type LangBoxHost = {
   /** 焦点从列表直接去了编辑器外面：替编辑器发一个 blur（用的一方照常保存退出） */
   left: (to: EventTarget | null) => void;
   langs: () => readonly CodeLang[];
+  classes?: MdClasses;
 };
 
 const CHEVRON = `<svg class="md-lang-v" width="8" height="8" viewBox="0 0 8 8" aria-hidden="true"><path d="M1.5 3 4 5.5 6.5 3" fill="none" stroke="currentColor" stroke-width="1"/></svg>`;
@@ -106,7 +108,7 @@ export class LangBox {
     // 挂在 body 下（不跟着白板缩放）；.mdui-anchor：编辑器把它当作自己的浮层，焦点在这里不算离开
     const b = (this.box = document.createElement("div"));
     b.className = "mdui-anchor md-langbox";
-    b.innerHTML = `<div class="ctx md-menu"><input class="md-langq" placeholder="Filter languages" spellcheck="false" autocomplete="off" aria-label="Filter languages"><div class="md-langs" role="listbox"></div></div>`;
+    b.innerHTML = `<div class="${kindClass(this.host.classes, "menu")}"><input class="md-langq" placeholder="Filter languages" spellcheck="false" autocomplete="off" aria-label="Filter languages"><div class="md-langs" role="listbox"></div></div>`;
     b.addEventListener("mousedown", (e) => {
       if (e.target !== this.q) e.preventDefault();
     }); // 焦点留在筛选框里

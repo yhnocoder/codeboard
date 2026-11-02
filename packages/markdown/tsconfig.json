@@ -3,7 +3,9 @@
     "target": "ES2022", "module": "ESNext", "moduleResolution": "bundler",
     "jsx": "preserve", "jsxImportSource": "solid-js",
     "strict": true, "noUnusedLocals": true, "noEmit": true, "skipLibCheck": true,
-    "lib": ["ES2022", "DOM", "DOM.Iterable"], "types": ["node"]
+    "lib": ["ES2022", "DOM", "DOM.Iterable"], "types": ["node"],
+    // nothing is emitted (noEmit): outDir lets the dead-code check (knip) map what the board imports from dist/ back to src/
+    "outDir": "dist"
   },
   "include": ["src", "test"]
 }

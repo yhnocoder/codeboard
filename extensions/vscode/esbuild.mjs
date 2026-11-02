@@ -1,21 +1,30 @@
 import { build, context } from "esbuild";
 import { execFileSync } from "node:child_process";
-import { copyFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 
-// tree-sitter 的运行时和 Python / Rust 语法、C / C++ / CUDA 共用的 tree-sitter-cuda（wasm）拷进 dist/，插件启动时 initAnalysis(dist)
+// Files the bundle loads at run time are copied from the packages that use them, so they are the versions those packages were
+// written against: the tree-sitter runtime and grammars (Python, Rust; C / C++ / CUDA share tree-sitter-cuda) that
+// @codeboard/analysis loads with initAnalysis(dist), ELK from @codeboard/core, and the board's own build (media/board)
 const require = createRequire(import.meta.url);
-const wasmDir = dirname(require.resolve("@vscode/tree-sitter-wasm/wasm/tree-sitter.wasm"));
+const fromAnalysis = createRequire(require.resolve("@codeboard/analysis"));
+const fromCore = createRequire(require.resolve("@codeboard/core"));
+const wasmDir = dirname(fromAnalysis.resolve("@vscode/tree-sitter-wasm/wasm/tree-sitter.wasm"));
 mkdirSync("dist", { recursive: true });
 for (const f of ["tree-sitter.wasm", "tree-sitter-python.wasm", "tree-sitter-rust.wasm"]) copyFileSync(join(wasmDir, f), join("dist", f));
-const cudaWasm = require.resolve("@yhnocoder/tree-sitter-cuda/tree-sitter-cuda.wasm");
+const cudaWasm = fromAnalysis.resolve("@yhnocoder/tree-sitter-cuda/tree-sitter-cuda.wasm");
 copyFileSync(cudaWasm, join("dist", "tree-sitter-cuda.wasm"));
 // MIT 许可要求随附声明（tree-sitter-cpp 和 tree-sitter-cuda 的作者都在里面）
 copyFileSync(join(dirname(cudaWasm), "LICENSE"), join("dist", "LICENSE-tree-sitter-cuda.txt"));
 // ELK（Tidy Up 的排版）放在 dist/elk.js，第一次 Tidy Up 才 require：打进 extension.js 的话，插件每次启动都要多解析 3.5 MB（约 80 ms）
-copyFileSync(require.resolve("elkjs/lib/elk.bundled.js"), join("dist", "elk.js"));
+copyFileSync(fromCore.resolve("elkjs/lib/elk.bundled.js"), join("dist", "elk.js"));
+// The webview loads the board's build from media/board (npm run build builds @codeboard/board first)
+const boardDist = join(dirname(require.resolve("@codeboard/board/package.json")), "dist");
+if (!existsSync(join(boardDist, "board.js"))) throw new Error(`${boardDist}/board.js is missing: build @codeboard/board first`);
+rmSync("media/board", { recursive: true, force: true });
+cpSync(boardDist, "media/board", { recursive: true });
 const elkApart = { name: "elk-apart", setup: (b) => b.onResolve({ filter: /^elkjs\// }, () => ({ path: "./elk.js", external: true })) };
 
 // 构建自哪个提交（Copy Diagnostics 里显示）：正好在发版 tag v<version> 上是正式版，什么都不加；否则写 "dev <短 commit>"，有没提交的改动再加 "dirty"

@@ -47,20 +47,22 @@ describe("code editing with a language service", () => {
   // a stub language service: logs what was synced and what the document was when asked
   const log: string[] = [];
   const docs = new Map<string, string>();
+  const files: string[] = [];
   let slow: Promise<void> | undefined; // a slow language service: completions wait for this
   beforeAll(async () => {
     W.language.scratch = {
-      sync: async (id, lang, text, near) => {
-        log.push(`sync ${id} ${lang} ${near ? path.relative(WS, near) : "-"} ${JSON.stringify(text)}`);
-        docs.set(id, text);
+      sync: async (file, lang, text) => {
+        log.push(`sync ${path.relative(WS, file)} ${lang} ${JSON.stringify(text)}`);
+        files.push(file);
+        docs.set(file, text);
       },
-      close: async (id) => {
-        log.push(`close ${id}`);
-        docs.delete(id);
+      close: (file) => {
+        log.push(`close ${path.relative(WS, file)}`);
+        docs.delete(file);
       },
-      completions: async (id, line, col) => {
+      completions: async (file, line, col) => {
         await slow;
-        log.push(`complete ${JSON.stringify(docs.get(id))} ${line}:${col}`);
+        log.push(`complete ${JSON.stringify(docs.get(file))} ${line}:${col}`);
         return [
           ...Array.from({ length: 1000 }, (_, i) => ({ label: `zz${i}` })),
           { label: "schedule", kind: "method" as const },
@@ -68,7 +70,6 @@ describe("code editing with a language service", () => {
           { label: "reschedule" },
         ];
       },
-      hover: async () => ["```python\ndef schedule(self) -> tuple[list[Sequence], bool]\n```"],
       signature: async () => ({
         label: "allocate(seq: Sequence)",
         params: [{ at: [9, 22] as [number, number] }],
@@ -80,10 +81,13 @@ describe("code editing with a language service", () => {
       path: "nanovllm/engine/llm_engine.py",
       version: { kind: "none" as const },
     };
+    W.language.hover = async (file, line, col) =>
+      docs.has(file) ? [`\`\`\`python\ndef schedule(self) -> tuple[list[Sequence], bool]\n\`\`\` ${line}:${col}`] : [];
     await send({ type: "codeDoc", id: "free-b", lang: "python", text: "self.scheduler.", near });
   });
   afterAll(() => {
     delete W.language.scratch;
+    W.language.hover = async () => [];
   });
 
   it("syncs the virtual document next to the linked source file before asking, and narrows by the word before the cursor", async () => {
@@ -95,7 +99,8 @@ describe("code editing with a language service", () => {
       line: 0,
       col: 18,
     })) as { label: string }[];
-    expect(log[0]).toBe(`sync free-b python nanovllm/engine/llm_engine.py "self.scheduler."`);
+    expect(log[0]).toBe(`sync nanovllm/engine/.codeboard-scratch-free-b.py python "self.scheduler."`);
+    expect(fs.readFileSync(files[0], "utf8")).toBe(""); // the editor writes the text; the host only creates the file
     expect(log).toContain(`complete "self.scheduler.sch" 0:18`);
     expect(items.map((i) => i.label)).toEqual(["schedule", "reschedule"]); // prefix matches first
   });
@@ -138,11 +143,12 @@ describe("code editing with a language service", () => {
       trigger: "(",
     })) as { active: number } | null;
     expect(hv).toHaveLength(1);
-    expect(hv[0]).toMatch(/def schedule/);
+    expect(hv[0]).toMatch(/def schedule.* 1:16$/s); // the hover of the scratch file, its line counted from 1
     expect(sg?.active).toBe(0);
   });
-  it("closes the virtual document when the editor closes", async () => {
+  it("closes the document and deletes its file when the editor closes", async () => {
     await send({ type: "codeDocClose", id: "free-b" });
-    expect(log.at(-1)).toBe("close free-b");
+    expect(log.at(-1)).toBe("close nanovllm/engine/.codeboard-scratch-free-b.py");
+    expect(fs.existsSync(files[0])).toBe(false);
   });
 });
