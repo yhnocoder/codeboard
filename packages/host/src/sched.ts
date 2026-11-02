@@ -52,6 +52,8 @@ export class Scheduler {
     let resolve!: () => void;
     const done = new Promise<void>((r) => (resolve = r));
     const timer = setTimeout(() => s.end(), HOLD_MAX);
+    // a stretch left open must not keep the host's process alive (Node timers have unref; others don't need it)
+    (timer as { unref?: () => void }).unref?.();
     const s: Stretch = {
       done,
       jobs: 0,

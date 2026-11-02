@@ -95,6 +95,8 @@ export type StorageOpts = {
 /** 白板的改动攒多久写一次盘（ms）；写失败了隔多久再试 */
 const WRITE_DELAY = 400,
   RETRY_DELAY = 5000;
+/** The coarsest folder mtime step the listing cache allows for (FAT and some network mounts: 2 s) */
+const MTIME_GRAIN = 2000;
 
 export class Storage {
   private changed = new Emitter<void>();
@@ -136,9 +138,12 @@ export class Storage {
   private failing = new Set<string>();
   /** 正在看着的存储目录（设置里换了目录时换一个） */
   private watched?: Disposable[];
-  /** Bumped by every change in the folder the cache does not follow by itself; the cache is good while listed equals it */
-  private changes = 0;
-  private listed = -1;
+  /**
+   * The folders the cached listing was read from (the storage folder and each group folder) with their mtimes then. Adding,
+   * deleting or renaming a board file or a group folder changes its folder's mtime, so the listing is good while none moved, however
+   * the change was made (another window, a sync tool, a network mount the watcher can't see). null = read the folder again
+   */
+  private listedFrom: Map<string, number> | null = null;
 
   constructor(
     private fs: Fs,
@@ -156,23 +161,15 @@ export class Storage {
   /** 看着现在的存储目录（建好时；设置里换了目录时 reset 换过去） */
   private watchDir() {
     const dir = this.dir();
-    this.changes++;
+    this.listedFrom = null;
     if (!this.opts.watch) return;
     this.dispose();
     this.watched = [
+      // open boards and shared cards follow what another window wrote; the listing does not depend on it (see listedFrom)
       this.opts.watch(dir, "**/*.json", (abs) => {
-        // a file the cache does not hold (a board added, deleted or broken outside): read the listing again. The cache's own
-        // files are merged in by changedOnDisk (its own writes change nothing)
-        if (dirName(abs) !== this.library.dir() && ![...this.cache.values()].some((x) => x.file === abs))
-          this.changes++;
         void this.serial(() => this.changedOnDisk(abs)).catch((e) =>
           this.opts.log?.("error", `storage: ${abs}: ${e instanceof Error ? e.message : e}`),
         );
-      }),
-      // group folders made, renamed or deleted outside: a folder's event does not match the glob above. Board files are
-      // handled there, and the temporary files every save writes and renames away are not folders
-      this.opts.watch(dir, "*", (abs) => {
-        if (!/\.(json|tmp)$/.test(abs)) this.changes++;
       }),
     ];
   }
@@ -194,10 +191,7 @@ export class Storage {
       () => false,
     );
     if (e && there) await this.pull(e);
-    else {
-      this.changes++;
-      this.changed.fire();
-    }
+    else this.changed.fire();
   }
 
   dir(): string {
@@ -211,18 +205,33 @@ export class Storage {
     return this.queue.serial(fn);
   }
 
-  /** The boards in the storage folder: the cache while it is good (see changes), otherwise a scan */
+  /** The boards in the storage folder: the cache while no folder it was read from changed (see listedFrom), otherwise a scan */
   private async entries(): Promise<Entry[]> {
-    if (this.watched && this.listed === this.changes) return [...this.cache.values()].sort((a, b) => a.birth - b.birth);
+    if (await this.listingGood()) return [...this.cache.values()].sort((a, b) => a.birth - b.birth);
     return this.scan();
+  }
+  private async listingGood(): Promise<boolean> {
+    const from = this.listedFrom;
+    if (!from) return false;
+    const now = await Promise.all([...from.keys()].map((d) => this.mtimeOf(d)));
+    return [...from.values()].every((m, i) => m === now[i]);
+  }
+  /** A folder's mtime; -1 when it is not there */
+  private mtimeOf(dir: string): Promise<number> {
+    return this.fs.stat(dir).then(
+      (s) => s.mtimeMs,
+      () => -1,
+    );
   }
 
   /** 扫描存储目录（按修改时间缓存解析结果） */
   private async scan(): Promise<Entry[]> {
     const fs = this.fs;
-    const at = this.changes;
     const root = this.dir();
     const files: { file: string; group?: string }[] = [];
+    // each folder's mtime is taken before it is read: a change made while reading moves it, and the next listing reads again
+    const from = new Map([[root, await this.mtimeOf(root)]]);
+    const readAt = Date.now();
     let names: Awaited<ReturnType<Fs["readdir"]>> = [];
     try {
       names = await fs.readdir(root);
@@ -230,12 +239,15 @@ export class Storage {
       /* 还没有目录 */
     }
     // 组目录、每个文件的 stat 一起发（每次开白板、进子白板都要扫一遍，逐个等的话白板越多越慢）；处理仍按顺序
+    this.emptyGroups.clear();
     const subs = await Promise.all(
       names.map(async (d) => {
         if (!d.isDir || RESERVED.has(d.name) || d.name.startsWith(".")) return [];
         this.emptyGroups.add(d.name);
+        const dir = fs.join(root, d.name);
+        from.set(dir, await this.mtimeOf(dir));
         try {
-          return (await fs.readdir(fs.join(root, d.name))).map((x) => x.name);
+          return (await fs.readdir(dir)).map((x) => x.name);
         } catch {
           return [];
         }
@@ -331,8 +343,12 @@ export class Storage {
       }
     }
     for (const file of [...this.bad.keys()]) if (!files.some((f) => f.file === file)) this.bad.delete(file);
+    // a broken file fixed in place changes no folder: its own mtime keys the listing too
+    for (const b of this.bad.values()) from.set(b.file, b.mtime);
     for (const id of [...this.cache.keys()]) if (!seen.has(id)) this.cache.delete(id);
-    this.listed = at;
+    // a folder changed within MTIME_GRAIN of reading it may change again with the same mtime (coarse file system clocks): the
+    // listing is not kept then, and the next one reads again
+    this.listedFrom = [...from.values()].every((m) => readAt - m > MTIME_GRAIN) ? from : null;
     return out.sort((a, b) => a.birth - b.birth);
   }
 
@@ -907,7 +923,7 @@ export class Storage {
       await this.fs.rename(this.fs.join(this.dir(), from), this.fs.join(this.dir(), safe));
       this.emptyGroups.delete(from);
       this.cache.clear();
-      this.changes++;
+      this.listedFrom = null;
       this.changed.fire();
     });
   }

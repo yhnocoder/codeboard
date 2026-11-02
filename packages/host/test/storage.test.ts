@@ -21,21 +21,39 @@ import { Storage } from "../src/storage/boards";
 import { pasteClip } from "../src/storage/clip";
 import type { DirEnt, Fs } from "../src/storage/fs";
 
-/** In-memory Fs: files and directories keyed by "/"-joined paths; every write bumps a clock used as mtime */
+/**
+ * In-memory Fs: files and directories keyed by "/"-joined paths; every write bumps a clock used as mtime. A folder's mtime moves
+ * when an entry in it is added, removed or renamed, as on disk
+ */
 class MemFs implements Fs {
   files = new Map<string, { data: string | Uint8Array; mtime: number; birth: number }>();
-  /** Watchers (StorageOpts.watch) told about every .json created, changed or deleted under their folder, a turn later like a file watcher */
-  private watchers = new Set<{ base: string; fn: (abs: string) => void }>();
-  watch = (base: string, _glob: string, fn: (abs: string) => void) => {
-    const w = { base, fn };
+  /** Watchers (StorageOpts.watch) told about every file created, changed or deleted that matches their glob, a turn later */
+  private watchers = new Set<{ base: string; glob: RegExp; fn: (abs: string) => void }>();
+  watch = (base: string, glob: string, fn: (abs: string) => void) => {
+    const re = glob
+      .split("/")
+      .map((g) => (g === "**" ? "(?:[^/]+/)*" : g.replace(/[.]/g, "\\.").replace(/\*/g, "[^/]*") + "/"))
+      .join("")
+      .slice(0, -1);
+    const w = { base, glob: new RegExp(`^${re}$`), fn };
     this.watchers.add(w);
     return { dispose: () => void this.watchers.delete(w) };
   };
+  /** While set, watchers are told nothing (an event the watcher missed: another machine, a full inotify table) */
+  quiet = false;
   private told: Promise<void>[] = [];
   private touched(p: string) {
-    if (p.endsWith(".json"))
-      for (const w of this.watchers)
-        if (p.startsWith(w.base + "/")) this.told.push(new Promise((r) => setImmediate(() => r(w.fn(p)))));
+    if (this.quiet) return;
+    for (const w of this.watchers)
+      if (p.startsWith(w.base + "/") && w.glob.test(p.slice(w.base.length + 1)))
+        this.told.push(new Promise((r) => setImmediate(() => r(w.fn(p)))));
+  }
+  private dirTimes = new Map<string, number>();
+  /** Folder mtimes count apart from `clock`, which tests read as the number of file writes */
+  private dirClock = 0;
+  /** An entry in dir was added, removed or renamed */
+  private bump(dir: string) {
+    this.dirTimes.set(dir, ++this.dirClock);
   }
   /** Once the watchers have been told about every write so far */
   async delivered() {
@@ -68,6 +86,8 @@ class MemFs implements Fs {
     return [...out.values()];
   }
   async stat(p: string) {
+    const d = this.dirs.has(p) && (this.dirTimes.get(p) ?? 0);
+    if (d !== false) return { mtimeMs: d, birthtimeMs: 0, ctimeMs: 0 };
     const f = this.files.get(p);
     if (!f) throw new Error(`ENOENT ${p}`);
     return { mtimeMs: f.mtime, birthtimeMs: f.birth, ctimeMs: f.birth };
@@ -83,6 +103,7 @@ class MemFs implements Fs {
   async writeFile(p: string, data: string | Uint8Array) {
     if (this.hold) await this.hold;
     this.need(this.parent(p));
+    if (!this.files.has(p)) this.bump(this.parent(p));
     const t = ++this.clock;
     this.files.set(p, { data, mtime: t, birth: this.files.get(p)?.birth ?? t });
     this.touched(p);
@@ -93,6 +114,8 @@ class MemFs implements Fs {
       this.need(this.parent(b));
       this.files.delete(a);
       this.files.set(b, f);
+      this.bump(this.parent(a));
+      this.bump(this.parent(b));
       this.touched(a);
       this.touched(b);
       return;
@@ -102,7 +125,11 @@ class MemFs implements Fs {
       if (d === a || d.startsWith(a + "/")) {
         this.dirs.delete(d);
         this.dirs.add(b + d.slice(a.length));
+        this.dirTimes.set(b + d.slice(a.length), this.dirTimes.get(d) ?? 0);
+        this.dirTimes.delete(d);
       }
+    this.bump(this.parent(a));
+    this.bump(this.parent(b));
     for (const [k, v] of [...this.files])
       if (k.startsWith(a + "/")) {
         this.files.delete(k);
@@ -110,21 +137,27 @@ class MemFs implements Fs {
       }
   }
   async rm(p: string) {
-    this.files.delete(p);
+    if (this.files.delete(p)) this.bump(this.parent(p));
     this.touched(p);
   }
   async rmdir(p: string) {
     this.need(p);
     if ((await this.readdir(p)).length) throw new Error(`ENOTEMPTY ${p}`);
     this.dirs.delete(p);
+    this.bump(this.parent(p));
   }
   async mkdir(p: string) {
-    for (let d = p; d !== "/" && !this.dirs.has(d); d = this.parent(d)) this.dirs.add(d);
+    for (let d = p; d !== "/" && !this.dirs.has(d); d = this.parent(d)) {
+      this.dirs.add(d);
+      this.bump(d);
+      this.bump(this.parent(d));
+    }
   }
   fromBase64 = (s: string) => new Uint8Array(Buffer.from(s, "base64"));
   sha1 = (d: Uint8Array) => createHash("sha1").update(d).digest("hex");
   put(p: string, json: unknown) {
     void this.mkdir(this.parent(p));
+    if (!this.files.has(p)) this.bump(this.parent(p));
     const t = ++this.clock;
     this.files.set(p, { data: typeof json === "string" ? json : JSON.stringify(json), mtime: t, birth: t });
     this.touched(p);
@@ -181,7 +214,9 @@ describe("board storage", () => {
     const n = fs.reads;
     await store.list();
     expect(fs.reads).toBe(n);
-    fs.put(`${ROOT}/a.json`, { ...emptyBoard("a", "A2") });
+    // another window saves it the way every save here does: a temporary file renamed over it
+    fs.put(`${ROOT}/a.json.tmp`, { ...emptyBoard("a", "A2") });
+    await fs.rename(`${ROOT}/a.json.tmp`, `${ROOT}/a.json`);
     expect((await store.list())[0].name).toBe("A2");
     expect(fs.reads).toBe(n + 1);
   });
@@ -349,44 +384,54 @@ describe("board storage", () => {
     expect(await store.load("strict")).toBeNull();
   });
 
-  it("reads the folder again only after the watcher reports a change the cache does not hold", async () => {
+  it("reads the folder again only when a folder it listed changed", async () => {
     const fs = new MemFs();
-    const store = new Storage(fs, { dir: () => ROOT, watch: fs.watch });
+    const store = new Storage(fs, { dir: () => ROOT });
     fs.put(`${ROOT}/a.json`, emptyBoard("a", "A"));
-    await fs.delivered();
     expect((await store.list()).map((m) => m.name)).toEqual(["A"]);
-    const reads = fs.readdirs;
+    const dirs = fs.readdirs;
     await store.list();
     await store.load("a");
     await store.groups();
-    expect(fs.readdirs).toBe(reads);
-    // its own writes keep the cache
+    expect(fs.readdirs).toBe(dirs);
+    // its own writes rename a file into the folder: listed again, but no board file is read again
+    const reads = fs.reads;
     await store.rename("a", "A2");
-    await fs.delivered();
+    await store.flush();
     expect((await store.list()).map((m) => m.name)).toEqual(["A2"]);
-    expect(fs.readdirs).toBe(reads);
+    expect(fs.reads).toBe(reads);
     // a board another window adds, and one it deletes
     fs.put(`${ROOT}/g/b.json`, emptyBoard("b", "B"));
-    await fs.delivered();
     expect((await store.list()).map((m) => [m.name, m.group])).toEqual([
       ["A2", undefined],
       ["B", "g"],
     ]);
     expect(await store.groups()).toEqual(["g"]);
     await fs.rm(`${ROOT}/a.json`);
-    await fs.delivered();
     expect((await store.list()).map((m) => m.name)).toEqual(["B"]);
     expect(await store.load("a")).toBeNull();
   });
 
-  it("reads the folder on every call without a watcher", async () => {
-    const { fs, store } = setup();
+  it("sees group folders made or renamed outside even when the watcher misses them", async () => {
+    const fs = new MemFs();
+    const store = new Storage(fs, { dir: () => ROOT, watch: fs.watch });
     fs.put(`${ROOT}/a.json`, emptyBoard("a", "A"));
-    await store.list();
-    const reads = fs.readdirs;
-    fs.put(`${ROOT}/b.json`, emptyBoard("b", "B"));
-    expect((await store.list()).map((m) => m.name)).toEqual(["A", "B"]);
-    expect(fs.readdirs).toBeGreaterThan(reads);
+    await fs.delivered();
+    expect((await store.list()).map((m) => m.name)).toEqual(["A"]);
+    fs.quiet = true;
+    await fs.mkdir(`${ROOT}/made`);
+    expect(await store.groups()).toEqual(["made"]);
+    fs.put(`${ROOT}/made/b.json`, emptyBoard("b", "B"));
+    expect((await store.list()).map((m) => [m.name, m.group])).toEqual([
+      ["A", undefined],
+      ["B", "made"],
+    ]);
+    await fs.rename(`${ROOT}/made`, `${ROOT}/renamed`);
+    expect(await store.groups()).toEqual(["renamed"]);
+    expect((await store.list()).map((m) => [m.name, m.group])).toEqual([
+      ["A", undefined],
+      ["B", "renamed"],
+    ]);
   });
 
   it("turns a broken board file back into a board once it is fixed on disk", async () => {

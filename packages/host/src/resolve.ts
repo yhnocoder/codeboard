@@ -401,7 +401,7 @@ function callerOf(lang: string, full: string, line: number): { lang: string; lin
 }
 
 /** 点击时最多等转到实现多久（ms）：缓存里有、或者语言服务热着时够用；再久就先建卡 */
-const DISPATCH_WAIT = 200;
+export const DISPATCH_WAIT = 200;
 const LATE = Symbol("late");
 const within = <T>(p: Promise<T>, ms: number): Promise<T | typeof LATE> => {
   let t: ReturnType<typeof setTimeout> | undefined;

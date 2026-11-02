@@ -4,7 +4,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { CodeCard, ExpandPick, ExpandResult, PeekDef, Segment } from "@codeboard/core";
 import { analysisOf } from "../src/analysis";
 import { cardForFileSym } from "../src/cards";
-import { dispatchAt, expand, peek } from "../src/resolve";
+import { DISPATCH_WAIT, dispatchAt, expand, peek } from "../src/resolve";
 import { searchName } from "../src/search";
 import { nodeWorkspace } from "./node-workspace";
 import { at, card, startTreeSitter } from "./helpers";
@@ -156,11 +156,17 @@ describe("dynamic dispatch", () => {
    * must not decide a test about what the implementations show, so its timer stays still and they are waited for
    */
   const noWaitWindow = async (fn: () => Promise<void>) => {
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    // only that window's timer is held: faking every timer would hang any other wait on the click path (the language service's
+    // start) instead of failing
+    const real = globalThis.setTimeout;
+    const spy = vi
+      .spyOn(globalThis, "setTimeout")
+      .mockImplementation(((cb: () => void, ms?: number) =>
+        real(ms === DISPATCH_WAIT ? () => {} : cb, ms)) as typeof setTimeout);
     try {
       await fn();
     } finally {
-      vi.useRealTimers();
+      spy.mockRestore();
     }
   };
 
