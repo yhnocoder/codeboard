@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { addVariant, emptyBoard, type CodeCard, type Segment, type SegView } from "@codeboard/core";
-import { shot, put, symCard, findSym, viewOf, OUT, type Host } from "../harness";
+import { cpuSpans, shot, put, symCard, findSym, viewOf, OUT, type Host } from "../harness";
 import { test, open, light, verdict, until, idle } from "../fixtures";
 
 async function shotPr(h: Host, name: string, away = true) {
@@ -379,24 +379,25 @@ async function switchTime(res: Record<string, unknown>) {
   let ok = true;
   for (let i = 0; i < 10; i++) {
     const toMine = i % 2 === 0;
-    const t = await page.evaluate(
-      async ([id, toMine]) => {
-        const sel = toMine ? ".vtab:not(.up):not(.vadd)" : ".vtab.up";
-        const el = document.querySelector(`.card[data-id="${id}"] ${sel}`) as HTMLElement;
-        const t0 = performance.now();
-        el.click();
-        await new Promise((r) => requestAnimationFrame(() => r(0)));
-        const t1 = performance.now();
-        const mine = !!document.querySelector(`.card[data-id="${id}"] .chead .mine`);
-        return {
-          ms: t1 - t0,
-          ok: mine === toMine && document.querySelector(`.card[data-id="${id}"] ${sel}.on`) !== null,
-        };
-      },
-      [sch.id, toMine] as const,
-    );
-    ms.push(t.ms);
-    ok &&= t.ok;
+    // the switch's main-thread CPU time, from the click to the next frame (cpuSpans): load beside this scenario doesn't count
+    let shown = false;
+    const [t] = await cpuSpans(page, async () => {
+      shown = await page.evaluate(
+        async ([id, toMine]) => {
+          const sel = toMine ? ".vtab:not(.up):not(.vadd)" : ".vtab.up";
+          const el = document.querySelector(`.card[data-id="${id}"] ${sel}`) as HTMLElement;
+          performance.mark("cpu:start");
+          el.click();
+          await new Promise((r) => requestAnimationFrame(() => r(0)));
+          performance.mark("cpu:end");
+          const mine = !!document.querySelector(`.card[data-id="${id}"] .chead .mine`);
+          return mine === toMine && document.querySelector(`.card[data-id="${id}"] ${sel}.on`) !== null;
+        },
+        [sch.id, toMine] as const,
+      );
+    });
+    ms.push(t);
+    ok &&= shown && t !== undefined;
     await idle(h); // 改动发出去、宿主的回复都过去了再切下一次
   }
   const sorted = [...ms].sort((a, b) => a - b);

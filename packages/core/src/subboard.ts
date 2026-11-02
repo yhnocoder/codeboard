@@ -253,6 +253,28 @@ export function subCardOf(b: Board, id: string): { card: Card; cols?: Card[] } |
   return { card: c, cols: c.cols.map((k) => b.cards.find((x) => x.id === k)).filter((x): x is Card => !!x) };
 }
 
+/** How many levels of sub-boards the walks below go down (the skeleton's [[ candidates, the sub-boards the host doesn't list again) */
+const SUB_DEPTH = 8;
+
+/**
+ * The sub-boards b's placed frames lead into, all the way down (not b; as deep as refsOf goes, and not round a cycle). Their cards
+ * are among b's own [[ candidates already (with the frames on the way), so the host leaves them out of the other boards it lists
+ */
+export function subBoardTree(b: Board, peek: (id: string) => Board | undefined): Set<string> {
+  const out = new Set<string>();
+  const walk = (x: Board, depth: number) => {
+    for (const c of x.cards) {
+      if (!x.place[c.id] || c.kind !== "board" || c.board === b.id || out.has(c.board) || depth >= SUB_DEPTH) continue;
+      const sub = peek(c.board);
+      if (!sub) continue;
+      out.add(c.board);
+      walk(sub, depth + 1);
+    }
+  };
+  walk(b, 0);
+  return out;
+}
+
 /** 这块白板上（和一路往下的子白板里）有真正标题的卡（refTitle）；套得太深、套成环的不往下走 */
 function refsOf(b: Board, peek: (id: string) => Board | undefined): SkelRef[] {
   const out: SkelRef[] = [];
@@ -262,7 +284,7 @@ function refsOf(b: Board, peek: (id: string) => Board | undefined): SkelRef[] {
       if (!x.place[c.id]) continue;
       const t = refTitle(c, (id) => peek(id)?.name);
       if (t) out.push(via.length ? { id: c.id, t, k: c.kind, via } : { id: c.id, t, k: c.kind });
-      if (c.kind !== "board" || seen.has(c.board) || via.length >= 8) continue;
+      if (c.kind !== "board" || seen.has(c.board) || via.length >= SUB_DEPTH) continue;
       const sub = peek(c.board);
       if (!sub) continue;
       seen.add(c.board);

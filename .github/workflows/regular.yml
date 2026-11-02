@@ -5,15 +5,12 @@ on:
   schedule:
     - cron: "30 0,6,12,18 * * *" # every 6 hours: 02:30, 08:30, 14:30, 20:30 Beijing time, each 30 min before a replay (replay.yml)
   workflow_dispatch:
+# Read-only by default; publish pushes the impact map (ci-screenshots branch) and comments on the results issue
 permissions:
-  contents: write
-  issues: write
+  contents: read
 concurrency:
   group: regular-${{ github.ref }}
   cancel-in-progress: true
-env:
-  VSCODE_VERSION: "1.142.0"
-  E2E_EXTENSIONS: "ms-python.python@2026.10.0 ms-python.vscode-pylance@2026.4.1"
 jobs:
   harness:
     runs-on: ubuntu-24.04
@@ -135,6 +132,7 @@ jobs:
   publish:
     needs: [harness, e2e, perf, storybook, repeat]
     if: ${{ !cancelled() }}
+    permissions: { contents: write, issues: write }
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -159,6 +157,7 @@ jobs:
               body: "The scheduled runs (`.github/workflows/regular.yml`, `replay.yml`, every 6 hours) comment here when their set of failures changes, including when everything passes again." })).data;
             const comments = await github.paginate(github.rest.issues.listComments, { ...context.repo, issue_number: issue.number, per_page: 100 });
             const r = regularReport({ dir: "test-out/artifacts", jobs: JSON.parse(process.env.JOBS), comments: comments.map((c) => c.body || ""), run, sha: context.sha.slice(0, 7),
-              tiers: JSON.parse(require("fs").readFileSync(`${process.env.GITHUB_WORKSPACE}/packages/board/test/tiers.json`, "utf8")) });
+              tiers: JSON.parse(require("fs").readFileSync(`${process.env.GITHUB_WORKSPACE}/packages/board/test/tiers.json`, "utf8")),
+              streaks: require("fs").existsSync("test-out/impact-new/alone.json") ? JSON.parse(require("fs").readFileSync("test-out/impact-new/alone.json", "utf8")) : {} });
             core.info(`failing: ${r.fails.length}, flakes: ${r.flaky.flakes.length}, alone: ${r.flaky.alone.length}${r.flaky.error ? `, repeat error: ${r.flaky.error}` : ""}, groups over their limits: ${r.groups.length}; comment: ${r.due}`);
             if (r.due) await github.rest.issues.createComment({ ...context.repo, issue_number: issue.number, body: r.body });

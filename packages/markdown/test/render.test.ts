@@ -1,4 +1,4 @@
-// @vitest-environment happy-dom
+// @vitest-environment jsdom
 // 静态显示和编辑器用的是同一份 renderHTML：同一篇文档，render.ts 拼出来的 HTML 和 TipTap 的 getHTML（ProseMirror 的 DOMSerializer）一样；
 // 显示时只有文档里写明的几处不同（公式、Mermaid、目录、图片、链接、只有一段的列表项 / 格子）
 import { describe, expect, it } from "vitest";

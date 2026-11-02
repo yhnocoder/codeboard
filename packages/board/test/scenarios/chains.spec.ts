@@ -3,35 +3,10 @@
 // server for dynamic dispatch (definition = the base method, implementations = the overrides, as Pylance answers).
 import * as fs from "node:fs";
 import * as path from "node:path";
-import {
-  emptyBoard,
-  DEFAULT_SETTINGS,
-  type Board,
-  type CodeCard,
-  type SegView,
-  type HostToBoard,
-} from "@codeboard/core";
+import { emptyBoard, type Board, type CodeCard } from "@codeboard/core";
 import { shot, put, OUT, REPO, type Host } from "../harness";
-import {
-  analysisOf,
-  callVars,
-  cardForFileSym,
-  dispatchAt,
-  expand,
-  genSource,
-  nodeWorkspace,
-  peek,
-  searchName,
-  searchPick,
-  startAnalysis,
-  type TestWorkspace,
-  viewsFor,
-  HostContext,
-} from "@codeboard/host/testing";
-import { test, open, check, light, verdict, expect, until, idle } from "../fixtures";
-
-/** The host the scenario talks to (each setup makes a new one) */
-let cx: HostContext;
+import type { RealHostRun } from "../realhost";
+import { test, check, light, verdict, expect, until, idle, hostBoards } from "../fixtures";
 
 /** Screenshot also into the PR shots folder when SHOTS_DIR is set */
 async function shotPr(h: Host, name: string) {
@@ -44,78 +19,21 @@ async function shotPr(h: Host, name: string) {
 }
 
 let FIX = "",
-  W: TestWorkspace;
+  run: RealHostRun;
+/** The real host (realhost.ts) on the crosslang fixture repo, copied once per worker; a new host for each scenario */
 async function fixture() {
-  if (FIX) return;
-  FIX = fs.mkdtempSync("/tmp/codeboard-chains-");
-  fs.cpSync(path.join(REPO, "packages/host/test/fixtures/crosslang"), FIX, { recursive: true });
-  W = nodeWorkspace(FIX);
-  cx = new HostContext(W);
-  await startAnalysis();
-  cx.index.start();
-  await cx.index.ready();
+  if (!FIX) {
+    FIX = fs.mkdtempSync("/tmp/codeboard-chains-");
+    fs.cpSync(path.join(REPO, "packages/host/test/fixtures/crosslang"), FIX, { recursive: true });
+  }
+  run = await hostBoards([], { root: FIX, page: { light, w: 1700, h: 1000 } });
 }
-async function symCard(rel: string, qual: string, last = false): Promise<CodeCard> {
-  const abs = path.join(FIX, rel);
-  const syms = analysisOf(cx.langOf(abs), fs.readFileSync(abs, "utf8")).symbols.filter((s) => s.qual === qual);
-  const sym = last ? syms[syms.length - 1] : syms[0];
-  return (await cardForFileSym(cx, abs, sym))!.card as CodeCard;
-}
+const symCard = (rel: string, qual: string, last = false): Promise<CodeCard> => run.card(rel, qual, last ? -1 : 0);
 
-/** The board with the real host behind it (only the messages these scenarios use; the rest fall back to the harness mock) */
+/** The board, saved in the host's storage and opened in a page */
 async function chainsHost(b: Board): Promise<Host> {
-  const segs = b.cards.flatMap((c) => (c.kind === "code" ? c.segments : []));
-  const views: Record<string, SegView> = await viewsFor(cx, segs);
-  let h!: Host;
-  h = await open({
-    board: b,
-    light,
-    w: 1700,
-    h: 1000,
-    on: async (m, reply) => {
-      switch (m.type) {
-        case "ready":
-          return true; // init below, once open() has returned the page
-        case "expand":
-          await reply(m.req, await expand(cx, m));
-          return true;
-        case "dispatch":
-          await reply(m.req, await dispatchAt(cx, m));
-          return true;
-        case "peek":
-          await reply(m.req, await peek(cx, m));
-          return true;
-        case "views":
-          await reply(m.req, await viewsFor(cx, m.segs));
-          return true;
-        case "callVars":
-          await reply(m.req, await callVars(cx, m));
-          return true;
-        case "searchName":
-          await reply(m.req, await searchName(cx, m.name));
-          return true;
-        case "searchPick":
-          await reply(m.req, await searchPick(cx, m.item));
-          return true;
-        case "genSource":
-          await reply(m.req, await genSource(cx, m.from));
-          return true;
-        case "prefetch":
-          return true;
-        default:
-          return false;
-      }
-    },
-  });
-  const init: HostToBoard = {
-    type: "init",
-    board: b,
-    boards: [{ id: b.id, name: b.name, cards: b.cards.length }],
-    views,
-    stale: {},
-    host: { assetBase: "", target: true, settings: { ...DEFAULT_SETTINGS } },
-  };
-  await h.post(init);
+  await run.host.store.save(b);
+  const h = await run.open(b.id);
   await h.page.locator(".card").first().waitFor();
   await idle(h);
   return h;
@@ -174,16 +92,15 @@ async function pickimpl(res: Record<string, unknown>) {
   // stub language server: self.impl.forward → AttentionImpl.forward; its implementations → the two subclasses
   const baseAbs = path.join(FIX, "vllm/base.py"),
     implAbs = path.join(FIX, "vllm/impls.py");
-  W.language.definitions = async (abs, line) =>
+  run.ws.language.definitions = async (abs, line) =>
     abs.endsWith("vllm/layer.py") && line === 7 ? [{ abs: baseAbs, line: 2, col: 8 }] : [];
-  W.language.implementations = async (abs, line) =>
+  run.ws.language.implementations = async (abs, line) =>
     abs === baseAbs && line === 2
       ? [
           { abs: implAbs, line: 5, col: 8 },
           { abs: implAbs, line: 10, col: 8 },
         ]
       : [];
-  cx.defs.forget();
   const B = emptyBoard("bPick", "vLLM · attention");
   const lay = await symCard("vllm/layer.py", "Attention.forward");
   put(B, lay, 80, 160, 620);
@@ -304,7 +221,7 @@ async function pickimpl(res: Record<string, unknown>) {
   // 8. Go to Implementation is slow (a cold Pylance searching the whole workspace): the click doesn't wait for it.
   // The definition's card comes first; when the implementations arrive the picker opens, and picking one swaps it in (the abstract base is not kept)
   await page.keyboard.press("Escape");
-  W.language.implementations = async (abs, line) => {
+  run.ws.language.implementations = async (abs, line) => {
     await new Promise((r) => setTimeout(r, 1500));
     return abs === baseAbs && line === 2
       ? [
@@ -313,7 +230,7 @@ async function pickimpl(res: Record<string, unknown>) {
         ]
       : [];
   };
-  cx.defs.forget();
+  run.host.hub.cx.defs.forget();
   await h.page.context().close();
   const B8 = emptyBoard("bPickLate", "vLLM · attention (cold language server)");
   const lay8 = await symCard("vllm/layer.py", "Attention.forward");
@@ -371,9 +288,6 @@ async function pickimpl(res: Record<string, unknown>) {
     res.lateItems === 2 &&
     res.lateSwap;
   check("pickimpl", ok, JSON.stringify(res));
-  W.language.definitions = async () => [];
-  W.language.implementations = async () => [];
-  cx.defs.forget();
   await h8.page.context().close();
 }
 
@@ -456,7 +370,7 @@ async function crosslang(res: Record<string, unknown>) {
     (h.board().cards.find((c) => c.id === kern?.id) as CodeCard | undefined)?.title === "dispatch<4, 768, 8192>";
 
   // 3. Generated card from the clipboard: dashed card, Generated · CUDA source, run note, dotted Generated from arrow
-  W.ui.clipboard = async () =>
+  run.ws.ui.clipboard = async () =>
     "// generated by DeepEP JIT for num_ranks=8\n#include <cuda_runtime.h>\n__global__ void dispatch_8_768(int4* recv_x, const int4* x, int num_tokens) {\n    const int sm_id = blockIdx.x;\n    if (sm_id >= 8) return;\n    recv_x[threadIdx.x] = x[threadIdx.x];\n}\n";
   await page
     .locator(`.card[data-id="${kern?.id}"] .gutter .no`)
@@ -495,7 +409,8 @@ async function crosslang(res: Record<string, unknown>) {
 
   // 4. Triton kernel[grid] and the sglang-style autotune configs as grey alternatives (no screenshot)
   const inv = await symCard("ops/kern.py", "invoke_fused_moe_kernel");
-  const r = await expand(cx, {
+  const r = await run.ask<"expand">({
+    type: "expand",
     seg: inv.segments[0],
     line: inv.segments[0].start + inv.segments[0].text.findIndex((t) => /fused_moe_kernel\[grid\]/.test(t)),
     col: inv.segments[0].text.find((t) => /fused_moe_kernel\[grid\]/.test(t))!.indexOf("fused_moe_kernel"),

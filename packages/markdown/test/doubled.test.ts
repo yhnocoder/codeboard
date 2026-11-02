@@ -1,4 +1,4 @@
-// @vitest-environment happy-dom
+// @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
 import { DOMParser as PMParser, type Node as PMNode } from "@tiptap/pm/model";
 import { mdSchema, parseMd } from "../src/schema";

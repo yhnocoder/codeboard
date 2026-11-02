@@ -43,6 +43,9 @@ export function areasOf(files, tiers) {
   return { areas, broad, unplaced };
 }
 
+/** The changed files that the perf benchmarks run (tiers.json "perf"): CI's perf job runs only when there is one */
+export const perfFiles = (files, tiers) => files.filter((f) => matches(tiers.perf?.files ?? [], f));
+
 /** The areas (and broad) that hold a file */
 export const holders = (file, tiers) => [
   ...(matches(tiers.broad?.files ?? [], file) ? ["broad"] : []),

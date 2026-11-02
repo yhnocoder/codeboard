@@ -25,18 +25,16 @@ import * as path from "node:path";
 import { crc32, deflateSync } from "node:zlib";
 import {
   emptyBoard,
-  mimeOf,
   type Board,
   type BoardToHost,
   type ImageAiOp,
   type ImageCard,
   type NoteCard,
 } from "@codeboard/core";
-import { nodeFs, readAsset, runImageAi, saveNoteImage, Storage } from "@codeboard/host/testing";
-import { OUT, put, type Host } from "../harness";
-import { test, open, check, until, idle, onMac } from "../fixtures";
+import { put, type Host } from "../harness";
+import { fakeDeepseek, type DeepseekAnswer } from "../deepseek";
+import { test, check, until, idle, hostBoards, onMac } from "../fixtures";
 
-const BASE = "https://cb-assets.test/res";
 const SHOTS = process.env.IMAGE_AI_SHOTS;
 
 /** A w × h PNG: a light page with a dark bar (a stand-in for a screenshot) */
@@ -74,104 +72,48 @@ const MD = "# Wave count\n\nA kernel launches $N$ blocks:\n\n$$\\lceil N / C \\r
 const SVG_SRC = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 160"><rect x="0" y="0" width="240" height="160" fill="#ffffff"/><rect x="20" y="30" width="120" height="40" fill="#e8a33d"/><text x="80" y="56" text-anchor="middle" font-size="14">prefill</text></svg>`;
 const SVG_BLUE = SVG_SRC.replace('fill="#e8a33d"', 'fill="#3d7be8"');
 
-type Fake = { calls: { op: ImageAiOp; body: any }[]; answer: (op: ImageAiOp) => string | "hang" | number };
+type Fake = { calls: { op: ImageAiOp; body: any }[]; answer: (op: ImageAiOp) => DeepseekAnswer };
 /**
- * The board in Warm Ink, light, with a host that stores images in a temp assets/ folder (served at BASE) and answers imageAi with
- * the host's runImageAi on a fake DeepSeek. key: undefined = no key set
+ * The board in Warm Ink, light, on the real host (realhost.ts): images in its storage's assets/ (PNG_FILE and `seed`), DeepSeek a
+ * local fake (deepseek.ts) answering `answer` for the op the board asked. key: the DeepSeek key stored; null = none
  */
 async function aiHost(
   b: Board,
   answer: Fake["answer"],
   o: { key?: string | null; seed?: Record<string, Buffer | string> } = {},
 ) {
-  const dir = path.join(OUT, `image-ai-${process.pid}-${Math.random().toString(36).slice(2, 8)}`);
-  const store = new Storage(nodeFs, { dir: () => dir });
-  fs.mkdirSync(store.assetsDir(), { recursive: true });
-  fs.writeFileSync(path.join(store.assetsDir(), PNG_FILE), png(320, 200));
-  for (const [f, v] of Object.entries(o.seed ?? {})) fs.writeFileSync(path.join(store.assetsDir(), f), v);
   const fake: Fake = { calls: [], answer };
-  const cache = new Map<string, string>(); // the host's memory of images read
-  const jobs = new Map<number, AbortController>();
   // the op being asked (the fake DeepSeek only sees the request; a reused answer never reaches it)
   let asking: ImageAiOp | undefined;
-  const fetchFake = (async (_url: string, init: RequestInit) => {
-    const body = JSON.parse(String(init.body));
-    const op = asking!;
-    fake.calls.push({ op, body });
-    const a = fake.answer(op);
-    if (a === "hang")
-      return new Promise<Response>((_, rej) =>
-        init.signal!.addEventListener("abort", () => rej(new DOMException("aborted", "AbortError"))),
-      );
-    if (typeof a === "number")
-      return new Response(JSON.stringify({ error: { message: `status ${a}` } }), { status: a });
-    return new Response(JSON.stringify({ choices: [{ finish_reason: "stop", message: { content: a } }] }), {
-      status: 200,
-    });
-  }) as unknown as typeof fetch;
-  const answerReq = async (
-    reply: (req: number, data?: unknown, error?: string) => Promise<void>,
-    req: number,
-    f: () => Promise<unknown>,
-  ) => {
-    try {
-      await reply(req, await f());
-    } catch (e) {
-      await reply(req, undefined, (e as Error).message);
-    }
-    return true;
-  };
-  const key = o.key === null ? "" : (o.key ?? "sk-fake");
-  const h = await open({
-    board: b,
-    light: true,
-    w: 1280,
-    h: 820,
-    settings: { theme: "warm-ink" } as any,
-    host: { assetBase: BASE },
-    beforeLoad: (p) =>
-      p.route(`${BASE}/**`, (r) => {
-        const name = decodeURIComponent(new URL(r.request().url()).pathname.split("/").pop()!),
-          f = path.join(store.assetsDir(), name);
-        return fs.existsSync(f)
-          ? r.fulfill({ body: fs.readFileSync(f), contentType: mimeOf(name) })
-          : r.fulfill({ status: 404 });
-      }),
-    on: async (m, reply) => {
-      if (m.type === "saveAsset") return answerReq(reply, m.req!, () => store.saveAsset(m.name, m.dataUrl));
-      if (m.type === "saveImage") return answerReq(reply, m.req!, () => saveNoteImage(store, m.dataUrl));
-      if (m.type === "readAsset") return answerReq(reply, m.req!, () => readAsset(store, m.file));
-      if (m.type === "imageAiCancel") {
-        jobs.get(m.job)?.abort();
-        return true;
-      }
-      if (m.type === "imageAi")
-        return answerReq(reply, m.req!, async () => {
-          const ac = new AbortController();
-          jobs.set(m.job, ac);
-          asking = m.op;
-          try {
-            return await runImageAi({ key, fetch: fetchFake, signal: ac.signal, cache }, m.op);
-          } finally {
-            jobs.delete(m.job);
-          }
-        });
-      return false;
+  const run = await hostBoards([b], {
+    page: {
+      light: true,
+      w: 1280,
+      h: 820,
+      settings: { theme: "warm-ink" },
+      on: (m) => {
+        if (m.type === "imageAi") asking = m.op;
+        return false;
+      },
     },
   });
-  await idle(h);
-  const assets = () => fs.readdirSync(store.assetsDir()).sort();
-  const asset = (f: string) => fs.readFileSync(path.join(store.assetsDir(), f), "utf8");
-  return {
-    h,
-    fake,
-    assets,
-    asset,
-    done: async () => {
-      await h.close();
-      fs.rmSync(dir, { recursive: true, force: true });
+  await fakeDeepseek(
+    run,
+    (body) => {
+      fake.calls.push({ op: asking!, body });
+      return fake.answer(asking!);
     },
-  };
+    { key: o.key },
+  );
+  const dir = run.host.store.assetsDir();
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, PNG_FILE), png(320, 200));
+  for (const [f, v] of Object.entries(o.seed ?? {})) fs.writeFileSync(path.join(dir, f), v);
+  const h = await run.open(b.id);
+  await idle(h);
+  const assets = () => fs.readdirSync(dir).sort();
+  const asset = (f: string) => fs.readFileSync(path.join(dir, f), "utf8");
+  return { h, fake, assets, asset, done: () => run.close() };
 }
 
 const board = (f: (b: Board) => void) => {

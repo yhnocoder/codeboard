@@ -1,6 +1,8 @@
 import { test as base, expect, type Browser, type Page } from "@playwright/test";
 import { ready, openBoard, idle, type Host, type OpenOptions, type PageCoverage } from "./harness";
 import { nodeCoverage, pageFiles } from "./coverage";
+import { realHost, type RealHostOptions } from "./realhost";
+import type { Board } from "@codeboard/core";
 import tiers from "./tiers.json";
 
 export { expect };
@@ -62,6 +64,21 @@ export const hold = (h: { page: Page }, ms: number, _why: string) => h.page.wait
  *  the browser, so a scenario expects the labels of the platform it runs on */
 export const onMac = (pg: Page) => pg.evaluate(() => /Mac|iP(hone|[oa]d)/.test(navigator.platform));
 
+/**
+ * Pauses the page's clock (Playwright's, page.clock.install() first) a moment from now: from then on only clock.runFor() moves
+ * time, so timers and frames come exactly when the board asks for them, however busy the machine is. A busy machine can let that
+ * moment pass before the pause arrives: then it picks a new one
+ */
+export async function pauseClock(pg: Page) {
+  for (;;)
+    try {
+      await pg.clock.pauseAt((await pg.evaluate(() => Date.now())) + 100);
+      return;
+    } catch (e) {
+      if (!/to the past/.test(String(e))) throw e;
+    }
+}
+
 /** n rendered frames of the page, through its own requestAnimationFrame (so a page that makes frames late makes these late too):
  *  each pointer move of a drag landing in a frame of its own, as a real one does */
 export const frames = (pg: Page, n = 1) =>
@@ -110,7 +127,7 @@ export async function focusSettled(pg: Page) {
   }, PM_FOCUS_GUARD);
 }
 
-let cur: { browser: Browser; hosts: Host[]; coverage?: PageCoverage } | undefined;
+let cur: { browser: Browser; hosts: Host[]; after: (() => Promise<void>)[]; coverage?: PageCoverage } | undefined;
 
 export async function open(o: OpenOptions = {}): Promise<Host> {
   if (!cur) throw new Error("open() is for a running test");
@@ -121,6 +138,17 @@ export async function open(o: OpenOptions = {}): Promise<Host> {
   });
   c.hosts.push(h);
   return h;
+}
+
+/** The real host (realhost.ts) with these boards in its storage; its pages open with run.open(id). Disposed after the scenario */
+export function hostBoards(boards: Board[], o: RealHostOptions = {}) {
+  if (!cur) throw new Error("hostBoards() is for a running test");
+  const c = cur;
+  return realHost(
+    boards,
+    { openPage: open, afterTest: (fn) => void c.after.push(fn), fail: (name, detail) => check(name, false, detail) },
+    o,
+  );
 }
 
 export const test = base.extend<{ boards: void }, { nodeCov: Awaited<ReturnType<typeof nodeCoverage>> | undefined }>({
@@ -136,11 +164,12 @@ export const test = base.extend<{ boards: void }, { nodeCov: Awaited<ReturnType<
   boards: [
     async ({ browser, nodeCov }, use, info) => {
       await nodeCov?.take(); // what ran before the test (loading the test files, the analysis of nano-vllm) belongs to no test
-      cur = { browser, hosts: [], coverage: COV ? [] : undefined };
+      cur = { browser, hosts: [], after: [], coverage: COV ? [] : undefined };
       await use();
       const c = cur;
       cur = undefined;
       for (const h of c.hosts) await h.close().catch(() => {});
+      for (const fn of c.after) await fn();
       if (COV) {
         const files = new Set<string>();
         pageFiles(c.coverage!, files);

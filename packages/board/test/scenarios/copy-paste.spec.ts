@@ -19,77 +19,35 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { emptyBoard, type Board, type Card, type CodeCard, type NoteCard } from "@codeboard/core";
-import { nodeFs, png, readAsset, saveNoteImage, Storage } from "@codeboard/host/testing";
+import { png } from "@codeboard/host/testing";
 import { OUT, put, symCard, findSym, type Host } from "../harness";
-import { test, open, check, until, idle, frames, expect, focusSettled } from "../fixtures";
+import { test, open, check, until, idle, frames, expect, focusSettled, hostBoards } from "../fixtures";
 
-const BASE = "https://cb-assets.test/res";
 /** A 240 × 160 picture: a warm gradient with a dark band */
 const PICTURE = png(240, 160, (x, y) => (y > 60 && y < 100 ? [40, 44, 60, 255] : [230 - x / 3, 150 + y / 4, 80, 255]));
 
-/** The board in Warm Ink with a host that keeps assets/ in a temp storage folder (served at BASE), answers readAsset and saveImage
- * with the host's own code, and plays the host's card clipboard for pastes on the same board (pasteCards answers null there) */
+/** The board in Warm Ink on the real host (realhost.ts), with the picture card.png in its storage's assets/; the host's card
+ *  clipboard plays the pastes */
 async function boardWith(b: Board) {
-  const dir = path.join(OUT, `copy-paste-${process.pid}-${Math.random().toString(36).slice(2, 8)}`);
-  const store = new Storage(nodeFs, { dir: () => dir });
-  fs.mkdirSync(store.assetsDir(), { recursive: true });
-  fs.writeFileSync(path.join(store.assetsDir(), "card.png"), PICTURE);
-  const h = await open({
-    board: b,
-    light: true,
-    w: 1300,
-    h: 820,
-    settings: { theme: "warm-ink" } as any,
-    host: { assetBase: BASE },
-    beforeLoad: async (p) => {
-      await p.context().grantPermissions(["clipboard-read", "clipboard-write"]);
-      await p.route(`${BASE}/**`, (r) => {
-        const f = path.join(
-          store.assetsDir(),
-          decodeURIComponent(new URL(r.request().url()).pathname.split("/").pop()!),
-        );
-        return fs.existsSync(f)
-          ? r.fulfill({ body: fs.readFileSync(f), contentType: "image/png" })
-          : r.fulfill({ status: 404 });
-      });
-    },
-    on: async (m, reply) => {
-      if (m.type === "readAsset") {
-        try {
-          await reply(m.req!, await readAsset(store, m.file));
-        } catch (e) {
-          await reply(m.req!, undefined, (e as Error).message);
-        }
-        return true;
-      }
-      if (m.type === "saveImage") {
-        try {
-          await reply(m.req!, await saveNoteImage(store, m.dataUrl));
-        } catch (e) {
-          await reply(m.req!, undefined, (e as Error).message);
-        }
-        return true;
-      }
-      if (m.type === "pasteCards") {
-        await reply(m.req!, null);
-        return true;
-      }
-      return false;
+  const run = await hostBoards([b], {
+    page: {
+      light: true,
+      w: 1300,
+      h: 820,
+      settings: { theme: "warm-ink" },
+      beforeLoad: (p) => p.context().grantPermissions(["clipboard-read", "clipboard-write"]),
     },
   });
+  const dir = run.host.store.assetsDir();
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, "card.png"), PICTURE);
+  const h = await run.open(b.id);
   // the pictures of the image cards have loaded
   for (const img of await h.page.locator(".card .imgb img").all())
     await img.evaluate((e) => (e as HTMLImageElement).decode());
   await idle(h);
-  const assets = () => fs.readdirSync(store.assetsDir()).sort();
-  return {
-    h,
-    assets,
-    done: async () => {
-      await h.close();
-      fs.rmSync(dir, { recursive: true, force: true });
-    },
-  };
+  const assets = () => fs.readdirSync(dir).sort();
+  return { h, assets, done: () => run.close() };
 }
 
 const cardEl = (h: Host, id: string) => h.page.locator(`.card[data-id="${id}"]`);
@@ -601,12 +559,12 @@ test("pasteAsReference", async () => {
   await until(h, "Detach makes it a copy", () => !card("n1")?.same && !card(id)?.same);
   await until(h, "no mark after Detach", async () => !(await pg.locator(".twinmk").count()));
 
-  // a code card through ⌘D: Reference shares the original's segments; moving the copy puts the chip away
+  // a code card through ⌘D (Ctrl+D off a Mac, as the editor binds it): Reference shares the original's segments; moving the copy puts the chip away
   await pg.mouse.click(1250, 760);
   await cardEl(h, code.id)
     .locator(".chead")
     .click({ position: { x: 200, y: 12 } });
-  await pg.keyboard.press("Meta+d");
+  await pg.keyboard.press("ControlOrMeta+d");
   const cid = await until(
     h,
     "the duplicate is saved",

@@ -1,33 +1,10 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { execFileSync } from "node:child_process";
-import {
-  emptyBoard,
-  DEFAULT_SETTINGS,
-  type Board,
-  type CodeCard,
-  type SegView,
-  type HostToBoard,
-} from "@codeboard/core";
+import { emptyBoard, type Board, type CodeCard } from "@codeboard/core";
 import { shot, put, symCard as nvCard, findSym, OUT, REPO, type Host } from "../harness";
-import {
-  analysisOf,
-  callVars,
-  captureRun,
-  cardForFileSym,
-  expand,
-  nodeWorkspace,
-  peek,
-  runApply,
-  searchPick,
-  startAnalysis,
-  viewsFor,
-  HostContext,
-} from "@codeboard/host/testing";
-import { test, open, light, verdict, expect, until, idle } from "../fixtures";
-
-/** The host the scenario talks to (each setup makes a new one) */
-let cx: HostContext;
+import { captureRun, runApply } from "@codeboard/host/testing";
+import { test, open, light, verdict, expect, until, idle, hostBoards } from "../fixtures";
 
 async function shotPr(h: Host, name: string) {
   await shot(h, name);
@@ -402,15 +379,8 @@ async function runtime(res: Record<string, unknown>) {
   execFileSync("git", ["init", "-q"], { cwd: FIX });
   execFileSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", "add", "-A"], { cwd: FIX });
   execFileSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "fixture"], { cwd: FIX });
-  cx = new HostContext(nodeWorkspace(FIX));
-  await startAnalysis();
-  cx.index.start();
-  await cx.index.ready();
-  const card = async (rel: string, qual: string) => {
-    const abs = path.join(FIX, rel);
-    const sym = analysisOf(cx.langOf(abs), fs.readFileSync(abs, "utf8")).symbols.find((s) => s.qual === qual)!;
-    return (await cardForFileSym(cx, abs, sym))!.card as CodeCard;
-  };
+  const run = await hostBoards([], { root: FIX, page: { light, w: 1700, h: 1000 } });
+  const card = (rel: string, qual: string) => run.card(rel, qual);
   const B = emptyBoard("bRun", "toyllm · step");
   const step = await card("toyllm/engine.py", "LLMEngine.step"),
     sched = await card("toyllm/scheduler.py", "Scheduler.schedule");
@@ -431,51 +401,8 @@ async function runtime(res: Record<string, unknown>) {
       call: { name: "method", col: 0, ev: { kind: "manual" as const } },
     },
   );
-  const views: Record<string, SegView> = await viewsFor(
-    cx,
-    B.cards.flatMap((c) => (c.kind === "code" ? c.segments : [])),
-  );
-  const h = await open({
-    board: B,
-    light,
-    w: 1700,
-    h: 1000,
-    on: async (m, reply) => {
-      switch (m.type) {
-        case "ready":
-          return true;
-        case "expand":
-          await reply(m.req, await expand(cx, m));
-          return true;
-        case "peek":
-          await reply(m.req, await peek(cx, m));
-          return true;
-        case "views":
-          await reply(m.req, await viewsFor(cx, m.segs));
-          return true;
-        case "callVars":
-          await reply(m.req, await callVars(cx, m));
-          return true;
-        case "searchPick":
-          await reply(m.req, await searchPick(cx, m.item));
-          return true;
-        case "prefetch":
-          return true;
-        default:
-          return false;
-      }
-    },
-  });
-  const init: HostToBoard = {
-    type: "init",
-    board: B,
-    boards: [{ id: B.id, name: B.name, cards: B.cards.length }],
-    views,
-    stale: {},
-    host: { assetBase: "", target: true, settings: { ...DEFAULT_SETTINGS } },
-  };
-  await h.post(init);
-  await idle(h);
+  await run.host.store.save(B);
+  const h = await run.open(B.id);
   const page = h.page;
   // 1. Capture: python3 runs the entry once with the tracer from a temp dir (nothing written into the fixture)
   const before = fs.readdirSync(FIX).sort().join(",");
@@ -487,7 +414,7 @@ async function runtime(res: Record<string, unknown>) {
   const tens = rec.calls.find((c) => c.to.qual === "ModelRunner.sample")?.samples[0]?.args[0];
   res.tensor = tens?.[1];
   // 2. Apply: matching Call arrows turn Observed with the actual values; the rest are listed
-  await h.post({ type: "run", apply: await runApply(cx, rec) });
+  await h.post({ type: "run", apply: await runApply(run.host.hub.cx, rec) });
   await until(
     h,
     "the run's Observed arrows are saved",

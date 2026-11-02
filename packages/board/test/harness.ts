@@ -17,6 +17,7 @@ import {
   type SegView,
   type HostToBoard,
   type CallSpan,
+  type ReplyOf,
 } from "@codeboard/core";
 import { F_BLANK } from "@codeboard/analysis/basics";
 import { tidy } from "@codeboard/core/tidy";
@@ -28,7 +29,7 @@ declare const REPO_ROOT: string;
 export const REPO = REPO_ROOT;
 const NV = path.join(REPO, "examples/nano-vllm");
 // HARNESS_BOARD: another build of the board (harness.mjs --against=<ref> runs the scenarios on the build of an older commit)
-const MEDIA = process.env.HARNESS_BOARD || path.join(REPO, "packages/board/dist");
+export const MEDIA = process.env.HARNESS_BOARD || path.join(REPO, "packages/board/dist");
 export const OUT = path.join(REPO, "test-out/harness");
 
 export const files = new Map<string, { text: string[]; a: FileAnalysis }>();
@@ -190,8 +191,18 @@ export type OnMsg = (
   reply: (req: number, data?: unknown, error?: string) => Promise<void>,
 ) => boolean | Promise<boolean>;
 
+/**
+ * Answers the board's messages in place of the fixture host in openBoard (realhost.ts: the real host). send resolves once the
+ * message is handled (a request's reply posted), which is what idle() waits for; post sends to this page; board is the host's copy
+ */
+export type Via = {
+  send: (m: BoardToHost & { req?: number }, post: (m: HostToBoard) => Promise<void>) => Promise<void>;
+  board: () => Board;
+};
+
 export type OpenOptions = {
   board?: Board;
+  via?: Via;
   settings?: Partial<typeof DEFAULT_SETTINGS>;
   light?: boolean;
   w?: number;
@@ -285,6 +296,7 @@ export async function openBoard(
     const m = JSON.parse(s) as BoardToHost & { req?: number };
     sent.push(m);
     if (o.on && (await o.on(m, reply))) return;
+    if (o.via) return o.via.send(m, post);
     switch (m.type) {
       case "ready": {
         const views: Record<string, SegView> = {};
@@ -408,20 +420,8 @@ export async function openBoard(
           t.s.kind === "class" ? (allSyms().find((x) => x.s.qual === `${t.s.qual}.__init__`)?.s ?? t.s) : t.s;
         return reply(m.req, varCandidates(call, callee));
       }
-      case "diff": {
-        const seg = m.seg;
-        const right = seg.text.map((l, i) => (i === 3 ? l + "  # changed" : l));
-        const ns = { ...seg, text: right, version: { kind: "git" as const, commit: "f64d8210" } };
-        return reply(m.req, {
-          title: `New Version · ${seg.symbol?.qual ?? seg.path}`,
-          left: { label: "Pinned bb823b3", path: seg.path, start: seg.start, text: seg.text, html: viewOf(seg).html },
-          right: { label: "HEAD f64d821", path: seg.path, start: seg.start, text: right, html: viewOf(ns).html },
-          lastChange: "Last changed in f64d821 · fix chunked prefill · 2026-04-26",
-          canUpdate: true,
-          newSeg: ns,
-          newView: viewOf(ns),
-        });
-      }
+      case "diff":
+        return reply(m.req, newerVersion(m.seg));
       case "commits":
         return reply(m.req, [
           { commit: "f64d8210aa", msg: "fix chunked prefill bugs", date: "2026-04-26", head: true },
@@ -438,9 +438,24 @@ export async function openBoard(
   await o.beforeLoad?.(page);
   await page.goto(`file://${html}`);
   await page.waitForFunction(() => document.querySelector(".board"));
-  const h: Host = { page, board: () => board, sent, post, close: () => context.close() };
+  const h: Host = { page, board: o.via?.board ?? (() => board), sent, post, close: () => context.close() };
   if (o.until !== "shown") await idle(h); // the board's first requests to the host answered, its first render and the camera at rest
   return h;
+}
+
+/** The diff of a segment against a made-up newer version f64d8210 (its fourth line changed): what Update offers */
+export function newerVersion(seg: Segment): ReplyOf<"diff"> {
+  const right = seg.text.map((l, i) => (i === 3 ? l + "  # changed" : l));
+  const ns = { ...seg, text: right, version: { kind: "git" as const, commit: "f64d8210" } };
+  return {
+    title: `New Version · ${seg.symbol?.qual ?? seg.path}`,
+    left: { label: "Pinned bb823b3", path: seg.path, start: seg.start, text: seg.text, html: viewOf(seg).html },
+    right: { label: "HEAD f64d821", path: seg.path, start: seg.start, text: right, html: viewOf(ns).html },
+    lastChange: "Last changed in f64d821 · fix chunked prefill · 2026-04-26",
+    canUpdate: true,
+    newSeg: ns,
+    newView: viewOf(ns),
+  };
 }
 
 // Definition preview: lines taken per peekPlan, hover faked with docstrings (libraries use the fake data below)
@@ -548,6 +563,48 @@ export function peekMock(seg: Segment, word: string): any {
     sigHtml: plan.sig ? renderLine(tokenize(plan.sig)) : undefined,
     doc: plan.doc,
   };
+}
+
+/**
+ * The page's main-thread CPU time (ms) between each performance.mark("cpu:start") and the next performance.mark("cpu:end") it
+ * sets while `run` runs. Chrome's trace records the thread's clock at each mark: time the thread spent waiting for a CPU (other
+ * scenarios beside this one, a busy machine) doesn't count, as it does in a performance.now() span. For checks that the board's
+ * own work for a keystroke or a click stays small
+ */
+export async function cpuSpans(page: Page, run: () => Promise<unknown>): Promise<number[]> {
+  const cdp = await page.context().newCDPSession(page);
+  const done = new Promise<{ stream?: string }>((r) => cdp.once("Tracing.tracingComplete", r));
+  await cdp.send("Tracing.start", {
+    traceConfig: { includedCategories: ["blink.user_timing"], excludedCategories: ["*"] },
+    transferMode: "ReturnAsStream",
+  });
+  try {
+    await run();
+  } finally {
+    await cdp.send("Tracing.end");
+  }
+  const { stream } = await done;
+  let text = "";
+  for (;;) {
+    const r = await cdp.send("IO.read", { handle: stream! });
+    text += r.base64Encoded ? Buffer.from(r.data, "base64").toString() : r.data;
+    if (r.eof) break;
+  }
+  await cdp.send("IO.close", { handle: stream! });
+  await cdp.detach();
+  const parsed = JSON.parse(text);
+  const marks = ((Array.isArray(parsed) ? parsed : parsed.traceEvents) as { name: string; ts: number; tts?: number }[])
+    .filter((e) => (e.name === "cpu:start" || e.name === "cpu:end") && e.tts !== undefined)
+    .sort((a, b) => a.ts - b.ts);
+  const out: number[] = [];
+  let start: number | undefined;
+  for (const m of marks)
+    if (m.name === "cpu:start") start = m.tts;
+    else if (start !== undefined) {
+      out.push((m.tts! - start) / 1000);
+      start = undefined;
+    }
+  return out;
 }
 
 /** A screenshot into test-out/harness/, once the board is idle(). `at: "now"` takes it at once: a picture of something on its

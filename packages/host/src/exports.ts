@@ -68,7 +68,7 @@ export async function exportFile(
 }
 
 /** mediaDir = the board's media folder (HostContext.mediaDir). 只读这两个目录里的文件（路径里有 .. 的一律不读） */
-export function inlineFor(mediaDir: string, store: Storage, html: string): Promise<string> {
+function inlineFor(mediaDir: string, store: Storage, html: string): Promise<string> {
   return inlineSnapshot(html, async (kind, rel) => {
     const base = kind === "media" ? mediaDir : store.assetsDir();
     const abs = path.resolve(base, rel);

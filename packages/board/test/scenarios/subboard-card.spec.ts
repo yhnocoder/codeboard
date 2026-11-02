@@ -654,7 +654,9 @@ test("subboardLinkPicker", async () => {
     ];
     res.missing = want.filter((w) => !all.includes(w));
     res.banned = all.filter((x) => banned.some((b) => x === b || x.endsWith(` › ${b}`)));
+    res.twice = all.filter((x, i) => all.indexOf(x) !== i);
     await page.keyboard.type("深处");
+    // once: the sub-boards' cards are listed through their frames, and the host doesn't list those boards again (boardRefs)
     await until(
       h,
       "the picker narrows to the deep card",
@@ -680,6 +682,7 @@ test("subboardLinkPicker", async () => {
     return (
       !(res.missing as string[]).length &&
       !(res.banned as string[]).length &&
+      !(res.twice as string[]).length &&
       res.resolved &&
       JSON.stringify(res.crumbs) === JSON.stringify(["Main", "nano-vllm 调度器", "Deep"])
     );

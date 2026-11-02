@@ -128,4 +128,30 @@ describe("cross-board refs", () => {
     hub.refreshBoardRefs(true);
     expect(pushes(views[0]).at(-1)!.refs.recent).toHaveLength(3);
   });
+  it("leaves out the boards this board's frames lead into, all the way down: their cards are among this board's own", async () => {
+    await store.save(board("bD", "Delta", [{ id: "d1", md: "# Deep note" }]));
+    await store.update("bB", (b) => {
+      b.cards.push({ id: "fD", kind: "board", board: "bD" });
+      b.place.fD = { x: 0, y: 800, w: 400, h: 300 };
+    });
+    await store.update("bA", (b) => {
+      b.cards.push({ id: "fB", kind: "board", board: "bB" });
+      b.place.fB = { x: 400, y: 0, w: 400, h: 300 };
+    });
+    const names = async (id: string) => {
+      const p = hub.get(id) ?? (await hub.show(id))!;
+      return ((await hub.handler(p, { type: "boardRefs", req: 1 })) as BoardRefs).boards.map((b) => b.name);
+    };
+    // Beta through the frame fB, Delta through Beta's frame fD: each listed once, under Alpha's own candidates
+    expect(await names("bA")).toEqual(["Gamma"]);
+    // the board pushed to a panel that asked follows: Alpha's panel no longer gets Beta or Delta
+    hub.refreshBoardRefs(true);
+    expect(
+      pushes(views[0])
+        .at(-1)!
+        .refs.boards.map((b) => b.name),
+    ).toEqual(["Gamma"]);
+    // Gamma holds no frames: every other board is its own group there
+    expect((await names("bC")).sort()).toEqual(["Alpha", "Beta", "Delta"]);
+  });
 });

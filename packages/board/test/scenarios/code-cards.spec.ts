@@ -12,7 +12,7 @@
 //  secondCallUnderFirstCall   — in a short panel the second expanded call still goes in the caller's column, under the first call
 import { emptyBoard, type Board, type CodeCard } from "@codeboard/core";
 import { put, symCard, findSym, viewOf, type Host } from "../harness";
-import { test, open, verdict, until, idle, hold, onMac } from "../fixtures";
+import { test, open, verdict, until, idle, hold, onMac, pauseClock } from "../fixtures";
 import { SEL_REPORT, NUDGE_HOLD, NUDGE_RAMP, NUDGE_SPEED, NUDGE_MAX } from "../../src/state/timing";
 
 const nv = (qual: string) => {
@@ -312,9 +312,15 @@ async function nudgeHoldAccelerates(res: Record<string, unknown>) {
   await until(h, "the page samples the card every frame", () =>
     h.page.evaluate(() => (window as unknown as { nudgeLog: { s: unknown[] } }).nudgeLog.s.length > 2),
   );
+  // The page's clock is Playwright's while the key is held: every frame comes 16 ms after the last, however busy the machine is,
+  // so the speeds below are the glide's own (on a real clock a late frame is a long step, which the glide caps)
+  await h.page.clock.install();
+  await pauseClock(h.page);
   await h.page.keyboard.down("ArrowRight");
-  await hold(h, NUDGE_HOLD + NUDGE_RAMP + 500, "held through the speed-up and on at full speed");
+  await h.page.clock.runFor(NUDGE_HOLD + NUDGE_RAMP + 500); // held through the speed-up and on at full speed
   await h.page.keyboard.up("ArrowRight");
+  await h.page.clock.runFor(200);
+  await h.page.clock.resume();
   await idle(h);
   const log = await h.page.evaluate(
     () => (window as unknown as { nudgeLog: { down: number; up: number; s: [number, number][] } }).nudgeLog,

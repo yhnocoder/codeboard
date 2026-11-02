@@ -1,4 +1,4 @@
-// @vitest-environment happy-dom
+// @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
 import { renderMd } from "../src/render";
 import { staticTextRange, staticDomRange } from "../src/selmap";

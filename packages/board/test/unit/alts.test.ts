@@ -1,4 +1,4 @@
-// @vitest-environment happy-dom
+// @vitest-environment jsdom
 // A call arrow's grey alternatives: an implementation already expanded from the same call site is not offered again, and that is
 // decided by its file as well as its qual (a DispatchStub's CUDA and CPU kernels are often both at::native::add_kernel)
 import { afterAll, describe, expect, it } from "vitest";

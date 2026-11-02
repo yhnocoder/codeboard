@@ -9,9 +9,10 @@
 //                                   the notice says why, and there is nothing to undo
 import * as path from "node:path";
 import { emptyBoard, type AiInfo, type Board, type BoardToHost, type ImageAiOp, type NoteCard } from "@codeboard/core";
-import { runImageAi, SYS_FOCUS } from "@codeboard/host/testing";
+import { SYS_FOCUS } from "@codeboard/host/testing";
 import { put, type Host } from "../harness";
-import { test, open, check, until, idle } from "../fixtures";
+import { test, check, until, idle, hostBoards } from "../fixtures";
+import { fakeDeepseek } from "../deepseek";
 
 const SHOTS = process.env.AI_SHOTS;
 const shoot = async (h: Host, name: string, el?: string) => {
@@ -34,26 +35,13 @@ const MODELS: AiInfo["models"] = [
 ];
 
 test("aiSettingsSection", async () => {
-  let key = false;
-  const h = await open({
-    light: true,
-    w: 1280,
-    h: 900,
-    settings: { theme: "warm-ink" } as any,
-    on: async (m, reply) => {
-      if (m.type === "aiInfo") {
-        await reply(m.req!, { key, models: MODELS });
-        return true;
-      }
-      if (m.type === "aiKey") {
-        key = m.action === "set";
-        await reply(m.req!, { key, models: MODELS });
-        return true;
-      }
-      return false;
-    },
+  const run = await hostBoards([emptyBoard("b1", "ai")], {
+    page: { light: true, w: 1280, h: 900, settings: { theme: "warm-ink" } },
   });
-  await h.page.keyboard.press("Meta+Comma");
+  // the editor's language models (VS Code's Language Model API); no DeepSeek key stored yet
+  run.ws.ai = { models: async () => MODELS, chat: async () => ({ fail: "nomodel" }) };
+  const h = await run.open("b1");
+  await h.page.keyboard.press("ControlOrMeta+Comma");
   const sec = h.page.locator('.settings [data-sec="ai"]');
   await sec.waitFor();
   await sec.evaluate((el) => el.scrollIntoView({ block: "start" }));
@@ -65,12 +53,18 @@ test("aiSettingsSection", async () => {
     await status.innerText(),
   );
   await sec.locator("button", { hasText: "Set Key…" }).click();
+  // the host asks for the key in a dialog on the board, as a password
+  const pw = h.page.locator('input[type="password"]');
+  await pw.fill("sk-test");
+  await pw.press("Enter");
   await until(h, "the key shows Set", async () => (await status.innerText()) === "Set");
   check(
     "aiSettingsSection Set Key… asks the host, which opens the password box",
     sentOf(h, "aiKey")
       .map((m) => m.action)
-      .join() === "set" && !(await sec.locator("button", { hasText: "Clear" }).isDisabled()),
+      .join() === "set" &&
+      !(await sec.locator("button", { hasText: "Clear" }).isDisabled()) &&
+      (await run.ws.secrets.get("codeboard.deepseekApiKey")) === "sk-test",
     sentOf(h, "aiKey"),
   );
   const auto = await sec.locator('select[data-ai="aiText"] option[value="auto"]').innerText();
@@ -125,37 +119,17 @@ const MD =
 const MARKED =
   "## Paged attention\n\nThe ==scheduler== keeps the ==KV cache== in fixed-size blocks, so **memory is never copied**. Run `step()` to advance.\n\n- A *block table* maps each sequence to its ==blocks==.\n- Cost: $O(n)$ lookups per step.";
 
-/** A Note on a board whose host answers imageAi with runImageAi on a fake DeepSeek; gate = hold the answer until released */
+/** A Note on the real host (realhost.ts) with DeepSeek a local fake (deepseek.ts); gate = hold the answer until released */
 async function focusHost(answer: (op: ImageAiOp) => string, o: { gate?: Promise<void> } = {}) {
   const b: Board = emptyBoard("b1", "focus");
   b.cam = { x: 0, y: 0, z: 1 };
   put(b, { id: "n1", kind: "note", md: MD, look: "note" } as NoteCard, 80, 80, 460);
-  const calls: any[] = [];
-  const fetchFake = (async (_url: string, init: RequestInit) => {
-    const body = JSON.parse(String(init.body));
-    calls.push(body);
+  const run = await hostBoards([b], { page: { light: true, w: 1100, h: 640, settings: { theme: "warm-ink" } } });
+  const { calls } = await fakeDeepseek(run, async (body) => {
     await o.gate;
-    const op: ImageAiOp = { kind: "focus", md: body.messages[1].content };
-    return new Response(JSON.stringify({ choices: [{ finish_reason: "stop", message: { content: answer(op) } }] }), {
-      status: 200,
-    });
-  }) as unknown as typeof fetch;
-  const h = await open({
-    board: b,
-    light: true,
-    w: 1100,
-    h: 640,
-    settings: { theme: "warm-ink" } as any,
-    on: async (m, reply) => {
-      if (m.type !== "imageAi") return false;
-      try {
-        await reply(m.req!, await runImageAi({ key: "sk-fake", fetch: fetchFake }, m.op));
-      } catch (e) {
-        await reply(m.req!, undefined, (e as Error).message);
-      }
-      return true;
-    },
+    return answer({ kind: "focus", md: body.messages[1].content });
   });
+  const h = await run.open(b.id);
   await idle(h);
   return { h, calls };
 }
@@ -188,7 +162,7 @@ test("autoFocusNote", async () => {
     await busy.innerText(),
   );
   await until(h, "DeepSeek is asked", () => calls.length);
-  const body = calls[0];
+  const body = calls[0].body;
   check(
     "autoFocusNote sends the rules and the Markdown, without thinking",
     body.messages[0].content === SYS_FOCUS &&

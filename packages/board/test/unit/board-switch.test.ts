@@ -1,4 +1,4 @@
-// @vitest-environment happy-dom
+// @vitest-environment jsdom
 // 换白板（宿主发 init）时界面状态怎么处理：这块白板的临时状态回到初值，宿主状态整个换掉，浮层关掉（设置页留着）
 import { afterAll, describe, expect, it, vi } from "vitest";
 import {
@@ -38,7 +38,7 @@ const settled = <T>(p: Promise<T>) =>
   Promise.race([p, new Promise<"pending">((r) => setTimeout(() => r("pending"), 0))]);
 
 // A board switch clears the selection, and the board reports the selection to the host a moment after it changes (a timer): the
-// last report goes out before happy-dom is torn down, or it fires on a window that is gone (an uncaught error in the run)
+// last report goes out before jsdom is torn down, or it fires on a window that is gone (an uncaught error in the run)
 afterAll(async () => {
   const before = window.__cbSent?.length ?? 0;
   reportSelection();

@@ -3,15 +3,13 @@ on:
   push:
     branches: [main, "dev/**"]
   pull_request:
+# Read-only by default; the report job pushes screenshots (ci-screenshots branch) and edits the PR description
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
 concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 env:
-  VSCODE_VERSION: "1.142.0"
-  E2E_EXTENSIONS: "ms-python.python@2026.10.0 ms-python.vscode-pylance@2026.4.1"
   # PR: compare with the target branch; push: compare with the previous tip (empty for a new branch)
   BASE_SHA: ${{ github.event.pull_request.base.sha || (github.event.before != '0000000000000000000000000000000000000000' && github.event.before) || '' }}
 jobs:
@@ -104,8 +102,11 @@ jobs:
         id: need
         run: |
           if [ -z "$BASE_SHA" ] || [ "${{ github.event_name }}" = push ]; then echo "run=true" >> $GITHUB_OUTPUT; exit 0; fi
-          if git diff --name-only "$BASE_SHA" HEAD | grep -qE '^(packages/(analysis|board|core|markdown)/(src/|test/(perf|harness)\.ts|vite\.config|package\.json)|packages/host/(src/|test/perf|package\.json)|package-lock\.json|tools/review/perf)'; then echo "run=true" >> $GITHUB_OUTPUT
-          else echo "run=false" >> $GITHUB_OUTPUT; echo "No change to code the benchmarks run: perf skipped (the regular run still measures it)"; fi
+          # the files the benchmarks run: tiers.json "perf"
+          # run=true / run=false; any failure (a base it cannot diff against) fails this step instead of skipping perf
+          need=$(node tools/test/perf-need.mjs "$BASE_SHA")
+          echo "$need" >> $GITHUB_OUTPUT
+          if [ "$need" = run=false ]; then echo "No change to code the benchmarks run: perf skipped (the regular run still measures it)"; fi
       - run: git submodule update --init examples/nano-vllm # the other examples (sglang, DeepEP) are large manual testbeds
         if: steps.need.outputs.run == 'true'
       - uses: ./.github/actions/setup
@@ -128,6 +129,7 @@ jobs:
     needs: [harness-plan, harness, e2e, perf]
     # !cancelled(), not always(): a run superseded by a newer push must stop at once, since the newer run waits for it (concurrency group)
     if: ${{ !cancelled() && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository) }}
+    permissions: { contents: write, pull-requests: write }
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -162,43 +164,13 @@ jobs:
           JOBS: ${{ toJSON(needs) }}
         with:
           script: |
-            const fs = require("fs");
-            const A = "test-out/artifacts";
-            const read = (f) => (fs.existsSync(f) ? fs.readFileSync(f, "utf8") : "");
-            const json = (f) => (fs.existsSync(f) ? JSON.parse(fs.readFileSync(f, "utf8")) : []);
-            // one line per unique warning (rule + element) with the steps it appears in
-            const { report } = require(`${process.env.GITHUB_WORKSPACE}/tools/review/audit.cjs`);
-            const audit = json(`${A}/e2e/audit.json`);
-            const jobs = JSON.parse(process.env.JOBS);
-            // Harness: what ran, why, what failed, what was left to the regular run (the plan: tools/test/pick.mjs in the harness-plan job)
-            const plan = json(`${A}/harness-plan/plan.json`);
-            const hr = fs.readdirSync(A).filter((d) => /^harness-\d+$/.test(d)).map((d) => json(`${A}/${d}/result.json`)).filter((x) => x.results);
-            const res = hr.flatMap((x) => x.results), deferred = plan.deferred ?? [];
-            const by = Object.entries(res.reduce((m, r) => ((m[r.why] = (m[r.why] || 0) + 1), m), {})).map(([w, n]) => `${n} ${w}`).join(", ");
-            const known = [...new Set(res.flatMap((r) => r.known || []))], alone = res.filter((r) => r.alone).map((r) => r.name);
-            const missing = (plan.run ?? []).filter((x) => !res.some((r) => r.name === x.name)).map((x) => x.name);
-            const harness = !hr.length ? ["**Harness**: no results."] : [
-              `**Harness**: ${res.length} scenarios (${by}), ${res.filter((r) => !r.ok).length} failed, on ${hr.length} of ${plan.shards ?? "?"} jobs` + (deferred.length ? `, ${deferred.length} deferred to the regular run` : ""),
-              ...res.filter((r) => !r.ok).map((r) => `- ❌ ${r.name}: ${(r.fails[0] || r.error || "").slice(0, 200)}`),
-              ...(missing.length ? [`- ❌ picked but no result (a harness job failed before reporting): ${missing.length}`] : []),
-              ...(known.length ? [`- known failures (tiers.json): ${known.length}`] : []),
-              ...(alone.length ? [`- passed only when run alone: ${alone.join(", ")}`] : []),
-              ...(plan.areas?.length ? [`- area groups: ${plan.areas.map((g) => g.name).join(", ")}`] : []),
-              ...(plan.notes ?? []).filter((n) => /^(the scenarios this change needs|group )/.test(n)).map((n) => `- ⚠️ ${n}`),
-              ...(deferred.length ? ["", `<details><summary>Deferred (extra coverage that didn't fit)</summary>${deferred.join(", ")}</details>`] : []),
-            ];
-            const run = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
-            const section = [
-              "<!-- ci-screenshots:start -->", "## CI report", "",
-              `Commit ${context.payload.pull_request.head.sha.slice(0, 7)} · [Run log](${run}) · ` + Object.entries(jobs).map(([k, v]) => `${k} ${v.result === "success" ? "✅" : v.result === "skipped" ? "–" : "❌"}`).join(" · "), "",
-              ...harness, "",
-              read(`${A}/perf/summary.md`) || (jobs.perf?.result === "success" ? "**Performance**: skipped, no change to code the benchmarks run." : "**Performance**: no results."), "",
-              ...report(audit, "UI audit"), "",
-              "<details><summary>e2e screenshots, vs target branch</summary>", "", read("test-out/e2e-summary.md") || "No screenshots.", "</details>",
-              "<!-- ci-screenshots:end -->",
-            ].join("\n");
+            const { ciReport, withSection } = await import(`${process.env.GITHUB_WORKSPACE}/tools/test/ci-report.mjs`);
+            const section = ciReport({
+              dir: "test-out/artifacts",
+              jobs: JSON.parse(process.env.JOBS),
+              run: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              sha: context.payload.pull_request.head.sha.slice(0, 7),
+              shots: "test-out/e2e-summary.md",
+            });
             const { data: pr } = await github.rest.pulls.get({ ...context.repo, pull_number: context.issue.number });
-            const body = pr.body || "";
-            const re = /<!-- ci-screenshots:start -->[\s\S]*<!-- ci-screenshots:end -->/;
-            const next = re.test(body) ? body.replace(re, section) : `${body}\n\n${section}`;
-            await github.rest.pulls.update({ ...context.repo, pull_number: context.issue.number, body: next });
+            await github.rest.pulls.update({ ...context.repo, pull_number: context.issue.number, body: withSection(pr.body, section) });

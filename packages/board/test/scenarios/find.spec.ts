@@ -2,7 +2,7 @@
 // ⌘F 打开、高亮全部、第几个 / 几个、Enter / ⇧Enter 上下、区分大小写、⌥⌘F 替换、全部替换一次撤销、Esc 关上焦点回编辑器
 import { emptyBoard, type Board, type NoteCard } from "@codeboard/core";
 import type { Page } from "playwright-core";
-import { put, shot, type Host } from "../harness";
+import { cpuSpans, put, shot, type Host } from "../harness";
 import { test, open, check, until, idle, focusSettled } from "../fixtures";
 
 const close = (h: Host) => h.page.context().close();
@@ -164,48 +164,55 @@ test("noteFindTypingLatency", async () => {
   await editNote(h, "n0");
   await pg.keyboard.press("Control+f");
   await pg.locator(".md-find .md-findq").waitFor();
-  const lat = await pg.evaluate(async () => {
-    const q = document.querySelector(".md-find .md-findq") as HTMLInputElement,
-      ts: number[] = [];
-    const words = [
-      "s",
-      "se",
-      "seq",
-      "sequ",
-      "seque",
-      "sequen",
-      "sequenc",
-      "sequence",
-      "sequenc",
-      "sequen",
-      "seque",
-      "sequ",
-      "seq",
-      "se",
-      "s",
-      "k",
-      "ke",
-      "ker",
-      "kern",
-      "kerne",
-      "kernel",
-    ];
-    for (const w of [...words, ...words]) {
-      await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
-      const t0 = performance.now();
-      q.value = w;
-      q.dispatchEvent(new Event("input", { bubbles: true }));
-      document.querySelector(".md-pm")!.getBoundingClientRect();
-      ts.push(performance.now() - t0);
-    }
-    ts.sort((a, b) => a - b);
-    return {
-      p50: +ts[Math.floor(ts.length / 2)].toFixed(2),
-      p90: +ts[Math.floor(ts.length * 0.9)].toFixed(2),
-      max: +ts[ts.length - 1].toFixed(2),
-      n: document.querySelector(".md-find .md-findn")!.textContent,
-    };
+  let n: string | null = null;
+  const ts = await cpuSpans(pg, async () => {
+    n = await pg.evaluate(async () => {
+      const q = document.querySelector(".md-find .md-findq") as HTMLInputElement;
+      const words = [
+        "s",
+        "se",
+        "seq",
+        "sequ",
+        "seque",
+        "sequen",
+        "sequenc",
+        "sequence",
+        "sequenc",
+        "sequen",
+        "seque",
+        "sequ",
+        "seq",
+        "se",
+        "s",
+        "k",
+        "ke",
+        "ker",
+        "kern",
+        "kerne",
+        "kernel",
+      ];
+      for (const w of [...words, ...words]) {
+        await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
+        performance.mark("cpu:start");
+        q.value = w;
+        q.dispatchEvent(new Event("input", { bubbles: true }));
+        document.querySelector(".md-pm")!.getBoundingClientRect();
+        performance.mark("cpu:end");
+      }
+      return document.querySelector(".md-find .md-findn")!.textContent;
+    });
   });
+  // each keystroke's CPU time on the page's main thread (cpuSpans): other scenarios on the machine don't add to it
+  ts.sort((a, b) => a - b);
+  // a trace that missed marks has fewer spans: NaN there, so the check below fails with the count instead of a TypeError here
+  const at = (i: number) => Number(ts[i]?.toFixed(2));
+  const lat = {
+    keys: ts.length,
+    p50: at(Math.floor(ts.length / 2)),
+    p90: at(Math.floor(ts.length * 0.9)),
+    max: at(ts.length - 1),
+    n,
+  };
   // 每一下只画屏幕上的，其余的之后分批补上：停下来以后 250 个都画上了（大部分在屏幕外）
   const painted = await until(h, "every match is painted", () =>
     pg.evaluate(() => {
@@ -223,7 +230,7 @@ test("noteFindTypingLatency", async () => {
   await idle(h);
   check(
     "noteFindTypingLatency one keystroke in the find field on a 250-paragraph Note well inside a frame",
-    lat.n === "1/250" && lat.p50 < 8 && lat.p90 < 16,
+    lat.n === "1/250" && lat.keys === 42 && lat.p50 < 8 && lat.p90 < 16,
     lat,
   );
   await close(h);

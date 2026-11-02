@@ -1,4 +1,4 @@
-// @vitest-environment happy-dom
+// @vitest-environment jsdom
 // Right after a press on the board, a blur that leaves the keyboard on the webview's host page (VS Code's first focusing step, its second
 // one skipped) gives the keyboard back to the board; a blur to elsewhere in VS Code, or one long after the press, is left alone
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";

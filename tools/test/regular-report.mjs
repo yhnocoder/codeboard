@@ -10,6 +10,7 @@
 // Usage (github-script): const { regularReport } = await import(`${process.env.GITHUB_WORKSPACE}/tools/test/regular-report.mjs`)
 import * as fs from "node:fs";
 import { groupTimes } from "./areas.mjs";
+import { ALONE_LIMIT } from "./alone.mjs";
 
 const json = (f) => (fs.existsSync(f) ? JSON.parse(fs.readFileSync(f, "utf8")) : null);
 const read = (f) => (fs.existsSync(f) ? fs.readFileSync(f, "utf8") : "");
@@ -17,11 +18,13 @@ const first = (x) => (x.fails?.[0] || x.error || "").split("\n")[0].slice(0, 160
 
 /**
  * dir: the artifacts; jobs: the publish job's `needs`; comments: the issue's comment bodies, oldest first; run: the run's URL;
- * sha: the commit (short); tiers: packages/board/test/tiers.json → { fails, flaky, groups, due, body }
+ * sha: the commit (short); tiers: packages/board/test/tiers.json; streaks: how many regular runs in a row each scenario has passed
+ * only alone, this one included (publish-impact.sh's alone.json) → { fails, flaky, groups, due, body }
  */
-export function regularReport({ dir, jobs, comments, run, sha, tiers }) {
+export function regularReport({ dir, jobs, comments, run, sha, tiers, streaks = {} }) {
   const fails = [],
-    alone = [];
+    alone = [],
+    besides = new Map();
   const fullFailing = new Set();
   const took = new Map();
   for (const k of [1, 2]) {
@@ -34,7 +37,10 @@ export function regularReport({ dir, jobs, comments, run, sha, tiers }) {
       fails.push(`harness ${x.name}: ${first(x)}`);
       fullFailing.add(x.name);
     }
-    for (const x of r.results.filter((x) => x.alone)) alone.push(x.name);
+    for (const x of r.results.filter((x) => x.alone)) {
+      alone.push(x.name);
+      besides.set(x.name, first({ fails: x.parallelFails }));
+    }
     for (const x of r.results) took.set(x.name, x.ms);
   }
   // timed only when both halves of the full run reported: a missing half would make every group look short
@@ -128,8 +134,11 @@ export function regularReport({ dir, jobs, comments, run, sha, tiers }) {
     `### Passed only when run alone (${alone.length})`,
     ...(alone.length
       ? [
-          `Failed beside other scenarios in the full run, passed when run again on their own (counted as passed):`,
-          ...alone.map((a) => `- ${a}`),
+          `Failed beside other scenarios in the full run, passed when run again on their own (counted as passed). In ${ALONE_LIMIT} runs in a row, a scenario gets no alone retry any more (tools/test/alone.mjs) and fails until it passes beside the others:`,
+          ...alone.map(
+            (a) =>
+              `- ${a}${streaks[a] ? ` (${streaks[a]} of ${ALONE_LIMIT} in a row)` : ""}${besides.get(a) ? `: ${besides.get(a)}` : ""}`,
+          ),
         ]
       : ["- none"]),
     "",

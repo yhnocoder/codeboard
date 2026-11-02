@@ -1,10 +1,10 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { emptyBoard, type Board, type ImageCard, type NoteCard } from "@codeboard/core";
-import { nodeFs, png, type Rgba, saveNoteImage, Storage } from "@codeboard/host/testing";
+import { png, type Rgba } from "@codeboard/host/testing";
 import type { Page } from "playwright-core";
 import { OUT, put, shot, type Host } from "../harness";
-import { test, open, check, light, until, idle, frames } from "../fixtures";
+import { test, open, check, light, until, idle, frames, hostBoards } from "../fixtures";
 
 const BASE = "https://cb-assets.test/res";
 
@@ -40,49 +40,25 @@ function board(md: string[]): Board {
   return b;
 }
 
-/** The board with a host that saves images with the host's code into a temp storage folder and serves assets/ at BASE */
+/** The board on the real host (realhost.ts): pasted images saved into its storage's assets/, which the page loads from */
 async function imageHost(md: string[]) {
-  const dir = path.join(OUT, `note-images-${process.pid}-${Math.random().toString(36).slice(2, 8)}`);
-  const store = new Storage(nodeFs, { dir: () => dir });
   const saves: string[] = [];
-  const h = await open({
-    board: board(md),
-    light,
-    w: 1240,
-    h: 820,
-    settings: { theme: "warm-ink" } as any,
-    host: { assetBase: BASE },
-    beforeLoad: (p) =>
-      p.route(`${BASE}/**`, (r) => {
-        const f = path.join(
-          store.assetsDir(),
-          decodeURIComponent(new URL(r.request().url()).pathname.split("/").pop()!),
-        );
-        return fs.existsSync(f)
-          ? r.fulfill({ body: fs.readFileSync(f), contentType: "image/png" })
-          : r.fulfill({ status: 404 });
-      }),
-    on: async (m, reply) => {
-      if (m.type !== "saveImage") return false;
-      saves.push(m.dataUrl.slice(0, 30));
-      try {
-        await reply(m.req!, await saveNoteImage(store, m.dataUrl));
-      } catch (e) {
-        await reply(m.req!, undefined, (e as Error).message);
-      }
-      return true;
+  const run = await hostBoards([board(md)], {
+    page: {
+      light,
+      w: 1240,
+      h: 820,
+      settings: { theme: "warm-ink" },
+      on: (m) => {
+        if (m.type === "saveImage") saves.push(m.dataUrl.slice(0, 30));
+        return false;
+      },
     },
   });
-  const assets = () => (fs.existsSync(store.assetsDir()) ? fs.readdirSync(store.assetsDir()) : []);
-  return {
-    h,
-    saves,
-    assets,
-    done: async () => {
-      await h.close();
-      fs.rmSync(dir, { recursive: true, force: true });
-    },
-  };
+  const h = await run.open("b1");
+  const dir = run.host.store.assetsDir();
+  const assets = () => (fs.existsSync(dir) ? fs.readdirSync(dir) : []);
+  return { h, saves, assets, base: run.assetBase, done: () => run.close() };
 }
 
 const md = (h: Host, id: string) =>
@@ -134,7 +110,7 @@ const cardH = (h: Host, id: string) =>
 
 /** Paste a screenshot into a Note: one file in assets/, ![](assets/…) in the Markdown, the same size while editing and after */
 test("notePastedImageSameSizeInBothModes", async () => {
-  const { h, saves, assets, done } = await imageHost([
+  const { h, saves, assets, base, done } = await imageHost([
     "**Prefill before decode.** The scheduler fills the batch with waiting sequences first:",
   ]); // no title heading: display mode hides that one
   await idle(h);
@@ -161,7 +137,7 @@ test("notePastedImageSameSizeInBothModes", async () => {
   );
   check(
     "notePastedImageSrcResolved",
-    edit.src === `${BASE}/${files[0]}` && disp.src === edit.src && disp.sized && edit.sized && disp.lazy,
+    edit.src === `${base}/${files[0]}` && disp.src === edit.src && disp.sized && edit.sized && disp.lazy,
     { edit, disp },
   );
   // the Note body is 520 wide minus padding: the 800-pixel screenshot is scaled to it, keeping 16:9

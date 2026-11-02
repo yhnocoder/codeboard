@@ -13,15 +13,10 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { pathToFileURL } from "node:url";
-import { emptyBoard, mimeOf, sniffImage, type Board, type ImageCard } from "@codeboard/core";
-import { nodeFs, nodeWorkspace, png, readImageUri, Storage, HostContext } from "@codeboard/host/testing";
+import { emptyBoard, sniffImage, type Board, type ImageCard } from "@codeboard/core";
+import { png } from "@codeboard/host/testing";
 import { OUT, shot, type Host } from "../harness";
-import { test, open, check, until, idle } from "../fixtures";
-
-/** The host the scenario talks to (each setup makes a new one) */
-let cx: HostContext;
-
-const BASE = "https://cb-assets.test/res";
+import { test, check, until, idle, hostBoards } from "../fixtures";
 
 const SVG = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 160" fill="none">
@@ -43,8 +38,8 @@ let JPEG = Buffer.alloc(0);
 type Shape = { files?: { name: string; type: string; b64: string }[]; data?: Record<string, string>; shift?: boolean };
 
 /**
- * The board in Warm Ink with a host running the host's own image code: a workspace folder holding the dropped files (read by
- * readImageUri through a Node Workspace), assets/ in a temp storage folder served at BASE
+ * The board in Warm Ink on the real host (realhost.ts) over a workspace folder holding the dropped files, which the host reads
+ * through the Node Workspace (readImageUri); assets/ in its storage
  */
 async function dropHost(b: Board = emptyAt()) {
   const tmp = path.join(OUT, `file-drops-${process.pid}-${Math.random().toString(36).slice(2, 8)}`);
@@ -56,47 +51,23 @@ async function dropHost(b: Board = emptyAt()) {
   fs.writeFileSync(path.join(ws, "docs/chart.png"), PNG);
   fs.writeFileSync(path.join(ws, "model.py"), "def forward(x):\n    return x\n");
   fs.writeFileSync(path.join(outside, "screen shot.png"), PNG);
-  cx = new HostContext(nodeWorkspace(ws));
-  const store = new Storage(nodeFs, { dir: () => path.join(tmp, "storage") });
-  fs.mkdirSync(store.assetsDir(), { recursive: true });
   const reads: string[] = [];
-  const answer = async (
-    reply: (req: number, data?: unknown, error?: string) => Promise<void>,
-    req: number,
-    f: () => Promise<unknown>,
-  ) => {
-    try {
-      await reply(req, await f());
-    } catch (e) {
-      await reply(req, undefined, (e as Error).message);
-    }
-    return true;
-  };
-  const h = await open({
-    board: b,
-    light: true,
-    w: 1240,
-    h: 820,
-    settings: { theme: "warm-ink" } as any,
-    host: { assetBase: BASE },
-    beforeLoad: (p) =>
-      p.route(`${BASE}/**`, (r) => {
-        const name = decodeURIComponent(new URL(r.request().url()).pathname.split("/").pop()!),
-          f = path.join(store.assetsDir(), name);
-        return fs.existsSync(f)
-          ? r.fulfill({ body: fs.readFileSync(f), contentType: mimeOf(name) })
-          : r.fulfill({ status: 404 });
-      }),
-    on: async (m, reply) => {
-      if (m.type === "saveAsset") return answer(reply, m.req!, () => store.saveAsset(m.name, m.dataUrl));
-      if (m.type === "readImageUri") {
-        reads.push(m.uri);
-        return answer(reply, m.req!, () => readImageUri(cx, m.uri));
-      }
-      if (m.type === "pasteCards") return answer(reply, m.req!, async () => null);
-      return false;
+  const run = await hostBoards([b], {
+    root: ws,
+    page: {
+      light: true,
+      w: 1240,
+      h: 820,
+      settings: { theme: "warm-ink" },
+      on: (m) => {
+        if (m.type === "readImageUri") reads.push(m.uri);
+        return false;
+      },
     },
   });
+  const store = run.host.store;
+  fs.mkdirSync(store.assetsDir(), { recursive: true });
+  const h = await run.open(b.id);
   await idle(h);
   // a real JPEG (300 x 180), from the page's canvas
   JPEG = Buffer.from(
@@ -128,7 +99,7 @@ async function dropHost(b: Board = emptyAt()) {
     assets,
     asset,
     done: async () => {
-      await h.close();
+      await run.close();
       fs.rmSync(tmp, { recursive: true, force: true });
     },
   };
