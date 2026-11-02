@@ -5,7 +5,7 @@ import { launch } from "./chromium";
 import {
   uid,
   emptyBoard,
-  loadBoard,
+  checkBoard,
   applyPatch,
   DEFAULT_SETTINGS,
   renderLine,
@@ -319,11 +319,11 @@ boot({ post: (m) => { window.__inflight++; window.__host(JSON.stringify(m)).fina
         break;
       }
       case "patch": {
-        // The host's copy follows the patches; every version must load back through loadBoard (schema check)
+        // The host's copy follows the patches; every version must pass the schema the board checks a board from the host with (checkBoard)
         const next = structuredClone(board);
         applyPatch(next, m.patch);
         try {
-          loadBoard(structuredClone(next));
+          checkBoard(structuredClone(next));
         } catch (e) {
           watch.fail("board-schema", (e as Error).message);
         }

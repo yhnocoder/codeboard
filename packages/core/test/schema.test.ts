@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
-import { BoardError, BoardSchema, emptyBoard, loadBoard, migrateBoard, type Segment } from "../src";
+import { BoardError, BoardSchema, emptyBoard, checkBoard, loadBoardFile, migrateBoard, type Segment } from "../src";
 import * as v from "valibot";
 
 const seg = (id: string): Segment => ({
@@ -111,18 +111,48 @@ function full() {
   return b;
 }
 
-describe("loadBoard", () => {
-  it("accepts every kind of content a v5 board holds, unchanged", () => {
+describe("checkBoard", () => {
+  it("accepts every kind of content a current board holds, unchanged", () => {
     const b = full();
-    expect(loadBoard(structuredClone(b))).toEqual(b);
+    expect(checkBoard(structuredClone(b))).toEqual(b);
     expect(v.is(BoardSchema, emptyBoard("e", "E"))).toBe(true);
   });
+  it("checks a board without upgrading it: an older version is refused", () => {
+    const b = full() as any;
+    b.version = 9;
+    expect(() => checkBoard(b)).toThrow(/version/);
+    expect(() => checkBoard(null)).toThrow(BoardError);
+  });
+  it("names the bad path", () => {
+    const b: any = full();
+    b.cards[0].segments[0].text = "oops";
+    expect(() => checkBoard(b)).toThrow(BoardError);
+    expect(() => checkBoard(b)).toThrow(/cards\.0\.segments\.0\.text/);
+    const c: any = full();
+    c.place.n.x = "1";
+    expect(() => checkBoard(c)).toThrow(/place\.n\.x/);
+    const d: any = full();
+    d.cards[1].kind = "chart";
+    expect(() => checkBoard(d)).toThrow(/cards\.1\.kind/);
+    const e: any = full();
+    e.stickers[2].at.on = { link: 3 };
+    expect(() => checkBoard(e)).toThrow(/stickers\.2\.at\.on/);
+    const f: any = full();
+    f.links[1].style.width = 5;
+    expect(() => checkBoard(f)).toThrow(/links\.1\.style\.width/);
+    const g: any = full();
+    g.links[0].call = { col: 1 };
+    expect(() => checkBoard(g)).toThrow(/links\.0\.call\.name/);
+  });
+});
+
+describe("loadBoardFile", () => {
   it("accepts a board saved by the extension (e2e run)", () => {
     const raw = e2e();
-    expect(loadBoard(raw).cards.length).toBeGreaterThan(0);
+    expect(loadBoardFile(raw).cards.length).toBeGreaterThan(0);
   });
   it("migrates v1 and v2 boards and validates the result", () => {
-    const v1 = loadBoard({
+    const v1 = loadBoardFile({
       id: "b",
       name: "x",
       cam: { x: 0, y: 0, z: 1 },
@@ -149,7 +179,7 @@ describe("loadBoard", () => {
     });
     expect(v1.version).toBe(10);
     const col = (id: string) => ({ id, kind: "code", x: 5, y: 6, w: 300, segments: [seg(`s${id}`)] });
-    const v2 = loadBoard({
+    const v2 = loadBoardFile({
       version: 2,
       id: "b",
       name: "x",
@@ -167,11 +197,11 @@ describe("loadBoard", () => {
     const b: any = full();
     b.cards[1].tilt = true;
     b.cards[2].tilt = false;
-    const l = loadBoard(structuredClone(b));
+    const l: any = loadBoardFile(structuredClone(b));
     expect(l.cards[1].tilt).toBe(true);
     expect("tilt" in l.cards[2]).toBe(false);
     b.cards[2].tilt = "yes";
-    expect(() => loadBoard(b)).toThrow(/cards\.2\.tilt/);
+    expect(() => checkBoard(b)).toThrow(/cards\.2\.tilt/);
   });
   it("keeps a sub-board card's two preview columns and drops the old one-column value", () => {
     const b: any = {
@@ -182,51 +212,30 @@ describe("loadBoard", () => {
       ],
       place: { f1: { x: 0, y: 0, w: 400, h: 300 }, f2: { x: 500, y: 0, w: 400, h: 300 } },
     };
-    const l = loadBoard(b) as any;
+    const l = loadBoardFile(b) as any;
     expect("pcols" in l.cards[0]).toBe(false);
     expect(l.cards[1].pcols).toBe(2);
   });
   it("leaves id to the caller (storage names it after the file)", () => {
     const b: any = full();
     delete b.id;
-    expect(loadBoard(b).id).toBeUndefined();
-  });
-  it("names the bad path", () => {
-    const b: any = full();
-    b.cards[0].segments[0].text = "oops";
-    expect(() => loadBoard(b)).toThrow(BoardError);
-    expect(() => loadBoard(b)).toThrow(/cards\.0\.segments\.0\.text/);
-    const c: any = full();
-    c.place.n.x = "1";
-    expect(() => loadBoard(c)).toThrow(/place\.n\.x/);
-    const d: any = full();
-    d.cards[1].kind = "chart";
-    expect(() => loadBoard(d)).toThrow(/cards\.1\.kind/);
-    const e: any = full();
-    e.stickers[2].at.on = { link: 3 };
-    expect(() => loadBoard(e)).toThrow(/stickers\.2\.at\.on/);
-    const f: any = full();
-    f.links[1].style.width = 5;
-    expect(() => loadBoard(f)).toThrow(/links\.1\.style\.width/);
-    const g: any = full();
-    g.links[0].call = { col: 1 };
-    expect(() => loadBoard(g)).toThrow(/links\.0\.call\.name/);
+    expect(loadBoardFile(b).id).toBeUndefined();
   });
   it("rejects non-boards and newer versions", () => {
-    expect(() => loadBoard(null)).toThrow(/Not a board file/);
-    expect(() => loadBoard([1])).toThrow(BoardError);
-    expect(() => loadBoard({ version: "3" })).toThrow(/version/);
-    expect(() => loadBoard({ version: 99, id: "b", name: "B", cards: [] })).toThrow(/newer/);
+    expect(() => loadBoardFile(null)).toThrow(/Not a board file/);
+    expect(() => loadBoardFile([1])).toThrow(BoardError);
+    expect(() => loadBoardFile({ version: "3" })).toThrow(/version/);
+    expect(() => loadBoardFile({ version: 99, id: "b", name: "B", cards: [] })).toThrow(/newer/);
   });
   it("keeps fields it does not know", () => {
     const b: any = full();
     b.cards[1].future = { x: 1 };
     b.extra = true;
-    const r: any = loadBoard(b);
+    const r: any = loadBoardFile(b);
     expect(r.cards[1].future).toEqual({ x: 1 });
     expect(r.extra).toBe(true);
   });
   it("matches migrateBoard on valid input", () => {
-    expect(loadBoard(structuredClone(e2e()))).toEqual({ ...migrateBoard(e2e()), cam: e2e().cam });
+    expect(loadBoardFile(structuredClone(e2e()))).toEqual(migrateBoard(e2e()));
   });
 });

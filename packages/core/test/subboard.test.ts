@@ -4,7 +4,6 @@ import {
   danglingRefs,
   emptyBoard,
   extractBoard,
-  loadBoard,
   refTitle,
   skeletonOf,
   subBoardsOf,
@@ -13,6 +12,7 @@ import {
   type Board,
   type Card,
 } from "../src";
+import { upgraded } from "./upgrade";
 
 const note = (id: string): Card => ({ id, kind: "note", md: `# ${id}\nbody`, look: "note" });
 const code = (id: string, qual = id): Card => ({
@@ -103,7 +103,7 @@ describe("sub-board skeleton", () => {
     const h = Object.fromEntries(skeletonOf(b).cards.map((c) => [c.id, c.h]));
     expect(h).toEqual({ m: 612, e: 160, s: 240 });
     // the field survives a save and load (the schema knows it)
-    expect(loadBoard(JSON.parse(JSON.stringify(b))).place.m.mh).toBe(612);
+    expect(upgraded(JSON.parse(JSON.stringify(b))).place.m.mh).toBe(612);
   });
 
   it("names nested sub-boards", () => {
@@ -246,8 +246,8 @@ describe("Turn into Board", () => {
     expect(danglingRefs(p)).toEqual([]);
     expect(danglingRefs(r.child)).toEqual([]);
     // both load back through the schema
-    expect(() => loadBoard(structuredClone(p))).not.toThrow();
-    expect(() => loadBoard(structuredClone(r.child))).not.toThrow();
+    expect(() => upgraded(structuredClone(p))).not.toThrow();
+    expect(() => upgraded(structuredClone(r.child))).not.toThrow();
   });
 });
 

@@ -7,7 +7,7 @@ import * as path from "node:path";
 import type { Page } from "playwright-core";
 import {
   Emitter,
-  loadBoard,
+  checkBoard,
   mimeOf,
   type AskType,
   type Board,
@@ -243,11 +243,11 @@ export async function realHost(boards: Board[], t: Harness, o: RealHostOptions =
             : undefined;
       this.message.fire(m);
       await answered;
-      // every version of the board the host keeps must load back through loadBoard (the schema), as with the fixture host
+      // every version of the board the host keeps must pass the schema (checkBoard), as with the fixture host
       const b = m.type === "patch" && host.store.peek(panelOf(this)?.id ?? "");
       if (b)
         try {
-          loadBoard(structuredClone(b));
+          checkBoard(structuredClone(b));
         } catch (e) {
           t.fail("board-schema", (e as Error).message);
         }

@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   emptyBoard,
-  loadBoard,
   boardQuestions,
   collectQuestions,
   questionsMarkdown,
@@ -17,6 +16,7 @@ import {
   type Card,
   type CodeCard,
 } from "../src";
+import { upgraded } from "./upgrade";
 
 const code = (id: string, path: string, text: string[], start = 10): CodeCard => ({
   id,
@@ -67,7 +67,7 @@ describe("questions", () => {
       { id: "s", icon: { pack: "builtin", name: "star" }, at: { kind: "canvas", x: 0, y: 0, on: { card: "n" } } },
       { id: "q3", icon: { pack: "builtin", name: "question" }, at: { kind: "canvas", x: 0, y: 0 } },
     );
-    const qs = boardQuestions(loadBoard(structuredClone(b)));
+    const qs = boardQuestions(upgraded(structuredClone(b)));
     expect(qs.map((q) => [q.sticker, q.line, q.done])).toEqual([
       ["q2", 60, true],
       ["q1", 61, false],

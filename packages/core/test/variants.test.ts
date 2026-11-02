@@ -5,7 +5,6 @@ import {
   dropVariants,
   emptyBoard,
   isMine,
-  loadBoard,
   placeCards,
   rebaseUpstream,
   removeVariant,
@@ -20,6 +19,7 @@ import {
   type CodeCard,
   type Segment,
 } from "../src";
+import { upgraded } from "./upgrade";
 
 const UP = ["def forward(x):", "    a = x < 1", "    r = a.argmax()", "    out[r + 1:] = -1", "    return out"];
 const MINE = [
@@ -79,7 +79,7 @@ describe("variants", () => {
     expect(b.links[0].from.line).toBe(14);
     expect(b.sidenotes[0].at.lines).toEqual([12, 12]);
     expect(segsOf(card(b), "v1")![0].text).toEqual(MINE);
-    expect(() => loadBoard(JSON.parse(JSON.stringify(b)))).not.toThrow();
+    expect(() => upgraded(JSON.parse(JSON.stringify(b)))).not.toThrow();
   });
   it("danglingRefs checks the variant invariant: only the shown variant has no segs, the others mirror the card's segment ids", () => {
     const b = board();

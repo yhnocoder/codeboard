@@ -33,7 +33,6 @@ import {
   splitLink,
   swapCallTarget,
   renumberBorn,
-  loadBoard,
   loadSharedCard,
   turnNoteInto,
   cardTitle,
@@ -43,6 +42,7 @@ import {
   type Link,
   type Segment,
 } from "../src";
+import { upgraded } from "./upgrade";
 
 const seg = (id: string, start: number, text: string[]): Segment => ({
   id,
@@ -291,7 +291,7 @@ describe("migrateBoard", () => {
   });
   it("v7 → v8: a note's background and handwriting become one of Note / Text / Mark, code's nobg becomes bg: false", () => {
     const old = (o: object) => ({ id: "x", kind: "note", md: "x", ...o });
-    const b = loadBoard({
+    const b = upgraded({
       version: 7,
       id: "b",
       name: "B",
@@ -320,7 +320,7 @@ describe("migrateBoard", () => {
     expect(by.c).toMatchObject({ bg: false });
     expect((by.c as CodeCard).mergedFrom![0].card).toMatchObject({ bg: false });
     expect("nobg" in by.c || "bg" in by.f || "nobg" in by.f).toBe(false);
-    expect(loadBoard(structuredClone(b))).toEqual(b); // v8 is read as is
+    expect(upgraded(structuredClone(b))).toEqual(b); // v8 is read as is
   });
   it("v7 → v8 upgrades shared card files too", () => {
     expect(

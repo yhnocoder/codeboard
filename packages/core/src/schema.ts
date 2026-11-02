@@ -1,4 +1,5 @@
-// 读白板文件时的校验（valibot）。loadBoard = 先看是不是对象、版本是不是认得 → migrateBoard（migrate.ts）迁到当前版本、补齐 → 按当前版本的结构校验。
+// 读白板文件时的校验（valibot）。loadBoardFile = 先看是不是对象、版本是不是认得 → migrateBoard（migrate.ts）迁到当前版本、补齐 → 按当前版本的结构校验。
+// 宿主和界面之间传的白板只有当前版本：checkBoard 只校验，不迁移。
 // 校验的是迁移之后的结果，结构和 model.ts 的类型一一对应；旧文件的样子（缺省、null）由迁移负责。
 // 只拦会让白板读坏的东西（类型不对、缺必填字段、kind 不认得），不认得的字段原样保留。
 import * as v from "valibot";
@@ -318,12 +319,10 @@ function check(schema: v.GenericSchema, x: unknown, what: string) {
   throw new BoardError(`${what}: ${lines.join("; ")}${r.issues.length > 3 ? ` (+${r.issues.length - 3} more)` : ""}`);
 }
 
-/** 宿主和界面之间传的白板（带镜头；内容可以是任何版本）→ 校验过的当前版本白板（不能有共享卡的引用） */
-export function loadBoard(raw: unknown): Board {
-  check(RawBoard, raw, "Not a board file");
-  const b = { ...migrateBoard(raw), cam: (raw as { cam?: unknown }).cam };
-  check(BoardSchema, b, "Invalid board");
-  return b as Board;
+/** 宿主和界面之间传的白板（带镜头，不能有共享卡的引用）：一定是当前版本，只校验（旧文件宿主读的时候就迁移好了） */
+export function checkBoard(raw: unknown): Board {
+  check(BoardSchema, raw, "Invalid board");
+  return raw as Board;
 }
 
 /** 白板文件（任何版本）→ 校验过的当前版本的白板文件（共享卡还是引用，由宿主的存储换成内容） */

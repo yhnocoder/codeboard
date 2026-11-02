@@ -6,13 +6,13 @@ import {
   boardMarkdown,
   danglingRefs,
   emptyBoard,
-  loadBoard,
   rebaseBlocks,
   BOARD_VERSION,
   type Board,
   type Card,
   type Link,
 } from "../src";
+import { upgraded } from "./upgrade";
 
 const ROOF = "**Roofline 模型**把应用画在一张图上：左边的斜线是内存带宽的上限，右边的水平线是峰值算力。";
 const OLD = [
@@ -126,9 +126,9 @@ describe("Note block ends in the board file", () => {
   it("the schema reads a block end and rejects a malformed one; danglingRefs flags a block on a code card or next to a line", () => {
     const b = board([arrow(2)]);
     const file = { ...structuredClone(b), version: BOARD_VERSION, cam: { x: 0, y: 0, z: 1 } };
-    expect(loadBoard(structuredClone(file)).links[0].to.block).toEqual(ref(OLD, 2));
+    expect(upgraded(structuredClone(file)).links[0].to.block).toEqual(ref(OLD, 2));
     (file.links[0].to as { block: unknown }).block = { i: "2", h: "x" };
-    expect(() => loadBoard(file)).toThrow(/links\.0\.to\.block\.i/);
+    expect(() => upgraded(file)).toThrow(/links\.0\.to\.block\.i/);
     const c = board([
       {
         id: "l",

@@ -1,5 +1,5 @@
 import { batch } from "solid-js";
-import { loadBoard, findCard, isCode, walkOrder, type HostToBoard, type Sidenote } from "@codeboard/core";
+import { checkBoard, findCard, isCode, walkOrder, type HostToBoard, type Sidenote } from "@codeboard/core";
 import { deleteItems, followMoved } from "@codeboard/core/commands";
 import { commandEnv } from "./actions/env";
 import { state, setHost, mergeHost, setBoards, setLoaded, setSharedInfo, flows } from "./state/store";
@@ -46,7 +46,7 @@ export function onHost(m: HostToBoard) {
 function handle(m: HostToBoard) {
   switch (m.type) {
     case "init": {
-      const b = loadBoard(m.board);
+      const b = checkBoard(m.board);
       batch(() => {
         // the host state and the segments' views and version states are replaced, not merged (the last board's would stay)
         setHost(m.host);

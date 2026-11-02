@@ -6,7 +6,6 @@ import {
   callTree,
   computeFlows,
   emptyBoard,
-  loadBoard,
   loadRun,
   matchRun,
   rpcText,
@@ -17,6 +16,7 @@ import {
   type RunApply,
   type RunRecord,
 } from "../src";
+import { upgraded } from "./upgrade";
 
 const code = (id: string, qual: string, path = "a.py", start = 1, end = 20): Card => ({
   id,
@@ -76,7 +76,7 @@ describe("RPC arrows and the call graph", () => {
     expect(f.byId.has("step")).toBe(false);
     expect(walkOrder(b, "call")).toEqual(["call", "loop", "run"]);
     // the board loads back with the new fields
-    expect(loadBoard(structuredClone(b)).links[0].rpc).toEqual({ mech: "shm", msg: "run", fan: "all" });
+    expect(upgraded(structuredClone(b)).links[0].rpc).toEqual({ mech: "shm", msg: "run", fan: "all" });
   });
 
   it("rpcText: mechanism · message · fan-out", () => {
@@ -226,7 +226,7 @@ describe("run records", () => {
     expect(l1.call?.ev?.base).toBeUndefined();
     expect(l2.call?.ev).toMatchObject({ kind: "observed", base: "manual", via: "registry" });
     expect(l2.call?.seen?.[0].args[0]).toEqual(["method_name", "'run'"]);
-    expect(() => loadBoard(structuredClone(b))).not.toThrow();
+    expect(() => upgraded(structuredClone(b))).not.toThrow();
   });
 
   it("does not match an arrow whose target card is another function in the same file", () => {

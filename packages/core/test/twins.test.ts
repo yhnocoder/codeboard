@@ -4,7 +4,6 @@ import {
   danglingRefs,
   detachTwin,
   emptyBoard,
-  loadBoard,
   makeTwin,
   placeCards,
   syncTwins,
@@ -14,6 +13,7 @@ import {
   type NoteCard,
   type Segment,
 } from "../src";
+import { upgraded } from "./upgrade";
 
 const seg = (id: string, start: number, text: string[]): Segment => ({
   id,
@@ -172,7 +172,7 @@ describe("copies and shared updates", () => {
       place: { a: { x: 0, y: 0, w: 1 }, b: { x: 0, y: 0, w: 1 } },
     });
     makeTwin(b, "b", "a");
-    const back = loadBoard(JSON.parse(JSON.stringify(b)));
+    const back = upgraded(JSON.parse(JSON.stringify(b)));
     expect(back.cards[1].same).toBe(b.cards[0].same);
   });
 });

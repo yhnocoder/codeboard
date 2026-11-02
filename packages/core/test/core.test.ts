@@ -12,7 +12,6 @@ import {
   descendants,
   hiddenByCollapse,
   stampBorn,
-  loadBoard,
   snapMove,
   align,
   cardRows,
@@ -35,6 +34,7 @@ import {
 } from "../src";
 import { initAnalysis, analyze, type FileAnalysis } from "@codeboard/analysis";
 import { F_BLANK, F_COMMENT, F_DOCSTRING } from "@codeboard/analysis/basics";
+import { upgraded } from "./upgrade";
 
 // Uses the repo's nano-vllm submodule as test data
 const repo = fileURLToPath(new URL("../../../examples/nano-vllm", import.meta.url));
@@ -500,7 +500,7 @@ describe("migrateBoard", () => {
         },
       ],
     };
-    const b = loadBoard(structuredClone(raw));
+    const b = upgraded(structuredClone(raw));
     expect(b.links).toEqual([
       { id: "c", from: { card: "a", seg: "sa", line: 3 }, to: { card: "f" }, call: { name: "g", col: 0 } },
       { id: "gone", from: { card: "a" }, to: { card: "f" } },
@@ -604,7 +604,7 @@ describe("migrateBoard", () => {
         { id: "p3", kind: "plain", from: { card: "a" }, to: { card: "n" } },
       ],
     };
-    const b = loadBoard(structuredClone(raw));
+    const b = upgraded(structuredClone(raw));
     expect(b.version).toBe(10);
     expect(b.links).toEqual([
       {
@@ -659,7 +659,7 @@ describe("migrateBoard", () => {
       cards: ids.map(code),
       links: [old("r1", "c1"), old("r2", "k"), old("r2", "x", 2)],
     };
-    const b = loadBoard(structuredClone(raw));
+    const b = upgraded(structuredClone(raw));
     let f = computeFlows(b);
     expect(["r1", "c1", "r2", "k", "x"].map((id) => f.byId.get(id)!.label)).toEqual(["A", "A", "B", "B", "B"]);
     expect(f.graphs.map((g) => g.id)).toEqual(["r1", "r2"]); // the old root is the graph's oldest card
@@ -692,7 +692,7 @@ describe("migrateBoard", () => {
         q: { md: "", done: false },
       })),
     };
-    const b = loadBoard(raw);
+    const b = upgraded(raw);
     expect("hideNumbers" in b || "title" in b.cards[0] || "h" in b.place.a).toBe(false);
     expect((b.cards[0] as CodeCard).segments[0].lang).toBe("plaintext");
     expect(b.cards[1]).toMatchObject({ look: "text" });
