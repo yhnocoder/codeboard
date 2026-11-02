@@ -394,12 +394,13 @@ describe("board storage", () => {
     await store.load("a");
     await store.groups();
     expect(fs.readdirs).toBe(dirs);
-    // its own writes rename a file into the folder: listed again, but no board file is read again
+    // its own writes rename a file into the folder: the listing takes the folder's new mtime, nothing is read again
     const reads = fs.reads;
     await store.rename("a", "A2");
     await store.flush();
     expect((await store.list()).map((m) => m.name)).toEqual(["A2"]);
     expect(fs.reads).toBe(reads);
+    expect(fs.readdirs).toBe(dirs);
     // a board another window adds, and one it deletes
     fs.put(`${ROOT}/g/b.json`, emptyBoard("b", "B"));
     expect((await store.list()).map((m) => [m.name, m.group])).toEqual([
@@ -410,6 +411,34 @@ describe("board storage", () => {
     await fs.rm(`${ROOT}/a.json`);
     expect((await store.list()).map((m) => m.name)).toEqual(["B"]);
     expect(await store.load("a")).toBeNull();
+  });
+
+  it("saving keeps the listing; a folder someone else changed around the save is read again", async () => {
+    const fs = new MemFs();
+    const store = new Storage(fs, { dir: () => ROOT });
+    fs.put(`${ROOT}/a.json`, emptyBoard("a", "A"));
+    fs.put(`${ROOT}/g/b.json`, emptyBoard("b", "B"));
+    await store.list();
+    const dirs = fs.readdirs;
+    for (const n of ["A1", "A2", "A3"]) {
+      await store.rename("a", n);
+      await store.flush();
+      expect((await store.list()).map((m) => m.name)).toEqual([n, "B"]);
+    }
+    // moving a board writes into another folder and removes it from its own: both take the new mtimes
+    await store.move("a", "g");
+    await store.flush();
+    expect((await store.list()).map((m) => [m.name, m.group])).toEqual([
+      ["A3", "g"],
+      ["B", "g"],
+    ]);
+    expect(fs.readdirs).toBe(dirs);
+    // another window adds a board to the folder after it was listed and before this one writes into it: read again
+    fs.put(`${ROOT}/g/c.json`, emptyBoard("c", "C"));
+    await store.rename("b", "B2");
+    await store.flush();
+    expect((await store.list()).map((m) => m.name)).toEqual(["A3", "B2", "C"]);
+    expect(fs.readdirs).toBeGreaterThan(dirs);
   });
 
   it("sees group folders made or renamed outside even when the watcher misses them", async () => {
@@ -924,7 +953,9 @@ describe("card library (shared cards)", () => {
     const { fs, store, B } = await two();
     const c = card(fs, "s");
     c.card.md = "outside";
-    fs.put(`${ROOT}/cards/s.json`, c);
+    // written the way editors and sync tools do (a temporary file renamed over it), with no watcher to tell
+    fs.put(`${ROOT}/cards/s.json.tmp`, c);
+    await fs.rename(`${ROOT}/cards/s.json.tmp`, `${ROOT}/cards/s.json`);
     expect(((await store.load(B))!.cards[0] as any).md).toBe("outside");
     expect(((await store.load("A"))!.cards[0] as any).md).toBe("outside");
   });

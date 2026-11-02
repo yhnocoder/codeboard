@@ -141,9 +141,12 @@ export class Storage {
   /**
    * The folders the cached listing was read from (the storage folder and each group folder) with their mtimes then. Adding,
    * deleting or renaming a board file or a group folder changes its folder's mtime, so the listing is good while none moved, however
-   * the change was made (another window, a sync tool, a network mount the watcher can't see). null = read the folder again
+   * the change was made (another window, a sync tool, a network mount the watcher can't see). The shared-card folder is one of
+   * them: a scan also pulls the cards the boards show. null = read the folder again
    */
   private listedFrom: Map<string, number> | null = null;
+  // A board file rewritten in place outside the app (not written to a temporary file and renamed, as git, editors and sync
+  // tools do) changes no folder's mtime: with no watcher event for it, the listing shows it as it was until the next scan.
 
   constructor(
     private fs: Fs,
@@ -216,6 +219,25 @@ export class Storage {
     const now = await Promise.all([...from.keys()].map((d) => this.mtimeOf(d)));
     return [...from.values()].every((m, i) => m === now[i]);
   }
+  /**
+   * Our own write into these folders moves their mtimes; the cached listing already has what it wrote (commit puts the entry in
+   * the cache), so it takes the new mtimes instead of reading the folders again on the next listing. Only when each folder was
+   * as listed just before the write: otherwise someone else changed it too, and the next listing reads it. A whole-second mtime
+   * may come from a coarse clock (see MTIME_GRAIN), on which a change right after ours could keep the same mtime: read again then
+   */
+  private async ownWrite(dirs: string[], write: () => Promise<void>) {
+    const before = await Promise.all(dirs.map((d) => this.mtimeOf(d)));
+    await write();
+    const from = this.listedFrom;
+    if (!from) return;
+    const after = await Promise.all(dirs.map((d) => this.mtimeOf(d)));
+    const ok = dirs.every((d, i) => from.get(d) === before[i] && after[i] >= 0 && after[i] % 1000 !== 0);
+    if (!ok || this.listedFrom !== from) {
+      this.listedFrom = null;
+      return;
+    }
+    dirs.forEach((d, i) => from.set(d, after[i]));
+  }
   /** A folder's mtime; -1 when it is not there */
   private mtimeOf(dir: string): Promise<number> {
     return this.fs.stat(dir).then(
@@ -230,7 +252,12 @@ export class Storage {
     const root = this.dir();
     const files: { file: string; group?: string }[] = [];
     // each folder's mtime is taken before it is read: a change made while reading moves it, and the next listing reads again
-    const from = new Map([[root, await this.mtimeOf(root)]]);
+    const cards = this.library.dir();
+    const from = new Map([
+      [root, await this.mtimeOf(root)],
+      // a shared card written outside (renamed into cards/) is pulled into the boards that show it by the next scan
+      [cards, await this.mtimeOf(cards)],
+    ]);
     const readAt = Date.now();
     let names: Awaited<ReturnType<Fs["readdir"]>> = [];
     try {
@@ -537,14 +564,15 @@ export class Storage {
       const disk = await this.library.read(sc.card.id);
       const m = merged(e.used.get(sc.card.id), disk, sc);
       for (const item of m.mine) this.writer.set(item, e.id);
-      if (!m.file) continue;
-      await this.library.write(m.file);
-      e.used.set(sc.card.id, m.file);
-      changed.push({ card: m.file.card, sidenotes: m.file.sidenotes, items: m.items });
+      const file = m.file;
+      if (!file) continue;
+      await this.ownWrite([this.library.dir()], () => this.library.write(file));
+      e.used.set(sc.card.id, file);
+      changed.push({ card: file.card, sidenotes: file.sidenotes, items: m.items });
       // 卡文件被另一个窗口改过：这块白板也换上合并后的那份
       if (m.back.length) {
-        putShared(e.board, structuredClone({ card: m.file.card, sidenotes: m.file.sidenotes }));
-        back.push({ ...structuredClone({ card: m.file.card, sidenotes: m.file.sidenotes }), items: m.back });
+        putShared(e.board, structuredClone({ card: file.card, sidenotes: file.sidenotes }));
+        back.push({ ...structuredClone({ card: file.card, sidenotes: file.sidenotes }), items: m.back });
       }
     }
     this.keepCam(e.id, e.board.cam);
@@ -552,13 +580,17 @@ export class Storage {
     // 写在它现在的文件夹里（存储目录刚换过时还是原来那个）；新白板、换了组的写到组的文件夹。文件名就是 id
     const dir =
       prev?.file && prev.group === e.group ? dirName(prev.file) : e.group ? fs.join(this.dir(), e.group) : this.dir();
-    await fs.mkdir(dir);
     const file = fs.join(dir, `${e.id}.json`);
     const tmp = `${file}.tmp`;
-    e.text = JSON.stringify(fromDisk?.file ?? data, null, 1);
-    await fs.writeFile(tmp, e.text);
-    await fs.rename(tmp, file);
-    if (prev?.file && prev.file !== file) await fs.rm(prev.file);
+    const text = JSON.stringify(fromDisk?.file ?? data, null, 1);
+    e.text = text;
+    const moved = prev?.file && prev.file !== file ? prev.file : undefined;
+    await this.ownWrite(moved ? [dir, dirName(moved)] : [dir], async () => {
+      await fs.mkdir(dir);
+      await fs.writeFile(tmp, text);
+      await fs.rename(tmp, file);
+      if (moved) await fs.rm(moved);
+    });
     e.file = file;
     e.mtime = (await fs.stat(file)).mtimeMs;
     e.pending = undefined;
