@@ -2,7 +2,7 @@
 // 编辑器的壳（VS Code 插件、以后的 Node sidecar）只调这一个函数，再把自己的界面（侧栏、CodeLens、状态栏）挂到返回的事件上
 import type { Disposable, Event, Workspace } from "@codeboard/core";
 import { HOST_SETTINGS } from "@codeboard/core/settings";
-import type { Storage } from "@codeboard/core/storage";
+import type { Storage } from "./storage/boards";
 import { makeActions } from "./actions";
 import { startAnalysis } from "./analysis";
 import { scheduleAssetSweep } from "./assetsweep";
@@ -16,7 +16,7 @@ import { watchNameIndex } from "./nameindex";
 import { affectsSettings, readSettings } from "./settings";
 import { scratchFiles } from "./scratchfiles";
 import { initSource } from "./source";
-import { followStorageDir, githubDir, onDidSwitchStorage, openStorage, watchProjectDir } from "./storage";
+import { followStorageDir, githubDir, onDidSwitchStorage, openStorage, watchProjectDir } from "./storage/place";
 import { recordProject } from "./transfer";
 import { watchVersions } from "./watch";
 import { useWorkspace } from "./ws";

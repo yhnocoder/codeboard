@@ -24,7 +24,7 @@ import { githubFileDir, type Loc } from "./source";
 import { makeSegment } from "./versions";
 import { highlight } from "./views";
 import { langOf, splitLines, workspace } from "./ws";
-import type { Storage } from "./storage";
+import type { Storage } from "./storage/boards";
 
 const API = "https://api.github.com";
 

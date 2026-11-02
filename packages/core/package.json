@@ -23,7 +23,6 @@
     "./commands": "./src/commands/index.ts",
     "./canvas": "./src/canvas/index.ts",
     ".": "./src/index.ts",
-    "./storage": "./src/storage/index.ts",
     "./settings": "./src/settings.ts",
     "./tidy": "./src/tidy.ts"
   }

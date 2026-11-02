@@ -2,7 +2,7 @@
 // 不带浏览器 cookie：需要登录的页面抓不到，白板降级显示（域名首字母 + 路径 + Retry）。
 import { Parser } from "htmlparser2";
 import type { WebMeta } from "@codeboard/core";
-import type { Storage } from "./storage";
+import type { Storage } from "./storage/boards";
 import { log } from "./log";
 
 const UA = "Mozilla/5.0 (compatible; CodeBoard; +https://github.com/yhnocoder/codeboard)";

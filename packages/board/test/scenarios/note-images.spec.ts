@@ -1,8 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { emptyBoard, type Board, type ImageCard, type NoteCard } from "@codeboard/core";
-import { Storage } from "@codeboard/core/storage";
-import { nodeFs, png, type Rgba, saveNoteImage } from "@codeboard/host/testing";
+import { nodeFs, png, type Rgba, saveNoteImage, Storage } from "@codeboard/host/testing";
 import type { Page } from "playwright-core";
 import { OUT, put, shot, type Host } from "../harness";
 import { test, open, check, light, until, idle, frames } from "../fixtures";

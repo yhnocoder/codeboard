@@ -1,4 +1,4 @@
-// A host for sub-board scenarios (subboards.spec.ts, boards.spec.ts): core Storage on a temp dir, switching one board panel
+// A host for sub-board scenarios (subboards.spec.ts, boards.spec.ts): the host's Storage on a temp dir, switching one board panel
 // between boards like BoardHub.switchBoard (crumbs, cameras, walkthrough hops) and pushing skeletons after saves (120 ms debounce).
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -18,8 +18,7 @@ import {
   type SegView,
   type HostToBoard,
 } from "@codeboard/core";
-import { Storage } from "@codeboard/core/storage";
-import { nodeFs } from "@codeboard/host/testing";
+import { nodeFs, Storage } from "@codeboard/host/testing";
 import { viewOf, OUT, type Host } from "./harness";
 import { open, light } from "./fixtures";
 

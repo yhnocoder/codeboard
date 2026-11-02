@@ -4,11 +4,11 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { emptyBoard, type Board, type HostToBoard } from "@codeboard/core";
-import type { Storage } from "@codeboard/core/storage";
+import type { Storage } from "../src/storage/boards";
 import { BoardHub } from "../src/hub";
 import type { HostEnv } from "../src/env";
 import { useWorkspace } from "../src/ws";
-import { followStorageDir, moveIntoProject, onDidSwitchStorage, openStorage } from "../src/storage";
+import { followStorageDir, moveIntoProject, onDidSwitchStorage, openStorage } from "../src/storage/place";
 import { nodeWorkspace, type TestWorkspace } from "./node-workspace";
 import { git, stubView, tempRepo } from "./helpers";
 

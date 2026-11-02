@@ -32,8 +32,7 @@ import {
   type ImageCard,
   type NoteCard,
 } from "@codeboard/core";
-import { Storage } from "@codeboard/core/storage";
-import { nodeFs, readAsset, resetImageAiCache, runImageAi, saveNoteImage } from "@codeboard/host/testing";
+import { nodeFs, readAsset, resetImageAiCache, runImageAi, saveNoteImage, Storage } from "@codeboard/host/testing";
 import { OUT, put, type Host } from "../harness";
 import { test, open, check, until, idle, onMac } from "../fixtures";
 

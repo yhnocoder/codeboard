@@ -1,7 +1,7 @@
 import { allCodeCards, type Segment } from "@codeboard/core";
 import { analysisOf } from "./analysis";
 import { absOf } from "./source";
-import type { Storage } from "./storage";
+import type { Storage } from "./storage/boards";
 import { workingPlace } from "./versions";
 
 type Entry = { board: string; card: string; seg: Segment };

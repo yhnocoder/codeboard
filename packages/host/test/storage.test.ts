@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createHash } from "node:crypto";
-import { danglingRefs, emptyBoard, type Board, type Camera } from "../src";
+import { danglingRefs, emptyBoard, type Board, type Camera } from "@codeboard/core";
 
 const headOf = (b: Board) => {
   const {
@@ -17,21 +17,29 @@ const headOf = (b: Board) => {
   } = b;
   return h;
 };
-import { Storage, pasteClip, type DirEnt, type Fs } from "../src/storage";
+import { Storage } from "../src/storage/boards";
+import { pasteClip } from "../src/storage/clip";
+import type { DirEnt, Fs } from "../src/storage/fs";
 
 /** In-memory Fs: files and directories keyed by "/"-joined paths; every write bumps a clock used as mtime */
 class MemFs implements Fs {
   files = new Map<string, { data: string | Uint8Array; mtime: number; birth: number }>();
-  /** Watchers (StorageOpts.watch) told about every .json created, changed or deleted under their folder, a tick later like a file watcher */
+  /** Watchers (StorageOpts.watch) told about every .json created, changed or deleted under their folder, a turn later like a file watcher */
   private watchers = new Set<{ base: string; fn: (abs: string) => void }>();
   watch = (base: string, _glob: string, fn: (abs: string) => void) => {
     const w = { base, fn };
     this.watchers.add(w);
     return { dispose: () => void this.watchers.delete(w) };
   };
+  private told: Promise<void>[] = [];
   private touched(p: string) {
     if (p.endsWith(".json"))
-      for (const w of this.watchers) if (p.startsWith(w.base + "/")) setTimeout(() => w.fn(p), 0);
+      for (const w of this.watchers)
+        if (p.startsWith(w.base + "/")) this.told.push(new Promise((r) => setImmediate(() => r(w.fn(p)))));
+  }
+  /** Once the watchers have been told about every write so far */
+  async delivered() {
+    while (this.told.length) await Promise.all(this.told.splice(0));
   }
   dirs = new Set<string>(["/"]);
   reads = 0;
@@ -47,7 +55,9 @@ class MemFs implements Fs {
   private need(p: string) {
     if (!this.dirs.has(p)) throw new Error(`ENOENT ${p}`);
   }
+  readdirs = 0;
   async readdir(dir: string): Promise<DirEnt[]> {
+    this.readdirs++;
     this.need(dir);
     const out = new Map<string, DirEnt>();
     for (const f of this.files.keys())
@@ -117,6 +127,7 @@ class MemFs implements Fs {
     void this.mkdir(this.parent(p));
     const t = ++this.clock;
     this.files.set(p, { data: typeof json === "string" ? json : JSON.stringify(json), mtime: t, birth: t });
+    this.touched(p);
   }
 }
 
@@ -140,7 +151,7 @@ function setup() {
   return { fs, store, logs, cams };
 }
 
-describe("core storage", () => {
+describe("board storage", () => {
   it("creates, lists, loads and saves boards atomically", async () => {
     const { fs, store } = setup();
     let changed = 0,
@@ -338,6 +349,46 @@ describe("core storage", () => {
     expect(await store.load("strict")).toBeNull();
   });
 
+  it("reads the folder again only after the watcher reports a change the cache does not hold", async () => {
+    const fs = new MemFs();
+    const store = new Storage(fs, { dir: () => ROOT, watch: fs.watch });
+    fs.put(`${ROOT}/a.json`, emptyBoard("a", "A"));
+    await fs.delivered();
+    expect((await store.list()).map((m) => m.name)).toEqual(["A"]);
+    const reads = fs.readdirs;
+    await store.list();
+    await store.load("a");
+    await store.groups();
+    expect(fs.readdirs).toBe(reads);
+    // its own writes keep the cache
+    await store.rename("a", "A2");
+    await fs.delivered();
+    expect((await store.list()).map((m) => m.name)).toEqual(["A2"]);
+    expect(fs.readdirs).toBe(reads);
+    // a board another window adds, and one it deletes
+    fs.put(`${ROOT}/g/b.json`, emptyBoard("b", "B"));
+    await fs.delivered();
+    expect((await store.list()).map((m) => [m.name, m.group])).toEqual([
+      ["A2", undefined],
+      ["B", "g"],
+    ]);
+    expect(await store.groups()).toEqual(["g"]);
+    await fs.rm(`${ROOT}/a.json`);
+    await fs.delivered();
+    expect((await store.list()).map((m) => m.name)).toEqual(["B"]);
+    expect(await store.load("a")).toBeNull();
+  });
+
+  it("reads the folder on every call without a watcher", async () => {
+    const { fs, store } = setup();
+    fs.put(`${ROOT}/a.json`, emptyBoard("a", "A"));
+    await store.list();
+    const reads = fs.readdirs;
+    fs.put(`${ROOT}/b.json`, emptyBoard("b", "B"));
+    expect((await store.list()).map((m) => m.name)).toEqual(["A", "B"]);
+    expect(fs.readdirs).toBeGreaterThan(reads);
+  });
+
   it("turns a broken board file back into a board once it is fixed on disk", async () => {
     const fs = new MemFs();
     const logs: string[] = [];
@@ -353,8 +404,10 @@ describe("core storage", () => {
     expect(store.broken()).toEqual([]);
     // 修好时清掉了「只记一次」：之后再出现的坏文件照样记日志
     await fs.rm(`${ROOT}/b.json`);
+    await fs.delivered(); // the listing is read again once the watcher reports a change
     await store.list();
     fs.put(`${ROOT}/b.json`, "{");
+    await fs.delivered();
     await store.list();
     expect(store.broken()).toHaveLength(1);
     expect(logs.filter((l) => l.includes("b.json"))).toHaveLength(2);
@@ -888,7 +941,7 @@ describe("two windows on one storage folder", () => {
     const w1 = new Storage(fs, { dir: () => ROOT, watch: fs.watch }),
       w2 = new Storage(fs, { dir: () => ROOT, watch: fs.watch });
     const settled = async () => {
-      await new Promise((r) => setTimeout(r, 0));
+      await fs.delivered();
       await w1.flush();
       await w2.flush();
     };
@@ -980,9 +1033,8 @@ describe("two windows on one storage folder", () => {
     await patchNow(w2, "A", {
       sidenotes: { set: [{ id: "n9", kind: "text", md: "note in window 2", at: { card: "s" } }] },
     });
-    await new Promise((r) => setTimeout(r, 0));
+    await vi.waitFor(() => expect(w1.peek("A")!.sidenotes.map((n) => n.id)).toEqual(["n9"]));
     expect((w1.peek("A")!.cards[0] as any).md).toBe("body in window 1");
-    expect(w1.peek("A")!.sidenotes.map((n) => n.id)).toEqual(["n9"]);
     await settled();
     const c = JSON.parse(fs.files.get(`${ROOT}/cards/s.json`)!.data as string);
     expect(c.card.md).toBe("body in window 1");
@@ -1002,9 +1054,8 @@ describe("two windows on one storage folder", () => {
     w1.onDidMerge((e) => merges.push(e.patch));
     await w1.patch("A", { cards: { set: [note("s", "unsaved text")] } });
     await patchNow(w2, "A", { place: { set: { s: { x: 300, y: 40, w: 100 } } } });
-    await new Promise((r) => setTimeout(r, 0));
+    await vi.waitFor(() => expect(w1.peek("A")!.place.s).toEqual({ x: 300, y: 40, w: 100 }));
     expect(w1.peek("A")!.cards).toEqual([note("s", "unsaved text")]);
-    expect(w1.peek("A")!.place.s).toEqual({ x: 300, y: 40, w: 100 });
     // The open panel only gets the move
     expect(merges.at(-1)).toEqual({ place: { set: { s: { x: 300, y: 40, w: 100 } } } });
     await settled();
@@ -1204,8 +1255,7 @@ describe("writing boards to disk", () => {
     expect(onDisk(fs, file).cards).toEqual([note("x", "edited")]);
     expect(fs.clock - writes).toBe(1); // one board file write for both patches
     await store.patch(b.id, { cards: { set: [note("x", "later")] } });
-    await new Promise((r) => setTimeout(r, 600));
-    expect(onDisk(fs, file).cards).toEqual([note("x", "later")]);
+    await vi.waitFor(() => expect(onDisk(fs, file).cards).toEqual([note("x", "later")])); // the write timer
   });
 
   it("a failed write is reported once however often the retry fails, and once more when it gets through; the changes stay in the storage", async () => {

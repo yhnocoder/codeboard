@@ -5,7 +5,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { Emitter, type HostToBoard } from "@codeboard/core";
-import type { Storage } from "@codeboard/core/storage";
+import type { Storage } from "../src/storage/boards";
 import type { HostEnv } from "../src/env";
 import { startHost, type Host } from "../src/start";
 import { excludeScratch, scratchName } from "../src/scratchnames";

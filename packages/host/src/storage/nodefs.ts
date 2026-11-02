@@ -1,7 +1,7 @@
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
 import { createHash } from "node:crypto";
-import type { Fs } from "@codeboard/core/storage";
+import type { Fs } from "./fs";
 
 export const nodeFs: Fs = {
   readdir: async (dir) =>

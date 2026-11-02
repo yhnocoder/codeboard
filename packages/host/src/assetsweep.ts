@@ -5,7 +5,7 @@
 // Sidenote、问题都算上）。没人用、而且 7 天没改过的才删。每个存储目录一天最多一次（记在这个工作区的状态里）
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import type { Storage } from "./storage";
+import type { Storage } from "./storage/boards";
 import { log } from "./log";
 import { workspace } from "./ws";
 

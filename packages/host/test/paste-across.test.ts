@@ -10,8 +10,9 @@ import {
   type Segment,
   type Source,
 } from "@codeboard/core";
-import { Storage, type Pasted } from "@codeboard/core/storage";
-import { nodeFs } from "../src/nodefs";
+import { Storage } from "../src/storage/boards";
+import { type Pasted } from "../src/storage/clip";
+import { nodeFs } from "../src/storage/nodefs";
 import { useWorkspace } from "../src/ws";
 import { makeHandler } from "../src/handlers";
 import type { BoardHost, BoardPanel } from "../src/boards";

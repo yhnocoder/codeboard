@@ -1,5 +1,4 @@
-import type { CardCopy } from "../edit";
-import type { Link } from "../model";
+import type { CardCopy, Link } from "@codeboard/core";
 import type { Storage } from "./boards";
 
 /** text = ⌘C 时写进系统剪贴板的文字：⌘V 收到的文字和它一样才算贴的是这几张卡 */

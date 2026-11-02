@@ -6,7 +6,7 @@ import { createHash } from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { IMAGE_EXT, sniffImage, sniffSvg } from "@codeboard/core";
-import type { Storage } from "./storage";
+import type { Storage } from "./storage/boards";
 import { workspace } from "./ws";
 
 export const MAX_NOTE_IMAGE = 10 * 1024 * 1024;

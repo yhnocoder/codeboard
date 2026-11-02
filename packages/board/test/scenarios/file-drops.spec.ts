@@ -14,8 +14,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { pathToFileURL } from "node:url";
 import { emptyBoard, mimeOf, sniffImage, type Board, type ImageCard } from "@codeboard/core";
-import { Storage } from "@codeboard/core/storage";
-import { nodeFs, nodeWorkspace, png, readImageUri, useWorkspace } from "@codeboard/host/testing";
+import { nodeFs, nodeWorkspace, png, readImageUri, useWorkspace, Storage } from "@codeboard/host/testing";
 import { OUT, shot, type Host } from "../harness";
 import { test, open, check, until, idle } from "../fixtures";
 

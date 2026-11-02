@@ -3,7 +3,7 @@ export { startHost, type Host } from "./start";
 export type { HostEnv } from "./env";
 export type { BoardView } from "./boards";
 export type { BoardHub } from "./hub";
-export type { Storage } from "./storage";
+export type { Storage } from "./storage/boards";
 export { FORWARDED_KEYS } from "./boards";
 export { BoardMarks } from "./marks";
 export { treeChildren, type TreeNode } from "./boardtree";

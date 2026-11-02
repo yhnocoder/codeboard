@@ -18,10 +18,11 @@ import {
   type Source,
   type WebMeta,
 } from "@codeboard/core";
-import { Storage, pasteClip, type CardClip, type Pasted } from "@codeboard/core/storage";
+import { Storage } from "./storage/boards";
+import { pasteClip, type CardClip, type Pasted } from "./storage/clip";
 import type { StateStore } from "./env";
 import { log } from "./log";
-import { nodeFs } from "./nodefs";
+import { nodeFs } from "./storage/nodefs";
 import { rootOf, srcKey } from "./source";
 import { exists, posix, workspace, wsRoots } from "./ws";
 

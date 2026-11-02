@@ -23,7 +23,7 @@ export interface Fs {
   sha1(data: Uint8Array): string;
 }
 
-import { baseName } from "../model";
+import { baseName } from "@codeboard/core";
 
 export const dirName = (p: string) => p.slice(0, Math.max(p.lastIndexOf("/"), p.lastIndexOf("\\")));
 /** 扩展名（含点；没有返回 ""），同 node path.extname */

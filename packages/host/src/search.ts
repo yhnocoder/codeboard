@@ -18,7 +18,7 @@ import { analysisOf } from "./analysis";
 import { cardForFileSym, freeCard, newCodeCard, withViews } from "./cards";
 import { locOfFile } from "./source";
 import { allNames, grepWord, lookupName } from "./nameindex";
-import type { Storage } from "./storage";
+import type { Storage } from "./storage/boards";
 import { makeSegment } from "./versions";
 import { CODE_EXCLUDE, exists, fromHostPath, hostPath, langOf, readText, splitLines, workspace, wsRoots } from "./ws";
 

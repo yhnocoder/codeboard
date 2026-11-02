@@ -8,7 +8,7 @@ import type { Disposable } from "@codeboard/core";
 import { forgetIgnored, forgetRepos, gitDirOf, headOf, repoRootOf } from "./git";
 import type { BoardHost } from "./boards";
 import { absOf, hasLocalFile } from "./source";
-import type { Storage } from "./storage";
+import type { Storage } from "./storage/boards";
 import { countStale, staleFor, staleSegments } from "./versions";
 import { debounce, inWorkspace, workspace, wsRoots } from "./ws";
 import { forgetDefs } from "./defcache";

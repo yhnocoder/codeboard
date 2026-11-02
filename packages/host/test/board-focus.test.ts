@@ -2,8 +2,8 @@
 import * as fs from "node:fs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { emptyBoard } from "@codeboard/core";
-import { Storage } from "@codeboard/core/storage";
-import { nodeFs } from "../src/nodefs";
+import { Storage } from "../src/storage/boards";
+import { nodeFs } from "../src/storage/nodefs";
 import { BoardHub } from "../src/hub";
 import { makeHandler } from "../src/handlers";
 import type { HostEnv } from "../src/env";

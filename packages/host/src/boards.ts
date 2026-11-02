@@ -19,7 +19,8 @@ import {
   type Stale,
   type WalkHop,
 } from "@codeboard/core";
-import type { CardClip, Storage } from "@codeboard/core/storage";
+import type { CardClip } from "./storage/clip";
+import type { Storage } from "./storage/boards";
 import { countStale, staleFor, staleSegments } from "./versions";
 import { syncVariants } from "./variants";
 import { viewsFor } from "./views";

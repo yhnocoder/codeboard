@@ -9,8 +9,8 @@ import {
   type Crumb,
   type WalkHop,
 } from "@codeboard/core";
-import { Storage } from "@codeboard/core/storage";
-import { nodeFs } from "../src/nodefs";
+import { Storage } from "../src/storage/boards";
+import { nodeFs } from "../src/storage/nodefs";
 import { makeHandler } from "../src/handlers";
 import { BoardPanel, type BoardHost } from "../src/boards";
 import { treeChildren } from "../src/boardtree";

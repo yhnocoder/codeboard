@@ -11,8 +11,8 @@ import {
   type Segment,
   type Source,
 } from "@codeboard/core";
-import { Storage } from "@codeboard/core/storage";
-import { nodeFs } from "../src/nodefs";
+import { Storage } from "../src/storage/boards";
+import { nodeFs } from "../src/storage/nodefs";
 import { useWorkspace } from "../src/ws";
 import { BundleError, LIMITS, importBundle, importFile, packBoards, readBundle, type Manifest } from "../src/bundle";
 import { nodeWorkspace } from "./node-workspace";

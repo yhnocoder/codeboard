@@ -1,8 +1,8 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { Storage } from "@codeboard/core/storage";
-import { nodeFs } from "../src/nodefs";
+import { Storage } from "../src/storage/boards";
+import { nodeFs } from "../src/storage/nodefs";
 import { makeActions } from "../src/actions";
 import type { BoardHost } from "../src/boards";
 import { useWorkspace } from "../src/ws";

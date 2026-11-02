@@ -4,13 +4,12 @@ import * as path from "node:path";
 import { mkdirSync, statSync } from "node:fs";
 import * as fs from "node:fs/promises";
 import { Emitter, type Camera, type Disposable } from "@codeboard/core";
-import { RESERVED, Storage } from "@codeboard/core/storage";
+import { RESERVED } from "./names";
+import { Storage } from "./boards";
 import { nodeFs } from "./nodefs";
-import { log } from "./log";
-import { readHostSetting } from "./settings";
-import { debounce, settingDir, workspace, ws0 } from "./ws";
-
-export type { Storage };
+import { log } from "../log";
+import { readHostSetting } from "../settings";
+import { debounce, settingDir, workspace, ws0 } from "../ws";
 
 /** 项目里的白板目录（第一个工作区文件夹下） */
 export const PROJECT_DIR = ".codeboard";

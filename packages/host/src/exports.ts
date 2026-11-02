@@ -8,7 +8,7 @@ import {
   type QuestionItem,
   type Segment,
 } from "@codeboard/core";
-import type { Storage } from "@codeboard/core/storage";
+import type { Storage } from "./storage/boards";
 import { git, repoRootOf } from "./git";
 import { absOf } from "./source";
 import { log } from "./log";
