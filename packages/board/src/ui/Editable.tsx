@@ -135,30 +135,38 @@ function MdEdit(p: P) {
   const md = useMd();
   let el!: HTMLDivElement;
   let ed: MdEditorHandle | undefined;
-  const { finish, done } = useFinish(
-    (v: string | null, layout?: MdLayout | null) => {
-      setCurrentEditor(p.id, null);
-      // 先存再退出、一批更新：静态内容直接按新原文画一次（先退出的话会先按旧原文画一遍，存了再画一遍）
-      batch(() => {
-        const text = v !== null && v !== p.value;
-        if (layout !== undefined) p.onCommit(text ? v! : p.value, layout);
-        else if (text) p.onCommit(v!);
-        if (editing()?.kind === p.kind && editing()?.id === p.id) setEditing(null);
-      });
-    },
-    (f) => {
-      const v = ed?.value() ?? null,
-        l = ed ? ed.layout() : undefined;
-      if (p.kind === "note") setLiveNote(null);
-      ed?.destroy();
-      f(v, l !== undefined && JSON.stringify(l) !== JSON.stringify(p.layout ?? null) ? l : undefined);
-    },
-  );
+  const close = (f: (v: string | null, layout?: MdLayout | null) => void) => {
+    const v = ed?.value() ?? null,
+      l = ed ? ed.layout() : undefined;
+    if (p.kind === "note") setLiveNote(null);
+    ed?.destroy();
+    f(v, l !== undefined && JSON.stringify(l) !== JSON.stringify(p.layout ?? null) ? l : undefined);
+  };
+  const { finish, done } = useFinish((v: string | null, layout?: MdLayout | null) => {
+    setCurrentEditor(p.id, null);
+    // 先存再退出、一批更新：静态内容直接按新原文画一次（先退出的话会先按旧原文画一遍，存了再画一遍）
+    batch(() => {
+      const text = v !== null && v !== p.value;
+      if (layout !== undefined) p.onCommit(text ? v! : p.value, layout);
+      else if (text) p.onCommit(v!);
+      if (editing()?.kind === p.kind && editing()?.id === p.id) setEditing(null);
+    });
+  }, close);
   const start = p.value;
   // 显示时选了一段字再按 ⌫ / Delete 进来的：选上同一段，再把这个键交给编辑器
   const entry = p.kind === "note" ? takeEditEntry("note", p.id) : null;
+  // Until the editor's code has loaded, a plain text box takes the keyboard: keys typed right after entering (a new Note's "n"
+  // and then the text) would otherwise go to the board's shortcuts. What it holds is typed into the editor once it is there
+  let early: HTMLDivElement | undefined,
+    composing = false,
+    escaped = false,
+    held: NonNullable<ReturnType<typeof editorNow>> | undefined;
   const mount = (m: NonNullable<ReturnType<typeof editorNow>>) => {
     if (done() || !el.isConnected) return;
+    // an IME composition in the text box goes on there until it is committed
+    if (composing) return void (held = m);
+    const typed = early?.textContent ?? "";
+    early = undefined;
     el.textContent = "";
     ed = m.mountEditor(md, el, {
       ...editorOpts(md),
@@ -180,22 +188,33 @@ function MdEdit(p: P) {
       const spot = entry.spot;
       if (spot === "end") h.placeCaret("end");
       else if (!spot || !h.placeCaret({ visible: spot.char, after: spot.after })) h.placeCaret(entry.at);
-      return;
-    }
-    if (!entry || !h.selectVisible(entry.range)) return;
-    // 编辑器拿到焦点（mountEditor 放进了微任务）以后，和在编辑器里按这个键一样走它的键表；键表没接（不会发生）就直接删
-    queueMicrotask(() => h.press(entry.key));
+    } else if (entry && h.selectVisible(entry.range))
+      // 编辑器拿到焦点（mountEditor 放进了微任务）以后，和在编辑器里按这个键一样走它的键表；键表没接（不会发生）就直接删
+      queueMicrotask(() => h.press(entry.key));
+    // after the key that entered: the text was typed after it
+    if (typed) queueMicrotask(() => h.type(typed));
+    // Esc pressed in the text box: leaves as Esc in the editor does, keeping what was typed
+    if (escaped) queueMicrotask(() => close(finish));
   };
   // 预加载过的：元素挂到页面上后立刻挂编辑器（同一个任务里，不闪静态内容）；否则等加载完
   const now = editorNow();
   if (now) onMount(() => mount(now));
-  else
+  else {
+    // the same moments the editor takes the keyboard (mountEditor): in a microtask, and the next frame if it fell to <body>
+    const grab = () => early?.isConnected && early.focus({ preventScroll: true });
+    onMount(() => {
+      queueMicrotask(grab);
+      requestAnimationFrame(() => {
+        if (!document.activeElement || document.activeElement === document.body) grab();
+      });
+    });
     void loadEditor()
       .then(mount)
       .catch((e) => {
         console.error("markdown editor failed to load", e);
         finish(null);
       });
+  }
   return (
     <div
       ref={el}
@@ -206,7 +225,27 @@ function MdEdit(p: P) {
       onKeyDown={keepKey}
       onKeyUp={(e) => e.stopPropagation()}
     >
-      {now ? null : <MdStatic src={p.value} class="md-loading" />}
+      {now ? null : (
+        <>
+          <MdStatic src={p.value} class="md-loading" />
+          <div
+            ref={early}
+            class="md-early"
+            contentEditable="plaintext-only"
+            spellcheck={false}
+            onKeyDown={(e) => {
+              if (e.key !== "Escape" || e.isComposing) return;
+              e.preventDefault();
+              escaped = true;
+            }}
+            onCompositionStart={() => (composing = true)}
+            onCompositionEnd={() => {
+              composing = false;
+              if (held) mount(held);
+            }}
+          />
+        </>
+      )}
     </div>
   );
 }

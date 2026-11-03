@@ -13,3 +13,7 @@ Changes that need code or styles updated when upgrading from 0.1.1:
 - Theme variables: `--md-radius` (was `--r-card`) and `--md-heading-font` (was `--note-h`).
 - The code editor's line-number class is `cbcm-gutter` (was `cbcm-card`), and its default gutter width is no longer the board's.
 - Removed exports: `mdSchema`, `baseExtensions`, `clearMdCache` (a new math preamble or image resolver clears the render cache on its own), `resolveRef`, `highlightCode`, `cachedCode`, `colorCode` from `@yhnocoder/markdown`; `parseHl`, `LspKind`, `EditorSelection` and `keymap` from `@yhnocoder/markdown/code-editor` (import the last two from `@codemirror/state` and `@codemirror/view`).
+
+Added:
+
+- `MdEditorHandle.type(text)`: types text at the selection as if on the keyboard (key bindings and input rules run; a newline is Enter), for keys typed before the editor was mounted.

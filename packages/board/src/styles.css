@@ -3342,6 +3342,12 @@ kbd {
 .nbody.hidehead.editing > .md-loading > :nth-child(2) {
   margin-top: 0;
 }
+/* what is typed while the editor loads (Editable MdEdit), until the editor takes it over */
+.md-early {
+  outline: none;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 .nbody ul,
 .nbody ol,
 .cdesc ul,
