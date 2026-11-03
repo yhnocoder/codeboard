@@ -3348,6 +3348,10 @@ kbd {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+/* an empty editable block is a line tall: until something is typed it must not grow the Note while the editor loads */
+.md-early:empty {
+  position: absolute;
+}
 .nbody ul,
 .nbody ol,
 .cdesc ul,
