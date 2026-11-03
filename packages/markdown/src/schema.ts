@@ -27,7 +27,6 @@ import {
   Hr,
   HtmlBlock,
   HtmlInline,
-  imageWidthAt,
   Img,
   Item,
   Math1,
@@ -43,6 +42,7 @@ import {
 } from "./schema-nodes";
 import { Annot, Highlight, InlineCode, Kbd, Lnk, outsideCode, Sub, Sup, U } from "./schema-marks";
 import { ESC_DOLLAR, escText, markStarts } from "./schema-escape";
+import { imageAttrsAt } from "./imageattrs";
 import { markableLeaf, marksOnAtoms, SHIELD, shield, unshield } from "./tiptap-markdown-patch";
 
 /** 两边共用的扩展（只含 schema 和 markdown 规则；编辑器专用的插件在 editor/ 里另加） */
@@ -185,11 +185,11 @@ const mm = new MarkdownManager({
         emStrong(src: string) {
           return src[0] === "_" ? undefined : false;
         },
-        // 图片后面紧跟的 {width=…%} 是它的宽度（见 Img），连同图片一起读掉
+        // 图片后面紧跟的 {width=…% frame=… loop=true} 是它的属性（见 imageattrs.ts），连同图片一起读掉
         link(this: Tokenizer, src: string) {
           const t = Tokenizer.prototype.link.call(this, src) ?? brokenImage(src),
-            w = t?.type === "image" ? imageWidthAt(src.slice(t.raw.length)) : undefined;
-          return w ? { ...t!, raw: t!.raw + w.raw, width: w.width } : (t ?? false);
+            a = t?.type === "image" ? imageAttrsAt(src.slice(t.raw.length)) : undefined;
+          return a ? { ...t!, raw: t!.raw + a.raw, attrs: a.attrs } : (t ?? false);
         },
       } as MarkedExtension["tokenizer"],
     });
@@ -210,9 +210,9 @@ function toMd(content: JSONContent[], raw: boolean): string {
     ns.map((n, i) => {
       if (n.type === "text") {
         if (code || n.marks?.some((m) => marks[m.type]?.spec.code)) return n;
-        // 标注里的字：{ } | 也要转义（它们会断开标注的写法）；紧跟在图片后面、会被读成它的宽度的 {width=…%} 也转义
+        // 标注里的字：{ } | 也要转义（它们会断开标注的写法）；紧跟在图片后面、会被读成它的属性的 {width=…%} 也转义
         let t = raw ? n.text! : escText(n.text!);
-        if (!raw && ns[i - 1]?.type === "image" && imageWidthAt(t)) t = `\\${t}`;
+        if (!raw && ns[i - 1]?.type === "image" && imageAttrsAt(t)) t = `\\${t}`;
         return {
           ...n,
           text: shield(n.marks?.some((m) => m.type === "annot") && !raw ? t.replace(/(?<!\\)[{}|]/g, "\\$&") : t),

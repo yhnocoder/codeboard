@@ -6,7 +6,7 @@ import { captionOf } from "./image";
 import { spliceBlocks } from "./marks";
 
 /** 第 nth 张地址是 src 的图（文档 JSON 里的节点） */
-function imageNode(doc: JSONContent, src: string, nth: number): JSONContent | null {
+export function imageNode(doc: JSONContent, src: string, nth: number): JSONContent | null {
   let k = 0,
     hit: JSONContent | null = null;
   const walk = (n: JSONContent) => {
@@ -27,11 +27,11 @@ export function imageCaption(md: string, src: string, nth = 0): string | null {
   return n ? captionOf(n.attrs?.title) : null;
 }
 
-const IMAGE =
+export const IMAGE =
   /!\[(?:\\.|[^\]\\\n])*\]\(\s*(<[^>\n]*>|(?:\\.|[^\s()\\]|\([^\s()]*\))+)((?:\s+(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\((?:\\.|[^)\\])*\)))?)\s*\)/g;
 
 /** 代码（围栏代码块、行内代码）换成等长的空白：在里面的 ![…](…) 不是图 */
-function maskCode(md: string): string {
+export function maskCode(md: string): string {
   let out = md.replace(/(`+)(?!`)[\s\S]*?[^`]\1(?!`)/g, (m) => m.replace(/[^\n]/g, " "));
   let fence = "";
   out = out

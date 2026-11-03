@@ -20,6 +20,16 @@ export {
 export { imageCaption, setImageCaption, tableCaption, setTableCaption } from "./caption";
 export {
   /** @public */
+  imagePlayback,
+  setImagePlayback,
+} from "./imageplay";
+export {
+  /** @public */
+  type ImageAttrs,
+  type ImagePlayback,
+} from "./imageattrs";
+export {
+  /** @public */
   toggleTask,
   type RefTarget,
   type RefBroken,

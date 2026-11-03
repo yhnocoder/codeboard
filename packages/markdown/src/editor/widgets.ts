@@ -8,6 +8,7 @@ import { markTex, type MathPreamble } from "../math";
 import { captionOf, missingImage, IMAGE_DRAG_TYPE, type DraggedImage } from "../image";
 import { captionHtml } from "../render";
 import type { Md } from "../markdown";
+import { imageAttrsText } from "../imageattrs";
 import { mdOf } from "./md";
 import { IMAGE_SETTLE } from "../ui/timing";
 import { blockInfo, flat, type Atom, type Span } from "./spans";
@@ -344,14 +345,14 @@ const imageSourceEnding = (view: EditorView, end: number | undefined): [number, 
   return r ? [r.base + r.sp.from, r.base + r.sp.to] : null;
 };
 
-/** Rewrites the width suffix of the image whose source ends at `end` */
+/** Rewrites the width in the attribute block of the image whose source ends at `end` (its other attributes stay) */
 function setWidth(view: EditorView, end: number | undefined, w: number | null) {
   const r = imageEnding(view, end);
   if (!r) return;
   const { sp, base } = r;
   if (sp.atom?.type !== "image") return;
   const at = sp.atom.widthAt,
-    text = w ? `{width=${w}%}` : "";
+    text = imageAttrsText({ ...sp.atom, width: w });
   const tr = closeHistory(view.state.tr);
   if (at) {
     if (text) tr.insertText(text, base + at[0], base + at[1]);
