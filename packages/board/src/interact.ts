@@ -70,7 +70,7 @@ import {
 import { selSticker, setSelSticker } from "./state/stickers";
 import { ghostOut } from "./state/ghost";
 import { overNote, leaveNote, noteDropAt } from "./notedrop";
-import { boardPoint, worldAt, lastPointer, trackPointer, naturalSize, chromeOf } from "./state/measure";
+import { boardPoint, worldAt, lastPointer, trackPointer, naturalSize, chromeOf, CODE_MAX } from "./state/measure";
 import { installOverlays, modalOpen, typing } from "./ui/overlay";
 import { NODRAG, CARD_CONTROL, OWNS_POINTER, BOARD_CHROME } from "./ui/guard";
 import { dispatch, matches } from "./keymap";
@@ -602,7 +602,7 @@ export function resizeDown(
   const text = frameless(c),
     box = c.kind === "note" && c.look === "box";
   // 最矮 = 头部 + 一行；拉到内容本来的高度附近就回到自动高度（Box 的高度就是框的大小，一直存着）
-  const nat = box ? undefined : naturalSize(c.id);
+  const nat = box ? undefined : naturalSize(c.id, "now");
   // 子白板的框：最小也放得下几块地图和右上角的按钮
   const frame = c.kind === "board";
   const minW = box ? 60 : text ? 80 : frame ? 200 : 160,
@@ -643,8 +643,9 @@ export function resizeDown(
         if (sn.same === "h") hint = `same height · ${Math.round(h)}`;
       } else setGuides([]);
       setSizeHint(hint ? { x: x + w / 2, y: y + h + 8, text: hint } : null);
-      // 拉到内容本来的高度附近（±8 屏幕像素）= 回到跟着内容的自动高度；别的高度照存（Note 可以比内容高，也可以矮了在正文里滚）
-      const auto = bottom && nat && Math.abs(h - nat.h) < 8 / z;
+      // 拉到内容本来的高度附近（±8 屏幕像素）= 回到跟着内容的自动高度；别的高度照存（Note 可以比内容高，也可以矮了在正文里滚）。
+      // 代码比没存高度时的上限（CODE_MAX）还高的代码卡没有这样的自动高度（会一下缩到上限）：一直存着拖出来的高度
+      const auto = bottom && nat && (nat.body === undefined || nat.body <= CODE_MAX) && Math.abs(h - nat.h) < 8 / z;
       live((b) => {
         const k = hostPlace(b, id)!;
         k.w = Math.round(w);

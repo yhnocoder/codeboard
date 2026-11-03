@@ -1,7 +1,7 @@
 // 这里只管外框（贴着锚点放、跟着镜头走、悬停时不收起）；每种浮层的内容按 kind 查 registry.ts
 import { For, createSignal, createEffect, onCleanup, on, type Component } from "solid-js";
 import { Dynamic } from "solid-js/web";
-import { autoUpdate } from "@floating-ui/dom";
+import { autoUpdate, type VirtualElement } from "@floating-ui/dom";
 import { state } from "../../state/store";
 import { cam } from "../../state/camera";
 import { pops, closeAllPops, type PopInst, type Pop } from "../../state/pop";
@@ -22,6 +22,26 @@ export function Popovers() {
     ),
   );
   return <For each={pops()}>{(p) => <PopFrame inst={p} />}</For>;
+}
+
+/** The lines a gutter Sidenote marker marks, as one box: from the marker's top (the first line) to the bottom of the last line
+ *  (its data-last row), from the marker's left to the code's right. Below it, or above when there's no room (place flips) */
+function markedLines(mk: Element): VirtualElement | undefined {
+  const row = (mk as HTMLElement).dataset.last;
+  const last = row && mk.closest(".code")?.querySelector(`.src > .l[data-r="${row}"]`);
+  if (!last) return undefined;
+  return {
+    contextElement: mk,
+    getBoundingClientRect: () => {
+      const a = mk.getBoundingClientRect(),
+        b = last.getBoundingClientRect();
+      const x = a.left,
+        y = a.top,
+        right = Math.max(a.right, b.right),
+        bottom = Math.max(a.bottom, b.bottom);
+      return { x, y, left: x, top: y, right, bottom, width: right - x, height: bottom - y };
+    },
+  };
 }
 
 function PopFrame(p: { inst: PopInst }) {
@@ -47,8 +67,10 @@ function PopFrame(p: { inst: PopInst }) {
     const k = ++n;
     // 贴着锚点元素：下方 / 右侧 / 上方，放不下翻到另一边；没有元素就放在点 (x, y)
     const ref = at.el?.isConnected ? at.el : virtual({ x: at.x ?? 0, y: at.y ?? 0 });
-    const r =
-      at.el?.isConnected && at.prefer === "right"
+    const lines = at.el?.isConnected && at.prefer === "lines" ? markedLines(at.el) : undefined;
+    const r = lines
+      ? place(el, lines, "bottom-start", { gap: 6 })
+      : at.el?.isConnected && at.prefer === "right"
         ? place(el, ref, "right-start", { gap: { mainAxis: 8, crossAxis: -6 } })
         : place(el, ref, at.prefer === "above" ? "top-start" : "bottom-start", { gap: at.el?.isConnected ? 6 : 0 });
     void r.then((r) => {

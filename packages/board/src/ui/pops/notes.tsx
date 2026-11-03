@@ -173,7 +173,6 @@ function NoteItem(p: { n: Sidenote }) {
               fallback={
                 <MdStatic
                   class="sn-text"
-                  tip="Double-click to edit"
                   src={t().md}
                   onDblClick={() => editText(t())}
                   onToggle={(v) => A.writeSidenote(t().id, v)}

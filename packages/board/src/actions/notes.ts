@@ -84,7 +84,8 @@ function showNotes(el: Element, ids: string[], pin: boolean) {
       : "card";
   const id = openPop(
     { kind: "notes", card: n0.at.card, ids, title: `Sidenotes · ${where}`, sel: ids[0] },
-    { el, prefer: "right" },
+    // 标着几行的（行号栏里的标记）：放在那几行下面，不盖住它们；整张卡的（卡头的标记）放在右边
+    { el, prefer: n0.at.lines && el instanceof HTMLElement && el.dataset.last ? "lines" : "right" },
   );
   if (pin) pinPop(id);
 }

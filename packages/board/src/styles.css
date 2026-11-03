@@ -962,6 +962,8 @@ textarea {
   scrollbar-width: thin;
   scrollbar-color: var(--hair) transparent;
   border-radius: 0 0 var(--r-card) var(--r-card);
+  /* the code area's visible width (100cqw) is what an Always Show sidenote (.inote) wraps to */
+  container-type: inline-size;
 }
 .card.autoh .cbody {
   max-height: var(--code-max);
@@ -1295,7 +1297,9 @@ textarea {
   margin: 2px 12px 4px -2px;
   padding: 5px 10px;
   border-radius: 0 7px 7px 0;
-  max-width: 520px;
+  /* wraps inside the card's visible width (the .cbody container), not the code's scroll width: right of the line numbers, the
+     same room on the right as the lines (--code-pr) plus its own margin. Being no wider than that, it never widens the code */
+  max-width: min(520px, calc(100cqw - var(--gutter) - var(--code-pr) - 10px));
 }
 .kw {
   color: var(--k-kw);
