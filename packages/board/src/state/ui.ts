@@ -141,6 +141,8 @@ export const [dropTarget, setDropTarget] = boardSignal<{
   cands?: string[];
 } | null>(null);
 export const [dragging, setDragging] = boardSignal<Set<string>>(new Set());
+/** Cards just put down after a drag: their lift shadow (and scale) settles back over LAND_MS (`.card.landing`) */
+export const [landing, setLanding] = boardSignal<Set<string>>(new Set());
 export const [marquee, setMarquee] = boardSignal<{ x: number; y: number; w: number; h: number } | null>(null);
 export const [rubber, setRubber] = boardSignal<{
   x1: number;

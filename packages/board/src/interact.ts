@@ -1,3 +1,4 @@
+import { batch } from "solid-js";
 import {
   findCard,
   frameless,
@@ -19,7 +20,7 @@ import { live } from "./state/changes";
 import { sel, select, toggleSel, clearSel, setLineSel, isSel } from "./state/selection";
 import { toast } from "./state/toast";
 import { tune } from "./state/tune";
-import { WHEEL_GESTURE, BLOCK_GLIDE, SNAP_SETTLE } from "./state/timing";
+import { WHEEL_GESTURE, BLOCK_GLIDE, SNAP_SETTLE, LAND_MS } from "./state/timing";
 import { cam, setCam, stopCam, camTo, fling, toWorld, view, ZMIN, ZMAX, lod } from "./state/camera";
 import { reduceMotion } from "./state/motion";
 import {
@@ -28,6 +29,7 @@ import {
   setDropTarget,
   dropTarget,
   setDragging,
+  setLanding,
   setMarquee,
   setRubber,
   setEditing,
@@ -77,7 +79,7 @@ import * as A from "./actions";
 import { CALL_DRAG_SLOP, DRAG_SLOP, track, undoGesture } from "./gesture";
 import { togglePreview } from "./state/subboards";
 import { cardSel } from "./cardsel";
-import { boardRef } from "./state/root";
+import { boardRef, boardTimer } from "./state/root";
 
 const pt = (e: { clientX: number; clientY: number }) => ({ x: e.clientX, y: e.clientY });
 const local = (e: { clientX: number; clientY: number }) => boardPoint(pt(e));
@@ -296,6 +298,7 @@ const hostPlace = (b: Board, id: string) => {
 /** 卡头上能点也能拖的东西（文件路径、版本号）：刚拖完松手时浏览器还会补一个 click，这时不算点 */
 const dragEndAt = boardRef(-1e9);
 export const justDragged = () => performance.now() - dragEndAt.v < 250;
+const landT = boardTimer();
 function startCardDrag(e: PointerEvent, grabbed: string, onClick?: () => void) {
   const ids = sel.cards.filter((i) => cardById(i) && !A.isLocked(i));
   if (!ids.length) return onClick?.();
@@ -346,7 +349,8 @@ function startCardDrag(e: PointerEvent, grabbed: string, onClick?: () => void) {
         }
       }
     });
-  setDragging(new Set(ids));
+  // 卡只在真的拖起来（过了 DRAG_SLOP）才拿起来：按下就抬、松手就落的话，点一下选中看着像弹了一下
+  let lifted = false;
   const pace = snapPace(e, (ev, still) => onMove(ev, still));
   const onMove = (ev: PointerEvent, still = false) => {
     const z = cam.z;
@@ -439,13 +443,27 @@ function startCardDrag(e: PointerEvent, grabbed: string, onClick?: () => void) {
     e,
     (ev) => {
       moving();
+      if (!lifted) {
+        lifted = true;
+        landT.stop();
+        batch(() => {
+          setLanding(new Set<string>());
+          setDragging(new Set(ids));
+        });
+      }
       onMove(ev);
     },
     (_ev, moved) => {
       pace.stop();
       clearTimeout(mergeT);
       setGuides([]);
-      setDragging(new Set<string>());
+      if (lifted) {
+        batch(() => {
+          setDragging(new Set<string>());
+          setLanding(new Set(ids));
+        });
+        landT.start(() => setLanding(new Set<string>()), LAND_MS * (100 / tune("animSpeed")));
+      }
       setMovingHome(null);
       const drop = dropTarget();
       const noteAt = drop?.kind === "note" ? noteDropAt(drop.card) : undefined;

@@ -5,7 +5,7 @@
 //  inkWashFlashBrush       — jumping to a line sweeps a brush under its text: from its first to its last character, half a
 //                            character more at each end, so a longer line gets a longer stroke
 //  inkWashCallStrokeStable — each call gets one of five strokes, picked by the called word: the same word, the same stroke
-//  inkWashMotions          — the stamp, menu, delete and toast motions run (transform / opacity / clip / mask only) and finish;
+//  inkWashMotions          — the stamp, menu (opening and rolling back up), delete and toast motions run (transform / opacity / clip / mask only) and finish;
 //                            mid-animation frames as screenshots
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -129,7 +129,18 @@ test("inkWashLook", async () => {
         calls: calls.length,
         callStroke: calls.every((c) => /\bcv[0-4]\b/.test(c.className) && cs(c).backgroundImage.startsWith("url(")),
         callDeco: calls.every((c) => cs(c).textDecorationLine === "none"),
-        bar: { img: cs(pill).backgroundImage.startsWith("url("), shadow: cs(pill).boxShadow },
+        // the stroke and its frost are drawn under the buttons, masked to the stroke's outline
+        bar: {
+          img: cs(pill, "::before").backgroundImage.startsWith("url("),
+          mask: cs(pill, "::before").maskImage.startsWith("url("),
+          frost: cs(pill, "::before").backdropFilter,
+          shadow: cs(pill).boxShadow,
+        },
+        // the header: a faint ink wash fading to the right, no ink line under it
+        heads: [...document.querySelectorAll<HTMLElement>(".card:not(.nobg) > .cface > .chead")].map((e) => ({
+          wash: cs(e).backgroundImage.startsWith("linear-gradient("),
+          line: cs(e, "::after").content,
+        })),
       };
     });
     // select a card: the corners come in
@@ -169,7 +180,11 @@ test("inkWashLook", async () => {
       r.callStroke &&
       r.callDeco &&
       r.bar.img &&
+      r.bar.mask &&
+      r.bar.frost.includes("blur(7px)") &&
       r.bar.shadow === "none" &&
+      r.heads.length > 0 &&
+      r.heads.every((x) => x.wash && x.line === "none") &&
       sel.img &&
       sel.outset === "7px" &&
       sel.anim &&
@@ -296,8 +311,24 @@ test("inkWashMotions", async () => {
   await shot(h, "ink-wash-motion-menu", "now");
   keep("ink-wash-motion-menu");
   await finish(h);
+  // …and rolls back up when it closes: a copy left where it was (.ctx.closing) runs the close and goes
+  await h.page.evaluate(() => {
+    const w = window as unknown as { __close?: string[] };
+    const mo = new MutationObserver((ms) => {
+      const c = ms.flatMap((m) => [...m.addedNodes]).find((n) => (n as Element).classList?.contains("closing"));
+      if (!c) return;
+      mo.disconnect();
+      requestAnimationFrame(() => {
+        w.__close = (c as Element).getAnimations().map((a) => (a as CSSTransition).transitionProperty);
+      });
+    });
+    mo.observe(document.body, { childList: true, subtree: true });
+  });
   await h.page.keyboard.press("Escape");
   await until(h, "the menu closed", async () => !(await h.page.locator(".ctx.open").count()));
+  await until(h, "the close ran", () => h.page.evaluate(() => !!(window as unknown as { __close?: string[] }).__close));
+  res.menuClose = await h.page.evaluate(() => (window as unknown as { __close: string[] }).__close);
+  await until(h, "the closing copy is gone", async () => !(await h.page.locator(".ctx").count()));
   await h.page.mouse.click(1200, 30);
   // a deleted Note's ink disperses
   await h.page.locator('.card[data-id="n1"] .chead').click();
@@ -335,6 +366,7 @@ test("inkWashMotions", async () => {
     "inkWashMotions",
     names("stamp").includes("ink-stamp") &&
       names("menu").includes("clip-path") &&
+      names("menuClose").includes("clip-path") &&
       names("delete").includes("ink-disperse") &&
       names("flash").includes("ink-sweep") &&
       names("toast").includes("ink-toast") &&

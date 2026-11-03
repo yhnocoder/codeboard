@@ -3129,7 +3129,7 @@
     opacity: 0.4;
   }
 }
-/* 卡头下面不画分隔线，换成一笔干笔墨痕 */
+/* 卡头下面不画分隔线：卡头是一层很淡的墨（淡墨底），从左往右淡没。底在卡里面（纸是卡外伸出去的 ::before），深色下 --ink 是浅墨 */
 :root.look-ink-wash .card:not(.nobg) > .cface > .chead {
   position: relative;
   height: 36px;
@@ -3137,27 +3137,16 @@
   gap: 9px;
   --hg: 9px;
   border-bottom: 0;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--ink) 6%, transparent) 0,
+    color-mix(in srgb, var(--ink) 3.5%, transparent) 45%,
+    transparent 85%
+  );
 }
-:root.look-ink-wash .card:not(.nobg) > .cface > .chead::after {
-  content: "";
-  position: absolute;
-  left: 8px;
-  right: 30%;
-  bottom: 1px;
-  height: 3.5px;
-  background: var(--ink);
-  opacity: 0.55;
-  pointer-events: none;
-  -webkit-mask:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 8' preserveAspectRatio='none'%3E%3Cpath d='M0 4.6C20 2.4 60 1.6 120 2.2S240 3 300 4.4L300 4.9C250 5.2 180 6.4 110 6.1S30 6.6 0 5.4Z'/%3E%3Cpath d='M30 3.2L90 2.9M150 3.4L230 3.6M60 6L140 5.7' stroke='%23000' stroke-width='.5' opacity='.5'/%3E%3C/svg%3E")
-    0 0 / 100% 100% no-repeat;
-  mask:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 8' preserveAspectRatio='none'%3E%3Cpath d='M0 4.6C20 2.4 60 1.6 120 2.2S240 3 300 4.4L300 4.9C250 5.2 180 6.4 110 6.1S30 6.6 0 5.4Z'/%3E%3Cpath d='M30 3.2L90 2.9M150 3.4L230 3.6M60 6L140 5.7' stroke='%23000' stroke-width='.5' opacity='.5'/%3E%3C/svg%3E")
-    0 0 / 100% 100% no-repeat;
-}
-/* 编辑开头是标题的 Note 时卡头收起、标题滑到这里（NoteBody 的 foldHeader）：墨线跟着卡头一起淡掉，不压在标题上 */
-:root.look-ink-wash .card.note:not(.nobg) > .cface > .chead.fold::after {
-  opacity: 0;
+/* 编辑开头是标题的 Note 时卡头收起、标题滑到这里（NoteBody 的 foldHeader）：淡墨底跟着卡头一起去掉，不压在标题上 */
+:root.look-ink-wash .card.note:not(.nobg) > .cface > .chead.fold {
+  background: transparent;
 }
 :root.look-ink-wash .chead .kind {
   display: none;
@@ -3282,7 +3271,7 @@
     opacity: 0;
   }
 }
-/* 能点的调用：字下一笔细朱笔（背景图，字距不变），五种笔触按词轮换，同一个词总是同一笔（core render.ts 的 cv0–cv4） */
+/* 能点的调用：字下一笔细朱笔（背景图，字距不变），一笔到底不断开，五种笔触按词轮换，同一个词总是同一笔（core render.ts 的 cv0–cv4） */
 :root.look-ink-wash .call {
   border-radius: 1px;
   padding-bottom: 1.5px;
@@ -3299,7 +3288,7 @@
 :root.look-ink-wash .call.cv2 {
   background-image: var(--ink-cb2);
   background-position: -3px bottom;
-  background-size: 106% 4.5px;
+  background-size: 106% 3.6px;
 }
 :root.look-ink-wash .call.cv3 {
   background-image: var(--ink-cb3);
@@ -3309,7 +3298,7 @@
 :root.look-ink-wash .call.cv4 {
   background-image: var(--ink-cb4);
   background-position: -1px bottom;
-  background-size: 102% 4px;
+  background-size: 102% 3.4px;
 }
 /* 毛笔线（Links.tsx，look.ts 的 stroke: "brush"）：实线是填充的笔画轮廓，描边的那条不画；中段三道纸色飞白 */
 :root.look-ink-wash .edge.brushed {
@@ -3418,8 +3407,25 @@
   gap: 1px;
   padding: 0 34px 0 22px;
   border-radius: 0;
-  background: var(--ink-bar) 0 0 / 100% 100% no-repeat;
+  background: none;
   box-shadow: none;
+  isolation: isolate;
+}
+/* 磨砂：在那一笔的形状里（--ink-bar-mask：同一个轮廓，实心）把底下的东西糊开、提亮一点，再刷上那一笔淡墨。按钮和笔不在遮罩里 */
+:root.look-ink-wash .bbar .pill::before,
+:root.look-ink-wash .dock .pill::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    var(--ink-bar) 0 0 / 100% 100% no-repeat,
+    color-mix(in srgb, var(--paper) 55%, transparent);
+  -webkit-backdrop-filter: blur(7px) saturate(1.15);
+  backdrop-filter: blur(7px) saturate(1.15);
+  -webkit-mask: var(--ink-bar-mask) 0 0 / 100% 100% no-repeat;
+  mask: var(--ink-bar-mask) 0 0 / 100% 100% no-repeat;
 }
 :root.look-ink-wash .dock .pill {
   padding: 0 26px 0 18px;
@@ -3516,16 +3522,37 @@
   font: 13px var(--serif);
   color: var(--ink-2);
 }
-/* 右键菜单：像挂轴往下展开（从上往下露出来，略往下落），顶上一道轴杆一闪而过；关：淡出 */
+/* 右键菜单：像挂轴往下展开（从上往下露出来，略往下落），顶上一道轴杆一闪而过 */
+/* 关：从下往上卷回去，最后一点淡出，轴杆在顶上淡入。关掉的菜单当场就没了，卷回去的是它留下的一份（Menu.tsx exitCopy，
+   --menu-exit 是它留多久，ms） */
+:root.look-ink-wash {
+  --menu-exit: 130;
+}
 :root.look-ink-wash .ctx {
   scale: none;
   translate: 0 -3px;
   clip-path: inset(-24px -24px calc(100% + 24px) -24px);
   transition:
-    opacity calc(var(--t) * 90ms) var(--in),
-    visibility 0s linear calc(var(--t) * 90ms),
-    clip-path 0s linear calc(var(--t) * 90ms),
-    translate 0s linear calc(var(--t) * 90ms);
+    clip-path calc(var(--t) * 130ms) cubic-bezier(0.5, 0, 0.75, 0.4),
+    translate calc(var(--t) * 130ms) cubic-bezier(0.5, 0, 0.75, 0.4),
+    opacity calc(var(--t) * 40ms) var(--in) calc(var(--t) * 90ms),
+    visibility 0s linear calc(var(--t) * 130ms);
+}
+:root.look-ink-wash .ctx.closing::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--ink);
+  pointer-events: none;
+  opacity: 0;
+}
+:root.look-ink-wash .ctx.closing:not(.open)::before {
+  opacity: 0.7;
+  transition: opacity calc(var(--t) * 130ms) ease-in;
 }
 :root.look-ink-wash .ctx.open {
   translate: 0 0;
@@ -3536,7 +3563,7 @@
     translate calc(var(--t) * 170ms) cubic-bezier(0.25, 0.8, 0.25, 1),
     visibility 0s;
 }
-:root.look-ink-wash .ctx.open::before {
+:root.look-ink-wash .ctx.open:not(.closing)::before {
   content: "";
   position: absolute;
   left: 0;

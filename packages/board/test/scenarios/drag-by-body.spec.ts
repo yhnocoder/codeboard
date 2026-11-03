@@ -2,7 +2,9 @@
 // grabbed by any of its cards, moves like when grabbed by the header, with no text selected; the only selected card keeps
 // native text selection in its body. A plain click still selects (a multi-selection becomes the clicked card), a double
 // click on a Note still edits it. Grabbing an unselected card while others are selected selects and moves just that card.
-// Usage: npm run harness -- dragUnselectedCardByBody dragMultiSelectionByBody singleSelectedBodySelectsText
+// A click on a card's header selects it without lifting it (no .lift, no scale, no lift shadow); only a real drag lifts it,
+// and it settles back (.landing) after it is put down.
+// Usage: npm run harness -- dragUnselectedCardByBody dragMultiSelectionByBody singleSelectedBodySelectsText clickSelectsWithoutLift
 import { emptyBoard, type Board, type CodeCard, type NoteCard } from "@codeboard/core";
 import type { Page } from "playwright-core";
 import { put, findSym, symCard, shot, type Host } from "../harness";
@@ -297,5 +299,77 @@ test("singleSelectedBodySelectsText", async () => {
       after: placeOf(h, id),
     });
   }
+  await h.close();
+});
+
+/** A click on a card's header (press and release without moving past the drag threshold) selects it and never lifts it: no
+ *  .lift class at any point, no scale, no lift shadow. A real drag lifts it (.lift, scaled up a little) and, put down, it
+ *  settles back (.landing, then neither) */
+test("clickSelectsWithoutLift", async () => {
+  const h = await open({ board: board(), light, w: 1200, h: 900, settings: { theme: "warm-ink" } as never });
+  const pg = h.page;
+  await idle(h);
+  const card = '.card[data-id="c1"]';
+  // every class the card gets, as it gets it (a lift that came and went within a frame shows up too)
+  await pg.evaluate((sel) => {
+    const el = document.querySelector(sel)!;
+    const w = window as unknown as { __cls: string[] };
+    w.__cls = [];
+    new MutationObserver(() => w.__cls.push(el.className)).observe(el, {
+      attributes: true,
+      attributeFilter: ["class"],
+    });
+  }, card);
+  const seen = () => pg.evaluate(() => (window as unknown as { __cls: string[] }).__cls);
+  const look = () =>
+    pg.evaluate((sel) => {
+      const el = document.querySelector(sel)!;
+      return { scale: getComputedStyle(el).scale, ring: getComputedStyle(el, "::after").boxShadow };
+    }, card);
+  const rest = await look();
+  const hd = (await pg.locator(`${card} .chead`).boundingBox())!;
+  const at = { x: hd.x + 40, y: hd.y + hd.height / 2 };
+  await pg.mouse.move(at.x, at.y);
+  await pg.mouse.down();
+  await frames(pg);
+  const pressed = await look();
+  await pg.mouse.up();
+  await until(h, "the clicked card is selected", async () => (await selected(pg)).join() === "c1");
+  await idle(h);
+  const clicked = await seen();
+  check("clickDoesNotLiftCard", clicked.every((c) => !/\b(lift|landing)\b/.test(c)) && pressed.scale === rest.scale, {
+    clicked,
+    rest,
+    pressed,
+  });
+
+  // a real drag lifts it, and putting it down settles it back (pressed away from the click: not a double-click)
+  at.x += 60;
+  await pg.mouse.move(at.x, at.y);
+  await pg.mouse.down();
+  for (let i = 1; i <= 8; i++) {
+    await pg.mouse.move(at.x + 5 * i, at.y + 3 * i);
+    await frames(pg);
+  }
+  const lifted = await until(h, "the dragged card lifts", async () => {
+    const l = await look();
+    return (await pg.locator(`${card}.lift`).count()) === 1 && l.scale !== "none" && parseFloat(l.scale) > 1;
+  }).catch(() => false);
+  await pg.mouse.up();
+  const landing = (await seen()).some((c) => /\blanding\b/.test(c));
+  const flat = (s: string) => (s === "none" ? 1 : parseFloat(s));
+  await until(
+    h,
+    "the card has settled",
+    async () =>
+      !(await pg.locator(`${card}:is(.lift, .landing)`).count()) && flat((await look()).scale) === flat(rest.scale),
+  ).catch(() => {}); // not settled: the check below says so
+  const after = await look();
+  check("dragLiftsCardAndSettlesBack", lifted && landing && flat(after.scale) === flat(rest.scale), {
+    lifted,
+    landing,
+    rest,
+    after,
+  });
   await h.close();
 });

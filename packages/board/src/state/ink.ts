@@ -138,28 +138,27 @@ function cornersSvg(zhu: string) {
   );
 }
 
-/** The five brush strokes under clickable calls: each starts, bends, thins and ends differently; one is broken in the middle,
- *  one dry along its tail. themes.css .call.cv0–cv4 give each its own width, offset and height */
-const CALL_STROKES: { P: number[]; w: number; seed: number; gap?: [number, number]; dry?: boolean }[] = [
+/** The five brush strokes under clickable calls: each starts, bends, thins and ends differently, all in one unbroken stroke
+ *  (a gap read as the word being cut off); one is dry along its tail. themes.css .call.cv0–cv4 give each its own width, offset and height */
+const CALL_STROKES: { P: number[]; w: number; seed: number; dry?: boolean }[] = [
   { P: [1.5, 3.8, 40, 2.2, 80, 3.8, 118.5, 2.4], w: 1.3, seed: 2.2 },
   { P: [118.5, 2.6, 80, 4.2, 40, 2.0, 1.5, 3.4], w: 0.95, seed: 5.1 },
-  { P: [1.5, 2.0, 30, 4.4, 90, 4.2, 118.5, 1.6], w: 1.6, seed: 0.7, gap: [0.56, 0.61] },
+  { P: [1.5, 2.0, 30, 4.4, 90, 4.2, 118.5, 1.6], w: 1.15, seed: 0.7 },
   { P: [2, 3.4, 50, 3.8, 96, 4.0, 118.5, 0.9], w: 0.85, seed: 3.9 },
-  { P: [1.5, 4.2, 45, 1.8, 75, 4.6, 118.5, 3.0], w: 1.4, seed: 8.3, dry: true },
+  { P: [1.5, 4.2, 45, 1.8, 75, 4.6, 118.5, 3.0], w: 1.1, seed: 8.3, dry: true },
 ];
 function callSvg(zhu: string, k: number) {
   const c = CALL_STROKES[k],
     P = c.P;
   let body = `<path d='${brushLine(`M${P[0]} ${P[1]}C${P.slice(2).join(" ")}`, c.seed, c.w).d}' fill='${zhu}' fill-opacity='${0.78 + (k % 3) * 0.05}'/>`;
-  if (c.gap)
-    body = `<defs><mask id='m'><rect width='120' height='6' fill='#fff'/><rect x='${c.gap[0] * 120}' y='0' width='${f((c.gap[1] - c.gap[0]) * 120)}' height='6' fill='#000'/></mask></defs><g mask='url(#m)'>${body}</g>`;
   if (c.dry)
     body = `<defs><mask id='m'><rect width='120' height='6' fill='#fff'/><path d='M70 3.1L117 3.3' stroke='#000' stroke-width='.35'/></mask></defs><g mask='url(#m)'>${body}</g>`;
   return svgUrl(120, 6, body, " preserveAspectRatio='none'");
 }
 
-/** The bottom toolbar: one pale ink brush stroke (edges rising and falling a little, a round, darker start, a dry tail) */
-function barSvg(ink: string, dk: boolean) {
+/** The bottom toolbar: one pale ink brush stroke (edges rising and falling a little, a round, darker start, a dry tail).
+ *  solid: the same outline filled opaque, the mask of the frosted layer under the stroke (--ink-bar-mask) */
+function barSvg(ink: string, dk: boolean, solid = false) {
   const W = 400,
     H = 46,
     top: number[][] = [],
@@ -181,6 +180,7 @@ function barSvg(ink: string, dk: boolean) {
     .reverse()
     .map((q) => `${f(q[0])} ${f(q[1])}`)
     .join("L")}C4 38 2 9 14 8.5Z`;
+  if (solid) return svgUrl(W, H, `<path d='${d}' fill='#000'/>`, " preserveAspectRatio='none'");
   let fb = "";
   for (let i = 0; i < 9; i++) {
     const y = 11 + i * 3.1 + (i % 2) * 0.7,
@@ -200,7 +200,7 @@ function barSvg(ink: string, dk: boolean) {
 
 /** The root variables the Ink Wash rules read (themes.css): set while the look draws on paper (look.ts paper, Ink Wash), for
  *  light or dark; gone otherwise. Also follows html[data-theme] for inkDark. Wired once (wire.ts) */
-const VARS = ["--ink-crn", "--ink-bar", ...CALL_STROKES.map((_, k) => `--ink-cb${k}`)];
+const VARS = ["--ink-crn", "--ink-bar", "--ink-bar-mask", ...CALL_STROKES.map((_, k) => `--ink-cb${k}`)];
 export function wireInk() {
   const root = document.documentElement;
   const sync = () => setDark(root.dataset.theme === "dark");
@@ -218,6 +218,7 @@ export function wireInk() {
         ink = dk ? "#e9e5da" : "#1d1c1a";
       root.style.setProperty("--ink-crn", cornersSvg(zhu));
       root.style.setProperty("--ink-bar", barSvg(ink, dk));
+      root.style.setProperty("--ink-bar-mask", barSvg("#000", dk, true));
       for (let k = 0; k < CALL_STROKES.length; k++) root.style.setProperty(`--ink-cb${k}`, callSvg(zhu, k));
     }),
   );

@@ -31,7 +31,7 @@ import {
 import { measuredHeight } from "../state/subboards";
 import { state, setSize, flows, placeOf, rectOf, twinsOf } from "../state/store";
 import { isSel, sel } from "../state/selection";
-import { editing, setEditing, dragging, popIn, sizeIn, walk, pingCard, dropTarget, staged } from "../state/ui";
+import { editing, setEditing, dragging, landing, popIn, sizeIn, walk, pingCard, dropTarget, staged } from "../state/ui";
 import { foldAt, toTitle, fadeAt, goneAt, skel } from "../state/fold";
 import { Icon } from "../ui/icons";
 import { isHidden } from "../state/sections";
@@ -219,6 +219,7 @@ export function CardView(p: { card: Card }) {
   // 拖动中的卡、落点是所有卡共用的信号：直接写进 classList 的话，它们一变，241 张卡的整个 classList 都要重算一遍（松手那一帧 ~5ms）。
   // 先算成这张卡自己的真假，只有值真变了的那张卡才重算 classList
   const lift = createMemo(() => dragging().has(c().id));
+  const land = createMemo(() => landing().has(c().id));
   const ed = createMemo(() => editing()?.id === c().id);
   const drop = createMemo(() => {
     const d = dropTarget(),
@@ -245,6 +246,7 @@ export function CardView(p: { card: Card }) {
           sel: isSel(c().id),
           solo: sel.cards.length === 1,
           lift: lift(),
+          landing: land(),
           dim: dim(),
           locked: !!pl().locked,
           autoh: !pl().h,

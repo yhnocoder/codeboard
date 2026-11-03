@@ -4,6 +4,7 @@ import { place, virtual, scrollIntoBox } from "@yhnocoder/markdown/ui";
 import { useOverlay } from "./overlay";
 import { useListNav } from "./hooks";
 import { TIP_DELAY } from "../state/timing";
+import { tune } from "../state/tune";
 
 export type Item = {
   label: string;
@@ -73,6 +74,27 @@ type Level = {
 };
 const levels: Level[] = [];
 
+/** A look whose menus animate closing too (--menu-exit on :root, in ms; Ink Wash's roll-up): the menu is gone at once (its
+ *  items, keys and levels), and a copy left where it was plays the close (.ctx without .open) and is removed after it. Looks
+ *  without it close at once */
+function exitCopy(el: HTMLElement, at: ParentNode | null) {
+  const ms =
+    parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--menu-exit")) * (100 / tune("animSpeed"));
+  if (!(ms > 0) || !at || !el.classList.contains("open")) return;
+  const c = el.cloneNode(true) as HTMLElement;
+  c.inert = true;
+  c.setAttribute("aria-hidden", "true");
+  c.removeAttribute("role");
+  c.classList.add("closing");
+  at.appendChild(c);
+  c.scrollTop = el.scrollTop;
+  // its open look first (the copy is new: no transition into it), then closed: the close runs from there
+  void getComputedStyle(c).clipPath;
+  void getComputedStyle(c, "::before").opacity;
+  c.classList.remove("open");
+  window.setTimeout(() => c.remove(), ms + 34);
+}
+
 function MenuList(p: {
   items: Item[];
   x: number;
@@ -127,8 +149,13 @@ function MenuList(p: {
     kbSub: () => !!subOf()?.kb,
   };
   levels.push(level);
-  onCleanup(() => levels.splice(levels.indexOf(level), 1));
+  let host: ParentNode | null = null;
+  onCleanup(() => {
+    levels.splice(levels.indexOf(level), 1);
+    exitCopy(el, el.parentNode ?? host);
+  });
   onMount(() => {
+    host = el.parentNode;
     // 右键菜单从点往右下开（up：从工具栏往上开）；二级菜单贴着父项往右开；放不下翻到另一边，太高就限高滚动
     const at = p.anchor
       ? place(el, p.anchor, "right-start", { gap: { crossAxis: -5 }, pad: 4 })
