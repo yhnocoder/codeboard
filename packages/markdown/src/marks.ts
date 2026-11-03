@@ -51,7 +51,7 @@ export function toggleStaticMark(src: string, r: StaticTextRange, mark: StaticMa
 }
 
 /** 只把变了的顶层块换成它新写出来的 Markdown；块对不上原文、变了的块里有脚注引用（单独写会重新编号）时给 null */
-function spliceBlocks(src: string, before: PMNode, after: PMNode): string | null {
+export function spliceBlocks(src: string, before: PMNode, after: PMNode): string | null {
   const starts = mdBlockStarts(src);
   if (!starts || before.childCount !== starts.length || after.childCount !== starts.length) return null;
   let out = "",

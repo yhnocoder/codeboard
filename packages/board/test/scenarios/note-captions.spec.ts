@@ -1,7 +1,13 @@
 // Captions for images in a Note: right-click the image → Add Caption… / Edit Caption…; the caption is the image's Markdown title
 // (![alt](src "caption")) and shows centred right under the image in small muted type, the same in the static render and while
-// editing. Each change is one undo step.
-//   noteImageCaption   add, render (static and editing), edit, undo, remove
+// editing. Each change is one undo step. Tables get the same captions, kept as a "Table: …" line after the table.
+//   noteImageCaption                 add, render (static and editing), edit, undo, remove
+//   noteOpenedImageCaptionNoGap      a clicked image (its source open, the framed picture under it): the caption under the frame,
+//                                    and no empty line between it and the next paragraph
+//   noteSizedImageCaptionBodyWidth   a narrowed image's caption keeps the body's width, centred under it, in smaller type
+//   noteCaptionInlineMath            $…$ in a caption is typeset, in the static render and while editing
+//   noteTableCaption                 right-click a table → Add Caption…: a "Table: …" line, drawn under the table like an image's
+//                                    caption, the same while editing; edits in the editor keep it; edit, remove, undo
 import { emptyBoard, type Board, type NoteCard } from "@codeboard/core";
 import { png } from "@codeboard/host/testing";
 import { put, shot, type Host } from "../harness";
@@ -172,4 +178,265 @@ test("noteImageCaption", async () => {
   await menu(h, "Remove Caption");
   await until(h, "the removal is saved", () => md(h) === MD);
   check("noteImageCaption Remove Caption", md(h) === MD, md(h));
+});
+
+/** A 1222 × 535 diagram, as a figure taken from a book */
+const FIG_SRC = "assets/c329e0660dabb92d-1222x535.svg";
+const FIG = `<svg xmlns="http://www.w3.org/2000/svg" width="1222" height="535" viewBox="0 0 1222 535"><rect width="1222" height="535" fill="#e9e4da"/><rect x="60" y="60" width="320" height="200" rx="12" fill="#d98a64"/><rect x="460" y="60" width="320" height="200" rx="12" fill="#7ea4cf"/><rect x="860" y="60" width="300" height="400" rx="12" fill="#8fb98a"/></svg>`;
+/** A Note of the given Markdown on the fixture host, its assets/ answered with FIG */
+async function figNote(md: string, w = 560) {
+  const b = emptyBoard("b1", "captions");
+  put(b, { id: "n", kind: "note", md, look: "note" } as NoteCard, 80, 60, w);
+  b.cam = { x: 0, y: 0, z: 1 };
+  const h = await open({
+    board: b,
+    light,
+    w: 1000,
+    h: 900,
+    host: { assetBase: BASE },
+    beforeLoad: (p) => p.route(`${BASE}/**`, (r) => r.fulfill({ body: FIG, contentType: "image/svg+xml" })),
+  });
+  await idle(h);
+  return h;
+}
+const card = (h: Host) => h.page.locator('.card[data-id="n"]');
+async function editAtEnd(h: Host) {
+  await card(h).locator(".nbody p").last().dblclick();
+  await card(h).locator(".md-pm").waitFor();
+  await idle(h);
+}
+/** Opens the image's source in the editor (a click on the drawn image) and waits for the framed picture under it to load */
+async function openImage(h: Host) {
+  await card(h).locator(".md-pm .md-img:not(.below) img").first().click();
+  const im = card(h).locator(".md-pm .md-img.below img");
+  await im.waitFor();
+  await until(h, "the opened image loads", () =>
+    im.evaluate((e) => (e as HTMLImageElement).complete && (e as HTMLImageElement).naturalWidth > 0),
+  );
+  await idle(h);
+}
+type Box = { top: number; bottom: number; left: number; right: number; w: number; cx: number };
+/** Boxes relative to the card: the figure's image (or opened frame), its caption, the paragraph it sits in, the last paragraph */
+const figGeo = (h: Host, fig: string) =>
+  card(h).evaluate((c, fig) => {
+    const o = c.getBoundingClientRect();
+    const box = (e: Element | null | undefined): Box | null => {
+      if (!e) return null;
+      const r = e.getBoundingClientRect();
+      return {
+        top: r.top - o.top,
+        bottom: r.bottom - o.top,
+        left: r.left - o.left,
+        right: r.right - o.left,
+        w: r.width,
+        cx: r.left + r.width / 2 - o.left,
+      };
+    };
+    const f = c.querySelector(fig),
+      cap = f?.querySelector(":scope > .md-cap"),
+      body = c.querySelector(".nbody p, .md-pm p")!;
+    return {
+      img: box(f?.querySelector(":scope > .md-imgframe") ?? f?.querySelector("img")),
+      cap: box(cap),
+      para: box(f?.closest("p")),
+      last: box([...c.querySelectorAll(".nbody > p, .md-pm > p")].at(-1)),
+      capText: cap?.textContent ?? null,
+      katex: cap?.querySelectorAll(".katex").length ?? 0,
+      capFont: cap ? parseFloat(getComputedStyle(cap).fontSize) : 0,
+      bodyFont: parseFloat(getComputedStyle(body).fontSize),
+    };
+  }, fig);
+type FigGeo = Awaited<ReturnType<typeof figGeo>>;
+const near = (a: number | undefined | null, b: number | undefined | null, d = 1) =>
+  a != null && b != null && Math.abs(a - b) <= d;
+
+test("noteOpenedImageCaptionNoGap", async () => {
+  const h = await figNote(
+    `The blocks of a grid run in any order.\n\n![](${FIG_SRC} "Figure 4.5: thread blocks without synchronisation scale transparently")\n\nWhen blocks are at different barriers they still run in any order.`,
+  );
+  const still = await figGeo(h, ".nbody .md-fig");
+  await editAtEnd(h);
+  await openImage(h);
+  const open = await figGeo(h, ".md-pm .md-img.below");
+  await shot(h, "noteOpenedImageCaptionNoGap");
+  const capGap = (g: FigGeo) => g.cap && g.img && g.cap.top - g.img.bottom;
+  const after = (g: FigGeo) => g.cap && g.last && g.last.top - g.cap.bottom;
+  check(
+    "noteOpenedImageCaptionNoGap laid out as when not editing: the caption under the frame, no empty line before the next paragraph",
+    !!open.cap &&
+      !!open.img &&
+      open.cap.top >= open.img.bottom - 0.5 &&
+      near(capGap(open), capGap(still)) &&
+      near(after(open), after(still)),
+    { still, open },
+  );
+});
+
+test("noteSizedImageCaptionBodyWidth", async () => {
+  const cap = "Figure 4.6: a thread block is split into warps for scheduling, each warp issued as one unit";
+  const h = await figNote(`Warps:\n\n![](${FIG_SRC} "${cap}"){width=40%}\n\nEach warp has 32 threads.`);
+  const ok = (g: FigGeo) =>
+    !!g.cap &&
+    !!g.img &&
+    !!g.para &&
+    g.capText === cap &&
+    near(g.cap.w, g.para.w) &&
+    near(g.cap.cx, g.img.cx) &&
+    g.img.w < g.para.w * 0.5 &&
+    g.capFont <= g.bodyFont * 0.78;
+  const still = await figGeo(h, ".nbody .md-fig");
+  await shot(h, "noteSizedImageCaptionBodyWidth-static");
+  check(
+    "noteSizedImageCaptionBodyWidth static: the body's width, centred under the image, smaller type",
+    ok(still),
+    still,
+  );
+  await editAtEnd(h);
+  const shown = await figGeo(h, ".md-pm .md-img:not(.below)");
+  check("noteSizedImageCaptionBodyWidth editing: the same", ok(shown) && near(shown.cap?.top, still.cap?.top, 2), {
+    shown,
+    still,
+  });
+  await openImage(h);
+  const open = await figGeo(h, ".md-pm .md-img.below");
+  await shot(h, "noteSizedImageCaptionBodyWidth-opened");
+  check("noteSizedImageCaptionBodyWidth opened image: the same", ok(open), open);
+});
+
+test("noteCaptionInlineMath", async () => {
+  const h = await figNote(`Tiling:\n\n![](${FIG_SRC} "Figure 5.7: tiling $M$ and $N$ to use shared memory")\n\nEnd.`);
+  const ok = (g: FigGeo) =>
+    g.katex === 2 && !!g.capText && !g.capText.includes("$") && g.capText.includes("to use shared memory");
+  const still = await figGeo(h, ".nbody .md-fig");
+  await shot(h, "noteCaptionInlineMath-static");
+  check("noteCaptionInlineMath static: the formulas typeset", ok(still), still);
+  await editAtEnd(h);
+  const shown = await figGeo(h, ".md-pm .md-img:not(.below)");
+  check("noteCaptionInlineMath editing: the same", ok(shown), shown);
+  await openImage(h);
+  const open = await figGeo(h, ".md-pm .md-img.below");
+  check("noteCaptionInlineMath opened image: the same", ok(open), open);
+});
+
+const TABLE = "| tile | M   | N   |\n| ---- | --- | --- |\n| 1    | 64  | 64  |\n| 2    | 128 | 64  |";
+const TMD = `Tile sizes per block:\n\n${TABLE}\n\nThe end.`;
+const CAP = "Table 2: tile sizes of $M$ and $N$";
+async function tableMenu(h: Host, cell: string, label: string) {
+  await card(h).locator(cell).first().click({ button: "right" });
+  await h.page.locator(".ctx button").first().waitFor();
+  await idle(h);
+  const items = await h.page.locator(".ctx button .lb").allTextContents();
+  const b = h.page.locator(".ctx button", { hasText: label });
+  if (await b.count()) await b.first().click();
+  else await h.page.keyboard.press("Escape");
+  return items;
+}
+/** The table, its caption and the paragraph before it, relative to the card */
+const tableGeo = (h: Host, scope: string) =>
+  card(h).evaluate((c, scope) => {
+    const o = c.getBoundingClientRect(),
+      root = c.querySelector(scope)!;
+    const box = (e: Element | null) => {
+      if (!e) return null;
+      const r = e.getBoundingClientRect();
+      return { top: r.top - o.top, bottom: r.bottom - o.top, w: r.width, cx: r.left + r.width / 2 - o.left };
+    };
+    const cap = root.querySelector(".md-tfig > .md-cap"),
+      p = root.querySelector("p")!;
+    return {
+      table: box(root.querySelector("table")),
+      cap: box(cap),
+      para: box(p),
+      capText: cap?.textContent ?? null,
+      katex: cap?.querySelectorAll(".katex").length ?? 0,
+      small: !!cap && parseFloat(getComputedStyle(cap).fontSize) <= parseFloat(getComputedStyle(p).fontSize) * 0.78,
+      muted: !!cap && getComputedStyle(cap).color !== getComputedStyle(p).color,
+    };
+  }, scope);
+
+test("noteTableCaption", async () => {
+  const h = await figNote(TMD, 460);
+  const pg = h.page,
+    md = () => (h.board().cards.find((c) => c.id === "n") as NoteCard).md;
+
+  const items = await tableMenu(h, ".nbody td", "Add Caption…");
+  check("noteTableCaption the table menu offers Add Caption", items[0] === "Add Caption…", items);
+  await prompt(h, CAP);
+  await until(h, "the caption is saved", () => md().includes("Table 2"));
+  check(
+    "noteTableCaption stored as a Table: line after the table",
+    md() === TMD.replace(TABLE, `${TABLE}\n\nTable: ${CAP}`),
+    md(),
+  );
+  await idle(h);
+  const still = await tableGeo(h, ".nbody");
+  check(
+    "noteTableCaption shown under the table, centred, at the body's width, small, muted, formulas typeset",
+    !!still.table &&
+      !!still.cap &&
+      !!still.para &&
+      still.cap.top >= still.table.bottom &&
+      still.cap.top - still.table.bottom <= 10 &&
+      near(still.cap.cx, still.table.cx) &&
+      near(still.cap.w, still.para.w) &&
+      still.katex === 2 &&
+      still.small &&
+      still.muted,
+    still,
+  );
+  await shot(h, "noteTableCaption-static");
+
+  // while editing: in the same place; an edit in a cell keeps the caption
+  await editAtEnd(h);
+  const editing = await tableGeo(h, ".md-pm");
+  check(
+    "noteTableCaption shown the same while editing",
+    !!editing.cap &&
+      !!still.cap &&
+      editing.capText === still.capText &&
+      editing.katex === 2 &&
+      near(editing.cap.top, still.cap.top, 2) &&
+      near(editing.cap.cx, still.cap.cx) &&
+      near(editing.table?.cx, still.table?.cx),
+    { editing, still },
+  );
+  await shot(h, "noteTableCaption-editing");
+  await card(h).locator(".md-pm td").last().click();
+  await pg.keyboard.press("End");
+  await pg.keyboard.type("0");
+  await pg.keyboard.press("Escape");
+  await card(h).locator(".md-pm").waitFor({ state: "detached" });
+  await until(h, "the cell edit is saved", () => md().includes("640"));
+  check(
+    "noteTableCaption an edit in the editor keeps the caption",
+    md().includes(`\n\nTable: ${CAP}\n\nThe end.`),
+    md(),
+  );
+
+  // edit, while editing: the editor closes and the change lands
+  await editAtEnd(h);
+  const items2 = await tableMenu(h, ".md-pm td", "Edit Caption…");
+  check(
+    "noteTableCaption Edit Caption and Remove Caption once it has one, also while editing",
+    items2[0] === "Edit Caption…" && items2[1] === "Remove Caption",
+    items2,
+  );
+  const v = await pg.locator(".dialog input").inputValue();
+  check("noteTableCaption Edit Caption starts with the caption", v === CAP, v);
+  await prompt(h, "Table 2");
+  await until(h, "the edit is saved", () => md().includes("Table: Table 2\n"));
+  check("noteTableCaption edited caption shown", (await tableGeo(h, ".nbody")).capText === "Table 2");
+
+  // remove, undo
+  await tableMenu(h, ".nbody td", "Remove Caption");
+  await until(h, "the removal is saved", () => !md().includes("Table:"));
+  check(
+    "noteTableCaption Remove Caption",
+    (await tableGeo(h, ".nbody")).cap === null && md().includes("640") && md().endsWith("|\n\nThe end."),
+    md(),
+  );
+  await pg.keyboard.press("Meta+z");
+  await until(h, "undo is saved", () => md().includes("Table: Table 2\n"));
+  await idle(h);
+  check("noteTableCaption undo brings it back", (await tableGeo(h, ".nbody")).capText === "Table 2");
 });

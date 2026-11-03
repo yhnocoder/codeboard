@@ -22,7 +22,7 @@ import { cardsMeasured } from "../state/measure";
 import { noteImageOf } from "./imagedata";
 import { quietHover } from "../state/camera";
 import { promptText, type Item } from "../ui/Menu";
-import { imageCaption, setImageCaption } from "@yhnocoder/markdown";
+import { imageCaption, setImageCaption, setTableCaption, tableCaption } from "@yhnocoder/markdown";
 import { noteImageAt, type ImgRef } from "./imageai";
 import { openPop, closePop, pops, updatePop, pinPop } from "../state/pop";
 import { ask } from "../host";
@@ -270,7 +270,7 @@ export function captionItems(ref: ImgRef, el: Element | null): Item[] {
 }
 async function editCaption(card: string, src: string, nth: number, cap: string) {
   const v = await promptText(cap ? "Edit Caption" : "Add Caption", cap, "Figure 1: …", cap ? "Save" : "Add", {
-    text: "Shown under the image, like a figure caption",
+    text: "Shown under the image, like a figure caption; $…$ for math",
   });
   if (v !== null && v !== cap) setCaption(card, src, nth, v);
 }
@@ -279,4 +279,35 @@ function setCaption(card: string, src: string, nth: number, cap: string) {
   if (editing()?.kind === "note" && editing()?.id === card) setEditing(null);
   const n = cardById(card)?.card;
   if (n?.kind === "note") C.setNoteMarkdown(commandEnv, card, setImageCaption(n.md, src, nth, cap));
+}
+
+/** 右键落在 Note 里的一张表格上（静态显示或编辑中）：它是这张 Note 的第几张表格（原样写的 HTML 里的表格不算，文档里没有它） */
+export function noteTableAt(t: Element, card: string): number | null {
+  const tb = t.closest("table"),
+    face = tb?.closest(".cface");
+  if (!tb || !face || cardById(card)?.card.kind !== "note" || tb.closest(".md-html")) return null;
+  const i = [...face.querySelectorAll("table")].filter((x) => !x.closest(".md-html")).indexOf(tb);
+  return i < 0 ? null : i;
+}
+/** Note 里一张表格的图注（表格后面的 "Table: …" 一行）：Add Caption… / Edit Caption…、Remove Caption */
+export function tableCaptionItems(card: string, nth: number): Item[] {
+  const c = cardById(card)?.card;
+  if (c?.kind !== "note") return [];
+  const cap = tableCaption(liveNoteMd(card) ?? c.md, nth);
+  if (cap === null) return [];
+  return [
+    { label: cap ? "Edit Caption…" : "Add Caption…", run: () => void editTableCaption(card, nth, cap) },
+    ...(cap ? [{ label: "Remove Caption", run: () => setTableCaptionOf(card, nth, "") } as Item] : []),
+  ];
+}
+async function editTableCaption(card: string, nth: number, cap: string) {
+  const v = await promptText(cap ? "Edit Caption" : "Add Caption", cap, "Table 1: …", cap ? "Save" : "Add", {
+    text: "Shown under the table, like a table caption; $…$ for math",
+  });
+  if (v !== null && v !== cap) setTableCaptionOf(card, nth, v);
+}
+function setTableCaptionOf(card: string, nth: number, cap: string) {
+  if (editing()?.kind === "note" && editing()?.id === card) setEditing(null);
+  const n = cardById(card)?.card;
+  if (n?.kind === "note") C.setNoteMarkdown(commandEnv, card, setTableCaption(n.md, nth, cap));
 }

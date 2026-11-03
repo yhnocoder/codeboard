@@ -3,7 +3,7 @@
 // (Enter, Backspace), which made typing in a long Note slow. The static render (render.ts) and the editor
 // (editor/gaps.ts) give the classes to the elements the sibling rules matched, by the elements they draw
 
-/** A paragraph (<p>), a block spaced like one (ul, ol, pre, table, blockquote, details, a formula block), or neither */
+/** A paragraph (<p>), a block spaced like one (ul, ol, pre, table, a captioned table, blockquote, details, a formula block), or neither */
 export type GapKind = "p" | "block" | null;
 
 /** The class of an element after one of kind prev: md-pp for a paragraph after a paragraph, md-gap for a block after a
@@ -23,7 +23,7 @@ export function htmlGapKind(html: string): GapKind {
   if (tag === "p") return "p";
   if (BLOCK_TAGS.has(tag)) return "block";
   const cls = /\sclass="([^"]*)"/.exec(m[2])?.[1].split(/\s+/) ?? [];
-  return cls.includes("math") || /\sdata-type="block-math"/.test(m[2]) ? "block" : null;
+  return cls.includes("math") || cls.includes("md-tfig") || /\sdata-type="block-math"/.test(m[2]) ? "block" : null;
 }
 
 /** The HTML string with cls added to the element it starts with */

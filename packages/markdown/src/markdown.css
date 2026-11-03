@@ -49,7 +49,7 @@ math {
    paragraph, .md ol.footnotes keeps its own margin */
 .md p:where(.md-pp):is(p),
 .md :is(p, ul, ol, pre, table, blockquote, details).md-gap,
-.md :is(.math, [data-type="block-math"]).md-gap {
+.md :is(.math, [data-type="block-math"], .md-tfig, .tableWrapper).md-gap {
   margin-top: 0.5em;
 }
 .md p:empty::before {
@@ -235,7 +235,8 @@ math {
   text-align: center;
 }
 /* 图注（![a](u "图注")）：图正下方居中的小字，像论文的图注。静态显示里带图注的图包在 .md-fig 里（和编辑器的 .md-img 一样排），
-   图注不撑宽这一层（contain: inline-size）：宽度是图的宽，长的图注在图的宽度里折行 */
+   图注不撑宽这一层（contain: inline-size）：宽度是图的宽，长的图注在图的宽度里折行。缩小了的图（.sized，--f 是它占正文宽的比例）
+   的图注不跟着变窄：按正文宽排，居中在图下面 */
 .md .md-fig {
   display: inline-block;
   vertical-align: middle;
@@ -254,13 +255,30 @@ math {
   contain: inline-size;
   margin: 5px 0 2px;
   text-align: center;
-  font-size: 0.82em;
+  font-size: 0.76em;
   line-height: 1.45;
   color: var(--ink-2);
   white-space: normal;
 }
 .md .md-cap[hidden] {
   display: none;
+}
+.md :is(.md-fig, .md-img).sized > .md-cap {
+  width: calc(100% / var(--f));
+  margin-inline: calc(50% - 50% / var(--f));
+}
+/* A table with a caption ("Table: …" after it): the table centred, the caption under it at the body's width, as an image's */
+.md .md-tfig {
+  margin: 4px 0;
+}
+.md .md-tfig > table {
+  margin: 0 auto;
+}
+.md-pm .md-tfig > .tableWrapper {
+  margin: 0;
+}
+.md-pm .md-tfig > .tableWrapper > table {
+  margin: 0 auto;
 }
 .md kbd {
   font: 0.85em var(--mono);
@@ -812,13 +830,20 @@ math {
 .md-pm .md-img.sized > img {
   width: 100%;
 }
+/* its space below is padding, and it holds its caption's margin (flow-root): margins at the paragraph's end would merge with the
+   next paragraph's, which those around the static render's inline figure do not */
 .md-pm .md-img.below {
-  display: block;
+  display: flow-root;
   width: fit-content;
-  margin: 4px auto 4px 0;
+  margin: 4px auto 0 0;
+  padding-bottom: 4px;
 }
 .md-pm .md-img.below.sized {
   margin-inline: auto;
+}
+/* the picture under its source ends its paragraph: ProseMirror's trailing break after it would be an empty line under it */
+.md-pm .md-img.below ~ :is(img.ProseMirror-separator, br.ProseMirror-trailingBreak) {
+  display: none;
 }
 .md-pm .md-img[draggable="true"] {
   -webkit-user-drag: element;

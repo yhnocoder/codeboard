@@ -4,7 +4,9 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { parseMd, serializeMd } from "../src/schema";
 import { createMarkdown, type Markdown } from "../src/markdown";
-import { imageCaption, setImageCaption } from "../src/caption";
+import { imageCaption, setImageCaption, setTableCaption, tableCaption } from "../src/caption";
+import { mdBlockStarts } from "../src/schema";
+import { sourceDoc, sourceMd } from "../src/editor/srcdoc";
 
 const rt = (s: string) => serializeMd(parseMd(s));
 const imgOf = (html: string) => {
@@ -224,6 +226,69 @@ describe("image captions (the title)", () => {
       md.replace("![second](<assets/a.png> 'old')", "![second](<assets/a.png>)"),
     );
     expect(setImageCaption(md, "assets/zzz.png", 0, "x")).toBe(md);
+  });
+});
+
+describe("captions with inline Markdown", () => {
+  it("typesets $formulas$ in an image caption, keeps the title as written, and leaves a caption that reads as a block as text", () => {
+    const md = '![](assets/a.png "图 5.7：对 $M$ 和 $N$ tiling **以**利用 shared memory")';
+    expect(rt(md)).toBe(md);
+    const d = document.createElement("div");
+    d.innerHTML = markdown.render(md);
+    const cap = d.querySelector(".md-fig .md-cap")!;
+    expect(cap.querySelectorAll(".katex").length).toBe(2);
+    expect(cap.querySelector("strong")?.textContent).toBe("以");
+    expect(cap.textContent).not.toContain("$");
+    d.innerHTML = markdown.render('![](assets/a.png "1. not a list")');
+    expect(d.querySelector(".md-cap")!.textContent).toBe("1. not a list");
+  });
+  it("gives a narrowed image's figure its share of the body width (--f), for the caption to keep the body width", () => {
+    const d = document.createElement("div");
+    d.innerHTML = markdown.render('![](assets/a.png "c"){width=56%}');
+    expect((d.querySelector(".md-fig") as HTMLElement).style.getPropertyValue("--f")).toBe("0.56");
+  });
+});
+
+describe("table captions (a Table: line after the table)", () => {
+  const T = "| a   | b   |\n| --- | --- |\n| 1   | 2   |";
+  it("reads the line onto the table and writes it back the same, $formulas$ included", () => {
+    const md = `Intro\n\n${T}\n\nTable: Table 2: sizes of $M$ and \`n\`\n\nAfter`;
+    const doc = parseMd(md);
+    expect(doc.content!.map((n) => n.type)).toEqual(["paragraph", "table", "paragraph"]);
+    expect(doc.content![1].attrs!.caption).toBe("Table 2: sizes of $M$ and `n`");
+    expect(rt(md)).toBe(md);
+    expect(sourceMd(sourceDoc(md))).toBe(md);
+    expect(mdBlockStarts(md)).toEqual([0, 7, md.indexOf("After")]);
+  });
+  it("is only a caption right after a table: elsewhere it stays a paragraph", () => {
+    for (const md of [`Table: not one\n\n${T}`, `${T}\n\nText\n\nTable: not one`, "Table: alone"])
+      expect(rt(md)).toBe(md);
+    expect(parseMd(`${T}\n\nTable: x\n\nTable: y`).content!.map((n) => n.type)).toEqual(["table", "paragraph"]);
+  });
+  it("renders the caption under the table in a .md-tfig, spaced as a block", () => {
+    const d = document.createElement("div");
+    d.innerHTML = markdown.render(`Intro\n\n${T}\n\nTable: Sizes of $M$`);
+    const fig = d.querySelector(".md-tfig")!;
+    expect(fig.classList.contains("md-gap")).toBe(true);
+    expect(fig.firstElementChild!.tagName).toBe("TABLE");
+    expect(fig.lastElementChild!.className).toBe("md-cap");
+    expect(fig.lastElementChild!.querySelectorAll(".katex").length).toBe(1);
+    d.innerHTML = markdown.render(T);
+    expect(d.querySelector(".md-tfig")).toBeNull();
+  });
+  it("sets, changes and removes the caption of the nth table, rewriting only the block it is in", () => {
+    const md = `# *T*\n\n- list\n\n  ${T.replace(/\n/g, "\n  ")}\n\n${T}\n\nTable: old\n\nend   *x*`;
+    expect(tableCaption(md, 0)).toBe("");
+    expect(tableCaption(md, 1)).toBe("old");
+    expect(tableCaption(md, 2)).toBeNull();
+    const one = setTableCaption(md, 1, "new\n$M$");
+    expect(one).toBe(md.replace("Table: old", "Table: new $M$"));
+    expect(setTableCaption(one, 1, " ")).toBe(md.replace("\n\nTable: old", ""));
+    const nested = setTableCaption(md, 0, "inner");
+    expect(tableCaption(nested, 0)).toBe("inner");
+    expect(tableCaption(nested, 1)).toBe("old");
+    expect(nested.endsWith("Table: old\n\nend   *x*")).toBe(true);
+    expect(setTableCaption(md, 5, "x")).toBe(md);
   });
 });
 

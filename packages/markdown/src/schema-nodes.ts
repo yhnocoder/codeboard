@@ -22,6 +22,7 @@ import { Footnotes, Footnote, FootnoteReference } from "tiptap-footnotes";
 import DOMPurify from "dompurify";
 import katex from "katex";
 import { EMOJI } from "./emoji";
+import { captionOf } from "./image";
 
 // 行内 $…$：$ 后紧跟非空白，结尾 $ 前是非空白、后面不是数字，所以 "$5 and $10" 不算公式；紧跟在 \ 或 $ 后面的 $ 不开头。
 // 行内的 $$…$$ 是行内的大号公式
@@ -680,9 +681,17 @@ export const Tasks = TaskList.extend({
 });
 // 表格：GFM 存不下合并单元格和一格多段，所以一格只放一段
 export const Cell = TableCell.extend({ content: "paragraph" });
+// A table's caption is a paragraph "Table: …" right after it (Pandoc's table caption), read onto the table by parseMd
+// (tableCaptions in schema.ts); the attribute holds the caption's inline Markdown
+export const TABLE_CAPTION = /^Table:[ \t]+(?=\S)/;
 export const Tbl = Table.extend({
+  addAttributes() {
+    return { ...this.parent?.(), caption: { default: null, rendered: false } };
+  },
   renderMarkdown(n, h, c) {
-    return String(this.parent?.(n, h, c) ?? "").replace(/^\n+|\n+$/g, "");
+    const t = String(this.parent?.(n, h, c) ?? "").replace(/^\n+|\n+$/g, ""),
+      cap = captionOf(n.attrs?.caption).replace(/\s*\n\s*/g, " ");
+    return cap ? `${t}\n\nTable: ${cap}` : t;
   },
 }).configure({ resizable: false });
 export const Head = TableHeader.extend({ content: "paragraph" });

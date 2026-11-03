@@ -523,7 +523,10 @@ export function cardContextMenu(e: MouseEvent, id: string) {
   // Note 里选中了一段字：照这段字画 SVG 的菜单（编辑器里没选字时照旧不弹菜单）
   const picked = ctxSel.v?.id === id ? ctxSel.v.text : A.noteSelText(id);
   ctxSel.v = null;
-  if (picked) return A.noteTextMenu(id, picked, e.clientX, e.clientY);
+  // Note 里的一张表格（显示着或编辑中）：图注的菜单；右键在格子里常常同时选上了一个词，图注的操作照样在前面
+  const table = A.noteTableAt(t, id);
+  if (picked) return A.noteTextMenu(id, picked, e.clientX, e.clientY, table);
+  if (table !== null) return A.noteTableMenu(id, table, e.clientX, e.clientY);
   if (t.closest("[contenteditable], input, textarea")) return;
   const colEl = t.closest("[data-col]") as HTMLElement | null;
   A.cardMenu(colEl?.dataset.col ?? id, e.clientX, e.clientY);

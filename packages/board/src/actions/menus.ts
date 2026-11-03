@@ -95,6 +95,7 @@ import {
   setMarkColor,
   showPeek,
   splitByHeadings,
+  tableCaptionItems,
   turnNote,
 } from "./notes";
 import { mergeIntoLinkList, retryMeta, setListRich, setWebStyle } from "./web";
@@ -258,9 +259,23 @@ export function noteImageMenu(ref: ImgRef, x: number, y: number) {
   );
 }
 
-/** 右键 Note 里选中的一段字（编辑中或静态显示）：照这段字画 SVG，整张 Note 的菜单在最后的 Note ▸ 里 */
-export function noteTextMenu(id: string, text: string, x: number, y: number) {
-  openMenu([drawSvgItem(id, text), null, { label: "Note", sub: cardItems(id, x, y) }], x, y);
+/** 右键 Note 里的一张表格（nth：Note 里的第几张）：图注的操作，整张 Note 的菜单在最后的 Note ▸ 里 */
+export function noteTableMenu(card: string, nth: number, x: number, y: number) {
+  selectCard(card);
+  const cap = tableCaptionItems(card, nth);
+  if (!cap.length) return cardMenu(card, x, y);
+  openMenu([...cap, null, { label: "Note", sub: cardItems(card, x, y) }], x, y);
+}
+
+/** 右键 Note 里选中的一段字（编辑中或静态显示）：照这段字画 SVG，整张 Note 的菜单在最后的 Note ▸ 里；字在表格里（table：第几张）
+ *  时前面先是表格图注的操作 */
+export function noteTextMenu(id: string, text: string, x: number, y: number, table: number | null = null) {
+  const cap = table === null ? [] : tableCaptionItems(id, table);
+  openMenu(
+    [...cap, ...(cap.length ? [null] : []), drawSvgItem(id, text), null, { label: "Note", sub: cardItems(id, x, y) }],
+    x,
+    y,
+  );
 }
 
 export function cardMenu(id: string, x: number, y: number) {

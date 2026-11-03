@@ -36,6 +36,7 @@ import {
   Para,
   Task,
   Tasks,
+  TABLE_CAPTION,
   Tbl,
   Toc,
   WikiRef,
@@ -269,8 +270,39 @@ export function parseMd(src: string): JSONContent {
     });
   }
   if (!rest.length) rest.push({ type: "paragraph" });
-  return { type: "doc", content: unDollar(mathify(rest)!) };
+  return { type: "doc", content: tableCaptions(unDollar(mathify(rest)!)) };
 }
+/**
+ * A paragraph "Table: …" right after a table becomes that table's caption (TABLE_CAPTION), at any depth. In a tight list item
+ * the line comes as loose inline nodes, its text as written (not read for marks): that text is kept as it is
+ */
+function tableCaptions(ns: JSONContent[]): JSONContent[] {
+  const out: JSONContent[] = [];
+  for (let i = 0; i < ns.length; i++) {
+    const n = ns[i],
+      prev = out[out.length - 1];
+    if (prev?.type === "table" && !prev.attrs?.caption) {
+      let src: string | null = null,
+        end = i;
+      if (n.type === "paragraph" && n.content?.[0]?.type === "text") src = inlineMd(n);
+      else if (n.type === "text") {
+        while (end + 1 < ns.length && mdSchema().nodes[ns[end + 1].type!]?.isInline) end++;
+        src = ns
+          .slice(i, end + 1)
+          .map((k) => (k.type === "text" && !k.marks?.length ? k.text : inlineMd({ type: "paragraph", content: [k] })))
+          .join("");
+      }
+      if (src !== null && TABLE_CAPTION.test(src)) {
+        out[out.length - 1] = { ...prev, attrs: { ...prev.attrs, caption: src.replace(TABLE_CAPTION, "").trim() } };
+        i = end;
+        continue;
+      }
+    }
+    out.push(n.content && !NO_TABLES.has(n.type!) ? { ...n, content: tableCaptions(n.content) } : n);
+  }
+  return out;
+}
+const NO_TABLES = new Set(["paragraph", "heading", "codeBlock", "table"]);
 /**
  * 每个顶层块（parseMd 的 content，文末的脚注块不算）在 src 里从第几个字开始：往两块之间插一段 Markdown 时用（比如拖进来的图放在松手的那两块之间）。
  * 按 marked 的顶层分词：一个不是空行的词对应一块。对不上（多出来的空行读成了空段落、脚注定义、链接定义这些）就给 null
@@ -284,12 +316,16 @@ export function mdBlockStarts(src: string): number[] | null {
   const toks = mgr.createLexer().lex(src);
   if (toks.reduce((n, t) => n + t.raw.length, 0) !== src.length) return null;
   const starts: number[] = [];
-  let at = 0;
+  let at = 0,
+    prev = "";
   for (const t of toks) {
-    if (t.type !== "space") starts.push(at);
+    // a table's caption line is part of the table's block (tableCaptions)
+    const caption = prev === "table" && t.type === "paragraph" && TABLE_CAPTION.test(t.raw);
+    if (t.type !== "space" && !caption) starts.push(at);
+    if (t.type !== "space") prev = caption ? "" : t.type;
     at += t.raw.length;
   }
-  const blocks = mgr.parse(src).content ?? [];
+  const blocks = tableCaptions(mgr.parse(src).content ?? []);
   return blocks.length === starts.length && blocks.every((b) => b.type !== "footnote") ? starts : null;
 }
 /**
