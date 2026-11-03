@@ -3,6 +3,7 @@
 import { shot, symCard, findSym, put, type Host } from "../harness";
 import { cornerAt, emptyBoard, type Board, type StickerPack } from "@codeboard/core";
 import { animWebp, apng, faceFrames, gif, type Paint, png, type Rgba } from "@codeboard/host/testing";
+import { PNG } from "pngjs";
 import type { Browser, Page } from "@playwright/test";
 import { test, open, check, light, until, idle, hold, frames } from "../fixtures";
 
@@ -125,9 +126,62 @@ const imgs = (page: Page) =>
         }),
       ) as Record<string, ImgState>,
   );
-/** The test images' frames last 200 ms: screenshots this far apart see every frame within 600 ms */
+type Played = { pictures: number; back: boolean };
+/**
+ * What each sticker shows in the frames Chromium presents (a CDP screencast sends one each time the page's picture changes): an
+ * animated image's every frame arrives, however late a busy machine shows it. Screenshots taken at their own pace can miss them: on
+ * a busy machine one takes about as long as the images' 400 ms loop, and every sample lands on the same frame.
+ * A sticker plays when it comes back to a picture it showed before another one (A → B → A): a one-off change (settling, a late src
+ * swap) does not count. Waits until each does; resolves to what each showed either way
+ */
+async function playing(h: Host, ids: string[]): Promise<{ played: Record<string, Played>; why?: string }> {
+  const page = h.page;
+  const boxes = await Promise.all(ids.map((k) => page.locator(`[data-sticker="${k}"] img`).boundingBox()));
+  const st = ids.map(() => ({ seen: new Set<number>(), last: -1, back: false }));
+  const played = () => Object.fromEntries(ids.map((k, i) => [k, { pictures: st[i].seen.size, back: st[i].back }]));
+  const missing = ids.filter((_, i) => !boxes[i]);
+  if (missing.length) return { played: played(), why: `no box for ${missing.join(", ")}` };
+  const cdp = await page.context().newCDPSession(page);
+  const shown: { png: string; cssWidth: number }[] = [];
+  cdp.on("Page.screencastFrame", (f) => {
+    shown.push({ png: f.data, cssWidth: f.metadata.deviceWidth ?? 0 });
+    void cdp.send("Page.screencastFrameAck", { sessionId: f.sessionId }).catch(() => {});
+  });
+  await cdp.send("Page.startScreencast", { format: "png", everyNthFrame: 1 });
+  let done = 0;
+  await until(h, "each animated sticker comes back to a frame it showed", () => {
+    for (; done < shown.length; done++) {
+      // decoded here in Node, not in the page whose timing is under test
+      const img = PNG.sync.read(Buffer.from(shown[done].png, "base64"));
+      const s = img.width / (shown[done].cssWidth || img.width);
+      boxes.forEach((b, i) => {
+        const x0 = Math.max(0, Math.round(b!.x * s)),
+          y0 = Math.max(0, Math.round(b!.y * s));
+        const x1 = Math.min(img.width, Math.round((b!.x + b!.width) * s)),
+          y1 = Math.min(img.height, Math.round((b!.y + b!.height) * s));
+        let x = 0x811c9dc5;
+        for (let y = y0; y < y1; y++)
+          for (let p = (y * img.width + x0) * 4, e = (y * img.width + x1) * 4; p < e; p++)
+            x = Math.imul(x ^ img.data[p], 0x01000193);
+        const t = st[i],
+          hash = x >>> 0;
+        if (hash === t.last) return;
+        if (t.seen.has(hash)) t.back = true;
+        t.seen.add(hash);
+        t.last = hash;
+      });
+    }
+    return st.every((t) => t.back);
+  }).catch(() => {}); // the check reports what each showed
+  await cdp.send("Page.stopScreencast");
+  await cdp.detach();
+  return { played: played() };
+}
+
+/** The test images loop in 400 ms (two 200 ms frames): screenshots this far apart cover every frame within 600 ms */
 const SAMPLE = 110;
-/** Screenshots of one element a few times over 600 ms (the frames are 200 ms): how many different pictures */
+/** Screenshots of one element a few times over 600 ms: how many different pictures. For a sticker that must stay still: a busy
+ *  machine only stretches the span */
 async function pictures(h: Host, sel: string) {
   const seen = new Set<string>();
   for (let i = 0; i < 6; i++) {
@@ -199,12 +253,9 @@ test("stickerBitmapsAnimate", async ({ browser }) => {
     onPlay,
     JSON.stringify(ANIM.map((k) => [k, st[k].paused, st[k].src.slice(0, 22)])),
   );
-  const moving = {
-    gif: await pictures(h, '[data-sticker="k3"] img'),
-    webp: await pictures(h, '[data-sticker="k4"] img'),
-    apng: await pictures(h, '[data-sticker="k5"] img'),
-  };
-  check("sticker-anim-frames-change", moving.gif > 1 && moving.webp > 1 && moving.apng > 1, JSON.stringify(moving));
+  const p = await playing(h, ["k3", "k4", "k5"]);
+  const moving = { gif: p.played.k3, webp: p.played.k4, apng: p.played.k5, why: p.why };
+  check("sticker-anim-frames-change", !p.why && Object.values(p.played).every((x) => x.back), JSON.stringify(moving));
   check(
     "sticker-anim-offscreen-paused",
     st.k7.paused && st.k7.src.startsWith("data:image/png;") && st.k7.src !== orig.wink,
