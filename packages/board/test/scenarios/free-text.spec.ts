@@ -329,7 +329,7 @@ test("freeTextLevels", async () => {
   await pg.locator(".ctx button", { hasText: "Heading 2" }).click();
   await until(h, "H1 is now H2", () => byId(h, "h1")?.level === 2);
   await pg.locator(`${card("h1")} .tx`).click({ button: "right" });
-  await pg.locator(".ctx button", { hasText: /^Bold/ }).click();
+  await pg.locator(".ctx.open button", { hasText: /^Bold/ }).click();
   await until(h, "and bold", () => byId(h, "h1")?.bold === true);
   await idle(h);
   check("freeTextLevels Level and Bold from the menu", (await lookOf(h, "h1")).size === "30px", byId(h, "h1"));

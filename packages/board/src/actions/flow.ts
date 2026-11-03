@@ -48,7 +48,7 @@ import { lineY } from "../state/geo";
 import { flash, ping, setWalk, walk } from "../state/ui";
 import { openPop } from "../state/pop";
 import { send, ask } from "../host";
-import { headPoint, hostRect, popCard, showPicker, slideFrom } from "./common";
+import { headPoint, hostRect, popAlong, showPicker, slideFrom } from "./common";
 import { lastPointer } from "../state/measure";
 import { jumpTo } from "./nav";
 import { walkIntoFrame, walkOut } from "./subboards";
@@ -226,7 +226,7 @@ export function placeExpanded(
   requestAnimationFrame(() => {
     followExpanded(cardId, segId, call, id);
     const from = headPoint(cardId);
-    popCard(id, from ?? undefined);
+    popAlong(id, from ?? undefined);
   });
   if (pushed.length) slideFrom(pushed.map((q) => ({ id: q.id, ox: 0, oy: -q.dy })));
 }

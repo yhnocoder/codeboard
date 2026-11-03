@@ -69,6 +69,12 @@ export const WEB_PEEK_DELAY = 550;
 export const SECTION_PEEK_OUT = 140;
 /** Lines that flash (a jump to a line, a call's target) stay lit this long (state/ui.ts flash) */
 export const FLASH_MS = 700;
+/** Warm Ink: a warm highlight sweeps under the line's text (its first 240 ms) and fades over this long instead (themes.css
+ *  .rowbg.flash; look.ts flash) */
+export const FLASH_SWEEP = 900;
+/** Warm Ink: the arrow to a card that comes out along it is drawn from its source over this long, before the card springs out of
+ *  its head (actions/common.ts popAlong; look.ts spawn) */
+export const DRAW_IN = 260;
 /** Ink Wash: a vermilion brush stroke sweeps under the line's text and fades over this long instead (themes.css .rowbg.flash;
  *  look.ts flash) */
 export const FLASH_BRUSH = 1100;

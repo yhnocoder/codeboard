@@ -1,4 +1,5 @@
-/* 材质主题：html[data-look]，明暗仍跟随 VS Code（html[data-theme]）。Warm Ink 是 styles.css 里的默认值，不在这里。
+/* 材质主题：html[data-look]，明暗仍跟随 VS Code（html[data-theme]）。Warm Ink 是 styles.css 里的默认值（变量也在那里），
+   这里只有它自己的几条结构规则（下面第一节，:root.look-warm-ink），别的材质不受影响。
    - 变量在前半（亮色块、暗色块各写全，否则暗色下会漏出亮色的值）；[data-look] 也挂在设置页的小样上，所以变量块也匹配元素。
    - 结构规则在后半，只挂在 :root.look-<id> 下面（applyLook 和 data-look 一起挂的类）。不用 :root[data-look="…"]：属性值进不了
      浏览器的祖先过滤（bloom filter），每个元素重算样式时，别的主题的规则都要沿祖先一路比到根；类名能直接排除。
@@ -8,6 +9,263 @@
    - 代码区的字号、字宽、行高、上下留白所有主题都一样（11px / 20px 行，字宽 6.6px）：换主题时卡片装得下同样的内容。
    - 背景画（Ink Wash 的远山、City 的街区）是 .board 的背景：固定在窗口上，不跟着画布平移缩放，镜头动时不重画；
      画里的滤镜只在换主题、改窗口大小时栅格化一次。没有常驻动画。 */
+
+/* ---------- Warm Ink（默认）：它自己的结构规则。颜色和阴影的变量（--wi-*）在 styles.css 的 Warm Ink 块里 ---------- */
+/* 卡：一道清楚的边（0.5px 细边、顶上 1px 内高光、底下 1.5px 暖色暗边）压在分层的柔和阴影上。还是分两半画（styles.css 的
+   --sh-ring / --sh-soft）：模糊的那半在 ::before（圆角），清楚的那半在 ::after（跟着卡的 squircle）。::after 抬到卡的内容上面，
+   内高光才不会被卡头的底色盖住；它不接指针，只画在卡边上 */
+:root.look-warm-ink .card {
+  --sh-ring: var(--wi-ring);
+  --sh-soft: var(--wi-soft);
+}
+:root.look-warm-ink .card::after {
+  z-index: 3;
+}
+/* 选中：1.5px 强调色描边，外面一圈 3px 的柔光，画在单独一层（.cface::before，跟着卡的 squircle）。卡本身不动：这一层 120ms 淡入、
+   从 0.985 微微放大到 1，取消选中时 90ms 淡出。只动 opacity / scale */
+:root.look-warm-ink .card.sel:not(.text):not(.nobg):not(.lo-map) {
+  --ring: var(--sh-ring);
+}
+:root.look-warm-ink .card > .cface::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  border-radius: var(--cr);
+  pointer-events: none;
+  box-shadow:
+    0 0 0 1.5px var(--accent),
+    0 0 4px 3px color-mix(in srgb, var(--accent) 20%, transparent);
+  opacity: 0;
+  scale: 0.985;
+  transition:
+    opacity calc(var(--t) * 90ms) var(--in),
+    scale 0s linear calc(var(--t) * 90ms);
+}
+:root.look-warm-ink .card.sel > .cface::before {
+  opacity: 1;
+  scale: 1;
+  transition:
+    opacity calc(var(--t) * 120ms) var(--out),
+    scale calc(var(--t) * 120ms) var(--out);
+}
+/* Text（虚线框）、无背景的卡、地图档各有各的选中样子 */
+:root.look-warm-ink .card.text > .cface::before,
+:root.look-warm-ink .card.nobg > .cface::before,
+:root.look-warm-ink .card.lo-map > .cface::before {
+  content: none;
+}
+/* 拖起来（过了 DRAG_SLOP）：阴影加深，弹簧放大到 1.01；放下时带一点回弹落定（两条弹簧曲线写成 linear()，只动 scale / box-shadow） */
+:root.look-warm-ink {
+  /* 拿起：k 620 / c 34 的弹簧（略冲过一点），260ms；落下：k 520 / c 17（回弹一下再停），420ms */
+  --wi-spring-up: linear(0, 0.16, 0.45, 0.72, 0.9, 1.01, 1.05, 1.05, 1.04, 1.02, 1);
+  --wi-spring-down: linear(0, 0.19, 0.59, 0.98, 1.22, 1.28, 1.22, 1.11, 1, 0.94, 0.92, 0.94, 0.97, 1, 1);
+}
+:root.look-warm-ink .card.lift:not(.text):not(.nobg):not(.lo-map) {
+  --ring: var(--sh-ring), var(--sh-lift);
+}
+:root.look-warm-ink .card.lift {
+  scale: 1.01;
+  transition:
+    box-shadow calc(var(--t) * 200ms) var(--lift-in),
+    scale calc(var(--t) * 260ms) var(--wi-spring-up),
+    opacity calc(var(--t) * 160ms) var(--out);
+}
+:root.look-warm-ink .card.landing {
+  transition:
+    box-shadow calc(var(--t) * 240ms) var(--lift-out),
+    scale calc(var(--t) * 420ms) var(--wi-spring-down),
+    opacity calc(var(--t) * 240ms) var(--out),
+    filter calc(var(--t) * 240ms);
+}
+/* 卡头下面平时没有线；代码往下滚了才在 160ms 里淡出一条细线，回到顶上再淡掉（CodeBody.tsx 的 .hdl，只在跨过顶的那一下换 class） */
+:root.look-warm-ink .chead {
+  border-bottom-color: transparent;
+}
+:root.look-warm-ink .hdl {
+  display: block;
+  position: relative;
+  flex: none;
+  height: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+:root.look-warm-ink .hdl::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -1px;
+  height: 1px;
+  background: var(--line);
+  opacity: 0;
+  transition: opacity calc(var(--t) * 160ms) var(--out);
+}
+:root.look-warm-ink .hdl.on::after {
+  opacity: 1;
+}
+/* 箭头：暖墨色；实线是一块起点粗（2.5px）往箭头收细（0.9px）的填充（Links.tsx，look.ts 的 stroke: "taper"），描边的那条不画；
+   箭头是小的实心 dart。虚线、点线、手绘线照旧描边，也是暖墨色 */
+:root.look-warm-ink .lyr {
+  --edge: var(--wi-edge);
+}
+:root.look-warm-ink .edge.brushed {
+  stroke: none;
+}
+:root.look-warm-ink .taper {
+  fill: var(--edge);
+  stroke: none;
+  transition: opacity 0.2s;
+}
+:root.look-warm-ink .taper.lc-orange {
+  fill: var(--lk-orange);
+}
+:root.look-warm-ink .taper.lc-blue {
+  fill: var(--lk-blue);
+}
+:root.look-warm-ink .taper.lc-green {
+  fill: var(--lk-green);
+}
+:root.look-warm-ink .taper.ev-observed {
+  fill: var(--ev-obs);
+}
+:root.look-warm-ink .taper.back {
+  fill-opacity: 0.7;
+}
+:root.look-warm-ink .taper.lost {
+  fill: var(--lk-lost, #d64545);
+}
+:root.look-warm-ink .taper.on {
+  fill: var(--accent);
+  stroke: var(--accent);
+  stroke-width: 0.45;
+}
+:root.look-warm-ink .ahead.dart.on {
+  stroke-width: calc(0.45px * var(--lw, 1));
+}
+/* 几条线汇到一处时最后那一小段（合并段）是描边：和收细的线到头时一样细 */
+:root.look-warm-ink .edge.stub {
+  stroke-width: calc(0.9px * var(--lw, 1));
+}
+/* 跳到某行：一道暖色从这一行的第一个字扫到最后一个字（CodeBody.tsx flashSpan），扫完停一下再淡掉。时长同 timing.ts 的 FLASH_SWEEP */
+:root.look-warm-ink .rowbg.flash {
+  animation: none;
+}
+:root.look-warm-ink .rowbg.flash::after {
+  content: "";
+  position: absolute;
+  left: calc(var(--gutter) + var(--fx, 0px));
+  top: 2px;
+  bottom: 2px;
+  width: var(--fw, 0px);
+  border-radius: 3px;
+  background: var(--wi-sweep);
+  transform-origin: 0 50%;
+  pointer-events: none;
+  animation: wi-sweep calc(var(--t) * 900ms) both;
+}
+@keyframes wi-sweep {
+  0% {
+    transform: scaleX(0);
+    opacity: 1;
+    animation-timing-function: cubic-bezier(0.3, 0.7, 0.2, 1);
+  }
+  26.7% {
+    transform: scaleX(1);
+    opacity: 1;
+  }
+  45% {
+    opacity: 1;
+    animation-timing-function: ease-out;
+  }
+  100% {
+    transform: scaleX(1);
+    opacity: 0;
+  }
+}
+/* 工具栏和 Dock：真的毛玻璃（模糊 + 提饱和、更透的玻璃、细边、顶上一道内高光）；正在用的工具（Chrome.tsx 的 data-on）下面垫一块
+   会滑动的底（.tpill：只动 clip-path，200ms 先快后慢），换工具时滑过去 */
+:root.look-warm-ink .bbar > .pill,
+:root.look-warm-ink .dock > .pill {
+  background: var(--wi-glass);
+  -webkit-backdrop-filter: blur(22px) saturate(1.9);
+  backdrop-filter: blur(22px) saturate(1.9);
+  box-shadow:
+    var(--sh-float),
+    inset 0 0.5px 0 var(--wi-hilite);
+}
+:root.look-warm-ink .bbar > .pill {
+  position: relative;
+}
+:root.look-warm-ink .tpill {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: var(--wi-pill);
+  opacity: 0;
+  clip-path: inset(50% round 8.5px);
+  transition:
+    clip-path calc(var(--t) * 200ms) var(--out),
+    opacity calc(var(--t) * 140ms) var(--out);
+}
+:root.look-warm-ink .tpill.on {
+  opacity: 1;
+}
+:root.look-warm-ink .bbar .tbtn[data-on] {
+  color: var(--accent);
+}
+/* 右键菜单：毛玻璃、8px 圆角（squircle）；悬停的那一行不整行上色，是一块在行间滑动的淡底（Menu.tsx 的 .mpill，只动 transform）。
+   打开照旧从点击点 0.97→1 淡入 150ms；关：留下的那一份（Menu.tsx exitCopy，--menu-exit ms）90ms 淡出、缩到 0.98 */
+:root.look-warm-ink {
+  --menu-exit: 90;
+}
+:root.look-warm-ink .ctx {
+  border-radius: 8px;
+  background: var(--wi-glass);
+  -webkit-backdrop-filter: blur(24px) saturate(1.9);
+  backdrop-filter: blur(24px) saturate(1.9);
+  box-shadow:
+    var(--sh-float),
+    inset 0 0.5px 0 var(--wi-hilite);
+}
+:root.look-warm-ink .ctx.closing:not(.open) {
+  scale: 0.98;
+}
+:root.look-warm-ink .ctx button {
+  border-radius: 5px;
+}
+:root.look-warm-ink .ctx button:not([disabled]):is(:hover, .kb, .subopen) {
+  background: none;
+  color: var(--ink);
+}
+:root.look-warm-ink .ctx button:not([disabled]):is(:hover, .kb, .subopen) .ck {
+  color: var(--accent);
+}
+:root.look-warm-ink .ctx button:not([disabled]):is(:hover, .kb, .subopen) small {
+  color: var(--ink-3);
+}
+:root.look-warm-ink .ctx button.danger:not([disabled]):is(:hover, .kb, .subopen) {
+  background: none;
+  color: #d6453d;
+}
+:root.look-warm-ink .mpill {
+  position: absolute;
+  left: 5px;
+  right: 5px;
+  top: 0;
+  z-index: -1;
+  border-radius: 5px;
+  background: var(--wi-pill);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    transform calc(var(--t) * 150ms) cubic-bezier(0.2, 0.9, 0.3, 1),
+    opacity calc(var(--t) * 120ms) var(--out);
+}
+:root.look-warm-ink .mpill.on {
+  opacity: 1;
+}
 
 /* ---------- Classic：实线边框、同一种阴影、陶土色强调 ---------- */
 :root.look-classic,

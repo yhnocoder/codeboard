@@ -584,8 +584,22 @@ export function gutterLine(x: number, y1: number, y2: number, left: boolean): Sh
   };
 }
 
-/** 箭头：tip 是尖，(ux, uy) 是来的方向（单位向量）。k = 形状（材质决定），s = 粗细档带来的放大 */
-export function headPath(k: "chevron" | "triangle" | "dot", tx: number, ty: number, ux: number, uy: number, s = 1) {
+/** 箭头：tip 是尖，(ux, uy) 是来的方向（单位向量）。k = 形状（材质决定），s = 粗细档带来的放大。
+ *  dart（Warm Ink）：小的实心箭头，尾巴往里凹一点（填充，和收细的线 taper.ts 接在一起） */
+export function headPath(
+  k: "chevron" | "triangle" | "dot" | "dart",
+  tx: number,
+  ty: number,
+  ux: number,
+  uy: number,
+  s = 1,
+) {
+  if (k === "dart") {
+    const bx = tx - 6.5 * s * ux,
+      by = ty - 6.5 * s * uy,
+      w = 3 * s;
+    return `M${r(tx)} ${r(ty)} L${r(bx - w * uy)} ${r(by + w * ux)} L${r(tx - 4.6 * s * ux)} ${r(ty - 4.6 * s * uy)} L${r(bx + w * uy)} ${r(by - w * ux)} Z`;
+  }
   if (k === "dot") {
     const rr = 3.5 * s;
     return `M${r(tx - rr)} ${r(ty)} a${rr} ${rr} 0 1 0 ${2 * rr} 0 a${rr} ${rr} 0 1 0 ${-2 * rr} 0`;

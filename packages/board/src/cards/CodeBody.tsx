@@ -18,7 +18,7 @@ import { state } from "../state/store";
 import { lineSel, setLineSel, reportSelection } from "../state/selection";
 import { StickerChip } from "../stickers/Picker";
 import { geo, setGeo } from "../state/geo";
-import { look } from "../state/look";
+import { look, shape } from "../state/look";
 import { queueMeasure, observeResize, DED_PAD } from "../state/measure";
 import {
   shown,
@@ -202,6 +202,9 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
     else measure();
   };
 
+  /** 往下滚过了（Warm Ink 卡头下的细线，look.ts 的 scrollLine）：只在滚到顶 / 离开顶时变一次，滚动的每一帧不写样式 */
+  const scrolled = createMemo(() => scrollY() > 0);
+
   // 拖箭头松手会连到这一行：行号和这一行都亮起来
   const dropAt = (seg: string, line: number) => {
     const d = dropTarget();
@@ -272,6 +275,9 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
             />
           )}
         </For>
+      </Show>
+      <Show when={shape().scrollLine}>
+        <i class="hdl" classList={{ on: scrolled() }} aria-hidden="true" />
       </Show>
       <div
         ref={scrollEl}

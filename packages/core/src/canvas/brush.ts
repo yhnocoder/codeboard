@@ -50,6 +50,37 @@ function flatten(d: string): number[] {
   return out;
 }
 
+/** Walks a path (absolute M / L / C / Q) by arc length: L = its length, at(s) = the point and unit tangent at arc length s.
+ *  s may only grow within one pass; reset() starts a new pass from the beginning. null for a path of fewer than two points */
+export function pathWalker(d: string) {
+  const pl = flatten(d),
+    n = pl.length / 2;
+  if (n < 2) return null;
+  const acc = [0];
+  for (let k = 1; k < n; k++)
+    acc.push(acc[k - 1] + Math.hypot(pl[2 * k] - pl[2 * k - 2], pl[2 * k + 1] - pl[2 * k - 1]));
+  let j = 0;
+  const at = (s: number) => {
+    if (s < acc[j]) j = 0;
+    while (j < n - 2 && acc[j + 1] < s) j++;
+    const seg = acc[j + 1] - acc[j] || 1,
+      k = Math.min(1, Math.max(0, (s - acc[j]) / seg));
+    const x0 = pl[2 * j],
+      y0 = pl[2 * j + 1],
+      dx = pl[2 * j + 2] - x0,
+      dy = pl[2 * j + 3] - y0,
+      l = Math.hypot(dx, dy) || 1;
+    return { x: x0 + dx * k, y: y0 + dy * k, tx: dx / l, ty: dy / l };
+  };
+  return {
+    L: acc[n - 1] || 1,
+    at,
+    reset: () => {
+      j = 0;
+    },
+  };
+}
+
 /** FNV-1a of a string (unsigned 32 bit): stable per id or word */
 export function fnv(s: string) {
   let h = 2166136261;

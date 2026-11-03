@@ -90,6 +90,19 @@
     0 1px 1px rgba(50, 35, 10, 0.04), 0 3px 8px -2px rgba(50, 35, 10, 0.06), 0 18px 36px -14px rgba(50, 35, 10, 0.16);
   --sh-lift: 0 0 0 0.5px var(--hair), 0 4px 10px -2px rgba(50, 35, 10, 0.1), 0 30px 60px -18px rgba(50, 35, 10, 0.3);
   --sh-float: 0 0 0 0.5px var(--hair), 0 2px 6px -1px rgba(50, 35, 10, 0.08), 0 10px 28px -8px rgba(50, 35, 10, 0.18);
+  /* Warm Ink's own structure rules (themes.css, :root.look-warm-ink) draw with these; other looks never read them.
+     The card: a crisp edge (hairline, a 1px inner highlight on top, a 1.5px warm dark edge at the bottom) over a soft layered
+     shadow; the arrows' warm ink; the frosted toolbar and menu; the sliding pill under the hovered row / active tool; the sweep
+     under a line jumped to */
+  --wi-ring: 0 0 0 0.5px var(--hair), inset 0 1px 0 #ffffff, inset 0 -1.5px 0 rgba(60, 45, 20, 0.1);
+  --wi-soft:
+    0 1px 1px rgba(50, 35, 10, 0.05), 0 3px 6px -2px rgba(50, 35, 10, 0.05), 0 12px 24px -12px rgba(50, 35, 10, 0.1),
+    0 28px 50px -26px rgba(50, 35, 10, 0.12);
+  --wi-edge: #85786a;
+  --wi-glass: rgba(250, 248, 244, 0.62);
+  --wi-hilite: #ffffff;
+  --wi-pill: rgba(60, 45, 20, 0.075);
+  --wi-sweep: rgba(240, 190, 80, 0.34);
 
   --sys:
     -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", "PingFang SC", "Noto Sans SC", "Helvetica Neue",
@@ -191,6 +204,15 @@
   --sh-soft: 0 1px 1px rgba(0, 0, 0, 0.25), 0 3px 8px -2px rgba(0, 0, 0, 0.3), 0 18px 36px -14px rgba(0, 0, 0, 0.55);
   --sh-lift: 0 0 0 0.5px var(--hair), 0 4px 10px -2px rgba(0, 0, 0, 0.4), 0 30px 60px -18px rgba(0, 0, 0, 0.75);
   --sh-float: 0 0 0 0.5px var(--hair), 0 2px 6px -1px rgba(0, 0, 0, 0.35), 0 10px 28px -8px rgba(0, 0, 0, 0.55);
+  --wi-ring: 0 0 0 0.5px var(--hair), inset 0 1px 0 rgba(255, 245, 230, 0.13), inset 0 -1.5px 0 rgba(0, 0, 0, 0.35);
+  --wi-soft:
+    0 0.5px 1px rgba(0, 0, 0, 0.22), 0 2px 5px -1px rgba(0, 0, 0, 0.2), 0 10px 22px -10px rgba(0, 0, 0, 0.3),
+    0 26px 48px -24px rgba(0, 0, 0, 0.32);
+  --wi-edge: #a69886;
+  --wi-glass: rgba(40, 39, 36, 0.6);
+  --wi-hilite: rgba(255, 245, 230, 0.13);
+  --wi-pill: rgba(255, 240, 220, 0.09);
+  --wi-sweep: rgba(224, 176, 85, 0.26);
   --sect-border: 0.5px solid var(--hair);
   --sect-fill: color-mix(in srgb, var(--ink) 2.5%, transparent);
   --sect-sh: inset 0 1px 0 rgba(255, 245, 230, 0.025);
@@ -528,7 +550,8 @@ textarea {
   stroke: var(--lk-lost, #d64545);
 }
 .ahead.triangle.lost,
-.ahead.dot.lost {
+.ahead.dot.lost,
+.ahead.dart.lost {
   fill: var(--lk-lost, #d64545);
 }
 .edge.hot {
@@ -2386,25 +2409,35 @@ textarea {
   stroke: var(--accent);
 }
 .ahead.triangle,
-.ahead.dot {
+.ahead.dot,
+.ahead.dart {
   fill: var(--edge);
 }
+/* Warm Ink's dart（state/look.ts）：填充的小箭头，描边只留一丝（颜色跟着线走），不把它描粗 */
+.ahead.dart {
+  stroke-width: calc(0.35px * var(--lw, 1));
+}
 .ahead.triangle.lc-orange,
-.ahead.dot.lc-orange {
+.ahead.dot.lc-orange,
+.ahead.dart.lc-orange {
   fill: var(--lk-orange);
 }
 .ahead.triangle.lc-blue,
-.ahead.dot.lc-blue {
+.ahead.dot.lc-blue,
+.ahead.dart.lc-blue {
   fill: var(--lk-blue);
 }
 .ahead.triangle.lc-green,
-.ahead.dot.lc-green {
+.ahead.dot.lc-green,
+.ahead.dart.lc-green {
   fill: var(--lk-green);
 }
 .ahead.triangle.on,
 .ahead.dot.on,
+.ahead.dart.on,
 .ahead.triangle.hot,
-.ahead.dot.hot {
+.ahead.dot.hot,
+.ahead.dart.hot {
   fill: var(--accent);
 }
 .vlabel {
@@ -6182,7 +6215,8 @@ mark.wdiff {
   stroke: var(--ev-obs);
 }
 .ahead.triangle.ev-observed,
-.ahead.dot.ev-observed {
+.ahead.dot.ev-observed,
+.ahead.dart.ev-observed {
   fill: var(--ev-obs);
 }
 .edge.gen {
