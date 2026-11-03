@@ -167,6 +167,7 @@ const LIVE_CLASSES = [
   "bind-hot",
   "bind-anchor",
   "pinged",
+  "md-animsrc",
 ];
 
 /** 导出用的画布克隆：完整细节、没有选中；范围外的卡、两端不都在范围里的箭头、范围外的 Section 去掉，

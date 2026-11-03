@@ -53,6 +53,7 @@ export function Editable(p: {
             layout={p.layout}
             onToggle={(v) => p.onCommit(v)}
             prep
+            anims={p.kind === "note" ? p.id : undefined}
           />
         ) : (
           <div class={p.class} style={p.style} data-ph={p.placeholder}>

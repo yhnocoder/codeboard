@@ -8,7 +8,14 @@ import { cam, camMoving } from "../state/camera";
 import { applyMdLayout, type Markdown, type MdLayout } from "@yhnocoder/markdown";
 import { escHtml } from "@codeboard/core";
 
-type Job = { md: Markdown; el: HTMLElement; src: string; inline?: boolean; layout?: MdLayout | null };
+type Job = {
+  md: Markdown;
+  el: HTMLElement;
+  src: string;
+  inline?: boolean;
+  layout?: MdLayout | null;
+  painted?: (el: HTMLElement) => void;
+};
 const pending = new Map<HTMLElement, Job>();
 let idleOn = false,
   frameOn = false;
@@ -50,6 +57,7 @@ function paint(j: Job) {
   j.md.hydrate(j.el, h);
   // table widths, row heights and code wrap are card data, not Markdown: put onto the shared cached HTML here
   if (!j.inline) applyMdLayout(j.el, j.layout);
+  j.painted?.(j.el);
 }
 // 已经在屏幕里的排最前（-2），屏幕外一圈里的其次（-1），远处的按距离
 const byDist = () =>
@@ -143,9 +151,16 @@ export function flushMd() {
   for (const j of [...pending.values()]) run(j);
 }
 
-/** md 渲染进 el（远处的、没缓存的排队，见上） */
-export function mdInto(md: Markdown, el: HTMLElement, src: string, inline?: boolean, layout?: MdLayout | null) {
-  const j: Job = { md, el, src, inline, layout };
+/** md 渲染进 el（远处的、没缓存的排队，见上）；painted: called each time it is painted */
+export function mdInto(
+  md: Markdown,
+  el: HTMLElement,
+  src: string,
+  inline?: boolean,
+  layout?: MdLayout | null,
+  painted?: (el: HTMLElement) => void,
+) {
+  const j: Job = { md, el, src, inline, layout, painted };
   pending.delete(el);
   // 不跟踪镜头：镜头动了不该让每个 Note 的 effect 重跑
   if (!inline && !md.isCached(src) && src.trim() && untrack(() => offView(el)) >= 0) {

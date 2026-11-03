@@ -22,7 +22,14 @@ import { cardsMeasured } from "../state/measure";
 import { noteImageOf } from "./imagedata";
 import { quietHover } from "../state/camera";
 import { promptText, type Item } from "../ui/Menu";
-import { imageCaption, setImageCaption, setTableCaption, tableCaption } from "@yhnocoder/markdown";
+import {
+  imageCaption,
+  setImageCaption,
+  setImagePlayback,
+  setTableCaption,
+  tableCaption,
+  type ImagePlayback,
+} from "@yhnocoder/markdown";
 import { noteImageAt, type ImgRef } from "./imageai";
 import { openPop, closePop, pops, updatePop, pinPop } from "../state/pop";
 import { ask } from "../host";
@@ -273,6 +280,13 @@ async function editCaption(card: string, src: string, nth: number, cap: string) 
     text: "Shown under the image, like a figure caption; $…$ for math",
   });
   if (v !== null && v !== cap) setCaption(card, src, nth, v);
+}
+/** An animated image's snapshot frame or always-play, into its Note's Markdown ({frame=N loop=true}; md/anim.ts) */
+export function setImagePlaybackIn(card: string, src: string, nth: number, p: ImagePlayback) {
+  const n = cardById(card)?.card;
+  if (n?.kind !== "note" || editing()?.id === card) return;
+  const md = setImagePlayback(n.md, src, nth, p);
+  if (md !== n.md) C.setNoteMarkdown(commandEnv, card, md);
 }
 function setCaption(card: string, src: string, nth: number, cap: string) {
   // 正在编辑这张 Note：先存下编辑器里的字，再改图注（编辑器里的文档不跟着外面的改动走）

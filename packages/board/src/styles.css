@@ -7397,3 +7397,75 @@ mark.wdiff {
   font: 10px var(--mono);
   color: var(--ink-2);
 }
+
+/* Animated images in a Note (md/anim.ts): the <img> keeps its place, clicks and menus but shows nothing; over it (no pointer
+   events) the GIF's canvas or the SVG inline, clipped to the image's rounded corners */
+.md img.md-animsrc {
+  opacity: 0;
+}
+.md-anim {
+  position: absolute;
+  pointer-events: none;
+  overflow: hidden;
+  white-space: normal;
+}
+.md-anim.sel {
+  box-shadow: 0 0 0 1.5px var(--accent);
+}
+/* The selected animated image's filmstrip (ui/AnimStrip.tsx): floats just under the image in the world layer, zooms with it */
+.animstrip {
+  position: absolute;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 5px 6px 5px 5px;
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: var(--sh-float);
+  font: 13px / 1.4 var(--sys);
+}
+.animstrip .ib svg {
+  width: 14px;
+  height: 14px;
+  fill: currentColor;
+}
+.animstrip .ib.loop[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--surface);
+}
+.animstrip .thumbs {
+  display: flex;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  padding: 2px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--hair) transparent;
+}
+.animstrip .thumbs > * {
+  flex: none;
+  display: block;
+  height: var(--th);
+  border-radius: 3px;
+  overflow: hidden;
+  opacity: 0.55;
+  background: var(--surface);
+  box-shadow: 0 0 0 1px var(--line);
+}
+.animstrip .thumbs > :hover {
+  opacity: 0.85;
+}
+.animstrip .thumbs > .on {
+  opacity: 1;
+  box-shadow: 0 0 0 1.5px var(--accent);
+}
+.animstrip .fno {
+  min-width: 36px;
+  padding: 0 2px;
+  text-align: right;
+  font: 500 11px var(--mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-2);
+}

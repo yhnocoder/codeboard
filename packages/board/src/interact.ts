@@ -78,6 +78,7 @@ import { CALL_DRAG_SLOP, DRAG_SLOP, track, undoGesture } from "./gesture";
 import { togglePreview } from "./state/subboards";
 import { cardSel } from "./cardsel";
 import { boardRef } from "./state/root";
+import { playerAt, selectAnim } from "./md/anim";
 
 const pt = (e: { clientX: number; clientY: number }) => ({ x: e.clientX, y: e.clientY });
 const local = (e: { clientX: number; clientY: number }) => boardPoint(pt(e));
@@ -182,6 +183,12 @@ const armed = boardRef<{ id: string; kind: "note" | "free"; x: number; y: number
 export function cardClick(e: MouseEvent, id: string) {
   const a = armed.v;
   armed.v = null;
+  // a click on an animated image in the one selected Note selects the image (its filmstrip), not the text: no editing yet
+  const anim = playerAt(e.target as Element);
+  if (anim && anim.key.card === id && !e.shiftKey && !e.metaKey && !e.ctrlKey && !justDragged()) {
+    if (isSel(id) && sel.cards.length === 1 && editing()?.id !== id) selectAnim(anim);
+    return;
+  }
   if (!a || a.id !== id || e.shiftKey || e.metaKey || e.ctrlKey) return;
   // 拖着选了字的不算；任务勾选框、引用的点击 MdStatic 自己处理了（停止冒泡，到不了这里）
   if (Math.hypot(e.clientX - a.x, e.clientY - a.y) >= DRAG_SLOP || !window.getSelection()?.isCollapsed) return;
