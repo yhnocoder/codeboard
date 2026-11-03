@@ -259,6 +259,14 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
 
   /** 藏了公共缩进时字往左挪了多少（和 .src.ded .l 的 text-indent 一样） */
   const shift = () => (ded() ? `${DED_PAD}px - ${ded()}ch` : "0px");
+  /** 跳到某行时字下那一笔朱笔（Ink Wash，themes.css .rowbg.flash::after）从哪到哪：第一个字到最后一个字，两头各多出半个字。
+   *  按字数乘字宽（ch，等宽字体）算，不量 DOM */
+  const flashSpan = (r: Extract<Row, { t: "line" }>) => {
+    const s = segById(r.seg);
+    const t = (s?.text[r.line - s.start] ?? "").replace(/\t/g, "    ").trimEnd();
+    const lead = t.length - t.trimStart().length;
+    return { "--fx": `calc(${shift()} + ${lead - 0.5}ch)`, "--fw": `${t.length - lead + 1}ch` };
+  };
   const alwaysNotes = (seg: string, line: number) =>
     act
       .sidenotesOf(c().id)
@@ -433,7 +441,11 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
                           flash: flashRows().has(`${c().id}:${l().seg}:${l().line}`),
                           vhi: vhi(l()),
                         }}
-                        style={{ top: `${ys()[i()].y}px`, height: `${ys()[i()].h}px` }}
+                        style={{
+                          top: `${ys()[i()].y}px`,
+                          height: `${ys()[i()].h}px`,
+                          ...(flashRows().has(`${c().id}:${l().seg}:${l().line}`) ? flashSpan(l()) : {}),
+                        }}
                       />
                     )}
                   </Show>

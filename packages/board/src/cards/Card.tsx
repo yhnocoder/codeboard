@@ -31,7 +31,7 @@ import {
 import { measuredHeight } from "../state/subboards";
 import { state, setSize, flows, placeOf, rectOf, twinsOf } from "../state/store";
 import { isSel, sel } from "../state/selection";
-import { editing, setEditing, dragging, popIn, sizeIn, walk, pingCard, dropTarget, staged } from "../state/ui";
+import { editing, setEditing, dragging, landing, popIn, sizeIn, walk, pingCard, dropTarget, staged } from "../state/ui";
 import { foldAt, toTitle, fadeAt, goneAt, skel } from "../state/fold";
 import { Icon } from "../ui/icons";
 import { isHidden } from "../state/sections";
@@ -40,6 +40,7 @@ import { CodeBody } from "./CodeBody";
 import { BoundStickers } from "../stickers/Picker";
 import { isBindHot, isBindAnchor } from "../state/stickers";
 import { fileHue, shape } from "../state/look";
+import { inkDark, paperOf } from "../state/ink";
 import { CompareBody } from "./CompareBody";
 import { NoteBody, WritingToolbar } from "./NoteBody";
 import { WebBody, LinksBody } from "./WebBody";
@@ -104,6 +105,7 @@ export function CardView(p: { card: Card }) {
     el = e;
     onCleanup(observeResize(e, () => queueMeasure(read, read)));
     popStyle(e);
+    paperStyle(e);
   };
   createEffect(() => {
     const pg = pingCard();
@@ -186,6 +188,20 @@ export function CardView(p: { card: Card }) {
       s.opacity = pi!.slide ? "" : String(Math.min(1, pi!.v * 1.8));
       s.transition = "none";
     });
+  // 毛边宣纸（look.ts 的 paper，Ink Wash）：卡的 ::before 画一张按这张卡的尺寸画的纸（state/ink.ts，同尺寸的卡共用一张）。
+  // 只在尺寸（取整后）、明暗变了时换图；没有卡框的（Text、Box、Mark、无背景）不画
+  const paper = createMemo(() => {
+    const k = c();
+    if (shape().paper !== "deckle" || (k.kind === "note" && k.look !== "note") || act.noBg(k)) return "";
+    const r = rectOf(k);
+    return paperOf(r.w, r.h, k.id, inkDark());
+  });
+  const paperStyle = (e: HTMLDivElement) =>
+    createRenderEffect(() => {
+      const u = paper();
+      if (u) e.style.setProperty("--deckle", u);
+      else e.style.removeProperty("--deckle");
+    });
   const dim = () => {
     const w = walk();
     if (!w) return false;
@@ -203,6 +219,7 @@ export function CardView(p: { card: Card }) {
   // 拖动中的卡、落点是所有卡共用的信号：直接写进 classList 的话，它们一变，241 张卡的整个 classList 都要重算一遍（松手那一帧 ~5ms）。
   // 先算成这张卡自己的真假，只有值真变了的那张卡才重算 classList
   const lift = createMemo(() => dragging().has(c().id));
+  const land = createMemo(() => landing().has(c().id));
   const ed = createMemo(() => editing()?.id === c().id);
   const drop = createMemo(() => {
     const d = dropTarget(),
@@ -229,6 +246,7 @@ export function CardView(p: { card: Card }) {
           sel: isSel(c().id),
           solo: sel.cards.length === 1,
           lift: lift(),
+          landing: land(),
           dim: dim(),
           locked: !!pl().locked,
           autoh: !pl().h,

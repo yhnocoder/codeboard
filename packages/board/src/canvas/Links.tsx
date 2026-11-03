@@ -31,7 +31,7 @@ import { LinkLabel, sizeWatcher, type WatchSize } from "./Labels";
 import { LinkStickers } from "../stickers/Picker";
 import { track, undoGesture } from "../gesture";
 import { isBindHot } from "../state/stickers";
-import { anchorOn, turnAnchor, type Side, clamp } from "@codeboard/core/canvas";
+import { anchorOn, turnAnchor, type Side, clamp, brushLine, brushSeed } from "@codeboard/core/canvas";
 import { type CarPose, type Road } from "./city";
 import { Car, Lane, trackTraffic } from "./Traffic";
 import { tiltOf } from "../state/tilt";
@@ -537,6 +537,16 @@ function linkDom(
       `ahead start ${hand() ? "chevron" : shape().head}${style()}${L.lost?.from ? " lost" : ""}${on() ? " on" : ""}`,
   );
   const portCls = createMemo(() => `port fc-${toHue()}${L.lost?.from ? " lost" : ""}`);
+  // 毛笔线（look.ts 的 stroke: "brush"，Ink Wash）：实线画成填充的笔画轮廓 + 三道飞白，描边的那条 .edge 留着（几何、导出照旧）但不画。
+  // 虚线、点线、点划线、对照线、手绘线照旧描边。只在这条线的几何变了时重算
+  const brush = createMemo(() => {
+    const gg = g();
+    if (!gg || shape().stroke !== "brush" || hand() || gutter()) return null;
+    if (L.style?.dash || L.gen || L.rpc || L.call?.ev?.kind === "manual") return null;
+    const k = L.style?.width === 1 ? 0.6 : L.style?.width === 3 ? 1.6 : 1;
+    return brushLine(gg.d, brushSeed(L.id), 1.5 * k);
+  });
+  const brushCls = createMemo(() => `brush${style()}${L.lost ? " lost" : ""}${on() ? " on" : ""}`);
   const line = (
     <g>
       <Show when={g()}>
@@ -549,7 +559,17 @@ function linkDom(
           data-merged={merged() ? "" : undefined}
           data-sides={r.sides()}
         >
-          <path class={cls()} d={g()!.d} />
+          <path class={brush() ? `${cls()} brushed` : cls()} d={g()!.d} />
+          <Show when={brush()}>
+            {(b) => (
+              <>
+                <path class={brushCls()} d={b().d} />
+                <Show when={b().fb}>
+                  <path class="feibai" d={b().fb} />
+                </Show>
+              </>
+            )}
+          </Show>
           <Show when={g()!.d2}>
             <path class={`${cls()} p2`} d={g()!.d2} />
           </Show>

@@ -1,4 +1,4 @@
-import { createMemo, Show, For } from "solid-js";
+import { createMemo, Show, For, onMount } from "solid-js";
 import {
   cardTitle,
   hiddenLang,
@@ -27,6 +27,8 @@ import { staleOf } from "../state/views";
 import { merged } from "../state/variants";
 import { justDragged } from "../interact";
 import { kbd } from "../keymap";
+import { shape } from "../state/look";
+import { reduceMotion } from "../state/motion";
 
 export function CodeHead(p: { card: CodeCard; col?: boolean }) {
   const c = () => p.card;
@@ -51,10 +53,18 @@ export function CodeHead(p: { card: CodeCard; col?: boolean }) {
   const up0 = () => (onVar() ? upstreamSegs(c())[0] : s0());
   const mine = createMemo(() => isMine(c()));
   const revLabel = () => (mixed() ? "Mixed" : versionLabel(up0()?.version, true));
+  // 编号在卡头已经在了之后才出现（连进了调用链、打开了编号）：主题要的话像印章落下（look.ts 的 stamp）。卡、白板一打开就有的不盖
+  let shown = false;
+  onMount(() => (shown = true));
+  const stamp = (e: HTMLElement) => {
+    if (!shown || !shape().stamp || reduceMotion()) return;
+    e.classList.add("stamp");
+    e.addEventListener("animationend", () => e.classList.remove("stamp"), { once: true });
+  };
   return (
     <div class="chead" data-drag>
       <Show when={node() && !state.host.settings.hideNumbers}>
-        <span class="step" data-tip="Click: change mark · Drag: move with the cards it calls">
+        <span ref={stamp} class="step" data-tip="Click: change mark · Drag: move with the cards it calls">
           <MarkView g={node()!} />
         </span>
       </Show>

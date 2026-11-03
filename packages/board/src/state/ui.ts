@@ -5,6 +5,7 @@ import { state } from "./store";
 import { rooted, boardRef, boardSignal, boardStore } from "./root";
 import type { StaticTextRange } from "@yhnocoder/markdown";
 import { FLASH_MS } from "./timing";
+import { shape } from "./look";
 
 // 临时展开的手动隐藏范围（Show）："seg:from"
 const [shown, setShown] = boardSignal<Set<string>>(new Set());
@@ -57,7 +58,7 @@ export function flash(card: string, seg: string, lines: number[]) {
     const s = new Set(flashRows());
     keys.forEach((k) => s.delete(k));
     setFlashRows(s);
-  }, FLASH_MS);
+  }, shape().flash ?? FLASH_MS);
 }
 const [pingCard, setPingCard] = boardSignal<{ id: string; n: number } | null>(null);
 export { pingCard };
@@ -140,6 +141,8 @@ export const [dropTarget, setDropTarget] = boardSignal<{
   cands?: string[];
 } | null>(null);
 export const [dragging, setDragging] = boardSignal<Set<string>>(new Set());
+/** Cards just put down after a drag: their lift shadow (and scale) settles back over LAND_MS (`.card.landing`) */
+export const [landing, setLanding] = boardSignal<Set<string>>(new Set());
 export const [marquee, setMarquee] = boardSignal<{ x: number; y: number; w: number; h: number } | null>(null);
 export const [rubber, setRubber] = boardSignal<{
   x1: number;
