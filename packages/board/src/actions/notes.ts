@@ -18,7 +18,7 @@ import { sel, select, clearSel, lineSel } from "../state/selection";
 import { toast } from "../state/toast";
 import { IS_MAC } from "@yhnocoder/markdown/ui";
 import { editing, liveNoteMd, setEditing } from "../state/ui";
-import { cardsMeasured } from "../state/measure";
+import { cardsMeasured, naturalSize, chromeOf, CODE_MAX } from "../state/measure";
 import { noteImageOf } from "./imagedata";
 import { quietHover } from "../state/camera";
 import { promptText, type Item } from "../ui/Menu";
@@ -110,12 +110,19 @@ export function addSidenote(n: Omit<Sidenote, "id">, view?: SegView) {
 }
 /** 一次加好几条（一个撤销步骤），返回新 id */
 export const addSidenotes = (list: Omit<Sidenote, "id">[]) => C.addSidenotes(commandEnv, list);
+/** How a code card is measured for keeping it fitted when an Always Show sidenote changes (commands keepFitted): the code area's
+ *  height that shows all its content at its width now */
+const fitMeasure: C.FitMeasure = {
+  measure: (id) => {
+    const n = naturalSize(id, "now");
+    return n?.body === undefined ? null : { h: n.h - chromeOf(id), body: n.body };
+  },
+  codeMax: CODE_MAX,
+};
 /** A Text sidenote's Markdown; written empty it goes */
-export const writeSidenote = (id: string, md: string) => C.writeSidenote(commandEnv, id, md);
-export const toggleAlwaysShow = (id: string) => C.toggleAlwaysShow(commandEnv, id);
-export function deleteSidenote(id: string) {
-  C.deleteItems(commandEnv, { sidenotes: [id] });
-}
+export const writeSidenote = (id: string, md: string) => C.writeSidenote(commandEnv, id, md, fitMeasure);
+export const toggleAlwaysShow = (id: string) => C.toggleAlwaysShow(commandEnv, id, fitMeasure);
+export const deleteSidenote = (id: string) => C.deleteSidenote(commandEnv, id, fitMeasure);
 /** Place on Board：Sidenote 变成卡，放在源卡旁边，自动连一条箭头（从原来挂的那一行连出） */
 export function placeSidenote(id: string) {
   const n = state.board.sidenotes.find((k) => k.id === id);

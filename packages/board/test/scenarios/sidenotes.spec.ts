@@ -9,6 +9,10 @@
 //                               bottom of the window, above them. Its text has no "Double-click to edit" tip
 //  sidenoteCardPreview          a Card sidenote's eye in the popover: resting on it shows, beside the popover, a copy of that Note card as
 //                               the board draws it, with its text; leaving the eye hides it
+//  sidenoteAlwaysShowRefits     a card fitted to its content (⌥F; taller than the cap, so its height is stored) grows and shrinks with
+//                               its sidenote as Always Show is turned off and on in the popover, and as the shown sidenote's text is
+//                               edited: it still ends right under its last line, no scrollbar; each is one undo step. A card with a
+//                               height set by hand keeps it
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { DEFAULT_SETTINGS, emptyBoard, type Board, type CodeCard } from "@codeboard/core";
@@ -112,9 +116,9 @@ const layout = (h: Host) =>
   h.page.evaluate(() => {
     const card = document.querySelector<HTMLElement>('.card[data-id="k1"]')!,
       b = card.querySelector<HTMLElement>(".cbody")!,
-      n = b.querySelector<HTMLElement>(".inote")!;
+      n = b.querySelector<HTMLElement>(".inote");
     const br = b.getBoundingClientRect(),
-      nr = n.getBoundingClientRect();
+      nr = n?.getBoundingClientRect() ?? { right: 0, height: 0 };
     const ls = [...b.querySelectorAll<HTMLElement>(".src > .l")];
     const last = ls[ls.length - 1].getBoundingClientRect();
     return {
@@ -299,5 +303,101 @@ test("sidenoteCardPreview", async () => {
       shown.w <= 444 &&
       shown.h <= 384,
     shown,
+  );
+});
+
+test("sidenoteAlwaysShowRefits", async () => {
+  const h = await open({ board: board(380), light, w: 1200, h: 1000, settings: { theme: "warm-ink" } as never });
+  await setWarmInk(h);
+  const pg = h.page;
+  await fit(h);
+  const snap = async () => ({
+    ...(await layout(h)),
+    ph: h.board().place.k1.h ?? null,
+    on: !!(h.board().sidenotes[0] as { alwaysShow?: boolean }).alwaysShow,
+  });
+  /** ends right under its last line (the code area's 8px bottom padding), no scrollbar */
+  const fits = (s: Awaited<ReturnType<typeof snap>>) =>
+    !s.vscroll && !s.hscroll && s.lastBottom <= s.visBottom && s.visBottom - s.lastBottom <= 9;
+  const fitted = await snap();
+  await save(h, "sidenotes-refit-on-before");
+  const toggle = async () => {
+    const was = !!(h.board().sidenotes[0] as { alwaysShow?: boolean }).alwaysShow;
+    if (!(await pg.locator(".pop.k-notes").count())) {
+      await pg.locator('.card[data-id="k1"] .mk[data-notes="n1"]').click();
+      await until(h, "the Sidenotes popover is open", () => pg.locator(".pop.k-notes").count());
+    }
+    await pg.locator(".pop.k-notes .sn-acts button", { hasText: "Always Show" }).click();
+    await until(
+      h,
+      "Always Show is toggled",
+      () => !!(h.board().sidenotes[0] as { alwaysShow?: boolean }).alwaysShow !== was,
+    );
+    await idle(h);
+    return snap();
+  };
+  const off = await toggle();
+  await pg.keyboard.press("Escape");
+  await idle(h);
+  await save(h, "sidenotes-refit-off-after");
+  const on = await toggle();
+  await pg.keyboard.press("Escape");
+  await idle(h);
+  await save(h, "sidenotes-refit-on-after");
+  // one undo step: Always Show and the height together
+  await pg.mouse.click(1150, 950);
+  await pg.keyboard.press("ControlOrMeta+z");
+  await until(h, "the toggle is undone", () => !(h.board().sidenotes[0] as { alwaysShow?: boolean }).alwaysShow);
+  await idle(h);
+  const undone = await snap();
+  await pg.keyboard.press("ControlOrMeta+Shift+z");
+  await until(h, "the toggle is redone", () => !!(h.board().sidenotes[0] as { alwaysShow?: boolean }).alwaysShow);
+  await idle(h);
+  // the shown sidenote's text written twice as long: the card grows with it
+  await pg.locator('.card[data-id="k1"] .mk[data-notes="n1"]').click();
+  await until(h, "the Sidenotes popover is open", () => pg.locator(".pop.k-notes").count());
+  await pg.locator(".pop.k-notes .sn-acts button", { hasText: "Edit" }).click();
+  const ta = pg.locator(".pop.k-notes .sn-edit textarea");
+  await ta.waitFor();
+  await pg.keyboard.press("ControlOrMeta+End");
+  await pg.keyboard.insertText(
+    " 每个阶段结束时，所有线程都要等其他线程用完共享内存里的这一块 tile，才能开始加载下一块。",
+  );
+  await pg.keyboard.press("Escape");
+  await until(h, "the longer text is saved", () => (h.board().sidenotes[0] as { md: string }).md.includes("下一块"));
+  await pg.keyboard.press("Escape");
+  await idle(h);
+  const longer = await snap();
+  check(
+    "sidenoteAlwaysShowRefits a fitted card grows and shrinks with its Always Show sidenote, in one undo step",
+    fits(fitted) &&
+      !off.on &&
+      fits(off) &&
+      off.h < fitted.h - 40 &&
+      on.on &&
+      fits(on) &&
+      Math.abs(on.h - fitted.h) <= 1 &&
+      !undone.on &&
+      Math.abs(undone.h - off.h) <= 1 &&
+      fits(undone) &&
+      fits(longer) &&
+      longer.h > on.h,
+    { fitted, off, on, undone, longer },
+  );
+  await h.close();
+  // a height set by hand (shorter than the content: the code scrolls) stays
+  const b = board(560);
+  b.place.k1.h = 300;
+  const h2 = await open({ board: b, light, w: 1200, h: 1000, settings: { theme: "warm-ink" } as never });
+  await setWarmInk(h2);
+  await h2.page.locator('.card[data-id="k1"] .mk[data-notes="n1"]').click();
+  await until(h2, "the Sidenotes popover is open", () => h2.page.locator(".pop.k-notes").count());
+  await h2.page.locator(".pop.k-notes .sn-acts button", { hasText: "Always Show" }).click();
+  await until(h2, "Always Show is off", () => !(h2.board().sidenotes[0] as { alwaysShow?: boolean }).alwaysShow);
+  await idle(h2);
+  check(
+    "sidenoteAlwaysShowRefits a card with a height set by hand keeps it",
+    h2.board().place.k1.h === 300,
+    h2.board().place.k1,
   );
 });
