@@ -130,6 +130,32 @@ describe("code card rules", () => {
     expect(b.cards.map((c) => (c.kind === "code" || c.kind === "image" ? c.bg : null))).toEqual([undefined, undefined]);
   });
 
+  it("an animated image card's frame and always-play are stored only when not the default, each change one step", () => {
+    const { b, env, log } = setup([code("a"), { id: "i", kind: "image", src: "x.gif" }]);
+    const img = () => b.cards[1] as Extract<Card, { kind: "image" }>;
+    C.setImageFrame(env, "i", 4);
+    expect([img().frame, log.edits]).toEqual([4, 1]);
+    // the same frame again, or a card that is not an image: nothing changes, no step
+    C.setImageFrame(env, "i", 4);
+    C.setImageFrame(env, "a", 2);
+    expect(log.edits).toBe(1);
+    expect("frame" in b.cards[0]).toBe(false);
+    C.setImageLoop(env, "i", true);
+    expect([img().loop, img().frame, log.edits]).toEqual([true, 4, 2]);
+    // turning it off stands it on the frame it stopped on, in the same step
+    C.setImageLoop(env, "i", false, 7);
+    expect([img().loop, img().frame, log.edits]).toEqual([undefined, 7, 3]);
+    // the first frame is the default: not written
+    C.setImageFrame(env, "i", 1);
+    expect(img()).toEqual({ id: "i", kind: "image", src: "x.gif", loop: undefined, frame: undefined });
+    expect(JSON.parse(JSON.stringify(img()))).toEqual({ id: "i", kind: "image", src: "x.gif" });
+    // another picture: the old frame goes, always-play stays
+    C.setImageFrame(env, "i", 3);
+    C.setImageLoop(env, "i", true);
+    C.replaceImage(env, { card: "i" }, "y.gif");
+    expect([img().src, img().frame, img().loop]).toEqual(["y.gif", undefined, true]);
+  });
+
   it("a new annotation replaces the ones it overlaps on its line and takes the segment's last colour", () => {
     const { b, env } = setup([code("a")]);
     segOf(b, "a").annots = [

@@ -8,9 +8,14 @@
 //   animSvgInline             an SVG animated by CSS keyframes and SMIL is drawn inline (shadow root), cleaned (no script,
 //                             handlers or outside references), paused on its step (data-steps), stepped by its filmstrip, and its
 //                             colours follow the board's light / dark theme; a still SVG stays an <img>
+//   animImageCardFilmstrip    an image card's GIF stands on the card's stored frame; selecting the card opens the same filmstrip
+//                             under the image (thumbs, ← →, Space, hidden zoomed out); deselecting stores the frame on the card;
+//                             the loop button stores loop and the GIF plays unselected with the badge; an HTML snapshot taken
+//                             while it plays has the plain <img>
+//   animImageCardSvg          an image card's animated SVG is drawn inline and paused, stepped by its filmstrip, the step stored
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { emptyBoard, type Board, type NoteCard } from "@codeboard/core";
+import { emptyBoard, type Board, type ImageCard, type NoteCard } from "@codeboard/core";
 import { gif } from "@codeboard/host/testing";
 import { put, shot, type Host } from "../harness";
 import { test, check, until, idle, hold, hostBoards } from "../fixtures";
@@ -80,38 +85,49 @@ function board(md: string): Board {
   return b;
 }
 async function animHost(md: string, o: { light?: boolean } = {}) {
-  const run = await hostBoards([board(md)], {
+  return (await openAnim(board(md), o)).h;
+}
+/** The board on the real host with the pictures in its assets/; Export's save dialog writes into a temp file (exported: what was
+ *  written, once it is) */
+async function openAnim(b: Board, o: { light?: boolean } = {}) {
+  const run = await hostBoards([b], {
     page: { light: o.light ?? true, w: 1100, h: 760, settings: { theme: "warm-ink" } },
   });
-  const dir = run.host.store.assetsDir();
+  const dir = run.host.store.assetsDir(),
+    saved = path.join(run.host.store.dir(), "export.html");
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, GIF_FILE), GIF);
   fs.writeFileSync(path.join(dir, SVG_ANIM_FILE), SVG_ANIM);
   fs.writeFileSync(path.join(dir, SVG_STILL_FILE), SVG_STILL);
-  const h = await run.open("b1");
+  run.ws.ui = { ...run.ws.ui, saveDialog: async () => saved };
+  const h = await run.open(b.id);
   await idle(h);
-  return h;
+  return { h, exported: () => (fs.existsSync(saved) ? fs.readFileSync(saved, "utf8") : undefined) };
 }
 const noteMd = (h: Host) => (h.board().cards.find((c) => c.id === "n1") as NoteCard).md;
 
-/** What the GIF's overlay shows: the frame whose bar is drawn (from the canvas's pixels), and whether the <img> is hidden */
-const gifShown = (h: Host) =>
-  h.page.evaluate((y) => {
-    const host = document.querySelector<HTMLElement>(".card .nbody .md-anim");
-    const cv = host?.shadowRoot?.querySelector("canvas");
-    const img = document.querySelector<HTMLImageElement>(".card .nbody img");
-    if (!cv || !cv.width) return { frame: -1, hidden: false, over: false };
-    const d = cv.getContext("2d", { willReadFrequently: true })!.getImageData(0, y, cv.width, 1).data;
-    let n = 0;
-    for (let i = 0; i < cv.width; i++) if (d[i * 4] > 150 && d[i * 4 + 1] < 140) n++;
-    const a = host!.getBoundingClientRect(),
-      b = img!.getBoundingClientRect();
-    return {
-      frame: n ? Math.round(n / 8) - 1 : -1,
-      hidden: getComputedStyle(img!).opacity === "0",
-      over: Math.abs(a.left - b.left) < 1 && Math.abs(a.top - b.top) < 1 && Math.abs(a.width - b.width) < 1,
-    };
-  }, BAR_Y);
+/** What the GIF's overlay shows: the frame whose bar is drawn (from the canvas's pixels), and whether the <img> is hidden. in: the
+ *  element the image is in (a Note's body, an image card's box) */
+const gifShown = (h: Host, inside = ".card .nbody") =>
+  h.page.evaluate(
+    ([y, inside]) => {
+      const host = document.querySelector<HTMLElement>(`${inside} .md-anim`);
+      const cv = host?.shadowRoot?.querySelector("canvas");
+      const img = document.querySelector<HTMLImageElement>(`${inside} img`);
+      if (!cv || !cv.width) return { frame: -1, hidden: false, over: false };
+      const d = cv.getContext("2d", { willReadFrequently: true })!.getImageData(0, y, cv.width, 1).data;
+      let n = 0;
+      for (let i = 0; i < cv.width; i++) if (d[i * 4] > 150 && d[i * 4 + 1] < 140) n++;
+      const a = host!.getBoundingClientRect(),
+        b = img!.getBoundingClientRect();
+      return {
+        frame: n ? Math.round(n / 8) - 1 : -1,
+        hidden: getComputedStyle(img!).opacity === "0",
+        over: Math.abs(a.left - b.left) < 1 && Math.abs(a.top - b.top) < 1 && Math.abs(a.width - b.width) < 1,
+      };
+    },
+    [BAR_Y, inside] as const,
+  );
 const strip = (h: Host) =>
   h.page.evaluate(() => {
     const s = document.querySelector<HTMLElement>(".animstrip");
@@ -329,6 +345,149 @@ test("animSvgInline", async () => {
   }).catch(() => null);
   check("anim-svg-follows-theme-dark", !!dark && dark.fill === hexRgb(dark.ink) && dark.fill !== s4?.fill, dark, s4);
   await shot(h, "104-svg-filmstrip-dark");
+});
+
+/** A board with one image card (cards/Card.tsx), its playback as given */
+function cardBoard(c: Partial<ImageCard> & { src: string }): Board {
+  const b = emptyBoard("b1", "anim");
+  b.cam = { x: 0, y: 0, z: 1 };
+  put(b, { id: "i1", kind: "image", ...c } as ImageCard, 120, 80, W);
+  return b;
+}
+const CARD = '.card[data-id="i1"] .imgb';
+const imageCard = (h: Host) => h.board().cards.find((c) => c.id === "i1") as ImageCard;
+
+test("animImageCardFilmstrip", async () => {
+  const { h, exported } = await openAnim(cardBoard({ src: GIF_FILE, frame: 6 }));
+  const pg = h.page;
+  const a = await until(h, "the card's GIF is drawn", async () => {
+    const s = await gifShown(h, CARD);
+    return s.frame >= 0 ? s : null;
+  }).catch(() => null);
+  await hold(h, GIF_MIN_DELAY * 4, "a playing GIF would have moved on by several frames");
+  const b = await gifShown(h, CARD);
+  check("anim-card-stands-on-stored-frame", !!a && a.hidden && a.over && a.frame === 5 && b.frame === 5, { a, b });
+
+  // selecting the card opens the filmstrip under its image
+  const box = (await pg.locator(CARD).boundingBox())!;
+  await pg.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  const s0 = await until(h, "the filmstrip opens", () => strip(h)).catch(() => null);
+  const sb = await pg.locator(".animstrip").boundingBox();
+  check("anim-card-strip-shows-frames", s0?.thumbs === N && s0.fno === `6/${N}` && s0.on === 5, s0);
+  check(
+    "anim-card-strip-under-image",
+    !!sb &&
+      Math.abs(sb.y - (box.y + box.height) - 8) < 2 &&
+      Math.abs(sb.x + sb.width / 2 - (box.x + box.width / 2)) < 2,
+    { sb, box },
+  );
+  await shot(h, "106-card-gif-filmstrip");
+
+  await pg.locator(".animstrip .thumbs > *").nth(9).click();
+  const at10 = await until(h, "the GIF shows frame 10", async () =>
+    (await gifShown(h, CARD)).frame === 9 ? true : null,
+  ).catch(() => false);
+  await pg.keyboard.press("ArrowRight");
+  const r = await until(h, "→ steps to frame 11", async () =>
+    (await gifShown(h, CARD)).frame === 10 ? true : null,
+  ).catch(() => false);
+  check("anim-card-thumb-and-arrows", at10 && r && h.board().place.i1.x === 120, await gifShown(h, CARD));
+  await pg.keyboard.press(" ");
+  const moved = await until(h, "Space plays", async () => ((await gifShown(h, CARD)).frame > 10 ? true : null)).catch(
+    () => false,
+  );
+  await pg.keyboard.press(" ");
+  const p1 = (await gifShown(h, CARD)).frame;
+  await hold(h, GIF_MIN_DELAY * 3, "a paused GIF stays on its frame");
+  const p2 = (await gifShown(h, CARD)).frame;
+  check("anim-card-space-plays-and-pauses", moved && p1 === p2, { moved, p1, p2 });
+
+  for (let i = 0; i < 4; i++) await pg.keyboard.press("Control+Minus");
+  await idle(h);
+  const small = await strip(h);
+  for (let i = 0; i < 4; i++) await pg.keyboard.press("Control+Equal");
+  await idle(h);
+  check("anim-card-strip-hides-zoomed-out", small === null && (await strip(h)) !== null, small);
+
+  // deselecting stores the frame it stopped on on the card
+  await pg.mouse.click(900, 700);
+  const f = await until(h, "the frame is saved", () => (imageCard(h).frame !== 6 ? imageCard(h).frame : null)).catch(
+    () => imageCard(h).frame,
+  );
+  check("anim-card-deselect-saves-frame", f === p2 + 1 && (await strip(h)) === null, { f, p2 });
+
+  // the loop button: always plays, unselected, with the badge on hover; stored as loop on the card
+  await pg.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  await until(h, "the filmstrip opens", () => strip(h));
+  await pg.locator(".animstrip .loop").click();
+  const loop = await until(h, "loop is saved", () => imageCard(h).loop ?? null).catch(() => false);
+  await pg.mouse.click(700, 450);
+  await until(h, "the strip closes", async () => ((await strip(h)) === null ? true : null));
+  const f0 = (await gifShown(h, CARD)).frame;
+  const plays = await until(h, "the always-playing card moves on unselected", async () =>
+    (await gifShown(h, CARD)).frame !== f0 ? true : null,
+  ).catch(() => false);
+  check("anim-card-loop-plays-unselected", loop === true && plays, { loop, f0 });
+  await pg.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  const badge = await until(h, "the always-play badge shows on hover", () =>
+    pg.evaluate((q) => {
+      const b = document.querySelector(`${q} .md-anim`)?.shadowRoot?.querySelector<HTMLElement>(".b");
+      return b && getComputedStyle(b).opacity === "1" ? b.textContent : null;
+    }, CARD),
+  ).catch(() => null);
+  check("anim-card-loop-badge-on-hover", badge === "Always playing", badge);
+  await shot(h, "106-card-loop-badge", "now");
+
+  // an HTML snapshot taken while it plays has the plain picture, without the overlay
+  await pg.locator('.bbar [aria-label="More"]').click();
+  await pg.locator(".ctx button", { hasText: "Export…" }).click();
+  await pg.locator(".xdlg").waitFor();
+  await pg.locator(".xdlg .seg button", { hasText: "HTML Snapshot" }).click();
+  await pg.locator(".xdlg .seg button", { hasText: "Whole Board" }).click();
+  await pg.locator(".xdlg button.def").click();
+  const html = (await until(h, "the snapshot is written", exported, 20000).catch(() => "")) ?? "";
+  const imgs = html.match(/<img\b[^>]*>/g) ?? [];
+  check(
+    "anim-card-export-plain-img",
+    plays &&
+      imgs.length === 1 &&
+      /src="data:image\/gif;base64,/.test(imgs[0]) &&
+      !/class="[^"]*md-anim/.test(html) &&
+      !/md-animsrc/.test(imgs[0]),
+    imgs.map((i) => i.slice(0, 120)),
+  );
+});
+
+test("animImageCardSvg", async () => {
+  const { h } = await openAnim(cardBoard({ src: SVG_ANIM_FILE }));
+  const inner = () =>
+    h.page.evaluate((q) => {
+      const root = document.querySelector(`${q} .md-anim`)?.shadowRoot?.querySelector(".v")?.shadowRoot;
+      const svg = root?.querySelector("svg");
+      if (!root || !svg) return null;
+      const anims = root.getAnimations();
+      const r = svg.querySelector<SVGRectElement>("rect.hop")!;
+      return {
+        paused: anims.length > 0 && anims.every((x) => x.playState === "paused") && svg.animationsPaused(),
+        x: Math.round(new DOMMatrix(getComputedStyle(r).transform).m41),
+        script: !!root.querySelector("script") || svg.hasAttribute("onload") || !!(window as any).__svgRan,
+      };
+    }, CARD);
+  const s = await until(h, "the card's SVG is drawn inline", inner).catch(() => null);
+  check("anim-card-svg-inline-paused", !!s && s.paused && s.x === 0 && !s.script, s);
+  const box = (await h.page.locator(CARD).boundingBox())!;
+  await h.page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  const st = await until(h, "the filmstrip opens", () => strip(h)).catch(() => null);
+  check("anim-card-svg-strip-steps", st?.thumbs === 8 && st.fno === "1/8", st);
+  await h.page.locator(".animstrip .thumbs > *").nth(3).click();
+  const s4 = await until(h, "the SVG stands on step 4", async () => {
+    const v = await inner();
+    return v?.x === 120 ? v : null;
+  }).catch(() => null);
+  await shot(h, "106-card-svg-filmstrip");
+  await h.page.mouse.click(900, 700);
+  const f = await until(h, "the step is saved", () => imageCard(h).frame ?? null).catch(() => null);
+  check("anim-card-svg-step-saved", !!s4 && f === 4, { s4, f });
 });
 
 function hexRgb(c: string) {

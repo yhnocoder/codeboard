@@ -3828,6 +3828,8 @@ mark.wdiff {
 }
 
 .imgb {
+  /* the animated image's overlay (md/anim.ts) is placed in it and clipped to its corners */
+  position: relative;
   flex: none;
   overflow: hidden;
   border-radius: var(--r-card);
@@ -7425,7 +7427,8 @@ mark.wdiff {
 
 /* Animated images in a Note (md/anim.ts): the <img> keeps its place, clicks and menus but shows nothing; over it (no pointer
    events) the GIF's canvas or the SVG inline, clipped to the image's rounded corners */
-.md img.md-animsrc {
+.md img.md-animsrc,
+.imgb img.md-animsrc {
   opacity: 0;
 }
 .md-anim {

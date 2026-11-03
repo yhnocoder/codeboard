@@ -112,6 +112,7 @@ function normSeg(s: Segment) {
 
 function normCard(c: Card) {
   dropFalse(c, ["tilt"]);
+  if (c.kind === "image") dropFalse(c, ["loop"]);
   if (c.kind !== "code") return;
   dropFalse(c, ["keepOld"]);
   if ((c.bg as boolean | undefined) === true) delete c.bg; // 代码卡默认有卡框：只存 false

@@ -1065,6 +1065,24 @@ describe("board action edits (core edit)", () => {
     expect(danglingRefs(b)).toEqual([]);
   });
 
+  it("imageIntoNote keeps an animated image's frame and always-play in the image's attribute block", () => {
+    const b = base([]);
+    placeCards(
+      b,
+      [
+        { card: { id: "n", kind: "note", md: "Top", look: "note" }, place: { x: 0, y: 0, w: 300 } },
+        { card: { id: "i", kind: "image", src: "a.gif", frame: 5, loop: true }, place: { x: 400, y: 0, w: 200 } },
+        { card: { id: "j", kind: "image", src: "b.gif", frame: 2 }, place: { x: 400, y: 300, w: 200 } },
+      ],
+      { copy: false },
+    );
+    expect(imageIntoNote(b, "i", "n", "assets/a.gif")).toBe(true);
+    expect(imageIntoNote(b, "j", "n", "assets/b.gif")).toBe(true);
+    expect((b.cards[0] as { md: string }).md).toBe(
+      "Top\n\n![](assets/a.gif){frame=5 loop=true}\n\n![](assets/b.gif){frame=2}",
+    );
+  });
+
   it("imageIntoNote at a block's start puts the image there as its own paragraph", () => {
     const b = base([]);
     const md = "# Plan\n\nStep one\n\n- a\n- b\n";

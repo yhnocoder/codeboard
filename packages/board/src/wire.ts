@@ -7,7 +7,7 @@ import { onHost } from "./hostio";
 import { installKeys } from "./interact";
 import { connectHost, followHostTheme, type Transport } from "./host";
 import { noteHighlight } from "./cm/load";
-import { resolveCardRef, setImagePlaybackIn, wireFreshCards, wireVariantViews } from "./actions";
+import { resolveCardRef, setCardPlayback, setImagePlaybackIn, wireFreshCards, wireVariantViews } from "./actions";
 import { installAnims } from "./md/anim";
 import { checkEdits } from "./state/changes";
 import { measure } from "./state/measure";
@@ -40,7 +40,9 @@ export function wireBoard(t: Transport, o: BoardOptions): Markdown {
   wireSectionEasing();
   wireVariantViews();
   wireFreshCards();
-  installAnims({ save: (k, p) => setImagePlaybackIn(k.card, k.src, k.nth, p) });
+  installAnims({
+    save: (k, p) => (k.whole ? setCardPlayback(k.card, p) : setImagePlaybackIn(k.card, k.src, k.nth, p)),
+  });
   followHostTheme();
   wireInk();
   return md;

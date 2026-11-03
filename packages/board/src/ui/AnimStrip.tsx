@@ -1,4 +1,4 @@
-// The filmstrip of the selected animated image in a Note (md/anim.ts): it floats just under the image, over whatever is below it
+// The filmstrip of the selected animated image in a Note or image card (md/anim.ts): it floats just under the image, over whatever is below it
 // (the caption, the next paragraph, past the card's edge), and never changes the card's size. It lives in the board's world layer,
 // so it zooms with the board like the card does; zoomed out to an overview it is not shown. Play / pause, a still per frame
 // (clicking one stands the image on it), the frame number, and the loop button that makes the image always play
@@ -90,10 +90,12 @@ function Strip(props: { p: Player }) {
     return k;
   }, -1);
   // as wide as the Note's text allows (up to MAX_W), centred under the image but kept over the text
+  // (an image card has no text around its image: centred under it)
   const place = () => {
     const { img, body: b } = box(),
       w = Math.min(MAX_W, Math.max(MIN_W, b.w - 16)),
-      x = Math.max(b.x + 8, Math.min(b.x + b.w - 8 - w, img.x + img.w / 2 - w / 2));
+      mid = img.x + img.w / 2 - w / 2,
+      x = body ? Math.max(b.x + 8, Math.min(b.x + b.w - 8 - w, mid)) : mid;
     return { left: `${x}px`, top: `${img.y + img.h + 8}px`, width: `${w}px` };
   };
   return (

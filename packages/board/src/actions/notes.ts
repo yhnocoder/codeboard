@@ -288,6 +288,11 @@ export function setImagePlaybackIn(card: string, src: string, nth: number, p: Im
   const md = setImagePlayback(n.md, src, nth, p);
   if (md !== n.md) C.setNoteMarkdown(commandEnv, card, md);
 }
+/** The same for an image card: its frame and loop fields */
+export function setCardPlayback(card: string, p: ImagePlayback) {
+  if (p.loop !== undefined) C.setImageLoop(commandEnv, card, p.loop, p.frame);
+  else if (p.frame !== undefined) C.setImageFrame(commandEnv, card, p.frame);
+}
 function setCaption(card: string, src: string, nth: number, cap: string) {
   // 正在编辑这张 Note：先存下编辑器里的字，再改图注（编辑器里的文档不跟着外面的改动走）
   if (editing()?.kind === "note" && editing()?.id === card) setEditing(null);

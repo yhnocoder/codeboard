@@ -1,12 +1,12 @@
-// Animated images in a Note's static view: GIFs, and SVGs that animate without script (md/animsvg.ts). Each one stands still on
-// a frame (its snapshot: {frame=N} in the Markdown, the first by default) unless it is set to always play ({loop=true}), or it is
-// selected and played. The <img> stays where it is for layout, clicks, menus and dragging, with nothing of it shown; drawn over it
+// Animated images in a Note's static view, and image cards' images: GIFs, and SVGs that animate without script (md/animsvg.ts).
+// Each one stands still on a frame (its snapshot: {frame=N} in the Markdown or the card's frame, the first by default) unless it
+// is set to always play ({loop=true}, the card's loop), or it is selected and played. The <img> stays where it is for layout, clicks, menus and dragging, with nothing of it shown; drawn over it
 // (positioned, no pointer events) is a canvas the GIF's frames are decoded into (ImageDecoder, off the main thread), or the SVG
 // inline in a shadow root, whose CSS / SMIL timeline is paused and moved. A GIF that has one frame, an SVG that does not animate
 // or an image whose bytes cannot be read (the web) stays the plain <img>.
 // Playing images stop off screen and while the camera moves, like animated stickers; reduced motion never plays one by itself.
 // The filmstrip of the selected image is ui/AnimStrip.tsx; selecting, keys and saving the playback are wired in installAnims
-import { createEffect, createRoot, createSignal, on, type Accessor } from "solid-js";
+import { createEffect, createRoot, createSignal, on, untrack, type Accessor } from "solid-js";
 import { ask } from "../host";
 import { camMoving } from "../state/camera";
 import { reduceMotion } from "../state/motion";
@@ -17,8 +17,9 @@ import { noteSrcOf } from "./images";
 import { GIF_MIN_DELAY } from "../state/timing";
 import { clockMs, inlineSvg } from "./animsvg";
 
-/** One image in a Note: its address as written and which of the Note's images with that address it is (from 0) */
-export type AnimKey = { card: string; src: string; nth: number };
+/** One image in a Note: its address as written and which of the Note's images with that address it is (from 0). whole: the image
+ *  is an image card's (cards/Card.tsx), its playback stored on the card, and the card is all there is to select */
+export type AnimKey = { card: string; src: string; nth: number; whole?: true };
 const same = (a: AnimKey, b: AnimKey) => a.card === b.card && a.src === b.src && a.nth === b.nth;
 const idOf = (k: AnimKey) => `${k.card}\n${k.nth}\n${k.src}`;
 
@@ -177,8 +178,8 @@ export abstract class Player {
     this.host.style.borderRadius = getComputedStyle(this.img).borderRadius;
     this.img.before(this.host);
     this.img.classList.add("md-animsrc");
-    this.img.addEventListener("pointerenter", this.hover);
-    this.img.addEventListener("pointerleave", this.hover);
+    this.hoverEl.addEventListener("pointerenter", this.hover);
+    this.hoverEl.addEventListener("pointerleave", this.hover);
     this.place();
     watch(this.img, this);
     watch(this.box, this);
@@ -190,6 +191,10 @@ export abstract class Player {
     bumpPlayers(0);
   }
   private hover = (e: PointerEvent) => this.host.classList.toggle("hover", e.type === "pointerenter");
+  /** An image card's <img> takes no pointer events (the card is dragged by its box): the box is what is hovered */
+  private get hoverEl(): HTMLElement {
+    return this.key.whole ? this.box : this.img;
+  }
   private seen(v: boolean) {
     this.visible = v;
     this.sync();
@@ -254,8 +259,8 @@ export abstract class Player {
     unwatch(this.box, this);
     unwatch(this.host, this);
     seen?.unobserve(this.host);
-    this.img.removeEventListener("pointerenter", this.hover);
-    this.img.removeEventListener("pointerleave", this.hover);
+    this.hoverEl.removeEventListener("pointerenter", this.hover);
+    this.hoverEl.removeEventListener("pointerleave", this.hover);
     this.img.classList.remove("md-animsrc");
     this.host.remove();
     return this.mounted ? { frame: this.frame(), want: this.want, ...this.passOn() } : undefined;
@@ -560,24 +565,34 @@ class SvgPlayer extends Player {
 
 /** Draws the animated images of a Note's static view `box` (just painted) as players; the ones it had before are dropped */
 export function attachAnims(box: HTMLElement, card: string) {
-  const old = new Map<string, Handoff>();
-  for (const p of byView.get(box) ?? []) {
-    const h = p.dispose();
-    if (h) old.set(idOf(p.key), h);
-  }
-  byView.delete(box);
-  const list: Player[] = [],
-    nth = new Map<string, number>();
+  const nth = new Map<string, number>(),
+    found: [AnimKey, HTMLImageElement][] = [];
   for (const img of box.querySelectorAll("img")) {
     const shown = img.getAttribute("src");
     if (!shown || img.closest(".md-html")) continue;
     const src = noteSrcOf(shown),
       k = nth.get(src) ?? 0;
     nth.set(src, k + 1);
-    const kind = kindOf(src);
-    if (!kind) continue;
-    const key = { card, src, nth: k };
-    list.push(new (kind === "gif" ? GifPlayer : SvgPlayer)(key, img, box, old.get(idOf(key))));
+    found.push([{ card, src, nth: k }, img]);
+  }
+  attach(box, found);
+}
+/** An image card's image `img` (in its box), whose address on the board is src (assets/… or a data: URL); its <img> carries the
+ *  card's frame and loop as a Note image's does (data-frame, data-loop). Called again when any of those change */
+export function attachCardAnim(box: HTMLElement, card: string, img: HTMLImageElement, src: string) {
+  attach(box, [[{ card, src, nth: 0, whole: true }, img]]);
+}
+function attach(box: HTMLElement, found: [AnimKey, HTMLImageElement][]) {
+  const old = new Map<string, Handoff>();
+  for (const p of byView.get(box) ?? []) {
+    const h = p.dispose();
+    if (h) old.set(idOf(p.key), h);
+  }
+  byView.delete(box);
+  const list: Player[] = [];
+  for (const [key, img] of found) {
+    const kind = kindOf(key.src);
+    if (kind) list.push(new (kind === "gif" ? GifPlayer : SvgPlayer)(key, img, box, old.get(idOf(key))));
   }
   if (list.length) byView.set(box, list);
   bumpPlayers(0);
@@ -662,8 +677,17 @@ export function installAnims(o: { save: SavePlayback }) {
     createEffect(() => {
       const k = selKey();
       if (!k) return;
-      if (editing()?.id === k.card) deselectAnim(true);
+      // editing an image card's description writes nothing of its image: the frame is saved as on any deselect
+      if (editing()?.id === k.card) deselectAnim(!k.whole);
       else if (sel.cards.length !== 1 || sel.cards[0] !== k.card) deselectAnim();
+    });
+    // an image card is its image: selecting the card alone selects that
+    createEffect(() => {
+      const id = sel.cards.length === 1 ? sel.cards[0] : undefined;
+      if (!id || editing()?.id === id) return;
+      players();
+      for (const l of byView.values())
+        for (const p of l) if (p.key.whole && p.key.card === id && p.mounted) return untrack(() => selectAnim(p));
     });
   });
   window.addEventListener(
@@ -671,7 +695,8 @@ export function installAnims(o: { save: SavePlayback }) {
     (e) => {
       const p = selectedAnim(),
         t = e.target as Element | null;
-      if (p && t !== p.img && !t?.closest?.(".animstrip")) deselectAnim();
+      // an image card's image goes with the card's selection only
+      if (p && !p.key.whole && t !== p.img && !t?.closest?.(".animstrip")) deselectAnim();
     },
     true,
   );

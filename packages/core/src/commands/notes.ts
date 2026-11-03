@@ -165,10 +165,44 @@ export function replaceImage(env: CommandEnv, ref: { card: string; note?: string
   env.edit((b) => {
     const c = findCard(b, ref.card)?.card;
     if (old === undefined) {
-      if (c?.kind === "image") c.src = src;
+      if (c?.kind === "image") {
+        c.src = src;
+        // another picture: the old one's frame means nothing for it
+        delete c.frame;
+      }
     } else if (c?.kind === "note") c.md = c.md.split(old).join(src);
   });
 }
+
+/** The frame an animated image card stands still on, from 1 (null or 1: the first, which is not written) */
+export function setImageFrame(env: CommandEnv, id: string, frame: number | null) {
+  const f = frameField(frame),
+    c0 = imageCardOf(env.board(), id);
+  if (!c0 || c0.frame === f) return;
+  env.edit((b) => {
+    const c = imageCardOf(b, id);
+    if (c) c.frame = f;
+  });
+}
+
+/** An animated image card always plays, or no longer does. frame (as setImageFrame; undefined: kept) goes in the same step, so
+ *  turning it off stands it on the frame it stopped on */
+export function setImageLoop(env: CommandEnv, id: string, loop: boolean, frame?: number | null) {
+  const c0 = imageCardOf(env.board(), id),
+    f = frame === undefined ? c0?.frame : frameField(frame);
+  if (!c0 || (!!c0.loop === loop && c0.frame === f)) return;
+  env.edit((b) => {
+    const c = imageCardOf(b, id);
+    if (!c) return;
+    c.loop = loop || undefined;
+    c.frame = f;
+  });
+}
+const frameField = (n: number | null) => (n !== null && n >= 1.5 ? Math.round(n) : undefined);
+const imageCardOf = (b: Board, id: string) => {
+  const c = findCard(b, id)?.card;
+  return c?.kind === "image" ? c : undefined;
+};
 
 /** A Note's Markdown replaced as given (a mark toggled, a caption set, Auto Focus's markup); unlike writeNote it never goes */
 export function setNoteMarkdown(env: CommandEnv, id: string, md: string) {

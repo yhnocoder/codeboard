@@ -29,6 +29,7 @@ import {
   type LinkSide,
 } from "@codeboard/core";
 import { measuredHeight } from "../state/subboards";
+import { attachCardAnim, detachAnims } from "../md/anim";
 import { state, setSize, flows, placeOf, rectOf, twinsOf } from "../state/store";
 import { isSel, sel } from "../state/selection";
 import { editing, setEditing, dragging, landing, popIn, sizeIn, walk, pingCard, dropTarget, staged } from "../state/ui";
@@ -778,15 +779,28 @@ function Desc(p: { id: string; desc?: string }) {
 }
 
 function ImageView(p: { card: ImageCard }) {
-  const src = () =>
-    p.card.src.startsWith("data:") || /^https?:/.test(p.card.src)
-      ? p.card.src
-      : `${state.host.assetBase}/${p.card.src}`;
+  const own = () => p.card.src.startsWith("data:") || /^https?:/.test(p.card.src);
+  const src = () => (own() ? p.card.src : `${state.host.assetBase}/${p.card.src}`);
+  let box!: HTMLDivElement, img!: HTMLImageElement;
+  // a GIF or animated SVG plays as a Note's image does (md/anim.ts), standing on the card's frame unless it always plays
+  createEffect(() => {
+    const at = own() ? p.card.src : `assets/${p.card.src}`;
+    void [p.card.frame, p.card.loop];
+    attachCardAnim(box, p.card.id, img, at);
+  });
+  onCleanup(() => detachAnims(box));
   return (
     <>
       {/* 跟 Note 一样没有标题栏：整张图都能拖，菜单用右键 */}
-      <div class="imgb" data-drag>
-        <img src={src()} alt={p.card.alt ?? ""} draggable={false} />
+      <div class="imgb" data-drag ref={box}>
+        <img
+          ref={img}
+          src={src()}
+          alt={p.card.alt ?? ""}
+          draggable={false}
+          data-frame={p.card.frame}
+          data-loop={p.card.loop ? "" : undefined}
+        />
       </div>
       <Desc id={p.card.id} desc={p.card.desc} />
     </>

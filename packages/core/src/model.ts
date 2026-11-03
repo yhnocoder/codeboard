@@ -157,7 +157,17 @@ export type NoteLayout = {
 /** 没有卡框、字直接写在画布上的（Text、Box、Mark） */
 export const frameless = (c: Card | undefined): c is NoteCard => c?.kind === "note" && c.look !== "note";
 /** 图片：默认无背景（只显示图片本身），bg = 有卡片外框 */
-export type ImageCard = CardBase & { kind: "image"; src: string; alt?: string; bg?: boolean }; // src = assets/ 下的文件名，或 data: URL
+export type ImageCard = CardBase & {
+  kind: "image";
+  /** assets/ 下的文件名，或 data: URL */
+  src: string;
+  alt?: string;
+  bg?: boolean;
+  /** An animated image (GIF, animated SVG) stands still on this frame, from 1 (as a Note image's {frame=N}); none: the first */
+  frame?: number;
+  /** The animated image always plays (a Note image's {loop=true}); none: it shows its frame and plays only while selected */
+  loop?: true;
+};
 
 /** 网页的元信息：插件端贴链接时抓一次，图片存进 assets/，离线也能显示 */
 export type WebMeta = {

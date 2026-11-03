@@ -136,7 +136,15 @@ const Card = v.variant("kind", [
     msg: opt(obj({ where: opt(str) })),
     mdLayout: opt(NoteLayout),
   }),
-  obj({ ...base, kind: v.literal("image"), src: str, alt: opt(str), bg: opt(bool) }),
+  obj({
+    ...base,
+    kind: v.literal("image"),
+    src: str,
+    alt: opt(str),
+    bg: opt(bool),
+    frame: opt(v.pipe(num, v.integer(), v.minValue(1))),
+    loop: opt(yes),
+  }),
   obj({
     ...base,
     kind: v.literal("web"),

@@ -203,6 +203,21 @@ describe("loadBoardFile", () => {
     b.cards[2].tilt = "yes";
     expect(() => checkBoard(b)).toThrow(/cards\.2\.tilt/);
   });
+  it("keeps an image card's frame and always-play; loop: false counts as none, a frame that is not a whole number from 1 is refused", () => {
+    const b: any = full();
+    const i = b.cards.findIndex((c: any) => c.kind === "image");
+    b.cards[i].frame = 3;
+    b.cards[i].loop = true;
+    let l: any = loadBoardFile(structuredClone(b));
+    expect([l.cards[i].frame, l.cards[i].loop]).toEqual([3, true]);
+    b.cards[i].loop = false;
+    l = loadBoardFile(structuredClone(b));
+    expect("loop" in l.cards[i]).toBe(false);
+    for (const bad of [0, 1.5, "2"]) {
+      b.cards[i].frame = bad;
+      expect(() => checkBoard(b)).toThrow(new RegExp(`cards\\.${i}\\.frame`));
+    }
+  });
   it("keeps a sub-board card's two preview columns and drops the old one-column value", () => {
     const b: any = {
       ...emptyBoard("b", "b"),
