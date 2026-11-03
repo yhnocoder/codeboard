@@ -162,7 +162,11 @@ test("markCard", async () => {
   // double-click edits in place
   await pg.locator(`${card("m3")} .tx`).dblclick();
   await pg.waitForSelector(`${card("m3")} .md-pm`, { timeout: 5000 });
+  // End is the browser moving the caret: within ProseMirror's focus window it is undone, and ProseMirror reads it from the
+  // asynchronous selectionchange (the caret stays where the double-click put it: "先挑这一 ok批")
+  await focusSettled(pg);
   await pg.keyboard.press("End");
+  await pmHasSelection(pg);
   await pg.keyboard.type(" ok");
   await pg.mouse.click(700, 880);
   await until(
