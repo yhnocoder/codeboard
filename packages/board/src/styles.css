@@ -577,19 +577,40 @@ textarea {
 .card:is(.text, .nobg, .lo-map, .lift)::before {
   box-shadow: none;
 }
+/* 拿起来（真的拖起来了才算，点一下不算）——浮起和落回各一条曲线 */
+:root {
+  --lift-in: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --lift-out: cubic-bezier(0.3, 0.6, 0.3, 1);
+}
+/* 拿起来阴影在 200ms 里升起来，放下后（.landing）在 LAND_MS 里落回去。
+   过渡只写在这两个状态上：模糊那层换档（地图档）时照旧不渐变 */
+.card.lift::before,
 .card.lift::after {
-  transition-duration: calc(var(--t) * 120ms);
+  transition: box-shadow calc(var(--t) * 200ms) var(--lift-in);
+}
+.card.landing::before,
+.card.landing::after {
+  transition: box-shadow calc(var(--t) * 240ms) var(--lift-out);
 }
 .card.sel {
   --ring: 0 0 0 1.5px var(--accent), 0 0 0 4.5px color-mix(in srgb, var(--accent) 16%, transparent), var(--sh-ring);
 }
 .card.lift {
-  scale: 1.012;
+  scale: 1.008;
   --ring: var(--sh-lift);
   transition:
-    box-shadow calc(var(--t) * 120ms) var(--out),
-    scale calc(var(--t) * 120ms) var(--out),
+    box-shadow calc(var(--t) * 200ms) var(--lift-in),
+    scale calc(var(--t) * 200ms) var(--lift-in),
     opacity calc(var(--t) * 160ms) var(--out);
+  z-index: 10;
+}
+/* 刚放下：缩放和阴影顺着落回去，不用卡平时那条带回弹的缩放曲线；落完之前还压在别的卡上面 */
+.card.landing {
+  transition:
+    box-shadow calc(var(--t) * 240ms) var(--lift-out),
+    scale calc(var(--t) * 240ms) var(--lift-out),
+    opacity calc(var(--t) * 240ms) var(--out),
+    filter calc(var(--t) * 240ms);
   z-index: 10;
 }
 .card.sel.lift {

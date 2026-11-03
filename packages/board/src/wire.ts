@@ -14,6 +14,7 @@ import { measure } from "./state/measure";
 import { ghosts } from "./gesture";
 import { vscodeKey } from "./ui/vscodekeys";
 import { wireSectionEasing } from "./state/sections";
+import { wireInk } from "./state/ink";
 
 export type { Transport };
 export type BoardOptions = {
@@ -41,5 +42,6 @@ export function wireBoard(t: Transport, o: BoardOptions): Markdown {
   wireFreshCards();
   installAnims({ save: (k, p) => setImagePlaybackIn(k.card, k.src, k.nth, p) });
   followHostTheme();
+  wireInk();
   return md;
 }

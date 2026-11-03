@@ -158,6 +158,7 @@ const LIVE_CLASSES = [
   "far",
   "sel",
   "lift",
+  "landing",
   "hov",
   "editing",
   "lo-ov",

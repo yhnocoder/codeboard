@@ -259,7 +259,7 @@
       "files": [
         "packages/board/src/canvas/{Links,Labels}.tsx",
         "packages/board/src/canvas/routes.ts",
-        "packages/core/src/canvas/{labelpos,route,hand}.ts",
+        "packages/core/src/canvas/{labelpos,route,hand,brush}.ts",
         "packages/board/src/actions/{links,annots}.ts",
         "packages/core/src/commands/links.ts",
         "packages/core/src/linklabel.ts",
@@ -334,14 +334,14 @@
         "packages/board/src/themes.css",
         "packages/board/src/settings.css",
         "packages/board/src/scenes/**",
-        "packages/board/src/state/{look,tilt}.ts",
+        "packages/board/src/state/{look,tilt,ink}.ts",
         "packages/board/src/canvas/city.ts",
         "packages/board/src/canvas/Traffic.tsx",
         "packages/board/src/ui/Settings.tsx",
         "packages/board/src/actions/settings.ts",
         "packages/host/src/settings.ts",
         "packages/core/src/settings.ts",
-        "packages/board/test/scenarios/{themes,tilt}.spec.ts"
+        "packages/board/test/scenarios/{themes,tilt,ink-wash}.spec.ts"
       ],
       "scenarios": [
         "settingsPage",

@@ -1,0 +1,378 @@
+// Ink Wash (水墨): what the look draws with images and motions of its own (state/ink.ts, themes.css, Links.tsx brush lines).
+//  inkWashLook             — brush arrows (filled outline + dry-brush hairlines, no stroked line), rice-paper cards (one image per size,
+//                            card size unchanged), vermilion seals, corner brackets on the selected card, call strokes, the ink toolbar,
+//                            a toast clear of the toolbar; light and dark, with screenshots (INK_SHOTS: a copy elsewhere)
+//  inkWashFlashBrush       — jumping to a line sweeps a brush under its text: from its first to its last character, half a
+//                            character more at each end, so a longer line gets a longer stroke
+//  inkWashCallStrokeStable — each call gets one of five strokes, picked by the called word: the same word, the same stroke
+//  inkWashMotions          — the stamp, menu (opening and rolling back up), delete and toast motions run (transform / opacity / clip / mask only) and finish;
+//                            mid-animation frames as screenshots
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { shot, symCard, findSym, put, OUT } from "../harness";
+import { DEFAULT_SETTINGS, emptyBoard, type Board } from "@codeboard/core";
+import { test, open, check, idle, until, type Host } from "../fixtures";
+
+const card = (q: string) => {
+  const s = findSym(q);
+  return symCard(s.f, s.s);
+};
+
+function board(): Board {
+  const b = emptyBoard("b1", "nano-vllm · 推理一步");
+  const step = card("LLMEngine.step"),
+    sch = card("Scheduler.schedule"),
+    run = card("ModelRunner.run");
+  put(b, step, 60, 110, 560);
+  put(b, sch, 760, 60, 480);
+  put(b, run, 760, 470, 480);
+  b.place[sch.id].h = 300;
+  b.place[run.id].h = 160;
+  b.cards.push({
+    id: "n1",
+    kind: "note",
+    look: "note",
+    md: "## 一步推理\n\n先 schedule 挑出这一批，==prefill 和 decode 不混在一批里==；再交给 ModelRunner 跑模型、采样。",
+  } as never);
+  b.place.n1 = { x: 80, y: 440, w: 340 };
+  const s0 = step.segments[0];
+  const at = (re: RegExp) => s0.start + s0.text.findIndex((t) => re.test(t));
+  b.links.push({
+    id: "L1",
+    kind: "call",
+    from: { card: step.id, seg: s0.id, line: at(/scheduler\.schedule\(/) },
+    to: { card: sch.id },
+    call: { name: "schedule", col: 37 },
+  } as never);
+  b.links.push({
+    id: "L2",
+    kind: "call",
+    from: { card: step.id, seg: s0.id, line: at(/model_runner\.call\(/) },
+    to: { card: run.id },
+    call: { name: "call", col: 38 },
+  } as never);
+  b.cam = { x: 0, y: 0, z: 1 };
+  return b;
+}
+
+const ink = { theme: "ink-wash" } as never;
+
+/** A copy of the screenshots somewhere else too (INK_SHOTS), e.g. for review */
+function keep(name: string) {
+  const dir = process.env.INK_SHOTS;
+  if (!dir) return;
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    fs.copyFileSync(path.join(OUT, `${name}.png`), path.join(dir, `${name}.png`));
+  } catch {
+    /* no such folder here: harness output only */
+  }
+}
+
+/** Freezes every running animation and transition at t ms (Web Animations), so a screenshot shows that moment */
+const freezeAt = (h: Host, t: number) =>
+  h.page.evaluate((t) => {
+    const as = document.getAnimations();
+    for (const a of as) {
+      a.pause();
+      a.currentTime = t;
+    }
+    return as.map((a) => (a as CSSAnimation).animationName ?? (a as CSSTransition).transitionProperty);
+  }, t);
+const finish = (h: Host) => h.page.evaluate(() => document.getAnimations().forEach((a) => a.finish()));
+
+test("inkWashLook", async () => {
+  const res: Record<string, unknown> = {};
+  let ok = true;
+  // the cards' sizes in Warm Ink: Ink Wash's paper is drawn outside the card and must not change them
+  const w = await open({ board: board(), light: true, w: 1300, h: 820 });
+  await idle(w);
+  const sizes = () =>
+    w.page.evaluate(() =>
+      [...document.querySelectorAll<HTMLElement>(".card[data-id]")].map((c) => [c.offsetWidth, c.offsetHeight]),
+    );
+  const warm = await sizes();
+  await w.page.context().close();
+  for (const lt of [true, false]) {
+    const h = await open({ board: board(), light: lt, w: 1300, h: 820, settings: ink });
+    await idle(h);
+    const r = await h.page.evaluate(() => {
+      const cs = (e: Element, p?: string) => getComputedStyle(e, p);
+      const links = [...document.querySelectorAll<SVGGElement>("g.link")].map((g) => {
+        const b = g.querySelector<SVGPathElement>("path.brush");
+        return {
+          brush: !!b && /Z$/.test(b.getAttribute("d") ?? "") && cs(b).fill !== "none",
+          dash: b ? cs(b).strokeDasharray : "",
+          edge: cs(g.querySelector("path.edge")!).stroke,
+          feibai: g.querySelectorAll("path.feibai").length,
+        };
+      });
+      const cards = [...document.querySelectorAll<HTMLElement>(".card[data-id]")].map((c) => ({
+        paper: c.style.getPropertyValue("--deckle").startsWith('url("data:image/svg+xml'),
+        before: cs(c, "::before").backgroundImage.startsWith('url("data:image/svg+xml'),
+        bg: cs(c).backgroundColor,
+        size: [c.offsetWidth, c.offsetHeight],
+      }));
+      const step = document.querySelector(".chead > .step");
+      const calls = [...document.querySelectorAll<HTMLElement>(".src .call")];
+      const pill = document.querySelector(".bbar .pill")!;
+      return {
+        links,
+        cards,
+        seal: step
+          ? {
+              color: cs(step).color,
+              bg: cs(step).backgroundColor,
+              mask: cs(step).maskImage.split("data:image").length - 1,
+            }
+          : null,
+        calls: calls.length,
+        callStroke: calls.every((c) => /\bcv[0-4]\b/.test(c.className) && cs(c).backgroundImage.startsWith("url(")),
+        callDeco: calls.every((c) => cs(c).textDecorationLine === "none"),
+        // the stroke and its frost are drawn under the buttons, masked to the stroke's outline
+        bar: {
+          img: cs(pill, "::before").backgroundImage.startsWith("url("),
+          mask: cs(pill, "::before").maskImage.startsWith("url("),
+          frost: cs(pill, "::before").backdropFilter,
+          shadow: cs(pill).boxShadow,
+        },
+        // the header: a faint ink wash fading to the right, no ink line under it
+        heads: [...document.querySelectorAll<HTMLElement>(".card:not(.nobg) > .cface > .chead")].map((e) => ({
+          wash: cs(e).backgroundImage.startsWith("linear-gradient("),
+          line: cs(e, "::after").content,
+        })),
+      };
+    });
+    // select a card: the corners come in
+    await h.page.locator(".card.ccard .ctitle").nth(1).click();
+    await h.page.locator(".card.ccard.sel").waitFor();
+    const sel = await h.page.evaluate(() => {
+      const c = document.querySelector(".card.sel")!,
+        a = getComputedStyle(c, "::after");
+      return {
+        img: a.borderImageSource.startsWith('url("data:image/svg+xml'),
+        outset: a.borderImageOutset,
+        ring: a.boxShadow,
+        anim: document.getAnimations().some((x) => (x as CSSAnimation).animationName === "ink-corners"),
+      };
+    });
+    await h.post({ type: "toast", text: "Copied 3 cards" });
+    await h.page.locator(".toast").waitFor();
+    await idle(h);
+    const toast = await h.page.evaluate(() => {
+      const t = document.querySelector(".toast")!.getBoundingClientRect(),
+        b = document.querySelector(".bbar .pill")!.getBoundingClientRect();
+      return { gap: Math.round(b.top - t.bottom) };
+    });
+    const name = `ink-wash-board-${lt ? "light" : "dark"}`;
+    await shot(h, name);
+    keep(name);
+    const sizesNow = r.cards.map((c) => c.size);
+    const one =
+      r.links.length === 2 &&
+      r.links.every((l) => l.brush && l.feibai === 1 && l.edge === "none" && (l.dash === "none" || l.dash === "")) &&
+      r.cards.every((c) => c.paper && c.before && c.bg === "rgba(0, 0, 0, 0)") &&
+      JSON.stringify(sizesNow) === JSON.stringify(warm) &&
+      !!r.seal &&
+      r.seal.bg === "rgba(0, 0, 0, 0)" &&
+      r.seal.mask === 2 &&
+      r.calls > 0 &&
+      r.callStroke &&
+      r.callDeco &&
+      r.bar.img &&
+      r.bar.mask &&
+      r.bar.frost.includes("blur(7px)") &&
+      r.bar.shadow === "none" &&
+      r.heads.length > 0 &&
+      r.heads.every((x) => x.wash && x.line === "none") &&
+      sel.img &&
+      sel.outset === "7px" &&
+      sel.anim &&
+      toast.gap >= 4;
+    ok &&= one;
+    res[lt ? "light" : "dark"] = { ...r, links: r.links, warm, sel, toast };
+    await h.page.context().close();
+  }
+  check("inkWashLook", ok, res);
+});
+
+test("inkWashFlashBrush", async () => {
+  // clicking a call that is already expanded flashes its line and jumps to its card (actions/flow.ts expandCall)
+  const flashOf = async (word: string) => {
+    const h = await open({ board: board(), light: true, w: 1300, h: 820, settings: ink });
+    await idle(h);
+    await h.page
+      .locator(".card.ccard")
+      .first()
+      .locator(".src .call", { hasText: new RegExp(`^${word}$`) })
+      .click();
+    await until(h, `the ${word} line flashes`, () => h.page.locator(".rowbg.flash").count());
+    const r = await h.page.evaluate(() => {
+      const row = document.querySelector<HTMLElement>(".rowbg.flash")!,
+        a = getComputedStyle(row, "::after");
+      // the code font's character width, measured here only to check the stroke (the board computes it in ch, unmeasured)
+      const s = document.createElement("span");
+      s.textContent = "0".repeat(100);
+      s.style.cssText = "position:absolute;visibility:hidden;white-space:pre";
+      row.appendChild(s);
+      const ch = s.getBoundingClientRect().width / 100;
+      s.remove();
+      const anims = document.getAnimations().map((x) => (x as CSSAnimation).animationName);
+      return { width: parseFloat(a.width), left: parseFloat(a.left), ch, anims, img: a.backgroundImage.slice(0, 30) };
+    });
+    if (word === "schedule") await shot(h, "ink-wash-flash", "now");
+    await h.page.context().close();
+    return r;
+  };
+  const a = await flashOf("schedule"),
+    b = await flashOf("call");
+  // seqs, is_prefill = self.scheduler.schedule()  /  token_ids = self.model_runner.call("run", seqs, is_prefill)
+  const ra = "seqs, is_prefill = self.scheduler.schedule()".length + 1,
+    rb = 'token_ids = self.model_runner.call("run", seqs, is_prefill)'.length + 1;
+  check(
+    "inkWashFlashBrush",
+    Math.abs(a.width - ra * a.ch) < 1 &&
+      Math.abs(b.width - rb * b.ch) < 1 &&
+      a.left === b.left &&
+      a.anims.includes("ink-sweep") &&
+      a.img.startsWith('url("data:image/svg+xml'),
+    { a, b, ra, rb },
+  );
+});
+
+test("inkWashCallStrokeStable", async () => {
+  const b = board();
+  // a second copy of LLMEngine.step: its calls are the same words
+  const twin = card("LLMEngine.step");
+  put(b, twin, 60, 760, 560);
+  const h = await open({ board: b, light: true, w: 1300, h: 1300, settings: ink });
+  await idle(h);
+  const r = await h.page.evaluate(() => {
+    const by = new Map<string, Set<string>>();
+    for (const c of document.querySelectorAll<HTMLElement>(".src .call")) {
+      const v = [...c.classList].find((k) => /^cv[0-4]$/.test(k)) ?? "none";
+      const w = c.textContent ?? "";
+      if (!by.has(w)) by.set(w, new Set());
+      by.get(w)!.add(`${v} ${getComputedStyle(c).backgroundImage.slice(0, 60)}`);
+    }
+    return [...by].map(([w, s]) => [w, [...s]] as const);
+  });
+  await h.page.context().close();
+  const kinds = new Set(r.flatMap(([, s]) => s.map((x) => x.split(" ")[0])));
+  check("inkWashCallStrokeStable", r.length >= 4 && r.every(([, s]) => s.length === 1) && kinds.size >= 2, r);
+});
+
+test("inkWashMotions", async () => {
+  const res: Record<string, unknown> = {};
+  const h = await open({
+    board: board(),
+    light: true,
+    w: 1300,
+    h: 820,
+    settings: { ...ink, hideNumbers: true } as never,
+  });
+  await idle(h);
+  // what Ink Wash's own animations (and the menu's transitions) animate
+  const props = () =>
+    h.page.evaluate(() =>
+      document
+        .getAnimations()
+        .filter(
+          (a) =>
+            (a as CSSAnimation).animationName?.startsWith("ink-") ||
+            (a.effect as KeyframeEffect).target?.classList.contains("ctx"),
+        )
+        .flatMap((a) =>
+          (a.effect as KeyframeEffect)
+            .getKeyframes()
+            .flatMap((k) => Object.keys(k))
+            .filter((p) => !["offset", "easing", "composite", "computedOffset"].includes(p)),
+        ),
+    );
+  const cheap = (ps: string[]) =>
+    ps.every((p) => ["transform", "opacity", "clipPath", "clip-path", "scale", "translate", "--ink-r"].includes(p));
+  // the step seals appear on cards already on the board: they stamp in
+  await h.post({
+    type: "host",
+    host: { settings: { ...DEFAULT_SETTINGS, theme: "ink-wash", hideNumbers: false } } as never,
+  });
+  await h.page.locator(".chead > .step.stamp").first().waitFor();
+  res.stampProps = await props();
+  res.stamp = await freezeAt(h, 60);
+  await shot(h, "ink-wash-motion-stamp", "now");
+  keep("ink-wash-motion-stamp");
+  await finish(h);
+  await until(h, "the stamps are over", async () => !(await h.page.locator(".chead > .step.stamp").count()));
+  // the context menu unrolls from the top
+  await h.page.locator(".card.ccard .ctitle").first().click({ button: "right" });
+  await h.page.locator(".ctx.open").waitFor();
+  res.menuProps = await props();
+  res.menu = await freezeAt(h, 70);
+  await shot(h, "ink-wash-motion-menu", "now");
+  keep("ink-wash-motion-menu");
+  await finish(h);
+  // …and rolls back up when it closes: a copy left where it was (.ctx.closing) runs the close and goes
+  await h.page.evaluate(() => {
+    const w = window as unknown as { __close?: string[] };
+    const mo = new MutationObserver((ms) => {
+      const c = ms.flatMap((m) => [...m.addedNodes]).find((n) => (n as Element).classList?.contains("closing"));
+      if (!c) return;
+      mo.disconnect();
+      requestAnimationFrame(() => {
+        w.__close = (c as Element).getAnimations().map((a) => (a as CSSTransition).transitionProperty);
+      });
+    });
+    mo.observe(document.body, { childList: true, subtree: true });
+  });
+  await h.page.keyboard.press("Escape");
+  await until(h, "the menu closed", async () => !(await h.page.locator(".ctx.open").count()));
+  await until(h, "the close ran", () => h.page.evaluate(() => !!(window as unknown as { __close?: string[] }).__close));
+  res.menuClose = await h.page.evaluate(() => (window as unknown as { __close: string[] }).__close);
+  await until(h, "the closing copy is gone", async () => !(await h.page.locator(".ctx").count()));
+  await h.page.mouse.click(1200, 30);
+  // a deleted Note's ink disperses
+  await h.page.locator('.card[data-id="n1"] .chead').click();
+  await h.page.locator('.card.sel[data-id="n1"]').waitFor();
+  await h.page.keyboard.press("Delete");
+  await until(h, "the ghost starts", () => h.page.locator(".card.ghost-out.go").count());
+  res.deleteProps = await props();
+  res.delete = await freezeAt(h, 220);
+  await shot(h, "ink-wash-motion-delete", "now");
+  keep("ink-wash-motion-delete");
+  await finish(h);
+  await until(h, "the ghost is gone", async () => !(await h.page.locator(".card.ghost-out").count()), 3000);
+  // jumping to a line: the brush sweeps
+  await h.page
+    .locator(".card.ccard")
+    .first()
+    .locator(".src .call", { hasText: /^schedule$/ })
+    .click();
+  await until(h, "the line flashes", () => h.page.locator(".rowbg.flash").count());
+  res.flashProps = await props();
+  res.flash = await freezeAt(h, 200);
+  await shot(h, "ink-wash-motion-flash", "now");
+  keep("ink-wash-motion-flash");
+  await finish(h);
+  // a toast unrolls and its seal stamps in
+  await h.post({ type: "toast", text: "Copied 3 cards" });
+  await h.page.locator(".toast").waitFor();
+  res.toastProps = await props();
+  res.toast = await freezeAt(h, 90);
+  await shot(h, "ink-wash-motion-toast", "now");
+  keep("ink-wash-motion-toast");
+  await h.page.context().close();
+  const names = (k: string) => (res[k] as string[]).join(" ");
+  check(
+    "inkWashMotions",
+    names("stamp").includes("ink-stamp") &&
+      names("menu").includes("clip-path") &&
+      names("menuClose").includes("clip-path") &&
+      names("delete").includes("ink-disperse") &&
+      names("flash").includes("ink-sweep") &&
+      names("toast").includes("ink-toast") &&
+      ["stampProps", "menuProps", "deleteProps", "flashProps", "toastProps"].every(
+        (k) => (res[k] as string[]).length && cheap(res[k] as string[]),
+      ),
+    res,
+  );
+});

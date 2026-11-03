@@ -96,10 +96,10 @@ describe("renderLine", () => {
       { text: "()" },
     ];
     expect(renderLine(toks, [{ col: 9, end: 12, idx: 0 }])).toBe(
-      'x = <span class="self">self</span><span class="p">.</span><span class="call" data-c="0"><span class="fn">f&lt;g</span></span>()',
+      'x = <span class="self">self</span><span class="p">.</span><span class="call cv2" data-c="0"><span class="fn">f&lt;g</span></span>()',
     );
     expect(renderLine([{ text: "abcdef", cls: "fn" }], [{ col: 2, end: 4, idx: 3 }])).toBe(
-      '<span class="fn">ab</span><span class="call" data-c="3"><span class="fn">cd</span></span><span class="fn">ef</span>',
+      '<span class="fn">ab</span><span class="call cv2" data-c="3"><span class="fn">cd</span></span><span class="fn">ef</span>',
     );
   });
   it("cuts the trailing comment", () => {
