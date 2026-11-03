@@ -197,7 +197,7 @@
       "files": [
         "packages/board/src/cards/NoteBody.tsx",
         "packages/board/src/ui/{Md,Editable}.tsx",
-        "packages/board/src/ui/pops/notes.tsx",
+        "packages/board/src/ui/pops/{notes,cardpeek}.tsx",
         "packages/board/src/md/{lazy,load,refs,context}.ts",
         "packages/board/src/actions/notes.ts",
         "packages/core/src/commands/notes.ts",

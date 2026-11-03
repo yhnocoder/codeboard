@@ -7,6 +7,8 @@
 //                               cap for cards without a stored height
 //  sidenotePopoverBelowLines    clicking a gutter marker opens the Sidenotes popover below the lines it marks (not over them); near the
 //                               bottom of the window, above them. Its text has no "Double-click to edit" tip
+//  sidenoteCardPreview          a Card sidenote's eye in the popover: resting on it shows, beside the popover, a copy of that Note card as
+//                               the board draws it, with its text; leaving the eye hides it
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { DEFAULT_SETTINGS, emptyBoard, type Board, type CodeCard } from "@codeboard/core";
@@ -239,5 +241,63 @@ test("sidenotePopoverBelowLines", async () => {
     "sidenotePopoverBelowLines the popover leaves the marked lines visible: below them, above near the bottom",
     ok,
     res,
+  );
+});
+
+test("sidenoteCardPreview", async () => {
+  const b = board(560);
+  put(
+    b,
+    {
+      id: "nc",
+      kind: "note",
+      look: "note",
+      md: "## 声明变量所处的内存\n\n把 `Mds` 和 `Nds` 声明为 shared memory 数组。",
+    } as never,
+    700,
+    40,
+    360,
+  );
+  b.sidenotes.push({ id: "n3", kind: "card", card: "nc", at: { card: "k1", seg: "s1", lines: [4, 4] } });
+  const h = await open({ board: b, light, w: 1400, h: 900, settings: { theme: "warm-ink" } as never });
+  await setWarmInk(h);
+  const pg = h.page;
+  await pg.locator('.card[data-id="k1"] .mk[data-notes="n3"]').click();
+  await until(h, "the Sidenotes popover is open", () => pg.locator(".pop.k-notes").count());
+  await idle(h);
+  const eye = pg.locator(".pop.k-notes .sn-peek");
+  if ((await eye.count()) !== 1) {
+    check("sidenoteCardPreview the Card sidenote has a preview eye", false);
+    return;
+  }
+  await eye.hover();
+  await pg.locator(".cpeek.show").waitFor({ timeout: 5000 });
+  await idle(h);
+  const shown = await pg.evaluate(() => {
+    const pk = document.querySelector<HTMLElement>(".cpeek")!,
+      pop = document.querySelector<HTMLElement>(".pop.k-notes")!.getBoundingClientRect(),
+      r = pk.getBoundingClientRect();
+    return {
+      text: pk.textContent ?? "",
+      // a copy of the card as the board draws it, which nothing looking for the board's cards finds
+      card: !!pk.querySelector(".card .nbody") && !pk.querySelector("[data-id]"),
+      w: Math.round(r.width),
+      h: Math.round(r.height),
+      beside: r.left >= pop.right || r.right <= pop.left,
+      cards: document.querySelectorAll('.card[data-id="nc"]').length,
+    };
+  });
+  await save(h, "sidenotes-card-preview", ".pop.k-notes, .cpeek");
+  await pg.mouse.move(20, 880);
+  await until(h, "the preview is gone", async () => (await pg.locator(".cpeek").count()) === 0);
+  check(
+    "sidenoteCardPreview resting on the eye shows the card beside the popover, leaving hides it",
+    shown.text.includes("shared memory") &&
+      shown.card &&
+      shown.beside &&
+      shown.cards === 1 &&
+      shown.w <= 444 &&
+      shown.h <= 384,
+    shown,
   );
 });

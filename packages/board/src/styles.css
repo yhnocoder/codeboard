@@ -3001,6 +3001,40 @@ textarea {
   font-weight: 500;
   color: var(--ink);
 }
+/* A Card sidenote's preview (ui/pops/cardpeek.tsx): a copy of the card as the board draws it, scaled to fit, beside the popover.
+   Hidden until placed; clipped at the bottom with a fade when the card is taller than the preview */
+.cpeek {
+  position: fixed;
+  z-index: 36;
+  padding: 12px;
+  border-radius: 14px;
+  background: var(--canvas);
+  box-shadow:
+    var(--sh-float),
+    0 18px 40px -16px rgba(0, 0, 0, 0.25);
+  visibility: hidden;
+  animation: popin calc(var(--t) * 150ms) var(--out);
+}
+.cpeek.show {
+  visibility: visible;
+}
+.cpeek-stage {
+  position: relative;
+  overflow: hidden;
+}
+.cpeek-stage:empty {
+  display: none;
+}
+.cpeek.cut .cpeek-stage {
+  -webkit-mask: linear-gradient(#000 calc(100% - 28px), transparent);
+  mask: linear-gradient(#000 calc(100% - 28px), transparent);
+}
+.cpeek-alt {
+  max-width: 360px;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--ink);
+}
 .sn-text {
   padding: 4px 12px 8px;
   font-size: 12.5px;
