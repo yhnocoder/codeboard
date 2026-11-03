@@ -17,3 +17,5 @@ Changes that need code or styles updated when upgrading from 0.1.1:
 Added:
 
 - `MdEditorHandle.type(text)`: types text at the selection as if on the keyboard (key bindings and input rules run; a newline is Enter), for keys typed before the editor was mounted.
+- `tableCaption` / `setTableCaption`: a table's caption, stored as a Pandoc `Table: …` line right after the table.
+- `imagePlayback` / `setImagePlayback` and the types `ImageAttrs` / `ImagePlayback`: an animated image's snapshot frame and "always play" flag, stored in the image's attribute block (`{width=40% frame=12 loop=true}`).
