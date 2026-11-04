@@ -466,7 +466,8 @@ test("subboardLinkAttachesToFrame", async () => {
     await page.mouse.move(port.x + port.width / 2, port.y + port.height / 2);
     await page.mouse.down();
     await page.mouse.move(mini.x + mini.width / 2, mini.y + mini.height / 2, { steps: 10 });
-    res.frameHot = await page.locator('.card.drop-hot[data-id="fSch"]').count();
+    // 箭头头落到框上：框整张卡是目标（放大 + 选中），不是框里的某一块
+    res.frameHot = await page.locator('.card.aim.sel[data-id="fSch"]').count();
     res.miniHot = await page.locator(".skel .hot").count();
     await page.mouse.up();
     const made = () => t.store.peek("bMain")!.links.find((l) => l.from.card === "mNote");
