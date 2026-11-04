@@ -1,8 +1,8 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { shot, symCard, findSym, put, OUT } from "../harness";
-import { emptyBoard, type Board } from "@codeboard/core";
-import { test, open, check, light, idle } from "../fixtures";
+import { DEFAULT_SETTINGS, THEMES, emptyBoard, type Board, type CodeCard, type NoteCard } from "@codeboard/core";
+import { test, open, check, light, idle, until, hostBoards } from "../fixtures";
 
 const card = (q: string) => {
   const s = findSym(q);
@@ -1067,4 +1067,72 @@ test("themesKeepCardHeights", async () => {
       Object.values(off).every((d) => d.every((v) => Math.abs(v) <= 2 * base.metrics[0] + 1)),
     { res, off },
   );
+});
+
+/** A Note's code block is not a code card: clicking its calls goes nowhere, so no theme marks them, neither shown nor while
+ *  the Note is edited (Ink Wash drew its vermilion brush stroke under A and B in a Note, #125); a Free code card with the
+ *  same code keeps its call marks */
+test("noteCodeCallsUnmarked", async () => {
+  const CODE = ["for(unsigned int i = 0; i < 16; ++i) {", "    A(i);", "    B(i);", "}"];
+  const b = emptyBoard("b1", "note code calls");
+  const md = `循环展开：\n\n\`\`\`cpp\n${CODE.join("\n")}\n\`\`\`\n\n其中 A(i) 是某些操作。`;
+  put(b, { id: "n1", kind: "note", look: "note", md } as NoteCard, 60, 60, 420);
+  const seg = {
+    id: "sf1",
+    src: { kind: "free" },
+    path: "",
+    lang: "cpp",
+    start: 1,
+    end: CODE.length,
+    text: CODE.slice(),
+  };
+  put(b, { id: "f1", kind: "code", segments: [{ ...seg, version: { kind: "none" } }] } as CodeCard, 540, 60, 420);
+  b.cam = { x: 0, y: 0, z: 1 };
+  const run = await hostBoards([b], { page: { light: true, w: 1040, h: 460, settings: { theme: "warm-ink" } } });
+  const h = await run.open(b.id);
+  const pg = h.page;
+  /** each .call under sel: is anything drawn under it (an underline, or a theme's stroke as a background image) */
+  const marks = (sel: string) =>
+    pg.evaluate(
+      (sel) =>
+        [...document.querySelectorAll(`${sel} .call`)].map((e) => {
+          const s = getComputedStyle(e);
+          return { t: e.textContent, deco: s.textDecorationLine, bg: s.backgroundImage.slice(0, 24) };
+        }),
+      sel,
+    );
+  const marked = (m: { deco: string; bg: string }) => m.deco !== "none" || m.bg !== "none";
+  const setTheme = async (theme: string) => {
+    await h.post({ type: "host", host: { settings: { ...DEFAULT_SETTINGS, theme } } as never });
+    await idle(h);
+  };
+  const NOTE = '.card[data-id="n1"] .nbody pre.md-code',
+    EDIT = '.card[data-id="n1"] .md-pm pre',
+    FREE = '.card[data-id="f1"] .code';
+  await until(h, "the Note's code block has the host's call spans", async () => (await marks(NOTE)).length >= 2);
+  await until(h, "the Free code card has the host's call spans", async () => (await marks(FREE)).length >= 2);
+  const res: Record<string, unknown> = {};
+  let ok = true;
+  for (const [theme] of THEMES) {
+    await setTheme(theme);
+    const note = await marks(NOTE),
+      free = (await marks(FREE)).filter(marked).length;
+    if (theme === "ink-wash") await shot(h, "note-code-calls-ink-wash");
+    // 有的主题本来就不画调用记号（--call-deco: none），Free 卡那边只看 Warm Ink 和 Ink Wash
+    const good = note.length >= 2 && !note.some(marked) && (free >= 2 || !["warm-ink", "ink-wash"].includes(theme));
+    ok &&= good;
+    if (!good || theme === "ink-wash") res[theme] = { note, free };
+  }
+  // 编辑时（CodeMirror 里的代码块，用的是同一份着色）也不画
+  await pg.locator(NOTE).dblclick();
+  await pg.locator(EDIT).first().waitFor();
+  await until(h, "the edited code block has the call spans", async () => (await marks(EDIT)).length >= 2);
+  for (const theme of ["ink-wash", "warm-ink"]) {
+    await setTheme(theme);
+    const edit = await marks(EDIT);
+    res[`${theme} editing`] = edit;
+    ok &&= edit.length >= 2 && !edit.some(marked);
+  }
+  await shot(h, "note-code-calls-editing");
+  check("noteCodeCallsUnmarked", ok, res);
 });

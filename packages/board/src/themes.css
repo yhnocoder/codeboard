@@ -3300,6 +3300,11 @@
   background-position: -1px bottom;
   background-size: 102% 3.4px;
 }
+/* Note 的代码块里调用点不了（styles.css 的 .md pre.md-code .call），显示和编辑时都不画这一笔 */
+:root.look-ink-wash :is(.md pre.md-code, .md-pm pre) .call {
+  padding-bottom: 0;
+  background-image: none;
+}
 /* 毛笔线（Links.tsx，look.ts 的 stroke: "brush"）：实线是填充的笔画轮廓，描边的那条不画；中段三道纸色飞白 */
 :root.look-ink-wash .edge.brushed {
   stroke: none;
