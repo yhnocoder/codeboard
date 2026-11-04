@@ -1,6 +1,7 @@
 // 白板界面也会引入这里，所以不放 tree-sitter（分析在 @codeboard/analysis）
 export * from "./model";
 export * from "./migrate";
+export * from "./mdrefs";
 export * from "./schema";
 export * from "./protocol";
 export * from "./diff";
@@ -21,6 +22,7 @@ export * from "./run";
 export * from "./questions";
 export * from "./export";
 export * from "./variants";
+export * from "./summary";
 // 宿主用的小工具（白板不引入也没关系，打包时会摇掉）
 export * from "./track";
 export * from "./image";

@@ -1,8 +1,17 @@
 // [[ 引用别的白板上的卡：宿主给出别的白板上有真正标题的卡和这个工作区最近选过的引用（要过一次以后，别的白板存盘时宿主自己重推），
-// 存成 [[白板 › 卡]]。第一次编辑 Note、或者第一次认到这种引用时才问宿主要；候选在这里先排好（memo），打字时只过滤
-import { createMemo, untrack } from "solid-js";
+// 存成 [[白板 › 卡#^白板id/卡id]]（显示按 id 找到的现在的名字，改了名也不断）。第一次编辑 Note、或者第一次认到这种引用时才问宿主要；候选在这里先排好（memo），打字时只过滤
+import { createEffect, createMemo, on, untrack } from "solid-js";
 import { createStore, reconcile } from "solid-js/store";
-import { bookPath, refSeal, type BoardMeta, type BoardRefs, type RefBoard, type SealColor } from "@codeboard/core";
+import {
+  bookPath,
+  cardTitle,
+  refSeal,
+  type BoardMeta,
+  type BoardRef,
+  type BoardRefs,
+  type RefBoard,
+  type SealColor,
+} from "@codeboard/core";
 import type { Markdown, RefBroken, RefSeal, RefTarget } from "@yhnocoder/markdown";
 import type { RefGroup, RefPick } from "@yhnocoder/markdown/editor";
 import { ask, send } from "../host";
@@ -29,6 +38,20 @@ export function refreshRefs(md: Markdown) {
   for (const r of document.querySelectorAll<HTMLElement>(".md .md-ref"))
     if (!r.closest("[contenteditable=true]")) md.paintRef(r);
 }
+/**
+ * 引用显示的是目标现在的名字：这块白板上的卡、Section 或白板列表里的名字变了（改名、改了 Note 的标题行），静态 Note 里的引用再认一遍。
+ * 别的白板、子白板的名字跟着宿主推来的 boardRefs、骨架（putBoardRefs、hostio.ts）
+ */
+export function wireRefTitles(md: Markdown) {
+  const names = createMemo(() =>
+    [
+      ...state.board.cards.map((c) => `${c.id}\u0000${cardTitle(c, state.board)}`),
+      ...state.board.sections.map((x) => `${x.id}\u0000${x.title}`),
+      ...state.boards.map((m) => `${m.id}\u0000${m.name}`),
+    ].join("\n"),
+  );
+  createEffect(on(names, () => refreshRefs(md), { defer: true }));
+}
 /** 宿主给的（回答或推过来的）：换上，静态 Note 里的引用再认一遍 */
 export function putBoardRefs(md: Markdown, r: BoardRefs | null) {
   if (!r) return;
@@ -46,6 +69,7 @@ export const refGroups = rooted(() =>
         id: b.id,
         title: b.name.trim(),
         label: b.name.trim(),
+        target: b.id,
         note: `${cardsWord(b.refs.length)} · whiteboard`,
         items: b.refs.map((r) => ({
           id: r.id,
@@ -53,6 +77,7 @@ export const refGroups = rooted(() =>
           kind: r.k,
           crumb: r.s,
           label: `${b.name.trim()}${REF_SEP}${r.t}`,
+          target: `${b.id}/${r.id}`,
         })),
       })),
   ),
@@ -73,6 +98,56 @@ export function refFoot(here: number): string {
   return `${n} titled card${n === 1 ? "" : "s"} · ${xrefs.boards.length + 1} boards`;
 }
 
+/** 别的白板上的卡按 白板id/卡id 和只按卡 id（先列的白板优先）：画引用时查表，不把每块白板走一遍 */
+const xrefIds = rooted(() =>
+  createMemo(() => {
+    const boards = new Map<string, RefBoard>(),
+      cards = new Map<string, [RefBoard, BoardRef]>();
+    for (const b of xrefs.boards) {
+      boards.set(b.id, b);
+      for (const r of b.refs) {
+        cards.set(`${b.id}/${r.id}`, [b, r]);
+        if (!cards.has(r.id)) cards.set(r.id, [b, r]);
+      }
+    }
+    return { boards, cards };
+  }),
+);
+/**
+ * [[…#^白板id/卡id]]（或只有卡 id）→ 别的白板上的那张卡，显示它和那块白板现在的名字。白板在、卡不在了：broken item；
+ * 白板也不在（或只有卡 id 又没找到）：null，交给按标题找。还没拿到别的白板时问宿主要，先当找不到
+ */
+export function crossRefById(
+  label: string,
+  board: string | undefined,
+  id: string,
+  md: Markdown,
+): RefTarget | RefBroken | null {
+  return untrack(() => {
+    if (!xrefs.loaded) {
+      wantBoardRefs(md);
+      return null;
+    }
+    const ix = xrefIds(),
+      hit = ix.cards.get(board ? `${board}/${id}` : id);
+    if (hit) {
+      const [rb, r] = hit,
+        seal = sealFor(rb.id);
+      return seal
+        ? { id: r.id, title: r.t, seal, hint: refPath(rb.id, r.t), place: rb.id }
+        : { id: r.id, title: r.t, badge: rb.name.trim(), place: rb.id };
+    }
+    const b = board && ix.boards.get(board);
+    if (!b) return null;
+    const parts = label.split(/\s*›\s*/);
+    return {
+      broken: "item",
+      title: parts[parts.length - 1].trim() || label,
+      badge: b.name.trim(),
+      why: `This card is no longer on ${b.name.trim()}`,
+    };
+  });
+}
 /** 所有白板（带印章，宿主推的 boards）：这块白板自己的名字和印章用它现在的（刚改过时宿主还没推回来） */
 export const boardMetas = rooted(() =>
   createMemo((): BoardMeta[] =>

@@ -19,7 +19,6 @@ const SECTIONS = [
   "shared",
   "questions",
   "export",
-  "zoom",
   "diagnostics",
   "debug",
   "shortcuts",
@@ -40,8 +39,6 @@ type Args = Pick<
   | "exportScope"
   | "exportQuestions"
   | "exportBoardOnly"
-  | "zoomOverview"
-  | "zoomMap"
   | "debug"
 > & {
   section: (typeof SECTIONS)[number] | "";
@@ -76,8 +73,6 @@ const DEFAULTS: Args = {
   exportScope: D.exportScope,
   exportQuestions: D.exportQuestions,
   exportBoardOnly: D.exportBoardOnly,
-  zoomOverview: D.zoomOverview,
-  zoomMap: D.zoomMap,
   debug: D.debug,
   bodyPx: 0,
   h1Px: 0,
@@ -105,8 +100,6 @@ function settings(a: Args): Omit<Settings, "theme"> {
     exportScope: a.exportScope,
     exportQuestions: a.exportQuestions,
     exportBoardOnly: a.exportBoardOnly,
-    zoomOverview: a.zoomOverview,
-    zoomMap: a.zoomMap,
     debug: a.debug,
     noteFontSize: { ...D.noteFontSize, body: px(a.bodyPx), h1: px(a.h1Px), h2: px(a.h2Px), h3: px(a.h3Px) },
   };
@@ -151,8 +144,6 @@ const meta = {
     exportScope: pick(["board", "sections", "walk"] as const),
     exportQuestions: { control: "boolean" },
     exportBoardOnly: { control: "boolean" },
-    zoomOverview: { control: { type: "range", min: 0.2, max: 1, step: 0.05 } },
-    zoomMap: { control: { type: "range", min: 0.05, max: 0.6, step: 0.05 } },
     debug: { control: "boolean", description: "codeboard.debug.enabled: adds the Debug section" },
     bodyPx: {
       control: { type: "range", min: 0, max: 24, step: 1 },
@@ -224,11 +215,6 @@ export const Boards: Story = {
 };
 export const Export: Story = {
   args: { section: "export", exportScope: "walk", exportQuestions: true, exportBoardOnly: true },
-  play: open,
-};
-export const ZoomLevels: Story = {
-  name: "Zoom Levels",
-  args: { section: "zoom", zoomOverview: 0.5, zoomMap: 0.2 },
   play: open,
 };
 export const Debug: Story = { args: { section: "debug", debug: true }, play: open };

@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased (additions)
+
+Nothing to change when upgrading:
+
+- References can carry their target's id: `[[title#^id]]` (an id of letters, digits, `_` and `-`, optionally `board/card`). The `[[` menu writes it when a candidate (`RefItem`) or a group (`RefGroup`) has the new `target` field, and `refs.resolve(label, target)` gets it as a second argument, so the reference can be found by id after its target is renamed; show the target's current title from `resolve` and the stored title is only the readable fallback. The static render puts it on the chip as `data-target`; plain-text copies and the editor's source keep the readable `[[title]]` part, with `#^id` drawn as part of the closing marker. `[[title]]` without an id works as before.
+
 ## Unreleased (breaking, next minor)
 
 Changes that need code or styles updated when upgrading from 0.1.1:

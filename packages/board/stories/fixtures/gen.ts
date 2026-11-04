@@ -11,7 +11,7 @@ const PICK = {
   schedule: "Scheduler.schedule",
   preempt: "Scheduler.preempt",
   canAppend: "BlockManager.can_append",
-  // Code 和 Canvas 小样共用：调用图、Compare、类卡、多段卡、箭头、LOD
+  // Code 和 Canvas 小样共用：调用图、Compare、类卡、多段卡、箭头、缩放
   step: "LLMEngine.step",
   postprocess: "Scheduler.postprocess",
   canAllocate: "BlockManager.can_allocate",

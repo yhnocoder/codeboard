@@ -17,7 +17,7 @@
     "syncundo",
     "sharedsync",
     "walkthroughOrder",
-    "zoomLevels",
+    "zoomKeepsDetail",
     "palette",
     "settingsPage",
     "linkMergeSection",
@@ -27,7 +27,11 @@
   "manual": ["markdownRecord", "boardMarksScreenshots"],
   "solo": ["markdownLazyRender"],
   "known": {},
-  "limits": { "area": 30, "smoke": 90, "local": 180 },
+  "limits": {
+    "area": 30,
+    "smoke": 90,
+    "local": 180
+  },
   "perf": {
     "about": "code the perf benchmarks (packages/board/test/perf.ts, packages/host/test/perf-*.ts, tools/review/perf-ab.sh) run or build: a change touching none of it skips the perf job in PR CI; the regular run measures every time",
     "files": [
@@ -76,7 +80,7 @@
         "packages/board/src/canvas/Canvas.tsx",
         "packages/core/src/canvas/{index,geom}.ts",
         "packages/board/src/cards/Card.tsx",
-        "packages/board/src/state/{camera,changes,cull,extent,geo,ghost,hover,idle,lodcards,measure,mode,motion,offscreen,root,selection,store,timing,toast,tune,ui,views}.ts",
+        "packages/board/src/state/{camera,changes,cull,extent,geo,ghost,hover,measure,mode,motion,offscreen,root,selection,store,timing,toast,tune,ui,views,zoomlog}.ts",
         "packages/core/src/history/*.ts",
         "packages/board/src/actions/{index,common,edit,create,env,clipboard,pastechip}.ts",
         "packages/board/src/ui/{guard,hooks,overlay,shield}.ts",
@@ -90,7 +94,7 @@
         "packages/board/test/scenarios/{board,fit,drag-by-body,drag-controls,copy-paste,multi-select,text-selection-delete,click-to-edit}.spec.ts"
       ],
       "scenarios": [
-        "zoomLevels",
+        "zoomKeepsDetail",
         "syncundo",
         "dragUnselectedCardByBody",
         "pastedCardsKeepTheirSize",
@@ -210,8 +214,9 @@
         "packages/core/src/complete.ts",
         "packages/host/src/{deepseek,ai}.ts",
         "packages/board/test/typing-sequence.json",
-        "packages/board/test/scenarios/{markdown,md-blocks,mdreview,note-editing,note-source,note-fold,note-fresh,note-sizing,writing,free-text,typing,typing-sequence,find,md-paste-marks,split-headings}.spec.ts",
+        "packages/board/test/scenarios/{markdown,md-blocks,mdreview,note-editing,note-refs,note-source,note-fold,note-fresh,note-sizing,writing,free-text,typing,typing-sequence,find,md-paste-marks,split-headings}.spec.ts",
         "packages/core/src/split.ts",
+        "packages/core/src/mdrefs.ts",
         "packages/markdown/src/marks.ts",
         "packages/board/src/actions/format.ts",
         "packages/board/src/ui/StaticFormat.tsx",
@@ -278,6 +283,7 @@
         "lineToLineLink",
         "childArrowAnchor",
         "headPortHidden",
+        "arrowTargetAim",
         "markCard",
         "markArrowStable",
         "codeAnnotations",
@@ -353,7 +359,8 @@
         "themeNotUndoStep",
         "tiltCardFromMenu",
         "tiltStraightensWhileEditing",
-        "squircleCorners"
+        "squircleCorners",
+        "freeTextLevels"
       ]
     },
     "variants": {
@@ -510,7 +517,7 @@
         "packages/core/src/commands/shared.ts",
         "packages/core/src/{protocol,patch,schema,migrate,shared,workspace,diagnostics}.ts",
         "packages/host/src/storage/**",
-        "packages/host/src/{hub,handlers,boards,env,ws,context,actions,commands,diagnostics,start,index}.ts",
+        "packages/host/src/{hub,handlers,boards,env,ws,context,actions,commands,diagnostics,paths,start,index}.ts",
         "packages/board/test/scenarios/{shared,boards}.spec.ts"
       ],
       "scenarios": [
@@ -520,6 +527,25 @@
         "changesreachhost",
         "newTextReachesHostWhenShown",
         "sharedcards"
+      ]
+    },
+    "summaries": {
+      "about": "zoomed-out AI summaries (#130): the summary level and its fade, the board's minimum zoom, columns, editing and ↻, the host writing summaries with DeepSeek",
+      "files": [
+        "packages/core/src/summary.ts",
+        "packages/core/src/commands/summaries.ts",
+        "packages/board/src/state/summary.ts",
+        "packages/board/src/canvas/Summaries.tsx",
+        "packages/board/src/actions/summaries.ts",
+        "packages/host/src/summaries.ts",
+        "packages/board/test/scenarios/{summaries,summary-zoom}.spec.ts"
+      ],
+      "scenarios": [
+        "summaryLevelFade",
+        "summarySwitchWhole",
+        "summaryWrittenAndEdited",
+        "summaryNoKey",
+        "summaryNestedSections"
       ]
     }
   }

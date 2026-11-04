@@ -212,7 +212,7 @@ test("noteRefSectionAndBoard", async () => {
 });
 
 /** [[ lists every other board's titled cards: each board's own row heads its group (3 cards, "+ N more" expands in place), a card from
- *  another board is stored as [[Board › Title]], its chip carries the board's name and opens that board; gone cards and boards look broken */
+ *  another board is stored as [[Board › Title#^board/card]], its chip carries the board's name and opens that board; gone cards and boards look broken */
 /** Long titles and Section paths in the [[ list: the title gets the width first, the path takes what is left; on the selected row whatever still doesn't fit slides into view */
 test("noteRefLongTitleSlides", async () => {
   const b = emptyBoard("b1", "long refs");
@@ -353,6 +353,12 @@ test("noteRefOtherBoards", async () => {
       !chips[2].cls.includes("missing"),
     { chips },
   );
+  // 白板名比标题明显小一号，标题本身才是要读的
+  const sizes = await chip("Flash attention").evaluate((e) => ({
+    t: parseFloat(getComputedStyle(e.querySelector(".t")!).fontSize),
+    bd: parseFloat(getComputedStyle(e.querySelector(".bd")!).fontSize),
+  }));
+  check("noteRefOtherBoards badge smaller", sizes.bd / sizes.t < 0.8, sizes);
   await pg.locator('.card[data-id="n2"]').scrollIntoViewIfNeeded();
   await shot(h, "note-ref-other-boards-chip");
   await chip("Flash attention").click();
@@ -436,7 +442,7 @@ test("noteRefOtherBoards", async () => {
     top0,
   });
 
-  // 打字：别的白板上的对上的带着「白板 › Section」，选了写成 [[Kernels › Paged KV]]
+  // 打字：别的白板上的对上的带着「白板 › Section」，选了写成 [[Kernels › Paged KV#^bk/k1]]
   await pg.keyboard.type("paged");
   await pg.locator(".md-menu button", { hasText: "Paged KV" }).waitFor();
   const hitRow = await pg
@@ -455,7 +461,7 @@ test("noteRefOtherBoards", async () => {
   const picked = h.sent.some((m) => m.type === "refPicked" && m.b === "bk" && m.id === "k1");
   check(
     "noteRefOtherBoards pick",
-    hitRow === "Kernels › Attention" && edChip === "Kernels" && md.includes("[[Kernels › Paged KV]]") && picked,
+    hitRow === "Kernels › Attention" && edChip === "Kernels" && md.includes("[[Kernels › Paged KV#^bk/k1]]") && picked,
     { hitRow, edChip, md, picked },
   );
   await close(h);
@@ -550,14 +556,14 @@ test("markdownEdit", async () => {
     italic,
     italicAfterUndo,
     stillEditing,
-    rawHas: rawVal.includes("[[Scheduler.schedule]]"),
+    rawHas: rawVal.includes("[[Scheduler.schedule#^"),
     backWys,
     focusBack,
     exited,
     saved: {
       world: after.includes("Hello **world** and t"),
       table: /\| *cell *\|/.test(after),
-      ref: after.includes("[[Scheduler.schedule]]"),
+      ref: after.includes("[[Scheduler.schedule#^"),
       raw: after.includes("raw line"),
       under: after.includes("block_manager") && !after.includes("block\\_"),
     },

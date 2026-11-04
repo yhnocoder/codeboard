@@ -95,6 +95,9 @@ import {
   openAddNote,
   setMarkColor,
   setMarkWeight,
+  setMarkSize,
+  setFreeTextLevel,
+  setFreeTextBold,
   showPeek,
   splitByHeadings,
   tableCaptionItems,
@@ -103,7 +106,7 @@ import {
 import { mergeIntoLinkList, retryMeta, setListRich, setWebStyle } from "./web";
 import { canLinkList } from "@codeboard/core/commands";
 import { moveOutOfParent, setSectionColor, toggleCompare, unlinkShared } from "./edit";
-import { deleteEverywhere, pasteFromBoard, copyCardsSel, cutCardsSel, detachTwins } from "./shared";
+import { deleteEverywhere, pasteFromBoard, copyCardsSel, cutCardsSel, detachTwins, copyPath } from "./shared";
 import {
   enterFrame,
   turnIntoBoard,
@@ -118,7 +121,19 @@ import { addProc, clearRpc, legendOf, markRpc, toggleBack, toggleStart } from ".
 import { setLegendOpen } from "../state/calls";
 import { askQuestion, askQuestionOnCard } from "./questions";
 import { addVariantMenu } from "./variants";
-import { LEGEND, legendName, HAND_COLORS, HAND_WEIGHTS, type Link } from "@codeboard/core";
+import {
+  LEGEND,
+  legendName,
+  HAND_COLORS,
+  HAND_WEIGHTS,
+  MARK_SIZES,
+  markSizeOf,
+  FREE_TEXT_LEVELS,
+  FREE_TEXT_FS,
+  freeTextLevelName,
+  type Link,
+  type MarkSize,
+} from "@codeboard/core";
 import { kbd } from "../keymap";
 import { drawSvgItem, imageAiItems, type ImgRef } from "./imageai";
 import { autoFocusItem } from "./autofocus";
@@ -332,9 +347,12 @@ function cardItems(id: string, x: number, y: number): Item[] {
   const tiltItem: Item = { label: "Tilt", kbd: kbd("tilt"), checked: !!host.tilt, run: () => toggleTilt([host.id]) };
   // 每种卡同一个结构：常用操作 → Edit ▸ → Arrange ▸ → 分隔线 → Move to New Section、Delete（红）。
   // 界面上已经有的（双击改名、⌘D、拖圆点连线）不进菜单
+  // Copy Path：Compare 的一栏是那一栏自己（白板文件里它也是一张卡）
+  const pathItem: Item = { label: "Copy Path", run: () => void copyPath([id]) };
   const tail: Item[] = [
     tiltItem,
     arrangeItem(() => [host.id]),
+    pathItem,
     null,
     ...sectionItems(),
     turnItem(),
@@ -347,6 +365,7 @@ function cardItems(id: string, x: number, y: number): Item[] {
       { label: "Edit", sub: [lockItem] },
       tiltItem,
       arrangeItem(() => [host.id]),
+      pathItem,
       null,
       ...sectionItems(),
       { label: "Remove from This Board", kbd: "⌫", hint: "The board stays in the sidebar", run: deleteSel },
@@ -382,11 +401,32 @@ function cardItems(id: string, x: number, y: number): Item[] {
             run: () => setMarkWeight(id, k),
           })),
         },
+        {
+          label: "Size",
+          sub: (Object.keys(MARK_SIZES) as MarkSize[]).map((k) => ({
+            label: `${k.toUpperCase()} (${MARK_SIZES[k]}px)`,
+            checked: markSizeOf(c) === k,
+            run: () => setMarkSize(id, k),
+          })),
+        },
         edit,
         ...tail,
       ];
-    // Free Text：纯文字的标题，字号拖右下角改
-    if (c.look === "freetext") return [edit, ...tail];
+    // Free Text：纯文字，级别（正文、H1–H3）和粗体也在选中时的工具条上；字号拖右下角改
+    if (c.look === "freetext")
+      return [
+        {
+          label: "Level",
+          sub: FREE_TEXT_LEVELS.map((k) => ({
+            label: `${freeTextLevelName(k)} (${FREE_TEXT_FS[k]}px)`,
+            checked: (c.level ?? 0) === k,
+            run: () => setFreeTextLevel(id, k),
+          })),
+        },
+        { label: "Bold", checked: !!c.bold, run: () => setFreeTextBold(id, !c.bold) },
+        edit,
+        ...tail,
+      ];
     // Box 不和别的互转（底色在选中时的工具条上）
     if (c.look === "box") return [drawSvgItem(id), autoFocusItem(id), edit, ...tail];
     // Text 没有改高度的把手（只拖宽度），所以也没有 Fit Content
@@ -511,6 +551,7 @@ function cardItems(id: string, x: number, y: number): Item[] {
       lockItem,
       tiltItem,
       arrangeItem(() => [host.id]),
+      pathItem,
       null,
       ...deleteItems(host.id),
     ];
@@ -613,6 +654,7 @@ function cardItems(id: string, x: number, y: number): Item[] {
         ]),
     { label: "Call Graph", sub: flow },
     ...(col ? [] : [tiltItem, arrangeItem(() => [host.id])]),
+    pathItem,
     null,
     ...(col ? [] : [...sectionItems(), turnItem()]),
     ...deleteItems(host.id),
@@ -691,6 +733,7 @@ function multiItems(): Item[] {
       run: () => void tidyUp(),
     },
     arrangeItem(() => [...sel.cards]),
+    { label: "Copy Paths", run: () => void copyPath([...sel.cards, ...sel.sections]) },
     null,
     { label: "Cut", kbd: kbd("cut"), run: () => cutCardsSel() },
     { label: "Copy", kbd: kbd("copy"), run: () => copyCardsSel() },
@@ -1024,6 +1067,7 @@ function multiSectionItems(ids: string[]): Item[] {
       run: () => toggleLock([], ids),
     },
     sectionColorItem(ids),
+    { label: "Copy Paths", run: () => void copyPath(ids) },
     null,
     { label: `Remove ${ss.length} Sections`, hint: "Cards and inner sections stay", run: () => removeSections(ids) },
   ];
@@ -1062,6 +1106,7 @@ export function sectionMenu(id: string, x: number, y: number) {
           ]
         : []),
       sectionColorItem([id]),
+      { label: "Copy Path", run: () => void copyPath([id]) },
       null,
       { label: "Remove Section", hint: "Cards and inner sections stay", run: () => removeSections([id]) },
     ],

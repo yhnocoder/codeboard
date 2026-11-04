@@ -4,6 +4,7 @@
 import type { BoundVal, CallAlt } from "@codeboard/analysis/basics";
 import { removeCards, removeLinks, removeSidenotes, replaceCards } from "./refs";
 import { clone, withCols, uid, type Board, type Card, type End, type Link, type Place, type Sidenote } from "../model";
+import { eachMarkdown, retargetRefs } from "../mdrefs";
 
 /**
  * 点灰色备选换实现：Call 箭头 linkId 改连新卡 card（摆在旧卡的位置和 Section 里；旧卡没有摆放时摆在 (0, 0)、宽 w）。
@@ -165,6 +166,13 @@ export function placeCards(
     if (there.has(key(n))) continue;
     there.add(key(n));
     b.links.push(n);
+  }
+  // 一起复制的卡之间的 [[引用#^id]] 跟着换成副本（和箭头一样）；指着没一起来的卡的留着原来的 id
+  if (o.copy) {
+    const fix = (md: string) => retargetRefs(md, cards);
+    const made = new Set(Object.values(cards));
+    eachMarkdown({ cards: b.cards.filter((c) => made.has(c.id)), sidenotes: [], stickers: [] }, fix);
+    for (const n of b.sidenotes) if (made.has(n.at.card) && n.kind === "text") n.md = fix(n.md);
   }
   return { cards, segs };
 }

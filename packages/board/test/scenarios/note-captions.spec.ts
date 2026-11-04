@@ -6,6 +6,8 @@
 //                                    and no empty line between it and the next paragraph
 //   noteSizedImageCaptionBodyWidth   a narrowed image's caption keeps the body's width, centred under it, in smaller type
 //   noteCaptionInlineMath            $…$ in a caption is typeset, in the static render and while editing
+//   noteOpenedSvgImageKeepsStaticSize  a pt-sized SVG clicked into the first time: the opened copy has the static render's width
+//                                    and place (the file name's size, not the decoded one)
 //   noteTableCaption                 right-click a table → Add Caption…: a "Table: …" line, drawn under the table like an image's
 //                                    caption, the same while editing; edits in the editor keep it; edit, remove, undo
 import { emptyBoard, type Board, type NoteCard } from "@codeboard/core";
@@ -316,6 +318,59 @@ test("noteCaptionInlineMath", async () => {
   await openImage(h);
   const open = await figGeo(h, ".md-pm .md-img.below");
   check("noteCaptionInlineMath opened image: the same", ok(open), open);
+});
+
+/** An SVG sized in pt (as exported from a book's PDF): the file name carries its viewBox, 900 × 394, while the browser decodes it
+ *  at 640 × 280 px. The static render and the editor lay it out by the file name's size; the opened copy must too */
+const PT_SRC = "assets/5e0f6c1a9b2d4e73-900x394.svg";
+const PT_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="480pt" height="210pt" viewBox="0 0 900 394"><rect width="900" height="394" fill="#e9e4da"/><rect x="40" y="40" width="250" height="314" rx="10" fill="#d98a64"/><rect x="325" y="40" width="250" height="314" rx="10" fill="#7ea4cf"/><rect x="610" y="40" width="250" height="314" rx="10" fill="#8fb98a"/></svg>`;
+
+test("noteOpenedSvgImageKeepsStaticSize", async () => {
+  const b = emptyBoard("b1", "captions");
+  const text = `Phases:\n\n![](${PT_SRC} "图 6.11：各阶段由 thread block 加载的 $M$ 元素")\n\n图 6.11 的第 4、5 行展示了第 1 阶段加载的 $M$ 元素。`;
+  put(b, { id: "n", kind: "note", md: text, look: "note" } as NoteCard, 40, 40, 1000);
+  b.cam = { x: 0, y: 0, z: 1 };
+  const h = await open({
+    board: b,
+    light: true,
+    w: 1120,
+    h: 820,
+    settings: { theme: "warm-ink" },
+    host: { assetBase: BASE },
+    beforeLoad: (p) => p.route(`${BASE}/**`, (r) => r.fulfill({ body: PT_SVG, contentType: "image/svg+xml" })),
+  });
+  const still = card(h).locator(".nbody .md-fig > img");
+  await until(h, "the static image loads", () =>
+    still.evaluate((e) => (e as HTMLImageElement).complete && (e as HTMLImageElement).naturalWidth > 0),
+  );
+  await idle(h);
+  const before = await figGeo(h, ".nbody .md-fig");
+  await shot(h, "noteOpenedSvgImageKeepsStaticSize-static");
+  // the first click into the image: the Note starts editing with the image's source open, the framed copy under it
+  await still.dblclick();
+  const im = card(h).locator(".md-pm .md-img.below img");
+  await im.waitFor();
+  await until(h, "the opened image loads", () =>
+    im.evaluate((e) => (e as HTMLImageElement).complete && (e as HTMLImageElement).naturalWidth > 0),
+  );
+  await idle(h);
+  const opened = await figGeo(h, ".md-pm .md-img.below");
+  await shot(h, "noteOpenedSvgImageKeepsStaticSize-opened");
+  check(
+    "noteOpenedSvgImageKeepsStaticSize the opened image as wide as in the static render (the file name's 900 px), not its decoded 640",
+    !!before.img && !!opened.img && near(before.img.w, 900) && near(opened.img.w, before.img.w),
+    { before: before.img, opened: opened.img },
+  );
+  check(
+    "noteOpenedSvgImageKeepsStaticSize the same horizontal place, its caption centred under it",
+    !!before.img &&
+      !!opened.img &&
+      !!opened.cap &&
+      near(opened.img.left, before.img.left) &&
+      near(opened.img.cx, before.img.cx) &&
+      near(opened.cap.cx, opened.img.cx),
+    { before, opened },
+  );
 });
 
 const TABLE = "| tile | M   | N   |\n| ---- | --- | --- |\n| 1    | 64  | 64  |\n| 2    | 128 | 64  |";

@@ -266,7 +266,7 @@ export async function runJob(
     );
     if (over) return null;
     if ("fail" in r) {
-      failed(r);
+      aiFailed(r);
       return null;
     }
     return r;
@@ -283,7 +283,8 @@ const KEY_ACTION = {
   run: () => void ask("aiKey", { action: "set" }).catch(() => undefined),
 };
 const SETTINGS_ACTION = { label: "AI Settings…", run: () => openSettings("ai") };
-function failed(r: Extract<ImageAiResult, { fail: string }>) {
+/** A failed AI request's toast (image tools, summaries), with Set DeepSeek API Key… where a key would help */
+export function aiFailed(r: Extract<ImageAiResult, { fail: string }>) {
   const who = r.via ?? "DeepSeek";
   switch (r.fail) {
     case "nokey":

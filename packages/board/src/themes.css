@@ -3058,14 +3058,14 @@
 :root.look-ink-wash .card:not(.text):not(.nobg) {
   --sh-ring: 0 0 transparent;
 }
-:root.look-ink-wash .card:not(.text):not(.nobg):not(.lo-map) {
+:root.look-ink-wash .card:not(.text):not(.nobg) {
   background: transparent;
   box-shadow: 0 4px 9px rgba(0, 0, 0, 0.12);
 }
-:root.look-ink-wash[data-theme="dark"] .card:not(.text):not(.nobg):not(.lo-map) {
+:root.look-ink-wash[data-theme="dark"] .card:not(.text):not(.nobg) {
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
 }
-:root.look-ink-wash .card:not(.text):not(.nobg):not(.lo-map)::before {
+:root.look-ink-wash .card:not(.text):not(.nobg)::before {
   inset: -14px;
   border-radius: 0;
   box-shadow: none;
@@ -3078,24 +3078,93 @@
 :root.look-ink-wash[data-theme="dark"] .card.lift:not(.text):not(.nobg) {
   --ring: 0 26px 38px -24px rgba(0, 0, 0, 0.85);
 }
-/* 选中：卡外四个朱笔校对角（border-image，向外伸 7px），选中时从略大处收拢、淡入 */
-:root.look-ink-wash .card.sel:not(.text):not(.lo-map) {
+/* 选中（#128）：卡右上角盖一枚小朱印"选"，纸面抬起 2px、阴影加深；取消时印淡去、纸落回。
+   全用过渡（不用关键帧）：动画中途再点一下，从当时的样子顺着倒回去，不跳。印在 .cface::before（卡的 ::before 是纸、
+   ::after 是各种状态的描边），骑在卡角外面，不压卡头右边的编号印和 ⋯ 按钮；导出时去掉 .sel，印是透明的 */
+:root.look-ink-wash .card.sel:not(.text) {
   --ring: none;
 }
-:root.look-ink-wash .card.sel:not(.text):not(.lo-map)::after {
-  border: 14px solid transparent;
-  border-image: var(--ink-crn) 24 / 14px / 7px stretch;
-  animation: ink-corners calc(var(--t) * 260ms) cubic-bezier(0.2, 0.8, 0.3, 1) both;
+/* 抬起的过渡加在 .card 一级（:where 不加权重）：拿起来、刚放下（.card.lift / .landing）照旧用它们自己的过渡。
+   选中、取消各一条曲线，由 --ink-lt 换（注册成不继承，选中时卡里的节点不用跟着重算样式） */
+@property --ink-lt {
+  syntax: "*";
+  inherits: false;
 }
-:root.look-ink-wash .card.sel.ping:not(.text):not(.lo-map)::after {
-  animation:
-    ink-corners calc(var(--t) * 260ms) cubic-bezier(0.2, 0.8, 0.3, 1) both,
-    ping calc(var(--t) * 700ms) var(--out);
+.card:where(:root.look-ink-wash *) {
+  --ink-lt: calc(var(--t) * 200ms) cubic-bezier(0.4, 0, 0.4, 1);
+  transition:
+    box-shadow var(--ink-lt),
+    translate var(--ink-lt),
+    scale calc(var(--t) * 260ms) cubic-bezier(0.3, 1.35, 0.5, 1),
+    opacity calc(var(--t) * 240ms) var(--out),
+    filter calc(var(--t) * 240ms);
 }
-@keyframes ink-corners {
-  from {
-    scale: 1.05;
-    opacity: 0;
+.card.sel:where(:root.look-ink-wash *) {
+  --ink-lt: calc(var(--t) * 220ms) var(--out);
+}
+:root.look-ink-wash .card.sel:not(.text):not(.nobg) {
+  translate: 0 -2px;
+  box-shadow:
+    0 4px 9px rgba(0, 0, 0, 0.12),
+    0 26px 38px -20px rgba(30, 25, 15, 0.45),
+    0 8px 14px -8px rgba(30, 25, 15, 0.2);
+}
+:root.look-ink-wash[data-theme="dark"] .card.sel:not(.text):not(.nobg) {
+  box-shadow:
+    0 4px 10px rgba(0, 0, 0, 0.5),
+    0 26px 38px -20px rgba(0, 0, 0, 0.8),
+    0 8px 14px -8px rgba(0, 0, 0, 0.45);
+}
+/* 印：24px 见方，中心在卡右上角往外 7px、往上 5px：整枚在 ⋯ 按钮（卡头右边 8px 内）的右上方。
+   没选中时停在"高处"（放大、多转一点、透明），选中时落下来：缩放的曲线冲过头一点，像盖下去略压一下。
+   取消时只在原处淡去；淡完以后（延迟同淡去的时长）才悄悄回到高处，等下次落下。
+   缩放、转角用 scale / rotate 两个属性，别和 transform 写在同一条规则里：打包时的 CSS 压缩会把它们丢掉 */
+:root.look-ink-wash .card:not(.text) > .cface::before {
+  content: "选" / "";
+  position: absolute;
+  z-index: 6;
+  top: -17px;
+  right: -19px;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--paper) 60%, transparent);
+  box-shadow: inset 0 0 0 1.6px var(--zhu);
+  color: var(--zhu);
+  font: 700 14px / 1 var(--serif);
+  pointer-events: none;
+  -webkit-mask: var(--seal-mask);
+  -webkit-mask-composite: source-in;
+  mask: var(--seal-mask);
+  mask-composite: intersect;
+  opacity: 0;
+  scale: 1.8;
+  rotate: -14deg;
+  transition:
+    opacity calc(var(--t) * 180ms) cubic-bezier(0.4, 0, 0.4, 1),
+    scale 0s calc(var(--t) * 180ms),
+    rotate 0s calc(var(--t) * 180ms);
+}
+:root.look-ink-wash .card.sel:not(.text) > .cface::before {
+  opacity: 0.92;
+  scale: 1;
+  rotate: -6deg;
+  transition:
+    opacity calc(var(--t) * 170ms) var(--out),
+    scale calc(var(--t) * 280ms) cubic-bezier(0.3, 0.7, 0.4, 1.12),
+    rotate calc(var(--t) * 280ms) cubic-bezier(0.3, 0.7, 0.4, 1.12);
+}
+/* 减少动态效果：纸不抬、印不落，只淡入淡出（不乘 --t：那时 --t 几乎是 0） */
+@media (prefers-reduced-motion: reduce) {
+  :root.look-ink-wash .card.sel:not(.text):not(.nobg) {
+    translate: none;
+  }
+  :root.look-ink-wash .card:not(.text) > .cface::before {
+    scale: 1;
+    rotate: -6deg;
+    transition: opacity 160ms linear;
   }
 }
 /* 删卡：墨从四周往中间收、散掉（遮罩的半径缩到 0，连着纸边一起）；时长同 state/timing.ts 的 GHOST_DISPERSE */
@@ -3299,6 +3368,11 @@
   background-image: var(--ink-cb4);
   background-position: -1px bottom;
   background-size: 102% 3.4px;
+}
+/* Note 的代码块里调用点不了（styles.css 的 .md pre.md-code .call），显示和编辑时都不画这一笔 */
+:root.look-ink-wash :is(.md pre.md-code, .md-pm pre) .call {
+  padding-bottom: 0;
+  background-image: none;
 }
 /* 毛笔线（Links.tsx，look.ts 的 stroke: "brush"）：实线是填充的笔画轮廓，描边的那条不画；中段三道纸色飞白 */
 :root.look-ink-wash .edge.brushed {
@@ -3709,7 +3783,7 @@
     linear-gradient(90deg, var(--blockc) 1px, transparent 1px) 0 0 / 20px 20px,
     var(--canvas);
 }
-:root.look-city .card.sel:not(.text):not(.lo-map) {
+:root.look-city .card.sel:not(.text) {
   --ring: 0 0 0 2px var(--sign), 0 0 0 6px color-mix(in srgb, var(--sign) 20%, transparent), var(--sh-ring);
 }
 :root.look-city .card.sel.lift {

@@ -245,6 +245,7 @@ function purify(html: string) {
         "data-latex",
         "data-src",
         "data-ref",
+        "data-target",
         "data-lang",
         "data-type",
         "data-checked",

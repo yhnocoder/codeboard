@@ -2,8 +2,7 @@
 import { createStore } from "solid-js/store";
 import { createSignal, createMemo, batch } from "solid-js";
 import { tune } from "./tune";
-import { rooted } from "./root";
-import { state } from "./store";
+import { boardSignal, rooted } from "./root";
 import { CAM_STILL } from "./timing";
 import { reduceMotion } from "./motion";
 
@@ -72,7 +71,8 @@ export { cam };
 /** 镜头在动（最后一次变化后 180ms 内）。这时 .world.moving 让浏览器把世界层当位图缩放；停下后按新比例重新清晰绘制 */
 const [camMoving, setCamMoving] = createSignal(false);
 export { camMoving };
-let still: number | undefined;
+let still: number | undefined,
+  stillGen = 0;
 // 「在动」和镜头本身同一批更新：先改镜头再标「在动」的话，第一帧会把按停下比例画的东西（stillZ）多重画一遍
 function setCamStore(p: Partial<{ x: number; y: number; z: number }>) {
   batch(() => {
@@ -80,7 +80,10 @@ function setCamStore(p: Partial<{ x: number; y: number; z: number }>) {
     setCamStore0(p);
   });
   clearTimeout(still);
-  still = window.setTimeout(() => setCamMoving(false), CAM_STILL);
+  const g = ++stillGen;
+  // 停下 = 等过 CAM_STILL 后又画了一帧、镜头还没变。一帧比 CAM_STILL 还长（跨过摘要档的那几帧）时定时器在帧里就到点了，
+  // 手势没停也算成停了：接着 stillZ、settle 一起换，下一帧又长，一路连锁
+  still = window.setTimeout(() => requestAnimationFrame(() => g === stillGen && setCamMoving(false)), CAM_STILL);
 }
 const sx = new Spring(0, 120, 22, 0.05),
   sy = new Spring(0, 120, 22, 0.05),
@@ -88,8 +91,11 @@ const sx = new Spring(0, 120, 22, 0.05),
 let running = false,
   gen = 0;
 
-export const ZMIN = 0.1,
-  ZMAX = 2.5;
+export const ZMAX = 2.5;
+/** The board's minimum zoom: fit-all ÷ 1.3 (state/summary.ts sets it; core summaryMinZoom) */
+const [zFloor, setZoomFloor] = boardSignal(0.1);
+export { setZoomFloor };
+export const zMin = () => zFloor();
 
 // 等镜头飞完的（camRest）：飞到了、被打断（拖动、别的镜头操作接手）都算停下
 const resting: (() => void)[] = [];
@@ -106,10 +112,10 @@ export function stopCam() {
 }
 export function setCam(x: number, y: number, z: number) {
   if (running) stopCam();
-  setCamStore({ x, y, z: Math.min(ZMAX, Math.max(ZMIN, z)) });
+  setCamStore({ x, y, z: Math.min(ZMAX, Math.max(zMin(), z)) });
 }
 export function camTo(x: number, y: number, z: number, soft = false) {
-  z = Math.min(ZMAX, Math.max(ZMIN, z));
+  z = Math.min(ZMAX, Math.max(zMin(), z));
   if (!running) {
     sx.set(cam.x);
     sy.set(cam.y);
@@ -167,7 +173,7 @@ export const usableW = (z: number) => (viewport.w - SAFE.l - SAFE.r) / z;
 export const usableH = (z: number) => (viewport.h - SAFE.t - SAFE.b) / z;
 
 /** 能放下 r 的镜头（不超过 maxZ，不小于 minZ：再小放不下就居中、四边各裁一点） */
-export function fitRect(r: Rect, maxZ = 1, minZ = ZMIN) {
+export function fitRect(r: Rect, maxZ = 1, minZ = zMin()) {
   const { w, h } = viewport;
   const z = Math.max(minZ, Math.min(maxZ, (w - SAFE.l - SAFE.r) / r.w, (h - SAFE.t - SAFE.b) / r.h));
   return {
@@ -179,7 +185,7 @@ export function fitRect(r: Rect, maxZ = 1, minZ = ZMIN) {
 /** 很高的东西：保证宽度放得下，顶部对齐 */
 export function fitTop(r: Rect, maxZ = 1) {
   const { w, h } = viewport;
-  const z = Math.max(ZMIN, Math.min(maxZ, (w - SAFE.l - SAFE.r) / r.w));
+  const z = Math.max(zMin(), Math.min(maxZ, (w - SAFE.l - SAFE.r) / r.w));
   if (r.h * z <= h - SAFE.t - SAFE.b) return fitRect(r, z);
   return { z, x: SAFE.l + (w - SAFE.l - SAFE.r - r.w * z) / 2 - r.x * z, y: SAFE.t - r.y * z };
 }
@@ -219,7 +225,7 @@ export const union = (a: Rect, b: Rect): Rect => {
 };
 export function zoomAt(f: number, px = viewport.w / 2, py = viewport.h / 2, smooth = true) {
   const c = camTarget();
-  const z = Math.min(ZMAX, Math.max(ZMIN, c.z * f));
+  const z = Math.min(ZMAX, Math.max(zMin(), c.z * f));
   const x = px - ((px - c.x) * z) / c.z,
     y = py - ((py - c.y) * z) / c.z;
   smooth ? camTo(x, y, z) : setCam(x, y, z);
@@ -227,25 +233,9 @@ export function zoomAt(f: number, px = viewport.w / 2, py = viewport.h / 2, smoo
 export const toWorld = (px: number, py: number) => ({ x: (px - cam.x) / cam.z, y: (py - cam.y) / cam.z });
 export const viewportCenter = () => toWorld(viewport.w / 2, viewport.h / 2);
 
-// 缩放分档：100% 正常；概览只剩卡片名、图标记和灰条；地图只剩名字和色块
-
 let heldZ = 1;
 /**
  * 停下来时的缩放比例，镜头动的时候不变。按 1/z 保持屏幕上粗细的东西（箭头的点击区等）用它：
  * 缩放的每一帧都改 196 条线的样式，会让整层重新绘制（每帧 ~25ms）；动的时候整层本来就按位图缩放，停下再按准确比例画
  */
 export const stillZ = rooted(() => createMemo(() => (camMoving() ? heldZ : (heldZ = cam.z))));
-export type Lod = "full" | "overview" | "map";
-/** 低于这个比例就是概览（代码变灰条）：自动缩小镜头不缩过它 */
-export const overviewZ = () => state.host.settings.zoomOverview;
-const [fullHold, setFullHold] = createSignal(false);
-/** 导出要完整的卡：临时按 100% 的档画（镜头不动，用户看到的位置不变） */
-export const holdFullDetail = setFullHold;
-export const lod = rooted(() =>
-  createMemo<Lod>(() => {
-    if (fullHold()) return "full";
-    return cam.z >= overviewZ() ? "full" : cam.z >= state.host.settings.zoomMap ? "overview" : "map";
-  }),
-);
-/** 缩得很小时不弹定义预览、旁注 */
-export const quietHover = () => lod() !== "full";

@@ -72,13 +72,11 @@ const OUTLIVES_BOARD: Record<string, string> = {
   "state/camera.ts:heldZ": "the camera's zoom held while it moves",
   "state/measure.ts:measure": "the page's read-then-write measuring and its shared ResizeObserver",
   "gesture.ts:ghosts": "the page's hold on AI completions: a gesture's drop releases it",
-  "state/lodcards.ts:held": "the map level's zoom held while the camera moves",
   "state/measure.ts:lastPtr": "the pointer",
   "state/measure.ts:down": "the pointer's last press",
   "state/measure.ts:boardAt": "the board element's place in the window",
   "state/measure.ts:charW": "the code font's width",
   "state/hover.ts:ptr": "the pointer",
-  "state/idle.ts:on": "the idle-time queue",
   "state/toast.ts:toastTimer": "the toast, which stays across a switch",
   "state/blocks.ts:sheet": "the one style element for block tints",
   "state/blocks.ts:tinted": "what that style element holds",
@@ -118,6 +116,8 @@ const OUTLIVES_BOARD: Record<string, string> = {
   "actions/imageai.ts:colorCtx": "a canvas for parsing colors",
   "actions/flow.ts:sent": "calls prefetched lately, by segment: the host caches them",
   // kept across boards on purpose
+  "state/zoomlog.ts:rec":
+    "the zoom diagnostics recording, which runs across board switches until the host command stops it",
   "actions/clipboard.ts:lastCopy": "the clipboard: its card is looked up on the board pasted on",
   "actions/shared.ts:copied": "the clipboard: carries the board it was copied on",
   "actions/shared.ts:cutClip": "the clipboard: carries the board it was cut on",

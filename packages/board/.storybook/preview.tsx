@@ -80,10 +80,9 @@ const preview: Preview = {
       description: "Light or dark",
       toolbar: { title: "Light / Dark", icon: "mirror", dynamicTitle: true, items: [{ value: "light", title: "Light", icon: "sun" }, { value: "dark", title: "Dark", icon: "moon" }] },
     },
-    // 分档的门槛是 settings.zoomOverview = 0.6、zoomMap = 0.25（不含）：60% 正好还是完整的卡，30% 是概览，地图档要 25% 以下
     zoom: {
       description: "Zoom",
-      toolbar: { title: "Zoom", icon: "zoom", dynamicTitle: true, items: [{ value: "100", title: "100% · full" }, { value: "60", title: "60% · full (threshold)" }, { value: "30", title: "30% · overview" }] },
+      toolbar: { title: "Zoom", icon: "zoom", dynamicTitle: true, items: [{ value: "100", title: "100%" }, { value: "60", title: "60%" }, { value: "30", title: "30%" }] },
     },
   },
   initialGlobals: { theme: "warm-ink", scheme: "light", zoom: "100" },

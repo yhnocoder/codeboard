@@ -11,6 +11,8 @@ import {
   type BoxFill,
   type HandColor,
   type HandWeight,
+  type MarkSize,
+  type FreeTextLevel,
 } from "@codeboard/core";
 import * as C from "@codeboard/core/commands";
 import { commandEnv } from "./env";
@@ -21,7 +23,6 @@ import { IS_MAC } from "@yhnocoder/markdown/ui";
 import { editing, liveNoteMd, setEditing } from "../state/ui";
 import { cardsMeasured, naturalSize, chromeOf, CODE_MAX } from "../state/measure";
 import { noteImageOf } from "./imagedata";
-import { quietHover } from "../state/camera";
 import { promptText, type Item } from "../ui/Menu";
 import {
   imageCaption,
@@ -45,7 +46,6 @@ import { boardTimer } from "../state/root";
 const hoverT = boardTimer(),
   leaveT = boardTimer();
 export function hoverMarker(el: Element, ids: string[]) {
-  if (quietHover()) return;
   leaveT.stop();
   hoverT.start(() => showNotes(el, ids, false), 120);
   el.addEventListener(
@@ -182,7 +182,6 @@ export async function showPeek(
   pin = false,
   at?: { path: string; line: number; col: number },
 ) {
-  if (quietHover() && !pin) return;
   const c = cardById(cardId)?.card;
   const s = isCode(c) ? segOf(c, segId) : undefined;
   if (!s) return;
@@ -199,6 +198,9 @@ export async function showPeek(
 /** Mark 的颜色（它的箭头跟着变） */
 export const setMarkColor = (id: string, hand: HandColor) => C.setMarkColor(commandEnv, id, hand);
 export const setMarkWeight = (id: string, weight: HandWeight) => C.setMarkWeight(commandEnv, id, weight);
+export const setMarkSize = (id: string, size: MarkSize) => C.setMarkSize(commandEnv, id, size);
+export const setFreeTextLevel = (id: string, level: FreeTextLevel) => C.setFreeTextLevel(commandEnv, id, level);
+export const setFreeTextBold = (id: string, bold: boolean) => C.setFreeTextBold(commandEnv, id, bold);
 export const setBoxFill = (id: string, fill: BoxFill) => C.setBoxFill(commandEnv, id, fill);
 
 export const turnNote = (id: string, look: "note" | "text") => C.turnNote(commandEnv, id, look);

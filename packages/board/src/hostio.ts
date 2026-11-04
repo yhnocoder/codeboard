@@ -5,10 +5,11 @@ import { appendSegment, deleteItems, followMoved, renameBoard, setBoardSeal } fr
 import { commandEnv } from "./actions/env";
 import { state, setHost, mergeHost, setBoards, setLoaded, setSharedInfo, flows } from "./state/store";
 import { putViews, putStale, resetSegs } from "./state/views";
-import { markSaved, setBoard, sync, syncShared, syncGone, syncMerged } from "./state/changes";
+import { markSaved, setBoard, sync, syncShared, syncGone, syncMerged, syncSummaries } from "./state/changes";
 import { select, setLineSel, lineSel, sel } from "./state/selection";
 import { toast } from "./state/toast";
 import { setCam } from "./state/camera";
+import { showSummaryLevel } from "./state/summary";
 import { cardsMeasured } from "./state/measure";
 import { putSkels, setCrumbs, setWalkBack } from "./state/subboards";
 import { boardSwitched } from "./state/root";
@@ -22,6 +23,7 @@ import { preloadEditor } from "./md/load";
 import { putBoardRefs, refreshRefs } from "./md/refs";
 import { preloadCm } from "./cm/load";
 import { questionsOpen, setWelcome } from "./state/questions";
+import { toggleZoomLog } from "./state/zoomlog";
 
 let preloaded = false;
 /** 进出子白板、旧白板还在淡出时收到的 init 和它后面的消息：淡出完再按顺序处理（actions/subboards.ts switchGate） */
@@ -73,6 +75,7 @@ function handle(m: HostToBoard, md: Markdown) {
       });
       if (questionsOpen()) A.refreshQuestions();
       setCam(b.cam.x, b.cam.y, b.cam.z);
+      showSummaryLevel();
       markSaved();
       A.boardShown();
       if (m.walk) void hopWalk(m.walk);
@@ -190,6 +193,9 @@ function handle(m: HostToBoard, md: Markdown) {
     case "githubPicker":
       A.openGitHubPicker(m.repo);
       break;
+    case "zoomLog":
+      send({ type: "answer", id: m.id, value: toggleZoomLog() });
+      break;
     case "ask": {
       const a = m.ask;
       void (
@@ -208,6 +214,9 @@ function handle(m: HostToBoard, md: Markdown) {
       break;
     case "merged":
       syncMerged(m.patch, m.views);
+      break;
+    case "summaries":
+      syncSummaries(m.items);
       break;
     case "sharedGone": {
       const n = m.cards.filter((id) => findCard(state.board, id)).length;

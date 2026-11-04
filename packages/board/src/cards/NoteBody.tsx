@@ -1,6 +1,19 @@
 import { For, Match, Show, Switch, createEffect, createMemo, createSignal, on } from "solid-js";
 import { IS_MAC } from "@yhnocoder/markdown/ui";
-import { mdHeading, BOX_FILLS, HAND_COLORS, HAND_WEIGHTS, HAND_WEIGHT_CSS, type NoteCard } from "@codeboard/core";
+import {
+  mdHeading,
+  BOX_FILLS,
+  HAND_COLORS,
+  HAND_WEIGHTS,
+  HAND_WEIGHT_CSS,
+  MARK_SIZES,
+  markSizeOf,
+  FREE_TEXT_LEVELS,
+  FREE_TEXT_FS,
+  freeTextLevelName,
+  type MarkSize,
+  type NoteCard,
+} from "@codeboard/core";
 import { state, placeOf } from "../state/store";
 import { isSel, sel } from "../state/selection";
 import { editing } from "../state/ui";
@@ -74,10 +87,11 @@ export function NoteBody(p: { card: NoteCard }) {
           onCommit={(v, l) => A.setNoteText(c().id, v, l)}
         />
       </Match>
-      {/* Free Text：纯文字（只有换行，不按 Markdown 读），主题的标题字体，字号在卡上（--tfs）；原地编辑是普通的可编辑框，没有 Markdown 编辑器 */}
+      {/* Free Text：纯文字（只有换行，不按 Markdown 读）；H1、H2 用主题的标题样式，H3 小标题样式，正文（没有级别）正文样式，
+          字号在卡上（--tfs）；原地编辑是普通的可编辑框，没有 Markdown 编辑器 */}
       <Match when={c().look === "freetext"}>
         <Editable
-          class="tx st-title ft"
+          class={`tx ft ft-l${c().level ?? 0} ${c().level === 3 ? "st-heading" : c().level ? "st-title" : "st-body"}${c().bold ? " ftb" : ""}`}
           kind="note"
           id={c().id}
           value={c().md}
@@ -266,7 +280,7 @@ function foldHeader(id: string, entering: boolean, setFolded: (v: boolean) => vo
   };
 }
 
-/** 选中时上方的小工具条：Box 的底色、Mark 的颜色和粗细；Text、Free Text 没有 */
+/** 选中时上方的小工具条：Box 的底色、Mark 的颜色和粗细、Free Text 的级别和粗体；Text 没有 */
 export function WritingToolbar(p: { card: NoteCard }) {
   return (
     <Show when={isSel(p.card.id) && sel.cards.length === 1 && editing()?.id !== p.card.id}>
@@ -284,6 +298,36 @@ export function WritingToolbar(p: { card: NoteCard }) {
                 />
               )}
             </For>
+          </div>
+        </Match>
+        <Match when={p.card.look === "freetext"}>
+          <div class="ttb pill ftbar" data-nodrag>
+            {/* 级别：正文、H1–H3（选一级字号回到那一级的预设） */}
+            <For each={FREE_TEXT_LEVELS}>
+              {(k) => (
+                <button
+                  class="hsz ftl"
+                  classList={{ on: (p.card.level ?? 0) === k }}
+                  aria-label={freeTextLevelName(k)}
+                  aria-pressed={(p.card.level ?? 0) === k}
+                  data-tip={`${freeTextLevelName(k)} · ${FREE_TEXT_FS[k]}px`}
+                  onClick={() => A.setFreeTextLevel(p.card.id, k)}
+                >
+                  {k ? `H${k}` : "Aa"}
+                </button>
+              )}
+            </For>
+            <span class="hsep" />
+            <button
+              class="hsz ftbold"
+              classList={{ on: !!p.card.bold }}
+              aria-label="Bold"
+              aria-pressed={!!p.card.bold}
+              data-tip="Bold"
+              onClick={() => A.setFreeTextBold(p.card.id, !p.card.bold)}
+            >
+              B
+            </button>
           </div>
         </Match>
         <Match when={p.card.look === "mark"}>
@@ -312,6 +356,21 @@ export function WritingToolbar(p: { card: NoteCard }) {
                   onClick={() => A.setMarkWeight(p.card.id, k)}
                 >
                   a
+                </button>
+              )}
+            </For>
+            {/* 字号：四档；拖角拖出来的、不在档上的字号哪个都不亮 */}
+            <span class="hsep" />
+            <For each={Object.keys(MARK_SIZES) as MarkSize[]}>
+              {(k) => (
+                <button
+                  class="hsz"
+                  classList={{ on: markSizeOf(p.card) === k }}
+                  aria-label={`size ${k}`}
+                  data-tip={`${MARK_SIZES[k]}px`}
+                  onClick={() => A.setMarkSize(p.card.id, k)}
+                >
+                  {k.toUpperCase()}
                 </button>
               )}
             </For>

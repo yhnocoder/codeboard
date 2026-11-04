@@ -5,7 +5,7 @@ import {
   scalesText,
   scaleText,
   textSizeOf,
-  TEXT_FS,
+  baseTextSize,
   isCode,
   snapMove,
   snapResize,
@@ -24,11 +24,11 @@ import {
 } from "@codeboard/core";
 import { state, cardById, hostOf, rectOf, placeOf, placed } from "./state/store";
 import { live } from "./state/changes";
-import { sel, select, toggleSel, clearSel, setLineSel, isSel } from "./state/selection";
+import { sel, select, toggleSel, clearSel, setLineSel, isSel, type Sel } from "./state/selection";
 import { toast } from "./state/toast";
 import { tune } from "./state/tune";
 import { WHEEL_GESTURE, BLOCK_GLIDE, SNAP_SETTLE, LAND_MS } from "./state/timing";
-import { cam, setCam, stopCam, camTo, fling, toWorld, view, ZMIN, ZMAX, lod } from "./state/camera";
+import { cam, setCam, stopCam, camTo, fitRect, fling, toWorld, view, zMin, ZMAX } from "./state/camera";
 import { reduceMotion } from "./state/motion";
 import {
   setGuides,
@@ -141,7 +141,7 @@ export function isDbl(key: string, e: { clientX: number; clientY: number }) {
  */
 const OWN_CLICK = ".md-ref, label, summary";
 function clickEditKind(c: Card, t: HTMLElement): "note" | "free" | null {
-  if (lod() !== "full" || t.closest(OWN_CLICK)) return null;
+  if (t.closest(OWN_CLICK)) return null;
   if (c.kind === "note")
     return t.closest(c.look === "note" ? ".nbody" : ".tx") || t.classList.contains("cface") ? "note" : null;
   return c.kind === "code" && c.segments[0]?.src.kind === "free" && t.closest(".src") ? "free" : null;
@@ -570,15 +570,30 @@ export function cardContextMenu(e: MouseEvent, id: string, md: Markdown) {
   const colEl = t.closest("[data-col]") as HTMLElement | null;
   A.cardMenu(colEl?.dataset.col ?? id, e.clientX, e.clientY);
 }
+/** 放大到这张卡 100%：左上角对齐（卡比视野窄就水平居中） */
+function zoomToCard(id: string) {
+  const f = cardById(id);
+  if (!f) return;
+  const r = rectOf(f.host),
+    w = view().w;
+  camTo(24 + Math.max(0, (w - 48 - r.w) / 2) - r.x, 72 - r.y, 1);
+}
+/** Double-clicking a summary's title (the summary level, #130) zooms to what it summarizes: a loose card to 100 %, as in the
+ *  overview, a Section to fit its frame, an outer Section's own cards (own:) to fit them (at most 100 %) */
+function zoomToSummary(key: string) {
+  if (key.startsWith("card:")) return zoomToCard(key.slice(5));
+  const own = key.startsWith("own:") ? key.slice(4) : undefined;
+  const r = own
+    ? (bounds(placed().flatMap((c) => (placeOf(c.id).section === own ? [rectOf(c)] : []))) ?? frames().get(own))
+    : key.startsWith("sec:")
+      ? frames().get(key.slice(4))
+      : undefined;
+  if (!r) return;
+  const f = fitRect(r, 1);
+  camTo(f.x, f.y, f.z);
+}
 export function cardDblClick(e: MouseEvent, id: string) {
   const t = e.target as HTMLElement;
-  // 概览 / 地图里双击卡片：放大到这张卡 100%
-  if (lod() !== "full") {
-    e.preventDefault();
-    const r = rectOf(cardById(id)!.host),
-      w = view().w;
-    return camTo(24 + Math.max(0, (w - 48 - r.w) / 2) - r.x, 72 - r.y, 1);
-  }
   if (t.closest(".cdesc")) {
     e.preventDefault();
     setEditing({ kind: "desc", id });
@@ -712,7 +727,7 @@ export function scaleDown(e: PointerEvent, id: string) {
         const c = findCard(b, id)?.card,
           p = hostPlace(b, id);
         if (!scalesText(c) || !p) return;
-        c.fs = fs === TEXT_FS[c.look] ? undefined : fs;
+        c.fs = fs === baseTextSize(c) ? undefined : fs;
         p.w = w;
       });
     },
@@ -793,6 +808,40 @@ export function callPointerDown(e: PointerEvent, cardId: string, seg: string, ca
 }
 
 /**
+ * 拖箭头的终点指着的卡（#127）：那张卡显示成选中（主题自己的选中样式），离开就还原拖之前的选中；松手连上了就只选它（新箭头指向它，
+ * 起点那张卡不必再选着）。选中不是白板数据：不进撤销；拖到一半换了白板，选中跟着白板一起清掉，没有要还原的
+ */
+function aimSel() {
+  let prev: Sel | null = null,
+    cur = "",
+    at: { x: number; y: number } | undefined;
+  return {
+    /** 返回放大的原点（卡内坐标）：指针进卡的那一点，之后在卡里移动不变。绕中心放大的话，靠边的行号、代码行会从指针下面滑走 */
+    at(id: string, ev: PointerEvent) {
+      if (id === cur) return at;
+      prev ??= { cards: [...sel.cards], links: [...sel.links], sections: [...sel.sections] };
+      cur = id;
+      at = undefined;
+      if (id) {
+        const p = placeOf(id),
+          w = worldOf(ev);
+        at = { x: w.x - p.x, y: w.y - p.y };
+        select({ cards: [id] });
+        return at;
+      }
+      select(prev);
+      prev = null;
+    },
+    end(landed: string | null) {
+      if (landed) select({ cards: [landed] });
+      else if (prev) select(prev);
+      prev = null;
+      cur = "";
+    },
+  };
+}
+
+/**
  * side：用户从哪个圆点拖出来，起点就固定在那一侧（不再按位置自动推）。
  * 落点：代码行（行号）→ 那一行；Note 的卡身（卡头以外：块上、块之间的空隙、上下内边距）→ 最近的那一块；别的地方 → 整张卡。
  * 指着 Note 的一块时那一块和起点那一块（从块拖出来的）上淡色底，终点滑到那一块在卡边上的位置（换一块时滑过去，不跳）
@@ -809,6 +858,7 @@ export function linkPortDown(e: PointerEvent, from: End, sx: number, sy: number,
     raf = 0,
     aimKey = "";
   const a = local({ clientX: sx, clientY: sy });
+  const aimed = aimSel();
   const draw = () => {
     if (shown) setRubber({ x1: a.x, y1: a.y, x2: shown.x, y2: shown.y, plain: true });
   };
@@ -852,9 +902,17 @@ export function linkPortDown(e: PointerEvent, from: End, sx: number, sy: number,
           aim = null;
         }
       }
+      const at = aimed.at(to ? hostOf(to.card) : "", ev);
       setDropTarget(
         to
-          ? { kind: to.line ? "line" : to.block ? "block" : "card", card: hostOf(to.card), seg: to.seg, line: to.line }
+          ? {
+              kind: to.line ? "line" : to.block ? "block" : "card",
+              card: hostOf(to.card),
+              seg: to.seg,
+              line: to.line,
+              aim: true,
+              at,
+            }
           : null,
       );
       tintBlocks(aim ? [aim, src] : to ? [src] : []); // 起点那段：对准了任何落点（一段、一行、卡头）都上色
@@ -881,7 +939,9 @@ export function linkPortDown(e: PointerEvent, from: End, sx: number, sy: number,
       stop();
       setRubber(null);
       setDropTarget(null);
-      if (moved && to) A.addLink(from, to, side);
+      if (!moved || !to) return aimed.end(null);
+      aimed.end(hostOf(to.card));
+      A.addLink(from, to, side);
     },
     DRAG_SLOP,
     stop,
@@ -910,7 +970,12 @@ export function canvasPointerDown(e: PointerEvent) {
   if (modeIs("connect")) return void cancelMode();
   e.preventDefault();
   closeAllPops();
-  if (isDbl("canvas", e)) {
+  // a summary's title (the summary level shows, Summaries.tsx): its double-click zooms to its card or Section
+  const sum = t.closest("button")
+    ? undefined
+    : t.closest<HTMLElement>(".sumlay.live .sumhd")?.closest<HTMLElement>(".sumcol")?.dataset.sum;
+  if (isDbl(sum ? `sum:${sum}` : "canvas", e)) {
+    if (sum) return zoomToSummary(sum);
     const w = worldOf(e),
       k = state.host.settings.dblClick;
     if (k === "text") A.newText({ x: w.x, y: w.y - 12 });
@@ -1065,7 +1130,7 @@ export function canvasWheel(e: WheelEvent) {
   const p = local(e);
   if (e.ctrlKey || e.metaKey) {
     const z0 = cam.z,
-      z = Math.min(ZMAX, Math.max(ZMIN, z0 * Math.exp(-e.deltaY * (e.deltaMode ? 0.05 : 0.01))));
+      z = Math.min(ZMAX, Math.max(zMin(), z0 * Math.exp(-e.deltaY * (e.deltaMode ? 0.05 : 0.01))));
     setCam(p.x - ((p.x - cam.x) * z) / z0, p.y - ((p.y - cam.y) * z) / z0, z);
   } else {
     const k = e.deltaMode === 1 ? 16 : 1;

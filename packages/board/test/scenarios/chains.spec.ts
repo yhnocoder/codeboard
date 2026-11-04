@@ -39,8 +39,7 @@ async function chainsHost(b: Board): Promise<Host> {
   return h;
 }
 
-/** Fit all (or the selection), then zoom out a little: the grey boxes and labels beside the cards are not in the fit.
- *  Stops before the cards drop to the overview level of detail (code drawn as bars) */
+/** Fit all (or the selection), then zoom out a little: the grey boxes and labels beside the cards are not in the fit */
 async function fitWide(h: Host, sel = false, steps = 4) {
   await h.page.keyboard.press(sel ? "Shift+Digit2" : "Shift+Digit1");
   await idle(h);
@@ -58,21 +57,6 @@ async function fitWide(h: Host, sel = false, steps = 4) {
       ),
     );
     await idle(h);
-    if (await h.page.locator(".card.lo-ov").count()) {
-      await h.page.evaluate(() =>
-        document.querySelector("#board")!.dispatchEvent(
-          new WheelEvent("wheel", {
-            deltaY: -6,
-            ctrlKey: true,
-            clientX: 700,
-            clientY: 460,
-            bubbles: true,
-            cancelable: true,
-          }),
-        ),
-      );
-      break;
-    }
   }
   await h.page.mouse.move(5, 5);
   await idle(h);

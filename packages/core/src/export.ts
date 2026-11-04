@@ -21,6 +21,7 @@ import {
   type Link,
 } from "./model";
 import { computeFlows, isCall, startCards, walkOrder } from "./flow";
+import { plainRefs } from "./mdrefs";
 import { langInfo } from "@codeboard/analysis/langs";
 
 export type ExportScope = { kind: "board" } | { kind: "sections"; ids: string[] } | { kind: "walk"; start: string };
@@ -278,8 +279,12 @@ export function boardMarkdown(b: Board, o: MdOpts): string {
       .sort((x, y) => Number(!isCall(x)) - Number(!isCall(y)) || (x.from.line ?? 0) - (y.from.line ?? 0));
     if (outs.length) out.push(...outs.map((l) => `- ${arrowMd(b, l, o)}`), "");
   }
-  return `${out
-    .join("\n")
+  // 引用写成可读的 [[名字]]：id 在白板外面没有意义，名字用目标现在的
+  const name = (t: string) => {
+    const c = findCard(b, t)?.card;
+    return c ? cardTitle(c, b) : b.sections.find((s) => s.id === t)?.title.trim() || o.boardName?.(t);
+  };
+  return `${plainRefs(out.join("\n"), name)
     .replace(/\n{3,}/g, "\n\n")
     .trimEnd()}\n`;
 }

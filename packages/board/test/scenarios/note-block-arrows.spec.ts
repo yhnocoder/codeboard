@@ -306,7 +306,7 @@ test("noteBlockGapPicksNearestHeaderPicksCard", async () => {
     },
     async () => {
       got.headTint = await tinted(h.page);
-      got.ring = await h.page.locator('.card.drop-hot[data-id="nb"]').count();
+      got.ring = await h.page.locator('.card.aim.sel[data-id="nb"]').count();
     },
   );
   const end = await arrowEnd(h.page, head.id),

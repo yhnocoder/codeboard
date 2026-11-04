@@ -24,7 +24,7 @@ export type Atom =
       broken: boolean;
     }
   | { type: "emoji"; name: string }
-  | { type: "ref"; label: string }
+  | { type: "ref"; label: string; target?: string }
   | { type: "fn"; label: string }
   | { type: "html"; raw: string }
   | { type: "br" }
@@ -157,18 +157,21 @@ function spanOf(t: InlineToken, raw: string, src: string, at: number, from: numb
         ),
         atom: { type: "emoji", name: String(t.name ?? "") },
       };
-    case "wikiRef":
+    case "wikiRef": {
+      // 标题后面的 #^id 和 ]] 一起算记号：源码里读的是标题
+      const tail = t.target ? String(t.target).length + 4 : 2;
       return {
         ...mk(
           [
             [from, from + 2],
-            [to - 2, to],
+            [to - tail, to],
           ],
-          [from + 2, to - 2],
+          [from + 2, to - tail],
           { tag: { nodeName: "span", class: "md-refsrc" } },
         ),
-        atom: { type: "ref", label: String(t.label ?? "") },
+        atom: { type: "ref", label: String(t.label ?? ""), ...(t.target ? { target: String(t.target) } : {}) },
       };
+    }
     case "footnoteReference":
       return { ...mk([[from, to]], null), atom: { type: "fn", label: String(t.label ?? "") } };
     case "br":

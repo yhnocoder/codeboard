@@ -1,6 +1,5 @@
 // 代码是一整块连续文本（选区连续），行号栏按实测行位置绝对定位；复制时不带行号（copy 事件里自己拼）。
 import { FreeEdit } from "./FreeEdit";
-import { lod } from "../state/camera";
 import { portStyle } from "../state/hover";
 import { createMemo, For, Show, onMount, onCleanup, createEffect, createSignal, Switch, Match } from "solid-js";
 import {
@@ -20,8 +19,7 @@ import { lineSel, setLineSel, reportSelection } from "../state/selection";
 import { StickerChip } from "../stickers/Picker";
 import { geo, setGeo } from "../state/geo";
 import { look } from "../state/look";
-import { queueMeasure, observeResize, DED_PAD, monoWidth } from "../state/measure";
-import { whenIdle } from "../state/idle";
+import { queueMeasure, observeResize, DED_PAD } from "../state/measure";
 import {
   shown,
   notesOn,
@@ -119,11 +117,6 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
   const M = useLineMarks(cx);
   const A = useAnnots(cx);
 
-  // 概览档的代码轮廓（.ovm）：每行按真实缩进和长度一个色块；行本身不加内联样式，样式共享不受影响。
-  // .ovm 是 .src 的兄弟、盖住整个代码区：概览档用 opacity 藏行号和代码（不继承，不用重算里面几千个节点的样式），指针落在 .ovm 上交给卡片。
-  // 灰条在空闲时就提前做好、藏着（styles.css），进概览档时只是显示出来：241 张卡的灰条在切档那一帧里一起建要好几十 ms
-  const [warm, setWarm] = createSignal(false);
-  onMount(() => whenIdle(() => setWarm(true)));
   /**
    * 片段整体缩得很深（方法里一段 for 循环）：把所有行共有的缩进藏起来，代码靠左；左边留几根细竖线表示藏了几层。
    * 只用 text-indent 往左挪，文字本身不动：列号、调用、变量高亮照旧
@@ -136,31 +129,6 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
       }),
     ),
   );
-  const overviewMask = createMemo(() => {
-    if ((!warm() && lod() !== "overview") || !srcEl) return undefined;
-    // 只用已经量好的行位置（ys，相对 .code），不在这里读 DOM：切到概览档时 241 张卡挨个读会让浏览器每张卡排一次版
-    const rs = rows(),
-      y = ys(),
-      cw = monoWidth(srcEl);
-    // 每行一个直角色块：CSS 背景层（纯色渐变），不用图片，浏览器不用为每张卡解析、栅格化一张 SVG
-    const img: string[] = [],
-      size: string[] = [],
-      pos: string[] = [];
-    rs.forEach((r, i) => {
-      if (r.t !== "line" || !y[i]) return;
-      const s = segById(r.seg);
-      const t = (s?.text[r.line - s.start] ?? "").replace(/\t/g, "    ").trimEnd();
-      const ind = t.length - t.trimStart().length;
-      if (t.length === ind) return;
-      const sh = ded() ? DED_PAD - ded() * cw : 0;
-      img.push(cmtLine(r) ? "linear-gradient(var(--bar-c), var(--bar-c))" : "linear-gradient(var(--bar), var(--bar))");
-      size.push(`${((t.length - ind) * cw).toFixed(1)}px 10px`);
-      pos.push(`calc(var(--gutter) + ${(sh + ind * cw).toFixed(1)}px) ${y[i].y + 5}px`);
-    });
-    return img.length
-      ? { img: img.join(","), size: size.join(","), pos: pos.join(",") }
-      : { img: undefined, size: undefined, pos: undefined };
-  });
   const lineRow = (r: Row) => (r.t === "line" ? r : undefined);
   const lineHtml = (r: Extract<Row, { t: "line" }>) => {
     const s = segById(r.seg);
@@ -453,14 +421,6 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
                 )}
               </For>
             </div>
-            <Show when={overviewMask()}>
-              {(m) => (
-                <i
-                  class="ovm"
-                  style={{ "background-image": m().img, "background-size": m().size, "background-position": m().pos }}
-                />
-              )}
-            </Show>
             <Show when={ded()}>
               <i
                 class="dedm"

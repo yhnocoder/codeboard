@@ -207,7 +207,7 @@ export type OpenOptions = {
   light?: boolean;
   w?: number;
   h?: number;
-  /** device pixels per CSS pixel (screenshots for review at 2×) */
+  /** The page's device scale factor (screenshots at 2×); 1 by default */
   scale?: number;
   beforeLoad?: (p: Page) => Promise<void>;
   on?: OnMsg;

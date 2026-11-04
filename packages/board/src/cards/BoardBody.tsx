@@ -122,8 +122,6 @@ export function BoardBody(p: { card: BoardCard }) {
           This board was deleted or can’t be read.
         </div>
       </Show>
-      {/* 地图档时浮在框上面的名字（字号按 --iz 放大） */}
-      <div class="sbfar">{p.card.title || sk()?.name || ""}</div>
       <Show
         when={titleOnly() && sk()}
         fallback={

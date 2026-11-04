@@ -1227,3 +1227,102 @@ test("markWeight", async () => {
   await shot(h, "120-mark-weights");
   await h.close();
 });
+
+/** #123: S / M / L / XL on a Mark's toolbar, after the weights: each sets the font size in one undo step, the width scaled with it
+ *  as a corner drag scales it; the current size's button is lit, none for a size dragged off the steps */
+test("markSizes", async () => {
+  const h = await oneMark("picks this batch 先挑这一批", {}, 1400, 560);
+  const pg = h.page;
+  const sizeOf = () => pg.locator(`${card("m1")} .tx`).evaluate((t) => parseFloat(getComputedStyle(t).fontSize));
+  const lit = () =>
+    pg
+      .locator(`${card("m1")} .hdots .hsz`)
+      .evaluateAll((bs) => bs.filter((b) => b.classList.contains("on")).map((b) => b.textContent));
+  await pg.locator(`${card("m1")} .tx`).click();
+  await pg
+    .locator(`${card("m1")} .hdots .hsz`)
+    .first()
+    .waitFor({ timeout: 3000 });
+  const btns = await pg.locator(`${card("m1")} .hdots .hsz`).evaluateAll((bs) => bs.map((b) => b.textContent));
+  check("markSizeButtons", btns.join("|") === "S|M|L|XL", btns);
+  // a Mark never resized is at S, the default size
+  check("markSizeDefaultLit", (await lit()).join() === "S", await lit());
+  await shot(h, "123-mark-size-s");
+  const steps = { M: 24, L: 32, XL: 48 } as const;
+  for (const [k, px] of Object.entries(steps)) {
+    await pg.locator(`${card("m1")} .hsz`, { hasText: new RegExp(`^${k}$`) }).click();
+    await until(h, `${k} is saved`, () => mark(h).fs === px);
+    await until(h, `${k} is drawn`, async () => (await sizeOf()) === px);
+    // the width scales step by step from 420 at 18px, so it can be a pixel off from rounding once
+    check(`markSize${k}`, (await lit()).join() === k && Math.abs(h.board().place.m1.w - (420 * px) / 18) <= 1, {
+      lit: await lit(),
+      w: h.board().place.m1.w,
+    });
+    await shot(h, `123-mark-size-${k.toLowerCase()}`);
+  }
+  // one step each: undoing XL is back at L with L's width
+  await pg.keyboard.press("ControlOrMeta+z");
+  await until(h, "XL is undone", () => mark(h).fs === 32);
+  check("markSizeUndo", Math.abs(h.board().place.m1.w - (420 * 32) / 18) <= 1 && (await lit()).join() === "L", {
+    m: mark(h),
+    w: h.board().place.m1.w,
+  });
+  // the corner grip still scales it, off the steps: no button lit (it is still selected: a click on its text would edit it)
+  const g = (await pg.locator(`${card("m1")} .mkgrip`).boundingBox())!;
+  await pg.mouse.move(g.x + g.width / 2, g.y + g.height / 2);
+  await pg.mouse.down();
+  for (let i = 1; i <= 4; i++) await pg.mouse.move(g.x + i * 9, g.y + i * 3);
+  await pg.mouse.up();
+  await until(h, "the dragged size is saved", () => mark(h).fs !== 32);
+  const dragged = mark(h).fs;
+  check("markSizeDragOffSteps", !!dragged && ![18, 24, 32, 48].includes(dragged), mark(h));
+  await until(
+    h,
+    "no size is lit",
+    async () => (await pg.locator(`${card("m1")} .hdots .hsz`).count()) === 4 && (await lit()).length === 0,
+  );
+  // and S takes it back to the default size, which is not written
+  await pg.locator(`${card("m1")} .hsz`, { hasText: /^S$/ }).click();
+  await until(h, "S is saved", () => mark(h).fs === undefined);
+  check("markSizeS", (await sizeOf()) === TEXT_FS.mark && (await lit()).join() === "S", await lit());
+  await h.close();
+});
+
+/** A Mark written as a heading ("# Basic Concepts", at a dragged size): Light / Regular / Bold from its toolbar set the heading's
+ *  weight too, not the Markdown heading's own 600 */
+test("markHeadingWeight", async () => {
+  const b = emptyBoard("bMH", "mh");
+  put(
+    b,
+    { id: "m1", kind: "note", md: "# Basic Concepts", look: "mark", hand: "blue", fs: 38.5 } as NoteCard,
+    60,
+    60,
+    500,
+  );
+  b.cam = { x: 0, y: 0, z: 1 };
+  const h = await open({ board: b, light: true, w: 900, h: 500, settings: { theme: "warm-ink" } });
+  const pg = h.page,
+    sel = '.card[data-id="m1"]';
+  await pg.locator(`${sel} .tx`).click();
+  const seen: Record<string, string> = {};
+  for (const [tip, w] of [
+    ["Bold", "bold"],
+    ["Light", "light"],
+    ["Regular", "regular"],
+  ] as const) {
+    await pg.locator(`${sel} .hwt[data-tip="${tip}"]`).click();
+    await until(
+      h,
+      `${tip} is saved`,
+      () => (h.board().cards[0] as NoteCard).weight === (w === "regular" ? undefined : w),
+    );
+    await idle(h);
+    seen[tip] = await pg.locator(`${sel} .tx h1`).evaluate((e) => getComputedStyle(e).fontWeight);
+  }
+  check(
+    "markHeadingWeight each weight reaches the heading",
+    seen.Bold === "700" && seen.Light === "300" && seen.Regular === "400",
+    seen,
+  );
+  await h.close();
+});

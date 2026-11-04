@@ -43,7 +43,7 @@ import { putViews } from "../state/views";
 import { sync } from "../state/changes";
 import { sel, select, clearSel } from "../state/selection";
 import { toast } from "../state/toast";
-import { camTo, camTarget, fitRect, usableW, usableH, fitTop, isVisible, union, overviewZ } from "../state/camera";
+import { camTo, camTarget, fitRect, usableW, usableH, fitTop, isVisible, union } from "../state/camera";
 import { lineY } from "../state/geo";
 import { flash, ping, setWalk, walk } from "../state/ui";
 import { openPop } from "../state/pop";
@@ -56,6 +56,9 @@ import { walkBack, setWalkBack } from "../state/subboards";
 import { lateDispatch, openImplPicker, unresolvedMenu, searchAllLangs } from "./callpops";
 import { cardSel } from "../cardsel";
 import { boardRef, boardSet, boardTimer } from "../state/root";
+
+/** The camera's flights to a new call keep code this readable: they zoom out no further than this */
+const READABLE_Z = 0.6;
 
 // 正在问宿主的展开（换白板时那些请求都作废了）
 const pending = boardSet<string>();
@@ -190,9 +193,9 @@ export function placeExpanded(
         }
     const tree = new Set((f.byId.get(cardId)?.cards ?? []).map(hostOf));
     const hb = rectOf(host);
-    // 白板够宽（父卡和新卡并排时缩放不低于概览）就放右边一列，新卡头对着出发行、箭头基本是平的；
+    // 白板够宽（父卡和新卡并排时缩放不低于 READABLE_Z）就放右边一列，新卡头对着出发行、箭头基本是平的；
     // 窄（放在编辑器旁边）就缩进放在父卡下面，Fit 时代码还能读
-    const side = hb.w + COL_GAP + size.w <= usableW(overviewZ());
+    const side = hb.w + COL_GAP + size.w <= usableW(READABLE_Z);
     const top = side ? (lineY(cardId, segId, call.line)?.y ?? hb.y) - 18 : hb.y + hb.h;
     // 别的子树的卡也可能在这一列：在新卡上方的挡住它，下方的给它让位（下面整体下移）
     const fixed = placed()
@@ -240,7 +243,7 @@ function followExpanded(cardId: string, segId: string, call: CallSpan, id: strin
   const from = { x: p.x, y: y - 14, w: p.w, h: 28 };
   const c = camTarget();
   if (isVisible(from, c) && isVisible(r, c)) return;
-  const floor = Math.min(c.z, overviewZ());
+  const floor = Math.min(c.z, READABLE_Z);
   const body = { ...r, h: Math.min(r.h, usableH(floor)) };
   // 调用名大概在哪（等宽字，按列估）
   const name = { x: p.x + CODE_LEFT + call.col * CHAR_W - 24, y: from.y, w: call.name.length * CHAR_W + 48, h: from.h };

@@ -52,6 +52,8 @@ import { addVariant, variantSources } from "./variants";
 import { highlight, segView, viewsFor } from "./views";
 import { splitLines } from "./ws";
 import { imageAiJob } from "./imageai";
+import { summarize, withExamples } from "./summaries";
+import { copyPaths } from "./paths";
 import { aiInfo, clearDeepseekKey, completeNote, setDeepseekKey } from "./ai";
 import type { HostContext } from "./context";
 
@@ -167,10 +169,20 @@ export function makeHandler(cx: HostContext, panels: BoardHost, mediaDir: string
     permalinks: (_p, m) => permalinks(cx, m.segs),
     exportFile: (_p, m) => exportFile(cx, store, mediaDir, m.kind, m.name, m.text),
     copyText: (_p, m) => cx.ws.ui.copy(m.text),
+    copyPath: (p, m) => copyPaths(cx, store, p.id, m.items),
     imageAi: (p, m) => imageAiJob(cx, p.imageJobs, m.job, m.op),
     imageAiCancel: (p, m) => {
       p.imageJobs.get(m.job)?.abort();
     },
+    summarize: (p, m) =>
+      summarize(
+        cx,
+        withExamples(
+          m.input,
+          store.cached().map((e) => e.board),
+          p.id,
+        ),
+      ),
     aiInfo: () => aiInfo(cx),
     aiKey: async (p, m) => {
       if (m.action === "set") await setDeepseekKey(cx, prompts(cx, p));

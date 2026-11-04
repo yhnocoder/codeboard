@@ -75,6 +75,25 @@ describe("markdown round trip", () => {
     same("see [[Scheduler.schedule]] and [[My note]]");
     expect(JSON.stringify(parseMd("[[A b]]"))).toContain('"wikiRef"');
   });
+  it("[[title#^id]]: a picked reference keeps its target's id next to its title", () => {
+    same("see [[Scheduler.schedule#^c1x-2]] and [[Kernels › Flash#^bk/k0]] in | a table");
+    same("| a         | b             |\n| --------- | ------------- |\n| [[A#^c1]] | [[Issue #12]] |");
+    const refs = (s: string) => {
+      const out: unknown[] = [];
+      const walk = (n: JSONContent) => {
+        if (n.type === "wikiRef") out.push(n.attrs);
+        n.content?.forEach(walk);
+      };
+      walk(parseMd(s));
+      return out;
+    };
+    expect(refs("[[A b#^c1]] [[Kernels › Flash#^bk/k0]] [[Issue #12]] [[x#^ spaced]]")).toEqual([
+      { label: "A b", target: "c1" },
+      { label: "Kernels › Flash", target: "bk/k0" },
+      { label: "Issue #12", target: "" },
+      { label: "x#^ spaced", target: "" },
+    ]);
+  });
   it("footnotes", () => {
     same("text[^1] more[^2]\n\n[^1]: first note\n[^2]: second");
     // 标签按出现顺序重新编号
@@ -159,6 +178,27 @@ describe("static render", () => {
   });
   it("keeps soft line breaks as written (old notes were one line per paragraph)", () => {
     expect(markdown.render("line one\nline two")).toBe("<p>line one\nline two</p>");
+  });
+  it("a [[title#^id]] chip asks the resolver with the id and shows the target's current title", () => {
+    const asked: unknown[] = [];
+    const md = createMarkdown({
+      refs: {
+        resolve: (label, target) => {
+          asked.push([label, target]);
+          return target === "c1" ? { id: "c1", title: "New name" } : null;
+        },
+      },
+    });
+    const h = md.render("see [[Old name#^c1]] and [[Typed]]");
+    expect(h).toContain('data-ref="Old name" data-target="c1"');
+    const el = document.createElement("div");
+    el.innerHTML = h;
+    md.hydrate(el, h);
+    expect(el.textContent).toBe("see New name and Typed");
+    expect(asked).toEqual([
+      ["Old name", "c1"],
+      ["Typed", undefined],
+    ]);
   });
   it("renders code for the host highlighter, chips, tasks, footnotes", () => {
     const h = markdown.render("```python\ndef f(): return 1\n```\n\n- [x] done\n\nsee [[Card]][^1]\n\n[^1]: n");

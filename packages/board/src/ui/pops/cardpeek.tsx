@@ -26,8 +26,6 @@ const STATE_CLASSES = [
   "editing",
   "off",
   "far",
-  "lo-ov",
-  "lo-map",
   "skel",
   "skel-in",
   "merge-hot",
@@ -40,7 +38,7 @@ const STATE_CLASSES = [
   "ghost-out",
 ];
 /** What a card's inline style gets from its animations and tilt, not its look */
-const STATE_STYLES = ["rotate", "transform", "translate", "scale", "transform-origin", "opacity", "transition", "--iz"];
+const STATE_STYLES = ["rotate", "transform", "translate", "scale", "transform-origin", "opacity", "transition"];
 
 const noteOf = (c: Card) => (c.kind === "note" ? c : undefined);
 

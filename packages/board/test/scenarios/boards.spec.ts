@@ -1,7 +1,9 @@
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { emptyBoard, type Board } from "@codeboard/core";
-import { put, symCard, findSym, type Host } from "../harness";
+import { put, symCard, findSym, shot, type Host } from "../harness";
 import { subHost } from "../subhost";
-import { test, open, verdict, expect, until, idle, hold, pauseClock } from "../fixtures";
+import { test, open, verdict, expect, until, idle, hold, pauseClock, check, hostBoards, light } from "../fixtures";
 import { CAM_SETTLE, LIVE_DELAY } from "../../src/state/timing";
 
 type Sub = Awaited<ReturnType<typeof subHost>>;
@@ -20,6 +22,8 @@ test("emptyquestion", () => verdict("empty-new-question-is-dropped", emptyQuesti
 test("undoafterpeek", () => verdict("undo-history-survives-a-visit-to-a-sub-board", undoAfterPeek));
 
 test("undoturnintoboard", () => verdict("undoing-turn-into-board-removes-the-new-board", undoTurnIntoBoard));
+
+test("copyPathPointsIntoBoardFile", copyPathPointsIntoBoardFile);
 
 test("deletedparentcrumb", () => verdict("a-deleted-parent-board-leaves-the-breadcrumbs", deletedParentCrumb));
 
@@ -338,4 +342,69 @@ async function changesReachHostTime(res: Record<string, unknown>) {
   );
   await page.context().close();
   return res.wrapSent && res.textSent;
+}
+
+/**
+ * Copy Path (#126) on the real host: a card's menu, a Section's, two cards selected, a shared card and the board's ⋯ menu each put
+ * <file>#<id> (the board: just the file) on the clipboard, with a toast. Every line names a file that exists and holds that id, as
+ * Claude Code in a terminal would open and grep it: the board's JSON, and the card library's file for the shared card
+ */
+async function copyPathPointsIntoBoardFile() {
+  const B = emptyBoard("bPath", "Attention");
+  const step = nv("LLMEngine.step");
+  put(B, step, 80, 120);
+  B.cards.push({ id: "nPath", kind: "note", md: "## Prefill\nthe first pass", look: "note" });
+  B.place.nPath = { x: 720, y: 120, w: 260 };
+  B.cards.push({ id: "nShared", kind: "note", md: "a shared note", look: "note" });
+  B.place.nShared = { x: 720, y: 420, w: 260 };
+  B.sections.push({ id: "sPath", title: "Engine", x: 40, y: 60, w: 620, h: 560 });
+  B.place[step.id].section = "sPath";
+  const run = await hostBoards([B], { page: { light, w: 1300, h: 820 } });
+  await run.host.store.share("bPath", ["nShared"]);
+  const copied: string[] = [];
+  run.ws.ui.copy = async (text) => void copied.push(text);
+  const h = await run.open("bPath");
+  const pg = h.page;
+  const pick = async (label: string) => {
+    const n = copied.length;
+    await pg.locator(".ctx button", { hasText: new RegExp(`^${label}$`) }).click();
+    return until(h, `${label} copies a path`, () => copied[n]);
+  };
+  const toast = () => pg.locator(".toast").last().innerText();
+
+  await pg.locator(`.card[data-id="${step.id}"] .chead`).click({ button: "right", position: { x: 200, y: 12 } });
+  await pg.locator(".ctx button", { hasText: /^Copy Path$/ }).waitFor();
+  await shot(h, "126-copy-path");
+  const card = await pick("Copy Path");
+  const file = run.host.store.fileOf("bPath")!;
+  check("card-path", card === `${file}#${step.id}`, card, file);
+  check("card-path-toast", (await toast()).includes("Copied path"), await toast());
+  await pg.keyboard.press("Escape");
+
+  await pg.locator('.slabel[data-sect="sPath"]').click({ button: "right" });
+  const sect = await pick("Copy Path");
+  check("section-path", sect === `${file}#sPath`, sect);
+  await pg.keyboard.press("Escape");
+
+  await pg.locator('.card[data-id="nPath"]').click();
+  await pg.locator(`.card[data-id="${step.id}"] .chead`).click({ modifiers: ["Shift"], position: { x: 200, y: 12 } });
+  await pg.locator('.card[data-id="nPath"]').click({ button: "right" });
+  const two = await pick("Copy Paths");
+  check("multi-path", two === `${file}#nPath\n${file}#${step.id}` || two === `${file}#${step.id}\n${file}#nPath`, two);
+  await pg.keyboard.press("Escape");
+  await pg.mouse.click(1200, 780);
+
+  await pg.locator('.card[data-id="nShared"]').click({ button: "right" });
+  const shared = await pick("Copy Path");
+  check("shared-path", shared === `${path.join(path.dirname(file), "cards", "nShared.json")}#nShared`, shared);
+
+  await pg.locator('.bbar button[aria-label="More"]').click();
+  const board = await pick("Copy Path");
+  check("board-path", board === file, board);
+
+  for (const line of [card, sect, ...two.split("\n"), shared, board]) {
+    const [f, id] = line.split("#");
+    const body = fs.existsSync(f) ? fs.readFileSync(f, "utf8") : "";
+    check("path-file-holds-id", body && (!id || body.includes(`"id": "${id}"`)), line);
+  }
 }

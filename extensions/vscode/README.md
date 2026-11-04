@@ -68,7 +68,6 @@ Nine board themes (plus an experimental one), each with a light and a dark varia
 | `codeboard.ai.deepseekModel` | `deepseek-flash` | DeepSeek model for completions and the AI tools. |
 | `codeboard.ai.textModel`, `svgModel`, `focusModel` | `auto` | Model for Extract Text, for Convert / Modify SVG and for Auto Focus: `auto` (DeepSeek if a key is set, otherwise a VS Code language model), `deepseek`, or a VS Code language model picked in Settings › AI. |
 | `codeboard.studyScope` | `[]` | Packages outside the workspace that count as project code (for example `torch`). |
-| `codeboard.zoom.overview` | `0.6` | Below this zoom, cards show an overview instead of code. |
 | `codeboard.doubleClick` | `text` | What double-clicking empty board space creates. |
 
 Set the DeepSeek key in the board's Settings › AI or with **CodeBoard: Set DeepSeek API Key**; it is kept in VS Code's secret storage.

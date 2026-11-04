@@ -11,8 +11,8 @@ export type RefSeal = { text: string; color: string; outer?: { text: string; col
 export type RefTarget = { id: string; title: string; badge?: string; seal?: RefSeal; hint?: string; place?: string };
 /** 认得出指的是哪儿、但已经找不到了：item = 那里已经没有这一项（灰、划掉），place = 那个地方本身没了（警告色）。why = 悬停的提示 */
 export type RefBroken = { broken: "item" | "place"; title: string; badge?: string; why?: string };
-/** [[标题]] 怎么找目标；missing：找不到时的提示 */
-export type Refs = { resolve: (label: string) => RefTarget | RefBroken | null; missing?: string };
+/** [[标题]] 怎么找目标：target = 从 [[ 列表选的时候带上的目标 id（[[标题#^id]]，见 schema-nodes.ts WikiRef），先按它找；missing：找不到时的提示 */
+export type Refs = { resolve: (label: string, target?: string) => RefTarget | RefBroken | null; missing?: string };
 const MISSING = "Nothing with this title";
 
 /** 上次画成什么样（一样就不重画，静态 Note 里的引用每次别处的数据到了都会再认一遍） */
@@ -20,7 +20,7 @@ const painted = new WeakMap<HTMLElement, string>();
 
 /** 按现在能找到的把一个 [[引用]]（.md-ref）画出来：印章、标题（和 badge），找不到时的样子和提示 */
 export function paintRef(r: HTMLElement, refs: Refs) {
-  const hit = refs.resolve(r.dataset.ref ?? ""),
+  const hit = refs.resolve(r.dataset.ref ?? "", r.dataset.target || undefined),
     missing = refs.missing || MISSING;
   const broken = hit && "broken" in hit ? hit.broken : undefined;
   r.classList.toggle("missing", !hit || broken === "item");
@@ -143,7 +143,7 @@ export function mdClick(e: MouseEvent, src: string, o: ClickOpts, refs: Refs): b
   if (r) {
     e.preventDefault();
     e.stopPropagation();
-    const hit = refs.resolve(r.dataset.ref ?? "");
+    const hit = refs.resolve(r.dataset.ref ?? "", r.dataset.target || undefined);
     if (hit && !("broken" in hit)) o.openRef(hit.id, hit);
     return true;
   }

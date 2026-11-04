@@ -8,6 +8,7 @@ import {
   exportOrder,
   findCard,
   isQuestion,
+  plainRefs,
   startCards,
   walkOrder,
   bounds,
@@ -22,11 +23,10 @@ import {
 import { state, rectOf, hostOf, flows } from "../state/store";
 import { sel, select, lineSel, setLineSel } from "../state/selection";
 import { toast } from "../state/toast";
-import { lod, holdFullDetail } from "../state/camera";
-import { lodBusy, lodOf } from "../state/lodcards";
 import { setExportOpen, exportBusy, setExportBusy, type ExportOpts } from "../state/export";
 import { ask, send } from "../host";
 import { flushMd } from "../md/lazy";
+import { resolveCardRef } from "./common";
 import type { Markdown } from "@yhnocoder/markdown";
 import { noteBlocks } from "../md/blocks";
 import type { ViewerData } from "../export/viewer";
@@ -136,22 +136,6 @@ const frames = (n = 2) =>
     requestAnimationFrame(f);
   });
 
-/** 卡片都换成完整的样子（缩小时卡片是概览 / 地图）：分档临时定在 full（镜头不动），等卡一批批换完，做完再放开 */
-async function withFullDetail<T>(fn: () => T | Promise<T>): Promise<T> {
-  const notFull = () => state.board.cards.some((c) => state.board.place[c.id] && lodOf(c.id) !== "full");
-  const need = lod() !== "full" || notFull();
-  if (need) {
-    holdFullDetail(true);
-    for (let i = 0; i < 180 && (lodBusy() || notFull()); i++) await frames(1);
-    await frames(2);
-  }
-  try {
-    return await fn();
-  } finally {
-    if (need) holdFullDetail(false);
-  }
-}
-
 // 交互状态的 class（选中、悬停、分档、离屏、镜头在动）：导出的是静止、没选中的样子
 const LIVE_CLASSES = [
   "off",
@@ -161,8 +145,6 @@ const LIVE_CLASSES = [
   "landing",
   "hov",
   "editing",
-  "lo-ov",
-  "lo-map",
   "moving",
   "settle",
   "bind-hot",
@@ -180,11 +162,9 @@ async function cloneForExport(b: Board, scope: ExportScope, order: string[]): Pr
   setLineSel(null);
   flushMd(); // 视野外还没渲染完的 Note 先补上
   await frames(2);
-  const world = await withFullDetail(async () => {
-    flushMd();
-    await frames(1);
-    return (document.querySelector("#board .world") as HTMLElement).cloneNode(true) as HTMLElement;
-  });
+  flushMd();
+  await frames(1);
+  const world = (document.querySelector("#board .world") as HTMLElement).cloneNode(true) as HTMLElement;
   select(prevSel);
   setLineSel(prevLine);
   const keep = new Set(order);
@@ -215,6 +195,11 @@ async function cloneForExport(b: Board, scope: ExportScope, order: string[]): Pr
     });
   }
   world.querySelectorAll('[data-export="strip"]').forEach((el) => el.remove());
+  // zoomed out, the card level is faded out (state/summary.ts): an export always shows the cards
+  world.querySelectorAll<HTMLElement>(".cardlay").forEach((el) => {
+    el.style.opacity = "";
+    el.classList.remove("gone");
+  });
   for (const c of LIVE_CLASSES) world.querySelectorAll(`.${c}`).forEach((el) => el.classList.remove(c));
   world.classList.remove("moving", "settle");
   world.querySelectorAll("[contenteditable]").forEach((el) => el.removeAttribute("contenteditable"));
@@ -368,13 +353,20 @@ function collectCss(): string {
   return out.join("\n");
 }
 
+/** 快照里的引用不再去找目标（没有白板了）：写成目标现在的名字 */
+const namedRefs = (md: Markdown, src: string) =>
+  plainRefs(src, (t) => {
+    const r = resolveCardRef("", md, t);
+    return r && !("broken" in r) ? r.title : undefined;
+  });
+
 function noteHtml(md: Markdown, n: Sidenote): string {
   const where = n.at.lines
     ? `<div class="xv-w">${n.at.lines[0] === n.at.lines[1] ? `line ${n.at.lines[0]}` : `lines ${n.at.lines[0]}–${n.at.lines[1]}`}${n.why ? ` · ${escHtml(n.why)}` : ""}</div>`
     : "";
   switch (n.kind) {
     case "text":
-      return `${where}<div class="md">${md.render(n.md)}</div>`;
+      return `${where}<div class="md">${md.render(namedRefs(md, n.md))}</div>`;
     case "link":
       return `${where}<a href="${escHtml(n.url)}" target="_blank" rel="noopener">${escHtml(n.title || n.url)}</a>`;
     case "card": {
@@ -450,7 +442,7 @@ async function snapshotHtml(
     for (const s of b.stickers)
       if (qs.has(s.id))
         questions[s.id] = imgRefs(
-          `<div class="xv-w">${s.q?.done ? "Answered" : "Question"}</div><div class="md">${md.render(s.q?.md || "(no text)")}</div>`,
+          `<div class="xv-w">${s.q?.done ? "Answered" : "Question"}</div><div class="md">${md.render(namedRefs(md, s.q?.md || "(no text)"))}</div>`,
         );
   const cardLinks: Record<string, string> = {};
   for (const id of order) {

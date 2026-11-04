@@ -79,6 +79,17 @@ export const VariantSchema = obj({
   ]),
 });
 
+/** model.ts Summary */
+const Summary = obj({
+  text: str,
+  title: opt(str),
+  at: num,
+  sig: str,
+  edited: opt(yes),
+  pairs: opt(v.array(obj({ ai: str, user: str, at: num }))),
+  input: opt(str),
+});
+
 const Place = obj({
   x: num,
   y: num,
@@ -89,6 +100,7 @@ const Place = obj({
   locked: opt(bool),
   collapsed: opt(bool),
   start: opt(bool),
+  summary: opt(Summary),
 });
 
 const base = {
@@ -137,6 +149,7 @@ const Card = v.variant("kind", [
     fill: opt(v.picklist(BOX_FILLS)),
     hand: opt(v.picklist(HAND_COLORS)),
     weight: opt(v.picklist(["light", "bold"])),
+    level: opt(v.picklist([1, 2, 3])),
     fs: opt(v.pipe(num, v.minValue(TEXT_FS.min), v.maxValue(TEXT_FS.max))),
     msg: opt(obj({ where: opt(str) })),
     mdLayout: opt(NoteLayout),
@@ -256,6 +269,8 @@ const Section = obj({
   collapsed: opt(bool),
   locked: opt(bool),
   desc: opt(str),
+  summary: opt(Summary),
+  directSummary: opt(Summary),
 });
 
 const noteBase = {

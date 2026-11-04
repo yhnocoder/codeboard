@@ -1,5 +1,10 @@
-// Free Text: a heading written on the board. Plain text (line breaks only), no frame, the theme's title font, its size dragged
-// freely from its corner (the Mark's mechanism), edited in place in a plain text box (no Markdown editor)
+// Free Text: text written on the board. Plain text (line breaks only), no frame, its size dragged freely from its corner (the
+// Mark's mechanism), edited in place in a plain text box (no Markdown editor). Its level (#131: plain, the default, or H1–H3) is
+// the theme's body, title or heading style at that level's preset size, and it can be bold; both from its toolbar or its menu.
+//   freeTextCard     #119: new from the menus, edited in place, H1 in every theme's title font, resized, undo, duplicate, paste
+//   freeTextExport   #119: the HTML snapshot and the PNG export draw it
+//   freeTextLevels   #131: the four levels in every theme (the Text styles they take, their preset sizes), picked from the
+//                    toolbar (one undo step each) and the menu, and bold toggled; an old board's Free Text is H1
 import { shot, type Host } from "../harness";
 import { DEFAULT_SETTINGS, emptyBoard, type Board, type NoteCard } from "@codeboard/core";
 import { test, open, check, until, idle } from "../fixtures";
@@ -9,17 +14,21 @@ const frees = (h: Host) =>
   h.board().cards.filter((c): c is NoteCard => c.kind === "note" && c.look === "freetext") as NoteCard[];
 const byId = (h: Host, id: string) => h.board().cards.find((c) => c.id === id) as NoteCard | undefined;
 
-/** A title-sized Text to compare the theme's title font with */
+/** A title-sized Text to compare the theme's title font with (and a heading- and a body-sized one, for the levels) */
 function titleBoard(): Board {
   const b = emptyBoard("b1", "free text");
   b.cards.push({ id: "t1", kind: "note", md: "Title reference", look: "text", size: "title" } as NoteCard);
   b.place.t1 = { x: 640, y: 60, w: 300 };
+  b.cards.push({ id: "t2", kind: "note", md: "Heading reference", look: "text", size: "heading" } as NoteCard);
+  b.place.t2 = { x: 640, y: 140, w: 300 };
+  b.cards.push({ id: "t3", kind: "note", md: "Body reference", look: "text", size: "body" } as NoteCard);
+  b.place.t3 = { x: 640, y: 200, w: 300 };
   b.cam = { x: 0, y: 0, z: 1 };
   return b;
 }
 
 /** The text's font next to the title Text's, and the Free Text's frame */
-const lookOf = (h: Host, id: string) =>
+const lookOf = (h: Host, id: string, ref = "t1") =>
   h.page.evaluate(
     ({ sel, ref }) => {
       const c = document.querySelector<HTMLElement>(sel)!,
@@ -47,11 +56,11 @@ const lookOf = (h: Host, id: string) =>
         lines: Math.round(t.offsetHeight / parseFloat(ts.lineHeight)),
       };
     },
-    { sel: card(id), ref: `${card("t1")} .tx` },
+    { sel: card(id), ref: `${card(ref)} .tx` },
   );
 
-/** #119: New Free Text from the toolbar's T ▾ menu and the board menu; plain text edited in place; the theme's title font in
- *  every theme; frameless and as wide as its text; resized from its corner (font size, one undo step); an empty one goes without
+/** #119: New Free Text from the toolbar's T ▾ menu and the board menu (plain, #131); plain text edited in place; at H1 the theme's
+ *  title font in every theme; frameless and as wide as its text; resized from its corner (font size, one undo step); an empty one goes without
  *  an undo step; Duplicate and copy / paste keep its text and size */
 test("freeTextCard", async () => {
   const h = await open({ board: titleBoard(), light: true, w: 1200, h: 760, settings: { theme: "warm-ink" } as never });
@@ -68,9 +77,18 @@ test("freeTextCard", async () => {
   const ft = await until(h, "the Free Text is saved", () => frees(h).find((c) => c.md === "Scheduler"));
   await idle(h);
   const id = ft.id;
+  const p0 = await lookOf(h, id, "t3");
+  check(
+    "freeTextSaved a new one is plain: the body Text's font at 20px",
+    ft.fs === undefined && ft.level === undefined && p0.size === "20px" && p0.font === p0.title,
+    { ft, p0 },
+  );
+  // Heading 1 from its toolbar: the theme's title font at 40px
+  await pg.locator(`${card(id)} .ftbar button[aria-label="Heading 1"]`).click();
+  await until(h, "it is H1", () => byId(h, id)?.level === 1);
+  await idle(h);
   const l0 = await lookOf(h, id);
-  check("freeTextSaved", ft.fs === undefined && l0.size === "40px", { ft, size: l0.size });
-  check("freeTextTitleFont", l0.font === l0.title, l0);
+  check("freeTextTitleFont", l0.font === l0.title && l0.size === "40px", l0);
   check("freeTextFrameless", /rgba\(0, 0, 0, 0\)|transparent/.test(l0.bg) && l0.shadow.length === 0, l0);
   check("freeTextFitsItsText", l0.w < 381 && l0.fits, l0);
 
@@ -219,5 +237,101 @@ test("freeTextExport", async () => {
     return { w: img.width, h: img.height, dark };
   }, png);
   check("freeTextExportPng", ink.dark > 2000, ink);
+  await h.close();
+});
+
+/** #131: a Free Text's level and bold. Every level in every theme takes the Text style it says (plain: the body Text's font, H1
+ *  and H2 the title Text's, H3 the heading Text's) at its preset size; bold is heavier than the theme's own weight. Picked from
+ *  the toolbar (one undo step, back at the level's preset size) and from the menu */
+test("freeTextLevels", async () => {
+  const b = titleBoard();
+  const ft = (id: string, md: string, x: number, y: number, o: Partial<NoteCard> = {}) => {
+    b.cards.push({ id, kind: "note", md, look: "freetext", ...o } as NoteCard);
+    b.place[id] = { x, y, w: 200 };
+  };
+  ft("h1", "Heading 1 · 调度器", 40, 40, { level: 1 });
+  ft("h2", "Heading 2 · 批处理", 40, 130, { level: 2 });
+  ft("h3", "Heading 3 · 预填充", 40, 210, { level: 3 });
+  ft("p0", "Plain · 正文的字", 40, 280);
+  ft("hb", "Heading 2 bold", 40, 340, { level: 2, bold: true });
+  const h = await open({ board: b, light: true, w: 1100, h: 520, settings: { theme: "warm-ink" } as never });
+  const pg = h.page;
+  const want = {
+    h1: ["t1", "40px"],
+    h2: ["t1", "30px"],
+    h3: ["t2", "24px"],
+    p0: ["t3", "20px"],
+    hb: ["t1", "30px"],
+  } as const;
+  const weight = (id: string) => pg.locator(`${card(id)} .tx`).evaluate((e) => +getComputedStyle(e).fontWeight);
+  for (const theme of ["warm-ink", "drafting", "ink-wash", "newspaper", "poster", "graphite"] as const) {
+    await h.post({ type: "host", host: { settings: { ...DEFAULT_SETTINGS, theme } } as never });
+    await idle(h);
+    const got: Record<string, unknown> = {};
+    let ok = true;
+    for (const [id, [ref, size]] of Object.entries(want)) {
+      const l = await lookOf(h, id, ref);
+      got[id] = l;
+      // the bold one is its level's style but heavier
+      const font =
+          id === "hb"
+            ? l.font
+                .split(" | ")
+                .filter((_, i) => i !== 1)
+                .join()
+            : l.font,
+        title =
+          id === "hb"
+            ? l.title
+                .split(" | ")
+                .filter((_, i) => i !== 1)
+                .join()
+            : l.title;
+      ok &&= font === title && l.size === size;
+    }
+    check(`freeTextLevels ${theme} each level takes its Text style at its preset size`, ok, got);
+    const w = { h2: await weight("h2"), hb: await weight("hb") };
+    check(`freeTextLevels ${theme} bold is heavier than the level's own weight`, w.hb > w.h2 && w.hb >= 700, w);
+    if (theme === "warm-ink") await shot(h, "131-free-text-levels");
+  }
+  await h.post({ type: "host", host: { settings: { ...DEFAULT_SETTINGS, theme: "warm-ink" } } as never });
+  await idle(h);
+
+  // the toolbar: the plain one to H3 (its preset size, one undo step), then bold
+  await pg.locator(`${card("p0")} .tx`).click();
+  const bar = pg.locator(`${card("p0")} .ftbar`);
+  await bar.waitFor();
+  const on = () => bar.locator("button.on").allTextContents();
+  check("freeTextLevels the toolbar shows plain and not bold", (await on()).join() === "Aa", await on());
+  await shot(h, "131-free-text-toolbar");
+  await bar.locator('button[aria-label="Heading 3"]').click();
+  await until(h, "it is H3", () => byId(h, "p0")?.level === 3);
+  await idle(h);
+  check(
+    "freeTextLevels H3 from the toolbar: the heading Text's style at 24px",
+    (await lookOf(h, "p0", "t2")).size === "24px" && (await on()).join() === "H3",
+    await lookOf(h, "p0", "t2"),
+  );
+  await bar.locator('button[aria-label="Bold"]').click();
+  await until(h, "it is bold", () => byId(h, "p0")?.bold === true);
+  await idle(h);
+  check("freeTextLevels B makes it bold", (await weight("p0")) >= 700 && (await on()).join() === "H3,B", await on());
+  await shot(h, "131-free-text-bold");
+  await pg.keyboard.press("ControlOrMeta+z");
+  await until(h, "bold is undone", () => !byId(h, "p0")?.bold);
+  await pg.keyboard.press("ControlOrMeta+z");
+  await until(h, "the level is undone", () => byId(h, "p0")?.level === undefined);
+  check("freeTextLevels each pick is one undo step", (await lookOf(h, "p0", "t3")).size === "20px");
+
+  // the menu: a dragged size goes back to the level's preset; Bold toggles
+  await pg.locator(`${card("h1")} .tx`).click({ button: "right" });
+  await pg.locator(".ctx button", { hasText: "Level" }).hover();
+  await pg.locator(".ctx button", { hasText: "Heading 2" }).click();
+  await until(h, "H1 is now H2", () => byId(h, "h1")?.level === 2);
+  await pg.locator(`${card("h1")} .tx`).click({ button: "right" });
+  await pg.locator(".ctx button", { hasText: /^Bold/ }).click();
+  await until(h, "and bold", () => byId(h, "h1")?.bold === true);
+  await idle(h);
+  check("freeTextLevels Level and Bold from the menu", (await lookOf(h, "h1")).size === "30px", byId(h, "h1"));
   await h.close();
 });

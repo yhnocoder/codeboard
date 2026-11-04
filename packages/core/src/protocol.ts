@@ -15,6 +15,7 @@ import type {
   CallMark,
   VariantFrom,
   Link,
+  Summary,
 } from "./model";
 import type { Var } from "@codeboard/analysis/basics";
 import type { SegView } from "./lines";
@@ -26,6 +27,7 @@ import type { RunApply } from "./run";
 import type { Rect } from "./layout";
 import type { QuestionItem } from "./questions";
 import type { LspItem, LspSignature } from "./workspace";
+import type { SumRequest } from "./summary";
 
 /** A question for the user in a board dialog (HostToBoard "ask"): a line of text, or one of a list */
 export type BoardAsk =
@@ -82,8 +84,6 @@ export type Settings = {
   hideOnNew: HideFlags; // 新卡默认隐藏什么
   studyScope: string[]; // 除了工作区以外也算 project code 的包（torch、vllm…）
   stickerDir: string; // Sticker Packs 目录；"" = ~/.codeboard/stickers
-  zoomOverview: number; // 低于这个比例：概览（代码变灰条）
-  zoomMap: number; // 低于这个比例：地图（只剩图标记和名字）
   dblClick: "text" | "note" | "code" | "none"; // 双击画布空白处新建什么
   hideNumbers: boolean; // 卡片上不显示调用图标记（A / B 或图标）；设置里叫 Hide Call Graph Marks
   themeReflow: "push" | "overlap"; // 换主题后卡变高压住下面的卡：往下推（默认）/ 允许重叠
@@ -117,8 +117,6 @@ export const DEFAULT_SETTINGS: Settings = {
   hideOnNew: { blank: false },
   studyScope: [],
   stickerDir: "",
-  zoomOverview: 0.6,
-  zoomMap: 0.25,
   dblClick: "text",
   hideNumbers: false,
   themeReflow: "push",
@@ -279,6 +277,9 @@ export type HostToBoard =
   /** A question CodeBoard asks while this board is where the user works (its own requests, a palette command on it): the board shows it
    *  as one of its dialogs and sends { type: "answer", id } back */
   | { type: "ask"; id: number; ask: BoardAsk }
+  /** Record Zoom Log: start recording the zoom diagnostics log, or stop and hand it back. The board answers { type: "answer", id }
+   *  with null when it started recording, or with the log's text */
+  | { type: "zoomLog"; id: number }
   /** 共享卡在别的白板上改了（或这块白板撤销时被跳过的项）：卡和跟着它走的 Sidenote 的新内容。白板用 sync 换上（不进撤销栈），不再发回来 */
   | { type: "shared"; cards: SharedUpdate[]; views?: Record<string, SegView> }
   /** 这块白板上的共享卡在几块白板上、别的白板上谁连到它（宿主在存盘后算，整个换掉） */
@@ -297,6 +298,8 @@ export type HostToBoard =
   | { type: "run"; apply: RunApply }
   /** 有 Variant 的卡：Variant 的代码变了（保存、分支 rebase、PR 更新）、合进了上游、上游最新的代码。只发有变化的卡 */
   | { type: "variants"; cards: Record<string, VariantSync> }
+  /** Zoomed-out summaries the host wrote by itself (a pending one after its quiet time, a missing one when the board opened), by key */
+  | { type: "summaries"; items: Record<string, Summary> }
   | { type: "reply"; req: number; data?: ReplyOf<AskType>; error?: string };
 
 export type BoardToHost =
@@ -431,12 +434,16 @@ export type BoardToHost =
   | { type: "exportFile"; req: number; kind: "html" | "md"; name: string; text: string }
   /** 写剪贴板（webview 里写可能被拦下） */
   | { type: "copyText"; text: string }
+  /** Copy Path：这些卡 / Section（不给 = 这块白板）在磁盘上的路径（<白板文件>#<id>，一行一个），宿主写进剪贴板。回写进去的文字（白板还没存下时回 null） */
+  | { type: "copyPath"; req: number; items?: string[] }
   /** 图片的 AI 操作（DeepSeek 看图）：宿主拿着密钥去问，回模型的原话或失败的原因（ImageAiResult）。job = 白板给的号，取消用 */
   | { type: "imageAi"; req: number; job: number; op: ImageAiOp }
   /** 取消还在等的 imageAi（卡上的 Cancel、Esc）：宿主中止请求，那个请求回 { fail: "canceled" } */
   | { type: "imageAiCancel"; job: number }
   /** Settings 的 AI 一节：密钥设了没有、有哪些 VS Code 语言模型。回 AiInfo */
   | { type: "aiInfo"; req: number }
+  /** ↻ on a zoomed-out summary: write it now (the board sizes the request by its layout). Replies SummaryResult */
+  | { type: "summarize"; req: number; input: SumRequest }
   /** Settings 里的 Set Key… / Clear 和 AI 功能提示里的 Set DeepSeek API Key…：set 在白板上问密钥（存进密钥存储），clear 删掉；回之后的 AiInfo。密钥本身不进白板 */
   | { type: "aiKey"; req: number; action: "set" | "clear" }
   /** Add Variant 菜单：这段代码所在仓库的其他 worktree、本地分支。回 VariantSources */
@@ -475,6 +482,8 @@ export type ImageAiFail =
 export type ImageAiResult =
   | { text: string; cut?: true; reused?: true }
   | { fail: ImageAiFail; message?: string; via?: string };
+/** A summary the host had written, or why not (failures as for the image tools; nokey = no DeepSeek key) */
+export type SummaryResult = { summary: Summary } | { fail: ImageAiFail; message?: string; via?: string };
 /** VS Code 的一个语言模型（Copilot 的 GPT-4o、Claude…）：vision = 收图 */
 export type AiModel = { id: string; name: string; vendor: string; vision: boolean };
 /** key = DeepSeek 的密钥设了没有（只有这一位，密钥不进白板）；models = 现在能用的 VS Code 语言模型 */
@@ -607,6 +616,7 @@ type Replies = {
   genSource: GenSource | null;
   complete: string | null;
   imageAi: ImageAiResult;
+  summarize: SummaryResult;
   aiInfo: AiInfo;
   aiKey: AiInfo;
   lspComplete: LspItem[];
@@ -626,6 +636,7 @@ type Replies = {
   questions: QuestionItem[];
   permalinks: Record<string, string>;
   exportFile: boolean;
+  copyPath: string | null;
   variantSources: VariantSources;
   addVariant: NewVariant | null;
 };
