@@ -133,6 +133,7 @@ export function CardView(p: { card: Card }) {
   const pop = () => popIn()[c().id];
   const grow = () => sizeIn()[c().id]; // Fit Content 后从旧的大小变过去（actions/common.ts growFrom）
   const pl = () => placeOf(c().id);
+  const textFits = () => c().kind === "note" && (c() as NoteCard).look === "text";
   const style = (): JSX.CSSProperties => {
     const s: JSX.CSSProperties = { left: `${pl().x}px`, top: `${pl().y}px`, width: `${pl().w}px` };
     // 代码卡的高度给内容区（.carea），卡头 / 底栏按主题撑开。
@@ -358,19 +359,29 @@ export function CardView(p: { card: Card }) {
                 </>
               }
             >
-              {/* Text、Mark：左右两边只改宽度（字跟着折行）。Mark、Free Text：右下角一个小方块整体缩放，字号和宽度一起变 */}
+              {/* Text、Mark：左右两边只改宽度（字跟着折行），Text 的双击是 Fit Content（Mark 的宽度跟着字号缩放走）。Mark、Free Text：右下角一个小方块整体缩放，字号和宽度一起变 */}
               <Show when={(c() as NoteCard).look === "text" || (c() as NoteCard).look === "mark"}>
                 <span
                   class="hw l"
                   data-nodrag
                   data-export="strip"
+                  data-tip={textFits() ? "Drag to resize · Double-click to fit content" : "Drag to resize"}
                   onPointerDown={(e) => resizeDown(e, c().id, { left: true })}
+                  onDblClick={(e) => {
+                    e.stopPropagation();
+                    if (textFits()) act.fitContent([c().id]);
+                  }}
                 />
                 <span
                   class="hw r"
                   data-nodrag
                   data-export="strip"
+                  data-tip={textFits() ? "Drag to resize · Double-click to fit content" : "Drag to resize"}
                   onPointerDown={(e) => resizeDown(e, c().id, { right: true })}
+                  onDblClick={(e) => {
+                    e.stopPropagation();
+                    if (textFits()) act.fitContent([c().id]);
+                  }}
                 />
               </Show>
               <Switch>

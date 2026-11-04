@@ -690,6 +690,23 @@ describe("Sections and places", () => {
     ]);
   });
 
+  it("Fit Content of a Text keeps its width between 80 and 720 and its height following the text", () => {
+    const { b, env } = setup([note("s", "x"), note("l", "x")]);
+    for (const id of ["s", "l"]) Object.assign(b.cards.find((c) => c.id === id)!, { look: "text" });
+    C.fitCardSizes(
+      env,
+      new Map([
+        ["s", { w: 30, h: 20, chrome: 0 }],
+        ["l", { w: 3000, h: 20, chrome: 0 }],
+      ]),
+      460,
+    );
+    expect(["s", "l"].map((id) => [b.place[id].w, b.place[id].h])).toEqual([
+      [80, undefined],
+      [720, undefined],
+    ]);
+  });
+
   it("Move to Section moves the cards together into it", () => {
     const { b, env } = setup([code("a"), code("b")]);
     b.sections.push({ id: "g", title: "", x: 0, y: 0, w: 9, h: 9 });

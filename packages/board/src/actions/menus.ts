@@ -33,7 +33,7 @@ import {
   selectCard,
   resolveCardRef,
 } from "./common";
-import { boardOffset } from "../state/measure";
+import { boardOffset, naturalSize } from "../state/measure";
 import {
   addLink,
   callOn,
@@ -429,15 +429,23 @@ function cardItems(id: string, x: number, y: number): Item[] {
       ];
     // Box 不和别的互转（底色在选中时的工具条上）
     if (c.look === "box") return [drawSvgItem(id), autoFocusItem(id), edit, ...tail];
-    // Text 没有改高度的把手（只拖宽度），所以也没有 Fit Content
-    if (c.look === "text")
+    // Text 的高度一直跟着字：Fit Content 只定宽度（不折行时多宽，太长的照样折）
+    if (c.look === "text") {
+      const n = naturalSize(id)?.w;
       return [
         { label: "Turn into Note", run: () => turnNote(id, "note") },
+        {
+          label: "Fit Content",
+          kbd: kbd("fitContent"),
+          disabled: n && Math.abs(C.fitWidth(c, n) - placeOf(id).w) > 1 ? false : "Already as wide as its content",
+          run: () => fitContent([id]),
+        },
         drawSvgItem(id),
         autoFocusItem(id),
         edit,
         ...tail,
       ];
+    }
     // Note 只定高度（宽度是折行用的，不动）：Fit Content = 回到跟着内容长高
     const fit: Item = {
       label: "Fit Content",
