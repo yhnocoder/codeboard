@@ -3453,12 +3453,71 @@
   font: 400 30px / 1.2 var(--serif);
   letter-spacing: 0.02em;
 }
+/* Sections (#137): no border or tray; the frame is four dry brush strokes (state/inkframe.ts, an SVG in the frame,
+   canvas/Sections.tsx), its colour the SVG's currentColor. The title is written in running script (Zhi Mang Xing,
+   fonts-zhimangxing.css) in the gap the top stroke leaves for it, its middle on the stroke; it ellipsizes before the frame's
+   right corner. Collapsed: the title back inside the small frame, which has no gap. Selected: strokes and title vermilion */
 :root.look-ink-wash .sect {
+  --sect-fill: transparent;
+  --sect-sh: none;
+  border-color: transparent;
   border-radius: 2px;
 }
+:root.look-ink-wash .sect.sel,
+:root.look-ink-wash .sect.drop {
+  border-color: transparent;
+  box-shadow: none;
+}
+/* the image reaches FRAME_M (12 px) outside the frame, measured from its border box: the frame's 1 px border is inside that */
+:root.look-ink-wash .sbrush {
+  position: absolute;
+  left: -13px;
+  top: -13px;
+  overflow: visible;
+  pointer-events: none;
+  color: var(--ink);
+  fill: currentColor;
+  fill-opacity: 0.72;
+  transition:
+    color 0.18s var(--out),
+    fill-opacity 0.18s var(--out);
+}
+:root.look-ink-wash .sect.sel .sbrush {
+  color: var(--zhu);
+  fill-opacity: 0.85;
+}
 :root.look-ink-wash .slabel {
-  font: italic 400 13px / 20px var(--serif);
+  --ml: 24px;
+  --mt: -17px;
+  max-width: max(60px, calc(var(--sw, 100vw) - 64px));
+  padding: 0 2px 0 0;
   border-radius: 2px;
+  font:
+    400 25px / 32px "Zhi Mang Xing",
+    "Xingkai SC",
+    STXingkai,
+    var(--serif);
+  letter-spacing: 0.01em;
+  color: var(--ink);
+  transition: color 0.18s var(--out);
+}
+:root.look-ink-wash .slabel.sel {
+  color: var(--zhu);
+}
+:root.look-ink-wash .slabel.collapsed,
+:root.look-ink-wash .slabel:has(.sname.editing) {
+  max-width: none;
+}
+:root.look-ink-wash .slabel.collapsed {
+  --ml: 14px;
+  --mt: 4px;
+}
+:root.look-ink-wash .slabel .sname:not(.editing) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+:root.look-ink-wash .slabel .scount {
+  font: italic 400 13px / 32px var(--serif);
 }
 :root.look-ink-wash .pill,
 :root.look-ink-wash .ctx,

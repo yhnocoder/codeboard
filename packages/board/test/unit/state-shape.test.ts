@@ -106,6 +106,7 @@ const OUTLIVES_BOARD: Record<string, string> = {
   // caches and loaders keyed by content
   "md/blocks.ts:cache": "Markdown blocks by source text",
   "state/ink.ts:papers": "Ink Wash's card paper images, by size",
+  "state/inkframe.ts:frames": "Ink Wash's Section frames, by size, title width and Section",
   "md/load.ts:mod": "the editor module",
   "cm/load.ts:mod": "the code editor module",
   "stickers/glyphs.tsx:loading": "the sticker packs, loaded once",
