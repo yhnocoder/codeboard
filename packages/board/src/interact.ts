@@ -1411,7 +1411,8 @@ export function installKeys(md: Markdown) {
       rd.readAsDataURL(f);
     };
     if (!text && svg) return void A.pasteText(md, svg, w);
-    if (!text) return image(file!);
+    // a picture alone may be a card copied on a board (a lone image card leaves only its picture on the clipboard)
+    if (!text) return void A.pastePicture(file!, w).then((done) => done || image(file!));
     // 先看是不是白板上复制的卡（这块白板的，或者问宿主：别的白板上的就贴卡），否则照旧按图 / 文字粘贴
     void A.pasteFromBoard(text, w).then((done) => {
       if (done) return;

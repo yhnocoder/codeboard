@@ -8,8 +8,10 @@ import { blockInfo, flat, spanEdgeOut } from "./spans";
 
 /** 存一张图（data: URL、文件名）→ 写进 Markdown 的地址；null = 不插（存不了时用的一方自己提示） */
 export type SaveImage = (dataUrl: string, name: string) => Promise<string | null>;
-/** Put the image at src (its address as written in the Markdown) on the clipboard, with md (its Markdown) as the text */
+/** Put the image at src (its address as written in the Markdown) on the clipboard; md: its Markdown */
 export type CopyImage = (src: string, md: string) => void;
+/** A pasted or dropped picture the page knows (one it copied): the Markdown it stands for, null for any other */
+export type KnownImage = (f: File) => Promise<string | null>;
 
 const readUrl = (f: File) =>
   new Promise<string>((ok, bad) => {
@@ -61,19 +63,19 @@ function outsideSpans(doc: PMNode, pos: number) {
 }
 
 /** Inserts the saved images at `at` (or at the caret if the document changed meanwhile), as one undo step */
-async function insertFiles(editor: Editor, save: SaveImage, files: File[], at: number) {
+async function insertFiles(editor: Editor, save: SaveImage, known: KnownImage | undefined, files: File[], at: number) {
   const doc0 = editor.state.doc;
-  const srcs = await Promise.all(
-    files.map((f) =>
-      readUrl(f)
+  const mds = await Promise.all(
+    files.map(async (f) => {
+      const md = await known?.(f).catch(() => null);
+      if (md) return md;
+      return readUrl(f)
         .then((u) => save(u, f.name || "pasted.png"))
-        .catch(() => null),
-    ),
+        .then((src) => (src ? imageSrc(src) : null))
+        .catch(() => null);
+    }),
   );
-  const text = srcs
-    .filter((s): s is string => !!s)
-    .map(imageSrc)
-    .join(" ");
+  const text = mds.filter((s): s is string => !!s).join(" ");
   if (!text || editor.isDestroyed) return;
   const pos = outsideSpans(
     editor.state.doc,
@@ -141,6 +143,7 @@ export function imageEditing(
   editor: () => Editor,
   save: () => SaveImage,
   copy: () => CopyImage | undefined,
+  known: () => KnownImage | undefined,
 ) {
   return base.extend({
     addProseMirrorPlugins() {
@@ -185,9 +188,8 @@ export function imageEditing(
                 const c = copy(),
                   img = c && selectedImage(view.state);
                 if (!img) return false;
+                // the picture alone (an app given text as well pastes the text); a paste of it back is the Markdown (knownImage)
                 ev.preventDefault();
-                // the Markdown now, the picture with it once its bytes are read (it replaces this text, keeping it)
-                ev.clipboardData?.setData("text/plain", img.md);
                 c(img.src, img.md);
                 return true;
               },
@@ -199,7 +201,7 @@ export function imageEditing(
                   : [];
               if (!files.length) return false;
               ev.preventDefault();
-              void insertFiles(editor(), save(), files, view.state.selection.from);
+              void insertFiles(editor(), save(), known(), files, view.state.selection.from);
               return true;
             },
             handleDrop: (view: EditorView, ev: DragEvent, _slice, moved: boolean) => {
@@ -208,7 +210,7 @@ export function imageEditing(
               ev.preventDefault();
               const at = view.posAtCoords({ left: ev.clientX, top: ev.clientY })?.pos ?? view.state.selection.from;
               if (view.state.doc.resolve(at).parent.type.spec.code) return false;
-              void insertFiles(editor(), save(), files, at);
+              void insertFiles(editor(), save(), known(), files, at);
               return true;
             },
           },

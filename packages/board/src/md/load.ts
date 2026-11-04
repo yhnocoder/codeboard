@@ -10,7 +10,7 @@ import { camMoving } from "../state/camera";
 import { openLink } from "../actions/common";
 import { BOARD_CLASSES, lspHost } from "../cm/load";
 import { saveNoteImage } from "./images";
-import { copyNoteImage } from "../actions/imagedata";
+import { copyNoteImage, knownPicture } from "../actions/imagedata";
 import { boardsGrouped, refFoot, refGroups, refPicked, refRecent, wantBoardRefs } from "./refs";
 import type { MdEditorOpts, MdEditorHandle, RefItem } from "@yhnocoder/markdown/editor";
 import type { Markdown, MdLayout } from "@yhnocoder/markdown";
@@ -166,6 +166,7 @@ export function editorOpts(md: Markdown): Omit<MdEditorOpts, "value" | "onDone" 
     pickImage: () => ask("pickFile", { kind: "image" }).catch(() => null),
     saveImage: saveNoteImage,
     copyImage: copyNoteImage,
+    knownImage: knownPicture,
     complete: completionsOn(state.host.settings)
       ? (before: string, after: string) => ask("complete", { before, after }).catch(() => null)
       : undefined,

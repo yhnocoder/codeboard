@@ -30,7 +30,7 @@ import { ask, send } from "../host";
 import { hostRect, popCard, revealCard, selCards } from "./common";
 import { cardText, remember } from "./clipboard";
 import { offerReference, pasteChip, setPasteChip } from "./pastechip";
-import { copyPicture, imageDataUrl } from "./imagedata";
+import { copyPicture, fingerprint, imageDataUrl, knownPicture } from "./imagedata";
 
 /**
  * Copy Path：这些卡 / Section（不给 = 这块白板）在磁盘上的路径，一行一个，给终端里的 Claude Code 引用。路径只有宿主知道（白板文件在哪、
@@ -64,16 +64,27 @@ const selHosts = () =>
     .filter((c, i, a) => a.indexOf(c) === i);
 /**
  * 卡的内容进系统剪贴板，宿主记下是哪几张卡；返回文字。别的应用拿到的是卡的文字（几张卡之间空一行）；有图片卡时还有那张图（image/png，
- * 第一张），这时白板自己写剪贴板（宿主只写文字，会把图盖掉），写不了交给宿主（copyPicture）
+ * 第一张），这时白板自己写剪贴板（宿主只写文字，会把图盖掉），写不了交给宿主（copyPicture）。只复制一张图片卡时只有图，没有文字
+ * （有文字时聊天框、终端贴出来的是文字）：贴回白板时按图认出是这张卡（pastePicture）
  */
 function copyCards(cs: Card[]): string {
   flushSave(); // 宿主那边是最新的内容
   const text = cs.map(textOf).join("\n\n");
   remember(cs[0].id, text); // 同一块白板上 ⌘V：放在原卡旁边
   const img = cs.find((c): c is ImageCard => c.kind === "image");
-  if (img) copyPicture(imageDataUrl(unwrap(img)), text);
-  else navigator.clipboard?.writeText(text).catch(() => {});
-  send({ type: "copyCards", cards: cs.map((c) => c.id), text, rich: !!img });
+  const cards = cs.map((c) => c.id);
+  if (!img) {
+    navigator.clipboard?.writeText(text).catch(() => {});
+    send({ type: "copyCards", cards, text });
+  } else if (cs.length > 1) {
+    copyPicture(imageDataUrl(unwrap(img)), text, { withText: true });
+    send({ type: "copyCards", cards, text, rich: true });
+  }
+  // a lone image card: only the picture leaves the board; the host learns which picture stands for the card
+  else
+    copyPicture(imageDataUrl(unwrap(img)), text, {
+      onPic: (pic) => send({ type: "copyCards", cards, text, rich: true, pic: pic ?? undefined }),
+    });
   return text;
 }
 /** ⌘C 复制的卡（这块白板上的）：同一块白板上 ⌘V 贴成副本，大小、样子和原来的一样；n = 已经贴了几次（一次比一次错开一点） */
@@ -216,6 +227,21 @@ export async function pasteFromBoard(
 ): Promise<boolean> {
   if (pasteCut(text, at) || pasteCopied(text)) return true;
   const r = await ask("pasteCards", { text, copy: pasteCopy(alt) }).catch(() => null);
+  if (!r) return false;
+  placePasted(r, at);
+  return true;
+}
+
+/**
+ * ⌘V of a picture alone: when it is the picture a lone image card (or a Note's image) was copied as, the paste is that copy
+ * (pasteFromBoard of its text here; on another board the host knows it by the picture). False: an ordinary picture
+ */
+export async function pastePicture(f: Blob, at: { x: number; y: number }): Promise<boolean> {
+  const text = await knownPicture(f);
+  if (text !== null) return pasteFromBoard(text, at);
+  const pic = await fingerprint(f).catch(() => null);
+  if (!pic) return false;
+  const r = await ask("pasteCards", { pic, copy: pasteCopy(false) }).catch(() => null);
   if (!r) return false;
   placePasted(r, at);
   return true;

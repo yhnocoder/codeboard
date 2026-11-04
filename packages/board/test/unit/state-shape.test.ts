@@ -122,6 +122,7 @@ const OUTLIVES_BOARD: Record<string, string> = {
   "actions/clipboard.ts:lastCopy": "the clipboard: its card is looked up on the board pasted on",
   "actions/shared.ts:copied": "the clipboard: carries the board it was copied on",
   "actions/shared.ts:cutClip": "the clipboard: carries the board it was cut on",
+  "actions/imagedata.ts:lastPic": "the clipboard: a picture copied on one board pastes as that copy on the next",
   "actions/subboards.ts:transit": "the sub-board switch animation, which spans the switch",
   "actions/subboards.ts:titleAt": "where each board's frames showed their names, by board",
   "actions/variants.ts:asked":

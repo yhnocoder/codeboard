@@ -129,7 +129,7 @@ export function makeHandler(cx: HostContext, panels: BoardHost, mediaDir: string
     log: (_p, m) => cx.log(m.level, m.text),
     openBoard: (_p, m) => openOnBoard(cx, panels, m.id, m.card, m.line, m.sticker),
     copyCards: async (p, m) => {
-      panels.clip = { board: p.id, cards: m.cards, text: m.text };
+      panels.clip = { board: p.id, cards: m.cards, text: m.text, pic: m.pic };
       // 别的窗口（别的项目）也能贴：记进全局存储目录
       const recorded = recordClip(cx, store.dir(), panels.clip).catch((e) =>
         cx.log("warn", `copyCards: ${e instanceof Error ? e.message : e}`),
@@ -141,7 +141,7 @@ export function makeHandler(cx: HostContext, panels: BoardHost, mediaDir: string
       await recorded;
     },
     pasteCards: async (p, m) => {
-      const o = { text: m.text, copy: !!m.copy };
+      const o = { text: m.text, pic: m.pic, copy: !!m.copy };
       // 这个窗口的剪贴板对不上：看是不是别的窗口复制的卡
       const r = (await pasteClip(store, panels.clip, p.id, o)) ?? (await pasteFar(cx, store, p.id, o));
       if (!r) return null;

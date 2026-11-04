@@ -373,11 +373,13 @@ export type BoardToHost =
   | { type: "openBoard"; id: string; card?: string; line?: number; sticker?: string }
   /**
    * ⌘C 复制了这些卡（text = 写进剪贴板的文字）：宿主记下来，贴到别的白板时用。
-   * rich = 白板自己写剪贴板（文字 + 图片），宿主不再写文字盖掉它；写不了时白板再发 copyImage / copyText
+   * rich = 白板自己写剪贴板（图片，或文字 + 图片），宿主不再写文字盖掉它；写不了时白板再发 copyImage / copyText。
+   * pic = the fingerprint of the picture put on the clipboard instead of the text (a lone image card): a paste of that picture
+   * is these cards
    */
-  | { type: "copyCards"; cards: string[]; text: string; rich?: boolean }
+  | { type: "copyCards"; cards: string[]; text: string; rich?: boolean; pic?: string }
   /** 粘贴：剪贴板里是别的白板上复制的卡就回 PastedCards（text 对不上、同一块白板回 null）；copy = 独立副本 */
-  | { type: "pasteCards"; req: number; text?: string; copy?: boolean }
+  | { type: "pasteCards"; req: number; text?: string; pic?: string; copy?: boolean }
   /** 共享卡 Delete Everywhere：从所有白板上删掉（回删了它的白板数） */
   | { type: "deleteEverywhere"; req: number; card: string }
   | { type: "confirm"; req: number; text: string; detail?: string; ok: string }
@@ -435,7 +437,7 @@ export type BoardToHost =
   /** 写剪贴板（webview 里写可能被拦下） */
   | { type: "copyText"; text: string }
   /** A picture the webview could not put on the clipboard itself (why: its error): the host puts the PNG (a data: URL) on the
-   *  OS clipboard, or the text when the editor can't */
+   *  OS clipboard, alone, or the text when the editor can't */
   | { type: "copyImage"; png: string; text: string; why: string }
   /** Copy Path：这些卡 / Section（不给 = 这块白板）在磁盘上的路径（<白板文件>#<id>，一行一个），宿主写进剪贴板。回写进去的文字（白板还没存下时回 null） */
   | { type: "copyPath"; req: number; items?: string[] }

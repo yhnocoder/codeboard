@@ -6,7 +6,8 @@ Nothing to change when upgrading:
 
 - References can carry their target's id: `[[title#^id]]` (an id of letters, digits, `_` and `-`, optionally `board/card`). The `[[` menu writes it when a candidate (`RefItem`) or a group (`RefGroup`) has the new `target` field, and `refs.resolve(label, target)` gets it as a second argument, so the reference can be found by id after its target is renamed; show the target's current title from `resolve` and the stored title is only the readable fallback. The static render puts it on the chip as `data-target`; plain-text copies and the editor's source keep the readable `[[title]]` part, with `#^id` drawn as part of the closing marker. `[[title]]` without an id works as before.
 
-- New `copyImage(src, md)` editor option: ⌘C with the caret in an image's source (the image drawn selected) or with just that source selected calls it, so the page can put the picture itself on the clipboard (image/png for other apps); the copy event already carries the image's Markdown as text. Without it, copying works as before and the caret alone copies nothing.
+- New `copyImage(src, md)` editor option: ⌘C with the caret in an image's source (the image drawn selected) or with just that source selected cancels the copy and calls it, so the page can put the picture itself on the clipboard (image/png alone, for other apps). Without it, copying works as before and the caret alone copies nothing.
+- New `knownImage(file)` editor option: a pasted or dropped picture the page recognizes (one it copied) is inserted as the Markdown it returns instead of being saved again.
 
 ## Unreleased (breaking, next minor)
 

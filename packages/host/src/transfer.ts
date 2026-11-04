@@ -343,10 +343,10 @@ export async function pasteFar(
   cx: HostContext,
   store: Storage,
   target: string,
-  o: { text?: string; copy: boolean },
+  o: { text?: string; pic?: string; copy: boolean },
 ): Promise<Pasted | null> {
   const clip = await readClip(cx);
-  if (!clip || (o.text === undefined && Date.now() - clip.at > FAR_RECENT)) return null;
+  if (!clip || (o.text === undefined && o.pic === undefined && Date.now() - clip.at > FAR_RECENT)) return null;
   if (path.resolve(clip.dir) === path.resolve(store.dir())) return pasteClip(store, clip, target, { ...o, copy: true });
   const src = new Storage(nodeFs, { dir: () => clip.dir, log: cx.log });
   try {
