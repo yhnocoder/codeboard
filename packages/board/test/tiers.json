@@ -49,7 +49,7 @@
       "packages/*/tsconfig*.json",
       "packages/*/vite.config.*",
       "packages/board/playwright.config.ts",
-      "packages/board/src/{styles,fonts}.css",
+      "packages/board/src/{styles,fonts,fonts-yozai}.css",
       "packages/board/src/fonts/**",
       "packages/board/test/{harness,fixtures,coverage,subhost,realhost,deepseek,chromium}.ts",
       "packages/host/test/node-workspace.ts",

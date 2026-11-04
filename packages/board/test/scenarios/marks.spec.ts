@@ -87,7 +87,7 @@ test("markCard", async () => {
   );
   check("markHandFont", /Shantell Sans/.test(look.font) && look.size === "18px", look);
   const fontsOk = await pg.evaluate(
-    () => document.fonts.check('18px "Shantell Sans"') && document.fonts.check('18px "LXGW WenKai Lite"', "先挑"),
+    () => document.fonts.check('18px "Shantell Sans"') && document.fonts.check('18px "Yozai"', "先挑"),
   );
   check("markFontsBundled", fontsOk);
   const l1 = await linkPaths(h, "L1"),
@@ -780,7 +780,7 @@ test("noteAnnotationsApart", async () => {
   await h.close();
 });
 
-/** The annotation label is drawn in the bundled handwriting fonts (Shantell Sans for Latin, LXGW WenKai Lite for Chinese):
+/** The annotation label is drawn in the bundled handwriting fonts (Shantell Sans for Latin, Yozai for Chinese):
  *  the computed font is the hand font, both faces are loaded, and the glyphs really come from them (not a system fallback) */
 test("noteAnnotationHandFont", async () => {
   const b = emptyBoard("b1", "annotations");
@@ -795,11 +795,11 @@ test("noteAnnotationHandFont", async () => {
         font = `${lb.fontWeight} ${lb.fontSize} ${lb.fontFamily}`;
       return { note: e.dataset.note!, family: lb.fontFamily, checked: document.fonts.check(font, e.dataset.note) };
     });
-    const faces = Object.fromEntries(
-      [...document.fonts]
-        .filter((x) => /Shantell Sans|LXGW WenKai Lite/.test(x.family))
-        .map((x) => [x.family.replace(/"/g, ""), x.status]),
-    );
+    // a family is loaded when one of its faces is (Yozai is split into chunks by characters; only the ones shown load)
+    const faces: Record<string, string> = {};
+    for (const x of document.fonts)
+      if (/Shantell Sans|Yozai/.test(x.family) && faces[x.family.replace(/"/g, "")] !== "loaded")
+        faces[x.family.replace(/"/g, "")] = x.status;
     // glyphs drawn with the label's font stack vs the same stack without the bundled face: they differ only if the bundled face is used
     const draw = (font: string, t: string) => {
       const c = document.createElement("canvas");
@@ -824,20 +824,18 @@ test("noteAnnotationHandFont", async () => {
     return {
       labels,
       faces,
-      cjk: differ(draw(`24px ${stack}`, "异构计算"), draw(`24px ${without("LXGW")}`, "异构计算")),
+      cjk: differ(draw(`24px ${stack}`, "异构计算"), draw(`24px ${without("Yozai")}`, "异构计算")),
       latin: differ(draw(`24px ${stack}`, "thread"), draw(`24px ${without("Shantell")}`, "thread")),
     };
   });
   check(
     "annotHandFontFamily",
-    f.labels.length === 3 && f.labels.every((l) => /^"?Shantell Sans"?,\s*"?LXGW WenKai Lite"?/.test(l.family)),
+    f.labels.length === 3 && f.labels.every((l) => /^"?Shantell Sans"?,\s*"?Yozai"?/.test(l.family)),
     f.labels,
   );
   check(
     "annotHandFontsLoaded",
-    f.faces["Shantell Sans"] === "loaded" &&
-      f.faces["LXGW WenKai Lite"] === "loaded" &&
-      f.labels.every((l) => l.checked),
+    f.faces["Shantell Sans"] === "loaded" && f.faces.Yozai === "loaded" && f.labels.every((l) => l.checked),
     f,
   );
   check("annotHandGlyphsFromBundledFonts", f.cjk > 50 && f.latin > 50, f);
