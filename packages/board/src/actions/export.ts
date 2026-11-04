@@ -217,6 +217,11 @@ async function cloneForExport(b: Board, scope: ExportScope, order: string[]): Pr
     });
   }
   world.querySelectorAll('[data-export="strip"]').forEach((el) => el.remove());
+  // zoomed out, the card level is faded out (state/summary.ts): an export always shows the cards
+  world.querySelectorAll<HTMLElement>(".cardlay").forEach((el) => {
+    el.style.opacity = "";
+    el.classList.remove("gone");
+  });
   for (const c of LIVE_CLASSES) world.querySelectorAll(`.${c}`).forEach((el) => el.classList.remove(c));
   world.classList.remove("moving", "settle");
   world.querySelectorAll("[contenteditable]").forEach((el) => el.removeAttribute("contenteditable"));

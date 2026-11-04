@@ -1,0 +1,524 @@
+// Zoomed-out AI summaries (#130). Zoomed out past the board's cut, every top-level Section shows one summary (title + body) and
+// every card in no Section one sentence, in place of the cards. This file is the pure part both the board and the host run:
+// which items get a summary, the board's one font size, the columns (anchored at the source's top-left, growing only right
+// and down, aligned sources kept aligned: a port of the layout in feedback/demo/boards-130-viewer.html), the minimum zoom, the
+// length budget the AI writes to, the prompt material and what makes a summary pending.
+import {
+  baseName,
+  cardTitle,
+  type Board,
+  type Card,
+  type Place,
+  type Section,
+  type Summary,
+  type SummaryPair,
+} from "./model";
+import type { Rect } from "./layout";
+
+/** The rules' numbers (board units unless they say otherwise) */
+export const SUMMARY = {
+  /** Space kept before an obstacle */
+  gap: 60,
+  /** Edges this close count as aligned */
+  align: 4,
+  /** Tops this close are one row of the reading order */
+  row: 200,
+  /** Body line height (in S) */
+  lh: 1.5,
+  /** A Section's title strip above its frame */
+  strip: 30,
+  /** A card's column grows at most this far below the card's top */
+  looseCap: 1500,
+  /** The cross-fade between cards and summaries (ms) */
+  fadeMs: 250,
+  /** A pending summary is written again after this long without another change (ms) */
+  regenMs: 10 * 60_000,
+  /** The minimum zoom: fit-all ÷ this … */
+  fitShrink: 1.3,
+  /** … kept within these, and this on a board with nothing on it */
+  zoomFloor: 0.02,
+  zoomCeil: 0.5,
+  emptyZoom: 0.1,
+} as const;
+
+export type SumKey = `sec:${string}` | `card:${string}`;
+export const secKey = (id: string): SumKey => `sec:${id}`;
+export const cardKey = (id: string): SumKey => `card:${id}`;
+const parseKey = (key: string) =>
+  key.startsWith("sec:")
+    ? { sec: key.slice(4) }
+    : key.startsWith("card:")
+      ? { card: key.slice(5) }
+      : ({} as { sec?: string; card?: string });
+
+/** A card that is never summarized, alone or in its Section's summary: sub-board frames, Marks and Free Text */
+export const unsummarized = (c: Card) =>
+  c.kind === "board" || (c.kind === "note" && (c.look === "mark" || c.look === "freetext"));
+/** An unsummarized card that stays at the summary level as it is (sub-board frames, Free Text at its own size); Marks hide */
+export const keepsLook = (c: Card) => c.kind === "board" || (c.kind === "note" && c.look === "freetext");
+
+/** The Section a card is in, if that Section exists */
+const homeOf = (b: Pick<Board, "sections">, p: Place | undefined) =>
+  p?.section && b.sections.some((s) => s.id === p.section) ? p.section : undefined;
+
+/** One summarized item: its anchor box, what it covers before its column is placed, its title line */
+export type SumSource = {
+  key: SumKey;
+  box: Rect;
+  own: Rect;
+  title: string;
+  /** A code card's title line: the function name and file:line, both from the card header */
+  code?: { name: string; at: string };
+  /** A loose image card: the image stays as a thumbnail, the summary starts GAP below it */
+  image?: Rect;
+  /** The current body, for estimating its height where nothing measured it */
+  text?: string;
+};
+export type SumInput = { items: SumSource[]; keep: Rect[] };
+
+/**
+ * What a board summarizes: its top-level, open Sections (a nested Section's cards belong to its top Section's summary) and the
+ * cards in no Section, except sub-board frames, Marks and Free Text (unsummarized; the frames and Free Text stay, as obstacles:
+ * keep). rect = a placed card's box, frames = the Sections' frames
+ */
+export function summarySources(b: Board, rect: (id: string) => Rect | undefined, frames: Map<string, Rect>): SumInput {
+  const items: SumSource[] = [],
+    keep: Rect[] = [];
+  for (const s of b.sections) {
+    const f = frames.get(s.id);
+    if (s.parent || s.collapsed || !f) continue;
+    items.push({
+      key: secKey(s.id),
+      box: { ...f },
+      own: { x: f.x, y: f.y - SUMMARY.strip, w: f.w, h: f.h + SUMMARY.strip },
+      title: s.title,
+      text: s.summary?.text,
+    });
+  }
+  for (const c of b.cards) {
+    const p = b.place[c.id],
+      r = p && rect(c.id);
+    if (!r) continue;
+    if (unsummarized(c)) {
+      if (keepsLook(c)) keep.push(r);
+      continue;
+    }
+    if (homeOf(b, p)) continue;
+    const it: SumSource = {
+      key: cardKey(c.id),
+      box: { ...r },
+      own: { ...r },
+      title: p.summary?.title || cardTitle(c, b),
+      text: p.summary?.text,
+    };
+    if (c.kind === "image") {
+      it.image = { ...r };
+      it.box = { x: r.x, y: r.y + r.h + SUMMARY.gap, w: r.w, h: 0 };
+      keep.push(r);
+    } else if (c.kind === "code") {
+      const s = c.segments[0];
+      it.code = { name: cardTitle(c, b), at: s?.path ? `${baseName(s.path)}:${s.start}` : "" };
+    }
+    items.push(it);
+  }
+  return { items, keep };
+}
+
+/** The board's summary font size from its median column width w: about 56 at 400, 80 at 1600 */
+export function summaryFont(w: number): number {
+  const b = 24 / Math.log(4),
+    a = 56 - b * Math.log(400);
+  return Math.min(118, Math.max(52, Math.round(a + b * Math.log(Math.max(1, w)))));
+}
+/** Zoomed out below this the board shows summaries: summary text is never bigger than about 32 screen px */
+export const summaryCut = (S: number) => Math.min(0.3, 32 / S);
+/** The board's minimum zoom: you can zoom out until the whole board fills about 77 % of the view (content = its bounds) */
+export function summaryMinZoom(view: { w: number; h: number }, content: Rect | null): number {
+  if (!content || content.w <= 0 || content.h <= 0) return SUMMARY.emptyZoom;
+  const fit = Math.min(view.w / content.w, view.h / content.h) * 0.96;
+  return Math.min(SUMMARY.zoomCeil, Math.max(SUMMARY.zoomFloor, fit / SUMMARY.fitShrink));
+}
+
+/** A column: its extent, the title block height of its row, chars per body line and the body lines its whole extent can hold */
+export type SumCol = Rect & { key: SumKey; hd: number; cpl: number; lines: number } & Pick<
+    SumSource,
+    "title" | "code" | "image"
+  >;
+export type SumLayout = { S: number; P: number; cut: number; med: number; cols: SumCol[] };
+/** Heights read from the page for a column (title block, body), when it has been drawn at its width */
+export type SumMeasured = Map<string, { hd: number; tx: number }>;
+
+const median = (a: number[]) => {
+  const s = [...a].sort((x, y) => x - y);
+  return s[Math.floor((s.length - 1) / 2)];
+};
+/** Rough width in ems: CJK and full-width characters 1, the rest about half */
+const ems = (t: string) => {
+  let n = 0;
+  for (const ch of t) n += /[⺀-鿿가-힯豈-﫿＀-￯]/.test(ch) ? 1 : 0.55;
+  return n;
+};
+const linesOf = (t: string, em: number, w: number) => Math.max(1, Math.ceil((ems(t) * em) / Math.max(1, w)));
+/** Height of a title block drawn nowhere yet (0.8·S bold, line height 1.3; a code card: name line and file:line) */
+function titleH(it: SumSource, w: number, S: number) {
+  if (it.code) return Math.ceil(S * 0.7 * 1.3) + (it.code.at ? Math.ceil(S * 0.6 * 1.4) : 0);
+  return Math.ceil(linesOf(`■ ${it.title}`, S * 0.8, w) * S * 0.8 * 1.3);
+}
+const textH = (t: string | undefined, w: number, S: number) =>
+  t ? linesOf(t.replace(/\*\*/g, ""), S, w) * S * SUMMARY.lh : 0;
+
+const overlapsY = (o: Rect, y: number, h: number) => !(o.y >= y + h || o.y + o.h <= y);
+/** Widen to the right only (the anchor stays): up to want, stopping GAP before the nearest obstacle on the right within [y, y + h] */
+function widenRight(box: Rect, h: number, want: number, obs: Rect[]) {
+  if (box.w >= want) return box.w;
+  let R = Infinity;
+  for (const o of obs) if (overlapsY(o, box.y, h) && o.x >= box.x + box.w - 1) R = Math.min(R, o.x - SUMMARY.gap);
+  return Math.max(box.w, Math.min(want, R - box.x));
+}
+/** Sources aligned by left or top edge and of the same width get one column width: the smallest any of them reached */
+function unify(items: SumSource[], w: number[]) {
+  const par = items.map((_, i) => i);
+  const f = (i: number): number => (par[i] === i ? i : (par[i] = f(par[i])));
+  const A = SUMMARY.align;
+  for (let i = 0; i < items.length; i++)
+    for (let j = i + 1; j < items.length; j++) {
+      const a = items[i].box,
+        b = items[j].box;
+      if (Math.abs(a.w - b.w) <= A && (Math.abs(a.x - b.x) <= A || Math.abs(a.y - b.y) <= A)) par[f(i)] = f(j);
+    }
+  const m = new Map<number, number>();
+  items.forEach((_, i) => m.set(f(i), Math.min(m.get(f(i)) ?? Infinity, w[i])));
+  return items.map((_, i) => m.get(f(i))!);
+}
+/** Sources whose left (or top) edges are within ALIGN share the group's smallest one; right and bottom edges stay */
+function alignAnchors(items: SumSource[]) {
+  for (const [k, d] of [
+    ["x", "w"],
+    ["y", "h"],
+  ] as const) {
+    const par = items.map((_, i) => i);
+    const f = (i: number): number => (par[i] === i ? i : (par[i] = f(par[i])));
+    for (let i = 0; i < items.length; i++)
+      for (let j = i + 1; j < items.length; j++)
+        if (Math.abs(items[i].box[k] - items[j].box[k]) <= SUMMARY.align) par[f(i)] = f(j);
+    const m = new Map<number, number>();
+    items.forEach((it, i) => m.set(f(i), Math.min(m.get(f(i)) ?? Infinity, it.box[k])));
+    items.forEach((it, i) => {
+      const a = m.get(f(i))!,
+        off = it.box[k] - a;
+      if (off) it.box = { ...it.box, [k]: a, [d]: it.box[d] + off };
+    });
+  }
+}
+/** Reading order: rows (tops within ROW) top to bottom, left to right within a row */
+function readingOrder(items: SumSource[]) {
+  const sorted = [...items].sort((a, b) => a.box.y - b.box.y || a.box.x - b.box.x);
+  const rows: { y: number; items: SumSource[] }[] = [];
+  for (const it of sorted) {
+    const r = rows.find((q) => Math.abs(q.y - it.box.y) < SUMMARY.row);
+    if (r) r.items.push(it);
+    else rows.push({ y: it.box.y, items: [it] });
+  }
+  return rows.sort((a, b) => a.y - b.y).flatMap((r) => r.items.sort((a, b) => a.box.x - b.box.x));
+}
+
+/**
+ * The summary level's layout: the board's font size S, padding P, cut and every column, in reading order. measured = the title
+ * and body heights the page read at the columns' widths (the widths never depend on them); without it, heights are estimated
+ * (the host's budgets). Nothing is clamped or shrunk: a column's extent is only where later columns stop
+ */
+export function layoutSummaries(input: SumInput, measured?: SumMeasured): SumLayout {
+  const src = input.items.map((it) => ({ ...it, box: { ...it.box } }));
+  alignAnchors(src);
+  const items = readingOrder(src);
+  const keep = input.keep;
+  // the widths a column could get: its source plus the free space to its right (up to 1416), aligned groups at their smallest
+  const reach = unify(
+    items,
+    items.map((it) =>
+      widenRight(
+        it.box,
+        Math.max(it.box.h, 600),
+        Math.max(it.box.w, 1416),
+        keep.concat(items.filter((x) => x !== it).map((x) => x.own)),
+      ),
+    ),
+  );
+  const med = items.length ? Math.round(median(reach)) : 1190;
+  const S = summaryFont(med),
+    P = Math.round(S / 3),
+    cut = summaryCut(S);
+  // widths: each column looks right for room as tall as a title and two body lines
+  const hd1 = Math.ceil(S * 0.8 * 1.3);
+  const hMin = 2 * P + hd1 + 0.3 * S + 2 * S * SUMMARY.lh,
+    want = 12 * S + 2 * P;
+  const cols = new Map<string, Rect>();
+  for (const it of items) {
+    const others = items.filter((x) => x !== it).map((x) => cols.get(x.key) ?? x.own);
+    const w = widenRight(it.box, Math.max(it.box.h, hMin), want, keep.concat(others));
+    cols.set(it.key, { x: it.box.x, y: it.box.y, w, h: Math.max(it.box.h, 1) });
+  }
+  const ws = unify(
+    items,
+    items.map((it) => cols.get(it.key)!.w),
+  );
+  items.forEach((it, i) => (cols.get(it.key)!.w = ws[i]));
+  // heights: sources sharing a top edge start their bodies on one line (the row's tallest title block)
+  const hdOf = (it: SumSource) => measured?.get(it.key)?.hd ?? titleH(it, cols.get(it.key)!.w - 2 * P, S);
+  const rowOf = new Map<string, string>(),
+    rowHd = new Map<string, number>();
+  for (const it of items) {
+    const first = items.find((u) => Math.abs(u.box.y - it.box.y) <= SUMMARY.align)!;
+    rowOf.set(it.key, first.key);
+    rowHd.set(first.key, Math.max(rowHd.get(first.key) ?? 0, hdOf(it)));
+  }
+  // in reading order, each column's final extent is an obstacle for the later ones
+  const done = new Map<string, Rect>();
+  const extent = (it: SumSource, col: Rect, need: number, cap: number): Rect => {
+    const obs = keep.concat(items.filter((x) => x !== it).map((x) => done.get(x.key) ?? cols.get(x.key)!));
+    let bottom = it.box.y + cap;
+    for (const o of obs)
+      if (o.x < col.x + col.w && o.x + o.w > col.x && o.y + o.h > col.y + 1)
+        bottom = Math.min(bottom, o.y - SUMMARY.gap);
+    const lim = Math.max(0, bottom - col.y);
+    return { x: col.x, y: col.y, w: col.w, h: Math.max(Math.min(it.box.h, lim), Math.min(need, lim)) };
+  };
+  const out: SumCol[] = [];
+  for (const it of items) {
+    const col = cols.get(it.key)!,
+      hd = rowHd.get(rowOf.get(it.key)!)!;
+    const tx = measured?.get(it.key)?.tx ?? textH(it.text, col.w - 2 * P, S);
+    const cap = it.key.startsWith("card:") ? SUMMARY.looseCap : 1e7;
+    const e = extent(it, col, 2 * P + hd + 0.3 * S + tx, cap);
+    const most = extent(it, col, 1e7, cap);
+    done.set(it.key, e);
+    out.push({
+      ...e,
+      key: it.key,
+      hd,
+      cpl: Math.max(1, Math.floor((col.w - 2 * P) / S)),
+      lines: Math.max(0, Math.floor((most.h - 2 * P - hd - 0.3 * S) / (S * SUMMARY.lh) + 1e-6)),
+      title: it.title,
+      code: it.code,
+      image: it.image,
+    });
+  }
+  return { S, P, cut, med, cols: out };
+}
+
+/**
+ * How long the AI may write: capacity = chars per line × the lines the column's whole extent holds; the target is about 0.6 of
+ * it, never under two full lines. Sections get 2–4 sentences (4 at most however large), a card one
+ */
+export type SumBudget = { cpl: number; lines: number; capacity: number; target: number; sentences: [number, number] };
+export function summaryBudget(col: Pick<SumCol, "cpl" | "lines">, card: boolean): SumBudget {
+  const lines = Math.max(2, col.lines),
+    capacity = col.cpl * lines;
+  const target = Math.max(2 * col.cpl, Math.round(0.6 * capacity));
+  const sentences: [number, number] = card ? [1, 1] : target < 60 ? [2, 2] : target < 140 ? [2, 3] : [3, 4];
+  return { cpl: col.cpl, lines, capacity, target, sentences };
+}
+
+const fnv = (s: string) => {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 0x01000193);
+  return (h >>> 0).toString(36);
+};
+/** The cards a Section's summary is written from: its own and its nested Sections' members */
+function membersOf(b: Board, sec: string): Card[] {
+  const ids = new Set([sec]);
+  for (let grew = true; grew; ) {
+    grew = false;
+    for (const s of b.sections)
+      if (s.parent && ids.has(s.parent) && !ids.has(s.id)) {
+        ids.add(s.id);
+        grew = true;
+      }
+  }
+  return b.cards.filter((c) => {
+    const h = homeOf(b, b.place[c.id]);
+    return !!h && ids.has(h) && !unsummarized(c);
+  });
+}
+/**
+ * What a summary was written from, as far as regenerating goes: a Section's card count and card titles, a card's title.
+ * undefined = the board has no such item
+ */
+export function summarySig(b: Board, key: string): string | undefined {
+  const k = parseKey(key);
+  if (k.sec) {
+    if (!b.sections.some((s) => s.id === k.sec)) return undefined;
+    const ts = membersOf(b, k.sec).map((c) => cardTitle(c, b));
+    return fnv(`${ts.length}\n${ts.sort().join("\n")}`);
+  }
+  const c = k.card ? b.cards.find((x) => x.id === k.card) : undefined;
+  return c && b.place[c.id] ? fnv(cardTitle(c, b)) : undefined;
+}
+/**
+ * A hash of everything an item's prompt is written from: a Section's title and cards (with its nested Sections'), each one's
+ * id, title and content; a card's own. Stored with the summary (Summary.input): the same hash = nothing to ask the AI. undefined = no such item
+ */
+export function summaryInput(b: Board, key: string): string | undefined {
+  const k = parseKey(key);
+  const cards = k.sec
+    ? b.sections.some((s) => s.id === k.sec)
+      ? membersOf(b, k.sec)
+      : undefined
+    : b.cards.filter((c) => c.id === k.card && b.place[c.id]);
+  if (!cards || (!k.sec && !cards.length)) return undefined;
+  const head = k.sec ? (b.sections.find((s) => s.id === k.sec)?.title ?? "") : "";
+  return fnv(
+    `${head}\u0003${cards
+      .map((c) => `${c.id}\u0001${cardTitle(c, b)}\u0001${cardText(c)}`)
+      .sort()
+      .join("\u0002")}`,
+  );
+}
+export function summaryOf(b: Board, key: string): Summary | undefined {
+  const k = parseKey(key);
+  return k.sec ? b.sections.find((s) => s.id === k.sec)?.summary : k.card ? b.place[k.card]?.summary : undefined;
+}
+/** Write (or clear) an item's summary: one field of its Section or of the card's place. false = no such item */
+export function putSummary(b: Board, key: string, s: Summary | undefined): boolean {
+  const k = parseKey(key);
+  const o: Section | Place | undefined = k.sec
+    ? b.sections.find((x) => x.id === k.sec)
+    : k.card
+      ? b.place[k.card]
+      : undefined;
+  if (!o) return false;
+  if (s) o.summary = s;
+  else delete o.summary;
+  return true;
+}
+/** Pending: never written, or written from something else than what is there now */
+export const summaryPending = (b: Board, key: string) => {
+  const s = summaryOf(b, key);
+  return !s || s.sig !== summarySig(b, key);
+};
+
+/** What the AI is asked to summarize: the item, its cards' titles and contents, the budget and the language to write in */
+export type SumRequest = {
+  key: SumKey;
+  title: string;
+  /** A card in no Section: one sentence and a short title; code: the title line is the signature, no title wanted */
+  card?: "note" | "code" | "image" | "other";
+  cards: { title: string; text: string }[];
+  budget: SumBudget;
+  lang: "zh" | "en";
+  sig: string;
+  /** summaryInput now: the summary written from this request carries it */
+  input: string;
+  /** The user's edits of this summary, newest first: the rewrite keeps their emphasis, wording and length (the newer wins where
+   *  they conflict) and updates only the content */
+  pairs?: SummaryPair[];
+  /** The user's edits elsewhere (the host fills them in: summaryExamples), in place of the prompt's own examples */
+  examples?: SumExample[];
+};
+/** A worked example for the AI: a Section's title, its content condensed, and the summary the user wrote for it */
+export type SumExample = { title: string; content: string; summary: string };
+/** Card material for the prompt: at most this much in all (130-deepseek-prompt.md) */
+const ALL_CHARS = 6000;
+function cardText(c: Card): string {
+  switch (c.kind) {
+    case "note":
+      // without images and tags
+      return c.md.replace(/!\[[^\]]*\]\([^)]*\)/g, "").replace(/<[^>\n]+>/g, "");
+    case "code":
+      return c.segments.map((s) => `// ${s.path}:${s.start}\n${s.text.slice(0, 80).join("\n")}`).join("\n");
+    case "image":
+      return c.alt ?? "";
+    case "web":
+      return [c.url, c.meta?.title, c.meta?.desc].filter(Boolean).join("\n");
+    case "links":
+      return c.items.map((i) => i.title || i.url).join("\n");
+    default:
+      return "";
+  }
+}
+const CJK = /[㐀-鿿]/g;
+/** Chinese when the board's text has a fair share of Chinese characters */
+export function boardLang(text: string): "zh" | "en" {
+  const n = (text.match(CJK) ?? []).length,
+    l = (text.match(/[A-Za-z]/g) ?? []).length;
+  return n > 0 && n * 3 >= l * 0.5 ? "zh" : "en";
+}
+/** The request for an item, sized by its column in layout. undefined = no such item or column */
+export function summaryRequest(b: Board, key: SumKey, layout: SumLayout): SumRequest | undefined {
+  const col = layout.cols.find((c) => c.key === key),
+    sig = summarySig(b, key);
+  if (!col || sig === undefined) return undefined;
+  const k = parseKey(key);
+  const cards = k.sec ? membersOf(b, k.sec) : b.cards.filter((c) => c.id === k.card);
+  let left = ALL_CHARS;
+  const material = cards.map((c) => {
+    const t = cardText(c).slice(0, Math.max(0, left));
+    left -= t.length;
+    return { title: cardTitle(c, b), text: t };
+  });
+  const sec = k.sec ? b.sections.find((s) => s.id === k.sec) : undefined;
+  const one = cards[0];
+  const all = [sec?.title ?? "", ...material.map((m) => `${m.title}\n${m.text}`)].join("\n");
+  return {
+    key,
+    title: sec ? sec.title : one ? cardTitle(one, b) : "",
+    ...(sec
+      ? {}
+      : {
+          card: one?.kind === "note" || one?.kind === "code" || one?.kind === "image" ? one.kind : ("other" as const),
+        }),
+    cards: material,
+    budget: summaryBudget(col, !sec),
+    lang: boardLang(all),
+    sig,
+    input: summaryInput(b, key) ?? "",
+    ...(summaryOf(b, key)?.pairs?.length ? { pairs: summaryOf(b, key)!.pairs } : {}),
+  };
+}
+
+const EXAMPLE_CHARS = 240;
+/**
+ * The user's edited Section summaries on these boards (each Section's newest edit), most recent first, at most n, as examples
+ * for the AI: its title, its cards condensed and the user's text. but = the summary being written (not its own example)
+ */
+export function summaryExamples(boards: Board[], n: number, but?: { board: string; key: string }): SumExample[] {
+  const all: (SumExample & { at: number })[] = [];
+  for (const b of boards)
+    for (const s of b.sections) {
+      const p = s.summary?.pairs?.[0];
+      if (!p || (but && but.board === b.id && but.key === secKey(s.id))) continue;
+      const content = membersOf(b, s.id)
+        .map((c) => `${cardTitle(c, b)}：${cardText(c).replace(/\s+/g, " ").trim()}`)
+        .join(" ")
+        .slice(0, EXAMPLE_CHARS);
+      all.push({ title: s.title, content, summary: p.user, at: p.at });
+    }
+  return all
+    .sort((a, b) => b.at - a.at)
+    .slice(0, n)
+    .map(({ at: _, ...e }) => e);
+}
+
+/** The AI's answer → a summary (JSON as asked; a bare text answer is taken as the body). One bold span kept. undefined = empty */
+export function readSummaryReply(raw: string, r: SumRequest, at: number): Summary | undefined {
+  const t = raw
+    .trim()
+    .replace(/^```(?:json)?\s*\n?|\n?```$/g, "")
+    .trim();
+  let text = t,
+    title: string | undefined;
+  try {
+    const j = JSON.parse(t) as { text?: unknown; title?: unknown };
+    if (typeof j.text === "string") text = j.text;
+    if (typeof j.title === "string") title = j.title;
+  } catch {
+    /* plain text */
+  }
+  let bold = 0;
+  text = text.trim().replace(/\*\*(.+?)\*\*/g, (_, x: string) => (bold++ ? x : `**${x}**`));
+  if (!text) return undefined;
+  const s: Summary = { text, at, sig: r.sig, input: r.input };
+  if (r.pairs?.length) s.pairs = r.pairs;
+  if (title?.trim() && r.card && r.card !== "code") s.title = title.trim();
+  return s;
+}

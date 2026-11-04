@@ -31,7 +31,11 @@ const izWant = rooted(() =>
 export const izOf = (id: string) => cardIz[id] ?? izWant();
 // 换完了的档：新出现的卡直接用它
 const [settled, setSettled] = createSignal<Lod>("full");
-export const lodOf = (id: string): Lod => cardLod[id] ?? settled();
+// Free Text stays on the summary level as it is (#130), so it looks the same at every zoom: never the map's box and name
+const plain = rooted(() =>
+  createMemo(() => new Set(placed().flatMap((c) => (c.kind === "note" && c.look === "freetext" ? [c.id] : [])))),
+);
+export const lodOf = (id: string): Lod => (plain().has(id) ? "full" : (cardLod[id] ?? settled()));
 
 /** Canvas 里调用一次 */
 export function trackCardLod() {
@@ -55,8 +59,10 @@ export function trackCardLod() {
       Z = unwrap(sizes),
       CL = unwrap(cardLod),
       CI = unwrap(cardIz),
-      st = settled();
+      st = settled(),
+      fixed = plain();
     for (const c of placed()) {
+      if (fixed.has(c.id)) continue;
       const was = CL[c.id] ?? st;
       if (was === want && (want !== "map" || CI[c.id] === iz)) continue;
       const p = P[c.id],

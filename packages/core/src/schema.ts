@@ -77,6 +77,17 @@ export const VariantSchema = obj({
   ]),
 });
 
+/** model.ts Summary */
+const Summary = obj({
+  text: str,
+  title: opt(str),
+  at: num,
+  sig: str,
+  edited: opt(yes),
+  pairs: opt(v.array(obj({ ai: str, user: str, at: num }))),
+  input: opt(str),
+});
+
 const Place = obj({
   x: num,
   y: num,
@@ -87,6 +98,7 @@ const Place = obj({
   locked: opt(bool),
   collapsed: opt(bool),
   start: opt(bool),
+  summary: opt(Summary),
 });
 
 const base = {
@@ -254,6 +266,7 @@ const Section = obj({
   collapsed: opt(bool),
   locked: opt(bool),
   desc: opt(str),
+  summary: opt(Summary),
 });
 
 const noteBase = {

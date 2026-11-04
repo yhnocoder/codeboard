@@ -1278,7 +1278,7 @@ test("subboardPreviewColumnsHideClear", async () => {
 const others = (h: Host, f: string) =>
   h.page.evaluate(
     (f) =>
-      [...document.querySelectorAll<HTMLElement>(".world > .card")]
+      [...document.querySelectorAll<HTMLElement>(":is(.cardlay, .keeplay) > .card")]
         .filter((c) => c.dataset.id !== f)
         .flatMap((c) => {
           const r = c.getBoundingClientRect(),

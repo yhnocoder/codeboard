@@ -14,6 +14,7 @@ import type {
   CallMark,
   VariantFrom,
   Link,
+  Summary,
 } from "./model";
 import type { Var } from "@codeboard/analysis/basics";
 import type { SegView } from "./lines";
@@ -25,6 +26,7 @@ import type { RunApply } from "./run";
 import type { Rect } from "./layout";
 import type { QuestionItem } from "./questions";
 import type { LspItem, LspSignature } from "./workspace";
+import type { SumRequest } from "./summary";
 
 /** A question for the user in a board dialog (HostToBoard "ask"): a line of text, or one of a list */
 export type BoardAsk =
@@ -292,6 +294,8 @@ export type HostToBoard =
   | { type: "run"; apply: RunApply }
   /** 有 Variant 的卡：Variant 的代码变了（保存、分支 rebase、PR 更新）、合进了上游、上游最新的代码。只发有变化的卡 */
   | { type: "variants"; cards: Record<string, VariantSync> }
+  /** Zoomed-out summaries the host wrote by itself (a pending one after its quiet time, a missing one when the board opened), by key */
+  | { type: "summaries"; items: Record<string, Summary> }
   | { type: "reply"; req: number; data?: ReplyOf<AskType>; error?: string };
 
 export type BoardToHost =
@@ -432,6 +436,8 @@ export type BoardToHost =
   | { type: "imageAiCancel"; job: number }
   /** Settings 的 AI 一节：密钥设了没有、有哪些 VS Code 语言模型。回 AiInfo */
   | { type: "aiInfo"; req: number }
+  /** ↻ on a zoomed-out summary: write it now (the board sizes the request by its layout). Replies SummaryResult */
+  | { type: "summarize"; req: number; input: SumRequest }
   /** Settings 里的 Set Key… / Clear 和 AI 功能提示里的 Set DeepSeek API Key…：set 在白板上问密钥（存进密钥存储），clear 删掉；回之后的 AiInfo。密钥本身不进白板 */
   | { type: "aiKey"; req: number; action: "set" | "clear" }
   /** Add Variant 菜单：这段代码所在仓库的其他 worktree、本地分支。回 VariantSources */
@@ -470,6 +476,8 @@ export type ImageAiFail =
 export type ImageAiResult =
   | { text: string; cut?: true; reused?: true }
   | { fail: ImageAiFail; message?: string; via?: string };
+/** A summary the host had written, or why not (failures as for the image tools; nokey = no DeepSeek key) */
+export type SummaryResult = { summary: Summary } | { fail: ImageAiFail; message?: string; via?: string };
 /** VS Code 的一个语言模型（Copilot 的 GPT-4o、Claude…）：vision = 收图 */
 export type AiModel = { id: string; name: string; vendor: string; vision: boolean };
 /** key = DeepSeek 的密钥设了没有（只有这一位，密钥不进白板）；models = 现在能用的 VS Code 语言模型 */
@@ -602,6 +610,7 @@ type Replies = {
   genSource: GenSource | null;
   complete: string | null;
   imageAi: ImageAiResult;
+  summarize: SummaryResult;
   aiInfo: AiInfo;
   aiKey: AiInfo;
   lspComplete: LspItem[];

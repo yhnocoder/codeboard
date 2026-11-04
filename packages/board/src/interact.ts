@@ -28,7 +28,7 @@ import { sel, select, toggleSel, clearSel, setLineSel, isSel, type Sel } from ".
 import { toast } from "./state/toast";
 import { tune } from "./state/tune";
 import { WHEEL_GESTURE, BLOCK_GLIDE, SNAP_SETTLE, LAND_MS } from "./state/timing";
-import { cam, setCam, stopCam, camTo, fling, toWorld, view, ZMIN, ZMAX, lod } from "./state/camera";
+import { cam, setCam, stopCam, camTo, fling, toWorld, view, zMin, ZMAX, lod } from "./state/camera";
 import { reduceMotion } from "./state/motion";
 import {
   setGuides,
@@ -1107,7 +1107,7 @@ export function canvasWheel(e: WheelEvent) {
   const p = local(e);
   if (e.ctrlKey || e.metaKey) {
     const z0 = cam.z,
-      z = Math.min(ZMAX, Math.max(ZMIN, z0 * Math.exp(-e.deltaY * (e.deltaMode ? 0.05 : 0.01))));
+      z = Math.min(ZMAX, Math.max(zMin(), z0 * Math.exp(-e.deltaY * (e.deltaMode ? 0.05 : 0.01))));
     setCam(p.x - ((p.x - cam.x) * z) / z0, p.y - ((p.y - cam.y) * z) / z0, z);
   } else {
     const k = e.deltaMode === 1 ? 16 : 1;

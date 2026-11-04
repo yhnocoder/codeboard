@@ -30,6 +30,7 @@ import { BoardPanel, type BoardHost, type BoardView } from "./boards";
 import type { HostEnv, ViewPlace } from "./env";
 import type { Handler } from "./handlers";
 import { viewsFor } from "./views";
+import { SummaryWatch } from "./summaries";
 import type { HostContext } from "./context";
 
 /** How long pushes to open boards (skeletons, [[ refs, shared cards) wait for more changes */
@@ -67,6 +68,8 @@ export class BoardHub implements BoardHost, Disposable {
   /** 共享卡的改动按顺序转发（段的展示数据要先算好） */
   private shareQ: Promise<unknown> = Promise.resolve();
   private subs: Disposable[] = [];
+  /** Zoomed-out summaries the host writes by itself for open boards */
+  readonly summaries: SummaryWatch;
 
   constructor(
     readonly cx: HostContext,
@@ -75,6 +78,20 @@ export class BoardHub implements BoardHost, Disposable {
     handler: (hub: BoardHub) => Handler,
   ) {
     this.target = this.cx.ws.storage.get<string>(TARGET);
+    this.summaries = new SummaryWatch(cx, {
+      board: (id) => this.store.peek(id),
+      boards: () => this.store.cached().map((e) => e.board),
+      post: (id, m) => {
+        const p = this.panels.get(id);
+        if (!p?.ready) return false;
+        p.post(m);
+        return true;
+      },
+    });
+    this.subs.push(
+      this.summaries,
+      store.onDidSave((b) => this.summaries.saw(b)),
+    );
     // 共享卡写进了卡库：开着同一张卡的别的白板换上（存储里的那份已经换好了）。卡本身变了（新版本、改段）时带上段的展示数据
     this.subs.push(
       store.onDidShare((e) => {

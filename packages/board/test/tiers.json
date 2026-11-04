@@ -27,7 +27,11 @@
   "manual": ["markdownRecord"],
   "solo": ["markdownLazyRender"],
   "known": {},
-  "limits": { "area": 30, "smoke": 90, "local": 180 },
+  "limits": {
+    "area": 30,
+    "smoke": 90,
+    "local": 180
+  },
   "perf": {
     "about": "code the perf benchmarks (packages/board/test/perf.ts, packages/host/test/perf-*.ts, tools/review/perf-ab.sh) run or build: a change touching none of it skips the perf job in PR CI; the regular run measures every time",
     "files": [
@@ -519,6 +523,19 @@
         "newTextReachesHostWhenShown",
         "sharedcards"
       ]
+    },
+    "summaries": {
+      "about": "zoomed-out AI summaries (#130): the summary level and its fade, the board's minimum zoom, columns, editing and ↻, the host writing summaries with DeepSeek",
+      "files": [
+        "packages/core/src/summary.ts",
+        "packages/core/src/commands/summaries.ts",
+        "packages/board/src/state/summary.ts",
+        "packages/board/src/canvas/Summaries.tsx",
+        "packages/board/src/actions/summaries.ts",
+        "packages/host/src/summaries.ts",
+        "packages/board/test/scenarios/summaries.spec.ts"
+      ],
+      "scenarios": ["summaryLevelFade", "summaryWrittenAndEdited", "summaryNoKey"]
     }
   }
 }

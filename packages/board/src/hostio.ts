@@ -5,10 +5,11 @@ import { appendSegment, deleteItems, followMoved, renameBoard } from "@codeboard
 import { commandEnv } from "./actions/env";
 import { state, setHost, mergeHost, setBoards, setLoaded, setSharedInfo, flows } from "./state/store";
 import { putViews, putStale, resetSegs } from "./state/views";
-import { markSaved, setBoard, sync, syncShared, syncGone, syncMerged } from "./state/changes";
+import { markSaved, setBoard, sync, syncShared, syncGone, syncMerged, syncSummaries } from "./state/changes";
 import { select, setLineSel, lineSel, sel } from "./state/selection";
 import { toast } from "./state/toast";
 import { setCam } from "./state/camera";
+import { showSummaryLevel } from "./state/summary";
 import { cardsMeasured } from "./state/measure";
 import { putSkels, setCrumbs, setWalkBack } from "./state/subboards";
 import { boardSwitched } from "./state/root";
@@ -73,6 +74,7 @@ function handle(m: HostToBoard, md: Markdown) {
       });
       if (questionsOpen()) A.refreshQuestions();
       setCam(b.cam.x, b.cam.y, b.cam.z);
+      showSummaryLevel();
       markSaved();
       A.boardShown();
       if (m.walk) void hopWalk(m.walk);
@@ -200,6 +202,9 @@ function handle(m: HostToBoard, md: Markdown) {
       break;
     case "merged":
       syncMerged(m.patch, m.views);
+      break;
+    case "summaries":
+      syncSummaries(m.items);
       break;
     case "sharedGone": {
       const n = m.cards.filter((id) => findCard(state.board, id)).length;

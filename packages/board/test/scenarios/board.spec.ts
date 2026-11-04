@@ -79,12 +79,14 @@ test("zoomLevels", async () => {
   const b = richBoard();
   b.sections.push({ id: "g1", title: "Scheduling", x: 740, y: 20, w: 640, h: 560, color: "blue" });
   b.place[b.cards[1].id].section = "g1";
+  // a board this small cannot zoom out past fit-all ÷ 1.3 (#130), here 50 %: the map level is moved up to reach it
   for (const [z, n] of [
     [0.45, "board-12-overview"],
-    [0.18, "board-13-map"],
+    [0.5, "board-13-map"],
   ] as const) {
     b.cam = { x: 60, y: 60, z };
-    const h = await open({ board: structuredClone(b), light, w: 1400, h: 900 });
+    const settings = n === "board-13-map" ? { zoomOverview: 0.8, zoomMap: 0.6 } : undefined;
+    const h = await open({ board: structuredClone(b), light, w: 1400, h: 900, settings });
     await shot(h, n);
     if (n === "board-12-overview") {
       // Overview hides code with opacity, so the hidden code must not take the pointer: a press on a call lands on the cover and goes to the card
@@ -122,7 +124,7 @@ test("zoomLevels", async () => {
       );
       const end = await fs(),
         iz = await h.page.evaluate(
-          () => +getComputedStyle(document.querySelector(".world > .card")!).getPropertyValue("--iz"),
+          () => +getComputedStyle(document.querySelector(".cardlay > .card")!).getPropertyValue("--iz"),
         );
       check("map-labels-settle-after-pinch", Math.abs(iz * z - 1) < 0.01, JSON.stringify({ mid, end, z, iz }));
     }

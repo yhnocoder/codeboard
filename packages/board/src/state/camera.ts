@@ -2,7 +2,7 @@
 import { createStore } from "solid-js/store";
 import { createSignal, createMemo, batch } from "solid-js";
 import { tune } from "./tune";
-import { rooted } from "./root";
+import { boardSignal, rooted } from "./root";
 import { state } from "./store";
 import { CAM_STILL } from "./timing";
 import { reduceMotion } from "./motion";
@@ -88,8 +88,11 @@ const sx = new Spring(0, 120, 22, 0.05),
 let running = false,
   gen = 0;
 
-export const ZMIN = 0.1,
-  ZMAX = 2.5;
+export const ZMAX = 2.5;
+/** The board's minimum zoom: fit-all ÷ 1.3 (state/summary.ts sets it; core summaryMinZoom) */
+const [zFloor, setZoomFloor] = boardSignal(0.1);
+export { setZoomFloor };
+export const zMin = () => zFloor();
 
 // 等镜头飞完的（camRest）：飞到了、被打断（拖动、别的镜头操作接手）都算停下
 const resting: (() => void)[] = [];
@@ -106,10 +109,10 @@ export function stopCam() {
 }
 export function setCam(x: number, y: number, z: number) {
   if (running) stopCam();
-  setCamStore({ x, y, z: Math.min(ZMAX, Math.max(ZMIN, z)) });
+  setCamStore({ x, y, z: Math.min(ZMAX, Math.max(zMin(), z)) });
 }
 export function camTo(x: number, y: number, z: number, soft = false) {
-  z = Math.min(ZMAX, Math.max(ZMIN, z));
+  z = Math.min(ZMAX, Math.max(zMin(), z));
   if (!running) {
     sx.set(cam.x);
     sy.set(cam.y);
@@ -167,7 +170,7 @@ export const usableW = (z: number) => (viewport.w - SAFE.l - SAFE.r) / z;
 export const usableH = (z: number) => (viewport.h - SAFE.t - SAFE.b) / z;
 
 /** 能放下 r 的镜头（不超过 maxZ，不小于 minZ：再小放不下就居中、四边各裁一点） */
-export function fitRect(r: Rect, maxZ = 1, minZ = ZMIN) {
+export function fitRect(r: Rect, maxZ = 1, minZ = zMin()) {
   const { w, h } = viewport;
   const z = Math.max(minZ, Math.min(maxZ, (w - SAFE.l - SAFE.r) / r.w, (h - SAFE.t - SAFE.b) / r.h));
   return {
@@ -179,7 +182,7 @@ export function fitRect(r: Rect, maxZ = 1, minZ = ZMIN) {
 /** 很高的东西：保证宽度放得下，顶部对齐 */
 export function fitTop(r: Rect, maxZ = 1) {
   const { w, h } = viewport;
-  const z = Math.max(ZMIN, Math.min(maxZ, (w - SAFE.l - SAFE.r) / r.w));
+  const z = Math.max(zMin(), Math.min(maxZ, (w - SAFE.l - SAFE.r) / r.w));
   if (r.h * z <= h - SAFE.t - SAFE.b) return fitRect(r, z);
   return { z, x: SAFE.l + (w - SAFE.l - SAFE.r - r.w * z) / 2 - r.x * z, y: SAFE.t - r.y * z };
 }
@@ -219,7 +222,7 @@ export const union = (a: Rect, b: Rect): Rect => {
 };
 export function zoomAt(f: number, px = viewport.w / 2, py = viewport.h / 2, smooth = true) {
   const c = camTarget();
-  const z = Math.min(ZMAX, Math.max(ZMIN, c.z * f));
+  const z = Math.min(ZMAX, Math.max(zMin(), c.z * f));
   const x = px - ((px - c.x) * z) / c.z,
     y = py - ((py - c.y) * z) / c.z;
   smooth ? camTo(x, y, z) : setCam(x, y, z);

@@ -15,6 +15,7 @@ import { ghosts } from "./gesture";
 import { vscodeKey } from "./ui/vscodekeys";
 import { wireSectionEasing } from "./state/sections";
 import { wireInk } from "./state/ink";
+import { wireSummaries } from "./state/summary";
 import { rooted } from "./state/root";
 import { wireRefTitles } from "./md/refs";
 
@@ -50,6 +51,7 @@ export function wireBoard(t: Transport, o: BoardOptions): Markdown {
   });
   followHostTheme();
   wireInk();
+  wireSummaries();
   rooted(() => wireRefTitles(md));
   return md;
 }

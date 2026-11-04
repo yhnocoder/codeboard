@@ -7661,3 +7661,210 @@ mark.wdiff {
   font-variant-numeric: tabular-nums;
   color: var(--ink-2);
 }
+
+/* Zoomed-out summaries (#130; canvas/Summaries.tsx, state/summary.ts). The card level (Marks included), the cards that stay as
+   they are (sub-board frames, Free Text) and the summaries are three layers; the switch fades only the card and summary layers' own opacity. The board's
+   one summary font size --S and padding --P come from its layout; --sum-iz (1 / zoom; --iz does not inherit) keeps the ↻ mark 20 screen px */
+.lay {
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+.cardlay,
+.sumlay {
+  will-change: opacity;
+}
+/* fully faded: not painted, not hit */
+.cardlay.gone {
+  visibility: hidden;
+}
+/* the type and colours are the demo's (feedback/demo/boards-130-viewer.html: .sum .hd, .txt), per look; other looks and dark
+   boards take their own fonts and a grey between ink-3 and the paper */
+.sumlay {
+  pointer-events: none;
+  --sum-font: var(--note-h);
+  --sum-head: var(--note-h);
+  --sum-hd: var(--ink-2);
+  --sum-grey: color-mix(in srgb, var(--ink-3) 80%, var(--bg));
+}
+:root.look-warm-ink:not([data-theme="dark"]) .sumlay {
+  --sum-font: "Noto Sans SC", -apple-system, "PingFang SC", sans-serif;
+  --sum-head: var(--sys);
+  --sum-hd: #57534b;
+  --sum-grey: #a9a49a;
+}
+:root.look-ink-wash:not([data-theme="dark"]) .sumlay {
+  --sum-font: "Noto Serif SC", "Source Serif 4", "Songti SC", serif;
+  --sum-head: "Source Serif 4", "Noto Serif SC", "Songti SC", Georgia, serif;
+  --sum-hd: #4c4943;
+  --sum-grey: #a7a296;
+}
+.sumcol {
+  position: absolute;
+  box-sizing: border-box;
+  padding: var(--P);
+}
+.sumblk {
+  position: relative;
+}
+.sumlay.live .sumblk {
+  pointer-events: auto;
+}
+.sumlay.live .sumtx {
+  cursor: text;
+}
+.sumhd {
+  margin-bottom: calc(var(--S) * 0.3);
+}
+.sumhdi {
+  font: 700 calc(var(--S) * 0.8) / 1.3 var(--sum-head);
+  color: var(--sum-hd);
+  letter-spacing: 0.04em;
+  overflow-wrap: break-word;
+}
+.sumhdi::before {
+  content: "";
+  display: inline-block;
+  width: 0.55em;
+  height: 0.55em;
+  margin-right: 0.45em;
+  background: var(--accent);
+  border-radius: 1px;
+  vertical-align: 0.04em;
+}
+.sumcol.loose .sumhdi::before {
+  background: var(--ink-3);
+}
+.sumhd.code code {
+  font: 600 calc(var(--S) * 0.7) / 1.3 var(--mono);
+  letter-spacing: 0;
+  color: var(--sum-hd);
+  overflow-wrap: anywhere;
+}
+.sumhd.code i {
+  display: block;
+  font: 400 calc(var(--S) * 0.6) / 1.4 var(--mono);
+  font-style: normal;
+  letter-spacing: 0;
+  color: var(--ink-3);
+  white-space: nowrap;
+  padding-left: calc(var(--S) * 0.8);
+}
+.sumtx {
+  font: 400 var(--S) / 1.5 var(--sum-font);
+  color: var(--sum-grey);
+  word-break: normal;
+  overflow-wrap: break-word;
+  line-break: auto;
+  outline: none;
+}
+.sumtx b {
+  color: var(--ink);
+  font-weight: 700;
+}
+.sumcol.pend .sumtx {
+  text-decoration: underline dotted color-mix(in srgb, var(--ink) 45%, transparent);
+  text-decoration-thickness: 0.07em;
+  text-underline-offset: 0.28em;
+}
+.sumtx[contenteditable="true"] {
+  text-decoration: none;
+  user-select: text;
+  -webkit-user-select: text;
+  box-shadow: 0 0 0 0.12em color-mix(in srgb, var(--accent) 45%, transparent);
+  border-radius: 0.08em;
+  background: color-mix(in srgb, var(--surface) 80%, transparent);
+}
+.sumcol.gen :is(.sumtx, .sumhdi) {
+  animation: sum-breathe 1.1s ease-in-out infinite;
+}
+@keyframes sum-breathe {
+  50% {
+    opacity: 0.3;
+  }
+}
+.sumimg {
+  position: absolute;
+  object-fit: contain;
+}
+/* the AI mark: ↻ at the column's top-right on the title line, only while the pointer is on the column */
+.sumre {
+  position: absolute;
+  right: var(--P);
+  top: var(--P);
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  corner-shape: round;
+  display: grid;
+  place-items: center;
+  /* the demo's UI stack in every look (a look's serif --sys draws ↻ small) */
+  font:
+    13px / 1 -apple-system,
+    BlinkMacSystemFont,
+    "SF Pro Text",
+    "Segoe UI",
+    "PingFang SC",
+    "Noto Sans SC",
+    sans-serif;
+  color: color-mix(in srgb, var(--ink) 55%, transparent);
+  background: color-mix(in srgb, var(--surface) 80%, transparent);
+  transform-origin: 100% 0;
+  transform: scale(var(--sum-iz));
+  opacity: 0;
+  pointer-events: none;
+  cursor: pointer;
+  transition: opacity 90ms ease-in;
+}
+.sumlay.live .sumcol:hover .sumre,
+.sumlay.live .sumre:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+  transition: opacity 120ms ease-out;
+}
+.sumlay.live .sumcol:has(.sumtx[contenteditable="true"]) .sumre {
+  opacity: 1;
+  pointer-events: auto;
+}
+.sumre:hover {
+  color: var(--ink);
+  background: var(--line);
+}
+.sumcol.gen .sumre {
+  animation: sum-spin 1s linear infinite;
+}
+@keyframes sum-spin {
+  to {
+    rotate: 1turn;
+  }
+}
+.sumdot {
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  corner-shape: round;
+  display: none;
+}
+.sumcol.edited .sumdot {
+  display: block;
+  background: var(--accent);
+}
+.sumcol.pend:not(.edited) .sumdot {
+  display: block;
+  box-shadow: inset 0 0 0 1px var(--ink-3);
+}
+@media (prefers-reduced-motion: reduce) {
+  .sumre,
+  .sumlay.live .sumcol:hover .sumre {
+    transition: none;
+  }
+  .sumcol.gen :is(.sumtx, .sumhdi),
+  .sumcol.gen .sumre {
+    animation: none;
+  }
+}

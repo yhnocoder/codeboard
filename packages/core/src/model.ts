@@ -250,7 +250,29 @@ export type Place = {
   // 白板上量到的整张卡的高（视图 sync 写，不进撤销）：宿主量不到实测尺寸，estSize 先用它（子白板的缩略地图、宿主排新卡）。
   // 没定 h 的卡才写，和估计的差不到几像素就不写
   mh?: number;
+  /** The card's zoomed-out AI summary while it is in no Section (summary.ts; per board, so a shared card has one per board) */
+  summary?: Summary;
 };
+
+/**
+ * A zoomed-out AI summary (summary.ts): text = the body (one **key phrase**), title = the AI's short title (cards only),
+ * at = when it was written, sig = summarySig of what it was written from (another sig now = pending), edited = the text shown is
+ * the user's own. pairs = the user's edits, newest first, at most 3: each the AI text showing when the user edited it and what
+ * the user made of it (at = when); edits with no rewrite in between update the newest pair. They stay across rewrites: every rewrite
+ * of this summary follows them (the newer wins where they conflict), and the newest is one of the examples the AI learns the
+ * user's style from on every board (summaryExamples). input = summaryInput of what the AI text was written from (card ids, titles,
+ * contents): the host never asks again by itself while it is the same, across reloads and undos too
+ */
+export type Summary = {
+  text: string;
+  title?: string;
+  at: number;
+  sig: string;
+  edited?: true;
+  pairs?: SummaryPair[];
+  input?: string;
+};
+export type SummaryPair = { ai: string; user: string; at: number };
 
 // Link 在界面上叫 Arrow
 /** Link 的一端：整张卡，或卡里某一段的某一行，或 Note 的某一块（子白板框只能整张连：框里的小卡片只是预览） */
@@ -394,6 +416,8 @@ export type Section = {
   collapsed?: boolean;
   locked?: boolean;
   desc?: string;
+  /** Its zoomed-out AI summary (summary.ts) */
+  summary?: Summary;
 };
 
 /** 挂在哪：整张卡、一行或几行 */
