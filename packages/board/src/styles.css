@@ -7798,14 +7798,15 @@ mark.wdiff {
   mask-image: none;
   transition: none;
 }
-/* the panel a hovered column shows its whole text on: the board's own paper, reaching 0.6·S past the column on every side (the
-   text keeps its place), card-rounded, lifted by a soft wide shadow and a faint hairline. It fades and scales in on its own
-   layer (opacity and transform only); the column stays raised until it has faded out */
+/* the panel a hovered column shows its whole text on, only when the text is cut at rest (.sumover; one that fits shows just its
+   ↻): the board's own paper around what the column holds (the column is as tall as its content then, never its free room),
+   reaching 0.6·S past it on every side (the text keeps its place), card-rounded, lifted by a soft wide shadow and a faint
+   hairline. It fades and scales in on its own layer (opacity and transform only); the column stays raised until it has faded out */
 .sumcol {
   isolation: isolate;
   transition: z-index 90ms step-end;
 }
-.sumcol:is(.sumover, .sumclamp)::before {
+.sumcol.sumover::before {
   content: "";
   position: absolute;
   inset: calc(var(--S) * -0.6);
@@ -7829,7 +7830,7 @@ mark.wdiff {
   z-index: 2;
   transition: none;
 }
-.sumlay.live .sumcol:is(.sumover, .sumclamp):is(:hover, :focus-within)::before {
+.sumlay.live .sumcol.sumover:is(:hover, :focus-within)::before {
   opacity: 1;
   transform: none;
   transition:
@@ -7867,13 +7868,8 @@ mark.wdiff {
   display: block;
   overflow: visible;
 }
-.sumlay.live .sumcol.sumclamp:is(:hover, :focus-within) {
+.sumlay.live .sumcol:is(.sumover, .sumclamp):is(:hover, :focus-within) {
   height: auto !important;
-  min-height: var(--rest);
-}
-.sumlay.live .sumcol.sumover:is(:hover, :focus-within) {
-  height: auto !important;
-  min-height: var(--rest);
 }
 /* a header above the frame of a Section with child Sections (the demo's .col.h1 / .h2, feedback/demo/nested-sections.html; core
    summary.ts HEAD measures the same): level 1 a larger ink title over a thin vermilion rule, deeper a smaller ink-2 title over a
@@ -7898,9 +7894,6 @@ mark.wdiff {
 }
 .sumcol:is(.h1, .h2) .sumhdi::before {
   display: none;
-}
-.sumcol.bare .sumhd {
-  margin-bottom: 0;
 }
 .sumkick {
   font: 600 calc(var(--S) * 0.56) / 1.3 var(--sum-head);

@@ -11,10 +11,11 @@
 //   summaryOverflowFades         two loose cards stacked close, each with a long summary: at rest the columns never overlap and
 //                                the upper one fades out over its last lines; hovered it shows in full over the lower one, raised;
 //                                a title past two lines ends in an ellipsis and shows in full the same way
-//   summaryNestedSections        Sections inside Sections (option G; the demo's 计算架构 nesting): each innermost Section its own
-//                                summary, an outer one a header above its frame (title, rule, overview), its direct cards one
-//                                column with the AI's title, a Section with one child only a kick line above the child's title;
-//                                nothing overlaps at rest; ↻ on a header asks the AI for the overview from its children's summaries
+//   summaryNestedSections        Sections inside Sections, three deep (option G; the demo's 计算架构 nesting in one more Section):
+//                                each innermost Section its own summary, an outer one a header above its frame (title, rule,
+//                                overview: two lines on top, one deeper, the deeper header under the outer one), its direct cards
+//                                one column with the AI's title, a Section with one child only a kick line above the child's title;
+//                                nothing overlaps at rest; ↻ on a middle header asks the AI for its overview from its children
 //   summaryFramesOnlyBoard       a board of sub-board frames, Free Text headings and Marks, nothing to summarize: zoomed out past the
 //                                cut the Marks hide all the same, and the frames and Free Text look as they do at 100 %, only scaled
 import {
@@ -407,6 +408,28 @@ test("summaryOverflowFades", async () => {
     !a1.mask && a1.bottom > b0.top && (await shown(B)).top === b0.top,
     { a1, b0 },
   );
+  // the paper panel hugs what the column holds (0.6·S past it on every side), never the column's free room below
+  const panelOf = (l: typeof A) =>
+    l.evaluate((e) => {
+      const S = parseFloat(getComputedStyle(e.closest(".sumlay")!).getPropertyValue("--S")),
+        cs = getComputedStyle(e),
+        pad = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom),
+        p = getComputedStyle(e, "::before");
+      return {
+        drawn: p.content !== "none" && p.content !== "normal",
+        panel: parseFloat(p.height),
+        content: (e.querySelector(".sumblk") as HTMLElement).offsetHeight + pad + 1.2 * S,
+      };
+    });
+  await until(h, "the panel has faded in", async () =>
+    A.evaluate((e) => getComputedStyle(e, "::before").opacity === "1"),
+  );
+  const pa = await panelOf(A);
+  check(
+    "summaryOverflowFades the hover panel of a cut text is as tall as the column's content plus its padding",
+    pa.drawn && Math.abs(pa.panel - pa.content) < 4,
+    pa,
+  );
   await h.page.mouse.move(1200, 780);
   await until(h, "it collapses on leave", async () => !(await shown(A)).raised);
   // a title longer than two lines: two lines and an ellipsis at rest, in full while hovered
@@ -424,6 +447,12 @@ test("summaryOverflowFades", async () => {
   await C.locator(".sumhd").hover();
   await until(h, "the long title shows in full", async () => (await title()).lines > 2);
   const c1 = await title();
+  const pc = await panelOf(C);
+  check(
+    "summaryOverflowFades a column whose text fits shows no paper panel on hover",
+    !pc.drawn && !(await C.evaluate((e) => e.classList.contains("sumover"))),
+    pc,
+  );
   check(
     "summaryOverflowFades a long title is two lines at rest and shows in full, raised, while hovered",
     c0.lines === 2 && c0.clamp && !c0.raised && c1.raised,
@@ -434,8 +463,9 @@ test("summaryOverflowFades", async () => {
   await h.page.context().close();
 });
 
-/** The demo's 计算架构 board (feedback/demo/nested-sections.html), short Notes in the same places: GPU 架构初探 holds three
- *  Sections and five cards of its own, WARP 执行 three Sections; 设备与资源 holds only 查询设备属性. Written as in the demo */
+/** The demo's 计算架构 board (feedback/demo/nested-sections.html), short Notes in the same places, both its outer Sections in one
+ *  more (计算架构): GPU 架构初探 holds three Sections and five cards of its own, WARP 执行 three Sections; 设备与资源 holds only
+ *  查询设备属性. Written as in the demo */
 function nestedBoard(id: string, z: number): Board {
   const b = emptyBoard(id, "计算架构与调度");
   const S = (sid: string, title: string, parent?: string): Section => ({
@@ -448,11 +478,12 @@ function nestedBoard(id: string, z: number): Board {
     ...(parent ? { parent } : {}),
   });
   b.sections.push(
-    S("P", "GPU 架构初探"),
+    S("T", "计算架构"),
+    S("P", "GPU 架构初探", "T"),
     S("c1", "SM 与 block 调度", "P"),
     S("c2", "barrier 与透明扩展", "P"),
     S("c3", "__syncthreads 误用示例", "P"),
-    S("W", "WARP 执行"),
+    S("W", "WARP 执行", "T"),
     S("w1", "WARP 与 SIMD 硬件", "W"),
     S("w2", "WARP 控制流分歧", "W"),
     S("w3", "WARP 调度、延迟、占用率", "W"),
@@ -516,17 +547,18 @@ function nestedBoard(id: string, z: number): Board {
     "barrier 分三层：block 内用 __syncthreads()，cluster 和 grid 用 Cooperative Groups，**范围越大开销越高**。同时执行的一批 block 叫 wave。",
     "同步层次与 wave",
   );
-  written("sec:P", "GPU 由 SM 组成，线程以 block 为单位调度，barrier 只在 block 内同步，**换来透明扩展**。");
-  written("sec:W", "warp 是 SM 的调度单位：同一指令一起跑，分支要分遍跑，靠**多驻留 warp** 盖住延迟。");
-  b.cam = { x: 40, y: 120, z };
+  written("sec:P", "SM 按块调度，barrier 只在块内，**换来透明扩展**。");
+  written("sec:W", "warp 一起跑、分支分遍跑，靠**多驻留 warp** 盖住延迟。");
+  written("sec:T", "SM 按 block 调度、barrier 只在块内，warp 是执行单位：**两层调度**决定了并行怎么写。");
+  b.cam = { x: 40, y: 190, z };
   return b;
 }
 
 test("summaryNestedSections", async () => {
-  const run = await hostBoards([nestedBoard("bN", 0.15)], {
+  const run = await hostBoards([nestedBoard("bN", 0.14)], {
     page: { light: true, w: 1280, h: 800, settings: { theme: "warm-ink" } },
   });
-  const { calls } = await fakeDeepseek(run, () => "SM 按块调度、barrier 只在块内，**换来透明扩展**。");
+  const { calls } = await fakeDeepseek(run, () => "块内同步**换来透明扩展**，SM 按 block 调度。");
   const h = await run.open("bN");
   await idle(h);
   const cols = () =>
@@ -541,6 +573,7 @@ test("summaryNestedSections", async () => {
         title: e.querySelector(".sumt")?.textContent ?? "",
         kick: e.querySelector(".sumkick")?.textContent ?? "",
         re: !!e.querySelector(".sumre"),
+        text: e.querySelector(".sumtx")?.textContent ?? "",
       })),
     );
   const frame = (id: string) =>
@@ -551,12 +584,14 @@ test("summaryNestedSections", async () => {
   const by = (k: string) => all.find((c) => c.key === k);
   await shot(h, "130-nested");
   check(
-    "summaryNestedSections innermost Sections summarized, outer ones a header (level 1), the direct cards one column with the AI's title, a one-child Section a kick line",
+    "summaryNestedSections innermost Sections summarized, outer ones a header (level 1 on top, level 2 inside it, each with its overview and ↻), the direct cards one column with the AI's title, a one-child Section a kick line",
     ["sec:c1", "sec:c2", "sec:c3", "sec:w1", "sec:w2", "sec:w3", "sec:q"].every(
       (k) => by(k) && !/\bh[12]\b/.test(by(k)!.cls),
     ) &&
-      /\bh1\b/.test(by("sec:P")?.cls ?? "") &&
-      /\bh1\b/.test(by("sec:W")?.cls ?? "") &&
+      /\bh1\b/.test(by("sec:T")?.cls ?? "") &&
+      /\bh2\b/.test(by("sec:P")?.cls ?? "") &&
+      /\bh2\b/.test(by("sec:W")?.cls ?? "") &&
+      ["sec:T", "sec:P", "sec:W"].every((k) => by(k)?.re && by(k)?.text.includes("**") === false && !!by(k)?.text) &&
       by("own:P")?.title === "同步层次与 wave" &&
       !by("sec:D") &&
       by("sec:q")?.kick === "设备与资源 ›",
@@ -565,7 +600,8 @@ test("summaryNestedSections", async () => {
   const fP = await frame("P"),
     fW = await frame("W");
   const P = by("sec:P")!,
-    W = by("sec:W")!;
+    W = by("sec:W")!,
+    T = by("sec:T")!;
   const hit = all.flatMap((a, i) =>
     all
       .slice(i + 1)
@@ -573,9 +609,14 @@ test("summaryNestedSections", async () => {
       .map((c) => `${a.key} / ${c.key}`),
   );
   check(
-    "summaryNestedSections the headers sit above their frames, at their left edges; nothing overlaps at rest",
-    Math.abs(P.x - fP.x) < 1 && P.y + P.h <= fP.y && Math.abs(W.x - fW.x) < 1 && W.y + W.h <= fW.y && !hit.length,
-    { P, fP, W, fW, hit },
+    "summaryNestedSections the headers sit above their frames, at their left edges, the outer one on top of the deeper one; nothing overlaps at rest",
+    Math.abs(P.x - fP.x) < 1 &&
+      P.y + P.h <= fP.y &&
+      Math.abs(W.x - fW.x) < 1 &&
+      W.y + W.h <= fW.y &&
+      T.y + T.h <= P.y &&
+      !hit.length,
+    { P, fP, W, fW, T, hit },
   );
   await h.page.locator('.sumcol[data-sum="sec:P"] .sumhd').hover();
   await h.page.locator('.sumcol[data-sum="sec:P"] .sumre').click();
@@ -587,11 +628,11 @@ test("summaryNestedSections", async () => {
       !!h
         .board()
         .sections.find((s) => s.id === "P")
-        ?.summary?.text.startsWith("SM 按块调度"),
+        ?.summary?.text.startsWith("块内同步"),
   );
   const asked = calls[0].body.messages[1].content as string;
   check(
-    "summaryNestedSections ↻ on a header asks for one sentence from the children's titles and summaries and the direct cards",
+    "summaryNestedSections ↻ on a middle header asks for one sentence from its children's titles and summaries and its direct cards",
     asked.includes("外层 Section 标题：GPU 架构初探") &&
       asked.includes("**透明扩展**") &&
       asked.includes("【Wave】") &&
