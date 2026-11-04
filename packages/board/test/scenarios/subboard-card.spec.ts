@@ -667,7 +667,7 @@ test("subboardLinkPicker", async () => {
     await page.keyboard.press("Escape");
     await until(h, "the link is saved", () =>
       (t.store.peek("bMain")!.cards.find((c) => c.id === "mNote") as NoteCard).md.includes(
-        "[[nano-vllm 调度器 › Deep › 深处的笔记]]",
+        "[[nano-vllm 调度器 › Deep › 深处的笔记#^d1]]",
       ),
     );
     await idle(h);

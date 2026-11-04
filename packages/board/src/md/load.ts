@@ -11,7 +11,7 @@ import { openLink } from "../actions/common";
 import { BOARD_CLASSES, lspHost } from "../cm/load";
 import { saveNoteImage } from "./images";
 import { boardsGrouped, refFoot, refGroups, refPicked, refRecent, wantBoardRefs } from "./refs";
-import type { MdEditorOpts, MdEditorHandle } from "@yhnocoder/markdown/editor";
+import type { MdEditorOpts, MdEditorHandle, RefItem } from "@yhnocoder/markdown/editor";
 import type { Markdown, MdLayout } from "@yhnocoder/markdown";
 import { boardRef, boardSignal, boardTimer } from "../state/root";
 
@@ -109,23 +109,23 @@ function whenIdle(f: () => void) {
  * [[ / 【【 / @ 引用的候选：这块白板上和子白板里（一路往下，标上所在的子白板：子白板 › 卡）有真正标题的卡（core refTitle），
  * 再是这块白板上的 Section 和别的白板。图片、名字只是正文第一行的卡不列。别的白板上的卡在 refGroups
  */
-function refCandidates(): { id: string; title: string; kind: string }[] {
-  const out: { id: string; title: string; kind: string }[] = [];
+function refCandidates(): RefItem[] {
+  const out: RefItem[] = [];
   const clean = (t: string) => t.replace(/[\[\]\n]/g, " ").slice(0, 160);
   const boardName = (id: string) => skels[id]?.name ?? state.boards.find((m) => m.id === id)?.name;
   for (const c of placed()) {
     const t = c.kind === "board" ? frameName(c) : refTitle(c, boardName)?.trim();
-    if (t) out.push({ id: c.id, title: clean(t), kind: isCode(c) ? "code" : c.kind });
+    if (t) out.push({ id: c.id, title: clean(t), kind: isCode(c) ? "code" : c.kind, target: c.id });
   }
-  for (const r of subRefs()) out.push({ id: r.id, title: clean(r.label), kind: r.k });
+  for (const r of subRefs()) out.push({ id: r.id, title: clean(r.label), kind: r.k, target: r.id });
   for (const s of state.board.sections)
-    if (s.title.trim()) out.push({ id: s.id, title: clean(s.title.trim()), kind: "section" });
+    if (s.title.trim()) out.push({ id: s.id, title: clean(s.title.trim()), kind: "section", target: s.id });
   // 别的白板：宿主给了别的白板上的卡时它们各成一组（refGroups，白板本身是组头），这里不列；已经作为子白板框列过的不重复
   if (boardsGrouped()) return out;
   const framed = new Set(placed().flatMap((c) => (c.kind === "board" ? [c.board] : [])));
   for (const m of state.boards)
     if (m.id !== state.board.id && !framed.has(m.id) && m.name.trim())
-      out.push({ id: m.id, title: clean(m.name.trim()), kind: "whiteboard" });
+      out.push({ id: m.id, title: clean(m.name.trim()), kind: "whiteboard", target: m.id });
   return out;
 }
 

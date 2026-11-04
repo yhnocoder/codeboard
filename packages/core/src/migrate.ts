@@ -1,4 +1,4 @@
-// 旧白板文件 → 当前版本（第 10 版）。项目里唯一的兼容代码：旧版本的结构、缺省的字段、手改出来的 null 都在这里补成
+// 旧白板文件 → 当前版本（第 11 版）。项目里唯一的兼容代码：旧版本的结构、缺省的字段、手改出来的 null 都在这里补成
 // 和 model.ts 的类型一模一样，读进来之后的代码只认当前结构。schema.ts 校验的是这里的结果。
 import {
   BOARD_VERSION,
@@ -17,9 +17,11 @@ import {
   type SharedCardFile,
   type Sidenote,
   type Sticker,
+  cardTitle,
 } from "./model";
+import { eachMarkdown, mapRefs } from "./mdrefs";
 
-/** 读进来的白板文件（第 1–10 版）→ 第 10 版白板文件（共享卡还是引用，由宿主的存储换成内容） */
+/** 读进来的白板文件（第 1–11 版）→ 第 11 版白板文件（共享卡还是引用，由宿主的存储换成内容） */
 export function migrateBoard(raw: any): BoardFile {
   // 更新的版本写的文件：读不懂就别碰（当第 1 版迁移会丢掉所有卡，下次自动保存把空白板写回去）
   if (typeof raw?.version === "number" && raw.version > BOARD_VERSION)
@@ -47,7 +49,37 @@ export function migrateBoard(raw: any): BoardFile {
     for (const c of b.cards) if (c.kind === "note" && c.look === "text" && b.place[c.id]) delete b.place[c.id].h;
   b.version = BOARD_VERSION;
   normalize(b);
+  // 第 10 版 → 第 11 版：[[引用]] 带上目标的 id（[[标题#^id]]），改名不再断开
+  if (from < 11) v10to11(b);
   return b;
+}
+
+/**
+ * 第 10 版 → 第 11 版：按标题找的 [[标题]] 指着这块白板上的卡或 Section 的，写成 [[标题#^id]]（显示按 id 找、跟着改名）。
+ * 和当时白板认引用的先后一样：摆在白板上的卡（标题不分大小写，重名取叠放顺序里第一张），再是 Section。
+ * 别的白板（[[白板]]、[[白板 › 卡]]）、子白板里的卡这里看不到（读一块白板时手里只有这一块），照旧按名字找；共享卡的内容在卡库里，也不动
+ */
+function v10to11(b: BoardFile) {
+  const ids = new Map<string, string>();
+  for (const c of b.cards) {
+    if (c.kind === "shared" || !b.place[c.id]) continue;
+    const t = cardTitle(c, b as Board)
+      .trim()
+      .toLowerCase();
+    if (t && !ids.has(t)) ids.set(t, c.id);
+  }
+  for (const s of b.sections) {
+    const t = s.title.trim().toLowerCase();
+    if (t && !ids.has(t)) ids.set(t, s.id);
+  }
+  if (!ids.size) return;
+  const byId = new Set(b.cards.map((c) => c.id));
+  eachMarkdown(b, (md) =>
+    mapRefs(md, (r) => {
+      const id = !r.target && !byId.has(r.label) ? ids.get(r.label.toLowerCase()) : undefined;
+      return id ? `[[${r.label}#^${id}]]` : undefined;
+    }),
+  );
 }
 
 /** 第 9 版以前的白板文件里存着的镜头：这台机器上还没记过这块白板的镜头时，宿主拿它当起点（见 schema.ts readBoardFile） */
@@ -85,7 +117,7 @@ export function migrateSharedCard(raw: any): SharedCardFile {
     (sc.sidenotes ?? []).forEach(v6to7Note);
   }
   if (sc?.version === 6 || sc?.version === 7) if (sc.card) v7to8Card(sc.card);
-  // 第 9、10 版的卡文件和第 8 版一样（变的只是白板文件的镜头和摆放）
+  // 第 9–11 版的卡文件和第 8 版一样（变的只是白板文件的镜头、摆放和白板上的引用）
   if (sc?.version >= 6 && sc.version < BOARD_VERSION) sc.version = BOARD_VERSION;
   if (sc?.card) normCard(sc.card);
   for (const n of sc?.sidenotes ?? []) normNote(n);

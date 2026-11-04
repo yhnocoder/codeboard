@@ -8,6 +8,7 @@ import {
   exportOrder,
   findCard,
   isQuestion,
+  plainRefs,
   startCards,
   walkOrder,
   bounds,
@@ -27,6 +28,7 @@ import { lodBusy, lodOf } from "../state/lodcards";
 import { setExportOpen, exportBusy, setExportBusy, type ExportOpts } from "../state/export";
 import { ask, send } from "../host";
 import { flushMd } from "../md/lazy";
+import { resolveCardRef } from "./common";
 import type { Markdown } from "@yhnocoder/markdown";
 import { noteBlocks } from "../md/blocks";
 import type { ViewerData } from "../export/viewer";
@@ -363,13 +365,20 @@ function collectCss(): string {
   return out.join("\n");
 }
 
+/** 快照里的引用不再去找目标（没有白板了）：写成目标现在的名字 */
+const namedRefs = (md: Markdown, src: string) =>
+  plainRefs(src, (t) => {
+    const r = resolveCardRef("", md, t);
+    return r && !("broken" in r) ? r.title : undefined;
+  });
+
 function noteHtml(md: Markdown, n: Sidenote): string {
   const where = n.at.lines
     ? `<div class="xv-w">${n.at.lines[0] === n.at.lines[1] ? `line ${n.at.lines[0]}` : `lines ${n.at.lines[0]}–${n.at.lines[1]}`}${n.why ? ` · ${escHtml(n.why)}` : ""}</div>`
     : "";
   switch (n.kind) {
     case "text":
-      return `${where}<div class="md">${md.render(n.md)}</div>`;
+      return `${where}<div class="md">${md.render(namedRefs(md, n.md))}</div>`;
     case "link":
       return `${where}<a href="${escHtml(n.url)}" target="_blank" rel="noopener">${escHtml(n.title || n.url)}</a>`;
     case "card": {
@@ -445,7 +454,7 @@ async function snapshotHtml(
     for (const s of b.stickers)
       if (qs.has(s.id))
         questions[s.id] = imgRefs(
-          `<div class="xv-w">${s.q?.done ? "Answered" : "Question"}</div><div class="md">${md.render(s.q?.md || "(no text)")}</div>`,
+          `<div class="xv-w">${s.q?.done ? "Answered" : "Question"}</div><div class="md">${md.render(namedRefs(md, s.q?.md || "(no text)"))}</div>`,
         );
   const cardLinks: Record<string, string> = {};
   for (const id of order) {

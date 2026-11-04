@@ -15,7 +15,7 @@ import { openPop, updatePop } from "../state/pop";
 import { lastPointer, naturalSize, chromeOf, cardsMeasured, CODE_MAX } from "../state/measure";
 import { send, ask } from "../host";
 import type { Markdown, RefBroken, RefTarget } from "@yhnocoder/markdown";
-import { crossRef } from "../md/refs";
+import { crossRef, crossRefById } from "../md/refs";
 import { mathRev } from "../md/math";
 import { cardSel } from "../cardsel";
 import { IS_MAC } from "@yhnocoder/markdown/ui";
@@ -49,10 +49,15 @@ export const mdInline = (md: Markdown, s: string) => (mathRev(), md.renderInline
 export const mdBlock = (md: Markdown, s: string) => (mathRev(), md.render(s));
 export const sidenotesOf = notesOf;
 /**
- * [[引用]] 找卡：先当 id，再按标题（不分大小写，重名时取第一张），再到子白板里找，最后是别的白板上的（[[白板 › 卡]]；还没拿到时
- * 问宿主要，到了以后 md 画的引用再认一遍）
+ * [[引用]] 找卡：从 [[ 列表选的带着目标的 id（target，[[标题#^id]]），先按它找（改了名也认得出，显示现在的名字）；
+ * 没有 id、或者按 id 找不到的，先当 id，再按标题（不分大小写，重名时取第一张），再到子白板里找，最后是别的白板上的
+ * （[[白板 › 卡]]；还没拿到时问宿主要，到了以后 md 画的引用再认一遍）
  */
-export function resolveCardRef(label: string, md: Markdown): RefTarget | RefBroken | null {
+export function resolveCardRef(label: string, md: Markdown, target?: string): RefTarget | RefBroken | null {
+  if (target) {
+    const hit = refById(label, target, md);
+    if (hit) return hit;
+  }
   const l = label.trim();
   if (!l) return null;
   const byId = cardById(l);
@@ -74,6 +79,25 @@ export function resolveCardRef(label: string, md: Markdown): RefTarget | RefBrok
     const r = resolveCardRef(t, md);
     return r && !("broken" in r) ? r : null;
   });
+}
+/** 按 id 找：这块白板上的卡、子白板里的卡、Section、别的白板，再是别的白板上的卡（白板id/卡id，或者只有卡 id：从别的白板复制过来的 Note） */
+function refById(label: string, target: string, md: Markdown): RefTarget | RefBroken | null {
+  const k = target.indexOf("/"),
+    board = k < 0 ? undefined : target.slice(0, k),
+    id = k < 0 ? target : target.slice(k + 1);
+  if (board === undefined || board === state.board.id) {
+    const c = cardById(id);
+    if (c) return { id: c.card.id, title: cardTitle(c.card, state.board).trim() };
+    if (board === undefined) {
+      const s = subRef(id);
+      if (s) return { id: s.id, title: s.label };
+      const sec = state.board.sections.find((x) => x.id === id);
+      if (sec) return { id: sec.id, title: sec.title.trim() || label };
+      const b = state.boards.find((m) => m.id === id && m.id !== state.board.id);
+      if (b) return { id: b.id, title: b.name.trim() || label };
+    }
+  }
+  return crossRefById(label, board, id, md);
 }
 export const hostRect = (id: string) => {
   const f = cardById(id);
