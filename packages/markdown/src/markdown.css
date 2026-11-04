@@ -503,6 +503,54 @@ math {
 .md-ref:hover {
   background: color-mix(in srgb, var(--k-fn) 18%, transparent);
 }
+/* 印章（RefTarget.seal）：别处的引用标题前面画那一处的几个字，代替 badge 和 ↗。字是背景色（--surface）写在 --md-seal 上；
+   两半的（.two）：前一半是外面那一处的（--md-seal-outer 的字、浅底、描边），后一半实心。和标题之间留 .4em（alone = 只有印章） */
+.md-ref.sealed::before {
+  content: none;
+}
+.md-seal {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  height: 1.36em;
+  min-width: 1.36em;
+  padding: 0 0.34em;
+  margin-right: 0.4em;
+  border-radius: 3px;
+  font-family: var(--sys);
+  font-size: 0.72em;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  vertical-align: 0.12em;
+  color: var(--surface);
+  background: var(--md-seal);
+}
+.md-seal.alone {
+  margin-right: 0;
+}
+.md-seal.two {
+  padding: 0;
+  overflow: hidden;
+  align-items: stretch;
+  background: none;
+  box-shadow: inset 0 0 0 1px var(--md-seal-outer);
+}
+.md-seal.two > span {
+  display: flex;
+  align-items: center;
+  padding: 0 0.4em;
+}
+.md-seal.two > .o {
+  color: var(--md-seal-outer);
+  background: color-mix(in srgb, var(--md-seal-outer) 13%, transparent);
+}
+.md-seal.two > .o + span {
+  color: var(--surface);
+  background: var(--md-seal);
+}
 /* 别处（别的白板）的：标题后面带那一处的名字；那里没有这一项了：灰、标题划掉；那一处本身没了：警告色（paintRef） */
 .md-ref .bd {
   font-size: 0.86em;

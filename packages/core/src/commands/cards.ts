@@ -5,6 +5,7 @@ import {
   isCode,
   uid,
   type Board,
+  type BoardSeal,
   type Card,
   type CodeCard,
   type NoteCard,
@@ -32,6 +33,7 @@ import {
   type Arrange,
   type CardCopy,
 } from "../edit";
+import { putSeal } from "../seal";
 import { sharedOn, type CommandEnv } from "./env";
 
 /** Delete these items, with what hangs on them (arrows, sidenotes and stickers on deleted cards; a Section's cards stay) */
@@ -338,6 +340,11 @@ export function renameBoard(env: CommandEnv, name: string) {
   env.edit((b) => {
     b.name = name;
   });
+}
+
+/** The board's Mark (seal.ts): what the user wrote, the fields equal to the defaults dropped; undefined goes back to the defaults */
+export function setBoardSeal(env: CommandEnv, seal: BoardSeal | undefined) {
+  env.edit((b) => putSeal(b, seal));
 }
 
 /** A card's description; blank clears it */

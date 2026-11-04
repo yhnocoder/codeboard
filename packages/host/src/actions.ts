@@ -21,6 +21,7 @@ import { copyDiagnostics } from "./diagnostics";
 import { applyFlow, captureFlow } from "./runs";
 import { openOnBoard } from "./handlers";
 import { prompts } from "./prompts";
+import { editSealPrompt } from "./seals";
 import { clearDeepseekKey, setDeepseekKey } from "./ai";
 import type { CommandId } from "./commands";
 import { copyToProject, otherProjects, removeMoved } from "./transfer";
@@ -442,6 +443,13 @@ export function makeActions(cx: HostContext, panels: BoardHost, store: Storage, 
       }
       await store.rename(b.id, name.trim());
       await panels.pushBoards();
+    },
+    // A board's Mark: from the sidebar (a) VS Code's input box and quick pick; from the palette over a board, the board's own popover
+    "codeboard.editMark": async (a?: unknown) => {
+      const on = a === undefined ? active() : undefined;
+      if (on) return void on.post({ type: "editSeal" });
+      const id = boardArg(a) ?? panels.target;
+      if (id) await editSealPrompt(panels, id);
     },
     "codeboard.duplicateBoard": async (a?: unknown) => {
       const id = boardArg(a);

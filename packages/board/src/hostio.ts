@@ -1,7 +1,7 @@
 import { batch } from "solid-js";
 import type { Markdown } from "@yhnocoder/markdown";
 import { checkBoard, findCard, walkOrder, type HostToBoard, type Sidenote } from "@codeboard/core";
-import { appendSegment, deleteItems, followMoved, renameBoard } from "@codeboard/core/commands";
+import { appendSegment, deleteItems, followMoved, renameBoard, setBoardSeal } from "@codeboard/core/commands";
 import { commandEnv } from "./actions/env";
 import { state, setHost, mergeHost, setBoards, setLoaded, setSharedInfo, flows } from "./state/store";
 import { putViews, putStale, resetSegs } from "./state/views";
@@ -105,6 +105,8 @@ function handle(m: HostToBoard, md: Markdown) {
     }
     case "boards":
       setBoards(m.boards);
+      // 白板的名字、印章、谁嵌在谁里面变了：静态 Note 里指向别的白板的引用再认一遍
+      refreshRefs(md);
       break;
     case "host":
       mergeHost(m.host);
@@ -166,6 +168,12 @@ function handle(m: HostToBoard, md: Markdown) {
       break;
     case "rename":
       if (m.name.trim()) renameBoard(commandEnv, m.name.trim());
+      break;
+    case "setSeal":
+      setBoardSeal(commandEnv, m.seal ?? undefined);
+      break;
+    case "editSeal":
+      A.editOwnMark();
       break;
     case "replaceSegment":
       A.replaceSegment(m.card, m.seg, m.view);

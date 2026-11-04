@@ -32,6 +32,7 @@ import {
   type LinkSide,
 } from "@codeboard/core";
 import { measuredHeight } from "../state/subboards";
+import { useMd } from "../md/context";
 import { attachCardAnim, detachAnims } from "../md/anim";
 import { state, setSize, flows, placeOf, rectOf, twinsOf } from "../state/store";
 import { isSel, sel } from "../state/selection";
@@ -93,6 +94,7 @@ const BODIES: { [K in Card["kind"]]: Component<{ card: Extract<Card, { kind: K }
 };
 
 export function CardView(p: { card: Card }) {
+  const md = useMd();
   let el!: HTMLDivElement;
   const c = () => p.card;
   const read = () => {
@@ -284,7 +286,7 @@ export function CardView(p: { card: Card }) {
         onPointerEnter={() => enterCard(c().id)}
         onPointerLeave={() => leaveCard(c().id)}
         onPointerDown={(e) => cardPointerDown(e, c().id)}
-        onContextMenu={(e) => cardContextMenu(e, c().id)}
+        onContextMenu={(e) => cardContextMenu(e, c().id, md)}
         onClick={(e) => cardClick(e, c().id)}
         onDblClick={(e) => cardDblClick(e, c().id)}
       >

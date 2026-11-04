@@ -9,6 +9,7 @@ export * from "./edit";
 export * from "./patch";
 export * from "./shared";
 export * from "./subboard";
+export * from "./seal";
 export * from "./layout";
 export * from "./split";
 export * from "./paste";
