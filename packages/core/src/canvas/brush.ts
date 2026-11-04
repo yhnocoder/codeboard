@@ -12,17 +12,26 @@ function flatten(d: string): number[] {
     x = 0,
     y = 0;
   const num = () => Number(tok[i++]);
+  // a repeated point would be a segment with no direction, which pinches the outline to nothing there
+  const push = (px: number, py: number) => {
+    const m = out.length;
+    if (m < 2 || Math.abs(out[m - 2] - px) > 1e-6 || Math.abs(out[m - 1] - py) > 1e-6) out.push(px, py);
+  };
   while (i < tok.length) {
     if (/[MLCQ]/.test(tok[i])) cmd = tok[i++];
     if (cmd === "M" || cmd === "L") {
       x = num();
       y = num();
-      out.push(x, y);
+      push(x, y);
     } else if (cmd === "C" || cmd === "Q") {
       const n = cmd === "C" ? 3 : 2,
         p = [x, y];
       for (let k = 0; k < n; k++) p.push(num(), num());
-      const steps = Math.max(4, Math.min(24, Math.round(Math.hypot(p[p.length - 2] - x, p[p.length - 1] - y) / 8)));
+      // By the control polygon's length, not the chord's: a tight bend has a short chord but turns a lot. A Q is a rounded
+      // corner (route.ts): at least 8 steps keep its quarter turn round under the brush's width
+      let poly = 0;
+      for (let k = 2; k < p.length; k += 2) poly += Math.hypot(p[k] - p[k - 2], p[k + 1] - p[k - 1]);
+      const steps = Math.max(n === 2 ? 8 : 4, Math.min(64, Math.round(poly / 8)));
       for (let s = 1; s <= steps; s++) {
         const t = s / steps,
           u = 1 - t;
@@ -31,8 +40,8 @@ function flatten(d: string): number[] {
             b = 3 * u * u * t,
             c = 3 * u * t * t,
             e = t * t * t;
-          out.push(a * p[0] + b * p[2] + c * p[4] + e * p[6], a * p[1] + b * p[3] + c * p[5] + e * p[7]);
-        } else out.push(u * u * p[0] + 2 * u * t * p[2] + t * t * p[4], u * u * p[1] + 2 * u * t * p[3] + t * t * p[5]);
+          push(a * p[0] + b * p[2] + c * p[4] + e * p[6], a * p[1] + b * p[3] + c * p[5] + e * p[7]);
+        } else push(u * u * p[0] + 2 * u * t * p[2] + t * t * p[4], u * u * p[1] + 2 * u * t * p[3] + t * t * p[5]);
       }
       x = p[p.length - 2];
       y = p[p.length - 1];
@@ -73,26 +82,58 @@ export function brushLine(d: string, seed: number, w = 1.5): Brush {
   for (let k = 1; k < n; k++)
     acc.push(acc[k - 1] + Math.hypot(pl[2 * k] - pl[2 * k - 2], pl[2 * k + 1] - pl[2 * k - 1]));
   const L = acc[n - 1] || 1;
+  const dir = (k: number) => {
+    const dx = pl[2 * k + 2] - pl[2 * k],
+      dy = pl[2 * k + 3] - pl[2 * k + 1],
+      l = Math.hypot(dx, dy) || 1;
+    return { tx: dx / l, ty: dy / l };
+  };
+  // The tangent at each vertex: the mean of its two segments'. Between vertices it turns evenly from one to the next, so the
+  // offset sides follow the path's bends instead of jumping at every vertex
+  const tan: { tx: number; ty: number }[] = [];
+  for (let k = 0; k < n; k++) {
+    const a = dir(Math.max(0, k - 1)),
+      b = dir(Math.min(n - 2, k)),
+      mx = a.tx + b.tx,
+      my = a.ty + b.ty,
+      ml = Math.hypot(mx, my);
+    tan.push(ml > 1e-6 ? { tx: mx / ml, ty: my / ml } : b);
+  }
   // The point and unit tangent at arc length s (s only grows within one pass; a smaller s starts over)
   let j = 0;
   const at = (s: number) => {
     if (s < acc[j]) j = 0;
     while (j < n - 2 && acc[j + 1] < s) j++;
     const seg = acc[j + 1] - acc[j] || 1,
-      k = Math.min(1, Math.max(0, (s - acc[j]) / seg));
-    const x0 = pl[2 * j],
-      y0 = pl[2 * j + 1],
-      dx = pl[2 * j + 2] - x0,
-      dy = pl[2 * j + 3] - y0,
-      l = Math.hypot(dx, dy) || 1;
-    return { x: x0 + dx * k, y: y0 + dy * k, tx: dx / l, ty: dy / l };
+      k = Math.min(1, Math.max(0, (s - acc[j]) / seg)),
+      a = tan[j],
+      b = tan[j + 1],
+      tx = a.tx + (b.tx - a.tx) * k,
+      ty = a.ty + (b.ty - a.ty) * k,
+      tl = Math.hypot(tx, ty) || 1;
+    return {
+      x: pl[2 * j] + (pl[2 * j + 2] - pl[2 * j]) * k,
+      y: pl[2 * j + 1] + (pl[2 * j + 3] - pl[2 * j + 1]) * k,
+      tx: tx / tl,
+      ty: ty / tl,
+    };
   };
+  // Even steps along the length, plus every vertex where the path turns: a rounded corner is shorter than one even step on a
+  // long line, and sampled only by the even steps it came out as a chamfer with a kink (#135)
   const N = Math.max(12, Math.min(80, Math.round(L / 7)));
+  const ss: number[] = [];
+  for (let i = 0; i <= N; i++) ss.push((i / N) * L);
+  for (let k = 1; k < n - 1; k++) {
+    const a = dir(k - 1),
+      b = dir(k);
+    if (a.tx * b.tx + a.ty * b.ty < 0.9995) ss.push(acc[k]);
+  }
+  ss.sort((u, v) => u - v);
   const lx: number[] = [],
     rx: number[] = [];
-  for (let i = 0; i <= N; i++) {
-    const t = i / N,
-      p = at(t * L);
+  for (const s of ss) {
+    const p = at(s);
+    const t = s / L;
     const h = w * headAt(t) * (1 + 0.07 * Math.sin(t * 19 + seed) + 0.04 * Math.sin(t * 47 + seed * 2));
     lx.push(p.x - p.ty * h, p.y + p.tx * h);
     rx.push(p.x + p.ty * h, p.y - p.tx * h);
