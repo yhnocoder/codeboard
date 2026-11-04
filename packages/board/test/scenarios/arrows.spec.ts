@@ -1037,6 +1037,8 @@ test("arrowTargetAim", async () => {
       at: await c1.evaluate((e) =>
         [e.style.getPropertyValue("--aim-x"), e.style.getPropertyValue("--aim-y")].map(parseFloat),
       ),
+      // Ink Wash 的选中把纸抬起 2px（translate），量放大原点时扣掉
+      lift: await c1.evaluate((e) => parseFloat(getComputedStyle(e).translate.split(" ")[1] ?? "0") || 0),
       box: (await c1.boundingBox())!,
     });
     const t = (await c1.boundingBox())!;
@@ -1054,7 +1056,7 @@ test("arrowTargetAim", async () => {
     const over = await look();
     // 绕指针进卡的那一点放大：那一点不动（绕中心放大的话，靠边的行号会从指针下面滑走）
     const [ax, ay] = over.at;
-    const drift = Math.hypot(over.box.x + ax * over.scale - (t.x + ax), over.box.y + ay * over.scale - (t.y + ay));
+    const drift = Math.hypot(over.box.x + ax * over.scale - (t.x + ax), over.box.y - over.lift + ay * over.scale - (t.y + ay));
     await shot(h, `arrows-aim-${theme}`);
     check(
       `arrowTargetAim over (${theme}): scaled about where the pointer came in, and selected`,
