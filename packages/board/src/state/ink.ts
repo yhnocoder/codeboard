@@ -2,9 +2,9 @@
 // - the card paper (毛边宣纸): one image per card size (deckle), drawn on the card's ::before (themes.css), regenerated only when
 //   the size changes; cached by size (rounded to SIZE_STEP) and one of PAPER_SEEDS edge patterns picked by the card's id, so
 //   cards of the same size share one image
-// - the selection corners, the five brush strokes under calls and the toolbar's pale ink stroke: one each per light / dark, set
+// - the five brush strokes under calls and the toolbar's pale ink stroke: one each per light / dark, set
 //   as variables on the root while the look is Ink Wash (wireInk)
-// The shapes follow the approved mock (versions/v0.2.1/ink-wash/demo.html: deckleImg, crnImg, callImg, barImg)
+// The shapes follow the approved mock (versions/v0.2.1/ink-wash/demo.html: deckleImg, callImg, barImg)
 import { createEffect, createSignal } from "solid-js";
 import { brushLine, fnv } from "@codeboard/core/canvas";
 import { shape } from "./look";
@@ -24,9 +24,6 @@ const svgUrl = (w: number, h: number, body: string, par = "") =>
     .replace(/#/g, "%23")
     .replace(/</g, "%3C")
     .replace(/>/g, "%3E")}")`;
-/** A straight stroke as a cubic (control points at the thirds), for brushLine */
-const line2 = (x0: number, y0: number, x1: number, y1: number) =>
-  `M${x0} ${y0}C${x0 + (x1 - x0) / 3} ${y0 + (y1 - y0) / 3} ${x0 + (2 * (x1 - x0)) / 3} ${y0 + (2 * (y1 - y0)) / 3} ${x1} ${y1}`;
 
 // ---------- the card paper ----------
 /** How far the paper reaches outside the card (themes.css: the card's ::before is inset by −PAPER_M) */
@@ -122,26 +119,7 @@ export function paperOf(w: number, h: number, id: string, dk: boolean) {
   return u;
 }
 
-// ---------- corners, call strokes, toolbar ----------
-/** Selection: four small vermilion brush corners (a 96 × 96 border-image, 24 px slices) */
-function cornersSvg(zhu: string) {
-  const L = [
-    line2(3.5, 5.5, 20, 5),
-    line2(5, 3.5, 5.6, 20),
-    line2(76, 5, 92.5, 5.6),
-    line2(91, 3.5, 90.6, 20),
-    line2(3.5, 90.8, 20, 91.2),
-    line2(5.4, 76, 5, 92.5),
-    line2(76, 91, 92.5, 90.6),
-    line2(90.8, 76, 91.2, 92.5),
-  ];
-  return svgUrl(
-    96,
-    96,
-    `<g fill='${zhu}' fill-opacity='.92'>${L.map((d, i) => `<path d='${brushLine(d, i, 1.5).d}'/>`).join("")}</g>`,
-  );
-}
-
+// ---------- call strokes, toolbar ----------
 /** The five brush strokes under clickable calls: each starts, bends, thins and ends differently, all in one unbroken stroke
  *  (a gap read as the word being cut off); one is dry along its tail. themes.css .call.cv0–cv4 give each its own width, offset and height */
 const CALL_STROKES: { P: number[]; w: number; seed: number; dry?: boolean }[] = [
@@ -204,7 +182,7 @@ function barSvg(ink: string, dk: boolean, solid = false) {
 
 /** The root variables the Ink Wash rules read (themes.css): set while the look draws on paper (look.ts paper, Ink Wash), for
  *  light or dark; gone otherwise. Also follows html[data-theme] for inkDark. Wired once (wire.ts) */
-const VARS = ["--ink-crn", "--ink-bar", "--ink-bar-mask", ...CALL_STROKES.map((_, k) => `--ink-cb${k}`)];
+const VARS = ["--ink-bar", "--ink-bar-mask", ...CALL_STROKES.map((_, k) => `--ink-cb${k}`)];
 export function wireInk() {
   const root = document.documentElement;
   const sync = () => setDark(root.dataset.theme === "dark");
@@ -220,7 +198,6 @@ export function wireInk() {
       }
       const zhu = dk ? "#d6533a" : "#b8321f",
         ink = dk ? "#e9e5da" : "#1d1c1a";
-      root.style.setProperty("--ink-crn", cornersSvg(zhu));
       root.style.setProperty("--ink-bar", barSvg(ink, dk));
       root.style.setProperty("--ink-bar-mask", barSvg("#000", dk, true));
       for (let k = 0; k < CALL_STROKES.length; k++) root.style.setProperty(`--ink-cb${k}`, callSvg(zhu, k));

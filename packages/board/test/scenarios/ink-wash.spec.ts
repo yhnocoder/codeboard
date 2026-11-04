@@ -1,12 +1,16 @@
 // Ink Wash (水墨): what the look draws with images and motions of its own (state/ink.ts, themes.css, Links.tsx brush lines).
 //  inkWashLook             — brush arrows (filled outline + dry-brush hairlines, no stroked line), rice-paper cards (one image per size,
-//                            card size unchanged), vermilion seals, corner brackets on the selected card, call strokes, the ink toolbar,
+//                            card size unchanged), vermilion seals, the selection seal, call strokes, the ink toolbar,
 //                            a toast clear of the toolbar; light and dark, with screenshots (INK_SHOTS: a copy elsewhere)
 //  inkWashFlashBrush       — jumping to a line sweeps a brush under its text: from its first to its last character, half a
 //                            character more at each end, so a longer line gets a longer stroke
 //  inkWashCallStrokeStable — each call gets one of five strokes, picked by the called word: the same word, the same stroke
 //  inkWashMotions          — the stamp, menu (opening and rolling back up), delete and toast motions run (transform / opacity / clip / mask only) and finish;
 //                            mid-animation frames as screenshots
+//  inkWashSelectSeal       — selecting a card stamps a small vermilion seal 选 on its top-right corner (it drops in) and lifts the
+//                            paper 2 px with a deeper shadow; deselecting fades the seal and settles the paper, from wherever the
+//                            stamp was; the seal stays clear of the header's ⋯ button; many selected cards each get one; Warm Ink
+//                            has no seal and no lift (#128)
 //  inkWashPaperFillsCard   — the paper reaches all four edges of cards whose rounded size has another aspect ratio (#112: it was
 //                            shrunk to fit and centred, its torn edge inside the card, off the shadow and header wash)
 import * as fs from "node:fs";
@@ -145,18 +149,14 @@ test("inkWashLook", async () => {
         })),
       };
     });
-    // select a card: the corners come in
+    // select a card: its seal is stamped on
     await h.page.locator(".card.ccard .ctitle").nth(1).click();
     await h.page.locator(".card.ccard.sel").waitFor();
+    await finish(h);
     const sel = await h.page.evaluate(() => {
       const c = document.querySelector(".card.sel")!,
-        a = getComputedStyle(c, "::after");
-      return {
-        img: a.borderImageSource.startsWith('url("data:image/svg+xml'),
-        outset: a.borderImageOutset,
-        ring: a.boxShadow,
-        anim: document.getAnimations().some((x) => (x as CSSAnimation).animationName === "ink-corners"),
-      };
+        s = getComputedStyle(c.querySelector(".cface")!, "::before");
+      return { seal: s.content, opacity: s.opacity, ring: getComputedStyle(c, "::after").boxShadow };
     });
     await h.post({ type: "toast", text: "Copied 3 cards" });
     await h.page.locator(".toast").waitFor();
@@ -187,15 +187,121 @@ test("inkWashLook", async () => {
       r.bar.shadow === "none" &&
       r.heads.length > 0 &&
       r.heads.every((x) => x.wash && x.line === "none") &&
-      sel.img &&
-      sel.outset === "7px" &&
-      sel.anim &&
+      sel.seal.includes("选") &&
+      sel.opacity === "0.92" &&
+      sel.ring === "none" &&
       toast.gap >= 4;
     ok &&= one;
     res[lt ? "light" : "dark"] = { ...r, links: r.links, warm, sel, toast };
     await h.page.context().close();
   }
   check("inkWashLook", ok, res);
+});
+
+/** Each code card's selection seal (.cface::before), the card's lift, and whether the seal lies clear of the card's ⋯ button */
+const seals = (h: Host) =>
+  h.page.evaluate(() =>
+    [...document.querySelectorAll<HTMLElement>(".card.ccard")].map((c) => {
+      const s = getComputedStyle(c.querySelector(".cface")!, "::before"),
+        cs = getComputedStyle(c),
+        r = c.getBoundingClientRect(),
+        m = c.querySelector(".cmenu")!.getBoundingClientRect(),
+        px = (v: string) => Number.parseFloat(v) || 0;
+      // the seal's box (top / right from the card's corner), widened by what its tilt adds at the corners
+      const w = px(s.width),
+        a = (Math.abs(px(s.rotate)) * Math.PI) / 180,
+        l = r.right - px(s.right) - w,
+        t = r.top + px(s.top),
+        k = (w / 2) * (Math.cos(a) + Math.sin(a) - 1);
+      return {
+        sel: c.classList.contains("sel"),
+        text: s.content,
+        opacity: Number(s.opacity),
+        translate: cs.translate,
+        shadows: cs.boxShadow.split("rgba").length - 1,
+        clear: l - k >= m.right || t + w + k <= m.top,
+      };
+    }),
+  );
+
+test("inkWashSelectSeal", async () => {
+  const res: Record<string, unknown> = {};
+  const h = await open({ board: board(), light: true, w: 1300, h: 820, settings: ink });
+  await idle(h);
+  const none = await seals(h);
+  res.none = none;
+  // slow motion (the CSS durations are × --t), so the transitions can be looked at while they run
+  await h.page.evaluate(() => document.documentElement.style.setProperty("--t", "20"));
+  const title = h.page.locator(".card.ccard .ctitle");
+  await title.nth(1).click();
+  await h.page.locator(".card.ccard.sel").waitFor();
+  // the seal drops in: it comes down from larger and more turned (scale / rotate) while it fades in
+  res.dropping = await h.page.evaluate(() =>
+    document
+      .getAnimations()
+      .filter((a) => (a.effect as KeyframeEffect).pseudoElement === "::before" && a.playState === "running")
+      .map((a) => (a as CSSTransition).transitionProperty),
+  );
+  // partway in, click the empty board: the seal fades from where it was, it does not jump
+  await until(h, "the seal is partway in", async () => (await seals(h))[1].opacity > 0.3);
+  await h.page.mouse.click(690, 30);
+  await until(h, "deselected", async () => !(await h.page.locator(".card.sel").count()));
+  res.reversed = (await seals(h))[1].opacity;
+  await h.page.evaluate(() => document.documentElement.style.removeProperty("--t"));
+  await finish(h);
+  await idle(h);
+  const after = await seals(h);
+  res.after = after;
+  // one card, at normal speed
+  await title.nth(1).click();
+  await h.page.locator(".card.ccard.sel").waitFor();
+  await idle(h);
+  const one = await seals(h);
+  res.one = one;
+  await shot(h, "ink-wash-select-single");
+  keep("ink-wash-select-single");
+  // many: each selected card has its own seal
+  await title.nth(0).click({ modifiers: ["Shift"] });
+  await title.nth(2).click({ modifiers: ["Shift"] });
+  await idle(h);
+  const many = await seals(h);
+  res.many = many;
+  await shot(h, "ink-wash-select-multi");
+  keep("ink-wash-select-multi");
+  await h.page.mouse.click(690, 30);
+  await idle(h);
+  const gone = await seals(h);
+  res.gone = gone;
+  await h.page.context().close();
+  // Warm Ink: its own selection ring, no seal and no lift
+  const w = await open({ board: board(), light: true, w: 1300, h: 820 });
+  await idle(w);
+  await w.page.locator(".card.ccard .ctitle").nth(1).click();
+  await w.page.locator(".card.ccard.sel").waitFor();
+  await idle(w);
+  const warm = await seals(w);
+  res.warm = warm;
+  await w.page.context().close();
+  type Seal = (typeof none)[number];
+  const hidden = (x: Seal) => x.opacity === 0 && x.translate === "none";
+  const shown = (x: Seal) =>
+    x.text.includes("选") && x.opacity > 0.9 && x.clear && x.translate === "0px -2px" && x.shadows > none[0].shadows;
+  check(
+    "inkWashSelectSeal",
+    none.length === 3 &&
+      none.every(hidden) &&
+      ["scale", "rotate", "opacity"].every((p) => (res.dropping as string[]).includes(p)) &&
+      (res.reversed as number) > 0.15 &&
+      after.every(hidden) &&
+      one.filter((x) => x.sel).length === 1 &&
+      one.every((x) => (x.sel ? shown(x) : hidden(x))) &&
+      many.length === 3 &&
+      many.every((x) => x.sel && shown(x)) &&
+      gone.every(hidden) &&
+      warm.some((x) => x.sel) &&
+      warm.every((x) => !x.text.includes("选") && x.translate === "none"),
+    res,
+  );
 });
 
 test("inkWashPaperFillsCard", async () => {
