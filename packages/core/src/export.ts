@@ -211,6 +211,12 @@ function bodyMd(b: Board, c: Card, o: MdOpts): string[] {
     }
     case "note": {
       if (c.msg) return [`Message: ${c.md.trim()}${c.msg.where ? ` (${c.msg.where})` : ""}`];
+      // Free Text 是纯文字：第一行已经是节标题，后面几行原样（Markdown 记号转义掉，一行一段）
+      if (c.look === "freetext") {
+        const rest = c.md.split("\n").map((l) => l.trim());
+        rest.splice(0, rest.findIndex(Boolean) + 1);
+        return rest.filter(Boolean).flatMap((l, i) => [...(i ? [""] : []), l.replace(/[\\`*_[\]<>#|~]/g, "\\$&")]);
+      }
       // Note 自己第一行就是标题（## prefix caching）：节标题已经写了，不重复
       const md = c.md.trim(),
         m = /^#{1,6}\s+(.+)\n?/.exec(md);

@@ -1,9 +1,10 @@
-// Notes and sidenotes: new Notes, Text, Marks and Boxes, sidenotes added and sidenote ↔ card, images in a Note, Note ↔ Text,
-// Split by Headings
+// Notes and sidenotes: new Notes, Text, Marks, Boxes and Free Text, sidenotes added and sidenote ↔ card, images in a Note,
+// Note ↔ Text, Split by Headings, a Mark's colour and weight
 import {
   BOX_FILLS,
   type BoxFill,
   type HandColor,
+  type HandWeight,
   findCard,
   isCode,
   uid,
@@ -106,9 +107,12 @@ export function splitByHeadings(
     : null;
 }
 
+/** About how wide a new Free Text's first words are, to centre it where it goes */
+const FREE_TEXT_W = 200;
 /**
- * A new Note, Text, Mark or Box with `text`: a Text is body-sized, a Box gets the first fill and a fixed height, a Mark the colour
- * of the last Mark on the board (blue for the first). Written empty (a Box aside) it is fresh (env.fresh): no undo step until
+ * A new Note, Text, Mark, Box or Free Text with `text`: a Text is body-sized, a Box gets the first fill and a fixed height, a Mark
+ * the colour of the last Mark on the board (blue for the first), a Free Text its look's text size (TEXT_FS, kept without fs).
+ * Written empty (a Box aside) it is fresh (env.fresh): no undo step until
  * something is written. at(size) = where it goes, for its size (the shell's layout); settle(b, id) files it in the Section it
  * landed in. Its id
  */
@@ -118,7 +122,8 @@ export function newWriting(
   text: string,
   o: { at: (size: { w: number; h?: number }) => { x: number; y: number }; settle: (b: Board, id: string) => void },
 ): string {
-  const w = NEW_CARD_W,
+  // a Free Text is as wide as its text (styles.css): its stored width only places it
+  const w = look === "freetext" ? FREE_TEXT_W : NEW_CARD_W,
     h = look === "box" ? 60 : undefined;
   const p = o.at({ w, h });
   const id = uid("n");
@@ -270,6 +275,16 @@ export function setMarkColor(env: CommandEnv, id: string, hand: HandColor) {
   env.edit((b) => {
     const c = findCard(b, id)?.card;
     if (c?.kind === "note" && c.look === "mark") c.hand = hand;
+  });
+}
+
+/** A Mark's weight (Light, Regular, Bold): the Latin and the Chinese handwriting both follow it */
+export function setMarkWeight(env: CommandEnv, id: string, weight: HandWeight) {
+  const c0 = findCard(env.board(), id)?.card;
+  if (c0?.kind !== "note" || c0.look !== "mark" || (c0.weight ?? "regular") === weight) return;
+  env.edit((b) => {
+    const c = findCard(b, id)?.card;
+    if (c?.kind === "note" && c.look === "mark") c.weight = weight === "regular" ? undefined : weight;
   });
 }
 

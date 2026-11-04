@@ -2,6 +2,10 @@ import { batch } from "solid-js";
 import {
   findCard,
   frameless,
+  scalesText,
+  scaleText,
+  textSizeOf,
+  TEXT_FS,
   isCode,
   snapMove,
   snapResize,
@@ -663,6 +667,53 @@ export function resizeDown(
     },
     () => {
       setGuides([]);
+      setSizeHint(null);
+      end();
+    },
+    DRAG_SLOP,
+    drop,
+  );
+}
+
+/**
+ * Mark / Free Text 右下角的小方块：整体缩放，字号（NoteCard.fs，真的 font-size，放大了也清楚）和宽度按同一个比例变，折行的地方不变。
+ * 比例 = 指针在卡的对角线方向上走了多远（左上角不动）；上下限在 core 的 scaleText。整个拖动是一步撤销
+ */
+export function scaleDown(e: PointerEvent, id: string) {
+  if (e.button !== 0) return;
+  e.preventDefault();
+  e.stopPropagation();
+  const f = cardById(id);
+  if (!f || !scalesText(f.card) || A.isLocked(id)) return;
+  A.selectCard(id);
+  const r0 = rectOf(f.host),
+    fs0 = textSizeOf(f.card),
+    w0 = placeOf(f.host.id).w,
+    d2 = r0.w * r0.w + r0.h * r0.h || 1;
+  const { end, moving, drop } = undoGesture([f.host.id]);
+  const sx = e.clientX,
+    sy = e.clientY;
+  let last = fs0;
+  track(
+    e,
+    (ev) => {
+      moving();
+      const z = cam.z,
+        dx = (ev.clientX - sx) / z,
+        dy = (ev.clientY - sy) / z;
+      const { fs, w } = scaleText(fs0, w0, 1 + (dx * r0.w + dy * r0.h) / d2);
+      setSizeHint({ x: r0.x + (r0.w * fs) / fs0 / 2, y: r0.y + (r0.h * fs) / fs0 + 8, text: `${fs}px` });
+      if (fs === last) return;
+      last = fs;
+      live((b) => {
+        const c = findCard(b, id)?.card,
+          p = hostPlace(b, id);
+        if (!scalesText(c) || !p) return;
+        c.fs = fs === TEXT_FS[c.look] ? undefined : fs;
+        p.w = w;
+      });
+    },
+    () => {
       setSizeHint(null);
       end();
     },

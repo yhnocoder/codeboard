@@ -1443,8 +1443,9 @@ textarea {
 .hc-green {
   --hc: var(--hd-green);
 }
+/* 字号（--tfs）、粗细（--hw）写在卡上（Card.tsx）：拖右下角缩放的是真的字号 */
 .card.mark .tx.hand {
-  font: 18px / 1.3 var(--hand);
+  font: var(--hw, 400) var(--tfs, 18px) / 1.3 var(--hand);
   color: var(--hc);
 }
 .card.mark .tx.hand :is(p, li) {
@@ -1469,8 +1470,55 @@ textarea {
   cursor: nwse-resize;
   display: none;
 }
-.card.mark.sel .mkgrip {
+.card.mark.sel .mkgrip,
+.card.freetext.sel .mkgrip {
   display: block;
+}
+/* Mark 的左右两边只改宽度：矮一点，一行字的 Mark 上也和右下角缩放的小方块分得开 */
+.card.mark .hw {
+  height: 14px;
+  margin-top: -7px;
+  box-shadow: 0 0 0 1.5px var(--hc);
+}
+.card.freetext .mkgrip {
+  box-shadow: 0 0 0 1.5px var(--accent);
+}
+/* Mark 的粗细：颜色点后面一道竖线，三个手写的 a */
+.ttb.hdots .hsep {
+  align-self: stretch;
+  width: 1px;
+  margin: 1px 2px;
+  background: var(--hair);
+}
+.hwt {
+  min-width: 20px;
+  height: 20px;
+  padding: 0 3px;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  color: var(--ink-2);
+  font-family: var(--hand);
+  font-size: 16px;
+  line-height: 1;
+  cursor: default;
+}
+.hwt:hover {
+  color: var(--ink);
+}
+.hwt.on {
+  color: var(--ink);
+  background: var(--hlrow);
+}
+/* Free Text：白板上的标题，纯文字、没有框。用 Text 的标题样式（.st-title：每个主题自己的标题字体、粗细、字距），
+   字号是卡上的 --tfs（拖右下角缩放）；宽度跟着字，只在打的换行处换行 */
+.card.text.freetext {
+  width: max-content;
+}
+:root .card.text.freetext .tx.ft {
+  font-size: var(--tfs, 40px);
+  white-space: pre;
+  min-width: 1ch;
 }
 .hdot {
   width: 16px;

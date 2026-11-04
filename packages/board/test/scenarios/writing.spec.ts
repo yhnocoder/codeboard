@@ -34,7 +34,8 @@ function fourBoard(): Board {
   return b;
 }
 
-/** The toolbar's T ▾ only opens a menu (like Code): New Text (T), New Box (R), New Mark (M); each makes its kind, and so do the keys */
+/** The toolbar's T ▾ only opens a menu (like Code): New Text (T), New Box (R), New Mark (M), New Free Text; each makes its kind,
+ *  and so do the keys */
 test("writeMenuAndKeysCreateTextBoxMark", async () => {
   const h = await open({ board: emptyBoard("b1", "writing"), light, w: 1200, h: 800 });
   const pg = h.page;
@@ -51,7 +52,7 @@ test("writeMenuAndKeysCreateTextBoxMark", async () => {
     .evaluateAll((bs) =>
       bs.map((b) => `${b.querySelector(".lb")?.textContent} ${b.querySelector("small")?.textContent ?? ""}`.trim()),
     );
-  check("writeMenu items", items.join("|") === "New Text T|New Box R|New Mark M", items);
+  check("writeMenu items", items.join("|") === "New Text T|New Box R|New Mark M|New Free Text", items);
   check("writeMenu made nothing yet", notes(h).length === 0);
   await shot(h, "writing-menu");
   await pg.locator(".ctx button", { hasText: "New Box" }).click();

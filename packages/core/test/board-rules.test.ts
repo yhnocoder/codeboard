@@ -3,6 +3,11 @@
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_SETTINGS,
+  TEXT_FS,
+  cardTitle,
+  scaleText,
+  scalesText,
+  textSizeOf,
   danglingRefs,
   emptyBoard,
   removeCards,
@@ -213,6 +218,56 @@ describe("new cards and questions with nothing written yet", () => {
     if (k.kind === "note") k.hand = "orange";
     const m2 = C.newWriting(env, "mark", "", { at, settle: noSettle });
     expect(b.cards.find((c) => c.id === m2)).toMatchObject({ hand: "orange" });
+  });
+
+  it("a new Free Text is plain text at its look's default size, fresh until written, and goes written empty", () => {
+    const { b, env, log } = setup();
+    const at = () => ({ x: 0, y: 0 });
+    const kept = C.newWriting(env, "freetext", "", { at, settle: noSettle });
+    const gone = C.newWriting(env, "freetext", "", { at, settle: noSettle });
+    expect(log.edits).toBe(0);
+    C.writeNote(env, kept, "Scheduler\n**not bold**");
+    C.writeNote(env, gone, " \n ");
+    expect(log.edits).toBe(1);
+    expect(b.cards).toEqual([{ id: kept, kind: "note", look: "freetext", md: "Scheduler\n**not bold**" }]);
+    // its title is its first line as written (no Markdown read out of it)
+    expect(cardTitle(b.cards[0], b)).toBe("Scheduler");
+    expect(danglingRefs(b)).toEqual([]);
+  });
+
+  it("a Mark's weight is one step, regular is not written, and only a Mark takes one", () => {
+    const { b, env, log } = setup([
+      { id: "m", kind: "note", md: "x", look: "mark", hand: "blue" },
+      { id: "t", kind: "note", md: "x", look: "text" },
+    ]);
+    C.setMarkWeight(env, "m", "bold");
+    expect(b.cards[0]).toMatchObject({ weight: "bold" });
+    C.setMarkWeight(env, "m", "bold");
+    expect(log.edits).toBe(1);
+    C.setMarkWeight(env, "m", "light");
+    C.setMarkWeight(env, "m", "regular");
+    expect(JSON.parse(JSON.stringify(b.cards[0]))).toEqual({
+      id: "m",
+      kind: "note",
+      md: "x",
+      look: "mark",
+      hand: "blue",
+    });
+    C.setMarkWeight(env, "t", "bold");
+    expect(b.cards[1]).not.toHaveProperty("weight");
+    expect(log.edits).toBe(3);
+  });
+
+  it("dragging a Mark's or Free Text's corner scales its text size and width together, within the limits", () => {
+    expect(scaleText(18, 200, 2)).toEqual({ fs: 36, w: 400 });
+    expect(scaleText(18, 200, 1.31)).toEqual({ fs: 23.5, w: 261 });
+    // past a limit the size stops, and the width stops with it
+    expect(scaleText(18, 200, 0.1)).toEqual({ fs: TEXT_FS.min, w: Math.round((200 * TEXT_FS.min) / 18) });
+    expect(scaleText(40, 300, 100)).toEqual({ fs: TEXT_FS.max, w: Math.round((300 * TEXT_FS.max) / 40) });
+    const mark = { id: "m", kind: "note", md: "x", look: "mark" } as const,
+      ft = { id: "f", kind: "note", md: "x", look: "freetext" } as const;
+    expect([textSizeOf(mark), textSizeOf(ft), textSizeOf({ ...ft, fs: 72 })]).toEqual([18, 40, 72]);
+    expect([scalesText(mark), scalesText(ft), scalesText({ ...mark, look: "text" })]).toEqual([true, true, false]);
   });
 
   it("a Note written empty goes, in the same step, while an empty Box stays", () => {

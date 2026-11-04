@@ -17,6 +17,9 @@ import { Dynamic } from "solid-js/web";
 import {
   cardTitle,
   frameless,
+  scalesText,
+  textSizeOf,
+  HAND_WEIGHT_CSS,
   versionLabel,
   mixedVersions,
   activeOf,
@@ -67,6 +70,7 @@ import {
   cardWheel,
   linkPortDown,
   resizeDown,
+  scaleDown,
 } from "../interact";
 import { tiltOf, trackTilt } from "../state/tilt";
 import { aiJobOn } from "../state/imageai";
@@ -137,7 +141,15 @@ export function CardView(p: { card: Card }) {
     }
     if (lodOf(c().id) === "map") (s as Record<string, string>)["--iz"] = String(izOf(c().id));
     // Mark 的颜色、Box 的底色：写成变量，不进 class（class 一变，classList 管的 sel 等会被冲掉）
-    if (k.kind === "note" && k.look === "mark") (s as Record<string, string>)["--hc"] = `var(--hd-${k.hand ?? "blue"})`;
+    if (k.kind === "note" && k.look === "mark") {
+      (s as Record<string, string>)["--hc"] = `var(--hd-${k.hand ?? "blue"})`;
+      if (k.weight) (s as Record<string, string>)["--hw"] = String(HAND_WEIGHT_CSS[k.weight]);
+    }
+    // Mark / Free Text 的字号（拖角缩放）：真的字号，不是 transform，放大了字照样清楚。Free Text 的宽度跟着字（styles.css）
+    if (scalesText(k)) {
+      (s as Record<string, string>)["--tfs"] = `${textSizeOf(k)}px`;
+      if (k.look === "freetext" && !g) delete s.width;
+    }
     if (k.kind === "note" && k.look === "box")
       (s as Record<string, string>)["--fc"] = `var(--bf-${k.fill ?? "yellow"})`;
     // 斜贴：绕卡的中心转（箭头的端点按同一个中心转，Links.tsx）
@@ -340,32 +352,29 @@ export function CardView(p: { card: Card }) {
                 </>
               }
             >
-              <Switch
-                fallback={
-                  <>
-                    <span
-                      class="hw l"
-                      data-nodrag
-                      data-export="strip"
-                      onPointerDown={(e) => resizeDown(e, c().id, { left: true })}
-                    />
-                    <span
-                      class="hw r"
-                      data-nodrag
-                      data-export="strip"
-                      onPointerDown={(e) => resizeDown(e, c().id, { right: true })}
-                    />
-                  </>
-                }
-              >
-                {/* Mark：右下角一个小方块只改宽度，字号不变、字跟着折行 */}
-                <Match when={(c() as NoteCard).look === "mark"}>
+              {/* Text、Mark：左右两边只改宽度（字跟着折行）。Mark、Free Text：右下角一个小方块整体缩放，字号和宽度一起变 */}
+              <Show when={(c() as NoteCard).look === "text" || (c() as NoteCard).look === "mark"}>
+                <span
+                  class="hw l"
+                  data-nodrag
+                  data-export="strip"
+                  onPointerDown={(e) => resizeDown(e, c().id, { left: true })}
+                />
+                <span
+                  class="hw r"
+                  data-nodrag
+                  data-export="strip"
+                  onPointerDown={(e) => resizeDown(e, c().id, { right: true })}
+                />
+              </Show>
+              <Switch>
+                <Match when={scalesText(c())}>
                   <span
                     class="mkgrip"
                     data-nodrag
                     data-export="strip"
-                    data-tip="Drag to change the width"
-                    onPointerDown={(e) => resizeDown(e, c().id, { right: true })}
+                    data-tip="Drag to resize the text"
+                    onPointerDown={(e) => scaleDown(e, c().id)}
                   />
                 </Match>
                 <Match when={(c() as NoteCard).look === "box"}>

@@ -52,6 +52,8 @@ function full() {
     },
     { id: "q", kind: "code", segments: [{ ...seg("s3"), src: { kind: "free" }, version: { kind: "none" } }] },
     { id: "k", kind: "compare", cols: ["p", "q"], swap: true },
+    { id: "m", kind: "note", md: "先挑", look: "mark", hand: "green", weight: "bold", fs: 27.5 },
+    { id: "f", kind: "note", md: "Scheduler\nprefill", look: "freetext", fs: 64 },
   );
   b.place = {
     c: { x: 1, y: 2, w: 400, h: 90, section: "g", locked: true, collapsed: true },
@@ -143,6 +145,18 @@ describe("checkBoard", () => {
     const g: any = full();
     g.links[0].call = { col: 1 };
     expect(() => checkBoard(g)).toThrow(/links\.0\.call\.name/);
+  });
+  it("refuses a Mark or Free Text size outside the limits and a weight it does not know", () => {
+    const at = (b: any) => b.cards.findIndex((c: { id: string }) => c.id === "m");
+    const a: any = full();
+    a.cards[at(a)].fs = 2;
+    expect(() => checkBoard(a)).toThrow(new RegExp(`cards\\.${at(a)}\\.fs`));
+    const b: any = full();
+    b.cards[at(b)].fs = 1000;
+    expect(() => checkBoard(b)).toThrow(/fs/);
+    const c: any = full();
+    c.cards[at(c)].weight = "heavy";
+    expect(() => checkBoard(c)).toThrow(new RegExp(`cards\\.${at(c)}\\.weight`));
   });
 });
 

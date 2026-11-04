@@ -87,12 +87,13 @@ import {
   fitSections,
   tidyUp,
 } from "./edit";
-import { newFreeCode, newNote, newText, pasteText } from "./create";
+import { newFreeCode, newFreeText, newNote, newText, pasteText } from "./create";
 import {
   captionItems,
   headingSplitCount,
   openAddNote,
   setMarkColor,
+  setMarkWeight,
   showPeek,
   splitByHeadings,
   tableCaptionItems,
@@ -107,7 +108,7 @@ import { addProc, clearRpc, legendOf, markRpc, toggleBack, toggleStart } from ".
 import { setLegendOpen } from "../state/calls";
 import { askQuestion, askQuestionOnCard } from "./questions";
 import { addVariantMenu } from "./variants";
-import { LEGEND, legendName, HAND_COLORS, type Link } from "@codeboard/core";
+import { LEGEND, legendName, HAND_COLORS, HAND_WEIGHTS, type Link } from "@codeboard/core";
 import { kbd } from "../keymap";
 import { drawSvgItem, imageAiItems, type ImgRef } from "./imageai";
 import { autoFocusItem } from "./autofocus";
@@ -340,9 +341,19 @@ function cardItems(id: string, x: number, y: number): Item[] {
             run: () => setMarkColor(id, k),
           })),
         },
+        {
+          label: "Weight",
+          sub: HAND_WEIGHTS.map((k) => ({
+            label: k[0].toUpperCase() + k.slice(1),
+            checked: (c.weight ?? "regular") === k,
+            run: () => setMarkWeight(id, k),
+          })),
+        },
         edit,
         ...tail,
       ];
+    // Free Text：纯文字的标题，字号拖右下角改
+    if (c.look === "freetext") return [edit, ...tail];
     // Box 不和别的互转（底色在选中时的工具条上）
     if (c.look === "box") return [drawSvgItem(id), autoFocusItem(id), edit, ...tail];
     // Text 没有改高度的把手（只拖宽度），所以也没有 Fit Content
@@ -666,6 +677,7 @@ export function canvasMenu(md: Markdown, x: number, y: number) {
   openMenu(
     [
       { label: "New Text", kbd: kbd("newText"), run: () => newText(w) },
+      { label: "New Free Text", run: () => newFreeText(w) },
       { label: "New Note", kbd: kbd("newNote"), run: () => newNote(w) },
       { label: "New Code", run: () => newFreeCode(w) },
       { label: "Add Function…", kbd: kbd("search"), run: () => setPaletteOpen({ mode: "code" }) },

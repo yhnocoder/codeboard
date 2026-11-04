@@ -125,11 +125,35 @@ export const viewKeyOf = (c: Pick<CodeCard, "active">, sid: string, vid: string)
   activeOf(c) === vid ? sid : viewKey(sid, vid);
 
 /**
- * 写在白板上的字的四种样子：Note = 卡片（卡框、「¶ 标题」栏）；Text、Box、Mark 没有卡框。
- * 只有 Note ↔ Text 能互转（turnNoteInto），Box、Mark 不和别的互转
+ * 写在白板上的字的五种样子：Note = 卡片（卡框、「¶ 标题」栏）；Text、Box、Mark、Free Text 没有卡框。
+ * Free Text（freetext）是白板上的标题：纯文字（md 里存的就是字本身，不按 Markdown 读，只有换行），主题的标题字体，字号随意拖。
+ * 只有 Note ↔ Text 能互转（turnNoteInto），Box、Mark、Free Text 不和别的互转
  */
-export const NOTE_LOOKS = ["note", "text", "box", "mark"] as const;
+export const NOTE_LOOKS = ["note", "text", "box", "mark", "freetext"] as const;
 export type NoteLook = (typeof NOTE_LOOKS)[number];
+/** Mark 的三种粗细：没有 = regular */
+export const HAND_WEIGHTS = ["light", "regular", "bold"] as const;
+export type HandWeight = (typeof HAND_WEIGHTS)[number];
+/** 每种粗细的 font-weight：手写的拉丁字母（Shantell Sans，300–800 连续可调）和中文（悠哉，三个字重）都有这三档 */
+export const HAND_WEIGHT_CSS: Record<HandWeight, number> = { light: 300, regular: 400, bold: 700 };
+/**
+ * 拖角改字号的（Mark、Free Text）：没存字号（NoteCard.fs）时的字号，和拖出来的上下限（px）。
+ * 拖角是整体缩放：字号和宽度按同一个比例变，折行的地方不变
+ */
+export const TEXT_FS = { mark: 18, freetext: 40, min: 10, max: 240 } as const;
+/** 拖角改字号的那几种 */
+export const scalesText = (c: Card | undefined): c is NoteCard & { look: "mark" | "freetext" } =>
+  c?.kind === "note" && (c.look === "mark" || c.look === "freetext");
+/** 一张 Mark / Free Text 现在的字号 */
+export const textSizeOf = (c: NoteCard & { look: "mark" | "freetext" }) => c.fs ?? TEXT_FS[c.look];
+/**
+ * 拖角缩放：从 fs0、宽 w0 起按 f 倍缩放后的字号和宽度。字号取整（半像素）、夹在上下限里，宽度按字号真正变了的比例跟着变，
+ * 所以拖到头以后字和宽度一起停下
+ */
+export function scaleText(fs0: number, w0: number, f: number): { fs: number; w: number } {
+  const fs = Math.min(TEXT_FS.max, Math.max(TEXT_FS.min, Math.round(fs0 * f * 2) / 2));
+  return { fs, w: Math.max(1, Math.round((w0 * fs) / fs0)) };
+}
 /** Box 的底色：新 Box 是第一个（黄色） */
 export const BOX_FILLS = ["yellow", "paper", "blue", "green", "pink"] as const;
 export type BoxFill = (typeof BOX_FILLS)[number];
@@ -144,6 +168,10 @@ export type NoteCard = CardBase & {
   fill?: BoxFill;
   /** Mark 的颜色（只有 Mark 有）：手写字、统一字号；从它出发的箭头画成这个颜色的手绘线 */
   hand?: HandColor;
+  /** Mark 的粗细（只有 Mark 有；没有 = regular）：拉丁字母和中文手写体一起变 */
+  weight?: Exclude<HandWeight, "regular">;
+  /** Mark、Free Text 拖角拖出来的字号（px）；没有 = TEXT_FS 里这种的默认字号 */
+  fs?: number;
   /** 消息卡：跨进程时夹在发送点和接收处之间的消息类型（md = 类型名，where = 定义在哪，如 io_struct.py） */
   msg?: { where?: string };
   /** Layout Markdown cannot hold: table column widths and row heights, wrapped code blocks (by position: nth table,
@@ -486,7 +514,13 @@ export const uid = (p: string) =>
 
 export const isCode = (c: Card | undefined): c is CodeCard => c?.kind === "code";
 
-const LOOK_NAME: Record<NoteLook, string> = { note: "Note", text: "Text", box: "Box", mark: "Mark" };
+const LOOK_NAME: Record<NoteLook, string> = {
+  note: "Note",
+  text: "Text",
+  box: "Box",
+  mark: "Mark",
+  freetext: "Free Text",
+};
 
 export function cardTitle(c: Card, b?: Pick<Board, "cards">): string {
   if (c.title) return c.title;
@@ -494,7 +528,8 @@ export function cardTitle(c: Card, b?: Pick<Board, "cards">): string {
     case "code":
       return codeTitle(c);
     case "note":
-      return firstLine(c.md) || LOOK_NAME[c.look];
+      // a Free Text is plain text: its first line as written
+      return (c.look === "freetext" ? plainFirstLine(c.md) : firstLine(c.md)) || LOOK_NAME[c.look];
     case "image":
       return c.alt || "Image";
     case "web":
@@ -578,6 +613,12 @@ export const firstLine = (md: string) =>
         .replace(/\*\*|`/g, "")
         .trim(),
     )
+    .find(Boolean) ?? "";
+/** 纯文字（Free Text）的第一行非空的字，原样 */
+const plainFirstLine = (text: string) =>
+  text
+    .split("\n")
+    .map((l) => l.trim())
     .find(Boolean) ?? "";
 /** 深拷贝。白板在 mutate 里传进来的是 store 的代理，structuredClone 拷不了，所以走 JSON（白板数据本来就是 JSON） */
 export const clone = <T>(x: T): T => JSON.parse(JSON.stringify(x));
