@@ -60,6 +60,12 @@ describe("decoration ranges of a paragraph's source", () => {
     expect(t.slice(img.widthAt![0], img.widthAt![1])).toBe("{width=40%}");
     expect(t.slice(0, img.altTo).endsWith("![a")).toBe(true);
   });
+  it("an annotation whose note has a formula with { } pairs: one atom, the text up to the | that ends it", () => {
+    const t = "所以 {==64 位==|$\\frac{a}{b}$ 倍} 总线";
+    const a = flat(blockInfo(t).spans).find((s) => s.atom?.type === "annot")!;
+    expect(at(t, a)).toMatchObject({ text: "{==64 位==|$\\frac{a}{b}$ 倍}", marks: ["{", "|$\\frac{a}{b}$ 倍}"] });
+    expect(a.atom).toMatchObject({ note: "$\\frac{a}{b}$ 倍", text: "==64 位==" });
+  });
   it("escapes: the backslash is the marker; an escaped $ is never a formula", () => {
     expect(all("a \\* b \\$5 and $x$")).toEqual([
       { text: "\\*", marks: ["\\"], inner: "*", kind: "esc" },

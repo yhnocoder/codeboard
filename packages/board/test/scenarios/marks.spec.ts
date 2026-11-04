@@ -612,6 +612,83 @@ test("noteAnnotationMath", async () => {
   await h.close();
 });
 
+/** #121: a note with \frac{a}{b} ({ } pairs in its formula). Typed as source in the editor, and written in the toolbar's
+ *  Handwritten Note field: both become annotations whose label typesets the fraction, in the editor and the static Note, and
+ *  the saved Markdown keeps the formula as typed, the same after the board is opened again */
+test("noteAnnotationFraction", async () => {
+  const b = emptyBoard("b1", "annotations");
+  const md = "所以 3.2 GHz 的总线带宽是 DDR5-6400 的几倍。";
+  b.cards.push({ id: "n1", kind: "note", md, look: "note" } as NoteCard);
+  b.place.n1 = { x: 80, y: 80, w: 560 };
+  b.cam = { x: 0, y: 0, z: 1 };
+  const h = await open({ board: b, light: true, w: 800, h: 380, settings: { theme: "warm-ink" } as never });
+  const pg = h.page;
+  const pm = `${card("n1")} .md-pm`;
+  const fracs = (root: string) =>
+    pg.evaluate(
+      (root) =>
+        [...document.querySelectorAll<HTMLElement>(`${root} .md-annot > .md-annot-n`)].map((n) => ({
+          frac: !!n.querySelector(".katex .mfrac"),
+          text: n.textContent ?? "",
+        })),
+      root,
+    );
+  await pg.locator(`${card("n1")} .nbody p`).dblclick({ position: { x: 20, y: 10 } });
+  await pg.waitForSelector(pm, { timeout: 5000 });
+  await pg.keyboard.press("Control+End");
+  await pg.keyboard.type(" 合计 {==64 位==|$\\frac{a}{b}$ 倍}。");
+  await idle(h);
+  const typed = await fracs(pm);
+  check("annotFracTypedInEditor", typed.length === 1 && typed[0].frac && typed[0].text.includes("倍"), typed);
+  // the toolbar's Handwritten Note on "DDR5-6400"
+  await focusSettled(pg);
+  await pg.evaluate((pm) => {
+    const e = (document.querySelector(pm) as any).editor,
+      w = "DDR5-6400";
+    let at = -1;
+    e.state.doc.descendants((n: any, pos: number) => {
+      if (at < 0 && n.isText && n.text.includes(w)) at = pos + n.text.indexOf(w);
+    });
+    e.commands.setTextSelection({ from: at, to: at + w.length });
+  }, pm);
+  await pmHasSelection(pg);
+  const btn = pg.locator('.md-bubble .tbtn[data-tip="Handwritten Note"]');
+  await btn.waitFor({ timeout: 2000 });
+  await btn.click();
+  const input = pg.locator(".md-bubble input.md-annotin");
+  await input.waitFor({ timeout: 2000 });
+  await input.fill("$\\frac{1}{2}$ 周期");
+  await input.press("Enter");
+  await idle(h);
+  const both = await fracs(pm);
+  check("annotFracFromToolbar", both.length === 2 && both.every((f) => f.frac), both);
+  await pg.mouse.click(760, 360);
+  await until(h, "the edit is saved", () => (h.board().cards[0] as NoteCard).md !== md);
+  await idle(h);
+  const saved = (h.board().cards[0] as NoteCard).md;
+  check(
+    "annotFracSaved",
+    saved.includes("{==64 位==|$\\frac{a}{b}$ 倍}。") && saved.includes("{DDR5-6400|$\\frac{1}{2}$ 周期}"),
+    { saved },
+  );
+  const shown = await fracs(card("n1"));
+  check("annotFracStatic", shown.length === 2 && shown.every((f) => f.frac), shown);
+  await shot(h, "marks-annotation-fraction");
+  const board = h.board();
+  await h.close();
+  // opened again from what was saved
+  const h2 = await open({ board, light: true, w: 800, h: 380, settings: { theme: "warm-ink" } as never });
+  await idle(h2);
+  const again = await h2.page.evaluate(
+    () => [...document.querySelectorAll(".card .md-annot > .md-annot-n .katex .mfrac")].length,
+  );
+  check("annotFracReopened", again === 2 && (h2.board().cards[0] as NoteCard).md === saved, {
+    again,
+    md: (h2.board().cards[0] as NoteCard).md,
+  });
+  await h2.close();
+});
+
 /** #115: annotations close together on one line. Their labels never overlap: two that would are spread apart (the earlier
  *  one left, the later one right), and when that is not enough one goes up a row, with the line keeping room for it above
  *  (it does not cover the line before). Every label stays over its own arrow and inside its paragraph; static and editing */

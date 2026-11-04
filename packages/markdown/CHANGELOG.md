@@ -22,4 +22,6 @@ Added:
 
 Fixed:
 
+- A `{text|note}` annotation's text and note can hold `{ }` pairs as typed, so a note like `$\frac{a}{b}$ 倍` is an annotation with its formula typeset (a `|` inside a pair does not end the part). The note is written back the same way: pairs stay as they are, and `\` is doubled only before `\ { } |` or at the end. Unpaired braces and `|` are still escaped (`\{ \} \|`), and the escaped form written before reads as it did.
+
 - `{text|note}` annotations close together on one line no longer draw their labels over each other, in the static render and the editor: two labels that would overlap are spread apart (each still over its own arrow, inside its block), and when that is not enough one goes up a row with a longer arrow, its line keeping room for it above. The labels are measured in the instance's `measure` round (the editor's are now fitted too); the annotation's inline `--rise` holds the extra height.

@@ -179,9 +179,8 @@ function spanOf(t: InlineToken, raw: string, src: string, at: number, from: numb
       return { ...mk([[from, to]], null), atom: { type: "html", raw } };
     }
     case "x_annot": {
-      // { } | \ in the text and the note are written \{ \} \| \\: the text runs from { to the first unescaped |
-      let k = 1;
-      while (k < raw.length && raw[k] !== "|") k += raw[k] === "\\" ? 2 : 1;
+      // the text runs from { to the first | outside escapes and { } pairs (the tokenizer found it)
+      const k = Number(t.textEnd);
       return {
         ...mk(
           [

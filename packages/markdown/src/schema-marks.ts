@@ -74,11 +74,65 @@ export const Highlight = tagMark("highlight", "mark", HL_RE);
 
 // {字|批注}、{字|批注|purple below}：贴在字上的手写标注（注音 ruby 的写法）
 // 和 ==高亮== 是两回事，各用各的记号。第三段可选：颜色（blue purple orange green，默认 blue）和 below（标签写在字下面）。
-// 字和批注里的 { } | \ 写成 \{ \} \| \\；表格里 | 本来就要写成 \|。别的 Markdown 查看器里它原样显示成 {字|批注}，字不会丢
+// 字和批注里的 { } | \ 可以写成 \{ \} \| \\；成对的 { } 不用转义（公式 $\frac{a}{b}$ 照写），成对的括号里的 | 也不分段。
+// 表格里 | 本来就要写成 \|。别的 Markdown 查看器里它原样显示成 {字|批注}，字不会丢
 const ANNOT_COLORS = ["blue", "purple", "orange", "green"] as const;
-const ANNOT_PART = "((?:\\\\.|[^{}|\\n\\\\])+)";
-export const ANNOT_RE = new RegExp(`^\\{${ANNOT_PART}\\|${ANNOT_PART}(?:\\|([a-z ]*))?\\}`);
-const escAnnot = (t: string) => t.replace(/[\\{}|]/g, "\\$&");
+const ANNOT_OPTS = /^\|([a-z ]*)\}/;
+/** One part of an annotation from i: up to the | or } that ends it outside any { } pair; null: the line or the source ends first */
+function annotPart(s: string, i: number): { end: number; by: string } | null {
+  let depth = 0;
+  for (; i < s.length; i++) {
+    const c = s[i];
+    if (c === "\n") return null;
+    if (c === "\\") {
+      if (s[i + 1] === "\n") return null;
+      i++;
+    } else if (c === "{") depth++;
+    else if (c === "}" && depth) depth--;
+    else if ((c === "}" || c === "|") && !depth) return { end: i, by: c };
+  }
+  return null;
+}
+/** The {text|note|options} at the start of s: its parts as written (still escaped) and its length; null: none there */
+export function annotAt(s: string): { text: string; note: string; opts: string; len: number } | null {
+  if (s[0] !== "{") return null;
+  const a = annotPart(s, 1);
+  if (!a || a.by !== "|" || a.end === 1) return null;
+  const b = annotPart(s, a.end + 1);
+  if (!b || b.end === a.end + 1) return null;
+  const text = s.slice(1, a.end),
+    note = s.slice(a.end + 1, b.end);
+  if (b.by === "}") return { text, note, opts: "", len: b.end + 1 };
+  const o = ANNOT_OPTS.exec(s.slice(b.end));
+  return o ? { text, note, opts: o[1], len: b.end + o[0].length } : null;
+}
+/**
+ * A note as written in {text|note}: \ before { } | \ (or at the end) is doubled, any other \ stays as it is (\frac); { } stay
+ * when they pair up (a formula reads as typed), else every one is escaped; | is always escaped (a table cell would split on it)
+ */
+export function escAnnot(t: string): string {
+  let depth = 0,
+    paired = true;
+  for (const c of t) {
+    if (c === "{") depth++;
+    else if (c === "}" && --depth < 0) paired = false;
+  }
+  paired &&= depth === 0;
+  let out = "";
+  for (let i = 0; i < t.length; i++) {
+    const c = t[i];
+    if (c === "\\") {
+      const n = t[i + 1];
+      if (n === undefined || "\\{}|".includes(n)) out += "\\\\";
+      else {
+        out += c + n;
+        i++;
+      }
+    } else if (c === "|" || ((c === "{" || c === "}") && !paired)) out += `\\${c}`;
+    else out += c;
+  }
+  return out;
+}
 const annotOpts = (a: Attrs) => {
   const o = [a.color && a.color !== "blue" ? a.color : "", a.below ? "below" : ""].filter(Boolean).join(" ");
   return o ? `|${o}` : "";
@@ -120,15 +174,17 @@ export const Annot = Mark.create({
     level: "inline",
     start: (src: string) => src.indexOf("{"),
     tokenize: (src: string, _prev: unknown, lx: Lexer) => {
-      const m = ANNOT_RE.exec(src);
+      const m = annotAt(src);
       if (!m) return;
       const un = (t: string) => t.replace(/\\([\\{}|])/g, "$1"),
-        opts = (m[3] ?? "").split(/\s+/);
+        opts = m.opts.split(/\s+/);
       return {
         type: "x_annot",
-        raw: m[0],
-        tokens: lx.inlineTokens(un(m[1])),
-        note: un(m[2]).trim(),
+        raw: src.slice(0, m.len),
+        // where the text ends in raw (the editor shows the text and hides the rest)
+        textEnd: 1 + m.text.length,
+        tokens: lx.inlineTokens(un(m.text)),
+        note: un(m.note).trim(),
         color: ANNOT_COLORS.find((c) => opts.includes(c)) ?? "blue",
         below: opts.includes("below"),
       };
