@@ -373,7 +373,7 @@ export type BoardToHost =
   | { type: "openBoard"; id: string; card?: string; line?: number; sticker?: string }
   /**
    * ⌘C 复制了这些卡（text = 写进剪贴板的文字）：宿主记下来，贴到别的白板时用。
-   * rich = 白板自己写剪贴板（文字 + 图片），宿主不再写文字盖掉它；写不了时白板再发 copyText
+   * rich = 白板自己写剪贴板（文字 + 图片），宿主不再写文字盖掉它；写不了时白板再发 copyImage / copyText
    */
   | { type: "copyCards"; cards: string[]; text: string; rich?: boolean }
   /** 粘贴：剪贴板里是别的白板上复制的卡就回 PastedCards（text 对不上、同一块白板回 null）；copy = 独立副本 */
@@ -434,6 +434,9 @@ export type BoardToHost =
   | { type: "exportFile"; req: number; kind: "html" | "md"; name: string; text: string }
   /** 写剪贴板（webview 里写可能被拦下） */
   | { type: "copyText"; text: string }
+  /** A picture the webview could not put on the clipboard itself (why: its error): the host puts the PNG (a data: URL) on the
+   *  OS clipboard, or the text when the editor can't */
+  | { type: "copyImage"; png: string; text: string; why: string }
   /** Copy Path：这些卡 / Section（不给 = 这块白板）在磁盘上的路径（<白板文件>#<id>，一行一个），宿主写进剪贴板。回写进去的文字（白板还没存下时回 null） */
   | { type: "copyPath"; req: number; items?: string[] }
   /** 图片的 AI 操作（DeepSeek 看图）：宿主拿着密钥去问，回模型的原话或失败的原因（ImageAiResult）。job = 白板给的号，取消用 */

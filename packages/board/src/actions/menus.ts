@@ -136,6 +136,7 @@ import {
 } from "@codeboard/core";
 import { kbd } from "../keymap";
 import { drawSvgItem, imageAiItems, type ImgRef } from "./imageai";
+import { copyNoteImage } from "./imagedata";
 import { autoFocusItem } from "./autofocus";
 import type { Markdown } from "@yhnocoder/markdown";
 
@@ -272,8 +273,10 @@ export function lineMenu(ls: LineSel, x: number, y: number, annotate?: () => voi
 export function noteImageMenu(ref: ImgRef, x: number, y: number) {
   selectCard(ref.card);
   const cap = captionItems(ref, document.elementFromPoint(x, y));
+  const src = ref.note;
   openMenu(
     [
+      ...(src ? [{ label: "Copy Image", run: () => copyNoteImage(src) } satisfies Item, null] : []),
       ...cap,
       ...(cap.length ? [null] : []),
       ...imageAiItems(ref),
@@ -517,6 +520,8 @@ function cardItems(id: string, x: number, y: number): Item[] {
     ];
   if (c.kind === "image")
     return [
+      { label: "Copy Image", kbd: kbd("copy"), run: () => copyCardsSel() },
+      null,
       ...imageAiItems({ card: id }),
       null,
       { label: "Fit Content", kbd: kbd("fitContent"), run: () => fitContent([id]) },

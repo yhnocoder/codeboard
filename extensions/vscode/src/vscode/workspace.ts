@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import * as path from "node:path";
+import { copyImage } from "./clipimage";
 import { hoverAt, locations } from "./lsp";
 import { isScratch, vscodeScratch } from "./scratch";
 import {
@@ -390,6 +391,7 @@ export function vscodeWorkspace(ctx: vscode.ExtensionContext): Workspace {
       openFolder: async (abs) => void (await vscode.env.openExternal(vscode.Uri.file(abs))),
       revealInOS: async (abs) => void (await vscode.commands.executeCommand("revealFileInOS", vscode.Uri.file(abs))),
       copy: async (text) => vscode.env.clipboard.writeText(text),
+      copyImage,
       clipboard: async () => vscode.env.clipboard.readText(),
       undoAddChanged: (on) => undoAddKey(on),
       // the board's own keys are bound on this context key (package.json keybindings)

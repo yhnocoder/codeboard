@@ -12,6 +12,11 @@
 //                                         Reference makes the copy the same card as the original (one undo step): editing either one
 //                                         changes both, both show the "same card" mark, Detach makes it a copy again; for code cards
 //                                         the two places share the original's segments. A click elsewhere puts the chip away
+//   copiedImagesArePictures               every way of copying one image gives other apps the picture (image/png) with its Markdown
+//                                         as the text: ⌘C in a Note being edited with the caret in the image's source and with just
+//                                         its source selected, right-click Copy Image on an image in a shown Note and on an image card
+//   imageCopyFallsBackToEditor            when the webview may not write the clipboard, the picture goes to the editor, which puts the
+//                                         PNG on the OS clipboard (no text written over it); an editor that can't gets the text
 //   pasteIntoEditorMakesNoCard            ⌘V while editing a Note (into its code block, and into its text) pastes there only: the
 //                                         board does not also turn the paste into a card. In VS Code the paste event's target is the
 //                                         highlighted span the selection starts on, and the code editor replaces that span before the
@@ -47,7 +52,7 @@ async function boardWith(b: Board) {
     await img.evaluate((e) => (e as HTMLImageElement).decode());
   await idle(h);
   const assets = () => fs.readdirSync(dir).sort();
-  return { h, assets, done: () => run.close() };
+  return { h, assets, ws: run.ws, done: () => run.close() };
 }
 
 const cardEl = (h: Host, id: string) => h.page.locator(`.card[data-id="${id}"]`);
@@ -154,6 +159,126 @@ test("copiedCardsGiveOtherAppsTheirContent", async () => {
     added.map((c) => ({ kind: c.kind, src: (c as { src?: string }).src })),
   );
   await shotTo(h, "image-copied-back", { x: 20, y: 40, width: 900, height: 700 });
+  await done();
+});
+
+/** Something else on the clipboard, so the next read shows the next copy */
+const clear = (h: Host) => h.page.evaluate(() => navigator.clipboard.writeText("-"));
+/** The next copy, once its picture is on the clipboard (an editor's copy puts the text there first) */
+const nextCopy = (h: Host, what: string) =>
+  until(h, what, async () => {
+    const c = await clipboard(h);
+    return c && c.text !== "-" && c.types.includes("image/png") ? c : undefined;
+  });
+
+test("copiedImagesArePictures", async () => {
+  const b = emptyBoard("b1", "copy images");
+  put(
+    b,
+    { id: "n1", kind: "note", md: "Batch layout\n\n![](assets/card.png)\n\nPrefill first.", look: "note" } as NoteCard,
+    60,
+    60,
+    380,
+  );
+  put(b, { id: "i1", kind: "image", src: "card.png" } as Card, 560, 80, 240);
+  b.cam = { x: 0, y: 0, z: 1 };
+  const { h, done } = await boardWith(b);
+  const pg = h.page;
+  const isPicture = (c: Awaited<ReturnType<typeof nextCopy>>) =>
+    c.types.includes("image/png") && c.png?.w === 240 && c.png?.h === 160 && c.text === "![](assets/card.png)";
+
+  // a Note being edited: a click on the image puts the caret in its source (the image shows selected); ⌘C copies the image
+  await cardEl(h, "n1")
+    .locator(".nbody")
+    .dblclick({ position: { x: 200, y: 10 } });
+  await cardEl(h, "n1").locator(".md-pm:focus").waitFor();
+  const inEditor = cardEl(h, "n1").locator(".md-pm img:not(.ProseMirror-separator)").first();
+  await inEditor.evaluate((i) => (i as HTMLImageElement).decode());
+  await inEditor.click();
+  await idle(h);
+  const caret = await pg.evaluate(() => {
+    const s = getSelection()!;
+    return { collapsed: s.isCollapsed, line: s.anchorNode?.parentElement?.closest("p")?.textContent ?? "" };
+  });
+  await clear(h);
+  await pg.keyboard.press("ControlOrMeta+c");
+  const caretCopy = await nextCopy(h, "⌘C with the caret in the image's source is on the clipboard");
+  check("copiedImagesArePictures caret in the image's source", caret.collapsed && isPicture(caretCopy), {
+    caret,
+    caretCopy,
+  });
+  await shotTo(h, "note-image-selected", { x: 40, y: 40, width: 440, height: 340 });
+
+  // just the image's source selected (its paragraph, from start to end)
+  await pg.keyboard.press("Home");
+  await pg.keyboard.press("Shift+End");
+  const picked = await pg.evaluate(() => getSelection()!.toString());
+  await clear(h);
+  await pg.keyboard.press("ControlOrMeta+c");
+  const selCopy = await nextCopy(h, "⌘C with the image's source selected is on the clipboard");
+  check("copiedImagesArePictures the image's source selected", isPicture(selCopy), { picked, selCopy });
+  for (let k = 0; k < 3 && (await pg.locator(".md-pm").count()); k++) {
+    await pg.keyboard.press("Escape");
+    await idle(h);
+  }
+
+  // right-click the image in the shown Note: Copy Image
+  const shown = cardEl(h, "n1").locator(".nbody img").first();
+  await shown.evaluate((i) => (i as HTMLImageElement).decode());
+  await clear(h);
+  await shown.click({ button: "right" });
+  await pg.locator(".ctx.open button", { hasText: "Copy Image" }).first().click();
+  const menuCopy = await nextCopy(h, "Copy Image on the Note's image is on the clipboard");
+  check("copiedImagesArePictures Copy Image on an image in a Note", isPicture(menuCopy), menuCopy);
+
+  // right-click an image card: Copy Image (the card copy: pasted back on the board it is the card again)
+  await clear(h);
+  await cardEl(h, "i1").locator(".imgb").click({ button: "right" });
+  await pg.locator(".ctx.open button", { hasText: "Copy Image" }).first().click();
+  const cardCopy = await nextCopy(h, "Copy Image on the image card is on the clipboard");
+  check("copiedImagesArePictures Copy Image on an image card", isPicture(cardCopy), cardCopy);
+  check(
+    "copiedImagesArePictures the image card's Copy Image is a card copy",
+    h.sent.some((m) => m.type === "copyCards" && m.cards.join() === "i1"),
+  );
+  await done();
+});
+
+test("imageCopyFallsBackToEditor", async () => {
+  const b = emptyBoard("b1", "copy fallback");
+  put(b, { id: "i1", kind: "image", src: "card.png" } as Card, 60, 80, 240);
+  b.cam = { x: 0, y: 0, z: 1 };
+  const { h, ws, done } = await boardWith(b);
+  const pg = h.page;
+  // the editor's side: what reached the OS clipboard
+  const os: { png?: Uint8Array; text?: string }[] = [];
+  let canImage = true;
+  ws.ui.copyImage = async (png) => {
+    if (canImage) os.push({ png });
+    return canImage;
+  };
+  ws.ui.copy = async (text) => void os.push({ text });
+  // the webview refuses to write the clipboard, as it can in the editor
+  await pg.evaluate(() => {
+    navigator.clipboard.write = () => Promise.reject(new DOMException("Document is not focused.", "NotAllowedError"));
+  });
+  await cardEl(h, "i1").locator(".imgb").click();
+  await pg.keyboard.press("Meta+c");
+  const got = await until(h, "the editor puts the picture on the clipboard", () => os.find((o) => o.png));
+  const head = Buffer.from(got.png!);
+  const size = { png: head.subarray(1, 4).toString(), w: head.readUInt32BE(16), h: head.readUInt32BE(20) };
+  check(
+    "imageCopyFallsBackToEditor the editor gets the PNG, no text over it",
+    size.png === "PNG" && size.w === 240 && size.h === 160 && !os.some((o) => o.text !== undefined),
+    { size, os: os.map((o) => o.text ?? `png ${o.png?.length}`) },
+  );
+
+  // an editor that can't put a picture there: the text, as before
+  canImage = false;
+  os.length = 0;
+  await pg.keyboard.press("Meta+c");
+  const text = await until(h, "the editor copies the text", () => os.find((o) => o.text !== undefined));
+  check("imageCopyFallsBackToEditor without a picture the text", text.text === "![](assets/card.png)", os);
   await done();
 });
 

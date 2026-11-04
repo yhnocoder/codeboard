@@ -169,6 +169,14 @@ export function makeHandler(cx: HostContext, panels: BoardHost, mediaDir: string
     permalinks: (_p, m) => permalinks(cx, m.segs),
     exportFile: (_p, m) => exportFile(cx, store, mediaDir, m.kind, m.name, m.text),
     copyText: (_p, m) => cx.ws.ui.copy(m.text),
+    copyImage: async (_p, m) => {
+      cx.log("warn", `copy image: the board could not write the clipboard (${m.why}), the editor writes it`);
+      const png = /^data:image\/png;base64,/.test(m.png)
+        ? Buffer.from(m.png.slice(m.png.indexOf(",") + 1), "base64")
+        : null;
+      const done = png && (await cx.ws.ui.copyImage?.(png).catch((e) => (cx.log("warn", `copy image: ${e}`), false)));
+      if (!done) await cx.ws.ui.copy(m.text);
+    },
     copyPath: (p, m) => copyPaths(cx, store, p.id, m.items),
     imageAi: (p, m) => imageAiJob(cx, p.imageJobs, m.job, m.op),
     imageAiCancel: (p, m) => {

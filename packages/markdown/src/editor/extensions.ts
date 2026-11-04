@@ -51,6 +51,7 @@ export function editorExtensions(
             }),
             ed,
             () => saveImage(o),
+            () => o.copyImage,
           )
         : x.name === "codeBlock"
           ? (x as TNode).extend({

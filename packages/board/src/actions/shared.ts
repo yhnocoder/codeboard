@@ -30,7 +30,7 @@ import { ask, send } from "../host";
 import { hostRect, popCard, revealCard, selCards } from "./common";
 import { cardText, remember } from "./clipboard";
 import { offerReference, pasteChip, setPasteChip } from "./pastechip";
-import { imageDataUrl, pngOf } from "./imagedata";
+import { copyPicture, imageDataUrl } from "./imagedata";
 
 /**
  * Copy Path：这些卡 / Section（不给 = 这块白板）在磁盘上的路径，一行一个，给终端里的 Claude Code 引用。路径只有宿主知道（白板文件在哪、
@@ -64,22 +64,16 @@ const selHosts = () =>
     .filter((c, i, a) => a.indexOf(c) === i);
 /**
  * 卡的内容进系统剪贴板，宿主记下是哪几张卡；返回文字。别的应用拿到的是卡的文字（几张卡之间空一行）；有图片卡时还有那张图（image/png，
- * 第一张），这时白板自己写剪贴板（宿主只能写文字，会把图盖掉），写不了再让宿主写文字
+ * 第一张），这时白板自己写剪贴板（宿主只写文字，会把图盖掉），写不了交给宿主（copyPicture）
  */
 function copyCards(cs: Card[]): string {
   flushSave(); // 宿主那边是最新的内容
   const text = cs.map(textOf).join("\n\n");
   remember(cs[0].id, text); // 同一块白板上 ⌘V：放在原卡旁边
   const img = cs.find((c): c is ImageCard => c.kind === "image");
-  const rich = !!img && typeof ClipboardItem !== "undefined" && !!navigator.clipboard?.write;
-  if (rich) {
-    // 要在按键的这一刻调 write（用户手势），图的内容随后才有：ClipboardItem 收 Promise
-    const png = imageDataUrl(unwrap(img)).then((u) => (u ? pngOf(u) : Promise.reject(new Error("No image data"))));
-    navigator.clipboard
-      .write([new ClipboardItem({ "text/plain": new Blob([text], { type: "text/plain" }), "image/png": png })])
-      .catch(() => send({ type: "copyText", text }));
-  } else navigator.clipboard?.writeText(text).catch(() => {});
-  send({ type: "copyCards", cards: cs.map((c) => c.id), text, rich });
+  if (img) copyPicture(imageDataUrl(unwrap(img)), text);
+  else navigator.clipboard?.writeText(text).catch(() => {});
+  send({ type: "copyCards", cards: cs.map((c) => c.id), text, rich: !!img });
   return text;
 }
 /** ⌘C 复制的卡（这块白板上的）：同一块白板上 ⌘V 贴成副本，大小、样子和原来的一样；n = 已经贴了几次（一次比一次错开一点） */
