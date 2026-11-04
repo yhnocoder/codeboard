@@ -11,11 +11,16 @@
 //   summaryOverflowFades         two loose cards stacked close, each with a long summary: at rest the columns never overlap and
 //                                the upper one fades out over its last lines; hovered it shows in full over the lower one, raised;
 //                                a title past two lines ends in an ellipsis and shows in full the same way
+//   summaryNestedSections        Sections inside Sections (option G; the demo's 计算架构 nesting): each innermost Section its own
+//                                summary, an outer one a header above its frame (title, rule, overview), its direct cards one
+//                                column with the AI's title, a Section with one child only a kick line above the child's title;
+//                                nothing overlaps at rest; ↻ on a header asks the AI for the overview from its children's summaries
 //   summaryFramesOnlyBoard       a board of sub-board frames, Free Text headings and Marks, nothing to summarize: zoomed out past the
 //                                cut the Marks hide all the same, and the frames and Free Text look as they do at 100 %, only scaled
 import {
   emptyBoard,
   putSummary,
+  summaryInput,
   summarySig,
   type Board,
   type BoardToHost,
@@ -375,7 +380,8 @@ test("summaryOverflowFades", async () => {
         cs = getComputedStyle(e),
         rest = parseFloat(cs.getPropertyValue("--rest")),
         z = r.height / (e as HTMLElement).offsetHeight;
-      const clipped = cs.clipPath !== "none";
+      // hovered, the clip opens past the column (inset(-3S)) for the panel around it
+      const clipped = cs.clipPath !== "none" && !cs.clipPath.startsWith("inset(-");
       return {
         top: r.top,
         bottom: clipped ? r.top + rest * z : r.bottom,
@@ -426,4 +432,171 @@ test("summaryOverflowFades", async () => {
   await h.page.mouse.move(1200, 780);
   await until(h, "the title is two lines again", async () => (await title()).lines === 2);
   await h.page.context().close();
+});
+
+/** The demo's 计算架构 board (feedback/demo/nested-sections.html), short Notes in the same places: GPU 架构初探 holds three
+ *  Sections and five cards of its own, WARP 执行 three Sections; 设备与资源 holds only 查询设备属性. Written as in the demo */
+function nestedBoard(id: string, z: number): Board {
+  const b = emptyBoard(id, "计算架构与调度");
+  const S = (sid: string, title: string, parent?: string): Section => ({
+    id: sid,
+    title,
+    x: 0,
+    y: 0,
+    w: 0,
+    h: 0,
+    ...(parent ? { parent } : {}),
+  });
+  b.sections.push(
+    S("P", "GPU 架构初探"),
+    S("c1", "SM 与 block 调度", "P"),
+    S("c2", "barrier 与透明扩展", "P"),
+    S("c3", "__syncthreads 误用示例", "P"),
+    S("W", "WARP 执行"),
+    S("w1", "WARP 与 SIMD 硬件", "W"),
+    S("w2", "WARP 控制流分歧", "W"),
+    S("w3", "WARP 调度、延迟、占用率", "W"),
+    S("D", "设备与资源"),
+    S("q", "查询设备属性", "D"),
+  );
+  const cards: [string, string, number, number, number, string][] = [
+    ["c1", "现代 GPU 的架构", 63, 25, 524, "GPU 由一组高度多线程化的 SM 组成。"],
+    ["c1", "thread block 调度", 617, 25, 498, "block 整块分给一个 SM。"],
+    ["c2", "同步与透明可扩展性", 1203, 25, 517, "同一 block 的线程用 barrier 协调。"],
+    ["c2", "barrier 应尽量限制在较小范围", 1203, 692, 524, "范围越大，等待越多。"],
+    ["c3", "错误使用 __syncthreads() 的示例", 2382, 671, 292, "if 和 else 各放一个。"],
+    ["P", "thread block cluster", 1807, 25, 404, "cluster 范围的 barrier。"],
+    ["P", "grid 范围同步", 1807, 228, 404, "开销高于 block 和 cluster。"],
+    ["P", "Intrinsic Function", 1807, 413, 404, "__syncthreads 是 intrinsic。"],
+    ["P", "__syncthreads tricky 的地方", 1807, 648, 517, "每处调用都是独立的同步点。"],
+    ["P", "Wave", 1807, 983, 476, "同时执行的一组 block。"],
+    ["w1", "Warp", 1703, 1700, 476, "32 个线程一组。"],
+    ["w1", "线程布局", 2258, 1700, 476, "row-major 展平再切。"],
+    ["w1", "GPU 中的 SIMD 硬件设计", 1703, 2558, 476, "一条指令跑整个 warp。"],
+    ["w2", "Wrap 控制流分歧", 2994, 1700, 381, "分支要分遍跑。"],
+    ["w2", "检查是否会造成控制流分歧", 3635, 1700, 480, "看判定条件。"],
+    ["w2", "控制流分歧: if-else", 2845, 2206, 387, "两边各跑一遍。"],
+    ["w3", "Warp 调度与延迟容忍", 2808, 2902, 517, "等内存时换一个 warp。"],
+    ["w3", "资源划分与占用率", 2808, 3626, 381, "occupancy。"],
+    ["w3", "性能悬崖初探", 3698, 3626, 417, "多用一个寄存器就掉一截。"],
+    ["q", "查询设备属性", 4542, 2902, 380, "cudaGetDeviceProperties。"],
+    ["q", "使用 cudaDeviceProp", 4261, 3297, 450, "按资源上限调参。"],
+  ];
+  cards.forEach(([sec, title, x, y, w, text], i) => {
+    put(b, note(`k${i}`, `## ${title}\n\n${text}`), x, y, w);
+    b.place[`k${i}`].section = sec;
+  });
+  // a frame is its stored box grown to what it holds: store a point inside it (its first card's corner)
+  const inside = (sid: string): string =>
+    cards.find((c) => c[0] === sid)?.[0] ?? inside(b.sections.find((x) => x.parent === sid)!.id);
+  for (const sec of b.sections) {
+    const c = cards.find((k) => k[0] === inside(sec.id))!;
+    Object.assign(sec, { x: c[2], y: c[3] });
+  }
+  const written = (k: string, text: string, title?: string) =>
+    putSummary(b, k, {
+      text,
+      at: Date.now(),
+      sig: summarySig(b, k)!,
+      input: summaryInput(b, k),
+      ...(title ? { title } : {}),
+    });
+  written(
+    "sec:c1",
+    "线程以 **thread block 为单位**分到 SM，同一 block 的线程落在同一个 SM 上，能用 barrier 和 shared memory **低延迟协作**。",
+  );
+  written("sec:c2", "barrier 只限在 block 内，不同 block 就能按任意顺序执行，程序在大小不同的 GPU 上**透明扩展**。");
+  written("sec:c3", "if 和 else 两边各放一个 __syncthreads()，其实是**两个同步点**，行为未定义。");
+  written("sec:w1", "block 按 32 个线程切成 **warp**，是 SM 的调度单位；SIMD 让一条指令同时跑整个 warp。");
+  written("sec:w2", "同一 warp 的线程走不同分支时，硬件要**分遍执行**，每遍只有部分线程活动。");
+  written("sec:w3", "一个 warp 等内存时调度器**零开销**切到另一个，靠 warp 多来盖住延迟。");
+  written("sec:q", "每个设备的资源由**计算能力**决定，查 SM 数、每 block 线程上限等资源上限。");
+  written(
+    "own:P",
+    "barrier 分三层：block 内用 __syncthreads()，cluster 和 grid 用 Cooperative Groups，**范围越大开销越高**。同时执行的一批 block 叫 wave。",
+    "同步层次与 wave",
+  );
+  written("sec:P", "GPU 由 SM 组成，线程以 block 为单位调度，barrier 只在 block 内同步，**换来透明扩展**。");
+  written("sec:W", "warp 是 SM 的调度单位：同一指令一起跑，分支要分遍跑，靠**多驻留 warp** 盖住延迟。");
+  b.cam = { x: 40, y: 120, z };
+  return b;
+}
+
+test("summaryNestedSections", async () => {
+  const run = await hostBoards([nestedBoard("bN", 0.15)], {
+    page: { light: true, w: 1280, h: 800, settings: { theme: "warm-ink" } },
+  });
+  const { calls } = await fakeDeepseek(run, () => "SM 按块调度、barrier 只在块内，**换来透明扩展**。");
+  const h = await run.open("bN");
+  await idle(h);
+  const cols = () =>
+    h.page.evaluate(() =>
+      [...document.querySelectorAll<HTMLElement>(".sumcol")].map((e) => ({
+        key: e.dataset.sum!,
+        cls: e.className,
+        x: parseFloat(e.style.left),
+        y: parseFloat(e.style.top),
+        w: parseFloat(e.style.width),
+        h: parseFloat(e.style.getPropertyValue("--rest")),
+        title: e.querySelector(".sumt")?.textContent ?? "",
+        kick: e.querySelector(".sumkick")?.textContent ?? "",
+        re: !!e.querySelector(".sumre"),
+      })),
+    );
+  const frame = (id: string) =>
+    h.page
+      .locator(`.sect[data-sect="${id}"]`)
+      .evaluate((e) => ({ x: parseFloat((e as HTMLElement).style.left), y: parseFloat((e as HTMLElement).style.top) }));
+  const all = await cols();
+  const by = (k: string) => all.find((c) => c.key === k);
+  await shot(h, "130-nested");
+  check(
+    "summaryNestedSections innermost Sections summarized, outer ones a header (level 1), the direct cards one column with the AI's title, a one-child Section a kick line",
+    ["sec:c1", "sec:c2", "sec:c3", "sec:w1", "sec:w2", "sec:w3", "sec:q"].every(
+      (k) => by(k) && !/\bh[12]\b/.test(by(k)!.cls),
+    ) &&
+      /\bh1\b/.test(by("sec:P")?.cls ?? "") &&
+      /\bh1\b/.test(by("sec:W")?.cls ?? "") &&
+      by("own:P")?.title === "同步层次与 wave" &&
+      !by("sec:D") &&
+      by("sec:q")?.kick === "设备与资源 ›",
+    all.map((c) => [c.key, c.cls, c.title, c.kick]),
+  );
+  const fP = await frame("P"),
+    fW = await frame("W");
+  const P = by("sec:P")!,
+    W = by("sec:W")!;
+  const hit = all.flatMap((a, i) =>
+    all
+      .slice(i + 1)
+      .filter((c) => a.x < c.x + c.w && c.x < a.x + a.w && a.y < c.y + c.h && c.y < a.y + a.h)
+      .map((c) => `${a.key} / ${c.key}`),
+  );
+  check(
+    "summaryNestedSections the headers sit above their frames, at their left edges; nothing overlaps at rest",
+    Math.abs(P.x - fP.x) < 1 && P.y + P.h <= fP.y && Math.abs(W.x - fW.x) < 1 && W.y + W.h <= fW.y && !hit.length,
+    { P, fP, W, fW, hit },
+  );
+  await h.page.locator('.sumcol[data-sum="sec:P"] .sumhd').hover();
+  await h.page.locator('.sumcol[data-sum="sec:P"] .sumre').click();
+  await until(h, "↻ asked for the overview", () => calls.length === 1);
+  await until(
+    h,
+    "the overview is in the host's board",
+    () =>
+      !!h
+        .board()
+        .sections.find((s) => s.id === "P")
+        ?.summary?.text.startsWith("SM 按块调度"),
+  );
+  const asked = calls[0].body.messages[1].content as string;
+  check(
+    "summaryNestedSections ↻ on a header asks for one sentence from the children's titles and summaries and the direct cards",
+    asked.includes("外层 Section 标题：GPU 架构初探") &&
+      asked.includes("**透明扩展**") &&
+      asked.includes("【Wave】") &&
+      !asked.includes("WARP"),
+    asked,
+  );
+  await h.close();
 });

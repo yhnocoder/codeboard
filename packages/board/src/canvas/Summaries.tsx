@@ -1,5 +1,6 @@
-// The summary level (#130; state/summary.ts, core summary.ts): one column per top-level Section and per card in no Section, at the
-// board's one font size, drawn in full (no clamping, no fallbacks). It is built once the zoom comes near the highest cut (state/summary.ts
+// The summary level (#130; state/summary.ts, core summary.ts): one column per innermost Section, per group of cards placed directly
+// in a Section with child Sections and per card in no Section, and a header above the frame of each Section with child Sections
+// (its title, a rule and a one-sentence overview; under another header the title only), at the board's one font size, drawn in full (no clamping, no fallbacks). It is built once the zoom comes near the highest cut (state/summary.ts
 // summaryNear: zoomed in it costs nothing) and from then on only its opacity follows the fade, so the switch never adds elements or
 // lays anything out. Each column's title and body heights are read once per change of width or text
 // (ResizeObserver, in the board's measuring round) and give the final extents the later columns stop at.
@@ -84,13 +85,16 @@ function Column(p: { col: SumCol }) {
   const text = () => sum()?.text ?? "";
   let hd!: HTMLDivElement,
     tx!: HTMLDivElement,
+    kick: HTMLDivElement | undefined,
     editing: string | null = null;
+  /** A header under another header shows its title only: nothing to write, edit or rewrite */
+  const writes = () => !p.col.head || p.col.head.lines > 0;
   // heights at this width: read in the board's measuring round when the title or body changes size
   const read = () =>
     queueMeasure(hd, () => {
       // shown in full over its neighbours: not the size it takes in the layout
       if (col.matches(":hover, :focus-within")) return () => {};
-      const h = { hd: hd.offsetHeight, tx: tx.offsetHeight },
+      const h = { hd: hd.offsetHeight + (kick?.offsetHeight ?? 0), tx: tx.offsetHeight },
         cut = !p.col.code && hd.scrollHeight > hd.clientHeight + 1;
       setClamped(cut);
       return () =>
@@ -103,7 +107,7 @@ function Column(p: { col: SumCol }) {
   const watch = (el: HTMLElement) => onCleanup(observeResize(el, read));
 
   const startEdit = () => {
-    if (editing !== null || writing()) return;
+    if (editing !== null || writing() || !writes()) return;
     editing = text();
     tx.dataset.nodrag = "";
     tx.contentEditable = "true";
@@ -183,7 +187,10 @@ function Column(p: { col: SumCol }) {
         data-sum={key}
         lang={boardLang(`${c().title}${text()}`) === "zh" ? "zh-CN" : "en"}
         classList={{
-          loose: key.startsWith("card:"),
+          loose: key.startsWith("card:") || !!c().group,
+          h1: c().head?.level === 1,
+          h2: c().head?.level === 2,
+          bare: !!c().head && !c().head!.lines,
           pend: pending() && !!sum(),
           edited: !!sum()?.edited,
           gen: writing(),
@@ -202,13 +209,20 @@ function Column(p: { col: SumCol }) {
       >
         <div class="sumblk">
           <div class="sumhd" classList={{ code: !!c().code }} style={{ "min-height": `${c().hd}px` }}>
+            <Show when={c().kick}>
+              {(k) => (
+                <div class="sumkick" ref={(el) => (kick = el)}>
+                  {k()} ›
+                </div>
+              )}
+            </Show>
             <div class="sumhdi" ref={(el) => ((hd = el), watch(el))}>
               <Show
                 when={c().code}
                 fallback={
                   <>
                     <span class="sumt md" ref={(el) => createEffect(() => rich(md, el, c().title))} />
-                    {mark()}
+                    <Show when={writes()}>{mark()}</Show>
                   </>
                 }
               >
@@ -230,7 +244,7 @@ function Column(p: { col: SumCol }) {
               tx = el;
               watch(el);
               createEffect(() => {
-                const t = text();
+                const t = writes() ? text() : "";
                 if (editing === null) rich(md, el, t);
               });
             }}

@@ -1,5 +1,7 @@
-// Zoomed-out AI summaries (#130). Zoomed out past the board's cut, every top-level Section shows one summary (title + body) and
-// every card in no Section one sentence, in place of the cards. This file is the pure part both the board and the host run:
+// Zoomed-out AI summaries (#130). Zoomed out past the board's cut, every innermost Section shows one summary (title + body) and
+// every card in no Section one sentence, in place of the cards. A Section with child Sections (nesting by Section.parent, any
+// depth: option G of feedback/demo/nested-sections.html) shows a header above its frame instead, and the cards placed in it
+// directly one summary of their own (sectionPlan). This file is the pure part both the board and the host run:
 // which items get a summary, the board's one font size, the columns (anchored at the source's top-left, growing only right
 // and down, aligned sources kept aligned: a port of the layout in feedback/demo/boards-130-viewer.html), the minimum zoom, the
 // prompt material (how much to write follows the content alone, never the layout) and what makes a summary pending.
@@ -29,6 +31,8 @@ export const SUMMARY = {
   strip: 30,
   /** A card's column grows at most this far below the card's top */
   looseCap: 1500,
+  /** Space between a header and the frame (or the deeper header) below it */
+  headGap: 10,
   /** A column's text is at most this many S wide (a wide Section's column keeps its anchor and stops there) */
   maxLine: 28,
   /** The most key phrases a summary keeps bold (the prompt asks for about one per 40 chars); later ones are kept as plain text */
@@ -47,15 +51,20 @@ export const SUMMARY = {
   emptyZoom: 0.1,
 } as const;
 
-export type SumKey = `sec:${string}` | `card:${string}`;
+/** sec: a Section's summary (a Section with child Sections: its header's overview), own: the cards placed in a Section with child
+ *  Sections directly (Section.directSummary), card: a card in no Section */
+export type SumKey = `sec:${string}` | `card:${string}` | `own:${string}`;
 export const secKey = (id: string): SumKey => `sec:${id}`;
 export const cardKey = (id: string): SumKey => `card:${id}`;
-const parseKey = (key: string) =>
+export const ownKey = (id: string): SumKey => `own:${id}`;
+const parseKey = (key: string): { sec?: string; card?: string; own?: string } =>
   key.startsWith("sec:")
     ? { sec: key.slice(4) }
     : key.startsWith("card:")
       ? { card: key.slice(5) }
-      : ({} as { sec?: string; card?: string });
+      : key.startsWith("own:")
+        ? { own: key.slice(4) }
+        : {};
 
 /** A card that is never summarized, alone or in its Section's summary: sub-board frames, Marks and Free Text */
 export const unsummarized = (c: Card) =>
@@ -77,6 +86,60 @@ export function untitled(c: Card): boolean {
 const homeOf = (b: Pick<Board, "sections">, p: Place | undefined) =>
   p?.section && b.sections.some((s) => s.id === p.section) ? p.section : undefined;
 
+/**
+ * How a Section shows at the summary level. leaf (no open child Section): its own summary at its top-left. head: a header above
+ * its frame, where its title is at the card level, growing upward (the deepest at the bottom when they stack), with a written
+ * overview of lines lines (level 1: 2, deeper: 1; a header under another header: 0, the title only), and its direct cards (in it,
+ * in no child) as one summary. pass: one child and no direct cards: no header, its name is a small line (kick) above the child's
+ */
+export type SecPlan = {
+  role: "leaf" | "head" | "pass";
+  depth: number;
+  lines: 0 | 1 | 2;
+  kick?: string;
+  kids: Section[];
+  direct: Card[];
+};
+/** Every open Section's role at the summary level (collapsed Sections and what is in them are not summarized) */
+export function sectionPlan(b: Pick<Board, "sections" | "cards" | "place">): Map<string, SecPlan> {
+  const ids = new Set(b.sections.map((s) => s.id));
+  const kids = new Map<string, Section[]>();
+  for (const s of b.sections)
+    if (s.parent && ids.has(s.parent) && !s.collapsed) kids.set(s.parent, [...(kids.get(s.parent) ?? []), s]);
+  const direct = new Map<string, Card[]>();
+  for (const c of b.cards) {
+    const h = homeOf(b, b.place[c.id]);
+    if (h && !unsummarized(c)) direct.set(h, [...(direct.get(h) ?? []), c]);
+  }
+  const out = new Map<string, SecPlan>();
+  const visit = (s: Section, depth: number, kick: string | undefined, under: boolean) => {
+    if (out.has(s.id)) return;
+    const ks = kids.get(s.id) ?? [],
+      dir = direct.get(s.id) ?? [];
+    const base = { depth, kids: ks, direct: dir, ...(kick ? { kick } : {}) };
+    if (!ks.length) out.set(s.id, { ...base, role: "leaf", lines: 0 });
+    else if (ks.length === 1 && !dir.length) {
+      out.set(s.id, { ...base, role: "pass", lines: 0 });
+      visit(ks[0], depth + 1, kick ? `${kick} › ${s.title}` : s.title, under);
+    } else {
+      out.set(s.id, { ...base, role: "head", lines: under ? 0 : depth === 1 ? 2 : 1 });
+      for (const k of ks) visit(k, depth + 1, undefined, true);
+    }
+  };
+  for (const s of b.sections) if (!s.collapsed && !(s.parent && ids.has(s.parent))) visit(s, 1, undefined, false);
+  return out;
+}
+/** The items a board summarizes, by key (what the host may write) */
+export function summaryKeys(b: Board): SumKey[] {
+  const out: SumKey[] = [];
+  for (const [id, p] of sectionPlan(b)) {
+    if (p.role === "leaf" || (p.role === "head" && p.lines)) out.push(secKey(id));
+    if (p.role === "head" && p.direct.some((c) => b.place[c.id])) out.push(ownKey(id));
+  }
+  for (const c of b.cards) if (b.place[c.id] && !homeOf(b, b.place[c.id]) && !unsummarized(c)) out.push(cardKey(c.id));
+  return out;
+}
+
 /** One summarized item: its anchor box, what it covers before its column is placed, its title line */
 export type SumSource = {
   key: SumKey;
@@ -89,26 +152,66 @@ export type SumSource = {
   image?: Rect;
   /** The current body, for estimating its height where nothing measured it */
   text?: string;
+  /** The names of the Sections with one child each it is in (SecPlan pass), shown small above its title */
+  kick?: string;
+  /** A header above a Section's frame (SecPlan head): level 1 or deeper, the overview lines it shows at most (0: title only) */
+  head?: { frame: Rect; level: 1 | 2; lines: 0 | 1 | 2; depth: number };
+  /** The direct cards of a Section with child Sections, summarized as one */
+  group?: true;
 };
 export type SumInput = { items: SumSource[]; keep: Rect[] };
 
 /**
- * What a board summarizes: its top-level, open Sections (a nested Section's cards belong to its top Section's summary) and the
- * cards in no Section, except sub-board frames, Marks and Free Text (unsummarized; the frames and Free Text stay, as obstacles:
- * keep). rect = a placed card's box, frames = the Sections' frames
+ * What a board summarizes (sectionPlan): its innermost open Sections (with the cards of their collapsed ones), a header for each
+ * Section with child Sections and one item for its direct cards, and the cards in no Section, except sub-board frames, Marks and
+ * Free Text (unsummarized; the frames and Free Text stay, as obstacles: keep). rect = a placed card's box, frames = the
+ * Sections' frames
  */
 export function summarySources(b: Board, rect: (id: string) => Rect | undefined, frames: Map<string, Rect>): SumInput {
   const items: SumSource[] = [],
     keep: Rect[] = [];
-  for (const s of b.sections) {
-    const f = frames.get(s.id);
-    if (s.parent || s.collapsed || !f) continue;
+  for (const [id, p] of sectionPlan(b)) {
+    const s = b.sections.find((x) => x.id === id)!,
+      f = frames.get(id);
+    if (!f || p.role === "pass") continue;
+    const kick = p.kick ? { kick: p.kick } : {};
+    if (p.role === "leaf") {
+      items.push({
+        key: secKey(id),
+        box: { ...f },
+        own: { x: f.x, y: f.y - SUMMARY.strip, w: f.w, h: f.h + SUMMARY.strip },
+        title: s.title,
+        text: s.summary?.text,
+        ...kick,
+      });
+      continue;
+    }
     items.push({
-      key: secKey(s.id),
-      box: { ...f },
-      own: { x: f.x, y: f.y - SUMMARY.strip, w: f.w, h: f.h + SUMMARY.strip },
+      key: secKey(id),
+      box: { x: f.x, y: f.y, w: f.w, h: 0 },
+      own: { x: f.x, y: f.y, w: f.w, h: 0 },
       title: s.title,
-      text: s.summary?.text,
+      text: p.lines ? s.summary?.text : undefined,
+      head: { frame: { ...f }, level: p.depth === 1 ? 1 : 2, lines: p.lines, depth: p.depth },
+      ...kick,
+    });
+    const rs = p.direct.map((c) => rect(c.id)).filter((r): r is Rect => !!r);
+    if (!rs.length) continue;
+    const x0 = Math.min(...rs.map((r) => r.x)),
+      y0 = Math.min(...rs.map((r) => r.y));
+    const g = {
+      x: x0,
+      y: y0,
+      w: Math.max(...rs.map((r) => r.x + r.w)) - x0,
+      h: Math.max(...rs.map((r) => r.y + r.h)) - y0,
+    };
+    items.push({
+      key: ownKey(id),
+      box: g,
+      own: { ...g },
+      title: s.directSummary?.title ?? "",
+      text: s.directSummary?.text,
+      group: true,
     });
   }
   for (const c of b.cards) {
@@ -156,8 +259,14 @@ export function summaryMinZoom(view: { w: number; h: number }, content: Rect | n
   return Math.min(SUMMARY.zoomCeil, Math.max(SUMMARY.zoomFloor, fit / SUMMARY.fitShrink));
 }
 
-/** A column: its extent, the title block height of its row, chars per body line and the body lines its whole extent can hold */
-export type SumCol = Rect & { key: SumKey; hd: number; full: number } & Pick<SumSource, "title" | "code" | "image">;
+/** A column: its extent, the title block height of its row, chars per body line and the body lines its whole extent can hold. A
+ *  header's (head) extent ends above its frame */
+export type SumCol = Rect & { key: SumKey; hd: number; full: number } & Pick<
+    SumSource,
+    "title" | "code" | "image" | "kick" | "group"
+  > & {
+    head?: { level: 1 | 2; lines: 0 | 1 | 2 };
+  };
 export type SumLayout = { S: number; P: number; cut: number; med: number; cols: SumCol[] };
 /** Heights read from the page for a column (title block, body), when it has been drawn at its width */
 export type SumMeasured = Map<string, { hd: number; tx: number }>;
@@ -173,10 +282,25 @@ const ems = (t: string) => {
   return n;
 };
 const linesOf = (t: string, em: number, w: number) => Math.max(1, Math.ceil((ems(t) * em) / Math.max(1, w)));
-/** Height of a title block drawn nowhere yet (0.8·S bold, line height 1.3; a code card: name line and file:line) */
+/** A header's title size, the space under its rule and the rule (in S; Summaries.tsx draws them the same: the demo's .col.h1 / .h2) */
+const HEAD = {
+  1: { font: 1.12, pad: 0.16, rule: 0.045, gap: 1.12 * 0.32 },
+  2: { font: 0.92, pad: 0.12, rule: 0.03, gap: 0.92 * 0.3 },
+} as const;
+/** The kick line above a title (0.56·S, line height 1.3, 0.2 em under it) */
+const kickH = (it: SumSource, S: number) => (it.kick ? Math.ceil(S * 0.56 * 1.3 + S * 0.56 * 0.2) : 0);
+/** Space between the title block and the body */
+const titleGap = (it: SumSource, S: number) => (it.head ? HEAD[it.head.level].gap : 0.3) * S;
+/** Height of a title block drawn nowhere yet (0.8·S bold, line height 1.3; a code card: name line and file:line; a header: its
+ *  title and rule), with its kick line */
 function titleH(it: SumSource, w: number, S: number) {
   if (it.code) return Math.ceil(S * 0.7 * 1.3) + (it.code.at ? Math.ceil(S * 0.6 * 1.4) : 0);
-  return Math.ceil(linesOf(`■ ${it.title}`, S * 0.8, w) * S * 0.8 * 1.3);
+  if (it.head) {
+    const h = HEAD[it.head.level],
+      f = S * h.font;
+    return kickH(it, S) + Math.ceil(linesOf(it.title, f, w) * f * 1.3 + f * h.pad + Math.max(1, f * h.rule));
+  }
+  return kickH(it, S) + Math.ceil(linesOf(`■ ${it.title}`, S * 0.8, w) * S * 0.8 * 1.3);
 }
 const textH = (t: string | undefined, w: number, S: number) =>
   t ? linesOf(t.replace(/\*\*/g, ""), S, w) * S * SUMMARY.lh : 0;
@@ -244,10 +368,10 @@ function readingOrder(items: SumSource[]) {
  * the last visible lines when it is taller, and shows it all over its neighbours while it is hovered)
  */
 export function layoutSummaries(input: SumInput, measured?: SumMeasured): SumLayout {
-  const src = input.items.map((it) => ({ ...it, box: { ...it.box } }));
+  const src = input.items.filter((it) => !it.head).map((it) => ({ ...it, box: { ...it.box } }));
   alignAnchors(src);
   const items = readingOrder(src);
-  const keep = input.keep;
+  let keep = input.keep;
   // the widths a column could get: its source plus the free space to its right (up to 1416), aligned groups at their smallest
   const reach = unify(
     items,
@@ -264,6 +388,15 @@ export function layoutSummaries(input: SumInput, measured?: SumMeasured): SumLay
   const S = summaryFont(med),
     P = Math.round(S / 3),
     cut = summaryCut(S);
+  const heads = placeHeads(
+    input.items.filter((it) => it.head),
+    keep.concat(items.map((x) => x.own)),
+    S,
+    P,
+    measured,
+  );
+  // the other columns stop at the headers: they are obstacles like the cards that stay
+  keep = keep.concat(heads);
   // widths: each column looks right for room as tall as a title and two body lines
   const hd1 = Math.ceil(S * 0.8 * 1.3);
   const hMin = 2 * P + hd1 + 0.3 * S + 2 * S * SUMMARY.lh,
@@ -316,9 +449,57 @@ export function layoutSummaries(input: SumInput, measured?: SumMeasured): SumLay
       title: it.title,
       code: it.code,
       image: it.image,
+      ...(it.kick ? { kick: it.kick } : {}),
+      ...(it.group ? { group: true as const } : {}),
     });
   }
-  return { S, P, cut, med, cols: out };
+  return { S, P, cut, med, cols: out.concat(heads) };
+}
+
+/**
+ * The headers: each above its Section's frame, where the title is at the card level, at most SUMMARY.maxLine S wide, growing
+ * upward to its title and overview lines; a header whose frame holds a deeper header's sits on top of that one (the deepest at
+ * the bottom, read like a breadcrumb). Never above the room it has: obstacles above it (keep: cards that stay, the other
+ * sources) stop it GAP short, and a taller text fades there like any column
+ */
+function placeHeads(heads: SumSource[], obs: Rect[], S: number, P: number, measured?: SumMeasured): SumCol[] {
+  const inside = (a: Rect, f: Rect) =>
+    a.x >= f.x - 1 && a.y >= f.y - 1 && a.x + a.w <= f.x + f.w + 1 && a.y + a.h <= f.y + f.h + 1;
+  const xov = (a: Rect, x: number, w: number) => a.x < x + w && a.x + a.w > x;
+  const placed: { col: SumCol; frame: Rect }[] = [];
+  for (const it of [...heads].sort((a, b) => b.head!.depth - a.head!.depth)) {
+    const { frame, lines, level } = it.head!;
+    const w = Math.min(frame.w, SUMMARY.maxLine * S + 2 * P);
+    const hd = measured?.get(it.key)?.hd ?? titleH(it, w - 2 * P, S);
+    const tx = lines ? (measured?.get(it.key)?.tx ?? textH(it.text, w - 2 * P, S)) : 0;
+    const body = (n: number) => (n ? titleGap(it, S) + n : 0);
+    const full = Math.ceil(2 * P + hd + body(tx));
+    const most = 2 * P + hd + body(lines * S * SUMMARY.lh);
+    let bottom = frame.y - SUMMARY.headGap;
+    for (const o of placed)
+      if (inside(o.frame, frame) && xov(o.col, frame.x, w)) bottom = Math.min(bottom, o.col.y - SUMMARY.headGap);
+    let top = -Infinity;
+    for (const o of obs.concat(placed.filter((o) => !inside(o.frame, frame)).map((o) => o.col)))
+      if (xov(o, frame.x, w) && o.y + o.h <= bottom + 1 && !inside(o, frame))
+        top = Math.max(top, o.y + o.h + SUMMARY.gap);
+    const h = Math.max(0, Math.floor(Math.min(full, most, bottom - top)));
+    placed.push({
+      frame,
+      col: {
+        x: frame.x,
+        y: bottom - h,
+        w,
+        h,
+        key: it.key,
+        hd,
+        full,
+        title: it.title,
+        head: { level, lines },
+        ...(it.kick ? { kick: it.kick } : {}),
+      },
+    });
+  }
+  return placed.map((p) => p.col);
 }
 
 const fnv = (s: string) => {
@@ -342,49 +523,86 @@ function membersOf(b: Board, sec: string): Card[] {
     return !!h && ids.has(h) && !unsummarized(c);
   });
 }
-/**
- * What a summary was written from, as far as regenerating goes: a Section's card count and card titles, a card's title.
- * undefined = the board has no such item
- */
-export function summarySig(b: Board, key: string): string | undefined {
+/** What a header's overview is written from: each child Section's title and summary (a child with children of its own: theirs,
+ *  and its direct cards' summary, in its place) */
+function kidsOf(b: Board, plan: Map<string, SecPlan>, id: string): { title: string; text: string }[] {
+  return (plan.get(id)?.kids ?? []).map((k) => {
+    const p = plan.get(k.id);
+    if (!p || p.role === "leaf") return { title: k.title, text: k.summary?.text ?? "" };
+    const parts = kidsOf(b, plan, k.id).map((x) => `${x.title}：${x.text}`);
+    if (k.directSummary?.text) parts.unshift(k.directSummary.text);
+    return { title: k.title, text: parts.join("\n") };
+  });
+}
+/** What an item is written from: its Section's plan (a key the board has no item for: undefined) */
+function itemOf(b: Board, key: string) {
   const k = parseKey(key);
-  if (k.sec) {
-    if (!b.sections.some((s) => s.id === k.sec)) return undefined;
-    const ts = membersOf(b, k.sec).map((c) => cardTitle(c, b));
-    return fnv(`${ts.length}\n${ts.sort().join("\n")}`);
+  if (k.card) {
+    const c = b.cards.find((x) => x.id === k.card);
+    return c && b.place[c.id] ? { kind: "card" as const, cards: [c] } : undefined;
   }
-  const c = k.card ? b.cards.find((x) => x.id === k.card) : undefined;
-  return c && b.place[c.id] ? fnv(cardTitle(c, b)) : undefined;
+  const id = k.sec ?? k.own;
+  const sec = id ? b.sections.find((s) => s.id === id) : undefined;
+  const plan = sec && sectionPlan(b);
+  const p = plan?.get(sec!.id);
+  if (!sec || !plan || !p) return undefined;
+  if (k.own) return p.role === "head" && p.direct.length ? { kind: "own" as const, sec, cards: p.direct } : undefined;
+  if (p.role === "leaf") return { kind: "leaf" as const, sec, cards: membersOf(b, sec.id) };
+  if (p.role === "head" && p.lines)
+    return { kind: "head" as const, sec, cards: p.direct, kids: kidsOf(b, plan, sec.id) };
+  return undefined;
 }
 /**
- * A hash of everything an item's prompt is written from: a Section's title and cards (with its nested Sections'), each one's
- * id, title and content; a card's own; and the user's edit pairs. Never the layout: moving cards asks nothing. Stored with the
- * summary (Summary.input): the same hash = nothing to ask the AI. undefined = no such item
+ * What a summary was written from, as far as regenerating goes: a Section's card count and card titles, a card's title; a
+ * header's overview: its children's titles and summaries too. undefined = the board has no such item
+ */
+export function summarySig(b: Board, key: string): string | undefined {
+  const it = itemOf(b, key);
+  if (!it) return undefined;
+  if (it.kind === "card") return fnv(cardTitle(it.cards[0], b));
+  const ts = it.cards.map((c) => cardTitle(c, b));
+  const kids = it.kind === "head" ? it.kids.map((x) => `${x.title}\u0001${x.text}`).join("\u0002") : "";
+  return fnv(`${ts.length}\n${ts.sort().join("\n")}${kids ? `\u0003${kids}` : ""}`);
+}
+/**
+ * A hash of the content an item's summary is written from: a Section's title and cards (with its nested Sections'), each one's
+ * id, title and content; a card's own. Never the layout (moving cards asks nothing) and never the user's edit pairs: they steer a
+ * rewrite asked for another reason, and an edit alone leaves its summary fresh. Stored with the summary (Summary.input): the
+ * same hash = nothing to ask the AI. undefined = no such item
  */
 export function summaryInput(b: Board, key: string): string | undefined {
-  const k = parseKey(key);
-  const cards = k.sec
-    ? b.sections.some((s) => s.id === k.sec)
-      ? membersOf(b, k.sec)
-      : undefined
-    : b.cards.filter((c) => c.id === k.card && b.place[c.id]);
-  if (!cards || (!k.sec && !cards.length)) return undefined;
-  const head = k.sec ? (b.sections.find((s) => s.id === k.sec)?.title ?? "") : "";
-  const pairs = (summaryOf(b, key)?.pairs ?? []).map((p) => `${p.ai}\u0001${p.user}`).join("\u0002");
+  const it = itemOf(b, key);
+  if (!it) return undefined;
+  const head = it.kind === "card" ? "" : `${it.kind === "own" ? "own\u0001" : ""}${it.sec.title}`;
+  const kids = it.kind === "head" ? it.kids.map((x) => `${x.title}\u0001${x.text}`).join("\u0002") : "";
   return fnv(
-    `${head}\u0003${cards
+    `${head}\u0003${it.cards
       .map((c) => `${c.id}\u0001${cardTitle(c, b)}\u0001${cardText(c)}`)
       .sort()
-      .join("\u0002")}\u0003${pairs}`,
+      .join("\u0002")}${kids ? `\u0003${kids}` : ""}`,
   );
 }
 export function summaryOf(b: Board, key: string): Summary | undefined {
   const k = parseKey(key);
-  return k.sec ? b.sections.find((s) => s.id === k.sec)?.summary : k.card ? b.place[k.card]?.summary : undefined;
+  return k.sec
+    ? b.sections.find((s) => s.id === k.sec)?.summary
+    : k.own
+      ? b.sections.find((s) => s.id === k.own)?.directSummary
+      : k.card
+        ? b.place[k.card]?.summary
+        : undefined;
 }
-/** Write (or clear) an item's summary: one field of its Section or of the card's place. false = no such item */
+/** Write (or clear) an item's summary: one field of its Section (own: Section.directSummary) or of the card's place. false = no
+ *  such item */
 export function putSummary(b: Board, key: string, s: Summary | undefined): boolean {
   const k = parseKey(key);
+  if (k.own) {
+    const o = b.sections.find((x) => x.id === k.own);
+    if (!o) return false;
+    if (s) o.directSummary = s;
+    else delete o.directSummary;
+    return true;
+  }
   const o: Section | Place | undefined = k.sec
     ? b.sections.find((x) => x.id === k.sec)
     : k.card
@@ -410,6 +628,11 @@ export type SumRequest = {
   card?: "note" | "code" | "image" | "other";
   /** The card has no title of its own (untitled): the AI also writes a short one, about 12 chars or 6 English words */
   untitled?: true;
+  /** The cards placed directly in a Section with child Sections (title = that Section's), summarized as one: the AI writes their
+   *  short title too */
+  group?: true;
+  /** A header's one-sentence overview: the child Sections' titles and summaries (cards = the Section's direct cards) */
+  overview?: { title: string; text: string }[];
   cards: { title: string; text: string }[];
   lang: "zh" | "en";
   sig: string;
@@ -452,22 +675,29 @@ export function boardLang(text: string): "zh" | "en" {
 /** The request for an item, sized by its column in layout. undefined = no such item or column */
 export function summaryRequest(b: Board, key: SumKey, layout: SumLayout): SumRequest | undefined {
   const col = layout.cols.find((c) => c.key === key),
-    sig = summarySig(b, key);
-  if (!col || sig === undefined) return undefined;
-  const k = parseKey(key);
-  const cards = k.sec ? membersOf(b, k.sec) : b.cards.filter((c) => c.id === k.card);
+    sig = summarySig(b, key),
+    it = itemOf(b, key);
+  if (!col || sig === undefined || !it) return undefined;
+  const cards = it.cards;
   let left = ALL_CHARS;
   const material = cards.map((c) => {
     const t = cardText(c).slice(0, Math.max(0, left));
     left -= t.length;
     return { title: untitled(c) ? "（无标题）" : cardTitle(c, b), text: t };
   });
-  const sec = k.sec ? b.sections.find((s) => s.id === k.sec) : undefined;
+  const sec = it.kind === "card" ? undefined : it.sec;
+  const kids = it.kind === "head" ? it.kids : undefined;
   const one = cards[0];
-  const all = [sec?.title ?? "", ...material.map((m) => `${m.title}\n${m.text}`)].join("\n");
+  const all = [
+    sec?.title ?? "",
+    ...(kids ?? []).map((x) => `${x.title}\n${x.text}`),
+    ...material.map((m) => `${m.title}\n${m.text}`),
+  ].join("\n");
   return {
     key,
     title: sec ? sec.title : one && !untitled(one) ? cardTitle(one, b) : "（无标题）",
+    ...(it.kind === "own" ? { group: true as const } : {}),
+    ...(kids ? { overview: kids } : {}),
     ...(sec
       ? {}
       : {
@@ -489,16 +719,19 @@ const EXAMPLE_CHARS = 240;
  */
 export function summaryExamples(boards: Board[], n: number, but?: { board: string; key: string }): SumExample[] {
   const all: (SumExample & { at: number })[] = [];
-  for (const b of boards)
+  for (const b of boards) {
+    const plan = sectionPlan(b);
     for (const s of b.sections) {
       const p = s.summary?.pairs?.[0];
-      if (!p || (but && but.board === b.id && but.key === secKey(s.id))) continue;
+      // a Section's own summary only: an overview is written another way
+      if (!p || plan.get(s.id)?.role !== "leaf" || (but && but.board === b.id && but.key === secKey(s.id))) continue;
       const content = membersOf(b, s.id)
         .map((c) => `${cardTitle(c, b)}：${cardText(c).replace(/\s+/g, " ").trim()}`)
         .join(" ")
         .slice(0, EXAMPLE_CHARS);
       all.push({ title: s.title, content, summary: p.user, at: p.at });
     }
+  }
   return all
     .sort((a, b) => b.at - a.at)
     .slice(0, n)
@@ -529,6 +762,6 @@ export function readSummaryReply(raw: string, r: SumRequest, at: number): Summar
   if (!text) return undefined;
   const s: Summary = { text, at, sig: r.sig, input: r.input };
   if (r.pairs?.length) s.pairs = r.pairs;
-  if (title?.trim() && r.card && r.card !== "code") s.title = title.trim();
+  if (title?.trim() && ((r.card && r.card !== "code") || r.group)) s.title = title.trim();
   return s;
 }

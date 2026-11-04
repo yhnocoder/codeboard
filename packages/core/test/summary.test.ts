@@ -27,6 +27,9 @@ import {
   summaryOf,
   summaryExamples,
   untitled,
+  sectionPlan,
+  sectionFrames,
+  summaryKeys,
 } from "../src";
 import { editSummary, type CommandEnv } from "../src/commands";
 
@@ -130,7 +133,8 @@ describe("summary columns", () => {
   });
 });
 
-/** A board: Section s (top level, nested t inside) with two Notes, a loose Note, a Mark, a Free Text and a sub-board frame */
+/** A board: Section s (top level, a collapsed Section t inside: s is still innermost, with t's cards) with two Notes, a loose
+ *  Note, a Mark, a Free Text and a sub-board frame */
 function board(): Board {
   const b = emptyBoard("b", "t");
   const note = (id: string, md: string, look: NoteCard["look"] = "note"): NoteCard => ({ id, kind: "note", md, look });
@@ -138,7 +142,7 @@ function board(): Board {
   b.cards.push(note("n3", "# 松散的卡\n一句话"), note("m", "看这里", "mark"));
   b.cards.push({ id: "f", kind: "board", board: "sub" }, note("ft", "随手写的一行", "freetext"));
   b.sections.push({ id: "s", title: "异构并行", x: 0, y: 0, w: 900, h: 500 });
-  b.sections.push({ id: "t", title: "子", x: 20, y: 20, w: 300, h: 300, parent: "s" });
+  b.sections.push({ id: "t", title: "子", x: 20, y: 20, w: 300, h: 300, parent: "s", collapsed: true });
   b.place = {
     n1: { x: 40, y: 60, w: 300, section: "s" },
     n2: { x: 400, y: 60, w: 300, section: "t" },
@@ -155,7 +159,7 @@ const rects = (b: Board) => (id: string) => {
 };
 
 describe("what a board summarizes", () => {
-  it("summarizes top-level Sections and loose cards, not nested Sections, sub-board frames, Marks or Free Text", () => {
+  it("summarizes innermost open Sections and loose cards, not collapsed Sections, sub-board frames, Marks or Free Text", () => {
     const b = board();
     const frames = new Map(b.sections.map((s) => [s.id, { x: s.x, y: s.y, w: s.w, h: s.h }]));
     const input = summarySources(b, rects(b), frames);
@@ -335,5 +339,147 @@ describe("the user's edits of a summary", () => {
     expect(ex[0].title).toBe("异构并行");
     expect(ex[0].content).toContain("吞吐");
     expect(summaryExamples([b], 4, { board: "b", key: "sec:s" })).toEqual([]);
+  });
+});
+
+/**
+ * Nested Sections (option G, feedback/demo/nested-sections.html): P holds Q (which holds L1 and L2), A, B, L3 and two cards of its
+ * own (d1, d2); O1 holds only O2, which holds only C; a loose card z sits above P
+ */
+function nested(): { b: Board; frames: Map<string, Rect>; rect: (id: string) => Rect | undefined } {
+  const b = emptyBoard("bn", "计算架构");
+  const note = (id: string, title: string): NoteCard => ({
+    id,
+    kind: "note",
+    md: `# ${title}\n正文 ${id}`,
+    look: "note",
+  });
+  const at: Record<string, [string | undefined, number, number, number, number]> = {
+    l1: ["L1", 100, 100, 400, 300],
+    l2: ["L2", 550, 100, 400, 300],
+    l3: ["L3", 1100, 100, 400, 300],
+    d1: ["P", 1600, 100, 300, 150],
+    d2: ["P", 1600, 300, 300, 150],
+    a1: ["A", 100, 800, 400, 300],
+    a2: ["A", 550, 800, 400, 300],
+    b1: ["B", 1100, 800, 400, 500],
+    c1: ["C", 3000, 100, 400, 300],
+    z: [undefined, 100, -900, 500, 200],
+  };
+  for (const [id, [s, x, y, w]] of Object.entries(at)) {
+    b.cards.push(note(id, `卡 ${id}`));
+    b.place[id] = { x, y, w, ...(s ? { section: s } : {}) };
+  }
+  const S = (id: string, parent?: string) => ({
+    id,
+    title: `节 ${id}`,
+    x: 0,
+    y: 0,
+    w: 0,
+    h: 0,
+    ...(parent ? { parent } : {}),
+  });
+  b.sections.push(S("P"), S("Q", "P"), S("L1", "Q"), S("L2", "Q"), S("L3", "P"), S("A", "P"), S("B", "P"));
+  b.sections.push(S("O1"), S("O2", "O1"), S("C", "O2"));
+  const rs = new Map(Object.entries(at).map(([id, [, x, y, w, h]]) => [id, { x, y, w, h }]));
+  // a frame is its stored box grown to what it holds: store a point inside it (a card's corner)
+  const first = (sid: string): string =>
+    Object.keys(at).find((id) => at[id][0] === sid) ?? first(b.sections.find((x) => x.parent === sid)!.id);
+  for (const s of b.sections) Object.assign(s, { x: rs.get(first(s.id))!.x, y: rs.get(first(s.id))!.y });
+  return { b, frames: sectionFrames(b, rs), rect: (id) => rs.get(id) };
+}
+const overlap = (a: Rect, c: Rect) => a.x < c.x + c.w && c.x < a.x + a.w && a.y < c.y + c.h && c.y < a.y + a.h;
+
+describe("nested Sections", () => {
+  it("plans innermost Sections, headers (overview on the outermost only), one-child Sections as a kick line, direct cards", () => {
+    const { b } = nested();
+    const plan = sectionPlan(b);
+    const role = (id: string) => {
+      const p = plan.get(id)!;
+      return [p.role, p.lines, p.kick ?? ""];
+    };
+    expect(role("P")).toEqual(["head", 2, ""]);
+    expect(role("Q")).toEqual(["head", 0, ""]);
+    expect(["L1", "L2", "L3", "A", "B"].map((id) => plan.get(id)!.role)).toEqual(Array(5).fill("leaf"));
+    expect(role("O1")).toEqual(["pass", 0, ""]);
+    expect(role("O2")).toEqual(["pass", 0, "节 O1"]);
+    expect(role("C")).toEqual(["leaf", 0, "节 O1 › 节 O2"]);
+    expect(plan.get("P")!.direct.map((c) => c.id)).toEqual(["d1", "d2"]);
+    expect(summaryKeys(b).sort()).toEqual(
+      ["card:z", "own:P", "sec:A", "sec:B", "sec:C", "sec:L1", "sec:L2", "sec:L3", "sec:P"].sort(),
+    );
+  });
+  it("a depth-2 header with one line: an outer Section whose parent has one child", () => {
+    const b = emptyBoard("b2", "t");
+    b.sections.push({ id: "T", title: "T", x: 0, y: 0, w: 0, h: 0 });
+    b.sections.push({ id: "M", title: "M", x: 0, y: 0, w: 0, h: 0, parent: "T" });
+    b.sections.push({ id: "X", title: "X", x: 0, y: 0, w: 0, h: 0, parent: "M" });
+    b.sections.push({ id: "Y", title: "Y", x: 0, y: 0, w: 0, h: 0, parent: "M" });
+    const p = sectionPlan(b);
+    expect([p.get("T")!.role, p.get("M")!.role, p.get("M")!.lines, p.get("M")!.kick]).toEqual(["pass", "head", 1, "T"]);
+  });
+  it("lays headers above their frames, stacked deepest at the bottom, the direct cards as one column, nothing overlapping", () => {
+    const { b, frames, rect } = nested();
+    const l = layoutSummaries(summarySources(b, rect, frames));
+    const P = col(l, "sec:P"),
+      Q = col(l, "sec:Q"),
+      own = col(l, "own:P"),
+      C = col(l, "sec:C"),
+      z = col(l, "card:z");
+    const fP = frames.get("P")!,
+      fQ = frames.get("Q")!;
+    expect(P.head).toEqual({ level: 1, lines: 2 });
+    expect(Q.head).toEqual({ level: 2, lines: 0 });
+    // Q's header ends just above Q's frame; P's sits on top of Q's (Q's frame is P's top row)
+    expect(Q.y + Q.h).toBe(fQ.y - SUMMARY.headGap);
+    expect(Q.y).toBeLessThan(fP.y);
+    expect(P.y + P.h).toBe(Q.y - SUMMARY.headGap);
+    expect([P.x, P.w]).toEqual([fP.x, Math.min(fP.w, SUMMARY.maxLine * l.S + 2 * l.P)]);
+    // the direct cards: one column at their top-left; the one-child chain: the leaf's column with the kick
+    expect([own.x, own.y, own.group]).toEqual([1600, 100, true]);
+    expect([C.kick, C.x, C.y]).toEqual(["节 O1 › 节 O2", frames.get("C")!.x, frames.get("C")!.y]);
+    expect(l.cols.some((c) => c.key === "sec:O1" || c.key === "sec:O2")).toBe(false);
+    // the column above the header runs down to it
+    expect(z.y + z.h).toBeLessThanOrEqual(P.y - SUMMARY.gap);
+    expect(z.h).toBeGreaterThan(0);
+    for (const a of l.cols)
+      for (const c of l.cols) if (a !== c) expect(overlap(a, c), `${a.key} / ${c.key}`).toBe(false);
+  });
+  it("writes the overview from the children's titles and summaries and the direct cards; the direct cards' summary apart", () => {
+    const { b, frames, rect } = nested();
+    const l = layoutSummaries(summarySources(b, rect, frames));
+    putSummary(b, "sec:A", { text: "A 的**摘要**", at: 1, sig: summarySig(b, "sec:A")! });
+    const r = summaryRequest(b, "sec:P", l)!;
+    expect(r.overview?.map((k) => k.title)).toEqual(["节 Q", "节 L3", "节 A", "节 B"]);
+    expect(r.overview?.find((k) => k.title === "节 A")?.text).toBe("A 的**摘要**");
+    expect(r.cards.map((c) => c.title)).toEqual(["卡 d1", "卡 d2"]);
+    // a header under another header writes nothing
+    expect(summaryRequest(b, "sec:Q", l)).toBeUndefined();
+    expect(summarySig(b, "sec:Q")).toBeUndefined();
+    const g = summaryRequest(b, "own:P", l)!;
+    expect([g.group, g.title, g.cards.map((c) => c.title)]).toEqual([true, "节 P", ["卡 d1", "卡 d2"]]);
+    // its answer keeps the AI's short title, stored on the Section, apart from the overview
+    const s = readSummaryReply('{"title": "同步层次", "text": "barrier 分**三层**。"}', g, 3)!;
+    expect(s.title).toBe("同步层次");
+    putSummary(b, "own:P", s);
+    putSummary(b, "sec:P", { text: "概述", at: 3, sig: summarySig(b, "sec:P")!, input: summaryInput(b, "sec:P") });
+    const P = b.sections.find((x) => x.id === "P")!;
+    expect([P.directSummary?.text, P.summary?.text]).toEqual(["barrier 分**三层**。", "概述"]);
+    expect(summaryOf(b, "own:P")?.title).toBe("同步层次");
+    expect(summarySources(b, rect, frames).items.find((i) => i.key === "own:P")?.title).toBe("同步层次");
+  });
+  it("hashes an overview over its children's summaries and its direct cards; moving cards changes nothing", () => {
+    const { b } = nested();
+    const h0 = summaryInput(b, "sec:P"),
+      g0 = summaryInput(b, "own:P"),
+      s0 = summarySig(b, "sec:P");
+    b.place.d1.x += 80;
+    expect([summaryInput(b, "sec:P"), summaryInput(b, "own:P")]).toEqual([h0, g0]);
+    putSummary(b, "sec:B", { text: "B 写好了", at: 1, sig: summarySig(b, "sec:B")! });
+    expect(summaryInput(b, "sec:P")).not.toBe(h0);
+    expect(summarySig(b, "sec:P")).not.toBe(s0);
+    expect(summaryInput(b, "own:P")).toBe(g0);
+    (b.cards.find((c) => c.id === "d2") as NoteCard).md = "# 换了标题\n正文";
+    expect(summaryInput(b, "own:P")).not.toBe(g0);
   });
 });
