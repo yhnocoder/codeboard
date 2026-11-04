@@ -76,8 +76,10 @@ export class BoardsTree implements vscode.TreeDataProvider<BNode>, vscode.TreeDr
       m.stale ? new vscode.ThemeColor("charts.orange") : undefined,
     );
     // 印章的字（别的白板引用它时画的那几个字）在说明文字最前面：侧栏的行画不了颜色，只放字
-    const mark = sealOf(m).text;
-    it.description = `${mark} · ${m.cards}${m.stale ? ` ● ${m.stale}` : ""}`;
+    // 和名字一样的（Scan、pmpp）不再写一遍
+    const mark = sealOf(m).text,
+      shown = mark.toLowerCase() === m.name.trim().toLowerCase() ? "" : `${mark} · `;
+    it.description = `${shown}${m.cards}${m.stale ? ` ● ${m.stale}` : ""}`;
     it.tooltip = new vscode.MarkdownString(
       [
         `**${m.name}**`,
