@@ -5,10 +5,12 @@
 //   summaryWrittenAndEdited      on the real host with a fake DeepSeek: opening the board asks nothing, ↻ writes one item (as
 //                                long as its content asks, no layout numbers); a click edits a body in place (Enter saves, marked edited, kept as a pair
 //                                with the AI text it replaced), ↻ rewrites it following that edit and keeps the pair, ⌘Z brings
-//                                the hand edit back
+//                                the hand edit back; a Note with no heading shows nothing until written, then the AI's short
+//                                title, titles and bodies rendered inline (refs by name, highlights) with no syntax showing
 //   summaryNoKey                 without a DeepSeek key nothing is written: Section titles with empty bodies, and ↻ says a key is needed
 //   summaryOverflowFades         two loose cards stacked close, each with a long summary: at rest the columns never overlap and
-//                                the upper one fades out over its last lines; hovered it shows in full over the lower one, raised
+//                                the upper one fades out over its last lines; hovered it shows in full over the lower one, raised;
+//                                a title past two lines ends in an ellipsis and shows in full the same way
 //   summaryFramesOnlyBoard       a board of sub-board frames, Free Text headings and Marks, nothing to summarize: zoomed out past the
 //                                cut the Marks hide all the same, and the frames and Free Text look as they do at 100 %, only scaled
 import {
@@ -118,7 +120,7 @@ test("summaryLevelFade", async () => {
   );
   const s0 = await h.page.locator('.sumcol[data-sum="sec:s0"]').evaluate((e) => {
     const st = (e as HTMLElement).style;
-    return { x: parseFloat(st.left), y: parseFloat(st.top), b: e.querySelector(".sumtx b")?.textContent };
+    return { x: parseFloat(st.left), y: parseFloat(st.top), b: e.querySelector(".sumtx :is(b, strong)")?.textContent };
   });
   check(
     "summaryLevelFade a Section's column starts at its frame's top-left, with its key phrase bold",
@@ -164,11 +166,21 @@ const sentOf = <T extends BoardToHost["type"]>(h: Host, t: T) =>
 const summaryIn = (h: Host, id: string) => h.board().sections.find((s) => s.id === id)?.summary;
 
 test("summaryWrittenAndEdited", async () => {
-  const run = await hostBoards([bigBoard("bW", 0.2, false)], {
+  const b = bigBoard("bW", 0.2, false);
+  // a Note with no heading: its first paragraph (a [[ref]], a ==highlight==) is never its title
+  put(b, note("bare", "这一段没有标题，讲 [[异构并行计算 1]] 的 ==合并访存== 和 **吞吐**。"), 5000, 1800, 600);
+  const run = await hostBoards([b], {
     page: { light: true, w: 1280, h: 800, settings: { theme: "warm-ink" } },
   });
   let n = 0;
-  const { calls } = await fakeDeepseek(run, () => `第 ${++n} 版：GPU 押**吞吐量**。`);
+  const { calls } = await fakeDeepseek(run, (body) =>
+    (body.messages[1].content as string).includes("短标题")
+      ? JSON.stringify({
+          title: "==访存== 与 [[异构并行计算 1]]",
+          text: "**合并访存**靠 ==连续地址==，见 [[异构并行计算 1]]。",
+        })
+      : `第 ${++n} 版：GPU 押**吞吐量**。`,
+  );
   const h = await run.open("bW");
   await idle(h);
   check("summaryWrittenAndEdited opening a board asks the AI nothing by itself", calls.length === 0, calls.length);
@@ -180,7 +192,7 @@ test("summaryWrittenAndEdited", async () => {
   };
   await redo("sec:s1");
   await redo("card:loose");
-  await until(h, "they show", async () => (await h.page.locator(".sumtx b").count()) === 2);
+  await until(h, "they show", async () => (await h.page.locator(".sumtx :is(b, strong)").count()) === 2);
   const asked = calls.map((c) => c.body.messages[1].content as string);
   check(
     "summaryWrittenAndEdited ↻ writes one item, its length following its content (no layout numbers asked)",
@@ -212,6 +224,39 @@ test("summaryWrittenAndEdited", async () => {
   await until(h, "undo brings the hand edit back", () => summaryIn(h, "s1")?.text === "手改的摘要");
   await idle(h);
   check("summaryWrittenAndEdited nothing else was asked", calls.length === 3, calls.length);
+  // the Note with no heading: nothing at all until written (not its first paragraph as a title), then the AI's short title;
+  // titles and bodies rendered inline (the ref showing its target's name, the highlight marked), no Markdown syntax showing
+  const bare = h.page.locator('.sumcol[data-sum="card:bare"]');
+  const look = () =>
+    bare.evaluate((e) => ({
+      opacity: getComputedStyle(e).opacity,
+      title: e.querySelector(".sumt")?.textContent ?? "",
+      text: (e as HTMLElement).innerText,
+      refs: [...e.querySelectorAll(".md-ref")].map((r) => r.textContent),
+      marks: e.querySelectorAll("mark").length,
+      bold: e.querySelectorAll(".sumtx :is(b, strong)").length,
+    }));
+  const before = await look();
+  check(
+    "summaryWrittenAndEdited a Note with no heading shows nothing until its summary is written, never its first paragraph",
+    before.opacity === "0" && before.title === "" && !before.text.includes("这一段"),
+    before,
+  );
+  await redo("card:bare");
+  await until(h, "the untitled Note's summary shows", async () => (await look()).bold === 1);
+  await h.page.mouse.move(5, 5);
+  const after = await look();
+  check(
+    "summaryWrittenAndEdited the AI's short title and the body show rendered: the ref by its target's name, the highlight marked, no syntax",
+    after.opacity === "1" &&
+      after.title.includes("访存") &&
+      after.refs.length === 2 &&
+      after.refs.every((r) => r?.includes("异构并行计算 1")) &&
+      after.marks === 2 &&
+      !/\[\[|\]\]|==|\*\*/.test(after.text) &&
+      (calls.at(-1)?.body.messages[1].content as string).includes("不超过 12 个字"),
+    after,
+  );
   await h.close();
 });
 
@@ -315,6 +360,8 @@ test("summaryOverflowFades", async () => {
   put(b, note("a", "# 合并访存：连续地址\n\n同一 warp 访问连续地址。"), 80, 80, 700);
   put(b, note("b", "# 合并访存：对齐方式\n\n起始地址按 128 字节对齐。"), 80, 520, 700);
   put(b, note("far", "# 远处\n\n撑开白板"), 4200, 2600, 700);
+  put(b, note("c", `# ${"共享内存的 bank 冲突与填充".repeat(6)}\n\n短。`), 1200, 80, 600);
+  putSummary(b, "card:c", { text: "短。", at: Date.now(), sig: summarySig(b, "card:c")! });
   for (const k of ["card:a", "card:b"]) putSummary(b, k, { text: long, at: Date.now(), sig: summarySig(b, k)! });
   b.cam = { x: 40, y: 40, z: 0.2 };
   const h = await open({ board: b, w: 1280, h: 800, light: true });
@@ -356,5 +403,27 @@ test("summaryOverflowFades", async () => {
   );
   await h.page.mouse.move(1200, 780);
   await until(h, "it collapses on leave", async () => !(await shown(A)).raised);
+  // a title longer than two lines: two lines and an ellipsis at rest, in full while hovered
+  const C = h.page.locator('.sumcol[data-sum="card:c"]');
+  const title = () =>
+    C.evaluate((e) => {
+      const t = e.querySelector(".sumhdi") as HTMLElement;
+      return {
+        lines: Math.round(t.clientHeight / parseFloat(getComputedStyle(t).lineHeight)),
+        clamp: e.classList.contains("sumclamp"),
+        raised: getComputedStyle(e).zIndex === "2",
+      };
+    });
+  const c0 = await title();
+  await C.locator(".sumhd").hover();
+  await until(h, "the long title shows in full", async () => (await title()).lines > 2);
+  const c1 = await title();
+  check(
+    "summaryOverflowFades a long title is two lines at rest and shows in full, raised, while hovered",
+    c0.lines === 2 && c0.clamp && !c0.raised && c1.raised,
+    { c0, c1 },
+  );
+  await h.page.mouse.move(1200, 780);
+  await until(h, "the title is two lines again", async () => (await title()).lines === 2);
   await h.page.context().close();
 });

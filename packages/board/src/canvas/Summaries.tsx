@@ -6,18 +6,28 @@
 // Click a body to edit it (Enter saves, Esc cancels, ⌘B marks the key phrase); ↻ on hover writes it again.
 // At rest a column shows only the room it has (it never overlaps the next one); a longer text fades out over its last visible
 // lines and shows in full, over its neighbours, while the column is hovered or has the focus: only a clip, a mask, a shadow and
-// the stacking change, nothing is laid out again.
-import { For, Show, createMemo, onCleanup } from "solid-js";
+// the stacking change, nothing is laid out again. A title is at most two lines (an ellipsis) and shows in full the same way.
+// Titles and bodies go through the Markdown inline renderer: [[refs]] show their target's current name, ==marks== and **bold**
+// are styled, no syntax shows. A card with no title of its own shows none until the AI wrote one (core untitled).
+import { For, Show, createEffect, createMemo, createSignal, onCleanup } from "solid-js";
 import { state } from "../state/store";
 import { stillZ } from "../state/camera";
 import { lastDown, observeResize, queueMeasure } from "../state/measure";
 import { summaryFade, summaryLayout, summaryNear, setSummaryHeights } from "../state/summary";
 import { boardLang, summaryOf, summaryPending, type SumCol, type SumKey } from "@codeboard/core";
 import * as A from "../actions";
+import { useMd } from "../md/context";
+import type { Markdown } from "@yhnocoder/markdown";
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
-/** The body's Markdown (only **key phrase**) → HTML, escaped */
+/** The body's Markdown while it is edited (only **key phrase**: what ⌘B makes) → HTML, escaped */
 const html = (t: string) => esc(t).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>");
+/** Shown: the inline Markdown rendered and hydrated (its [[refs]] painted with their targets' current names) */
+function rich(md: Markdown, el: HTMLElement, src: string) {
+  const h = src ? md.renderInline(src) : "";
+  el.innerHTML = h;
+  md.hydrate(el, h);
+}
 /** An edited body → its Markdown: bold (the editor's ⌘B) → **…** */
 function plain(n: Node): string {
   let o = "";
@@ -64,6 +74,10 @@ export function Summaries() {
 
 function Column(p: { col: SumCol }) {
   const key = p.col.key;
+  const md = useMd();
+  /** The title runs past its two lines (shown in full while the column is hovered or focused) */
+  const [clamped, setClamped] = createSignal(false);
+  let col!: HTMLDivElement;
   const sum = () => summaryOf(state.board, key);
   const pending = () => summaryPending(state.board, key);
   const writing = () => A.summaryWriting(key);
@@ -74,7 +88,11 @@ function Column(p: { col: SumCol }) {
   // heights at this width: read in the board's measuring round when the title or body changes size
   const read = () =>
     queueMeasure(hd, () => {
-      const h = { hd: hd.offsetHeight, tx: tx.offsetHeight };
+      // shown in full over its neighbours: not the size it takes in the layout
+      if (col.matches(":hover, :focus-within")) return () => {};
+      const h = { hd: hd.offsetHeight, tx: tx.offsetHeight },
+        cut = !p.col.code && hd.scrollHeight > hd.clientHeight + 1;
+      setClamped(cut);
       return () =>
         setSummaryHeights((m) => {
           const was = m.get(key);
@@ -108,7 +126,7 @@ function Column(p: { col: SumCol }) {
     tx.contentEditable = "false";
     delete tx.dataset.nodrag;
     if (save) A.editSummary(key, t);
-    tx.innerHTML = html(text());
+    rich(md, tx, text());
   };
   const tip = () =>
     writing()
@@ -160,6 +178,7 @@ function Column(p: { col: SumCol }) {
         )}
       </Show>
       <div
+        ref={(el) => (col = el)}
         class="sumcol"
         data-sum={key}
         lang={boardLang(`${c().title}${text()}`) === "zh" ? "zh-CN" : "en"}
@@ -169,6 +188,9 @@ function Column(p: { col: SumCol }) {
           edited: !!sum()?.edited,
           gen: writing(),
           sumover: c().full > c().h + 1,
+          sumclamp: clamped(),
+          // no title of its own yet and nothing written: nothing to show
+          sumnone: !c().title && !c().code && !c().image && !text() && !writing(),
         }}
         style={{
           left: `${c().x}px`,
@@ -185,7 +207,7 @@ function Column(p: { col: SumCol }) {
                 when={c().code}
                 fallback={
                   <>
-                    <span class="sumt">{c().title}</span>
+                    <span class="sumt md" ref={(el) => createEffect(() => rich(md, el, c().title))} />
                     {mark()}
                   </>
                 }
@@ -203,9 +225,15 @@ function Column(p: { col: SumCol }) {
             </div>
           </div>
           <div
-            class="sumtx"
-            ref={(el) => ((tx = el), watch(el))}
-            innerHTML={html(text())}
+            class="sumtx md"
+            ref={(el) => {
+              tx = el;
+              watch(el);
+              createEffect(() => {
+                const t = text();
+                if (editing === null) rich(md, el, t);
+              });
+            }}
             onClick={(e) => {
               const d = lastDown();
               if (!live() || (d && Math.hypot(e.clientX - d.x, e.clientY - d.y) > 4)) return;

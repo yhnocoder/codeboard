@@ -26,6 +26,7 @@ import {
   type SumSource,
   summaryOf,
   summaryExamples,
+  untitled,
 } from "../src";
 import { editSummary, type CommandEnv } from "../src/commands";
 
@@ -177,6 +178,33 @@ describe("what a board summarizes", () => {
     b.place.n3.section = "s";
     expect(summaryPending(b, "sec:s")).toBe(true);
     expect(summarySig(b, cardKey("n3"))).toBeDefined();
+  });
+});
+
+describe("a card with no title of its own", () => {
+  it("is a Note with no heading or an image with no alt; it shows no title until the AI wrote one, and its own wins once it has one", () => {
+    const b = board();
+    const n3 = b.cards.find((c) => c.id === "n3") as NoteCard;
+    n3.md = "第一段讲 [[吞吐]] 和 ==延迟==，不是标题\n# 后面的标题不算";
+    expect(untitled(n3)).toBe(true);
+    expect(untitled({ id: "i", kind: "image", src: "a.png" })).toBe(true);
+    expect(untitled({ id: "i", kind: "image", src: "a.png", alt: "流水线" })).toBe(false);
+    expect(untitled({ ...n3, md: "\n## 有标题\n正文" })).toBe(false);
+    const frames = new Map(b.sections.map((s) => [s.id, { x: s.x, y: s.y, w: s.w, h: s.h }]));
+    const title = () => summarySources(b, rects(b), frames).items.find((i) => i.key === cardKey("n3"))!.title;
+    // never its first paragraph
+    expect(title()).toBe("");
+    const r = summaryRequest(b, cardKey("n3"), layoutSummaries(summarySources(b, rects(b), frames)))!;
+    expect(r.untitled).toBe(true);
+    expect(r.title).toBe("（无标题）");
+    const s = readSummaryReply('{"title": "吞吐与延迟", "text": "**吞吐**先于延迟。"}', r, 5)!;
+    putSummary(b, cardKey("n3"), s);
+    expect(title()).toBe("吞吐与延迟");
+    n3.md = "# 自己的标题\n正文";
+    expect(title()).toBe("自己的标题");
+    expect(
+      summaryRequest(b, cardKey("n3"), layoutSummaries(summarySources(b, rects(b), frames)))!.untitled,
+    ).toBeUndefined();
   });
 });
 

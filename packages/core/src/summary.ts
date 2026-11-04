@@ -63,6 +63,16 @@ export const unsummarized = (c: Card) =>
 /** An unsummarized card that stays at the summary level as it is (sub-board frames, Free Text at its own size); Marks hide */
 export const keepsLook = (c: Card) => c.kind === "board" || (c.kind === "note" && c.look === "freetext");
 
+/**
+ * A card with no title of its own to show at the summary level: a Note with no heading, an image with no alt text. Its first
+ * paragraph is never shown as a title: the AI writes it a short one with its summary (SumRequest.untitled)
+ */
+export function untitled(c: Card): boolean {
+  if (c.title) return false;
+  if (c.kind === "note") return !/^\s*#{1,6}\s+\S/.test(c.md.split("\n").find((l) => l.trim()) ?? "");
+  return c.kind === "image" && !c.alt;
+}
+
 /** The Section a card is in, if that Section exists */
 const homeOf = (b: Pick<Board, "sections">, p: Place | undefined) =>
   p?.section && b.sections.some((s) => s.id === p.section) ? p.section : undefined;
@@ -114,7 +124,8 @@ export function summarySources(b: Board, rect: (id: string) => Rect | undefined,
       key: cardKey(c.id),
       box: { ...r },
       own: { ...r },
-      title: p.summary?.title || cardTitle(c, b),
+      // its own title once it has one; until then the AI's (none before it is written)
+      title: untitled(c) ? (p.summary?.title ?? "") : cardTitle(c, b),
       text: p.summary?.text,
     };
     if (c.kind === "image") {
@@ -397,6 +408,8 @@ export type SumRequest = {
   title: string;
   /** A card in no Section: one sentence and a short title; code: the title line is the signature, no title wanted */
   card?: "note" | "code" | "image" | "other";
+  /** The card has no title of its own (untitled): the AI also writes a short one, about 12 chars or 6 English words */
+  untitled?: true;
   cards: { title: string; text: string }[];
   lang: "zh" | "en";
   sig: string;
@@ -447,18 +460,19 @@ export function summaryRequest(b: Board, key: SumKey, layout: SumLayout): SumReq
   const material = cards.map((c) => {
     const t = cardText(c).slice(0, Math.max(0, left));
     left -= t.length;
-    return { title: cardTitle(c, b), text: t };
+    return { title: untitled(c) ? "（无标题）" : cardTitle(c, b), text: t };
   });
   const sec = k.sec ? b.sections.find((s) => s.id === k.sec) : undefined;
   const one = cards[0];
   const all = [sec?.title ?? "", ...material.map((m) => `${m.title}\n${m.text}`)].join("\n");
   return {
     key,
-    title: sec ? sec.title : one ? cardTitle(one, b) : "",
+    title: sec ? sec.title : one && !untitled(one) ? cardTitle(one, b) : "（无标题）",
     ...(sec
       ? {}
       : {
           card: one?.kind === "note" || one?.kind === "code" || one?.kind === "image" ? one.kind : ("other" as const),
+          ...(one && untitled(one) ? { untitled: true as const } : {}),
         }),
     cards: material,
     lang: boardLang(all),

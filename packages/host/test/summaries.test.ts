@@ -246,6 +246,20 @@ describe("summaryPrompt", () => {
       expect(bold.join("").length).toBeLessThanOrEqual(t.replace(/\*\*/g, "").length / 4);
     }
   });
+  it("asks a card with no title of its own for a short title too, as JSON, and keeps the plain-text answer otherwise", () => {
+    const b = board();
+    (b.cards[2] as NoteCard).md = "没有标题的一段，讲 [[吞吐]]";
+    const r = hostRequests(b).get("card:n3")!;
+    expect(r.untitled).toBe(true);
+    const p = summaryPrompt(r);
+    expect(p.user).toContain("不超过 12 个字（英文不超过 6 个词）");
+    expect(p.user).toContain('{"title": "短标题", "text": "摘要正文"}');
+    expect(p.user).not.toContain("只输出摘要正文。");
+    expect(p.system).not.toContain("不要标题");
+    const own = summaryPrompt(hostRequests(board()).get("card:n3")!);
+    expect(own.user).toContain("只输出摘要正文。");
+    expect(own.system).toBe(SUMMARY_SYSTEM);
+  });
   it("puts the user's edited summaries in the first example slots, the prompt's own in the rest", () => {
     const u = summaryPrompt({
       ...base(),

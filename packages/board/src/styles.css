@@ -7789,6 +7789,36 @@ mark.wdiff {
   letter-spacing: 0.04em;
   overflow-wrap: break-word;
 }
+/* a title is at most two lines, an ellipsis on the second; hovered or focused it shows in full (the column raised as above,
+   grown to what it holds). A code card's name and place are never cut */
+.sumhd:not(.code) .sumhdi {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
+.sumlay.live .sumcol:is(:hover, :focus-within) .sumhd:not(.code) .sumhdi {
+  display: block;
+  overflow: visible;
+}
+.sumlay.live .sumcol.sumclamp:is(:hover, :focus-within) {
+  z-index: 2;
+  height: auto !important;
+  min-height: var(--rest);
+  background: var(--bg);
+  border-radius: calc(var(--P) * 0.5);
+  box-shadow: 0 calc(var(--S) * 0.15) calc(var(--S) * 0.9) color-mix(in srgb, var(--ink) 18%, transparent);
+}
+.sumlay.live .sumcol.sumover:is(:hover, :focus-within) {
+  height: auto !important;
+  min-height: var(--rest);
+}
+/* no title of its own yet and nothing written: nothing shows at rest; hovered, only its ↻ (a missing summary is written on ↻
+   or after a change, never by itself) */
+.sumcol.sumnone:not(:hover, :focus-within) {
+  opacity: 0;
+}
 .sumhdi::before {
   content: "";
   display: inline-block;
@@ -7825,7 +7855,7 @@ mark.wdiff {
   line-break: auto;
   outline: none;
 }
-.sumtx b {
+.sumtx :is(b, strong) {
   color: var(--ink);
   font-weight: 700;
 }

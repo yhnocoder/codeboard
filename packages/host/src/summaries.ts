@@ -74,7 +74,7 @@ Section 标题：{标题}
 4. 加粗（用 **…** 包起来）每个重要句子的关键短语：大约每 40 字一处，最多 3 处；不到 50 字的摘要正好一处。每处 2–10 个字；加粗的字合起来不超过全文的四分之一。第一处加粗放在核心观点上。不要加粗数字或 API 名。
 5. 不要重复标题；用中文；英文术语可以保留。
 
-长度：跟着卡片内容有多少要点走，和摆放的地方无关。卡片里每个独立的关键要点写一句：内容单薄的 Section 一句就够，内容丰富的最多六句左右。绝不凑字数，也不要硬塞细节；一般不超过 250 字。
+长度：跟着卡片内容有多少要点走，和摆放的地方无关。卡片里每个独立的关键要点写一句：内容单薄的 Section 一句就够，内容丰富的最多六句左右。绝不凑字数，也不要硬塞细节；一般不超过 200 字。
 只输出摘要正文。
 `;
 
@@ -84,6 +84,10 @@ const SUMMARY_PAIR = `第 {序号} 次（{新旧}）AI 原来写的：
 {AI 原文}
 用户改成：
 {用户改的}`;
+
+/** In place of the last line for a card with no title of its own (SumRequest.untitled): a short title too, never its first sentence */
+const SUMMARY_UNTITLED = `这张卡没有标题：另外给它起一个短标题，不超过 12 个字（英文不超过 6 个词），说它讲的是什么，不要照抄原文的第一句。
+只输出 JSON：{"title": "短标题", "text": "摘要正文"}，不要别的。`;
 
 /** How many examples the prompt shows */
 const SUMMARY_EXAMPLES = 4;
@@ -122,6 +126,11 @@ export function summaryPrompt(r: SumRequest): { system: string; user: string } {
     );
     const last = user.lastIndexOf("只输出摘要正文。");
     user = `${user.slice(0, last)}${[SUMMARY_PAIRS_INTRO, ...pairs].join("\n\n")}\n${user.slice(last)}`;
+  }
+  if (r.untitled) {
+    const last = user.lastIndexOf("只输出摘要正文。");
+    user = `${user.slice(0, last)}${SUMMARY_UNTITLED}`;
+    return { system: SUMMARY_SYSTEM.replace("不要标题、", ""), user };
   }
   return { system: SUMMARY_SYSTEM, user };
 }
