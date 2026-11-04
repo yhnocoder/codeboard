@@ -431,8 +431,10 @@ export type Section = {
   collapsed?: boolean;
   locked?: boolean;
   desc?: string;
-  /** Its zoomed-out AI summary (summary.ts) */
+  /** Its zoomed-out AI summary (summary.ts); a Section with child Sections: the overview in its header */
   summary?: Summary;
+  /** A Section with child Sections: the summary of the cards placed in it directly, in no child (summary.ts, key own:) */
+  directSummary?: Summary;
 };
 
 /** 挂在哪：整张卡、一行或几行 */

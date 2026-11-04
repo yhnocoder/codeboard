@@ -23,6 +23,7 @@ import {
   summaryChatRequest,
   summaryPrompt,
   SUMMARY_SYSTEM,
+  OVERVIEW_SYSTEM,
 } from "../src/summaries";
 import { nodeWorkspace } from "./node-workspace";
 import { HostContext } from "../src/context";
@@ -318,5 +319,81 @@ describe("summaryPrompt", () => {
     expect(u).toContain("第 1 次（最新）AI 原来写的：\nAI 第二版\n用户改成：\n我的第二版");
     expect(u).toContain("第 2 次（最旧）");
     expect(u.trimEnd().endsWith("只输出摘要正文。")).toBe(true);
+  });
+});
+
+describe("nested Sections", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  /** P holds A and B (A summarized) and a card of its own, d */
+  function nestedBoard(): Board {
+    const b = emptyBoard("bn", "t");
+    const note = (id: string, md: string): NoteCard => ({ id, kind: "note", md, look: "note" });
+    b.cards.push(
+      note("a", "# 线程块调度\nblock 整块分给 SM"),
+      note("c", "# barrier\n只在 block 内"),
+      note("d", "# wave\n同时执行的一批 block"),
+    );
+    b.sections.push(
+      { id: "P", title: "GPU 架构初探", x: 0, y: 0, w: 0, h: 0 },
+      { id: "A", title: "SM 与 block 调度", x: 0, y: 0, w: 0, h: 0, parent: "P" },
+      { id: "B", title: "barrier 与透明扩展", x: 0, y: 0, w: 0, h: 0, parent: "P" },
+    );
+    b.place = {
+      a: { x: 40, y: 60, w: 300, section: "A" },
+      c: { x: 400, y: 60, w: 300, section: "B" },
+      d: { x: 800, y: 60, w: 300, section: "P" },
+    };
+    putSummary(b, "sec:A", { ...written(b, "sec:A"), text: "block 整块**交给一个 SM**。" });
+    return b;
+  }
+
+  it("asks for a header's overview from the children's titles and summaries and the direct cards, one sentence", async () => {
+    const b = nestedBoard();
+    const reqs = hostRequests(b);
+    expect([...reqs.keys()].sort()).toEqual(["own:P", "sec:A", "sec:B", "sec:P"]);
+    const { f, calls } = fakeFetch(() => ok("SM 按块调度，barrier 只在块内，**换来透明扩展**。"));
+    const r = await summarize(cx, reqs.get("sec:P")!, f);
+    const [sys, user] = calls[0].body.messages.map((m: { content: string }) => m.content);
+    expect(sys).toBe(OVERVIEW_SYSTEM);
+    expect(user).toContain("外层 Section 标题：GPU 架构初探");
+    expect(user).toContain("【SM 与 block 调度】\nblock 整块**交给一个 SM**。");
+    expect(user).toContain("【barrier 与透明扩展】\n（还没有摘要）");
+    expect(user).toMatch(/直接放在这个 Section 里[^]*【wave】[^]*同时执行的一批 block/);
+    expect(user).toContain("只写一句话");
+    expect(user).not.toMatch(/\{[^{}]*\}/);
+    expect(r).toEqual({
+      summary: expect.objectContaining({
+        text: "SM 按块调度，barrier 只在块内，**换来透明扩展**。",
+        input: summaryInput(b, "sec:P"),
+      }),
+    });
+    // the direct cards: one summary with a short title of its own
+    const g = summaryPrompt(reqs.get("own:P")!);
+    expect(g.user).toContain("直接放在这个 Section 里");
+    expect(g.user).toContain('{"title": "短标题", "text": "摘要正文"}');
+  });
+
+  it("rewrites the overview SUMMARY.regenMs after a child's summary changed", async () => {
+    const b = nestedBoard();
+    putSummary(b, "sec:P", written(b, "sec:P"));
+    const { w, posts, calls } = (() => {
+      const posts: HostToBoard[] = [];
+      const { f, calls } = fakeFetch(() => ok("新的**概述**。"));
+      const w = new SummaryWatch(cx, { board: () => b, boards: () => [b], post: (_id, m) => (posts.push(m), true) }, f);
+      return { w, posts, calls };
+    })();
+    w.opened(b);
+    expect(w.waiting("bn")).toEqual([]);
+    putSummary(b, "sec:B", { ...written(b, "sec:B"), text: "barrier 只在**块内**。" });
+    w.saw(b);
+    expect(w.waiting("bn")).toEqual(["sec:P"]);
+    await vi.advanceTimersByTimeAsync(SUMMARY.regenMs);
+    await w.idle();
+    expect(calls).toHaveLength(1);
+    expect(calls[0].body.messages[1].content).toContain("barrier 只在**块内**。");
+    expect(posts.flatMap((m) => (m.type === "summaries" ? Object.keys(m.items) : []))).toEqual(["sec:P"]);
+    w.dispose();
   });
 });

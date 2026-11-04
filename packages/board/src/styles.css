@@ -7875,6 +7875,40 @@ mark.wdiff {
   height: auto !important;
   min-height: var(--rest);
 }
+/* a header above the frame of a Section with child Sections (the demo's .col.h1 / .h2, feedback/demo/nested-sections.html; core
+   summary.ts HEAD measures the same): level 1 a larger ink title over a thin vermilion rule, deeper a smaller ink-2 title over a
+   dashed hairline; no square. The kick line names the Sections with one child each above a title */
+.sumcol.h1 .sumhdi {
+  font-size: calc(var(--S) * 1.12);
+  color: var(--ink);
+  padding-bottom: 0.16em;
+  border-bottom: max(2px, 0.045em) solid color-mix(in srgb, var(--accent) 70%, transparent);
+  letter-spacing: 0.03em;
+}
+.sumcol.h1 .sumhd {
+  margin-bottom: calc(var(--S) * 1.12 * 0.32);
+}
+.sumcol.h2 .sumhdi {
+  font-size: calc(var(--S) * 0.92);
+  padding-bottom: 0.12em;
+  border-bottom: max(1px, 0.03em) dashed color-mix(in srgb, var(--ink) 30%, transparent);
+}
+.sumcol.h2 .sumhd {
+  margin-bottom: calc(var(--S) * 0.92 * 0.3);
+}
+.sumcol:is(.h1, .h2) .sumhdi::before {
+  display: none;
+}
+.sumcol.bare .sumhd {
+  margin-bottom: 0;
+}
+.sumkick {
+  font: 600 calc(var(--S) * 0.56) / 1.3 var(--sum-head);
+  color: var(--ink-3);
+  letter-spacing: 0.04em;
+  padding-bottom: 0.2em;
+  overflow-wrap: break-word;
+}
 /* no title of its own yet and nothing written: nothing shows at rest; hovered, only its ↻ (a missing summary is written on ↻
    or after a change, never by itself) */
 .sumcol.sumnone:not(:hover, :focus-within) {

@@ -270,6 +270,7 @@ const Section = obj({
   locked: opt(bool),
   desc: opt(str),
   summary: opt(Summary),
+  directSummary: opt(Summary),
 });
 
 const noteBase = {

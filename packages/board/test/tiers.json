@@ -540,7 +540,7 @@
         "packages/host/src/summaries.ts",
         "packages/board/test/scenarios/summaries.spec.ts"
       ],
-      "scenarios": ["summaryLevelFade", "summaryWrittenAndEdited", "summaryNoKey"]
+      "scenarios": ["summaryLevelFade", "summaryWrittenAndEdited", "summaryNoKey", "summaryNestedSections"]
     }
   }
 }

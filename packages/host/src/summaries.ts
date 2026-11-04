@@ -18,7 +18,7 @@ import {
   summarySources,
   summarySig,
   summaryInput,
-  unsummarized,
+  summaryKeys,
   summaryExamples,
   type Board,
   type Disposable,
@@ -89,6 +89,27 @@ const SUMMARY_PAIR = `第 {序号} 次（{新旧}）AI 原来写的：
 const SUMMARY_UNTITLED = `这张卡没有标题：另外给它起一个短标题，不超过 12 个字（英文不超过 6 个词），说它讲的是什么，不要照抄原文的第一句。
 只输出 JSON：{"title": "短标题", "text": "摘要正文"}，不要别的。`;
 
+/** For a group of cards placed directly in a Section with child Sections (SumRequest.group): in place of the last line */
+const SUMMARY_GROUP = `这些卡片直接放在这个 Section 里，不属于它的任何子 Section；它们合起来写一份摘要。另外给它们起一个短标题，不超过 12 个字（英文不超过 6 个词），说它们讲的是什么，不要用 Section 的标题。
+只输出 JSON：{"title": "短标题", "text": "摘要正文"}，不要别的。`;
+
+/**
+ * A header's overview (SumRequest.overview): one sentence under the title of a Section with child Sections, whose children have
+ * summaries of their own. {…} are filled as in SUMMARY_USER
+ */
+export const OVERVIEW_SYSTEM = `你为白板缩远视图里一个外层 Section 写一句概述，放在它的标题下面。只输出这一句本身，不要标题、不要引号、不要解释。`;
+const OVERVIEW_USER = `外层 Section 标题：{标题}
+
+它的子 Section（标题和各自的摘要）：
+{子 Section}
+{直属卡片}
+写法：
+1. 只写一句话：这一组整体讲什么、子题之间是什么关系（先后、对照、因果），读者扫一眼就知道这一块在干什么。子 Section 各有自己的摘要，不要逐个复述，也不要罗列“包括……”。
+2. 加粗（用 **…** 包起来）这句里最关键的一个短语，2–10 个字；不要加粗数字或 API 名。
+3. 不要重复标题；用中文；英文术语可以保留。越短越好，绝不凑字数。
+只输出这一句。
+`;
+
 /** How many examples the prompt shows */
 const SUMMARY_EXAMPLES = 4;
 const EXAMPLE = /例 (\d+)\n标题：(.*)\n内容：(.*)\n摘要：(.*)/g;
@@ -103,6 +124,15 @@ const BUILT_IN = [...SUMMARY_USER.matchAll(EXAMPLE)].map((m) => ({ title: m[2], 
 export function summaryPrompt(r: SumRequest): { system: string; user: string } {
   const cards = r.cards.map((c) => `【${c.title}】\n${c.text.trim()}`).join("\n\n");
   const fill = (t: string, f: Record<string, string>) => t.replace(/\{([^{}]+)\}/g, (m, k: string) => f[k] ?? m);
+  if (r.overview) {
+    let user = fill(OVERVIEW_USER, {
+      标题: r.title,
+      "子 Section": r.overview.map((k) => `【${k.title}】\n${k.text.trim() || "（还没有摘要）"}`).join("\n\n"),
+      直属卡片: r.cards.length ? `\n直接放在这个 Section 里、不属于任何子 Section 的卡片：\n${cards}\n` : "",
+    });
+    if (r.pairs?.length) user = withPairs(user, r.pairs, "只输出这一句。", fill);
+    return { system: OVERVIEW_SYSTEM, user };
+  }
   const examples = [...(r.examples ?? []), ...BUILT_IN]
     .slice(0, SUMMARY_EXAMPLES)
     .map((e, i) => `例 ${i + 1}\n标题：${e.title}\n内容：${e.content}\n摘要：${e.summary}`)
@@ -114,25 +144,33 @@ export function summaryPrompt(r: SumRequest): { system: string; user: string } {
     标题: r.title,
     "卡片内容，笔记卡去掉图片和标签，代码卡前 80 行，共最多 6000 字": cards,
   });
-  if (r.pairs?.length) {
-    const n = r.pairs.length;
-    const pairs = r.pairs.map((p, i) =>
-      fill(SUMMARY_PAIR, {
-        序号: String(i + 1),
-        新旧: i === 0 ? "最新" : i === n - 1 ? "最旧" : "较旧",
-        "AI 原文": p.ai,
-        用户改的: p.user,
-      }),
-    );
+  if (r.pairs?.length) user = withPairs(user, r.pairs, "只输出摘要正文。", fill);
+  if (r.untitled || r.group) {
     const last = user.lastIndexOf("只输出摘要正文。");
-    user = `${user.slice(0, last)}${[SUMMARY_PAIRS_INTRO, ...pairs].join("\n\n")}\n${user.slice(last)}`;
-  }
-  if (r.untitled) {
-    const last = user.lastIndexOf("只输出摘要正文。");
-    user = `${user.slice(0, last)}${SUMMARY_UNTITLED}`;
+    user = `${user.slice(0, last)}${r.group ? SUMMARY_GROUP : SUMMARY_UNTITLED}`;
     return { system: SUMMARY_SYSTEM.replace("不要标题、", ""), user };
   }
   return { system: SUMMARY_SYSTEM, user };
+}
+
+/** The user's edits of this summary (newest first), before the prompt's last line */
+function withPairs(
+  user: string,
+  pairs: NonNullable<SumRequest["pairs"]>,
+  lastLine: string,
+  fill: (t: string, f: Record<string, string>) => string,
+) {
+  const n = pairs.length;
+  const blocks = pairs.map((p, i) =>
+    fill(SUMMARY_PAIR, {
+      序号: String(i + 1),
+      新旧: i === 0 ? "最新" : i === n - 1 ? "最旧" : "较旧",
+      "AI 原文": p.ai,
+      用户改的: p.user,
+    }),
+  );
+  const last = user.lastIndexOf(lastLine);
+  return `${user.slice(0, last)}${[SUMMARY_PAIRS_INTRO, ...blocks].join("\n\n")}\n${user.slice(last)}`;
 }
 
 /** How long one summary may take */
@@ -256,9 +294,7 @@ export class SummaryWatch implements Disposable {
   private look(b: Board, first: boolean) {
     let seen = this.seen.get(b.id);
     if (!seen) this.seen.set(b.id, (seen = new Map()));
-    const keys = new Set<string>();
-    for (const s of b.sections) if (!s.parent) keys.add(`sec:${s.id}`);
-    for (const c of b.cards) if (b.place[c.id] && !b.place[c.id].section && !unsummarized(c)) keys.add(`card:${c.id}`);
+    const keys = new Set<string>(summaryKeys(b));
     for (const t of this.waiting(b.id)) if (!keys.has(t)) this.stop(b.id, t);
     for (const key of keys) {
       const sig = summarySig(b, key);
