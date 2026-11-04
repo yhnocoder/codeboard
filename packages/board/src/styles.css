@@ -1946,13 +1946,63 @@ textarea {
     left 0.26s var(--out),
     top 0.26s var(--out);
 }
-.sect .sgrip {
+/* Resize handles on the frame's four sides (a thin band across the border) and four corners (Sections.tsx, interact.ts
+   sectionEdgeDown). The title and the cards are on layers above the frames, so the bands never take their clicks */
+.sect .sedge {
   position: absolute;
-  right: -4px;
+  pointer-events: auto;
+}
+.sect .sedge[data-edge="n"],
+.sect .sedge[data-edge="s"] {
+  left: 10px;
+  right: 10px;
+  height: 8px;
+  cursor: ns-resize;
+}
+.sect .sedge[data-edge="e"],
+.sect .sedge[data-edge="w"] {
+  top: 10px;
+  bottom: 10px;
+  width: 8px;
+  cursor: ew-resize;
+}
+.sect .sedge[data-edge="n"] {
+  top: -4px;
+}
+.sect .sedge[data-edge="s"] {
   bottom: -4px;
+}
+.sect .sedge[data-edge="e"] {
+  right: -4px;
+}
+.sect .sedge[data-edge="w"] {
+  left: -4px;
+}
+.sect .sedge[data-edge="nw"],
+.sect .sedge[data-edge="ne"],
+.sect .sedge[data-edge="sw"],
+.sect .sedge[data-edge="se"] {
   width: 14px;
   height: 14px;
-  pointer-events: auto;
+}
+.sect .sedge[data-edge="nw"] {
+  left: -5px;
+  top: -5px;
+  cursor: nwse-resize;
+}
+.sect .sedge[data-edge="ne"] {
+  right: -5px;
+  top: -5px;
+  cursor: nesw-resize;
+}
+.sect .sedge[data-edge="sw"] {
+  left: -5px;
+  bottom: -5px;
+  cursor: nesw-resize;
+}
+.sect .sedge[data-edge="se"] {
+  right: -5px;
+  bottom: -5px;
   cursor: nwse-resize;
 }
 #slabels {

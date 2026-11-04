@@ -290,6 +290,31 @@ const padded = (k: Rect): Rect => ({
   h: k.h + SECTION_PAD.t + SECTION_PAD.b,
 });
 
+/** The edges of a Section's frame a resize handle drags: one side (n, s, e, w) or a corner (ne, nw, se, sw) */
+export type FrameEdge = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";
+/** The smallest frame a Section is dragged to */
+export const SECTION_MIN = { w: 120, h: 80 };
+/**
+ * A Section's frame `f` with these edges dragged by (dx, dy): the edges opposite stay where they are, and it keeps at least
+ * SECTION_MIN (a dragged top or left edge then stops that far from the bottom or right one). Whole pixels
+ */
+export function dragFrameEdge(f: Rect, edge: FrameEdge, dx: number, dy: number): Rect {
+  let { x, y, w, h } = f;
+  if (edge.includes("e")) w = Math.max(SECTION_MIN.w, f.w + dx);
+  if (edge.includes("w")) {
+    w = Math.max(SECTION_MIN.w, f.w - dx);
+    x = f.x + f.w - w;
+  }
+  if (edge.includes("s")) h = Math.max(SECTION_MIN.h, f.h + dy);
+  if (edge.includes("n")) {
+    h = Math.max(SECTION_MIN.h, f.h - dy);
+    y = f.y + f.h - h;
+  }
+  const x0 = Math.round(x),
+    y0 = Math.round(y);
+  return { x: x0, y: y0, w: Math.round(x + w) - x0, h: Math.round(y + h) - y0 };
+}
+
 /** Section 的 Fit Content：刚好包住里面的东西（各加边距）的框，往外取整到整数；里面没东西 = undefined */
 export function sectionFit(inner: Iterable<Rect>): Rect | undefined {
   let r: Rect | undefined;

@@ -1254,3 +1254,64 @@ test("sectionGroupDeleteUndo", async () => {
   check("sectionGroupDeleteUndo", gone.sections === 0 && gone.cards === 3 && back === "S1,S2", { gone, back });
   await close(h);
 });
+
+/** A Section is resized by any of its four edges and four corners, the opposite edges staying put, one undo step each; shrunk
+ *  past a card, the frame stops around it and the card stays in the Section */
+test("sectionResizeEdges", async () => {
+  const h = await open({ board: twoSectionsAndLoose(), light, w: 1600 });
+  await idle(h);
+  const pg = h.page;
+  const handles = await pg.locator('.sect[data-sect="S2"] .sedge').count();
+  check("sectionResizeEdges has a handle on each side and corner", handles === 8, { handles });
+  if (handles !== 8) return close(h);
+  const frame = async (id: string) => {
+    const r = (await pg.locator(`.sect[data-sect="${id}"]`).boundingBox())!;
+    return { l: Math.round(r.x), t: Math.round(r.y), r: Math.round(r.x + r.width), b: Math.round(r.y + r.height) };
+  };
+  const drag = async (id: string, edge: string, dx: number, dy: number, mid?: string) => {
+    const r = (await pg.locator(`.sect[data-sect="${id}"] .sedge[data-edge="${edge}"]`).boundingBox())!;
+    const x = r.x + r.width / 2,
+      y = r.y + r.height / 2;
+    await pg.mouse.move(x, y);
+    await pg.mouse.down();
+    await pg.mouse.move(x + dx / 2, y + dy / 2, { steps: 4 });
+    if (mid) await shot(h, mid, "now");
+    await pg.mouse.move(x + dx, y + dy, { steps: 4 });
+    await pg.mouse.up();
+    await idle(h);
+  };
+  const diff = (a: Record<string, number>, b: Record<string, number>) =>
+    ["l", "t", "r", "b"].map((k) => b[k] - a[k]).join();
+  const s2 = await frame("S2"),
+    s1 = await frame("S1");
+  await drag("S2", "w", -60, 15, "sect-resize-01-left-edge-mid-drag");
+  const left = diff(s2, await frame("S2"));
+  await pg.keyboard.press("Meta+z");
+  await idle(h);
+  const undone = diff(s2, await frame("S2"));
+  await drag("S1", "n", 10, -30);
+  const top = diff(s1, await frame("S1"));
+  await drag("S2", "e", 40, 10);
+  const right = diff(s2, await frame("S2"));
+  await drag("S2", "sw", -20, 30);
+  const corner = diff(s2, await frame("S2"));
+  // 左边往右拖过 Note：框停在 Note 外面，Note 还在 S2 里
+  const n1 = (await pg.locator('.card[data-id="n1"]').boundingBox())!;
+  await drag("S2", "w", n1.x + 200 - s2.l, 0);
+  const past = await frame("S2");
+  const stillIn = h.board().place.n1.section;
+  check(
+    "sectionResizeEdges",
+    left === "-60,0,0,0" &&
+      undone === "0,0,0,0" &&
+      top === "0,-30,0,0" &&
+      right === "0,0,40,0" &&
+      corner === "-20,0,40,30" &&
+      past.l < n1.x &&
+      past.l >= s2.l &&
+      h.board().sections.find((s) => s.id === "S2")!.x > h.board().place.n1.x &&
+      stillIn === "S2",
+    { left, undone, top, right, corner, past, n1: n1.x, stillIn },
+  );
+  await close(h);
+});

@@ -12,6 +12,8 @@ import {
   type CallSpan,
   type Rect,
   type Section,
+  type FrameEdge,
+  dragFrameEdge,
   type Anchor,
   type End,
   type LinkSide,
@@ -1193,8 +1195,8 @@ function dragGroup(e: PointerEvent, secIds: string[], cardIds: string[], grabbed
     },
   );
 }
-/** 拖 Section 的边改大小（框只会比内容大） */
-export function sectionEdgeDown(e: PointerEvent, id: string) {
+/** 拖 Section 的四条边、四个角改大小：对面的边不动（框只会比内容大：缩过卡时框停在卡外面，卡还在 Section 里） */
+export function sectionEdgeDown(e: PointerEvent, id: string, edge: FrameEdge) {
   if (e.button !== 0) return;
   e.preventDefault();
   e.stopPropagation();
@@ -1207,16 +1209,10 @@ export function sectionEdgeDown(e: PointerEvent, id: string) {
   track(
     e,
     (ev) => {
-      const w = Math.max(120, f0.w + (ev.clientX - sx) / cam.z),
-        h = Math.max(80, f0.h + (ev.clientY - sy) / cam.z);
+      const r = dragFrameEdge(f0, edge, (ev.clientX - sx) / cam.z, (ev.clientY - sy) / cam.z);
       live((b) => {
         const q = b.sections.find((x) => x.id === id);
-        if (q) {
-          q.x = f0.x;
-          q.y = f0.y;
-          q.w = Math.round(w);
-          q.h = Math.round(h);
-        }
+        if (q) Object.assign(q, r);
       });
     },
     g.end,
