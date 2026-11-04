@@ -505,7 +505,7 @@ math {
 }
 /* 别处（别的白板）的：标题后面带那一处的名字；那里没有这一项了：灰、标题划掉；那一处本身没了：警告色（paintRef） */
 .md-ref .bd {
-  font-size: 0.86em;
+  font-size: 0.74em;
   opacity: 0.62;
   margin-left: 4px;
 }

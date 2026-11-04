@@ -353,6 +353,12 @@ test("noteRefOtherBoards", async () => {
       !chips[2].cls.includes("missing"),
     { chips },
   );
+  // 白板名比标题明显小一号，标题本身才是要读的
+  const sizes = await chip("Flash attention").evaluate((e) => ({
+    t: parseFloat(getComputedStyle(e.querySelector(".t")!).fontSize),
+    bd: parseFloat(getComputedStyle(e.querySelector(".bd")!).fontSize),
+  }));
+  check("noteRefOtherBoards badge smaller", sizes.bd / sizes.t < 0.8, sizes);
   await pg.locator('.card[data-id="n2"]').scrollIntoViewIfNeeded();
   await shot(h, "note-ref-other-boards-chip");
   await chip("Flash attention").click();
