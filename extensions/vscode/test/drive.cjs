@@ -2268,13 +2268,21 @@ const finish = async (browser, errors) => {
     // 白板窄、卡多，适应窗口后在概览档（代码是灰条，点不到调用）：照用户的做法双击这张卡，放大到它 100%
     // （适应窗口在 ~28%，Zoom In 一次 ×1.25、以画面中心放大，到 60% 的完整档之前卡就出了右边；
     // 不按键：焦点可能还在编辑器里，Shift+2 会把 @ 打进代码）
+    // 适应窗口可能落在摘要档（低于白板的门槛，卡整层藏着）：那就双击这张卡摘要的标题，一样放大到它
     await fit(f);
     await idle(f);
-    if (await pt.locator(".ovm").isVisible()) {
+    const sumTitle = f.locator(".sumlay.live .sumcol.loose .sumhd", { hasText: "pick_tokens" });
+    if (await sumTitle.isVisible()) {
+      await sumTitle.dblclick();
+      await idle(f);
+    } else if (await pt.locator(".ovm").isVisible()) {
       await pt.locator(".ovm").dblclick();
       await idle(f);
     }
-    check(!(await pt.locator(".ovm").isVisible()), "double-clicking a card in the overview zooms to it");
+    check(
+      !(await pt.locator(".ovm").isVisible()) && (await pt.locator(".src").first().isVisible()),
+      "double-clicking a card in the overview or its summary zooms to it",
+    );
     await pt
       .locator(".src .call", { hasText: /^sample$/ })
       .first()
