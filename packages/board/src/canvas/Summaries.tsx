@@ -1,13 +1,14 @@
 // The summary level (#130; state/summary.ts, core summary.ts): one column per top-level Section and per card in no Section, at the
-// board's one font size, drawn in full (no clamping, no fallbacks). It is always built and only its opacity follows the fade, so the
-// switch never adds elements or lays anything out. Each column's title and body heights are read once per change of width or text
+// board's one font size, drawn in full (no clamping, no fallbacks). It is built once the zoom comes near the highest cut (state/summary.ts
+// summaryNear: zoomed in it costs nothing) and from then on only its opacity follows the fade, so the switch never adds elements or
+// lays anything out. Each column's title and body heights are read once per change of width or text
 // (ResizeObserver, in the board's measuring round) and give the final extents the later columns stop at.
 // Click a body to edit it (Enter saves, Esc cancels, ⌘B marks the key phrase); ↻ on hover writes it again.
 import { For, Show, createMemo, onCleanup } from "solid-js";
 import { state } from "../state/store";
 import { stillZ } from "../state/camera";
 import { lastDown, observeResize, queueMeasure } from "../state/measure";
-import { summaryFade, summaryLayout, setSummaryHeights } from "../state/summary";
+import { summaryFade, summaryLayout, summaryNear, setSummaryHeights } from "../state/summary";
 import { boardLang, summaryOf, summaryPending, type SumCol, type SumKey } from "@codeboard/core";
 import * as A from "../actions";
 
@@ -40,11 +41,11 @@ export function Summaries() {
     return prev.length === ks.length && prev.every((k, i) => k === ks[i]) ? prev : ks;
   }, []);
   return (
-    <Show when={keys().length}>
+    <Show when={summaryNear() && keys().length}>
       <div
         class="lay sumlay"
         data-export="strip"
-        classList={{ live: live() }}
+        classList={{ live: live(), gone: summaryFade() === 0, fading: summaryFade() > 0 && summaryFade() < 1 }}
         style={{
           opacity: String(Math.max(0.003, summaryFade())),
           "--S": `${layout()?.S ?? 56}px`,
@@ -117,6 +118,28 @@ function Column(p: { col: SumCol }) {
             ? "AI summary · Pending: rewritten 10 minutes after the last change"
             : `AI summary · ${ago(sum()!.at)}`;
   const c = () => p.col;
+  // ↻ right after the title's last line (a zero-width anchor: hidden, it takes no room and the title never reflows)
+  const mark = () => (
+    <span class="sumreat">
+      <button
+        type="button"
+        class="sumre"
+        data-nodrag
+        aria-label="Rewrite the summary now"
+        data-tip={tip()}
+        onPointerEnter={(e) => (e.currentTarget.dataset.tip = tip())}
+        disabled={writing()}
+        onClick={() => void A.regenerateSummary(key)}
+      >
+        {/* the icon on its own square box: a spin turns it in place (a text glyph's line box is off-centre) */}
+        <svg class="sumic" viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M13.2 9.4A5.4 5.4 0 1 1 11.6 4" />
+          <path d="M12.4 1.6v3.2H9.2" />
+        </svg>
+        <span class="sumdot" />
+      </button>
+    </span>
+  );
   return (
     <>
       <Show when={c().image}>
@@ -148,10 +171,19 @@ function Column(p: { col: SumCol }) {
         <div class="sumblk">
           <div class="sumhd" classList={{ code: !!c().code }} style={{ "min-height": `${c().hd}px` }}>
             <div class="sumhdi" ref={(el) => ((hd = el), watch(el))}>
-              <Show when={c().code} fallback={<span class="sumt">{c().title}</span>}>
+              <Show
+                when={c().code}
+                fallback={
+                  <>
+                    <span class="sumt">{c().title}</span>
+                    {mark()}
+                  </>
+                }
+              >
                 {(code) => (
                   <>
                     <code>{code().name}</code>
+                    {mark()}
                     <Show when={code().at}>
                       <i>{code().at}</i>
                     </Show>
@@ -186,18 +218,6 @@ function Column(p: { col: SumCol }) {
             onBlur={() => endEdit(true)}
           />
         </div>
-        <button
-          type="button"
-          class="sumre"
-          data-nodrag
-          aria-label="Rewrite the summary now"
-          data-tip={tip()}
-          onPointerEnter={(e) => (e.currentTarget.dataset.tip = tip())}
-          disabled={writing()}
-          onClick={() => void A.regenerateSummary(key)}
-        >
-          ↻<span class="sumdot" />
-        </button>
       </div>
     </>
   );

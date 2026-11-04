@@ -29,6 +29,14 @@ export const SUMMARY = {
   strip: 30,
   /** A card's column grows at most this far below the card's top */
   looseCap: 1500,
+  /** A column's text is at most this many S wide (a wide Section's column keeps its anchor and stops there) */
+  maxLine: 28,
+  /** The most characters a summary is asked for, whatever its column holds (about 4–5 lines) */
+  maxChars: 120,
+  /** The most key phrases a summary keeps bold (the prompt asks for about one per 40 chars); later ones are kept as plain text */
+  maxBold: 3,
+  /** The highest cut any board has (summaryCut) */
+  cutMax: 0.3,
   /** The cross-fade between cards and summaries (ms) */
   fadeMs: 250,
   /** A pending summary is written again after this long without another change (ms) */
@@ -131,7 +139,7 @@ export function summaryFont(w: number): number {
   return Math.min(118, Math.max(52, Math.round(a + b * Math.log(Math.max(1, w)))));
 }
 /** Zoomed out below this the board shows summaries: summary text is never bigger than about 32 screen px */
-export const summaryCut = (S: number) => Math.min(0.3, 32 / S);
+export const summaryCut = (S: number) => Math.min(SUMMARY.cutMax, 32 / S);
 /** The board's minimum zoom: you can zoom out until the whole board fills about 77 % of the view (content = its bounds) */
 export function summaryMinZoom(view: { w: number; h: number }, content: Rect | null): number {
   if (!content || content.w <= 0 || content.h <= 0) return SUMMARY.emptyZoom;
@@ -262,7 +270,8 @@ export function layoutSummaries(input: SumInput, measured?: SumMeasured): SumLay
     items,
     items.map((it) => cols.get(it.key)!.w),
   );
-  items.forEach((it, i) => (cols.get(it.key)!.w = ws[i]));
+  const wMax = SUMMARY.maxLine * S + 2 * P;
+  items.forEach((it, i) => (cols.get(it.key)!.w = Math.min(ws[i], wMax)));
   // heights: sources sharing a top edge start their bodies on one line (the row's tallest title block)
   const hdOf = (it: SumSource) => measured?.get(it.key)?.hd ?? titleH(it, cols.get(it.key)!.w - 2 * P, S);
   const rowOf = new Map<string, string>(),
@@ -308,14 +317,14 @@ export function layoutSummaries(input: SumInput, measured?: SumMeasured): SumLay
 
 /**
  * How long the AI may write: capacity = chars per line × the lines the column's whole extent holds; the target is about 0.6 of
- * it, never under two full lines. Sections get 2–4 sentences (4 at most however large), a card one
+ * it, never under two full lines and never over SUMMARY.maxChars. Sections get 2–3 sentences, a card one
  */
 export type SumBudget = { cpl: number; lines: number; capacity: number; target: number; sentences: [number, number] };
 export function summaryBudget(col: Pick<SumCol, "cpl" | "lines">, card: boolean): SumBudget {
   const lines = Math.max(2, col.lines),
     capacity = col.cpl * lines;
-  const target = Math.max(2 * col.cpl, Math.round(0.6 * capacity));
-  const sentences: [number, number] = card ? [1, 1] : target < 60 ? [2, 2] : target < 140 ? [2, 3] : [3, 4];
+  const target = Math.min(SUMMARY.maxChars, Math.max(2 * col.cpl, Math.round(0.6 * capacity)));
+  const sentences: [number, number] = card ? [1, 1] : target < 60 ? [2, 2] : [2, 3];
   return { cpl: col.cpl, lines, capacity, target, sentences };
 }
 
@@ -499,7 +508,7 @@ export function summaryExamples(boards: Board[], n: number, but?: { board: strin
     .map(({ at: _, ...e }) => e);
 }
 
-/** The AI's answer → a summary (JSON as asked; a bare text answer is taken as the body). One bold span kept. undefined = empty */
+/** The AI's answer → a summary (JSON as asked; a bare text answer is taken as the body). Up to SUMMARY.maxBold bold key phrases kept. undefined = empty */
 export function readSummaryReply(raw: string, r: SumRequest, at: number): Summary | undefined {
   const t = raw
     .trim()
@@ -515,7 +524,7 @@ export function readSummaryReply(raw: string, r: SumRequest, at: number): Summar
     /* plain text */
   }
   let bold = 0;
-  text = text.trim().replace(/\*\*(.+?)\*\*/g, (_, x: string) => (bold++ ? x : `**${x}**`));
+  text = text.trim().replace(/\*\*(.+?)\*\*/g, (_, x: string) => (bold++ < SUMMARY.maxBold ? `**${x}**` : x));
   if (!text) return undefined;
   const s: Summary = { text, at, sig: r.sig, input: r.input };
   if (r.pairs?.length) s.pairs = r.pairs;

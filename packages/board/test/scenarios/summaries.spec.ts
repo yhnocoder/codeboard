@@ -7,6 +7,8 @@
 //                                with the AI text it replaced), ↻ rewrites it following that edit and keeps the pair, ⌘Z brings
 //                                the hand edit back
 //   summaryNoKey                 without a DeepSeek key nothing is written: Section titles with empty bodies, and ↻ says a key is needed
+//   summaryFramesOnlyBoard       a board of sub-board frames, Free Text headings and Marks, nothing to summarize: zoomed out past the
+//                                cut the Marks hide all the same, and the frames and Free Text look as they do at 100 %, only scaled
 import {
   emptyBoard,
   putSummary,
@@ -85,9 +87,8 @@ const fadeSeen = (h: Host) => h.page.evaluate(() => (window as unknown as { __fa
 test("summaryLevelFade", async () => {
   const h = await open({ board: bigBoard("bSum", 1, true), w: 1280, h: 800, light: true });
   check(
-    "summaryLevelFade at 100 % the cards show and the summaries are only pre-rendered",
-    (await opacity(h, ".cardlay")) === 1 && (await opacity(h, ".sumlay")) <= 0.01,
-    await opacity(h, ".sumlay"),
+    "summaryLevelFade at 100 % the cards show and the summary level is not built yet (it is, near the cut)",
+    (await opacity(h, ".cardlay")) === 1 && (await h.page.locator(".sumlay").count()) === 0,
   );
   check(
     "summaryLevelFade a Free Text is in the layer that never fades, a Mark in the card layer",
@@ -234,6 +235,70 @@ test("summaryNoKey", async () => {
   check(
     "summaryNoKey ↻ says a DeepSeek key is needed",
     (await h.page.locator(".toast").innerText()).includes("No DeepSeek API key") && calls.length === 0,
+  );
+  await h.close();
+});
+
+test("summaryFramesOnlyBoard", async () => {
+  const kid = (id: string, name: string) => {
+    const b = emptyBoard(id, name);
+    for (let i = 0; i < 4; i++)
+      put(b, note(`${id}n${i}`, `# ${name} ${i}`), 60 + (i % 2) * 400, 60 + Math.floor(i / 2) * 260, 340);
+    return b;
+  };
+  const names = ["Heterogeneous computing", "Memory hierarchy", "Thread scheduling", "Parallel patterns"];
+  const kids = names.map((n, i) => kid(`bK${i}`, n));
+  const M = emptyBoard("bFrames", "Course");
+  kids.forEach((k, i) => {
+    M.cards.push({ id: `f${i}`, kind: "board", board: k.id });
+    M.place[`f${i}`] = { x: 80 + (i % 2) * 1500, y: 400 + Math.floor(i / 2) * 1100, w: 1200, h: 800 };
+  });
+  put(M, note("ft", "# Basic Concepts", "freetext"), 80, 80, 900);
+  put(M, note("mk", "Parallel Pattern", "mark"), 1580, 120, 500);
+  M.cam = { x: 20, y: 20, z: 0.6 };
+  const run = await hostBoards([M, ...kids], {
+    page: { light: true, w: 1280, h: 800, settings: { theme: "warm-ink" } },
+  });
+  const h = await run.open("bFrames");
+  await until(h, "the frames draw their boards", () => h.page.locator(".card.board .skel [data-sub]").count());
+  await idle(h);
+  /** What a frame and the Free Text show, independent of the zoom */
+  const looks = () =>
+    h.page.evaluate(() => {
+      const one = (id: string) => {
+        const e = document.querySelector(`.card[data-id="${id}"]`) as HTMLElement,
+          r = e.getBoundingClientRect(),
+          name = e.querySelector(".sbname") as HTMLElement | null;
+        return {
+          lod: [...e.classList].filter((c) => c.startsWith("lo-")).join(),
+          shown: getComputedStyle(e).visibility === "visible" && r.width > 0,
+          name: name ? name.textContent : e.textContent?.trim(),
+          cut: name ? name.scrollWidth > name.clientWidth + 1 : false,
+          count: e.querySelector(".sbmeta")?.textContent ?? null,
+          aspect: +(r.width / r.height).toFixed(2),
+        };
+      };
+      return { f0: one("f0"), f3: one("f3"), ft: one("ft") };
+    });
+  const near = await looks();
+  check(
+    "summaryFramesOnlyBoard at 60 % the frames show their names and counts, the Mark shows",
+    near.f0.count === "4" && !near.f0.cut && (await h.page.locator('.card[data-id="mk"]').isVisible()),
+    near,
+  );
+  await wheelZoom(h, 900);
+  await until(h, "the card level is gone", () => h.page.locator(".cardlay.gone").count());
+  await idle(h);
+  const far = await looks();
+  check(
+    "summaryFramesOnlyBoard past the cut a board with nothing to summarize hides its Marks too",
+    !(await h.page.locator('.card[data-id="mk"]').isVisible()) && (await zoomOf(h)) < 0.3,
+    { z: await zoomOf(h) },
+  );
+  check(
+    "summaryFramesOnlyBoard the frames and the Free Text look as at 60 %, only scaled: no map look, names whole, counts kept",
+    JSON.stringify(far) === JSON.stringify(near) && far.f0.lod === "" && far.ft.lod === "",
+    { near, far },
   );
   await h.close();
 });

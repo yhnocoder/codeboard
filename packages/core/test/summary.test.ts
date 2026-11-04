@@ -181,8 +181,19 @@ describe("what a board summarizes", () => {
   });
 });
 
+describe("a wide Section's column", () => {
+  it("keeps its anchor and stops at 28 S of text, however wide the Section", () => {
+    const l = layoutSummaries({ items: [sec("wide", { x: 100, y: 200, w: 6000, h: 900 })], keep: [] });
+    const c = col(l, secKey("wide"));
+    expect(c.x).toBe(100);
+    expect(c.y).toBe(200);
+    expect(c.w).toBe(SUMMARY.maxLine * l.S + 2 * l.P);
+    expect(c.cpl).toBe(SUMMARY.maxLine);
+  });
+});
+
 describe("the AI's length budget and prompt", () => {
-  it("asks for about 0.6 of the column's capacity, never under two full lines; Sections 2–4 sentences, cards one", () => {
+  it("asks for about 0.6 of the column's capacity, never under two full lines nor over 120 chars; Sections 2–3 sentences, cards one", () => {
     expect(summaryBudget({ cpl: 10, lines: 8 }, false)).toEqual({
       cpl: 10,
       lines: 8,
@@ -191,7 +202,12 @@ describe("the AI's length budget and prompt", () => {
       sentences: [2, 2],
     });
     expect(summaryBudget({ cpl: 12, lines: 1 }, false).target).toBe(24); // two full lines
-    expect(summaryBudget({ cpl: 12, lines: 40 }, false).sentences).toEqual([3, 4]);
+    expect(summaryBudget({ cpl: 12, lines: 40 }, false)).toMatchObject({
+      capacity: 480,
+      target: 120,
+      sentences: [2, 3],
+    });
+    expect(summaryBudget({ cpl: 28, lines: 20 }, false).target).toBe(SUMMARY.maxChars);
     expect(summaryBudget({ cpl: 12, lines: 6 }, true).sentences).toEqual([1, 1]);
   });
   it("builds a Chinese request for a Chinese board, from the Section's cards and nested Sections", () => {
@@ -219,12 +235,14 @@ describe("the AI's length budget and prompt", () => {
     b.sections[0].title += "!";
     expect(new Set([h0, h1, summaryInput(b, k)]).size).toBe(3);
   });
-  it("reads the JSON answer, keeps one bold key phrase and a card's title", () => {
+  it("reads the JSON answer, keeps up to three bold key phrases and a card's title", () => {
     const b = board();
     const frames = new Map(b.sections.map((s) => [s.id, { x: s.x, y: s.y, w: s.w, h: s.h }]));
     const r = summaryRequest(b, cardKey("n3"), layoutSummaries(summarySources(b, rects(b), frames)))!;
     const s = readSummaryReply('```json\n{"text": "**吞吐**优先，**延迟**其次。", "title": "导读"}\n```', r, 5)!;
-    expect(s).toEqual({ text: "**吞吐**优先，延迟其次。", title: "导读", at: 5, sig: r.sig, input: r.input });
+    expect(s).toEqual({ text: "**吞吐**优先，**延迟**其次。", title: "导读", at: 5, sig: r.sig, input: r.input });
+    // at most three bold key phrases: later ones stay as plain text
+    expect(readSummaryReply("**一**，**二**，**三**，**四**。", r, 5)!.text).toBe("**一**，**二**，**三**，四。");
     expect(r.input).toBe(summaryInput(b, cardKey("n3")));
     expect(readSummaryReply("纯文字的回答", r, 5)?.text).toBe("纯文字的回答");
     expect(readSummaryReply("  ", r, 5)).toBeUndefined();

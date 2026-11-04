@@ -28,18 +28,39 @@ const placedRects = () => {
   for (const c of placed()) m.set(c.id, rectOf(c));
   return m;
 };
-/** The layout before measuring: the widths, the font size and the cut (held while cards are dragged: nothing shows it then) */
+/** 0 = cards, 1 = summaries, in between while fading */
+const [fade, setFade] = boardSignal(0);
+export const summaryFade = fade;
+
+/** Zoomed in this far past the highest cut nothing shows the summary level and the zoom cannot cross any cut */
+const NEAR = 1.5;
+/** The summary level is shown, fading, or the zoom is near enough to the cut that it may be soon */
+const near = rooted(() => createMemo(() => fade() > 0 || cam.z < SUMMARY.cutMax * NEAR));
+/** The summary layer exists only then (Summaries.tsx): zoomed in it costs nothing, and it is built before the zoom reaches a cut */
+export const summaryNear = near;
+/** A layout is held while cards are dragged, and while the summary level is far away (nudges, undo and edits zoomed in then
+ *  cost no layout: it catches up once the zoom comes near); a board switch always lays out again */
+const held = (prev: SumLayout | undefined, board: { v: string }) => {
+  const id = state.board.id;
+  if (prev && board.v === id && (dragging().size || !near())) return true;
+  board.v = id;
+  return false;
+};
+
+/** The layout before measuring: the widths, the font size and the cut */
+const draftBoard = boardRef("");
 const draft = rooted(() =>
   createMemo<SumLayout | undefined>((prev) => {
-    if (prev && dragging().size) return prev;
+    if (held(prev, draftBoard)) return prev;
     const rs = placedRects();
     return layoutSummaries(summarySources(state.board, (id) => rs.get(id), frames()));
   }),
 );
 /** The summary level's layout, with the heights the page measured */
+const layoutBoard = boardRef("");
 export const summaryLayout = rooted(() =>
   createMemo<SumLayout | undefined>((prev) => {
-    if (prev && dragging().size) return prev;
+    if (held(prev, layoutBoard)) return prev;
     const rs = placedRects();
     const m = measured();
     return m.size
@@ -50,8 +71,6 @@ export const summaryLayout = rooted(() =>
       : draft();
   }),
 );
-/** The board summarizes something: it has a summary level */
-const hasSummaries = () => !!draft()?.cols.length;
 
 /** The board's content: its cards and its Sections with their title strips */
 function contentBounds(): Rect | null {
@@ -60,14 +79,12 @@ function contentBounds(): Rect | null {
   return bounds(rs);
 }
 
-/** 0 = cards, 1 = summaries, in between while fading */
-const [fade, setFade] = boardSignal(0);
-export const summaryFade = fade;
 /** The level shown (null: none yet on this board) and the fade running (its token; a board switch drops it) */
 const shown = boardRef<0 | 1 | null>(null);
 const running = boardRef<object | null>(null);
 const ease = (t: number) => (t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2);
-const want = rooted(() => createMemo(() => (state.loaded && hasSummaries() && cam.z < (draft()?.cut ?? 0) ? 1 : 0)));
+/** Every board switches at its cut, one with nothing to summarize too (frames and Free Text stay, Marks and the rest fade) */
+const want = rooted(() => createMemo(() => (state.loaded && cam.z < (draft()?.cut ?? 0) ? 1 : 0)));
 
 /** The board was opened or switched to and its camera set: show its level at once, without a fade */
 export function showSummaryLevel() {

@@ -256,7 +256,7 @@ export type Place = {
 };
 
 /**
- * A zoomed-out AI summary (summary.ts): text = the body (one **key phrase**), title = the AI's short title (cards only),
+ * A zoomed-out AI summary (summary.ts): text = the body (up to three **key phrases**), title = the AI's short title (cards only),
  * at = when it was written, sig = summarySig of what it was written from (another sig now = pending), edited = the text shown is
  * the user's own. pairs = the user's edits, newest first, at most 3: each the AI text showing when the user edited it and what
  * the user made of it (at = when); edits with no rewrite in between update the newest pair. They stay across rewrites: every rewrite

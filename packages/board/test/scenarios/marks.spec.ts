@@ -1287,3 +1287,42 @@ test("markSizes", async () => {
   check("markSizeS", (await sizeOf()) === TEXT_FS.mark && (await lit()).join() === "S", await lit());
   await h.close();
 });
+
+/** A Mark written as a heading ("# Basic Concepts", at a dragged size): Light / Regular / Bold from its toolbar set the heading's
+ *  weight too, not the Markdown heading's own 600 */
+test("markHeadingWeight", async () => {
+  const b = emptyBoard("bMH", "mh");
+  put(
+    b,
+    { id: "m1", kind: "note", md: "# Basic Concepts", look: "mark", hand: "blue", fs: 38.5 } as NoteCard,
+    60,
+    60,
+    500,
+  );
+  b.cam = { x: 0, y: 0, z: 1 };
+  const h = await open({ board: b, light: true, w: 900, h: 500, settings: { theme: "warm-ink" } });
+  const pg = h.page,
+    sel = '.card[data-id="m1"]';
+  await pg.locator(`${sel} .tx`).click();
+  const seen: Record<string, string> = {};
+  for (const [tip, w] of [
+    ["Bold", "bold"],
+    ["Light", "light"],
+    ["Regular", "regular"],
+  ] as const) {
+    await pg.locator(`${sel} .hwt[data-tip="${tip}"]`).click();
+    await until(
+      h,
+      `${tip} is saved`,
+      () => (h.board().cards[0] as NoteCard).weight === (w === "regular" ? undefined : w),
+    );
+    await idle(h);
+    seen[tip] = await pg.locator(`${sel} .tx h1`).evaluate((e) => getComputedStyle(e).fontWeight);
+  }
+  check(
+    "markHeadingWeight each weight reaches the heading",
+    seen.Bold === "700" && seen.Light === "300" && seen.Regular === "400",
+    seen,
+  );
+  await h.close();
+});

@@ -4,6 +4,7 @@
 // 每一步都改的话，每一步都要把所有名字重新排版（241 张卡每步 ~60ms）
 import { batch, createEffect, createMemo, createSignal } from "solid-js";
 import { unwrap } from "solid-js/store";
+import { keepsLook } from "@codeboard/core";
 import { cam, camMoving, lod, view, type Lod } from "./camera";
 import { onBoard, placed, rectOf, sizes, state } from "./store";
 import { offscreen } from "./offscreen";
@@ -31,10 +32,9 @@ const izWant = rooted(() =>
 export const izOf = (id: string) => cardIz[id] ?? izWant();
 // 换完了的档：新出现的卡直接用它
 const [settled, setSettled] = createSignal<Lod>("full");
-// Free Text stays on the summary level as it is (#130), so it looks the same at every zoom: never the map's box and name
-const plain = rooted(() =>
-  createMemo(() => new Set(placed().flatMap((c) => (c.kind === "note" && c.look === "freetext" ? [c.id] : [])))),
-);
+// Sub-board frames and Free Text stay on the summary level as they are (#130, core keepsLook), so they look the same at every
+// zoom, only scaled: never the overview's or the map's look (no map name box, no cut titles)
+const plain = rooted(() => createMemo(() => new Set(placed().flatMap((c) => (keepsLook(c) ? [c.id] : [])))));
 export const lodOf = (id: string): Lod => (plain().has(id) ? "full" : (cardLod[id] ?? settled()));
 
 /** Canvas 里调用一次 */

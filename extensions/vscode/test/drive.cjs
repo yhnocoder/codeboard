@@ -2047,6 +2047,26 @@ const finish = async (browser, errors) => {
   // 10. 共享卡：板 1 上 Ctrl+C 一张卡，新建板 2 上 Ctrl+V = 同一张卡（⧉ 2 boards），板 2 上加的 Sidenote 板 1 上也有
   await clickBoard(f);
   const sch1 = card(f, "Scheduler.schedule");
+  // Fit on this narrow board (shot() fits before every screenshot) is now below the summary cut (#130): the cards are faded out
+  // and summaries show in their place. Ctrl+wheel in at the card's own top-left (its column's anchor) to bring the cards back
+  if (await f.locator(".cardlay.gone").count()) {
+    await sch1.evaluate((c) => {
+      const board = document.getElementById("board"),
+        r = c.getBoundingClientRect();
+      board.dispatchEvent(
+        new WheelEvent("wheel", {
+          bubbles: true,
+          cancelable: true,
+          clientX: r.x,
+          clientY: r.y,
+          ctrlKey: true,
+          deltaY: -80,
+        }),
+      );
+    });
+    await until("the cards show again after zooming in", async () => (await f.locator(".cardlay.gone").count()) === 0);
+    await idle(f);
+  }
   const mk0 = await sch1.locator(".mk").count();
   await sch1.locator(".chead .ctitle").click();
   await until(

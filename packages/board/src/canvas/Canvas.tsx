@@ -149,7 +149,7 @@ export function Canvas() {
         <div
           class="lay cardlay"
           style={{ opacity: String(1 - summaryFade()) }}
-          classList={{ gone: summaryFade() === 1 }}
+          classList={{ gone: summaryFade() === 1, fading: summaryFade() > 0 && summaryFade() < 1 }}
         >
           <SectionFrames />
           <links.Layer bottom />

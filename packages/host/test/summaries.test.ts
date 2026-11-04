@@ -224,6 +224,25 @@ describe("summaryPrompt", () => {
     expect(u).toContain("标题：使用 Kogge–Stone 算法进行 parallel scan");
     expect(u).not.toContain("用户改");
   });
+  it("asks for a bold key phrase per important sentence, and its own examples show 2–3 short ones, no numbers", () => {
+    const u = summaryPrompt(base()).user;
+    expect(u).toContain("大约每 40 字一处，最多 3 处；每处 2–10 个字；加粗的字合起来不超过全文的四分之一");
+    const sums = [...u.matchAll(/^摘要：(.*)$/gm)].map((m) => m[1]);
+    expect(sums).toHaveLength(4);
+    for (const t of sums) {
+      const bold = [...t.matchAll(/\*\*(.+?)\*\*/g)].map((m) => m[1]);
+      expect(bold.length).toBeGreaterThanOrEqual(2);
+      expect(bold.length).toBeLessThanOrEqual(3);
+      for (const b of bold) {
+        // CJK characters count one, Latin letters and spaces half
+        const n = [...b].reduce((a, ch) => a + (/[\u4e00-\u9fff]/.test(ch) ? 1 : 0.5), 0);
+        expect(n).toBeGreaterThanOrEqual(2);
+        expect(n).toBeLessThanOrEqual(10);
+        expect(b).not.toMatch(/\d/);
+      }
+      expect(bold.join("").length).toBeLessThanOrEqual(t.replace(/\*\*/g, "").length / 4);
+    }
+  });
   it("puts the user's edited summaries in the first example slots, the prompt's own in the rest", () => {
     const u = summaryPrompt({
       ...base(),

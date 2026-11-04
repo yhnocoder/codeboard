@@ -773,6 +773,9 @@ test("portSizeWhenZoomedOut", async () => {
   b.place.n0 = { x: 300, y: 200, w: 320, h: 160 };
   b.cards.push({ id: "n1", kind: "note", md: "Another note", look: "note" } as NoteCard);
   b.place.n1 = { x: 700, y: 200, w: 200, h: 100 };
+  // a note far to the right: the board must be wide for its minimum zoom (fit-all ÷ 1.3, #130) to reach about 30 %
+  b.cards.push({ id: "n2", kind: "note", md: "Far away", look: "note" } as NoteCard);
+  b.place.n2 = { x: 3400, y: 200, w: 200, h: 100 };
   b.cam = { x: 0, y: 0, z: 1 };
   const h = await open({ board: b, light: true, w: 1300, h: 800 });
   const pg = h.page,
