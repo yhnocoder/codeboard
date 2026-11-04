@@ -164,7 +164,7 @@ test("arrowLabelsMenus", async () => {
     aLoop: await A.locator(".vloop").count(),
     aText: await A.locator(".vlabel").textContent(),
     aRows: await A.locator(".vrow").allTextContents(),
-    aGone: await A.locator(".vrow.gone").allTextContents(),
+    aGone: await A.locator(".vrow.vgone").allTextContents(),
     bText: await B.locator(".vloop").textContent(),
     bRows: await B.locator(".vrow").count(),
     bTip: await B.locator(".vloop").getAttribute("data-tip"),

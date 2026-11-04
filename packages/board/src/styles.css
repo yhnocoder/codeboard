@@ -4883,11 +4883,11 @@ mark.wdiff {
   white-space: nowrap;
 }
 /* 代码更新后不在了的参数：划掉、变灰，留着等用户自己去掉 */
-.vrow.gone > span {
+.vrow.vgone > span {
   text-decoration: line-through;
   color: var(--ink-3);
 }
-.vrow.gone:hover > span {
+.vrow.vgone:hover > span {
   color: var(--ink-3);
 }
 
@@ -8006,7 +8006,7 @@ mark.wdiff {
   transition: opacity 90ms ease-in;
 }
 .sumlay.live .sumcol:hover .sumre,
-.sumlay.live .sumre:focus-visible {
+.sumlay.live .sumreat:has(.sumre:focus-visible) .sumre {
   opacity: 1;
   pointer-events: auto;
   transition: opacity 120ms ease-out;
@@ -8039,6 +8039,8 @@ mark.wdiff {
     rotate: 1turn;
   }
 }
+/* the one dot: the cards changed since this summary was written (it is rewritten after the wait); ↻ or ✓ 保留 clears it. A hand
+   edit counts as written, so an edited summary has none */
 .sumdot {
   position: absolute;
   right: 0;
@@ -8049,13 +8051,13 @@ mark.wdiff {
   corner-shape: round;
   display: none;
 }
-.sumcol.edited .sumdot {
+.sumcol.pend .sumdot {
   display: block;
   background: var(--accent);
 }
-.sumcol.pend:not(.edited) .sumdot {
-  display: block;
-  box-shadow: inset 0 0 0 1px var(--ink-3);
+/* ✓ 保留, only on a stale item: the same button as ↻, right after it (its offset scales with it) */
+.sumre.sumkp {
+  left: calc(0.3em + 24px * var(--sum-iz));
 }
 @media (prefers-reduced-motion: reduce) {
   .sumre,

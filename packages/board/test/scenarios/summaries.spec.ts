@@ -5,8 +5,8 @@
 //   summaryWrittenAndEdited      on the real host with a fake DeepSeek: opening the board asks nothing, ↻ writes one item (as
 //                                long as its content asks, no layout numbers); a click edits a body in place (Enter saves, marked edited, kept as a pair
 //                                with the AI text it replaced), ↻ rewrites it following that edit and keeps the pair, ⌘Z brings
-//                                the hand edit back; a Note with no heading shows nothing until written, then the AI's short
-//                                title, titles and bodies rendered inline (refs by name, highlights) with no syntax showing
+//                                the hand edit back; ✓ 保留 on a stale one keeps it and clears its dot; a Note with no heading
+//                                shows nothing until written, then the AI's short title, titles and bodies rendered inline (refs by name, highlights) with no syntax showing
 //   summaryNoKey                 without a DeepSeek key nothing is written: Section titles with empty bodies, and ↻ says a key is needed
 //   summaryOverflowFades         two loose cards stacked close, each with a long summary: at rest the columns never overlap and
 //                                the upper one fades out over its last lines; hovered it shows in full over the lower one, raised;
@@ -175,6 +175,8 @@ test("summaryWrittenAndEdited", async () => {
   const b = bigBoard("bW", 0.2, false);
   // a Note with no heading: its first paragraph (a [[ref]], a ==highlight==) is never its title
   put(b, note("bare", "这一段没有标题，讲 [[异构并行计算 1]] 的 ==合并访存== 和 **吞吐**。"), 5000, 1800, 600);
+  // written before its cards changed: stale (the dot), but asked for only after a change in this session
+  putSummary(b, "sec:s2", { text: "线程调度的旧摘要。", at: Date.now(), sig: "before the change" });
   const run = await hostBoards([b], {
     page: { light: true, w: 1280, h: 800, settings: { theme: "warm-ink" } },
   });
@@ -190,6 +192,31 @@ test("summaryWrittenAndEdited", async () => {
   const h = await run.open("bW");
   await idle(h);
   check("summaryWrittenAndEdited opening a board asks the AI nothing by itself", calls.length === 0, calls.length);
+  // ✓ 保留 beside ↻ on the stale one keeps its text, counts it as written from these cards and clears its dot
+  const s2 = h.page.locator('.sumcol[data-sum="sec:s2"]');
+  const marks = () =>
+    s2.evaluate((e) => ({
+      dot: getComputedStyle(e.querySelector(".sumdot")!).display !== "none",
+      keep: e.querySelectorAll(".sumkp").length,
+    }));
+  await s2.locator(".sumhd").hover();
+  await s2.locator(".sumkp").waitFor();
+  const stale = await marks();
+  await shot(h, "130-keep-summary");
+  await s2.locator(".sumkp").click();
+  await until(h, "保留 is saved", () => !!h.board().sections.find((s) => s.id === "s2")?.summary?.input);
+  const kept = await marks();
+  check(
+    "summaryWrittenAndEdited 保留 keeps a stale summary as it is and clears its dot",
+    stale.dot &&
+      stale.keep === 1 &&
+      !kept.dot &&
+      kept.keep === 0 &&
+      summaryIn(h, "s2")?.text === "线程调度的旧摘要。" &&
+      summaryIn(h, "s2")?.sig === summarySig(h.board(), "sec:s2") &&
+      calls.length === 0,
+    { stale, kept, s2: summaryIn(h, "s2") },
+  );
   const redo = async (key: string) => {
     const was = calls.length;
     await h.page.locator(`.sumcol[data-sum="${key}"] .sumhd`).hover();

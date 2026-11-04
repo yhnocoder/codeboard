@@ -9,8 +9,16 @@ import { cam, camMoving, lod, view, type Lod } from "./camera";
 import { onBoard, placed, rectOf, sizes, state } from "./store";
 import { offscreen } from "./offscreen";
 import { boardStore, rooted } from "./root";
+import { summaryFade } from "./summary";
 
 const PER = 12;
+const DETAIL: Record<Lod, number> = { map: 0, overview: 1, full: 2 };
+/**
+ * The card level is fading or faded out (the summary level, state/summary.ts): the cards keep the level they had and cull.ts
+ * leaves them as they are. Changes made under the faded layer (content-visibility: hidden) are not styled then but all at once
+ * when it shows again: switching 241 cards to the map level while it was hidden made that frame 150–300 ms of style alone
+ */
+export const cardsAway = rooted(() => createMemo(() => summaryFade() > 0));
 // 正在一批批换档（还没换完）：cull.ts 这时先不显示屏幕外的卡
 const [busy, setBusy] = createSignal(false);
 export const lodBusy = busy;
@@ -49,6 +57,7 @@ export function trackCardLod() {
   };
   function run() {
     on = false;
+    if (cardsAway()) return;
     const want = lod(),
       iz = izWant();
     const { w, h } = view(),
@@ -61,10 +70,19 @@ export function trackCardLod() {
       CI = unwrap(cardIz),
       st = settled(),
       fixed = plain();
+    // more detail only once the camera rests: while it moves the world layer is scaled as a bitmap anyway, and a card switched
+    // to more detail paints all its code lines (12 cards a frame: 30–60 ms of paint on every frame of a zoom in). Less detail
+    // (fewer nodes to paint) still follows the camera; a pinch going back and forth then never switches a card back and forth
+    const moving = camMoving();
+    let held = false;
     for (const c of placed()) {
       if (fixed.has(c.id)) continue;
       const was = CL[c.id] ?? st;
       if (was === want && (want !== "map" || CI[c.id] === iz)) continue;
+      if (moving && DETAIL[want] > DETAIL[was]) {
+        held = true;
+        continue;
+      }
       const p = P[c.id],
         sz = Z[c.id];
       const r = p
@@ -82,8 +100,8 @@ export function trackCardLod() {
     }
     if (!todo.length) {
       batch(() => {
-        if (settled() !== want) setSettled(want);
-        setBusy(false);
+        if (!held && settled() !== want) setSettled(want);
+        setBusy(held);
       });
       return;
     }
@@ -97,8 +115,8 @@ export function trackCardLod() {
         setCardLod(id, want);
         if (want === "map") setCardIz(id, iz);
       }
-      if (i === todo.length) setSettled(want);
-      setBusy(i < todo.length);
+      if (i === todo.length && !held) setSettled(want);
+      setBusy(i < todo.length || held);
     });
     if (i < todo.length) later();
   }
@@ -107,6 +125,8 @@ export function trackCardLod() {
     lod();
     izWant();
     placed();
+    cardsAway();
+    camMoving();
     later();
   });
 }

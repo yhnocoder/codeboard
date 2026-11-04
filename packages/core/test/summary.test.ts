@@ -31,7 +31,8 @@ import {
   sectionFrames,
   summaryKeys,
 } from "../src";
-import { editSummary, type CommandEnv } from "../src/commands";
+import { editSummary, keepSummary, type CommandEnv } from "../src/commands";
+import { createHistory } from "../src/history";
 
 const sec = (key: string, box: Rect, title = key): SumSource => ({
   key: secKey(key),
@@ -339,6 +340,50 @@ describe("the user's edits of a summary", () => {
     expect(ex[0].title).toBe("异构并行");
     expect(ex[0].content).toContain("吞吐");
     expect(summaryExamples([b], 4, { board: "b", key: "sec:s" })).toEqual([]);
+  });
+});
+
+describe("keeping a summary as it is", () => {
+  it("counts it as written from what is there now, text untouched, and undo makes it pending again", () => {
+    let b = board();
+    putSummary(b, "sec:s", { text: "AI 写的", at: 1, sig: summarySig(b, "sec:s")!, input: summaryInput(b, "sec:s") });
+    const h = createHistory(
+      {
+        read: () => b,
+        write: (fn) => fn(b),
+        replace: (x) => {
+          b = structuredClone(x);
+        },
+        putItems: (ops) => {
+          for (const [k, at, v] of ops) {
+            if (k === "place") b.place[at as string] = v as Board["place"][string];
+            else (b[k] as unknown[])[at as number] = v;
+          }
+        },
+        raw: (x) => x,
+      },
+      { changed: () => {}, changedLive: () => {}, stacks: () => {}, restored: () => {}, toast: () => {} },
+      { noteBlocks: (md) => [md] },
+    );
+    h.setBoard(b, []);
+    const env = { board: () => b, edit: (fn: (x: Board) => void) => h.mutate(fn) } as unknown as CommandEnv;
+    h.mutate((x) => {
+      (x.cards[0] as NoteCard).md = "# 吞吐量\n多核路线保住串行速度";
+    });
+    expect(summaryPending(b, "sec:s")).toBe(true);
+    keepSummary(env, "sec:s");
+    expect(summaryPending(b, "sec:s")).toBe(false);
+    expect(summaryOf(b, "sec:s")).toMatchObject({ text: "AI 写的", at: 1, input: summaryInput(b, "sec:s") });
+    expect(h.undo()).toBe(true);
+    expect(summaryPending(b, "sec:s")).toBe(true);
+    expect(summaryOf(b, "sec:s")!.text).toBe("AI 写的");
+    // nothing to keep, no undo step: never written, or not pending
+    keepSummary(env, "card:n3");
+    expect(summaryOf(b, "card:n3")).toBeUndefined();
+    expect(h.undo()).toBe(true);
+    expect(summaryPending(b, "sec:s")).toBe(false);
+    keepSummary(env, "sec:s");
+    expect(h.undo()).toBe(false);
   });
 });
 

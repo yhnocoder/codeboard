@@ -1,4 +1,4 @@
-// Zoomed-out summaries (state/summary.ts, canvas/Summaries.tsx): the user's edit and ↻. The rules are core commands
+// Zoomed-out summaries (state/summary.ts, canvas/Summaries.tsx): the user's edit, ↻ and 保留. The rules are core commands
 import { summaryRequest, type SumKey } from "@codeboard/core";
 import * as C from "@codeboard/core/commands";
 import { state } from "../state/store";
@@ -12,6 +12,8 @@ const [writing, setWriting] = boardSignal<ReadonlySet<string>>(new Set());
 export const summaryWriting = (key: string) => writing().has(key);
 
 export const editSummary = (key: string, text: string) => C.editSummary(commandEnv, key, text);
+/** 保留: the summary stays as it is and is no longer pending (no rewrite for the changes so far) */
+export const keepSummary = (key: string) => C.keepSummary(commandEnv, key);
 
 /** ↻: the host writes the item's summary now, sized by its column; a hand edit is replaced. Failures show as the AI tools' do */
 export async function regenerateSummary(key: SumKey) {

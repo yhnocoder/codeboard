@@ -1,7 +1,7 @@
-// Zoomed-out summaries (summary.ts): the user's own text, and ↻ (written now). Both are undo steps. A hand edit is kept as a pair
+// Zoomed-out summaries (summary.ts): the user's own text, ↻ (written now) and 保留 (kept as it is). All are undo steps. A hand edit is kept as a pair
 // (the AI text it replaced, the user's), newest first, at most SUMMARY_PAIRS: rewrites, automatic or ↻, follow them and keep them.
 import type { SummaryResult } from "../protocol";
-import { putSummary, summaryInput, summaryOf, summarySig, type SumRequest } from "../summary";
+import { putSummary, summaryInput, summaryOf, summaryPending, summarySig, type SumRequest } from "../summary";
 import type { CommandEnv } from "./env";
 
 /** How many of the user's edits a summary keeps */
@@ -33,6 +33,21 @@ export function editSummary(env: CommandEnv, key: string, text: string) {
       edited: true,
       pairs,
     });
+  });
+}
+
+/**
+ * 保留: the summary stays as it is, counted as written from what is there now: no longer pending (its dot goes), so the host
+ * neither waits to rewrite it nor asks on opening the board. Its text, edit mark and pairs are left alone. Undo makes it pending
+ * again. Nothing written yet or not pending: nothing
+ */
+export function keepSummary(env: CommandEnv, key: string) {
+  const b = env.board(),
+    s = summaryOf(b, key);
+  if (!s || !summaryPending(b, key)) return;
+  env.edit((b) => {
+    const s = summaryOf(b, key);
+    if (s) putSummary(b, key, { ...s, sig: summarySig(b, key) ?? "", input: summaryInput(b, key) });
   });
 }
 

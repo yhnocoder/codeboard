@@ -60,14 +60,33 @@ export function Canvas() {
   );
   // 停下以后一两帧去掉 will-change 的提示（styles.css 的 .world.settle）：位图缩放过的内容按新比例重新清晰栅格化
   const [settle, setSettle] = createSignal(false);
+  // the zoom the world layer was last rastered at (at rest, or by the settle frame below while zooming out)
+  let rasterZ = cam.z;
   createEffect(
     on(
       camMoving,
       (m) => {
+        if (!m) rasterZ = cam.z;
         setSettle(!m);
         if (!m) requestAnimationFrame(() => requestAnimationFrame(() => setSettle(false)));
       },
       { defer: true },
+    ),
+  );
+  // Zooming out in one gesture: the world layer keeps the raster scale it had when the gesture began (will-change), so at 1/5 of
+  // it Chromium rasters 25 times the screen's area of tiles at the old scale, on every frame that brings new tiles in (the
+  // commits wait on it: 60–120 ms frames). Each time the zoom falls below half the scale it was rastered at, one settle frame
+  // re-rasters it at the current scale; zooming in it stays as is (scaled up) until the camera rests, as before
+  createEffect(
+    on(
+      () => cam.z,
+      (z) => {
+        if (z < rasterZ * 0.5 && !settle()) {
+          rasterZ = z;
+          setSettle(true);
+          requestAnimationFrame(() => requestAnimationFrame(() => setSettle(false)));
+        }
+      },
     ),
   );
   // 打开白板后，世界层的 transform 要先变过一次，之后的平移才便宜：没变过时，Chromium 每帧都把整块世界层重新分层（实测每帧 40+ ms，

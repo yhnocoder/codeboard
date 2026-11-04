@@ -15,7 +15,7 @@ import {
   type NoteCard,
   type Summary,
 } from "@codeboard/core";
-import { editSummary, type CommandEnv } from "@codeboard/core/commands";
+import { editSummary, keepSummary, type CommandEnv } from "@codeboard/core/commands";
 import {
   SummaryWatch,
   hostRequests,
@@ -220,6 +220,28 @@ describe("SummaryWatch", () => {
     b.sections[0].summary = before;
     w.saw(b);
     expect(summaryPending(b, "sec:s")).toBe(false);
+    await vi.advanceTimersByTimeAsync(SUMMARY.regenMs);
+    await w.idle();
+    expect(calls).toHaveLength(0);
+    w.dispose();
+  });
+  it("stops the wait of a summary kept as it is (保留) and asks nothing after SUMMARY.regenMs, nor on reopening", async () => {
+    const b = board();
+    putSummary(b, "sec:s", written(b, "sec:s"));
+    const { w, calls } = watch(b);
+    w.opened(b);
+    (b.cards[0] as NoteCard).md = "# 带宽\n显存带宽";
+    w.saw(b);
+    expect(w.waiting("b1")).toEqual(["sec:s"]);
+    await vi.advanceTimersByTimeAsync(SUMMARY.regenMs / 2);
+    const env = { board: () => b, edit: (fn: (x: Board) => void) => (fn(b), true) } as unknown as CommandEnv;
+    keepSummary(env, "sec:s");
+    expect(b.sections[0].summary?.text).toBe("旧的");
+    w.saw(b);
+    expect(w.waiting("b1")).toEqual([]);
+    await vi.advanceTimersByTimeAsync(SUMMARY.regenMs);
+    w.opened(b);
+    expect(w.waiting("b1")).toEqual([]);
     await vi.advanceTimersByTimeAsync(SUMMARY.regenMs);
     await w.idle();
     expect(calls).toHaveLength(0);

@@ -4,7 +4,8 @@
 // summaryNear: zoomed in it costs nothing) and from then on only its opacity follows the fade, so the switch never adds elements or
 // lays anything out. Each column's title and body heights are read once per change of width or text
 // (ResizeObserver, in the board's measuring round) and give the final extents the later columns stop at.
-// Click a body to edit it (Enter saves, Esc cancels, ⌘B marks the key phrase); ↻ on hover writes it again.
+// Click a body to edit it (Enter saves, Esc cancels, ⌘B marks the key phrase); ↻ on hover writes it again, and on a stale item
+// (its cards changed since it was written: the one dot, on ↻) ✓ 保留 beside it keeps it as it is.
 // At rest a column shows only the room it has (it never overlaps the next one); a longer text fades out over its last visible
 // lines and shows in full, over its neighbours, while the column is hovered or has the focus: only a clip, a mask, a shadow and
 // the stacking change, nothing is laid out again. A title is at most two lines (an ellipsis) and shows in full the same way.
@@ -130,15 +131,17 @@ function Column(p: { col: SumCol }) {
     if (save) A.editSummary(key, t);
     rich(md, tx, text());
   };
+  /** Written, and its cards changed since: the dot shows, it is rewritten after the wait unless kept (✓ 保留) */
+  const stale = () => pending() && !!sum();
   const tip = () =>
     writing()
       ? "AI summary · Writing…"
-      : sum()?.edited
-        ? "AI summary · Edited by hand · rewrites follow your edits"
-        : !sum()
-          ? "AI summary · Not written yet · ↻ writes it now"
-          : pending()
-            ? "AI summary · Pending: rewritten 10 minutes after the last change"
+      : !sum()
+        ? "AI summary · Not written yet · ↻ writes it now"
+        : pending()
+          ? "AI summary · Cards changed since it was written: rewritten 10 minutes after the last change · ✓ 保留 keeps it"
+          : sum()?.edited
+            ? "AI summary · Edited by hand · rewrites follow your edits"
             : `AI summary · ${ago(sum()!.at)}`;
   const c = () => p.col;
   // ↻ right after the title's last line (a zero-width anchor: hidden, it takes no room and the title never reflows)
@@ -161,6 +164,21 @@ function Column(p: { col: SumCol }) {
         </svg>
         <span class="sumdot" />
       </button>
+      <Show when={stale()}>
+        <button
+          type="button"
+          class="sumre sumkp"
+          data-nodrag
+          aria-label="保留 · Keep this summary as it is"
+          data-tip="保留 · Keep this summary as it is: no rewrite for these changes"
+          disabled={writing()}
+          onClick={() => A.keepSummary(key)}
+        >
+          <svg class="sumic" viewBox="0 0 16 16" aria-hidden="true">
+            <path d="M3.2 8.6l3.1 3.1 6.5-7" />
+          </svg>
+        </button>
+      </Show>
     </span>
   );
   return (
@@ -188,8 +206,7 @@ function Column(p: { col: SumCol }) {
           loose: key.startsWith("card:") || !!c().group,
           h1: c().head?.level === 1,
           h2: c().head?.level === 2,
-          pend: pending() && !!sum(),
-          edited: !!sum()?.edited,
+          pend: stale(),
           gen: writing(),
           sumover: c().full > c().h + 1,
           sumclamp: clamped(),

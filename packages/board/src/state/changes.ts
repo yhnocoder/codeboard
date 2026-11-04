@@ -6,6 +6,7 @@ import {
   applySharedUpdate,
   putSummary,
   summaryOf,
+  summaryPending,
   type Board,
   type BoardPatch,
   type SegView,
@@ -123,12 +124,14 @@ export function syncMerged(p: BoardPatch, views?: Record<string, SegView>) {
   save.alignSent();
 }
 /** Summaries the host wrote by itself (zoomed out; host summaries.ts): saved like any change, no undo step. One the user edited
- *  after the host asked (its newest edit is not the one the host wrote from) stays as the user left it */
+ *  after the host asked (its newest edit is not the one the host wrote from), or kept as it is (保留: no longer pending), stays as
+ *  the user left it */
 export function syncSummaries(items: Record<string, Summary>) {
   sync((b) => {
     for (const [k, s] of Object.entries(items)) {
       const now = summaryOf(b, k);
       if (now?.edited && now.pairs?.[0]?.at !== s.pairs?.[0]?.at) continue;
+      if (now && !summaryPending(b, k)) continue;
       putSummary(b, k, structuredClone(s));
     }
   });

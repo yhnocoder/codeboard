@@ -12,7 +12,7 @@ import { onBoard, placed, rectOf } from "./store";
 import { boardStore } from "./root";
 import { sel } from "./selection";
 import { editing, dragging } from "./ui";
-import { lodOf, lodBusy } from "./lodcards";
+import { lodOf, lodBusy, cardsAway } from "./lodcards";
 import { offscreen, setOffscreen } from "./offscreen";
 
 // 一帧最多显示 SHOW 份：代码卡算 1 份；Note 算 1.5 份（表格、高亮的代码、勾选框、公式，画起来比一张代码卡还贵），一帧最多两张
@@ -54,6 +54,8 @@ export function trackOffscreen() {
   let again = false;
   createEffect(() => {
     tick();
+    // the card level is faded out: nothing to show or hide under it (lodcards.ts cardsAway)
+    if (cardsAway()) return;
     const { w, h } = viewTracked(),
       z = cam.z,
       x = cam.x,
