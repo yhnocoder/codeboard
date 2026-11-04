@@ -21,7 +21,8 @@ import { placing } from "../state/mode";
 import { placeOf, rectOf, state } from "../state/store";
 import { nearView } from "../state/cull";
 import { send } from "../host";
-import { cam, camMoving, lod } from "../state/camera";
+import { cam, camMoving } from "../state/camera";
+import { summaryFade } from "../state/summary";
 import { shownIcon, stickerClick } from "../actions/questions";
 import { useOverlay } from "../ui/overlay";
 import { followPointer } from "../gesture";
@@ -167,13 +168,13 @@ const menuAt = (id: string) => (e: MouseEvent) => {
 };
 
 /**
- * 动图贴纸能不能播：完整档（概览、地图档不播），且世界坐标里的这一块在屏幕附近（state/cull.ts 的 nearView）。
+ * 动图贴纸能不能播：卡片这一层没有整个换成摘要（state/summary.ts），且世界坐标里的这一块在屏幕附近（state/cull.ts 的 nearView）。
  * 停随时停；开始播等镜头停下（平移时新进来的先画第一帧，免得换图、建合成层挤进平移的那几帧，同 cull.ts 等镜头停下再藏）。
  * 只有动图会调它（stickers/glyphs.tsx），别的贴纸不跟踪镜头
  */
 function playNear(rect: () => { x: number; y: number; w: number; h: number }) {
   let was = false;
-  return () => (was = lod() === "full" && nearView(rect(), was) && (was || !camMoving()));
+  return () => (was = summaryFade() < 1 && nearView(rect(), was) && (was || !camMoving()));
 }
 
 /** 一枚可拖、可改大小的贴纸；x、y 是它所在那一层的坐标（画布 = 世界坐标，卡里 = 相对卡左上角，card = 那张卡） */
@@ -188,7 +189,7 @@ function FreeSticker(p: { s: Sticker; x: number; y: number; card?: string }) {
   return (
     <div
       class="stk canvas"
-      classList={{ q: !!p.s.q, done: !!p.s.q?.done, sel: sel(), bound: !!at().on, "lod-map": lod() === "map" }}
+      classList={{ q: !!p.s.q, done: !!p.s.q?.done, sel: sel(), bound: !!at().on }}
       data-sticker={p.s.id}
       data-tip={stickerLabel(p.s.icon)}
       style={{
@@ -221,7 +222,7 @@ function FreeSticker(p: { s: Sticker; x: number; y: number; card?: string }) {
 /** 卡角上、代码行上的小贴纸（不能改大小） */
 export function StickerChip(p: { s: Sticker; size: number }) {
   const card = p.s.at.kind === "line" ? p.s.at.card : undefined;
-  const play = card ? playNear(() => rectOf(card)) : () => lod() === "full";
+  const play = card ? playNear(() => rectOf(card)) : () => summaryFade() < 1;
   return (
     <span
       class="stk"

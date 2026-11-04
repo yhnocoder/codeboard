@@ -1,5 +1,5 @@
 //  summaryTitleZoomsToItem — Fit to Window on a board of a dozen code cards lands below the summary cut (the cards are hidden,
-//                            so they cannot be double-clicked as in the overview): double-clicking a loose card's summary title
+//                            so they cannot be double-clicked): double-clicking a loose card's summary title
 //                            flies to that card at 100 % with the card level back and its calls clickable, nothing new on the
 //                            board; double-clicking a Section's title fits the Section's frame, an outer Section's own
 //                            column (own:, the cards placed directly in it beside a child Section) fits those cards

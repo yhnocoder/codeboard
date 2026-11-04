@@ -15,7 +15,7 @@ import {
 } from "@codeboard/core";
 import { state, placed, rectOf } from "./store";
 import { frames } from "./sections";
-import { animate, cam, setZoomFloor, viewTracked } from "./camera";
+import { animate, cam, camMoving, setZoomFloor, viewTracked } from "./camera";
 import { boardRef, boardSignal, rooted } from "./root";
 import { dragging } from "./ui";
 import { zlog, zlogging } from "./zoomlog";
@@ -97,17 +97,44 @@ const ease = (t: number) => (t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2);
 /** Every board switches at its cut, one with nothing to summarize too (frames and Free Text stay, Marks and the rest fade) */
 const want = rooted(() => createMemo(() => (state.loaded && cam.z < (draft()?.cut ?? 0) ? 1 : 0)));
 
+/** The level the fade runs to */
+const [toward, setToward] = boardSignal<0 | 1>(0);
+/** Below the cut the card level stays in the tree. Once the camera rests it is kept drawn (awake): painted at an opacity too
+ *  low to show, on a layer of its own, and cull.ts prepares the cards in view under it, so the fade back to the cards opens
+ *  on whole cards, from tiles already there. While the camera moves it is asleep (styles.css .cardlay.asleep: clipped to
+ *  nothing, so none of its cards is painted; a zoom or pan at the summary level draws the summaries only, where a level
+ *  painted under them was painted again on every frame, 15–40 ms a frame on 241 cards). Waking is a repaint of the cards,
+ *  taken in an idle moment at rest; hiding the level instead (content-visibility) made the frame that showed it again style
+ *  and lay out every card at once, 400 ms on a board of 41 cards */
+const [awake, setAwake0] = boardSignal(false);
+function setAwake(on: boolean) {
+  setAwake0(on);
+  if (zlogging()) zlog("W", `card level ${on ? "kept drawn" : "let go"} z${cam.z.toFixed(4)}`);
+}
+/** The card level is faded out (styles.css .cardlay.gone: not hit) */
+export const cardsGone = rooted(() => createMemo(() => fade() === 1));
+/** The card level is fading out: cull.ts shows no card entering the view then (a card never seen is not painted just to
+ *  fade; its box is hidden instead) */
+export const cardsLeaving = rooted(() => createMemo(() => fade() > 0 && fade() < 1 && toward() === 1));
+/** The card level is faded out and asleep (Canvas.tsx .cardlay.asleep): cull.ts leaves its cards as they are */
+export const cardsAsleep = rooted(() => createMemo(() => fade() === 1 && (!awake() || camMoving())));
+/** The card level's opacity: faded out, 0 asleep and too low to show while it is kept drawn */
+export const cardsOpacity = () => (fade() < 1 ? 1 - fade() : cardsAsleep() ? 0 : 0.003);
+
 /** The board was opened or switched to and its camera set: show its level at once, without a fade */
 export function showSummaryLevel() {
   running.v = null;
   shown.v = want();
+  setToward(shown.v);
   setFade(shown.v);
+  setAwake0(false);
 }
 
 function run(to: 0 | 1) {
   const me = {};
   running.v = me;
   const from = shown.v ?? 0;
+  setToward(to);
   if (zlogging()) zlog("S", `${from}→${to} start z${cam.z.toFixed(4)}`);
   let t = 0;
   animate((dt, instant) => {
@@ -126,6 +153,8 @@ function run(to: 0 | 1) {
     if (t < 1) return false;
     shown.v = to;
     running.v = null;
+    // faded out under a camera at rest: its tiles are there, keep them
+    if (to === 1) setAwake(!untrack(camMoving));
     if (zlogging()) zlog("S", `${to} end`);
     // the zoom crossed back during the fade: the reverse one follows at once
     const w = untrack(want);
@@ -148,6 +177,18 @@ export function wireSummaries() {
         };
         idle = requestIdleCallback(go, { timeout: 400 });
       } else if (outOfRange() && built() && !shownOrFading()) setBuilt(false);
+    });
+    let wake: number | undefined;
+    createEffect(() => {
+      if (fade() < 1 || awake() || camMoving() || wake !== undefined) return;
+      // woken in an idle moment: the repaint of every card then lands in no frame of a gesture
+      wake = requestIdleCallback(
+        () => {
+          wake = undefined;
+          if (untrack(fade) === 1 && !untrack(awake) && !untrack(camMoving)) setAwake(true);
+        },
+        { timeout: 500 },
+      );
     });
     createEffect(
       on(want, (w) => {

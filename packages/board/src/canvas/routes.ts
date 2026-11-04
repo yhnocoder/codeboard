@@ -20,7 +20,6 @@ import { popIn } from "../state/ui";
 import { foldAt, foldHome, frameAt, lerp, type Fold } from "../state/fold";
 import { animate, frameTime } from "../state/camera";
 import { reduceMotion } from "../state/motion";
-import { lodOf } from "../state/lodcards";
 import { shape } from "../state/look";
 import { tune } from "../state/tune";
 import {
@@ -124,8 +123,7 @@ type End = {
   box: Box /** 整张卡（Compare 栏 → 整张 Compare）：绕路时要避开的 */;
   outer: Box;
   line: boolean;
-  y: number /** 卡头那一行的 y（行端的卡在地图档时用） */;
-  hy: number;
+  y: number;
   col?: "left" | "right";
   host: string;
   card: string;
@@ -135,12 +133,6 @@ type Base = { a: End; b: End; kind: "normal" | "self" | "gutter"; gx?: number };
 
 /** 连着一行 / Note 的一块（不是整张卡）：只从左右两边进出 */
 export const subEnd = (e: Link["from"]) => e.line !== undefined || !!e.block;
-/** 行端、块端的那张卡在地图档（看不到行和块）：端点落到卡头 */
-const mapHides = (e: Link["from"]) => {
-  if (!subEnd(e)) return false;
-  const f = cardById(e.card);
-  return !!f && lodOf(f.host.id) === "map";
-};
 
 /** moving：这一端的卡在正在折叠、展开的 Section 里时跟着动（外面连进来的线；两端都在里面的线整条缩放，不动端点） */
 function endOf(e: Link["from"], moving = true): End | null {
@@ -149,14 +141,13 @@ function endOf(e: Link["from"], moving = true): End | null {
   const f = cardById(e.card)!;
   const r = er.r;
   const line = subEnd(e);
-  const hy = er.pill ? r.y + r.h / 2 : headY(e.card, r);
-  let y = hy;
+  let y = er.pill ? r.y + r.h / 2 : headY(e.card, r);
   // 块端：那一块的中线（state/blocks.ts 量的）；块没了、量不到时落到卡头，和行端一样
   if (e.block && !er.pill) {
     const by = blockY(e.card, e.block);
     if (by !== null) y = r.y + by;
   }
-  // 行端：那一行的 y；行被折叠 / 藏起来时落到卡头，线的样子不变。卡在地图档（看不到行）时也落到卡头：那个在 ends 里挑（hy）
+  // 行端：那一行的 y；行被折叠 / 藏起来时落到卡头，线的样子不变
   else if (line && !er.pill) {
     const p = lineY(e.card, e.seg, e.line);
     const row = p?.row !== undefined ? geo[e.card]?.rows[p.row] : undefined;
@@ -183,14 +174,13 @@ function endOf(e: Link["from"], moving = true): End | null {
       outer: col ? foldBox(fo, outer) : b,
       line,
       y: foldY(fo, y),
-      hy: foldY(fo, hy),
       col,
       host: f.host.id,
       card: e.card,
       pill: er.pill,
     };
   }
-  return { box: r, outer, line, y, hy, col, host: f.host.id, card: e.card, pill: er.pill };
+  return { box: r, outer, line, y, col, host: f.host.id, card: e.card, pill: er.pill };
 }
 
 function baseOf(L: Link): Base | null {
@@ -231,10 +221,9 @@ function sidesFor(L: Link, bs: Base, remember: boolean): [Side, Side] {
   }
   return [uf ?? a.col ?? auto[0], ut ?? b.col ?? auto[1]];
 }
-/** atMap：两端各自是不是「行端、那张卡在地图档」（落到卡头） */
-const anchorsFor = (bs: Base, s: [Side, Side], atMap: readonly [boolean, boolean]): [Anchor, Anchor] => [
-  tilted(bs.a, anchorOn(bs.a.box, s[0], atMap[0] ? bs.a.hy : bs.a.y)),
-  tilted(bs.b, anchorOn(bs.b.box, s[1], atMap[1] ? bs.b.hy : bs.b.y)),
+const anchorsFor = (bs: Base, s: [Side, Side]): [Anchor, Anchor] => [
+  tilted(bs.a, anchorOn(bs.a.box, s[0], bs.a.y)),
+  tilted(bs.b, anchorOn(bs.b.box, s[1], bs.b.y)),
 ];
 /** 斜贴的卡：端点落在转过去的边上（state/tilt.ts，转动中每一帧都跟着） */
 function tilted(e: End, a: Anchor): Anchor {
@@ -366,10 +355,6 @@ export function makeRoute(L: Link): Route {
   const ea = createMemo(() => endOf(L.from, still())),
     eb = createMemo(() => endOf(L.to, still()));
   const base = createMemo(() => baseFrom(ea(), eb()));
-  // 卡的缩放分档一批批换（lodcards.ts）：只有进出地图档会挪行端（落到卡头）。每端一个布尔 memo，只接到 ends 上：
-  // 别的换档不碰这条线，进出地图档也只重算端点和路径，两端的矩形、走哪一侧（base / sides）不重算
-  const mapA = createMemo(() => mapHides(L.from)),
-    mapB = createMemo(() => mapHides(L.to));
   const sides = createMemo(() => {
     const bs = base();
     return bs ? sidesFor(L, bs, true).join("|") : "";
@@ -418,11 +403,10 @@ export function makeRoute(L: Link): Route {
     const bs = base(),
       s = sides();
     if (!bs || !s) return null;
-    const atMap = [mapA(), mapB()] as const;
-    const now = anchorsFor(bs, s.split("|") as [Side, Side], atMap);
+    const now = anchorsFor(bs, s.split("|") as [Side, Side]);
     const m = sl();
     if (!m) return now;
-    const was = anchorsFor(bs, m.from, atMap);
+    const was = anchorsFor(bs, m.from);
     return [slide(was[0], now[0], m.p), slide(was[1], now[1], m.p)];
   });
   const sig = createMemo(() => {
@@ -443,7 +427,7 @@ function geoOf(L: Link): Geo | null {
   if (r?.L === L && r.geo) return r.geo();
   const bs = baseOf(L);
   if (!bs) return null;
-  const [p, q] = anchorsFor(bs, sidesFor(L, bs, false), [mapHides(L.from), mapHides(L.to)]);
+  const [p, q] = anchorsFor(bs, sidesFor(L, bs, false));
   return geoFrom(L, bs, p, q, false);
 }
 

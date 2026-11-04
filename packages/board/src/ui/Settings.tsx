@@ -448,16 +448,6 @@ function SettingsPage(p: { section?: string }) {
           </div>
         </Sec>
         <Sec
-          id="zoom"
-          title="Zoom levels"
-          hint="Below Overview, code turns into outlines. Below Map, cards show only numbers and titles."
-        >
-          <div class="st-row">
-            <Pct label="Overview below" k="zoomOverview" min={20} max={100} />
-            <Pct label="Map below" k="zoomMap" min={5} max={60} />
-          </div>
-        </Sec>
-        <Sec
           id="diagnostics"
           title="Troubleshooting"
           hint="Versions, workspace state and recent log lines, with your home folder shown as ~."
@@ -840,38 +830,6 @@ function PathField() {
         if (e.key === "Enter") e.currentTarget.blur();
       }}
     />
-  );
-}
-
-function Pct(p: { label: string; k: "zoomOverview" | "zoomMap"; min: number; max: number }) {
-  const commit = (inp: HTMLInputElement) => {
-    let v = Math.round(Number(inp.value));
-    if (!Number.isFinite(v)) v = Math.round(cur()[p.k] * 100);
-    v = Math.min(p.max, Math.max(p.min, v));
-    // Map 要比 Overview 小
-    if (p.k === "zoomMap") v = Math.min(v, Math.round(cur().zoomOverview * 100) - 5);
-    else v = Math.max(v, Math.round(cur().zoomMap * 100) + 5);
-    inp.value = String(v);
-    if (v / 100 !== cur()[p.k]) A.setSetting(p.k, v / 100);
-  };
-  return (
-    <label class="st-pct">
-      {p.label}
-      <span class="st-num">
-        <input
-          type="number"
-          min={p.min}
-          max={p.max}
-          step={5}
-          value={Math.round(cur()[p.k] * 100)}
-          onChange={(e) => commit(e.currentTarget)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") commit(e.currentTarget);
-          }}
-        />
-        %
-      </span>
-    </label>
   );
 }
 

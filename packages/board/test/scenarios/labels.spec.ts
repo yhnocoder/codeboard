@@ -228,29 +228,6 @@ test("arrowLabelsMenus", async () => {
   await h.page.mouse.click(5, 900);
   await idle(h);
 
-  // zoomed out: arguments collapse, ↺ and own text stay
-  {
-    const lb = h.page.locator(".lyr").first();
-    await h.page.mouse.move(700, 500);
-    await h.page.keyboard.down("Control");
-    for (let i = 0; i < 2; i++) await h.page.mouse.wheel(0, 20);
-    await h.page.keyboard.up("Control");
-    await idle(h);
-    const lod = await lb.getAttribute("class");
-    const rowsShown = await A.locator(".vbox").evaluate((e) => getComputedStyle(e).display !== "none");
-    const headShown = await A.locator(".vhead").evaluate((e) => getComputedStyle(e).display !== "none");
-    check("lod-collapses-args", /lod-overview/.test(lod ?? "") && !rowsShown && headShown, {
-      lod,
-      rowsShown,
-      headShown,
-    });
-    await snap(h, "labels-3-zoomed-out");
-    await h.page.keyboard.down("Control");
-    for (let i = 0; i < 2; i++) await h.page.mouse.wheel(0, -20);
-    await h.page.keyboard.up("Control");
-    await idle(h);
-  }
-
   // drag along the arrow, ratio kept when a card moves
   const r0 = (await A.boundingBox())!;
   await h.page.mouse.move(r0.x + 12, r0.y + 8);

@@ -3,7 +3,7 @@
 // so it zooms with the board like the card does; zoomed out to an overview it is not shown. Play / pause, a still per frame
 // (clicking one stands the image on it), the frame number, and the loop button that makes the image always play
 import { Show, createEffect, createMemo, createSignal, onCleanup, onMount } from "solid-js";
-import { cam, lod } from "../state/camera";
+import { cam } from "../state/camera";
 import { hostOf, placeOf } from "../state/store";
 import { selectedAnim, toggleLoop, THUMB_H, type Player } from "../md/anim";
 
@@ -28,7 +28,7 @@ function worldBox(img: HTMLElement) {
 }
 
 export function AnimStrip() {
-  const near = createMemo(() => lod() === "full" && cam.z >= CONTROLS_MIN_Z);
+  const near = createMemo(() => cam.z >= CONTROLS_MIN_Z);
   return (
     <Show when={near() && selectedAnim()} keyed>
       {(p) => <Strip p={p} />}

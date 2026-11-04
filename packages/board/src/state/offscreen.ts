@@ -1,5 +1,4 @@
-// Which cards have their content hidden for being far off screen: cull.ts decides it, lodcards.ts counts showing it again
-// in the frame a card leaves the map level
+// Which cards have their content hidden for being far off screen: cull.ts decides it
 import { onBoard } from "./store";
 import { boardStore } from "./root";
 

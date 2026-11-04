@@ -487,7 +487,6 @@ async function run(res: Record<string, unknown>) {
     const fr = page.locator(`.card[data-id="${frame?.id}"]`);
     res.far = {
       z: +(await worldZ()).toFixed(3),
-      lo: await fr.evaluate((e) => e.classList.contains("lo-map") || e.classList.contains("lo-ov")),
       name: (await fr.locator(".sbname").isVisible()) && (await fr.locator(".sbmeta").isVisible()),
     };
     await shotPr(h, "subboards-2-far");
@@ -545,7 +544,6 @@ async function run(res: Record<string, unknown>) {
     await idle(h);
     res.cycleToast = await page.locator(".toast").textContent();
     res.noCycle = !subBoardsOf(t.store.peek(t.cur())!).includes("bEngine");
-    res.lo = await page.locator(".card.lo-ov, .card.lo-map").count();
     // nothing is selected: Esc leaves
     n = t.inits.length;
     await page.keyboard.press("Escape");
@@ -597,7 +595,7 @@ async function run(res: Record<string, unknown>) {
       (res.skelCards as number) >= 1 &&
       /Scheduler\s*5$/.test(String(res.title)) &&
       res.tip === "Scheduler · bb823b3" &&
-      JSON.stringify(res.far).includes('"lo":false,"name":true') &&
+      JSON.stringify(res.far).includes('"name":true') &&
       res.more === "8 cards, 7 lines" &&
       res.newArrow === into &&
       res.entered &&
@@ -607,8 +605,7 @@ async function run(res: Record<string, unknown>) {
       res.back &&
       res.walkIn &&
       res.walkOut &&
-      res.removedFrame &&
-      res.lo === 0;
+      res.removedFrame;
     check("subboards", ok, JSON.stringify(res));
     await h.page.context().close();
   }

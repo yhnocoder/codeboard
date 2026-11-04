@@ -78,7 +78,7 @@ const shot = async (page, n) => {
   if (process.env.AUDIT_STRICT === "1") check(!r.issues.length, `${n} passes the UI audit`);
 };
 // A spot on empty canvas inside the board frame (frame coordinates): where cards land depends on the layout, so pick it rather than hard-code it.
-// Cards are checked by their boxes too: at the summary level the card layer is hidden (.cardlay.gone) and elementFromPoint finds none
+// Cards are checked by their boxes too: at the summary level the card layer is faded out and not hit (.cardlay.gone), so elementFromPoint finds none
 const emptySpot = (f) =>
   f.evaluate(() => {
     const b = document.querySelector("#board").getBoundingClientRect();
@@ -932,21 +932,19 @@ async function cardfocusStep(page) {
     const n0 = await f.locator(".card").count();
     check((await card(f, "get_context").count()) === 1, `get_context is on the board before the ${where} click`);
     await shot(page, `18-cardfocus-${where}`);
-    // shot() fits the whole board, which after the earlier steps is the map zoom: card faces are hidden there and the enlarged
-    // map labels can cover neighbouring cards. Go to 100% (the board's zoom button), then Reveal on Board from get_context
-    // pans the board to that card
+    // shot() fits the whole board, which after the earlier steps is below the summary cut: the cards are faded out there. Go to
+    // 100% (the board's zoom button), then Reveal on Board from get_context pans the board to that card
     await f.locator(".zoom").first().click();
     await idle(f);
     await openFile(page, CONTEXT, 18);
     await command(page, "CodeBoard: Reveal on Board");
     f = await boardFrame(page);
-    // the host tells the board to fly to the card: wait for it to be shown in full, then for the camera to stop
-    const lod = await soon(
-      () => card(f, "get_context").getAttribute("class", { timeout: 1000 }),
-      (c) => c && !/lo-map|lo-ov/.test(c),
+    // the host tells the board to fly to the card: wait for the card level to show, then for the camera to stop
+    await soon(
+      () => f.locator(".cardlay.gone").count(),
+      (n) => n === 0,
     );
     await idle(f);
-    check(!/lo-map|lo-ov/.test(lod), `get_context is shown at full detail before the ${where} click`, lod);
     await openFile(page, CONTEXT, 21);
     await page.keyboard.press("Shift+ArrowDown");
     await page.keyboard.press("Shift+ArrowDown");
@@ -2269,25 +2267,17 @@ const finish = async (browser, errors) => {
     await idle(f);
     const pt = card(f, "pick_tokens");
     check((await pt.count()) === 1, "Alt+B puts pick_tokens on the board");
-    // 白板窄、卡多，适应窗口后在概览档（代码是灰条，点不到调用）：照用户的做法双击这张卡，放大到它 100%
-    // （适应窗口在 ~28%，Zoom In 一次 ×1.25、以画面中心放大，到 60% 的完整档之前卡就出了右边；
+    // 白板窄、卡多，适应窗口可能落在摘要档（低于白板的门槛，卡整层藏着）：双击这张卡摘要标题里的名字，放大到它 100%
+    // （双击名字本身：标题短时标题行的正中间是名字旁边的 ↻ 按钮，那是重新生成摘要；
     // 不按键：焦点可能还在编辑器里，Shift+2 会把 @ 打进代码）
-    // 适应窗口可能落在摘要档（低于白板的门槛，卡整层藏着）：那就双击这张卡摘要标题里的名字，一样放大到它
-    // （双击名字本身：标题短时标题行的正中间是名字旁边的 ↻ 按钮，那是重新生成摘要）
     await fit(f);
     await idle(f);
     const sumTitle = f.locator(".sumlay.live .sumcol.loose .sumhd code", { hasText: /^pick_tokens$/ });
     if (await sumTitle.isVisible()) {
       await sumTitle.dblclick();
       await idle(f);
-    } else if (await pt.locator(".ovm").isVisible()) {
-      await pt.locator(".ovm").dblclick();
-      await idle(f);
     }
-    check(
-      !(await pt.locator(".ovm").isVisible()) && (await pt.locator(".src").first().isVisible()),
-      "double-clicking a card in the overview or its summary zooms to it",
-    );
+    check(await pt.locator(".src").first().isVisible(), "double-clicking a card's summary title zooms to it");
     await pt
       .locator(".src .call", { hasText: /^sample$/ })
       .first()

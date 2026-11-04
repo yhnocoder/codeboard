@@ -591,8 +591,8 @@ textarea {
   box-shadow: var(--ring);
   transition: box-shadow calc(var(--t) * 160ms) var(--out);
 }
-/* 没有卡框的、地图档的、拿起来的（--sh-lift 自己带着阴影）不画模糊的那层 */
-.card:is(.text, .nobg, .lo-map, .lift)::before {
+/* 没有卡框的、拿起来的（--sh-lift 自己带着阴影）不画模糊的那层 */
+.card:is(.text, .nobg, .lift)::before {
   box-shadow: none;
 }
 /* 拿起来（真的拖起来了才算，点一下不算）——浮起和落回各一条曲线 */
@@ -1209,9 +1209,6 @@ textarea {
 } /* 悬停热区宽一点，好看到提示 */
 .dedm:hover {
   opacity: 1;
-}
-.card.lo-ov .dedm {
-  visibility: hidden;
 }
 .src .l {
   height: 20px;
@@ -2582,9 +2579,6 @@ textarea {
 .card > .twinmk:hover {
   background: var(--accent);
   color: var(--accent-ink);
-}
-.lo-map > .twinmk {
-  display: none;
 }
 .alignbar.pill {
   position: absolute;
@@ -4136,8 +4130,7 @@ mark.wdiff {
   pointer-events: all;
   cursor: ew-resize;
 }
-.board.dragging .porthit,
-.lyr.lod-map .porthit {
+.board.dragging .porthit {
   display: none;
 }
 .board.dragging .lyr .ghost {
@@ -5196,19 +5189,6 @@ mark.wdiff {
   text-align: left;
 }
 
-/* 缩放分档：概览 = 名字 + 图标记 + 代码灰条；地图 = 名字 + 色块。只换可见性，不改布局（不触发重新测量）。
-   卡上的样子跟着卡自己的 .lo-ov / .lo-map 走（state/lodcards.ts 每帧换一批，屏幕中间的先换），不跟着 .board 一次全换：241 张卡一起换要 100+ ms，掉好几帧 */
-.board {
-  --bar: color-mix(in srgb, var(--ink) 13%, transparent);
-}
-.card.lo-ov .crows .cmpl,
-.card.lo-ov .cno,
-.card.lo-ov .cpath,
-.card.lo-ov .rev,
-.card.lo-ov .chead .ib,
-.card.lo-ov .lport {
-  visibility: hidden;
-}
 /* 卡头的 ⋯ 平时不显示，悬停 / 选中卡、键盘聚焦到它、它的菜单开着时淡入；位置照留，出现时卡头不动 */
 .cmenu {
   opacity: 0;
@@ -5224,58 +5204,7 @@ mark.wdiff {
 .cmenu.on {
   opacity: 1;
 }
-/* 缩小看全局：参数收起，留 ↺ 和自己写的字；只有参数的框整个不画 */
-.lyr.lod-overview .vbox,
-.lyr.lod-overview .vchips.argsonly,
-.lyr.lod-overview .vplus,
-.lyr.lod-overview .mkcall {
-  display: none;
-}
-.lyr.lod-overview .vcard.split .vhead {
-  border-bottom: 0;
-}
-/* 代码和行号节点多（241 张卡 ≈ 3 万个）：用 opacity 藏，不用 visibility。visibility 会继承，切档时里面每个节点都要重算样式（一次 0.3–0.5 秒）；
-   opacity 不继承，只算这两个元素。指针由盖住整个代码区的 .ovm 接住，交给卡片 */
-.card.lo-ov .gutter,
-.card.lo-ov .src,
-.card.lo-ov .rowbgs {
-  opacity: 0;
-}
-/* 概览档：每行按真实缩进和长度画一根直角灰条（注释行淡一些），轮廓就是这段代码本身的样子 */
-.card .code > .ovm {
-  position: absolute;
-  inset: 0;
-  z-index: 4;
-  background-repeat: no-repeat;
-  --bar-c: color-mix(in srgb, var(--ink) 6%, transparent);
-} /* 色块的 x 从 --gutter（行号区宽，跟 .src 的 margin-left 一致）算起 */
-.card .code > .ovm {
-  visibility: hidden;
-}
-.card.lo-ov .code > .ovm {
-  visibility: visible;
-} /* 提前做好、不在概览档时藏着（CodeBody） */
-.card.lo-ov .ctitle {
-  font-size: 15px;
-  font-weight: 600;
-}
-/* --iz（地图档 = 1/z）：注册成不继承，只有卡和名字用到，卡里的几千个代码节点就不用跟着重算样式 */
-@property --iz {
-  syntax: "<number>";
-  inherits: false;
-  initial-value: 1;
-}
-.maplabel,
-.maplabel * {
-  --iz: inherit;
-} /* 卡上的 --iz 由 state/lodcards.ts 写在卡的 style 上 */
-/* 不在地图档时名字也在（提前建好），藏着，按进地图档那一刻的比例（--izmap，Canvas）排好版 */
-.card:not(.lo-map) > .maplabel {
-  visibility: hidden;
-  --iz: var(--izmap, 4);
-}
-/* 卡的内容（除了名字、贴纸）都在 .cface 里，跟卡一样是竖排 flex；地图档整块用 clip-path 藏起来（不继承，里面的节点不用重算样式，也挡住指针）。
-   别写成 .card > :not(...) 再用会继承的 visibility：最右边没有类名，切档时浏览器只能把整块白板 3 万个节点全重算一遍 */
+/* 卡的内容（除了贴纸）都在 .cface 里，跟卡一样是竖排 flex */
 .card.off > .cface {
   visibility: hidden;
 } /* state/cull.ts：离屏幕很远的卡不画内容 */
@@ -5285,14 +5214,12 @@ mark.wdiff {
 /* 折叠、展开 Section（actions/edit.ts toggleSection，state/fold.ts skel）：卡飞的时候内容换成几道骨架线（.skl，Card.tsx）。
    透明度只写在卡下面一层的这几块上（不继承；卡的 class 下没有 "> *"，切换时不用把卡里的节点都重算）；时长同 state/timing.ts 的 SKEL_OUT / SKEL_IN */
 .card.skel > .cface,
-.card.skel > .twinmk,
-.card.skel > .maplabel {
+.card.skel > .twinmk {
   opacity: 0;
   transition: opacity 80ms ease-out;
 }
 .card.skel-in > .cface,
-.card.skel-in > .twinmk,
-.card.skel-in > .maplabel {
+.card.skel-in > .twinmk {
   transition: opacity 100ms ease-in;
 }
 .card > .skl {
@@ -5342,64 +5269,6 @@ mark.wdiff {
   min-height: 0;
   min-width: 0;
 }
-.card.lo-map > .cface {
-  clip-path: inset(50%);
-}
-.card.lo-map {
-  background: color-mix(in srgb, var(--surface) 92%, var(--accent));
-  --ring: 0 0 0 calc(1px * var(--iz, 1)) var(--hair);
-}
-/* 地图档的描边（::after）每一步缩放都跟着 --iz 变：不给 box-shadow 过渡，不然每一步给 241 张卡各起一段 160ms 的动画（其余过渡跟 .card 一样） */
-.card.lo-map {
-  transition:
-    scale calc(var(--t) * 260ms) cubic-bezier(0.3, 1.35, 0.5, 1),
-    opacity calc(var(--t) * 240ms) var(--out),
-    filter calc(var(--t) * 240ms);
-}
-.card.lo-map::after {
-  transition: none;
-}
-.card.lo-map.note {
-  background: color-mix(in srgb, var(--surface) 70%, var(--mark));
-}
-.card.lo-map.text {
-  background: transparent;
-}
-.card.lo-map.sel {
-  --ring: 0 0 0 calc(2px * var(--iz, 1)) var(--accent);
-}
-.lyr.lod-map .vchips,
-.stk.canvas.lod-map .sgrip {
-  display: none;
-} /* 分档类名写在这几个小容器上，不写成 .board.lod-* 的后代规则：那样换档时浏览器要把整块白板 3 万个节点走一遍找它们（~15ms） */
-/* 地图档：图标记 + 名字靠左、上下居中；字号由卡片大小和名字长度算出（--fit，世界坐标），再按屏幕上 11–22px 夹住 */
-.maplabel {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  align-content: center;
-  flex-wrap: wrap;
-  gap: calc(4px * var(--iz, 1));
-  padding: 0 calc(8px * var(--iz, 1));
-  overflow: hidden;
-  font: 600 clamp(calc(11px * var(--iz, 1)), var(--fit, 10px), calc(22px * var(--iz, 1))) / 1.15 var(--sys);
-  color: var(--ink);
-  pointer-events: none;
-  overflow-wrap: normal;
-  word-break: normal;
-}
-.maplabel > .mt {
-  min-width: 0;
-  max-width: 100%;
-}
-.maplabel .step {
-  height: auto;
-  padding: 0.08em 0.3em;
-  font-size: 0.8em;
-  border-radius: calc(5.5px * var(--iz, 1));
-}
-
 /* 旁注原地编辑 */
 .sn-edit {
   padding: 6px 10px 8px;
@@ -6384,9 +6253,6 @@ mark.wdiff {
   padding: 0 5px;
   border-radius: 5.5px;
   box-shadow: inset 0 0 0 1px var(--hair);
-}
-.lod-overview .altcol {
-  opacity: 0.8;
 }
 /* 卡头：语言标签、1 of N、Generated */
 .disp1 {
@@ -7728,7 +7594,7 @@ mark.wdiff {
 
 /* Zoomed-out summaries (#130; canvas/Summaries.tsx, state/summary.ts). The card level (Marks included), the cards that stay as
    they are (sub-board frames, Free Text) and the summaries are three layers; the switch fades only the card and summary layers' own opacity. The board's
-   one summary font size --S and padding --P come from its layout; --sum-iz (1 / zoom; --iz does not inherit) keeps the ↻ mark 20 screen px */
+   one summary font size --S and padding --P come from its layout; --sum-iz (1 / zoom) keeps the ↻ mark 20 screen px */
 .lay {
   position: absolute;
   left: 0;
@@ -7736,17 +7602,25 @@ mark.wdiff {
 }
 /* Both levels are layers of their own (the summary level from when it is built near the cut), so the fade only changes their
    opacity: promoting a layer when a fade started (and folding it back into the world when it ended) re-rastered all its
-   content twice per switch, 100–270 ms frames in the middle of a zoom */
+   content twice per switch, 100–270 ms frames in the middle of a zoom. Faded out, a level stays painted at an opacity too low
+   to show (Summaries.tsx; state/summary.ts cardsOpacity), so its tiles are there before the fade back needs them: a level
+   hidden with visibility or content-visibility was styled, laid out and rastered whole in the frame that showed it again.
+   The faded card level asleep (state/summary.ts: far below the cut, or under a moving camera) is clipped to nothing: a clip
+   empties the cull rect under it, so none of its cards is painted (an opacity of 0 alone leaves a layer with the hint painted,
+   and painted again on every frame of a zoom at the summary level), and waking it is a repaint, not a restyle. The hint stays
+   on it throughout: taking it off made Chromium paint and composite the whole level again, 500 ms in the frame the fade ended */
 .cardlay,
 .sumlay {
   will-change: opacity;
 }
-/* fully faded: not hit. The faded card level is not rendered at all (no style, layout or paint of its cards: a zoom or pan at the
-   summary level draws the summaries only). The summary level, built near the cut, stays painted at an opacity too low to show
-   (Summaries.tsx), so it is rastered before the fade needs it: hiding it (visibility) restyled and rastered all of it in the
-   frame the fade began */
-.cardlay.gone {
-  content-visibility: hidden;
+.cardlay.asleep {
+  clip: rect(0 0 0 0);
+}
+/* fully faded, the card level is not hit: one element over its extent, between it and the levels that stay, takes the pointer
+   (Canvas.tsx; pointer-events is inherited, so setting it on the layer restyled every node under it, 200+ ms on 241 cards,
+   twice per switch) */
+.cshield {
+  position: absolute;
 }
 /* the type and colours are the demo's (feedback/demo/boards-130-viewer.html: .sum .hd, .txt), per look; other looks and dark
    boards take their own fonts and a grey between ink-3 and the paper */

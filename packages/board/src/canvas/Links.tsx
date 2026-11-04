@@ -20,7 +20,7 @@ import { portStyle } from "../state/hover";
 import { dragLink, setDragLink, rubber } from "../state/ui";
 import { foldOf, linkFadeAt } from "../state/fold";
 import { hoverLink, hoverCard, enterLink, leaveLink, watchHover } from "../state/hover";
-import { cam, toWorld, stillZ, lod } from "../state/camera";
+import { cam, toWorld, stillZ } from "../state/camera";
 import { reduceMotion } from "../state/motion";
 import { boardOffset } from "../state/measure";
 import { shape, fileHue, look } from "../state/look";
@@ -402,8 +402,6 @@ function Layer(p: { k: string; layers: Layers }) {
         top,
         bottom: p.k === BOTTOM,
         ports: p.k === PORTS,
-        "lod-overview": lod() === "overview",
-        "lod-map": lod() === "map",
       }}
     >
       <svg class="edges" width="1" height="1">

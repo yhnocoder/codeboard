@@ -1,11 +1,9 @@
 import { send } from "../host";
 import {
   createMemo,
-  createSignal,
   Show,
   Switch,
   Match,
-  onMount,
   onCleanup,
   createEffect,
   createRenderEffect,
@@ -57,8 +55,6 @@ import { cardStale } from "@codeboard/core/commands";
 import { staleOf } from "../state/views";
 import { farAway } from "../state/cull";
 import { offscreen } from "../state/offscreen";
-import { lodOf, izOf } from "../state/lodcards";
-import { whenIdle } from "../state/idle";
 import { landed } from "../canvas/routes";
 import { CodeHead, MarkView, Procs } from "./CodeHead";
 import { enterCard, leaveCard, portStyle } from "../state/hover";
@@ -134,8 +130,6 @@ export function CardView(p: { card: Card }) {
     }
   });
   trackTilt(c);
-  const [labelReady, setLabelReady] = createSignal(false);
-  onMount(() => whenIdle(() => setLabelReady(true)));
   const pop = () => popIn()[c().id];
   const grow = () => sizeIn()[c().id]; // Fit Content 后从旧的大小变过去（actions/common.ts growFrom）
   const pl = () => placeOf(c().id);
@@ -152,7 +146,6 @@ export function CardView(p: { card: Card }) {
       s.width = `${g.w}px`;
       if (c().kind !== "code") s.height = `${g.h}px`;
     }
-    if (lodOf(c().id) === "map") (s as Record<string, string>)["--iz"] = String(izOf(c().id));
     // Mark 的颜色、Box 的底色：写成变量，不进 class（class 一变，classList 管的 sel 等会被冲掉）
     if (k.kind === "note" && k.look === "mark") {
       (s as Record<string, string>)["--hc"] = `var(--hd-${k.hand ?? "blue"})`;
@@ -179,7 +172,7 @@ export function CardView(p: { card: Card }) {
       const pi = pop(),
         f = foldAt(c().id),
         s = e.style;
-      if ((!pi && !f) || (farAway(c().id) && lodOf(c().id) === "full")) {
+      if ((!pi && !f) || farAway(c().id)) {
         folding = false;
         for (const k of POP) s.removeProperty(k);
         return;
@@ -281,8 +274,6 @@ export function CardView(p: { card: Card }) {
           editing: ed(),
           off: offscreen(c().id),
           far: farAway(c().id),
-          "lo-ov": lodOf(c().id) === "overview",
-          "lo-map": lodOf(c().id) === "map",
           lost: c().kind === "code" && cardStale(c() as CodeCard, staleOf) === "lost",
           gen: c().kind === "code" && !!(c() as CodeCard).gen,
           "merge-hot": !!(drop() & 1),
@@ -436,12 +427,7 @@ export function CardView(p: { card: Card }) {
             </button>
           )}
         </Show>
-        {/* 地图档只留下面这些：.cface 整块藏起来 */}
         <BoundStickers card={c().id} />
-        {/* 地图档的名字空闲时就建好、藏着（styles.css），切到地图档只是显示出来 */}
-        <Show when={(labelReady() || lodOf(c().id) === "map") && c().kind !== "board"}>
-          <MapLabel card={c()} />
-        </Show>
         {/* 收进 Section、从 Section 里出来时：内容换成几道骨架线（state/fold.ts skel） */}
         <Show when={skel(c().id)}>
           <Skeleton />
@@ -828,48 +814,5 @@ function ImageView(p: { card: ImageCard }) {
       </div>
       <Desc id={p.card.id} desc={p.card.desc} />
     </>
-  );
-}
-
-/** 地图档：卡片只剩图标记 + 名字，字号按缩放反向放大，始终看得清 */
-function MapLabel(p: { card: Card }) {
-  const g = () => {
-    const c = p.card;
-    return c.kind === "compare" ? (flows().byId.get(c.cols[0]) ?? flows().byId.get(c.cols[1])) : flows().byId.get(c.id);
-  };
-  const n = () => g()?.label || (g() ? "•" : "");
-  const t = () =>
-    p.card.kind === "note"
-      ? p.card.md
-          .split("\n")[0]
-          .replace(/^#+\s*/, "")
-          .slice(0, 60)
-      : cardTitle(p.card, state.board);
-  // 名字只在 . 和 _ 后面换行，不在单词中间断开
-  const parts = () => t().split(/(?<=[._])/);
-  // 一行放得下的字号：宽 / (字数 × 平均字宽)，高度最多占 45%
-  const fit = () => {
-    const r = rectOf(p.card);
-    const chars = t().length + (n() ? n()!.length + 2 : 0);
-    return `${Math.max(1, Math.min((r.w - 24) / (Math.max(chars, 4) * 0.58), r.h * 0.45))}px`;
-  };
-  return (
-    <div class="maplabel" style={{ "--fit": fit() }}>
-      <Show when={g() && !state.host.settings.hideNumbers}>
-        <span class="step">
-          <MarkView g={g()!} />
-        </span>
-      </Show>
-      <span class="mt">
-        <For each={parts()}>
-          {(x) => (
-            <>
-              {x}
-              <wbr />
-            </>
-          )}
-        </For>
-      </span>
-    </div>
   );
 }

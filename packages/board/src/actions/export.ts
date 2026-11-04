@@ -23,8 +23,6 @@ import {
 import { state, rectOf, hostOf, flows } from "../state/store";
 import { sel, select, lineSel, setLineSel } from "../state/selection";
 import { toast } from "../state/toast";
-import { lod, holdFullDetail } from "../state/camera";
-import { lodBusy, lodOf } from "../state/lodcards";
 import { setExportOpen, exportBusy, setExportBusy, type ExportOpts } from "../state/export";
 import { ask, send } from "../host";
 import { flushMd } from "../md/lazy";
@@ -138,22 +136,6 @@ const frames = (n = 2) =>
     requestAnimationFrame(f);
   });
 
-/** 卡片都换成完整的样子（缩小时卡片是概览 / 地图）：分档临时定在 full（镜头不动），等卡一批批换完，做完再放开 */
-async function withFullDetail<T>(fn: () => T | Promise<T>): Promise<T> {
-  const notFull = () => state.board.cards.some((c) => state.board.place[c.id] && lodOf(c.id) !== "full");
-  const need = lod() !== "full" || notFull();
-  if (need) {
-    holdFullDetail(true);
-    for (let i = 0; i < 180 && (lodBusy() || notFull()); i++) await frames(1);
-    await frames(2);
-  }
-  try {
-    return await fn();
-  } finally {
-    if (need) holdFullDetail(false);
-  }
-}
-
 // 交互状态的 class（选中、悬停、分档、离屏、镜头在动）：导出的是静止、没选中的样子
 const LIVE_CLASSES = [
   "off",
@@ -163,8 +145,6 @@ const LIVE_CLASSES = [
   "landing",
   "hov",
   "editing",
-  "lo-ov",
-  "lo-map",
   "moving",
   "settle",
   "bind-hot",
@@ -182,11 +162,9 @@ async function cloneForExport(b: Board, scope: ExportScope, order: string[]): Pr
   setLineSel(null);
   flushMd(); // 视野外还没渲染完的 Note 先补上
   await frames(2);
-  const world = await withFullDetail(async () => {
-    flushMd();
-    await frames(1);
-    return (document.querySelector("#board .world") as HTMLElement).cloneNode(true) as HTMLElement;
-  });
+  flushMd();
+  await frames(1);
+  const world = (document.querySelector("#board .world") as HTMLElement).cloneNode(true) as HTMLElement;
   select(prevSel);
   setLineSel(prevLine);
   const keep = new Set(order);

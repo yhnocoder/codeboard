@@ -1,4 +1,4 @@
-// Usage: node packages/board/test/run-perf.mjs [--cards 240] [--notes 200] (a board of Notes with realistic Markdown: open, pan, zoom, enter edit, type) [--runs 3] [--json out.json] [--quick] [--theme ink-wash] [--light] [--traffic] (City: green light, cars driving) [--profile <step>] [--trace <step>] [--steps <step>] [--long <step>] [--stop pinch] [--inval <step>] [--anim] (--anim: the line and corner stickers are animated GIFs from a sticker pack; --inval counts what invalidated style and layout; --stop pinch: end each run after the camera steps; --long breaks down each dropped frame, LONG_OVER=8.3 each frame over that many ms; --steps prints each step's time, LOD class and camera)
+// Usage: node packages/board/test/run-perf.mjs [--cards 240] [--notes 200] (a board of Notes with realistic Markdown: open, pan, zoom, enter edit, type) [--runs 3] [--json out.json] [--quick] [--theme ink-wash] [--light] [--traffic] (City: green light, cars driving) [--profile <step>] [--trace <step>] [--steps <step>] [--long <step>] [--stop pinch] [--inval <step>] [--anim] (--anim: the line and corner stickers are animated GIFs from a sticker pack; --inval counts what invalidated style and layout; --stop pinch: end each run after the camera steps; --long breaks down each dropped frame, LONG_OVER=8.3 each frame over that many ms; --steps prints each step's time, the board's classes and camera)
 // Each scenario reports wall clock (action → next frame painted), main-thread busy time (CDP TaskDuration) and frame times
 // (frameP95 / frameMax / over16 / over8: main-thread task durations; the 60 fps budget is 16.7 ms, 120 fps 8.3 ms).
 import * as fs from "node:fs";
@@ -598,95 +598,6 @@ async function once() {
     await h.page.context().browser()!.close();
     return res;
   }
-  if (arg("stop", "") === "lod") {
-    const sstats = process.argv.includes("--selstats");
-    const evs: any[] = [];
-    if (sstats) {
-      cdp.on("Tracing.dataCollected", (e: any) => evs.push(...e.value));
-      await cdp.send("Tracing.start", {
-        categories: "disabled-by-default-blink.debug",
-        transferMode: "ReportEvents",
-      } as any);
-    }
-    // Style + layout cost of switching every card's LOD class at once (no script): full → overview → map → full, 5 rounds
-    if (process.argv.includes("--nohue"))
-      await h.page.evaluate(() => {
-        (window as any).__nohue = true;
-      });
-    res.lodSwitch = await h.page.evaluate(
-      async (strip) => {
-        if (strip) {
-          const re = new RegExp(strip);
-          let n = 0;
-          for (const sh of [...document.styleSheets]) {
-            const walk = (list: CSSRuleList, del: (i: number) => void) => {
-              for (let i = list.length - 1; i >= 0; i--) {
-                const r = list[i] as any;
-                if (r.selectorText && re.test(r.selectorText)) {
-                  del(i);
-                  n++;
-                } else if (r.cssRules) walk(r.cssRules, (j) => r.deleteRule(j));
-              }
-            };
-            walk(sh.cssRules, (i) => sh.deleteRule(i));
-          }
-          console.log("stripped", n);
-        }
-        const cards = [...document.querySelectorAll(".card")] as HTMLElement[];
-        if ((window as any).__nohue) for (const c of cards) c.style.removeProperty("--file-hue");
-        const set = (ov: boolean, map: boolean) => {
-          for (const c of cards) {
-            c.classList.toggle("lo-ov", ov);
-            c.classList.toggle("lo-map", map);
-          }
-        };
-        const out: Record<string, number[]> = { ov: [], map: [], full: [] };
-        for (let k = 0; k < 7; k++)
-          for (const [n, ov, map] of [
-            ["ov", true, false],
-            ["map", false, true],
-            ["full", false, false],
-          ] as const) {
-            await new Promise((r) => requestAnimationFrame(() => r(0)));
-            const t = performance.now();
-            set(ov, map);
-            document.body.getBoundingClientRect();
-            (document.querySelector(".world") as HTMLElement).offsetHeight;
-            out[n].push(performance.now() - t);
-          }
-        const med = (a: number[]) => [...a].sort((x, y) => x - y)[a.length >> 1];
-        return Object.fromEntries(Object.entries(out).map(([k, v]) => [k, +med(v.slice(1)).toFixed(1)]));
-      },
-      arg("strip", ""),
-    );
-    if (sstats) {
-      // Selector stats (DevTools "Enable CSS selector stats"): which selectors cost the most during the LOD switches
-      const done = new Promise((r) => cdp.once("Tracing.tracingComplete", r));
-      await cdp.send("Tracing.end");
-      await done;
-      const by = new Map<string, { t: number; att: number; m: number }>();
-      for (const e of evs)
-        for (const x of e.args?.selector_stats?.selector_timings ?? []) {
-          const k = x.selector,
-            o = by.get(k) ?? { t: 0, att: 0, m: 0 };
-          o.t += x.elapsed ?? x["elapsed (us)"] ?? 0;
-          o.att += x.match_attempts;
-          o.m += x.match_count;
-          by.set(k, o);
-        }
-      const tot = [...by.values()].reduce((s, o) => s + o.t, 0);
-      console.log(`-- selector stats: ${by.size} selectors, ${(tot / 1000).toFixed(0)} ms`);
-      for (const [k, o] of [...by]
-        .sort((a, b) => b[1].t - a[1].t)
-        .filter(([k, o]) => o.att > 50000 || by.size < 0)
-        .slice(0, 200))
-        console.log(
-          `${(o.t / 1000).toFixed(1).padStart(7)}ms ${String(o.att).padStart(8)} ${String(o.m).padStart(7)}  ${k.slice(0, 140)}`,
-        );
-    }
-    await h.page.context().browser()!.close();
-    return res;
-  }
   if (arg("stop", "") === "dom") {
     res.dom = await h.page.evaluate(() => {
       const by: Record<string, number> = {};
@@ -701,42 +612,6 @@ async function once() {
           .slice(0, 45),
       };
     });
-    await h.page.context().browser()!.close();
-    return res;
-  }
-  if (arg("stop", "") === "switch") {
-    // Cross LOD thresholds in one wheel step and wait until every card has switched and the camera has stopped: full ↔ overview, full ↔ map
-    const spot = await h.page.evaluate(() => {
-      for (let y = 120; y < 860; y += 20)
-        for (let x = 80; x < 1350; x += 20) {
-          const e = document.elementFromPoint(x, y);
-          if (e && (e.classList.contains("board") || e.classList.contains("world"))) return [x, y];
-        }
-      return [700, 450];
-    });
-    await h.page.mouse.move(spot[0], spot[1]);
-    const wheel = async (d: number) => {
-      await h.page.keyboard.down("Control");
-      await h.page.mouse.wheel(0, d);
-      await h.page.keyboard.up("Control");
-    };
-    for (const [lvl, d] of [
-      ["Ov", 90],
-      ["Map", 150],
-    ] as const) {
-      res["switch" + lvl] = sum(
-        await steps(
-          h,
-          cdp,
-          6,
-          async (i) => {
-            await wheel(i % 2 ? -d : d);
-            await h.page.waitForTimeout(1500);
-          },
-          "switch" + lvl,
-        ),
-      );
-    }
     await h.page.context().browser()!.close();
     return res;
   }
@@ -763,7 +638,7 @@ async function once() {
     return res;
   }
   if (arg("stop", "") === "settle") {
-    // One small zoom step, then wait until the camera has stopped and the world is redrawn at the new scale: what one stop costs, per LOD level
+    // One small zoom step, then wait until the camera has stopped and the world is redrawn at the new scale: what one stop costs, at 100 % and zoomed out to 40 %
     const spot = await h.page.evaluate(() => {
       for (let y = 120; y < 860; y += 20)
         for (let x = 80; x < 1350; x += 20) {
@@ -780,8 +655,7 @@ async function once() {
     };
     for (const [lvl, n] of [
       ["Full", 0],
-      ["Ov", 3],
-      ["Map", 2],
+      ["Out", 3],
     ] as const) {
       for (let i = 0; i < n; i++) {
         await wheel(30);
@@ -854,7 +728,7 @@ async function once() {
       "zoom",
     ),
   );
-  // Trackpad pinch: many small steps from 100% down to the map level and back (passes every level and every switch)
+  // Trackpad pinch: many small steps from 100% down past the summary cut and back (crosses the switch both ways)
   res.pinch = sum(
     await steps(
       h,

@@ -942,20 +942,6 @@
           ],
           "description": "What the Export dialog exports by default."
         },
-        "codeboard.zoom.overview": {
-          "type": "number",
-          "default": 0.6,
-          "minimum": 0.2,
-          "maximum": 1,
-          "description": "Below this zoom, cards show an overview (titles and structure)."
-        },
-        "codeboard.zoom.map": {
-          "type": "number",
-          "default": 0.25,
-          "minimum": 0.05,
-          "maximum": 0.6,
-          "description": "Below this zoom, cards show only their titles (map view)."
-        },
         "codeboard.ai.deepseekBaseUrl": {
           "type": "string",
           "default": "https://api.deepseek.com",

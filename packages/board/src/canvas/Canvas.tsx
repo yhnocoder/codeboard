@@ -2,9 +2,8 @@ import { For, Show, onMount, onCleanup, createMemo, createEffect, createSignal, 
 import { bounds, keepsLook, twinContent, type AlignOp } from "@codeboard/core";
 import { state, rectOf, cardById, hostOf, placed, placeOf } from "../state/store";
 import { sel } from "../state/selection";
-import { cam, setViewport, viewTracked, lod, camMoving, stillZ, camTarget, camTo, fitRect } from "../state/camera";
+import { cam, setViewport, viewTracked, camMoving, stillZ, camTarget, camTo, fitRect } from "../state/camera";
 import { trackOffscreen } from "../state/cull";
-import { trackCardLod, izMap } from "../state/lodcards";
 import { trackSkeletons } from "../state/subboards";
 import { guides, sizeHint, marquee, dragging, dropTarget, walk, editing } from "../state/ui";
 import { CardView } from "../cards/Card";
@@ -26,7 +25,7 @@ import { observeResize, queueMeasure } from "../state/measure";
 import { cardSel } from "../cardsel";
 import { useMd } from "../md/context";
 import { Summaries } from "./Summaries";
-import { summaryFade } from "../state/summary";
+import { cardsAsleep, cardsGone, cardsOpacity, summaryFade } from "../state/summary";
 
 const EXT = 2048;
 
@@ -37,7 +36,6 @@ export function Canvas() {
   const md = useMd();
   let el!: HTMLDivElement, world!: HTMLDivElement;
   trackOffscreen();
-  trackCardLod();
   const links = trackLinks();
   const faded = createMemo(() => placed().filter((c) => !keepsLook(c)));
   const kept = createMemo(() => placed().filter(keepsLook));
@@ -93,6 +91,10 @@ export function Canvas() {
   // 结果几乎每张卡一个合成层（实测 74 层，CDP 的原因都是 Overlap；SVG 自己没有 will-change、动画、滤镜之类的原因）。
   // 这一块先并进线那层、把范围撑到整块白板，后面的卡就都并得进去：层数回到 25 层（Section 框还是各自一层）。
   // 放在最前面（Section 框前面）也行，但那样 Section 框、线、卡全挤进一个层，缩放、捏合的慢帧多。范围按卡和 Section 的外框往外留 EXT、对齐到 EXT 的整数倍，拖动中不重算
+  const extentBox = () => {
+    const [x, y, w, h] = extent().split(" ");
+    return { left: `${x}px`, top: `${y}px`, width: `${w}px`, height: `${h}px` };
+  };
   const extent = createMemo<string>((prev) => {
     if (prev && dragging().size) return prev;
     let x0 = 0,
@@ -133,8 +135,6 @@ export function Canvas() {
         walking: !!walk(),
         dragging: dragging().size > 0,
         "img-drop": dropTarget()?.kind === "note",
-        "lod-overview": lod() === "overview",
-        "lod-map": lod() === "map",
       }}
       onPointerDown={canvasPointerDown}
       onContextMenu={(e) => canvasContextMenu(e, md)}
@@ -143,33 +143,25 @@ export function Canvas() {
         ref={world}
         class="world"
         classList={{ moving: camMoving(), settle: settle() }}
-        style={{ transform: `translate(${cam.x}px, ${cam.y}px) scale(${cam.z})`, "--izmap": String(izMap()) }}
+        style={{ transform: `translate(${cam.x}px, ${cam.y}px) scale(${cam.z})` }}
       >
-        {/* the card level (zoomed out it fades out as one layer: state/summary.ts) */}
+        {/* the card level (zoomed out it fades out as one layer and stays under the summaries: state/summary.ts) */}
         <div
           class="lay cardlay"
-          style={{ opacity: String(1 - summaryFade()) }}
-          classList={{ gone: summaryFade() === 1, fading: summaryFade() > 0 && summaryFade() < 1 }}
+          style={{ opacity: String(cardsOpacity()) }}
+          classList={{ gone: cardsGone(), asleep: cardsAsleep(), fading: summaryFade() > 0 && summaryFade() < 1 }}
         >
           <SectionFrames />
           <links.Layer bottom />
-          <div
-            class="wext"
-            style={(() => {
-              const [x, y, w, h] = extent().split(" ");
-              return { left: `${x}px`, top: `${y}px`, width: `${w}px`, height: `${h}px` };
-            })()}
-          />
+          <div class="wext" style={extentBox()} />
           <For each={faded()}>{(c) => <CardView card={c} />}</For>
           <Traffic ways={links.ways} />
           <links.Layer ports />
           <CanvasStickers />
           <SectionLabels />
           {/* 灰色备选：在所有卡上面、浮上来的线下面 */}
-          <div class="alts" classList={{ "lod-overview": lod() === "overview" }}>
-            <Show when={lod() !== "map"}>
-              <AltBoxes />
-            </Show>
+          <div class="alts">
+            <AltBoxes />
           </div>
           <links.Layer top />
           <BlockPorts />
@@ -221,6 +213,10 @@ export function Canvas() {
             <DropHint />
           </div>
         </div>
+        {/* faded out, the card level is not hit: a shield over its whole extent takes the pointer (styles.css .cshield) */}
+        <Show when={cardsGone()}>
+          <div class="cshield" style={extentBox()} />
+        </Show>
         {/* sub-board frames and Free Text: never summarized, they stay as they are over the summary level (Marks fade with the cards) */}
         <div class="lay keeplay">
           <For each={kept()}>{(c) => <CardView card={c} />}</For>

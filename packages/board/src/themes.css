@@ -3058,14 +3058,14 @@
 :root.look-ink-wash .card:not(.text):not(.nobg) {
   --sh-ring: 0 0 transparent;
 }
-:root.look-ink-wash .card:not(.text):not(.nobg):not(.lo-map) {
+:root.look-ink-wash .card:not(.text):not(.nobg) {
   background: transparent;
   box-shadow: 0 4px 9px rgba(0, 0, 0, 0.12);
 }
-:root.look-ink-wash[data-theme="dark"] .card:not(.text):not(.nobg):not(.lo-map) {
+:root.look-ink-wash[data-theme="dark"] .card:not(.text):not(.nobg) {
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
 }
-:root.look-ink-wash .card:not(.text):not(.nobg):not(.lo-map)::before {
+:root.look-ink-wash .card:not(.text):not(.nobg)::before {
   inset: -14px;
   border-radius: 0;
   box-shadow: none;
@@ -3081,7 +3081,7 @@
 /* 选中（#128）：卡右上角盖一枚小朱印"选"，纸面抬起 2px、阴影加深；取消时印淡去、纸落回。
    全用过渡（不用关键帧）：动画中途再点一下，从当时的样子顺着倒回去，不跳。印在 .cface::before（卡的 ::before 是纸、
    ::after 是各种状态的描边），骑在卡角外面，不压卡头右边的编号印和 ⋯ 按钮；导出时去掉 .sel，印是透明的 */
-:root.look-ink-wash .card.sel:not(.text):not(.lo-map) {
+:root.look-ink-wash .card.sel:not(.text) {
   --ring: none;
 }
 /* 抬起的过渡加在 .card 一级（:where 不加权重）：拿起来、刚放下（.card.lift / .landing）照旧用它们自己的过渡。
@@ -3102,14 +3102,14 @@
 .card.sel:where(:root.look-ink-wash *) {
   --ink-lt: calc(var(--t) * 220ms) var(--out);
 }
-:root.look-ink-wash .card.sel:not(.text):not(.nobg):not(.lo-map) {
+:root.look-ink-wash .card.sel:not(.text):not(.nobg) {
   translate: 0 -2px;
   box-shadow:
     0 4px 9px rgba(0, 0, 0, 0.12),
     0 26px 38px -20px rgba(30, 25, 15, 0.45),
     0 8px 14px -8px rgba(30, 25, 15, 0.2);
 }
-:root.look-ink-wash[data-theme="dark"] .card.sel:not(.text):not(.nobg):not(.lo-map) {
+:root.look-ink-wash[data-theme="dark"] .card.sel:not(.text):not(.nobg) {
   box-shadow:
     0 4px 10px rgba(0, 0, 0, 0.5),
     0 26px 38px -20px rgba(0, 0, 0, 0.8),
@@ -3119,7 +3119,7 @@
    没选中时停在"高处"（放大、多转一点、透明），选中时落下来：缩放的曲线冲过头一点，像盖下去略压一下。
    取消时只在原处淡去；淡完以后（延迟同淡去的时长）才悄悄回到高处，等下次落下。
    缩放、转角用 scale / rotate 两个属性，别和 transform 写在同一条规则里：打包时的 CSS 压缩会把它们丢掉 */
-:root.look-ink-wash .card:not(.text):not(.lo-map) > .cface::before {
+:root.look-ink-wash .card:not(.text) > .cface::before {
   content: "选" / "";
   position: absolute;
   z-index: 6;
@@ -3147,7 +3147,7 @@
     scale 0s calc(var(--t) * 180ms),
     rotate 0s calc(var(--t) * 180ms);
 }
-:root.look-ink-wash .card.sel:not(.text):not(.lo-map) > .cface::before {
+:root.look-ink-wash .card.sel:not(.text) > .cface::before {
   opacity: 0.92;
   scale: 1;
   rotate: -6deg;
@@ -3158,10 +3158,10 @@
 }
 /* 减少动态效果：纸不抬、印不落，只淡入淡出（不乘 --t：那时 --t 几乎是 0） */
 @media (prefers-reduced-motion: reduce) {
-  :root.look-ink-wash .card.sel:not(.text):not(.nobg):not(.lo-map) {
+  :root.look-ink-wash .card.sel:not(.text):not(.nobg) {
     translate: none;
   }
-  :root.look-ink-wash .card:not(.text):not(.lo-map) > .cface::before {
+  :root.look-ink-wash .card:not(.text) > .cface::before {
     scale: 1;
     rotate: -6deg;
     transition: opacity 160ms linear;
@@ -3783,7 +3783,7 @@
     linear-gradient(90deg, var(--blockc) 1px, transparent 1px) 0 0 / 20px 20px,
     var(--canvas);
 }
-:root.look-city .card.sel:not(.text):not(.lo-map) {
+:root.look-city .card.sel:not(.text) {
   --ring: 0 0 0 2px var(--sign), 0 0 0 6px color-mix(in srgb, var(--sign) 20%, transparent), var(--sh-ring);
 }
 :root.look-city .card.sel.lift {

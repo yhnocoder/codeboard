@@ -18,9 +18,15 @@
 //                                nothing overlaps at rest; ↻ on a middle header asks the AI for its overview from its children
 //   summaryFramesOnlyBoard       a board of sub-board frames, Free Text headings and Marks, nothing to summarize: zoomed out past the
 //                                cut the Marks hide all the same, and the frames and Free Text look as they do at 100 %, only scaled
+//   summarySwitchWhole           a slow zoom out across the cut and back, sampled every frame: no card in view is ever blank
+//                                while the card level shows (cull keeps up through the fade), the card level is never taken out
+//                                of the tree (its opacity alone fades it), the fade starts only once both levels are complete and
+//                                the two opacities add up to one on every frame of it; faded out and at rest, the card level stays
+//                                drawn under the summaries with the cards in view prepared, so the fade back opens on whole cards
 //   zoomLogRecords               the host's Record Zoom Log: the first ask starts recording (null), a pinch past the cut is logged
-//                                frame by frame (scale, pinch events, latency) with the fade's start and end and the summary
-//                                layer's build, the second ask stops it and answers the log, headed with the cores and the dpr
+//                                frame by frame (scale, pinch events, latency) with the fade's start and end, the summary
+//                                layer's build, the cards in view with no content (none) and the faded card level kept drawn at
+//                                rest, the second ask stops it and answers the log, headed with the cores and the dpr
 import {
   emptyBoard,
   putSummary,
@@ -96,6 +102,8 @@ const recordFade = (h: Host) =>
     });
   });
 const fadeSeen = (h: Host) => h.page.evaluate(() => (window as unknown as { __fade: number[] }).__fade);
+/** The faded-out card level's opacity: kept drawn under the summaries, too low to show (state/summary.ts) */
+const FADED = 0.003;
 
 test("summaryLevelFade", async () => {
   const h = await open({ board: bigBoard("bSum", 1, true), w: 1280, h: 800, light: true });
@@ -114,8 +122,10 @@ test("summaryLevelFade", async () => {
   const z = await zoomOf(h);
   const seen = await fadeSeen(h);
   check(
-    "summaryLevelFade the switch is a fade of the card layer, not a jump",
-    seen.some((o) => o > 0.05 && o < 0.95) && seen.every((o, i) => i === 0 || o <= seen[i - 1]) && seen.at(-1) === 0,
+    "summaryLevelFade the switch is a fade of the card layer, not a jump, down to the opacity it is kept at",
+    seen.some((o) => o > 0.05 && o < 0.95) &&
+      seen.slice(0, -1).every((o, i) => i === 0 || o <= seen[i - 1]) &&
+      seen.at(-1) === FADED,
     seen,
   );
   check("summaryLevelFade the summaries show", (await opacity(h, ".sumlay")) === 1);
@@ -139,12 +149,11 @@ test("summaryLevelFade", async () => {
   const ft = h.page.locator('.card[data-id="ft"]');
   check(
     "summaryLevelFade the Mark is hidden, the Free Text keeps its look and its own size",
-    !(await h.page.locator('.card[data-id="mark"]').isVisible()) &&
+    (await opacity(h, ".cardlay")) === FADED &&
+      (await h.page.locator('.card[data-id="mark"]').count()) === 1 &&
       (await ft.isVisible()) &&
       (await h.page.locator(".keeplay").evaluate((e) => getComputedStyle(e).opacity)) === "1" &&
-      (await ft.evaluate(
-        (e) => !e.className.includes("lo-") && e.querySelector(".tx")?.textContent === "随手写的一行",
-      )),
+      (await ft.evaluate((e) => e.querySelector(".tx")?.textContent === "随手写的一行")),
     await ft.evaluate((e) => e.className),
   );
   // the board's minimum zoom: fit-all ÷ 1.3, so zooming further out does nothing
@@ -158,14 +167,118 @@ test("summaryLevelFade", async () => {
   await until(
     h,
     "back at the summaries",
-    async () => (await fadeSeen(h)).at(-1) === 0 && (await fadeSeen(h)).length > 2,
+    async () => (await fadeSeen(h)).at(-1) === FADED && (await fadeSeen(h)).length > 2,
   );
   const back = await fadeSeen(h);
   const top = back.indexOf(1);
   check(
     "summaryLevelFade crossing back mid-fade finishes the fade, then plays the reverse one",
-    top > 0 && back.slice(top).some((o) => o > 0.05 && o < 0.95) && back.at(-1) === 0,
+    top > 0 && back.slice(top).some((o) => o > 0.05 && o < 0.95) && back.at(-1) === FADED,
     back,
+  );
+  await h.page.context().close();
+});
+
+type Sample = { z: number; co: number; cv: string; so: number | null; cols: number; blank: string[] };
+/** Samples the two levels once per animation frame: the camera scale, the card level's opacity and content-visibility, the
+ *  summary level's opacity and columns, and the cards in view drawn with their content hidden (cull: .off, and not .far) */
+const sampleFrames = (h: Host) =>
+  h.page.evaluate(() => {
+    const w = window as unknown as { __samples: Sample[]; __raf: number };
+    w.__samples = [];
+    const tick = () => {
+      const world = document.querySelector(".world") as HTMLElement,
+        lay = document.querySelector(".cardlay") as HTMLElement,
+        sum = document.querySelector(".sumlay") as HTMLElement | null;
+      const blank: string[] = [];
+      for (const c of lay.querySelectorAll<HTMLElement>(".card.off:not(.far)")) {
+        const r = c.getBoundingClientRect();
+        if (r.right > 0 && r.left < innerWidth && r.bottom > 0 && r.top < innerHeight) blank.push(c.dataset.id!);
+      }
+      w.__samples.push({
+        z: +(/scale\(([\d.e-]+)\)/.exec(world.style.transform)?.[1] ?? 1),
+        co: +lay.style.opacity,
+        cv: getComputedStyle(lay).contentVisibility,
+        so: sum ? +sum.style.opacity : null,
+        cols: document.querySelectorAll(".sumcol").length,
+        blank,
+      });
+      w.__raf = requestAnimationFrame(tick);
+    };
+    w.__raf = requestAnimationFrame(tick);
+  });
+const samples = (h: Host) =>
+  h.page.evaluate(() => {
+    const w = window as unknown as { __samples: Sample[]; __raf: number };
+    cancelAnimationFrame(w.__raf);
+    return w.__samples;
+  });
+/** A pinch: ctrl + wheel in small steps, one per frame, until the condition holds (dy > 0: out) */
+async function pinch(h: Host, dy: number, done: () => Promise<boolean>) {
+  const v = h.page.viewportSize()!;
+  await h.page.mouse.move(v.width / 2, v.height / 2);
+  await h.page.keyboard.down("Control");
+  for (let i = 0; i < 120 && !(await done()); i++) {
+    await h.page.mouse.wheel(0, dy);
+    await h.page.evaluate(() => new Promise((r) => requestAnimationFrame(r)));
+  }
+  await h.page.keyboard.up("Control");
+}
+const gone = (h: Host) =>
+  h.page.evaluate(() => document.querySelector(".cardlay")?.classList.contains("gone") ?? false);
+
+test("summarySwitchWhole", async () => {
+  const h = await open({ board: bigBoard("bSwitch", 1, true), w: 1280, h: 800, light: true });
+  await idle(h);
+  // at 100 % only part of the first Section is in view: the other cards have their content hidden (cull) and come into view
+  // during the zoom out, through the fade
+  const hidden0 = await h.page.locator(".cardlay .card.off").count();
+  check("summarySwitchWhole at 100 % the cards out of view have their content hidden", hidden0 >= 6, hidden0);
+  await sampleFrames(h);
+  await pinch(h, 6, async () => (await gone(h)) && (await zoomOf(h)) < 0.2);
+  await idle(h);
+  const out = await samples(h);
+  const rest = out.at(-1)!;
+  const blankShown = (ss: Sample[]) => ss.filter((s) => s.co > 0.05 && s.blank.length).map((s) => [s.z, s.co, s.blank]);
+  check(
+    "summarySwitchWhole no card in view is blank while the card level shows (zoom out)",
+    !blankShown(out).length,
+    blankShown(out),
+  );
+  check(
+    "summarySwitchWhole the card level is never taken out of the tree (zoom out)",
+    out.every((s) => s.cv === "visible"),
+    out.filter((s) => s.cv !== "visible").length,
+  );
+  const first = out.findIndex((s) => s.co < 1);
+  const fading = out.filter((s) => s.co > 0 && s.co < 1);
+  check(
+    "summarySwitchWhole the fade starts once both levels are complete, and their opacities add up to one on every frame of it",
+    first > 0 &&
+      out[first].cols === 4 &&
+      fading.length > 3 &&
+      fading.every((s) => s.cols === 4 && Math.abs(s.co + s.so! - 1) < 0.01),
+    { first: out[first], fading: fading.length, off: fading.filter((s) => Math.abs(s.co + s.so! - 1) >= 0.01) },
+  );
+  check(
+    "summarySwitchWhole faded out and at rest, the card level stays drawn under the summaries with the cards in view prepared",
+    rest.co === 0.003 && rest.so === 1 && rest.blank.length === 0 && rest.cv === "visible",
+    rest,
+  );
+  await sampleFrames(h);
+  await pinch(h, -6, async () => (await zoomOf(h)) > 0.6);
+  await idle(h);
+  const back = await samples(h);
+  const open0 = back.find((s) => s.co > 0.003);
+  check(
+    "summarySwitchWhole the fade back opens on whole cards and never takes the level out of the tree",
+    !!open0 && open0.blank.length === 0 && back.every((s) => s.cv === "visible") && back.at(-1)!.co === 1,
+    { open0, last: back.at(-1) },
+  );
+  check(
+    "summarySwitchWhole no card in view is blank while the card level shows (zoom in)",
+    !blankShown(back).length,
+    blankShown(back),
   );
   await h.page.context().close();
 });
@@ -376,8 +489,10 @@ test("summaryFramesOnlyBoard", async () => {
   const far = await looks();
   check(
     "summaryFramesOnlyBoard past the cut a board with nothing to summarize hides its Marks too",
-    !(await h.page.locator('.card[data-id="mk"]').isVisible()) && (await zoomOf(h)) < 0.3,
-    { z: await zoomOf(h) },
+    (await opacity(h, ".cardlay")) === FADED &&
+      (await h.page.locator('.card[data-id="mk"]').count()) === 1 &&
+      (await zoomOf(h)) < 0.3,
+    { z: await zoomOf(h), cardlay: await opacity(h, ".cardlay") },
   );
   check(
     "summaryFramesOnlyBoard the frames and the Free Text look as at 60 %, only scaled: no map look, names whole, counts kept",
@@ -707,6 +822,13 @@ test("zoomLogRecords", async () => {
       lines.some((l) => /^B [\d.]+ [\d.]+ layer, cols \d+\/\d+$/.test(l)) &&
       lines.some((l) => /^S [\d.]+ 1 first frame [\d.]+$/.test(l)),
     lines.filter((l) => /^[SB] /.test(l)),
+  );
+  check(
+    "zoomLogRecords no card in view had its content hidden, and at rest the faded card level was kept drawn",
+    lines.some((l) => /^X [\d.]+ none$/.test(l)) &&
+      !lines.some((l) => /^X [\d.]+ (?!none)/.test(l)) &&
+      lines.some((l) => /^W [\d.]+ card level kept drawn z[\d.]+$/.test(l)),
+    lines.filter((l) => /^[XW] /.test(l)),
   );
   check("zoomLogRecords asked again it records anew", (await toggle(3)) === null);
   check("zoomLogRecords and stops with a log of its own", typeof (await toggle(4)) === "string");

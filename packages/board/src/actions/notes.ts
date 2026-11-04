@@ -23,7 +23,6 @@ import { IS_MAC } from "@yhnocoder/markdown/ui";
 import { editing, liveNoteMd, setEditing } from "../state/ui";
 import { cardsMeasured, naturalSize, chromeOf, CODE_MAX } from "../state/measure";
 import { noteImageOf } from "./imagedata";
-import { quietHover } from "../state/camera";
 import { promptText, type Item } from "../ui/Menu";
 import {
   imageCaption,
@@ -47,7 +46,6 @@ import { boardTimer } from "../state/root";
 const hoverT = boardTimer(),
   leaveT = boardTimer();
 export function hoverMarker(el: Element, ids: string[]) {
-  if (quietHover()) return;
   leaveT.stop();
   hoverT.start(() => showNotes(el, ids, false), 120);
   el.addEventListener(
@@ -184,7 +182,6 @@ export async function showPeek(
   pin = false,
   at?: { path: string; line: number; col: number },
 ) {
-  if (quietHover() && !pin) return;
   const c = cardById(cardId)?.card;
   const s = isCode(c) ? segOf(c, segId) : undefined;
   if (!s) return;

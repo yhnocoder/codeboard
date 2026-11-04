@@ -6,7 +6,6 @@ import { blockSig, blockAt, type BlockRef } from "@codeboard/core";
 import { noteBlocks } from "../md/blocks";
 import { state, cardById, onBoard } from "./store";
 import { editing, liveNoteMd, dragging } from "./ui";
-import { lodOf } from "./lodcards";
 import { look } from "./look";
 import { queueMeasure, observeResize } from "./measure";
 import { boardSignal, boardStore, boardTimer, rooted } from "./root";
@@ -158,8 +157,7 @@ export function watchBlockHover() {
     const body = t?.closest?.(".card.note > .cface > .nbody.md:not(.editing)") as HTMLElement | null;
     const card = body?.closest<HTMLElement>(".card");
     const id = card?.dataset.id;
-    if (!body || !id || e.buttons || dragging().size || card!.classList.contains("dim") || lodOf(id) !== "full")
-      return leaveBlock();
+    if (!body || !id || e.buttons || dragging().size || card!.classList.contains("dim")) return leaveBlock();
     const d = noteDom(id);
     const k = d ? nearest(d.kids, e.clientY) : -1;
     if (!d || k < 0) return leaveBlock();
@@ -169,10 +167,10 @@ export function watchBlockHover() {
   };
   window.addEventListener("pointermove", move, { capture: true, passive: true });
   onCleanup(() => window.removeEventListener("pointermove", move, { capture: true }));
-  // 进了编辑、换了缩放档：圆点收起
+  // 进了编辑：圆点收起
   createEffect(() => {
     const h = hoverBlock();
-    if (h && (editing()?.id === h.card || lodOf(h.card) !== "full")) setHoverBlock(null);
+    if (h && editing()?.id === h.card) setHoverBlock(null);
   });
 }
 

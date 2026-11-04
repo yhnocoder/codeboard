@@ -162,7 +162,7 @@ export abstract class Player {
       "<style>:host{display:block}.v{display:block;width:100%;height:100%}.v>canvas{display:block;width:100%;height:100%}" +
       ".b{position:absolute;top:6px;right:6px;padding:1px 7px;border-radius:999px;font:500 10.5px/1.5 system-ui,sans-serif;" +
       "color:var(--ink-2);background:var(--surface);box-shadow:0 0 0 1px var(--line);opacity:0;transition:opacity .14s;" +
-      "pointer-events:none;white-space:nowrap}:host(.loop.hover) .b{opacity:1}:host-context(.lod-overview,.lod-map) .b{display:none}</style>";
+      "pointer-events:none;white-space:nowrap}:host(.loop.hover) .b{opacity:1}</style>";
     this.view = document.createElement("span");
     this.view.className = "v";
     const badge = document.createElement("span");

@@ -28,7 +28,7 @@ import { sel, select, toggleSel, clearSel, setLineSel, isSel, type Sel } from ".
 import { toast } from "./state/toast";
 import { tune } from "./state/tune";
 import { WHEEL_GESTURE, BLOCK_GLIDE, SNAP_SETTLE, LAND_MS } from "./state/timing";
-import { cam, setCam, stopCam, camTo, fitRect, fling, toWorld, view, zMin, ZMAX, lod } from "./state/camera";
+import { cam, setCam, stopCam, camTo, fitRect, fling, toWorld, view, zMin, ZMAX } from "./state/camera";
 import { reduceMotion } from "./state/motion";
 import {
   setGuides,
@@ -141,7 +141,7 @@ export function isDbl(key: string, e: { clientX: number; clientY: number }) {
  */
 const OWN_CLICK = ".md-ref, label, summary";
 function clickEditKind(c: Card, t: HTMLElement): "note" | "free" | null {
-  if (lod() !== "full" || t.closest(OWN_CLICK)) return null;
+  if (t.closest(OWN_CLICK)) return null;
   if (c.kind === "note")
     return t.closest(c.look === "note" ? ".nbody" : ".tx") || t.classList.contains("cface") ? "note" : null;
   return c.kind === "code" && c.segments[0]?.src.kind === "free" && t.closest(".src") ? "free" : null;
@@ -594,11 +594,6 @@ function zoomToSummary(key: string) {
 }
 export function cardDblClick(e: MouseEvent, id: string) {
   const t = e.target as HTMLElement;
-  // 概览 / 地图里双击卡片：放大到这张卡 100%
-  if (lod() !== "full") {
-    e.preventDefault();
-    return zoomToCard(id);
-  }
   if (t.closest(".cdesc")) {
     e.preventDefault();
     setEditing({ kind: "desc", id });
