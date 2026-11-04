@@ -508,6 +508,28 @@ math {
 .md-ref.sealed::before {
   content: none;
 }
+/* 有印章的引用不再套 badge 的浅底框（框里套框）：正文大小，下面一条细线，悬停时线变深；只有印章的（alone）连线也不要 */
+.md-ref.sealed {
+  padding: 0 1px;
+  margin: 0 2px;
+  border-radius: 0;
+  font-size: 1em;
+  line-height: 1.6;
+  background: none;
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--k-fn) 32%, transparent);
+}
+.md-ref.sealed:hover {
+  background: none;
+  box-shadow: inset 0 -1px 0 var(--k-fn);
+}
+.md-ref.sealed:has(> .md-seal.alone) {
+  padding: 0;
+  box-shadow: none;
+}
+.md-ref.sealed:has(> .md-seal.alone):hover {
+  box-shadow: none;
+  filter: brightness(1.08);
+}
 .md-seal {
   display: inline-flex;
   align-items: center;

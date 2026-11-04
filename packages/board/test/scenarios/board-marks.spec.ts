@@ -66,8 +66,11 @@ async function refLook(h: Host, label: string) {
   });
 }
 
-async function setup(o: { light?: boolean; scale?: number } = {}) {
-  const run = await hostBoards(books(), { page: { light: o.light ?? light, w: 1100, h: 720, scale: o.scale } });
+async function setup(o: { light?: boolean; scale?: number; theme?: string } = {}) {
+  const settings = o.theme ? ({ theme: o.theme } as Record<string, unknown>) : undefined;
+  const run = await hostBoards(books(), {
+    page: { light: o.light ?? light, w: 1100, h: 720, scale: o.scale, settings },
+  });
   const h = await run.open("bComp");
   await until(h, "the refs to other boards show Marks", () => h.page.locator(`${refSel("csapp")} .md-seal`).count());
   await idle(h);
@@ -167,13 +170,13 @@ test("boardMarksEdit", async () => {
   await until(h, "undo brings the Mark back", () => run.host.store.peek("bComp")?.seal?.text === "CompArch");
 });
 
-// Screenshots for review (Warm Ink, light and dark, 2×): the refs, and Edit Mark… with a clash
+// Screenshots for review (Warm Ink and Ink Wash, light, 2×): the refs, and Edit Mark… with a clash
 test("boardMarksScreenshots", async () => {
   const dir = path.join(OUT, "board-marks");
   fs.mkdirSync(dir, { recursive: true });
-  for (const lit of [true, false]) {
-    const { h } = await setup({ light: lit, scale: 2 });
-    const tone = lit ? "light" : "dark";
+  for (const theme of ["warm-ink", "ink-wash"]) {
+    const { h } = await setup({ light: true, scale: 2, theme });
+    const tone = theme;
     const box = (await h.page.locator('.card[data-id="cp1"]').boundingBox())!;
     const clip = { x: box.x - 24, y: box.y - 24, width: box.width + 48, height: box.height + 48 };
     await h.page.screenshot({ path: path.join(dir, `refs-${tone}.png`), clip });
