@@ -1034,8 +1034,8 @@ test("markCjkHandFont", async () => {
     return r.loaded.length ? r : undefined;
   });
   check("markCjkFontFamily", /^"?Shantell Sans"?,\s*"?Yozai"?/.test(f.family), f);
-  // 135 faces (45 chunks × 3 weights); "你好共享内存调度" is in 3 chunks of Regular
-  check("markCjkFontChunked", f.faces >= 100 && f.loaded.length >= 1 && f.loaded.length <= 4, f);
+  // 90 faces (45 chunks × Regular and Bold); "你好共享内存调度" is in 3 chunks of Regular
+  check("markCjkFontChunked", f.faces >= 80 && f.loaded.length >= 1 && f.loaded.length <= 4, f);
   check("markCjkGlyphsFromBundledFont", f.differ > 80, f);
   await shot(h, "117-mark-cjk");
   await h.close();
@@ -1130,7 +1130,7 @@ test("markScaleText", async () => {
 });
 
 /** #120: a Mark's weight, Light / Regular / Bold, from its toolbar beside the colour dots: one step each, undoable, and both the
- *  Latin (Shantell Sans, a variable font) and the Chinese (Yozai's own Light and Bold, not a synthesized bold) follow it */
+ *  Latin (Shantell Sans, a variable font) and the Chinese (Yozai's own Bold, not a synthesized one; Light keeps Regular) follow it */
 test("markWeight", async () => {
   const h = await oneMark("Hello 你好 共享内存", {}, 1000, 420, [
     { fs: 32, weight: "light" },
@@ -1174,11 +1174,50 @@ test("markWeight", async () => {
   );
   await pg.locator(`${card("m1")} .hwt[data-tip="Light"]`).click();
   await until(h, "Light is saved", () => mark(h).weight === "light");
-  const thin = await until(h, "Yozai Light is loaded", async () => {
-    const r = await yozaiOf(h, "你好共享内存");
-    return r.loaded.includes("300") ? r : undefined;
-  });
-  check("markWeightLight", thin.weight === "300", thin);
+  // Yozai ships Regular and Bold only: a Light Mark's Latin is Shantell Sans at 300, its Chinese is Yozai Regular as it is (the
+  // same pixels as at 400, nothing synthesized), still Yozai and not a system font
+  const thin = await yozaiOf(h, "你好共享内存");
+  const light = await pg.evaluate(
+    (sel) => {
+      const t = document.querySelector<HTMLElement>(sel)!,
+        cs = getComputedStyle(t);
+      const draw = (font: string, text: string) => {
+        const c = document.createElement("canvas");
+        c.width = 260;
+        c.height = 40;
+        const x = c.getContext("2d")!;
+        x.font = font;
+        x.fillText(text, 2, 30);
+        return x.getImageData(0, 0, 260, 40).data;
+      };
+      const differ = (a: Uint8ClampedArray, b: Uint8ClampedArray) => {
+        let n = 0;
+        for (let i = 3; i < a.length; i += 4) if (a[i] !== b[i]) n++;
+        return n;
+      };
+      return {
+        cjk300vs400: differ(
+          draw(`300 24px ${cs.fontFamily}`, "你好共享内存"),
+          draw(`400 24px ${cs.fontFamily}`, "你好共享内存"),
+        ),
+        latin300vs400: differ(draw(`300 24px ${cs.fontFamily}`, "Hello"), draw(`400 24px ${cs.fontFamily}`, "Hello")),
+        synthesis: cs.getPropertyValue("font-synthesis-weight"),
+        lightFaces: [...document.fonts].filter((x) => x.family.replace(/"/g, "") === "Yozai" && x.weight === "300")
+          .length,
+      };
+    },
+    `${card("m1")} .tx`,
+  );
+  check(
+    "markWeightLight",
+    thin.weight === "300" &&
+      thin.differ > 80 &&
+      light.cjk300vs400 === 0 &&
+      light.latin300vs400 > 20 &&
+      light.lightFaces === 0 &&
+      light.synthesis === "auto",
+    { thin, light },
+  );
   await pg.keyboard.press("Meta+z");
   await until(h, "Light is undone", () => mark(h).weight === "bold");
   await pg.keyboard.press("Meta+z");

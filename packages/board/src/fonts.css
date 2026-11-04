@@ -200,7 +200,7 @@
 }
 /* Handwriting for Marks and annotations (SIL Open Font License 1.1, see public/fonts/ShantellSans-OFL.txt, shipped next to
    the fonts): Shantell Sans with its weight axis (300–800), so a Mark can be Light, Regular or Bold. The Chinese next to it,
-   Yozai in the same three weights, is in fonts-yozai.css */
+   Yozai in Regular and Bold (a Light Mark's Chinese is Regular), is in fonts-yozai.css */
 @font-face {
   font-family: "Shantell Sans";
   font-style: normal;

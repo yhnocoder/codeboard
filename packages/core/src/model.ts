@@ -134,7 +134,7 @@ export type NoteLook = (typeof NOTE_LOOKS)[number];
 /** Mark 的三种粗细：没有 = regular */
 export const HAND_WEIGHTS = ["light", "regular", "bold"] as const;
 export type HandWeight = (typeof HAND_WEIGHTS)[number];
-/** 每种粗细的 font-weight：手写的拉丁字母（Shantell Sans，300–800 连续可调）和中文（悠哉，三个字重）都有这三档 */
+/** 每种粗细的 font-weight：手写的拉丁字母（Shantell Sans，300–800 连续可调）三档都有；中文（悠哉）只带了 Regular 和 Bold，Light 用 Regular */
 export const HAND_WEIGHT_CSS: Record<HandWeight, number> = { light: 300, regular: 400, bold: 700 };
 /**
  * 拖角改字号的（Mark、Free Text）：没存字号（NoteCard.fs）时的字号，和拖出来的上下限（px）。
