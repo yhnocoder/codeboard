@@ -279,6 +279,7 @@
         "lineToLineLink",
         "childArrowAnchor",
         "headPortHidden",
+        "arrowTargetAim",
         "markCard",
         "markArrowStable",
         "codeAnnotations",

@@ -24,7 +24,7 @@ import {
 } from "@codeboard/core";
 import { state, cardById, hostOf, rectOf, placeOf, placed } from "./state/store";
 import { live } from "./state/changes";
-import { sel, select, toggleSel, clearSel, setLineSel, isSel } from "./state/selection";
+import { sel, select, toggleSel, clearSel, setLineSel, isSel, type Sel } from "./state/selection";
 import { toast } from "./state/toast";
 import { tune } from "./state/tune";
 import { WHEEL_GESTURE, BLOCK_GLIDE, SNAP_SETTLE, LAND_MS } from "./state/timing";
@@ -790,6 +790,40 @@ export function callPointerDown(e: PointerEvent, cardId: string, seg: string, ca
 }
 
 /**
+ * 拖箭头的终点指着的卡（#127）：那张卡显示成选中（主题自己的选中样式），离开就还原拖之前的选中；松手连上了就只选它（新箭头指向它，
+ * 起点那张卡不必再选着）。选中不是白板数据：不进撤销；拖到一半换了白板，选中跟着白板一起清掉，没有要还原的
+ */
+function aimSel() {
+  let prev: Sel | null = null,
+    cur = "",
+    at: { x: number; y: number } | undefined;
+  return {
+    /** 返回放大的原点（卡内坐标）：指针进卡的那一点，之后在卡里移动不变。绕中心放大的话，靠边的行号、代码行会从指针下面滑走 */
+    at(id: string, ev: PointerEvent) {
+      if (id === cur) return at;
+      prev ??= { cards: [...sel.cards], links: [...sel.links], sections: [...sel.sections] };
+      cur = id;
+      at = undefined;
+      if (id) {
+        const p = placeOf(id),
+          w = worldOf(ev);
+        at = { x: w.x - p.x, y: w.y - p.y };
+        select({ cards: [id] });
+        return at;
+      }
+      select(prev);
+      prev = null;
+    },
+    end(landed: string | null) {
+      if (landed) select({ cards: [landed] });
+      else if (prev) select(prev);
+      prev = null;
+      cur = "";
+    },
+  };
+}
+
+/**
  * side：用户从哪个圆点拖出来，起点就固定在那一侧（不再按位置自动推）。
  * 落点：代码行（行号）→ 那一行；Note 的卡身（卡头以外：块上、块之间的空隙、上下内边距）→ 最近的那一块；别的地方 → 整张卡。
  * 指着 Note 的一块时那一块和起点那一块（从块拖出来的）上淡色底，终点滑到那一块在卡边上的位置（换一块时滑过去，不跳）
@@ -806,6 +840,7 @@ export function linkPortDown(e: PointerEvent, from: End, sx: number, sy: number,
     raf = 0,
     aimKey = "";
   const a = local({ clientX: sx, clientY: sy });
+  const aimed = aimSel();
   const draw = () => {
     if (shown) setRubber({ x1: a.x, y1: a.y, x2: shown.x, y2: shown.y, plain: true });
   };
@@ -849,9 +884,17 @@ export function linkPortDown(e: PointerEvent, from: End, sx: number, sy: number,
           aim = null;
         }
       }
+      const at = aimed.at(to ? hostOf(to.card) : "", ev);
       setDropTarget(
         to
-          ? { kind: to.line ? "line" : to.block ? "block" : "card", card: hostOf(to.card), seg: to.seg, line: to.line }
+          ? {
+              kind: to.line ? "line" : to.block ? "block" : "card",
+              card: hostOf(to.card),
+              seg: to.seg,
+              line: to.line,
+              aim: true,
+              at,
+            }
           : null,
       );
       tintBlocks(aim ? [aim, src] : to ? [src] : []); // 起点那段：对准了任何落点（一段、一行、卡头）都上色
@@ -878,7 +921,9 @@ export function linkPortDown(e: PointerEvent, from: End, sx: number, sy: number,
       stop();
       setRubber(null);
       setDropTarget(null);
-      if (moved && to) A.addLink(from, to, side);
+      if (!moved || !to) return aimed.end(null);
+      aimed.end(hostOf(to.card));
+      A.addLink(from, to, side);
     },
     DRAG_SLOP,
     stop,

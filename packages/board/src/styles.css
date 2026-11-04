@@ -543,7 +543,8 @@ textarea {
     box-shadow calc(var(--t) * 160ms) var(--out),
     scale calc(var(--t) * 260ms) cubic-bezier(0.3, 1.35, 0.5, 1),
     opacity calc(var(--t) * 240ms) var(--out),
-    filter calc(var(--t) * 240ms);
+    filter calc(var(--t) * 240ms),
+    transform calc(var(--t) * 90ms) var(--out);
 }
 /* 卡的阴影分两层画（见上面 --sh-ring / --sh-soft）：::before 是模糊的那层，圆角；::after 在它上面，是细边、高光和各种状态的描边（--ring），
    跟着卡的 squircle。两层都在卡的底色上面、内容下面（z-index: -1），和原来卡自己的 box-shadow 叠的次序一样：描边压在模糊阴影上 */
@@ -615,6 +616,25 @@ textarea {
 }
 .card.sel.lift {
   --ring: 0 0 0 1.5px var(--accent), var(--sh-lift);
+}
+/* 拖箭头时终点指着的卡（松手会连到它）：放大一点（带一点回弹），同时显示成选中（interact.ts linkPortDown）；指针离开时 90ms 缩回（.card 上的过渡）。
+   只用 transform，不动布局：箭头的端点仍按原来的大小算，放大时线头稍微落在卡边里面。
+   绕指针进卡的那一点放大（--aim-x / --aim-y，Card.tsx）：指着的行号、代码行不从指针下面滑走。卡的缩放原点在卡头（0 18px，拿起来时用），
+   这里用平移补上 (1 - 1.03) × (那一点 - 原点)；平移和缩放按同一条曲线插值，回弹时那一点也不动。斜贴的卡原点在中心，不补（--aim-t） */
+.card.aim {
+  transform: translate(var(--aim-t, calc(var(--aim-x, 50%) * -0.03), calc((var(--aim-y, 50%) - 18px) * -0.03)))
+    scale(1.03);
+  transition:
+    box-shadow calc(var(--t) * 160ms) var(--out),
+    scale calc(var(--t) * 260ms) cubic-bezier(0.3, 1.35, 0.5, 1),
+    opacity calc(var(--t) * 240ms) var(--out),
+    filter calc(var(--t) * 240ms),
+    transform calc(var(--t) * 120ms) cubic-bezier(0.3, 1.35, 0.5, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .card.aim {
+    transform: none;
+  }
 }
 .card.dim {
   opacity: 0.28;

@@ -111,6 +111,17 @@ export function CardView(p: { card: Card }) {
     onCleanup(observeResize(e, () => queueMeasure(read, read)));
     popStyle(e);
     paperStyle(e);
+    // 箭头终点指着这张卡时放大的原点（.card.aim）：只在指着时写，离开后留着，缩回去的那 90ms 原点不跳
+    const aimAt = createMemo(() => {
+      const d = dropTarget();
+      return d?.aim && d.card === c().id ? d.at : undefined;
+    });
+    createRenderEffect(() => {
+      const a = aimAt();
+      if (!a) return;
+      e.style.setProperty("--aim-x", `${a.x}px`);
+      e.style.setProperty("--aim-y", `${a.y}px`);
+    });
   };
   createEffect(() => {
     const pg = pingCard();
@@ -154,7 +165,7 @@ export function CardView(p: { card: Card }) {
       (s as Record<string, string>)["--fc"] = `var(--bf-${k.fill ?? "yellow"})`;
     // 斜贴：绕卡的中心转（箭头的端点按同一个中心转，Links.tsx）
     const a = tiltOf(k.id);
-    if (a) Object.assign(s, { rotate: `${a}deg`, "transform-origin": "50% 50%" });
+    if (a) Object.assign(s, { rotate: `${a}deg`, "transform-origin": "50% 50%", "--aim-t": "0px, 0px" });
     return s;
   };
   // 弹出、滑过去、收进 Section 的每一帧只改这几项：单独一个 effect，不把卡的整个 style 和 classList 重算一遍
@@ -242,9 +253,10 @@ export function CardView(p: { card: Card }) {
     return (
       (m && d.armed ? 1 : 0) |
       (m && !d.armed ? 2 : 0) |
-      (d.kind === "card" && d.card === id ? 4 : 0) |
+      (d.kind === "card" && d.card === id && !d.aim ? 4 : 0) |
       (d.cands?.includes(id) ? 8 : 0) |
-      (d.kind === "note" && d.card === id ? 16 : 0)
+      (d.kind === "note" && d.card === id ? 16 : 0) |
+      (d.aim && d.card === id ? 32 : 0)
     );
   });
   return (
@@ -276,6 +288,7 @@ export function CardView(p: { card: Card }) {
           "drop-hot": !!(drop() & 4),
           "drop-cand": !!(drop() & 8),
           "img-drop": !!(drop() & 16),
+          aim: !!(drop() & 32),
           "bind-hot": isBindHot(`card:${c().id}`),
           "bind-anchor": isBindAnchor(c().id),
           skel: skel(c().id) === "out",

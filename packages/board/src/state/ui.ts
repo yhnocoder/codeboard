@@ -139,6 +139,10 @@ export const [dropTarget, setDropTarget] = boardSignal<{
   line?: number;
   armed?: boolean;
   cands?: string[];
+  /** 拖箭头的终点：松手会连到这张卡（放大一点、显示成选中，.card.aim） */
+  aim?: boolean;
+  /** 放大的原点（卡内坐标，白板单位） */
+  at?: { x: number; y: number };
 } | null>(null);
 export const [dragging, setDragging] = boardSignal<Set<string>>(new Set());
 /** Cards just put down after a drag: their lift shadow (and scale) settles back over LAND_MS (`.card.landing`) */

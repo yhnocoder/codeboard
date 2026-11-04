@@ -1005,3 +1005,107 @@ test("closeCardsArrow", async () => {
     res,
   );
 });
+
+/**
+ * 拖箭头的终点指着一张卡（#127）：那张卡绕指针进卡的那一点放大一点（transform，不动布局）、显示成选中；指针离开就缩回、还原拖之前的选中；
+ * 松手连上后只选着它。悬停和离开不发 patch（选中不是白板数据，不进撤销），撤销一次就撤掉这条箭头。
+ * Ink Wash 下同样（朱红的角）；减弱动态时只选中、不放大。之前：只有卡头的 drop-hot 描边，选中不变，卡不放大
+ */
+test("arrowTargetAim", async () => {
+  for (const theme of ["warm-ink", "ink-wash"]) {
+    const b = emptyBoard("b1", "aim");
+    const note = (id: string, md: string, x: number, y: number, w: number) => {
+      b.cards.push({ id, kind: "note", md, look: "note" } as NoteCard);
+      b.place[id] = { x, y, w };
+    };
+    note("n0", "From here", 80, 140, 260);
+    note("n1", "Arrow target\n\nScales up and shows as selected while the arrow end is over it", 520, 100, 340);
+    note("n2", "Selected before the drag", 80, 420, 260);
+    b.cam = { x: 0, y: 0, z: 1 };
+    const h = await open({ board: b, light: true, w: 1000, h: 640, settings: { theme } as any });
+    const pg = h.page,
+      c0 = pg.locator(`.card[data-id="n0"]`),
+      c1 = pg.locator(`.card[data-id="n1"]`);
+    await pg.locator(`.card[data-id="n2"]`).click({ position: { x: 20, y: 12 } });
+    await until(h, "n2 is selected", async () => (await selected(h)).join() === "n2");
+    await idle(h);
+    const look = async () => ({
+      sel: await selected(h),
+      aim: await c1.evaluate((e) => e.classList.contains("aim")),
+      scale: await c1.evaluate((e) => new DOMMatrix(getComputedStyle(e).transform).a),
+      // 放大的原点：指针进卡的那一点（卡内坐标）
+      at: await c1.evaluate((e) =>
+        [e.style.getPropertyValue("--aim-x"), e.style.getPropertyValue("--aim-y")].map(parseFloat),
+      ),
+      box: (await c1.boundingBox())!,
+    });
+    const t = (await c1.boundingBox())!;
+    const box0 = (await c0.boundingBox())!;
+    await pg.mouse.move(box0.x + 100, box0.y + 10);
+    await c0.locator(".eport.r").waitFor();
+    await idle(h);
+    const dot = (await c0.locator(".eport.r").boundingBox())!;
+    await pg.mouse.move(dot.x + dot.width / 2, dot.y + dot.height / 2);
+    await pg.mouse.down();
+    const patches = () => h.sent.filter((m) => m.type === "patch").length;
+    const p0 = patches();
+    await pg.mouse.move(t.x + 170, t.y + 60, { steps: 10 });
+    await idle(h);
+    const over = await look();
+    // 绕指针进卡的那一点放大：那一点不动（绕中心放大的话，靠边的行号会从指针下面滑走）
+    const [ax, ay] = over.at;
+    const drift = Math.hypot(over.box.x + ax * over.scale - (t.x + ax), over.box.y + ay * over.scale - (t.y + ay));
+    await shot(h, `arrows-aim-${theme}`);
+    check(
+      `arrowTargetAim over (${theme}): scaled about where the pointer came in, and selected`,
+      over.aim &&
+        over.scale > 1.02 &&
+        over.scale < 1.04 &&
+        ax >= 0 &&
+        ax < t.width &&
+        drift < 1 &&
+        over.sel.join() === "n1",
+      { over, drift, t },
+    );
+    if (theme === "warm-ink") {
+      await pg.mouse.move(t.x + 170, t.y + t.height + 120, { steps: 6 });
+      await idle(h);
+      const off = await look();
+      const p1 = patches();
+      check(
+        "arrowTargetAim off: back to size, the previous selection restored, no patch",
+        !off.aim && Math.abs(off.scale - 1) < 1e-3 && off.sel.join() === "n2" && p1 === p0,
+        { off, p0, p1 },
+      );
+      await pg.mouse.move(t.x + 170, t.y + 60, { steps: 6 });
+      await idle(h);
+      await pg.mouse.up();
+      await until(h, "the dragged arrow is saved", () => h.board().links.length === 1);
+      await idle(h);
+      const after = await look();
+      const link = h.board().links[0];
+      check(
+        "arrowTargetAim release: arrow made, the target stays selected at its size",
+        link.from.card === "n0" &&
+          link.to.card === "n1" &&
+          !after.aim &&
+          Math.abs(after.scale - 1) < 1e-3 &&
+          after.sel.join() === "n1",
+        { after, link },
+      );
+      await pg.keyboard.press("Meta+z");
+      const undone = await until(h, "undo takes the arrow back", () => h.board().links.length === 0).catch(() => false);
+      check("arrowTargetAim undo: one undo removes the arrow (the selection made no step)", undone);
+    } else {
+      // 减弱动态：照样选中，不放大
+      await pg.emulateMedia({ reducedMotion: "reduce" });
+      await pg.mouse.move(t.x + 175, t.y + 64, { steps: 2 });
+      await idle(h);
+      const still = await look();
+      await pg.mouse.up();
+      await until(h, "the dragged arrow is saved", () => h.board().links.length === 1);
+      check("arrowTargetAim reduced motion: selected, not scaled", still.aim && still.scale === 1, { still });
+    }
+    await close(h);
+  }
+});
