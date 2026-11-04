@@ -547,6 +547,8 @@ math {
   letter-spacing: 0.02em;
   white-space: nowrap;
   vertical-align: 0.12em;
+  /* 字在框里看着上下居中：line-height 1 的行框下面留着降部的空，只按行框居中大写字母会顶到上边，所以上面多垫一点 */
+  padding-top: 0.14em;
   color: var(--surface);
   background: var(--md-seal);
 }
@@ -563,7 +565,7 @@ math {
 .md-seal.two > span {
   display: flex;
   align-items: center;
-  padding: 0 0.4em;
+  padding: 0.14em 0.4em 0;
 }
 .md-seal.two > .o {
   color: var(--md-seal-outer);
