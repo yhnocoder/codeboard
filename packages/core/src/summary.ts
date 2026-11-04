@@ -2,7 +2,7 @@
 // every card in no Section one sentence, in place of the cards. This file is the pure part both the board and the host run:
 // which items get a summary, the board's one font size, the columns (anchored at the source's top-left, growing only right
 // and down, aligned sources kept aligned: a port of the layout in feedback/demo/boards-130-viewer.html), the minimum zoom, the
-// length budget the AI writes to, the prompt material and what makes a summary pending.
+// prompt material (how much to write follows the content alone, never the layout) and what makes a summary pending.
 import {
   baseName,
   cardTitle,
@@ -31,8 +31,6 @@ export const SUMMARY = {
   looseCap: 1500,
   /** A column's text is at most this many S wide (a wide Section's column keeps its anchor and stops there) */
   maxLine: 28,
-  /** The most characters a summary is asked for, whatever its column holds (about 4–5 lines) */
-  maxChars: 120,
   /** The most key phrases a summary keeps bold (the prompt asks for about one per 40 chars); later ones are kept as plain text */
   maxBold: 3,
   /** The highest cut any board has (summaryCut) */
@@ -148,10 +146,7 @@ export function summaryMinZoom(view: { w: number; h: number }, content: Rect | n
 }
 
 /** A column: its extent, the title block height of its row, chars per body line and the body lines its whole extent can hold */
-export type SumCol = Rect & { key: SumKey; hd: number; cpl: number; lines: number } & Pick<
-    SumSource,
-    "title" | "code" | "image"
-  >;
+export type SumCol = Rect & { key: SumKey; hd: number; full: number } & Pick<SumSource, "title" | "code" | "image">;
 export type SumLayout = { S: number; P: number; cut: number; med: number; cols: SumCol[] };
 /** Heights read from the page for a column (title block, body), when it has been drawn at its width */
 export type SumMeasured = Map<string, { hd: number; tx: number }>;
@@ -233,7 +228,9 @@ function readingOrder(items: SumSource[]) {
 /**
  * The summary level's layout: the board's font size S, padding P, cut and every column, in reading order. measured = the title
  * and body heights the page read at the columns' widths (the widths never depend on them); without it, heights are estimated
- * (the host's budgets). Nothing is clamped or shrunk: a column's extent is only where later columns stop
+ * (where nothing was drawn). A column's text is at most SUMMARY.maxLine S wide; at rest its height is the room it has, down to
+ * the next column or card below less the gap, so columns never overlap; full = the height its whole text takes (the board fades
+ * the last visible lines when it is taller, and shows it all over its neighbours while it is hovered)
  */
 export function layoutSummaries(input: SumInput, measured?: SumMeasured): SumLayout {
   const src = input.items.map((it) => ({ ...it, box: { ...it.box } }));
@@ -299,33 +296,18 @@ export function layoutSummaries(input: SumInput, measured?: SumMeasured): SumLay
     const tx = measured?.get(it.key)?.tx ?? textH(it.text, col.w - 2 * P, S);
     const cap = it.key.startsWith("card:") ? SUMMARY.looseCap : 1e7;
     const e = extent(it, col, 2 * P + hd + 0.3 * S + tx, cap);
-    const most = extent(it, col, 1e7, cap);
     done.set(it.key, e);
     out.push({
       ...e,
       key: it.key,
       hd,
-      cpl: Math.max(1, Math.floor((col.w - 2 * P) / S)),
-      lines: Math.max(0, Math.floor((most.h - 2 * P - hd - 0.3 * S) / (S * SUMMARY.lh) + 1e-6)),
+      full: Math.ceil(2 * P + hd + 0.3 * S + tx),
       title: it.title,
       code: it.code,
       image: it.image,
     });
   }
   return { S, P, cut, med, cols: out };
-}
-
-/**
- * How long the AI may write: capacity = chars per line × the lines the column's whole extent holds; the target is about 0.6 of
- * it, never under two full lines and never over SUMMARY.maxChars. Sections get 2–3 sentences, a card one
- */
-export type SumBudget = { cpl: number; lines: number; capacity: number; target: number; sentences: [number, number] };
-export function summaryBudget(col: Pick<SumCol, "cpl" | "lines">, card: boolean): SumBudget {
-  const lines = Math.max(2, col.lines),
-    capacity = col.cpl * lines;
-  const target = Math.min(SUMMARY.maxChars, Math.max(2 * col.cpl, Math.round(0.6 * capacity)));
-  const sentences: [number, number] = card ? [1, 1] : target < 60 ? [2, 2] : [2, 3];
-  return { cpl: col.cpl, lines, capacity, target, sentences };
 }
 
 const fnv = (s: string) => {
@@ -365,7 +347,8 @@ export function summarySig(b: Board, key: string): string | undefined {
 }
 /**
  * A hash of everything an item's prompt is written from: a Section's title and cards (with its nested Sections'), each one's
- * id, title and content; a card's own. Stored with the summary (Summary.input): the same hash = nothing to ask the AI. undefined = no such item
+ * id, title and content; a card's own; and the user's edit pairs. Never the layout: moving cards asks nothing. Stored with the
+ * summary (Summary.input): the same hash = nothing to ask the AI. undefined = no such item
  */
 export function summaryInput(b: Board, key: string): string | undefined {
   const k = parseKey(key);
@@ -376,11 +359,12 @@ export function summaryInput(b: Board, key: string): string | undefined {
     : b.cards.filter((c) => c.id === k.card && b.place[c.id]);
   if (!cards || (!k.sec && !cards.length)) return undefined;
   const head = k.sec ? (b.sections.find((s) => s.id === k.sec)?.title ?? "") : "";
+  const pairs = (summaryOf(b, key)?.pairs ?? []).map((p) => `${p.ai}\u0001${p.user}`).join("\u0002");
   return fnv(
     `${head}\u0003${cards
       .map((c) => `${c.id}\u0001${cardTitle(c, b)}\u0001${cardText(c)}`)
       .sort()
-      .join("\u0002")}`,
+      .join("\u0002")}\u0003${pairs}`,
   );
 }
 export function summaryOf(b: Board, key: string): Summary | undefined {
@@ -406,14 +390,14 @@ export const summaryPending = (b: Board, key: string) => {
   return !s || s.sig !== summarySig(b, key);
 };
 
-/** What the AI is asked to summarize: the item, its cards' titles and contents, the budget and the language to write in */
+/** What the AI is asked to summarize: the item, its cards' titles and contents and the language to write in (how long it is
+ *  follows the content, never the layout) */
 export type SumRequest = {
   key: SumKey;
   title: string;
   /** A card in no Section: one sentence and a short title; code: the title line is the signature, no title wanted */
   card?: "note" | "code" | "image" | "other";
   cards: { title: string; text: string }[];
-  budget: SumBudget;
   lang: "zh" | "en";
   sig: string;
   /** summaryInput now: the summary written from this request carries it */
@@ -477,7 +461,6 @@ export function summaryRequest(b: Board, key: SumKey, layout: SumLayout): SumReq
           card: one?.kind === "note" || one?.kind === "code" || one?.kind === "image" ? one.kind : ("other" as const),
         }),
     cards: material,
-    budget: summaryBudget(col, !sec),
     lang: boardLang(all),
     sig,
     input: summaryInput(b, key) ?? "",
@@ -508,7 +491,7 @@ export function summaryExamples(boards: Board[], n: number, but?: { board: strin
     .map(({ at: _, ...e }) => e);
 }
 
-/** The AI's answer → a summary (JSON as asked; a bare text answer is taken as the body). Up to SUMMARY.maxBold bold key phrases kept. undefined = empty */
+/** The AI's answer → a summary (JSON as asked; a bare text answer is taken as the body). About one bold key phrase per 40 chars kept (exactly one under 50, SUMMARY.maxBold at most). undefined = empty */
 export function readSummaryReply(raw: string, r: SumRequest, at: number): Summary | undefined {
   const t = raw
     .trim()
@@ -523,8 +506,12 @@ export function readSummaryReply(raw: string, r: SumRequest, at: number): Summar
   } catch {
     /* plain text */
   }
+  // about one bold key phrase per 40 chars, at most maxBold, exactly one under 50: the ones past that stay as plain text
+  text = text.trim();
+  const len = text.replace(/\*\*/g, "").length,
+    most = len < 50 ? 1 : Math.min(SUMMARY.maxBold, Math.max(1, Math.round(len / 40)));
   let bold = 0;
-  text = text.trim().replace(/\*\*(.+?)\*\*/g, (_, x: string) => (bold++ < SUMMARY.maxBold ? `**${x}**` : x));
+  text = text.replace(/\*\*(.+?)\*\*/g, (_, x: string) => (bold++ < most ? `**${x}**` : x));
   if (!text) return undefined;
   const s: Summary = { text, at, sig: r.sig, input: r.input };
   if (r.pairs?.length) s.pairs = r.pairs;

@@ -7757,6 +7757,20 @@ mark.wdiff {
   box-sizing: border-box;
   padding: var(--P);
 }
+/* a text taller than the column's room (--rest): clipped there, its last visible lines fading out; hovered or focused it shows
+   in full over its neighbours on the paper, raised. Clip, mask, shadow and z-index only: nothing else moves or lays out */
+.sumcol.sumover {
+  clip-path: inset(0 0 calc(100% - var(--rest)) 0);
+  mask-image: linear-gradient(to bottom, #000 calc(var(--rest) - var(--S) * 2.25), transparent var(--rest));
+}
+.sumlay.live .sumcol.sumover:is(:hover, :focus-within) {
+  clip-path: none;
+  mask-image: none;
+  z-index: 2;
+  background: var(--bg);
+  border-radius: calc(var(--P) * 0.5);
+  box-shadow: 0 calc(var(--S) * 0.15) calc(var(--S) * 0.9) color-mix(in srgb, var(--ink) 18%, transparent);
+}
 .sumblk {
   position: relative;
 }

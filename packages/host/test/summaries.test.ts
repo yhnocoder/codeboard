@@ -1,4 +1,4 @@
-// Zoomed-out summaries written by the host (summaries.ts) on a fake fetch: the request DeepSeek gets (the budget, JSON, no
+// Zoomed-out summaries written by the host (summaries.ts) on a fake fetch: the request DeepSeek gets (no layout numbers, JSON, no
 // thinking), what a failure turns into, and SummaryWatch's timing on vitest's fake timers: opening a board asks only for written
 // summaries whose cards changed since, a pending one is written SUMMARY.regenMs after its latest change (every change restarts the
 // wait), a hand-edited one too, in the style of the edit, and nothing is asked while an item's input hash is unchanged
@@ -72,7 +72,7 @@ const written = (b: Board, k: string): Summary => ({
 });
 
 describe("summarize", () => {
-  it("asks DeepSeek with the summary prompt filled in (title, cards, budget), without thinking, and reads the answer", async () => {
+  it("asks DeepSeek with the summary prompt filled in (title, cards), without thinking, and reads the answer", async () => {
     const b = board();
     const req = hostRequests(b).get("sec:s")!;
     const { f, calls } = fakeFetch(() => ok('{"text": "众线程押**吞吐量**，CPU 押延迟。"}'));
@@ -85,8 +85,9 @@ describe("summarize", () => {
     expect(body.thinking).toEqual({ type: "disabled" });
     expect(body.messages[0].content).toBe(SUMMARY_SYSTEM);
     expect(body.messages[1].content).toContain(`Section 标题：${req.title}`);
-    expect(body.messages[1].content).toContain(`目标约 ${req.budget.target} 字`);
-    expect(body.messages[1].content).toContain(`容量 ${req.budget.capacity} 字`);
+    // how long follows the content: no layout numbers in the prompt
+    expect(body.messages[1].content).toContain("每个独立的关键要点写一句");
+    expect(body.messages[1].content).not.toMatch(/容量|每行 \d+ 个字|目标约/);
     expect(body.messages[1].content).toContain("多核路线保住串行速度");
     expect(body.messages[1].content).not.toMatch(/\{[^{}]*\}/);
     expect(summaryChatRequest({ key: "k", baseUrl: "http://x/" }, req).url).toBe("http://x/chat/completions");
@@ -226,7 +227,9 @@ describe("summaryPrompt", () => {
   });
   it("asks for a bold key phrase per important sentence, and its own examples show 2–3 short ones, no numbers", () => {
     const u = summaryPrompt(base()).user;
-    expect(u).toContain("大约每 40 字一处，最多 3 处；每处 2–10 个字；加粗的字合起来不超过全文的四分之一");
+    expect(u).toContain(
+      "大约每 40 字一处，最多 3 处；不到 50 字的摘要正好一处。每处 2–10 个字；加粗的字合起来不超过全文的四分之一",
+    );
     const sums = [...u.matchAll(/^摘要：(.*)$/gm)].map((m) => m[1]);
     expect(sums).toHaveLength(4);
     for (const t of sums) {

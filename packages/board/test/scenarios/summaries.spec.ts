@@ -2,11 +2,13 @@
 //   summaryLevelFade             below the board's cut the card level fades out and the summaries in, as whole layers over a
 //                                timed fade; one column per top-level Section and loose card, anchored at its top-left; a Mark
 //                                fades with the cards, a Free Text stays as it is, at its own size; the zoom stops at the board's minimum; crossing back mid-fade finishes the fade first
-//   summaryWrittenAndEdited      on the real host with a fake DeepSeek: opening the board asks nothing, ↻ writes one item sized by
-//                                its column's budget; a click edits a body in place (Enter saves, marked edited, kept as a pair
+//   summaryWrittenAndEdited      on the real host with a fake DeepSeek: opening the board asks nothing, ↻ writes one item (as
+//                                long as its content asks, no layout numbers); a click edits a body in place (Enter saves, marked edited, kept as a pair
 //                                with the AI text it replaced), ↻ rewrites it following that edit and keeps the pair, ⌘Z brings
 //                                the hand edit back
 //   summaryNoKey                 without a DeepSeek key nothing is written: Section titles with empty bodies, and ↻ says a key is needed
+//   summaryOverflowFades         two loose cards stacked close, each with a long summary: at rest the columns never overlap and
+//                                the upper one fades out over its last lines; hovered it shows in full over the lower one, raised
 //   summaryFramesOnlyBoard       a board of sub-board frames, Free Text headings and Marks, nothing to summarize: zoomed out past the
 //                                cut the Marks hide all the same, and the frames and Free Text look as they do at 100 %, only scaled
 import {
@@ -18,7 +20,7 @@ import {
   type NoteCard,
   type Section,
 } from "@codeboard/core";
-import { put, type Host } from "../harness";
+import { put, shot, type Host } from "../harness";
 import { test, open, check, until, idle, hostBoards } from "../fixtures";
 import { fakeDeepseek } from "../deepseek";
 
@@ -180,11 +182,12 @@ test("summaryWrittenAndEdited", async () => {
   await redo("card:loose");
   await until(h, "they show", async () => (await h.page.locator(".sumtx b").count()) === 2);
   const asked = calls.map((c) => c.body.messages[1].content as string);
-  const target = asked.map((s) => +(/目标约 (\d+) 字/.exec(s)?.[1] ?? 0));
   check(
-    "summaryWrittenAndEdited ↻ writes one item, asking for a length sized by its column",
-    calls.length === 2 && target.every((t) => t >= 10) && asked[0].includes("Section 标题：内存层次"),
-    target,
+    "summaryWrittenAndEdited ↻ writes one item, its length following its content (no layout numbers asked)",
+    calls.length === 2 &&
+      asked.every((s) => s.includes("每个独立的关键要点写一句") && !/容量|目标约/.test(s)) &&
+      asked[0].includes("Section 标题：内存层次"),
+    asked.map((s) => s.length),
   );
   await until(h, "the loose card's summary is in the host's board", () => !!h.board().place.loose.summary?.text);
   const body = h.page.locator('.sumcol[data-sum="sec:s1"] .sumtx');
@@ -301,4 +304,57 @@ test("summaryFramesOnlyBoard", async () => {
     { near, far },
   );
   await h.close();
+});
+
+test("summaryOverflowFades", async () => {
+  const b = emptyBoard("bOv", "overflow");
+  const long =
+    "合并访存要求同一 warp 的线程访问**连续的地址**，这样一次事务就能取回整段数据，地址分散时要拆成很多次事务。".repeat(
+      3,
+    );
+  put(b, note("a", "# 合并访存：连续地址\n\n同一 warp 访问连续地址。"), 80, 80, 700);
+  put(b, note("b", "# 合并访存：对齐方式\n\n起始地址按 128 字节对齐。"), 80, 520, 700);
+  put(b, note("far", "# 远处\n\n撑开白板"), 4200, 2600, 700);
+  for (const k of ["card:a", "card:b"]) putSummary(b, k, { text: long, at: Date.now(), sig: summarySig(b, k)! });
+  b.cam = { x: 40, y: 40, z: 0.2 };
+  const h = await open({ board: b, w: 1280, h: 800, light: true });
+  await idle(h);
+  const A = h.page.locator('.sumcol[data-sum="card:a"]'),
+    B = h.page.locator('.sumcol[data-sum="card:b"]');
+  /** What shows of a column: its clip's bottom on screen, whether it is raised */
+  const shown = (l: typeof A) =>
+    l.evaluate((e) => {
+      const r = e.getBoundingClientRect(),
+        cs = getComputedStyle(e),
+        rest = parseFloat(cs.getPropertyValue("--rest")),
+        z = r.height / (e as HTMLElement).offsetHeight;
+      const clipped = cs.clipPath !== "none";
+      return {
+        top: r.top,
+        bottom: clipped ? r.top + rest * z : r.bottom,
+        over: e.classList.contains("sumover"),
+        mask: cs.maskImage !== "none",
+        raised: cs.zIndex === "2",
+      };
+    });
+  const a0 = await shown(A),
+    b0 = await shown(B);
+  await shot(h, "130-overflow-rest");
+  check(
+    "summaryOverflowFades at rest the upper column ends above the lower one and fades its last lines",
+    a0.over && a0.mask && !a0.raised && a0.bottom < b0.top,
+    { a0, b0 },
+  );
+  await A.locator(".sumhd").hover();
+  await until(h, "the hovered column is raised", async () => (await shown(A)).raised);
+  const a1 = await shown(A);
+  await shot(h, "130-overflow-hover");
+  check(
+    "summaryOverflowFades hovered it shows its whole text over the lower column, unmasked; nothing else moved",
+    !a1.mask && a1.bottom > b0.top && (await shown(B)).top === b0.top,
+    { a1, b0 },
+  );
+  await h.page.mouse.move(1200, 780);
+  await until(h, "it collapses on leave", async () => !(await shown(A)).raised);
+  await h.page.context().close();
 });

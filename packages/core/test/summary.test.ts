@@ -1,5 +1,5 @@
 // Zoomed-out summaries (core summary.ts): the board's font size, cut and minimum zoom, the columns (anchored at the source's
-// top-left, growing only right and down, aligned sources aligned, obstacles in reading order), the AI's length budget, what makes a
+// top-left, growing only right and down, aligned sources aligned, obstacles in reading order), the AI's prompt, what makes a
 // summary pending, and reading the AI's answer
 import { describe, expect, it } from "vitest";
 import {
@@ -7,7 +7,6 @@ import {
   emptyBoard,
   layoutSummaries,
   readSummaryReply,
-  summaryBudget,
   summaryCut,
   summaryFont,
   summaryMinZoom,
@@ -116,7 +115,7 @@ describe("summary columns", () => {
     );
     const a = col(l, "sec:a");
     expect(a.h).toBe(1200 - SUMMARY.gap);
-    expect(a.lines).toBe(Math.floor((a.h - 2 * l.P - 60 - 0.3 * l.S) / (1.5 * l.S) + 1e-6));
+    expect(a.full).toBe(Math.ceil(2 * l.P + 60 + 0.3 * l.S + 5000));
   });
   it("puts a loose image card's summary below the image and keeps the image as an obstacle", () => {
     const b: Board = emptyBoard("b", "t");
@@ -188,28 +187,37 @@ describe("a wide Section's column", () => {
     expect(c.x).toBe(100);
     expect(c.y).toBe(200);
     expect(c.w).toBe(SUMMARY.maxLine * l.S + 2 * l.P);
-    expect(c.cpl).toBe(SUMMARY.maxLine);
   });
 });
 
-describe("the AI's length budget and prompt", () => {
-  it("asks for about 0.6 of the column's capacity, never under two full lines nor over 120 chars; Sections 2–3 sentences, cards one", () => {
-    expect(summaryBudget({ cpl: 10, lines: 8 }, false)).toEqual({
-      cpl: 10,
-      lines: 8,
-      capacity: 80,
-      target: 48,
-      sentences: [2, 2],
-    });
-    expect(summaryBudget({ cpl: 12, lines: 1 }, false).target).toBe(24); // two full lines
-    expect(summaryBudget({ cpl: 12, lines: 40 }, false)).toMatchObject({
-      capacity: 480,
-      target: 120,
-      sentences: [2, 3],
-    });
-    expect(summaryBudget({ cpl: 28, lines: 20 }, false).target).toBe(SUMMARY.maxChars);
-    expect(summaryBudget({ cpl: 12, lines: 6 }, true).sentences).toEqual([1, 1]);
+describe("columns at rest", () => {
+  const card = (id: string, x: number, y: number, text: string): SumSource => ({
+    key: cardKey(id),
+    box: { x, y, w: 400, h: 100 },
+    own: { x, y, w: 400, h: 100 },
+    title: `合并访存：${id}`,
+    text,
   });
+  it("two loose cards stacked close together never overlap: the upper column stops the gap above the lower, its full text is longer", () => {
+    const long = "合并访存要求同一 warp 的线程访问连续的地址，".repeat(6);
+    for (const dy of [160, 300, 600, 1200]) {
+      const l = layoutSummaries({ items: [card("a", 0, 0, long), card("b", 0, dy, long)], keep: [] });
+      const a = col(l, cardKey("a")),
+        b = col(l, cardKey("b"));
+      expect(a.y + a.h).toBeLessThanOrEqual(b.y - SUMMARY.gap);
+      // the text it holds is taller than its room: the board fades its last lines and shows it all on hover
+      if (dy < 1200) expect(a.full).toBeGreaterThan(a.h);
+    }
+  });
+  it("a short text takes only the height it needs", () => {
+    const l = layoutSummaries({ items: [card("a", 0, 0, "短。"), card("b", 0, 1500, "短。")], keep: [] });
+    const a = col(l, cardKey("a"));
+    expect(a.h).toBeLessThan(1500 - SUMMARY.gap);
+    expect(a.full).toBeLessThanOrEqual(Math.ceil(a.h));
+  });
+});
+
+describe("the AI's prompt", () => {
   it("builds a Chinese request for a Chinese board, from the Section's cards and nested Sections", () => {
     const b = board();
     const frames = new Map(b.sections.map((s) => [s.id, { x: s.x, y: s.y, w: s.w, h: s.h }]));
@@ -235,14 +243,18 @@ describe("the AI's length budget and prompt", () => {
     b.sections[0].title += "!";
     expect(new Set([h0, h1, summaryInput(b, k)]).size).toBe(3);
   });
-  it("reads the JSON answer, keeps up to three bold key phrases and a card's title", () => {
+  it("reads the JSON answer, keeps about one bold key phrase per 40 chars (one under 50, three at most) and a card's title", () => {
     const b = board();
     const frames = new Map(b.sections.map((s) => [s.id, { x: s.x, y: s.y, w: s.w, h: s.h }]));
     const r = summaryRequest(b, cardKey("n3"), layoutSummaries(summarySources(b, rects(b), frames)))!;
     const s = readSummaryReply('```json\n{"text": "**吞吐**优先，**延迟**其次。", "title": "导读"}\n```', r, 5)!;
-    expect(s).toEqual({ text: "**吞吐**优先，**延迟**其次。", title: "导读", at: 5, sig: r.sig, input: r.input });
-    // at most three bold key phrases: later ones stay as plain text
-    expect(readSummaryReply("**一**，**二**，**三**，**四**。", r, 5)!.text).toBe("**一**，**二**，**三**，四。");
+    // under 50 chars: exactly one bold key phrase, the first
+    expect(s).toEqual({ text: "**吞吐**优先，延迟其次。", title: "导读", at: 5, sig: r.sig, input: r.input });
+    // about one per 40 chars, at most three: later ones stay as plain text
+    const long = (n: number) => Array.from({ length: n }, (_, i) => `**要点${i}**${"字".repeat(36)}。`).join("");
+    const bolds = (t: string) => (readSummaryReply(t, r, 5)!.text.match(/\*\*/g) ?? []).length / 2;
+    expect(bolds(long(2))).toBe(2);
+    expect(bolds(long(5))).toBe(3);
     expect(r.input).toBe(summaryInput(b, cardKey("n3")));
     expect(readSummaryReply("纯文字的回答", r, 5)?.text).toBe("纯文字的回答");
     expect(readSummaryReply("  ", r, 5)).toBeUndefined();

@@ -4,6 +4,9 @@
 // lays anything out. Each column's title and body heights are read once per change of width or text
 // (ResizeObserver, in the board's measuring round) and give the final extents the later columns stop at.
 // Click a body to edit it (Enter saves, Esc cancels, ⌘B marks the key phrase); ↻ on hover writes it again.
+// At rest a column shows only the room it has (it never overlaps the next one); a longer text fades out over its last visible
+// lines and shows in full, over its neighbours, while the column is hovered or has the focus: only a clip, a mask, a shadow and
+// the stacking change, nothing is laid out again.
 import { For, Show, createMemo, onCleanup } from "solid-js";
 import { state } from "../state/store";
 import { stillZ } from "../state/camera";
@@ -165,8 +168,15 @@ function Column(p: { col: SumCol }) {
           pend: pending() && !!sum(),
           edited: !!sum()?.edited,
           gen: writing(),
+          sumover: c().full > c().h + 1,
         }}
-        style={{ left: `${c().x}px`, top: `${c().y}px`, width: `${c().w}px`, height: `${c().h}px` }}
+        style={{
+          left: `${c().x}px`,
+          top: `${c().y}px`,
+          width: `${c().w}px`,
+          height: `${Math.max(c().h, c().full)}px`,
+          "--rest": `${c().h}px`,
+        }}
       >
         <div class="sumblk">
           <div class="sumhd" classList={{ code: !!c().code }} style={{ "min-height": `${c().hd}px` }}>

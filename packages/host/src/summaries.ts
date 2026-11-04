@@ -38,7 +38,7 @@ import type { HostContext } from "./context";
  * edited summaries take the examples' places (summaryPrompt). Swap a retuned version in here; nothing else holds prompt text
  */
 export const SUMMARY_SYSTEM = `你为白板缩远视图写 Section 摘要。缩远时读者只扫一眼，所以摘要必须先让人抓住重点。只输出摘要正文本身，不要标题、不要引号、不要解释。`;
-const SUMMARY_USER = `下面是 4 个好摘要的例子（先是 Section 内容的浓缩，再是理想摘要），学它们的写法：先点出核心观点，细节舍得删。
+const SUMMARY_USER = `下面是 4 个好摘要的例子（先是 Section 内容的浓缩，再是理想摘要），学它们的写法：先点出核心观点，细节舍得删；每个要点一句，要点多少决定写多长。
 
 例 1
 标题：使用 Kogge–Stone 算法进行 parallel scan
@@ -71,10 +71,10 @@ Section 标题：{标题}
 1. 第一句只说这个 Section 的核心观点：读者读完只记住一件事的话，该记住什么。用判断或结论的口吻，说“为什么／怎么做才成立”，不要罗列“介绍了……、包括……”。
 2. 后面的句子按重要性支撑第一句：先是最关键的原因或做法，再是次要的补充。越往后越可以删。
 3. 数字、API 名、例子，只在它们本身就是重点时才写；细节、公式推导、参数、代码里的变量名一律省略。
-4. 加粗（用 **…** 包起来）每个重要句子的关键短语：大约每 40 字一处，最多 3 处；每处 2–10 个字；加粗的字合起来不超过全文的四分之一。第一处加粗放在核心观点上。不要加粗数字或 API 名。
+4. 加粗（用 **…** 包起来）每个重要句子的关键短语：大约每 40 字一处，最多 3 处；不到 50 字的摘要正好一处。每处 2–10 个字；加粗的字合起来不超过全文的四分之一。第一处加粗放在核心观点上。不要加粗数字或 API 名。
 5. 不要重复标题；用中文；英文术语可以保留。
 
-长度：栏宽每行 {每行字数} 个字，容量 {容量} 字（英文字母、数字按半个字算）。目标约 {目标字数} 字，不要超过；容量是硬上限，超出的部分会被截掉。但长度服务于重点，说清核心观点就停，绝不凑字数，也不要为了塞满而加细节。内容很少时，一两句就够；容量不超过 40 字时只写一句，只放核心观点。
+长度：跟着卡片内容有多少要点走，和摆放的地方无关。卡片里每个独立的关键要点写一句：内容单薄的 Section 一句就够，内容丰富的最多六句左右。绝不凑字数，也不要硬塞细节；一般不超过 250 字。
 只输出摘要正文。
 `;
 
@@ -92,7 +92,7 @@ const EXAMPLE = /例 (\d+)\n标题：(.*)\n内容：(.*)\n摘要：(.*)/g;
 const BUILT_IN = [...SUMMARY_USER.matchAll(EXAMPLE)].map((m) => ({ title: m[2], content: m[3], summary: m[4] }));
 
 /**
- * The prompt for one request: the Section's (or card's) title, its cards, chars per line, capacity and target length; the user's
+ * The prompt for one request: the Section's (or card's) title and its cards (no layout numbers: the length follows the content); the user's
  * edited summaries (r.examples, most recent first) in the examples' first places, the prompt's own in the rest; and the user's
  * edits of this one (r.pairs, newest first)
  */
@@ -109,9 +109,6 @@ export function summaryPrompt(r: SumRequest): { system: string; user: string } {
   user = fill(user, {
     标题: r.title,
     "卡片内容，笔记卡去掉图片和标签，代码卡前 80 行，共最多 6000 字": cards,
-    每行字数: String(r.budget.cpl),
-    容量: String(r.budget.capacity),
-    目标字数: String(r.budget.target),
   });
   if (r.pairs?.length) {
     const n = r.pairs.length;
