@@ -28,6 +28,12 @@ function inPage(SEL) {
     const cs = getComputedStyle(el);
     if (cs.visibility === "hidden" || cs.display === "none" || +cs.opacity < 0.05 || cs.pointerEvents === "none")
       return null;
+    // an ancestor that hides it without changing its own computed style: content-visibility: hidden (the faded card level at
+    // the summary level, .cardlay.gone) or a transparent layer
+    for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
+      const ps = getComputedStyle(p);
+      if (ps.contentVisibility === "hidden" || +ps.opacity < 0.05) return null;
+    }
     return r;
   };
   // Wholly clipped away by an ancestor (e.g. a header chip's label folded onto a hidden second line): not on screen, so not truncated text

@@ -77,14 +77,18 @@ const shot = async (page, n) => {
   for (const i of r.issues) console.log(`  ⚠ ${n}: ${i.rule} — ${i.what}`);
   if (process.env.AUDIT_STRICT === "1") check(!r.issues.length, `${n} passes the UI audit`);
 };
-// A spot on empty canvas inside the board frame (frame coordinates): where cards land depends on the layout, so pick it rather than hard-code it
+// A spot on empty canvas inside the board frame (frame coordinates): where cards land depends on the layout, so pick it rather than hard-code it.
+// Cards are checked by their boxes too: at the summary level the card layer is hidden (.cardlay.gone) and elementFromPoint finds none
 const emptySpot = (f) =>
   f.evaluate(() => {
     const b = document.querySelector("#board").getBoundingClientRect();
+    const cards = [...document.querySelectorAll(".card, .sumcol")].map((c) => c.getBoundingClientRect());
+    const onCard = (x, y) =>
+      cards.some((r) => x >= r.left - 12 && x <= r.right + 12 && y >= r.top - 12 && y <= r.bottom + 12);
     for (let y = b.top + 60; y < b.bottom - 120; y += 20)
       for (let x = b.left + 40; x < b.right - 40; x += 20) {
         const t = document.elementFromPoint(x, y);
-        if (t && !t.closest(".card, .pop, .ctx, .dock, .bbar, .pill, .sec, .crumbs, svg [data-link]"))
+        if (t && !onCard(x, y) && !t.closest(".card, .pop, .ctx, .dock, .bbar, .pill, .sec, .crumbs, svg [data-link]"))
           return { x: x - b.left, y: y - b.top };
       }
     return { x: 30, y: 300 };
