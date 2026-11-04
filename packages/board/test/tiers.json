@@ -538,7 +538,7 @@
         "packages/board/src/canvas/Summaries.tsx",
         "packages/board/src/actions/summaries.ts",
         "packages/host/src/summaries.ts",
-        "packages/board/test/scenarios/summaries.spec.ts"
+        "packages/board/test/scenarios/{summaries,summary-zoom}.spec.ts"
       ],
       "scenarios": ["summaryLevelFade", "summaryWrittenAndEdited", "summaryNoKey"]
     }

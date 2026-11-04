@@ -28,7 +28,7 @@ import { sel, select, toggleSel, clearSel, setLineSel, isSel, type Sel } from ".
 import { toast } from "./state/toast";
 import { tune } from "./state/tune";
 import { WHEEL_GESTURE, BLOCK_GLIDE, SNAP_SETTLE, LAND_MS } from "./state/timing";
-import { cam, setCam, stopCam, camTo, fling, toWorld, view, zMin, ZMAX, lod } from "./state/camera";
+import { cam, setCam, stopCam, camTo, fitRect, fling, toWorld, view, zMin, ZMAX, lod } from "./state/camera";
 import { reduceMotion } from "./state/motion";
 import {
   setGuides,
@@ -570,14 +570,29 @@ export function cardContextMenu(e: MouseEvent, id: string, md: Markdown) {
   const colEl = t.closest("[data-col]") as HTMLElement | null;
   A.cardMenu(colEl?.dataset.col ?? id, e.clientX, e.clientY);
 }
+/** 放大到这张卡 100%：左上角对齐（卡比视野窄就水平居中） */
+function zoomToCard(id: string) {
+  const f = cardById(id);
+  if (!f) return;
+  const r = rectOf(f.host),
+    w = view().w;
+  camTo(24 + Math.max(0, (w - 48 - r.w) / 2) - r.x, 72 - r.y, 1);
+}
+/** Double-clicking a summary's title (the summary level, #130) zooms to what it summarizes: a loose card to 100 %, as in the
+ *  overview, a Section to fit its frame (at most 100 %) */
+function zoomToSummary(key: string) {
+  if (key.startsWith("card:")) return zoomToCard(key.slice(5));
+  const r = key.startsWith("sec:") ? frames().get(key.slice(4)) : undefined;
+  if (!r) return;
+  const f = fitRect(r, 1);
+  camTo(f.x, f.y, f.z);
+}
 export function cardDblClick(e: MouseEvent, id: string) {
   const t = e.target as HTMLElement;
   // 概览 / 地图里双击卡片：放大到这张卡 100%
   if (lod() !== "full") {
     e.preventDefault();
-    const r = rectOf(cardById(id)!.host),
-      w = view().w;
-    return camTo(24 + Math.max(0, (w - 48 - r.w) / 2) - r.x, 72 - r.y, 1);
+    return zoomToCard(id);
   }
   if (t.closest(".cdesc")) {
     e.preventDefault();
@@ -955,7 +970,12 @@ export function canvasPointerDown(e: PointerEvent) {
   if (modeIs("connect")) return void cancelMode();
   e.preventDefault();
   closeAllPops();
-  if (isDbl("canvas", e)) {
+  // a summary's title (the summary level shows, Summaries.tsx): its double-click zooms to its card or Section
+  const sum = t.closest("button")
+    ? undefined
+    : t.closest<HTMLElement>(".sumlay.live .sumhd")?.closest<HTMLElement>(".sumcol")?.dataset.sum;
+  if (isDbl(sum ? `sum:${sum}` : "canvas", e)) {
+    if (sum) return zoomToSummary(sum);
     const w = worldOf(e),
       k = state.host.settings.dblClick;
     if (k === "text") A.newText({ x: w.x, y: w.y - 12 });
