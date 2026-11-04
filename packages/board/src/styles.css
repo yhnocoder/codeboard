@@ -66,7 +66,7 @@
   --hd-purple: #7d55b0;
   --hd-orange: #c46a2a;
   --hd-green: #4c8a3a;
-  --hand: "Shantell Sans", "LXGW WenKai Lite", "Kaiti SC", STKaiti, KaiTi, cursive;
+  --hand: "Shantell Sans", "Yozai", "Kaiti SC", STKaiti, KaiTi, cursive;
   --md-hand: var(--hand);
   --md-annot-blue: var(--hd-blue);
   --md-annot-purple: var(--hd-purple);
@@ -962,6 +962,8 @@ textarea {
   scrollbar-width: thin;
   scrollbar-color: var(--hair) transparent;
   border-radius: 0 0 var(--r-card) var(--r-card);
+  /* the code area's visible width (100cqw) is what an Always Show sidenote (.inote) wraps to */
+  container-type: inline-size;
 }
 .card.autoh .cbody {
   max-height: var(--code-max);
@@ -1295,7 +1297,9 @@ textarea {
   margin: 2px 12px 4px -2px;
   padding: 5px 10px;
   border-radius: 0 7px 7px 0;
-  max-width: 520px;
+  /* wraps inside the card's visible width (the .cbody container), not the code's scroll width: right of the line numbers, the
+     same room on the right as the lines (--code-pr) plus its own margin. Being no wider than that, it never widens the code */
+  max-width: min(520px, calc(100cqw - var(--gutter) - var(--code-pr) - 10px));
 }
 .kw {
   color: var(--k-kw);
@@ -1439,8 +1443,9 @@ textarea {
 .hc-green {
   --hc: var(--hd-green);
 }
+/* 字号（--tfs）、粗细（--hw）写在卡上（Card.tsx）：拖右下角缩放的是真的字号 */
 .card.mark .tx.hand {
-  font: 18px / 1.3 var(--hand);
+  font: var(--hw, 400) var(--tfs, 18px) / 1.3 var(--hand);
   color: var(--hc);
 }
 .card.mark .tx.hand :is(p, li) {
@@ -1465,12 +1470,55 @@ textarea {
   cursor: nwse-resize;
   display: none;
 }
-.card.mark.sel .mkgrip {
+.card.mark.sel .mkgrip,
+.card.freetext.sel .mkgrip {
   display: block;
 }
-.ttb.hdots {
-  gap: 6px;
-  padding: 5px 8px;
+/* Mark 的左右两边只改宽度：矮一点，一行字的 Mark 上也和右下角缩放的小方块分得开 */
+.card.mark .hw {
+  height: 14px;
+  margin-top: -7px;
+  box-shadow: 0 0 0 1.5px var(--hc);
+}
+.card.freetext .mkgrip {
+  box-shadow: 0 0 0 1.5px var(--accent);
+}
+/* Mark 的粗细：颜色点后面一道竖线，三个手写的 a */
+.ttb.hdots .hsep {
+  align-self: stretch;
+  width: 1px;
+  margin: 1px 2px;
+  background: var(--hair);
+}
+.hwt {
+  min-width: 20px;
+  height: 20px;
+  padding: 0 3px;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  color: var(--ink-2);
+  font-family: var(--hand);
+  font-size: 16px;
+  line-height: 1;
+  cursor: default;
+}
+.hwt:hover {
+  color: var(--ink);
+}
+.hwt.on {
+  color: var(--ink);
+  background: var(--hlrow);
+}
+/* Free Text：白板上的标题，纯文字、没有框。用 Text 的标题样式（.st-title：每个主题自己的标题字体、粗细、字距），
+   字号是卡上的 --tfs（拖右下角缩放）；宽度跟着字，只在打的换行处换行 */
+.card.text.freetext {
+  width: max-content;
+}
+:root .card.text.freetext .tx.ft {
+  font-size: var(--tfs, 40px);
+  white-space: pre;
+  min-width: 1ch;
 }
 .hdot {
   width: 16px;
@@ -1529,7 +1577,7 @@ textarea {
 }
 .card.text.box .ttb {
   left: 50%;
-  top: -50px;
+  top: -56px;
   translate: -50% 0;
 }
 .bxh {
@@ -1565,9 +1613,15 @@ textarea {
   bottom: -8px;
   cursor: nwse-resize;
 }
-.ttb.bdots {
-  gap: 4px;
-  padding: 5px 8px;
+/* The colour strips (Box fills, Mark colours): a swatch's selected ring reaches 4px out and a neighbour's halo 2px, so the gap is wider
+   than both and the padding holds the ring inside the strip. Specific enough to win over the themes' own .pill padding and gap
+   (soft-light, drafting and colorful set them, which let the ring spill over the neighbour and out of the strip) */
+.card .ttb.pill:is(.bdots, .hdots) {
+  gap: 8px;
+  padding: 8px 10px;
+}
+.card .ttb.pill.hdots {
+  top: -50px; /* the taller strip keeps its distance above the card */
 }
 .bdot {
   width: 18px;
@@ -1942,13 +1996,63 @@ textarea {
     left 0.26s var(--out),
     top 0.26s var(--out);
 }
-.sect .sgrip {
+/* Resize handles on the frame's four sides (a thin band across the border) and four corners (Sections.tsx, interact.ts
+   sectionEdgeDown). The title and the cards are on layers above the frames, so the bands never take their clicks */
+.sect .sedge {
   position: absolute;
-  right: -4px;
+  pointer-events: auto;
+}
+.sect .sedge[data-edge="n"],
+.sect .sedge[data-edge="s"] {
+  left: 10px;
+  right: 10px;
+  height: 8px;
+  cursor: ns-resize;
+}
+.sect .sedge[data-edge="e"],
+.sect .sedge[data-edge="w"] {
+  top: 10px;
+  bottom: 10px;
+  width: 8px;
+  cursor: ew-resize;
+}
+.sect .sedge[data-edge="n"] {
+  top: -4px;
+}
+.sect .sedge[data-edge="s"] {
   bottom: -4px;
+}
+.sect .sedge[data-edge="e"] {
+  right: -4px;
+}
+.sect .sedge[data-edge="w"] {
+  left: -4px;
+}
+.sect .sedge[data-edge="nw"],
+.sect .sedge[data-edge="ne"],
+.sect .sedge[data-edge="sw"],
+.sect .sedge[data-edge="se"] {
   width: 14px;
   height: 14px;
-  pointer-events: auto;
+}
+.sect .sedge[data-edge="nw"] {
+  left: -5px;
+  top: -5px;
+  cursor: nwse-resize;
+}
+.sect .sedge[data-edge="ne"] {
+  right: -5px;
+  top: -5px;
+  cursor: nesw-resize;
+}
+.sect .sedge[data-edge="sw"] {
+  left: -5px;
+  bottom: -5px;
+  cursor: nesw-resize;
+}
+.sect .sedge[data-edge="se"] {
+  right: -5px;
+  bottom: -5px;
   cursor: nwse-resize;
 }
 #slabels {
@@ -2997,6 +3101,40 @@ textarea {
   font-weight: 500;
   color: var(--ink);
 }
+/* A Card sidenote's preview (ui/pops/cardpeek.tsx): a copy of the card as the board draws it, scaled to fit, beside the popover.
+   Hidden until placed; clipped at the bottom with a fade when the card is taller than the preview */
+.cpeek {
+  position: fixed;
+  z-index: 36;
+  padding: 12px;
+  border-radius: 14px;
+  background: var(--canvas);
+  box-shadow:
+    var(--sh-float),
+    0 18px 40px -16px rgba(0, 0, 0, 0.25);
+  visibility: hidden;
+  animation: popin calc(var(--t) * 150ms) var(--out);
+}
+.cpeek.show {
+  visibility: visible;
+}
+.cpeek-stage {
+  position: relative;
+  overflow: hidden;
+}
+.cpeek-stage:empty {
+  display: none;
+}
+.cpeek.cut .cpeek-stage {
+  -webkit-mask: linear-gradient(#000 calc(100% - 28px), transparent);
+  mask: linear-gradient(#000 calc(100% - 28px), transparent);
+}
+.cpeek-alt {
+  max-width: 360px;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--ink);
+}
 .sn-text {
   padding: 4px 12px 8px;
   font-size: 12.5px;
@@ -3362,6 +3500,16 @@ kbd {
 } /* still hidden while the editor loads (NoteBody foldHeader) */
 .nbody.hidehead.editing > .md-loading > :nth-child(2) {
   margin-top: 0;
+}
+/* what is typed while the editor loads (Editable MdEdit), until the editor takes it over */
+.md-early {
+  outline: none;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+/* an empty editable block is a line tall: until something is typed it must not grow the Note while the editor loads */
+.md-early:empty {
+  position: absolute;
 }
 .nbody ul,
 .nbody ol,
@@ -3818,6 +3966,8 @@ mark.wdiff {
 }
 
 .imgb {
+  /* the animated image's overlay (md/anim.ts) is placed in it and clipped to its corners */
+  position: relative;
   flex: none;
   overflow: hidden;
   border-radius: var(--r-card);
@@ -4883,7 +5033,7 @@ mark.wdiff {
 .stkpick .scolors {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 8px;
   font-size: 11.5px;
   color: var(--ink-3);
 }
@@ -7410,5 +7560,78 @@ mark.wdiff {
 }
 .k-modifySvg .msvg-f kbd {
   font: 10px var(--mono);
+  color: var(--ink-2);
+}
+
+/* Animated images in a Note (md/anim.ts): the <img> keeps its place, clicks and menus but shows nothing; over it (no pointer
+   events) the GIF's canvas or the SVG inline, clipped to the image's rounded corners */
+.md img.md-animsrc,
+.imgb img.md-animsrc {
+  opacity: 0;
+}
+.md-anim {
+  position: absolute;
+  pointer-events: none;
+  overflow: hidden;
+  white-space: normal;
+}
+.md-anim.sel {
+  box-shadow: 0 0 0 1.5px var(--accent);
+}
+/* The selected animated image's filmstrip (ui/AnimStrip.tsx): floats just under the image in the world layer, zooms with it */
+.animstrip {
+  position: absolute;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 5px 6px 5px 5px;
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: var(--sh-float);
+  font: 13px / 1.4 var(--sys);
+}
+.animstrip .ib svg {
+  width: 14px;
+  height: 14px;
+  fill: currentColor;
+}
+.animstrip .ib.loop[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--surface);
+}
+.animstrip .thumbs {
+  display: flex;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  padding: 2px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--hair) transparent;
+}
+.animstrip .thumbs > * {
+  flex: none;
+  display: block;
+  height: var(--th);
+  border-radius: 3px;
+  overflow: hidden;
+  opacity: 0.55;
+  background: var(--surface);
+  box-shadow: 0 0 0 1px var(--line);
+}
+.animstrip .thumbs > :hover {
+  opacity: 0.85;
+}
+.animstrip .thumbs > .on {
+  opacity: 1;
+  box-shadow: 0 0 0 1.5px var(--accent);
+}
+.animstrip .fno {
+  min-width: 36px;
+  padding: 0 2px;
+  text-align: right;
+  font: 500 11px var(--mono);
+  font-variant-numeric: tabular-nums;
   color: var(--ink-2);
 }

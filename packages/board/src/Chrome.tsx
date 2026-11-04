@@ -56,7 +56,7 @@ function Toolbar() {
       { up: true },
     );
   };
-  // 写在白板上、没有卡框的三种：和 Code 一样只开菜单
+  // 写在白板上、没有卡框的四种：和 Code 一样只开菜单
   const writeMenu = (el: HTMLElement) => {
     const [x, y] = at(el);
     openMenu(
@@ -64,6 +64,7 @@ function Toolbar() {
         { label: "New Text", kbd: kbd("newText"), run: () => A.newText() },
         { label: "New Box", kbd: kbd("newBox"), run: () => A.newBox() },
         { label: "New Mark", kbd: kbd("newMark"), run: () => A.newMark() },
+        { label: "New Free Text", run: () => A.newFreeText() },
       ],
       x,
       y,

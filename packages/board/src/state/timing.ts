@@ -80,3 +80,5 @@ export const SIDE_SLIDE = 120;
 export const LIFT_FADE = 140;
 /** A menu's open animation (TUNE.menuOpen's default) */
 export const MENU_OPEN = 150;
+/** A GIF frame that asks for no delay, or 10 ms, shows this long, as browsers play them (md/anim.ts) */
+export const GIF_MIN_DELAY = 100;

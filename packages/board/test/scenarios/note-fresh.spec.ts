@@ -1,6 +1,7 @@
 import * as path from "node:path";
 import { OUT, type Host } from "../harness";
 import { emptyBoard } from "@codeboard/core";
+import type { CDPSession, Page } from "playwright-core";
 import { test, open, check, light, until, idle, frames } from "../fixtures";
 
 const notes = (h: Host) => h.page.locator(".card.note").count();
@@ -199,4 +200,56 @@ test("newCardsDefaultWidths", async () => {
     Object.values(w).every((x) => x === 381),
     w,
   );
+});
+
+/** "n" and typing straight on, on a fresh board: the keys typed while the Note's editor is still loading (its code is fetched on
+ *  first use; a few hundred ms on a slow machine) all end up in the Note, in order, Markdown input rules included (#99: "# Plan"
+ *  came out as "lan"). The editor's code is held back until the keys are typed, as a slow machine would */
+test("newNoteTypedWhileEditorLoads", async () => {
+  const heldBack: string[] = [];
+  let release = false,
+    cdp!: CDPSession;
+  // before the page loads: a file:// page's requests are intercepted only when Fetch is on before it navigates
+  const beforeLoad = async (p: Page) => {
+    cdp = await p.context().newCDPSession(p);
+    cdp.on("Fetch.requestPaused", (e) => {
+      if (release) void cdp.send("Fetch.continueRequest", { requestId: e.requestId });
+      else heldBack.push(e.requestId);
+    });
+    await cdp.send("Fetch.enable", { patterns: [{ urlPattern: "*/chunks/editor-*" }] });
+  };
+  const h = await open({ board: emptyBoard("b1", "fresh"), light, w: 1200, h: 800, until: "shown", beforeLoad });
+  const pg = h.page;
+  // how many keys came before the editor was on the page, "n" included (only "n": this scenario tests nothing)
+  await pg.evaluate(() => {
+    const w = window as unknown as { early: number };
+    w.early = 0;
+    window.addEventListener(
+      "keydown",
+      () => {
+        if (!document.querySelector(".card.note .md-pm")) w.early++;
+      },
+      true,
+    );
+  });
+  await pg.mouse.move(600, 400);
+  await pg.keyboard.press("n");
+  await pg.keyboard.type("# Plan");
+  await until(h, "the editor's code is asked for", () => heldBack.length > 0);
+  release = true;
+  for (const id of heldBack) await cdp.send("Fetch.continueRequest", { requestId: id });
+  await until(h, "the Note's editor takes the keyboard", () =>
+    pg.evaluate(() => !!document.activeElement?.closest(".card.note .md-pm")),
+  );
+  const heading = await pg.locator(".card.note .md-pm h1").count();
+  await pg.keyboard.press("Escape");
+  await until(h, "editing ends", async () => (await pg.locator(".md-pm").count()) === 0);
+  await idle(h);
+  const md = h.board().cards.map((c) => (c.kind === "note" ? c.md : c.kind));
+  check("newNoteTypedWhileEditorLoads every key in the Note", md.length === 1 && md[0] === "# Plan" && heading === 1, {
+    md,
+    heading,
+  });
+  const early = await pg.evaluate(() => (window as unknown as { early: number }).early);
+  check("newNoteTypedWhileEditorLoads typed while loading", early === 7, { early });
 });

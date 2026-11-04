@@ -87,14 +87,16 @@ import {
   fitSections,
   tidyUp,
 } from "./edit";
-import { newFreeCode, newNote, newText, pasteText } from "./create";
+import { newFreeCode, newFreeText, newNote, newText, pasteText } from "./create";
 import {
   captionItems,
   headingSplitCount,
   openAddNote,
   setMarkColor,
+  setMarkWeight,
   showPeek,
   splitByHeadings,
+  tableCaptionItems,
   turnNote,
 } from "./notes";
 import { mergeIntoLinkList, retryMeta, setListRich, setWebStyle } from "./web";
@@ -106,7 +108,7 @@ import { addProc, clearRpc, legendOf, markRpc, toggleBack, toggleStart } from ".
 import { setLegendOpen } from "../state/calls";
 import { askQuestion, askQuestionOnCard } from "./questions";
 import { addVariantMenu } from "./variants";
-import { LEGEND, legendName, HAND_COLORS, type Link } from "@codeboard/core";
+import { LEGEND, legendName, HAND_COLORS, HAND_WEIGHTS, type Link } from "@codeboard/core";
 import { kbd } from "../keymap";
 import { drawSvgItem, imageAiItems, type ImgRef } from "./imageai";
 import { autoFocusItem } from "./autofocus";
@@ -258,9 +260,23 @@ export function noteImageMenu(ref: ImgRef, x: number, y: number) {
   );
 }
 
-/** 右键 Note 里选中的一段字（编辑中或静态显示）：照这段字画 SVG，整张 Note 的菜单在最后的 Note ▸ 里 */
-export function noteTextMenu(id: string, text: string, x: number, y: number) {
-  openMenu([drawSvgItem(id, text), null, { label: "Note", sub: cardItems(id, x, y) }], x, y);
+/** 右键 Note 里的一张表格（nth：Note 里的第几张）：图注的操作，整张 Note 的菜单在最后的 Note ▸ 里 */
+export function noteTableMenu(card: string, nth: number, x: number, y: number) {
+  selectCard(card);
+  const cap = tableCaptionItems(card, nth);
+  if (!cap.length) return cardMenu(card, x, y);
+  openMenu([...cap, null, { label: "Note", sub: cardItems(card, x, y) }], x, y);
+}
+
+/** 右键 Note 里选中的一段字（编辑中或静态显示）：照这段字画 SVG，整张 Note 的菜单在最后的 Note ▸ 里；字在表格里（table：第几张）
+ *  时前面先是表格图注的操作 */
+export function noteTextMenu(id: string, text: string, x: number, y: number, table: number | null = null) {
+  const cap = table === null ? [] : tableCaptionItems(id, table);
+  openMenu(
+    [...cap, ...(cap.length ? [null] : []), drawSvgItem(id, text), null, { label: "Note", sub: cardItems(id, x, y) }],
+    x,
+    y,
+  );
 }
 
 export function cardMenu(id: string, x: number, y: number) {
@@ -325,9 +341,19 @@ function cardItems(id: string, x: number, y: number): Item[] {
             run: () => setMarkColor(id, k),
           })),
         },
+        {
+          label: "Weight",
+          sub: HAND_WEIGHTS.map((k) => ({
+            label: k[0].toUpperCase() + k.slice(1),
+            checked: (c.weight ?? "regular") === k,
+            run: () => setMarkWeight(id, k),
+          })),
+        },
         edit,
         ...tail,
       ];
+    // Free Text：纯文字的标题，字号拖右下角改
+    if (c.look === "freetext") return [edit, ...tail];
     // Box 不和别的互转（底色在选中时的工具条上）
     if (c.look === "box") return [drawSvgItem(id), autoFocusItem(id), edit, ...tail];
     // Text 没有改高度的把手（只拖宽度），所以也没有 Fit Content
@@ -616,6 +642,7 @@ function multiItems(): Item[] {
       },
     },
     ...sectionItems(),
+    ...(sel.sections.length ? [sectionColorItem([...sel.sections], "Section Color")] : []),
     turnItem(),
     { label: lockAll ? "Unlock" : "Lock", kbd: kbd("lock"), run: () => toggleLock(sel.cards, sel.sections) },
     {
@@ -650,6 +677,7 @@ export function canvasMenu(md: Markdown, x: number, y: number) {
   openMenu(
     [
       { label: "New Text", kbd: kbd("newText"), run: () => newText(w) },
+      { label: "New Free Text", run: () => newFreeText(w) },
       { label: "New Note", kbd: kbd("newNote"), run: () => newNote(w) },
       { label: "New Code", run: () => newFreeCode(w) },
       { label: "Add Function…", kbd: kbd("search"), run: () => setPaletteOpen({ mode: "code" }) },
@@ -936,10 +964,45 @@ const SECTION_COLORS = [
   ["pink", "Light Pink"],
 ] as const;
 
+/** Color ▸ for these Sections: the one checked is the colour all of them have */
+const sectionColorItem = (ids: string[], label = "Color"): Item => ({
+  label,
+  sub: SECTION_COLORS.map(([v, lb]) => ({
+    label: lb,
+    checked: ids.every((i) => (sectionById(i)?.color ?? "none") === v),
+    run: () => setSectionColor(ids, v === "none" ? undefined : v),
+  })),
+});
+
+/** Several Sections selected (and no cards): what applies to all of them at once, each one undo step */
+function multiSectionItems(ids: string[]): Item[] {
+  const ss = ids.map(sectionById).filter((s): s is Section => !!s);
+  const fit = ss.filter((s) => !s.collapsed && !sectionLocked(s) && fitFrame(s));
+  return [
+    {
+      label: "Fit Content",
+      kbd: kbd("fitContent"),
+      disabled: fit.length ? false : "No open, unlocked Section with cards inside",
+      run: () => fitSections(fit.map((s) => s.id)),
+    },
+    {
+      label: ss.every((s) => s.locked) ? "Unlock" : "Lock",
+      kbd: kbd("lock"),
+      run: () => toggleLock([], ids),
+    },
+    sectionColorItem(ids),
+    null,
+    { label: `Remove ${ss.length} Sections`, hint: "Cards and inner sections stay", run: () => removeSections(ids) },
+  ];
+}
+
 export function sectionMenu(id: string, x: number, y: number) {
   const s = sectionById(id);
   if (!s) return;
   if (!sel.sections.includes(id)) select({ sections: [id] });
+  // several selected: what applies to all of them (with cards too: the menu for several cards, as on a card)
+  if (sel.cards.length) return openMenu(multiItems(), x, y);
+  if (sel.sections.length > 1) return openMenu(multiSectionItems([...sel.sections]), x, y);
   openMenu(
     [
       { label: "Rename", kbd: "Double-click", run: () => setEditing({ kind: "section", id }) },
@@ -965,14 +1028,7 @@ export function sectionMenu(id: string, x: number, y: number) {
             } as Item,
           ]
         : []),
-      {
-        label: "Color",
-        sub: SECTION_COLORS.map(([v, lb]) => ({
-          label: lb,
-          checked: (s.color ?? "none") === v,
-          run: () => setSectionColor(id, v === "none" ? undefined : v),
-        })),
-      },
+      sectionColorItem([id]),
       null,
       { label: "Remove Section", hint: "Cards and inner sections stay", run: () => removeSections([id]) },
     ],

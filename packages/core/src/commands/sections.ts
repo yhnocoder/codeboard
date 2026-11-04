@@ -133,6 +133,8 @@ export function alignCards(env: CommandEnv, rs: (Rect & { id: string })[], op: A
   });
 }
 
+/** The widths Fit Content keeps a card between (the board lays a code card out at the clamped width to measure its height) */
+export const FIT_WIDTH = { min: 240, max: 1600 };
 /**
  * Fit Content of cards to their natural size as measured (w = the longest line, h = all lines shown; body = a code card's content
  * height, chrome = its title and margins). The width is kept within 240–1600. The height is stored only for a code card taller
@@ -147,7 +149,7 @@ export function fitCardSizes(
     for (const [id, n] of sizes) {
       const p = b.place[id];
       if (!p) continue;
-      if (n.w) p.w = Math.max(240, Math.min(1600, n.w));
+      if (n.w) p.w = Math.max(FIT_WIDTH.min, Math.min(FIT_WIDTH.max, n.w));
       const c = b.cards.find((k) => k.id === id);
       const code = c?.kind === "code";
       p.h =
@@ -169,10 +171,13 @@ export function renameSection(env: CommandEnv, id: string, v: string) {
   });
 }
 
-/** A Section's colour; none = uncoloured */
-export function setSectionColor(env: CommandEnv, id: string, color: string | undefined) {
+/** The colour of these Sections (one, or all those selected), in one step; none = uncoloured. No step when none changes */
+export function setSectionColor(env: CommandEnv, ids: string[], color: string | undefined) {
+  const want = new Set(ids);
+  const change = env.board().sections.filter((s) => want.has(s.id) && s.color !== color);
+  if (!change.length) return;
+  const these = new Set(change.map((s) => s.id));
   env.edit((b) => {
-    const s = b.sections.find((q) => q.id === id);
-    if (s) s.color = color;
+    for (const s of b.sections) if (these.has(s.id)) s.color = color;
   });
 }

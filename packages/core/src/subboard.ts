@@ -13,6 +13,7 @@ import {
   type Board,
   type BoardCard,
   type Card,
+  type NoteLook,
   type Place,
 } from "./model";
 import { cardsToFrame, removeCards, removeSections, removeStickers, renumberBorn } from "./edit";
@@ -32,7 +33,7 @@ export type SkelCard = {
   h: number;
   t: string;
   k: Card["kind"];
-  lk?: "text" | "box" | "mark";
+  lk?: Exclude<NoteLook, "note">;
   si?: number;
   img?: string;
 };
@@ -121,7 +122,9 @@ export function refTitle(c: Card, nameOf: (board: string) => string | undefined 
     case "note": {
       const head = c.md.split("\n").find((l) => l.trim());
       return head &&
-        (/^\s{0,3}#{1,6}\s/.test(head) || (c.look === "text" && (c.size === "title" || c.size === "heading")))
+        (/^\s{0,3}#{1,6}\s/.test(head) ||
+          (c.look === "text" && (c.size === "title" || c.size === "heading")) ||
+          c.look === "freetext")
         ? firstLine(head) || undefined
         : undefined;
     }

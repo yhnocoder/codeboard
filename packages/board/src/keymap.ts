@@ -17,6 +17,7 @@ import { walk, keysOpen, setKeysOpen, setPaletteOpen, setEditing, editing } from
 import { setSpaceDown, cancelMode } from "./state/mode";
 import { selSticker, setSelSticker } from "./state/stickers";
 import { lastPointer, worldAt } from "./state/measure";
+import { selectedAnim } from "./md/anim";
 
 type A = typeof Actions;
 export type Group = "Create" | "View" | "Cards" | "Code" | "Walkthrough" | "Board";
@@ -191,6 +192,29 @@ const KEYMAP: Bind[] = [
   { id: "zoomIn", keys: ["mod+=", "mod++"], show: "⌘+", label: "Zoom In", group: "View", run: () => zoomAt(1.25) },
   { id: "zoomOut", keys: ["mod+-"], show: "⌘−", label: "Zoom Out", group: "View", run: () => zoomAt(0.8) },
   { id: "zoomGesture", show: "⌘ + scroll / pinch", label: "Zoom", group: "View" },
+  // a selected animated image in a Note (md/anim.ts) takes Space and ← → before panning and nudging
+  {
+    id: "animPlay",
+    keys: [" "],
+    show: "Space",
+    label: "Play / Pause the selected animated image",
+    group: "Cards",
+    when: () => !!selectedAnim(),
+    run: () => {
+      const p = selectedAnim()!;
+      p.play(!p.on());
+    },
+  },
+  {
+    id: "animPrev",
+    keys: ["ArrowLeft"],
+    show: "← →",
+    label: "Previous / next frame of the selected animated image",
+    group: "Cards",
+    when: () => !!selectedAnim(),
+    run: () => selectedAnim()!.step(-1),
+  },
+  { id: "animNext", keys: ["ArrowRight"], when: () => !!selectedAnim(), run: () => selectedAnim()!.step(1) },
   {
     id: "pan",
     keys: [" "],

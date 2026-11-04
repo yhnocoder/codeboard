@@ -1,6 +1,6 @@
 import { For, Match, Show, Switch, createEffect, createMemo, createSignal, on } from "solid-js";
 import { IS_MAC } from "@yhnocoder/markdown/ui";
-import { mdHeading, BOX_FILLS, HAND_COLORS, type NoteCard } from "@codeboard/core";
+import { mdHeading, BOX_FILLS, HAND_COLORS, HAND_WEIGHTS, HAND_WEIGHT_CSS, type NoteCard } from "@codeboard/core";
 import { state, placeOf } from "../state/store";
 import { isSel, sel } from "../state/selection";
 import { editing } from "../state/ui";
@@ -72,6 +72,18 @@ export function NoteBody(p: { card: NoteCard }) {
           md
           placeholder="Write a mark…"
           onCommit={(v, l) => A.setNoteText(c().id, v, l)}
+        />
+      </Match>
+      {/* Free Text：纯文字（只有换行，不按 Markdown 读），主题的标题字体，字号在卡上（--tfs）；原地编辑是普通的可编辑框，没有 Markdown 编辑器 */}
+      <Match when={c().look === "freetext"}>
+        <Editable
+          class="tx st-title ft"
+          kind="note"
+          id={c().id}
+          value={c().md}
+          multiline
+          placeholder="Heading"
+          onCommit={(v) => A.setNoteText(c().id, v)}
         />
       </Match>
       <Match when={c().look === "box"}>
@@ -254,7 +266,7 @@ function foldHeader(id: string, entering: boolean, setFolded: (v: boolean) => vo
   };
 }
 
-/** 选中时上方的小工具条：Box 的底色、Mark 的颜色；Text 没有 */
+/** 选中时上方的小工具条：Box 的底色、Mark 的颜色和粗细；Text、Free Text 没有 */
 export function WritingToolbar(p: { card: NoteCard }) {
   return (
     <Show when={isSel(p.card.id) && sel.cards.length === 1 && editing()?.id !== p.card.id}>
@@ -285,6 +297,22 @@ export function WritingToolbar(p: { card: NoteCard }) {
                   data-tip={k[0].toUpperCase() + k.slice(1)}
                   onClick={() => A.setMarkColor(p.card.id, k)}
                 />
+              )}
+            </For>
+            {/* 粗细：三个手写的 a，各是那一档的粗细 */}
+            <span class="hsep" />
+            <For each={HAND_WEIGHTS}>
+              {(k) => (
+                <button
+                  class="hwt"
+                  classList={{ on: (p.card.weight ?? "regular") === k }}
+                  style={{ "font-weight": HAND_WEIGHT_CSS[k] }}
+                  aria-label={k}
+                  data-tip={k[0].toUpperCase() + k.slice(1)}
+                  onClick={() => A.setMarkWeight(p.card.id, k)}
+                >
+                  a
+                </button>
               )}
             </For>
           </div>

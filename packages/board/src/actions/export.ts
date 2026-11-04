@@ -170,6 +170,7 @@ const LIVE_CLASSES = [
   "bind-hot",
   "bind-anchor",
   "pinged",
+  "md-animsrc",
 ];
 
 /** 导出用的画布克隆：完整细节、没有选中；范围外的卡、两端不都在范围里的箭头、范围外的 Section 去掉，
@@ -325,11 +326,15 @@ function mediaBase(): string {
   return l ? l.href.replace(/[^/]*$/, "") : "";
 }
 
-/** 页面上所有样式：字体只留这块白板真用到的（已经加载的），每个字体只留第一个地址（woff2） */
+/** 一个字体（@font-face）的身份：同一字体切成的几块（fonts-yozai.css 的中文手写体）字体名、样式、粗细都一样，只有字符范围不同 */
+const faceKey = (family: string, style: string, weight: string, range: string) =>
+  `${family.replace(/["']/g, "").trim()}|${style || "normal"}|${weight || "normal"}|${range.replace(/\s/g, "").toLowerCase() || "u+0-10ffff"}`;
+
+/** 页面上所有样式：字体只留这块白板真用到的（已经加载的；切成块的字体只留加载了的那几块），每个字体只留第一个地址（woff2） */
 function collectCss(): string {
   const loaded = new Set<string>();
   document.fonts?.forEach((f) => {
-    if (f.status === "loaded") loaded.add(`${f.family.replace(/["']/g, "")}|${f.style}|${f.weight}`);
+    if (f.status === "loaded") loaded.add(faceKey(f.family, f.style, f.weight, f.unicodeRange));
   });
   const out: string[] = [];
   for (const sh of [...document.styleSheets]) {
@@ -344,13 +349,13 @@ function collectCss(): string {
       for (const r of [...rs]) {
         if (r instanceof CSSFontFaceRule) {
           const st = r.style;
-          const fam = st.getPropertyValue("font-family").replace(/["']/g, "").trim();
-          if (
-            !loaded.has(
-              `${fam}|${st.getPropertyValue("font-style") || "normal"}|${st.getPropertyValue("font-weight") || "normal"}`,
-            )
-          )
-            continue;
+          const key = faceKey(
+            st.getPropertyValue("font-family"),
+            st.getPropertyValue("font-style"),
+            st.getPropertyValue("font-weight"),
+            st.getPropertyValue("unicode-range"),
+          );
+          if (!loaded.has(key)) continue;
           const src = st.getPropertyValue("src");
           const first = /url\(\s*(["']?)([^"')]+)\1\s*\)(\s*format\([^)]*\))?/.exec(src);
           if (!first) continue;

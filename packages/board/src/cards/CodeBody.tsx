@@ -371,6 +371,7 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
                       style={{ top: `${ys()[m.row].y}px` }}
                       data-card={c().id}
                       data-notes={m.ids.join(",")}
+                      data-last={m.row + (m.span ?? 0)}
                       data-nodrag
                       onPointerEnter={(e) => act.hoverMarker(e.currentTarget, m.ids)}
                       onClick={(e) => act.pinMarker(e.currentTarget, m.ids)}

@@ -236,6 +236,22 @@ export function mountEditor(md: Markdown, host: HTMLElement, o: MdEditorOpts): M
       editor.view.dom.dispatchEvent(ev);
       if (!ev.defaultPrevented) editor.commands.deleteSelection();
     },
+    type: (text) => {
+      if (editor.isDestroyed) return;
+      const view = editor.view;
+      for (const ch of text) {
+        // the key first, as a keystroke reaches the editor: its key bindings (Enter, the auto-closed brackets) may take it
+        const key = ch === "\n" ? "Enter" : ch;
+        const ev = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true });
+        view.dom.dispatchEvent(ev);
+        if (ev.defaultPrevented || key === "Enter") continue;
+        // then as text the browser put in, which ProseMirror offers to handleTextInput (the input rules) before inserting it
+        const { from, to } = view.state.selection;
+        const insert = () => view.state.tr.insertText(ch, from, to);
+        if (!view.someProp("handleTextInput", (f) => f(view, from, to, ch, insert)))
+          view.dispatch(insert().scrollIntoView());
+      }
+    },
     toggleSource,
     destroy: () => {
       if (!done) {

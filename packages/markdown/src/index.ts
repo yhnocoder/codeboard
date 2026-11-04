@@ -17,7 +17,17 @@ export {
   /** @public */
   type ResolvedImage,
 } from "./image";
-export { imageCaption, setImageCaption } from "./caption";
+export { imageCaption, setImageCaption, tableCaption, setTableCaption } from "./caption";
+export {
+  /** @public */
+  imagePlayback,
+  setImagePlayback,
+} from "./imageplay";
+export {
+  /** @public */
+  type ImageAttrs,
+  type ImagePlayback,
+} from "./imageattrs";
 export {
   /** @public */
   toggleTask,

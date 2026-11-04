@@ -1093,3 +1093,225 @@ test("sectionCmdDragEmptyMoves", async () => {
   );
   await close(h);
 });
+
+/** twoSections and a Note on its own to their right (in no Section), the camera at the origin */
+function twoSectionsAndLoose(): Board {
+  const b = twoSections();
+  put(b, { id: "n2", kind: "note", look: "note", md: "# Loose\n\nIn no Section." } as NoteCard, 1320, 110, 240);
+  b.cam = { x: 0, y: 0, z: 1 };
+  return b;
+}
+const selSections = (h: Host) =>
+  h.page.evaluate(() =>
+    [...document.querySelectorAll(".sect.sel")].map((e) => (e as HTMLElement).dataset.sect ?? "").sort(),
+  );
+const selCards = (h: Host) =>
+  h.page.evaluate(() =>
+    [...document.querySelectorAll(".card.sel")].map((e) => (e as HTMLElement).dataset.id ?? "").sort(),
+  );
+const title = (h: Host, id: string) => h.page.locator(`.slabel[data-sect="${id}"] .sname`);
+
+/** ⌘-click (and ⇧-click) on a Section's title adds it to the selection or takes it out, cards kept; the Section menu with several
+ *  selected colours them all in one undo step */
+test("sectionMultiSelectColor", async () => {
+  const h = await open({ board: twoSectionsAndLoose(), light, w: 1600 });
+  await idle(h);
+  await title(h, "S1").click();
+  await title(h, "S2").click({ modifiers: ["Meta"] });
+  await idle(h);
+  const both = await selSections(h);
+  await title(h, "S2").click({ button: "right" });
+  await h.page.locator(".ctx button", { hasText: "Color" }).hover();
+  await h.page.locator(".ctx button", { hasText: "Light Green" }).click();
+  await until(h, "both Sections are coloured", () => h.board().sections.every((s) => s.color === "green"));
+  await shot(h, "sect-multi-01-coloured");
+  await h.page.keyboard.press("Meta+z");
+  await until(h, "the colour is undone", () => h.board().sections.every((s) => !s.color));
+  // 卡和 Section 在同一个选择里：⌘ 点标题拿掉一个 Section，卡留着；⇧ 点再加回来
+  await h.page.locator('.card[data-id="n2"]').click({ modifiers: ["Shift"] });
+  await title(h, "S1").click({ modifiers: ["Meta"] });
+  await idle(h);
+  const less = { sections: await selSections(h), cards: await selCards(h) };
+  await title(h, "S1").click({ modifiers: ["Shift"] });
+  await idle(h);
+  const again = { sections: await selSections(h), cards: await selCards(h) };
+  check(
+    "sectionMultiSelectColor",
+    both.join() === "S1,S2" &&
+      less.sections.join() === "S2" &&
+      less.cards.join() === "n2" &&
+      again.sections.join() === "S1,S2" &&
+      again.cards.join() === "n2",
+    { both, less, again },
+  );
+  await close(h);
+});
+
+/** A marquee selects the Sections whose whole frame it encloses (one it only crosses is not), with the cards it touches; ⇧ adds */
+test("sectionMarqueeSelects", async () => {
+  const h = await open({ board: twoSectionsAndLoose(), light, w: 1600 });
+  await idle(h);
+  const pg = h.page;
+  const box = async (id: string) => (await pg.locator(`.sect[data-sect="${id}"]`).boundingBox())!;
+  const marquee = async (x0: number, y0: number, x1: number, y1: number, shift = false) => {
+    if (shift) await pg.keyboard.down("Shift");
+    await pg.mouse.move(x0, y0);
+    await pg.mouse.down();
+    await pg.mouse.move(x1, y1, { steps: 6 });
+    await pg.mouse.up();
+    if (shift) await pg.keyboard.up("Shift");
+    await idle(h);
+  };
+  const s1 = await box("S1"),
+    s2 = await box("S2");
+  // 框住整个 S2，只碰到 S1 的右边一截
+  await marquee(s1.x + s1.width - 20, s2.y - 30, s2.x + s2.width + 20, s2.y + s2.height + 20);
+  const one = { sections: await selSections(h), cards: await selCards(h) };
+  await marquee(s1.x - 20, s1.y - 30, s1.x + s1.width + 20, s1.y + s1.height + 20, true);
+  const added = await selSections(h);
+  check(
+    "sectionMarqueeSelects",
+    one.sections.join() === "S2" && one.cards.join() === "n1" && added.join() === "S1,S2",
+    {
+      one,
+      added,
+    },
+  );
+  await close(h);
+});
+
+/** Several selected Sections and a card on its own are dragged together by one Section's title, each with its cards, and one undo
+ *  brings everything back */
+test("sectionGroupDrag", async () => {
+  const b = twoSectionsAndLoose();
+  const h = await open({ board: b, light, w: 1600 });
+  await idle(h);
+  const pg = h.page;
+  const code = b.cards[0].id;
+  const at = () => {
+    const q = h.board();
+    const s = (id: string) => q.sections.find((x) => x.id === id)!;
+    return {
+      s1: [s("S1").x, s("S1").y],
+      s2: [s("S2").x, s("S2").y],
+      code: [q.place[code].x, q.place[code].y],
+      n1: [q.place.n1.x, q.place.n1.y],
+      n2: [q.place.n2.x, q.place.n2.y],
+      homes: [q.place[code].section, q.place.n1.section, q.place.n2.section ?? "-"].join(),
+      parents: q.sections.map((x) => x.parent ?? "-").join(),
+    };
+  };
+  await title(h, "S1").click({ modifiers: ["Shift"] });
+  await title(h, "S2").click({ modifiers: ["Shift"] });
+  await pg.locator('.card[data-id="n2"]').click({ modifiers: ["Shift"] });
+  await idle(h);
+  const p0 = at();
+  const t = (await title(h, "S1").boundingBox())!;
+  await pg.mouse.move(t.x + 10, t.y + t.height / 2);
+  await pg.mouse.down();
+  // ⌘ 关掉吸附：挪多少就是多少
+  await pg.keyboard.down("Meta");
+  await pg.mouse.move(t.x + 40, t.y + t.height / 2 + 20, { steps: 4 });
+  await shot(h, "sect-group-01-mid-drag", "now");
+  await pg.mouse.move(t.x + 70, t.y + t.height / 2 + 40, { steps: 4 });
+  await pg.mouse.up();
+  await pg.keyboard.up("Meta");
+  await until(h, "the group move is saved", () => at().n2[0] !== p0.n2[0]);
+  const p1 = at();
+  await pg.keyboard.press("Meta+z");
+  await until(h, "the group move is undone", () => at().n2[0] === p0.n2[0]);
+  const p2 = at();
+  const keys = ["s1", "s2", "code", "n1", "n2"] as const;
+  const moved = keys.map((k) => [p1[k][0] - p0[k][0], p1[k][1] - p0[k][1]].join());
+  check(
+    "sectionGroupDrag",
+    moved.every((m) => m === "60,40") &&
+      p1.homes === p0.homes &&
+      p1.parents === p0.parents &&
+      JSON.stringify(p2) === JSON.stringify(p0),
+    { p0, p1, p2, moved },
+  );
+  await close(h);
+});
+
+/** ⌫ with several Sections selected removes them all (their cards stay), and one undo brings them all back */
+test("sectionGroupDeleteUndo", async () => {
+  const h = await open({ board: twoSectionsAndLoose(), light, w: 1600 });
+  await idle(h);
+  await title(h, "S1").click();
+  await title(h, "S2").click({ modifiers: ["Meta"] });
+  await idle(h);
+  await h.page.keyboard.press("Backspace");
+  await until(h, "the Sections are removed", () => h.board().sections.length < 2);
+  await idle(h);
+  const gone = { sections: h.board().sections.length, cards: h.board().cards.length };
+  await h.page.keyboard.press("Meta+z");
+  await until(h, "the Sections are back", () => h.board().sections.length === 2);
+  const back = h
+    .board()
+    .sections.map((s) => s.id)
+    .join();
+  check("sectionGroupDeleteUndo", gone.sections === 0 && gone.cards === 3 && back === "S1,S2", { gone, back });
+  await close(h);
+});
+
+/** A Section is resized by any of its four edges and four corners, the opposite edges staying put, one undo step each; shrunk
+ *  past a card, the frame stops around it and the card stays in the Section */
+test("sectionResizeEdges", async () => {
+  const h = await open({ board: twoSectionsAndLoose(), light, w: 1600 });
+  await idle(h);
+  const pg = h.page;
+  const handles = await pg.locator('.sect[data-sect="S2"] .sedge').count();
+  check("sectionResizeEdges has a handle on each side and corner", handles === 8, { handles });
+  if (handles !== 8) return close(h);
+  const frame = async (id: string) => {
+    const r = (await pg.locator(`.sect[data-sect="${id}"]`).boundingBox())!;
+    return { l: Math.round(r.x), t: Math.round(r.y), r: Math.round(r.x + r.width), b: Math.round(r.y + r.height) };
+  };
+  const drag = async (id: string, edge: string, dx: number, dy: number, mid?: string) => {
+    const r = (await pg.locator(`.sect[data-sect="${id}"] .sedge[data-edge="${edge}"]`).boundingBox())!;
+    const x = r.x + r.width / 2,
+      y = r.y + r.height / 2;
+    await pg.mouse.move(x, y);
+    await pg.mouse.down();
+    await pg.mouse.move(x + dx / 2, y + dy / 2, { steps: 4 });
+    if (mid) await shot(h, mid, "now");
+    await pg.mouse.move(x + dx, y + dy, { steps: 4 });
+    await pg.mouse.up();
+    await idle(h);
+  };
+  const diff = (a: Record<string, number>, b: Record<string, number>) =>
+    ["l", "t", "r", "b"].map((k) => b[k] - a[k]).join();
+  const s2 = await frame("S2"),
+    s1 = await frame("S1");
+  await drag("S2", "w", -60, 15, "sect-resize-01-left-edge-mid-drag");
+  const left = diff(s2, await frame("S2"));
+  await pg.keyboard.press("Meta+z");
+  await idle(h);
+  const undone = diff(s2, await frame("S2"));
+  await drag("S1", "n", 10, -30);
+  const top = diff(s1, await frame("S1"));
+  await drag("S2", "e", 40, 10);
+  const right = diff(s2, await frame("S2"));
+  await drag("S2", "sw", -20, 30);
+  const corner = diff(s2, await frame("S2"));
+  // 左边往右拖过 Note：框停在 Note 外面，Note 还在 S2 里
+  const n1 = (await pg.locator('.card[data-id="n1"]').boundingBox())!;
+  await drag("S2", "w", n1.x + 200 - s2.l, 0);
+  const past = await frame("S2");
+  const stillIn = h.board().place.n1.section;
+  check(
+    "sectionResizeEdges",
+    left === "-60,0,0,0" &&
+      undone === "0,0,0,0" &&
+      top === "0,-30,0,0" &&
+      right === "0,0,40,0" &&
+      corner === "-20,0,40,30" &&
+      past.l < n1.x &&
+      past.l >= s2.l &&
+      h.board().sections.find((s) => s.id === "S2")!.x > h.board().place.n1.x &&
+      stillIn === "S2",
+    { left, undone, top, right, corner, past, n1: n1.x, stillIn },
+  );
+  await close(h);
+});

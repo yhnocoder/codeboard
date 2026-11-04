@@ -70,6 +70,11 @@ export type MdEditorHandle = {
   selectVisible(r: StaticTextRange): boolean;
   /** Press a key as if typed in the editor (its key bindings run); a key nothing handles deletes the selection */
   press(key: "Backspace" | "Delete"): void;
+  /**
+   * Type text at the selection as if typed on the keyboard, one character at a time (a newline is Enter): key bindings and input
+   * rules ("# " starts a heading) run as they do for typing. For keys typed before the editor was mounted
+   */
+  type(text: string): void;
   /** Switch the whole Note between rich editing and its Markdown source (⌘/) */
   toggleSource(): void;
 };

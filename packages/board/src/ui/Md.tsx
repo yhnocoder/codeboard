@@ -6,6 +6,7 @@ import { mathRev } from "../md/math";
 import { useMd } from "../md/context";
 import { prepareHover, prepareLeave } from "../md/load";
 import * as A from "../actions";
+import { attachAnims, detachAnims } from "../md/anim";
 
 const openRef = (id: string, to: RefTarget) => A.openCardRef(id, to.place);
 
@@ -21,14 +22,20 @@ export function MdStatic(p: {
   onDblClick?: (e: MouseEvent) => void;
   /** 能双击编辑的：鼠标停上来就先在页面外准备好编辑器 */
   prep?: boolean;
+  /** A Note's body (its card id): animated images in it are drawn as players (md/anim.ts) */
+  anims?: string;
 }) {
   const md = useMd();
   let el!: HTMLDivElement;
   createEffect(() => {
     mathRev();
-    mdInto(md, el, p.src, p.inline, p.layout);
+    const card = p.anims;
+    mdInto(md, el, p.src, p.inline, p.layout, card ? (box) => attachAnims(box, card) : undefined);
   });
-  onCleanup(() => mdForget(el));
+  onCleanup(() => {
+    mdForget(el);
+    detachAnims(el);
+  });
   return (
     <div
       ref={el}

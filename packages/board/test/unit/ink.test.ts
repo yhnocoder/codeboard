@@ -14,6 +14,9 @@ describe("paperOf", () => {
   it("draws the paper outside the card: the image is the card plus 14 px on each side", () => {
     expect(paperOf(560, 192, "c1", false)).toContain("width='588' height='220'");
   });
+  it("stretches onto the card: a rounded size with another aspect ratio is not shrunk to fit and centred", () => {
+    expect(paperOf(900, 102, "c1", false)).toContain("preserveAspectRatio='none'");
+  });
   it("has its own image in dark, and a few edge patterns between cards", () => {
     expect(paperOf(560, 192, "c1", true)).not.toBe(paperOf(560, 192, "c1", false));
     const ids = Array.from({ length: 12 }, (_, i) => `card${i}`);

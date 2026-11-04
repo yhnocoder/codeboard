@@ -75,7 +75,8 @@ const DISPLAY: Record<string, (n: PMNode, cx: Cx) => string | undefined> = {
       : undefined,
   toc: (_n, cx) => `<nav data-type="toc" class="md-toc">${tocHtml(tocEntries(cx.doc))}</nav>`,
   // 不让浏览器拖图（拖的是卡片）
-  // 有图注（title）的图包一层 .md-fig，图注在图下面；缩小了的宽度写在这一层上（和编辑器里的 .md-img 一样）
+  // 有图注（title）的图包一层 .md-fig，图注在图下面；缩小了的宽度写在这一层上（和编辑器里的 .md-img 一样），
+  // --f 是这个比例：图注按正文宽排，不跟着图变窄（markdown.css）
   image: (n, cx) => {
     if (n.attrs.broken) return missingImageHtml(String(n.attrs.alt ?? ""), String(n.attrs.src ?? ""), escA);
     const a: Record<string, string | null> = { ...cx.images.attrs(n.attrs), draggable: "false" },
@@ -84,13 +85,23 @@ const DISPLAY: Record<string, (n: PMNode, cx: Cx) => string | undefined> = {
       ? specHtml(
           [
             "span",
-            { class: `md-fig${a.class ? " sized" : ""}`, style: a.style },
+            {
+              class: `md-fig${a.class ? " sized" : ""}`,
+              style: a.class ? `${a.style}; --f: ${n.attrs.width / 100}` : null,
+            },
             ["img", { ...a, class: null, style: null }],
-            ["span", { class: "md-cap" }, cap],
+            ["span", { class: "md-cap" }, 0],
           ],
-          "",
+          captionInner(cap, cx),
         )
       : specHtml(["img", a], "");
+  },
+  // a table's caption ("Table: …" after it) under it, laid out like an image's (markdown.css .md-tfig)
+  table: (n, cx) => {
+    const cap = captionOf(n.attrs.caption);
+    return cap
+      ? `<div class="md-tfig">${specHtml(n.type.spec.toDOM!(n), contentHtml(n, cx))}<div class="md-cap">${captionInner(cap, cx)}</div></div>`
+      : undefined;
   },
   // 一条定义都还没写（只有正文里的 [^1]）：不画空的脚注列表
   footnotes: (n) =>
@@ -144,19 +155,34 @@ function inlineHtml(f: Fragment, cx: Cx | null): string {
  * {字|批注} 的批注：当一段行内 Markdown 画（$公式$、粗体、代码…）。读出来不是一段的（"- x" 读成了列表、"# x" 读成了标题）照原文显示；
  * 批注里再写的 {字|批注} 只留字，不再画标签
  */
-function noteInline(note: string, cx: Cx): string {
+const noteInline = (note: string, cx: Cx) => inlineSource(note, cx, "annot");
+/** 图注（图的 title、表格的 "Table: …"）：一行行内 Markdown，$公式$、粗体、代码照正文画；读出来不是一段的照原文显示 */
+const captionInner = (cap: string, cx: Cx) => inlineSource(cap, cx);
+/** A line of inline Markdown drawn as the body draws it (marks of type drop left out); as written when it does not read as one paragraph */
+function inlineSource(src: string, cx: Cx, drop?: string): string {
   try {
-    const doc = mdSchema().nodeFromJSON(parseMd(note)),
+    const doc = mdSchema().nodeFromJSON(parseMd(src)),
       p = doc.childCount === 1 ? doc.firstChild! : null;
-    if (p?.type.name !== "paragraph") return escHtml(note);
+    if (p?.type.name !== "paragraph") return escHtml(src);
     const kids: PMNode[] = [];
     p.content.forEach((k) => {
-      kids.push(k.mark(k.marks.filter((m) => m.type.name !== "annot")));
+      kids.push(drop ? k.mark(k.marks.filter((m) => m.type.name !== drop)) : k);
     });
     return inlineHtml(Fragment.from(kids), { images: cx.images, math: cx.math, doc, trusted: cx.trusted });
   } catch {
-    return escHtml(note);
+    return escHtml(src);
   }
+}
+/** A caption as HTML on its own (the editor draws it under its image or table), sanitized like a whole render */
+export function captionHtml(cap: string, env: RenderEnv): string {
+  const trusted: string[] = [];
+  const h = inlineSource(cap, {
+    images: env.images,
+    math: env.math,
+    doc: mdSchema().topNodeType.createAndFill()!,
+    trusted,
+  });
+  return untrust(purify(h), trusted);
 }
 
 function nodeHtml(n: PMNode, cx: Cx | null): string {

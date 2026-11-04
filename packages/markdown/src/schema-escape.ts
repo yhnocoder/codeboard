@@ -1,7 +1,7 @@
 // Escaping text written back as Markdown: the characters, and the line starts that would be read as blocks
 import type { JSONContent } from "@tiptap/core";
 import { EMOJI_AT, isEmoji, mathAt } from "./schema-nodes";
-import { ANNOT_RE, HL_RE, SUP_RE } from "./schema-marks";
+import { annotAt, HL_RE, SUP_RE } from "./schema-marks";
 
 /** The placeholder an escaped \$ is read as (see TEXT_MATH in schema.ts): always a literal $, never a formula's */
 export const ESC_DOLLAR = "\uE024";
@@ -65,7 +65,7 @@ export function escText(s: string): string {
         out += HL_RE.test(s.slice(i)) && prev !== "=" ? "\\=" : c;
         break;
       case "{":
-        out += ANNOT_RE.test(s.slice(i)) ? "\\{" : c;
+        out += annotAt(s.slice(i)) ? "\\{" : c;
         break;
       // 字面的 :smile:（会被读成表情的）：转义前一个冒号
       case ":": {

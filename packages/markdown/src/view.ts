@@ -72,58 +72,6 @@ function plainOf(box: HTMLElement) {
     b.after(/^(LI|TR)$/.test(b.tagName) ? "\n" : "\n\n");
   return (box.textContent ?? "").replace(/\n{3,}/g, "\n\n").trim();
 }
-/*
- * {字|批注} 的标签（.md-annot-n）靠 CSS 居中在被标的字上面；这里只把居中后超出所在块（段落、列表项、格子）左右的挪回块里（--ax，左边优先）。
- * 宽度、位置都用 offset* 量（不受镜头缩放、滚动和 --ax 的 transform 影响）。先全部量完再一起写，不来回排版。
- * 字体（中文字体按 unicode-range 才下载）、公式的字体到得晚，标签变宽时 ResizeObserver 再量一次；块变宽变窄（卡片改宽）也一样
- */
-const BLOCK = "p, li, td, th, h1, h2, h3, h4, h5, h6, summary";
-/** The annotations' fitting of one Markdown instance: one ResizeObserver for all its roots */
-export class AnnotFit {
-  private sized: ResizeObserver | undefined;
-  private rootOf = new WeakMap<Element, HTMLElement>();
-  fit(el: HTMLElement) {
-    if (!el.isConnected) {
-      if (typeof requestAnimationFrame === "function")
-        requestAnimationFrame(() => {
-          if (el.isConnected) this.fit(el);
-        });
-      return;
-    }
-    if (typeof ResizeObserver === "function")
-      this.sized ??= new ResizeObserver((es) => {
-        const todo = new Set<HTMLElement>();
-        for (const e of es) {
-          const t = e.target as HTMLElement,
-            root = this.rootOf.get(t) ?? t;
-          if (!t.isConnected || !root.isConnected || !root.querySelector(".md-annot")) this.sized!.unobserve(t);
-          else todo.add(root);
-        }
-        for (const r of todo) this.fit(r);
-      });
-    this.sized?.observe(el);
-    const out: [HTMLElement, number][] = [];
-    for (const a of el.querySelectorAll<HTMLElement>(".md-annot")) {
-      const n = a.querySelector<HTMLElement>(":scope > .md-annot-n");
-      if (!n) continue;
-      if (this.rootOf.get(n) !== el) {
-        this.rootOf.set(n, el);
-        this.sized?.observe(n);
-      }
-      const block = a.parentElement?.closest<HTMLElement>(BLOCK) ?? el;
-      if (a.offsetParent !== block.offsetParent && a.offsetParent !== block) continue;
-      const left = a.offsetParent === block ? a.offsetLeft : a.offsetLeft - block.offsetLeft;
-      const w = n.offsetWidth,
-        from = left + (a.offsetWidth - w) / 2; // 居中时标签左边在块里的位置
-      const room = block.clientWidth;
-      let ax = from + w > room ? room - (from + w) : 0;
-      if (from + ax < 0) ax = -from;
-      out.push([a, Math.round(ax * 2) / 2]);
-    }
-    for (const [a, ax] of out) a.style.setProperty("--ax", `${ax}px`);
-  }
-}
-
 /**
  * 静态 Markdown 上的点击：链接交给 openLink（页面自己不跳转），引用交给 openRef，勾选框改原文交给 onToggle（不给就勾不了）。
  * 处理了返回 true
