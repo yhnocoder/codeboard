@@ -39,7 +39,9 @@ export type Pop =
   /** 三方对照：原版 / 我的 / 上游最新 */
   | { kind: "three"; card: string }
   /** Modify SVG…：写一句怎么改（图片卡，或 Note 里的一张 SVG，见 actions/imageai.ts） */
-  | { kind: "modifySvg"; ref: { card: string; note?: string } };
+  | { kind: "modifySvg"; ref: { card: string; note?: string } }
+  /** Edit Mark…：一块白板（board）的印章 */
+  | { kind: "seal"; board: string };
 
 export type ImplPop = {
   card: string;

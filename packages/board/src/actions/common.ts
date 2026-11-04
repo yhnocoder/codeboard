@@ -15,7 +15,7 @@ import { openPop, updatePop } from "../state/pop";
 import { lastPointer, naturalSize, chromeOf, cardsMeasured, CODE_MAX } from "../state/measure";
 import { send, ask } from "../host";
 import type { Markdown, RefBroken, RefTarget } from "@yhnocoder/markdown";
-import { crossRef } from "../md/refs";
+import { crossRef, refPath, sealFor } from "../md/refs";
 import { mathRev } from "../md/math";
 import { cardSel } from "../cardsel";
 import { IS_MAC } from "@yhnocoder/markdown/ui";
@@ -64,12 +64,18 @@ export function resolveCardRef(label: string, md: Markdown): RefTarget | RefBrok
   }
   // 子白板里的卡：[[子白板 › 卡]]
   const s = subRef(l);
-  if (s) return { id: s.id, title: s.label };
+  if (s) {
+    const seal = sealFor(s.board);
+    return seal ? { id: s.id, title: s.t, seal, hint: s.label } : { id: s.id, title: s.label };
+  }
   // 卡以外：这块白板上的 Section，再是别的白板（@ 引用列出它们，同名时卡优先）
   const sec = state.board.sections.find((x) => x.title.trim().toLowerCase() === low);
   if (sec) return { id: sec.id, title: sec.title.trim() };
   const b = state.boards.find((m) => m.id !== state.board.id && m.name.trim().toLowerCase() === low);
-  if (b) return { id: b.id, title: b.name.trim() };
+  if (b) {
+    const seal = sealFor(b.id, true);
+    return seal ? { id: b.id, title: b.name.trim(), seal, hint: refPath(b.id) } : { id: b.id, title: b.name.trim() };
+  }
   return crossRef(l, md, (t) => {
     const r = resolveCardRef(t, md);
     return r && !("broken" in r) ? r : null;

@@ -142,7 +142,11 @@ export interface WorkspaceEditor {
 export type PickIcon = "board" | "boards" | "folder" | "file" | "add" | "class" | "function";
 export type PickItem = { label: string; description?: string; detail?: string; icon?: PickIcon };
 export type PickOpts = { placeHolder?: string; title?: string; matchOnDescription?: boolean };
-/** title: what is asked (the dialog's title on a board); ok: the button that accepts it there; password: the text is a secret */
+/**
+ * title: what is asked (the dialog's title on a board); ok: the button that accepts it there; password: the text is a secret;
+ * check: a line under the box while typing (an error keeps the box from being accepted, a warning only tells); VS Code's own input
+ * box shows it, the board's dialog does not
+ */
 export type InputOpts = {
   prompt: string;
   value?: string;
@@ -150,6 +154,7 @@ export type InputOpts = {
   title?: string;
   ok?: string;
   password?: boolean;
+  check?: (v: string) => { message: string; warn?: true } | undefined;
 };
 
 export interface WorkspaceUi {

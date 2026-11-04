@@ -1,31 +1,54 @@
-/** [[标题]] 指向的东西（白板上是卡）。badge = 标在标题后面的小字（白板：在别的白板上的卡写那块白板的名字），place = 它在哪（点的时候交给 openRef） */
-export type RefTarget = { id: string; title: string; badge?: string; place?: string };
+/**
+ * A short coloured mark ("seal") drawn before a ref's title instead of a badge: the place the target is in, as `text` on a fill of
+ * `color` (any CSS colour). `outer`: the larger place that one is part of, drawn as the first half of the same box (its text in
+ * its colour, on a light tint of it). `alone`: the ref names the place itself, so only the seal is drawn, without the title
+ */
+export type RefSeal = { text: string; color: string; outer?: { text: string; color: string }; alone?: boolean };
+/**
+ * [[标题]] 指向的东西（白板上是卡）。badge = 标在标题后面的小字，seal = 画在标题前面的印章（有 seal 时不画 badge），
+ * hint = 悬停时的提示（比如完整的路径），place = 它在哪（点的时候交给 openRef）
+ */
+export type RefTarget = { id: string; title: string; badge?: string; seal?: RefSeal; hint?: string; place?: string };
 /** 认得出指的是哪儿、但已经找不到了：item = 那里已经没有这一项（灰、划掉），place = 那个地方本身没了（警告色）。why = 悬停的提示 */
 export type RefBroken = { broken: "item" | "place"; title: string; badge?: string; why?: string };
 /** [[标题]] 怎么找目标；missing：找不到时的提示 */
 export type Refs = { resolve: (label: string) => RefTarget | RefBroken | null; missing?: string };
 const MISSING = "Nothing with this title";
 
-/** 按现在能找到的把一个 [[引用]]（.md-ref）画出来：标题（和 badge），找不到时的样子和提示 */
+/** 上次画成什么样（一样就不重画，静态 Note 里的引用每次别处的数据到了都会再认一遍） */
+const painted = new WeakMap<HTMLElement, string>();
+
+/** 按现在能找到的把一个 [[引用]]（.md-ref）画出来：印章、标题（和 badge），找不到时的样子和提示 */
 export function paintRef(r: HTMLElement, refs: Refs) {
   const hit = refs.resolve(r.dataset.ref ?? ""),
     missing = refs.missing || MISSING;
   const broken = hit && "broken" in hit ? hit.broken : undefined;
   r.classList.toggle("missing", !hit || broken === "item");
   r.classList.toggle("gone", broken === "place");
+  const seal = hit && !broken ? (hit as RefTarget).seal : undefined;
+  r.classList.toggle("sealed", !!seal);
   if (!hit) {
+    painted.delete(r);
     r.title = missing;
     return;
   }
-  if (broken) r.title = (hit as RefBroken).why ?? missing;
+  const hint = broken ? ((hit as RefBroken).why ?? missing) : (hit as RefTarget).hint;
+  if (hint) r.title = hint;
   else r.removeAttribute("title");
-  const t = r.querySelector<HTMLElement>(":scope > .t"),
-    bd = r.querySelector<HTMLElement>(":scope > .bd");
-  if (!hit.badge) {
-    if (t || r.textContent !== hit.title) r.textContent = hit.title;
+  const key = JSON.stringify([hit.title, seal ?? hit.badge ?? null]);
+  if (painted.get(r) === key && r.childNodes.length) return;
+  painted.set(r, key);
+  if (seal) {
+    const t = document.createElement("span");
+    t.className = "t";
+    t.textContent = hit.title;
+    r.replaceChildren(sealEl(seal), ...(seal.alone ? [] : [t]));
     return;
   }
-  if (t?.textContent === hit.title && bd?.textContent === hit.badge && r.childNodes.length === 2) return;
+  if (!hit.badge) {
+    r.textContent = hit.title;
+    return;
+  }
   const a = document.createElement("span"),
     b = document.createElement("span");
   a.className = "t";
@@ -33,6 +56,32 @@ export function paintRef(r: HTMLElement, refs: Refs) {
   b.className = "bd";
   b.textContent = hit.badge;
   r.replaceChildren(a, b);
+}
+
+/** 印章：一个圆角框；有 outer 时分成两半，前一半是外面那一处的（描边、浅底），后一半是这一处的（实心）。
+ * 字包在 .tx 里：它按大写字母的高到基线裁掉行框（text-box），框里居中的就是字本身，不受字体上下留白不同的影响 */
+function sealEl(s: RefSeal): HTMLElement {
+  const el = document.createElement("span");
+  el.className = `md-seal${s.outer ? " two" : ""}${s.alone ? " alone" : ""}`;
+  el.style.setProperty("--md-seal", s.color);
+  const tx = (text: string) => {
+    const t = document.createElement("span");
+    t.className = "tx";
+    t.textContent = text;
+    return t;
+  };
+  if (!s.outer) {
+    el.append(tx(s.text));
+    return el;
+  }
+  el.style.setProperty("--md-seal-outer", s.outer.color);
+  const a = document.createElement("span"),
+    b = document.createElement("span");
+  a.className = "o";
+  a.append(tx(s.outer.text));
+  b.append(tx(s.text));
+  el.append(a, b);
+  return el;
 }
 
 /**

@@ -4,6 +4,7 @@
 import type {
   Board,
   BoardMeta,
+  BoardSeal,
   Camera,
   CodeCard,
   Segment,
@@ -266,6 +267,10 @@ export type HostToBoard =
   | { type: "key"; action: KeyAction }
   /** 侧栏 / 命令面板改了白板名 */
   | { type: "rename"; name: string }
+  /** 侧栏、命令面板或别的白板改了这块白板的印章（null = 用默认的）：白板自己改（setBoardSeal），存回来 */
+  | { type: "setSeal"; seal: BoardSeal | null }
+  /** 命令面板的 Edit Mark… 在这块白板上：打开它自己的印章编辑框 */
+  | { type: "editSeal" }
   /** Relocate：符号在编辑器里找到了新位置，换掉这一段（段 id 不变） */
   | { type: "replaceSegment"; card: string; seg: Segment; view: SegView }
   | { type: "toast"; text: string }
@@ -379,6 +384,8 @@ export type BoardToHost =
   | { type: "subCard"; req: number; board: string; card: string }
   /** [[ 引用要列别的白板上的卡：回 BoardRefs（除了这块白板以外的白板，按最近打开的先后；最近选过的引用）。之后变了宿主自己推 boardRefs */
   | { type: "boardRefs"; req: number }
+  /** 引用浮层的 Edit Mark… 改了别的白板（board）的印章（null = 用默认的）：宿主改它的文件（开着就交给那块白板），之后推 boards */
+  | { type: "setSeal"; board: string; seal: BoardSeal | null }
   /** [[ 引用选了一项（b = 它所在的白板）：宿主记进这个工作区最近选过的（最多 3 个） */
   | { type: "refPicked"; b: string; id: string }
   /** Turn into Board：选中的卡拆出来的新白板（id 白板定），存到父白板所在的组；共享卡还是共享卡。回 ok */

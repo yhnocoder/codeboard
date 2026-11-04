@@ -167,6 +167,11 @@ function Toolbar() {
           label: "Rename Board…",
           run: () => promptText("Rename Board", state.board.name).then((v) => v && C.renameBoard(commandEnv, v)),
         },
+        {
+          label: "Edit Mark…",
+          hint: "How refs on other boards show this board",
+          run: () => A.editMark(state.board.id, { x, y }),
+        },
         { label: "Export…", hint: "HTML snapshot, Markdown or PNG", run: () => A.openExport() },
         {
           label: "Export Boards…",

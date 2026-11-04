@@ -32,6 +32,7 @@ export {
   /** @public */
   toggleTask,
   type RefTarget,
+  type RefSeal,
   type RefBroken,
   /** @public */
   type Refs,
