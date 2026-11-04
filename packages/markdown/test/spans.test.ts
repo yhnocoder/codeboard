@@ -60,6 +60,13 @@ describe("decoration ranges of a paragraph's source", () => {
     expect(t.slice(img.widthAt![0], img.widthAt![1])).toBe("{width=40%}");
     expect(t.slice(0, img.altTo).endsWith("![a")).toBe(true);
   });
+  it("a picked ref's #^id is part of its closing marker: the source reads as the title", () => {
+    expect(all("see [[Flash attention#^bk/k0]] and [[R]]")).toEqual([
+      { text: "[[Flash attention#^bk/k0]]", marks: ["[[", "#^bk/k0]]"], inner: "Flash attention", kind: "ref" },
+      { text: "[[R]]", marks: ["[[", "]]"], inner: "R", kind: "ref" },
+    ]);
+    expect(flat(blockInfo("[[A#^c1]]").spans)[0].atom).toEqual({ type: "ref", label: "A", target: "c1" });
+  });
   it("escapes: the backslash is the marker; an escaped $ is never a formula", () => {
     expect(all("a \\* b \\$5 and $x$")).toEqual([
       { text: "\\*", marks: ["\\"], inner: "*", kind: "esc" },

@@ -73,8 +73,11 @@ export type MdEditorHandle = {
   /** Switch the whole Note between rich editing and its Markdown source (⌘/) */
   toggleSource(): void;
 };
-/** [[ 的一个候选：label = 写进 [[…]] 的（不给就是 title），crumb = 标在标题后面的小字（白板：所在的 Section） */
-export type RefItem = { id: string; title: string; kind: string; label?: string; crumb?: string };
-/** 别处的一组候选：title = 那一处的名字，label = 引用那一处本身时写进 [[…]] 的，note = 组头右边的字 */
-export type RefGroup = { id: string; title: string; label?: string; note?: string; items: RefItem[] };
+/**
+ * [[ 的一个候选：label = 写进 [[…]] 的（不给就是 title），crumb = 标在标题后面的小字（白板：所在的 Section），
+ * target = 跟着写进去的稳定 id（[[label#^target]]，只能是 [\w-]，可以有一个 /）：改了名 refs.resolve 也按它找得到；不给就只写标题
+ */
+export type RefItem = { id: string; title: string; kind: string; label?: string; crumb?: string; target?: string };
+/** 别处的一组候选：title = 那一处的名字，label、target = 引用那一处本身时写进 [[…]] 的（同 RefItem），note = 组头右边的字 */
+export type RefGroup = { id: string; title: string; label?: string; target?: string; note?: string; items: RefItem[] };
 export type RefPick = { group?: string; id: string };

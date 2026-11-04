@@ -365,6 +365,18 @@ export const Emoji = Node.create({
 });
 
 // 存成 [[标题]]：可读，复制到别处也能按标题找。指向什么由用的一方定（Markdown 实例的 refs、编辑器的 refs）。
+// 从 [[ 列表选的还在标题后面带着目标的 id：[[标题#^id]]，改了名也认得出（显示的是目标现在的名字，原文里的标题只是给人读、找不到 id 时按它找）。
+// 为什么是 #^：和 Obsidian 的块 id（[[页面#^id]]）一个写法；| 会把 GFM 表格的格子切开，单个 # 常出现在标题里（Issue #12），
+// 而 id 只有 [\w-]（跨白板的是 白板id/卡id），标题以 #^字母 结尾的几乎没有
+const REF_TARGET = /#\^([\w-]+(?:\/[\w-]+)?)$/;
+/** [[…]] 里的字 → 标题和目标的 id（没有 id 的只有标题） */
+function splitRef(inner: string): { label: string; target?: string } {
+  const m = REF_TARGET.exec(inner);
+  return m ? { label: inner.slice(0, m.index).trim(), target: m[1] } : { label: inner.trim() };
+}
+/** 写进 Markdown 的样子（id 不是 [\w-]（跨白板的 a/b）的不写：读回来会被当成标题的一部分） */
+export const refSource = (label: string, target?: string) =>
+  `[[${label}${target && REF_TARGET.test(`#^${target}`) ? `#^${target}` : ""}]]`;
 export const WikiRef = Node.create({
   name: "wikiRef",
   group: "inline",
@@ -372,21 +384,34 @@ export const WikiRef = Node.create({
   atom: true,
   selectable: true,
   addAttributes() {
-    return { label: { default: "", rendered: false } };
+    return { label: { default: "", rendered: false }, target: { default: "", rendered: false } };
   },
   parseHTML() {
-    return [{ tag: "span[data-ref]", getAttrs: (e) => ({ label: (e as HTMLElement).getAttribute("data-ref") ?? "" }) }];
+    return [
+      {
+        tag: "span[data-ref]",
+        getAttrs: (e) => ({
+          label: (e as HTMLElement).getAttribute("data-ref") ?? "",
+          target: (e as HTMLElement).getAttribute("data-target") ?? "",
+        }),
+      },
+    ];
   },
   renderHTML({ node, HTMLAttributes }) {
     return [
       "span",
-      mergeAttributes(HTMLAttributes, { class: "md-ref", "data-ref": node.attrs.label }),
+      mergeAttributes(HTMLAttributes, {
+        class: "md-ref",
+        "data-ref": node.attrs.label,
+        ...(node.attrs.target ? { "data-target": node.attrs.target } : {}),
+      }),
       node.attrs.label,
     ];
   },
+  // 纯文字（别的应用）只要可读的标题
   renderText: ({ node }) => `[[${node.attrs.label}]]`,
-  parseMarkdown: (t) => ({ type: "wikiRef", attrs: { label: t.label } }),
-  renderMarkdown: (n) => `[[${n.attrs?.label ?? ""}]]`,
+  parseMarkdown: (t) => ({ type: "wikiRef", attrs: { label: t.label, target: t.target ?? "" } }),
+  renderMarkdown: (n) => refSource(n.attrs?.label ?? "", n.attrs?.target || undefined),
   markdownTokenizer: {
     name: "wikiRef",
     level: "inline",
@@ -394,7 +419,9 @@ export const WikiRef = Node.create({
     tokenize: (src) => {
       const m = /^\[\[([^\[\]\n]+?)\]\]/.exec(src);
       if (!m) return;
-      return { type: "wikiRef", raw: m[0], label: m[1].trim() };
+      const r = splitRef(m[1]);
+      if (!r.label) return;
+      return { type: "wikiRef", raw: m[0], ...r };
     },
   },
 });

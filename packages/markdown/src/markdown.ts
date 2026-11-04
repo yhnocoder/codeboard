@@ -14,7 +14,8 @@ import type { PassKeys } from "./ui/editkeys";
 import type { Diagrams } from "./diagram";
 
 export type MarkdownOptions = {
-  /** [[wiki link]] targets: resolve a label to what it points at (null: nothing), missing = the tooltip of one that is not found */
+  /** [[wiki link]] targets: resolve a label (and the id a reference picked from the [[ menu carries, [[label#^id]]) to what it
+   *  points at (null: nothing), missing = the tooltip of one that is not found */
   refs?: Refs;
   /** Code highlighting (text → HTML with token classes); langId maps a language name to the id it is cached and asked under */
   highlight?: CodeHighlighter;
