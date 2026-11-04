@@ -470,8 +470,7 @@
         "noteImageResize",
         "svgFileDropMakesImageCard",
         "svgPasteIntoNote",
-        "noteImageReopens",
-        "noteOpenedSvgImageKeepsStaticSize"
+        "noteImageReopens"
       ]
     },
     "ai": {
