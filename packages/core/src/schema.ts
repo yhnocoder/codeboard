@@ -149,6 +149,7 @@ const Card = v.variant("kind", [
     fill: opt(v.picklist(BOX_FILLS)),
     hand: opt(v.picklist(HAND_COLORS)),
     weight: opt(v.picklist(["light", "bold"])),
+    level: opt(v.picklist([1, 2, 3])),
     fs: opt(v.pipe(num, v.minValue(TEXT_FS.min), v.maxValue(TEXT_FS.max))),
     msg: opt(obj({ where: opt(str) })),
     mdLayout: opt(NoteLayout),

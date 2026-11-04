@@ -12,6 +12,7 @@ import {
   type HandColor,
   type HandWeight,
   type MarkSize,
+  type FreeTextLevel,
 } from "@codeboard/core";
 import * as C from "@codeboard/core/commands";
 import { commandEnv } from "./env";
@@ -201,6 +202,8 @@ export async function showPeek(
 export const setMarkColor = (id: string, hand: HandColor) => C.setMarkColor(commandEnv, id, hand);
 export const setMarkWeight = (id: string, weight: HandWeight) => C.setMarkWeight(commandEnv, id, weight);
 export const setMarkSize = (id: string, size: MarkSize) => C.setMarkSize(commandEnv, id, size);
+export const setFreeTextLevel = (id: string, level: FreeTextLevel) => C.setFreeTextLevel(commandEnv, id, level);
+export const setFreeTextBold = (id: string, bold: boolean) => C.setFreeTextBold(commandEnv, id, bold);
 export const setBoxFill = (id: string, fill: BoxFill) => C.setBoxFill(commandEnv, id, fill);
 
 export const turnNote = (id: string, look: "note" | "text") => C.turnNote(commandEnv, id, look);

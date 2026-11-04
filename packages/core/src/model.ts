@@ -8,7 +8,7 @@
 import type { BoundVal, CallAlt, Var } from "@codeboard/analysis/basics";
 import type { SealColor } from "./seal";
 
-export const BOARD_VERSION = 11;
+export const BOARD_VERSION = 12;
 
 /** 一段代码钉在哪个版本上 */
 export type Version =
@@ -127,7 +127,8 @@ export const viewKeyOf = (c: Pick<CodeCard, "active">, sid: string, vid: string)
 
 /**
  * 写在白板上的字的五种样子：Note = 卡片（卡框、「¶ 标题」栏）；Text、Box、Mark、Free Text 没有卡框。
- * Free Text（freetext）是白板上的标题：纯文字（md 里存的就是字本身，不按 Markdown 读，只有换行），主题的标题字体，字号随意拖。
+ * Free Text（freetext）是直接写在白板上的字：纯文字（md 里存的就是字本身，不按 Markdown 读，只有换行），字号随意拖；
+ * 级别（NoteCard.level：H1、H2、H3，没有 = 正文）取主题的标题 / 正文样式，选一级时字号回到那一级的预设（FREE_TEXT_FS）。
  * 只有 Note ↔ Text 能互转（turnNoteInto），Box、Mark、Free Text 不和别的互转
  */
 export const NOTE_LOOKS = ["note", "text", "box", "mark", "freetext"] as const;
@@ -142,11 +143,21 @@ export const HAND_WEIGHT_CSS: Record<HandWeight, number> = { light: 300, regular
  * 拖角是整体缩放：字号和宽度按同一个比例变，折行的地方不变
  */
 export const TEXT_FS = { mark: 18, freetext: 40, min: 10, max: 240 } as const;
+/** Free Text 的级别：H1、H2、H3；0 = 正文（plain，新建的 Free Text） */
+export const FREE_TEXT_LEVELS = [0, 1, 2, 3] as const;
+export type FreeTextLevel = (typeof FREE_TEXT_LEVELS)[number];
+/** 一级 Free Text 在菜单、工具条上的名字 */
+export const freeTextLevelName = (k: FreeTextLevel) => (k ? `Heading ${k}` : "Plain");
+/** 每一级 Free Text 没存字号（fs）时的字号（px）：H1 是从前所有 Free Text 的字号（TEXT_FS.freetext），H2、H3、正文依次小一档 */
+export const FREE_TEXT_FS: Record<FreeTextLevel, number> = { 0: 20, 1: TEXT_FS.freetext, 2: 30, 3: 24 };
 /** 拖角改字号的那几种 */
 export const scalesText = (c: Card | undefined): c is NoteCard & { look: "mark" | "freetext" } =>
   c?.kind === "note" && (c.look === "mark" || c.look === "freetext");
+/** 一张 Mark / Free Text 没存字号时的字号：Mark 的统一字号，Free Text 它那一级的 */
+export const baseTextSize = (c: NoteCard & { look: "mark" | "freetext" }) =>
+  c.look === "freetext" ? FREE_TEXT_FS[c.level ?? 0] : TEXT_FS.mark;
 /** 一张 Mark / Free Text 现在的字号 */
-export const textSizeOf = (c: NoteCard & { look: "mark" | "freetext" }) => c.fs ?? TEXT_FS[c.look];
+export const textSizeOf = (c: NoteCard & { look: "mark" | "freetext" }) => c.fs ?? baseTextSize(c);
 /** Mark 工具条上直接选的四档字号（px）。S 就是新 Mark 的默认字号，没改过字号的 Mark 亮着 S */
 export const MARK_SIZES = { s: TEXT_FS.mark, m: 24, l: 32, xl: 48 } as const;
 export type MarkSize = keyof typeof MARK_SIZES;
@@ -177,7 +188,9 @@ export type NoteCard = CardBase & {
   hand?: HandColor;
   /** Mark 的粗细（只有 Mark 有；没有 = regular）：拉丁字母和中文手写体一起变 */
   weight?: Exclude<HandWeight, "regular">;
-  /** Mark、Free Text 拖角拖出来的字号（px）；没有 = TEXT_FS 里这种的默认字号 */
+  /** Free Text 的级别（只有 Free Text 有）：1–3 = H1–H3，取主题的标题样式；没有 = 正文 */
+  level?: Exclude<FreeTextLevel, 0>;
+  /** Mark、Free Text 拖角拖出来的字号（px）；没有 = 这种（Free Text：这一级）的默认字号（baseTextSize） */
   fs?: number;
   /** 消息卡：跨进程时夹在发送点和接收处之间的消息类型（md = 类型名，where = 定义在哪，如 io_struct.py） */
   msg?: { where?: string };
@@ -468,7 +481,7 @@ export type Camera = { x: number; y: number; z: number };
 export const homeCam = (): Camera => ({ x: 80, y: 80, z: 1 });
 
 export type Board = {
-  version: 11;
+  version: 12;
   id: string;
   name: string;
   /** 镜头：不写进白板文件（光是平移、缩放就改了文件，项目里用 git 管白板时全是噪音），每台机器各记各的（宿主的工作区状态，按白板 id） */
@@ -518,7 +531,7 @@ export type BoardFile = Omit<Board, "cards" | "cam"> & { cards: (Card | SharedRe
 /** 一张共享卡的内容：卡本身 + 跟着它走的 Sidenote（挂在它上面、不是 boardOnly、不是 kind card） */
 export type SharedCard = { card: Card; sidenotes: Sidenote[] };
 /** 卡库里的文件 cards/<id>.json。写盘时按项（卡、每条 Sidenote）和磁盘上的合并（storage/boards.ts merged） */
-export type SharedCardFile = SharedCard & { version: 11 };
+export type SharedCardFile = SharedCard & { version: 12 };
 
 /** subs = 这块白板上嵌着的子白板（去重，按出现的先后；侧栏按它缩进成树） */
 export type BoardMeta = {

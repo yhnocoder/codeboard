@@ -1,7 +1,9 @@
 // Notes and sidenotes: new Notes, Text, Marks, Boxes and Free Text, sidenotes added and sidenote ↔ card, images in a Note,
-// Note ↔ Text, Split by Headings, a Mark's colour, weight and size
+// Note ↔ Text, Split by Headings, a Mark's colour, weight and size, a Free Text's level and bold
 import {
   BOX_FILLS,
+  FREE_TEXT_FS,
+  type FreeTextLevel,
   MARK_SIZES,
   type MarkSize,
   scaleText,
@@ -115,7 +117,7 @@ export function splitByHeadings(
 const FREE_TEXT_W = 200;
 /**
  * A new Note, Text, Mark, Box or Free Text with `text`: a Text is body-sized, a Box gets the first fill and a fixed height, a Mark
- * the colour of the last Mark on the board (blue for the first), a Free Text its look's text size (TEXT_FS, kept without fs).
+ * the colour of the last Mark on the board (blue for the first), a Free Text is plain (no level) at its level's text size (kept without fs).
  * Written empty (a Box aside) it is fresh (env.fresh): no undo step until
  * something is written. at(size) = where it goes, for its size (the shell's layout); settle(b, id) files it in the Section it
  * landed in. Its id
@@ -307,6 +309,38 @@ export function setMarkSize(env: CommandEnv, id: string, size: MarkSize) {
     if (c?.kind !== "note" || c.look !== "mark") return;
     c.fs = to === TEXT_FS.mark ? undefined : to;
     if (p) p.w = scaleText(fs0, p.w, to / fs0).w;
+  });
+}
+
+/** A Free Text's level (plain = 0, H1–H3): the theme's body or heading style, and the text size back at that level's preset (scaled
+ *  as dragging its corner does, so it wraps where it did) */
+export function setFreeTextLevel(env: CommandEnv, id: string, level: FreeTextLevel) {
+  const c0 = findCard(env.board(), id)?.card;
+  if (c0?.kind !== "note" || c0.look !== "freetext") return;
+  const fs0 = c0.fs ?? FREE_TEXT_FS[c0.level ?? 0],
+    to = FREE_TEXT_FS[level];
+  if ((c0.level ?? 0) === level && fs0 === to) return;
+  env.edit((b) => {
+    const f = findCard(b, id),
+      c = f?.card,
+      p = f && b.place[f.host.id];
+    if (c?.kind !== "note" || c.look !== "freetext") return;
+    if (level) c.level = level;
+    else delete c.level;
+    delete c.fs;
+    if (p) p.w = scaleText(fs0, p.w, to / fs0).w;
+  });
+}
+
+/** A Free Text set bold or not */
+export function setFreeTextBold(env: CommandEnv, id: string, bold: boolean) {
+  const c0 = findCard(env.board(), id)?.card;
+  if (c0?.kind !== "note" || c0.look !== "freetext" || !!c0.bold === bold) return;
+  env.edit((b) => {
+    const c = findCard(b, id)?.card;
+    if (c?.kind !== "note" || c.look !== "freetext") return;
+    if (bold) c.bold = true;
+    else delete c.bold;
   });
 }
 

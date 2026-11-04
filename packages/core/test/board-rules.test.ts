@@ -5,6 +5,9 @@ import {
   DEFAULT_SETTINGS,
   MARK_SIZES,
   TEXT_FS,
+  FREE_TEXT_FS,
+  migrateBoard,
+  migrateSharedCard,
   markSizeOf,
   cardTitle,
   scaleText,
@@ -290,6 +293,69 @@ describe("new cards and questions with nothing written yet", () => {
     expect(log.edits).toBe(3);
   });
 
+  it("a Free Text's level is one step back at the level's preset size (width scaled with it); plain is the default and not written", () => {
+    const { b, env, log } = setup([
+      { id: "t", kind: "note", md: "x", look: "freetext" },
+      { id: "m", kind: "note", md: "x", look: "mark", hand: "blue" },
+    ]);
+    const t = () => b.cards[0] as Extract<Card, { kind: "note" }> & { look: "freetext" };
+    expect(FREE_TEXT_FS).toEqual({ 0: 20, 1: TEXT_FS.freetext, 2: 30, 3: 24 });
+    expect(textSizeOf(t())).toBe(20);
+    C.setFreeTextLevel(env, "t", 0);
+    expect(log.edits).toBe(0);
+    C.setFreeTextLevel(env, "t", 1);
+    expect(log.edits).toBe(1);
+    expect(t().level).toBe(1);
+    expect(textSizeOf(t())).toBe(40);
+    expect(b.place.t.w).toBe(Math.round((400 * 40) / 20));
+    // a dragged size goes back to the level's preset, even at the same level
+    t().fs = 64;
+    C.setFreeTextLevel(env, "t", 1);
+    expect(t()).not.toHaveProperty("fs");
+    C.setFreeTextLevel(env, "t", 3);
+    expect(textSizeOf(t())).toBe(24);
+    C.setFreeTextLevel(env, "t", 0);
+    expect(JSON.parse(JSON.stringify(t()))).toEqual({ id: "t", kind: "note", md: "x", look: "freetext" });
+    // bold: written only when on; only a Free Text takes either
+    C.setFreeTextBold(env, "t", false);
+    expect(log.edits).toBe(4);
+    C.setFreeTextBold(env, "t", true);
+    expect(t().bold).toBe(true);
+    C.setFreeTextBold(env, "t", false);
+    expect(t()).not.toHaveProperty("bold");
+    C.setFreeTextLevel(env, "m", 2);
+    C.setFreeTextBold(env, "m", true);
+    expect(b.cards[1]).not.toHaveProperty("level");
+    expect(b.cards[1]).not.toHaveProperty("bold");
+    expect(log.edits).toBe(6);
+  });
+
+  it("an old board's Free Text (always a heading) opens as H1, its look and size kept; a shared one too", () => {
+    const old = {
+      ...emptyBoard("b", "old"),
+      version: 11,
+      cards: [
+        { id: "f", kind: "note", md: "Scheduler", look: "freetext" },
+        { id: "g", kind: "note", md: "Big", look: "freetext", fs: 64 },
+        { id: "m", kind: "note", md: "x", look: "mark", hand: "blue" },
+      ],
+      place: { f: { x: 0, y: 0, w: 200 }, g: { x: 0, y: 100, w: 200 }, m: { x: 0, y: 200, w: 200 } },
+    };
+    const b = migrateBoard(old);
+    expect(b.cards.map((c) => (c.kind === "note" ? [c.level, c.fs] : []))).toEqual([
+      [1, undefined],
+      [1, 64],
+      [undefined, undefined],
+    ]);
+    expect(textSizeOf(b.cards[0] as Extract<Card, { kind: "note" }> & { look: "freetext" })).toBe(TEXT_FS.freetext);
+    const sc = migrateSharedCard({
+      version: 11,
+      card: { id: "f", kind: "note", md: "x", look: "freetext" },
+      sidenotes: [],
+    });
+    expect(sc.card).toMatchObject({ level: 1 });
+  });
+
   it("dragging a Mark's or Free Text's corner scales its text size and width together, within the limits", () => {
     expect(scaleText(18, 200, 2)).toEqual({ fs: 36, w: 400 });
     expect(scaleText(18, 200, 1.31)).toEqual({ fs: 23.5, w: 261 });
@@ -298,7 +364,10 @@ describe("new cards and questions with nothing written yet", () => {
     expect(scaleText(40, 300, 100)).toEqual({ fs: TEXT_FS.max, w: Math.round((300 * TEXT_FS.max) / 40) });
     const mark = { id: "m", kind: "note", md: "x", look: "mark" } as const,
       ft = { id: "f", kind: "note", md: "x", look: "freetext" } as const;
-    expect([textSizeOf(mark), textSizeOf(ft), textSizeOf({ ...ft, fs: 72 })]).toEqual([18, 40, 72]);
+    // a Free Text with no size of its own is at its level's (plain: 20px, H1: 40px)
+    expect([textSizeOf(mark), textSizeOf(ft), textSizeOf({ ...ft, level: 1 }), textSizeOf({ ...ft, fs: 72 })]).toEqual([
+      18, 20, 40, 72,
+    ]);
     expect([scalesText(mark), scalesText(ft), scalesText({ ...mark, look: "text" })]).toEqual([true, true, false]);
   });
 

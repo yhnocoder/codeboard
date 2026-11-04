@@ -5,7 +5,7 @@ import {
   scalesText,
   scaleText,
   textSizeOf,
-  TEXT_FS,
+  baseTextSize,
   isCode,
   snapMove,
   snapResize,
@@ -712,7 +712,7 @@ export function scaleDown(e: PointerEvent, id: string) {
         const c = findCard(b, id)?.card,
           p = hostPlace(b, id);
         if (!scalesText(c) || !p) return;
-        c.fs = fs === TEXT_FS[c.look] ? undefined : fs;
+        c.fs = fs === baseTextSize(c) ? undefined : fs;
         p.w = w;
       });
     },

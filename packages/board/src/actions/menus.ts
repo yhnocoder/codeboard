@@ -96,6 +96,8 @@ import {
   setMarkColor,
   setMarkWeight,
   setMarkSize,
+  setFreeTextLevel,
+  setFreeTextBold,
   showPeek,
   splitByHeadings,
   tableCaptionItems,
@@ -126,6 +128,9 @@ import {
   HAND_WEIGHTS,
   MARK_SIZES,
   markSizeOf,
+  FREE_TEXT_LEVELS,
+  FREE_TEXT_FS,
+  freeTextLevelName,
   type Link,
   type MarkSize,
 } from "@codeboard/core";
@@ -407,8 +412,21 @@ function cardItems(id: string, x: number, y: number): Item[] {
         edit,
         ...tail,
       ];
-    // Free Text：纯文字的标题，字号拖右下角改
-    if (c.look === "freetext") return [edit, ...tail];
+    // Free Text：纯文字，级别（正文、H1–H3）和粗体也在选中时的工具条上；字号拖右下角改
+    if (c.look === "freetext")
+      return [
+        {
+          label: "Level",
+          sub: FREE_TEXT_LEVELS.map((k) => ({
+            label: `${freeTextLevelName(k)} (${FREE_TEXT_FS[k]}px)`,
+            checked: (c.level ?? 0) === k,
+            run: () => setFreeTextLevel(id, k),
+          })),
+        },
+        { label: "Bold", checked: !!c.bold, run: () => setFreeTextBold(id, !c.bold) },
+        edit,
+        ...tail,
+      ];
     // Box 不和别的互转（底色在选中时的工具条上）
     if (c.look === "box") return [drawSvgItem(id), autoFocusItem(id), edit, ...tail];
     // Text 没有改高度的把手（只拖宽度），所以也没有 Fit Content

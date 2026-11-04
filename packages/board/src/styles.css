@@ -1526,7 +1526,7 @@ textarea {
   box-shadow: 0 0 0 1.5px var(--accent);
 }
 /* Mark 的粗细：颜色点后面一道竖线，三个手写的 a；再一道竖线，字号 S、M、L、XL（和 a 一个样子，字小一点，XL 也放得下） */
-.ttb.hdots .hsep {
+.ttb:is(.hdots, .ftbar) .hsep {
   align-self: stretch;
   width: 1px;
   margin: 1px 2px;
@@ -1558,8 +1558,9 @@ textarea {
   color: var(--ink);
   background: var(--hlrow);
 }
-/* Free Text：白板上的标题，纯文字、没有框。用 Text 的标题样式（.st-title：每个主题自己的标题字体、粗细、字距），
-   字号是卡上的 --tfs（拖右下角缩放）；宽度跟着字，只在打的换行处换行 */
+/* Free Text：直接写在白板上的字，纯文字、没有框。级别取 Text 的样式（每个主题自己的字体、粗细、字距）：H1、H2 是 .st-title，
+   H3 是 .st-heading，正文（没有级别）是 .st-body；字号是卡上的 --tfs（拖右下角缩放，选一级回到那一级的预设）；宽度跟着字，
+   只在打的换行处换行 */
 .card.text.freetext {
   width: max-content;
 }
@@ -1567,6 +1568,21 @@ textarea {
   font-size: var(--tfs, 40px);
   white-space: pre;
   min-width: 1ch;
+}
+/* Bold (its toolbar's B): over every theme's own weight for the level */
+:root .card.text.freetext .tx.ft.ftb {
+  font-weight: 700;
+}
+/* the newspaper's titles are 700 already: bold goes one step further */
+:root.look-newspaper .card.text.freetext .tx.ft.ftb.st-title {
+  font-weight: 900;
+}
+/* the level buttons (Aa, H1–H3) and B: in the board's own type, not the Mark's handwriting */
+.ftbar .hsz {
+  font: 600 12px / 1 var(--sys);
+}
+.ftbar .ftbold {
+  font-weight: 800;
 }
 .hdot {
   width: 16px;

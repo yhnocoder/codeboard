@@ -21,7 +21,7 @@ import {
 } from "./model";
 import { eachMarkdown, mapRefs } from "./mdrefs";
 
-/** 读进来的白板文件（第 1–11 版）→ 第 11 版白板文件（共享卡还是引用，由宿主的存储换成内容） */
+/** 读进来的白板文件（第 1–12 版）→ 第 12 版白板文件（共享卡还是引用，由宿主的存储换成内容） */
 export function migrateBoard(raw: any): BoardFile {
   // 更新的版本写的文件：读不懂就别碰（当第 1 版迁移会丢掉所有卡，下次自动保存把空白板写回去）
   if (typeof raw?.version === "number" && raw.version > BOARD_VERSION)
@@ -51,7 +51,14 @@ export function migrateBoard(raw: any): BoardFile {
   normalize(b);
   // 第 10 版 → 第 11 版：[[引用]] 带上目标的 id（[[标题#^id]]），改名不再断开
   if (from < 11) v10to11(b);
+  // 第 11 版 → 第 12 版：Free Text 有了级别，没有级别的是正文；从前的 Free Text 都是标题，记成 H1（样子、字号都不变）
+  if (from < 12) for (const c of b.cards) if (c.kind !== "shared") v11to12Card(c);
   return b;
+}
+
+/** 第 11 版 → 第 12 版的一张卡：从前的 Free Text（主题的标题样式，默认 40px = H1 的预设字号）→ H1 */
+function v11to12Card(c: Card) {
+  if (c.kind === "note" && c.look === "freetext") c.level ??= 1;
 }
 
 /**
@@ -117,7 +124,8 @@ export function migrateSharedCard(raw: any): SharedCardFile {
     (sc.sidenotes ?? []).forEach(v6to7Note);
   }
   if (sc?.version === 6 || sc?.version === 7) if (sc.card) v7to8Card(sc.card);
-  // 第 9–11 版的卡文件和第 8 版一样（变的只是白板文件的镜头、摆放和白板上的引用）
+  // 第 9–11 版的卡文件和第 8 版一样（变的只是白板文件的镜头、摆放和白板上的引用）；第 12 版：Free Text 的级别
+  if (sc?.version >= 6 && sc.version < 12 && sc.card) v11to12Card(sc.card);
   if (sc?.version >= 6 && sc.version < BOARD_VERSION) sc.version = BOARD_VERSION;
   if (sc?.card) normCard(sc.card);
   for (const n of sc?.sidenotes ?? []) normNote(n);

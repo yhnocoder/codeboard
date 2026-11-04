@@ -359,7 +359,8 @@
         "themeNotUndoStep",
         "tiltCardFromMenu",
         "tiltStraightensWhileEditing",
-        "squircleCorners"
+        "squircleCorners",
+        "freeTextLevels"
       ]
     },
     "variants": {
