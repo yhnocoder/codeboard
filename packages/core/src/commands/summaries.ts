@@ -1,7 +1,7 @@
 // Zoomed-out summaries (summary.ts): the user's own text, and ↻ (written now). Both are undo steps. A hand edit is kept as a pair
 // (the AI text it replaced, the user's), newest first, at most SUMMARY_PAIRS: rewrites, automatic or ↻, follow them and keep them.
 import type { SummaryResult } from "../protocol";
-import { putSummary, summaryOf, summarySig, type SumRequest } from "../summary";
+import { putSummary, summaryInput, summaryOf, summarySig, type SumRequest } from "../summary";
 import type { CommandEnv } from "./env";
 
 /** How many of the user's edits a summary keeps */
@@ -23,7 +23,16 @@ export function editSummary(env: CommandEnv, key: string, text: string) {
       s?.edited && was.length
         ? [{ ...was[0], user: t, at }, ...was.slice(1)]
         : [{ ai: s?.text ?? "", user: t, at }, ...was].slice(0, SUMMARY_PAIRS);
-    putSummary(b, key, { ...s, text: t, at, sig: summarySig(b, key) ?? "", edited: true, pairs });
+    // written from what is there now: an edit alone never makes its summary pending or asks for a rewrite
+    putSummary(b, key, {
+      ...s,
+      text: t,
+      at,
+      sig: summarySig(b, key) ?? "",
+      input: summaryInput(b, key),
+      edited: true,
+      pairs,
+    });
   });
 }
 

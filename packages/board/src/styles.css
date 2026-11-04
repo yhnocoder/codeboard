@@ -7755,18 +7755,25 @@ mark.wdiff {
   --sum-head: var(--note-h);
   --sum-hd: var(--ink-2);
   --sum-grey: color-mix(in srgb, var(--ink-3) 80%, var(--bg));
+  --sum-panel: var(--canvas);
+  --sum-shade: rgb(50, 35, 10);
+}
+:root[data-theme="dark"] .sumlay {
+  --sum-shade: #000;
 }
 :root.look-warm-ink:not([data-theme="dark"]) .sumlay {
   --sum-font: "Noto Sans SC", -apple-system, "PingFang SC", sans-serif;
   --sum-head: var(--sys);
   --sum-hd: #57534b;
-  --sum-grey: #a9a49a;
+  --sum-grey: #8a857b;
 }
 :root.look-ink-wash:not([data-theme="dark"]) .sumlay {
   --sum-font: "Noto Serif SC", "Source Serif 4", "Songti SC", serif;
   --sum-head: "Source Serif 4", "Noto Serif SC", "Songti SC", Georgia, serif;
   --sum-hd: #4c4943;
-  --sum-grey: #a7a296;
+  --sum-grey: #88836f;
+  /* the ink-wash board is a textured scene: the panel is its lighter, warmer card paper, never a grey */
+  --sum-panel: var(--paper);
 }
 .sumcol {
   position: absolute;
@@ -7779,13 +7786,55 @@ mark.wdiff {
   clip-path: inset(0 0 calc(100% - var(--rest)) 0);
   mask-image: linear-gradient(to bottom, #000 calc(var(--rest) - var(--S) * 2.25), transparent var(--rest));
 }
+/* the clip and mask come back only once the panel has faded out (SUMMARY panel: 90 ms), so the collapse is never cut short */
+.sumcol.sumover {
+  transition:
+    clip-path 0s 90ms,
+    mask-image 0s 90ms allow-discrete,
+    z-index 90ms step-end;
+}
 .sumlay.live .sumcol.sumover:is(:hover, :focus-within) {
-  clip-path: none;
+  clip-path: inset(calc(var(--S) * -3));
   mask-image: none;
+  transition: none;
+}
+/* the panel a hovered column shows its whole text on: the board's own paper, reaching 0.6·S past the column on every side (the
+   text keeps its place), card-rounded, lifted by a soft wide shadow and a faint hairline. It fades and scales in on its own
+   layer (opacity and transform only); the column stays raised until it has faded out */
+.sumcol {
+  isolation: isolate;
+  transition: z-index 90ms step-end;
+}
+.sumcol:is(.sumover, .sumclamp)::before {
+  content: "";
+  position: absolute;
+  inset: calc(var(--S) * -0.6);
+  z-index: -1;
+  pointer-events: none;
+  background: var(--sum-panel);
+  border-radius: calc(var(--S) * 0.25);
+  box-shadow:
+    0 0 0 max(1px, calc(var(--S) * 0.02)) color-mix(in srgb, var(--sum-shade) 7%, transparent),
+    0 calc(var(--S) * 0.12) calc(var(--S) * 0.4) calc(var(--S) * -0.08)
+    color-mix(in srgb, var(--sum-shade) 8%, transparent),
+    0 calc(var(--S) * 0.9) calc(var(--S) * 2.4) calc(var(--S) * -0.6)
+    color-mix(in srgb, var(--sum-shade) 22%, transparent);
+  opacity: 0;
+  transform: scale(0.98);
+  transition:
+    opacity 90ms ease-in,
+    transform 90ms ease-in;
+}
+.sumlay.live .sumcol:is(.sumover, .sumclamp):is(:hover, :focus-within) {
   z-index: 2;
-  background: var(--bg);
-  border-radius: calc(var(--P) * 0.5);
-  box-shadow: 0 calc(var(--S) * 0.15) calc(var(--S) * 0.9) color-mix(in srgb, var(--ink) 18%, transparent);
+  transition: none;
+}
+.sumlay.live .sumcol:is(.sumover, .sumclamp):is(:hover, :focus-within)::before {
+  opacity: 1;
+  transform: none;
+  transition:
+    opacity 140ms ease-out,
+    transform 140ms ease-out;
 }
 .sumblk {
   position: relative;
@@ -7819,12 +7868,8 @@ mark.wdiff {
   overflow: visible;
 }
 .sumlay.live .sumcol.sumclamp:is(:hover, :focus-within) {
-  z-index: 2;
   height: auto !important;
   min-height: var(--rest);
-  background: var(--bg);
-  border-radius: calc(var(--P) * 0.5);
-  box-shadow: 0 calc(var(--S) * 0.15) calc(var(--S) * 0.9) color-mix(in srgb, var(--ink) 18%, transparent);
 }
 .sumlay.live .sumcol.sumover:is(:hover, :focus-within) {
   height: auto !important;
@@ -7987,7 +8032,10 @@ mark.wdiff {
 }
 @media (prefers-reduced-motion: reduce) {
   .sumre,
-  .sumlay.live .sumcol:hover .sumre {
+  .sumlay.live .sumcol:hover .sumre,
+  .sumcol,
+  .sumcol::before,
+  .sumlay.live .sumcol:is(:hover, :focus-within)::before {
     transition: none;
   }
   .sumcol.gen :is(.sumtx, .sumt, .sumhd code, .sumhd i),

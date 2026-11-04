@@ -8,12 +8,14 @@ import {
   emptyBoard,
   putSummary,
   summaryInput,
+  summaryPending,
   summarySig,
   type Board,
   type HostToBoard,
   type NoteCard,
   type Summary,
 } from "@codeboard/core";
+import { editSummary, type CommandEnv } from "@codeboard/core/commands";
 import {
   SummaryWatch,
   hostRequests,
@@ -191,6 +193,35 @@ describe("SummaryWatch", () => {
     await w.idle();
     expect(calls).toHaveLength(1);
     expect(keys(posts)).toEqual(["sec:s"]);
+    w.dispose();
+  });
+  it("keeps a summary the user edited fresh: no pending mark, no request after the wait, an undo of the edit neither", async () => {
+    const b = board();
+    putSummary(b, "sec:s", written(b, "sec:s"));
+    const { w, calls } = watch(b);
+    w.opened(b);
+    const before = structuredClone(b.sections[0].summary);
+    const env = {
+      board: () => b,
+      edit: (fn: (x: Board) => void) => (fn(b), true),
+    } as unknown as CommandEnv;
+    editSummary(env, "sec:s", "我改的**一句**。");
+    expect(summaryPending(b, "sec:s")).toBe(false);
+    expect(b.sections[0].summary?.input).toBe(summaryInput(b, "sec:s"));
+    w.saw(b);
+    expect(w.waiting("b1")).toEqual([]);
+    w.opened(b);
+    expect(w.waiting("b1")).toEqual([]);
+    await vi.advanceTimersByTimeAsync(SUMMARY.regenMs);
+    await w.idle();
+    expect(calls).toHaveLength(0);
+    // undo: the AI text it replaced comes back, still fresh
+    b.sections[0].summary = before;
+    w.saw(b);
+    expect(summaryPending(b, "sec:s")).toBe(false);
+    await vi.advanceTimersByTimeAsync(SUMMARY.regenMs);
+    await w.idle();
+    expect(calls).toHaveLength(0);
     w.dispose();
   });
   it("rewrites a hand-edited summary too, with the user's edits, and writes nothing without a key", async () => {

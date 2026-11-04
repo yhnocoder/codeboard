@@ -274,8 +274,9 @@ export type Place = {
  * the user's own. pairs = the user's edits, newest first, at most 3: each the AI text showing when the user edited it and what
  * the user made of it (at = when); edits with no rewrite in between update the newest pair. They stay across rewrites: every rewrite
  * of this summary follows them (the newer wins where they conflict), and the newest is one of the examples the AI learns the
- * user's style from on every board (summaryExamples). input = summaryInput of what the AI text was written from (card ids, titles,
- * contents): the host never asks again by itself while it is the same, across reloads and undos too
+ * user's style from on every board (summaryExamples). input = summaryInput of the content it was written from (card ids, titles,
+ * contents; a hand edit sets it to the content then): the host never asks again by itself while it is the same, across reloads
+ * and undos too
  */
 export type Summary = {
   text: string;

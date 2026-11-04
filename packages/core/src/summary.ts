@@ -357,9 +357,10 @@ export function summarySig(b: Board, key: string): string | undefined {
   return c && b.place[c.id] ? fnv(cardTitle(c, b)) : undefined;
 }
 /**
- * A hash of everything an item's prompt is written from: a Section's title and cards (with its nested Sections'), each one's
- * id, title and content; a card's own; and the user's edit pairs. Never the layout: moving cards asks nothing. Stored with the
- * summary (Summary.input): the same hash = nothing to ask the AI. undefined = no such item
+ * A hash of the content an item's summary is written from: a Section's title and cards (with its nested Sections'), each one's
+ * id, title and content; a card's own. Never the layout (moving cards asks nothing) and never the user's edit pairs: they steer a
+ * rewrite asked for another reason, and an edit alone leaves its summary fresh. Stored with the summary (Summary.input): the
+ * same hash = nothing to ask the AI. undefined = no such item
  */
 export function summaryInput(b: Board, key: string): string | undefined {
   const k = parseKey(key);
@@ -370,12 +371,11 @@ export function summaryInput(b: Board, key: string): string | undefined {
     : b.cards.filter((c) => c.id === k.card && b.place[c.id]);
   if (!cards || (!k.sec && !cards.length)) return undefined;
   const head = k.sec ? (b.sections.find((s) => s.id === k.sec)?.title ?? "") : "";
-  const pairs = (summaryOf(b, key)?.pairs ?? []).map((p) => `${p.ai}\u0001${p.user}`).join("\u0002");
   return fnv(
     `${head}\u0003${cards
       .map((c) => `${c.id}\u0001${cardTitle(c, b)}\u0001${cardText(c)}`)
       .sort()
-      .join("\u0002")}\u0003${pairs}`,
+      .join("\u0002")}`,
   );
 }
 export function summaryOf(b: Board, key: string): Summary | undefined {
