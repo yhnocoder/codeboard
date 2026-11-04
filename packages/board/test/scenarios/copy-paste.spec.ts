@@ -14,8 +14,8 @@
 //                                         changes both, both show the "same card" mark, Detach makes it a copy again; for code cards
 //                                         the two places share the original's segments. A click elsewhere puts the chip away
 //   copiedImagesArePictures               every way of copying one image gives other apps only the picture (image/png, no text):
-//                                         ⌘C in a Note being edited with the caret in the image's source and with just its source
-//                                         selected, right-click Copy Image on an image in a shown Note and on an image card; pasted back
+//                                         ⌘C in a Note being edited with the caret in the image's source (a selected source copies
+//                                         its Markdown as text), right-click Copy Image on an image in a shown Note and on an image card; pasted back
 //                                         into the Note, the picture is the same Markdown (no new file)
 //   imageCopyFallsBackToEditor            when the webview may not write the clipboard, the picture goes to the editor, which puts the
 //                                         PNG alone on the OS clipboard (no text); an editor that can't gets the text
@@ -224,8 +224,21 @@ test("copiedImagesArePictures", async () => {
   const picked = await pg.evaluate(() => getSelection()!.toString());
   await clear(h);
   await pg.keyboard.press("ControlOrMeta+c");
-  const selCopy = await nextCopy(h, "⌘C with the image's source selected is on the clipboard");
-  check("copiedImagesArePictures the image's source selected", isPicture(selCopy), { picked, selCopy });
+  const selCopy = await until(h, "⌘C with the image's source selected is on the clipboard", async () => {
+    const c = await clipboard(h);
+    return c && c.text !== "-" ? c : undefined;
+  });
+  check(
+    "copiedImagesArePictures the image's source selected copies its Markdown as text",
+    selCopy.types.includes("text/plain") && selCopy.text === "![](assets/card.png)" && !selCopy.png,
+    { picked, selCopy },
+  );
+  // the caret back in the source: the picture again, for the paste below
+  await pg.keyboard.press("End");
+  await clear(h);
+  await pg.keyboard.press("ControlOrMeta+c");
+  const againCopy = await nextCopy(h, "⌘C with the caret at the end of the image's source is on the clipboard");
+  check("copiedImagesArePictures caret at the end of the source", isPicture(againCopy), againCopy);
 
   // pasted back into the Note (at the end): the same Markdown, no new file saved
   await pg.keyboard.press("ControlOrMeta+End");

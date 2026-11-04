@@ -185,8 +185,9 @@ export function imageEditing(
                 return false;
               },
               copy: (view: EditorView, ev: ClipboardEvent) => {
+                // a selection over the source is text the writer picked (copyInsideShownSource); the caret alone is the picture
                 const c = copy(),
-                  img = c && selectedImage(view.state);
+                  img = c && view.state.selection.empty && selectedImage(view.state);
                 if (!img) return false;
                 // the picture alone (an app given text as well pastes the text); a paste of it back is the Markdown (knownImage)
                 ev.preventDefault();
