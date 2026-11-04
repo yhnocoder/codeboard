@@ -19,3 +19,7 @@ Added:
 - `MdEditorHandle.type(text)`: types text at the selection as if on the keyboard (key bindings and input rules run; a newline is Enter), for keys typed before the editor was mounted.
 - `tableCaption` / `setTableCaption`: a table's caption, stored as a Pandoc `Table: …` line right after the table.
 - `imagePlayback` / `setImagePlayback` and the types `ImageAttrs` / `ImagePlayback`: an animated image's snapshot frame and "always play" flag, stored in the image's attribute block (`{width=40% frame=12 loop=true}`).
+
+Fixed:
+
+- `{text|note}` annotations close together on one line no longer draw their labels over each other, in the static render and the editor: two labels that would overlap are spread apart (each still over its own arrow, inside its block), and when that is not enough one goes up a row with a longer arrow, its line keeping room for it above. The labels are measured in the instance's `measure` round (the editor's are now fitted too); the annotation's inline `--rise` holds the extra height.

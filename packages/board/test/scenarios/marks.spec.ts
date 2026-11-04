@@ -612,6 +612,97 @@ test("noteAnnotationMath", async () => {
   await h.close();
 });
 
+/** #115: annotations close together on one line. Their labels never overlap: two that would are spread apart (the earlier
+ *  one left, the later one right), and when that is not enough one goes up a row, with the line keeping room for it above
+ *  (it does not cover the line before). Every label stays over its own arrow and inside its paragraph; static and editing */
+test("noteAnnotationsApart", async () => {
+  const b = emptyBoard("b1", "annotations");
+  const md = [
+    "DDR 在每个时钟周期**传输两次数据**，分别发生在时钟的上升沿和下降沿。",
+    "",
+    "所以 3.2 GHz 的 {==64 位==|8 字节}{==DDR5-6400==|双倍数据速率} 总线，带宽是 $8 \\times 2 \\times 3.2$ GHz。",
+    "",
+    "挤在一起：{==a==|很长的一条批注} {==b==|$x^2$ 也在这里|purple}{==c==|第三条|green} 之后。",
+  ].join("\n");
+  b.cards.push({ id: "n1", kind: "note", md, look: "note" } as NoteCard);
+  b.place.n1 = { x: 80, y: 80, w: 520 };
+  b.cam = { x: 0, y: 0, z: 1 };
+  const h = await open({ board: b, light: true, w: 760, h: 460, settings: { theme: "warm-ink" } as never });
+  const pg = h.page;
+  await pg.evaluate(() => document.fonts.ready);
+  const settled = async (root: string) => {
+    await pg.waitForFunction(
+      (root) =>
+        [...document.querySelectorAll<HTMLElement>(`${root} .md-annot > .md-annot-n`)].every((n) => {
+          const lb = getComputedStyle(n);
+          return document.fonts.check(`${lb.fontWeight} ${lb.fontSize} ${lb.fontFamily}`, n.textContent ?? "");
+        }),
+      root,
+      { timeout: 5000 },
+    );
+    await idle(h);
+  };
+  const layout = (root: string) =>
+    pg.evaluate((root) => {
+      const ps = [...document.querySelectorAll<HTMLElement>(`${root} p`)];
+      return ps.map((p, k) => {
+        const prev = k ? ps[k - 1].getBoundingClientRect().bottom : -Infinity;
+        return {
+          prev,
+          right: p.getBoundingClientRect().right,
+          left: p.getBoundingClientRect().left,
+          labels: [...p.querySelectorAll<HTMLElement>(".md-annot")].map((e) => {
+            const r = e.getBoundingClientRect(),
+              l = e.querySelector(":scope > .md-annot-n")!.getBoundingClientRect();
+            return {
+              note: e.dataset.note,
+              arrow: r.left + r.width / 2,
+              l: l.left,
+              r: l.right,
+              t: l.top,
+              b: l.bottom,
+              rise: e.style.getPropertyValue("--rise"),
+            };
+          }),
+        };
+      });
+    }, root);
+  const verdict = (ps: Awaited<ReturnType<typeof layout>>) => {
+    const bad: string[] = [];
+    for (const p of ps)
+      p.labels.forEach((a, i) => {
+        if (!(a.l < a.arrow - 2 && a.r > a.arrow + 2)) bad.push(`${a.note}: off its arrow`);
+        if (a.l < p.left - 0.5 || a.r > p.right + 0.5) bad.push(`${a.note}: outside its paragraph`);
+        if (a.t < p.prev - 0.5) bad.push(`${a.note}: over the line before`);
+        for (const o of p.labels.slice(i + 1))
+          if (a.l < o.r - 0.5 && o.l < a.r - 0.5 && a.t < o.b - 0.5 && o.t < a.b - 0.5)
+            bad.push(`${a.note} overlaps ${o.note}`);
+      });
+    return bad;
+  };
+  await settled(card("n1"));
+  const shown = await layout(`${card("n1")} .nbody`);
+  check("annotApartCount", shown.flatMap((p) => p.labels).length === 5, shown);
+  check("annotApartStatic", verdict(shown).length === 0, { bad: verdict(shown), shown });
+  check(
+    "annotApartRaised",
+    shown[2]?.labels.some((a) => parseFloat(a.rise) > 0),
+    shown[2],
+  );
+  await shot(h, "marks-annotations-apart");
+  await pg
+    .locator(`${card("n1")} .nbody p`)
+    .first()
+    .dblclick({ position: { x: 20, y: 10 } });
+  await pg.waitForSelector(`${card("n1")} .md-pm .md-annot`, { timeout: 5000 });
+  await settled(`${card("n1")} .md-pm`);
+  const ed = await layout(`${card("n1")} .md-pm`);
+  check("annotApartEditorCount", ed.flatMap((p) => p.labels).length === 5, ed);
+  check("annotApartEditor", verdict(ed).length === 0, { bad: verdict(ed), ed });
+  await shot(h, "marks-annotations-apart-editing");
+  await h.close();
+});
+
 /** The annotation label is drawn in the bundled handwriting fonts (Shantell Sans for Latin, LXGW WenKai Lite for Chinese):
  *  the computed font is the hand font, both faces are loaded, and the glyphs really come from them (not a system fallback) */
 test("noteAnnotationHandFont", async () => {
