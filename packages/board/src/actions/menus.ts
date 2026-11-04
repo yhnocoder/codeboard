@@ -102,7 +102,7 @@ import {
 import { mergeIntoLinkList, retryMeta, setListRich, setWebStyle } from "./web";
 import { canLinkList } from "@codeboard/core/commands";
 import { moveOutOfParent, setSectionColor, toggleCompare, unlinkShared } from "./edit";
-import { deleteEverywhere, pasteFromBoard, copyCardsSel, cutCardsSel, detachTwins } from "./shared";
+import { deleteEverywhere, pasteFromBoard, copyCardsSel, cutCardsSel, detachTwins, copyPath } from "./shared";
 import { enterFrame, turnIntoBoard, insertBoard, insertable, deleteFrameBoard } from "./subboards";
 import { addProc, clearRpc, legendOf, markRpc, toggleBack, toggleStart } from "./calls";
 import { setLegendOpen } from "../state/calls";
@@ -299,9 +299,12 @@ function cardItems(id: string, x: number, y: number): Item[] {
   const tiltItem: Item = { label: "Tilt", kbd: kbd("tilt"), checked: !!host.tilt, run: () => toggleTilt([host.id]) };
   // 每种卡同一个结构：常用操作 → Edit ▸ → Arrange ▸ → 分隔线 → Move to New Section、Delete（红）。
   // 界面上已经有的（双击改名、⌘D、拖圆点连线）不进菜单
+  // Copy Path：Compare 的一栏是那一栏自己（白板文件里它也是一张卡）
+  const pathItem: Item = { label: "Copy Path", run: () => void copyPath([id]) };
   const tail: Item[] = [
     tiltItem,
     arrangeItem(() => [host.id]),
+    pathItem,
     null,
     ...sectionItems(),
     turnItem(),
@@ -314,6 +317,7 @@ function cardItems(id: string, x: number, y: number): Item[] {
       { label: "Edit", sub: [lockItem] },
       tiltItem,
       arrangeItem(() => [host.id]),
+      pathItem,
       null,
       ...sectionItems(),
       { label: "Remove from This Board", kbd: "⌫", hint: "The board stays in the sidebar", run: deleteSel },
@@ -478,6 +482,7 @@ function cardItems(id: string, x: number, y: number): Item[] {
       lockItem,
       tiltItem,
       arrangeItem(() => [host.id]),
+      pathItem,
       null,
       ...deleteItems(host.id),
     ];
@@ -580,6 +585,7 @@ function cardItems(id: string, x: number, y: number): Item[] {
         ]),
     { label: "Call Graph", sub: flow },
     ...(col ? [] : [tiltItem, arrangeItem(() => [host.id])]),
+    pathItem,
     null,
     ...(col ? [] : [...sectionItems(), turnItem()]),
     ...deleteItems(host.id),
@@ -658,6 +664,7 @@ function multiItems(): Item[] {
       run: () => void tidyUp(),
     },
     arrangeItem(() => [...sel.cards]),
+    { label: "Copy Paths", run: () => void copyPath([...sel.cards, ...sel.sections]) },
     null,
     { label: "Cut", kbd: kbd("cut"), run: () => cutCardsSel() },
     { label: "Copy", kbd: kbd("copy"), run: () => copyCardsSel() },
@@ -991,6 +998,7 @@ function multiSectionItems(ids: string[]): Item[] {
       run: () => toggleLock([], ids),
     },
     sectionColorItem(ids),
+    { label: "Copy Paths", run: () => void copyPath(ids) },
     null,
     { label: `Remove ${ss.length} Sections`, hint: "Cards and inner sections stay", run: () => removeSections(ids) },
   ];
@@ -1029,6 +1037,7 @@ export function sectionMenu(id: string, x: number, y: number) {
           ]
         : []),
       sectionColorItem([id]),
+      { label: "Copy Path", run: () => void copyPath([id]) },
       null,
       { label: "Remove Section", hint: "Cards and inner sections stay", run: () => removeSections([id]) },
     ],

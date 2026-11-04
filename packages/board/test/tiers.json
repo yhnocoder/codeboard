@@ -508,7 +508,7 @@
         "packages/core/src/commands/shared.ts",
         "packages/core/src/{protocol,patch,schema,migrate,shared,workspace,diagnostics}.ts",
         "packages/host/src/storage/**",
-        "packages/host/src/{hub,handlers,boards,env,ws,context,actions,commands,diagnostics,start,index}.ts",
+        "packages/host/src/{hub,handlers,boards,env,ws,context,actions,commands,diagnostics,paths,start,index}.ts",
         "packages/board/test/scenarios/{shared,boards}.spec.ts"
       ],
       "scenarios": [

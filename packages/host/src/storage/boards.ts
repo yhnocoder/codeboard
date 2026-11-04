@@ -938,6 +938,10 @@ export class Storage {
   fileOf(id: string) {
     return this.cache.get(id)?.file;
   }
+  /** 共享卡的内容所在：卡库里的那个文件（白板文件里只有它的 id） */
+  cardFileOf(id: string) {
+    return this.library.fileOf(id);
+  }
 
   async newGroup(name: string) {
     const safe = groupName(name);

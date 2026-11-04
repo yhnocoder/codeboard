@@ -167,6 +167,7 @@ function Toolbar() {
           label: "Rename Board…",
           run: () => promptText("Rename Board", state.board.name).then((v) => v && C.renameBoard(commandEnv, v)),
         },
+        { label: "Copy Path", hint: "The board's file, to point Claude Code at it", run: () => void A.copyPath() },
         { label: "Export…", hint: "HTML snapshot, Markdown or PNG", run: () => A.openExport() },
         {
           label: "Export Boards…",

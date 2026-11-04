@@ -50,6 +50,7 @@ import { addVariant, variantSources } from "./variants";
 import { highlight, segView, viewsFor } from "./views";
 import { splitLines } from "./ws";
 import { imageAiJob } from "./imageai";
+import { copyPaths } from "./paths";
 import { aiInfo, clearDeepseekKey, completeNote, setDeepseekKey } from "./ai";
 import type { HostContext } from "./context";
 
@@ -165,6 +166,7 @@ export function makeHandler(cx: HostContext, panels: BoardHost, mediaDir: string
     permalinks: (_p, m) => permalinks(cx, m.segs),
     exportFile: (_p, m) => exportFile(cx, store, mediaDir, m.kind, m.name, m.text),
     copyText: (_p, m) => cx.ws.ui.copy(m.text),
+    copyPath: (p, m) => copyPaths(cx, store, p.id, m.items),
     imageAi: (p, m) => imageAiJob(cx, p.imageJobs, m.job, m.op),
     imageAiCancel: (p, m) => {
       p.imageJobs.get(m.job)?.abort();

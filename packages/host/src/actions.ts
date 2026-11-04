@@ -18,6 +18,7 @@ import { type Storage } from "./storage/boards";
 import { workingPlace } from "./versions";
 import { viewsFor } from "./views";
 import { copyDiagnostics } from "./diagnostics";
+import { copyPaths } from "./paths";
 import { applyFlow, captureFlow } from "./runs";
 import { openOnBoard } from "./handlers";
 import { prompts } from "./prompts";
@@ -551,6 +552,11 @@ export function makeActions(cx: HostContext, panels: BoardHost, store: Storage, 
       const id = boardArg(a);
       const f = id ? store.fileOf(id) : undefined;
       await ui().revealInOS(f ?? store.dir());
+    },
+    // 侧栏的 Copy Path：白板文件的路径（和白板 ⋯ 菜单里的一样），让终端里的 Claude Code 引用；和编辑器自己的 Copy Path 一样不弹提示
+    "codeboard.copyBoardPath": async (a?: unknown) => {
+      const id = boardArg(a);
+      if (id) await copyPaths(cx, store, id);
     },
     // GITHUB FILES 的 Add Repo…：在目标白板上打开 From GitHub… 面板
     "codeboard.addGithubRepo": async () => {

@@ -32,6 +32,18 @@ import { cardText, remember } from "./clipboard";
 import { offerReference, pasteChip, setPasteChip } from "./pastechip";
 import { imageDataUrl, pngOf } from "./imagedata";
 
+/**
+ * Copy Path：这些卡 / Section（不给 = 这块白板）在磁盘上的路径，一行一个，给终端里的 Claude Code 引用。路径只有宿主知道（白板文件在哪、
+ * 共享卡在卡库里），由它算好写进剪贴板
+ */
+export async function copyPath(items?: string[]) {
+  flushSave(); // 刚建的卡宿主那边也有了
+  const text = await ask("copyPath", { items }).catch(() => null);
+  if (!text) return toast("Can't copy the path: the board isn't saved yet");
+  const n = text.split("\n").length;
+  toast(n > 1 ? `Copied ${n} paths` : "Copied path");
+}
+
 /** ⌘C：选中的卡记到宿主（贴到别的白板时用），卡的内容写进剪贴板（代码卡 = 看得见的行，Note / Text = Markdown，图片卡 = 图 + Markdown 的图） */
 export function copyCardsSel(): boolean {
   const cs = selHosts();

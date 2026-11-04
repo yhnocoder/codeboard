@@ -125,6 +125,11 @@
         "category": "CodeBoard"
       },
       {
+        "command": "codeboard.copyBoardPath",
+        "title": "Copy Path",
+        "category": "CodeBoard"
+      },
+      {
         "command": "codeboard.renameGroup",
         "title": "Rename Group",
         "category": "CodeBoard",
@@ -389,6 +394,11 @@
           "group": "3_misc@1"
         },
         {
+          "command": "codeboard.copyBoardPath",
+          "when": "view == codeboard.boards && viewItem == board",
+          "group": "3_misc@2"
+        },
+        {
           "command": "codeboard.deleteBoard",
           "when": "view == codeboard.boards && viewItem == board",
           "group": "4_del@1"
@@ -453,6 +463,10 @@
         },
         {
           "command": "codeboard.revealInFolder",
+          "when": "false"
+        },
+        {
+          "command": "codeboard.copyBoardPath",
           "when": "false"
         },
         {

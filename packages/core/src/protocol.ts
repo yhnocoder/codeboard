@@ -424,6 +424,8 @@ export type BoardToHost =
   | { type: "exportFile"; req: number; kind: "html" | "md"; name: string; text: string }
   /** 写剪贴板（webview 里写可能被拦下） */
   | { type: "copyText"; text: string }
+  /** Copy Path：这些卡 / Section（不给 = 这块白板）在磁盘上的路径（<白板文件>#<id>，一行一个），宿主写进剪贴板。回写进去的文字（白板还没存下时回 null） */
+  | { type: "copyPath"; req: number; items?: string[] }
   /** 图片的 AI 操作（DeepSeek 看图）：宿主拿着密钥去问，回模型的原话或失败的原因（ImageAiResult）。job = 白板给的号，取消用 */
   | { type: "imageAi"; req: number; job: number; op: ImageAiOp }
   /** 取消还在等的 imageAi（卡上的 Cancel、Esc）：宿主中止请求，那个请求回 { fail: "canceled" } */
@@ -619,6 +621,7 @@ type Replies = {
   questions: QuestionItem[];
   permalinks: Record<string, string>;
   exportFile: boolean;
+  copyPath: string | null;
   variantSources: VariantSources;
   addVariant: NewVariant | null;
 };
