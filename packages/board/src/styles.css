@@ -7734,8 +7734,10 @@ mark.wdiff {
   left: 0;
   top: 0;
 }
-/* a layer of its own only while it fades: at rest neither is composited apart from the world, so a zoom rasters one layer */
-.cardlay.fading,
+/* The card level is always a layer of its own, so the fade only changes that layer's opacity: promoting it when a fade started
+   (and folding it back into the world when it ended) re-rastered every card twice per switch, 100–270 ms frames in the middle
+   of a zoom. The summary level is a layer of its own only while it fades */
+.cardlay,
 .sumlay.fading {
   will-change: opacity;
 }
