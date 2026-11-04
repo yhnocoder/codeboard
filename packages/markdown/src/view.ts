@@ -58,21 +58,28 @@ export function paintRef(r: HTMLElement, refs: Refs) {
   r.replaceChildren(a, b);
 }
 
-/** 印章：一个圆角框；有 outer 时分成两半，前一半是外面那一处的（描边、浅底），后一半是这一处的（实心） */
+/** 印章：一个圆角框；有 outer 时分成两半，前一半是外面那一处的（描边、浅底），后一半是这一处的（实心）。
+ * 字包在 .tx 里：它按大写字母的高到基线裁掉行框（text-box），框里居中的就是字本身，不受字体上下留白不同的影响 */
 function sealEl(s: RefSeal): HTMLElement {
   const el = document.createElement("span");
   el.className = `md-seal${s.outer ? " two" : ""}${s.alone ? " alone" : ""}`;
   el.style.setProperty("--md-seal", s.color);
+  const tx = (text: string) => {
+    const t = document.createElement("span");
+    t.className = "tx";
+    t.textContent = text;
+    return t;
+  };
   if (!s.outer) {
-    el.textContent = s.text;
+    el.append(tx(s.text));
     return el;
   }
   el.style.setProperty("--md-seal-outer", s.outer.color);
   const a = document.createElement("span"),
     b = document.createElement("span");
   a.className = "o";
-  a.textContent = s.outer.text;
-  b.textContent = s.text;
+  a.append(tx(s.outer.text));
+  b.append(tx(s.text));
   el.append(a, b);
   return el;
 }

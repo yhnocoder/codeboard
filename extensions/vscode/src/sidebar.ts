@@ -9,7 +9,7 @@ import {
   type Storage,
   type TreeNode,
 } from "@codeboard/host";
-import { firstLine, type QuestionItem } from "@codeboard/core";
+import { firstLine, sealOf, type QuestionItem } from "@codeboard/core";
 
 type BNode = TreeNode;
 
@@ -75,10 +75,13 @@ export class BoardsTree implements vscode.TreeDataProvider<BNode>, vscode.TreeDr
       target ? "layout-sidebar-right" : "layout",
       m.stale ? new vscode.ThemeColor("charts.orange") : undefined,
     );
-    it.description = `${m.cards}${m.stale ? ` ● ${m.stale}` : ""}`;
+    // 印章的字（别的白板引用它时画的那几个字）在说明文字最前面：侧栏的行画不了颜色，只放字
+    const mark = sealOf(m).text;
+    it.description = `${mark} · ${m.cards}${m.stale ? ` ● ${m.stale}` : ""}`;
     it.tooltip = new vscode.MarkdownString(
       [
         `**${m.name}**`,
+        `Mark: ${mark}`,
         `${m.cards} cards`,
         m.stale ? `${m.stale} cards have new versions` : "",
         target ? "Target for Add to Board" : "",
