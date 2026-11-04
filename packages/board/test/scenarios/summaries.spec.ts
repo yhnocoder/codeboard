@@ -375,7 +375,8 @@ test("summaryOverflowFades", async () => {
         cs = getComputedStyle(e),
         rest = parseFloat(cs.getPropertyValue("--rest")),
         z = r.height / (e as HTMLElement).offsetHeight;
-      const clipped = cs.clipPath !== "none";
+      // hovered, the clip opens past the column (inset(-3S)) for the panel around it
+      const clipped = cs.clipPath !== "none" && !cs.clipPath.startsWith("inset(-");
       return {
         top: r.top,
         bottom: clipped ? r.top + rest * z : r.bottom,
