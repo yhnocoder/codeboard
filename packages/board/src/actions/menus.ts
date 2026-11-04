@@ -94,6 +94,7 @@ import {
   openAddNote,
   setMarkColor,
   setMarkWeight,
+  setMarkSize,
   showPeek,
   splitByHeadings,
   tableCaptionItems,
@@ -108,7 +109,16 @@ import { addProc, clearRpc, legendOf, markRpc, toggleBack, toggleStart } from ".
 import { setLegendOpen } from "../state/calls";
 import { askQuestion, askQuestionOnCard } from "./questions";
 import { addVariantMenu } from "./variants";
-import { LEGEND, legendName, HAND_COLORS, HAND_WEIGHTS, type Link } from "@codeboard/core";
+import {
+  LEGEND,
+  legendName,
+  HAND_COLORS,
+  HAND_WEIGHTS,
+  MARK_SIZES,
+  markSizeOf,
+  type Link,
+  type MarkSize,
+} from "@codeboard/core";
 import { kbd } from "../keymap";
 import { drawSvgItem, imageAiItems, type ImgRef } from "./imageai";
 import { autoFocusItem } from "./autofocus";
@@ -351,6 +361,14 @@ function cardItems(id: string, x: number, y: number): Item[] {
             label: k[0].toUpperCase() + k.slice(1),
             checked: (c.weight ?? "regular") === k,
             run: () => setMarkWeight(id, k),
+          })),
+        },
+        {
+          label: "Size",
+          sub: (Object.keys(MARK_SIZES) as MarkSize[]).map((k) => ({
+            label: `${k.toUpperCase()} (${MARK_SIZES[k]}px)`,
+            checked: markSizeOf(c) === k,
+            run: () => setMarkSize(id, k),
           })),
         },
         edit,

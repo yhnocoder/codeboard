@@ -1483,14 +1483,15 @@ textarea {
 .card.freetext .mkgrip {
   box-shadow: 0 0 0 1.5px var(--accent);
 }
-/* Mark 的粗细：颜色点后面一道竖线，三个手写的 a */
+/* Mark 的粗细：颜色点后面一道竖线，三个手写的 a；再一道竖线，字号 S、M、L、XL（和 a 一个样子，字小一点，XL 也放得下） */
 .ttb.hdots .hsep {
   align-self: stretch;
   width: 1px;
   margin: 1px 2px;
   background: var(--hair);
 }
-.hwt {
+.hwt,
+.hsz {
   min-width: 20px;
   height: 20px;
   padding: 0 3px;
@@ -1503,10 +1504,15 @@ textarea {
   line-height: 1;
   cursor: default;
 }
-.hwt:hover {
+.hsz {
+  font-size: 13px;
+}
+.hwt:hover,
+.hsz:hover {
   color: var(--ink);
 }
-.hwt.on {
+.hwt.on,
+.hsz.on {
   color: var(--ink);
   background: var(--hlrow);
 }

@@ -11,6 +11,7 @@ import {
   type BoxFill,
   type HandColor,
   type HandWeight,
+  type MarkSize,
 } from "@codeboard/core";
 import * as C from "@codeboard/core/commands";
 import { commandEnv } from "./env";
@@ -199,6 +200,7 @@ export async function showPeek(
 /** Mark 的颜色（它的箭头跟着变） */
 export const setMarkColor = (id: string, hand: HandColor) => C.setMarkColor(commandEnv, id, hand);
 export const setMarkWeight = (id: string, weight: HandWeight) => C.setMarkWeight(commandEnv, id, weight);
+export const setMarkSize = (id: string, size: MarkSize) => C.setMarkSize(commandEnv, id, size);
 export const setBoxFill = (id: string, fill: BoxFill) => C.setBoxFill(commandEnv, id, fill);
 
 export const turnNote = (id: string, look: "note" | "text") => C.turnNote(commandEnv, id, look);

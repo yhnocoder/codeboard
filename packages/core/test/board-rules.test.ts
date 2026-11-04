@@ -3,7 +3,9 @@
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_SETTINGS,
+  MARK_SIZES,
   TEXT_FS,
+  markSizeOf,
   cardTitle,
   scaleText,
   scalesText,
@@ -255,6 +257,36 @@ describe("new cards and questions with nothing written yet", () => {
     });
     C.setMarkWeight(env, "t", "bold");
     expect(b.cards[1]).not.toHaveProperty("weight");
+    expect(log.edits).toBe(3);
+  });
+
+  it("a Mark's size from its toolbar is one step that scales its width with it; S is the default and is not written", () => {
+    const { b, env, log } = setup([
+      { id: "m", kind: "note", md: "x", look: "mark", hand: "blue" },
+      { id: "t", kind: "note", md: "x", look: "freetext", fs: 30 },
+    ]);
+    const m = () => b.cards[0] as Extract<Card, { kind: "note" }> & { look: "mark" };
+    expect(MARK_SIZES).toEqual({ s: TEXT_FS.mark, m: 24, l: 32, xl: 48 });
+    expect(markSizeOf(m())).toBe("s");
+    C.setMarkSize(env, "m", "s");
+    expect(log.edits).toBe(0);
+    C.setMarkSize(env, "m", "xl");
+    expect(log.edits).toBe(1);
+    expect(m().fs).toBe(48);
+    expect(markSizeOf(m())).toBe("xl");
+    // the width follows as a corner drag's does, so the Mark wraps where it did
+    expect(b.place.m.w).toBe(Math.round((400 * 48) / TEXT_FS.mark));
+    C.setMarkSize(env, "m", "m");
+    expect(m().fs).toBe(24);
+    expect(b.place.m.w).toBe(Math.round((1067 * 24) / 48));
+    // a size dragged off the steps has none
+    m().fs = 27.5;
+    expect(markSizeOf(m())).toBeUndefined();
+    C.setMarkSize(env, "m", "s");
+    expect(JSON.parse(JSON.stringify(m()))).toEqual({ id: "m", kind: "note", md: "x", look: "mark", hand: "blue" });
+    // only a Mark takes one
+    C.setMarkSize(env, "t", "xl");
+    expect(b.cards[1]).toMatchObject({ fs: 30 });
     expect(log.edits).toBe(3);
   });
 

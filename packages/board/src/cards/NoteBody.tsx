@@ -1,6 +1,16 @@
 import { For, Match, Show, Switch, createEffect, createMemo, createSignal, on } from "solid-js";
 import { IS_MAC } from "@yhnocoder/markdown/ui";
-import { mdHeading, BOX_FILLS, HAND_COLORS, HAND_WEIGHTS, HAND_WEIGHT_CSS, type NoteCard } from "@codeboard/core";
+import {
+  mdHeading,
+  BOX_FILLS,
+  HAND_COLORS,
+  HAND_WEIGHTS,
+  HAND_WEIGHT_CSS,
+  MARK_SIZES,
+  markSizeOf,
+  type MarkSize,
+  type NoteCard,
+} from "@codeboard/core";
 import { state, placeOf } from "../state/store";
 import { isSel, sel } from "../state/selection";
 import { editing } from "../state/ui";
@@ -312,6 +322,21 @@ export function WritingToolbar(p: { card: NoteCard }) {
                   onClick={() => A.setMarkWeight(p.card.id, k)}
                 >
                   a
+                </button>
+              )}
+            </For>
+            {/* 字号：四档；拖角拖出来的、不在档上的字号哪个都不亮 */}
+            <span class="hsep" />
+            <For each={Object.keys(MARK_SIZES) as MarkSize[]}>
+              {(k) => (
+                <button
+                  class="hsz"
+                  classList={{ on: markSizeOf(p.card) === k }}
+                  aria-label={`size ${k}`}
+                  data-tip={`${MARK_SIZES[k]}px`}
+                  onClick={() => A.setMarkSize(p.card.id, k)}
+                >
+                  {k.toUpperCase()}
                 </button>
               )}
             </For>

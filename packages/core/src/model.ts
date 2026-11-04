@@ -146,6 +146,12 @@ export const scalesText = (c: Card | undefined): c is NoteCard & { look: "mark" 
   c?.kind === "note" && (c.look === "mark" || c.look === "freetext");
 /** 一张 Mark / Free Text 现在的字号 */
 export const textSizeOf = (c: NoteCard & { look: "mark" | "freetext" }) => c.fs ?? TEXT_FS[c.look];
+/** Mark 工具条上直接选的四档字号（px）。S 就是新 Mark 的默认字号，没改过字号的 Mark 亮着 S */
+export const MARK_SIZES = { s: TEXT_FS.mark, m: 24, l: 32, xl: 48 } as const;
+export type MarkSize = keyof typeof MARK_SIZES;
+/** 一张 Mark 的字号是哪一档；拖角拖出来的、不在四档上的字号没有档 */
+export const markSizeOf = (c: NoteCard): MarkSize | undefined =>
+  (Object.keys(MARK_SIZES) as MarkSize[]).find((k) => MARK_SIZES[k] === (c.fs ?? TEXT_FS.mark));
 /**
  * 拖角缩放：从 fs0、宽 w0 起按 f 倍缩放后的字号和宽度。字号取整（半像素）、夹在上下限里，宽度按字号真正变了的比例跟着变，
  * 所以拖到头以后字和宽度一起停下

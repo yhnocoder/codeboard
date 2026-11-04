@@ -1,7 +1,11 @@
 // Notes and sidenotes: new Notes, Text, Marks, Boxes and Free Text, sidenotes added and sidenote ↔ card, images in a Note,
-// Note ↔ Text, Split by Headings, a Mark's colour and weight
+// Note ↔ Text, Split by Headings, a Mark's colour, weight and size
 import {
   BOX_FILLS,
+  MARK_SIZES,
+  type MarkSize,
+  scaleText,
+  TEXT_FS,
   type BoxFill,
   type HandColor,
   type HandWeight,
@@ -285,6 +289,24 @@ export function setMarkWeight(env: CommandEnv, id: string, weight: HandWeight) {
   env.edit((b) => {
     const c = findCard(b, id)?.card;
     if (c?.kind === "note" && c.look === "mark") c.weight = weight === "regular" ? undefined : weight;
+  });
+}
+
+/** A Mark's size picked on its toolbar (S, M, L, XL): scaled as dragging its corner does, text size and width together, so it
+ *  wraps where it did */
+export function setMarkSize(env: CommandEnv, id: string, size: MarkSize) {
+  const c0 = findCard(env.board(), id)?.card;
+  if (c0?.kind !== "note" || c0.look !== "mark") return;
+  const fs0 = c0.fs ?? TEXT_FS.mark,
+    to = MARK_SIZES[size];
+  if (fs0 === to) return;
+  env.edit((b) => {
+    const f = findCard(b, id),
+      c = f?.card,
+      p = f && b.place[f.host.id];
+    if (c?.kind !== "note" || c.look !== "mark") return;
+    c.fs = to === TEXT_FS.mark ? undefined : to;
+    if (p) p.w = scaleText(fs0, p.w, to / fs0).w;
   });
 }
 
