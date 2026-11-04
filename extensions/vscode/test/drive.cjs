@@ -2268,10 +2268,11 @@ const finish = async (browser, errors) => {
     // 白板窄、卡多，适应窗口后在概览档（代码是灰条，点不到调用）：照用户的做法双击这张卡，放大到它 100%
     // （适应窗口在 ~28%，Zoom In 一次 ×1.25、以画面中心放大，到 60% 的完整档之前卡就出了右边；
     // 不按键：焦点可能还在编辑器里，Shift+2 会把 @ 打进代码）
-    // 适应窗口可能落在摘要档（低于白板的门槛，卡整层藏着）：那就双击这张卡摘要的标题，一样放大到它
+    // 适应窗口可能落在摘要档（低于白板的门槛，卡整层藏着）：那就双击这张卡摘要标题里的名字，一样放大到它
+    // （双击名字本身：标题短时标题行的正中间是名字旁边的 ↻ 按钮，那是重新生成摘要）
     await fit(f);
     await idle(f);
-    const sumTitle = f.locator(".sumlay.live .sumcol.loose .sumhd", { hasText: "pick_tokens" });
+    const sumTitle = f.locator(".sumlay.live .sumcol.loose .sumhd code", { hasText: /^pick_tokens$/ });
     if (await sumTitle.isVisible()) {
       await sumTitle.dblclick();
       await idle(f);

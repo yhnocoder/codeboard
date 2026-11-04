@@ -39,7 +39,7 @@ test("summaryTitleZoomsToItem", async () => {
   await h.page.keyboard.press("Shift+Digit1");
   await until(h, "the summary level shows after Fit to Window", () => h.page.locator(".cardlay.gone").count());
   const target = cards[1];
-  const title = h.page.locator(`.sumcol[data-sum="card:${target.id}"] .sumhd`);
+  const title = h.page.locator(`.sumcol[data-sum="card:${target.id}"] .sumhd code`);
   check(
     "summaryTitleZoomsToItem Fit to Window lands at the summary level, the card's title showing",
     (await zoomOf(h)) < 0.3 && (await title.isVisible()),
@@ -69,7 +69,7 @@ test("summaryTitleZoomsToItem", async () => {
   // back out, then a Section's title fits its frame
   await h.page.keyboard.press("Shift+Digit1");
   await until(h, "the summary level shows again", () => h.page.locator(".cardlay.gone").count());
-  await h.page.locator(`.sumcol[data-sum="sec:${sec.id}"] .sumhd`).dblclick();
+  await h.page.locator(`.sumcol[data-sum="sec:${sec.id}"] .sumhd .sumt`).dblclick();
   await until(h, "the card level is back after the Section zoom", () =>
     h.page
       .locator(".cardlay")
