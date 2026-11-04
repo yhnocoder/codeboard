@@ -94,7 +94,23 @@ test("boardMarksOnRefs", async () => {
   check("boardMarksThisBoardPlain", here.seal === null && here.title === "Warp 控制流分歧", here);
   await shot(h, "board-marks-refs");
   // the editor draws the same chips
-  await h.page.locator('.card[data-id="cp1"] .nbody').dblclick({ position: { x: 300, y: 12 } });
+  // on a plain word (a fixed offset can land on a ref chip, whose fonts differ between machines)
+  const at = await h.page.evaluate(() => {
+    const body = document.querySelector('.card[data-id="cp1"] .nbody')!;
+    const walk = document.createTreeWalker(body, NodeFilter.SHOW_TEXT);
+    for (let t = walk.nextNode() as Text | null; t; t = walk.nextNode() as Text | null) {
+      const i = t.data.indexOf("tiling");
+      if (i < 0 || t.parentElement?.closest(".md-ref")) continue;
+      const r = document.createRange();
+      r.setStart(t, i + 1);
+      r.setEnd(t, i + 2);
+      const b = r.getBoundingClientRect();
+      return { x: b.x + b.width / 2, y: b.y + b.height / 2 };
+    }
+    return null;
+  });
+  if (!at) throw new Error("no plain word to click in the Note");
+  await h.page.mouse.dblclick(at.x, at.y);
   await h.page.waitForSelector('.card[data-id="cp1"] .md-pm');
   const inEditor = await until(h, "the editor's chips show Marks", async () => {
     const n = await h.page.locator('.card[data-id="cp1"] .md-pm .md-ref > .md-seal').allTextContents();
