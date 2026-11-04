@@ -478,7 +478,7 @@ math {
 }
 /* [[引用]]（白板上指向卡片）。坐在字的基线上（和旁边的字同一条线，换字体也一样）：行内块 overflow 不是 visible 时基线默认是它的下边缘，
    baseline-source: first 让它用里面那行字的基线（写在 vertical-align 后面：vertical-align 是简写，会把它重设成 auto）。
-   不套浅底框：和正文一样大，下面一条细线，悬停时线变深（这块白板上的前面是 ↗，别处的是印章，两种看着一样轻） */
+   不套浅底框：和正文一样大，下面一条细线，悬停时线变深（这块白板上的前面是一支细线斜箭头，别处的是印章，两种看着一样轻） */
 .md-ref {
   display: inline-block;
   padding: 0 1px;
@@ -496,8 +496,17 @@ math {
   baseline-source: first;
 }
 .md-ref::before {
-  content: "↗ ";
-  opacity: 0.6;
+  /* 一支 1.5px 细线的斜箭头（16px 格子），用字的颜色涂：粗细和角度不跟着字体变，和印章放在一起一样稳 */
+  content: "";
+  display: inline-block;
+  width: 0.9em;
+  height: 0.9em;
+  margin-right: 0.28em;
+  vertical-align: -0.08em;
+  background: currentColor;
+  opacity: 0.75;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23000' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 11 11 5M6 5h5v5'/%3E%3C/svg%3E")
+    center / contain no-repeat;
 }
 .md-ref:hover {
   box-shadow: inset 0 -1px 0 var(--k-fn);
@@ -588,6 +597,13 @@ math {
 }
 .md-ref.gone::before {
   content: "⚠ ";
+  display: inline;
+  width: auto;
+  height: auto;
+  margin-right: 0;
+  vertical-align: baseline;
+  background: none;
+  mask: none;
   opacity: 0.9;
 }
 .md-ref.gone > .bd {
