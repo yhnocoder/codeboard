@@ -296,6 +296,19 @@ export function makeActions(cx: HostContext, panels: BoardHost, store: Storage, 
       return copyDiagnostics(cx, prompts(cx, a), (a ?? (panels.target ? panels.get(panels.target) : undefined))?.board);
     },
 
+    // zoom diagnostics: the first run starts recording on the board (up to 30 s), the next one copies what it recorded
+    "codeboard.zoomLog": async () => {
+      const p = active() ?? (panels.target ? panels.get(panels.target) : undefined);
+      if (!p) return void ui().info("Open a board first, then record the zoom log on it.");
+      const log = await p.zoomLog();
+      if (typeof log !== "string")
+        return void ui().info(
+          "Recording the zoom log: zoom and pinch, then run “Record Zoom Log” again to copy it (it records up to 30 s).",
+        );
+      await ui().copy(log);
+      void ui().info(`Zoom log copied to the clipboard (${log.split("\n").length} lines).`);
+    },
+
     "codeboard.addToBoard": async () => {
       const b = await fromEditor();
       if (b) await deliver(await targetId(), b);

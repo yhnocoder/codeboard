@@ -18,6 +18,7 @@ import { frames } from "./sections";
 import { animate, cam, setZoomFloor, viewTracked } from "./camera";
 import { boardRef, boardSignal, rooted } from "./root";
 import { dragging } from "./ui";
+import { zlog, zlogging } from "./zoomlog";
 
 /** What the summary layer measured at the columns' widths (Summaries.tsx), by item */
 const [measured, setMeasured] = boardSignal<SumMeasured>(new Map());
@@ -34,8 +35,18 @@ export const summaryFade = fade;
 
 /** Zoomed in this far past the highest cut nothing shows the summary level and the zoom cannot cross any cut */
 const NEAR = 1.5;
-/** The summary level is shown, fading, or the zoom is near enough to the cut that it may be soon */
-const near = rooted(() => createMemo(() => fade() > 0 || cam.z < SUMMARY.cutMax * NEAR));
+/** Zoomed in this much further the built layer is let go (between the two it stays as it is: a zoom back and forth near the
+ *  edge does not build it again and again) */
+const FAR = NEAR * 1.25;
+/** The zoom is near enough to the cut that the summary level may be soon */
+const inRange = rooted(() => createMemo(() => cam.z < SUMMARY.cutMax * NEAR));
+const outOfRange = rooted(() => createMemo(() => cam.z >= SUMMARY.cutMax * FAR));
+/** The summary layer is built: in the first idle time after the zoom came near (building it in the wheel event that crossed
+ *  there made that frame 35–55 ms of script, mid-gesture), at once when the fade needs it */
+const [built, setBuilt] = boardSignal(false);
+/** The summary level is shown, fading, or built because the zoom came near the cut */
+const shownOrFading = rooted(() => createMemo(() => fade() > 0));
+const near = rooted(() => createMemo(() => shownOrFading() || built()));
 /** The summary layer exists only then (Summaries.tsx): zoomed in it costs nothing, and it is built before the zoom reaches a cut */
 export const summaryNear = near;
 /** A layout is held while cards are dragged, and while the summary level is far away (nudges, undo and edits zoomed in then
@@ -97,14 +108,25 @@ function run(to: 0 | 1) {
   const me = {};
   running.v = me;
   const from = shown.v ?? 0;
+  if (zlogging()) zlog("S", `${from}→${to} start z${cam.z.toFixed(4)}`);
   let t = 0;
   animate((dt, instant) => {
     if (running.v !== me) return true;
+    // not built yet (the zoom crossed the cut before an idle moment): it is built now, in the fade's first frame
+    if (to === 1 && !untrack(built)) setBuilt(true);
+    const first = t === 0;
     t = instant ? 1 : Math.min(1, t + (dt * 1000) / SUMMARY.fadeMs);
     setFade(from + (to - from) * ease(t));
+    // the zoom log: the script of the fade's first frame (the frame's updates run together after this, camera.ts tick), where
+    // the summary columns not built yet are built
+    if (first && t > 0 && zlogging()) {
+      const t0 = performance.now();
+      queueMicrotask(() => zlog("S", `${to} first frame ${(performance.now() - t0).toFixed(1)}`));
+    }
     if (t < 1) return false;
     shown.v = to;
     running.v = null;
+    if (zlogging()) zlog("S", `${to} end`);
     // the zoom crossed back during the fade: the reverse one follows at once
     const w = untrack(want);
     if (w !== to) run(w);
@@ -116,6 +138,17 @@ function run(to: 0 | 1) {
 export function wireSummaries() {
   rooted(() => {
     createEffect(() => setZoomFloor(summaryMinZoom(viewTracked(), contentBounds())));
+    let idle: number | undefined;
+    createEffect(() => {
+      if (inRange() && !built()) {
+        if (idle !== undefined) return;
+        const go = () => {
+          idle = undefined;
+          if (untrack(inRange) && !untrack(built)) setBuilt(true);
+        };
+        idle = requestIdleCallback(go, { timeout: 400 });
+      } else if (outOfRange() && built() && !shownOrFading()) setBuilt(false);
+    });
     createEffect(
       on(want, (w) => {
         if (shown.v === null) showSummaryLevel();

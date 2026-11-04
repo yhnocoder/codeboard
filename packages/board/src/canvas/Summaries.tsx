@@ -11,11 +11,12 @@
 // the stacking change, nothing is laid out again. A title is at most two lines (an ellipsis) and shows in full the same way.
 // Titles and bodies go through the Markdown inline renderer: [[refs]] show their target's current name, ==marks== and **bold**
 // are styled, no syntax shows. A card with no title of its own shows none until the AI wrote one (core untitled).
-import { For, Show, createEffect, createMemo, createSignal, onCleanup } from "solid-js";
+import { For, Show, createEffect, createMemo, createSignal, onCleanup, onMount, untrack } from "solid-js";
 import { state } from "../state/store";
 import { stillZ } from "../state/camera";
 import { lastDown, observeResize, queueMeasure } from "../state/measure";
 import { summaryFade, summaryLayout, summaryNear, setSummaryHeights } from "../state/summary";
+import { zlog, zlogging } from "../state/zoomlog";
 import { boardLang, summaryOf, summaryPending, type SumCol, type SumKey } from "@codeboard/core";
 import * as A from "../actions";
 import { useMd } from "../md/context";
@@ -57,19 +58,50 @@ export function Summaries() {
   }, []);
   return (
     <Show when={summaryNear() && keys().length}>
-      <div
-        class="lay sumlay"
-        data-export="strip"
-        classList={{ live: live(), gone: summaryFade() === 0, fading: summaryFade() > 0 && summaryFade() < 1 }}
-        style={{
-          opacity: String(Math.max(0.003, summaryFade())),
-          "--S": `${layout()?.S ?? 56}px`,
-          "--P": `${layout()?.P ?? 19}px`,
-          "--sum-iz": String(1 / stillZ()),
-        }}
-      >
-        <For each={keys()}>{(k) => <Show when={byKey().get(k)}>{(c) => <Column col={c()} />}</Show>}</For>
-      </div>
+      {(_) => {
+        // Built near the cut, before it shows: a few columns in each idle moment (all of them at once took 35–55 ms, a dropped
+        // frame or three in the middle of a zoom); once the fade begins, every column not built yet is built in its first frame
+        const [n, setN] = createSignal(0);
+        const all = createMemo(() => summaryFade() > 0);
+        const shown = createMemo(() => (all() || n() >= keys().length ? keys() : keys().slice(0, n())));
+        let idle: number | undefined;
+        const more = (d: IdleDeadline) => {
+          idle = undefined;
+          if (untrack(all)) return;
+          const t0 = performance.now(),
+            from = n();
+          let k = from;
+          while (k < keys().length && (k === from || d.timeRemaining() > 4)) setN(++k);
+          // the zoom log (state/zoomlog.ts): each batch of columns built, and how long it took
+          if (zlogging()) zlog("B", `${(performance.now() - t0).toFixed(1)} cols ${from}→${k}/${keys().length}`);
+          if (k < keys().length) idle = requestIdleCallback(more);
+        };
+        createEffect(() => {
+          if (!all() && n() < keys().length && idle === undefined) idle = requestIdleCallback(more);
+        });
+        onCleanup(() => idle !== undefined && cancelIdleCallback(idle));
+        if (zlogging()) {
+          const t0 = performance.now();
+          onMount(() =>
+            zlog("B", `${(performance.now() - t0).toFixed(1)} layer, cols ${shown().length}/${keys().length}`),
+          );
+        }
+        return (
+          <div
+            class="lay sumlay"
+            data-export="strip"
+            classList={{ live: live(), gone: summaryFade() === 0, fading: summaryFade() > 0 && summaryFade() < 1 }}
+            style={{
+              opacity: String(Math.max(0.003, summaryFade())),
+              "--S": `${layout()?.S ?? 56}px`,
+              "--P": `${layout()?.P ?? 19}px`,
+              "--sum-iz": String(1 / stillZ()),
+            }}
+          >
+            <For each={shown()}>{(k) => <Show when={byKey().get(k)}>{(c) => <Column col={c()} />}</Show>}</For>
+          </div>
+        );
+      }}
     </Show>
   );
 }

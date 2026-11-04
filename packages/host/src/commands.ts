@@ -42,6 +42,7 @@ export const COMMANDS = {
   "codeboard.boardKey": { title: "Board Shortcut" },
   "codeboard.openSettings": { title: "Open Settings" },
   "codeboard.copyDiagnostics": { title: "Copy Diagnostics" },
+  "codeboard.zoomLog": { title: "Record Zoom Log (记录缩放日志)" },
   "codeboard.captureRun": { title: "Capture Run…" },
   "codeboard.applyRun": { title: "Apply Run…" },
   "codeboard.openQuestion": { title: "Open Question" },

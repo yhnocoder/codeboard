@@ -281,6 +281,9 @@ export type HostToBoard =
   /** A question CodeBoard asks while this board is where the user works (its own requests, a palette command on it): the board shows it
    *  as one of its dialogs and sends { type: "answer", id } back */
   | { type: "ask"; id: number; ask: BoardAsk }
+  /** Record Zoom Log: start recording the zoom diagnostics log, or stop and hand it back. The board answers { type: "answer", id }
+   *  with null when it started recording, or with the log's text */
+  | { type: "zoomLog"; id: number }
   /** 共享卡在别的白板上改了（或这块白板撤销时被跳过的项）：卡和跟着它走的 Sidenote 的新内容。白板用 sync 换上（不进撤销栈），不再发回来 */
   | { type: "shared"; cards: SharedUpdate[]; views?: Record<string, SegView> }
   /** 这块白板上的共享卡在几块白板上、别的白板上谁连到它（宿主在存盘后算，整个换掉） */

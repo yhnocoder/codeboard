@@ -118,6 +118,8 @@ const OUTLIVES_BOARD: Record<string, string> = {
   "actions/imageai.ts:colorCtx": "a canvas for parsing colors",
   "actions/flow.ts:sent": "calls prefetched lately, by segment: the host caches them",
   // kept across boards on purpose
+  "state/zoomlog.ts:rec":
+    "the zoom diagnostics recording, which runs across board switches until the host command stops it",
   "actions/clipboard.ts:lastCopy": "the clipboard: its card is looked up on the board pasted on",
   "actions/shared.ts:copied": "the clipboard: carries the board it was copied on",
   "actions/shared.ts:cutClip": "the clipboard: carries the board it was cut on",

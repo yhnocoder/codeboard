@@ -12,8 +12,9 @@ import { onBoard, placed, rectOf } from "./store";
 import { boardStore } from "./root";
 import { sel } from "./selection";
 import { editing, dragging } from "./ui";
-import { lodOf, lodBusy, cardsAway } from "./lodcards";
+import { lodOf, lodBusy, cardsGone } from "./lodcards";
 import { offscreen, setOffscreen } from "./offscreen";
+import { zlog, zlogging } from "./zoomlog";
 
 // 一帧最多显示 SHOW 份：代码卡算 1 份；Note 算 1.5 份（表格、高亮的代码、勾选框、公式，画起来比一张代码卡还贵），一帧最多两张
 const SHOW = 3,
@@ -54,8 +55,8 @@ export function trackOffscreen() {
   let again = false;
   createEffect(() => {
     tick();
-    // the card level is faded out: nothing to show or hide under it (lodcards.ts cardsAway)
-    if (cardsAway()) return;
+    // the card level is faded out: nothing to show or hide under it (lodcards.ts cardsGone)
+    if (cardsGone()) return;
     const { w, h } = viewTracked(),
       z = cam.z,
       x = cam.x,
@@ -96,14 +97,23 @@ export function trackOffscreen() {
       n += cost;
       k++;
     }
+    const hid = Math.min(hide.length, HIDE);
     for (const id of hide.slice(0, HIDE)) setOffscreen(id, true);
+    let near = 0,
+      far = 0;
     // 不画只在镜头停下以后加（和藏内容一样）：缩放时一圈圈的卡进出半屏，每帧都换的话缩放每步多出一截重画
     untrack(() => {
       for (const [id, a] of away) {
         const f = a && offscreen(id);
-        if (f !== !!distant[id] && (!f || !moving)) setDistant(id, f);
+        if (f !== !!distant[id] && (!f || !moving)) {
+          setDistant(id, f);
+          if (f) far++;
+          else near++;
+        }
       }
     });
+    if ((k || hid || near || far) && zlogging())
+      zlog("C", `show ${k}/${show.length} hide ${hid}/${hide.length} paint ${near} unpaint ${far}`);
     if ((show.length > k || hide.length > HIDE) && !again) {
       again = true;
       requestAnimationFrame(() => {

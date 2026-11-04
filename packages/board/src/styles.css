@@ -7734,20 +7734,19 @@ mark.wdiff {
   left: 0;
   top: 0;
 }
-/* The card level is always a layer of its own, so the fade only changes that layer's opacity: promoting it when a fade started
-   (and folding it back into the world when it ended) re-rastered every card twice per switch, 100–270 ms frames in the middle
-   of a zoom. The summary level is a layer of its own only while it fades */
+/* Both levels are layers of their own (the summary level from when it is built near the cut), so the fade only changes their
+   opacity: promoting a layer when a fade started (and folding it back into the world when it ended) re-rastered all its
+   content twice per switch, 100–270 ms frames in the middle of a zoom */
 .cardlay,
-.sumlay.fading {
+.sumlay {
   will-change: opacity;
 }
-/* fully faded: not painted, not hit. The faded card level is not rendered at all (no style, layout or paint of its cards: a zoom or
-   pan at the summary level draws the summaries only); the summary level, built near the cut, is only hidden */
+/* fully faded: not hit. The faded card level is not rendered at all (no style, layout or paint of its cards: a zoom or pan at the
+   summary level draws the summaries only). The summary level, built near the cut, stays painted at an opacity too low to show
+   (Summaries.tsx), so it is rastered before the fade needs it: hiding it (visibility) restyled and rastered all of it in the
+   frame the fade began */
 .cardlay.gone {
   content-visibility: hidden;
-}
-.sumlay.gone {
-  visibility: hidden;
 }
 /* the type and colours are the demo's (feedback/demo/boards-130-viewer.html: .sum .hd, .txt), per look; other looks and dark
    boards take their own fonts and a grey between ink-3 and the paper */

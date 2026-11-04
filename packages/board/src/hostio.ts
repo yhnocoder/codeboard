@@ -23,6 +23,7 @@ import { preloadEditor } from "./md/load";
 import { putBoardRefs, refreshRefs } from "./md/refs";
 import { preloadCm } from "./cm/load";
 import { questionsOpen, setWelcome } from "./state/questions";
+import { toggleZoomLog } from "./state/zoomlog";
 
 let preloaded = false;
 /** 进出子白板、旧白板还在淡出时收到的 init 和它后面的消息：淡出完再按顺序处理（actions/subboards.ts switchGate） */
@@ -191,6 +192,9 @@ function handle(m: HostToBoard, md: Markdown) {
       break;
     case "githubPicker":
       A.openGitHubPicker(m.repo);
+      break;
+    case "zoomLog":
+      send({ type: "answer", id: m.id, value: toggleZoomLog() });
       break;
     case "ask": {
       const a = m.ask;

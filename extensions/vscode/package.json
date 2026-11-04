@@ -229,6 +229,11 @@
         "category": "CodeBoard"
       },
       {
+        "command": "codeboard.zoomLog",
+        "title": "Record Zoom Log (记录缩放日志)",
+        "category": "CodeBoard"
+      },
+      {
         "command": "codeboard.captureRun",
         "title": "Capture Run…",
         "category": "CodeBoard"

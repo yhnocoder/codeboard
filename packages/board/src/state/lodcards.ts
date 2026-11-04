@@ -10,6 +10,7 @@ import { onBoard, placed, rectOf, sizes, state } from "./store";
 import { offscreen } from "./offscreen";
 import { boardStore, rooted } from "./root";
 import { summaryFade } from "./summary";
+import { zlog, zlogging } from "./zoomlog";
 
 const PER = 12;
 const DETAIL: Record<Lod, number> = { map: 0, overview: 1, full: 2 };
@@ -18,7 +19,10 @@ const DETAIL: Record<Lod, number> = { map: 0, overview: 1, full: 2 };
  * leaves them as they are. Changes made under the faded layer (content-visibility: hidden) are not styled then but all at once
  * when it shows again: switching 241 cards to the map level while it was hidden made that frame 150–300 ms of style alone
  */
-export const cardsAway = rooted(() => createMemo(() => summaryFade() > 0));
+const cardsAway = rooted(() => createMemo(() => summaryFade() > 0));
+/** The card level is faded out (not rendered, styles.css .cardlay.gone). While it fades it still shows, so the cards coming into
+ *  view then are shown as ever (cull.ts): left as they were, cards entering at the edges of a zoom out stayed blank through the fade */
+export const cardsGone = rooted(() => createMemo(() => summaryFade() === 1));
 // 正在一批批换档（还没换完）：cull.ts 这时先不显示屏幕外的卡
 const [busy, setBusy] = createSignal(false);
 export const lodBusy = busy;
@@ -118,6 +122,7 @@ export function trackCardLod() {
       if (i === todo.length && !held) setSettled(want);
       setBusy(i < todo.length || held);
     });
+    if (zlogging()) zlog("D", `${want} ${i}/${todo.length}${held ? " held" : ""}`);
     if (i < todo.length) later();
   }
   // 卡片增减时也看一遍：换了白板（进出子白板）后，同 id 的卡可能还留着上一块白板上的档

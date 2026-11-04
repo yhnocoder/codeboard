@@ -18,6 +18,9 @@
 //                                nothing overlaps at rest; ↻ on a middle header asks the AI for its overview from its children
 //   summaryFramesOnlyBoard       a board of sub-board frames, Free Text headings and Marks, nothing to summarize: zoomed out past the
 //                                cut the Marks hide all the same, and the frames and Free Text look as they do at 100 %, only scaled
+//   zoomLogRecords               the host's Record Zoom Log: the first ask starts recording (null), a pinch past the cut is logged
+//                                frame by frame (scale, pinch events, latency) with the fade's start and end and the summary
+//                                layer's build, the second ask stops it and answers the log, headed with the cores and the dpr
 import {
   emptyBoard,
   putSummary,
@@ -667,4 +670,44 @@ test("summaryNestedSections", async () => {
     asked,
   );
   await h.close();
+});
+
+test("zoomLogRecords", async () => {
+  const h = await open({ board: bigBoard("bZoomLog", 1, true), w: 1280, h: 800, light: true });
+  await idle(h);
+  type Answer = Extract<BoardToHost, { type: "answer" }>;
+  const toggle = async (id: number) => {
+    await h.post({ type: "zoomLog", id });
+    return (
+      await until(h, `the board answers zoomLog ${id}`, () =>
+        h.sent.find((m): m is Answer => m.type === "answer" && m.id === id),
+      )
+    ).value;
+  };
+  check("zoomLogRecords the first ask starts recording", (await toggle(1)) === null);
+  await wheelZoom(h, 600);
+  await until(h, "the card level is gone", () => h.page.locator(".cardlay.gone").count());
+  await idle(h);
+  const log = await toggle(2);
+  const lines = typeof log === "string" ? log.split("\n") : [];
+  check(
+    "zoomLogRecords the log is headed with the cores and the device pixel ratio",
+    /^# cores \d+ dpr [\d.]+ /.test(lines[1] ?? ""),
+    lines.slice(0, 3),
+  );
+  check(
+    "zoomLogRecords a frame line carries the pinch that arrived before it and its latency",
+    lines.some((l) => /^f [\d.]+ [\d.]+ z[\d.]+ p1 [\d.]+$/.test(l)),
+    lines.filter((l) => l.startsWith("f ")).slice(0, 6),
+  );
+  check(
+    "zoomLogRecords the fade's start and end and the summary layer's build are logged",
+    lines.some((l) => /^S [\d.]+ 0→1 start/.test(l)) &&
+      lines.some((l) => /^S [\d.]+ 1 end/.test(l)) &&
+      lines.some((l) => /^B [\d.]+ [\d.]+ layer, cols \d+\/\d+$/.test(l)) &&
+      lines.some((l) => /^S [\d.]+ 1 first frame [\d.]+$/.test(l)),
+    lines.filter((l) => /^[SB] /.test(l)),
+  );
+  check("zoomLogRecords asked again it records anew", (await toggle(3)) === null);
+  check("zoomLogRecords and stops with a log of its own", typeof (await toggle(4)) === "string");
 });

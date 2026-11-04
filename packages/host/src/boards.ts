@@ -170,6 +170,14 @@ export class BoardPanel {
       this.post({ type: "ask", id, ask: a });
     });
   }
+  /** Record Zoom Log on this board (HostToBoard "zoomLog"): null when it started recording, else the log */
+  zoomLog(): Promise<string | number | null> {
+    const id = ++this.askN;
+    return new Promise((r) => {
+      this.asks.set(id, r);
+      this.post({ type: "zoomLog", id });
+    });
+  }
   answer(id: number, v: string | number | null) {
     this.asks.get(id)?.(v);
     this.asks.delete(id);
