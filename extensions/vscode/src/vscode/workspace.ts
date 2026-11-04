@@ -361,6 +361,19 @@ export function vscodeWorkspace(ctx: vscode.ExtensionContext): Workspace {
           placeHolder: o.placeHolder,
           password: o.password,
           ignoreFocusOut: o.password,
+          validateInput: o.check
+            ? (v) => {
+                const r = o.check!(v);
+                return (
+                  r && {
+                    message: r.message,
+                    severity: r.warn
+                      ? vscode.InputBoxValidationSeverity.Warning
+                      : vscode.InputBoxValidationSeverity.Error,
+                  }
+                );
+              }
+            : undefined,
         }),
       openDialog: async (o) => {
         const r = await vscode.window.showOpenDialog(

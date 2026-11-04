@@ -13,6 +13,7 @@ const chipLook = (pg: Page, card: string) =>
   chip(pg, card).evaluate((e) => ({
     t: e.querySelector(".t")?.textContent ?? e.textContent,
     bd: e.querySelector(".bd")?.textContent,
+    tip: e.getAttribute("title"),
     missing: e.classList.contains("missing"),
     gone: e.classList.contains("gone"),
   }));
@@ -136,15 +137,14 @@ test("noteRefFollowsBoardRename", async () => {
   // 侧栏的 Rename Board（那块白板没开着）
   run.ws.ui = { ...run.ws.ui, input: async () => "Attention kernels" };
   await run.host.actions["codeboard.renameBoard"]("bk");
-  await until(
-    h,
-    "the reference carries the new board name",
-    async () => (await chipLook(pg, "n")).bd === "Attention kernels",
+  // a ref to another board shows that board's Mark (board-marks.spec.ts) and its path on hover: the path has the new name
+  await until(h, "the reference carries the new board name", async () =>
+    /^Attention kernels\b/.test((await chipLook(pg, "n")).tip ?? ""),
   );
   const look = await chipLook(pg, "n");
   check(
     "noteRefFollowsBoardRename the reference resolves under the board's new name",
-    look.t === "Flash attention" && look.bd === "Attention kernels" && !look.missing && !look.gone,
+    look.t === "Flash attention" && look.tip === "Attention kernels › Flash attention" && !look.missing && !look.gone,
     look,
   );
   check("noteRefFollowsBoardRename the note is not rewritten", noteMd(h.board(), "n") === picked, {

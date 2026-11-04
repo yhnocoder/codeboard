@@ -31,6 +31,7 @@ import {
   selCards,
   selectAll,
   selectCard,
+  resolveCardRef,
 } from "./common";
 import { boardOffset } from "../state/measure";
 import {
@@ -104,7 +105,16 @@ import { mergeIntoLinkList, retryMeta, setListRich, setWebStyle } from "./web";
 import { canLinkList } from "@codeboard/core/commands";
 import { moveOutOfParent, setSectionColor, toggleCompare, unlinkShared } from "./edit";
 import { deleteEverywhere, pasteFromBoard, copyCardsSel, cutCardsSel, detachTwins, copyPath } from "./shared";
-import { enterFrame, turnIntoBoard, insertBoard, insertable, deleteFrameBoard } from "./subboards";
+import {
+  enterFrame,
+  turnIntoBoard,
+  insertBoard,
+  insertable,
+  deleteFrameBoard,
+  editMark,
+  openCardRef,
+  refBoard,
+} from "./subboards";
 import { addProc, clearRpc, legendOf, markRpc, toggleBack, toggleStart } from "./calls";
 import { setLegendOpen } from "../state/calls";
 import { askQuestion, askQuestionOnCard } from "./questions";
@@ -268,6 +278,29 @@ export function noteImageMenu(ref: ImgRef, x: number, y: number) {
     x,
     y,
   );
+}
+
+/**
+ * 右键 Note 里一个指向别的白板的 [[引用]]（画着印章的）：打开、改那块白板的印章（浮层贴着引用），整张 Note 的菜单在最后的
+ * Note ▸ 里。不是这种引用返回 false
+ */
+export function noteRefMenu(card: string, el: HTMLElement, md: Markdown, x: number, y: number): boolean {
+  const label = el.dataset.ref ?? "",
+    board = refBoard(label, md),
+    hit = resolveCardRef(label, md);
+  if (!board || !hit || "broken" in hit) return false;
+  selectCard(card);
+  openMenu(
+    [
+      { label: "Open", run: () => openCardRef(hit.id, hit.place) },
+      { label: "Edit Mark…", run: () => editMark(board, { el }) },
+      null,
+      { label: "Note", sub: cardItems(card, x, y) },
+    ],
+    x,
+    y,
+  );
+  return true;
 }
 
 /** 右键 Note 里的一张表格（nth：Note 里的第几张）：图注的操作，整张 Note 的菜单在最后的 Note ▸ 里 */

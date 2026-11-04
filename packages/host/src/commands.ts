@@ -13,6 +13,7 @@ export const COMMANDS = {
   "codeboard.newBoard": { title: "New Board", icon: "add" },
   "codeboard.newGroup": { title: "New Group", icon: "newFolder" },
   "codeboard.renameBoard": { title: "Rename Board", icon: "edit" },
+  "codeboard.editMark": { title: "Edit Mark…" },
   "codeboard.duplicateBoard": { title: "Duplicate Board" },
   "codeboard.deleteBoard": { title: "Delete Board", icon: "close" },
   "codeboard.moveToGroup": { title: "Move to Group…" },

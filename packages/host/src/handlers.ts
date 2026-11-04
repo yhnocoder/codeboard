@@ -8,6 +8,7 @@ import {
   sniffSvg,
   cleanCompletion,
   checkBoard,
+  isBoardSeal,
   subCardOf,
   wouldCycle,
   findCard,
@@ -42,6 +43,7 @@ import { pasteClip } from "./storage/clip";
 import { pasteFar, recordClip } from "./transfer";
 import { applyFlow, captureFlow } from "./runs";
 import { prompts } from "./prompts";
+import { setSeal } from "./seals";
 import { allQuestions, exportFile, permalinks } from "./exports";
 import { exportFlow } from "./bundle";
 import { currentVersion, currentVersionLabel, srcKey, hasLocalFile } from "./source";
@@ -198,6 +200,10 @@ export function makeHandler(cx: HostContext, panels: BoardHost, mediaDir: string
       return panels.boardRefs(p);
     },
     refPicked: (_p, m) => panels.refPicked(m.b, m.id),
+    setSeal: async (_p, m) => {
+      if (!SAFE_ID.test(m.board) || (m.seal !== null && !isBoardSeal(m.seal))) throw new Error("Invalid mark");
+      await setSeal(panels, m.board, m.seal);
+    },
     subCard: async (_p, m) => {
       const b = store.peek(m.board) ?? (await store.load(m.board));
       const r = b && subCardOf(b, m.card);

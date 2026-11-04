@@ -11,9 +11,11 @@ import {
   TEXT_FS,
   type Board,
   type BoardFile,
+  type BoardSeal,
   type Camera,
   type SharedCardFile,
 } from "./model";
+import { SEAL_COLORS, sealTextOk } from "./seal";
 import { fileCamera, migrateBoard, migrateSharedCard, sharedTextHeights } from "./migrate";
 
 const str = v.string(),
@@ -303,6 +305,14 @@ const Sticker = obj({
   q: opt(obj({ md: str, done: opt(yes), answer: opt(str), at: opt(num) })),
 });
 
+/** 白板的印章（seal.ts）：字过不了 sealTextOk、颜色不认得的白板不收 */
+export const BoardSealSchema = obj({
+  text: opt(v.pipe(str, v.check(sealTextOk, "Mark text: 1–5 CJK and 1–12 other characters, no spaces"))),
+  color: opt(v.picklist(SEAL_COLORS)),
+});
+/** 别处（侧栏、别的白板）发来的印章 */
+export const isBoardSeal = (x: unknown): x is BoardSeal => v.is(BoardSealSchema, x);
+
 const boardEntries = {
   version: v.literal(BOARD_VERSION),
   id: opt(str),
@@ -319,6 +329,7 @@ const boardEntries = {
   seq: opt(num),
   marks: opt(v.record(str, GraphMark)),
   legend: opt(v.record(str, str)),
+  seal: opt(BoardSealSchema),
 };
 /** 当前版本（迁移之后）、共享卡已经换成内容的白板（界面拿到的，带着这台机器上的镜头）。id 可以缺：宿主扫描时按文件名补 */
 export const BoardSchema = obj({ ...boardEntries, cam: obj({ x: num, y: num, z: num }) });

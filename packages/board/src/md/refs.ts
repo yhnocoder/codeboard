@@ -2,8 +2,17 @@
 // 存成 [[白板 › 卡#^白板id/卡id]]（显示按 id 找到的现在的名字，改了名也不断）。第一次编辑 Note、或者第一次认到这种引用时才问宿主要；候选在这里先排好（memo），打字时只过滤
 import { createEffect, createMemo, on, untrack } from "solid-js";
 import { createStore, reconcile } from "solid-js/store";
-import { cardTitle, type BoardRef, type BoardRefs, type RefBoard } from "@codeboard/core";
-import type { Markdown, RefBroken, RefTarget } from "@yhnocoder/markdown";
+import {
+  bookPath,
+  cardTitle,
+  refSeal,
+  type BoardMeta,
+  type BoardRef,
+  type BoardRefs,
+  type RefBoard,
+  type SealColor,
+} from "@codeboard/core";
+import type { Markdown, RefBroken, RefSeal, RefTarget } from "@yhnocoder/markdown";
 import type { RefGroup, RefPick } from "@yhnocoder/markdown/editor";
 import { ask, send } from "../host";
 import { state } from "../state/store";
@@ -121,7 +130,13 @@ export function crossRefById(
     }
     const ix = xrefIds(),
       hit = ix.cards.get(board ? `${board}/${id}` : id);
-    if (hit) return { id: hit[1].id, title: hit[1].t, badge: hit[0].name.trim(), place: hit[0].id };
+    if (hit) {
+      const [rb, r] = hit,
+        seal = sealFor(rb.id);
+      return seal
+        ? { id: r.id, title: r.t, seal, hint: refPath(rb.id, r.t), place: rb.id }
+        : { id: r.id, title: r.t, badge: rb.name.trim(), place: rb.id };
+    }
     const b = board && ix.boards.get(board);
     if (!b) return null;
     const parts = label.split(/\s*›\s*/);
@@ -132,6 +147,35 @@ export function crossRefById(
       why: `This card is no longer on ${b.name.trim()}`,
     };
   });
+}
+/** 所有白板（带印章，宿主推的 boards）：这块白板自己的名字和印章用它现在的（刚改过时宿主还没推回来） */
+export const boardMetas = rooted(() =>
+  createMemo((): BoardMeta[] =>
+    state.boards.map((m) => (m.id === state.board.id ? { ...m, name: state.board.name, seal: state.board.seal } : m)),
+  ),
+);
+export const sealColor = (c: SealColor) => `var(--seal-${c})`;
+/**
+ * 引用白板 board（上的东西）时画的印章：这块白板上的不画（undefined）；别的书里的带上那本书的。alone = 引用的就是那块白板本身，
+ * 而它是一本书（只画印章，不写名字）
+ */
+export function sealFor(board: string, self = false): RefSeal | undefined {
+  const all = boardMetas(),
+    s = refSeal(board, state.board.id, all);
+  if (!s) return;
+  const alone = self && bookPath(board, all).length === 1;
+  return {
+    text: s.text,
+    color: sealColor(s.color),
+    ...(s.book ? { outer: { text: s.book.text, color: sealColor(s.book.color) } } : {}),
+    ...(alone ? { alone } : {}),
+  };
+}
+/** 悬停时的提示：从书到白板 board 的名字，再是卡的标题 */
+export function refPath(board: string, title?: string): string {
+  const all = boardMetas();
+  const names = bookPath(board, all).map((id) => all.find((m) => m.id === id)?.name.trim() ?? "");
+  return [...names, ...(title ? [title] : [])].filter(Boolean).join(REF_SEP);
 }
 
 const low = (s: string) => s.trim().toLowerCase();
@@ -158,8 +202,11 @@ export function crossRef(
       const b: RefBoard | undefined = xrefs.boards.find((x) => low(x.name) === name);
       if (b) {
         const c = b.refs.find((r) => low(r.t) === low(rest)) ?? b.refs.find((r) => r.id === rest);
+        const seal = c && sealFor(b.id);
         return c
-          ? { id: c.id, title: c.t, badge: b.name.trim(), place: b.id }
+          ? seal
+            ? { id: c.id, title: c.t, seal, hint: refPath(b.id, c.t), place: b.id }
+            : { id: c.id, title: c.t, badge: b.name.trim(), place: b.id }
           : { broken: "item", title: rest, badge: b.name.trim(), why: `No card with this title on ${b.name.trim()}` };
       }
       if (name === low(state.board.name))

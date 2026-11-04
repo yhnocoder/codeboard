@@ -6,6 +6,7 @@
 // Markdown 里转义的 \$ 总是字面的 $（旧编辑器写下的 \$…\$ 公式由 migrate.ts 改成 $…$）。
 
 import type { BoundVal, CallAlt, Var } from "@codeboard/analysis/basics";
+import type { SealColor } from "./seal";
 
 export const BOARD_VERSION = 11;
 
@@ -492,7 +493,11 @@ export type Board = {
   marks?: Record<string, GraphMark>;
   /** Arrow 图例：内置几种样式的名字，用户改过的才存 */
   legend?: Partial<Record<LegendKey, string>>;
+  /** 印章（Mark，seal.ts）：别的白板上的 [[引用]] 画在标题前面的几个字和颜色；只存用户改过的字段，没有的用默认的 */
+  seal?: BoardSeal;
 };
+/** 白板的印章里用户改过的：text 过得了 sealTextOk */
+export type BoardSeal = { text?: string; color?: SealColor };
 
 /** 图例：只给样式起名字，不加规则 */
 export const LEGEND = [
@@ -516,7 +521,16 @@ export type SharedCard = { card: Card; sidenotes: Sidenote[] };
 export type SharedCardFile = SharedCard & { version: 11 };
 
 /** subs = 这块白板上嵌着的子白板（去重，按出现的先后；侧栏按它缩进成树） */
-export type BoardMeta = { id: string; name: string; group?: string; cards: number; stale?: number; subs?: string[] };
+export type BoardMeta = {
+  id: string;
+  name: string;
+  group?: string;
+  cards: number;
+  stale?: number;
+  subs?: string[];
+  /** 白板文件里存的印章（Board.seal）：没有 = 全用默认的 */
+  seal?: BoardSeal;
+};
 /** 读不了的白板文件（JSON 坏了、过不了 schema）：侧栏照样列出来，免得看起来像白板没了。name = 文件里的 name，没有就用文件名 */
 export type BrokenBoard = { file: string; name: string; group?: string; reason: string };
 

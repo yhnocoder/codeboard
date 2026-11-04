@@ -24,7 +24,7 @@
     "stickerBitmapsPicker",
     "notePastedImageSameSizeInBothModes"
   ],
-  "manual": ["markdownRecord"],
+  "manual": ["markdownRecord", "boardMarksScreenshots"],
   "solo": ["markdownLazyRender"],
   "known": {},
   "limits": {
@@ -388,9 +388,13 @@
       "scenarios": ["versions", "patchsave", "lost", "rebase", "follow"]
     },
     "subboards": {
-      "about": "sub-boards: the sub-board card, entering and leaving, Turn into Board, breadcrumbs, the board tree",
+      "about": "sub-boards: the sub-board card, entering and leaving, Turn into Board, breadcrumbs, the board tree, board Marks on refs",
       "files": [
         "packages/board/src/cards/{BoardBody,SubPreviews}.tsx",
+        "packages/core/src/seal.ts",
+        "packages/host/src/seals.ts",
+        "packages/board/src/ui/pops/seal.tsx",
+        "packages/board/test/scenarios/board-marks.spec.ts",
         "packages/board/src/state/subboards.ts",
         "packages/board/src/actions/subboards.ts",
         "packages/core/src/commands/subboards.ts",

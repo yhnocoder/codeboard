@@ -66,6 +66,15 @@
   --hd-purple: #7d55b0;
   --hd-orange: #c46a2a;
   --hd-green: #4c8a3a;
+  /* 白板的印章（core seal.ts 的 SEAL_COLORS）：[[引用]] 前面的小字标、编辑框里的色块 */
+  --seal-vermilion: #b24a2c;
+  --seal-amber: #9a7018;
+  --seal-olive: #5f7230;
+  --seal-teal: #2a7570;
+  --seal-ink: #35609a;
+  --seal-plum: #7c4682;
+  --seal-rose: #a94c64;
+  --seal-graphite: #5f574e;
   --hand: "Shantell Sans", "Yozai", "Kaiti SC", STKaiti, KaiTi, cursive;
   --md-hand: var(--hand);
   --md-annot-blue: var(--hd-blue);
@@ -166,6 +175,14 @@
   --hd-purple: #b89be6;
   --hd-orange: #e3955a;
   --hd-green: #96c47e;
+  --seal-vermilion: #e8805f;
+  --seal-amber: #ddb052;
+  --seal-olive: #a9b96c;
+  --seal-teal: #66bdb3;
+  --seal-ink: #86ade0;
+  --seal-plum: #c38dc7;
+  --seal-rose: #e290a3;
+  --seal-graphite: #b1a798;
   --glass: rgba(42, 41, 38, 0.94);
   --tip-bg: rgba(245, 243, 238, 0.94);
   --tip-ink: #1d1c1a;
@@ -7587,6 +7604,71 @@ mark.wdiff {
 .k-modifySvg .msvg-f kbd {
   font: 10px var(--mono);
   color: var(--ink-2);
+}
+
+/* Edit Mark…（ui/pops/seal.tsx）：预览的印章、字、八个色块、提示（同一本书里重了是警告色） */
+.pop.k-seal {
+  width: 288px;
+}
+.k-seal .seal-ed {
+  display: grid;
+  gap: 10px;
+  padding: 10px 12px 8px;
+}
+.k-seal .seal-hd {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.k-seal .seal-pv {
+  font-size: 24px;
+  line-height: 1;
+  display: inline-flex;
+}
+.k-seal .seal-pv .md-seal {
+  vertical-align: 0;
+}
+.k-seal .seal-nm {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.k-seal .seal-in {
+  font: 13px / 1.3 var(--sys);
+  color: var(--ink);
+}
+.k-seal .seal-sw {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.k-seal .seal-sw button {
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  background: var(--sw);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08);
+}
+.k-seal .seal-sw button[aria-checked="true"] {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+.k-seal .seal-sw button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.k-seal .seal-hint {
+  font-size: 11.5px;
+  color: var(--ink-3);
+  min-height: 1.3em;
+}
+.k-seal .seal-hint.warn {
+  color: var(--warn);
 }
 
 /* Animated images in a Note (md/anim.ts): the <img> keeps its place, clicks and menus but shows nothing; over it (no pointer

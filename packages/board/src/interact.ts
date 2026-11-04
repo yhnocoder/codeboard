@@ -549,10 +549,13 @@ function rowAnchor(row: HTMLElement, hostId: string): Anchor | null {
   return { card: cid, seg: r.seg, lines: [r.line, r.line] };
 }
 
-export function cardContextMenu(e: MouseEvent, id: string) {
+export function cardContextMenu(e: MouseEvent, id: string, md: Markdown) {
   e.preventDefault();
   e.stopPropagation();
   const t = e.target as HTMLElement;
+  // Note 里指向别的白板的 [[引用]]（显示着或编辑中）：打开、Edit Mark…
+  const ref = t.closest<HTMLElement>(".md-ref");
+  if (ref && A.noteRefMenu(id, ref, md, e.clientX, e.clientY)) return;
   // Note 里的一张图（显示着或编辑中）：图的菜单
   const img = A.noteImageAt(t, id);
   if (img) return A.noteImageMenu(img, e.clientX, e.clientY);

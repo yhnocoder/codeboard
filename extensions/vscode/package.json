@@ -79,6 +79,11 @@
         "icon": "$(edit)"
       },
       {
+        "command": "codeboard.editMark",
+        "title": "Edit Mark…",
+        "category": "CodeBoard"
+      },
+      {
         "command": "codeboard.duplicateBoard",
         "title": "Duplicate Board",
         "category": "CodeBoard"
@@ -364,29 +369,34 @@
           "group": "2_edit@1"
         },
         {
-          "command": "codeboard.duplicateBoard",
+          "command": "codeboard.editMark",
           "when": "view == codeboard.boards && viewItem == board",
           "group": "2_edit@2"
         },
         {
-          "command": "codeboard.moveToGroup",
+          "command": "codeboard.duplicateBoard",
           "when": "view == codeboard.boards && viewItem == board",
           "group": "2_edit@3"
         },
         {
-          "command": "codeboard.copyToProject",
+          "command": "codeboard.moveToGroup",
           "when": "view == codeboard.boards && viewItem == board",
           "group": "2_edit@4"
         },
         {
-          "command": "codeboard.moveToProject",
+          "command": "codeboard.copyToProject",
           "when": "view == codeboard.boards && viewItem == board",
           "group": "2_edit@5"
         },
         {
-          "command": "codeboard.exportBoards",
+          "command": "codeboard.moveToProject",
           "when": "view == codeboard.boards && viewItem == board",
           "group": "2_edit@6"
+        },
+        {
+          "command": "codeboard.exportBoards",
+          "when": "view == codeboard.boards && viewItem == board",
+          "group": "2_edit@7"
         },
         {
           "command": "codeboard.revealInFolder",
