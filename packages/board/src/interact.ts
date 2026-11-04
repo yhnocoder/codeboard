@@ -2,6 +2,10 @@ import { batch } from "solid-js";
 import {
   findCard,
   frameless,
+  scalesText,
+  scaleText,
+  textSizeOf,
+  TEXT_FS,
   isCode,
   snapMove,
   snapResize,
@@ -11,6 +15,9 @@ import {
   type Card,
   type CallSpan,
   type Rect,
+  type Section,
+  type FrameEdge,
+  dragFrameEdge,
   type Anchor,
   type End,
   type LinkSide,
@@ -51,6 +58,7 @@ import {
   allMembers,
   visibleCards,
   setMovingHome,
+  isHidden,
 } from "./state/sections";
 import { geo } from "./state/geo";
 import { aimBlock, aimPoint, blockOf, tintBlocks, type BlockAim } from "./state/blocks";
@@ -70,7 +78,7 @@ import {
 import { selSticker, setSelSticker } from "./state/stickers";
 import { ghostOut } from "./state/ghost";
 import { overNote, leaveNote, noteDropAt } from "./notedrop";
-import { boardPoint, worldAt, lastPointer, trackPointer, naturalSize, chromeOf } from "./state/measure";
+import { boardPoint, worldAt, lastPointer, trackPointer, naturalSize, chromeOf, CODE_MAX } from "./state/measure";
 import { installOverlays, modalOpen, typing } from "./ui/overlay";
 import { NODRAG, CARD_CONTROL, OWNS_POINTER, BOARD_CHROME } from "./ui/guard";
 import { dispatch, matches } from "./keymap";
@@ -80,6 +88,7 @@ import { CALL_DRAG_SLOP, DRAG_SLOP, track, undoGesture } from "./gesture";
 import { togglePreview } from "./state/subboards";
 import { cardSel } from "./cardsel";
 import { boardRef, boardTimer } from "./state/root";
+import { playerAt, selectAnim } from "./md/anim";
 
 const pt = (e: { clientX: number; clientY: number }) => ({ x: e.clientX, y: e.clientY });
 const local = (e: { clientX: number; clientY: number }) => boardPoint(pt(e));
@@ -184,6 +193,12 @@ const armed = boardRef<{ id: string; kind: "note" | "free"; x: number; y: number
 export function cardClick(e: MouseEvent, id: string) {
   const a = armed.v;
   armed.v = null;
+  // a click on an animated image in the one selected Note selects the image (its filmstrip), not the text: no editing yet
+  const anim = playerAt(e.target as Element);
+  if (anim && anim.key.card === id && !e.shiftKey && !e.metaKey && !e.ctrlKey && !justDragged()) {
+    if (isSel(id) && sel.cards.length === 1 && editing()?.id !== id) selectAnim(anim);
+    return;
+  }
   if (!a || a.id !== id || e.shiftKey || e.metaKey || e.ctrlKey) return;
   // 拖着选了字的不算；任务勾选框、引用的点击 MdStatic 自己处理了（停止冒泡，到不了这里）
   if (Math.hypot(e.clientX - a.x, e.clientY - a.y) >= DRAG_SLOP || !window.getSelection()?.isCollapsed) return;
@@ -300,6 +315,9 @@ const dragEndAt = boardRef(-1e9);
 export const justDragged = () => performance.now() - dragEndAt.v < 250;
 const landT = boardTimer();
 function startCardDrag(e: PointerEvent, grabbed: string, onClick?: () => void) {
+  // Sections selected too: they and the cards move together (no merging, no dropping into a Note or onto a line)
+  if (sel.sections.some((i) => !A.sectionLocked(sec(i))))
+    return dragGroup(e, [...sel.sections], [...sel.cards], undefined, onClick);
   const ids = sel.cards.filter((i) => cardById(i) && !A.isLocked(i));
   if (!ids.length) return onClick?.();
   const skip = new Set(ids);
@@ -541,7 +559,10 @@ export function cardContextMenu(e: MouseEvent, id: string) {
   // Note 里选中了一段字：照这段字画 SVG 的菜单（编辑器里没选字时照旧不弹菜单）
   const picked = ctxSel.v?.id === id ? ctxSel.v.text : A.noteSelText(id);
   ctxSel.v = null;
-  if (picked) return A.noteTextMenu(id, picked, e.clientX, e.clientY);
+  // Note 里的一张表格（显示着或编辑中）：图注的菜单；右键在格子里常常同时选上了一个词，图注的操作照样在前面
+  const table = A.noteTableAt(t, id);
+  if (picked) return A.noteTextMenu(id, picked, e.clientX, e.clientY, table);
+  if (table !== null) return A.noteTableMenu(id, table, e.clientX, e.clientY);
   if (t.closest("[contenteditable], input, textarea")) return;
   const colEl = t.closest("[data-col]") as HTMLElement | null;
   A.cardMenu(colEl?.dataset.col ?? id, e.clientX, e.clientY);
@@ -592,7 +613,7 @@ export function resizeDown(
   const text = frameless(c),
     box = c.kind === "note" && c.look === "box";
   // 最矮 = 头部 + 一行；拉到内容本来的高度附近就回到自动高度（Box 的高度就是框的大小，一直存着）
-  const nat = box ? undefined : naturalSize(c.id);
+  const nat = box ? undefined : naturalSize(c.id, "now");
   // 子白板的框：最小也放得下几块地图和右上角的按钮
   const frame = c.kind === "board";
   const minW = box ? 60 : text ? 80 : frame ? 200 : 160,
@@ -633,8 +654,9 @@ export function resizeDown(
         if (sn.same === "h") hint = `same height · ${Math.round(h)}`;
       } else setGuides([]);
       setSizeHint(hint ? { x: x + w / 2, y: y + h + 8, text: hint } : null);
-      // 拉到内容本来的高度附近（±8 屏幕像素）= 回到跟着内容的自动高度；别的高度照存（Note 可以比内容高，也可以矮了在正文里滚）
-      const auto = bottom && nat && Math.abs(h - nat.h) < 8 / z;
+      // 拉到内容本来的高度附近（±8 屏幕像素）= 回到跟着内容的自动高度；别的高度照存（Note 可以比内容高，也可以矮了在正文里滚）。
+      // 代码比没存高度时的上限（CODE_MAX）还高的代码卡没有这样的自动高度（会一下缩到上限）：一直存着拖出来的高度
+      const auto = bottom && nat && (nat.body === undefined || nat.body <= CODE_MAX) && Math.abs(h - nat.h) < 8 / z;
       live((b) => {
         const k = hostPlace(b, id)!;
         k.w = Math.round(w);
@@ -645,6 +667,53 @@ export function resizeDown(
     },
     () => {
       setGuides([]);
+      setSizeHint(null);
+      end();
+    },
+    DRAG_SLOP,
+    drop,
+  );
+}
+
+/**
+ * Mark / Free Text 右下角的小方块：整体缩放，字号（NoteCard.fs，真的 font-size，放大了也清楚）和宽度按同一个比例变，折行的地方不变。
+ * 比例 = 指针在卡的对角线方向上走了多远（左上角不动）；上下限在 core 的 scaleText。整个拖动是一步撤销
+ */
+export function scaleDown(e: PointerEvent, id: string) {
+  if (e.button !== 0) return;
+  e.preventDefault();
+  e.stopPropagation();
+  const f = cardById(id);
+  if (!f || !scalesText(f.card) || A.isLocked(id)) return;
+  A.selectCard(id);
+  const r0 = rectOf(f.host),
+    fs0 = textSizeOf(f.card),
+    w0 = placeOf(f.host.id).w,
+    d2 = r0.w * r0.w + r0.h * r0.h || 1;
+  const { end, moving, drop } = undoGesture([f.host.id]);
+  const sx = e.clientX,
+    sy = e.clientY;
+  let last = fs0;
+  track(
+    e,
+    (ev) => {
+      moving();
+      const z = cam.z,
+        dx = (ev.clientX - sx) / z,
+        dy = (ev.clientY - sy) / z;
+      const { fs, w } = scaleText(fs0, w0, 1 + (dx * r0.w + dy * r0.h) / d2);
+      setSizeHint({ x: r0.x + (r0.w * fs) / fs0 / 2, y: r0.y + (r0.h * fs) / fs0 + 8, text: `${fs}px` });
+      if (fs === last) return;
+      last = fs;
+      live((b) => {
+        const c = findCard(b, id)?.card,
+          p = hostPlace(b, id);
+        if (!scalesText(c) || !p) return;
+        c.fs = fs === TEXT_FS[c.look] ? undefined : fs;
+        p.w = w;
+      });
+    },
+    () => {
       setSizeHint(null);
       end();
     },
@@ -851,9 +920,10 @@ export function canvasPointerDown(e: PointerEvent) {
   if (!e.shiftKey && (e.metaKey || e.ctrlKey)) {
     const w = worldOf(e);
     const s = deepestAt(frames(), w.x, w.y, new Set(state.board.sections.filter(hiddenByAncestor).map((x) => x.id)));
-    if (s) return sectionLabelDown(e, s.id);
+    if (s) return sectionLabelDown(e, s.id, true);
   }
-  const base = e.shiftKey ? [...sel.cards] : [];
+  const base = e.shiftKey ? [...sel.cards] : [],
+    baseSecs = e.shiftKey ? [...sel.sections] : [];
   if (!e.shiftKey) clearSel();
   window.getSelection()?.removeAllRanges();
   const a = local(e);
@@ -872,7 +942,15 @@ export function canvasPointerDown(e: PointerEvent) {
           return r.x < w1.x && r.x + r.w > w0.x && r.y < w1.y && r.y + r.h > w0.y;
         })
         .map((c) => c.id);
-      select({ cards: [...new Set([...base, ...hit])] });
+      // Section 整个框（折叠的：标题条）都在框选框里才选上；锁着的不选（和卡一样）
+      const fr = frames();
+      const secs = state.board.sections
+        .filter((q) => {
+          const f = fr.get(q.id);
+          return !!f && f.x >= w0.x && f.y >= w0.y && f.x + f.w <= w1.x && f.y + f.h <= w1.y && !A.sectionLocked(q);
+        })
+        .map((q) => q.id);
+      select({ cards: [...new Set([...base, ...hit])], sections: [...new Set([...baseSecs, ...secs])] });
     },
     (ev, moved) => {
       setMarquee(null);
@@ -1009,39 +1087,90 @@ export function canvasContextMenu(e: MouseEvent, md: Markdown) {
 
 // Section 标签：拖动整体移动（卡片、子 Section 一起走）
 
-export function sectionLabelDown(e: PointerEvent, id: string) {
+/** fromBody: pressed with ⌘ on its empty area (canvasPointerDown), where ⌘ means drag, not add to the selection */
+export function sectionLabelDown(e: PointerEvent, id: string, fromBody = false) {
   if (e.button !== 0 || (e.target as Element).closest(NODRAG)) return;
   e.preventDefault();
   e.stopPropagation();
   closeAllPops();
   const s = sec(id);
   if (!s) return;
-  if (isDbl(`s${id}`, e)) return setEditing({ kind: "section", id });
-  if (e.shiftKey) {
+  // ⇧ / ⌘ 点标题：加进、移出选择（和卡一样）；连着点两下是加进再移出，不是改名
+  if (e.shiftKey || (!fromBody && (e.metaKey || e.ctrlKey))) {
     toggleSel("sections", id);
     return;
   }
-  select({ sections: [id] });
-  if (A.sectionLocked(s)) return;
-  const subs = [s, ...descSections(id)];
-  const members = allMembers(id);
+  if (isDbl(`s${id}`, e)) return setEditing({ kind: "section", id });
+  // 已经选着它（和别的 Section、卡一起）：拖的是选着的全部；没选着：只选它、拖它
+  const group = sel.sections.includes(id) && sel.sections.length + sel.cards.length > 1;
+  if (!group) select({ sections: [id] });
+  if (A.sectionLocked(s) && !group) return;
+  dragGroup(e, group ? [...sel.sections] : [id], group ? [...sel.cards] : [], id);
+}
+
+/**
+ * Drag Sections and cards together: each Section with its inner Sections and its cards (a selected Section inside another goes
+ * with it), the other cards as they are. Locked ones stay. Snaps as one box: a Section alone to the other Sections' frames, with
+ * cards also to the other cards. On release each outer dragged Section is in the Section its title is in (the grabbed one: where
+ * the pointer is), and each card dragged on its own in the Section it now sits in (homeFor, as when a card is dragged).
+ * grabbed: the Section pressed (none: a card). onClick: released without moving
+ */
+function dragGroup(e: PointerEvent, secIds: string[], cardIds: string[], grabbed?: string, onClick?: () => void) {
+  const sel0 = secIds.map((i) => sec(i)).filter((q): q is Section => !!q && !A.sectionLocked(q));
+  const subs = new Map<string, Section>();
+  for (const q of sel0) for (const k of [q, ...descSections(q.id)]) subs.set(k.id, k);
+  const outerOf = (q: Section) => {
+    const out: string[] = [];
+    for (let p = sec(q.parent); p && !out.includes(p.id) && out.length < 50; p = sec(p.parent)) out.push(p.id);
+    return out;
+  };
+  const tops = sel0.filter((q) => !outerOf(q).some((p) => subs.has(p)));
+  const inSecs = new Set(tops.flatMap((q) => allMembers(q.id).map((c) => c.id)));
+  const loose = [...new Set(cardIds.map((i) => cardById(i)?.host.id))].filter(
+    (i): i is string => !!i && !inSecs.has(i) && !A.isLocked(i) && !isHidden(i),
+  );
+  if (!tops.length && !loose.length) return onClick?.();
   const items = [
-    ...members.map((c) => {
-      const q = placeOf(c.id);
-      return { kind: "c" as const, id: c.id, ox: q.x, oy: q.y };
+    ...[...inSecs, ...loose].map((i) => {
+      const q = placeOf(i);
+      return { kind: "c" as const, id: i, ox: q.x, oy: q.y };
     }),
-    ...subs.map((q) => ({ kind: "s" as const, id: q.id, ox: q.x, oy: q.y })),
+    ...[...subs.values()].map((q) => ({ kind: "s" as const, id: q.id, ox: q.x, oy: q.y })),
   ];
-  const skip = new Set(subs.map((q) => q.id));
+  const skip = new Set(subs.keys());
   const fr = new Map(frames());
-  // 和拖卡一样对齐、吸附：吸到别的 Section 的边和中线。自己、子 Section 跟着走；外层的框包着它、跟着它变，也不算
-  const box = fr.get(id);
-  const outer = new Set<string>();
-  for (let p = sec(s.parent); p && !outer.has(p.id); p = sec(p.parent)) outer.add(p.id);
-  const targets = [...fr.entries()].filter(([k]) => !skip.has(k) && !outer.has(k)).map(([, r]) => r);
+  // 和拖卡一样对齐、吸附：吸到别的 Section 的边和中线（带着卡时也吸别的卡）。拖着的、它们里面的 Section 跟着走；外层的框包着
+  // 它们、跟着变，也不算
+  const looseRects = loose.map((i) => rectOf(cardById(i)!.host));
+  const box = bounds([...tops.map((q) => fr.get(q.id)).filter((r): r is Rect => !!r), ...looseRects]);
+  const outer = new Set(tops.flatMap(outerOf));
+  const targets = [
+    ...[...fr.entries()].filter(([k]) => !skip.has(k) && !outer.has(k)).map(([, r]) => r),
+    ...(loose.length
+      ? visibleCards()
+          .filter((c) => !inSecs.has(c.id) && !loose.includes(c.id))
+          .map((c) => rectOf(c))
+      : []),
+  ];
+  /** the frames as they will be once moved by (dx, dy): the dragged Sections' moved with them */
+  const shifted = (dx: number, dy: number) => {
+    const m = new Map(fr);
+    for (const k of skip) {
+      const r = fr.get(k);
+      if (r) m.set(k, { ...r, x: r.x + dx, y: r.y + dy });
+    }
+    return m;
+  };
+  const homes = (dx: number, dy: number) => {
+    const f = shifted(dx, dy);
+    return new Map(
+      loose.map((i, k) => [i, homeFor(f, { ...looseRects[k], x: looseRects[k].x + dx, y: looseRects[k].y + dy })?.id]),
+    );
+  };
   const g = undoGesture();
   const sx = e.clientX,
     sy = e.clientY;
+  let at = { dx: 0, dy: 0 };
   const pace = snapPace(e, (ev, still) => onMove(ev, still));
   const onMove = (ev: PointerEvent, still = false) => {
     const z = cam.z;
@@ -1054,6 +1183,7 @@ export function sectionLabelDown(e: PointerEvent, id: string) {
       dy += sn.dy;
       setGuides(sn.guides);
     } else setGuides([]);
+    at = { dx: Math.round(dx), dy: Math.round(dy) };
     live((b) => {
       for (const it of items) {
         const o = it.kind === "c" ? b.place[it.id] : b.sections.find((q) => q.id === it.id);
@@ -1063,6 +1193,8 @@ export function sectionLabelDown(e: PointerEvent, id: string) {
         }
       }
     });
+    // 自己走的卡松手后会在哪个 Section：先预演出来（和拖卡一样）
+    if (loose.length) setMovingHome(homes(at.dx, at.dy));
   };
   track(
     e,
@@ -1070,28 +1202,52 @@ export function sectionLabelDown(e: PointerEvent, id: string) {
     (ev, moved) => {
       pace.stop();
       setGuides([]);
-      if (moved) {
-        const w = worldOf(ev);
-        const np = deepestAt(fr, w.x, w.y, skip);
-        if ((np?.id ?? undefined) !== s.parent) {
-          live((b) => {
-            const q = b.sections.find((x) => x.id === id);
-            if (q) q.parent = np?.id;
-          });
-          toast(np ? `Moved into ${np.title}` : "Moved out of the section");
-        }
+      setMovingHome(null);
+      if (!moved) {
+        g.end();
+        return onClick?.();
       }
+      const w = worldOf(ev);
+      const into = new Map<string, Section | undefined>();
+      for (const q of tops) {
+        const r = fr.get(q.id);
+        const p = q.id === grabbed || !r ? w : { x: r.x + at.dx + 16, y: r.y + at.dy + 16 };
+        const np = deepestAt(fr, p.x, p.y, skip);
+        if ((np?.id ?? undefined) !== q.parent) into.set(q.id, np);
+      }
+      const home = homes(at.dx, at.dy);
+      live((b) => {
+        for (const [id, np] of into) {
+          const q = b.sections.find((x) => x.id === id);
+          if (q) q.parent = np?.id;
+        }
+        for (const [i, h] of home) {
+          const c = b.place[i];
+          if (c) c.section = h;
+        }
+      });
+      const to = [...new Set(into.values())];
+      if (into.size === 1) toast(to[0] ? `Moved into ${to[0].title}` : "Moved out of the section");
+      else if (into.size > 1)
+        toast(
+          to.length > 1
+            ? `Moved ${into.size} sections`
+            : to[0]
+              ? `Moved ${into.size} sections into ${to[0].title}`
+              : `Moved ${into.size} sections out of their sections`,
+        );
       g.end();
     },
     DRAG_SLOP,
     () => {
       pace.stop();
+      setMovingHome(null);
       g.drop();
     },
   );
 }
-/** 拖 Section 的边改大小（框只会比内容大） */
-export function sectionEdgeDown(e: PointerEvent, id: string) {
+/** 拖 Section 的四条边、四个角改大小：对面的边不动（框只会比内容大：缩过卡时框停在卡外面，卡还在 Section 里） */
+export function sectionEdgeDown(e: PointerEvent, id: string, edge: FrameEdge) {
   if (e.button !== 0) return;
   e.preventDefault();
   e.stopPropagation();
@@ -1104,16 +1260,10 @@ export function sectionEdgeDown(e: PointerEvent, id: string) {
   track(
     e,
     (ev) => {
-      const w = Math.max(120, f0.w + (ev.clientX - sx) / cam.z),
-        h = Math.max(80, f0.h + (ev.clientY - sy) / cam.z);
+      const r = dragFrameEdge(f0, edge, (ev.clientX - sx) / cam.z, (ev.clientY - sy) / cam.z);
       live((b) => {
         const q = b.sections.find((x) => x.id === id);
-        if (q) {
-          q.x = f0.x;
-          q.y = f0.y;
-          q.w = Math.round(w);
-          q.h = Math.round(h);
-        }
+        if (q) Object.assign(q, r);
       });
     },
     g.end,

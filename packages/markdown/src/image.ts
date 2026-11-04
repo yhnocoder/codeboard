@@ -94,6 +94,8 @@ export class Images {
     alt?: string | null;
     title?: string | null;
     width?: number | null;
+    frame?: number | null;
+    loop?: boolean | null;
   }): Record<string, string | null> {
     const raw = a.src ?? "";
     const r = (raw && this.resolver?.(raw)) || { src: raw };
@@ -116,6 +118,9 @@ export class Images {
       // 缩小了的图：正文宽的百分之几，居中（.sized，见 markdown.css；编辑器里这个宽度在包着图的那一层上，见 editor/image.ts）
       style: a.width ? `width: ${a.width}%` : null,
       class: a.width ? "sized" : null,
+      // an animated image's still frame and always-play ({frame=N loop=true}), for a page that plays animated images itself
+      "data-frame": a.frame ? String(a.frame) : null,
+      "data-loop": a.loop ? "" : null,
       loading: "lazy",
       decoding: "async",
     };

@@ -34,7 +34,8 @@ function fourBoard(): Board {
   return b;
 }
 
-/** The toolbar's T ▾ only opens a menu (like Code): New Text (T), New Box (R), New Mark (M); each makes its kind, and so do the keys */
+/** The toolbar's T ▾ only opens a menu (like Code): New Text (T), New Box (R), New Mark (M), New Free Text; each makes its kind,
+ *  and so do the keys */
 test("writeMenuAndKeysCreateTextBoxMark", async () => {
   const h = await open({ board: emptyBoard("b1", "writing"), light, w: 1200, h: 800 });
   const pg = h.page;
@@ -51,7 +52,7 @@ test("writeMenuAndKeysCreateTextBoxMark", async () => {
     .evaluateAll((bs) =>
       bs.map((b) => `${b.querySelector(".lb")?.textContent} ${b.querySelector("small")?.textContent ?? ""}`.trim()),
     );
-  check("writeMenu items", items.join("|") === "New Text T|New Box R|New Mark M", items);
+  check("writeMenu items", items.join("|") === "New Text T|New Box R|New Mark M|New Free Text", items);
   check("writeMenu made nothing yet", notes(h).length === 0);
   await shot(h, "writing-menu");
   await pg.locator(".ctx button", { hasText: "New Box" }).click();
@@ -212,6 +213,60 @@ test("boxFillEditAndToolbars", async () => {
   await shot(h, "writing-menu-board");
   await h.close();
 });
+
+/** #116: the colour strip above a selected Box (and Mark) holds every swatch with its ring (the selected one's dark ring, the others'
+ *  halo) inside the strip, and no ring touches the next swatch's; in every theme (some of them restyle .pill's padding and gap) */
+const swatchRings = async (themes: readonly string[]) => {
+  const rings = (sel: string) => {
+    const dots = [...document.querySelectorAll<HTMLElement>(sel)];
+    const strip = dots[0].parentElement!.getBoundingClientRect();
+    const boxes = dots.map((d) => {
+      const r = d.getBoundingClientRect();
+      const spread = Math.max(
+        0,
+        ...[...getComputedStyle(d).boxShadow.matchAll(/((?:-?\d*\.?\d+px\s*){4})/g)].map((m) => {
+          const n = m[1].trim().split(/\s+/).map(parseFloat);
+          return n[3] + Math.abs(n[0]) + Math.abs(n[1]);
+        }),
+      );
+      return {
+        l: r.left - spread,
+        r: r.right + spread,
+        t: r.top - spread,
+        b: r.bottom + spread,
+        on: d.classList.contains("on"),
+      };
+    });
+    return { strip: { l: strip.left, r: strip.right, t: strip.top, b: strip.bottom }, boxes };
+  };
+  const bad: unknown[] = [];
+  for (const theme of themes) {
+    const h = await open({ board: fourBoard(), light, w: 1200, h: 800, settings: { theme } as never });
+    const pg = h.page;
+    for (const [id, dots, pick] of [
+      ["box", ".bdots .bdot", card("box")],
+      ["mark", ".hdots .hdot", `${card("mark")} .tx`],
+    ] as const) {
+      await pg.locator(pick).click();
+      await idle(h);
+      await pg
+        .locator(`${card(id)} ${dots}`)
+        .first()
+        .waitFor();
+      const { strip, boxes } = await pg.evaluate(rings, `${card(id)} ${dots}`);
+      const outside = boxes.some((b) => b.l < strip.l || b.r > strip.r || b.t < strip.t || b.b > strip.b);
+      const touching = boxes.some((b, i) => i > 0 && boxes[i - 1].r + 1 > b.l);
+      if (outside || touching || !boxes.some((b) => b.on)) bad.push({ theme, id, outside, touching, strip, boxes });
+      if (id === "box" && (theme === "warm-ink" || theme === "ink-wash")) await shot(h, `writing-swatches-${theme}`);
+      await pg.mouse.click(600, 600);
+      await idle(h);
+    }
+    await h.close();
+  }
+  check("swatchRings inside the strip, none touching the next", bad.length === 0, bad);
+};
+test("writingSwatchRingsClearWarm", () => swatchRings(["warm-ink", "graphite", "classic", "newspaper", "poster"]));
+test("writingSwatchRingsClearStyled", () => swatchRings(["ink-wash", "soft-light", "drafting", "colorful", "city"]));
 
 /** Turn into Text puts the Note's title on the first line as a # heading (shown big and bold, Markdown kept); Turn into Note moves it
  *  back into the header. The round trip looks the same and loses nothing */

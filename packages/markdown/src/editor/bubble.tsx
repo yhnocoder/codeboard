@@ -6,6 +6,7 @@ import { createEffect, createSignal, onCleanup, Show, type Accessor } from "soli
 import { Icon, type IconName } from "./icons";
 import { isWrapped, revealMeta, toggleWrap } from "./inline";
 import { blockInfo, flat, type Span } from "./spans";
+import { escAnnot } from "../schema-marks";
 import { place, virtual } from "../ui/place";
 import { TOOLBAR_SETTLE } from "../ui/timing";
 import { IS_MAC } from "../ui/platform";
@@ -193,7 +194,7 @@ export function Bubble(p: { editor: Editor; tick: Accessor<number>; ui: Ui }) {
     live = null;
     setAnnot(sp?.atom?.type === "annot" ? sp.atom.note : "");
   };
-  const escAnnot = (t: string) => t.replace(/(?<!\\)[{}|]/g, "\\$&");
+  const escText = (t: string) => t.replace(/(?<!\\)[{}|]/g, "\\$&");
   /** The source the annotation range becomes for this note, and the range it replaces */
   const annotEdit = (note: string, st = e.state) => {
     const r = annotAt!,
@@ -213,8 +214,8 @@ export function Bubble(p: { editor: Editor; tick: Accessor<number>; ui: Ui }) {
     return {
       from: r.from,
       to: r.to,
-      text: note && r.to > r.from ? `{${escAnnot(text)}|${escAnnot(note)}}` : text,
-      inner: escAnnot(text),
+      text: note && r.to > r.from ? `{${escText(text)}|${escAnnot(note)}}` : text,
+      inner: escText(text),
     };
   };
   const unpreview = () => {

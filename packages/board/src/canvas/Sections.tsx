@@ -1,7 +1,7 @@
 // Section：框画在卡片下面，标签浮在卡片上面（拖标签整体移动）；折叠后还是同样的框和标题，框缩到刚好包住「名字 · N cards ›」，
 // 指着它停一会儿下面摊开几张成员卡的预览。
 import { For, Show, createMemo, createRenderEffect, createSignal, onCleanup, untrack } from "solid-js";
-import { cardTitle, type Card } from "@codeboard/core";
+import { cardTitle, type Card, type FrameEdge } from "@codeboard/core";
 import { state } from "../state/store";
 import { sel } from "../state/selection";
 import {
@@ -22,6 +22,8 @@ import { sectionLabelDown, sectionEdgeDown } from "../interact";
 import * as A from "../actions";
 import { SECTION_PEEK_OUT } from "../state/timing";
 
+/** a resize handle on each side and each corner of an open frame (styles.css .sedge) */
+const FRAME_EDGES: FrameEdge[] = ["n", "s", "e", "w", "nw", "ne", "sw", "se"];
 const ordered = () => state.board.sections.filter((s) => !hiddenByAncestor(s)).sort((a, b) => depthOf(a) - depthOf(b));
 
 export function SectionFrames() {
@@ -86,7 +88,17 @@ export function SectionFrames() {
                 data-sect={s.id}
               >
                 <Show when={!s.collapsed}>
-                  <span class="sgrip" data-nodrag data-export="strip" onPointerDown={(e) => sectionEdgeDown(e, s.id)} />
+                  <For each={FRAME_EDGES}>
+                    {(k) => (
+                      <span
+                        class="sedge"
+                        data-edge={k}
+                        data-nodrag
+                        data-export="strip"
+                        onPointerDown={(e) => sectionEdgeDown(e, s.id, k)}
+                      />
+                    )}
+                  </For>
                 </Show>
               </div>
             </Show>

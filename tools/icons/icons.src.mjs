@@ -124,6 +124,7 @@ export const ICONS = {
   ],
   mark: ["M10.5 2.5l2.5 2.5L7 11H4.5V8.5zM2 14c1.3-.8 2.7-.8 4 0s2.7.8 4 0 2.7-.8 4 0", "", "pen with a squiggle"],
   box: [rect(2, 4, 14, 12, 2), "", "rectangle-horizontal"],
+  freetext: ["M4 8h8M4 13V3M12 13V3", "", "heading"],
   undo: ["M6 10 2 6l4-4M2 6h7.5a3.5 3.5 0 0 1 0 7H7", "", "undo-2"],
   redo: ["M10 10l4-4-4-4M14 6H6.5a3.5 3.5 0 0 0 0 7H9", "", "redo-2"],
   lock: [rect(2, 7, 14, 14, R) + "M5 7V5a3 3 0 0 1 6 0v2", "", "lock"],

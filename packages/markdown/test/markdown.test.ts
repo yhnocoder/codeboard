@@ -616,6 +616,44 @@ describe("annotations {text|note}", () => {
     same("plain {braces} and a|b pipes stay");
     same("==hl== and {t|n|orange}");
   });
+  it("a note can hold { } pairs, so a formula reads as typed (#121), and keeps its escapes", () => {
+    const one = (s: string) => annots(s)[0]?.note;
+    expect(one("{==64 位==|$\\frac{a}{b}$ 倍}")).toBe("$\\frac{a}{b}$ 倍");
+    expect(one("{x|$\\sqrt{\\frac{a}{b^{2}}}$|purple}")).toBe("$\\sqrt{\\frac{a}{b^{2}}}$");
+    expect(annots("{x|$\\frac{a}{b}$|green below}")[0]).toMatchObject({ color: "green", below: true });
+    // a | inside a pair does not end the note
+    expect(one("{x|$\\text{a|b}$}")).toBe("$\\text{a|b}$");
+    // the escaped form written before still reads the same
+    expect(one("{x|$\\\\frac\\{a\\}\\{b\\}$ 倍}")).toBe("$\\frac{a}{b}$ 倍");
+    expect(one("{x|a \\} b}")).toBe("a } b");
+    // an unpaired { never runs past the line
+    expect(annots("{x|$\\frac{a$ 倍}\nmore}")).toEqual([]);
+    same("{==64 位==|$\\frac{a}{b}$ 倍}");
+    same("{x|$\\sqrt{\\frac{a}{b^{2}}}$|purple below}");
+    same("{x|a \\} b \\{ c}");
+    same("{x|$\\\\{a\\\\}$}");
+    same("{x|path\\\\}");
+    // from the attribute (the toolbar's Handwritten Note): written with its pairs as they are
+    const doc = parseMd("{x|y}");
+    const set = (n: JSONContent): JSONContent => ({
+      ...n,
+      marks: n.marks?.map((m) =>
+        m.type === "annot" ? { ...m, attrs: { ...m.attrs, note: "$\\frac{a}{b}$ | \\" } } : m,
+      ),
+      content: n.content?.map(set),
+    });
+    const out = serializeMd(set(doc));
+    expect(out).toBe("{x|$\\frac{a}{b}$ \\| \\\\}");
+    expect(annots(out)[0]?.note).toBe("$\\frac{a}{b}$ | \\");
+  });
+  it("draws a formula with a fraction in the note", () => {
+    const d = document.createElement("div");
+    d.innerHTML = markdown.render("所以 {==64 位==|$\\frac{a}{b}$ 倍} 总线");
+    const n = d.querySelector(".md-annot > .md-annot-n")!;
+    expect(n.querySelector(".katex .mfrac")).not.toBeNull();
+    expect(n.textContent).toContain("倍");
+    expect(d.querySelector(".md-annot mark")?.textContent).toBe("64 位");
+  });
   it("renders a span with the note in data attributes", () => {
     const h = markdown.render("see {Scheduler|决定谁先跑|purple below}");
     expect(h).toContain('class="md-annot"');

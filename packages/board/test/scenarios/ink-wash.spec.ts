@@ -7,6 +7,8 @@
 //  inkWashCallStrokeStable — each call gets one of five strokes, picked by the called word: the same word, the same stroke
 //  inkWashMotions          — the stamp, menu (opening and rolling back up), delete and toast motions run (transform / opacity / clip / mask only) and finish;
 //                            mid-animation frames as screenshots
+//  inkWashPaperFillsCard   — the paper reaches all four edges of cards whose rounded size has another aspect ratio (#112: it was
+//                            shrunk to fit and centred, its torn edge inside the card, off the shadow and header wash)
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { shot, symCard, findSym, put, OUT } from "../harness";
@@ -194,6 +196,56 @@ test("inkWashLook", async () => {
     await h.page.context().close();
   }
   check("inkWashLook", ok, res);
+});
+
+test("inkWashPaperFillsCard", async () => {
+  // Notes whose size rounded to the paper's 4 px step has another aspect ratio than the card (a wide short one, #112's Note, a tall
+  // one): the paper still reaches the card's edges on all four sides, it is not shrunk to fit and centred inside the card
+  const md =
+    "认识到现代 DRAM 的 burst 组织方式以及现代缓存层次的 cache line 组织方式后，**把线程的内存访问组织成有利的模式**。";
+  const b = emptyBoard("b1", "纸");
+  const sizes: Record<string, { x: number; y: number; w: number; h: number }> = {
+    wide: { x: 40, y: 60, w: 900, h: 102 },
+    note: { x: 40, y: 220, w: 460, h: 202 },
+    tall: { x: 560, y: 220, w: 298, h: 398 },
+  };
+  for (const [id, p] of Object.entries(sizes)) {
+    b.cards.push({ id, kind: "note", look: "note", title: "memory coalescing 内存合并访存", md } as never);
+    b.place[id] = p;
+  }
+  b.cam = { x: 0, y: 0, z: 1 };
+  const h = await open({ board: b, light: true, w: 1000, h: 680, settings: ink });
+  await idle(h);
+  await shot(h, "ink-wash-paper-edges");
+  keep("ink-wash-paper-edges");
+  const png = (await h.page.screenshot()).toString("base64");
+  // just inside each edge (3 px, past the torn edge's ±1 px), halfway along it: the paper's colour, not the board's
+  const res = await h.page.evaluate(async (png) => {
+    const img = new Image();
+    img.src = `data:image/png;base64,${png}`;
+    await img.decode();
+    const cv = document.createElement("canvas");
+    cv.width = img.width;
+    cv.height = img.height;
+    const x = cv.getContext("2d", { willReadFrequently: true })!;
+    x.drawImage(img, 0, 0);
+    const at = (px: number, py: number) => [...x.getImageData(Math.round(px), Math.round(py), 1, 1).data.slice(0, 3)];
+    const paper = [0xfb, 0xf8, 0xf1];
+    const off = (c: number[]) => c.reduce((s, v, i) => s + Math.abs(v - paper[i]), 0);
+    return [...document.querySelectorAll<HTMLElement>(".card[data-id]")].map((c) => {
+      const r = c.getBoundingClientRect(),
+        mx = r.left + r.width / 2,
+        my = r.top + r.height * 0.7;
+      const sides = { left: at(r.left + 3, my), right: at(r.right - 4, my), bottom: at(mx, r.bottom - 4) };
+      return {
+        id: c.dataset.id,
+        sides,
+        off: Object.fromEntries(Object.entries(sides).map(([k, v]) => [k, off(v)])),
+      };
+    });
+  }, png);
+  await h.page.context().close();
+  check("inkWashPaperFillsCard", res.length === 3 && res.every((c) => Object.values(c.off).every((d) => d <= 8)), res);
 });
 
 test("inkWashFlashBrush", async () => {

@@ -116,6 +116,10 @@ export function newMark(at?: { x: number; y: number }) {
 export function newBox(at?: { x: number; y: number }) {
   return newWriting("box", at);
 }
+/** Free Text：白板上的标题，纯文字、没有框，主题的标题字体，拖右下角随意改字号 */
+export function newFreeText(at?: { x: number; y: number }) {
+  return newWriting("freetext", at);
+}
 const FREE_CODE_W = NEW_CARD_W;
 function newWriting(look: NoteLook, at?: { x: number; y: number }, text = "") {
   // 空的 Note / Text / Mark：写了内容才进撤销栈，什么都没写就消失；空的 Box 本身就是一个框，留着（core newWriting）

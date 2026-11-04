@@ -559,7 +559,7 @@ export function fitSections(ids: string[]) {
   );
 }
 export const renameSection = (id: string, v: string) => C.renameSection(commandEnv, id, v);
-export const setSectionColor = (id: string, color: string | undefined) => C.setSectionColor(commandEnv, id, color);
+export const setSectionColor = (ids: string[], color: string | undefined) => C.setSectionColor(commandEnv, ids, color);
 export const moveOutOfParent = (id: string) => C.moveOutOfParent(commandEnv, id);
 /** A Compare's Swap, Unified, Hide Same Lines, from its menu or its toolbar */
 export const toggleCompare = (id: string, k: "swap" | "unified" | "hideSame") => C.toggleCompareView(commandEnv, id, k);

@@ -9,6 +9,7 @@ import { trackSkeletons } from "../state/subboards";
 import { guides, sizeHint, marquee, dragging, dropTarget, walk, editing } from "../state/ui";
 import { CardView } from "../cards/Card";
 import { SubPreviews } from "../cards/SubPreviews";
+import { AnimStrip } from "../ui/AnimStrip";
 import { CanvasStickers } from "../stickers/Picker";
 import { trackLinks, BlockPorts } from "./Links";
 import { Traffic } from "./Traffic";
@@ -164,6 +165,8 @@ export function Canvas() {
         <BlockPorts />
         {/* 子白板框外点开的预览：在卡和线上面 */}
         <SubPreviews />
+        {/* the selected animated image's filmstrip, under it (md/anim.ts) */}
+        <AnimStrip />
         {/* Walkthrough 的步数：卡上方的小号码（算出来的，不存；走过的卡不再走），在卡外面一层，变暗的卡也看得清 */}
         <Show when={walk()}>
           <WalkSteps />

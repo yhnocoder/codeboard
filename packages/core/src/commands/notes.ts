@@ -1,9 +1,10 @@
-// Notes and sidenotes: new Notes, Text, Marks and Boxes, sidenotes added and sidenote ↔ card, images in a Note, Note ↔ Text,
-// Split by Headings
+// Notes and sidenotes: new Notes, Text, Marks, Boxes and Free Text, sidenotes added and sidenote ↔ card, images in a Note,
+// Note ↔ Text, Split by Headings, a Mark's colour and weight
 import {
   BOX_FILLS,
   type BoxFill,
   type HandColor,
+  type HandWeight,
   findCard,
   isCode,
   uid,
@@ -106,9 +107,12 @@ export function splitByHeadings(
     : null;
 }
 
+/** About how wide a new Free Text's first words are, to centre it where it goes */
+const FREE_TEXT_W = 200;
 /**
- * A new Note, Text, Mark or Box with `text`: a Text is body-sized, a Box gets the first fill and a fixed height, a Mark the colour
- * of the last Mark on the board (blue for the first). Written empty (a Box aside) it is fresh (env.fresh): no undo step until
+ * A new Note, Text, Mark, Box or Free Text with `text`: a Text is body-sized, a Box gets the first fill and a fixed height, a Mark
+ * the colour of the last Mark on the board (blue for the first), a Free Text its look's text size (TEXT_FS, kept without fs).
+ * Written empty (a Box aside) it is fresh (env.fresh): no undo step until
  * something is written. at(size) = where it goes, for its size (the shell's layout); settle(b, id) files it in the Section it
  * landed in. Its id
  */
@@ -118,7 +122,8 @@ export function newWriting(
   text: string,
   o: { at: (size: { w: number; h?: number }) => { x: number; y: number }; settle: (b: Board, id: string) => void },
 ): string {
-  const w = NEW_CARD_W,
+  // a Free Text is as wide as its text (styles.css): its stored width only places it
+  const w = look === "freetext" ? FREE_TEXT_W : NEW_CARD_W,
     h = look === "box" ? 60 : undefined;
   const p = o.at({ w, h });
   const id = uid("n");
@@ -148,15 +153,68 @@ export function addSidenotes(env: CommandEnv, list: Omit<Sidenote, "id">[]): str
   return sns.map((n) => n.id);
 }
 
-/** A Text sidenote's Markdown written; written empty it goes, as a Text sidenote is only its text. Unchanged: no step */
-export function writeSidenote(env: CommandEnv, id: string, md: string) {
+/**
+ * How a shell measures a code card for keeping it fitted: `measure` = the height of its code area (Place.h) that shows all its
+ * content as laid out now, and that content's height (body); `codeMax` = the most a code card without a stored height grows to
+ */
+export type FitMeasure = { measure(cardId: string): { h: number; body: number } | null; codeMax: number };
+
+/**
+ * A change to what a code card shows under its lines (an Always Show sidenote shown, hidden, written or deleted). A card whose
+ * stored height fitted its content (Fit Content, or dragged to it) fits it again after the change, in the same undo step: the
+ * change is made, the shell lays it out and measures, and the new height is folded into the change's step. As Fit Content,
+ * content no taller than codeMax keeps no height. A card without a stored height follows its content anyway; one with a height
+ * set by hand that does not fit its content keeps it
+ */
+function keepFitted(env: CommandEnv, cardId: string, fit: FitMeasure | undefined, change: (b: Board) => void) {
+  const b0 = env.board(),
+    p0 = b0.place[cardId];
+  const fitted =
+    fit &&
+    p0?.h !== undefined &&
+    b0.cards.find((c) => c.id === cardId)?.kind === "code" &&
+    Math.abs((fit.measure(cardId)?.h ?? Number.NaN) - p0.h) <= 1;
+  const merge = uid("fit");
+  if (!env.edit(change, fitted ? { merge } : undefined) || !fitted) return;
+  const now = fit.measure(cardId);
+  if (!now) return;
+  const h = now.body <= fit.codeMax ? undefined : Math.round(now.h);
+  if (h === env.board().place[cardId]?.h) return;
+  env.edit(
+    (b) => {
+      const p = b.place[cardId];
+      if (p) p.h = h;
+    },
+    { merge },
+  );
+}
+/** The card an Always Show sidenote shows in, when `id` is one */
+const shownIn = (env: CommandEnv, id: string) => {
+  const n = env.board().sidenotes.find((k) => k.id === id);
+  return n?.kind === "text" && n.alwaysShow ? n.at.card : undefined;
+};
+
+/** A Text sidenote's Markdown written; written empty it goes, as a Text sidenote is only its text. Unchanged: no step.
+ *  An Always Show one keeps a fitted card fitted (keepFitted) */
+export function writeSidenote(env: CommandEnv, id: string, md: string, fit?: FitMeasure) {
   const n0 = env.board().sidenotes.find((k) => k.id === id);
   if (n0?.kind !== "text" || n0.md === md) return;
-  env.edit((b) => {
+  const change = (b: Board) => {
     if (!md.trim()) return removeSidenotes(b, [id]);
     const n = b.sidenotes.find((k) => k.id === id);
     if (n?.kind === "text") n.md = md;
-  });
+  };
+  const card = shownIn(env, id);
+  if (card) keepFitted(env, card, fit, change);
+  else env.edit(change);
+}
+
+/** One sidenote deleted; an Always Show one keeps a fitted card fitted (keepFitted) */
+export function deleteSidenote(env: CommandEnv, id: string, fit?: FitMeasure) {
+  const change = (b: Board) => removeSidenotes(b, [id]);
+  const card = shownIn(env, id);
+  if (card) keepFitted(env, card, fit, change);
+  else env.edit(change);
 }
 
 /** An image replaced by the one stored at `src`: an image card's (note left out), or the one at `note` in a Note's Markdown */
@@ -165,10 +223,44 @@ export function replaceImage(env: CommandEnv, ref: { card: string; note?: string
   env.edit((b) => {
     const c = findCard(b, ref.card)?.card;
     if (old === undefined) {
-      if (c?.kind === "image") c.src = src;
+      if (c?.kind === "image") {
+        c.src = src;
+        // another picture: the old one's frame means nothing for it
+        delete c.frame;
+      }
     } else if (c?.kind === "note") c.md = c.md.split(old).join(src);
   });
 }
+
+/** The frame an animated image card stands still on, from 1 (null or 1: the first, which is not written) */
+export function setImageFrame(env: CommandEnv, id: string, frame: number | null) {
+  const f = frameField(frame),
+    c0 = imageCardOf(env.board(), id);
+  if (!c0 || c0.frame === f) return;
+  env.edit((b) => {
+    const c = imageCardOf(b, id);
+    if (c) c.frame = f;
+  });
+}
+
+/** An animated image card always plays, or no longer does. frame (as setImageFrame; undefined: kept) goes in the same step, so
+ *  turning it off stands it on the frame it stopped on */
+export function setImageLoop(env: CommandEnv, id: string, loop: boolean, frame?: number | null) {
+  const c0 = imageCardOf(env.board(), id),
+    f = frame === undefined ? c0?.frame : frameField(frame);
+  if (!c0 || (!!c0.loop === loop && c0.frame === f)) return;
+  env.edit((b) => {
+    const c = imageCardOf(b, id);
+    if (!c) return;
+    c.loop = loop || undefined;
+    c.frame = f;
+  });
+}
+const frameField = (n: number | null) => (n !== null && n >= 1.5 ? Math.round(n) : undefined);
+const imageCardOf = (b: Board, id: string) => {
+  const c = findCard(b, id)?.card;
+  return c?.kind === "image" ? c : undefined;
+};
 
 /** A Note's Markdown replaced as given (a mark toggled, a caption set, Auto Focus's markup); unlike writeNote it never goes */
 export function setNoteMarkdown(env: CommandEnv, id: string, md: string) {
@@ -186,6 +278,16 @@ export function setMarkColor(env: CommandEnv, id: string, hand: HandColor) {
   });
 }
 
+/** A Mark's weight (Light, Regular, Bold): the Latin and the Chinese handwriting both follow it */
+export function setMarkWeight(env: CommandEnv, id: string, weight: HandWeight) {
+  const c0 = findCard(env.board(), id)?.card;
+  if (c0?.kind !== "note" || c0.look !== "mark" || (c0.weight ?? "regular") === weight) return;
+  env.edit((b) => {
+    const c = findCard(b, id)?.card;
+    if (c?.kind === "note" && c.look === "mark") c.weight = weight === "regular" ? undefined : weight;
+  });
+}
+
 /** A Box's fill */
 export function setBoxFill(env: CommandEnv, id: string, fill: BoxFill) {
   env.edit((b) => {
@@ -195,8 +297,11 @@ export function setBoxFill(env: CommandEnv, id: string, fill: BoxFill) {
 }
 
 /** A Text sidenote's Always Show */
-export function toggleAlwaysShow(env: CommandEnv, id: string) {
-  env.edit((b) => {
+export function toggleAlwaysShow(env: CommandEnv, id: string, fit?: FitMeasure) {
+  const n0 = env.board().sidenotes.find((k) => k.id === id);
+  if (n0?.kind !== "text") return;
+  // shown under its lines or not: a card fitted to its content grows or shrinks with it (keepFitted)
+  keepFitted(env, n0.at.card, fit, (b) => {
     const n = b.sidenotes.find((k) => k.id === id);
     if (n?.kind === "text") n.alwaysShow = !n.alwaysShow || undefined;
   });

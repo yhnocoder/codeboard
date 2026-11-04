@@ -3,6 +3,7 @@
 // the text inside is drawn. Only the look; the document is never changed (the decorations are in inline.ts)
 import { TEXT_MATH, inlineTokens, type InlineToken } from "../schema";
 import { ESC_DOLLAR } from "../schema-escape";
+import { imageAttrsEnd } from "../imageattrs";
 
 type Range = [number, number];
 /** Something drawn in place of its source (while the caret is elsewhere the source is hidden and it counts as one character) */
@@ -14,8 +15,11 @@ export type Atom =
       alt: string;
       title: string;
       width: number | null;
+      frame: number | null;
+      loop: boolean;
       altTo: number;
       url: Range;
+      /** the attribute block after it ({width=… frame=… loop=true}) */
       widthAt: Range | null;
       broken: boolean;
     }
@@ -175,9 +179,8 @@ function spanOf(t: InlineToken, raw: string, src: string, at: number, from: numb
       return { ...mk([[from, to]], null), atom: { type: "html", raw } };
     }
     case "x_annot": {
-      // { } | \ in the text and the note are written \{ \} \| \\: the text runs from { to the first unescaped |
-      let k = 1;
-      while (k < raw.length && raw[k] !== "|") k += raw[k] === "\\" ? 2 : 1;
+      // the text runs from { to the first | outside escapes and { } pairs (the tokenizer found it)
+      const k = Number(t.textEnd);
       return {
         ...mk(
           [
@@ -261,7 +264,6 @@ function textSpans(raw: string, from: number, out: Span[]) {
 }
 
 const IMG_HEAD = /^!\[((?:\\.|[^\]\\])*)\]\(\s*/;
-const IMG_WIDTH = /\{width=(\d{1,3}(?:\.\d+)?)%\}$/;
 function imageAtom(t: InlineToken, raw: string, from: number): Atom {
   const h = IMG_HEAD.exec(raw),
     altTo = 2 + (h ? h[1].length : 0),
@@ -280,17 +282,18 @@ function imageAtom(t: InlineToken, raw: string, from: number): Atom {
       if (c === "(") depth++;
     }
   }
-  const w = IMG_WIDTH.exec(raw),
-    width = w ? Number(w[1]) : null;
+  const w = imageAttrsEnd(raw);
   return {
     type: "image",
     src: String(t.href ?? ""),
     alt: String(t.text ?? ""),
     title: String(t.title ?? ""),
-    width: width && width > 0 && width <= 100 ? width : null,
+    width: w?.attrs.width ?? null,
+    frame: w?.attrs.frame ?? null,
+    loop: !!w?.attrs.loop,
     altTo: from + altTo,
     url: [from + urlFrom, from + urlTo],
-    widthAt: w ? [from + raw.length - w[0].length, from + raw.length] : null,
+    widthAt: w ? [from + w.at, from + raw.length] : null,
     broken: !!t.broken,
   };
 }

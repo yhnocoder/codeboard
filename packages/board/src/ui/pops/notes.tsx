@@ -24,6 +24,7 @@ import { Icon } from "../icons";
 import { MdStatic } from "../Md";
 import { openMenu, type Item } from "../Menu";
 import { PopHead, Code, type PopProps } from "./common";
+import { CardPeek, cardPeeks, type CardPeeks } from "./cardpeek";
 
 export function NotesPop(p: PopProps<"notes">) {
   const notes = () =>
@@ -33,6 +34,7 @@ export function NotesPop(p: PopProps<"notes">) {
     if (!notes().length) closePop(p.inst.id);
   });
   const curNote = () => notes().find((n) => n.id === cur()) ?? notes()[0];
+  const peeks = cardPeeks();
   return (
     <>
       <PopHead title={`${p.pop.title} (${notes().length})`} inst={p.inst} />
@@ -50,11 +52,14 @@ export function NotesPop(p: PopProps<"notes">) {
                 noteMenu(n, e.clientX, e.clientY);
               }}
             >
-              <NoteItem n={n} />
+              <NoteItem n={n} peeks={peeks} />
             </div>
           )}
         </For>
       </div>
+      <Show when={peeks.peek()} keyed>
+        {(pk) => <CardPeek id={pk.card} at={pk.at} peeks={peeks} />}
+      </Show>
       <div class="sn-acts">
         <button
           class="tbtn"
@@ -123,7 +128,7 @@ export function NotesPop(p: PopProps<"notes">) {
 const kindOf = <K extends Sidenote["kind"]>(n: Sidenote | undefined, k: K) =>
   n?.kind === k ? (n as Extract<Sidenote, { kind: K }>) : undefined;
 
-function NoteItem(p: { n: Sidenote }) {
+function NoteItem(p: { n: Sidenote; peeks: CardPeeks }) {
   const n = () => p.n;
   return (
     <>
@@ -173,7 +178,6 @@ function NoteItem(p: { n: Sidenote }) {
               fallback={
                 <MdStatic
                   class="sn-text"
-                  tip="Double-click to edit"
                   src={t().md}
                   onDblClick={() => editText(t())}
                   onToggle={(v) => A.writeSidenote(t().id, v)}
@@ -211,6 +215,15 @@ function NoteItem(p: { n: Sidenote }) {
                   <b>Card · {t() ? cardTitle(t()!) : "deleted"}</b>
                   <span class="grow" />
                   <Show when={t()}>
+                    <button
+                      class="ib sn-peek"
+                      aria-label="Preview Card"
+                      onPointerEnter={(e) => p.peeks.on(k().card, e.currentTarget)}
+                      onPointerLeave={(e) => p.peeks.off(e)}
+                      onPointerDown={() => p.peeks.hide()}
+                    >
+                      <Icon name="eye" size={13} />
+                    </button>
                     <button class="tbtn" onClick={() => A.revealCard(k().card)}>
                       Go to Card
                     </button>
