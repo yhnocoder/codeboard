@@ -579,10 +579,15 @@ function zoomToCard(id: string) {
   camTo(24 + Math.max(0, (w - 48 - r.w) / 2) - r.x, 72 - r.y, 1);
 }
 /** Double-clicking a summary's title (the summary level, #130) zooms to what it summarizes: a loose card to 100 %, as in the
- *  overview, a Section to fit its frame (at most 100 %) */
+ *  overview, a Section to fit its frame, an outer Section's own cards (own:) to fit them (at most 100 %) */
 function zoomToSummary(key: string) {
   if (key.startsWith("card:")) return zoomToCard(key.slice(5));
-  const r = key.startsWith("sec:") ? frames().get(key.slice(4)) : undefined;
+  const own = key.startsWith("own:") ? key.slice(4) : undefined;
+  const r = own
+    ? (bounds(placed().flatMap((c) => (placeOf(c.id).section === own ? [rectOf(c)] : []))) ?? frames().get(own))
+    : key.startsWith("sec:")
+      ? frames().get(key.slice(4))
+      : undefined;
   if (!r) return;
   const f = fitRect(r, 1);
   camTo(f.x, f.y, f.z);
