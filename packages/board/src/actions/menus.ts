@@ -631,6 +631,7 @@ function multiItems(): Item[] {
       },
     },
     ...sectionItems(),
+    ...(sel.sections.length ? [sectionColorItem([...sel.sections], "Section Color")] : []),
     turnItem(),
     { label: lockAll ? "Unlock" : "Lock", kbd: kbd("lock"), run: () => toggleLock(sel.cards, sel.sections) },
     {
@@ -951,10 +952,45 @@ const SECTION_COLORS = [
   ["pink", "Light Pink"],
 ] as const;
 
+/** Color ▸ for these Sections: the one checked is the colour all of them have */
+const sectionColorItem = (ids: string[], label = "Color"): Item => ({
+  label,
+  sub: SECTION_COLORS.map(([v, lb]) => ({
+    label: lb,
+    checked: ids.every((i) => (sectionById(i)?.color ?? "none") === v),
+    run: () => setSectionColor(ids, v === "none" ? undefined : v),
+  })),
+});
+
+/** Several Sections selected (and no cards): what applies to all of them at once, each one undo step */
+function multiSectionItems(ids: string[]): Item[] {
+  const ss = ids.map(sectionById).filter((s): s is Section => !!s);
+  const fit = ss.filter((s) => !s.collapsed && !sectionLocked(s) && fitFrame(s));
+  return [
+    {
+      label: "Fit Content",
+      kbd: kbd("fitContent"),
+      disabled: fit.length ? false : "No open, unlocked Section with cards inside",
+      run: () => fitSections(fit.map((s) => s.id)),
+    },
+    {
+      label: ss.every((s) => s.locked) ? "Unlock" : "Lock",
+      kbd: kbd("lock"),
+      run: () => toggleLock([], ids),
+    },
+    sectionColorItem(ids),
+    null,
+    { label: `Remove ${ss.length} Sections`, hint: "Cards and inner sections stay", run: () => removeSections(ids) },
+  ];
+}
+
 export function sectionMenu(id: string, x: number, y: number) {
   const s = sectionById(id);
   if (!s) return;
   if (!sel.sections.includes(id)) select({ sections: [id] });
+  // several selected: what applies to all of them (with cards too: the menu for several cards, as on a card)
+  if (sel.cards.length) return openMenu(multiItems(), x, y);
+  if (sel.sections.length > 1) return openMenu(multiSectionItems([...sel.sections]), x, y);
   openMenu(
     [
       { label: "Rename", kbd: "Double-click", run: () => setEditing({ kind: "section", id }) },
@@ -980,14 +1016,7 @@ export function sectionMenu(id: string, x: number, y: number) {
             } as Item,
           ]
         : []),
-      {
-        label: "Color",
-        sub: SECTION_COLORS.map(([v, lb]) => ({
-          label: lb,
-          checked: (s.color ?? "none") === v,
-          run: () => setSectionColor(id, v === "none" ? undefined : v),
-        })),
-      },
+      sectionColorItem([id]),
       null,
       { label: "Remove Section", hint: "Cards and inner sections stay", run: () => removeSections([id]) },
     ],

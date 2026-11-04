@@ -171,10 +171,13 @@ export function renameSection(env: CommandEnv, id: string, v: string) {
   });
 }
 
-/** A Section's colour; none = uncoloured */
-export function setSectionColor(env: CommandEnv, id: string, color: string | undefined) {
+/** The colour of these Sections (one, or all those selected), in one step; none = uncoloured. No step when none changes */
+export function setSectionColor(env: CommandEnv, ids: string[], color: string | undefined) {
+  const want = new Set(ids);
+  const change = env.board().sections.filter((s) => want.has(s.id) && s.color !== color);
+  if (!change.length) return;
+  const these = new Set(change.map((s) => s.id));
   env.edit((b) => {
-    const s = b.sections.find((q) => q.id === id);
-    if (s) s.color = color;
+    for (const s of b.sections) if (these.has(s.id)) s.color = color;
   });
 }
