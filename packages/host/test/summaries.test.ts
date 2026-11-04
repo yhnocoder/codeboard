@@ -375,6 +375,35 @@ describe("nested Sections", () => {
     expect(g.user).toContain('{"title": "短标题", "text": "摘要正文"}');
   });
 
+  it("asks for a middle header's overview too, from its own children, and its parent's waits on it", async () => {
+    const b = nestedBoard();
+    // A gets two children of its own: P > A > (A1, A2), so A is a middle header
+    b.sections.push(
+      { id: "A1", title: "SM 资源", x: 0, y: 0, w: 0, h: 0, parent: "A" },
+      { id: "A2", title: "block 排队", x: 0, y: 0, w: 0, h: 0, parent: "A" },
+    );
+    b.cards.push({ id: "a2", kind: "note", md: "# 排队\n资源不够时等待", look: "note" });
+    b.place.a.section = "A1";
+    b.place.a2 = { x: 40, y: 400, w: 300, section: "A2" };
+    putSummary(b, "sec:A1", { ...written(b, "sec:A1"), text: "SM 的**资源有限**。" });
+    const reqs = hostRequests(b);
+    expect([...reqs.keys()].sort()).toEqual(["own:P", "sec:A", "sec:A1", "sec:A2", "sec:B", "sec:P"]);
+    const { f, calls } = fakeFetch(() => ok("资源有限，**多出来的 block 排队**。"));
+    await summarize(cx, reqs.get("sec:A")!, f);
+    const [sys, user] = calls[0].body.messages.map((m: { content: string }) => m.content);
+    expect(sys).toBe(OVERVIEW_SYSTEM);
+    expect(user).toContain("外层 Section 标题：SM 与 block 调度");
+    expect(user).toContain("【SM 资源】\nSM 的**资源有限**。");
+    expect(user).not.toContain("直接放在这个 Section 里");
+    // the outer header reads the middle one's overview once it is written: writing it makes P's pending
+    const sigP = summarySig(b, "sec:P");
+    putSummary(b, "sec:A", { ...written(b, "sec:A"), text: "资源有限，**多出来的 block 排队**。" });
+    expect(summarySig(b, "sec:P")).not.toBe(sigP);
+    expect(summaryPrompt(hostRequests(b).get("sec:P")!).user).toContain(
+      "【SM 与 block 调度】\n资源有限，**多出来的 block 排队**。",
+    );
+  });
+
   it("rewrites the overview SUMMARY.regenMs after a child's summary changed", async () => {
     const b = nestedBoard();
     putSummary(b, "sec:P", written(b, "sec:P"));

@@ -1,6 +1,6 @@
 // The summary level (#130; state/summary.ts, core summary.ts): one column per innermost Section, per group of cards placed directly
 // in a Section with child Sections and per card in no Section, and a header above the frame of each Section with child Sections
-// (its title, a rule and a one-sentence overview; under another header the title only), at the board's one font size, drawn in full (no clamping, no fallbacks). It is built once the zoom comes near the highest cut (state/summary.ts
+// (its title, a rule and a one-sentence overview), at the board's one font size, drawn in full (no clamping, no fallbacks). It is built once the zoom comes near the highest cut (state/summary.ts
 // summaryNear: zoomed in it costs nothing) and from then on only its opacity follows the fade, so the switch never adds elements or
 // lays anything out. Each column's title and body heights are read once per change of width or text
 // (ResizeObserver, in the board's measuring round) and give the final extents the later columns stop at.
@@ -87,8 +87,6 @@ function Column(p: { col: SumCol }) {
     tx!: HTMLDivElement,
     kick: HTMLDivElement | undefined,
     editing: string | null = null;
-  /** A header under another header shows its title only: nothing to write, edit or rewrite */
-  const writes = () => !p.col.head || p.col.head.lines > 0;
   // heights at this width: read in the board's measuring round when the title or body changes size
   const read = () =>
     queueMeasure(hd, () => {
@@ -107,7 +105,7 @@ function Column(p: { col: SumCol }) {
   const watch = (el: HTMLElement) => onCleanup(observeResize(el, read));
 
   const startEdit = () => {
-    if (editing !== null || writing() || !writes()) return;
+    if (editing !== null || writing()) return;
     editing = text();
     tx.dataset.nodrag = "";
     tx.contentEditable = "true";
@@ -190,7 +188,6 @@ function Column(p: { col: SumCol }) {
           loose: key.startsWith("card:") || !!c().group,
           h1: c().head?.level === 1,
           h2: c().head?.level === 2,
-          bare: !!c().head && !c().head!.lines,
           pend: pending() && !!sum(),
           edited: !!sum()?.edited,
           gen: writing(),
@@ -222,7 +219,7 @@ function Column(p: { col: SumCol }) {
                 fallback={
                   <>
                     <span class="sumt md" ref={(el) => createEffect(() => rich(md, el, c().title))} />
-                    <Show when={writes()}>{mark()}</Show>
+                    {mark()}
                   </>
                 }
               >
@@ -244,7 +241,7 @@ function Column(p: { col: SumCol }) {
               tx = el;
               watch(el);
               createEffect(() => {
-                const t = writes() ? text() : "";
+                const t = text();
                 if (editing === null) rich(md, el, t);
               });
             }}

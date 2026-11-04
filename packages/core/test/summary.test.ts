@@ -391,7 +391,7 @@ function nested(): { b: Board; frames: Map<string, Rect>; rect: (id: string) => 
 const overlap = (a: Rect, c: Rect) => a.x < c.x + c.w && c.x < a.x + a.w && a.y < c.y + c.h && c.y < a.y + a.h;
 
 describe("nested Sections", () => {
-  it("plans innermost Sections, headers (overview on the outermost only), one-child Sections as a kick line, direct cards", () => {
+  it("plans innermost Sections, headers (each with an overview), one-child Sections as a kick line, direct cards", () => {
     const { b } = nested();
     const plan = sectionPlan(b);
     const role = (id: string) => {
@@ -399,14 +399,14 @@ describe("nested Sections", () => {
       return [p.role, p.lines, p.kick ?? ""];
     };
     expect(role("P")).toEqual(["head", 2, ""]);
-    expect(role("Q")).toEqual(["head", 0, ""]);
+    expect(role("Q")).toEqual(["head", 1, ""]);
     expect(["L1", "L2", "L3", "A", "B"].map((id) => plan.get(id)!.role)).toEqual(Array(5).fill("leaf"));
     expect(role("O1")).toEqual(["pass", 0, ""]);
     expect(role("O2")).toEqual(["pass", 0, "节 O1"]);
     expect(role("C")).toEqual(["leaf", 0, "节 O1 › 节 O2"]);
     expect(plan.get("P")!.direct.map((c) => c.id)).toEqual(["d1", "d2"]);
     expect(summaryKeys(b).sort()).toEqual(
-      ["card:z", "own:P", "sec:A", "sec:B", "sec:C", "sec:L1", "sec:L2", "sec:L3", "sec:P"].sort(),
+      ["card:z", "own:P", "sec:A", "sec:B", "sec:C", "sec:L1", "sec:L2", "sec:L3", "sec:P", "sec:Q"].sort(),
     );
   });
   it("a depth-2 header with one line: an outer Section whose parent has one child", () => {
@@ -429,7 +429,7 @@ describe("nested Sections", () => {
     const fP = frames.get("P")!,
       fQ = frames.get("Q")!;
     expect(P.head).toEqual({ level: 1, lines: 2 });
-    expect(Q.head).toEqual({ level: 2, lines: 0 });
+    expect(Q.head).toEqual({ level: 2, lines: 1 });
     // Q's header ends just above Q's frame; P's sits on top of Q's (Q's frame is P's top row)
     expect(Q.y + Q.h).toBe(fQ.y - SUMMARY.headGap);
     expect(Q.y).toBeLessThan(fP.y);
@@ -453,9 +453,19 @@ describe("nested Sections", () => {
     expect(r.overview?.map((k) => k.title)).toEqual(["节 Q", "节 L3", "节 A", "节 B"]);
     expect(r.overview?.find((k) => k.title === "节 A")?.text).toBe("A 的**摘要**");
     expect(r.cards.map((c) => c.title)).toEqual(["卡 d1", "卡 d2"]);
-    // a header under another header writes nothing
-    expect(summaryRequest(b, "sec:Q", l)).toBeUndefined();
-    expect(summarySig(b, "sec:Q")).toBeUndefined();
+    // a middle header writes its own one-line overview from its children; once written, the outer one reads it in Q's place
+    putSummary(b, "sec:L1", { text: "L1 的摘要", at: 1, sig: summarySig(b, "sec:L1")! });
+    const q = summaryRequest(b, "sec:Q", l)!;
+    expect([q.overview?.map((k) => [k.title, k.text]), q.cards]).toEqual([
+      [
+        ["节 L1", "L1 的摘要"],
+        ["节 L2", ""],
+      ],
+      [],
+    ]);
+    expect(summaryRequest(b, "sec:P", l)!.overview?.[0].text).toBe("节 L1：L1 的摘要\n节 L2：");
+    putSummary(b, "sec:Q", { text: "Q 的**概述**", at: 1, sig: summarySig(b, "sec:Q")! });
+    expect(summaryRequest(b, "sec:P", l)!.overview?.[0]).toEqual({ title: "节 Q", text: "Q 的**概述**" });
     const g = summaryRequest(b, "own:P", l)!;
     expect([g.group, g.title, g.cards.map((c) => c.title)]).toEqual([true, "节 P", ["卡 d1", "卡 d2"]]);
     // its answer keeps the AI's short title, stored on the Section, apart from the overview

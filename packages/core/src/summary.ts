@@ -89,7 +89,7 @@ const homeOf = (b: Pick<Board, "sections">, p: Place | undefined) =>
 /**
  * How a Section shows at the summary level. leaf (no open child Section): its own summary at its top-left. head: a header above
  * its frame, where its title is at the card level, growing upward (the deepest at the bottom when they stack), with a written
- * overview of lines lines (level 1: 2, deeper: 1; a header under another header: 0, the title only), and its direct cards (in it,
+ * overview of at most lines lines (level 1: 2, deeper: 1; leaf and pass: 0), and its direct cards (in it,
  * in no child) as one summary. pass: one child and no direct cards: no header, its name is a small line (kick) above the child's
  */
 export type SecPlan = {
@@ -112,7 +112,7 @@ export function sectionPlan(b: Pick<Board, "sections" | "cards" | "place">): Map
     if (h && !unsummarized(c)) direct.set(h, [...(direct.get(h) ?? []), c]);
   }
   const out = new Map<string, SecPlan>();
-  const visit = (s: Section, depth: number, kick: string | undefined, under: boolean) => {
+  const visit = (s: Section, depth: number, kick: string | undefined) => {
     if (out.has(s.id)) return;
     const ks = kids.get(s.id) ?? [],
       dir = direct.get(s.id) ?? [];
@@ -120,20 +120,20 @@ export function sectionPlan(b: Pick<Board, "sections" | "cards" | "place">): Map
     if (!ks.length) out.set(s.id, { ...base, role: "leaf", lines: 0 });
     else if (ks.length === 1 && !dir.length) {
       out.set(s.id, { ...base, role: "pass", lines: 0 });
-      visit(ks[0], depth + 1, kick ? `${kick} › ${s.title}` : s.title, under);
+      visit(ks[0], depth + 1, kick ? `${kick} › ${s.title}` : s.title);
     } else {
-      out.set(s.id, { ...base, role: "head", lines: under ? 0 : depth === 1 ? 2 : 1 });
-      for (const k of ks) visit(k, depth + 1, undefined, true);
+      out.set(s.id, { ...base, role: "head", lines: depth === 1 ? 2 : 1 });
+      for (const k of ks) visit(k, depth + 1, undefined);
     }
   };
-  for (const s of b.sections) if (!s.collapsed && !(s.parent && ids.has(s.parent))) visit(s, 1, undefined, false);
+  for (const s of b.sections) if (!s.collapsed && !(s.parent && ids.has(s.parent))) visit(s, 1, undefined);
   return out;
 }
 /** The items a board summarizes, by key (what the host may write) */
 export function summaryKeys(b: Board): SumKey[] {
   const out: SumKey[] = [];
   for (const [id, p] of sectionPlan(b)) {
-    if (p.role === "leaf" || (p.role === "head" && p.lines)) out.push(secKey(id));
+    if (p.role !== "pass") out.push(secKey(id));
     if (p.role === "head" && p.direct.some((c) => b.place[c.id])) out.push(ownKey(id));
   }
   for (const c of b.cards) if (b.place[c.id] && !homeOf(b, b.place[c.id]) && !unsummarized(c)) out.push(cardKey(c.id));
@@ -154,8 +154,8 @@ export type SumSource = {
   text?: string;
   /** The names of the Sections with one child each it is in (SecPlan pass), shown small above its title */
   kick?: string;
-  /** A header above a Section's frame (SecPlan head): level 1 or deeper, the overview lines it shows at most (0: title only) */
-  head?: { frame: Rect; level: 1 | 2; lines: 0 | 1 | 2; depth: number };
+  /** A header above a Section's frame (SecPlan head): level 1 or deeper, the overview lines it shows at most */
+  head?: { frame: Rect; level: 1 | 2; lines: 1 | 2; depth: number };
   /** The direct cards of a Section with child Sections, summarized as one */
   group?: true;
 };
@@ -191,8 +191,8 @@ export function summarySources(b: Board, rect: (id: string) => Rect | undefined,
       box: { x: f.x, y: f.y, w: f.w, h: 0 },
       own: { x: f.x, y: f.y, w: f.w, h: 0 },
       title: s.title,
-      text: p.lines ? s.summary?.text : undefined,
-      head: { frame: { ...f }, level: p.depth === 1 ? 1 : 2, lines: p.lines, depth: p.depth },
+      text: s.summary?.text,
+      head: { frame: { ...f }, level: p.depth === 1 ? 1 : 2, lines: p.depth === 1 ? 2 : 1, depth: p.depth },
       ...kick,
     });
     const rs = p.direct.map((c) => rect(c.id)).filter((r): r is Rect => !!r);
@@ -265,7 +265,7 @@ export type SumCol = Rect & { key: SumKey; hd: number; full: number } & Pick<
     SumSource,
     "title" | "code" | "image" | "kick" | "group"
   > & {
-    head?: { level: 1 | 2; lines: 0 | 1 | 2 };
+    head?: { level: 1 | 2; lines: 1 | 2 };
   };
 export type SumLayout = { S: number; P: number; cut: number; med: number; cols: SumCol[] };
 /** Heights read from the page for a column (title block, body), when it has been drawn at its width */
@@ -471,10 +471,11 @@ function placeHeads(heads: SumSource[], obs: Rect[], S: number, P: number, measu
     const { frame, lines, level } = it.head!;
     const w = Math.min(frame.w, SUMMARY.maxLine * S + 2 * P);
     const hd = measured?.get(it.key)?.hd ?? titleH(it, w - 2 * P, S);
-    const tx = lines ? (measured?.get(it.key)?.tx ?? textH(it.text, w - 2 * P, S)) : 0;
+    const tx = measured?.get(it.key)?.tx ?? textH(it.text, w - 2 * P, S);
     const body = (n: number) => (n ? titleGap(it, S) + n : 0);
     const full = Math.ceil(2 * P + hd + body(tx));
-    const most = 2 * P + hd + body(lines * S * SUMMARY.lh);
+    // a measured line is a whole number of pixels (1.5·S rounded up): a text of exactly `lines` lines is not cut
+    const most = Math.ceil(2 * P + hd + body(lines * S * SUMMARY.lh)) + 1;
     let bottom = frame.y - SUMMARY.headGap;
     for (const o of placed)
       if (inside(o.frame, frame) && xov(o.col, frame.x, w)) bottom = Math.min(bottom, o.col.y - SUMMARY.headGap);
@@ -523,12 +524,13 @@ function membersOf(b: Board, sec: string): Card[] {
     return !!h && ids.has(h) && !unsummarized(c);
   });
 }
-/** What a header's overview is written from: each child Section's title and summary (a child with children of its own: theirs,
- *  and its direct cards' summary, in its place) */
+/** What a header's overview is written from: each child Section's title and summary (a child with a header: its overview; not
+ *  written yet, or a child with one child: what is under it, and its direct cards' summary) */
 function kidsOf(b: Board, plan: Map<string, SecPlan>, id: string): { title: string; text: string }[] {
   return (plan.get(id)?.kids ?? []).map((k) => {
     const p = plan.get(k.id);
-    if (!p || p.role === "leaf") return { title: k.title, text: k.summary?.text ?? "" };
+    if (!p || p.role === "leaf" || (p.role === "head" && k.summary?.text))
+      return { title: k.title, text: k.summary?.text ?? "" };
     const parts = kidsOf(b, plan, k.id).map((x) => `${x.title}：${x.text}`);
     if (k.directSummary?.text) parts.unshift(k.directSummary.text);
     return { title: k.title, text: parts.join("\n") };
@@ -548,8 +550,7 @@ function itemOf(b: Board, key: string) {
   if (!sec || !plan || !p) return undefined;
   if (k.own) return p.role === "head" && p.direct.length ? { kind: "own" as const, sec, cards: p.direct } : undefined;
   if (p.role === "leaf") return { kind: "leaf" as const, sec, cards: membersOf(b, sec.id) };
-  if (p.role === "head" && p.lines)
-    return { kind: "head" as const, sec, cards: p.direct, kids: kidsOf(b, plan, sec.id) };
+  if (p.role === "head") return { kind: "head" as const, sec, cards: p.direct, kids: kidsOf(b, plan, sec.id) };
   return undefined;
 }
 /**
