@@ -13,6 +13,10 @@
 //                            has no seal and no lift (#128)
 //  inkWashPaperFillsCard   — the paper reaches all four edges of cards whose rounded size has another aspect ratio (#112: it was
 //                            shrunk to fit and centred, its torn edge inside the card, off the shadow and header wash)
+//  inkWashBackgroundNoStreaks — the mountains behind the board are plain gradient shapes, no SVG filter: the filter was worked out at
+//                            the image's own 900×540 and scaled up, so its near-transparent gradients broke into horizontal streaks
+//                            and its anisotropic turbulence smeared them into text-like blots (#136); light and dark, screenshots
+//  inkWashTitleNoSeal      — the board's name in the top left has no seal after it (#138)
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { shot, symCard, findSym, put, OUT } from "../harness";
@@ -533,4 +537,43 @@ test("inkWashMotions", async () => {
       ),
     res,
   );
+});
+
+test("inkWashBackgroundNoStreaks", async () => {
+  for (const lt of [true, false]) {
+    const h = await open({ board: board(), light: lt, w: 1400, h: 900, scale: 2, settings: ink });
+    await idle(h);
+    const scene = await h.page.evaluate(async () => {
+      const bg = getComputedStyle(document.querySelector(".board")!).backgroundImage,
+        url = bg.match(/url\("([^"]+)"\)/)?.[1] ?? "";
+      // the build inlines the scene as a data URI
+      if (url.startsWith("data:image/svg+xml,")) return { bg: bg.slice(0, 80), svg: decodeURIComponent(url.slice(19)) };
+      return { bg, svg: url ? await (await fetch(url)).text() : "" };
+    });
+    check(
+      "inkWashBackgroundNoStreaks",
+      scene.svg.includes("<path") && !/<filter|feTurbulence|feDisplacementMap|feGaussianBlur/.test(scene.svg),
+      { light: lt, bg: scene.bg, svg: scene.svg.slice(0, 600) },
+    );
+    const name = `ink-wash-scene-${lt ? "light" : "dark"}`;
+    await shot(h, name);
+    keep(name);
+    await h.page.context().close();
+  }
+});
+
+test("inkWashTitleNoSeal", async () => {
+  const h = await open({ board: board(), light: true, w: 1300, h: 820, scale: 2, settings: ink });
+  await idle(h);
+  const mast = await h.page.evaluate(() => {
+    const m = document.querySelector(".mast")!;
+    return { name: m.textContent, after: getComputedStyle(m, "::after").content };
+  });
+  check("inkWashTitleNoSeal", mast.name === "nano-vllm · 推理一步" && mast.after === "none", mast);
+  const box = (await h.page.locator(".mast").boundingBox())!;
+  await h.page.screenshot({
+    path: path.join(OUT, "ink-wash-title.png"),
+    clip: { x: 0, y: 0, width: Math.min(1300, box.x + box.width + 120), height: box.y + box.height + 30 },
+  });
+  await h.page.context().close();
 });

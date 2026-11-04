@@ -59,14 +59,14 @@ export function paintRef(r: HTMLElement, refs: Refs) {
 }
 
 /** 印章：一个圆角框；有 outer 时分成两半，前一半是外面那一处的（描边、浅底），后一半是这一处的（实心）。
- * 字包在 .tx 里：它按大写字母的高到基线裁掉行框（text-box），框里居中的就是字本身，不受字体上下留白不同的影响 */
+ * 字包在 .md-seal-t 里（不叫 .tx：白板的 Text 卡也是 .tx，它的字色、最小高度会套到印章的字上）：它按大写字母的高到基线裁掉行框（text-box），框里居中的就是字本身，不受字体上下留白不同的影响 */
 function sealEl(s: RefSeal): HTMLElement {
   const el = document.createElement("span");
   el.className = `md-seal${s.outer ? " two" : ""}${s.alone ? " alone" : ""}`;
   el.style.setProperty("--md-seal", s.color);
   const tx = (text: string) => {
     const t = document.createElement("span");
-    t.className = "tx";
+    t.className = "md-seal-t";
     t.textContent = text;
     return t;
   };
