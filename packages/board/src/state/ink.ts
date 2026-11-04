@@ -91,6 +91,9 @@ function deckleSvg(W: number, H: number, dk: boolean, seed: number) {
       a = r() * Math.PI;
     inner += `M${f(x)} ${f(y)}q${f((Math.cos(a) * l) / 2 + 6)} ${f((Math.sin(a) * l) / 2 - 4)} ${f(Math.cos(a) * l)} ${f(Math.sin(a) * l)}`;
   }
+  // preserveAspectRatio none: the image is drawn for the card's size rounded to SIZE_STEP and stretched onto the card (themes.css
+  // 100% 100%). An SVG keeps its aspect ratio by default: a card whose rounded size has another ratio got the paper shrunk to fit
+  // and centred, its torn edge several px inside the card on two sides, off the card's shadow and header wash (a double edge)
   return svgUrl(
     W,
     H,
@@ -99,6 +102,7 @@ function deckleSvg(W: number, H: number, dk: boolean, seed: number) {
       `<path clip-path='url(#c)' d='${inner}' fill='none' stroke='${fiber}' stroke-opacity='${dk ? 0.035 : 0.04}' stroke-width='.5'/>` +
       `<path d='${fib.join("")}' fill='none' stroke='${paper}' stroke-width='.7' stroke-linecap='round'/>` +
       `<use href='#p' fill='none' stroke='${fiber}' stroke-opacity='${dk ? 0.12 : 0.1}' stroke-width='.5'/>`,
+    " preserveAspectRatio='none'",
   );
 }
 
