@@ -1472,10 +1472,6 @@ textarea {
 .card.mark.sel .mkgrip {
   display: block;
 }
-.ttb.hdots {
-  gap: 6px;
-  padding: 5px 8px;
-}
 .hdot {
   width: 16px;
   height: 16px;
@@ -1533,7 +1529,7 @@ textarea {
 }
 .card.text.box .ttb {
   left: 50%;
-  top: -50px;
+  top: -56px;
   translate: -50% 0;
 }
 .bxh {
@@ -1569,9 +1565,15 @@ textarea {
   bottom: -8px;
   cursor: nwse-resize;
 }
-.ttb.bdots {
-  gap: 4px;
-  padding: 5px 8px;
+/* The colour strips (Box fills, Mark colours): a swatch's selected ring reaches 4px out and a neighbour's halo 2px, so the gap is wider
+   than both and the padding holds the ring inside the strip. Specific enough to win over the themes' own .pill padding and gap
+   (soft-light, drafting and colorful set them, which let the ring spill over the neighbour and out of the strip) */
+.card .ttb.pill:is(.bdots, .hdots) {
+  gap: 8px;
+  padding: 8px 10px;
+}
+.card .ttb.pill.hdots {
+  top: -50px; /* the taller strip keeps its distance above the card */
 }
 .bdot {
   width: 18px;
@@ -4983,7 +4985,7 @@ mark.wdiff {
 .stkpick .scolors {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 8px;
   font-size: 11.5px;
   color: var(--ink-3);
 }
