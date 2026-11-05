@@ -27,7 +27,7 @@ const ROOT = tempRepo("stubs", {
   ".venv/lib/python3.12/site-packages/cfglib/__init__.pyi": "class Cfg:\n    def get(self, key: str) -> str: ...\n",
 });
 // A stub outside the workspace, like the typeshed stubs Pylance bundles
-const TYPESHED = fs.mkdtempSync("/tmp/codeboard-typeshed-");
+const TYPESHED = fs.realpathSync(fs.mkdtempSync("/tmp/codeboard-typeshed-"));
 fs.writeFileSync(path.join(TYPESHED, "builtins.pyi"), "class dict:\n    def get(self, key): ...\n");
 const W = nodeWorkspace(ROOT);
 const abs = (rel: string) => path.join(ROOT, rel);

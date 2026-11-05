@@ -15,7 +15,7 @@ let cx: HostContext;
 const C1 = "a".repeat(40),
   C2 = "b".repeat(40),
   C3 = "c".repeat(40);
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "codeboard-ghfiles-"));
+const tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "codeboard-ghfiles-")));
 const cache = path.join(tmp, "github");
 
 /** a workspace with its own state and board folder; the GitHub cache is shared */

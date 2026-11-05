@@ -527,14 +527,14 @@ test("markdownEdit", async () => {
   const italicAfterUndo = await pg.locator('.card[data-id="n1"] .md-pm em', { hasText: "words" }).count();
   const stillEditing = await pg.locator('.card[data-id="n1"] .md-pm').count();
   // ⌘/ 原文模式（整篇 Markdown 在 CodeMirror 里）
-  await pg.keyboard.press("Control+/");
+  await pg.keyboard.press("ControlOrMeta+/");
   await pg.locator('.card[data-id="n1"] .md-srcmode .cm-content').waitFor({ timeout: 5000 });
   const rawVal = await pg.evaluate(() =>
     [...document.querySelectorAll('.card[data-id="n1"] .md-srcmode .cm-line')].map((l) => l.textContent).join("\n"),
   );
   await pg.keyboard.type("\nraw line");
   // 切回来时焦点要立刻（同一个按键里）回到编辑器，不然紧接着的 Esc 会落到白板上
-  await pg.keyboard.press("Control+/");
+  await pg.keyboard.press("ControlOrMeta+/");
   const focusBack = await pg.evaluate(() => !!document.activeElement?.closest(".md-pm"));
   const backWys = await pg.locator('.card[data-id="n1"] .md-pm').isVisible();
   // Esc 保存退出

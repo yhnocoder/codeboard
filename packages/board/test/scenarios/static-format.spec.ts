@@ -124,7 +124,7 @@ test("staticSelectionBoldHighlight", async () => {
   await shot(h, "staticSelectionBoldHighlight-both");
 
   // Toggling off from the keyboard: the whole selection is bold, then highlighted, so each comes off again
-  await pg.keyboard.press("Control+b");
+  await pg.keyboard.press("ControlOrMeta+b");
   const HL = PLAIN.replace(PHRASE, `==${PHRASE}==`);
   const b3 = await saved("⌘B takes the bold off", HL);
   check(
@@ -132,11 +132,11 @@ test("staticSelectionBoldHighlight", async () => {
     b3.ok && b3.strong === "" && b3.mark === PHRASE && b3.sel === PHRASE && !b3.editing,
     b3,
   );
-  await pg.keyboard.press("Control+Shift+H");
+  await pg.keyboard.press("ControlOrMeta+Shift+H");
   const b4 = await saved("⇧⌘H takes the highlight off", PLAIN);
   check("staticSelectionHighlightOff", b4.ok && b4.mark === "" && b4.sel === PHRASE && !b4.editing, b4);
 
-  await pg.keyboard.press("Control+z");
+  await pg.keyboard.press("ControlOrMeta+z");
   const b5 = await saved("one undo brings the highlight back", HL);
   check("staticSelectionUndoOneStep", b5.ok, b5);
   await h.close();

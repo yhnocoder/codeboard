@@ -31,7 +31,7 @@ jobs:
       - name: Check the npm version
         run: |
           node -e 'const [a, b] = process.argv[1].split(".").map(Number); process.exit(a > 11 || (a === 11 && b >= 15) ? 0 : 1)' "$(npm --version)" \
-            || npm i -g npm@11.21.1
+            || npm i -g npm@12.2.1
           npm --version
       - name: Unit tests (with the tarball check)
         run: npm test -w @yhnocoder/markdown

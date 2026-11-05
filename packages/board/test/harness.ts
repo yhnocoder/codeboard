@@ -227,7 +227,25 @@ export { launch };
  * and only for http(s) addresses, are expected; anything else that doesn't load (a file of the board's own) fails the scenario
  */
 const OFFLINE =
-  /^Failed to load resource: net::(ERR_NAME_NOT_RESOLVED|ERR_TUNNEL_CONNECTION_FAILED|ERR_PROXY_CONNECTION_FAILED|ERR_INTERNET_DISCONNECTED|ERR_CONNECTION_REFUSED|ERR_CONNECTION_TIMED_OUT|ERR_ADDRESS_UNREACHABLE)$/;
+  /^Failed to load resource: net::(ERR_NAME_NOT_RESOLVED|ERR_TUNNEL_CONNECTION_FAILED|ERR_PROXY_CONNECTION_FAILED|ERR_INTERNET_DISCONNECTED|ERR_CONNECTION_REFUSED|ERR_CONNECTION_CLOSED|ERR_CONNECTION_TIMED_OUT|ERR_ADDRESS_UNREACHABLE)$/;
+
+/** Scenarios press the PC caret keys; on a Mac, Chromium's text fields (a Note's ProseMirror) move the caret with others: Home /
+ *  End scroll there, the line ends are ⌘← ⌘→, the document's ⌘↑ ⌘↓, a word ⌥. Shortcuts are written ControlOrMeta already */
+const MAC_KEY: [RegExp, string][] = [
+  [/^(?:Control|ControlOrMeta)\+(Shift\+)?Home$/, "Meta+$1ArrowUp"],
+  [/^(?:Control|ControlOrMeta)\+(Shift\+)?End$/, "Meta+$1ArrowDown"],
+  [/^(Shift\+)?Home$/, "Meta+$1ArrowLeft"],
+  [/^(Shift\+)?End$/, "Meta+$1ArrowRight"],
+  [/^Control\+(Shift\+)?(Backspace|Delete|ArrowLeft|ArrowRight)$/, "Alt+$1$2"],
+];
+function macKeys(page: Page) {
+  const press = page.keyboard.press.bind(page.keyboard);
+  page.keyboard.press = (key, o) =>
+    press(
+      MAC_KEY.reduce((k, [re, to]) => (re.test(k) ? k.replace(re, to) : k), key),
+      o,
+    );
+}
 
 let pages = 0;
 /** Opens the board in a new context of `browser`; closing the host (or its context) ends it */
@@ -256,6 +274,7 @@ boot({ post: (m) => { window.__inflight++; window.__host(JSON.stringify(m)).fina
     deviceScaleFactor: o.scale ?? 1,
   });
   const page = await context.newPage();
+  if (process.platform === "darwin") macKeys(page);
   // coverage (regular runs): which board code the scenario runs, for picking scenarios by changed file
   const cov = watch.coverage && (await functionCoverage(page));
   const closeContext = context.close.bind(context);

@@ -194,7 +194,7 @@ test("mathPreviewPlainErrors", async () => {
   const typing = await err();
   await pg.keyboard.press("Escape"); // close the list
   // a typo: \tims
-  await pg.keyboard.press("Control+a");
+  await pg.keyboard.press("ControlOrMeta+a");
   await pg.keyboard.type("a \\tims b");
   await drawn("a \\tims b");
   await until(h, "the error shows", async () => (await err()).text);
@@ -204,7 +204,7 @@ test("mathPreviewPlainErrors", async () => {
   await until(h, "the fix applies", async () => !(await err()).text);
   const fixed = { ...(await ta(pg)), ...(await err()) };
   // a missing }
-  await pg.keyboard.press("Control+a");
+  await pg.keyboard.press("ControlOrMeta+a");
   await pg.keyboard.type("\\frac{n + 255}{256");
   await drawn("\\frac{n + 255}{256");
   await until(h, "the error shows", async () => (await err()).text);
@@ -339,7 +339,7 @@ test("mathPreambleMacros", async () => {
   const after = await shown();
   // completion lists preamble and in-formula commands
   await openBlock(h);
-  await pg.keyboard.press("Control+a");
+  await pg.keyboard.press("ControlOrMeta+a");
   await pg.keyboard.type("\\newcommand{\\half}{\\frac12} \\");
   await pg.locator(".md-mathac").waitFor();
   const names = await acNames(pg),

@@ -1,7 +1,7 @@
 {
   "name": "codeboard",
   "private": true,
-  "packageManager": "npm@11.21.1",
+  "packageManager": "npm@12.2.1",
   "workspaces": ["packages/*", "extensions/*", "examples/markdown-demo"],
   "scripts": {
     "examples": "sh tools/examples.sh",
