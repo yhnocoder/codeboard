@@ -26,3 +26,4 @@ export * from "./annots";
 export * from "./format";
 export * from "./imageai";
 export * from "./summaries";
+export * from "./shelf";

@@ -511,6 +511,25 @@ export type Board = {
   legend?: Partial<Record<LegendKey, string>>;
   /** 印章（Mark，seal.ts）：别的白板上的 [[引用]] 画在标题前面的几个字和颜色；只存用户改过的字段，没有的用默认的 */
   seal?: BoardSeal;
+  /** The board's Shelf (edit/shelf.ts): what was put aside, newest last; none = empty */
+  shelf?: ShelfEntry[];
+};
+/**
+ * One entry on a board's Shelf: what was put aside together (cards, a Section with its cards and inner Sections, a multi-selection).
+ * place = the shelved cards (canvas hosts: a Compare, not its columns) and where they were; their content stays in Board.cards (a
+ * shared card keeps its library copy, twins stay the same) and their sidenotes in Board.sidenotes, but with no Place they are off
+ * the canvas, out of search, Walkthrough, the call tree and summaries. sections = the shelved Sections as they were (outermost
+ * first; a parent or a card's place.section outside the entry is kept up to date and dropped on return when it is gone). links =
+ * every arrow that touches a shelved card: those inside travel with it, those to the rest of the board are hidden until it comes
+ * back. stickers = the stickers on the shelved cards and on those arrows. at = when it was shelved (ms)
+ */
+export type ShelfEntry = {
+  id: string;
+  at: number;
+  place: Record<string, Place>;
+  sections: Section[];
+  links: Link[];
+  stickers: Sticker[];
 };
 /** 白板的印章里用户改过的：text 过得了 sealTextOk */
 export type BoardSeal = { text?: string; color?: SealColor };

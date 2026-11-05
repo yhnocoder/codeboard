@@ -425,6 +425,14 @@ const KEYMAP: Bind[] = [
     when: hasCards,
     run: (a) => a.toggleTilt(sel.cards.slice()),
   },
+  {
+    id: "shelve",
+    keys: ["alt+KeyS"],
+    label: "Move to Shelf",
+    group: "Cards",
+    when: () => hasCards() || sel.sections.length > 0,
+    run: (a) => a.shelveSel(),
+  },
   { id: "wrap", keys: ["alt+KeyZ"], label: "Wrap Lines", group: "Cards", run: (a) => a.toggleWrap(sel.cards.slice()) },
   {
     id: "nudgeL",
