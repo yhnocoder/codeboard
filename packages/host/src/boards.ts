@@ -13,6 +13,7 @@ import {
   type Event,
   type HostInfo,
   type HostToBoard,
+  type ImageCopies,
   type Segment,
   type Settings,
   type Skeleton,
@@ -25,6 +26,7 @@ import { countStale, staleFor, staleSegments } from "./versions";
 import { syncVariants } from "./variants";
 import { viewsFor } from "./views";
 import { readSettings } from "./settings";
+import { boardImages, imagesOf } from "./images";
 import type { StateStore, ViewPlace } from "./env";
 import type { HostContext } from "./context";
 
@@ -208,15 +210,22 @@ export class BoardPanel {
     const ss = staleSegments(b);
     // 版本状态要跑 git、在新版本里重新找段，常常比高亮还慢：白板不等它（卡上的提示晚一点出来）。高亮要等：注释折叠决定卡的高度
     const staleP = staleFor(this.cx, ss.segs, ss.up);
-    const [views, boards, readonly] = await Promise.all([
+    // the images' copies come with the board, so each image shows the right one from its first frame
+    const [views, boards, readonly, images] = await Promise.all([
       viewsFor(this.cx, [...segs, ...variantSegments(b)]),
       this.mgr.metas(),
       this.readonlyNote(b),
+      imagesOf(this.cx, this.mgr.store, boardImages(b)).catch((e) => {
+        this.cx.ws.log("warn", `image copies: ${e instanceof Error ? e.message : e}`);
+        return {};
+      }),
     ]);
     this.stale = {};
     this.readonly = readonly;
     const host = this.host();
     const init: HostToBoard = { type: "init", board: b, boards, views, stale: {}, host };
+    const known = Object.entries(images).filter((e): e is [string, ImageCopies] => !!e[1]);
+    if (known.length) init.images = Object.fromEntries(known);
     if (this.crumbs.length) init.crumbs = this.crumbs;
     // 进出子白板不算「回来」
     if (!this.crumbs.length && !next.walk) {

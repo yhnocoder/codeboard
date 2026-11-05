@@ -6,7 +6,8 @@ import { build } from "esbuild";
 import * as jpeg from "jpeg-js";
 import { PNG } from "pngjs";
 import { afterAll, describe, expect, it, vi } from "vitest";
-import { THUMB_WIDTHS, thumbWidth, type Workspace } from "@codeboard/core";
+import { createHash } from "node:crypto";
+import { THUMB_WIDTHS, type Workspace } from "@codeboard/core";
 import { jpegOrientation, kindOf, makeThumb, orient, shrink, type Raster } from "../src/thumbs/codec";
 import { Thumbs } from "../src/thumbs";
 import { apng, gif, png, withChunk } from "./images";
@@ -123,13 +124,6 @@ describe("thumbnail codec", () => {
     expect(kindOf(Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="2000" height="2000"/>'))).toBeNull();
     expect(makeThumb(png(700, 300, red), 800)).toBeNull();
   });
-
-  it("picks the smallest width that is still sharp, none past the largest", () => {
-    expect(thumbWidth(300)).toBe(400);
-    expect(thumbWidth(480)).toBe(800);
-    expect(thumbWidth(960)).toBe(1600);
-    expect(thumbWidth(1500)).toBeUndefined();
-  });
 });
 
 describe("thumbnail cache", () => {
@@ -208,6 +202,81 @@ describe("thumbnail cache", () => {
     expect(fs.readdirSync(cache).sort()).toEqual([a!.file, b!.file].sort());
     thumbs.dispose();
     await expect(thumbs.get(path.join(tmp, "none.png"), 400)).rejects.toThrow();
+  });
+
+  it("lists an image's size and the copies worth making, the made ones named, from the file's head", async () => {
+    const { thumbs, put, cache } = setup();
+    const bytes = png(2000, 1000, stripes),
+      sha = createHash("sha1").update(bytes).digest("hex");
+    // named by its content, as the host names a pasted image (images.ts): its copies are found by name
+    const named = `${sha.slice(0, 16)}-2000x1000.png`;
+    const big = put(named, bytes);
+    // a picture put there by hand: hashed
+    const plain = put("plain.png", bytes);
+    const tall = put(
+      "tall.jpg",
+      jpg(
+        raster(600, 1200, (x) => stripes(x)),
+        exif(6),
+      ),
+    );
+    const anim = put("anim.png", apng(900, 900, [() => [1, 2, 3, 255], () => [3, 2, 1, 255]]));
+    const small = put("small.png", png(300, 200, stripes));
+    const ask = () =>
+      thumbs.info({
+        [named]: big,
+        "plain.png": plain,
+        "tall.jpg": tall,
+        "anim.png": anim,
+        "small.png": small,
+        "gone.png": path.join(path.dirname(big), "gone.png"),
+      });
+    const before = await ask();
+    // 2000 wide: copies at 400 and 800 (1600 is not narrower enough to be worth one), none made yet
+    expect(before[named]).toEqual({ width: 2000, height: 1000, copies: [{ width: 400 }, { width: 800 }] });
+    expect(before["plain.png"]).toEqual(before[named]);
+    // EXIF-turned: 1200 wide as shown
+    expect(before["tall.jpg"]).toEqual({ width: 1200, height: 600, copies: [{ width: 400 }, { width: 800 }] });
+    expect(before["small.png"]).toEqual({ width: 300, height: 200, copies: [] });
+    expect(before["anim.png"]).toBeNull();
+    expect(before["gone.png"]).toBeNull();
+    const made = await thumbs.get(big, 800);
+    const old = new Date(Date.now() - 30 * 24 * 3600_000);
+    fs.utimesSync(path.join(cache, made!.file!), old, old);
+    const after = await ask();
+    expect(after[named]!.copies).toEqual([{ width: 400 }, { width: 800, file: made!.file }]);
+    expect(after["plain.png"]!.copies).toEqual(after[named]!.copies);
+    // listed = in use: touched, so the sweep keeps it
+    await vi.waitFor(() => expect(fs.statSync(path.join(cache, made!.file!)).mtimeMs).toBeGreaterThan(+old + 1000));
+    thumbs.dispose();
+  });
+
+  it("makes every copy worth making of a saved image in the background", async () => {
+    const { thumbs, put, cache } = setup();
+    const big = put("a.png", png(2400, 1200, stripes));
+    thumbs.prepare(big);
+    await vi.waitFor(
+      () =>
+        expect(
+          fs
+            .readdirSync(cache)
+            .filter((f) => !f.endsWith(".tmp"))
+            .sort(),
+        ).toHaveLength(3),
+      {
+        timeout: 20_000,
+      },
+    );
+    expect(
+      fs
+        .readdirSync(cache)
+        .map((f) => f.replace(/^[0-9a-f]{20}/, ""))
+        .sort(),
+    ).toEqual(["-1600.png", "-400.png", "-800.png"]);
+    // and the board asking for one gets it at once
+    expect((await thumbs.get(big, 400))!.file).toMatch(/-400\.png$/);
+    thumbs.prepare(put("c.gif", gif(900, 900, [[255, 0, 0]], [() => 0], 0, 0)));
+    thumbs.dispose();
   });
 
   it("deletes copies no board has asked for in a long time", async () => {

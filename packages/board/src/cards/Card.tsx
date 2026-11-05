@@ -8,8 +8,7 @@ import {
   createEffect,
   createRenderEffect,
   For,
-  createSignal,
-  untrack,
+  on,
   type JSX,
   type Component,
 } from "solid-js";
@@ -74,8 +73,7 @@ import {
 import { tiltOf, trackTilt } from "../state/tilt";
 import { aiJobOn } from "../state/imageai";
 import { AiBusy } from "../ui/AiBusy";
-import { stillZ } from "../state/camera";
-import { askThumb, thumbable, thumbStep } from "./thumbs";
+import { copyable, imageInfo } from "../md/copies";
 
 const EPORT_SIDE: Record<"t" | "r" | "b" | "l", LinkSide> = { t: "top", r: "right", b: "bottom", l: "left" };
 
@@ -134,6 +132,16 @@ export function CardView(p: { card: Card }) {
     }
   });
   trackTilt(c);
+  // images inside that were off screen when the camera stopped get the copy for this zoom as the card comes on screen
+  createEffect(
+    on(
+      () => offscreen(c().id),
+      (off) => {
+        if (!off && el?.isConnected && (c().kind === "note" || c().kind === "image")) md.updateImages(el);
+      },
+      { defer: true },
+    ),
+  );
   const pop = () => popIn()[c().id];
   const grow = () => sizeIn()[c().id]; // Fit Content 后从旧的大小变过去（actions/common.ts growFrom）
   const pl = () => placeOf(c().id);
@@ -803,49 +811,15 @@ function Desc(p: { id: string; desc?: string }) {
 }
 
 function ImageView(p: { card: ImageCard }) {
+  const md = useMd();
   const own = () => p.card.src.startsWith("data:") || /^https?:/.test(p.card.src);
-  const full = () => (own() ? p.card.src : `${state.host.assetBase}/${p.card.src}`);
+  const at = () => (own() ? p.card.src : `assets/${p.card.src}`);
   let box!: HTMLDivElement, img!: HTMLImageElement;
-  // the copy shown (cards/thumbs.ts): a smaller one of a big assets/ PNG or JPEG, stepped up as the user zooms in
-  const [shown, setShown] = createSignal<string>();
-  const [natural, setNatural] = createSignal<{ width: number; height: number }>();
-  let want = 0,
-    of = "";
-  const show = (url: string, step: number) => {
-    if (!untrack(shown)) return void setShown(url);
-    // decoded before it replaces the copy on screen: no blank frame
-    const next = new Image();
-    next.src = url;
-    next.decode().then(
-      () => want === step && setShown(url),
-      () => want === step && setShown(url),
-    );
-  };
+  // the source shown: a smaller copy of a big assets/ PNG or JPEG sized to the zoom, stepped up as the user zooms in, picked as a
+  // Note's images are (md/copies.ts); it also sets data-full, the original, for export, and the original's width / height
+  const natural = () => (own() || !copyable(p.card.src) ? undefined : imageInfo(md, p.card.src));
   createEffect(() => {
-    const src = p.card.src,
-      base = state.host.thumbBase;
-    if (own() || !base || !thumbable(src)) {
-      want = 0;
-      setShown(full());
-      return;
-    }
-    if (src !== of) {
-      of = src;
-      want = 0;
-    }
-    // a card off screen keeps the copy it has: zooming in on another part of the board does not load its original
-    if (want && offscreen(p.card.id)) return;
-    const step = thumbStep(rectOf(p.card).w, stillZ());
-    if (step <= want) return;
-    want = step;
-    if (step === Infinity) return show(full(), step);
-    void askThumb(src, step).then((a) => {
-      if (want !== step || of !== src) return;
-      if (a) setNatural({ width: a.width, height: a.height });
-      show(a?.file ? `${base}/${a.file}` : full(), step);
-      // no smaller copy at this width: none at a larger one either
-      if (!a?.file) want = Infinity;
-    });
+    onCleanup(md.showImage(img, at()));
   });
   // a GIF or animated SVG plays as a Note's image does (md/anim.ts), standing on the card's frame unless it always plays
   createEffect(() => {
@@ -858,11 +832,9 @@ function ImageView(p: { card: ImageCard }) {
     <>
       {/* 跟 Note 一样没有标题栏：整张图都能拖，菜单用右键 */}
       <div class="imgb" data-drag ref={box}>
-        {/* data-full: the original, for export (actions/export.ts); data-w: its width, a copy's naturalWidth is not (measure.ts) */}
+        {/* src, data-full (the original, for export): md.showImage; data-w: its width, a copy's naturalWidth is not (measure.ts) */}
         <img
           ref={img}
-          src={shown()}
-          data-full={full()}
           data-w={natural()?.width}
           style={natural() ? { "aspect-ratio": `${natural()!.width} / ${natural()!.height}` } : undefined}
           alt={p.card.alt ?? ""}

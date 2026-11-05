@@ -5,7 +5,7 @@
 import { createHash } from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { IMAGE_EXT, sniffImage, sniffSvg } from "@codeboard/core";
+import { type Board, IMAGE_EXT, sniffImage, sniffSvg } from "@codeboard/core";
 import type { Storage } from "./storage/boards";
 import type { HostContext } from "./context";
 
@@ -13,8 +13,9 @@ export const MAX_NOTE_IMAGE = 10 * 1024 * 1024;
 /** Markdown 里写的地址的前缀（相对存储目录） */
 const ASSET_PREFIX = "assets/";
 
-/** 存一张 data: URL 的图，回 Markdown 里写的地址（assets/<sha1 前 16 位>-<宽>x<高>.<扩展名>）；不是这几种图、太大时抛错（消息给用户看） */
-export async function saveNoteImage(store: Storage, dataUrl: string): Promise<string> {
+/** 存一张 data: URL 的图，回 Markdown 里写的地址（assets/<sha1 前 16 位>-<宽>x<高>.<扩展名>）；不是这几种图、太大时抛错（消息给用户看）。
+ *  A still PNG or JPEG gets its smaller copies made in the background (thumbs/index.ts), for the board to show it at its size */
+export async function saveNoteImage(cx: HostContext, store: Storage, dataUrl: string): Promise<string> {
   const m = /^data:[^,;]*(;[^,]*)?;base64,/.exec(dataUrl);
   if (!m) throw new Error("Not an image");
   // base64 每 4 个字 3 个字节：先按长度挡掉太大的，不解码
@@ -33,6 +34,8 @@ export async function saveNoteImage(store: Storage, dataUrl: string): Promise<st
       ? `${sha}-${svg!.w}x${svg!.h}.svg`
       : `${sha}.svg`;
   await store.putAsset(file, buf);
+  if (t && (t.mime === "image/png" || t.mime === "image/jpeg") && !t.anim)
+    cx.thumbs.prepare(path.join(store.assetsDir(), file));
   return ASSET_PREFIX + file;
 }
 
@@ -47,10 +50,44 @@ export async function readAsset(store: Storage, file: string): Promise<string> {
   return `data:${mime};base64,${buf.toString("base64")}`;
 }
 
-/** A smaller copy of an Image card's image (thumbs/index.ts), width wide: what the board shows at that size */
-export function thumbOf(cx: HostContext, store: Storage, file: string, width: number) {
+/** An Image card's picture saved into assets/ (Storage.saveAsset), with its smaller copies made in the background as a Note
+ *  image's are */
+export async function saveCardImage(cx: HostContext, store: Storage, name: string, dataUrl: string): Promise<string> {
+  const file = await store.saveAsset(name, dataUrl);
+  if (/\.(?:png|jpe?g)$/i.test(file)) cx.thumbs.prepare(path.join(store.assetsDir(), file));
+  return file;
+}
+
+const assetName = (file: string) => {
   if (!/^[\w.-]+$/.test(file) || file.startsWith(".")) throw new Error(`Bad asset name ${file}`);
-  return cx.thumbs.get(path.join(store.assetsDir(), file), width);
+  return file;
+};
+
+/** A smaller copy of a board image (thumbs/index.ts), width wide: what the board shows at that size */
+export function thumbOf(cx: HostContext, store: Storage, file: string, width: number) {
+  return cx.thumbs.get(path.join(store.assetsDir(), assetName(file)), width);
+}
+
+/** The board images' sizes and copies (ImageCopies), by assets/ file name; null for one that has none (not a still PNG or JPEG) */
+export function imagesOf(cx: HostContext, store: Storage, files: string[]) {
+  const dir = store.assetsDir();
+  return cx.thumbs
+    .info(
+      Object.fromEntries(
+        files.filter((f) => STILL.test(f)).map((f) => [assetName(f), path.join(dir, f)] as [string, string]),
+      ),
+    )
+    .then((r) => Object.fromEntries(files.map((f) => [f, r[f] ?? null])));
+}
+
+/** The assets/ files that can have smaller copies (still PNG or JPEG, by extension: the host checks the content) */
+const STILL = /^[\w.-]+\.(?:png|jpe?g)$/i;
+/** The assets/ images a board shows that can have copies: its Image cards' pictures and the images in its Markdown */
+export function boardImages(b: Board): string[] {
+  const out = new Set<string>();
+  for (const c of b.cards) if (c.kind === "image" && STILL.test(c.src)) out.add(c.src);
+  for (const m of JSON.stringify(b).matchAll(/assets\/([\w.-]+\.(?:png|jpe?g))\b/gi)) out.add(m[1]);
+  return [...out];
 }
 
 /**

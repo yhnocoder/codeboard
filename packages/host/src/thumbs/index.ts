@@ -7,12 +7,14 @@
 // SWEEP_AGE are deleted.
 // Made in a worker thread (thumbs/worker.ts, its path given to startHost), one at a time, so the host's event loop is never held
 // by a decode; a host started without one (tests, the harness) makes them in its own thread
+import { createHash } from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { Worker } from "node:worker_threads";
-import { type Disposable, THUMB_WIDTHS, type Workspace } from "@codeboard/core";
+import { type Disposable, type ImageCopies, THUMB_WIDTHS, type Workspace } from "@codeboard/core";
 import { Lru } from "../ws";
-import { lookUp, runJob, type ThumbDone, type ThumbJob } from "./job";
+import { copyable, jpegOrientation, kindOf, worthCopy } from "./codec";
+import { lookUp, readCopyName, runJob, type ThumbDone, type ThumbJob } from "./job";
 
 export type { ThumbDone } from "./job";
 
@@ -24,6 +26,33 @@ const WORKER_IDLE = 30_000;
 const SWEEP_AGE = 60 * 24 * 3600_000;
 /** A temporary file this old was left by a window that stopped while writing */
 const TMP_AGE = 24 * 3600_000;
+/** An image's first bytes hold its size (a PNG's IHDR before any IDAT, a JPEG's frame header after its EXIF) */
+const HEAD = 256 * 1024;
+/** assets/ files named by their content (host/src/images.ts, Storage.saveAsset): the first 16 hex digits of its sha1 */
+const NAMED = /^[0-9a-f]{16}(?=[-.])/;
+
+/** The first bytes of a file (all of it when it is shorter) */
+async function head(abs: string, n: number): Promise<Buffer> {
+  const f = await fs.open(abs, "r");
+  try {
+    const b = Buffer.alloc(n);
+    const { bytesRead } = await f.read(b, 0, n, 0);
+    return b.subarray(0, bytesRead);
+  } finally {
+    await f.close();
+  }
+}
+
+/** A still PNG or JPEG's kind, its size as shown (EXIF orientation applied) and the widths worth a copy; anything else null */
+async function sizeOf(abs: string) {
+  let b = await head(abs, HEAD);
+  let k = kindOf(b);
+  if (!k && b.length === HEAD) k = kindOf((b = await fs.readFile(abs)));
+  if (!k) return null;
+  const turned = k.mime === "jpg" && jpegOrientation(b) >= 5;
+  const size = turned ? { width: k.height, height: k.width } : { width: k.width, height: k.height };
+  return { k, size, widths: copyable(k) ? THUMB_WIDTHS.filter((w) => worthCopy(size.width, w)) : [] };
+}
 
 export class Thumbs implements Disposable {
   private memo = new Lru<Promise<ThumbDone | null>>(MEMO);
@@ -65,6 +94,68 @@ export class Thumbs implements Disposable {
       void this.sweep().catch((e) => this.ws.log("warn", `thumbnail sweep: ${e instanceof Error ? e.message : e}`));
     }
     return p;
+  }
+
+  /**
+   * What the board needs to show these images (assets/ file names → their paths) from the first frame: each one's size as shown
+   * and the copies worth making, the ones made already named. Not a still PNG or JPEG (or unreadable): null. Reads only each
+   * file's first bytes and lists the cache folder once: the copies of an image are found by its name, which starts with its
+   * content's hash (as theirs do). The copies listed are touched, so the sweep keeps them while boards show them
+   */
+  async info(files: Record<string, string>): Promise<Record<string, ImageCopies | null>> {
+    const made = new Map<string, { width: number; mime: string; file: string }[]>();
+    for (const n of await fs.readdir(this.dir()).catch(() => [] as string[])) {
+      const c = readCopyName(n);
+      if (!c) continue;
+      const l = made.get(c.id) ?? [];
+      l.push({ width: c.width, mime: c.mime, file: n });
+      made.set(c.id, l);
+    }
+    const out: Record<string, ImageCopies | null> = {};
+    const used: string[] = [];
+    await Promise.all(
+      Object.entries(files).map(async ([name, abs]) => {
+        out[name] = await this.infoOf(name, abs, made, used).catch(() => null);
+      }),
+    );
+    const now = new Date();
+    void Promise.all(used.map((f) => fs.utimes(path.join(this.dir(), f), now, now).catch(() => {})));
+    return out;
+  }
+
+  private async infoOf(
+    name: string,
+    abs: string,
+    made: Map<string, { width: number; mime: string; file: string }[]>,
+    used: string[],
+  ): Promise<ImageCopies | null> {
+    const s = await sizeOf(abs);
+    if (!s) return null;
+    const { k, size, widths } = s;
+    if (!widths.length) return { ...size, copies: [] };
+    // a file named otherwise (put there by hand) is hashed whole
+    const id =
+      NAMED.exec(name)?.[0] ??
+      createHash("sha1")
+        .update(await fs.readFile(abs))
+        .digest("hex")
+        .slice(0, 16);
+    const have = made.get(id) ?? [];
+    const copies = widths.map((w) => {
+      const f = have.find((h) => h.width === w && h.mime === k.mime)?.file;
+      if (f) used.push(f);
+      return f ? { width: w, file: f } : { width: w };
+    });
+    return { ...size, copies };
+  }
+
+  /** Makes the copies worth making of the image at abs in the background (one just saved: a board shows it next) */
+  prepare(abs: string) {
+    void (async () => {
+      for (const w of (await sizeOf(abs))?.widths ?? []) await this.get(abs, w);
+    })().catch((e) => {
+      if (!this.gone) this.ws.log("warn", `thumbnails of ${path.basename(abs)}: ${e instanceof Error ? e.message : e}`);
+    });
   }
 
   /** One job at a time: two big images decoded at once would hold two of them in memory for no gain */

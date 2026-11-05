@@ -86,6 +86,7 @@ const OUTLIVES_BOARD: Record<string, string> = {
   "md/lazy.ts:spent": "the render queue's frame budget",
   "md/lazy.ts:watching": "the render queue's camera watch",
   "md/images.ts:base": "the host's asset address: set on init",
+  "md/images.ts:key": "the host's asset and copies addresses: set on init",
   "md/anim.ts:save": "how a Note image's playback is saved, wired once",
   "md/anim.ts:raf": "the animated images' frame loop: stops by itself once none plays",
   "md/anim.ts:seen": "the page's observer of animated images on screen",
@@ -116,7 +117,9 @@ const OUTLIVES_BOARD: Record<string, string> = {
   "md/anim.ts:gifThumbs": "GIF filmstrip stills, by address",
   "actions/imageai.ts:colorCtx": "a canvas for parsing colors",
   "actions/flow.ts:sent": "calls prefetched lately, by segment: the host caches them",
-  "cards/thumbs.ts:asked": "the host's smaller copies of images, by asset name (named by its content) and width",
+  "md/copies.ts:known": "the host's smaller copies of images, by asset name (named by its content)",
+  "md/copies.ts:made": "the copies asked of the host, by asset name and width: each made once",
+  "md/copies.ts:wanted": "asset names to ask the host about in this task's batch: emptied by its microtask",
   // kept across boards on purpose
   "state/zoomlog.ts:rec":
     "the zoom diagnostics recording, which runs across board switches until the host command stops it",

@@ -1,6 +1,7 @@
 // The board's composition root: what it wires up once, in this order, before a board is shown. Every shell (boot.tsx, the stories)
 // calls wireBoard with its own way to the host and renders the board inside MdContext with the Markdown instance it returns;
 // nothing here happens by importing a module
+import { createEffect, on, untrack } from "solid-js";
 import { createMarkdown, type Markdown } from "@yhnocoder/markdown";
 import { langId } from "@codeboard/analysis/langs";
 import { onHost } from "./hostio";
@@ -18,6 +19,9 @@ import { wireInk } from "./state/ink";
 import { wireSummaries } from "./state/summary";
 import { rooted } from "./state/root";
 import { wireRefTitles } from "./md/refs";
+import { makeCopy } from "./md/copies";
+import { stillZ } from "./state/camera";
+import { offscreen } from "./state/offscreen";
 
 export type { Transport };
 export type BoardOptions = {
@@ -39,6 +43,13 @@ export function wireBoard(t: Transport, o: BoardOptions): Markdown {
     passKeys: vscodeKey,
     measure,
     ghosts,
+    // images show the copy that fits the size they are seen at (md/copies.ts), chosen when the camera stops
+    displayScale: () => untrack(stillZ) * devicePixelRatio,
+    imageVisible: (img) => {
+      const id = img.closest<HTMLElement>(".card[data-id]")?.dataset.id;
+      return !id || !offscreen(id);
+    },
+    makeImageCopy: (src, width) => makeCopy(md, src, width),
   });
   connectHost(t, (m) => onHost(m, md));
   checkEdits(o.selfCheck);
@@ -53,5 +64,6 @@ export function wireBoard(t: Transport, o: BoardOptions): Markdown {
   wireInk();
   wireSummaries();
   rooted(() => wireRefTitles(md));
+  rooted(() => createEffect(on(stillZ, () => md.updateImages(), { defer: true })));
   return md;
 }

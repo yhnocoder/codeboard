@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { createHash } from "node:crypto";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { sniffImage, type BoardToHost } from "@codeboard/core";
 import { Storage } from "../src/storage/boards";
 import { nodeFs } from "../src/storage/nodefs";
@@ -16,6 +16,10 @@ import { MEDIA } from "./helpers";
 let cx: HostContext;
 
 const tmp = fs.realpathSync(fs.mkdtempSync("/tmp/codeboard-img-"));
+// the host a pasted image is saved through (its copies are made in the background, in its storage)
+beforeAll(() => {
+  cx = new HostContext(nodeWorkspace(path.join(tmp, "ws")));
+});
 afterAll(() => fs.rmSync(tmp, { recursive: true, force: true }));
 let n = 0;
 function setup() {
@@ -108,6 +112,46 @@ describe("saving a pasted image", () => {
     expect(assets()).toEqual([`${sha(PNG)}-40x30.png`]); // no temp file left behind
   });
 
+  it("makes a pasted screenshot's smaller copies in the background, and lists them for the board", async () => {
+    const storage = path.join(tmp, "copies-storage");
+    cx = new HostContext({
+      ...nodeWorkspace(tmp),
+      storage: { dir: () => storage, globalDir: () => storage, get: () => undefined, set: async () => {} },
+    });
+    const { save, store } = setup();
+    const shot = png(2000, 1000, (x) => (x % 40 < 20 ? [250, 250, 245, 255] : [30, 30, 40, 255]));
+    const src = await save(url(shot));
+    const file = src.slice("assets/".length);
+    const h = makeHandler(cx, { cx, store } as unknown as BoardHost, MEDIA);
+    const images = () =>
+      h({} as BoardPanel, { type: "images", req: 1, files: [file, "none.png", "x.gif"] } as BoardToHost) as Promise<
+        Record<string, unknown>
+      >;
+    // 2000 px wide: copies 400 and 800 wide are worth it; the host makes them without being asked
+    await vi.waitFor(
+      async () =>
+        expect(await images()).toEqual({
+          [file]: {
+            width: 2000,
+            height: 1000,
+            copies: [
+              { width: 400, file: expect.stringMatching(/^[0-9a-f]{20}-400\.png$/) },
+              { width: 800, file: expect.stringMatching(/^[0-9a-f]{20}-800\.png$/) },
+            ],
+          },
+          "none.png": null,
+          "x.gif": null,
+        }),
+      { timeout: 20_000 },
+    );
+    // the copies are a cache in the editor's storage, named by the image's content (its assets/ name starts the same)
+    const made = fs.readdirSync(path.join(storage, "thumbs")).sort();
+    expect(made.every((f) => f.startsWith(sha(shot)))).toBe(true);
+    // the Markdown keeps the original's address
+    expect(src).toBe(`assets/${sha(shot)}-2000x1000.png`);
+    cx.dispose();
+  });
+
   it("keeps one file per image: the same bytes pasted again, under another type or name, give the same path", async () => {
     const { save, assets } = setup();
     const a = await save(url(PNG));
@@ -171,9 +215,9 @@ describe("saving a pasted image", () => {
   it("follows the storage folder (a moved storageDir, or global storage with no folder open)", async () => {
     let dir = path.join(tmp, "first");
     const store = new Storage(nodeFs, { dir: () => dir });
-    await saveNoteImage(store, url(PNG));
+    await saveNoteImage(cx, store, url(PNG));
     dir = path.join(tmp, "global", "boards");
-    const src = await saveNoteImage(store, url(PNG));
+    const src = await saveNoteImage(cx, store, url(PNG));
     expect(fs.existsSync(path.join(tmp, "first", src))).toBe(true);
     expect(fs.existsSync(path.join(dir, src))).toBe(true);
     expect(store.assetsDir()).toBe(path.join(dir, "assets"));

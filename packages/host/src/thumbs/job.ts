@@ -6,6 +6,15 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { jpegOrientation, kindOf, makeThumb, worthCopy } from "./codec";
 
+/** A copy's name in the cache folder: the image's content hash (sha1, hex: its first 16 characters are an assets/ file's name,
+ *  host/src/images.ts), the width and the format */
+const copyName = (sha1: string, width: number, mime: string) => `${sha1.slice(0, 20)}-${width}.${mime}`;
+/** A copy's name read back: the first 16 characters of its image's hash, its width and format */
+export function readCopyName(name: string): { id: string; width: number; mime: string } | null {
+  const m = /^([0-9a-f]{20})-(\d+)\.(png|jpg)$/.exec(name);
+  return m ? { id: m[1].slice(0, 16), width: +m[2], mime: m[3] } : null;
+}
+
 export type ThumbJob = { file: string; width: number; dir: string };
 /** file: the copy's name in the cache folder, null when the original is shown (no smaller copy is worth it);
  *  width / height: the image's own size as shown (EXIF orientation applied) */
@@ -23,7 +32,7 @@ export async function lookUp(
   const turned = k.mime === "jpg" && jpegOrientation(src) >= 5;
   const size = turned ? { width: k.height, height: k.width } : { width: k.width, height: k.height };
   if (!worthCopy(size.width, j.width)) return { done: { file: null, ...size } };
-  const name = `${createHash("sha1").update(src).digest("hex").slice(0, 20)}-${j.width}.${k.mime}`;
+  const name = copyName(createHash("sha1").update(src).digest("hex"), j.width, k.mime);
   try {
     // a copy made before: touched, so the sweep (thumbs/index.ts) sees it is still in use
     const now = new Date();
