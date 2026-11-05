@@ -315,6 +315,16 @@ export const BoardSealSchema = obj({
 /** 别处（侧栏、别的白板）发来的印章 */
 export const isBoardSeal = (x: unknown): x is BoardSeal => v.is(BoardSealSchema, x);
 
+/** An entry on the board's Shelf (model.ts ShelfEntry) */
+const ShelfEntry = obj({
+  id: str,
+  at: num,
+  place: v.record(str, Place),
+  sections: v.array(Section),
+  links: v.array(LinkMarked),
+  stickers: v.array(Sticker),
+});
+
 const boardEntries = {
   version: v.literal(BOARD_VERSION),
   id: opt(str),
@@ -332,6 +342,7 @@ const boardEntries = {
   marks: opt(v.record(str, GraphMark)),
   legend: opt(v.record(str, str)),
   seal: opt(BoardSealSchema),
+  shelf: opt(v.array(ShelfEntry)),
 };
 /** 当前版本（迁移之后）、共享卡已经换成内容的白板（界面拿到的，带着这台机器上的镜头）。id 可以缺：宿主扫描时按文件名补 */
 export const BoardSchema = obj({ ...boardEntries, cam: obj({ x: num, y: num, z: num }) });

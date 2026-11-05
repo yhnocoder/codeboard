@@ -3,6 +3,8 @@ import { activeOf, twinContent, UPSTREAM, type Board, type CodeCard, type Sticke
 
 /**
  * 白板里指向不存在的东西的引用（应该永远是空的）：Link 两端、Sidenote、Sticker、问题的解答、Compare 的栏、Place、Section 父子，以及重复的 id。
+ * The Shelf is checked the same way: its arrows, stickers, places and Sections (a shelved card is on the Shelf only, never on the
+ * canvas too; a shelved sticker is bound to its own entry's arrows).
  * 给测试和 mutate 的自检用；返回每一处问题的说明。
  */
 export function danglingRefs(b: Board): string[] {
@@ -12,18 +14,20 @@ export function danglingRefs(b: Board): string[] {
     if (cards.has(c.id)) out.push(`duplicate card id ${c.id}`);
     cards.set(c.id, c);
   }
+  const shelf = b.shelf ?? [];
+  const allLinks = [...b.links, ...shelf.flatMap((e) => e.links)];
   const links = new Set(b.links.map((l) => l.id));
-  const sections = new Set(b.sections.map((s) => s.id));
+  const sections = new Set([...b.sections, ...shelf.flatMap((e) => e.sections)].map((s) => s.id));
   const segOk = (card: string, seg?: string) => {
     const c = cards.get(card);
     if (!c) return false;
     return !seg || (c.kind === "code" && c.segments.some((s) => s.id === seg));
   };
-  for (const l of b.links)
+  for (const l of allLinks)
     for (const e of [l.from, l.to])
       if (!segOk(e.card, e.seg)) out.push(`link ${l.id} → missing ${e.card}${e.seg ? `/${e.seg}` : ""}`);
   // Note 的块：只能在 Note 上，和行不能同时有；块还在不在由白板拆 Markdown 时看（blockAt 找不到就画在卡头）
-  for (const l of b.links)
+  for (const l of allLinks)
     for (const e of [l.from, l.to]) {
       if (!e.block) continue;
       const c = cards.get(e.card);
@@ -33,7 +37,7 @@ export function danglingRefs(b: Board): string[] {
         out.push(`link ${l.id} → bad block ${JSON.stringify(e.block)} on ${e.card}`);
     }
   // 标记的组合（LinkMarks）：类型挡住了写法，这里挡住从别处来的数据
-  for (const l of b.links as { id: string; gen?: true; call?: unknown; rpc?: unknown; back?: true }[]) {
+  for (const l of allLinks as { id: string; gen?: true; call?: unknown; rpc?: unknown; back?: true }[]) {
     const extra = (["call", "rpc", "back"] as const).filter((k) => l[k]);
     if (l.gen && extra.length) out.push(`generated-from link ${l.id} also has ${extra.join(", ")}`);
   }
@@ -41,24 +45,58 @@ export function danglingRefs(b: Board): string[] {
     if (!segOk(n.at.card, n.at.seg)) out.push(`sidenote ${n.id} on missing ${n.at.card}`);
     if (n.kind === "card" && !cards.has(n.card)) out.push(`sidenote ${n.id} points to missing ${n.card}`);
   }
-  const stickerRef = (k: Sticker): string | null => {
+  const stickerRef = (k: Sticker, links: Set<string>): string | null => {
     const at = k.at;
     if (at.kind === "line") return segOk(at.card, at.seg) ? null : at.card;
     if (!at.on) return null;
     return "card" in at.on ? (cards.has(at.on.card) ? null : at.on.card) : links.has(at.on.link) ? null : at.on.link;
   };
-  for (const k of b.stickers) {
-    const m = stickerRef(k);
+  const stickers: [Sticker, Set<string>][] = [
+    ...b.stickers.map((k): [Sticker, Set<string>] => [k, links]),
+    ...shelf.flatMap((e) => {
+      const own = new Set(e.links.map((l) => l.id));
+      return e.stickers.map((k): [Sticker, Set<string>] => [k, own]);
+    }),
+  ];
+  for (const [k, ls] of stickers) {
+    const m = stickerRef(k, ls);
     if (m) out.push(`sticker ${k.id} on missing ${m}`);
   }
-  for (const k of b.stickers)
+  for (const [k] of stickers)
     if (k.q?.answer && !cards.has(k.q.answer)) out.push(`question ${k.id} answered by missing ${k.q.answer}`);
   for (const c of b.cards)
     if (c.kind === "compare")
       for (const k of c.cols) if (!cards.has(k)) out.push(`compare ${c.id} column missing ${k}`);
   for (const id of Object.keys(b.place)) if (!cards.has(id)) out.push(`place for missing card ${id}`);
-  for (const s of b.sections)
+  const shelved = new Set<string>();
+  for (const e of shelf) {
+    if (!Object.keys(e.place).length && !e.sections.length) out.push(`shelf entry ${e.id} is empty`);
+    for (const id of Object.keys(e.place)) {
+      if (!cards.has(id)) out.push(`shelf entry ${e.id} keeps missing card ${id}`);
+      if (b.place[id]) out.push(`card ${id} is both on the board and on the shelf`);
+      if (shelved.has(id)) out.push(`card ${id} is in two shelf entries`);
+      shelved.add(id);
+    }
+  }
+  // what stays on the canvas does not hang on a shelved card (a Compare's columns with it)
+  for (const id of [...shelved]) {
+    const c = cards.get(id);
+    if (c?.kind === "compare") c.cols.forEach((k) => shelved.add(k));
+  }
+  for (const l of b.links)
+    if (shelved.has(l.from.card) || shelved.has(l.to.card))
+      out.push(`link ${l.id} on the board touches a shelved card`);
+  for (const k of b.stickers) {
+    const at = k.at;
+    const on = at.kind === "line" ? at.card : at.on && "card" in at.on ? at.on.card : undefined;
+    if (on && shelved.has(on)) out.push(`sticker ${k.id} on the board is on shelved card ${on}`);
+  }
+  const secIds = new Set<string>();
+  for (const s of [...b.sections, ...shelf.flatMap((e) => e.sections)]) {
+    if (secIds.has(s.id)) out.push(`duplicate section id ${s.id}`);
+    secIds.add(s.id);
     if (s.parent && !sections.has(s.parent)) out.push(`section ${s.id} parent missing ${s.parent}`);
+  }
   for (const id of Object.keys(b.marks ?? {})) if (!cards.has(id)) out.push(`graph mark for missing card ${id}`);
   for (const id of Object.keys(b.born ?? {})) if (!cards.has(id)) out.push(`creation order for missing card ${id}`);
   for (const c of b.cards) if (c.kind === "code" && c.variants) out.push(...variantProblems(c));

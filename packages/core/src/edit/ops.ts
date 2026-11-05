@@ -232,6 +232,21 @@ export function removeSections(b: Board, ids: Iterable<string>): void {
       if (s) p.section = s;
       else delete p.section;
     }
+  // on the Shelf: a shelved Section or card that was in one of these goes up the same way (where it returns to)
+  for (const e of b.shelf ?? []) {
+    for (const s of e.sections)
+      if (s.parent && gone.has(s.parent)) {
+        const p = up(s.parent);
+        if (p) s.parent = p;
+        else delete s.parent;
+      }
+    for (const p of Object.values(e.place))
+      if (p.section && gone.has(p.section)) {
+        const s = up(p.section);
+        if (s) p.section = s;
+        else delete p.section;
+      }
+  }
   b.sections = b.sections.filter((s) => !gone.has(s.id));
 }
 

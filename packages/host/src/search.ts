@@ -4,6 +4,7 @@ import {
   cardTitle,
   computeFlows,
   fuzzy,
+  shelvedCards,
   guessLang,
   substr,
   type GenSource,
@@ -40,7 +41,9 @@ export async function search(
     for (const board of boards) {
       const refs = store.refsOf(board.id);
       let flows: ReturnType<typeof computeFlows> | undefined;
+      const off = shelvedCards(board); // on the Shelf: kept, but not found
       board.cards.forEach((c) => {
+        if (off.has(c.id)) return;
         if (
           !board.place[c.id] &&
           c.kind === "code" &&
@@ -71,6 +74,7 @@ export async function search(
         scored.push({ s: s + 30 + (board.id === here ? 5 : 0), item });
       });
       for (const n of board.sidenotes ?? []) {
+        if (off.has(n.at.card)) continue;
         if (refs.has(n.at.card) && !n.boardOnly && n.kind !== "card") {
           if (seenNotes.has(n.id)) continue;
           seenNotes.add(n.id);
