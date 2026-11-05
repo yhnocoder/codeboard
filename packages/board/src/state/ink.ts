@@ -1,7 +1,6 @@
 // Ink Wash's images, drawn once as small SVGs (data URIs) instead of live CSS filters or per-frame work:
-// - the card paper (毛边宣纸): one image per card size (deckle), drawn on the card's ::before (themes.css), regenerated only when
-//   the size changes; cached by size (rounded to SIZE_STEP) and one of PAPER_SEEDS edge patterns picked by the card's id, so
-//   cards of the same size share one image
+// - the card paper (毛边宣纸): one nine-slice image (deckle) per edge pattern (PAPER_SEEDS, picked by the card's id) and light /
+//   dark, drawn as the border image of the card's ::before (themes.css): the same image at every card size
 // - the five brush strokes under calls and the toolbar's pale ink stroke: one each per light / dark, set
 //   as variables on the root while the look is Ink Wash (wireInk)
 // The shapes follow the approved mock (versions/v0.2.1/ink-wash/demo.html: deckleImg, callImg, barImg)
@@ -28,9 +27,15 @@ const svgUrl = (w: number, h: number, body: string, par = "") =>
 // ---------- the card paper ----------
 /** How far the paper reaches outside the card (themes.css: the card's ::before is inset by −PAPER_M) */
 const PAPER_M = 14;
-/** Sizes are rounded to this before drawing: the image is stretched onto the card, a few px off does not show */
-const SIZE_STEP = 4;
+/** The sheet is drawn as a nine-slice border image (themes.css): corners PAPER_SLICE square, edges and middle tiled. Inside the
+ *  card the slice reaches PAPER_SLICE − PAPER_M (16 px), past the torn edge's jitter and its outward fibres. themes.css uses the same number */
+const PAPER_SLICE = 30;
+/** The tiled middle of each edge and of the sheet: long enough that the repeat does not show */
+const PAPER_TILE = 240;
 const PAPER_SEEDS = 4;
+/** Points along the torn edge are this far apart; PAPER_SLICE − PAPER_M and PAPER_TILE are multiples of it, so the edge passes
+ *  through a point at each slice line */
+const EDGE_STEP = 4;
 
 /** Seeded random numbers in [0, 1) (mulberry32) */
 export function rng(seed: number) {
@@ -44,29 +49,36 @@ export function rng(seed: number) {
 }
 
 /**
- * A torn sheet of rice paper W × H (the card plus PAPER_M on each side): the edge jitters ±0.5 px with a rare small notch, a few
- * short fibres stick out, ~10 very faint fibres inside. The shadow under it is the card's box-shadow (themes.css): blurred 4.5 px, the
- * outline's ±0.5 px jitter does not show in it, and a filter in the image would be redrawn on every paint of the card
+ * A torn sheet of rice paper, one size for every card: the edge jitters ±0.5 px with a rare small notch, a few short fibres stick
+ * out, a few very faint fibres inside. It is a nine-slice image (PAPER_SLICE): the card's size never changes the image, so a Note
+ * growing while it is edited keeps the paper it has. (One image per card size was redrawn, and decoded again, on every 4 px the
+ * card grew: a long card showed the board through it for a frame each time.) The edge is back on its line at each slice line,
+ * so the tiled edges join without a step. The shadow under it is the card's box-shadow (themes.css): blurred 4.5 px, the
+ * outline's jitter does not show in it, and a filter in the image would be redrawn on every paint of the card
  */
-function deckleSvg(W: number, H: number, dk: boolean, seed: number) {
+function deckleSvg(dk: boolean, seed: number) {
   const r = rng(seed),
     M = PAPER_M,
+    S = 2 * PAPER_SLICE + PAPER_TILE,
     x0 = M,
     y0 = M,
-    x1 = W - M,
-    y1 = H - M,
+    x1 = S - M,
+    y1 = S - M,
     pts: string[] = [],
     fib: string[] = [];
+  // along an edge, the slice lines fall at these distances from its start
+  const lines = [PAPER_SLICE - M, S - PAPER_SLICE - M];
   const jag = () => (r() - 0.5) * 1.0 + (r() < 0.03 ? -0.9 : 0);
   const edge = (ax: number, ay: number, bx: number, by: number, nx: number, ny: number) => {
-    const n = Math.max(2, Math.round(Math.hypot(bx - ax, by - ay) / 4));
+    const n = Math.round(Math.hypot(bx - ax, by - ay) / EDGE_STEP);
     for (let i = 0; i < n; i++) {
       const t = i / n,
-        j = jag(),
+        j = i === 0 || lines.includes(i * EDGE_STEP) ? 0 : jag(),
         x = ax + (bx - ax) * t + nx * j,
         y = ay + (by - ay) * t + ny * j;
       pts.push(`${f(x)} ${f(y)}`);
-      if (r() < 0.06) {
+      // fibres sticking out: not across a slice line, where the tiles meet
+      if (r() < 0.06 && !lines.some((l) => Math.abs(i * EDGE_STEP - l) < 6)) {
         const l = 1 + r() * 2,
           a = (r() - 0.5) * 1.2;
         fib.push(`M${f(x)} ${f(y)}l${f(nx * l + ny * a * l)} ${f(ny * l + nx * a * l)}`);
@@ -80,42 +92,37 @@ function deckleSvg(W: number, H: number, dk: boolean, seed: number) {
   const d = `M${pts.join("L")}Z`;
   const paper = dk ? "#1e1d1a" : "#fbf8f1",
     fiber = dk ? "#e9e5da" : "#6b5a3a";
+  // faint fibres inside, all within the tiled middle (a fibre across a slice line would be cut where the tiles meet)
   let inner = "";
-  for (let i = 0; i < 10; i++) {
-    const x = x0 + r() * (x1 - x0),
-      y = y0 + r() * (y1 - y0),
-      l = 20 + r() * 60,
-      a = r() * Math.PI;
-    inner += `M${f(x)} ${f(y)}q${f((Math.cos(a) * l) / 2 + 6)} ${f((Math.sin(a) * l) / 2 - 4)} ${f(Math.cos(a) * l)} ${f(Math.sin(a) * l)}`;
+  const lo = PAPER_SLICE + 6,
+    hi = S - PAPER_SLICE - 6;
+  for (let i = 0; i < 6; i++) {
+    const l = 20 + r() * 60,
+      a = r() * Math.PI,
+      dx = Math.cos(a) * l,
+      dy = Math.sin(a) * l,
+      x = lo + r() * (hi - lo - Math.abs(dx)) + Math.max(0, -dx),
+      y = lo + r() * (hi - lo - dy);
+    inner += `M${f(x)} ${f(y)}q${f(dx / 2 + 6)} ${f(dy / 2 - 4)} ${f(dx)} ${f(dy)}`;
   }
-  // preserveAspectRatio none: the image is drawn for the card's size rounded to SIZE_STEP and stretched onto the card (themes.css
-  // 100% 100%). An SVG keeps its aspect ratio by default: a card whose rounded size has another ratio got the paper shrunk to fit
-  // and centred, its torn edge several px inside the card on two sides, off the card's shadow and header wash (a double edge)
   return svgUrl(
-    W,
-    H,
-    `<defs><path id='p' d='${d}'/><clipPath id='c'><use href='#p'/></clipPath></defs>` +
+    S,
+    S,
+    `<defs><path id='p' d='${d}'/></defs>` +
       `<use href='#p' fill='${paper}'/>` +
-      `<path clip-path='url(#c)' d='${inner}' fill='none' stroke='${fiber}' stroke-opacity='${dk ? 0.035 : 0.04}' stroke-width='.5'/>` +
+      `<path d='${inner}' fill='none' stroke='${fiber}' stroke-opacity='${dk ? 0.035 : 0.04}' stroke-width='.5'/>` +
       `<path d='${fib.join("")}' fill='none' stroke='${paper}' stroke-width='.7' stroke-linecap='round'/>` +
       `<use href='#p' fill='none' stroke='${fiber}' stroke-opacity='${dk ? 0.12 : 0.1}' stroke-width='.5'/>`,
-    " preserveAspectRatio='none'",
   );
 }
 
 const papers = new Map<string, string>();
-/** The paper image for a card of w × h with this id (cached: cards of the same rounded size and pattern share it) */
-export function paperOf(w: number, h: number, id: string, dk: boolean) {
-  const W = Math.max(SIZE_STEP, Math.round(w / SIZE_STEP) * SIZE_STEP) + 2 * PAPER_M,
-    H = Math.max(SIZE_STEP, Math.round(h / SIZE_STEP) * SIZE_STEP) + 2 * PAPER_M,
-    seed = 1 + (fnv(id) % PAPER_SEEDS),
-    k = `${W}x${H}:${seed}:${dk ? 1 : 0}`;
+/** The paper image of the card with this id: one of PAPER_SEEDS edge patterns, picked by the id, for light or dark (cached) */
+export function paperOf(id: string, dk: boolean) {
+  const seed = 1 + (fnv(id) % PAPER_SEEDS),
+    k = `${seed}:${dk ? 1 : 0}`;
   let u = papers.get(k);
-  if (!u) {
-    // a long session of resizing would grow it without end: start over past a few hundred sizes
-    if (papers.size > 400) papers.clear();
-    papers.set(k, (u = deckleSvg(W, H, dk, seed)));
-  }
+  if (!u) papers.set(k, (u = deckleSvg(dk, seed)));
   return u;
 }
 
