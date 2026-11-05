@@ -45,6 +45,7 @@ import {
   liveNoteMd,
   type NoteSpot,
 } from "./state/ui";
+import { shelfHot } from "./state/shelf";
 import { staticTextRange, draggedImage, IMAGE_DRAG_TYPE, type DraggedImage, type Markdown } from "@yhnocoder/markdown";
 import {
   frames,
@@ -375,16 +376,19 @@ function startCardDrag(e: PointerEvent, grabbed: string, onClick?: () => void) {
     let dx = (ev.clientX - sx) / z,
       dy = (ev.clientY - sy) / z;
     const fast = pace.fast(ev, still);
+    // over the dock's Shelf button or the open Shelf panel: letting go puts them on the Shelf (no merging, no Section)
+    const shelf = A.shelfDragAt(ev.clientX, ev.clientY);
     // 合并 / 变成 Sidenote 的落点
-    const under = !nearOther(ev)
-      ? undefined
-      : (document
-          .elementsFromPoint(ev.clientX, ev.clientY)
-          .find(
-            (n) =>
-              (n as HTMLElement).closest?.(".card") &&
-              !skip.has(((n as HTMLElement).closest(".card") as HTMLElement).dataset.id!),
-          ) as HTMLElement | undefined);
+    const under =
+      shelf || !nearOther(ev)
+        ? undefined
+        : (document
+            .elementsFromPoint(ev.clientX, ev.clientY)
+            .find(
+              (n) =>
+                (n as HTMLElement).closest?.(".card") &&
+                !skip.has(((n as HTMLElement).closest(".card") as HTMLElement).dataset.id!),
+            ) as HTMLElement | undefined);
     const uc = under?.closest(".card") as HTMLElement | undefined;
     const uid = uc?.dataset.id;
     const head = under?.closest(".chead");
@@ -454,7 +458,9 @@ function startCardDrag(e: PointerEvent, grabbed: string, onClick?: () => void) {
     });
     // 松手后会在哪个 Section（和下面松手时同一个算法）：先预演出来，要进的 Section 亮起来；合并 / 变 Sidenote 时不算
     setMovingHome(
-      drop ? null : new Map(items.map((it) => [it.id, homeFor(fr, { ...it.r, x: it.r.x + dx, y: it.r.y + dy })?.id])),
+      drop || shelf
+        ? null
+        : new Map(items.map((it) => [it.id, homeFor(fr, { ...it.r, x: it.r.x + dx, y: it.r.y + dy })?.id])),
     );
   };
   track(
@@ -483,6 +489,8 @@ function startCardDrag(e: PointerEvent, grabbed: string, onClick?: () => void) {
         landT.start(() => setLanding(new Set<string>()), LAND_MS * (100 / tune("animSpeed")));
       }
       setMovingHome(null);
+      const toShelf = shelfHot() === "dock" || shelfHot() === "panel";
+      A.shelfDragEnd();
       const drop = dropTarget();
       const noteAt = drop?.kind === "note" ? noteDropAt(drop.card) : undefined;
       setDropTarget(null);
@@ -494,6 +502,13 @@ function startCardDrag(e: PointerEvent, grabbed: string, onClick?: () => void) {
         return;
       }
       dragEndAt.v = performance.now();
+      if (toShelf) {
+        // they fly in from where they were let go; the undo step brings them back where the drag started
+        const go = A.shelveDragged(ids, [], putBack);
+        end();
+        go();
+        return;
+      }
       if (drop?.kind === "merge" && drop.armed) {
         putBack();
         end();
@@ -535,6 +550,7 @@ function startCardDrag(e: PointerEvent, grabbed: string, onClick?: () => void) {
       pace.stop();
       clearTimeout(mergeT);
       leaveNote();
+      A.shelfDragEnd();
       dropGesture();
     },
   );
@@ -1252,6 +1268,7 @@ function dragGroup(e: PointerEvent, secIds: string[], cardIds: string[], grabbed
       setGuides(sn.guides);
     } else setGuides([]);
     at = { dx: Math.round(dx), dy: Math.round(dy) };
+    A.shelfDragAt(ev.clientX, ev.clientY);
     live((b) => {
       for (const it of items) {
         const o = it.kind === "c" ? b.place[it.id] : b.sections.find((q) => q.id === it.id);
@@ -1271,9 +1288,30 @@ function dragGroup(e: PointerEvent, secIds: string[], cardIds: string[], grabbed
       pace.stop();
       setGuides([]);
       setMovingHome(null);
+      const toShelf = shelfHot() === "dock" || shelfHot() === "panel";
+      A.shelfDragEnd();
       if (!moved) {
         g.end();
         return onClick?.();
+      }
+      if (toShelf) {
+        const go = A.shelveDragged(
+          loose,
+          tops.map((q) => q.id),
+          () =>
+            live((b) => {
+              for (const it of items) {
+                const o = it.kind === "c" ? b.place[it.id] : b.sections.find((q) => q.id === it.id);
+                if (o) {
+                  o.x = it.ox;
+                  o.y = it.oy;
+                }
+              }
+            }),
+        );
+        g.end();
+        go();
+        return;
       }
       const w = worldOf(ev);
       const into = new Map<string, Section | undefined>();
@@ -1310,6 +1348,7 @@ function dragGroup(e: PointerEvent, secIds: string[], cardIds: string[], grabbed
     () => {
       pace.stop();
       setMovingHome(null);
+      A.shelfDragEnd();
       g.drop();
     },
   );

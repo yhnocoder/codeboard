@@ -25,6 +25,7 @@ import { observeResize, queueMeasure } from "../state/measure";
 import { cardSel } from "../cardsel";
 import { useMd } from "../md/context";
 import { Summaries } from "./Summaries";
+import { ShelfOutline } from "../ui/ShelfPanel";
 import { cardsAsleep, cardsGone, cardsOpacity, summaryFade } from "../state/summary";
 
 const EXT = 2048;
@@ -222,6 +223,8 @@ export function Canvas() {
           <For each={kept()}>{(c) => <CardView card={c} />}</For>
         </div>
         <Summaries />
+        {/* a Shelf row dragged over the board: where it will land (ui/ShelfPanel.tsx) */}
+        <ShelfOutline />
       </div>
       {/* ui/shield.ts：滚轮平移、缩放的手势里盖在世界层上，命中测试不用把世界层里的东西一个个问过去 */}
       <div ref={bindShield} class="pshield" />

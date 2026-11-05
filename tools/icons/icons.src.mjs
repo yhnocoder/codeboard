@@ -242,6 +242,19 @@ export const ICONS = {
   arrowLink: [circle(4, 12, 2) + "M4 10V9a5 5 0 0 1 5-5h5M11 1l3 3-3 3", "", "custom: ring with a bent arrow"],
   // 圆圈里一个问号（circle-help），点是填色的小方块
   question: [circle(8, 8, 6) + "M6.5 6.5a1.5 1.5 0 0 1 3 0c0 1-1.5 1.5-1.5 2.5", "M7 11h2v2H7z", "circle-help"],
+  // The Shelf (dock): a box with its lid and a handle slot (archive). Lid 2..5, body down to 14, the slot 3 below the lid
+  shelf: [
+    rect(2, 2, 14, 5, R) +
+      poly([
+        [3, 5],
+        [3, 14, R],
+        [13, 14, R],
+        [13, 5],
+      ]) +
+      "M6 8h4",
+    "",
+    "archive",
+  ],
   // 托盘上一个向上的箭头（share）
   export: [
     "M8 2v8M5 5l3-3 3 3" +
