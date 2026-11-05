@@ -3,7 +3,8 @@
 // native text selection in its body. A plain click still selects (a multi-selection becomes the clicked card), a double
 // click on a Note still edits it. Grabbing an unselected card while others are selected selects and moves just that card.
 // A click on a card's header selects it without lifting it (no .lift, no scale, no lift shadow); only a real drag lifts it,
-// and it settles back (.landing) after it is put down.
+// and it settles back (.landing) after it is put down. Lifted, it is a compositor layer of its own (will-change), raster again
+// after a zoom in the middle of the drag.
 // Usage: npm run harness -- dragUnselectedCardByBody dragMultiSelectionByBody singleSelectedBodySelectsText clickSelectsWithoutLift
 import { emptyBoard, type Board, type CodeCard, type NoteCard } from "@codeboard/core";
 import type { Page } from "playwright-core";
@@ -303,8 +304,8 @@ test("singleSelectedBodySelectsText", async () => {
 });
 
 /** A click on a card's header (press and release without moving past the drag threshold) selects it and never lifts it: no
- *  .lift class at any point, no scale, no lift shadow. A real drag lifts it (.lift, scaled up a little) and, put down, it
- *  settles back (.landing, then neither) */
+ *  .lift class at any point, no scale, no lift shadow. A real drag lifts it (.lift, scaled up a little, its own compositor layer,
+ *  which a zoom mid-drag takes off for a frame and puts back) and, put down, it settles back (.landing, then neither, no layer) */
 test("clickSelectsWithoutLift", async () => {
   const h = await open({ board: board(), light, w: 1200, h: 900, settings: { theme: "warm-ink" } as never });
   const pg = h.page;
@@ -324,7 +325,11 @@ test("clickSelectsWithoutLift", async () => {
   const look = () =>
     pg.evaluate((sel) => {
       const el = document.querySelector(sel)!;
-      return { scale: getComputedStyle(el).scale, ring: getComputedStyle(el, "::after").boxShadow };
+      return {
+        scale: getComputedStyle(el).scale,
+        ring: getComputedStyle(el, "::after").boxShadow,
+        layer: getComputedStyle(el).willChange,
+      };
     }, card);
   const rest = await look();
   const hd = (await pg.locator(`${card} .chead`).boundingBox())!;
@@ -355,6 +360,39 @@ test("clickSelectsWithoutLift", async () => {
     const l = await look();
     return (await pg.locator(`${card}.lift`).count()) === 1 && l.scale !== "none" && parseFloat(l.scale) > 1;
   }).catch(() => false);
+  // lifted, the card is a compositor layer of its own (moving it does not re-raster the world's layer under it); when the camera
+  // stops at another zoom mid-drag the hint goes for a frame (.board.relift) and comes back, so it is rastered at the new scale
+  const liftLayer = (await look()).layer;
+  await pg.evaluate(() => {
+    const b = document.querySelector(".board")!;
+    const w = window as unknown as { __relift: boolean[] };
+    w.__relift = [];
+    new MutationObserver(() => w.__relift.push(b.classList.contains("relift"))).observe(b, {
+      attributes: true,
+      attributeFilter: ["class"],
+    });
+  });
+  const z0 = await pg.evaluate(() => (document.querySelector(".world") as HTMLElement).style.transform);
+  await pg.keyboard.down("ControlOrMeta");
+  await pg.mouse.wheel(0, -60);
+  await pg.keyboard.up("ControlOrMeta");
+  const relifted = await until(h, "the camera stops at the new zoom and the lifted card is a layer again", async () =>
+    pg.evaluate(() => {
+      const r = (window as unknown as { __relift: boolean[] }).__relift;
+      return r.includes(true) && !document.querySelector(".board.relift, .world.moving");
+    }),
+  ).catch(() => false);
+  const zoomed = await pg.evaluate(
+    (z0) => (document.querySelector(".world") as HTMLElement).style.transform !== z0,
+    z0,
+  );
+  const reLayer = (await look()).layer;
+  check("liftedCardIsOwnLayer", liftLayer === "transform" && reLayer === "transform" && relifted && zoomed, {
+    liftLayer,
+    reLayer,
+    relifted,
+    zoomed,
+  });
   await pg.mouse.up();
   const landing = (await seen()).some((c) => /\blanding\b/.test(c));
   const flat = (s: string) => (s === "none" ? 1 : parseFloat(s));
@@ -365,11 +403,15 @@ test("clickSelectsWithoutLift", async () => {
       !(await pg.locator(`${card}:is(.lift, .landing)`).count()) && flat((await look()).scale) === flat(rest.scale),
   ).catch(() => {}); // not settled: the check below says so
   const after = await look();
-  check("dragLiftsCardAndSettlesBack", lifted && landing && flat(after.scale) === flat(rest.scale), {
-    lifted,
-    landing,
-    rest,
-    after,
-  });
+  check(
+    "dragLiftsCardAndSettlesBack",
+    lifted && landing && flat(after.scale) === flat(rest.scale) && after.layer === "auto",
+    {
+      lifted,
+      landing,
+      rest,
+      after,
+    },
+  );
   await h.close();
 });
