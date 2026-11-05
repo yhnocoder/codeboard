@@ -12,7 +12,7 @@ import { HostContext } from "../src/context";
 
 let cx: HostContext;
 
-const FIX = fs.mkdtempSync("/tmp/codeboard-cross-");
+const FIX = fs.realpathSync(fs.mkdtempSync("/tmp/codeboard-cross-"));
 fs.cpSync(path.join(__dirname, "fixtures/crosslang"), FIX, { recursive: true });
 const W = nodeWorkspace(FIX);
 const seg = async (rel: string, qual: string) => (await card(cx, path.join(FIX, rel), qual)).seg;

@@ -9,8 +9,8 @@ import { HostContext } from "../src/context";
 
 let cx: HostContext;
 
-const FIX = fs.mkdtempSync("/tmp/codeboard-run-");
-const SD = fs.mkdtempSync("/tmp/codeboard-store-");
+const FIX = fs.realpathSync(fs.mkdtempSync("/tmp/codeboard-run-"));
+const SD = fs.realpathSync(fs.mkdtempSync("/tmp/codeboard-store-"));
 let rec: RunRecord, head: string, before: string;
 
 beforeAll(async () => {

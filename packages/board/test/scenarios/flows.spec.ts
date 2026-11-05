@@ -241,7 +241,7 @@ test("compare", async () => {
   const h = await open({ board: boardWith("Scheduler.schedule", "Scheduler.postprocess"), light });
   await h.page.keyboard.press("Shift+!");
   await idle(h);
-  await h.page.keyboard.press("Control+a");
+  await h.page.keyboard.press("ControlOrMeta+a");
   await h.page.keyboard.press("Meta+a");
   await h.page.locator(".card").first().locator(".chead").click({ button: "right" });
   await h.page.locator(".ctx button").first().waitFor();
@@ -405,7 +405,7 @@ test("linkMergeSection", async () => {
   await h.page.keyboard.press("Shift+!");
   await idle(h);
   // Arrow: select two cards, click Link
-  await h.page.keyboard.press("Control+a");
+  await h.page.keyboard.press("ControlOrMeta+a");
   await h.page.locator('.bbar button[aria-label="Arrow"]').click();
   await until(h, "the arrow is added", () => h.board().links.length);
   await idle(h);
@@ -451,7 +451,7 @@ test("linkMergeSection", async () => {
     { merged, links: h.board().links },
   );
   // Section, then collapse
-  await h.page.keyboard.press("Control+a");
+  await h.page.keyboard.press("ControlOrMeta+a");
   await h.page.locator(".card.ccard .chead").first().click({ button: "right" });
   await h.page.locator(".ctx button").first().waitFor();
   await h.page.locator(".ctx button", { hasText: /^Move to New Section/ }).click();
@@ -479,7 +479,7 @@ test("cmptree", async () => {
   const h = await open({ board: boardWith("LLMEngine.step", "Scheduler.schedule"), light });
   await h.page.keyboard.press("Shift+!");
   await idle(h);
-  await h.page.keyboard.press("Control+a");
+  await h.page.keyboard.press("ControlOrMeta+a");
   await h.page.locator(".card.ccard .chead").first().click({ button: "right" });
   await h.page.locator(".ctx button", { hasText: "Compare" }).first().click();
   await until(h, "Compare makes a compare card", () => h.board().cards.some((c) => c.kind === "compare"));
@@ -594,7 +594,7 @@ test("rebase", async () => {
     view: viewOf(sb),
   } as any);
   await until(h, "the Relocate reaches the board", () => segOf(1).start === sb.start + 7);
-  await h.page.keyboard.press("Control+z");
+  await h.page.keyboard.press("ControlOrMeta+z");
   await h.page.keyboard.press("Meta+z"); // undoes only the Relocate; the move must not be undone
   await until(h, "undo takes the Relocate back", () => segOf(1).start !== sb.start + 7);
   await idle(h);
@@ -995,7 +995,7 @@ test("walkview", async () => {
 
 test("palette", async () => {
   const h = await open({ board: boardWith("LLMEngine.step"), light });
-  await h.page.keyboard.press("Control+k");
+  await h.page.keyboard.press("ControlOrMeta+k");
   await h.page.keyboard.press("Meta+k");
   await h.page.locator(".palette input:focus").waitFor();
   await shot(h, "pal-01-entry");

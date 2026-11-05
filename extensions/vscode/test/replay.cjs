@@ -184,6 +184,7 @@ const gap = (a, b) => Math.hypot(Math.max(0, a.l - b.r, b.l - a.r), Math.max(0, 
     60000,
     200,
   );
+  (await import("../../../tools/test/mac-keys.mjs")).macKeys(page);
   await track(page); // before the first board's webview exists
   await watchKeyboard(page); // the keyboard hand-backs to webviews, likewise
   await page.locator(".monaco-workbench .part.editor").waitFor({ timeout: 60000 });
@@ -313,7 +314,7 @@ const gap = (a, b) => Math.hypot(Math.max(0, a.l - b.r, b.l - a.r), Math.max(0, 
       check(r.ch.l > r.st.r, "child card is right of the parent", r);
       const start = r.e && (r.e.a.x < r.e.b.x ? r.e.a : r.e.b);
       check(start && Math.abs(start.x - r.st.r) < 30, "arrow starts at the parent's right edge", r);
-      await page.keyboard.press("Control+z");
+      await page.keyboard.press("ControlOrMeta+z");
       await idle(f);
       await fit(f);
       await idle(f);
@@ -335,7 +336,7 @@ const gap = (a, b) => Math.hypot(Math.max(0, a.l - b.r, b.l - a.r), Math.max(0, 
         position: { x: 120, y: 12 },
       });
       await until("the new Section's title field has the keyboard", () => typingIn(f));
-      await page.keyboard.press("Control+a");
+      await page.keyboard.press("ControlOrMeta+a");
       await page.keyboard.type("Scheduling");
       await page.keyboard.press("Enter");
       const b = await waitJson((b) => b.sections?.[0]?.title === "Scheduling");
@@ -553,7 +554,7 @@ const gap = (a, b) => Math.hypot(Math.max(0, a.l - b.r, b.l - a.r), Math.max(0, 
     await blank(f, page);
     await fit(f);
     await idle(f);
-    for (let i = 0; i < 14; i++) await page.keyboard.press("Control+-");
+    for (let i = 0; i < 14; i++) await page.keyboard.press("ControlOrMeta+-");
     await idle(f);
     const c = f.locator(".card .src .call").first();
     if (await c.count()) await c.hover({ force: true });
@@ -570,7 +571,7 @@ const gap = (a, b) => Math.hypot(Math.max(0, a.l - b.r, b.l - a.r), Math.max(0, 
   });
   await step("r11c-zoom-max", "Zoom all the way in", async () => {
     await focusCard(f, page, "LLMEngine.step");
-    for (let i = 0; i < 12; i++) await page.keyboard.press("Control+=");
+    for (let i = 0; i < 12; i++) await page.keyboard.press("ControlOrMeta+=");
     await idle(f);
   });
 
@@ -599,7 +600,7 @@ const gap = (a, b) => Math.hypot(Math.max(0, a.l - b.r, b.l - a.r), Math.max(0, 
         true,
       );
     });
-    for (let i = 0; i < 40; i++) await page.keyboard.press("Control+z");
+    for (let i = 0; i < 40; i++) await page.keyboard.press("ControlOrMeta+z");
     const zk = await soon(
       () => f.evaluate(() => window.__zk),
       (n) => n >= 40,
@@ -607,7 +608,7 @@ const gap = (a, b) => Math.hypot(Math.max(0, a.l - b.r, b.l - a.r), Math.max(0, 
     );
     check(zk > 0, "Ctrl+Z reached the board", { keydowns: zk, focused: await f.evaluate(() => document.hasFocus()) });
     const mid = nCards(await waitJson((b) => nCards(b) <= 1, 6000));
-    for (let i = 0; i < 40; i++) await page.keyboard.press("Control+Shift+z");
+    for (let i = 0; i < 40; i++) await page.keyboard.press("ControlOrMeta+Shift+z");
     await waitJson((b) => JSON.stringify(b.cards.map((c) => c.id).sort()) === want, 6000);
     const got = JSON.stringify(
       boardJson()
@@ -647,7 +648,7 @@ const gap = (a, b) => Math.hypot(Math.max(0, a.l - b.r, b.l - a.r), Math.max(0, 
     const isOpen = async () => (await f.locator(".st-sw").count()) > 0;
     const openSettings = async () => {
       await blank(f, page);
-      await page.keyboard.press("Control+,");
+      await page.keyboard.press("ControlOrMeta+,");
       await until("Ctrl+, opens the board's Settings page", isOpen);
     };
     const closeSettings = async () => {
@@ -703,12 +704,12 @@ const gap = (a, b) => Math.hypot(Math.max(0, a.l - b.r, b.l - a.r), Math.max(0, 
     );
     const before = boardJson(),
       ids = new Set((before?.cards ?? []).map((c) => c.id));
-    await page.keyboard.press("Control+c");
+    await page.keyboard.press("ControlOrMeta+c");
     // ⌘V pastes what the system clipboard holds (read in the webview, which has the keyboard): the card's code once ⌘C has put it there
     await until("⌘C puts the card's code on the system clipboard", async () =>
       /def step\(self\)/.test(await f.evaluate(() => navigator.clipboard.readText())),
     );
-    await page.keyboard.press("Control+v");
+    await page.keyboard.press("ControlOrMeta+v");
     const b = await waitJson((b) => nCards(b) > nCards(before));
     const nid = (b?.cards ?? []).find((c) => !ids.has(c.id))?.id;
     check(!!nid, "⌘V created a card", { before: nCards(before), after: nCards(b) });
@@ -723,7 +724,7 @@ const gap = (a, b) => Math.hypot(Math.max(0, a.l - b.r, b.l - a.r), Math.max(0, 
         new: n,
       });
       await blank(f, page);
-      await page.keyboard.press("Control+z");
+      await page.keyboard.press("ControlOrMeta+z");
       await waitJson((b) => nCards(b) === nCards(before));
     }
   });
@@ -855,7 +856,7 @@ const gap = (a, b) => Math.hypot(Math.max(0, a.l - b.r, b.l - a.r), Math.max(0, 
       });
       if (Math.hypot(r1.l - r0.l, r1.t - r0.t) > 1) {
         await blank(f, page);
-        await page.keyboard.press("Control+z");
+        await page.keyboard.press("ControlOrMeta+z");
         await idle(f);
       }
     }
@@ -1059,7 +1060,7 @@ const gap = (a, b) => Math.hypot(Math.max(0, a.l - b.r, b.l - a.r), Math.max(0, 
             if (!ok) dead.push(`${k}: ${p.join(" › ")} (editor opened but typing does not reach it)`);
             else {
               await blank(f, page);
-              await page.keyboard.press("Control+z");
+              await page.keyboard.press("ControlOrMeta+z");
               await idle(f);
             }
           }
@@ -1069,7 +1070,7 @@ const gap = (a, b) => Math.hypot(Math.max(0, a.l - b.r, b.l - a.r), Math.max(0, 
           await idle(f);
           if (j0 !== j1) {
             await blank(f, page);
-            await page.keyboard.press("Control+z");
+            await page.keyboard.press("ControlOrMeta+z");
             await idle(f);
           }
         }

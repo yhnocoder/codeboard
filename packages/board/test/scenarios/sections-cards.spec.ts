@@ -153,7 +153,7 @@ test("sectionFitContent", async () => {
     { got, s },
   );
   check("sectionFitContent animated", mid >= 3, { w0, w1, samples });
-  await h.page.keyboard.press("Control+z");
+  await h.page.keyboard.press("ControlOrMeta+z");
   await until(h, "the undo is saved", () => h.board().sections[0].w !== s.w);
   await idle(h);
   const back = h.board().sections[0];
@@ -511,7 +511,7 @@ test("sectionFoldRoundTrip", async () => {
         .slice(-12),
     },
   );
-  await h.page.keyboard.press("Control+z");
+  await h.page.keyboard.press("ControlOrMeta+z");
   await until(h, "the undo is saved", () => h.board().sections[0].collapsed);
   await idle(h);
   const undone = await cards();
@@ -589,7 +589,7 @@ test("dragCardIntoOtherSection", async () => {
     during: s2b,
   });
   check("drag-into-section-joins", after === "S1" && lit === 0, { after, lit });
-  await h.page.keyboard.press("Control+z");
+  await h.page.keyboard.press("ControlOrMeta+z");
   await idle(h);
   check("drag-into-section-undo", h.board().place.n1.section === "S2", { section: h.board().place.n1.section });
   // the same move from the card menu: Move to Section ▸ 异构并行计算 (the card lands inside that Section's frame)
@@ -678,7 +678,7 @@ test("sectionDragSnapsToSection", async () => {
     { s2d, left, sec2, gone },
   );
   check("section-drag-moves-cards", card1.x === card0.x + (sec2.x - 600) && card1.y === card0.y + 40, { card0, card1 });
-  await h.page.keyboard.press("Control+z");
+  await h.page.keyboard.press("ControlOrMeta+z");
   await until(h, "the undo is saved", () => h.board().sections.find((q) => q.id === "S2")!.x !== sec2.x);
   await idle(h);
   const back = h.board().sections.find((q) => q.id === "S2")!;
@@ -764,7 +764,7 @@ test("sectionMembershipByOverlap", async () => {
   // about a quarter inside S (and a quarter inside T): stays out
   const q = await move("c1", 950, 150, "27-third-01-quarter-inside");
   check("overlap-quarter-stays-out", q.s < 1 / 3 && q.t < 1 / 3 && q.s > 0.15 && !q.p.section && !q.lit.length, q);
-  await h.page.keyboard.press("Control+z");
+  await h.page.keyboard.press("ControlOrMeta+z");
   await idle(h);
   // over two Sections, more than a third in each: joins the one it overlaps more
   const two = await move("m1", 840, 150, "27-third-02-over-two-sections");
@@ -777,7 +777,7 @@ test("sectionMembershipByOverlap", async () => {
       two.lit[0] === two.p.section,
     two,
   );
-  await h.page.keyboard.press("Control+z");
+  await h.page.keyboard.press("ControlOrMeta+z");
   await idle(h);
   // wide card a bit under half inside: joins, and the Section lights up during the drag
   const w = await move("w1", 740, 250, "27-third-03-wide-card-over-section");
@@ -923,7 +923,7 @@ test("noteTitleFromHeading", async () => {
   // editing the heading changes the title
   await h.page.locator('.card[data-id="n2"] .nbody').dblclick();
   await h.page.locator(".md-pm:focus").waitFor();
-  await h.page.keyboard.press("Control+a");
+  await h.page.keyboard.press("ControlOrMeta+a");
   await h.page.keyboard.type("# Decode loop\n\nOne token per step.");
   await h.page.keyboard.press("Escape");
   await idle(h);
@@ -946,14 +946,14 @@ test("cutCardsPasteUndo", async () => {
   const p0 = { ...h.board().place.n1 };
   await h.page.locator('.card[data-id="n1"] .chead').click();
   await h.page.locator('.card.sel[data-id="n1"]').waitFor();
-  await h.page.keyboard.press("Control+x");
+  await h.page.keyboard.press("ControlOrMeta+x");
   await idle(h);
   const cut = { n1: !!h.board().cards.find((c) => c.id === "n1"), copied: h.sent.some((m) => m.type === "copyCards") };
-  await h.page.keyboard.press("Control+z");
+  await h.page.keyboard.press("ControlOrMeta+z");
   await until(h, "undo brings the cut card back", () => h.board().cards.some((c) => c.id === "n1"));
   await idle(h);
   const undone = { n1: !!h.board().cards.find((c) => c.id === "n1"), place: h.board().place.n1 };
-  await h.page.keyboard.press("Control+Shift+z");
+  await h.page.keyboard.press("ControlOrMeta+Shift+z");
   await idle(h);
   const redone = !h.board().cards.some((c) => c.id === "n1");
   check("cut-removes-card", !cut.n1 && cut.copied, cut);
@@ -982,8 +982,8 @@ test("cutCardsPasteUndo", async () => {
   // ⌘X inside the Note editor: text is cut, the card stays
   await h.page.locator('.card[data-id="n1"] .nbody').dblclick();
   await h.page.locator(".md-pm:focus").waitFor();
-  await h.page.keyboard.press("Control+a");
-  await h.page.keyboard.press("Control+x");
+  await h.page.keyboard.press("ControlOrMeta+a");
+  await h.page.keyboard.press("ControlOrMeta+x");
   await idle(h);
   await h.page.keyboard.press("Escape");
   await idle(h);

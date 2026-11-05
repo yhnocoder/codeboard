@@ -50,7 +50,7 @@ describe("bitmap sticker packs", () => {
   let packs: StickerPack[];
   const W = nodeWorkspace();
   beforeAll(async () => {
-    dir = fs.mkdtempSync(path.join(os.tmpdir(), "cb-stickers-"));
+    dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "cb-stickers-")));
     const p = path.join(dir, "Party");
     fs.mkdirSync(p);
     const files: Record<string, Buffer | string> = {

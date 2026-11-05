@@ -30,7 +30,7 @@ const env: HostEnv = {
     return v.view;
   },
 };
-const dir = fs.mkdtempSync("/tmp/codeboard-focus-");
+const dir = fs.realpathSync(fs.mkdtempSync("/tmp/codeboard-focus-"));
 const store = new Storage(nodeFs, { dir: () => dir });
 let hub: BoardHub;
 const focus = (has: boolean) => hub.handler(hub.get("bF")!, { type: "focus", has });

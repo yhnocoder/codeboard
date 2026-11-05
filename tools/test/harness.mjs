@@ -181,7 +181,8 @@ if (against) {
     const add = git("worktree", "add", "--detach", dir, sha);
     if (add.status) die(`--against: git worktree add failed:\n${add.stderr}`);
     for (const cmd of [
-      "npm ci --prefer-offline --no-audit --no-fund",
+      // --allow-remote=root: a commit from before .npmrc had it (npm 12 refuses the tree-sitter-cuda tarball otherwise)
+      "npm ci --allow-remote=root --prefer-offline --no-audit --no-fund",
       "npm run build -w @yhnocoder/markdown",
       "npm run build -w @codeboard/board",
     ]) {

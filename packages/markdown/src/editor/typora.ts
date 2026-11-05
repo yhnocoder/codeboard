@@ -251,6 +251,26 @@ export const Typora = Extension.create<{
 
   addKeyboardShortcuts() {
     const e = this.editor;
+    // Home on a paragraph's first line goes to the start of its source (the browser would stop after a hidden opening
+    // marker, so the caret's place would depend on what is hidden); on a heading to the start of its text, after the
+    // "## " (a second Home goes before it)
+    const home = () => {
+      const sel = e.state.selection,
+        $h = sel.$head,
+        p = $h.parent;
+      if (!sel.empty || p.type.name !== "paragraph" || !$h.depth) return false;
+      const cell = /cell/.test($h.node(-1).type.spec.tableRole ?? "");
+      const info = cell ? { level: 0, prefix: 0 } : blockInfo(p.textContent, true),
+        to = $h.start() + (info.level ? info.prefix : 0);
+      if (info.level ? $h.parentOffset <= info.prefix : $h.parentOffset === 0) return false;
+      // the caret's line against the paragraph's top (the start itself may be a hidden marker, which has no place)
+      const v = e.view,
+        c = v.coordsAtPos(sel.head, -1),
+        box = (v.nodeDOM($h.before()) as HTMLElement | null)?.getBoundingClientRect();
+      if (!box || c.top - box.top > (c.bottom - c.top) * 0.8) return false; // a later line of a wrapped paragraph: the browser's own Home
+      v.dispatch(revealMeta(e.state.tr.setSelection(TextSelection.create(e.state.doc, to))).scrollIntoView());
+      return true;
+    };
     return {
       // right after an automatic conversion: back to what was typed (as in Typora); otherwise a normal undo
       "Mod-z": () => e.commands.undoInputRule() || e.commands.undo(),
@@ -273,26 +293,9 @@ export const Typora = Extension.create<{
           e.view.dispatch(e.state.tr.setSelection(TextSelection.create(e.state.doc, $h.start() + off)));
         return false;
       },
-      // Home on a paragraph's first line goes to the start of its source (the browser would stop after a hidden opening
-      // marker, so the caret's place would depend on what is hidden); on a heading to the start of its text, after the
-      // "## " (a second Home goes before it)
-      Home: () => {
-        const sel = e.state.selection,
-          $h = sel.$head,
-          p = $h.parent;
-        if (!sel.empty || p.type.name !== "paragraph" || !$h.depth) return false;
-        const cell = /cell/.test($h.node(-1).type.spec.tableRole ?? "");
-        const info = cell ? { level: 0, prefix: 0 } : blockInfo(p.textContent, true),
-          to = $h.start() + (info.level ? info.prefix : 0);
-        if (info.level ? $h.parentOffset <= info.prefix : $h.parentOffset === 0) return false;
-        // the caret's line against the paragraph's top (the start itself may be a hidden marker, which has no place)
-        const v = e.view,
-          c = v.coordsAtPos(sel.head, -1),
-          box = (v.nodeDOM($h.before()) as HTMLElement | null)?.getBoundingClientRect();
-        if (!box || c.top - box.top > (c.bottom - c.top) * 0.8) return false; // a later line of a wrapped paragraph: the browser's own Home
-        v.dispatch(revealMeta(e.state.tr.setSelection(TextSelection.create(e.state.doc, to))).scrollIntoView());
-        return true;
-      },
+      Home: home,
+      // the Mac's Home is ⌘← (Home itself only scrolls there)
+      "Meta-ArrowLeft": home,
       Backspace: () => {
         const sel = e.state.selection;
         if (!sel.empty) return false;

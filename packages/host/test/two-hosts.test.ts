@@ -10,7 +10,7 @@ import { startHost, type Host } from "../src/start";
 import { nodeWorkspace, type TestWorkspace } from "./node-workspace";
 import { startTreeSitter, stubView, MEDIA } from "./helpers";
 
-const tmp = fs.mkdtempSync("/tmp/codeboard-two-");
+const tmp = fs.realpathSync(fs.mkdtempSync("/tmp/codeboard-two-"));
 /** A workspace with one Python file defining name, and its own workspace storage */
 function workspace(dir: string, name: string): TestWorkspace {
   const root = path.join(tmp, dir);

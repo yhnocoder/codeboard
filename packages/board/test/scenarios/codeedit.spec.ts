@@ -297,9 +297,9 @@ async function typing() {
   const v2 = await text(pg);
   await pg.keyboard.press("Shift+Tab");
   const v3 = await text(pg);
-  await pg.keyboard.press("Control+/");
+  await pg.keyboard.press("ControlOrMeta+/");
   const v4 = await text(pg);
-  await pg.keyboard.press("Control+/");
+  await pg.keyboard.press("ControlOrMeta+/");
   const v5 = await text(pg);
   const tail = (v: string) => v.split("\n").slice(-2).join("|");
   const ok =

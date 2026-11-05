@@ -177,13 +177,13 @@ test("notePasteImageIsOneUndoStep", async () => {
   await imgBox(h, "n0", ".md-pm");
   const imgs = () => h.page.locator('.card[data-id="n0"] .md-pm img:not(.ProseMirror-separator)').count();
   const text = () => h.page.locator('.card[data-id="n0"] .md-pm').innerText();
-  await h.page.keyboard.press("Control+z");
+  await h.page.keyboard.press("ControlOrMeta+z");
   await until(h, "undo takes the pasted image out", async () => (await imgs()) === 0);
   const afterUndo = { imgs: await imgs(), text: (await text()).trim() };
-  await h.page.keyboard.press("Control+Shift+z");
+  await h.page.keyboard.press("ControlOrMeta+Shift+z");
   await until(h, "redo puts the image back", async () => (await imgs()) === 1);
   const afterRedo = await imgs();
-  await h.page.keyboard.press("Control+z");
+  await h.page.keyboard.press("ControlOrMeta+z");
   await until(h, "undo takes the image out again", async () => (await imgs()) === 0);
   await exitEdit(h);
   check(
@@ -334,12 +334,12 @@ test("noteImageResize", async () => {
   await shot(h, "17-note-image-resized-edit");
   // one undo step per drag: ⌘Z takes back the second drag, again the first (full width); redo puts both back
   const frac = async () => (await imgFrac(h, "n0", ".md-pm")).frac;
-  await pg.keyboard.press("Control+z");
+  await pg.keyboard.press("ControlOrMeta+z");
   await until(h, "undo takes back the left grip's drag", async () => Math.abs((await frac()) - right.frac) < 0.01);
-  await pg.keyboard.press("Control+z");
+  await pg.keyboard.press("ControlOrMeta+z");
   await until(h, "undo again gives the full width back", async () => (await frac()) > 0.99);
-  await pg.keyboard.press("Control+Shift+z");
-  await pg.keyboard.press("Control+Shift+z");
+  await pg.keyboard.press("ControlOrMeta+Shift+z");
+  await pg.keyboard.press("ControlOrMeta+Shift+z");
   await until(h, "redo puts both drags back", async () => Math.abs((await frac()) - edit.frac) < 0.01);
   // the card's height while editing, with the caret out of the image's source (in it, the source line shows above the image)
   await pg.keyboard.press("Control+Home");
@@ -586,7 +586,7 @@ test("noteImageOpenSlidesFramed", async () => {
     moved.join("|") === "Text above the image.|End text.[img]",
     moved,
   );
-  await pg.keyboard.press("Control+z");
+  await pg.keyboard.press("ControlOrMeta+z");
   await until(h, "undo puts it back", async () => (await card.locator(".md-pm > p").count()) === 3);
   // closing: the caret leaves the source, the image slides back up
   await pg.locator(imgSel(false)).click();
@@ -712,7 +712,7 @@ test("noteImageDragMoves", async () => {
     { moved, imgs },
   );
   // one undo puts the image back where it was (and the paragraph it left)
-  await pg.keyboard.press("Control+z");
+  await pg.keyboard.press("ControlOrMeta+z");
   await until(h, "undo puts the image back", async () => (await card.locator(".md-pm > p").count()) === 3);
   const undone = await paras(h, "n0");
   check(
@@ -720,7 +720,7 @@ test("noteImageDragMoves", async () => {
     JSON.stringify(undone) === JSON.stringify(["First paragraph of text.", "[img]", "Second paragraph of text here."]),
     undone,
   );
-  await pg.keyboard.press("Control+Shift+z");
+  await pg.keyboard.press("ControlOrMeta+Shift+z");
   await until(h, "redo moves it again", async () => (await card.locator(".md-pm > p").count()) === 2);
   // a click opens the image's source; the grip still resizes the image (it does not start a drag of its own)
   await img.click();
@@ -841,13 +841,13 @@ test("noteImageDragOut", async () => {
       out.editing === 0,
     out,
   );
-  await pg.keyboard.press("Control+z");
+  await pg.keyboard.press("ControlOrMeta+z");
   await until(h, "one undo takes the card away", () => images().length === 0);
   check("noteImageDragOut one undo puts the image back", md(h, "n0") === typed, md(h, "n0"));
-  await pg.keyboard.press("Control+z");
+  await pg.keyboard.press("ControlOrMeta+z");
   await until(h, "the next undo takes the typing back", () => md(h, "n0") === md0);
-  await pg.keyboard.press("Control+Shift+z");
-  await pg.keyboard.press("Control+Shift+z");
+  await pg.keyboard.press("ControlOrMeta+Shift+z");
+  await pg.keyboard.press("ControlOrMeta+Shift+z");
   await until(h, "redo moves it out again", () => images().length === 1 && !md(h, "n0").includes(file));
 
   // an image in a line of text, dragged from under its opened source: only the image and the space before it go

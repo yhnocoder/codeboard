@@ -16,7 +16,7 @@ import { HostContext } from "../src/context";
 let cx: HostContext;
 
 const W = nodeWorkspace();
-const dir = fs.mkdtempSync("/tmp/codeboard-watch-");
+const dir = fs.realpathSync(fs.mkdtempSync("/tmp/codeboard-watch-"));
 const store = new Storage(nodeFs, { dir: () => dir });
 const seqAbs = path.join(WS, "nanovllm/engine/sequence.py"),
   schAbs = path.join(WS, "nanovllm/engine/scheduler.py"),
@@ -115,9 +115,9 @@ describe("version re-checks", () => {
 // The test workspace's watch() never sees the disk, like an editor whose watcher starts the watch late (VS Code starts it only once
 // the watches asked for before it have started): the file's change still has to arrive
 describe("files changed outside the editor", () => {
-  const ext = fs.mkdtempSync("/tmp/codeboard-watch-ext-");
+  const ext = fs.realpathSync(fs.mkdtempSync("/tmp/codeboard-watch-ext-"));
   const modAbs = path.join(ext, "mod.py");
-  const boards = fs.mkdtempSync("/tmp/codeboard-watch-ext-boards-");
+  const boards = fs.realpathSync(fs.mkdtempSync("/tmp/codeboard-watch-ext-boards-"));
   const st = new Storage(nodeFs, { dir: () => boards });
   const seen: string[] = [];
   const host = {
@@ -164,7 +164,7 @@ describe("files changed outside the editor", () => {
 
 describe("new-version counts for closed boards", () => {
   it("a failure on one board is logged with its id, and the other boards are still counted", async () => {
-    const d2 = fs.mkdtempSync("/tmp/codeboard-watch-fail-");
+    const d2 = fs.realpathSync(fs.mkdtempSync("/tmp/codeboard-watch-fail-"));
     const st = new Storage(nodeFs, { dir: () => d2 });
     await st.save(emptyBoard("bBad", "Bad"));
     await st.save(emptyBoard("bOk", "Ok"));

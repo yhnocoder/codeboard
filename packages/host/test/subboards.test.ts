@@ -20,7 +20,7 @@ import { HostContext } from "../src/context";
 
 let cx: HostContext;
 
-const dir = fs.mkdtempSync("/tmp/codeboard-sub-");
+const dir = fs.realpathSync(fs.mkdtempSync("/tmp/codeboard-sub-"));
 const store = new Storage(nodeFs, { dir: () => dir });
 const switches: { to: string; crumbs: Crumb[]; cams: Camera[]; walk?: WalkHop; cam?: Camera }[] = [];
 const { view, posted } = stubView();

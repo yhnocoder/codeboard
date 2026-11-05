@@ -20,7 +20,7 @@ let cx: HostContext;
 const uncommitted = (v: unknown) => (v as { uncommitted?: boolean }).uncommitted;
 
 describe("variants", () => {
-  const FIX = fs.mkdtempSync("/tmp/codeboard-var-");
+  const FIX = fs.realpathSync(fs.mkdtempSync("/tmp/codeboard-var-"));
   const R = path.join(FIX, "vllm"),
     WT = path.join(FIX, "vllm-exp");
   const F = [
@@ -167,7 +167,7 @@ describe("variants", () => {
 });
 
 describe("variants in a submodule", () => {
-  const FIX = fs.mkdtempSync("/tmp/codeboard-submod-");
+  const FIX = fs.realpathSync(fs.mkdtempSync("/tmp/codeboard-submod-"));
   const LIB = path.join(FIX, "lib-src"),
     SUP = path.join(FIX, "super"),
     SUB = path.join(SUP, "examples/lib");

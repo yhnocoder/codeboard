@@ -840,7 +840,7 @@ export const PROBES: Probe[] = [
     start: "word here",
     run: async ({ pg }) => {
       await selectText(pg, "word");
-      await pg.keyboard.press("Control+Shift+Backquote");
+      await pg.keyboard.press("ControlOrMeta+Shift+Backquote");
     },
   },
   {

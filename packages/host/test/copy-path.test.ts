@@ -17,7 +17,7 @@ afterAll(() => {
 /** A workspace on a fresh repo; inProject: its boards in .codeboard/ (else in the extension's storage folder, outside the repo) */
 function setup(inProject: boolean) {
   const repo = tempRepo("copypath", { "x.py": "x = 1\n" });
-  const wsDir = fs.mkdtempSync("/tmp/codeboard-copypath-store-");
+  const wsDir = fs.realpathSync(fs.mkdtempSync("/tmp/codeboard-copypath-store-"));
   tmp.push(repo, wsDir);
   if (inProject) fs.mkdirSync(path.join(repo, ".codeboard"));
   const W = nodeWorkspace(repo);

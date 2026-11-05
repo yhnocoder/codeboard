@@ -23,7 +23,7 @@ afterAll(() => {
 /** A workspace on a fresh repo with its own workspace storage, workspace state and settings */
 function setup() {
   const repo = tempRepo("proj", { "x.py": "x = 1\n" });
-  const wsDir = fs.mkdtempSync("/tmp/codeboard-wsstore-");
+  const wsDir = fs.realpathSync(fs.mkdtempSync("/tmp/codeboard-wsstore-"));
   tmp.push(repo, wsDir);
   const state = new Map<string, unknown>(),
     settings = new Map<string, unknown>();
@@ -127,7 +127,7 @@ describe("boards in the project", () => {
     expect(tracked).toContain(".codeboard/bA.json");
     // A clone of the repository sees the boards without any setting
     git(s.repo, "commit", "-qm", "boards");
-    const clone = fs.mkdtempSync("/tmp/codeboard-clone-");
+    const clone = fs.realpathSync(fs.mkdtempSync("/tmp/codeboard-clone-"));
     tmp.push(clone);
     git(clone, "clone", "-q", s.repo, "r");
     cx = new HostContext(nodeWorkspace(path.join(clone, "r")));
