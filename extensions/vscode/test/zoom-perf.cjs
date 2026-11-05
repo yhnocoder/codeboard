@@ -3,7 +3,7 @@
 // renderer main thread's tasks from a trace (frame p95 / p99, the longest task of each step with STEPS=1, what was in each long task).
 // The workspace holds the one board to measure (E2E_WS; Open Board opens the first board):
 //   E2E_WS=/path/to/ws E2E_FLOW=extensions/vscode/test/zoom-perf.cjs E2E_TMP=/tmp/zoom-perf npm run e2e
-// RUNS=<n> (2) gestures, TAIL=<ms> (1200) traced after the last step, TRACE_OUT=1 keeps the raw traces; results in test-out/<theme>/zoom-perf/
+// RUNS=<n> (2) gestures, TAIL=<ms> (1200) traced after the last step, TRACE_OUT=1 keeps the raw traces (TRACE_CATS=cc,viz adds categories); results in test-out/<theme>/zoom-perf/
 const fs = require("node:fs");
 const path = require("node:path");
 const pct = (xs, p) => {
@@ -64,7 +64,14 @@ module.exports = async (page, t) => {
     const done = new Promise((r) => tracer.once("Tracing.tracingComplete", r));
     await tracer.send("Tracing.start", {
       transferMode: "ReportEvents",
-      traceConfig: { includedCategories: ["devtools.timeline", "disabled-by-default-devtools.timeline"] },
+      traceConfig: {
+        // TRACE_CATS=cc,viz: more categories (the compositor's and the display compositor's own events), for the raw traces
+        includedCategories: [
+          "devtools.timeline",
+          "disabled-by-default-devtools.timeline",
+          ...(process.env.TRACE_CATS ? process.env.TRACE_CATS.split(",") : []),
+        ],
+      },
     });
     await f.evaluate(() => {
       const w = window;
@@ -77,20 +84,31 @@ module.exports = async (page, t) => {
       };
       w.__raf = requestAnimationFrame(tick);
     });
+    // Control held for the whole gesture, one wheel notch per step, paced by the webview's frames: the step's mark, the notch, two
+    // animation frames (the handler's frame and the next), then the camera read and the next mark in one round trip, so the steps
+    // come about as fast as a wheel's notches do (two frames apart) and no step's work is counted against another's
     const cams = [];
+    await page.keyboard.down("Control");
+    await f.evaluate(() => console.timeStamp("perf-step"));
     for (let i = 0; i < n; i++) {
-      await f.evaluate(() => console.timeStamp("perf-step"));
-      await page.keyboard.down("Control");
       await page.mouse.wheel(0, delta(i));
-      await page.keyboard.up("Control");
-      await raf();
-      if (rest) await t.hold(rest, "the camera stops after each step: the stop's work is what this step measures");
       cams.push(
         await f.evaluate(
-          () => `${document.querySelector(".world")?.style.transform} ${document.querySelector(".board")?.className}`,
+          () =>
+            new Promise((r) =>
+              requestAnimationFrame(() =>
+                requestAnimationFrame(() => {
+                  const s = `${document.querySelector(".world")?.style.transform} ${document.querySelector(".board")?.className}`;
+                  console.timeStamp("perf-step");
+                  r(s);
+                }),
+              ),
+            ),
         ),
       );
+      if (rest) await t.hold(rest, "the camera stops after each step: the stop's work is what this step measures");
     }
+    await page.keyboard.up("Control");
     await t.hold(TAIL, "the camera stops after the last step: its re-raster belongs to the gesture");
     const gaps = await f.evaluate(() => {
       cancelAnimationFrame(window.__raf);
@@ -109,9 +127,10 @@ module.exports = async (page, t) => {
       .filter(onMain)
       .map((e) => e.ts)
       .sort((a, b) => a - b);
-    const perStep = marks.map((ts, i) =>
-      Math.max(0, ...tasks.filter((e) => e.ts >= ts && e.ts < (marks[i + 1] ?? Infinity)).map((e) => e.dur / 1000)),
-    );
+    const perStep = marks
+      .slice(0, -1)
+      .map((ts, i) => Math.max(0, ...tasks.filter((e) => e.ts >= ts && e.ts < marks[i + 1]).map((e) => e.dur / 1000)));
+    const pace = marks.slice(1).map((ts, i) => (ts - marks[i]) / 1000);
     if (process.env.STEPS) perStep.forEach((ms, i) => console.log(`  ${name} #${i} ${ms.toFixed(1)}ms ${cams[i]}`));
     const long = tasks
       .filter((e) => e.dur > 16700)
@@ -142,12 +161,13 @@ module.exports = async (page, t) => {
       tasks: stat(tasks.map((e) => e.dur / 1000)),
       gaps: stat(gaps),
       step: stat(perStep),
+      pace: stat(pace),
       long,
       otherLong: others,
       pid: main?.pid,
     };
     console.log(
-      `  ${name}: tasks p95 ${r.tasks.p95} p99 ${r.tasks.p99} max ${r.tasks.max} over16 ${r.tasks.over16}/${r.tasks.n}; gaps p95 ${r.gaps.p95} p99 ${r.gaps.p99} max ${r.gaps.max} n ${r.gaps.n}; steps ${marks.length}`,
+      `  ${name}: tasks p95 ${r.tasks.p95} p99 ${r.tasks.p99} max ${r.tasks.max} over16 ${r.tasks.over16}/${r.tasks.n}; gaps p95 ${r.gaps.p95} p99 ${r.gaps.p99} max ${r.gaps.max} n ${r.gaps.n}; steps ${perStep.length} every ${r.pace.p50}–${r.pace.p95} ms`,
     );
     for (const l of long) console.log("    long", l);
     return r;
