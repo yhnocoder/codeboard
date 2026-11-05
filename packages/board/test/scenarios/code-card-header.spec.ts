@@ -173,10 +173,10 @@ test("codeHeaderHoverOnly", async () => {
       return document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) === l;
     });
     await h.page.locator('.card[data-id="f1"] .chead .lang').click();
-    await h.page.locator(".ctx.open button").first().waitFor();
+    await h.page.locator(".ctx:not(.closing) button").first().waitFor();
     await idle(h);
     const menu = await h.page.evaluate(() =>
-      [...document.querySelectorAll(".ctx.open button")].map((b) => b.textContent?.trim() ?? ""),
+      [...document.querySelectorAll(".ctx:not(.closing) button")].map((b) => b.textContent?.trim() ?? ""),
     );
     await h.page.keyboard.press("Escape");
     await idle(h);
@@ -280,7 +280,7 @@ test("freeCodeLanguageDetect", async () => {
     await idle(h);
   };
   await h.page.mouse.click(300, 200, { button: "right" });
-  await h.page.locator(".ctx.open button", { hasText: "New Code" }).click();
+  await h.page.locator(".ctx:not(.closing) button", { hasText: "New Code" }).click();
   await h.page.locator(".card .cm-content:focus").waitFor();
   await h.page.keyboard.insertText(C_CODE.join("\n"));
   await h.page.mouse.click(900, 650);
@@ -293,7 +293,7 @@ test("freeCodeLanguageDetect", async () => {
   await idle(h);
   await h.page.locator(`.card[data-id="${id}"] .chead .lang`).click();
   await saved("the picked language is saved", () =>
-    h.page.locator(".ctx.open button", { hasText: /^Python$/ }).click(),
+    h.page.locator(".ctx:not(.closing) button", { hasText: /^Python$/ }).click(),
   );
   const picked = { lang: seg()?.lang, src: seg()?.src };
   await h.page.locator(`.card[data-id="${id}"] .src`).dblclick();
@@ -306,7 +306,9 @@ test("freeCodeLanguageDetect", async () => {
   await h.page.hover(`.card[data-id="${id}"] .cbody`);
   await idle(h);
   await h.page.locator(`.card[data-id="${id}"] .chead .lang`).click();
-  await saved("Auto-detect is saved", () => h.page.locator(".ctx.open button", { hasText: "Auto-detect" }).click());
+  await saved("Auto-detect is saved", () =>
+    h.page.locator(".ctx:not(.closing) button", { hasText: "Auto-detect" }).click(),
+  );
   const auto = { lang: seg()?.lang, src: seg()?.src };
   check("freeCodeLanguageDetect typed C code is C", detected.lang === "c" && detected.label === "C", detected);
   check(

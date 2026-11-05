@@ -341,8 +341,8 @@ test("webstyles", async () => {
   await shot(h, "web-styles");
   // Menu View ▸ No Image
   await h.page.mouse.click(r.x + 40, r.y + 40, { button: "right" });
-  await h.page.locator(".ctx.open button", { hasText: /^View/ }).hover();
-  await h.page.locator(".ctx.open button", { hasText: "No Image" }).click();
+  await h.page.locator(".ctx:not(.closing) button", { hasText: /^View/ }).hover();
+  await h.page.locator(".ctx:not(.closing) button", { hasText: "No Image" }).click();
   await until(
     h,
     "View ▸ No Image is saved",
@@ -403,7 +403,7 @@ test("linklist", async () => {
   // Merge two Link Lists (multi-select → Merge into Link List)
   await h.page.keyboard.press("ControlOrMeta+a");
   await h.page.locator(".card.links .chead").first().click({ button: "right" });
-  await h.page.locator(".ctx.open button", { hasText: "Merge into Link List" }).click();
+  await h.page.locator(".ctx:not(.closing) button", { hasText: "Merge into Link List" }).click();
   await until(h, "the two Link Lists are merged", () => lists().length === 1);
   await h.page.mouse.click(1300, 860);
   await shot(h, "ll-02-compact");
@@ -423,13 +423,13 @@ test("linklist", async () => {
   await rows.nth(1).hover();
   await shot(h, "ll-05-rich-hover");
   await rows.nth(3).click({ button: "right" });
-  await h.page.locator(".ctx.open button").first().waitFor();
+  await h.page.locator(".ctx:not(.closing) button").first().waitFor();
   await shot(h, "ll-06-row-menu");
   await h.page.keyboard.press("Escape");
   await h.page.locator(".card.links .chead").click({ button: "right", position: { x: 30, y: 12 } });
-  await h.page.locator(".ctx.open button", { hasText: "View" }).hover();
+  await h.page.locator(".ctx:not(.closing) button", { hasText: "View" }).hover();
   await shot(h, "ll-06b-view");
-  await h.page.locator(".ctx.open button", { hasText: /^Rich/ }).last().click();
+  await h.page.locator(".ctx:not(.closing) button", { hasText: /^Rich/ }).last().click();
   await until(h, "View ▸ Rich is saved", () => L()?.rich);
   await h.page.mouse.move(1300, 860);
   await shot(h, "ll-07-all-rich");

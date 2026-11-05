@@ -387,7 +387,7 @@ async function exportStep(page) {
   );
   await f.locator('button[aria-label="More"]').first().click();
   await f
-    .locator(".ctx.open :is(button,div,li)", { hasText: /^Export…/ })
+    .locator(".ctx:not(.closing) :is(button,div,li)", { hasText: /^Export…/ })
     .first()
     .click();
   check(
@@ -495,10 +495,10 @@ async function variantsStep(page) {
   );
   await idle(f);
   await sch.locator(".chead").click({ button: "right", position: { x: 140, y: 12 } });
-  await f.locator(".ctx.open button", { hasText: /^Add Variant…/ }).click();
+  await f.locator(".ctx:not(.closing) button", { hasText: /^Add Variant…/ }).click();
   // the worktrees come from the host's reply
   const items = await soon(
-    () => f.locator(".ctx.open button").allTextContents(),
+    () => f.locator(".ctx:not(.closing) button").allTextContents(),
     (t) => t.some((x) => /Other Worktree/.test(x)),
     15000,
   );
@@ -509,7 +509,7 @@ async function variantsStep(page) {
     items,
   );
   await shot(page, "14-add-variant-menu");
-  await f.locator(".ctx.open button", { hasText: /Other Worktree/ }).click();
+  await f.locator(".ctx:not(.closing) button", { hasText: /Other Worktree/ }).click();
   const tabs = await soon(
     () => sch.locator(".vtab:not(.vadd)").allTextContents(),
     (t) => t.length === 2,
@@ -1042,7 +1042,7 @@ async function codeeditStep(page) {
   await idle(f);
   await f.locator("#board").click({ button: "right", position: { x: 80, y: 560 } });
   await f
-    .locator(".ctx.open button", { hasText: /^New Code/ })
+    .locator(".ctx:not(.closing) button", { hasText: /^New Code/ })
     .first()
     .click();
   check(
@@ -1419,7 +1419,7 @@ async function stickerfolderStep(page) {
     else {
       await f.locator('.bbar button[aria-label="More"]').first().click();
       await f
-        .locator(".ctx.open button", { hasText: /^Add a Sticker/ })
+        .locator(".ctx:not(.closing) button", { hasText: /^Add a Sticker/ })
         .first()
         .click();
     }
@@ -2152,11 +2152,11 @@ const finish = async (browser, errors) => {
     await clickBoard(f);
     await f.locator("#board").click({ button: "right", position: await emptySpot(f) });
     await f
-      .locator(".ctx.open button", { hasText: /^Insert Board/ })
+      .locator(".ctx:not(.closing) button", { hasText: /^Insert Board/ })
       .first()
       .hover(); // the submenu opens on hover; its item's click waits for it
     await f
-      .locator(".ctx.open button", { hasText: /^Shared E2E/ })
+      .locator(".ctx:not(.closing) button", { hasText: /^Shared E2E/ })
       .first()
       .click();
     const fr = f.locator(".card.board");

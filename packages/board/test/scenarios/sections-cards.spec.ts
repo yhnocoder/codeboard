@@ -97,9 +97,9 @@ test("sectionFitContent", async () => {
   await idle(h);
   await shot(h, "sect-fit-01-before");
   await h.page.locator('.slabel[data-sect="S"] .sname').click({ button: "right" });
-  await h.page.locator(".ctx.open button").first().waitFor();
+  await h.page.locator(".ctx:not(.closing) button").first().waitFor();
   await idle(h);
-  const items = await h.page.locator(".ctx.open button").allTextContents();
+  const items = await h.page.locator(".ctx:not(.closing) button").allTextContents();
   check(
     "sectionFitContent in the Section menu",
     items.some((t) => t.includes("Fit Content")),
@@ -107,7 +107,7 @@ test("sectionFitContent", async () => {
   );
   if (!items.some((t) => t.includes("Fit Content"))) return;
   const w0 = (await h.page.locator('.sect[data-sect="S"]').boundingBox())!.width;
-  await h.page.locator(".ctx.open button", { hasText: "Fit Content" }).click();
+  await h.page.locator(".ctx:not(.closing) button", { hasText: "Fit Content" }).click();
   const samples = await h.page.evaluate(
     () =>
       new Promise<number[]>((res) => {
@@ -594,10 +594,10 @@ test("dragCardIntoOtherSection", async () => {
   check("drag-into-section-undo", h.board().place.n1.section === "S2", { section: h.board().place.n1.section });
   // the same move from the card menu: Move to Section ▸ 异构并行计算 (the card lands inside that Section's frame)
   await h.page.locator('.card[data-id="n1"] .chead').click({ button: "right" });
-  await h.page.locator(".ctx.open button", { hasText: "Move to Section" }).hover();
-  await h.page.locator(".ctx.open button", { hasText: "异构并行计算" }).waitFor();
+  await h.page.locator(".ctx:not(.closing) button", { hasText: "Move to Section" }).hover();
+  await h.page.locator(".ctx:not(.closing) button", { hasText: "异构并行计算" }).waitFor();
   await shot(h, "sect-menu-01-move-to");
-  await h.page.locator(".ctx.open button", { hasText: "异构并行计算" }).click();
+  await h.page.locator(".ctx:not(.closing) button", { hasText: "异构并行计算" }).click();
   await until(h, "Move to Section saves the card in S1", () => h.board().place.n1.section !== "S2");
   await idle(h);
   const p = h.board().place.n1,
@@ -1121,8 +1121,8 @@ test("sectionMultiSelectColor", async () => {
   await idle(h);
   const both = await selSections(h);
   await title(h, "S2").click({ button: "right" });
-  await h.page.locator(".ctx.open button", { hasText: "Color" }).hover();
-  await h.page.locator(".ctx.open button", { hasText: "Light Green" }).click();
+  await h.page.locator(".ctx:not(.closing) button", { hasText: "Color" }).hover();
+  await h.page.locator(".ctx:not(.closing) button", { hasText: "Light Green" }).click();
   await until(h, "both Sections are coloured", () => h.board().sections.every((s) => s.color === "green"));
   await shot(h, "sect-multi-01-coloured");
   await h.page.keyboard.press("Meta+z");

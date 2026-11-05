@@ -202,7 +202,7 @@ test("warmInkLook", async () => {
     });
     await snap(h, `warm-ink-menu-${mode}`);
     await h.page.keyboard.press("Escape");
-    await until(h, "the menu closed", async () => !(await h.page.locator(".ctx.open").count()));
+    await until(h, "the menu closed", async () => !(await h.page.locator(".ctx:not(.closing)").count()));
     await h.page.context().close();
     const one =
       r.ring.z === "3" &&

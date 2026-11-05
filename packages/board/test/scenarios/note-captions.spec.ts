@@ -42,10 +42,10 @@ const md = (h: Host) => (h.board().cards.find((c) => c.id === "n") as NoteCard).
 const img = (h: Host) => h.page.locator('.card[data-id="n"] .nbody img').first();
 async function menu(h: Host, label: string) {
   await img(h).click({ button: "right" });
-  await h.page.locator(".ctx.open button").first().waitFor();
+  await h.page.locator(".ctx:not(.closing) button").first().waitFor();
   await idle(h);
-  const items = await h.page.locator(".ctx.open button .lb").allTextContents();
-  const b = h.page.locator(".ctx.open button", { hasText: label });
+  const items = await h.page.locator(".ctx:not(.closing) button .lb").allTextContents();
+  const b = h.page.locator(".ctx:not(.closing) button", { hasText: label });
   if (await b.count()) await b.first().click();
   else await h.page.keyboard.press("Escape");
   return items;
@@ -382,10 +382,10 @@ const TMD = `Tile sizes per block:\n\n${TABLE}\n\nThe end.`;
 const CAP = "Table 2: tile sizes of $M$ and $N$";
 async function tableMenu(h: Host, cell: string, label: string) {
   await card(h).locator(cell).first().click({ button: "right" });
-  await h.page.locator(".ctx.open button").first().waitFor();
+  await h.page.locator(".ctx:not(.closing) button").first().waitFor();
   await idle(h);
-  const items = await h.page.locator(".ctx.open button .lb").allTextContents();
-  const b = h.page.locator(".ctx.open button", { hasText: label });
+  const items = await h.page.locator(".ctx:not(.closing) button .lb").allTextContents();
+  const b = h.page.locator(".ctx:not(.closing) button", { hasText: label });
   if (await b.count()) await b.first().click();
   else await h.page.keyboard.press("Escape");
   return items;

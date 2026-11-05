@@ -172,8 +172,8 @@ test("noteTextFitContent", async () => {
   await pg.keyboard.press("Escape");
   const items = async (sel: string) => {
     await pg.locator(sel).click({ button: "right" });
-    await pg.waitForSelector(".ctx.open", { timeout: 3000 });
-    return pg.locator(".ctx.open button").allTextContents();
+    await pg.waitForSelector(".ctx:not(.closing)", { timeout: 3000 });
+    return pg.locator(".ctx:not(.closing) button").allTextContents();
   };
   const noteMenu = await items(`${card("n0")} .chead`);
   check(
@@ -183,7 +183,7 @@ test("noteTextFitContent", async () => {
   );
   const h0 = (await rect(h, card("n0"))).h;
   if (!noteMenu.some((t) => t.includes("Fit Content"))) return;
-  await pg.locator(".ctx.open button", { hasText: "Fit Content" }).click();
+  await pg.locator(".ctx:not(.closing) button", { hasText: "Fit Content" }).click();
   // sample the height over the next frames: it has to pass through values between the start and the end
   const samples = await pg.evaluate(
     (sel) =>
@@ -267,8 +267,8 @@ test("textCardFitContent", async () => {
   };
   const menu = async (id: string) => {
     await pg.locator(`${card(id)} .tx`).click({ button: "right" });
-    await pg.waitForSelector(".ctx.open", { timeout: 3000 });
-    return pg.locator(".ctx.open button", { hasText: "Fit Content" });
+    await pg.waitForSelector(".ctx:not(.closing)", { timeout: 3000 });
+    return pg.locator(".ctx:not(.closing) button", { hasText: "Fit Content" });
   };
 
   await select("t1");
@@ -607,7 +607,7 @@ test("noteManualHeightSticks", async () => {
   // Fit Content: back to the content's height, following it again
   await pg.locator(`${card("n0")} .chead`).click({ button: "right" });
   const hand = placeH(h, "n0");
-  await pg.locator(".ctx.open button", { hasText: "Fit Content" }).click();
+  await pg.locator(".ctx:not(.closing) button", { hasText: "Fit Content" }).click();
   await newH("Fit Content is saved", hand);
   const fit = (await rect(h, card("n0"))).h;
   await cardShot(h, "n0", "24-manual-height-fit");

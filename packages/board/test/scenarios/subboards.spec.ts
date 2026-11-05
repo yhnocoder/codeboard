@@ -53,9 +53,9 @@ test("exportBoardsFromMenu", async () => {
   put(b, card("Scheduler.schedule"), 60, 60, 560);
   const h = await open({ board: b, light });
   await h.page.locator('.bbar [aria-label="More"]').click();
-  await h.page.locator(".ctx.open button", { hasText: "Export Boards…" }).click();
+  await h.page.locator(".ctx:not(.closing) button", { hasText: "Export Boards…" }).click();
   await until(h, "the host is asked to export the board", () => h.sent.some((m) => m.type === "exportBoards"));
-  await expect(h.page.locator(".ctx.open")).toHaveCount(0);
+  await expect(h.page.locator(".ctx:not(.closing)")).toHaveCount(0);
   await h.page.context().close();
 });
 
@@ -495,8 +495,8 @@ async function run(res: Record<string, unknown>) {
 
     // 3. Insert Ops (canvas menu ▸ Insert Board) → its map: all 8 cards, the 7 arrows from the dispatch line
     await page.mouse.click(700, 820, { button: "right" });
-    await page.locator(".ctx.open button", { hasText: "Insert Board" }).hover();
-    await page.locator(".ctx.open button", { hasText: /^Ops/ }).click();
+    await page.locator(".ctx:not(.closing) button", { hasText: "Insert Board" }).hover();
+    await page.locator(".ctx:not(.closing) button", { hasText: /^Ops/ }).click();
     const opsFrame = await until(h, "Insert Board adds the Ops frame", () =>
       t.store.peek("bEngine")!.cards.find((c) => c.kind === "board" && c.board === "bOps"),
     );
@@ -538,8 +538,8 @@ async function run(res: Record<string, unknown>) {
     res.crumbs = await page.locator(".crumbs").textContent();
     await shotPr(h, "subboards-3-breadcrumb");
     await page.mouse.click(700, 820, { button: "right" });
-    await page.locator(".ctx.open button", { hasText: "Insert Board" }).hover();
-    await page.locator(".ctx.open button", { hasText: /^Engine/ }).click();
+    await page.locator(".ctx:not(.closing) button", { hasText: "Insert Board" }).hover();
+    await page.locator(".ctx:not(.closing) button", { hasText: /^Engine/ }).click();
     await page.locator(".toast").waitFor();
     await idle(h);
     res.cycleToast = await page.locator(".toast").textContent();

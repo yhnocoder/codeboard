@@ -447,7 +447,7 @@ test("animImageCardFilmstrip", async () => {
 
   // an HTML snapshot taken while it plays has the plain picture, without the overlay
   await pg.locator('.bbar [aria-label="More"]').click();
-  await pg.locator(".ctx.open button", { hasText: "Export…" }).click();
+  await pg.locator(".ctx:not(.closing) button", { hasText: "Export…" }).click();
   await pg.locator(".xdlg").waitFor();
   await pg.locator(".xdlg .seg button", { hasText: "HTML Snapshot" }).click();
   await pg.locator(".xdlg .seg button", { hasText: "Whole Board" }).click();

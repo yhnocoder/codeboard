@@ -115,7 +115,7 @@ async function boxOnArrow(h: Host, id: string, cards: string[]) {
 async function pick(h: Host, path: string[]) {
   for (let i = 0; i < path.length; i++) {
     const btn = h.page
-      .locator(".ctx.open")
+      .locator(".ctx:not(.closing)")
       .nth(i)
       .locator("button", { has: h.page.locator(".lb", { hasText: new RegExp(`^${esc(path[i])}$`) }) });
     if (i < path.length - 1) await btn.hover();
@@ -123,7 +123,8 @@ async function pick(h: Host, path: string[]) {
   }
   await idle(h); // a change is sent at once: idle waits for the host to have it
 }
-const menuLabels = (h: Host, n = 0) => h.page.locator(".ctx.open").nth(n).locator("button .lb").allTextContents();
+const menuLabels = (h: Host, n = 0) =>
+  h.page.locator(".ctx:not(.closing)").nth(n).locator("button .lb").allTextContents();
 async function arrowMenu(h: Host, id: string, f = 0.2) {
   // a point on the arrow that nothing covers (label box, card, another arrow)
   let p: { x: number; y: number } | undefined;
@@ -142,12 +143,12 @@ async function arrowMenu(h: Host, id: string, f = 0.2) {
   }
   if (!p) throw new Error(`no uncovered point on arrow ${id} to right-click`);
   await h.page.mouse.click(p.x, p.y, { button: "right" });
-  await h.page.locator(".ctx.open button").first().waitFor();
+  await h.page.locator(".ctx:not(.closing) button").first().waitFor();
   await idle(h);
 }
 async function labelMenu(h: Host, id: string) {
   await box(h, id).click({ button: "right", position: { x: 8, y: 6 } });
-  await h.page.locator(".ctx.open button").first().waitFor();
+  await h.page.locator(".ctx:not(.closing) button").first().waitFor();
   await idle(h);
 }
 
@@ -325,11 +326,11 @@ test("arrowLabelsMenus", async () => {
       "Call Mark|Mark as RPC…|↩ Back to Start|Style|Line|Width|Start|End|Color|Start Side|End Side|Reset Sides|Edit Label|Delete",
     am,
   );
-  await h.page.locator(".ctx.open").first().locator("button", { hasText: "End Side" }).hover();
+  await h.page.locator(".ctx:not(.closing)").first().locator("button", { hasText: "End Side" }).hover();
   await idle(h); // its submenu opens on pointerenter
   const endSides = await menuLabels(h, 1);
   await snap(h, "labels-6-arrow-menu");
-  await h.page.locator(".ctx.open").first().locator("button", { hasText: "Start Side" }).hover();
+  await h.page.locator(".ctx:not(.closing)").first().locator("button", { hasText: "Start Side" }).hover();
   await idle(h);
   const startSides = await menuLabels(h, 1);
   check("side-options", endSides.join() === "Auto,Left,Right,Top,Bottom" && startSides.join() === "Auto,Left,Right", {
