@@ -79,11 +79,22 @@ function setCamStore(p: Partial<{ x: number; y: number; z: number }>) {
     if (!camMoving()) setCamMoving(true);
     setCamStore0(p);
   });
+  keepCamMoving();
+}
+/**
+ * The camera counts as moving for another CAM_STILL: called on every camera change, and by the detent at the summary cut
+ * (state/summary.ts detentZoom) while the zoom pushes into it with the camera held at the cut. Stopped = CAM_STILL has passed
+ * since the frame after the last change was drawn, and the camera has not changed since. The wait starts after that frame, not at
+ * the change: a frame longer than CAM_STILL (the switch at the summary cut) used to count as a stop in the middle of a gesture,
+ * which then re-rastered the world (Canvas.tsx settle) and changed everything drawn by stillZ, making the next frame long too
+ */
+export function keepCamMoving() {
   clearTimeout(still);
   const g = ++stillGen;
-  // 停下 = 等过 CAM_STILL 后又画了一帧、镜头还没变。一帧比 CAM_STILL 还长（跨过摘要档的那几帧）时定时器在帧里就到点了，
-  // 手势没停也算成停了：接着 stillZ、settle 一起换，下一帧又长，一路连锁
-  still = window.setTimeout(() => requestAnimationFrame(() => g === stillGen && setCamMoving(false)), CAM_STILL);
+  requestAnimationFrame(() => {
+    if (g !== stillGen) return;
+    still = window.setTimeout(() => requestAnimationFrame(() => g === stillGen && setCamMoving(false)), CAM_STILL);
+  });
 }
 const sx = new Spring(0, 120, 22, 0.05),
   sy = new Spring(0, 120, 22, 0.05),

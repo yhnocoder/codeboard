@@ -21,7 +21,7 @@ import {
 } from "@codeboard/core";
 import { state, placed, rectOf } from "./store";
 import { frames } from "./sections";
-import { animate, cam, camMoving, setCam, setZoomFloor, viewTracked } from "./camera";
+import { animate, cam, camMoving, keepCamMoving, setCam, setZoomFloor, viewTracked } from "./camera";
 import { boardRef, boardSignal, rooted } from "./root";
 import { dragging } from "./ui";
 import { zlog, zlogging } from "./zoomlog";
@@ -100,6 +100,8 @@ const shown = boardRef<0 | 1 | null>(null);
 const running = boardRef<object | null>(null);
 const easeInOut = (t: number) => (t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2);
 const easeOut = (t: number) => 1 - (1 - t) ** 3;
+/** The board's cut: the zoom below which the summary level shows (0 before the board is laid out) */
+export const summaryCut = () => draft()?.cut ?? 0;
 /** Every board switches at its cut, one with nothing to summarize too (frames and Free Text stay, Marks and the rest fade) */
 const want = rooted(() => createMemo(() => (state.loaded && cam.z < (draft()?.cut ?? 0) ? 1 : 0)));
 
@@ -156,6 +158,8 @@ export function detentZoom(z0: number, z: number, p: { x: number; y: number }): 
   }
   if (running.v) return z0 === cut || (lv === 0 ? z0 < cut : z0 > cut) ? z0 : cut;
   const to: 0 | 1 = lv === 0 ? 1 : 0;
+  // held at the cut, the camera does not change: the gesture still goes on (no stop, no re-raster of the world under the mist)
+  keepCamMoving();
   push.v = Math.min(1, push.v + Math.min(1, Math.abs(Math.log(z / z0)) / D.notch));
   pushedAt.v = performance.now();
   if (push.v >= 1) run(to, p);
