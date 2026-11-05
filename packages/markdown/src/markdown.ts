@@ -21,8 +21,17 @@ export type MarkdownOptions = {
   /** Code highlighting (text → HTML with token classes); langId maps a language name to the id it is cached and asked under */
   highlight?: CodeHighlighter;
   langId?: (lang: string) => string;
-  /** How image addresses resolve (or setAssetBase / setImageResolver later) */
+  /** How image addresses resolve (or setAssetBase / setImageResolver later): the original's address and size, and the smaller
+   *  copies there are of it (ResolvedImage.copies). The Markdown always keeps the address as written */
   images?: ImageResolver;
+  /** Device pixels per CSS pixel an image is seen at: your page's zoom times devicePixelRatio (default devicePixelRatio). Each
+   *  image shows the smallest copy still sharp at its laid-out width times this; call updateImages when it changes */
+  displayScale?: () => number;
+  /** Whether an image is on screen (default: every one): one that is not keeps the source it has until updateImages */
+  imageVisible?: (img: HTMLImageElement) => boolean;
+  /** Make the copy `width` wide that the resolver listed without a src for the image written as src; call updateImages once it
+   *  is there (the resolver then gives its src) */
+  makeImageCopy?: (src: string, width: number) => void;
   /** \newcommand / \def lines every formula can use (or setMathPreamble later) */
   mathPreamble?: string;
   /** Unhandled keys inside the editors' inputs that still bubble out to the page (see keepKey in @yhnocoder/markdown/ui) */
@@ -60,6 +69,12 @@ export interface Markdown {
   setAssetBase(dir: string, base: string): void;
   /** Resolve every image address yourself (null: as written) */
   setImageResolver(r: ImageResolver | null): void;
+  /** Pick every shown image's source again: after the display scale changed, a copy was made (makeImageCopy) or the images
+   *  inside root came on screen (root: only those) */
+  updateImages(root?: ParentNode): void;
+  /** Show the image written as src (an address the resolver knows, as in Markdown) in an <img> of your own, picked the way
+   *  rendered images are: its src, width / height and data-full are set now and kept up; returns a function that stops */
+  showImage(img: HTMLImageElement, src: string): () => void;
   /** Plain text where a formula copied from a web page reads as its glyphs followed by its TeX: the TeX as $…$ */
   undoubleTex(text: string): string;
 }
@@ -92,10 +107,13 @@ export class Md implements Markdown {
     this.ghosts = o.ghosts ?? createGhostHold();
     this.annots = new AnnotFit(this.measure);
     // 解析换了全部重画；一张图学到了大小，带着它的那几篇重画（下次画时先留好位置）
-    this.images = new Images((raw) => {
-      if (raw === undefined) return this.cache.clear();
-      for (const k of [...this.cache.keys()]) if (k.includes(raw)) this.cache.delete(k);
-    });
+    this.images = new Images(
+      (raw) => {
+        if (raw === undefined) return this.cache.clear();
+        for (const k of [...this.cache.keys()]) if (k.includes(raw)) this.cache.delete(k);
+      },
+      { scale: o.displayScale, visible: o.imageVisible, make: o.makeImageCopy },
+    );
     if (o.images) this.images.setResolver(o.images);
     if (o.mathPreamble) this.math.set(o.mathPreamble);
   }
@@ -121,12 +139,15 @@ export class Md implements Markdown {
         this.watched.add(el);
         el.addEventListener("error", this.onImageError, true);
       }
-      for (const img of el.querySelectorAll("img"))
+      for (const img of el.querySelectorAll("img")) {
+        // the source shown, set before the image starts loading (render puts the original's address in the HTML)
+        if (!img.closest(".md-html")) this.images.watch(img);
         if (
           this.images.failedBefore(img.getAttribute("src")) ||
           (img.complete && !img.naturalWidth && img.getAttribute("src"))
         )
           this.images.fail(img);
+      }
     }
     if (html.includes('class="md-ref"')) for (const r of el.querySelectorAll<HTMLElement>(".md-ref")) this.paintRef(r);
     if (html.includes(" data-lang=")) this.code.color(el);
@@ -150,6 +171,11 @@ export class Md implements Markdown {
   mathMacros = () => this.math.macrosCopy();
   setAssetBase = (dir: string, base: string) => this.images.setAssetBase(dir, base);
   setImageResolver = (r: ImageResolver | null) => this.images.setResolver(r);
+  updateImages = (root?: ParentNode) => this.images.pictures.update(root);
+  showImage = (img: HTMLImageElement, src: string) => {
+    this.images.pictures.watch(img, src);
+    return () => this.images.pictures.forget(img);
+  };
   undoubleTex = (text: string) => undoubleTex(text, this.math);
 }
 

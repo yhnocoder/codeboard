@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.3.0 (unreleased)
+
+Changes that need code updated when upgrading from 0.2.0:
+
+- An image resolver may list the image's smaller copies (`ResolvedImage.copies: [{ width, src? }]`, the new type `ImageCopy`), and each image then shows the one that fits the size it is seen at (see Image sources in the README). A resolver that returns no `copies` works as before.
+- The static render's `<img>` of a resolved address carries the address as written in `data-src`, and on the page (after `hydrate`, in the editor) the original's address in `data-full`. Code that reads a shown image's `src` to find its Markdown address should read `data-src`: the `src` may be a copy's.
+
+Added:
+
+- `createMarkdown` options `displayScale` (your zoom times `devicePixelRatio`), `imageVisible(img)` and `makeImageCopy(src, width)`; methods `updateImages(root?)` (pick the shown images' sources again) and `showImage(img, src)` (an `<img>` of your own picked the same way).
+- `pickCopy(copies, devicePixels)`: the smallest copy at least that wide, with headroom (×1.15); none past the largest.
+
 ## 0.2.0
 
 Changes that need code or styles updated when upgrading from 0.1.1:

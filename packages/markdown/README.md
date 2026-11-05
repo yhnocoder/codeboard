@@ -56,6 +56,8 @@ const md = createMarkdown({
 md.setAssetBase("assets", "./assets"); // ![](assets/a.png) shows ./assets/a.png
 // or resolve every image yourself, with its size if you know it (width / height reserve the space before it decodes):
 // md.setImageResolver((src) => ({ src: myUrl(src), width: 640, height: 480 }));
+// and the smaller copies you have of it: each image then shows the one that fits the size it is seen at (see Image sources)
+// md.setImageResolver((src) => ({ src: myUrl(src), width: 2400, height: 1600, copies: [{ width: 800, src: myCopy(src, 800) }] }));
 
 const note = document.getElementById("note")!; // give it class="md"
 let src = "# Hello\n\nSome **Markdown** with $e^{i\\pi} = -1$.";
@@ -105,12 +107,27 @@ A complete page using only this package is in [examples/markdown-demo](https://g
 |---|---|
 | `refs: { resolve, missing? }` | `[[wiki link]]` targets: `resolve(label, target?)` returns `{ id, title, badge?, seal?, hint?, place? }`, `{ broken, title, … }` or `null`; `target` is the id a reference picked from the `[[` menu carries (`[[title#^id]]`, see `RefItem.target`), so look it up by id first and show its current title; `missing` is the tooltip of one not found |
 | `highlight(text, lang)`, `langId(lang)` | Code highlighting (a `Promise` of HTML with token classes, or `null`); `langId` maps a language name to the id it is cached and asked under |
-| `images(src)` | Resolve image addresses (or `setAssetBase` / `setImageResolver` later) |
+| `images(src)` | Resolve image addresses (or `setAssetBase` / `setImageResolver` later): `{ src, width?, height?, copies? }`, see [Image sources](#image-sources) |
+| `displayScale()` | Device pixels per CSS pixel an image is seen at: your page's zoom times `devicePixelRatio` (default `devicePixelRatio`); call `updateImages()` when it changes |
+| `imageVisible(img)` | Whether an image is on screen (default: every one); one that is not keeps its source until `updateImages` |
+| `makeImageCopy(src, width)` | Make a copy the resolver listed without a `src`; call `updateImages()` once it is there |
 | `mathPreamble` | Definitions every formula can use (or `setMathPreamble` later) |
 | `passKeys(e)` | Unhandled keys inside the editors' inputs that still bubble out to your page's shortcuts (by default none) |
 | `measure`, `ghosts` | Your page's `createMeasure()` and `createGhostHold()` (`/ui`), to share one measuring round and one hold on AI completions with your own code; by default the instance has its own |
 
-Its methods: `render(src)`, `renderInline(src)` (without the outer `<p>` when it is one paragraph), `isCached(src)`, `hydrate(el, html)`, `click(e, src, { openLink, openRef, onToggle? })`, `paintRef(el)`, `setMathPreamble(src)`, `mathPreambleErrors()`, `mathMacros()`, `setAssetBase(dir, base)` (addresses under the folder `dir`, as written in the Markdown, are served from `base`), `setImageResolver(r)` and `undoubleTex(text)` (plain text where a formula copied from a web page reads as its glyphs followed by its TeX → `$TeX$`). A change of preamble or image addresses clears the instance's render cache; HTML already on the page stays as it was, so render it again. Its caches are bounded (renders, highlighted code, Mermaid diagrams, image sizes and failed addresses).
+Its methods: `render(src)`, `renderInline(src)` (without the outer `<p>` when it is one paragraph), `isCached(src)`, `hydrate(el, html)`, `click(e, src, { openLink, openRef, onToggle? })`, `paintRef(el)`, `setMathPreamble(src)`, `mathPreambleErrors()`, `mathMacros()`, `setAssetBase(dir, base)` (addresses under the folder `dir`, as written in the Markdown, are served from `base`), `setImageResolver(r)`, `updateImages(root?)` (pick every shown image's source again: after the display scale changed, a copy was made, or the images inside `root` came on screen), `showImage(img, src)` (an `<img>` of your own shown the way rendered images are, its source picked the same way; returns a function that stops) and `undoubleTex(text)` (plain text where a formula copied from a web page reads as its glyphs followed by its TeX → `$TeX$`). A change of preamble or image addresses clears the instance's render cache; HTML already on the page stays as it was, so render it again. Its caches are bounded (renders, highlighted code, Mermaid diagrams, image sizes and failed addresses).
+
+## Image sources
+
+A big image (a 2500 px screenshot shown 480 px wide) costs the page as much to decode, keep and draw as at full size. When you have smaller copies of it, return them from the resolver: `{ src, width, height, copies: [{ width, src? }, …] }`, where `src`/`width`/`height` are the original's and each copy is `width` pixels wide. Each image, in the static render (after `hydrate`) and in the editor alike, then shows the smallest copy at least its laid-out width × `displayScale()` × 1.15, or the original past the largest; `pickCopy(copies, devicePixels)` is that rule on its own. The width is read with a `ResizeObserver` (no layout is forced), and the choice follows these rules:
+
+- It steps up to a larger copy, then the original, as the width or the scale grows, and never back down while that `<img>` stays on the page (until it has shown anything it may still go down: a first guess, corrected by the first layout).
+- The next source is decoded before it replaces the one on screen, so the image never blinks.
+- A copy listed without a `src` is asked for with `makeImageCopy(src, width)`; until it is there the image keeps what it shows (a larger copy that is there, or the original when it shows nothing yet). Call `updateImages()` once it is made, with the resolver now giving its `src`.
+- A copy that fails to load gives way to the original.
+- Copies are used only when the resolver gives the original's `width` and `height`: the `<img>` gets those, so a copy takes the space the original would.
+
+Only the display changes: the Markdown, the editor's document and an image dragged out of the editor keep the address as written. `render()` puts the original's address in the HTML, with the address as written in `data-src`; on the page the `<img>` also carries the original's address in `data-full` (for an export, say).
 
 ## Math
 
