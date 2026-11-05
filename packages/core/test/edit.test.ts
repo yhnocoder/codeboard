@@ -686,7 +686,7 @@ describe("guard: reference upkeep only in core/src/edit/", () => {
       "mutate stamps creation order on new cards (core stampBorn on a plain copy)",
     ],
   ];
-  const LISTS = "cards|links|sections|sidenotes|stickers";
+  const LISTS = "cards|links|sections|sidenotes|stickers|shelf";
   const SPLICE = "splice|pop|shift|sort|reverse|fill|copyWithin";
   const RULES = [
     new RegExp(`\\.(?:${LISTS}|place)\\s*=(?![=>])`, "g"),

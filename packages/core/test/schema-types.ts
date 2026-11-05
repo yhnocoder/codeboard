@@ -20,6 +20,7 @@ import type {
   Segment,
   SharedCardFile,
   SharedRef,
+  ShelfEntry,
   Sidenote,
   Sticker,
 } from "../src/model";
@@ -61,6 +62,7 @@ export const keys = {
   rpc: ok({} as SameKeys<RpcMark, NonNullable<Out["links"][number]["rpc"]>>),
   section: ok({} as SameKeys<Section, Out["sections"][number]>),
   sticker: ok({} as SameKeys<Sticker, Out["stickers"][number]>),
+  shelf: ok({} as SameKeys<ShelfEntry, NonNullable<Out["shelf"]>[number]>),
   segment: ok({} as SameKeys<Segment, ByKind<SNote, "code">["code"]>),
   file: ok({} as SameKeys<BoardFile, FileOut>),
   ref: ok({} as SameKeys<SharedRef, ByKind<FileOut["cards"][number], "shared">>),
