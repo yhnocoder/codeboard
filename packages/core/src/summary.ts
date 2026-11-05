@@ -39,8 +39,25 @@ export const SUMMARY = {
   maxBold: 3,
   /** The highest cut any board has (summaryCut) */
   cutMax: 0.3,
-  /** The cross-fade between cards and summaries (ms) */
-  fadeMs: 250,
+  /** The detent at the cut (board state/summary.ts): a zoom gesture stops there and has to push through it. One mouse-wheel
+   *  notch (deltaY 100) pushes through at once; a pinch or trackpad zoom does once its zoom factor past the cut adds up to
+   *  e^notch (the sum of |ln f| of its steps) */
+  detent: {
+    notch: 0.6,
+    /** While pushed, the mist rises to this much of the viewport's height at most */
+    mist: 0.55,
+    /** For the switch it rises to this much: its top band thins out, so past 1 it covers the board whole */
+    cover: 1.4,
+    /** Let go before it is through, the push drains at this rate (whole pushes per second) */
+    drain: 1.2,
+    /** …starting this long after the last step (ms) */
+    drainAfter: 80,
+    /** The switch: the mist covers the board over coverMs, the levels swap under it, and it clears over clearMs */
+    coverMs: 220,
+    clearMs: 300,
+    /** The seal stamps in once the push is this far */
+    seal: 0.6,
+  },
   /** A pending summary is written again after this long without another change (ms) */
   regenMs: 10 * 60_000,
   /** The minimum zoom: fit-all ÷ this … */

@@ -26,9 +26,12 @@ import { cardSel } from "../cardsel";
 import { useMd } from "../md/context";
 import { Summaries } from "./Summaries";
 import { ShelfOutline } from "../ui/ShelfPanel";
-import { cardsAsleep, cardsGone, cardsOpacity, summaryFade } from "../state/summary";
+import { cardsAsleep, cardsGone, cardsOpacity, detent, summaryCut } from "../state/summary";
 
-const EXT = 2048;
+/** The world-extent boxes (.wext, .cshield) reach this far beyond the cards and Sections, aligned to it: enough that a card
+ *  nudged outward does not move them, and no more, since every tile of the box within ~3000 px of the viewport is a raster task
+ *  at each re-raster of the world (see settle) */
+const EXT = 512;
 
 /** 正在写的字在屏幕上至少这么大（px） */
 const READ_PX = 11;
@@ -57,14 +60,28 @@ export function Canvas() {
       });
     }),
   );
-  // 停下以后一两帧去掉 will-change 的提示（styles.css 的 .world.settle）：位图缩放过的内容按新比例重新清晰栅格化
+  // While the camera moves the world is scaled as a bitmap (styles.css .world: will-change). Stopped, .settle drops the hint so
+  // Chromium rasters the world again at the new scale, which makes the text crisp but is not free: the compositor thread
+  // creates a raster task for every tile of the world in and around the viewport (hundreds, ~0.4 ms each without a GPU) and
+  // the next commit waits for it: 6–17 ms at 75 % and above, 35–70 ms at 40–60 % on a board of dense Notes (their prose is
+  // most of a tile's raster there), and more when it lands in the middle of a gesture. So the world is rastered again only
+  // when it is magnified (zoomed in past the scale it was rastered at: scaled up, a bitmap is blurry) or minified past 2×
+  // (scaled down it looks right, but the tiles at the old scale take many viewports of memory, and past about 8× Chromium
+  // rasters again on its own, 135 ms, wherever that falls), and not within the detent's reach of the summary cut, where the
+  // card level is about to be swapped out and its text is 4 px tall. A stop zoomed out a little, or back where it was, costs
+  // nothing. .settle stays until the next move: taking it off again was a second commit that waited for the same raster
   const [settle, setSettle] = createSignal(false);
+  let rasterZ = cam.z;
   createEffect(
     on(
       camMoving,
       (m) => {
-        setSettle(!m);
-        if (!m) requestAnimationFrame(() => requestAnimationFrame(() => setSettle(false)));
+        if (m) return setSettle(false);
+        const z = cam.z;
+        if (z > rasterZ * 1.04 || (z < rasterZ / 2 && z > summaryCut() * 1.3)) {
+          rasterZ = z;
+          setSettle(true);
+        }
       },
       { defer: true },
     ),
@@ -146,11 +163,11 @@ export function Canvas() {
         classList={{ moving: camMoving(), settle: settle() }}
         style={{ transform: `translate(${cam.x}px, ${cam.y}px) scale(${cam.z})` }}
       >
-        {/* the card level (zoomed out it fades out as one layer and stays under the summaries: state/summary.ts) */}
+        {/* the card level (zoomed out it is swapped out as one layer and stays under the summaries: state/summary.ts) */}
         <div
           class="lay cardlay"
           style={{ opacity: String(cardsOpacity()) }}
-          classList={{ gone: cardsGone(), asleep: cardsAsleep(), fading: summaryFade() > 0 && summaryFade() < 1 }}
+          classList={{ gone: cardsGone(), asleep: cardsAsleep() }}
         >
           <SectionFrames />
           <links.Layer bottom />
@@ -214,17 +231,32 @@ export function Canvas() {
             <DropHint />
           </div>
         </div>
-        {/* faded out, the card level is not hit: a shield over its whole extent takes the pointer (styles.css .cshield) */}
+        {/* swapped out, the card level is not hit: a shield over its whole extent takes the pointer (styles.css .cshield) */}
         <Show when={cardsGone()}>
           <div class="cshield" style={extentBox()} />
         </Show>
-        {/* sub-board frames and Free Text: never summarized, they stay as they are over the summary level (Marks fade with the cards) */}
+        {/* sub-board frames and Free Text: never summarized, they stay as they are over the summary level (Marks go with the cards) */}
         <div class="lay keeplay">
           <For each={kept()}>{(c) => <CardView card={c} />}</For>
         </div>
         <Summaries />
         {/* a Shelf row dragged over the board: where it will land (ui/ShelfPanel.tsx) */}
         <ShelfOutline />
+      </div>
+      {/* the detent at the summary cut (state/summary.ts detent; styles.css .cutmist …): a mist in the board's colour rising from
+          the bottom edge by the push (a viewport-tall layer scaled up from the bottom), past 1 covering the board for the
+          switch; a vermilion line along the bottom filling with the push; the seal naming the level the push goes to. All in
+          the viewport, over the world: transform and opacity only */}
+      <div
+        class="cutmist"
+        classList={{ on: detent().mist > 0 }}
+        style={{ transform: `scaleY(${detent().mist.toFixed(4)})` }}
+      />
+      <div class="cutline" classList={{ on: detent().line > 0 }}>
+        <i style={{ transform: `scaleX(${detent().line.toFixed(3)})` }} />
+      </div>
+      <div class="cutseal" classList={{ on: detent().seal }}>
+        {detent().to === 1 ? "Summary" : "Detail"}
       </div>
       {/* ui/shield.ts：滚轮平移、缩放的手势里盖在世界层上，命中测试不用把世界层里的东西一个个问过去 */}
       <div ref={bindShield} class="pshield" />

@@ -22,7 +22,7 @@ import { placeOf, rectOf, state } from "../state/store";
 import { nearView } from "../state/cull";
 import { send } from "../host";
 import { cam, camMoving } from "../state/camera";
-import { summaryFade } from "../state/summary";
+import { summaryLevel } from "../state/summary";
 import { shownIcon, stickerClick } from "../actions/questions";
 import { useOverlay } from "../ui/overlay";
 import { followPointer } from "../gesture";
@@ -174,7 +174,7 @@ const menuAt = (id: string) => (e: MouseEvent) => {
  */
 function playNear(rect: () => { x: number; y: number; w: number; h: number }) {
   let was = false;
-  return () => (was = summaryFade() < 1 && nearView(rect(), was) && (was || !camMoving()));
+  return () => (was = summaryLevel() === 0 && nearView(rect(), was) && (was || !camMoving()));
 }
 
 /** 一枚可拖、可改大小的贴纸；x、y 是它所在那一层的坐标（画布 = 世界坐标，卡里 = 相对卡左上角，card = 那张卡） */
@@ -222,7 +222,7 @@ function FreeSticker(p: { s: Sticker; x: number; y: number; card?: string }) {
 /** 卡角上、代码行上的小贴纸（不能改大小） */
 export function StickerChip(p: { s: Sticker; size: number }) {
   const card = p.s.at.kind === "line" ? p.s.at.card : undefined;
-  const play = card ? playNear(() => rectOf(card)) : () => summaryFade() < 1;
+  const play = card ? playNear(() => rectOf(card)) : () => summaryLevel() === 0;
   return (
     <span
       class="stk"

@@ -620,8 +620,8 @@ export async function shot(h: Host, name: string, at: "idle" | "now" = "idle") {
 
 /**
  * Waits until the board has settled: no board message still being handled by the host (window.__inflight, counted in the page
- * file above until the handler returns, i.e. after its reply was posted), the camera at rest (.world neither .moving nor
- * .settle), no finite Web Animation or CSS transition running (infinite ones, like spinners and animated stickers, don't count),
+ * file above until the handler returns, i.e. after its reply was posted), the camera at rest (.world not .moving; .settle is
+ * the world at rest without its will-change hint and stays until the next move), no finite Web Animation or CSS transition running (infinite ones, like spinners and animated stickers, don't count),
  * fonts loaded, no card moved or resized (their inline styles: the pop-in, slide, fold and grow springs) and no arrow moved (its
  * path: an end switching sides slides over in rAF steps, Links.tsx, which is no Web Animation) for `frames` frames in a row.
  * Throws after `ms`, saying what was still busy.
@@ -643,7 +643,7 @@ export async function idle(h: Host, ms = 5000, frames = 3) {
         q.busy = [
           w.__inflight > 0 && `${w.__inflight} message(s) waiting on the host`,
           document.fonts.status !== "loaded" && "fonts loading",
-          world?.matches(".moving, .settle") && "camera moving",
+          world?.matches(".moving") && "camera moving",
           anims.length > 0 &&
             `animations: ${anims.map((a) => (a as CSSTransition).transitionProperty ?? (a as CSSAnimation).animationName ?? "?").join(", ")}`,
         ].filter(Boolean);

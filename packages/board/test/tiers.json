@@ -530,7 +530,7 @@
       ]
     },
     "summaries": {
-      "about": "zoomed-out AI summaries (#130): the summary level and its fade, the board's minimum zoom, columns, editing and ↻, the host writing summaries with DeepSeek",
+      "about": "zoomed-out AI summaries (#130): the summary level, the detent at the cut and the covered switch, the board's minimum zoom, columns, editing and ↻, the host writing summaries with DeepSeek",
       "files": [
         "packages/core/src/summary.ts",
         "packages/core/src/commands/summaries.ts",
@@ -541,7 +541,7 @@
         "packages/board/test/scenarios/{summaries,summary-zoom}.spec.ts"
       ],
       "scenarios": [
-        "summaryLevelFade",
+        "summaryDetentSwitch",
         "summarySwitchWhole",
         "summaryWrittenAndEdited",
         "summaryNoKey",

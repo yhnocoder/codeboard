@@ -1,8 +1,8 @@
 // The summary level (#130; state/summary.ts, core summary.ts): one column per innermost Section, per group of cards placed directly
 // in a Section with child Sections and per card in no Section, and a header above the frame of each Section with child Sections
 // (its title, a rule and a one-sentence overview), at the board's one font size, drawn in full (no clamping, no fallbacks). It is built once the zoom comes near the highest cut (state/summary.ts
-// summaryNear: zoomed in it costs nothing) and from then on only its opacity follows the fade, so the switch never adds elements or
-// lays anything out. Each column's title and body heights are read once per change of width or text
+// summaryNear: zoomed in it costs nothing) and from then on only its opacity follows the level shown, so the switch never adds
+// elements or lays anything out. Each column's title and body heights are read once per change of width or text
 // (ResizeObserver, in the board's measuring round) and give the final extents the later columns stop at.
 // Click a body to edit it (Enter saves, Esc cancels, ⌘B marks the key phrase); ↻ on hover writes it again, and on a stale item
 // (its cards changed since it was written: the one dot, on ↻) ✓ 保留 beside it keeps it as it is.
@@ -15,9 +15,9 @@ import { For, Show, createEffect, createMemo, createSignal, onCleanup, onMount, 
 import { state } from "../state/store";
 import { stillZ } from "../state/camera";
 import { lastDown, observeResize, queueMeasure } from "../state/measure";
-import { summaryFade, summaryLayout, summaryNear, setSummaryHeights } from "../state/summary";
+import { summaryLevel, summaryLayout, summaryNear, setSummaryHeights, summaryCut } from "../state/summary";
 import { zlog, zlogging } from "../state/zoomlog";
-import { boardLang, summaryOf, summaryPending, type SumCol, type SumKey } from "@codeboard/core";
+import { SUMMARY, boardLang, summaryOf, summaryPending, type SumCol, type SumKey } from "@codeboard/core";
 import * as A from "../actions";
 import { useMd } from "../md/context";
 import type { Markdown } from "@yhnocoder/markdown";
@@ -46,7 +46,15 @@ const ago = (at: number) => {
   return m < 1 ? "just now" : m < 60 ? `${m} min ago` : `${Math.round(m / 60)} h ago`;
 };
 
-const live = () => summaryFade() > 0.5;
+const live = () => summaryLevel() === 1;
+/**
+ * The layer is laid out at 1 / K of the board's scale and scaled up by K, so that at the cut it is 1:1 with the screen. Under
+ * the world's will-change: transform, Chromium rasters a layer at least at the device's scale, whatever the zoom (so the
+ * world's cards stay crisp when zoomed in): laid out in board units, the summary columns were rastered at 1 / cut = 3.3 times
+ * the size they ever show at (11 times the pixels, 200–300 ms of glyphs on a GPU at the switch). Every size the layout gives
+ * is divided by K here (--S, --P, the columns' boxes) and what the columns measure is scaled back
+ */
+const K = () => 1 / (summaryCut() || SUMMARY.cutMax);
 
 export function Summaries() {
   const layout = summaryLayout;
@@ -60,9 +68,10 @@ export function Summaries() {
     <Show when={summaryNear() && keys().length}>
       {(_) => {
         // Built near the cut, before it shows: a few columns in each idle moment (all of them at once took 35–55 ms, a dropped
-        // frame or three in the middle of a zoom); once the fade begins, every column not built yet is built in its first frame
+        // frame or three in the middle of a zoom); once the level shows (under the switch's mist), every column not built yet is
+        // built in that frame
         const [n, setN] = createSignal(0);
-        const all = createMemo(() => summaryFade() > 0);
+        const all = createMemo(() => summaryLevel() === 1);
         const shown = createMemo(() => (all() || n() >= keys().length ? keys() : keys().slice(0, n())));
         let idle: number | undefined;
         const more = (d: IdleDeadline) => {
@@ -90,12 +99,13 @@ export function Summaries() {
           <div
             class="lay sumlay"
             data-export="strip"
-            classList={{ live: live(), gone: summaryFade() === 0, fading: summaryFade() > 0 && summaryFade() < 1 }}
+            classList={{ live: live(), gone: !live() }}
             style={{
-              opacity: String(Math.max(0.003, summaryFade())),
-              "--S": `${layout()?.S ?? 56}px`,
-              "--P": `${layout()?.P ?? 19}px`,
-              "--sum-iz": String(1 / stillZ()),
+              opacity: String(live() ? 1 : 0.003),
+              transform: `scale(${K()})`,
+              "--S": `${(layout()?.S ?? 56) / K()}px`,
+              "--P": `${(layout()?.P ?? 19) / K()}px`,
+              "--sum-iz": String(1 / (stillZ() * K())),
             }}
           >
             <For each={shown()}>{(k) => <Show when={byKey().get(k)}>{(c) => <Column col={c()} />}</Show>}</For>
@@ -125,7 +135,14 @@ function Column(p: { col: SumCol }) {
     queueMeasure(hd, () => {
       // shown in full over its neighbours: not the size it takes in the layout
       if (col.matches(":hover, :focus-within")) return () => {};
-      const h = { hd: hd.offsetHeight + (kick?.offsetHeight ?? 0), tx: tx.offsetHeight },
+      // in board units: the column's box is laid out at its board height / K (see K), so its screen height says the scale
+      const ch = col.getBoundingClientRect().height;
+      if (!ch) return () => {};
+      const u = Math.max(p.col.h, p.col.full) / ch;
+      const h = {
+          hd: (hd.getBoundingClientRect().height + (kick?.getBoundingClientRect().height ?? 0)) * u,
+          tx: tx.getBoundingClientRect().height * u,
+        },
         cut = !p.col.code && hd.scrollHeight > hd.clientHeight + 1;
       setClamped(cut);
       return () =>
@@ -225,7 +242,12 @@ function Column(p: { col: SumCol }) {
               const src = card?.kind === "image" ? card.src : "";
               return /^(data:|https?:)/.test(src) ? src : `${state.host.assetBase}/${src}`;
             })()}
-            style={{ left: `${r().x}px`, top: `${r().y}px`, width: `${r().w}px`, height: `${r().h}px` }}
+            style={{
+              left: `${r().x / K()}px`,
+              top: `${r().y / K()}px`,
+              width: `${r().w / K()}px`,
+              height: `${r().h / K()}px`,
+            }}
           />
         )}
       </Show>
@@ -246,15 +268,15 @@ function Column(p: { col: SumCol }) {
           sumnone: !c().title && !c().code && !c().image && !text() && !writing(),
         }}
         style={{
-          left: `${c().x}px`,
-          top: `${c().y}px`,
-          width: `${c().w}px`,
-          height: `${Math.max(c().h, c().full)}px`,
-          "--rest": `${c().h}px`,
+          left: `${c().x / K()}px`,
+          top: `${c().y / K()}px`,
+          width: `${c().w / K()}px`,
+          height: `${Math.max(c().h, c().full) / K()}px`,
+          "--rest": `${c().h / K()}px`,
         }}
       >
         <div class="sumblk">
-          <div class="sumhd" classList={{ code: !!c().code }} style={{ "min-height": `${c().hd}px` }}>
+          <div class="sumhd" classList={{ code: !!c().code }} style={{ "min-height": `${c().hd / K()}px` }}>
             <Show when={c().kick}>
               {(k) => (
                 <div class="sumkick" ref={(el) => (kick = el)}>

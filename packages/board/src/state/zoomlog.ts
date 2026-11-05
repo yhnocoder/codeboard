@@ -8,7 +8,7 @@
 // events that arrived since the frame before, and the time from the first of them to this frame's start. `X <t> <ids>` in a
 // frame: cards in view drawn with their content hidden (cull.ts off, and not far), on a card level that shows: what a flicker
 // looks like in the tree, if it is one. Events between frames: `L <t> <ms>` a long task, `C …` cards shown, hidden, painted again or not
-// painted (cull.ts), `S …` the cross-fade between the card and summary levels starting and ending, `W …` the faded card level
+// painted (cull.ts), `S …` the switch between the card and summary levels starting, swapping and ending, `W …` the faded card level
 // kept drawn under the summaries or let go (summary.ts), `B <t> <ms>` the summary layer built.
 import { cam } from "./camera";
 import { placed } from "./store";

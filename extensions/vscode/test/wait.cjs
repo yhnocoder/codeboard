@@ -181,7 +181,8 @@ function sample() {
     .filter((a) => a.playState === "running" && Number.isFinite(a.effect?.getComputedTiming().endTime));
   const busy = [
     document.fonts.status !== "loaded" && "fonts loading",
-    world?.matches(".moving, .settle") && "camera moving",
+    // .settle (the world rastered again at a stop) stays until the next move: not a moving camera
+    world?.matches(".moving") && "camera moving",
     anims.length > 0 && `animations: ${anims.map((a) => a.transitionProperty ?? a.animationName ?? "?").join(", ")}`,
   ].filter(Boolean);
   return { busy, key: `${world ? getComputedStyle(world).transform : ""}|${w.__e2eMuts.n}` };
