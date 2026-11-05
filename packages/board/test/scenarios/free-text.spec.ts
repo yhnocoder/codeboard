@@ -66,10 +66,10 @@ test("freeTextCard", async () => {
   const h = await open({ board: titleBoard(), light: true, w: 1200, h: 760, settings: { theme: "warm-ink" } as never });
   const pg = h.page;
   await pg.locator('.bbar button[aria-label="Text"]').click();
-  await pg.locator(".ctx button").first().waitFor();
-  const items = await pg.locator(".ctx button .lb").allTextContents();
+  await pg.locator(".ctx.open button").first().waitFor();
+  const items = await pg.locator(".ctx.open button .lb").allTextContents();
   check("freeTextInWriteMenu", items.includes("New Free Text"), items);
-  await pg.locator(".ctx button", { hasText: "New Free Text" }).click();
+  await pg.locator(".ctx.open button", { hasText: "New Free Text" }).click();
   await pg.locator(".card.freetext .tx.ft[contenteditable]").waitFor();
   check("freeTextPlainEditor", (await pg.locator(".md-pm").count()) === 0);
   await pg.keyboard.type("Scheduler");
@@ -138,7 +138,7 @@ test("freeTextCard", async () => {
   // an empty one, from the board menu, goes without a step: the next undo is the text edit before it
   const n0 = h.board().cards.length;
   await pg.mouse.click(300, 500, { button: "right" });
-  await pg.locator(".ctx button", { hasText: "New Free Text" }).click();
+  await pg.locator(".ctx.open button", { hasText: "New Free Text" }).click();
   await pg.locator(".card.freetext .tx.ft[contenteditable]").waitFor();
   await pg.keyboard.press("Escape");
   await until(h, "the empty one is gone", async () => (await pg.locator(".card.freetext").count()) === 1);
@@ -190,7 +190,7 @@ test("freeTextExport", async () => {
     ),
   );
   await pg.locator('.bbar [aria-label="More"]').click();
-  await pg.locator(".ctx button", { hasText: "Export…" }).click();
+  await pg.locator(".ctx.open button", { hasText: "Export…" }).click();
   await pg.locator(".xdlg").waitFor();
   await pg.locator(".xdlg .seg button", { hasText: "HTML Snapshot" }).click();
   await pg.locator(".xdlg button.def").click();
@@ -211,7 +211,7 @@ test("freeTextExport", async () => {
   await idle(h);
   // PNG: the export's picture has the Free Text's ink where it is on the board
   await pg.locator('.bbar [aria-label="More"]').click();
-  await pg.locator(".ctx button", { hasText: "Export…" }).click();
+  await pg.locator(".ctx.open button", { hasText: "Export…" }).click();
   await pg.locator(".xdlg").waitFor();
   await pg.locator(".xdlg .seg button", { hasText: "PNG" }).click();
   await pg.locator(".xdlg button.def").click();
@@ -325,8 +325,8 @@ test("freeTextLevels", async () => {
 
   // the menu: a dragged size goes back to the level's preset; Bold toggles
   await pg.locator(`${card("h1")} .tx`).click({ button: "right" });
-  await pg.locator(".ctx button", { hasText: "Level" }).hover();
-  await pg.locator(".ctx button", { hasText: "Heading 2" }).click();
+  await pg.locator(".ctx.open button", { hasText: "Level" }).hover();
+  await pg.locator(".ctx.open button", { hasText: "Heading 2" }).click();
   await until(h, "H1 is now H2", () => byId(h, "h1")?.level === 2);
   await pg.locator(`${card("h1")} .tx`).click({ button: "right" });
   await pg.locator(".ctx.open button", { hasText: /^Bold/ }).click();

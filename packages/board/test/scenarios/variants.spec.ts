@@ -114,18 +114,18 @@ async function variants(res: Record<string, unknown>) {
 
   // 1. 卡片菜单 → Add Variant…：列出另一个 worktree
   await card.locator(".chead").click({ button: "right", position: { x: 120, y: 12 } });
-  await page.locator(".ctx button", { hasText: /^Add Variant…/ }).click();
+  await page.locator(".ctx.open button", { hasText: /^Add Variant…/ }).click();
   // the worktree comes from the host's variantSources reply
-  await page.locator(".ctx button", { hasText: "Other Worktree" }).waitFor();
+  await page.locator(".ctx.open button", { hasText: "Other Worktree" }).waitFor();
   await idle(h);
-  const items = await page.locator(".ctx button").allTextContents();
+  const items = await page.locator(".ctx.open button").allTextContents();
   res.menu = items;
   const listed =
     items.some((t) => /Other Worktree.*vllm-exp · exp-overlap/.test(t)) &&
     items.some((t) => /Working Tree \(uncommitted\)/.test(t)) &&
     items.some((t) => /GitHub Pull Request/.test(t));
   await shotPr(h, "variants-1-add-menu", false);
-  await page.locator(".ctx button", { hasText: "Other Worktree" }).click();
+  await page.locator(".ctx.open button", { hasText: "Other Worktree" }).click();
   await until(h, "the worktree variant is added", () => sc().variants?.length);
   await idle(h);
 
@@ -153,8 +153,8 @@ async function variants(res: Record<string, unknown>) {
 
   // 3. 「+」再加一个分支；切换：点标签后的下一帧画面已经换好（用多久在 variantTabSwitchTime 里单独量）
   await card.locator(".vtab.vadd").click();
-  await page.locator(".ctx button", { hasText: /^Branch or Commit…/ }).hover();
-  await page.locator(".ctx button", { hasText: /^fix-spec-bug/ }).click();
+  await page.locator(".ctx.open button", { hasText: /^Branch or Commit…/ }).hover();
+  await page.locator(".ctx.open button", { hasText: /^fix-spec-bug/ }).click();
   await until(h, "the branch variant is added", () => (sc().variants?.length ?? 0) > 2);
   await idle(h);
   const nTabs = await card.locator(".vtab:not(.vadd)").count();
@@ -208,11 +208,11 @@ async function variants(res: Record<string, unknown>) {
   });
   await idle(h);
   await card.locator(".vsel").click();
-  await page.locator(".ctx button", { hasText: /Upstream Latest/ }).waitFor();
-  const baseItems = await page.locator(".ctx button").allTextContents();
+  await page.locator(".ctx.open button", { hasText: /Upstream Latest/ }).waitFor();
+  const baseItems = await page.locator(".ctx.open button").allTextContents();
   res.base = baseItems;
   await shotPr(h, "variants-3-base-picker", false);
-  await page.locator(".ctx button", { hasText: /Upstream Latest/ }).click();
+  await page.locator(".ctx.open button", { hasText: /Upstream Latest/ }).click();
   await idle(h);
   const baseLabel = await card.locator(".vsel").textContent();
   const behind = await card

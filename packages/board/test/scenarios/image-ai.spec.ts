@@ -125,13 +125,13 @@ const board = (f: (b: Board) => void) => {
 };
 const withPng = () => board((b) => put(b, { id: "i1", kind: "image", src: PNG_FILE } as ImageCard, 80, 120, 320));
 const card = (h: Host, id: string) => h.board().cards.find((c) => c.id === id);
-const menuLabels = (h: Host) => h.page.locator(".ctx").last().locator("button .lb").allInnerTexts();
+const menuLabels = (h: Host) => h.page.locator(".ctx.open").last().locator("button .lb").allInnerTexts();
 async function rightClick(h: Host, sel: string) {
   const r = (await h.page.locator(sel).first().boundingBox())!;
   await h.page.mouse.click(r.x + r.width / 2, r.y + r.height / 2, { button: "right" });
   await h.page.locator(".ctx.open").first().waitFor();
 }
-const pick = (h: Host, label: string) => h.page.locator(".ctx button", { hasText: label }).first().click();
+const pick = (h: Host, label: string) => h.page.locator(".ctx.open button", { hasText: label }).first().click();
 const shoot = async (h: Host, name: string) => {
   if (!SHOTS) return;
   await idle(h);

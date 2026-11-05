@@ -441,8 +441,8 @@ test("codeAnnotations", async () => {
     return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
   });
   await pg.mouse.click(box.x, box.y, { button: "right" });
-  await pg.locator(".ctx button").first().waitFor();
-  const item = pg.locator(".ctx button[role=menuitem]", { hasText: "Annotate Selection" });
+  await pg.locator(".ctx.open button").first().waitFor();
+  const item = pg.locator(".ctx.open button[role=menuitem]", { hasText: "Annotate Selection" });
   check("codeAnnotMenu", (await item.count()) === 1);
   if (await item.count()) {
     await item.click();
@@ -467,7 +467,7 @@ test("codeAnnotations", async () => {
   );
   // right-click a label → Remove
   await pg.locator(`${card(sch.id)} .alab`, { hasText: "KV cache blocks" }).click({ button: "right" });
-  await pg.locator(".ctx button[role=menuitem]", { hasText: "Remove Annotation" }).click();
+  await pg.locator(".ctx.open button[role=menuitem]", { hasText: "Remove Annotation" }).click();
   await until(
     h,
     "the annotation is removed",

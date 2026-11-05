@@ -155,10 +155,10 @@ async function lineMenu(h: Host, card: string, line: number, label: string) {
   const l = page.locator(`.card[data-id="${card}"] .gutter .no`, { hasText: new RegExp(`^${line}$`) }).first();
   const b = (await l.boundingBox())!;
   await page.mouse.click(b.x + b.width + 260, b.y + b.height / 2, { button: "right" });
-  await page.locator(".ctx button").first().waitFor();
-  if (!(await page.locator(".ctx button", { hasText: label }).count()))
-    await page.locator(".ctx button", { hasText: /^Edit/ }).hover();
-  await page.locator(".ctx button", { hasText: label }).first().click();
+  await page.locator(".ctx.open button").first().waitFor();
+  if (!(await page.locator(".ctx.open button", { hasText: label }).count()))
+    await page.locator(".ctx.open button", { hasText: /^Edit/ }).hover();
+  await page.locator(".ctx.open button", { hasText: label }).first().click();
 }
 
 async function questions(res: Record<string, unknown>) {
@@ -416,7 +416,7 @@ async function exportScenario(res: Record<string, unknown>) {
   await idle(h);
   // 1. ⋯ → Export…: format, scope (Walkthrough A from the Start card), include, look, file
   await page.locator('.bbar [aria-label="More"]').click();
-  await page.locator(".ctx button", { hasText: "Export…" }).click();
+  await page.locator(".ctx.open button", { hasText: "Export…" }).click();
   await page.locator(".xdlg").waitFor();
   await idle(h);
   res.dialog = await page.locator(".xdlg").count();
@@ -445,7 +445,7 @@ async function exportScenario(res: Record<string, unknown>) {
   res.privateInHtml = html.includes("PRIVATE draft");
   // 3. Markdown of the whole board with questions
   await page.locator('.bbar [aria-label="More"]').click();
-  await page.locator(".ctx button", { hasText: "Export…" }).click();
+  await page.locator(".ctx.open button", { hasText: "Export…" }).click();
   await page.locator(".xdlg").waitFor();
   await idle(h);
   await page.locator(".xdlg .seg button", { hasText: "Markdown" }).click();
@@ -585,7 +585,7 @@ async function settings(res: Record<string, unknown>) {
   await idle(h);
   if (!(await page.locator(".settings").count())) {
     await page.locator('.bbar [aria-label="More"]').click();
-    await page.locator(".ctx button", { hasText: "Settings…" }).click();
+    await page.locator(".ctx.open button", { hasText: "Settings…" }).click();
   }
   await page.locator(".settings").waitFor();
   await idle(h);

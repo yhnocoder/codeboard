@@ -655,10 +655,10 @@ test("manualCallMark", async () => {
     return null;
   });
   await h.page.mouse.click(pt!.x, pt!.y, { button: "right" });
-  await h.page.locator(".ctx").first().locator(":scope > button").first().waitFor();
+  await h.page.locator(".ctx.open").first().locator(":scope > button").first().waitFor();
   await idle(h);
-  const items = await h.page.locator(".ctx").first().locator(":scope > button").allTextContents();
-  await h.page.locator(".ctx button", { hasText: "Call Mark" }).first().click();
+  const items = await h.page.locator(".ctx.open").first().locator(":scope > button").allTextContents();
+  await h.page.locator(".ctx.open button", { hasText: "Call Mark" }).first().click();
   await until(h, "the Call Mark is saved", () => (h.board().links[0] as Link).call);
   await idle(h);
   const call = (h.board().links[0] as Link).call;

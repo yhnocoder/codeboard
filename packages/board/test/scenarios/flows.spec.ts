@@ -244,9 +244,9 @@ test("compare", async () => {
   await h.page.keyboard.press("ControlOrMeta+a");
   await h.page.keyboard.press("Meta+a");
   await h.page.locator(".card").first().locator(".chead").click({ button: "right" });
-  await h.page.locator(".ctx button").first().waitFor();
+  await h.page.locator(".ctx.open button").first().waitFor();
   await shot(h, "cmp-01-menu");
-  await h.page.locator(".ctx button", { hasText: "Compare" }).first().click();
+  await h.page.locator(".ctx.open button", { hasText: "Compare" }).first().click();
   await until(h, "Compare makes a compare card", () => h.board().cards.some((c) => c.kind === "compare"));
   await shot(h, "cmp-02-compare");
   console.log(
@@ -453,8 +453,8 @@ test("linkMergeSection", async () => {
   // Section, then collapse
   await h.page.keyboard.press("ControlOrMeta+a");
   await h.page.locator(".card.ccard .chead").first().click({ button: "right" });
-  await h.page.locator(".ctx button").first().waitFor();
-  await h.page.locator(".ctx button", { hasText: /^Move to New Section/ }).click();
+  await h.page.locator(".ctx.open button").first().waitFor();
+  await h.page.locator(".ctx.open button", { hasText: /^Move to New Section/ }).click();
   await typingInto(h);
   await h.page.keyboard.type("Scheduler");
   await h.page.keyboard.press("Enter");
@@ -481,7 +481,7 @@ test("cmptree", async () => {
   await idle(h);
   await h.page.keyboard.press("ControlOrMeta+a");
   await h.page.locator(".card.ccard .chead").first().click({ button: "right" });
-  await h.page.locator(".ctx button", { hasText: "Compare" }).first().click();
+  await h.page.locator(".ctx.open button", { hasText: "Compare" }).first().click();
   await until(h, "Compare makes a compare card", () => h.board().cards.some((c) => c.kind === "compare"));
   await idle(h);
   const calls = () => h.board().links.filter((l) => l.call).length;
@@ -958,9 +958,9 @@ test("walkview", async () => {
   await idle(h);
   const root = h.board().cards[0].id;
   await h.page.locator(".card").first().locator(".chead").click({ button: "right" });
-  await h.page.locator('.ctx button:has(.lb:text-is("Call Graph"))').hover();
+  await h.page.locator('.ctx.open button:has(.lb:text-is("Call Graph"))').hover();
   await h.page
-    .locator(".ctx button", { hasText: /Collapse/ })
+    .locator(".ctx.open button", { hasText: /Collapse/ })
     .first()
     .click();
   await until(h, "the collapse is saved", () => h.board().place[root]?.collapsed);
@@ -1142,16 +1142,16 @@ test("libcalls", async () => {
   await h.page.mouse.move(5, 5);
   await idle(h);
   await lib.click({ button: "right" });
-  await h.page.locator(".ctx button").first().waitFor();
+  await h.page.locator(".ctx.open button").first().waitFor();
   await idle(h);
-  const menu = await h.page.locator(".ctx button").allTextContents();
+  const menu = await h.page.locator(".ctx.open button").allTextContents();
   check(
     "libcalls the library call's menu offers Expand Anyway and adding its package to the Study Scope",
     menu.some((t) => /^Expand Anyway/.test(t)) && menu.includes('Add "torch" to Study Scope'),
     { menu },
   );
   await shot(h, "libcalls-02-menu");
-  await h.page.locator(".ctx button", { hasText: /^Add "torch" to Study Scope$/ }).click();
+  await h.page.locator(".ctx.open button", { hasText: /^Add "torch" to Study Scope$/ }).click();
   await until(h, "the Study Scope setting is sent", () => h.sent.some((m) => m.type === "setSetting"));
   await idle(h);
   const set = h.sent.filter((m) => m.type === "setSetting"),

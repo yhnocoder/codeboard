@@ -894,14 +894,14 @@ test("notePastedImageCaptionWhileEditing", async () => {
   await imgBox(h, "n0", ".md-pm");
   check("notePastedImageCaptionWhileEditing not saved to the card yet", !md(h, "n0").includes("assets/"), md(h, "n0"));
   await pg.locator('.card[data-id="n0"] .md-pm img:not(.ProseMirror-separator)').first().click({ button: "right" });
-  await pg.locator(".ctx button").first().waitFor();
-  const items = await pg.locator(".ctx button .lb").allTextContents();
+  await pg.locator(".ctx.open button").first().waitFor();
+  const items = await pg.locator(".ctx.open button .lb").allTextContents();
   check(
     "notePastedImageCaptionWhileEditing the menu offers Add Caption",
     items[0] === "Copy Image" && items[1] === "Add Caption…",
     items,
   );
-  await pg.locator(".ctx button", { hasText: "Add Caption…" }).first().click();
+  await pg.locator(".ctx.open button", { hasText: "Add Caption…" }).first().click();
   await pg.locator(".dialog input").fill("Figure 1");
   await pg.keyboard.press("Enter");
   await until(h, "the caption is saved", () => md(h, "n0").includes('"Figure 1")'));

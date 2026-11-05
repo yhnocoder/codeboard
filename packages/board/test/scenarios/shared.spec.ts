@@ -154,11 +154,11 @@ test("sharedcards", async () => {
   // 5. Board-only from the sidenote's context menu: it leaves Attention
   await cardEl(m, "Scheduler.schedule").locator(".chead .mk").click();
   await m.page.locator(".pop.k-notes .sn-item").first().click({ button: "right" });
-  await m.page.locator(".ctx button").first().waitFor();
+  await m.page.locator(".ctx.open button").first().waitFor();
   await idle(m);
-  res.noteMenu = await m.page.locator(".ctx button").allTextContents();
+  res.noteMenu = await m.page.locator(".ctx.open button").allTextContents();
   await shot(m, "shared-2-sidenote-menu");
-  await m.page.locator(".ctx button", { hasText: "Board-only" }).click();
+  await m.page.locator(".ctx.open button", { hasText: "Board-only" }).click();
   await until(m, "the sidenote is made board-only on MoE", () =>
     t.store.peek("bM")!.sidenotes.some((n) => n.kind === "text" && n.md === "Added on MoE." && n.boardOnly),
   );
@@ -202,9 +202,9 @@ test("sharedcards", async () => {
   await cardEl(m, "Scheduler.schedule")
     .locator(".chead")
     .click({ button: "right", position: { x: 80, y: 10 } });
-  await m.page.locator(".ctx button").first().waitFor();
+  await m.page.locator(".ctx.open button").first().waitFor();
   await idle(m);
-  res.menu = await m.page.locator(".ctx .mh, .ctx button").allTextContents();
+  res.menu = await m.page.locator(".ctx.open .mh, .ctx.open button").allTextContents();
   await shot(m, "shared-5-delete-menu");
   await m.page.keyboard.press("Escape");
 

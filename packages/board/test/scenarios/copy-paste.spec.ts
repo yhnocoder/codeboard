@@ -728,7 +728,7 @@ test("pasteAsReference", async () => {
 
   // Detach from the card menu: its own copy again; edits stay in it
   await cardEl(h, id).locator(".chead").click({ button: "right" });
-  await pg.locator(".ctx button", { hasText: "Detach (Make This a Copy)" }).click();
+  await pg.locator(".ctx.open button", { hasText: "Detach (Make This a Copy)" }).click();
   await until(h, "Detach makes it a copy", () => !card("n1")?.same && !card(id)?.same);
   await until(h, "no mark after Detach", async () => !(await pg.locator(".twinmk").count()));
 

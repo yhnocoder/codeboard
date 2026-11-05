@@ -146,17 +146,17 @@ test("menusFitWindow", async () => {
     .locator(".card.ccard .chead")
     .first()
     .click({ button: "right", position: { x: 300, y: 12 } });
-  await h.page.locator(".ctx button").first().waitFor();
+  await h.page.locator(".ctx.open button").first().waitFor();
   await shot(h, "board-03-cardmenu");
-  await h.page.locator(".ctx button", { hasText: /^View$/ }).hover();
+  await h.page.locator(".ctx.open button", { hasText: /^View$/ }).hover();
   await shot(h, "board-04-view");
   await h.page.keyboard.press("Escape");
   await h.page.locator('.bbar button[aria-label="Code"]').click();
-  await h.page.locator(".ctx button").first().waitFor();
+  await h.page.locator(".ctx.open button").first().waitFor();
   await shot(h, "board-05-codemenu");
   await h.page.keyboard.press("Escape");
   await h.page.locator('.bbar button[aria-label="More"]').click();
-  await h.page.locator(".ctx button").first().waitFor();
+  await h.page.locator(".ctx.open button").first().waitFor();
   await shot(h, "board-06-more");
   await h.page.keyboard.press("Escape");
   // Menu hits the bottom edge: flips upward, last item visible
@@ -165,10 +165,10 @@ test("menusFitWindow", async () => {
     .nth(2)
     .locator(".chead")
     .click({ button: "right", position: { x: 200, y: 12 } });
-  await h.page.locator(".ctx button").first().waitFor();
+  await h.page.locator(".ctx.open button").first().waitFor();
   await idle(h); // the earlier menus have faded out, this one is placed
   const vis = await h.page.evaluate(() => {
-    const m = document.querySelector(".ctx")!;
+    const m = document.querySelector(".ctx.open")!;
     const r = m.getBoundingClientRect();
     const last = [...m.querySelectorAll("button")].pop()!.getBoundingClientRect();
     return r.top >= 0 && last.bottom <= innerHeight;
@@ -183,8 +183,8 @@ test("arrangeMenuDisablesNoOps", async () => {
   const h = await open({ board: b, light, w: 1500, h: 950 });
   const arrange = async (id: string) => {
     await h.page.locator(`.card[data-id="${id}"] .chead`).click({ button: "right", position: { x: 200, y: 12 } });
-    await h.page.locator(".ctx button", { hasText: /^Arrange$/ }).hover();
-    const sub = h.page.locator(".ctx").last();
+    await h.page.locator(".ctx.open button", { hasText: /^Arrange$/ }).hover();
+    const sub = h.page.locator(".ctx.open").last();
     await sub.locator(":scope > button").first().waitFor();
     await idle(h);
     return Object.fromEntries(
@@ -211,7 +211,7 @@ test("arrangeMenuDisablesNoOps", async () => {
     JSON.stringify(atBack),
   );
   await h.page
-    .locator(".ctx")
+    .locator(".ctx.open")
     .last()
     .locator(":scope > button", { has: h.page.locator(".lb", { hasText: /^Bring to Front$/ }) })
     .click();
@@ -384,7 +384,7 @@ test("emptyCardDiscard", async () => {
   await h.page.mouse.click(1000, 700);
   await idle(h); // leaving the empty note discards it
   await h.page.locator('.bbar button[aria-label="Code"]').click();
-  await h.page.locator(".ctx button", { hasText: /^New Code$/ }).click();
+  await h.page.locator(".ctx.open button", { hasText: /^New Code$/ }).click();
   await h.page.locator(".card .cm-content:focus").waitFor();
   await shot(h, "board-09-newcode");
   await hold(h, DBL_CLICK, "two single clicks on the same spot, not a double-click (which would make a Text)");
@@ -395,8 +395,8 @@ test("emptyCardDiscard", async () => {
   await idle(h);
   const n = h.board().cards.length;
   await h.page.locator('.bbar button[aria-label="More"]').click();
-  await h.page.locator(".ctx button", { hasText: /^Undo/ }).waitFor();
-  const undo = await h.page.locator(".ctx button", { hasText: /^Undo/ }).isDisabled();
+  await h.page.locator(".ctx.open button", { hasText: /^Undo/ }).waitFor();
+  const undo = await h.page.locator(".ctx.open button", { hasText: /^Undo/ }).isDisabled();
   check(
     "fresh-discard",
     n === 0 && undo,
@@ -452,10 +452,10 @@ test("contextMenuCorners", async () => {
     [vw.width - 30, vw.height / 2],
   ]) {
     await h.page.mouse.click(x, y, { button: "right" });
-    await h.page.locator(".ctx button").first().waitFor();
+    await h.page.locator(".ctx.open button").first().waitFor();
     await idle(h);
     const r = await h.page
-      .locator(".ctx")
+      .locator(".ctx.open")
       .first()
       .evaluate((e) => {
         const r = e.getBoundingClientRect();
@@ -602,7 +602,7 @@ test("noteTurnIntoTextKeepsWordsInPlace", async () => {
   const turn = async (to: string) => {
     const box = (await h.page.locator('.card[data-id="n1"]').boundingBox())!;
     await h.page.mouse.click(box.x + 100, box.y + box.height - 12, { button: "right" });
-    await h.page.locator(".ctx button", { hasText: to }).click();
+    await h.page.locator(".ctx.open button", { hasText: to }).click();
     await idle(h);
     await h.page.mouse.click(10, 500);
     await idle(h);
@@ -635,9 +635,9 @@ test("submenuFlip", async () => {
   const h = await open({ board: b, light, w: 1300, h: 800 });
   const vw = h.page.viewportSize()!;
   await h.page.mouse.click(vw.width - 30, 200, { button: "right" });
-  await h.page.locator(".ctx button", { hasText: "View" }).hover();
+  await h.page.locator(".ctx.open button", { hasText: "View" }).hover();
   await idle(h); // the submenu opens on pointerenter
-  const rs = await h.page.locator(".ctx").evaluateAll((es) =>
+  const rs = await h.page.locator(".ctx.open").evaluateAll((es) =>
     es.map((e) => {
       const r = e.getBoundingClientRect();
       return { l: r.left, r: r.right, t: r.top, b: r.bottom };
@@ -657,11 +657,11 @@ test("codeDescription", async () => {
   const h = await open({ board: b, light, w: 1200, h: 800 });
   const hd = h.page.locator(".card .chead").first();
   await hd.click({ button: "right", position: { x: 200, y: 12 } });
-  await h.page.locator(".ctx button").first().waitFor();
+  await h.page.locator(".ctx.open button").first().waitFor();
   await shot(h, "board-cardmenu");
-  await h.page.locator('.ctx button:has(.lb:text-is("Edit"))').hover();
+  await h.page.locator('.ctx.open button:has(.lb:text-is("Edit"))').hover();
   await shot(h, "board-cardmenu-edit");
-  await h.page.locator(".ctx button", { hasText: "Add Description" }).click();
+  await h.page.locator(".ctx.open button", { hasText: "Add Description" }).click();
   await idle(h);
   const editing = await h.page.locator(".cdesc.editing").count();
   const focused = await h.page.evaluate(() => !!document.activeElement?.closest(".cdesc"));
@@ -734,13 +734,13 @@ test("dblclickText", async () => {
 test("freeCodeLanguage", async () => {
   const h = await open({ board: emptyBoard("b1", "free"), light, w: 1300, h: 700 });
   await h.page.mouse.click(300, 200, { button: "right" });
-  await h.page.locator(".ctx button", { hasText: "New Code" }).click();
+  await h.page.locator(".ctx.open button", { hasText: "New Code" }).click();
   await idle(h);
   await h.page.locator(".card .chead .lang").first().click();
-  await h.page.locator(".ctx button").nth(2).waitFor();
+  await h.page.locator(".ctx.open button").nth(2).waitFor();
   await idle(h);
   const afterOpen = await h.page.locator(".card").count();
-  await h.page.locator(".ctx button").nth(2).click();
+  await h.page.locator(".ctx.open button").nth(2).click();
   await idle(h);
   const afterPick = await h.page.locator(".card").count();
   // the editor is CodeMirror: its contentDOM inside .freecode has the focus

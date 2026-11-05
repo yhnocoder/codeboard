@@ -360,7 +360,7 @@ test("svgImagesInHtmlExport", async () => {
   await exitEdit(h);
   await until(h, "the image is in the Note", () => noteMd(h) !== md0);
   await pg.locator('.bbar [aria-label="More"]').click();
-  await pg.locator(".ctx button", { hasText: "Export…" }).click();
+  await pg.locator(".ctx.open button", { hasText: "Export…" }).click();
   await pg.locator(".xdlg").waitFor();
   await pg.locator(".xdlg .seg button", { hasText: "HTML Snapshot" }).click();
   await pg.locator(".xdlg .seg button", { hasText: "Whole Board" }).click();
@@ -403,7 +403,7 @@ test("svgImageInPngExport", async () => {
   await until(h, "the image card is added", () => images(h)[0]);
   await idle(h);
   await pg.locator('.bbar [aria-label="More"]').click();
-  await pg.locator(".ctx button", { hasText: "Export…" }).click();
+  await pg.locator(".ctx.open button", { hasText: "Export…" }).click();
   await pg.locator(".xdlg").waitFor();
   await pg.locator(".xdlg .seg button", { hasText: "PNG" }).click();
   await pg.locator(".xdlg button.def").click();
