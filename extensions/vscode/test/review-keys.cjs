@@ -25,6 +25,7 @@ const res = {};
     60000,
     200,
   );
+  (await import("../../../tools/test/mac-keys.mjs")).macKeys(page);
   await track(page);
   await page.locator(".monaco-workbench .part.editor").waitFor({ timeout: 60000 });
   await openFile(page, path.join(WS, "nanovllm/engine/llm_engine.py"), 51);

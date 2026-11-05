@@ -149,6 +149,7 @@ const leaveNote = async (page, f) => {
     60000,
     200,
   );
+  (await import("../../../tools/test/mac-keys.mjs")).macKeys(page);
   await track(page); // the board's requests to the host, for idle()
   await watchKeyboard(page); // the keyboard hand-backs to webviews, before the first one opens
   // Reduced motion: the board's camera, card and arrow animations jump straight to where they end (the shots show the board at rest,

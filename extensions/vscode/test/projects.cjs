@@ -178,7 +178,7 @@ const activated = (ud) => {
 
 module.exports = async function projectsStep({ check, OUT, WS, UD, port }) {
   const T0 = Date.now();
-  const TMP = path.dirname(UD);
+  const TMP = fs.realpathSync(path.dirname(UD)); // macOS /tmp is a link to /private/tmp; the host keeps real paths
   const PUD = path.join(TMP, "p"); // short: VS Code's IPC socket lives under the user-data-dir
   const NOTES = path.join(TMP, "notes"),
     MULTI = path.join(TMP, "multi-root.code-workspace");

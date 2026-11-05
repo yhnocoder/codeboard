@@ -1614,6 +1614,7 @@ const finish = async (browser, errors) => {
     60000,
     200,
   );
+  (await import("../../../tools/test/mac-keys.mjs")).macKeys(page);
   await track(page); // before the first board's webview exists
   await watchKeyboard(page); // the keyboard hand-backs to webviews, likewise
   await page.locator(".monaco-workbench .part.editor").waitFor({ timeout: 60000 });
