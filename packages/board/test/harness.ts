@@ -435,6 +435,9 @@ boot({ post: (m) => { window.__inflight++; window.__host(JSON.stringify(m)).fina
         return reply(m.req, null);
       case "searchName":
         return reply(m.req, []);
+      case "images":
+        // this host makes no copies of images: each shows its own file
+        return reply(m.req, {});
       default:
         if (m.req) return reply(m.req, null);
     }

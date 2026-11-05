@@ -124,9 +124,10 @@ describe("saving a pasted image", () => {
     const file = src.slice("assets/".length);
     const h = makeHandler(cx, { cx, store } as unknown as BoardHost, MEDIA);
     const images = () =>
-      h({} as BoardPanel, { type: "images", req: 1, files: [file, "none.png", "x.gif"] } as BoardToHost) as Promise<
-        Record<string, unknown>
-      >;
+      h(
+        {} as BoardPanel,
+        { type: "images", req: 1, files: [file, "none.png", "x.gif", ".x.png"] } as BoardToHost,
+      ) as Promise<Record<string, unknown>>;
     // 2000 px wide: copies 400 and 800 wide are worth it; the host makes them without being asked
     await vi.waitFor(
       async () =>
@@ -141,6 +142,8 @@ describe("saving a pasted image", () => {
           },
           "none.png": null,
           "x.gif": null,
+          // a name no asset can have (assetName refuses it): no copies, and the answer still comes
+          ".x.png": null,
         }),
       { timeout: 20_000 },
     );

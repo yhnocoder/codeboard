@@ -72,16 +72,13 @@ export function thumbOf(cx: HostContext, store: Storage, file: string, width: nu
 export function imagesOf(cx: HostContext, store: Storage, files: string[]) {
   const dir = store.assetsDir();
   return cx.thumbs
-    .info(
-      Object.fromEntries(
-        files.filter((f) => STILL.test(f)).map((f) => [assetName(f), path.join(dir, f)] as [string, string]),
-      ),
-    )
+    .info(Object.fromEntries(files.filter((f) => STILL.test(f)).map((f) => [f, path.join(dir, f)] as [string, string])))
     .then((r) => Object.fromEntries(files.map((f) => [f, r[f] ?? null])));
 }
 
-/** The assets/ files that can have smaller copies (still PNG or JPEG, by extension: the host checks the content) */
-const STILL = /^[\w.-]+\.(?:png|jpe?g)$/i;
+/** The assets/ files that can have smaller copies (still PNG or JPEG, by extension: the host checks the content); a name starting
+ *  with a dot is never one (assetName refuses it), so a board that writes one still opens */
+const STILL = /^[\w-][\w.-]*\.(?:png|jpe?g)$/i;
 /** The assets/ images a board shows that can have copies: its Image cards' pictures and the images in its Markdown */
 export function boardImages(b: Board): string[] {
   const out = new Set<string>();

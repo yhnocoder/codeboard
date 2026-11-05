@@ -246,6 +246,35 @@ describe("the resolver contract", () => {
     expect(b.dataset.src).toBeUndefined();
   });
 
+  it("an image shown before its copies are known takes its copy once they are, then only steps up", async () => {
+    let known = false;
+    const md = createMarkdown({
+      images: (src) => ({
+        src: `/full/${src}`,
+        width: 2400,
+        height: 1200,
+        copies: known ? [400, 800, 1600].map((w) => ({ width: w, src: `/copy/${w}.png` })) : undefined,
+      }),
+      displayScale: () => 1,
+    });
+    const img = document.createElement("img");
+    document.body.append(img);
+    md.showImage(img, SRC);
+    lay(img, 600);
+    expect(img.getAttribute("src")).toBe(`/full/${SRC}`);
+    loaded(img);
+    known = true;
+    md.updateImages();
+    expect(decodes.map((d) => d.src)).toEqual([expect.stringContaining("/copy/800.png")]);
+    decodes[0].done();
+    await flush();
+    expect(img.getAttribute("src")).toBe("/copy/800.png");
+    // from then on it steps up only: a narrower layout keeps the 800 copy
+    lay(img, 200);
+    expect(img.getAttribute("src")).toBe("/copy/800.png");
+    expect(decodes).toHaveLength(1);
+  });
+
   it("showImage picks the source of an <img> of the page's own the same way", async () => {
     const { md, setScale } = setup();
     const img = document.createElement("img");

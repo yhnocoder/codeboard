@@ -42,7 +42,7 @@ export type PictureOptions = {
 type Shown = {
   /** the address as written */
   raw: string;
-  /** the copy width it is at (Infinity: the original; 0: nothing chosen yet) */
+  /** the copy width it is at (Infinity: the original; 0: nothing chosen yet, or its copies not known yet) */
   want: number;
   /** its laid-out width in CSS px (0: not laid out yet) */
   css: number;
@@ -145,10 +145,12 @@ export class Pictures {
     const css = s.css || this.widths.get(s.raw) || Math.min(r.width || GUESS, GUESS);
     const best = pickCopy(copies, css * (this.o.scale?.() ?? (globalThis.devicePixelRatio || 1)));
     const want = best ? best.width : Infinity;
-    // step up only, once something is on screen; a stopgap stays until its copy is there
-    if (fresh || want > s.want) s.want = want;
+    // copies not known yet (the page asks the host): the original for now, the pick made once they are (0: none made), so an image
+    // shown before its copies were known steps down to its copy once, then only up while it stays on the page
+    if (!sized(r) && !s.broken) s.want = 0;
+    else if (fresh || !s.want || want > s.want) s.want = want;
     let to = r.src;
-    if (s.want !== Infinity) {
+    if (s.want && s.want !== Infinity) {
       const up = copies.filter((c) => c.width >= s.want).sort((a, b) => a.width - b.width);
       const c = up[0];
       if (c && !c.src) {
