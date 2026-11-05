@@ -1,7 +1,13 @@
 // Zoomed-out summaries (#130; the rules are in core's summary.ts): the board's summary layout, its minimum zoom, and the switch
-// between the two levels. The switch is a timed cross-fade of whole layers (SUMMARY.fadeMs, ease-in-out): it starts when the zoom
-// crosses the board's cut, always runs to its end, and when the zoom has crossed back meanwhile the reverse fade follows at once.
-// Opening or switching a board shows its level at once; with reduced motion the switch is instant.
+// between the two levels.
+// A zoom gesture does not cross the cut: it stops there (the detent, SUMMARY.detent; detentZoom, interact.ts canvasWheel) and
+// has to push through. While pushed, a mist in the board's own colour rises from the bottom edge, a vermilion line along the
+// bottom fills, and a seal stamps in near the end (Canvas.tsx reads `detent`); let go, the push drains and they go back. Pushed
+// through, the switch runs: the mist covers the whole board (coverMs), the levels swap under it in one frame (the summary level
+// built then, if the idle build has not finished: no fade of two live layers), the camera is set across the cut, and the mist
+// clears (clearMs). Programmatic zooms (Fit, keys, a summary's double-click) cross freely and get the same covered switch. A
+// switch always runs to its end; a push that lands during it is kept for after it, and the zoom crossing back meanwhile is
+// followed at once. Opening or switching a board shows its level at once; with reduced motion the switch is instant.
 import { createEffect, createMemo, on, untrack } from "solid-js";
 import {
   SUMMARY,
@@ -15,7 +21,7 @@ import {
 } from "@codeboard/core";
 import { state, placed, rectOf } from "./store";
 import { frames } from "./sections";
-import { animate, cam, camMoving, setZoomFloor, viewTracked } from "./camera";
+import { animate, cam, camMoving, setCam, setZoomFloor, viewTracked } from "./camera";
 import { boardRef, boardSignal, rooted } from "./root";
 import { dragging } from "./ui";
 import { zlog, zlogging } from "./zoomlog";
@@ -29,9 +35,9 @@ const placedRects = () => {
   for (const c of placed()) m.set(c.id, rectOf(c));
   return m;
 };
-/** 0 = cards, 1 = summaries, in between while fading */
-const [fade, setFade] = boardSignal(0);
-export const summaryFade = fade;
+/** The level shown: 0 = cards, 1 = summaries (they swap in one frame, under the mist) */
+const [level, setLevel] = boardSignal<0 | 1>(0);
+export const summaryLevel = level;
 
 /** Zoomed in this far past the highest cut nothing shows the summary level and the zoom cannot cross any cut */
 const NEAR = 1.5;
@@ -42,11 +48,10 @@ const FAR = NEAR * 1.25;
 const inRange = rooted(() => createMemo(() => cam.z < SUMMARY.cutMax * NEAR));
 const outOfRange = rooted(() => createMemo(() => cam.z >= SUMMARY.cutMax * FAR));
 /** The summary layer is built: in the first idle time after the zoom came near (building it in the wheel event that crossed
- *  there made that frame 35–55 ms of script, mid-gesture), at once when the fade needs it */
+ *  there made that frame 35–55 ms of script, mid-gesture), at once when the switch needs it */
 const [built, setBuilt] = boardSignal(false);
-/** The summary level is shown, fading, or built because the zoom came near the cut */
-const shownOrFading = rooted(() => createMemo(() => fade() > 0));
-const near = rooted(() => createMemo(() => shownOrFading() || built()));
+/** The summary level is shown, or built because the zoom came near the cut */
+const near = rooted(() => createMemo(() => level() === 1 || built()));
 /** The summary layer exists only then (Summaries.tsx): zoomed in it costs nothing, and it is built before the zoom reaches a cut */
 export const summaryNear = near;
 /** A layout is held while cards are dragged, and while the summary level is far away (nudges, undo and edits zoomed in then
@@ -90,17 +95,16 @@ function contentBounds(): Rect | null {
   return bounds(rs);
 }
 
-/** The level shown (null: none yet on this board) and the fade running (its token; a board switch drops it) */
+/** The level shown (null: none yet on this board) and the switch running (its token; a board switch drops it) */
 const shown = boardRef<0 | 1 | null>(null);
 const running = boardRef<object | null>(null);
-const ease = (t: number) => (t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2);
+const easeInOut = (t: number) => (t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2);
+const easeOut = (t: number) => 1 - (1 - t) ** 3;
 /** Every board switches at its cut, one with nothing to summarize too (frames and Free Text stay, Marks and the rest fade) */
 const want = rooted(() => createMemo(() => (state.loaded && cam.z < (draft()?.cut ?? 0) ? 1 : 0)));
 
-/** The level the fade runs to */
-const [toward, setToward] = boardSignal<0 | 1>(0);
 /** Below the cut the card level stays in the tree. Once the camera rests it is kept drawn (awake): painted at an opacity too
- *  low to show, on a layer of its own, and cull.ts prepares the cards in view under it, so the fade back to the cards opens
+ *  low to show, on a layer of its own, and cull.ts prepares the cards in view under it, so the switch back to the cards opens
  *  on whole cards, from tiles already there. While the camera moves it is asleep (styles.css .cardlay.asleep: clipped to
  *  nothing, so none of its cards is painted; a zoom or pan at the summary level draws the summaries only, where a level
  *  painted under them was painted again on every frame, 15–40 ms a frame on 241 cards). Waking is a repaint of the cards,
@@ -111,52 +115,140 @@ function setAwake(on: boolean) {
   setAwake0(on);
   if (zlogging()) zlog("W", `card level ${on ? "kept drawn" : "let go"} z${cam.z.toFixed(4)}`);
 }
-/** The card level is faded out (styles.css .cardlay.gone: not hit) */
-export const cardsGone = rooted(() => createMemo(() => fade() === 1));
-/** The card level is fading out: cull.ts shows no card entering the view then (a card never seen is not painted just to
- *  fade; its box is hidden instead) */
-export const cardsLeaving = rooted(() => createMemo(() => fade() > 0 && fade() < 1 && toward() === 1));
-/** The card level is faded out and asleep (Canvas.tsx .cardlay.asleep): cull.ts leaves its cards as they are */
-export const cardsAsleep = rooted(() => createMemo(() => fade() === 1 && (!awake() || camMoving())));
-/** The card level's opacity: faded out, 0 asleep and too low to show while it is kept drawn */
-export const cardsOpacity = () => (fade() < 1 ? 1 - fade() : cardsAsleep() ? 0 : 0.003);
+/** The card level is swapped out (styles.css .cardlay.gone: not hit) */
+export const cardsGone = rooted(() => createMemo(() => level() === 1));
+/** The card level is swapped out and asleep (Canvas.tsx .cardlay.asleep): cull.ts leaves its cards as they are */
+export const cardsAsleep = rooted(() => createMemo(() => level() === 1 && (!awake() || camMoving())));
+/** The card level's opacity: swapped out, 0 asleep and too low to show while it is kept drawn */
+export const cardsOpacity = () => (level() === 0 ? 1 : cardsAsleep() ? 0 : 0.003);
 
-/** The board was opened or switched to and its camera set: show its level at once, without a fade */
+/** What Canvas.tsx draws for the detent and the switch: the mist's height (of the viewport; D.cover covers the board whole),
+ *  the vermilion line's fill, whether the seal shows and which level it announces */
+export type Detent = { mist: number; line: number; seal: boolean; to: 0 | 1 };
+const REST: Detent = { mist: 0, line: 0, seal: false, to: 1 };
+const [detent, setDetent] = boardSignal<Detent>(REST);
+export { detent };
+/** The push into the detent (0…1: through) and when it was last pushed */
+const push = boardRef(0);
+const pushedAt = boardRef(0);
+const draining = boardRef(false);
+const D = SUMMARY.detent;
+
+const pushed = (q: number, to: 0 | 1) => setDetent({ mist: q * D.mist, line: q, seal: q >= D.seal, to });
+
+/**
+ * A zoom gesture's step from z0 to z (around the viewport point p; interact.ts canvasWheel): the zoom it gets. A step towards
+ * the cut from the level shown stops at the cut and pushes into the detent by how far it would have gone past; through it,
+ * the switch runs (and sets the camera across). A step away from the cut lets the push go. While the switch runs, steps
+ * towards the cut are held at it and count for nothing: the switch finishes first, and the zoom goes on from the other side.
+ */
+export function detentZoom(z0: number, z: number, p: { x: number; y: number }): number {
+  const cut = draft()?.cut ?? 0;
+  const lv = shown.v;
+  if (!cut || lv === null || !state.loaded) return z;
+  const towardCut = lv === 0 ? z < z0 && z <= cut : z > z0 && z >= cut;
+  if (!towardCut) {
+    if (push.v && !running.v) {
+      push.v = 0;
+      setDetent(REST);
+    }
+    return z;
+  }
+  if (running.v) return z0 === cut || (lv === 0 ? z0 < cut : z0 > cut) ? z0 : cut;
+  const to: 0 | 1 = lv === 0 ? 1 : 0;
+  push.v = Math.min(1, push.v + Math.min(1, Math.abs(Math.log(z / z0)) / D.notch));
+  pushedAt.v = performance.now();
+  if (push.v >= 1) run(to, p);
+  else {
+    pushed(push.v, to);
+    drain();
+  }
+  return cut;
+}
+/** Let go before it is through, the push drains: the mist sinks, the line empties, the seal goes */
+function drain() {
+  if (draining.v) return;
+  draining.v = true;
+  const to = untrack(detent).to;
+  animate((dt, instant) => {
+    if (!draining.v) return true;
+    if (running.v || push.v <= 0) {
+      draining.v = false;
+      return true;
+    }
+    if (instant || performance.now() - pushedAt.v > D.drainAfter) {
+      push.v = instant ? 0 : Math.max(0, push.v - dt * D.drain);
+      if (push.v <= 0) setDetent(REST);
+      else pushed(push.v, to);
+    }
+    if (push.v > 0) return false;
+    draining.v = false;
+    return true;
+  });
+}
+
+/** The board was opened or switched to and its camera set: show its level at once */
 export function showSummaryLevel() {
   running.v = null;
+  draining.v = false;
+  push.v = 0;
+  setDetent(REST);
   shown.v = want();
-  setToward(shown.v);
-  setFade(shown.v);
+  setLevel(shown.v);
   setAwake0(false);
 }
 
-function run(to: 0 | 1) {
+/**
+ * The switch to a level: the mist covers the board (from where the push left it), the levels swap under it in one frame (the
+ * summary level built then if it is not yet; from a push, the camera is set just across the cut around the push, so the zoom
+ * goes on from the other side), and the mist clears. Crossed back meanwhile (a programmatic zoom), the switch back follows at
+ * once.
+ */
+function run(to: 0 | 1, at?: { x: number; y: number }) {
   const me = {};
   running.v = me;
+  draining.v = false;
+  push.v = 0;
   const from = shown.v ?? 0;
-  setToward(to);
+  const mist0 = untrack(detent).mist;
   if (zlogging()) zlog("S", `${from}→${to} start z${cam.z.toFixed(4)}`);
-  let t = 0;
+  let t = 0,
+    covered = false;
+  const swap = () => {
+    covered = true;
+    // not built yet (pushed through before an idle moment): it is built now, under the mist
+    if (to === 1 && !untrack(built)) setBuilt(true);
+    shown.v = to;
+    setLevel(to);
+    if (at) {
+      const z = to === 1 ? (draft()?.cut ?? cam.z) * 0.9 : (draft()?.cut ?? cam.z) * 1.1;
+      setCam(at.x - ((at.x - cam.x) * z) / cam.z, at.y - ((at.y - cam.y) * z) / cam.z, z);
+    }
+    // the zoom log: the script of the swap's frame (the frame's updates run together after this, camera.ts tick), where
+    // the summary columns not built yet are built
+    if (zlogging()) {
+      const t0 = performance.now();
+      queueMicrotask(() => zlog("S", `${to} swap frame ${(performance.now() - t0).toFixed(1)}`));
+    }
+  };
   animate((dt, instant) => {
     if (running.v !== me) return true;
-    // not built yet (the zoom crossed the cut before an idle moment): it is built now, in the fade's first frame
-    if (to === 1 && !untrack(built)) setBuilt(true);
-    const first = t === 0;
-    t = instant ? 1 : Math.min(1, t + (dt * 1000) / SUMMARY.fadeMs);
-    setFade(from + (to - from) * ease(t));
-    // the zoom log: the script of the fade's first frame (the frame's updates run together after this, camera.ts tick), where
-    // the summary columns not built yet are built
-    if (first && t > 0 && zlogging()) {
-      const t0 = performance.now();
-      queueMicrotask(() => zlog("S", `${to} first frame ${(performance.now() - t0).toFixed(1)}`));
+    const total = D.coverMs + D.clearMs;
+    t = instant ? 1 : Math.min(1, t + (dt * 1000) / total);
+    const cover = D.coverMs / total;
+    if (t < cover) setDetent({ mist: mist0 + (D.cover - mist0) * easeOut(t / cover), line: 1, seal: true, to });
+    else {
+      if (!covered) swap();
+      const k = (t - cover) / (1 - cover);
+      setDetent({ mist: D.cover * (1 - easeInOut(k)), line: 1 - k, seal: k < 0.15, to });
     }
     if (t < 1) return false;
-    shown.v = to;
+    setDetent(REST);
     running.v = null;
-    // faded out under a camera at rest: its tiles are there, keep them
+    // swapped out under a camera at rest: its tiles are there, keep them
     if (to === 1) setAwake(!untrack(camMoving));
     if (zlogging()) zlog("S", `${to} end`);
-    // the zoom crossed back during the fade: the reverse one follows at once
+    // the zoom crossed back during the switch: the switch back follows at once
     const w = untrack(want);
     if (w !== to) run(w);
     return true;
@@ -176,16 +268,16 @@ export function wireSummaries() {
           if (untrack(inRange) && !untrack(built)) setBuilt(true);
         };
         idle = requestIdleCallback(go, { timeout: 400 });
-      } else if (outOfRange() && built() && !shownOrFading()) setBuilt(false);
+      } else if (outOfRange() && built() && level() === 0) setBuilt(false);
     });
     let wake: number | undefined;
     createEffect(() => {
-      if (fade() < 1 || awake() || camMoving() || wake !== undefined) return;
+      if (level() < 1 || awake() || camMoving() || wake !== undefined) return;
       // woken in an idle moment: the repaint of every card then lands in no frame of a gesture
       wake = requestIdleCallback(
         () => {
           wake = undefined;
-          if (untrack(fade) === 1 && !untrack(awake) && !untrack(camMoving)) setAwake(true);
+          if (untrack(level) === 1 && !untrack(awake) && !untrack(camMoving)) setAwake(true);
         },
         { timeout: 500 },
       );

@@ -1,7 +1,10 @@
 // Zoomed-out AI summaries (#130; core summary.ts, state/summary.ts, canvas/Summaries.tsx, host summaries.ts).
-//   summaryLevelFade             below the board's cut the card level fades out and the summaries in, as whole layers over a
-//                                timed fade; one column per top-level Section and loose card, anchored at its top-left; a Mark
-//                                fades with the cards, a Free Text stays as it is, at its own size; the zoom stops at the board's minimum; crossing back mid-fade finishes the fade first
+//   summaryDetentSwitch          the board's cut is a detent: a zoom out stops at it, and a small push raises the mist and fills
+//                                the line without switching, draining once let go; pushed through, the mist covers the board, the
+//                                card level is swapped for the summaries in one frame under it (no half-faded frame) with the seal
+//                                stamped, and the mist clears; one column per top-level Section and loose card, anchored at its
+//                                top-left; a Mark goes with the cards, a Free Text stays as it is, at its own size; the zoom stops at
+//                                the board's minimum; a push during the switch is held at the cut and the switch finishes first
 //   summaryWrittenAndEdited      on the real host with a fake DeepSeek: opening the board asks nothing, ↻ writes one item (as
 //                                long as its content asks, no layout numbers); a click edits a body in place (Enter saves, marked edited, kept as a pair
 //                                with the AI text it replaced), ↻ rewrites it following that edit and keeps the pair, ⌘Z brings
@@ -18,13 +21,13 @@
 //                                nothing overlaps at rest; ↻ on a middle header asks the AI for its overview from its children
 //   summaryFramesOnlyBoard       a board of sub-board frames, Free Text headings and Marks, nothing to summarize: zoomed out past the
 //                                cut the Marks hide all the same, and the frames and Free Text look as they do at 100 %, only scaled
-//   summarySwitchWhole           a slow zoom out across the cut and back, sampled every frame: no card in view is ever blank
-//                                while the card level shows (cull keeps up through the fade), the card level is never taken out
-//                                of the tree (its opacity alone fades it), the fade starts only once both levels are complete and
-//                                the two opacities add up to one on every frame of it; faded out and at rest, the card level stays
-//                                drawn under the summaries with the cards in view prepared, so the fade back opens on whole cards
+//   summarySwitchWhole           a slow pinch out through the detent and back, sampled every frame: no card in view is ever blank
+//                                while the card level shows, the card level is never taken out of the tree (its opacity alone
+//                                hides it), the swap happens in one frame, with the summary columns complete and the mist covering
+//                                the board on that frame and the one before; swapped out and at rest, the card level stays drawn
+//                                under the summaries with the cards in view prepared, so the switch back opens on whole cards
 //   zoomLogRecords               the host's Record Zoom Log: the first ask starts recording (null), a pinch past the cut is logged
-//                                frame by frame (scale, pinch events, latency) with the fade's start and end, the summary
+//                                frame by frame (scale, pinch events, latency) with the switch's start and end, the summary
 //                                layer's build, the cards in view with no content (none) and the faded card level kept drawn at
 //                                rest, the second ask stops it and answers the log, headed with the cores and the dpr
 import {
@@ -90,98 +93,37 @@ async function wheelZoom(h: Host, dy: number) {
   await h.page.mouse.wheel(0, dy);
   await h.page.keyboard.up("Control");
 }
-/** Records every opacity the card layer gets from now on */
-const recordFade = (h: Host) =>
-  h.page.evaluate(() => {
-    const el = document.querySelector(".cardlay") as HTMLElement,
-      seen: number[] = [];
-    (window as unknown as { __fade: number[] }).__fade = seen;
-    new MutationObserver(() => seen.push(+el.style.opacity)).observe(el, {
-      attributes: true,
-      attributeFilter: ["style"],
-    });
-  });
-const fadeSeen = (h: Host) => h.page.evaluate(() => (window as unknown as { __fade: number[] }).__fade);
-/** The faded-out card level's opacity: kept drawn under the summaries, too low to show (state/summary.ts) */
+/** The swapped-out card level's opacity: kept drawn under the summaries, too low to show (state/summary.ts) */
 const FADED = 0.003;
-
-test("summaryLevelFade", async () => {
-  const h = await open({ board: bigBoard("bSum", 1, true), w: 1280, h: 800, light: true });
-  check(
-    "summaryLevelFade at 100 % the cards show and the summary level is not built yet (it is, near the cut)",
-    (await opacity(h, ".cardlay")) === 1 && (await h.page.locator(".sumlay").count()) === 0,
-  );
-  check(
-    "summaryLevelFade a Free Text is in the layer that never fades, a Mark in the card layer",
-    (await h.page.locator('.keeplay .card[data-id="ft"]').count()) === 1 &&
-      (await h.page.locator('.cardlay .card[data-id="mark"]').count()) === 1,
-  );
-  await recordFade(h);
-  await wheelZoom(h, 600);
-  await until(h, "the card level is gone", () => h.page.locator(".cardlay.gone").count());
-  const z = await zoomOf(h);
-  const seen = await fadeSeen(h);
-  check(
-    "summaryLevelFade the switch is a fade of the card layer, not a jump, down to the opacity it is kept at",
-    seen.some((o) => o > 0.05 && o < 0.95) &&
-      seen.slice(0, -1).every((o, i) => i === 0 || o <= seen[i - 1]) &&
-      seen.at(-1) === FADED,
-    seen,
-  );
-  check("summaryLevelFade the summaries show", (await opacity(h, ".sumlay")) === 1);
-  const keys = await h.page
-    .locator(".sumcol")
-    .evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset.sum).sort());
-  check(
-    "summaryLevelFade one column per Section and loose card, none for the Mark or the Free Text",
-    keys.join() === "card:loose,sec:s0,sec:s1,sec:s2",
-    keys,
-  );
-  const s0 = await h.page.locator('.sumcol[data-sum="sec:s0"]').evaluate((e) => {
-    const st = (e as HTMLElement).style;
-    return { x: parseFloat(st.left), y: parseFloat(st.top), b: e.querySelector(".sumtx :is(b, strong)")?.textContent };
+/** The detent's mist, line and seal (Canvas.tsx): the mist's height as a fraction of the viewport (0 = not up at all, ≥ 1 =
+ *  covering the board), the line's fill, whether the seal is stamped and what it says */
+const detentOf = (h: Host) =>
+  h.page.evaluate(() => {
+    const num = (s: string | undefined) => (s ? +s : NaN);
+    const mist = document.querySelector(".cutmist") as HTMLElement,
+      line = document.querySelector(".cutline i") as HTMLElement,
+      seal = document.querySelector(".cutseal") as HTMLElement;
+    return {
+      mistOn: mist.classList.contains("on"),
+      mist: num(/scaleY\(([\d.]+)\)/.exec(mist.style.transform)?.[1]),
+      line: num(/scaleX\(([\d.]+)\)/.exec(line.style.transform)?.[1]),
+      seal: seal.classList.contains("on") ? seal.textContent : null,
+    };
   });
-  check(
-    "summaryLevelFade a Section's column starts at its frame's top-left, with its key phrase bold",
-    s0.x === 80 && s0.y === 80 && s0.b === "吞吐量",
-    s0,
-  );
-  const ft = h.page.locator('.card[data-id="ft"]');
-  check(
-    "summaryLevelFade the Mark is hidden, the Free Text keeps its look and its own size",
-    (await opacity(h, ".cardlay")) === FADED &&
-      (await h.page.locator('.card[data-id="mark"]').count()) === 1 &&
-      (await ft.isVisible()) &&
-      (await h.page.locator(".keeplay").evaluate((e) => getComputedStyle(e).opacity)) === "1" &&
-      (await ft.evaluate((e) => e.querySelector(".tx")?.textContent === "随手写的一行")),
-    await ft.evaluate((e) => e.className),
-  );
-  // the board's minimum zoom: fit-all ÷ 1.3, so zooming further out does nothing
-  await wheelZoom(h, 600);
-  const z2 = await zoomOf(h);
-  check("summaryLevelFade the zoom stops at the board's minimum", z2 === z && z < 0.3 && z > 0.05, { z, z2 });
-  // in and straight out again: the fade to the cards runs to its end, then the fade back follows
-  await recordFade(h);
-  await wheelZoom(h, -150);
-  await wheelZoom(h, 150);
-  await until(
-    h,
-    "back at the summaries",
-    async () => (await fadeSeen(h)).at(-1) === FADED && (await fadeSeen(h)).length > 2,
-  );
-  const back = await fadeSeen(h);
-  const top = back.indexOf(1);
-  check(
-    "summaryLevelFade crossing back mid-fade finishes the fade, then plays the reverse one",
-    top > 0 && back.slice(top).some((o) => o > 0.05 && o < 0.95) && back.at(-1) === FADED,
-    back,
-  );
-  await h.page.context().close();
-});
 
-type Sample = { z: number; co: number; cv: string; so: number | null; cols: number; blank: string[] };
+type Sample = {
+  z: number;
+  co: number;
+  cv: string;
+  so: number | null;
+  cols: number;
+  blank: string[];
+  mist: number;
+  seal: boolean;
+};
 /** Samples the two levels once per animation frame: the camera scale, the card level's opacity and content-visibility, the
- *  summary level's opacity and columns, and the cards in view drawn with their content hidden (cull: .off, and not .far) */
+ *  summary level's opacity and columns, the cards in view drawn with their content hidden (cull: .off, and not .far), and
+ *  the detent's mist (its top, as detentOf) and seal */
 const sampleFrames = (h: Host) =>
   h.page.evaluate(() => {
     const w = window as unknown as { __samples: Sample[]; __raf: number };
@@ -189,7 +131,8 @@ const sampleFrames = (h: Host) =>
     const tick = () => {
       const world = document.querySelector(".world") as HTMLElement,
         lay = document.querySelector(".cardlay") as HTMLElement,
-        sum = document.querySelector(".sumlay") as HTMLElement | null;
+        sum = document.querySelector(".sumlay") as HTMLElement | null,
+        mist = document.querySelector(".cutmist") as HTMLElement;
       const blank: string[] = [];
       for (const c of lay.querySelectorAll<HTMLElement>(".card.off:not(.far)")) {
         const r = c.getBoundingClientRect();
@@ -202,6 +145,8 @@ const sampleFrames = (h: Host) =>
         so: sum ? +sum.style.opacity : null,
         cols: document.querySelectorAll(".sumcol").length,
         blank,
+        mist: mist.classList.contains("on") ? +(/scaleY\(([\d.]+)\)/.exec(mist.style.transform)?.[1] ?? 0) : 0,
+        seal: document.querySelector(".cutseal")!.classList.contains("on"),
       });
       w.__raf = requestAnimationFrame(tick);
     };
@@ -213,6 +158,129 @@ const samples = (h: Host) =>
     cancelAnimationFrame(w.__raf);
     return w.__samples;
   });
+/** The frame the card level was swapped out (its opacity left 1): the swap happened in one frame, under the mist, with the
+ *  summary columns complete, and the mist still covered the board on the frame before */
+function swapChecks(name: string, ss: Sample[]) {
+  const i = ss.findIndex((x) => x.co < 1);
+  const half = ss.filter((x) => x.co > 0.01 && x.co < 0.99);
+  check(
+    `${name} the levels swap in one frame under the mist, the summary columns complete: no half-faded frame`,
+    i > 0 && ss[i].cols === 4 && ss[i].so === 1 && ss[i].mist >= 1 && ss[i - 1].mist >= 1 && !half.length,
+    { at: ss[i], before: ss[i - 1], half: half.length },
+  );
+  check(
+    `${name} the seal is stamped while the mist covers the board`,
+    ss.some((x) => x.seal && x.mist >= 1),
+    ss.filter((x) => x.mist >= 1).map((x) => x.seal),
+  );
+}
+
+test("summaryDetentSwitch", async () => {
+  const h = await open({ board: bigBoard("bSum", 1, true), w: 1280, h: 800, light: true });
+  check(
+    "summaryDetentSwitch at 100 % the cards show and the summary level is not built yet (it is, near the cut)",
+    (await opacity(h, ".cardlay")) === 1 && (await h.page.locator(".sumlay").count()) === 0,
+  );
+  check(
+    "summaryDetentSwitch a Free Text is in the layer that never fades, a Mark in the card layer",
+    (await h.page.locator('.keeplay .card[data-id="ft"]').count()) === 1 &&
+      (await h.page.locator('.cardlay .card[data-id="mark"]').count()) === 1,
+  );
+  // from just above the cut, a step that would cross it stops at it and pushes half-way (deltaY 30 is a zoom of e^-0.3; a push
+  // is through at e^0.6): the mist is up by half its height, the line half full, no seal, the cards still there
+  await wheelZoom(h, 100);
+  const above = await zoomOf(h);
+  await wheelZoom(h, 30);
+  const cut = await zoomOf(h);
+  const half = await detentOf(h);
+  check(
+    "summaryDetentSwitch a small push stops at the cut: the mist rises and the line fills by the push, the cards stay",
+    cut > 0.2 &&
+      cut <= 0.3 &&
+      cut < above &&
+      half.mistOn &&
+      // read a moment after the push: it may have begun to drain (SUMMARY.detent.drainAfter), the mist and line together
+      half.line > 0.3 &&
+      half.line <= 0.5 &&
+      Math.abs(half.mist - half.line * 0.55) < 0.02 &&
+      half.seal === null &&
+      (await h.page.locator(".cardlay.gone").count()) === 0,
+    { cut, above, half },
+  );
+  // let go: the push drains and the mist goes back down
+  await until(h, "the push has drained", async () => !(await detentOf(h)).mistOn);
+  check(
+    "summaryDetentSwitch let go, the push drains: the mist is gone, the zoom still at the cut, the cards still there",
+    (await zoomOf(h)) === cut && (await h.page.locator(".cardlay.gone").count()) === 0,
+  );
+  // through: the mist covers the board, the levels swap under it, the mist clears
+  await sampleFrames(h);
+  await wheelZoom(h, 600);
+  await until(h, "the card level is gone", () => h.page.locator(".cardlay.gone").count());
+  await until(h, "the mist has cleared", async () => !(await detentOf(h)).mistOn);
+  const out = await samples(h);
+  swapChecks("summaryDetentSwitch", out);
+  const z = await zoomOf(h);
+  check(
+    "summaryDetentSwitch through the detent the zoom is just across the cut, the mist cleared, the summaries showing",
+    z < cut && z > cut * 0.8 && (await opacity(h, ".sumlay")) === 1 && (await opacity(h, ".cardlay")) <= FADED,
+    { z, cut },
+  );
+  const keys = await h.page
+    .locator(".sumcol")
+    .evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset.sum).sort());
+  check(
+    "summaryDetentSwitch one column per Section and loose card, none for the Mark or the Free Text",
+    keys.join() === "card:loose,sec:s0,sec:s1,sec:s2",
+    keys,
+  );
+  const s0 = await h.page.locator('.sumcol[data-sum="sec:s0"]').evaluate((e) => {
+    const st = (e as HTMLElement).style;
+    return { x: parseFloat(st.left), y: parseFloat(st.top), b: e.querySelector(".sumtx :is(b, strong)")?.textContent };
+  });
+  check(
+    "summaryDetentSwitch a Section's column starts at its frame's top-left, with its key phrase bold",
+    s0.x === 80 && s0.y === 80 && s0.b === "吞吐量",
+    s0,
+  );
+  const ft = h.page.locator('.card[data-id="ft"]');
+  await idle(h);
+  check(
+    "summaryDetentSwitch the Mark is hidden, the Free Text keeps its look and its own size",
+    (await opacity(h, ".cardlay")) === FADED &&
+      (await h.page.locator('.card[data-id="mark"]').count()) === 1 &&
+      (await ft.isVisible()) &&
+      (await h.page.locator(".keeplay").evaluate((e) => getComputedStyle(e).opacity)) === "1" &&
+      (await ft.evaluate((e) => e.querySelector(".tx")?.textContent === "随手写的一行")),
+    await ft.evaluate((e) => e.className),
+  );
+  // the board's minimum zoom: fit-all ÷ 1.3, so zooming further out does nothing
+  await wheelZoom(h, 600);
+  const z1 = await zoomOf(h);
+  await wheelZoom(h, 600);
+  const z2 = await zoomOf(h);
+  check("summaryDetentSwitch the zoom stops at the board's minimum", z2 === z1 && z1 < cut && z1 > 0.05, { z1, z2 });
+  // back in through the detent, and a push out again while the switch runs: held at the cut, the switch finishes at the cards;
+  // the next push goes back through
+  await wheelZoom(h, -600);
+  await wheelZoom(h, 150);
+  await until(h, "the cards are back", async () => (await h.page.locator(".cardlay.gone").count()) === 0);
+  await until(h, "the mist has cleared after the switch back", async () => !(await detentOf(h)).mistOn);
+  const zb = await zoomOf(h);
+  check(
+    "summaryDetentSwitch a push during the switch is held at the cut: the switch finishes at the cards, just across the cut",
+    (await h.page.locator(".cardlay.gone").count()) === 0 &&
+      zb > cut &&
+      zb < cut * 1.2 &&
+      (await opacity(h, ".cardlay")) === 1,
+    { zb, cut },
+  );
+  await wheelZoom(h, 150);
+  await until(h, "the summaries are back", () => h.page.locator(".cardlay.gone").count());
+  check("summaryDetentSwitch the next push goes back through", (await zoomOf(h)) < cut);
+  await h.page.context().close();
+});
+
 /** A pinch: ctrl + wheel in small steps, one per frame, until the condition holds (dy > 0: out) */
 async function pinch(h: Host, dy: number, done: () => Promise<boolean>) {
   const v = h.page.viewportSize()!;
@@ -226,16 +294,18 @@ async function pinch(h: Host, dy: number, done: () => Promise<boolean>) {
 }
 const gone = (h: Host) =>
   h.page.evaluate(() => document.querySelector(".cardlay")?.classList.contains("gone") ?? false);
+const mistOn = (h: Host) => h.page.evaluate(() => document.querySelector(".cutmist")!.classList.contains("on"));
 
 test("summarySwitchWhole", async () => {
   const h = await open({ board: bigBoard("bSwitch", 1, true), w: 1280, h: 800, light: true });
   await idle(h);
   // at 100 % only part of the first Section is in view: the other cards have their content hidden (cull) and come into view
-  // during the zoom out, through the fade
+  // during the zoom out, under the switch
   const hidden0 = await h.page.locator(".cardlay .card.off").count();
   check("summarySwitchWhole at 100 % the cards out of view have their content hidden", hidden0 >= 6, hidden0);
   await sampleFrames(h);
-  await pinch(h, 6, async () => (await gone(h)) && (await zoomOf(h)) < 0.2);
+  // a pinch of 6 a frame pushes through the detent in ten frames or so, then zooms on
+  await pinch(h, 6, async () => (await gone(h)) && !(await mistOn(h)) && (await zoomOf(h)) < 0.2);
   await idle(h);
   const out = await samples(h);
   const rest = out.at(-1)!;
@@ -250,29 +320,31 @@ test("summarySwitchWhole", async () => {
     out.every((s) => s.cv === "visible"),
     out.filter((s) => s.cv !== "visible").length,
   );
-  const first = out.findIndex((s) => s.co < 1);
-  const fading = out.filter((s) => s.co > 0 && s.co < 1);
+  swapChecks("summarySwitchWhole", out);
+  const held = out.filter((s) => s.co === 1 && s.mist < 1 && s.mist > 0 && !s.seal);
   check(
-    "summarySwitchWhole the fade starts once both levels are complete, and their opacities add up to one on every frame of it",
-    first > 0 &&
-      out[first].cols === 4 &&
-      fading.length > 3 &&
-      fading.every((s) => s.cols === 4 && Math.abs(s.co + s.so! - 1) < 0.01),
-    { first: out[first], fading: fading.length, off: fading.filter((s) => Math.abs(s.co + s.so! - 1) >= 0.01) },
+    "summarySwitchWhole the pinch is held at the cut while it pushes, the mist rising with it",
+    held.length >= 3 && held.every((s) => Math.abs(s.z - held[0].z) < 1e-6) && held.at(-1)!.mist > held[0].mist,
+    { held: held.length, z: held.map((s) => s.z.toFixed(4)), mist: held.map((s) => s.mist.toFixed(2)) },
   );
   check(
-    "summarySwitchWhole faded out and at rest, the card level stays drawn under the summaries with the cards in view prepared",
+    "summarySwitchWhole swapped out and at rest, the card level stays drawn under the summaries with the cards in view prepared",
     rest.co === 0.003 && rest.so === 1 && rest.blank.length === 0 && rest.cv === "visible",
     rest,
   );
   await sampleFrames(h);
-  await pinch(h, -6, async () => (await zoomOf(h)) > 0.6);
+  await pinch(h, -6, async () => !(await gone(h)) && !(await mistOn(h)) && (await zoomOf(h)) > 0.6);
   await idle(h);
   const back = await samples(h);
   const open0 = back.find((s) => s.co > 0.003);
   check(
-    "summarySwitchWhole the fade back opens on whole cards and never takes the level out of the tree",
-    !!open0 && open0.blank.length === 0 && back.every((s) => s.cv === "visible") && back.at(-1)!.co === 1,
+    "summarySwitchWhole the switch back opens on whole cards, under the mist, and never takes the level out of the tree",
+    !!open0 &&
+      open0.co === 1 &&
+      open0.mist >= 1 &&
+      open0.blank.length === 0 &&
+      back.every((s) => s.cv === "visible") &&
+      back.at(-1)!.co === 1,
     { open0, last: back.at(-1) },
   );
   check(
@@ -802,6 +874,7 @@ test("zoomLogRecords", async () => {
   check("zoomLogRecords the first ask starts recording", (await toggle(1)) === null);
   await wheelZoom(h, 600);
   await until(h, "the card level is gone", () => h.page.locator(".cardlay.gone").count());
+  await until(h, "the mist has cleared", async () => !(await mistOn(h)));
   await idle(h);
   const log = await toggle(2);
   const lines = typeof log === "string" ? log.split("\n") : [];
@@ -816,11 +889,11 @@ test("zoomLogRecords", async () => {
     lines.filter((l) => l.startsWith("f ")).slice(0, 6),
   );
   check(
-    "zoomLogRecords the fade's start and end and the summary layer's build are logged",
+    "zoomLogRecords the switch's start and end and the summary layer's build are logged",
     lines.some((l) => /^S [\d.]+ 0→1 start/.test(l)) &&
       lines.some((l) => /^S [\d.]+ 1 end/.test(l)) &&
       lines.some((l) => /^B [\d.]+ [\d.]+ layer, cols \d+\/\d+$/.test(l)) &&
-      lines.some((l) => /^S [\d.]+ 1 first frame [\d.]+$/.test(l)),
+      lines.some((l) => /^S [\d.]+ 1 swap frame [\d.]+$/.test(l)),
     lines.filter((l) => /^[SB] /.test(l)),
   );
   check(

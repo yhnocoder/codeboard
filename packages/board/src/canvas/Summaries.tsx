@@ -1,8 +1,8 @@
 // The summary level (#130; state/summary.ts, core summary.ts): one column per innermost Section, per group of cards placed directly
 // in a Section with child Sections and per card in no Section, and a header above the frame of each Section with child Sections
 // (its title, a rule and a one-sentence overview), at the board's one font size, drawn in full (no clamping, no fallbacks). It is built once the zoom comes near the highest cut (state/summary.ts
-// summaryNear: zoomed in it costs nothing) and from then on only its opacity follows the fade, so the switch never adds elements or
-// lays anything out. Each column's title and body heights are read once per change of width or text
+// summaryNear: zoomed in it costs nothing) and from then on only its opacity follows the level shown, so the switch never adds
+// elements or lays anything out. Each column's title and body heights are read once per change of width or text
 // (ResizeObserver, in the board's measuring round) and give the final extents the later columns stop at.
 // Click a body to edit it (Enter saves, Esc cancels, ⌘B marks the key phrase); ↻ on hover writes it again, and on a stale item
 // (its cards changed since it was written: the one dot, on ↻) ✓ 保留 beside it keeps it as it is.
@@ -15,7 +15,7 @@ import { For, Show, createEffect, createMemo, createSignal, onCleanup, onMount, 
 import { state } from "../state/store";
 import { stillZ } from "../state/camera";
 import { lastDown, observeResize, queueMeasure } from "../state/measure";
-import { summaryFade, summaryLayout, summaryNear, setSummaryHeights } from "../state/summary";
+import { summaryLevel, summaryLayout, summaryNear, setSummaryHeights } from "../state/summary";
 import { zlog, zlogging } from "../state/zoomlog";
 import { boardLang, summaryOf, summaryPending, type SumCol, type SumKey } from "@codeboard/core";
 import * as A from "../actions";
@@ -46,7 +46,7 @@ const ago = (at: number) => {
   return m < 1 ? "just now" : m < 60 ? `${m} min ago` : `${Math.round(m / 60)} h ago`;
 };
 
-const live = () => summaryFade() > 0.5;
+const live = () => summaryLevel() === 1;
 
 export function Summaries() {
   const layout = summaryLayout;
@@ -60,9 +60,10 @@ export function Summaries() {
     <Show when={summaryNear() && keys().length}>
       {(_) => {
         // Built near the cut, before it shows: a few columns in each idle moment (all of them at once took 35–55 ms, a dropped
-        // frame or three in the middle of a zoom); once the fade begins, every column not built yet is built in its first frame
+        // frame or three in the middle of a zoom); once the level shows (under the switch's mist), every column not built yet is
+        // built in that frame
         const [n, setN] = createSignal(0);
-        const all = createMemo(() => summaryFade() > 0);
+        const all = createMemo(() => summaryLevel() === 1);
         const shown = createMemo(() => (all() || n() >= keys().length ? keys() : keys().slice(0, n())));
         let idle: number | undefined;
         const more = (d: IdleDeadline) => {
@@ -90,9 +91,9 @@ export function Summaries() {
           <div
             class="lay sumlay"
             data-export="strip"
-            classList={{ live: live(), gone: summaryFade() === 0, fading: summaryFade() > 0 && summaryFade() < 1 }}
+            classList={{ live: live(), gone: !live() }}
             style={{
-              opacity: String(Math.max(0.003, summaryFade())),
+              opacity: String(live() ? 1 : 0.003),
               "--S": `${layout()?.S ?? 56}px`,
               "--P": `${layout()?.P ?? 19}px`,
               "--sum-iz": String(1 / stillZ()),

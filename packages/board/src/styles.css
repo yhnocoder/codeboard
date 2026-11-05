@@ -403,6 +403,85 @@ textarea {
 .pshield.on {
   display: block;
 }
+/* The detent at the summary cut (state/summary.ts detent, Canvas.tsx). Three things in the viewport, over the world, none of
+   them hit: the mist (the board's own colour, solid over the lower 70 % of its box and thinning to nothing at its top, blurred),
+   a viewport-tall layer scaled up from the bottom edge by the push with a transform, so it is painted once; the line along the
+   bottom edge, a faint track and a vermilion fill scaled out from the middle; and the seal, a vermilion stamp at the bottom
+   right that pops in (opacity and transform) once the push is nearly through */
+.cutmist {
+  position: absolute;
+  inset: 0 -10%;
+  pointer-events: none;
+  display: none;
+  transform-origin: 50% 100%;
+  transform: scaleY(0);
+  will-change: transform;
+  background: linear-gradient(to top, var(--bg) 0, var(--bg) 70%, transparent 100%);
+  filter: blur(10px);
+}
+.cutmist.on {
+  display: block;
+}
+.cutline {
+  position: absolute;
+  left: 12%;
+  right: 12%;
+  bottom: 18px;
+  height: 2px;
+  pointer-events: none;
+  display: none;
+  border-radius: 1px;
+  background: color-mix(in srgb, var(--ink) 12%, transparent);
+}
+.cutline.on {
+  display: block;
+}
+.cutline i {
+  position: absolute;
+  inset: 0;
+  border-radius: 1px;
+  background: var(--accent);
+  transform-origin: 50% 50%;
+  transform: scaleX(0);
+  will-change: transform;
+}
+.cutseal {
+  position: absolute;
+  right: 28px;
+  bottom: 68px;
+  pointer-events: none;
+  padding: 7px 10px 6px;
+  border: 2px solid var(--accent);
+  border-radius: 4px;
+  color: var(--accent);
+  font: 600 13px / 1 var(--sys);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  opacity: 0;
+  transform: scale(1.3) rotate(-6deg);
+  transition:
+    opacity 0.2s,
+    transform 0.2s;
+}
+.cutseal.on {
+  opacity: 0.92;
+  transform: scale(1) rotate(-3deg);
+  transition:
+    opacity 0.12s ease-out,
+    transform 0.18s cubic-bezier(0.2, 1.4, 0.4, 1);
+}
+:root.look-ink-wash .cutseal {
+  font: 700 14px / 1 var(--note-h);
+  letter-spacing: 0.1em;
+  border-width: 2.5px;
+  border-radius: 5px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .cutseal,
+  .cutseal.on {
+    transition: none;
+  }
+}
 .wext {
   position: absolute;
   pointer-events: none;
@@ -7594,22 +7673,24 @@ mark.wdiff {
 }
 
 /* Zoomed-out summaries (#130; canvas/Summaries.tsx, state/summary.ts). The card level (Marks included), the cards that stay as
-   they are (sub-board frames, Free Text) and the summaries are three layers; the switch fades only the card and summary layers' own opacity. The board's
-   one summary font size --S and padding --P come from its layout; --sum-iz (1 / zoom) keeps the ↻ mark 20 screen px */
+   they are (sub-board frames, Free Text) and the summaries are three layers; the switch swaps only the card and summary
+   layers' own opacity, in one frame under the detent's mist (.cutmist). The board's one summary font size --S and padding --P
+   come from its layout; --sum-iz (1 / zoom) keeps the ↻ mark 20 screen px */
 .lay {
   position: absolute;
   left: 0;
   top: 0;
 }
-/* Both levels are layers of their own (the summary level from when it is built near the cut), so the fade only changes their
-   opacity: promoting a layer when a fade started (and folding it back into the world when it ended) re-rastered all its
-   content twice per switch, 100–270 ms frames in the middle of a zoom. Faded out, a level stays painted at an opacity too low
-   to show (Summaries.tsx; state/summary.ts cardsOpacity), so its tiles are there before the fade back needs them: a level
+/* Both levels are layers of their own (the summary level from when it is built near the cut), so the switch only changes their
+   opacity: promoting a layer when a switch started (and folding it back into the world when it ended) re-rastered all its
+   content twice per switch, 100–270 ms frames in the middle of a zoom. Swapped out, a level stays painted at an opacity too low
+   to show (Summaries.tsx; state/summary.ts cardsOpacity), so its tiles are there before the switch back needs them: a level
    hidden with visibility or content-visibility was styled, laid out and rastered whole in the frame that showed it again.
-   The faded card level asleep (state/summary.ts: far below the cut, or under a moving camera) is clipped to nothing: a clip
-   empties the cull rect under it, so none of its cards is painted (an opacity of 0 alone leaves a layer with the hint painted,
-   and painted again on every frame of a zoom at the summary level), and waking it is a repaint, not a restyle. The hint stays
-   on it throughout: taking it off made Chromium paint and composite the whole level again, 500 ms in the frame the fade ended */
+   The swapped-out card level asleep (state/summary.ts: far below the cut, or under a moving camera) is clipped to nothing: a
+   clip empties the cull rect under it, so none of its cards is painted (an opacity of 0 alone leaves a layer with the hint
+   painted, and painted again on every frame of a zoom at the summary level), and waking it is a repaint, not a restyle. The hint
+   stays on it throughout: taking it off made Chromium paint and composite the whole level again, 500 ms in the frame the switch
+   ended */
 .cardlay,
 .sumlay {
   will-change: opacity;
@@ -7617,7 +7698,7 @@ mark.wdiff {
 .cardlay.asleep {
   clip: rect(0 0 0 0);
 }
-/* fully faded, the card level is not hit: one element over its extent, between it and the levels that stay, takes the pointer
+/* swapped out, the card level is not hit: one element over its extent, between it and the levels that stay, takes the pointer
    (Canvas.tsx; pointer-events is inherited, so setting it on the layer restyled every node under it, 200+ ms on 241 cards,
    twice per switch) */
 .cshield {

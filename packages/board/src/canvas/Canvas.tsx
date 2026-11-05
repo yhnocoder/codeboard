@@ -25,7 +25,7 @@ import { observeResize, queueMeasure } from "../state/measure";
 import { cardSel } from "../cardsel";
 import { useMd } from "../md/context";
 import { Summaries } from "./Summaries";
-import { cardsAsleep, cardsGone, cardsOpacity, summaryFade } from "../state/summary";
+import { cardsAsleep, cardsGone, cardsOpacity, detent } from "../state/summary";
 
 const EXT = 2048;
 
@@ -145,11 +145,11 @@ export function Canvas() {
         classList={{ moving: camMoving(), settle: settle() }}
         style={{ transform: `translate(${cam.x}px, ${cam.y}px) scale(${cam.z})` }}
       >
-        {/* the card level (zoomed out it fades out as one layer and stays under the summaries: state/summary.ts) */}
+        {/* the card level (zoomed out it is swapped out as one layer and stays under the summaries: state/summary.ts) */}
         <div
           class="lay cardlay"
           style={{ opacity: String(cardsOpacity()) }}
-          classList={{ gone: cardsGone(), asleep: cardsAsleep(), fading: summaryFade() > 0 && summaryFade() < 1 }}
+          classList={{ gone: cardsGone(), asleep: cardsAsleep() }}
         >
           <SectionFrames />
           <links.Layer bottom />
@@ -213,15 +213,30 @@ export function Canvas() {
             <DropHint />
           </div>
         </div>
-        {/* faded out, the card level is not hit: a shield over its whole extent takes the pointer (styles.css .cshield) */}
+        {/* swapped out, the card level is not hit: a shield over its whole extent takes the pointer (styles.css .cshield) */}
         <Show when={cardsGone()}>
           <div class="cshield" style={extentBox()} />
         </Show>
-        {/* sub-board frames and Free Text: never summarized, they stay as they are over the summary level (Marks fade with the cards) */}
+        {/* sub-board frames and Free Text: never summarized, they stay as they are over the summary level (Marks go with the cards) */}
         <div class="lay keeplay">
           <For each={kept()}>{(c) => <CardView card={c} />}</For>
         </div>
         <Summaries />
+      </div>
+      {/* the detent at the summary cut (state/summary.ts detent; styles.css .cutmist …): a mist in the board's colour rising from
+          the bottom edge by the push (a viewport-tall layer scaled up from the bottom), past 1 covering the board for the
+          switch; a vermilion line along the bottom filling with the push; the seal naming the level the push goes to. All in
+          the viewport, over the world: transform and opacity only */}
+      <div
+        class="cutmist"
+        classList={{ on: detent().mist > 0 }}
+        style={{ transform: `scaleY(${detent().mist.toFixed(4)})` }}
+      />
+      <div class="cutline" classList={{ on: detent().line > 0 }}>
+        <i style={{ transform: `scaleX(${detent().line.toFixed(3)})` }} />
+      </div>
+      <div class="cutseal" classList={{ on: detent().seal }}>
+        {detent().to === 1 ? "Summary" : "Detail"}
       </div>
       {/* ui/shield.ts：滚轮平移、缩放的手势里盖在世界层上，命中测试不用把世界层里的东西一个个问过去 */}
       <div ref={bindShield} class="pshield" />
