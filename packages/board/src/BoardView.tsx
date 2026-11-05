@@ -29,6 +29,8 @@ import { MarkView } from "./cards/CodeHead";
 import { crumbs, crumbMorph, walkBack } from "./state/subboards";
 import { LegendPanel, CallTreePanel, RunPanel } from "./ui/CallPanels";
 import { QuestionsPanel, WelcomeHint } from "./ui/QuestionsPanel";
+import { ShelfPanel } from "./ui/ShelfPanel";
+import { shelfOpen } from "./state/shelf";
 import { ExportDialog } from "./ui/ExportDialog";
 import { ghPicker } from "./state/web";
 import { stickerPick } from "./state/stickers";
@@ -101,6 +103,9 @@ export function BoardView(p: { children?: JSX.Element }) {
       </Show>
       <Show when={questionsOpen()}>
         <QuestionsPanel />
+      </Show>
+      <Show when={shelfOpen()}>
+        <ShelfPanel />
       </Show>
       <Show when={welcome() && !walk()}>
         <WelcomeHint />
