@@ -10,7 +10,7 @@
     "test": "vite build && playwright test -c playwright.config.ts"
   },
   "dependencies": {
-    "@yhnocoder/markdown": "^0.3.0",
+    "@yhnocoder/markdown": "^0.2.1",
     "solid-js": "^1.9.17"
   },
   "devDependencies": {
