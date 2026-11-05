@@ -12,7 +12,7 @@ import * as path from "node:path";
 import { Worker } from "node:worker_threads";
 import { type Disposable, THUMB_WIDTHS, type Workspace } from "@codeboard/core";
 import { Lru } from "../ws";
-import { runJob, type ThumbDone, type ThumbJob } from "./job";
+import { lookUp, runJob, type ThumbDone, type ThumbJob } from "./job";
 
 export type { ThumbDone } from "./job";
 
@@ -54,7 +54,9 @@ export class Thumbs implements Disposable {
     const key = `${abs}\0${st.size}\0${st.mtimeMs}\0${width}`;
     let p = this.memo.get(key);
     if (!p) {
-      p = this.enqueue({ file: abs, width, dir: this.dir() });
+      const job = { file: abs, width, dir: this.dir() };
+      // a copy made before is found right away, beside the ones still being made; only making one waits its turn
+      p = lookUp(job).then((l) => ("done" in l ? l.done : this.enqueue(job)));
       this.memo.set(key, p);
       p.catch(() => this.memo.delete(key));
     }

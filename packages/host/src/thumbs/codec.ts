@@ -241,6 +241,9 @@ function encodeJpeg(r: Raster, source: Uint8Array): Buffer {
   return Buffer.concat([out.subarray(0, at), ...icc, out.subarray(at)]);
 }
 
+/** Whether a copy `width` wide of an image `shown` wide saves enough to be made */
+export const worthCopy = (shown: number, width: number) => width <= shown * WORTH;
+
 /**
  * A copy of the image `width` pixels wide (the height in proportion), or null when there is no point: not a still PNG or JPEG,
  * too large to decode, or not much wider than width (WORTH). Throws when the file does not decode
@@ -251,7 +254,7 @@ export function makeThumb(source: Uint8Array, width: number): Thumb | null {
   const o = k.mime === "jpg" ? jpegOrientation(source) : 1;
   const shownW = o >= 5 ? k.height : k.width,
     shownH = o >= 5 ? k.width : k.height;
-  if (width > shownW * WORTH) return null;
+  if (!worthCopy(shownW, width)) return null;
   let r: Raster;
   if (k.mime === "png") {
     const p = PNG.sync.read(Buffer.from(source.buffer, source.byteOffset, source.byteLength));

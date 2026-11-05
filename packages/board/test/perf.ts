@@ -6,6 +6,7 @@ import { ready, openBoard, launch, symCard, files, REPO, type Host } from "./har
 import {
   cornerAt,
   emptyBoard,
+  thumbWidth,
   skeletonOf,
   stampBorn,
   uid,
@@ -1402,6 +1403,18 @@ async function personaOnce() {
     images: board.cards.filter((c) => c.kind === "image").length,
     katex: [...board.cards].reduce((n, c) => n + (c.kind === "note" ? (c.md.match(/\$/g)?.length ?? 0) / 2 : 0), 0),
   };
+  // The copies the board will ask for at 100% made first (their time reported on its own, thumbs): load and the steps then
+  // measure a board opened again, as every open after the first is; --cold leaves them to be made while the board loads
+  if (!process.argv.includes("--cold")) {
+    const t = performance.now();
+    await Promise.all(
+      board.cards.map((c) => {
+        const w = c.kind === "image" && thumbWidth((board.place[c.id].w ?? 0) * +arg("scale", "1"));
+        return w ? run.host.hub.cx.thumbs.get(path.join(dir, (c as { src: string }).src), w) : null;
+      }),
+    );
+    res.thumbs = +(performance.now() - t).toFixed(0);
+  }
   const t0 = performance.now();
   const h = await run.open(board.id);
   // Load: init received → all cards painted; then → the Image cards in view showing their image
