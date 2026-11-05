@@ -21,7 +21,7 @@ if (!dir) {
 // but inside the budget is listed in the summary, not failed.
 const LIMITS = {
   busy: { ratio: 1.35, abs: 2 }, // ms of main-thread work per step
-  frame: { ratio: 1.5, abs: 4 }, // ms, 95th percentile frame time
+  frame: { ratio: 1.5, abs: 4 }, // ms, 95th percentile frame time (median step frame for steps that wait)
   scalar: { ratio: 1.75, abs: 20 }, // ms, one-off timings (dragEnd)
   host: { ratio: 1.5, abs: 30 }, // ms, host-side board open / version check (warm runs)
 };
@@ -64,7 +64,11 @@ if (!H.length) {
   process.exit(2);
 }
 
-const ops = Object.keys(H[0]).filter((k) => H[0][k] && typeof H[0][k] === "object" && "frameP95" in H[0][k]);
+// an operation's frame time: the p95 over its tasks, or for steps that wait the median over the steps (frameOf "stepMedian", perf.ts sum())
+const frameOf = (m) => (m?.frameOf === "stepMedian" ? m.frameMedian : m?.frameP95);
+const ops = Object.keys(H[0]).filter(
+  (k) => H[0][k] && typeof H[0][k] === "object" && ("frameP95" in H[0][k] || "frameMedian" in H[0][k]),
+);
 // budget: the check only fails when head is also over it; past the limits but inside it is listed, not failed
 const row = (name, b, h, lim, budget = 0, unit = "ms") => {
   const r = ratio(b, h),
@@ -81,18 +85,27 @@ const cell = (b, h, lim, name, budget = 0) => {
   return `${fmt(b)} → ${fmt(h)} (${Number.isFinite(r) ? r.toFixed(2) + "x" : "–"})${bad ? " ❌" : past ? " ⚠" : ""}`;
 };
 
-lines.push("| Operation | Work per step, ms (base → head) | Frame p95, ms (base → head) | |", "|---|---|---|---|");
+lines.push(
+  "| Operation | Work per step, ms (base → head) | Frame p95, ms (base → head; median step for hover) | |",
+  "|---|---|---|---|",
+);
 for (const op of ops) {
   const bb = median(B.map((r) => r[op]?.busyPerStep)),
     hb = median(H.map((r) => r[op]?.busyPerStep));
-  const bf = median(B.map((r) => r[op]?.frameP95)),
-    hf = median(H.map((r) => r[op]?.frameP95));
+  const bf = median(B.map((r) => frameOf(r[op]))),
+    hf = median(H.map((r) => frameOf(r[op])));
   const over = hf > FRAME_BUDGET;
   if (over) slow.push(op);
-  // frameOf: what the p95 is over (all tasks, or each step's frame, perf.ts sum()); when base measured it differently, nothing to compare
+  // frameOf: how the frame time was measured (p95 over all tasks, or the median step frame); when base measured it differently, nothing to compare
   const sameFrames = !B.length || B.every((r) => r[op]?.frameOf === H[0][op].frameOf);
   const frames = sameFrames
-    ? cell(bf, hf, LIMITS.frame, `${op} frame p95`, FRAME_BUDGET)
+    ? cell(
+        bf,
+        hf,
+        LIMITS.frame,
+        `${op} frame ${H[0][op].frameOf === "stepMedian" ? "median step" : "p95"}`,
+        FRAME_BUDGET,
+      )
     : `${fmt(bf)} → ${fmt(hf)} (measured differently, not compared)`;
   lines.push(
     `| ${op} | ${cell(bb, hb, LIMITS.busy, `${op} work per step`, FRAME_BUDGET)} | ${frames} | ${over ? "⚠ over 16.7 ms" : ""} |`,
