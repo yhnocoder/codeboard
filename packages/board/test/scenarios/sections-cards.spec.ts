@@ -813,11 +813,13 @@ test("sectionFrameEasesToTarget", async () => {
             /^(left|top|width|height)$/.test(a.transitionProperty) &&
             (a.effect as KeyframeEffect).target?.closest(".sect, .slabel"),
         );
+      // the frame as drawn: laid out at its style's rect, scaled from there while it eases (canvas/Sections.tsx)
+      const m = new DOMMatrix(getComputedStyle(f).transform === "none" ? undefined : getComputedStyle(f).transform);
       return {
-        x: parseFloat(f.style.left),
-        y: parseFloat(f.style.top),
-        w: parseFloat(f.style.width),
-        h: parseFloat(f.style.height),
+        x: parseFloat(f.style.left) + m.e,
+        y: parseFloat(f.style.top) + m.f,
+        w: parseFloat(f.style.width) * m.a,
+        h: parseFloat(f.style.height) * m.d,
         lx: parseFloat(l.style.left),
         ly: parseFloat(l.style.top),
         rectTransitions: rects.length,
@@ -850,6 +852,36 @@ test("sectionFrameEasesToTarget", async () => {
   );
   // the title sits on the drawn frame, not on the target
   check("section-ease-label-follows", mid.lx === mid.x && mid.ly === mid.y, mid);
+  // back where the drag started, and frame by frame while the frame eases back: the drawn frame moves every frame, but it is
+  // laid out again (a whole re-raster of its layer) only now and then; in between a transform on a layer of its own scales it
+  await h.page.mouse.move(grab.x, grab.y + 20);
+  const eased = await h.page.evaluate(
+    () =>
+      new Promise<{ laid: string; drawn: string; layer: string }[]>((done) => {
+        const f = document.querySelector<HTMLElement>('.sect[data-sect="S1"]')!,
+          out: { laid: string; drawn: string; layer: string }[] = [];
+        const step = () => {
+          const r = f.getBoundingClientRect();
+          out.push({
+            laid: `${f.style.left} ${f.style.top} ${f.style.width} ${f.style.height}`,
+            drawn: `${r.x.toFixed(1)} ${r.y.toFixed(1)} ${r.width.toFixed(1)} ${r.height.toFixed(1)}`,
+            layer: getComputedStyle(f).willChange,
+          });
+          if (out.length < 24) requestAnimationFrame(step);
+          else done(out);
+        };
+        requestAnimationFrame(step);
+      }),
+  );
+  const changes = (k: "laid" | "drawn") => eased.filter((e, i) => i && e[k] !== eased[i - 1][k]).length;
+  check(
+    "section-ease-scales-not-relaid",
+    changes("drawn") >= 5 &&
+      changes("laid") <= changes("drawn") / 2 &&
+      eased.slice(0, 4).every((e) => e.layer === "transform"),
+    { laid: changes("laid"), drawn: changes("drawn"), eased },
+  );
+  await h.page.mouse.move(grab.x - 80, grab.y - 50);
   await h.page.mouse.up();
   await until(h, "the drag is saved", () => h.board().place.a.y !== 210);
   await idle(h);

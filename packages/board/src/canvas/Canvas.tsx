@@ -86,6 +86,21 @@ export function Canvas() {
       { defer: true },
     ),
   );
+  // A lifted card is a layer of its own with its raster scale fixed (styles.css .card.lift: will-change). When the camera stops
+  // at another zoom in the middle of a drag, .relift takes the hint off for one drawn frame and puts it back, so the card is
+  // rastered again at the new scale instead of staying blurry (or needlessly sharp) until it is put down. Panning keeps stillZ
+  const [relift, setRelift] = createSignal(false);
+  createEffect(
+    on(
+      stillZ,
+      () => {
+        if (!dragging().size) return;
+        setRelift(true);
+        requestAnimationFrame(() => requestAnimationFrame(() => setRelift(false)));
+      },
+      { defer: true },
+    ),
+  );
   // 打开白板后，世界层的 transform 要先变过一次，之后的平移才便宜：没变过时，Chromium 每帧都把整块世界层重新分层（实测每帧 40+ ms，
   // 变过一次以后 ~13 ms）。所以白板一加载好就悄悄动 0.01px 再放回，用户的第一段平移就不会卡
   createEffect(
@@ -152,6 +167,7 @@ export function Canvas() {
       classList={{
         walking: !!walk(),
         dragging: dragging().size > 0,
+        relift: relift(),
         "img-drop": dropTarget()?.kind === "note",
       }}
       onPointerDown={canvasPointerDown}

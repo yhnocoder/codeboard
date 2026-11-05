@@ -717,7 +717,13 @@ textarea {
 .card.sel {
   --ring: 0 0 0 1.5px var(--accent), 0 0 0 4.5px color-mix(in srgb, var(--accent) 16%, transparent), var(--sh-ring);
 }
+/* A lifted card is a compositor layer of its own: moving it with the pointer only moves that layer. Without the hint it is
+   squashed back, once its lift transition ends, into the layer under it (the world's links and extent layer, Canvas.tsx .wext),
+   and every step of the drag re-rasters the card's old and new place in that big layer at the zoom's scale (a Note on a
+   real board: ~1.1 s of raster work over a 60-step drag, ~0.27 s with the hint). The hint fixes the layer's raster scale: when the camera stops at another
+   zoom in the middle of a drag, .board.relift takes it off for a frame so the card is rastered again at the new scale */
 .card.lift {
+  will-change: transform;
   scale: 1.008;
   --ring: var(--sh-lift);
   transition:
@@ -734,6 +740,14 @@ textarea {
     opacity calc(var(--t) * 240ms) var(--out),
     filter calc(var(--t) * 240ms);
   z-index: 10;
+}
+/* put down, it stays that layer while it settles back (.landing), and goes back into the layer under it once it has landed,
+   not in the drop's own frame */
+.card.landing {
+  will-change: transform;
+}
+.board.relift .card.lift {
+  will-change: auto;
 }
 .card.sel.lift {
   --ring: 0 0 0 1.5px var(--accent), var(--sh-lift);
