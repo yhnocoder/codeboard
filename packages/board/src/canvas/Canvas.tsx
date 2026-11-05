@@ -68,7 +68,13 @@ export function Canvas() {
   // (scaled down it looks right, but the tiles at the old scale take many viewports of memory, and past about 8× Chromium
   // rasters again on its own, 135 ms, wherever that falls), and not within the detent's reach of the summary cut, where the
   // card level is about to be swapped out and its text is 4 px tall. A stop zoomed out a little, or back where it was, costs
-  // nothing. .settle stays until the next move: taking it off again was a second commit that waited for the same raster
+  // nothing. .settle stays until the next move: taking it off again was a second commit that waited for the same raster.
+  // Mid-gesture, the world keeps its raster scale as the hint asks, and that is where a zoom-out gets expensive: anything
+  // painted again then (a card whose content cull.ts shows as it comes into view, the levels swapping at the cut) is
+  // rastered at the old scale over the viewport's extent at the new one, so one viewport at 20 % is hundreds of tiles of 185 %
+  // text, 200–300 ms of raster that the next commit waits for. So when a zoom-out passes 2× below the rastered scale while the
+  // camera still moves, the hint is dropped for one frame: Chromium rasters the viewport at the new scale (a few dozen tiles),
+  // and from then on every repaint is at that scale
   const [settle, setSettle] = createSignal(false);
   let rasterZ = cam.z;
   createEffect(
@@ -81,6 +87,22 @@ export function Canvas() {
           rasterZ = z;
           setSettle(true);
         }
+      },
+      { defer: true },
+    ),
+  );
+  let pulse = 0;
+  createEffect(
+    on(
+      () => cam.z,
+      (z) => {
+        if (!camMoving() || pulse || z >= rasterZ / 2) return;
+        rasterZ = z;
+        setSettle(true);
+        pulse = requestAnimationFrame(() => {
+          pulse = 0;
+          if (camMoving()) setSettle(false);
+        });
       },
       { defer: true },
     ),
