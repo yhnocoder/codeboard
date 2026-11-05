@@ -11,9 +11,11 @@ const card = (q: string) => {
   return symCard(s.f, s.s);
 };
 
-/** 打一串：{Enter}、{Control+z} 之类是按键，其余是字 */
+/** 打一串：{Enter}、{ControlOrMeta+z} 之类是按键，其余是字 */
 async function keys(pg: Page, seq: string) {
-  for (const part of seq.split(/(\{(?:Enter|Tab|Home|End|Backspace|Escape|Arrow\w+|Control\+[^}]+|Shift\+[^}]+)\})/)) {
+  for (const part of seq.split(
+    /(\{(?:Enter|Tab|Home|End|Backspace|Escape|Arrow\w+|Control(?:OrMeta)?\+[^}]+|Shift\+[^}]+)\})/,
+  )) {
     if (!part) continue;
     if (part.startsWith("{") && part.endsWith("}")) {
       // Home / End / 方向键是浏览器自己移光标，ProseMirror 要等异步的 selectionchange 才知道；脚本按键比人快得多，前后各等它读到选区
@@ -154,7 +156,7 @@ test("markdownInputRules", async () => {
       after: async (pg) => {
         await pg.waitForSelector(".md-pm .md-mathsrc:focus");
         await pg.keyboard.type("x^2");
-        await pg.keyboard.press("Control+Enter");
+        await pg.keyboard.press("ControlOrMeta+Enter");
       },
       md: "$$\nx^2\n$$",
     },
@@ -167,7 +169,7 @@ test("markdownInputRules", async () => {
         await pg.waitForSelector(".md-pm .md-mathsrc:focus");
         await frames(pg, 2);
         await pg.keyboard.type("x^2");
-        await pg.keyboard.press("Control+Enter");
+        await pg.keyboard.press("ControlOrMeta+Enter");
         await fastFrames(pg);
       },
       md: "$$\nx^2\n$$",
@@ -241,12 +243,18 @@ test("markdownInputRules", async () => {
     { name: "image", seq: "![alt](https://x.y/i.png)", md: "![alt](https://x.y/i.png)" },
     { name: "card ref", seq: "see [[Scheduler.schedule]]", md: "see [[Scheduler.schedule]]" },
     // 打字不转换（原文就是文档），⌘Z 撤回的是打的字，不会留下只画了样子的东西
-    { name: "undo bold rule", seq: "**b**{Control+z}", md: "", dom: count(".md-pm strong"), domOk: (n) => n === 0 },
-    { name: "undo heading rule", seq: "# {Control+z}x", md: "x" },
+    {
+      name: "undo bold rule",
+      seq: "**b**{ControlOrMeta+z}",
+      md: "",
+      dom: count(".md-pm strong"),
+      domOk: (n) => n === 0,
+    },
+    { name: "undo heading rule", seq: "# {ControlOrMeta+z}x", md: "x" },
     // 写回成 \$a$；再读进来时字里的 $a$ 会变成公式
     {
       name: "undo math rule",
-      seq: "$a${Control+z}",
+      seq: "$a${ControlOrMeta+z}",
       md: "",
       dom: count(".md-pm [data-type=inline-math]"),
       domOk: (n) => n === 0,
@@ -262,7 +270,7 @@ test("markdownInputRules", async () => {
     },
     {
       name: "undo fence rule",
-      seq: "```js{Enter}{Control+z}",
+      seq: "```js{Enter}{ControlOrMeta+z}",
       md: /^```js$|^\\`\\`\\`js$/,
       dom: count(".md-pm pre"),
       domOk: (n) => n === 0,
@@ -327,7 +335,11 @@ test("markdownInputRules", async () => {
       md: "[t](https://qs.r) z",
     },
     // 原文里改了一下又离开（收回去了）：一次 ⌘Z 回到改之前，格式照旧
-    { name: "source undo", seq: "x **bo** y{Home}{ArrowRight}{ArrowRight}{Delete}{End}{Control+z}", md: "x **bo** y" },
+    {
+      name: "source undo",
+      seq: "x **bo** y{Home}{ArrowRight}{ArrowRight}{Delete}{End}{ControlOrMeta+z}",
+      md: "x **bo** y",
+    },
     {
       name: "source math by arrows",
       seq: "a $x$ b{ArrowLeft}{ArrowLeft}{ArrowLeft}y{End}",
@@ -413,14 +425,14 @@ test("markdownInputRules", async () => {
 /** 编辑时的快捷键；VS Code 要接手的键（剪切 / 复制 / 粘贴 …）要冒泡到 window，别的不冒泡 */
 test("editorKeys", async () => {
   const cases: Case[] = [
-    { name: "bold", seq: "{Control+b}b{Control+b} x", md: "**b** x" },
-    { name: "italic", seq: "{Control+i}i{Control+i} x", md: "*i* x" },
-    { name: "strike ⇧S", seq: "{Control+Shift+s}s{Control+Shift+s} x", md: "~~s~~ x" },
-    { name: "strike ⇧X", seq: "{Control+Shift+x}s{Control+Shift+x} x", md: "~~s~~ x" },
-    { name: "code", seq: "{Control+e}c{Control+e} x", md: "`c` x" },
+    { name: "bold", seq: "{ControlOrMeta+b}b{ControlOrMeta+b} x", md: "**b** x" },
+    { name: "italic", seq: "{ControlOrMeta+i}i{ControlOrMeta+i} x", md: "*i* x" },
+    { name: "strike ⇧S", seq: "{ControlOrMeta+Shift+s}s{ControlOrMeta+Shift+s} x", md: "~~s~~ x" },
+    { name: "strike ⇧X", seq: "{ControlOrMeta+Shift+x}s{ControlOrMeta+Shift+x} x", md: "~~s~~ x" },
+    { name: "code", seq: "{ControlOrMeta+e}c{ControlOrMeta+e} x", md: "`c` x" },
     {
       name: "link ⌘K on selection",
-      seq: "word{Shift+Home}{Control+k}",
+      seq: "word{Shift+Home}{ControlOrMeta+k}",
       after: async (pg) => {
         await pg.waitForSelector(".md-linkin");
         await pg.keyboard.type("x.y/z");
@@ -431,7 +443,7 @@ test("editorKeys", async () => {
     {
       name: "link ⌘K slow frame",
       pre: slowFrames(400),
-      seq: "see {Control+k}",
+      seq: "see {ControlOrMeta+k}",
       after: async (pg) => {
         await pg.waitForSelector(".md-linkin");
         await frames(pg, 2);
@@ -443,7 +455,7 @@ test("editorKeys", async () => {
     },
     {
       name: "link ⌘K at caret",
-      seq: "see {Control+k}",
+      seq: "see {ControlOrMeta+k}",
       after: async (pg) => {
         await pg.waitForSelector(".md-linkin");
         await pg.keyboard.type("https://a.b");
@@ -451,14 +463,14 @@ test("editorKeys", async () => {
       },
       md: "see https://a.b",
     },
-    { name: "undo redo", seq: "one{Control+z}two{Control+z}{Control+Shift+z}", md: "two" },
-    { name: "redo ⌘Y", seq: "abc{Control+z}{Control+y}", md: "abc" },
-    { name: "select all", seq: "abc{Enter}def{Control+a}x", md: "x" },
+    { name: "undo redo", seq: "one{ControlOrMeta+z}two{ControlOrMeta+z}{ControlOrMeta+Shift+z}", md: "two" },
+    { name: "redo ⌘Y", seq: "abc{ControlOrMeta+z}{ControlOrMeta+y}", md: "abc" },
+    { name: "select all", seq: "abc{Enter}def{ControlOrMeta+a}x", md: "x" },
     { name: "list tab", seq: "- a{Enter}b{Tab}", md: "- a\n  - b" },
     { name: "list shift-tab", seq: "- a{Enter}b{Tab}{Shift+Tab}", md: "- a\n- b" },
     {
       name: "raw toggle",
-      seq: "a{Control+/}{End}\n**r**{Control+/}",
+      seq: "a{ControlOrMeta+/}{End}\n**r**{ControlOrMeta+/}",
       md: "a\n**r**",
       dom: count(".md-pm strong"),
       domOk: (n) => n === 1,
@@ -480,7 +492,7 @@ test("editorKeys", async () => {
   // ⌘↵ / Esc：存好退出
   const base = cases.length;
   await editNote(h, `n${base}`);
-  await keys(pg, "saved{Control+Enter}");
+  await keys(pg, "saved{ControlOrMeta+Enter}");
   const exitedEnter = (await pg.locator(".md-pm").count()) === 0;
   await editNote(h, `n${base + 1}`);
   await keys(pg, "esc{Escape}");
@@ -517,7 +529,7 @@ test("editorKeys", async () => {
   await editNote(h, n);
   await keys(pg, "x **bold** y");
   await fwd();
-  for (const k of ["Control+b", "Control+b", "Control+k"]) await pg.keyboard.press(k);
+  for (const k of ["ControlOrMeta+b", "ControlOrMeta+b", "ControlOrMeta+k"]) await pg.keyboard.press(k);
   await pg.keyboard.press("Escape"); // 关链接框
   await pg.locator(`.card[data-id="${n}"] .md-pm`).waitFor();
   const blocked = await fwd();
@@ -552,14 +564,14 @@ test("editorKeys", async () => {
     null,
     { timeout: 5000 },
   );
-  await pg.keyboard.press("Control+c");
+  await pg.keyboard.press("ControlOrMeta+c");
   // 收起选区再剪（按 End 在 CI 上偶尔赶在选区同步前，选区没收起来）。等 ProseMirror 也收起来了（选中工具条消失）再剪：
   // 它同样是在异步的 selectionchange 里才读到，固定等 100ms 在忙的机器上不够（剪到的还是 "**bold** y"）
   await pg.evaluate(() => getSelection()!.collapseToEnd());
   await expect(pg.locator(".md-bubble")).toHaveCount(0);
-  await pg.keyboard.press("Control+x"); // 没选中：什么都不剪
-  await pg.keyboard.press("Control+a");
-  await pg.keyboard.press("Control+x");
+  await pg.keyboard.press("ControlOrMeta+x"); // 没选中：什么都不剪
+  await pg.keyboard.press("ControlOrMeta+a");
+  await pg.keyboard.press("ControlOrMeta+x");
   const passed = await fwd();
   const clip = await pg.evaluate(() => (window as any).__clip);
   const emptied = (await pg.locator(inNote(n, "p")).first().textContent())?.trim() ?? "";
@@ -578,10 +590,11 @@ test("editorKeys", async () => {
   await pg.keyboard.press("Escape");
   // 单行名字、搜索框、公式框：剪切 / 复制 / 粘贴 / 全选 / 撤销 也要交给 VS Code，白板自己不撤销
   await pg.locator(`.card[data-id="${n}"]`).click({ position: { x: 5, y: 5 } });
-  await pg.keyboard.press("Control+k");
+  await pg.keyboard.press("ControlOrMeta+k");
   await pg.waitForSelector(".palette input");
   await fwd();
-  for (const k of ["Control+c", "Control+x", "Control+v", "Control+a", "Control+z"]) await pg.keyboard.press(k);
+  for (const k of ["ControlOrMeta+c", "ControlOrMeta+x", "ControlOrMeta+v", "ControlOrMeta+a", "ControlOrMeta+z"])
+    await pg.keyboard.press(k);
   const paletteFwd = await fwd();
   await pg.keyboard.press("Escape");
   const ok =
@@ -647,10 +660,10 @@ test("aiCompletionAccept", async () => {
   await accept("n1", "x $\\frac{");
   const d2 = await pg.locator(inNote("n1", "[data-type=inline-math]")).count();
   // 一次 ⌘Z：整个接受撤回（回到打了一半的，连同自动补的 }）
-  await pg.keyboard.press("Control+z");
+  await pg.keyboard.press("ControlOrMeta+z");
   const undone = (await pg.locator(inNote("n1", "p")).first().textContent())?.trim();
   await pg.locator(inNote("n1", ".md-ghost")).waitFor(); // 撤销后又问了一次，灰字又出来了也一样能重做
-  await pg.keyboard.press("Control+Shift+z");
+  await pg.keyboard.press("ControlOrMeta+Shift+z");
   const redone = await pg.locator(inNote("n1", "[data-type=inline-math]")).count();
   await pg.keyboard.press("Escape");
   // 3：标题里接受

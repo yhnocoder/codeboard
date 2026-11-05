@@ -21,7 +21,7 @@ import { HostContext } from "../src/context";
 
 const tmp: string[] = [];
 const mk = (p: string) => {
-  const d = fs.mkdtempSync(`/tmp/codeboard-${p}-`);
+  const d = fs.realpathSync(fs.mkdtempSync(`/tmp/codeboard-${p}-`));
   tmp.push(d);
   return d;
 };

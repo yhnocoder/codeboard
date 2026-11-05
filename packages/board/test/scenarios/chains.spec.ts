@@ -23,7 +23,7 @@ let FIX = "",
 /** The real host (realhost.ts) on the crosslang fixture repo, copied once per worker; a new host for each scenario */
 async function fixture() {
   if (!FIX) {
-    FIX = fs.mkdtempSync("/tmp/codeboard-chains-");
+    FIX = fs.realpathSync(fs.mkdtempSync("/tmp/codeboard-chains-"));
     fs.cpSync(path.join(REPO, "packages/host/test/fixtures/crosslang"), FIX, { recursive: true });
   }
   run = await hostBoards([], { root: FIX, page: { light, w: 1700, h: 1000 } });

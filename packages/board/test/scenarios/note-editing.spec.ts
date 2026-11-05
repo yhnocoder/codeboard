@@ -7,7 +7,7 @@ import { test, open, check, light, expect, until, idle, pmHasSelection, focusSet
 
 const close = (h: Host) => h.page.context().close();
 
-/** 打一串：{Enter}、{Control+z} 之类是按键，其余是字 */
+/** 打一串：{Enter}、{ControlOrMeta+z} 之类是按键，其余是字 */
 async function keys(pg: Page, seq: string, delay = 0) {
   for (const part of seq.split(/(\{[A-Za-z0-9+]+\})/)) {
     if (!part) continue;
@@ -222,10 +222,10 @@ test("editorKeysReachVsCode", async () => {
   await h.page.evaluate(() => {
     (window as any).__keys = [];
     window.addEventListener("keydown", (e) =>
-      (window as any).__keys.push(`${e.ctrlKey ? "C+" : ""}${e.shiftKey ? "S+" : ""}${e.key}`),
+      (window as any).__keys.push(`${e.ctrlKey || e.metaKey ? "C+" : ""}${e.shiftKey ? "S+" : ""}${e.key}`),
     );
   });
-  const KEYS = ["F1", "Control+Shift+P", "Control+P"];
+  const KEYS = ["F1", "ControlOrMeta+Shift+P", "ControlOrMeta+P"];
   const got = async () => {
     const k = await h.page.evaluate(() => (window as any).__keys.splice(0));
     return k as string[];
@@ -303,7 +303,7 @@ test("sidenoteTextEditSaves", async () => {
   await saved("Esc adds the text sidenote", before);
   const afterAdd = texts();
   before = await openEdit();
-  await keys(h.page, "{Control+a}{Backspace}{Control+Enter}");
+  await keys(h.page, "{ControlOrMeta+a}{Backspace}{ControlOrMeta+Enter}");
   await saved("saving an emptied sidenote deletes it", before);
   const afterClear = texts();
   const ok =
@@ -404,7 +404,7 @@ test("undoIsOneStep", async () => {
   const undo = async () => {
     const was = st();
     await h.page.locator("#board").click({ position: { x: 600, y: 760 } });
-    await h.page.keyboard.press("Control+z");
+    await h.page.keyboard.press("ControlOrMeta+z");
     await changed("undo reaches the host", was);
   };
   const start = st();
@@ -415,7 +415,7 @@ test("undoIsOneStep", async () => {
   await undo();
   const placeUndone = st();
   await editNote(h, "n0");
-  await keys(h.page, "{Control+a}{Backspace}");
+  await keys(h.page, "{ControlOrMeta+a}{Backspace}");
   await exitEdit(h);
   await changed("the emptied Note is deleted", placeUndone);
   const cleared = st();
@@ -761,7 +761,7 @@ test("mathSourceInPlace", async () => {
       inline: document.querySelectorAll(`${card} .md-pm [data-type=inline-math]`).length,
     };
   }, card);
-  await pg.keyboard.press("Control+a");
+  await pg.keyboard.press("ControlOrMeta+a");
   await pg.keyboard.type("\\frac{3}{4}");
   await until(h, "the preview follows the typing", async () => (await tex()).includes("\\frac{3}{4}"));
   const live = await tex();
@@ -778,7 +778,7 @@ test("mathSourceInPlace", async () => {
   );
   const closedH = await blockH(),
     after = await tex();
-  await pg.keyboard.press("Control+z");
+  await pg.keyboard.press("ControlOrMeta+z");
   await until(h, "undo takes the formula edit back", async () => (await tex()).includes("\\frac{1}{2}"));
   const undone = await tex();
   await exitEdit(h);
@@ -1452,9 +1452,9 @@ test("noteCodeBlockLanguagePicker", async () => {
   res.python = { name: await name(), inCode: await inCode() };
   await snap("python");
   // 一次撤销回到纯文字，重做又是 Python
-  await pg.keyboard.press("Control+z");
+  await pg.keyboard.press("ControlOrMeta+z");
   await until(h, "undo: back to plain text", async () => (await kws()) === 0 && (await name()) === "Plain text");
-  await pg.keyboard.press("Control+Shift+z");
+  await pg.keyboard.press("ControlOrMeta+Shift+z");
   await until(h, "redo: python again", async () => (await kws()) > 0 && (await name()) === "Python");
   // Esc：不改，回到代码里，还在编辑
   await label.click();
@@ -1589,7 +1589,27 @@ test("noteBoldStaysBoldInSource", async () => {
       h,
       "the bold shows its markers",
       async () => (await pg.locator(`.card[data-id="${id}"] .md-pm .md-mk:not(.md-hide)`).count()) > 0,
-    );
+    ).catch(async (e) => {
+      // Say which way it failed: the editor closed, the keys went elsewhere (focus), or the caret is outside every bold
+      const at = await pg.evaluate((id) => {
+        const d = (n: Element | null) =>
+          n ? `${n.tagName.toLowerCase()}.${String(n.className).trim().replace(/\s+/g, ".")}`.slice(0, 60) : null;
+        const s = getSelection();
+        const node = s?.anchorNode
+          ? s.anchorNode.nodeType === 1
+            ? (s.anchorNode as Element)
+            : s.anchorNode.parentElement
+          : null;
+        return {
+          editors: document.querySelectorAll(`.card[data-id="${id}"] .md-pm`).length,
+          active: d(document.activeElement),
+          focus: document.hasFocus(),
+          caret: { at: d(node), offset: s?.anchorOffset, collapsed: s?.isCollapsed, inBold: !!node?.closest("strong") },
+          marks: document.querySelectorAll(`.card[data-id="${id}"] .md-pm .md-mk`).length,
+        };
+      }, id);
+      throw new Error(`${(e as Error).message}; editor: ${JSON.stringify(at)}`);
+    });
     await idle(h);
   };
   /** 显出来的记号，和第一个到最后一个记号之间看得见的字：是不是都是粗体、斜体的是哪些 */

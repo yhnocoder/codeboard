@@ -10,7 +10,7 @@ import { HostContext } from "../src/context";
 
 let cx: HostContext;
 
-const root = fs.mkdtempSync(path.join(os.tmpdir(), "cb-nameindex-"));
+const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "cb-nameindex-")));
 
 beforeAll(async () => {
   fs.writeFileSync(path.join(root, "kernel.hh"), "namespace k {\nint launch_hh(int n) {\n  return n;\n}\n}\n");

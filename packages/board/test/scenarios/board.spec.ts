@@ -667,7 +667,7 @@ test("codeDescription", async () => {
   const focused = await h.page.evaluate(() => !!document.activeElement?.closest(".cdesc"));
   await h.page.keyboard.type("Picks prefill first.");
   await h.page.keyboard.press("Meta+Enter");
-  await h.page.keyboard.press("Control+Enter");
+  await h.page.keyboard.press("ControlOrMeta+Enter");
   await idle(h);
   const desc = (h.board().cards[0] as any).desc;
   await hd.hover();
@@ -931,7 +931,7 @@ test("noteHeadings", async () => {
   await shot(h, "board-notehead");
   await h.page.locator('.card[data-id="t2"] .nbody').dblclick();
   await h.page.locator(".md-pm:focus").waitFor();
-  await h.page.keyboard.press("Control+a");
+  await h.page.keyboard.press("ControlOrMeta+a");
   await until(h, "⌘A selects text", () => h.page.evaluate(() => String(window.getSelection()).length > 0));
   const selTxt = await h.page.evaluate(() => String(window.getSelection()));
   const h1 = fs.find((x) => x[0] === "H1")?.[1] as number,
@@ -1174,7 +1174,7 @@ test("themeReflow", async () => {
       post = b.cards[2].id;
     b.place[post] = { ...b.place[post], x: 80, y: y0 };
     h = await open({ board: b, light, w: 1500, h: 950, settings: { themeReflow: mode } as any });
-    await h.page.keyboard.press("Control+,");
+    await h.page.keyboard.press("ControlOrMeta+,");
     await h.page.locator(".st-sw", { hasText: "Colorful" }).click();
     await idle(h);
     await h.page.keyboard.press("Escape");
@@ -1205,7 +1205,7 @@ test("themeNotUndoStep", async () => {
   await h.post({ type: "rename", name: "Renamed" });
   await until(h, "the rename is saved", () => h.board().name === "Renamed");
   await idle(h);
-  await h.page.keyboard.press("Control+,");
+  await h.page.keyboard.press("ControlOrMeta+,");
   await h.page.locator(".st-sw", { hasText: "Colorful" }).click();
   await idle(h);
   await h.page.keyboard.press("Escape");
@@ -1229,7 +1229,7 @@ test("pasteNearOriginal", async () => {
   const h = await open({ board: b, light, w: 1500, h: 950 });
   await h.page.locator(`.card[data-id="${st.id}"] .chead .ctitle`).click();
   await h.page.locator(`.card.sel[data-id="${st.id}"]`).waitFor();
-  await h.page.keyboard.press("Control+c");
+  await h.page.keyboard.press("ControlOrMeta+c");
   await until(h, "⌘C copies the card", () => h.sent.some((m) => m.type === "copyCards"));
   await idle(h);
   await h.page.mouse.move(1300, 800);

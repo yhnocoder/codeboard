@@ -211,7 +211,7 @@ test("noteTextFitContent", async () => {
   });
   check("noteTextFitContent note animated", mid >= 3, { h0, h1, samples });
   await cardShot(h, "n0", "05-fit-content-after");
-  await pg.keyboard.press("Control+z");
+  await pg.keyboard.press("ControlOrMeta+z");
   await idle(h);
   check("noteTextFitContent one undo step", placeH(h, "n0") === 150, { h: placeH(h, "n0") });
 
@@ -290,7 +290,7 @@ test("textCardFitContent", async () => {
   const again = await menu("t0");
   check("textCardFitContent menu greyed once it fits", (await again.count()) === 1 && !(await again.isEnabled()));
   await pg.keyboard.press("Escape");
-  await pg.keyboard.press("Control+z");
+  await pg.keyboard.press("ControlOrMeta+z");
   await idle(h);
   check("textCardFitContent menu one undo step", placeW("t0") === 400, { w: placeW("t0") });
 
@@ -306,7 +306,7 @@ test("textCardFitContent", async () => {
     h1,
   });
   await cardShot(h, "t1", "text-fit-after");
-  await pg.keyboard.press("Control+z");
+  await pg.keyboard.press("ControlOrMeta+z");
   await idle(h);
   check("textCardFitContent handle one undo step", placeW("t1") === 120, { w: placeW("t1") });
 
@@ -315,7 +315,7 @@ test("textCardFitContent", async () => {
   await pg.keyboard.press("Alt+KeyF");
   await idle(h);
   check("textCardFitContent long text capped", placeW("t2") === 720, { w: placeW("t2") });
-  await pg.keyboard.press("Control+z");
+  await pg.keyboard.press("ControlOrMeta+z");
   await idle(h);
 
   // every theme: the fitted width leaves no line wrapped
@@ -329,7 +329,7 @@ test("textCardFitContent", async () => {
     m = await fits("t1");
     if (!(placeW("t1")! > 120 && m.h === m.one.h && Math.abs(m.w - m.one.w) <= 1))
       bad.push({ theme, w: placeW("t1"), m });
-    await pg.keyboard.press("Control+z");
+    await pg.keyboard.press("ControlOrMeta+z");
     await idle(h);
     if (placeW("t1") !== 120) bad.push({ theme, undo: placeW("t1") });
   }
@@ -418,7 +418,7 @@ test("noteShrinksWithContent", async () => {
   const full = await gap();
   await cardShot(h, "n0", "18-delete-shrinks-before");
   await editNote(h, "n0");
-  await pg.keyboard.press("Control+a");
+  await pg.keyboard.press("ControlOrMeta+a");
   await pg.keyboard.type("Short now.");
   await idle(h);
   const typing = await gap();
@@ -451,8 +451,8 @@ test("noteShrinksWithContent", async () => {
   });
   // two undo steps: the long text is back, at its full height
   await pg.mouse.click(900, 650);
-  await pg.keyboard.press("Control+z");
-  await pg.keyboard.press("Control+z");
+  await pg.keyboard.press("ControlOrMeta+z");
+  await pg.keyboard.press("ControlOrMeta+z");
   await idle(h);
   const back = await gap();
   check("noteShrinksWithContent undo restores", Math.abs(back.card - full.card) < 1 && placeH(h, "n0") === undefined, {
@@ -513,7 +513,7 @@ test("noteScrollFades", async () => {
     Math.abs(moved.x - (620 + fx - ox)) < 3 && Math.abs(moved.y - (460 + fy - oy)) < 3,
     { moved },
   );
-  await pg.keyboard.press("Control+z");
+  await pg.keyboard.press("ControlOrMeta+z");
   await idle(h);
   // an arrow dragged from the other card onto the faded area links to this Note
   await pg.locator(card("n1")).hover();
@@ -597,7 +597,7 @@ test("noteManualHeightSticks", async () => {
   );
   // deleting text: the card keeps its height (only cards that follow their content shrink)
   await editNote(h, "n0");
-  await pg.keyboard.press("Control+a");
+  await pg.keyboard.press("ControlOrMeta+a");
   await pg.keyboard.type("x");
   await pg.keyboard.press("Escape");
   await until(h, "the emptied Note is saved", () => md() === "x");

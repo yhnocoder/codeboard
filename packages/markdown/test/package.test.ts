@@ -27,7 +27,8 @@ beforeAll(() => {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "ignore"],
   });
-  packed = JSON.parse(out)[0].files.map((f: { path: string }) => f.path);
+  // npm 12 keys the result by package name
+  packed = (Object.values(JSON.parse(out))[0] as { files: { path: string }[] }).files.map((f) => f.path);
 }, 30e3);
 
 describe("the published @yhnocoder/markdown package", () => {

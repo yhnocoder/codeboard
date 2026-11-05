@@ -89,6 +89,7 @@ import {
   tidyUp,
 } from "./edit";
 import { newFreeCode, newFreeText, newNote, newText, pasteText } from "./create";
+import { shelveSel } from "./shelf";
 import {
   captionItems,
   headingSplitCount,
@@ -698,8 +699,12 @@ function sectionItems(): Item[] {
         ]
       : []),
     { label: "Move to New Section", run: () => moveToNewSection() },
+    shelfItem(),
   ];
 }
+
+/** Move to Shelf: what is selected (cards, Sections with what is in them) goes onto the board's Shelf */
+const shelfItem = (): Item => ({ label: "Move to Shelf", kbd: kbd("shelve"), run: shelveSel });
 
 const turnItem = (): Item => ({
   label: "Turn into Board…",
@@ -1082,6 +1087,7 @@ function multiSectionItems(ids: string[]): Item[] {
     sectionColorItem(ids),
     { label: "Copy Paths", run: () => void copyPath(ids) },
     null,
+    shelfItem(),
     { label: `Remove ${ss.length} Sections`, hint: "Cards and inner sections stay", run: () => removeSections(ids) },
   ];
 }
@@ -1121,6 +1127,7 @@ export function sectionMenu(id: string, x: number, y: number) {
       sectionColorItem([id]),
       { label: "Copy Path", run: () => void copyPath([id]) },
       null,
+      shelfItem(),
       { label: "Remove Section", hint: "Cards and inner sections stay", run: () => removeSections([id]) },
     ],
     x,

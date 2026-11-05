@@ -1,5 +1,5 @@
 name: Setup
-description: Node 22 with npm 11, the npm cache, npm ci and a build of the checked-out tree (or of the tree in `dir`)
+description: Node 22 with npm 12, the npm cache, npm ci and a build of the checked-out tree (or of the tree in `dir`)
 inputs:
   dir:
     description: Directory of the checkout to install and build
@@ -13,7 +13,7 @@ runs:
     - uses: actions/setup-node@v6
       with: { node-version: 22, cache: npm, cache-dependency-path: "${{ inputs.dir }}/package-lock.json" }
     - shell: bash
-      run: npm i -g npm@11.21.1
+      run: npm i -g npm@12.2.1
     - shell: bash
       working-directory: ${{ inputs.dir }}
       env:

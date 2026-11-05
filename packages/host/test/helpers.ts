@@ -43,7 +43,7 @@ export const git = (cwd: string, ...a: string[]) =>
     .trim();
 /** A new git repo in a temp dir with files, committed on main */
 export function tempRepo(prefix: string, files: Record<string, string>): string {
-  const r = fs.mkdtempSync(`/tmp/codeboard-${prefix}-`);
+  const r = fs.realpathSync(fs.mkdtempSync(`/tmp/codeboard-${prefix}-`));
   for (const [f, t] of Object.entries(files)) {
     fs.mkdirSync(path.dirname(path.join(r, f)), { recursive: true });
     fs.writeFileSync(path.join(r, f), t);

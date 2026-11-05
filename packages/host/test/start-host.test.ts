@@ -38,7 +38,7 @@ vi.mock("../src/context", async (orig) => {
   return { ...m, HostContext: Recorded };
 });
 
-const tmp = fs.mkdtempSync("/tmp/codeboard-start-");
+const tmp = fs.realpathSync(fs.mkdtempSync("/tmp/codeboard-start-"));
 const root = path.join(tmp, "ws"),
   storage = path.join(tmp, "storage"),
   moved = path.join(tmp, "moved");

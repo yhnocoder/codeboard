@@ -10,7 +10,7 @@ import { HostContext } from "../src/context";
 
 let cx: HostContext;
 
-const tmp = fs.mkdtempSync("/tmp/codeboard-sweep-");
+const tmp = fs.realpathSync(fs.mkdtempSync("/tmp/codeboard-sweep-"));
 afterAll(() => fs.rmSync(tmp, { recursive: true, force: true }));
 const state = new Map<string, unknown>();
 beforeEach(() => {

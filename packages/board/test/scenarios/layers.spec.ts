@@ -107,17 +107,23 @@ test("arrowsUnderCards", async () => {
             ""
           );
         };
-        const slot = (x: Element) => {
-          while (x.parentElement && !x.parentElement.classList.contains("world")) x = x.parentElement;
-          return x;
+        // the children of the closest element holding both (the card level .cardlay, or .world) that hold x and y: their z-index,
+        // then their order, says which paints on top
+        const slots = (x: Element, y: Element) => {
+          let box: Element | null = x.parentElement;
+          while (box && !box.contains(y)) box = box.parentElement;
+          const under = (e: Element) => {
+            while (e.parentElement !== box) e = e.parentElement!;
+            return e;
+          };
+          return [under(x), under(y)];
         };
         const zi = (x: Element) => {
           const z = getComputedStyle(x).zIndex;
           return z === "auto" ? 0 : +z;
         };
         const above = (x: Element, y: Element) => {
-          const sx = slot(x),
-            sy = slot(y);
+          const [sx, sy] = slots(x, y);
           return zi(sx) !== zi(sy)
             ? zi(sx) > zi(sy)
             : !!(sy.compareDocumentPosition(sx) & Node.DOCUMENT_POSITION_FOLLOWING);

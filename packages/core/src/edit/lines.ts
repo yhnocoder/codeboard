@@ -1,6 +1,7 @@
 // A segment's lines moved (a new version, Relocate, another commit): everything pointing at its lines follows them by content.
 // Pure functions that change the board passed in (the board calls them inside a mutate).
 import { cornerOf } from "./internal";
+import { allLinks, allStickers } from "./refs";
 import { mapLines } from "../diff";
 import {
   activeOf,
@@ -159,7 +160,7 @@ export function moveLineRefs(
     e.line = undefined;
     l.lost = { ...l.lost, [k]: true };
   };
-  for (const l of b.links) {
+  for (const l of allLinks(b)) {
     moveEnd(l, "from");
     moveEnd(l, "to");
   }
@@ -176,7 +177,7 @@ export function moveLineRefs(
         }
       : undefined,
   );
-  for (const k of b.stickers) {
+  for (const k of allStickers(b)) {
     if (k.at.kind !== "line" || k.at.card !== cardId || k.at.seg !== ns.id) continue;
     const m = map(k.at.line);
     if (m) k.at.line = m;

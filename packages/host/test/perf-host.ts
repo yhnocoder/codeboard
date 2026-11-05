@@ -73,7 +73,7 @@ const codeCards = (b: Board, segs: Segment[]) =>
   });
 /** A parent board with a frame per child board, each board with 20 code cards (each child other functions, every other child pinned to an older commit); the store on disk like a real project's */
 async function boardStore(commit: string, older: string) {
-  const dir = fs.mkdtempSync("/tmp/codeboard-perf-boards-");
+  const dir = fs.realpathSync(fs.mkdtempSync("/tmp/codeboard-perf-boards-"));
   const store = new Storage(nodeFs, { dir: () => dir });
   const top = emptyBoard("bTop", "Top"),
     kids: Board[] = [];

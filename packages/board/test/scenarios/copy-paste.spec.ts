@@ -28,7 +28,7 @@ import * as path from "node:path";
 import { emptyBoard, type Board, type Card, type CodeCard, type NoteCard } from "@codeboard/core";
 import { png } from "@codeboard/host/testing";
 import { OUT, put, symCard, findSym, type Host } from "../harness";
-import { test, open, check, until, idle, frames, expect, focusSettled, hostBoards } from "../fixtures";
+import { test, open, check, until, idle, frames, expect, focusSettled, hostBoards, pmHasSelection } from "../fixtures";
 
 /** A 240 × 160 picture: a warm gradient with a dark band */
 const PICTURE = png(240, 160, (x, y) => (y > 60 && y < 100 ? [40, 44, 60, 255] : [230 - x / 3, 150 + y / 4, 80, 255]));
@@ -221,6 +221,7 @@ test("copiedImagesArePictures", async () => {
   // just the image's source selected (its paragraph, from start to end)
   await pg.keyboard.press("Home");
   await pg.keyboard.press("Shift+End");
+  await pmHasSelection(pg); // the copy handler asks ProseMirror's selection whether the caret alone is in the source
   const picked = await pg.evaluate(() => getSelection()!.toString());
   await clear(h);
   await pg.keyboard.press("ControlOrMeta+c");
@@ -235,6 +236,7 @@ test("copiedImagesArePictures", async () => {
   );
   // the caret back in the source: the picture again, for the paste below
   await pg.keyboard.press("End");
+  await pmHasSelection(pg);
   await clear(h);
   await pg.keyboard.press("ControlOrMeta+c");
   const againCopy = await nextCopy(h, "⌘C with the caret at the end of the image's source is on the clipboard");
@@ -242,6 +244,9 @@ test("copiedImagesArePictures", async () => {
 
   // pasted back into the Note (at the end): the same Markdown, no new file saved
   await pg.keyboard.press("ControlOrMeta+End");
+  // ProseMirror learns of a caret the browser moved only in the async selectionchange: Enter before it would split the paragraph
+  // where the caret was (the image's source), and the paste would land between the image and the last paragraph
+  await pmHasSelection(pg);
   await pg.keyboard.press("Enter");
   await idle(h);
   await pasteClipboard(h, true);

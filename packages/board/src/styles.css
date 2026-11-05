@@ -6860,6 +6860,178 @@ mark.wdiff {
   color: var(--surface);
   box-shadow: none;
 }
+/* The Shelf (ui/ShelfPanel.tsx, actions/shelf.ts): the dock button and its count, the panel beside the other right-side panels,
+   the outline of a row dragged out onto the board, the copies that fly into the dock button */
+.dock .shelf-btn {
+  position: relative;
+  transition:
+    background calc(var(--t) * 120ms),
+    color calc(var(--t) * 120ms),
+    box-shadow calc(var(--t) * 120ms),
+    scale calc(var(--t) * 140ms) var(--out);
+}
+.dock .shelf-btn .sbadge {
+  position: absolute;
+  right: -2px;
+  top: -2px;
+  min-width: 13px;
+  height: 13px;
+  padding: 0 3px;
+  box-sizing: border-box;
+  border-radius: 7px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font: 600 9px / 13px var(--sys);
+  text-align: center;
+  pointer-events: none;
+}
+.dock .shelf-btn.armed {
+  color: var(--accent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent);
+}
+.dock .shelf-btn.hot {
+  color: var(--accent-ink);
+  background: var(--accent);
+  scale: 1.15;
+}
+.dock .shelf-btn.hot .sbadge {
+  background: var(--accent-ink);
+  color: var(--accent);
+}
+.cpanel.shelf {
+  right: 12px;
+  top: 12px;
+  width: 300px;
+  max-height: min(76vh, 700px);
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+  transition: outline-color calc(var(--t) * 120ms);
+}
+.cpanel.ctree ~ .cpanel.shelf {
+  right: 324px;
+}
+.cpanel.qpanel ~ .cpanel.shelf {
+  right: 364px;
+}
+.cpanel.ctree ~ .cpanel.qpanel ~ .cpanel.shelf {
+  right: 676px;
+}
+.cpanel.shelf.hot {
+  outline-color: var(--accent);
+}
+.srows {
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 2px 4px 4px;
+}
+.srow {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 8px;
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--hair);
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+  transition:
+    background 0.1s,
+    opacity calc(var(--t) * 120ms);
+}
+.srow:hover {
+  background: var(--row);
+}
+.srow.lift {
+  opacity: 0.4;
+}
+.sthumb {
+  flex: none;
+  border-radius: 5px;
+  background: var(--bg);
+  box-shadow: inset 0 0 0 1px var(--hair);
+}
+.sthumb .ts {
+  fill: none;
+  stroke: var(--ink-3);
+  stroke-width: 0.8;
+}
+.sthumb .tc {
+  fill: var(--surface);
+  stroke: var(--ink-3);
+  stroke-width: 0.6;
+}
+.sthumb .tl {
+  fill: none;
+  stroke: var(--ink-3);
+  stroke-width: 1;
+  stroke-linecap: round;
+}
+.sthumb .tl.code {
+  stroke: var(--accent);
+  opacity: 0.75;
+}
+.smeta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.smeta .stt {
+  font: 600 12px / 16px var(--sys);
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.smeta .skind {
+  font: 10.5px / 14px var(--sys);
+  color: var(--ink-3);
+}
+.srow .sback {
+  flex: none;
+  height: 22px;
+  padding: 0 7px;
+  font-size: 11px;
+  box-shadow: inset 0 0 0 1px var(--hair);
+}
+.cpanel.shelf .cpf {
+  padding: 6px 10px 2px;
+}
+.shelf-outline {
+  position: absolute;
+  z-index: 30;
+  box-sizing: border-box;
+  pointer-events: none;
+  border: var(--ow, 1.5px) dashed var(--accent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+}
+.shelf-outline .sol {
+  position: absolute;
+  left: 10px;
+  bottom: 100%;
+  margin-bottom: 4px;
+  font: 600 12px / 18px var(--sys);
+  color: var(--accent);
+  white-space: nowrap;
+  transform-origin: 0 100%;
+  scale: var(--os, 1);
+}
+.shelf-outline :is(.sos, .soc) {
+  position: absolute;
+  box-sizing: border-box;
+  border: var(--ow, 1px) dashed color-mix(in srgb, var(--accent) 60%, transparent);
+  border-radius: 8px;
+}
+.shelf-ghost {
+  pointer-events: none;
+  transition: none;
+}
 .qrows {
   overflow: auto;
   display: flex;

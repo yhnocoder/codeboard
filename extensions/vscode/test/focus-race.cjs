@@ -27,7 +27,7 @@ module.exports = async (page, t) => {
         .locator(".editor-group-container .monaco-editor .view-lines")
         .first()
         .click({ position: { x: 60, y: 30 } });
-    else await page.keyboard.press("Control+p");
+    else await page.keyboard.press("ControlOrMeta+p");
     const at0 = mode === "editor" ? await inEditor() : await t.soon(inQuick, (v) => v, 3000);
     await t.hold(1300, "past CLICK_KEEPS_KEYS: the board must not take the keyboard back meanwhile");
     const at1 = mode === "editor" ? await inEditor() : await inQuick();

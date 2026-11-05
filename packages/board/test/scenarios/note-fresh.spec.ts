@@ -64,7 +64,7 @@ test("emptyNewNoteSurvivesDrag", async () => {
   const md = h.board().cards.map((c) => (c.kind === "note" ? c.md.trim() : c.kind));
   check("emptyNewNoteSurvivesDrag typed text saved", md.length === 1 && md[0] === "kept", { md });
   await pg.mouse.click(1100, 760);
-  await pg.keyboard.press("Control+z");
+  await pg.keyboard.press("ControlOrMeta+z");
   await until(h, "undo takes the note away", async () => (await notes(h)) === 0);
   check("emptyNewNoteSurvivesDrag one undo step", (await notes(h)) === 0, { notes: await notes(h) });
 

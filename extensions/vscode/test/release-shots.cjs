@@ -149,6 +149,7 @@ const leaveNote = async (page, f) => {
     60000,
     200,
   );
+  (await import("../../../tools/test/mac-keys.mjs")).macKeys(page);
   await track(page); // the board's requests to the host, for idle()
   await watchKeyboard(page); // the keyboard hand-backs to webviews, before the first one opens
   // Reduced motion: the board's camera, card and arrow animations jump straight to where they end (the shots show the board at rest,
@@ -372,7 +373,7 @@ const leaveNote = async (page, f) => {
     await focusSettled(f); // or ProseMirror undoes the Ctrl+End (the double click just focused it)
     // The browser moves the caret for Ctrl+End and ProseMirror reads it only later: a Backspace before that acts where the double
     // click put the caret (in this Note, between two paragraphs: it selects the one before, and the period replaces it)
-    await page.keyboard.press("Control+End");
+    await page.keyboard.press("ControlOrMeta+End");
     await pmHasSelection(f);
     await page.keyboard.press("Backspace");
     await page.keyboard.type(".");
@@ -487,14 +488,14 @@ const leaveNote = async (page, f) => {
     const setLook = async (t) => {
       const id = t.toLowerCase().replace(/ /g, "-");
       await blank(f);
-      await page.keyboard.press("Control+,");
+      await page.keyboard.press("ControlOrMeta+,");
       const sw = f.locator(".st-sw", { hasText: t }).first();
       await sw.click({ timeout: 5000 });
       check(
         await soon(() => f.evaluate((id) => document.documentElement.dataset.look === id, id), Boolean, 5000, 30),
         `${t}: board theme set`,
       );
-      await page.keyboard.press("Control+,");
+      await page.keyboard.press("ControlOrMeta+,");
       await f.locator(".st-sw").first().waitFor({ state: "hidden", timeout: 5000 });
       await idle(f);
     };

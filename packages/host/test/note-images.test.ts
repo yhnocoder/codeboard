@@ -15,7 +15,7 @@ import { MEDIA } from "./helpers";
 
 let cx: HostContext;
 
-const tmp = fs.mkdtempSync("/tmp/codeboard-img-");
+const tmp = fs.realpathSync(fs.mkdtempSync("/tmp/codeboard-img-"));
 afterAll(() => fs.rmSync(tmp, { recursive: true, force: true }));
 let n = 0;
 function setup() {

@@ -246,7 +246,28 @@ async function command(page, text, prompt) {
     throw new Error(`no command "${text}" in the command palette`);
   }
   if (!prompt) {
-    await qiClosed(page, `the command palette (after "${text}")`);
+    await qiClosed(page, `the command palette (after "${text}")`).catch(async (e) => {
+      // Say why it stayed: the Enter or click went elsewhere (where the keyboard is, the quick input's events), or it took the
+      // wrong row (what it shows now)
+      const st = await page
+        .evaluate(() => {
+          const d = (e) =>
+            e ? `${e.tagName.toLowerCase()}.${String(e.className).trim().replace(/\s+/g, ".")}`.slice(0, 60) : null;
+          const rows = [...document.querySelectorAll(".quick-input-widget .monaco-list-row")];
+          return {
+            value: document.querySelector(".quick-input-widget .quick-input-box input")?.value,
+            rows: rows
+              .slice(0, 4)
+              .map((r) => `${r.classList.contains("focused") ? "*" : ""}${r.getAttribute("aria-label")}`),
+            active: d(document.activeElement),
+            focus: document.hasFocus(),
+          };
+        })
+        .catch(() => ({}));
+      throw new Error(
+        `${e.message}: ${JSON.stringify({ ...st, events: await qiSince(page, mark).catch(() => []), handBack: await handBack(page).catch(() => "?") })}`,
+      );
+    });
     return keyboardSettled(page);
   }
   await until(
@@ -334,7 +355,7 @@ async function openFile(page, abs, line) {
   const name = path.basename(abs);
   const tab = page.locator(".editor-group-container .tab.active", { hasText: name });
   await command(page, "View: Focus First Editor Group"); // code in the left group, the board on the right (with the board focused, Ctrl+1 means 100% zoom)
-  await openQuick(page, "Control+p", "Quick Open");
+  await openQuick(page, "ControlOrMeta+p", "Quick Open");
   if (!(await pick(page, abs, 10000, name))) throw new Error(`Quick Open does not offer ${abs}`);
   await qiClosed(page, "Quick Open");
   await until(`${name} is the active editor`, () => tab.count(), 10000);
@@ -411,7 +432,7 @@ const inChord = (page) =>
  *  VS Code sends back to the board on screen): press Ctrl+K and see. "board": the board in frame f opened its search (closed again
  *  with Escape when the board has the keyboard); "vscode": VS Code began its own Ctrl+K chord (Escape ends it) */
 async function ctrlK(page, f) {
-  await page.keyboard.press("Control+k");
+  await page.keyboard.press("ControlOrMeta+k");
   const who = await until(
     "Ctrl+K opens the board's search or begins VS Code's chord",
     async () => ((await f.locator(".palette").count()) ? "board" : (await inChord(page)) ? "vscode" : null),
