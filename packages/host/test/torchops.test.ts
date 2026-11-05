@@ -14,7 +14,7 @@ import { HostContext } from "../src/context";
 
 let cx: HostContext;
 
-const FIX = fs.mkdtempSync("/tmp/codeboard-torchops-");
+const FIX = fs.realpathSync(fs.mkdtempSync("/tmp/codeboard-torchops-"));
 fs.cpSync(path.join(__dirname, "fixtures/torchops"), FIX, { recursive: true });
 // a Python name PyTorch does not register, but a test of a third-party library inside the checkout does
 fs.writeFileSync(path.join(FIX, "torch/cache.py"), "def lookup(c):\n    return c.fetch(1)\n");
@@ -397,7 +397,7 @@ describe("with a language server that answers with stubs and generated headers",
 
 describe("the build folder", () => {
   const tree = (files: Record<string, string>) => {
-    const r = fs.mkdtempSync("/tmp/codeboard-torchbuild-");
+    const r = fs.realpathSync(fs.mkdtempSync("/tmp/codeboard-torchbuild-"));
     for (const [f, t] of Object.entries(files)) {
       fs.mkdirSync(path.dirname(path.join(r, f)), { recursive: true });
       fs.writeFileSync(path.join(r, f), t);

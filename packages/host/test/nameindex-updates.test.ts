@@ -13,7 +13,7 @@ import { HostContext } from "../src/context";
 let cx: HostContext;
 
 // its own copy of nano-vllm: the probe file it creates would show up in the other files' scans of WS, which run alongside
-const ROOT = fs.mkdtempSync("/tmp/codeboard-nameindex-");
+const ROOT = fs.realpathSync(fs.mkdtempSync("/tmp/codeboard-nameindex-"));
 execFileSync("git", ["clone", "-q", WS, ROOT]);
 const W = nodeWorkspace(ROOT);
 const click = <T>(fn: () => Promise<T>) => cx.sched.run(Prio.Click, fn);

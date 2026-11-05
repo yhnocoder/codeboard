@@ -36,7 +36,7 @@ const env: HostEnv = {
     return v.view;
   },
 };
-const dir = fs.mkdtempSync("/tmp/codeboard-hub-");
+const dir = fs.realpathSync(fs.mkdtempSync("/tmp/codeboard-hub-"));
 const store = new Storage(nodeFs, { dir: () => dir });
 let hub: BoardHub;
 /** The message types the hub handed to its handler */

@@ -401,7 +401,7 @@ test("linklist", async () => {
   await idle(h);
   const pasted = lists().length === 2 && lists()[1].items.length === 3;
   // Merge two Link Lists (multi-select → Merge into Link List)
-  await h.page.keyboard.press("Control+a");
+  await h.page.keyboard.press("ControlOrMeta+a");
   await h.page.locator(".card.links .chead").first().click({ button: "right" });
   await h.page.locator(".ctx button", { hasText: "Merge into Link List" }).click();
   await until(h, "the two Link Lists are merged", () => lists().length === 1);

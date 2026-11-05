@@ -34,7 +34,10 @@ const {
 } = require("./ui.cjs");
 
 const EXT = path.resolve(__dirname, "..");
-const CODE = process.env.VSCODE_BIN || process.env.VSCODE_TEST_PATH || "/opt/vscode/code";
+const CODE =
+  process.env.VSCODE_BIN ||
+  process.env.VSCODE_TEST_PATH ||
+  (process.platform === "darwin" ? "/Applications/Visual Studio Code.app/Contents/MacOS/Code" : "/opt/vscode/code");
 
 /** Click the quick pick row whose label (aria-label up to ", ") contains text; false when there is none within ms (the list is the
  *  command's answer, e.g. the projects to copy to: nothing is typed) */
@@ -82,7 +85,7 @@ async function addFunction(p, file, line, title) {
 }
 async function renameBoard(p, name) {
   await command(p, "CodeBoard: Rename Board", "Rename board");
-  await p.keyboard.press("Control+a");
+  await p.keyboard.press("ControlOrMeta+a");
   await p.keyboard.type(name);
   await p.keyboard.press("Enter");
   await qiClosed(p, "the Rename Board input box");
@@ -257,7 +260,7 @@ module.exports = async function projectsStep({ check, OUT, WS, UD, port }) {
   ];
   const launch = (target) => {
     const a = args(target);
-    return process.env.DISPLAY
+    return process.env.DISPLAY || process.platform === "darwin"
       ? spawn(a[0], a.slice(1), { stdio: "ignore", detached: true })
       : spawn("xvfb-run", ["-a", "-s", "-screen 0 1280x800x24", ...a], { stdio: "ignore", detached: true });
   };
@@ -361,7 +364,7 @@ module.exports = async function projectsStep({ check, OUT, WS, UD, port }) {
     // 2. M → S (move), from the multi-root workspace: one card from each folder
     await command(M, "View: Close All Editors");
     await command(M, "CodeBoard: New Board", "Name of the new board");
-    await M.keyboard.press("Control+a");
+    await M.keyboard.press("ControlOrMeta+a");
     await M.keyboard.type("Mixed move");
     await M.keyboard.press("Enter");
     await qiClosed(M, "the New Board input box");

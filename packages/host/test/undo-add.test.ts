@@ -13,7 +13,7 @@ import { HostContext } from "../src/context";
 let cx: HostContext;
 
 const W = nodeWorkspace();
-const dir = fs.mkdtempSync("/tmp/codeboard-undoadd-");
+const dir = fs.realpathSync(fs.mkdtempSync("/tmp/codeboard-undoadd-"));
 const store = new Storage(nodeFs, { dir: () => dir });
 let open: BoardPanel | undefined;
 const panels = {

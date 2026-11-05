@@ -30,7 +30,7 @@ const env: HostEnv = {
     return v.view;
   },
 };
-const dir = fs.mkdtempSync("/tmp/codeboard-marks-");
+const dir = fs.realpathSync(fs.mkdtempSync("/tmp/codeboard-marks-"));
 const store = new Storage(nodeFs, { dir: () => dir });
 let cx: HostContext, hub: BoardHub;
 const off: { dispose(): void }[] = [];

@@ -18,9 +18,9 @@ const SEQS: Record<string, string> = {
   subSup: "H~2~O x^2^ y",
   singleTilde: "x ~a b~ y",
   link: "x [t](https://a.b) y",
-  undoBold: "x **b**{Control+z} *i* y",
-  undoMath: "x $a${Control+z} and $b$ y",
-  undoHighlight: "x ==a=={Control+z} ==b== y",
+  undoBold: "x **b**{ControlOrMeta+z} *i* y",
+  undoMath: "x $a${ControlOrMeta+z} and $b$ y",
+  undoHighlight: "x ==a=={ControlOrMeta+z} ==b== y",
 };
 
 function board(n: number): Board {

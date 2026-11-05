@@ -1,8 +1,11 @@
 // /opt/pw-browsers/chromium is the image's link to whatever Chromium it ships: a revision path (chromium-NNNN) breaks
-// whenever the image or our playwright-core version moves on.
+// whenever the image or our playwright-core version moves on. Elsewhere (a Mac) it is the browser playwright-core pins
+// (`npx playwright-core install chromium` once).
+import * as fs from "node:fs";
 import { chromium } from "playwright-core";
 
-export const CHROMIUM = process.env.CHROMIUM ?? "/opt/pw-browsers/chromium";
+const IMAGE = "/opt/pw-browsers/chromium";
+export const CHROMIUM = process.env.CHROMIUM ?? (fs.existsSync(IMAGE) ? IMAGE : chromium.executablePath());
 export const CHROMIUM_ARGS = ["--allow-file-access-from-files"];
 
 /** Chromium for any script (repo tests, review tools, one-off checks): the repo's playwright-core with the browser above. A bare

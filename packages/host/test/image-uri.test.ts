@@ -15,7 +15,7 @@ import { MEDIA } from "./helpers";
 
 let cx: HostContext;
 
-const tmp = fs.mkdtempSync("/tmp/codeboard-uri-");
+const tmp = fs.realpathSync(fs.mkdtempSync("/tmp/codeboard-uri-"));
 afterAll(() => fs.rmSync(tmp, { recursive: true, force: true }));
 const ws = path.join(tmp, "ws"),
   outside = path.join(tmp, "Downloads");

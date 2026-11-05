@@ -48,7 +48,7 @@ test("noteFindReplace", async () => {
   const pg = h.page;
   await editNote(h, "n0");
   const y0 = await pg.locator('.card[data-id="n0"] .md-pm p').first().boundingBox();
-  await pg.keyboard.press("Control+f");
+  await pg.keyboard.press("ControlOrMeta+f");
   await pg.locator(".md-find .md-findq").waitFor();
   const opened = await focusIn(pg);
   await pg.keyboard.type("alpha");
@@ -90,18 +90,18 @@ test("noteFindReplace", async () => {
   const caseOn = await count(pg);
   await pg.locator(".md-find .md-case").click();
   // 替换：⌥⌘F 打开替换框；Enter 换掉选中的这一个（第一个），⌘↵ 全部换掉
-  await pg.keyboard.press("Control+Alt+f");
+  await pg.keyboard.press("ControlOrMeta+Alt+f");
   const replFocus = await focusIn(pg);
   await pg.keyboard.type("omega");
   await pg.keyboard.press("Enter");
   const afterOne = await count(pg);
-  await pg.keyboard.press("Control+Enter");
+  await pg.keyboard.press("ControlOrMeta+Enter");
   const afterAll = await count(pg);
   const allText = await pg.locator('.card[data-id="n0"] .md-pm').textContent();
   // Esc：关上，焦点回编辑器；一次撤销撤回全部替换（第一次单个的替换还在）
   await pg.keyboard.press("Escape");
   const closed = { bar: await pg.locator(".md-find").count(), focus: await focusIn(pg), marks: (await marks()).all };
-  await pg.keyboard.press("Control+z");
+  await pg.keyboard.press("ControlOrMeta+z");
   const undone = (await pg.locator('.card[data-id="n0"] .md-pm').textContent())?.match(/alpha/gi)?.length ?? 0;
   await pg.keyboard.press("Escape");
   await idle(h);
@@ -162,7 +162,7 @@ test("noteFindTypingLatency", async () => {
   await idle(h);
   const pg = h.page;
   await editNote(h, "n0");
-  await pg.keyboard.press("Control+f");
+  await pg.keyboard.press("ControlOrMeta+f");
   await pg.locator(".md-find .md-findq").waitFor();
   let n: string | null = null;
   const ts = await cpuSpans(pg, async () => {
@@ -272,7 +272,7 @@ test("codeFindReplace", async () => {
   await pg.locator('.card[data-id="c1"] .src .l').nth(0).dblclick();
   await pg.waitForSelector('.card[data-id="c1"] .cm-content', { timeout: 8000 });
   const y0 = await pg.locator('.card[data-id="c1"] .cm-line').first().boundingBox();
-  await pg.keyboard.press("Control+f");
+  await pg.keyboard.press("ControlOrMeta+f");
   await pg.locator('.card[data-id="c1"] .md-find .md-findq').waitFor();
   const opened = await focusIn(pg);
   await pg.keyboard.type("y");
@@ -283,14 +283,14 @@ test("codeFindReplace", async () => {
   const n1 = await count(pg);
   await pg.keyboard.press("Enter");
   const n2 = await count(pg);
-  await pg.keyboard.press("Control+Alt+f");
+  await pg.keyboard.press("ControlOrMeta+Alt+f");
   const replFocus = await focusIn(pg);
   await pg.keyboard.type("z");
-  await pg.keyboard.press("Control+Enter");
+  await pg.keyboard.press("ControlOrMeta+Enter");
   const replaced = await codeText(pg);
   await pg.keyboard.press("Escape");
   const closed = { bar: await pg.locator(".md-find").count(), focus: await focusIn(pg) };
-  await pg.keyboard.press("Control+z");
+  await pg.keyboard.press("ControlOrMeta+z");
   const undone = await codeText(pg);
   await pg.keyboard.press("Escape");
   await idle(h);

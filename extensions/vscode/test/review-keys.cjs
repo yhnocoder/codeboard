@@ -106,7 +106,7 @@ const res = {};
     await page.mouse.up();
     await idle(f);
     const selTxt = await f.evaluate(() => getSelection().toString());
-    await key("Control+x");
+    await key("ControlOrMeta+x");
     return { selTxt, text: await text(), cardMoved: false };
   });
   await run("dblclickWord", async () => {
@@ -115,50 +115,50 @@ const res = {};
     await page.mouse.dblclick(o.x + r.x + r.w / 2, o.y + r.y + r.h / 2);
     await idle(f);
     const selTxt = await f.evaluate(() => getSelection().toString());
-    await key("Control+c");
+    await key("ControlOrMeta+c");
     await page.keyboard.press("End");
-    await key("Control+v");
+    await key("ControlOrMeta+v");
     return { selTxt, text: await text() };
   });
   await run("cut", async () => {
     await startEdit("alpha beta");
     await sel(4);
-    await key("Control+x");
+    await key("ControlOrMeta+x");
     return { text: await text(), clip: await clip() };
   });
   await run("paste", async () => {
-    await key("Control+v");
+    await key("ControlOrMeta+v");
     return { text: await text() };
   });
   await run("copy", async () => {
     await sel(4);
-    await key("Control+c");
+    await key("ControlOrMeta+c");
     return { clip: await clip() };
   });
   await run("selectAll", async () => {
-    await key("Control+a");
+    await key("ControlOrMeta+a");
     return { sel: await f.evaluate(() => getSelection().toString()), cards: await f.locator(".card.sel").count() };
   });
   await run("undo", async () => {
     await page.keyboard.press("End");
     await page.keyboard.type(" zzz");
     await idle(f);
-    await key("Control+z");
+    await key("ControlOrMeta+z");
     return { text: await text() };
   });
   await run("redo", async () => {
-    await key("Control+Shift+z");
+    await key("ControlOrMeta+Shift+z");
     return { text: await text() };
   });
   await run("bold", async () => {
     await sel(3);
-    await key("Control+b");
+    await key("ControlOrMeta+b");
     return { html: await html() };
   });
   await run("ctrlK", async () => {
     await page.keyboard.press("End");
     await sel(3);
-    await key("Control+k");
+    await key("ControlOrMeta+k");
     const r = {
       palette: await f.locator(".palette").count(),
       linkInput: await f.locator(".md-linkin").count(),
@@ -171,82 +171,82 @@ const res = {};
   await run("ctrlD", async () => {
     await startEdit("dup test");
     const n0 = await f.locator(".card").count();
-    await key("Control+d");
+    await key("ControlOrMeta+d");
     return { cardsBefore: n0, cardsAfter: await f.locator(".card").count(), editing: await pm().count() };
   });
   await run("ctrlEq", async () => {
     await startEdit("zoom test");
     const z0 = await zoom();
-    await key("Control+=");
+    await key("ControlOrMeta+=");
     return { zoomChanged: z0 !== (await zoom()), editing: await pm().count(), text: await text() };
   });
   await run("ctrl1", async () => {
     await startEdit("head test");
     const z0 = await zoom();
-    await key("Control+1");
+    await key("ControlOrMeta+1");
     return { zoomChanged: z0 !== (await zoom()), html: await html() };
   });
   await run("ctrl0", async () => {
     await startEdit("para test");
     const z0 = await zoom();
-    await key("Control+0");
+    await key("ControlOrMeta+0");
     return { zoomChanged: z0 !== (await zoom()), editing: await pm().count() };
   });
   await run("ctrlMinus", async () => {
     await startEdit("minus");
     const z0 = await zoom();
-    await key("Control+-");
+    await key("ControlOrMeta+-");
     return { zoomChanged: z0 !== (await zoom()), editing: await pm().count() };
   });
   await run("ctrlSlash", async () => {
     await startEdit("raw test");
-    await key("Control+/");
+    await key("ControlOrMeta+/");
     const r = { raw: await f.locator(".md-srcmode .cm-content").count() };
-    await key("Control+/");
+    await key("ControlOrMeta+/");
     return r;
   });
   await run("ctrlS", async () => {
     await startEdit("save test");
-    await key("Control+s");
+    await key("ControlOrMeta+s");
     return { editing: await pm().count(), text: await text() };
   });
   await run("ctrlShiftL", async () => {
     await startEdit("lock test");
-    await key("Control+Shift+l");
+    await key("ControlOrMeta+Shift+l");
     return { editing: await pm().count(), locked: await f.locator(".card.locked, .card .lock").count() };
   });
   await run("ctrlComma", async () => {
     await startEdit("settings test");
-    await key("Control+,");
+    await key("ControlOrMeta+,");
     return { editing: await pm().count(), settings: await f.locator(".settings").count() };
   });
   await run("ctrlShiftV", async () => {
     await key("Escape");
     await startEdit("pp ");
     await f.evaluate(() => navigator.clipboard.writeText("**raw**")); // in the board's webview, which has the keyboard
-    await key("Control+Shift+v");
+    await key("ControlOrMeta+Shift+v");
     return { html: await html() };
   });
   await run("ctrlE", async () => {
     await startEdit("code word");
     await sel(4);
-    await key("Control+e");
+    await key("ControlOrMeta+e");
     return { html: await html() };
   });
   await run("ctrlShiftS", async () => {
     await startEdit("strike word");
     await sel(4);
-    await key("Control+Shift+s");
+    await key("ControlOrMeta+Shift+s");
     return { html: await html() };
   });
   await run("ctrlAltC", async () => {
     await startEdit("cb");
-    await key("Control+Alt+c");
+    await key("ControlOrMeta+Alt+c");
     return { html: await html() };
   });
   await run("ctrlShift8", async () => {
     await startEdit("ul");
-    await key("Control+Shift+8");
+    await key("ControlOrMeta+Shift+8");
     return { html: await html() };
   });
   await page.screenshot({ path: `${OUT}/review-keys.png` });

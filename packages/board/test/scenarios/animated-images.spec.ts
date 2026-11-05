@@ -208,10 +208,10 @@ test("animGifFilmstrip", async () => {
   check("anim-space-plays-and-pauses", moved && p1 === p2 && p1 > 8, { moved, p1, p2 });
 
   // zoomed out under 50% (four steps of ×0.8) the strip hides; back in it returns
-  for (let i = 0; i < 4; i++) await h.page.keyboard.press("Control+Minus");
+  for (let i = 0; i < 4; i++) await h.page.keyboard.press("ControlOrMeta+Minus");
   await idle(h);
   const small = await strip(h);
-  for (let i = 0; i < 4; i++) await h.page.keyboard.press("Control+Equal");
+  for (let i = 0; i < 4; i++) await h.page.keyboard.press("ControlOrMeta+Equal");
   await idle(h);
   const back = await strip(h);
   check("anim-strip-hides-zoomed-out", small === null && back !== null, small, back);
@@ -409,10 +409,10 @@ test("animImageCardFilmstrip", async () => {
   const p2 = (await gifShown(h, CARD)).frame;
   check("anim-card-space-plays-and-pauses", moved && p1 === p2, { moved, p1, p2 });
 
-  for (let i = 0; i < 4; i++) await pg.keyboard.press("Control+Minus");
+  for (let i = 0; i < 4; i++) await pg.keyboard.press("ControlOrMeta+Minus");
   await idle(h);
   const small = await strip(h);
-  for (let i = 0; i < 4; i++) await pg.keyboard.press("Control+Equal");
+  for (let i = 0; i < 4; i++) await pg.keyboard.press("ControlOrMeta+Equal");
   await idle(h);
   check("anim-card-strip-hides-zoomed-out", small === null && (await strip(h)) !== null, small);
 

@@ -128,12 +128,12 @@ test("deleteKeyWithTextSelectionEditsNote", async () => {
     { edited },
   );
   await pmHasSelection(pg);
-  await pg.keyboard.press("Control+z");
+  await pg.keyboard.press("ControlOrMeta+z");
   const undone = await until(h, "undo in the editor brings the word back", async () => {
     const t = await pmText(pg);
     return t?.includes("alpha brave charlie") && t;
   }).catch(() => pmText(pg));
-  await pg.keyboard.press("Control+Shift+z");
+  await pg.keyboard.press("ControlOrMeta+Shift+z");
   const redone = await until(h, "redo deletes it again", async () => {
     const t = await pmText(pg);
     return t?.includes("alpha  charlie") && t;
@@ -152,7 +152,7 @@ test("deleteKeyWithTextSelectionEditsNote", async () => {
     saved === "## Plan\n\nalpha  charlie\n\nsecond **line** here",
     { saved },
   );
-  await pg.keyboard.press("Control+z");
+  await pg.keyboard.press("ControlOrMeta+z");
   await until(h, "the board's undo restores the text", () => noteMd(h) === NOTE.trim()).catch(() => {});
   check(
     "deleteKeyWithTextSelectionEditsNote one board undo step restores it",

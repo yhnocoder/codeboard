@@ -5,7 +5,8 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Emitter, type Workspace } from "@codeboard/core";
 
-export const WS = "/tmp/codeboard-perf/ws";
+// the real path (macOS /tmp is a link to /private/tmp, and git answers with real paths)
+export const WS = `${fs.realpathSync("/tmp")}/codeboard-perf/ws`;
 
 export type TestWorkspace = Workspace & {
   /** Unsaved editor buffers */
