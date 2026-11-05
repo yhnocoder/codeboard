@@ -242,7 +242,12 @@ function Column(p: { col: SumCol }) {
               const src = card?.kind === "image" ? card.src : "";
               return /^(data:|https?:)/.test(src) ? src : `${state.host.assetBase}/${src}`;
             })()}
-            style={{ left: `${r().x / K()}px`, top: `${r().y / K()}px`, width: `${r().w / K()}px`, height: `${r().h / K()}px` }}
+            style={{
+              left: `${r().x / K()}px`,
+              top: `${r().y / K()}px`,
+              width: `${r().w / K()}px`,
+              height: `${r().h / K()}px`,
+            }}
           />
         )}
       </Show>

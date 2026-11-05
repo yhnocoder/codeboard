@@ -235,8 +235,11 @@ test("summaryDetentSwitch", async () => {
     keys,
   );
   const s0 = await h.page.locator('.sumcol[data-sum="sec:s0"]').evaluate((e) => {
-    const st = (e as HTMLElement).style;
-    return { x: parseFloat(st.left), y: parseFloat(st.top), b: e.querySelector(".sumtx :is(b, strong)")?.textContent };
+    // the layer is laid out at 1 / K of the board and scaled up by K (Summaries.tsx K): back to board units
+    const st = (e as HTMLElement).style,
+      K = +(/scale\(([\d.]+)\)/.exec((e.closest(".sumlay") as HTMLElement).style.transform)?.[1] ?? 1),
+      px = (v: string) => Math.round(parseFloat(v) * K * 100) / 100;
+    return { x: px(st.left), y: px(st.top), b: e.querySelector(".sumtx :is(b, strong)")?.textContent };
   });
   check(
     "summaryDetentSwitch a Section's column starts at its frame's top-left, with its key phrase bold",
@@ -780,18 +783,23 @@ test("summaryNestedSections", async () => {
   await idle(h);
   const cols = () =>
     h.page.evaluate(() =>
-      [...document.querySelectorAll<HTMLElement>(".sumcol")].map((e) => ({
-        key: e.dataset.sum!,
-        cls: e.className,
-        x: parseFloat(e.style.left),
-        y: parseFloat(e.style.top),
-        w: parseFloat(e.style.width),
-        h: parseFloat(e.style.getPropertyValue("--rest")),
-        title: e.querySelector(".sumt")?.textContent ?? "",
-        kick: e.querySelector(".sumkick")?.textContent ?? "",
-        re: !!e.querySelector(".sumre"),
-        text: e.querySelector(".sumtx")?.textContent ?? "",
-      })),
+      [...document.querySelectorAll<HTMLElement>(".sumcol")].map((e) => {
+        // the layer is laid out at 1 / K of the board and scaled up by K (Summaries.tsx K): back to board units
+        const K = +(/scale\(([\d.]+)\)/.exec((e.closest(".sumlay") as HTMLElement).style.transform)?.[1] ?? 1),
+          px = (v: string) => Math.round(parseFloat(v) * K * 100) / 100;
+        return {
+          key: e.dataset.sum!,
+          cls: e.className,
+          x: px(e.style.left),
+          y: px(e.style.top),
+          w: px(e.style.width),
+          h: px(e.style.getPropertyValue("--rest")),
+          title: e.querySelector(".sumt")?.textContent ?? "",
+          kick: e.querySelector(".sumkick")?.textContent ?? "",
+          re: !!e.querySelector(".sumre"),
+          text: e.querySelector(".sumtx")?.textContent ?? "",
+        };
+      }),
     );
   const frame = (id: string) =>
     h.page
