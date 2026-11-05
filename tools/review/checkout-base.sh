@@ -12,4 +12,5 @@ if [ "$3" = --test-drivers ]; then
   cp extensions/vscode/test/run.sh extensions/vscode/test/replay.cjs extensions/vscode/test/wait.cjs extensions/vscode/test/ui.cjs "$DIR/extensions/vscode/test/"
   cp tools/review/audit.cjs "$DIR/tools/review/"
 fi
-(cd "$DIR" && npm ci --no-audit --no-fund && npm run build)
+# --allow-remote=root: a base from before .npmrc had it (npm 12 refuses the tree-sitter-cuda tarball otherwise)
+(cd "$DIR" && npm ci --allow-remote=root --no-audit --no-fund && npm run build)
