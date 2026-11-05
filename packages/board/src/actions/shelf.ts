@@ -12,6 +12,7 @@ import { cam, camTarget, camTo, fitRect, view } from "../state/camera";
 import { worldAt } from "../state/measure";
 import { toast } from "../state/toast";
 import { animScale, reduceMotion } from "../state/motion";
+import { boardRef } from "../state/root";
 import { setShelfOpen, setShelfOut, shelfOut, setShelfHot } from "../state/shelf";
 import { cardSel } from "../cardsel";
 import { track } from "../gesture";
@@ -42,15 +43,21 @@ export function entryBox(e: ShelfEntry): Rect | undefined {
   return bounds([...r.sections, ...r.cards]) ?? undefined;
 }
 
+/** The dock's Shelf button and the open Shelf panel on screen, measured once per drag (neither moves while it lasts): a drag reads
+ *  no layout as it moves */
+const targets = boardRef<{ dock?: DOMRect; panel?: DOMRect } | null>(null);
+const measureTargets = () => {
+  const r = (q: string) => {
+    const b = document.querySelector(q)?.getBoundingClientRect();
+    return b && b.width > 0 ? b : undefined;
+  };
+  return { dock: r(".dock .shelf-btn"), panel: r(".cpanel.shelf") };
+};
 /** What a drag at (x, y) on screen is over: the dock's Shelf button, the open Shelf panel, or neither */
 function shelfTargetAt(x: number, y: number): "dock" | "panel" | null {
-  const inside = (q: string) => {
-    const el = document.querySelector(q);
-    if (!el) return false;
-    const r = el.getBoundingClientRect();
-    return r.width > 0 && x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
-  };
-  return inside(".dock .shelf-btn") ? "dock" : inside(".cpanel.shelf") ? "panel" : null;
+  const t = (targets.v ??= measureTargets());
+  const inside = (r?: DOMRect) => !!r && x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+  return inside(t.dock) ? "dock" : inside(t.panel) ? "panel" : null;
 }
 /** A drag of cards or Sections moved to (x, y): what it is over, shown on the dock button and the panel */
 export function shelfDragAt(x: number, y: number): "dock" | "panel" | null {
@@ -58,7 +65,10 @@ export function shelfDragAt(x: number, y: number): "dock" | "panel" | null {
   setShelfHot(t ?? "drag");
   return t;
 }
-export const shelfDragEnd = () => setShelfHot(null);
+export const shelfDragEnd = () => {
+  targets.v = null;
+  setShelfHot(null);
+};
 
 /** Where the dock's Shelf button is, in world coordinates (none in the narrow layout: then things fade where they are) */
 function dockPoint(): { x: number; y: number } | null {
@@ -287,6 +297,7 @@ export function shelfRowDown(e: PointerEvent, id: string) {
   // the grab point: just inside the outline's top left, the same on screen at any zoom
   const gx = 28 / cam.z,
     gy = 14 / cam.z;
+  targets.v = null;
   track(
     e,
     (ev) => {
@@ -297,9 +308,13 @@ export function shelfRowDown(e: PointerEvent, id: string) {
     (_ev, moved) => {
       const o = shelfOut();
       setShelfOut(null);
+      targets.v = null;
       if (moved && o?.at) dropEntry(id, o.at);
     },
     undefined,
-    () => setShelfOut(null),
+    () => {
+      setShelfOut(null);
+      targets.v = null;
+    },
   );
 }
