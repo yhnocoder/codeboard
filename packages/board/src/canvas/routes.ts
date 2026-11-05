@@ -250,6 +250,10 @@ export function handOf(L: Pick<Link, "from">) {
   return c?.kind === "note" && c.look === "mark" ? c.hand : undefined;
 }
 
+/** 实线：材质可以把它画成一块填充的形状（look.ts 的 stroke：毛笔、收细的线）。手绘线、虚线、点线（Generated）、点划线（RPC）、
+ *  手动补的 Call 箭头照旧描边 */
+export const solidLine = (L: Link) => !handOf(L) && !(L.style?.dash || L.gen || L.rpc || L.call?.ev?.kind === "manual");
+
 export const headScale = (L: Link) => (L.style?.width === 1 ? 0.85 : L.style?.width === 3 ? 1.25 : 1);
 /** 合并点离终点多远 */
 export const STUB = 28;

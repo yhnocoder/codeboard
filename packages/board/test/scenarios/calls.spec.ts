@@ -17,7 +17,7 @@ async function shotPr(h: Host, name: string) {
 /** Right-click menu path: each label but the last is a submenu (hover), the last is clicked */
 async function menu(h: Host, ...labels: (string | RegExp)[]) {
   for (let i = 0; i < labels.length; i++) {
-    const b = h.page.locator(".ctx button", { hasText: labels[i] }).first();
+    const b = h.page.locator(".ctx:not(.closing) button", { hasText: labels[i] }).first();
     if (i < labels.length - 1) await b.hover();
     else await b.click();
   }
@@ -267,7 +267,7 @@ async function walkstart(res: Record<string, unknown>) {
   // Style ▸ in the arrow menu uses the legend's names
   await page.locator('.lhit[data-link="l4"]').first().click({ button: "right", force: true });
   await page
-    .locator(".ctx button", { hasText: /^Style/ })
+    .locator(".ctx:not(.closing) button", { hasText: /^Style/ })
     .first()
     .hover();
   await expect(page.locator(".ctx.open")).toHaveCount(2);

@@ -124,18 +124,18 @@ const focusCard = async (f, page, title) => {
 const menuOpen = (f, n = 1, of = "") =>
   until(
     `${n > 1 ? `the submenu${of ? ` of "${of}"` : ""}` : "the context menu"} opens`,
-    async () => (await f.locator(".ctx").count()) >= n,
+    async () => (await f.locator(".ctx:not(.closing)").count()) >= n,
   );
 async function menu(f, target, label, sub, opts = {}) {
   await target.click({ button: "right", ...opts });
   await menuOpen(f);
   await f
-    .locator(".ctx button", { hasText: new RegExp(`^${label}`) })
+    .locator(".ctx:not(.closing) button", { hasText: new RegExp(`^${label}`) })
     .first()
     [sub ? "hover" : "click"]();
   if (sub)
     await f
-      .locator(".ctx button", { hasText: new RegExp(`^${sub}`) })
+      .locator(".ctx:not(.closing) button", { hasText: new RegExp(`^${sub}`) })
       .last()
       .click();
   await idle(f);
@@ -476,12 +476,13 @@ const gap = (a, b) => Math.hypot(Math.max(0, a.l - b.r, b.l - a.r), Math.max(0, 
     const bb = await f.locator("#board").boundingBox();
     const fits = () =>
       f.evaluate(() => {
-        const m = document.querySelector(".ctx");
+        const m = document.querySelector(".ctx:not(.closing)");
         if (!m) return null;
         const r = m.getBoundingClientRect();
         return r.left >= 0 && r.top >= 0 && r.right <= innerWidth && r.bottom <= innerHeight;
       });
-    const closed = () => until("Esc closes the context menu", async () => !(await f.locator(".ctx").count()));
+    const closed = () =>
+      until("Esc closes the context menu", async () => !(await f.locator(".ctx:not(.closing)").count()));
     for (const [x, y, n] of [
       [8, 8, "top-left"],
       [bb.width - 8, 8, "top-right"],
@@ -914,7 +915,8 @@ const gap = (a, b) => Math.hypot(Math.max(0, a.l - b.r, b.l - a.r), Math.max(0, 
       });
       const dead = [],
         unreachable = [];
-      const closed = () => until("Esc closes the context menu", async () => !(await f.locator(".ctx").count()));
+      const closed = () =>
+        until("Esc closes the context menu", async () => !(await f.locator(".ctx:not(.closing)").count()));
       for (const [k, sel] of kinds) {
         await blank(f, page);
         await fit(f);
@@ -978,7 +980,7 @@ const gap = (a, b) => Math.hypot(Math.max(0, a.l - b.r, b.l - a.r), Math.max(0, 
             })),
           );
         await open();
-        const top = await list(f.locator(".ctx").first());
+        const top = await list(f.locator(".ctx:not(.closing)").first());
         const paths = [];
         for (const it of top) {
           if (it.off || SKIP.test(it.label)) continue;
@@ -986,10 +988,10 @@ const gap = (a, b) => Math.hypot(Math.max(0, a.l - b.r, b.l - a.r), Math.max(0, 
             paths.push([it.label]);
             continue;
           }
-          await item(f.locator(".ctx").first(), it.label).hover({ timeout: 5000 });
+          await item(f.locator(".ctx:not(.closing)").first(), it.label).hover({ timeout: 5000 });
           await menuOpen(f, 2, `${k}: ${it.label}`);
           await idle(f);
-          const subs = await list(f.locator(".ctx").nth(1));
+          const subs = await list(f.locator(".ctx:not(.closing)").nth(1));
           for (const s of subs) if (!s.off && !s.sub && !SKIP.test(s.label)) paths.push([it.label, s.label]);
         }
         await page.keyboard.press("Escape");
@@ -1006,10 +1008,10 @@ const gap = (a, b) => Math.hypot(Math.max(0, a.l - b.r, b.l - a.r), Math.max(0, 
           try {
             await open();
             if (p.length > 1) {
-              await item(f.locator(".ctx").first(), p[0]).hover({ timeout: 5000 });
+              await item(f.locator(".ctx:not(.closing)").first(), p[0]).hover({ timeout: 5000 });
               await menuOpen(f, 2);
             }
-            const m = f.locator(".ctx").nth(p.length - 1);
+            const m = f.locator(".ctx:not(.closing)").nth(p.length - 1);
             await item(m, p[p.length - 1]).click({ timeout: 5000 });
             return true;
           } catch (e) {

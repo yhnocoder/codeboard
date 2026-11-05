@@ -541,7 +541,7 @@ async function newCode() {
   await idle(h);
   await pg.mouse.click(300, 450, { button: "right" });
   await pg
-    .locator(".ctx button", { hasText: /^New Code/ })
+    .locator(".ctx:not(.closing) button", { hasText: /^New Code/ })
     .first()
     .click();
   await pg.waitForSelector(".card .cm-content:focus", { timeout: 8000 });

@@ -197,7 +197,7 @@ test("cardMenuDotsOnHover", async () => {
   await pg.locator(".ctx.open button").last().hover();
   const menu = await dots();
   await pg.keyboard.press("Escape");
-  await pg.locator(".ctx").waitFor({ state: "detached" });
+  await pg.locator(".ctx:not(.closing)").waitFor({ state: "detached" });
   await pg.mouse.click(800, 600); // the click on ⋯ selected the card, which keeps it shown
   await until(h, "card deselected", () => pg.evaluate(() => !document.querySelector(".card.sel")));
   const after = await dots();

@@ -61,9 +61,9 @@ test("shelfMenuPutBack", async () => {
   const h = await open({ board: structuredClone(b0), light, w: 1440, h: 900 });
   await idle(h);
   await h.page.locator('.slabel[data-sect="S2"] .sname').click({ button: "right" });
-  const item = h.page.locator(".ctx button", { hasText: "Move to Shelf" });
+  const item = h.page.locator(".ctx:not(.closing) button", { hasText: "Move to Shelf" });
   check("shelf-menu-item", (await item.count()) === 1, {
-    items: await h.page.locator(".ctx button").allTextContents(),
+    items: await h.page.locator(".ctx:not(.closing) button").allTextContents(),
   });
   await item.click();
   await until(h, "the Section is on the Shelf", () => h.board().shelf?.length === 1);
@@ -199,7 +199,7 @@ test("shelfArrows", async () => {
   const h = await open({ board: b, light, w: 1440, h: 900 });
   await idle(h);
   await h.page.locator(`.card[data-id="${alloc}"] .chead`).click({ button: "right" });
-  await h.page.locator(".ctx button", { hasText: "Move to Shelf" }).click();
+  await h.page.locator(".ctx:not(.closing) button", { hasText: "Move to Shelf" }).click();
   await until(h, "allocate on the Shelf", () => h.board().shelf?.length === 1);
   await idle(h);
   check("shelf-arrows-hidden", (await arrowsDrawn(h)).length === 0, await arrowsDrawn(h));
@@ -234,9 +234,9 @@ test("shelfScreenshots", async () => {
   await h.page.keyboard.press("Alt+KeyS");
   await until(h, "n2 shelved", () => h.board().shelf?.length === 2);
   await h.page.locator('.slabel[data-sect="S2"] .sname').click({ button: "right" });
-  await h.page.locator(".ctx button", { hasText: "Move to Shelf" }).hover();
+  await h.page.locator(".ctx:not(.closing) button", { hasText: "Move to Shelf" }).hover();
   await shot(h, "shelf-impl-1-menu");
-  await h.page.locator(".ctx button", { hasText: "Move to Shelf" }).click();
+  await h.page.locator(".ctx:not(.closing) button", { hasText: "Move to Shelf" }).click();
   await until(h, "S2 shelved", () => h.board().shelf?.length === 3);
   await h.page.locator(".dock .shelf-btn").click();
   await h.page.mouse.move(900, 600);

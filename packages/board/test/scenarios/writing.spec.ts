@@ -6,7 +6,7 @@ import { test, open, check, light, until, idle } from "../fixtures";
 const card = (id: string) => `.card[data-id="${id}"]`;
 const notes = (h: Host) => h.board().cards.filter((c): c is NoteCard => c.kind === "note");
 const byId = (h: Host, id: string) => h.board().cards.find((c) => c.id === id) as NoteCard | undefined;
-const menuItems = (h: Host) => h.page.locator(".ctx button .lb").allTextContents();
+const menuItems = (h: Host) => h.page.locator(".ctx:not(.closing) button .lb").allTextContents();
 const commitEdit = async (h: Host) => {
   await h.page.keyboard.press("Escape");
   await h.page.locator(".md-pm").waitFor({ state: "detached" });
@@ -45,17 +45,17 @@ test("writeMenuAndKeysCreateTextBoxMark", async () => {
     (await pg.locator('.bbar button[aria-label="Mark"]').count()) === 0 && (await btn.locator(".ico").count()) === 2,
   );
   await btn.click();
-  await pg.locator(".ctx button").first().waitFor();
+  await pg.locator(".ctx:not(.closing) button").first().waitFor();
   await idle(h);
   const items = await pg
-    .locator(".ctx button")
+    .locator(".ctx:not(.closing) button")
     .evaluateAll((bs) =>
       bs.map((b) => `${b.querySelector(".lb")?.textContent} ${b.querySelector("small")?.textContent ?? ""}`.trim()),
     );
   check("writeMenu items", items.join("|") === "New Text T|New Box R|New Mark M|New Free Text", items);
   check("writeMenu made nothing yet", notes(h).length === 0);
   await shot(h, "writing-menu");
-  await pg.locator(".ctx button", { hasText: "New Box" }).click();
+  await pg.locator(".ctx:not(.closing) button", { hasText: "New Box" }).click();
   await pg.locator(".md-pm").waitFor();
   await pg.keyboard.type("Model Runner");
   await commitEdit(h);
@@ -173,7 +173,7 @@ test("boxFillEditAndToolbars", async () => {
   check("boxEdit double-click", byId(h, "box")?.md === "Model Runner 2");
   const menu = async (id: string) => {
     await pg.locator(card(id)).click({ button: "right" });
-    await pg.locator(".ctx button").first().waitFor();
+    await pg.locator(".ctx:not(.closing) button").first().waitFor();
     const m = await menuItems(h);
     await pg.keyboard.press("Escape");
     await idle(h);
@@ -209,7 +209,7 @@ test("boxFillEditAndToolbars", async () => {
   await pg.mouse.click(600, 420);
   await idle(h);
   await pg.locator('.bbar button[aria-label="Text"]').click();
-  await pg.locator(".ctx button").first().waitFor();
+  await pg.locator(".ctx:not(.closing) button").first().waitFor();
   await shot(h, "writing-menu-board");
   await h.close();
 });
@@ -279,7 +279,7 @@ test("noteTextRoundTripKeepsTitle", async () => {
   check("noteRoundTrip starts with the title in the header", (await head()) === "Scheduler");
   const before = await pg.locator(card("note")).boundingBox();
   await pg.locator(`${card("note")} .chead button[aria-label="Note Menu"]`).click();
-  await pg.locator(".ctx button").first().waitFor();
+  await pg.locator(".ctx:not(.closing) button").first().waitFor();
   await idle(h);
   const items = await menuItems(h);
   check(
@@ -291,7 +291,7 @@ test("noteTextRoundTripKeepsTitle", async () => {
     items,
   );
   await shot(h, "writing-note-menu");
-  await pg.locator(".ctx button", { hasText: "Turn into Text" }).click();
+  await pg.locator(".ctx:not(.closing) button", { hasText: "Turn into Text" }).click();
   await until(h, "the Note is a Text", () => byId(h, "note")?.look === "text");
   await pg.mouse.click(600, 480);
   await idle(h);
@@ -322,7 +322,7 @@ test("noteTextRoundTripKeepsTitle", async () => {
   await shot(h, "writing-note-as-text");
 
   await pg.locator(card("note")).click({ button: "right" });
-  await pg.locator(".ctx button", { hasText: "Turn into Note" }).click();
+  await pg.locator(".ctx:not(.closing) button", { hasText: "Turn into Note" }).click();
   await until(h, "the Text is a Note again", () => byId(h, "note")?.look === "note");
   await pg.mouse.click(600, 480);
   await idle(h);
@@ -362,8 +362,8 @@ test("codeBackgroundToggle", async () => {
   const code = () => h.board().cards.find((k) => k.id === c.id) as Card & { bg?: false };
   const view = async () => {
     await pg.locator(`${card(c.id)} .chead`).click({ button: "right", position: { x: 300, y: 12 } });
-    await pg.locator(".ctx button", { hasText: /^View$/ }).hover();
-    const item = pg.locator(".ctx button", { hasText: /^Background$/ });
+    await pg.locator(".ctx:not(.closing) button", { hasText: /^View$/ }).hover();
+    const item = pg.locator(".ctx:not(.closing) button", { hasText: /^Background$/ });
     await item.waitFor();
     await idle(h);
     return item;
@@ -372,7 +372,7 @@ test("codeBackgroundToggle", async () => {
   check("codeBackground checked by default", (await item.locator(".ck svg").count()) === 1, await item.innerHTML());
   check(
     "codeBackground no old No Background item",
-    (await pg.locator(".ctx button", { hasText: "No Background" }).count()) === 0,
+    (await pg.locator(".ctx:not(.closing) button", { hasText: "No Background" }).count()) === 0,
   );
   await shot(h, "writing-code-view-menu");
   await item.click();

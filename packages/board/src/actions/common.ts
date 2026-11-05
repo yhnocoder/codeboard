@@ -5,12 +5,14 @@ import { commandEnv } from "./env";
 import { sel, select, isSel } from "../state/selection";
 import { frames, isHidden, visibleCards } from "../state/sections";
 import { subRef } from "../state/subboards";
-import { linkCurve } from "../canvas/routes";
+import { linkCurve, solidLine } from "../canvas/routes";
 import { extraList } from "../state/extent";
 import { bezAt, bezBox } from "@codeboard/core/canvas";
 import { camTo, camRest, ensureVisible, fitRect, animate, Spring } from "../state/camera";
 import { reduceMotion } from "../state/motion";
-import { notesOf, ping, setPopIn, popIn, setPaletteOpen, setSizeIn, type SizeAnim } from "../state/ui";
+import { notesOf, ping, setPopIn, popIn, setPaletteOpen, setSizeIn, setDrawIn, type SizeAnim } from "../state/ui";
+import { shape } from "../state/look";
+import { DRAW_IN } from "../state/timing";
 import { openPop, updatePop } from "../state/pop";
 import { lastPointer, naturalSize, chromeOf, cardsMeasured, CODE_MAX } from "../state/measure";
 import { send, ask } from "../host";
@@ -247,6 +249,35 @@ export function popCard(id: string, from?: { x: number; y: number }) {
     const done = sp.done || instant;
     setPopIn(id, done ? undefined : { ox, oy, v });
     return done;
+  });
+}
+
+/** 顺着一条箭头新出来的卡（展开一个调用、换成另一个调用）。Warm Ink（look.ts 的 spawn: "arrow"）：箭头先从起点画出来（DRAW_IN，
+ *  先快后慢），卡再从箭头那里弹出来（放大 + 往右一点的弹簧，带一点过冲），箭头那头每帧跟着卡（routes.ts endRect 读 popIn）。
+ *  别的材质、画不出来的线（虚线、手绘……）、减少动态效果时：和 popCard 一样 */
+export function popAlong(id: string, from?: { x: number; y: number }) {
+  const L = state.board.links.find((l) => l.to.card === id);
+  if (shape().spawn !== "arrow" || !L || !solidLine(L) || reduceMotion()) return popCard(id, from);
+  const ox = -22,
+    sp = new Spring(0, 420, 24, 0.002);
+  sp.t = 1;
+  let t = 0;
+  setPopIn(id, { ox, oy: 0, v: 0 });
+  setDrawIn(L.id, 0);
+  animate((dt, instant) => {
+    if (instant || !cardById(id)) {
+      setDrawIn(L.id, undefined);
+      setPopIn(id, undefined);
+      return true;
+    }
+    if (t < 1) {
+      t = Math.min(1, t + (dt * 1000) / DRAW_IN);
+      setDrawIn(L.id, t < 1 ? 1 - (1 - t) ** 3 : undefined);
+      return false;
+    }
+    sp.step(dt);
+    setPopIn(id, sp.done ? undefined : { ox, oy: 0, v: sp.v });
+    return sp.done;
   });
 }
 

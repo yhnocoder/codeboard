@@ -171,6 +171,11 @@ export function setPopIn(id: string, a: PopAnim | undefined) {
   if (a && cur && cur.ox === a.ox && cur.oy === a.oy && !!cur.slide === !!a.slide) setPopStore(id, "v", a.v);
   else setPopStore(id, a);
 }
+// 箭头从起点画出来的动画（Warm Ink 顺着箭头出来的新卡，actions/common.ts popAlong）：线 id → 画到了哪（0..1，undefined = 整条）。
+// 同样存成 store：每帧只重算这一条线
+const [drawStore, setDrawStore] = boardStore<Record<string, number | undefined>>(() => ({}));
+export const drawIn = (id: string) => drawStore[id];
+export const setDrawIn = (id: string, t: number | undefined) => setDrawStore(id, t);
 // 展开、折叠 Section 时成员卡分几帧建、拆（actions/edit.ts 的 toggleSection）：一次建好、拆掉十几张代码卡要 50–100ms，那一帧卡住。
 // "in" = 藏着（在折叠的 Section 里）也先建着（透明：弹出动画停在开头 / 收完的那一帧）；"out" = 不藏也先不建（离屏幕很远、反正看不见的卡，动画完了再建）
 export type Staged = "in" | "out";

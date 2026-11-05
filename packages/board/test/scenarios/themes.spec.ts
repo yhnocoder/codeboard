@@ -258,7 +258,7 @@ test("squircleCorners", async () => {
       head: cs(".card .chead"),
       sect: cs(".sect"),
       bar: cs(".bbar"),
-      menu: cs(".ctx"),
+      menu: cs(".ctx:not(.closing)"),
       dot:
         cs(".chead .rev .rl") &&
         getComputedStyle(document.querySelector(".chead .rev .rl")!, "::before").getPropertyValue(
@@ -267,9 +267,9 @@ test("squircleCorners", async () => {
     };
   });
   await h.page.locator('.card[data-id="n1"] .chead').click({ button: "right" });
-  await h.page.locator(".ctx").waitFor();
+  await h.page.locator(".ctx:not(.closing)").waitFor();
   const menu = await h.page.evaluate(() =>
-    getComputedStyle(document.querySelector(".ctx")!).getPropertyValue("corner-top-left-shape"),
+    getComputedStyle(document.querySelector(".ctx:not(.closing)")!).getPropertyValue("corner-top-left-shape"),
   );
   await shot(h, "squircle-01-board");
   await h.page.keyboard.press("Escape");
@@ -309,9 +309,9 @@ test("themeMenuSwitchesTheme", async () => {
   const h = await open({ board: board(), light: true, w: 1300, h: 820, settings: { theme: "warm-ink" } as never });
   const pg = h.page;
   await idle(h);
-  const menus = () => pg.locator(".ctx").count();
-  const first = () => pg.locator(".ctx").first();
-  const sub = () => pg.locator(".ctx").nth(1);
+  const menus = () => pg.locator(".ctx:not(.closing)").count();
+  const first = () => pg.locator(".ctx:not(.closing)").first();
+  const sub = () => pg.locator(".ctx:not(.closing)").nth(1);
   const items = (m: ReturnType<typeof sub>) =>
     m.locator("button[role=menuitem]").evaluateAll((bs) =>
       bs.map((b) => ({
@@ -448,7 +448,7 @@ test("menuOpensWithoutOvershoot", async () => {
   const sample = async (act: () => Promise<void>) => {
     await pg.evaluate(() => {
       const w = window as unknown as { __menuSamples: Promise<S[]>; __menuGo: () => void };
-      const n0 = document.querySelectorAll(".ctx").length;
+      const n0 = document.querySelectorAll(".ctx:not(.closing)").length;
       let go!: () => void;
       const started = new Promise<void>((r) => {
         go = r;
@@ -459,7 +459,7 @@ test("menuOpensWithoutOvershoot", async () => {
           t0 = performance.now();
         while (performance.now() - t0 < 400) {
           await new Promise(requestAnimationFrame);
-          const ms = document.querySelectorAll<HTMLElement>(".ctx");
+          const ms = document.querySelectorAll<HTMLElement>(".ctx:not(.closing)");
           if (ms.length <= n0) continue;
           const cs = getComputedStyle(ms[ms.length - 1]);
           out.push({
@@ -488,7 +488,7 @@ test("menuOpensWithoutOvershoot", async () => {
   };
   const top = summary(await sample(() => pg.locator('.bbar button[aria-label="More"]').click()));
   await pg
-    .locator(".ctx")
+    .locator(".ctx:not(.closing)")
     .first()
     .locator("button[role=menuitem]", { hasText: /^Theme$/ })
     .hover();

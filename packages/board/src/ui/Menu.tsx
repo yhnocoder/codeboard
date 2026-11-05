@@ -5,6 +5,8 @@ import { useOverlay } from "./overlay";
 import { useListNav } from "./hooks";
 import { TIP_DELAY } from "../state/timing";
 import { tune } from "../state/tune";
+import { shape } from "../state/look";
+import { reduceMotion } from "../state/motion";
 
 export type Item = {
   label: string;
@@ -80,7 +82,7 @@ const levels: Level[] = [];
 function exitCopy(el: HTMLElement, at: ParentNode | null) {
   const ms =
     parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--menu-exit")) * (100 / tune("animSpeed"));
-  if (!(ms > 0) || !at || !el.classList.contains("open")) return;
+  if (!(ms > 0) || reduceMotion() || !at || !el.classList.contains("open")) return;
   const c = el.cloneNode(true) as HTMLElement;
   c.inert = true;
   c.setAttribute("aria-hidden", "true");
@@ -114,6 +116,10 @@ function MenuList(p: {
   /** 点过的 keep 项（勾选状态跟着翻） */
   const [flipped, setFlipped] = createSignal<ReadonlySet<number>>(new Set());
   const checked = (it: Exclude<Item, null>, i: number) => !!it.checked !== flipped().has(i);
+  /** 指针下的那一项（能点的）。滑动的底（look.ts 的 glide，Warm Ink 的 .mpill）垫在键盘选中的、指针下的、开着二级菜单的那一项下面 */
+  const [hov, setHov] = createSignal<number | null>(null);
+  const hot = () => kbAt() ?? hov() ?? subOf()?.i ?? null;
+  let pill: HTMLSpanElement | undefined;
   const live = (it: Item) => !!it && !it.head && !it.disabled;
   const openSub = (i: number, kb: boolean) => {
     const b = btns[i];
@@ -154,6 +160,22 @@ function MenuList(p: {
     levels.splice(levels.indexOf(level), 1);
     exitCopy(el, el.parentNode ?? host);
   });
+  // 底只动 transform：换到另一项时滑过去（themes.css），从没有到有时直接出现在那一项下面再淡入。只在换项时量一次那一项的位置
+  createEffect(() => {
+    const i = hot(),
+      b = i === null ? undefined : btns[i];
+    if (!pill) return;
+    if (!b) return pill.classList.remove("on");
+    const was = pill.classList.contains("on");
+    if (!was) pill.style.transition = "none";
+    pill.style.transform = `translateY(${b.offsetTop}px)`;
+    pill.style.height = `${b.offsetHeight}px`;
+    if (!was) {
+      void pill.offsetWidth;
+      pill.style.removeProperty("transition");
+    }
+    pill.classList.add("on");
+  });
   onMount(() => {
     host = el.parentNode;
     // 右键菜单从点往右下开（up：从工具栏往上开）；二级菜单贴着父项往右开；放不下翻到另一边，太高就限高滚动
@@ -186,6 +208,7 @@ function MenuList(p: {
         data-nodrag
         onContextMenu={(e) => e.preventDefault()}
         onPointerMove={() => kbAt() !== null && setKbAt(null)}
+        onPointerLeave={() => setHov(null)}
       >
         <For each={p.items}>
           {(it, i) =>
@@ -203,6 +226,7 @@ function MenuList(p: {
                 aria-haspopup={it.sub ? "menu" : undefined}
                 aria-expanded={it.sub ? subOf()?.i === i() : undefined}
                 onPointerEnter={() => {
+                  setHov(it.disabled ? null : i());
                   if (it.sub && !it.disabled) openSub(i(), false);
                   else setSubOf(null);
                 }}
@@ -236,6 +260,9 @@ function MenuList(p: {
             )
           }
         </For>
+        <Show when={shape().glide}>
+          <span ref={pill} class="mpill" aria-hidden="true" />
+        </Show>
       </div>
       <Show when={subOf()} keyed>
         {(s) => (

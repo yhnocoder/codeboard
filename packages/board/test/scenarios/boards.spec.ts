@@ -186,10 +186,10 @@ async function lineMenu(h: Host, card: string, line: number, label: string) {
   ).toHaveCount(1);
   const b = (await l.boundingBox())!;
   await page.mouse.click(b.x + b.width + 260, b.y + b.height / 2, { button: "right" });
-  await page.locator(".ctx button").first().waitFor();
-  if (!(await page.locator(".ctx button", { hasText: label }).count()))
-    await page.locator(".ctx button", { hasText: /^Edit/ }).hover();
-  await page.locator(".ctx button", { hasText: label }).first().click();
+  await page.locator(".ctx:not(.closing) button").first().waitFor();
+  if (!(await page.locator(".ctx:not(.closing) button", { hasText: label }).count()))
+    await page.locator(".ctx:not(.closing) button", { hasText: /^Edit/ }).hover();
+  await page.locator(".ctx:not(.closing) button", { hasText: label }).first().click();
 }
 
 /** Ask a Question, then close it without writing anything: no question is left behind and nothing goes on the undo stack.
@@ -367,13 +367,13 @@ async function copyPathPointsIntoBoardFile() {
   const pg = h.page;
   const pick = async (label: string) => {
     const n = copied.length;
-    await pg.locator(".ctx button", { hasText: new RegExp(`^${label}$`) }).click();
+    await pg.locator(".ctx:not(.closing) button", { hasText: new RegExp(`^${label}$`) }).click();
     return until(h, `${label} copies a path`, () => copied[n]);
   };
   const toast = () => pg.locator(".toast").last().innerText();
 
   await pg.locator(`.card[data-id="${step.id}"] .chead`).click({ button: "right", position: { x: 200, y: 12 } });
-  await pg.locator(".ctx button", { hasText: /^Copy Path$/ }).waitFor();
+  await pg.locator(".ctx:not(.closing) button", { hasText: /^Copy Path$/ }).waitFor();
   await shot(h, "126-copy-path");
   const card = await pick("Copy Path");
   const file = run.host.store.fileOf("bPath")!;

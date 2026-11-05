@@ -1,4 +1,4 @@
-import { Show, For } from "solid-js";
+import { Show, For, createMemo, createEffect, createSignal } from "solid-js";
 import { state } from "./state/store";
 import { canUndo, canRedo, undo, redo } from "./state/changes";
 import * as C from "@codeboard/core/commands";
@@ -11,10 +11,10 @@ import { kbd } from "./keymap";
 import { openMenu, promptText } from "./ui/Menu";
 import { Icon } from "./ui/icons";
 import { StaticFormat } from "./ui/StaticFormat";
-import { startDraw } from "./state/mode";
+import { startDraw, modeIs } from "./state/mode";
 import { THEMES, EXPERIMENTAL_THEMES } from "@codeboard/core";
 import * as A from "./actions";
-import { look, traffic, setTraffic } from "./state/look";
+import { look, shape, traffic, setTraffic } from "./state/look";
 import { questionsOpen } from "./state/questions";
 import { legendOpen, setLegendOpen, setTreeOpen, treeOpen } from "./state/calls";
 import { shelfHot, shelfOpen } from "./state/shelf";
@@ -142,6 +142,31 @@ function Toolbar() {
       run: (el) => A.stickerPicker(el),
     },
   ];
+  // 正在用的工具（画 Section、连箭头、放贴纸）：滑动的底（look.ts 的 glide，Warm Ink 的 .tpill）垫在它下面，换工具时滑过去
+  const active = createMemo(() =>
+    modeIs("draw") ? "section" : modeIs("connect") ? "arrowLink" : modeIs("place") ? "sticker" : null,
+  );
+  let bar!: HTMLDivElement;
+  const [pillEl, setPillEl] = createSignal<HTMLSpanElement>();
+  // 底只动 clip-path（裁成那个按钮的大小，themes.css 里过渡）；从没有到有时直接裁到那个按钮再淡入。
+  // 只在换工具、工具栏折起或展开（按钮挪了位置）、底刚出现（换成 Warm Ink）时量一次按钮
+  createEffect(() => {
+    narrow();
+    const pill = pillEl();
+    const b = active() ? bar.querySelector<HTMLElement>(`.tbtn[data-on]`) : null;
+    if (!pill) return;
+    if (!b) return pill.classList.remove("on");
+    const was = pill.classList.contains("on");
+    if (!was) pill.style.transition = "none";
+    const r = bar.offsetWidth - b.offsetLeft - b.offsetWidth,
+      d = bar.offsetHeight - b.offsetTop - b.offsetHeight;
+    pill.style.clipPath = `inset(${b.offsetTop}px ${r}px ${d}px ${b.offsetLeft}px round 8.5px)`;
+    if (!was) {
+      void pill.offsetWidth;
+      pill.style.removeProperty("transition");
+    }
+    pill.classList.add("on");
+  });
   const more = (e: MouseEvent) => {
     const el = e.currentTarget as HTMLElement,
       [x, y] = at(el);
@@ -219,11 +244,12 @@ function Toolbar() {
   };
   return (
     <div class="over bbar">
-      <div class="pill">
+      <div class="pill" ref={bar}>
         <For each={narrow() ? tools.filter((t) => !t.fold) : tools}>
           {(t) => (
             <button
               class="tbtn"
+              data-on={active() === t.icon ? "" : undefined}
               aria-label={t.label}
               data-tip={t.tip ?? `New ${t.label}`}
               data-kbd={t.kbd}
@@ -252,6 +278,9 @@ function Toolbar() {
         <Show when={narrow()}>
           <span class="sep" />
           <Zoom />
+        </Show>
+        <Show when={shape().glide}>
+          <span ref={setPillEl} class="tpill" aria-hidden="true" />
         </Show>
       </div>
     </div>

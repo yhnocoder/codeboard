@@ -4,32 +4,41 @@ import { createMemo } from "solid-js";
 import type { ThemeId } from "@codeboard/core";
 import { state } from "./store";
 import { rooted, boardSignal } from "./root";
-import { FLASH_BRUSH, GHOST_DISPERSE } from "./timing";
+import { FLASH_BRUSH, FLASH_SWEEP, GHOST_DISPERSE } from "./timing";
 
 export const look = () => state.host.settings.theme;
 
 /** clear：直角折线绕到卡外时离卡边多远（route.ts 的 CLEAR），只有路面宽的材质要加大 */
 /** band / foot：代码卡显示色带（大标题）/ 底栏（Card.tsx 只在这些主题里建这两块） */
-/** stroke：brush = 实线画成毛笔笔画（填充的轮廓，@codeboard/core/canvas 的 brushLine）；虚线、点线照旧描边 */
+/** stroke：brush = 实线画成毛笔笔画（填充的轮廓，@codeboard/core/canvas 的 brushLine）；taper = 起点粗、往箭头均匀收细的
+ *  填充线（taperLine）；虚线、点线照旧描边 */
 /** paper：卡是一张毛边宣纸（每种卡的尺寸画一张图，state/ink.ts） */
 /** sect：brush = Section 的框是四笔枯笔（state/inkframe.ts），标题写在上边留的缺口里 */
 /** stamp：新出现的编号像印章落下（CodeHead.tsx 加 .stamp，动画在 themes.css） */
 /** ghost / flash：删卡的消失动画、跳到某行的闪动有多长（ms，乘 --t 前；不给 = timing.ts 的 GHOST_OUT / FLASH_MS） */
+/** glide：右键菜单悬停的那一行、工具栏正在用的工具下面垫一块会滑动的底（Menu.tsx .mpill、Chrome.tsx .tpill），不给整行上色 */
+/** scrollLine：卡头下面平时没有线，代码往下滚了才淡出一条细线（CodeBody.tsx 的 .hdl） */
+/** spawn：arrow = 顺着箭头新出来的卡（展开调用、换一个调用）先从起点画出箭头，卡再从箭头那里弹出来（actions/common.ts popAlong） */
 type Shape = {
   route: "curve" | "elbow";
-  head: "chevron" | "triangle" | "dot" | "car";
+  head: "chevron" | "triangle" | "dot" | "dart" | "car";
   port: "circle" | "square" | "diamond" | "plaza";
   clear?: number;
   band?: boolean;
   foot?: boolean;
-  stroke?: "brush";
+  stroke?: "brush" | "taper";
   paper?: "deckle";
   sect?: "brush";
   stamp?: boolean;
   ghost?: number;
   flash?: number;
+  glide?: boolean;
+  scrollLine?: boolean;
+  spawn?: "arrow";
 };
 const SHAPES: Partial<Record<ThemeId, Partial<Shape>>> = {
+  // Warm Ink（默认）：收细的暖墨线和小实心箭头；跳到某行是一道暖色从左扫到右；菜单、工具栏的底会滑；新卡顺着箭头出来
+  "warm-ink": { head: "dart", stroke: "taper", flash: FLASH_SWEEP, glide: true, scrollLine: true, spawn: "arrow" },
   classic: { head: "triangle" },
   drafting: { route: "elbow", head: "triangle", port: "square" },
   "soft-light": { head: "dot" },

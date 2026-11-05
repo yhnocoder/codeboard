@@ -155,7 +155,7 @@ async function pickimpl(res: Record<string, unknown>) {
 
   // 5. Expand Again re-picks: Triton as a second branch from the same call site
   await callIn(h, lay.id, "forward").click({ button: "right" });
-  await page.locator(".ctx button", { hasText: "Expand Again" }).click();
+  await page.locator(".ctx:not(.closing) button", { hasText: "Expand Again" }).click();
   await page.locator(".pop.k-impls .cand").nth(1).click(); // the picker comes with the host's reply
   await until(h, "the second branch is saved", () => linksOf(h).filter((l) => l.call?.name === "forward").length === 2);
   await idle(h);
@@ -165,12 +165,14 @@ async function pickimpl(res: Record<string, unknown>) {
   // 6. Unresolvable: Search “unified_attention” in All Languages → the string registration → dashed manual arrow
   await page.keyboard.press("Escape");
   await callIn(h, lay.id, "unified_attention").click({ button: "right" });
-  await page.locator(".ctx button").first().waitFor();
+  await page.locator(".ctx:not(.closing) button").first().waitFor();
   await idle(h);
   res.menu =
-    (await page.locator(".ctx button", { hasText: /Search “unified_attention” in All Languages/ }).count()) === 1 &&
-    (await page.locator(".ctx button", { hasText: "Draw Call Arrow Manually…" }).count()) === 1;
-  await page.locator(".ctx button", { hasText: /Search “unified_attention”/ }).click();
+    (await page
+      .locator(".ctx:not(.closing) button", { hasText: /Search “unified_attention” in All Languages/ })
+      .count()) === 1 &&
+    (await page.locator(".ctx:not(.closing) button", { hasText: "Draw Call Arrow Manually…" }).count()) === 1;
+  await page.locator(".ctx:not(.closing) button", { hasText: /Search “unified_attention”/ }).click();
   await page.locator(".pop.k-names .cand").first().waitFor();
   await idle(h);
   res.groups = await page.locator(".pop.k-names .grp-h").allTextContents();
@@ -187,7 +189,7 @@ async function pickimpl(res: Record<string, unknown>) {
 
   // 7. Draw Call Arrow Manually…: connect mode, click a card → manual Call arrow
   await callIn(h, lay.id, "forward").click({ button: "right" });
-  await page.locator(".ctx button", { hasText: "Draw Call Arrow Manually…" }).click();
+  await page.locator(".ctx:not(.closing) button", { hasText: "Draw Call Arrow Manually…" }).click();
   await idle(h);
   const fl2 = cardByQual(h, "FlashAttentionImpl.forward");
   await page.locator(`.card[data-id="${fl2?.id}"] .chead`).click({ position: { x: 160, y: 10 } });
@@ -364,13 +366,13 @@ async function crosslang(res: Record<string, unknown>) {
   const kLine = page.locator(`.card[data-id="${kern?.id}"] .src .l`).nth(2);
   const kb = (await kLine.boundingBox())!;
   await page.mouse.click(kb.x + kb.width - 30, kb.y + kb.height / 2, { button: "right" });
-  await page.locator(".ctx button").first().waitFor();
+  await page.locator(".ctx:not(.closing) button").first().waitFor();
   // the line menu when the right-click lands on the selected line, else the card menu's Edit ▸
-  if (!(await page.locator(".ctx button", { hasText: "Add Generated Code" }).count())) {
-    await page.locator(".ctx button", { hasText: /^Edit/ }).hover();
+  if (!(await page.locator(".ctx:not(.closing) button", { hasText: "Add Generated Code" }).count())) {
+    await page.locator(".ctx:not(.closing) button", { hasText: /^Edit/ }).hover();
   }
-  await page.locator(".ctx button", { hasText: "Add Generated Code" }).hover();
-  await page.locator(".ctx button", { hasText: "Paste from Clipboard" }).click();
+  await page.locator(".ctx:not(.closing) button", { hasText: "Add Generated Code" }).hover();
+  await page.locator(".ctx:not(.closing) button", { hasText: "Paste from Clipboard" }).click();
   await until(h, "the generated card is saved", () => h.board().cards.some((c) => c.kind === "code" && c.gen));
   await idle(h);
   const gen = h.board().cards.find((c) => c.kind === "code" && c.gen) as CodeCard | undefined;

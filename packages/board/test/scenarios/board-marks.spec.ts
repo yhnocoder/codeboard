@@ -128,7 +128,7 @@ test("boardMarksEdit", async () => {
   const page = h.page;
   // a ref's menu: Edit Mark… of the board it points into
   await page.locator(refSel("Convolution › tiled 二维卷积")).click({ button: "right" });
-  await page.locator(".ctx button", { hasText: "Edit Mark…" }).click();
+  await page.locator(".ctx:not(.closing) button", { hasText: "Edit Mark…" }).click();
   const input = page.locator(".pop.k-seal input.seal-in");
   await input.waitFor();
   await until(h, "the box has the keyboard", () => input.evaluate((e) => e === document.activeElement));
@@ -178,7 +178,7 @@ test("boardMarksEdit", async () => {
 
   // this board's own Mark, from the More menu: a command, undone with ⌘Z
   await page.locator('.bbar button[aria-label="More"]').click();
-  await page.locator(".ctx button", { hasText: "Edit Mark…" }).click();
+  await page.locator(".ctx:not(.closing) button", { hasText: "Edit Mark…" }).click();
   await input.waitFor();
   check("boardMarksOwnStarts", (await input.inputValue()) === "CompArch", await input.inputValue());
   await input.fill("GPU 架构");
@@ -201,7 +201,7 @@ test("boardMarksScreenshots", async () => {
     const clip = { x: box.x - 24, y: box.y - 24, width: box.width + 48, height: box.height + 48 };
     await h.page.screenshot({ path: path.join(dir, `refs-${tone}.png`), clip });
     await h.page.locator(refSel("Convolution › tiled 二维卷积")).click({ button: "right" });
-    await h.page.locator(".ctx button", { hasText: "Edit Mark…" }).click();
+    await h.page.locator(".ctx:not(.closing) button", { hasText: "Edit Mark…" }).click();
     const input = h.page.locator(".pop.k-seal input.seal-in");
     await input.fill("Mem&Data");
     await until(h, "the clash is shown", () => h.page.locator(".pop.k-seal .seal-hint.warn").count());

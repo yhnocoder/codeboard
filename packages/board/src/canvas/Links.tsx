@@ -17,7 +17,7 @@ import { live } from "../state/changes";
 import { sel, select } from "../state/selection";
 import { hoverBlock, keepBlock, leaveBlock, watchBlockHover } from "../state/blocks";
 import { portStyle } from "../state/hover";
-import { dragLink, setDragLink, rubber } from "../state/ui";
+import { dragLink, setDragLink, rubber, drawIn } from "../state/ui";
 import { foldOf, linkFadeAt } from "../state/fold";
 import { hoverLink, hoverCard, enterLink, leaveLink, watchHover } from "../state/hover";
 import { cam, toWorld, stillZ } from "../state/camera";
@@ -31,7 +31,16 @@ import { LinkLabel, sizeWatcher, type WatchSize } from "./Labels";
 import { LinkStickers } from "../stickers/Picker";
 import { track, undoGesture } from "../gesture";
 import { isBindHot } from "../state/stickers";
-import { anchorOn, turnAnchor, type Side, clamp, brushLine, brushSeed } from "@codeboard/core/canvas";
+import {
+  anchorOn,
+  turnAnchor,
+  type Side,
+  clamp,
+  brushLine,
+  brushSeed,
+  taperLine,
+  headPath,
+} from "@codeboard/core/canvas";
 import { type CarPose, type Road } from "./city";
 import { Car, Lane, trackTraffic } from "./Traffic";
 import { tiltOf } from "../state/tilt";
@@ -42,6 +51,7 @@ import {
   type Geo,
   handOf,
   headScale,
+  solidLine,
   STUB,
   headOrCar,
   geoFrom,
@@ -535,16 +545,23 @@ function linkDom(
       `ahead start ${hand() ? "chevron" : shape().head}${style()}${L.lost?.from ? " lost" : ""}${on() ? " on" : ""}`,
   );
   const portCls = createMemo(() => `port fc-${toHue()}${L.lost?.from ? " lost" : ""}`);
-  // 毛笔线（look.ts 的 stroke: "brush"，Ink Wash）：实线画成填充的笔画轮廓 + 三道飞白，描边的那条 .edge 留着（几何、导出照旧）但不画。
+  // 实线画成一块填充的形状（look.ts 的 stroke），描边的那条 .edge 留着（几何、导出照旧）但不画：
+  // brush（Ink Wash）= 毛笔笔画的轮廓 + 三道飞白；taper（Warm Ink）= 起点粗、往箭头收细的线。
   // 虚线、点线、点划线、对照线、手绘线照旧描边。只在这条线的几何变了时重算
-  const brush = createMemo(() => {
-    const gg = g();
-    if (!gg || shape().stroke !== "brush" || hand() || gutter()) return null;
-    if (L.style?.dash || L.gen || L.rpc || L.call?.ev?.kind === "manual") return null;
+  // 正在从起点画出来的线（drawIn，Warm Ink 顺着箭头出来的新卡）：只画到那里，箭头（tip）跟着画到的那一头走，最后三成里淡入
+  const brush = createMemo((): { d: string; fb?: string; tip?: string; tipO?: number } | null => {
+    const gg = g(),
+      st = shape().stroke;
+    if (!gg || !st || gutter() || !solidLine(L)) return null;
     const k = L.style?.width === 1 ? 0.6 : L.style?.width === 3 ? 1.6 : 1;
-    return brushLine(gg.d, brushSeed(L.id), 1.5 * k);
+    if (st === "brush") return brushLine(gg.d, brushSeed(L.id), 1.5 * k);
+    const t = drawIn(L.id),
+      tp = taperLine(gg.d, 2.5 * k, 0.9 * k, t ?? 1);
+    if (t === undefined || !tp.end || !gg.head) return { d: tp.d };
+    const e = tp.end;
+    return { d: tp.d, tip: headPath("dart", e.x, e.y, e.ux, e.uy, headScale(L)), tipO: Math.max(0, (t - 0.7) / 0.3) };
   });
-  const brushCls = createMemo(() => `brush${style()}${L.lost ? " lost" : ""}${on() ? " on" : ""}`);
+  const brushCls = createMemo(() => `${shape().stroke}${style()}${L.lost ? " lost" : ""}${on() ? " on" : ""}`);
   const line = (
     <g>
       <Show when={g()}>
@@ -565,6 +582,9 @@ function linkDom(
                 <Show when={b().fb}>
                   <path class="feibai" d={b().fb} />
                 </Show>
+                <Show when={b().tip}>
+                  <path class={headCls()} d={b().tip} style={{ opacity: b().tipO }} />
+                </Show>
               </>
             )}
           </Show>
@@ -574,7 +594,7 @@ function linkDom(
           <Show when={city() && !gutter() && !hand()}>
             <Lane d={g()!.d} road={road} s={headScale(L)} start={!!g()!.tail} end={!!g()!.head} />
           </Show>
-          <Show when={g()!.head}>
+          <Show when={g()!.head && !brush()?.tip}>
             <Head cls={headCls()} d={g()!.head!} road={road} hand={!!hand()} />
           </Show>
           <Show when={g()!.tail}>

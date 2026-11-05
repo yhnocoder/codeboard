@@ -82,7 +82,7 @@ test("emptyNewNoteSurvivesDrag", async () => {
   await idle(h);
   const left = await notes(h);
   await pg.locator('.bbar button[aria-label="More"]').click();
-  const undoOff = await pg.locator(".ctx button", { hasText: /^Undo/ }).isDisabled();
+  const undoOff = await pg.locator(".ctx:not(.closing) button", { hasText: /^Undo/ }).isDisabled();
   await pg.keyboard.press("Escape");
   check("emptyNewNoteSurvivesDrag empty note discarded on click away", left === 0 && undoOff, { left, undoOff });
 
@@ -183,7 +183,7 @@ test("newCardsDefaultWidths", async () => {
   };
   const menu = (tool: string, item: string) => async () => {
     await pg.locator(`.bbar button[aria-label="${tool}"]`).click();
-    await pg.locator(".ctx button", { hasText: item }).click();
+    await pg.locator(".ctx:not(.closing) button", { hasText: item }).click();
   };
   const w = {
     note: await made("Note", key(80, 120, "n"), "A new note, wide enough for a sentence or two"),

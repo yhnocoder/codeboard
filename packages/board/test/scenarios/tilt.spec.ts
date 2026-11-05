@@ -70,7 +70,7 @@ test("tiltCardFromMenu", async () => {
   const before = await probe(h);
   check("tilt-starts-straight", before.deg === 0 && before.off < 0.75, before);
   await pg.locator('.card[data-id="n"] .nbody').click({ button: "right" });
-  await pg.locator(".ctx button[role=menuitem]", { hasText: /^Tilt/ }).click();
+  await pg.locator(".ctx:not(.closing) button[role=menuitem]", { hasText: /^Tilt/ }).click();
   await until(h, "the host's board has n tilted", () => h.board().cards.find((c) => c.id === "n")?.tilt === true);
   await idle(h);
   const on = await probe(h);
@@ -85,7 +85,7 @@ test("tiltCardFromMenu", async () => {
   await shot(h, "selected");
   // the menu shows it checked; one undo step takes it off
   await pg.locator('.card[data-id="n"] .nbody').click({ button: "right" });
-  const item = pg.locator(".ctx button[role=menuitem]", { hasText: /^Tilt/ });
+  const item = pg.locator(".ctx:not(.closing) button[role=menuitem]", { hasText: /^Tilt/ });
   check("tilt-menu-checked", (await item.locator(".ck svg").count()) === 1);
   await pg.keyboard.press("Escape");
   await pg.keyboard.press("Meta+z");
@@ -175,7 +175,7 @@ test("tiltShortcutMultiSelect", async () => {
   await shot(h, "multi");
   // the menu for a multi-selection has it too, checked; it turns them all back
   await pg.locator('.card[data-id="n"] .nbody').click({ button: "right" });
-  const item = pg.locator(".ctx button[role=menuitem]", { hasText: /^Tilt/ });
+  const item = pg.locator(".ctx:not(.closing) button[role=menuitem]", { hasText: /^Tilt/ });
   check("tilt-multi-menu-checked", (await item.locator(".ck svg").count()) === 1);
   await item.click();
   await until(h, "both cards straight again", () => h.board().cards.every((c) => !c.tilt));

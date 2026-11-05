@@ -55,10 +55,10 @@ function splitBoard(): Board {
 const notes = (h: Host) => h.board().cards.filter((c): c is NoteCard => c.kind === "note");
 const openMenu = async (h: Host, id: string) => {
   await h.page.locator(`.card[data-id="${id}"] .nbody`).click({ button: "right", position: { x: 40, y: 12 } });
-  await h.page.locator(".ctx button").first().waitFor();
+  await h.page.locator(".ctx:not(.closing) button").first().waitFor();
   await idle(h);
 };
-const item = (h: Host) => h.page.locator(".ctx button", { hasText: "Split by Headings" });
+const item = (h: Host) => h.page.locator(".ctx:not(.closing) button", { hasText: "Split by Headings" });
 /** Every card's box on screen, by id */
 const boxes = (h: Host) =>
   h.page.locator(".card").evaluateAll((els) =>

@@ -265,7 +265,7 @@
       "files": [
         "packages/board/src/canvas/{Links,Labels}.tsx",
         "packages/board/src/canvas/routes.ts",
-        "packages/core/src/canvas/{labelpos,route,hand,brush}.ts",
+        "packages/core/src/canvas/{labelpos,route,hand,brush,taper}.ts",
         "packages/board/src/actions/{links,annots}.ts",
         "packages/core/src/commands/links.ts",
         "packages/core/src/linklabel.ts",
@@ -348,7 +348,7 @@
         "packages/board/src/actions/settings.ts",
         "packages/host/src/settings.ts",
         "packages/core/src/settings.ts",
-        "packages/board/test/scenarios/{themes,tilt,ink-wash}.spec.ts"
+        "packages/board/test/scenarios/{themes,tilt,ink-wash,warm-ink}.spec.ts"
       ],
       "scenarios": [
         "settingsPage",

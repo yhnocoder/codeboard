@@ -61,13 +61,13 @@ async function dockFits(res: Record<string, unknown>) {
     if (w === 540) {
       // 收起来的按钮在 ⋯ 里：New Web Card 能用，Call Tree 能开
       await h.page.locator('.bbar button[aria-label="More"]').click();
-      await h.page.locator(".ctx button").first().waitFor();
+      await h.page.locator(".ctx:not(.closing) button").first().waitFor();
       await idle(h);
       res.folded = await h.page
-        .locator(".ctx button")
+        .locator(".ctx:not(.closing) button")
         .allInnerTexts()
         .then((t) => t.filter((x) => /New Web Card|Call Tree|Arrow Legend|Add a Sticker/.test(x)).length);
-      await h.page.locator(".ctx button", { hasText: "Call Tree" }).click();
+      await h.page.locator(".ctx:not(.closing) button", { hasText: "Call Tree" }).click();
       await idle(h);
       res.tree = await h.page.locator(".cpanel.ctree").count();
       if (res.folded !== 4 || res.tree !== 1) ok = false;

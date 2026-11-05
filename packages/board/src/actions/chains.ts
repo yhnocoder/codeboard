@@ -24,7 +24,7 @@ import { select } from "../state/selection";
 import { toast } from "../state/toast";
 import { openPop, type ImplPop, type NamesPop } from "../state/pop";
 import { ask } from "../host";
-import { K, hostRect, popCard } from "./common";
+import { K, hostRect, popCard, popAlong } from "./common";
 import { expandCall, placeExpanded, isLibCall } from "./flow";
 import { linksInto } from "./nav";
 import { boardRef } from "../state/root";
@@ -157,7 +157,7 @@ export async function swapAlt(linkId: string, k: number, o: { label?: string; dr
   });
   if (kept) toast(`Kept ${old ? cardTitle(old) : "the previous card"}: it has its own arrows`);
   select({ cards: [newId] });
-  requestAnimationFrame(() => popCard(newId));
+  requestAnimationFrame(() => popAlong(newId));
 }
 
 // ⌥ 按着没有（点灰色备选时）：备选框是 HTML 元素，点击事件里读

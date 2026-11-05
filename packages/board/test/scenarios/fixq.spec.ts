@@ -260,16 +260,16 @@ async function varmenu(res: Record<string, unknown>) {
   await idle(h);
   await page.locator(`.card[data-id="${sch.id}"] .chead`).click({ button: "right", position: { x: 140, y: 12 } });
   await page
-    .locator(".ctx button", { hasText: /^Add Variant/ })
+    .locator(".ctx:not(.closing) button", { hasText: /^Add Variant/ })
     .first()
     .click();
-  const it = page.locator(".ctx button", { hasText: "Other Worktree" }).first();
+  const it = page.locator(".ctx:not(.closing) button", { hasText: "Other Worktree" }).first();
   await it.waitFor();
   await idle(h); // the submenu comes from the host's variantSources reply
   res.item = await it.evaluate((el) => {
     const lb = el.querySelector(".lb") as HTMLElement,
       sm = el.querySelector("small") as HTMLElement;
-    const menu = el.closest(".ctx")!.getBoundingClientRect();
+    const menu = el.closest(".ctx:not(.closing)")!.getBoundingClientRect();
     return {
       h: Math.round(el.getBoundingClientRect().height),
       lbH: Math.round(lb.getBoundingClientRect().height),
@@ -357,7 +357,7 @@ async function segsep(res: Record<string, unknown>) {
   await page.locator(`.card[data-id="cThree"] .chead`).click({ position: { x: 400, y: 10 }, modifiers: ["Shift"] });
   await expect(page.locator(".card.sel")).toHaveCount(2);
   await page.locator(`.card[data-id="cThree"] .chead`).click({ position: { x: 400, y: 10 }, button: "right" });
-  const item = page.locator(".ctx button", { hasText: "Merge into One Card" });
+  const item = page.locator(".ctx:not(.closing) button", { hasText: "Merge into One Card" });
   await item.waitFor();
   res.mergeDisabled = await item.isDisabled();
   await item.click();
@@ -426,7 +426,7 @@ async function fithide(res: Record<string, unknown>) {
   const card = page.locator(`.card[data-id="${c.id}"]`);
   const w0 = await card.evaluate((el) => (el as HTMLElement).offsetWidth);
   await card.locator(".chead").click({ position: { x: 200, y: 10 }, button: "right" });
-  await page.locator(".ctx button", { hasText: "Fit Content" }).click();
+  await page.locator(".ctx:not(.closing) button", { hasText: "Fit Content" }).click();
   await until(h, "Fit Content changes the card's width", () =>
     card.evaluate((el, w0) => (el as HTMLElement).offsetWidth !== w0, w0),
   );
