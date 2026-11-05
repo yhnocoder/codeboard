@@ -10,6 +10,6 @@ export type ViewPlace = { preserveFocus?: boolean; side?: boolean; here?: boolea
 export interface HostEnv {
   globalState: StateStore;
   /** side = beside the current editor, here = in the current editor group; otherwise where the other boards are.
-   *  assets = the folder the board's images are in, which the view must be able to read */
-  openView(id: string, title: string, place: ViewPlace, assets: string): BoardView;
+   *  roots = the folders the view must be able to read: the board's images and their smaller copies (BoardHub.viewRoots) */
+  openView(id: string, title: string, place: ViewPlace, roots: string[]): BoardView;
 }

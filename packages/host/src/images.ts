@@ -47,6 +47,12 @@ export async function readAsset(store: Storage, file: string): Promise<string> {
   return `data:${mime};base64,${buf.toString("base64")}`;
 }
 
+/** A smaller copy of an Image card's image (thumbs/index.ts), width wide: what the board shows at that size */
+export function thumbOf(cx: HostContext, store: Storage, file: string, width: number) {
+  if (!/^[\w.-]+$/.test(file) || file.startsWith(".")) throw new Error(`Bad asset name ${file}`);
+  return cx.thumbs.get(path.join(store.assetsDir(), file), width);
+}
+
 /**
  * 拖到白板上、只给了 URI 的图片文件（VS Code 资源管理器里拖来的，或系统拖放只带 URI 的）读成 data: URL，交给白板照粘贴的图存。
  * 经编辑器读（工作区外的 file:、远程的 vscode-remote: 都行）；认不出、太大时抛错（消息给用户看）

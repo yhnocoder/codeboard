@@ -38,6 +38,18 @@ function buildId() {
   return `dev ${head}${run("status", "--porcelain", "--untracked-files=no") ? " dirty" : ""}`;
 }
 
+// The host's thumbnail worker (smaller copies of big images, decoded in pure JavaScript) is a worker thread with its own file
+const thumbs = {
+  entryPoints: [require.resolve("@codeboard/host/thumbs-worker")],
+  bundle: true,
+  outfile: "dist/thumbs.js",
+  platform: "node",
+  format: "cjs",
+  target: "node18",
+  sourcemap: true,
+  logLevel: "info",
+};
+
 const opts = {
   entryPoints: ["src/extension.ts"],
   bundle: true,
@@ -77,5 +89,5 @@ async function writeContributes(check) {
 await writeContributes(!!process.env.CI || process.argv.includes("--check"));
 // --contributes: only package.json (npm run check writes it before the unit tests read it, not halfway through them)
 if (process.argv.includes("--contributes")) process.exit(0);
-if (process.argv.includes("--watch")) await (await context(opts)).watch();
-else await build(opts);
+if (process.argv.includes("--watch")) await Promise.all([context(opts), context(thumbs)].map(async (c) => (await c).watch()));
+else await Promise.all([build(opts), build(thumbs)]);

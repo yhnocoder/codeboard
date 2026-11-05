@@ -24,6 +24,7 @@ export async function activate(ctx: vscode.ExtensionContext) {
   const h = startHost(ws, webviews.env(), {
     wasmDir: path.join(ctx.extensionUri.fsPath, "dist"),
     mediaDir: path.join(ctx.extensionUri.fsPath, "media", "board"),
+    thumbWorker: path.join(ctx.extensionUri.fsPath, "dist", "thumbs.js"),
   });
   sub(h);
   flushOnExit = h.flush;

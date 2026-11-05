@@ -8,6 +8,8 @@ import {
   createEffect,
   createRenderEffect,
   For,
+  createSignal,
+  untrack,
   type JSX,
   type Component,
 } from "solid-js";
@@ -72,6 +74,8 @@ import {
 import { tiltOf, trackTilt } from "../state/tilt";
 import { aiJobOn } from "../state/imageai";
 import { AiBusy } from "../ui/AiBusy";
+import { stillZ } from "../state/camera";
+import { askThumb, thumbable, thumbStep } from "./thumbs";
 
 const EPORT_SIDE: Record<"t" | "r" | "b" | "l", LinkSide> = { t: "top", r: "right", b: "bottom", l: "left" };
 
@@ -800,8 +804,49 @@ function Desc(p: { id: string; desc?: string }) {
 
 function ImageView(p: { card: ImageCard }) {
   const own = () => p.card.src.startsWith("data:") || /^https?:/.test(p.card.src);
-  const src = () => (own() ? p.card.src : `${state.host.assetBase}/${p.card.src}`);
+  const full = () => (own() ? p.card.src : `${state.host.assetBase}/${p.card.src}`);
   let box!: HTMLDivElement, img!: HTMLImageElement;
+  // the copy shown (cards/thumbs.ts): a smaller one of a big assets/ PNG or JPEG, stepped up as the user zooms in
+  const [shown, setShown] = createSignal<string>();
+  const [natural, setNatural] = createSignal<{ width: number; height: number }>();
+  let want = 0,
+    of = "";
+  const show = (url: string, step: number) => {
+    if (!untrack(shown)) return void setShown(url);
+    // decoded before it replaces the copy on screen: no blank frame
+    const next = new Image();
+    next.src = url;
+    next.decode().then(
+      () => want === step && setShown(url),
+      () => want === step && setShown(url),
+    );
+  };
+  createEffect(() => {
+    const src = p.card.src,
+      base = state.host.thumbBase;
+    if (own() || !base || !thumbable(src)) {
+      want = 0;
+      setShown(full());
+      return;
+    }
+    if (src !== of) {
+      of = src;
+      want = 0;
+    }
+    // a card off screen keeps the copy it has: zooming in on another part of the board does not load its original
+    if (want && offscreen(p.card.id)) return;
+    const step = thumbStep(rectOf(p.card).w, stillZ());
+    if (step <= want) return;
+    want = step;
+    if (step === Infinity) return show(full(), step);
+    void askThumb(src, step).then((a) => {
+      if (want !== step || of !== src) return;
+      if (a) setNatural({ width: a.width, height: a.height });
+      show(a?.file ? `${base}/${a.file}` : full(), step);
+      // no smaller copy at this width: none at a larger one either
+      if (!a?.file) want = Infinity;
+    });
+  });
   // a GIF or animated SVG plays as a Note's image does (md/anim.ts), standing on the card's frame unless it always plays
   createEffect(() => {
     const at = own() ? p.card.src : `assets/${p.card.src}`;
@@ -813,11 +858,17 @@ function ImageView(p: { card: ImageCard }) {
     <>
       {/* 跟 Note 一样没有标题栏：整张图都能拖，菜单用右键 */}
       <div class="imgb" data-drag ref={box}>
+        {/* data-full: the original, for export (actions/export.ts); data-w: its width, a copy's naturalWidth is not (measure.ts) */}
         <img
           ref={img}
-          src={src()}
+          src={shown()}
+          data-full={full()}
+          data-w={natural()?.width}
+          style={natural() ? { "aspect-ratio": `${natural()!.width} / ${natural()!.height}` } : undefined}
           alt={p.card.alt ?? ""}
           draggable={false}
+          decoding="async"
+          loading="lazy"
           data-frame={p.card.frame}
           data-loop={p.card.loop ? "" : undefined}
         />

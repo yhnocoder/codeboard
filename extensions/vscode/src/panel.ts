@@ -56,7 +56,7 @@ export class BoardWebviews {
           await this.ctx.globalState.update(k, v);
         },
       },
-      openView: (id, title, place, assets) => {
+      openView: (id, title, place, roots) => {
         const col = place.side
           ? vscode.ViewColumn.Beside
           : place.here
@@ -68,7 +68,7 @@ export class BoardWebviews {
           { viewColumn: col, preserveFocus: place.preserveFocus },
           { enableScripts: true, retainContextWhenHidden: true },
         );
-        return this.setup(panel, id, assets);
+        return this.setup(panel, id, roots);
       },
     };
   }
@@ -79,17 +79,20 @@ export class BoardWebviews {
       panel.dispose();
       return;
     }
-    hub.attach(id, this.setup(panel, id, hub.store.assetsDir()));
+    hub.attach(id, this.setup(panel, id, hub.viewRoots()));
   }
 
   private boardColumn() {
     return [...this.open].map((p) => p.viewColumn).find((c) => c);
   }
 
-  /** assets = the folder of the board's images: the webview may read it */
-  private setup(panel: vscode.WebviewPanel, id: string, assets: string): BoardView {
+  /** roots = the folders of the board's images and their smaller copies: the webview may read them */
+  private setup(panel: vscode.WebviewPanel, id: string, roots: string[]): BoardView {
     const media = vscode.Uri.joinPath(this.ctx.extensionUri, "media");
-    panel.webview.options = { enableScripts: true, localResourceRoots: [media, vscode.Uri.file(assets)] };
+    panel.webview.options = {
+      enableScripts: true,
+      localResourceRoots: [media, ...roots.map((r) => vscode.Uri.file(r))],
+    };
     panel.iconPath = vscode.Uri.joinPath(media, "icon.svg");
     panel.webview.html = this.html(panel.webview, id);
     this.open.add(panel);

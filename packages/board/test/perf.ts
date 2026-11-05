@@ -1,8 +1,8 @@
-// Usage: node packages/board/test/run-perf.mjs [--cards 240] [--notes 200] (a board of Notes with realistic Markdown: open, pan, zoom, enter edit, type) [--runs 3] [--json out.json] [--quick] [--theme ink-wash] [--light] [--traffic] (City: green light, cars driving) [--profile <step>] [--trace <step>] [--steps <step>] [--long <step>] [--stop pinch] [--inval <step>] [--anim] (--anim: the line and corner stickers are animated GIFs from a sticker pack; --inval counts what invalidated style and layout; --stop pinch: end each run after the camera steps; --long breaks down each dropped frame, LONG_OVER=8.3 each frame over that many ms; --steps prints each step's time, the board's classes and camera)
+// Usage: node packages/board/test/run-perf.mjs [--cards 240] [--notes 200] (a board of Notes with realistic Markdown: open, pan, zoom, enter edit, type) [--runs 3] [--json out.json] [--quick] [--theme ink-wash] [--light] [--traffic] (City: green light, cars driving) [--profile <step>] [--trace <step>] [--steps <step>] [--long <step>] [--stop pinch] [--inval <step>] [--anim] [--persona] [--scale 2] (--persona: a board like a real study board, Chinese Notes dense with math and Image cards of big screenshots, through the real host: load, pan, zoom, pinch, zoomOutIn, dragImage / dragNote / dragCode; --anim: the line and corner stickers are animated GIFs from a sticker pack; --inval counts what invalidated style and layout; --stop pinch: end each run after the camera steps; --long breaks down each dropped frame, LONG_OVER=8.3 each frame over that many ms; --steps prints each step's time, the board's classes and camera)
 // Each scenario reports wall clock (action → next frame painted), main-thread busy time (CDP TaskDuration) and frame times
 // (frameP95 / frameMax / over16 / over8: main-thread task durations; the 60 fps budget is 16.7 ms, 120 fps 8.3 ms).
 import * as fs from "node:fs";
-import { ready, openBoard, launch, symCard, files, type Host } from "./harness";
+import { ready, openBoard, launch, symCard, files, REPO, type Host } from "./harness";
 import {
   cornerAt,
   emptyBoard,
@@ -18,7 +18,9 @@ import {
   type Skeleton,
 } from "@codeboard/core";
 import type { CDPSession } from "playwright-core";
-import { faceFrames, gif } from "@codeboard/host/testing";
+import { faceFrames, gif, png } from "@codeboard/host/testing";
+import * as path from "node:path";
+import { realHost } from "./realhost";
 
 const arg = (k: string, d: string) => {
   const i = process.argv.indexOf(`--${k}`);
@@ -1224,10 +1226,268 @@ async function focusCard(h: Host, id: string) {
   await raf(h);
 }
 
+// --persona: a board like the ones people study with (Linda's "Multidimensional grids", 41 cards): Notes of long Chinese prose with
+// dense inline math (tens of $…$ each), display math and a big table, code cards, and Image cards of big screenshots
+// (~2400 × 1800, shown ~480 px wide; smaller ones shown 280) that the real host shows as smaller copies (host/src/thumbs).
+// Opened through the real host (realhost.ts) with its thumbnail worker, so load includes making the copies
+const ZH = [
+  "这一段讲的是网格怎么在多个维度上展开",
+  "每个线程块负责输出矩阵的一小块",
+  "先把全局内存里的数据搬进共享内存，再在寄存器里累加",
+  "边界上不满一个块的地方要单独处理",
+  "这样做的好处是访存是合并的，带宽利用率高",
+  "注意步长和维度的顺序，行优先和列优先会差很多",
+  "如果维度不能整除块大小，就要多发一个块",
+  "调度器按顺序把块分给每个流式多处理器",
+];
+const MATH = [
+  "$x_{i,j}$",
+  "$\\mathbf{A} \\in \\mathbb{R}^{m \\times n}$",
+  "$\\lceil N / B \\rceil$",
+  "$\\sum_{k=0}^{K-1} a_{ik} b_{kj}$",
+  "$\\text{blockIdx}.x \\cdot B + \\text{threadIdx}.x$",
+  "$O(n^3)$",
+  "$\\alpha \\cdot \\beta$",
+  "$t \\in [0, T)$",
+  "$\\frac{M}{B_m} \\times \\frac{N}{B_n}$",
+  "$s = \\sqrt{d_k}$",
+];
+function personaNote(i: number): string {
+  const para = (k: number) =>
+    Array.from({ length: 9 }, (_, j) => `${ZH[(i + k + j) % ZH.length]}，${MATH[(i * 3 + k + j) % MATH.length]}`).join(
+      "；",
+    ) + "。";
+  const table =
+    i % 4 === 0
+      ? [
+          "| 维度 | 块大小 | 网格大小 | 每块线程 | 说明 |",
+          "| --- | --- | --- | --- | --- |",
+          ...Array.from(
+            { length: 10 },
+            (_, r) =>
+              `| ${r + 1} | $B_${r} = ${2 ** (r % 6)}$ | $\\lceil N_${r} / B_${r} \\rceil$ | ${32 * (r + 1)} | ${ZH[r % ZH.length]} |`,
+          ),
+          "",
+        ]
+      : [];
+  return [
+    `## ${i + 1}. 多维网格 ${MATH[i % MATH.length]}`,
+    "",
+    para(0),
+    "",
+    para(1),
+    "",
+    "$$",
+    "C_{ij} = \\sum_{k=0}^{K-1} A_{ik} B_{kj}, \\quad i < M,\; j < N",
+    "$$",
+    "",
+    para(2),
+    "",
+    ...table,
+    para(3),
+  ].join("\n");
+}
+/** A screenshot-like picture: a grid, dark text-like rows and a few coloured blocks, different for each seed */
+const shot = (w: number, h: number, seed: number) =>
+  png(w, h, (x, y) => {
+    if (x % 48 === 0 || y % 48 === 0) return [40, 40, 48, 255];
+    const row = Math.floor(y / 24),
+      col = Math.floor(x / 96);
+    if (y % 24 > 6 && y % 24 < 14 && (row * 7 + col * 3 + seed) % 5 < 3 && x % 96 < 80) return [30, 30, 36, 255];
+    if ((row + col + seed) % 11 === 0) return [200 - seed * 10, 90 + seed * 12, 60, 255];
+    return [248, 247, 242, 255];
+  });
+/** The board and its assets/ files */
+export function personaBoard(): { board: Board; assets: Record<string, Buffer> } {
+  const b = emptyBoard("persona", "perf · persona");
+  const assets: Record<string, Buffer> = {};
+  const defs = [...files.entries()].flatMap(([f, x]) =>
+    x.a.symbols.filter((s) => s.kind === "def" && s.end - s.start < 60).map((s) => ({ f, s })),
+  );
+  // rows like Linda's: Notes 420 wide, big images 480, small ones 280, code 560
+  let y = 0;
+  for (let r = 0; r < 5; r++) {
+    let x = 0;
+    const row: { c: Board["cards"][number]; w: number }[] = [];
+    const note = (i: number) =>
+      row.push({
+        c: { id: `n${i}`, kind: "note", md: personaNote(i), look: "note" } as Board["cards"][number],
+        w: 420,
+      });
+    note(r * 4);
+    note(r * 4 + 1);
+    const big = `big${r}.png`;
+    assets[big] = shot(r % 2 ? 2492 : 2460, r % 2 ? 1764 : 1796, r);
+    row.push({ c: { id: `i${r}`, kind: "image", src: big } as Board["cards"][number], w: 480 });
+    if (r < 4) {
+      const small = `small${r}.png`;
+      assets[small] = shot(900, 904, r + 5);
+      row.push({ c: { id: `j${r}`, kind: "image", src: small } as Board["cards"][number], w: 280 });
+    }
+    note(r * 4 + 2);
+    note(r * 4 + 3);
+    const d = defs[(r * 7) % defs.length],
+      d2 = defs[(r * 7 + 3) % defs.length];
+    row.push({ c: symCard(d.f, d.s), w: 560 }, { c: symCard(d2.f, d2.s), w: 560 });
+    for (const { c, w } of row) {
+      b.cards.push(c);
+      b.place[c.id] = { x, y, w };
+      x += w + 60;
+    }
+    y += 1100;
+  }
+  // arrows from each row's first Note to its code and image cards, and down to the next row
+  for (let r = 0; r < 5; r++) {
+    const ids = b.cards.filter((c) => b.place[c.id].y === r * 1100).map((c) => c.id);
+    for (const to of ids.filter((id) => !id.startsWith("n")))
+      b.links.push({ id: uid("l"), from: { card: ids[0] }, to: { card: to } });
+    if (r < 4) b.links.push({ id: uid("l"), from: { card: ids[1] }, to: { card: `n${(r + 1) * 4}` } });
+  }
+  b.cam = { x: 80, y: 80, z: 1 };
+  stampBorn(b);
+  return { board: b, assets };
+}
+
+/** A point of the card that grabs it (its drag handle, not under an arrow, a button or an editor) */
+async function grabPoint(h: Host, id: string) {
+  return h.page.evaluate((id) => {
+    const card = document.querySelector(`.card[data-id="${id}"]`)!;
+    const head = (card.querySelector("[data-drag]") ?? card).getBoundingClientRect();
+    for (const fy of [0.5, 0.3, 0.7, 0.1])
+      for (let x = head.left + 6; x < head.right - 6; x += 6) {
+        const y = head.top + Math.min(head.height, 40) * fy;
+        const e = document.elementFromPoint(x, y);
+        if (
+          e?.closest(".card")?.getAttribute("data-id") === id &&
+          e.closest("[data-drag]") &&
+          !e.closest("button, .step, [contenteditable]")
+        )
+          return { x, y };
+      }
+    throw new Error(`no point to grab card ${id} by`);
+  }, id);
+}
+
+let personaFiles: ReturnType<typeof personaBoard> | undefined;
+async function personaOnce() {
+  await ready();
+  personaFiles ??= personaBoard();
+  const { board, assets } = personaFiles;
+  const browser = await launch();
+  let cdp!: CDPSession;
+  const fails: string[] = [];
+  const fail = (c: string, d: string) => void fails.push(`${c}: ${d.slice(0, 200)}`);
+  const run = await realHost(
+    [board],
+    { openPage: (o) => openBoard(browser, o, { fail }), afterTest: () => {}, fail },
+    {
+      thumbWorker: path.join(REPO, "test-out/harness/thumbs-worker.cjs"),
+      page: {
+        light: process.argv.includes("--light"),
+        scale: +arg("scale", "1"),
+        settings: THEME ? ({ theme: THEME } as any) : undefined,
+        beforeLoad: async (page) => {
+          cdp = await page.context().newCDPSession(page);
+          await cdp.send("Performance.enable");
+        },
+      },
+    },
+  );
+  const dir = run.host.store.assetsDir();
+  fs.mkdirSync(dir, { recursive: true });
+  for (const [f, b] of Object.entries(assets)) fs.writeFileSync(path.join(dir, f), b);
+  const res: Record<string, unknown> = {
+    persona: true,
+    cards: board.cards.length,
+    images: board.cards.filter((c) => c.kind === "image").length,
+    katex: [...board.cards].reduce((n, c) => n + (c.kind === "note" ? (c.md.match(/\$/g)?.length ?? 0) / 2 : 0), 0),
+  };
+  const t0 = performance.now();
+  const h = await run.open(board.id);
+  // Load: init received → all cards painted; then → the Image cards in view showing their image
+  const ld = await h.page.waitForFunction(
+    (n) => document.querySelectorAll(".card").length >= n && performance.now() - (window as any).__tInit,
+    board.cards.length,
+    { timeout: 60000 },
+  );
+  res.load = +(+(await ld.jsonValue())).toFixed(0);
+  const shown = await h.page.waitForFunction(
+    () => {
+      const inView = [...document.querySelectorAll<HTMLImageElement>(".card.image img")].filter((i) => {
+        const r = i.getBoundingClientRect();
+        return r.right > 0 && r.bottom > 0 && r.left < innerWidth && r.top < innerHeight;
+      });
+      return (
+        inView.length &&
+        inView.every((i) => i.complete && i.naturalWidth) &&
+        performance.now() - (window as any).__tInit
+      );
+    },
+    null,
+    { timeout: 60000 },
+  );
+  res.imagesShown = +(+(await shown.jsonValue())).toFixed(0);
+  res.openTotal = +(performance.now() - t0).toFixed(0);
+  await h.page.waitForTimeout(1500);
+  res.idleBusy1s = +(await idle(h, cdp, 1000)).toFixed(1);
+
+  const zoomStep = async (dy: number) => {
+    await h.page.keyboard.down("Control");
+    await h.page.mouse.wheel(0, dy);
+    await h.page.keyboard.up("Control");
+  };
+  await h.page.mouse.move(700, 450);
+  res.pan = sum(await steps(h, cdp, 60, async (i) => void (await h.page.mouse.wheel(i % 3 ? 0 : 60, 40)), "pan"));
+  res.zoom = sum(await steps(h, cdp, 40, (i) => zoomStep(i < 20 ? 30 : -30), "zoom"));
+  res.pinch = sum(await steps(h, cdp, 100, (i) => zoomStep(i < 50 ? 5 : -5), "pinch"));
+  // From card level (100%) out through the summary cut to the smallest zoom, and back in; the rest after each direction is in
+  // the measured window, so the re-raster when the camera stops is in it too
+  await focusCard(h, "n0");
+  res.zoomOutIn = sum(
+    await steps(
+      h,
+      cdp,
+      62,
+      async (i) => {
+        if (i === 30 || i === 61) await h.page.waitForTimeout(1500);
+        else await zoomStep(i < 30 ? 40 : -40);
+      },
+      "zoomOutIn",
+    ),
+  );
+  // Drag an Image card, a Note and a code card (the drag does not commit: undone after, so each starts from the same board)
+  for (const [name, id] of [
+    ["dragImage", "i0"],
+    ["dragNote", "n1"],
+    ["dragCode", board.cards.find((c) => c.kind === "code")!.id],
+  ] as const) {
+    await focusCard(h, id);
+    const at = await grabPoint(h, id);
+    await h.page.mouse.move(at.x, at.y);
+    await h.page.mouse.down();
+    res[name] = sum(await steps(h, cdp, 60, (i) => h.page.mouse.move(at.x + i * 4, at.y + i * 2, { steps: 1 }), name));
+    await h.page.mouse.up();
+    await h.page.waitForTimeout(600);
+  }
+  res.dom = await h.page.evaluate(() => ({
+    katex: document.querySelectorAll(".katex").length,
+    imgMP: +(
+      [...document.querySelectorAll<HTMLImageElement>(".card.image img")].reduce(
+        (s, i) => s + i.naturalWidth * i.naturalHeight,
+        0,
+      ) / 1e6
+    ).toFixed(1),
+  }));
+  res.heapMB = +(((await cdp.send("Runtime.getHeapUsage")) as any).usedSize / 2 ** 20).toFixed(0);
+  if (fails.length) res.fails = fails.slice(0, 8);
+  await run.close().catch(() => {});
+  await browser.close();
+  return res;
+}
 void (async () => {
   const all: Record<string, unknown>[] = [];
   for (let i = 0; i < RUNS; i++) {
-    const r = await once();
+    const r = process.argv.includes("--persona") ? await personaOnce() : await once();
     console.log(JSON.stringify(r));
     all.push(r);
   }

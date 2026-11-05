@@ -50,6 +50,10 @@ export const png = (w: number, h: number, paint: Paint, dpi?: number) =>
     chunk("IEND", Buffer.alloc(0)),
   ]);
 
+/** A PNG with one more chunk right after its IHDR (a colour chunk: gAMA, iCCP…) */
+export const withChunk = (img: Buffer, type: string, data: Buffer) =>
+  Buffer.concat([img.subarray(0, 33), chunk(type, data), img.subarray(33)]);
+
 /** An animated PNG (APNG), looping, delay ms per frame */
 export function apng(w: number, h: number, frames: Paint[], delay = 200) {
   let seq = 0;

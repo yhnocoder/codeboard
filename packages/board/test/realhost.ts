@@ -35,6 +35,10 @@ export type RealHostOptions = {
   beforeSwitch?: () => Promise<void>;
   /** Changes what the host answered a request before the page gets it (e.g. an extra name hit) */
   reply?: (ask: BoardToHost, data: unknown) => unknown;
+  /** The built thumbnail worker (HostOptions.thumbWorker; the perf benchmark builds one): none = copies made in the host's thread */
+  thumbWorker?: string;
+  /** The editor's storage for this workspace (default: a new folder per run): a later run on the same one finds its image copies */
+  storage?: string;
 };
 
 export type RealHostRun = {
@@ -112,7 +116,7 @@ export async function realHost(boards: Board[], t: Harness, o: RealHostOptions =
   const state = new Map<string, unknown>(),
     global = new Map<string, unknown>();
   ws.storage = {
-    dir: () => dir,
+    dir: () => o.storage ?? dir,
     globalDir: () => path.join(dir, "global"),
     get: <T>(k: string) => state.get(k) as T | undefined,
     set: async (k, v) => void state.set(k, v),
@@ -177,7 +181,7 @@ export async function realHost(boards: Board[], t: Harness, o: RealHostOptions =
     },
   };
   // the board build the pages load, as the extension passes its media folder (HTML snapshots inline its fonts and styles)
-  const host = startHost(ws, env, { mediaDir: MEDIA });
+  const host = startHost(ws, env, { mediaDir: MEDIA, thumbWorker: o.thumbWorker });
   // the name index complete before the first board opens (the host builds it in the background): a call resolves the same every run
   host.hub.cx.index.start();
   await host.hub.cx.index.ready();

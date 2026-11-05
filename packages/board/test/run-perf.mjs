@@ -14,4 +14,13 @@ await build({
   logLevel: "warning",
   define: { REPO_ROOT: JSON.stringify(path.resolve(here, "../../..")) },
 });
+// the host's thumbnail worker, as the extension builds it (the persona board's host makes its image copies in it)
+await build({
+  entryPoints: [path.join(here, "../../host/src/thumbs/worker.ts")],
+  bundle: true,
+  platform: "node",
+  format: "cjs",
+  outfile: path.join(path.dirname(out), "thumbs-worker.cjs"),
+  logLevel: "warning",
+});
 execFileSync("node", [out, ...process.argv.slice(2)], { stdio: "inherit" });
