@@ -7709,6 +7709,8 @@ mark.wdiff {
    boards take their own fonts and a grey between ink-3 and the paper */
 .sumlay {
   pointer-events: none;
+  /* laid out at 1 / K of the board and scaled up by K (Summaries.tsx K): at the cut, one of its px is one screen px */
+  transform-origin: 0 0;
   --sum-font: var(--note-h);
   --sum-head: var(--note-h);
   --sum-hd: var(--ink-2);
@@ -7780,9 +7782,14 @@ mark.wdiff {
     color-mix(in srgb, var(--sum-shade) 22%, transparent);
   opacity: 0;
   transform: scale(0.98);
+  /* not painted while hidden: painted at opacity 0, its wide shadow was still rastered, ~10 ms a tile on a GPU, on every
+     repaint of the column (the level going live at the switch: 200–300 ms on three section columns). visibility switches to
+     visible at once on hover and back only after the fade-out */
+  visibility: hidden;
   transition:
     opacity 90ms ease-in,
-    transform 90ms ease-in;
+    transform 90ms ease-in,
+    visibility 0s 90ms;
 }
 .sumlay.live .sumcol:is(.sumover, .sumclamp):is(:hover, :focus-within) {
   z-index: 2;
@@ -7791,6 +7798,7 @@ mark.wdiff {
 .sumlay.live .sumcol.sumover:is(:hover, :focus-within)::before {
   opacity: 1;
   transform: none;
+  visibility: visible;
   transition:
     opacity 140ms ease-out,
     transform 140ms ease-out;

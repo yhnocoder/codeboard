@@ -15,9 +15,9 @@ import { For, Show, createEffect, createMemo, createSignal, onCleanup, onMount, 
 import { state } from "../state/store";
 import { stillZ } from "../state/camera";
 import { lastDown, observeResize, queueMeasure } from "../state/measure";
-import { summaryLevel, summaryLayout, summaryNear, setSummaryHeights } from "../state/summary";
+import { summaryLevel, summaryLayout, summaryNear, setSummaryHeights, summaryCut } from "../state/summary";
 import { zlog, zlogging } from "../state/zoomlog";
-import { boardLang, summaryOf, summaryPending, type SumCol, type SumKey } from "@codeboard/core";
+import { SUMMARY, boardLang, summaryOf, summaryPending, type SumCol, type SumKey } from "@codeboard/core";
 import * as A from "../actions";
 import { useMd } from "../md/context";
 import type { Markdown } from "@yhnocoder/markdown";
@@ -47,6 +47,14 @@ const ago = (at: number) => {
 };
 
 const live = () => summaryLevel() === 1;
+/**
+ * The layer is laid out at 1 / K of the board's scale and scaled up by K, so that at the cut it is 1:1 with the screen. Under
+ * the world's will-change: transform, Chromium rasters a layer at least at the device's scale, whatever the zoom (so the
+ * world's cards stay crisp when zoomed in): laid out in board units, the summary columns were rastered at 1 / cut = 3.3 times
+ * the size they ever show at (11 times the pixels, 200–300 ms of glyphs on a GPU at the switch). Every size the layout gives
+ * is divided by K here (--S, --P, the columns' boxes) and what the columns measure is scaled back
+ */
+const K = () => 1 / (summaryCut() || SUMMARY.cutMax);
 
 export function Summaries() {
   const layout = summaryLayout;
@@ -94,9 +102,10 @@ export function Summaries() {
             classList={{ live: live(), gone: !live() }}
             style={{
               opacity: String(live() ? 1 : 0.003),
-              "--S": `${layout()?.S ?? 56}px`,
-              "--P": `${layout()?.P ?? 19}px`,
-              "--sum-iz": String(1 / stillZ()),
+              transform: `scale(${K()})`,
+              "--S": `${(layout()?.S ?? 56) / K()}px`,
+              "--P": `${(layout()?.P ?? 19) / K()}px`,
+              "--sum-iz": String(1 / (stillZ() * K())),
             }}
           >
             <For each={shown()}>{(k) => <Show when={byKey().get(k)}>{(c) => <Column col={c()} />}</Show>}</For>
@@ -126,7 +135,14 @@ function Column(p: { col: SumCol }) {
     queueMeasure(hd, () => {
       // shown in full over its neighbours: not the size it takes in the layout
       if (col.matches(":hover, :focus-within")) return () => {};
-      const h = { hd: hd.offsetHeight + (kick?.offsetHeight ?? 0), tx: tx.offsetHeight },
+      // in board units: the column's box is laid out at its board height / K (see K), so its screen height says the scale
+      const ch = col.getBoundingClientRect().height;
+      if (!ch) return () => {};
+      const u = Math.max(p.col.h, p.col.full) / ch;
+      const h = {
+          hd: (hd.getBoundingClientRect().height + (kick?.getBoundingClientRect().height ?? 0)) * u,
+          tx: tx.getBoundingClientRect().height * u,
+        },
         cut = !p.col.code && hd.scrollHeight > hd.clientHeight + 1;
       setClamped(cut);
       return () =>
@@ -226,7 +242,7 @@ function Column(p: { col: SumCol }) {
               const src = card?.kind === "image" ? card.src : "";
               return /^(data:|https?:)/.test(src) ? src : `${state.host.assetBase}/${src}`;
             })()}
-            style={{ left: `${r().x}px`, top: `${r().y}px`, width: `${r().w}px`, height: `${r().h}px` }}
+            style={{ left: `${r().x / K()}px`, top: `${r().y / K()}px`, width: `${r().w / K()}px`, height: `${r().h / K()}px` }}
           />
         )}
       </Show>
@@ -247,15 +263,15 @@ function Column(p: { col: SumCol }) {
           sumnone: !c().title && !c().code && !c().image && !text() && !writing(),
         }}
         style={{
-          left: `${c().x}px`,
-          top: `${c().y}px`,
-          width: `${c().w}px`,
-          height: `${Math.max(c().h, c().full)}px`,
-          "--rest": `${c().h}px`,
+          left: `${c().x / K()}px`,
+          top: `${c().y / K()}px`,
+          width: `${c().w / K()}px`,
+          height: `${Math.max(c().h, c().full) / K()}px`,
+          "--rest": `${c().h / K()}px`,
         }}
       >
         <div class="sumblk">
-          <div class="sumhd" classList={{ code: !!c().code }} style={{ "min-height": `${c().hd}px` }}>
+          <div class="sumhd" classList={{ code: !!c().code }} style={{ "min-height": `${c().hd / K()}px` }}>
             <Show when={c().kick}>
               {(k) => (
                 <div class="sumkick" ref={(el) => (kick = el)}>
