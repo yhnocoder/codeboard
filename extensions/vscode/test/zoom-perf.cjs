@@ -3,7 +3,7 @@
 // renderer main thread's tasks from a trace (frame p95 / p99, the longest task of each step with STEPS=1, what was in each long task).
 // The workspace holds the one board to measure (E2E_WS; Open Board opens the first board):
 //   E2E_WS=/path/to/ws E2E_FLOW=extensions/vscode/test/zoom-perf.cjs E2E_TMP=/tmp/zoom-perf npm run e2e
-// RUNS=<n> (2) gestures, TAIL=<ms> (1200) traced after the last step, TRACE_OUT=1 keeps the raw traces (TRACE_CATS=cc,viz adds categories); PERF_CSS=<rules> injects styles to try a change; results in test-out/<theme>/zoom-perf/
+// RUNS=<n> (2) gestures, TAIL=<ms> (1200) traced after the last step, TRACE_OUT=1 keeps the raw traces (TRACE_CATS=cc,viz adds categories); PERF_CSS=<rules> injects styles to try a change; LAYERS=1 lists the compositor layers at the end; results in test-out/<theme>/zoom-perf/
 const fs = require("node:fs");
 const path = require("node:path");
 const pct = (xs, p) => {
@@ -198,6 +198,45 @@ module.exports = async (page, t) => {
     runs.push({ out, in: back });
   }
   await tracer.detach();
+  // LAYERS=1: the webview's compositor layers after the gestures (id, size, element), to match a trace's RasterTask tileData.layerId
+  if (process.env.LAYERS) {
+    // the webview's renderer: the board's frame, or the webview host frame around it, has the CDP session (an out-of-process
+    // frame); the page's own session would list the workbench's layers only
+    let cdp;
+    for (const target of [f, f.parentFrame(), page]) {
+      cdp = await page
+        .context()
+        .newCDPSession(target)
+        .catch(() => null);
+      if (cdp) break;
+    }
+    await cdp.send("DOM.enable");
+    await cdp.send("DOM.getDocument", { depth: 0 });
+    let layers = null;
+    cdp.once("LayerTree.layerTreeDidChange", (e) => {
+      layers = e.layers ?? [];
+    });
+    await cdp.send("LayerTree.enable");
+    await t.until("the webview's compositor layers", () => !!layers, 5000);
+    const rows = [];
+    for (const l of layers) {
+      let desc = "";
+      if (l.backendNodeId)
+        desc = await cdp
+          .send("DOM.describeNode", { backendNodeId: l.backendNodeId })
+          .then(({ node }) => {
+            const a = node.attributes ?? [];
+            return `<${node.localName} class="${(a[a.indexOf("class") + 1] ?? "").slice(0, 50)}">`;
+          })
+          .catch(() => "");
+      rows.push(
+        `  layer ${l.layerId} ${l.width}x${l.height} paints ${l.paintCount} ${l.drawsContent ? "draws" : ""} ${desc}`,
+      );
+    }
+    console.log(`  ${layers.length} compositor layers:\n${rows.join("\n")}`);
+    fs.writeFileSync(path.join(OUT, "layers.txt"), rows.join("\n"));
+    await cdp.detach();
+  }
   fs.writeFileSync(path.join(OUT, "result.json"), JSON.stringify({ info, runs }, null, 1));
   const all = (k) => runs.flatMap((r) => [r.out, r.in]).map((g) => g[k]);
   console.log("  summary tasks:", JSON.stringify(all("tasks")));
