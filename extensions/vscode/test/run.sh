@@ -19,7 +19,8 @@ DRIVER=${DRIVER:-drive.cjs}   # DRIVER=replay.cjs runs the scripted study-task r
 OUT=${E2E_OUT:-$REPO/test-out/$TAG}
 # E2E_SETTINGS adds entries to the user settings (a JSON fragment without braces)
 # E2E_TMP and CDP_PORT let several instances run side by side on one machine
-TMP=${E2E_TMP:-/tmp/codeboard-e2e}
+# the real path: macOS /tmp is a link to /private/tmp, and git answers with real paths
+TMP=${E2E_TMP:-$(cd /tmp && pwd -P)/codeboard-e2e}
 export CDP_PORT=${CDP_PORT:-9223}
 WS=$TMP/ws
 # VS Code puts its IPC socket in the user data dir, and a socket path over 107 bytes fails (listen EINVAL): keep it short and
