@@ -23,6 +23,9 @@ export type HostOptions = {
   wasmDir?: string;
   /** 白板页面的资源目录（导出 HTML 时内联字体和图标） */
   mediaDir: string;
+  /** The built thumbnail worker (src/thumbs/worker.ts): the smaller copies of big images are made in it. None: in the host's
+   *  own thread (tests and the harness, which run the TypeScript sources) */
+  thumbWorker?: string;
 };
 
 export type Host = Disposable & {
@@ -49,7 +52,7 @@ export type Host = Disposable & {
 };
 
 export function startHost(ws: Workspace, env: HostEnv, o: HostOptions): Host {
-  const cx = new HostContext(ws);
+  const cx = new HostContext(ws, o.thumbWorker);
   const subs: Disposable[] = [cx];
   const on = (d: Disposable) => void subs.push(d);
   const analysis = startAnalysis(o.wasmDir);

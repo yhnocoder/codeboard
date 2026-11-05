@@ -427,6 +427,11 @@ export class BoardHub implements BoardHost, Disposable {
     return this.store.list();
   }
 
+  /** The folders a board view reads images from: the storage's assets/ and the smaller copies' cache */
+  viewRoots(): string[] {
+    return [this.store.assetsDir(), this.cx.thumbs.dir()];
+  }
+
   async show(id: string, place: ViewPlace = {}): Promise<BoardPanel | undefined> {
     const ex = this.panels.get(id);
     if (ex) {
@@ -435,7 +440,7 @@ export class BoardHub implements BoardHost, Disposable {
     }
     const b = await this.store.load(id);
     if (!b) return undefined;
-    const p = this.attach(id, this.env.openView(id, b.name, place, this.store.assetsDir()));
+    const p = this.attach(id, this.env.openView(id, b.name, place, this.viewRoots()));
     if (!place.preserveFocus) this.setTarget(id);
     return p;
   }

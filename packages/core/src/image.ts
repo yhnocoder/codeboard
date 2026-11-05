@@ -180,3 +180,13 @@ export function imageScale(b: Uint8Array, fallback = 1): number {
   const k = Math.min(4, Math.max(0.25, dpi / 72)); // 记错的（1 dpi、几千 dpi）不让卡大得、小得离谱
   return Math.abs(k * 4 - Math.round(k * 4)) < 0.01 ? Math.round(k * 4) / 4 : k;
 }
+
+/** The widths the host makes smaller copies of a board image at (host/src/thumbs): few, so a copy serves many cards and zooms */
+export const THUMB_WIDTHS = [400, 800, 1600];
+/** Headroom over the shown size: a copy a little sharper than the screen, so the next zoom step in does not blur it */
+const THUMB_HEADROOM = 1.15;
+/** The copy to show for an image `shown` device pixels wide: the smallest of THUMB_WIDTHS at least that (with headroom); none
+ *  (the original) when it is wider than the largest */
+export function thumbWidth(shown: number): number | undefined {
+  return THUMB_WIDTHS.find((w) => w >= shown * THUMB_HEADROOM);
+}

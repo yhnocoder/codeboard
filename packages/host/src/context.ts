@@ -25,6 +25,7 @@ import { Scheduler } from "./sched";
 import { WorkspacePkgs } from "./scope";
 import { SettingWrites } from "./settings";
 import { Sources } from "./source";
+import { Thumbs } from "./thumbs";
 import { OpIndex } from "./torchops";
 import { Lru, notProject, posix } from "./ws";
 
@@ -53,11 +54,19 @@ export class HostContext implements Disposable {
   readonly codeEdit = new CodeEdit(this);
   /** The hidden files behind code being edited on a board */
   readonly scratch = new ScratchFiles(this);
+  /** Smaller copies of the board's big images */
+  readonly thumbs: Thumbs;
 
   private recent = new Lru<true>(RECENT_FILES);
   private logs: string[] = [];
 
-  constructor(readonly ws: Workspace) {}
+  /** thumbWorker: the built thumbnail worker (HostOptions) */
+  constructor(
+    readonly ws: Workspace,
+    thumbWorker?: string,
+  ) {
+    this.thumbs = new Thumbs(ws, thumbWorker);
+  }
 
   dispose() {
     this.index.dispose();
@@ -66,6 +75,7 @@ export class HostContext implements Disposable {
     this.githubFiles.dispose();
     this.scratch.dispose();
     this.trees.dispose();
+    this.thumbs.dispose();
   }
 
   log = (level: LogLevel, text: string) => {

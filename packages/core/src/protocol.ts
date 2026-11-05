@@ -151,6 +151,8 @@ export type StickerPack = { id: string; name: string; icons: StickerIcon[] };
 export type HostInfo = {
   fontFamily?: string; // 跟随 VS Code 编辑器字体
   assetBase: string; // assets/ 目录的 webview URI，图片卡用
+  /** The webview URI of the host's folder of smaller image copies ({type:"thumb"} names a file in it); none: the board shows the originals */
+  thumbBase?: string;
   readonly?: string; // 仓库找不到时的提示
   target: boolean; // 编辑器里 Add to 的目标白板是不是这块
   settings: Settings;
@@ -355,6 +357,7 @@ export type BoardToHost =
   | { type: "saveImage"; req: number; dataUrl: string } // Note 里的图：宿主验过、存进 assets/，回 Markdown 里写的地址
   | { type: "readImageUri"; req: number; uri: string } // 拖到白板上的图片文件只给了 URI（VS Code 资源管理器、只带 URI 的系统拖放）：宿主读出来，回 data: URL
   | { type: "readAsset"; req: number; file: string } // Image 卡的图（assets/ 里的文件名）：回 data: URL（复制到剪贴板、拖进 Note 用）
+  | { type: "thumb"; req: number; file: string; width: number } // an Image card's image (assets/ file) width wide (THUMB_WIDTHS)
   | { type: "exportPng"; dataUrl: string; name: string }
   | { type: "views"; req: number; segs: Segment[] } // 白板生成的新段（合并、拆开）要展示数据
   | { type: "checkVersions" }
@@ -610,6 +613,9 @@ type Replies = {
   saveAsset: string; // assets/ 里的文件名
   saveImage: string; // Markdown 里写的地址（assets/…）
   readAsset: string; // data: URL
+  /** file: the copy in thumbBase (null: show the original, no smaller copy is worth it); width / height: the image's own size;
+   *  null: not an image the host makes copies of (GIF, WebP, SVG, APNG) */
+  thumb: { file: string | null; width: number; height: number } | null;
   readImageUri: string; // data: URL
   views: Record<string, SegView>;
   webMeta: WebMeta;

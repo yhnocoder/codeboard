@@ -4,7 +4,9 @@
 # Usage: tools/review/perf-ab.sh <base checkout dir, or "" for none> <out dir> [quick]
 #   quick (PR CI, to fit the 5-minute budget): head, base, head for the board benchmark and one host run per side instead of four and two
 #   full (regular runs, no third argument): also the board benchmark with 100 animated GIF stickers on the board (run-perf.mjs --anim),
-#   compared on its own in <out dir>/anim and appended to the summary. The base side runs it only when its benchmark has --anim
+#   compared on its own in <out dir>/anim and appended to the summary. The base side runs it only when its benchmark has --anim.
+#   And the persona board (run-perf.mjs --persona: Chinese Notes dense with math, Image cards of big screenshots, through the real
+#   host; ~1 min a run, too long for the PR budget), in <out dir>/persona, the same way
 # Exits 1 when perfdiff.mjs finds a regression.
 set -e
 BASE=$1; OUT=$2; MODE=$3
@@ -13,6 +15,7 @@ board() { (cd "$1" && node packages/board/test/run-perf.mjs --quick --runs 1 --j
 host() { for i in 1 2; do (cd "$1" && node packages/host/test/run-perf-host.mjs --runs 3) 2>&1 | grep '^{' >>"$OUT/host-$2.log" || true; done; }
 # a failed animated run leaves its log and no JSON: perfdiff then reports it, the other results still count
 anim() { (cd "$1" && node packages/board/test/run-perf.mjs --quick --anim --runs 1 --json "$OUT/anim/board-$2-$3.json") >"$OUT/anim/board-$2-$3.log" 2>&1 || true; }
+persona() { (cd "$1" && node packages/board/test/run-perf.mjs --persona --runs 1 --json "$OUT/persona/board-$2-$3.json") >"$OUT/persona/board-$2-$3.log" 2>&1 || true; }
 HAS_BASE=""
 [ -n "$BASE" ] && [ -f "$BASE/packages/board/test/run-perf.mjs" ] && HAS_BASE=1
 OUT=$(cd "$OUT" && pwd)
@@ -34,6 +37,12 @@ if [ "$MODE" != quick ]; then
   else
     anim . head 1; anim . head 2
   fi
+  mkdir -p "$OUT/persona"
+  if [ -n "$HAS_BASE" ] && grep -q -- '"--persona"' "$BASE/packages/board/test/perf.ts"; then
+    persona "$BASE" base 1; persona . head 1; persona . head 2; persona "$BASE" base 2
+  else
+    persona . head 1; persona . head 2
+  fi
 fi
 set +e
 node tools/review/perfdiff.mjs "$OUT"; RC=$?
@@ -41,5 +50,8 @@ if [ "$MODE" != quick ]; then
   node tools/review/perfdiff.mjs "$OUT/anim" "Performance with 100 animated stickers"; RA=$?
   [ -f "$OUT/anim/summary.md" ] && { echo; cat "$OUT/anim/summary.md"; } >>"$OUT/summary.md"
   [ $RA -ne 0 ] && [ $RC -eq 0 ] && RC=$RA
+  node tools/review/perfdiff.mjs "$OUT/persona" "Performance on a study board (Chinese Notes with math, big images)"; RP=$?
+  [ -f "$OUT/persona/summary.md" ] && { echo; cat "$OUT/persona/summary.md"; } >>"$OUT/summary.md"
+  [ $RP -ne 0 ] && [ $RC -eq 0 ] && RC=$RP
 fi
 exit $RC

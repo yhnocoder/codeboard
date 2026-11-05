@@ -257,6 +257,7 @@ export class BoardPanel {
       fontFamily: this.cx.ws.settings.get<string>("editor.fontFamily"),
       forwardedKeys: FORWARDED_KEYS,
       assetBase: this.view.resourceUrl(this.mgr.store.assetsDir()),
+      thumbBase: this.view.resourceUrl(this.cx.thumbs.dir()),
       readonly: this.readonly,
       settings: readSettings(this.cx),
       target: this.mgr.target === this.id,

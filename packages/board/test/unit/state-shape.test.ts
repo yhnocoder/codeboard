@@ -116,6 +116,7 @@ const OUTLIVES_BOARD: Record<string, string> = {
   "md/anim.ts:gifThumbs": "GIF filmstrip stills, by address",
   "actions/imageai.ts:colorCtx": "a canvas for parsing colors",
   "actions/flow.ts:sent": "calls prefetched lately, by segment: the host caches them",
+  "cards/thumbs.ts:asked": "the host's smaller copies of images, by asset name (named by its content) and width",
   // kept across boards on purpose
   "state/zoomlog.ts:rec":
     "the zoom diagnostics recording, which runs across board switches until the host command stops it",

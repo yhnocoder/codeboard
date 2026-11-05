@@ -38,7 +38,7 @@
       "packages/{analysis,board,core,host,markdown}/src/**",
       "packages/{analysis,board,core,host,markdown}/package.json",
       "packages/*/vite.config.*",
-      "packages/board/test/{perf,harness}.ts",
+      "packages/board/test/{perf,harness,realhost}.ts",
       "packages/host/test/perf-*",
       "package-lock.json",
       "tools/review/perf*"
@@ -462,9 +462,11 @@
         "packages/markdown/src/editor/{image,imageslide}.ts",
         "packages/core/src/image.ts",
         "packages/host/src/{images,assetsweep,imageai}.ts",
+        "packages/host/src/thumbs/*.ts",
+        "packages/board/src/cards/thumbs.ts",
         "packages/board/src/state/imageai.ts",
         "packages/board/src/ui/AiBusy.tsx",
-        "packages/board/test/scenarios/{image-cards,note-images,svg-images,file-drops,image-ai,image-width,note-captions,animated-images}.spec.ts",
+        "packages/board/test/scenarios/{image-cards,note-images,svg-images,file-drops,image-ai,image-width,note-captions,animated-images,image-thumbs}.spec.ts",
         "packages/markdown/src/caption.ts",
         "packages/markdown/src/{imageattrs,imageplay}.ts"
       ],
