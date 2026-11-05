@@ -12,7 +12,7 @@ import { HostContext } from "../src/context";
 
 let cx: HostContext;
 
-const FIX = fs.mkdtempSync("/tmp/codeboard-torchops-updates-");
+const FIX = fs.realpathSync(fs.mkdtempSync("/tmp/codeboard-torchops-updates-"));
 fs.cpSync(path.join(__dirname, "fixtures/torchops"), FIX, { recursive: true });
 const W = nodeWorkspace(FIX);
 const abs = (rel: string) => path.join(FIX, rel);

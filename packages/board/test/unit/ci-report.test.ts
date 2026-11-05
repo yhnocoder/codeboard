@@ -18,7 +18,7 @@ import { perfFiles } from "../../../../tools/test/areas.mjs";
 const REPO = fileURLToPath(new URL("../../../..", import.meta.url));
 const TIERS = JSON.parse(fs.readFileSync(path.join(REPO, "packages/board/test/tiers.json"), "utf8"));
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "codeboard-ci-report-"));
+const tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "codeboard-ci-report-")));
 afterAll(() => fs.rmSync(tmp, { recursive: true, force: true }));
 /** An artifacts directory: { "harness-1/result.json": {...}, ... } */
 function artifacts(name: string, files: Record<string, unknown>) {

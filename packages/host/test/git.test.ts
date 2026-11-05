@@ -27,7 +27,7 @@ beforeAll(() => {
   sh(R, "commit", "-qam", "two");
   c2 = sh(R, "rev-parse", "HEAD");
   // a clone that doesn't have the next commit yet
-  C = fs.mkdtempSync("/tmp/codeboard-anc-clone-");
+  C = fs.realpathSync(fs.mkdtempSync("/tmp/codeboard-anc-clone-"));
   sh(C, "clone", "-q", R, ".");
   fs.writeFileSync(path.join(R, "f.py"), "x = 3\n");
   sh(R, "commit", "-qam", "three");

@@ -8,3 +8,4 @@ export * from "./twins";
 export * from "./merge";
 export * from "./notes";
 export * from "./blocks";
+export * from "./shelf";

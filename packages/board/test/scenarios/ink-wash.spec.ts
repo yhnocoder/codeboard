@@ -1,5 +1,5 @@
 // Ink Wash (水墨): what the look draws with images and motions of its own (state/ink.ts, themes.css, Links.tsx brush lines).
-//  inkWashLook             — brush arrows (filled outline + dry-brush hairlines, no stroked line), rice-paper cards (one image per size,
+//  inkWashLook             — brush arrows (filled outline + dry-brush hairlines, no stroked line), rice-paper cards (a nine-slice border image,
 //                            card size unchanged), vermilion seals, the selection seal, call strokes, the ink toolbar,
 //                            a toast clear of the toolbar; light and dark, with screenshots (INK_SHOTS: a copy elsewhere)
 //  inkWashFlashBrush       — jumping to a line sweeps a brush under its text: from its first to its last character, half a
@@ -11,8 +11,10 @@
 //                            paper 2 px with a deeper shadow; deselecting fades the seal and settles the paper, from wherever the
 //                            stamp was; the seal stays clear of the header's ⋯ button; many selected cards each get one; Warm Ink
 //                            has no seal and no lift (#128)
-//  inkWashPaperFillsCard   — the paper reaches all four edges of cards whose rounded size has another aspect ratio (#112: it was
+//  inkWashPaperFillsCard   — the paper reaches all four edges of cards of very different aspect ratios (#112: it was
 //                            shrunk to fit and centred, its torn edge inside the card, off the shadow and header wash)
+//  inkWashPaperKeptWhileEditing — a long Note growing while it is edited keeps its paper image: one image per card size was redrawn
+//                            and decoded again on every 4 px the card grew, and the card showed the board through it for a frame
 //  inkWashBackgroundNoStreaks — the mountains behind the board are plain gradient shapes, no SVG filter: the filter was worked out at
 //                            the image's own 900×540 and scaled up, so its near-transparent gradients broke into horizontal streaks
 //                            and its anisotropic turbulence smeared them into text-like blots (#136); light and dark, screenshots
@@ -123,7 +125,7 @@ test("inkWashLook", async () => {
       });
       const cards = [...document.querySelectorAll<HTMLElement>(".card[data-id]")].map((c) => ({
         paper: c.style.getPropertyValue("--deckle").startsWith('url("data:image/svg+xml'),
-        before: cs(c, "::before").backgroundImage.startsWith('url("data:image/svg+xml'),
+        before: cs(c, "::before").borderImageSource.startsWith('url("data:image/svg+xml'),
         bg: cs(c).backgroundColor,
         size: [c.offsetWidth, c.offsetHeight],
       }));
@@ -360,6 +362,48 @@ test("inkWashPaperFillsCard", async () => {
   }, png);
   await h.page.context().close();
   check("inkWashPaperFillsCard", res.length === 3 && res.every((c) => Object.values(c.off).every((d) => d <= 8)), res);
+});
+
+test("inkWashPaperKeptWhileEditing", async () => {
+  const md = Array.from(
+    { length: 30 },
+    (_, i) =>
+      `Line ${i}: the loss $L_{${i}} = \\sum_i x_i^2$ and **bold** text that wraps past the end of one line here.`,
+  ).join("\n\n");
+  const b = emptyBoard("b1", "纸");
+  put(b, { id: "n0", kind: "note", look: "note", md } as never, 40, 40, 520);
+  b.cam = { x: 0, y: 0, z: 1 };
+  const h = await open({ board: b, light: true, w: 1000, h: 800, settings: ink });
+  await idle(h);
+  const card = h.page.locator('.card[data-id="n0"]');
+  await card.locator(".nbody").dblclick({ position: { x: 40, y: 200 } });
+  await h.page.waitForSelector('.card[data-id="n0"] .md-pm');
+  await idle(h);
+  // every paper image the card's ::before is given while it grows, and its height before and after
+  const h0 = await card.evaluate((c: HTMLElement) => {
+    const w = window as unknown as { papers: string[] };
+    const src = () => getComputedStyle(c, "::before").borderImageSource;
+    w.papers = [src()];
+    new MutationObserver(() => {
+      if (src() !== w.papers[w.papers.length - 1]) w.papers.push(src());
+    }).observe(c, { attributes: true, attributeFilter: ["style", "class"] });
+    return c.offsetHeight;
+  });
+  for (let i = 0; i < 8; i++) {
+    await h.page.keyboard.type("more words ");
+    await h.page.keyboard.press("Enter");
+  }
+  await until(h, "the Note grew by the new lines", async () => (await card.evaluate((c) => c.offsetHeight)) > h0 + 150);
+  const res = await card.evaluate((c: HTMLElement) => ({
+    papers: (window as unknown as { papers: string[] }).papers.map((u) => u.slice(0, 120)),
+    h: c.offsetHeight,
+  }));
+  await h.page.context().close();
+  check(
+    "inkWashPaperKeptWhileEditing",
+    res.papers.length === 1 && res.papers[0].startsWith('url("data:image/svg+xml'),
+    { h0, ...res },
+  );
 });
 
 test("inkWashFlashBrush", async () => {

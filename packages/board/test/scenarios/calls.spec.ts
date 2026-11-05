@@ -374,7 +374,7 @@ async function calltree(res: Record<string, unknown>) {
 
 /** Capture Run on test fixtures/runtime (toyllm: no torch, no GPU) with the real host + python3, then apply it to a board */
 async function runtime(res: Record<string, unknown>) {
-  const FIX = fs.mkdtempSync("/tmp/codeboard-runtime-");
+  const FIX = fs.realpathSync(fs.mkdtempSync("/tmp/codeboard-runtime-"));
   fs.cpSync(path.join(REPO, "packages/host/test/fixtures/runtime"), FIX, { recursive: true });
   execFileSync("git", ["init", "-q"], { cwd: FIX });
   execFileSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", "add", "-A"], { cwd: FIX });

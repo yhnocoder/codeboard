@@ -12,7 +12,7 @@ import { HostContext } from "../src/context";
 let cx: HostContext;
 
 const W = nodeWorkspace();
-const dir = fs.mkdtempSync("/tmp/codeboard-firstboard-");
+const dir = fs.realpathSync(fs.mkdtempSync("/tmp/codeboard-firstboard-"));
 const store = new Storage(nodeFs, { dir: () => dir });
 const shown: string[] = [];
 let target: string | undefined;

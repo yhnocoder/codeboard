@@ -25,6 +25,7 @@ import { observeResize, queueMeasure } from "../state/measure";
 import { cardSel } from "../cardsel";
 import { useMd } from "../md/context";
 import { Summaries } from "./Summaries";
+import { ShelfOutline } from "../ui/ShelfPanel";
 import { cardsAsleep, cardsGone, cardsOpacity, detent, summaryCut } from "../state/summary";
 
 /** The world-extent boxes (.wext, .cshield) reach this far beyond the cards and Sections, aligned to it: enough that a card
@@ -239,6 +240,8 @@ export function Canvas() {
           <For each={kept()}>{(c) => <CardView card={c} />}</For>
         </div>
         <Summaries />
+        {/* a Shelf row dragged over the board: where it will land (ui/ShelfPanel.tsx) */}
+        <ShelfOutline />
       </div>
       {/* the detent at the summary cut (state/summary.ts detent; styles.css .cutmist …): a mist in the board's colour rising from
           the bottom edge by the push (a viewport-tall layer scaled up from the bottom), past 1 covering the board for the

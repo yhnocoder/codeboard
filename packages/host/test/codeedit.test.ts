@@ -12,7 +12,7 @@ import { MEDIA } from "./helpers";
 
 const W = nodeWorkspace();
 const cx = new HostContext(W);
-const dir = fs.mkdtempSync("/tmp/codeboard-ce-");
+const dir = fs.realpathSync(fs.mkdtempSync("/tmp/codeboard-ce-"));
 const h = makeHandler(
   cx,
   {

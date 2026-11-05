@@ -17,6 +17,10 @@ import * as A from "./actions";
 import { look, traffic, setTraffic } from "./state/look";
 import { questionsOpen } from "./state/questions";
 import { legendOpen, setLegendOpen, setTreeOpen, treeOpen } from "./state/calls";
+import { shelfHot, shelfOpen } from "./state/shelf";
+
+/** How many entries are on this board's Shelf (the dock button's badge) */
+const shelfCount = () => state.board.shelf?.length ?? 0;
 
 /** 白板放在编辑器旁边（窄）：工具栏和缩放并成一行，少用的按钮收进 ⋯ */
 const NARROW = 700;
@@ -149,6 +153,11 @@ function Toolbar() {
           { label: "Paste Image Text", kbd: kbd("pasteImageText"), run: () => void A.pasteImageText() },
           { label: "New SVG from Text…", run: () => void A.newSvgFromText() },
           null,
+          {
+            label: shelfCount() ? `Shelf · ${shelfCount()}` : "Shelf",
+            checked: shelfOpen(),
+            run: () => A.toggleShelf(),
+          },
           { label: "Call Tree", checked: treeOpen(), run: () => setTreeOpen(!treeOpen()) },
           { label: "Arrow Legend", checked: legendOpen(), run: () => setLegendOpen(!legendOpen()) },
           ...(look() === "city"
@@ -285,6 +294,20 @@ function Dock() {
   return (
     <div class="over dock">
       <div class="pill">
+        {/* the Shelf: click opens its panel; cards and Sections dragged onto it go onto the Shelf (actions/shelf.ts) */}
+        <button
+          class="ib shelf-btn"
+          classList={{ armed: shelfHot() === "drag" || shelfHot() === "panel", hot: shelfHot() === "dock" }}
+          aria-label="Shelf"
+          aria-pressed={shelfOpen()}
+          data-tip={shelfHot() ? "Drop to Move to Shelf" : "Shelf"}
+          onClick={() => A.toggleShelf()}
+        >
+          <Icon name="shelf" />
+          <Show when={shelfCount()}>
+            <span class="sbadge">{shelfCount()}</span>
+          </Show>
+        </button>
         {/* City 的红绿灯：车流开关，默认红灯（车不动）；绿灯时车沿路开（canvas/Traffic.tsx） */}
         <Show when={look() === "city"}>
           <button

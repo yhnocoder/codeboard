@@ -1,20 +1,42 @@
 // Reference upkeep when cards, links, sidenotes and stickers go or change id: what was attached to them goes with them or follows
 // them.
 // Pure functions that change the board passed in (the board calls them inside a mutate).
-import { cornerOf } from "./internal";
-import { withCols, type Board, type End } from "../model";
+import { cornerOf, tidyShelf } from "./internal";
+import { withCols, type Board, type End, type Link, type Sticker } from "../model";
 
-/** 删掉这些卡（Compare 连同两栏）和它们的摆放，以及连着它们的 Link、挂在它们上面或指向它们的 Sidenote、贴在它们上面的 Sticker */
+/** Every arrow of the board: on the canvas and on the Shelf (the same objects) */
+export const allLinks = (b: Pick<Board, "links" | "shelf">): Link[] => [
+  ...b.links,
+  ...(b.shelf ?? []).flatMap((e) => e.links),
+];
+/** Every sticker of the board: on the canvas and on the Shelf (the same objects) */
+export const allStickers = (b: Pick<Board, "stickers" | "shelf">): Sticker[] => [
+  ...b.stickers,
+  ...(b.shelf ?? []).flatMap((e) => e.stickers),
+];
+
+/**
+ * 删掉这些卡（Compare 连同两栏）和它们的摆放，以及连着它们的 Link、挂在它们上面或指向它们的 Sidenote、贴在它们上面的 Sticker。
+ * On the Shelf too: a shelved card's place, the hidden arrows to a deleted card; an entry left empty goes
+ */
 export function removeCards(b: Board, ids: Iterable<string>): void {
   const gone = new Set(withCols(b, ids));
   b.cards = b.cards.filter((c) => !gone.has(c.id));
   for (const id of gone) delete b.place[id];
-  b.links = b.links.filter((l) => !gone.has(l.from.card) && !gone.has(l.to.card));
+  const keep = (l: Link) => !gone.has(l.from.card) && !gone.has(l.to.card);
+  const onLine = (k: Sticker) => k.at.kind !== "line" || !gone.has(k.at.card);
+  b.links = b.links.filter(keep);
   b.sidenotes = b.sidenotes.filter((n) => !gone.has(n.at.card) && !(n.kind === "card" && gone.has(n.card)));
-  b.stickers = b.stickers.filter((k) => k.at.kind !== "line" || !gone.has(k.at.card));
-  for (const k of b.stickers) if (k.q?.answer && gone.has(k.q.answer)) delete k.q.answer; // 解答它的卡删了：问题还在
+  b.stickers = b.stickers.filter(onLine);
+  for (const e of b.shelf ?? []) {
+    for (const id of gone) delete e.place[id];
+    e.links = e.links.filter(keep);
+    e.stickers = e.stickers.filter(onLine);
+  }
+  for (const k of allStickers(b)) if (k.q?.answer && gone.has(k.q.answer)) delete k.q.answer; // 解答它的卡删了：问题还在
   forget(b, gone);
   pruneStickers(b);
+  tidyShelf(b);
 }
 
 /**
@@ -47,7 +69,14 @@ export function pruneRefs(b: Board): void {
     b,
     b.stickers.filter((k) => k.at.kind === "line" && !segOk(k.at.card, k.at.seg)).map((k) => k.id),
   );
-  for (const k of b.stickers) if (k.q?.answer && !cards.has(k.q.answer)) delete k.q.answer;
+  // the Shelf: what points to cards and segments that are gone, and cards that are back on the canvas (both windows changed them)
+  for (const e of b.shelf ?? []) {
+    e.links = e.links.filter((l) => segOk(l.from.card, l.from.seg) && segOk(l.to.card, l.to.seg));
+    e.stickers = e.stickers.filter((k) => k.at.kind !== "line" || segOk(k.at.card, k.at.seg));
+    for (const id of Object.keys(e.place)) if (!cards.has(id) || b.place[id]) delete e.place[id];
+  }
+  pruneStickers(b);
+  for (const k of allStickers(b)) if (k.q?.answer && !cards.has(k.q.answer)) delete k.q.answer;
   const gone = new Set(
     [...Object.keys(b.place), ...Object.keys(b.marks ?? {}), ...Object.keys(b.born ?? {})].filter(
       (id) => !cards.has(id),
@@ -55,9 +84,13 @@ export function pruneRefs(b: Board): void {
   );
   for (const id of gone) delete b.place[id];
   forget(b, gone);
-  const secs = new Set(b.sections.map((s) => s.id));
-  for (const s of b.sections) if (s.parent && !secs.has(s.parent)) delete s.parent;
-  for (const p of Object.values(b.place)) if (p.section && !secs.has(p.section)) delete p.section;
+  const shelf = b.shelf ?? [];
+  const secs = new Set([...b.sections, ...shelf.flatMap((e) => e.sections)].map((s) => s.id));
+  for (const s of [...b.sections, ...shelf.flatMap((e) => e.sections)])
+    if (s.parent && !secs.has(s.parent)) delete s.parent;
+  for (const p of [...Object.values(b.place), ...shelf.flatMap((e) => Object.values(e.place))])
+    if (p.section && !secs.has(p.section)) delete p.section;
+  tidyShelf(b);
 }
 
 /** 删掉的卡的创建顺序和调用图标记 */
@@ -92,11 +125,12 @@ export function renameCard(b: Board, from: string, to: string): void {
     c.id = r(c.id);
     if (c.kind === "compare") c.cols = [r(c.cols[0]), r(c.cols[1])];
   }
-  if (b.place[from]) {
-    b.place[to] = b.place[from];
-    delete b.place[from];
-  }
-  for (const l of b.links) {
+  for (const place of [b.place, ...(b.shelf ?? []).map((e) => e.place)])
+    if (place[from]) {
+      place[to] = place[from];
+      delete place[from];
+    }
+  for (const l of allLinks(b)) {
     l.from.card = r(l.from.card);
     l.to.card = r(l.to.card);
   }
@@ -104,7 +138,7 @@ export function renameCard(b: Board, from: string, to: string): void {
     n.at.card = r(n.at.card);
     if (n.kind === "card") n.card = r(n.card);
   }
-  for (const k of b.stickers) {
+  for (const k of allStickers(b)) {
     const at = k.at;
     if (at.kind === "line") at.card = r(at.card);
     else if (at.on && "card" in at.on) at.on.card = r(at.on.card);
@@ -141,14 +175,15 @@ export function removeLinks(b: Board, ids: Iterable<string>): void {
   pruneStickers(b);
 }
 
-/** 绑着的卡 / 箭头没了的 Sticker 一起删（删卡、删箭头之后调用；撤销时一起回来） */
+/** 绑着的卡 / 箭头没了的 Sticker 一起删（删卡、删箭头之后调用；撤销时一起回来）。A shelved one is bound within its entry */
 function pruneStickers(b: Board): void {
-  const cards = new Set(b.cards.map((c) => c.id)),
-    links = new Set(b.links.map((l) => l.id));
-  b.stickers = b.stickers.filter((k) => {
+  const cards = new Set(b.cards.map((c) => c.id));
+  const bound = (links: Set<string>) => (k: Sticker) => {
     const on = k.at.kind === "canvas" ? k.at.on : undefined;
     return !on || ("card" in on ? cards.has(on.card) : links.has(on.link));
-  });
+  };
+  b.stickers = b.stickers.filter(bound(new Set(b.links.map((l) => l.id))));
+  for (const e of b.shelf ?? []) e.stickers = e.stickers.filter(bound(new Set(e.links.map((l) => l.id))));
 }
 
 /** 旧卡上的一个位置（整卡，或某段某行）在替换它的卡上落在哪；seg 为空 = 落在整张卡上 */
@@ -166,14 +201,16 @@ export function retargetCards(b: Board, ids: Iterable<string>, to: Retarget): vo
     return { card: o.card, seg: o.seg, line: o.seg ? e.line : undefined };
   };
   const touched = new Set<string>();
-  for (const l of b.links) {
+  for (const l of allLinks(b)) {
     const f = gone.has(l.from.card),
       t = gone.has(l.to.card);
     if (f) l.from = moveEnd(l.from);
     if (t) l.to = moveEnd(l.to);
     if (f || t) touched.add(l.id);
   }
-  b.links = b.links.filter((l) => !(touched.has(l.id) && l.from.card === l.to.card));
+  const looped = (l: Link) => !(touched.has(l.id) && l.from.card === l.to.card);
+  b.links = b.links.filter(looped);
+  for (const e of b.shelf ?? []) e.links = e.links.filter(looped);
   for (const n of b.sidenotes) {
     if (gone.has(n.at.card)) {
       const o = to({ card: n.at.card, seg: n.at.seg, line: n.at.lines?.[0] });
@@ -181,7 +218,7 @@ export function retargetCards(b: Board, ids: Iterable<string>, to: Retarget): vo
     }
     if (n.kind === "card" && gone.has(n.card)) n.card = to({ card: n.card }).card;
   }
-  for (const k of b.stickers) {
+  for (const k of allStickers(b)) {
     const at = k.at;
     if (at.kind === "line" && gone.has(at.card)) {
       const o = to({ card: at.card, seg: at.seg, line: at.line });
@@ -206,8 +243,12 @@ export function replaceCards(b: Board, ids: Iterable<string>, to: Retarget): voi
   }
   retargetCards(b, gone, to);
   b.cards = b.cards.filter((c) => !gone.has(c.id));
-  for (const id of gone) delete b.place[id];
+  for (const id of gone) {
+    delete b.place[id];
+    for (const e of b.shelf ?? []) delete e.place[id];
+  }
   forget(b, gone);
+  tidyShelf(b);
 }
 
 /** 创建顺序按原来的先后重新从 0 编（拆出来的新白板：删掉别的卡之后号不连续），seq 接着编 */

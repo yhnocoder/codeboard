@@ -39,7 +39,7 @@ const env: HostEnv = {
     return v.view;
   },
 };
-const dir = fs.mkdtempSync("/tmp/codeboard-prompts-");
+const dir = fs.realpathSync(fs.mkdtempSync("/tmp/codeboard-prompts-"));
 const store = new Storage(nodeFs, { dir: () => dir });
 let hub: BoardHub;
 const asks = () => views[0].posted.filter((m): m is Ask => m.type === "ask");

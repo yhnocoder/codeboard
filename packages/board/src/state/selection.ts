@@ -1,6 +1,6 @@
 // What is selected on the board (cards, links, Sections, a range of lines). The host hears of it a moment after it changes
 import { batch } from "solid-js";
-import type { Board } from "@codeboard/core";
+import { shelvedCards, type Board } from "@codeboard/core";
 import { send } from "../host";
 import { boardSignal, boardStore, boardTimer, onBoardSwitch } from "./root";
 import { SEL_REPORT } from "./timing";
@@ -41,7 +41,8 @@ export const unselectCard = (id: string) => setSel("cards", (c) => c.filter((x) 
  *  make every card's isSel run again) */
 export function keepOn(b: Board) {
   const keep = (xs: string[], ok: (x: string) => boolean) => (xs.every(ok) ? xs : xs.filter(ok));
-  const cards = new Set(b.cards.map((c) => c.id));
+  const off = shelvedCards(b);
+  const cards = new Set(b.cards.filter((c) => !off.has(c.id)).map((c) => c.id));
   setSel("cards", (c) => keep(c, (x) => cards.has(x)));
   setSel("links", (l) => keep(l, (x) => b.links.some((k) => k.id === x)));
   setSel("sections", (l) => keep(l, (x) => b.sections.some((k) => k.id === x)));

@@ -23,6 +23,7 @@ import { F_BLANK } from "@codeboard/analysis/basics";
 import { tidy } from "@codeboard/core/tidy";
 import { analyze, varCandidates, importPkg, peekPlan, type FileAnalysis, type Sym } from "@codeboard/analysis";
 import { analysisReady, highlight, startAnalysis } from "@codeboard/host/testing";
+import { macKeys } from "../../../tools/test/mac-keys.mjs";
 
 /** The repo's root, defined by the builds that bundle this file (playwright.config.ts, run-perf.mjs) */
 declare const REPO_ROOT: string;
@@ -227,7 +228,7 @@ export { launch };
  * and only for http(s) addresses, are expected; anything else that doesn't load (a file of the board's own) fails the scenario
  */
 const OFFLINE =
-  /^Failed to load resource: net::(ERR_NAME_NOT_RESOLVED|ERR_TUNNEL_CONNECTION_FAILED|ERR_PROXY_CONNECTION_FAILED|ERR_INTERNET_DISCONNECTED|ERR_CONNECTION_REFUSED|ERR_CONNECTION_TIMED_OUT|ERR_ADDRESS_UNREACHABLE)$/;
+  /^Failed to load resource: net::(ERR_NAME_NOT_RESOLVED|ERR_TUNNEL_CONNECTION_FAILED|ERR_PROXY_CONNECTION_FAILED|ERR_INTERNET_DISCONNECTED|ERR_CONNECTION_REFUSED|ERR_CONNECTION_CLOSED|ERR_CONNECTION_TIMED_OUT|ERR_ADDRESS_UNREACHABLE)$/;
 
 let pages = 0;
 /** Opens the board in a new context of `browser`; closing the host (or its context) ends it */
@@ -256,6 +257,7 @@ boot({ post: (m) => { window.__inflight++; window.__host(JSON.stringify(m)).fina
     deviceScaleFactor: o.scale ?? 1,
   });
   const page = await context.newPage();
+  macKeys(page);
   // coverage (regular runs): which board code the scenario runs, for picking scenarios by changed file
   const cov = watch.coverage && (await functionCoverage(page));
   const closeContext = context.close.bind(context);

@@ -5,7 +5,7 @@ import { HostContext } from "../src/context";
 import { HEARTBEAT_MS, STALE_MS } from "../src/scratchnames";
 import { nodeWorkspace } from "./node-workspace";
 
-const dir = fs.mkdtempSync("/tmp/codeboard-scratch-");
+const dir = fs.realpathSync(fs.mkdtempSync("/tmp/codeboard-scratch-"));
 const near = path.join(dir, "engine.py");
 const put = (name: string, ageMs: number) => {
   const f = path.join(dir, name);

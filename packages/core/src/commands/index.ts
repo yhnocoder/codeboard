@@ -12,3 +12,4 @@ export * from "./web";
 export * from "./subboards";
 export * from "./versions";
 export * from "./summaries";
+export * from "./shelf";

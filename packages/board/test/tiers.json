@@ -24,7 +24,7 @@
     "stickerBitmapsPicker",
     "notePastedImageSameSizeInBothModes"
   ],
-  "manual": ["markdownRecord", "boardMarksScreenshots"],
+  "manual": ["markdownRecord", "boardMarksScreenshots", "shelfScreenshots"],
   "solo": ["markdownLazyRender"],
   "known": {},
   "limits": {
@@ -547,6 +547,18 @@
         "summaryNoKey",
         "summaryNestedSections"
       ]
+    },
+    "shelf": {
+      "about": "The Shelf: putting cards and Sections aside per board, the dock button and panel, taking entries back",
+      "files": [
+        "packages/core/src/edit/shelf.ts",
+        "packages/core/src/commands/shelf.ts",
+        "packages/board/src/actions/shelf.ts",
+        "packages/board/src/state/shelf.ts",
+        "packages/board/src/ui/ShelfPanel.tsx",
+        "packages/board/test/scenarios/shelf.spec.ts"
+      ],
+      "scenarios": ["shelfMenuPutBack", "shelfDragRowOut", "shelfDragOntoDock", "shelfArrows"]
     }
   }
 }

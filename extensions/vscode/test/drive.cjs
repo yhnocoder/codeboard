@@ -637,7 +637,7 @@ async function addselStep(page) {
   // focus is still in the editor: Ctrl+Z (⌘Z) undoes the add on the board, the editor text is untouched
   check((await editorFocused(page)) === 1, "focus stays in the editor after Alt+B");
   const textBefore = await page.locator(".editor-group-container .monaco-editor .view-lines").first().textContent();
-  await page.keyboard.press("Control+z");
+  await page.keyboard.press("ControlOrMeta+z");
   const left = await soon(
     () => f.locator(".card").count(),
     (n) => n === n0,
@@ -892,7 +892,7 @@ async function winzoomStep(page) {
   );
   const camZoom = () => text(f.locator(".zoom"));
   const [z0, dpr0] = [await camZoom(), await page.evaluate(() => window.devicePixelRatio)];
-  await page.keyboard.press("Control+=");
+  await page.keyboard.press("ControlOrMeta+=");
   const dpr = await soon(
     () => page.evaluate(() => window.devicePixelRatio),
     (d) => d > dpr0,
@@ -990,7 +990,7 @@ async function cardfocusStep(page) {
     );
     check(gone[0] === n0 - 1 && gone[1] === 0, `…and deletes the card (${where})`, gone[0]);
     // the board has focus, so Ctrl+Z is the board's own undo: the card comes back
-    await page.keyboard.press("Control+z");
+    await page.keyboard.press("ControlOrMeta+z");
     check(
       (await soon(
         () => card(f, "get_context").count(),
@@ -1188,7 +1188,7 @@ const setUserSetting = (key, value) => {
 async function newBoard(page, name) {
   const before = await boardFrames(page, { visible: false });
   await command(page, "CodeBoard: New Board", "Name of the new board");
-  await page.keyboard.press("Control+a");
+  await page.keyboard.press("ControlOrMeta+a");
   await page.keyboard.type(name);
   await page.keyboard.press("Enter");
   await qiClosed(page, "the New Board input box");
@@ -1262,14 +1262,14 @@ async function notepasteStep(page) {
     "notepaste: the piece of code is selected",
     await f.evaluate(() => getSelection().toString()),
   );
-  await page.keyboard.press("Control+c");
+  await page.keyboard.press("ControlOrMeta+c");
   // pointer over empty canvas, where a pasted card would land
   const fb = await (await f.frameElement()).boundingBox(),
     sp = await emptySpot(f);
   await page.mouse.move(fb.x + sp.x, fb.y + sp.y);
   // select "ceil(n/128), 128" in the second block and paste over it
   await selectIn(1, 15, 16);
-  await page.keyboard.press("Control+v");
+  await page.keyboard.press("ControlOrMeta+v");
   const pasted = await soon(
     () => blocks.nth(1).innerText(),
     (t) => t.includes("<<<ceil(n/128)>>>"),
@@ -1403,14 +1403,14 @@ async function stickerfolderStep(page) {
   // Settings page shows the folder the host passed on (live)
   await clickBoard(f);
   await boardKeys(page, f);
-  await page.keyboard.press("Control+,");
+  await page.keyboard.press("ControlOrMeta+,");
   await until(
     "the board's Settings page shows the new sticker folder",
     async () =>
       /stickers$/.test(await f.locator('.settings input[aria-label="Sticker folder"]').inputValue({ timeout: 1000 })),
     15000,
   );
-  await page.keyboard.press("Control+,");
+  await page.keyboard.press("ControlOrMeta+,");
   await until("Ctrl+, closes the board's Settings page", async () => !(await f.locator(".settings").count()));
   // the Sticker button; in a narrow pane (two editor groups) it is folded into More as Add a Sticker
   const openPicker = async () => {
@@ -1541,7 +1541,7 @@ async function notesettingsStep(page) {
     "the Note is selected and the board has the keyboard",
     async () => /\bsel\b/.test(await note.getAttribute("class")) && (await boardHasKeyboard(f)),
   );
-  await page.keyboard.press("Control+x");
+  await page.keyboard.press("ControlOrMeta+x");
   const cut = await soon(
     async () => [
       await f.locator(".card.note").count(),
@@ -1563,7 +1563,7 @@ async function notesettingsStep(page) {
   const fb = await (await f.frameElement()).boundingBox(),
     sp = await emptySpot(f);
   await page.mouse.move(fb.x + sp.x, fb.y + sp.y);
-  await page.keyboard.press("Control+v");
+  await page.keyboard.press("ControlOrMeta+v");
   const back = await soon(
     async () => [
       await f.locator(".card.note").count(),
@@ -1614,6 +1614,7 @@ const finish = async (browser, errors) => {
     60000,
     200,
   );
+  (await import("../../../tools/test/mac-keys.mjs")).macKeys(page);
   await track(page); // before the first board's webview exists
   await watchKeyboard(page); // the keyboard hand-backs to webviews, likewise
   await page.locator(".monaco-workbench .part.editor").waitFor({ timeout: 60000 });
@@ -1838,7 +1839,7 @@ const finish = async (browser, errors) => {
 
   // 6. ⌘K search for allocate, ↵ puts it on the board
   await page.keyboard.press("Escape");
-  await page.keyboard.press("Control+k");
+  await page.keyboard.press("ControlOrMeta+k");
   await until("⌘K's search field has the keyboard", () => typingIn(f, ".palette"));
   await page.keyboard.type("BlockManager.allocate");
   check(
@@ -1901,22 +1902,22 @@ const finish = async (browser, errors) => {
       f.evaluate(() => !!document.activeElement?.closest(".card.note .md-pm")),
     );
     await focusSettled(f); // or ProseMirror undoes the Ctrl+End and " cutme" replaces the double-clicked word
-    await page.keyboard.press("Control+End");
+    await page.keyboard.press("ControlOrMeta+End");
     await page.keyboard.type(" cutme");
     for (let i = 0; i < 5; i++) await page.keyboard.press("Shift+ArrowLeft");
     await selected("cutme");
-    await page.keyboard.press("Control+x");
+    await page.keyboard.press("ControlOrMeta+x");
     const afterCut = await soon(txt, (t) => !/cutme$/.test(t));
-    await page.keyboard.press("Control+v");
+    await page.keyboard.press("ControlOrMeta+v");
     const afterPaste = await soon(txt, (t) => /cutme$/.test(t));
     // copy the pasted word and paste it again at the end
     for (let i = 0; i < 5; i++) await page.keyboard.press("Shift+ArrowLeft");
     await selected("cutme");
     // the copy goes through VS Code (the webview host runs it) like the paste after it, on the same channel and in order
-    await page.keyboard.press("Control+c");
+    await page.keyboard.press("ControlOrMeta+c");
     await page.keyboard.press("End");
     await page.keyboard.type(" ");
-    await page.keyboard.press("Control+v");
+    await page.keyboard.press("ControlOrMeta+v");
     const afterCopy = await soon(txt, (t) => /cutme cutme$/.test(t));
     await page.keyboard.press("Escape");
     const want = "**Takeaway**: schedule → run → postprocess cutme cutme";
@@ -1952,7 +1953,7 @@ const finish = async (browser, errors) => {
   // 8b. Settings: Ctrl+, inside the board opens the Settings page (the extension routes VS Code's own Ctrl+, back to the board); changing the theme writes codeboard.theme
   await clickBoard(f);
   await boardKeys(page, f);
-  await page.keyboard.press("Control+,");
+  await page.keyboard.press("ControlOrMeta+,");
   check(
     (await soon(
       () => f.locator(".settings").count(),
@@ -1974,7 +1975,7 @@ const finish = async (browser, errors) => {
     "board switches to Graphite",
   );
   await shot(page, "7a-settings");
-  await page.keyboard.press("Control+,");
+  await page.keyboard.press("ControlOrMeta+,");
   check(
     (await soon(
       () => f.locator(".settings").count(),
@@ -2035,7 +2036,7 @@ const finish = async (browser, errors) => {
   await openFile(page, SCHED, 30);
   await page.keyboard.press("End");
   await page.keyboard.type("  # local edit");
-  await page.keyboard.press("Control+s");
+  await page.keyboard.press("ControlOrMeta+s");
   check(
     (await soon(
       () => f.locator(".rev.unc").count(),
@@ -2075,7 +2076,7 @@ const finish = async (browser, errors) => {
     "Scheduler.schedule is selected and the board has the keyboard",
     async () => /\bsel\b/.test(await sch1.getAttribute("class")) && (await boardHasKeyboard(f)),
   );
-  await page.keyboard.press("Control+c");
+  await page.keyboard.press("ControlOrMeta+c");
   await until("the board says the card was copied", async () => /^Copied/.test(await text(f.locator(".toast"))), 5000);
   const g = await newBoard(page, "Shared E2E");
   check(!!g, "New Board opens a second board");
@@ -2092,7 +2093,7 @@ const finish = async (browser, errors) => {
       "Ctrl+C on a card puts its code on the system clipboard",
       clip?.slice(0, 80),
     );
-    await page.keyboard.press("Control+v");
+    await page.keyboard.press("ControlOrMeta+v");
     const sch2 = card(g, "Scheduler.schedule");
     check(
       (await soon(
