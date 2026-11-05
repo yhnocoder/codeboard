@@ -1,6 +1,6 @@
 // Sections and where cards sit: moving cards into a Section, folding and fitting Sections, unfolding what hides a card, locks,
 // moves the shell laid out (Tidy Up, Align), card sizes fitted to their content
-import { findCard, type Board, type Section } from "../model";
+import { findCard, type Board, type Card, type Section } from "../model";
 import { align, type AlignOp, type Rect } from "../layout";
 import type { CommandEnv } from "./env";
 
@@ -133,10 +133,19 @@ export function alignCards(env: CommandEnv, rs: (Rect & { id: string })[], op: A
   });
 }
 
+/** The widths Fit Content keeps a card between (the board lays a code card out at the clamped width to measure its height) */
+export const FIT_WIDTH = { min: 240, max: 1600 };
+/** The same for a Text card: as narrow as its resize handles go, and no wider than prose stays readable */
+const FIT_TEXT_WIDTH = { min: 80, max: 720 };
+/** The width Fit Content gives a card whose content is `w` wide */
+export function fitWidth(c: Card | undefined, w: number) {
+  const r = c?.kind === "note" && c.look === "text" ? FIT_TEXT_WIDTH : FIT_WIDTH;
+  return Math.max(r.min, Math.min(r.max, w));
+}
 /**
  * Fit Content of cards to their natural size as measured (w = the longest line, h = all lines shown; body = a code card's content
- * height, chrome = its title and margins). The width is kept within 240–1600. The height is stored only for a code card taller
- * than `codeMax` (its content area); Notes, Web, Image cards and shorter code follow their content
+ * height, chrome = its title and margins). The width is kept within `fitWidth`. The height is stored only for a code card taller
+ * than `codeMax` (its content area); Notes, Text, Web, Image cards and shorter code follow their content
  */
 export function fitCardSizes(
   env: CommandEnv,
@@ -147,8 +156,8 @@ export function fitCardSizes(
     for (const [id, n] of sizes) {
       const p = b.place[id];
       if (!p) continue;
-      if (n.w) p.w = Math.max(240, Math.min(1600, n.w));
       const c = b.cards.find((k) => k.id === id);
+      if (n.w) p.w = fitWidth(c, n.w);
       const code = c?.kind === "code";
       p.h =
         c?.kind === "note" ||
@@ -169,10 +178,13 @@ export function renameSection(env: CommandEnv, id: string, v: string) {
   });
 }
 
-/** A Section's colour; none = uncoloured */
-export function setSectionColor(env: CommandEnv, id: string, color: string | undefined) {
+/** The colour of these Sections (one, or all those selected), in one step; none = uncoloured. No step when none changes */
+export function setSectionColor(env: CommandEnv, ids: string[], color: string | undefined) {
+  const want = new Set(ids);
+  const change = env.board().sections.filter((s) => want.has(s.id) && s.color !== color);
+  if (!change.length) return;
+  const these = new Set(change.map((s) => s.id));
   env.edit((b) => {
-    const s = b.sections.find((q) => q.id === id);
-    if (s) s.color = color;
+    for (const s of b.sections) if (these.has(s.id)) s.color = color;
   });
 }

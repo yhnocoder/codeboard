@@ -367,7 +367,8 @@ async function nudgeStepFollowsZoom(res: Record<string, unknown>) {
   const b = emptyBoard("bNudgeZ", "nudgezoom");
   const a = nv("LLMEngine.step");
   put(b, a, 80, 80, 560);
-  b.cam = { x: 40, y: 40, z: 0.25 };
+  // 50 %: the lowest zoom a one-card board allows (fit-all ÷ 1.3, at most 50 %: #130); a nudge is 1 screen px there, 2 board px
+  b.cam = { x: 40, y: 40, z: 0.5 };
   const h = await open({ board: b });
   await clickHead(h, a.id);
   const at = () => [h.board().place[a.id].x, h.board().place[a.id].y];
@@ -397,12 +398,12 @@ async function nudgeStepFollowsZoom(res: Record<string, unknown>) {
   await close(h);
   const [hx, hy] = res.held as number[];
   return (
-    JSON.stringify(res.one) === "[84,80]" &&
-    JSON.stringify(res.shift) === "[124,80]" &&
+    JSON.stringify(res.one) === "[82,80]" &&
+    JSON.stringify(res.shift) === "[102,80]" &&
     JSON.stringify(res.screen) === "[1,10]" &&
-    hx === 124 &&
-    hy > 84 &&
-    JSON.stringify(undos) === "[[124,80],[84,80],[80,80]]"
+    hx === 102 &&
+    hy > 82 &&
+    JSON.stringify(undos) === "[[102,80],[82,80],[80,80]]"
   );
 }
 

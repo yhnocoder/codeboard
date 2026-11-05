@@ -200,7 +200,13 @@ function direct(
     k1 = Math.max(0, along) + out;
     k2 = Math.max(0, -along) + out;
   } else {
-    k1 = k2 = clamp(dist * 0.5, 30, 180);
+    // 两端垂直（一端左右、一端上下，用户指定了一端的边时）：控制柄不长过另一端在这个方向上的距离，
+    // 否则线会冲过另一端的高度再折回来，在端点前拐出一个钩（#134）
+    const base = clamp(dist * 0.5, 30, 180),
+      f1 = dx * p.nx + dy * p.ny,
+      f2 = -(dx * q.nx + dy * q.ny);
+    k1 = f1 > 0 ? Math.min(base, Math.max(16, f1 * 0.6)) : base;
+    k2 = f2 > 0 ? Math.min(base, Math.max(16, f2 * 0.6)) : base;
   }
   const c1 = { x: p.x + d1.x * k1, y: p.y + d1.y * k1 },
     c2 = { x: q.x + d2.x * k2, y: q.y + d2.y * k2 };

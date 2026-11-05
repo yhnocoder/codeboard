@@ -8,11 +8,14 @@ import {
   BOX_FILLS,
   HAND_COLORS,
   NOTE_LOOKS,
+  TEXT_FS,
   type Board,
   type BoardFile,
+  type BoardSeal,
   type Camera,
   type SharedCardFile,
 } from "./model";
+import { SEAL_COLORS, sealTextOk } from "./seal";
 import { fileCamera, migrateBoard, migrateSharedCard, sharedTextHeights } from "./migrate";
 
 const str = v.string(),
@@ -76,6 +79,17 @@ export const VariantSchema = obj({
   ]),
 });
 
+/** model.ts Summary */
+const Summary = obj({
+  text: str,
+  title: opt(str),
+  at: num,
+  sig: str,
+  edited: opt(yes),
+  pairs: opt(v.array(obj({ ai: str, user: str, at: num }))),
+  input: opt(str),
+});
+
 const Place = obj({
   x: num,
   y: num,
@@ -86,6 +100,7 @@ const Place = obj({
   locked: opt(bool),
   collapsed: opt(bool),
   start: opt(bool),
+  summary: opt(Summary),
 });
 
 const base = {
@@ -133,10 +148,21 @@ const Card = v.variant("kind", [
     bold: opt(bool),
     fill: opt(v.picklist(BOX_FILLS)),
     hand: opt(v.picklist(HAND_COLORS)),
+    weight: opt(v.picklist(["light", "bold"])),
+    level: opt(v.picklist([1, 2, 3])),
+    fs: opt(v.pipe(num, v.minValue(TEXT_FS.min), v.maxValue(TEXT_FS.max))),
     msg: opt(obj({ where: opt(str) })),
     mdLayout: opt(NoteLayout),
   }),
-  obj({ ...base, kind: v.literal("image"), src: str, alt: opt(str), bg: opt(bool) }),
+  obj({
+    ...base,
+    kind: v.literal("image"),
+    src: str,
+    alt: opt(str),
+    bg: opt(bool),
+    frame: opt(v.pipe(num, v.integer(), v.minValue(1))),
+    loop: opt(yes),
+  }),
   obj({
     ...base,
     kind: v.literal("web"),
@@ -243,6 +269,8 @@ const Section = obj({
   collapsed: opt(bool),
   locked: opt(bool),
   desc: opt(str),
+  summary: opt(Summary),
+  directSummary: opt(Summary),
 });
 
 const noteBase = {
@@ -279,6 +307,14 @@ const Sticker = obj({
   q: opt(obj({ md: str, done: opt(yes), answer: opt(str), at: opt(num) })),
 });
 
+/** 白板的印章（seal.ts）：字过不了 sealTextOk、颜色不认得的白板不收 */
+export const BoardSealSchema = obj({
+  text: opt(v.pipe(str, v.check(sealTextOk, "Mark text: 1–5 CJK and 1–12 other characters, no spaces"))),
+  color: opt(v.picklist(SEAL_COLORS)),
+});
+/** 别处（侧栏、别的白板）发来的印章 */
+export const isBoardSeal = (x: unknown): x is BoardSeal => v.is(BoardSealSchema, x);
+
 const boardEntries = {
   version: v.literal(BOARD_VERSION),
   id: opt(str),
@@ -295,6 +331,7 @@ const boardEntries = {
   seq: opt(num),
   marks: opt(v.record(str, GraphMark)),
   legend: opt(v.record(str, str)),
+  seal: opt(BoardSealSchema),
 };
 /** 当前版本（迁移之后）、共享卡已经换成内容的白板（界面拿到的，带着这台机器上的镜头）。id 可以缺：宿主扫描时按文件名补 */
 export const BoardSchema = obj({ ...boardEntries, cam: obj({ x: num, y: num, z: num }) });

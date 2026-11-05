@@ -56,7 +56,7 @@ function Toolbar() {
       { up: true },
     );
   };
-  // 写在白板上、没有卡框的三种：和 Code 一样只开菜单
+  // 写在白板上、没有卡框的四种：和 Code 一样只开菜单
   const writeMenu = (el: HTMLElement) => {
     const [x, y] = at(el);
     openMenu(
@@ -64,6 +64,7 @@ function Toolbar() {
         { label: "New Text", kbd: kbd("newText"), run: () => A.newText() },
         { label: "New Box", kbd: kbd("newBox"), run: () => A.newBox() },
         { label: "New Mark", kbd: kbd("newMark"), run: () => A.newMark() },
+        { label: "New Free Text", run: () => A.newFreeText() },
       ],
       x,
       y,
@@ -165,6 +166,12 @@ function Toolbar() {
         {
           label: "Rename Board…",
           run: () => promptText("Rename Board", state.board.name).then((v) => v && C.renameBoard(commandEnv, v)),
+        },
+        { label: "Copy Path", hint: "The board's file, to point Claude Code at it", run: () => void A.copyPath() },
+        {
+          label: "Edit Mark…",
+          hint: "How refs on other boards show this board",
+          run: () => A.editMark(state.board.id, { x, y }),
         },
         { label: "Export…", hint: "HTML snapshot, Markdown or PNG", run: () => A.openExport() },
         {

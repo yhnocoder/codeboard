@@ -5,7 +5,8 @@ import { Highlighter, type CodeHighlighter } from "./code";
 import { Images, type ImageResolver } from "./image";
 import { MathPreamble, type MathMacros } from "./math";
 import { renderHtml, unwrapParagraph } from "./render";
-import { AnnotFit, copyTex, mdClick, paintRef, type ClickOpts, type Refs } from "./view";
+import { copyTex, mdClick, paintRef, type ClickOpts, type Refs } from "./view";
+import { AnnotFit } from "./annots";
 import { undoubleTex } from "./doubled";
 import { capped } from "./cache";
 import { createMeasure, type Measure } from "./ui/measure";
@@ -14,7 +15,8 @@ import type { PassKeys } from "./ui/editkeys";
 import type { Diagrams } from "./diagram";
 
 export type MarkdownOptions = {
-  /** [[wiki link]] targets: resolve a label to what it points at (null: nothing), missing = the tooltip of one that is not found */
+  /** [[wiki link]] targets: resolve a label (and the id a reference picked from the [[ menu carries, [[label#^id]]) to what it
+   *  points at (null: nothing), missing = the tooltip of one that is not found */
   refs?: Refs;
   /** Code highlighting (text → HTML with token classes); langId maps a language name to the id it is cached and asked under */
   highlight?: CodeHighlighter;
@@ -76,7 +78,8 @@ export class Md implements Markdown {
   /** The editor entry's kept editor (editor/session.ts), built for this instance */
   editorPool: unknown;
   private cache = new Map<string, string>();
-  private annots = new AnnotFit();
+  /** The {text|note} labels' places (annots.ts), in the static render and the editor */
+  readonly annots: AnnotFit;
   private diagrams: Promise<Diagrams> | undefined;
   private watched = new WeakSet<HTMLElement>();
   private copying = new WeakSet<HTMLElement>();
@@ -87,6 +90,7 @@ export class Md implements Markdown {
     this.passKeys = o.passKeys;
     this.measure = o.measure ?? createMeasure();
     this.ghosts = o.ghosts ?? createGhostHold();
+    this.annots = new AnnotFit(this.measure);
     // 解析换了全部重画；一张图学到了大小，带着它的那几篇重画（下次画时先留好位置）
     this.images = new Images((raw) => {
       if (raw === undefined) return this.cache.clear();

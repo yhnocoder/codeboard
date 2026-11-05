@@ -39,6 +39,9 @@ import {
   type Board,
   type Card,
   type CodeCard,
+  type NoteCard,
+  type Sidenote,
+  plainRefs,
   type Link,
   type Segment,
 } from "../src";
@@ -286,8 +289,57 @@ describe("danglingRefs", () => {
 describe("migrateBoard", () => {
   it("refuses a board written by a newer CodeBoard instead of wiping it", () => {
     expect(() =>
-      migrateBoard({ version: 11, id: "b", name: "B", cards: [{ id: "a", kind: "code", segments: [] }] }),
+      migrateBoard({ version: 13, id: "b", name: "B", cards: [{ id: "a", kind: "code", segments: [] }] }),
     ).toThrow(/newer/);
+  });
+  it("v10 → v11: [[title]] references to this board's cards and Sections carry their ids; code, other boards and ids stay", () => {
+    const md = [
+      "see [[Allocate]], [[prefill STAGE]] and [[Kernels › Flash]]",
+      "`[[Allocate]]` in code, [[Nothing]], [[a]] by id, [[Allocate#^x1]] picked",
+      "```",
+      "[[Allocate]]",
+      "```",
+    ].join("\n");
+    const b = upgraded({
+      version: 10,
+      id: "b",
+      name: "B",
+      cards: [
+        { id: "a", kind: "note", md: "# Allocate\n\nbody", look: "note" },
+        { id: "n", kind: "note", md, look: "note", desc: "[[Allocate]]" },
+        { id: "off", kind: "note", md: "# Nothing", look: "note" },
+      ],
+      place: { a: { x: 0, y: 0, w: 300 }, n: { x: 0, y: 400, w: 300 } },
+      links: [],
+      sections: [{ id: "g", title: "Prefill stage", x: 0, y: 0, w: 1, h: 1 }],
+      sidenotes: [{ id: "sn", kind: "text", md: "[[Prefill stage]]", at: { card: "a" } }],
+      stickers: [
+        {
+          id: "q",
+          icon: { pack: "builtin", name: "question" },
+          at: { kind: "canvas", x: 0, y: 0 },
+          q: { md: "why [[allocate]]?" },
+        },
+      ],
+    });
+    const n = b.cards.find((c) => c.id === "n") as NoteCard;
+    expect(n.md.split("\n")).toEqual([
+      "see [[Allocate#^a]], [[prefill STAGE#^g]] and [[Kernels › Flash]]",
+      "`[[Allocate]]` in code, [[Nothing]], [[a]] by id, [[Allocate#^x1]] picked",
+      "```",
+      "[[Allocate]]",
+      "```",
+    ]);
+    expect(n.desc).toBe("[[Allocate#^a]]");
+    expect(b.sidenotes[0]).toMatchObject({ md: "[[Prefill stage#^g]]" });
+    expect(b.stickers[0].q?.md).toBe("why [[allocate#^a]]?");
+    expect(upgraded(structuredClone(b))).toEqual(b); // v11 is read as is
+  });
+  it("plainRefs writes references without ids, by the target's current name", () => {
+    const md = "[[Old#^a]] and [[Kernels › Flash#^bk/k0]], [[Typed]] `[[Old#^a]]`";
+    expect(plainRefs(md, (t) => (t === "a" ? "New name" : undefined))).toBe(
+      "[[New name]] and [[Kernels › Flash]], [[Typed]] `[[Old#^a]]`",
+    );
   });
   it("v7 → v8: a note's background and handwriting become one of Note / Text / Mark, code's nobg becomes bg: false", () => {
     const old = (o: object) => ({ id: "x", kind: "note", md: "x", ...o });
@@ -325,7 +377,7 @@ describe("migrateBoard", () => {
   it("v7 → v8 upgrades shared card files too", () => {
     expect(
       loadSharedCard({ version: 7, card: { id: "s", kind: "note", md: "x", bg: false, hand: "green" }, sidenotes: [] }),
-    ).toEqual({ version: 10, card: { id: "s", kind: "note", md: "x", look: "mark", hand: "green" }, sidenotes: [] });
+    ).toEqual({ version: 12, card: { id: "s", kind: "note", md: "x", look: "mark", hand: "green" }, sidenotes: [] });
     expect(loadSharedCard({ version: 6, card: { ...code("s"), nobg: true }, sidenotes: [] }).card).toMatchObject({
       bg: false,
     });
@@ -797,6 +849,28 @@ describe("card copies, unlink, merge and unmerge (core edit, D2)", () => {
     expect(danglingRefs(b)).toEqual([]);
     expect((src.cards[0] as CodeCard).segments[0].id).toBe("sa"); // the source is not touched
   });
+  it("placeCards copy: [[ref#^id]] between the copied cards points at the copies, others keep their ids", () => {
+    const src = two();
+    const n = { id: "n", kind: "note", md: "see [[f#^a]] and [[z#^z]]", look: "note", desc: "[[f#^a]]" } as NoteCard;
+    const b = emptyBoard("t", "T");
+    const r = placeCards(
+      b,
+      [
+        {
+          card: src.cards[0],
+          place: src.place.a,
+          sidenotes: [{ ...src.sidenotes[0], kind: "text", md: "[[f#^a]]" } as Sidenote],
+        },
+        { card: n, place: { x: 0, y: 0, w: 1 } },
+      ],
+      { copy: true },
+    );
+    const copy = b.cards.find((c) => c.id === r.cards.n) as NoteCard;
+    expect(copy.md).toBe(`see [[f#^${r.cards.a}]] and [[z#^z]]`);
+    expect(copy.desc).toBe(`[[f#^${r.cards.a}]]`);
+    expect(b.sidenotes[0]).toMatchObject({ md: `[[f#^${r.cards.a}]]` });
+    expect(n.md).toBe("see [[f#^a]] and [[z#^z]]"); // the source is not touched
+  });
   it("placeCards linked: same ids, skips cards already on the board", () => {
     const src = two(),
       b = emptyBoard("t", "T");
@@ -1063,6 +1137,24 @@ describe("board action edits (core edit)", () => {
     expect(b.links).toEqual([]);
     expect(b.place.i).toBeUndefined();
     expect(danglingRefs(b)).toEqual([]);
+  });
+
+  it("imageIntoNote keeps an animated image's frame and always-play in the image's attribute block", () => {
+    const b = base([]);
+    placeCards(
+      b,
+      [
+        { card: { id: "n", kind: "note", md: "Top", look: "note" }, place: { x: 0, y: 0, w: 300 } },
+        { card: { id: "i", kind: "image", src: "a.gif", frame: 5, loop: true }, place: { x: 400, y: 0, w: 200 } },
+        { card: { id: "j", kind: "image", src: "b.gif", frame: 2 }, place: { x: 400, y: 300, w: 200 } },
+      ],
+      { copy: false },
+    );
+    expect(imageIntoNote(b, "i", "n", "assets/a.gif")).toBe(true);
+    expect(imageIntoNote(b, "j", "n", "assets/b.gif")).toBe(true);
+    expect((b.cards[0] as { md: string }).md).toBe(
+      "Top\n\n![](assets/a.gif){frame=5 loop=true}\n\n![](assets/b.gif){frame=2}",
+    );
   });
 
   it("imageIntoNote at a block's start puts the image there as its own paragraph", () => {

@@ -5,8 +5,10 @@ import { TextSelection } from "@tiptap/pm/state";
 import { closeHistory } from "@tiptap/pm/history";
 import type { EditorView } from "@tiptap/pm/view";
 import { markTex, type MathPreamble } from "../math";
-import { captionOf, missingImage, IMAGE_DRAG_TYPE, type DraggedImage, type Images } from "../image";
+import { captionOf, missingImage, IMAGE_DRAG_TYPE, type DraggedImage } from "../image";
+import { captionHtml } from "../render";
 import type { Md } from "../markdown";
+import { imageAttrsText } from "../imageattrs";
 import { mdOf } from "./md";
 import { IMAGE_SETTLE } from "../ui/timing";
 import { blockInfo, flat, type Atom, type Span } from "./spans";
@@ -72,7 +74,7 @@ export function atomWidget(
       renderTex(el, a.latex, a.display, md.math);
     } else if (a.type === "image") {
       let dragged: [number, number] | null = null;
-      el = imageEl(a, false, md.images);
+      el = imageEl(a, false, md);
       el.draggable = true;
       el.addEventListener("dragstart", (ev) => {
         const from = getPos();
@@ -162,8 +164,9 @@ function carryImage(dt: DataTransfer, a: Extract<Atom, { type: "image" }>) {
 const MIN_W = 24; // narrowest an image can be dragged to, in px
 
 /** An image as drawn: `below` is the copy under the source while the caret is in it, the one with the resize grips */
-function imageEl(a: Extract<Atom, { type: "image" }>, below: boolean, images: Images): HTMLElement {
-  const el = span(`md-img${below ? " below" : ""}`);
+function imageEl(a: Extract<Atom, { type: "image" }>, below: boolean, md: Md): HTMLElement {
+  const el = span(`md-img${below ? " below" : ""}`),
+    images = md.images;
   // an address the parser could not read: nothing to load, drawn as a failed image
   if (a.broken) {
     el.append(missingImage(a.alt, a.src));
@@ -185,11 +188,12 @@ function imageEl(a: Extract<Atom, { type: "image" }>, below: boolean, images: Im
   const cap = captionOf(a.title);
   if (cap) {
     const c = span("md-cap");
-    c.textContent = cap;
+    c.innerHTML = captionHtml(cap, md);
     el.append(c);
   }
   if (a.width) {
     el.style.width = `${a.width}%`;
+    el.style.setProperty("--f", String(a.width / 100));
     el.classList.add("sized");
   }
   return el;
@@ -198,8 +202,9 @@ function imageEl(a: Extract<Atom, { type: "image" }>, below: boolean, images: Im
 /** The image under its source; dragging a grip rewrites the {width=N%} after it in one undo step */
 export function imageBelow(a: Extract<Atom, { type: "image" }>): ToDOM {
   return (view, getPos) => {
-    const images = mdOf(view.state).images;
-    const el = imageEl(a, true, images),
+    const md = mdOf(view.state),
+      images = md.images;
+    const el = imageEl(a, true, md),
       img = el.querySelector("img");
     // a press keeps the caret in the source; on the image itself it may start a drag (below), which needs the press's default
     el.addEventListener("mousedown", (ev) => {
@@ -287,6 +292,7 @@ function grip(
   ghosts.hold(true);
   const show = () => {
     el.style.width = w ? `${w}%` : "";
+    el.style.setProperty("--f", w ? String(w / 100) : "");
     el.classList.toggle("sized", !!w);
   };
   const move = (ev: PointerEvent) => {
@@ -339,14 +345,14 @@ const imageSourceEnding = (view: EditorView, end: number | undefined): [number, 
   return r ? [r.base + r.sp.from, r.base + r.sp.to] : null;
 };
 
-/** Rewrites the width suffix of the image whose source ends at `end` */
+/** Rewrites the width in the attribute block of the image whose source ends at `end` (its other attributes stay) */
 function setWidth(view: EditorView, end: number | undefined, w: number | null) {
   const r = imageEnding(view, end);
   if (!r) return;
   const { sp, base } = r;
   if (sp.atom?.type !== "image") return;
   const at = sp.atom.widthAt,
-    text = w ? `{width=${w}%}` : "";
+    text = imageAttrsText({ ...sp.atom, width: w });
   const tr = closeHistory(view.state.tr);
   if (at) {
     if (text) tr.insertText(text, base + at[0], base + at[1]);

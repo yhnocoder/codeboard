@@ -1,11 +1,9 @@
 import { send } from "../host";
 import {
   createMemo,
-  createSignal,
   Show,
   Switch,
   Match,
-  onMount,
   onCleanup,
   createEffect,
   createRenderEffect,
@@ -17,6 +15,9 @@ import { Dynamic } from "solid-js/web";
 import {
   cardTitle,
   frameless,
+  scalesText,
+  textSizeOf,
+  HAND_WEIGHT_CSS,
   versionLabel,
   mixedVersions,
   activeOf,
@@ -29,9 +30,11 @@ import {
   type LinkSide,
 } from "@codeboard/core";
 import { measuredHeight } from "../state/subboards";
+import { useMd } from "../md/context";
+import { attachCardAnim, detachAnims } from "../md/anim";
 import { state, setSize, flows, placeOf, rectOf, twinsOf } from "../state/store";
 import { isSel, sel } from "../state/selection";
-import { editing, setEditing, dragging, popIn, sizeIn, walk, pingCard, dropTarget, staged } from "../state/ui";
+import { editing, setEditing, dragging, landing, popIn, sizeIn, walk, pingCard, dropTarget, staged } from "../state/ui";
 import { foldAt, toTitle, fadeAt, goneAt, skel } from "../state/fold";
 import { Icon } from "../ui/icons";
 import { isHidden } from "../state/sections";
@@ -40,6 +43,7 @@ import { CodeBody } from "./CodeBody";
 import { BoundStickers } from "../stickers/Picker";
 import { isBindHot, isBindAnchor } from "../state/stickers";
 import { fileHue, shape } from "../state/look";
+import { inkDark, paperOf } from "../state/ink";
 import { CompareBody } from "./CompareBody";
 import { NoteBody, WritingToolbar } from "./NoteBody";
 import { WebBody, LinksBody } from "./WebBody";
@@ -51,8 +55,6 @@ import { cardStale } from "@codeboard/core/commands";
 import { staleOf } from "../state/views";
 import { farAway } from "../state/cull";
 import { offscreen } from "../state/offscreen";
-import { lodOf, izOf } from "../state/lodcards";
-import { whenIdle } from "../state/idle";
 import { landed } from "../canvas/routes";
 import { CodeHead, MarkView, Procs } from "./CodeHead";
 import { enterCard, leaveCard, portStyle } from "../state/hover";
@@ -65,6 +67,7 @@ import {
   cardWheel,
   linkPortDown,
   resizeDown,
+  scaleDown,
 } from "../interact";
 import { tiltOf, trackTilt } from "../state/tilt";
 import { aiJobOn } from "../state/imageai";
@@ -87,6 +90,7 @@ const BODIES: { [K in Card["kind"]]: Component<{ card: Extract<Card, { kind: K }
 };
 
 export function CardView(p: { card: Card }) {
+  const md = useMd();
   let el!: HTMLDivElement;
   const c = () => p.card;
   const read = () => {
@@ -104,6 +108,18 @@ export function CardView(p: { card: Card }) {
     el = e;
     onCleanup(observeResize(e, () => queueMeasure(read, read)));
     popStyle(e);
+    paperStyle(e);
+    // 箭头终点指着这张卡时放大的原点（.card.aim）：只在指着时写，离开后留着，缩回去的那 90ms 原点不跳
+    const aimAt = createMemo(() => {
+      const d = dropTarget();
+      return d?.aim && d.card === c().id ? d.at : undefined;
+    });
+    createRenderEffect(() => {
+      const a = aimAt();
+      if (!a) return;
+      e.style.setProperty("--aim-x", `${a.x}px`);
+      e.style.setProperty("--aim-y", `${a.y}px`);
+    });
   };
   createEffect(() => {
     const pg = pingCard();
@@ -114,11 +130,10 @@ export function CardView(p: { card: Card }) {
     }
   });
   trackTilt(c);
-  const [labelReady, setLabelReady] = createSignal(false);
-  onMount(() => whenIdle(() => setLabelReady(true)));
   const pop = () => popIn()[c().id];
   const grow = () => sizeIn()[c().id]; // Fit Content 后从旧的大小变过去（actions/common.ts growFrom）
   const pl = () => placeOf(c().id);
+  const textFits = () => c().kind === "note" && (c() as NoteCard).look === "text";
   const style = (): JSX.CSSProperties => {
     const s: JSX.CSSProperties = { left: `${pl().x}px`, top: `${pl().y}px`, width: `${pl().w}px` };
     // 代码卡的高度给内容区（.carea），卡头 / 底栏按主题撑开。
@@ -132,14 +147,21 @@ export function CardView(p: { card: Card }) {
       s.width = `${g.w}px`;
       if (c().kind !== "code") s.height = `${g.h}px`;
     }
-    if (lodOf(c().id) === "map") (s as Record<string, string>)["--iz"] = String(izOf(c().id));
     // Mark 的颜色、Box 的底色：写成变量，不进 class（class 一变，classList 管的 sel 等会被冲掉）
-    if (k.kind === "note" && k.look === "mark") (s as Record<string, string>)["--hc"] = `var(--hd-${k.hand ?? "blue"})`;
+    if (k.kind === "note" && k.look === "mark") {
+      (s as Record<string, string>)["--hc"] = `var(--hd-${k.hand ?? "blue"})`;
+      if (k.weight) (s as Record<string, string>)["--hw"] = String(HAND_WEIGHT_CSS[k.weight]);
+    }
+    // Mark / Free Text 的字号（拖角缩放）：真的字号，不是 transform，放大了字照样清楚。Free Text 的宽度跟着字（styles.css）
+    if (scalesText(k)) {
+      (s as Record<string, string>)["--tfs"] = `${textSizeOf(k)}px`;
+      if (k.look === "freetext" && !g) delete s.width;
+    }
     if (k.kind === "note" && k.look === "box")
       (s as Record<string, string>)["--fc"] = `var(--bf-${k.fill ?? "yellow"})`;
     // 斜贴：绕卡的中心转（箭头的端点按同一个中心转，Links.tsx）
     const a = tiltOf(k.id);
-    if (a) Object.assign(s, { rotate: `${a}deg`, "transform-origin": "50% 50%" });
+    if (a) Object.assign(s, { rotate: `${a}deg`, "transform-origin": "50% 50%", "--aim-t": "0px, 0px" });
     return s;
   };
   // 弹出、滑过去、收进 Section 的每一帧只改这几项：单独一个 effect，不把卡的整个 style 和 classList 重算一遍
@@ -151,7 +173,7 @@ export function CardView(p: { card: Card }) {
       const pi = pop(),
         f = foldAt(c().id),
         s = e.style;
-      if ((!pi && !f) || (farAway(c().id) && lodOf(c().id) === "full")) {
+      if ((!pi && !f) || farAway(c().id)) {
         folding = false;
         for (const k of POP) s.removeProperty(k);
         return;
@@ -186,6 +208,20 @@ export function CardView(p: { card: Card }) {
       s.opacity = pi!.slide ? "" : String(Math.min(1, pi!.v * 1.8));
       s.transition = "none";
     });
+  // 毛边宣纸（look.ts 的 paper，Ink Wash）：卡的 ::before 画一张按这张卡的尺寸画的纸（state/ink.ts，同尺寸的卡共用一张）。
+  // 只在尺寸（取整后）、明暗变了时换图；没有卡框的（Text、Box、Mark、无背景）不画
+  const paper = createMemo(() => {
+    const k = c();
+    if (shape().paper !== "deckle" || (k.kind === "note" && k.look !== "note") || act.noBg(k)) return "";
+    const r = rectOf(k);
+    return paperOf(r.w, r.h, k.id, inkDark());
+  });
+  const paperStyle = (e: HTMLDivElement) =>
+    createRenderEffect(() => {
+      const u = paper();
+      if (u) e.style.setProperty("--deckle", u);
+      else e.style.removeProperty("--deckle");
+    });
   const dim = () => {
     const w = walk();
     if (!w) return false;
@@ -203,6 +239,7 @@ export function CardView(p: { card: Card }) {
   // 拖动中的卡、落点是所有卡共用的信号：直接写进 classList 的话，它们一变，241 张卡的整个 classList 都要重算一遍（松手那一帧 ~5ms）。
   // 先算成这张卡自己的真假，只有值真变了的那张卡才重算 classList
   const lift = createMemo(() => dragging().has(c().id));
+  const land = createMemo(() => landing().has(c().id));
   const ed = createMemo(() => editing()?.id === c().id);
   const drop = createMemo(() => {
     const d = dropTarget(),
@@ -212,9 +249,10 @@ export function CardView(p: { card: Card }) {
     return (
       (m && d.armed ? 1 : 0) |
       (m && !d.armed ? 2 : 0) |
-      (d.kind === "card" && d.card === id ? 4 : 0) |
+      (d.kind === "card" && d.card === id && !d.aim ? 4 : 0) |
       (d.cands?.includes(id) ? 8 : 0) |
-      (d.kind === "note" && d.card === id ? 16 : 0)
+      (d.kind === "note" && d.card === id ? 16 : 0) |
+      (d.aim && d.card === id ? 32 : 0)
     );
   });
   return (
@@ -229,6 +267,7 @@ export function CardView(p: { card: Card }) {
           sel: isSel(c().id),
           solo: sel.cards.length === 1,
           lift: lift(),
+          landing: land(),
           dim: dim(),
           locked: !!pl().locked,
           autoh: !pl().h,
@@ -236,8 +275,6 @@ export function CardView(p: { card: Card }) {
           editing: ed(),
           off: offscreen(c().id),
           far: farAway(c().id),
-          "lo-ov": lodOf(c().id) === "overview",
-          "lo-map": lodOf(c().id) === "map",
           lost: c().kind === "code" && cardStale(c() as CodeCard, staleOf) === "lost",
           gen: c().kind === "code" && !!(c() as CodeCard).gen,
           "merge-hot": !!(drop() & 1),
@@ -245,6 +282,7 @@ export function CardView(p: { card: Card }) {
           "drop-hot": !!(drop() & 4),
           "drop-cand": !!(drop() & 8),
           "img-drop": !!(drop() & 16),
+          aim: !!(drop() & 32),
           "bind-hot": isBindHot(`card:${c().id}`),
           "bind-anchor": isBindAnchor(c().id),
           skel: skel(c().id) === "out",
@@ -253,7 +291,7 @@ export function CardView(p: { card: Card }) {
         onPointerEnter={() => enterCard(c().id)}
         onPointerLeave={() => leaveCard(c().id)}
         onPointerDown={(e) => cardPointerDown(e, c().id)}
-        onContextMenu={(e) => cardContextMenu(e, c().id)}
+        onContextMenu={(e) => cardContextMenu(e, c().id, md)}
         onClick={(e) => cardClick(e, c().id)}
         onDblClick={(e) => cardDblClick(e, c().id)}
       >
@@ -321,32 +359,39 @@ export function CardView(p: { card: Card }) {
                 </>
               }
             >
-              <Switch
-                fallback={
-                  <>
-                    <span
-                      class="hw l"
-                      data-nodrag
-                      data-export="strip"
-                      onPointerDown={(e) => resizeDown(e, c().id, { left: true })}
-                    />
-                    <span
-                      class="hw r"
-                      data-nodrag
-                      data-export="strip"
-                      onPointerDown={(e) => resizeDown(e, c().id, { right: true })}
-                    />
-                  </>
-                }
-              >
-                {/* Mark：右下角一个小方块只改宽度，字号不变、字跟着折行 */}
-                <Match when={(c() as NoteCard).look === "mark"}>
+              {/* Text、Mark：左右两边只改宽度（字跟着折行），Text 的双击是 Fit Content（Mark 的宽度跟着字号缩放走）。Mark、Free Text：右下角一个小方块整体缩放，字号和宽度一起变 */}
+              <Show when={(c() as NoteCard).look === "text" || (c() as NoteCard).look === "mark"}>
+                <span
+                  class="hw l"
+                  data-nodrag
+                  data-export="strip"
+                  data-tip={textFits() ? "Drag to resize · Double-click to fit content" : "Drag to resize"}
+                  onPointerDown={(e) => resizeDown(e, c().id, { left: true })}
+                  onDblClick={(e) => {
+                    e.stopPropagation();
+                    if (textFits()) act.fitContent([c().id]);
+                  }}
+                />
+                <span
+                  class="hw r"
+                  data-nodrag
+                  data-export="strip"
+                  data-tip={textFits() ? "Drag to resize · Double-click to fit content" : "Drag to resize"}
+                  onPointerDown={(e) => resizeDown(e, c().id, { right: true })}
+                  onDblClick={(e) => {
+                    e.stopPropagation();
+                    if (textFits()) act.fitContent([c().id]);
+                  }}
+                />
+              </Show>
+              <Switch>
+                <Match when={scalesText(c())}>
                   <span
                     class="mkgrip"
                     data-nodrag
                     data-export="strip"
-                    data-tip="Drag to change the width"
-                    onPointerDown={(e) => resizeDown(e, c().id, { right: true })}
+                    data-tip="Drag to resize the text"
+                    onPointerDown={(e) => scaleDown(e, c().id)}
                   />
                 </Match>
                 <Match when={(c() as NoteCard).look === "box"}>
@@ -393,12 +438,7 @@ export function CardView(p: { card: Card }) {
             </button>
           )}
         </Show>
-        {/* 地图档只留下面这些：.cface 整块藏起来 */}
         <BoundStickers card={c().id} />
-        {/* 地图档的名字空闲时就建好、藏着（styles.css），切到地图档只是显示出来 */}
-        <Show when={(labelReady() || lodOf(c().id) === "map") && c().kind !== "board"}>
-          <MapLabel card={c()} />
-        </Show>
         {/* 收进 Section、从 Section 里出来时：内容换成几道骨架线（state/fold.ts skel） */}
         <Show when={skel(c().id)}>
           <Skeleton />
@@ -760,60 +800,30 @@ function Desc(p: { id: string; desc?: string }) {
 }
 
 function ImageView(p: { card: ImageCard }) {
-  const src = () =>
-    p.card.src.startsWith("data:") || /^https?:/.test(p.card.src)
-      ? p.card.src
-      : `${state.host.assetBase}/${p.card.src}`;
+  const own = () => p.card.src.startsWith("data:") || /^https?:/.test(p.card.src);
+  const src = () => (own() ? p.card.src : `${state.host.assetBase}/${p.card.src}`);
+  let box!: HTMLDivElement, img!: HTMLImageElement;
+  // a GIF or animated SVG plays as a Note's image does (md/anim.ts), standing on the card's frame unless it always plays
+  createEffect(() => {
+    const at = own() ? p.card.src : `assets/${p.card.src}`;
+    void [p.card.frame, p.card.loop];
+    attachCardAnim(box, p.card.id, img, at);
+  });
+  onCleanup(() => detachAnims(box));
   return (
     <>
       {/* 跟 Note 一样没有标题栏：整张图都能拖，菜单用右键 */}
-      <div class="imgb" data-drag>
-        <img src={src()} alt={p.card.alt ?? ""} draggable={false} />
+      <div class="imgb" data-drag ref={box}>
+        <img
+          ref={img}
+          src={src()}
+          alt={p.card.alt ?? ""}
+          draggable={false}
+          data-frame={p.card.frame}
+          data-loop={p.card.loop ? "" : undefined}
+        />
       </div>
       <Desc id={p.card.id} desc={p.card.desc} />
     </>
-  );
-}
-
-/** 地图档：卡片只剩图标记 + 名字，字号按缩放反向放大，始终看得清 */
-function MapLabel(p: { card: Card }) {
-  const g = () => {
-    const c = p.card;
-    return c.kind === "compare" ? (flows().byId.get(c.cols[0]) ?? flows().byId.get(c.cols[1])) : flows().byId.get(c.id);
-  };
-  const n = () => g()?.label || (g() ? "•" : "");
-  const t = () =>
-    p.card.kind === "note"
-      ? p.card.md
-          .split("\n")[0]
-          .replace(/^#+\s*/, "")
-          .slice(0, 60)
-      : cardTitle(p.card, state.board);
-  // 名字只在 . 和 _ 后面换行，不在单词中间断开
-  const parts = () => t().split(/(?<=[._])/);
-  // 一行放得下的字号：宽 / (字数 × 平均字宽)，高度最多占 45%
-  const fit = () => {
-    const r = rectOf(p.card);
-    const chars = t().length + (n() ? n()!.length + 2 : 0);
-    return `${Math.max(1, Math.min((r.w - 24) / (Math.max(chars, 4) * 0.58), r.h * 0.45))}px`;
-  };
-  return (
-    <div class="maplabel" style={{ "--fit": fit() }}>
-      <Show when={g() && !state.host.settings.hideNumbers}>
-        <span class="step">
-          <MarkView g={g()!} />
-        </span>
-      </Show>
-      <span class="mt">
-        <For each={parts()}>
-          {(x) => (
-            <>
-              {x}
-              <wbr />
-            </>
-          )}
-        </For>
-      </span>
-    </div>
   );
 }

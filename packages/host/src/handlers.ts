@@ -8,6 +8,7 @@ import {
   sniffSvg,
   cleanCompletion,
   checkBoard,
+  isBoardSeal,
   subCardOf,
   wouldCycle,
   findCard,
@@ -42,6 +43,7 @@ import { pasteClip } from "./storage/clip";
 import { pasteFar, recordClip } from "./transfer";
 import { applyFlow, captureFlow } from "./runs";
 import { prompts } from "./prompts";
+import { setSeal } from "./seals";
 import { allQuestions, exportFile, permalinks } from "./exports";
 import { exportFlow } from "./bundle";
 import { currentVersion, currentVersionLabel, srcKey, hasLocalFile } from "./source";
@@ -50,6 +52,8 @@ import { addVariant, variantSources } from "./variants";
 import { highlight, segView, viewsFor } from "./views";
 import { splitLines } from "./ws";
 import { imageAiJob } from "./imageai";
+import { summarize, withExamples } from "./summaries";
+import { copyPaths } from "./paths";
 import { aiInfo, clearDeepseekKey, completeNote, setDeepseekKey } from "./ai";
 import type { HostContext } from "./context";
 
@@ -125,7 +129,7 @@ export function makeHandler(cx: HostContext, panels: BoardHost, mediaDir: string
     log: (_p, m) => cx.log(m.level, m.text),
     openBoard: (_p, m) => openOnBoard(cx, panels, m.id, m.card, m.line, m.sticker),
     copyCards: async (p, m) => {
-      panels.clip = { board: p.id, cards: m.cards, text: m.text };
+      panels.clip = { board: p.id, cards: m.cards, text: m.text, pic: m.pic };
       // 别的窗口（别的项目）也能贴：记进全局存储目录
       const recorded = recordClip(cx, store.dir(), panels.clip).catch((e) =>
         cx.log("warn", `copyCards: ${e instanceof Error ? e.message : e}`),
@@ -137,7 +141,7 @@ export function makeHandler(cx: HostContext, panels: BoardHost, mediaDir: string
       await recorded;
     },
     pasteCards: async (p, m) => {
-      const o = { text: m.text, copy: !!m.copy };
+      const o = { text: m.text, pic: m.pic, copy: !!m.copy };
       // 这个窗口的剪贴板对不上：看是不是别的窗口复制的卡
       const r = (await pasteClip(store, panels.clip, p.id, o)) ?? (await pasteFar(cx, store, p.id, o));
       if (!r) return null;
@@ -165,10 +169,28 @@ export function makeHandler(cx: HostContext, panels: BoardHost, mediaDir: string
     permalinks: (_p, m) => permalinks(cx, m.segs),
     exportFile: (_p, m) => exportFile(cx, store, mediaDir, m.kind, m.name, m.text),
     copyText: (_p, m) => cx.ws.ui.copy(m.text),
+    copyImage: async (_p, m) => {
+      cx.log("warn", `copy image: the board could not write the clipboard (${m.why}), the editor writes it`);
+      const png = /^data:image\/png;base64,/.test(m.png)
+        ? Buffer.from(m.png.slice(m.png.indexOf(",") + 1), "base64")
+        : null;
+      const done = png && (await cx.ws.ui.copyImage?.(png).catch((e) => (cx.log("warn", `copy image: ${e}`), false)));
+      if (!done) await cx.ws.ui.copy(m.text);
+    },
+    copyPath: (p, m) => copyPaths(cx, store, p.id, m.items),
     imageAi: (p, m) => imageAiJob(cx, p.imageJobs, m.job, m.op),
     imageAiCancel: (p, m) => {
       p.imageJobs.get(m.job)?.abort();
     },
+    summarize: (p, m) =>
+      summarize(
+        cx,
+        withExamples(
+          m.input,
+          store.cached().map((e) => e.board),
+          p.id,
+        ),
+      ),
     aiInfo: () => aiInfo(cx),
     aiKey: async (p, m) => {
       if (m.action === "set") await setDeepseekKey(cx, prompts(cx, p));
@@ -186,6 +208,10 @@ export function makeHandler(cx: HostContext, panels: BoardHost, mediaDir: string
       return panels.boardRefs(p);
     },
     refPicked: (_p, m) => panels.refPicked(m.b, m.id),
+    setSeal: async (_p, m) => {
+      if (!SAFE_ID.test(m.board) || (m.seal !== null && !isBoardSeal(m.seal))) throw new Error("Invalid mark");
+      await setSeal(panels, m.board, m.seal);
+    },
     subCard: async (_p, m) => {
       const b = store.peek(m.board) ?? (await store.load(m.board));
       const r = b && subCardOf(b, m.card);

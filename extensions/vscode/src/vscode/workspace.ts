@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import * as path from "node:path";
+import { copyImage } from "./clipimage";
 import { hoverAt, locations } from "./lsp";
 import { isScratch, vscodeScratch } from "./scratch";
 import {
@@ -361,6 +362,19 @@ export function vscodeWorkspace(ctx: vscode.ExtensionContext): Workspace {
           placeHolder: o.placeHolder,
           password: o.password,
           ignoreFocusOut: o.password,
+          validateInput: o.check
+            ? (v) => {
+                const r = o.check!(v);
+                return (
+                  r && {
+                    message: r.message,
+                    severity: r.warn
+                      ? vscode.InputBoxValidationSeverity.Warning
+                      : vscode.InputBoxValidationSeverity.Error,
+                  }
+                );
+              }
+            : undefined,
         }),
       openDialog: async (o) => {
         const r = await vscode.window.showOpenDialog(
@@ -377,6 +391,7 @@ export function vscodeWorkspace(ctx: vscode.ExtensionContext): Workspace {
       openFolder: async (abs) => void (await vscode.env.openExternal(vscode.Uri.file(abs))),
       revealInOS: async (abs) => void (await vscode.commands.executeCommand("revealFileInOS", vscode.Uri.file(abs))),
       copy: async (text) => vscode.env.clipboard.writeText(text),
+      copyImage,
       clipboard: async () => vscode.env.clipboard.readText(),
       undoAddChanged: (on) => undoAddKey(on),
       // the board's own keys are bound on this context key (package.json keybindings)

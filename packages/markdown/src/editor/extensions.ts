@@ -6,6 +6,7 @@ import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { Placeholder } from "@tiptap/extensions";
 import DragHandle from "@tiptap/extension-drag-handle";
 import { sourceExtensions } from "../schema";
+import { refSource } from "../schema-nodes";
 import { Ghost } from "./ghost";
 import { EMOJI, EMOJI_NAMES } from "../emoji";
 import { ParaView, revealMeta } from "./inline";
@@ -50,6 +51,8 @@ export function editorExtensions(
             }),
             ed,
             () => saveImage(o),
+            () => o.copyImage,
+            () => o.knownImage,
           )
         : x.name === "codeBlock"
           ? (x as TNode).extend({
@@ -94,21 +97,24 @@ export function editorExtensions(
   const refItems = (close: string) => {
     // 这一次打开的列表里展开了的组（「N more」）
     const open = new Set<string>();
-    const insert = (label: string, pick: RefPick) => (e: Editor, r: Range) => {
+    const insert = (label: string, target: string | undefined, pick: RefPick) => (e: Editor, r: Range) => {
       // 自动配对补上的 ]]（pairs.ts）或手打的 】】 也一起换掉
       const to =
         close &&
         e.state.doc.textBetween(r.to, Math.min(r.to + close.length, e.state.doc.content.size), "", "￼") === close
           ? r.to + close.length
           : r.to;
-      e.chain().focus().insertContentAt({ from: r.from, to }, `[[${label}]] `).run();
+      e.chain()
+        .focus()
+        .insertContentAt({ from: r.from, to }, `${refSource(label, target)} `)
+        .run();
       o.refs?.picked?.(pick);
     };
     const row = (c: RefItem, g?: RefGroup, more: Partial<MenuItem> = {}): MenuItem => ({
       title: c.title,
       hint: c.kind,
       key: `${g?.id ?? ""}/${c.id}`,
-      run: insert(c.label ?? c.title, { group: g?.id, id: c.id }),
+      run: insert(c.label ?? c.title, c.target, { group: g?.id, id: c.id }),
       ...more,
     });
     const self = (g: RefGroup): RefItem => ({
@@ -116,6 +122,7 @@ export function editorExtensions(
       title: g.title,
       kind: "whiteboard",
       label: g.label ?? g.title,
+      target: g.target,
     });
     const where = (c: RefItem, g?: RefGroup) => (g ? [g.title, c.crumb].filter(Boolean).join(" › ") : undefined);
     const items = (q: string): MenuItem[] => {

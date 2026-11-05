@@ -52,6 +52,8 @@ function full() {
     },
     { id: "q", kind: "code", segments: [{ ...seg("s3"), src: { kind: "free" }, version: { kind: "none" } }] },
     { id: "k", kind: "compare", cols: ["p", "q"], swap: true },
+    { id: "m", kind: "note", md: "先挑", look: "mark", hand: "green", weight: "bold", fs: 27.5 },
+    { id: "f", kind: "note", md: "Scheduler\nprefill", look: "freetext", fs: 64 },
   );
   b.place = {
     c: { x: 1, y: 2, w: 400, h: 90, section: "g", locked: true, collapsed: true },
@@ -144,6 +146,18 @@ describe("checkBoard", () => {
     g.links[0].call = { col: 1 };
     expect(() => checkBoard(g)).toThrow(/links\.0\.call\.name/);
   });
+  it("refuses a Mark or Free Text size outside the limits and a weight it does not know", () => {
+    const at = (b: any) => b.cards.findIndex((c: { id: string }) => c.id === "m");
+    const a: any = full();
+    a.cards[at(a)].fs = 2;
+    expect(() => checkBoard(a)).toThrow(new RegExp(`cards\\.${at(a)}\\.fs`));
+    const b: any = full();
+    b.cards[at(b)].fs = 1000;
+    expect(() => checkBoard(b)).toThrow(/fs/);
+    const c: any = full();
+    c.cards[at(c)].weight = "heavy";
+    expect(() => checkBoard(c)).toThrow(new RegExp(`cards\\.${at(c)}\\.weight`));
+  });
 });
 
 describe("loadBoardFile", () => {
@@ -177,7 +191,7 @@ describe("loadBoardFile", () => {
       ],
       edges: [{ id: "e", from: { card: "c1", line: 2 }, to: { card: "c1" }, kind: "call" }],
     });
-    expect(v1.version).toBe(10);
+    expect(v1.version).toBe(12);
     const col = (id: string) => ({ id, kind: "code", x: 5, y: 6, w: 300, segments: [seg(`s${id}`)] });
     const v2 = loadBoardFile({
       version: 2,
@@ -202,6 +216,21 @@ describe("loadBoardFile", () => {
     expect("tilt" in l.cards[2]).toBe(false);
     b.cards[2].tilt = "yes";
     expect(() => checkBoard(b)).toThrow(/cards\.2\.tilt/);
+  });
+  it("keeps an image card's frame and always-play; loop: false counts as none, a frame that is not a whole number from 1 is refused", () => {
+    const b: any = full();
+    const i = b.cards.findIndex((c: any) => c.kind === "image");
+    b.cards[i].frame = 3;
+    b.cards[i].loop = true;
+    let l: any = loadBoardFile(structuredClone(b));
+    expect([l.cards[i].frame, l.cards[i].loop]).toEqual([3, true]);
+    b.cards[i].loop = false;
+    l = loadBoardFile(structuredClone(b));
+    expect("loop" in l.cards[i]).toBe(false);
+    for (const bad of [0, 1.5, "2"]) {
+      b.cards[i].frame = bad;
+      expect(() => checkBoard(b)).toThrow(new RegExp(`cards\\.${i}\\.frame`));
+    }
   });
   it("keeps a sub-board card's two preview columns and drops the old one-column value", () => {
     const b: any = {

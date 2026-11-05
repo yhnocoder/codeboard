@@ -1,11 +1,12 @@
 // 图注（图的 title）的读和改：按 Markdown 里写的地址找图，第 nth 张（同一个地址的图可以有几张，按文档里的先后）。
 // 改的时候只换那一张图的写法，别处一个字不动；对不上（比如图写在原样的 HTML 里）就整篇按文档写回
 import type { JSONContent } from "@tiptap/core";
-import { parseMd, serializeMd } from "./schema";
+import { mdSchema, parseMd, serializeMd } from "./schema";
 import { captionOf } from "./image";
+import { spliceBlocks } from "./marks";
 
 /** 第 nth 张地址是 src 的图（文档 JSON 里的节点） */
-function imageNode(doc: JSONContent, src: string, nth: number): JSONContent | null {
+export function imageNode(doc: JSONContent, src: string, nth: number): JSONContent | null {
   let k = 0,
     hit: JSONContent | null = null;
   const walk = (n: JSONContent) => {
@@ -26,11 +27,11 @@ export function imageCaption(md: string, src: string, nth = 0): string | null {
   return n ? captionOf(n.attrs?.title) : null;
 }
 
-const IMAGE =
+export const IMAGE =
   /!\[(?:\\.|[^\]\\\n])*\]\(\s*(<[^>\n]*>|(?:\\.|[^\s()\\]|\([^\s()]*\))+)((?:\s+(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\((?:\\.|[^)\\])*\)))?)\s*\)/g;
 
 /** 代码（围栏代码块、行内代码）换成等长的空白：在里面的 ![…](…) 不是图 */
-function maskCode(md: string): string {
+export function maskCode(md: string): string {
   let out = md.replace(/(`+)(?!`)[\s\S]*?[^`]\1(?!`)/g, (m) => m.replace(/[^\n]/g, " "));
   let fence = "";
   out = out
@@ -73,4 +74,38 @@ export function setImageCaption(md: string, src: string, nth: number, caption: s
     n = imageNode(doc, src, nth)!;
   n.attrs = { ...n.attrs, title: cap || null };
   return serializeMd(doc);
+}
+
+/** 第 nth 张表格（文档里的先后，嵌在列表、引用里的也算） */
+function tableNode(doc: JSONContent, nth: number): JSONContent | null {
+  let k = 0,
+    hit: JSONContent | null = null;
+  const walk = (n: JSONContent) => {
+    if (hit) return;
+    if (n.type === "table" && k++ === nth) {
+      hit = n;
+      return;
+    }
+    n.content?.forEach(walk);
+  };
+  walk(doc);
+  return hit;
+}
+
+/** 第 nth 张表格的图注（表格后面的 "Table: …" 那一行）；没有这张表格回 null */
+export function tableCaption(md: string, nth: number): string | null {
+  const n = tableNode(parseMd(md), nth);
+  return n ? captionOf(n.attrs?.caption) : null;
+}
+
+/** 第 nth 张表格换上图注 caption（空 = 去掉）：只重写它所在的那个顶层块；没有这张表格时原样返回 */
+export function setTableCaption(md: string, nth: number, caption: string): string {
+  const cap = caption.replace(/\s*\n\s*/g, " ").trim(),
+    json = parseMd(md),
+    n = tableNode(json, nth);
+  if (!n) return md;
+  const before = mdSchema().nodeFromJSON(json);
+  n.attrs = { ...n.attrs, caption: cap || null };
+  const after = mdSchema().nodeFromJSON(json);
+  return spliceBlocks(md, before, after) ?? serializeMd(json);
 }

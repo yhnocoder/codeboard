@@ -164,7 +164,7 @@ test("arrowLabelsMenus", async () => {
     aLoop: await A.locator(".vloop").count(),
     aText: await A.locator(".vlabel").textContent(),
     aRows: await A.locator(".vrow").allTextContents(),
-    aGone: await A.locator(".vrow.gone").allTextContents(),
+    aGone: await A.locator(".vrow.vgone").allTextContents(),
     bText: await B.locator(".vloop").textContent(),
     bRows: await B.locator(".vrow").count(),
     bTip: await B.locator(".vloop").getAttribute("data-tip"),
@@ -227,29 +227,6 @@ test("arrowLabelsMenus", async () => {
   await h.page.keyboard.press("Escape");
   await h.page.mouse.click(5, 900);
   await idle(h);
-
-  // zoomed out: arguments collapse, ↺ and own text stay
-  {
-    const lb = h.page.locator(".lyr").first();
-    await h.page.mouse.move(700, 500);
-    await h.page.keyboard.down("Control");
-    for (let i = 0; i < 2; i++) await h.page.mouse.wheel(0, 20);
-    await h.page.keyboard.up("Control");
-    await idle(h);
-    const lod = await lb.getAttribute("class");
-    const rowsShown = await A.locator(".vbox").evaluate((e) => getComputedStyle(e).display !== "none");
-    const headShown = await A.locator(".vhead").evaluate((e) => getComputedStyle(e).display !== "none");
-    check("lod-collapses-args", /lod-overview/.test(lod ?? "") && !rowsShown && headShown, {
-      lod,
-      rowsShown,
-      headShown,
-    });
-    await snap(h, "labels-3-zoomed-out");
-    await h.page.keyboard.down("Control");
-    for (let i = 0; i < 2; i++) await h.page.mouse.wheel(0, -20);
-    await h.page.keyboard.up("Control");
-    await idle(h);
-  }
 
   // drag along the arrow, ratio kept when a card moves
   const r0 = (await A.boundingBox())!;

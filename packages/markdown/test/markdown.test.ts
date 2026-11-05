@@ -75,6 +75,25 @@ describe("markdown round trip", () => {
     same("see [[Scheduler.schedule]] and [[My note]]");
     expect(JSON.stringify(parseMd("[[A b]]"))).toContain('"wikiRef"');
   });
+  it("[[title#^id]]: a picked reference keeps its target's id next to its title", () => {
+    same("see [[Scheduler.schedule#^c1x-2]] and [[Kernels › Flash#^bk/k0]] in | a table");
+    same("| a         | b             |\n| --------- | ------------- |\n| [[A#^c1]] | [[Issue #12]] |");
+    const refs = (s: string) => {
+      const out: unknown[] = [];
+      const walk = (n: JSONContent) => {
+        if (n.type === "wikiRef") out.push(n.attrs);
+        n.content?.forEach(walk);
+      };
+      walk(parseMd(s));
+      return out;
+    };
+    expect(refs("[[A b#^c1]] [[Kernels › Flash#^bk/k0]] [[Issue #12]] [[x#^ spaced]]")).toEqual([
+      { label: "A b", target: "c1" },
+      { label: "Kernels › Flash", target: "bk/k0" },
+      { label: "Issue #12", target: "" },
+      { label: "x#^ spaced", target: "" },
+    ]);
+  });
   it("footnotes", () => {
     same("text[^1] more[^2]\n\n[^1]: first note\n[^2]: second");
     // 标签按出现顺序重新编号
@@ -159,6 +178,27 @@ describe("static render", () => {
   });
   it("keeps soft line breaks as written (old notes were one line per paragraph)", () => {
     expect(markdown.render("line one\nline two")).toBe("<p>line one\nline two</p>");
+  });
+  it("a [[title#^id]] chip asks the resolver with the id and shows the target's current title", () => {
+    const asked: unknown[] = [];
+    const md = createMarkdown({
+      refs: {
+        resolve: (label, target) => {
+          asked.push([label, target]);
+          return target === "c1" ? { id: "c1", title: "New name" } : null;
+        },
+      },
+    });
+    const h = md.render("see [[Old name#^c1]] and [[Typed]]");
+    expect(h).toContain('data-ref="Old name" data-target="c1"');
+    const el = document.createElement("div");
+    el.innerHTML = h;
+    md.hydrate(el, h);
+    expect(el.textContent).toBe("see New name and Typed");
+    expect(asked).toEqual([
+      ["Old name", "c1"],
+      ["Typed", undefined],
+    ]);
   });
   it("renders code for the host highlighter, chips, tasks, footnotes", () => {
     const h = markdown.render("```python\ndef f(): return 1\n```\n\n- [x] done\n\nsee [[Card]][^1]\n\n[^1]: n");
@@ -615,6 +655,44 @@ describe("annotations {text|note}", () => {
     same("set literal \\{a|b} braces");
     same("plain {braces} and a|b pipes stay");
     same("==hl== and {t|n|orange}");
+  });
+  it("a note can hold { } pairs, so a formula reads as typed (#121), and keeps its escapes", () => {
+    const one = (s: string) => annots(s)[0]?.note;
+    expect(one("{==64 位==|$\\frac{a}{b}$ 倍}")).toBe("$\\frac{a}{b}$ 倍");
+    expect(one("{x|$\\sqrt{\\frac{a}{b^{2}}}$|purple}")).toBe("$\\sqrt{\\frac{a}{b^{2}}}$");
+    expect(annots("{x|$\\frac{a}{b}$|green below}")[0]).toMatchObject({ color: "green", below: true });
+    // a | inside a pair does not end the note
+    expect(one("{x|$\\text{a|b}$}")).toBe("$\\text{a|b}$");
+    // the escaped form written before still reads the same
+    expect(one("{x|$\\\\frac\\{a\\}\\{b\\}$ 倍}")).toBe("$\\frac{a}{b}$ 倍");
+    expect(one("{x|a \\} b}")).toBe("a } b");
+    // an unpaired { never runs past the line
+    expect(annots("{x|$\\frac{a$ 倍}\nmore}")).toEqual([]);
+    same("{==64 位==|$\\frac{a}{b}$ 倍}");
+    same("{x|$\\sqrt{\\frac{a}{b^{2}}}$|purple below}");
+    same("{x|a \\} b \\{ c}");
+    same("{x|$\\\\{a\\\\}$}");
+    same("{x|path\\\\}");
+    // from the attribute (the toolbar's Handwritten Note): written with its pairs as they are
+    const doc = parseMd("{x|y}");
+    const set = (n: JSONContent): JSONContent => ({
+      ...n,
+      marks: n.marks?.map((m) =>
+        m.type === "annot" ? { ...m, attrs: { ...m.attrs, note: "$\\frac{a}{b}$ | \\" } } : m,
+      ),
+      content: n.content?.map(set),
+    });
+    const out = serializeMd(set(doc));
+    expect(out).toBe("{x|$\\frac{a}{b}$ \\| \\\\}");
+    expect(annots(out)[0]?.note).toBe("$\\frac{a}{b}$ | \\");
+  });
+  it("draws a formula with a fraction in the note", () => {
+    const d = document.createElement("div");
+    d.innerHTML = markdown.render("所以 {==64 位==|$\\frac{a}{b}$ 倍} 总线");
+    const n = d.querySelector(".md-annot > .md-annot-n")!;
+    expect(n.querySelector(".katex .mfrac")).not.toBeNull();
+    expect(n.textContent).toContain("倍");
+    expect(d.querySelector(".md-annot mark")?.textContent).toBe("64 位");
   });
   it("renders a span with the note in data attributes", () => {
     const h = markdown.render("see {Scheduler|决定谁先跑|purple below}");

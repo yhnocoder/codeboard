@@ -207,6 +207,8 @@ export type OpenOptions = {
   light?: boolean;
   w?: number;
   h?: number;
+  /** The page's device scale factor (screenshots at 2×); 1 by default */
+  scale?: number;
   beforeLoad?: (p: Page) => Promise<void>;
   on?: OnMsg;
   host?: Record<string, unknown>;
@@ -251,7 +253,7 @@ boot({ post: (m) => { window.__inflight++; window.__host(JSON.stringify(m)).fina
   );
   const context = await browser.newContext({
     viewport: { width: o.w ?? 1400, height: o.h ?? 900 },
-    deviceScaleFactor: 1,
+    deviceScaleFactor: o.scale ?? 1,
   });
   const page = await context.newPage();
   // coverage (regular runs): which board code the scenario runs, for picking scenarios by changed file

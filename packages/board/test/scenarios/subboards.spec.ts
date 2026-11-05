@@ -465,9 +465,11 @@ async function run(res: Record<string, unknown>) {
     await idle(h);
     await shotPr(h, "subboards-1-frame");
 
-    // 2. Far zoom: grey blocks with Section colour, name above
-    // 滚轮一点一点缩到刚进地图档（< 25%），框还看得清
-    for (let i = 0; i < 30 && !(await page.locator(`.card.board.lo-map`).count()); i++) {
+    // 2. Far zoom: the frame keeps its look at every zoom, only scaled (#130: no map look, its name and count stay above it)
+    // 滚轮一点一点缩到最小（这块白板的最小缩放：fit-all ÷ 1.3）
+    const worldZ = () =>
+      page.evaluate(() => new DOMMatrix(getComputedStyle(document.querySelector(".world")!).transform).a);
+    for (let i = 0, z = 0; i < 30 && z !== (z = await worldZ()); i++) {
       await page.evaluate(() =>
         document.querySelector("#board")!.dispatchEvent(
           new WheelEvent("wheel", {
@@ -482,7 +484,11 @@ async function run(res: Record<string, unknown>) {
       );
       await idle(h);
     }
-    res.far = await page.locator(`.card.board.lo-map[data-id="${frame?.id}"]`).count();
+    const fr = page.locator(`.card[data-id="${frame?.id}"]`);
+    res.far = {
+      z: +(await worldZ()).toFixed(3),
+      name: (await fr.locator(".sbname").isVisible()) && (await fr.locator(".sbmeta").isVisible()),
+    };
     await shotPr(h, "subboards-2-far");
     await page.keyboard.press("Shift+Digit1");
     await idle(h);
@@ -538,7 +544,6 @@ async function run(res: Record<string, unknown>) {
     await idle(h);
     res.cycleToast = await page.locator(".toast").textContent();
     res.noCycle = !subBoardsOf(t.store.peek(t.cur())!).includes("bEngine");
-    res.lo = await page.locator(".card.lo-ov, .card.lo-map").count();
     // nothing is selected: Esc leaves
     n = t.inits.length;
     await page.keyboard.press("Escape");
@@ -590,7 +595,7 @@ async function run(res: Record<string, unknown>) {
       (res.skelCards as number) >= 1 &&
       /Scheduler\s*5$/.test(String(res.title)) &&
       res.tip === "Scheduler · bb823b3" &&
-      res.far === 1 &&
+      JSON.stringify(res.far).includes('"name":true') &&
       res.more === "8 cards, 7 lines" &&
       res.newArrow === into &&
       res.entered &&
@@ -600,8 +605,7 @@ async function run(res: Record<string, unknown>) {
       res.back &&
       res.walkIn &&
       res.walkOut &&
-      res.removedFrame &&
-      res.lo === 0;
+      res.removedFrame;
     check("subboards", ok, JSON.stringify(res));
     await h.page.context().close();
   }

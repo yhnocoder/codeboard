@@ -1110,40 +1110,40 @@ test("noteEditKeepsHeightWithHeaderFolded", async () => {
   }
 });
 
-/** Ink Wash draws a brush line under the card header. Editing a Note whose header is its leading heading folds the header and slides
- *  the heading up to where the line was: the line fades with the header and comes back after editing */
-test("inkWashFoldHidesHeaderLine", async () => {
+/** Ink Wash tints the card header with a faint ink wash. Editing a Note whose header is its leading heading folds the header and
+ *  slides the heading up into it: the wash goes with the header and comes back after editing */
+test("inkWashFoldHidesHeaderWash", async () => {
   const b = emptyBoard("b1", "ink wash fold");
   put(b, { id: "n0", kind: "note", md: FOLD_NOTES[0], look: "note" } as NoteCard, 60, 60, 420);
   b.cam = { x: 0, y: 0, z: 1 };
   const h = await open({ board: b, light: true, w: 600, h: 300, settings: { theme: "ink-wash" } as never });
   const pg = h.page;
   await idle(h);
-  const line = () =>
+  const wash = () =>
     pg.evaluate(() => {
       const head = document.querySelector('.card[data-id="n0"] .chead')!;
-      return { folded: head.classList.contains("fold"), opacity: +getComputedStyle(head, "::after").opacity };
+      const cs = getComputedStyle(head);
+      return {
+        folded: head.classList.contains("fold"),
+        wash: cs.backgroundImage.includes("gradient"),
+        line: getComputedStyle(head, "::after").content,
+      };
     });
-  const shown = await line();
+  const shown = await wash();
   await pg.locator('.card[data-id="n0"] .nbody p').last().dblclick();
   await pg.waitForSelector('.card[data-id="n0"] .md-pm > h1');
   await pg.mouse.move(5, 5);
   await idle(h);
-  const editing = await line();
+  const editing = await wash();
   await pg.screenshot({
     path: path.join(OUT, "inkWashFold-editing.png"),
     clip: { x: 40, y: 40, width: 480, height: 200 },
   });
   await exitEdit(h);
-  const after = await line();
+  const after = await wash();
   check(
-    "inkWashFoldHidesHeaderLine",
-    !shown.folded &&
-      shown.opacity > 0.3 &&
-      editing.folded &&
-      editing.opacity === 0 &&
-      !after.folded &&
-      after.opacity === shown.opacity,
+    "inkWashFoldHidesHeaderWash",
+    !shown.folded && shown.wash && editing.folded && !editing.wash && !after.folded && after.wash,
     { shown, editing, after },
   );
   await close(h);

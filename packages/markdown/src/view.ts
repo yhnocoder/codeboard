@@ -1,31 +1,54 @@
-/** [[标题]] 指向的东西（白板上是卡）。badge = 标在标题后面的小字（白板：在别的白板上的卡写那块白板的名字），place = 它在哪（点的时候交给 openRef） */
-export type RefTarget = { id: string; title: string; badge?: string; place?: string };
+/**
+ * A short coloured mark ("seal") drawn before a ref's title instead of a badge: the place the target is in, as `text` on a fill of
+ * `color` (any CSS colour). `outer`: the larger place that one is part of, drawn as the first half of the same box (its text in
+ * its colour, on a light tint of it). `alone`: the ref names the place itself, so only the seal is drawn, without the title
+ */
+export type RefSeal = { text: string; color: string; outer?: { text: string; color: string }; alone?: boolean };
+/**
+ * [[标题]] 指向的东西（白板上是卡）。badge = 标在标题后面的小字，seal = 画在标题前面的印章（有 seal 时不画 badge），
+ * hint = 悬停时的提示（比如完整的路径），place = 它在哪（点的时候交给 openRef）
+ */
+export type RefTarget = { id: string; title: string; badge?: string; seal?: RefSeal; hint?: string; place?: string };
 /** 认得出指的是哪儿、但已经找不到了：item = 那里已经没有这一项（灰、划掉），place = 那个地方本身没了（警告色）。why = 悬停的提示 */
 export type RefBroken = { broken: "item" | "place"; title: string; badge?: string; why?: string };
-/** [[标题]] 怎么找目标；missing：找不到时的提示 */
-export type Refs = { resolve: (label: string) => RefTarget | RefBroken | null; missing?: string };
+/** [[标题]] 怎么找目标：target = 从 [[ 列表选的时候带上的目标 id（[[标题#^id]]，见 schema-nodes.ts WikiRef），先按它找；missing：找不到时的提示 */
+export type Refs = { resolve: (label: string, target?: string) => RefTarget | RefBroken | null; missing?: string };
 const MISSING = "Nothing with this title";
 
-/** 按现在能找到的把一个 [[引用]]（.md-ref）画出来：标题（和 badge），找不到时的样子和提示 */
+/** 上次画成什么样（一样就不重画，静态 Note 里的引用每次别处的数据到了都会再认一遍） */
+const painted = new WeakMap<HTMLElement, string>();
+
+/** 按现在能找到的把一个 [[引用]]（.md-ref）画出来：印章、标题（和 badge），找不到时的样子和提示 */
 export function paintRef(r: HTMLElement, refs: Refs) {
-  const hit = refs.resolve(r.dataset.ref ?? ""),
+  const hit = refs.resolve(r.dataset.ref ?? "", r.dataset.target || undefined),
     missing = refs.missing || MISSING;
   const broken = hit && "broken" in hit ? hit.broken : undefined;
   r.classList.toggle("missing", !hit || broken === "item");
   r.classList.toggle("gone", broken === "place");
+  const seal = hit && !broken ? (hit as RefTarget).seal : undefined;
+  r.classList.toggle("sealed", !!seal);
   if (!hit) {
+    painted.delete(r);
     r.title = missing;
     return;
   }
-  if (broken) r.title = (hit as RefBroken).why ?? missing;
+  const hint = broken ? ((hit as RefBroken).why ?? missing) : (hit as RefTarget).hint;
+  if (hint) r.title = hint;
   else r.removeAttribute("title");
-  const t = r.querySelector<HTMLElement>(":scope > .t"),
-    bd = r.querySelector<HTMLElement>(":scope > .bd");
-  if (!hit.badge) {
-    if (t || r.textContent !== hit.title) r.textContent = hit.title;
+  const key = JSON.stringify([hit.title, seal ?? hit.badge ?? null]);
+  if (painted.get(r) === key && r.childNodes.length) return;
+  painted.set(r, key);
+  if (seal) {
+    const t = document.createElement("span");
+    t.className = "t";
+    t.textContent = hit.title;
+    r.replaceChildren(sealEl(seal), ...(seal.alone ? [] : [t]));
     return;
   }
-  if (t?.textContent === hit.title && bd?.textContent === hit.badge && r.childNodes.length === 2) return;
+  if (!hit.badge) {
+    r.textContent = hit.title;
+    return;
+  }
   const a = document.createElement("span"),
     b = document.createElement("span");
   a.className = "t";
@@ -33,6 +56,32 @@ export function paintRef(r: HTMLElement, refs: Refs) {
   b.className = "bd";
   b.textContent = hit.badge;
   r.replaceChildren(a, b);
+}
+
+/** 印章：一个圆角框；有 outer 时分成两半，前一半是外面那一处的（描边、浅底），后一半是这一处的（实心）。
+ * 字包在 .md-seal-t 里（不叫 .tx：白板的 Text 卡也是 .tx，它的字色、最小高度会套到印章的字上）：它按大写字母的高到基线裁掉行框（text-box），框里居中的就是字本身，不受字体上下留白不同的影响 */
+function sealEl(s: RefSeal): HTMLElement {
+  const el = document.createElement("span");
+  el.className = `md-seal${s.outer ? " two" : ""}${s.alone ? " alone" : ""}`;
+  el.style.setProperty("--md-seal", s.color);
+  const tx = (text: string) => {
+    const t = document.createElement("span");
+    t.className = "md-seal-t";
+    t.textContent = text;
+    return t;
+  };
+  if (!s.outer) {
+    el.append(tx(s.text));
+    return el;
+  }
+  el.style.setProperty("--md-seal-outer", s.outer.color);
+  const a = document.createElement("span"),
+    b = document.createElement("span");
+  a.className = "o";
+  a.append(tx(s.outer.text));
+  b.append(tx(s.text));
+  el.append(a, b);
+  return el;
 }
 
 /**
@@ -72,58 +121,6 @@ function plainOf(box: HTMLElement) {
     b.after(/^(LI|TR)$/.test(b.tagName) ? "\n" : "\n\n");
   return (box.textContent ?? "").replace(/\n{3,}/g, "\n\n").trim();
 }
-/*
- * {字|批注} 的标签（.md-annot-n）靠 CSS 居中在被标的字上面；这里只把居中后超出所在块（段落、列表项、格子）左右的挪回块里（--ax，左边优先）。
- * 宽度、位置都用 offset* 量（不受镜头缩放、滚动和 --ax 的 transform 影响）。先全部量完再一起写，不来回排版。
- * 字体（中文字体按 unicode-range 才下载）、公式的字体到得晚，标签变宽时 ResizeObserver 再量一次；块变宽变窄（卡片改宽）也一样
- */
-const BLOCK = "p, li, td, th, h1, h2, h3, h4, h5, h6, summary";
-/** The annotations' fitting of one Markdown instance: one ResizeObserver for all its roots */
-export class AnnotFit {
-  private sized: ResizeObserver | undefined;
-  private rootOf = new WeakMap<Element, HTMLElement>();
-  fit(el: HTMLElement) {
-    if (!el.isConnected) {
-      if (typeof requestAnimationFrame === "function")
-        requestAnimationFrame(() => {
-          if (el.isConnected) this.fit(el);
-        });
-      return;
-    }
-    if (typeof ResizeObserver === "function")
-      this.sized ??= new ResizeObserver((es) => {
-        const todo = new Set<HTMLElement>();
-        for (const e of es) {
-          const t = e.target as HTMLElement,
-            root = this.rootOf.get(t) ?? t;
-          if (!t.isConnected || !root.isConnected || !root.querySelector(".md-annot")) this.sized!.unobserve(t);
-          else todo.add(root);
-        }
-        for (const r of todo) this.fit(r);
-      });
-    this.sized?.observe(el);
-    const out: [HTMLElement, number][] = [];
-    for (const a of el.querySelectorAll<HTMLElement>(".md-annot")) {
-      const n = a.querySelector<HTMLElement>(":scope > .md-annot-n");
-      if (!n) continue;
-      if (this.rootOf.get(n) !== el) {
-        this.rootOf.set(n, el);
-        this.sized?.observe(n);
-      }
-      const block = a.parentElement?.closest<HTMLElement>(BLOCK) ?? el;
-      if (a.offsetParent !== block.offsetParent && a.offsetParent !== block) continue;
-      const left = a.offsetParent === block ? a.offsetLeft : a.offsetLeft - block.offsetLeft;
-      const w = n.offsetWidth,
-        from = left + (a.offsetWidth - w) / 2; // 居中时标签左边在块里的位置
-      const room = block.clientWidth;
-      let ax = from + w > room ? room - (from + w) : 0;
-      if (from + ax < 0) ax = -from;
-      out.push([a, Math.round(ax * 2) / 2]);
-    }
-    for (const [a, ax] of out) a.style.setProperty("--ax", `${ax}px`);
-  }
-}
-
 /**
  * 静态 Markdown 上的点击：链接交给 openLink（页面自己不跳转），引用交给 openRef，勾选框改原文交给 onToggle（不给就勾不了）。
  * 处理了返回 true
@@ -146,7 +143,7 @@ export function mdClick(e: MouseEvent, src: string, o: ClickOpts, refs: Refs): b
   if (r) {
     e.preventDefault();
     e.stopPropagation();
-    const hit = refs.resolve(r.dataset.ref ?? "");
+    const hit = refs.resolve(r.dataset.ref ?? "", r.dataset.target || undefined);
     if (hit && !("broken" in hit)) o.openRef(hit.id, hit);
     return true;
   }

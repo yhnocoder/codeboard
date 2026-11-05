@@ -17,17 +17,21 @@
     "syncundo",
     "sharedsync",
     "walkthroughOrder",
-    "zoomLevels",
+    "zoomKeepsDetail",
     "palette",
     "settingsPage",
     "linkMergeSection",
     "stickerBitmapsPicker",
     "notePastedImageSameSizeInBothModes"
   ],
-  "manual": ["markdownRecord"],
+  "manual": ["markdownRecord", "boardMarksScreenshots"],
   "solo": ["markdownLazyRender"],
   "known": {},
-  "limits": { "area": 30, "smoke": 90, "local": 180 },
+  "limits": {
+    "area": 30,
+    "smoke": 90,
+    "local": 180
+  },
   "perf": {
     "about": "code the perf benchmarks (packages/board/test/perf.ts, packages/host/test/perf-*.ts, tools/review/perf-ab.sh) run or build: a change touching none of it skips the perf job in PR CI; the regular run measures every time",
     "files": [
@@ -49,7 +53,7 @@
       "packages/*/tsconfig*.json",
       "packages/*/vite.config.*",
       "packages/board/playwright.config.ts",
-      "packages/board/src/{styles,fonts}.css",
+      "packages/board/src/{styles,fonts,fonts-yozai,fonts-zhimangxing}.css",
       "packages/board/src/fonts/**",
       "packages/board/test/{harness,fixtures,coverage,subhost,realhost,deepseek,chromium}.ts",
       "packages/host/test/node-workspace.ts",
@@ -76,7 +80,7 @@
         "packages/board/src/canvas/Canvas.tsx",
         "packages/core/src/canvas/{index,geom}.ts",
         "packages/board/src/cards/Card.tsx",
-        "packages/board/src/state/{camera,changes,cull,extent,geo,ghost,hover,idle,lodcards,measure,mode,motion,offscreen,root,selection,store,timing,toast,tune,ui,views}.ts",
+        "packages/board/src/state/{camera,changes,cull,extent,geo,ghost,hover,measure,mode,motion,offscreen,root,selection,store,timing,toast,tune,ui,views,zoomlog}.ts",
         "packages/core/src/history/*.ts",
         "packages/board/src/actions/{index,common,edit,create,env,clipboard,pastechip}.ts",
         "packages/board/src/ui/{guard,hooks,overlay,shield}.ts",
@@ -90,7 +94,7 @@
         "packages/board/test/scenarios/{board,fit,drag-by-body,drag-controls,copy-paste,multi-select,text-selection-delete,click-to-edit}.spec.ts"
       ],
       "scenarios": [
-        "zoomLevels",
+        "zoomKeepsDetail",
         "syncundo",
         "dragUnselectedCardByBody",
         "pastedCardsKeepTheirSize",
@@ -197,12 +201,12 @@
       "files": [
         "packages/board/src/cards/NoteBody.tsx",
         "packages/board/src/ui/{Md,Editable}.tsx",
-        "packages/board/src/ui/pops/notes.tsx",
+        "packages/board/src/ui/pops/{notes,cardpeek}.tsx",
         "packages/board/src/md/{lazy,load,refs,context}.ts",
         "packages/board/src/actions/notes.ts",
         "packages/core/src/commands/notes.ts",
         "packages/board/src/ui/vscodekeys.ts",
-        "packages/markdown/src/{index,markdown,cache,render,schema,schema-nodes,schema-marks,schema-escape,tiptap-markdown-patch,gaps,selmap,view,diagram,emoji,emoji-data,layout}.ts",
+        "packages/markdown/src/{index,markdown,cache,render,schema,schema-nodes,schema-marks,schema-escape,tiptap-markdown-patch,gaps,selmap,view,annots,diagram,emoji,emoji-data,layout}.ts",
         "packages/markdown/src/markdown.css",
         "packages/markdown/src/editor/{index,icons,menu,bubble}.tsx",
         "packages/markdown/src/editor/{clipboard,codeblock,codelang,find,ghost,pairs,pastemarks,typora,inline,spans,srcdoc,srcmode,table,visible,widgets,types,ui,extensions,paste,pad,session,gaps,md}.ts",
@@ -210,12 +214,14 @@
         "packages/core/src/complete.ts",
         "packages/host/src/{deepseek,ai}.ts",
         "packages/board/test/typing-sequence.json",
-        "packages/board/test/scenarios/{markdown,md-blocks,mdreview,note-editing,note-source,note-fold,note-fresh,note-sizing,writing,typing,typing-sequence,find,md-paste-marks,split-headings}.spec.ts",
+        "packages/board/test/scenarios/{markdown,md-blocks,mdreview,note-editing,note-refs,note-source,note-fold,note-fresh,note-sizing,writing,free-text,typing,typing-sequence,find,md-paste-marks,split-headings}.spec.ts",
         "packages/core/src/split.ts",
+        "packages/core/src/mdrefs.ts",
         "packages/markdown/src/marks.ts",
         "packages/board/src/actions/format.ts",
         "packages/board/src/ui/StaticFormat.tsx",
-        "packages/board/test/scenarios/static-format.spec.ts"
+        "packages/board/test/scenarios/static-format.spec.ts",
+        "packages/board/test/scenarios/sidenotes.spec.ts"
       ],
       "scenarios": [
         "notes",
@@ -259,7 +265,7 @@
       "files": [
         "packages/board/src/canvas/{Links,Labels}.tsx",
         "packages/board/src/canvas/routes.ts",
-        "packages/core/src/canvas/{labelpos,route,hand}.ts",
+        "packages/core/src/canvas/{labelpos,route,hand,brush}.ts",
         "packages/board/src/actions/{links,annots}.ts",
         "packages/core/src/commands/links.ts",
         "packages/core/src/linklabel.ts",
@@ -277,6 +283,7 @@
         "lineToLineLink",
         "childArrowAnchor",
         "headPortHidden",
+        "arrowTargetAim",
         "markCard",
         "markArrowStable",
         "codeAnnotations",
@@ -334,14 +341,14 @@
         "packages/board/src/themes.css",
         "packages/board/src/settings.css",
         "packages/board/src/scenes/**",
-        "packages/board/src/state/{look,tilt}.ts",
+        "packages/board/src/state/{look,tilt,ink,inkframe}.ts",
         "packages/board/src/canvas/city.ts",
         "packages/board/src/canvas/Traffic.tsx",
         "packages/board/src/ui/Settings.tsx",
         "packages/board/src/actions/settings.ts",
         "packages/host/src/settings.ts",
         "packages/core/src/settings.ts",
-        "packages/board/test/scenarios/{themes,tilt}.spec.ts"
+        "packages/board/test/scenarios/{themes,tilt,ink-wash}.spec.ts"
       ],
       "scenarios": [
         "settingsPage",
@@ -352,7 +359,8 @@
         "themeNotUndoStep",
         "tiltCardFromMenu",
         "tiltStraightensWhileEditing",
-        "squircleCorners"
+        "squircleCorners",
+        "freeTextLevels"
       ]
     },
     "variants": {
@@ -381,9 +389,13 @@
       "scenarios": ["versions", "patchsave", "lost", "rebase", "follow"]
     },
     "subboards": {
-      "about": "sub-boards: the sub-board card, entering and leaving, Turn into Board, breadcrumbs, the board tree",
+      "about": "sub-boards: the sub-board card, entering and leaving, Turn into Board, breadcrumbs, the board tree, board Marks on refs",
       "files": [
         "packages/board/src/cards/{BoardBody,SubPreviews}.tsx",
+        "packages/core/src/seal.ts",
+        "packages/host/src/seals.ts",
+        "packages/board/src/ui/pops/seal.tsx",
+        "packages/board/test/scenarios/board-marks.spec.ts",
         "packages/board/src/state/subboards.ts",
         "packages/board/src/actions/subboards.ts",
         "packages/core/src/commands/subboards.ts",
@@ -442,6 +454,8 @@
       "about": "images: Image cards, images in Notes (paste, drop, resize), SVG, the asset store, the DeepSeek image tools (Extract Text, Convert to SVG, Modify SVG, Paste Image Text, Draw as SVG)",
       "files": [
         "packages/board/src/md/images.ts",
+        "packages/board/src/md/{anim,animsvg}.ts",
+        "packages/board/src/ui/AnimStrip.tsx",
         "packages/board/src/notedrop.ts",
         "packages/board/src/actions/{imagedata,imageai}.ts",
         "packages/markdown/src/image.ts",
@@ -450,8 +464,9 @@
         "packages/host/src/{images,assetsweep,imageai}.ts",
         "packages/board/src/state/imageai.ts",
         "packages/board/src/ui/AiBusy.tsx",
-        "packages/board/test/scenarios/{image-cards,note-images,svg-images,file-drops,image-ai,image-width,note-captions}.spec.ts",
-        "packages/markdown/src/caption.ts"
+        "packages/board/test/scenarios/{image-cards,note-images,svg-images,file-drops,image-ai,image-width,note-captions,animated-images}.spec.ts",
+        "packages/markdown/src/caption.ts",
+        "packages/markdown/src/{imageattrs,imageplay}.ts"
       ],
       "scenarios": [
         "imageAiConvertThenModify",
@@ -502,7 +517,7 @@
         "packages/core/src/commands/shared.ts",
         "packages/core/src/{protocol,patch,schema,migrate,shared,workspace,diagnostics}.ts",
         "packages/host/src/storage/**",
-        "packages/host/src/{hub,handlers,boards,env,ws,context,actions,commands,diagnostics,start,index}.ts",
+        "packages/host/src/{hub,handlers,boards,env,ws,context,actions,commands,diagnostics,paths,start,index}.ts",
         "packages/board/test/scenarios/{shared,boards}.spec.ts"
       ],
       "scenarios": [
@@ -512,6 +527,25 @@
         "changesreachhost",
         "newTextReachesHostWhenShown",
         "sharedcards"
+      ]
+    },
+    "summaries": {
+      "about": "zoomed-out AI summaries (#130): the summary level and its fade, the board's minimum zoom, columns, editing and ↻, the host writing summaries with DeepSeek",
+      "files": [
+        "packages/core/src/summary.ts",
+        "packages/core/src/commands/summaries.ts",
+        "packages/board/src/state/summary.ts",
+        "packages/board/src/canvas/Summaries.tsx",
+        "packages/board/src/actions/summaries.ts",
+        "packages/host/src/summaries.ts",
+        "packages/board/test/scenarios/{summaries,summary-zoom}.spec.ts"
+      ],
+      "scenarios": [
+        "summaryLevelFade",
+        "summarySwitchWhole",
+        "summaryWrittenAndEdited",
+        "summaryNoKey",
+        "summaryNestedSections"
       ]
     }
   }

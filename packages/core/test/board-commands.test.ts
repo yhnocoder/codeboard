@@ -19,6 +19,7 @@ import {
   mergeIntoLinkList,
   moveOutOfParent,
   separate,
+  setSectionColor,
   setListRich,
   toggleItemRich,
   toggleLock,
@@ -164,6 +165,21 @@ describe("board commands", () => {
     expect(b.sections.find((s) => s.id === "low")?.parent).toBe("top");
     moveOutOfParent(env, "mid");
     expect(b.sections.find((s) => s.id === "mid")?.parent).toBeUndefined();
+    expect(log.edits).toBe(2);
+    expect(danglingRefs(b)).toEqual([]);
+  });
+
+  it("colours several Sections in one step, and makes no step when none changes", () => {
+    const { b, env, log } = setup([]);
+    const sec = (id: string, color?: string) => ({ id, title: id, x: 0, y: 0, w: 100, h: 100, color });
+    b.sections.push(sec("a"), sec("b", "blue"), sec("c", "pink"));
+    setSectionColor(env, ["a", "b", "gone"], "green");
+    expect(b.sections.map((s) => s.color)).toEqual(["green", "green", "pink"]);
+    expect(log.edits).toBe(1);
+    setSectionColor(env, ["a", "b"], "green");
+    expect(log.edits).toBe(1);
+    setSectionColor(env, ["a", "c"], undefined);
+    expect(b.sections.map((s) => s.color)).toEqual([undefined, "green", undefined]);
     expect(log.edits).toBe(2);
     expect(danglingRefs(b)).toEqual([]);
   });

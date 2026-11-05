@@ -49,7 +49,7 @@ math {
    paragraph, .md ol.footnotes keeps its own margin */
 .md p:where(.md-pp):is(p),
 .md :is(p, ul, ol, pre, table, blockquote, details).md-gap,
-.md :is(.math, [data-type="block-math"]).md-gap {
+.md :is(.math, [data-type="block-math"], .md-tfig, .tableWrapper).md-gap {
   margin-top: 0.5em;
 }
 .md p:empty::before {
@@ -146,14 +146,14 @@ math {
   margin: 0;
 }
 /* {字|批注}：被标的字是一个行内块，上面（data-below：下面）多出一条窄轨道，标签（.md-annot-n，批注按行内 Markdown 画，公式也能写）
-   和箭头（::after）画在轨道里，只用 CSS 居中，编辑器里和静态显示一样（静态显示时 view.ts 只把写出块外的标签挪回来，--ax）。
-   只有这一行变高，代码和字不会被盖住。颜色 --md-annot-blue / -purple / -orange / -green，手写字体 --md-hand（都有默认值） */
+   和箭头（::after）画在轨道里，用 CSS 居中，编辑器里和静态显示一样；annots.ts 把写出块外的标签挪回来、同一行会叠在一起的
+   标签往旁边让（--ax），让不开的升高一排（--rise：轨道加高，箭头变长）。只有这一行变高，代码和字不会被盖住。颜色 --md-annot-blue / -purple / -orange / -green，手写字体 --md-hand（都有默认值） */
 .md .md-annot {
   --ac: var(--md-annot-blue, #3a72aa);
   position: relative;
   display: inline-block;
   max-width: 100%;
-  padding-top: 2.05em;
+  padding-top: calc(2.05em + var(--rise, 0px));
   text-indent: 0;
   background: color-mix(in srgb, var(--ac) 16%, transparent);
   background-clip: content-box;
@@ -186,20 +186,23 @@ math {
   left: calc(50% - 5px);
   top: 1.3em;
   width: 10px;
-  height: 0.72em;
+  height: calc(0.72em + var(--rise, 0px));
   min-height: 9px;
   pointer-events: none;
   background: var(--ac);
-  -webkit-mask:
+  /* the arrow keeps its shape; a raised label's (--rise) gets a straight shaft above it as long as the rise */
+  --md-arrow:
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 10' preserveAspectRatio='none'%3E%3Cpath d='M3.6 .8Q2.9 5 4 9.2M1.4 6.4Q3 7.6 4 9.2Q4.8 7.4 6.6 6.6' fill='none' stroke='%23000' stroke-width='1.3' stroke-linecap='round'/%3E%3C/svg%3E")
-    center / 100% 100% no-repeat;
-  mask:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 10' preserveAspectRatio='none'%3E%3Cpath d='M3.6 .8Q2.9 5 4 9.2M1.4 6.4Q3 7.6 4 9.2Q4.8 7.4 6.6 6.6' fill='none' stroke='%23000' stroke-width='1.3' stroke-linecap='round'/%3E%3C/svg%3E")
-    center / 100% 100% no-repeat;
+    center bottom / 100% calc(100% - var(--rise, 0px)) no-repeat;
+  --md-shaft:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 10' preserveAspectRatio='none'%3E%3Cpath d='M3.6 0V10' stroke='%23000' stroke-width='1.3'/%3E%3C/svg%3E")
+    center top / 100% calc(var(--rise, 0px) + min(var(--rise, 0px), 0.12em)) no-repeat;
+  -webkit-mask: var(--md-arrow), var(--md-shaft);
+  mask: var(--md-arrow), var(--md-shaft);
 }
 .md .md-annot[data-below] {
   padding-top: 0;
-  padding-bottom: 2.05em;
+  padding-bottom: calc(2.05em + var(--rise, 0px));
 }
 .md .md-annot[data-below] > .md-annot-n {
   top: auto;
@@ -235,7 +238,8 @@ math {
   text-align: center;
 }
 /* 图注（![a](u "图注")）：图正下方居中的小字，像论文的图注。静态显示里带图注的图包在 .md-fig 里（和编辑器的 .md-img 一样排），
-   图注不撑宽这一层（contain: inline-size）：宽度是图的宽，长的图注在图的宽度里折行 */
+   图注不撑宽这一层（contain: inline-size）：宽度是图的宽，长的图注在图的宽度里折行。缩小了的图（.sized，--f 是它占正文宽的比例）
+   的图注不跟着变窄：按正文宽排，居中在图下面 */
 .md .md-fig {
   display: inline-block;
   vertical-align: middle;
@@ -254,13 +258,30 @@ math {
   contain: inline-size;
   margin: 5px 0 2px;
   text-align: center;
-  font-size: 0.82em;
+  font-size: 0.76em;
   line-height: 1.45;
   color: var(--ink-2);
   white-space: normal;
 }
 .md .md-cap[hidden] {
   display: none;
+}
+.md :is(.md-fig, .md-img).sized > .md-cap {
+  width: calc(100% / var(--f));
+  margin-inline: calc(50% - 50% / var(--f));
+}
+/* A table with a caption ("Table: …" after it): the table centred, the caption under it at the body's width, as an image's */
+.md .md-tfig {
+  margin: 4px 0;
+}
+.md .md-tfig > table {
+  margin: 0 auto;
+}
+.md-pm .md-tfig > .tableWrapper {
+  margin: 0;
+}
+.md-pm .md-tfig > .tableWrapper > table {
+  margin: 0 auto;
 }
 .md kbd {
   font: 0.85em var(--mono);
@@ -456,17 +477,16 @@ math {
   transform: rotate(90deg);
 }
 /* [[引用]]（白板上指向卡片）。坐在字的基线上（和旁边的字同一条线，换字体也一样）：行内块 overflow 不是 visible 时基线默认是它的下边缘，
-   baseline-source: first 让它用里面那行字的基线（写在 vertical-align 后面：vertical-align 是简写，会把它重设成 auto）；框（line-height 1.45、字小一号）比正文的行矮，这一行不变高 */
+   baseline-source: first 让它用里面那行字的基线（写在 vertical-align 后面：vertical-align 是简写，会把它重设成 auto）。
+   不套浅底框：和正文一样大，下面一条细线，悬停时线变深（这块白板上的前面是一支细线斜箭头，别处的是印章，两种看着一样轻） */
 .md-ref {
   display: inline-block;
-  padding: 0 6px;
-  margin: 0 1px;
-  border-radius: 5px;
-  line-height: 1.45;
-  font-size: 0.94em;
+  padding: 0 1px;
+  margin: 0 2px;
+  /* 线是行内块的下边缘，连印章一起托住；行高收紧到印章刚好放得下，线才贴着字 */
+  line-height: 1.32;
   color: var(--k-fn);
-  background: color-mix(in srgb, var(--k-fn) 11%, transparent);
-  box-shadow: inset 0 0 0 0.5px color-mix(in srgb, var(--k-fn) 30%, transparent);
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--k-fn) 34%, transparent);
   cursor: pointer;
   white-space: nowrap;
   max-width: 100%;
@@ -476,15 +496,87 @@ math {
   baseline-source: first;
 }
 .md-ref::before {
-  content: "↗ ";
-  opacity: 0.6;
+  /* 一支 1.5px 细线的斜箭头（16px 格子），用字的颜色涂：粗细和角度不跟着字体变，和印章放在一起一样稳 */
+  content: "";
+  display: inline-block;
+  width: 0.9em;
+  height: 0.9em;
+  margin-right: 0.28em;
+  vertical-align: -0.08em;
+  background: currentColor;
+  opacity: 0.75;
+  mask:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23000' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 11 11 5M6 5h5v5'/%3E%3C/svg%3E")
+    center / contain no-repeat;
 }
 .md-ref:hover {
-  background: color-mix(in srgb, var(--k-fn) 18%, transparent);
+  box-shadow: inset 0 -1px 0 var(--k-fn);
+}
+/* 印章（RefTarget.seal）：别处的引用标题前面画那一处的几个字，代替 badge 和 ↗。字是背景色（--surface）写在 --md-seal 上；
+   两半的（.two）：前一半是外面那一处的（--md-seal-outer 的字、浅底、描边），后一半实心。和标题之间留 .4em（alone = 只有印章，连线也不要） */
+.md-ref.sealed::before {
+  content: none;
+}
+.md-ref.sealed:has(> .md-seal.alone) {
+  padding: 0;
+  box-shadow: none;
+}
+.md-ref.sealed:has(> .md-seal.alone):hover {
+  box-shadow: none;
+  filter: brightness(1.08);
+}
+.md-seal {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  height: 1.36em;
+  min-width: 1.36em;
+  padding: 0 0.34em;
+  margin-right: 0.4em;
+  border-radius: 3px;
+  font-family: var(--sys);
+  font-size: 0.72em;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  vertical-align: 0.12em;
+  color: var(--surface);
+  background: var(--md-seal);
+}
+.md-seal-t {
+  display: block;
+  /* 只留大写字母顶到基线这一段：框按它居中，上下的空一样大（不同字体的行框上下留白不同，按行框居中会偏）；略往下一点，看着才正 */
+  text-box: trim-both cap alphabetic;
+  transform: translateY(0.03em);
+}
+.md-seal.alone {
+  margin-right: 0;
+}
+.md-seal.two {
+  padding: 0;
+  overflow: hidden;
+  align-items: stretch;
+  background: none;
+  box-shadow: inset 0 0 0 1px var(--md-seal-outer);
+}
+.md-seal.two > span {
+  display: flex;
+  align-items: center;
+  padding: 0 0.4em;
+}
+.md-seal.two > .o {
+  color: var(--md-seal-outer);
+  background: color-mix(in srgb, var(--md-seal-outer) 13%, transparent);
+}
+.md-seal.two > .o + span {
+  color: var(--surface);
+  background: var(--md-seal);
 }
 /* 别处（别的白板）的：标题后面带那一处的名字；那里没有这一项了：灰、标题划掉；那一处本身没了：警告色（paintRef） */
 .md-ref .bd {
-  font-size: 0.86em;
+  font-size: 0.74em;
   opacity: 0.62;
   margin-left: 4px;
 }
@@ -493,8 +585,7 @@ math {
 }
 .md-ref.missing {
   color: var(--ink-3);
-  background: var(--hlrow);
-  box-shadow: inset 0 0 0 0.5px var(--hair);
+  box-shadow: inset 0 -1px 0 var(--hair);
 }
 .md-ref.missing:not(:has(> .t)),
 .md-ref.missing > .t {
@@ -503,11 +594,17 @@ math {
 }
 .md-ref.gone {
   color: var(--warn);
-  background: color-mix(in srgb, var(--warn) 10%, transparent);
-  box-shadow: inset 0 0 0 0.5px color-mix(in srgb, var(--warn) 35%, transparent);
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--warn) 45%, transparent);
 }
 .md-ref.gone::before {
   content: "⚠ ";
+  display: inline;
+  width: auto;
+  height: auto;
+  margin-right: 0;
+  vertical-align: baseline;
+  background: none;
+  mask: none;
   opacity: 0.9;
 }
 .md-ref.gone > .bd {
@@ -812,13 +909,20 @@ math {
 .md-pm .md-img.sized > img {
   width: 100%;
 }
+/* its space below is padding, and it holds its caption's margin (flow-root): margins at the paragraph's end would merge with the
+   next paragraph's, which those around the static render's inline figure do not */
 .md-pm .md-img.below {
-  display: block;
+  display: flow-root;
   width: fit-content;
-  margin: 4px auto 4px 0;
+  margin: 4px auto 0 0;
+  padding-bottom: 4px;
 }
 .md-pm .md-img.below.sized {
   margin-inline: auto;
+}
+/* the picture under its source ends its paragraph: ProseMirror's trailing break after it would be an empty line under it */
+.md-pm .md-img.below ~ :is(img.ProseMirror-separator, br.ProseMirror-trailingBreak) {
+  display: none;
 }
 .md-pm .md-img[draggable="true"] {
   -webkit-user-drag: element;
@@ -839,10 +943,15 @@ math {
     0 0 0 1.5px color-mix(in srgb, var(--accent) 75%, transparent),
     0 6px 18px -8px rgba(0, 0, 0, 0.28);
 }
+/* 没缩小的图按它自己的 width / height 属性排（文件名里的宽高，和静态显示、编辑器里没选中时一样）：写成 width: 100% 的话
+   .below 的 fit-content 取的是图解码出来的大小，SVG 的宽高单位不是 px（pt、mm）时和属性不一样，选中时图就缩了、靠了左；
+   第一次选中时地址晚一点才给（IMAGE_SETTLE），那一下还没有大小，整块先塌下去 */
 .md-pm .md-imgframe > img {
   display: block;
-  width: 100%;
   border-radius: 5px;
+}
+.md-pm .md-img.sized > .md-imgframe > img {
+  width: 100%;
 }
 .md-pm .md-imgframe[draggable="true"] {
   -webkit-user-drag: element;

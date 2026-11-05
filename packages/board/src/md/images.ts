@@ -5,6 +5,7 @@ import DOMPurify from "dompurify";
 import type { Markdown } from "@yhnocoder/markdown";
 import { ask } from "../host";
 import { toast } from "../state/toast";
+import { SMIL_TAGS, dropUnsafeSmil } from "./animsvg";
 
 const SIZED = /-(\d{1,5})x(\d{1,5})\.(?:png|jpg|webp|gif|svg)$/;
 let base: string | undefined;
@@ -18,6 +19,10 @@ export function setNoteAssets(md: Markdown, b: string) {
     return { src: b ? `${b}/${name}` : src, ...(m ? { width: +m[1], height: +m[2] } : {}) };
   });
 }
+
+/** A displayed image address back as the Note's Markdown writes it (assets/…); others are written as shown */
+export const noteSrcOf = (shown: string) =>
+  base && shown.startsWith(`${base}/`) ? `assets/${shown.slice(base.length + 1)}` : shown;
 
 /** 编辑器里粘贴、拖进来、/Image 选的图交给宿主存；存不了（不是这几种图、太大）提示一下，不插 */
 export async function saveNoteImage(dataUrl: string): Promise<string | null> {
@@ -34,7 +39,8 @@ const abs = (v: string | null) => (v && /^\s*[\d.]+(?:e[+-]?\d+)?(?:px)?\s*$/i.t
 
 /**
  * SVG 存之前清洗一遍。显示只用 <img>（SVG 里的脚本不跑、不加载外面的东西），这一步是多一层保险：存下的文件别处打开也没有脚本。
- * 按 XML 解析（DOCTYPE 里的实体照常展开），DOMPurify（svg 配置）去掉脚本、事件属性、javascript: 链接、foreignObject，
+ * 按 XML 解析（DOCTYPE 里的实体照常展开），DOMPurify（svg 配置）去掉脚本、事件属性、javascript: 链接、foreignObject；
+ * SMIL 的 <animate> / <set> 留着（动画 SVG，见 md/animsvg.ts），改链接、事件属性的去掉，
  * 再用 XMLSerializer 写回（innerHTML 写出的 &nbsp; 之类不是合法的 XML）。
  * 只有 viewBox、或宽高是百分比的 SVG 在 <img> 里没有自己的大小（浏览器当 300×150）：按 viewBox 补上像素宽高，卡片和 Note 里的大小才对。
  * 不是 SVG 回 null
@@ -44,11 +50,16 @@ export function cleanSvg(text: string): string | null {
   const root = doc.documentElement;
   if (root.namespaceURI !== SVG_NS || root.localName !== "svg" || doc.getElementsByTagNameNS("*", "parsererror").length)
     return null;
-  const body = DOMPurify.sanitize(root, { USE_PROFILES: { svg: true, svgFilters: true }, RETURN_DOM: true });
+  const body = DOMPurify.sanitize(root, {
+    USE_PROFILES: { svg: true, svgFilters: true },
+    ADD_TAGS: SMIL_TAGS,
+    RETURN_DOM: true,
+  });
   const svg = [...body.childNodes].find(
     (e): e is Element => e instanceof Element && e.namespaceURI === SVG_NS && e.localName === "svg",
   );
   if (!svg) return null;
+  dropUnsafeSmil(svg);
   let w = abs(svg.getAttribute("width")),
     h = abs(svg.getAttribute("height"));
   if (!(w > 0 && h > 0)) {

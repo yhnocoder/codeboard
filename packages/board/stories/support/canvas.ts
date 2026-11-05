@@ -1,4 +1,4 @@
-// 画布这一块（箭头、Section、贴纸、旁注、多选、LOD、主题）的小样共用：搭白板的小工具、假的贴纸包
+// 画布这一块（箭头、Section、贴纸、旁注、多选、缩放、主题）的小样共用：搭白板的小工具、假的贴纸包
 import { onCleanup, onMount } from "solid-js";
 import type { Board, Card, CodeCard, End, Link, Section, StickerPack } from "@codeboard/core";
 import { loadPacks } from "../../src/stickers/glyphs";

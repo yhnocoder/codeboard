@@ -6,6 +6,7 @@ import { isCode, cardRows, shownText, commonIndent } from "@codeboard/core";
 import { state, cardById } from "./store";
 import { shown } from "./ui";
 import { toWorld } from "./camera";
+import { FIT_WIDTH } from "@codeboard/core/commands";
 import { cmNow } from "../cm/load";
 import { cardSel } from "../cardsel";
 
@@ -72,7 +73,7 @@ export const DED_PAD = 16;
 /** 没存高度的代码卡（新卡、Fit Content 过的卡）代码区最高多少，更长的在里面滚（BoardView 挂到 body 上的 --code-max） */
 export const CODE_MAX = 460;
 let charW = 0;
-export function monoWidth(el: Element) {
+function monoWidth(el: Element) {
   if (charW) return charW;
   const ctx = document.createElement("canvas").getContext("2d")!;
   ctx.font = getComputedStyle(el).font;
@@ -85,8 +86,37 @@ export function chromeOf(id: string): number {
   const a = el?.querySelector<HTMLElement>(":scope > .cface > .carea");
   return el && a ? el.offsetHeight - a.offsetHeight : 0;
 }
-/** 卡片内容刚好装下的宽高；minH = 头部 + 一行 */
-export function naturalSize(id: string): { w?: number; h: number; minH: number; body?: number } | null {
+/** 代码区排成 w 宽（没有滚动条，和适配后一样）时 read 量到的东西；量完放回原样，滚动位置也放回去。w 没有就按现在的量 */
+function laidOutAt<T>(body: HTMLElement, w: number | undefined, read: () => T): T {
+  if (w === undefined) return read();
+  const { width, overflow } = body.style,
+    { scrollLeft, scrollTop } = body;
+  body.style.width = `${w}px`;
+  body.style.overflow = "hidden";
+  try {
+    return read();
+  } finally {
+    body.style.width = width;
+    body.style.overflow = overflow;
+    body.scrollLeft = scrollLeft;
+    body.scrollTop = scrollTop;
+  }
+}
+/** Text 卡不折行时多宽：卡排成 max-content 量一次再放回。offsetWidth 取整可能少了零点几像素，多给 1 免得最长那行又折下去 */
+function textWidth(el: HTMLElement): number {
+  const w = el.style.width;
+  el.style.width = "max-content";
+  try {
+    return el.offsetWidth + 1;
+  } finally {
+    el.style.width = w;
+  }
+}
+/** 卡片内容刚好装下的宽高；minH = 头部 + 一行。代码卡的高默认按适配后的宽度量（Fit Content）；now：按现在的宽度（拖大小时） */
+export function naturalSize(
+  id: string,
+  at: "fit" | "now" = "fit",
+): { w?: number; h: number; minH: number; body?: number } | null {
   const el = document.querySelector<HTMLElement>(`${cardSel(id)}`);
   if (!el) return null;
   const f = cardById(id);
@@ -94,6 +124,7 @@ export function naturalSize(id: string): { w?: number; h: number; minH: number; 
   const code = body?.querySelector<HTMLElement>(":scope > .code");
   const head = el.querySelector<HTMLElement>(":scope > .cface > .chead")?.offsetHeight ?? 0;
   if (f && isCode(f.card) && body && code) {
+    const card = f.card;
     const src = code.querySelector<HTMLElement>(".src");
     const top = body.offsetTop,
       bs = getComputedStyle(body);
@@ -103,19 +134,11 @@ export function naturalSize(id: string): { w?: number; h: number; minH: number; 
       parseFloat(bs.borderBottomWidth) +
       parseFloat(bs.paddingTop) +
       parseFloat(bs.paddingBottom);
-    // 自动换行开着时：新的宽度放得下最长行，不会再折行，减掉现在折出来的那几行（每行比一行高多出的部分）
-    let wrapped = 0;
-    if (src && f.card.wrap) {
-      const lh = parseFloat(getComputedStyle(src).lineHeight) || 20;
-      for (const l of src.querySelectorAll<HTMLElement>(".l")) wrapped += Math.max(0, l.offsetHeight - lh);
-    }
-    const h = top + code.offsetHeight - wrapped + frame + Math.max(0, el.offsetHeight - top - body.offsetHeight);
     let w: number | undefined;
     if (src) {
       const cs = getComputedStyle(src);
       // 只量显示着的行（藏了 Docstring / 注释 / 空行后，藏掉的长行不该把卡撑宽）：
       // 和 CodeBody 同一套 cardRows；Hide Comments 去掉行尾注释；藏了公共缩进时减掉那几格、加上左边留的空
-      const card = f.card;
       const texts = cardRows(card, { views: state.views, shown: shown() }).flatMap((r) => {
         const s = r.t === "line" ? card.segments.find((q) => q.id === r.seg) : undefined;
         return s && r.t === "line" ? [shownText(s, r.line, state.views[s.id], card.hide?.comments)] : [];
@@ -156,7 +179,19 @@ export function naturalSize(id: string): { w?: number; h: number; minH: number; 
         );
       }
     }
-    return { w, h, minH: top + 6 + 20 + 8 + 2, body: code.offsetHeight - wrapped + frame };
+    // 按适配后的宽度排一次再量高：Always Show 的 Sidenote 按卡的可见宽度折行（styles.css .inote），卡变宽变窄它就变矮变高
+    const fitW = w === undefined || at === "now" ? undefined : Math.max(FIT_WIDTH.min, Math.min(FIT_WIDTH.max, w));
+    const below = Math.max(0, el.offsetHeight - top - body.offsetHeight);
+    const inner = laidOutAt(body, fitW === undefined ? undefined : fitW - (el.offsetWidth - body.offsetWidth), () => {
+      // 自动换行开着时：新的宽度放得下最长行，不会再折行，减掉还折着的那几行（每行比一行高多出的部分）
+      let wrapped = 0;
+      if (src && card.wrap && at === "fit") {
+        const lh = parseFloat(getComputedStyle(src).lineHeight) || 20;
+        for (const l of src.querySelectorAll<HTMLElement>(".l")) wrapped += Math.max(0, l.offsetHeight - lh);
+      }
+      return code.offsetHeight - wrapped + frame;
+    });
+    return { w, h: top + inner + below, minH: top + 6 + 20 + 8 + 2, body: inner };
   }
   // 子白板的框里只有绝对定位的缩略地图，没有撑开它的内容：它的大小就是拖出来的大小，没有"内容本来的大小"
   if (f?.card.kind === "board") return null;
@@ -169,6 +204,7 @@ export function naturalSize(id: string): { w?: number; h: number; minH: number; 
   const nb = el.querySelector<HTMLElement>(":scope > .cface > .nbody, :scope > .cface > .tx");
   if (nb)
     return {
+      w: f?.card.kind === "note" && f.card.look === "text" ? textWidth(el) : undefined,
       h: Math.ceil(nb.offsetTop + nb.scrollHeight + parseFloat(getComputedStyle(el).paddingBottom) + el.clientTop),
       minH: head + 30,
     };

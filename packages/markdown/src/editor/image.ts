@@ -1,13 +1,17 @@
 import type { Editor, Node as TNode } from "@tiptap/core";
-import { Plugin, PluginKey } from "@tiptap/pm/state";
+import { Plugin, PluginKey, type EditorState } from "@tiptap/pm/state";
 import { closeHistory } from "@tiptap/pm/history";
 import { Mapping } from "@tiptap/pm/transform";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import type { EditorView } from "@tiptap/pm/view";
-import { blockInfo, spanEdgeOut } from "./spans";
+import { blockInfo, flat, spanEdgeOut } from "./spans";
 
 /** 存一张图（data: URL、文件名）→ 写进 Markdown 的地址；null = 不插（存不了时用的一方自己提示） */
 export type SaveImage = (dataUrl: string, name: string) => Promise<string | null>;
+/** Put the image at src (its address as written in the Markdown) on the clipboard; md: its Markdown */
+export type CopyImage = (src: string, md: string) => void;
+/** A pasted or dropped picture the page knows (one it copied): the Markdown it stands for, null for any other */
+export type KnownImage = (f: File) => Promise<string | null>;
 
 const readUrl = (f: File) =>
   new Promise<string>((ok, bad) => {
@@ -59,19 +63,19 @@ function outsideSpans(doc: PMNode, pos: number) {
 }
 
 /** Inserts the saved images at `at` (or at the caret if the document changed meanwhile), as one undo step */
-async function insertFiles(editor: Editor, save: SaveImage, files: File[], at: number) {
+async function insertFiles(editor: Editor, save: SaveImage, known: KnownImage | undefined, files: File[], at: number) {
   const doc0 = editor.state.doc;
-  const srcs = await Promise.all(
-    files.map((f) =>
-      readUrl(f)
+  const mds = await Promise.all(
+    files.map(async (f) => {
+      const md = await known?.(f).catch(() => null);
+      if (md) return md;
+      return readUrl(f)
         .then((u) => save(u, f.name || "pasted.png"))
-        .catch(() => null),
-    ),
+        .then((src) => (src ? imageSrc(src) : null))
+        .catch(() => null);
+    }),
   );
-  const text = srcs
-    .filter((s): s is string => !!s)
-    .map(imageSrc)
-    .join(" ");
+  const text = mds.filter((s): s is string => !!s).join(" ");
   if (!text || editor.isDestroyed) return;
   const pos = outsideSpans(
     editor.state.doc,
@@ -112,8 +116,35 @@ const imageOnly = (p: PMNode) => {
   return !rest.trim();
 };
 
-/** Pasting and dropping image files; save is read per paste (the editor is shared, the options follow this session) */
-export function imageEditing(base: TNode, editor: () => Editor, save: () => SaveImage) {
+/**
+ * The image the selection stands for: the caret in its source (the image is drawn selected, with its grips) or exactly its
+ * source selected (spaces around it aside)
+ */
+function selectedImage(state: EditorState): { src: string; md: string } | null {
+  const { $from, $to, from, to } = state.selection;
+  if (!$from.sameParent($to) || $from.parent.type.name !== "paragraph") return null;
+  const text = $from.parent.textContent,
+    cell = $from.depth > 0 && /cell|header/.test($from.node(-1).type.spec.tableRole ?? "");
+  let a = from - $from.start(),
+    b = to - $from.start();
+  const picked = text.slice(a, b);
+  a += picked.length - picked.trimStart().length;
+  b -= picked.length - picked.trimEnd().length;
+  const sp = flat(blockInfo(text, !cell).spans).find(
+    (s) => s.atom?.type === "image" && (a === b ? s.from <= a && a <= s.to : s.from === a && s.to === b),
+  );
+  return sp?.atom?.type === "image" && sp.atom.src ? { src: sp.atom.src, md: text.slice(sp.from, sp.to) } : null;
+}
+
+/** Pasting and dropping image files, copying an image; save and copy are read per use (the editor is shared, the options
+ *  follow this session) */
+export function imageEditing(
+  base: TNode,
+  editor: () => Editor,
+  save: () => SaveImage,
+  copy: () => CopyImage | undefined,
+  known: () => KnownImage | undefined,
+) {
   return base.extend({
     addProseMirrorPlugins() {
       return [
@@ -147,6 +178,23 @@ export function imageEditing(base: TNode, editor: () => Editor, save: () => Save
             return tr;
           },
           props: {
+            handleDOMEvents: {
+              // the caret alone in an image's source copies nothing by default: saying so before the copy lets it happen
+              beforecopy: (view: EditorView, ev: Event) => {
+                if (copy() && view.state.selection.empty && selectedImage(view.state)) ev.preventDefault();
+                return false;
+              },
+              copy: (view: EditorView, ev: ClipboardEvent) => {
+                // a selection over the source is text the writer picked (copyInsideShownSource); the caret alone is the picture
+                const c = copy(),
+                  img = c && view.state.selection.empty && selectedImage(view.state);
+                if (!img) return false;
+                // the picture alone (an app given text as well pastes the text); a paste of it back is the Markdown (knownImage)
+                ev.preventDefault();
+                c(img.src, img.md);
+                return true;
+              },
+            },
             handlePaste: (view: EditorView, ev: ClipboardEvent) => {
               const files =
                 ev.clipboardData && !view.state.selection.$from.parent.type.spec.code
@@ -154,7 +202,7 @@ export function imageEditing(base: TNode, editor: () => Editor, save: () => Save
                   : [];
               if (!files.length) return false;
               ev.preventDefault();
-              void insertFiles(editor(), save(), files, view.state.selection.from);
+              void insertFiles(editor(), save(), known(), files, view.state.selection.from);
               return true;
             },
             handleDrop: (view: EditorView, ev: DragEvent, _slice, moved: boolean) => {
@@ -163,7 +211,7 @@ export function imageEditing(base: TNode, editor: () => Editor, save: () => Save
               ev.preventDefault();
               const at = view.posAtCoords({ left: ev.clientX, top: ev.clientY })?.pos ?? view.state.selection.from;
               if (view.state.doc.resolve(at).parent.type.spec.code) return false;
-              void insertFiles(editor(), save(), files, at);
+              void insertFiles(editor(), save(), known(), files, at);
               return true;
             },
           },

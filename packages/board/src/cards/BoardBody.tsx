@@ -122,8 +122,6 @@ export function BoardBody(p: { card: BoardCard }) {
           This board was deleted or can’t be read.
         </div>
       </Show>
-      {/* 地图档时浮在框上面的名字（字号按 --iz 放大） */}
-      <div class="sbfar">{p.card.title || sk()?.name || ""}</div>
       <Show
         when={titleOnly() && sk()}
         fallback={
@@ -220,7 +218,7 @@ function mapHtml(sk: Skeleton, m: MapFit): string {
       inner = src
         ? `<image href="${escHtml(src)}" x="${x}" y="${y}" width="${w}" height="${h}" preserveAspectRatio="xMidYMid slice"/><rect class="im" x="${x}" y="${y}" width="${w}" height="${h}"/>`
         : `<rect class="imx" x="${x}" y="${y}" width="${w}" height="${h}"/>`;
-    } else if (c.lk === "text") {
+    } else if (c.lk === "text" || c.lk === "freetext") {
       // 一行放得下就是一道粗线（标题、短标签）；多行的正文按高度画满几道线，没有纸
       if (h < 9)
         inner = `<rect class="bar t" x="${x}" y="${n1(y + h / 2 - 1.2)}" width="${n1(w * 0.8)}" height="2.4"/>`;

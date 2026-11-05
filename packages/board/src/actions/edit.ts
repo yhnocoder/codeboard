@@ -28,7 +28,6 @@ import { setEditing, setEditEntry, codeTextRange, staged, setStaged } from "../s
 import { foldOf, setFold, setFoldV, setFoldHome, setSkel, unskel, type Fold } from "../state/fold";
 import { farAway } from "../state/cull";
 import { SKEL_OUT, SECTION_FIT } from "../state/timing";
-import { lodOf } from "../state/lodcards";
 import { staticTextRange } from "@yhnocoder/markdown";
 import { openMenu, type Item } from "../ui/Menu";
 import { ghostOut } from "../state/ghost";
@@ -458,7 +457,7 @@ export function toggleSection(id: string) {
   };
   // 展开：屏幕附近的成员卡先建好（state/ui.ts staged；v = 0，看不见），一帧几张，都建好了再真正展开、放出来。
   // 离屏幕很远的（整张藏着，看不见）先不建，放完了再一帧一张地建；连着它们的线照样跟着动（不要 DOM）
-  const far = new Set(was ? shown.filter((k) => farAway(k) && lodOf(k) === "full") : []);
+  const far = new Set(was ? shown.filter((k) => farAway(k)) : []);
   const near = shown.filter((k) => !far.has(k));
   // 阶段：建卡（展开）→ 内容换成骨架线（折叠，SKEL_OUT）→ 弹簧 → 拆卡（折叠好了）
   let phase: "build" | "fade" | "spring" | "down" = was ? "build" : "fade";
@@ -559,7 +558,7 @@ export function fitSections(ids: string[]) {
   );
 }
 export const renameSection = (id: string, v: string) => C.renameSection(commandEnv, id, v);
-export const setSectionColor = (id: string, color: string | undefined) => C.setSectionColor(commandEnv, id, color);
+export const setSectionColor = (ids: string[], color: string | undefined) => C.setSectionColor(commandEnv, ids, color);
 export const moveOutOfParent = (id: string) => C.moveOutOfParent(commandEnv, id);
 /** A Compare's Swap, Unified, Hide Same Lines, from its menu or its toolbar */
 export const toggleCompare = (id: string, k: "swap" | "unified" | "hideSame") => C.toggleCompareView(commandEnv, id, k);

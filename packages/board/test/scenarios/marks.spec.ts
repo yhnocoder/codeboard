@@ -1,5 +1,5 @@
-import { shot, symCard, findSym, put, type Host } from "../harness";
-import { emptyBoard, type Board, type CodeCard, type NoteCard } from "@codeboard/core";
+import { shot, symCard, findSym, put, cpuSpans, type Host } from "../harness";
+import { emptyBoard, TEXT_FS, type Board, type CodeCard, type NoteCard } from "@codeboard/core";
 import { test, open, check, light, until, idle, frames, pmHasSelection, focusSettled } from "../fixtures";
 
 const sym = (q: string) => {
@@ -87,7 +87,7 @@ test("markCard", async () => {
   );
   check("markHandFont", /Shantell Sans/.test(look.font) && look.size === "18px", look);
   const fontsOk = await pg.evaluate(
-    () => document.fonts.check('18px "Shantell Sans"') && document.fonts.check('18px "LXGW WenKai Lite"', "先挑"),
+    () => document.fonts.check('18px "Shantell Sans"') && document.fonts.check('18px "Yozai"', "先挑"),
   );
   check("markFontsBundled", fontsOk);
   const l1 = await linkPaths(h, "L1"),
@@ -136,14 +136,15 @@ test("markCard", async () => {
     { after, arrow: l1b?.stroke },
   );
 
-  // width handle: narrower → wraps onto more lines, font size unchanged
+  // width handles (the left edge here, the right one has the arrow; the corner grip scales the text, markScaleText): narrower →
+  // wraps onto more lines, font size unchanged
   const before = await pg.locator(card("m1")).boundingBox();
-  const grip = await pg.locator(`${card("m1")} .mkgrip`).boundingBox();
-  check("markGripShown", !!grip);
+  check("markGripShown", !!(await pg.locator(`${card("m1")} .mkgrip`).boundingBox()));
+  const grip = await pg.locator(`${card("m1")} .hw.l`).boundingBox();
   if (grip && before) {
     await pg.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2);
     await pg.mouse.down();
-    for (let i = 1; i <= 8; i++) await pg.mouse.move(grip.x + grip.width / 2 - i * 12, grip.y + grip.height / 2);
+    for (let i = 1; i <= 8; i++) await pg.mouse.move(grip.x + grip.width / 2 + i * 12, grip.y + grip.height / 2);
     await pg.mouse.up();
     await until(h, "the new width is saved", () => h.board().place.m1?.w !== 200);
     await idle(h);
@@ -162,7 +163,11 @@ test("markCard", async () => {
   // double-click edits in place
   await pg.locator(`${card("m3")} .tx`).dblclick();
   await pg.waitForSelector(`${card("m3")} .md-pm`, { timeout: 5000 });
+  // End is the browser moving the caret: within ProseMirror's focus window it is undone, and ProseMirror reads it from the
+  // asynchronous selectionchange (the caret stays where the double-click put it: "先挑这一 ok批")
+  await focusSettled(pg);
   await pg.keyboard.press("End");
+  await pmHasSelection(pg);
   await pg.keyboard.type(" ok");
   await pg.mouse.click(700, 880);
   await until(
@@ -608,7 +613,175 @@ test("noteAnnotationMath", async () => {
   await h.close();
 });
 
-/** The annotation label is drawn in the bundled handwriting fonts (Shantell Sans for Latin, LXGW WenKai Lite for Chinese):
+/** #121: a note with \frac{a}{b} ({ } pairs in its formula). Typed as source in the editor, and written in the toolbar's
+ *  Handwritten Note field: both become annotations whose label typesets the fraction, in the editor and the static Note, and
+ *  the saved Markdown keeps the formula as typed, the same after the board is opened again */
+test("noteAnnotationFraction", async () => {
+  const b = emptyBoard("b1", "annotations");
+  const md = "所以 3.2 GHz 的总线带宽是 DDR5-6400 的几倍。";
+  b.cards.push({ id: "n1", kind: "note", md, look: "note" } as NoteCard);
+  b.place.n1 = { x: 80, y: 80, w: 560 };
+  b.cam = { x: 0, y: 0, z: 1 };
+  const h = await open({ board: b, light: true, w: 800, h: 380, settings: { theme: "warm-ink" } as never });
+  const pg = h.page;
+  const pm = `${card("n1")} .md-pm`;
+  const fracs = (root: string) =>
+    pg.evaluate(
+      (root) =>
+        [...document.querySelectorAll<HTMLElement>(`${root} .md-annot > .md-annot-n`)].map((n) => ({
+          frac: !!n.querySelector(".katex .mfrac"),
+          text: n.textContent ?? "",
+        })),
+      root,
+    );
+  await pg.locator(`${card("n1")} .nbody p`).dblclick({ position: { x: 20, y: 10 } });
+  await pg.waitForSelector(pm, { timeout: 5000 });
+  await pg.keyboard.press("Control+End");
+  await pg.keyboard.type(" 合计 {==64 位==|$\\frac{a}{b}$ 倍}。");
+  await idle(h);
+  const typed = await fracs(pm);
+  check("annotFracTypedInEditor", typed.length === 1 && typed[0].frac && typed[0].text.includes("倍"), typed);
+  // the toolbar's Handwritten Note on "DDR5-6400"
+  await focusSettled(pg);
+  await pg.evaluate((pm) => {
+    const e = (document.querySelector(pm) as any).editor,
+      w = "DDR5-6400";
+    let at = -1;
+    e.state.doc.descendants((n: any, pos: number) => {
+      if (at < 0 && n.isText && n.text.includes(w)) at = pos + n.text.indexOf(w);
+    });
+    e.commands.setTextSelection({ from: at, to: at + w.length });
+  }, pm);
+  await pmHasSelection(pg);
+  const btn = pg.locator('.md-bubble .tbtn[data-tip="Handwritten Note"]');
+  await btn.waitFor({ timeout: 2000 });
+  await btn.click();
+  const input = pg.locator(".md-bubble input.md-annotin");
+  await input.waitFor({ timeout: 2000 });
+  await input.fill("$\\frac{1}{2}$ 周期");
+  await input.press("Enter");
+  await idle(h);
+  const both = await fracs(pm);
+  check("annotFracFromToolbar", both.length === 2 && both.every((f) => f.frac), both);
+  await pg.mouse.click(760, 360);
+  await until(h, "the edit is saved", () => (h.board().cards[0] as NoteCard).md !== md);
+  await idle(h);
+  const saved = (h.board().cards[0] as NoteCard).md;
+  check(
+    "annotFracSaved",
+    saved.includes("{==64 位==|$\\frac{a}{b}$ 倍}。") && saved.includes("{DDR5-6400|$\\frac{1}{2}$ 周期}"),
+    { saved },
+  );
+  const shown = await fracs(card("n1"));
+  check("annotFracStatic", shown.length === 2 && shown.every((f) => f.frac), shown);
+  await shot(h, "marks-annotation-fraction");
+  const board = h.board();
+  await h.close();
+  // opened again from what was saved
+  const h2 = await open({ board, light: true, w: 800, h: 380, settings: { theme: "warm-ink" } as never });
+  await idle(h2);
+  const again = await h2.page.evaluate(
+    () => [...document.querySelectorAll(".card .md-annot > .md-annot-n .katex .mfrac")].length,
+  );
+  check("annotFracReopened", again === 2 && (h2.board().cards[0] as NoteCard).md === saved, {
+    again,
+    md: (h2.board().cards[0] as NoteCard).md,
+  });
+  await h2.close();
+});
+
+/** #115: annotations close together on one line. Their labels never overlap: two that would are spread apart (the earlier
+ *  one left, the later one right), and when that is not enough one goes up a row, with the line keeping room for it above
+ *  (it does not cover the line before). Every label stays over its own arrow and inside its paragraph; static and editing */
+test("noteAnnotationsApart", async () => {
+  const b = emptyBoard("b1", "annotations");
+  const md = [
+    "DDR 在每个时钟周期**传输两次数据**，分别发生在时钟的上升沿和下降沿。",
+    "",
+    "所以 3.2 GHz 的 {==64 位==|8 字节}{==DDR5-6400==|双倍数据速率} 总线，带宽是 $8 \\times 2 \\times 3.2$ GHz。",
+    "",
+    "挤在一起：{==a==|很长的一条批注} {==b==|$x^2$ 也在这里|purple}{==c==|第三条|green} 之后。",
+  ].join("\n");
+  b.cards.push({ id: "n1", kind: "note", md, look: "note" } as NoteCard);
+  b.place.n1 = { x: 80, y: 80, w: 520 };
+  b.cam = { x: 0, y: 0, z: 1 };
+  const h = await open({ board: b, light: true, w: 760, h: 460, settings: { theme: "warm-ink" } as never });
+  const pg = h.page;
+  await pg.evaluate(() => document.fonts.ready);
+  const settled = async (root: string) => {
+    await pg.waitForFunction(
+      (root) =>
+        [...document.querySelectorAll<HTMLElement>(`${root} .md-annot > .md-annot-n`)].every((n) => {
+          const lb = getComputedStyle(n);
+          return document.fonts.check(`${lb.fontWeight} ${lb.fontSize} ${lb.fontFamily}`, n.textContent ?? "");
+        }),
+      root,
+      { timeout: 5000 },
+    );
+    await idle(h);
+  };
+  const layout = (root: string) =>
+    pg.evaluate((root) => {
+      const ps = [...document.querySelectorAll<HTMLElement>(`${root} p`)];
+      return ps.map((p, k) => {
+        const prev = k ? ps[k - 1].getBoundingClientRect().bottom : -Infinity;
+        return {
+          prev,
+          right: p.getBoundingClientRect().right,
+          left: p.getBoundingClientRect().left,
+          labels: [...p.querySelectorAll<HTMLElement>(".md-annot")].map((e) => {
+            const r = e.getBoundingClientRect(),
+              l = e.querySelector(":scope > .md-annot-n")!.getBoundingClientRect();
+            return {
+              note: e.dataset.note,
+              arrow: r.left + r.width / 2,
+              l: l.left,
+              r: l.right,
+              t: l.top,
+              b: l.bottom,
+              rise: e.style.getPropertyValue("--rise"),
+            };
+          }),
+        };
+      });
+    }, root);
+  const verdict = (ps: Awaited<ReturnType<typeof layout>>) => {
+    const bad: string[] = [];
+    for (const p of ps)
+      p.labels.forEach((a, i) => {
+        if (!(a.l < a.arrow - 2 && a.r > a.arrow + 2)) bad.push(`${a.note}: off its arrow`);
+        if (a.l < p.left - 0.5 || a.r > p.right + 0.5) bad.push(`${a.note}: outside its paragraph`);
+        if (a.t < p.prev - 0.5) bad.push(`${a.note}: over the line before`);
+        for (const o of p.labels.slice(i + 1))
+          if (a.l < o.r - 0.5 && o.l < a.r - 0.5 && a.t < o.b - 0.5 && o.t < a.b - 0.5)
+            bad.push(`${a.note} overlaps ${o.note}`);
+      });
+    return bad;
+  };
+  await settled(card("n1"));
+  const shown = await layout(`${card("n1")} .nbody`);
+  check("annotApartCount", shown.flatMap((p) => p.labels).length === 5, shown);
+  check("annotApartStatic", verdict(shown).length === 0, { bad: verdict(shown), shown });
+  check(
+    "annotApartRaised",
+    shown[2]?.labels.some((a) => parseFloat(a.rise) > 0),
+    shown[2],
+  );
+  await shot(h, "marks-annotations-apart");
+  await pg
+    .locator(`${card("n1")} .nbody p`)
+    .first()
+    .dblclick({ position: { x: 20, y: 10 } });
+  await pg.waitForSelector(`${card("n1")} .md-pm .md-annot`, { timeout: 5000 });
+  await settled(`${card("n1")} .md-pm`);
+  const ed = await layout(`${card("n1")} .md-pm`);
+  check("annotApartEditorCount", ed.flatMap((p) => p.labels).length === 5, ed);
+  check("annotApartEditor", verdict(ed).length === 0, { bad: verdict(ed), ed });
+  await shot(h, "marks-annotations-apart-editing");
+  await h.close();
+});
+
+/** The annotation label is drawn in the bundled handwriting fonts (Shantell Sans for Latin, Yozai for Chinese):
  *  the computed font is the hand font, both faces are loaded, and the glyphs really come from them (not a system fallback) */
 test("noteAnnotationHandFont", async () => {
   const b = emptyBoard("b1", "annotations");
@@ -623,11 +796,11 @@ test("noteAnnotationHandFont", async () => {
         font = `${lb.fontWeight} ${lb.fontSize} ${lb.fontFamily}`;
       return { note: e.dataset.note!, family: lb.fontFamily, checked: document.fonts.check(font, e.dataset.note) };
     });
-    const faces = Object.fromEntries(
-      [...document.fonts]
-        .filter((x) => /Shantell Sans|LXGW WenKai Lite/.test(x.family))
-        .map((x) => [x.family.replace(/"/g, ""), x.status]),
-    );
+    // a family is loaded when one of its faces is (Yozai is split into chunks by characters; only the ones shown load)
+    const faces: Record<string, string> = {};
+    for (const x of document.fonts)
+      if (/Shantell Sans|Yozai/.test(x.family) && faces[x.family.replace(/"/g, "")] !== "loaded")
+        faces[x.family.replace(/"/g, "")] = x.status;
     // glyphs drawn with the label's font stack vs the same stack without the bundled face: they differ only if the bundled face is used
     const draw = (font: string, t: string) => {
       const c = document.createElement("canvas");
@@ -652,20 +825,18 @@ test("noteAnnotationHandFont", async () => {
     return {
       labels,
       faces,
-      cjk: differ(draw(`24px ${stack}`, "异构计算"), draw(`24px ${without("LXGW")}`, "异构计算")),
+      cjk: differ(draw(`24px ${stack}`, "异构计算"), draw(`24px ${without("Yozai")}`, "异构计算")),
       latin: differ(draw(`24px ${stack}`, "thread"), draw(`24px ${without("Shantell")}`, "thread")),
     };
   });
   check(
     "annotHandFontFamily",
-    f.labels.length === 3 && f.labels.every((l) => /^"?Shantell Sans"?,\s*"?LXGW WenKai Lite"?/.test(l.family)),
+    f.labels.length === 3 && f.labels.every((l) => /^"?Shantell Sans"?,\s*"?Yozai"?/.test(l.family)),
     f.labels,
   );
   check(
     "annotHandFontsLoaded",
-    f.faces["Shantell Sans"] === "loaded" &&
-      f.faces["LXGW WenKai Lite"] === "loaded" &&
-      f.labels.every((l) => l.checked),
+    f.faces["Shantell Sans"] === "loaded" && f.faces.Yozai === "loaded" && f.labels.every((l) => l.checked),
     f,
   );
   check("annotHandGlyphsFromBundledFonts", f.cjk > 50 && f.latin > 50, f);
@@ -797,5 +968,361 @@ test("noteAnnotationFromToolbar", async () => {
   await idle(h); // the editor has closed and its save reached the host
   check("annotSaved", md() === "Prefill and decode {never share a batch|not mixed} in nano-vllm.", md());
   await shot(h, "marks-annotation-toolbar-saved");
+  await h.close();
+});
+
+/** A Mark m1 at (80, 80) in Warm Ink, and `more` Marks below it (for the picture) */
+async function oneMark(md: string, extra: Partial<NoteCard> = {}, w = 1000, hgt = 420, more: Partial<NoteCard>[] = []) {
+  const b = emptyBoard("b1", "marks");
+  b.cards.push({ id: "m1", kind: "note", md, look: "mark", hand: "blue", ...extra } as NoteCard);
+  b.place.m1 = { x: 80, y: 80, w: 420 };
+  more.forEach((c, i) => {
+    const id = `mm${i}`;
+    b.cards.push({ id, kind: "note", md, look: "mark", hand: "blue", ...c } as NoteCard);
+    b.place[id] = { x: 80, y: 170 + i * 70, w: 700 };
+  });
+  b.cam = { x: 0, y: 0, z: 1 };
+  const h = await open({ board: b, light: true, w, h: hgt, settings: { theme: "warm-ink" } as never });
+  await h.page.evaluate(() => document.fonts.ready);
+  return h;
+}
+const mark = (h: Host) => h.board().cards.find((c) => c.id === "m1") as NoteCard;
+
+/** The bundled Chinese faces (Yozai): which chunks are loaded (their weights), and how the Mark's glyphs are drawn with and
+ *  without them (canvas: the stack as computed vs the same stack without Yozai differ only when Yozai draws them) */
+const yozaiOf = (h: Host, text: string) =>
+  h.page.evaluate(
+    ({ sel, text }) => {
+      const t = document.querySelector<HTMLElement>(sel)!,
+        cs = getComputedStyle(t);
+      const faces = [...document.fonts].filter((x) => x.family.replace(/"/g, "") === "Yozai");
+      const draw = (font: string) => {
+        const c = document.createElement("canvas");
+        c.width = 260;
+        c.height = 40;
+        const x = c.getContext("2d")!;
+        x.font = font;
+        x.fillText(text, 2, 30);
+        return x.getImageData(0, 0, 260, 40).data;
+      };
+      const stack = cs.fontFamily,
+        without = stack
+          .split(",")
+          .filter((s) => !s.includes("Yozai"))
+          .join(",");
+      const a = draw(`${cs.fontWeight} 24px ${stack}`),
+        b = draw(`${cs.fontWeight} 24px ${without}`);
+      let differ = 0;
+      for (let i = 3; i < a.length; i += 4) if (a[i] !== b[i]) differ++;
+      return {
+        family: stack,
+        weight: cs.fontWeight,
+        faces: faces.length,
+        loaded: faces.filter((x) => x.status === "loaded").map((x) => x.weight),
+        differ,
+      };
+    },
+    { sel: `${card("m1")} .tx`, text },
+  );
+
+/** #117: Chinese in a Mark is handwriting too: the bundled Yozai next to Shantell Sans, split into chunks by characters so only the
+ *  few chunks of the characters shown are downloaded, and the glyphs really come from it (not a system fallback) */
+test("markCjkHandFont", async () => {
+  const h = await oneMark("Hello 你好 共享内存 warp 调度", {}, 1000, 420, [{ fs: 36 }]);
+  const f = await until(h, "the Chinese chunks are loaded", async () => {
+    const r = await yozaiOf(h, "你好共享内存调度");
+    return r.loaded.length ? r : undefined;
+  });
+  check("markCjkFontFamily", /^"?Shantell Sans"?,\s*"?Yozai"?/.test(f.family), f);
+  // 90 faces (45 chunks × Regular and Bold); "你好共享内存调度" is in 3 chunks of Regular
+  check("markCjkFontChunked", f.faces >= 80 && f.loaded.length >= 1 && f.loaded.length <= 4, f);
+  check("markCjkGlyphsFromBundledFont", f.differ > 80, f);
+  await shot(h, "117-mark-cjk");
+  await h.close();
+});
+
+/** #118: dragging a Mark's corner scales its whole text (font size and width together, so it wraps at the same words) with a real
+ *  font size (crisp, no transform), within limits, as one undo step, and each move's work fits in a frame */
+test("markScaleText", async () => {
+  const h = await oneMark("prefill / decode never share a batch", {}, 1100, 640);
+  const pg = h.page;
+  await pg.locator(`${card("m1")} .tx`).click();
+  const grip = (await pg.locator(`${card("m1")} .mkgrip`).boundingBox())!;
+  const box0 = (await pg.locator(card("m1")).boundingBox())!;
+  const lines = () =>
+    pg.evaluate(
+      (sel) => {
+        const t = document.querySelector<HTMLElement>(sel)!;
+        return Math.round(t.offsetHeight / parseFloat(getComputedStyle(t).lineHeight));
+      },
+      `${card("m1")} .tx`,
+    );
+  const lines0 = await lines();
+  const gx = grip.x + grip.width / 2,
+    gy = grip.y + grip.height / 2;
+  await pg.mouse.move(gx, gy);
+  await pg.mouse.down();
+  await pg.mouse.move(gx + 4, gy + 2);
+  // the pointer moves along the card's diagonal: the CPU time of each move's change and layout
+  const spans = await cpuSpans(pg, () =>
+    pg.evaluate(
+      async ({ gx, gy, w, hh }) => {
+        for (let i = 1; i <= 24; i++) {
+          await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
+          performance.mark("cpu:start");
+          const k = (i * 10) / Math.hypot(w, hh);
+          window.dispatchEvent(
+            new PointerEvent("pointermove", { clientX: gx + w * k, clientY: gy + hh * k, bubbles: true, buttons: 1 }),
+          );
+          document.querySelector(".card.mark")!.getBoundingClientRect();
+          performance.mark("cpu:end");
+        }
+      },
+      { gx, gy, w: box0.width, hh: box0.height },
+    ),
+  );
+  await pg.mouse.move(gx + box0.width * 0.6, gy + box0.height * 0.6);
+  await pg.mouse.up();
+  const m = await until(h, "the new size is saved", () => (mark(h).fs ? mark(h) : undefined));
+  await idle(h);
+  const t = await pg.evaluate(
+    (sel) => {
+      const e = document.querySelector<HTMLElement>(sel)!,
+        cs = getComputedStyle(e),
+        c = getComputedStyle(e.closest(".card")!);
+      return { size: cs.fontSize, transform: cs.transform, cardScale: c.scale, cardTransform: c.transform };
+    },
+    `${card("m1")} .tx`,
+  );
+  const w = h.board().place.m1.w;
+  check(
+    "markScaleFontSize",
+    m.fs! > 25 &&
+      t.size === `${m.fs}px` &&
+      t.transform === "none" &&
+      t.cardTransform === "none" &&
+      t.cardScale === "none",
+    { fs: m.fs, t },
+  );
+  check("markScaleWidthFollows", Math.abs(w / 420 - m.fs! / 18) < 0.02, { w, fs: m.fs });
+  const lines1 = await lines();
+  check("markScaleSameLines", lines1 === lines0, { before: lines0, after: lines1 });
+  spans.sort((a, b) => a - b);
+  check("markScaleFrameCpu", spans.length >= 20 && spans[Math.floor(spans.length / 2)] < 8, spans);
+  await shot(h, "118-mark-scaled");
+  // one undo step back to the default size and the old width
+  await pg.keyboard.press("Meta+z");
+  await until(h, "the scale is undone", () => mark(h).fs === undefined);
+  check("markScaleUndo", mark(h).fs === undefined && h.board().place.m1.w === 420, {
+    m: mark(h),
+    w: h.board().place.m1.w,
+  });
+  // far past the smallest size: it stops at the limit
+  await pg.locator(`${card("m1")} .tx`).click();
+  const g2 = (await pg.locator(`${card("m1")} .mkgrip`).boundingBox())!;
+  await pg.mouse.move(g2.x + g2.width / 2, g2.y + g2.height / 2);
+  await pg.mouse.down();
+  for (let i = 1; i <= 10; i++) await pg.mouse.move(g2.x - i * 60, g2.y - i * 20);
+  await pg.mouse.up();
+  await until(h, "the small size is saved", () => mark(h).fs);
+  check("markScaleMin", mark(h).fs === TEXT_FS.min, mark(h));
+  await h.close();
+});
+
+/** #120: a Mark's weight, Light / Regular / Bold, from its toolbar beside the colour dots: one step each, undoable, and both the
+ *  Latin (Shantell Sans, a variable font) and the Chinese (Yozai's own Bold, not a synthesized one; Light keeps Regular) follow it */
+test("markWeight", async () => {
+  const h = await oneMark("Hello 你好 共享内存", {}, 1000, 420, [
+    { fs: 32, weight: "light" },
+    { fs: 32 },
+    { fs: 32, weight: "bold" },
+  ]);
+  const pg = h.page;
+  await pg.locator(`${card("m1")} .tx`).click();
+  await pg
+    .locator(`${card("m1")} .hdots .hwt`)
+    .first()
+    .waitFor();
+  const btns = await pg
+    .locator(`${card("m1")} .hdots .hwt`)
+    .evaluateAll((bs) => bs.map((b) => ({ tip: b.getAttribute("data-tip"), on: b.classList.contains("on") })));
+  check(
+    "markWeightButtons",
+    btns.map((b) => b.tip).join("|") === "Light|Regular|Bold" && btns[1].on && !btns[0].on && !btns[2].on,
+    btns,
+  );
+  await shot(h, "120-mark-weight-toolbar");
+  await pg.locator(`${card("m1")} .hwt[data-tip="Bold"]`).click();
+  await until(h, "the weight is saved", () => mark(h).weight === "bold");
+  const bold = await until(h, "Yozai Bold is loaded", async () => {
+    const r = await yozaiOf(h, "你好共享内存");
+    return r.loaded.includes("700") ? r : undefined;
+  });
+  const latin = await pg.evaluate(
+    (sel) => {
+      const t = document.querySelector<HTMLElement>(sel)!;
+      const shantell = [...document.fonts].find((x) => x.family.replace(/"/g, "") === "Shantell Sans");
+      return { weight: getComputedStyle(t).fontWeight, axis: shantell?.weight, status: shantell?.status };
+    },
+    `${card("m1")} .tx`,
+  );
+  check("markWeightBold", bold.weight === "700" && bold.differ > 80, bold);
+  check(
+    "markWeightLatinVariable",
+    latin.weight === "700" && latin.axis === "300 800" && latin.status === "loaded",
+    latin,
+  );
+  await pg.locator(`${card("m1")} .hwt[data-tip="Light"]`).click();
+  await until(h, "Light is saved", () => mark(h).weight === "light");
+  // Yozai ships Regular and Bold only: a Light Mark's Latin is Shantell Sans at 300, its Chinese is Yozai Regular as it is (the
+  // same pixels as at 400, nothing synthesized), still Yozai and not a system font
+  const thin = await yozaiOf(h, "你好共享内存");
+  const light = await pg.evaluate(
+    (sel) => {
+      const t = document.querySelector<HTMLElement>(sel)!,
+        cs = getComputedStyle(t);
+      const draw = (font: string, text: string) => {
+        const c = document.createElement("canvas");
+        c.width = 260;
+        c.height = 40;
+        const x = c.getContext("2d")!;
+        x.font = font;
+        x.fillText(text, 2, 30);
+        return x.getImageData(0, 0, 260, 40).data;
+      };
+      const differ = (a: Uint8ClampedArray, b: Uint8ClampedArray) => {
+        let n = 0;
+        for (let i = 3; i < a.length; i += 4) if (a[i] !== b[i]) n++;
+        return n;
+      };
+      return {
+        cjk300vs400: differ(
+          draw(`300 24px ${cs.fontFamily}`, "你好共享内存"),
+          draw(`400 24px ${cs.fontFamily}`, "你好共享内存"),
+        ),
+        latin300vs400: differ(draw(`300 24px ${cs.fontFamily}`, "Hello"), draw(`400 24px ${cs.fontFamily}`, "Hello")),
+        synthesis: cs.getPropertyValue("font-synthesis-weight"),
+        lightFaces: [...document.fonts].filter((x) => x.family.replace(/"/g, "") === "Yozai" && x.weight === "300")
+          .length,
+      };
+    },
+    `${card("m1")} .tx`,
+  );
+  check(
+    "markWeightLight",
+    thin.weight === "300" &&
+      thin.differ > 80 &&
+      light.cjk300vs400 === 0 &&
+      light.latin300vs400 > 20 &&
+      light.lightFaces === 0 &&
+      light.synthesis === "auto",
+    { thin, light },
+  );
+  await pg.keyboard.press("Meta+z");
+  await until(h, "Light is undone", () => mark(h).weight === "bold");
+  await pg.keyboard.press("Meta+z");
+  await until(h, "Bold is undone", () => mark(h).weight === undefined);
+  check("markWeightUndo", mark(h).weight === undefined, mark(h));
+  await pg.mouse.click(900, 60);
+  await shot(h, "120-mark-weights");
+  await h.close();
+});
+
+/** #123: S / M / L / XL on a Mark's toolbar, after the weights: each sets the font size in one undo step, the width scaled with it
+ *  as a corner drag scales it; the current size's button is lit, none for a size dragged off the steps */
+test("markSizes", async () => {
+  const h = await oneMark("picks this batch 先挑这一批", {}, 1400, 560);
+  const pg = h.page;
+  const sizeOf = () => pg.locator(`${card("m1")} .tx`).evaluate((t) => parseFloat(getComputedStyle(t).fontSize));
+  const lit = () =>
+    pg
+      .locator(`${card("m1")} .hdots .hsz`)
+      .evaluateAll((bs) => bs.filter((b) => b.classList.contains("on")).map((b) => b.textContent));
+  await pg.locator(`${card("m1")} .tx`).click();
+  await pg
+    .locator(`${card("m1")} .hdots .hsz`)
+    .first()
+    .waitFor({ timeout: 3000 });
+  const btns = await pg.locator(`${card("m1")} .hdots .hsz`).evaluateAll((bs) => bs.map((b) => b.textContent));
+  check("markSizeButtons", btns.join("|") === "S|M|L|XL", btns);
+  // a Mark never resized is at S, the default size
+  check("markSizeDefaultLit", (await lit()).join() === "S", await lit());
+  await shot(h, "123-mark-size-s");
+  const steps = { M: 24, L: 32, XL: 48 } as const;
+  for (const [k, px] of Object.entries(steps)) {
+    await pg.locator(`${card("m1")} .hsz`, { hasText: new RegExp(`^${k}$`) }).click();
+    await until(h, `${k} is saved`, () => mark(h).fs === px);
+    await until(h, `${k} is drawn`, async () => (await sizeOf()) === px);
+    // the width scales step by step from 420 at 18px, so it can be a pixel off from rounding once
+    check(`markSize${k}`, (await lit()).join() === k && Math.abs(h.board().place.m1.w - (420 * px) / 18) <= 1, {
+      lit: await lit(),
+      w: h.board().place.m1.w,
+    });
+    await shot(h, `123-mark-size-${k.toLowerCase()}`);
+  }
+  // one step each: undoing XL is back at L with L's width
+  await pg.keyboard.press("ControlOrMeta+z");
+  await until(h, "XL is undone", () => mark(h).fs === 32);
+  check("markSizeUndo", Math.abs(h.board().place.m1.w - (420 * 32) / 18) <= 1 && (await lit()).join() === "L", {
+    m: mark(h),
+    w: h.board().place.m1.w,
+  });
+  // the corner grip still scales it, off the steps: no button lit (it is still selected: a click on its text would edit it)
+  const g = (await pg.locator(`${card("m1")} .mkgrip`).boundingBox())!;
+  await pg.mouse.move(g.x + g.width / 2, g.y + g.height / 2);
+  await pg.mouse.down();
+  for (let i = 1; i <= 4; i++) await pg.mouse.move(g.x + i * 9, g.y + i * 3);
+  await pg.mouse.up();
+  await until(h, "the dragged size is saved", () => mark(h).fs !== 32);
+  const dragged = mark(h).fs;
+  check("markSizeDragOffSteps", !!dragged && ![18, 24, 32, 48].includes(dragged), mark(h));
+  await until(
+    h,
+    "no size is lit",
+    async () => (await pg.locator(`${card("m1")} .hdots .hsz`).count()) === 4 && (await lit()).length === 0,
+  );
+  // and S takes it back to the default size, which is not written
+  await pg.locator(`${card("m1")} .hsz`, { hasText: /^S$/ }).click();
+  await until(h, "S is saved", () => mark(h).fs === undefined);
+  check("markSizeS", (await sizeOf()) === TEXT_FS.mark && (await lit()).join() === "S", await lit());
+  await h.close();
+});
+
+/** A Mark written as a heading ("# Basic Concepts", at a dragged size): Light / Regular / Bold from its toolbar set the heading's
+ *  weight too, not the Markdown heading's own 600 */
+test("markHeadingWeight", async () => {
+  const b = emptyBoard("bMH", "mh");
+  put(
+    b,
+    { id: "m1", kind: "note", md: "# Basic Concepts", look: "mark", hand: "blue", fs: 38.5 } as NoteCard,
+    60,
+    60,
+    500,
+  );
+  b.cam = { x: 0, y: 0, z: 1 };
+  const h = await open({ board: b, light: true, w: 900, h: 500, settings: { theme: "warm-ink" } });
+  const pg = h.page,
+    sel = '.card[data-id="m1"]';
+  await pg.locator(`${sel} .tx`).click();
+  const seen: Record<string, string> = {};
+  for (const [tip, w] of [
+    ["Bold", "bold"],
+    ["Light", "light"],
+    ["Regular", "regular"],
+  ] as const) {
+    await pg.locator(`${sel} .hwt[data-tip="${tip}"]`).click();
+    await until(
+      h,
+      `${tip} is saved`,
+      () => (h.board().cards[0] as NoteCard).weight === (w === "regular" ? undefined : w),
+    );
+    await idle(h);
+    seen[tip] = await pg.locator(`${sel} .tx h1`).evaluate((e) => getComputedStyle(e).fontWeight);
+  }
+  check(
+    "markHeadingWeight each weight reaches the heading",
+    seen.Bold === "700" && seen.Light === "300" && seen.Regular === "400",
+    seen,
+  );
   await h.close();
 });

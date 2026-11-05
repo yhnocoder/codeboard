@@ -18,7 +18,11 @@ import {
   isInTable,
   selectionCell,
 } from "@tiptap/pm/tables";
+import { TableView } from "@tiptap/extension-table";
 import { iconEl, type IconName } from "../ui/icons";
+import { captionOf } from "../image";
+import { captionHtml } from "../render";
+import { mdOf } from "./md";
 import { CELL_MIN } from "../layout";
 import { IS_MAC } from "../ui/platform";
 import { kindClass, type MdClasses } from "../ui/classes";
@@ -517,6 +521,28 @@ class TableBar {
   }
 }
 
+/** A table with a caption: drawn as the static render draws it, the table and the caption under it in a .md-tfig. The caption is
+ *  the table's attribute, changed only from outside the editor; a table that gains or loses one is drawn again */
+class CaptionedTableView extends TableView {
+  private cap: string;
+  constructor(node: PMNode, cellMinWidth: number, view: EditorView) {
+    super(node, cellMinWidth, view);
+    this.cap = captionOf(node.attrs.caption);
+    if (!this.cap) return;
+    const fig = document.createElement("div"),
+      c = document.createElement("div");
+    fig.className = "md-tfig";
+    c.className = "md-cap";
+    c.contentEditable = "false";
+    c.innerHTML = captionHtml(this.cap, mdOf(view.state));
+    fig.append(this.dom, c);
+    this.dom = fig;
+  }
+  update(node: PMNode) {
+    return captionOf(node.attrs.caption) === this.cap && super.update(node);
+  }
+}
+
 /** The table node for the editor (column resizing on, cells at least CELL_MIN wide), plus the toolbar and shortcuts */
 export function tableEditing(base: TNode, classes?: MdClasses): AnyExtension[] {
   const node = base
@@ -537,7 +563,7 @@ export function tableEditing(base: TNode, classes?: MdClasses): AnyExtension[] {
         ];
       },
     })
-    .configure({ resizable: true, cellMinWidth: CELL_MIN, lastColumnResizable: true });
+    .configure({ resizable: true, cellMinWidth: CELL_MIN, lastColumnResizable: true, View: CaptionedTableView });
   // ahead of saving (⌘↵ outside a table) and of the paragraph rules
   const keys = Extension.create({
     name: "cbTableKeys",

@@ -2,8 +2,10 @@
 import { boardSignal } from "./root";
 import type { Anchor, DiffData, PeekDef, Commit, Segment, CallSpan, ImplPick, NameHit } from "@codeboard/core";
 
-/** 浮层挂在哪：一个元素（跟着它走，镜头动也跟），或一个屏幕坐标 */
-export type At = { el?: Element; x?: number; y?: number; prefer?: "below" | "right" | "above" };
+/** 浮层挂在哪：一个元素（跟着它走，镜头动也跟），或一个屏幕坐标。
+ *  prefer "lines"：el 是代码卡行号栏里的 Sidenote 标记（data-last = 它标的最后一行的 data-r），浮层放在它标的那几行下面，
+ *  下面放不下就放在那几行上面，不盖住它们 */
+export type At = { el?: Element; x?: number; y?: number; prefer?: "below" | "right" | "above" | "lines" };
 
 export type Pop =
   | { kind: "notes"; card: string; ids: string[]; title: string; sel?: string }
@@ -37,7 +39,9 @@ export type Pop =
   /** 三方对照：原版 / 我的 / 上游最新 */
   | { kind: "three"; card: string }
   /** Modify SVG…：写一句怎么改（图片卡，或 Note 里的一张 SVG，见 actions/imageai.ts） */
-  | { kind: "modifySvg"; ref: { card: string; note?: string } };
+  | { kind: "modifySvg"; ref: { card: string; note?: string } }
+  /** Edit Mark…：一块白板（board）的印章 */
+  | { kind: "seal"; board: string };
 
 export type ImplPop = {
   card: string;

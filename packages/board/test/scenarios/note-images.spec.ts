@@ -896,7 +896,11 @@ test("notePastedImageCaptionWhileEditing", async () => {
   await pg.locator('.card[data-id="n0"] .md-pm img:not(.ProseMirror-separator)').first().click({ button: "right" });
   await pg.locator(".ctx button").first().waitFor();
   const items = await pg.locator(".ctx button .lb").allTextContents();
-  check("notePastedImageCaptionWhileEditing the menu offers Add Caption", items[0] === "Add Caption…", items);
+  check(
+    "notePastedImageCaptionWhileEditing the menu offers Add Caption",
+    items[0] === "Copy Image" && items[1] === "Add Caption…",
+    items,
+  );
   await pg.locator(".ctx button", { hasText: "Add Caption…" }).first().click();
   await pg.locator(".dialog input").fill("Figure 1");
   await pg.keyboard.press("Enter");

@@ -466,7 +466,8 @@ test("subboardLinkAttachesToFrame", async () => {
     await page.mouse.move(port.x + port.width / 2, port.y + port.height / 2);
     await page.mouse.down();
     await page.mouse.move(mini.x + mini.width / 2, mini.y + mini.height / 2, { steps: 10 });
-    res.frameHot = await page.locator('.card.drop-hot[data-id="fSch"]').count();
+    // 箭头头落到框上：框整张卡是目标（放大 + 选中），不是框里的某一块
+    res.frameHot = await page.locator('.card.aim.sel[data-id="fSch"]').count();
     res.miniHot = await page.locator(".skel .hot").count();
     await page.mouse.up();
     const made = () => t.store.peek("bMain")!.links.find((l) => l.from.card === "mNote");
@@ -667,7 +668,7 @@ test("subboardLinkPicker", async () => {
     await page.keyboard.press("Escape");
     await until(h, "the link is saved", () =>
       (t.store.peek("bMain")!.cards.find((c) => c.id === "mNote") as NoteCard).md.includes(
-        "[[nano-vllm 调度器 › Deep › 深处的笔记]]",
+        "[[nano-vllm 调度器 › Deep › 深处的笔记#^d1]]",
       ),
     );
     await idle(h);
@@ -1277,7 +1278,7 @@ test("subboardPreviewColumnsHideClear", async () => {
 const others = (h: Host, f: string) =>
   h.page.evaluate(
     (f) =>
-      [...document.querySelectorAll<HTMLElement>(".world > .card")]
+      [...document.querySelectorAll<HTMLElement>(":is(.cardlay, .keeplay) > .card")]
         .filter((c) => c.dataset.id !== f)
         .flatMap((c) => {
           const r = c.getBoundingClientRect(),

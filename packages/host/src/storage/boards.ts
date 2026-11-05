@@ -398,6 +398,7 @@ export class Storage {
       cards: e.board.cards.length,
       stale: this.stale.get(e.id) || undefined,
       subs: subs.length ? subs : undefined,
+      seal: e.board.seal,
     };
   }
 
@@ -938,6 +939,10 @@ export class Storage {
   fileOf(id: string) {
     return this.cache.get(id)?.file;
   }
+  /** 共享卡的内容所在：卡库里的那个文件（白板文件里只有它的 id） */
+  cardFileOf(id: string) {
+    return this.library.fileOf(id);
+  }
 
   async newGroup(name: string) {
     const safe = groupName(name);
@@ -1048,7 +1053,8 @@ const boardKey = (b: Board) =>
   );
 
 /** 侧栏关心的部分：名字、卡片数、子白板 */
-const outline = (b: Board) => JSON.stringify([b.name, b.cards.length, allCodeCards(b).length, subBoardsOf(b)]);
+const outline = (b: Board) =>
+  JSON.stringify([b.name, b.cards.length, allCodeCards(b).length, subBoardsOf(b), b.seal ?? null]);
 /** 改之前的样子：有没写盘的改动时是第一次改之前的 */
 const prevOf = (e: Entry): Prev => e.pending ?? { file: e.file, outline: outline(e.board), group: e.group };
 

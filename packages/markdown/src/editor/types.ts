@@ -4,7 +4,7 @@ import type { MdLayout } from "../layout";
 import type { StaticTextRange } from "../selmap";
 import type { MdClasses } from "../ui/classes";
 import type { CodeLang } from "./codelang";
-import type { SaveImage } from "./image";
+import type { CopyImage, KnownImage, SaveImage } from "./image";
 
 export type MdEditorOpts = {
   value: string;
@@ -33,6 +33,13 @@ export type MdEditorOpts = {
   /** 存图（粘贴、拖进来、/Image）：回写进 Markdown 的地址，null = 不插（存不了，用的一方自己提示）；不给就把 data: 地址原样写进去 */
   saveImage?: SaveImage;
   pickImage?: () => Promise<string | null>;
+  /** ⌘C on an image (the caret in its source, or just its source selected): the caller puts the picture itself on the clipboard
+   *  (image/png for other apps; the copy event is cancelled, so no text goes with it). Not given: the Markdown is copied as
+   *  text, as any selection */
+  copyImage?: CopyImage;
+  /** A pasted or dropped picture: the Markdown to insert instead of saving it when the caller knows it (the image it put on the
+   *  clipboard with copyImage), null to save it as usual */
+  knownImage?: KnownImage;
   openLink?: (url: string) => void;
   /** 灰字补全（宿主没有就不给） */
   complete?: (before: string, after: string) => Promise<string | null>;
@@ -70,11 +77,19 @@ export type MdEditorHandle = {
   selectVisible(r: StaticTextRange): boolean;
   /** Press a key as if typed in the editor (its key bindings run); a key nothing handles deletes the selection */
   press(key: "Backspace" | "Delete"): void;
+  /**
+   * Type text at the selection as if typed on the keyboard, one character at a time (a newline is Enter): key bindings and input
+   * rules ("# " starts a heading) run as they do for typing. For keys typed before the editor was mounted
+   */
+  type(text: string): void;
   /** Switch the whole Note between rich editing and its Markdown source (⌘/) */
   toggleSource(): void;
 };
-/** [[ 的一个候选：label = 写进 [[…]] 的（不给就是 title），crumb = 标在标题后面的小字（白板：所在的 Section） */
-export type RefItem = { id: string; title: string; kind: string; label?: string; crumb?: string };
-/** 别处的一组候选：title = 那一处的名字，label = 引用那一处本身时写进 [[…]] 的，note = 组头右边的字 */
-export type RefGroup = { id: string; title: string; label?: string; note?: string; items: RefItem[] };
+/**
+ * [[ 的一个候选：label = 写进 [[…]] 的（不给就是 title），crumb = 标在标题后面的小字（白板：所在的 Section），
+ * target = 跟着写进去的稳定 id（[[label#^target]]，只能是 [\w-]，可以有一个 /）：改了名 refs.resolve 也按它找得到；不给就只写标题
+ */
+export type RefItem = { id: string; title: string; kind: string; label?: string; crumb?: string; target?: string };
+/** 别处的一组候选：title = 那一处的名字，label、target = 引用那一处本身时写进 [[…]] 的（同 RefItem），note = 组头右边的字 */
+export type RefGroup = { id: string; title: string; label?: string; target?: string; note?: string; items: RefItem[] };
 export type RefPick = { group?: string; id: string };

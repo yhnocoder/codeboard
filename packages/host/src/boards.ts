@@ -70,6 +70,8 @@ export interface BoardHost {
   refreshShared(now?: boolean, fresh?: string): void;
   /** 子白板的骨架重新推给白板（变了的）；now = 不等防抖，fresh = 刚 init 的白板 */
   refreshSkeletons(now?: boolean, fresh?: string): void;
+  /** Zoomed-out summaries: the host writes the board's missing ones and waits on its pending ones (hub.ts) */
+  readonly summaries?: { opened(b: Board): void };
   skeleton(id: string): Skeleton | null;
   /** [[ 引用能选的别的白板上的卡（p 之后会收到变了的 boardRefs）；refreshBoardRefs 重推变了的；refPicked 记下最近选过的 */
   boardRefs(p: BoardPanel): BoardRefs;
@@ -168,6 +170,14 @@ export class BoardPanel {
       this.post({ type: "ask", id, ask: a });
     });
   }
+  /** Record Zoom Log on this board (HostToBoard "zoomLog"): null when it started recording, else the log */
+  zoomLog(): Promise<string | number | null> {
+    const id = ++this.askN;
+    return new Promise((r) => {
+      this.asks.set(id, r);
+      this.post({ type: "zoomLog", id });
+    });
+  }
   answer(id: number, v: string | number | null) {
     this.asks.get(id)?.(v);
     this.asks.delete(id);
@@ -223,6 +233,7 @@ export class BoardPanel {
     this.mgr.refreshShared(true, this.id);
     this.mgr.refreshSkeletons(true, this.id);
     this.mgr.refreshBoardRefs(true, this.id);
+    this.mgr.summaries?.opened(b);
     // 排进版本检查的队列：之后的 refreshStale 在它后面（旧的结果不盖掉新的）
     const first = this.staleRun
       .then(() => staleP)

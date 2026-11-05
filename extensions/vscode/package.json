@@ -79,6 +79,11 @@
         "icon": "$(edit)"
       },
       {
+        "command": "codeboard.editMark",
+        "title": "Edit Mark…",
+        "category": "CodeBoard"
+      },
+      {
         "command": "codeboard.duplicateBoard",
         "title": "Duplicate Board",
         "category": "CodeBoard"
@@ -122,6 +127,11 @@
       {
         "command": "codeboard.revealInFolder",
         "title": "Reveal in Folder",
+        "category": "CodeBoard"
+      },
+      {
+        "command": "codeboard.copyBoardPath",
+        "title": "Copy Path",
         "category": "CodeBoard"
       },
       {
@@ -216,6 +226,11 @@
       {
         "command": "codeboard.copyDiagnostics",
         "title": "Copy Diagnostics",
+        "category": "CodeBoard"
+      },
+      {
+        "command": "codeboard.zoomLog",
+        "title": "Record Zoom Log (记录缩放日志)",
         "category": "CodeBoard"
       },
       {
@@ -359,34 +374,44 @@
           "group": "2_edit@1"
         },
         {
-          "command": "codeboard.duplicateBoard",
+          "command": "codeboard.editMark",
           "when": "view == codeboard.boards && viewItem == board",
           "group": "2_edit@2"
         },
         {
-          "command": "codeboard.moveToGroup",
+          "command": "codeboard.duplicateBoard",
           "when": "view == codeboard.boards && viewItem == board",
           "group": "2_edit@3"
         },
         {
-          "command": "codeboard.copyToProject",
+          "command": "codeboard.moveToGroup",
           "when": "view == codeboard.boards && viewItem == board",
           "group": "2_edit@4"
         },
         {
-          "command": "codeboard.moveToProject",
+          "command": "codeboard.copyToProject",
           "when": "view == codeboard.boards && viewItem == board",
           "group": "2_edit@5"
         },
         {
-          "command": "codeboard.exportBoards",
+          "command": "codeboard.moveToProject",
           "when": "view == codeboard.boards && viewItem == board",
           "group": "2_edit@6"
+        },
+        {
+          "command": "codeboard.exportBoards",
+          "when": "view == codeboard.boards && viewItem == board",
+          "group": "2_edit@7"
         },
         {
           "command": "codeboard.revealInFolder",
           "when": "view == codeboard.boards && viewItem == board",
           "group": "3_misc@1"
+        },
+        {
+          "command": "codeboard.copyBoardPath",
+          "when": "view == codeboard.boards && viewItem == board",
+          "group": "3_misc@2"
         },
         {
           "command": "codeboard.deleteBoard",
@@ -453,6 +478,10 @@
         },
         {
           "command": "codeboard.revealInFolder",
+          "when": "false"
+        },
+        {
+          "command": "codeboard.copyBoardPath",
           "when": "false"
         },
         {
@@ -912,20 +941,6 @@
             "One walkthrough path (from the Start card or the selected card)"
           ],
           "description": "What the Export dialog exports by default."
-        },
-        "codeboard.zoom.overview": {
-          "type": "number",
-          "default": 0.6,
-          "minimum": 0.2,
-          "maximum": 1,
-          "description": "Below this zoom, cards show an overview (titles and structure)."
-        },
-        "codeboard.zoom.map": {
-          "type": "number",
-          "default": 0.25,
-          "minimum": 0.05,
-          "maximum": 0.6,
-          "description": "Below this zoom, cards show only their titles (map view)."
         },
         "codeboard.ai.deepseekBaseUrl": {
           "type": "string",

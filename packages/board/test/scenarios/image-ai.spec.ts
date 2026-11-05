@@ -1,15 +1,16 @@
 // The image tools (DeepSeek reading images), with the host's own request code (packages/host/src/imageai.ts) answered by a fake
 // DeepSeek: the board sends the image, the host builds the request, and the fake answers like the API does.
-//   imageAiMenus                    right-click an image card: Extract Text to Note / to Clipboard, Convert to SVG with its two check
-//                                   items (they toggle without closing the menu and are saved as settings); an SVG image instead gets
-//                                   Modify SVG… and Copy SVG Source
+//   imageAiMenus                    right-click an image card: Copy Image, then Extract Text to Note / to Clipboard, Convert to SVG
+//                                   with its two check items (they toggle without closing the menu and are saved as settings); an SVG
+//                                   image instead gets Modify SVG… and Copy SVG Source
 //   imageAiExtractNoteThenClip      Extract Text to Note: a Note with the Markdown next to the image, an arrow from the image, one undo;
 //                                   Extract Text to Clipboard right after copies the same Markdown without asking DeepSeek again
 //   imageAiConvertThenModify        Convert to SVG: a new image card with the SVG (background removed) next to the source, linked;
 //                                   Modify SVG… opens a popover on the card, Enter sends the instruction and the source (thinking on)
 //                                   and swaps the picture in one change, ⌘Z brings the old one back
-//   imageAiNoteImage                right-click an image inside a Note: the image tools plus the Note's menu; Convert to SVG puts the
-//                                   SVG in the Note in place and moves the old image out as an image card linked from the Note (one undo)
+//   imageAiNoteImage                right-click an image inside a Note: Copy Image, the image tools and the Note's menu; Convert to
+//                                   SVG puts the SVG in the Note in place and moves the old image out as an image card linked from
+//                                   the Note (one undo)
 //   imageAiPasteImageText           the toolbar's Image button is a dropdown (New Image, Paste Image Text ⇧⌘V, New SVG from Text…);
 //                                   Paste Image Text reads the clipboard's image into a Note in the middle of the view, with no image card
 //   drawSvgFromTextMenu             Image ▾ New SVG from Text… asks for a description; while waiting an empty card with the busy layer sits
@@ -169,8 +170,8 @@ test("imageAiMenus", async () => {
     think0 = await state("Think First (slower)");
   check(
     "imageAiMenus image card items",
-    png.slice(0, 5).join("|") ===
-      "Extract Text to Note|Extract Text to Clipboard|Convert to SVG|Remove Background|Think First (slower)" &&
+    png.slice(0, 6).join("|") ===
+      "Copy Image|Extract Text to Note|Extract Text to Clipboard|Convert to SVG|Remove Background|Think First (slower)" &&
       !png.includes("Modify SVG…"),
     png,
   );
@@ -197,7 +198,8 @@ test("imageAiMenus", async () => {
   const svg = await menuLabels(h);
   check(
     "imageAiMenus SVG image items",
-    svg.slice(0, 4).join("|") === "Modify SVG…|Extract Text to Note|Extract Text to Clipboard|Copy SVG Source" &&
+    svg.slice(0, 5).join("|") ===
+      "Copy Image|Modify SVG…|Extract Text to Note|Extract Text to Clipboard|Copy SVG Source" &&
       !svg.includes("Convert to SVG"),
     svg,
   );
@@ -345,7 +347,8 @@ test("imageAiNoteImage", async () => {
   const items = await menuLabels(h);
   check(
     "imageAiNoteImage the image tools and the Note's menu",
-    items.slice(0, 4).join("|") === "Add Caption…|Extract Text to Note|Extract Text to Clipboard|Convert to SVG" &&
+    items.slice(0, 5).join("|") ===
+      "Copy Image|Add Caption…|Extract Text to Note|Extract Text to Clipboard|Convert to SVG" &&
       items.at(-1) === "Note",
     items,
   );
@@ -614,7 +617,7 @@ test("drawSvgFromNoteCard", async () => {
   await rightClick(h, `.card[data-id="${img.id}"] .imgb img`);
   check(
     "drawSvgFromNoteCard the drawn image has the SVG tools",
-    (await menuLabels(h))[0] === "Modify SVG…",
+    (await menuLabels(h)).slice(0, 2).join("|") === "Copy Image|Modify SVG…",
     await menuLabels(h),
   );
   await h.page.keyboard.press("Escape");

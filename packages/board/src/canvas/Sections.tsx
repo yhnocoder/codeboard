@@ -1,7 +1,7 @@
 // Section：框画在卡片下面，标签浮在卡片上面（拖标签整体移动）；折叠后还是同样的框和标题，框缩到刚好包住「名字 · N cards ›」，
 // 指着它停一会儿下面摊开几张成员卡的预览。
 import { For, Show, createMemo, createRenderEffect, createSignal, onCleanup, untrack } from "solid-js";
-import { cardTitle, type Card } from "@codeboard/core";
+import { cardTitle, type Card, type FrameEdge, type Rect, type Section } from "@codeboard/core";
 import { state } from "../state/store";
 import { sel } from "../state/selection";
 import {
@@ -16,12 +16,16 @@ import {
 } from "../state/sections";
 import { foldOf, foldAt, frameAt, toTitle, fadeAt, goneAt, shutLook, lerp } from "../state/fold";
 import { observeResize } from "../state/measure";
+import { shape } from "../state/look";
+import { brushFrame, titleWidth, setTitleWidth } from "../state/inkframe";
 import { Editable } from "../ui/Editable";
 import { Icon } from "../ui/icons";
 import { sectionLabelDown, sectionEdgeDown } from "../interact";
 import * as A from "../actions";
 import { SECTION_PEEK_OUT } from "../state/timing";
 
+/** a resize handle on each side and each corner of an open frame (styles.css .sedge) */
+const FRAME_EDGES: FrameEdge[] = ["n", "s", "e", "w", "nw", "ne", "sw", "se"];
 const ordered = () => state.board.sections.filter((s) => !hiddenByAncestor(s)).sort((a, b) => depthOf(a) - depthOf(b));
 
 export function SectionFrames() {
@@ -85,8 +89,21 @@ export function SectionFrames() {
                 }}
                 data-sect={s.id}
               >
+                <Show when={shape().sect === "brush"}>
+                  <BrushFrame s={s} r={r} />
+                </Show>
                 <Show when={!s.collapsed}>
-                  <span class="sgrip" data-nodrag data-export="strip" onPointerDown={(e) => sectionEdgeDown(e, s.id)} />
+                  <For each={FRAME_EDGES}>
+                    {(k) => (
+                      <span
+                        class="sedge"
+                        data-edge={k}
+                        data-nodrag
+                        data-export="strip"
+                        onPointerDown={(e) => sectionEdgeDown(e, s.id, k)}
+                      />
+                    )}
+                  </For>
                 </Show>
               </div>
             </Show>
@@ -94,6 +111,23 @@ export function SectionFrames() {
         }}
       </For>
     </div>
+  );
+}
+
+/** Ink Wash's frame: four dry brush strokes (state/inkframe.ts), following the frame through folding as the frame does, with a
+ *  gap in the top stroke for the title while it shows open (its colour is CSS: themes.css .sbrush) */
+function BrushFrame(p: { s: Section; r: () => Rect | undefined }) {
+  const img = createMemo(() => {
+    const f = foldOf(p.s.id),
+      q = f ? frameAt(f) : p.r();
+    if (!q) return;
+    const open = f ? !shutLook(f) : !p.s.collapsed;
+    return brushFrame(q.w, q.h, p.s.id, open ? Math.max(40, titleWidth(p.s.id)) : 0);
+  });
+  return (
+    <svg class="sbrush" width={img()?.w ?? 0} height={img()?.h ?? 0} viewBox={`0 0 ${img()?.w ?? 0} ${img()?.h ?? 0}`}>
+      <path d={img()?.d ?? ""} />
+    </svg>
   );
 }
 
@@ -130,6 +164,7 @@ export function SectionLabels() {
           setLabelEl(s.id, e);
           onCleanup(
             observeResize(e, () => {
+              if (untrack(shape).sect === "brush") setTitleWidth(s.id, e.offsetWidth);
               if (untrack(shut)) measureShut(s.id);
             }),
           );
@@ -168,7 +203,7 @@ export function SectionLabels() {
                 fit: fitting().has(s.id),
               }}
               data-sect={s.id}
-              style={{ left: `${r()!.x}px`, top: `${r()!.y}px` }}
+              style={{ left: `${r()!.x}px`, top: `${r()!.y}px`, "--sw": `${r()!.w}px` }}
               onPointerEnter={enter}
               onPointerLeave={leave}
               onPointerDown={(e) => {

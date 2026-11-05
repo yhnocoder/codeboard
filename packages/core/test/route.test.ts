@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { chooseMode, sidesOf, anchorOn, tiltAngle, connect, slide, type Box } from "../src/canvas/route";
+import { bezBox } from "../src/canvas/geom";
 
 const S: Box = { x: 0, y: 0, w: 300, h: 200 };
 const at = (x: number, y: number, w = 300, h = 160): Box => ({ x, y, w, h });
@@ -54,6 +55,23 @@ describe("tilt (W03 D 11)", () => {
     const ang = Math.atan2(sh.inDir.y, -sh.inDir.x);
     expect(ang).toBeGreaterThan(0.2);
     expect(ang).toBeLessThanOrEqual(Math.PI / 4 + 1e-6);
+  });
+});
+
+describe("perpendicular ends (one side pinned)", () => {
+  it("the curve stays between its two ends: no overshoot past the other end, no hook before it (#134)", () => {
+    const A: Box = { x: 80, y: 300, w: 300, h: 200 };
+    for (const [B, py] of [
+      [{ x: 420, y: 60, w: 900, h: 200 }, 320],
+      [{ x: 420, y: 60, w: 900, h: 140 }, 320],
+      [{ x: 420, y: 60, w: 300, h: 230 }, 310],
+    ] as const) {
+      const p = anchorOn(A, "right", py),
+        q = anchorOn(B, "bottom", 0);
+      const box = bezBox(connect(p, q, "curve", undefined, { a: A, b: B }).pts);
+      expect(box.y + box.h).toBeLessThanOrEqual(p.y + 0.5);
+      expect(box.x + box.w).toBeLessThanOrEqual(q.x + 0.5);
+    }
   });
 });
 

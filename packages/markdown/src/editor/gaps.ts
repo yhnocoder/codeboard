@@ -1,6 +1,7 @@
 // The paragraph spacing classes (../gaps.ts) in the editor, as node decorations on the blocks it draws: paragraphs are <p>
 // unless their source makes them a heading (ParaView), lists, code blocks, formula blocks and quotes are spaced like
-// paragraphs; tables and details are drawn in a <div> there, which the spacing never counted.
+// paragraphs, and so are tables (their <div> takes the class, as the static render's <table> does); details, drawn in a <div>
+// there, never were.
 // A change only redoes the blocks around it: a block's class depends on itself and the block before it, so the blocks a change
 // touches and the one after each of them, at every level down to the change. What still grows with the Note is ProseMirror's:
 // mapping the set, and the view looking through the top level's decorations for each top-level block
@@ -10,7 +11,7 @@ import type { Node as PMNode } from "@tiptap/pm/model";
 import { gapClass, type GapKind } from "../gaps";
 import { tagOf } from "./inline";
 
-const BLOCKS = new Set(["bulletList", "orderedList", "taskList", "codeBlock", "blockMath", "blockquote"]);
+const BLOCKS = new Set(["bulletList", "orderedList", "taskList", "codeBlock", "blockMath", "blockquote", "table"]);
 const kindOf = (n: PMNode, cell: boolean): GapKind =>
   n.type.name === "paragraph" ? (tagOf(n, cell) === "p" ? "p" : null) : BLOCKS.has(n.type.name) ? "block" : null;
 const isCell = (n: PMNode) => /cell/.test(n.type.spec.tableRole ?? "");

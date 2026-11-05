@@ -387,10 +387,11 @@ test("markdownInputRules", async () => {
     { name: "slash code", seq: "/code{Enter}k", md: "```\nk\n```" },
     { name: "slash divider", seq: "/divider{Enter}", md: "---" },
     { name: "slash task", seq: "/task{Enter}t", md: "- [ ] t" },
-    { name: "ref picker", seq: "[[sched{Enter}", md: "[[Scheduler.schedule]]" },
+    // 选来的引用带着卡的 id（改了名也认得出）
+    { name: "ref picker", seq: "[[sched{Enter}", md: /^\[\[Scheduler\.schedule#\^c[\w-]+\]\]$/ },
     // 全角【【（中文输入法）和 @ 也打开引用列表；@ 后面什么都对不上时不弹空列表，照常打字
-    { name: "ref picker fullwidth", seq: "【【sched{Enter}", md: "[[Scheduler.schedule]]" },
-    { name: "ref picker at", seq: "see @sched{Enter}", md: "see [[Scheduler.schedule]]" },
+    { name: "ref picker fullwidth", seq: "【【sched{Enter}", md: /^\[\[Scheduler\.schedule#\^c[\w-]+\]\]$/ },
+    { name: "ref picker at", seq: "see @sched{Enter}", md: /^see \[\[Scheduler\.schedule#\^c[\w-]+\]\]$/ },
     { name: "at without a card", seq: "meet @ 5pm{Enter}x", md: "meet @ 5pm\n\nx" },
   ];
   const run = process.env.CASES

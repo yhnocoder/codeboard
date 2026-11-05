@@ -1,5 +1,6 @@
 import { batch } from "solid-js";
-import { cardTitle, descendants, escHtml, wouldCycle, type WalkHop } from "@codeboard/core";
+import { cardTitle, descendants, escHtml, wouldCycle, type BoardSeal, type WalkHop } from "@codeboard/core";
+import type { Markdown } from "@yhnocoder/markdown";
 import * as C from "@codeboard/core/commands";
 import { commandEnv } from "./env";
 import { state, cardById, hostOf, rectOf, flows } from "../state/store";
@@ -12,13 +13,15 @@ import {
   crumbs,
   frameOf,
   skelOf,
+  subRef,
   subRefs,
   walkBack,
   setWalkBack,
   setCrumbMorph,
   heightToKeep,
 } from "../state/subboards";
-import { revealCard, selectCard } from "./common";
+import { resolveCardRef, revealCard, selectCard } from "./common";
+import { openPop, type At } from "../state/pop";
 import { walk, setWalk } from "../state/ui";
 import { settleHome, frames as sectionFrames } from "../state/sections";
 import { animScale } from "../state/motion";
@@ -455,4 +458,29 @@ export function openCardRef(id: string, place?: string) {
     return;
   }
   if (state.boards.some((m) => m.id === id)) send({ type: "openBoard", id });
+}
+
+/** The board a [[ref]] drawn with a seal points into: the other board (or sub-board) its card is on, or that board itself */
+export function refBoard(label: string, md: Markdown): string | undefined {
+  const hit = resolveCardRef(label, md);
+  if (!hit || "broken" in hit || !hit.seal) return;
+  if (hit.place) return hit.place;
+  if (state.boards.some((m) => m.id === hit.id)) return hit.id;
+  return subRef(label)?.board;
+}
+/** Edit Mark… of a board (this one or another): the popover at `at` */
+export function editMark(board: string, at: At) {
+  openPop({ kind: "seal", board }, at);
+}
+/** Edit Mark… from the palette over this board: its own Mark, the popover near the top of the board */
+export function editOwnMark() {
+  editMark(state.board.id, { x: Math.max(16, innerWidth / 2 - 150), y: 72 });
+}
+/**
+ * A board's Mark saved (undefined = the defaults): this board's is a command (one undo step); another board's file belongs to the
+ * host, which changes it (or hands it to that board when it is open) and pushes the board list with the new Mark to every board
+ */
+export function saveMark(board: string, seal: BoardSeal | undefined) {
+  if (board === state.board.id) C.setBoardSeal(commandEnv, seal);
+  else send({ type: "setSeal", board, seal: seal ?? null });
 }

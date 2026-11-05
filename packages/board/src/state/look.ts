@@ -4,11 +4,17 @@ import { createMemo } from "solid-js";
 import type { ThemeId } from "@codeboard/core";
 import { state } from "./store";
 import { rooted, boardSignal } from "./root";
+import { FLASH_BRUSH, GHOST_DISPERSE } from "./timing";
 
 export const look = () => state.host.settings.theme;
 
 /** clear：直角折线绕到卡外时离卡边多远（route.ts 的 CLEAR），只有路面宽的材质要加大 */
 /** band / foot：代码卡显示色带（大标题）/ 底栏（Card.tsx 只在这些主题里建这两块） */
+/** stroke：brush = 实线画成毛笔笔画（填充的轮廓，@codeboard/core/canvas 的 brushLine）；虚线、点线照旧描边 */
+/** paper：卡是一张毛边宣纸（每种卡的尺寸画一张图，state/ink.ts） */
+/** sect：brush = Section 的框是四笔枯笔（state/inkframe.ts），标题写在上边留的缺口里 */
+/** stamp：新出现的编号像印章落下（CodeHead.tsx 加 .stamp，动画在 themes.css） */
+/** ghost / flash：删卡的消失动画、跳到某行的闪动有多长（ms，乘 --t 前；不给 = timing.ts 的 GHOST_OUT / FLASH_MS） */
 type Shape = {
   route: "curve" | "elbow";
   head: "chevron" | "triangle" | "dot" | "car";
@@ -16,6 +22,12 @@ type Shape = {
   clear?: number;
   band?: boolean;
   foot?: boolean;
+  stroke?: "brush";
+  paper?: "deckle";
+  sect?: "brush";
+  stamp?: boolean;
+  ghost?: number;
+  flash?: number;
 };
 const SHAPES: Partial<Record<ThemeId, Partial<Shape>>> = {
   classic: { head: "triangle" },
@@ -24,7 +36,16 @@ const SHAPES: Partial<Record<ThemeId, Partial<Shape>>> = {
   colorful: { head: "triangle", band: true, foot: true },
   newspaper: { head: "triangle", band: true },
   poster: { port: "diamond", band: true },
-  "ink-wash": { head: "dot" },
+  // Ink Wash：毛笔线、毛边宣纸的卡；删卡时墨往中间收着散掉，跳到某行是一笔朱笔划过
+  "ink-wash": {
+    head: "dot",
+    stroke: "brush",
+    paper: "deckle",
+    sect: "brush",
+    stamp: true,
+    ghost: GHOST_DISPERSE,
+    flash: FLASH_BRUSH,
+  },
   // City：路横平竖直；被调用那头停一辆车代替箭头；起点是一块圆形小广场。路沿、路口见 canvas/Links.tsx，车、标线和车流见 canvas/Traffic.tsx
   // clear 40：路面中线离卡边 40，路沿（16px）外还空出 32，约两条路宽
   city: { route: "elbow", head: "car", port: "plaza", clear: 40 },

@@ -22,6 +22,8 @@ import { Footnotes, Footnote, FootnoteReference } from "tiptap-footnotes";
 import DOMPurify from "dompurify";
 import katex from "katex";
 import { EMOJI } from "./emoji";
+import { captionOf } from "./image";
+import { imageAttrsText } from "./imageattrs";
 
 // 行内 $…$：$ 后紧跟非空白，结尾 $ 前是非空白、后面不是数字，所以 "$5 and $10" 不算公式；紧跟在 \ 或 $ 后面的 $ 不开头。
 // 行内的 $$…$$ 是行内的大号公式
@@ -365,6 +367,18 @@ export const Emoji = Node.create({
 });
 
 // 存成 [[标题]]：可读，复制到别处也能按标题找。指向什么由用的一方定（Markdown 实例的 refs、编辑器的 refs）。
+// 从 [[ 列表选的还在标题后面带着目标的 id：[[标题#^id]]，改了名也认得出（显示的是目标现在的名字，原文里的标题只是给人读、找不到 id 时按它找）。
+// 为什么是 #^：和 Obsidian 的块 id（[[页面#^id]]）一个写法；| 会把 GFM 表格的格子切开，单个 # 常出现在标题里（Issue #12），
+// 而 id 只有 [\w-]（跨白板的是 白板id/卡id），标题以 #^字母 结尾的几乎没有
+const REF_TARGET = /#\^([\w-]+(?:\/[\w-]+)?)$/;
+/** [[…]] 里的字 → 标题和目标的 id（没有 id 的只有标题） */
+function splitRef(inner: string): { label: string; target?: string } {
+  const m = REF_TARGET.exec(inner);
+  return m ? { label: inner.slice(0, m.index).trim(), target: m[1] } : { label: inner.trim() };
+}
+/** 写进 Markdown 的样子（id 不是 [\w-]（跨白板的 a/b）的不写：读回来会被当成标题的一部分） */
+export const refSource = (label: string, target?: string) =>
+  `[[${label}${target && REF_TARGET.test(`#^${target}`) ? `#^${target}` : ""}]]`;
 export const WikiRef = Node.create({
   name: "wikiRef",
   group: "inline",
@@ -372,21 +386,34 @@ export const WikiRef = Node.create({
   atom: true,
   selectable: true,
   addAttributes() {
-    return { label: { default: "", rendered: false } };
+    return { label: { default: "", rendered: false }, target: { default: "", rendered: false } };
   },
   parseHTML() {
-    return [{ tag: "span[data-ref]", getAttrs: (e) => ({ label: (e as HTMLElement).getAttribute("data-ref") ?? "" }) }];
+    return [
+      {
+        tag: "span[data-ref]",
+        getAttrs: (e) => ({
+          label: (e as HTMLElement).getAttribute("data-ref") ?? "",
+          target: (e as HTMLElement).getAttribute("data-target") ?? "",
+        }),
+      },
+    ];
   },
   renderHTML({ node, HTMLAttributes }) {
     return [
       "span",
-      mergeAttributes(HTMLAttributes, { class: "md-ref", "data-ref": node.attrs.label }),
+      mergeAttributes(HTMLAttributes, {
+        class: "md-ref",
+        "data-ref": node.attrs.label,
+        ...(node.attrs.target ? { "data-target": node.attrs.target } : {}),
+      }),
       node.attrs.label,
     ];
   },
+  // 纯文字（别的应用）只要可读的标题
   renderText: ({ node }) => `[[${node.attrs.label}]]`,
-  parseMarkdown: (t) => ({ type: "wikiRef", attrs: { label: t.label } }),
-  renderMarkdown: (n) => `[[${n.attrs?.label ?? ""}]]`,
+  parseMarkdown: (t) => ({ type: "wikiRef", attrs: { label: t.label, target: t.target ?? "" } }),
+  renderMarkdown: (n) => refSource(n.attrs?.label ?? "", n.attrs?.target || undefined),
   markdownTokenizer: {
     name: "wikiRef",
     level: "inline",
@@ -394,7 +421,9 @@ export const WikiRef = Node.create({
     tokenize: (src) => {
       const m = /^\[\[([^\[\]\n]+?)\]\]/.exec(src);
       if (!m) return;
-      return { type: "wikiRef", raw: m[0], label: m[1].trim() };
+      const r = splitRef(m[1]);
+      if (!r.label) return;
+      return { type: "wikiRef", raw: m[0], ...r };
     },
   },
 });
@@ -473,14 +502,8 @@ export const FnList = Footnotes.extend({
 export const Doc = Document.extend({ content: "block+ footnotes?", allowGapCursor: true });
 
 // 图片是行内的：和字混在一段里照原样放（单独一段的图就是一段里只有它）。
-// 缩小了的图写成 ![a](u){width=40%}（Pandoc 的写法）：宽度是正文宽的百分之几，卡片变宽变窄时图跟着缩放；没写的占满（最宽就是正文宽）
-const IMG_WIDTH = /^\{width=(\d{1,3}(?:\.\d+)?)%\}/;
-/** s 开头是图片的宽度写法时给它（0 < 宽度 ≤ 100，别的数不认，照字留着） */
-export function imageWidthAt(s: string): { width: number; raw: string } | undefined {
-  const m = IMG_WIDTH.exec(s),
-    w = m ? Number(m[1]) : 0;
-  return m && w > 0 && w <= 100 ? { width: w, raw: m[0] } : undefined;
-}
+// 缩小了的图写成 ![a](u){width=40%}（Pandoc 的写法）：宽度是正文宽的百分之几，卡片变宽变窄时图跟着缩放；没写的占满（最宽就是正文宽）。
+// 同一个块里还有动图停在哪一帧（frame=N）、是否一直播放（loop=true）：imageattrs.ts
 /**
  * ![alt](…) whose address CommonMark does not accept (spaces, an unencoded <svg> in a data: URL): still an image, one that is
  * never loaded and shows as an image that failed to load. Its source stays as written
@@ -507,19 +530,38 @@ export const Img = Image.extend({
         parseHTML: (e) => pct(e.style.width),
         renderHTML: (a) => (a.width ? { style: `width: ${a.width}%` } : {}),
       },
+      // an animated image's still frame (from 1; null = the first) and always-play (imageattrs.ts); data attributes in HTML
+      frame: {
+        default: null,
+        parseHTML: (e) => Number(e.getAttribute("data-frame")) || null,
+        renderHTML: (a) => (a.frame ? { "data-frame": String(a.frame) } : {}),
+      },
+      loop: {
+        default: false,
+        parseHTML: (e) => e.hasAttribute("data-loop"),
+        renderHTML: (a) => (a.loop ? { "data-loop": "" } : {}),
+      },
       // an address the parser could not read (brokenImage): drawn as a failed image, never loaded
       broken: { default: false, parseHTML: () => false, renderHTML: () => ({}) },
     };
   },
   parseMarkdown: (t, h) =>
-    h.createNode("image", { src: t.href, title: t.title, alt: t.text, width: t.width ?? null, broken: !!t.broken }),
+    h.createNode("image", {
+      src: t.href,
+      title: t.title,
+      alt: t.text,
+      width: t.attrs?.width ?? null,
+      frame: t.attrs?.frame ?? null,
+      loop: !!t.attrs?.loop,
+      broken: !!t.broken,
+    }),
   // title 是图注（显示在图下面）：TipTap 自己写的 "title" 不转义引号，这里转义 \ 和 "，换行并成空格（标题只能一行）
   renderMarkdown(n) {
     const a = n.attrs ?? {},
       t = String(a.title ?? "")
         .replace(/\s*\n\s*/g, " ")
         .trim();
-    return `![${a.alt ?? ""}](${a.src ?? ""}${t ? ` "${t.replace(/[\\"]/g, "\\$&")}"` : ""})${a.width ? `{width=${a.width}%}` : ""}`;
+    return `![${a.alt ?? ""}](${a.src ?? ""}${t ? ` "${t.replace(/[\\"]/g, "\\$&")}"` : ""})${imageAttrsText(a)}`;
   },
 }).configure({ inline: true, allowBase64: true });
 // TipTap 的段落把只有一张图的一段解析成块级的图：这里图片是行内的，照样是一段
@@ -680,9 +722,17 @@ export const Tasks = TaskList.extend({
 });
 // 表格：GFM 存不下合并单元格和一格多段，所以一格只放一段
 export const Cell = TableCell.extend({ content: "paragraph" });
+// A table's caption is a paragraph "Table: …" right after it (Pandoc's table caption), read onto the table by parseMd
+// (tableCaptions in schema.ts); the attribute holds the caption's inline Markdown
+export const TABLE_CAPTION = /^Table:[ \t]+(?=\S)/;
 export const Tbl = Table.extend({
+  addAttributes() {
+    return { ...this.parent?.(), caption: { default: null, rendered: false } };
+  },
   renderMarkdown(n, h, c) {
-    return String(this.parent?.(n, h, c) ?? "").replace(/^\n+|\n+$/g, "");
+    const t = String(this.parent?.(n, h, c) ?? "").replace(/^\n+|\n+$/g, ""),
+      cap = captionOf(n.attrs?.caption).replace(/\s*\n\s*/g, " ");
+    return cap ? `${t}\n\nTable: ${cap}` : t;
   },
 }).configure({ resizable: false });
 export const Head = TableHeader.extend({ content: "paragraph" });

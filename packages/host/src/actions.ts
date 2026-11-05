@@ -18,9 +18,11 @@ import { type Storage } from "./storage/boards";
 import { workingPlace } from "./versions";
 import { viewsFor } from "./views";
 import { copyDiagnostics } from "./diagnostics";
+import { copyPaths } from "./paths";
 import { applyFlow, captureFlow } from "./runs";
 import { openOnBoard } from "./handlers";
 import { prompts } from "./prompts";
+import { editSealPrompt } from "./seals";
 import { clearDeepseekKey, setDeepseekKey } from "./ai";
 import type { CommandId } from "./commands";
 import { copyToProject, otherProjects, removeMoved } from "./transfer";
@@ -294,6 +296,19 @@ export function makeActions(cx: HostContext, panels: BoardHost, store: Storage, 
       return copyDiagnostics(cx, prompts(cx, a), (a ?? (panels.target ? panels.get(panels.target) : undefined))?.board);
     },
 
+    // zoom diagnostics: the first run starts recording on the board (up to 30 s), the next one copies what it recorded
+    "codeboard.zoomLog": async () => {
+      const p = active() ?? (panels.target ? panels.get(panels.target) : undefined);
+      if (!p) return void ui().info("Open a board first, then record the zoom log on it.");
+      const log = await p.zoomLog();
+      if (typeof log !== "string")
+        return void ui().info(
+          "Recording the zoom log: zoom and pinch, then run “Record Zoom Log” again to copy it (it records up to 30 s).",
+        );
+      await ui().copy(log);
+      void ui().info(`Zoom log copied to the clipboard (${log.split("\n").length} lines).`);
+    },
+
     "codeboard.addToBoard": async () => {
       const b = await fromEditor();
       if (b) await deliver(await targetId(), b);
@@ -443,6 +458,13 @@ export function makeActions(cx: HostContext, panels: BoardHost, store: Storage, 
       await store.rename(b.id, name.trim());
       await panels.pushBoards();
     },
+    // A board's Mark: from the sidebar (a) VS Code's input box and quick pick; from the palette over a board, the board's own popover
+    "codeboard.editMark": async (a?: unknown) => {
+      const on = a === undefined ? active() : undefined;
+      if (on) return void on.post({ type: "editSeal" });
+      const id = boardArg(a) ?? panels.target;
+      if (id) await editSealPrompt(panels, id);
+    },
     "codeboard.duplicateBoard": async (a?: unknown) => {
       const id = boardArg(a);
       if (id) await store.duplicate(id);
@@ -551,6 +573,11 @@ export function makeActions(cx: HostContext, panels: BoardHost, store: Storage, 
       const id = boardArg(a);
       const f = id ? store.fileOf(id) : undefined;
       await ui().revealInOS(f ?? store.dir());
+    },
+    // 侧栏的 Copy Path：白板文件的路径（和白板 ⋯ 菜单里的一样），让终端里的 Claude Code 引用；和编辑器自己的 Copy Path 一样不弹提示
+    "codeboard.copyBoardPath": async (a?: unknown) => {
+      const id = boardArg(a);
+      if (id) await copyPaths(cx, store, id);
     },
     // GITHUB FILES 的 Add Repo…：在目标白板上打开 From GitHub… 面板
     "codeboard.addGithubRepo": async () => {

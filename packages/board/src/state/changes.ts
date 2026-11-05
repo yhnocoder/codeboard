@@ -4,10 +4,14 @@ import { produce, reconcile, unwrap } from "solid-js/store";
 import {
   applyPatch,
   applySharedUpdate,
+  putSummary,
+  summaryOf,
+  summaryPending,
   type Board,
   type BoardPatch,
   type SegView,
   type SharedUpdate,
+  type Summary,
 } from "@codeboard/core";
 import { ask } from "../host";
 import { createHistory, createSave, type Doc, type HistoryPorts } from "@codeboard/core/history";
@@ -118,4 +122,17 @@ export function syncMerged(p: BoardPatch, views?: Record<string, SegView>) {
     sync((b) => applyPatch(b, structuredClone(p)));
   });
   save.alignSent();
+}
+/** Summaries the host wrote by itself (zoomed out; host summaries.ts): saved like any change, no undo step. One the user edited
+ *  after the host asked (its newest edit is not the one the host wrote from), or kept as it is (保留: no longer pending), stays as
+ *  the user left it */
+export function syncSummaries(items: Record<string, Summary>) {
+  sync((b) => {
+    for (const [k, s] of Object.entries(items)) {
+      const now = summaryOf(b, k);
+      if (now?.edited && now.pairs?.[0]?.at !== s.pairs?.[0]?.at) continue;
+      if (now && !summaryPending(b, k)) continue;
+      putSummary(b, k, structuredClone(s));
+    }
+  });
 }

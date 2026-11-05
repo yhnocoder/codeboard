@@ -464,7 +464,7 @@ export function LinkLabel(p: { L: Link; g: Accessor<Geo | null>; watchSize: Watc
                     return (
                       <div
                         class="vrow"
-                        classList={{ gone: x() }}
+                        classList={{ vgone: x() }}
                         data-k={varKey(v)}
                         data-tip={x() ? "No longer in the code. Remove it in Arguments…" : undefined}
                         onPointerEnter={() => A.hiVar(L, v, true)}

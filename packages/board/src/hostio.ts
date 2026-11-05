@@ -1,14 +1,15 @@
 import { batch } from "solid-js";
 import type { Markdown } from "@yhnocoder/markdown";
 import { checkBoard, findCard, walkOrder, type HostToBoard, type Sidenote } from "@codeboard/core";
-import { appendSegment, deleteItems, followMoved, renameBoard } from "@codeboard/core/commands";
+import { appendSegment, deleteItems, followMoved, renameBoard, setBoardSeal } from "@codeboard/core/commands";
 import { commandEnv } from "./actions/env";
 import { state, setHost, mergeHost, setBoards, setLoaded, setSharedInfo, flows } from "./state/store";
 import { putViews, putStale, resetSegs } from "./state/views";
-import { markSaved, setBoard, sync, syncShared, syncGone, syncMerged } from "./state/changes";
+import { markSaved, setBoard, sync, syncShared, syncGone, syncMerged, syncSummaries } from "./state/changes";
 import { select, setLineSel, lineSel, sel } from "./state/selection";
 import { toast } from "./state/toast";
 import { setCam } from "./state/camera";
+import { showSummaryLevel } from "./state/summary";
 import { cardsMeasured } from "./state/measure";
 import { putSkels, setCrumbs, setWalkBack } from "./state/subboards";
 import { boardSwitched } from "./state/root";
@@ -22,6 +23,7 @@ import { preloadEditor } from "./md/load";
 import { putBoardRefs, refreshRefs } from "./md/refs";
 import { preloadCm } from "./cm/load";
 import { questionsOpen, setWelcome } from "./state/questions";
+import { toggleZoomLog } from "./state/zoomlog";
 
 let preloaded = false;
 /** 进出子白板、旧白板还在淡出时收到的 init 和它后面的消息：淡出完再按顺序处理（actions/subboards.ts switchGate） */
@@ -73,6 +75,7 @@ function handle(m: HostToBoard, md: Markdown) {
       });
       if (questionsOpen()) A.refreshQuestions();
       setCam(b.cam.x, b.cam.y, b.cam.z);
+      showSummaryLevel();
       markSaved();
       A.boardShown();
       if (m.walk) void hopWalk(m.walk);
@@ -105,6 +108,8 @@ function handle(m: HostToBoard, md: Markdown) {
     }
     case "boards":
       setBoards(m.boards);
+      // 白板的名字、印章、谁嵌在谁里面变了：静态 Note 里指向别的白板的引用再认一遍
+      refreshRefs(md);
       break;
     case "host":
       mergeHost(m.host);
@@ -167,6 +172,12 @@ function handle(m: HostToBoard, md: Markdown) {
     case "rename":
       if (m.name.trim()) renameBoard(commandEnv, m.name.trim());
       break;
+    case "setSeal":
+      setBoardSeal(commandEnv, m.seal ?? undefined);
+      break;
+    case "editSeal":
+      A.editOwnMark();
+      break;
     case "replaceSegment":
       A.replaceSegment(m.card, m.seg, m.view);
       break;
@@ -181,6 +192,9 @@ function handle(m: HostToBoard, md: Markdown) {
       break;
     case "githubPicker":
       A.openGitHubPicker(m.repo);
+      break;
+    case "zoomLog":
+      send({ type: "answer", id: m.id, value: toggleZoomLog() });
       break;
     case "ask": {
       const a = m.ask;
@@ -200,6 +214,9 @@ function handle(m: HostToBoard, md: Markdown) {
       break;
     case "merged":
       syncMerged(m.patch, m.views);
+      break;
+    case "summaries":
+      syncSummaries(m.items);
       break;
     case "sharedGone": {
       const n = m.cards.filter((id) => findCard(state.board, id)).length;

@@ -66,7 +66,17 @@
   --hd-purple: #7d55b0;
   --hd-orange: #c46a2a;
   --hd-green: #4c8a3a;
-  --hand: "Shantell Sans", "LXGW WenKai Lite", "Kaiti SC", STKaiti, KaiTi, cursive;
+  /* 白板的印章（core seal.ts 的 SEAL_COLORS）：[[引用]] 前面的小字标、编辑框里的色块。
+     都是低饱和的（#139）：正文里一行有好几枚，原来的饱和色比链接和高亮都抢眼；明度没变，白字 / 深字照样看得清 */
+  --seal-vermilion: #945b4a;
+  --seal-amber: #7d6635;
+  --seal-olive: #59633f;
+  --seal-teal: #3b6461;
+  --seal-ink: #4c6383;
+  --seal-plum: #715474;
+  --seal-rose: #94616e;
+  --seal-graphite: #5b5752;
+  --hand: "Shantell Sans", "Yozai", "Kaiti SC", STKaiti, KaiTi, cursive;
   --md-hand: var(--hand);
   --md-annot-blue: var(--hd-blue);
   --md-annot-purple: var(--hd-purple);
@@ -166,6 +176,14 @@
   --hd-purple: #b89be6;
   --hd-orange: #e3955a;
   --hd-green: #96c47e;
+  --seal-vermilion: #c69281;
+  --seal-amber: #baa475;
+  --seal-olive: #9ea67f;
+  --seal-teal: #7ca7a2;
+  --seal-ink: #9cb0ca;
+  --seal-plum: #b79cb9;
+  --seal-rose: #cea4ae;
+  --seal-graphite: #aba69e;
   --glass: rgba(42, 41, 38, 0.94);
   --tip-bg: rgba(245, 243, 238, 0.94);
   --tip-ink: #1d1c1a;
@@ -543,7 +561,8 @@ textarea {
     box-shadow calc(var(--t) * 160ms) var(--out),
     scale calc(var(--t) * 260ms) cubic-bezier(0.3, 1.35, 0.5, 1),
     opacity calc(var(--t) * 240ms) var(--out),
-    filter calc(var(--t) * 240ms);
+    filter calc(var(--t) * 240ms),
+    transform calc(var(--t) * 90ms) var(--out);
 }
 /* 卡的阴影分两层画（见上面 --sh-ring / --sh-soft）：::before 是模糊的那层，圆角；::after 在它上面，是细边、高光和各种状态的描边（--ring），
    跟着卡的 squircle。两层都在卡的底色上面、内容下面（z-index: -1），和原来卡自己的 box-shadow 叠的次序一样：描边压在模糊阴影上 */
@@ -573,27 +592,67 @@ textarea {
   box-shadow: var(--ring);
   transition: box-shadow calc(var(--t) * 160ms) var(--out);
 }
-/* 没有卡框的、地图档的、拿起来的（--sh-lift 自己带着阴影）不画模糊的那层 */
-.card:is(.text, .nobg, .lo-map, .lift)::before {
+/* 没有卡框的、拿起来的（--sh-lift 自己带着阴影）不画模糊的那层 */
+.card:is(.text, .nobg, .lift)::before {
   box-shadow: none;
 }
+/* 拿起来（真的拖起来了才算，点一下不算）——浮起和落回各一条曲线 */
+:root {
+  --lift-in: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --lift-out: cubic-bezier(0.3, 0.6, 0.3, 1);
+}
+/* 拿起来阴影在 200ms 里升起来，放下后（.landing）在 LAND_MS 里落回去。
+   过渡只写在这两个状态上：模糊那层换档（地图档）时照旧不渐变 */
+.card.lift::before,
 .card.lift::after {
-  transition-duration: calc(var(--t) * 120ms);
+  transition: box-shadow calc(var(--t) * 200ms) var(--lift-in);
+}
+.card.landing::before,
+.card.landing::after {
+  transition: box-shadow calc(var(--t) * 240ms) var(--lift-out);
 }
 .card.sel {
   --ring: 0 0 0 1.5px var(--accent), 0 0 0 4.5px color-mix(in srgb, var(--accent) 16%, transparent), var(--sh-ring);
 }
 .card.lift {
-  scale: 1.012;
+  scale: 1.008;
   --ring: var(--sh-lift);
   transition:
-    box-shadow calc(var(--t) * 120ms) var(--out),
-    scale calc(var(--t) * 120ms) var(--out),
+    box-shadow calc(var(--t) * 200ms) var(--lift-in),
+    scale calc(var(--t) * 200ms) var(--lift-in),
     opacity calc(var(--t) * 160ms) var(--out);
+  z-index: 10;
+}
+/* 刚放下：缩放和阴影顺着落回去，不用卡平时那条带回弹的缩放曲线；落完之前还压在别的卡上面 */
+.card.landing {
+  transition:
+    box-shadow calc(var(--t) * 240ms) var(--lift-out),
+    scale calc(var(--t) * 240ms) var(--lift-out),
+    opacity calc(var(--t) * 240ms) var(--out),
+    filter calc(var(--t) * 240ms);
   z-index: 10;
 }
 .card.sel.lift {
   --ring: 0 0 0 1.5px var(--accent), var(--sh-lift);
+}
+/* 拖箭头时终点指着的卡（松手会连到它）：放大一点（带一点回弹），同时显示成选中（interact.ts linkPortDown）；指针离开时 90ms 缩回（.card 上的过渡）。
+   只用 transform，不动布局：箭头的端点仍按原来的大小算，放大时线头稍微落在卡边里面。
+   绕指针进卡的那一点放大（--aim-x / --aim-y，Card.tsx）：指着的行号、代码行不从指针下面滑走。卡的缩放原点在卡头（0 18px，拿起来时用），
+   这里用平移补上 (1 - 1.03) × (那一点 - 原点)；平移和缩放按同一条曲线插值，回弹时那一点也不动。斜贴的卡原点在中心，不补（--aim-t） */
+.card.aim {
+  transform: translate(var(--aim-t, calc(var(--aim-x, 50%) * -0.03), calc((var(--aim-y, 50%) - 18px) * -0.03)))
+    scale(1.03);
+  transition:
+    box-shadow calc(var(--t) * 160ms) var(--out),
+    scale calc(var(--t) * 260ms) cubic-bezier(0.3, 1.35, 0.5, 1),
+    opacity calc(var(--t) * 240ms) var(--out),
+    filter calc(var(--t) * 240ms),
+    transform calc(var(--t) * 120ms) cubic-bezier(0.3, 1.35, 0.5, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .card.aim {
+    transform: none;
+  }
 }
 .card.dim {
   opacity: 0.28;
@@ -941,6 +1000,8 @@ textarea {
   scrollbar-width: thin;
   scrollbar-color: var(--hair) transparent;
   border-radius: 0 0 var(--r-card) var(--r-card);
+  /* the code area's visible width (100cqw) is what an Always Show sidenote (.inote) wraps to */
+  container-type: inline-size;
 }
 .card.autoh .cbody {
   max-height: var(--code-max);
@@ -1150,9 +1211,6 @@ textarea {
 .dedm:hover {
   opacity: 1;
 }
-.card.lo-ov .dedm {
-  visibility: hidden;
-}
 .src .l {
   height: 20px;
   margin-right: calc(-1 * var(--code-pr));
@@ -1274,7 +1332,9 @@ textarea {
   margin: 2px 12px 4px -2px;
   padding: 5px 10px;
   border-radius: 0 7px 7px 0;
-  max-width: 520px;
+  /* wraps inside the card's visible width (the .cbody container), not the code's scroll width: right of the line numbers, the
+     same room on the right as the lines (--code-pr) plus its own margin. Being no wider than that, it never widens the code */
+  max-width: min(520px, calc(100cqw - var(--gutter) - var(--code-pr) - 10px));
 }
 .kw {
   color: var(--k-kw);
@@ -1418,12 +1478,18 @@ textarea {
 .hc-green {
   --hc: var(--hd-green);
 }
+/* 字号（--tfs）、粗细（--hw）写在卡上（Card.tsx）：拖右下角缩放的是真的字号 */
 .card.mark .tx.hand {
-  font: 18px / 1.3 var(--hand);
+  font: var(--hw, 400) var(--tfs, 18px) / 1.3 var(--hand);
   color: var(--hc);
 }
 .card.mark .tx.hand :is(p, li) {
   margin: 0;
+}
+/* a heading written in a Mark ("# Basic Concepts") takes the Mark's weight too: the toolbar's Light / Regular / Bold is the
+   weight of everything the Mark says, never the Markdown heading's own 600 */
+.card.mark .tx.hand :is(h1, h2, h3, h4, h5, h6) {
+  font-weight: inherit;
 }
 .card.mark:hover {
   outline-color: color-mix(in srgb, var(--hc) 60%, transparent);
@@ -1444,12 +1510,77 @@ textarea {
   cursor: nwse-resize;
   display: none;
 }
-.card.mark.sel .mkgrip {
+.card.mark.sel .mkgrip,
+.card.freetext.sel .mkgrip {
   display: block;
 }
-.ttb.hdots {
-  gap: 6px;
-  padding: 5px 8px;
+/* Mark 的左右两边只改宽度：矮一点，一行字的 Mark 上也和右下角缩放的小方块分得开 */
+.card.mark .hw {
+  height: 14px;
+  margin-top: -7px;
+  box-shadow: 0 0 0 1.5px var(--hc);
+}
+.card.freetext .mkgrip {
+  box-shadow: 0 0 0 1.5px var(--accent);
+}
+/* Mark 的粗细：颜色点后面一道竖线，三个手写的 a；再一道竖线，字号 S、M、L、XL（和 a 一个样子，字小一点，XL 也放得下） */
+.ttb:is(.hdots, .ftbar) .hsep {
+  align-self: stretch;
+  width: 1px;
+  margin: 1px 2px;
+  background: var(--hair);
+}
+.hwt,
+.hsz {
+  min-width: 20px;
+  height: 20px;
+  padding: 0 3px;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  color: var(--ink-2);
+  font-family: var(--hand);
+  font-size: 16px;
+  line-height: 1;
+  cursor: default;
+}
+.hsz {
+  font-size: 13px;
+}
+.hwt:hover,
+.hsz:hover {
+  color: var(--ink);
+}
+.hwt.on,
+.hsz.on {
+  color: var(--ink);
+  background: var(--hlrow);
+}
+/* Free Text：直接写在白板上的字，纯文字、没有框。级别取 Text 的样式（每个主题自己的字体、粗细、字距）：H1、H2 是 .st-title，
+   H3 是 .st-heading，正文（没有级别）是 .st-body；字号是卡上的 --tfs（拖右下角缩放，选一级回到那一级的预设）；宽度跟着字，
+   只在打的换行处换行 */
+.card.text.freetext {
+  width: max-content;
+}
+:root .card.text.freetext .tx.ft {
+  font-size: var(--tfs, 40px);
+  white-space: pre;
+  min-width: 1ch;
+}
+/* Bold (its toolbar's B): over every theme's own weight for the level */
+:root .card.text.freetext .tx.ft.ftb {
+  font-weight: 700;
+}
+/* the newspaper's titles are 700 already: bold goes one step further */
+:root.look-newspaper .card.text.freetext .tx.ft.ftb.st-title {
+  font-weight: 900;
+}
+/* the level buttons (Aa, H1–H3) and B: in the board's own type, not the Mark's handwriting */
+.ftbar .hsz {
+  font: 600 12px / 1 var(--sys);
+}
+.ftbar .ftbold {
+  font-weight: 800;
 }
 .hdot {
   width: 16px;
@@ -1508,7 +1639,7 @@ textarea {
 }
 .card.text.box .ttb {
   left: 50%;
-  top: -50px;
+  top: -56px;
   translate: -50% 0;
 }
 .bxh {
@@ -1544,9 +1675,15 @@ textarea {
   bottom: -8px;
   cursor: nwse-resize;
 }
-.ttb.bdots {
-  gap: 4px;
-  padding: 5px 8px;
+/* The colour strips (Box fills, Mark colours): a swatch's selected ring reaches 4px out and a neighbour's halo 2px, so the gap is wider
+   than both and the padding holds the ring inside the strip. Specific enough to win over the themes' own .pill padding and gap
+   (soft-light, drafting and colorful set them, which let the ring spill over the neighbour and out of the strip) */
+.card .ttb.pill:is(.bdots, .hdots) {
+  gap: 8px;
+  padding: 8px 10px;
+}
+.card .ttb.pill.hdots {
+  top: -50px; /* the taller strip keeps its distance above the card */
 }
 .bdot {
   width: 18px;
@@ -1921,13 +2058,63 @@ textarea {
     left 0.26s var(--out),
     top 0.26s var(--out);
 }
-.sect .sgrip {
+/* Resize handles on the frame's four sides (a thin band across the border) and four corners (Sections.tsx, interact.ts
+   sectionEdgeDown). The title and the cards are on layers above the frames, so the bands never take their clicks */
+.sect .sedge {
   position: absolute;
-  right: -4px;
+  pointer-events: auto;
+}
+.sect .sedge[data-edge="n"],
+.sect .sedge[data-edge="s"] {
+  left: 10px;
+  right: 10px;
+  height: 8px;
+  cursor: ns-resize;
+}
+.sect .sedge[data-edge="e"],
+.sect .sedge[data-edge="w"] {
+  top: 10px;
+  bottom: 10px;
+  width: 8px;
+  cursor: ew-resize;
+}
+.sect .sedge[data-edge="n"] {
+  top: -4px;
+}
+.sect .sedge[data-edge="s"] {
   bottom: -4px;
+}
+.sect .sedge[data-edge="e"] {
+  right: -4px;
+}
+.sect .sedge[data-edge="w"] {
+  left: -4px;
+}
+.sect .sedge[data-edge="nw"],
+.sect .sedge[data-edge="ne"],
+.sect .sedge[data-edge="sw"],
+.sect .sedge[data-edge="se"] {
   width: 14px;
   height: 14px;
-  pointer-events: auto;
+}
+.sect .sedge[data-edge="nw"] {
+  left: -5px;
+  top: -5px;
+  cursor: nwse-resize;
+}
+.sect .sedge[data-edge="ne"] {
+  right: -5px;
+  top: -5px;
+  cursor: nesw-resize;
+}
+.sect .sedge[data-edge="sw"] {
+  left: -5px;
+  bottom: -5px;
+  cursor: nesw-resize;
+}
+.sect .sedge[data-edge="se"] {
+  right: -5px;
+  bottom: -5px;
   cursor: nwse-resize;
 }
 #slabels {
@@ -2393,9 +2580,6 @@ textarea {
 .card > .twinmk:hover {
   background: var(--accent);
   color: var(--accent-ink);
-}
-.lo-map > .twinmk {
-  display: none;
 }
 .alignbar.pill {
   position: absolute;
@@ -2976,6 +3160,40 @@ textarea {
   font-weight: 500;
   color: var(--ink);
 }
+/* A Card sidenote's preview (ui/pops/cardpeek.tsx): a copy of the card as the board draws it, scaled to fit, beside the popover.
+   Hidden until placed; clipped at the bottom with a fade when the card is taller than the preview */
+.cpeek {
+  position: fixed;
+  z-index: 36;
+  padding: 12px;
+  border-radius: 14px;
+  background: var(--canvas);
+  box-shadow:
+    var(--sh-float),
+    0 18px 40px -16px rgba(0, 0, 0, 0.25);
+  visibility: hidden;
+  animation: popin calc(var(--t) * 150ms) var(--out);
+}
+.cpeek.show {
+  visibility: visible;
+}
+.cpeek-stage {
+  position: relative;
+  overflow: hidden;
+}
+.cpeek-stage:empty {
+  display: none;
+}
+.cpeek.cut .cpeek-stage {
+  -webkit-mask: linear-gradient(#000 calc(100% - 28px), transparent);
+  mask: linear-gradient(#000 calc(100% - 28px), transparent);
+}
+.cpeek-alt {
+  max-width: 360px;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--ink);
+}
 .sn-text {
   padding: 4px 12px 8px;
   font-size: 12.5px;
@@ -3341,6 +3559,16 @@ kbd {
 } /* still hidden while the editor loads (NoteBody foldHeader) */
 .nbody.hidehead.editing > .md-loading > :nth-child(2) {
   margin-top: 0;
+}
+/* what is typed while the editor loads (Editable MdEdit), until the editor takes it over */
+.md-early {
+  outline: none;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+/* an empty editable block is a line tall: until something is typed it must not grow the Note while the editor loads */
+.md-early:empty {
+  position: absolute;
 }
 .nbody ul,
 .nbody ol,
@@ -3797,6 +4025,8 @@ mark.wdiff {
 }
 
 .imgb {
+  /* the animated image's overlay (md/anim.ts) is placed in it and clipped to its corners */
+  position: relative;
   flex: none;
   overflow: hidden;
   border-radius: var(--r-card);
@@ -3901,8 +4131,7 @@ mark.wdiff {
   pointer-events: all;
   cursor: ew-resize;
 }
-.board.dragging .porthit,
-.lyr.lod-map .porthit {
+.board.dragging .porthit {
   display: none;
 }
 .board.dragging .lyr .ghost {
@@ -4648,11 +4877,11 @@ mark.wdiff {
   white-space: nowrap;
 }
 /* 代码更新后不在了的参数：划掉、变灰，留着等用户自己去掉 */
-.vrow.gone > span {
+.vrow.vgone > span {
   text-decoration: line-through;
   color: var(--ink-3);
 }
-.vrow.gone:hover > span {
+.vrow.vgone:hover > span {
   color: var(--ink-3);
 }
 
@@ -4862,7 +5091,7 @@ mark.wdiff {
 .stkpick .scolors {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 8px;
   font-size: 11.5px;
   color: var(--ink-3);
 }
@@ -4961,19 +5190,6 @@ mark.wdiff {
   text-align: left;
 }
 
-/* 缩放分档：概览 = 名字 + 图标记 + 代码灰条；地图 = 名字 + 色块。只换可见性，不改布局（不触发重新测量）。
-   卡上的样子跟着卡自己的 .lo-ov / .lo-map 走（state/lodcards.ts 每帧换一批，屏幕中间的先换），不跟着 .board 一次全换：241 张卡一起换要 100+ ms，掉好几帧 */
-.board {
-  --bar: color-mix(in srgb, var(--ink) 13%, transparent);
-}
-.card.lo-ov .crows .cmpl,
-.card.lo-ov .cno,
-.card.lo-ov .cpath,
-.card.lo-ov .rev,
-.card.lo-ov .chead .ib,
-.card.lo-ov .lport {
-  visibility: hidden;
-}
 /* 卡头的 ⋯ 平时不显示，悬停 / 选中卡、键盘聚焦到它、它的菜单开着时淡入；位置照留，出现时卡头不动 */
 .cmenu {
   opacity: 0;
@@ -4989,58 +5205,7 @@ mark.wdiff {
 .cmenu.on {
   opacity: 1;
 }
-/* 缩小看全局：参数收起，留 ↺ 和自己写的字；只有参数的框整个不画 */
-.lyr.lod-overview .vbox,
-.lyr.lod-overview .vchips.argsonly,
-.lyr.lod-overview .vplus,
-.lyr.lod-overview .mkcall {
-  display: none;
-}
-.lyr.lod-overview .vcard.split .vhead {
-  border-bottom: 0;
-}
-/* 代码和行号节点多（241 张卡 ≈ 3 万个）：用 opacity 藏，不用 visibility。visibility 会继承，切档时里面每个节点都要重算样式（一次 0.3–0.5 秒）；
-   opacity 不继承，只算这两个元素。指针由盖住整个代码区的 .ovm 接住，交给卡片 */
-.card.lo-ov .gutter,
-.card.lo-ov .src,
-.card.lo-ov .rowbgs {
-  opacity: 0;
-}
-/* 概览档：每行按真实缩进和长度画一根直角灰条（注释行淡一些），轮廓就是这段代码本身的样子 */
-.card .code > .ovm {
-  position: absolute;
-  inset: 0;
-  z-index: 4;
-  background-repeat: no-repeat;
-  --bar-c: color-mix(in srgb, var(--ink) 6%, transparent);
-} /* 色块的 x 从 --gutter（行号区宽，跟 .src 的 margin-left 一致）算起 */
-.card .code > .ovm {
-  visibility: hidden;
-}
-.card.lo-ov .code > .ovm {
-  visibility: visible;
-} /* 提前做好、不在概览档时藏着（CodeBody） */
-.card.lo-ov .ctitle {
-  font-size: 15px;
-  font-weight: 600;
-}
-/* --iz（地图档 = 1/z）：注册成不继承，只有卡和名字用到，卡里的几千个代码节点就不用跟着重算样式 */
-@property --iz {
-  syntax: "<number>";
-  inherits: false;
-  initial-value: 1;
-}
-.maplabel,
-.maplabel * {
-  --iz: inherit;
-} /* 卡上的 --iz 由 state/lodcards.ts 写在卡的 style 上 */
-/* 不在地图档时名字也在（提前建好），藏着，按进地图档那一刻的比例（--izmap，Canvas）排好版 */
-.card:not(.lo-map) > .maplabel {
-  visibility: hidden;
-  --iz: var(--izmap, 4);
-}
-/* 卡的内容（除了名字、贴纸）都在 .cface 里，跟卡一样是竖排 flex；地图档整块用 clip-path 藏起来（不继承，里面的节点不用重算样式，也挡住指针）。
-   别写成 .card > :not(...) 再用会继承的 visibility：最右边没有类名，切档时浏览器只能把整块白板 3 万个节点全重算一遍 */
+/* 卡的内容（除了贴纸）都在 .cface 里，跟卡一样是竖排 flex */
 .card.off > .cface {
   visibility: hidden;
 } /* state/cull.ts：离屏幕很远的卡不画内容 */
@@ -5050,14 +5215,12 @@ mark.wdiff {
 /* 折叠、展开 Section（actions/edit.ts toggleSection，state/fold.ts skel）：卡飞的时候内容换成几道骨架线（.skl，Card.tsx）。
    透明度只写在卡下面一层的这几块上（不继承；卡的 class 下没有 "> *"，切换时不用把卡里的节点都重算）；时长同 state/timing.ts 的 SKEL_OUT / SKEL_IN */
 .card.skel > .cface,
-.card.skel > .twinmk,
-.card.skel > .maplabel {
+.card.skel > .twinmk {
   opacity: 0;
   transition: opacity 80ms ease-out;
 }
 .card.skel-in > .cface,
-.card.skel-in > .twinmk,
-.card.skel-in > .maplabel {
+.card.skel-in > .twinmk {
   transition: opacity 100ms ease-in;
 }
 .card > .skl {
@@ -5107,64 +5270,6 @@ mark.wdiff {
   min-height: 0;
   min-width: 0;
 }
-.card.lo-map > .cface {
-  clip-path: inset(50%);
-}
-.card.lo-map {
-  background: color-mix(in srgb, var(--surface) 92%, var(--accent));
-  --ring: 0 0 0 calc(1px * var(--iz, 1)) var(--hair);
-}
-/* 地图档的描边（::after）每一步缩放都跟着 --iz 变：不给 box-shadow 过渡，不然每一步给 241 张卡各起一段 160ms 的动画（其余过渡跟 .card 一样） */
-.card.lo-map {
-  transition:
-    scale calc(var(--t) * 260ms) cubic-bezier(0.3, 1.35, 0.5, 1),
-    opacity calc(var(--t) * 240ms) var(--out),
-    filter calc(var(--t) * 240ms);
-}
-.card.lo-map::after {
-  transition: none;
-}
-.card.lo-map.note {
-  background: color-mix(in srgb, var(--surface) 70%, var(--mark));
-}
-.card.lo-map.text {
-  background: transparent;
-}
-.card.lo-map.sel {
-  --ring: 0 0 0 calc(2px * var(--iz, 1)) var(--accent);
-}
-.lyr.lod-map .vchips,
-.stk.canvas.lod-map .sgrip {
-  display: none;
-} /* 分档类名写在这几个小容器上，不写成 .board.lod-* 的后代规则：那样换档时浏览器要把整块白板 3 万个节点走一遍找它们（~15ms） */
-/* 地图档：图标记 + 名字靠左、上下居中；字号由卡片大小和名字长度算出（--fit，世界坐标），再按屏幕上 11–22px 夹住 */
-.maplabel {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  align-content: center;
-  flex-wrap: wrap;
-  gap: calc(4px * var(--iz, 1));
-  padding: 0 calc(8px * var(--iz, 1));
-  overflow: hidden;
-  font: 600 clamp(calc(11px * var(--iz, 1)), var(--fit, 10px), calc(22px * var(--iz, 1))) / 1.15 var(--sys);
-  color: var(--ink);
-  pointer-events: none;
-  overflow-wrap: normal;
-  word-break: normal;
-}
-.maplabel > .mt {
-  min-width: 0;
-  max-width: 100%;
-}
-.maplabel .step {
-  height: auto;
-  padding: 0.08em 0.3em;
-  font-size: 0.8em;
-  border-radius: calc(5.5px * var(--iz, 1));
-}
-
 /* 旁注原地编辑 */
 .sn-edit {
   padding: 6px 10px 8px;
@@ -5920,45 +6025,6 @@ mark.wdiff {
 .sbpvl circle {
   fill: var(--accent);
 }
-/* 地图档的名字：框里左上角一块底色（框外的大名字在地图档太小，藏起来） */
-.sbfar {
-  position: absolute;
-  left: 0;
-  top: 0;
-  max-width: 100%;
-  box-sizing: border-box;
-  visibility: hidden;
-  padding: calc(2px * var(--iz, 1)) calc(6px * var(--iz, 1));
-  border-radius: 0 0 calc(5.5px * var(--iz, 1)) 0;
-  background: color-mix(in srgb, var(--surface) 88%, transparent);
-  font: 700 calc(12px * var(--iz, 1)) / 1.25 var(--sys);
-  color: var(--ink);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  pointer-events: none;
-  z-index: 1;
-  --iz: inherit;
-}
-.card.board.lo-map > .cface {
-  clip-path: none;
-  --iz: inherit;
-}
-.card.board.lo-map .sbfar {
-  visibility: visible;
-}
-/* 标题行里的几样逐个写出来：最右边是 * 的话，任何一张卡换 .lo-map 都要把整棵子树的样式重算一遍 */
-.card.board.lo-map .sbhead,
-.card.board.lo-map .sbhead > :is(.step, .sbname, .sbmeta),
-.card.board.lo-map .sbgone {
-  visibility: hidden;
-}
-/* 地图档：Section 名、提示、按钮都不画，地图本身照样（已经是缩略的） */
-.card.board.lo-map .sblab,
-.card.board.lo-map .sbtip,
-.card.board.lo-map .sbacts {
-  visibility: hidden;
-}
 /* 面包屑：进入子白板后在左上角，点上一级回去 */
 .crumbs {
   position: absolute;
@@ -6188,9 +6254,6 @@ mark.wdiff {
   padding: 0 5px;
   border-radius: 5.5px;
   box-shadow: inset 0 0 0 1px var(--hair);
-}
-.lod-overview .altcol {
-  opacity: 0.8;
 }
 /* 卡头：语言标签、1 of N、Generated */
 .disp1 {
@@ -7390,4 +7453,498 @@ mark.wdiff {
 .k-modifySvg .msvg-f kbd {
   font: 10px var(--mono);
   color: var(--ink-2);
+}
+
+/* Edit Mark…（ui/pops/seal.tsx）：预览的印章、字、八个色块、提示（同一本书里重了是警告色） */
+.pop.k-seal {
+  width: 288px;
+}
+.k-seal .seal-ed {
+  display: grid;
+  gap: 10px;
+  padding: 10px 12px 8px;
+}
+.k-seal .seal-hd {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.k-seal .seal-pv {
+  font-size: 24px;
+  line-height: 1;
+  display: inline-flex;
+}
+.k-seal .seal-pv .md-seal {
+  vertical-align: 0;
+}
+.k-seal .seal-nm {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.k-seal .seal-in {
+  font: 13px / 1.3 var(--sys);
+  color: var(--ink);
+}
+.k-seal .seal-sw {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.k-seal .seal-sw button {
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  background: var(--sw);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08);
+}
+.k-seal .seal-sw button[aria-checked="true"] {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+.k-seal .seal-sw button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.k-seal .seal-hint {
+  font-size: 11.5px;
+  color: var(--ink-3);
+  min-height: 1.3em;
+}
+.k-seal .seal-hint.warn {
+  color: var(--warn);
+}
+
+/* Animated images in a Note (md/anim.ts): the <img> keeps its place, clicks and menus but shows nothing; over it (no pointer
+   events) the GIF's canvas or the SVG inline, clipped to the image's rounded corners */
+.md img.md-animsrc,
+.imgb img.md-animsrc {
+  opacity: 0;
+}
+.md-anim {
+  position: absolute;
+  pointer-events: none;
+  overflow: hidden;
+  white-space: normal;
+}
+.md-anim.sel {
+  box-shadow: 0 0 0 1.5px var(--accent);
+}
+/* The selected animated image's filmstrip (ui/AnimStrip.tsx): floats just under the image in the world layer, zooms with it */
+.animstrip {
+  position: absolute;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 5px 6px 5px 5px;
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: var(--sh-float);
+  font: 13px / 1.4 var(--sys);
+}
+.animstrip .ib svg {
+  width: 14px;
+  height: 14px;
+  fill: currentColor;
+}
+.animstrip .ib.loop[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--surface);
+}
+.animstrip .thumbs {
+  display: flex;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  padding: 2px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--hair) transparent;
+}
+.animstrip .thumbs > * {
+  flex: none;
+  display: block;
+  height: var(--th);
+  border-radius: 3px;
+  overflow: hidden;
+  opacity: 0.55;
+  background: var(--surface);
+  box-shadow: 0 0 0 1px var(--line);
+}
+.animstrip .thumbs > :hover {
+  opacity: 0.85;
+}
+.animstrip .thumbs > .on {
+  opacity: 1;
+  box-shadow: 0 0 0 1.5px var(--accent);
+}
+.animstrip .fno {
+  min-width: 36px;
+  padding: 0 2px;
+  text-align: right;
+  font: 500 11px var(--mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-2);
+}
+
+/* Zoomed-out summaries (#130; canvas/Summaries.tsx, state/summary.ts). The card level (Marks included), the cards that stay as
+   they are (sub-board frames, Free Text) and the summaries are three layers; the switch fades only the card and summary layers' own opacity. The board's
+   one summary font size --S and padding --P come from its layout; --sum-iz (1 / zoom) keeps the ↻ mark 20 screen px */
+.lay {
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+/* Both levels are layers of their own (the summary level from when it is built near the cut), so the fade only changes their
+   opacity: promoting a layer when a fade started (and folding it back into the world when it ended) re-rastered all its
+   content twice per switch, 100–270 ms frames in the middle of a zoom. Faded out, a level stays painted at an opacity too low
+   to show (Summaries.tsx; state/summary.ts cardsOpacity), so its tiles are there before the fade back needs them: a level
+   hidden with visibility or content-visibility was styled, laid out and rastered whole in the frame that showed it again.
+   The faded card level asleep (state/summary.ts: far below the cut, or under a moving camera) is clipped to nothing: a clip
+   empties the cull rect under it, so none of its cards is painted (an opacity of 0 alone leaves a layer with the hint painted,
+   and painted again on every frame of a zoom at the summary level), and waking it is a repaint, not a restyle. The hint stays
+   on it throughout: taking it off made Chromium paint and composite the whole level again, 500 ms in the frame the fade ended */
+.cardlay,
+.sumlay {
+  will-change: opacity;
+}
+.cardlay.asleep {
+  clip: rect(0 0 0 0);
+}
+/* fully faded, the card level is not hit: one element over its extent, between it and the levels that stay, takes the pointer
+   (Canvas.tsx; pointer-events is inherited, so setting it on the layer restyled every node under it, 200+ ms on 241 cards,
+   twice per switch) */
+.cshield {
+  position: absolute;
+}
+/* the type and colours are the demo's (feedback/demo/boards-130-viewer.html: .sum .hd, .txt), per look; other looks and dark
+   boards take their own fonts and a grey between ink-3 and the paper */
+.sumlay {
+  pointer-events: none;
+  --sum-font: var(--note-h);
+  --sum-head: var(--note-h);
+  --sum-hd: var(--ink-2);
+  --sum-grey: color-mix(in srgb, var(--ink-3) 80%, var(--bg));
+  --sum-panel: var(--canvas);
+  --sum-shade: rgb(50, 35, 10);
+}
+:root[data-theme="dark"] .sumlay {
+  --sum-shade: #000;
+}
+:root.look-warm-ink:not([data-theme="dark"]) .sumlay {
+  --sum-font: "Noto Sans SC", -apple-system, "PingFang SC", sans-serif;
+  --sum-head: var(--sys);
+  --sum-hd: #57534b;
+  --sum-grey: #8a857b;
+}
+:root.look-ink-wash:not([data-theme="dark"]) .sumlay {
+  --sum-font: "Noto Serif SC", "Source Serif 4", "Songti SC", serif;
+  --sum-head: "Source Serif 4", "Noto Serif SC", "Songti SC", Georgia, serif;
+  --sum-hd: #4c4943;
+  --sum-grey: #88836f;
+  /* the ink-wash board is a textured scene: the panel is its lighter, warmer card paper, never a grey */
+  --sum-panel: var(--paper);
+}
+.sumcol {
+  position: absolute;
+  box-sizing: border-box;
+  padding: var(--P);
+}
+/* a text taller than the column's room (--rest): clipped there, its last visible lines fading out; hovered or focused it shows
+   in full over its neighbours on the paper, raised. Clip, mask, shadow and z-index only: nothing else moves or lays out */
+.sumcol.sumover {
+  clip-path: inset(0 0 calc(100% - var(--rest)) 0);
+  mask-image: linear-gradient(to bottom, #000 calc(var(--rest) - var(--S) * 2.25), transparent var(--rest));
+}
+/* the clip and mask come back only once the panel has faded out (SUMMARY panel: 90 ms), so the collapse is never cut short */
+.sumcol.sumover {
+  transition:
+    clip-path 0s 90ms,
+    mask-image 0s 90ms allow-discrete,
+    z-index 90ms step-end;
+}
+.sumlay.live .sumcol.sumover:is(:hover, :focus-within) {
+  clip-path: inset(calc(var(--S) * -3));
+  mask-image: none;
+  transition: none;
+}
+/* the panel a hovered column shows its whole text on, only when the text is cut at rest (.sumover; one that fits shows just its
+   ↻): the board's own paper around what the column holds (the column is as tall as its content then, never its free room),
+   reaching 0.6·S past it on every side (the text keeps its place), card-rounded, lifted by a soft wide shadow and a faint
+   hairline. It fades and scales in on its own layer (opacity and transform only); the column stays raised until it has faded out */
+.sumcol {
+  isolation: isolate;
+  transition: z-index 90ms step-end;
+}
+.sumcol.sumover::before {
+  content: "";
+  position: absolute;
+  inset: calc(var(--S) * -0.6);
+  z-index: -1;
+  pointer-events: none;
+  background: var(--sum-panel);
+  border-radius: calc(var(--S) * 0.25);
+  box-shadow:
+    0 0 0 max(1px, calc(var(--S) * 0.02)) color-mix(in srgb, var(--sum-shade) 7%, transparent),
+    0 calc(var(--S) * 0.12) calc(var(--S) * 0.4) calc(var(--S) * -0.08)
+    color-mix(in srgb, var(--sum-shade) 8%, transparent),
+    0 calc(var(--S) * 0.9) calc(var(--S) * 2.4) calc(var(--S) * -0.6)
+    color-mix(in srgb, var(--sum-shade) 22%, transparent);
+  opacity: 0;
+  transform: scale(0.98);
+  transition:
+    opacity 90ms ease-in,
+    transform 90ms ease-in;
+}
+.sumlay.live .sumcol:is(.sumover, .sumclamp):is(:hover, :focus-within) {
+  z-index: 2;
+  transition: none;
+}
+.sumlay.live .sumcol.sumover:is(:hover, :focus-within)::before {
+  opacity: 1;
+  transform: none;
+  transition:
+    opacity 140ms ease-out,
+    transform 140ms ease-out;
+}
+.sumblk {
+  position: relative;
+}
+.sumlay.live .sumblk {
+  pointer-events: auto;
+}
+.sumlay.live .sumtx {
+  cursor: text;
+}
+.sumhd {
+  margin-bottom: calc(var(--S) * 0.3);
+}
+.sumhdi {
+  font: 700 calc(var(--S) * 0.8) / 1.3 var(--sum-head);
+  color: var(--sum-hd);
+  letter-spacing: 0.04em;
+  overflow-wrap: break-word;
+}
+/* a title is at most two lines, an ellipsis on the second; hovered or focused it shows in full (the column raised as above,
+   grown to what it holds). A code card's name and place are never cut */
+.sumhd:not(.code) .sumhdi {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
+.sumlay.live .sumcol:is(:hover, :focus-within) .sumhd:not(.code) .sumhdi {
+  display: block;
+  overflow: visible;
+}
+.sumlay.live .sumcol:is(.sumover, .sumclamp):is(:hover, :focus-within) {
+  height: auto !important;
+}
+/* a header above the frame of a Section with child Sections (the demo's .col.h1 / .h2, feedback/demo/nested-sections.html; core
+   summary.ts HEAD measures the same): level 1 a larger ink title over a thin vermilion rule, deeper a smaller ink-2 title over a
+   dashed hairline; no square. The kick line names the Sections with one child each above a title */
+.sumcol.h1 .sumhdi {
+  font-size: calc(var(--S) * 1.12);
+  color: var(--ink);
+  padding-bottom: 0.16em;
+  border-bottom: max(2px, 0.045em) solid color-mix(in srgb, var(--accent) 70%, transparent);
+  letter-spacing: 0.03em;
+}
+.sumcol.h1 .sumhd {
+  margin-bottom: calc(var(--S) * 1.12 * 0.32);
+}
+.sumcol.h2 .sumhdi {
+  font-size: calc(var(--S) * 0.92);
+  padding-bottom: 0.12em;
+  border-bottom: max(1px, 0.03em) dashed color-mix(in srgb, var(--ink) 30%, transparent);
+}
+.sumcol.h2 .sumhd {
+  margin-bottom: calc(var(--S) * 0.92 * 0.3);
+}
+.sumcol:is(.h1, .h2) .sumhdi::before {
+  display: none;
+}
+.sumkick {
+  font: 600 calc(var(--S) * 0.56) / 1.3 var(--sum-head);
+  color: var(--ink-3);
+  letter-spacing: 0.04em;
+  padding-bottom: 0.2em;
+  overflow-wrap: break-word;
+}
+/* no title of its own yet and nothing written: nothing shows at rest; hovered, only its ↻ (a missing summary is written on ↻
+   or after a change, never by itself) */
+.sumcol.sumnone:not(:hover, :focus-within) {
+  opacity: 0;
+}
+.sumhdi::before {
+  content: "";
+  display: inline-block;
+  width: 0.55em;
+  height: 0.55em;
+  margin-right: 0.45em;
+  background: var(--accent);
+  border-radius: 1px;
+  vertical-align: 0.04em;
+}
+.sumcol.loose .sumhdi::before {
+  background: var(--ink-3);
+}
+.sumhd.code code {
+  font: 600 calc(var(--S) * 0.7) / 1.3 var(--mono);
+  letter-spacing: 0;
+  color: var(--sum-hd);
+  overflow-wrap: anywhere;
+}
+.sumhd.code i {
+  display: block;
+  font: 400 calc(var(--S) * 0.6) / 1.4 var(--mono);
+  font-style: normal;
+  letter-spacing: 0;
+  color: var(--ink-3);
+  white-space: nowrap;
+  padding-left: calc(var(--S) * 0.8);
+}
+.sumtx {
+  font: 400 var(--S) / 1.5 var(--sum-font);
+  color: var(--sum-grey);
+  word-break: normal;
+  overflow-wrap: break-word;
+  line-break: auto;
+  outline: none;
+}
+.sumtx :is(b, strong) {
+  color: var(--ink);
+  font-weight: 700;
+}
+.sumcol.pend .sumtx {
+  text-decoration: underline dotted color-mix(in srgb, var(--ink) 45%, transparent);
+  text-decoration-thickness: 0.07em;
+  text-underline-offset: 0.28em;
+}
+.sumtx[contenteditable="true"] {
+  text-decoration: none;
+  user-select: text;
+  -webkit-user-select: text;
+  box-shadow: 0 0 0 0.12em color-mix(in srgb, var(--accent) 45%, transparent);
+  border-radius: 0.08em;
+  background: color-mix(in srgb, var(--surface) 80%, transparent);
+}
+/* the title and body breathe, not the ↻ beside the title */
+.sumcol.gen :is(.sumtx, .sumt, .sumhd code, .sumhd i) {
+  animation: sum-breathe 1.1s ease-in-out infinite;
+}
+@keyframes sum-breathe {
+  50% {
+    opacity: 0.3;
+  }
+}
+.sumimg {
+  position: absolute;
+  object-fit: contain;
+}
+/* the AI mark: ↻ right after the title (its last line), about 0.3 em on, centred on that line, only while the pointer is on
+   the column. Its anchor is an inline box of no width, so the mark takes no room and never reflows the title */
+.sumreat {
+  display: inline-block;
+  position: relative;
+  width: 0;
+  height: 1em;
+  vertical-align: middle;
+}
+.sumre {
+  position: absolute;
+  left: 0.3em;
+  top: 50%;
+  margin-top: -10px;
+  letter-spacing: 0;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  corner-shape: round;
+  display: grid;
+  place-items: center;
+  color: color-mix(in srgb, var(--ink) 55%, transparent);
+  background: color-mix(in srgb, var(--surface) 80%, transparent);
+  transform-origin: 0 50%;
+  transform: scale(var(--sum-iz));
+  opacity: 0;
+  pointer-events: none;
+  cursor: pointer;
+  transition: opacity 90ms ease-in;
+}
+.sumlay.live .sumcol:hover .sumre,
+.sumlay.live .sumreat:has(.sumre:focus-visible) .sumre {
+  opacity: 1;
+  pointer-events: auto;
+  transition: opacity 120ms ease-out;
+}
+.sumlay.live .sumcol:has(.sumtx[contenteditable="true"]) .sumre {
+  opacity: 1;
+  pointer-events: auto;
+}
+.sumre:hover {
+  color: var(--ink);
+  background: var(--line);
+}
+.sumic {
+  display: block;
+  width: 13px;
+  height: 13px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+/* writing: only the icon turns, about its own centre; the button and its scale stay put */
+.sumcol.gen .sumic {
+  transform-origin: 50% 50%;
+  animation: sum-spin 1s linear infinite;
+}
+@keyframes sum-spin {
+  to {
+    rotate: 1turn;
+  }
+}
+/* the one dot: the cards changed since this summary was written (it is rewritten after the wait); ↻ or ✓ 保留 clears it. A hand
+   edit counts as written, so an edited summary has none */
+.sumdot {
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  corner-shape: round;
+  display: none;
+}
+.sumcol.pend .sumdot {
+  display: block;
+  background: var(--accent);
+}
+/* ✓ 保留, only on a stale item: the same button as ↻, right after it (its offset scales with it) */
+.sumre.sumkp {
+  left: calc(0.3em + 24px * var(--sum-iz));
+}
+@media (prefers-reduced-motion: reduce) {
+  .sumre,
+  .sumlay.live .sumcol:hover .sumre,
+  .sumcol,
+  .sumcol::before,
+  .sumlay.live .sumcol:is(:hover, :focus-within)::before {
+    transition: none;
+  }
+  .sumcol.gen :is(.sumtx, .sumt, .sumhd code, .sumhd i),
+  .sumcol.gen .sumic {
+    animation: none;
+  }
 }

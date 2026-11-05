@@ -334,26 +334,6 @@ export const SETTINGS: { [K in keyof Settings]-?: SettingDecl } = {
       description: "What the Export dialog exports by default.",
     },
   },
-  zoomOverview: {
-    key: "zoom.overview",
-    valid: num,
-    schema: {
-      type: "number",
-      minimum: 0.2,
-      maximum: 1,
-      description: "Below this zoom, cards show an overview (titles and structure).",
-    },
-  },
-  zoomMap: {
-    key: "zoom.map",
-    valid: num,
-    schema: {
-      type: "number",
-      minimum: 0.05,
-      maximum: 0.6,
-      description: "Below this zoom, cards show only their titles (map view).",
-    },
-  },
 };
 
 /** Settings only the host reads (the board neither reads nor changes them): key = the name after codeboard. */

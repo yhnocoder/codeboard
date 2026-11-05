@@ -331,7 +331,8 @@ export function subCard(board: string, card: string): SubCard | null | undefined
 export const frameName = (f: BoardCard) =>
   f.title || skels[f.board]?.name || state.boards.find((m) => m.id === f.board)?.name || "Board";
 export const REF_SEP = " › ";
-type SubRef = { id: string; label: string; k: string; frame: string };
+/** board = 卡所在的那块子白板（一路往下的最后一块），t = 卡的标题 */
+type SubRef = { id: string; label: string; t: string; k: string; frame: string; board: string };
 export function subRefs(): SubRef[] {
   const out: SubRef[] = [],
     seen = new Set<string>();
@@ -344,8 +345,10 @@ export function subRefs(): SubRef[] {
       out.push({
         id: r.id,
         label: [frameName(f), ...(r.via ?? []).map((v) => v.n), r.t].join(REF_SEP),
+        t: r.t,
         k: r.k,
         frame: f.id,
+        board: r.via?.length ? r.via[r.via.length - 1].b : f.board,
       });
     }
   }

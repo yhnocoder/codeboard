@@ -1,5 +1,5 @@
 // Bitmap and animated stickers from a folder pack (PNG, APNG, GIF, animated WebP): drawn as <img>, animated ones play only on screen
-// at full detail and in the picker under the pointer
+// at the card level and in the picker under the pointer
 import { shot, symCard, findSym, put, type Host } from "../harness";
 import { cornerAt, emptyBoard, type Board, type StickerPack } from "@codeboard/core";
 import { animWebp, apng, faceFrames, gif, type Paint, png, type Rgba } from "@codeboard/host/testing";
@@ -82,6 +82,9 @@ function board(): Board {
   const s = findSym("Scheduler.schedule"),
     c = symCard(s.f, s.s);
   put(b, c, 80, 200, 560);
+  // a second card far to the right: wide enough a board to zoom out past the summary cut (#130; its minimum zoom is fit-all ÷ 1.3)
+  const s2 = findSym("LLMEngine.step");
+  put(b, symCard(s2.f, s2.s), 5400, 200, 560);
   const icon = (name: string) => ({ pack: "Party", name });
   b.stickers.push(
     { id: "k1", icon: icon("smile"), at: { kind: "canvas", x: 80, y: 60, size: 64 } },
@@ -263,8 +266,8 @@ test("stickerBitmapsAnimate", async ({ browser }) => {
   );
   await shot(h, "stickers-bitmap-board");
 
-  // Zoomed out to the overview: every animated sticker stops on its first frame
-  await zoom(h, 40, () => h.page.evaluate(() => document.getElementById("board")!.classList.contains("lod-overview")));
+  // Zoomed out past the summary cut (#130; the card level is faded out): every animated sticker stops on its first frame
+  await zoom(h, 40, async () => (await h.page.locator(".cardlay.gone").count()) > 0);
   st = await imgs(h.page);
   const still = await pictures(h, '[data-sticker="k3"] img');
   check(
@@ -273,10 +276,10 @@ test("stickerBitmapsAnimate", async ({ browser }) => {
       still === 1,
     JSON.stringify({ still, paused: ANIM.map((k) => [k, st[k].paused]) }),
   );
-  await shot(h, "stickers-bitmap-overview");
+  await shot(h, "stickers-bitmap-summaries");
 
-  // Back to full detail: they play again
-  await zoom(h, -40, () => h.page.evaluate(() => !document.getElementById("board")!.className.includes("lod-")));
+  // Back at the card level: they play again
+  await zoom(h, -40, async () => (await h.page.locator(".cardlay.gone").count()) === 0);
   st = await imgs(h.page);
   check(
     "sticker-anim-resumes",

@@ -75,59 +75,35 @@ function richBoard(): Board {
   return b;
 }
 
-test("zoomLevels", async () => {
+/** Zoomed out, a card looks as it does at 100 %, only scaled: its code shows and takes the pointer down to the summary cut
+ *  (#130), with no outline or title-only look in its place */
+test("zoomKeepsDetail", async () => {
   const b = richBoard();
   b.sections.push({ id: "g1", title: "Scheduling", x: 740, y: 20, w: 640, h: 560, color: "blue" });
   b.place[b.cards[1].id].section = "g1";
-  for (const [z, n] of [
-    [0.45, "board-12-overview"],
-    [0.18, "board-13-map"],
-  ] as const) {
-    b.cam = { x: 60, y: 60, z };
-    const h = await open({ board: structuredClone(b), light, w: 1400, h: 900 });
-    await shot(h, n);
-    if (n === "board-12-overview") {
-      // Overview hides code with opacity, so the hidden code must not take the pointer: a press on a call lands on the cover and goes to the card
-      const hit = await h.page.evaluate(() => {
-        const el = document.querySelector<HTMLElement>(".card .src .call");
-        if (!el) return { call: false, inSrc: true, cover: false };
-        const r = el.getBoundingClientRect(),
-          t = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) as HTMLElement | null;
-        return { call: true, inSrc: !!t?.closest(".src, .gutter"), cover: !!t?.classList.contains("ovm") };
-      });
-      check("overview-hidden-code-takes-no-pointer", hit.call && !hit.inSrc && hit.cover, JSON.stringify(hit));
-    }
-    if (n === "board-13-map") {
-      // Map labels hold their size while the camera moves (they scale with the board), then settle to the exact size after it stops
-      await h.page.mouse.move(700, 450);
-      await h.page.keyboard.down("Control");
-      for (let i = 0; i < 4; i++) {
-        await h.page.mouse.wheel(0, 20);
-        await hold(h, 40, "pinch rhythm: the camera keeps moving between the wheel steps");
-      }
-      await h.page.keyboard.up("Control");
-      // pictures of the labels during and right after the pinch: taken at these times on purpose
-      await shot(h, "board-13b-map-pinch-mid", "now");
-      const fs = () =>
-        h.page.evaluate(() => {
-          const e = document.querySelector(".maplabel");
-          return e ? getComputedStyle(e).fontSize : "none";
-        });
-      const mid = await fs();
-      await hold(h, 200, "a picture 200 ms after the pinch");
-      await shot(h, "board-13c-map-pinch-200ms", "now");
-      await shot(h, "board-13d-map-pinch-settled");
-      const z = await h.page.evaluate(
-        () => +((document.querySelector(".world") as HTMLElement).style.transform.match(/scale\(([\d.]+)\)/)?.[1] ?? 1),
-      );
-      const end = await fs(),
-        iz = await h.page.evaluate(
-          () => +getComputedStyle(document.querySelector(".world > .card")!).getPropertyValue("--iz"),
-        );
-      check("map-labels-settle-after-pinch", Math.abs(iz * z - 1) < 0.01, JSON.stringify({ mid, end, z, iz }));
-    }
-    await close(h);
-  }
+  b.cam = { x: 60, y: 60, z: 0.45 };
+  const h = await open({ board: structuredClone(b), light, w: 1400, h: 900 });
+  await shot(h, "board-12-zoomed-out");
+  const look = await h.page.evaluate(() => {
+    const el = document.querySelector<HTMLElement>(".card .src .call");
+    if (!el) return { call: false };
+    const r = el.getBoundingClientRect(),
+      t = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) as HTMLElement | null;
+    return {
+      call: true,
+      hit: !!t?.closest(".src"),
+      shown: [...document.querySelectorAll<HTMLElement>(".cardlay .card")].every(
+        (c) => getComputedStyle(c.querySelector(".cface")!).visibility === "visible" && !/\blo-/.test(c.className),
+      ),
+      src: getComputedStyle(el.closest(".src")!).opacity === "1",
+    };
+  });
+  check(
+    "zoomKeepsDetail at 45 % the code shows as at 100 % and takes the pointer",
+    look.call && look.hit && look.shown && look.src,
+    look,
+  );
+  await close(h);
 });
 
 /** A Section folding from its label's button, with pictures mid-fold and folded: the fold is saved and its card is hidden */

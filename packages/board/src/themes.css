@@ -828,7 +828,7 @@
   --sect-border: 1px solid var(--rule);
 }
 
-/* ---------- Ink Wash（水墨）：宣纸底、几层淡墨远山（静止，没有太阳、没有飘动的雾）；编号是朱印，连线是墨线。深色是拓片：黑底白字 ---------- */
+/* ---------- Ink Wash（水墨）：宣纸底、几层淡墨远山（层峦，静止）；卡是毛边宣纸，编号是朱文印，连线是毛笔线（带飞白）。深色是拓片：黑底白字 ---------- */
 :root.look-ink-wash,
 [data-look="ink-wash"] {
   color-scheme: light;
@@ -3004,12 +3004,22 @@
   max-width: 100%;
 }
 
-/* 远山是白板背景（不跟着画布平移缩放，镜头动时不重画）；滤镜都在 SVG 里，只在换主题、改窗口大小时栅格化一次 */
+/* 层峦是白板背景（不跟着画布平移缩放，镜头动时不重画）：远山淡、近山浓，每层山脊处墨最重、往下化进雾里，左半留白给卡片。
+   SVG 里只有渐变填的路径，没有滤镜（#136）：滤镜按图的原尺寸（900×540）算，再放大几倍铺满窗口，几乎透明的渐变在 8 位里一阶一阶地断，
+   成了一道道横纹（预乘 alpha 取整还带出红绿的色偏）；feTurbulence 竖向频率高、横向低，把山的渐变和左边竖直的山脚错开成横向的碎墨，像抹花的字。
+   别的几张小图（卡的毛边宣纸、选中的朱笔四角、调用下的五种朱笔、工具条那一笔淡墨）由 state/ink.ts 画一次，挂成变量（--deckle 在卡上，其余在根上） */
 :root.look-ink-wash {
   --kw-w: 600;
   --no-link: var(--zhu);
-  --call-deco: underline 1px var(--zhu);
+  --call-deco: none;
   --ico-w: 1;
+  /* 印泥：缺墨的小白点（平铺的颗粒）× 略毛的边（拉伸到印的大小）。两张是位图（SVG 的 feTurbulence 先画好的，2 倍大）：
+     SVG 图里的滤镜每次画这一块都要重算，几百枚印在缩放时太贵 */
+  --seal-mask:
+    url("data:image/png;base64,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")
+    0 0 / 48px 48px,
+    url("data:image/png;base64,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")
+    0 0 / 100% 100% no-repeat;
 }
 /* ==高亮== 不涂黄：字下一道粗细不匀的朱笔，像在书上用朱笔画重点（和标题旁的朱印同色）。换行时每行各画一道；只画背景，字距不变 */
 :root.look-ink-wash .md mark {
@@ -3023,6 +3033,17 @@
   font-weight: 700;
   -webkit-text-stroke: 0.015em currentColor;
 }
+/* 拖选文字：一层淡墨（不用淡朱：和印同色，选多了一片红） */
+:root.look-ink-wash :is(.md, .md-pm) ::selection,
+:root.look-ink-wash .src::selection,
+:root.look-ink-wash .src *::selection {
+  background: color-mix(in srgb, var(--ink) 13%, transparent);
+}
+:root.look-ink-wash[data-theme="dark"] :is(.md, .md-pm) ::selection,
+:root.look-ink-wash[data-theme="dark"] .src::selection,
+:root.look-ink-wash[data-theme="dark"] .src *::selection {
+  background: color-mix(in srgb, var(--ink) 20%, transparent);
+}
 :root.look-ink-wash .board {
   background:
     url("./scenes/ink-light.svg") center bottom / cover no-repeat,
@@ -3033,13 +3054,152 @@
     url("./scenes/ink-dark.svg") center bottom / cover no-repeat,
     var(--canvas);
 }
-:root.look-ink-wash .card.sel:not(.text):not(.lo-map) {
-  --ring: 0 0 0 1px var(--ink), 0 0 0 7px var(--wash), var(--sh-ring);
+/* 卡是一张毛边宣纸：纸是 ::before 上按这张卡的尺寸画的一张图（Card.tsx paper），伸出卡外 14px，不改卡的尺寸和排版；
+   卡自己没有底色、没有细边，阴影是卡的 box-shadow（模糊 4.5px 下看不出纸边的毛）。没有卡框的（Text、无背景）、地图档的照旧 */
+:root.look-ink-wash .card:not(.text):not(.nobg) {
+  --sh-ring: 0 0 transparent;
 }
-:root.look-ink-wash .card.sel.lift {
-  --ring: 0 0 0 1px var(--ink), var(--sh-lift);
+:root.look-ink-wash .card:not(.text):not(.nobg) {
+  background: transparent;
+  box-shadow: 0 4px 9px rgba(0, 0, 0, 0.12);
 }
-/* 卡头下面不画分隔线，换成一笔干笔墨痕 */
+:root.look-ink-wash[data-theme="dark"] .card:not(.text):not(.nobg) {
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+}
+:root.look-ink-wash .card:not(.text):not(.nobg)::before {
+  inset: -14px;
+  border-radius: 0;
+  box-shadow: none;
+  background: var(--deckle) 0 0 / 100% 100% no-repeat;
+}
+/* 拿起来时纸下面的阴影重一点 */
+:root.look-ink-wash .card.lift:not(.text):not(.nobg) {
+  --ring: 0 26px 38px -24px rgba(30, 25, 15, 0.4);
+}
+:root.look-ink-wash[data-theme="dark"] .card.lift:not(.text):not(.nobg) {
+  --ring: 0 26px 38px -24px rgba(0, 0, 0, 0.85);
+}
+/* 选中（#128）：卡右上角盖一枚小朱印"选"，纸面抬起 2px、阴影加深；取消时印淡去、纸落回。
+   全用过渡（不用关键帧）：动画中途再点一下，从当时的样子顺着倒回去，不跳。印在 .cface::before（卡的 ::before 是纸、
+   ::after 是各种状态的描边），骑在卡角外面，不压卡头右边的编号印和 ⋯ 按钮；导出时去掉 .sel，印是透明的 */
+:root.look-ink-wash .card.sel:not(.text) {
+  --ring: none;
+}
+/* 抬起的过渡加在 .card 一级（:where 不加权重）：拿起来、刚放下（.card.lift / .landing）照旧用它们自己的过渡。
+   选中、取消各一条曲线，由 --ink-lt 换（注册成不继承，选中时卡里的节点不用跟着重算样式） */
+@property --ink-lt {
+  syntax: "*";
+  inherits: false;
+}
+.card:where(:root.look-ink-wash *) {
+  --ink-lt: calc(var(--t) * 200ms) cubic-bezier(0.4, 0, 0.4, 1);
+  transition:
+    box-shadow var(--ink-lt),
+    translate var(--ink-lt),
+    scale calc(var(--t) * 260ms) cubic-bezier(0.3, 1.35, 0.5, 1),
+    opacity calc(var(--t) * 240ms) var(--out),
+    filter calc(var(--t) * 240ms);
+}
+.card.sel:where(:root.look-ink-wash *) {
+  --ink-lt: calc(var(--t) * 220ms) var(--out);
+}
+:root.look-ink-wash .card.sel:not(.text):not(.nobg) {
+  translate: 0 -2px;
+  box-shadow:
+    0 4px 9px rgba(0, 0, 0, 0.12),
+    0 26px 38px -20px rgba(30, 25, 15, 0.45),
+    0 8px 14px -8px rgba(30, 25, 15, 0.2);
+}
+:root.look-ink-wash[data-theme="dark"] .card.sel:not(.text):not(.nobg) {
+  box-shadow:
+    0 4px 10px rgba(0, 0, 0, 0.5),
+    0 26px 38px -20px rgba(0, 0, 0, 0.8),
+    0 8px 14px -8px rgba(0, 0, 0, 0.45);
+}
+/* 印：24px 见方，中心在卡右上角往外 7px、往上 5px：整枚在 ⋯ 按钮（卡头右边 8px 内）的右上方。
+   没选中时停在"高处"（放大、多转一点、透明），选中时落下来：缩放的曲线冲过头一点，像盖下去略压一下。
+   取消时只在原处淡去；淡完以后（延迟同淡去的时长）才悄悄回到高处，等下次落下。
+   缩放、转角用 scale / rotate 两个属性，别和 transform 写在同一条规则里：打包时的 CSS 压缩会把它们丢掉 */
+:root.look-ink-wash .card:not(.text) > .cface::before {
+  content: "选" / "";
+  position: absolute;
+  z-index: 6;
+  top: -17px;
+  right: -19px;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--paper) 60%, transparent);
+  box-shadow: inset 0 0 0 1.6px var(--zhu);
+  color: var(--zhu);
+  font: 700 14px / 1 var(--serif);
+  pointer-events: none;
+  -webkit-mask: var(--seal-mask);
+  -webkit-mask-composite: source-in;
+  mask: var(--seal-mask);
+  mask-composite: intersect;
+  opacity: 0;
+  scale: 1.8;
+  rotate: -14deg;
+  transition:
+    opacity calc(var(--t) * 180ms) cubic-bezier(0.4, 0, 0.4, 1),
+    scale 0s calc(var(--t) * 180ms),
+    rotate 0s calc(var(--t) * 180ms);
+}
+:root.look-ink-wash .card.sel:not(.text) > .cface::before {
+  opacity: 0.92;
+  scale: 1;
+  rotate: -6deg;
+  transition:
+    opacity calc(var(--t) * 170ms) var(--out),
+    scale calc(var(--t) * 280ms) cubic-bezier(0.3, 0.7, 0.4, 1.12),
+    rotate calc(var(--t) * 280ms) cubic-bezier(0.3, 0.7, 0.4, 1.12);
+}
+/* 减少动态效果：纸不抬、印不落，只淡入淡出（不乘 --t：那时 --t 几乎是 0） */
+@media (prefers-reduced-motion: reduce) {
+  :root.look-ink-wash .card.sel:not(.text):not(.nobg) {
+    translate: none;
+  }
+  :root.look-ink-wash .card:not(.text) > .cface::before {
+    scale: 1;
+    rotate: -6deg;
+    transition: opacity 160ms linear;
+  }
+}
+/* 删卡：墨从四周往中间收、散掉（遮罩的半径缩到 0，连着纸边一起）；时长同 state/timing.ts 的 GHOST_DISPERSE */
+@property --ink-r {
+  syntax: "<length-percentage>";
+  inherits: false;
+  initial-value: 140%;
+}
+:root.look-ink-wash .card.ghost-out {
+  transition: none;
+}
+:root.look-ink-wash .card.ghost-out.go {
+  opacity: 1;
+  scale: none;
+  -webkit-mask:
+    radial-gradient(circle at 50% 50%, #000 calc(var(--ink-r) - 80px), transparent var(--ink-r)) -14px -14px /
+    calc(100% + 28px) calc(100% + 28px) no-repeat;
+  mask:
+    radial-gradient(circle at 50% 50%, #000 calc(var(--ink-r) - 80px), transparent var(--ink-r)) -14px -14px /
+    calc(100% + 28px) calc(100% + 28px) no-repeat;
+  mask-clip: no-clip;
+  animation: ink-disperse calc(var(--t) * 300ms) cubic-bezier(0.4, 0, 0.8, 0.6) both;
+}
+@keyframes ink-disperse {
+  from {
+    --ink-r: 140%;
+    opacity: 1;
+  }
+  to {
+    --ink-r: 0%;
+    opacity: 0.4;
+  }
+}
+/* 卡头下面不画分隔线：卡头是一层很淡的墨（淡墨底），从左往右淡没。底在卡里面（纸是卡外伸出去的 ::before），深色下 --ink 是浅墨 */
 :root.look-ink-wash .card:not(.nobg) > .cface > .chead {
   position: relative;
   height: 36px;
@@ -3047,48 +3207,57 @@
   gap: 9px;
   --hg: 9px;
   border-bottom: 0;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--ink) 6%, transparent) 0,
+    color-mix(in srgb, var(--ink) 3.5%, transparent) 45%,
+    transparent 85%
+  );
 }
-:root.look-ink-wash .card:not(.nobg) > .cface > .chead::after {
-  content: "";
-  position: absolute;
-  left: 8px;
-  right: 30%;
-  bottom: 1px;
-  height: 3.5px;
-  background: var(--ink);
-  opacity: 0.55;
-  pointer-events: none;
-  -webkit-mask:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 8' preserveAspectRatio='none'%3E%3Cpath d='M0 4.6C20 2.4 60 1.6 120 2.2S240 3 300 4.4L300 4.9C250 5.2 180 6.4 110 6.1S30 6.6 0 5.4Z'/%3E%3Cpath d='M30 3.2L90 2.9M150 3.4L230 3.6M60 6L140 5.7' stroke='%23000' stroke-width='.5' opacity='.5'/%3E%3C/svg%3E")
-    0 0 / 100% 100% no-repeat;
-  mask:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 8' preserveAspectRatio='none'%3E%3Cpath d='M0 4.6C20 2.4 60 1.6 120 2.2S240 3 300 4.4L300 4.9C250 5.2 180 6.4 110 6.1S30 6.6 0 5.4Z'/%3E%3Cpath d='M30 3.2L90 2.9M150 3.4L230 3.6M60 6L140 5.7' stroke='%23000' stroke-width='.5' opacity='.5'/%3E%3C/svg%3E")
-    0 0 / 100% 100% no-repeat;
-}
-/* 编辑开头是标题的 Note 时卡头收起、标题滑到这里（NoteBody 的 foldHeader）：墨线跟着卡头一起淡掉，不压在标题上 */
-:root.look-ink-wash .card.note:not(.nobg) > .cface > .chead.fold::after {
-  opacity: 0;
+/* 编辑开头是标题的 Note 时卡头收起、标题滑到这里（NoteBody 的 foldHeader）：淡墨底跟着卡头一起去掉，不压在标题上 */
+:root.look-ink-wash .card.note:not(.nobg) > .cface > .chead.fold {
+  background: transparent;
 }
 :root.look-ink-wash .chead .kind {
   display: none;
 }
-/* 编号是一枚朱印，盖在卡头右边 */
-/* 印的底色留 1% 透明：卡头整块不透明时，Chromium 会在缩放分档切换时把每张卡的行号栏单独提成合成层（几百层，捏合缩放每帧多 20–30ms） */
+/* 编号是一枚朱文印：红字、红框，印泥有颗粒、边略毛（--seal-mask），盖在卡头右边。新出现的编号像印章落下（CodeHead.tsx 的 stamp） */
 :root.look-ink-wash .chead > .step {
   order: 9;
   height: 20px;
   padding: 0 5px;
   border-radius: 2px;
-  background: color-mix(in srgb, var(--zhu) 99%, transparent);
-  color: var(--paper);
-  font: 600 10.5px var(--serif);
+  background: none;
+  color: var(--zhu);
+  font: 700 10.5px var(--serif);
   letter-spacing: 0.04em;
   rotate: 2deg;
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--paper) 35%, transparent);
+  box-shadow: inset 0 0 0 1.4px var(--zhu);
+  -webkit-mask: var(--seal-mask);
+  -webkit-mask-composite: source-in;
+  mask: var(--seal-mask);
+  mask-composite: intersect;
 }
 :root.look-ink-wash .chead > .step:hover {
-  background: color-mix(in srgb, var(--zhu) 82%, var(--ink));
-  color: var(--paper);
+  background: color-mix(in srgb, var(--zhu) 10%, transparent);
+  color: var(--zhu);
+}
+:root.look-ink-wash .chead > .step.stamp {
+  animation: ink-stamp calc(var(--t) * 300ms) cubic-bezier(0.2, 0.9, 0.25, 1) both;
+}
+@keyframes ink-stamp {
+  from {
+    transform: scale(1.7) rotate(-9deg);
+    opacity: 0;
+  }
+  55% {
+    transform: scale(0.93) rotate(1deg);
+    opacity: 1;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
 }
 :root.look-ink-wash .chead > .ib:not(.cpy) {
   order: 10;
@@ -3101,14 +3270,18 @@
 :root.look-ink-wash .cpath {
   color: var(--ink-3);
 }
-/* 有新版本：朱文印，红框红字 */
+/* 有新版本：也是一枚朱文印 */
 :root.look-ink-wash .chead .rev.new {
   color: var(--zhu);
-  box-shadow: inset 0 0 0 1px var(--zhu);
+  box-shadow: inset 0 0 0 1.4px var(--zhu);
   border-radius: 2px;
   rotate: -3deg;
-  font: 600 10px var(--serif);
+  font: 700 10px var(--serif);
   letter-spacing: 0.04em;
+  -webkit-mask: var(--seal-mask);
+  -webkit-mask-composite: source-in;
+  mask: var(--seal-mask);
+  mask-composite: intersect;
 }
 :root.look-ink-wash .chead .rev.new i {
   display: none;
@@ -3122,6 +3295,130 @@
 :root.look-ink-wash .rowbg.hl {
   background: linear-gradient(90deg, transparent, var(--wash) 8%, var(--wash) 70%, transparent);
   box-shadow: none;
+}
+/* 跳到某行：一笔朱笔从左划到右，划在这一行的字下面（从第一个字到最后一个字，CodeBody.tsx flashSpan），整行淡淡洇一下墨，再慢慢淡掉。
+   时长同 state/timing.ts 的 FLASH_BRUSH */
+:root.look-ink-wash .rowbg.flash {
+  animation: none;
+}
+:root.look-ink-wash .rowbg.flash::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--wash);
+  opacity: 0;
+  animation: ink-row calc(var(--t) * 1100ms) ease-out;
+}
+:root.look-ink-wash .rowbg.flash::after {
+  content: "";
+  position: absolute;
+  left: calc(var(--gutter) + var(--fx, 0px));
+  bottom: 2px;
+  width: var(--fw, 0px);
+  height: 6px;
+  background: var(--hl-brush) 0 0 / 100% 100% no-repeat;
+  animation: ink-sweep calc(var(--t) * 1100ms) cubic-bezier(0.3, 0.7, 0.3, 1) both;
+}
+@keyframes ink-row {
+  20% {
+    opacity: 1;
+  }
+}
+@keyframes ink-sweep {
+  0% {
+    clip-path: inset(0 100% 0 0);
+    opacity: 1;
+  }
+  22% {
+    clip-path: inset(0 0 0 0);
+    opacity: 1;
+  }
+  60% {
+    opacity: 1;
+  }
+  100% {
+    clip-path: inset(0 0 0 0);
+    opacity: 0;
+  }
+}
+/* 能点的调用：字下一笔细朱笔（背景图，字距不变），一笔到底不断开，五种笔触按词轮换，同一个词总是同一笔（core render.ts 的 cv0–cv4） */
+:root.look-ink-wash .call {
+  border-radius: 1px;
+  padding-bottom: 1.5px;
+  background-image: var(--ink-cb0);
+  background-position: 0 bottom;
+  background-size: 100% 3.5px;
+  background-repeat: no-repeat;
+}
+:root.look-ink-wash .call.cv1 {
+  background-image: var(--ink-cb1);
+  background-position: 4px bottom;
+  background-size: 94% 3px;
+}
+:root.look-ink-wash .call.cv2 {
+  background-image: var(--ink-cb2);
+  background-position: -3px bottom;
+  background-size: 106% 3.6px;
+}
+:root.look-ink-wash .call.cv3 {
+  background-image: var(--ink-cb3);
+  background-position: 1px bottom;
+  background-size: 90% 3.5px;
+}
+:root.look-ink-wash .call.cv4 {
+  background-image: var(--ink-cb4);
+  background-position: -1px bottom;
+  background-size: 102% 3.4px;
+}
+/* Note 的代码块里调用点不了（styles.css 的 .md pre.md-code .call），显示和编辑时都不画这一笔 */
+:root.look-ink-wash :is(.md pre.md-code, .md-pm pre) .call {
+  padding-bottom: 0;
+  background-image: none;
+}
+/* 毛笔线（Links.tsx，look.ts 的 stroke: "brush"）：实线是填充的笔画轮廓，描边的那条不画；中段三道纸色飞白 */
+:root.look-ink-wash .edge.brushed {
+  stroke: none;
+}
+:root.look-ink-wash .brush {
+  fill: var(--edge);
+  fill-opacity: 0.95;
+  stroke: none;
+  transition: opacity 0.2s;
+}
+:root.look-ink-wash .brush:is(.lc-orange) {
+  fill: var(--lk-orange);
+}
+:root.look-ink-wash .brush:is(.lc-blue) {
+  fill: var(--lk-blue);
+}
+:root.look-ink-wash .brush:is(.lc-green) {
+  fill: var(--lk-green);
+}
+:root.look-ink-wash .brush.ev-observed {
+  fill: var(--ev-obs);
+}
+:root.look-ink-wash .brush.back {
+  fill-opacity: 0.7;
+}
+:root.look-ink-wash .brush.lost {
+  fill: var(--lk-lost, #d64545);
+}
+:root.look-ink-wash .brush.on {
+  fill: var(--accent);
+  stroke: var(--accent);
+  stroke-width: 0.45;
+}
+:root.look-ink-wash .feibai {
+  fill: none;
+  stroke: var(--paper);
+  stroke-opacity: 0.75;
+  stroke-width: 0.6;
+  stroke-linecap: round;
+  pointer-events: none;
+}
+/* 几条线汇到一处时最后那一小段（合并段）是描边：和毛笔线收笔处一样细 */
+:root.look-ink-wash .edge.stub {
+  stroke-width: calc(1.4px * var(--lw, 1));
 }
 :root.look-ink-wash .port {
   fill: var(--ink);
@@ -3147,16 +3444,80 @@
   line-height: 1.6;
   font-family: var(--serif);
 } /* 行高、卡头和别的主题一样：切主题不改卡片高度 */
+/* 拓片（深色）上 Note 的正文用满墨：--ink-2 在黑底上发灰 */
+:root.look-ink-wash[data-theme="dark"] .card.note .nbody {
+  --ink-2: var(--ink);
+  color: var(--ink);
+}
 :root.look-ink-wash .tx.st-title {
   font: 400 30px / 1.2 var(--serif);
   letter-spacing: 0.02em;
 }
+/* Sections (#137): no border or tray; the frame is four dry brush strokes (state/inkframe.ts, an SVG in the frame,
+   canvas/Sections.tsx), its colour the SVG's currentColor. The title is written in running script (Zhi Mang Xing,
+   fonts-zhimangxing.css) in the gap the top stroke leaves for it, its middle on the stroke; it ellipsizes before the frame's
+   right corner. Collapsed: the title back inside the small frame, which has no gap. Selected: strokes and title vermilion */
 :root.look-ink-wash .sect {
+  --sect-fill: transparent;
+  --sect-sh: none;
+  border-color: transparent;
   border-radius: 2px;
 }
+:root.look-ink-wash .sect.sel,
+:root.look-ink-wash .sect.drop {
+  border-color: transparent;
+  box-shadow: none;
+}
+/* the image reaches FRAME_M (12 px) outside the frame, measured from its border box: the frame's 1 px border is inside that */
+:root.look-ink-wash .sbrush {
+  position: absolute;
+  left: -13px;
+  top: -13px;
+  overflow: visible;
+  pointer-events: none;
+  color: var(--ink);
+  fill: currentColor;
+  fill-opacity: 0.72;
+  transition:
+    color 0.18s var(--out),
+    fill-opacity 0.18s var(--out);
+}
+:root.look-ink-wash .sect.sel .sbrush {
+  color: var(--zhu);
+  fill-opacity: 0.85;
+}
 :root.look-ink-wash .slabel {
-  font: italic 400 13px / 20px var(--serif);
+  --ml: 24px;
+  --mt: -17px;
+  max-width: max(60px, calc(var(--sw, 100vw) - 64px));
+  padding: 0 2px 0 0;
   border-radius: 2px;
+  font:
+    400 25px / 32px "Zhi Mang Xing",
+    "Xingkai SC",
+    STXingkai,
+    var(--serif);
+  letter-spacing: 0.01em;
+  color: var(--ink);
+  transition: color 0.18s var(--out);
+}
+:root.look-ink-wash .slabel.sel {
+  color: var(--zhu);
+}
+:root.look-ink-wash .slabel.collapsed,
+:root.look-ink-wash .slabel:has(.sname.editing) {
+  max-width: none;
+}
+:root.look-ink-wash .slabel.collapsed {
+  --ml: 14px;
+  --mt: 4px;
+}
+:root.look-ink-wash .slabel .sname:not(.editing) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+:root.look-ink-wash .slabel .scount {
+  font: italic 400 13px / 32px var(--serif);
 }
 :root.look-ink-wash .pill,
 :root.look-ink-wash .ctx,
@@ -3171,37 +3532,51 @@
   border-radius: 2px;
   box-shadow: var(--sh-float);
 }
-/* 底部工具条：一条素宣纸，右边斜搁一支毛笔 */
-:root.look-ink-wash .bbar .pill {
+/* 底部工具条（右下角的缩放条也一样）：纸上刷的一笔淡墨（state/ink.ts 的 --ink-bar：起笔圆而浓，收笔干出飞白），没有框和阴影；
+   一支毛笔搁在收笔那头。悬停时图标下洇开一小团墨，按下的工具下一粒朱点；分隔是一笔斜的短墨 */
+:root.look-ink-wash .bbar .pill,
+:root.look-ink-wash .dock .pill {
   position: relative;
-  padding: 5px 30px 5px 12px;
-  border-radius: 1px;
-  background: linear-gradient(180deg, color-mix(in srgb, var(--paper) 96%, #fff), var(--paper));
-  box-shadow:
-    inset 0 0 0 3px var(--paper),
-    inset 0 0 0 3.5px var(--hair),
-    var(--sh-float);
-} /* 像装裱：纸面 + 里面一道细框线（不用纤维噪点底纹：在 1x 屏上发糊） */
+  height: 46px;
+  gap: 1px;
+  padding: 0 34px 0 22px;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  isolation: isolate;
+}
+/* 磨砂：在那一笔的形状里（--ink-bar-mask：同一个轮廓，实心）把底下的东西糊开、提亮一点，再刷上那一笔淡墨。按钮和笔不在遮罩里 */
+:root.look-ink-wash .bbar .pill::before,
+:root.look-ink-wash .dock .pill::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    var(--ink-bar) 0 0 / 100% 100% no-repeat,
+    color-mix(in srgb, var(--paper) 55%, transparent);
+  -webkit-backdrop-filter: blur(7px) saturate(1.15);
+  backdrop-filter: blur(7px) saturate(1.15);
+  -webkit-mask: var(--ink-bar-mask) 0 0 / 100% 100% no-repeat;
+  mask: var(--ink-bar-mask) 0 0 / 100% 100% no-repeat;
+}
+:root.look-ink-wash .dock .pill {
+  padding: 0 26px 0 18px;
+}
 :root.look-ink-wash .bbar .pill::after {
   content: "";
   position: absolute;
-  right: 3px;
-  top: -12px;
-  width: 13px;
-  height: 62px;
-  rotate: 24deg;
+  right: -4px;
+  top: 6px;
+  width: 10px;
+  height: 46px;
+  rotate: 72deg;
   pointer-events: none;
-  filter: drop-shadow(2px 3px 2px rgba(0, 0, 0, 0.3));
+  filter: drop-shadow(1px 2px 1.5px rgba(0, 0, 0, 0.25));
   background:
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 84'%3E%3Cdefs%3E%3ClinearGradient id='h' x1='0' x2='1'%3E%3Cstop offset='0' stop-color='%236b4a26'/%3E%3Cstop offset='.45' stop-color='%23c79a5c'/%3E%3Cstop offset='1' stop-color='%235a3c1c'/%3E%3C/linearGradient%3E%3ClinearGradient id='t' x1='0' x2='1'%3E%3Cstop offset='0' stop-color='%23111'/%3E%3Cstop offset='.45' stop-color='%23444'/%3E%3Cstop offset='1' stop-color='%230b0b0b'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M8 1.5a1.6 1.6 0 0 1 0 3.2' fill='none' stroke='%23b0322a' stroke-width='1'/%3E%3Crect x='5' y='4' width='6' height='50' rx='2.6' fill='url(%23h)'/%3E%3Cpath d='M5.4 22h5.2M5.4 40h5.2' stroke='%235a3c1c' stroke-width='.7' opacity='.7'/%3E%3Crect x='4.6' y='52' width='6.8' height='5' rx='1.2' fill='%23222'/%3E%3Cpath d='M4.8 57c0 8 1.6 16 3.2 25 1.6-9 3.2-17 3.2-25z' fill='url(%23t)'/%3E%3C/svg%3E")
     center / contain no-repeat;
-}
-:root.look-ink-wash .dock .pill {
-  border-radius: 1px;
-  box-shadow:
-    inset 0 0 0 3px var(--paper),
-    inset 0 0 0 3.5px var(--hair),
-    var(--sh-float);
 }
 :root.look-ink-wash .ib,
 :root.look-ink-wash .tbtn,
@@ -3217,8 +3592,6 @@
 :root.look-ink-wash .pill .ib {
   color: var(--ink);
 }
-:root.look-ink-wash .pill .tbtn:hover,
-:root.look-ink-wash .pill .ib:hover,
 :root.look-ink-wash .ctx button:not([disabled]):is(:hover, .kb, .subopen) {
   background: var(--wash);
   color: var(--ink);
@@ -3227,21 +3600,147 @@
 :root.look-ink-wash .ctx button:not([disabled]):is(:hover, .kb, .subopen) small {
   color: var(--ink-3);
 }
+:root.look-ink-wash :is(.bbar, .dock) .pill :is(.tbtn, .ib) {
+  position: relative;
+  isolation: isolate;
+}
+:root.look-ink-wash :is(.bbar, .dock) .pill :is(.tbtn, .ib):is(:hover, :active, .on, [aria-pressed="true"]) {
+  background: none;
+  color: var(--ink);
+}
+:root.look-ink-wash :is(.bbar, .dock) .pill :is(.tbtn, .ib)::before {
+  content: "";
+  position: absolute;
+  inset: 1px 2px;
+  z-index: -1;
+  border-radius: 50%;
+  corner-shape: round;
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--ink) 13%, transparent), transparent);
+  opacity: 0;
+  scale: 0.6;
+  pointer-events: none;
+  transition:
+    opacity calc(var(--t) * 120ms),
+    scale calc(var(--t) * 160ms) cubic-bezier(0.2, 0.8, 0.3, 1);
+}
+:root.look-ink-wash :is(.bbar, .dock) .pill :is(.tbtn, .ib):hover::before {
+  opacity: 1;
+  scale: 1;
+}
+:root.look-ink-wash :is(.bbar, .dock) .pill :is(.tbtn.on, .ib[aria-pressed="true"])::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -1px;
+  width: 4px;
+  height: 4px;
+  margin-left: -2px;
+  border-radius: 50%;
+  corner-shape: round;
+  background: var(--zhu);
+  pointer-events: none;
+}
 :root.look-ink-wash .sep {
   width: 0.5px;
   background: var(--hair);
+}
+:root.look-ink-wash :is(.bbar, .dock) .pill .sep {
+  width: 1.2px;
+  height: 13px;
+  background: var(--ink);
+  opacity: 0.3;
+  rotate: 10deg;
+  border-radius: 1px;
 }
 :root.look-ink-wash .zoom {
   font: 13px var(--serif);
   color: var(--ink-2);
 }
+/* 右键菜单：像挂轴往下展开（从上往下露出来，略往下落），顶上一道轴杆一闪而过 */
+/* 关：从下往上卷回去，最后一点淡出，轴杆在顶上淡入。关掉的菜单当场就没了，卷回去的是它留下的一份（Menu.tsx exitCopy，
+   --menu-exit 是它留多久，ms） */
+:root.look-ink-wash {
+  --menu-exit: 130;
+}
+:root.look-ink-wash .ctx {
+  scale: none;
+  translate: 0 -3px;
+  clip-path: inset(-24px -24px calc(100% + 24px) -24px);
+  transition:
+    clip-path calc(var(--t) * 130ms) cubic-bezier(0.5, 0, 0.75, 0.4),
+    translate calc(var(--t) * 130ms) cubic-bezier(0.5, 0, 0.75, 0.4),
+    opacity calc(var(--t) * 40ms) var(--in) calc(var(--t) * 90ms),
+    visibility 0s linear calc(var(--t) * 130ms);
+}
+:root.look-ink-wash .ctx.closing::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--ink);
+  pointer-events: none;
+  opacity: 0;
+}
+:root.look-ink-wash .ctx.closing:not(.open)::before {
+  opacity: 0.7;
+  transition: opacity calc(var(--t) * 130ms) ease-in;
+}
+:root.look-ink-wash .ctx.open {
+  translate: 0 0;
+  clip-path: inset(-24px -24px -32px -24px);
+  transition:
+    opacity calc(var(--t) * 40ms) ease-out,
+    clip-path calc(var(--t) * 170ms) cubic-bezier(0.25, 0.8, 0.25, 1),
+    translate calc(var(--t) * 170ms) cubic-bezier(0.25, 0.8, 0.25, 1),
+    visibility 0s;
+}
+:root.look-ink-wash .ctx.open:not(.closing)::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--ink);
+  pointer-events: none;
+  animation: ink-rod calc(var(--t) * 170ms) cubic-bezier(0.25, 0.8, 0.25, 1) both;
+}
+@keyframes ink-rod {
+  from {
+    opacity: 0.9;
+  }
+  to {
+    opacity: 0;
+  }
+}
+/* 提示条：纸条从左往右展开，左边的小朱印随后盖上；比工具条高一点，不压在那一笔淡墨上 */
 :root.look-ink-wash .toast {
+  bottom: 72px;
   background: var(--paper);
   color: var(--ink);
   border-radius: 2px;
   box-shadow: var(--sh-float);
   font: 12.5px var(--serif);
   padding-left: 8px;
+}
+:root.look-ink-wash .toast.show {
+  animation: ink-toast calc(var(--t) * 260ms) cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+:root.look-ink-wash .toast.show.bump {
+  animation: bump calc(var(--t) * 260ms) var(--out);
+}
+@keyframes ink-toast {
+  from {
+    opacity: 0;
+    clip-path: inset(0 100% 0 0);
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+  }
 }
 :root.look-ink-wash .toast::before {
   content: "";
@@ -3250,6 +3749,11 @@
   border-radius: 2px;
   background: var(--zhu);
   flex: none;
+  -webkit-mask: var(--seal-mask);
+  -webkit-mask-composite: source-in;
+  mask: var(--seal-mask);
+  mask-composite: intersect;
+  animation: ink-stamp calc(var(--t) * 300ms) calc(var(--t) * 120ms) cubic-bezier(0.2, 0.9, 0.25, 1) both;
 }
 :root.look-ink-wash .toast .tlink {
   color: var(--zhu);
@@ -3257,7 +3761,7 @@
 :root.look-ink-wash .tip {
   border-radius: 2px;
 }
-/* 白板名：左上角一行大字，后面一枚小朱印 */
+/* 白板名：左上角一行大字（后面不盖印，#138） */
 :root.look-ink-wash .mast {
   display: flex;
   position: absolute;
@@ -3276,18 +3780,6 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-:root.look-ink-wash .mast::after {
-  content: "";
-  flex: none;
-  width: 11px;
-  height: 20px;
-  border-radius: 2px;
-  background: var(--zhu);
-  box-shadow:
-    inset 0 0 0 2px var(--zhu),
-    inset 0 0 0 3px color-mix(in srgb, var(--paper) 55%, transparent);
-  rotate: 3deg;
 }
 
 /* 界面字体只给浮在白板上的部件和卡头用（--ui），不换 --sys：白板里大量文字换成网页字体后，Chromium 在缩放分档切换时会把每张卡的行号栏提成合成层 */
@@ -3330,7 +3822,7 @@
     linear-gradient(90deg, var(--blockc) 1px, transparent 1px) 0 0 / 20px 20px,
     var(--canvas);
 }
-:root.look-city .card.sel:not(.text):not(.lo-map) {
+:root.look-city .card.sel:not(.text) {
   --ring: 0 0 0 2px var(--sign), 0 0 0 6px color-mix(in srgb, var(--sign) 20%, transparent), var(--sh-ring);
 }
 :root.look-city .card.sel.lift {
@@ -3807,6 +4299,13 @@
     url("./scenes/ink-dark.svg") center bottom / cover no-repeat,
     var(--bg);
 }
+.st-prev[data-look="ink-wash"] .sp-card {
+  overflow: visible;
+  box-shadow: 0 3px 5px -2px rgba(30, 25, 15, 0.22);
+}
+:root[data-theme="dark"] .st-prev[data-look="ink-wash"] .sp-card {
+  box-shadow: 0 3px 6px -2px rgba(0, 0, 0, 0.7);
+}
 .st-prev[data-look="ink-wash"] .sp-h {
   background: none;
   border-bottom: 0;
@@ -3814,12 +4313,15 @@
 .st-prev[data-look="ink-wash"] .sp-step {
   order: 2;
   margin-left: auto;
-  width: 4px;
-  height: 5px;
-  background: var(--zhu);
+  width: 5px;
+  height: 6px;
+  background: none;
+  box-shadow: inset 0 0 0 1px var(--zhu);
+  rotate: 3deg;
 }
 .st-prev[data-look="ink-wash"] .sp-edge path {
-  stroke-width: 1.4;
+  stroke-width: 1.8;
+  stroke-linecap: round;
 }
 .st-prev[data-look="city"] {
   background:

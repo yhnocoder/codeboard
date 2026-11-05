@@ -31,8 +31,9 @@ import {
   selCards,
   selectAll,
   selectCard,
+  resolveCardRef,
 } from "./common";
-import { boardOffset } from "../state/measure";
+import { boardOffset, naturalSize } from "../state/measure";
 import {
   addLink,
   callOn,
@@ -87,28 +88,55 @@ import {
   fitSections,
   tidyUp,
 } from "./edit";
-import { newFreeCode, newNote, newText, pasteText } from "./create";
+import { newFreeCode, newFreeText, newNote, newText, pasteText } from "./create";
 import {
   captionItems,
   headingSplitCount,
   openAddNote,
   setMarkColor,
+  setMarkWeight,
+  setMarkSize,
+  setFreeTextLevel,
+  setFreeTextBold,
   showPeek,
   splitByHeadings,
+  tableCaptionItems,
   turnNote,
 } from "./notes";
 import { mergeIntoLinkList, retryMeta, setListRich, setWebStyle } from "./web";
 import { canLinkList } from "@codeboard/core/commands";
 import { moveOutOfParent, setSectionColor, toggleCompare, unlinkShared } from "./edit";
-import { deleteEverywhere, pasteFromBoard, copyCardsSel, cutCardsSel, detachTwins } from "./shared";
-import { enterFrame, turnIntoBoard, insertBoard, insertable, deleteFrameBoard } from "./subboards";
+import { deleteEverywhere, pasteFromBoard, copyCardsSel, cutCardsSel, detachTwins, copyPath } from "./shared";
+import {
+  enterFrame,
+  turnIntoBoard,
+  insertBoard,
+  insertable,
+  deleteFrameBoard,
+  editMark,
+  openCardRef,
+  refBoard,
+} from "./subboards";
 import { addProc, clearRpc, legendOf, markRpc, toggleBack, toggleStart } from "./calls";
 import { setLegendOpen } from "../state/calls";
 import { askQuestion, askQuestionOnCard } from "./questions";
 import { addVariantMenu } from "./variants";
-import { LEGEND, legendName, HAND_COLORS, type Link } from "@codeboard/core";
+import {
+  LEGEND,
+  legendName,
+  HAND_COLORS,
+  HAND_WEIGHTS,
+  MARK_SIZES,
+  markSizeOf,
+  FREE_TEXT_LEVELS,
+  FREE_TEXT_FS,
+  freeTextLevelName,
+  type Link,
+  type MarkSize,
+} from "@codeboard/core";
 import { kbd } from "../keymap";
 import { drawSvgItem, imageAiItems, type ImgRef } from "./imageai";
+import { copyNoteImage } from "./imagedata";
 import { autoFocusItem } from "./autofocus";
 import type { Markdown } from "@yhnocoder/markdown";
 
@@ -245,8 +273,10 @@ export function lineMenu(ls: LineSel, x: number, y: number, annotate?: () => voi
 export function noteImageMenu(ref: ImgRef, x: number, y: number) {
   selectCard(ref.card);
   const cap = captionItems(ref, document.elementFromPoint(x, y));
+  const src = ref.note;
   openMenu(
     [
+      ...(src ? [{ label: "Copy Image", run: () => copyNoteImage(src) } satisfies Item, null] : []),
       ...cap,
       ...(cap.length ? [null] : []),
       ...imageAiItems(ref),
@@ -258,9 +288,46 @@ export function noteImageMenu(ref: ImgRef, x: number, y: number) {
   );
 }
 
-/** 右键 Note 里选中的一段字（编辑中或静态显示）：照这段字画 SVG，整张 Note 的菜单在最后的 Note ▸ 里 */
-export function noteTextMenu(id: string, text: string, x: number, y: number) {
-  openMenu([drawSvgItem(id, text), null, { label: "Note", sub: cardItems(id, x, y) }], x, y);
+/**
+ * 右键 Note 里一个指向别的白板的 [[引用]]（画着印章的）：打开、改那块白板的印章（浮层贴着引用），整张 Note 的菜单在最后的
+ * Note ▸ 里。不是这种引用返回 false
+ */
+export function noteRefMenu(card: string, el: HTMLElement, md: Markdown, x: number, y: number): boolean {
+  const label = el.dataset.ref ?? "",
+    board = refBoard(label, md),
+    hit = resolveCardRef(label, md);
+  if (!board || !hit || "broken" in hit) return false;
+  selectCard(card);
+  openMenu(
+    [
+      { label: "Open", run: () => openCardRef(hit.id, hit.place) },
+      { label: "Edit Mark…", run: () => editMark(board, { el }) },
+      null,
+      { label: "Note", sub: cardItems(card, x, y) },
+    ],
+    x,
+    y,
+  );
+  return true;
+}
+
+/** 右键 Note 里的一张表格（nth：Note 里的第几张）：图注的操作，整张 Note 的菜单在最后的 Note ▸ 里 */
+export function noteTableMenu(card: string, nth: number, x: number, y: number) {
+  selectCard(card);
+  const cap = tableCaptionItems(card, nth);
+  if (!cap.length) return cardMenu(card, x, y);
+  openMenu([...cap, null, { label: "Note", sub: cardItems(card, x, y) }], x, y);
+}
+
+/** 右键 Note 里选中的一段字（编辑中或静态显示）：照这段字画 SVG，整张 Note 的菜单在最后的 Note ▸ 里；字在表格里（table：第几张）
+ *  时前面先是表格图注的操作 */
+export function noteTextMenu(id: string, text: string, x: number, y: number, table: number | null = null) {
+  const cap = table === null ? [] : tableCaptionItems(id, table);
+  openMenu(
+    [...cap, ...(cap.length ? [null] : []), drawSvgItem(id, text), null, { label: "Note", sub: cardItems(id, x, y) }],
+    x,
+    y,
+  );
 }
 
 export function cardMenu(id: string, x: number, y: number) {
@@ -283,9 +350,12 @@ function cardItems(id: string, x: number, y: number): Item[] {
   const tiltItem: Item = { label: "Tilt", kbd: kbd("tilt"), checked: !!host.tilt, run: () => toggleTilt([host.id]) };
   // 每种卡同一个结构：常用操作 → Edit ▸ → Arrange ▸ → 分隔线 → Move to New Section、Delete（红）。
   // 界面上已经有的（双击改名、⌘D、拖圆点连线）不进菜单
+  // Copy Path：Compare 的一栏是那一栏自己（白板文件里它也是一张卡）
+  const pathItem: Item = { label: "Copy Path", run: () => void copyPath([id]) };
   const tail: Item[] = [
     tiltItem,
     arrangeItem(() => [host.id]),
+    pathItem,
     null,
     ...sectionItems(),
     turnItem(),
@@ -298,6 +368,7 @@ function cardItems(id: string, x: number, y: number): Item[] {
       { label: "Edit", sub: [lockItem] },
       tiltItem,
       arrangeItem(() => [host.id]),
+      pathItem,
       null,
       ...sectionItems(),
       { label: "Remove from This Board", kbd: "⌫", hint: "The board stays in the sidebar", run: deleteSel },
@@ -325,20 +396,59 @@ function cardItems(id: string, x: number, y: number): Item[] {
             run: () => setMarkColor(id, k),
           })),
         },
+        {
+          label: "Weight",
+          sub: HAND_WEIGHTS.map((k) => ({
+            label: k[0].toUpperCase() + k.slice(1),
+            checked: (c.weight ?? "regular") === k,
+            run: () => setMarkWeight(id, k),
+          })),
+        },
+        {
+          label: "Size",
+          sub: (Object.keys(MARK_SIZES) as MarkSize[]).map((k) => ({
+            label: `${k.toUpperCase()} (${MARK_SIZES[k]}px)`,
+            checked: markSizeOf(c) === k,
+            run: () => setMarkSize(id, k),
+          })),
+        },
+        edit,
+        ...tail,
+      ];
+    // Free Text：纯文字，级别（正文、H1–H3）和粗体也在选中时的工具条上；字号拖右下角改
+    if (c.look === "freetext")
+      return [
+        {
+          label: "Level",
+          sub: FREE_TEXT_LEVELS.map((k) => ({
+            label: `${freeTextLevelName(k)} (${FREE_TEXT_FS[k]}px)`,
+            checked: (c.level ?? 0) === k,
+            run: () => setFreeTextLevel(id, k),
+          })),
+        },
+        { label: "Bold", checked: !!c.bold, run: () => setFreeTextBold(id, !c.bold) },
         edit,
         ...tail,
       ];
     // Box 不和别的互转（底色在选中时的工具条上）
     if (c.look === "box") return [drawSvgItem(id), autoFocusItem(id), edit, ...tail];
-    // Text 没有改高度的把手（只拖宽度），所以也没有 Fit Content
-    if (c.look === "text")
+    // Text 的高度一直跟着字：Fit Content 只定宽度（不折行时多宽，太长的照样折）
+    if (c.look === "text") {
+      const n = naturalSize(id)?.w;
       return [
         { label: "Turn into Note", run: () => turnNote(id, "note") },
+        {
+          label: "Fit Content",
+          kbd: kbd("fitContent"),
+          disabled: n && Math.abs(C.fitWidth(c, n) - placeOf(id).w) > 1 ? false : "Already as wide as its content",
+          run: () => fitContent([id]),
+        },
         drawSvgItem(id),
         autoFocusItem(id),
         edit,
         ...tail,
       ];
+    }
     // Note 只定高度（宽度是折行用的，不动）：Fit Content = 回到跟着内容长高
     const fit: Item = {
       label: "Fit Content",
@@ -410,6 +520,8 @@ function cardItems(id: string, x: number, y: number): Item[] {
     ];
   if (c.kind === "image")
     return [
+      { label: "Copy Image", kbd: kbd("copy"), run: () => copyCardsSel() },
+      null,
       ...imageAiItems({ card: id }),
       null,
       { label: "Fit Content", kbd: kbd("fitContent"), run: () => fitContent([id]) },
@@ -452,6 +564,7 @@ function cardItems(id: string, x: number, y: number): Item[] {
       lockItem,
       tiltItem,
       arrangeItem(() => [host.id]),
+      pathItem,
       null,
       ...deleteItems(host.id),
     ];
@@ -554,6 +667,7 @@ function cardItems(id: string, x: number, y: number): Item[] {
         ]),
     { label: "Call Graph", sub: flow },
     ...(col ? [] : [tiltItem, arrangeItem(() => [host.id])]),
+    pathItem,
     null,
     ...(col ? [] : [...sectionItems(), turnItem()]),
     ...deleteItems(host.id),
@@ -616,6 +730,7 @@ function multiItems(): Item[] {
       },
     },
     ...sectionItems(),
+    ...(sel.sections.length ? [sectionColorItem([...sel.sections], "Section Color")] : []),
     turnItem(),
     { label: lockAll ? "Unlock" : "Lock", kbd: kbd("lock"), run: () => toggleLock(sel.cards, sel.sections) },
     {
@@ -631,6 +746,7 @@ function multiItems(): Item[] {
       run: () => void tidyUp(),
     },
     arrangeItem(() => [...sel.cards]),
+    { label: "Copy Paths", run: () => void copyPath([...sel.cards, ...sel.sections]) },
     null,
     { label: "Cut", kbd: kbd("cut"), run: () => cutCardsSel() },
     { label: "Copy", kbd: kbd("copy"), run: () => copyCardsSel() },
@@ -650,6 +766,7 @@ export function canvasMenu(md: Markdown, x: number, y: number) {
   openMenu(
     [
       { label: "New Text", kbd: kbd("newText"), run: () => newText(w) },
+      { label: "New Free Text", run: () => newFreeText(w) },
       { label: "New Note", kbd: kbd("newNote"), run: () => newNote(w) },
       { label: "New Code", run: () => newFreeCode(w) },
       { label: "Add Function…", kbd: kbd("search"), run: () => setPaletteOpen({ mode: "code" }) },
@@ -936,10 +1053,46 @@ const SECTION_COLORS = [
   ["pink", "Light Pink"],
 ] as const;
 
+/** Color ▸ for these Sections: the one checked is the colour all of them have */
+const sectionColorItem = (ids: string[], label = "Color"): Item => ({
+  label,
+  sub: SECTION_COLORS.map(([v, lb]) => ({
+    label: lb,
+    checked: ids.every((i) => (sectionById(i)?.color ?? "none") === v),
+    run: () => setSectionColor(ids, v === "none" ? undefined : v),
+  })),
+});
+
+/** Several Sections selected (and no cards): what applies to all of them at once, each one undo step */
+function multiSectionItems(ids: string[]): Item[] {
+  const ss = ids.map(sectionById).filter((s): s is Section => !!s);
+  const fit = ss.filter((s) => !s.collapsed && !sectionLocked(s) && fitFrame(s));
+  return [
+    {
+      label: "Fit Content",
+      kbd: kbd("fitContent"),
+      disabled: fit.length ? false : "No open, unlocked Section with cards inside",
+      run: () => fitSections(fit.map((s) => s.id)),
+    },
+    {
+      label: ss.every((s) => s.locked) ? "Unlock" : "Lock",
+      kbd: kbd("lock"),
+      run: () => toggleLock([], ids),
+    },
+    sectionColorItem(ids),
+    { label: "Copy Paths", run: () => void copyPath(ids) },
+    null,
+    { label: `Remove ${ss.length} Sections`, hint: "Cards and inner sections stay", run: () => removeSections(ids) },
+  ];
+}
+
 export function sectionMenu(id: string, x: number, y: number) {
   const s = sectionById(id);
   if (!s) return;
   if (!sel.sections.includes(id)) select({ sections: [id] });
+  // several selected: what applies to all of them (with cards too: the menu for several cards, as on a card)
+  if (sel.cards.length) return openMenu(multiItems(), x, y);
+  if (sel.sections.length > 1) return openMenu(multiSectionItems([...sel.sections]), x, y);
   openMenu(
     [
       { label: "Rename", kbd: "Double-click", run: () => setEditing({ kind: "section", id }) },
@@ -965,14 +1118,8 @@ export function sectionMenu(id: string, x: number, y: number) {
             } as Item,
           ]
         : []),
-      {
-        label: "Color",
-        sub: SECTION_COLORS.map(([v, lb]) => ({
-          label: lb,
-          checked: (s.color ?? "none") === v,
-          run: () => setSectionColor(id, v === "none" ? undefined : v),
-        })),
-      },
+      sectionColorItem([id]),
+      { label: "Copy Path", run: () => void copyPath([id]) },
       null,
       { label: "Remove Section", hint: "Cards and inner sections stay", run: () => removeSections([id]) },
     ],

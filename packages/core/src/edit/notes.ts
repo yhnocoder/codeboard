@@ -16,7 +16,9 @@ export function imageIntoNote(b: Board, imageId: string, noteId: string, src: st
     note = b.cards.find((c) => c.id === noteId);
   if (img?.kind !== "image" || note?.kind !== "note") return false;
   const alt = (img.alt ?? "").replace(/[[\]\s]+/g, " ").trim();
-  const block = `![${alt}](${src})${img.desc?.trim() ? `\n\n${img.desc.trim()}` : ""}`;
+  // an animated image keeps its frame and always-play, in the Markdown's attribute block (@yhnocoder/markdown imageattrs.ts)
+  const attrs = [img.frame ? `frame=${img.frame}` : "", img.loop ? "loop=true" : ""].filter(Boolean).join(" ");
+  const block = `![${alt}](${src})${attrs ? `{${attrs}}` : ""}${img.desc?.trim() ? `\n\n${img.desc.trim()}` : ""}`;
   const cut = at === undefined ? note.md.length : Math.max(0, Math.min(at, note.md.length));
   const head = note.md.slice(0, cut).replace(/\s+$/, ""),
     tail = note.md.slice(cut).replace(/\s+$/, "");

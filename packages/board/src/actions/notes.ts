@@ -10,6 +10,9 @@ import {
   type Anchor,
   type BoxFill,
   type HandColor,
+  type HandWeight,
+  type MarkSize,
+  type FreeTextLevel,
 } from "@codeboard/core";
 import * as C from "@codeboard/core/commands";
 import { commandEnv } from "./env";
@@ -18,11 +21,17 @@ import { sel, select, clearSel, lineSel } from "../state/selection";
 import { toast } from "../state/toast";
 import { IS_MAC } from "@yhnocoder/markdown/ui";
 import { editing, liveNoteMd, setEditing } from "../state/ui";
-import { cardsMeasured } from "../state/measure";
+import { cardsMeasured, naturalSize, chromeOf, CODE_MAX } from "../state/measure";
 import { noteImageOf } from "./imagedata";
-import { quietHover } from "../state/camera";
 import { promptText, type Item } from "../ui/Menu";
-import { imageCaption, setImageCaption } from "@yhnocoder/markdown";
+import {
+  imageCaption,
+  setImageCaption,
+  setImagePlayback,
+  setTableCaption,
+  tableCaption,
+  type ImagePlayback,
+} from "@yhnocoder/markdown";
 import { noteImageAt, type ImgRef } from "./imageai";
 import { openPop, closePop, pops, updatePop, pinPop } from "../state/pop";
 import { ask } from "../host";
@@ -37,7 +46,6 @@ import { boardTimer } from "../state/root";
 const hoverT = boardTimer(),
   leaveT = boardTimer();
 export function hoverMarker(el: Element, ids: string[]) {
-  if (quietHover()) return;
   leaveT.stop();
   hoverT.start(() => showNotes(el, ids, false), 120);
   el.addEventListener(
@@ -77,7 +85,8 @@ function showNotes(el: Element, ids: string[], pin: boolean) {
       : "card";
   const id = openPop(
     { kind: "notes", card: n0.at.card, ids, title: `Sidenotes · ${where}`, sel: ids[0] },
-    { el, prefer: "right" },
+    // 标着几行的（行号栏里的标记）：放在那几行下面，不盖住它们；整张卡的（卡头的标记）放在右边
+    { el, prefer: n0.at.lines && el instanceof HTMLElement && el.dataset.last ? "lines" : "right" },
   );
   if (pin) pinPop(id);
 }
@@ -102,12 +111,19 @@ export function addSidenote(n: Omit<Sidenote, "id">, view?: SegView) {
 }
 /** 一次加好几条（一个撤销步骤），返回新 id */
 export const addSidenotes = (list: Omit<Sidenote, "id">[]) => C.addSidenotes(commandEnv, list);
+/** How a code card is measured for keeping it fitted when an Always Show sidenote changes (commands keepFitted): the code area's
+ *  height that shows all its content at its width now */
+const fitMeasure: C.FitMeasure = {
+  measure: (id) => {
+    const n = naturalSize(id, "now");
+    return n?.body === undefined ? null : { h: n.h - chromeOf(id), body: n.body };
+  },
+  codeMax: CODE_MAX,
+};
 /** A Text sidenote's Markdown; written empty it goes */
-export const writeSidenote = (id: string, md: string) => C.writeSidenote(commandEnv, id, md);
-export const toggleAlwaysShow = (id: string) => C.toggleAlwaysShow(commandEnv, id);
-export function deleteSidenote(id: string) {
-  C.deleteItems(commandEnv, { sidenotes: [id] });
-}
+export const writeSidenote = (id: string, md: string) => C.writeSidenote(commandEnv, id, md, fitMeasure);
+export const toggleAlwaysShow = (id: string) => C.toggleAlwaysShow(commandEnv, id, fitMeasure);
+export const deleteSidenote = (id: string) => C.deleteSidenote(commandEnv, id, fitMeasure);
 /** Place on Board：Sidenote 变成卡，放在源卡旁边，自动连一条箭头（从原来挂的那一行连出） */
 export function placeSidenote(id: string) {
   const n = state.board.sidenotes.find((k) => k.id === id);
@@ -166,7 +182,6 @@ export async function showPeek(
   pin = false,
   at?: { path: string; line: number; col: number },
 ) {
-  if (quietHover() && !pin) return;
   const c = cardById(cardId)?.card;
   const s = isCode(c) ? segOf(c, segId) : undefined;
   if (!s) return;
@@ -182,6 +197,10 @@ export async function showPeek(
 
 /** Mark 的颜色（它的箭头跟着变） */
 export const setMarkColor = (id: string, hand: HandColor) => C.setMarkColor(commandEnv, id, hand);
+export const setMarkWeight = (id: string, weight: HandWeight) => C.setMarkWeight(commandEnv, id, weight);
+export const setMarkSize = (id: string, size: MarkSize) => C.setMarkSize(commandEnv, id, size);
+export const setFreeTextLevel = (id: string, level: FreeTextLevel) => C.setFreeTextLevel(commandEnv, id, level);
+export const setFreeTextBold = (id: string, bold: boolean) => C.setFreeTextBold(commandEnv, id, bold);
 export const setBoxFill = (id: string, fill: BoxFill) => C.setBoxFill(commandEnv, id, fill);
 
 export const turnNote = (id: string, look: "note" | "text") => C.turnNote(commandEnv, id, look);
@@ -270,13 +289,56 @@ export function captionItems(ref: ImgRef, el: Element | null): Item[] {
 }
 async function editCaption(card: string, src: string, nth: number, cap: string) {
   const v = await promptText(cap ? "Edit Caption" : "Add Caption", cap, "Figure 1: …", cap ? "Save" : "Add", {
-    text: "Shown under the image, like a figure caption",
+    text: "Shown under the image, like a figure caption; $…$ for math",
   });
   if (v !== null && v !== cap) setCaption(card, src, nth, v);
+}
+/** An animated image's snapshot frame or always-play, into its Note's Markdown ({frame=N loop=true}; md/anim.ts) */
+export function setImagePlaybackIn(card: string, src: string, nth: number, p: ImagePlayback) {
+  const n = cardById(card)?.card;
+  if (n?.kind !== "note" || editing()?.id === card) return;
+  const md = setImagePlayback(n.md, src, nth, p);
+  if (md !== n.md) C.setNoteMarkdown(commandEnv, card, md);
+}
+/** The same for an image card: its frame and loop fields */
+export function setCardPlayback(card: string, p: ImagePlayback) {
+  if (p.loop !== undefined) C.setImageLoop(commandEnv, card, p.loop, p.frame);
+  else if (p.frame !== undefined) C.setImageFrame(commandEnv, card, p.frame);
 }
 function setCaption(card: string, src: string, nth: number, cap: string) {
   // 正在编辑这张 Note：先存下编辑器里的字，再改图注（编辑器里的文档不跟着外面的改动走）
   if (editing()?.kind === "note" && editing()?.id === card) setEditing(null);
   const n = cardById(card)?.card;
   if (n?.kind === "note") C.setNoteMarkdown(commandEnv, card, setImageCaption(n.md, src, nth, cap));
+}
+
+/** 右键落在 Note 里的一张表格上（静态显示或编辑中）：它是这张 Note 的第几张表格（原样写的 HTML 里的表格不算，文档里没有它） */
+export function noteTableAt(t: Element, card: string): number | null {
+  const tb = t.closest("table"),
+    face = tb?.closest(".cface");
+  if (!tb || !face || cardById(card)?.card.kind !== "note" || tb.closest(".md-html")) return null;
+  const i = [...face.querySelectorAll("table")].filter((x) => !x.closest(".md-html")).indexOf(tb);
+  return i < 0 ? null : i;
+}
+/** Note 里一张表格的图注（表格后面的 "Table: …" 一行）：Add Caption… / Edit Caption…、Remove Caption */
+export function tableCaptionItems(card: string, nth: number): Item[] {
+  const c = cardById(card)?.card;
+  if (c?.kind !== "note") return [];
+  const cap = tableCaption(liveNoteMd(card) ?? c.md, nth);
+  if (cap === null) return [];
+  return [
+    { label: cap ? "Edit Caption…" : "Add Caption…", run: () => void editTableCaption(card, nth, cap) },
+    ...(cap ? [{ label: "Remove Caption", run: () => setTableCaptionOf(card, nth, "") } as Item] : []),
+  ];
+}
+async function editTableCaption(card: string, nth: number, cap: string) {
+  const v = await promptText(cap ? "Edit Caption" : "Add Caption", cap, "Table 1: …", cap ? "Save" : "Add", {
+    text: "Shown under the table, like a table caption; $…$ for math",
+  });
+  if (v !== null && v !== cap) setTableCaptionOf(card, nth, v);
+}
+function setTableCaptionOf(card: string, nth: number, cap: string) {
+  if (editing()?.kind === "note" && editing()?.id === card) setEditing(null);
+  const n = cardById(card)?.card;
+  if (n?.kind === "note") C.setNoteMarkdown(commandEnv, card, setTableCaption(n.md, nth, cap));
 }
