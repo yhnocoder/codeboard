@@ -565,7 +565,7 @@ async function once() {
   await h.page.waitForTimeout(1500);
   if (arg("shot", "")) {
     const still = () =>
-      h.page.waitForFunction(() => !document.querySelector(".world")?.matches(".moving, .settle"), null, {
+      h.page.waitForFunction(() => !document.querySelector(".world")?.matches(".moving"), null, {
         timeout: 30000,
       });
     for (const z of [1, 2.5]) {

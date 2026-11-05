@@ -11,6 +11,10 @@ const pct = (xs, p) => {
   const s = [...xs].sort((a, b) => a - b);
   return s[Math.min(s.length - 1, Math.floor((p / 100) * s.length))];
 };
+// rests between the gestures, so a stop's work (the re-raster at the new scale) is in the trace and over before the next gesture
+const SETTLED = 1500;
+const BETWEEN = 800;
+const TAIL = +(process.env.TAIL || 1200);
 const stat = (xs) => ({
   n: xs.length,
   p50: +pct(xs, 50).toFixed(1),
@@ -33,9 +37,9 @@ module.exports = async (page, t) => {
         .then((n) => n >= 30),
     60000,
   );
-  await t.idle(f).catch(() => {});
+  await t.idle(f);
   await t.fit(f);
-  await page.waitForTimeout(3000);
+  await t.hold(SETTLED, "the fit's zoom animation ends and the world is rastered at its scale before the steps start");
   const box = await (await f.frameElement()).boundingBox();
   // an empty spot: center-ish of the frame, away from the toolbar
   const spot = [box.x + box.width * 0.5, box.y + box.height * 0.55];
@@ -80,14 +84,14 @@ module.exports = async (page, t) => {
       await page.mouse.wheel(0, delta(i));
       await page.keyboard.up("Control");
       await raf();
-      if (rest) await page.waitForTimeout(rest);
+      if (rest) await t.hold(rest, "the camera stops after each step: the stop's work is what this step measures");
       cams.push(
         await f.evaluate(
           () => `${document.querySelector(".world")?.style.transform} ${document.querySelector(".board")?.className}`,
         ),
       );
     }
-    await page.waitForTimeout(+(process.env.TAIL || 1200));
+    await t.hold(TAIL, "the camera stops after the last step: its re-raster belongs to the gesture");
     const gaps = await f.evaluate(() => {
       cancelAnimationFrame(window.__raf);
       return window.__gaps.slice(1);
@@ -159,15 +163,15 @@ module.exports = async (page, t) => {
       await page.keyboard.up("Control");
       await raf();
     }
-    await page.waitForTimeout(1500);
+    await t.hold(SETTLED, "at rest at the card level before zooming out");
     const out = await gesture("out", n, () => d);
-    await page.waitForTimeout(800);
+    await t.hold(BETWEEN, "at rest at the minimum zoom before zooming back in");
     if (r === 0) await page.screenshot({ path: path.join(OUT, "out.png") });
     const back = await gesture("in", n / 2, () => -d);
-    await page.waitForTimeout(800);
+    await t.hold(BETWEEN, "at rest at the card level before the fit");
     if (r === 0) await page.screenshot({ path: path.join(OUT, "in.png") });
     await t.fit(f);
-    await page.waitForTimeout(1500);
+    await t.hold(SETTLED, "the fit's zoom animation ends before the next run");
     await page.mouse.move(spot[0], spot[1]);
     runs.push({ out, in: back });
   }
