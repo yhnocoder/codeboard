@@ -275,6 +275,9 @@ export const wireSectionEasing = () =>
   );
 /** 渲染用：这个 Section 的框画在哪：拖卡时正缓动的框在半路上，别的就是 frames() 里的框。框和标签都按它画 */
 export const shownFrame = (id: string) => shownOf(id)[0]() ?? frames().get(id);
+/** The frame halfway through its easing while a card is dragged (above), undefined when it is not easing: canvas/Sections.tsx
+ *  then scales the laid-out frame to it instead of laying it out again each frame */
+export const easedFrame = (id: string) => shownOf(id)[0]();
 
 function overlapArea(a: Rect, b: Rect): number {
   const w = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x),

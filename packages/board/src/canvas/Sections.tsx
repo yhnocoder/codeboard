@@ -6,6 +6,7 @@ import { state } from "../state/store";
 import { sel } from "../state/selection";
 import {
   shownFrame,
+  easedFrame,
   depthOf,
   hiddenByAncestor,
   allMembers,
@@ -16,6 +17,7 @@ import {
 } from "../state/sections";
 import { foldOf, foldAt, frameAt, toTitle, fadeAt, goneAt, shutLook, lerp } from "../state/fold";
 import { observeResize } from "../state/measure";
+import { cam } from "../state/camera";
 import { shape } from "../state/look";
 import { brushFrame, titleWidth, setTitleWidth } from "../state/inkframe";
 import { Editable } from "../ui/Editable";
@@ -26,6 +28,13 @@ import { SECTION_PEEK_OUT } from "../state/timing";
 
 /** a resize handle on each side and each corner of an open frame (styles.css .sedge) */
 const FRAME_EDGES: FrameEdge[] = ["n", "s", "e", "w", "nw", "ne", "sw", "se"];
+/** The least reach of a frame's look past its edges and corners (the selection and drop rings, Poster's outline), for the
+ *  scaled frame while it eases: the corner radius counts when it is bigger */
+const SCALE_REACH = 8;
+/** Ink Wash's brush strokes: they reach FRAME_M (12 px, state/inkframe.ts) past the frame and are a few px thick */
+const BRUSH_REACH = 18;
+const sameRect = (a?: Rect, b?: Rect) =>
+  a === b || (!!a && !!b && a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h);
 const ordered = () => state.board.sections.filter((s) => !hiddenByAncestor(s)).sort((a, b) => depthOf(a) - depthOf(b));
 
 export function SectionFrames() {
@@ -37,20 +46,66 @@ export function SectionFrames() {
           const r = createMemo(() => shownFrame(s.id));
           // 折叠、展开的动画（state/fold.ts）：框跟着弹簧缩放（圆角也跟着变），子 Section 的框朝标题收。每帧只写这几项
           let rad: [number, number] | null = null;
+          // While a dragged card makes the frame ease (state/sections.ts easedFrame) the frame is not laid out again each frame:
+          // a frame with rounded corners that changes size is painted and rastered again whole (a big Section's layer: ~18 ms a
+          // step, the most expensive part of a drag). It stays laid out at `base`, a layer of its own (will-change), and a
+          // transform scales that to the eased rect, as long as the scale moves nothing of the frame's look (its corners, rings,
+          // brush strokes: `reach` px) by more than half a device pixel; past that it is laid out at the eased rect again.
+          // When the easing ends it is laid out where it stopped. The rect laid out is also what Ink Wash's brush strokes follow
+          const [laid, setLaid] = createSignal<Rect | undefined>(undefined, { equals: sameRect });
+          let base: Rect | null = null,
+            reach = 0;
           const place = (e: HTMLDivElement) =>
             createRenderEffect(() => {
               const f = foldOf(s.id),
+                k = foldAt(s.id),
                 q = f ? frameAt(f) : r(),
                 st = e.style;
               if (!q) return;
+              const eased = f || k ? undefined : easedFrame(s.id);
+              if (!eased) base = null;
+              else if (!base) {
+                reach = Math.max(
+                  untrack(shape).sect === "brush" ? BRUSH_REACH : SCALE_REACH,
+                  parseFloat(getComputedStyle(e).borderTopLeftRadius) || 0,
+                );
+                base = eased;
+              } else {
+                const off = Math.max(Math.abs(eased.w / base.w - 1), Math.abs(eased.h / base.h - 1)),
+                  z = untrack(() => cam.z) * devicePixelRatio;
+                if (off * reach * z > 0.5) base = eased;
+              }
+              const L = base ?? q;
               // 没变的不写（同样的值再写一遍也会重算样式）：折叠时左上角不动
-              const set = (k: "left" | "top" | "width" | "height" | "borderRadius", v: string) => {
-                if (st[k] !== v) st[k] = v;
+              const set = (
+                key:
+                  | "left"
+                  | "top"
+                  | "width"
+                  | "height"
+                  | "borderRadius"
+                  | "transform"
+                  | "transformOrigin"
+                  | "willChange",
+                v: string,
+              ) => {
+                if (st[key] !== v) st[key] = v;
               };
-              set("left", `${q.x}px`);
-              set("top", `${q.y}px`);
-              set("width", `${q.w}px`);
-              set("height", `${q.h}px`);
+              set("left", `${L.x}px`);
+              set("top", `${L.y}px`);
+              set("width", `${L.w}px`);
+              set("height", `${L.h}px`);
+              setLaid(L);
+              if (base && eased) {
+                set("willChange", "transform");
+                set("transformOrigin", "0 0");
+                set(
+                  "transform",
+                  sameRect(base, eased)
+                    ? "none"
+                    : `matrix(${eased.w / base.w}, 0, 0, ${eased.h / base.h}, ${eased.x - base.x}, ${eased.y - base.y})`,
+                );
+              } else for (const p of ["will-change", "transform-origin", "transform"]) st.removeProperty(p);
               // 圆角：展开的框和折叠的框（.shut）各自的圆角之间变过去，动画完了交给 CSS（停在同一个值上）
               if (f && !rad) {
                 const shut = e.classList.contains("shut"),
@@ -66,7 +121,6 @@ export function SectionFrames() {
                 rad = null;
                 st.removeProperty("border-radius");
               }
-              const k = foldAt(s.id);
               if (k && q && goneAt(k)) {
                 if (st.opacity !== "0") st.opacity = "0";
               } else if (k && q) {
@@ -90,7 +144,7 @@ export function SectionFrames() {
                 data-sect={s.id}
               >
                 <Show when={shape().sect === "brush"}>
-                  <BrushFrame s={s} r={r} />
+                  <BrushFrame s={s} laid={laid} />
                 </Show>
                 <Show when={!s.collapsed}>
                   <For each={FRAME_EDGES}>
@@ -116,10 +170,10 @@ export function SectionFrames() {
 
 /** Ink Wash's frame: four dry brush strokes (state/inkframe.ts), following the frame through folding as the frame does, with a
  *  gap in the top stroke for the title while it shows open (its colour is CSS: themes.css .sbrush) */
-function BrushFrame(p: { s: Section; r: () => Rect | undefined }) {
+function BrushFrame(p: { s: Section; laid: () => Rect | undefined }) {
   const img = createMemo(() => {
     const f = foldOf(p.s.id),
-      q = f ? frameAt(f) : p.r();
+      q = p.laid();
     if (!q) return;
     const open = f ? !shutLook(f) : !p.s.collapsed;
     return brushFrame(q.w, q.h, p.s.id, open ? Math.max(40, titleWidth(p.s.id)) : 0);
