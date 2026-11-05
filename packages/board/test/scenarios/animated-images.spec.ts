@@ -358,7 +358,11 @@ const CARD = '.card[data-id="i1"] .imgb';
 const imageCard = (h: Host) => h.board().cards.find((c) => c.id === "i1") as ImageCard;
 
 test("animImageCardFilmstrip", async () => {
-  const { h, exported } = await openAnim(cardBoard({ src: GIF_FILE, frame: 6 }));
+  // a far Note makes the board big enough to zoom out below 50%: on a small board the zoom floor is 50% (core summaryMinZoom),
+  // where the filmstrip still shows
+  const b0 = cardBoard({ src: GIF_FILE, frame: 6 });
+  put(b0, { id: "far", kind: "note", md: "Far away", look: "note" } as NoteCard, 3000, 2000, 200);
+  const { h, exported } = await openAnim(b0);
   const pg = h.page;
   const a = await until(h, "the card's GIF is drawn", async () => {
     const s = await gifShown(h, CARD);
@@ -445,7 +449,14 @@ test("animImageCardFilmstrip", async () => {
   await pg.locator(".xdlg .seg button", { hasText: "HTML Snapshot" }).click();
   await pg.locator(".xdlg .seg button", { hasText: "Whole Board" }).click();
   await pg.locator(".xdlg button.def").click();
-  const html = (await until(h, "the snapshot is written", exported, 20000).catch(() => "")) ?? "";
+  // the whole file: read while the host is still writing it, it is cut short
+  const html =
+    (await until(
+      h,
+      "the snapshot is written",
+      () => (exported()?.trimEnd().endsWith("</html>") ? exported() : null),
+      20000,
+    ).catch(() => exported() ?? "")) ?? "";
   const imgs = html.match(/<img\b[^>]*>/g) ?? [];
   check(
     "anim-card-export-plain-img",
