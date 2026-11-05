@@ -3,7 +3,7 @@
 // renderer main thread's tasks from a trace (frame p95 / p99, the longest task of each step with STEPS=1, what was in each long task).
 // The workspace holds the one board to measure (E2E_WS; Open Board opens the first board):
 //   E2E_WS=/path/to/ws E2E_FLOW=extensions/vscode/test/zoom-perf.cjs E2E_TMP=/tmp/zoom-perf npm run e2e
-// RUNS=<n> (2) gestures, TAIL=<ms> (1200) traced after the last step, TRACE_OUT=1 keeps the raw traces (TRACE_CATS=cc,viz adds categories); results in test-out/<theme>/zoom-perf/
+// RUNS=<n> (2) gestures, TAIL=<ms> (1200) traced after the last step, TRACE_OUT=1 keeps the raw traces (TRACE_CATS=cc,viz adds categories); PERF_CSS=<rules> injects styles to try a change; results in test-out/<theme>/zoom-perf/
 const fs = require("node:fs");
 const path = require("node:path");
 const pct = (xs, p) => {
@@ -38,6 +38,8 @@ module.exports = async (page, t) => {
     60000,
   );
   await t.idle(f);
+  // PERF_CSS=<rules>: style rules injected into the board before the gesture, to try a change without a build
+  if (process.env.PERF_CSS) await f.addStyleTag({ content: process.env.PERF_CSS });
   await t.fit(f);
   await t.hold(SETTLED, "the fit's zoom animation ends and the world is rastered at its scale before the steps start");
   const box = await (await f.frameElement()).boundingBox();
