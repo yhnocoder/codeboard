@@ -258,8 +258,9 @@ export type HostToBoard =
       crumbs?: Crumb[];
       walk?: WalkHop;
       welcome?: { days: number; open: number };
-      /** The board's images that have copies (by assets/ file name), so they show the right one from the first frame */
-      images?: Record<string, ImageCopies>;
+      /** The board's assets/ PNGs and JPEGs (by file name; null: none, not a still one) with their copies, so each shows the
+       *  right one from its first frame */
+      images?: Record<string, ImageCopies | null>;
     }
   | { type: "views"; views: Record<string, SegView> }
   | { type: "stale"; stale: Record<string, Stale> }

@@ -13,7 +13,6 @@ import {
   type Event,
   type HostInfo,
   type HostToBoard,
-  type ImageCopies,
   type Segment,
   type Settings,
   type Skeleton,
@@ -224,8 +223,7 @@ export class BoardPanel {
     this.readonly = readonly;
     const host = this.host();
     const init: HostToBoard = { type: "init", board: b, boards, views, stale: {}, host };
-    const known = Object.entries(images).filter((e): e is [string, ImageCopies] => !!e[1]);
-    if (known.length) init.images = Object.fromEntries(known);
+    if (Object.keys(images).length) init.images = images;
     if (this.crumbs.length) init.crumbs = this.crumbs;
     // 进出子白板不算「回来」
     if (!this.crumbs.length && !next.walk) {
