@@ -208,13 +208,12 @@ export function CardView(p: { card: Card }) {
       s.opacity = pi!.slide ? "" : String(Math.min(1, pi!.v * 1.8));
       s.transition = "none";
     });
-  // 毛边宣纸（look.ts 的 paper，Ink Wash）：卡的 ::before 画一张按这张卡的尺寸画的纸（state/ink.ts，同尺寸的卡共用一张）。
-  // 只在尺寸（取整后）、明暗变了时换图；没有卡框的（Text、Box、Mark、无背景）不画
+  // 毛边宣纸（look.ts 的 paper，Ink Wash）：卡的 ::before 用九宫格画一张纸（state/ink.ts，按卡的 id 挑几种毛边之一）。
+  // 和卡的尺寸无关：卡变高（编辑时）不换图；只在明暗变了时换。没有卡框的（Text、Box、Mark、无背景）不画
   const paper = createMemo(() => {
     const k = c();
     if (shape().paper !== "deckle" || (k.kind === "note" && k.look !== "note") || act.noBg(k)) return "";
-    const r = rectOf(k);
-    return paperOf(r.w, r.h, k.id, inkDark());
+    return paperOf(k.id, inkDark());
   });
   const paperStyle = (e: HTMLDivElement) =>
     createRenderEffect(() => {

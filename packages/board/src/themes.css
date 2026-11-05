@@ -3070,7 +3070,8 @@
   inset: -14px;
   border-radius: 0;
   box-shadow: none;
-  background: var(--deckle) 0 0 / 100% 100% no-repeat;
+  /* nine-slice (state/ink.ts PAPER_SLICE): the same image at every card size, corners as drawn, edges and middle tiled */
+  border-image: var(--deckle) 30 fill / 30px round;
 }
 /* 拿起来时纸下面的阴影重一点 */
 :root.look-ink-wash .card.lift:not(.text):not(.nobg) {
