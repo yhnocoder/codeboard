@@ -1589,7 +1589,27 @@ test("noteBoldStaysBoldInSource", async () => {
       h,
       "the bold shows its markers",
       async () => (await pg.locator(`.card[data-id="${id}"] .md-pm .md-mk:not(.md-hide)`).count()) > 0,
-    );
+    ).catch(async (e) => {
+      // Say which way it failed: the editor closed, the keys went elsewhere (focus), or the caret is outside every bold
+      const at = await pg.evaluate((id) => {
+        const d = (n: Element | null) =>
+          n ? `${n.tagName.toLowerCase()}.${String(n.className).trim().replace(/\s+/g, ".")}`.slice(0, 60) : null;
+        const s = getSelection();
+        const node = s?.anchorNode
+          ? s.anchorNode.nodeType === 1
+            ? (s.anchorNode as Element)
+            : s.anchorNode.parentElement
+          : null;
+        return {
+          editors: document.querySelectorAll(`.card[data-id="${id}"] .md-pm`).length,
+          active: d(document.activeElement),
+          focus: document.hasFocus(),
+          caret: { at: d(node), offset: s?.anchorOffset, collapsed: s?.isCollapsed, inBold: !!node?.closest("strong") },
+          marks: document.querySelectorAll(`.card[data-id="${id}"] .md-pm .md-mk`).length,
+        };
+      }, id);
+      throw new Error(`${(e as Error).message}; editor: ${JSON.stringify(at)}`);
+    });
     await idle(h);
   };
   /** 显出来的记号，和第一个到最后一个记号之间看得见的字：是不是都是粗体、斜体的是哪些 */
