@@ -28,6 +28,8 @@ One-time setup for the stores: create the Marketplace publisher `yhnocoder`; add
 
 To debug the extension, open this repository in VS Code, press `F5` and pick **CodeBoard：在 nano-vllm 上调试插件**. A new window opens with the extension installed and `examples/nano-vllm` loaded.
 
+On macOS the tests run too (CI runs only Linux): install the browser once with `npx playwright-core install chromium` (used when `/opt/pw-browsers/chromium` is not there); `npm run e2e` opens a real window of `/Applications/Visual Studio Code.app` (no xvfb). Scenarios and e2e steps write shortcuts as `ControlOrMeta+…` and caret keys the PC way (`Home`, `Control+End`); on a Mac `tools/test/mac-keys.mjs` turns those into ⌘← / ⌘↓ and the like.
+
 A script that needs a browser launches it with `launch()` from `tools/test/chromium.mjs` (the repo's `playwright-core` with the browser CI or the cloud image provides), not with a bare `require("playwright")`, whose pinned browser revision the cloud image may not have.
 
 Test tiers, time budgets and how scenarios are selected are described in [TESTING.md](TESTING.md).

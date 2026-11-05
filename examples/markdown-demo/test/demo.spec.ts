@@ -6,6 +6,8 @@ const shot = (name: string) =>
   path.join(path.dirname(new URL(import.meta.url).pathname), "../../../test-out/markdown-demo", `${name}.png`);
 
 test("markdownDemo", async ({ page }) => {
+  // a Mac's line ends are ⌘← ⌘→ (Home and End only scroll there)
+  const [home, end] = process.platform === "darwin" ? ["Meta+ArrowLeft", "Meta+ArrowRight"] : ["Home", "End"];
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(String(e)));
   // every script the page fetches, with its body: the editor chunk is the one with the editor's own class names in it
@@ -64,13 +66,13 @@ test("markdownDemo", async ({ page }) => {
   expect(await editorChunks(), "the editor chunk came with the first click").toHaveLength(1);
 
   // the selection bar, drawn with the page's .md-bar / .md-btn styles
-  await page.keyboard.press("Shift+Home");
+  await page.keyboard.press(`Shift+${home}`);
   const bubble = page.locator(".md-bubble.md-bar");
   await expect(bubble).toBeVisible();
   await expect(bubble.locator(".md-btn").first()).toBeVisible();
   expect(await bubble.evaluate((e) => getComputedStyle(e).borderRadius), "the page's .md-bar style").toBe("10px");
   await page.screenshot({ path: shot("editing-light") });
-  await page.keyboard.press("End");
+  await page.keyboard.press(end);
   await expect(bubble).toHaveCount(0);
 
   // / menu → Code Block: the code goes into CodeMirror, Esc in it ends the whole edit
