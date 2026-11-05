@@ -93,7 +93,11 @@ test("noteImageCaption", async () => {
 
   // add
   const items = await menu(h, "Add Caption…");
-  check("noteImageCaption the image menu offers Add Caption", items[0] === "Add Caption…", items);
+  check(
+    "noteImageCaption the image menu offers Add Caption",
+    items[0] === "Copy Image" && items[1] === "Add Caption…",
+    items,
+  );
   await prompt(h, 'Figure 4.9: a warp at an "if-else"');
   await until(h, "the caption is saved", () => md(h).includes("Figure 4.9"));
   check(
@@ -149,7 +153,7 @@ test("noteImageCaption", async () => {
   const items2 = await menu(h, "Edit Caption…");
   check(
     "noteImageCaption Edit Caption and Remove Caption once it has one",
-    items2[0] === "Edit Caption…" && items2[1] === "Remove Caption",
+    items2[0] === "Copy Image" && items2[1] === "Edit Caption…" && items2[2] === "Remove Caption",
     items2,
   );
   const v = await pg.locator(".dialog input").inputValue();

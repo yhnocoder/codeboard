@@ -1,14 +1,17 @@
 // Board Marks (core seal.ts) on the real host: a Note's [[refs]] to cards on other boards show the target board's Mark instead of
 // its name; one in another book (top-level board) puts that book's Mark first, as the left half of one box; a ref to a book itself
 // is only its Mark. Edit Mark… (a ref's menu, the board's More menu) changes a Mark, and every ref follows.
+//  textCardRefSeal  — refs in a Text card draw the same seal as in a Note (size, shape, the surface colour on the seal; the Text
+//                     card's own .tx rules reached the seal's inner text: dark text on a box 1.4em tall, #140), Ink Wash and Warm Ink
+//  boardMarksMuted  — the eight seal colours are muted (low saturation, #139) and the text on them stays legible, light and dark
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { emptyBoard, type Board, type NoteCard } from "@codeboard/core";
 import { shot, OUT, type Host } from "../harness";
 import { test, check, until, idle, hostBoards, light } from "../fixtures";
 
-const note = (b: Board, id: string, md: string, x: number, y: number, w = 420) => {
-  b.cards.push({ id, kind: "note", md, look: "note" } satisfies NoteCard);
+const note = (b: Board, id: string, md: string, x: number, y: number, w = 420, look: "note" | "text" = "note") => {
+  b.cards.push({ id, kind: "note", md, look } satisfies NoteCard);
   b.place[id] = { x, y, w };
 };
 const frame = (b: Board, sub: string, x: number, y: number) => {
@@ -45,6 +48,7 @@ function books() {
   note(mh, "mh1", "## Cache 的组织方式\n组相联、行大小、替换策略", 0, 0);
   note(comp, "cp0", "## Warp 控制流分歧\n同一个 warp 里的线程走不同的分支", 40, 360, 360);
   note(comp, "cp1", NOTE, 40, 40, 620);
+  note(comp, "tx1", NOTE, 700, 40, 380, "text");
   comp.cam = { x: 40, y: 40, z: 1 };
   return [comp, pmpp, conv, mem, csapp, mh];
 }
@@ -213,6 +217,122 @@ test("boardMarksScreenshots", async () => {
         width: Math.max(box.x + box.width, pop.x + pop.width) + 24 - x,
         height: Math.max(box.y + box.height, pop.y + pop.height) + 24 - y,
       },
+    });
+    await h.page.context().close();
+  }
+});
+
+/** A seal's box and the look of its text, relative to the ref's font size */
+async function sealBox(h: Host, card: string, label: string) {
+  return h.page.locator(`.card[data-id="${card}"] .md-ref[data-ref="${label}"] > .md-seal`).evaluate((s) => {
+    const r = s.getBoundingClientRect(),
+      t = s.firstElementChild as HTMLElement,
+      fs = parseFloat(getComputedStyle(s.parentElement!).fontSize),
+      cs = getComputedStyle(s);
+    return {
+      h: +(r.height / fs).toFixed(2),
+      textH: +(t.getBoundingClientRect().height / fs).toFixed(2),
+      radius: cs.borderRadius,
+      color: getComputedStyle(t).color,
+      onSeal: cs.color,
+      bg: cs.backgroundColor,
+    };
+  });
+}
+
+test("textCardRefSeal", async () => {
+  const dir = path.join(OUT, "board-marks");
+  fs.mkdirSync(dir, { recursive: true });
+  for (const theme of ["ink-wash", "warm-ink"]) {
+    const { h } = await setup({ light: true, scale: 2, theme });
+    const label = "Convolution › tiled 二维卷积";
+    const inNote = await sealBox(h, "cp1", label),
+      inText = await sealBox(h, "tx1", label);
+    check(
+      "textCardRefSeal",
+      inText.h === inNote.h &&
+        inText.textH === inNote.textH &&
+        inText.radius === inNote.radius &&
+        inText.color === inText.onSeal &&
+        inText.color === inNote.color &&
+        inText.bg === inNote.bg,
+      { theme, inNote, inText },
+    );
+    // one light underline: the ref's own, the same as in a Note
+    const line = (card: string) =>
+      h.page
+        .locator(`.card[data-id="${card}"] .md-ref[data-ref="${label}"]`)
+        .evaluate((r) => [getComputedStyle(r).boxShadow, getComputedStyle(r).textDecorationLine]);
+    const ln = await line("cp1"),
+      lt = await line("tx1");
+    check("textCardRefLine", JSON.stringify(ln) === JSON.stringify(lt), { theme, ln, lt });
+    const box = (await h.page.locator('.card[data-id="tx1"]').boundingBox())!;
+    await h.page.screenshot({
+      path: path.join(dir, `text-refs-${theme}.png`),
+      clip: { x: box.x - 16, y: box.y - 16, width: box.width + 32, height: box.height + 32 },
+    });
+    await h.page.context().close();
+  }
+});
+
+const COLORS = ["vermilion", "amber", "olive", "teal", "ink", "plum", "rose", "graphite"];
+/** HSL saturation and WCAG contrast of an sRGB colour */
+const rgbOf = (c: string) => {
+  const m = c.match(/\d+(\.\d+)?/g)!.map(Number);
+  return [m[0], m[1], m[2]].map((v) => v / 255);
+};
+const satOf = (c: string) => {
+  const [r, g, b] = rgbOf(c),
+    mx = Math.max(r, g, b),
+    mn = Math.min(r, g, b),
+    l = (mx + mn) / 2;
+  return mx === mn ? 0 : (mx - mn) / (1 - Math.abs(2 * l - 1));
+};
+const lumOf = (c: string) => {
+  const [r, g, b] = rgbOf(c).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+};
+const contrast = (a: string, b: string) => {
+  const [x, y] = [lumOf(a), lumOf(b)].sort((p, q) => p - q);
+  return (y + 0.05) / (x + 0.05);
+};
+
+test("boardMarksMuted", async () => {
+  for (const theme of ["warm-ink", "ink-wash"])
+    for (const lt of [true, false]) {
+      const { h } = await setup({ light: lt, theme });
+      // each colour on a seal as the refs draw it: its background, and the text colour on it
+      const seen = await h.page.evaluate((colors) => {
+        const host = document.querySelector('.card[data-id="cp1"] .nbody')!;
+        return colors.map((c) => {
+          const s = document.createElement("span");
+          s.className = "md-seal";
+          s.style.setProperty("--md-seal", `var(--seal-${c})`);
+          s.textContent = "X";
+          host.append(s);
+          const cs = getComputedStyle(s),
+            out = { c, bg: cs.backgroundColor, ink: cs.color };
+          s.remove();
+          return out;
+        });
+      }, COLORS);
+      const rows = seen.map((x) => ({ ...x, sat: +satOf(x.bg).toFixed(2), cr: +contrast(x.bg, x.ink).toFixed(2) }));
+      check(
+        "boardMarksMuted",
+        rows.every((x) => x.sat <= 0.4 && x.cr >= 4.5),
+        { theme, light: lt, rows },
+      );
+      await h.page.context().close();
+    }
+  // the refs in Warm Ink and Ink Wash, light, 2×
+  const dir = path.join(OUT, "board-marks");
+  fs.mkdirSync(dir, { recursive: true });
+  for (const theme of ["warm-ink", "ink-wash"]) {
+    const { h } = await setup({ light: true, scale: 2, theme });
+    const box = (await h.page.locator('.card[data-id="cp1"]').boundingBox())!;
+    await h.page.screenshot({
+      path: path.join(dir, `muted-${theme}.png`),
+      clip: { x: box.x - 16, y: box.y - 16, width: box.width + 32, height: box.height + 32 },
     });
     await h.page.context().close();
   }

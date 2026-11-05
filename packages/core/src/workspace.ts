@@ -176,6 +176,8 @@ export interface WorkspaceUi {
   openFolder(abs: string): Promise<void>;
   revealInOS(abs: string): Promise<void>;
   copy(text: string): Promise<void>;
+  /** Put a PNG on the OS clipboard of the machine the user sits at; false when the editor can't (then the caller copies text) */
+  copyImage?(png: Uint8Array): Promise<boolean>;
   clipboard(): Promise<string>;
   /** Whether ⌘Z in the editor can now undo the cards just added to a board (codeboard.undoAdd). Once on, the editor turns it
    *  off by itself when the user types, moves the cursor or switches editors there */

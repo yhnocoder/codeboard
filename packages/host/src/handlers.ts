@@ -129,7 +129,7 @@ export function makeHandler(cx: HostContext, panels: BoardHost, mediaDir: string
     log: (_p, m) => cx.log(m.level, m.text),
     openBoard: (_p, m) => openOnBoard(cx, panels, m.id, m.card, m.line, m.sticker),
     copyCards: async (p, m) => {
-      panels.clip = { board: p.id, cards: m.cards, text: m.text };
+      panels.clip = { board: p.id, cards: m.cards, text: m.text, pic: m.pic };
       // 别的窗口（别的项目）也能贴：记进全局存储目录
       const recorded = recordClip(cx, store.dir(), panels.clip).catch((e) =>
         cx.log("warn", `copyCards: ${e instanceof Error ? e.message : e}`),
@@ -141,7 +141,7 @@ export function makeHandler(cx: HostContext, panels: BoardHost, mediaDir: string
       await recorded;
     },
     pasteCards: async (p, m) => {
-      const o = { text: m.text, copy: !!m.copy };
+      const o = { text: m.text, pic: m.pic, copy: !!m.copy };
       // 这个窗口的剪贴板对不上：看是不是别的窗口复制的卡
       const r = (await pasteClip(store, panels.clip, p.id, o)) ?? (await pasteFar(cx, store, p.id, o));
       if (!r) return null;
@@ -169,6 +169,14 @@ export function makeHandler(cx: HostContext, panels: BoardHost, mediaDir: string
     permalinks: (_p, m) => permalinks(cx, m.segs),
     exportFile: (_p, m) => exportFile(cx, store, mediaDir, m.kind, m.name, m.text),
     copyText: (_p, m) => cx.ws.ui.copy(m.text),
+    copyImage: async (_p, m) => {
+      cx.log("warn", `copy image: the board could not write the clipboard (${m.why}), the editor writes it`);
+      const png = /^data:image\/png;base64,/.test(m.png)
+        ? Buffer.from(m.png.slice(m.png.indexOf(",") + 1), "base64")
+        : null;
+      const done = png && (await cx.ws.ui.copyImage?.(png).catch((e) => (cx.log("warn", `copy image: ${e}`), false)));
+      if (!done) await cx.ws.ui.copy(m.text);
+    },
     copyPath: (p, m) => copyPaths(cx, store, p.id, m.items),
     imageAi: (p, m) => imageAiJob(cx, p.imageJobs, m.job, m.op),
     imageAiCancel: (p, m) => {

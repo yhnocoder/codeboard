@@ -33,6 +33,29 @@ describe("brushLine", () => {
     expect(Math.max(...p.map((q) => q[1]))).toBeGreaterThan(190);
     expect(Math.max(...p.map((q) => q[0]))).toBeLessThan(117);
   });
+  it("turns round corners with both sides of the outline, however long the line (#135)", () => {
+    // the sharpest turn between neighbouring outline points along one side
+    const sharpest = (d: string) => {
+      const p = pts(brushLine(d, 1).d),
+        m = p.length / 2;
+      let worst = 0;
+      for (const side of [p.slice(0, m), p.slice(m).reverse()])
+        for (let i = 1; i < side.length - 1; i++) {
+          const [a, b, c] = [side[i - 1], side[i], side[i + 1]];
+          if (Math.hypot(b[0] - a[0], b[1] - a[1]) < 0.3 || Math.hypot(c[0] - b[0], c[1] - b[1]) < 0.3) continue;
+          let t = Math.abs(Math.atan2(c[1] - b[1], c[0] - b[0]) - Math.atan2(b[1] - a[1], b[0] - a[0]));
+          if (t > Math.PI) t = 2 * Math.PI - t;
+          worst = Math.max(worst, (t * 180) / Math.PI);
+        }
+      return worst;
+    };
+    expect(sharpest("M0 0 L800 0 Q814 0 814 14 L814 600")).toBeLessThan(25);
+    expect(
+      sharpest(
+        "M380 100 L392 100 Q404 100 404 112 L404 362 Q404 376 390 376 L190 376 Q176 376 176 390 L176 408 Q176 420 188 420 L200 420",
+      ),
+    ).toBeLessThan(25);
+  });
   it("draws three dry-brush hairlines only on lines long enough", () => {
     expect(brushLine(D, 0).fb.match(/M/g)).toHaveLength(3);
     expect(brushLine("M0 0 L40 0", 0).fb).toBe("");

@@ -545,7 +545,7 @@ math {
   color: var(--surface);
   background: var(--md-seal);
 }
-.md-seal .tx {
+.md-seal-t {
   display: block;
   /* 只留大写字母顶到基线这一段：框按它居中，上下的空一样大（不同字体的行框上下留白不同，按行框居中会偏）；略往下一点，看着才正 */
   text-box: trim-both cap alphabetic;

@@ -33,7 +33,7 @@ const SIZE_STEP = 4;
 const PAPER_SEEDS = 4;
 
 /** Seeded random numbers in [0, 1) (mulberry32) */
-function rng(seed: number) {
+export function rng(seed: number) {
   let a = (seed * 2654435761) >>> 0;
   return () => {
     a = (a + 0x6d2b79f5) >>> 0;

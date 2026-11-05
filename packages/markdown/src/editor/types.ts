@@ -4,7 +4,7 @@ import type { MdLayout } from "../layout";
 import type { StaticTextRange } from "../selmap";
 import type { MdClasses } from "../ui/classes";
 import type { CodeLang } from "./codelang";
-import type { SaveImage } from "./image";
+import type { CopyImage, KnownImage, SaveImage } from "./image";
 
 export type MdEditorOpts = {
   value: string;
@@ -33,6 +33,13 @@ export type MdEditorOpts = {
   /** 存图（粘贴、拖进来、/Image）：回写进 Markdown 的地址，null = 不插（存不了，用的一方自己提示）；不给就把 data: 地址原样写进去 */
   saveImage?: SaveImage;
   pickImage?: () => Promise<string | null>;
+  /** ⌘C on an image (the caret in its source, or just its source selected): the caller puts the picture itself on the clipboard
+   *  (image/png for other apps; the copy event is cancelled, so no text goes with it). Not given: the Markdown is copied as
+   *  text, as any selection */
+  copyImage?: CopyImage;
+  /** A pasted or dropped picture: the Markdown to insert instead of saving it when the caller knows it (the image it put on the
+   *  clipboard with copyImage), null to save it as usual */
+  knownImage?: KnownImage;
   openLink?: (url: string) => void;
   /** 灰字补全（宿主没有就不给） */
   complete?: (before: string, after: string) => Promise<string | null>;

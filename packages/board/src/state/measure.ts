@@ -102,6 +102,16 @@ function laidOutAt<T>(body: HTMLElement, w: number | undefined, read: () => T): 
     body.scrollTop = scrollTop;
   }
 }
+/** Text 卡不折行时多宽：卡排成 max-content 量一次再放回。offsetWidth 取整可能少了零点几像素，多给 1 免得最长那行又折下去 */
+function textWidth(el: HTMLElement): number {
+  const w = el.style.width;
+  el.style.width = "max-content";
+  try {
+    return el.offsetWidth + 1;
+  } finally {
+    el.style.width = w;
+  }
+}
 /** 卡片内容刚好装下的宽高；minH = 头部 + 一行。代码卡的高默认按适配后的宽度量（Fit Content）；now：按现在的宽度（拖大小时） */
 export function naturalSize(
   id: string,
@@ -194,6 +204,7 @@ export function naturalSize(
   const nb = el.querySelector<HTMLElement>(":scope > .cface > .nbody, :scope > .cface > .tx");
   if (nb)
     return {
+      w: f?.card.kind === "note" && f.card.look === "text" ? textWidth(el) : undefined,
       h: Math.ceil(nb.offsetTop + nb.scrollHeight + parseFloat(getComputedStyle(el).paddingBottom) + el.clientTop),
       minH: head + 30,
     };

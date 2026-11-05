@@ -1,15 +1,14 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="900" height="540" viewBox="0 0 900 540" preserveAspectRatio="xMidYMax slice">
 <defs>
-<filter id="w" x="-10%" y="-30%" width="120%" height="160%"><feTurbulence type="fractalNoise" baseFrequency=".012 .05" numOctaves="3" seed="7"/><feDisplacementMap in="SourceGraphic" scale="12"/><feGaussianBlur stdDeviation="1.2"/></filter>
 <linearGradient id="l1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e9e5da" stop-opacity="0.055"/><stop offset=".55" stop-color="#e9e5da" stop-opacity="0.019"/><stop offset="1" stop-color="#e9e5da" stop-opacity="0"/></linearGradient>
 <linearGradient id="l2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e9e5da" stop-opacity="0.099"/><stop offset=".55" stop-color="#e9e5da" stop-opacity="0.035"/><stop offset="1" stop-color="#e9e5da" stop-opacity="0"/></linearGradient>
 <linearGradient id="l3" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e9e5da" stop-opacity="0.187"/><stop offset=".55" stop-color="#e9e5da" stop-opacity="0.065"/><stop offset="1" stop-color="#e9e5da" stop-opacity="0"/></linearGradient>
 <linearGradient id="l4" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e9e5da" stop-opacity="0.303"/><stop offset=".55" stop-color="#e9e5da" stop-opacity="0.106"/><stop offset="1" stop-color="#e9e5da" stop-opacity="0"/></linearGradient>
 </defs>
-<g filter="url(#w)">
-<path fill="url(#l1)" d="M260 330C330 300 380 250 430 262C470 272 500 236 540 214C590 186 620 230 660 222C720 210 760 160 800 150C840 140 880 176 920 168V540H260Z"/>
-<path fill="url(#l2)" d="M380 400C430 380 470 330 520 338C560 344 590 300 640 290C700 278 730 320 780 300C830 280 870 250 920 262V540H380Z"/>
-<path fill="url(#l3)" d="M560 470C600 448 640 400 690 404C730 408 760 372 800 360C850 346 880 380 920 372V540H560Z"/>
+<g>
+<path fill="url(#l1)" d="M150 540C190 470 213 350 260 330C330 300 380 250 430 262C470 272 500 236 540 214C590 186 620 230 660 222C720 210 760 160 800 150C840 140 880 176 920 168V540Z"/>
+<path fill="url(#l2)" d="M290 540C320 470 330 420 380 400C430 380 470 330 520 338C560 344 590 300 640 290C700 278 730 320 780 300C830 280 870 250 920 262V540Z"/>
+<path fill="url(#l3)" d="M500 540C515 505 520 492 560 470C600 448 640 400 690 404C730 408 760 372 800 360C850 346 880 380 920 372V540Z"/>
 <path fill="url(#l4)" d="M700 540C730 512 760 484 800 482C840 480 870 452 920 446V540Z"/>
 <path fill="url(#l2)" d="M-20 520C40 500 90 476 140 486C180 494 210 470 250 474C290 478 320 500 360 540H-20Z"/>
 </g>

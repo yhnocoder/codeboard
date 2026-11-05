@@ -13,6 +13,14 @@
 //                            has no seal and no lift (#128)
 //  inkWashPaperFillsCard   — the paper reaches all four edges of cards whose rounded size has another aspect ratio (#112: it was
 //                            shrunk to fit and centred, its torn edge inside the card, off the shadow and header wash)
+//  inkWashBackgroundNoStreaks — the mountains behind the board are plain gradient shapes, no SVG filter: the filter was worked out at
+//                            the image's own 900×540 and scaled up, so its near-transparent gradients broke into horizontal streaks
+//                            and its anisotropic turbulence smeared them into text-like blots (#136); light and dark, screenshots
+//  inkWashTitleNoSeal      — the board's name in the top left has no seal after it (#138)
+//  inkWashSectionBrushFrame — a Section's frame is four dry brush strokes (one filled path, no border), the title written in
+//                            running script in the gap of the top stroke; selected = strokes and title vermilion; the frame is
+//                            the same path every time it is drawn and follows a resize by drag; nested Sections too; light and
+//                            dark, with screenshots; Warm Ink keeps its border and title (#137)
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { shot, symCard, findSym, put, OUT } from "../harness";
@@ -533,4 +541,215 @@ test("inkWashMotions", async () => {
       ),
     res,
   );
+});
+
+test("inkWashBackgroundNoStreaks", async () => {
+  for (const lt of [true, false]) {
+    const h = await open({ board: board(), light: lt, w: 1400, h: 900, scale: 2, settings: ink });
+    await idle(h);
+    const scene = await h.page.evaluate(async () => {
+      const bg = getComputedStyle(document.querySelector(".board")!).backgroundImage,
+        url = bg.match(/url\("([^"]+)"\)/)?.[1] ?? "";
+      // the build inlines the scene as a data URI
+      if (url.startsWith("data:image/svg+xml,")) return { bg: bg.slice(0, 80), svg: decodeURIComponent(url.slice(19)) };
+      return { bg, svg: url ? await (await fetch(url)).text() : "" };
+    });
+    check(
+      "inkWashBackgroundNoStreaks",
+      scene.svg.includes("<path") && !/<filter|feTurbulence|feDisplacementMap|feGaussianBlur/.test(scene.svg),
+      { light: lt, bg: scene.bg, svg: scene.svg.slice(0, 600) },
+    );
+    const name = `ink-wash-scene-${lt ? "light" : "dark"}`;
+    await shot(h, name);
+    keep(name);
+    await h.page.context().close();
+  }
+});
+
+test("inkWashTitleNoSeal", async () => {
+  const h = await open({ board: board(), light: true, w: 1300, h: 820, scale: 2, settings: ink });
+  await idle(h);
+  const mast = await h.page.evaluate(() => {
+    const m = document.querySelector(".mast")!;
+    return { name: m.textContent, after: getComputedStyle(m, "::after").content };
+  });
+  check("inkWashTitleNoSeal", mast.name === "nano-vllm · 推理一步" && mast.after === "none", mast);
+  const box = (await h.page.locator(".mast").boundingBox())!;
+  await h.page.screenshot({
+    path: path.join(OUT, "ink-wash-title.png"),
+    clip: { x: 0, y: 0, width: Math.min(1300, box.x + box.width + 120), height: box.y + box.height + 30 },
+  });
+  await h.page.context().close();
+});
+
+/** Three Sections, one nested in another, plus a long English title, for the brush frame */
+function sectionBoard(): Board {
+  const b = board();
+  const [step, sch, run] = b.cards;
+  b.sections.push({ id: "S1", title: "推理一步", x: 40, y: 100, w: 600, h: 640 });
+  b.sections.push({ id: "S2", title: "Scheduler and KV cache allocation", x: 730, y: 70, w: 540, h: 800 });
+  b.sections.push({ id: "S3", title: "模型执行", parent: "S2", x: 745, y: 540, w: 510, h: 300 });
+  b.place[step.id].section = "S1";
+  b.place.n1.section = "S1";
+  b.place[sch.id].section = "S2";
+  b.place[run.id].section = "S3";
+  b.place[step.id].y = 180;
+  b.place.n1.y = 510;
+  b.place[sch.id].y = 140;
+  b.place[run.id].y = 620;
+  return b;
+}
+
+/** Each Section's frame and title: the brush image (its path, colour), the border, and where the title sits on the top stroke */
+const sectionLooks = (h: Host) =>
+  h.page.evaluate(() =>
+    [...document.querySelectorAll<HTMLElement>(".sect[data-sect]")].map((e) => {
+      const id = e.dataset.sect!,
+        l = document.querySelector<HTMLElement>(`.slabel[data-sect="${id}"]`)!,
+        nm = l.querySelector<HTMLElement>(".sname")!,
+        svg = e.querySelector<SVGSVGElement>("svg.sbrush"),
+        path = svg?.querySelector<SVGPathElement>("path"),
+        fr = e.getBoundingClientRect(),
+        lr = l.getBoundingClientRect(),
+        z = fr.width / e.offsetWidth,
+        cs = getComputedStyle(e),
+        ls = getComputedStyle(l);
+      // the top stroke, in the image's own units (it is drawn 12 px outside the frame): ink across the title, ink right of it
+      let across = 0,
+        right = 0,
+        cols = 0;
+      if (path && svg) {
+        const p = svg.createSVGPoint(),
+          inkAt = (x: number) => {
+            for (let y = 6; y <= 18; y += 0.5) {
+              p.x = x;
+              p.y = y;
+              if (path.isPointInFill(p)) return true;
+            }
+            return false;
+          },
+          x0 = 13 + (lr.left - fr.left) / z,
+          x1 = x0 + lr.width / z;
+        for (let x = x0 + 2; x < x1 - 2; x += 2) across += +inkAt(x);
+        for (let x = x1 + 24; x < 12 + e.offsetWidth - 20; x += 4, cols++) right += +inkAt(x);
+      }
+      return {
+        id,
+        sel: e.classList.contains("sel"),
+        brush: !!path && /^M[\d.\s-]/.test(path.getAttribute("d") ?? "") && /Z$/.test(path.getAttribute("d") ?? ""),
+        subpaths: (path?.getAttribute("d") ?? "").split("M").length - 1,
+        d: path?.getAttribute("d") ?? "",
+        fill: path ? getComputedStyle(path).fill : "",
+        fillOpacity: path ? getComputedStyle(path).fillOpacity : "",
+        filter: svg ? getComputedStyle(svg).filter : "",
+        transition: svg ? getComputedStyle(svg).transitionDuration : "",
+        border: cs.borderTopColor,
+        borderWidth: cs.borderTopWidth,
+        across,
+        right: cols ? right / cols : 0,
+        family: ls.fontFamily,
+        size: ls.fontSize,
+        color: ls.color,
+        // the title's middle against the top stroke, and its left against the frame's (screen px at zoom 1)
+        mid: Math.round((lr.top + lr.height / 2 - fr.top) / z),
+        left: Math.round((lr.left - fr.left) / z),
+        clipped: nm.scrollWidth > nm.clientWidth + 1,
+        font: document.fonts.check(`25px "Zhi Mang Xing"`, nm.textContent ?? ""),
+        within: lr.right <= fr.right + 1,
+      };
+    }),
+  );
+
+test("inkWashSectionBrushFrame", async () => {
+  const res: Record<string, unknown> = {};
+  let ok = true;
+  for (const lt of [true, false]) {
+    const h = await open({ board: sectionBoard(), light: lt, w: 1320, h: 960, scale: 2, settings: ink });
+    await idle(h);
+    await until(h, "the titles' running script is loaded", () =>
+      h.page.evaluate(() => document.fonts.check('25px "Zhi Mang Xing"', "推理一步 Scheduler")),
+    );
+    await idle(h);
+    const before = await sectionLooks(h);
+    // select S1 by its title: strokes and title turn vermilion
+    await h.page.locator('.slabel[data-sect="S1"] .sname').click();
+    await h.page.locator('.sect.sel[data-sect="S1"]').waitFor();
+    await idle(h);
+    const name = `ink-wash-sections-${lt ? "light" : "dark"}`;
+    await shot(h, name);
+    keep(name);
+    const sel = await sectionLooks(h);
+    // deselect: the same path as before (drawn once per size and Section, the same every time)
+    await h.page.keyboard.press("Escape");
+    await until(h, "deselected", async () => !(await h.page.locator(".sect.sel").count()));
+    await idle(h);
+    const again = await sectionLooks(h);
+    const ink0 = lt ? "rgb(29, 28, 26)" : "rgb(233, 229, 218)",
+      zhu = lt ? "rgb(184, 50, 31)" : "rgb(214, 83, 58)";
+    const one =
+      before.length === 3 &&
+      before.every(
+        (x) =>
+          x.brush &&
+          x.subpaths >= 5 &&
+          x.fill === ink0 &&
+          x.fillOpacity === "0.72" &&
+          x.filter === "none" &&
+          x.transition.split(",")[0] === "0.18s" &&
+          x.border === "rgba(0, 0, 0, 0)" &&
+          x.across === 0 &&
+          x.right > 0.75 &&
+          /^"?Zhi Mang Xing"?/.test(x.family) &&
+          x.size === "25px" &&
+          Math.abs(x.mid) <= 3 &&
+          x.left >= 22 &&
+          x.left <= 28 &&
+          x.font &&
+          x.within,
+      ) &&
+      sel.every((x) =>
+        x.id === "S1" ? x.sel && x.fill === zhu && x.color === zhu : !x.sel && x.fill === ink0 && x.color !== zhu,
+      ) &&
+      again.every((x, i) => x.d === before[i].d && x.fill === ink0);
+    ok &&= one;
+    res[lt ? "light" : "dark"] = {
+      one,
+      before: before.map(({ d, ...x }) => ({ ...x, d: d.length })),
+      sel: sel.map((x) => [x.id, x.fill, x.color]),
+    };
+    if (lt) {
+      // resize S1 by its right edge: the frame follows the drag, and the left stroke (its texture keyed by distance) stays as it was
+      const e = await h.page.locator('.sect[data-sect="S1"] .sedge[data-edge="e"]').boundingBox();
+      const d0 = before.find((x) => x.id === "S1")!.d;
+      await h.page.mouse.move(e!.x + e!.width / 2, e!.y + e!.height / 2);
+      await h.page.mouse.down();
+      for (let i = 1; i <= 10; i++) await h.page.mouse.move(e!.x + e!.width / 2 + i * 8, e!.y + e!.height / 2);
+      const mid = await sectionLooks(h);
+      await h.page.mouse.up();
+      await idle(h);
+      const d1 = mid.find((x) => x.id === "S1")!.d;
+      // the left stroke (and the stub left of the title): the subpaths that lie wholly within 20 px of the image's left edge
+      const lefts = (d: string) =>
+        d.split("M").filter(
+          (p) =>
+            p &&
+            p
+              .split(/[LZ]/)
+              .filter(Boolean)
+              .every((q) => Number.parseFloat(q) < 20),
+        );
+      const resize = { changed: d1 !== d0, leftSame: JSON.stringify(lefts(d1)) === JSON.stringify(lefts(d0)) };
+      ok &&= resize.changed && resize.leftSame && lefts(d0).length > 0;
+      res.resize = resize;
+    }
+    await h.page.context().close();
+  }
+  // Warm Ink: its own border and title, no brush
+  const w = await open({ board: sectionBoard(), light: true, w: 1320, h: 960 });
+  await idle(w);
+  const warm = await sectionLooks(w);
+  await w.page.context().close();
+  res.warm = warm.map(({ d, ...x }) => x);
+  ok &&= warm.every((x) => !x.brush && x.border !== "rgba(0, 0, 0, 0)" && !/Zhi Mang Xing/.test(x.family));
+  check("inkWashSectionBrushFrame", ok, res);
 });

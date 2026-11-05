@@ -1117,3 +1117,108 @@ test("arrowTargetAim", async () => {
     await close(h);
   }
 });
+
+/** Two Notes for an arrow between pinned sides (Ink Wash, 2× for the screenshot) */
+async function pinnedArrow(
+  name: string,
+  a: { x: number; y: number; w: number },
+  b: { x: number; y: number; w: number },
+  sides: Link["sides"],
+) {
+  const bd = emptyBoard("b1", name);
+  bd.cards.push({ id: "na", kind: "note", look: "note", md: "## 起点\n\n从右边出去" } as NoteCard);
+  bd.cards.push({ id: "nb", kind: "note", look: "note", md: "## Note\n\n箭头指到这张卡" } as NoteCard);
+  bd.place.na = a;
+  bd.place.nb = b;
+  bd.links.push({ id: "L1", from: { card: "na" }, to: { card: "nb" }, sides });
+  bd.cam = { x: 0, y: 0, z: 1 };
+  const h = await open({ board: bd, light: true, w: 1100, h: 700, scale: 2, settings: { theme: "ink-wash" } as never });
+  await h.page.locator(`g.link[data-lk="L1"] path.lhit`).waitFor({ state: "attached" });
+  await idle(h);
+  return h;
+}
+
+/**
+ * One end pinned to a side at right angles to the other's (#134: from a card's right side to the bottom of a card above and to
+ * the right). The end's control handle was as long as the whole distance allowed, longer than the height between the two ends:
+ * the curve dipped below its start and rose back into the end in a steep hook. Now it stays between its two ends
+ */
+test("arrowCurveNoHook", async () => {
+  const h = await pinnedArrow(
+    "nohook",
+    { x: 80, y: 230, w: 300 },
+    { x: 420, y: 60, w: 760 },
+    { from: "right", to: "bottom" },
+  );
+  await shot(h, "arrow-curve-nohook-inkwash");
+  const r = await h.page.evaluate(() => {
+    const path = document.querySelector(`g.link[data-lk="L1"] path.lhit`) as SVGPathElement,
+      len = path.getTotalLength();
+    const pts = Array.from({ length: 121 }, (_, i) => path.getPointAtLength((len * i) / 120));
+    const s = pts[0],
+      e = pts[120];
+    const ys = pts.map((q) => q.y),
+      xs = pts.map((q) => q.x);
+    return {
+      d: path.getAttribute("d"),
+      sides: path.closest("g.link")?.getAttribute("data-sides"),
+      start: [s.x, s.y],
+      end: [e.x, e.y],
+      // how far the curve runs past the box of its two ends
+      below: Math.max(...ys) - Math.max(s.y, e.y),
+      above: Math.min(s.y, e.y) - Math.min(...ys),
+      right: Math.max(...xs) - Math.max(s.x, e.x),
+      left: Math.min(s.x, e.x) - Math.min(...xs),
+    };
+  });
+  await close(h);
+  check("arrowCurveNoHook the arrow keeps its pinned sides", r.sides === "right|bottom", r);
+  check(
+    "arrowCurveNoHook the curve stays between its two ends (no dip below the start, no hook past the end)",
+    Math.max(r.below, r.above, r.right, r.left) <= 1,
+    r,
+  );
+});
+
+/**
+ * Ink Wash draws arrows as brush strokes (brushLine). A routed arrow's corners are rounded, but the brush sampled the path every
+ * L/7 px (at most 80 points) with each sample's own segment as its direction: on a long arrow the corner fell between two
+ * samples and came out as a short chamfer with a kink (#135). Now both sides of the stroke turn through the corner in small steps
+ */
+test("inkWashElbowCornerRound", async () => {
+  const h = await pinnedArrow(
+    "brushcorner",
+    { x: 60, y: 60, w: 600 },
+    { x: 160, y: 240, w: 860 },
+    { from: "right", to: "left" },
+  );
+  await shot(h, "inkwash-elbow-corner");
+  const r = await h.page.evaluate(() => {
+    const route = document.querySelector(`g.link[data-lk="L1"] path.lhit`)!.getAttribute("d") ?? "";
+    const d = document.querySelector(`g.link[data-lk="L1"] path[class^="brush"]`)?.getAttribute("d") ?? "";
+    const n = d
+      .replace(/A[^Z]*Z/, "")
+      .match(/-?\d+(\.\d+)?/g)!
+      .map(Number);
+    const p: [number, number][] = [];
+    for (let i = 0; i < n.length; i += 2) p.push([n[i], n[i + 1]]);
+    const m = p.length / 2;
+    let worst = 0;
+    for (const side of [p.slice(0, m), p.slice(m).reverse()])
+      for (let i = 1; i < side.length - 1; i++) {
+        const [a, b, c] = [side[i - 1], side[i], side[i + 1]];
+        if (Math.hypot(b[0] - a[0], b[1] - a[1]) < 0.3 || Math.hypot(c[0] - b[0], c[1] - b[1]) < 0.3) continue;
+        let t = Math.abs(Math.atan2(c[1] - b[1], c[0] - b[0]) - Math.atan2(b[1] - a[1], b[0] - a[0]));
+        if (t > Math.PI) t = 2 * Math.PI - t;
+        worst = Math.max(worst, (t * 180) / Math.PI);
+      }
+    return { route, corners: (route.match(/Q/g) ?? []).length, points: m, worst: Math.round(worst) };
+  });
+  await close(h);
+  check("inkWashElbowCornerRound the arrow is routed around the cards with rounded corners", r.corners >= 2, r);
+  check(
+    "inkWashElbowCornerRound both sides of the brush stroke turn through every corner in small steps",
+    r.worst < 25,
+    r,
+  );
+});

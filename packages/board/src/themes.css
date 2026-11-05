@@ -3005,7 +3005,8 @@
 }
 
 /* 层峦是白板背景（不跟着画布平移缩放，镜头动时不重画）：远山淡、近山浓，每层山脊处墨最重、往下化进雾里，左半留白给卡片。
-   滤镜都在 SVG 里，只在换主题、改窗口大小时栅格化一次。
+   SVG 里只有渐变填的路径，没有滤镜（#136）：滤镜按图的原尺寸（900×540）算，再放大几倍铺满窗口，几乎透明的渐变在 8 位里一阶一阶地断，
+   成了一道道横纹（预乘 alpha 取整还带出红绿的色偏）；feTurbulence 竖向频率高、横向低，把山的渐变和左边竖直的山脚错开成横向的碎墨，像抹花的字。
    别的几张小图（卡的毛边宣纸、选中的朱笔四角、调用下的五种朱笔、工具条那一笔淡墨）由 state/ink.ts 画一次，挂成变量（--deckle 在卡上，其余在根上） */
 :root.look-ink-wash {
   --kw-w: 600;
@@ -3452,12 +3453,71 @@
   font: 400 30px / 1.2 var(--serif);
   letter-spacing: 0.02em;
 }
+/* Sections (#137): no border or tray; the frame is four dry brush strokes (state/inkframe.ts, an SVG in the frame,
+   canvas/Sections.tsx), its colour the SVG's currentColor. The title is written in running script (Zhi Mang Xing,
+   fonts-zhimangxing.css) in the gap the top stroke leaves for it, its middle on the stroke; it ellipsizes before the frame's
+   right corner. Collapsed: the title back inside the small frame, which has no gap. Selected: strokes and title vermilion */
 :root.look-ink-wash .sect {
+  --sect-fill: transparent;
+  --sect-sh: none;
+  border-color: transparent;
   border-radius: 2px;
 }
+:root.look-ink-wash .sect.sel,
+:root.look-ink-wash .sect.drop {
+  border-color: transparent;
+  box-shadow: none;
+}
+/* the image reaches FRAME_M (12 px) outside the frame, measured from its border box: the frame's 1 px border is inside that */
+:root.look-ink-wash .sbrush {
+  position: absolute;
+  left: -13px;
+  top: -13px;
+  overflow: visible;
+  pointer-events: none;
+  color: var(--ink);
+  fill: currentColor;
+  fill-opacity: 0.72;
+  transition:
+    color 0.18s var(--out),
+    fill-opacity 0.18s var(--out);
+}
+:root.look-ink-wash .sect.sel .sbrush {
+  color: var(--zhu);
+  fill-opacity: 0.85;
+}
 :root.look-ink-wash .slabel {
-  font: italic 400 13px / 20px var(--serif);
+  --ml: 24px;
+  --mt: -17px;
+  max-width: max(60px, calc(var(--sw, 100vw) - 64px));
+  padding: 0 2px 0 0;
   border-radius: 2px;
+  font:
+    400 25px / 32px "Zhi Mang Xing",
+    "Xingkai SC",
+    STXingkai,
+    var(--serif);
+  letter-spacing: 0.01em;
+  color: var(--ink);
+  transition: color 0.18s var(--out);
+}
+:root.look-ink-wash .slabel.sel {
+  color: var(--zhu);
+}
+:root.look-ink-wash .slabel.collapsed,
+:root.look-ink-wash .slabel:has(.sname.editing) {
+  max-width: none;
+}
+:root.look-ink-wash .slabel.collapsed {
+  --ml: 14px;
+  --mt: 4px;
+}
+:root.look-ink-wash .slabel .sname:not(.editing) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+:root.look-ink-wash .slabel .scount {
+  font: italic 400 13px / 32px var(--serif);
 }
 :root.look-ink-wash .pill,
 :root.look-ink-wash .ctx,
@@ -3701,7 +3761,7 @@
 :root.look-ink-wash .tip {
   border-radius: 2px;
 }
-/* 白板名：左上角一行大字，后面一枚朱文小印 */
+/* 白板名：左上角一行大字（后面不盖印，#138） */
 :root.look-ink-wash .mast {
   display: flex;
   position: absolute;
@@ -3720,27 +3780,6 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-:root.look-ink-wash .mast::after {
-  content: "墨";
-  flex: none;
-  display: grid;
-  place-items: center;
-  height: 26px;
-  min-width: 22px;
-  padding: 0 4px;
-  border-radius: 2px;
-  color: var(--zhu);
-  font:
-    700 13px / 1 "Noto Serif SC",
-    "Songti SC",
-    var(--serif);
-  box-shadow: inset 0 0 0 1.4px var(--zhu);
-  rotate: 3deg;
-  -webkit-mask: var(--seal-mask);
-  -webkit-mask-composite: source-in;
-  mask: var(--seal-mask);
-  mask-composite: intersect;
 }
 
 /* 界面字体只给浮在白板上的部件和卡头用（--ui），不换 --sys：白板里大量文字换成网页字体后，Chromium 在缩放分档切换时会把每张卡的行号栏提成合成层 */
