@@ -246,7 +246,28 @@ async function command(page, text, prompt) {
     throw new Error(`no command "${text}" in the command palette`);
   }
   if (!prompt) {
-    await qiClosed(page, `the command palette (after "${text}")`);
+    await qiClosed(page, `the command palette (after "${text}")`).catch(async (e) => {
+      // Say why it stayed: the Enter or click went elsewhere (where the keyboard is, the quick input's events), or it took the
+      // wrong row (what it shows now)
+      const st = await page
+        .evaluate(() => {
+          const d = (e) =>
+            e ? `${e.tagName.toLowerCase()}.${String(e.className).trim().replace(/\s+/g, ".")}`.slice(0, 60) : null;
+          const rows = [...document.querySelectorAll(".quick-input-widget .monaco-list-row")];
+          return {
+            value: document.querySelector(".quick-input-widget .quick-input-box input")?.value,
+            rows: rows
+              .slice(0, 4)
+              .map((r) => `${r.classList.contains("focused") ? "*" : ""}${r.getAttribute("aria-label")}`),
+            active: d(document.activeElement),
+            focus: document.hasFocus(),
+          };
+        })
+        .catch(() => ({}));
+      throw new Error(
+        `${e.message}: ${JSON.stringify({ ...st, events: await qiSince(page, mark).catch(() => []), handBack: await handBack(page).catch(() => "?") })}`,
+      );
+    });
     return keyboardSettled(page);
   }
   await until(
