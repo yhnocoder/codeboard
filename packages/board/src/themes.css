@@ -78,8 +78,8 @@
     opacity calc(var(--t) * 240ms) var(--out),
     filter calc(var(--t) * 240ms);
 }
-/* 卡头下面平时没有线；代码往下滚了才在 160ms 里淡出一条细线，回到顶上再淡掉（CodeBody.tsx 的 .hdl，只在跨过顶的那一下换 class） */
-:root.look-warm-ink .chead {
+/* 卡头下面平时没有线；代码往下滚了才在 160ms 里淡出一条细线，回到顶上再淡掉（CodeBody.tsx 的 .hdl，只在跨过顶的那一下换 class）；只管代码卡，Note、Web、Compare 的卡头线照旧 */
+:root.look-warm-ink .card.ccard .chead {
   border-bottom-color: transparent;
 }
 :root.look-warm-ink .hdl {
