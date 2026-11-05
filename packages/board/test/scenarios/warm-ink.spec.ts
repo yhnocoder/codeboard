@@ -129,6 +129,8 @@ const probe = (h: Host) =>
       },
       links,
       headLine: cs(head).borderBottomColor,
+      // only code cards trade the header line for the scrolled one; a Note keeps its line
+      noteLine: cs(document.querySelector(".card.note .chead")!).borderBottomColor,
       hdl: document.querySelectorAll(".card.ccard .hdl").length,
       bar: { frost: cs(bar).backdropFilter, bg: cs(bar).backgroundColor, sh: cs(bar).boxShadow },
       dock: { frost: cs(dock).backdropFilter },
@@ -215,6 +217,7 @@ test("warmInkLook", async () => {
       r.links.length === 2 &&
       r.links.every((l) => l.taper && l.edge === "none" && /\bdart\b/.test(l.head) && l.headFill !== "none") &&
       r.headLine === "rgba(0, 0, 0, 0)" &&
+      r.noteLine !== "rgba(0, 0, 0, 0)" &&
       r.hdl === 3 &&
       before.on === 0 &&
       before.opacity === "0" &&

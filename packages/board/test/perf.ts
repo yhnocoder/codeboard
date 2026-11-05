@@ -1,6 +1,6 @@
 // Usage: node packages/board/test/run-perf.mjs [--cards 240] [--notes 200] (a board of Notes with realistic Markdown: open, pan, zoom, enter edit, type) [--runs 3] [--json out.json] [--quick] [--theme ink-wash] [--light] [--traffic] (City: green light, cars driving) [--profile <step>] [--trace <step>] [--steps <step>] [--long <step>] [--stop pinch] [--inval <step>] [--anim] [--persona] [--scale 2] (--persona: a board like a real study board, Chinese Notes dense with math and Image cards of big screenshots, through the real host: load, pan, zoom, pinch, zoomOutIn, dragImage / dragNote / dragCode; --anim: the line and corner stickers are animated GIFs from a sticker pack; --inval counts what invalidated style and layout; --stop pinch: end each run after the camera steps; --long breaks down each dropped frame, LONG_OVER=8.3 each frame over that many ms; --steps prints each step's time, the board's classes and camera)
 // Each scenario reports wall clock (action → next frame painted), main-thread busy time (CDP TaskDuration) and frame times
-// (frameP95 / frameMax / over16 / over8: main-thread task durations; the 60 fps budget is 16.7 ms, 120 fps 8.3 ms).
+// (frameP95 / frameMax / over16 / over8: main-thread task durations, frameMedian for steps that wait; the 60 fps budget is 16.7 ms, 120 fps 8.3 ms).
 import * as fs from "node:fs";
 import { ready, openBoard, launch, symCard, files, REPO, type Host } from "./harness";
 import {
@@ -235,7 +235,7 @@ async function busy(cdp: CDPSession) {
   const { metrics } = await cdp.send("Performance.getMetrics");
   return (metrics.find((m) => m.name === "TaskDuration")?.value ?? 0) * 1000;
 }
-/** Run n steps, each one action followed by waiting for it to paint; perStep: also each step's frame (sum's frameP95 is then over the steps) */
+/** Run n steps, each one action followed by waiting for it to paint; perStep: also each step's frame (sum then reports frameMedian over the steps) */
 async function steps(
   h: Host,
   cdp: CDPSession,
@@ -441,17 +441,20 @@ const p95 = (a: number[]) => {
 };
 /**
  * Frames: main-thread task durations (>1 ms); frameMax over 16.7 means a dropped frame, over16 counts such tasks (over8: over 8.3 ms, a dropped frame at 120 fps). frameP95 is the 95th
- * percentile of all the tasks, or after steps(..., perStep) (frameOf "step") of each step's frame, its longest task: for steps that wait, where
- * the waits' own frames outnumber the steps' (hover: 12 steps that wait 250–500 ms each for the cross-fades, ~125 tasks of which the
- * 6 lifts are 5%, so p95 fell on either side of them by how many fade frames the runner drew: 12.7 → 19.6 ms, same code)
+ * percentile of all the tasks. After steps(..., perStep) (frameOf "stepMedian") it is frameMedian instead, the median of each step's frame (its longest task), with
+ * the frames themselves in stepFrames: for steps that wait, where the waits' own frames outnumber the steps' (hover: 12 steps that wait 250–500 ms each for the
+ * cross-fades, ~125 tasks of which the 6 lifts are 5%, so a p95 over all tasks fell on either side of them by how many fade frames the runner drew: 12.7 → 19.6 ms,
+ * same code). A p95 over 12 steps is their longest one, which one stray task decides: 18.9–37.2 ms in four runs of the same commit, a 1.60x hover "regression"
+ * in the regular run on e1a08d9. The median moves only when the lifts and drops themselves get slower: 16.5–18.6 ms in six runs.
  */
 const sum = (m: M) => ({
   median: +med(m.wall).toFixed(1),
   p95: +p95(m.wall).toFixed(1),
   busyPerStep: +(m.busy / m.wall.length).toFixed(2),
   ...m.parts,
-  ...(m.frames ? { frameOf: "step" } : {}),
-  frameP95: +p95(m.frames ?? (m.tasks?.length ? m.tasks : [0])).toFixed(1),
+  ...(m.frames
+    ? { frameOf: "stepMedian", frameMedian: +med(m.frames).toFixed(1), stepFrames: m.frames.map((f) => +f.toFixed(1)) }
+    : { frameP95: +p95(m.tasks?.length ? m.tasks : [0]).toFixed(1) }),
   frameMax: +Math.max(0, ...(m.tasks ?? [])).toFixed(1),
   over16: (m.tasks ?? []).filter((t) => t > 16.7).length,
   over8: (m.tasks ?? []).filter((t) => t > 8.3).length,

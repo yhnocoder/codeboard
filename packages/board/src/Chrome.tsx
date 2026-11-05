@@ -1,4 +1,4 @@
-import { Show, For, createMemo, createEffect } from "solid-js";
+import { Show, For, createMemo, createEffect, createSignal } from "solid-js";
 import { state } from "./state/store";
 import { canUndo, canRedo, undo, redo } from "./state/changes";
 import * as C from "@codeboard/core/commands";
@@ -146,9 +146,13 @@ function Toolbar() {
   const active = createMemo(() =>
     modeIs("draw") ? "section" : modeIs("connect") ? "arrowLink" : modeIs("place") ? "sticker" : null,
   );
-  let bar!: HTMLDivElement, pill: HTMLSpanElement | undefined;
-  // 底只动 clip-path（裁成那个按钮的大小，themes.css 里过渡）；从没有到有时直接裁到那个按钮再淡入。只在换工具时量一次按钮
+  let bar!: HTMLDivElement;
+  const [pillEl, setPillEl] = createSignal<HTMLSpanElement>();
+  // 底只动 clip-path（裁成那个按钮的大小，themes.css 里过渡）；从没有到有时直接裁到那个按钮再淡入。
+  // 只在换工具、工具栏折起或展开（按钮挪了位置）、底刚出现（换成 Warm Ink）时量一次按钮
   createEffect(() => {
+    narrow();
+    const pill = pillEl();
     const b = active() ? bar.querySelector<HTMLElement>(`.tbtn[data-on]`) : null;
     if (!pill) return;
     if (!b) return pill.classList.remove("on");
@@ -276,7 +280,7 @@ function Toolbar() {
           <Zoom />
         </Show>
         <Show when={shape().glide}>
-          <span ref={pill} class="tpill" aria-hidden="true" />
+          <span ref={setPillEl} class="tpill" aria-hidden="true" />
         </Show>
       </div>
     </div>
