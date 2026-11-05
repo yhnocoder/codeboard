@@ -3,7 +3,7 @@
 // renderer main thread's tasks from a trace (frame p95 / p99, the longest task of each step with STEPS=1, what was in each long task).
 // The workspace holds the one board to measure (E2E_WS; Open Board opens the first board):
 //   E2E_WS=/path/to/ws E2E_FLOW=extensions/vscode/test/zoom-perf.cjs E2E_TMP=/tmp/zoom-perf npm run e2e
-// RUNS=<n> (2) gestures, TAIL=<ms> (1200) traced after the last step, TRACE_OUT=1 keeps the raw traces (TRACE_CATS=cc,viz adds categories); PERF_CSS=<rules> injects styles to try a change; LAYERS=1 lists the compositor layers at the end; results in test-out/<theme>/zoom-perf/
+// RUNS=<n> (2) gestures, TAIL=<ms> (1200) traced after the last step, TRACE_OUT=1 keeps the raw traces (TRACE_CATS=cc,viz adds categories); PERF_CSS=<rules> injects styles to try a change; LAYERS=1 lists the compositor layers at the end; ZLOG=1 records the board's zoom log over the first run; results in test-out/<theme>/zoom-perf/
 const fs = require("node:fs");
 const path = require("node:path");
 const pct = (xs, p) => {
@@ -174,6 +174,13 @@ module.exports = async (page, t) => {
     for (const l of long) console.log("    long", l);
     return r;
   };
+  // ZLOG=1: the board's own zoom log (state/zoomlog.ts: per-frame camera lines, cull, the level switch, the summary build, long
+  // tasks) recorded over the first run through the host's Record Zoom Log command, copied from the clipboard into zoom-log.txt
+  const ZLOG = !!process.env.ZLOG;
+  const zoomLog = async () => {
+    await t.command(page, "CodeBoard: Record Zoom Log");
+    await page.mouse.move(spot[0], spot[1]);
+  };
   const runs = [];
   const RUNS = +(process.env.RUNS || 2);
   const d = 30,
@@ -186,12 +193,20 @@ module.exports = async (page, t) => {
       await raf();
     }
     await t.hold(SETTLED, "at rest at the card level before zooming out");
+    if (ZLOG && r === 0) await zoomLog();
     const out = await gesture("out", n, () => d);
     await t.hold(BETWEEN, "at rest at the minimum zoom before zooming back in");
     if (r === 0) await page.screenshot({ path: path.join(OUT, "out.png") });
     const back = await gesture("in", n / 2, () => -d);
     await t.hold(BETWEEN, "at rest at the card level before the fit");
     if (r === 0) await page.screenshot({ path: path.join(OUT, "in.png") });
+    if (ZLOG && r === 0) {
+      await zoomLog();
+      const log = await t.clipboard(f);
+      fs.writeFileSync(path.join(OUT, "zoom-log.txt"), log);
+      const lines = log.split("\n");
+      console.log(`  zoom log: ${lines.length} lines; events: ${lines.filter((l) => !/^f /.test(l)).join(" | ")}`);
+    }
     await t.fit(f);
     await t.hold(SETTLED, "the fit's zoom animation ends before the next run");
     await page.mouse.move(spot[0], spot[1]);
