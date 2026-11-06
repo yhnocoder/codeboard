@@ -69,7 +69,11 @@ export function Canvas() {
   // (scaled down it looks right, but the tiles at the old scale take many viewports of memory, and past about 8× Chromium
   // rasters again on its own, 135 ms, wherever that falls), and not within the detent's reach of the summary cut, where the
   // card level is about to be swapped out and its text is 4 px tall. A stop zoomed out a little, or back where it was, costs
-  // nothing. .settle stays until the next move: taking it off again was a second commit that waited for the same raster
+  // nothing. .settle stays until the next move: taking it off again was a second commit that waited for the same raster.
+  // A stop in the detent's reach is left to Chromium, which rasters a layer with the hint again on its own once it is shown far
+  // enough below its raster scale (from 250 % out to 0.15: every layer of the world at 1.0, the device scale, not lower). So the
+  // scale remembered there is at most that: back at 128 % the stop is a magnification and the world is rastered again, where it
+  // stayed rastered at 1.0 (blurry) while the scale remembered was still 2.5. Out and back without passing 100 % costs nothing
   const [settle, setSettle] = createSignal(false);
   let rasterZ = cam.z;
   createEffect(
@@ -77,11 +81,12 @@ export function Canvas() {
       camMoving,
       (m) => {
         if (m) return setSettle(false);
-        const z = cam.z;
-        if (z > rasterZ * 1.04 || (z < rasterZ / 2 && z > summaryCut() * 1.3)) {
+        const z = cam.z,
+          near = z <= summaryCut() * 1.3;
+        if (z > rasterZ * 1.04 || (z < rasterZ / 2 && !near)) {
           rasterZ = z;
           setSettle(true);
-        }
+        } else if (near) rasterZ = Math.min(rasterZ, Math.max(z, 1));
       },
       { defer: true },
     ),
