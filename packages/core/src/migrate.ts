@@ -87,20 +87,13 @@ function runsInCard(c: any) {
  * 第 12 版 → 第 13 版：a Highlight is a range of lines that can carry notes. Highlighted lines become their consecutive runs; every
  * sidenote on lines gets a Highlight of its lines; Highlights that then overlap or nest merge into their union, and the sidenotes on
  * them take the merged lines (fixHighlights, the same upkeep a version update uses). Code sidenotes' segments only get the runs.
- * A shared card's content is in its library file (migrateSharedCard); the board-only sidenotes this board keeps on one get their
- * Highlights once Storage has put the card in (sharedHighlights)
+ * A shared card's content is in its library file (migrateSharedCard). Board-only and Card sidenotes are Highlights of their own
+ * (localNote), so the ones a board keeps on a shared card need nothing from the card
  */
 function v12to13(b: any) {
   for (const c of b.cards) runsInCard(c);
   for (const n of b.sidenotes) if (n.kind === "code") runsInCard({ kind: "code", segments: [n.code] });
-  fixHighlights(b);
-}
-
-/** v12 → v13 for the board-only sidenotes a board file keeps on a shared card: run on the board once its shared cards are in */
-export function sharedHighlights(raw: any): ((b: Board) => void) | undefined {
-  if (!(raw?.version >= 6 && raw.version < 13) || !Array.isArray(raw.cards)) return undefined;
-  const ids = raw.cards.filter((c: any) => c?.kind === "shared").map((c: any) => c.id as string);
-  return ids.length ? (b) => fixHighlights(b, ids) : undefined;
+  fixHighlights(b, undefined, { review: false });
 }
 
 /** 第 11 版 → 第 12 版的一张卡：从前的 Free Text（主题的标题样式，默认 40px = H1 的预设字号）→ H1 */
@@ -178,7 +171,7 @@ export function migrateSharedCard(raw: any): SharedCardFile {
     runsInCard(sc.card);
     for (const n of sc.sidenotes ?? [])
       if (n?.kind === "code" && n.code) runsInCard({ kind: "code", segments: [n.code] });
-    fixHighlights({ cards: [sc.card], sidenotes: sc.sidenotes ?? [] });
+    fixHighlights({ cards: [sc.card], sidenotes: sc.sidenotes ?? [] }, undefined, { review: false });
   }
   if (sc?.version >= 6 && sc.version < BOARD_VERSION) sc.version = BOARD_VERSION;
   if (sc?.card) normCard(sc.card);

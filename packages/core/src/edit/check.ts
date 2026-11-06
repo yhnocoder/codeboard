@@ -1,7 +1,9 @@
 // The board's self-check: references to things that are not there (always empty after an edit)
 import {
   activeOf,
+  localNote,
   noteSegment,
+  within,
   sameRange,
   twinContent,
   UPSTREAM,
@@ -54,12 +56,14 @@ export function danglingRefs(b: Board): string[] {
   for (const n of b.sidenotes) {
     if (!segOk(n.at.card, n.at.seg)) out.push(`sidenote ${n.id} on missing ${n.at.card}`);
     if (n.kind === "card" && !cards.has(n.card)) out.push(`sidenote ${n.id} points to missing ${n.card}`);
-    // a sidenote on lines belongs to the Highlight with exactly those lines (edit/highlights.ts)
+    // a sidenote on lines lies in its segment; one that goes along with the card is on the segment's Highlight with exactly those
+    // lines, a local one is a Highlight of its own (edit/highlights.ts)
     const s = n.at.lines && noteSegment(b, n);
-    if (s && !s.hl?.some((r) => sameRange(r, n.at.lines)))
-      out.push(
-        `sidenote ${n.id} on lines ${n.at.lines!.join("–")} of ${n.at.card}/${n.at.seg}, which are no Highlight`,
-      );
+    const where = () => `sidenote ${n.id} on lines ${n.at.lines!.join("–")} of ${n.at.card}/${n.at.seg}`;
+    if (s && !(n.at.lines![0] <= n.at.lines![1] && within(n.at.lines!, [s.start, s.end])))
+      out.push(`${where()}, outside its segment ${s.start}–${s.end}`);
+    else if (s && !localNote(n) && !s.hl?.some((r) => sameRange(r, n.at.lines)))
+      out.push(`${where()}, which are no Highlight`);
   }
   for (const c of b.cards)
     if (c.kind === "code")
@@ -131,12 +135,14 @@ export function danglingRefs(b: Board): string[] {
   return out;
 }
 
-/** A segment's Highlights: each first ≤ last, sorted, none overlapping another */
+/** A segment's Highlights: each first ≤ last inside the segment, sorted, none overlapping another */
 function rangeProblems(card: string, s: Segment): string[] {
   const out: string[] = [];
   (s.hl ?? []).forEach(([a, z], i, rs) => {
     if (!Number.isInteger(a) || !Number.isInteger(z) || a > z)
       out.push(`card ${card}/${s.id}: bad Highlight ${a}–${z}`);
+    else if (a < s.start || z > s.end)
+      out.push(`card ${card}/${s.id}: Highlight ${a}–${z} outside the segment's lines ${s.start}–${s.end}`);
     if (i && rs[i - 1][1] >= a)
       out.push(`card ${card}/${s.id}: Highlight ${a}–${z} overlaps or precedes the one before`);
   });

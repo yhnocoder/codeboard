@@ -25,6 +25,8 @@ import { NEW_CARD_W, type Rect } from "../layout";
 import {
   cardIntoSidenote,
   imageIntoNote,
+  dropOwnHighlight,
+  fixHighlights,
   onHighlight,
   removeSidenotes,
   sidenoteCard,
@@ -33,6 +35,7 @@ import {
   turnNoteInto,
 } from "../edit";
 import type { CommandEnv } from "./env";
+import { keepFitted, type FitMeasure } from "./fit";
 
 /**
  * Place on Board: a sidenote becomes a card, with an arrow from the line it was on, in one step. add = the shell puts the card on
@@ -155,50 +158,19 @@ export function newWriting(
  * Add sidenotes in one step; their new ids, in order. One on lines goes on the Highlight of those lines, made when there is none;
  * lines that overlap Highlights grow them into one, with the sidenotes on them (addHighlight)
  */
-export function addSidenotes(env: CommandEnv, list: Omit<Sidenote, "id">[]): string[] {
+export function addSidenotes(env: CommandEnv, list: Omit<Sidenote, "id">[], fit?: FitMeasure): string[] {
   const sns = list.map((n) => ({ ...n, id: uid("n") }) as Sidenote);
-  env.edit((b) => {
+  const change = (b: Board) => {
     b.sidenotes.push(...sns);
     for (const n of sns) onHighlight(b, n);
-  });
+  };
+  // one on lines makes or grows a Highlight (its gap, the marker's gutter): a fitted card stays fitted
+  const card = sns.length === 1 && sns[0].at.lines ? sns[0].at.card : undefined;
+  if (card) keepFitted(env, card, fit, change);
+  else env.edit(change);
   return sns.map((n) => n.id);
 }
 
-/**
- * How a shell measures a code card for keeping it fitted: `measure` = the height of its code area (Place.h) that shows all its
- * content as laid out now, and that content's height (body); `codeMax` = the most a code card without a stored height grows to
- */
-export type FitMeasure = { measure(cardId: string): { h: number; body: number } | null; codeMax: number };
-
-/**
- * A change to what a code card shows under its lines (an Always Show sidenote shown, hidden, written or deleted). A card whose
- * stored height fitted its content (Fit Content, or dragged to it) fits it again after the change, in the same undo step: the
- * change is made, the shell lays it out and measures, and the new height is folded into the change's step. As Fit Content,
- * content no taller than codeMax keeps no height. A card without a stored height follows its content anyway; one with a height
- * set by hand that does not fit its content keeps it
- */
-function keepFitted(env: CommandEnv, cardId: string, fit: FitMeasure | undefined, change: (b: Board) => void) {
-  const b0 = env.board(),
-    p0 = b0.place[cardId];
-  const fitted =
-    fit &&
-    p0?.h !== undefined &&
-    b0.cards.find((c) => c.id === cardId)?.kind === "code" &&
-    Math.abs((fit.measure(cardId)?.h ?? Number.NaN) - p0.h) <= 1;
-  const merge = uid("fit");
-  if (!env.edit(change, fitted ? { merge } : undefined) || !fitted) return;
-  const now = fit.measure(cardId);
-  if (!now) return;
-  const h = now.body <= fit.codeMax ? undefined : Math.round(now.h);
-  if (h === env.board().place[cardId]?.h) return;
-  env.edit(
-    (b) => {
-      const p = b.place[cardId];
-      if (p) p.h = h;
-    },
-    { merge },
-  );
-}
 /** The card an Always Show sidenote shows in, when `id` is one */
 const shownIn = (env: CommandEnv, id: string) => {
   const n = env.board().sidenotes.find((k) => k.id === id);
@@ -220,10 +192,12 @@ export function writeSidenote(env: CommandEnv, id: string, md: string, fit?: Fit
   else env.edit(change);
 }
 
-/** One sidenote deleted; an Always Show one keeps a fitted card fitted (keepFitted) */
+/** One sidenote deleted; one on lines (an Always Show one, the last on a Highlight's marker, a local one's Highlight) keeps a
+ *  fitted card fitted (keepFitted) */
 export function deleteSidenote(env: CommandEnv, id: string, fit?: FitMeasure) {
   const change = (b: Board) => removeSidenotes(b, [id]);
-  const card = shownIn(env, id);
+  const n = env.board().sidenotes.find((k) => k.id === id);
+  const card = n?.at.lines ? n.at.card : shownIn(env, id);
   if (card) keepFitted(env, card, fit, change);
   else env.edit(change);
 }
@@ -372,7 +346,13 @@ export function toggleAlwaysShow(env: CommandEnv, id: string, fit?: FitMeasure) 
 export function toggleBoardOnly(env: CommandEnv, id: string) {
   env.edit((b) => {
     const n = b.sidenotes.find((k) => k.id === id);
-    if (n) n.boardOnly = n.boardOnly ? undefined : true;
+    if (!n) return;
+    n.boardOnly = n.boardOnly ? undefined : true;
+    // going along with the card again: its lines become (or join) one of the card's Highlights. Made board-only, it takes the
+    // card's Highlight it was the only note on, with exactly its lines, along (dropOwnHighlight); one the card shows anyway
+    // (others' notes on it, or wider) stays
+    if (!n.boardOnly) fixHighlights(b, [n.at.card]);
+    else dropOwnHighlight(b, n);
   });
 }
 

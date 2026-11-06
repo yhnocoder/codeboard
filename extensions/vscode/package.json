@@ -771,8 +771,8 @@
           ],
           "enumDescriptions": [
             "Highlighter: the lines and their Always Show notes are one soft band",
-            "Margin bracket: a pen bracket beside the lines, notes as margin notes in the Note font",
-            "Margin bracket, with the notes in handwriting"
+            "Margin Bracket: a pen bracket beside the lines, notes as margin notes in the Note font",
+            "Margin Bracket, Handwritten: the bracket, with the notes in handwriting"
           ],
           "description": "How code cards draw highlighted lines and the notes on them."
         },

@@ -12,7 +12,6 @@ import {
   type NoteLayout,
   type Place,
   type Section,
-  type HlRange,
   type Segment,
 } from "../model";
 import { defaultWidth, estSize, GAP, type Rect } from "../layout";
@@ -29,6 +28,7 @@ import {
   renameTitleRefs,
   replaceCards,
   retargetCards,
+  clipHighlights,
   fixHighlights,
   unlinkCard,
   unmergeCard,
@@ -301,12 +301,12 @@ export function splitSegment(
   const c = findCard(env.board(), id)?.card;
   if (!isCode(c) || c.segments.length !== 1) return;
   const s = c.segments[0];
-  // each part keeps the Highlights on its lines (cut at its ends); the sidenotes on them go to the part with their first line
+  // each part keeps the Highlights on its lines (cut at its ends); a sidenote goes to the part with its first line, its lines cut to
+  // that part's (fixHighlights)
   const parts = given.map((p) => {
-    const hl = (s.hl ?? [])
-      .map(([a, z]): HlRange => [Math.max(a, p.start), Math.min(z, p.end)])
-      .filter(([a, z]) => a <= z);
-    return hl.length ? { ...p, hl } : p;
+    const q = { ...p };
+    clipHighlights(q, [s]);
+    return q;
   });
   const partOf = (line?: number) =>
     Math.max(

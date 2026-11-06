@@ -1,9 +1,19 @@
 // Code cards: hidden and highlighted lines, Free code's text and language, the card frame, segments added by the editor, and
 // the handwritten annotations on a segment's text
-import { findCard, isCode, type Board, type CodeAnnot, type HandColor, type HlRange, type Segment } from "../model";
+import {
+  findCard,
+  isCode,
+  shownRanges,
+  type Board,
+  type CodeAnnot,
+  type HandColor,
+  type HlRange,
+  type Segment,
+} from "../model";
 import { addHighlight, removeHighlights } from "../edit";
 import { guessLang, pythonDialect } from "../paste";
 import type { CommandEnv } from "./env";
+import { keepFitted, type FitMeasure } from "./fit";
 
 /** Lines start..end of one segment of a card */
 export type LineRange = { card: string; seg: string; start: number; end: number };
@@ -33,12 +43,13 @@ export function hideLines(env: CommandEnv, ls: LineRange) {
  * selected ones go too) and with the sidenotes on them; otherwise the lines become one Highlight, taking in the ones they overlap
  * (addHighlight). How many sidenotes went with removed Highlights (the shell says so: undo brings them back)
  */
-export function toggleHighlight(env: CommandEnv, ls: LineRange): number {
+export function toggleHighlight(env: CommandEnv, ls: LineRange, fit?: FitMeasure): number {
   let gone = 0;
-  env.edit((b) => {
+  // its lines get a gap before and after, the marker its gutter: a fitted card stays fitted
+  keepFitted(env, ls.card, fit, (b) => {
     const s = segIn(b, ls.card, ls.seg);
     if (!s) return;
-    const hit = (s.hl ?? []).filter(([a, z]) => a <= ls.end && z >= ls.start);
+    const hit = shownRanges(b, s).filter(([a, z]) => a <= ls.end && z >= ls.start);
     const all = (l: number) => hit.some(([a, z]) => l >= a && l <= z);
     const covered = Array.from({ length: ls.end - ls.start + 1 }, (_, i) => ls.start + i).every(all);
     if (covered) gone = removeHighlights(b, s, hit);
@@ -47,10 +58,11 @@ export function toggleHighlight(env: CommandEnv, ls: LineRange): number {
   return gone;
 }
 
-/** Remove Highlight: the range and the sidenotes on it, in one undo step. How many sidenotes went */
-export function removeHighlight(env: CommandEnv, card: string, seg: string, range: HlRange): number {
+/** Remove Highlight (one as the board shows it, shownRanges): the lines and the sidenotes on them, in one undo step. How many
+ *  sidenotes went */
+export function removeHighlight(env: CommandEnv, card: string, seg: string, range: HlRange, fit?: FitMeasure): number {
   let gone = 0;
-  env.edit((b) => {
+  keepFitted(env, card, fit, (b) => {
     const s = segIn(b, card, seg);
     if (s) gone = removeHighlights(b, s, [range]);
   });

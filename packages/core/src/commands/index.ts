@@ -2,6 +2,7 @@ export * from "./env";
 export * from "./cards";
 export * from "./code";
 export * from "./notes";
+export * from "./fit";
 export * from "./links";
 export * from "./shared";
 export * from "./calls";

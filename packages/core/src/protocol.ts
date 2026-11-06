@@ -115,6 +115,12 @@ export type Settings = {
  */
 export const HIGHLIGHT_LOOKS = ["band", "bracket", "bracket-hand"] as const;
 export type HighlightLook = (typeof HIGHLIGHT_LOOKS)[number];
+/** Each look's name, as Settings shows it */
+export const HIGHLIGHT_LOOK_NAMES: Record<HighlightLook, string> = {
+  band: "Highlighter",
+  bracket: "Margin Bracket",
+  "bracket-hand": "Margin Bracket, Handwritten",
+};
 /** AI 功能用哪个模型："auto" = 有 DeepSeek 密钥用 DeepSeek，没有用 VS Code 的语言模型（Copilot…）；"deepseek"；别的 = 某个 VS Code 语言模型的 id */
 export type AiChoice = string;
 /** Gray inline completions while a Note is edited: read from the settings, so a settings change turns them on or off at once */

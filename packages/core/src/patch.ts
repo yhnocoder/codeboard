@@ -5,6 +5,7 @@ import {
   clone,
   copyTwinContent,
   sameVersion,
+  localNote,
   versionLabel,
   withCols,
   type Board,
@@ -85,7 +86,7 @@ function applyList<T extends { id: string }>(xs: T[], p: ListPatch<T>, full: boo
 export type SharedUpdate = SharedCard & { items: string[] };
 
 /** 跟着共享卡走的 Sidenote：挂在这张卡上、不是 boardOnly、不是 kind card（它指着的卡只在这块白板上） */
-export const travels = (n: Sidenote, card: string) => n.at.card === card && !n.boardOnly && n.kind !== "card";
+export const travels = (n: Sidenote, card: string) => n.at.card === card && !localNote(n);
 
 /** 白板上一张卡的共享内容（卡 + 跟着它走的 Sidenote）；卡不在白板上返回 undefined */
 export function sharedOf(b: Pick<Board, "cards" | "sidenotes">, id: string): SharedCard | undefined {

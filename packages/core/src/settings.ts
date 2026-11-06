@@ -5,6 +5,7 @@ import {
   DEFAULT_SETTINGS,
   EXPERIMENTAL_THEMES,
   HIGHLIGHT_LOOKS,
+  HIGHLIGHT_LOOK_NAMES,
   NOTE_FONT_LEVELS,
   NOTE_FONT_RANGE,
   THEMES,
@@ -203,11 +204,18 @@ export const SETTINGS: { [K in keyof Settings]-?: SettingDecl } = {
     valid: oneOf(...HIGHLIGHT_LOOKS),
     schema: {
       type: "string",
-      ...choices([
-        ["band", "Highlighter: the lines and their Always Show notes are one soft band"],
-        ["bracket", "Margin bracket: a pen bracket beside the lines, notes as margin notes in the Note font"],
-        ["bracket-hand", "Margin bracket, with the notes in handwriting"],
-      ]),
+      ...choices(
+        HIGHLIGHT_LOOKS.map((v): [string, string] => [
+          v,
+          `${HIGHLIGHT_LOOK_NAMES[v]}: ${
+            {
+              band: "the lines and their Always Show notes are one soft band",
+              bracket: "a pen bracket beside the lines, notes as margin notes in the Note font",
+              "bracket-hand": "the bracket, with the notes in handwriting",
+            }[v]
+          }`,
+        ]),
+      ),
       description: "How code cards draw highlighted lines and the notes on them.",
     },
   },

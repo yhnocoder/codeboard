@@ -469,7 +469,7 @@ export type Sidenote = {
   why?: string; // 「为什么相关」，可选
   lineRemoved?: boolean; // 更新版本时原来的行被删了，改挂整卡
   boardOnly?: true; // 挂在共享卡上、但只属于这块白板（不跟着卡去别的白板）
-  review?: string; // Update 时挂着的行变了：新版本的标签（如 9f3e2a1），琥珀色提醒复查；用户看过就去掉
+  review?: string; // Update 时挂着的行变了：新版本的标签（如 9f3e2a1）；Highlight 合并让它的行变宽了：WIDENED。琥珀色提醒复查；用户看过就去掉
   variant?: string; // 只在卡的这个 Variant 上显示；行号按那个 Variant 的代码算。没有 = 跟着卡，所有 Variant 都显示
 } & (
   | { kind: "code"; code: Segment } // 仓库里或仓库外的代码，钉版本
@@ -831,9 +831,30 @@ export function noteSegment(b: Pick<Board, "cards">, n: Pick<Sidenote, "at" | "v
   const v = n.variant && n.variant !== activeOf(c) ? c.variants?.find((x) => x.id === n.variant) : undefined;
   return (v ? v.segs : c.segments)?.find((s) => s.id === n.at.seg);
 }
-/** The sidenotes on a Highlight: on these lines of this segment, counted where its lines are (noteSegment) */
+/**
+ * A sidenote this board keeps for itself: board-only, or a Card sidenote (the card it points to is on this board only). It does not
+ * go along with a shared card, and neither does its Highlight: its lines are a Highlight on this board only (shownRanges), never
+ * written into the segment's own Highlights (Segment.hl, which a shared card carries to every board)
+ */
+/** Sidenote.review when its lines grew because the Highlight it is on merged with another (edit/highlights.ts) */
+export const WIDENED = "widened";
+export const localNote = (n: Pick<Sidenote, "boardOnly" | "kind">) => !!n.boardOnly || n.kind === "card";
+/** Lines a..z inside range r */
+export const within = (l: readonly number[], r: readonly number[]) => l[0] >= r[0] && l[1] <= r[1];
+/** The line sidenotes counted on a segment (noteSegment) */
+const segNotes = (b: Pick<Board, "cards" | "sidenotes">, s: Segment) =>
+  b.sidenotes.filter((n) => n.at.lines && n.at.seg === s.id && noteSegment(b, n) === s);
+/**
+ * The Highlights a board shows on a segment: the segment's own, and the lines of this board's local sidenotes on it (localNote);
+ * ones that overlap or nest shown as one
+ */
+export function shownRanges(b: Pick<Board, "cards" | "sidenotes">, s: Segment): HlRange[] {
+  const local = segNotes(b, s).filter(localNote);
+  return local.length ? unionRanges([...(s.hl ?? []), ...local.map((n) => n.at.lines!)]) : (s.hl ?? []);
+}
+/** The sidenotes on a Highlight (one of shownRanges, or of the segment's own): the ones on lines inside it */
 export function highlightNotes(b: Pick<Board, "cards" | "sidenotes">, s: Segment, r: readonly number[]): Sidenote[] {
-  return b.sidenotes.filter((n) => n.at.seg === s.id && sameRange(n.at.lines, r) && noteSegment(b, n) === s);
+  return segNotes(b, s).filter((n) => within(n.at.lines!, r));
 }
 
 /** Compare 的两栏（按 cols 的顺序）；有一栏找不到时返回 undefined */

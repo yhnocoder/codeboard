@@ -2,14 +2,12 @@
 // Pure functions that change the board passed in (the board calls them inside a mutate).
 import { replaceCards } from "./refs";
 import { unlinkCard } from "./twins";
-import { fixHighlights } from "./highlights";
+import { clipHighlights, fixHighlights } from "./highlights";
 import {
   clone,
   sameVersion,
   sortSegments,
   mergeOverlapping,
-  unionRanges,
-  type HlRange,
   uid,
   type Board,
   type CodeCard,
@@ -113,12 +111,7 @@ export function unmergeCard(b: Board, id: string): { made: string[]; segments: S
       const src = m.segments.filter(
         (q) => q.path === s.path && sameVersion(q.version, s.version) && q.start <= s.end && q.end >= s.start,
       );
-      s.hl = unionRanges(
-        src
-          .flatMap((q) => q.hl ?? [])
-          .map(([a, c]): HlRange => [Math.max(a, s.start), Math.min(c, s.end)])
-          .filter(([a, c]) => a <= c),
-      );
+      clipHighlights(s, src);
       s.hidden = src
         .flatMap((q) => q.hidden ?? [])
         .map(([a, c]) => [Math.max(a, s.start), Math.min(c, s.end)] as [number, number])
@@ -128,7 +121,6 @@ export function unmergeCard(b: Board, id: string): { made: string[]; segments: S
         .filter((a) => a.line >= s.start && a.line <= s.end)
         .map((a) => ({ ...a }));
       if (!s.annots.length) s.annots = undefined;
-      if (!s.hl.length) s.hl = undefined;
       if (!s.hidden.length) s.hidden = undefined;
     }
   const owner = (seg?: string, line?: number) => {
@@ -154,7 +146,7 @@ export function unmergeCard(b: Board, id: string): { made: string[]; segments: S
     b.place[p.id] = q;
     made.push(p.id);
   });
-  // a sidenote went to the part with its first line: its Highlight goes along whole
+  // a sidenote went to the part with its first line: its lines are cut to that part's
   fixHighlights(b, made);
   for (const p of parts) segments.push(...clone(p.segments));
   return { made, segments };
