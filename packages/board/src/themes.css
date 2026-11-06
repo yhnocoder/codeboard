@@ -3722,6 +3722,10 @@
   border-color: transparent;
   border-radius: 2px;
 }
+/* its own selected look is the brush strokes in vermilion: no accent wash */
+:root.look-ink-wash .sect::after {
+  content: none;
+}
 :root.look-ink-wash .sect.sel,
 :root.look-ink-wash .sect.drop {
   border-color: transparent;

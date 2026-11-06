@@ -1287,8 +1287,69 @@ test("sectionGroupDeleteUndo", async () => {
   await close(h);
 });
 
+/** Resizing a Section changes who is in it: dragged out over a loose card, the card joins (the Section lights up while it is
+ *  dragged); dragged in past a card of its own, that card leaves; each drag one undo step, frame and members together. A locked
+ *  card stays where it is */
+test("sectionResizeMembers", async () => {
+  const b = twoSectionsAndLoose();
+  put(b, { id: "n3", kind: "note", look: "note", md: "# Locked\n\nStays out." } as NoteCard, 1320, 300, 240);
+  b.place.n3.locked = true;
+  const h = await open({ board: b, light, w: 1600 });
+  await idle(h);
+  const pg = h.page;
+  const home = (id: string) => h.board().place[id].section;
+  const box = async (sel: string) => (await pg.locator(sel).boundingBox())!;
+  const drag = async (edge: string, toX: number, mid?: string) => {
+    const r = await box(`.sect[data-sect="S2"] .sedge[data-edge="${edge}"]`);
+    const x = r.x + r.width / 2,
+      y = r.y + r.height / 2;
+    await pg.mouse.move(x, y);
+    await pg.mouse.down();
+    await pg.mouse.move(toX, y, { steps: 6 });
+    const lit = await pg.locator('.sect[data-sect="S2"].drop').count();
+    if (mid) await shot(h, mid, "now");
+    await pg.mouse.up();
+    await idle(h);
+    return lit;
+  };
+  const n2 = await box('.card[data-id="n2"]');
+  const litJoin = await drag("e", n2.x + n2.width + 30, "sect-members-01-growing-over-loose-card");
+  const joined = home("n2"),
+    locked = home("n3");
+  const grown = await box('.sect[data-sect="S2"]');
+  await shot(h, "sect-members-02-loose-card-joined");
+  const n1 = await box('.card[data-id="n1"]');
+  await drag("w", n1.x + n1.width + 30);
+  const left = { n1: home("n1"), n2: home("n2") };
+  const shrunk = await box('.sect[data-sect="S2"]');
+  await shot(h, "sect-members-03-card-left");
+  await pg.keyboard.press("Meta+z");
+  await idle(h);
+  const undo1 = { n1: home("n1"), n2: home("n2"), x: h.board().sections.find((s) => s.id === "S2")!.x };
+  await pg.keyboard.press("Meta+z");
+  await idle(h);
+  const undo2 = { n1: home("n1"), n2: home("n2") };
+  check(
+    "sectionResizeMembers",
+    litJoin === 1 &&
+      joined === "S2" &&
+      locked === undefined &&
+      grown.x + grown.width >= n2.x + n2.width &&
+      left.n1 === undefined &&
+      left.n2 === "S2" &&
+      shrunk.x > n1.x + n1.width &&
+      undo1.n1 === "S2" &&
+      undo1.n2 === "S2" &&
+      undo1.x === 720 &&
+      undo2.n1 === "S2" &&
+      undo2.n2 === undefined,
+    { litJoin, joined, locked, grown, n2, left, shrunk, undo1, undo2 },
+  );
+  await close(h);
+});
+
 /** A Section is resized by any of its four edges and four corners, the opposite edges staying put, one undo step each; shrunk
- *  past a card, the frame stops around it and the card stays in the Section */
+ *  part way past a card (it still covers a third of it), the frame stops around it and the card stays in the Section */
 test("sectionResizeEdges", async () => {
   const h = await open({ board: twoSectionsAndLoose(), light, w: 1600 });
   await idle(h);
@@ -1327,7 +1388,7 @@ test("sectionResizeEdges", async () => {
   const right = diff(s2, await frame("S2"));
   await drag("S2", "sw", -20, 30);
   const corner = diff(s2, await frame("S2"));
-  // 左边往右拖过 Note：框停在 Note 外面，Note 还在 S2 里
+  // 左边往右拖进 Note 一截（Note 还有三分之一多在框里）：框停在 Note 外面，Note 还在 S2 里
   const n1 = (await pg.locator('.card[data-id="n1"]').boundingBox())!;
   await drag("S2", "w", n1.x + 200 - s2.l, 0);
   const past = await frame("S2");

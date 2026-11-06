@@ -246,7 +246,7 @@ export const wireSectionEasing = () =>
         for (const [id, r] of f) {
           const p = prev.get(id);
           if (p === r) continue;
-          if (!p || fitting().has(id)) {
+          if (!p || fitting().has(id) || id === untrack(resizing)) {
             if (easing.delete(id)) show(id);
             continue;
           }
@@ -310,6 +310,32 @@ export function homeFor(fr: Map<string, Rect>, r: Rect, skip?: Set<string>): Sec
   }
   return best;
 }
+/**
+ * Section `id` resized to `r` (the frame as dragged, before its cards widen it): the cards whose Section changes, card id → its
+ * Section after (undefined: none). `fr` = the frames when the drag began. A card `r` covers by more than a third (partlyIn, the
+ * rule of homeFor) joins, if it was in no Section or in one `id` is in (a card of another Section stays there); a card of its own
+ * it no longer covers that much goes to the Section it then lies in (homeFor without `id` and the Sections in it). A locked card
+ * stays where it is
+ */
+export function resizedHomes(id: string, r: Rect, fr: Map<string, Rect>): Map<string, string | undefined> {
+  const outer = new Set<string | undefined>([undefined]);
+  for (let p = sec(sec(id)?.parent), i = 0; p && i < 50; p = sec(p.parent), i++) outer.add(p.id);
+  const inner = new Set([id, ...descSections(id).map((s) => s.id)]);
+  const out = new Map<string, string | undefined>();
+  for (const c of visibleCards()) {
+    const p = placeOf(c.id);
+    if (p.locked) continue;
+    const was = p.section,
+      cr = rectOf(c);
+    if (was === id) {
+      if (!partlyIn(cr, r)) out.set(c.id, homeFor(fr, cr, inner)?.id);
+    } else if (outer.has(was) && partlyIn(cr, r)) out.set(c.id, id);
+  }
+  return out;
+}
+/** The Section whose edges are being dragged: its frame follows the pointer as it is, without easing */
+const [resizing, setResizing] = boardSignal<string | null>(null);
+export { setResizing };
 /** 刚放到白板上的卡（还没量过尺寸，按估计的大小）进它落在的 Section：在 mutate 里调 */
 export function settleHome(b: Board, id: string) {
   const p = b.place[id],

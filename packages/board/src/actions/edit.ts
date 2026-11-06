@@ -560,6 +560,9 @@ export function fitSections(ids: string[]) {
 export const renameSection = (id: string, v: string) => C.renameSection(commandEnv, id, v);
 export const setSectionColor = (ids: string[], color: string | undefined) => C.setSectionColor(commandEnv, ids, color);
 export const moveOutOfParent = (id: string) => C.moveOutOfParent(commandEnv, id);
+/** A Section resized by its edges: the frame and the cards that join or leave it, one undo step */
+export const resizeSection = (id: string, frame: Rect, homes: ReadonlyMap<string, string | undefined>) =>
+  C.resizeSection(commandEnv, id, frame, homes);
 /** A Compare's Swap, Unified, Hide Same Lines, from its menu or its toolbar */
 export const toggleCompare = (id: string, k: "swap" | "unified" | "hideSame") => C.toggleCompareView(commandEnv, id, k);
 
