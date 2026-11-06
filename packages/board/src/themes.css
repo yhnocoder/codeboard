@@ -3312,7 +3312,7 @@
     url("./scenes/ink-dark.svg") center bottom / cover no-repeat,
     var(--canvas);
 }
-/* 卡是一张毛边宣纸：纸是 ::before 上按这张卡的尺寸画的一张图（Card.tsx paper），伸出卡外 14px，不改卡的尺寸和排版；
+/* 卡是一张毛边宣纸：纸是 ::before 上的九宫格位图（Card.tsx paper，state/ink.ts），伸出卡外 14px，不改卡的尺寸和排版；
    卡自己没有底色、没有细边，阴影是卡的 box-shadow（模糊 4.5px 下看不出纸边的毛）。没有卡框的（Text、无背景）、地图档的照旧 */
 :root.look-ink-wash .card:not(.text):not(.nobg) {
   --sh-ring: 0 0 transparent;
@@ -3328,8 +3328,9 @@
   inset: -14px;
   border-radius: 0;
   box-shadow: none;
-  /* nine-slice (state/ink.ts PAPER_SLICE): the same image at every card size, corners as drawn, edges and middle tiled */
-  border-image: var(--deckle) 30 fill / 30px round;
+  /* nine-slice (state/ink.ts PAPER_SLICE 30 px, the PNG drawn at PAPER_SCALE 3: sliced at 90 image px): the same image at every
+     card size, corners as drawn, edges and middle tiled */
+  border-image: var(--deckle) 90 fill / 30px round;
 }
 /* 拿起来时纸下面的阴影重一点 */
 :root.look-ink-wash .card.lift:not(.text):not(.nobg) {
