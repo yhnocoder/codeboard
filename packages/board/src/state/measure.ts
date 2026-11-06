@@ -73,7 +73,8 @@ export const DED_PAD = 16;
 /** 没存高度的代码卡（新卡、Fit Content 过的卡）代码区最高多少，更长的在里面滚（BoardView 挂到 body 上的 --code-max） */
 export const CODE_MAX = 460;
 let charW = 0;
-function monoWidth(el: Element) {
+/** One character of the code font (every code card's is the same), px: where a code column is without measuring the DOM */
+export function monoWidth(el: Element) {
   if (charW) return charW;
   const ctx = document.createElement("canvas").getContext("2d")!;
   ctx.font = getComputedStyle(el).font;

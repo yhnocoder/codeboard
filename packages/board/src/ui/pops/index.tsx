@@ -24,21 +24,17 @@ export function Popovers() {
   return <For each={pops()}>{(p) => <PopFrame inst={p} />}</For>;
 }
 
-/** The lines a gutter Sidenote marker marks, as one box: from the marker's top (the first line) to the bottom of the last line
- *  (its data-last row), from the marker's left to the code's right. Below it, or above when there's no room (place flips) */
-function markedLines(mk: Element): VirtualElement | undefined {
-  const row = (mk as HTMLElement).dataset.last;
-  const last = row && mk.closest(".code")?.querySelector(`.src > .l[data-r="${row}"]`);
-  if (!last) return undefined;
+/** A Highlight's lines (its gutter area, .hxhit) as one box: from where its code starts (data-in) to the code's right */
+function rangeBox(hit: Element): VirtualElement {
   return {
-    contextElement: mk,
+    contextElement: hit,
     getBoundingClientRect: () => {
-      const a = mk.getBoundingClientRect(),
-        b = last.getBoundingClientRect();
-      const x = a.left,
+      const a = hit.getBoundingClientRect(),
+        k = a.width / ((hit as HTMLElement).offsetWidth || 1);
+      const x = a.right + (Number((hit as HTMLElement).dataset.in) || 0) * k - 12 * k,
         y = a.top,
-        right = Math.max(a.right, b.right),
-        bottom = Math.max(a.bottom, b.bottom);
+        right = x + 1,
+        bottom = a.bottom;
       return { x, y, left: x, top: y, right, bottom, width: right - x, height: bottom - y };
     },
   };
@@ -63,16 +59,25 @@ function PopFrame(p: { inst: PopInst }) {
         setAnchor(mk);
       }
     }
+    // a Highlight's gutter area drawn again (its notes changed): the popup goes to the new one
+    if (at.el && !at.el.isConnected && p.inst.pop.kind === "highlight") {
+      const { card, seg, lines } = p.inst.pop;
+      const hit = document.querySelector(`.hxhit[data-hl="${card}:${seg}:${lines[0]}-${lines[1]}"]`);
+      if (hit) {
+        at.el = hit;
+        setAnchor(hit);
+      }
+    }
     if (at.el && !at.el.isConnected && last) return;
     const k = ++n;
     // 贴着锚点元素：下方 / 右侧 / 上方，放不下翻到另一边；没有元素就放在点 (x, y)
     const ref = at.el?.isConnected ? at.el : virtual({ x: at.x ?? 0, y: at.y ?? 0 });
-    const lines = at.el?.isConnected && at.prefer === "lines" ? markedLines(at.el) : undefined;
-    const r = lines
-      ? place(el, lines, "bottom-start", { gap: 6 })
-      : at.el?.isConnected && at.prefer === "right"
-        ? place(el, ref, "right-start", { gap: { mainAxis: 8, crossAxis: -6 } })
-        : place(el, ref, at.prefer === "above" ? "top-start" : "bottom-start", { gap: at.el?.isConnected ? 6 : 0 });
+    const r =
+      at.el?.isConnected && at.prefer === "range"
+        ? place(el, rangeBox(at.el), "bottom-start", { gap: 4 })
+        : at.el?.isConnected && at.prefer === "right"
+          ? place(el, ref, "right-start", { gap: { mainAxis: 8, crossAxis: -6 } })
+          : place(el, ref, at.prefer === "above" ? "top-start" : "bottom-start", { gap: at.el?.isConnected ? 6 : 0 });
     void r.then((r) => {
       if (k === n) setPos((last = { x: r.x, y: r.y }));
     });
@@ -107,7 +112,7 @@ function PopFrame(p: { inst: PopInst }) {
       }}
       onPointerLeave={() => {
         if (p.inst.pinned) return;
-        if (k() === "notes") A.scheduleHideNotes();
+        if (k() === "notes" || k() === "highlight") A.scheduleHideNotes();
         if (k() === "peek") A.scheduleHidePeek();
       }}
     >

@@ -1,14 +1,16 @@
 // 不固定的同时只开一个；⌘ + 悬停 / Pin 固定后变成独立的一个，可以开好几个对照着看。
 import { boardSignal } from "./root";
-import type { Anchor, DiffData, PeekDef, Commit, Segment, CallSpan, ImplPick, NameHit } from "@codeboard/core";
+import type { Anchor, DiffData, PeekDef, Commit, Segment, CallSpan, ImplPick, NameHit, HlRange } from "@codeboard/core";
 
 /** 浮层挂在哪：一个元素（跟着它走，镜头动也跟），或一个屏幕坐标。
- *  prefer "lines"：el 是代码卡行号栏里的 Sidenote 标记（data-last = 它标的最后一行的 data-r），浮层放在它标的那几行下面，
- *  下面放不下就放在那几行上面，不盖住它们 */
-export type At = { el?: Element; x?: number; y?: number; prefer?: "below" | "right" | "above" | "lines" };
+ *  prefer "range": el is a Highlight's gutter area (.hxhit, data-in = how far right of the gutter its code starts, px): the popup goes
+ *  under its lines, lined up with its code, or above them when there is no room */
+export type At = { el?: Element; x?: number; y?: number; prefer?: "below" | "right" | "above" | "range" };
 
 export type Pop =
   | { kind: "notes"; card: string; ids: string[]; title: string; sel?: string }
+  /** A Highlight (lines of a code card's segment) and the sidenotes on it */
+  | { kind: "highlight"; card: string; seg: string; lines: HlRange }
   | {
       kind: "peek";
       card: string;

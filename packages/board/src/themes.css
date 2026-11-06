@@ -3552,10 +3552,6 @@
   font: 12.5px / 1.55 var(--serif);
   color: var(--ink-2);
 }
-:root.look-ink-wash .rowbg.hl {
-  background: linear-gradient(90deg, transparent, var(--wash) 8%, var(--wash) 70%, transparent);
-  box-shadow: none;
-}
 /* 跳到某行：一笔朱笔从左划到右，划在这一行的字下面（从第一个字到最后一个字，CodeBody.tsx flashSpan），整行淡淡洇一下墨，再慢慢淡掉。
    时长同 state/timing.ts 的 FLASH_BRUSH */
 :root.look-ink-wash .rowbg.flash {
@@ -4166,9 +4162,6 @@
 :root.look-city .cdesc {
   border-bottom: 0;
   padding-top: 8px;
-}
-:root.look-city .rowbg.hl {
-  background: color-mix(in srgb, var(--lane) 26%, transparent);
 }
 /* 马路：路肩 + 白边线 + 路面 + 双黄线。调用是大路，普通箭头是小街（白路沿、白中线） */
 :root.look-city .edge:not(.rubber) {

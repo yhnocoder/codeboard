@@ -64,7 +64,7 @@ function playground(a: Args): Scene {
   return {
     board: b,
     after: a.pinned
-      ? () => void waitFor(() => $<HTMLElement>(".card .mk"), "the marker").then((m) => m.click())
+      ? () => void waitFor(() => $<HTMLElement>(".card .hxm, .card .mk"), "the marker").then((m) => m.click())
       : undefined,
   };
 }
@@ -169,11 +169,8 @@ export const Pinned2: Story = {
         return {
           ...s,
           after: () =>
-            void waitFor(
-              () => $<HTMLElement>('.card[data-id="c"] .gutter .mk, .card[data-id="c"] .mk:not(.inline)'),
-              "the marker",
-            ).then(() =>
-              [...document.querySelectorAll<HTMLElement>('.card[data-id="c"] .mk')]
+            void waitFor(() => $<HTMLElement>('.card[data-id="c"] .gutter .hxm'), "the marker").then(() =>
+              [...document.querySelectorAll<HTMLElement>('.card[data-id="c"] .hxm')]
                 .find((m) => m.textContent?.trim() === "2")
                 ?.click(),
             ),

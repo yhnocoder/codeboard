@@ -1166,9 +1166,11 @@ textarea {
   z-index: 2;
 }
 
-/* 代码区的几何，所有主题同一套：行号左边空 --code-pl，行号栏 = --nd 位数字宽（右对齐），再空 22px 到代码（标记、贴纸、
+/* 代码区的几何，所有主题同一套：行号左边空 --code-pl，行号栏 = --nd 位数字宽（右对齐），再空 22px 到代码（贴纸、
    隐藏行的 + 都在这 22px 里），最长行右边空 --code-pr；上 --code-pt，下 --code-pt + 2px。没有托盘的主题左 17、右 18；
-   有托盘的（Soft Light：托盘离卡边各 10px）左 7、右 8，另外 10px 是托盘的边。这样同一份 Place（w、.carea 的 h）在每个主题里都刚好装下同样的代码 */
+   有托盘的（Soft Light：托盘离卡边各 10px）左 7、右 8，另外 10px 是托盘的边。这样同一份 Place（w、.carea 的 h）在每个主题里都刚好装下同样的代码。
+   A card with Highlight note counts (.hxmk) has 30px there: the count sits 8px clear of the numbers. That follows the card's
+   content, never the theme, so every theme still fits the same Place */
 .code {
   --code-pt: 6px;
   --code-pl: 17px;
@@ -1235,14 +1237,6 @@ textarea {
   background: var(--accent);
   color: var(--accent-ink);
 }
-.mkr {
-  position: absolute;
-  left: calc(var(--gutter) - 11.5px);
-  width: 1.5px;
-  background: var(--mark);
-  opacity: 0.45;
-  border-radius: 1px;
-}
 .addn {
   position: absolute;
   left: calc(var(--gutter) - 18px);
@@ -1277,10 +1271,6 @@ textarea {
 }
 .rowbg.origin {
   background: var(--row);
-}
-.rowbg.hl {
-  background: var(--hlrow);
-  box-shadow: inset 2px 0 0 var(--hlbar);
 }
 .rowbg.flash {
   animation: flash calc(var(--t) * 600ms) var(--out);
@@ -1440,19 +1430,6 @@ textarea {
   color: var(--accent);
   background: var(--row);
 }
-.inote {
-  white-space: normal;
-  font: 12px / 1.55 var(--sys);
-  color: var(--ink-2);
-  background: var(--inote);
-  box-shadow: inset 2px 0 0 var(--ink-3);
-  margin: 2px 12px 4px -2px;
-  padding: 5px 10px;
-  border-radius: 0 7px 7px 0;
-  /* wraps inside the card's visible width (the .cbody container), not the code's scroll width: right of the line numbers, the
-     same room on the right as the lines (--code-pr) plus its own margin. Being no wider than that, it never widens the code */
-  max-width: min(520px, calc(100cqw - var(--gutter) - var(--code-pr) - 10px));
-}
 .kw {
   color: var(--k-kw);
   font-weight: var(--kw-w, inherit);
@@ -1546,8 +1523,7 @@ textarea {
 }
 .tx code,
 .nbody code,
-.sn-text code,
-.inote code {
+.sn-text code {
   font: 11px var(--mono);
   background: var(--hlrow);
   padding: 0 3px;
@@ -3632,7 +3608,6 @@ kbd {
 .nbody p,
 .cdesc p,
 .tx p,
-.inote p,
 .sn-text p,
 .pdesc p,
 .k-question .qtext p {
@@ -3718,7 +3693,6 @@ kbd {
 .cdesc ol,
 .tx ul,
 .tx ol,
-.inote ul,
 .sn-text ul,
 .sn-text ol {
   margin: 2px 0;
@@ -8272,4 +8246,325 @@ mark.wdiff {
   .sumcol.gen .sumic {
     animation: none;
   }
+}
+
+/* ---- Highlights (cards/code/highlights.ts): a range of lines that can carry notes. Two looks (Settings › Notes, highlightLook):
+   a highlighter band (.hx-band), or a pen bracket in the margin (.hx-bracket; .hx-hand: its notes in handwriting).
+   The notes are a Note's body (.nbody, the same renderer and styles), one step smaller beside 11px code ---- */
+.code.hxmk {
+  --gutter: calc(var(--code-pl) + var(--nd, 3) * 1ch + 30px);
+}
+/* where a Highlight's notes start: its code's left edge (CodeBody sets it in code columns, so in the code font) */
+@property --hx-in {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 0px;
+}
+.inotes {
+  margin-left: var(--hx-in);
+}
+.inote > .nbody {
+  --md-fs: 12.5px;
+  --md-h1: 1.45em;
+  --md-h2: 1.25em;
+  --md-h3: 1.1em;
+  font: var(--md-fs) / 1.6 var(--sys);
+  color: var(--ink);
+  white-space: normal;
+  word-break: break-word;
+}
+.inote {
+  /* wraps inside the card's visible width (the .cbody container), not the code's scroll width: right of the line numbers, the
+     same room on the right as the lines (--code-pr) plus its own 20px margin, less the indent it starts at. Its margin box being
+     no wider than that, it never widens the code */
+  max-width: min(600px, 100cqw - var(--gutter) - var(--code-pr) - var(--hx-in) - 20px);
+  box-sizing: border-box;
+  position: relative;
+}
+:root.look-ink-wash .inote > .nbody {
+  font-family: var(--serif);
+}
+:root.look-ink-wash[data-theme="dark"] .inote > .nbody {
+  --ink-2: var(--ink);
+}
+/* block content starts at the code's left edge too, not centred */
+.inote .mmd.ok {
+  justify-content: flex-start;
+  zoom: 0.85;
+}
+.inote :is(.katex-display, .katex-display > .katex) {
+  text-align: left;
+}
+.inote pre.md-code {
+  width: fit-content;
+  min-width: 50%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+/* the gutter area of a Highlight (its numbers and the marker column): hovering it opens the popup, under the numbers */
+.hxhit {
+  position: absolute;
+  left: 0;
+  width: var(--gutter);
+}
+.hxb {
+  position: absolute;
+  pointer-events: none;
+  z-index: 0;
+}
+.hxm {
+  position: absolute;
+  z-index: 2;
+  cursor: pointer;
+}
+.gutter .no.hxon {
+  color: var(--accent);
+  opacity: 1;
+}
+
+/* R3 荧光笔: the lines and their Always Show notes are one soft rounded band */
+.hx-band {
+  --band: color-mix(in srgb, var(--accent) 6.5%, transparent);
+  --band-on: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+:root[data-theme="dark"] .hx-band {
+  --band: color-mix(in srgb, var(--accent) 11%, transparent);
+  --band-on: color-mix(in srgb, var(--accent) 19%, transparent);
+}
+/* adjacent Highlights never touch: 10px before a range and after its end (its last line or last Always Show note) */
+.hx-band .src > .hx-first {
+  margin-top: 10px;
+}
+.hx-band .src > .hx-end {
+  margin-bottom: 10px;
+}
+.hx-band .hxb {
+  left: calc(var(--gutter) - 4px);
+  right: 14px;
+  border-radius: 8px;
+  background: var(--band);
+  transition: background calc(var(--t, 1) * 160ms);
+}
+.hx-band .hxb.on {
+  background: var(--band-on);
+}
+.hx-band .inote {
+  margin: 0 20px 0 0;
+  padding: 9px 12px 3px 1px;
+}
+.hx-band .inote::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 8px;
+  top: 3px;
+  border-top: 1px dashed color-mix(in srgb, var(--accent) 28%, transparent);
+}
+.hx-band .hxm {
+  left: calc(var(--gutter) - 23px);
+  min-width: 15px;
+  height: 15px;
+  margin-top: 2.5px;
+  padding: 0 4px;
+  box-sizing: border-box;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+  color: var(--accent);
+  font: 600 9.5px / 15px var(--sys);
+  text-align: center;
+  transition:
+    background calc(var(--t, 1) * 160ms),
+    color calc(var(--t, 1) * 160ms);
+}
+.hx-band .hxm.on,
+.hx-band .hxm:hover {
+  background: var(--accent);
+  color: var(--accent-ink, #fff);
+}
+
+/* R4 页边括号: a pen bracket between the line numbers and the code; the notes follow it as margin notes */
+.hx-bracket .src > .hx-first {
+  margin-top: 4px;
+}
+.hx-bracket .src > .hx-end {
+  margin-bottom: 4px;
+}
+.hx-bracket .src > .inotes.hx-end {
+  margin-bottom: 10px;
+}
+.hx-bracket .hxb {
+  left: calc(var(--gutter) - 7px);
+  width: 4px;
+  border: 1.2px solid color-mix(in srgb, var(--accent) 70%, transparent);
+  border-right: 0;
+  border-radius: 2px 0 0 2px;
+  box-sizing: border-box;
+  transition: border-color calc(var(--t, 1) * 160ms);
+}
+.hx-bracket .hxb.on {
+  border-color: var(--accent);
+  border-left-width: 2px;
+}
+.hx-bracket .hxm {
+  left: calc(var(--gutter) - 22px);
+  width: 12px;
+  margin-top: 2px;
+  text-align: center;
+  font: 12.5px / 16px var(--hand);
+  color: var(--accent);
+}
+.hx-bracket .hxm.on,
+.hx-bracket .hxm:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.hx-bracket .inote {
+  margin: 3px 20px 8px 0;
+  padding: 0 0 0 1px;
+}
+/* a note that needs a look after a new version (Sidenote.review): its count in amber */
+.hxm.rv {
+  --accent: var(--warn);
+}
+/* the bracket with the hand: the same Note styles, only the font (and a little of the pen's colour) changes. One rule for every theme */
+.hx-hand :is(.inote > .nbody, .sb.nbody) {
+  --sys: var(--hand);
+  --serif: var(--hand);
+  --md-heading-font: var(--hand);
+  --note-h: var(--hand);
+  --display: var(--hand);
+  font-family: var(--hand);
+  color: color-mix(in srgb, var(--accent) 70%, var(--ink));
+}
+
+/* a Highlight's popup: slips on a tray, the Always Show ones last */
+.pop.k-highlight {
+  width: 460px;
+  max-height: 560px;
+  overflow: auto;
+  padding: 0;
+}
+.hxpop .hh {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 10px 5px 12px;
+  font: 600 12px var(--sys);
+  color: var(--ink-2);
+}
+.hxpop .grow {
+  flex: 1;
+}
+.hxpop .rng {
+  font: 600 11px var(--mono);
+  color: var(--accent);
+}
+.hxpop.hx-band .rng {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  padding: 1px 7px;
+  border-radius: 999px;
+}
+.hxpop.hx-bracket .rng::before {
+  content: "[ ";
+  opacity: 0.6;
+}
+.hxpop.hx-bracket .rng::after {
+  content: " ]";
+  opacity: 0.6;
+}
+.hxpop .tray {
+  display: grid;
+  gap: 6px;
+  padding: 2px 8px 8px;
+}
+.hxpop .slip {
+  background: color-mix(in srgb, var(--ink) 2.5%, transparent);
+  box-shadow: 0 0 0 1px var(--hair);
+  border-radius: 9px;
+  padding: 7px 10px 9px;
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.hxpop.hx-band .slip.always {
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+.hxpop.hx-bracket .slip.always {
+  box-shadow:
+    inset 2px 0 0 color-mix(in srgb, var(--accent) 70%, transparent),
+    0 0 0 1px var(--hair);
+  border-radius: 3px 9px 9px 3px;
+}
+.hxpop .kt {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  font: 600 10px var(--sys);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  min-height: 20px;
+}
+.hxpop .kt .tag {
+  margin-right: 6px;
+}
+.hxpop .kt .as {
+  color: var(--accent);
+  letter-spacing: 0.04em;
+}
+.hxpop .kt .ib {
+  width: 22px;
+  height: 22px;
+  color: var(--ink-3);
+  border-radius: 6px;
+}
+.hxpop .kt .ib:hover {
+  color: var(--ink);
+  background: var(--hlrow);
+}
+.hxpop .kt .ib.on {
+  color: var(--accent);
+}
+.hxpop .sb.nbody {
+  --md-fs: 12.5px;
+  --md-h1: 1.45em;
+  --md-h2: 1.25em;
+  --md-h3: 1.1em;
+  font: var(--md-fs) / 1.6 var(--sys);
+  color: var(--ink);
+  white-space: normal;
+  word-break: break-word;
+}
+:root.look-ink-wash .hxpop .sb.nbody {
+  font-family: var(--serif);
+}
+.hxpop .lk {
+  display: grid;
+  gap: 1px;
+}
+.hxpop .lk a {
+  color: var(--k-fn);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--k-fn) 40%, transparent);
+  text-underline-offset: 3px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.hxpop .lk span {
+  font: 11px var(--mono);
+  color: var(--ink-3);
+}
+.hxpop .add {
+  text-align: center;
+  font: 500 12px var(--sys);
+  color: var(--ink-3);
+  padding: 6px;
+  border: 1px dashed var(--hair);
+  border-radius: 9px;
+  background: none;
+}
+.hxpop .add:hover {
+  color: var(--accent);
+  border-color: var(--accent);
 }

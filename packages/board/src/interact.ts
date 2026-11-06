@@ -1449,7 +1449,8 @@ export function installKeys(md: Markdown) {
   window.addEventListener("keydown", (e) => {
     // 按下 ⌘：正在显示的弹窗固定下来。按住不放时系统会一直重发 keydown（repeat），那些不算，不然按住 ⌘ 扫过的每个弹窗都会被固定
     if ((e.key === "Meta" || e.key === "Control") && !e.repeat)
-      for (const p of pops()) if (!p.pinned && (p.pop.kind === "peek" || p.pop.kind === "notes")) pinPop(p.id);
+      for (const p of pops())
+        if (!p.pinned && (p.pop.kind === "peek" || p.pop.kind === "notes" || p.pop.kind === "highlight")) pinPop(p.id);
     if (typing() || modalOpen()) return;
     const kl = e.key.toLowerCase();
     if (

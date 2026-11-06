@@ -15,7 +15,7 @@ const NEW: Stale = { state: "changed", hiddenOnly: false, head: "f64d821" };
 function staleCard(id: string, a: Pick<Args, "title" | "notes">) {
   const c = fn(id, "schedule", {
     seg: (s) => {
-      s.hl = [30];
+      s.hl = [[30, 30]];
     },
   });
   const s = c.segments[0];

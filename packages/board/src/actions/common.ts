@@ -47,7 +47,6 @@ export function selectAll() {
 export const selCards = () => sel.cards.map((id) => cardById(id)?.card).filter(Boolean) as Card[];
 
 // 读 mathRev：公式预设换了，用它的地方重画
-export const mdInline = (md: Markdown, s: string) => (mathRev(), md.renderInline(s));
 export const mdBlock = (md: Markdown, s: string) => (mathRev(), md.render(s));
 export const sidenotesOf = notesOf;
 /**

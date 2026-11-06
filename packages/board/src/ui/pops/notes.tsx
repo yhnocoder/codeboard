@@ -7,6 +7,7 @@ import {
   isCode,
   guessLang,
   escHtml,
+  sameRange,
   type Sidenote,
   type SearchItem,
   type SegView,
@@ -128,7 +129,134 @@ export function NotesPop(p: PopProps<"notes">) {
 const kindOf = <K extends Sidenote["kind"]>(n: Sidenote | undefined, k: K) =>
   n?.kind === k ? (n as Extract<Sidenote, { kind: K }>) : undefined;
 
-function NoteItem(p: { n: Sidenote; peeks: CardPeeks }) {
+/**
+ * A Highlight's popup: its lines and what is on them, then each sidenote as a slip with its own tools (the hidden ones first, the
+ * Always Show ones last, as they sit under the code), and a dashed Add Note at the bottom
+ */
+export function HighlightPop(p: PopProps<"highlight">) {
+  const seg = () => {
+    const c = cardById(p.pop.card)?.card;
+    return isCode(c) ? c.segments.find((s) => s.id === p.pop.seg) : undefined;
+  };
+  const here = () => !!seg()?.hl?.some((r) => sameRange(r, p.pop.lines));
+  const notes = () => {
+    const mine = A.sidenotesOf(p.pop.card).filter((n) => n.at.seg === p.pop.seg && sameRange(n.at.lines, p.pop.lines));
+    const always = (n: Sidenote) => n.kind === "text" && !!n.alwaysShow;
+    return [...mine.filter((n) => !always(n)), ...mine.filter(always)];
+  };
+  createEffect(() => {
+    if (!here()) closePop(p.inst.id);
+  });
+  const peeks = cardPeeks();
+  const [a, z] = p.pop.lines;
+  const look = () => state.host.settings.highlightLook;
+  const add = () => {
+    closePop(p.inst.id);
+    A.openAddNote({ card: p.pop.card, seg: p.pop.seg, lines: [a, z] }, "text");
+  };
+  return (
+    <div
+      class="hxpop"
+      classList={{
+        "hx-band": look() !== "bracket" && look() !== "bracket-hand",
+        "hx-bracket": look() === "bracket" || look() === "bracket-hand",
+        "hx-hand": look() === "bracket-hand",
+      }}
+    >
+      <div class="hh">
+        <span class="rng">{a === z ? `${a}` : `${a}–${z}`}</span>
+        <span>
+          Highlight
+          {notes().length ? ` · ${notes().length} note${notes().length > 1 ? "s" : ""}` : ""}
+        </span>
+        <span class="grow" />
+        <button class="ib" aria-label="Add Note" data-tip="Add Note" onClick={add}>
+          <Icon name="plus" size={14} />
+        </button>
+        <button
+          class="ib"
+          aria-label="Remove Highlight"
+          data-tip={notes().length ? "Remove Highlight and its notes" : "Remove Highlight"}
+          onClick={() => A.removeHighlight(p.pop.card, p.pop.seg, p.pop.lines)}
+        >
+          <Icon name="trash" size={14} />
+        </button>
+      </div>
+      <div class="tray">
+        <For each={notes()}>{(n) => <Slip n={n} peeks={peeks} pop={p.inst.id} />}</For>
+        <button class="add" onClick={add}>
+          + Add Note
+        </button>
+      </div>
+      <Show when={peeks.peek()} keyed>
+        {(pk) => <CardPeek id={pk.card} at={pk.at} peeks={peeks} />}
+      </Show>
+    </div>
+  );
+}
+
+const KIND_LABEL: Record<Sidenote["kind"], string> = {
+  text: "Note",
+  code: "Code",
+  paste: "Paste",
+  link: "Link",
+  card: "Card",
+};
+/** One sidenote on a Highlight: its kind, its tools, and its body (a Text sidenote rendered as a Note is) */
+function Slip(p: { n: Sidenote; peeks: CardPeeks; pop: number }) {
+  const n = () => p.n;
+  const always = () => !!kindOf(n(), "text")?.alwaysShow;
+  const tool = (icon: string, tip: string, run: () => void, on?: () => boolean) => (
+    <button class="ib" classList={{ on: !!on?.() }} aria-label={tip} data-tip={tip} onClick={run}>
+      <Icon name={icon} size={14} />
+    </button>
+  );
+  return (
+    <div
+      class="slip"
+      classList={{ always: always() }}
+      data-note={n().id}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        pinPop(p.pop);
+        noteMenu(n(), e.clientX, e.clientY);
+      }}
+    >
+      <div class="kt">
+        <span class="tag">{KIND_LABEL[n().kind]}</span>
+        <Show when={always()}>
+          <span class="as">· Always Show</span>
+        </Show>
+        <span class="grow" />
+        <Show when={n().kind === "text"}>
+          {tool("pencil", "Edit", () => editText(n()))}
+          {tool("eye", "Always Show", () => A.toggleAlwaysShow(n().id), always)}
+        </Show>
+        <Show when={n().kind !== "card"}>{tool("place", "Place on Board", () => A.placeSidenote(n().id))}</Show>
+        <Show when={n().kind !== "card" && sharedOn(n().at.card) > 1}>
+          {tool(
+            "lock",
+            "Board-only",
+            () => A.toggleBoardOnly(n().id),
+            () => !!n().boardOnly,
+          )}
+        </Show>
+        <Show when={hasVariants(n().at.card)}>
+          {tool(
+            "swap",
+            "Only in This Variant",
+            () => A.toggleVariantOnly(n().id),
+            () => !!n().variant,
+          )}
+        </Show>
+        {tool("trash", "Delete Sidenote", () => A.deleteSidenote(n().id))}
+      </div>
+      <NoteItem n={n()} peeks={p.peeks} slip />
+    </div>
+  );
+}
+
+function NoteItem(p: { n: Sidenote; peeks: CardPeeks; slip?: boolean }) {
   const n = () => p.n;
   return (
     <>
@@ -177,7 +305,7 @@ function NoteItem(p: { n: Sidenote; peeks: CardPeeks }) {
               when={snEditing() === t().id}
               fallback={
                 <MdStatic
-                  class="sn-text"
+                  class={p.slip ? "sb nbody" : "sn-text"}
                   src={t().md}
                   onDblClick={() => editText(t())}
                   onToggle={(v) => A.writeSidenote(t().id, v)}
@@ -186,6 +314,14 @@ function NoteItem(p: { n: Sidenote; peeks: CardPeeks }) {
             >
               <SidenoteEditor n={t()} />
             </Show>
+          )}
+        </Match>
+        <Match when={p.slip && kindOf(n(), "link")}>
+          {(l) => (
+            <div class="lk">
+              <a onClick={() => A.openLink(l().url)}>{l().title || l().url}</a>
+              <span>{hostOf(l().url)}</span>
+            </div>
           )}
         </Match>
         <Match when={kindOf(n(), "link")}>
@@ -264,6 +400,14 @@ function NoteItem(p: { n: Sidenote; peeks: CardPeeks }) {
     </>
   );
 }
+/** A link's site, as the popup shows it under its title */
+const hostOf = (url: string) => {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
+};
 const hasVariants = (id: string) => {
   const c = cardById(id)?.card;
   return isCode(c) && !!c.variants?.length;
@@ -309,7 +453,12 @@ function noteMenu(n: Sidenote, x: number, y: number) {
 const [snEditing, setSnEditing] = boardSignal<string | null>(null);
 function editText(n: Sidenote) {
   if (n.kind !== "text") return;
-  for (const q of pops()) if (q.pop.kind === "notes" && q.pop.ids.includes(n.id)) pinPop(q.id);
+  for (const q of pops())
+    if (
+      (q.pop.kind === "notes" && q.pop.ids.includes(n.id)) ||
+      (q.pop.kind === "highlight" && q.pop.card === n.at.card && sameRange(q.pop.lines, n.at.lines))
+    )
+      pinPop(q.id);
   setSnEditing(n.id);
 }
 function SidenoteEditor(p: { n: Extract<Sidenote, { kind: "text" }> }) {

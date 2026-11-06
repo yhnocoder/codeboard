@@ -2,7 +2,7 @@
 import type { Component } from "solid-js";
 import type { Pop } from "../../state/pop";
 import type { PopProps } from "./common";
-import { NotesPop, AddNotePop } from "./notes";
+import { NotesPop, AddNotePop, HighlightPop } from "./notes";
 import { PeekPop } from "./peek";
 import { DiffPop, ThreePop, CommitsPop } from "./versions";
 import { VarsPop, MarkPop, ImplsPop, ValsPop, NamesPop, RpcPop } from "./chains";
@@ -11,6 +11,7 @@ import { SealPop } from "./seal";
 
 export const POPS: { [K in Pop["kind"]]: Component<PopProps<K>> } = {
   notes: NotesPop,
+  highlight: HighlightPop,
   peek: PeekPop,
   addNote: AddNotePop,
   diff: DiffPop,

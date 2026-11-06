@@ -22,6 +22,7 @@ import { LANGS, langLabel } from "@codeboard/analysis/langs";
 import { state, cardById, hostOf, rectOf, placeOf, collapsedAway } from "../state/store";
 import { sel, select, clearSel, setLineSel, type LineSel } from "../state/selection";
 import { toast } from "../state/toast";
+import { undo } from "../state/changes";
 import { animate, Spring } from "../state/camera";
 import { reduceMotion } from "../state/motion";
 import { setEditing, setEditEntry, codeTextRange, staged, setStaged } from "../state/ui";
@@ -64,7 +65,13 @@ export function hideLines(ls: LineSel) {
   window.getSelection()?.removeAllRanges();
   setLineSel(null);
 }
-export const toggleHl = (ls: LineSel) => C.toggleHighlight(commandEnv, ls);
+/** Sidenotes that went with a removed Highlight: said, with Undo right there */
+export function removedNotes(n: number) {
+  if (n)
+    toast(`Removed the Highlight and its ${n} note${n > 1 ? "s" : ""}`, [{ label: "Undo", run: () => void undo() }]);
+}
+/** Highlight Lines / Remove Highlight (menus.ts); sidenotes removed with a Highlight are said, undo brings them back */
+export const toggleHl = (ls: LineSel) => removedNotes(C.toggleHighlight(commandEnv, ls));
 
 /** Align / distribute the selected cards (their frames as drawn); locked ones stay */
 export const alignCards = (rs: (Rect & { id: string })[], op: AlignOp) => C.alignCards(commandEnv, rs, op);

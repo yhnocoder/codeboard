@@ -159,6 +159,29 @@ function SettingsPage(p: { section?: string }) {
             Also Show the Title Heading in the Note
           </label>
           <NoteFonts />
+          <div class="st-sub">Highlighted lines in code cards, and the notes on them</div>
+          <div class="st-chips st-hl">
+            <For
+              each={
+                [
+                  ["band", "Highlighter"],
+                  ["bracket", "Margin Bracket"],
+                  ["bracket-hand", "Margin Bracket, Handwritten"],
+                ] as const
+              }
+            >
+              {([v, lb]) => (
+                <button
+                  class="st-chip pick"
+                  classList={{ on: cur().highlightLook === v }}
+                  data-v={v}
+                  onClick={() => A.setSetting("highlightLook", v)}
+                >
+                  {lb}
+                </button>
+              )}
+            </For>
+          </div>
         </Sec>
         <Sec
           id="math"

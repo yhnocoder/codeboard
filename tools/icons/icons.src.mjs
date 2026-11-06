@@ -139,6 +139,8 @@ export const ICONS = {
   ],
   eye: ["M1.5 8a6.73 6.73 0 0 1 13 0 6.73 6.73 0 0 1-13 0z" + circle(8, 8, 2), "", "eye"],
   swap: ["M11 2l3 3-3 3M14 5H2M5 14l-3-3 3-3M2 11h12", "", "arrow-right-left"],
+  pencil: ["M11 2l3 3-8.5 8.5L2 14l.5-3.5zM9 4l3 3", "", "pencil"],
+  place: [rect(2, 3, 14, 13, R) + "M5 7h6M5 10h4", "", "panel (Place on Board)"],
   check: ["M13 4 6 11 3 8", "", "check"],
   alignL: ["M2 1v14" + rect(5, 2, 14, 6, R) + rect(5, 10, 11, 14, R), "", "align-start-vertical"],
   alignC: ["M8 1v1M8 6v4M8 14v1" + rect(2, 2, 14, 6, R) + rect(4, 10, 12, 14, R), "", "align-center-vertical"],

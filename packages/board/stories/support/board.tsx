@@ -18,6 +18,7 @@ import {
   type Stale,
   type ThemeId,
   type HostToBoard,
+  fixHighlights,
 } from "@codeboard/core";
 import { App } from "../../src/App";
 import { BoardView } from "../../src/BoardView";
@@ -94,7 +95,9 @@ export function Stage(p: { scene: () => Scene; globals: Globals; replies?: Repli
   let raf = 0;
   const load = (s: Scene) => {
     cancelAnimationFrame(raf);
-    const b: Board = { ...s.board, cam: { x: ORIGIN, y: ORIGIN, z: s.zoom ?? untrack(z) } };
+    const b: Board = structuredClone({ ...s.board, cam: { x: ORIGIN, y: ORIGIN, z: s.zoom ?? untrack(z) } });
+    // scenes put sidenotes on lines; the Highlights they belong to come as the host's reads bring them (core edit/highlights.ts)
+    fixHighlights(b);
     // 宿主的消息是 postMessage 来的（结构化克隆）：store 会就地改它收下的对象（reconcile），小样之间共用的常量不能直接交出去
     fromHost(
       structuredClone({
