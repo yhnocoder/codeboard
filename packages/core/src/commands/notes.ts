@@ -165,9 +165,12 @@ export function addSidenotes(env: CommandEnv, list: Omit<Sidenote, "id">[], fit?
     for (const n of sns) onHighlight(b, n);
   };
   // one on lines makes or grows a Highlight (its gap, the marker's gutter): a fitted card stays fitted
-  const card = sns.length === 1 && sns[0].at.lines ? sns[0].at.card : undefined;
-  if (card) keepFitted(env, card, fit, change);
-  else env.edit(change);
+  keepFitted(
+    env,
+    sns.filter((n) => n.at.lines).map((n) => n.at.card),
+    fit,
+    change,
+  );
   return sns.map((n) => n.id);
 }
 

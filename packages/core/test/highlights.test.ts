@@ -25,7 +25,14 @@ import {
   type Segment,
   type Sidenote,
 } from "../src";
-import { splitSegment, toggleBoardOnly, toggleVariantOnly, type CommandEnv } from "../src/commands";
+import {
+  addSidenotes,
+  splitSegment,
+  toggleBoardOnly,
+  toggleVariantOnly,
+  type CommandEnv,
+  type FitMeasure,
+} from "../src/commands";
 
 const seg = (id: string, hl?: unknown): Segment =>
   ({
@@ -437,5 +444,36 @@ describe("local sidenotes (board-only, Card)", () => {
     expect(removeHighlights(b, s0(b), [[2, 8]])).toBe(2);
     expect(s0(b).hl).toBeUndefined();
     expect(b.sidenotes).toEqual([]);
+  });
+});
+
+describe("keeping fitted code cards fitted when sidenotes go on lines", () => {
+  /** A shell's measure: the gutter grows 8px once a card has a Highlight, its height 20px per Highlight */
+  const fake = (b: Board): FitMeasure => ({
+    measure: (id) => {
+      const s = (b.cards.find((c) => c.id === id) as CodeCard).segments[0];
+      const n = s.hl?.length ?? 0;
+      return { h: 400 + 20 * n, body: 400 + 20 * n, w: 300 + (n ? 8 : 0) };
+    },
+    codeMax: 100,
+  });
+  it("several line notes in one call refit each card they are on, width and height", () => {
+    const b = emptyBoard("b", "b");
+    b.cards.push(code("a"), code("c"), code("d"));
+    b.place.a = { x: 0, y: 0, w: 300, h: 400 }; // fitted
+    b.place.c = { x: 400, y: 0, w: 300, h: 400 }; // fitted
+    b.place.d = { x: 800, y: 0, w: 520, h: 700 }; // sized by hand
+    addSidenotes(
+      envOf(b),
+      [
+        { kind: "text", md: "a", at: { card: "a", seg: "s-a", lines: [2, 3] } } as Omit<Sidenote, "id">,
+        { kind: "text", md: "c", at: { card: "c", seg: "s-c", lines: [4, 4] } } as Omit<Sidenote, "id">,
+        { kind: "text", md: "d", at: { card: "d", seg: "s-d", lines: [4, 4] } } as Omit<Sidenote, "id">,
+      ],
+      fake(b),
+    );
+    expect(b.place.a).toMatchObject({ w: 308, h: 420 });
+    expect(b.place.c).toMatchObject({ w: 308, h: 420 });
+    expect(b.place.d).toMatchObject({ w: 520, h: 700 });
   });
 });

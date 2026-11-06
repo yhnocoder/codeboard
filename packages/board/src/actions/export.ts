@@ -166,17 +166,22 @@ async function cloneForExport(
     prevLine = lineSel();
   select({});
   setLineSel(null);
-  setExportHidden(hide);
-  flushMd(); // 视野外还没渲染完的 Note 先补上
-  await frames(2);
-  flushMd();
-  await frames(1);
-  const world = (document.querySelector("#board .world") as HTMLElement).cloneNode(true) as HTMLElement;
-  setExportHidden(new Set<string>());
+  let world: HTMLElement;
+  try {
+    setExportHidden(hide);
+    flushMd(); // 视野外还没渲染完的 Note 先补上
+    await frames(2);
+    flushMd();
+    await frames(1);
+    world = (document.querySelector("#board .world") as HTMLElement).cloneNode(true) as HTMLElement;
+  } finally {
+    // the live board shows every sidenote and its selection again, whatever went wrong
+    setExportHidden(new Set<string>());
+    select(prevSel);
+    setLineSel(prevLine);
+  }
   // Image cards and Note images show a smaller copy at the zoom they are seen at (md/copies.ts): the export carries the original
   world.querySelectorAll<HTMLImageElement>("img[data-full]").forEach((im) => im.setAttribute("src", im.dataset.full!));
-  select(prevSel);
-  setLineSel(prevLine);
   const keep = new Set(order);
   const linkOk = new Set(
     b.links.filter((l) => keep.has(hostOf(l.from.card)) && keep.has(hostOf(l.to.card))).map((l) => l.id),

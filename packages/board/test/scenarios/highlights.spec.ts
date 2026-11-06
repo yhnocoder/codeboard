@@ -13,7 +13,7 @@
 //                           another step came after it the Undo is off and does nothing
 //  highlightExport          the HTML export leaves board-only notes out as if they were not there: no empty note row, no band
 //                           or marker for a Highlight only they made, bands no longer than their code, line numbers on their lines
-import { DEFAULT_SETTINGS, emptyBoard, type Board, type CodeCard, type HighlightLook } from "@codeboard/core";
+import { DEFAULT_SETTINGS, THEMES, emptyBoard, type Board, type CodeCard, type HighlightLook } from "@codeboard/core";
 import type { Page } from "playwright-core";
 import type { Host } from "../harness";
 import { NOTE_HOVER } from "../../src/state/timing";
@@ -287,6 +287,33 @@ test("highlightLookSetting", async () => {
     [band, bracket, hand].every((l) => JSON.stringify(l.marks) === '["1","1","1"]'),
     { band: band.marks, bracket: bracket.marks, hand: hand.marks },
   );
+  // the hand is one rule for every theme, light and dark: the body and its headings in the hand font and the pen's tint
+  const off: unknown[] = [];
+  for (const [theme] of THEMES)
+    for (const dark of [false, true]) {
+      await pg.evaluate((d) => {
+        document.body.classList.remove("vscode-light", "vscode-dark");
+        document.body.classList.add(d ? "vscode-dark" : "vscode-light");
+      }, dark);
+      await h.post({
+        type: "host",
+        host: { settings: { ...DEFAULT_SETTINGS, theme, highlightLook: "bracket-hand" } } as never,
+      });
+      await idle(h);
+      const r = await pg.evaluate(() => {
+        const nb = document.querySelector<HTMLElement>('.card[data-id="k1"] .inote .nbody')!;
+        const [b, t] = [getComputedStyle(nb), getComputedStyle(nb.querySelector("h2")!)];
+        return {
+          theme: document.documentElement.dataset.theme,
+          hand: getComputedStyle(document.documentElement).getPropertyValue("--hand").trim().split(",")[0],
+          fonts: [b.fontFamily.split(",")[0], t.fontFamily.split(",")[0]],
+          colors: [b.color, t.color],
+        };
+      });
+      if (r.theme !== (dark ? "dark" : "light") || r.fonts.some((f) => f !== r.hand) || r.colors[0] !== r.colors[1])
+        off.push({ look: theme, ...r });
+    }
+  check("highlightLookSetting the hand looks the same in every theme, light and dark", off.length === 0, off);
   await h.close();
 });
 

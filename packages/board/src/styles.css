@@ -8426,16 +8426,17 @@ mark.wdiff {
   --accent: var(--warn);
 }
 /* the bracket with the hand: the same Note styles, only the font (and a little of the pen's colour) changes. One rule for every theme */
-/* :root:root:root outweighs the themes' Note rules (themes.css), which set the body's and the headings' fonts */
-:root:root:root .hx-hand :is(.inote > .nbody, .sb.nbody),
-:root:root:root .hx-hand :is(.inote > .nbody, .sb.nbody) :is(h1, h2, h3, h4, h5, h6, strong, b) {
-  --sys: var(--hand);
-  --serif: var(--hand);
-  --md-heading-font: var(--hand);
-  --note-h: var(--hand);
-  --display: var(--hand);
-  font-family: var(--hand);
-  color: color-mix(in srgb, var(--accent) 70%, var(--ink));
+/* !important: a theme's Note rules (themes.css: :root.look-… :is(.card.note, .inote, .slip) .nbody) set the body's and the headings'
+   fonts and colours at any weight, so no selector weight wins over every theme; nothing else here sets these on notes */
+.hx-hand :is(.inote > .nbody, .sb.nbody),
+.hx-hand :is(.inote > .nbody, .sb.nbody) :is(h1, h2, h3, h4, h5, h6, strong, b) {
+  --sys: var(--hand) !important;
+  --serif: var(--hand) !important;
+  --md-heading-font: var(--hand) !important;
+  --note-h: var(--hand) !important;
+  --display: var(--hand) !important;
+  font-family: var(--hand) !important;
+  color: color-mix(in srgb, var(--accent) 70%, var(--ink)) !important;
 }
 
 /* a Highlight's popup: slips on a tray, the Always Show ones last */
