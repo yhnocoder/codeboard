@@ -35,7 +35,19 @@ import { useMd } from "../md/context";
 import { attachCardAnim, detachAnims } from "../md/anim";
 import { state, setSize, flows, placeOf, rectOf, twinsOf } from "../state/store";
 import { isSel, sel } from "../state/selection";
-import { editing, setEditing, dragging, landing, popIn, sizeIn, walk, pingCard, dropTarget, staged } from "../state/ui";
+import {
+  editing,
+  setEditing,
+  dragging,
+  landing,
+  carried,
+  popIn,
+  sizeIn,
+  walk,
+  pingCard,
+  dropTarget,
+  staged,
+} from "../state/ui";
 import { foldAt, toTitle, fadeAt, goneAt, skel } from "../state/fold";
 import { Icon } from "../ui/icons";
 import { isHidden } from "../state/sections";
@@ -251,6 +263,7 @@ export function CardView(p: { card: Card }) {
   // 先算成这张卡自己的真假，只有值真变了的那张卡才重算 classList
   const lift = createMemo(() => dragging().has(c().id));
   const land = createMemo(() => landing().has(c().id));
+  const carry = createMemo(() => carried().cards.has(c().id));
   const ed = createMemo(() => editing()?.id === c().id);
   const drop = createMemo(() => {
     const d = dropTarget(),
@@ -279,6 +292,7 @@ export function CardView(p: { card: Card }) {
           solo: sel.cards.length === 1,
           lift: lift(),
           landing: land(),
+          carry: carry(),
           dim: dim(),
           locked: !!pl().locked,
           autoh: !pl().h,

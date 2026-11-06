@@ -23,7 +23,7 @@ const [skels, setSkels] = boardStore<Record<string, Skeleton | null>>(() => ({})
 export { skels };
 /** 面包屑（从最外层到上一级）；顶层白板是空的 */
 export const [crumbs, setCrumbs] = createSignal<Crumb[]>([]);
-/** 进子白板时名字正飞向面包屑：面包屑上「当前」那一格先不显示 */
+/** 进子白板时名字正飞向面包屑、出来时名字正从面包屑飞走：面包屑上「当前」那一格先不显示 */
 export const [crumbMorph, setCrumbMorph] = createSignal(false);
 /** 从父白板的讲解进来的：讲完（→ 走过最后一步 / ← 退过第一步）回到父白板，从这里接着讲 */
 export const [walkBack, setWalkBack] = boardSignal<{ root: string; i: number } | null>(null);

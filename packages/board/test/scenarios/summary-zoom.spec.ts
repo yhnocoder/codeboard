@@ -3,9 +3,16 @@
 //                            flies to that card at 100 % with the card level back and its calls clickable, nothing new on the
 //                            board; double-clicking a Section's title fits the Section's frame, an outer Section's own
 //                            column (own:, the cards placed directly in it beside a child Section) fits those cards
-import { emptyBoard, type Section } from "@codeboard/core";
+//  summaryImageCopy        — an Image card's picture at the summary level is the smaller copy the card itself would show
+//                            (md.showImage, picked by the size the summary shows it at times the display scale), not the
+//                            full-size original: a 3200 × 1600 PNG shown 480 px wide at 20 % decodes a copy at least that
+//                            wide, and the end-of-scenario image budget (fixtures.ts budgets) holds
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { emptyBoard, type Board, type Section } from "@codeboard/core";
+import { png } from "@codeboard/host/testing";
 import { put, symCard, findSym, type Host } from "../harness";
-import { test, open, check, idle, until } from "../fixtures";
+import { test, open, check, idle, until, hostBoards } from "../fixtures";
 
 const nv = (qual: string) => {
   const s = findSym(qual);
@@ -113,4 +120,50 @@ test("summaryTitleZoomsToItem", async () => {
   );
   check("summaryTitleZoomsToItem nothing new on the board", h.board().cards.length === nCards);
   await h.page.context().close();
+});
+
+test("summaryImageCopy", async () => {
+  const b = emptyBoard("bSumImg", "summary image");
+  b.cards.push({ id: "big", kind: "image", src: "big.png" } as Board["cards"][number]);
+  b.place.big = { x: 80, y: 80, w: 2400 };
+  // code cards beside it: a board wide enough to be seen at 20 %, below the summary cut. Opened there, so that the card's own
+  // picture is a copy too (a picture never steps down while it stays on the page: picture.ts)
+  ["LLMEngine.step", "Scheduler.schedule", "ModelRunner.run", "BlockManager.allocate", "Sampler.forward"].forEach(
+    (q, i) => put(b, nv(q), 2600 + i * 640, 80, 560),
+  );
+  b.cam = { x: 0, y: 0, z: 0.2 };
+  const run = await hostBoards([b], { page: { light: true, w: 1100, h: 760 } });
+  const assets = run.host.store.assetsDir();
+  fs.mkdirSync(assets, { recursive: true });
+  fs.writeFileSync(
+    path.join(assets, "big.png"),
+    png(3200, 1600, (x, y) => (x % 50 === 0 || y % 50 === 0 ? [40, 40, 48, 255] : [248, 247, 242, 255])),
+  );
+  const h = await run.open(b.id);
+  await until(h, "the summary level shows", () => h.page.locator(".sumlay.live").count());
+  await idle(h);
+  const z = await zoomOf(h);
+  // the original may show for a moment, until the host has made the copy (picture.ts): the copy then replaces it (beside other
+  // scenarios the host takes a while to make it)
+  const seen = await until(
+    h,
+    "the summary's picture shows a copy",
+    () =>
+      h.page.evaluate(() => {
+        const i = document.querySelector<HTMLImageElement>(".sumlay .sumimg");
+        if (!i?.complete || !i.naturalWidth || i.naturalWidth === 3200) return null;
+        const r = i.getBoundingClientRect();
+        return { src: i.getAttribute("src") ?? "", natural: i.naturalWidth, w: r.width, h: r.height };
+      }),
+    20_000,
+  );
+  check("summaryImageCopy the summary shows a smaller copy, not the original", /\/thumbs\//.test(seen.src), {
+    ...seen,
+    z,
+  });
+  check("summaryImageCopy the picture is shown at the card's size", Math.abs(seen.w - 2400 * z) < 2, { ...seen, z });
+  // picked by the size it is seen at (its board size times the zoom), not by the box it is laid out in inside the summary layer
+  // (1 / K of that): the copy is at least as wide as it shows (1x screen)
+  check("summaryImageCopy the copy is sharp at the size shown", seen.natural >= seen.w, { ...seen, z });
+  await idle(h);
 });
