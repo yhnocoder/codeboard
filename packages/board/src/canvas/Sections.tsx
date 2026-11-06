@@ -32,8 +32,9 @@ const FRAME_EDGES: FrameEdge[] = ["n", "s", "e", "w", "nw", "ne", "sw", "se"];
 /** The least reach of a frame's look past its edges and corners (the selection and drop rings, Poster's outline), for the
  *  scaled frame while it eases: the corner radius counts when it is bigger */
 const SCALE_REACH = 8;
-/** Ink Wash's brush strokes: they reach FRAME_M (12 px, state/inkframe.ts) past the frame and are a few px thick */
-const BRUSH_REACH = 18;
+/** Ink Wash's brush strokes: they reach FRAME_M (12 px, state/inkframe.ts) past the frame and are a few px thick; the selected
+ *  look's second stroke (themes.css .secho) lies 5 px further right and down */
+const BRUSH_REACH = 23;
 const sameRect = (a?: Rect, b?: Rect) =>
   a === b || (!!a && !!b && a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h);
 const ordered = () => state.board.sections.filter((s) => !hiddenByAncestor(s)).sort((a, b) => depthOf(a) - depthOf(b));
@@ -180,10 +181,18 @@ function BrushFrame(p: { s: Section; laid: () => Rect | undefined }) {
     const open = f ? !shutLook(f) : !p.s.collapsed;
     return brushFrame(q.w, q.h, p.s.id, open ? Math.max(40, titleWidth(p.s.id)) : 0);
   });
-  return (
-    <svg class="sbrush" width={img()?.w ?? 0} height={img()?.h ?? 0} viewBox={`0 0 ${img()?.w ?? 0} ${img()?.h ?? 0}`}>
+  // the image twice: the strokes, and under them the selected look's second, lighter stroke (themes.css .secho). Two images
+  // rather than two paths in one, so the second stroke fades in as a layer of its own without the strokes being painted again
+  const svg = (cls: string) => (
+    <svg class={cls} width={img()?.w ?? 0} height={img()?.h ?? 0} viewBox={`0 0 ${img()?.w ?? 0} ${img()?.h ?? 0}`}>
       <path d={img()?.d ?? ""} />
     </svg>
+  );
+  return (
+    <>
+      {svg("secho")}
+      {svg("sbrush")}
+    </>
   );
 }
 

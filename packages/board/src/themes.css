@@ -3720,16 +3720,25 @@
 /* Sections (#137): no border or tray; the frame is four dry brush strokes (state/inkframe.ts, an SVG in the frame,
    canvas/Sections.tsx), its colour the SVG's currentColor. The title is written in running script (Zhi Mang Xing,
    fonts-zhimangxing.css) in the gap the top stroke leaves for it, its middle on the stroke; it ellipsizes before the frame's
-   right corner. Collapsed: the title back inside the small frame, which has no gap. Selected: strokes and title vermilion */
+   right corner. Collapsed: the title back inside the small frame, which has no gap. Selected: what Warm Ink's border, ring and
+   wash are, in brush and vermilion: the strokes and title turn vermilion, a second, lighter vermilion stroke shows a little
+   inside the frame (the same strokes again, offset, as if the brush went round twice) and a faint vermilion wash covers it.
+   The second stroke and the wash only fade (opacity), so selecting a big Section paints nothing but the strokes' colour. The
+   drop target keeps the plain ink-grey wash (.sect.drop, styles.css) and no second stroke */
 :root.look-ink-wash .sect {
   --sect-fill: transparent;
   --sect-sh: none;
   border-color: transparent;
   border-radius: 2px;
 }
-/* its own selected look is the brush strokes in vermilion: no accent wash */
+/* the wash: vermilion and fainter than Warm Ink's accent wash, a little stronger on rubbing-black paper, timed with the strokes */
 :root.look-ink-wash .sect::after {
-  content: none;
+  border-radius: 0;
+  background: color-mix(in srgb, var(--zhu) 4.5%, transparent);
+  transition: opacity 0.18s var(--out);
+}
+:root.look-ink-wash[data-theme="dark"] .sect::after {
+  background: color-mix(in srgb, var(--zhu) 7%, transparent);
 }
 :root.look-ink-wash .sect.sel,
 :root.look-ink-wash .sect.drop {
@@ -3737,7 +3746,7 @@
   box-shadow: none;
 }
 /* the image reaches FRAME_M (12 px) outside the frame, measured from its border box: the frame's 1 px border is inside that */
-:root.look-ink-wash .sbrush {
+:root.look-ink-wash :is(.sbrush, .secho) {
   position: absolute;
   left: -13px;
   top: -13px;
@@ -3753,6 +3762,17 @@
 :root.look-ink-wash .sect.sel .sbrush {
   color: var(--zhu);
   fill-opacity: 0.85;
+}
+/* the second stroke: hidden until selected, then only its opacity changes */
+:root.look-ink-wash .secho {
+  translate: 5px 5px;
+  color: var(--zhu);
+  fill-opacity: 1;
+  opacity: 0;
+  transition: opacity 0.18s var(--out);
+}
+:root.look-ink-wash .sect.sel .secho {
+  opacity: 0.42;
 }
 :root.look-ink-wash .slabel {
   --ml: 24px;
