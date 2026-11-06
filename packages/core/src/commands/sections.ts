@@ -34,6 +34,30 @@ export function moveIntoSection(env: CommandEnv, ids: string[], section: string,
   });
 }
 
+/**
+ * A Section resized by dragging its edges: its frame becomes `frame`, and each card in `homes` goes into the Section given there
+ * (undefined: on the board, in no Section). The shell decides those by where the cards lie in the new frame: the ones it now
+ * covers join, the ones it no longer covers leave. One undo step
+ */
+export function resizeSection(
+  env: CommandEnv,
+  id: string,
+  frame: Rect,
+  homes: ReadonlyMap<string, string | undefined>,
+) {
+  env.edit((b) => {
+    const s = b.sections.find((q) => q.id === id);
+    if (!s) return;
+    Object.assign(s, { x: frame.x, y: frame.y, w: frame.w, h: frame.h });
+    for (const [card, to] of homes) {
+      const p = b.place[card];
+      if (!p) continue;
+      if (to && b.sections.some((q) => q.id === to)) p.section = to;
+      else delete p.section;
+    }
+  });
+}
+
 /** Move Out of Parent Section: it goes one level up, into the Section its parent is in (none: on the board) */
 export function moveOutOfParent(env: CommandEnv, id: string) {
   env.edit((b) => {

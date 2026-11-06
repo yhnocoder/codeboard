@@ -60,6 +60,8 @@ import {
   allMembers,
   visibleCards,
   setMovingHome,
+  resizedHomes,
+  setResizing,
   isHidden,
 } from "./state/sections";
 import { geo } from "./state/geo";
@@ -1355,29 +1357,59 @@ function dragGroup(e: PointerEvent, secIds: string[], cardIds: string[], grabbed
     },
   );
 }
-/** 拖 Section 的四条边、四个角改大小：对面的边不动（框只会比内容大：缩过卡时框停在卡外面，卡还在 Section 里） */
+/**
+ * 拖 Section 的四条边、四个角改大小：对面的边不动。拖的时候就预演成员（resizedHomes）：新框盖住三分之一以上的卡进来、
+ * 不再盖住的卡出去，框跟着它们撑开（setMovingHome，和拖卡同一套），要收卡的 Section 亮起来（.drop）；松手时框和成员一起
+ * 改（resizeSection，一步撤销）
+ */
 export function sectionEdgeDown(e: PointerEvent, id: string, edge: FrameEdge) {
   if (e.button !== 0) return;
   e.preventDefault();
   e.stopPropagation();
   const s = sec(id);
   if (!s || A.sectionLocked(s)) return;
-  const f0 = frameOf(s);
+  const f0 = frameOf(s),
+    fr = frames(),
+    saved = { x: s.x, y: s.y, w: s.w, h: s.h };
   const g = undoGesture();
   const sx = e.clientX,
     sy = e.clientY;
+  let r: Rect | null = null;
+  setResizing(id);
+  const done = () => {
+    setMovingHome(null);
+    setResizing(null);
+  };
   track(
     e,
     (ev) => {
-      const r = dragFrameEdge(f0, edge, (ev.clientX - sx) / cam.z, (ev.clientY - sy) / cam.z);
-      live((b) => {
-        const q = b.sections.find((x) => x.id === id);
-        if (q) Object.assign(q, r);
+      r = dragFrameEdge(f0, edge, (ev.clientX - sx) / cam.z, (ev.clientY - sy) / cam.z);
+      const to = r;
+      batch(() => {
+        live((b) => {
+          const q = b.sections.find((x) => x.id === id);
+          if (q) Object.assign(q, to);
+        });
+        setMovingHome(resizedHomes(id, to, fr));
       });
     },
-    g.end,
+    () => {
+      const homes = r ? resizedHomes(id, r, fr) : null;
+      done();
+      if (!r || !homes) return g.end();
+      // 框先回到按下时，拖动本身不记一步：resizeSection 把框和成员一起改，是一步撤销
+      live((b) => {
+        const q = b.sections.find((x) => x.id === id);
+        if (q) Object.assign(q, saved);
+      });
+      g.end();
+      A.resizeSection(id, r, homes);
+    },
     3,
-    g.drop,
+    () => {
+      done();
+      g.drop();
+    },
   );
 }
 

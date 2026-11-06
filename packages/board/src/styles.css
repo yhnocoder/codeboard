@@ -2145,11 +2145,14 @@ textarea {
 .sect:not([class*=" c-"]) {
   background: var(--sect-fill);
 }
+/* selected: an accent border and ring, and an accent wash over its fill (an inset shadow as big as the frame, so a coloured
+   Section gets it too and it eases in with the shadow's transition) */
 .sect.sel {
-  border-color: color-mix(in srgb, var(--accent) 70%, transparent);
+  border-color: var(--accent);
   box-shadow:
     var(--sect-sh),
-    0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent);
+    inset 0 0 0 9999px color-mix(in srgb, var(--accent) 7%, transparent),
+    0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
 }
 .sect.drop {
   border-color: color-mix(in srgb, var(--ink) 42%, transparent);
@@ -2159,7 +2162,7 @@ textarea {
     0 0 0 4px color-mix(in srgb, var(--ink) 7%, transparent);
 }
 .sect.sel.drop {
-  border-color: color-mix(in srgb, var(--accent) 70%, transparent);
+  border-color: var(--accent);
 }
 /* Fit Content: the frame and its title ease to the new rect */
 .sect.fit {
