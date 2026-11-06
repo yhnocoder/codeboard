@@ -133,20 +133,34 @@ if (HH.length) {
 
 // Raster counts (perf.ts rasterProbes, probes.ts): pixels rastered per step and layers' raster scale at rest, counted from the
 // compositor's trace, so the same on any machine. They are judged against absolute budgets (probes.ts RASTER_BUDGET, carried in
-// each run's rasterChecks), not against base: head fails when its median over the runs that have them is over the limit
+// each run's rasterChecks), not against base: head fails when its median over the runs that have them is past the limit (under
+// it for the checks marked atLeast: the integrity checks that a pass has snapshots, tasks and layers at rest). perf-ab.sh leaves
+// raster.expected in the dir when a head run was asked for them, so a run that crashed or dropped them fails here, not silently
 const withRaster = (rs) => rs.filter((r) => Array.isArray(r.rasterChecks));
 const RB = withRaster(B),
   RH = withRaster(H);
 const rasterFails = [];
+if (!RH.length && fs.existsSync(path.join(dir, "raster.expected"))) {
+  lines.push(
+    "",
+    "No head run has raster counts, though one was asked for them: the run failed or dropped them (see its log).",
+  );
+  fails.push("raster: no head run has raster counts (raster.expected is set)");
+}
 if (RH.length) {
   lines.push("", "| Raster budget (absolute; counts) | base → head | limit | |", "|---|---|---|---|");
   for (const c of RH[0].rasterChecks) {
     const at = (rs) => median(rs.map((r) => r.rasterChecks.find((x) => x.name === c.name)?.value));
     const h = at(RH),
       b = at(RB),
-      bad = h > c.limit;
-    if (bad) rasterFails.push(`raster ${c.name}: ${fmt(h)} over the budget of ${c.limit}`);
-    lines.push(`| ${c.name} | ${RB.length ? `${fmt(b)} → ` : ""}${fmt(h)} | ${c.limit} | ${bad ? "❌" : ""} |`);
+      bad = h === undefined || Number.isNaN(h) || (c.atLeast ? h < c.limit : h > c.limit);
+    if (bad)
+      rasterFails.push(
+        `raster ${c.name}: ${fmt(h)} ${c.atLeast ? "under the minimum" : "over the budget"} of ${c.limit}`,
+      );
+    lines.push(
+      `| ${c.name} | ${RB.length ? `${fmt(b)} → ` : ""}${fmt(h)} | ${c.atLeast ? "≥ " : ""}${c.limit} | ${bad ? "❌" : ""} |`,
+    );
   }
   const passes = Object.keys(RH[0].raster ?? {});
   lines.push(

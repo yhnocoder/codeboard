@@ -156,6 +156,8 @@ const pass = (o: Partial<RasterResult> = {}): RasterResult => ({
   blurry: [],
   wasted: [],
   unknown: 0,
+  tasks: 40,
+  snapshots: 12,
   ...o,
 });
 
@@ -169,6 +171,46 @@ describe("rasterChecks", () => {
   it("counts the blurry and wasted layers at rest of the passes judged for sharpness, not of the others", () => {
     const checks = rasterChecks({ stops: pass({ blurry: ["x"] }), fit: pass({ wasted: ["y"] }) }, "synthetic");
     expect(checks.find((c) => c.name === "stops blurry layers at rest")).toMatchObject({ value: 1, ok: false });
-    expect(checks.some((c) => c.name.startsWith("fit"))).toBe(false);
+    expect(checks.some((c) => c.name.startsWith("fit") && c.name.endsWith("at rest"))).toBe(false);
+  });
+  it("passes a board whose passes all have their counts", () => {
+    const checks = rasterChecks({ drag: pass(), pan: pass(), stops: pass() }, "persona");
+    expect(checks.filter((c) => !c.ok)).toEqual([]);
+  });
+  it("fails a pass that ran but brought back no results", () => {
+    const checks = rasterChecks({ drag: pass() }, "persona", ["drag", "stops"]);
+    expect(checks.find((c) => c.name === "stops results")).toMatchObject({ value: 0, ok: false, atLeast: true });
+  });
+  it("fails a pass with no layer snapshots or no raster tasks in the trace, instead of counting 0 px", () => {
+    const checks = rasterChecks({ drag: pass({ snapshots: 0, tasks: 0, stepVP: 0 }) }, "persona");
+    expect(checks.find((c) => c.name === "drag layer snapshots")?.ok).toBe(false);
+    expect(checks.find((c) => c.name === "drag raster tasks")?.ok).toBe(false);
+    expect(checks.find((c) => c.name === "drag stepVP")?.ok).toBe(true);
+  });
+  it("fails a pass where most raster tasks could not be matched to a tile", () => {
+    const checks = rasterChecks({ drag: pass({ tasks: 40, unknown: 30 }) }, "persona");
+    expect(checks.find((c) => c.name === "drag share of raster tasks with no tile")).toMatchObject({
+      value: 0.75,
+      ok: false,
+    });
+    const fine = rasterChecks({ drag: pass({ tasks: 223, unknown: 32 }) }, "persona"); // the most seen on a real run
+    expect(fine.find((c) => c.name === "drag share of raster tasks with no tile")?.ok).toBe(true);
+  });
+  it("fails a sharpness check that found no layers at rest", () => {
+    const checks = rasterChecks({ stops: pass({ layers: 0 }) }, "synthetic");
+    expect(checks.find((c) => c.name === "stops layers at rest")).toMatchObject({ value: 0, ok: false, atLeast: true });
+  });
+  it("counts every raster task in the windows, matched to a tile or not", () => {
+    const { tasks, unknown } = rasterWindows(
+      [
+        task(5, "a", 1),
+        { name: "RasterTask", ph: "X", ts: 6, dur: 1, args: {} },
+        snap(8, { active_tiles: [tile("a", 1, 10, 10)] }),
+        task(25, "a", 1),
+      ],
+      [0],
+      20,
+    );
+    expect([tasks, unknown]).toEqual([2, 1]);
   });
 });

@@ -150,7 +150,7 @@ export type RasterStep = {
 /**
  * The pixels rastered in each window [from[i], from[i + 1]) (the last one to `end`): every RasterTask in it, its tile's content
  * rect (device pixels at the tile's scale) taken from the snapshots. A tile rastered and dropped before any snapshot was drawn has
- * no rect: `unknown` counts those. A tile's waste is judged against its layer's ideal scale in the first snapshot drawn after the
+ * no rect: `unknown` counts those (and tasks of a shape not read here), `tasks` all the tasks in the windows. A tile's waste is judged against its layer's ideal scale in the first snapshot drawn after the
  * task (the frame it was rastered for). names: each layer's name in the last snapshot that had it
  */
 export function rasterWindows(events: readonly TraceEvent[], from: readonly number[], end: number, wasteOver = 2.05) {
@@ -185,9 +185,10 @@ export function rasterWindows(events: readonly TraceEvent[], from: readonly numb
     return 0;
   };
   const steps: RasterStep[] = from.map(() => ({ px: 0, wasted: 0, layers: 0, tiles: 0, byLayer: new Map() }));
-  let unknown = 0;
+  let unknown = 0,
+    tasks = 0;
   for (const e of events) {
-    if (e.name !== "RasterTask" || !e.args?.tileData) continue;
+    if (e.name !== "RasterTask") continue;
     let i = -1;
     for (let k = from.length - 1; k >= 0; k--)
       if (e.ts >= from[k]) {
@@ -195,7 +196,8 @@ export function rasterWindows(events: readonly TraceEvent[], from: readonly numb
         break;
       }
     if (i < 0 || e.ts >= (from[i + 1] ?? end)) continue;
-    const t = tiles.get(e.args.tileData.tileId?.id_ref);
+    tasks++;
+    const t = tiles.get(e.args?.tileData?.tileId?.id_ref);
     if (!t) {
       unknown++;
       continue;
@@ -209,7 +211,7 @@ export function rasterWindows(events: readonly TraceEvent[], from: readonly numb
     w.byLayer.set(L, (w.byLayer.get(L) ?? 0) + t.px);
     w.layers = w.byLayer.size;
   }
-  return { steps, unknown, names };
+  return { steps, unknown, tasks, names };
 }
 
 export type LayerScale = {
@@ -287,6 +289,9 @@ export type RasterResult = {
   wasted: string[];
   /** RasterTasks whose tile no snapshot had (rastered and dropped between two draws): not in the pixels above */
   unknown: number;
+  /** RasterTasks in the pass's windows, with or without a known tile, and the layer snapshots drawn: what the counts rest on */
+  tasks: number;
+  snapshots: number;
 };
 
 /**
@@ -311,15 +316,43 @@ export const RASTER_BUDGET = {
   sharp: ["drag", "pan", "stops"],
 } as const;
 
-export type RasterCheck = { name: string; value: number; limit: number; ok: boolean };
+/** A budgeted number: ok when value <= limit, or with atLeast when value >= limit */
+export type RasterCheck = { name: string; value: number; limit: number; ok: boolean; atLeast?: boolean };
+
+/**
+ * What a pass's counts rest on, so a trace that no longer says what probes.ts reads fails instead of counting nothing: Chromium
+ * dropping the layer snapshots, renaming RasterTask or its tile ids (every task unknown), or the layers' raster scales (no layer
+ * at rest). Up to 12.5 % of a pass's tasks were unknown in the runs measured (tiles rastered and dropped between two draws while
+ * panning), so past a quarter the pixels counted are not the pixels rastered
+ */
+export const TRACE_BUDGET = { unknownShare: 0.25 };
 
 /** The budgeted numbers of a run's raster passes (missing passes are not judged) */
 export function rasterChecks(
   passes: Readonly<Record<string, RasterResult>>,
   board: "synthetic" | "persona",
+  /** the passes that ran: a budgeted one missing from them is not judged, one that ran and has no result fails */
+  ran: readonly string[] = Object.keys(passes),
   budget = RASTER_BUDGET,
 ): RasterCheck[] {
   const out: RasterCheck[] = [];
+  const asked = new Set([...Object.keys(budget[board]), ...budget.sharp].filter((p) => ran.includes(p)));
+  for (const pass of ran) {
+    const r = passes[pass];
+    if (!r) {
+      out.push({ name: `${pass} results`, value: 0, limit: 1, ok: false, atLeast: true });
+      continue;
+    }
+    out.push({ name: `${pass} layer snapshots`, value: r.snapshots, limit: 1, ok: r.snapshots >= 1, atLeast: true });
+    out.push({ name: `${pass} raster tasks`, value: r.tasks, limit: 1, ok: r.tasks >= 1, atLeast: true });
+    const share = r.tasks ? +(r.unknown / r.tasks).toFixed(3) : 0;
+    out.push({
+      name: `${pass} share of raster tasks with no tile`,
+      value: share,
+      limit: TRACE_BUDGET.unknownShare,
+      ok: share <= TRACE_BUDGET.unknownShare,
+    });
+  }
   for (const [pass, limits] of Object.entries(budget[board]))
     for (const [k, limit] of Object.entries(limits as Record<string, number>)) {
       const v = (passes[pass] as Record<string, unknown> | undefined)?.[k];
@@ -327,7 +360,8 @@ export function rasterChecks(
     }
   for (const pass of budget.sharp) {
     const r = passes[pass];
-    if (!r) continue;
+    if (!r || !asked.has(pass)) continue;
+    out.push({ name: `${pass} layers at rest`, value: r.layers, limit: 1, ok: r.layers >= 1, atLeast: true });
     out.push({ name: `${pass} blurry layers at rest`, value: r.blurry.length, limit: 0, ok: !r.blurry.length });
     out.push({ name: `${pass} wasted layers at rest`, value: r.wasted.length, limit: 0, ok: !r.wasted.length });
   }

@@ -701,9 +701,9 @@ async function once() {
   res.idleBusy1s = +(await idle(h, cdp, 1000)).toFixed(1);
   // --raster: only the raster probes (rasterProbes), not the timed steps
   if (RASTER_ONLY) {
-    const raster = await rasterProbes(h, cdp, hubOf(board));
+    const { passes: raster, ran } = await rasterProbes(h, cdp, hubOf(board));
     res.raster = raster;
-    res.rasterChecks = rasterChecks(raster, "synthetic");
+    res.rasterChecks = rasterChecks(raster, "synthetic", ran);
     await h.page.context().browser()!.close();
     return res;
   }
@@ -986,9 +986,9 @@ async function once() {
   await h.page.waitForTimeout(1200);
   // --no-raster: no raster probes (PR CI runs them in one of its two head runs: they count, so one run is enough)
   if (!NNOTES && !sk && !process.argv.includes("--no-raster")) {
-    const raster = await rasterProbes(h, cdp, hubOf(board));
+    const { passes: raster, ran } = await rasterProbes(h, cdp, hubOf(board));
     res.raster = raster;
-    res.rasterChecks = rasterChecks(raster, "synthetic");
+    res.rasterChecks = rasterChecks(raster, "synthetic", ran);
   }
 
   if (process.argv.includes("--quick")) {
@@ -1239,8 +1239,10 @@ async function rasterPass(
     .filter((e) => e.name === "TimeStamp" && e.args?.data?.message === RASTER_MARK)
     .map((e) => e.ts)
     .sort((a, b) => a - b);
-  const end = Math.max(...events.map((e) => e.ts));
-  const { steps: w, unknown, names } = rasterWindows(events, marks, end + 1);
+  // a loop, not Math.max(...): a pass's trace can hold more events than a call takes arguments
+  let end = 0;
+  for (const e of events) if (e.ts > end) end = e.ts;
+  const { steps: w, unknown, tasks, names } = rasterWindows(events, marks, end + 1);
   const snaps = snapshotsOf(events);
   const last = snaps.at(-1)?.s;
   const vs = last?.device_viewport_size;
@@ -1264,6 +1266,8 @@ async function rasterPass(
     blurry: hits.filter((x) => x.kind === "blurry").map(tag),
     wasted: hits.filter((x) => x.kind === "wasted").map(tag),
     unknown,
+    tasks,
+    snapshots: snaps.length,
   };
   if (process.argv.includes("--steps")) {
     console.log(`  raster ${name}: ${JSON.stringify(r)}`);
@@ -1312,9 +1316,14 @@ const emptySpot = (h: Host) =>
  */
 async function rasterProbes(h: Host, cdp: CDPSession, drag: string) {
   const out: Record<string, RasterResult> = {};
+  const ran: string[] = [];
   // --passes drag,cut: only these; --quick (PR CI): only the passes with a budget at card level, the others run in the regular runs
   const passes = arg("passes", process.argv.includes("--quick") ? "drag,pan,stops" : "").split(",");
   const want = (p: string) => passes[0] === "" || passes.includes(p);
+  // the passes asked for (zoom: zoomOut and zoomIn; zoomedOut after fit): rasterChecks fails one that ran and left no result
+  for (const p of ["drag", "pan", "stops", "zoomOut", "zoomIn", "cut", "fit", "zoomedOut"])
+    if (want(p) || (p.startsWith("zoom") && p !== "zoomedOut" && want("zoom")) || (p === "fit" && want("zoomedOut")))
+      ran.push(p);
   // every pass from 100 % (the timed steps before leave the camera wherever they ended), where reveal keeps it
   const at100 = async () => {
     await h.page.locator('span.zoom[data-tip="Zoom to 100%"]').click();
@@ -1402,7 +1411,7 @@ async function rasterProbes(h: Host, cdp: CDPSession, drag: string) {
       }
     });
   }
-  return out;
+  return { passes: out, ran };
 }
 
 /** --long editEnter / editExit: what each main-thread task over 4 ms spent its time on (events inside it over 0.8 ms) */
@@ -1738,9 +1747,9 @@ async function personaOnce() {
   const imageCheck = { name: "images over the decode budget at open", value: hits.length, limit: 0, ok: !hits.length };
   res.idleBusy1s = +(await idle(h, cdp, 1000)).toFixed(1);
   if (RASTER_ONLY) {
-    const raster = await rasterProbes(h, cdp, PERSONA_DRAG);
+    const { passes: raster, ran } = await rasterProbes(h, cdp, PERSONA_DRAG);
     res.raster = raster;
-    res.rasterChecks = [...rasterChecks(raster, "persona"), imageCheck];
+    res.rasterChecks = [...rasterChecks(raster, "persona", ran), imageCheck];
     await run.close().catch(() => {});
     await browser.close();
     return res;
@@ -1787,9 +1796,9 @@ async function personaOnce() {
   if (!process.argv.includes("--no-raster")) {
     // the three drags put back, so the raster probes see the board as opened (as with --raster)
     for (let k = 0; k < 3; k++) await h.page.keyboard.press("Meta+z");
-    const raster = await rasterProbes(h, cdp, PERSONA_DRAG);
+    const { passes: raster, ran } = await rasterProbes(h, cdp, PERSONA_DRAG);
     res.raster = raster;
-    res.rasterChecks = [...rasterChecks(raster, "persona"), imageCheck];
+    res.rasterChecks = [...rasterChecks(raster, "persona", ran), imageCheck];
   } else res.rasterChecks = [imageCheck];
   res.dom = await h.page.evaluate(() => ({
     katex: document.querySelectorAll(".katex").length,

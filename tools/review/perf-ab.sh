@@ -23,6 +23,8 @@ persona() { (cd "$1" && node packages/board/test/run-perf.mjs --persona --runs 1
 HAS_BASE=""
 [ -n "$BASE" ] && [ -f "$BASE/packages/board/test/run-perf.mjs" ] && HAS_BASE=1
 OUT=$(cd "$OUT" && pwd)
+# head 1 runs the raster probes: perfdiff fails when no head run brought them back
+touch "$OUT/raster.expected"
 if [ -n "$HAS_BASE" ] && [ "$MODE" = quick ]; then
   board . head 1; board "$BASE" base 1 --no-raster; board . head 2 --no-raster
   host "$BASE" base; host . head
@@ -42,6 +44,7 @@ if [ "$MODE" != quick ]; then
     anim . head 1; anim . head 2
   fi
   mkdir -p "$OUT/persona"
+  touch "$OUT/persona/raster.expected"
   if [ -n "$HAS_BASE" ] && grep -q -- '"--persona"' "$BASE/packages/board/test/perf.ts"; then
     persona "$BASE" base 1 --no-raster; persona . head 1; persona . head 2 --no-raster; persona "$BASE" base 2 --no-raster
   else
