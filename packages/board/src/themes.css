@@ -1925,19 +1925,21 @@
 /* 卡片高度和别的主题一样（切主题不挤卡）：行高 = 13.5px 正文的 1.6 倍；等宽字更宽，字号小一号才折出差不多的行数 */
 :root.look-drafting .card.note .nbody {
   --md-fs: calc(var(--note-fs, 13.5px) * 12.5 / 13.5);
+}
+:root.look-drafting :is(.card.note, .inote, .slip) .nbody {
   line-height: 1.728;
   font-family: var(--mono);
   color: var(--ink-2);
 }
-:root.look-drafting .card.note .nbody h1,
-:root.look-drafting .card.note .nbody h2,
-:root.look-drafting .card.note .nbody h3 {
+:root.look-drafting :is(.card.note, .inote, .slip) .nbody h1,
+:root.look-drafting :is(.card.note, .inote, .slip) .nbody h2,
+:root.look-drafting :is(.card.note, .inote, .slip) .nbody h3 {
   font-family: var(--head-font);
   color: var(--ink);
   letter-spacing: 0.06em;
 } /* 加粗只加粗：用正文的字（标题字体排进等宽正文里像换了一种字） */
-:root.look-drafting .card.note .nbody strong,
-:root.look-drafting .card.note .nbody b {
+:root.look-drafting :is(.card.note, .inote, .slip) .nbody strong,
+:root.look-drafting :is(.card.note, .inote, .slip) .nbody b {
   color: var(--ink);
 }
 :root.look-drafting .card.note .ctitle {
@@ -2374,9 +2376,9 @@
 :root.look-colorful .card.note .nbody {
   --md-fs: var(--note-fs, 13.5px);
 }
-:root.look-colorful .card.note .nbody h1,
-:root.look-colorful .card.note .nbody h2,
-:root.look-colorful .card.note .nbody h3 {
+:root.look-colorful :is(.card.note, .inote, .slip) .nbody h1,
+:root.look-colorful :is(.card.note, .inote, .slip) .nbody h2,
+:root.look-colorful :is(.card.note, .inote, .slip) .nbody h3 {
   font-weight: 600;
   letter-spacing: 0.02em;
 }
@@ -2738,15 +2740,17 @@
 }
 :root.look-newspaper .card.note .nbody {
   --md-fs: var(--note-fs, 13.5px);
-  line-height: 1.55;
-  font-family: var(--serif);
   --md-h1: var(--note-fs-h1, 19px);
   --md-h2: var(--note-fs-h2, 19px);
   --md-h3: var(--note-fs-h3, 19px);
 }
-:root.look-newspaper .card.note .nbody h1,
-:root.look-newspaper .card.note .nbody h2,
-:root.look-newspaper .card.note .nbody h3 {
+:root.look-newspaper :is(.card.note, .inote, .slip) .nbody {
+  line-height: 1.55;
+  font-family: var(--serif);
+}
+:root.look-newspaper :is(.card.note, .inote, .slip) .nbody h1,
+:root.look-newspaper :is(.card.note, .inote, .slip) .nbody h2,
+:root.look-newspaper :is(.card.note, .inote, .slip) .nbody h3 {
   font-weight: 700;
   line-height: 1.15;
   font-family: var(--serif);
@@ -3099,14 +3103,16 @@
 }
 :root.look-poster .card.note .nbody {
   --md-fs: var(--note-fs, 12px);
-  line-height: 1.7;
   --md-h1: var(--note-fs-h1, 17px);
   --md-h2: var(--note-fs-h2, 17px);
   --md-h3: var(--note-fs-h3, 17px);
 }
-:root.look-poster .card.note .nbody h1,
-:root.look-poster .card.note .nbody h2,
-:root.look-poster .card.note .nbody h3 {
+:root.look-poster :is(.card.note, .inote, .slip) .nbody {
+  line-height: 1.7;
+}
+:root.look-poster :is(.card.note, .inote, .slip) .nbody h1,
+:root.look-poster :is(.card.note, .inote, .slip) .nbody h2,
+:root.look-poster :is(.card.note, .inote, .slip) .nbody h3 {
   font-weight: 400;
   line-height: 1.3;
   font-family: var(--serif);
@@ -3697,11 +3703,13 @@
 }
 :root.look-ink-wash .card.note .nbody {
   --md-fs: var(--note-fs, 13.5px);
+}
+:root.look-ink-wash :is(.card.note, .inote, .slip) .nbody {
   line-height: 1.6;
   font-family: var(--serif);
 } /* 行高、卡头和别的主题一样：切主题不改卡片高度 */
 /* 拓片（深色）上 Note 的正文用满墨：--ink-2 在黑底上发灰 */
-:root.look-ink-wash[data-theme="dark"] .card.note .nbody {
+:root.look-ink-wash[data-theme="dark"] :is(.card.note, .inote, .slip) .nbody {
   --ink-2: var(--ink);
   color: var(--ink);
 }

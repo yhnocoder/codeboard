@@ -2,7 +2,7 @@ import {
   isCode,
   cardTitle,
   segOf,
-  hlAt,
+  shownRanges,
   allCodeCards,
   walkOrder,
   headOf,
@@ -234,7 +234,10 @@ function lineItems(ls: LineSel): Item[] {
   if (!f || !isCode(f.card)) return [];
   const s = segOf(f.card, ls.seg)!;
   const n = ls.end - ls.start + 1;
-  const hlAll = Array.from({ length: n }, (_, i) => ls.start + i).every((l) => !!hlAt(s, l));
+  const shown = shownRanges(state.board, s);
+  const hlAll = Array.from({ length: n }, (_, i) => ls.start + i).every((l) =>
+    shown.some(([a, z]) => l >= a && l <= z),
+  );
   return [
     { label: "Hide Lines", kbd: "H", run: () => hideLines(ls) },
     { label: hlAll ? "Remove Highlight" : "Highlight Lines", run: () => toggleHl(ls) },

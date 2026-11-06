@@ -52,6 +52,8 @@ export const checkEdits = (on: boolean) => {
 const [canUndo, setCanUndo] = createSignal(false);
 const [canRedo, setCanRedo] = createSignal(false);
 export { canUndo, canRedo };
+/** Bumped whenever the undo / redo stacks change: what reads stepIsLatest follows it */
+const [stacksRev, setStacksRev] = createSignal(0);
 
 const history = createHistory(
   doc,
@@ -62,6 +64,7 @@ const history = createHistory(
       batch(() => {
         setCanUndo(u);
         setCanRedo(r);
+        setStacksRev((n) => n + 1);
       }),
     restored: () => {
       keepOn(state.board);
@@ -84,6 +87,13 @@ const save = createSave({
 
 export const { mutate, sync, live, liveCam, undo, redo, setBoard, beginGesture, createFresh, isFresh } = history;
 export const { flush: flushSave, markSaved } = save;
+
+/** The undo step the last edit made (or merged into), as a token for an Undo offered for that step only (a toast's) */
+export const lastStep = () => history.undoTop();
+/** Whether that step is still the latest one (reactive): only then does undo undo it */
+export const stepIsLatest = (step: object | undefined) => (stacksRev(), !!step && history.undoTop() === step);
+/** Undo that step, when it is still the latest; false when it is not */
+export const undoStep = (step: object | undefined) => (stepIsLatest(step) ? history.undo() : false);
 
 /** The first edit of a new card ends: keep = content was written (`fn` writes it); not kept, the card fades out */
 export function settleFresh(id: string, keep: boolean, fn?: (b: Board) => void) {

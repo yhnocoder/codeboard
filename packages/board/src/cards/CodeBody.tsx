@@ -1,7 +1,18 @@
 // 代码是一整块连续文本（选区连续），行号栏按实测行位置绝对定位；复制时不带行号（copy 事件里自己拼）。
 import { FreeEdit } from "./FreeEdit";
 import { portStyle } from "../state/hover";
-import { createMemo, For, Show, onMount, onCleanup, createEffect, createSignal, Switch, Match } from "solid-js";
+import {
+  createMemo,
+  For,
+  Show,
+  onMount,
+  onCleanup,
+  createEffect,
+  createSignal,
+  Switch,
+  Match,
+  type JSX,
+} from "solid-js";
 import {
   cardRows,
   commonIndent,
@@ -11,7 +22,6 @@ import {
   type Row,
   type Segment,
   type SegView,
-  type Sidenote,
 } from "@codeboard/core";
 import { escapeRegExp, F_COMMENT } from "@codeboard/analysis/basics";
 import { state } from "../state/store";
@@ -133,13 +143,55 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
       }),
     ),
   );
-  const X = useHighlights(cx, ded);
+  const X = useHighlights(cx);
   const M = useLineMarks(cx, () => new Set(X.list().flatMap((h) => (h.notes.length ? [h.first] : []))));
+  /** The Highlight the pointer is on (its gutter area, a number, its marker) */
+  let hovered: string | undefined;
+  /** Each Highlight's elements, kept while its key stays (only?: drawn only for those); the one the pointer is on going (its
+   *  lines changed under it) counts as the pointer leaving it, as no pointerleave comes from an element taken away */
+  const eachHx = (draw: (h: () => Hx) => JSX.Element, only?: (h: Hx) => boolean) => (
+    <For each={X.keys()}>
+      {(k) => {
+        onCleanup(() => {
+          if (hovered === k) leaveHx();
+        });
+        const h = () => {
+          const x = X.byKey().get(k);
+          return x && (!only || only(x)) ? x : undefined;
+        };
+        return <Show when={h()}>{(x) => draw(x)}</Show>;
+      }}
+    </For>
+  );
   /** Settings › Notes: a highlighter band, or a pen bracket in the margin (its notes in the Note font or in handwriting) */
   const hlLook = () => state.host.settings.highlightLook;
   const bracket = () => hlLook() === "bracket" || hlLook() === "bracket-hand";
-  /** Where a Highlight's code starts right of the gutter, px (its notes start there, and its popup) */
-  const codeAt = (h: Hx) => (srcEl ? h.indent * monoWidth(srcEl) : 0) + (ded() ? DED_PAD : 0);
+  /**
+   * Where a Highlight's code starts right of the gutter (its notes start there, and its popup), as CSS (exact, in the code font's
+   * ch) and in px. A dedented line starts DED_PAD left of its hidden indent (text-indent); a tab goes on to the next tab stop at
+   * least half a column on (CSS Text), and tab stops count from the line's own left edge (every 4 columns, .src tab-size), not
+   * from where the text-indent puts it. The code font's measured width only decides which tab stop a tab reaches
+   */
+  const codeStart = (h: Hx): { css: string; px: number } => {
+    // the code font's width once the lines are laid out (measured with them, ys)
+    const ch = (srcEl && ys().length && monoWidth(srcEl)) || 7.2;
+    const pad = ded() ? DED_PAD : 0;
+    let stop: number | undefined, // the last tab stop a tab reached (in columns), if any
+      cols = -ded(); // columns after it (or after the line's start, with the pad)
+    for (const c of h.lead) {
+      if (c !== "\t") {
+        cols++;
+        continue;
+      }
+      const x = stop === undefined ? pad / ch + cols : stop + cols;
+      stop = (Math.floor((x + 0.5) / 4) + 1) * 4;
+      cols = 0;
+    }
+    return stop === undefined
+      ? { css: `calc(${pad}px + ${cols}ch)`, px: pad + cols * ch }
+      : { css: `${stop + cols}ch`, px: (stop + cols) * ch };
+  };
+  const codeAt = (h: Hx) => Math.max(0, codeStart(h).px);
   const bandStyle = (h: Hx) => {
     const a = ys()[h.first],
       z = ys()[h.last];
@@ -148,12 +200,23 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
     return { top: `${a.y - 3}px`, height: `${end - a.y + 6}px` };
   };
   const hoverHx = (e: PointerEvent, h: Hx | undefined) => {
-    if (h && !e.buttons) act.hoverHighlight(e.currentTarget as Element, c().id, h.seg, h.lines);
+    if (!h || e.buttons) return;
+    hovered = h.key;
+    act.hoverHighlight(c().id, h.seg, h.lines);
   };
-  /** The last line of a Highlight with no Always Show notes under it: the Highlight ends there */
-  const endsAt = (i: number, l: Extract<Row, { t: "line" }>) => {
-    const h = X.byRow().get(i);
-    return h && h.last === i && !alwaysNotes(l.seg, l.line).length ? h.key : undefined;
+  /** The Highlight whose Always Show notes go under row i */
+  const notesAfter = (i: number) => {
+    const h = X.endRow().get(i);
+    return h?.always.length ? h : undefined;
+  };
+  const leaveHx = () => {
+    hovered = undefined;
+    act.leaveHighlight();
+  };
+  /** The last row of a Highlight with no Always Show notes under it: the Highlight ends there */
+  const endsAt = (i: number) => {
+    const h = X.endRow().get(i);
+    return h && !h.always.length ? h.key : undefined;
   };
   const lineRow = (r: Row) => (r.t === "line" ? r : undefined);
   const lineHtml = (r: Extract<Row, { t: "line" }>) => {
@@ -264,13 +327,6 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
     const lead = t.length - t.trimStart().length;
     return { "--fx": `calc(${shift()} + ${lead - 0.5}ch)`, "--fw": `${t.length - lead + 1}ch` };
   };
-  const alwaysNotes = (seg: string, line: number) =>
-    act
-      .sidenotesOf(c().id)
-      .filter(
-        (n): n is Extract<Sidenote, { kind: "text" }> =>
-          n.kind === "text" && !!n.alwaysShow && n.at.seg === seg && n.at.lines?.[1] === line,
-      );
   const cmtLine = (r: Row) =>
     r.t === "line" && (viewOf(r.seg)?.flags[r.line - (segById(r.seg)?.start ?? 0)] ?? 0) & F_COMMENT;
 
@@ -339,27 +395,26 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
           >
             <div class="gutter">
               {/* a Highlight's gutter area (its line numbers and the marker column): hovering it opens its popup, under the numbers */}
-              <For each={X.list()}>
-                {(h) => (
-                  <Show when={ys()[h.first] && ys()[h.last]}>
-                    <div
-                      class="hxhit"
-                      data-hl={h.key}
-                      data-in={codeAt(h)}
-                      data-nodrag
-                      style={{
-                        top: `${ys()[h.first].y}px`,
-                        height: `${ys()[h.last].y + ys()[h.last].h - ys()[h.first].y}px`,
-                      }}
-                      onPointerEnter={(e) => hoverHx(e, h)}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        act.pinHighlight(c().id, h.seg, h.lines);
-                      }}
-                    />
-                  </Show>
-                )}
-              </For>
+              {eachHx((h) => (
+                <Show when={ys()[h().first] && ys()[h().last]}>
+                  <div
+                    class="hxhit"
+                    data-hl={h().key}
+                    data-in={codeAt(h())}
+                    data-nodrag
+                    style={{
+                      top: `${ys()[h().first].y}px`,
+                      height: `${ys()[h().last].y + ys()[h().last].h - ys()[h().first].y}px`,
+                    }}
+                    onPointerEnter={(e) => hoverHx(e, h())}
+                    onPointerLeave={leaveHx}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      act.pinHighlight(c().id, h().seg, h().lines);
+                    }}
+                  />
+                </Show>
+              ))}
               <For each={rows()}>
                 {(r, i) => (
                   <Show when={ys()[i()] && lineRow(r)}>
@@ -378,7 +433,10 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
                         data-nodrag
                         onPointerEnter={(e) => hoverHx(e, X.byRow().get(i()))}
                         onPointerMove={(e) => H.hoverNo(e, i())}
-                        onPointerLeave={H.onLeave}
+                        onPointerLeave={() => {
+                          H.onLeave();
+                          if (X.byRow().get(i())) leaveHx();
+                        }}
                         onClick={(e) => clickNo(l(), e)}
                         onContextMenu={(e) => lineCtx(l(), e)}
                       >
@@ -388,28 +446,32 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
                   </Show>
                 )}
               </For>
-              <For each={X.list().filter((h) => h.notes.length)}>
-                {(h) => (
-                  <Show when={ys()[h.first]}>
+              {eachHx(
+                (h) => (
+                  <Show when={ys()[h().first]}>
                     <button
                       class="hxm"
-                      classList={{ on: X.open().has(h.key), rv: h.review }}
-                      data-hl={h.key}
-                      data-notes={h.notes.map((n) => n.id).join(",")}
-                      style={{ top: `${ys()[h.first].y}px` }}
+                      classList={{ on: X.open().has(h().key), rv: h().review }}
+                      data-hl={h().key}
+                      data-notes={h()
+                        .notes.map((n) => n.id)
+                        .join(",")}
+                      style={{ top: `${ys()[h().first].y}px` }}
                       data-nodrag
-                      data-tip={`${h.notes.length} note${h.notes.length > 1 ? "s" : ""}`}
-                      onPointerEnter={(e) => hoverHx(e, h)}
+                      data-tip={`${h().notes.length} note${h().notes.length > 1 ? "s" : ""}`}
+                      onPointerEnter={(e) => hoverHx(e, h())}
+                      onPointerLeave={leaveHx}
                       onClick={(e) => {
                         e.stopPropagation();
-                        act.pinHighlight(c().id, h.seg, h.lines);
+                        act.pinHighlight(c().id, h().seg, h().lines);
                       }}
                     >
-                      {h.notes.length}
+                      {h().notes.length}
                     </button>
                   </Show>
-                )}
-              </For>
+                ),
+                (h) => h.notes.length > 0,
+              )}
               <For each={M.vrows()}>
                 {(x) => (
                   <Show when={ys()[x.i]}>
@@ -434,13 +496,11 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
               </For>
             </div>
             <div class="rowbgs">
-              <For each={X.list()}>
-                {(h) => (
-                  <Show when={ys()[h.first] && ys()[h.last]}>
-                    <div class="hxb" classList={{ on: X.open().has(h.key) }} style={bandStyle(h)} />
-                  </Show>
-                )}
-              </For>
+              {eachHx((h) => (
+                <Show when={ys()[h().first] && ys()[h().last]}>
+                  <div class="hxb" classList={{ on: X.open().has(h().key) }} style={bandStyle(h())} />
+                </Show>
+              ))}
               <For each={M.vrows()}>
                 {(x) => (
                   <Show when={ys()[x.i]}>
@@ -512,68 +572,80 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
             >
               <For each={rows()}>
                 {(r, i) => (
-                  <Switch>
-                    <Match when={lineRow(r)}>
-                      {(l) => (
-                        <>
-                          <Show when={A.railOf(l(), false)}>
-                            {(as) => <AnnotRail cx={cx} l={l()} list={as()} below={false} shift={shift()} />}
-                          </Show>
-                          <div
-                            class="l"
-                            classList={{
-                              cmt: !!cmtLine(l()),
-                              drop: dropAt(l().seg, l().line),
-                              "hx-first": X.byRow().get(i())?.first === i(),
-                              "hx-end": !!endsAt(i(), l()),
-                            }}
-                            data-r={i()}
-                            data-hxe={endsAt(i(), l())}
-                            innerHTML={lineHtml(l()) || "​"}
+                  <>
+                    <Switch>
+                      <Match when={lineRow(r)}>
+                        {(l) => (
+                          <>
+                            <Show when={A.railOf(l(), false)}>
+                              {(as) => <AnnotRail cx={cx} l={l()} list={as()} below={false} shift={shift()} />}
+                            </Show>
+                            <div
+                              class="l"
+                              classList={{
+                                cmt: !!cmtLine(l()),
+                                drop: dropAt(l().seg, l().line),
+                                "hx-first": X.byRow().get(i())?.first === i(),
+                                "hx-end": !!endsAt(i()),
+                              }}
+                              data-r={i()}
+                              data-hxe={endsAt(i())}
+                              innerHTML={lineHtml(l()) || "​"}
+                            />
+                            <Show when={A.railOf(l(), true)}>
+                              {(as) => <AnnotRail cx={cx} l={l()} list={as()} below={true} shift={shift()} />}
+                            </Show>
+                          </>
+                        )}
+                      </Match>
+                      <Match when={r.t === "gap" && r}>
+                        {(g) => (
+                          <GapRow
+                            r={g()}
+                            i={i()}
+                            card={c()}
+                            first={X.byRow().get(i())?.first === i()}
+                            end={endsAt(i())}
                           />
-                          <Show when={A.railOf(l(), true)}>
-                            {(as) => <AnnotRail cx={cx} l={l()} list={as()} below={true} shift={shift()} />}
-                          </Show>
-                          {/* the Highlight's Always Show notes, rendered as a Note is, starting where its code starts */}
-                          <Show when={alwaysNotes(l().seg, l().line).length > 0 && X.byRow().get(i())}>
-                            {(h) => (
-                              <div
-                                class="inotes hx-end"
-                                data-hxe={h().key}
-                                style={{ "--hx-in": `calc(${h().indent}ch + ${ded() ? "var(--ded-pad)" : "0px"})` }}
-                              >
-                                <For each={alwaysNotes(l().seg, l().line)}>
-                                  {(n) => (
-                                    <div class="inote" data-note={n.id}>
-                                      <MdStatic class="nbody" src={n.md} onToggle={(v) => act.writeSidenote(n.id, v)} />
-                                    </div>
-                                  )}
-                                </For>
+                        )}
+                      </Match>
+                      <Match when={r.t === "fn" && r}>
+                        {(f) => (
+                          <div class="fnbar" data-r={i()}>
+                            <span>{f().name}</span>
+                          </div>
+                        )}
+                      </Match>
+                      <Match when={r.t === "file" && r}>
+                        {(f) => (
+                          <div class="fbar" data-r={i()}>
+                            <span class="fp">{f().path}</span>
+                            <Show when={f().version}>
+                              <span class="fv">{f().version}</span>
+                            </Show>
+                          </div>
+                        )}
+                      </Match>
+                    </Switch>
+                    {/* a Highlight's Always Show notes, under its last row, rendered as a Note is, starting where its code starts */}
+                    <Show when={notesAfter(i())}>
+                      {(h) => (
+                        <div
+                          class="inotes hx-end"
+                          data-hxe={h().key}
+                          style={{ "--hx-in": `max(0px, ${codeStart(h()).css})` }}
+                        >
+                          <For each={h().always}>
+                            {(n) => (
+                              <div class="inote" data-note={n.id}>
+                                <MdStatic class="nbody" src={n.md} onToggle={(v) => act.writeSidenote(n.id, v)} />
                               </div>
                             )}
-                          </Show>
-                        </>
-                      )}
-                    </Match>
-                    <Match when={r.t === "gap" && r}>{(g) => <GapRow r={g()} i={i()} card={c()} />}</Match>
-                    <Match when={r.t === "fn" && r}>
-                      {(f) => (
-                        <div class="fnbar" data-r={i()}>
-                          <span>{f().name}</span>
+                          </For>
                         </div>
                       )}
-                    </Match>
-                    <Match when={r.t === "file" && r}>
-                      {(f) => (
-                        <div class="fbar" data-r={i()}>
-                          <span class="fp">{f().path}</span>
-                          <Show when={f().version}>
-                            <span class="fv">{f().version}</span>
-                          </Show>
-                        </div>
-                      )}
-                    </Match>
-                  </Switch>
+                    </Show>
+                  </>
                 )}
               </For>
             </div>

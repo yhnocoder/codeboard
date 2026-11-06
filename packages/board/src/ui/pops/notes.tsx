@@ -8,6 +8,9 @@ import {
   guessLang,
   escHtml,
   sameRange,
+  shownRanges,
+  within,
+  WIDENED,
   type Sidenote,
   type SearchItem,
   type SegView,
@@ -138,9 +141,14 @@ export function HighlightPop(p: PopProps<"highlight">) {
     const c = cardById(p.pop.card)?.card;
     return isCode(c) ? c.segments.find((s) => s.id === p.pop.seg) : undefined;
   };
-  const here = () => !!seg()?.hl?.some((r) => sameRange(r, p.pop.lines));
+  const here = () => {
+    const s = seg();
+    return !!s && shownRanges(state.board, s).some((r) => sameRange(r, p.pop.lines));
+  };
   const notes = () => {
-    const mine = A.sidenotesOf(p.pop.card).filter((n) => n.at.seg === p.pop.seg && sameRange(n.at.lines, p.pop.lines));
+    const mine = A.sidenotesOf(p.pop.card).filter(
+      (n) => n.at.seg === p.pop.seg && !!n.at.lines && within(n.at.lines, p.pop.lines),
+    );
     const always = (n: Sidenote) => n.kind === "text" && !!n.alwaysShow;
     return [...mine.filter((n) => !always(n)), ...mine.filter(always)];
   };
@@ -385,7 +393,11 @@ function NoteItem(p: { n: Sidenote; peeks: CardPeeks; slip?: boolean }) {
       </Show>
       <Show when={n().review}>
         <div class="sn-why review">
-          <span>Line changed in {n().review}, check it</span>
+          <span>
+            {n().review === WIDENED
+              ? "Its lines grew when its Highlight merged with another, check it"
+              : `Line changed in ${n().review}, check it`}
+          </span>
           <button class="tbtn" onClick={() => A.markReviewed(n().id)}>
             Mark Reviewed
           </button>
@@ -456,7 +468,11 @@ function editText(n: Sidenote) {
   for (const q of pops())
     if (
       (q.pop.kind === "notes" && q.pop.ids.includes(n.id)) ||
-      (q.pop.kind === "highlight" && q.pop.card === n.at.card && sameRange(q.pop.lines, n.at.lines))
+      (q.pop.kind === "highlight" &&
+        q.pop.card === n.at.card &&
+        q.pop.seg === n.at.seg &&
+        !!n.at.lines &&
+        within(n.at.lines, q.pop.lines))
     )
       pinPop(q.id);
   setSnEditing(n.id);

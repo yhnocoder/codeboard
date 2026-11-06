@@ -4366,6 +4366,10 @@ mark.wdiff {
   color: var(--accent);
   font-weight: 600;
 }
+.toast .tlink:disabled {
+  color: var(--ink-3);
+  cursor: default;
+}
 .emptyhint {
   position: absolute;
   left: 50%;
@@ -8281,12 +8285,7 @@ mark.wdiff {
   box-sizing: border-box;
   position: relative;
 }
-:root.look-ink-wash .inote > .nbody {
-  font-family: var(--serif);
-}
-:root.look-ink-wash[data-theme="dark"] .inote > .nbody {
-  --ink-2: var(--ink);
-}
+/* each theme's Note rules (themes.css :is(.card.note, .inote, .slip) .nbody) apply to these too: the same fonts and colours */
 /* block content starts at the code's left edge too, not centred */
 .inote .mmd.ok {
   justify-content: flex-start;
@@ -8427,7 +8426,9 @@ mark.wdiff {
   --accent: var(--warn);
 }
 /* the bracket with the hand: the same Note styles, only the font (and a little of the pen's colour) changes. One rule for every theme */
-.hx-hand :is(.inote > .nbody, .sb.nbody) {
+/* :root:root:root outweighs the themes' Note rules (themes.css), which set the body's and the headings' fonts */
+:root:root:root .hx-hand :is(.inote > .nbody, .sb.nbody),
+:root:root:root .hx-hand :is(.inote > .nbody, .sb.nbody) :is(h1, h2, h3, h4, h5, h6, strong, b) {
   --sys: var(--hand);
   --serif: var(--hand);
   --md-heading-font: var(--hand);

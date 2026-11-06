@@ -23,7 +23,8 @@ import { sel, select, clearSel, lineSel } from "../state/selection";
 import { toast } from "../state/toast";
 import { IS_MAC } from "@yhnocoder/markdown/ui";
 import { editing, liveNoteMd, setEditing } from "../state/ui";
-import { cardsMeasured, naturalSize, chromeOf, CODE_MAX } from "../state/measure";
+import { cardsMeasured } from "../state/measure";
+import { fitMeasure } from "./fit";
 import { noteImageOf } from "./imagedata";
 import { promptText, type Item } from "../ui/Menu";
 import {
@@ -97,19 +98,16 @@ function showNotes(el: Element, ids: string[], pin: boolean) {
 
 /**
  * The pointer came onto a Highlight's gutter area (its line numbers, its marker): after the hover delay its popup opens under its
- * lines. el = the element the pointer is on; it closes a while after the pointer leaves it, unless the pointer went into the popup
+ * lines. It closes a while after the pointer leaves (leaveHighlight), unless the pointer went into the popup
  */
-export function hoverHighlight(el: Element, card: string, seg: string, lines: HlRange) {
+export function hoverHighlight(card: string, seg: string, lines: HlRange) {
   leaveT.stop();
   hoverT.start(() => showHighlight(card, seg, lines, false), NOTE_HOVER);
-  el.addEventListener(
-    "pointerleave",
-    () => {
-      hoverT.stop();
-      scheduleHideNotes();
-    },
-    { once: true },
-  );
+}
+/** The pointer left a Highlight's gutter area, or the element it was on went (the Highlight changed under it) */
+export function leaveHighlight() {
+  hoverT.stop();
+  scheduleHideNotes();
 }
 /** A click on a Highlight's gutter area or marker: its popup opens and stays */
 export const pinHighlight = (card: string, seg: string, lines: HlRange) => showHighlight(card, seg, lines, true);
@@ -130,7 +128,7 @@ function showHighlight(card: string, seg: string, lines: HlRange, pin: boolean) 
 }
 /** Remove Highlight (its popup): the lines and the sidenotes on them, one undo step */
 export function removeHighlight(card: string, seg: string, lines: HlRange) {
-  removedNotes(C.removeHighlight(commandEnv, card, seg, lines));
+  removedNotes(C.removeHighlight(commandEnv, card, seg, lines, fitMeasure));
 }
 
 export function openAddNote(at: Anchor, tab: "code" | "paste" | "text" | "link" | "card" = "code") {
@@ -150,19 +148,10 @@ export function addSidenoteUI() {
 export function addSidenote(n: Omit<Sidenote, "id">, view?: SegView) {
   const sn = n as Sidenote;
   if (sn.kind === "code" && view) putViews({ [sn.code.id]: view });
-  return C.addSidenotes(commandEnv, [n])[0];
+  return C.addSidenotes(commandEnv, [n], fitMeasure)[0];
 }
 /** 一次加好几条（一个撤销步骤），返回新 id */
-export const addSidenotes = (list: Omit<Sidenote, "id">[]) => C.addSidenotes(commandEnv, list);
-/** How a code card is measured for keeping it fitted when an Always Show sidenote changes (commands keepFitted): the code area's
- *  height that shows all its content at its width now */
-const fitMeasure: C.FitMeasure = {
-  measure: (id) => {
-    const n = naturalSize(id, "now");
-    return n?.body === undefined ? null : { h: n.h - chromeOf(id), body: n.body };
-  },
-  codeMax: CODE_MAX,
-};
+export const addSidenotes = (list: Omit<Sidenote, "id">[]) => C.addSidenotes(commandEnv, list, fitMeasure);
 /** A Text sidenote's Markdown; written empty it goes */
 export const writeSidenote = (id: string, md: string) => C.writeSidenote(commandEnv, id, md, fitMeasure);
 export const toggleAlwaysShow = (id: string) => C.toggleAlwaysShow(commandEnv, id, fitMeasure);

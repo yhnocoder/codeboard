@@ -4,7 +4,8 @@ import type { CodeCard, Row } from "@codeboard/core";
 import { state } from "../../state/store";
 import { linksFrom, toggleShown } from "../../state/ui";
 
-export function GapRow(p: { r: Extract<Row, { t: "gap" }>; i: number; card: CodeCard }) {
+/** first / end: a Highlight starts or ends on these hidden lines (its gap before, or after with its key: data-hxe) */
+export function GapRow(p: { r: Extract<Row, { t: "gap" }>; i: number; card: CodeCard; first?: boolean; end?: string }) {
   const n = () => p.r.to - p.r.from + 1;
   const links = () =>
     linksFrom(p.card.id).filter((l) => l.from.seg === p.r.seg && l.from.line! >= p.r.from && l.from.line! <= p.r.to)
@@ -14,7 +15,12 @@ export function GapRow(p: { r: Extract<Row, { t: "gap" }>; i: number; card: Code
     return s?.state === "changed" && s.hiddenOnly;
   };
   return (
-    <div class="gap" classList={{ mgap: !p.r.manual }} data-r={p.i}>
+    <div
+      class="gap"
+      classList={{ mgap: !p.r.manual, "hx-first": p.first, "hx-end": !!p.end }}
+      data-r={p.i}
+      data-hxe={p.end}
+    >
       ⋯ {n()} line{n() > 1 ? "s" : ""} hidden ({p.r.from === p.r.to ? p.r.from : `${p.r.from}–${p.r.to}`})
       <Show when={p.r.manual}>
         {" "}

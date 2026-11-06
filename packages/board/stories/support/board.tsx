@@ -97,7 +97,7 @@ export function Stage(p: { scene: () => Scene; globals: Globals; replies?: Repli
     cancelAnimationFrame(raf);
     const b: Board = structuredClone({ ...s.board, cam: { x: ORIGIN, y: ORIGIN, z: s.zoom ?? untrack(z) } });
     // scenes put sidenotes on lines; the Highlights they belong to come as the host's reads bring them (core edit/highlights.ts)
-    fixHighlights(b);
+    fixHighlights(b, undefined, { review: false });
     // 宿主的消息是 postMessage 来的（结构化克隆）：store 会就地改它收下的对象（reconcile），小样之间共用的常量不能直接交出去
     fromHost(
       structuredClone({

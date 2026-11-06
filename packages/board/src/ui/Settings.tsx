@@ -3,6 +3,8 @@ import { For, Show, createEffect, createSignal, onMount, type JSX } from "solid-
 import {
   THEMES,
   EXPERIMENTAL_THEMES,
+  HIGHLIGHT_LOOKS,
+  HIGHLIGHT_LOOK_NAMES,
   NOTE_FONT_LEVELS,
   NOTE_FONT_RANGE,
   type AiInfo,
@@ -161,23 +163,15 @@ function SettingsPage(p: { section?: string }) {
           <NoteFonts />
           <div class="st-sub">Highlighted lines in code cards, and the notes on them</div>
           <div class="st-chips st-hl">
-            <For
-              each={
-                [
-                  ["band", "Highlighter"],
-                  ["bracket", "Margin Bracket"],
-                  ["bracket-hand", "Margin Bracket, Handwritten"],
-                ] as const
-              }
-            >
-              {([v, lb]) => (
+            <For each={HIGHLIGHT_LOOKS}>
+              {(v) => (
                 <button
                   class="st-chip pick"
                   classList={{ on: cur().highlightLook === v }}
                   data-v={v}
                   onClick={() => A.setSetting("highlightLook", v)}
                 >
-                  {lb}
+                  {HIGHLIGHT_LOOK_NAMES[v]}
                 </button>
               )}
             </For>

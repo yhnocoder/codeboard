@@ -1,6 +1,7 @@
 import { createSignal } from "solid-js";
 
-export type ToastT = { text: string; actions?: { label: string; run: () => void }[]; n: number };
+/** An action's `off`: shown disabled (an Undo for a step that is no longer the latest) */
+export type ToastT = { text: string; actions?: { label: string; run: () => void; off?: () => boolean }[]; n: number };
 export const [toastMsg, setToastMsg] = createSignal<ToastT | null>(null);
 let toastTimer: number | undefined,
   toastN = 0;
