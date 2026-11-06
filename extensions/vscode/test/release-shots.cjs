@@ -107,7 +107,7 @@ const zoomToSelection = async (page, f) => {
 };
 // Turn on Always Show in the open Sidenote popover. The button toggles: leave it alone when it is already on (.on)
 const alwaysShowIn = async (f) => {
-  const btn = f.locator(".pop button", { hasText: /^Always Show$/ }).first();
+  const btn = f.locator('.pop button[aria-label="Always Show"]').first();
   await btn.waitFor({ timeout: 5000 });
   if (!(await btn.evaluate((b) => b.classList.contains("on")))) await btn.click();
   await until("Always Show is on", () => btn.evaluate((b) => b.classList.contains("on")), 3000);
