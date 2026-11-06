@@ -4,7 +4,8 @@
 //  highlightNotesLikeNote   an Always Show note is rendered as a Note is: its Mermaid diagram drawn, its task list with checkboxes
 //                           (ticking one writes the note), headings at the Note ratios of 12.5px
 //  highlightHoverGutter     resting on a Highlight's code opens nothing; on its line numbers its popup opens (the band lights up, the
-//                           numbers turn accent), and moving into the popup keeps it open; leaving both closes it
+//                           numbers turn accent), and moving into the popup keeps it open; leaving both closes it. A right-click
+//                           on its numbers opens only the menu (an open popup closes), and with a menu open its gutter opens nothing
 //  highlightLookSetting     the setting switches the look in place: a band (R3), a margin bracket (R4) and the bracket with the hand,
 //                           which only changes the notes' font; the marker shows the note count in each
 //  highlightNoteIndent      an Always Show note starts where the least-indented line of its range starts, after the card's dedent,
@@ -226,6 +227,30 @@ test("highlightHoverGutter", async () => {
       /1 note/.test(lit.head) &&
       kept === 1,
     { fromCode, lit, kept },
+  );
+  // right-clicking a Highlight's line number opens only its menu; with the menu open its gutter opens nothing either
+  const menus = () => pg.locator(".ctx:not(.closing)").count();
+  await no(pg, 3).click({ button: "right" });
+  await pg.locator(".ctx:not(.closing)").waitFor();
+  await hold(h, NOTE_HOVER * 3, "a right-click on a Highlight's number must open no popup");
+  const onRight = { menus: await menus(), pops: await pops() };
+  await no(pg, 13).hover();
+  await hold(h, NOTE_HOVER * 3, "hovering a Highlight's numbers while a menu is open must open no popup");
+  const underMenu = { menus: await menus(), pops: await pops() };
+  await pg.keyboard.press("Escape");
+  await until(h, "the menu closes", async () => (await menus()) === 0);
+  // a popup already open closes on the right-click
+  await pg.mouse.move(1300, 960);
+  await no(pg, 2).hover();
+  await pg.locator(".pop.k-highlight").waitFor();
+  await no(pg, 2).click({ button: "right" });
+  await until(h, "the popup closes as the menu opens", async () => (await pops()) === 0 && (await menus()) === 1);
+  await hold(h, NOTE_HOVER * 3, "the popup must not open again under the menu");
+  const closed = { menus: await menus(), pops: await pops() };
+  check(
+    "highlightHoverGutter a right-click on a Highlight's numbers shows only the menu, and its gutter opens nothing while it is open",
+    [onRight, underMenu, closed].every((x) => x.menus === 1 && x.pops === 0),
+    { onRight, underMenu, closed },
   );
   await h.close();
 });

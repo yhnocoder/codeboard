@@ -26,7 +26,7 @@ import { editing, liveNoteMd, setEditing } from "../state/ui";
 import { cardsMeasured } from "../state/measure";
 import { fitMeasure } from "./fit";
 import { noteImageOf } from "./imagedata";
-import { promptText, type Item } from "../ui/Menu";
+import { menuOpen, promptText, type Item } from "../ui/Menu";
 import {
   imageCaption,
   setImageCaption,
@@ -102,7 +102,14 @@ function showNotes(el: Element, ids: string[], pin: boolean) {
  */
 export function hoverHighlight(card: string, seg: string, lines: HlRange) {
   leaveT.stop();
+  // a context menu open: the gutter under it opens nothing
+  if (menuOpen()) return hoverT.stop();
   hoverT.start(() => showHighlight(card, seg, lines, false), NOTE_HOVER);
+}
+/** A context menu opens on a code card's lines: only the menu shows. A Highlight popup waiting to open does not, one open closes */
+export function menuOverHighlights() {
+  hoverT.stop();
+  for (const p of pops()) if (p.pop.kind === "highlight") closePop(p.id);
 }
 /** The pointer left a Highlight's gutter area, or the element it was on went (the Highlight changed under it) */
 export function leaveHighlight() {
@@ -114,6 +121,7 @@ export const pinHighlight = (card: string, seg: string, lines: HlRange) => showH
 /** The key a Highlight's gutter area (.hxhit) carries in data-hl: where its popup finds it */
 export const highlightKey = (card: string, seg: string, lines: HlRange) => `${card}:${seg}:${lines[0]}-${lines[1]}`;
 function showHighlight(card: string, seg: string, lines: HlRange, pin: boolean) {
+  if (!pin && menuOpen()) return;
   const same = pops().find(
     (p) => p.pop.kind === "highlight" && p.pop.card === card && p.pop.seg === seg && sameRange(p.pop.lines, lines),
   );

@@ -292,6 +292,7 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
   const lineCtx = (r: Extract<Row, { t: "line" }>, e: MouseEvent, words?: ReturnType<typeof textSel>) => {
     e.preventDefault();
     e.stopPropagation();
+    act.menuOverHighlights();
     const ls = lineSel();
     if (ls && ls.card === c().id && ls.seg === r.seg && r.line >= ls.start && r.line <= ls.end)
       return act.lineMenu(ls, e.clientX, e.clientY, words && (() => startAnnot(words)));
