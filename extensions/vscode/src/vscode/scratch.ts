@@ -6,6 +6,7 @@
 // (untitled too), VS Code soon opens a tab for the unsaved document and brings it back when the window reloads.
 // Known side effects: the Explorer shows the file while it is edited, and Pylance may list its problems.
 import * as vscode from "vscode";
+import * as fs from "node:fs";
 import * as path from "node:path";
 import type { LspItem, LspKind, LspSignature, WorkspaceScratch } from "@codeboard/core";
 import { isScratchName } from "@codeboard/host";
@@ -101,29 +102,27 @@ export async function setText(d: Doc, text: string) {
       }),
     ];
     const limit = setTimeout(() => {
-      void vscode.workspace.fs
-        .readFile(d.uri)
-        .then(
-          (b) => b.toString(),
-          (e: unknown) => `(unreadable: ${e})`,
-        )
-        .then((disk) =>
-          end(
-            new Error(
-              `scratch document did not reload within ${RELOAD_LIMIT_MS} ms: ${d.uri.fsPath} ` +
-                JSON.stringify({
-                  want: text.length,
-                  onDisk: sameText(disk, text) ? "same" : disk.length,
-                  reloads,
-                  lastReload: last?.length ?? null,
-                  doc: d.doc.getText().length,
-                  dirty: d.doc.isDirty,
-                  closed: d.doc.isClosed,
-                  ms: Date.now() - t0,
-                }),
-            ),
-          ),
-        );
+      let disk: string | undefined;
+      try {
+        disk = fs.readFileSync(d.uri.fsPath, "utf8");
+      } catch {
+        disk = undefined;
+      }
+      end(
+        new Error(
+          `scratch document did not reload within ${RELOAD_LIMIT_MS} ms: ${d.uri.fsPath} ` +
+            JSON.stringify({
+              want: text.length,
+              onDisk: disk === undefined ? "unreadable" : sameText(disk, text) ? "same" : disk.length,
+              reloads,
+              lastReload: last?.length ?? null,
+              doc: d.doc.getText().length,
+              dirty: d.doc.isDirty,
+              closed: d.doc.isClosed,
+              ms: Date.now() - t0,
+            }),
+        ),
+      );
     }, RELOAD_LIMIT_MS);
     vscode.workspace.fs
       .writeFile(d.uri, Buffer.from(text, "utf8"))

@@ -105,6 +105,8 @@ describe("scratch setText", () => {
     vi.advanceTimersByTime(RELOAD_LIMIT_MS);
     await tick();
     expect(String(late.err)).toMatch(/did not reload/);
+    // and says what VS Code read back meanwhile: nothing here, and the file under the fake path is not there
+    expect(String(late.err)).toMatch(/"want":1,"onDisk":"unreadable","reloads":0,"lastReload":null/);
     expect(changes.size + closes.size).toBe(0);
 
     const closed = settled(setText(d, "y"));
