@@ -1,0 +1,24 @@
+# Once a day (or by hand): remove from the ci-screenshots branch the screenshots of pull requests closed over 7 days ago
+# (tools/review/prune-ci-branch.sh), so cloning the repo stays small
+name: Prune CI screenshots
+on:
+  schedule:
+    - cron: "15 19 * * *" # 03:15 Beijing time
+  workflow_dispatch:
+    inputs:
+      keep_days: { description: "Keep the screenshots of PRs closed this many days ago or later", default: "7" }
+permissions:
+  contents: write
+  pull-requests: read
+concurrency:
+  group: ci-screenshots-prune
+jobs:
+  prune:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+      - run: tools/review/prune-ci-branch.sh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          KEEP_DAYS: ${{ inputs.keep_days || '7' }}
