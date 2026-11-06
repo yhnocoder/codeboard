@@ -302,6 +302,10 @@ export type RasterResult = {
  *   move rasters only what follows the card (its arrows): the persona board drags a Note with no arrows, 0 a move, 1.04 when the
  *   card was squashed back into the layer under it. On the synthetic board a move repaints the hub card's 7 long arrows through
  *   its Section's layer (1.7-2.3 on every build measured), so its budget only guards against regressions.
+ * - drag restVP (persona): the pixels rastered after the card is put down, until it has settled: 10.4. Most of it is the card
+ *   painted again at each frame of its lift shadow's transition back (~0.6 a frame for a tall Note, on its own layer). 14.1-14.8
+ *   when .landing ended while the card's scale still eased: Chromium then took the card as overlapping every card painted after
+ *   it, gave each its own layer and rastered them all, twice.
  * - dragSection stepVP (persona): the median pixels one pointer move of a Section dragged by its title rasters, with its cards
  *   and the Section inside it. They are carried on layers of their own (.carry), so a move rasters what follows them: the
  *   arrows into, out of and inside the Section (0.73); 1.35-1.46 when the frame and its cards were painted again in the world's
@@ -322,7 +326,12 @@ export type RasterResult = {
  */
 export const RASTER_BUDGET = {
   synthetic: { drag: { stepVP: 2.5 }, stops: { stepVP: 5 }, fit: { restVP: 110, wastedVP: 10 } },
-  persona: { drag: { stepVP: 0.25 }, dragSection: { stepVP: 1 }, stops: { stepVP: 1.1 }, fit: { restVP: 48, wastedVP: 10 } },
+  persona: {
+    drag: { stepVP: 0.25, restVP: 12 },
+    dragSection: { stepVP: 1 },
+    stops: { stepVP: 1.1 },
+    fit: { restVP: 48, wastedVP: 10 },
+  },
   sharp: ["drag", "pan", "stops", "fit", "inOutIn"],
 } as const;
 

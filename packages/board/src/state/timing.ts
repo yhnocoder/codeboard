@@ -23,9 +23,6 @@ export const PEEK_DELAY = 800;
 export const LINK_LEAVE = 300;
 /** The selection (cards, code lines) is reported to the host this long after its last change (selection.ts reportSelection) */
 export const SEL_REPORT = 60;
-/** A dragged card rises once the drag really starts (past DRAG_SLOP: a click does not lift it; `.card.lift`, 200 ms in
- *  styles.css) and settles back over this long after it is put down (`.card.landing`) */
-export const LAND_MS = 240;
 /** A tilted card turns straight when its editing starts, and back when it ends, over this long (tilt.ts) */
 export const TILT_MS = 200;
 /** A wheel gesture ends after this long without a wheel event: until then it stays with whatever it started on, the canvas or a

@@ -704,7 +704,7 @@ textarea {
   --lift-in: cubic-bezier(0.2, 0.8, 0.2, 1);
   --lift-out: cubic-bezier(0.3, 0.6, 0.3, 1);
 }
-/* 拿起来阴影在 200ms 里升起来，放下后（.landing）在 LAND_MS 里落回去。
+/* 拿起来阴影在 200ms 里升起来，放下后（.landing）在 240ms 里落回去（.landing 留到卡自己的过渡都走完：interact.ts settling）。
    过渡只写在这两个状态上：模糊那层换档（地图档）时照旧不渐变 */
 .card.lift::before,
 .card.lift::after {

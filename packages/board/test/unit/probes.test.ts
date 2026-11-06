@@ -168,6 +168,12 @@ describe("rasterChecks", () => {
     expect(checks.find((c) => c.name === "stops stepVP")?.ok).toBe(true);
     expect(checks.some((c) => c.name.startsWith("cut"))).toBe(false);
   });
+  it("judges what a card drag rasters after the drop on the persona board", () => {
+    const checks = rasterChecks({ drag: pass({ restVP: 14.1 }) }, "persona");
+    expect(checks.find((c) => c.name === "drag restVP")).toMatchObject({ value: 14.1, limit: 12, ok: false });
+    const synthetic = rasterChecks({ drag: pass({ restVP: 14.1 }) }, "synthetic");
+    expect(synthetic.some((c) => c.name === "drag restVP")).toBe(false);
+  });
   it("judges a Section drag on the persona board by the pixels a move rasters", () => {
     const checks = rasterChecks({ dragSection: pass({ stepVP: 1.46 }) }, "persona");
     expect(checks.find((c) => c.name === "dragSection stepVP")).toMatchObject({ value: 1.46, limit: 1, ok: false });
