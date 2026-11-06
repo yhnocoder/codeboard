@@ -72,6 +72,10 @@ const sameText = (a: string, b: string) => a === b || a.replace(/\r\n/g, "\n") =
 export async function setText(d: Doc, text: string) {
   if (sameText(d.doc.getText(), text)) return;
   const k = d.uri.toString();
+  const t0 = Date.now();
+  // what VS Code read back while we waited: on a timeout the error says whether it reloaded at all, and what it got
+  let reloads = 0,
+    last: string | undefined;
   await new Promise<void>((resolve, reject) => {
     let over = false;
     const end = (err?: Error) => {
@@ -84,7 +88,10 @@ export async function setText(d: Doc, text: string) {
     };
     const subs = [
       vscode.workspace.onDidChangeTextDocument((e) => {
-        if (e.document.uri.toString() === k && sameText(e.document.getText(), text)) {
+        if (e.document.uri.toString() !== k) return;
+        reloads++;
+        last = e.document.getText();
+        if (sameText(last, text)) {
           d.doc = e.document;
           end();
         }
@@ -93,10 +100,31 @@ export async function setText(d: Doc, text: string) {
         if (doc.uri.toString() === k) end(new Error(`scratch document was closed before it reloaded: ${d.uri.fsPath}`));
       }),
     ];
-    const limit = setTimeout(
-      () => end(new Error(`scratch document did not reload within ${RELOAD_LIMIT_MS} ms: ${d.uri.fsPath}`)),
-      RELOAD_LIMIT_MS,
-    );
+    const limit = setTimeout(() => {
+      void vscode.workspace.fs
+        .readFile(d.uri)
+        .then(
+          (b) => b.toString(),
+          (e: unknown) => `(unreadable: ${e})`,
+        )
+        .then((disk) =>
+          end(
+            new Error(
+              `scratch document did not reload within ${RELOAD_LIMIT_MS} ms: ${d.uri.fsPath} ` +
+                JSON.stringify({
+                  want: text.length,
+                  onDisk: sameText(disk, text) ? "same" : disk.length,
+                  reloads,
+                  lastReload: last?.length ?? null,
+                  doc: d.doc.getText().length,
+                  dirty: d.doc.isDirty,
+                  closed: d.doc.isClosed,
+                  ms: Date.now() - t0,
+                }),
+            ),
+          ),
+        );
+    }, RELOAD_LIMIT_MS);
     vscode.workspace.fs
       .writeFile(d.uri, Buffer.from(text, "utf8"))
       .then(undefined, (e: unknown) => end(e instanceof Error ? e : new Error(String(e))));
