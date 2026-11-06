@@ -1153,10 +1153,10 @@ function startPan(e: PointerEvent) {
   );
 }
 
-/** 滚轮在这上面归它自己（原生滚动，不动画布）：画布上浮着的面板、浮层（data-nodrag）；卡上的按钮、把手、边上的圆点不算，
- *  卡里只有能输入的东西算 */
+/** 滚轮在这上面归它自己（原生滚动，不动画布）：画布上浮着的面板、浮层（data-nodrag）。白板上跟着镜头走的东西（.world 里：
+ *  卡、Section 的边框和缩放把手、标题和它的按钮、箭头标签、摘要）上的按钮、把手、圆点不算，那里只有能输入的东西算 */
 const ownsWheel = (t: HTMLElement) =>
-  !!t.closest(NODRAG) && (!t.closest(".card") || !!t.closest("input, textarea, [contenteditable]"));
+  !!t.closest(NODRAG) && (!t.closest(".world") || !!t.closest("input, textarea, [contenteditable]"));
 export function canvasWheel(e: WheelEvent) {
   const t = e.target as HTMLElement;
   // 正在平移画布的这次滚动手势一路平移下去：画布带着卡移到指针下面，指针落到卡边的圆点、把手上也不停

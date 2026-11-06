@@ -105,7 +105,8 @@
         "undoAddKeepsLaterWork",
         "nudgeHoldIsOneUndoStep",
         "farClicksNotDoubleClick",
-        "multiSelectToolbarTidyUp"
+        "multiSelectToolbarTidyUp",
+        "sectionEdgeWheelPans"
       ]
     },
     "code": {

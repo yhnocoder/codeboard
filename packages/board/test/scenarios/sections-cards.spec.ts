@@ -1,6 +1,7 @@
 import { shot, symCard, findSym, put, type Host } from "../harness";
 import { DEFAULT_SETTINGS, emptyBoard, sectionFrame, type Board, type NoteCard, type Rect } from "@codeboard/core";
 import { test, open, check, light, until, idle, hold } from "../fixtures";
+import { WHEEL_GESTURE } from "../../src/state/timing";
 
 const close = (h: Host) => h.page.context().close();
 
@@ -1436,6 +1437,75 @@ test("sectionResizeEdges", async () => {
       h.board().sections.find((s) => s.id === "S2")!.x > h.board().place.n1.x &&
       stillIn === "S2",
     { left, undone, top, right, corner, past, n1: n1.x, stillIn },
+  );
+  await close(h);
+});
+
+/** A wheel (two-finger) pan pans the board the same over a Section as over the empty canvas: on its edges and corners (the
+ *  resize handles), on its title and on the title's caret. Each is a new gesture, so none rides on a pan already going */
+test("sectionEdgeWheelPans", async () => {
+  const b = twoSectionsAndLoose();
+  b.cam = { x: 0, y: 160, z: 1 }; // room above the titles for the pans
+  const h = await open({ board: b, light, w: 1600, h: 900 });
+  await idle(h);
+  const pg = h.page;
+  const camOf = () =>
+    pg.evaluate(() => {
+      const m = /translate\(([-\d.]+)px, ([-\d.]+)px\)/.exec(
+        (document.querySelector(".world") as HTMLElement).style.transform,
+      );
+      return { x: Number(m![1]), y: Number(m![2]) };
+    });
+  const centre = async (sel: string) => {
+    const r = (await pg.locator(sel).boundingBox())!;
+    return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+  };
+  const S2 = '[data-sect="S2"]';
+  const below = async () => {
+    const r = (await pg.locator(`.sect${S2}`).boundingBox())!;
+    return { x: r.x + r.width / 2, y: r.y + r.height + 120 };
+  };
+  // where the pointer is, and what the hit test there must find (so the wheel goes to that element)
+  const targets: [string, string, () => Promise<{ x: number; y: number }>][] = [
+    ["canvas", "#board > .world, #board", below],
+    ...["e", "s", "se"].map((k): [string, string, () => Promise<{ x: number; y: number }>] => {
+      const sel = `.sect${S2} .sedge[data-edge="${k}"]`;
+      return [`edge ${k}`, sel, () => centre(sel)];
+    }),
+    ["title", `.slabel${S2} .sname`, () => centre(`.slabel${S2} .sname`)],
+    ["caret", `.slabel${S2} .chev2`, () => centre(`.slabel${S2} .chev2`)],
+  ];
+  const runs: { where: string; under: string; moved: string; want: string }[] = [];
+  let sign = 1;
+  for (const [where, sel, at] of targets) {
+    const p = await at();
+    await pg.mouse.move(p.x, p.y);
+    await idle(h);
+    await hold(h, WHEEL_GESTURE + 100, "a new wheel gesture: longer than the gap that ends one");
+    const under = await pg.evaluate(
+      ([x, y, s]) => {
+        const e = document.elementFromPoint(x, y);
+        if (!e) return "nothing";
+        return s.startsWith("#board") ? (e.matches(s) ? "" : e.className) : e.closest(s) ? "" : e.className;
+      },
+      [p.x, p.y, sel] as const,
+    );
+    const c0 = await camOf();
+    await pg.mouse.wheel(30 * sign, 40 * sign);
+    await idle(h);
+    const c1 = await camOf();
+    runs.push({
+      where,
+      under,
+      moved: `${Math.round(c1.x - c0.x)},${Math.round(c1.y - c0.y)}`,
+      want: `${-30 * sign},${-40 * sign}`,
+    });
+    sign = -sign;
+  }
+  check(
+    "sectionEdgeWheelPans",
+    runs.every((r) => r.under === "" && r.moved === r.want),
+    runs,
   );
   await close(h);
 });
