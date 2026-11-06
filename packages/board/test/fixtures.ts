@@ -2,6 +2,7 @@ import { test as base, expect, type Browser, type Page } from "@playwright/test"
 import { ready, openBoard, idle, type Host, type OpenOptions, type PageCoverage } from "./harness";
 import { nodeCoverage, pageFiles } from "./coverage";
 import { realHost, type RealHostOptions } from "./realhost";
+import { imageHits, pageMeasure } from "./probes";
 import type { Board } from "@codeboard/core";
 import tiers from "./tiers.json";
 
@@ -151,6 +152,25 @@ export function hostBoards(boards: Board[], o: RealHostOptions = {}) {
   );
 }
 
+/**
+ * The resource budget at the end of every scenario (probes.ts), like the board's self-check on every edit: an image on screen
+ * decoded at more than IMAGE_BUDGET.ratio times the pixels it is shown at fails it (#161: Note images loaded at full size). The
+ * page's counts (nodes, cards, KaTeX, decoded megapixels in view) go to the scenario's annotations, for the record: no budget on
+ * them, a scenario's board is whatever it tests. A page the scenario closed, or one that no longer answers, is skipped
+ */
+async function budgets(hosts: Host[]) {
+  for (const [i, h] of hosts.entries()) {
+    if (h.page.isClosed()) continue;
+    const m = await h.page.evaluate(pageMeasure).catch(() => undefined);
+    if (!m) continue;
+    test
+      .info()
+      .annotations.push({ type: "counts", description: `${i ? `page ${i + 1}: ` : ""}${JSON.stringify(m.counts)}` });
+    const hits = imageHits(m.imgs, m.dpr);
+    if (hits.length) check("image-budget", false, `${hits.length} image(s) decoded far above the size shown`, hits);
+  }
+}
+
 export const test = base.extend<{ boards: void }, { nodeCov: Awaited<ReturnType<typeof nodeCoverage>> | undefined }>({
   // once per worker: the analysis of nano-vllm, which every test's host reads
   nodeCov: [
@@ -168,6 +188,7 @@ export const test = base.extend<{ boards: void }, { nodeCov: Awaited<ReturnType<
       await use();
       const c = cur;
       cur = undefined;
+      await budgets(c.hosts);
       for (const h of c.hosts) await h.close().catch(() => {});
       for (const fn of c.after) await fn();
       if (COV) {

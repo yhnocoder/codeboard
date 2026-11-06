@@ -7,28 +7,34 @@
 #   compared on its own in <out dir>/anim and appended to the summary. The base side runs it only when its benchmark has --anim.
 #   And the persona board (run-perf.mjs --persona: Chinese Notes dense with math, Image cards of big screenshots, through the real
 #   host; ~1 min a run, too long for the PR budget), in <out dir>/persona, the same way
+#   The raster probes run in head's first board run (quick: drag, pan and small zoom stops; full: also the zoom out and in, the
+#   summary cut, Fit and zoomed out past the cut) and in head's first persona run
 # Exits 1 when perfdiff.mjs finds a regression.
 set -e
 BASE=$1; OUT=$2; MODE=$3
 mkdir -p "$OUT"
-board() { (cd "$1" && node packages/board/test/run-perf.mjs --quick --runs 1 --json "$OUT/board-$2-$3.json") >"$OUT/board-$2-$3.log" 2>&1; }
+# the raster probes (counts against absolute budgets, packages/board/test/probes.ts) run in head's first run only: counts are the
+# same from run to run, and base is not compared with them (--no-raster; a base from before them ignores the flag)
+board() { (cd "$1" && node packages/board/test/run-perf.mjs --quick --runs 1 --json "$OUT/board-$2-$3.json" $4) >"$OUT/board-$2-$3.log" 2>&1; }
 host() { for i in 1 2; do (cd "$1" && node packages/host/test/run-perf-host.mjs --runs 3) 2>&1 | grep '^{' >>"$OUT/host-$2.log" || true; done; }
 # a failed animated run leaves its log and no JSON: perfdiff then reports it, the other results still count
 anim() { (cd "$1" && node packages/board/test/run-perf.mjs --quick --anim --runs 1 --json "$OUT/anim/board-$2-$3.json") >"$OUT/anim/board-$2-$3.log" 2>&1 || true; }
-persona() { (cd "$1" && node packages/board/test/run-perf.mjs --persona --runs 1 --json "$OUT/persona/board-$2-$3.json") >"$OUT/persona/board-$2-$3.log" 2>&1 || true; }
+persona() { (cd "$1" && node packages/board/test/run-perf.mjs --persona --runs 1 --json "$OUT/persona/board-$2-$3.json" $4) >"$OUT/persona/board-$2-$3.log" 2>&1 || true; }
 HAS_BASE=""
 [ -n "$BASE" ] && [ -f "$BASE/packages/board/test/run-perf.mjs" ] && HAS_BASE=1
 OUT=$(cd "$OUT" && pwd)
+# head 1 runs the raster probes: perfdiff fails when no head run brought them back
+touch "$OUT/raster.expected"
 if [ -n "$HAS_BASE" ] && [ "$MODE" = quick ]; then
-  board . head 1; board "$BASE" base 1; board . head 2
+  board . head 1; board "$BASE" base 1 --no-raster; board . head 2 --no-raster
   host "$BASE" base; host . head
   if ! cmp -s "$BASE/packages/board/test/perf.ts" packages/board/test/perf.ts; then echo "Note: the board benchmark itself changed between base and head." >"$OUT/note.txt"; fi
 elif [ -n "$HAS_BASE" ]; then
-  board "$BASE" base 1; board . head 1; board . head 2; board "$BASE" base 2
+  board "$BASE" base 1 --no-raster; board . head 1; board . head 2 --no-raster; board "$BASE" base 2 --no-raster
   host "$BASE" base; host . head; host . head; host "$BASE" base
   if ! cmp -s "$BASE/packages/board/test/perf.ts" packages/board/test/perf.ts; then echo "Note: the board benchmark itself changed between base and head." >"$OUT/note.txt"; fi
 else
-  board . head 1; board . head 2; host . head
+  board . head 1; board . head 2 --no-raster; host . head
 fi
 if [ "$MODE" != quick ]; then
   mkdir -p "$OUT/anim"
@@ -38,10 +44,11 @@ if [ "$MODE" != quick ]; then
     anim . head 1; anim . head 2
   fi
   mkdir -p "$OUT/persona"
+  touch "$OUT/persona/raster.expected"
   if [ -n "$HAS_BASE" ] && grep -q -- '"--persona"' "$BASE/packages/board/test/perf.ts"; then
-    persona "$BASE" base 1; persona . head 1; persona . head 2; persona "$BASE" base 2
+    persona "$BASE" base 1 --no-raster; persona . head 1; persona . head 2 --no-raster; persona "$BASE" base 2 --no-raster
   else
-    persona . head 1; persona . head 2
+    persona . head 1; persona . head 2 --no-raster
   fi
 fi
 set +e

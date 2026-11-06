@@ -5,7 +5,7 @@
 | 层 | 什么时候 | 时间上限 | 跑什么 |
 |---|---|---|---|
 | 1 本地 | 每次改完：`npm run check` | 90 秒 | 先构建 `@yhnocoder/markdown`（几秒）；typecheck、lint（Biome 和 knip，几秒）、单元测试（analysis、core、markdown、board、host、插件，一次 vitest 并行跑完）、Markdown 示例；这次改动需要的 harness 场景（白板构建完就开始，和前面这些同时跑） |
-| 2 CI | 每次 push、每个 PR（`ci.yml`） | 5 分钟 | 第 1 层的全部，加上所有改过的场景；harness 先由一个小 job 挑场景、按估计用时定要几个 job（每个约 3 分钟，2–6 个），再并行跑；e2e 拆两段并行；perf（只在改了 benchmark 跑的代码时跑：`tiers.json` 的 `perf`，`tools/test/perf-need.mjs` 判断） |
+| 2 CI | 每次 push、每个 PR（`ci.yml`） | 5 分钟 | 第 1 层的全部，加上所有改过的场景；harness 先由一个小 job 挑场景、按估计用时定要几个 job（每个约 3 分钟，2–6 个），再并行跑；e2e 拆两段并行；perf（只在改了 benchmark 跑的代码时跑：`tiers.json` 的 `perf`，`tools/test/perf-need.mjs` 判断；除了 base 对 head 的毫秒比，还有不看机器的光栅计数，按绝对预算判：拖动、平移、缩放停下时每步光栅了几个视口的设备像素，停稳后有没有层糊了或者光栅到显示的 2 倍以上，`probes.ts` 的 `RASTER_BUDGET`） |
 | 3 定时全量 | 每 6 小时：北京时间 02:30、08:30、14:30、20:30（`regular.yml`）；replay 每天一次，北京时间 03:00（`replay.yml`） | 不限 | 全部 harness 场景、整套 e2e（包括平时不跑的 export / variants / noteimage / stickerfolder / notesettings / codeedit）、完整 perf（另加一轮白板上 100 个动图贴纸的，`run-perf.mjs --anim`）、Storybook（构建后每个 story 都打开一遍）、study-task replay；harness 全量跑完后再做一轮 flaky 重复（见下） |
 
 ## 一定会测到的
@@ -29,7 +29,7 @@
 
 ## 怎么算失败
 
-harness 场景是 Playwright Test 的测试（`packages/board/test/scenarios/*.spec.ts`，配置在 `packages/board/playwright.config.ts`）。`check(名字, 条件, 细节…)` 不成立、`expect` 不成立、抛异常、超时，都算失败，CI 会变红。`check` 不成立时场景接着跑完，最后一起算失败（`expect.soft`）。白板自检（`dangling references`）和宿主收到的每个版本过不了 schema 也是失败。
+harness 场景是 Playwright Test 的测试（`packages/board/test/scenarios/*.spec.ts`，配置在 `packages/board/playwright.config.ts`）。`check(名字, 条件, 细节…)` 不成立、`expect` 不成立、抛异常、超时，都算失败，CI 会变红。`check` 不成立时场景接着跑完，最后一起算失败（`expect.soft`）。白板自检（`dangling references`）和宿主收到的每个版本过不了 schema 也是失败。每个场景结束时还查一次资源预算（`fixtures.ts` 的 `budgets`，`packages/board/test/probes.ts`）：屏幕上哪张图解码的像素超过它显示的设备像素 6 倍（`IMAGE_BUDGET`，按它在这个页面里被放大到过的最大倍数算，因为图只往大换），就是失败（`image-budget`）；节点、卡、KaTeX、解码的百万像素这些计数只写进场景的 annotations，不设预算。
 
 `tools/test/harness.mjs` 分两轮调 Playwright：先在几个 worker 上一起跑，再一个一个单独跑。一起跑时挂了的场景会在第二轮单独再跑一次，单独跑过了就算过（报告里标"alone"）。
 
