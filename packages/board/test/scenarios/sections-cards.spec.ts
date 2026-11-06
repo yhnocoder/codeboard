@@ -1288,9 +1288,13 @@ test("sectionGroupDeleteUndo", async () => {
 });
 
 /** Resizing a Section changes who is in it: dragged out over a loose card, the card joins (the Section lights up while it is
- *  dragged); dragged in past a card of its own, that card leaves; each drag one undo step, frame and members together */
+ *  dragged); dragged in past a card of its own, that card leaves; each drag one undo step, frame and members together. A locked
+ *  card stays where it is */
 test("sectionResizeMembers", async () => {
-  const h = await open({ board: twoSectionsAndLoose(), light, w: 1600 });
+  const b = twoSectionsAndLoose();
+  put(b, { id: "n3", kind: "note", look: "note", md: "# Locked\n\nStays out." } as NoteCard, 1320, 300, 240);
+  b.place.n3.locked = true;
+  const h = await open({ board: b, light, w: 1600 });
   await idle(h);
   const pg = h.page;
   const home = (id: string) => h.board().place[id].section;
@@ -1310,7 +1314,8 @@ test("sectionResizeMembers", async () => {
   };
   const n2 = await box('.card[data-id="n2"]');
   const litJoin = await drag("e", n2.x + n2.width + 30, "sect-members-01-growing-over-loose-card");
-  const joined = home("n2");
+  const joined = home("n2"),
+    locked = home("n3");
   const grown = await box('.sect[data-sect="S2"]');
   await shot(h, "sect-members-02-loose-card-joined");
   const n1 = await box('.card[data-id="n1"]');
@@ -1328,6 +1333,7 @@ test("sectionResizeMembers", async () => {
     "sectionResizeMembers",
     litJoin === 1 &&
       joined === "S2" &&
+      locked === undefined &&
       grown.x + grown.width >= n2.x + n2.width &&
       left.n1 === undefined &&
       left.n2 === "S2" &&
@@ -1337,7 +1343,7 @@ test("sectionResizeMembers", async () => {
       undo1.x === 720 &&
       undo2.n1 === "S2" &&
       undo2.n2 === undefined,
-    { litJoin, joined, grown, n2, left, shrunk, undo1, undo2 },
+    { litJoin, joined, locked, grown, n2, left, shrunk, undo1, undo2 },
   );
   await close(h);
 });

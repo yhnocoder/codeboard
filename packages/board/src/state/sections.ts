@@ -314,7 +314,8 @@ export function homeFor(fr: Map<string, Rect>, r: Rect, skip?: Set<string>): Sec
  * Section `id` resized to `r` (the frame as dragged, before its cards widen it): the cards whose Section changes, card id → its
  * Section after (undefined: none). `fr` = the frames when the drag began. A card `r` covers by more than a third (partlyIn, the
  * rule of homeFor) joins, if it was in no Section or in one `id` is in (a card of another Section stays there); a card of its own
- * it no longer covers that much goes to the Section it then lies in (homeFor without `id` and the Sections in it)
+ * it no longer covers that much goes to the Section it then lies in (homeFor without `id` and the Sections in it). A locked card
+ * stays where it is
  */
 export function resizedHomes(id: string, r: Rect, fr: Map<string, Rect>): Map<string, string | undefined> {
   const outer = new Set<string | undefined>([undefined]);
@@ -322,7 +323,9 @@ export function resizedHomes(id: string, r: Rect, fr: Map<string, Rect>): Map<st
   const inner = new Set([id, ...descSections(id).map((s) => s.id)]);
   const out = new Map<string, string | undefined>();
   for (const c of visibleCards()) {
-    const was = placeOf(c.id).section,
+    const p = placeOf(c.id);
+    if (p.locked) continue;
+    const was = p.section,
       cr = rectOf(c);
     if (was === id) {
       if (!partlyIn(cr, r)) out.set(c.id, homeFor(fr, cr, inner)?.id);

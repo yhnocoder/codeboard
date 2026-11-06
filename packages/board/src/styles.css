@@ -2145,14 +2145,26 @@ textarea {
 .sect:not([class*=" c-"]) {
   background: var(--sect-fill);
 }
-/* selected: an accent border and ring, and an accent wash over its fill (an inset shadow as big as the frame, so a coloured
-   Section gets it too and it eases in with the shadow's transition) */
+/* selected: an accent border and ring, and an accent wash over its fill (a layer of its own that only fades in and out, so a
+   big Section is not painted again; on top of a coloured Section's fill too) */
 .sect.sel {
   border-color: var(--accent);
   box-shadow:
     var(--sect-sh),
-    inset 0 0 0 9999px color-mix(in srgb, var(--accent) 7%, transparent),
     0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+.sect::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+  opacity: 0;
+  transition: opacity 0.15s var(--out);
+  pointer-events: none;
+}
+.sect.sel::after {
+  opacity: 1;
 }
 .sect.drop {
   border-color: color-mix(in srgb, var(--ink) 42%, transparent);
