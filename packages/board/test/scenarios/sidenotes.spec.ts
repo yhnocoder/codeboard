@@ -5,7 +5,7 @@
 //                               than the cap, so its height is stored) ends right under its last line, no scrollbar (Warm Ink)
 //  sidenoteAlwaysShowResize     dragging the corner of that card down and up: its height follows the pointer, it never drops to the
 //                               cap for cards without a stored height
-//  sidenotePopoverBelowLines    clicking a gutter marker opens the Sidenotes popover below the lines it marks (not over them); near the
+//  sidenotePopoverBelowLines    clicking a gutter marker opens the Highlight popover below the lines it marks (not over them); near the
 //                               bottom of the window, above them. Its text has no "Double-click to edit" tip
 //  sidenoteCardPreview          a Card sidenote's eye in the popover: resting on it shows, beside the popover, a copy of that Note card as
 //                               the board draws it, with its text; leaving the eye hides it
@@ -71,6 +71,10 @@ function board(w: number, y = 40): Board {
         end: KERNEL.length,
         text: KERNEL.slice(),
         version: { kind: "none" },
+        hl: [
+          [7, 8],
+          [16, 16],
+        ],
       },
     ],
   } as CodeCard;
@@ -218,11 +222,11 @@ test("sidenotePopoverBelowLines", async () => {
     const h = await open({ board: board(560, y), light, w: 1200, h: 900, settings: { theme: "warm-ink" } as never });
     await setWarmInk(h);
     const pg = h.page;
-    await pg.locator('.card[data-id="k1"] .mk[data-notes="n2"]').click();
-    await until(h, "the Sidenotes popover is open", () => pg.locator(".pop.k-notes").count());
+    await pg.locator('.card[data-id="k1"] .hxm[data-hl="k1:s1:7-8"]').click();
+    await until(h, "the Highlight popover is open", () => pg.locator(".pop.k-highlight").count());
     await idle(h);
     const r = await pg.evaluate(() => {
-      const p = document.querySelector<HTMLElement>(".pop.k-notes")!.getBoundingClientRect();
+      const p = document.querySelector<HTMLElement>(".pop.k-highlight")!.getBoundingClientRect();
       const ls = [...document.querySelectorAll<HTMLElement>('.card[data-id="k1"] .src > .l')];
       const lines = [ls[6], ls[7]].map((l) => l.getBoundingClientRect());
       const hit = lines.some((l) => l.top < p.bottom && l.bottom > p.top && l.left < p.right && l.right > p.left);
@@ -233,7 +237,7 @@ test("sidenotePopoverBelowLines", async () => {
         below: p.top >= lines[1].bottom,
         above: p.bottom <= lines[0].top,
         inWindow: p.top >= 0 && p.bottom <= innerHeight,
-        tips: document.querySelectorAll(".pop.k-notes .sn-text[data-tip]").length,
+        tips: document.querySelectorAll(".pop.k-highlight .nbody[data-tip]").length,
       };
     });
     if (where === "top") await save(h, "sidenotes-popover-below");
@@ -262,14 +266,15 @@ test("sidenoteCardPreview", async () => {
     40,
     360,
   );
+  (b.cards[0] as CodeCard).segments[0].hl!.unshift([4, 4]);
   b.sidenotes.push({ id: "n3", kind: "card", card: "nc", at: { card: "k1", seg: "s1", lines: [4, 4] } });
   const h = await open({ board: b, light, w: 1400, h: 900, settings: { theme: "warm-ink" } as never });
   await setWarmInk(h);
   const pg = h.page;
-  await pg.locator('.card[data-id="k1"] .mk[data-notes="n3"]').click();
-  await until(h, "the Sidenotes popover is open", () => pg.locator(".pop.k-notes").count());
+  await pg.locator('.card[data-id="k1"] .hxm[data-hl="k1:s1:4-4"]').click();
+  await until(h, "the Highlight popover is open", () => pg.locator(".pop.k-highlight").count());
   await idle(h);
-  const eye = pg.locator(".pop.k-notes .sn-peek");
+  const eye = pg.locator(".pop.k-highlight .sn-peek");
   if ((await eye.count()) !== 1) {
     check("sidenoteCardPreview the Card sidenote has a preview eye", false);
     return;
@@ -279,7 +284,7 @@ test("sidenoteCardPreview", async () => {
   await idle(h);
   const shown = await pg.evaluate(() => {
     const pk = document.querySelector<HTMLElement>(".cpeek")!,
-      pop = document.querySelector<HTMLElement>(".pop.k-notes")!.getBoundingClientRect(),
+      pop = document.querySelector<HTMLElement>(".pop.k-highlight")!.getBoundingClientRect(),
       r = pk.getBoundingClientRect();
     return {
       text: pk.textContent ?? "",
@@ -291,7 +296,7 @@ test("sidenoteCardPreview", async () => {
       cards: document.querySelectorAll('.card[data-id="nc"]').length,
     };
   });
-  await save(h, "sidenotes-card-preview", ".pop.k-notes, .cpeek");
+  await save(h, "sidenotes-card-preview", ".pop.k-highlight, .cpeek");
   await pg.mouse.move(20, 880);
   await until(h, "the preview is gone", async () => (await pg.locator(".cpeek").count()) === 0);
   check(
@@ -323,11 +328,11 @@ test("sidenoteAlwaysShowRefits", async () => {
   await save(h, "sidenotes-refit-on-before");
   const toggle = async () => {
     const was = !!(h.board().sidenotes[0] as { alwaysShow?: boolean }).alwaysShow;
-    if (!(await pg.locator(".pop.k-notes").count())) {
-      await pg.locator('.card[data-id="k1"] .mk[data-notes="n1"]').click();
-      await until(h, "the Sidenotes popover is open", () => pg.locator(".pop.k-notes").count());
+    if (!(await pg.locator(".pop.k-highlight").count())) {
+      await pg.locator('.card[data-id="k1"] .hxm[data-hl="k1:s1:16-16"]').click();
+      await until(h, "the Highlight popover is open", () => pg.locator(".pop.k-highlight").count());
     }
-    await pg.locator(".pop.k-notes .sn-acts button", { hasText: "Always Show" }).click();
+    await pg.locator('.pop.k-highlight .slip button[aria-label="Always Show"]').click();
     await until(
       h,
       "Always Show is toggled",
@@ -354,10 +359,10 @@ test("sidenoteAlwaysShowRefits", async () => {
   await until(h, "the toggle is redone", () => !!(h.board().sidenotes[0] as { alwaysShow?: boolean }).alwaysShow);
   await idle(h);
   // the shown sidenote's text written twice as long: the card grows with it
-  await pg.locator('.card[data-id="k1"] .mk[data-notes="n1"]').click();
-  await until(h, "the Sidenotes popover is open", () => pg.locator(".pop.k-notes").count());
-  await pg.locator(".pop.k-notes .sn-acts button", { hasText: "Edit" }).click();
-  const ta = pg.locator(".pop.k-notes .sn-edit textarea");
+  await pg.locator('.card[data-id="k1"] .hxm[data-hl="k1:s1:16-16"]').click();
+  await until(h, "the Highlight popover is open", () => pg.locator(".pop.k-highlight").count());
+  await pg.locator('.pop.k-highlight .slip button[aria-label="Edit"]').click();
+  const ta = pg.locator(".pop.k-highlight .sn-edit textarea");
   await ta.waitFor();
   await pg.keyboard.press("ControlOrMeta+End");
   await pg.keyboard.insertText(
@@ -390,9 +395,9 @@ test("sidenoteAlwaysShowRefits", async () => {
   b.place.k1.h = 300;
   const h2 = await open({ board: b, light, w: 1200, h: 1000, settings: { theme: "warm-ink" } as never });
   await setWarmInk(h2);
-  await h2.page.locator('.card[data-id="k1"] .mk[data-notes="n1"]').click();
-  await until(h2, "the Sidenotes popover is open", () => h2.page.locator(".pop.k-notes").count());
-  await h2.page.locator(".pop.k-notes .sn-acts button", { hasText: "Always Show" }).click();
+  await h2.page.locator('.card[data-id="k1"] .hxm[data-hl="k1:s1:16-16"]').click();
+  await until(h2, "the Highlight popover is open", () => h2.page.locator(".pop.k-highlight").count());
+  await h2.page.locator('.pop.k-highlight .slip button[aria-label="Always Show"]').click();
   await until(h2, "Always Show is off", () => !(h2.board().sidenotes[0] as { alwaysShow?: boolean }).alwaysShow);
   await idle(h2);
   check(

@@ -108,6 +108,7 @@ export function bigBoard(n: number): Board {
   cards.forEach(({ c }, i) => {
     if (i % 3) return;
     const s = c.segments[0];
+    s.hl = [[s.start + 1, s.start + 1]];
     const n: Sidenote = {
       id: uid("n"),
       at: { card: c.id, seg: s.id, lines: [s.start + 1, s.start + 1] },

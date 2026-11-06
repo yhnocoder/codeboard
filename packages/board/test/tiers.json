@@ -221,7 +221,8 @@
         "packages/board/src/actions/format.ts",
         "packages/board/src/ui/StaticFormat.tsx",
         "packages/board/test/scenarios/static-format.spec.ts",
-        "packages/board/test/scenarios/sidenotes.spec.ts"
+        "packages/board/test/scenarios/sidenotes.spec.ts",
+        "packages/board/test/scenarios/highlights.spec.ts"
       ],
       "scenarios": [
         "notes",

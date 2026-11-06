@@ -352,6 +352,7 @@ function schedBoard() {
     },
     { id: "lSee", from: { card: can.id }, to: { card: note.id }, label: "why" },
   );
+  s0.hl = [[lineOf(sch, /# prefill/), lineOf(sch, /# prefill/)]];
   b.sidenotes.push({
     id: "snA",
     kind: "text",
@@ -510,7 +511,7 @@ async function exportScenario(res: Record<string, unknown>) {
   res.cur = await v.evaluate(() => (document.querySelector(".xv-cur") as HTMLElement | null)?.dataset.id);
   await v.locator('.xv-walk [data-w="prev"]').click();
   await still(v);
-  const mk = v.locator(`.card[data-id="${ids.sch}"] .gutter .mk`).first();
+  const mk = v.locator(`.card[data-id="${ids.sch}"] .gutter .hxm`).first();
   await mk.hover();
   await v.locator(".xv-tip").waitFor();
   res.tip = await v.locator(".xv-tip").textContent();

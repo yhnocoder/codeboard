@@ -44,6 +44,7 @@ function richBoard(): Board {
     to: { card: post.id },
     call: { name: "postprocess", col: 23, vars: [{ a: "seqs" }, { a: "token_ids" }, { a: "is_prefill" }] },
   });
+  s0.hl = [[l1, l1]];
   b.sidenotes.push({
     id: "n1",
     kind: "text",
@@ -899,14 +900,14 @@ test("sidenoteDelete", async () => {
   const n1 = b.sidenotes[0];
   b.sidenotes.push({ ...n1, id: "n2", md: "Second note." } as any);
   const h = await open({ board: b, light, w: 1500, h: 950 });
-  await h.page.locator(".mk").first().click();
-  await h.page.locator(".pop.k-notes").waitFor();
+  await h.page.locator(".hxm").first().click();
+  await h.page.locator(".pop.k-highlight").waitFor();
   await idle(h);
-  const p0 = (await h.page.locator(".pop.k-notes").boundingBox())!;
-  await h.page.locator('.pop.k-notes [aria-label="Delete Sidenote"]').click();
+  const p0 = (await h.page.locator(".pop.k-highlight").boundingBox())!;
+  await h.page.locator('.pop.k-highlight [aria-label="Delete Sidenote"]').first().click();
   await until(h, "the sidenote is deleted", () => h.board().sidenotes.length === 1);
   await idle(h);
-  const p1 = (await h.page.locator(".pop.k-notes").boundingBox())!;
+  const p1 = (await h.page.locator(".pop.k-highlight").boundingBox())!;
   await shot(h, "board-notedel");
   const ok = Math.abs(p1.x - p0.x) < 30 && Math.abs(p1.y - p0.y) < 30 && h.board().sidenotes.length === 1;
   check("note-delete-stays", ok, JSON.stringify({ p0, p1 }));

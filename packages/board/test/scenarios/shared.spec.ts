@@ -75,6 +75,7 @@ test("sharedcards", async () => {
     to: { card: sch.id },
     call: { name: "schedule", col: 0 },
   });
+  s0.hl = [[s0.start + 3, s0.start + 3]];
   A.sidenotes.push({
     id: "sn1",
     kind: "text",
@@ -189,13 +190,13 @@ test("sharedcards", async () => {
     () => (t.store.peek("bA")!.cards.find((c) => c.id === sch.id) as any)?.segments[0].version.commit === "f64d8210",
   );
   await until(a, "Attention shows the review marker", () =>
-    cardEl(a, "Scheduler.schedule").locator(".mk.rv, .chead .rvdot").count(),
+    cardEl(a, "Scheduler.schedule").locator(".hxm.rv, .chead .rvdot").count(),
   );
   await both(a, m);
   const sa = (t.store.peek("bA")!.cards.find((c) => c.id === sch.id) as any).segments[0];
   res.updatedA = sa.version.commit === "f64d8210";
   res.reviewA = (await t.store.load("bA"))!.sidenotes.find((n) => n.id === "sn1")?.review;
-  res.amberA = await cardEl(a, "Scheduler.schedule").locator(".mk.rv, .chead .rvdot").count();
+  res.amberA = await cardEl(a, "Scheduler.schedule").locator(".hxm.rv, .chead .rvdot").count();
   await shot(a, "shared-4-review-marker");
 
   // 7. Card menu on a shared card: Remove from This Board / Delete Everywhere… / Unlink
