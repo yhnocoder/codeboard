@@ -38,7 +38,7 @@
       "packages/{analysis,board,core,host,markdown}/src/**",
       "packages/{analysis,board,core,host,markdown}/package.json",
       "packages/*/vite.config.*",
-      "packages/board/test/{perf,harness,realhost}.ts",
+      "packages/board/test/{perf,harness,realhost,probes}.ts",
       "packages/host/test/perf-*",
       "package-lock.json",
       "tools/review/perf*"
@@ -55,7 +55,7 @@
       "packages/board/playwright.config.ts",
       "packages/board/src/{styles,fonts,fonts-yozai,fonts-zhimangxing}.css",
       "packages/board/src/fonts/**",
-      "packages/board/test/{harness,fixtures,coverage,subhost,realhost,deepseek,chromium}.ts",
+      "packages/board/test/{harness,fixtures,coverage,subhost,realhost,deepseek,chromium,probes}.ts",
       "packages/host/test/node-workspace.ts",
       "tools/test/**",
       "examples/nano-vllm"

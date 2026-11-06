@@ -131,12 +131,45 @@ if (HH.length) {
   }
 }
 
+// Raster counts (perf.ts rasterProbes, probes.ts): pixels rastered per step and layers' raster scale at rest, counted from the
+// compositor's trace, so the same on any machine. They are judged against absolute budgets (probes.ts RASTER_BUDGET, carried in
+// each run's rasterChecks), not against base: head fails when its median over the runs that have them is over the limit
+const withRaster = (rs) => rs.filter((r) => Array.isArray(r.rasterChecks));
+const RB = withRaster(B),
+  RH = withRaster(H);
+const rasterFails = [];
+if (RH.length) {
+  lines.push("", "| Raster budget (absolute; counts) | base → head | limit | |", "|---|---|---|---|");
+  for (const c of RH[0].rasterChecks) {
+    const at = (rs) => median(rs.map((r) => r.rasterChecks.find((x) => x.name === c.name)?.value));
+    const h = at(RH),
+      b = at(RB),
+      bad = h > c.limit;
+    if (bad) rasterFails.push(`raster ${c.name}: ${fmt(h)} over the budget of ${c.limit}`);
+    lines.push(`| ${c.name} | ${RB.length ? `${fmt(b)} → ` : ""}${fmt(h)} | ${c.limit} | ${bad ? "❌" : ""} |`);
+  }
+  const passes = Object.keys(RH[0].raster ?? {});
+  lines.push(
+    "",
+    "| Raster pass (head) | px per step, viewports (median / max) | layers per step (median / max) | wasted, viewports | rest, viewports | layers at rest | zoom | blurry / wasted at rest |",
+    "|---|---|---|---|---|---|---|---|",
+  );
+  for (const p of passes) {
+    const v = (k) => median(RH.map((r) => r.raster?.[p]?.[k]));
+    const n = (k) => median(RH.map((r) => r.raster?.[p]?.[k]?.length));
+    lines.push(
+      `| ${p} | ${fmt(v("stepVP"))} / ${fmt(v("stepVPMax"))} | ${fmt(v("stepLayers"))} / ${fmt(v("stepLayersMax"))} | ${fmt(v("wastedVP"))} | ${fmt(v("restVP"))} | ${fmt(v("layers"))} | ${v("zoom")} | ${n("blurry")} / ${n("wasted")} |`,
+    );
+  }
+  fails.push(...rasterFails);
+}
+
 const head = [
   `**${title}** (${B.length ? `${B.length} base, ${H.length} head` : H.length} run${H.length > 1 ? "s" : ""}, base and head alternating on the same runner; medians; the runner has no GPU, so compare ratios, not absolute times): ` +
-    (!B.length
-      ? "no base results, nothing to compare."
-      : fails.length
-        ? `❌ ${fails.length} regression${fails.length > 1 ? "s" : ""}.`
+    (fails.length
+      ? `❌ ${fails.length} regression${fails.length > 1 ? "s" : ""}.`
+      : !B.length
+        ? "no base results, nothing to compare."
         : "✅ no regressions."),
   ...fails.map((f) => `- ${f}`),
   inBudget.length
@@ -148,7 +181,7 @@ const head = [
   `<details><summary>Details</summary>\n`,
   ...lines,
   "",
-  `Fails when work per step grows > ${LIMITS.busy.ratio}x and > ${LIMITS.busy.abs} ms, frame p95 > ${LIMITS.frame.ratio}x and > ${LIMITS.frame.abs} ms, or a one-off timing > ${LIMITS.scalar.ratio}x and > ${LIMITS.scalar.abs} ms, each only when head is also over ${FRAME_BUDGET} ms; or a host timing > ${LIMITS.host.ratio}x and > ${LIMITS.host.abs} ms.`,
+  `Fails when work per step grows > ${LIMITS.busy.ratio}x and > ${LIMITS.busy.abs} ms, frame p95 > ${LIMITS.frame.ratio}x and > ${LIMITS.frame.abs} ms, or a one-off timing > ${LIMITS.scalar.ratio}x and > ${LIMITS.scalar.abs} ms, each only when head is also over ${FRAME_BUDGET} ms; or a host timing > ${LIMITS.host.ratio}x and > ${LIMITS.host.abs} ms; or a raster count is over its absolute budget (packages/board/test/probes.ts RASTER_BUDGET: viewports of device pixels rastered per step; layers blurry or rastered over 2x the scale shown at rest).`,
   "</details>",
 ];
 fs.writeFileSync(path.join(dir, "summary.md"), head.join("\n") + "\n");

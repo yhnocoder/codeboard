@@ -1,4 +1,4 @@
-// Usage: node packages/board/test/run-perf.mjs [--cards 240] [--notes 200] (a board of Notes with realistic Markdown: open, pan, zoom, enter edit, type) [--runs 3] [--json out.json] [--quick] [--theme ink-wash] [--light] [--traffic] (City: green light, cars driving) [--profile <step>] [--trace <step>] [--steps <step>] [--long <step>] [--stop pinch] [--inval <step>] [--anim] [--persona] [--scale 2] (--persona: a board like a real study board, Chinese Notes dense with math and Image cards of big screenshots, through the real host: load, pan, zoom, pinch, zoomOutIn, dragImage / dragNote / dragCode; --anim: the line and corner stickers are animated GIFs from a sticker pack; --inval counts what invalidated style and layout; --stop pinch: end each run after the camera steps; --long breaks down each dropped frame, LONG_OVER=8.3 each frame over that many ms; --steps prints each step's time, the board's classes and camera)
+// Usage: node packages/board/test/run-perf.mjs [--cards 240] [--notes 200] (a board of Notes with realistic Markdown: open, pan, zoom, enter edit, type) [--runs 3] [--json out.json] [--quick] [--theme ink-wash] [--light] [--traffic] (City: green light, cars driving) [--profile <step>] [--trace <step>] [--steps <step>] [--long <step>] [--stop pinch] [--inval <step>] [--anim] [--persona] [--scale 2] (--persona: a board like a real study board, Chinese Notes dense with math and Image cards of big screenshots, through the real host: load, pan, zoom, pinch, zoomOutIn, dragImage / dragNote / dragCode; --anim: the line and corner stickers are animated GIFs from a sticker pack; --inval counts what invalidated style and layout; --stop pinch: end each run after the camera steps; --long breaks down each dropped frame, LONG_OVER=8.3 each frame over that many ms; --steps prints each step's time, the board's classes and camera, and the raster passes step by step) [--raster] (only the raster probes: rasterProbes) [--passes drag,pan,zoom,stops,cut,fit,zoomedOut] [--no-raster] (RASTER_OUT=<dir>: each raster pass's trace and a screenshot)
 // Each scenario reports wall clock (action → next frame painted), main-thread busy time (CDP TaskDuration) and frame times
 // (frameP95 / frameMax / over16 / over8: main-thread task durations, frameMedian for steps that wait; the 60 fps budget is 16.7 ms, 120 fps 8.3 ms).
 import * as fs from "node:fs";
@@ -23,6 +23,18 @@ import { faceFrames, gif, png } from "@codeboard/host/testing";
 import * as path from "node:path";
 import { createHash } from "node:crypto";
 import { realHost } from "./realhost";
+import {
+  imageHits,
+  layerScales,
+  median as medianOf,
+  pageMeasure,
+  rasterChecks,
+  rasterWindows,
+  scaleHits,
+  snapshotsOf,
+  type RasterResult,
+  type TraceEvent,
+} from "./probes";
 
 const arg = (k: string, d: string) => {
   const i = process.argv.indexOf(`--${k}`);
@@ -34,7 +46,8 @@ const NCARDS = +arg("cards", "240"),
   RUNS = +arg("runs", "3"),
   JSON_OUT = arg("json", ""),
   PROFILE = arg("profile", ""),
-  THEME = arg("theme", "");
+  THEME = arg("theme", ""),
+  RASTER_ONLY = process.argv.includes("--raster");
 
 /** A large board: nano-vllm functions (repeated if too few), linked into trees by calls, a Section every 12 cards (two levels nested), some Sidenotes */
 export function bigBoard(n: number): Board {
@@ -686,6 +699,14 @@ async function once() {
     return res;
   }
   res.idleBusy1s = +(await idle(h, cdp, 1000)).toFixed(1);
+  // --raster: only the raster probes (rasterProbes), not the timed steps
+  if (RASTER_ONLY) {
+    const raster = await rasterProbes(h, cdp, hubOf(board));
+    res.raster = raster;
+    res.rasterChecks = rasterChecks(raster, "synthetic");
+    await h.page.context().browser()!.close();
+    return res;
+  }
 
   // Pan the canvas (gesture starts over empty canvas, so the board pans instead of a card scrolling); the first pan after opening
   const spot = await h.page.evaluate(() => {
@@ -963,6 +984,12 @@ async function once() {
     ),
   );
   await h.page.waitForTimeout(1200);
+  // --no-raster: no raster probes (PR CI runs them in one of its two head runs: they count, so one run is enough)
+  if (!NNOTES && !sk && !process.argv.includes("--no-raster")) {
+    const raster = await rasterProbes(h, cdp, hubOf(board));
+    res.raster = raster;
+    res.rasterChecks = rasterChecks(raster, "synthetic");
+  }
 
   if (process.argv.includes("--quick")) {
     await h.page.context().browser()!.close();
@@ -1152,6 +1179,230 @@ async function notesEdit(h: Host, cdp: CDPSession, board: Board, res: Record<str
   res.typed = (h.board().cards.find((c) => c.id === ids[ids.length - 1]) as { md: string }).md.includes(
     "Prefill admits waiting",
   );
+}
+
+// ---- Raster probes: counts, not milliseconds (probes.ts). Each runs its own steps after the timed ones, traced with the
+// compositor's layer snapshots (disabled-by-default-devtools.timeline.layers: the tree and its tiles at every draw), which would
+// slow the timed steps: the pixels rastered in each step (as a share of the viewport's device pixels), the layers rastered in
+// each step, the pixels of tiles rastered at more than 2x the scale they were shown at, the pixels rastered while the camera
+// comes to rest, and, at rest, every layer rastered below the scale it is shown at (blurry) or more than 2x above it (wasted).
+
+/** Trace marker at the start of each raster step, and of the rest after the last one */
+const RASTER_MARK = "raster-step";
+const still = (h: Host) =>
+  h.page.waitForFunction(() => !document.querySelector(".world.moving, .board.relift, .board.lifting"), null, {
+    timeout: 30000,
+  });
+/** A rest: the camera stopped, then long enough for the raster workers to finish and the compositor to draw */
+async function rest(h: Host) {
+  await still(h);
+  await h.page.waitForTimeout(900);
+  await still(h);
+  await raf(h);
+}
+const timeStamp = (h: Host, m: string) => h.page.evaluate((m) => console.timeStamp(m), m);
+
+async function rasterPass(
+  h: Host,
+  cdp: CDPSession,
+  name: string,
+  n: number,
+  step: (i: number) => Promise<void>,
+  done?: () => Promise<void>,
+): Promise<RasterResult> {
+  await rest(h);
+  const events: TraceEvent[] = [];
+  const onData = (e: any) => events.push(...e.value);
+  cdp.on("Tracing.dataCollected", onData);
+  await cdp.send("Tracing.start", {
+    categories: "devtools.timeline,disabled-by-default-devtools.timeline,disabled-by-default-devtools.timeline.layers",
+    transferMode: "ReportEvents",
+  } as any);
+  for (let i = 0; i < n; i++) {
+    await timeStamp(h, RASTER_MARK);
+    await step(i);
+    await raf(h);
+  }
+  await timeStamp(h, RASTER_MARK);
+  await done?.();
+  await rest(h);
+  const ended = new Promise((r) => cdp.once("Tracing.tracingComplete", r));
+  await cdp.send("Tracing.end");
+  await ended;
+  cdp.off("Tracing.dataCollected", onData);
+  // RASTER_OUT=<dir>: each pass's trace and a screenshot at rest, for a closer look
+  if (process.env.RASTER_OUT) {
+    fs.writeFileSync(path.join(process.env.RASTER_OUT, `${name}.json`), JSON.stringify(events));
+    await h.page.screenshot({ path: path.join(process.env.RASTER_OUT, `${name}.png`) });
+  }
+  const marks = events
+    .filter((e) => e.name === "TimeStamp" && e.args?.data?.message === RASTER_MARK)
+    .map((e) => e.ts)
+    .sort((a, b) => a - b);
+  const end = Math.max(...events.map((e) => e.ts));
+  const { steps: w, unknown, names } = rasterWindows(events, marks, end + 1);
+  const snaps = snapshotsOf(events);
+  const last = snaps.at(-1)?.s;
+  const vs = last?.device_viewport_size;
+  const vp = vs ? vs.width * vs.height : 1;
+  const st = w.slice(0, -1),
+    settle = w.at(-1);
+  const layers = last ? layerScales(last) : [];
+  const hits = scaleHits(layers, vp);
+  const tag = (l: (typeof hits)[number]) =>
+    `${l.name.replace(/^Layout\w+ (\([^)]*\) )?/, "")} ${l.w}×${l.h} raster ${l.raster} shown ${l.ideal} (${l.ratio}x)`;
+  const vps = (px: number) => +(px / vp).toFixed(2);
+  const r: RasterResult = {
+    stepVP: vps(medianOf(st.map((x) => x.px))),
+    stepVPMax: vps(Math.max(0, ...st.map((x) => x.px))),
+    stepLayers: medianOf(st.map((x) => x.layers)),
+    stepLayersMax: Math.max(0, ...st.map((x) => x.layers)),
+    wastedVP: vps(w.reduce((t, x) => t + x.wasted, 0)),
+    restVP: vps(settle?.px ?? 0),
+    layers: layers.length,
+    zoom: +(await zoomOf(h)).toFixed(3),
+    blurry: hits.filter((x) => x.kind === "blurry").map(tag),
+    wasted: hits.filter((x) => x.kind === "wasted").map(tag),
+    unknown,
+  };
+  if (process.argv.includes("--steps")) {
+    console.log(`  raster ${name}: ${JSON.stringify(r)}`);
+    const short = (id: number) => (names.get(id) ?? `#${id}`).replace(/^Layout\w+ (\([^)]*\) )?/, "").slice(0, 40);
+    w.forEach((x, i) =>
+      console.log(
+        `    ${i === w.length - 1 ? "rest" : `#${i}`} ${(x.px / vp).toFixed(2)} vp (wasted ${(x.wasted / vp).toFixed(2)}), ${x.layers} layers, ${x.tiles} tiles: ${[
+          ...x.byLayer,
+        ]
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 3)
+          .map(([id, px]) => `${short(id)} ${(px / vp).toFixed(2)}`)
+          .join(", ")}`,
+      ),
+    );
+    for (const l of layers)
+      console.log(`    layer ${l.id} ${l.name} ${l.w}×${l.h} raster ${l.raster} shown ${l.ideal} on ${l.shownPx} px`);
+  }
+  return r;
+}
+
+const zoomOf = (h: Host) =>
+  h.page.evaluate(
+    () => +(/scale\(([\d.e+-]+)\)/.exec((document.querySelector(".world") as HTMLElement)?.style.transform)?.[1] ?? 1),
+  );
+const ctrlWheel = async (h: Host, dy: number) => {
+  await h.page.keyboard.down("Control");
+  await h.page.mouse.wheel(0, dy);
+  await h.page.keyboard.up("Control");
+};
+/** A point over empty canvas, where a wheel pans or zooms the board */
+const emptySpot = (h: Host) =>
+  h.page.evaluate(() => {
+    for (let y = 120; y < innerHeight - 40; y += 20)
+      for (let x = 80; x < innerWidth - 50; x += 20) {
+        const e = document.elementFromPoint(x, y);
+        if (e && (e.classList.contains("board") || e.classList.contains("world"))) return { x, y };
+      }
+    return { x: innerWidth / 2, y: innerHeight / 2 };
+  });
+
+/**
+ * The raster probes on a board (probes.ts RASTER_BUDGET says which numbers are judged): drag a card (`drag`: its id), pan, zoom
+ * out and in, six small zoom stops, a mouse-wheel zoom out across the summary cut (#155: the summary columns rastered at device
+ * scale as they came in), Fit to Window, and from there in to 0.2 (zoomed out past the cut, out of the detent's reach)
+ */
+async function rasterProbes(h: Host, cdp: CDPSession, drag: string) {
+  const out: Record<string, RasterResult> = {};
+  // --passes drag,cut: only these; --quick (PR CI): only the passes with a budget at card level, the others run in the regular runs
+  const passes = arg("passes", process.argv.includes("--quick") ? "drag,pan,stops" : "").split(",");
+  const want = (p: string) => passes[0] === "" || passes.includes(p);
+  // every pass from 100 % (the timed steps before leave the camera wherever they ended), where reveal keeps it
+  const at100 = async () => {
+    await h.page.locator('span.zoom[data-tip="Zoom to 100%"]').click();
+    await still(h);
+  };
+  // out to 0.45 one step at a time, each to its stop: the camera eases to a wheel's target, so a loop that reads the zoom
+  // between quick steps overshoots into the summary cut's detent
+  const outTo045 = async () => {
+    for (let i = 0; i < 40 && (await zoomOf(h)) > 0.46; i++) {
+      await ctrlWheel(h, 10);
+      await still(h);
+    }
+  };
+  // ...and the world rastered at 100 % again: the board keeps the scale it last rastered at until a zoom in passes it or a zoom
+  // out halves it (Canvas.tsx), so what a pass rasters depends on where the camera stopped before. Out to 0.45 and back to 100 %
+  // rasters it at 100 % on every build (older ones rastered at every stop)
+  const fresh = async () => {
+    await at100();
+    await outTo045();
+    await at100();
+    await focusCard(h, drag);
+  };
+  await fresh();
+  if (want("drag")) {
+    await focusCard(h, drag);
+    const at = await grabPoint(h, drag);
+    await h.page.mouse.move(at.x, at.y);
+    await h.page.mouse.down();
+    out.drag = await rasterPass(
+      h,
+      cdp,
+      "drag",
+      30,
+      (i) => h.page.mouse.move(at.x + 4 + i * 4, at.y + 2 + i * 2, { steps: 1 }),
+      () => h.page.mouse.up(),
+    );
+    await h.page.keyboard.press("Meta+z");
+  }
+  await fresh();
+  const spot = await emptySpot(h);
+  await h.page.mouse.move(spot.x, spot.y);
+  if (want("pan")) out.pan = await rasterPass(h, cdp, "pan", 20, (i) => h.page.mouse.wheel(i % 3 ? 0 : 60, 40));
+  // camera stops: from where the card is revealed (100 %), each step a small zoom (±4) and a rest: what a stop costs
+  if (want("stops")) {
+    await fresh();
+    await h.page.mouse.move(spot.x, spot.y);
+    out.stops = await rasterPass(h, cdp, "stops", 6, async (i) => {
+      await ctrlWheel(h, i % 2 ? 4 : -4);
+      await rest(h);
+    });
+  }
+  if (want("zoom")) {
+    await fresh();
+    await h.page.mouse.move(spot.x, spot.y);
+    out.zoomOut = await rasterPass(h, cdp, "zoomOut", 8, () => ctrlWheel(h, 30));
+    out.zoomIn = await rasterPass(h, cdp, "zoomIn", 8, () => ctrlWheel(h, -30));
+  }
+  // across the summary cut: from 0.45 at rest (half a mouse-wheel notch out of the detent's reach), mouse-wheel notches out
+  // (deltaY 100: one pushes through the detent) to below 0.27, so the summary columns come in while the camera moves
+  if (want("cut")) {
+    await fresh();
+    await h.page.mouse.move(spot.x, spot.y);
+    await outTo045();
+    out.cut = await rasterPass(h, cdp, "cut", 4, async () => {
+      if ((await zoomOf(h)) <= 0.27) return;
+      await ctrlWheel(h, 100);
+      await still(h);
+    });
+  }
+  if (want("fit") || want("zoomedOut"))
+    out.fit = await rasterPass(h, cdp, "fit", 1, () => h.page.locator('button[aria-label="Fit to Window"]').click());
+  if (want("zoomedOut")) {
+    // zoomed in around the summaries (their first column), so they stay in view
+    const s2 = await h.page.evaluate(() => {
+      const r = document.querySelector(".sumcol")?.getBoundingClientRect();
+      return r && r.width ? { x: r.left + r.width / 2, y: r.top + Math.min(r.height / 2, 40) } : null;
+    });
+    if (s2) await h.page.mouse.move(s2.x, s2.y);
+    // in from the fit with small steps (a trackpad's) to 0.2, below the summary cut (at most 0.3) and out of the detent's reach
+    let i = 0;
+    out.zoomedOut = await rasterPass(h, cdp, "zoomedOut", 1, async () => {
+      for (; i < 80 && (await zoomOf(h)) < 0.2; i++) {
+        await ctrlWheel(h, -5);
+        await raf(h);
+      }
+    });
+  }
+  return out;
 }
 
 /** --long editEnter / editExit: what each main-thread task over 4 ms spent its time on (events inside it over 0.8 ms) */
@@ -1382,6 +1633,9 @@ async function grabPoint(h: Host, id: string) {
   }, id);
 }
 
+/** The card the raster probes drag on the persona board: a Note with no arrows, which the timed drags (i0, n1, a code card) leave
+ *  where it was. Lifted onto a layer of its own, its moves raster nothing */
+const PERSONA_DRAG = "n2";
 let personaFiles: ReturnType<typeof personaBoard> | undefined;
 async function personaOnce() {
   await ready();
@@ -1477,7 +1731,20 @@ async function personaOnce() {
   );
   res.openTotal = +(performance.now() - t0).toFixed(0);
   await h.page.waitForTimeout(1500);
+  // the image budget (probes.ts imageHits): images on screen decoded at more than 6x the pixels they are shown at (#161)
+  const seen = await h.page.evaluate(pageMeasure);
+  const hits = imageHits(seen.imgs, seen.dpr);
+  res.imageBudget = { hits: hits.length, ...seen.counts, ...(hits.length ? { over: hits.slice(0, 4) } : {}) };
+  const imageCheck = { name: "images over the decode budget at open", value: hits.length, limit: 0, ok: !hits.length };
   res.idleBusy1s = +(await idle(h, cdp, 1000)).toFixed(1);
+  if (RASTER_ONLY) {
+    const raster = await rasterProbes(h, cdp, PERSONA_DRAG);
+    res.raster = raster;
+    res.rasterChecks = [...rasterChecks(raster, "persona"), imageCheck];
+    await run.close().catch(() => {});
+    await browser.close();
+    return res;
+  }
 
   const zoomStep = async (dy: number) => {
     await h.page.keyboard.down("Control");
@@ -1517,6 +1784,13 @@ async function personaOnce() {
     await h.page.mouse.up();
     await h.page.waitForTimeout(600);
   }
+  if (!process.argv.includes("--no-raster")) {
+    // the three drags put back, so the raster probes see the board as opened (as with --raster)
+    for (let k = 0; k < 3; k++) await h.page.keyboard.press("Meta+z");
+    const raster = await rasterProbes(h, cdp, PERSONA_DRAG);
+    res.raster = raster;
+    res.rasterChecks = [...rasterChecks(raster, "persona"), imageCheck];
+  } else res.rasterChecks = [imageCheck];
   res.dom = await h.page.evaluate(() => ({
     katex: document.querySelectorAll(".katex").length,
     imgMP: +(

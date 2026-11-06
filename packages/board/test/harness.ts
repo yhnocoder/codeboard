@@ -230,6 +230,25 @@ export { launch };
 const OFFLINE =
   /^Failed to load resource: net::(ERR_NAME_NOT_RESOLVED|ERR_TUNNEL_CONNECTION_FAILED|ERR_PROXY_CONNECTION_FAILED|ERR_INTERNET_DISCONNECTED|ERR_CONNECTION_REFUSED|ERR_CONNECTION_CLOSED|ERR_CONNECTION_TIMED_OUT|ERR_ADDRESS_UNREACHABLE)$/;
 
+/**
+ * Keeps window.__zoomMax, the largest zoom the world has been shown at, for the image budget at the end of each scenario
+ * (probes.ts): an image steps up to a larger copy when zoomed in and keeps it when zoomed out again. One observer on the world's
+ * style (each camera frame: one regex), after one that finds the world once it is made
+ */
+const ZOOM_MAX = `(() => {
+  const mo = new MutationObserver((rs) => {
+    const m = /scale\\(([\\d.e+-]+)\\)/.exec(rs[0].target.style.transform);
+    if (m) window.__zoomMax = Math.max(window.__zoomMax || 0, +m[1]);
+  });
+  const find = new MutationObserver(() => {
+    const w = document.querySelector(".world");
+    if (!w) return;
+    find.disconnect();
+    mo.observe(w, { attributes: true, attributeFilter: ["style"] });
+  });
+  find.observe(document.documentElement, { childList: true, subtree: true });
+})();`;
+
 let pages = 0;
 /** Opens the board in a new context of `browser`; closing the host (or its context) ends it */
 export async function openBoard(
@@ -249,6 +268,7 @@ export async function openBoard(
 <body class="${o.light ? "vscode-light" : "vscode-dark"}"><div id="root"></div>
 <script>addEventListener("message", (e) => { if (e.data?.type === "init") window.__tInit = performance.now(); }, true); addEventListener("pointerdown", () => { window.__tDown = performance.now(); }, true);</script>
 <script>addEventListener("dragover", (e) => e.preventDefault()); addEventListener("drop", (e) => e.preventDefault());</script>
+<script>${ZOOM_MAX}</script>
 <script type="module">import { boot } from "file://${MEDIA}/boot.js"; window.__inflight = 0;
 boot({ post: (m) => { window.__inflight++; window.__host(JSON.stringify(m)).finally(() => window.__inflight--); }, listen: (fn) => addEventListener("message", (e) => fn(e.data)) }, { selfCheck: true });</script></body></html>`,
   );
