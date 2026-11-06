@@ -147,6 +147,12 @@ export const [dropTarget, setDropTarget] = boardSignal<{
 export const [dragging, setDragging] = boardSignal<Set<string>>(new Set());
 /** Cards just put down after a drag: their lift shadow (and scale) settles back over LAND_MS (`.card.landing`) */
 export const [landing, setLanding] = boardSignal<Set<string>>(new Set());
+/** Cards and Sections that a Section drag moves (interact.ts dragGroup): each a compositor layer of its own while it moves
+ *  (styles.css .carry), with nothing of a lifted card's look */
+export const [carried, setCarried] = boardSignal<{ cards: ReadonlySet<string>; sections: ReadonlySet<string> }>({
+  cards: new Set(),
+  sections: new Set(),
+});
 export const [marquee, setMarquee] = boardSignal<{ x: number; y: number; w: number; h: number } | null>(null);
 export const [rubber, setRubber] = boardSignal<{
   x1: number;

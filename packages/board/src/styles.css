@@ -746,7 +746,15 @@ textarea {
 .card.landing {
   will-change: transform;
 }
-.board.relift .card.lift {
+/* What a Section drag moves (its frames, titles and cards, interact.ts dragGroup) is a layer of its own the same way while it
+   moves, looking as it does at rest: a move only moves those layers instead of painting the frame, title and cards again in the
+   world's layer at their old and new places (~1.5 viewports a move on a real board) */
+.card.carry,
+.sect.carry,
+.slabel.carry {
+  will-change: transform;
+}
+.board.relift :is(.card.lift, .carry) {
   will-change: auto;
 }
 .card.sel.lift {

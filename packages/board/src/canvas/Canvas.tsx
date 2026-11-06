@@ -15,7 +15,7 @@ import {
 } from "../state/camera";
 import { trackOffscreen } from "../state/cull";
 import { trackSkeletons } from "../state/subboards";
-import { guides, sizeHint, marquee, dragging, dropTarget, walk, editing } from "../state/ui";
+import { guides, sizeHint, marquee, dragging, carried, dropTarget, walk, editing } from "../state/ui";
 import { CardView } from "../cards/Card";
 import { SubPreviews } from "../cards/SubPreviews";
 import { AnimStrip } from "../ui/AnimStrip";
@@ -126,15 +126,17 @@ export function Canvas() {
       } else if (near) rasterZ = Math.min(rasterZ, Math.max(z, 1));
     });
   });
-  // A lifted card is a layer of its own with its raster scale fixed (styles.css .card.lift: will-change). When the camera stops
-  // at another zoom in the middle of a drag, .relift takes the hint off for one drawn frame and puts it back, so the card is
-  // rastered again at the new scale instead of staying blurry (or needlessly sharp) until it is put down. Panning keeps stillZ
+  // A lifted card, and what a Section drag carries, is a layer of its own with its raster scale fixed (styles.css .card.lift,
+  // .carry: will-change). When the camera stops at another zoom in the middle of a drag, .relift takes the hint off for one
+  // drawn frame and puts it back, so the card is rastered again at the new scale instead of staying blurry (or needlessly
+  // sharp) until it is put down. Panning keeps stillZ
   const [relift, setRelift] = createSignal(false);
+  const carrying = () => carried().cards.size + carried().sections.size > 0;
   createEffect(
     on(
       stillZ,
       () => {
-        if (!dragging().size) return;
+        if (!dragging().size && !carrying()) return;
         setRelift(true);
         requestAnimationFrame(() => requestAnimationFrame(() => setRelift(false)));
       },
@@ -169,7 +171,7 @@ export function Canvas() {
     return { left: `${x}px`, top: `${y}px`, width: `${w}px`, height: `${h}px` };
   };
   const extent = createMemo<string>((prev) => {
-    if (prev && dragging().size) return prev;
+    if (prev && (dragging().size || carrying())) return prev;
     let x0 = 0,
       y0 = 0,
       x1 = 0,

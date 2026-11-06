@@ -649,6 +649,25 @@ test("sectionDragSnapsToSection", async () => {
       }),
     );
   const card0 = { ...h.board().place.c };
+  // what the drag moves (S2's frame and title, its card) and what it leaves (S1, its card): compositor layer hint and look
+  const layers = () =>
+    h.page.evaluate(() =>
+      [
+        '.sect[data-sect="S2"]',
+        '.slabel[data-sect="S2"]',
+        '.card[data-id="c"]',
+        '.sect[data-sect="S1"]',
+        '.card[data-id="a"]',
+      ].map((q) => {
+        const e = document.querySelector(q)!,
+          st = getComputedStyle(e);
+        return {
+          layer: st.willChange,
+          look: [st.scale, st.zIndex, getComputedStyle(e, "::after").boxShadow].join(" | "),
+        };
+      }),
+    );
+  const still = await layers();
   await h.page.mouse.move(grab.x, grab.y);
   await h.page.mouse.down();
   await h.page.mouse.move(grab.x + dx / 2, grab.y + dy / 2, { steps: 8 });
@@ -656,11 +675,23 @@ test("sectionDragSnapsToSection", async () => {
   await hold(h, SNAP_SETTLE + 100, "the pointer rests past the drag's settle delay: it snaps now if it is going to");
   await idle(h);
   const during = await guides(),
-    s2d = await box("S2");
+    s2d = await box("S2"),
+    held = await layers();
   await shot(h, "sect-snap-01-guide");
   await h.page.mouse.up();
   await until(h, "the Section's move is saved", () => h.board().sections.find((q) => q.id === "S2")!.x !== 600);
   await idle(h);
+  const down = await layers();
+  // Dragged, the Section's frame, its title and its card are each a layer of its own (styles.css .carry), so a move only moves
+  // those layers instead of painting them again in the world's layer; nothing of them looks different, and put down they are
+  // back in the world's layer
+  check(
+    "sectionDragCarriesLayers",
+    held.map((l) => l.layer).join() === "transform,transform,transform,auto,auto" &&
+      down.every((l) => l.layer === "auto") &&
+      held.every((l, i) => l.look === still[i].look),
+    { still, held, down },
+  );
   const sec2 = h.board().sections.find((q) => q.id === "S2")!,
     card1 = h.board().place.c;
   const left = (await box("S2")).x,

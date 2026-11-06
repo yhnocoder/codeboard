@@ -4,6 +4,7 @@ import { For, Show, createMemo, createRenderEffect, createSignal, onCleanup, unt
 import { cardTitle, type Card, type FrameEdge, type Rect, type Section } from "@codeboard/core";
 import { state } from "../state/store";
 import { sel } from "../state/selection";
+import { carried } from "../state/ui";
 import {
   shownFrame,
   easedFrame,
@@ -140,6 +141,7 @@ export function SectionFrames() {
                   locked: A.sectionLocked(s),
                   drop: dropSections().has(s.id),
                   fit: fitting().has(s.id),
+                  carry: carried().sections.has(s.id),
                 }}
                 data-sect={s.id}
               >
@@ -255,6 +257,7 @@ export function SectionLabels() {
                 sel: sel.sections.includes(s.id),
                 drop: dropSections().has(s.id),
                 fit: fitting().has(s.id),
+                carry: carried().sections.has(s.id),
               }}
               data-sect={s.id}
               style={{ left: `${r()!.x}px`, top: `${r()!.y}px`, "--sw": `${r()!.w}px` }}

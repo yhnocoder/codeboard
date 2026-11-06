@@ -302,6 +302,10 @@ export type RasterResult = {
  *   move rasters only what follows the card (its arrows): the persona board drags a Note with no arrows, 0 a move, 1.04 when the
  *   card was squashed back into the layer under it. On the synthetic board a move repaints the hub card's 7 long arrows through
  *   its Section's layer (1.7-2.3 on every build measured), so its budget only guards against regressions.
+ * - dragSection stepVP (persona): the median pixels one pointer move of a Section dragged by its title rasters, with its cards
+ *   and the Section inside it. They are carried on layers of their own (.carry), so a move rasters what follows them: the
+ *   arrows into, out of and inside the Section (0.73); 1.35-1.46 when the frame and its cards were painted again in the world's
+ *   layer at every move (1.46-1.66 on real study boards).
  * - stops stepVP: the pixels one small zoom stop rasters, the move and the rest after it: persona 0.47; 2.2 when the world was
  *   rastered again at every stop (#155). Synthetic: 11-12, about 16 before #155.
  * - fit restVP and wastedVP: Fit to Window from 100 % (the flight is in the rest after the click), all of it and the part at
@@ -318,7 +322,7 @@ export type RasterResult = {
  */
 export const RASTER_BUDGET = {
   synthetic: { drag: { stepVP: 2.5 }, stops: { stepVP: 5 }, fit: { restVP: 110, wastedVP: 10 } },
-  persona: { drag: { stepVP: 0.25 }, stops: { stepVP: 1.1 }, fit: { restVP: 48, wastedVP: 10 } },
+  persona: { drag: { stepVP: 0.25 }, dragSection: { stepVP: 1 }, stops: { stepVP: 1.1 }, fit: { restVP: 48, wastedVP: 10 } },
   sharp: ["drag", "pan", "stops", "fit", "inOutIn"],
 } as const;
 
