@@ -16,7 +16,7 @@ import {
   type SharedCardFile,
 } from "./model";
 import { SEAL_COLORS, sealTextOk } from "./seal";
-import { fileCamera, migrateBoard, migrateSharedCard, sharedTextHeights } from "./migrate";
+import { fileCamera, migrateBoard, migrateSharedCard, sharedHighlights, sharedTextHeights } from "./migrate";
 
 const str = v.string(),
   num = v.number(),
@@ -55,7 +55,7 @@ const Segment = obj({
   symbol: opt(obj({ qual: str, kind: v.picklist(["function", "class", "module"]) })),
   scope: opt(str),
   hidden: opt(v.array(v.tuple([num, num]))),
-  hl: opt(v.array(num)),
+  hl: opt(v.array(v.tuple([num, num]))),
   keep: opt(str),
   annots: opt(
     v.array(obj({ line: num, from: num, to: num, text: str, color: opt(v.picklist(HAND_COLORS)), below: opt(yes) })),
@@ -387,7 +387,12 @@ export function loadBoardFile(raw: unknown): BoardFile {
  * runs on the board once it has put them in
  */
 export function readBoardFile(raw: unknown): { file: BoardFile; cam?: Camera; inflated?: (b: Board) => void } {
-  return { file: loadBoardFile(raw), cam: fileCamera(raw), inflated: sharedTextHeights(raw) };
+  const ups = [sharedTextHeights(raw), sharedHighlights(raw)].filter((f) => !!f);
+  return {
+    file: loadBoardFile(raw),
+    cam: fileCamera(raw),
+    inflated: ups.length ? (b) => ups.forEach((f) => f(b)) : undefined,
+  };
 }
 
 /** 卡库里的文件 cards/<id>.json → 校验过的共享卡 */

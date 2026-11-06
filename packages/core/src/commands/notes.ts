@@ -25,6 +25,7 @@ import { NEW_CARD_W, type Rect } from "../layout";
 import {
   cardIntoSidenote,
   imageIntoNote,
+  onHighlight,
   removeSidenotes,
   sidenoteCard,
   sidenoteToCard,
@@ -150,11 +151,15 @@ export function newWriting(
   return id;
 }
 
-/** Add sidenotes in one step; their new ids, in order */
+/**
+ * Add sidenotes in one step; their new ids, in order. One on lines goes on the Highlight of those lines, made when there is none;
+ * lines that overlap Highlights grow them into one, with the sidenotes on them (addHighlight)
+ */
 export function addSidenotes(env: CommandEnv, list: Omit<Sidenote, "id">[]): string[] {
   const sns = list.map((n) => ({ ...n, id: uid("n") }) as Sidenote);
   env.edit((b) => {
     b.sidenotes.push(...sns);
+    for (const n of sns) onHighlight(b, n);
   });
   return sns.map((n) => n.id);
 }

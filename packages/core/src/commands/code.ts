@@ -1,6 +1,7 @@
 // Code cards: hidden and highlighted lines, Free code's text and language, the card frame, segments added by the editor, and
 // the handwritten annotations on a segment's text
-import { findCard, isCode, type Board, type CodeAnnot, type HandColor, type Segment } from "../model";
+import { findCard, isCode, type Board, type CodeAnnot, type HandColor, type HlRange, type Segment } from "../model";
+import { addHighlight, removeHighlights } from "../edit";
 import { guessLang, pythonDialect } from "../paste";
 import type { CommandEnv } from "./env";
 
@@ -27,15 +28,33 @@ export function hideLines(env: CommandEnv, ls: LineRange) {
   });
 }
 
-/** Highlight: lines all highlighted already lose it, else they all get it */
-export function toggleHighlight(env: CommandEnv, ls: LineRange) {
+/**
+ * Highlight: lines that are all highlighted already lose their Highlights, whole (a Highlight is one range: the lines around the
+ * selected ones go too) and with the sidenotes on them; otherwise the lines become one Highlight, taking in the ones they overlap
+ * (addHighlight). How many sidenotes went with removed Highlights (the shell says so: undo brings them back)
+ */
+export function toggleHighlight(env: CommandEnv, ls: LineRange): number {
+  let gone = 0;
   env.edit((b) => {
     const s = segIn(b, ls.card, ls.seg);
     if (!s) return;
-    const ln = Array.from({ length: ls.end - ls.start + 1 }, (_, i) => ls.start + i);
-    const all = ln.every((l) => s.hl?.includes(l));
-    s.hl = all ? (s.hl ?? []).filter((l) => l < ls.start || l > ls.end) : [...new Set([...(s.hl ?? []), ...ln])];
+    const hit = (s.hl ?? []).filter(([a, z]) => a <= ls.end && z >= ls.start);
+    const all = (l: number) => hit.some(([a, z]) => l >= a && l <= z);
+    const covered = Array.from({ length: ls.end - ls.start + 1 }, (_, i) => ls.start + i).every(all);
+    if (covered) gone = removeHighlights(b, s, hit);
+    else addHighlight(b, s, [ls.start, ls.end]);
   });
+  return gone;
+}
+
+/** Remove Highlight: the range and the sidenotes on it, in one undo step. How many sidenotes went */
+export function removeHighlight(env: CommandEnv, card: string, seg: string, range: HlRange): number {
+  let gone = 0;
+  env.edit((b) => {
+    const s = segIn(b, card, seg);
+    if (s) gone = removeHighlights(b, s, [range]);
+  });
+  return gone;
 }
 
 /** Show All Hidden Lines of a card */

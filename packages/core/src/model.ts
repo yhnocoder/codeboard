@@ -8,7 +8,7 @@
 import type { BoundVal, CallAlt, Var } from "@codeboard/analysis/basics";
 import type { SealColor } from "./seal";
 
-export const BOARD_VERSION = 12;
+export const BOARD_VERSION = 13;
 
 /** 一段代码钉在哪个版本上 */
 export type Version =
@@ -39,10 +39,33 @@ export type Segment = {
   symbol?: SymRef; // 函数卡 / 类卡按符号追踪；片段卡没有
   scope?: string; // 片段所在的函数（标题、函数边界线用），如 Scheduler.schedule
   hidden?: [number, number][]; // 手动隐藏的行范围
-  hl?: number[]; // 显式高亮的行
+  /**
+   * Highlights: line ranges [first, last] (inclusive, the segment's own line numbers), sorted, never overlapping (adjacent ones
+   * stay apart). A Highlight can carry notes: a sidenote on lines belongs to the Highlight with exactly those lines (one with no
+   * notes is a plain Highlight). edit/highlights.ts keeps the two in step; danglingRefs checks it
+   */
+  hl?: HlRange[];
   keep?: string; // 用户对这个 HEAD 选了 Keep：同一个新版本不再提醒，HEAD 再变才提醒
   annots?: CodeAnnot[]; // 贴在字上的手写标注（代码本身不改）
 };
+
+/** A Highlight's lines: first and last, inclusive */
+export type HlRange = [number, number];
+export const sameRange = (a: readonly number[] | undefined, b: readonly number[] | undefined) =>
+  !!a && !!b && a[0] === b[0] && a[1] === b[1];
+/** The Highlight line `line` is in */
+export const hlAt = (s: Pick<Segment, "hl">, line: number): HlRange | undefined =>
+  s.hl?.find(([a, z]) => line >= a && line <= z);
+/** Ranges sorted, with the ones that overlap or nest merged into their union (adjacent ones stay apart) */
+export function unionRanges(rs: readonly (readonly number[])[]): HlRange[] {
+  const out: HlRange[] = [];
+  for (const [a, z] of [...rs].sort((p, q) => p[0] - q[0] || p[1] - q[1])) {
+    const p = out[out.length - 1];
+    if (p && a <= p[1]) p[1] = Math.max(p[1], z);
+    else out.push([a, z]);
+  }
+  return out;
+}
 
 /** 手写的东西（Mark 卡、贴在字上的标注）的四种颜色 */
 export const HAND_COLORS = ["blue", "purple", "orange", "green"] as const;
@@ -484,7 +507,7 @@ export type Camera = { x: number; y: number; z: number };
 export const homeCam = (): Camera => ({ x: 80, y: 80, z: 1 });
 
 export type Board = {
-  version: 12;
+  version: 13;
   id: string;
   name: string;
   /** 镜头：不写进白板文件（光是平移、缩放就改了文件，项目里用 git 管白板时全是噪音），每台机器各记各的（宿主的工作区状态，按白板 id） */
@@ -553,7 +576,7 @@ export type BoardFile = Omit<Board, "cards" | "cam"> & { cards: (Card | SharedRe
 /** 一张共享卡的内容：卡本身 + 跟着它走的 Sidenote（挂在它上面、不是 boardOnly、不是 kind card） */
 export type SharedCard = { card: Card; sidenotes: Sidenote[] };
 /** 卡库里的文件 cards/<id>.json。写盘时按项（卡、每条 Sidenote）和磁盘上的合并（storage/boards.ts merged） */
-export type SharedCardFile = SharedCard & { version: 12 };
+export type SharedCardFile = SharedCard & { version: 13 };
 
 /** subs = 这块白板上嵌着的子白板（去重，按出现的先后；侧栏按它缩进成树） */
 export type BoardMeta = {
@@ -797,6 +820,22 @@ export function allSegments(b: Pick<Board, "cards" | "sidenotes">): Segment[] {
   return [...out];
 }
 
+/**
+ * The segment a sidenote's lines count in, the one whose Highlights it belongs to: a sidenote only in a Variant that is not shown
+ * counts in that Variant's own copy of the segment, any other in the segment the card shows
+ */
+export function noteSegment(b: Pick<Board, "cards">, n: Pick<Sidenote, "at" | "variant">): Segment | undefined {
+  if (!n.at.seg) return undefined;
+  const c = b.cards.find((k) => k.id === n.at.card);
+  if (c?.kind !== "code") return undefined;
+  const v = n.variant && n.variant !== activeOf(c) ? c.variants?.find((x) => x.id === n.variant) : undefined;
+  return (v ? v.segs : c.segments)?.find((s) => s.id === n.at.seg);
+}
+/** The sidenotes on a Highlight: on these lines of this segment, counted where its lines are (noteSegment) */
+export function highlightNotes(b: Pick<Board, "cards" | "sidenotes">, s: Segment, r: readonly number[]): Sidenote[] {
+  return b.sidenotes.filter((n) => n.at.seg === s.id && sameRange(n.at.lines, r) && noteSegment(b, n) === s);
+}
+
 /** Compare 的两栏（按 cols 的顺序）；有一栏找不到时返回 undefined */
 export function colsOf(b: Pick<Board, "cards">, c: CompareCard): [CodeCard, CodeCard] | undefined {
   const a = b.cards.find((k) => k.id === c.cols[0]),
@@ -867,7 +906,7 @@ export function mergeOverlapping(segs: Segment[]): Segment[] {
         p.end = s.end;
       }
       p.hidden = [...(p.hidden ?? []), ...(s.hidden ?? [])];
-      p.hl = [...new Set([...(p.hl ?? []), ...(s.hl ?? [])])];
+      p.hl = unionRanges([...(p.hl ?? []), ...(s.hl ?? [])]);
       if (s.annots) p.annots = [...(p.annots ?? []), ...s.annots];
       if (p.symbol && s.symbol?.qual !== p.symbol.qual) p.symbol = undefined;
       continue;
@@ -876,7 +915,7 @@ export function mergeOverlapping(segs: Segment[]): Segment[] {
       ...s,
       text: [...s.text],
       hidden: s.hidden ? [...s.hidden] : undefined,
-      hl: s.hl ? [...s.hl] : undefined,
+      hl: s.hl?.map(([a, z]): HlRange => [a, z]),
       annots: s.annots?.map((a) => ({ ...a })),
     });
   }

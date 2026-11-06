@@ -12,6 +12,7 @@ import {
   type NoteLayout,
   type Place,
   type Section,
+  type HlRange,
   type Segment,
 } from "../model";
 import { defaultWidth, estSize, GAP, type Rect } from "../layout";
@@ -28,6 +29,7 @@ import {
   renameTitleRefs,
   replaceCards,
   retargetCards,
+  fixHighlights,
   unlinkCard,
   unmergeCard,
   type Arrange,
@@ -293,12 +295,19 @@ export function addCards(
 export function splitSegment(
   env: CommandEnv,
   id: string,
-  parts: Segment[],
+  given: Segment[],
   o: { merge: true } | { merge: false; at: Rect },
 ) {
   const c = findCard(env.board(), id)?.card;
   if (!isCode(c) || c.segments.length !== 1) return;
   const s = c.segments[0];
+  // each part keeps the Highlights on its lines (cut at its ends); the sidenotes on them go to the part with their first line
+  const parts = given.map((p) => {
+    const hl = (s.hl ?? [])
+      .map(([a, z]): HlRange => [Math.max(a, p.start), Math.min(z, p.end)])
+      .filter(([a, z]) => a <= z);
+    return hl.length ? { ...p, hl } : p;
+  });
   const partOf = (line?: number) =>
     Math.max(
       0,
@@ -313,6 +322,7 @@ export function splitSegment(
         seg: at.seg === s.id && at.line ? parts[partOf(at.line)].id : undefined,
       }));
       k.segments = parts;
+      fixHighlights(b, [id]);
     });
     return;
   }
@@ -332,6 +342,7 @@ export function splitSegment(
       b.place[k.id] = { x: r.x, y, w: r.w, section };
       y += estSize(k, { w: r.w }).h + GAP;
     });
+    fixHighlights(b, ids);
   });
 }
 

@@ -97,7 +97,19 @@ describe("rebaseSegment", () => {
   const old = seg("s1", 10, ["def f():", "    x = 1", "    y = 2", "    return x + y"]);
   const board = (): Board => ({
     ...emptyBoard("b", "B"),
-    cards: [{ ...code("a", { ...old, hidden: [[11, 11]], hl: [12, 13] }) }, code("z")],
+    cards: [
+      {
+        ...code("a", {
+          ...old,
+          hidden: [[11, 11]],
+          hl: [
+            [11, 11],
+            [12, 13],
+          ],
+        }),
+      },
+      code("z"),
+    ],
     links: [
       { id: "l1", call: { name: "f", col: 0 }, from: { card: "a", seg: "s1", line: 13 }, to: { card: "z" } },
       { id: "l2", from: { card: "z" }, to: { card: "a", seg: "s1", line: 12 } },
@@ -119,7 +131,7 @@ describe("rebaseSegment", () => {
     const s = (b.cards[0] as CodeCard).segments[0];
     expect([s.start, s.end]).toEqual([20, 24]);
     expect(s.hidden).toBeUndefined(); // the hidden line is gone
-    expect(s.hl).toEqual([23, 24]);
+    expect(s.hl).toEqual([[23, 24]]);
     expect(b.links[0].from).toEqual({ card: "a", seg: "s1", line: 24 });
     expect(b.links[1].to).toEqual({ card: "a", seg: "s1", line: 23 });
     expect(b.links.some((l) => l.lost)).toBe(false);
@@ -135,7 +147,10 @@ describe("rebaseSegment", () => {
     rebaseSegment(b, "a", { ...old, start: 15, end: 18 }, shiftBy(5));
     const s = (b.cards[0] as CodeCard).segments[0];
     expect(s.hidden).toEqual([[16, 16]]);
-    expect(s.hl).toEqual([17, 18]);
+    expect(s.hl).toEqual([
+      [16, 16],
+      [17, 18],
+    ]);
     expect(b.links[0].from.line).toBe(18);
     expect(b.sidenotes[1].at.lines).toEqual([16, 16]);
   });
@@ -289,7 +304,7 @@ describe("danglingRefs", () => {
 describe("migrateBoard", () => {
   it("refuses a board written by a newer CodeBoard instead of wiping it", () => {
     expect(() =>
-      migrateBoard({ version: 13, id: "b", name: "B", cards: [{ id: "a", kind: "code", segments: [] }] }),
+      migrateBoard({ version: 14, id: "b", name: "B", cards: [{ id: "a", kind: "code", segments: [] }] }),
     ).toThrow(/newer/);
   });
   it("v10 → v11: [[title]] references to this board's cards and Sections carry their ids; code, other boards and ids stay", () => {
@@ -377,7 +392,7 @@ describe("migrateBoard", () => {
   it("v7 → v8 upgrades shared card files too", () => {
     expect(
       loadSharedCard({ version: 7, card: { id: "s", kind: "note", md: "x", bg: false, hand: "green" }, sidenotes: [] }),
-    ).toEqual({ version: 12, card: { id: "s", kind: "note", md: "x", look: "mark", hand: "green" }, sidenotes: [] });
+    ).toEqual({ version: 13, card: { id: "s", kind: "note", md: "x", look: "mark", hand: "green" }, sidenotes: [] });
     expect(loadSharedCard({ version: 6, card: { ...code("s"), nobg: true }, sidenotes: [] }).card).toMatchObject({
       bg: false,
     });
@@ -446,7 +461,7 @@ describe("reference upkeep in board actions", () => {
     expect(b.stickers[0].at).toMatchObject({ kind: "line", line: 33 });
   });
   it("splitting a snippet into cards (splitSnippet) moves line references to the part holding the line", () => {
-    const s = seg("s1", 1, ["def f():", "    pass", "def g():", "    pass"]);
+    const s: Segment = { ...seg("s1", 1, ["def f():", "    pass", "def g():", "    pass"]), hl: [[2, 2]] };
     const b: Board = {
       ...emptyBoard("b", "B"),
       cards: [code("a", s), code("z")],
@@ -457,7 +472,7 @@ describe("reference upkeep in board actions", () => {
       ],
       sidenotes: [{ id: "n", at: { card: "a", seg: "s1", lines: [2, 2] }, kind: "text", md: "" }],
     };
-    const parts = [seg("p1", 1, s.text.slice(0, 2)), seg("p2", 3, s.text.slice(2))];
+    const parts = [{ ...seg("p1", 1, s.text.slice(0, 2)), hl: s.hl }, seg("p2", 3, s.text.slice(2))];
     const ids = ["c1", "c2"];
     const i = (line?: number) =>
       Math.max(
@@ -822,7 +837,7 @@ describe("guard: reference upkeep only in core/src/edit/", () => {
 describe("card copies, unlink, merge and unmerge (core edit, D2)", () => {
   const two = (): Board => ({
     ...emptyBoard("b", "B"),
-    cards: [code("a", seg("sa", 1, ["def f():", "    g()"])), code("z")],
+    cards: [code("a", { ...seg("sa", 1, ["def f():", "    g()"]), hl: [[2, 2]] }), code("z")],
     place: { a: { x: 10, y: 20, w: 300, section: "g1", locked: true }, z: { x: 0, y: 0, w: 1 } },
     sections: [{ id: "g1", title: "S", x: 0, y: 0, w: 900, h: 900 }],
     links: [call("a", "z", 2)],

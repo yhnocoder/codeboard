@@ -2,11 +2,13 @@
 // Pure functions that change the board passed in (the board calls them inside a mutate).
 import { cornerOf } from "./internal";
 import { allLinks, allStickers } from "./refs";
+import { fixHighlights } from "./highlights";
 import { mapLines } from "../diff";
 import {
   activeOf,
   clone,
   sameVersion,
+  unionRanges,
   type Board,
   type CodeCard,
   type Link,
@@ -39,17 +41,18 @@ function mapRange(map: LineMap, a: number, e: number): [number, number] | null {
 
 /**
  * 把卡里的一段换成新的（同一个段 id）：新版本 Update、HEAD 下只是挪了位置、Relocate 都走这里。
- * 段上的隐藏 / 高亮，Link 两端、Sidenote、Sticker 的行号都按 map 搬过去（moveLineRefs）；
+ * 段上的隐藏 / 高亮（Highlight 和挂在上面的 Sidenote 按同一个 mapRange 走，之后重叠的合并：fixHighlights），Link 两端、Sidenote、Sticker 的行号都按 map 搬过去（moveLineRefs）；
  * 行没了的：Link 端点退到卡头并标上 lost（画成红色，等用户重连或删掉），Sidenote 改挂整卡并标上 lineRemoved，Sticker 挪到卡的右上角。
  * 合并卡的 mergedFrom（拆开时用的原卡快照）里落在这段上的段也一起换版本、挪行，Unmerge 时行锚还对得上。
- * review：挂在内容变了的行上的 Sidenote 标上 review（新版本的标签），提醒复查（Update 时传）
+ * review：挂在内容变了的行上的 Sidenote 标上 review（新版本的标签），提醒复查（Update 时传）。
+ * fix: false = the caller brings Highlights and sidenotes back in step itself once it is done (switchVariant)
  */
 export function rebaseSegment(
   b: Board,
   cardId: string,
   ns: Segment,
   map: LineMap = lineMapOf(findSeg(b, cardId, ns.id) ?? ns, ns),
-  o: { review?: string; notes?: (n: Sidenote) => boolean } = {},
+  o: { review?: string; notes?: (n: Sidenote) => boolean; fix?: false } = {},
 ): void {
   const owner = findOwner(b, cardId);
   const i = owner?.segments.findIndex((s) => s.id === ns.id) ?? -1;
@@ -80,6 +83,8 @@ export function rebaseSegment(
   // 有 Variant 的卡：「只在某个 Variant」的 Sidenote 行号按那个 Variant 的代码算，只跟着当前显示的那个挪
   const notes = o.notes ?? (owner.variants ? (n: Sidenote) => !n.variant || n.variant === activeOf(owner) : undefined);
   moveLineRefs(b, cardId, old, ns, map, { review: o.review, notes });
+  // Highlights and the sidenotes on them moved by the same map; ones that now overlap merge
+  if (o.fix !== false) fixHighlights(b, [cardId]);
 }
 
 /**
@@ -92,7 +97,8 @@ export function remapSegMarks(
   map: LineMap,
 ): Segment {
   const hidden = (old.hidden ?? []).map(([a, e]) => mapRange(map, a, e)).filter((r): r is [number, number] => !!r);
-  const hl = (old.hl ?? []).map(map).filter(Boolean);
+  // a Highlight follows its lines as a sidenote on them does (moveNoteLines), so the two stay the same lines
+  const hl = unionRanges((old.hl ?? []).map(([a, e]) => mapRange(map, a, e)).filter((r): r is [number, number] => !!r));
   const annots = (old.annots ?? []).flatMap((a) => {
     const line = map(a.line),
       words = (old.text[a.line - old.start] ?? "").slice(a.from, a.to);

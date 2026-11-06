@@ -97,6 +97,7 @@ export type Settings = {
   exportBoardOnly: boolean; // 导出时带上 Board-only 的 Sidenote（默认不带）
   exportScope: "board" | "sections" | "walk"; // 导出对话框默认的范围（默认整块）
   noteHeadingInBody: boolean; // Note 开头的标题已经是卡头的名字时，正文里还显示它吗（默认不显示，只是显示上藏起来，编辑时照常出现）
+  highlightLook: HighlightLook; // 代码卡上 Highlight 和挂在上面的 Sidenote 的样子：荧光笔（默认）/ 页边括号 / 手写的页边括号
   noteFontSize: NoteFontSizes; // Note 正文和各级标题的字号（px，null = 跟主题）；Text 卡有自己的字号档，不受影响
   mathPreamble: string; // 公式预设：几行 \newcommand / \def，所有白板的公式都认（显示、编辑、导出）
   svgNoBg: boolean; // Convert to SVG 的 Remove Background（默认开）：画出来的 SVG 不带纸的底色
@@ -107,6 +108,13 @@ export type Settings = {
   aiSvg: AiChoice; // Convert to SVG、Modify SVG 用哪个模型
   aiFocus: AiChoice; // Auto Focus 用哪个模型
 };
+/**
+ * How a code card draws Highlights and the notes on them: band = a highlighter (the lines and their Always Show notes one soft
+ * band); bracket = a pen bracket between the line numbers and the code, the notes as margin notes; bracket-hand = the bracket
+ * with the notes in handwriting
+ */
+export const HIGHLIGHT_LOOKS = ["band", "bracket", "bracket-hand"] as const;
+export type HighlightLook = (typeof HIGHLIGHT_LOOKS)[number];
 /** AI 功能用哪个模型："auto" = 有 DeepSeek 密钥用 DeepSeek，没有用 VS Code 的语言模型（Copilot…）；"deepseek"；别的 = 某个 VS Code 语言模型的 id */
 export type AiChoice = string;
 /** Gray inline completions while a Note is edited: read from the settings, so a settings change turns them on or off at once */
@@ -130,6 +138,7 @@ export const DEFAULT_SETTINGS: Settings = {
   exportBoardOnly: false,
   exportScope: "board",
   noteHeadingInBody: false,
+  highlightLook: "band",
   noteFontSize: { body: null, h1: null, h2: null, h3: null, h4: null, h5: null, h6: null },
   mathPreamble: "",
   svgNoBg: true,

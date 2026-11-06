@@ -3,6 +3,7 @@
 // Pure functions that change the board passed in (the board calls them inside a mutate).
 import type { BoundVal, CallAlt } from "@codeboard/analysis/basics";
 import { removeCards, removeLinks, removeSidenotes, replaceCards } from "./refs";
+import { onHighlight } from "./highlights";
 import { clone, withCols, uid, type Board, type Card, type End, type Link, type Place, type Sidenote } from "../model";
 import { eachMarkdown, retargetRefs } from "../mdrefs";
 
@@ -328,5 +329,6 @@ export function joinLinks(b: Board, first: string, second: string, mid: string):
 /** 卡变成 Sidenote n：卡连同它的箭头一起删掉；n 是 kind card（指着这张卡）时卡留着 */
 export function cardIntoSidenote(b: Board, cardId: string, n: Sidenote): void {
   b.sidenotes.push(n);
+  onHighlight(b, n);
   if (n.kind !== "card") removeCards(b, [cardId]);
 }
