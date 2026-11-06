@@ -1,8 +1,18 @@
-import { For, Show, onMount, onCleanup, createMemo, createEffect, createSignal, on } from "solid-js";
+import { For, Show, onMount, onCleanup, createMemo, createEffect, createSignal, on, untrack } from "solid-js";
 import { bounds, keepsLook, twinContent, type AlignOp } from "@codeboard/core";
 import { state, rectOf, cardById, hostOf, placed, placeOf } from "../state/store";
 import { sel } from "../state/selection";
-import { cam, setViewport, viewTracked, camMoving, stillZ, camTarget, camTo, fitRect } from "../state/camera";
+import {
+  cam,
+  setViewport,
+  viewTracked,
+  camMoving,
+  stillZ,
+  camTarget,
+  camTo,
+  fitRect,
+  flyingOut,
+} from "../state/camera";
 import { trackOffscreen } from "../state/cull";
 import { trackSkeletons } from "../state/subboards";
 import { guides, sizeHint, marquee, dragging, dropTarget, walk, editing } from "../state/ui";
@@ -70,27 +80,52 @@ export function Canvas() {
   // rasters again on its own, 135 ms, wherever that falls), and not within the detent's reach of the summary cut, where the
   // card level is about to be swapped out and its text is 4 px tall. A stop zoomed out a little, or back where it was, costs
   // nothing. .settle stays until the next move: taking it off again was a second commit that waited for the same raster.
-  // A stop in the detent's reach is left to Chromium, which rasters a layer with the hint again on its own once it is shown far
-  // enough below its raster scale (from 250 % out to 0.15: every layer of the world at 1.0, the device scale, not lower). So the
-  // scale remembered there is at most that: back at 128 % the stop is a magnification and the world is rastered again, where it
-  // stayed rastered at 1.0 (blurry) while the scale remembered was still 2.5. Out and back without passing 100 % costs nothing
+  // A stop in the detent's reach, with the card level still shown, is left to Chromium, which rasters a layer with the hint
+  // again on its own once it is shown far enough below its raster scale (from 250 % out to 0.3: every layer of the world at
+  // 1.0, the device scale, not lower). So the scale remembered there is at most that: back at 128 % the stop is a
+  // magnification and the world is rastered again, where it stayed rastered at 1.0 (blurry) while the scale remembered was
+  // still 2.5. Out and back without passing 100 % costs nothing. Past the cut, with the summaries shown, the detent is behind:
+  // a stop there minified past 2× is rastered again like any other, at its own scale (Chromium's own raster there was at 1.0:
+  // 5× the scale shown at 0.2, the whole card level once it was kept drawn).
+  // A camera flight that zooms out (Fit to Window, a reveal, the zoom keys) takes the hint off as soon as it is shown at half
+  // its raster scale, until it stops: under the hint every tile that comes into view on the way is rastered at the scale the
+  // flight started from (Fit from 100 % on a board of 40 dense Notes: 43–77 viewports, 31–73 of them at over 2× the scale
+  // shown, the links and cards layer at 1.0 while shown at 0.16–0.5), without it at the scale of its frame (35–40 viewports,
+  // 3–4 over 2×; the frames no longer than before). A wheel, a drag or a fling that takes over puts the hint back
   const [settle, setSettle] = createSignal(false);
-  let rasterZ = cam.z;
-  createEffect(
-    on(
-      camMoving,
-      (m) => {
-        if (m) return setSettle(false);
-        const z = cam.z,
-          near = z <= summaryCut() * 1.3;
-        if (z > rasterZ * 1.04 || (z < rasterZ / 2 && !near)) {
+  let rasterZ = cam.z,
+    moving = false,
+    unhinted = false;
+  createEffect(() => {
+    const m = camMoving(),
+      z = cam.z;
+    untrack(() => {
+      if (m) {
+        if (!moving) {
+          moving = true;
+          unhinted = false;
+          setSettle(false);
+        }
+        const out = flyingOut();
+        if (out && (unhinted || z < rasterZ / 2)) {
+          unhinted = true;
           rasterZ = z;
           setSettle(true);
-        } else if (near) rasterZ = Math.min(rasterZ, Math.max(z, 1));
-      },
-      { defer: true },
-    ),
-  );
+        } else if (unhinted && !out) {
+          unhinted = false;
+          setSettle(false);
+        }
+        return;
+      }
+      if (!moving) return;
+      moving = false;
+      const near = z <= summaryCut() * 1.3 && !cardsGone();
+      if (z > rasterZ * 1.04 || (z < rasterZ / 2 && !near)) {
+        rasterZ = z;
+        setSettle(true);
+      } else if (near) rasterZ = Math.min(rasterZ, Math.max(z, 1));
+    });
+  });
   // A lifted card is a layer of its own with its raster scale fixed (styles.css .card.lift: will-change). When the camera stops
   // at another zoom in the middle of a drag, .relift takes the hint off for one drawn frame and puts it back, so the card is
   // rastered again at the new scale instead of staying blurry (or needlessly sharp) until it is put down. Panning keeps stillZ

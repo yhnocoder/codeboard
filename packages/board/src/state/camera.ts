@@ -100,7 +100,9 @@ const sx = new Spring(0, 120, 22, 0.05),
   sy = new Spring(0, 120, 22, 0.05),
   sz = new Spring(1, 120, 22, 0.0005);
 let running = false,
-  gen = 0;
+  gen = 0,
+  /** the camera's last change is a camTo flight that zooms out (flyingOut) */
+  outward = false;
 
 export const ZMAX = 2.5;
 /** The board's minimum zoom: fit-all ÷ 1.3 (state/summary.ts sets it; core summaryMinZoom) */
@@ -123,10 +125,12 @@ export function stopCam() {
 }
 export function setCam(x: number, y: number, z: number) {
   if (running) stopCam();
+  outward = false;
   setCamStore({ x, y, z: Math.min(ZMAX, Math.max(zMin(), z)) });
 }
 export function camTo(x: number, y: number, z: number, soft = false) {
   z = Math.min(ZMAX, Math.max(zMin(), z));
+  outward = z < cam.z;
   if (!running) {
     sx.set(cam.x);
     sy.set(cam.y);
@@ -152,12 +156,17 @@ export function camTo(x: number, y: number, z: number, soft = false) {
     return done;
   });
 }
+/** The camera's last change is a flight (camTo) that zooms out, to its end (judged from where it was asked for: the spring may
+ *  dip below its target and come back up); a wheel, a drag or a fling ends it. Canvas.tsx rasters the world at the scale of
+ *  each of its frames */
+export const flyingOut = () => outward;
 /** 目标镜头（动画中时是终点） */
 export const camTarget = () => (running ? { x: sx.t, y: sy.t, z: sz.t } : { ...cam });
 
 export function fling(vx: number, vy: number) {
   if (reduceMotion() || Math.hypot(vx, vy) < 80) return;
   const g = ++gen;
+  outward = false;
   animate((dt) => {
     if (g !== gen) return true;
     vx *= Math.pow(0.004, dt);

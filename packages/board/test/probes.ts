@@ -304,18 +304,22 @@ export type RasterResult = {
  *   its Section's layer (1.7-2.3 on every build measured), so its budget only guards against regressions.
  * - stops stepVP: the pixels one small zoom stop rasters, the move and the rest after it: persona 0.47; 2.2 when the world was
  *   rastered again at every stop (#155). Synthetic: 11-12, about 16 before #155.
- * The sharpness at rest (blurry and wasted layers, SCALE_BUDGET) is judged after the passes listed in `sharp`: at 100 %, and
- * at ~150 % after inOutIn (in to 250 %, out below the summary cut, back in: 1 layer blurry at 0.67x when the stop below the cut
- * left the board remembering the 250 % raster while Chromium had rastered at 1.0).
+ * - fit restVP and wastedVP: Fit to Window from 100 % (the flight is in the rest after the click), all of it and the part at
+ *   over 2x the scale shown. While the flight kept the world's hint, every tile coming into view was rastered at 1.0: persona
+ *   43-77 (31-73 wasted), synthetic 224 (203 wasted); with the hint off from half the raster scale on, persona 35-40 (3-4),
+ *   synthetic 55-84 (2-5). restVP guards the total with headroom (it does not always tell the two apart); wastedVP does.
+ * The sharpness at rest (blurry and wasted layers, SCALE_BUDGET) is judged after the passes listed in `sharp`: at 100 %; at the
+ * fit (the persona board's summary columns stayed rastered at 1.0 there, 2.4x the scale shown, when the stop past the cut was
+ * not rastered again); and at ~150 % after inOutIn (in to 250 %, out below the summary cut, back in: 1 layer blurry at 0.67x
+ * when the stop below the cut left the board remembering the 250 % raster while Chromium had rastered at 1.0).
  * After the zoom passes it is reported only: the zoom out stops in the detent's reach of the summary cut, where the world keeps its
  * card-level raster by design (Canvas.tsx: 3.7x at 0.27); and the summary columns, laid out at 1/K of the board, keep the scale
- * they were first rastered at under the world's will-change (1:1 at the cut; 2.2x at 0.2 once they came in from 0.45, 2.4x at
- * the persona board's fit).
+ * they were first rastered at under the world's will-change (1:1 at the cut).
  */
 export const RASTER_BUDGET = {
-  synthetic: { drag: { stepVP: 2.5 }, stops: { stepVP: 5 } },
-  persona: { drag: { stepVP: 0.25 }, stops: { stepVP: 1.1 } },
-  sharp: ["drag", "pan", "stops", "inOutIn"],
+  synthetic: { drag: { stepVP: 2.5 }, stops: { stepVP: 5 }, fit: { restVP: 110, wastedVP: 10 } },
+  persona: { drag: { stepVP: 0.25 }, stops: { stepVP: 1.1 }, fit: { restVP: 48, wastedVP: 10 } },
+  sharp: ["drag", "pan", "stops", "fit", "inOutIn"],
 } as const;
 
 /** A budgeted number: ok when value <= limit, or with atLeast when value >= limit */

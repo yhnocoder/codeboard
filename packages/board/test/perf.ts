@@ -1312,7 +1312,7 @@ const emptySpot = (h: Host) =>
 /**
  * The raster probes on a board (probes.ts RASTER_BUDGET says which numbers are judged): drag a card (`drag`: its id), pan, zoom
  * out and in, six small zoom stops, a mouse-wheel zoom out across the summary cut (#155: the summary columns rastered at device
- * scale as they came in), Fit to Window, from there in to 0.2 (zoomed out past the cut, out of the detent's reach),
+ * scale as they came in), Fit to Window from 100 %, from there in to 0.2 (zoomed out past the cut, out of the detent's reach),
  * and in to 250 %, out past the cut and back to ~150 % (inOutIn)
  */
 async function rasterProbes(h: Host, cdp: CDPSession, drag: string) {
@@ -1394,8 +1394,11 @@ async function rasterProbes(h: Host, cdp: CDPSession, drag: string) {
       await still(h);
     });
   }
-  if (want("fit") || want("zoomedOut"))
+  // Fit to Window from 100 %, the world rastered there: the camera flies out 8x (persona) to 19x (synthetic)
+  if (want("fit") || want("zoomedOut")) {
+    await fresh();
     out.fit = await rasterPass(h, cdp, "fit", 1, () => h.page.locator('button[aria-label="Fit to Window"]').click());
+  }
   if (want("zoomedOut")) {
     // zoomed in around the summaries (their first column), so they stay in view
     const s2 = await h.page.evaluate(() => {
