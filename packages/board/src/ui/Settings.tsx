@@ -9,6 +9,7 @@ import {
   NOTE_FONT_RANGE,
   type AiInfo,
   type HideFlags,
+  type HighlightLook,
   type NoteFontLevel,
   type Settings as S,
 } from "@codeboard/core";
@@ -161,21 +162,6 @@ function SettingsPage(p: { section?: string }) {
             Also Show the Title Heading in the Note
           </label>
           <NoteFonts />
-          <div class="st-sub">Highlighted lines in code cards, and the notes on them</div>
-          <div class="st-chips st-hl">
-            <For each={HIGHLIGHT_LOOKS}>
-              {(v) => (
-                <button
-                  class="st-chip pick"
-                  classList={{ on: cur().highlightLook === v }}
-                  data-v={v}
-                  onClick={() => A.setSetting("highlightLook", v)}
-                >
-                  {HIGHLIGHT_LOOK_NAMES[v]}
-                </button>
-              )}
-            </For>
-          </div>
         </Sec>
         <Sec
           id="math"
@@ -217,6 +203,28 @@ function SettingsPage(p: { section?: string }) {
                   />
                   {lb}
                 </label>
+              )}
+            </For>
+          </div>
+        </Sec>
+        <Sec
+          id="highlights"
+          title="Highlights"
+          hint="How code cards draw highlighted lines and the notes on them. A Highlight never changes a card's size; only Always Show notes take room."
+        >
+          <div class="st-hls">
+            <For each={HIGHLIGHT_LOOKS}>
+              {(v) => (
+                <button
+                  class="st-hlk"
+                  classList={{ on: cur().highlightLook === v }}
+                  aria-pressed={cur().highlightLook === v}
+                  data-v={v}
+                  onClick={() => A.setSetting("highlightLook", v)}
+                >
+                  <HighlightPreview look={v} />
+                  <span class="st-swn">{HIGHLIGHT_LOOK_NAMES[v]}</span>
+                </button>
               )}
             </For>
           </div>
@@ -493,6 +501,22 @@ function Sec(p: { id: string; title: string; hint?: string; children: JSX.Elemen
       </div>
       <div class="st-c">{p.children}</div>
     </section>
+  );
+}
+
+/** A Highlight look in small: four code lines, the middle two highlighted, a note under them */
+function HighlightPreview(p: { look: HighlightLook }) {
+  return (
+    <span class={`st-hlp ${p.look}`} aria-hidden="true">
+      <i class="hp-l" style={{ width: "62%" }} />
+      <span class="hp-hl">
+        <i class="hp-m" />
+        <i class="hp-l" style={{ width: "78%" }} />
+        <i class="hp-l" style={{ width: "54%" }} />
+        <span class="hp-n">{p.look === "bracket-hand" ? "why it waits" : <i class="hp-t" />}</span>
+      </span>
+      <i class="hp-l" style={{ width: "40%" }} />
+    </span>
   );
 }
 

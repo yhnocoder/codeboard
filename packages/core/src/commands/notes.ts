@@ -35,7 +35,7 @@ import {
   turnNoteInto,
 } from "../edit";
 import type { CommandEnv } from "./env";
-import { keepFitted, type FitMeasure } from "./fit";
+import { keepFitted, shownUnder, type FitMeasure } from "./fit";
 
 /**
  * Place on Board: a sidenote becomes a card, with an arrow from the line it was on, in one step. add = the shell puts the card on
@@ -164,10 +164,10 @@ export function addSidenotes(env: CommandEnv, list: Omit<Sidenote, "id">[], fit?
     b.sidenotes.push(...sns);
     for (const n of sns) onHighlight(b, n);
   };
-  // one on lines makes or grows a Highlight (its gap, the marker's gutter): a fitted card stays fitted
+  // a Highlight takes no room; an Always Show one shows under its lines: a fitted card stays fitted
   keepFitted(
     env,
-    sns.filter((n) => n.at.lines).map((n) => n.at.card),
+    sns.filter(shownUnder).map((n) => n.at.card),
     fit,
     change,
   );
@@ -195,12 +195,11 @@ export function writeSidenote(env: CommandEnv, id: string, md: string, fit?: Fit
   else env.edit(change);
 }
 
-/** One sidenote deleted; one on lines (an Always Show one, the last on a Highlight's marker, a local one's Highlight) keeps a
- *  fitted card fitted (keepFitted) */
+/** One sidenote deleted; an Always Show one keeps a fitted card fitted (keepFitted). A Highlight it leaves, or takes with it, takes
+ *  no room */
 export function deleteSidenote(env: CommandEnv, id: string, fit?: FitMeasure) {
   const change = (b: Board) => removeSidenotes(b, [id]);
-  const n = env.board().sidenotes.find((k) => k.id === id);
-  const card = n?.at.lines ? n.at.card : shownIn(env, id);
+  const card = shownIn(env, id);
   if (card) keepFitted(env, card, fit, change);
   else env.edit(change);
 }

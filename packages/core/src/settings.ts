@@ -216,7 +216,8 @@ export const SETTINGS: { [K in keyof Settings]-?: SettingDecl } = {
           }`,
         ]),
       ),
-      description: "How code cards draw highlighted lines and the notes on them.",
+      description:
+        "Highlight look: how code cards draw Highlights (highlighted lines) and the notes on them. A Highlight never changes a card's size.",
     },
   },
   mathPreamble: {

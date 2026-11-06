@@ -54,6 +54,10 @@ import { AnnotRail, useAnnots } from "./code/Annots";
 import { GapRow } from "./code/GapRow";
 import { freeEditBlur } from "./code/freeblur";
 
+/** How far a Highlight's band (and its bracket, one more) and a Line Selection sit inside their rows at a run's first and last line:
+ *  adjacent runs read apart with no space added between lines */
+const HX_INSET = 2;
+
 export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; dim?: () => boolean }) {
   let codeEl!: HTMLDivElement, srcEl!: HTMLDivElement, scrollEl!: HTMLDivElement;
   const c = () => p.card;
@@ -163,7 +167,7 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
       }}
     </For>
   );
-  /** Settings › Notes: a highlighter band, or a pen bracket in the margin (its notes in the Note font or in handwriting) */
+  /** Settings › Highlights: a highlighter band, or a pen bracket in the margin (its notes in the Note font or in handwriting) */
   const hlLook = () => state.host.settings.highlightLook;
   const bracket = () => hlLook() === "bracket" || hlLook() === "bracket-hand";
   /**
@@ -195,9 +199,26 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
   const bandStyle = (h: Hx) => {
     const a = ys()[h.first],
       z = ys()[h.last];
-    if (bracket()) return { top: `${a.y + 3}px`, height: `${Math.max(0, z.y + z.h - a.y - 6)}px` };
+    if (bracket())
+      return { top: `${a.y + HX_INSET + 1}px`, height: `${Math.max(0, z.y + z.h - a.y - 2 * HX_INSET - 2)}px` };
     const end = ends()[h.key] ?? z.y + z.h;
-    return { top: `${a.y - 3}px`, height: `${end - a.y + 6}px` };
+    return { top: `${a.y + HX_INSET}px`, height: `${Math.max(0, end - a.y - 2 * HX_INSET)}px` };
+  };
+  /** The selected lines (Line Selection) as runs of rows: drawn with a Highlight band's geometry (.lselb) */
+  const selRuns = createMemo(() => {
+    const out: { first: number; last: number }[] = [];
+    rows().forEach((r, i) => {
+      if (r.t !== "line" || !inSel(r.seg, r.line)) return;
+      const run = out[out.length - 1];
+      if (run && run.last === i - 1) run.last = i;
+      else out.push({ first: i, last: i });
+    });
+    return out;
+  });
+  const runStyle = (x: { first: number; last: number }) => {
+    const a = ys()[x.first],
+      z = ys()[x.last];
+    return { top: `${a.y + HX_INSET}px`, height: `${Math.max(0, z.y + z.h - a.y - 2 * HX_INSET)}px` };
   };
   const hoverHx = (e: PointerEvent, h: Hx | undefined) => {
     if (!h || e.buttons) return;
@@ -388,7 +409,6 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
               "hx-band": !bracket(),
               "hx-bracket": bracket(),
               "hx-hand": hlLook() === "bracket-hand",
-              hxmk: X.marked(),
             }}
             style={{ "--nd": String(numDigits()) }}
             onCopy={(e) => copyCode(cx, e)}
@@ -501,6 +521,13 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
                   <div class="hxb" classList={{ on: X.open().has(h().key) }} style={bandStyle(h())} />
                 </Show>
               ))}
+              <For each={selRuns()}>
+                {(x) => (
+                  <Show when={ys()[x.first] && ys()[x.last]}>
+                    <div class="lselb" style={runStyle(x)} />
+                  </Show>
+                )}
+              </For>
               <For each={M.vrows()}>
                 {(x) => (
                   <Show when={ys()[x.i]}>
@@ -533,7 +560,6 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
                         class="rowbg"
                         classList={{
                           origin: fromLines().has(`${l().seg}:${l().line}`),
-                          lsel: inSel(l().seg, l().line),
                           flash: flashRows().has(`${c().id}:${l().seg}:${l().line}`),
                           vhi: vhi(l()),
                         }}

@@ -11,6 +11,11 @@
 //                           with spaces and with tabs
 //  highlightRemoveToastUndo removing a Highlight with notes says so with an Undo of that step only: it brings them back; once
 //                           another step came after it the Undo is off and does nothing
+//  highlightKeepsCardSize   a Highlight takes no room, in every look: adding, removing and switching the look leave the card's
+//                           width and height and every line's top as they were; lines 9, 10 and 11 highlighted one by one read
+//                           as three bands with a gap between them at the same line pitch
+//  highlightSelectionBand   a Line Selection over Highlights is drawn with the band's geometry: the same left and right edges,
+//                           radius and insets, one run over the selected lines
 //  highlightExport          the HTML export leaves board-only notes out as if they were not there: no empty note row, no band
 //                           or marker for a Highlight only they made, bands no longer than their code, line numbers on their lines
 import { DEFAULT_SETTINGS, THEMES, emptyBoard, type Board, type CodeCard, type HighlightLook } from "@codeboard/core";
@@ -240,7 +245,9 @@ test("highlightLookSetting", async () => {
       return {
         cls: ["hx-band", "hx-bracket", "hx-hand"].filter((c) => code.classList.contains(c)),
         bandW: Math.round(band.width),
-        gap: Number.parseFloat(getComputedStyle(first).marginTop),
+        gap:
+          Number.parseFloat(getComputedStyle(first).marginTop) +
+          Number.parseFloat(getComputedStyle(first).marginBottom),
         marks: [...code.querySelectorAll(".hxm")].map((e) => e.textContent),
         font: getComputedStyle(nb).fontFamily,
         headFont: getComputedStyle(h2).fontFamily,
@@ -260,15 +267,15 @@ test("highlightLookSetting", async () => {
   const hand = await set("bracket-hand");
   const first = (f: string) => f.split(",")[0].trim();
   check(
-    "highlightLookSetting band: a wide band, 10px before a range",
-    JSON.stringify(band.cls) === '["hx-band"]' && band.bandW > 300 && band.gap === 10,
+    "highlightLookSetting band: a wide band, no space added around its lines",
+    JSON.stringify(band.cls) === '["hx-band"]' && band.bandW > 300 && band.gap === 0,
     band,
   );
   check(
-    "highlightLookSetting bracket: a 4px bracket, 4px before a range, the same fonts as the band",
+    "highlightLookSetting bracket: a 4px bracket, no space added around its lines, the same fonts as the band",
     JSON.stringify(bracket.cls) === '["hx-bracket"]' &&
       bracket.bandW <= 5 &&
-      bracket.gap === 4 &&
+      bracket.gap === 0 &&
       bracket.font === band.font &&
       !bracket.font.includes(first(band.hand)),
     bracket,
@@ -277,7 +284,7 @@ test("highlightLookSetting", async () => {
     "highlightLookSetting bracket with the hand: the notes and their headings in the hand font, the rest as the bracket",
     JSON.stringify(hand.cls) === '["hx-bracket","hx-hand"]' &&
       hand.bandW === bracket.bandW &&
-      hand.gap === 4 &&
+      hand.gap === 0 &&
       first(hand.font) === first(hand.hand) &&
       first(hand.headFont) === first(hand.hand),
     hand,
@@ -314,6 +321,157 @@ test("highlightLookSetting", async () => {
         off.push({ look: theme, ...r });
     }
   check("highlightLookSetting the hand looks the same in every theme, light and dark", off.length === 0, off);
+  await h.close();
+});
+
+/** The kernel alone, no Highlights and no notes, its height following its content (no stored h) */
+function plain(): Board {
+  const b = board();
+  b.cards = b.cards.filter((c) => c.id === "k1");
+  delete b.place.t1;
+  delete (b.cards[0] as CodeCard).segments[0].hl;
+  b.sidenotes = [];
+  return b;
+}
+/** The card's size, its lines' tops (in the card) and where each Highlight's band or bracket is */
+const geometry = (pg: Page) =>
+  pg.evaluate(() => {
+    const card = document.querySelector<HTMLElement>('.card[data-id="k1"]')!;
+    const r = card.getBoundingClientRect();
+    const box = (e: Element) => {
+      const q = e.getBoundingClientRect();
+      return { top: q.top - r.top, bottom: q.bottom - r.top, left: q.left - r.left, right: q.right - r.left };
+    };
+    return {
+      size: [r.width, r.height],
+      tops: [...card.querySelectorAll(".src > .l")].map((e) => e.getBoundingClientRect().top - r.top),
+      bands: [...card.querySelectorAll(".hxb")].map(box),
+      sel: [...card.querySelectorAll(".lselb")].map((e) => ({ ...box(e), radius: getComputedStyle(e).borderRadius })),
+      radius: [...card.querySelectorAll(".hxb")].map((e) => getComputedStyle(e).borderRadius),
+    };
+  });
+/** Select lines a..z by their numbers, and Highlight Lines (or Remove Highlight, when all are highlighted) from their menu */
+async function highlightLines(h: Host, a: number, z: number, want: string) {
+  await no(h.page, a).click();
+  if (z !== a) await no(h.page, z).click({ modifiers: ["Shift"] });
+  await no(h.page, z).click({ button: "right" });
+  await h.page.locator(".ctx:not(.closing) button", { hasText: /^(Highlight Lines|Remove Highlight)/ }).click();
+  await until(h, `Highlights ${want}`, () => JSON.stringify(seg(h).hl ?? []) === want);
+  await h.page.keyboard.press("Escape");
+  await idle(h);
+}
+
+test("highlightKeepsCardSize", async () => {
+  const h = await openBoard("band", plain());
+  const pg = h.page;
+  await idle(h);
+  const base = await geometry(pg);
+  const same = (g: Awaited<ReturnType<typeof geometry>>) =>
+    JSON.stringify(g.size) === JSON.stringify(base.size) && JSON.stringify(g.tops) === JSON.stringify(base.tops);
+  const setLook = async (highlightLook: HighlightLook) => {
+    await h.post({
+      type: "host",
+      host: { settings: { ...DEFAULT_SETTINGS, theme: "warm-ink", highlightLook } } as never,
+    });
+    await idle(h);
+  };
+  const looks: HighlightLook[] = ["band", "bracket", "bracket-hand"];
+  for (const look of looks) {
+    await setLook(look);
+    await highlightLines(h, 3, 4, "[[3,4]]");
+    for (const l of [9, 10, 11])
+      await highlightLines(h, l, l, JSON.stringify([[3, 4], ...[9, 10, 11].filter((x) => x <= l).map((x) => [x, x])]));
+    const on = await geometry(pg);
+    check(
+      `highlightKeepsCardSize ${look}: highlighting leaves the card's size and its lines where they were`,
+      same(on),
+      {
+        base: base.size,
+        on: on.size,
+        moved: on.tops.flatMap((t, i) => (t === base.tops[i] ? [] : [{ line: i + 1, from: base.tops[i], to: t }])),
+      },
+    );
+    // lines 9, 10, 11 (rows 8–10): three bands apart, at the line pitch of lines without Highlights
+    const [b9, b10, b11] = on.bands.slice(1);
+    const pitch = base.tops[1] - base.tops[0];
+    check(
+      `highlightKeepsCardSize ${look}: adjacent one-line Highlights read apart with no space between their lines`,
+      on.bands.length === 4 &&
+        b10.top - b9.bottom >= 3 &&
+        b11.top - b10.bottom >= 3 &&
+        on.tops[9] - on.tops[8] === pitch &&
+        on.tops[10] - on.tops[9] === pitch,
+      { pitch, bands: on.bands.slice(1), tops: on.tops.slice(8, 11) },
+    );
+    // switching the look with Highlights on the card
+    for (const other of looks.filter((x) => x !== look)) {
+      await setLook(other);
+      const g = await geometry(pg);
+      check(`highlightKeepsCardSize switching ${look} to ${other} with Highlights leaves the card as it was`, same(g), {
+        base: base.size,
+        size: g.size,
+      });
+    }
+    await setLook(look);
+    await highlightLines(h, 3, 4, "[[9,9],[10,10],[11,11]]");
+    await highlightLines(h, 9, 11, "[]");
+    const off = await geometry(pg);
+    check(
+      `highlightKeepsCardSize ${look}: removing them leaves the card as it was`,
+      same(off) && !off.bands.length,
+      off.size,
+    );
+  }
+  check(
+    "highlightKeepsCardSize the board stores no size for the card",
+    h.board().place.k1.h === undefined,
+    h.board().place.k1,
+  );
+  await h.close();
+});
+
+test("highlightSelectionBand", async () => {
+  const b = plain();
+  (b.cards[0] as CodeCard).segments[0].hl = [
+    [9, 9],
+    [10, 10],
+    [11, 11],
+  ];
+  const h = await openBoard("band", b);
+  const pg = h.page;
+  await idle(h);
+  await no(pg, 9).click();
+  await no(pg, 11).click({ modifiers: ["Shift"] });
+  await until(h, "lines 9–11 are selected", async () => (await pg.locator('.card[data-id="k1"] .lselb').count()) === 1);
+  const g = await geometry(pg);
+  const [sel] = g.sel,
+    [b9, , b11] = g.bands;
+  check(
+    "highlightSelectionBand a selection over Highlights has the band's edges, radius and insets, one run",
+    g.sel.length === 1 &&
+      sel.left === b9.left &&
+      sel.right === b9.right &&
+      sel.top === b9.top &&
+      sel.bottom === b11.bottom &&
+      sel.radius === g.radius[0],
+    { sel: g.sel, bands: g.bands, radius: g.radius },
+  );
+  // beside the Highlights (lines 12–13): the same geometry, inset inside its own rows
+  await no(pg, 12).click();
+  await no(pg, 13).click({ modifiers: ["Shift"] });
+  await idle(h);
+  const g2 = await geometry(pg);
+  const pitch = g2.tops[1] - g2.tops[0];
+  check(
+    "highlightSelectionBand a selection beside them is drawn the same way, inside its rows",
+    g2.sel.length === 1 &&
+      g2.sel[0].left === b9.left &&
+      g2.sel[0].right === b9.right &&
+      g2.sel[0].top === b11.top + pitch &&
+      // two rows less the insets a one-row band has
+      g2.sel[0].bottom - g2.sel[0].top === pitch + (b11.bottom - b11.top),
+    { sel: g2.sel, b11 },
+  );
   await h.close();
 });
 

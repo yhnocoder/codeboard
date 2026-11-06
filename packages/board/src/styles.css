@@ -1177,8 +1177,8 @@ textarea {
 /* 代码区的几何，所有主题同一套：行号左边空 --code-pl，行号栏 = --nd 位数字宽（右对齐），再空 22px 到代码（贴纸、
    隐藏行的 + 都在这 22px 里），最长行右边空 --code-pr；上 --code-pt，下 --code-pt + 2px。没有托盘的主题左 17、右 18；
    有托盘的（Soft Light：托盘离卡边各 10px）左 7、右 8，另外 10px 是托盘的边。这样同一份 Place（w、.carea 的 h）在每个主题里都刚好装下同样的代码。
-   A card with Highlight note counts (.hxmk) has 30px there: the count sits 8px clear of the numbers. That follows the card's
-   content, never the theme, so every theme still fits the same Place */
+   Highlights never change this: their note counts sit in the same 22px (right of the numbers, left of the band or bracket) and
+   their bands draw inside the rows, so a card is the same size with or without them, in every theme */
 .code {
   --code-pt: 6px;
   --code-pl: 17px;
@@ -3942,8 +3942,19 @@ kbd {
 }
 .src .l.cmt {
 }
-.rowbg.lsel {
-  background: color-mix(in srgb, var(--accent) 11%, transparent);
+/* Line Selection: one rounded run with a Highlight band's geometry (its insets, its radius; CodeBody HX_INSET), so a selection
+   on or beside a Highlight reads as the same kind of mark, a deeper fill */
+.lselb {
+  position: absolute;
+  left: calc(var(--gutter) - 4px);
+  right: 14px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  pointer-events: none;
+  z-index: 0;
+}
+:root[data-theme="dark"] .lselb {
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
 }
 .rowbg.vhi {
   background: var(--hi);
@@ -8260,12 +8271,9 @@ mark.wdiff {
   }
 }
 
-/* ---- Highlights (cards/code/highlights.ts): a range of lines that can carry notes. Two looks (Settings › Notes, highlightLook):
+/* ---- Highlights (cards/code/highlights.ts): a range of lines that can carry notes. Two looks (Settings › Highlights, highlightLook):
    a highlighter band (.hx-band), or a pen bracket in the margin (.hx-bracket; .hx-hand: its notes in handwriting).
    The notes are a Note's body (.nbody, the same renderer and styles), one step smaller beside 11px code ---- */
-.code.hxmk {
-  --gutter: calc(var(--code-pl) + var(--nd, 3) * 1ch + 30px);
-}
 /* where a Highlight's notes start: its code's left edge (CodeBody sets it in code columns, so in the code font) */
 @property --hx-in {
   syntax: "<length>";
@@ -8338,17 +8346,11 @@ mark.wdiff {
   --band: color-mix(in srgb, var(--accent) 11%, transparent);
   --band-on: color-mix(in srgb, var(--accent) 19%, transparent);
 }
-/* adjacent Highlights never touch: 10px before a range and after its end (its last line or last Always Show note) */
-.hx-band .src > .hx-first {
-  margin-top: 10px;
-}
-.hx-band .src > .hx-end {
-  margin-bottom: 10px;
-}
+/* a Highlight adds no space: its band sits 2px inside its first and last rows (CodeBody HX_INSET), so adjacent ones read apart */
 .hx-band .hxb {
   left: calc(var(--gutter) - 4px);
   right: 14px;
-  border-radius: 8px;
+  border-radius: 6px;
   background: var(--band);
   transition: background calc(var(--t, 1) * 160ms);
 }
@@ -8367,17 +8369,18 @@ mark.wdiff {
   top: 3px;
   border-top: 1px dashed color-mix(in srgb, var(--accent) 28%, transparent);
 }
+/* the count, in the 22px between the numbers and the band: right-aligned 2px clear of the band, so more digits grow left */
 .hx-band .hxm {
-  left: calc(var(--gutter) - 23px);
-  min-width: 15px;
-  height: 15px;
-  margin-top: 2.5px;
-  padding: 0 4px;
+  right: 6px;
+  min-width: 13px;
+  height: 13px;
+  margin-top: 3.5px;
+  padding: 0 3.5px;
   box-sizing: border-box;
   border-radius: 999px;
   background: color-mix(in srgb, var(--accent) 14%, var(--surface));
   color: var(--accent);
-  font: 600 9.5px / 15px var(--sys);
+  font: 600 9px / 13px var(--sys);
   text-align: center;
   transition:
     background calc(var(--t, 1) * 160ms),
@@ -8390,15 +8393,7 @@ mark.wdiff {
 }
 
 /* R4 页边括号: a pen bracket between the line numbers and the code; the notes follow it as margin notes */
-.hx-bracket .src > .hx-first {
-  margin-top: 4px;
-}
-.hx-bracket .src > .hx-end {
-  margin-bottom: 4px;
-}
-.hx-bracket .src > .inotes.hx-end {
-  margin-bottom: 10px;
-}
+/* its ends sit 3px inside its first and last rows, so adjacent brackets read apart with no space added */
 .hx-bracket .hxb {
   left: calc(var(--gutter) - 7px);
   width: 4px;
@@ -8413,8 +8408,8 @@ mark.wdiff {
   border-left-width: 2px;
 }
 .hx-bracket .hxm {
-  left: calc(var(--gutter) - 22px);
-  width: 12px;
+  right: 9px;
+  width: 10px;
   margin-top: 2px;
   text-align: center;
   font: 12.5px / 16px var(--hand);

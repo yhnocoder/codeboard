@@ -4,7 +4,7 @@ import type { CodeCard, Row } from "@codeboard/core";
 import { state } from "../../state/store";
 import { linksFrom, toggleShown } from "../../state/ui";
 
-/** first / end: a Highlight starts or ends on these hidden lines (its gap before, or after with its key: data-hxe) */
+/** first / end: a Highlight starts or ends on these hidden lines (end with its key: data-hxe); marks only, they add no space */
 export function GapRow(p: { r: Extract<Row, { t: "gap" }>; i: number; card: CodeCard; first?: boolean; end?: string }) {
   const n = () => p.r.to - p.r.from + 1;
   const links = () =>

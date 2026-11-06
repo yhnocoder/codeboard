@@ -448,32 +448,36 @@ describe("local sidenotes (board-only, Card)", () => {
 });
 
 describe("keeping fitted code cards fitted when sidenotes go on lines", () => {
-  /** A shell's measure: the gutter grows 8px once a card has a Highlight, its height 20px per Highlight */
+  /** A shell's measure: 20px per Always Show note under the lines, nothing for a Highlight */
   const fake = (b: Board): FitMeasure => ({
     measure: (id) => {
-      const s = (b.cards.find((c) => c.id === id) as CodeCard).segments[0];
-      const n = s.hl?.length ?? 0;
-      return { h: 400 + 20 * n, body: 400 + 20 * n, w: 300 + (n ? 8 : 0) };
+      const n = b.sidenotes.filter((x) => x.at.card === id && x.kind === "text" && x.alwaysShow).length;
+      return { h: 400 + 20 * n, body: 400 + 20 * n };
     },
     codeMax: 100,
   });
-  it("several line notes in one call refit each card they are on, width and height", () => {
+  const text = (card: string, lines: [number, number], alwaysShow?: true) =>
+    ({ kind: "text", md: card, at: { card, seg: `s-${card}`, lines }, ...(alwaysShow ? { alwaysShow } : {}) }) as Omit<
+      Sidenote,
+      "id"
+    >;
+  it("Always Show notes refit each fitted card they go on; plain ones and sizes set by hand are left", () => {
     const b = emptyBoard("b", "b");
-    b.cards.push(code("a"), code("c"), code("d"));
+    b.cards.push(code("a"), code("c"), code("d"), code("e"));
     b.place.a = { x: 0, y: 0, w: 300, h: 400 }; // fitted
     b.place.c = { x: 400, y: 0, w: 300, h: 400 }; // fitted
     b.place.d = { x: 800, y: 0, w: 520, h: 700 }; // sized by hand
+    b.place.e = { x: 1400, y: 0, w: 300, h: 400 }; // fitted, gets a plain note
+    let edits = 0;
+    const env = envOf(b);
+    const counted: CommandEnv = { ...env, edit: (fn, o) => (edits++, env.edit(fn, o)) };
     addSidenotes(
-      envOf(b),
-      [
-        { kind: "text", md: "a", at: { card: "a", seg: "s-a", lines: [2, 3] } } as Omit<Sidenote, "id">,
-        { kind: "text", md: "c", at: { card: "c", seg: "s-c", lines: [4, 4] } } as Omit<Sidenote, "id">,
-        { kind: "text", md: "d", at: { card: "d", seg: "s-d", lines: [4, 4] } } as Omit<Sidenote, "id">,
-      ],
+      counted,
+      [text("a", [2, 3], true), text("c", [4, 4], true), text("d", [4, 4], true), text("e", [4, 4])],
       fake(b),
     );
-    expect(b.place.a).toMatchObject({ w: 308, h: 420 });
-    expect(b.place.c).toMatchObject({ w: 308, h: 420 });
-    expect(b.place.d).toMatchObject({ w: 520, h: 700 });
+    expect([b.place.a.h, b.place.c.h, b.place.d.h, b.place.e.h]).toEqual([420, 420, 700, 400]);
+    expect(b.place.e.w).toBe(300);
+    expect(edits).toBe(3); // the change, then a and c refitted into its step
   });
 });

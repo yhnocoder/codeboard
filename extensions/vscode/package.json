@@ -774,7 +774,7 @@
             "Margin Bracket: a pen bracket beside the lines, notes as margin notes in the Note font",
             "Margin Bracket, Handwritten: the bracket, with the notes in handwriting"
           ],
-          "description": "How code cards draw highlighted lines and the notes on them."
+          "description": "Highlight look: how code cards draw Highlights (highlighted lines) and the notes on them. A Highlight never changes a card's size."
         },
         "codeboard.math.preamble": {
           "type": "string",

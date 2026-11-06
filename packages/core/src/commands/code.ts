@@ -13,7 +13,7 @@ import {
 import { addHighlight, removeHighlights } from "../edit";
 import { guessLang, pythonDialect } from "../paste";
 import type { CommandEnv } from "./env";
-import { keepFitted, type FitMeasure } from "./fit";
+import { fitIfShown, keepFitted, type FitMeasure } from "./fit";
 
 /** Lines start..end of one segment of a card */
 export type LineRange = { card: string; seg: string; start: number; end: number };
@@ -45,8 +45,8 @@ export function hideLines(env: CommandEnv, ls: LineRange) {
  */
 export function toggleHighlight(env: CommandEnv, ls: LineRange, fit?: FitMeasure): number {
   let gone = 0;
-  // its lines get a gap before and after, the marker its gutter: a fitted card stays fitted
-  keepFitted(env, ls.card, fit, (b) => {
+  // a Highlight takes no room: only Always Show notes going with it change the card's height (fitIfShown)
+  keepFitted(env, ls.card, fitIfShown(env.board(), ls.card, fit), (b) => {
     const s = segIn(b, ls.card, ls.seg);
     if (!s) return;
     const hit = shownRanges(b, s).filter(([a, z]) => a <= ls.end && z >= ls.start);
@@ -62,7 +62,7 @@ export function toggleHighlight(env: CommandEnv, ls: LineRange, fit?: FitMeasure
  *  sidenotes went */
 export function removeHighlight(env: CommandEnv, card: string, seg: string, range: HlRange, fit?: FitMeasure): number {
   let gone = 0;
-  keepFitted(env, card, fit, (b) => {
+  keepFitted(env, card, fitIfShown(env.board(), card, fit), (b) => {
     const s = segIn(b, card, seg);
     if (s) gone = removeHighlights(b, s, [range]);
   });

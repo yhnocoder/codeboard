@@ -125,10 +125,11 @@ const covers = (parts: Box[], from: number, to: number) => {
 
 async function shown(h: Host, card: string, row: number, what: string) {
   const s = await shownBand(h.page, card, row);
-  const band = s.bands.find((b) => s.line && b.t <= s.line.t + 0.5 && b.b >= s.line.b - 0.5);
+  // a Highlight's band sits 2px inside its first and last rows (it adds no space: adjacent ones read apart by that)
+  const band = s.bands.find((b) => s.line && b.t <= s.line.t + 2.5 && b.b >= s.line.b - 2.5);
   const ok = !!band && !!s.no && !!s.line && band.l >= s.no.r && band.l <= s.line.l && band.r >= s.line.r - 14.5;
   check(
-    `codeLineBandContinuous shown Highlight band, ${what}: one band starting clear of the line numbers, over the whole line, top to bottom`,
+    `codeLineBandContinuous shown Highlight band, ${what}: one band starting clear of the line numbers, over the whole line, top to bottom less its 2px insets`,
     ok,
     { band, no: s.no, line: s.line, code: s.code },
   );

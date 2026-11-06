@@ -117,5 +117,5 @@ export function useHighlights(cx: CodeCx) {
     for (const p of pops()) if (p.pop.kind === "highlight") s.add(act.highlightKey(p.pop.card, p.pop.seg, p.pop.lines));
     return s;
   });
-  return { list, keys, byKey, byRow, endRow, open, marked: () => list().some((h) => h.notes.length) };
+  return { list, keys, byKey, byRow, endRow, open };
 }
