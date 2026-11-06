@@ -1,6 +1,7 @@
-// Ink Wash's images, drawn once as small SVGs (data URIs) instead of live CSS filters or per-frame work:
+// Ink Wash's images, drawn once as small images (data URIs) instead of live CSS filters or per-frame work:
 // - the card paper (毛边宣纸): one nine-slice image (deckle) per edge pattern (PAPER_SEEDS, picked by the card's id) and light /
-//   dark, drawn as the border image of the card's ::before (themes.css): the same image at every card size
+//   dark, drawn as the border image of the card's ::before (themes.css): the same image at every card size; a PNG drawn on a
+//   canvas once (paperPng), not an SVG
 // - the five brush strokes under calls and the toolbar's pale ink stroke: one each per light / dark, set
 //   as variables on the root while the look is Ink Wash (wireInk)
 // The shapes follow the approved mock (versions/v0.2.1/ink-wash/demo.html: deckleImg, callImg, barImg)
@@ -54,9 +55,9 @@ export function rng(seed: number) {
  * growing while it is edited keeps the paper it has. (One image per card size was redrawn, and decoded again, on every 4 px the
  * card grew: a long card showed the board through it for a frame each time.) The edge is back on its line at each slice line,
  * so the tiled edges join without a step. The shadow under it is the card's box-shadow (themes.css): blurred 4.5 px, the
- * outline's jitter does not show in it, and a filter in the image would be redrawn on every paint of the card
+ * outline's jitter does not show in it. The shapes as SVG path data, in sheet px (paperPng draws them)
  */
-function deckleSvg(dk: boolean, seed: number) {
+export function paperSheet(dk: boolean, seed: number) {
   const r = rng(seed),
     M = PAPER_M,
     S = 2 * PAPER_SLICE + PAPER_TILE,
@@ -89,9 +90,6 @@ function deckleSvg(dk: boolean, seed: number) {
   edge(x1, y0, x1, y1, 1, 0);
   edge(x1, y1, x0, y1, 0, 1);
   edge(x0, y1, x0, y0, -1, 0);
-  const d = `M${pts.join("L")}Z`;
-  const paper = dk ? "#1e1d1a" : "#fbf8f1",
-    fiber = dk ? "#e9e5da" : "#6b5a3a";
   // faint fibres inside, all within the tiled middle (a fibre across a slice line would be cut where the tiles meet)
   let inner = "";
   const lo = PAPER_SLICE + 6,
@@ -105,26 +103,66 @@ function deckleSvg(dk: boolean, seed: number) {
       y = lo + r() * (hi - lo - dy);
     inner += `M${f(x)} ${f(y)}q${f(dx / 2 + 6)} ${f(dy / 2 - 4)} ${f(dx)} ${f(dy)}`;
   }
-  return svgUrl(
-    S,
-    S,
-    `<defs><path id='p' d='${d}'/></defs>` +
-      `<use href='#p' fill='${paper}'/>` +
-      `<path d='${inner}' fill='none' stroke='${fiber}' stroke-opacity='${dk ? 0.035 : 0.04}' stroke-width='.5'/>` +
-      `<path d='${fib.join("")}' fill='none' stroke='${paper}' stroke-width='.7' stroke-linecap='round'/>` +
-      `<use href='#p' fill='none' stroke='${fiber}' stroke-opacity='${dk ? 0.12 : 0.1}' stroke-width='.5'/>`,
-  );
+  return {
+    size: S,
+    outline: `M${pts.join("L")}Z`,
+    inner,
+    fibres: fib.join(""),
+    paper: dk ? "#1e1d1a" : "#fbf8f1",
+    fiber: dk ? "#e9e5da" : "#6b5a3a",
+    innerOpacity: dk ? 0.035 : 0.04,
+    edgeOpacity: dk ? 0.12 : 0.1,
+  };
+}
+
+/** The paper is drawn PAPER_SCALE times its size: still crisp on a 2× screen zoomed in 150 %. themes.css slices it at
+ *  PAPER_SLICE × PAPER_SCALE image px */
+const PAPER_SCALE = 3;
+
+/**
+ * The sheet as a PNG (a data URI): a bitmap, not an SVG. As an SVG border image every card's ::before redrew the vector sheet for
+ * each of its nine pieces and each tile of the world it falls on, at every raster scale the zoom reached; with GPU raster
+ * (a Mac) dozens of those hung the GPU process when the look switched to Ink Wash, all of VS Code with it, and the right and
+ * bottom pieces were drawn off their place at some zooms (a second paper edge inside the card). A bitmap is one texture
+ */
+function paperPng(dk: boolean, seed: number) {
+  const p = paperSheet(dk, seed),
+    k = PAPER_SCALE,
+    cv = document.createElement("canvas");
+  cv.width = cv.height = p.size * k;
+  const g = cv.getContext("2d")!;
+  g.scale(k, k);
+  const outline = new Path2D(p.outline);
+  g.fillStyle = p.paper;
+  g.fill(outline);
+  g.lineWidth = 0.5;
+  g.strokeStyle = p.fiber;
+  g.globalAlpha = p.innerOpacity;
+  g.stroke(new Path2D(p.inner));
+  g.globalAlpha = 1;
+  g.lineWidth = 0.7;
+  g.lineCap = "round";
+  g.strokeStyle = p.paper;
+  g.stroke(new Path2D(p.fibres));
+  g.lineWidth = 0.5;
+  g.lineCap = "butt";
+  g.strokeStyle = p.fiber;
+  g.globalAlpha = p.edgeOpacity;
+  g.stroke(outline);
+  return `url("${cv.toDataURL("image/png")}")`;
 }
 
 const papers = new Map<string, string>();
-/** The paper image of the card with this id: one of PAPER_SEEDS edge patterns, picked by the id, for light or dark (cached) */
+/** The paper image of the card with this id: one of PAPER_SEEDS edge patterns, picked by the id, for light or dark (drawn once each) */
 export function paperOf(id: string, dk: boolean) {
-  const seed = 1 + (fnv(id) % PAPER_SEEDS),
+  const seed = paperSeed(id),
     k = `${seed}:${dk ? 1 : 0}`;
   let u = papers.get(k);
-  if (!u) papers.set(k, (u = deckleSvg(dk, seed)));
+  if (!u) papers.set(k, (u = paperPng(dk, seed)));
   return u;
 }
+/** Which of the PAPER_SEEDS edge patterns the card with this id gets */
+const paperSeed = (id: string) => 1 + (fnv(id) % PAPER_SEEDS);
 
 // ---------- call strokes, toolbar ----------
 /** The five brush strokes under clickable calls: each starts, bends, thins and ends differently, all in one unbroken stroke

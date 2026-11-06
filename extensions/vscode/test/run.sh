@@ -27,10 +27,21 @@ WS=$TMP/ws
 # out of E2E_TMP, one per E2E_TMP so side-by-side runs still get their own
 UD=/tmp/cb-ud-$(echo "$TMP" | md5sum | cut -c1-8)
 # Stop this user data dir's VS Code and wait until it has exited: a window left running keeps the debugging port, and the next run's
-# driver would attach to it. It can ignore SIGTERM while shutting down, so it gets SIGKILL after 10 s
+# driver would attach to it. Only the main process (the one without --type=) gets SIGTERM, and its helpers go with it: a SIGTERM
+# to every process at once killed the window's renderer while the main process still ran, which then showed "The window terminated
+# unexpectedly (reason: 'killed', code: '15')" on screen and logged every helper as crashed. Whatever is left after 10 s
+# (a main process that ignores SIGTERM while shutting down, an orphaned helper) gets SIGTERM, then SIGKILL
+running() { pgrep -f -- "--user-data-dir=$UD" >/dev/null; }
+wait_code() {
+  for _ in $(seq 100); do running || return 0; sleep 0.1; done
+  return 1
+}
 stop_code() {
-  pkill -f -- "--user-data-dir=$UD" 2>/dev/null || return 0
-  for _ in $(seq 100); do pgrep -f -- "--user-data-dir=$UD" >/dev/null || return 0; sleep 0.1; done
+  running || return 0
+  ps -axo pid=,command= | grep -F -- "--user-data-dir=$UD" | grep -v -e "--type=" -e grep | awk '{print $1}' | xargs kill 2>/dev/null || true
+  wait_code && return 0
+  pkill -f -- "--user-data-dir=$UD" 2>/dev/null || true
+  wait_code && return 0
   pkill -9 -f -- "--user-data-dir=$UD" 2>/dev/null || true
 }
 stop_code
@@ -56,16 +67,20 @@ JSON
 # E2E_ARGS adds VS Code command-line flags (e.g. --password-store=basic, so secret storage works without an OS keyring)
 # E2E_SCALE=2 renders at 2x device pixels (sharper screenshots, used for release shots); the X screen grows to match
 SCALE=${E2E_SCALE:-1}
+# E2E_GPU=1 keeps the GPU (raster and compositing as a user's VS Code does them: for looks that only show with a GPU, on a Mac);
+# by default VS Code runs without it, as in CI
+GPU_ARG="--disable-gpu"; [ -n "$E2E_GPU" ] && GPU_ARG=""
 SCALE_ARG=""; [ "$SCALE" != 1 ] && SCALE_ARG="--force-device-scale-factor=$SCALE"
 RUN=""; [ -z "$DISPLAY" ] && [ -z "$MAC" ] && RUN="xvfb-run -a -s '-screen 0 $((1700 * SCALE))x$((1100 * SCALE))x24'"
 eval $RUN '"$CODE"' "$WS" --extensionDevelopmentPath="$EXT" --user-data-dir="$UD" --extensions-dir="$UD/ext" \
-  --disable-workspace-trust --skip-welcome --skip-release-notes --disable-gpu --no-sandbox \
+  --disable-workspace-trust --skip-welcome --skip-release-notes $GPU_ARG --no-sandbox \
   --remote-debugging-port=$CDP_PORT --window-size=1600,1000 $SCALE_ARG $E2E_ARGS >"$OUT/code.log" 2>&1 &
 PID=$!
 set +e
 node "$HERE/$DRIVER" "$OUT" "$WS" "$UD" 2>&1 | tee "$OUT/e2e.log"
 RC=${PIPESTATUS[0]}
-kill $PID 2>/dev/null; stop_code
+# VS Code first (the X server under it on Linux goes with the xvfb-run wrapper after)
+stop_code; kill $PID 2>/dev/null || true
 # The extension's output channel (host-side logs) goes with the screenshots, so a failure in CI comes with them: one per window
 N=0; for L in $(find "$UD/logs" -name CodeBoard.log 2>/dev/null | sort); do N=$((N + 1)); cp "$L" "$OUT/CodeBoard-$N.log"; done
 exit $RC

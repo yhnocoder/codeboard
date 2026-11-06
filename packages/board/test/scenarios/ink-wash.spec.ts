@@ -124,8 +124,8 @@ test("inkWashLook", async () => {
         };
       });
       const cards = [...document.querySelectorAll<HTMLElement>(".card[data-id]")].map((c) => ({
-        paper: c.style.getPropertyValue("--deckle").startsWith('url("data:image/svg+xml'),
-        before: cs(c, "::before").borderImageSource.startsWith('url("data:image/svg+xml'),
+        paper: c.style.getPropertyValue("--deckle").startsWith('url("data:image/png'),
+        before: cs(c, "::before").borderImageSource.startsWith('url("data:image/png'),
         bg: cs(c).backgroundColor,
         size: [c.offsetWidth, c.offsetHeight],
       }));
@@ -399,11 +399,10 @@ test("inkWashPaperKeptWhileEditing", async () => {
     h: c.offsetHeight,
   }));
   await h.page.context().close();
-  check(
-    "inkWashPaperKeptWhileEditing",
-    res.papers.length === 1 && res.papers[0].startsWith('url("data:image/svg+xml'),
-    { h0, ...res },
-  );
+  check("inkWashPaperKeptWhileEditing", res.papers.length === 1 && res.papers[0].startsWith('url("data:image/png'), {
+    h0,
+    ...res,
+  });
 });
 
 test("inkWashFlashBrush", async () => {
