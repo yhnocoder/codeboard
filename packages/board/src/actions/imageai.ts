@@ -25,7 +25,7 @@ import { openPop } from "../state/pop";
 import { promptText } from "../ui/Menu";
 import { onBoardSwitch } from "../state/root";
 import type { Item } from "../ui/Menu";
-import { cleanSvg, svgDataUrl } from "../md/images";
+import { cleanSvg, noteImageSrc, svgDataUrl } from "../md/images";
 import { aiJobOn, setAiJobs } from "../state/imageai";
 import { imageDataUrl } from "./imagedata";
 import { addCards } from "./create";
@@ -44,10 +44,8 @@ const srcOf = (r: ImgRef) => r.note ?? (cardById(r.card)?.card as ImageCard | un
 /** 右键落在 Note 里的一张图上（静态显示或编辑中）：那张图；显示的地址换回 Markdown 里写的（assets/…） */
 export function noteImageAt(t: Element, card: string): ImgRef | null {
   if (!(t instanceof HTMLImageElement) || cardById(card)?.card.kind !== "note" || !t.closest(".cface")) return null;
-  const s = t.getAttribute("src") ?? "",
-    b = state.host.assetBase;
-  if (!s) return null;
-  return { card, note: b && s.startsWith(`${b}/`) ? `assets/${s.slice(b.length + 1)}` : s };
+  if (!t.getAttribute("src")) return null;
+  return { card, note: noteImageSrc(t) };
 }
 
 /** 图的内容（data: URL）；网上的图拿不到（webview 里画到 canvas 上也读不出来） */

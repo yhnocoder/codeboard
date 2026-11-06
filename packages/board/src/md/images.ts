@@ -1,28 +1,44 @@
 // Note 里的图：Markdown 写的是存储目录里的相对地址 assets/<内容的 sha1>-<宽>x<高>.<扩展名>（宿主存的，见 host/src/images.ts）。
 // 显示、编辑时换成宿主给的 webview 资源地址（host.assetBase，和 Image 卡同一个目录）；文件名里的宽高交给渲染器先留好位置。
-// 别的地址（网址、手打的别处的路径）照原样
+// 别的地址（网址、手打的别处的路径）照原样。
+// A big still PNG or JPEG also lists its smaller copies (md/copies.ts, in host.thumbBase): the Markdown instance shows the one
+// that fits the size the image is seen at, and the Markdown keeps the address as written
 import DOMPurify from "dompurify";
-import type { Markdown } from "@yhnocoder/markdown";
+import type { Markdown, ResolvedImage } from "@yhnocoder/markdown";
 import { ask } from "../host";
+import { copiesOf } from "./copies";
 import { toast } from "../state/toast";
 import { SMIL_TAGS, dropUnsafeSmil } from "./animsvg";
 
 const SIZED = /-(\d{1,5})x(\d{1,5})\.(?:png|jpg|webp|gif|svg)$/;
 let base: string | undefined;
-export function setNoteAssets(md: Markdown, b: string) {
-  if (b === base) return;
+let key = "";
+/** The resolver for the host's asset address b and copies folder thumbs (none: originals only) */
+export function setNoteAssets(md: Markdown, b: string, thumbs: string | undefined) {
+  if (`${b}\n${thumbs}` === key) return;
+  key = `${b}\n${thumbs}`;
   base = b;
-  md.setImageResolver((src) => {
+  md.setImageResolver((src): ResolvedImage | undefined => {
     if (!src.startsWith("assets/")) return undefined;
     const name = src.slice(7),
-      m = SIZED.exec(name);
-    return { src: b ? `${b}/${name}` : src, ...(m ? { width: +m[1], height: +m[2] } : {}) };
+      m = SIZED.exec(name),
+      i = thumbs ? copiesOf(md, name) : undefined;
+    const size = m ? { width: +m[1], height: +m[2] } : i ? { width: i.width, height: i.height } : {};
+    return {
+      src: b ? `${b}/${name}` : src,
+      ...size,
+      copies: i?.copies.length
+        ? i.copies.map((c) => ({ width: c.width, src: c.file && `${thumbs}/${c.file}` }))
+        : undefined,
+    };
   });
 }
 
 /** A displayed image address back as the Note's Markdown writes it (assets/…); others are written as shown */
-export const noteSrcOf = (shown: string) =>
+const noteSrcOf = (shown: string) =>
   base && shown.startsWith(`${base}/`) ? `assets/${shown.slice(base.length + 1)}` : shown;
+/** A Note image's address as its Markdown writes it: data-src (it may show a smaller copy), else from what it shows */
+export const noteImageSrc = (img: HTMLImageElement) => img.dataset.src ?? noteSrcOf(img.getAttribute("src") ?? "");
 
 /** 编辑器里粘贴、拖进来、/Image 选的图交给宿主存；存不了（不是这几种图、太大）提示一下，不插 */
 export async function saveNoteImage(dataUrl: string): Promise<string | null> {

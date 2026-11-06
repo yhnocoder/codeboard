@@ -1,4 +1,4 @@
-// Image cards of big pictures show the host's smaller copy (host/src/thumbs, cards/thumbs.ts) at the zoom they are seen at, and
+// Image cards of big pictures show the host's smaller copy (host/src/thumbs, picked as Note images are: md/copies.ts) at the zoom they are seen at, and
 // the original once zoomed in far enough that the copy would blur. The copies go in the editor's storage, never into the boards'
 // folder; an Image card far off screen does not load its picture until the camera comes near (loading="lazy" inside the
 // board's transformed world)
@@ -111,5 +111,14 @@ test("imageCardThumbnail", async () => {
     const i = await imgOf(h, "far");
     return i?.loaded ? i : null;
   });
-  check("imageCardThumbnail lazy image loads when the camera comes", near.src.includes("/thumbs/"), near);
+  // the source for the zoom it is seen at: a copy of the 2000 px picture (400 or 800; none at 1600, too close to its own width), or
+  // the original past that
+  const z = await zoom(h),
+    seen = 400 * z * 1.15;
+  const want = seen <= 400 ? 400 : seen <= 800 ? 800 : 2000;
+  check(
+    "imageCardThumbnail lazy image loads when the camera comes, sized to the zoom",
+    near.natural === want && (want === 2000 ? /\/assets\/far\.png$/.test(near.src) : near.src.includes("/thumbs/")),
+    { ...near, z },
+  );
 });

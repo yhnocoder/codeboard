@@ -13,7 +13,7 @@ import { reduceMotion } from "../state/motion";
 import { boardSignal } from "../state/root";
 import { sel } from "../state/selection";
 import { editing } from "../state/ui";
-import { noteSrcOf } from "./images";
+import { noteImageSrc } from "./images";
 import { GIF_MIN_DELAY } from "../state/timing";
 import { clockMs, inlineSvg } from "./animsvg";
 
@@ -568,9 +568,8 @@ export function attachAnims(box: HTMLElement, card: string) {
   const nth = new Map<string, number>(),
     found: [AnimKey, HTMLImageElement][] = [];
   for (const img of box.querySelectorAll("img")) {
-    const shown = img.getAttribute("src");
-    if (!shown || img.closest(".md-html")) continue;
-    const src = noteSrcOf(shown),
+    if (!img.getAttribute("src") || img.closest(".md-html")) continue;
+    const src = noteImageSrc(img),
       k = nth.get(src) ?? 0;
     nth.set(src, k + 1);
     found.push([{ card, src, nth: k }, img]);

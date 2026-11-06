@@ -1,10 +1,11 @@
 // 静态显示和编辑器的图片节点视图用同一份 <img> 属性，切换时不跳。写上 width / height，图还没解码时浏览器已经按比例
 // 留好位置（CSS 里 max-width: 100%、height: auto）；解析没给宽高的，第一次加载完记下大小，之后再画就带上
+// 图显示成哪一份（原图或者小一些的副本）由 picture.ts 挑：解析给出所有的来源，Markdown 里照样写原来的地址
 import { capped, cappedAdd } from "./cache";
+import { Pictures, type PictureOptions, type ResolvedImage } from "./picture";
 
-/** 解析出来的图：显示的地址，知道的话还有宽高（像素） */
-export type ResolvedImage = { src: string; width?: number; height?: number };
-/** 返回 undefined = 地址照原样用 */
+export type { ImageCopy, ResolvedImage } from "./picture";
+/** 返回 undefined = 地址照原样用。Synchronous: called for every image drawn and again on each updateImages */
 export type ImageResolver = (src: string) => ResolvedImage | undefined;
 
 /**
@@ -62,8 +63,16 @@ export class Images {
   /** Addresses already shown under their source in the editor: those load at once (editor/widgets.ts) */
   private loaded = new Set<string>();
 
+  /** The sources shown: the original or a smaller copy, for the size each image is seen at */
+  readonly pictures: Pictures;
+
   /** changed: the resolver changed (everything redraws), or an image learned its size (raw: the address it is written as) */
-  constructor(private changed: (raw?: string) => void) {}
+  constructor(
+    private changed: (raw?: string) => void,
+    o: PictureOptions = {},
+  ) {
+    this.pictures = new Pictures((raw) => this.resolver?.(raw), o);
+  }
 
   /** 换掉图片地址的解析（null = 照原样） */
   setResolver(r: ImageResolver | null) {
@@ -73,6 +82,7 @@ export class Images {
     this.learned.clear();
     this.rawOf.clear();
     this.changed();
+    this.pictures.update();
   }
   /**
    * The common resolver: an address under the folder dir (relative, as written in the Markdown: "assets") is served from base,
@@ -98,7 +108,8 @@ export class Images {
     loop?: boolean | null;
   }): Record<string, string | null> {
     const raw = a.src ?? "";
-    const r = (raw && this.resolver?.(raw)) || { src: raw };
+    const res = (raw && this.resolver?.(raw)) || undefined,
+      r = res ?? { src: raw };
     let w = r.width,
       h = r.height;
     if (!(w && h)) {
@@ -111,7 +122,9 @@ export class Images {
     }
     return {
       // title 是图注，画在图下面（render.ts、editor/image.ts），不再当悬停提示
+      // src: the original; the source shown is picked when the image is on the page (watch), data-src keeps the address as written
       src: r.src,
+      "data-src": res ? raw : null,
       alt: a.alt ?? "",
       width: w && h ? String(w) : null,
       height: w && h ? String(h) : null,
@@ -126,8 +139,16 @@ export class Images {
     };
   }
 
-  /** An image that could not load: a quiet line in its place (the alt text, or the address), not the browser's broken icon */
+  /** img (drawn from attrs) is on the page: its source is picked for the size it is seen at (picture.ts) */
+  watch(img: HTMLImageElement) {
+    const raw = img.dataset.src;
+    if (raw) this.pictures.watch(img, raw);
+  }
+
+  /** An image that could not load: a quiet line in its place (the alt text, or the address), not the browser's broken icon;
+   *  a smaller copy that could not load gives way to the original instead */
   fail(img: HTMLImageElement) {
+    if (this.pictures.failed(img)) return;
     const src = img.getAttribute("src") ?? "";
     if (src) cappedAdd(this.failed, MAX, src);
     img.replaceWith(missingImage(img.alt, src));

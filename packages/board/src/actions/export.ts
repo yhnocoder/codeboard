@@ -165,7 +165,7 @@ async function cloneForExport(b: Board, scope: ExportScope, order: string[]): Pr
   flushMd();
   await frames(1);
   const world = (document.querySelector("#board .world") as HTMLElement).cloneNode(true) as HTMLElement;
-  // Image cards show a smaller copy at the zoom they are seen at (cards/thumbs.ts): the export carries the original
+  // Image cards and Note images show a smaller copy at the zoom they are seen at (md/copies.ts): the export carries the original
   world.querySelectorAll<HTMLImageElement>("img[data-full]").forEach((im) => im.setAttribute("src", im.dataset.full!));
   select(prevSel);
   setLineSel(prevLine);

@@ -6,7 +6,7 @@ import { ready, openBoard, launch, symCard, files, REPO, type Host } from "./har
 import {
   cornerAt,
   emptyBoard,
-  thumbWidth,
+  THUMB_WIDTHS,
   skeletonOf,
   stampBorn,
   uid,
@@ -21,6 +21,7 @@ import {
 import type { CDPSession } from "playwright-core";
 import { faceFrames, gif, png } from "@codeboard/host/testing";
 import * as path from "node:path";
+import { createHash } from "node:crypto";
 import { realHost } from "./realhost";
 
 const arg = (k: string, d: string) => {
@@ -1313,11 +1314,20 @@ export function personaBoard(): { board: Board; assets: Record<string, Buffer> }
   for (let r = 0; r < 5; r++) {
     let x = 0;
     const row: { c: Board["cards"][number]; w: number }[] = [];
-    const note = (i: number) =>
+    // every other Note carries a big screenshot, pasted as the host saves one (assets/<its sha1>-<w>x<h>.png)
+    const note = (i: number) => {
+      let md = personaNote(i);
+      if (i % 2 === 0) {
+        const bytes = shot(i % 4 ? 2380 : 2520, i % 4 ? 1480 : 1620, i + 20);
+        const file = `${createHash("sha1").update(bytes).digest("hex").slice(0, 16)}-${i % 4 ? 2380 : 2520}x${i % 4 ? 1480 : 1620}.png`;
+        assets[file] = bytes;
+        md = md.replace(/\n\n/, `\n\n![screenshot ${i}](assets/${file})\n\n`);
+      }
       row.push({
-        c: { id: `n${i}`, kind: "note", md: personaNote(i), look: "note" } as Board["cards"][number],
+        c: { id: `n${i}`, kind: "note", md, look: "note" } as Board["cards"][number],
         w: 420,
       });
+    };
     note(r * 4);
     note(r * 4 + 1);
     const big = `big${r}.png`;
@@ -1386,6 +1396,7 @@ async function personaOnce() {
     { openPage: (o) => openBoard(browser, o, { fail }), afterTest: () => {}, fail },
     {
       thumbWorker: path.join(REPO, "test-out/harness/thumbs-worker.cjs"),
+      storage: process.argv.includes("--cold") ? undefined : path.join(REPO, "test-out/perf-storage"),
       page: {
         light: process.argv.includes("--light"),
         scale: +arg("scale", "1"),
@@ -1404,18 +1415,16 @@ async function personaOnce() {
     persona: true,
     cards: board.cards.length,
     images: board.cards.filter((c) => c.kind === "image").length,
+    noteImages: board.cards.filter((c) => c.kind === "note" && c.md.includes("](assets/")).length,
     katex: [...board.cards].reduce((n, c) => n + (c.kind === "note" ? (c.md.match(/\$/g)?.length ?? 0) / 2 : 0), 0),
   };
-  // The copies the board will ask for at 100% made first (their time reported on its own, thumbs): load and the steps then
-  // measure a board opened again, as every open after the first is; --cold leaves them to be made while the board loads
+  // The copies made first, as the host makes them when an image is saved (their time reported on its own, thumbs), in a storage
+  // kept across runs (test-out/perf-storage): load and the steps then measure a board opened again, as every open after the
+  // first is; --cold leaves them to be made while the board loads
   if (!process.argv.includes("--cold")) {
     const t = performance.now();
-    await Promise.all(
-      board.cards.map((c) => {
-        const w = c.kind === "image" && thumbWidth((board.place[c.id].w ?? 0) * +arg("scale", "1"));
-        return w ? run.host.hub.cx.thumbs.get(path.join(dir, (c as { src: string }).src), w) : null;
-      }),
-    );
+    for (const f of Object.keys(assets))
+      for (const w of THUMB_WIDTHS) await run.host.hub.cx.thumbs.get(path.join(dir, f), w);
     res.thumbs = +(performance.now() - t).toFixed(0);
   }
   const t0 = performance.now();
@@ -1443,6 +1452,29 @@ async function personaOnce() {
     { timeout: 60000 },
   );
   res.imagesShown = +(+(await shown.jsonValue())).toFixed(0);
+  // the Note images in view loaded, then their decoded size (megapixels) as opened at 100%
+  await h.page
+    .waitForFunction(
+      () =>
+        [...document.querySelectorAll<HTMLImageElement>(".card.note .md img")]
+          .filter((i) => {
+            const r = i.getBoundingClientRect();
+            return r.right > 0 && r.bottom > 0 && r.left < innerWidth && r.top < innerHeight;
+          })
+          .every((i) => i.complete),
+      null,
+      { timeout: 60000 },
+    )
+    .catch(() => {});
+  res.noteImgMPOpen = await h.page.evaluate(
+    () =>
+      +(
+        [...document.querySelectorAll<HTMLImageElement>(".card.note .md img")].reduce(
+          (s, i) => s + i.naturalWidth * i.naturalHeight,
+          0,
+        ) / 1e6
+      ).toFixed(1),
+  );
   res.openTotal = +(performance.now() - t0).toFixed(0);
   await h.page.waitForTimeout(1500);
   res.idleBusy1s = +(await idle(h, cdp, 1000)).toFixed(1);
@@ -1489,6 +1521,13 @@ async function personaOnce() {
     katex: document.querySelectorAll(".katex").length,
     imgMP: +(
       [...document.querySelectorAll<HTMLImageElement>(".card.image img")].reduce(
+        (s, i) => s + i.naturalWidth * i.naturalHeight,
+        0,
+      ) / 1e6
+    ).toFixed(1),
+    // the Note images' decoded size (megapixels): the originals, or the copies they show
+    noteImgMP: +(
+      [...document.querySelectorAll<HTMLImageElement>(".card.note .md img")].reduce(
         (s, i) => s + i.naturalWidth * i.naturalHeight,
         0,
       ) / 1e6

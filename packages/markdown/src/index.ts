@@ -16,7 +16,13 @@ export {
   type ImageResolver,
   /** @public */
   type ResolvedImage,
+  /** @public */
+  type ImageCopy,
 } from "./image";
+export {
+  /** @public */
+  pickCopy,
+} from "./picture";
 export { imageCaption, setImageCaption, tableCaption, setTableCaption } from "./caption";
 export {
   /** @public */

@@ -178,6 +178,8 @@ function imageEl(a: Extract<Atom, { type: "image" }>, below: boolean, md: Md): H
   // the width of a sized image is on this box (below); an unsized one keeps its height cap
   if (!a.width && at.style) img.setAttribute("style", at.style);
   img.draggable = false;
+  // the source shown, as in the static render (picture.ts): the document keeps the address as written
+  images.watch(img);
   if (!below && img.src) images.sawLoad(img.getAttribute("src")!);
   el.append(img);
   if (images.failedBefore(img.getAttribute("src"))) images.fail(img);

@@ -33,7 +33,7 @@ import { tidy } from "@codeboard/core/tidy";
 import { pasteCard } from "./paste";
 import { writeSetting } from "./settings";
 import { openStickerDir, readPacks } from "./stickers";
-import { readAsset, readImageUri, saveNoteImage, thumbOf } from "./images";
+import { imagesOf, readAsset, readImageUri, saveCardImage, saveNoteImage, thumbOf } from "./images";
 import { copyDiagnostics } from "./diagnostics";
 import type { BoardHost, BoardPanel } from "./boards";
 import { callVars, dispatchAt, expand, peek } from "./resolve";
@@ -110,10 +110,11 @@ export function makeHandler(cx: HostContext, panels: BoardHost, mediaDir: string
     resolveRef: (p, m) => resolveTyped(cx, p, m.text),
     paste: (_p, m) => pasteCard(cx, m.text),
     github: (_p, m) => githubCard(cx, m.url),
-    saveAsset: (_p, m) => store.saveAsset(m.name, m.dataUrl),
-    saveImage: (_p, m) => saveNoteImage(store, m.dataUrl),
+    saveAsset: (_p, m) => saveCardImage(cx, store, m.name, m.dataUrl),
+    saveImage: (_p, m) => saveNoteImage(cx, store, m.dataUrl),
     readAsset: (_p, m) => readAsset(store, m.file),
     thumb: (_p, m) => thumbOf(cx, store, m.file, m.width),
+    images: (_p, m) => imagesOf(cx, store, m.files),
     readImageUri: (_p, m) => readImageUri(cx, m.uri),
     exportPng: (_p, m) => exportPng(cx, m.dataUrl, m.name),
     views: (_p, m) => viewsFor(cx, m.segs),

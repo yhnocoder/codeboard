@@ -148,6 +148,14 @@ export const DEFAULT_SETTINGS: Settings = {
 export type StickerIcon = { name: string; svg: string } | { name: string; img: string; anim?: true };
 export type StickerPack = { id: string; name: string; icons: StickerIcon[] };
 
+/**
+ * A board image (an assets/ still PNG or JPEG) as the board shows it: its size as shown (EXIF orientation applied) and the smaller
+ * copies worth making of it (host/src/thumbs: one of THUMB_WIDTHS, narrower enough than the image), with the file in thumbBase of
+ * each one made already. The board picks among them for the size an image is seen at (@yhnocoder/markdown's picture.ts) and asks
+ * for a missing one with {type:"thumb"}
+ */
+export type ImageCopies = { width: number; height: number; copies: { width: number; file?: string }[] };
+
 export type HostInfo = {
   fontFamily?: string; // 跟随 VS Code 编辑器字体
   assetBase: string; // assets/ 目录的 webview URI，图片卡用
@@ -250,6 +258,9 @@ export type HostToBoard =
       crumbs?: Crumb[];
       walk?: WalkHop;
       welcome?: { days: number; open: number };
+      /** The board's assets/ PNGs and JPEGs (by file name; null: none, not a still one) with their copies, so each shows the
+       *  right one from its first frame */
+      images?: Record<string, ImageCopies | null>;
     }
   | { type: "views"; views: Record<string, SegView> }
   | { type: "stale"; stale: Record<string, Stale> }
@@ -357,7 +368,8 @@ export type BoardToHost =
   | { type: "saveImage"; req: number; dataUrl: string } // Note 里的图：宿主验过、存进 assets/，回 Markdown 里写的地址
   | { type: "readImageUri"; req: number; uri: string } // 拖到白板上的图片文件只给了 URI（VS Code 资源管理器、只带 URI 的系统拖放）：宿主读出来，回 data: URL
   | { type: "readAsset"; req: number; file: string } // Image 卡的图（assets/ 里的文件名）：回 data: URL（复制到剪贴板、拖进 Note 用）
-  | { type: "thumb"; req: number; file: string; width: number } // an Image card's image (assets/ file) width wide (THUMB_WIDTHS)
+  | { type: "thumb"; req: number; file: string; width: number } // a board image (assets/ file) width wide (THUMB_WIDTHS)
+  | { type: "images"; req: number; files: string[] } // what init.images says, for images added since (assets/ file names)
   | { type: "exportPng"; dataUrl: string; name: string }
   | { type: "views"; req: number; segs: Segment[] } // 白板生成的新段（合并、拆开）要展示数据
   | { type: "checkVersions" }
@@ -616,6 +628,8 @@ type Replies = {
   /** file: the copy in thumbBase (null: show the original, no smaller copy is worth it); width / height: the image's own size;
    *  null: not an image the host makes copies of (GIF, WebP, SVG, APNG) */
   thumb: { file: string | null; width: number; height: number } | null;
+  /** by file: null = not an image the host makes copies of */
+  images: Record<string, ImageCopies | null>;
   readImageUri: string; // data: URL
   views: Record<string, SegView>;
   webMeta: WebMeta;

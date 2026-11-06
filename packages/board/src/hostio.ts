@@ -18,6 +18,7 @@ import { runKey } from "./keymap";
 import { send } from "./host";
 import { choose, pickOne, promptText } from "./ui/Menu";
 import { setNoteAssets } from "./md/images";
+import { putImages } from "./md/copies";
 import { applyMathPreamble } from "./md/math";
 import { preloadEditor } from "./md/load";
 import { putBoardRefs, refreshRefs } from "./md/refs";
@@ -54,7 +55,8 @@ function handle(m: HostToBoard, md: Markdown) {
       batch(() => {
         // the host state and the segments' views and version states are replaced, not merged (the last board's would stay)
         setHost(m.host);
-        setNoteAssets(md, m.host.assetBase);
+        putImages(m.images);
+        setNoteAssets(md, m.host.assetBase, m.host.thumbBase);
         applyMathPreamble(md, m.host.settings.mathPreamble);
         if (!preloaded) {
           preloaded = true;
@@ -113,7 +115,8 @@ function handle(m: HostToBoard, md: Markdown) {
       break;
     case "host":
       mergeHost(m.host);
-      if (m.host.assetBase !== undefined) setNoteAssets(md, m.host.assetBase);
+      if (m.host.assetBase !== undefined || m.host.thumbBase !== undefined)
+        setNoteAssets(md, state.host.assetBase, state.host.thumbBase);
       break;
     case "add": {
       const ids = A.addCards(m.cards);
