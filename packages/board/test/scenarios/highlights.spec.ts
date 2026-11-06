@@ -7,12 +7,20 @@
 //                           numbers turn accent), and moving into the popup keeps it open; leaving both closes it
 //  highlightLookSetting     the setting switches the look in place: a band (R3), a margin bracket (R4) and the bracket with the hand,
 //                           which only changes the notes' font; the marker shows the note count in each
-//  highlightNoteIndent      an Always Show note starts where the least-indented line of its range starts, after the card's dedent
+//  highlightNoteIndent      an Always Show note starts where the least-indented line of its range starts, after the card's dedent,
+//                           with spaces and with tabs
+//  highlightRemoveToastUndo removing a Highlight with notes says so with an Undo of that step only: it brings them back; once
+//                           another step came after it the Undo is off and does nothing
+//  highlightExport          the HTML export leaves board-only notes out as if they were not there: no empty note row, no band
+//                           or marker for a Highlight only they made, bands no longer than their code, line numbers on their lines
 import { DEFAULT_SETTINGS, emptyBoard, type Board, type CodeCard, type HighlightLook } from "@codeboard/core";
 import type { Page } from "playwright-core";
 import type { Host } from "../harness";
 import { NOTE_HOVER } from "../../src/state/timing";
-import { test, open, check, light, until, idle, hold } from "../fixtures";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { OUT } from "../harness";
+import { test, open, check, light, until, idle, hold, hostBoards } from "../fixtures";
 
 // every line indented by at least 4: the card hides that much (its dedent)
 const KERNEL = [
@@ -282,9 +290,38 @@ test("highlightLookSetting", async () => {
   await h.close();
 });
 
+// indented with tabs, all by at least two: the card hides them (its dedent)
+const TABBED = ["\t\tfor (;;) {", "\t\t\tif (a) {", "\t\t\t\tb();", "\t\t\t}", "\t\t}"];
 test("highlightNoteIndent", async () => {
   for (const look of ["band", "bracket"] as const) {
-    const h = await openBoard(look);
+    const b = board();
+    b.cards.push({
+      id: "k2",
+      kind: "code",
+      title: "tabbed",
+      segments: [
+        {
+          id: "s2",
+          src: { kind: "free" },
+          path: "",
+          lang: "cuda",
+          start: 1,
+          end: TABBED.length,
+          text: TABBED.slice(),
+          version: { kind: "none" },
+          hl: [[2, 4]],
+        },
+      ],
+    } as CodeCard);
+    b.place.k2 = { x: 860, y: 700, w: 420 };
+    b.sidenotes.push({
+      id: "n4",
+      kind: "text",
+      md: "跳出前先看 a。",
+      alwaysShow: true,
+      at: { card: "k2", seg: "s2", lines: [2, 4] },
+    });
+    const h = await openBoard(look, b);
     const pg = h.page;
     await mermaidDrawn(h);
     await idle(h);
@@ -306,6 +343,8 @@ test("highlightNoteIndent", async () => {
         return Number.NaN;
       };
       const noteAt = (id: string) => card.querySelector(`.inote[data-note="${id}"]`)!.getBoundingClientRect().left;
+      const tab = document.querySelector('.card[data-id="k2"]')!;
+      const tl = tab.querySelectorAll<HTMLElement>(".src > .l");
       return {
         n2: noteAt("n2"),
         line5: textAt(lines[4]),
@@ -313,6 +352,11 @@ test("highlightNoteIndent", async () => {
         n3: noteAt("n3"),
         line13: textAt(lines[12]),
         line1: textAt(lines[0]),
+        // the tabbed card: n4 on 2–4, least indented 2 and 4 (three tabs, one after the dedent)
+        n4: tab.querySelector('.inote[data-note="n4"]')!.getBoundingClientRect().left,
+        tab1: textAt(tl[0]),
+        tab2: textAt(tl[1]),
+        tab3: textAt(tl[2]),
       };
     });
     check(
@@ -320,6 +364,123 @@ test("highlightNoteIndent", async () => {
       Math.abs(r.n2 - r.line5) <= 1.5 && Math.abs(r.n3 - r.line13) <= 1.5 && r.line6 > r.n2 + 10 && r.n2 > r.line1 + 10,
       r,
     );
+    check(
+      `highlightNoteIndent ${look}: indented with tabs, in a card that hides some of them`,
+      Math.abs(r.n4 - r.tab2) <= 1.5 && r.tab3 > r.n4 + 10 && r.n4 > r.tab1 + 10,
+      r,
+    );
     await h.close();
   }
+});
+
+test("highlightRemoveToastUndo", async () => {
+  const h = await openBoard();
+  const pg = h.page;
+  await idle(h);
+  const notes = () =>
+    h
+      .board()
+      .sidenotes.map((n) => n.id)
+      .join(",");
+  const remove = async (line: number) => {
+    await no(pg, line).hover();
+    await pg.locator(".pop.k-highlight").waitFor();
+    await pg.locator('.pop.k-highlight [aria-label="Remove Highlight"]').click();
+  };
+  await remove(2);
+  await until(h, "the Highlight and its note go", () => notes() === "n2,n3");
+  const toast = pg.locator(".toast");
+  const said = await toast.textContent();
+  await toast.locator("button", { hasText: "Undo" }).click();
+  await until(h, "Undo brings them back", () => notes() === "n1,n2,n3" && seg(h).hl?.length === 3);
+  await idle(h);
+  // again, then another step after it: the toast's Undo is off, and clicking it changes nothing
+  await remove(2);
+  await until(h, "removed again", () => notes() === "n2,n3");
+  await pg.locator('.card[data-id="t1"] .chead').click({ position: { x: 40, y: 10 } });
+  await pg.keyboard.press("Alt+Shift+KeyT"); // Tilt: a step of its own
+  await until(h, "the Note is tilted", () => !!(h.board().cards.find((c) => c.id === "t1") as { tilt?: unknown }).tilt);
+  const off = await toast.locator("button", { hasText: "Undo" }).isDisabled();
+  await toast.locator("button", { hasText: "Undo" }).click({ force: true });
+  await idle(h);
+  check(
+    "highlightRemoveToastUndo the toast's Undo undoes that removal only, and is off once another step came after it",
+    /Removed the Highlight and its 1 note/.test(said ?? "") &&
+      off &&
+      notes() === "n2,n3" &&
+      !!(h.board().cards.find((c) => c.id === "t1") as { tilt?: unknown }).tilt,
+    { said, off, notes: notes() },
+  );
+  await h.close();
+});
+
+test("highlightExport", async () => {
+  const b = board();
+  // n3 board-only: its Highlight (13–15) is on this board only, and an export without board-only notes has neither
+  const s = (b.cards[0] as CodeCard).segments[0];
+  s.hl = s.hl!.filter((r) => r[0] !== 13);
+  (b.sidenotes.find((n) => n.id === "n3") as { boardOnly?: true }).boardOnly = true;
+  const files: Record<string, string> = {};
+  const run = await hostBoards([b], {
+    page: { light, w: 1400, h: 1000, settings: { theme: "warm-ink" } as never },
+  });
+  let saving = "";
+  run.ws.ui = {
+    ...run.ws.ui,
+    saveDialog: async (o) => (saving = path.join(OUT, `hx-export-${process.pid}-${path.basename(o.defaultPath)}`)),
+    info: async (text) => {
+      if (text.startsWith("Exported ")) files[path.extname(saving).slice(1)] = saving;
+      return undefined;
+    },
+  };
+  const h = await run.open(b.id),
+    page = h.page;
+  await mermaidDrawn(h);
+  await idle(h);
+  const before = await page.locator('.card[data-id="k1"] .hxm').count();
+  await page.locator('.bbar [aria-label="More"]').click();
+  await page.locator(".ctx:not(.closing) button", { hasText: "Export…" }).click();
+  await page.locator(".xdlg").waitFor();
+  await page.locator(".xdlg .seg button", { hasText: "Whole Board" }).click();
+  await page.locator(".xdlg button.def").click();
+  await until(h, "the HTML snapshot is written", () => files.html, 20000);
+  const v = await page.context().browser()!.newPage();
+  await v.setViewportSize({ width: 1400, height: 1000 });
+  await v.goto(`file://${files.html}`);
+  await v.waitForFunction(() => document.querySelector(".world .card[data-id]") && document.fonts.status === "loaded");
+  const r = await v.evaluate(() => {
+    const card = document.querySelector('.world .card[data-id="k1"]')!;
+    const box = (e: Element) => e.getBoundingClientRect();
+    const lines = [...card.querySelectorAll<HTMLElement>(".src > [data-r]")];
+    const rowTop = (i: string) => lines.find((l) => l.dataset.r === i)?.getBoundingClientRect().top ?? Number.NaN;
+    // each band ends by its last line or note row (data-hxe) plus the 3px it reaches beyond
+    const ends = Object.fromEntries(
+      [...card.querySelectorAll<HTMLElement>(".src > [data-hxe]")].map((e) => [e.dataset.hxe!, box(e).bottom]),
+    );
+    const hits = [...card.querySelectorAll<HTMLElement>(".hxhit")].map((e) => e.dataset.hl!);
+    return {
+      notes: [...card.querySelectorAll<HTMLElement>(".inote")].map((e) => e.dataset.note),
+      emptyRows: card.querySelectorAll(".inotes:not(:has(.inote))").length,
+      marks: [...card.querySelectorAll<HTMLElement>(".hxm")].map((e) => e.dataset.hl),
+      hits,
+      bandOver: [...card.querySelectorAll<HTMLElement>(".hxb")].map((e, i) => box(e).bottom - (ends[hits[i]] ?? 0)),
+      numbersOff: [...card.querySelectorAll<HTMLElement>(".gutter .no")].map((n) =>
+        Math.abs(box(n).top - rowTop(n.dataset.r!)),
+      ),
+    };
+  });
+  await v.screenshot({ path: path.join(OUT, "highlight-export.png") });
+  await v.close();
+  check(
+    "highlightExport board-only notes left out as if never there: their row, band and marker go, the rest lines up",
+    before === 3 &&
+      JSON.stringify(r.notes) === '["n2"]' &&
+      r.emptyRows === 0 &&
+      JSON.stringify(r.marks) === '["k1:s1:2-3","k1:s1:5-9"]' &&
+      !r.hits.includes("k1:s1:13-15") &&
+      r.bandOver.every((d) => d <= 3.5) &&
+      r.numbersOff.every((d) => d <= 3),
+    r,
+  );
+  if (fs.existsSync(files.html)) fs.rmSync(files.html);
 });
