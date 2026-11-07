@@ -316,18 +316,22 @@ export type RasterResult = {
  *   layer at every move (1.46-1.66 on real study boards).
  * - stops stepVP: the pixels one small zoom stop rasters, the move and the rest after it: persona 0.47; 2.2 when the world was
  *   rastered again at every stop (#155). Synthetic: 11-12, about 16 before #155.
+ * - nearCut wastedVP (persona): at rest at 0.34 (just above the summary cut, the card level shown), 20 steps of pans and the
+ *   pointer moved over the cards, the pixels rastered at over 2x the scale shown: 0.1-0.2. 12 when the hint came back on at each
+ *   pan and Chromium rastered the world at 1.0 there (2.9x; 5.9x on a 2x screen), and every card a hover painted again with it:
+ *   more tiles than the GPU kept, drawn as holes in the cards and images while the pointer moved.
  * - fit restVP and wastedVP: Fit to Window from 100 % (the flight is in the rest after the click), all of it and the part at
  *   over 2x the scale shown. While the flight kept the world's hint, every tile coming into view was rastered at 1.0: persona
  *   43-77 (31-73 wasted), synthetic 224 (203 wasted); with the hint off from half the raster scale to the end, every layer in
  *   view was rastered at every frame: persona 35-37 (3-4), synthetic 55-84 (2-5); with the hint put back below a quarter of
  *   the device scale and the world rastered again only as the scale halves there (Canvas.tsx HINT_KEEPS), persona 21-26 (4-6).
  *   restVP guards the total (it does not always tell keeping the hint from dropping it); wastedVP does.
- * The sharpness at rest (blurry and wasted layers, SCALE_BUDGET) is judged after the passes listed in `sharp`: at 100 %; at the
+ * The sharpness at rest (blurry and wasted layers, SCALE_BUDGET) is judged after the passes listed in `sharp`: at 100 %; at 0.34
+ * after nearCut (the world at 1.0 there before, 2.9x); at the
  * fit (the persona board's summary columns stayed rastered at 1.0 there, 2.4x the scale shown, when the stop past the cut was
  * not rastered again); and at ~150 % after inOutIn (in to 250 %, out below the summary cut, back in: 1 layer blurry at 0.67x
  * when the stop below the cut left the board remembering the 250 % raster while Chromium had rastered at 1.0).
- * After the zoom passes it is reported only: the zoom out stops in the detent's reach of the summary cut, where the world keeps its
- * card-level raster by design (Canvas.tsx: 3.7x at 0.27); and the summary columns, laid out at 1/K of the board, keep the scale
+ * After the zoom passes it is reported only: the summary columns, laid out at 1/K of the board, keep the scale
  * they were first rastered at under the world's will-change (1:1 at the cut).
  */
 export const RASTER_BUDGET = {
@@ -336,10 +340,11 @@ export const RASTER_BUDGET = {
     drag: { stepVP: 0.25, restVP: 12 },
     dragSnap: { stepVP: 0.25 },
     dragSection: { stepVP: 1 },
+    nearCut: { wastedVP: 1 },
     stops: { stepVP: 1.1 },
     fit: { restVP: 30, wastedVP: 10 },
   },
-  sharp: ["drag", "pan", "stops", "fit", "inOutIn"],
+  sharp: ["drag", "pan", "nearCut", "stops", "fit", "inOutIn"],
 } as const;
 
 /** A budgeted number: ok when value <= limit, or with atLeast when value >= limit */

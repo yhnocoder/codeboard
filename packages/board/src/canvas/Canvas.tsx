@@ -36,7 +36,7 @@ import { cardSel } from "../cardsel";
 import { useMd } from "../md/context";
 import { Summaries } from "./Summaries";
 import { ShelfOutline } from "../ui/ShelfPanel";
-import { cardsAsleep, cardsGone, cardsOpacity, detent, summaryCut } from "../state/summary";
+import { cardsAsleep, cardsGone, cardsOpacity, detent } from "../state/summary";
 
 /** The world-extent boxes (.wext, .cshield) reach this far beyond the cards and Sections, aligned to it: enough that a card
  *  nudged outward does not move them, and no more, since every tile of the box within ~3000 px of the viewport is a raster task
@@ -49,6 +49,9 @@ const READ_PX = 11;
 /** Shown below this share of the device scale, a layer with the will-change hint keeps the scale it was rastered at when the
  *  hint is put back (Chromium: above it, between it and the device scale, it rasters at the device scale) */
 const HINT_KEEPS = 0.25;
+/** Below this zoom, above the summary cut, the world moves with no hint (see settle): under it Chromium would raster it at the
+ *  device scale, over 2× the scale shown */
+const HINT_MIN = 0.5;
 /** A flight drops the hint (or rasters again under it) a little before it is shown at half the scale it was rastered at: the
  *  raster lags the camera by a frame or two at a flight's speed, and what is rastered under the hint then is drawn further out
  *  (at half, up to a sixth of a Fit's raster on an Ink Wash board was at over 2× the scale it was drawn at, 2–3 % at 1.8) */
@@ -85,16 +88,15 @@ export function Canvas() {
   // most of a tile's raster there), and more when it lands in the middle of a gesture. So the world is rastered again only
   // when it is magnified (zoomed in past the scale it was rastered at: scaled up, a bitmap is blurry) or minified past 2×
   // (scaled down it looks right, but the tiles at the old scale take many viewports of memory, and past about 8× Chromium
-  // rasters again on its own, 135 ms, wherever that falls), and not within the detent's reach of the summary cut, where the
-  // card level is about to be swapped out and its text is 4 px tall. A stop zoomed out a little, or back where it was, costs
-  // nothing. .settle stays until the next move: taking it off again was a second commit that waited for the same raster.
-  // A stop in the detent's reach, with the card level still shown, is left to Chromium, which rasters a layer with the hint
-  // again on its own once it is shown far enough below its raster scale (from 250 % out to 0.3: every layer of the world at
-  // 1.0, the device scale, not lower). So the scale remembered there is at most that: back at 128 % the stop is a
-  // magnification and the world is rastered again, where it stayed rastered at 1.0 (blurry) while the scale remembered was
-  // still 2.5. Out and back without passing 100 % costs nothing. Past the cut, with the summaries shown, the detent is behind:
-  // a stop there minified past 2× is rastered again like any other, at its own scale (Chromium's own raster there was at 1.0:
-  // 5× the scale shown at 0.2, the whole card level once it was kept drawn).
+  // rasters again on its own, 135 ms, wherever that falls). A stop zoomed out a little, or back where it was, costs nothing.
+  // .settle stays until the next move: taking it off again was a second commit that waited for the same raster.
+  // Below HINT_MIN with the card level shown (just above the summary cut) a move does not put the hint back: Chromium would
+  // raster the world at the device scale (see HINT_KEEPS: 1.0 at 0.3, 11× the pixels shown, 44× on a 2× screen), and every
+  // tile a pan uncovers and every card a hover paints again with it, more than the GPU's tile memory holds: the tiles it cannot
+  // keep were drawn as holes in the cards and images while the pointer moved. There a pan moves the world as it was last
+  // rastered, a zoom rasters it at each frame's scale (at most the viewport's pixels), and a stop minified past 2× is rastered
+  // again like any other. Pushing into the detent is not a stop (summary.ts: the camera is held at the cut while the gesture
+  // goes on), so no re-raster lands under the switch's mist.
   // A camera flight that zooms out (Fit to Window, a reveal, the zoom keys) takes the hint off once it is shown at about half
   // its raster scale (FLY_HALF): under the hint every tile that comes into view on the way is rastered at the scale the flight
   // started from (Fit from 100 % on a board of 40 dense Notes: 43–77 viewports, 31–73 of them at over 2× the scale shown, the
@@ -104,11 +106,17 @@ export function Canvas() {
   // keeps the scale it was rastered at. So from there on the flight takes the hint off for one frame each time the scale
   // about halves and puts it back, rastering the world a few times instead of at every frame (Fit from 100 % to 0.13: every
   // frame from 0.55 to 0.25, then at 0.25 and 0.14; on real study boards Fit to 0.22–0.24 rastered 14–47 viewports instead of
-  // 39–66). A wheel, a drag or a fling that takes over puts the hint back. Where a flight that put the hint back stops, the
+  // 39–66). A wheel, a drag or a fling that takes over puts the hint back (not below HINT_MIN, above). Where a flight that put the hint back stops, the
   // world is rastered once more at the scale it stopped at: what came into view under the hint (the summaries, laid out at
   // 1 / K and shown above a quarter) was rastered at the device scale
   const [settle, setSettle] = createSignal(false);
-  let rasterZ = cam.z,
+  const hintable = (z: number) => z >= HINT_MIN || cardsGone();
+  // the hint back on above HINT_KEEPS, Chromium rasters the world at the device scale (1.0 here) at least
+  const hint = () => {
+    setSettle(false);
+    if (cam.z > HINT_KEEPS) rasterZ = Math.max(rasterZ, 1);
+  };
+  let rasterZ = Math.max(cam.z, 1),
     moving = false,
     unhinted = false,
     rehinted = false,
@@ -122,7 +130,6 @@ export function Canvas() {
           moving = true;
           unhinted = rehinted = false;
           pulse++;
-          setSettle(false);
         }
         const out = flyingOut();
         if (out && (unhinted || z < rasterZ / FLY_HALF)) {
@@ -137,18 +144,17 @@ export function Canvas() {
           }
         } else if (unhinted && !out) {
           unhinted = false;
-          setSettle(false);
-        }
+          if (hintable(z)) hint();
+        } else if (!out && settle() && hintable(z)) hint();
         return;
       }
       if (!moving) return;
       moving = false;
       pulse++;
-      const near = z <= summaryCut() * 1.3 && !cardsGone();
-      if (z > rasterZ * 1.04 || (z < rasterZ / 2 && !near) || rehinted) {
+      if (z > rasterZ * 1.04 || z < rasterZ / 2 || rehinted) {
         rasterZ = z;
         setSettle(true);
-      } else if (near) rasterZ = Math.min(rasterZ, Math.max(z, 1));
+      }
     });
   });
   // A lifted card, and what a Section drag carries, is a layer of its own with its raster scale fixed (styles.css .card.lift,

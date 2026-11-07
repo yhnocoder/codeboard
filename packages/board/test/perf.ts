@@ -1,4 +1,4 @@
-// Usage: node packages/board/test/run-perf.mjs [--cards 240] [--notes 200] (a board of Notes with realistic Markdown: open, pan, zoom, enter edit, type) [--runs 3] [--json out.json] [--quick] [--theme ink-wash] [--light] [--traffic] (City: green light, cars driving) [--profile <step>] [--trace <step>] [--steps <step>] [--long <step>] [--stop pinch] [--inval <step>] [--anim] [--persona] [--scale 2] (--persona: a board like a real study board, Chinese Notes dense with math and Image cards of big screenshots, a Section with one inside it, through the real host: load, pan, zoom, pinch, zoomOutIn, dragImage / dragNote / dragCode; --anim: the line and corner stickers are animated GIFs from a sticker pack; --inval counts what invalidated style and layout; --stop pinch: end each run after the camera steps; --long breaks down each dropped frame, LONG_OVER=8.3 each frame over that many ms; --steps prints each step's time, the board's classes and camera, and the raster passes step by step) [--raster] (only the raster probes: rasterProbes) [--passes drag,dragSnap,dragSection,pan,zoom,stops,cut,fit,zoomedOut,inOutIn] (dragSnap, dragSection: persona only) [--no-raster] (RASTER_OUT=<dir>: each raster pass's trace and a screenshot)
+// Usage: node packages/board/test/run-perf.mjs [--cards 240] [--notes 200] (a board of Notes with realistic Markdown: open, pan, zoom, enter edit, type) [--runs 3] [--json out.json] [--quick] [--theme ink-wash] [--light] [--traffic] (City: green light, cars driving) [--profile <step>] [--trace <step>] [--steps <step>] [--long <step>] [--stop pinch] [--inval <step>] [--anim] [--persona] [--scale 2] (--persona: a board like a real study board, Chinese Notes dense with math and Image cards of big screenshots, a Section with one inside it, through the real host: load, pan, zoom, pinch, zoomOutIn, dragImage / dragNote / dragCode; --anim: the line and corner stickers are animated GIFs from a sticker pack; --inval counts what invalidated style and layout; --stop pinch: end each run after the camera steps; --long breaks down each dropped frame, LONG_OVER=8.3 each frame over that many ms; --steps prints each step's time, the board's classes and camera, and the raster passes step by step) [--raster] (only the raster probes: rasterProbes) [--passes drag,dragSnap,dragSection,pan,nearCut,zoom,stops,cut,fit,zoomedOut,inOutIn] (dragSnap, dragSection: persona only) [--no-raster] (RASTER_OUT=<dir>: each raster pass's trace and a screenshot)
 // Each scenario reports wall clock (action → next frame painted), main-thread busy time (CDP TaskDuration) and frame times
 // (frameP95 / frameMax / over16 / over8: main-thread task durations, frameMedian for steps that wait; the 60 fps budget is 16.7 ms, 120 fps 8.3 ms).
 import * as fs from "node:fs";
@@ -1311,7 +1311,7 @@ const emptySpot = (h: Host) =>
   });
 
 /**
- * The raster probes on a board (probes.ts RASTER_BUDGET says which numbers are judged): drag a card (`drag`: its id), pan, zoom
+ * The raster probes on a board (probes.ts RASTER_BUDGET says which numbers are judged): drag a card (`drag`: its id), pan, pan and hover at rest just above the summary cut (nearCut), zoom
  * out and in, six small zoom stops, a mouse-wheel zoom out across the summary cut (#155: the summary columns rastered at device
  * scale as they came in), Fit to Window from 100 %, from there in to 0.2 (zoomed out past the cut, out of the detent's reach),
  * and in to 250 %, out past the cut and back to ~150 % (inOutIn)
@@ -1327,7 +1327,7 @@ async function rasterProbes(
   const out: Record<string, RasterResult> = {};
   const ran: string[] = [];
   // --passes drag,cut: only these; --quick (PR CI): only the passes with a budget at card level, the others run in the regular runs
-  const passes = arg("passes", process.argv.includes("--quick") ? "drag,dragSnap,pan,stops" : "").split(",");
+  const passes = arg("passes", process.argv.includes("--quick") ? "drag,dragSnap,pan,nearCut,stops" : "").split(",");
   const want = (p: string) => passes[0] === "" || passes.includes(p);
   // the passes asked for (zoom: zoomOut and zoomIn; zoomedOut after fit): rasterChecks fails one that ran and left no result
   for (const p of [
@@ -1335,6 +1335,7 @@ async function rasterProbes(
     "dragSnap",
     "dragSection",
     "pan",
+    "nearCut",
     "stops",
     "zoomOut",
     "zoomIn",
@@ -1432,6 +1433,24 @@ async function rasterProbes(
   const spot = await emptySpot(h);
   await h.page.mouse.move(spot.x, spot.y);
   if (want("pan")) out.pan = await rasterPass(h, cdp, "pan", 20, (i) => h.page.mouse.wheel(i % 3 ? 0 : 60, 40));
+  // a pan at rest just above the summary cut (in the detent's reach, the card level shown), stepped out there from 100 %
+  if (want("nearCut")) {
+    await fresh();
+    await h.page.mouse.move(spot.x, spot.y);
+    for (let i = 0; i < 60 && (await zoomOf(h)) > 0.34; i++) {
+      await ctrlWheel(h, 6);
+      await still(h);
+    }
+    await rest(h);
+    if (process.argv.includes("--steps")) console.log(`  nearCut: at ${(await zoomOf(h)).toFixed(3)}`);
+    // panned, and the pointer moved over the cards in between (hovered, a card is painted again)
+    const box = await h.page.evaluate(() => ({ w: innerWidth, h: innerHeight }));
+    out.nearCut = await rasterPass(h, cdp, "nearCut", 20, (i) =>
+      i % 2
+        ? h.page.mouse.move(box.w * (0.2 + 0.06 * (i % 10)), box.h * (0.3 + 0.04 * (i % 7)), { steps: 4 })
+        : h.page.mouse.wheel(i % 3 ? 0 : 80, 50),
+    );
+  }
   // camera stops: from where the card is revealed (100 %), each step a small zoom (±4) and a rest: what a stop costs
   if (want("stops")) {
     await fresh();
