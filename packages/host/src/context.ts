@@ -18,7 +18,7 @@ import { Remotes } from "./exports";
 import { GitCache } from "./git";
 import { OpenedGithubFiles } from "./github";
 import { Lsp } from "./lsp";
-import { MeaningSearch } from "./meaning";
+import { MeaningSearch, type BoxOptions } from "./meaning";
 import { NameIndex } from "./nameindex";
 import { Prefetch } from "./prefetch";
 import { ScratchFiles } from "./scratchfiles";
@@ -54,7 +54,7 @@ export class HostContext implements Disposable {
   readonly githubFiles = new OpenedGithubFiles(this);
   readonly codeEdit = new CodeEdit(this);
   /** ⌘K's Related by Meaning: the project's semantic index */
-  readonly meaning = new MeaningSearch(this);
+  readonly meaning: MeaningSearch;
   /** The hidden files behind code being edited on a board */
   readonly scratch = new ScratchFiles(this);
   /** Smaller copies of the board's big images */
@@ -63,12 +63,13 @@ export class HostContext implements Disposable {
   private recent = new Lru<true>(RECENT_FILES);
   private logs: string[] = [];
 
-  /** thumbWorker: the built thumbnail worker (HostOptions) */
+  /** thumbWorker: the built thumbnail worker; box: the index service's binary (HostOptions) */
   constructor(
     readonly ws: Workspace,
-    thumbWorker?: string,
+    o: { thumbWorker?: string; box?: BoxOptions } = {},
   ) {
-    this.thumbs = new Thumbs(ws, thumbWorker);
+    this.thumbs = new Thumbs(ws, o.thumbWorker);
+    this.meaning = new MeaningSearch(this, o.box);
   }
 
   dispose() {

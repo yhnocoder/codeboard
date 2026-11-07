@@ -13,7 +13,7 @@
   "workspaces": {
     ".": { "entry": ["tools/**/*.{mjs,cjs}", "vitest.config.mts"], "project": ["tools/**/*.{mjs,cjs}"] },
     "packages/core": { "includeEntryExports": true, "entry": ["test/**/*.ts"], "project": ["src/**/*.ts"] },
-    "packages/innerbox": { "includeEntryExports": true, "entry": ["test/**/*.ts", "bench/**/*.ts"], "project": ["src/**/*.ts"] },
+    "packages/box": { "includeEntryExports": true, "entry": ["test/**/*.ts", "build.mjs"], "project": ["src/**/*.ts"] },
     "packages/host": { "includeEntryExports": true, "entry": ["test/**/*.ts"], "project": ["src/**/*.ts"] },
     "packages/board": {
       "includeEntryExports": true,

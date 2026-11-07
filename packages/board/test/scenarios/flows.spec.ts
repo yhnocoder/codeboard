@@ -1025,7 +1025,7 @@ test("palette", async () => {
 });
 
 test("paletteMeaning", async () => {
-  // the host's Related by Meaning (innerbox) played here: the first answer is still indexing, the next is done
+  // the host's Related by Meaning (box) played here: the first answer is still indexing, the next is done
   let asked = 0;
   const h = await open({
     board: boardWith("BlockManager.deallocate"),

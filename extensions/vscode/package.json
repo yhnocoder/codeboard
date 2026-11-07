@@ -970,7 +970,7 @@
         "codeboard.search.embeddingUrl": {
           "type": "string",
           "default": "",
-          "markdownDescription": "OpenAI-compatible embedding server for Search › Related by Meaning, running on your own machine, e.g. `http://127.0.0.1:11001/v1` (oMLX serving EmbeddingGemma). Empty: off. Set its key with **CodeBoard: Set Embedding API Key**. The index is kept in the storage folder (`.innerbox/`, not in git)."
+          "markdownDescription": "OpenAI-compatible embedding server for Search › Related by Meaning, running on your own machine, e.g. `http://127.0.0.1:11001/v1` (oMLX serving EmbeddingGemma). Empty: off. Set its key with **CodeBoard: Set Embedding API Key**. The index is kept in your user data folder (`box/`, shared by every window), not in the project."
         },
         "codeboard.search.embeddingModel": {
           "type": "string",
@@ -1019,6 +1019,7 @@
   },
   "devDependencies": {
     "@codeboard/board": "^0.1.0",
+    "@codeboard/box": "^0.1.0",
     "@types/node": "^20.19.43",
     "@types/vscode": "1.140.0",
     "esbuild": "^0.28.2",

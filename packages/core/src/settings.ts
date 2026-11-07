@@ -371,7 +371,7 @@ export const HOST_SETTINGS = {
       type: "string",
       default: "",
       markdownDescription:
-        "OpenAI-compatible embedding server for Search › Related by Meaning, running on your own machine, e.g. `http://127.0.0.1:11001/v1` (oMLX serving EmbeddingGemma). Empty: off. Set its key with **CodeBoard: Set Embedding API Key**. The index is kept in the storage folder (`.innerbox/`, not in git).",
+        "OpenAI-compatible embedding server for Search › Related by Meaning, running on your own machine, e.g. `http://127.0.0.1:11001/v1` (oMLX serving EmbeddingGemma). Empty: off. Set its key with **CodeBoard: Set Embedding API Key**. The index is kept in your user data folder (`box/`, shared by every window), not in the project.",
     },
   },
   searchEmbeddingModel: {
