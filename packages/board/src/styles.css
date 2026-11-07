@@ -4586,6 +4586,15 @@ mark.wdiff {
 .palette .cand {
   padding: 5px 8px;
 }
+.pgh .pnote {
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.palette .empty.perr {
+  font-size: 11px;
+  padding: 2px 8px 4px;
+}
 .palette .cand .kind,
 .addnote .cand .kind {
   font: italic 600 12px / 1 var(--serif);

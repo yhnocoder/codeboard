@@ -226,6 +226,10 @@ export type SearchItem =
   | { kind: "sidenote"; label: string; detail: string; board: string; card: string; sidenote: string }
   | { kind: "entry"; label: string; detail: string; path: string; line: number; sym?: string; end?: number };
 
+/** Related by Meaning: the closest cards and sidenotes; left = pieces still being indexed (ask again); off = no embedding
+ *  endpoint is set; error = the endpoint failed (what it said) */
+export type MeaningResult = { items: SearchItem[]; left?: number; off?: true; error?: string };
+
 export type Commit = { commit: string; msg: string; date: string; head?: boolean };
 
 export type DiffData = {
@@ -371,6 +375,8 @@ export type BoardToHost =
     } // 回 PeekResult
   | { type: "search"; req: number; q: string; scope?: "all" | "code" | "symbols" }
   | { type: "searchPick"; req: number; item: SearchItem; alt?: boolean }
+  /** ⌘K's Related by Meaning (host meaning.ts): cards and sidenotes of the project's boards closest in meaning to q */
+  | { type: "searchMeaning"; req: number; q: string }
   | { type: "entryPoints"; req: number }
   | { type: "diff"; req: number; seg: Segment; against?: string } // against 缺省 = HEAD；"upstream" = 上游最新（有 Variant 的卡）
   | { type: "commits"; req: number; seg: Segment }
@@ -629,6 +635,7 @@ type Replies = {
   peek: PeekResult;
   search: SearchItem[];
   searchPick: NewCard | null;
+  searchMeaning: MeaningResult;
   entryPoints: SearchItem[];
   diff: DiffData;
   commits: Commit[];

@@ -1024,6 +1024,46 @@ test("palette", async () => {
   await h.page.context().close();
 });
 
+test("paletteMeaning", async () => {
+  // the host's Related by Meaning (innerbox) played here: the first answer is still indexing, the next is done
+  let asked = 0;
+  const h = await open({
+    board: boardWith("BlockManager.deallocate"),
+    light,
+    on: async (m, reply) => {
+      if (m.type !== "searchMeaning") return false;
+      asked++;
+      const c = h.board().cards[0];
+      await reply(m.req!, {
+        items: [
+          { kind: "card", label: "BlockManager.deallocate", detail: "This board", board: h.board().id, card: c.id },
+        ],
+        ...(asked === 1 ? { left: 3 } : {}),
+      });
+      return true;
+    },
+  });
+  await h.page.keyboard.press("ControlOrMeta+k");
+  await h.page.locator(".palette input:focus").waitFor();
+  await h.page.keyboard.type("显存回收");
+  const group = h.page.locator(".palette .pgh", { hasText: "Related by Meaning" });
+  await group.waitFor();
+  const indexing = (await group.textContent()) ?? "";
+  await until(h, "asked again once indexing is done", () => asked >= 2);
+  await expect(group).not.toContainText("indexing");
+  await shot(h, "pal-04-meaning");
+  const sent = h.sent.filter((m) => m.type === "searchMeaning").map((m: any) => m.q);
+  await h.page.keyboard.press("Enter");
+  await expect(h.page.locator(".palette")).toHaveCount(0);
+  const selected = await h.page.locator(`.card.sel[data-id="${h.board().cards[0].id}"]`).count();
+  check(
+    "paletteMeaning shows Related by Meaning while indexing, asks again until done, and Enter goes to the card",
+    /indexing, 3 left/.test(indexing) && sent.every((q) => q === "显存回收") && selected === 1,
+    { indexing, sent, selected },
+  );
+  await h.page.context().close();
+});
+
 test("peek", async () => {
   const h = await open({ board: boardWith("Scheduler.schedule"), light });
   await h.page.locator(".card .src .call", { hasText: "can_allocate" }).first().hover();

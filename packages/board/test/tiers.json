@@ -426,6 +426,7 @@
         "packages/board/src/actions/menus.ts",
         "packages/board/src/keymap.ts",
         "packages/host/src/prompts.ts",
+        "packages/host/src/meaning.ts",
         "packages/board/test/scenarios/{dialogs,keyboard-focus,header,multi-select}.spec.ts"
       ],
       "scenarios": [

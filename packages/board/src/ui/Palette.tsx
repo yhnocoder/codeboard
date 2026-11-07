@@ -6,11 +6,12 @@ import { Icon } from "./icons";
 import { useOverlay } from "./overlay";
 import { useListNav, useDebouncedAsk } from "./hooks";
 import { For, Show, createSignal, createEffect, onMount, createMemo } from "solid-js";
-import type { SearchItem } from "@codeboard/core";
+import type { MeaningResult, SearchItem } from "@codeboard/core";
 import { state } from "../state/store";
 import { select } from "../state/selection";
 import { toast } from "../state/toast";
 import { paletteOpen, setPaletteOpen } from "../state/ui";
+import { MEANING_PAUSE, MEANING_RETRY } from "../state/timing";
 import { ask, send } from "../host";
 import * as A from "../actions";
 
@@ -31,7 +32,16 @@ export function Palette() {
     inp.focus();
     inp.select();
   });
-  const ordered = createMemo(() => GROUPS.flatMap(([k]) => res().filter((r) => r.kind === k)));
+  const [meaning, setMeaning] = createSignal<MeaningResult>({ items: [] });
+  /** asked again while indexing: for which query, how many times */
+  const [retry, setRetry] = createSignal({ s: "", n: 0 });
+  /** Related by Meaning, without what the words already found */
+  const related = createMemo(() => {
+    const key = (r: SearchItem) => (r.kind === "sidenote" ? `s:${r.sidenote}` : r.kind === "card" ? `c:${r.card}` : "");
+    const found = new Set(res().map(key));
+    return meaning().items.filter((r) => !found.has(key(r)));
+  });
+  const ordered = createMemo(() => [...GROUPS.flatMap(([k]) => res().filter((r) => r.kind === k)), ...related()]);
   const { i, setI, key } = useListNav(() => ordered().length);
   const busy = useDebouncedAsk(
     () => q().trim(),
@@ -44,6 +54,19 @@ export function Palette() {
       setI(0);
     },
     (s) => (s ? 90 : 0),
+  );
+  useDebouncedAsk(
+    () => {
+      const s = init.mode === "code" ? "" : q().trim();
+      return { s, again: retry().s === s && retry().n > 0 };
+    },
+    ({ s }) =>
+      s ? ask("searchMeaning", { q: s }).catch((): MeaningResult => ({ items: [] })) : Promise.resolve({ items: [] }),
+    (r, { s }) => {
+      setMeaning(r);
+      if (r.left) setRetry((x) => ({ s, n: x.s === s ? x.n + 1 : 1 }));
+    },
+    ({ again }) => (again ? MEANING_RETRY : MEANING_PAUSE),
   );
   createEffect(() => {
     i();
@@ -92,6 +115,24 @@ export function Palette() {
     ) : (
       <Icon name="entry" size={13} />
     );
+  const item = (it: SearchItem) => {
+    const idx = () => ordered().indexOf(it);
+    return (
+      <button
+        class="cand"
+        classList={{ on: idx() === i() }}
+        onPointerMove={(e) => {
+          if (e.movementX || e.movementY) setI(idx());
+        }}
+        onClick={(e) => run(it, e.altKey)}
+      >
+        <span class="kind">{icon(it)}</span>
+        <Show when={it.kind === "card" ? it.num : undefined}>{(n) => <span class="step sm">{n()}</span>}</Show>
+        <span class="lb">{it.label}</span>
+        <small>{it.detail}</small>
+      </button>
+    );
+  };
   return (
     <div class="scrim light">
       <div class="palette pill" data-nodrag onKeyDown={onKey}>
@@ -108,32 +149,19 @@ export function Palette() {
             {([k, title]) => (
               <Show when={res().some((r) => r.kind === k)}>
                 <div class="pgh">{title}</div>
-                <For each={res().filter((r) => r.kind === k)}>
-                  {(it) => {
-                    const idx = () => ordered().indexOf(it);
-                    return (
-                      <button
-                        class="cand"
-                        classList={{ on: idx() === i() }}
-                        onPointerMove={(e) => {
-                          if (e.movementX || e.movementY) setI(idx());
-                        }}
-                        onClick={(e) => run(it, e.altKey)}
-                      >
-                        <span class="kind">{icon(it)}</span>
-                        <Show when={it.kind === "card" ? it.num : undefined}>
-                          {(n) => <span class="step sm">{n()}</span>}
-                        </Show>
-                        <span class="lb">{it.label}</span>
-                        <small>{it.detail}</small>
-                      </button>
-                    );
-                  }}
-                </For>
+                <For each={res().filter((r) => r.kind === k)}>{(it) => item(it)}</For>
               </Show>
             )}
           </For>
-          <Show when={!res().length && !busy()}>
+          <Show when={related().length || meaning().left || meaning().error}>
+            <div class="pgh">
+              Related by Meaning
+              <Show when={meaning().left}>{(n) => <span class="pnote"> · indexing, {n()} left</span>}</Show>
+            </div>
+            <Show when={meaning().error}>{(e) => <div class="empty perr">{e()}</div>}</Show>
+            <For each={related()}>{(it) => item(it)}</For>
+          </Show>
+          <Show when={!res().length && !related().length && !busy()}>
             <div class="empty">{q().trim() ? "No matches" : "No entry points found. Type to search."}</div>
           </Show>
         </div>

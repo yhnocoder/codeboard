@@ -87,3 +87,7 @@ export const LIFT_FADE = 140;
 export const MENU_OPEN = 150;
 /** A GIF frame that asks for no delay, or 10 ms, shows this long, as browsers play them (md/anim.ts) */
 export const GIF_MIN_DELAY = 100;
+/** ⌘K's Related by Meaning: asked this long after typing stops (each keystroke would embed a query the user is still typing) */
+export const MEANING_PAUSE = 150;
+/** …and asked again this often while the project is still being indexed */
+export const MEANING_RETRY = 1500;
