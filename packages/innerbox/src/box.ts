@@ -2,11 +2,14 @@
 // two documents with the same piece share one vector), and which pieces each document has. A document's score for a query is
 // its best piece's. Searching compares the query with every vector: a few milliseconds for tens of thousands of pieces.
 import { BATCH, unit, type Embedder } from "./embed";
-import { fingerprint, pieces, type Doc } from "./text";
+import { fingerprint, imageFingerprint, PICTURE, pieces, type Doc, type DocImage } from "./text";
 
-/** piece: which of the document's pieces matched best (pieceBodies) */
-export type Hit = { id: string; score: number; piece: number };
+/** piece: which of the document's pieces matched best (an index into pieceBodies); picture: the key of the picture that did
+ *  instead (then piece is -1) */
+export type Hit = { id: string; score: number; piece: number; picture?: string };
 
+/** Pictures read and embedded between two batch() calls (each takes a second or so) */
+const PICTURES = 4;
 /** File format version (toBytes) */
 const FORMAT = 1;
 const MAGIC = 0x31786269; // "ibx1"
@@ -23,31 +26,36 @@ export class Box {
     return this.docs.size;
   }
 
-  /** Pieces of these documents not embedded yet */
+  /** Pieces of these documents not embedded yet (pictures too) */
   missing(docs: Doc[]): number {
     const need = new Set<string>();
-    for (const d of docs) for (const p of pieces(d)) if (!this.vecs.has(fingerprint(p))) need.add(fingerprint(p));
+    for (const d of docs) {
+      for (const p of pieces(d)) if (!this.vecs.has(fingerprint(p))) need.add(fingerprint(p));
+      for (const img of d.images ?? []) if (!this.vecs.has(imageFingerprint(img))) need.add(imageFingerprint(img));
+    }
     return need.size;
   }
 
   /**
    * Brings the index to exactly these documents: embeds the pieces it has no vector for (in the order given, so put what
-   * matters most first), forgets documents that are gone and vectors no document uses. Documents become searchable as
-   * soon as their pieces are in. After each request batch() is awaited (to save what is done so far, so a window closed halfway
-   * keeps it) and stop() asked; when it says yes, the rest waits for the next update.
+   * matters most first; pictures after all the text), forgets documents that are gone and vectors no document uses. A document
+   * becomes searchable as soon as its text is in, and each picture joins it when embedded (none, when the model does not take
+   * pictures). After each request batch(done) is awaited (to save what is done so far, so a window closed halfway keeps it;
+   * done: pieces embedded so far) and stop() asked; when it says yes, the rest waits for the next update.
    * Answers whether anything changed.
    */
   async update(
     docs: Doc[],
     embedder: Embedder,
-    o: { stop?: () => boolean; batch?: () => Promise<void> } = {},
+    o: { stop?: () => boolean; batch?: (done: number) => Promise<void> } = {},
   ): Promise<boolean> {
     const stop = o.stop ?? (() => false);
-    let changed = false;
-    const want = new Map<string, { texts: string[]; fps: string[] }>();
+    let changed = false,
+      done = 0;
+    const want = new Map<string, { texts: string[]; fps: string[]; images: DocImage[] }>();
     for (const d of docs) {
       const texts = pieces(d);
-      want.set(d.id, { texts, fps: texts.map(fingerprint) });
+      want.set(d.id, { texts, fps: texts.map(fingerprint), images: d.images ?? [] });
     }
     for (const id of [...this.docs.keys()])
       if (!want.has(id)) {
@@ -55,12 +63,13 @@ export class Box {
         this.packed = undefined;
         changed = true;
       }
-    const ready = (fps: string[]) => fps.every((f) => this.vecs.has(f));
     const settle = () => {
       for (const [id, w] of want) {
+        if (!w.fps.every((f) => this.vecs.has(f))) continue;
+        const fps = [...w.fps, ...w.images.map(imageFingerprint).filter((f) => this.vecs.has(f))];
         const had = this.docs.get(id);
-        if (ready(w.fps) && !(had && had.length === w.fps.length && had.every((f, i) => f === w.fps[i]))) {
-          this.docs.set(id, w.fps);
+        if (!(had && had.length === fps.length && had.every((f, i) => f === fps[i]))) {
+          this.docs.set(id, fps);
           this.packed = undefined;
           changed = true;
         }
@@ -68,24 +77,49 @@ export class Box {
     };
     settle();
     const queue: [string, string][] = [];
+    const pics: [string, DocImage][] = [];
     const queued = new Set<string>();
-    for (const w of want.values())
+    for (const w of want.values()) {
       w.fps.forEach((f, i) => {
         if (!this.vecs.has(f) && !queued.has(f)) {
           queued.add(f);
           queue.push([f, w.texts[i]]);
         }
       });
+      for (const img of w.images) {
+        const f = imageFingerprint(img);
+        if (!this.vecs.has(f) && !queued.has(f)) {
+          queued.add(f);
+          pics.push([f, img]);
+        }
+      }
+    }
     for (let i = 0; i < queue.length && !stop(); i += BATCH) {
       const batch = queue.slice(i, i + BATCH);
       const vs = await embedder.embed(batch.map(([, t]) => t));
       batch.forEach(([f], j) => this.vecs.set(f, vs[j]));
+      done += batch.length;
       settle();
-      await o.batch?.();
+      await o.batch?.(done);
+    }
+    for (let i = 0; i < pics.length && !stop() && embedder.embedImages; i += PICTURES) {
+      const urls = await Promise.all(
+        pics.slice(i, i + PICTURES).map(async ([f, img]) => [f, await img.url()] as const),
+      );
+      const read = urls.filter((x): x is readonly [string, string] => !!x[1]);
+      const vs = read.length ? await embedder.embedImages(read.map(([, u]) => u)) : [];
+      if (!vs) break; // the model does not take pictures
+      read.forEach(([f], j) => this.vecs.set(f, vs[j]));
+      done += urls.length;
+      settle();
+      await o.batch?.(done);
     }
     if (!stop()) {
       const used = new Set<string>();
-      for (const w of want.values()) for (const f of w.fps) used.add(f);
+      for (const w of want.values()) {
+        for (const f of w.fps) used.add(f);
+        for (const img of w.images) used.add(imageFingerprint(img));
+      }
       for (const f of [...this.vecs.keys()]) if (!used.has(f)) this.vecs.delete(f);
     }
     return changed;
@@ -148,7 +182,12 @@ export class Box {
           best = sims[rows[j]];
           piece = j - starts[d];
         }
-      hits.push({ id: ids[d], score: best, piece });
+      const f = this.docs.get(ids[d])![piece];
+      hits.push(
+        f.startsWith(PICTURE)
+          ? { id: ids[d], score: best, piece: -1, picture: f.slice(PICTURE.length) }
+          : { id: ids[d], score: best, piece },
+      );
     }
     return hits.sort((a, b) => b.score - a.score).slice(0, k);
   }

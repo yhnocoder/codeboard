@@ -1,11 +1,20 @@
 // An embedding model behind an OpenAI-compatible endpoint (POST {base}/embeddings), such as oMLX serving EmbeddingGemma on
-// the user's own machine. Texts arrive already prompted (text.ts); vectors come back normalized.
+// the user's own machine. Texts arrive already prompted (text.ts); vectors come back normalized. Pictures go in the shape the
+// server takes (SHAPES); a server that answers the first one with an error in every shape does not take pictures.
 
 export interface Embedder {
   /** The model's name: the index is kept per model, a different one starts it again */
   model(): Promise<string>;
   embed(texts: string[]): Promise<Float32Array[]>;
+  /** Pictures (data: URLs), one vector each; undefined when the model does not take pictures (then they are left out) */
+  embedImages?(urls: string[]): Promise<Float32Array[] | undefined>;
 }
+
+/** How a picture (a data: URL) goes in /embeddings' input, as servers take it: a content part (oMLX), an {image} item (SGLang) */
+const SHAPES = {
+  part: (url: string) => ({ type: "image_url", image_url: { url } }),
+  item: (url: string) => ({ image: url }),
+};
 
 /** Texts per request */
 export const BATCH = 16;
@@ -37,9 +46,21 @@ export function endpointEmbedder(o: EndpointOptions): Embedder {
     const r = await get(url, { ...init, headers }).catch((e: Error & { cause?: { code?: string } }) => {
       throw new Error(`Cannot reach the embedding server at ${base} (${e.cause?.code ?? e.message})`);
     });
-    if (!r.ok) throw new Error(`The embedding server answered ${r.status}: ${(await r.text()).slice(0, 200)}`);
+    if (!r.ok)
+      throw Object.assign(new Error(`The embedding server answered ${r.status}: ${(await r.text()).slice(0, 200)}`), {
+        status: r.status,
+      });
     return (await r.json()) as T;
   };
+  const vectors = async (input: unknown[]) => {
+    const j = await call<{ data: { index: number; embedding: number[] }[] }>(`${base}/embeddings`, {
+      method: "POST",
+      body: JSON.stringify({ model: await model(), input }),
+    });
+    return [...j.data].sort((a, b) => a.index - b.index).map((d) => unit(d.embedding));
+  };
+  /** The item shape the server takes pictures in; null: it takes none; undefined: not known before the first picture */
+  let shape: keyof typeof SHAPES | null | undefined;
   let picked: Promise<string> | undefined;
   const model = () =>
     (picked ??= o.model
@@ -56,14 +77,35 @@ export function endpointEmbedder(o: EndpointOptions): Embedder {
   return {
     model,
     async embed(texts) {
-      const m = await model();
       const out: Float32Array[] = [];
-      for (let i = 0; i < texts.length; i += BATCH) {
-        const j = await call<{ data: { index: number; embedding: number[] }[] }>(`${base}/embeddings`, {
-          method: "POST",
-          body: JSON.stringify({ model: m, input: texts.slice(i, i + BATCH) }),
-        });
-        for (const d of [...j.data].sort((a, b) => a.index - b.index)) out.push(unit(d.embedding));
+      for (let i = 0; i < texts.length; i += BATCH) out.push(...(await vectors(texts.slice(i, i + BATCH))));
+      return out;
+    },
+    async embedImages(urls) {
+      if (shape === null) return undefined;
+      const out: Float32Array[] = [];
+      // one at a time: a picture is hundreds of tokens and large to send
+      for (const url of urls) {
+        if (shape) {
+          out.push(...(await vectors([SHAPES[shape](url)])));
+          continue;
+        }
+        // the first picture finds the item shape the server takes; an error answer to every shape means no pictures
+        for (const s of Object.keys(SHAPES) as (keyof typeof SHAPES)[]) {
+          const v = await vectors([SHAPES[s](url)]).catch((e: { status?: number }) => {
+            if (e.status === undefined) throw e;
+            return undefined;
+          });
+          if (v) {
+            shape = s;
+            out.push(...v);
+            break;
+          }
+        }
+        if (!shape) {
+          shape = null;
+          return undefined;
+        }
       }
       return out;
     },

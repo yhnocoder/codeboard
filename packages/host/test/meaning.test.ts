@@ -1,6 +1,6 @@
 // ⌘K's Related by Meaning against a stand-in embedding server: the project's cards and sidenotes are indexed (each with its
-// board and Section), the index is a file in the storage folder kept out of git, and only changed text is embedded again;
-// ⌘K's This Board keeps both groups to the board asked from
+// board and Section) and Image cards by their picture, the index is a file in the storage folder kept out of git, and only
+// changed text is embedded again; ⌘K's This Board keeps both groups to the board asked from
 import * as fs from "node:fs";
 import * as http from "node:http";
 import * as path from "node:path";
@@ -21,12 +21,15 @@ const server = http.createServer((req, res) => {
   req.on("end", () => {
     res.setHeader("content-type", "application/json");
     if (req.url?.endsWith("/models")) return res.end(JSON.stringify({ data: [{ id: "test-embed" }] }));
-    const { input } = JSON.parse(body) as { input: string[] };
-    asked.push({ texts: input, auth: req.headers.authorization });
+    const { input } = JSON.parse(body) as { input: (string | { image_url: { url: string } })[] };
+    // a "picture" here is a file whose bytes are the words it shows
+    const text = (x: (typeof input)[number]) =>
+      typeof x === "string" ? x : Buffer.from(x.image_url.url.split(",")[1], "base64").toString("utf8");
+    asked.push({ texts: input.map(text), auth: req.headers.authorization });
     const vec = (t: string) => WORDS.map((w) => t.split(w).length - 1 + 0.01);
     res.end(
       JSON.stringify({
-        data: input.map((t, index) => ({ index, embedding: vec(t.replace(/^.*?\| (text|query): /, "")) })),
+        data: input.map((x, index) => ({ index, embedding: vec(text(x).replace(/^.*?\| (text|query): /, "")) })),
       }),
     );
   });
@@ -95,6 +98,19 @@ describe("Related by Meaning", () => {
     expect(r.items[0]).toMatchObject({ card: "n2" });
     expect(asked.slice(start).flatMap((a) => a.texts)).toEqual(["task: search result | query: 显存"]);
     fresh.dispose();
+  });
+
+  it("finds an Image card by its picture, read from assets/", async () => {
+    fs.mkdirSync(path.join(dir, "assets"), { recursive: true });
+    fs.writeFileSync(path.join(dir, "assets", "f00d.png"), "a prefill scheduler diagram");
+    const b = (await store.load("b"))!;
+    b.cards.push({ id: "pic", kind: "image", src: "f00d.png" });
+    b.place.pic = { x: 0, y: 0, w: 300 };
+    await store.save(b);
+    await cx.meaning.update(store);
+    const r = await cx.meaning.search(store, "prefill scheduler", "b");
+    expect(r.items.map((i) => i.kind === "card" && i.card)).toContain("pic");
+    expect(asked.flatMap((a) => a.texts)).toContain("a prefill scheduler diagram");
   });
 
   it("is off while no endpoint is set, and says what failed when the server does", async () => {

@@ -4,7 +4,16 @@
 // after boards change; only text not seen before is embedded. Off while no endpoint is set.
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { BATCH, Box, endpointEmbedder, pieceBodies, queryText, type Doc, type Embedder } from "@codeboard/innerbox";
+import {
+  Box,
+  endpointEmbedder,
+  fingerprint,
+  pieceBodies,
+  queryText,
+  type Doc,
+  type DocImage,
+  type Embedder,
+} from "@codeboard/innerbox";
 import { cardTitle, shelvedCards, type Card, type MeaningResult, type SearchItem } from "@codeboard/core";
 import type { Storage } from "./storage/boards";
 import type { HostContext } from "./context";
@@ -140,14 +149,13 @@ export class MeaningSearch {
           this.latest = await projectDocs(store, here);
           const docs = [...this.latest.docs.values()].map((d) => d.doc);
           const total = box.missing(docs);
-          let batches = 0,
-            saved = Date.now();
+          let saved = Date.now();
           this.left = total;
           const changed = await box.update(docs, e, {
             stop: () => this.disposed,
             // what is embedded so far is kept every little while: a window closed halfway loses at most that much
-            batch: async () => {
-              this.left = Math.max(0, total - BATCH * ++batches);
+            batch: async (done) => {
+              this.left = Math.max(0, total - done);
               if (Date.now() - saved < SAVE_EVERY || this.disposed) return;
               await this.save(box);
               saved = Date.now();
@@ -209,6 +217,7 @@ export class MeaningSearch {
 async function projectDocs(store: Storage, here?: string) {
   const boards = (await store.all()).map((x) => x.board).sort((a, b) => (a.id === here ? -1 : b.id === here ? 1 : 0));
   const docs = new Map<string, { doc: Doc; origin: Origin; md: string; where: string }>();
+  const pictures = picturesIn(store);
   const names = new Map(boards.map((b) => [b.id, b.name]));
   for (const board of boards) {
     const off = shelvedCards(board);
@@ -228,7 +237,7 @@ async function projectDocs(store: Storage, here?: string) {
       }
       const title = cardTitle(c, board);
       docs.set(id, {
-        doc: { id, title, text: cardText(c, board.place[c.id]?.summary?.text) },
+        doc: { id, title, text: cardText(c, board.place[c.id]?.summary?.text), images: pictures(c) },
         where: whereOf(board, c.id),
         origin: { kind: "card", label: title, board: board.id, card: c.id, boards: [board.id] },
         md: cardMarkdown(c, board),
@@ -271,6 +280,52 @@ async function projectDocs(store: Storage, here?: string) {
     }
   }
   return { docs, names };
+}
+
+/** Raster formats an embedding server reads (an SVG would need drawing first) */
+const RASTER: Record<string, string> = {
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  gif: "image/gif",
+  webp: "image/webp",
+};
+/** Pictures embedded per card, at most (a Note full of screenshots still costs a bounded number) */
+const MAX_PICTURES = 4;
+
+/** A card's pictures, for embedding on their own: an Image card's, and the local images in a Note (files in assets/, named by
+ *  their content, so the name is the key; a data: URL is its own) */
+function picturesIn(store: Storage) {
+  const asset = (src: string): DocImage | undefined => {
+    if (src.startsWith("data:"))
+      return /^data:image\/(png|jpeg|gif|webp)[;,]/.test(src)
+        ? { key: fingerprint(src), url: async () => src }
+        : undefined;
+    const file = src.replace(/^assets\//, "");
+    const type = RASTER[path.extname(file).slice(1).toLowerCase()];
+    if (!type || /[\\/:]/.test(file)) return undefined;
+    return {
+      key: file,
+      url: () =>
+        fs.readFile(path.join(store.assetsDir(), file)).then(
+          (b) => `data:${type};base64,${b.toString("base64")}`,
+          () => undefined, // gone or not there yet: tried again on the next update
+        ),
+    };
+  };
+  return (c: Card): DocImage[] | undefined => {
+    const srcs =
+      c.kind === "image"
+        ? [c.src]
+        : c.kind === "note"
+          ? [...c.md.matchAll(/!\[[^\]]*\]\(<?([^)\s>]+)/g)].map((m) => m[1])
+          : [];
+    const out = srcs
+      .map(asset)
+      .filter((x): x is DocImage => !!x)
+      .slice(0, MAX_PICTURES);
+    return out.length ? out : undefined;
+  };
 }
 
 /** What a card says, for embedding: its description and summary, then its own text */

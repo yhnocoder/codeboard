@@ -4,22 +4,38 @@ import { pieceBodies, pieces } from "../src/text";
 
 /** A stand-in model: a vector of word counts over a small vocabulary, so "kv cache" lands near pieces that say kv cache */
 const VOCAB = ["kv", "cache", "block", "scheduler", "prefill", "decode", "graph", "cuda", "attention", "sampler"];
-function fake(): Embedder & { calls: string[][] } {
+function fake(o: { pictures?: boolean } = {}): Embedder & { calls: string[][]; pics: string[] } {
   const calls: string[][] = [];
+  const pics: string[] = [];
+  const vec = (body: string) => {
+    const v = Float32Array.from(
+      VOCAB,
+      (w) =>
+        body
+          .toLowerCase()
+          .split(/\W+/)
+          .filter((x) => x === w).length + 0.01,
+    );
+    const n = Math.hypot(...v);
+    return v.map((x) => x / n);
+  };
   return {
     calls,
+    pics,
     model: async () => "fake",
     async embed(texts) {
       calls.push(texts);
-      return texts.map((t) => {
-        const body = t.replace(/^task: search result \| query: |^title: .*? \| text: /, "").toLowerCase();
-        const v = Float32Array.from(VOCAB, (w) => body.split(/\W+/).filter((x) => x === w).length + 0.01);
-        const n = Math.hypot(...v);
-        return v.map((x) => x / n);
-      });
+      return texts.map((t) => vec(t.replace(/^task: search result \| query: |^title: .*? \| text: /, "")));
+    },
+    // a "picture" is a data: URL whose text is what it shows
+    async embedImages(urls) {
+      if (o.pictures === false) return undefined;
+      pics.push(...urls);
+      return urls.map((u) => vec(decodeURIComponent(u.replace(/^data:,/, ""))));
     },
   };
 }
+const picture = (key: string, shows: string) => ({ key, url: async () => `data:,${encodeURIComponent(shows)}` });
 const q = async (e: Embedder, s: string) => (await e.embed([queryText(s)]))[0];
 
 const DOCS: Doc[] = [
@@ -92,6 +108,33 @@ describe("innerbox", () => {
     expect(pieces({ id: "y", title: "Only a title", text: "" })).toEqual(["title: Only a title | text: Only a title"]);
   });
 
+  it("finds a document by a picture in it, embeds each picture once, and keeps the text when the model takes no pictures", async () => {
+    const e = fake(),
+      box = new Box("fake");
+    const docs: Doc[] = [
+      ...DOCS,
+      { id: "img", title: "", text: "", images: [picture("p1", "a cuda graph replayed for decode")] },
+      { id: "img2", title: "Same picture", text: "", images: [picture("p1", "a cuda graph replayed for decode")] },
+    ];
+    await box.update(docs, e);
+    const hits = box.search(await q(e, "cuda graph decode"), 5);
+    expect(hits.find((h) => h.id === "img")).toMatchObject({ picture: "p1", piece: -1 });
+    expect(e.pics).toHaveLength(1);
+    await box.update(docs, e);
+    expect(e.pics).toHaveLength(1);
+    expect(
+      Box.fromBytes(box.toBytes(), "fake")!
+        .search(await q(e, "cuda graph decode"), 5)
+        .map((h) => h.id),
+    ).toContain("img");
+
+    const blind = fake({ pictures: false }),
+      plain = new Box("fake");
+    await plain.update(docs, blind);
+    expect(plain.size).toBe(docs.length);
+    expect(plain.search(await q(blind, "scheduler"), 1)[0]).toMatchObject({ id: "b", piece: 0 });
+  });
+
   it("talks to an OpenAI-compatible endpoint, picking its embedding model", async () => {
     const seen: string[] = [];
     const fetchStub = (async (url: string, init?: RequestInit) => {
@@ -110,5 +153,46 @@ describe("innerbox", () => {
       "GET http://127.0.0.1:11001/v1/models Bearer k",
       "POST http://127.0.0.1:11001/v1/embeddings Bearer k",
     ]);
+  });
+});
+
+describe("pictures through an endpoint", () => {
+  const server = (takes: "part" | "item" | "none", bodies: unknown[]) =>
+    (async (url: string, init?: RequestInit) => {
+      if (url.endsWith("/models")) return Response.json({ data: [{ id: "embeddinggemma-2" }] });
+      const body = JSON.parse(String(init?.body));
+      bodies.push(body.input);
+      const x = body.input[0];
+      const ok =
+        typeof x === "string" || (takes === "part" ? x.type === "image_url" : takes === "item" && "image" in x);
+      if (!ok)
+        return Response.json({ error: { message: "Unsupported embedding content part type: None" } }, { status: 400 });
+      return Response.json({ data: (body.input as unknown[]).map((_, index) => ({ index, embedding: [1, 0] })) });
+    }) as typeof fetch;
+  const A = "data:image/png;base64,AA",
+    B = "data:image/png;base64,BB";
+
+  it("sends each as an image_url part (oMLX), or an {image} item (SGLang) when that is what the server takes", async () => {
+    const parts: unknown[] = [];
+    expect(
+      await endpointEmbedder({ base: "http://x/v1", fetch: server("part", parts) }).embedImages!([A, B]),
+    ).toHaveLength(2);
+    expect(parts).toEqual([
+      [{ type: "image_url", image_url: { url: A } }],
+      [{ type: "image_url", image_url: { url: B } }],
+    ]);
+    const items: unknown[] = [];
+    expect(
+      await endpointEmbedder({ base: "http://x/v1", fetch: server("item", items) }).embedImages!([A, B]),
+    ).toHaveLength(2);
+    expect(items.slice(1)).toEqual([[{ image: A }], [{ image: B }]]);
+  });
+
+  it("stops sending pictures once the server turns the first one down in every shape", async () => {
+    const bodies: unknown[] = [];
+    const no = endpointEmbedder({ base: "http://x/v1", fetch: server("none", bodies) });
+    expect(await no.embedImages!([A, B])).toBeUndefined();
+    expect(await no.embedImages!(["data:image/png;base64,CC"])).toBeUndefined();
+    expect(bodies).toHaveLength(2);
   });
 });
