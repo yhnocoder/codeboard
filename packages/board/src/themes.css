@@ -23,7 +23,8 @@
 }
 /* 选中：1.5px 强调色描边，外面一圈 3px 的柔光，画在单独一层（.cface::before，跟着卡的 squircle）。卡本身不动：这一层 120ms 淡入、
    从 0.985 微微放大到 1，取消选中时 90ms 淡出。只动 opacity / scale */
-:root.look-warm-ink .card.sel:not(.text):not(.nobg):not(.lo-map) {
+/* an Image card without a background (.nobg) too: selected, it shows the same edge and ring as every other card */
+:root.look-warm-ink .card.sel:not(.text):not(.lo-map) {
   --ring: var(--sh-ring);
 }
 :root.look-warm-ink .card > .cface::before {
@@ -49,9 +50,8 @@
     opacity calc(var(--t) * 120ms) var(--out),
     scale calc(var(--t) * 120ms) var(--out);
 }
-/* Text（虚线框）、无背景的卡、地图档各有各的选中样子 */
+/* Text（虚线框）和地图档各有各的选中样子 */
 :root.look-warm-ink .card.text > .cface::before,
-:root.look-warm-ink .card.nobg > .cface::before,
 :root.look-warm-ink .card.lo-map > .cface::before {
   content: none;
 }
