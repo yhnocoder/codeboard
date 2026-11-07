@@ -1517,7 +1517,7 @@ test("subboardEnterLeaveWatched", async () => {
     await enter("fSch", "bSch");
     // into the deep board: the whole board fades and the title flies into the breadcrumb (the camera stays)
     const n = run.inits.length;
-    await watch(h, `subboardEnterLeaveWatched ${theme} enter`, { moves: "all", frames: 24 }, () =>
+    await watch(h, `subboardEnterLeaveWatched ${theme} enter`, { moves: "all", keep: [".crumbs"], frames: 24 }, () =>
       page.locator('.card[data-id="fDeep"] .sbname').dblclick(),
     );
     await until(h, "entering the deep board", () => run.inits.length > n && shown() === "bDeep");

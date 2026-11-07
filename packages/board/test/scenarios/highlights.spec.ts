@@ -705,7 +705,12 @@ test("highlightWatched", async () => {
   const h = await openBoard("band", plain());
   const pg = h.page;
   await idle(h);
-  const watched = { follow: ['.card[data-id="k1"] .src > .l'], ignore: [".ctx"], frames: 12 };
+  const watched = {
+    follow: ['.card[data-id="k1"] .src > .l'],
+    keep: ['.card[data-id="k1"]'],
+    ignore: [".ctx"],
+    frames: 12,
+  };
   const fromMenu = async (a: number, z: number, item: RegExp, name: string) => {
     await no(pg, a).click();
     if (z !== a) await no(pg, z).click({ modifiers: ["Shift"] });
