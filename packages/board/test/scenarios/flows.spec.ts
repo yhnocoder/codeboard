@@ -1032,14 +1032,16 @@ test("paletteThisBoard", async () => {
   await h.page.locator(".palette input:focus").waitFor();
   await h.page.keyboard.type("alloc");
   await until(h, "the symbols are listed", async () => (await h.page.locator(".palette .cand").count()) > 0);
+  // with results, an unset embedding server takes no room above them
+  await expect(h.page.locator(".palette .poff")).toHaveCount(0);
   const scopes = (t: string) => h.sent.filter((m) => m.type === t).map((m: any) => m.scope ?? "all");
   await h.page.keyboard.press("Tab");
   await until(h, "both searches asked for this board", () =>
     ["search", "searchMeaning"].every((t) => scopes(t).at(-1) === "board"),
   );
-  await expect(h.page.locator(".palette .empty:not(.perr)")).toHaveText("No matches on this board");
-  // this host has no embedding server: Related by Meaning says it is off, not just nothing
-  await expect(h.page.locator(".palette .empty.perr")).toContainText("codeboard.search.embeddingUrl");
+  await expect(h.page.locator(".palette .empty")).toHaveText("No matches on this board");
+  // this host has no embedding server: when nothing is found, the Palette says meaning was not searched
+  await expect(h.page.locator(".palette .poff")).toContainText("codeboard.search.embeddingUrl");
   const on = await h.page.locator(".pscope button.on").textContent();
   const focused = await h.page.evaluate(() => document.activeElement?.classList.contains("pin"));
   await shot(h, "pal-this-board");

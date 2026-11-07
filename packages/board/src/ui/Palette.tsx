@@ -367,18 +367,12 @@ export function Palette() {
             <For each={GROUPS}>
               {([k, title]) =>
                 k === "meaning" ? (
-                  <Show when={related().length || meaning().left || meaning().error || off()}>
+                  <Show when={related().length || meaning().left || meaning().error}>
                     <div class="pgh">
                       {title}
                       <Show when={meaning().left}>{(n) => <span class="pnote"> · indexing, {n()} left</span>}</Show>
                     </div>
                     <Show when={meaning().error}>{(e) => <div class="empty perr">{e()}</div>}</Show>
-                    {/* off says so, or a query that finds nothing by its words reads as one nothing is related to */}
-                    <Show when={off()}>
-                      <div class="empty perr">
-                        Off: set codeboard.search.embeddingUrl to an embedding server to search by meaning
-                      </div>
-                    </Show>
                     <For each={related()}>{(it) => item(it)}</For>
                   </Show>
                 ) : (
@@ -399,6 +393,13 @@ export function Palette() {
                     ? "Type to search this board."
                     : "No entry points found. Type to search."}
               </div>
+              {/* nothing found: say that meaning was not searched, or it reads as nothing is related */}
+              <Show when={off()}>
+                <div class="pnote poff">
+                  Related by Meaning is off: set codeboard.search.embeddingUrl to an embedding server to search by
+                  meaning
+                </div>
+              </Show>
             </Show>
           </div>
           <Show when={wide()}>
