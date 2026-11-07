@@ -751,7 +751,7 @@ function multiItems(): Item[] {
     {
       label: "Tidy Up",
       kbd: kbd("tidyUp"),
-      disabled: cs.length + sel.sections.length >= 2 ? false : "Select two or more cards",
+      disabled: cs.length + sel.sections.length >= 2 ? false : "Select two or more cards or Sections",
       run: () => void tidyUp(),
     },
     arrangeItem(() => [...sel.cards]),
@@ -1083,7 +1083,12 @@ function multiSectionItems(ids: string[]): Item[] {
       disabled: fit.length ? false : "No open, unlocked Section with cards inside",
       run: () => fitSections(fit.map((s) => s.id)),
     },
-    { label: "Tidy Up", kbd: kbd("tidyUp"), run: () => void tidyUp([], ids) },
+    {
+      label: "Tidy Up",
+      kbd: kbd("tidyUp"),
+      disabled: ss.filter((s) => !sectionLocked(s)).length >= 2 ? false : "Two or more unlocked Sections",
+      run: () => void tidyUp([], ids),
+    },
     {
       label: ss.every((s) => s.locked) ? "Unlock" : "Lock",
       kbd: kbd("lock"),

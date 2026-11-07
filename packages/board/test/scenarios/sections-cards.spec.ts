@@ -1234,6 +1234,8 @@ test("sectionTidyUp", async () => {
   b.sections[1].y = 500;
   b.place.n1.x = 340;
   b.place.n1.y = 550;
+  // an unselected Note where S2 would go: Tidy Up keeps clear of it
+  put(b, { id: "n3", kind: "note", look: "note", md: "# Beside\n\nNot selected." } as NoteCard, 720, 100, 260);
   const h = await open({ board: b, light, w: 1600, h: 1000 });
   await idle(h);
   const inside = (bd: Board) => {
@@ -1255,13 +1257,13 @@ test("sectionTidyUp", async () => {
   await idle(h);
   await shot(h, "sect-tidy-01-after");
   const frames = await h.page.evaluate(() =>
-    ["S1", "S2"].map((id) => document.querySelector(`.sect[data-sect="${id}"]`)!.getBoundingClientRect()),
+    ['.sect[data-sect="S1"]', '.sect[data-sect="S2"]', '.card[data-id="n3"]'].map((q) =>
+      document.querySelector(q)!.getBoundingClientRect(),
+    ),
   );
-  const apart =
-    frames[0].right <= frames[1].left ||
-    frames[1].right <= frames[0].left ||
-    frames[0].bottom <= frames[1].top ||
-    frames[1].bottom <= frames[0].top;
+  const clear = (a: DOMRect, c: DOMRect) =>
+    a.right <= c.left || c.right <= a.left || a.bottom <= c.top || c.bottom <= a.top;
+  const apart = clear(frames[0], frames[1]) && clear(frames[0], frames[2]) && clear(frames[1], frames[2]);
   const off1 = inside(h.board());
   const loose = h.board().place.n2;
   await h.page.keyboard.press("ControlOrMeta+z");
@@ -1271,7 +1273,7 @@ test("sectionTidyUp", async () => {
     () => JSON.stringify({ s: h.board().sections, p: h.board().place }) === before,
   );
   check(
-    "sectionTidyUp the Sections are laid out apart, each with its cards, the loose card stays",
+    "sectionTidyUp the Sections are laid out apart and clear of the unselected Note, each with its cards, the loose card stays",
     apart && off0.join() === off1.join() && loose.x === 1320 && loose.y === 110,
     { frames, off0, off1, loose },
   );
