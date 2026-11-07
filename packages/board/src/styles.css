@@ -4318,6 +4318,16 @@ mark.wdiff {
   pointer-events: none;
   z-index: 8;
 }
+/* While a card or Section is dragged the guides are a layer of their own (Canvas.tsx): a guide shown, moved or taken away at
+   a move then repaints only it, where in the card level's layer every move painted the guides' old and new places again in
+   that big layer (0.3-0.6 viewports a move on real boards, 0 without the guides). Only while dragging, so the layer is made at
+   the zoom it is drawn at; .board.relift takes the hint off for a frame after a zoom mid-drag, as for the lifted card */
+.guides.live {
+  will-change: transform;
+}
+.board.relift .guides.live {
+  will-change: auto;
+}
 
 .board[data-mode="draw"],
 .board[data-mode="draw"] * {
@@ -4660,10 +4670,15 @@ mark.wdiff {
   font: 10.5px var(--mono);
   color: var(--ink-3);
 }
+/* the gap under where it sits is its own, not the scrolling pane's: text scrolled up is cut below it, never drawn under it */
+.palette .ppw {
+  padding-bottom: 8px;
+  flex: none;
+}
 .palette .ppmd {
   flex: 1;
   overflow: auto;
-  padding: 8px 20px 20px;
+  padding: 0 20px 20px;
   font-size: 13px;
 }
 .palette .cand.more .lb {
@@ -4680,6 +4695,25 @@ mark.wdiff {
 .palette .ppmd table {
   display: block;
   overflow-x: auto;
+}
+.palette .cand .kind.thumb {
+  width: 28px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.palette .cand .kind.thumb img {
+  max-width: 28px;
+  max-height: 20px;
+  object-fit: contain;
+  border-radius: 2px;
+  outline: 1px solid var(--line);
+}
+.palette .ppmd img.pphit {
+  outline: 2px solid color-mix(in srgb, var(--accent) 70%, transparent);
+  outline-offset: 3px;
+  border-radius: 2px;
 }
 .palette ::highlight(palette-hit) {
   background: color-mix(in srgb, var(--accent) 24%, transparent);
@@ -6311,7 +6345,7 @@ mark.wdiff {
   -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 34px), transparent);
   mask-image: linear-gradient(to bottom, #000 calc(100% - 34px), transparent);
 }
-.sbpv .pmd {
+:is(.sbpv, .spk-card) .pmd {
   --md-fs: 12.5px;
   --md-h1: 1.25em;
   --md-h2: 1.15em;
@@ -6326,13 +6360,13 @@ mark.wdiff {
 .sbpv.k-compare .pb {
   background: var(--head);
 }
-.sbpv .pcode {
+:is(.sbpv, .spk-card) .pcode {
   margin: 0;
   font: 11px / 1.55 var(--mono);
   color: var(--ink);
   white-space: pre;
 }
-.sbpv .pcol {
+:is(.sbpv, .spk-card) .pcol {
   font: 600 10.5px / 1.6 var(--sys);
   color: var(--ink-3);
 }
@@ -6341,31 +6375,31 @@ mark.wdiff {
   max-height: none;
   background: #fff;
 }
-.sbpv .pimg {
+:is(.sbpv, .spk-card) .pimg {
   display: block;
   width: 100%;
   height: 150px;
   object-fit: contain;
 }
-.sbpv .cap {
+:is(.sbpv, .spk-card) .cap {
   padding: 6px 11px 8px;
   font: 11.5px / 1.4 var(--sys);
   color: var(--ink-2);
   background: var(--surface);
   border-top: 0.5px solid var(--line);
 }
-.sbpv .pweb b {
+:is(.sbpv, .spk-card) .pweb b {
   display: block;
   color: var(--ink);
   font-weight: 600;
 }
-.sbpv .pweb p {
+:is(.sbpv, .spk-card) .pweb p {
   margin: 2px 0;
 }
-.sbpv .pweb small {
+:is(.sbpv, .spk-card) .pweb small {
   color: var(--ink-3);
 }
-.sbpv .plinks {
+:is(.sbpv, .spk-card) .plinks {
   margin: 0;
   padding-left: 16px;
 }
@@ -6441,9 +6475,7 @@ mark.wdiff {
   padding: 3px 5px;
   color: var(--ink-2);
 }
-.crumbs.morph {
-  animation: none;
-}
+/* no animation: none here: taking .morph off again would start popin over (the breadcrumb blinking out a second time) */
 .crumbs.morph .cur {
   visibility: hidden;
 }
@@ -7376,6 +7408,80 @@ mark.wdiff {
   padding: 0 7px;
   font-size: 11px;
   box-shadow: inset 0 0 0 1px var(--hair);
+}
+/* Resting on a Shelf row: the entry as it was on the board, scaled down, beside the panel (ShelfPeek). The world inside is drawn at
+   board size and scaled, so cards keep their proportions */
+.shelf-peek {
+  position: absolute;
+  z-index: 22;
+  display: block;
+  box-sizing: content-box;
+  padding: 10px;
+  pointer-events: none;
+  overflow: hidden;
+  animation: popin calc(var(--t) * 120ms) var(--out);
+}
+.spk-world {
+  position: relative;
+  transform-origin: 0 0;
+}
+.spk-sec {
+  position: absolute;
+  box-sizing: border-box;
+  border-radius: 14px;
+  border: 1.5px solid var(--line);
+  background: color-mix(in srgb, var(--ink-3) 5%, transparent);
+}
+.spk-sec > span {
+  position: absolute;
+  left: 14px;
+  top: 8px;
+  font: 600 15px / 20px var(--sys);
+  color: var(--ink-2);
+}
+.spk-card {
+  position: absolute;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow:
+    0 0 0 1px var(--hair),
+    0 2px 6px rgb(0 0 0 / 0.06);
+}
+.spk-h {
+  flex: none;
+  padding: 8px 12px;
+  font: 600 13px / 18px var(--sys);
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-bottom: 0.5px solid var(--line);
+}
+.spk-b {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  padding: 8px 12px;
+  font: 13px / 1.6 var(--sys);
+  color: var(--ink-2);
+}
+.spk-card:is(.k-code, .k-compare) .spk-b {
+  background: var(--head);
+}
+.spk-card .pcode {
+  max-height: none;
+  overflow: hidden;
+  font-size: 12.5px;
+}
+.spk-card.k-image .spk-b {
+  padding: 0;
+}
+.spk-card.k-image .pimg {
+  height: 100%;
 }
 .cpanel.shelf .cpf {
   padding: 6px 10px 2px;
@@ -8595,6 +8701,7 @@ mark.wdiff {
 .hx-band .hxb.on {
   background: var(--band-on);
 }
+/* 12px of block room per note: .hx-bracket .inote takes the same */
 .hx-band .inote {
   margin: 0 20px 0 0;
   padding: 9px 12px 3px 1px;
@@ -8658,9 +8765,10 @@ mark.wdiff {
   text-decoration: underline;
   text-underline-offset: 2px;
 }
+/* the same block room as the band's notes (9px + 3px, no margin to collapse between two notes), so switching the look moves no line */
 .hx-bracket .inote {
-  margin: 3px 20px 8px 0;
-  padding: 0 0 0 1px;
+  margin: 0 20px 0 0;
+  padding: 3px 0 9px 1px;
 }
 /* a note that needs a look after a new version (Sidenote.review): its count in amber */
 .hxm.rv {

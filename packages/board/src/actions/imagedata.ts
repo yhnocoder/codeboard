@@ -3,6 +3,9 @@
 import type { ImageCard } from "@codeboard/core";
 import { ask, send } from "../host";
 import { saveNoteImage } from "../md/images";
+import { camMoving } from "../state/camera";
+import { dragging } from "../state/ui";
+import { DRAW_QUIET_POLL } from "../state/timing";
 
 const remote = (src: string) => /^https?:/.test(src);
 /** 图的 data: URL；网上的图拿不到内容（回 null） */
@@ -116,13 +119,22 @@ async function drawn(dataUrl: string): Promise<HTMLCanvasElement> {
 /** About this many pixels on a drawn picture's longer side (what an embedding model looks at is smaller still) */
 const DRAWN_SIDE = 1024;
 
+/** Resolves on a frame where the camera is still and nothing is dragged */
+const quiet = () =>
+  new Promise<void>((ok) => {
+    const look = () =>
+      camMoving() || dragging().size ? setTimeout(look, DRAW_QUIET_POLL) : requestAnimationFrame(() => ok());
+    look();
+  });
+
 /** A picture (an SVG) drawn as the board shows it, on white, as a PNG data: URL, its longer side DRAWN_SIDE; null when it does
- *  not draw */
+ *  not draw. Drawn while the board is still (the host asks for one at a time), the PNG made off the main thread (toBlob) */
 export async function drawnPng(dataUrl: string): Promise<string | null> {
   try {
     const img = new Image();
     img.src = dataUrl;
     await img.decode();
+    await quiet();
     const w = img.naturalWidth || DRAWN_SIDE,
       h = img.naturalHeight || DRAWN_SIDE;
     const k = DRAWN_SIDE / Math.max(w, h);
@@ -133,7 +145,14 @@ export async function drawnPng(dataUrl: string): Promise<string | null> {
     g.fillStyle = "#fff";
     g.fillRect(0, 0, cv.width, cv.height);
     g.drawImage(img, 0, 0, cv.width, cv.height);
-    return cv.toDataURL("image/png");
+    const png = await new Promise<Blob | null>((ok) => cv.toBlob(ok, "image/png"));
+    if (!png) return null;
+    return await new Promise<string>((ok, no) => {
+      const r = new FileReader();
+      r.onload = () => ok(r.result as string);
+      r.onerror = () => no(r.error);
+      r.readAsDataURL(png);
+    });
   } catch {
     return null;
   }

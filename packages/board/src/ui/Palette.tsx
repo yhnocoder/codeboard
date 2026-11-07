@@ -14,7 +14,7 @@ import { paletteOpen, setPaletteOpen } from "../state/ui";
 import { MEANING_PAUSE, MEANING_RETRY } from "../state/timing";
 import { ask, send } from "../host";
 import * as A from "../actions";
-import { Label, Preview } from "./PalettePreview";
+import { Label, Preview, Thumb } from "./PalettePreview";
 import { refOf, startTrace, type Verdict } from "./searchtrace";
 
 type Group = SearchGroup;
@@ -47,8 +47,9 @@ export function Palette() {
   const init: Exclude<ReturnType<typeof paletteOpen>, false> = paletteOpen() || { mode: "all" };
   const [q, setQ] = createSignal(init.q ?? "");
   const [res, setRes] = createSignal<SearchItem[]>([]);
-  /** This Board: only the cards and sidenotes on this board (Tab switches); searching everything (not Add Function) only */
-  const [here, setHere] = createSignal(false);
+  /** This Board: only the cards and sidenotes on this board (opened with ⌘F; Tab switches); searching everything (not Add
+   *  Function) only */
+  const [here, setHere] = createSignal(!!init.here);
   const scoped = () => init.mode !== "code" && here();
   let inp!: HTMLInputElement, list!: HTMLDivElement;
   /** This session's trace (searchtrace.ts), sent when ⌘K closes */
@@ -296,7 +297,12 @@ export function Palette() {
         }}
         onClick={(e) => run(it, e.altKey)}
       >
-        <span class="kind">{icon(it)}</span>
+        <Show
+          when={(it.kind === "card" || it.kind === "sidenote") && it.preview?.picture}
+          fallback={<span class="kind">{icon(it)}</span>}
+        >
+          {(src) => <Thumb src={src()} />}
+        </Show>
         <Show when={it.kind === "card" ? it.num : undefined}>{(n) => <span class="step sm">{n()}</span>}</Show>
         <Label it={it} />
         <small>{it.detail}</small>

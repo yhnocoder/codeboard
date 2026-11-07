@@ -109,8 +109,24 @@ describe("Related by Meaning", () => {
     await store.save(b);
     await cx.meaning.update(store);
     const r = await cx.meaning.search(store, "prefill scheduler", "b");
-    expect(r.items.map((i) => i.kind === "card" && i.card)).toContain("pic");
+    const pic = r.items.find((i) => i.kind === "card" && i.card === "pic");
+    // its picture goes with it, for the row's thumbnail
+    expect(pic?.kind === "card" && pic.preview?.picture).toBe("assets/f00d.png");
     expect(asked.flatMap((a) => a.texts)).toContain("a prefill scheduler diagram");
+  });
+
+  it("shows the picture in a long Note that matched, not its opening", async () => {
+    const b = (await store.load("b"))!;
+    const filler = Array.from({ length: 60 }, (_, i) => `Line ${i} about something else entirely.`).join("\n");
+    b.cards.push({ id: "long", kind: "note", look: "note", md: `${filler}\n\n![](assets/f00d.png)\n\nThe end.` });
+    b.place.long = { x: 400, y: 0, w: 300 };
+    await store.save(b);
+    await cx.meaning.update(store);
+    const r = await cx.meaning.search(store, "prefill scheduler", "b");
+    const long = r.items.find((i) => i.kind === "card" && i.card === "long");
+    expect(long?.kind === "card" && long.preview).toMatchObject({ picture: "assets/f00d.png" });
+    expect(long?.kind === "card" && long.preview?.hit).toBeUndefined();
+    expect(long?.kind === "card" && long.preview?.md).toContain("![](assets/f00d.png)");
   });
 
   it("finds an SVG by its words, and by the PNG an open board draws of it", async () => {

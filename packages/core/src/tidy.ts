@@ -15,9 +15,10 @@ let elk: InstanceType<typeof ELK> | undefined;
  * 同一列里尽量保持现在从上到下的顺序，几组互不相连的上下排开）；
  * 没有箭头连着的，按现在的 y 分成几行（每行按 x 排、顶端对齐）放在箭头那组下面。
  * 从这些卡现在的左上角开始摆。fixed = 不能动的卡（锁住的）：压到它的卡往下（行里往右）挪开，后面的卡跟着让。
+ * avoid = 旁边没选中的东西：压到它的卡往下或往右挪开，哪边挪得少走哪边（不会顺着一排邻居一直滑到很远）。
  * 返回每张卡的新 x / y
  */
-export async function tidy(rs: R[], links: [string, string][], fixed: Rect[] = []): Promise<At> {
+export async function tidy(rs: R[], links: [string, string][], fixed: Rect[] = [], avoid: Rect[] = []): Promise<At> {
   const out: At = new Map();
   const b = bounds(rs);
   if (!b) return out;
@@ -35,7 +36,7 @@ export async function tidy(rs: R[], links: [string, string][], fixed: Rect[] = [
       (p, q) => flow.get(p.id)!.y - flow.get(q.id)!.y || flow.get(p.id)!.x - flow.get(q.id)!.x,
     )) {
       const f = flow.get(r.id)!;
-      const p = clear({ x: b.x + f.x, y: b.y + f.y, w: r.w, h: r.h }, fixed, placed, false);
+      const p = clear({ x: b.x + f.x, y: b.y + f.y, w: r.w, h: r.h }, fixed, placed, false, avoid);
       out.set(r.id, p);
       placed.push({ ...p, w: r.w, h: r.h });
     }
@@ -55,7 +56,7 @@ export async function tidy(rs: R[], links: [string, string][], fixed: Rect[] = [
     let x = b.x,
       bottom = y;
     for (const r of row.rs.sort((p, q) => p.x - q.x || p.y - q.y)) {
-      const p = clear({ x, y, w: r.w, h: r.h }, fixed, placed, true);
+      const p = clear({ x, y, w: r.w, h: r.h }, fixed, placed, true, avoid);
       out.set(r.id, p);
       placed.push({ ...p, w: r.w, h: r.h });
       x = p.x + r.w + GAP;
@@ -66,16 +67,24 @@ export async function tidy(rs: R[], links: [string, string][], fixed: Rect[] = [
   return out;
 }
 
-/** 和锁住的卡或已经放好的卡重叠就顺着排列方向（列往下、行往右）跳过去，直到不重叠 */
-function clear(r: Rect, fixed: Rect[], placed: Rect[], alongX: boolean): { x: number; y: number } {
+/** 和锁住的卡或已经放好的卡重叠就顺着排列方向（列往下、行往右）跳过去；压到 avoid 里的就往下或往右，挪得少的那边；直到不重叠 */
+function clear(r: Rect, fixed: Rect[], placed: Rect[], alongX: boolean, avoid: Rect[]): { x: number; y: number } {
   let { x, y } = r;
   const all = [...fixed, ...placed];
-  for (let moved = true, n = 0; moved && n <= all.length; n++) {
+  for (let moved = true, n = 0; moved && n <= all.length + avoid.length; n++) {
     moved = false;
     for (const o of all) {
       if (!overlaps({ x, y, w: r.w, h: r.h }, o, GAP - 1)) continue;
       if (alongX) x = o.x + o.w + GAP;
       else y = o.y + o.h + GAP;
+      moved = true;
+    }
+    for (const o of avoid) {
+      if (!overlaps({ x, y, w: r.w, h: r.h }, o, GAP - 1)) continue;
+      const right = o.x + o.w + GAP - x,
+        down = o.y + o.h + GAP - y;
+      if (right < down) x += right;
+      else y += down;
       moved = true;
     }
   }

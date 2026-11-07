@@ -8,7 +8,7 @@ import { fingerprint, imageFingerprint, PICTURE, pieces, type Doc, type DocImage
  *  instead (then piece is -1) */
 export type Hit = { id: string; score: number; piece: number; picture?: string };
 
-/** Pictures read and embedded between two batch() calls (each takes a second or so) */
+/** Pictures read (one after another) and embedded between two batch() calls (each takes a second or so) */
 const PICTURES = 4;
 /** File format version (toBytes) */
 const FORMAT = 1;
@@ -19,6 +19,8 @@ export class Box {
   private vecs = new Map<string, Float32Array>();
   /** document id → its pieces' fingerprints (only documents whose pieces all have vectors) */
   private docs = new Map<string, string[]>();
+  /** Pictures the server turned down (too big, a format it does not read): left out while this box lives, asked again by the next */
+  private refused = new Set<string>();
 
   constructor(readonly model: string) {}
 
@@ -31,7 +33,10 @@ export class Box {
     const need = new Set<string>();
     for (const d of docs) {
       for (const p of pieces(d)) if (!this.vecs.has(fingerprint(p))) need.add(fingerprint(p));
-      for (const img of d.images ?? []) if (!this.vecs.has(imageFingerprint(img))) need.add(imageFingerprint(img));
+      for (const img of d.images ?? []) {
+        const f = imageFingerprint(img);
+        if (!this.vecs.has(f) && !this.refused.has(f)) need.add(f);
+      }
     }
     return need.size;
   }
@@ -88,7 +93,7 @@ export class Box {
       });
       for (const img of w.images) {
         const f = imageFingerprint(img);
-        if (!this.vecs.has(f) && !queued.has(f)) {
+        if (!this.vecs.has(f) && !this.refused.has(f) && !queued.has(f)) {
           queued.add(f);
           pics.push([f, img]);
         }
@@ -103,13 +108,17 @@ export class Box {
       await o.batch?.(done);
     }
     for (let i = 0; i < pics.length && !stop() && embedder.embedImages; i += PICTURES) {
-      const urls = await Promise.all(
-        pics.slice(i, i + PICTURES).map(async ([f, img]) => [f, await img.url()] as const),
-      );
+      // one after another: an SVG is drawn by the open board, which should not draw several in one go
+      const urls: (readonly [string, string | undefined])[] = [];
+      for (const [f, img] of pics.slice(i, i + PICTURES)) urls.push([f, await img.url()]);
       const read = urls.filter((x): x is readonly [string, string] => !!x[1]);
       const vs = read.length ? await embedder.embedImages(read.map(([, u]) => u)) : [];
       if (!vs) break; // the model does not take pictures
-      read.forEach(([f], j) => this.vecs.set(f, vs[j]));
+      read.forEach(([f], j) => {
+        const v = vs[j];
+        if (v) this.vecs.set(f, v);
+        else this.refused.add(f);
+      });
       done += urls.length;
       settle();
       await o.batch?.(done);
@@ -152,8 +161,10 @@ export class Box {
     return this.packed;
   }
 
-  /** The k documents closest to the query vector (unit), best first */
-  search(q: Float32Array, k: number): Hit[] {
+  /** The k documents closest to the query vector (unit), best first. floor: the least score a text piece or a picture counts
+   *  with (a model scores pictures higher than text overall); a document with none that counts is left out */
+  search(q: Float32Array, k: number, floor: { text?: number; picture?: number } = {}): Hit[] {
+    const least = [floor.text ?? -1, floor.picture ?? -1];
     const { m, dim, ids, rows, starts } = this.pack();
     const n = Math.min(dim, q.length);
     const sims = new Float32Array(m.length / (dim || 1));
@@ -175,14 +186,18 @@ export class Box {
     }
     const hits: Hit[] = [];
     for (let d = 0; d < ids.length; d++) {
+      const fps = this.docs.get(ids[d])!;
       let best = -1,
-        piece = 0;
-      for (let j = starts[d]; j < starts[d + 1]; j++)
-        if (sims[rows[j]] > best) {
-          best = sims[rows[j]];
+        piece = -1;
+      for (let j = starts[d]; j < starts[d + 1]; j++) {
+        const v = sims[rows[j]];
+        if (v > best && v >= least[+fps[j - starts[d]].startsWith(PICTURE)]) {
+          best = v;
           piece = j - starts[d];
         }
-      const f = this.docs.get(ids[d])![piece];
+      }
+      if (piece < 0) continue;
+      const f = fps[piece];
       hits.push(
         f.startsWith(PICTURE)
           ? { id: ids[d], score: best, piece: -1, picture: f.slice(PICTURE.length) }

@@ -1,13 +1,15 @@
 // An embedding model behind an OpenAI-compatible endpoint (POST {base}/embeddings), such as oMLX serving EmbeddingGemma on
 // the user's own machine. Texts arrive already prompted (text.ts); vectors come back normalized. Pictures go in the shape the
-// server takes (SHAPES); a server that answers the first one with an error in every shape does not take pictures.
+// server takes (SHAPES), found with the first one; a picture the server turns down (too big, a format it does not read, a
+// passing error) is left out on its own, and pictures are off only when the server turns down a small plain PNG too.
 
 export interface Embedder {
   /** The model's name: the index is kept per model, a different one starts it again */
   model(): Promise<string>;
   embed(texts: string[]): Promise<Float32Array[]>;
-  /** Pictures (data: URLs), one vector each; undefined when the model does not take pictures (then they are left out) */
-  embedImages?(urls: string[]): Promise<Float32Array[] | undefined>;
+  /** Pictures (data: URLs), one vector each (undefined: the server turned that one down); undefined when the model does not
+   *  take pictures (then they are all left out) */
+  embedImages?(urls: string[]): Promise<(Float32Array | undefined)[] | undefined>;
 }
 
 /** How a picture (a data: URL) goes in /embeddings' input, as servers take it: a content part (oMLX), an {image} item (SGLang) */
@@ -15,6 +17,11 @@ const SHAPES = {
   part: (url: string) => ({ type: "image_url", image_url: { url } }),
   item: (url: string) => ({ image: url }),
 };
+
+/** A small plain PNG (32 × 32, white) every server that takes pictures reads: when a picture is turned down in every shape,
+ *  this tells a server that takes no pictures from one that took that picture badly */
+const PLAIN_PNG =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAAJklEQVR42u3NMQ0AAAwDoPo33arYsQQMkB6LQCAQCAQCgUAg+BIMi1X0ptsIcT0AAAAASUVORK5CYII=";
 
 /** Texts per request */
 export const BATCH = 16;
@@ -83,29 +90,44 @@ export function endpointEmbedder(o: EndpointOptions): Embedder {
     },
     async embedImages(urls) {
       if (shape === null) return undefined;
-      const out: Float32Array[] = [];
+      /** The picture's vector in shape s; undefined when the server answers with an error (one it could not reach throws) */
+      const as = (s: keyof typeof SHAPES, url: string) =>
+        vectors([SHAPES[s](url)]).then(
+          (v) => v[0],
+          (e: { status?: number }) => {
+            if (e.status === undefined) throw e;
+            return undefined;
+          },
+        );
+      /** The first shape the server takes this picture in (and its vector) */
+      const find = async (url: string) => {
+        for (const s of Object.keys(SHAPES) as (keyof typeof SHAPES)[]) {
+          const v = await as(s, url);
+          if (v) return { s, v };
+        }
+        return undefined;
+      };
+      const out: (Float32Array | undefined)[] = [];
       // one at a time: a picture is hundreds of tokens and large to send
       for (const url of urls) {
         if (shape) {
-          out.push(...(await vectors([SHAPES[shape](url)])));
+          out.push(await as(shape, url));
           continue;
         }
-        // the first picture finds the item shape the server takes; an error answer to every shape means no pictures
-        for (const s of Object.keys(SHAPES) as (keyof typeof SHAPES)[]) {
-          const v = await vectors([SHAPES[s](url)]).catch((e: { status?: number }) => {
-            if (e.status === undefined) throw e;
-            return undefined;
-          });
-          if (v) {
-            shape = s;
-            out.push(...v);
-            break;
-          }
+        const got = await find(url);
+        if (got) {
+          shape = got.s;
+          out.push(got.v);
+          continue;
         }
-        if (!shape) {
+        // turned down in every shape: this picture, or pictures at all?
+        const plain = await find(PLAIN_PNG);
+        if (!plain) {
           shape = null;
           return undefined;
         }
+        shape = plain.s;
+        out.push(undefined);
       }
       return out;
     },

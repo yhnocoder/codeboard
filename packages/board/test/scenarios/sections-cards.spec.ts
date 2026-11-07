@@ -650,6 +650,7 @@ test("sectionDragSnapsToSection", async () => {
         return { v: g.classList.contains("v"), x: r.x, y: r.y, h: r.height };
       }),
     );
+  const guideLayer = () => h.page.evaluate(() => getComputedStyle(document.querySelector(".guides")!).willChange);
   const card0 = { ...h.board().place.c };
   // what the drag moves (S2's frame and title, its card) and what it leaves (S1, its card): compositor layer hint and look
   const layers = () =>
@@ -678,12 +679,17 @@ test("sectionDragSnapsToSection", async () => {
   await idle(h);
   const during = await guides(),
     s2d = await box("S2"),
-    held = await layers();
+    held = await layers(),
+    guidesHeld = await guideLayer();
   await shot(h, "sect-snap-01-guide");
   await h.page.mouse.up();
   await until(h, "the Section's move is saved", () => h.board().sections.find((q) => q.id === "S2")!.x !== 600);
   await idle(h);
-  const down = await layers();
+  const down = await layers(),
+    guidesDown = await guideLayer();
+  // While dragging, the guides are a layer of their own (styles.css .guides.live): a guide that shows or moves repaints only
+  // them, not the card level's layer; put down, they are back in it
+  check("section-drag-guides-layer", guidesHeld === "transform" && guidesDown === "auto", { guidesHeld, guidesDown });
   // Dragged, the Section's frame, its title and its card are each a layer of its own (styles.css .carry), so a move only moves
   // those layers instead of painting them again in the world's layer; nothing of them looks different, and put down they are
   // back in the world's layer
@@ -1236,6 +1242,8 @@ test("sectionTidyUp", async () => {
   b.place.n1.y = 550;
   // an unselected Note where S2 would go: Tidy Up keeps clear of it
   put(b, { id: "n3", kind: "note", look: "note", md: "# Beside\n\nNot selected." } as NoteCard, 720, 100, 260);
+  // and one S1 already touches where it starts (real boards have those): it does not push the blocks away
+  put(b, { id: "n4", kind: "note", look: "note", md: "# Below\n\nTouching S1." } as NoteCard, 120, 812, 260);
   const h = await open({ board: b, light, w: 1600, h: 1000 });
   await idle(h);
   const inside = (bd: Board) => {
@@ -1264,6 +1272,7 @@ test("sectionTidyUp", async () => {
   const clear = (a: DOMRect, c: DOMRect) =>
     a.right <= c.left || c.right <= a.left || a.bottom <= c.top || c.bottom <= a.top;
   const apart = clear(frames[0], frames[1]) && clear(frames[0], frames[2]) && clear(frames[1], frames[2]);
+  const onScreen = frames.slice(0, 2).every((f) => f.left >= 0 && f.right <= 1600);
   const off1 = inside(h.board());
   const loose = h.board().place.n2;
   await h.page.keyboard.press("ControlOrMeta+z");
@@ -1273,9 +1282,9 @@ test("sectionTidyUp", async () => {
     () => JSON.stringify({ s: h.board().sections, p: h.board().place }) === before,
   );
   check(
-    "sectionTidyUp the Sections are laid out apart and clear of the unselected Note, each with its cards, the loose card stays",
-    apart && off0.join() === off1.join() && loose.x === 1320 && loose.y === 110,
-    { frames, off0, off1, loose },
+    "sectionTidyUp the Sections are laid out apart, clear of the unselected Note and near where they were, each with its cards, the loose card stays",
+    apart && onScreen && off0.join() === off1.join() && loose.x === 1320 && loose.y === 110,
+    { frames, onScreen, off0, off1, loose },
   );
   await close(h);
 });

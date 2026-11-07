@@ -221,7 +221,8 @@ export type PeekDef = {
 
 /** ⌘K's preview of a card or sidenote: its content as Markdown (code in fenced blocks), where it sits (board › Section …), and
  *  for Related by Meaning the passage that matched (as it is written in md, give or take the Markdown marks) */
-export type SearchPreview = { md: string; where: string; hit?: string };
+/** hit: the passage that matched (Related by Meaning); picture: the picture that did, or an Image card's, as md writes it */
+export type SearchPreview = { md: string; where: string; hit?: string; picture?: string };
 
 export type SearchItem =
   | { kind: "symbol"; label: string; detail: string; path: string; line: number; sym: string; glyph: string }
@@ -481,7 +482,14 @@ export type BoardToHost =
   /** 网页元信息：抓一次，图片存进 assets/ */
   | { type: "webMeta"; req: number; url: string } // 回 WebMeta
   | { type: "stickerPacks"; req: number } // 回 StickerPack[]
-  | { type: "tidy"; req: number; cards: (Rect & { id: string })[]; links: [string, string][]; fixed: Rect[] } // Tidy Up 的排版（ELK 只在宿主里）：回每张卡的新 x / y
+  | {
+      type: "tidy";
+      req: number;
+      cards: (Rect & { id: string })[];
+      links: [string, string][];
+      fixed: Rect[];
+      avoid?: Rect[];
+    } // Tidy Up 的排版（ELK 只在宿主里）：回每张卡的新 x / y
   | { type: "openStickerDir" }
   | { type: "copyDiagnostics"; board?: boolean }
   /** 白板里的错误 / 日志：写进 Output 面板的 CodeBoard 频道，Copy Diagnostics 会带上 */

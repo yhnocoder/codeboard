@@ -1026,7 +1026,7 @@ test("palette", async () => {
 });
 
 test("paletteThisBoard", async () => {
-  // Tab (or the switch beside the input) keeps both searches to this board, and back
+  // Tab (or the switch beside the input) keeps both searches to this board, and back; ⌘F opens it on this board
   const h = await open({ board: boardWith("LLMEngine.step"), light });
   await h.page.keyboard.press("ControlOrMeta+k");
   await h.page.locator(".palette input:focus").waitFor();
@@ -1044,12 +1044,26 @@ test("paletteThisBoard", async () => {
   await h.page.locator(".pscope button", { hasText: "All Boards" }).click();
   await until(h, "back to all boards", () => scopes("search").at(-1) === "all");
   await until(h, "the symbols are back", async () => (await h.page.locator(".palette .cand").count()) > 0);
+  // ⌘F opens it on this board straight away; ⌘K on every board
+  await h.page.keyboard.press("Escape");
+  await expect(h.page.locator(".palette")).toHaveCount(0);
+  await h.page.keyboard.press("ControlOrMeta+f");
+  await h.page.locator(".palette input:focus").waitFor();
+  const onF = await h.page.locator(".pscope button.on").textContent();
+  await h.page.keyboard.type("sched");
+  await until(h, "⌘F searched this board", () => scopes("search").at(-1) === "board");
+  await h.page.keyboard.press("Escape");
+  await h.page.keyboard.press("ControlOrMeta+k");
+  await h.page.locator(".palette input:focus").waitFor();
+  const onK = await h.page.locator(".pscope button.on").textContent();
   check(
-    "paletteThisBoard Tab searches only this board, the switch goes back to all boards",
-    on === "This Board" && !!focused,
+    "paletteThisBoard Tab searches only this board, the switch goes back to all boards; ⌘F opens on this board, ⌘K on all",
+    on === "This Board" && !!focused && onF === "This Board" && onK === "All Boards",
     {
       on,
       focused,
+      onF,
+      onK,
       search: scopes("search"),
       meaning: scopes("searchMeaning"),
     },
@@ -1140,6 +1154,58 @@ test("paletteMeaning", async () => {
 });
 
 // Related by Meaning embeds pictures as pixels: the host asks an open board to draw an SVG (with the fonts it shows it in)
+test("paletteMeaningPicture", async () => {
+  // Related by Meaning found a Note by a picture far down it: the row shows that picture small, the pane frames it in view
+  const svg = `data:image/svg+xml;base64,${btoa('<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100"><rect width="200" height="100" fill="#c33"/></svg>')}`;
+  const long = Array.from({ length: 40 }, (_, i) => `Line ${i} of a long Note about something else.`).join("\n\n");
+  const h = await open({
+    board: boardWith("BlockManager.deallocate"),
+    light,
+    on: async (m, reply) => {
+      if (m.type !== "searchMeaning") return false;
+      const c = h.board().cards[0];
+      await reply(m.req!, {
+        items: [
+          {
+            kind: "card",
+            label: "Image",
+            detail: "This board",
+            board: h.board().id,
+            card: c.id,
+            preview: { md: `${long}\n\n![](<${svg}>)\n\nThe end.`, where: "nano-vllm", picture: svg },
+          },
+        ],
+      });
+      return true;
+    },
+  });
+  await h.page.keyboard.press("ControlOrMeta+k");
+  await h.page.locator(".palette input:focus").waitFor();
+  await h.page.keyboard.type("red box");
+  await h.page.locator(".palette .cand .kind.thumb img").waitFor();
+  const framed = h.page.locator(".palette .ppmd img.pphit");
+  await framed.waitFor();
+  await until(h, "the framed picture is scrolled into the pane", () =>
+    h.page.evaluate(() => {
+      const pane = document.querySelector(".palette .ppmd")!.getBoundingClientRect();
+      const r = document.querySelector(".palette .ppmd img.pphit")!.getBoundingClientRect();
+      return r.height > 0 && r.top >= pane.top && r.bottom <= pane.bottom;
+    }),
+  );
+  await shot(h, "pal-05-meaning-picture");
+  const seen = await h.page.evaluate(() => ({
+    thumb: document.querySelectorAll(".palette .cand .kind.thumb img").length,
+    framed: document.querySelectorAll(".palette .ppmd img.pphit").length,
+    scrolled: document.querySelector(".palette .ppmd")!.scrollTop,
+    marks: [...((CSS as any).highlights?.get("palette-hit") ?? [])].length,
+  }));
+  check(
+    "paletteMeaningPicture shows the matched picture in the row and frames it in view in the pane, marking no words",
+    seen.thumb === 1 && seen.framed === 1 && seen.scrolled > 0 && seen.marks === 0,
+    seen,
+  );
+});
+
 test("meaningDrawsSvg", async () => {
   const h = await open({ board: boardWith("BlockManager.deallocate"), light });
   await idle(h);
