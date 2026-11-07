@@ -1036,7 +1036,18 @@ test("paletteMeaning", async () => {
       const c = h.board().cards[0];
       await reply(m.req!, {
         items: [
-          { kind: "card", label: "BlockManager.deallocate", detail: "This board", board: h.board().id, card: c.id },
+          {
+            kind: "card",
+            label: "==Frees== blocks",
+            detail: "This board",
+            board: h.board().id,
+            card: c.id,
+            preview: {
+              md: "## Blocks\n\nAllocates blocks.\n\nFrees the **blocks** of a finished sequence.",
+              where: "nano-vllm › Memory",
+              hit: "Frees the **blocks** of a finished sequence.",
+            },
+          },
         ],
         ...(asked === 1 ? { left: 3 } : {}),
       });
@@ -1052,6 +1063,12 @@ test("paletteMeaning", async () => {
   await until(h, "asked again once indexing is done", () => asked >= 2);
   await expect(group).not.toContainText("indexing");
   await shot(h, "pal-04-meaning");
+  const pane = await h.page.evaluate(() => ({
+    where: document.querySelector(".palette .ppw")?.textContent,
+    heading: document.querySelector(".palette .ppmd h2")?.textContent,
+    label: document.querySelector(".palette .cand .lb mark")?.textContent,
+    hit: [...((CSS as any).highlights?.get("palette-hit") ?? [])].map((r: Range) => r.toString()).join("|"),
+  }));
   const sent = h.sent.filter((m) => m.type === "searchMeaning").map((m: any) => m.q);
   await h.page.keyboard.press("Enter");
   await expect(h.page.locator(".palette")).toHaveCount(0);
@@ -1060,6 +1077,14 @@ test("paletteMeaning", async () => {
     "paletteMeaning shows Related by Meaning while indexing, asks again until done, and Enter goes to the card",
     /indexing, 3 left/.test(indexing) && sent.every((q) => q === "显存回收") && selected === 1,
     { indexing, sent, selected },
+  );
+  check(
+    "paletteMeaning previews the card with where it sits, marks the passage that matched, and renders the label's Markdown",
+    pane.where === "nano-vllm › Memory" &&
+      pane.heading === "Blocks" &&
+      pane.label === "Frees" &&
+      pane.hit === "Frees the blocks of a finished sequence.",
+    pane,
   );
   await h.page.context().close();
 });

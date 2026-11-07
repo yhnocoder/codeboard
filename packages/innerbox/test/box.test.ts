@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { Box, endpointEmbedder, queryText, type Doc, type Embedder } from "../src/index";
-import { pieces } from "../src/text";
+import { pieceBodies, pieces } from "../src/text";
 
 /** A stand-in model: a vector of word counts over a small vocabulary, so "kv cache" lands near pieces that say kv cache */
 const VOCAB = ["kv", "cache", "block", "scheduler", "prefill", "decode", "graph", "cuda", "attention", "sampler"];
@@ -35,6 +35,20 @@ describe("innerbox", () => {
     await box.update(DOCS, e);
     expect(box.search(await q(e, "kv cache"), 3)[0].id).toBe("a");
     expect(box.search(await q(e, "cuda graph"), 3)[0].id).toBe("c");
+  });
+
+  it("says which piece matched, for the preview", async () => {
+    const e = fake(),
+      box = new Box("fake");
+    const long = {
+      id: "l",
+      title: "Long",
+      text: `${"The scheduler decides. ".repeat(20)}Then a cuda graph is replayed.`,
+    };
+    await box.update([long], e);
+    const [hit] = box.search(await q(e, "cuda graph"), 1);
+    expect(pieceBodies(long)[hit.piece]).toContain("cuda graph");
+    expect(hit.piece).toBeGreaterThan(0);
   });
 
   it("embeds only text it has not seen, and forgets documents that are gone", async () => {

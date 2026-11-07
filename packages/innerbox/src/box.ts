@@ -4,7 +4,8 @@
 import { BATCH, unit, type Embedder } from "./embed";
 import { fingerprint, pieces, type Doc } from "./text";
 
-export type Hit = { id: string; score: number };
+/** piece: which of the document's pieces matched best (pieceBodies) */
+export type Hit = { id: string; score: number; piece: number };
 
 /** File format version (toBytes) */
 const FORMAT = 1;
@@ -133,9 +134,14 @@ export class Box {
     }
     const hits: Hit[] = [];
     for (let d = 0; d < ids.length; d++) {
-      let best = -1;
-      for (let j = starts[d]; j < starts[d + 1]; j++) best = Math.max(best, sims[rows[j]]);
-      hits.push({ id: ids[d], score: best });
+      let best = -1,
+        piece = 0;
+      for (let j = starts[d]; j < starts[d + 1]; j++)
+        if (sims[rows[j]] > best) {
+          best = sims[rows[j]];
+          piece = j - starts[d];
+        }
+      hits.push({ id: ids[d], score: best, piece });
     }
     return hits.sort((a, b) => b.score - a.score).slice(0, k);
   }

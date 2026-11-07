@@ -219,11 +219,23 @@ export type PeekDef = {
   dispatch?: { n: number; base: string; abstract?: boolean };
 };
 
+/** ⌘K's preview of a card or sidenote: its content as Markdown (code in fenced blocks), where it sits (board › Section …), and
+ *  for Related by Meaning the passage that matched (as it is written in md, give or take the Markdown marks) */
+export type SearchPreview = { md: string; where: string; hit?: string };
+
 export type SearchItem =
   | { kind: "symbol"; label: string; detail: string; path: string; line: number; sym: string; glyph: string }
   | { kind: "file"; label: string; detail: string; path: string }
-  | { kind: "card"; label: string; detail: string; board: string; card: string; num?: string }
-  | { kind: "sidenote"; label: string; detail: string; board: string; card: string; sidenote: string }
+  | { kind: "card"; label: string; detail: string; board: string; card: string; num?: string; preview?: SearchPreview }
+  | {
+      kind: "sidenote";
+      label: string;
+      detail: string;
+      board: string;
+      card: string;
+      sidenote: string;
+      preview?: SearchPreview;
+    }
   | { kind: "entry"; label: string; detail: string; path: string; line: number; sym?: string; end?: number };
 
 /** Related by Meaning: the closest cards and sidenotes; left = pieces still being indexed (ask again); off = no embedding

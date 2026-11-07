@@ -4599,6 +4599,54 @@ mark.wdiff {
   flex: none;
   max-width: 45%;
 }
+.palette.wide {
+  width: min(1080px, 94vw);
+}
+.palette .pbody {
+  display: flex;
+  min-height: 0;
+}
+.palette .pbody > .plist {
+  flex: 1 1 0;
+  min-width: 0;
+}
+.palette.wide .pbody > .plist {
+  height: 52vh;
+}
+.palette .pprev {
+  flex: 1.15 1 0;
+  min-width: 0;
+  height: 52vh;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--line);
+}
+.palette .ppw,
+.palette .ppempty {
+  padding: 12px 20px 0;
+  font: 10.5px var(--mono);
+  color: var(--ink-3);
+}
+.palette .ppmd {
+  flex: 1;
+  overflow: auto;
+  padding: 8px 20px 20px;
+  font-size: 13px;
+}
+.palette .cand .lb.md-inline {
+  font-family: var(--sys);
+}
+.palette .cand .lb mark {
+  background: linear-gradient(transparent 58%, var(--md-hl) 58%);
+  color: inherit;
+}
+.palette .ppmd table {
+  display: block;
+  overflow-x: auto;
+}
+.palette ::highlight(palette-hit) {
+  background: color-mix(in srgb, var(--accent) 24%, transparent);
+}
 .palette .empty.perr {
   font-size: 11px;
   padding: 2px 8px 4px;

@@ -4,11 +4,12 @@
 // after boards change; only text not seen before is embedded. Off while no endpoint is set.
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { BATCH, Box, endpointEmbedder, queryText, type Doc, type Embedder } from "@codeboard/innerbox";
+import { BATCH, Box, endpointEmbedder, pieceBodies, queryText, type Doc, type Embedder } from "@codeboard/innerbox";
 import { cardTitle, shelvedCards, type Card, type MeaningResult, type SearchItem } from "@codeboard/core";
 import type { Storage } from "./storage/boards";
 import type { HostContext } from "./context";
 import type { Prompts } from "./prompts";
+import { cardMarkdown, preview, sidenoteMarkdown, whereOf } from "./preview";
 import { readHostSetting } from "./settings";
 
 /** The embedding endpoint's API key in the secret storage */
@@ -158,7 +159,8 @@ export class MeaningSearch {
         if (!d) continue;
         const { boards, ...o } = d.origin;
         const where = boards.map((b) => (b === here ? "This board" : (names.get(b) ?? b))).join(" · ");
-        items.push({ ...o, detail: where } as SearchItem);
+        const hit = pieceBodies(d.doc)[h.piece];
+        items.push({ ...o, detail: where, preview: preview(d.md, d.doc.ctx ?? "", hit) } as SearchItem);
         if (items.length >= TOP) break;
       }
       return { items, left: this.left || undefined, error: this.error || undefined };
@@ -171,19 +173,11 @@ export class MeaningSearch {
 /** Every card and sidenote on the project's boards as a document (here's board first, so it is indexed first) */
 async function projectDocs(store: Storage, here?: string) {
   const boards = (await store.all()).map((x) => x.board).sort((a, b) => (a.id === here ? -1 : b.id === here ? 1 : 0));
-  const docs = new Map<string, { doc: Doc; origin: Origin }>();
+  const docs = new Map<string, { doc: Doc; origin: Origin; md: string }>();
   const names = new Map(boards.map((b) => [b.id, b.name]));
   for (const board of boards) {
     const off = shelvedCards(board);
-    const sectionPath = (id?: string): string[] => {
-      const out: string[] = [];
-      for (let s = board.sections.find((x) => x.id === id); s; s = board.sections.find((x) => x.id === s!.parent)) {
-        out.unshift(s.title);
-        if (out.length > 8) break;
-      }
-      return out;
-    };
-    const ctxOf = (c: string) => [board.name, ...sectionPath(board.place[c]?.section)].filter(Boolean).join(" › ");
+    const ctxOf = (c: string) => whereOf(board, c);
     for (const c of board.cards) {
       if (off.has(c.id)) continue;
       if (
@@ -202,6 +196,7 @@ async function projectDocs(store: Storage, here?: string) {
       docs.set(id, {
         doc: { id, title, text: cardText(c, board.place[c.id]?.summary?.text), ctx: ctxOf(c.id) },
         origin: { kind: "card", label: title, board: board.id, card: c.id, boards: [board.id] },
+        md: cardMarkdown(c, board),
       });
     }
     for (const n of board.sidenotes ?? []) {
@@ -227,6 +222,7 @@ async function projectDocs(store: Storage, here?: string) {
       const title = host ? cardTitle(host, board) : "";
       docs.set(id, {
         doc: { id, title, text, ctx: ctxOf(n.at.card) },
+        md: sidenoteMarkdown(n),
         origin: {
           kind: "sidenote",
           label: (text.split("\n").find((l) => l.trim()) ?? "").trim().slice(0, 80),

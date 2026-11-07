@@ -3,4 +3,4 @@
 // embedded, and the whole index is one file the caller stores where it likes.
 export { Box } from "./box";
 export { BATCH, endpointEmbedder, type Embedder } from "./embed";
-export { queryText, type Doc } from "./text";
+export { pieceBodies, queryText, type Doc } from "./text";

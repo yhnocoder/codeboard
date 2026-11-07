@@ -26,12 +26,12 @@ function sentences(text: string): string[] {
     .filter(Boolean);
 }
 
-/** A document's pieces (already prompted): sentences packed up to PIECE_CHARS; a title-only document is one piece */
-export function pieces(d: Doc): string[] {
+/** A document's pieces as written in it: sentences packed up to PIECE_CHARS; a title-only document is one empty piece */
+export function pieceBodies(d: Doc): string[] {
   const out: string[] = [];
   let cur = "";
   const flush = () => {
-    if (cur) out.push(pieceText(d, cur));
+    if (cur) out.push(cur);
     cur = "";
   };
   for (const s of sentences(d.text)) {
@@ -43,9 +43,12 @@ export function pieces(d: Doc): string[] {
     if (out.length >= MAX_PIECES) break;
   }
   flush();
-  if (!out.length) out.push(pieceText(d, ""));
+  if (!out.length) out.push("");
   return out.slice(0, MAX_PIECES);
 }
+
+/** A document's pieces as embedded: each with the prompt and the title */
+export const pieces = (d: Doc): string[] => pieceBodies(d).map((b) => pieceText(d, b));
 
 /** A short fingerprint of a string (cyrb53): the key a piece's vector is kept under, so unchanged text is never embedded again */
 export function fingerprint(s: string): string {

@@ -14,6 +14,7 @@ import { paletteOpen, setPaletteOpen } from "../state/ui";
 import { MEANING_PAUSE, MEANING_RETRY } from "../state/timing";
 import { ask, send } from "../host";
 import * as A from "../actions";
+import { Label, Preview } from "./PalettePreview";
 
 const GROUPS: [SearchItem["kind"], string][] = [
   ["entry", "Entry Points"],
@@ -73,6 +74,8 @@ export function Palette() {
     const on = list?.querySelector(".cand.on");
     if (on) scrollIntoBox(on, "nearest");
   });
+  /** Searching cards (not Add Function, not the entry points): the preview pane beside the list */
+  const wide = () => init.mode !== "code" && !!q().trim();
   const close = () => setPaletteOpen(false);
   useOverlay({ close, inside: (t) => !!t.closest(".palette"), grab: true, modal: true, outside: true });
   const run = async (it: SearchItem, alt: boolean) => {
@@ -128,14 +131,14 @@ export function Palette() {
       >
         <span class="kind">{icon(it)}</span>
         <Show when={it.kind === "card" ? it.num : undefined}>{(n) => <span class="step sm">{n()}</span>}</Show>
-        <span class="lb">{it.label}</span>
+        <Label it={it} />
         <small>{it.detail}</small>
       </button>
     );
   };
   return (
     <div class="scrim light">
-      <div class="palette pill" data-nodrag onKeyDown={onKey}>
+      <div class="palette pill" classList={{ wide: wide() }} data-nodrag onKeyDown={onKey}>
         <input
           ref={inp}
           class="pin"
@@ -144,25 +147,30 @@ export function Palette() {
           onInput={(e) => setQ(e.currentTarget.value)}
           spellcheck={false}
         />
-        <div ref={list} class="plist">
-          <For each={GROUPS}>
-            {([k, title]) => (
-              <Show when={res().some((r) => r.kind === k)}>
-                <div class="pgh">{title}</div>
-                <For each={res().filter((r) => r.kind === k)}>{(it) => item(it)}</For>
-              </Show>
-            )}
-          </For>
-          <Show when={related().length || meaning().left || meaning().error}>
-            <div class="pgh">
-              Related by Meaning
-              <Show when={meaning().left}>{(n) => <span class="pnote"> · indexing, {n()} left</span>}</Show>
-            </div>
-            <Show when={meaning().error}>{(e) => <div class="empty perr">{e()}</div>}</Show>
-            <For each={related()}>{(it) => item(it)}</For>
-          </Show>
-          <Show when={!res().length && !related().length && !busy()}>
-            <div class="empty">{q().trim() ? "No matches" : "No entry points found. Type to search."}</div>
+        <div class="pbody">
+          <div ref={list} class="plist">
+            <For each={GROUPS}>
+              {([k, title]) => (
+                <Show when={res().some((r) => r.kind === k)}>
+                  <div class="pgh">{title}</div>
+                  <For each={res().filter((r) => r.kind === k)}>{(it) => item(it)}</For>
+                </Show>
+              )}
+            </For>
+            <Show when={related().length || meaning().left || meaning().error}>
+              <div class="pgh">
+                Related by Meaning
+                <Show when={meaning().left}>{(n) => <span class="pnote"> · indexing, {n()} left</span>}</Show>
+              </div>
+              <Show when={meaning().error}>{(e) => <div class="empty perr">{e()}</div>}</Show>
+              <For each={related()}>{(it) => item(it)}</For>
+            </Show>
+            <Show when={!res().length && !related().length && !busy()}>
+              <div class="empty">{q().trim() ? "No matches" : "No entry points found. Type to search."}</div>
+            </Show>
+          </div>
+          <Show when={wide()}>
+            <Preview it={ordered()[i()]} q={q().trim()} />
           </Show>
         </div>
         <div class="pfoot">
