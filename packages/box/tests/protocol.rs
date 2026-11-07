@@ -121,7 +121,8 @@ impl Client {
         let s = loop {
             match Stream::connect(name.clone()) {
                 Ok(s) => break s,
-                Err(_) => std::thread::yield_now(),
+                // a poll, not a spin: spinning starves the service threads on a busy machine (macOS runners)
+                Err(_) => std::thread::sleep(Duration::from_millis(5)),
             }
         };
         Client {
@@ -152,7 +153,9 @@ impl Client {
             if !s["indexing"].as_bool().unwrap() {
                 return s;
             }
-            std::thread::yield_now();
+            // a poll, not a spin: each status takes the lock the indexing job needs to write, and a spinning client
+            // kept it from ever getting it on macOS runners
+            std::thread::sleep(Duration::from_millis(5));
         }
     }
 }
