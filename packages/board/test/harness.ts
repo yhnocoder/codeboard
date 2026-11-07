@@ -417,7 +417,7 @@ boot({ post: (m) => { window.__inflight++; window.__host(JSON.stringify(m)).fina
         return reply(m.req, [...syms, ...fl]);
       }
       case "tidy":
-        return reply(m.req, Object.fromEntries(await tidy(m.cards, m.links, m.fixed)));
+        return reply(m.req, Object.fromEntries(await tidy(m.cards, m.links, m.fixed, m.avoid)));
       case "entryPoints":
         return reply(m.req, [
           {

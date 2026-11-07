@@ -126,7 +126,7 @@ export function makeHandler(cx: HostContext, panels: BoardHost, mediaDir: string
     webMeta: (_p, m) => webMeta(cx, store, m.url),
     gh: (_p, m) => ghQuery(cx, m.q),
     stickerPacks: () => readPacks(cx),
-    tidy: async (_p, m) => Object.fromEntries(await tidy(m.cards, m.links, m.fixed)),
+    tidy: async (_p, m) => Object.fromEntries(await tidy(m.cards, m.links, m.fixed, m.avoid)),
     openStickerDir: () => openStickerDir(cx),
     copyDiagnostics: (p, m) => copyDiagnostics(cx, prompts(cx, p), p.board, m.board),
     log: (_p, m) => cx.log(m.level, m.text),

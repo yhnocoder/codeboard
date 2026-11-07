@@ -413,7 +413,14 @@ export type BoardToHost =
   /** 网页元信息：抓一次，图片存进 assets/ */
   | { type: "webMeta"; req: number; url: string } // 回 WebMeta
   | { type: "stickerPacks"; req: number } // 回 StickerPack[]
-  | { type: "tidy"; req: number; cards: (Rect & { id: string })[]; links: [string, string][]; fixed: Rect[] } // Tidy Up 的排版（ELK 只在宿主里）：回每张卡的新 x / y
+  | {
+      type: "tidy";
+      req: number;
+      cards: (Rect & { id: string })[];
+      links: [string, string][];
+      fixed: Rect[];
+      avoid?: Rect[];
+    } // Tidy Up 的排版（ELK 只在宿主里）：回每张卡的新 x / y
   | { type: "openStickerDir" }
   | { type: "copyDiagnostics"; board?: boolean }
   /** 白板里的错误 / 日志：写进 Output 面板的 CodeBoard 频道，Copy Diagnostics 会带上 */
