@@ -211,10 +211,10 @@ export class MeaningSearch {
         }
         const where = boards.map((b) => (b === here ? "This board" : (names.get(b) ?? b))).join(" · ");
         const hit = pieceBodies(d.doc)[h.piece];
-        items.push({ ...o, detail: where, preview: preview(d.md, d.where, hit) } as SearchItem);
+        items.push({ ...o, detail: where, preview: preview(d.md, d.where, hit), score: h.score } as SearchItem);
         if (items.length >= TOP) break;
       }
-      return { items, left: this.left || undefined, error: this.error || undefined };
+      return { items, left: this.left || undefined, error: this.error || undefined, model: await e.model() };
     } catch (err) {
       return { items: [], error: (err as Error).message };
     }
