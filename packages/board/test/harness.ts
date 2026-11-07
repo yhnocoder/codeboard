@@ -395,6 +395,8 @@ boot({ post: (m) => { window.__inflight++; window.__host(JSON.stringify(m)).fina
           Object.fromEntries(await Promise.all(m.segs.map(async (s) => [s.id, await langView(s)] as const))),
         );
       case "search": {
+        // this board only: the cards and sidenotes on it, which this host does not search
+        if (m.scope === "board") return reply(m.req, []);
         const q = m.q.toLowerCase();
         const syms = allSyms()
           .filter((x) => x.s.qual.toLowerCase().includes(q))

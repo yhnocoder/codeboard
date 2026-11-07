@@ -1025,6 +1025,38 @@ test("palette", async () => {
   await h.page.context().close();
 });
 
+test("paletteThisBoard", async () => {
+  // Tab (or the switch beside the input) keeps both searches to this board, and back
+  const h = await open({ board: boardWith("LLMEngine.step"), light });
+  await h.page.keyboard.press("ControlOrMeta+k");
+  await h.page.locator(".palette input:focus").waitFor();
+  await h.page.keyboard.type("alloc");
+  await until(h, "the symbols are listed", async () => (await h.page.locator(".palette .cand").count()) > 0);
+  const scopes = (t: string) => h.sent.filter((m) => m.type === t).map((m: any) => m.scope ?? "all");
+  await h.page.keyboard.press("Tab");
+  await until(h, "both searches asked for this board", () =>
+    ["search", "searchMeaning"].every((t) => scopes(t).at(-1) === "board"),
+  );
+  await expect(h.page.locator(".palette .empty")).toHaveText("No matches on this board");
+  const on = await h.page.locator(".pscope button.on").textContent();
+  const focused = await h.page.evaluate(() => document.activeElement?.classList.contains("pin"));
+  await shot(h, "pal-this-board");
+  await h.page.locator(".pscope button", { hasText: "All Boards" }).click();
+  await until(h, "back to all boards", () => scopes("search").at(-1) === "all");
+  await until(h, "the symbols are back", async () => (await h.page.locator(".palette .cand").count()) > 0);
+  check(
+    "paletteThisBoard Tab searches only this board, the switch goes back to all boards",
+    on === "This Board" && !!focused,
+    {
+      on,
+      focused,
+      search: scopes("search"),
+      meaning: scopes("searchMeaning"),
+    },
+  );
+  await h.page.context().close();
+});
+
 test("paletteMeaning", async () => {
   // the host's Related by Meaning (innerbox) played here: the first answer is still indexing, the next is done
   let asked = 0;
