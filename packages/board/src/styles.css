@@ -4670,10 +4670,15 @@ mark.wdiff {
   font: 10.5px var(--mono);
   color: var(--ink-3);
 }
+/* the gap under where it sits is its own, not the scrolling pane's: text scrolled up is cut below it, never drawn under it */
+.palette .ppw {
+  padding-bottom: 8px;
+  flex: none;
+}
 .palette .ppmd {
   flex: 1;
   overflow: auto;
-  padding: 8px 20px 20px;
+  padding: 0 20px 20px;
   font-size: 13px;
 }
 .palette .cand.more .lb {
@@ -4690,6 +4695,25 @@ mark.wdiff {
 .palette .ppmd table {
   display: block;
   overflow-x: auto;
+}
+.palette .cand .kind.thumb {
+  width: 28px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.palette .cand .kind.thumb img {
+  max-width: 28px;
+  max-height: 20px;
+  object-fit: contain;
+  border-radius: 2px;
+  outline: 1px solid var(--line);
+}
+.palette .ppmd img.pphit {
+  outline: 2px solid color-mix(in srgb, var(--accent) 70%, transparent);
+  outline-offset: 3px;
+  border-radius: 2px;
 }
 .palette ::highlight(palette-hit) {
   background: color-mix(in srgb, var(--accent) 24%, transparent);

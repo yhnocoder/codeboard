@@ -179,6 +179,14 @@ export class BoardPanel {
       this.post({ type: "zoomLog", id });
     });
   }
+  /** A picture (an SVG data: URL) drawn into a PNG data: URL by this board (HostToBoard "draw"); null when it does not draw */
+  draw(dataUrl: string): Promise<string | number | null> {
+    const id = ++this.askN;
+    return new Promise((r) => {
+      this.asks.set(id, r);
+      this.post({ type: "draw", id, dataUrl });
+    });
+  }
   answer(id: number, v: string | number | null) {
     this.asks.get(id)?.(v);
     this.asks.delete(id);

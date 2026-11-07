@@ -48,6 +48,8 @@ class Push {
   }
 }
 
+/** How long an open board has to draw a picture for Related by Meaning */
+const DRAW_WAIT = 10_000;
 const TARGET = "codeboard.target",
   OPEN = "codeboard.open",
   OPENED = "codeboard.opened",
@@ -422,6 +424,16 @@ export class BoardHub implements BoardHost, Disposable {
   }
   all() {
     return [...this.panels.values()];
+  }
+  /** A picture (an SVG data: URL) drawn into a PNG data: URL by an open board, the one in sight first; undefined when no board
+   *  is open, or it does not answer within DRAW_WAIT (a board in the background may not run until it is shown again) */
+  async draw(dataUrl: string): Promise<string | undefined> {
+    const p = this.all().find((x) => x.ready && x.visible) ?? this.all().find((x) => x.ready);
+    if (!p) return undefined;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const late = new Promise<null>((r) => (timer = setTimeout(() => r(null), DRAW_WAIT)));
+    const v = await Promise.race([p.draw(dataUrl), late]).finally(() => clearTimeout(timer));
+    return typeof v === "string" ? v : undefined;
   }
   metas(): Promise<BoardMeta[]> {
     return this.store.list();

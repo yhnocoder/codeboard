@@ -14,7 +14,7 @@ import { paletteOpen, setPaletteOpen } from "../state/ui";
 import { MEANING_PAUSE, MEANING_RETRY } from "../state/timing";
 import { ask, send } from "../host";
 import * as A from "../actions";
-import { Label, Preview } from "./PalettePreview";
+import { Label, Preview, Thumb } from "./PalettePreview";
 
 type Group = SearchItem["kind"] | "meaning";
 /** The row that opens the rest of a long group */
@@ -190,7 +190,12 @@ export function Palette() {
         }}
         onClick={(e) => run(it, e.altKey)}
       >
-        <span class="kind">{icon(it)}</span>
+        <Show
+          when={(it.kind === "card" || it.kind === "sidenote") && it.preview?.picture}
+          fallback={<span class="kind">{icon(it)}</span>}
+        >
+          {(src) => <Thumb src={src()} />}
+        </Show>
         <Show when={it.kind === "card" ? it.num : undefined}>{(n) => <span class="step sm">{n()}</span>}</Show>
         <Label it={it} />
         <small>{it.detail}</small>
