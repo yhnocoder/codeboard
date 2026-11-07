@@ -224,6 +224,12 @@ pub fn serve(paths: Paths, idle: Duration) -> std::io::Result<Outcome> {
     loop {
         match listener.accept() {
             Ok(conn) => {
+                // macOS (BSD) hands out accepted sockets non-blocking like the listener; Linux does not. Each
+                // connection has its own thread and reads blocking
+                if let Err(e) = conn.set_nonblocking(false) {
+                    log(&svc.paths, &format!("accept: {e}"));
+                    continue;
+                }
                 svc.conns.fetch_add(1, Ordering::SeqCst);
                 let s = svc.clone();
                 std::thread::spawn(move || {
