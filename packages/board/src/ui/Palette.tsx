@@ -73,6 +73,8 @@ export function Palette() {
     if (init.mode === "code" || k === "meaning" || open || all.length <= GROUP_SHOWN + 1) return all;
     return [...all.slice(0, GROUP_SHOWN), { kind: "more", group: k, n: all.length - GROUP_SHOWN }];
   };
+  /** Related by Meaning is off (no embedding server set) and a query is typed */
+  const off = () => !!meaning().off && !!q().trim() && wide();
   const ordered = createMemo(() => GROUPS.flatMap(([k]) => groupOf(k)));
   const expand = (k: Group) => {
     const at = i();
@@ -242,12 +244,18 @@ export function Palette() {
             <For each={GROUPS}>
               {([k, title]) =>
                 k === "meaning" ? (
-                  <Show when={related().length || meaning().left || meaning().error}>
+                  <Show when={related().length || meaning().left || meaning().error || off()}>
                     <div class="pgh">
                       {title}
                       <Show when={meaning().left}>{(n) => <span class="pnote"> · indexing, {n()} left</span>}</Show>
                     </div>
                     <Show when={meaning().error}>{(e) => <div class="empty perr">{e()}</div>}</Show>
+                    {/* off says so, or a query that finds nothing by its words reads as one nothing is related to */}
+                    <Show when={off()}>
+                      <div class="empty perr">
+                        Off: set codeboard.search.embeddingUrl to an embedding server to search by meaning
+                      </div>
+                    </Show>
                     <For each={related()}>{(it) => item(it)}</For>
                   </Show>
                 ) : (
