@@ -25,6 +25,7 @@ import { prompts } from "./prompts";
 import { editSealPrompt } from "./seals";
 import { clearDeepseekKey, setDeepseekKey } from "./ai";
 import { setEmbeddingKey } from "./meaning";
+import { exportSearchTraces } from "./searchtrace";
 import type { CommandId } from "./commands";
 import { copyToProject, otherProjects, removeMoved } from "./transfer";
 import { BUNDLE_EXT, exportFlow, importFile } from "./bundle";
@@ -588,6 +589,7 @@ export function makeActions(cx: HostContext, panels: BoardHost, store: Storage, 
     "codeboard.setDeepseekKey": () => setDeepseekKey(cx, prompts(cx, active())),
     "codeboard.clearDeepseekKey": () => clearDeepseekKey(cx),
     "codeboard.setEmbeddingKey": () => setEmbeddingKey(cx, prompts(cx, active())),
+    "codeboard.exportSearchTraces": () => exportSearchTraces(cx, store),
   } satisfies Record<CommandId, (...a: never[]) => unknown>;
 }
 
