@@ -43,6 +43,7 @@ import {
   descSections,
   frames,
   hiddenByAncestor,
+  visibleCards,
   openUnder,
   measureShut,
 } from "../state/sections";
@@ -183,7 +184,8 @@ export const arrangeItem = (ids: () => string[]): Item => {
 /**
  * Tidy Up：宿主排版（core/tidy.ts，ELK 分层布局），有箭头的按调用关系从左往右分列，没箭头的排成行放在下面。一步撤销；卡和线从旧位置滑过去。
  * 选中的 Section 整个当一块排（框、成员卡、子 Section 一起挪）；块之间的箭头是成员卡之间的箭头。
- * 锁住的卡、Section 不动，当成障碍（别的绕开它）。等宿主回答期间卡被拖动或删掉了就不再套用
+ * 锁住的卡、Section 不动，当成障碍（别的绕开它）；没选中的卡和 Section 也是障碍，排开的块不会压到旁边的东西上
+ * （包着这些块的外层 Section 除外）。等宿主回答期间卡被拖动或删掉了就不再套用
  */
 export async function tidyUp(ids = sel.cards, secIds = sel.sections) {
   const chosen = secIds.map(sectionById).filter((q): q is Section => !!q && !hiddenByAncestor(q));
@@ -205,20 +207,39 @@ export async function tidyUp(ids = sel.cards, secIds = sel.sections) {
       return f ? [{ id: `s:${q.id}`, x: f.x, y: f.y, w: f.w, h: f.h }] : [];
     }),
   ];
+  // the Sections around the blocks hold them, so they are no obstacle
+  const around = new Set<string>();
+  const up = (id: string | undefined) => {
+    for (let q = sectionById(id ?? ""); q && !around.has(q.id); q = sectionById(q.parent ?? "")) around.add(q.id);
+  };
+  for (const q of tops) up(q.parent);
+  for (const id of hosts) up(placeOf(id).section);
   const fixed = [
     ...hosts.filter(isLocked).map((id) => rectOf(id)),
     ...tops.filter((q) => sectionLocked(q)).flatMap((q) => fr.get(q.id) ?? []),
+    ...visibleCards()
+      .filter((c) => !blockOf.has(c.id))
+      .map((c) => rectOf(c)),
+    ...state.board.sections
+      .filter((q) => !around.has(q.id) && !inChosen.has(q.id) && !tops.includes(q) && !hiddenByAncestor(q))
+      .flatMap((q) => fr.get(q.id) ?? []),
   ];
   const links = state.board.links
     .map((l) => [blockOf.get(hostOf(l.from.card)), blockOf.get(hostOf(l.to.card))])
     .filter((e): e is [string, string] => !!e[0] && !!e[1] && e[0] !== e[1]);
+  const members = frees.flatMap((q) => allMembers(q.id).map((c) => c.id));
   const at = () =>
-    JSON.stringify([...free.map((id) => placeOf(id)), ...frees.map((q) => sectionById(q.id))].map((q) => [q?.x, q?.y]));
+    JSON.stringify(
+      [...[...free, ...members].map((id) => state.board.place[id]), ...frees.map((q) => sectionById(q.id))].map((q) => [
+        q?.x,
+        q?.y,
+      ]),
+    );
   const asked = at();
   const m = await ask("tidy", { cards: rects, links, fixed }).catch(() => null);
   if (!m || asked !== at()) return;
   const cards: Record<string, { x: number; y: number }> = {};
-  const sections: Record<string, { x: number; y: number }> = {};
+  const sections: Record<string, { dx: number; dy: number }> = {};
   const moved: { id: string; ox: number; oy: number }[] = [];
   const slid = new Set<string>();
   for (const r of rects) {
@@ -233,16 +254,13 @@ export async function tidyUp(ids = sel.cards, secIds = sel.sections) {
       continue;
     }
     const sid = r.id.slice(2);
-    for (const q of [sectionById(sid), ...descSections(sid)]) if (q) sections[q.id] = { x: q.x + dx, y: q.y + dy };
-    for (const c of allMembers(sid)) {
-      const q = placeOf(c.id);
-      cards[c.id] = { x: q.x + dx, y: q.y + dy };
-      moved.push({ id: c.id, ox: -dx, oy: -dy });
-    }
+    sections[sid] = { dx, dy };
+    // the cards slide along (the command moves them with their Section)
+    for (const c of allMembers(sid)) moved.push({ id: c.id, ox: -dx, oy: -dy });
     slid.add(sid);
   }
   if (!moved.length && !slid.size) return;
-  if (!C.moveCards(commandEnv, cards, sections)) return;
+  if (!C.tidyMove(commandEnv, cards, sections)) return;
   slideFrom(moved);
   // the frames ease to where they went, as with Fit Content
   if (slid.size && !reduceMotion()) {

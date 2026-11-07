@@ -133,11 +133,14 @@ export function unfoldTo(env: CommandEnv, host: string, callers: Iterable<string
   });
 }
 
-/** Cards and Section frames moved to where the shell laid them out (Tidy Up), in one step */
-export function moveCards(
+/**
+ * Tidy Up's result in one step: cards to their new place, and whole Sections moved by (dx, dy), each with its inner Sections
+ * and every card placed in any of them (as dragging the Section moves them)
+ */
+export function tidyMove(
   env: CommandEnv,
   to: Record<string, { x: number; y: number }>,
-  sections: Record<string, { x: number; y: number }> = {},
+  sections: Record<string, { dx: number; dy: number }>,
 ): boolean {
   return env.edit((b) => {
     for (const [id, p] of Object.entries(to)) {
@@ -147,11 +150,25 @@ export function moveCards(
         c.y = p.y;
       }
     }
+    const by = new Map<string, { dx: number; dy: number }>();
+    const walk = (id: string, d: { dx: number; dy: number }) => {
+      if (by.has(id)) return;
+      by.set(id, d);
+      for (const k of b.sections) if (k.parent === id) walk(k.id, d);
+    };
+    for (const [id, d] of Object.entries(sections)) walk(id, d);
     for (const s of b.sections) {
-      const p = sections[s.id];
-      if (p) {
-        s.x = p.x;
-        s.y = p.y;
+      const d = by.get(s.id);
+      if (d) {
+        s.x += d.dx;
+        s.y += d.dy;
+      }
+    }
+    for (const c of Object.values(b.place)) {
+      const d = c.section ? by.get(c.section) : undefined;
+      if (d) {
+        c.x += d.dx;
+        c.y += d.dy;
       }
     }
   });
