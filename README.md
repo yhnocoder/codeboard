@@ -100,7 +100,7 @@ For the best results with Python, install [Pylance](https://marketplace.visualst
 | `codeboard.ai.textModel`, `svgModel`, `focusModel` | `auto` | Model for Extract Text, for Convert / Modify SVG and for Auto Focus: `auto` (DeepSeek if a key is set, otherwise a VS Code language model), `deepseek`, or a VS Code language model picked in Settings › AI. |
 | `codeboard.studyScope` | `[]` | Packages outside the workspace that count as project code, for example `torch`. |
 | `codeboard.doubleClick` | `text` | What double-clicking empty board space creates. |
-| `codeboard.search.embeddingUrl` | *(empty)* | An embedding server on your machine (OpenAI-compatible, for example oMLX or LM Studio serving EmbeddingGemma at `http://127.0.0.1:11001/v1`). When set, ⌘K also lists **Related by Meaning**: cards and sidenotes of this project's boards that mean what you typed, in any language, and Image cards by what their picture shows (when the model takes pictures, as EmbeddingGemma 2 does). Set its key with **CodeBoard: Set Embedding API Key**. |
+| `codeboard.search.embeddingUrl` | *(empty)* | An embedding server on your machine (OpenAI-compatible, for example oMLX or LM Studio serving EmbeddingGemma at `http://127.0.0.1:11001/v1`). When set, ⌘K (every board) and ⌘F (this board) also list **Related by Meaning**: cards and sidenotes of this project's boards that mean what you typed, in any language, and Image cards by what their picture shows (when the model takes pictures, as EmbeddingGemma 2 does). Set its key with **CodeBoard: Set Embedding API Key**. |
 
 Set a DeepSeek API key in the board's Settings › AI, or with **CodeBoard: Set DeepSeek API Key**. It is kept in VS Code's secret storage.
 
