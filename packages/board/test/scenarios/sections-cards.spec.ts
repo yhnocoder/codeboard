@@ -1,6 +1,7 @@
 import { shot, symCard, findSym, put, type Host } from "../harness";
 import { DEFAULT_SETTINGS, emptyBoard, sectionFrame, type Board, type NoteCard, type Rect } from "@codeboard/core";
 import { test, open, check, light, until, idle, hold } from "../fixtures";
+import { watch } from "../watch";
 import { WHEEL_GESTURE } from "../../src/state/timing";
 
 const close = (h: Host) => h.page.context().close();
@@ -649,6 +650,7 @@ test("sectionDragSnapsToSection", async () => {
         return { v: g.classList.contains("v"), x: r.x, y: r.y, h: r.height };
       }),
     );
+  const guideLayer = () => h.page.evaluate(() => getComputedStyle(document.querySelector(".guides")!).willChange);
   const card0 = { ...h.board().place.c };
   // what the drag moves (S2's frame and title, its card) and what it leaves (S1, its card): compositor layer hint and look
   const layers = () =>
@@ -677,12 +679,17 @@ test("sectionDragSnapsToSection", async () => {
   await idle(h);
   const during = await guides(),
     s2d = await box("S2"),
-    held = await layers();
+    held = await layers(),
+    guidesHeld = await guideLayer();
   await shot(h, "sect-snap-01-guide");
   await h.page.mouse.up();
   await until(h, "the Section's move is saved", () => h.board().sections.find((q) => q.id === "S2")!.x !== 600);
   await idle(h);
-  const down = await layers();
+  const down = await layers(),
+    guidesDown = await guideLayer();
+  // While dragging, the guides are a layer of their own (styles.css .guides.live): a guide that shows or moves repaints only
+  // them, not the card level's layer; put down, they are back in it
+  check("section-drag-guides-layer", guidesHeld === "transform" && guidesDown === "auto", { guidesHeld, guidesDown });
   // Dragged, the Section's frame, its title and its card are each a layer of its own (styles.css .carry), so a move only moves
   // those layers instead of painting them again in the world's layer; nothing of them looks different, and put down they are
   // back in the world's layer
@@ -1076,6 +1083,17 @@ test("sectionClickEmptySelects", async () => {
   await pg.mouse.click(s1.x + 40, s1.y + s1.height - 30);
   await idle(h);
   const one = await selected();
+  // ⇧ 点另一个 Section 的空白处：加进选择；再 ⇧ 点一次：移出
+  const s2 = await box("S2");
+  await pg.keyboard.down("Shift");
+  await pg.mouse.click(s2.x + s2.width - 30, s2.y + 30);
+  await idle(h);
+  const added = await selected();
+  // somewhere else in it (the same spot again would be a double-click)
+  await pg.mouse.click(s2.x + s2.width - 30, s2.y + s2.height - 30);
+  await idle(h);
+  const removed = await selected();
+  await pg.keyboard.up("Shift");
   await pg.mouse.click(s3.x + s3.width - 30, s3.y + s3.height - 20);
   await idle(h);
   const inner = await selected();
@@ -1098,11 +1116,13 @@ test("sectionClickEmptySelects", async () => {
   check(
     "sectionClickEmptySelects",
     one.join() === "S1" &&
+      added.sort().join() === "S1,S2" &&
+      removed.join() === "S1" &&
       inner.join() === "S3" &&
       none.length === 0 &&
       dragged.sections.length === 0 &&
       dragged.cards.join() === "n1",
-    { one, inner, none, dragged },
+    { one, added, removed, inner, none, dragged },
   );
   await close(h);
 });
@@ -1207,6 +1227,64 @@ test("sectionMultiSelectColor", async () => {
       again.sections.join() === "S1,S2" &&
       again.cards.join() === "n2",
     { both, less, again },
+  );
+  await close(h);
+});
+
+/** Tidy Up on several Sections lays them out as blocks: each frame moves with its cards (same place inside it), the frames do
+ *  not overlap afterwards, and one undo puts everything back */
+test("sectionTidyUp", async () => {
+  const b = twoSectionsAndLoose();
+  // S2 on top of S1's lower half, so Tidy Up has something to do
+  b.sections[1].x = 300;
+  b.sections[1].y = 500;
+  b.place.n1.x = 340;
+  b.place.n1.y = 550;
+  // an unselected Note where S2 would go: Tidy Up keeps clear of it
+  put(b, { id: "n3", kind: "note", look: "note", md: "# Beside\n\nNot selected." } as NoteCard, 720, 100, 260);
+  // and one S1 already touches where it starts (real boards have those): it does not push the blocks away
+  put(b, { id: "n4", kind: "note", look: "note", md: "# Below\n\nTouching S1." } as NoteCard, 120, 812, 260);
+  const h = await open({ board: b, light, w: 1600, h: 1000 });
+  await idle(h);
+  const inside = (bd: Board) => {
+    const S2 = bd.sections.find((s) => s.id === "S2")!;
+    return [bd.place.n1.x - S2.x, bd.place.n1.y - S2.y];
+  };
+  const before = JSON.stringify({ s: h.board().sections, p: h.board().place });
+  const off0 = inside(h.board());
+  await shot(h, "sect-tidy-00-before");
+  await title(h, "S1").click();
+  await title(h, "S2").click({ modifiers: ["Shift"] });
+  await title(h, "S2").click({ button: "right" });
+  await h.page.locator(".ctx:not(.closing) button", { hasText: "Tidy Up" }).click();
+  await until(
+    h,
+    "the Sections are moved",
+    () => JSON.stringify({ s: h.board().sections, p: h.board().place }) !== before,
+  );
+  await idle(h);
+  await shot(h, "sect-tidy-01-after");
+  const frames = await h.page.evaluate(() =>
+    ['.sect[data-sect="S1"]', '.sect[data-sect="S2"]', '.card[data-id="n3"]'].map((q) =>
+      document.querySelector(q)!.getBoundingClientRect(),
+    ),
+  );
+  const clear = (a: DOMRect, c: DOMRect) =>
+    a.right <= c.left || c.right <= a.left || a.bottom <= c.top || c.bottom <= a.top;
+  const apart = clear(frames[0], frames[1]) && clear(frames[0], frames[2]) && clear(frames[1], frames[2]);
+  const onScreen = frames.slice(0, 2).every((f) => f.left >= 0 && f.right <= 1600);
+  const off1 = inside(h.board());
+  const loose = h.board().place.n2;
+  await h.page.keyboard.press("ControlOrMeta+z");
+  await until(
+    h,
+    "one undo puts it back",
+    () => JSON.stringify({ s: h.board().sections, p: h.board().place }) === before,
+  );
+  check(
+    "sectionTidyUp the Sections are laid out apart, clear of the unselected Note and near where they were, each with its cards, the loose card stays",
+    apart && onScreen && off0.join() === off1.join() && loose.x === 1320 && loose.y === 110,
+    { frames, onScreen, off0, off1, loose },
   );
   await close(h);
 });
@@ -1508,4 +1586,38 @@ test("sectionEdgeWheelPans", async () => {
     runs,
   );
   await close(h);
+});
+
+/**
+ * Folding a Section and opening it again, watched frame by frame (watch.ts): its cards and arrows move into the folded frame
+ * and back without a jump, the card outside it stays put, nothing flashes and no title shows twice over itself
+ */
+test("sectionFoldWatched", async () => {
+  const b = emptyBoard("b1", "fold watched");
+  for (let i = 0; i < 4; i++) {
+    put(
+      b,
+      { id: `n${i}`, kind: "note", look: "note", md: `# N${i}\n\nwords ${i}` } as NoteCard,
+      120 + (i % 2) * 300,
+      140 + Math.floor(i / 2) * 160,
+      260,
+    );
+    b.place[`n${i}`].section = "S";
+  }
+  put(b, { id: "out", kind: "note", look: "note", md: "# Out\n\nnot in it" } as NoteCard, 900, 140, 260);
+  b.sections.push({ id: "S", title: "Fold me", x: 80, y: 80, w: 700, h: 500 });
+  b.links.push({ id: "L1", from: { card: "n0" }, to: { card: "out" } } as never);
+  b.cam = { x: 0, y: 0, z: 1 };
+  const h = await open({ board: b, light, w: 1300, h: 760 });
+  await idle(h);
+  const label = '.slabel[data-sect="S"]';
+  await h.page.locator(label).hover();
+  await idle(h);
+  const o = { moves: [/^card:n/, /^sect:/, /^link:/, /^el:/], follow: [label], keep: [label], frames: 50 };
+  await watch(h, "sectionFoldWatched fold", o, () => h.page.locator(`${label} .chev2`).click());
+  await idle(h);
+  check("sectionFoldWatched the Section is folded", h.board().sections[0].collapsed === true, h.board().sections[0]);
+  await watch(h, "sectionFoldWatched open", o, () => h.page.locator(`${label} .chev2`).click());
+  await idle(h);
+  check("sectionFoldWatched the Section is open again", !h.board().sections[0].collapsed, h.board().sections[0]);
 });

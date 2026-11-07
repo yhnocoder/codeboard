@@ -135,6 +135,21 @@ export function Label(props: { it: SearchItem }) {
   );
 }
 
+/** The picture that matched (or an Image card's), small, in place of the row's kind mark: Image cards are told apart by it */
+export function Thumb(props: { src: string }) {
+  const md = useMd();
+  return (
+    <span
+      class="kind thumb"
+      ref={(el) => createEffect(() => rich(md, el, `![](<${props.src.replace(/[<>]/g, "")}>)`))}
+    />
+  );
+}
+
+/** The picture in the rendered preview that src (as the Markdown writes it) is */
+const pictureIn = (el: HTMLElement, src: string) =>
+  [...el.querySelectorAll("img")].find((im) => (im.dataset.src ?? im.getAttribute("src")) === src);
+
 function rich(md: Markdown, el: HTMLElement, src: string) {
   const h = md.renderInline(src);
   el.innerHTML = h;
@@ -159,6 +174,15 @@ export function Preview(props: { it?: SearchItem; q: string }) {
   let body!: HTMLDivElement;
   /** Marks what matched and brings it into view */
   const paint = (v: SearchPreview) => {
+    // a picture that matched: framed and brought into view (once it has its size), the typed words not marked
+    const pic = v.picture && !v.hit ? pictureIn(body, v.picture) : undefined;
+    if (pic) {
+      mark([]);
+      pic.classList.add("pphit");
+      scrollIntoBox(pic, "center");
+      if (!pic.complete) pic.addEventListener("load", () => scrollIntoBox(pic, "center"), { once: true });
+      return;
+    }
     const rs = hitRanges(body, v, props.q);
     mark(rs);
     const first = rs[0]?.startContainer.parentElement;

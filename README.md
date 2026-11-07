@@ -95,12 +95,12 @@ For the best results with Python, install [Pylance](https://marketplace.visualst
 | --- | --- | --- |
 | `codeboard.theme` | `warm-ink` | Board theme. Each has a light and a dark variant. |
 | `codeboard.storageDir` | *(empty)* | Folder for board files. Empty uses the `.codeboard` folder in the first workspace folder if there is one, otherwise VS Code's workspace storage, outside the repository. |
-| `codeboard.ai.provider` | `auto` | Inline completions in Notes: `auto`, `copilot`, `deepseek` or `off`. |
+| `codeboard.ai.provider` | `off` | Inline completions in Notes: `off`, `auto`, `copilot` or `deepseek`. Off until you turn them on. |
 | `codeboard.ai.deepseekModel` | `deepseek-flash` | DeepSeek model used for completions and the AI tools. |
 | `codeboard.ai.textModel`, `svgModel`, `focusModel` | `auto` | Model for Extract Text, for Convert / Modify SVG and for Auto Focus: `auto` (DeepSeek if a key is set, otherwise a VS Code language model), `deepseek`, or a VS Code language model picked in Settings › AI. |
 | `codeboard.studyScope` | `[]` | Packages outside the workspace that count as project code, for example `torch`. |
 | `codeboard.doubleClick` | `text` | What double-clicking empty board space creates. |
-| `codeboard.search.embeddingUrl` | *(empty)* | An embedding server on your machine (OpenAI-compatible, for example oMLX or LM Studio serving EmbeddingGemma at `http://127.0.0.1:11001/v1`). When set, ⌘K also lists **Related by Meaning**: cards and sidenotes of this project's boards that mean what you typed, in any language. Set its key with **CodeBoard: Set Embedding API Key**. |
+| `codeboard.search.embeddingUrl` | *(empty)* | An embedding server on your machine (OpenAI-compatible, for example oMLX or LM Studio serving EmbeddingGemma at `http://127.0.0.1:11001/v1`). When set, ⌘K (every board) and ⌘F (this board) also list **Related by Meaning**: cards and sidenotes of this project's boards that mean what you typed, in any language, and Image cards by what their picture shows (when the model takes pictures, as EmbeddingGemma 2 does). Set its key with **CodeBoard: Set Embedding API Key**. |
 
 Set a DeepSeek API key in the board's Settings › AI, or with **CodeBoard: Set DeepSeek API Key**. It is kept in VS Code's secret storage.
 
@@ -108,10 +108,10 @@ Set a DeepSeek API key in the board's Settings › AI, or with **CodeBoard: Set 
 
 CodeBoard runs locally and collects no telemetry. Boards are stored on your machine, in VS Code's workspace storage or in `codeboard.storageDir`, and nothing is written into the repository you are reading unless you move the boards into it (a `.codeboard` folder). Only these features reach the network:
 
-- **Gray inline completions** (in Notes and Free code cards): the text around the caret (up to a few thousand characters) goes to a VS Code language model such as GitHub Copilot or, only if you set a DeepSeek API key, to DeepSeek. Turn them off with `"codeboard.ai.provider": "off"`.
+- **Gray inline completions** (in Notes and Free code cards): the text around the caret (up to a few thousand characters) goes to a VS Code language model such as GitHub Copilot or, only if you set a DeepSeek API key, to DeepSeek. They are off until you turn them on in the board's Settings or with `codeboard.ai.provider`.
 - **AI tools** (Extract Text, Paste Image Text, Convert to SVG, Modify SVG, Draw as SVG, Auto Focus): only when you run one, the image, the SVG source, the card's Markdown or the text you draw from goes to the model chosen in Settings › AI (DeepSeek, or a VS Code language model such as GitHub Copilot).
 - **GitHub**: the GitHub Files sidebar, pasted GitHub file links and pull-request variants read from GitHub's API, signed in with your VS Code GitHub account when a repository needs it.
-- **Related by Meaning** (only when `codeboard.search.embeddingUrl` is set): the text of your cards and sidenotes and what you type in ⌘K go to that embedding server. The index is kept outside the project, in your user data folder (`~/.local/share/codeboard-box` on Linux, `~/Library/Application Support/codeboard-box` on macOS, `%LOCALAPPDATA%\codeboard-box` on Windows), and shared by all your VS Code windows.
+- **Related by Meaning** (only when `codeboard.search.embeddingUrl` is set): the text of your cards and sidenotes, the pictures in them and what you type in ⌘K go to that embedding server. The index is kept outside the project, in your user data folder (`~/.local/share/codeboard-box` on Linux, `~/Library/Application Support/codeboard-box` on macOS, `%LOCALAPPDATA%\codeboard-box` on Windows), and shared by all your VS Code windows.
 - **Web page cards**: pasting a link fetches that page once for its title, description and images, which are saved with the board. Images that a Note links by URL load from that URL.
 
 ## Roadmap

@@ -1,16 +1,20 @@
 // ⌘K's "Related by Meaning": the project's cards and sidenotes found by what they mean, through box (packages/box: one index
 // service per user, shared by every window) and an embedding model the user runs themselves (an OpenAI-compatible endpoint,
 // e.g. oMLX serving EmbeddingGemma: codeboard.search.*). A little after boards change, the host hands box every card and
-// sidenote of the storage folder (the source) at its git branch (the ref); box embeds in the background only what it has not
-// seen, and a search answers with what is indexed so far. Off while no endpoint is set, or without the box binary.
+// sidenote of the storage folder (the source) at its git branch (the ref), with the pictures of Image cards and Notes (read
+// from assets/ as data: URLs; an SVG drawn into a PNG by an open board, HostToBoard draw, and its <text> indexed as the
+// card's text); box embeds in the background only what it has not seen, and a search answers with what is indexed so far.
+// Off while no endpoint is set, or without the box binary.
+import { createHash } from "node:crypto";
 import * as fs from "node:fs";
-import { connect, type BoxClient, type BoxEmbedder, type BoxItem } from "@codeboard/box";
+import * as path from "node:path";
+import { connect, type BoxClient, type BoxEmbedder, type BoxImage, type BoxItem } from "@codeboard/box";
 import { cardTitle, shelvedCards, type Card, type MeaningResult, type SearchItem } from "@codeboard/core";
 import type { Storage } from "./storage/boards";
 import type { HostContext } from "./context";
 import { git } from "./git";
 import type { Prompts } from "./prompts";
-import { cardMarkdown, preview, sidenoteMarkdown, whereOf } from "./preview";
+import { cardMarkdown, imageSrc, preview, sidenoteMarkdown, whereOf } from "./preview";
 import { readHostSetting } from "./settings";
 
 /** The embedding endpoint's API key in the secret storage */
@@ -63,10 +67,25 @@ export class MeaningSearch {
   /** The endpoint's key, read once from the secret storage (Set Embedding API Key forgets it) */
   private key?: Promise<string | undefined>;
 
+  /** Draws an SVG (data: URL) into a PNG (data: URL): an open board does it, with the fonts it shows the picture in */
+  private draw?: (svg: string) => Promise<string | undefined>;
+  /** Picture keys box has indexed for this endpoint (embedded, or refused and skipped): later syncs hand them without their
+   *  data. Only a sync that carried the data and was indexed through (status: idle, no error) adds to it */
+  private pictured = new Set<string>();
+  /** The endpoint pictured is for */
+  private picturedFor = "";
+  /** The keys the last sync handed with their data */
+  private handed = new Set<string>();
+
   constructor(
     private cx: HostContext,
     private box?: BoxOptions,
   ) {}
+
+  /** How SVG pictures become pixels for the model (startHost: through an open board); without it they are left out */
+  drawWith(draw: (svg: string) => Promise<string | undefined>) {
+    this.draw = draw;
+  }
 
   dispose() {
     this.disposed = true;
@@ -95,6 +114,15 @@ export class MeaningSearch {
     );
     const key = await this.key;
     return { base, ...(model ? { model } : {}), ...(key ? { key } : {}) };
+  }
+
+  /** A search found nothing left to embed: once box is idle without an error, the pictures the last sync carried are in */
+  private async indexed(l: { source: string; ref: string }) {
+    const handed = this.handed;
+    const st = await this.connection().status(l.source, l.ref);
+    if (st.indexing || st.error || st.left || this.handed !== handed) return;
+    for (const k of handed) this.pictured.add(k);
+    this.handed = new Set();
   }
 
   /** Why there is no box to ask; "" when there is one */
@@ -130,16 +158,33 @@ export class MeaningSearch {
         if (!e || this.missing() || this.disposed) return;
         try {
           this.stale = false;
-          const docs = await projectDocs(store, here);
+          const docs = await projectDocs(store, here, this.draw);
           const source = store.dir();
           const ref = await refOf(source);
-          const items: BoxItem[] = [...docs.docs.entries()].map(([id, d]) => ({
-            id,
-            title: d.title,
-            text: d.text,
-            groups: d.origin.boards,
-          }));
+          const conf = JSON.stringify([e.base, e.model, e.key]);
+          if (conf !== this.picturedFor) {
+            this.picturedFor = conf;
+            this.pictured.clear();
+          }
+          const handed = new Set<string>();
+          const items: BoxItem[] = [];
+          for (const [id, d] of docs.docs) {
+            const images: BoxImage[] = [];
+            for (const p of d.pictures ?? []) {
+              const url = this.pictured.has(p.key) ? undefined : await p.url().catch(() => undefined);
+              if (url) handed.add(p.key);
+              images.push({ key: p.key, ...(url ? { url } : {}) });
+            }
+            items.push({
+              id,
+              title: d.title,
+              text: d.text,
+              groups: d.origin.boards,
+              ...(images.length ? { images } : {}),
+            });
+          }
           await this.connection().sync(source, ref, e, items);
+          this.handed = handed;
           this.latest = { ...docs, source, ref };
           this.error = "";
         } catch (err) {
@@ -153,8 +198,8 @@ export class MeaningSearch {
     return this.running;
   }
 
-  /** The cards and sidenotes closest in meaning to q (only those on the board here, onlyHere); while indexing, what is
-   *  indexed so far and how much is left */
+  /** The cards and sidenotes closest in meaning to q; while indexing, what is indexed so far and how much is left. onlyHere:
+   *  only what is on the board here (a shared card counts there too), and a hit opens there */
   async search(store: Storage, q: string, here?: string, onlyHere = false): Promise<MeaningResult> {
     if (!(await this.embedder())) return { items: [], off: true };
     const missing = this.missing();
@@ -176,18 +221,24 @@ export class MeaningSearch {
         r = await ask();
       }
       if (!r || !this.latest) return { items: [], error: this.error || undefined };
+      if (!r.left && !r.error && this.handed.size) await this.indexed(this.latest);
       const { docs, names } = this.latest;
       const items: SearchItem[] = [];
       for (const h of r.hits) {
         const d = docs.get(h.id);
         if (!d) continue;
         const { boards, ...o } = d.origin;
+        if (onlyHere) {
+          if (!here || !boards.includes(here)) continue;
+          o.board = here;
+        }
         const where = boards.map((b) => (b === here ? "This board" : (names.get(b) ?? b))).join(" · ");
-        // a paragraph matched: it is the passage to show; the whole card matched: no passage
+        // a paragraph matched: it is the passage to show; the whole card or a picture matched: no passage
         const hit = h.piece > 0 && h.range ? d.text.slice(h.range[0], h.range[1]) : undefined;
-        const at = onlyHere && here ? { board: here } : {};
+        // the picture that matched (an Image card's own, found by its words too), as the Markdown writes it
+        const pic = d.pictures?.find((x) => x.key === h.picture)?.src ?? d.picture;
         const faint = h.score < FAINT_BELOW ? { faint: true } : {};
-        items.push({ ...o, ...at, ...faint, detail: where, preview: preview(d.md, d.where, hit) } as SearchItem);
+        items.push({ ...o, ...faint, detail: where, preview: preview(d.md, d.where, hit, pic) } as SearchItem);
         if (items.length >= TOP) break;
       }
       return { items, left: r.left || undefined, error: r.error || this.error || undefined };
@@ -207,9 +258,13 @@ async function refOf(dir: string): Promise<string> {
 }
 
 /** Every card and sidenote on the project's boards as a document (here's board first, so it is indexed first) */
-async function projectDocs(store: Storage, here?: string) {
+async function projectDocs(store: Storage, here?: string, draw?: (svg: string) => Promise<string | undefined>) {
   const boards = (await store.all()).map((x) => x.board).sort((a, b) => (a.id === here ? -1 : b.id === here ? 1 : 0));
-  const docs = new Map<string, { title: string; text: string; origin: Origin; md: string; where: string }>();
+  const docs = new Map<
+    string,
+    { title: string; text: string; pictures?: Picture[]; origin: Origin; md: string; where: string; picture?: string }
+  >();
+  const pictures = picturesIn(store, draw);
   const names = new Map(boards.map((b) => [b.id, b.name]));
   for (const board of boards) {
     const off = shelvedCards(board);
@@ -230,10 +285,12 @@ async function projectDocs(store: Storage, here?: string) {
       const title = cardTitle(c, board);
       docs.set(id, {
         title,
-        text: cardText(c, board.place[c.id]?.summary?.text),
+        text: cardText(c, board.place[c.id]?.summary?.text, c.kind === "image" ? await svgWords(store, c.src) : ""),
+        pictures: pictures(c),
         where: whereOf(board, c.id),
         origin: { kind: "card", label: title, board: board.id, card: c.id, boards: [board.id] },
         md: cardMarkdown(c, board),
+        picture: c.kind === "image" ? imageSrc(c) : undefined,
       });
     }
     for (const n of board.sidenotes ?? []) {
@@ -276,8 +333,96 @@ async function projectDocs(store: Storage, here?: string) {
   return { docs, names };
 }
 
+/** Picture formats an embedding server reads as they are; an SVG is drawn first */
+const RASTER: Record<string, string> = {
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  gif: "image/gif",
+  webp: "image/webp",
+};
+/** Pictures embedded per card, at most (a Note full of screenshots still costs a bounded number) */
+const MAX_PICTURES = 4;
+
+/** A picture to embed: its key (its content's), its data: URL when box needs it (undefined when it cannot be read or drawn
+ *  now), and its address as the card's Markdown writes it (for the preview) */
+type Picture = { key: string; url: () => Promise<string | undefined>; src: string };
+
+const fingerprint = (s: string) => createHash("sha256").update(s).digest("hex");
+
+/** A card's pictures, for embedding on their own: an Image card's, and the local images in a Note (files in assets/, named by
+ *  their content, so the name is the key; a data: URL is its own). An SVG goes as the PNG draw makes of it, left out without
+ *  one; one that cannot be read or drawn now is tried again on the next update */
+function picturesIn(store: Storage, draw?: (svg: string) => Promise<string | undefined>) {
+  const read = (file: string) => fs.promises.readFile(path.join(store.assetsDir(), file)).catch(() => undefined);
+  const asset = (src: string): Omit<Picture, "src"> | undefined => {
+    if (src.startsWith("data:")) {
+      if (/^data:image\/(png|jpeg|gif|webp)[;,]/.test(src)) return { key: fingerprint(src), url: async () => src };
+      if (draw && /^data:image\/svg\+xml[;,]/.test(src)) return { key: fingerprint(src), url: () => draw(src) };
+      return undefined;
+    }
+    const file = src.replace(/^assets\//, "");
+    if (/[\\/:]/.test(file)) return undefined;
+    const ext = path.extname(file).slice(1).toLowerCase();
+    const type = RASTER[ext];
+    if (type)
+      return {
+        key: file,
+        url: async () => {
+          const b = await read(file);
+          return b && `data:${type};base64,${b.toString("base64")}`;
+        },
+      };
+    if (ext === "svg" && draw)
+      return {
+        key: file,
+        url: async () => {
+          const b = await read(file);
+          return b && draw(`data:image/svg+xml;base64,${b.toString("base64")}`);
+        },
+      };
+    return undefined;
+  };
+  return (c: Card): Picture[] | undefined => {
+    const srcs =
+      c.kind === "image"
+        ? [imageSrc(c)]
+        : c.kind === "note"
+          ? [...c.md.matchAll(/!\[[^\]]*\]\(<?([^)\s>]+)/g)].map((m) => m[1])
+          : [];
+    const out = srcs
+      .flatMap((src) => {
+        const a = asset(src);
+        return a ? [{ ...a, src }] : [];
+      })
+      .slice(0, MAX_PICTURES);
+    return out.length ? out : undefined;
+  };
+}
+
+/** The words an SVG in assets/ writes (its <text>s), as a line; "" for any other picture */
+async function svgWords(store: Storage, src: string): Promise<string> {
+  const file = src.replace(/^assets\//, "");
+  if (!/^[^\\/:]+\.svg$/i.test(file)) return "";
+  const svg = await fs.promises.readFile(path.join(store.assetsDir(), file), "utf8").catch(() => "");
+  const ENT: Record<string, string> = { lt: "<", gt: ">", amp: "&", quot: '"', apos: "'", nbsp: " " };
+  return [...svg.matchAll(/<text\b[^>]*>([\s\S]*?)<\/text>/g)]
+    .map((m) =>
+      m[1]
+        .replace(/<[^>]+>/g, "")
+        .replace(/&(#x?[0-9a-f]+|\w+);/gi, (e, n: string) => {
+          if (n[0] !== "#") return ENT[n] ?? e;
+          const cp = Number.parseInt(n.slice(n[1] === "x" ? 2 : 1), n[1] === "x" ? 16 : 10);
+          return cp <= 0x10ffff ? String.fromCodePoint(cp) : e;
+        })
+        .trim(),
+    )
+    .filter(Boolean)
+    .join(" ");
+}
+
 /** What a card says, for embedding: its description and summary, then its own text */
-function cardText(c: Card, summary?: string): string {
+function cardText(c: Card, summary?: string, words?: string): string {
   const own = (() => {
     switch (c.kind) {
       case "note":
@@ -291,7 +436,7 @@ function cardText(c: Card, summary?: string): string {
           )
           .join("\n");
       case "image":
-        return c.alt ?? "";
+        return [c.alt, words].filter(Boolean).join("\n");
       case "web":
         return [c.url, c.meta?.title, c.meta?.desc, c.meta?.site].filter(Boolean).join("\n");
       case "links":

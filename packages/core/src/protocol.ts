@@ -149,7 +149,7 @@ export const DEFAULT_SETTINGS: Settings = {
   mathPreamble: "",
   svgNoBg: true,
   svgThink: false,
-  aiProvider: "auto",
+  aiProvider: "off",
   deepseekModel: "deepseek-flash",
   aiText: "auto",
   aiSvg: "auto",
@@ -221,7 +221,8 @@ export type PeekDef = {
 
 /** ⌘K's preview of a card or sidenote: its content as Markdown (code in fenced blocks), where it sits (board › Section …), and
  *  for Related by Meaning the passage that matched (as it is written in md, give or take the Markdown marks) */
-export type SearchPreview = { md: string; where: string; hit?: string };
+/** hit: the passage that matched (Related by Meaning); picture: the picture that did, or an Image card's, as md writes it */
+export type SearchPreview = { md: string; where: string; hit?: string; picture?: string };
 
 export type SearchItem =
   | { kind: "symbol"; label: string; detail: string; path: string; line: number; sym: string; glyph: string }
@@ -335,6 +336,9 @@ export type HostToBoard =
   /** Record Zoom Log: start recording the zoom diagnostics log, or stop and hand it back. The board answers { type: "answer", id }
    *  with null when it started recording, or with the log's text */
   | { type: "zoomLog"; id: number }
+  /** Draw a picture (an SVG, as a data: URL) into a PNG, as the board shows it (its fonts): for Related by Meaning, which embeds
+   *  pictures only as pixels. The board answers { type: "answer", id, value: the PNG as a data: URL, or null } */
+  | { type: "draw"; id: number; dataUrl: string }
   /** 共享卡在别的白板上改了（或这块白板撤销时被跳过的项）：卡和跟着它走的 Sidenote 的新内容。白板用 sync 换上（不进撤销栈），不再发回来 */
   | { type: "shared"; cards: SharedUpdate[]; views?: Record<string, SegView> }
   /** 这块白板上的共享卡在几块白板上、别的白板上谁连到它（宿主在存盘后算，整个换掉） */
@@ -396,10 +400,10 @@ export type BoardToHost =
       word: string;
       at?: { path: string; line: number; col: number };
     } // 回 PeekResult
-  | { type: "search"; req: number; q: string; scope?: "all" | "code" | "symbols" }
+  | { type: "search"; req: number; q: string; scope?: "all" | "board" | "code" | "symbols" } // board = only the cards and sidenotes on the asking board
   | { type: "searchPick"; req: number; item: SearchItem; alt?: boolean }
   /** ⌘K's Related by Meaning (host meaning.ts): cards and sidenotes of the project's boards closest in meaning to q */
-  | { type: "searchMeaning"; req: number; q: string }
+  | { type: "searchMeaning"; req: number; q: string; scope?: "all" | "board" } // board = only what is on the asking board
   | { type: "entryPoints"; req: number }
   | { type: "diff"; req: number; seg: Segment; against?: string } // against 缺省 = HEAD；"upstream" = 上游最新（有 Variant 的卡）
   | { type: "commits"; req: number; seg: Segment }
@@ -424,7 +428,14 @@ export type BoardToHost =
   /** 网页元信息：抓一次，图片存进 assets/ */
   | { type: "webMeta"; req: number; url: string } // 回 WebMeta
   | { type: "stickerPacks"; req: number } // 回 StickerPack[]
-  | { type: "tidy"; req: number; cards: (Rect & { id: string })[]; links: [string, string][]; fixed: Rect[] } // Tidy Up 的排版（ELK 只在宿主里）：回每张卡的新 x / y
+  | {
+      type: "tidy";
+      req: number;
+      cards: (Rect & { id: string })[];
+      links: [string, string][];
+      fixed: Rect[];
+      avoid?: Rect[];
+    } // Tidy Up 的排版（ELK 只在宿主里）：回每张卡的新 x / y
   | { type: "openStickerDir" }
   | { type: "copyDiagnostics"; board?: boolean }
   /** 白板里的错误 / 日志：写进 Output 面板的 CodeBoard 频道，Copy Diagnostics 会带上 */

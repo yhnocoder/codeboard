@@ -227,7 +227,7 @@ export function trackLinks() {
       const g = createMemo(() => {
         const bs = r.base(),
           e = r.ends();
-        return bs && e ? geoFrom(L, bs, e[0], e[1], merged()) : null;
+        return bs && e ? geoFrom(L, bs, e[0], e[1], merged(), r.rest()) : null;
       });
       r.geo = g;
       // 两端里叠放次序高的那张卡；两张都不在画布上时是 ""（画在所有卡上面那一层）
@@ -624,7 +624,9 @@ function linkDom(
     <g data-lk={L.id}>
       <Show when={g()}>
         <Show when={g()!.port}>
-          <path class={portCls()} data-x={g()!.port!.x} d={portPath(g()!.port!.x, g()!.port!.y)} />
+          <Show when={shape().port !== "none" || L.lost?.from || on()}>
+            <path class={portCls()} data-x={g()!.port!.x} d={portPath(g()!.port!.x, g()!.port!.y)} />
+          </Show>
           <Show when={on() && subEnd(L.from) && r.base()?.kind === "normal"}>
             <circle
               class="porthit"
@@ -639,7 +641,7 @@ function linkDom(
             />
           </Show>
         </Show>
-        <Show when={g()!.port2}>
+        <Show when={g()!.port2 && (shape().port !== "none" || L.lost?.to || on())}>
           <path class={`port fc-${toHue()}`} d={portPath(g()!.port2!.x, g()!.port2!.y)} />
         </Show>
       </Show>

@@ -12,13 +12,15 @@
 //                             under the image (thumbs, ← →, Space, hidden zoomed out); deselecting stores the frame on the card;
 //                             the loop button stores loop and the GIF plays unselected with the badge; an HTML snapshot taken
 //                             while it plays has the plain <img>
-//   animImageCardSvg          an image card's animated SVG is drawn inline and paused, stepped by its filmstrip, the step stored
+//   animImageCardSvg          an image card's animated SVG is drawn inline and paused, stepped by its filmstrip, the step stored;
+//                             standing still, nothing in it is a compositor layer (its CSS animations frozen into its style)
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { emptyBoard, type Board, type ImageCard, type NoteCard } from "@codeboard/core";
 import { gif } from "@codeboard/host/testing";
 import { put, shot, type Host } from "../harness";
 import { test, check, until, idle, hold, hostBoards } from "../fixtures";
+import { layerScales, snapshotsOf, type TraceEvent } from "../probes";
 import { GIF_MIN_DELAY } from "../../src/state/timing";
 
 const N = 24,
@@ -75,6 +77,8 @@ ${Array.from({ length: 8 }, (_, i) => `<rect class="cell" x="${i * 40 + 1}" y="4
 <image href="https://example.com/x.png" width="10" height="10"/>
 </svg>`;
 const SVG_ANIM_FILE = "1123456789abcdef-320x120.svg";
+/** One step of SVG_ANIM (4 s in 8 steps) */
+const SVG_STEP_MS = 500;
 const SVG_STILL = `<svg xmlns="http://www.w3.org/2000/svg" width="80" height="40"><rect width="80" height="40" fill="#5aa469"/></svg>`;
 const SVG_STILL_FILE = "2123456789abcdef-80x40.svg";
 
@@ -299,9 +303,8 @@ test("animSvgInline", async () => {
       const a = host!.getBoundingClientRect(),
         b = img.getBoundingClientRect();
       return {
-        n: anims.length,
-        paused: anims.every((x) => x.playState === "paused") && svg.animationsPaused(),
-        t: anims.map((x) => Math.round(Number(x.currentTime))),
+        // standing still, its CSS animation is frozen into the box's style and cancelled (md/anim.ts freeze)
+        frozen: anims.length === 0 && svg.animationsPaused(),
         smil: Math.round(svg.getCurrentTime() * 1000),
         x: Math.round(new DOMMatrix(getComputedStyle(box).transform).m41),
         fill: getComputedStyle(box).fill,
@@ -315,14 +318,14 @@ test("animSvgInline", async () => {
       };
     });
   const s = await until(h, "the SVG is drawn inline", inner).catch(() => null);
-  check("anim-svg-inline", !!s && s.over && s.n === 1, s);
+  check("anim-svg-inline", !!s && s.over, s);
   check(
     "anim-svg-cleaned",
     !!s && !s.script && s.outside.every((o) => !/https?:|href/.test(o)) && !/@import/.test(s.css),
     s,
   );
   // step 1 of 8 (0.5 s each), stood on 60% into it: 300 ms
-  check("anim-svg-paused-on-step", !!s && s.paused && s.t[0] === 300 && s.smil === 300 && s.x === 0, s);
+  check("anim-svg-paused-on-step", !!s && s.frozen && s.smil === 300 && s.x === 0, s);
   check("anim-svg-clipped-to-corners", !!s && s.clip === "hidden" && s.radius !== "0px", s);
   const still = await h.page.evaluate(() => document.querySelectorAll(".card .nbody .md-anim").length);
   check("anim-svg-still-stays-img", still === 1, still);
@@ -342,7 +345,7 @@ test("animSvgInline", async () => {
     const v = await inner();
     return v?.x === 120 ? v : null;
   }).catch(() => null);
-  check("anim-svg-thumb-seeks", !!s4 && s4.paused && s4.t[0] === 1800 && (await strip(h))?.fno === "4/8", s4);
+  check("anim-svg-thumb-seeks", !!s4 && s4.frozen && s4.smil === 1800 && (await strip(h))?.fno === "4/8", s4);
   await shot(h, "104-svg-filmstrip-light");
   check("anim-svg-follows-theme-light", !!s4 && s4.fill === hexRgb(s4.ink), s4);
   await h.page.evaluate(() => document.body.classList.replace("vscode-light", "vscode-dark"));
@@ -482,13 +485,17 @@ test("animImageCardSvg", async () => {
       const anims = root.getAnimations();
       const r = svg.querySelector<SVGRectElement>("rect.hop")!;
       return {
-        paused: anims.length > 0 && anims.every((x) => x.playState === "paused") && svg.animationsPaused(),
+        paused: anims.length === 0 && svg.animationsPaused(),
         x: Math.round(new DOMMatrix(getComputedStyle(r).transform).m41),
         script: !!root.querySelector("script") || svg.hasAttribute("onload") || !!(window as any).__svgRan,
       };
     }, CARD);
   const s = await until(h, "the card's SVG is drawn inline", inner).catch(() => null);
   check("anim-card-svg-inline-paused", !!s && s.paused && s.x === 0 && !s.script, s);
+  // Standing still, nothing inside the SVG is a compositor layer: a paused CSS animation of a transform kept its box one,
+  // rastered at the scale it was first drawn at whatever the zoom (2.9-4.9x the scale shown on a real board)
+  const inside = await svgLayers(h);
+  check("anim-card-svg-still-no-layers", inside.length === 0, inside);
   const box = (await h.page.locator(CARD).boundingBox())!;
   await h.page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
   const st = await until(h, "the filmstrip opens", () => strip(h)).catch(() => null);
@@ -499,10 +506,47 @@ test("animImageCardSvg", async () => {
     return v?.x === 120 ? v : null;
   }).catch(() => null);
   await shot(h, "106-card-svg-filmstrip");
+  // Space plays it (its animation running again from the step it stood on) and pauses it: frozen again where it stopped
+  await h.page.keyboard.press(" ");
+  const ran = await until(h, "Space plays the SVG", async () => {
+    const v = await inner();
+    return v && v.x !== 120 ? v : null;
+  }).catch(() => null);
+  await h.page.keyboard.press(" ");
+  const p1 = await until(h, "Space pauses the SVG", inner).catch(() => null);
+  await hold(h, SVG_STEP_MS, "a paused SVG stays on its step: playing, it would have moved on by one");
+  const p2 = await inner();
+  check(
+    "anim-card-svg-plays-and-freezes",
+    !!ran && !ran.paused && !!p1?.paused && !!p2 && p2.x === p1.x && (await svgLayers(h)).length === 0,
+    { ran, p1, p2 },
+  );
   await h.page.mouse.click(900, 700);
   const f = await until(h, "the step is saved", () => imageCard(h).frame ?? null).catch(() => null);
-  check("anim-card-svg-step-saved", !!s4 && f === 4, { s4, f });
+  check("anim-card-svg-step-saved", !!s4 && !!f && f === Math.round(p2!.x / 40) + 1, { s4, f, p2 });
 });
+
+/** The compositor layers drawn from inside the animated SVG (its hopping box), from the layer tree of the frames drawn next */
+async function svgLayers(h: Host) {
+  const cdp = await h.page.context().newCDPSession(h.page);
+  const events: TraceEvent[] = [];
+  cdp.on("Tracing.dataCollected", (e) => events.push(...(e.value as TraceEvent[])));
+  await cdp.send("Tracing.start", {
+    categories: "disabled-by-default-devtools.timeline.layers",
+    transferMode: "ReportEvents",
+  } as never);
+  await idle(h);
+  const ended = new Promise((r) => cdp.once("Tracing.tracingComplete", r));
+  await cdp.send("Tracing.end");
+  await ended;
+  await cdp.detach();
+  const last = snapshotsOf(events).at(-1)?.s;
+  return last
+    ? layerScales(last)
+        .filter((l) => /class='ink hop'/.test(l.name))
+        .map((l) => `${l.name} raster ${l.raster}`)
+    : ["no snapshot"];
+}
 
 function hexRgb(c: string) {
   const m = /^#([0-9a-f]{6})$/i.exec(c);

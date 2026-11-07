@@ -222,6 +222,67 @@ test("shelfArrows", async () => {
   await close(h);
 });
 
+/** Resting the pointer on a Shelf row shows the entry beside the panel as it was: the Section with its title, its cards with their
+ *  content; the next row's shows at once, and it goes when the pointer leaves the rows or a row is dragged */
+test("shelfRowPreview", async () => {
+  const { b } = board();
+  const h = await open({ board: b, light, w: 1440, h: 900 });
+  await idle(h);
+  await h.page.locator('.card[data-id="n2"] .chead').click();
+  await h.page.keyboard.press("Alt+KeyS");
+  await until(h, "n2 on the Shelf", () => h.board().shelf?.length === 1);
+  await h.page.locator('.slabel[data-sect="S2"] .sname').click({ button: "right" });
+  await h.page.locator(".ctx:not(.closing) button", { hasText: "Move to Shelf" }).click();
+  await until(h, "S2 on the Shelf", () => h.board().shelf?.length === 2);
+  await h.page.locator(".dock .shelf-btn").click();
+  const rows = h.page.locator(".cpanel.shelf .srow");
+  const r0 = (await rows.nth(0).boundingBox())!; // newest first: Block manager
+  await h.page.mouse.move(r0.x + 120, r0.y + r0.height / 2);
+  const peek = h.page.locator(".shelf-peek");
+  await peek.waitFor();
+  await idle(h);
+  const got = await h.page.evaluate(() => {
+    const el = document.querySelector<HTMLElement>(".shelf-peek")!;
+    const r = el.getBoundingClientRect(),
+      panel = document.querySelector(".cpanel.shelf")!.getBoundingClientRect();
+    return {
+      sections: [...el.querySelectorAll(".spk-sec")].map((s) => s.textContent),
+      cards: el.querySelectorAll(".spk-card").length,
+      text: el.textContent ?? "",
+      code: el.querySelectorAll(".spk-card.k-code .pcode").length,
+      beside: r.right <= panel.left && r.left >= 0 && r.top >= 0 && r.bottom <= innerHeight,
+    };
+  });
+  check(
+    "shelf-preview-entry",
+    got.sections.join() === "Block manager" &&
+      got.cards === 2 &&
+      got.text.includes("Blocks are hashed") &&
+      got.text.includes("def allocate") &&
+      got.code === 1,
+    got,
+  );
+  check("shelf-preview-beside-panel", got.beside, got);
+  await shot(h, "shelf-row-preview");
+  const r1 = (await rows.nth(1).boundingBox())!;
+  await h.page.mouse.move(r1.x + 120, r1.y + r1.height / 2, { steps: 3 });
+  await until(h, "the next row's preview, at once", async () =>
+    ((await peek.textContent()) ?? "").includes("CUDA graph capture"),
+  );
+  check("shelf-preview-one", (await peek.count()) === 1);
+  await h.page.mouse.move(600, 600, { steps: 3 });
+  await peek.waitFor({ state: "detached" });
+  // a drag out of a row takes no preview with it
+  await h.page.mouse.move(r1.x + 40, r1.y + r1.height / 2);
+  await peek.waitFor();
+  await h.page.mouse.down();
+  await h.page.mouse.move(r1.x - 100, r1.y + 80, { steps: 4 });
+  await h.page.locator(".shelf-outline").waitFor();
+  check("shelf-preview-gone-on-drag", (await peek.count()) === 0);
+  await h.page.mouse.up();
+  await close(h);
+});
+
 /** Warm Ink screenshots at 2× for review: the menu, the panel with three entries, a row dragged out, a card over the dock */
 test("shelfScreenshots", async () => {
   const { b, runner } = board({ runner: true });
