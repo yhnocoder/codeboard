@@ -9,6 +9,7 @@
 - **⌘F searches this board.** ⌘K searches every board; ⌘F only the cards and sidenotes on this board, word matches and Related by Meaning alike (while editing a Note or code, ⌘F still finds in it). `Tab` switches between the two in the search box.
 - **Tidy Up on Sections.** With several Sections selected, **Tidy Up** lays them out as blocks, each Section moving with its cards and inner Sections, around what is already on the board. ⇧-clicking a Section's empty area adds it to the selection, as on its title.
 - Warm Ink and Ink Wash draw no dot where an arrow starts; it shows while the arrow is selected or hovered, to drag its start.
+- Resting the pointer on a row of the Shelf shows what is on it beside the panel, as it was on the board: its Sections, and its cards with their code and Notes.
 - Submenus stay open while the pointer heads for them across the items of the menu, instead of closing as it crosses a neighbouring item.
 - Cards on files git ignores (generated code in `build/`, a virtual environment inside the repository) no longer show **+ uncommitted**.
 - CodeBoard now needs VS Code 1.142 or later.

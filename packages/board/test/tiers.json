@@ -565,7 +565,7 @@
         "packages/board/src/ui/ShelfPanel.tsx",
         "packages/board/test/scenarios/shelf.spec.ts"
       ],
-      "scenarios": ["shelfMenuPutBack", "shelfDragRowOut", "shelfDragOntoDock", "shelfArrows"]
+      "scenarios": ["shelfMenuPutBack", "shelfDragRowOut", "shelfDragOntoDock", "shelfArrows", "shelfRowPreview"]
     }
   }
 }
