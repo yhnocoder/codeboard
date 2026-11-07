@@ -8426,6 +8426,7 @@ mark.wdiff {
 .hx-band .hxb.on {
   background: var(--band-on);
 }
+/* 12px of block room per note: .hx-bracket .inote takes the same */
 .hx-band .inote {
   margin: 0 20px 0 0;
   padding: 9px 12px 3px 1px;
@@ -8489,9 +8490,10 @@ mark.wdiff {
   text-decoration: underline;
   text-underline-offset: 2px;
 }
+/* the same block room as the band's notes (9px + 3px, no margin to collapse between two notes), so switching the look moves no line */
 .hx-bracket .inote {
-  margin: 3px 20px 8px 0;
-  padding: 0 0 0 1px;
+  margin: 0 20px 0 0;
+  padding: 3px 0 9px 1px;
 }
 /* a note that needs a look after a new version (Sidenote.review): its count in amber */
 .hxm.rv {
