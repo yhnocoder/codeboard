@@ -20,6 +20,8 @@ const REINDEX_PAUSE = 3000;
 const SAVE_EVERY = 10_000;
 /** Results in the group */
 const TOP = 8;
+/** Searching only the board here: how many times TOP nearest pieces to look through for TOP on this board */
+const HERE_WIDEN = 40;
 /**
  * Closeness (cosine, EmbeddingGemma 2 with its prompts) below which a card is not related at all. Measured on persona's 20
  * boards (85 queries, 2026-11): the first card a query should find scored 0.69 and up. Unrelated queries mostly stay under
@@ -165,8 +167,9 @@ export class MeaningSearch {
     return this.running;
   }
 
-  /** The cards and sidenotes closest in meaning to q; while indexing, what is indexed so far and how much is left */
-  async search(store: Storage, q: string, here?: string): Promise<MeaningResult> {
+  /** The cards and sidenotes closest in meaning to q; while indexing, what is indexed so far and how much is left. onlyHere:
+   *  only what is on the board here (a shared card counts there too), and a hit opens there */
+  async search(store: Storage, q: string, here?: string, onlyHere = false): Promise<MeaningResult> {
     const e = await this.current();
     if (!e) return { items: [], off: true };
     if (!q.trim()) return { items: [] };
@@ -181,11 +184,15 @@ export class MeaningSearch {
       }
       const { docs, names } = this.latest ?? (await projectDocs(store, here));
       const items: SearchItem[] = [];
-      for (const h of box.search(qv, TOP * 2)) {
+      for (const h of box.search(qv, TOP * (onlyHere ? HERE_WIDEN : 2))) {
         if (h.score < MIN_SCORE) break;
         const d = docs.get(h.id);
         if (!d) continue;
         const { boards, ...o } = d.origin;
+        if (onlyHere) {
+          if (!here || !boards.includes(here)) continue;
+          o.board = here;
+        }
         const where = boards.map((b) => (b === here ? "This board" : (names.get(b) ?? b))).join(" · ");
         const hit = pieceBodies(d.doc)[h.piece];
         items.push({ ...o, detail: where, preview: preview(d.md, d.where, hit) } as SearchItem);

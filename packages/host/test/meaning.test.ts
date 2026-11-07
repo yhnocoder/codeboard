@@ -1,5 +1,6 @@
 // ⌘K's Related by Meaning against a stand-in embedding server: the project's cards and sidenotes are indexed (each with its
-// board and Section), the index is a file in the storage folder kept out of git, and only changed text is embedded again
+// board and Section), the index is a file in the storage folder kept out of git, and only changed text is embedded again;
+// ⌘K's This Board keeps both groups to the board asked from
 import * as fs from "node:fs";
 import * as http from "node:http";
 import * as path from "node:path";
@@ -8,6 +9,7 @@ import { emptyBoard, type Board } from "@codeboard/core";
 import { Storage } from "../src/storage/boards";
 import { nodeFs } from "../src/storage/nodefs";
 import { HostContext } from "../src/context";
+import { search } from "../src/search";
 import { nodeWorkspace } from "./node-workspace";
 
 const WORDS = ["kv", "cache", "scheduler", "prefill", "graph", "cuda", "显存"];
@@ -105,5 +107,22 @@ describe("Related by Meaning", () => {
     expect(down.error).toMatch(/Cannot reach the embedding server/);
     off.dispose();
     url = keep;
+  });
+});
+
+describe("Search this board only", () => {
+  it("finds by meaning only what is on the board asked from", async () => {
+    await cx.meaning.update(store);
+    expect((await cx.meaning.search(store, "kv cache", "a", true)).items[0]).toMatchObject({ card: "n1", board: "a" });
+    const elsewhere = await cx.meaning.search(store, "kv cache", "b", true);
+    expect(elsewhere.items).toEqual([]);
+  });
+
+  it("finds by words only the cards and sidenotes on that board, and no functions or files", async () => {
+    const here = await search(cx, store, "Scheduler", "board", "a");
+    expect(here.map((r) => r.kind)).toEqual(["card"]);
+    expect(here[0]).toMatchObject({ card: "n2", board: "a" });
+    expect(await search(cx, store, "Scheduler", "board", "b")).toEqual([]);
+    expect((await search(cx, store, "cuda graph", "board", "a")).map((r) => r.kind)).toEqual(["sidenote"]);
   });
 });
