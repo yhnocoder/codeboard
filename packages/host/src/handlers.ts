@@ -104,6 +104,7 @@ export function makeHandler(cx: HostContext, panels: BoardHost, mediaDir: string
     search: (p, m) => search(cx, store, m.q, m.scope, p.id),
     searchPick: (_p, m) => searchPick(cx, m.item),
     searchMeaning: (p, m) => cx.meaning.search(store, m.q, p.id, m.scope === "board"),
+    searchTrace: (_p, m) => void cx.searchTraces.record(store, m.trace).catch(() => undefined),
     entryPoints: () => entryPoints(cx),
     diff: (_p, m) => diff(cx, m.seg, m.against),
     commits: (_p, m) => commits(cx, m.seg),
