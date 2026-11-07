@@ -205,11 +205,8 @@ pub fn serve(paths: Paths, idle: Duration) -> std::io::Result<Outcome> {
     let opts = ListenerOptions::new()
         .name(name)
         .nonblocking(ListenerNonblockingMode::Accept);
-    #[cfg(unix)]
-    let opts = {
-        use interprocess::os::unix::local_socket::ListenerOptionsExt;
-        opts.mode(0o600)
-    };
+    // Unix: the socket sits in the data folder, which only the user can enter (private_dir, 0700), so no one else can
+    // reach it. Not ListenerOptions::mode: macOS refuses it, and the service would never listen
     // Windows: only the user who started the service may open the pipe (the owner; no one else, not even other admins'
     // default access)
     #[cfg(windows)]
@@ -219,7 +216,9 @@ pub fn serve(paths: Paths, idle: Duration) -> std::io::Result<Outcome> {
             widestring::U16CString::from_str("D:P(A;;GA;;;OW)").map_err(|e| std::io::Error::other(e.to_string()))?;
         opts.security_descriptor(SecurityDescriptor::deserialize(&sddl)?)
     };
-    let listener = opts.create_sync()?;
+    let listener = opts
+        .create_sync()
+        .inspect_err(|e| log(&svc.paths, &format!("listen on {}: {e}", svc.paths.socket)))?;
     let mut quiet_since = Instant::now();
     let mut gc_at = Instant::now();
     loop {
