@@ -58,13 +58,21 @@ fn embedding_server(fail_first: usize) -> (String, Asked) {
                         let j: Value = serde_json::from_slice(&body).unwrap();
                         a.lock().unwrap().push(j["input"].clone());
                         let input = j["input"].as_array().unwrap();
-                        let failing = fails
-                            .fetch_update(
-                                std::sync::atomic::Ordering::SeqCst,
-                                std::sync::atomic::Ordering::SeqCst,
-                                |n| n.checked_sub(1),
-                            )
-                            .is_ok();
+                        // take one of the failures left, if any (a plain CAS loop: fetch_update is deprecated on
+                        // newer toolchains and try_update missing on older ones)
+                        let failing = {
+                            use std::sync::atomic::Ordering::SeqCst;
+                            let mut n = fails.load(SeqCst);
+                            loop {
+                                if n == 0 {
+                                    break false;
+                                }
+                                match fails.compare_exchange(n, n - 1, SeqCst, SeqCst) {
+                                    Ok(_) => break true,
+                                    Err(now) => n = now,
+                                }
+                            }
+                        };
                         let image = input.first().and_then(|x| x["image_url"]["url"].as_str()).unwrap_or("");
                         if failing {
                             (503, json!({ "error": "restarting" }))
