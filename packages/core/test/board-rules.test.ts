@@ -612,6 +612,26 @@ describe("call rules", () => {
 });
 
 describe("Sections and places", () => {
+  it("Tidy Up moves a Section with its inner Sections and every card in them, and loose cards to their place, in one step", () => {
+    const { b, env, log } = setup([code("a"), code("b"), code("c")]);
+    b.sections.push(
+      { id: "s", title: "", x: 0, y: 0, w: 900, h: 500 },
+      { id: "in", title: "", x: 10, y: 10, w: 300, h: 300, parent: "s" },
+      { id: "other", title: "", x: 2000, y: 0, w: 100, h: 100 },
+    );
+    b.place.a.section = "s";
+    b.place.b.section = "in";
+    expect(C.tidyMove(env, { c: { x: 7, y: 8 } }, { s: { dx: 100, dy: -50 } })).toBe(true);
+    expect(log.edits).toBe(1);
+    expect(b.sections.map((q) => [q.x, q.y])).toEqual([
+      [100, -50],
+      [110, -40],
+      [2000, 0],
+    ]);
+    expect([b.place.a.x, b.place.a.y, b.place.b.x, b.place.b.y]).toEqual([100, -50, 600, -50]);
+    expect([b.place.c.x, b.place.c.y]).toEqual([7, 8]);
+  });
+
   it("Fit Content leaves folded and locked Sections, a Section in a locked one too", () => {
     const { b, env } = setup();
     const frame = { x: 0, y: 0, w: 100, h: 100 };
