@@ -26,6 +26,14 @@ const TOP = 8;
  * two, so this one only never hides a right card
  */
 const MIN_SCORE = 0.55;
+/**
+ * Closeness below which a result is shown faint, as a "maybe": the highest any unrelated query reached. Measured on persona
+ * through this host and box (2026-11, clip 0.119) with the 75 + 12 queries of the bench and the review's 20 + 4 fresh ones,
+ * on what the Palette shows (the best 8 at MIN_SCORE or above): the closest row any of the 16 unrelated queries showed scored
+ * 0.632 (MPI_Allreduce across nodes), so at 0.635 all 46 rows they showed are faint, while 6 of the 93 first right cards are.
+ * Of the labelled queries' rows, 7% below the line are a wanted card and 24% above it (the labels name only the best cards)
+ */
+const FAINT_BELOW = 0.635;
 
 /** The box binary and, for tests, its data folder (HostOptions.box) */
 export type BoxOptions = { bin: string; home?: string };
@@ -175,7 +183,8 @@ export class MeaningSearch {
         // a paragraph matched: it is the passage to show; the whole card matched: no passage
         const hit = h.piece > 0 && h.range ? d.text.slice(h.range[0], h.range[1]) : undefined;
         const at = onlyHere && here ? { board: here } : {};
-        items.push({ ...o, ...at, detail: where, preview: preview(d.md, d.where, hit) } as SearchItem);
+        const faint = h.score < FAINT_BELOW ? { faint: true } : {};
+        items.push({ ...o, ...at, ...faint, detail: where, preview: preview(d.md, d.where, hit) } as SearchItem);
         if (items.length >= TOP) break;
       }
       return { items, left: r.left || undefined, error: r.error || this.error || undefined };

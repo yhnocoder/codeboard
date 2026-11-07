@@ -226,7 +226,17 @@ export type SearchPreview = { md: string; where: string; hit?: string };
 export type SearchItem =
   | { kind: "symbol"; label: string; detail: string; path: string; line: number; sym: string; glyph: string }
   | { kind: "file"; label: string; detail: string; path: string }
-  | { kind: "card"; label: string; detail: string; board: string; card: string; num?: string; preview?: SearchPreview }
+  | {
+      kind: "card";
+      label: string;
+      detail: string;
+      board: string;
+      card: string;
+      num?: string;
+      preview?: SearchPreview;
+      /** Related by Meaning: closer than its floor but no closer than unrelated queries come (shown faint, "maybe") */
+      faint?: true;
+    }
   | {
       kind: "sidenote";
       label: string;
@@ -235,6 +245,7 @@ export type SearchItem =
       card: string;
       sidenote: string;
       preview?: SearchPreview;
+      faint?: true;
     }
   | { kind: "entry"; label: string; detail: string; path: string; line: number; sym?: string; end?: number };
 
