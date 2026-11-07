@@ -18,6 +18,7 @@ import { initExports, moduleFiles, pyprojectScripts } from "@codeboard/analysis"
 import { analysisOf } from "./analysis";
 import { cardForFileSym, freeCard, newCodeCard, withViews } from "./cards";
 import type { Storage } from "./storage/boards";
+import { cardMarkdown, preview, sidenoteMarkdown, whereOf } from "./preview";
 import { makeSegment } from "./versions";
 import { CODE_EXCLUDE, exists, splitLines } from "./ws";
 import type { HostContext } from "./context";
@@ -69,6 +70,7 @@ export async function search(
           board: board.id,
           card: c.id,
           num,
+          preview: preview(cardMarkdown(c, board), whereOf(board, c.id)),
         };
         if (shared) seen.set(c.id, item);
         scored.push({ s: s + 30 + (board.id === here ? 5 : 0), item });
@@ -104,6 +106,7 @@ export async function search(
             board: board.id,
             card: n.at.card,
             sidenote: n.id,
+            preview: preview(sidenoteMarkdown(n), whereOf(board, n.at.card)),
           },
         });
       }

@@ -1025,6 +1025,88 @@ test("palette", async () => {
   await h.page.context().close();
 });
 
+test("paletteMeaning", async () => {
+  // the host's Related by Meaning (innerbox) played here: the first answer is still indexing, the next is done
+  let asked = 0;
+  const h = await open({
+    board: boardWith("BlockManager.deallocate"),
+    light,
+    on: async (m, reply) => {
+      if (m.type !== "searchMeaning") return false;
+      asked++;
+      const c = h.board().cards[0];
+      await reply(m.req!, {
+        items: [
+          {
+            kind: "card",
+            label: "1. ==Frees== blocks",
+            detail: "This board",
+            board: h.board().id,
+            card: c.id,
+            preview: {
+              md: "## Blocks\n\nAllocates blocks.\n\nFrees the **blocks** of a finished sequence.\n\n```c\nfree(blocks[i]);\n```",
+              where: "nano-vllm › Memory",
+              // a passage runs on into a code block (whose brackets the rendered code has too): one mark over both
+              hit: "Frees the **blocks** of a finished sequence. free(blocks[i]);",
+            },
+          },
+          // a sidenote's label is its first line: a heading there reads as a line too
+          {
+            kind: "sidenote",
+            label: "## Why free early",
+            detail: "This board",
+            board: h.board().id,
+            card: c.id,
+            sidenote: "sn",
+          },
+        ],
+        ...(asked === 1 ? { left: 3 } : {}),
+      });
+      return true;
+    },
+  });
+  await h.page.keyboard.press("ControlOrMeta+k");
+  await h.page.locator(".palette input:focus").waitFor();
+  await h.page.keyboard.type("显存回收");
+  const group = h.page.locator(".palette .pgh", { hasText: "Related by Meaning" });
+  await group.waitFor();
+  const indexing = (await group.textContent()) ?? "";
+  await until(h, "asked again once indexing is done", () => asked >= 2);
+  await expect(group).not.toContainText("indexing");
+  await shot(h, "pal-04-meaning");
+  await expect(h.page.locator(".palette .ppw")).toHaveText("nano-vllm › Memory");
+  const pane = await h.page.evaluate(() => ({
+    where: document.querySelector(".palette .ppw")?.textContent,
+    heading: document.querySelector(".palette .ppmd h2")?.textContent,
+    label: document.querySelector(".palette .cand .lb mark")?.textContent,
+    list: document.querySelectorAll(".palette .cand .lb :is(ol, li, h1, h2, h3, h4, h5, h6)").length,
+    note: [...document.querySelectorAll(".palette .cand .lb")]
+      .map((e) => e.textContent)
+      .find((t) => t?.includes("free early")),
+    hit: [...((CSS as any).highlights?.get("palette-hit") ?? [])].map((r: Range) => r.toString()).join("|"),
+  }));
+  const sent = h.sent.filter((m) => m.type === "searchMeaning").map((m: any) => m.q);
+  await h.page.keyboard.press("Enter");
+  await expect(h.page.locator(".palette")).toHaveCount(0);
+  const selected = await h.page.locator(`.card.sel[data-id="${h.board().cards[0].id}"]`).count();
+  check(
+    "paletteMeaning shows Related by Meaning while indexing, asks again until done, and Enter goes to the card",
+    /indexing, 3 left/.test(indexing) && sent.every((q) => q === "显存回收") && selected === 1,
+    { indexing, sent, selected },
+  );
+  check(
+    "paletteMeaning previews the card with where it sits, marks the passage that matched, and renders the label's Markdown on one line",
+    pane.where === "nano-vllm › Memory" &&
+      pane.heading === "Blocks" &&
+      pane.label === "Frees" &&
+      pane.list === 0 &&
+      pane.note === "Why free early" &&
+      pane.hit === "Frees the blocks of a finished sequence.free(blocks[i]);",
+    pane,
+  );
+  await h.page.context().close();
+});
+
 test("peek", async () => {
   const h = await open({ board: boardWith("Scheduler.schedule"), light });
   await h.page.locator(".card .src .call", { hasText: "can_allocate" }).first().hover();

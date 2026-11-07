@@ -18,6 +18,7 @@ import { Remotes } from "./exports";
 import { GitCache } from "./git";
 import { OpenedGithubFiles } from "./github";
 import { Lsp } from "./lsp";
+import { MeaningSearch } from "./meaning";
 import { NameIndex } from "./nameindex";
 import { Prefetch } from "./prefetch";
 import { ScratchFiles } from "./scratchfiles";
@@ -52,6 +53,8 @@ export class HostContext implements Disposable {
   readonly ai = new AiMemory();
   readonly githubFiles = new OpenedGithubFiles(this);
   readonly codeEdit = new CodeEdit(this);
+  /** ⌘K's Related by Meaning: the project's semantic index */
+  readonly meaning = new MeaningSearch(this);
   /** The hidden files behind code being edited on a board */
   readonly scratch = new ScratchFiles(this);
   /** Smaller copies of the board's big images */
@@ -70,6 +73,7 @@ export class HostContext implements Disposable {
 
   dispose() {
     this.index.dispose();
+    this.meaning.dispose();
     this.prefetch.dispose();
     this.ops.dispose();
     this.githubFiles.dispose();

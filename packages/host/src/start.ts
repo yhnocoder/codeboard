@@ -81,6 +81,8 @@ export function startHost(ws: Workspace, env: HostEnv, o: HostOptions): Host {
   on(ws.files.onDidChangeRoots(follow));
 
   on(store.onDidChange(() => void hub.pushBoards()));
+  on(store.onDidChange(() => cx.meaning.soon(store)));
+  cx.meaning.soon(store);
   on(hub.onDidChangeStale(() => void hub.pushBoards()));
 
   // 代码变了：记下的定义跳转结果作废
@@ -103,6 +105,7 @@ export function startHost(ws: Workspace, env: HostEnv, o: HostOptions): Host {
   on(
     ws.settings.onDidChange((e) => {
       if (e.affects(`codeboard.${HOST_SETTINGS.storageDir.key}`)) follow();
+      if (e.affects("codeboard.search")) cx.meaning.soon(store);
       if (affectsSettings(e)) hub.broadcast({ type: "host", host: { settings: readSettings(cx) } });
       if (e.affects("editor.fontFamily"))
         hub.broadcast({ type: "host", host: { fontFamily: ws.settings.get<string>("editor.fontFamily") } });
