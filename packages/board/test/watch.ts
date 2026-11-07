@@ -24,8 +24,9 @@ import {
 
 /** One frame's time: Playwright's clock runs requestAnimationFrame callbacks every 16 ms */
 const FRAME_MS = 16;
-/** A box that moved is masked for the flash rule with this much around it (CSS px): an arrow's head, a shadow */
-const MOVE_MARGIN = 8;
+/** A box that moved is masked for the flash rule with this much around it (CSS px, at 100 %): an arrow's head, a shadow, and
+ *  what a card draws off its edges and takes along (Ink Wash's selection seal sits 19px past a card's top right corner) */
+const MOVE_MARGIN = 24;
 
 export type WatchOptions = {
   /** how many frames to record after the action (the frame before it is frame 0, the first one painted after it frame 1) */
