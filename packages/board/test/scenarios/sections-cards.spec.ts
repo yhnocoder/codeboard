@@ -1536,7 +1536,7 @@ test("sectionFoldWatched", async () => {
   const label = '.slabel[data-sect="S"]';
   await h.page.locator(label).hover();
   await idle(h);
-  const o = { moves: [/^card:n/, /^sect:/, /^link:/, /^el:/], follow: [label], frames: 50 };
+  const o = { moves: [/^card:n/, /^sect:/, /^link:/, /^el:/], follow: [label], keep: [label], frames: 50 };
   await watch(h, "sectionFoldWatched fold", o, () => h.page.locator(`${label} .chev2`).click());
   await idle(h);
   check("sectionFoldWatched the Section is folded", h.board().sections[0].collapsed === true, h.board().sections[0]);

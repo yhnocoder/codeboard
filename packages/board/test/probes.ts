@@ -828,11 +828,16 @@ export function pageSample(o: {
   for (const sel of o.keep) shown[sel] = [...document.querySelectorAll(sel)].filter(shownEl).length;
   const masks: Box[] = [];
   // what a running animation moves (a flying copy, a sliding panel) is motion by design, like a card that moved
-  const MOVES = /^(transform|translate|scale|rotate|left|top|right|bottom|width|height|inset|offset)/;
+  // (offset-path and friends, not the `offset` / `computedOffset` keys every keyframe from getKeyframes() carries)
+  const MOVES = /^(transform|translate|scale|rotate|left|top|right|bottom|width|height|inset|offset[A-Z-])/;
+  const KEYFRAME_KEYS = new Set(["offset", "computedOffset", "easing", "composite"]);
   for (const a of document.getAnimations()) {
     const e = a.effect as KeyframeEffect | null;
     if (a.playState !== "running" || !e?.target) continue;
-    const props = a instanceof CSSTransition ? [a.transitionProperty] : e.getKeyframes().flatMap((k) => Object.keys(k));
+    const props =
+      a instanceof CSSTransition
+        ? [a.transitionProperty]
+        : e.getKeyframes().flatMap((k) => Object.keys(k).filter((p) => !KEYFRAME_KEYS.has(p)));
     if (!props.some((p) => MOVES.test(p))) continue;
     const r = e.target.getBoundingClientRect();
     if (r.width && r.height) masks.push({ x: r.left, y: r.top, w: r.width, h: r.height });

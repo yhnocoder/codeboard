@@ -459,11 +459,18 @@ test("dragWatched", async () => {
       y = box.y + box.height / 2;
     await pg.mouse.move(x, y);
     const carried = ["card:n0", /^link:/];
-    await watch(h, `dragWatched ${theme} lift`, { free: carried, frames: 16 }, async () => {
-      await pg.mouse.down();
-      for (let i = 1; i <= 4; i++) await pg.mouse.move(x + i * 12, y + i * 14);
-    });
-    await watch(h, `dragWatched ${theme} drop`, { moves: carried, frames: 32 }, () => pg.mouse.up());
+    await watch(
+      h,
+      `dragWatched ${theme} lift`,
+      { free: carried, keep: ['.card[data-id="n0"]'], frames: 16 },
+      async () => {
+        await pg.mouse.down();
+        for (let i = 1; i <= 4; i++) await pg.mouse.move(x + i * 12, y + i * 14);
+      },
+    );
+    await watch(h, `dragWatched ${theme} drop`, { moves: carried, keep: ['.card[data-id="n0"]'], frames: 32 }, () =>
+      pg.mouse.up(),
+    );
     await idle(h);
     check(`dragWatched ${theme} the card moved`, h.board().place.n0.y > 100, h.board().place.n0);
     await h.close();

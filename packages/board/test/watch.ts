@@ -70,7 +70,7 @@ const roleOf =
     matches(o.free, key) ? "free" : o.moves === "all" || matches(o.moves || [], key) ? "moves" : "still";
 
 /** Screen boxes (CSS px) of what moved between two samples, for the flash rule: a box that moved covers both its places; one
- *  that only grew or shrank covers the band it gained or lost */
+ *  that only grew or shrank covers the band it gained or lost; one that appeared or disappeared covers nothing */
 function moveMasks(a: Sample, b: Sample, clip: Box): Box[] {
   // the camera moved: everything in the world moved, words sliding over cells look like flashes. Not judged for flashes (the
   // jump probe judges the world's boxes in world units then)
@@ -83,10 +83,8 @@ function moveMasks(a: Sample, b: Sample, clip: Box): Box[] {
   for (const key of Object.keys(b.rects)) {
     const ra = a.rects[key],
       rb = b.rects[key];
-    if (!ra) {
-      out.push(scr(b, key, rb));
-      continue;
-    }
+    // a box that appears or disappears is not motion: it stays judged, so one that is gone for a frame and back is a flash
+    if (!ra) continue;
     const p = scr(a, key, ra),
       q = scr(b, key, rb);
     if (Math.abs(p.x - q.x) < 0.5 && Math.abs(p.y - q.y) < 0.5) {
@@ -100,7 +98,6 @@ function moveMasks(a: Sample, b: Sample, clip: Box): Box[] {
       y = Math.min(p.y, q.y);
     out.push({ x, y, w: Math.max(p.x + p.w, q.x + q.w) - x, h: Math.max(p.y + p.h, q.y + q.h) - y });
   }
-  for (const key of Object.keys(a.rects)) if (!b.rects[key]) out.push(scr(a, key, a.rects[key]));
   return out.map((m) => ({
     x: m.x - MOVE_MARGIN,
     y: m.y - MOVE_MARGIN,
