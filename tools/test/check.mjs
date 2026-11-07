@@ -1,7 +1,8 @@
 // npm run check: the local test run, about 90 seconds. See TESTING.md.
 //   1. the @yhnocoder/markdown build (packages/markdown/dist, a few seconds), which the board, its typecheck, the package's own
-//      tests and the demo all use, and the extension's generated package.json contributes; then typecheck, lint (Biome and knip), unit tests (core, markdown, board, host, extension) and the Markdown demo
-//      (examples/markdown-demo, built and run in Chromium) side by side with the board build, which runs only when its
+//      tests and the demo all use, and the extension's generated package.json contributes, and box's binary (cargo,
+//      incremental); then typecheck, lint (Biome and knip), unit tests (core, box, markdown, board, host, extension), box's
+//      cargo tests and the Markdown demo (examples/markdown-demo, built and run in Chromium) side by side with the board build, which runs only when its
 //      sources changed since the last one
 //   2. as soon as the board is built (the scenarios need nothing else), the harness scenarios this change needs
 //      (tools/test/pick.mjs), compared with origin/main, several at a time: asked, added, failing, smoke and the whole group of
@@ -9,7 +10,7 @@
 //      groups behind it; edited scenarios outside those groups are listed as run in CI
 // Usage: npm run check [-- <scenario…>] [-- --all] [-- --base=<ref>] [-- --budget=<seconds of harness, for the warning>]
 //   scenario names are always run (the problem being worked on); --all runs every scenario, with no time limit
-import { spawn, execFileSync } from "node:child_process";
+import { spawn, spawnSync, execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -49,6 +50,14 @@ if (!(await run("extension package.json", "npm", ["run", "contributes", "-w", "c
   process.exit(1);
 }
 
+// box (packages/box: Rust), whose binary the host's and the box client's unit tests run and the extension's build copies:
+// incremental, under a second when it did not change (without cargo it says so and they skip)
+if (!(await run("build box", "npm", ["run", "build", "-w", "@codeboard/box"]))) {
+  console.log("box build failed: nothing else run");
+  process.exit(1);
+}
+const cargo = spawnSync("cargo", ["--version"], { stdio: "ignore" }).status === 0;
+
 const stamp = path.join(REPO, "packages/board/dist/.build-hash");
 const hash = buildHash(REPO); // the board build takes most of a minute: skipped when nothing it is built from changed since the last one
 const fresh =
@@ -66,6 +75,7 @@ const first = Promise.all([
   run("typecheck", "npm", ["run", "typecheck"]),
   run("lint", "npm", ["run", "lint"]),
   run("unit tests", "npm", ["test"]),
+  ...(cargo ? [run("box cargo tests", "sh", ["-c", "cd packages/box && cargo test --quiet"])] : []),
   run("markdown demo", "npm", ["test", "-w", "@codeboard/markdown-demo"]),
 ]);
 if (!(await build)) {

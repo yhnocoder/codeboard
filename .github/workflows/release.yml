@@ -4,7 +4,7 @@ on:
     tags: ["v*"]
   # A PR that changes the release flow runs package + shots as a check; no release is made
   pull_request:
-    paths: [".github/workflows/release.yml", "tools/release/**", "extensions/vscode/test/release-shots.cjs", "extensions/vscode/test/wait.cjs", "extensions/vscode/test/ui.cjs", "extensions/vscode/.vscodeignore"]
+    paths: [".github/workflows/release.yml", "tools/release/**", "packages/box/Cargo.*", "extensions/vscode/test/release-shots.cjs", "extensions/vscode/test/wait.cjs", "extensions/vscode/test/ui.cjs", "extensions/vscode/.vscodeignore"]
   # By hand: without publish_tag, the draft release is tagged v<package.json version> on this commit when published;
   # with publish_tag, the .vsix of that published release is (re)published to the stores, nothing is built
   workflow_dispatch:
@@ -22,9 +22,45 @@ concurrency:
   group: release-${{ (github.event_name == 'release' || inputs.publish_tag) && format('publish-{0}', github.event.release.tag_name || inputs.publish_tag) || github.event.pull_request.number || github.ref }}
   cancel-in-progress: false
 jobs:
+  # box, the index service behind Related by Meaning, for every platform the one .vsix serves (bin/<platform>-<arch>/ in it).
+  # Linux is a static musl build, so it runs on any distribution
+  box:
+    if: github.event_name != 'release' && !inputs.publish_tag
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - { os: ubuntu-24.04, target: x86_64-unknown-linux-musl, platform: linux-x64, exe: box }
+          - { os: macos-15, target: aarch64-apple-darwin, platform: darwin-arm64, exe: box }
+          - { os: macos-15, target: x86_64-apple-darwin, platform: darwin-x64, exe: box }
+          - { os: windows-2025, target: x86_64-pc-windows-msvc, platform: win32-x64, exe: box.exe }
+    name: box (${{ matrix.platform }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+        with: { targets: "${{ matrix.target }}" }
+      - uses: Swatinem/rust-cache@v2
+        with: { workspaces: packages/box, key: "${{ matrix.target }}" }
+      - if: runner.os == 'Linux'
+        run: sudo apt-get update -q && sudo apt-get install -qy musl-tools
+      - name: Build
+        shell: bash
+        working-directory: packages/box
+        run: |
+          cargo build --release --locked --bin box --target ${{ matrix.target }}
+          mkdir -p bin/${{ matrix.platform }}
+          cp target/${{ matrix.target }}/release/${{ matrix.exe }} bin/${{ matrix.platform }}/
+      - uses: actions/upload-artifact@v6
+        with: { name: "box-${{ matrix.platform }}", path: packages/box/bin, retention-days: 7 }
+
   package:
+    needs: box
     if: github.event_name != 'release' && !inputs.publish_tag
     runs-on: ubuntu-24.04
+    env:
+      BOX_PREBUILT: "1" # the build would make this machine's box again: the downloaded ones are the ones released
     timeout-minutes: 15
     outputs:
       version: ${{ steps.v.outputs.version }}
@@ -40,7 +76,13 @@ jobs:
             echo "::error::Tag $TAG does not match extensions/vscode/package.json version $V. Bump the version there first, or tag v$V."; exit 1
           fi
           echo "version=$V" >> $GITHUB_OUTPUT
+      # every platform's box binary into packages/box/bin, where the extension's build copies them from
+      - uses: actions/download-artifact@v7
+        with: { pattern: "box-*", path: packages/box/bin, merge-multiple: true }
+      - run: chmod +x packages/box/bin/*/box # artifacts lose the executable bit
       - uses: ./.github/actions/setup
+      - name: Check every platform's box is in the extension
+        run: for p in linux-x64 darwin-arm64 darwin-x64; do test -x extensions/vscode/bin/$p/box; done && test -f extensions/vscode/bin/win32-x64/box.exe
       - name: Package the extension
         working-directory: extensions/vscode
         run: npm run package
