@@ -1,8 +1,8 @@
 # box protocol
 
-One service per user and data folder (`BOX_HOME`, else the platform's local data folder + `box/`; `box home` prints the paths
+One service per user and data folder (`BOX_HOME`, else the platform's local data folder + `codeboard-box/`; `box home` prints the paths
 as JSON). It listens on a local socket only: `<home>/box.sock` (mode 0600) on macOS and Linux, the named pipe
-`\\.\pipe\box-<hash of home>` on Windows. No TCP port. `box serve [--idle <seconds>]` runs it; a second one for the same folder
+`\\.\pipe\codeboard-box-<hash of home>` on Windows. No TCP port. `box serve [--idle <seconds>]` runs it; a second one for the same folder
 exits at once (lock file), and it exits after 10 minutes without connections.
 
 Requests and answers are lines of JSON. A request is `{"id": <any>, "op": "<op>", ...fields}`; its answer is

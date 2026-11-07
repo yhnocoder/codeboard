@@ -1,6 +1,10 @@
-//! Where box keeps its files: the platform's per-user data folder (`dirs::data_local_dir()/box`), or `BOX_HOME`
+//! Where box keeps its files: the platform's per-user data folder (`dirs::data_local_dir()/codeboard-box`), or `BOX_HOME`.
+//! Not plain `box`: on macOS, whose file system ignores case, that is Box Drive's folder
 
 use std::path::{Path, PathBuf};
+
+/// The data folder's name in the platform's local data folder
+pub const DIR_NAME: &str = "codeboard-box";
 
 pub struct Paths {
     pub home: PathBuf,
@@ -18,7 +22,7 @@ pub struct Paths {
 pub fn home() -> PathBuf {
     match std::env::var_os("BOX_HOME") {
         Some(h) if !h.is_empty() => PathBuf::from(h),
-        _ => dirs::data_local_dir().unwrap_or_else(std::env::temp_dir).join("box"),
+        _ => dirs::data_local_dir().unwrap_or_else(std::env::temp_dir).join(DIR_NAME),
     }
 }
 
@@ -41,5 +45,5 @@ pub fn paths(home: &Path) -> Paths {
 /// The named pipe of a data folder (Windows)
 pub fn pipe_name(home: &Path) -> String {
     let h = blake3::hash(home.to_string_lossy().as_bytes()).to_hex();
-    format!("box-{}", &h[..16])
+    format!("codeboard-box-{}", &h[..16])
 }
