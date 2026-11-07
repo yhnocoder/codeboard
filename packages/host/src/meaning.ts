@@ -31,7 +31,10 @@ const MIN_SCORE = 0.55;
  * through this host and box (2026-11, clip 0.119) with the 75 + 12 queries of the bench and the review's 20 + 4 fresh ones,
  * on what the Palette shows (the best 8 at MIN_SCORE or above): the closest row any of the 16 unrelated queries showed scored
  * 0.632 (MPI_Allreduce across nodes), so at 0.635 all 46 rows they showed are faint, while 6 of the 93 first right cards are.
- * Of the labelled queries' rows, 7% below the line are a wanted card and 24% above it (the labels name only the best cards)
+ * Of the labelled queries' rows, 7% below the line are a wanted card and 24% above it (the labels name only the best cards).
+ * Checked on queries not used to set it (review-176 fresh2: 20 labelled, 10 unrelated, 6 of them near GPU / ML topics): all 24
+ * rows of the unrelated ones faint, 1 of 18 first right cards faint; the closest unrelated row scored 0.633, so this is a hint,
+ * not a line that reliably separates related from unrelated. Keep those queries out of any re-calibration
  */
 const FAINT_BELOW = 0.635;
 
