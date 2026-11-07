@@ -222,7 +222,6 @@ test("shelfArrows", async () => {
   await close(h);
 });
 
-/** Warm Ink screenshots at 2× for review: the menu, the panel with three entries, a row dragged out, a card over the dock */
 /** Resting the pointer on a Shelf row shows the entry beside the panel as it was: the Section with its title, its cards with their
  *  content; the next row's shows at once, and it goes when the pointer leaves the rows or a row is dragged */
 test("shelfRowPreview", async () => {
@@ -284,6 +283,7 @@ test("shelfRowPreview", async () => {
   await close(h);
 });
 
+/** Warm Ink screenshots at 2× for review: the menu, the panel with three entries, a row dragged out, a card over the dock */
 test("shelfScreenshots", async () => {
   const { b, runner } = board({ runner: true });
   const h = await open({ board: b, light: true, w: 1440, h: 900, scale: 2, settings: { theme: "warm-ink" } });
