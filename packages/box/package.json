@@ -16,6 +16,7 @@
   },
   "exports": {
     ".": "./src/index.ts",
+    "./embedded": "./src/embedded.ts",
     "./package.json": "./package.json"
   }
 }

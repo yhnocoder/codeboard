@@ -1,7 +1,9 @@
 name: box
 # box (packages/box) for every platform the one .vsix serves, each built on and smoke-tested on its own runner: cargo's tests
-# (the service over its Unix socket or named pipe) and the release binary through the TypeScript client (test/smoke.mjs).
-# release.yml calls this for the binaries it packs; a PR that changes box runs it as a check.
+# (the service over its Unix socket or named pipe, the C ABI), the release binary through the TypeScript client
+# (test/smoke.mjs), the Node addon in a Node process (test/smoke-addon.mjs) and, on macOS, the Swift package (swift test).
+# release.yml calls this for the binaries it packs; a PR that changes box runs it as a check. The Node addon of each
+# platform is uploaded on its own (node-addon-<platform>), not into the extension.
 on:
   workflow_call:
   pull_request:
@@ -20,6 +22,8 @@ jobs:
           # cross-built on Apple silicon; it runs there under Rosetta 2
           - { os: macos-15, target: x86_64-apple-darwin, platform: darwin-x64, exe: box }
           - { os: windows-2025, target: x86_64-pc-windows-msvc, platform: win32-x64, exe: box.exe }
+          - { os: ubuntu-24.04-arm, target: aarch64-unknown-linux-musl, platform: linux-arm64, exe: box }
+          - { os: windows-11-arm, target: aarch64-pc-windows-msvc, platform: win32-arm64, exe: box.exe }
     name: box (${{ matrix.platform }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 25
@@ -40,6 +44,16 @@ jobs:
           cargo build --release --locked --bin box --target ${{ matrix.target }}
           mkdir -p bin/${{ matrix.platform }}
           cp target/${{ matrix.target }}/release/${{ matrix.exe }} bin/${{ matrix.platform }}/
+      - name: Build the Node addon and the C ABI library
+        run: |
+          # a musl cdylib must not be static: the addon is loaded by Node, which links the C library itself
+          if [ "${{ runner.os }}" = Linux ]; then target=${{ matrix.target }}; target=${target/musl/gnu}; else target=${{ matrix.target }}; fi
+          rustup target add $target
+          cargo build --release --locked -p box-node -p box-ffi --target $target
+          case "${{ runner.os }}" in Windows) lib=box_node.dll ;; macOS) lib=libbox_node.dylib ;; *) lib=libbox_node.so ;; esac
+          mkdir -p node/bin/${{ matrix.platform }}
+          cp target/$target/release/$lib node/bin/${{ matrix.platform }}/box.node
+          echo "FFI_LIB_DIR=$PWD/target/$target/release" >> "$GITHUB_ENV"
       - name: Can this runner run it?
         id: runs
         run: |
@@ -55,5 +69,15 @@ jobs:
       - name: Smoke test (the binary through the TypeScript client)
         if: steps.runs.outputs.ok == 'true'
         run: node test/smoke.mjs bin/${{ matrix.platform }}/${{ matrix.exe }}
+      # the runner's Node is arm64: an x64 addon cannot load in it
+      - name: Smoke test (the Node addon in this Node process)
+        if: steps.runs.outputs.ok == 'true' && matrix.platform != 'darwin-x64'
+        run: node test/smoke-addon.mjs node/bin/${{ matrix.platform }}/box.node
+      - name: Swift package (swift test over the C ABI)
+        if: matrix.platform == 'darwin-arm64'
+        working-directory: packages/box/swift
+        run: BOX_LIB_DIR="$FFI_LIB_DIR" swift test
       - uses: actions/upload-artifact@v6
         with: { name: "box-${{ matrix.platform }}", path: packages/box/bin, retention-days: 7 }
+      - uses: actions/upload-artifact@v6
+        with: { name: "node-addon-${{ matrix.platform }}", path: packages/box/node/bin, retention-days: 7 }
