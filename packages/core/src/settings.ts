@@ -365,6 +365,23 @@ export const HOST_SETTINGS = {
     key: "ai.deepseekBaseUrl",
     schema: { type: "string", default: "https://api.deepseek.com", description: "DeepSeek API base URL." },
   },
+  searchEmbeddingUrl: {
+    key: "search.embeddingUrl",
+    schema: {
+      type: "string",
+      default: "",
+      markdownDescription:
+        "OpenAI-compatible embedding server for Search › Related by Meaning, running on your own machine, e.g. `http://127.0.0.1:11001/v1` (oMLX serving EmbeddingGemma). Empty: off. Set its key with **CodeBoard: Set Embedding API Key**. The index is kept in the storage folder (`.innerbox/`, not in git).",
+    },
+  },
+  searchEmbeddingModel: {
+    key: "search.embeddingModel",
+    schema: {
+      type: "string",
+      default: "",
+      description: 'Embedding model name on that server. Empty: the first model whose name has "embed".',
+    },
+  },
   storageDir: {
     key: "storageDir",
     schema: {

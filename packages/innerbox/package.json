@@ -1,0 +1,20 @@
+{
+  "name": "@codeboard/innerbox",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "bench": "esbuild bench/accuracy.ts --bundle --platform=node --format=esm --log-level=warning --outfile=../../test-out/innerbox/bench.mjs && node ../../test-out/innerbox/bench.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.43",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.4"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

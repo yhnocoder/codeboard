@@ -1,0 +1,355 @@
+[
+  {
+    "id": "q01",
+    "type": "xling",
+    "query": "计算受限",
+    "relevant": ["n_compute_bound", "z_roofline"]
+  },
+  {
+    "id": "q02",
+    "type": "xling",
+    "query": "显存回收",
+    "relevant": ["n_kv_free", "code:BlockManager.deallocate", "code:BlockManager._deallocate_block", "s_refcount"]
+  },
+  {
+    "id": "q03",
+    "type": "xling",
+    "query": "预填充",
+    "relevant": [
+      "n_compute_bound",
+      "n_prefill_chunk",
+      "n_flash_varlen",
+      "code:ModelRunner.prepare_prefill",
+      "s_chunked",
+      "n_lmhead_last"
+    ]
+  },
+  {
+    "id": "q04",
+    "type": "xling",
+    "query": "分页注意力",
+    "relevant": ["n_paged", "code:ModelRunner.prepare_block_tables", "sec_kv", "code:BlockManager.allocate"]
+  },
+  {
+    "id": "q05",
+    "type": "xling",
+    "query": "调度",
+    "relevant": ["code:Scheduler.schedule", "z_sched_note", "sec_sched", "n_loop", "n_preempt"]
+  },
+  {
+    "id": "q06",
+    "type": "xling",
+    "query": "抢占正在运行的序列",
+    "relevant": ["n_preempt", "code:Scheduler.preempt", "m_preempt"]
+  },
+  {
+    "id": "q07",
+    "type": "xling",
+    "query": "前缀缓存命中",
+    "relevant": [
+      "n_prefix_cache",
+      "z_prefix_chain",
+      "code:BlockManager.can_allocate",
+      "code:BlockManager.hash_blocks",
+      "s_numcached"
+    ]
+  },
+  {
+    "id": "q08",
+    "type": "xling",
+    "query": "张量并行",
+    "relevant": [
+      "n_tp",
+      "sec_tp",
+      "z_tp_zh",
+      "code:ColumnParallelLinear.__init__",
+      "code:RowParallelLinear.forward",
+      "code:RowParallelLinear.__init__"
+    ]
+  },
+  {
+    "id": "q09",
+    "type": "xling",
+    "query": "采样温度",
+    "relevant": ["n_sampler", "code:Sampler.forward", "s_gumbel", "z_temperature"]
+  },
+  {
+    "id": "q10",
+    "type": "xling",
+    "query": "旋转位置编码",
+    "relevant": [
+      "n_rope",
+      "code:apply_rotary_emb",
+      "code:RotaryEmbedding.forward",
+      "code:RotaryEmbedding.__init__",
+      "code:get_rope"
+    ]
+  },
+  {
+    "id": "q11",
+    "type": "xling",
+    "query": "减少内核启动开销",
+    "relevant": ["n_cudagraph", "code:ModelRunner.capture_cudagraph", "m_cudagraph"]
+  },
+  {
+    "id": "q12",
+    "type": "xling",
+    "query": "什么时候停止生成",
+    "relevant": ["n_eos", "code:Scheduler.postprocess"]
+  },
+  {
+    "id": "q13",
+    "type": "xling",
+    "query": "解码阶段受内存带宽限制",
+    "relevant": ["n_memory_bound", "n_compute_bound"]
+  },
+  {
+    "id": "q14",
+    "type": "xling",
+    "query": "多进程之间怎么传方法和参数",
+    "relevant": [
+      "n_shm",
+      "code:ModelRunner.read_shm",
+      "code:ModelRunner.write_shm",
+      "code:ModelRunner.loop",
+      "code:ModelRunner.call"
+    ]
+  },
+  {
+    "id": "q15",
+    "type": "xling",
+    "query": "加载模型权重",
+    "relevant": [
+      "n_load",
+      "code:load_model",
+      "code:QKVParallelLinear.weight_loader",
+      "code:MergedColumnParallelLinear.weight_loader"
+    ]
+  },
+  {
+    "id": "q16",
+    "type": "xling",
+    "query": "词表并行的嵌入层",
+    "relevant": [
+      "n_vocab_parallel",
+      "code:VocabParallelEmbedding.forward",
+      "code:VocabParallelEmbedding.__init__",
+      "code:VocabParallelEmbedding.weight_loader"
+    ]
+  },
+  {
+    "id": "q17",
+    "type": "xling",
+    "query": "残差相加和归一化融合",
+    "relevant": ["n_rmsnorm", "code:RMSNorm.add_rms_forward"]
+  },
+  {
+    "id": "q18",
+    "type": "en2zh",
+    "query": "how to compute a thread's global index",
+    "relevant": ["z_thread_index", "z_col_row"]
+  },
+  {
+    "id": "q19",
+    "type": "en2zh",
+    "query": "guard against out-of-bounds threads in a kernel",
+    "relevant": ["z_boundary"]
+  },
+  {
+    "id": "q20",
+    "type": "en2zh",
+    "query": "deadlock caused by a barrier inside if/else",
+    "relevant": ["z_syncthreads", "sec_barrier"]
+  },
+  {
+    "id": "q21",
+    "type": "en2zh",
+    "query": "warp divergence",
+    "relevant": ["z_warp_div", "sec_warp"]
+  },
+  {
+    "id": "q22",
+    "type": "en2zh",
+    "query": "latency hiding by switching warps",
+    "relevant": ["z_warp_sched", "z_gpu_throughput"]
+  },
+  {
+    "id": "q23",
+    "type": "en2zh",
+    "query": "register usage limits occupancy",
+    "relevant": ["z_occupancy"]
+  },
+  {
+    "id": "q24",
+    "type": "en2zh",
+    "query": "coalesced memory access",
+    "relevant": ["z_coalesce"]
+  },
+  {
+    "id": "q25",
+    "type": "en2zh",
+    "query": "tiled matrix multiplication with shared memory",
+    "relevant": ["z_tiling", "z_shared_mem"]
+  },
+  {
+    "id": "q26",
+    "type": "en2zh",
+    "query": "throughput-oriented versus latency-oriented processor design",
+    "relevant": ["z_gpu_throughput", "z_heter"]
+  },
+  {
+    "id": "q27",
+    "type": "en2zh",
+    "query": "query device properties such as number of SMs",
+    "relevant": ["z_device_prop"]
+  },
+  {
+    "id": "q28",
+    "type": "en2zh",
+    "query": "arithmetic intensity and the roofline",
+    "relevant": ["z_roofline", "n_compute_bound"]
+  },
+  {
+    "id": "q29",
+    "type": "en2zh",
+    "query": "how nvcc splits host code and device code",
+    "relevant": ["z_host_device"]
+  },
+  {
+    "id": "q30",
+    "type": "en2zh",
+    "query": "sending tokens to experts on other GPUs",
+    "relevant": ["z_dispatch", "z_moe_side"]
+  },
+  {
+    "id": "q31",
+    "type": "en2zh",
+    "query": "how many KV cache blocks fit in GPU memory",
+    "relevant": ["z_kv_alloc", "n_warmup", "code:ModelRunner.allocate_kv_cache"]
+  },
+  {
+    "id": "q32",
+    "type": "para",
+    "query": "why do sequences get kicked out when memory runs out",
+    "relevant": ["n_preempt", "code:Scheduler.preempt", "m_preempt"]
+  },
+  {
+    "id": "q33",
+    "type": "para",
+    "query": "compute logits only for the final position",
+    "relevant": ["n_lmhead_last", "m_lmhead", "code:ParallelLMHead.forward"]
+  },
+  {
+    "id": "q34",
+    "type": "para",
+    "query": "batch prompts of different lengths without padding",
+    "relevant": ["n_flash_varlen", "code:ModelRunner.prepare_prefill"]
+  },
+  {
+    "id": "q35",
+    "type": "para",
+    "query": "pass attention metadata without function arguments",
+    "relevant": ["n_context", "code:set_context"]
+  },
+  {
+    "id": "q36",
+    "type": "para",
+    "query": "前缀相同的请求可以复用已经算好的块",
+    "relevant": ["z_prefix_chain", "n_prefix_cache", "code:BlockManager.can_allocate"]
+  },
+  {
+    "id": "q37",
+    "type": "para",
+    "query": "让一个线程块里的所有线程互相等待",
+    "relevant": ["z_syncthreads", "z_intrinsic", "sec_barrier", "z_barrier_scope"]
+  },
+  {
+    "id": "q38",
+    "type": "ident",
+    "query": "slot_mapping",
+    "relevant": [
+      "n_slot_mapping",
+      "code:ModelRunner.prepare_prefill",
+      "code:ModelRunner.prepare_decode",
+      "code:ModelRunner.run_model",
+      "code:ModelRunner.capture_cudagraph",
+      "code:store_kvcache_kernel",
+      "code:store_kvcache",
+      "code:Attention.forward",
+      "code:set_context"
+    ]
+  },
+  {
+    "id": "q39",
+    "type": "ident",
+    "query": "block_table",
+    "relevant": [
+      "n_paged",
+      "code:BlockManager.allocate",
+      "code:BlockManager.deallocate",
+      "code:BlockManager.may_append",
+      "code:BlockManager.hash_blocks",
+      "code:ModelRunner.prepare_block_tables",
+      "code:ModelRunner.prepare_prefill",
+      "code:ModelRunner.prepare_decode",
+      "code:ModelRunner.run_model",
+      "code:ModelRunner.capture_cudagraph",
+      "code:Scheduler.schedule",
+      "code:Sequence.__init__",
+      "code:Sequence.__getstate__",
+      "code:Sequence.__setstate__",
+      "code:Attention.forward",
+      "code:set_context"
+    ]
+  },
+  {
+    "id": "q40",
+    "type": "ident",
+    "query": "flash_attn_with_kvcache",
+    "relevant": ["code:Attention.forward"]
+  },
+  {
+    "id": "q41",
+    "type": "ident",
+    "query": "cu_seqlens_q",
+    "relevant": [
+      "n_flash_varlen",
+      "n_lmhead_last",
+      "code:ModelRunner.prepare_prefill",
+      "code:Attention.forward",
+      "code:ParallelLMHead.forward",
+      "code:set_context"
+    ]
+  },
+  {
+    "id": "q42",
+    "type": "ident",
+    "query": "gpu_memory_utilization",
+    "relevant": ["n_warmup", "n_config", "code:ModelRunner.allocate_kv_cache"]
+  },
+  {
+    "id": "q43",
+    "type": "ident",
+    "query": "hash_to_block_id",
+    "relevant": [
+      "n_prefix_cache",
+      "code:BlockManager.__init__",
+      "code:BlockManager._allocate_block",
+      "code:BlockManager.can_allocate",
+      "code:BlockManager.allocate",
+      "code:BlockManager.hash_blocks"
+    ]
+  },
+  {
+    "id": "q44",
+    "type": "ident",
+    "query": "max_num_batched_tokens 是做什么的",
+    "relevant": [
+      "n_config",
+      "n_warmup",
+      "code:ModelRunner.warmup_model",
+      "code:Scheduler.__init__",
+      "code:Scheduler.schedule"
+    ]
+  }
+]
