@@ -93,3 +93,6 @@ export const MEANING_PAUSE = 150;
 export const MEANING_RETRY = 1500;
 /** ⌘K's preview follows the highlighted result once it rests this long (holding ↓ renders no Note on the way) */
 export const PREVIEW_PAUSE = 60;
+/** A menu's submenu stays open while the pointer heads for it across other items (the safe triangle, ui/Menu.tsx), at most
+ *  this long once the pointer rests: then the item under it takes over */
+export const MENU_AIM = 300;
