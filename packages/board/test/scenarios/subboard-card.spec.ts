@@ -5,6 +5,7 @@ import { put, symCard, findSym, shot, OUT, type Host } from "../harness";
 import { subHost } from "../subhost";
 import { test, until, idle, hold, verdict, check, hostBoards, pauseClock } from "../fixtures";
 import { DBL_CLICK, WHEEL_GESTURE } from "../../src/state/timing";
+import { watch } from "../watch";
 
 const nv = (qual: string) => {
   const s = findSym(qual);
@@ -1484,6 +1485,49 @@ test("subboardLeaveOneTitle", async () => {
       after.copies === 0 && after.cur === "nano-vllm 调度器" && after.shown === "visible",
       { theme, ...after },
     );
+    await page.context().close();
+  }
+});
+
+/**
+ * Entering a sub-board by its frame's title and leaving it by the breadcrumb, watched frame by frame (watch.ts) in Warm Ink
+ * light and Ink Wash dark: nothing flashes, the cards left behind do not move, the title is never shown twice over itself and
+ * the copy that flies takes over at the size of the words it copies (#169: leaving laid the copy over the crumb without hiding
+ * the crumb, 2 % smaller, so the title showed twice for the frames the breadcrumb took to fade)
+ */
+test("subboardEnterLeaveWatched", async () => {
+  const { M, P, S, D } = boards();
+  S.cam = { x: 0, y: 0, z: 0.45 };
+  for (const [theme, lit] of [
+    ["warm-ink", true],
+    ["ink-wash", false],
+  ] as const) {
+    const run = await hostBoards([M, P, S, D], { page: { light: lit, w: 1400, h: 900, settings: { theme } } });
+    const h = await run.open(M.id),
+      page = h.page;
+    const shown = () => run.host.hub.all()[0].id;
+    await until(h, "Main shows its frames", () => page.locator('.card[data-id="fSch"] .sbname').count());
+    await idle(h);
+    const enter = async (frame: string, board: string) => {
+      const n = run.inits.length;
+      await page.locator(`.card[data-id="${frame}"] .sbname`).dblclick();
+      await until(h, `entering ${board}`, () => run.inits.length > n && shown() === board);
+      await idle(h);
+    };
+    await enter("fSch", "bSch");
+    // into the deep board: the whole board fades and the title flies into the breadcrumb (the camera stays)
+    const n = run.inits.length;
+    await watch(h, `subboardEnterLeaveWatched ${theme} enter`, { moves: "all", frames: 24 }, () =>
+      page.locator('.card[data-id="fDeep"] .sbname').dblclick(),
+    );
+    await until(h, "entering the deep board", () => run.inits.length > n && shown() === "bDeep");
+    await idle(h);
+    const m = run.inits.length;
+    await watch(h, `subboardEnterLeaveWatched ${theme} leave`, { moves: "all", frames: 24 }, () =>
+      page.locator(".crumbs .crumb:not(.cur):not(.back)").last().click(),
+    );
+    await until(h, "leaving opens the scheduler board", () => run.inits.length > m && shown() === "bSch");
+    await idle(h);
     await page.context().close();
   }
 });
