@@ -1049,6 +1049,15 @@ test("paletteMeaning", async () => {
               hit: "Frees the **blocks** of a finished sequence. free(blocks[i]);",
             },
           },
+          // a sidenote's label is its first line: a heading there reads as a line too
+          {
+            kind: "sidenote",
+            label: "## Why free early",
+            detail: "This board",
+            board: h.board().id,
+            card: c.id,
+            sidenote: "sn",
+          },
         ],
         ...(asked === 1 ? { left: 3 } : {}),
       });
@@ -1069,7 +1078,10 @@ test("paletteMeaning", async () => {
     where: document.querySelector(".palette .ppw")?.textContent,
     heading: document.querySelector(".palette .ppmd h2")?.textContent,
     label: document.querySelector(".palette .cand .lb mark")?.textContent,
-    list: document.querySelectorAll(".palette .cand .lb ol, .palette .cand .lb li").length,
+    list: document.querySelectorAll(".palette .cand .lb :is(ol, li, h1, h2, h3, h4, h5, h6)").length,
+    note: [...document.querySelectorAll(".palette .cand .lb")]
+      .map((e) => e.textContent)
+      .find((t) => t?.includes("free early")),
     hit: [...((CSS as any).highlights?.get("palette-hit") ?? [])].map((r: Range) => r.toString()).join("|"),
   }));
   const sent = h.sent.filter((m) => m.type === "searchMeaning").map((m: any) => m.q);
@@ -1087,6 +1099,7 @@ test("paletteMeaning", async () => {
       pane.heading === "Blocks" &&
       pane.label === "Frees" &&
       pane.list === 0 &&
+      pane.note === "Why free early" &&
       pane.hit === "Frees the blocks of a finished sequence.free(blocks[i]);",
     pane,
   );

@@ -117,9 +117,10 @@ const readable = (s: string) =>
         .join(" · ") || "Table"
     : s
         .replace(/^\s*!\[([^\]]*)\]\([^)]*\)\s*/, (_, alt: string) => alt || "Image")
-        // "1. 考虑…" or "- item" is a line of text here, not a list
+        // "1. 考虑…" or "- item" is a line of text here, not a list, and "## Title" not a heading (its marks go, as in a card title)
         .replace(/^(\s*)(\d+)([.)])(\s)/, "$1$2\\$3$4")
-        .replace(/^(\s*)([-*+>#])(\s)/, "$1\\$2$3");
+        .replace(/^\s*#{1,6}\s+/, "")
+        .replace(/^(\s*)([-*+>])(\s)/, "$1\\$2$3");
 
 /** A list label as inline Markdown (==marks==, math, bold), for cards and sidenotes; other labels stay plain text */
 export function Label(props: { it: SearchItem }) {

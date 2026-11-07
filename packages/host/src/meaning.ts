@@ -22,8 +22,9 @@ const SAVE_EVERY = 10_000;
 const TOP = 8;
 /**
  * Closeness (cosine, EmbeddingGemma 2 with its prompts) below which a card is not related at all. Measured on persona's 20
- * boards (52 queries, 2026-11): the cards a query should find scored 0.66 and up, the best card for an unrelated query
- * ("banana bread recipe", "kubernetes ingress controller") at most 0.65
+ * boards (85 queries, 2026-11): the first card a query should find scored 0.69 and up. Unrelated queries mostly stay under
+ * it, but not all (code cards sit near anything, up to 0.71): no fixed value, nor one relative to the query's spread of
+ * scores, separates the two, so this one only never hides a right card
  */
 const MIN_SCORE = 0.66;
 /** Query vectors kept (typing a query again, or the Palette asking again while indexing) */
