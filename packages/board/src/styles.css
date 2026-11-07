@@ -4691,6 +4691,25 @@ mark.wdiff {
   display: block;
   overflow-x: auto;
 }
+.palette .cand .kind.thumb {
+  width: 28px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.palette .cand .kind.thumb img {
+  max-width: 28px;
+  max-height: 20px;
+  object-fit: contain;
+  border-radius: 2px;
+  outline: 1px solid var(--line);
+}
+.palette .ppmd img.pphit {
+  outline: 2px solid color-mix(in srgb, var(--accent) 70%, transparent);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
 .palette ::highlight(palette-hit) {
   background: color-mix(in srgb, var(--accent) 24%, transparent);
 }

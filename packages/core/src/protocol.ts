@@ -221,7 +221,8 @@ export type PeekDef = {
 
 /** ⌘K's preview of a card or sidenote: its content as Markdown (code in fenced blocks), where it sits (board › Section …), and
  *  for Related by Meaning the passage that matched (as it is written in md, give or take the Markdown marks) */
-export type SearchPreview = { md: string; where: string; hit?: string };
+/** hit: the passage that matched (Related by Meaning); picture: the picture that did, or an Image card's, as md writes it */
+export type SearchPreview = { md: string; where: string; hit?: string; picture?: string };
 
 export type SearchItem =
   | { kind: "symbol"; label: string; detail: string; path: string; line: number; sym: string; glyph: string }

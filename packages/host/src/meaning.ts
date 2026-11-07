@@ -18,7 +18,7 @@ import { cardTitle, shelvedCards, type Card, type MeaningResult, type SearchItem
 import type { Storage } from "./storage/boards";
 import type { HostContext } from "./context";
 import type { Prompts } from "./prompts";
-import { cardMarkdown, preview, sidenoteMarkdown, whereOf } from "./preview";
+import { cardMarkdown, imageSrc, preview, sidenoteMarkdown, whereOf } from "./preview";
 import { readHostSetting } from "./settings";
 
 /** The embedding endpoint's API key in the secret storage */
@@ -38,6 +38,12 @@ const HERE_WIDEN = 40;
  * scores, separates the two, so this one only never hides a right card
  */
 const MIN_SCORE = 0.66;
+/**
+ * The same for a picture: the model scores pictures higher than text overall. Measured on persona (187 pictures, 17 queries
+ * written from pictures, 10 unrelated queries, 2026-11): the right picture scored 0.70 and up in all but one, while pictures
+ * reached 0.67–0.70 for unrelated queries (TCP handshake, CSS grid, git rebase)
+ */
+const PICTURE_MIN = 0.7;
 /** Query vectors kept (typing a query again, or the Palette asking again while indexing) */
 const QUERY_CACHE = 64;
 
@@ -200,8 +206,7 @@ export class MeaningSearch {
       }
       const { docs, names } = this.latest ?? (await projectDocs(store, here, this.draw));
       const items: SearchItem[] = [];
-      for (const h of box.search(qv, TOP * (onlyHere ? HERE_WIDEN : 2))) {
-        if (h.score < MIN_SCORE) break;
+      for (const h of box.search(qv, TOP * (onlyHere ? HERE_WIDEN : 2), { text: MIN_SCORE, picture: PICTURE_MIN })) {
         const d = docs.get(h.id);
         if (!d) continue;
         const { boards, ...o } = d.origin;
@@ -210,8 +215,10 @@ export class MeaningSearch {
           o.board = here;
         }
         const where = boards.map((b) => (b === here ? "This board" : (names.get(b) ?? b))).join(" · ");
-        const hit = pieceBodies(d.doc)[h.piece];
-        items.push({ ...o, detail: where, preview: preview(d.md, d.where, hit) } as SearchItem);
+        const hit = h.picture ? undefined : pieceBodies(d.doc)[h.piece];
+        // the picture that matched (an Image card's own, found by its words too), as the Markdown writes it
+        const pic = d.doc.images?.find((x) => x.key === h.picture)?.src ?? d.picture;
+        items.push({ ...o, detail: where, preview: preview(d.md, d.where, hit, pic) } as SearchItem);
         if (items.length >= TOP) break;
       }
       return { items, left: this.left || undefined, error: this.error || undefined };
@@ -224,7 +231,10 @@ export class MeaningSearch {
 /** Every card and sidenote on the project's boards as a document (here's board first, so it is indexed first) */
 async function projectDocs(store: Storage, here?: string, draw?: (svg: string) => Promise<string | undefined>) {
   const boards = (await store.all()).map((x) => x.board).sort((a, b) => (a.id === here ? -1 : b.id === here ? 1 : 0));
-  const docs = new Map<string, { doc: Doc; origin: Origin; md: string; where: string }>();
+  const docs = new Map<
+    string,
+    { doc: Omit<Doc, "images"> & { images?: Picture[] }; origin: Origin; md: string; where: string; picture?: string }
+  >();
   const pictures = picturesIn(store, draw);
   const names = new Map(boards.map((b) => [b.id, b.name]));
   for (const board of boards) {
@@ -254,6 +264,7 @@ async function projectDocs(store: Storage, here?: string, draw?: (svg: string) =
         where: whereOf(board, c.id),
         origin: { kind: "card", label: title, board: board.id, card: c.id, boards: [board.id] },
         md: cardMarkdown(c, board),
+        picture: c.kind === "image" ? imageSrc(c) : undefined,
       });
     }
     for (const n of board.sidenotes ?? []) {
@@ -306,12 +317,15 @@ const RASTER: Record<string, string> = {
 /** Pictures embedded per card, at most (a Note full of screenshots still costs a bounded number) */
 const MAX_PICTURES = 4;
 
+/** A picture to embed, and its address as the card's Markdown writes it (for the preview) */
+type Picture = DocImage & { src: string };
+
 /** A card's pictures, for embedding on their own: an Image card's, and the local images in a Note (files in assets/, named by
  *  their content, so the name is the key; a data: URL is its own). An SVG goes as the PNG draw makes of it, left out without
  *  one; one that cannot be read or drawn now is tried again on the next update */
 function picturesIn(store: Storage, draw?: (svg: string) => Promise<string | undefined>) {
   const read = (file: string) => fs.readFile(path.join(store.assetsDir(), file)).catch(() => undefined);
-  const asset = (src: string): DocImage | undefined => {
+  const asset = (src: string): Omit<Picture, "src"> | undefined => {
     if (src.startsWith("data:")) {
       if (/^data:image\/(png|jpeg|gif|webp)[;,]/.test(src)) return { key: fingerprint(src), url: async () => src };
       if (draw && /^data:image\/svg\+xml[;,]/.test(src)) return { key: fingerprint(src), url: () => draw(src) };
@@ -339,16 +353,18 @@ function picturesIn(store: Storage, draw?: (svg: string) => Promise<string | und
       };
     return undefined;
   };
-  return (c: Card): DocImage[] | undefined => {
+  return (c: Card): Picture[] | undefined => {
     const srcs =
       c.kind === "image"
-        ? [c.src]
+        ? [imageSrc(c)]
         : c.kind === "note"
           ? [...c.md.matchAll(/!\[[^\]]*\]\(<?([^)\s>]+)/g)].map((m) => m[1])
           : [];
     const out = srcs
-      .map(asset)
-      .filter((x): x is DocImage => !!x)
+      .flatMap((src) => {
+        const a = asset(src);
+        return a ? [{ ...a, src }] : [];
+      })
       .slice(0, MAX_PICTURES);
     return out.length ? out : undefined;
   };
