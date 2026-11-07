@@ -1251,6 +1251,86 @@ test("meaningDrawsSvg", async () => {
   await h.page.context().close();
 });
 
+test("paletteFeedback", async () => {
+  // ⌘K reports its session to the host when it closes: what each query answered (Related by Meaning with its scores), the
+  // marks given with ⌥↑ / ⌥↓, and the verdict and note from the strip ⌘. puts in the footer's place
+  const h = await open({
+    board: boardWith("BlockManager.deallocate"),
+    light,
+    on: async (m, reply) => {
+      if (m.type !== "searchMeaning") return false;
+      const c = h.board().cards[0];
+      await reply(m.req!, {
+        items: ["Frees blocks", "Prefix cache", "Thread blocks"].map((label, n) => ({
+          kind: "card",
+          label,
+          detail: "Memory",
+          board: h.board().id,
+          card: n ? `x${n}` : c.id,
+          score: 0.8 - n / 20,
+        })),
+        model: "embed-test",
+      });
+      return true;
+    },
+  });
+  await h.page.keyboard.press("ControlOrMeta+k");
+  await h.page.locator(".palette input:focus").waitFor();
+  await h.page.keyboard.type("显存回收");
+  await h.page.locator(".palette .pgh", { hasText: "Related by Meaning" }).waitFor();
+  await idle(h);
+  const rows = h.page.locator(".palette .cand");
+  const first = await rows.count();
+  const meaningAt = (await rows.allTextContents()).findIndex((t) => t.includes("Frees blocks"));
+  for (let k = 0; k < meaningAt; k++) await h.page.keyboard.press("ArrowDown");
+  await h.page.keyboard.press("Alt+ArrowUp"); // Frees blocks: right
+  await h.page.keyboard.press("ArrowDown");
+  await h.page.keyboard.press("ArrowDown");
+  await h.page.keyboard.press("Alt+ArrowDown"); // Thread blocks: wrong
+  const set = await h.page.locator(".palette .cand .pm.set").count();
+  const query = await h.page.locator(".palette .pin").inputValue();
+  const footH = await h.page.locator(".palette .pfoot").evaluate((e) => e.getBoundingClientRect().height);
+  await h.page.keyboard.press("ControlOrMeta+Period");
+  await h.page.locator(".palette .pfeed").waitFor();
+  await h.page.keyboard.press("ArrowRight"); // Found
+  await h.page.keyboard.press("ArrowRight"); // Partly
+  await h.page.keyboard.press("Tab");
+  await h.page.keyboard.type("the deallocate card first");
+  const stripH = await h.page.locator(".palette .pfeed").evaluate((e) => e.getBoundingClientRect().height);
+  await shot(h, "pal-05-feedback");
+  await h.page.keyboard.press("Enter");
+  await h.page.locator(".palette .psaved").waitFor();
+  const back = await h.page.evaluate(() => document.activeElement?.classList.contains("pin"));
+  await h.page.keyboard.press("Escape");
+  await expect(h.page.locator(".palette")).toHaveCount(0);
+  await until(h, "the session's trace reached the host", () => h.sent.some((m) => m.type === "searchTrace"));
+  const t = (h.sent.find((m) => m.type === "searchTrace") as any).trace;
+  const last = t.queries.at(-1);
+  const meaning = last.hits.filter((x: any) => x.group === "meaning");
+  check(
+    "paletteFeedback marks rows with Alt+Up / Alt+Down without touching the query, and the strip keeps the footer's height",
+    set === 2 && query === "显存回收" && Math.abs(footH - stripH) < 1 && back === true && first >= 3,
+    { set, query, footH, stripH, back, first },
+  );
+  check(
+    "paletteFeedback sends the session's queries, Related by Meaning's scores, the marks, the verdict and the note, and no pick",
+    last.q === "显存回收" &&
+      meaning.map((x: any) => [x.label, x.rank, x.score]).join("|") ===
+        "Frees blocks,1,0.8|Prefix cache,2,0.75|Thread blocks,3,0.7" &&
+      last.meaning?.model === "embed-test" &&
+      t.marks?.map((x: any) => `${x.label}:${x.good}`).join("|") === "Frees blocks:true|Thread blocks:false" &&
+      t.feedback?.q === "显存回收" &&
+      t.feedback?.verdict === "partly" &&
+      t.feedback?.note === "the deallocate card first" &&
+      t.queries.every((x: any) => x.q === "显存回收") &&
+      t.pick === undefined &&
+      t.mode === "all" &&
+      t.scope === "all",
+    t,
+  );
+  await h.page.context().close();
+});
+
 test("peek", async () => {
   const h = await open({ board: boardWith("Scheduler.schedule"), light });
   await h.page.locator(".card .src .call", { hasText: "can_allocate" }).first().hover();
