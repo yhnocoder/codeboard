@@ -32,7 +32,7 @@
 harness 场景是 Playwright Test 的测试（`packages/board/test/scenarios/*.spec.ts`，配置在 `packages/board/playwright.config.ts`）。`check(名字, 条件, 细节…)` 不成立、`expect` 不成立、抛异常、超时，都算失败，CI 会变红。`check` 不成立时场景接着跑完，最后一起算失败（`expect.soft`）。白板自检（`dangling references`）和宿主收到的每个版本过不了 schema 也是失败。每个场景结束时还查一次资源预算（`fixtures.ts` 的 `budgets`，`packages/board/test/probes.ts`）：屏幕上哪张图解码的像素超过它显示的设备像素 6 倍（`IMAGE_BUDGET`，按它在这个页面里被放大到过的最大倍数算，因为图只往大换），就是失败（`image-budget`）；节点、卡、KaTeX、解码的百万像素这些计数只写进场景的 annotations，不设预算。
 
 **动作探针**（`packages/board/test/watch.ts` 的 `watch(h, 名字, 选项, 动作)`，判定是 `probes.ts` 里的纯函数，单元测试在 `test/unit/probes.test.ts`）：把场景里的一个动作包起来逐帧录下来。页面时钟停住（`pauseClock`），文档时间线冻结（CDP `Animation.setPlaybackRate` 0），每一帧先让宿主的回复到达，再把所有 Web Animation 和 CSS 过渡往前推一帧（16 ms，到头的照常结束、发事件），再走页面时钟的一帧（requestAnimationFrame），然后截图、读一遍页面。帧和机器快慢无关，每次都一样。判四样，任一样有就是失败，检查名是「名字 + 哪一样」，所以 `known` 能点名一条：
-- `flash`：一块格子（8 px，再分四个 4 px 的小块比）本来静止，变了 1–3 帧又变回原样并停住——东西闪了一下（#151 那种 Ink Wash 纸面缺一帧）。动了的卡、箭头、正在动画移动的元素和 `ignore` 选择器盖住的地方不判；镜头在动的帧也不判（整个世界都在动，滑过的字看着像闪），这时靠下面的 jump 按世界坐标判。
+- `flash`：一块格子（8 px，再分四个 4 px 的小块比）本来静止，变了 1–3 帧又变回原样并停住——东西闪了一下（#151 那种 Ink Wash 纸面缺一帧）。动了的卡、箭头、正在动画移动的元素（四周各放宽 24 px，`watch.ts` 的 `MOVE_MARGIN`：Ink Wash 的选中印章伸出卡角 19 px，跟着卡动）和 `ignore` 选择器盖住的地方不判；镜头在动的帧也不判（整个世界都在动，滑过的字看着像闪），这时靠下面的 jump 按世界坐标判。
 - `moved` / `jumped`：每帧读卡、Section、箭头（世界坐标）、`chrome` 和 `follow` 选择器的框。`moves` 里没写的必须一直在原地、原大小（差 0.5 px 以上就算，世界坐标按当帧的缩放换成屏幕像素：镜头动它不算动）；写了的可以动，但不能有一步比前后两步长 3 倍以上（跳一下再落定）；`free` 是跟着指针走的（拖着的卡），步子随指针。`handoff`：同样的字从一个元素交给一个新元素（飞出去的标题接过面包屑），新的那份大小差 0.5 px 以上（#169：副本比面包屑小 2 %）；只看动作后的头两帧（副本是在动作那一刻接过去的；后面落地是哪一帧，看真宿主的消息什么时候到，每次不一样）。
 - `vanish`：`keep` 里的选择器动作前看得见、某一帧看不见了。
 - `twice`：同样的字、差不多的字号，两份叠在一起，动作前和最后一帧都没有、只在中间出现（#169：离开子白板时面包屑和它的副本同时显示了几帧）。字号差很多的变形（标题滑成正文的大标题）不算。
