@@ -81,7 +81,7 @@ export function Canvas() {
       });
     }),
   );
-  // While the camera moves the world is scaled as a bitmap (styles.css .world: will-change). Stopped, .settle drops the hint so
+  // While the camera moves the world is scaled as a bitmap (styles.css .world: will-change; not below HINT_MIN, see below). Stopped, .settle drops the hint so
   // Chromium rasters the world again at the new scale, which makes the text crisp but is not free: the compositor thread
   // creates a raster task for every tile of the world in and around the viewport (hundreds, ~0.4 ms each without a GPU) and
   // the next commit waits for it: 6–17 ms at 75 % and above, 35–70 ms at 40–60 % on a board of dense Notes (their prose is
@@ -106,7 +106,7 @@ export function Canvas() {
   // keeps the scale it was rastered at. So from there on the flight takes the hint off for one frame each time the scale
   // about halves and puts it back, rastering the world a few times instead of at every frame (Fit from 100 % to 0.13: every
   // frame from 0.55 to 0.25, then at 0.25 and 0.14; on real study boards Fit to 0.22–0.24 rastered 14–47 viewports instead of
-  // 39–66). A wheel, a drag or a fling that takes over puts the hint back (not below HINT_MIN, above). Where a flight that put the hint back stops, the
+  // 39–66). A wheel, a drag or a fling that takes over puts the hint back (above HINT_MIN, see below). Where a flight that put the hint back stops, the
   // world is rastered once more at the scale it stopped at: what came into view under the hint (the summaries, laid out at
   // 1 / K and shown above a quarter) was rastered at the device scale
   const [settle, setSettle] = createSignal(false);
@@ -145,7 +145,7 @@ export function Canvas() {
         } else if (unhinted && !out) {
           unhinted = false;
           if (hintable(z)) hint();
-        } else if (!out && settle() && hintable(z)) hint();
+        } else if ((!out || !rehinted) && settle() && hintable(z)) hint();
         return;
       }
       if (!moving) return;
@@ -157,6 +157,13 @@ export function Canvas() {
       }
     });
   });
+  // Without the hint a move of the world by a fraction of a device pixel rasters it again (its tiles are drawn at the new
+  // offset): a trackpad pan or a fling at 0.34, 1.4 viewports a step. Settled, it moves by whole device pixels
+  const px = (v: number) => {
+    if (!settle()) return v;
+    const d = window.devicePixelRatio || 1;
+    return Math.round(v * d) / d;
+  };
   // A lifted card, and what a Section drag carries, is a layer of its own with its raster scale fixed (styles.css .card.lift,
   // .carry: will-change). When the camera stops at another zoom in the middle of a drag, .relift takes the hint off for one
   // drawn frame and puts it back, so the card is rastered again at the new scale instead of staying blurry (or needlessly
@@ -252,7 +259,7 @@ export function Canvas() {
         ref={world}
         class="world"
         classList={{ moving: camMoving(), settle: settle() }}
-        style={{ transform: `translate(${cam.x}px, ${cam.y}px) scale(${cam.z})` }}
+        style={{ transform: `translate(${px(cam.x)}px, ${px(cam.y)}px) scale(${cam.z})` }}
       >
         {/* the card level (zoomed out it is swapped out as one layer and stays under the summaries: state/summary.ts) */}
         <div

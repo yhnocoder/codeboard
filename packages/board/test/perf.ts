@@ -1443,12 +1443,13 @@ async function rasterProbes(
     }
     await rest(h);
     if (process.argv.includes("--steps")) console.log(`  nearCut: at ${(await zoomOf(h)).toFixed(3)}`);
-    // panned, and the pointer moved over the cards in between (hovered, a card is painted again)
+    // panned by fractions of a pixel too (a trackpad's), and the pointer moved over the cards in between (hovered, a card is
+    // painted again)
     const box = await h.page.evaluate(() => ({ w: innerWidth, h: innerHeight }));
     out.nearCut = await rasterPass(h, cdp, "nearCut", 20, (i) =>
       i % 2
         ? h.page.mouse.move(box.w * (0.2 + 0.06 * (i % 10)), box.h * (0.3 + 0.04 * (i % 7)), { steps: 4 })
-        : h.page.mouse.wheel(i % 3 ? 0 : 80, 50),
+        : h.page.mouse.wheel(i % 3 ? 0.4 : 80.6, 50.3),
     );
   }
   // camera stops: from where the card is revealed (100 %), each step a small zoom (±4) and a rest: what a stop costs
