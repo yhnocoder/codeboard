@@ -184,8 +184,9 @@ export const arrangeItem = (ids: () => string[]): Item => {
 /**
  * Tidy Up：宿主排版（core/tidy.ts，ELK 分层布局），有箭头的按调用关系从左往右分列，没箭头的排成行放在下面。一步撤销；卡和线从旧位置滑过去。
  * 选中的 Section 整个当一块排（框、成员卡、子 Section 一起挪）；块之间的箭头是成员卡之间的箭头。
- * 锁住的卡、Section 不动，当成障碍（别的绕开它）；没选中的卡和 Section 也是障碍，排开的块不会压到旁边的东西上
- * （包着这些块的外层 Section 除外）。等宿主回答期间卡被拖动或删掉了就不再套用
+ * 锁住的卡、Section 不动，当成障碍（别的绕开它）。旁边没选中的卡和 Section 也避开（往下或往右，挪得少的那边），排开的块
+ * 不会压到它们上面；包着这些块的外层 Section、一开始就和哪一块碰着的不算（真实白板上常有挨着几像素的，算上会把块推得很远）。
+ * 等宿主回答期间卡被拖动或删掉了就不再套用
  */
 export async function tidyUp(ids = sel.cards, secIds = sel.sections) {
   const chosen = secIds.map(sectionById).filter((q): q is Section => !!q && !hiddenByAncestor(q));
@@ -217,13 +218,15 @@ export async function tidyUp(ids = sel.cards, secIds = sel.sections) {
   const fixed = [
     ...hosts.filter(isLocked).map((id) => rectOf(id)),
     ...tops.filter((q) => sectionLocked(q)).flatMap((q) => fr.get(q.id) ?? []),
+  ];
+  const avoid = [
     ...visibleCards()
       .filter((c) => !blockOf.has(c.id))
       .map((c) => rectOf(c)),
     ...state.board.sections
       .filter((q) => !around.has(q.id) && !inChosen.has(q.id) && !tops.includes(q) && !hiddenByAncestor(q))
       .flatMap((q) => fr.get(q.id) ?? []),
-  ];
+  ].filter((o) => !rects.some((r) => overlaps(r, o, GAP)));
   const links = state.board.links
     .map((l) => [blockOf.get(hostOf(l.from.card)), blockOf.get(hostOf(l.to.card))])
     .filter((e): e is [string, string] => !!e[0] && !!e[1] && e[0] !== e[1]);
@@ -236,7 +239,7 @@ export async function tidyUp(ids = sel.cards, secIds = sel.sections) {
       ]),
     );
   const asked = at();
-  const m = await ask("tidy", { cards: rects, links, fixed }).catch(() => null);
+  const m = await ask("tidy", { cards: rects, links, fixed, avoid }).catch(() => null);
   if (!m || asked !== at()) return;
   const cards: Record<string, { x: number; y: number }> = {};
   const sections: Record<string, { dx: number; dy: number }> = {};
