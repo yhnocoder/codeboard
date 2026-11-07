@@ -113,6 +113,30 @@ describe("Related by Meaning", () => {
     expect(asked.flatMap((a) => a.texts)).toContain("a prefill scheduler diagram");
   });
 
+  it("finds an SVG by its words, and by the PNG an open board draws of it", async () => {
+    fs.writeFileSync(
+      path.join(dir, "assets", "beef.svg"),
+      '<svg xmlns="http://www.w3.org/2000/svg"><text x="0" y="9">cuda graph &amp; kv</text><rect/></svg>',
+    );
+    const drawn: string[] = [];
+    cx.meaning.drawWith(async (svg) => {
+      drawn.push(svg);
+      return `data:image/png;base64,${Buffer.from("a scheduler drawing").toString("base64")}`;
+    });
+    const b = (await store.load("b"))!;
+    b.cards.push({ id: "vec", kind: "image", src: "beef.svg" });
+    b.place.vec = { x: 0, y: 400, w: 300 };
+    await store.save(b);
+    await cx.meaning.update(store);
+    const texts = asked.flatMap((a) => a.texts);
+    expect(texts).toContain("title: Image | text: cuda graph & kv");
+    expect(texts).toContain("a scheduler drawing");
+    expect(drawn[0]).toMatch(/^data:image\/svg\+xml;base64,/);
+    expect((await cx.meaning.search(store, "cuda graph", "b")).items.map((i) => i.kind === "card" && i.card)).toContain(
+      "vec",
+    );
+  });
+
   it("is off while no endpoint is set, and says what failed when the server does", async () => {
     const keep = url;
     url = "";

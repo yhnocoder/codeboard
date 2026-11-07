@@ -65,7 +65,15 @@ export class MeaningSearch {
   /** The endpoint's key, read once from the secret storage (Set Embedding API Key forgets it) */
   private key?: Promise<string | undefined>;
 
+  /** Draws an SVG (data: URL) into a PNG (data: URL): an open board does it, with the fonts it shows the picture in */
+  private draw?: (svg: string) => Promise<string | undefined>;
+
   constructor(private cx: HostContext) {}
+
+  /** How SVG pictures become pixels for the model (startHost: through an open board); without it they are left out */
+  drawWith(draw: (svg: string) => Promise<string | undefined>) {
+    this.draw = draw;
+  }
 
   dispose() {
     this.disposed = true;
@@ -146,7 +154,7 @@ export class MeaningSearch {
         try {
           const box = await this.boxFor(store, e);
           this.stale = false;
-          this.latest = await projectDocs(store, here);
+          this.latest = await projectDocs(store, here, this.draw);
           const docs = [...this.latest.docs.values()].map((d) => d.doc);
           const total = box.missing(docs);
           let saved = Date.now();
@@ -190,7 +198,7 @@ export class MeaningSearch {
         if (this.queries.size >= QUERY_CACHE) this.queries.delete(this.queries.keys().next().value!);
         this.queries.set(q, qv);
       }
-      const { docs, names } = this.latest ?? (await projectDocs(store, here));
+      const { docs, names } = this.latest ?? (await projectDocs(store, here, this.draw));
       const items: SearchItem[] = [];
       for (const h of box.search(qv, TOP * (onlyHere ? HERE_WIDEN : 2))) {
         if (h.score < MIN_SCORE) break;
@@ -214,10 +222,10 @@ export class MeaningSearch {
 }
 
 /** Every card and sidenote on the project's boards as a document (here's board first, so it is indexed first) */
-async function projectDocs(store: Storage, here?: string) {
+async function projectDocs(store: Storage, here?: string, draw?: (svg: string) => Promise<string | undefined>) {
   const boards = (await store.all()).map((x) => x.board).sort((a, b) => (a.id === here ? -1 : b.id === here ? 1 : 0));
   const docs = new Map<string, { doc: Doc; origin: Origin; md: string; where: string }>();
-  const pictures = picturesIn(store);
+  const pictures = picturesIn(store, draw);
   const names = new Map(boards.map((b) => [b.id, b.name]));
   for (const board of boards) {
     const off = shelvedCards(board);
@@ -237,7 +245,12 @@ async function projectDocs(store: Storage, here?: string) {
       }
       const title = cardTitle(c, board);
       docs.set(id, {
-        doc: { id, title, text: cardText(c, board.place[c.id]?.summary?.text), images: pictures(c) },
+        doc: {
+          id,
+          title,
+          text: cardText(c, board.place[c.id]?.summary?.text, c.kind === "image" ? await svgWords(store, c.src) : ""),
+          images: pictures(c),
+        },
         where: whereOf(board, c.id),
         origin: { kind: "card", label: title, board: board.id, card: c.id, boards: [board.id] },
         md: cardMarkdown(c, board),
@@ -282,7 +295,7 @@ async function projectDocs(store: Storage, here?: string) {
   return { docs, names };
 }
 
-/** Raster formats an embedding server reads (an SVG would need drawing first) */
+/** Picture formats an embedding server reads as they are; an SVG is drawn first */
 const RASTER: Record<string, string> = {
   png: "image/png",
   jpg: "image/jpeg",
@@ -294,24 +307,37 @@ const RASTER: Record<string, string> = {
 const MAX_PICTURES = 4;
 
 /** A card's pictures, for embedding on their own: an Image card's, and the local images in a Note (files in assets/, named by
- *  their content, so the name is the key; a data: URL is its own) */
-function picturesIn(store: Storage) {
+ *  their content, so the name is the key; a data: URL is its own). An SVG goes as the PNG draw makes of it, left out without
+ *  one; one that cannot be read or drawn now is tried again on the next update */
+function picturesIn(store: Storage, draw?: (svg: string) => Promise<string | undefined>) {
+  const read = (file: string) => fs.readFile(path.join(store.assetsDir(), file)).catch(() => undefined);
   const asset = (src: string): DocImage | undefined => {
-    if (src.startsWith("data:"))
-      return /^data:image\/(png|jpeg|gif|webp)[;,]/.test(src)
-        ? { key: fingerprint(src), url: async () => src }
-        : undefined;
+    if (src.startsWith("data:")) {
+      if (/^data:image\/(png|jpeg|gif|webp)[;,]/.test(src)) return { key: fingerprint(src), url: async () => src };
+      if (draw && /^data:image\/svg\+xml[;,]/.test(src)) return { key: fingerprint(src), url: () => draw(src) };
+      return undefined;
+    }
     const file = src.replace(/^assets\//, "");
-    const type = RASTER[path.extname(file).slice(1).toLowerCase()];
-    if (!type || /[\\/:]/.test(file)) return undefined;
-    return {
-      key: file,
-      url: () =>
-        fs.readFile(path.join(store.assetsDir(), file)).then(
-          (b) => `data:${type};base64,${b.toString("base64")}`,
-          () => undefined, // gone or not there yet: tried again on the next update
-        ),
-    };
+    if (/[\\/:]/.test(file)) return undefined;
+    const ext = path.extname(file).slice(1).toLowerCase();
+    const type = RASTER[ext];
+    if (type)
+      return {
+        key: file,
+        url: async () => {
+          const b = await read(file);
+          return b && `data:${type};base64,${b.toString("base64")}`;
+        },
+      };
+    if (ext === "svg" && draw)
+      return {
+        key: file,
+        url: async () => {
+          const b = await read(file);
+          return b && draw(`data:image/svg+xml;base64,${b.toString("base64")}`);
+        },
+      };
+    return undefined;
   };
   return (c: Card): DocImage[] | undefined => {
     const srcs =
@@ -328,8 +354,29 @@ function picturesIn(store: Storage) {
   };
 }
 
+/** The words an SVG in assets/ writes (its <text>s), as a line; "" for any other picture */
+async function svgWords(store: Storage, src: string): Promise<string> {
+  const file = src.replace(/^assets\//, "");
+  if (!/^[^\\/:]+\.svg$/i.test(file)) return "";
+  const svg = await fs.readFile(path.join(store.assetsDir(), file), "utf8").catch(() => "");
+  const ENT: Record<string, string> = { lt: "<", gt: ">", amp: "&", quot: '"', apos: "'", nbsp: " " };
+  return [...svg.matchAll(/<text\b[^>]*>([\s\S]*?)<\/text>/g)]
+    .map((m) =>
+      m[1]
+        .replace(/<[^>]+>/g, "")
+        .replace(/&(#x?[0-9a-f]+|\w+);/gi, (e, n: string) => {
+          if (n[0] !== "#") return ENT[n] ?? e;
+          const cp = Number.parseInt(n.slice(n[1] === "x" ? 2 : 1), n[1] === "x" ? 16 : 10);
+          return cp <= 0x10ffff ? String.fromCodePoint(cp) : e;
+        })
+        .trim(),
+    )
+    .filter(Boolean)
+    .join(" ");
+}
+
 /** What a card says, for embedding: its description and summary, then its own text */
-function cardText(c: Card, summary?: string): string {
+function cardText(c: Card, summary?: string, words?: string): string {
   const own = (() => {
     switch (c.kind) {
       case "note":
@@ -343,7 +390,7 @@ function cardText(c: Card, summary?: string): string {
           )
           .join("\n");
       case "image":
-        return c.alt ?? "";
+        return [c.alt, words].filter(Boolean).join("\n");
       case "web":
         return [c.url, c.meta?.title, c.meta?.desc, c.meta?.site].filter(Boolean).join("\n");
       case "links":

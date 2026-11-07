@@ -1139,6 +1139,52 @@ test("paletteMeaning", async () => {
   await h.page.context().close();
 });
 
+// Related by Meaning embeds pictures as pixels: the host asks an open board to draw an SVG (with the fonts it shows it in)
+test("meaningDrawsSvg", async () => {
+  const h = await open({ board: boardWith("BlockManager.deallocate"), light });
+  await idle(h);
+  const svg = `data:image/svg+xml;base64,${Buffer.from(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100"><rect width="100" height="100" fill="#d4472a"/></svg>',
+  ).toString("base64")}`;
+  const answer = async (id: number, dataUrl: string) => {
+    await h.post({ type: "draw", id, dataUrl });
+    return (
+      await until(h, `the board answers draw ${id}`, () =>
+        h.sent.find((m): m is Extract<typeof m, { type: "answer" }> => m.type === "answer" && m.id === id),
+      )
+    ).value;
+  };
+  const png = await answer(1, svg);
+  const look =
+    typeof png === "string"
+      ? await h.page.evaluate(async (u) => {
+          const img = new Image();
+          img.src = u;
+          await img.decode();
+          const cv = document.createElement("canvas");
+          cv.width = img.naturalWidth;
+          cv.height = img.naturalHeight;
+          const g = cv.getContext("2d")!;
+          g.drawImage(img, 0, 0);
+          const px = (x: number, y: number) => Array.from(g.getImageData(x, y, 1, 1).data.slice(0, 3));
+          return { w: img.naturalWidth, h: img.naturalHeight, left: px(10, 10), right: px(cv.width - 10, 10) };
+        }, png)
+      : null;
+  const broken = await answer(2, "data:image/svg+xml;base64,bm90IGFuIHN2Zw==");
+  check(
+    "meaningDrawsSvg the board draws an SVG into a PNG on white, its longer side 1024, and answers null for one that does not draw",
+    typeof png === "string" &&
+      png.startsWith("data:image/png;base64,") &&
+      look?.w === 1024 &&
+      look.h === 512 &&
+      look.left.join() === "212,71,42" &&
+      look.right.join() === "255,255,255" &&
+      broken === null,
+    { look, broken },
+  );
+  await h.page.context().close();
+});
+
 test("peek", async () => {
   const h = await open({ board: boardWith("Scheduler.schedule"), light });
   await h.page.locator(".card .src .call", { hasText: "can_allocate" }).first().hover();

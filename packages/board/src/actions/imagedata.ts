@@ -113,6 +113,32 @@ async function drawn(dataUrl: string): Promise<HTMLCanvasElement> {
   return cv;
 }
 
+/** About this many pixels on a drawn picture's longer side (what an embedding model looks at is smaller still) */
+const DRAWN_SIDE = 1024;
+
+/** A picture (an SVG) drawn as the board shows it, on white, as a PNG data: URL, its longer side DRAWN_SIDE; null when it does
+ *  not draw */
+export async function drawnPng(dataUrl: string): Promise<string | null> {
+  try {
+    const img = new Image();
+    img.src = dataUrl;
+    await img.decode();
+    const w = img.naturalWidth || DRAWN_SIDE,
+      h = img.naturalHeight || DRAWN_SIDE;
+    const k = DRAWN_SIDE / Math.max(w, h);
+    const cv = document.createElement("canvas");
+    cv.width = Math.max(1, Math.round(w * k));
+    cv.height = Math.max(1, Math.round(h * k));
+    const g = cv.getContext("2d")!;
+    g.fillStyle = "#fff";
+    g.fillRect(0, 0, cv.width, cv.height);
+    g.drawImage(img, 0, 0, cv.width, cv.height);
+    return cv.toDataURL("image/png");
+  } catch {
+    return null;
+  }
+}
+
 /** 剪贴板要的 PNG（浏览器的剪贴板只收 image/png）：PNG 原样，别的格式画一遍 */
 async function pngOf(dataUrl: string): Promise<Blob> {
   if (/^data:image\/png[;,]/.test(dataUrl)) {
