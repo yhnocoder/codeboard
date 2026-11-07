@@ -381,6 +381,8 @@ mod tests {
         let m = s.write_manifest("old", "main", "m", &[item("x", &[a])], &[0]).unwrap();
         s.db.execute("UPDATE manifests SET used = 0 WHERE id = ?", [m]).unwrap();
         assert_eq!(s.gc(now() - MANIFEST_DAYS * 86400).unwrap(), (1, 0));
+        // Windows will not delete a database file that is still open
+        drop(s);
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }

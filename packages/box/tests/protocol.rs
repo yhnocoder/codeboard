@@ -290,7 +290,8 @@ fn sync_search_and_switching_refs_over_the_socket() {
     drop((c, d, bad));
     // idle with no connections: the service exits
     assert!(matches!(svc.join().unwrap(), service::Outcome::Stopped));
-    std::fs::remove_dir_all(&home).unwrap();
+    // cleanup only: on Windows the service that just exited may hold its files a moment longer
+    let _ = std::fs::remove_dir_all(&home);
 }
 
 #[test]
@@ -329,7 +330,8 @@ fn indexing_recovers_by_itself_after_the_embedding_server_fails() {
     assert_eq!(s["hits"][0]["id"], json!("b"));
     drop(c);
     assert!(matches!(svc.join().unwrap(), service::Outcome::Stopped));
-    std::fs::remove_dir_all(&home).unwrap();
+    // cleanup only: on Windows the service that just exited may hold its files a moment longer
+    let _ = std::fs::remove_dir_all(&home);
 }
 
 #[test]
@@ -374,7 +376,8 @@ fn one_refused_image_is_skipped_and_a_server_without_images_is_found_out() {
     assert_eq!(images_asked(before), 6);
     drop(c);
     assert!(matches!(svc.join().unwrap(), service::Outcome::Stopped));
-    std::fs::remove_dir_all(&home).unwrap();
+    // cleanup only: on Windows the service that just exited may hold its files a moment longer
+    let _ = std::fs::remove_dir_all(&home);
 }
 
 #[test]
@@ -434,5 +437,6 @@ fn forget_while_indexing_then_sync_leaves_one_right_index() {
     );
     drop(c);
     assert!(matches!(svc.join().unwrap(), service::Outcome::Stopped));
-    std::fs::remove_dir_all(&home).unwrap();
+    // cleanup only: on Windows the service that just exited may hold its files a moment longer
+    let _ = std::fs::remove_dir_all(&home);
 }
