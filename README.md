@@ -111,7 +111,7 @@ CodeBoard runs locally and collects no telemetry. Boards are stored on your mach
 - **Gray inline completions** (in Notes and Free code cards): the text around the caret (up to a few thousand characters) goes to a VS Code language model such as GitHub Copilot or, only if you set a DeepSeek API key, to DeepSeek. Turn them off with `"codeboard.ai.provider": "off"`.
 - **AI tools** (Extract Text, Paste Image Text, Convert to SVG, Modify SVG, Draw as SVG, Auto Focus): only when you run one, the image, the SVG source, the card's Markdown or the text you draw from goes to the model chosen in Settings › AI (DeepSeek, or a VS Code language model such as GitHub Copilot).
 - **GitHub**: the GitHub Files sidebar, pasted GitHub file links and pull-request variants read from GitHub's API, signed in with your VS Code GitHub account when a repository needs it.
-- **Related by Meaning** (only when `codeboard.search.embeddingUrl` is set): the text of your cards and sidenotes and what you type in ⌘K go to that embedding server. The index it builds is kept next to the boards, in `.innerbox/`, which git ignores.
+- **Related by Meaning** (only when `codeboard.search.embeddingUrl` is set): the text of your cards and sidenotes and what you type in ⌘K go to that embedding server. The index is kept outside the project, in your user data folder (`~/.local/share/box` on Linux, `~/Library/Application Support/box` on macOS, `%LOCALAPPDATA%\box` on Windows), and shared by all your VS Code windows.
 - **Web page cards**: pasting a link fetches that page once for its title, description and images, which are saved with the board. Images that a Note links by URL load from that URL.
 
 ## Roadmap
