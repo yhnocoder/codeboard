@@ -34,8 +34,10 @@ Text is embedded as `title: <title or none> | text: <piece>`, a query as `task: 
 
 Images: `key` is the image's content hash (one vector per key, however many items show it), `url` a
 `data:image/...;base64,...` URL; an image without `url` is not embedded until a sync brings it. Each is sent alone, with no
-prompt, first as `{"type": "image_url", "image_url": {"url": ...}}` and then as `{"image": ...}`; when the server takes neither,
-images are skipped for that endpoint.
+prompt, first as `{"type": "image_url", "image_url": {"url": ...}}` and then as `{"image": ...}`; once one went in,
+that format is used. An image refused otherwise (too large, a server error) is skipped and tried again at a later sync;
+only after three images in a row were refused in both formats as not understood (400, 404, 415, 422) are images skipped
+for that endpoint.
 
 ## search
 
@@ -54,7 +56,8 @@ last sync): sync, then ask again.
 
 ## forget
 
-`{source}` → `{}`: every manifest of the source goes; content no other manifest has goes at the next clean-up.
+`{source}` → `{}`: every manifest of the source goes; content no other manifest has goes at the next clean-up. Indexing
+under way for the source stops and writes nothing more.
 
 ## Storage
 

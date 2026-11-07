@@ -65,6 +65,8 @@ pub struct ItemIn {
 struct Job {
     r#ref: String,
     items: Vec<ItemIn>,
+    /// The source's generation when it was synced: a forget since makes it stale
+    generation: u64,
 }
 
 /// A manifest as search reads it
@@ -83,6 +85,8 @@ struct Source {
     /// Pieces not embedded yet, per ref
     left: HashMap<String, usize>,
     error: Option<String>,
+    /// One more on every forget: a job of an earlier generation stops and writes nothing
+    generation: u64,
 }
 
 /// (source, ref) → its manifest
@@ -452,6 +456,7 @@ impl Service {
             running: false,
             left: HashMap::new(),
             error: None,
+            generation: 0,
         });
         if s.conf != r.embedder {
             s.conf = r.embedder.clone();
@@ -461,6 +466,7 @@ impl Service {
         s.pending = Some(Job {
             r#ref: r.r#ref,
             items: r.items,
+            generation: s.generation,
         });
         if !s.running {
             s.running = true;
@@ -519,11 +525,11 @@ impl Service {
                     }
                 }
             }
-            retry = Some(job);
             let until = Instant::now() + wait;
-            while Instant::now() < until && !self.superseded(source) {
+            while Instant::now() < until && !self.superseded(source, &job) {
                 std::thread::sleep(RETRY_POLL);
             }
+            retry = Some(job); // a stale one (forgotten since) writes nothing: index checks its generation
             wait = (wait * 2).min(RETRY_MAX);
         }
     }
@@ -531,6 +537,9 @@ impl Service {
     /// Pieces left at a ref; after a batch went through (ok), the error of an earlier run is over
     fn set_left(&self, source: &str, r: &str, n: usize, ok: bool) {
         if let Some(s) = self.sources.lock().unwrap().get_mut(source) {
+            if !ok {
+                s.left.clear(); // a new job: a ref it replaced is not being indexed any more
+            }
             s.left.insert(r.to_string(), n);
             if ok {
                 s.error = None;
@@ -538,14 +547,15 @@ impl Service {
         }
     }
 
-    fn superseded(&self, source: &str) -> bool {
+    /// Whether a job should stop: the service stops, a newer sync waits, or the source was forgotten since
+    fn superseded(&self, source: &str, job: &Job) -> bool {
         self.stop.load(Ordering::SeqCst)
             || self
                 .sources
                 .lock()
                 .unwrap()
                 .get(source)
-                .is_none_or(|s| s.pending.is_some())
+                .is_none_or(|s| s.pending.is_some() || s.generation != job.generation)
     }
 
     fn index(&self, source: &str, job: &Job, emb: &dyn Embedder) -> Result<(), String> {
@@ -595,12 +605,6 @@ impl Service {
                 }
             }
         }
-        let id = self
-            .store
-            .lock()
-            .unwrap()
-            .write_manifest(source, &job.r#ref, &fp, &rows, &changed)
-            .map_err(|e| e.to_string())?;
         // what still needs a vector, in the items' order (the client puts first what matters most)
         let mut need: Vec<(Key, Input)> = Vec::new();
         {
@@ -620,6 +624,17 @@ impl Service {
                 }
             }
         }
+        // written under the sources' lock, so a forget either comes first (and this job writes nothing) or after
+        let sources = self.sources.lock().unwrap();
+        if sources.get(source).is_none_or(|s| s.generation != job.generation) {
+            return Ok(());
+        }
+        let id = self
+            .store
+            .lock()
+            .unwrap()
+            .write_manifest(source, &job.r#ref, &fp, &rows, &changed)
+            .map_err(|e| e.to_string())?;
         self.manifests.write().unwrap().insert(
             key.clone(),
             Arc::new(RwLock::new(Manifest {
@@ -629,12 +644,13 @@ impl Service {
                 touched: store::now(),
             })),
         );
+        drop(sources);
         let mut left = need.len();
         self.set_left(source, &job.r#ref, left, false);
         // text in batches, each image on its own
         let mut i = 0;
         while i < need.len() {
-            if self.superseded(source) {
+            if self.superseded(source, job) {
                 return Ok(());
             }
             let n = if matches!(need[i].1, Input::Image(_)) {
@@ -796,7 +812,19 @@ impl Service {
     }
 
     fn forget(&self, r: ForgetReq) -> Reply {
-        self.sources.lock().unwrap().remove(&r.source);
+        // under the sources' lock (as index writes a manifest): a job running now writes nothing more
+        let mut sources = self.sources.lock().unwrap();
+        if let Some(s) = sources.get_mut(&r.source) {
+            if s.running {
+                // its worker keeps running (a sync coming next reuses it) and drops its stale job
+                s.generation += 1;
+                s.pending = None;
+                s.left.clear();
+                s.error = None;
+            } else {
+                sources.remove(&r.source);
+            }
+        }
         self.manifests.write().unwrap().retain(|k, _| k.0 != r.source);
         self.store
             .lock()

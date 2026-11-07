@@ -65,8 +65,13 @@ fn embedding_server(fail_first: usize) -> (String, Asked) {
                                 |n| n.checked_sub(1),
                             )
                             .is_ok();
+                        let image = input.first().and_then(|x| x["image_url"]["url"].as_str()).unwrap_or("");
                         if failing {
                             (503, json!({ "error": "restarting" }))
+                        } else if image.contains("toolarge") {
+                            (413, json!({ "error": "payload too large" }))
+                        } else if image.contains("noimg") {
+                            (400, json!({ "error": "unknown input type" }))
                         } else if input.iter().any(|x| x.get("image").is_some()) {
                             (400, json!({ "error": "no such input" }))
                         } else {
@@ -322,6 +327,111 @@ fn indexing_recovers_by_itself_after_the_embedding_server_fails() {
         json!({ "source": "s", "ref": "main", "q": "cuda graph", "k": 1 }),
     );
     assert_eq!(s["hits"][0]["id"], json!("b"));
+    drop(c);
+    assert!(matches!(svc.join().unwrap(), service::Outcome::Stopped));
+    std::fs::remove_dir_all(&home).unwrap();
+}
+
+#[test]
+fn one_refused_image_is_skipped_and_a_server_without_images_is_found_out() {
+    let home = std::env::temp_dir().join(format!("box-images-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&home);
+    let p = paths::paths(&home);
+    let h2 = home.clone();
+    let svc = std::thread::spawn(move || service::serve(paths::paths(&h2), Duration::from_millis(300)).unwrap());
+    let (base, asked) = embedding_server(0);
+    let mut c = Client::connect(&p);
+    let token = std::fs::read_to_string(&p.token).unwrap();
+    c.ok("hello", json!({ "token": token.trim() }));
+    let images_asked = |from: usize| {
+        asked.lock().unwrap()[from..]
+            .iter()
+            .filter(|x| x[0].is_object())
+            .count()
+    };
+    // too large (413 in both formats): only that image is skipped, the next one goes in
+    let items = json!([{ "id": "a", "title": "t", "text": "kv", "images": [
+        { "key": "big", "url": "data:image/png;base64,toolarge" }, { "key": "ok", "url": "data:image/png;base64,cuda" }] }]);
+    c.ok(
+        "sync",
+        json!({ "source": "s", "ref": "main", "embedder": { "base": base }, "items": items }),
+    );
+    c.settle("s", "main");
+    let s = c.ok("search", json!({ "source": "s", "ref": "main", "q": "cuda", "k": 1 }));
+    assert_eq!(s["hits"][0]["picture"], json!("ok"));
+    // a server that understands neither format: after three images refused in both, the rest are not sent
+    let before = asked.lock().unwrap().len();
+    let pics: Vec<Value> = (1..=5)
+        .map(|i| json!({ "key": format!("n{i}"), "url": format!("data:image/png;base64,noimg{i}") }))
+        .collect();
+    let items = json!([{ "id": "b", "title": "t", "text": "graph", "images": pics }]);
+    c.ok(
+        "sync",
+        json!({ "source": "other", "ref": "main", "embedder": { "base": base }, "items": items }),
+    );
+    let st = c.settle("other", "main");
+    assert_eq!((st["left"].clone(), st["error"].clone()), (json!(0), Value::Null));
+    assert_eq!(images_asked(before), 6);
+    drop(c);
+    assert!(matches!(svc.join().unwrap(), service::Outcome::Stopped));
+    std::fs::remove_dir_all(&home).unwrap();
+}
+
+#[test]
+fn forget_while_indexing_then_sync_leaves_one_right_index() {
+    let home = std::env::temp_dir().join(format!("box-forget-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&home);
+    let p = paths::paths(&home);
+    let h2 = home.clone();
+    let svc = std::thread::spawn(move || service::serve(paths::paths(&h2), Duration::from_millis(300)).unwrap());
+    let (base, _asked) = embedding_server(0);
+    let mut c = Client::connect(&p);
+    let token = std::fs::read_to_string(&p.token).unwrap();
+    c.ok("hello", json!({ "token": token.trim() }));
+    let many = |tag: &str| -> Value {
+        (0..300)
+            .map(|i| json!({ "id": format!("{tag}{i}"), "title": "t", "text": format!("{tag} kv cache {i}") }))
+            .collect()
+    };
+    let emb = json!({ "base": base });
+    c.ok(
+        "sync",
+        json!({ "source": "s", "ref": "main", "embedder": emb, "items": many("old") }),
+    );
+    c.ok("forget", json!({ "source": "s" }));
+    c.ok(
+        "sync",
+        json!({ "source": "s", "ref": "main", "embedder": emb, "items": many("new") }),
+    );
+    // another ref replaces main's job before it is done: main is not being indexed any more, so nothing is left there
+    c.ok(
+        "sync",
+        json!({ "source": "s", "ref": "feature", "embedder": emb, "items": many("new") }),
+    );
+    let st = c.settle("s", "feature");
+    assert_eq!((st["items"].clone(), st["left"].clone()), (json!(300), json!(0)));
+    assert_eq!(
+        c.ok("status", json!({ "source": "s", "ref": "main" }))["left"],
+        json!(0)
+    );
+    let s = c.ok(
+        "search",
+        json!({ "source": "s", "ref": "feature", "q": "kv cache", "k": 400 }),
+    );
+    let hits = s["hits"].as_array().unwrap();
+    assert!(hits.iter().all(|h| h["id"].as_str().unwrap().starts_with("new")));
+    // the forgotten job wrote nothing: main has the new set (or none of it yet), never the old one
+    let m = c.ok(
+        "search",
+        json!({ "source": "s", "ref": "main", "q": "kv cache", "k": 400 }),
+    );
+    assert!(
+        m["hits"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|h| h["id"].as_str().unwrap().starts_with("new"))
+    );
     drop(c);
     assert!(matches!(svc.join().unwrap(), service::Outcome::Stopped));
     std::fs::remove_dir_all(&home).unwrap();

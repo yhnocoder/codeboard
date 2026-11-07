@@ -69,13 +69,26 @@ impl std::fmt::Debug for EndpointConfig {
     }
 }
 
+/// Images refused in every format, in a row, before a server is taken not to embed images
+const IMAGE_PROBES: u32 = 3;
+
+/// What a server was found to do with images
+#[derive(Clone, Copy, Default)]
+struct Images {
+    /// Which IMAGE_FORMATS entry it took
+    format: Option<usize>,
+    /// Images in a row it refused in every format as not understood
+    misses: u32,
+    /// It does not embed images: they are skipped from then on
+    off: bool,
+}
+
 pub struct Endpoint {
     base: String,
     conf: EndpointConfig,
     agent: ureq::Agent,
     model: Mutex<Option<String>>,
-    /// Which IMAGE_FORMATS entry the server took; Some(None) once it took neither (images are skipped from then on)
-    image_format: Mutex<Option<Option<usize>>>,
+    images: Mutex<Images>,
 }
 
 impl Endpoint {
@@ -94,7 +107,7 @@ impl Endpoint {
             conf,
             agent: c.build().into(),
             model: Mutex::new(None),
-            image_format: Mutex::new(None),
+            images: Mutex::new(Images::default()),
         }
     }
 
@@ -228,24 +241,48 @@ impl Endpoint {
         }
     }
 
+    /// An image, in the format the server took before; the first ones try each format. A server is taken not to embed images
+    /// only after IMAGE_PROBES images in a row were refused in every format as not understood (400, 404, 415, 422); any other
+    /// refusal (too large, a server error) skips only that image
     fn embed_image(&self, model: &str, url: &str) -> Result<Option<Vec<f32>>, String> {
-        let known = *self.image_format.lock().unwrap();
-        let order: Vec<usize> = match known {
-            Some(None) => return Ok(None),
-            Some(Some(i)) => vec![i],
-            None => (0..IMAGE_FORMATS.len()).collect(),
-        };
-        for i in order {
-            if let Ok(mut v) = self.post(model, vec![IMAGE_FORMATS[i](url)])? {
-                *self.image_format.lock().unwrap() = Some(Some(i));
-                return Ok(v.pop().flatten());
+        let known = *self.images.lock().unwrap();
+        if known.off {
+            return Ok(None);
+        }
+        if let Some(i) = known.format {
+            return Ok(self
+                .post(model, vec![IMAGE_FORMATS[i](url)])?
+                .ok()
+                .and_then(|mut v| v.pop().flatten()));
+        }
+        let mut not_understood = true;
+        for (i, f) in IMAGE_FORMATS.iter().enumerate() {
+            match self.post(model, vec![f(url)])? {
+                Ok(mut v) => {
+                    *self.images.lock().unwrap() = Images {
+                        format: Some(i),
+                        misses: 0,
+                        off: false,
+                    };
+                    return Ok(v.pop().flatten());
+                }
+                Err(e) => not_understood &= matches!(status_of(&e), Some(400 | 404 | 415 | 422)),
             }
         }
-        if known.is_none() {
-            *self.image_format.lock().unwrap() = Some(None);
-        }
+        let mut st = self.images.lock().unwrap();
+        st.misses = if not_understood { st.misses + 1 } else { 0 };
+        st.off = st.misses >= IMAGE_PROBES;
         Ok(None)
     }
+}
+
+/// The HTTP status of a refusal (call's message)
+fn status_of(e: &str) -> Option<u16> {
+    e.strip_prefix("The embedding server answered ")?
+        .split(':')
+        .next()?
+        .parse()
+        .ok()
 }
 
 /// Whether a refusal says the input is longer than the model reads
