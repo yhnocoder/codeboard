@@ -6,6 +6,7 @@
 pub mod chunk;
 pub mod embed;
 pub mod index;
+pub mod keyword;
 pub mod store;
 pub mod vectors;
 

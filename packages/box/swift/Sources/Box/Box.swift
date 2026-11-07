@@ -43,6 +43,17 @@ public struct Hit: Codable, Sendable {
   public var picture: String?
 }
 
+/// A hit of the keyword group: its BM25 score and where the first query word is (UTF-16 offsets)
+public struct KeywordHit: Codable, Sendable {
+  public var id: String
+  public var score: Double
+  public var range: [Int]?
+}
+
+public struct KeywordResult: Codable, Sendable {
+  public var hits: [KeywordHit]
+}
+
 public struct SearchResult: Codable, Sendable {
   public var hits: [Hit]
   public var left: Int?
@@ -117,6 +128,15 @@ public final class BoxIndex: @unchecked Sendable {
     var fields: [String: Any] = ["source": source, "ref": ref, "q": q, "k": k]
     if let groups { fields["groups"] = groups }
     return try await request("search", fields)
+  }
+
+  /// The keyword group (full text): its own list, never mixed with search's; needs no model
+  public func searchKeyword(source: String, ref: String, q: String, k: Int = 10, groups: [String]? = nil) async throws
+    -> KeywordResult
+  {
+    var fields: [String: Any] = ["source": source, "ref": ref, "q": q, "k": k]
+    if let groups { fields["groups"] = groups }
+    return try await request("search_keyword", fields)
   }
 
   public func status(source: String, ref: String) async throws -> Status {

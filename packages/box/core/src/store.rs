@@ -10,6 +10,9 @@ use std::path::Path;
 
 pub type Key = [u8; 32];
 
+/// The layout of the manifests (PRAGMA user_version)
+const SCHEMA: i64 = 2;
+
 /// Days a manifest is kept without a sync or a search
 pub const MANIFEST_DAYS: i64 = 30;
 
@@ -41,7 +44,7 @@ pub struct PieceRow {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ItemRow {
     pub id: String,
-    /// What the item was made from (model, title, text, images): the same hash, the same pieces
+    /// What the item was made from (title, text, images): the same hash, the same pieces under the manifest's model
     pub hash: Key,
     pub groups: Vec<String>,
     /// JSON the client gave, handed back with hits
@@ -85,6 +88,15 @@ type R<T> = rusqlite::Result<T>;
 impl Store {
     pub fn open(file: &Path) -> R<Store> {
         let db = Connection::open(file)?;
+        // the manifests of an older layout go (an item's hash was the model's too); content stays, so a sync finds every
+        // vector it had and embeds nothing again
+        let v: i64 = db.query_row("PRAGMA user_version", [], |r| r.get(0))?;
+        if v != SCHEMA {
+            db.execute_batch(&format!(
+                "DROP TABLE IF EXISTS pieces; DROP TABLE IF EXISTS items; DROP TABLE IF EXISTS manifests;
+                 PRAGMA user_version = {SCHEMA};"
+            ))?;
+        }
         db.execute_batch(
             "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA foreign_keys=ON;
              CREATE TABLE IF NOT EXISTS content(key BLOB PRIMARY KEY, model TEXT NOT NULL, vec BLOB NOT NULL) WITHOUT ROWID;
@@ -311,6 +323,14 @@ impl Store {
         )?;
         tx.commit()?;
         Ok((m, c))
+    }
+
+    /// The keyword documents some manifest has (keyword::hid of its items' hashes)
+    pub fn item_hids(&self) -> R<std::collections::HashSet<u64>> {
+        let mut q = self.db.prepare("SELECT DISTINCT hash FROM items")?;
+        q.query_map([], |r| r.get::<_, Key>(0))?
+            .map(|k| k.map(|k| crate::keyword::hid(&k)))
+            .collect()
     }
 
     pub fn content_count(&self) -> R<usize> {

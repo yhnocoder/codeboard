@@ -50,6 +50,18 @@ them. An item scores as its best piece; `piece` is that piece's index (0: the wh
 error, or why this search could not run. `unsynced: true`: the service has no endpoint for this source (it started since the
 last sync): sync, then ask again.
 
+## search_keyword
+
+`{source, ref, q, k?, groups?}` → `{hits: [{id, score, range?, meta}], source, ref}`
+
+The keyword group: a full-text index (tantivy), answered as its own list and never fused with `search`'s. It needs no
+model: a sync indexes it before anything is embedded, so it answers while the embedding server is down. `score` is BM25;
+`range` is where the first query word is in the item's text (UTF-16 offsets). Every word of the query must match (a run
+of Chinese, Japanese or Korean characters: two thirds of its character pairs): exactly, as a prefix (`sched`), within one
+edit from five letters on (`dealocate`), or by its three-letter grams (`comp-boun` finds compute-bound). Identifiers are
+indexed whole and in parts (`BlockManager.deallocate`: blockmanager.deallocate, blockmanager, deallocate, block, manager);
+CJK text as single characters and pairs, with jieba's words to rank by; titles count twice.
+
 ## status
 
 `{source, ref}` → `{items, pieces, vectors, model, left, indexing, error, synced}`
@@ -61,9 +73,11 @@ under way for the source stops and writes nothing more.
 
 ## Storage
 
-`<home>/index.db` (SQLite, WAL). Content is kept by key (blake3 of the model fingerprint and the prompted text, or of the
-image key) as 768 f16. A manifest not used (synced or searched) for 30 days goes, and so does content no manifest has, at
-start and every day.
+`<home>/index.db` (SQLite, WAL); the keyword group's index is `<home>/keywords/`, one document per item content (title and
+text; the item's hash, which is the model's no more), seen by a search when its manifest has an item with that hash. Content is kept by key (blake3 of the model fingerprint and the prompted text, or of the
+image key) as 768 f16. A manifest not used (synced or searched) for 30 days goes, and so does content (vectors and keyword documents) no
+manifest has, at start and every day. A manifest written while its model was unknown (the server down) keeps the pieces
+of what did not change and gets the rest once the model answers.
 
 ## Search
 

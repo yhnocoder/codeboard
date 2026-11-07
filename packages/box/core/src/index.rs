@@ -8,6 +8,7 @@
 
 use crate::chunk::{query_prompt, text_pieces};
 use crate::embed::{BATCH, Embedder, Endpoint, EndpointConfig, Input};
+use crate::keyword::{self, Doc, Keywords, hid};
 use crate::store::{self, ItemRow, Key, PieceRow, Store, image_key, text_key};
 use crate::vectors::{ModelIndex, RESCORE, clipped, dot};
 use serde::Deserialize;
@@ -36,6 +37,8 @@ pub struct Files {
     pub home: PathBuf,
     /// The SQLite index
     pub db: PathBuf,
+    /// The keyword group's full-text index (a folder)
+    pub keywords: PathBuf,
     /// Held by the process that has the index open
     pub lock: PathBuf,
     pub log: PathBuf,
@@ -46,6 +49,7 @@ impl Files {
         Files {
             home: home.to_path_buf(),
             db: home.join("index.db"),
+            keywords: home.join("keywords"),
             lock: home.join("box.lock"),
             log: home.join("box.log"),
         }
@@ -108,10 +112,14 @@ impl Index {
         let (m, c) = st
             .gc(store::now() - store::MANIFEST_DAYS * 86400)
             .map_err(|e| other(&e))?;
+        let keywords = Keywords::open(&files.keywords).map_err(|e| other(&e))?;
+        let k = keywords
+            .retain(&st.item_hids().map_err(|e| other(&e))?)
+            .map_err(|e| other(&e))?;
         log(
             &files.log,
             &format!(
-                "open {} pid {}: gc dropped {m} manifests, {c} vectors",
+                "open {} pid {}: gc dropped {m} manifests, {c} vectors, {k} keyword documents",
                 crate::VERSION,
                 std::process::id()
             ),
@@ -120,6 +128,7 @@ impl Index {
             files,
             _lock: lock,
             store: Mutex::new(st),
+            keywords,
             models: RwLock::new(HashMap::new()),
             manifests: RwLock::new(HashMap::new()),
             sources: Mutex::new(HashMap::new()),
@@ -147,6 +156,7 @@ impl Index {
         match op {
             "sync" => self.sync(parse(req)?),
             "search" => self.search(parse(req)?),
+            "search_keyword" => self.search_keyword(parse(req)?),
             "status" => self.status(parse(req)?),
             "forget" => self.forget(parse(req)?),
             _ => Err(format!("unknown op {op:?}")),
@@ -161,6 +171,11 @@ impl Index {
     /// Searches what is indexed now, never waiting for indexing
     pub fn search(&self, r: SearchReq) -> Reply {
         self.inner.search(r)
+    }
+
+    /// The keyword group: what is indexed now, never waiting, and needing no model
+    pub fn search_keyword(&self, r: KeywordReq) -> Reply {
+        self.inner.search_keyword(r)
     }
 
     pub fn status(&self, r: StatusReq) -> Reply {
@@ -238,6 +253,7 @@ struct Inner {
     /// Held while the index is open: one process per data folder
     _lock: std::fs::File,
     store: Mutex<Store>,
+    keywords: Keywords,
     models: RwLock<HashMap<String, Arc<RwLock<ModelIndex>>>>,
     manifests: RwLock<Manifests>,
     sources: Mutex<HashMap<String, Source>>,
@@ -246,10 +262,11 @@ struct Inner {
     gc_at: Mutex<Instant>,
 }
 
-/// What an item was made from: the same hash, the same pieces
-fn item_hash(fp: &str, it: &ItemIn) -> Key {
+/// What an item was made from (title, text, images): the same hash, the same pieces under one model, the same keyword
+/// document under any
+fn item_hash(it: &ItemIn) -> Key {
     let mut h = blake3::Hasher::new();
-    for part in [fp, &it.title, &it.text] {
+    for part in [&it.title, &it.text] {
         h.update(&(part.len() as u64).to_le_bytes()).update(part.as_bytes());
     }
     for im in &it.images {
@@ -322,7 +339,14 @@ impl Inner {
                 if c > 0 {
                     self.models.write().unwrap().clear(); // read again from the store when next used
                 }
-                self.log(&format!("gc dropped {m} manifests, {c} vectors"));
+                let st = self.store.lock().unwrap();
+                let k = st
+                    .item_hids()
+                    .map_err(|e| e.to_string())
+                    .and_then(|keep| self.keywords.retain(&keep).map_err(|e| e.to_string()));
+                self.log(&format!(
+                    "gc dropped {m} manifests, {c} vectors, {k:?} keyword documents"
+                ));
             }
             Err(e) => self.log(&format!("gc: {e}")),
         }
@@ -477,33 +501,49 @@ impl Inner {
     }
 
     fn index(&self, source: &str, job: &Job, emb: &dyn Embedder) -> Result<(), String> {
-        let fp = emb.fingerprint()?;
-        let model = self.model(&fp)?;
+        let mut seen_ids = HashSet::new();
+        let items: Vec<&ItemIn> = job.items.iter().filter(|x| seen_ids.insert(x.id.as_str())).collect();
+        let hashes: Vec<Key> = items.iter().map(|it| item_hash(it)).collect();
+        // the keyword group first: it needs no model, so it is there while the embedding server is not
+        let docs: Vec<Doc> = items
+            .iter()
+            .zip(&hashes)
+            .filter(|(_, h)| !self.keywords.has(hid(h)))
+            .map(|(it, h)| Doc {
+                hid: hid(h),
+                title: &it.title,
+                text: &it.text,
+            })
+            .collect();
+        self.keywords.add(&docs).map_err(|e| format!("keyword index: {e}"))?;
+        // no model (the server is down): the manifest is written all the same, keeping the pieces of what did not change,
+        // and the run fails, to be tried again
+        let fp = emb.fingerprint();
         let key = (source.to_string(), job.r#ref.clone());
-        let old: HashMap<String, ItemRow> = match self.manifests.read().unwrap().get(&key) {
+        let (old_model, old): (String, HashMap<String, ItemRow>) = match self.manifests.read().unwrap().get(&key) {
             Some(m) => {
                 let m = m.read().unwrap();
-                if m.model == fp {
+                let same = fp.as_ref().map_or(true, |f| *f == m.model);
+                let old = if same {
                     m.items.iter().map(|x| (x.id.clone(), x.clone())).collect()
                 } else {
                     HashMap::new()
-                }
+                };
+                (m.model.clone(), old)
             }
-            None => HashMap::new(),
+            None => (String::new(), HashMap::new()),
         };
-        let mut rows = Vec::with_capacity(job.items.len());
+        let model_name = fp.clone().unwrap_or(old_model);
+        let mut rows = Vec::with_capacity(items.len());
         let mut changed = Vec::new();
-        let mut seen_ids = HashSet::new();
-        let items: Vec<&ItemIn> = job.items.iter().filter(|x| seen_ids.insert(x.id.as_str())).collect();
-        for (i, it) in items.iter().enumerate() {
-            let hash = item_hash(&fp, it);
+        for (i, (it, hash)) in items.iter().zip(hashes).enumerate() {
             let meta = it
                 .meta
                 .as_ref()
                 .map(|m| m.get().to_string())
                 .unwrap_or_else(|| "null".into());
             match old.get(&it.id) {
-                Some(o) if o.hash == hash => {
+                Some(o) if o.hash == hash && (fp.is_err() || !o.pieces.is_empty()) => {
                     rows.push(ItemRow {
                         groups: it.groups.clone(),
                         meta,
@@ -511,7 +551,10 @@ impl Inner {
                     });
                 }
                 _ => {
-                    let pieces = pieces_of(&fp, it).into_iter().map(|x| x.0).collect();
+                    let pieces = match &fp {
+                        Ok(f) => pieces_of(f, it).into_iter().map(|x| x.0).collect(),
+                        Err(_) => Vec::new(),
+                    };
                     rows.push(ItemRow {
                         id: it.id.clone(),
                         hash,
@@ -525,14 +568,18 @@ impl Inner {
         }
         // what still needs a vector, in the items' order (the client puts first what matters most)
         let mut need: Vec<(Key, Input)> = Vec::new();
-        {
+        let model = match &fp {
+            Ok(f) => Some(self.model(f)?),
+            Err(_) => None,
+        };
+        if let (Some(model), Ok(fp)) = (&model, &fp) {
             let m = model.read().unwrap();
             let mut queued = HashSet::new();
             for (row, it) in rows.iter().zip(&items) {
                 if row.pieces.iter().all(|p| m.has(&p.key)) {
                     continue;
                 }
-                for (p, input) in pieces_of(&fp, it) {
+                for (p, input) in pieces_of(fp, it) {
                     if let Some(input) = input
                         && !m.has(&p.key)
                         && queued.insert(p.key)
@@ -551,18 +598,22 @@ impl Inner {
             .store
             .lock()
             .unwrap()
-            .write_manifest(source, &job.r#ref, &fp, &rows, &changed)
+            .write_manifest(source, &job.r#ref, &model_name, &rows, &changed)
             .map_err(|e| e.to_string())?;
         self.manifests.write().unwrap().insert(
             key.clone(),
             Arc::new(RwLock::new(Manifest {
                 id,
-                model: fp.clone(),
+                model: model_name,
                 items: rows,
                 touched: store::now(),
             })),
         );
         drop(sources);
+        let fp = fp?;
+        let Some(model) = model else {
+            return Ok(());
+        };
         let mut left = need.len();
         self.set_left(source, &job.r#ref, left, false);
         // text in batches, each image on its own
@@ -683,14 +734,63 @@ impl Inner {
                 })
             }
         };
-        // kept while it is used: a manifest unused for MANIFEST_DAYS goes
+        self.touch(&man);
+        Ok(json!({ "hits": hits, "left": left, "error": error, "model": fp, "source": r.source, "ref": r.r#ref }))
+    }
+
+    fn search_keyword(&self, r: KeywordReq) -> Reply {
+        let Some(man) = self
+            .manifests
+            .read()
+            .unwrap()
+            .get(&(r.source.clone(), r.r#ref.clone()))
+            .cloned()
+        else {
+            return Ok(json!({ "hits": [], "source": r.source, "ref": r.r#ref }));
+        };
+        let hits = {
+            let man = man.read().unwrap();
+            let want: Option<HashSet<&str>> = r.groups.as_ref().map(|g| g.iter().map(String::as_str).collect());
+            let mut at: HashMap<keyword::Hid, Vec<usize>> = HashMap::new();
+            for (i, it) in man.items.iter().enumerate() {
+                if want
+                    .as_ref()
+                    .is_none_or(|w| it.groups.iter().any(|g| w.contains(g.as_str())))
+                {
+                    at.entry(hid(&it.hash)).or_default().push(i);
+                }
+            }
+            let visible = Arc::new(at.keys().copied().collect());
+            let found = self.keywords.search(&r.q, visible).map_err(|e| e.to_string())?;
+            let mut hits = Vec::new();
+            'out: for f in found {
+                for &i in at.get(&f.hid).into_iter().flatten() {
+                    if hits.len() >= r.k.unwrap_or(10) {
+                        break 'out;
+                    }
+                    let it = &man.items[i];
+                    let meta: Value = serde_json::from_str(&it.meta).unwrap_or(Value::Null);
+                    let mut h = json!({ "id": it.id, "score": f.score, "meta": meta });
+                    if let Some((a, b)) = f.range {
+                        h["range"] = json!([a, b]);
+                    }
+                    hits.push(h);
+                }
+            }
+            hits
+        };
+        self.touch(&man);
+        Ok(json!({ "hits": hits, "source": r.source, "ref": r.r#ref }))
+    }
+
+    /// Kept while it is used: a manifest unused for MANIFEST_DAYS goes
+    fn touch(&self, man: &RwLock<Manifest>) {
         let stale = man.read().unwrap().touched < store::now() - TOUCH_EVERY;
         if stale {
             let mut m = man.write().unwrap();
             m.touched = store::now();
             let _ = self.store.lock().unwrap().touch(m.id);
         }
-        Ok(json!({ "hits": hits, "left": left, "error": error, "model": fp, "source": r.source, "ref": r.r#ref }))
     }
 
     fn status(&self, r: StatusReq) -> Reply {
@@ -708,7 +808,7 @@ impl Inner {
                 (
                     m.items.len(),
                     m.items.iter().map(|x| x.pieces.len()).sum::<usize>(),
-                    Some(m.model.clone()),
+                    Some(m.model.clone()).filter(|m| !m.is_empty()),
                 )
             }
             None => (0, 0, None),
@@ -843,6 +943,17 @@ pub struct SearchReq {
     pub groups: Option<Vec<String>>,
     #[serde(default)]
     pub min_score: Option<f32>,
+}
+
+#[derive(Deserialize)]
+pub struct KeywordReq {
+    pub source: String,
+    pub r#ref: String,
+    pub q: String,
+    #[serde(default)]
+    pub k: Option<usize>,
+    #[serde(default)]
+    pub groups: Option<Vec<String>>,
 }
 
 #[derive(Deserialize)]

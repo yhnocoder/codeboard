@@ -3,7 +3,15 @@
 // folder may have it open. CodeBoard uses the service instead (connect in index.ts): every VS Code window is a process.
 import { createRequire } from "node:module";
 import * as path from "node:path";
-import type { BoxEmbedder, BoxItem, BoxResult, BoxSearch, BoxStatus } from "./index";
+import type {
+  BoxEmbedder,
+  BoxItem,
+  BoxKeywordResult,
+  BoxKeywordSearch,
+  BoxResult,
+  BoxSearch,
+  BoxStatus,
+} from "./index";
 
 type Addon = {
   BoxIndex: { open(home: string): { request(op: string, body: string): Promise<string>; close(): void } };
@@ -13,6 +21,8 @@ export type BoxIndex = {
   /** The whole set of items of a source at a ref; answers at once, indexing goes on in background threads */
   sync(source: string, ref: string, embedder: BoxEmbedder, items: BoxItem[]): Promise<{ accepted: number }>;
   search(q: BoxSearch): Promise<BoxResult>;
+  /** The keyword group, its own list (needs no model) */
+  searchKeyword(q: BoxKeywordSearch): Promise<BoxKeywordResult>;
   status(source: string, ref: string): Promise<BoxStatus>;
   forget(source: string): Promise<void>;
   /** Background indexing stops after its current batch; the data folder is free for another process after that */
@@ -33,6 +43,7 @@ export function open(o: { addon: string; home: string }): BoxIndex {
   return {
     sync: (source, ref, embedder, items) => ask("sync", { source, ref, embedder, items }),
     search: (q) => ask("search", q),
+    searchKeyword: (q) => ask("search_keyword", q),
     status: (source, ref) => ask("status", { source, ref }),
     forget: async (source) => void (await ask("forget", { source })),
     close: () => index.close(),

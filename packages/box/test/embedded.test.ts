@@ -63,6 +63,8 @@ describe.skipIf(!built)("box addon", () => {
     const r = await ix.search({ source: "src", ref: "main", q: "cuda graph", k: 1 });
     expect(r).toMatchObject({ model: "test-embed", left: 0 });
     expect(r.hits.map((h) => h.id)).toEqual(["b"]);
+    const kw = await ix.searchKeyword({ source: "src", ref: "main", q: "blocks" });
+    expect(kw.hits).toEqual([{ id: "a", score: expect.any(Number), range: [15, 21], meta: { n: 1 } }]);
     await ix.forget("src");
     expect(await ix.status("src", "main")).toMatchObject({ items: 0, synced: false });
   });

@@ -12,8 +12,10 @@ name = "box_core"
 [dependencies]
 blake3 = "1.8.7"
 half = "2.7.1"
+jieba-rs = "0.11.0"
 rayon = "1.12.0"
 rusqlite = { version = "0.41.1", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1.0.154", features = ["raw_value"] }
+tantivy = { version = "0.27.0", default-features = false, features = ["mmap"] }
 ureq = "3.5.1"
