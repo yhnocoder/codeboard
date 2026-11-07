@@ -318,8 +318,10 @@ export type RasterResult = {
  *   rastered again at every stop (#155). Synthetic: 11-12, about 16 before #155.
  * - fit restVP and wastedVP: Fit to Window from 100 % (the flight is in the rest after the click), all of it and the part at
  *   over 2x the scale shown. While the flight kept the world's hint, every tile coming into view was rastered at 1.0: persona
- *   43-77 (31-73 wasted), synthetic 224 (203 wasted); with the hint off from half the raster scale on, persona 35-40 (3-4),
- *   synthetic 55-84 (2-5). restVP guards the total with headroom (it does not always tell the two apart); wastedVP does.
+ *   43-77 (31-73 wasted), synthetic 224 (203 wasted); with the hint off from half the raster scale to the end, every layer in
+ *   view was rastered at every frame: persona 35-37 (3-4), synthetic 55-84 (2-5); with the hint put back below a quarter of
+ *   the device scale and the world rastered again only as the scale halves there (Canvas.tsx HINT_KEEPS), persona 21-26 (4-6).
+ *   restVP guards the total (it does not always tell keeping the hint from dropping it); wastedVP does.
  * The sharpness at rest (blurry and wasted layers, SCALE_BUDGET) is judged after the passes listed in `sharp`: at 100 %; at the
  * fit (the persona board's summary columns stayed rastered at 1.0 there, 2.4x the scale shown, when the stop past the cut was
  * not rastered again); and at ~150 % after inOutIn (in to 250 %, out below the summary cut, back in: 1 layer blurry at 0.67x
@@ -335,7 +337,7 @@ export const RASTER_BUDGET = {
     dragSnap: { stepVP: 0.25 },
     dragSection: { stepVP: 1 },
     stops: { stepVP: 1.1 },
-    fit: { restVP: 48, wastedVP: 10 },
+    fit: { restVP: 30, wastedVP: 10 },
   },
   sharp: ["drag", "pan", "stops", "fit", "inOutIn"],
 } as const;
