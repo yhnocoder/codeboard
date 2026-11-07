@@ -12,6 +12,7 @@ export function ghostOut(ids: Iterable<string>) {
     const el = document.querySelector<HTMLElement>(`${cardSel(id)}`);
     if (!el?.parentElement) continue;
     const g = el.cloneNode(true) as HTMLElement;
+    keepPictures(el, g);
     g.removeAttribute("data-id");
     g.classList.add("ghost-out");
     g.classList.remove("sel");
@@ -19,4 +20,27 @@ export function ghostOut(ids: Iterable<string>) {
     requestAnimationFrame(() => requestAnimationFrame(() => g.classList.add("go")));
     setTimeout(() => g.remove(), ms);
   }
+}
+
+/**
+ * A cloned <img> loads its picture again (decoding="async", loading="lazy" copied too): the first frames painted the ghost
+ * without it, the picture blinking out and back as the card started to go (an Image card, a Note's images). The card's own
+ * images, loaded and decoded, go into the ghost instead (the card is removed this same task; its copies take their places);
+ * a canvas's drawing is copied over
+ */
+function keepPictures(el: HTMLElement, g: HTMLElement) {
+  const from = el.querySelectorAll("img, canvas"),
+    to = g.querySelectorAll("img, canvas");
+  if (from.length !== to.length) return;
+  from.forEach((a, i) => {
+    const b = to[i];
+    if (a instanceof HTMLImageElement && b instanceof HTMLImageElement) {
+      if (!a.complete || !a.naturalWidth) return;
+      const mark = document.createComment("");
+      a.replaceWith(mark);
+      b.replaceWith(a);
+      mark.replaceWith(b);
+    } else if (a instanceof HTMLCanvasElement && b instanceof HTMLCanvasElement && a.width && a.height)
+      b.getContext("2d")?.drawImage(a, 0, 0);
+  });
 }
