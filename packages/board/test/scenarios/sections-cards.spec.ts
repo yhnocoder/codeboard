@@ -1083,6 +1083,17 @@ test("sectionClickEmptySelects", async () => {
   await pg.mouse.click(s1.x + 40, s1.y + s1.height - 30);
   await idle(h);
   const one = await selected();
+  // ⇧ 点另一个 Section 的空白处：加进选择；再 ⇧ 点一次：移出
+  const s2 = await box("S2");
+  await pg.keyboard.down("Shift");
+  await pg.mouse.click(s2.x + s2.width - 30, s2.y + 30);
+  await idle(h);
+  const added = await selected();
+  // somewhere else in it (the same spot again would be a double-click)
+  await pg.mouse.click(s2.x + s2.width - 30, s2.y + s2.height - 30);
+  await idle(h);
+  const removed = await selected();
+  await pg.keyboard.up("Shift");
   await pg.mouse.click(s3.x + s3.width - 30, s3.y + s3.height - 20);
   await idle(h);
   const inner = await selected();
@@ -1105,11 +1116,13 @@ test("sectionClickEmptySelects", async () => {
   check(
     "sectionClickEmptySelects",
     one.join() === "S1" &&
+      added.sort().join() === "S1,S2" &&
+      removed.join() === "S1" &&
       inner.join() === "S3" &&
       none.length === 0 &&
       dragged.sections.length === 0 &&
       dragged.cards.join() === "n1",
-    { one, inner, none, dragged },
+    { one, added, removed, inner, none, dragged },
   );
   await close(h);
 });
@@ -1214,6 +1227,59 @@ test("sectionMultiSelectColor", async () => {
       again.sections.join() === "S1,S2" &&
       again.cards.join() === "n2",
     { both, less, again },
+  );
+  await close(h);
+});
+
+/** Tidy Up on several Sections lays them out as blocks: each frame moves with its cards (same place inside it), the frames do
+ *  not overlap afterwards, and one undo puts everything back */
+test("sectionTidyUp", async () => {
+  const b = twoSectionsAndLoose();
+  // S2 on top of S1's lower half, so Tidy Up has something to do
+  b.sections[1].x = 300;
+  b.sections[1].y = 500;
+  b.place.n1.x = 340;
+  b.place.n1.y = 550;
+  const h = await open({ board: b, light, w: 1600, h: 1000 });
+  await idle(h);
+  const inside = (bd: Board) => {
+    const S2 = bd.sections.find((s) => s.id === "S2")!;
+    return [bd.place.n1.x - S2.x, bd.place.n1.y - S2.y];
+  };
+  const before = JSON.stringify({ s: h.board().sections, p: h.board().place });
+  const off0 = inside(h.board());
+  await shot(h, "sect-tidy-00-before");
+  await title(h, "S1").click();
+  await title(h, "S2").click({ modifiers: ["Shift"] });
+  await title(h, "S2").click({ button: "right" });
+  await h.page.locator(".ctx:not(.closing) button", { hasText: "Tidy Up" }).click();
+  await until(
+    h,
+    "the Sections are moved",
+    () => JSON.stringify({ s: h.board().sections, p: h.board().place }) !== before,
+  );
+  await idle(h);
+  await shot(h, "sect-tidy-01-after");
+  const frames = await h.page.evaluate(() =>
+    ["S1", "S2"].map((id) => document.querySelector(`.sect[data-sect="${id}"]`)!.getBoundingClientRect()),
+  );
+  const apart =
+    frames[0].right <= frames[1].left ||
+    frames[1].right <= frames[0].left ||
+    frames[0].bottom <= frames[1].top ||
+    frames[1].bottom <= frames[0].top;
+  const off1 = inside(h.board());
+  const loose = h.board().place.n2;
+  await h.page.keyboard.press("ControlOrMeta+z");
+  await until(
+    h,
+    "one undo puts it back",
+    () => JSON.stringify({ s: h.board().sections, p: h.board().place }) === before,
+  );
+  check(
+    "sectionTidyUp the Sections are laid out apart, each with its cards, the loose card stays",
+    apart && off0.join() === off1.join() && loose.x === 1320 && loose.y === 110,
+    { frames, off0, off1, loose },
   );
   await close(h);
 });
