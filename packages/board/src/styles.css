@@ -4591,6 +4591,14 @@ mark.wdiff {
   text-transform: none;
   letter-spacing: 0;
 }
+.palette .cand .lb {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.palette .cand small {
+  flex: none;
+  max-width: 45%;
+}
 .palette .empty.perr {
   font-size: 11px;
   padding: 2px 8px 4px;
