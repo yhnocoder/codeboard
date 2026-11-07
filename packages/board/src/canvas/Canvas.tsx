@@ -132,6 +132,8 @@ export function Canvas() {
   // sharp) until it is put down. Panning keeps stillZ
   const [relift, setRelift] = createSignal(false);
   const carrying = () => carried().cards.size + carried().sections.size > 0;
+  const guideX = createMemo(() => guides().find((g) => g.axis === "x")),
+    guideY = createMemo(() => guides().find((g) => g.axis === "y"));
   createEffect(
     on(
       stillZ,
@@ -250,32 +252,36 @@ export function Canvas() {
             <WalkSteps />
           </Show>
           <Show when={A.pasteChip()}>{(p) => <PasteChip chip={p()} />}</Show>
-          <div class="guides" data-export="strip">
-            <For each={guides()}>
-              {(g) =>
-                g.axis === "x" ? (
-                  <div
-                    class="guide v"
-                    style={{
-                      left: `${g.at}px`,
-                      top: `${g.from - 8}px`,
-                      height: `${g.to - g.from + 16}px`,
-                      "border-left-width": `${1 / cam.z}px`,
-                    }}
-                  />
-                ) : (
-                  <div
-                    class="guide h"
-                    style={{
-                      top: `${g.at}px`,
-                      left: `${g.from - 8}px`,
-                      width: `${g.to - g.from + 16}px`,
-                      "border-top-width": `${1 / cam.z}px`,
-                    }}
-                  />
-                )
-              }
-            </For>
+          {/* the alignment guides: a layer of their own while a card or Section is dragged (styles.css .guides.live), so a
+              guide that shows, moves or goes repaints only that layer, not the card level's; one element per axis (snapMove
+              and snapResize give at most one each), kept while its guide stays, so an unchanged guide is not painted again */}
+          <div class="guides" classList={{ live: dragging().size > 0 || carrying() }} data-export="strip">
+            <Show when={guideX()}>
+              {(g) => (
+                <div
+                  class="guide v"
+                  style={{
+                    left: `${g().at}px`,
+                    top: `${g().from - 8}px`,
+                    height: `${g().to - g().from + 16}px`,
+                    "border-left-width": `${1 / cam.z}px`,
+                  }}
+                />
+              )}
+            </Show>
+            <Show when={guideY()}>
+              {(g) => (
+                <div
+                  class="guide h"
+                  style={{
+                    top: `${g().at}px`,
+                    left: `${g().from - 8}px`,
+                    width: `${g().to - g().from + 16}px`,
+                    "border-top-width": `${1 / cam.z}px`,
+                  }}
+                />
+              )}
+            </Show>
             <Show when={sizeHint()}>
               {(h) => (
                 <div

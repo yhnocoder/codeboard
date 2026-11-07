@@ -4318,6 +4318,16 @@ mark.wdiff {
   pointer-events: none;
   z-index: 8;
 }
+/* While a card or Section is dragged the guides are a layer of their own (Canvas.tsx): a guide shown, moved or taken away at
+   a move then repaints only it, where in the card level's layer every move painted the guides' old and new places again in
+   that big layer (0.3-0.6 viewports a move on real boards, 0 without the guides). Only while dragging, so the layer is made at
+   the zoom it is drawn at; .board.relift takes the hint off for a frame after a zoom mid-drag, as for the lifted card */
+.guides.live {
+  will-change: transform;
+}
+.board.relift .guides.live {
+  will-change: auto;
+}
 
 .board[data-mode="draw"],
 .board[data-mode="draw"] * {
