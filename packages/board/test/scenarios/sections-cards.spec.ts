@@ -650,6 +650,7 @@ test("sectionDragSnapsToSection", async () => {
         return { v: g.classList.contains("v"), x: r.x, y: r.y, h: r.height };
       }),
     );
+  const guideLayer = () => h.page.evaluate(() => getComputedStyle(document.querySelector(".guides")!).willChange);
   const card0 = { ...h.board().place.c };
   // what the drag moves (S2's frame and title, its card) and what it leaves (S1, its card): compositor layer hint and look
   const layers = () =>
@@ -678,12 +679,17 @@ test("sectionDragSnapsToSection", async () => {
   await idle(h);
   const during = await guides(),
     s2d = await box("S2"),
-    held = await layers();
+    held = await layers(),
+    guidesHeld = await guideLayer();
   await shot(h, "sect-snap-01-guide");
   await h.page.mouse.up();
   await until(h, "the Section's move is saved", () => h.board().sections.find((q) => q.id === "S2")!.x !== 600);
   await idle(h);
-  const down = await layers();
+  const down = await layers(),
+    guidesDown = await guideLayer();
+  // While dragging, the guides are a layer of their own (styles.css .guides.live): a guide that shows or moves repaints only
+  // them, not the card level's layer; put down, they are back in it
+  check("section-drag-guides-layer", guidesHeld === "transform" && guidesDown === "auto", { guidesHeld, guidesDown });
   // Dragged, the Section's frame, its title and its card are each a layer of its own (styles.css .carry), so a move only moves
   // those layers instead of painting them again in the world's layer; nothing of them looks different, and put down they are
   // back in the world's layer

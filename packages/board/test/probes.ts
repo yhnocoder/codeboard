@@ -306,6 +306,10 @@ export type RasterResult = {
  *   painted again at each frame of its lift shadow's transition back (~0.6 a frame for a tall Note, on its own layer). 14.1-14.8
  *   when .landing ended while the card's scale still eased: Chromium then took the card as overlapping every card painted after
  *   it, gave each its own layer and rastered them all, twice.
+ * - dragSnap stepVP (persona): the same Note dragged sideways along its row, its top snapped to the row's with the guide along
+ *   it showing at every move: 0 a move, since the guides are a layer of their own while dragging (styles.css .guides.live) and
+ *   the guide that stays is not painted again; 0.47 when the guides were painted in the card level's layer and made anew at
+ *   every move (0.3-0.6 on real study boards).
  * - dragSection stepVP (persona): the median pixels one pointer move of a Section dragged by its title rasters, with its cards
  *   and the Section inside it. They are carried on layers of their own (.carry), so a move rasters what follows them: the
  *   arrows into, out of and inside the Section (0.73); 1.35-1.46 when the frame and its cards were painted again in the world's
@@ -328,6 +332,7 @@ export const RASTER_BUDGET = {
   synthetic: { drag: { stepVP: 2.5 }, stops: { stepVP: 5 }, fit: { restVP: 110, wastedVP: 10 } },
   persona: {
     drag: { stepVP: 0.25, restVP: 12 },
+    dragSnap: { stepVP: 0.25 },
     dragSection: { stepVP: 1 },
     stops: { stepVP: 1.1 },
     fit: { restVP: 48, wastedVP: 10 },
