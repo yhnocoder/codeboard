@@ -1087,16 +1087,16 @@
   --sect-border: 1px solid var(--rule);
 }
 
-/* ---------- Ink Wash（水墨）：宣纸底、几层淡墨远山（层峦，静止）；卡是毛边宣纸，编号是朱文印，连线是毛笔线（带飞白）。深色是拓片：黑底白字 ---------- */
+/* ---------- Ink Wash（水墨）：近白的宣纸底（留一丝暖，不发黄）、几层淡墨远山（层峦，静止）；卡是毛边宣纸，编号是朱文印，连线是毛笔线（带飞白）。深色是拓片：黑底白字 ---------- */
 :root.look-ink-wash,
 [data-look="ink-wash"] {
   color-scheme: light;
   --sys: "Source Serif 4", "Songti SC", "Noto Serif SC", Georgia, serif;
   --zhu: #b8321f;
   --wash: rgba(29, 28, 26, 0.06);
-  --paper: #faf7f0;
-  --bg: #f2ede2;
-  --surface: #faf7f0;
+  --paper: #fdfdfb;
+  --bg: #f6f5f1;
+  --surface: #fdfdfb;
   --head: transparent;
   --ink: #1d1c1a;
   --ink-2: #4c4943;
@@ -1104,7 +1104,7 @@
   --line: rgba(29, 28, 26, 0.08);
   --hair: rgba(29, 28, 26, 0.16);
   --accent: #b8321f;
-  --accent-ink: #faf7f0;
+  --accent-ink: #fdfdfb;
   --warn: #b8321f;
   --row: rgba(184, 50, 31, 0.08);
   --k-kw: #1d1c1a;
@@ -1120,7 +1120,7 @@
   --del: rgba(184, 50, 31, 0.08);
   --add: rgba(45, 91, 112, 0.08);
   --mark: #1d1c1a;
-  --mark-ink: #faf7f0;
+  --mark-ink: #fdfdfb;
   --md-hl: rgba(226, 190, 110, 0.3);
   --hl-brush: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 8' preserveAspectRatio='none'%3E%3Cpath d='M1 5.2C18 3.6 34 4.6 52 4.1S88 3.2 119 4.4L118.6 5.6C96 6.2 72 5.4 54 6.1S20 6.8 1.4 6.4Z' fill='%23b8321f' fill-opacity='.85'/%3E%3C/svg%3E");
   --inote: rgba(29, 28, 26, 0.04);
@@ -1136,9 +1136,9 @@
   --lk-blue: #2d5b70;
   --lk-green: #4d6b48;
   --guide: #b8321f;
-  --glass: #faf7f0;
+  --glass: #fdfdfb;
   --tip-bg: #1d1c1a;
-  --tip-ink: #faf7f0;
+  --tip-ink: #fdfdfb;
   --sh-ring: 0 0 0 0.5px var(--hair);
   --sh-soft: 0 18px 34px -22px rgba(30, 25, 15, 0.35);
   --sh-lift: 0 0 0 0.5px var(--hair), 0 30px 50px -24px rgba(30, 25, 15, 0.45);
