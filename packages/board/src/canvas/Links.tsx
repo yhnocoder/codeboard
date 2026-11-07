@@ -227,7 +227,7 @@ export function trackLinks() {
       const g = createMemo(() => {
         const bs = r.base(),
           e = r.ends();
-        return bs && e ? geoFrom(L, bs, e[0], e[1], merged()) : null;
+        return bs && e ? geoFrom(L, bs, e[0], e[1], merged(), r.rest()) : null;
       });
       r.geo = g;
       // 两端里叠放次序高的那张卡；两张都不在画布上时是 ""（画在所有卡上面那一层）
