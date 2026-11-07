@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import * as path from "node:path";
-import { debounce, startHost } from "@codeboard/host";
+import { binIn, debounce, startHost } from "@codeboard/host";
 import { questionsMarkdown } from "@codeboard/core";
 import { analyzedEditorLangs } from "@codeboard/analysis/langs";
 import { registerCommands } from "./commands";
@@ -25,6 +25,7 @@ export async function activate(ctx: vscode.ExtensionContext) {
     wasmDir: path.join(ctx.extensionUri.fsPath, "dist"),
     mediaDir: path.join(ctx.extensionUri.fsPath, "media", "board"),
     thumbWorker: path.join(ctx.extensionUri.fsPath, "dist", "thumbs.js"),
+    box: { bin: binIn(path.join(ctx.extensionUri.fsPath, "bin")) },
   });
   sub(h);
   flushOnExit = h.flush;

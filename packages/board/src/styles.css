@@ -4586,6 +4586,16 @@ mark.wdiff {
 .palette .cand {
   padding: 5px 8px;
 }
+/* Related by Meaning: a result no closer than unrelated queries come is a "maybe": lighter, with a quiet word (meaning.ts
+   FAINT_BELOW). Opacity, so the label's own marks and colours fade with it in every theme */
+.palette .cand.faint > :is(.kind, .lb, small) {
+  opacity: 0.55;
+}
+.palette .cand .maybe {
+  flex: none;
+  font: italic 400 11px var(--sys);
+  color: var(--ink-3);
+}
 .pgh .pnote {
   font-weight: 400;
   text-transform: none;

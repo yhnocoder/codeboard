@@ -10,4 +10,6 @@ export { treeChildren, type TreeNode } from "./boardtree";
 export { BUNDLE_EXT } from "./bundle";
 export { isScratchName } from "./scratchnames";
 export { debounce } from "./ws";
+/** Where the box binary for this platform is in a bin/ folder (the extension bundles them in its own) */
+export { binIn } from "@codeboard/box";
 export { COMMANDS, type CommandDecl, type CommandIcon, type CommandId } from "./commands";
