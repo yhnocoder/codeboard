@@ -3,16 +3,26 @@
 // The marks are a CSS Custom Highlight (no DOM change in the rendered Markdown); labels in the list render inline Markdown too.
 import { scrollIntoBox } from "@yhnocoder/markdown/ui";
 import type { Markdown } from "@yhnocoder/markdown";
-import { Show, createEffect, onCleanup } from "solid-js";
+import { Show, createEffect, createSignal, onCleanup } from "solid-js";
+import { PREVIEW_PAUSE } from "../state/timing";
 import type { SearchItem, SearchPreview } from "@codeboard/core";
 import { useMd } from "../md/context";
 
 const HIGHLIGHT = "palette-hit";
-/** Characters from each end of a passage looked for in the rendered text */
-const PROBE = 24;
+/** Characters from each end of a sentence looked for in the rendered text */
+const PROBE = 12;
 
-/** Markdown and math marks dropped, and all white space, so a passage written in Markdown can be found in its rendered text */
-const bare = (s: string) => s.replace(/[\s#*_=`$>~|\\[\]()-]+/g, "");
+/** Markdown and math marks dropped, and all white space, so text written in Markdown can be found in its rendered text: images
+ *  and list markers (drawn by CSS, not text) go, a link keeps its text */
+const bare = (s: string) =>
+  s
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, "")
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/(^|\s)(\d+[.)]|[-*+]|#{1,6})\s+/g, "$1")
+    .replace(/[\s#*_=`$>~|\\[\]()-]+/g, "");
+/** Sentences, as innerbox cuts them */
+const sentences = (s: string) => s.split(/(?<=[。！？!?])|(?<=[.;:])\s+/u);
+const wordy = (c: string | undefined) => !!c && /[\p{L}\p{N}_]/u.test(c) && !/\p{Script=Han}/u.test(c);
 
 /** The element's text with white space dropped, and for each character the text node and offset it came from */
 function textMap(el: HTMLElement) {
@@ -35,20 +45,35 @@ function textMap(el: HTMLElement) {
 function hitRanges(el: HTMLElement, p: SearchPreview, q: string): Range[] {
   const { text, at } = textMap(el);
   const low = text.toLowerCase();
+  /** From character a to z, widened to whole words (a mark never stops inside TILE_WIDTH) */
   const range = (a: number, z: number) => {
+    const [sn, so] = at[a],
+      [en, eo] = at[z];
+    let s0 = so,
+      e0 = eo + 1;
+    while (s0 > 0 && wordy(sn.data[s0 - 1]) && wordy(sn.data[s0])) s0--;
+    while (e0 < en.data.length && wordy(en.data[e0]) && wordy(en.data[e0 - 1])) e0++;
     const r = document.createRange();
-    r.setStart(at[a][0], at[a][1]);
-    r.setEnd(at[z][0], at[z][1] + 1);
+    r.setStart(sn, s0);
+    r.setEnd(en, e0);
     return r;
   };
   if (p.hit) {
-    const h = bare(p.hit).toLowerCase();
-    if (!h) return [];
-    const a = low.indexOf(h.slice(0, PROBE));
-    if (a < 0) return [];
-    const tail = h.slice(-PROBE);
-    const t = low.indexOf(tail, a);
-    return [range(a, t >= 0 ? t + tail.length - 1 : Math.min(at.length - 1, a + h.length - 1))];
+    // sentence by sentence: one with a formula or an image the text cannot be matched in does not lose the rest
+    const out: Range[] = [];
+    let from = 0;
+    for (const sen of sentences(p.hit)) {
+      const h = bare(sen).toLowerCase();
+      if (h.length < 4) continue; // a list number or a lone mark cut off as its own sentence
+      const a = low.indexOf(h.slice(0, PROBE), from);
+      if (a < 0) continue;
+      const tail = h.slice(-PROBE);
+      const t = low.indexOf(tail, a);
+      const z = t >= 0 && t - a < h.length + PROBE ? t + tail.length - 1 : Math.min(at.length - 1, a + PROBE - 1);
+      out.push(range(a, z));
+      from = z + 1;
+    }
+    return out;
   }
   const out: Range[] = [];
   for (const w of q.toLowerCase().split(/\s+/).map(bare).filter(Boolean))
@@ -73,7 +98,11 @@ const readable = (s: string) =>
         .map((x) => x.trim())
         .filter((x) => x && !/^:?-+:?$/.test(x))
         .join(" · ") || "Table"
-    : s.replace(/^\s*!\[([^\]]*)\]\([^)]*\)\s*/, (_, alt: string) => alt || "Image");
+    : s
+        .replace(/^\s*!\[([^\]]*)\]\([^)]*\)\s*/, (_, alt: string) => alt || "Image")
+        // "1. 考虑…" or "- item" is a line of text here, not a list
+        .replace(/^(\s*)(\d+)([.)])(\s)/, "$1$2\\$3$4")
+        .replace(/^(\s*)([-*+>#])(\s)/, "$1\\$2$3");
 
 /** A list label as inline Markdown (==marks==, math, bold), for cards and sidenotes; other labels stay plain text */
 export function Label(props: { it: SearchItem }) {
@@ -96,8 +125,17 @@ function rich(md: Markdown, el: HTMLElement, src: string) {
 
 export function Preview(props: { it?: SearchItem; q: string }) {
   const md = useMd();
-  const p = () => {
+  // the first one at once; after that, the one the highlight rests on
+  const [shown, setShown] = createSignal(props.it);
+  let wait: ReturnType<typeof setTimeout> | undefined;
+  createEffect(() => {
     const it = props.it;
+    clearTimeout(wait);
+    wait = setTimeout(() => setShown(() => it), PREVIEW_PAUSE);
+  });
+  onCleanup(() => clearTimeout(wait));
+  const p = () => {
+    const it = shown();
     return it && (it.kind === "card" || it.kind === "sidenote") ? it.preview : undefined;
   };
   let body!: HTMLDivElement;
@@ -122,7 +160,7 @@ export function Preview(props: { it?: SearchItem; q: string }) {
     <div class="pprev">
       <Show
         when={p()}
-        fallback={<div class="ppempty">{props.it ? props.it.detail || props.it.label : "Nothing to preview"}</div>}
+        fallback={<div class="ppempty">{shown()?.detail || shown()?.label || "Nothing to preview"}</div>}
       >
         {(v) => <div class="ppw">{v().where}</div>}
       </Show>

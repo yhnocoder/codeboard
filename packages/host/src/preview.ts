@@ -2,8 +2,9 @@
 // Meaning (meaning.ts) send it with their results, so moving through the list shows each one without asking the host again.
 import { cardTitle, type Board, type Card, type SearchPreview, type Sidenote } from "@codeboard/core";
 
-/** Enough of a card to read in the pane; the rest is cut (the card itself is one Enter away) */
-const PREVIEW_CHARS = 4000;
+/** Enough of a card to read in the pane (each word match carries one, up to 60 of them); the rest is cut: the card is one
+ *  Enter away */
+const PREVIEW_CHARS = 2000;
 
 /** board › Section › … the card is in */
 export function whereOf(b: Board, card: string): string {
@@ -69,5 +70,10 @@ export function sidenoteMarkdown(n: Sidenote): string {
 }
 
 export function preview(md: string, where: string, hit?: string): SearchPreview {
-  return { md: md.length > PREVIEW_CHARS ? `${md.slice(0, PREVIEW_CHARS)}\n\n…` : md, where, ...(hit ? { hit } : {}) };
+  if (md.length <= PREVIEW_CHARS) return { md, where, ...(hit ? { hit } : {}) };
+  // a long card: the stretch around the passage that matched (from a line start), so its mark is in what is sent
+  const at = hit ? md.indexOf(hit.split(/\s+/).slice(0, 4).join(" ").slice(0, 40)) : -1;
+  const from = at > PREVIEW_CHARS / 4 ? md.lastIndexOf("\n", at - PREVIEW_CHARS / 4) + 1 : 0;
+  const part = md.slice(from, from + PREVIEW_CHARS);
+  return { md: `${from ? "…\n\n" : ""}${part}\n\n…`, where, ...(hit ? { hit } : {}) };
 }

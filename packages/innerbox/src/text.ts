@@ -1,8 +1,9 @@
 // What gets embedded: a document cut into short pieces (a few sentences each), each piece written with EmbeddingGemma's
 // task prompt and the document's title, so a piece still says what it belongs to. A document matches by its best piece.
 
-/** One thing to find: an id the caller knows, its title, where it sits (board › Section …) and its text */
-export type Doc = { id: string; title: string; text: string; ctx?: string };
+/** One thing to find: an id the caller knows, its title and its text. Where it sits is left out on purpose: renaming a board or
+ *  a Section, or moving a card into another, would otherwise embed every card it holds again */
+export type Doc = { id: string; title: string; text: string };
 
 /** About this many characters per piece: a few sentences, short enough that one idea is not diluted by the rest */
 const PIECE_CHARS = 280;
@@ -12,10 +13,10 @@ const MAX_PIECES = 24;
 /** EmbeddingGemma's prompt for a search query */
 export const queryText = (q: string) => `task: search result | query: ${q}`;
 
-/** EmbeddingGemma's prompt for a document piece: the title (with where it sits) and the text */
-function pieceText(d: Pick<Doc, "title" | "ctx">, text: string): string {
-  const title = d.ctx && d.title ? `${d.ctx} › ${d.title}` : d.ctx || d.title;
-  return `title: ${title.trim() || "none"} | text: ${text.trim() || title.trim() || "none"}`;
+/** EmbeddingGemma's prompt for a document piece: the title and the text */
+function pieceText(d: Pick<Doc, "title">, text: string): string {
+  const title = d.title.trim();
+  return `title: ${title || "none"} | text: ${text.trim() || title || "none"}`;
 }
 
 /** Sentences and lines: split after 。！？.!? and at line breaks, keeping each mark with its sentence */

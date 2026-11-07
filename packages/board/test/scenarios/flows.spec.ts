@@ -1038,7 +1038,7 @@ test("paletteMeaning", async () => {
         items: [
           {
             kind: "card",
-            label: "==Frees== blocks",
+            label: "1. ==Frees== blocks",
             detail: "This board",
             board: h.board().id,
             card: c.id,
@@ -1063,10 +1063,12 @@ test("paletteMeaning", async () => {
   await until(h, "asked again once indexing is done", () => asked >= 2);
   await expect(group).not.toContainText("indexing");
   await shot(h, "pal-04-meaning");
+  await expect(h.page.locator(".palette .ppw")).toHaveText("nano-vllm › Memory");
   const pane = await h.page.evaluate(() => ({
     where: document.querySelector(".palette .ppw")?.textContent,
     heading: document.querySelector(".palette .ppmd h2")?.textContent,
     label: document.querySelector(".palette .cand .lb mark")?.textContent,
+    list: document.querySelectorAll(".palette .cand .lb ol, .palette .cand .lb li").length,
     hit: [...((CSS as any).highlights?.get("palette-hit") ?? [])].map((r: Range) => r.toString()).join("|"),
   }));
   const sent = h.sent.filter((m) => m.type === "searchMeaning").map((m: any) => m.q);
@@ -1079,10 +1081,11 @@ test("paletteMeaning", async () => {
     { indexing, sent, selected },
   );
   check(
-    "paletteMeaning previews the card with where it sits, marks the passage that matched, and renders the label's Markdown",
+    "paletteMeaning previews the card with where it sits, marks the passage that matched, and renders the label's Markdown on one line",
     pane.where === "nano-vllm › Memory" &&
       pane.heading === "Blocks" &&
       pane.label === "Frees" &&
+      pane.list === 0 &&
       pane.hit === "Frees the blocks of a finished sequence.",
     pane,
   );

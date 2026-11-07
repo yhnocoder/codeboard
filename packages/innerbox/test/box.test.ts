@@ -66,7 +66,7 @@ describe("innerbox", () => {
     const e = fake(),
       box = new Box("fake");
     const many = Array.from({ length: 40 }, (_, i) => ({ id: `d${i}`, title: `Doc ${i}`, text: `block ${i}` }));
-    await box.update(many, e, () => e.calls.length >= 1);
+    await box.update(many, e, { stop: () => e.calls.length >= 1 });
     expect(box.size).toBeGreaterThan(0);
     expect(box.missing(many)).toBeGreaterThan(0);
     await box.update(many, e);
@@ -86,9 +86,9 @@ describe("innerbox", () => {
   });
 
   it("keeps long documents to a bounded number of pieces, each with its title", () => {
-    const ps = pieces({ id: "x", title: "Long", ctx: "Board", text: "A sentence here. ".repeat(2000) });
+    const ps = pieces({ id: "x", title: "Long", text: "A sentence here. ".repeat(2000) });
     expect(ps.length).toBeLessThanOrEqual(24);
-    expect(ps.every((p) => p.startsWith("title: Board › Long | text: "))).toBe(true);
+    expect(ps.every((p) => p.startsWith("title: Long | text: "))).toBe(true);
     expect(pieces({ id: "y", title: "Only a title", text: "" })).toEqual(["title: Only a title | text: Only a title"]);
   });
 

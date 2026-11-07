@@ -4633,6 +4633,10 @@ mark.wdiff {
   padding: 8px 20px 20px;
   font-size: 13px;
 }
+.palette .cand.more .lb {
+  font: 11.5px var(--sys);
+  color: var(--ink-3);
+}
 .palette .cand .lb.md-inline {
   font-family: var(--sys);
 }

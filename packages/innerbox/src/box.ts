@@ -33,10 +33,16 @@ export class Box {
   /**
    * Brings the index to exactly these documents: embeds the pieces it has no vector for (in the order given, so put what
    * matters most first), forgets documents that are gone and vectors no document uses. Documents become searchable as
-   * soon as their pieces are in. stop() is asked between requests; when it says yes, the rest waits for the next update.
+   * soon as their pieces are in. After each request batch() is awaited (to save what is done so far, so a window closed halfway
+   * keeps it) and stop() asked; when it says yes, the rest waits for the next update.
    * Answers whether anything changed.
    */
-  async update(docs: Doc[], embedder: Embedder, stop: () => boolean = () => false): Promise<boolean> {
+  async update(
+    docs: Doc[],
+    embedder: Embedder,
+    o: { stop?: () => boolean; batch?: () => Promise<void> } = {},
+  ): Promise<boolean> {
+    const stop = o.stop ?? (() => false);
     let changed = false;
     const want = new Map<string, { texts: string[]; fps: string[] }>();
     for (const d of docs) {
@@ -75,6 +81,7 @@ export class Box {
       const vs = await embedder.embed(batch.map(([, t]) => t));
       batch.forEach(([f], j) => this.vecs.set(f, vs[j]));
       settle();
+      await o.batch?.();
     }
     if (!stop()) {
       const used = new Set<string>();

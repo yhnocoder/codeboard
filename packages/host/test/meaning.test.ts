@@ -70,7 +70,7 @@ describe("Related by Meaning", () => {
     expect(g.items[0]).toMatchObject({ kind: "sidenote", sidenote: "sn1", card: "n2", detail: "Engine" });
     // each piece carries where it sits; the key goes to the server
     expect(asked.flatMap((a) => a.texts)).toContain(
-      "title: Engine › Memory › Block manager | text: ## Block manager Frees kv cache blocks when a sequence ends.",
+      "title: Block manager | text: ## Block manager Frees kv cache blocks when a sequence ends.",
     );
     expect(asked.every((a) => a.auth === "Bearer k1")).toBe(true);
     expect(fs.readdirSync(path.join(dir, ".innerbox")).sort()).toEqual([".gitignore", "test-embed.ibx"]);
@@ -85,9 +85,7 @@ describe("Related by Meaning", () => {
     cx.meaning.soon(store); // as startHost does on a change
     await cx.meaning.update(store);
     const texts = asked.slice(before).flatMap((a) => a.texts);
-    expect(texts).toEqual([
-      "title: Engine › Scheduler | text: ## Scheduler Picks prefill or decode. Keeps 显存 in check.",
-    ]);
+    expect(texts).toEqual(["title: Scheduler | text: ## Scheduler Picks prefill or decode. Keeps 显存 in check."]);
     const fresh = new HostContext(W);
     const start = asked.length;
     const r = await fresh.meaning.search(store, "显存", "a");

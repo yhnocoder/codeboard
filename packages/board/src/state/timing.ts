@@ -91,3 +91,5 @@ export const GIF_MIN_DELAY = 100;
 export const MEANING_PAUSE = 150;
 /** …and asked again this often while the project is still being indexed */
 export const MEANING_RETRY = 1500;
+/** ⌘K's preview follows the highlighted result once it rests this long (holding ↓ renders no Note on the way) */
+export const PREVIEW_PAUSE = 60;

@@ -16,8 +16,16 @@ import { readHostSetting } from "./settings";
 const KEY_SECRET = "codeboard.embeddingApiKey";
 /** How long after the last board change the index catches up */
 const REINDEX_PAUSE = 3000;
+/** How often a long first indexing writes what it has so far */
+const SAVE_EVERY = 10_000;
 /** Results in the group */
 const TOP = 8;
+/**
+ * Closeness (cosine, EmbeddingGemma 2 with its prompts) below which a card is not related at all. Measured on persona's 20
+ * boards (52 queries, 2026-11): the cards a query should find scored 0.66 and up, the best card for an unrelated query
+ * ("banana bread recipe", "kubernetes ingress controller") at most 0.65
+ */
+const MIN_SCORE = 0.66;
 /** Query vectors kept (typing a query again, or the Palette asking again while indexing) */
 const QUERY_CACHE = 64;
 
@@ -42,12 +50,19 @@ export class MeaningSearch {
   /** The boards changed since the documents were last read */
   private stale = true;
   private latest?: Awaited<ReturnType<typeof projectDocs>>;
+  /** The endpoint's key, read once from the secret storage (Set Embedding API Key forgets it) */
+  private key?: Promise<string | undefined>;
 
   constructor(private cx: HostContext) {}
 
   dispose() {
     this.disposed = true;
     clearTimeout(this.timer);
+  }
+
+  /** The key changed: read it again on the next request */
+  forgetKey() {
+    this.key = undefined;
   }
 
   private base(): string {
@@ -59,7 +74,11 @@ export class MeaningSearch {
     const base = this.base();
     if (!base) return undefined;
     const model = (readHostSetting<string>(this.cx, "searchEmbeddingModel") ?? "").trim() || undefined;
-    const key = (await this.cx.ws.secrets.get(KEY_SECRET).catch(() => undefined)) || undefined;
+    this.key ??= this.cx.ws.secrets.get(KEY_SECRET).then(
+      (k) => k || undefined,
+      () => undefined,
+    );
+    const key = await this.key;
     const conf = JSON.stringify([base, model, key]);
     if (conf !== this.conf) {
       this.conf = conf;
@@ -118,11 +137,18 @@ export class MeaningSearch {
           this.latest = await projectDocs(store, here);
           const docs = [...this.latest.docs.values()].map((d) => d.doc);
           const total = box.missing(docs);
-          let batches = 0;
+          let batches = 0,
+            saved = Date.now();
           this.left = total;
-          const changed = await box.update(docs, e, () => {
-            this.left = Math.max(0, total - BATCH * batches++);
-            return this.disposed;
+          const changed = await box.update(docs, e, {
+            stop: () => this.disposed,
+            // what is embedded so far is kept every little while: a window closed halfway loses at most that much
+            batch: async () => {
+              this.left = Math.max(0, total - BATCH * ++batches);
+              if (Date.now() - saved < SAVE_EVERY || this.disposed) return;
+              await this.save(box);
+              saved = Date.now();
+            },
           });
           this.left = this.disposed ? this.left : 0;
           this.error = "";
@@ -155,12 +181,13 @@ export class MeaningSearch {
       const { docs, names } = this.latest ?? (await projectDocs(store, here));
       const items: SearchItem[] = [];
       for (const h of box.search(qv, TOP * 2)) {
+        if (h.score < MIN_SCORE) break;
         const d = docs.get(h.id);
         if (!d) continue;
         const { boards, ...o } = d.origin;
         const where = boards.map((b) => (b === here ? "This board" : (names.get(b) ?? b))).join(" · ");
         const hit = pieceBodies(d.doc)[h.piece];
-        items.push({ ...o, detail: where, preview: preview(d.md, d.doc.ctx ?? "", hit) } as SearchItem);
+        items.push({ ...o, detail: where, preview: preview(d.md, d.where, hit) } as SearchItem);
         if (items.length >= TOP) break;
       }
       return { items, left: this.left || undefined, error: this.error || undefined };
@@ -173,11 +200,10 @@ export class MeaningSearch {
 /** Every card and sidenote on the project's boards as a document (here's board first, so it is indexed first) */
 async function projectDocs(store: Storage, here?: string) {
   const boards = (await store.all()).map((x) => x.board).sort((a, b) => (a.id === here ? -1 : b.id === here ? 1 : 0));
-  const docs = new Map<string, { doc: Doc; origin: Origin; md: string }>();
+  const docs = new Map<string, { doc: Doc; origin: Origin; md: string; where: string }>();
   const names = new Map(boards.map((b) => [b.id, b.name]));
   for (const board of boards) {
     const off = shelvedCards(board);
-    const ctxOf = (c: string) => whereOf(board, c);
     for (const c of board.cards) {
       if (off.has(c.id)) continue;
       if (
@@ -194,7 +220,8 @@ async function projectDocs(store: Storage, here?: string) {
       }
       const title = cardTitle(c, board);
       docs.set(id, {
-        doc: { id, title, text: cardText(c, board.place[c.id]?.summary?.text), ctx: ctxOf(c.id) },
+        doc: { id, title, text: cardText(c, board.place[c.id]?.summary?.text) },
+        where: whereOf(board, c.id),
         origin: { kind: "card", label: title, board: board.id, card: c.id, boards: [board.id] },
         md: cardMarkdown(c, board),
       });
@@ -221,7 +248,8 @@ async function projectDocs(store: Storage, here?: string) {
       const host = board.cards.find((c) => c.id === n.at.card);
       const title = host ? cardTitle(host, board) : "";
       docs.set(id, {
-        doc: { id, title, text, ctx: ctxOf(n.at.card) },
+        doc: { id, title, text },
+        where: whereOf(board, n.at.card),
         md: sidenoteMarkdown(n),
         origin: {
           kind: "sidenote",
@@ -278,6 +306,7 @@ export async function setEmbeddingKey(cx: HostContext, ask: Prompts): Promise<bo
   )?.trim();
   if (!key) return false;
   await cx.ws.secrets.set(KEY_SECRET, key);
+  cx.meaning.forgetKey();
   void cx.ws.ui.info("Embedding API key saved.");
   return true;
 }
