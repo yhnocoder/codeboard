@@ -133,14 +133,25 @@ export function unfoldTo(env: CommandEnv, host: string, callers: Iterable<string
   });
 }
 
-/** Cards moved to where the shell laid them out (Tidy Up), in one step */
-export function moveCards(env: CommandEnv, to: Record<string, { x: number; y: number }>): boolean {
+/** Cards and Section frames moved to where the shell laid them out (Tidy Up), in one step */
+export function moveCards(
+  env: CommandEnv,
+  to: Record<string, { x: number; y: number }>,
+  sections: Record<string, { x: number; y: number }> = {},
+): boolean {
   return env.edit((b) => {
     for (const [id, p] of Object.entries(to)) {
       const c = b.place[id];
       if (c) {
         c.x = p.x;
         c.y = p.y;
+      }
+    }
+    for (const s of b.sections) {
+      const p = sections[s.id];
+      if (p) {
+        s.x = p.x;
+        s.y = p.y;
       }
     }
   });

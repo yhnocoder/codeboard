@@ -14,6 +14,7 @@ import {
   type CodeCard,
   type CompareCard,
   type Rect,
+  type Section,
   type NoteLayout,
 } from "@codeboard/core";
 import * as C from "@codeboard/core/commands";
@@ -40,10 +41,12 @@ import {
   allMembers,
   isHidden,
   descSections,
+  frames,
+  hiddenByAncestor,
   openUnder,
   measureShut,
 } from "../state/sections";
-import { popCard, revealCard, sectionById, selCards, isLocked, slideFrom } from "./common";
+import { popCard, revealCard, sectionById, sectionLocked, selCards, isLocked, slideFrom } from "./common";
 import { requestViews, copyViews, staleOk } from "../state/views";
 import { offerReference } from "./pastechip";
 import { cardText, remember } from "./clipboard";
@@ -178,33 +181,73 @@ export const arrangeItem = (ids: () => string[]): Item => {
 
 /**
  * Tidy Up：宿主排版（core/tidy.ts，ELK 分层布局），有箭头的按调用关系从左往右分列，没箭头的排成行放在下面。一步撤销；卡和线从旧位置滑过去。
- * 锁住的卡不动，当成障碍（别的卡绕开它）。等宿主回答期间卡被拖动或删掉了就不再套用
+ * 选中的 Section 整个当一块排（框、成员卡、子 Section 一起挪）；块之间的箭头是成员卡之间的箭头。
+ * 锁住的卡、Section 不动，当成障碍（别的绕开它）。等宿主回答期间卡被拖动或删掉了就不再套用
  */
-export async function tidyUp(ids = sel.cards) {
-  const hosts = [...new Set(ids.map(hostOf))].filter((id) => state.board.place[id]);
+export async function tidyUp(ids = sel.cards, secIds = sel.sections) {
+  const chosen = secIds.map(sectionById).filter((q): q is Section => !!q && !hiddenByAncestor(q));
+  const inChosen = new Set(chosen.flatMap((q) => descSections(q.id).map((d) => d.id)));
+  const tops = chosen.filter((q) => !inChosen.has(q.id));
+  const frees = tops.filter((q) => !sectionLocked(q));
+  // 每张卡属于哪一块：选中的 Section 里的卡归那个 Section（"s:" + id），别的卡自己是一块
+  const blockOf = new Map<string, string>();
+  for (const q of tops) for (const c of allMembers(q.id)) blockOf.set(c.id, `s:${q.id}`);
+  const hosts = [...new Set(ids.map(hostOf))].filter((id) => state.board.place[id] && !blockOf.has(id));
+  for (const id of hosts) blockOf.set(id, id);
   const free = hosts.filter((id) => !isLocked(id));
-  if (free.length < 2) return;
-  const inSel = new Set(free);
+  if (free.length + frees.length < 2) return;
+  const fr = frames();
+  const rects = [
+    ...free.map((id) => ({ id, ...rectOf(id) })),
+    ...frees.flatMap((q) => {
+      const f = fr.get(q.id);
+      return f ? [{ id: `s:${q.id}`, x: f.x, y: f.y, w: f.w, h: f.h }] : [];
+    }),
+  ];
+  const fixed = [
+    ...hosts.filter(isLocked).map((id) => rectOf(id)),
+    ...tops.filter((q) => sectionLocked(q)).flatMap((q) => fr.get(q.id) ?? []),
+  ];
   const links = state.board.links
-    .map((l) => [hostOf(l.from.card), hostOf(l.to.card)] as [string, string])
-    .filter(([f, t]) => inSel.has(f) && inSel.has(t));
-  const cards = free.map((id) => ({ id, ...rectOf(id) }));
-  const at = () => JSON.stringify(free.map((id) => [placeOf(id).x, placeOf(id).y]));
+    .map((l) => [blockOf.get(hostOf(l.from.card)), blockOf.get(hostOf(l.to.card))])
+    .filter((e): e is [string, string] => !!e[0] && !!e[1] && e[0] !== e[1]);
+  const at = () =>
+    JSON.stringify([...free.map((id) => placeOf(id)), ...frees.map((q) => sectionById(q.id))].map((q) => [q?.x, q?.y]));
   const asked = at();
-  const m = await ask("tidy", { cards, links, fixed: hosts.filter(isLocked).map((id) => rectOf(id)) }).catch(
-    () => null,
-  );
+  const m = await ask("tidy", { cards: rects, links, fixed }).catch(() => null);
   if (!m || asked !== at()) return;
+  const cards: Record<string, { x: number; y: number }> = {};
+  const sections: Record<string, { x: number; y: number }> = {};
   const moved: { id: string; ox: number; oy: number }[] = [];
-  for (const [id, p] of Object.entries(m)) {
-    const c = placeOf(id),
-      ox = c.x - p.x,
-      oy = c.y - p.y;
-    if (ox || oy) moved.push({ id, ox, oy });
+  const slid = new Set<string>();
+  for (const r of rects) {
+    const p = m[r.id];
+    if (!p) continue;
+    const dx = p.x - r.x,
+      dy = p.y - r.y;
+    if (!dx && !dy) continue;
+    if (!r.id.startsWith("s:")) {
+      cards[r.id] = p;
+      moved.push({ id: r.id, ox: -dx, oy: -dy });
+      continue;
+    }
+    const sid = r.id.slice(2);
+    for (const q of [sectionById(sid), ...descSections(sid)]) if (q) sections[q.id] = { x: q.x + dx, y: q.y + dy };
+    for (const c of allMembers(sid)) {
+      const q = placeOf(c.id);
+      cards[c.id] = { x: q.x + dx, y: q.y + dy };
+      moved.push({ id: c.id, ox: -dx, oy: -dy });
+    }
+    slid.add(sid);
   }
-  if (!moved.length) return;
-  if (!C.moveCards(commandEnv, m)) return;
+  if (!moved.length && !slid.size) return;
+  if (!C.moveCards(commandEnv, cards, sections)) return;
   slideFrom(moved);
+  // the frames ease to where they went, as with Fit Content
+  if (slid.size && !reduceMotion()) {
+    setFitting(slid);
+    setTimeout(() => setFitting((f) => (f === slid ? new Set<string>() : f)), SECTION_FIT);
+  }
 }
 
 export function duplicateSel() {

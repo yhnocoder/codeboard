@@ -12,6 +12,7 @@ export const look = () => state.host.settings.theme;
 /** band / foot：代码卡显示色带（大标题）/ 底栏（Card.tsx 只在这些主题里建这两块） */
 /** stroke：brush = 实线画成毛笔笔画（填充的轮廓，@codeboard/core/canvas 的 brushLine）；taper = 起点粗、往箭头均匀收细的
  *  填充线（taperLine）；虚线、点线照旧描边 */
+/** port：线起点卡边上的小记号；none = 不画（Ink Wash：毛笔线直接从卡边起笔），起点失联（lost）时照样画出来提示 */
 /** paper：卡是一张毛边宣纸（每种卡的尺寸画一张图，state/ink.ts） */
 /** sect：brush = Section 的框是四笔枯笔（state/inkframe.ts），标题写在上边留的缺口里 */
 /** stamp：新出现的编号像印章落下（CodeHead.tsx 加 .stamp，动画在 themes.css） */
@@ -22,7 +23,7 @@ export const look = () => state.host.settings.theme;
 type Shape = {
   route: "curve" | "elbow";
   head: "chevron" | "triangle" | "dot" | "dart" | "car";
-  port: "circle" | "square" | "diamond" | "plaza";
+  port: "circle" | "square" | "diamond" | "plaza" | "none";
   clear?: number;
   band?: boolean;
   foot?: boolean;
@@ -48,6 +49,7 @@ const SHAPES: Partial<Record<ThemeId, Partial<Shape>>> = {
   // Ink Wash：毛笔线、毛边宣纸的卡；删卡时墨往中间收着散掉，跳到某行是一笔朱笔划过
   "ink-wash": {
     head: "dot",
+    port: "none",
     stroke: "brush",
     paper: "deckle",
     sect: "brush",
