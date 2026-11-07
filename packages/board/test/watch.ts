@@ -49,8 +49,6 @@ export type WatchOptions = {
   judge?: Partial<Record<"flash" | "jump" | "vanish" | "twice", boolean>>;
   /** the page area screenshot (CSS px), the whole viewport by default */
   clip?: Box;
-  /** called after each frame is recorded (0 = the frame before the action), to read more of the page in that frame */
-  each?: (frame: number) => Promise<void>;
 };
 
 export type Recording = {
@@ -162,7 +160,6 @@ export async function watch(h: Host, name: string, o: WatchOptions, act: () => P
     const png = Buffer.from(data, "base64");
 
     samples.push(await page.evaluate(pageSample, opts));
-    await o.each?.(samples.length - 1);
 
     if (judge.flash) {
       const img = PNG.sync.read(png);

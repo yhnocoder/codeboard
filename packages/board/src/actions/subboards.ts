@@ -82,9 +82,8 @@ function switched(r: Promise<string | null>) {
   );
 }
 
-// 换白板是宿主发来新的 init（整块白板换掉），两块白板不会同时在页面上：先把这一块淡到 SWAP_FLOOR（同时名字开始飞），淡完之前收到的 init 先压着
-// （hostio.ts 问 switchGate），淡完再换上新白板，从 SWAP_FLOOR 淡入。旧白板停在那里等新白板（宿主回得慢、新白板排版要一会儿），
-// 所以哪一帧都不是一张白纸（以前淡到 0，在白纸上换，大白板上白纸有 280–500ms）。只动 opacity / transform，用 Web Animations（在合成线程上跑，换白板那一帧主线程忙也不卡）。
+// 换白板是宿主发来新的 init（整块白板换掉），两块白板不会同时在页面上：先把这一块淡出（同时名字开始飞），淡出完之前收到的 init 先压着
+// （hostio.ts 问 switchGate），淡出完再换上新白板、淡入。只动 opacity / transform，用 Web Animations（在合成线程上跑，换白板那一帧主线程忙也不卡）。
 // 时长跟着 --t（慢动作设置、系统「减少动态效果」）
 
 /** 进去 280ms、出来 220ms；淡出占前面一段，新白板至少用这么久淡入（宿主回得慢时名字先飞到，等新白板） */
@@ -93,8 +92,6 @@ const ENTER_MS = 280,
   FADE_IN_MIN = 140;
 const EASE_OUT = "cubic-bezier(.215,.61,.355,1)",
   EASE_IN_OUT = "cubic-bezier(.645,.045,.355,1)";
-/** 旧白板淡到这里就停住，等新白板换上来，新白板从这里淡入：换的那一帧是淡淡的一层换成另一层，不经过白纸 */
-const SWAP_FLOOR = 0.2;
 /** 淡入的子白板从 1.03 倍缩到 1（出来时淡出的子白板放大到 1.03），绕视口中心 */
 const ZOOM = 1.03;
 /** 宿主一直没换白板也没回（出错、重载了）就把动画收回来；说了换不了时马上收（switched） */
@@ -208,11 +205,8 @@ function morphIn(frame: string, name: string) {
     t.hidden.push(src);
   }
   t.out =
-    world?.animate([{ opacity: 1 }, { opacity: SWAP_FLOOR }], {
-      duration: ms * 0.6,
-      easing: "ease-in",
-      fill: "forwards",
-    }) ?? null;
+    world?.animate([{ opacity: 1 }, { opacity: 0 }], { duration: ms * 0.6, easing: "ease-in", fill: "forwards" }) ??
+    null;
   start(t);
 }
 
@@ -256,7 +250,7 @@ function morphOut(board: string, frame: string) {
     world?.animate(
       [
         { opacity: 1, scale: "1", translate: "0px 0px" },
-        { opacity: SWAP_FLOOR, scale: String(ZOOM), translate: zoomAround(ZOOM) },
+        { opacity: 0, scale: String(ZOOM), translate: zoomAround(ZOOM) },
       ],
       { duration: ms * 0.65, easing: "ease-in", fill: "forwards" },
     ) ?? null;
@@ -276,18 +270,10 @@ function start(t: Transit) {
     if (transit === t && !t.gated) giveUp(t);
   }, GIVE_UP);
 }
-/** 宿主没换白板：淡出的白板从它淡到的地方淡回来，名字回到原处 */
+/** 宿主没换白板：淡出的白板淡回来，名字回到原处 */
 function giveUp(t: Transit) {
   transit = null;
-  const world = worldEl(),
-    now = world ? getComputedStyle(world) : null;
-  world?.animate(
-    [
-      { opacity: now?.opacity ?? SWAP_FLOOR, scale: now?.scale ?? "1", translate: now?.translate ?? "0px 0px" },
-      { opacity: 1, scale: "1", translate: "0px 0px" },
-    ],
-    { duration: FADE_IN_MIN * animScale(), easing: EASE_OUT },
-  );
+  worldEl()?.animate([{ opacity: 0 }, { opacity: 1 }], { duration: FADE_IN_MIN * animScale(), easing: EASE_OUT });
   t.out?.cancel();
   t.navOut?.cancel();
   finish(t);
@@ -332,12 +318,12 @@ export function boardShown() {
   const fadeIn = t.enter
     ? world?.animate(
         [
-          { opacity: SWAP_FLOOR, scale: String(ZOOM), translate: zoomAround(ZOOM) },
+          { opacity: 0, scale: String(ZOOM), translate: zoomAround(ZOOM) },
           { opacity: 1, scale: "1", translate: "0px 0px" },
         ],
         { duration: left, easing: EASE_OUT },
       )
-    : world?.animate([{ opacity: SWAP_FLOOR }, { opacity: 1 }], { duration: left, easing: EASE_OUT });
+    : world?.animate([{ opacity: 0 }, { opacity: 1 }], { duration: left, easing: EASE_OUT });
   t.out?.cancel();
   // 面包屑：新的一组淡入（进去时本来就在的那一组不动，只多出一格），「当前」那一格等名字飞到了再出来
   t.navOut?.cancel();
