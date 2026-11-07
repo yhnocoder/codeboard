@@ -110,6 +110,35 @@ fn embedding_server(fail_first: usize) -> (String, Asked) {
     (base, asked)
 }
 
+/// Ends the whole test run with the service's log when a test is still going after a minute and a half, so a hang shows
+/// what the service was doing instead of running into the job's timeout. Dropping the guard disarms it
+struct Watchdog(Arc<std::sync::atomic::AtomicBool>);
+impl Drop for Watchdog {
+    fn drop(&mut self) {
+        self.0.store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+fn watchdog(name: &'static str, p: &paths::Paths) -> Watchdog {
+    let done = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let d = done.clone();
+    let log = p.log.clone();
+    std::thread::spawn(move || {
+        let until = std::time::Instant::now() + Duration::from_secs(90);
+        while std::time::Instant::now() < until {
+            if d.load(std::sync::atomic::Ordering::SeqCst) {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        }
+        eprintln!(
+            "{name} still running after 90 s; the service's log:\n{}",
+            std::fs::read_to_string(&log).unwrap_or_default()
+        );
+        std::process::exit(101);
+    });
+    Watchdog(done)
+}
+
 struct Client {
     r: BufReader<Stream>,
     n: u64,
@@ -121,7 +150,7 @@ impl Client {
         let s = loop {
             match Stream::connect(name.clone()) {
                 Ok(s) => break s,
-                // a poll, not a spin: spinning starves the service threads on a busy machine (macOS runners)
+                // a poll, not a spin
                 Err(_) => std::thread::sleep(Duration::from_millis(5)),
             }
         };
@@ -153,8 +182,7 @@ impl Client {
             if !s["indexing"].as_bool().unwrap() {
                 return s;
             }
-            // a poll, not a spin: each status takes the lock the indexing job needs to write, and a spinning client
-            // kept it from ever getting it on macOS runners
+            // a poll, not a spin: each status takes the lock the indexing job also needs
             std::thread::sleep(Duration::from_millis(5));
         }
     }
@@ -178,6 +206,7 @@ fn sync_search_and_switching_refs_over_the_socket() {
     let home = std::env::temp_dir().join(format!("box-protocol-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&home);
     let p = paths::paths(&home);
+    let _watch = watchdog("sync_search_and_switching_refs_over_the_socket", &p);
     let h2 = home.clone();
     let svc = std::thread::spawn(move || service::serve(paths::paths(&h2), Duration::from_millis(300)).unwrap());
     let (base, asked) = embedding_server(0);
@@ -310,6 +339,7 @@ fn indexing_recovers_by_itself_after_the_embedding_server_fails() {
     let home = std::env::temp_dir().join(format!("box-retry-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&home);
     let p = paths::paths(&home);
+    let _watch = watchdog("indexing_recovers_by_itself_after_the_embedding_server_fails", &p);
     let h2 = home.clone();
     let svc = std::thread::spawn(move || service::serve(paths::paths(&h2), Duration::from_millis(300)).unwrap());
     // the first two embedding requests fail, as while the server restarts
@@ -350,6 +380,10 @@ fn one_refused_image_is_skipped_and_a_server_without_images_is_found_out() {
     let home = std::env::temp_dir().join(format!("box-images-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&home);
     let p = paths::paths(&home);
+    let _watch = watchdog(
+        "one_refused_image_is_skipped_and_a_server_without_images_is_found_out",
+        &p,
+    );
     let h2 = home.clone();
     let svc = std::thread::spawn(move || service::serve(paths::paths(&h2), Duration::from_millis(300)).unwrap());
     let (base, asked) = embedding_server(0);
@@ -396,6 +430,7 @@ fn forget_while_indexing_then_sync_leaves_one_right_index() {
     let home = std::env::temp_dir().join(format!("box-forget-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&home);
     let p = paths::paths(&home);
+    let _watch = watchdog("forget_while_indexing_then_sync_leaves_one_right_index", &p);
     let h2 = home.clone();
     let svc = std::thread::spawn(move || service::serve(paths::paths(&h2), Duration::from_millis(300)).unwrap());
     let (base, _asked) = embedding_server(0);
