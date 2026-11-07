@@ -1242,6 +1242,8 @@ test("sectionTidyUp", async () => {
   b.place.n1.y = 550;
   // an unselected Note where S2 would go: Tidy Up keeps clear of it
   put(b, { id: "n3", kind: "note", look: "note", md: "# Beside\n\nNot selected." } as NoteCard, 720, 100, 260);
+  // and one S1 already touches where it starts (real boards have those): it does not push the blocks away
+  put(b, { id: "n4", kind: "note", look: "note", md: "# Below\n\nTouching S1." } as NoteCard, 120, 812, 260);
   const h = await open({ board: b, light, w: 1600, h: 1000 });
   await idle(h);
   const inside = (bd: Board) => {
@@ -1270,6 +1272,7 @@ test("sectionTidyUp", async () => {
   const clear = (a: DOMRect, c: DOMRect) =>
     a.right <= c.left || c.right <= a.left || a.bottom <= c.top || c.bottom <= a.top;
   const apart = clear(frames[0], frames[1]) && clear(frames[0], frames[2]) && clear(frames[1], frames[2]);
+  const onScreen = frames.slice(0, 2).every((f) => f.left >= 0 && f.right <= 1600);
   const off1 = inside(h.board());
   const loose = h.board().place.n2;
   await h.page.keyboard.press("ControlOrMeta+z");
@@ -1279,9 +1282,9 @@ test("sectionTidyUp", async () => {
     () => JSON.stringify({ s: h.board().sections, p: h.board().place }) === before,
   );
   check(
-    "sectionTidyUp the Sections are laid out apart and clear of the unselected Note, each with its cards, the loose card stays",
-    apart && off0.join() === off1.join() && loose.x === 1320 && loose.y === 110,
-    { frames, off0, off1, loose },
+    "sectionTidyUp the Sections are laid out apart, clear of the unselected Note and near where they were, each with its cards, the loose card stays",
+    apart && onScreen && off0.join() === off1.join() && loose.x === 1320 && loose.y === 110,
+    { frames, onScreen, off0, off1, loose },
   );
   await close(h);
 });
