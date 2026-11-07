@@ -203,9 +203,10 @@ export type Walk = {
   expanded: string[];
 };
 export const [walk, setWalk] = boardSignal<Walk | null>(null);
-export const [paletteOpen, setPaletteOpen] = createSignal<false | { mode: "all" | "code" | "entry"; q?: string }>(
-  false,
-);
+/** here: only this board's cards and sidenotes (⌘F; ⌘K searches every board) */
+export const [paletteOpen, setPaletteOpen] = createSignal<
+  false | { mode: "all" | "code" | "entry"; q?: string; here?: boolean }
+>(false);
 export const [keysOpen, setKeysOpen] = createSignal(false);
 // Settings 页（整窗）；section = 打开时滚到哪一节
 export const [settingsOpen, setSettingsOpen] = createSignal<false | { section?: string }>(false);
