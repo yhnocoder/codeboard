@@ -275,14 +275,18 @@ function PvCard(p: {
           when={d()}
           fallback={<div class="pload">{d() === null ? "This card is no longer on the board." : "Loading…"}</div>}
         >
-          {(r) => <PvContent data={r()} sk={p.sk} />}
+          {(r) => <PvContent data={r()} t={p.sk.t} />}
         </Show>
       </div>
     </div>
   );
 }
 
-function PvContent(p: { data: SubCard; sk: SkelCard }) {
+/**
+ * A card's content read-only, as a preview shows it (here and on the Shelf, ui/ShelfPanel.tsx); t = its title, an image's caption;
+ * lines = how many lines of code at most (CODE_LINES)
+ */
+export function PvContent(p: { data: SubCard; t: string; lines?: number }) {
   const c = () => p.data.card;
   return (
     <>
@@ -292,7 +296,7 @@ function PvContent(p: { data: SubCard; sk: SkelCard }) {
           case "note":
             return <MdStatic src={k.md} class={`pmd${hidesHeading(k) ? " hidehead" : ""}`} />;
           case "code":
-            return <CodeLines card={k} views={p.data.views} />;
+            return <CodeLines card={k} views={p.data.views} lines={p.lines} />;
           case "compare":
             return (
               <For each={p.data.cols ?? []}>
@@ -301,7 +305,7 @@ function PvContent(p: { data: SubCard; sk: SkelCard }) {
                     <div class="pcol">
                       {col.title || (isCode(col) ? col.segments[0]?.scope || col.segments[0]?.path : "") || "Column"}
                     </div>
-                    {isCode(col) ? <CodeLines card={col} views={p.data.views} /> : null}
+                    {isCode(col) ? <CodeLines card={col} views={p.data.views} lines={p.lines} /> : null}
                   </>
                 )}
               </For>
@@ -309,9 +313,9 @@ function PvContent(p: { data: SubCard; sk: SkelCard }) {
           case "image":
             return (
               <>
-                <img class="pimg" src={assetSrc(k.src)} alt={p.sk.t} draggable={false} />
-                <Show when={p.sk.t}>
-                  <div class="cap">{p.sk.t}</div>
+                <img class="pimg" src={assetSrc(k.src)} alt={p.t} draggable={false} />
+                <Show when={p.t}>
+                  <div class="cap">{p.t}</div>
                 </Show>
               </>
             );
@@ -335,7 +339,7 @@ function PvContent(p: { data: SubCard; sk: SkelCard }) {
             return (
               <div class="pweb">
                 <b>Sub-board</b>
-                <p>{p.sk.t}</p>
+                <p>{p.t}</p>
               </div>
             );
           default:
@@ -347,13 +351,14 @@ function PvContent(p: { data: SubCard; sk: SkelCard }) {
 }
 
 /** 代码卡的前几行，按宿主给的高亮（没有就是原文） */
-function CodeLines(p: { card: Extract<Card, { kind: "code" }>; views: SubCard["views"] }) {
+function CodeLines(p: { card: Extract<Card, { kind: "code" }>; views: SubCard["views"]; lines?: number }) {
   const html = () => {
     const out: string[] = [];
+    const most = p.lines ?? CODE_LINES;
     for (const s of p.card.segments) {
       const v = p.views[s.id];
-      for (let i = 0; i < s.text.length && out.length < CODE_LINES; i++) out.push(v?.html[i] ?? escHtml(s.text[i]));
-      if (out.length >= CODE_LINES) break;
+      for (let i = 0; i < s.text.length && out.length < most; i++) out.push(v?.html[i] ?? escHtml(s.text[i]));
+      if (out.length >= most) break;
     }
     return out.join("\n");
   };
