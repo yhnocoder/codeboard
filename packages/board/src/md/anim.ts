@@ -460,6 +460,10 @@ class SvgPlayer extends Player {
   private hold = 0;
   private markup = "";
   private th: Thumbs | null = null;
+  /** Standing still with its CSS animations cancelled (freeze), on time t; the elements' own style attributes, to give back */
+  private frozen = false;
+  private t = 0;
+  private styles = new Map<Element, string | null>();
 
   constructor(key: AnimKey, img: HTMLImageElement, box: HTMLElement, handoff?: Handoff) {
     super(key, img, box, handoff);
@@ -501,11 +505,15 @@ class SvgPlayer extends Player {
   }
   private timeOf = (i: number) => ((i + this.hold) * this.cycle) / this.count();
   private now() {
+    if (this.frozen) return this.t;
     const a = this.anims[0];
     const t = a ? Number(a.currentTime ?? 0) : this.smil && this.svg ? this.svg.getCurrentTime() * 1000 : 0;
     return ((t % this.cycle) + this.cycle) % this.cycle;
   }
+  /** Stands still on time t: paused there, and frozen (below) unless it plays */
   private at(t: number) {
+    this.t = t;
+    this.thaw();
     for (const a of this.anims) {
       a.pause();
       a.currentTime = t;
@@ -514,6 +522,32 @@ class SvgPlayer extends Player {
       this.svg.pauseAnimations();
       this.svg.setCurrentTime(t / 1000);
     }
+    if (!this.live) this.freeze();
+  }
+  /** Standing still, the CSS animations' values at the time it stands on are written into the style of the elements they move
+   *  and the animations are cancelled: a paused animation of a transform keeps its element a compositor layer, rastered at the
+   *  scale it was first drawn at whatever the zoom (a frozen SVG shown at 0.35 kept layers rastered at 1.0) */
+  private freeze() {
+    if (this.frozen) return;
+    this.frozen = true;
+    for (const a of this.anims) {
+      const el = (a.effect as KeyframeEffect | null)?.target;
+      if (el && !this.styles.has(el)) this.styles.set(el, el.getAttribute("style"));
+      try {
+        a.commitStyles();
+      } catch {
+        /* not rendered: nothing to keep */
+      }
+      a.cancel();
+    }
+  }
+  /** Gives the elements their own style back and the animations their time, paused there */
+  private thaw() {
+    if (!this.frozen) return;
+    this.frozen = false;
+    for (const [el, st] of this.styles) st === null ? el.removeAttribute("style") : el.setAttribute("style", st);
+    this.styles.clear();
+    for (const a of this.anims) a.currentTime = this.t;
   }
   protected show(i: number) {
     this.at(this.timeOf(i));
@@ -524,12 +558,18 @@ class SvgPlayer extends Player {
     if (i !== this.frame()) this.setFrame(i);
   }
   protected start() {
+    this.thaw();
     for (const a of this.anims) a.play();
     if (this.smil) this.svg?.unpauseAnimations();
   }
   protected stop() {
+    if (this.frozen) return;
     for (const a of this.anims) a.pause();
     if (this.smil) this.svg?.pauseAnimations();
+    if (this.anims.length && !this.dead) {
+      this.t = this.now();
+      this.freeze();
+    }
   }
   protected passOn() {
     return { time: this.svg ? this.now() : undefined };
@@ -553,10 +593,20 @@ class SvgPlayer extends Player {
     return this.th;
   }
   thumbsShown() {
-    if (!this.smil || !this.th) return;
+    if (!this.th) return;
     this.th.els.forEach((d, i) => {
       const s = d.shadowRoot?.querySelector("svg");
       if (!s?.isConnected) return;
+      // a still's CSS animations, paused on its step, written into its elements and cancelled, as the image's own (freeze)
+      for (const a of d.shadowRoot!.getAnimations()) {
+        try {
+          a.commitStyles();
+        } catch {
+          continue;
+        }
+        a.cancel();
+      }
+      if (!this.smil) return;
       s.pauseAnimations();
       s.setCurrentTime(this.timeOf(i) / 1000);
     });

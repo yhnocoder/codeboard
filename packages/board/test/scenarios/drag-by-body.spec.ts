@@ -10,6 +10,7 @@ import { emptyBoard, type Board, type CodeCard, type NoteCard } from "@codeboard
 import type { Page } from "playwright-core";
 import { put, findSym, symCard, shot, type Host } from "../harness";
 import { test, open, check, light, until, idle, frames } from "../fixtures";
+import { watch } from "../watch";
 
 const CODE = ["def f(x):", "    y = x + 1", "    return y"];
 
@@ -430,4 +431,48 @@ test("clickSelectsWithoutLift", async () => {
     },
   );
   await h.close();
+});
+
+/**
+ * A card drag, watched frame by frame (watch.ts) in Warm Ink and Ink Wash: the lift, the moves (each a frame of its own, the card
+ * and its arrows following the pointer) and the drop. The other cards stay where they are in every frame, the dropped card lands
+ * without a jump, nothing flashes
+ */
+test("dragWatched", async () => {
+  for (const theme of ["warm-ink", "ink-wash"]) {
+    const b = emptyBoard("b1", "drag watched");
+    for (let i = 0; i < 3; i++)
+      put(
+        b,
+        { id: `n${i}`, kind: "note", look: "note", md: `## Note ${i}\n\nwords ${i}` } as NoteCard,
+        80 + i * 340,
+        80,
+        300,
+      );
+    b.links.push({ id: "L1", from: { card: "n0" }, to: { card: "n1" } } as never);
+    b.cam = { x: 0, y: 0, z: 1 };
+    const h = await open({ board: b, light, w: 1200, h: 700, settings: { theme } as never });
+    const pg = h.page;
+    await idle(h);
+    const box = (await pg.locator('.card[data-id="n0"] .chead').boundingBox())!;
+    const x = box.x + 40,
+      y = box.y + box.height / 2;
+    await pg.mouse.move(x, y);
+    const carried = ["card:n0", /^link:/];
+    await watch(
+      h,
+      `dragWatched ${theme} lift`,
+      { free: carried, keep: ['.card[data-id="n0"]'], frames: 16 },
+      async () => {
+        await pg.mouse.down();
+        for (let i = 1; i <= 4; i++) await pg.mouse.move(x + i * 12, y + i * 14);
+      },
+    );
+    await watch(h, `dragWatched ${theme} drop`, { moves: carried, keep: ['.card[data-id="n0"]'], frames: 32 }, () =>
+      pg.mouse.up(),
+    );
+    await idle(h);
+    check(`dragWatched ${theme} the card moved`, h.board().place.n0.y > 100, h.board().place.n0);
+    await h.close();
+  }
 });

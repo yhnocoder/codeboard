@@ -94,8 +94,8 @@ function foldBox(f: Fold, r: Rect): Rect {
 }
 const foldY = (f: Fold, y: number) => lerp(f.shut.y + f.shut.h / 2, y, smooth(0, 1, f.v));
 
-/** 在折叠的 Section 里时是那个标题条 */
-export function endRect(id: string): { r: Rect; pill: boolean } | null {
+/** 在折叠的 Section 里时是那个标题条。still：正在弹出的卡按它落定的地方算（不加弹出的位移） */
+export function endRect(id: string, still = false): { r: Rect; pill: boolean } | null {
   const f = cardById(id);
   if (!f) return null;
   const home = collapsedHome(placeOf(f.host.id).section);
@@ -104,7 +104,7 @@ export function endRect(id: string): { r: Rect; pill: boolean } | null {
     return r ? { r, pill: true } : null;
   }
   const r = rectOf(f.host);
-  const pi = popOf(f.host.id);
+  const pi = still ? undefined : popOf(f.host.id);
   const base = pi ? { ...r, x: r.x + (1 - pi.v) * pi.ox, y: r.y + (1 - pi.v) * pi.oy } : r;
   const g = geo[id];
   if (f.host.id !== id && g?.colX !== undefined)
@@ -129,14 +129,23 @@ type End = {
   card: string;
   pill: boolean;
 };
-type Base = { a: End; b: End; kind: "normal" | "self" | "gutter"; gx?: number };
+/** rest：一端的卡正在弹出（popCard / popAlong，不是 slideFrom 的滑动）时，两端都落定后的样子。摆法（哪一侧）和要不要绕开卡
+ *  按它定，弹出的这几帧里线只跟着端点平滑地动，不会因为半路上的卡挡着、叠着而换一种走法（Ink Wash 展开调用时一帧跳 50px） */
+type Base = { a: End; b: End; kind: "normal" | "self" | "gutter"; gx?: number; rest?: Base };
 
 /** 连着一行 / Note 的一块（不是整张卡）：只从左右两边进出 */
 export const subEnd = (e: Link["from"]) => e.line !== undefined || !!e.block;
 
-/** moving：这一端的卡在正在折叠、展开的 Section 里时跟着动（外面连进来的线；两端都在里面的线整条缩放，不动端点） */
-function endOf(e: Link["from"], moving = true): End | null {
-  const er = endRect(e.card);
+/** 这一端的卡正在弹出（不是滑过去） */
+const popping = (e: Link["from"]) => {
+  const f = cardById(e.card),
+    pi = f && popOf(f.host.id);
+  return !!pi && !pi.slide;
+};
+/** moving：这一端的卡在正在折叠、展开的 Section 里时跟着动（外面连进来的线；两端都在里面的线整条缩放，不动端点）。
+ *  still：正在弹出的卡按落定的地方算（Base.rest） */
+function endOf(e: Link["from"], moving = true, still = false): End | null {
+  const er = endRect(e.card, still);
   if (!er) return null;
   const f = cardById(e.card)!;
   const r = er.r;
@@ -152,7 +161,7 @@ function endOf(e: Link["from"], moving = true): End | null {
     const p = lineY(e.card, e.seg, e.line);
     const row = p?.row !== undefined ? geo[e.card]?.rows[p.row] : undefined;
     if (p && row?.t === "line" && row.line === e.line) {
-      const pi = popOf(f.host.id);
+      const pi = still ? undefined : popOf(f.host.id);
       y = p.y + (pi ? (1 - pi.v) * pi.oy : 0);
     }
   }
@@ -163,7 +172,7 @@ function endOf(e: Link["from"], moving = true): End | null {
   let outer = r;
   if (col) {
     const h = rectOf(f.host),
-      pi = popOf(f.host.id);
+      pi = still ? undefined : popOf(f.host.id);
     outer = pi ? { ...h, x: h.x + (1 - pi.v) * pi.ox, y: h.y + (1 - pi.v) * pi.oy } : h;
   }
   const fo = moving ? foldAt(f.host.id) : undefined;
@@ -185,9 +194,19 @@ function endOf(e: Link["from"], moving = true): End | null {
 
 function baseOf(L: Link): Base | null {
   const still = !innerFold(L);
-  return baseFrom(endOf(L.from, still), endOf(L.to, still));
+  const a = endOf(L.from, still),
+    b = endOf(L.to, still);
+  const pa = popping(L.from),
+    pb = popping(L.to);
+  return baseFrom(a, b, pa || pb ? [pa ? endOf(L.from, still, true) : a, pb ? endOf(L.to, still, true) : b] : null);
 }
-function baseFrom(a: End | null, b: End | null): Base | null {
+function baseFrom(a: End | null, b: End | null, rest: [End | null, End | null] | null = null): Base | null {
+  const bs = baseOf2(a, b);
+  if (!bs || !rest) return bs;
+  const r = baseOf2(rest[0], rest[1]);
+  return r && r.kind === bs.kind ? { ...bs, rest: r } : bs;
+}
+function baseOf2(a: End | null, b: End | null): Base | null {
   if (!a || !b) return null;
   if (a.host === b.host && !a.pill) {
     // 同一张 Compare 的两栏之间、行对行：中缝的对照线
@@ -215,7 +234,8 @@ function sidesFor(L: Link, bs: Base, remember: boolean): [Side, Side] {
   }
   let auto: [Side, Side] = ["right", "left"];
   if (!((uf ?? a.col) && (ut ?? b.col))) {
-    const m = chooseMode(a.box, b.box, !a.line && !b.line, modes.get(L.id), tune("sideBuffer"));
+    const r = bs.rest ?? bs;
+    const m = chooseMode(r.a.box, r.b.box, !a.line && !b.line, modes.get(L.id), tune("sideBuffer"));
     if (remember) modes.set(L.id, m);
     auto = sidesOf(m);
   }
@@ -263,7 +283,8 @@ export const headOrCar = (k: Shape0["head"], tx: number, ty: number, ux: number,
   k === "car" ? carAt(tx, ty, ux, uy, s) : headPath(k, tx, ty, ux, uy, s);
 type Shape0 = ReturnType<typeof shape>;
 
-export function geoFrom(L: Link, bs: Base, p: Anchor, q: Anchor, merged: boolean): Geo {
+/** rest：两端落定后的端点（Base.rest 在时，makeRoute 的 rest） */
+export function geoFrom(L: Link, bs: Base, p: Anchor, q: Anchor, merged: boolean, rest?: [Anchor, Anchor] | null): Geo {
   const hd = headOf(L),
     hk = shape().head,
     s = headScale(L);
@@ -295,17 +316,18 @@ export function geoFrom(L: Link, bs: Base, p: Anchor, q: Anchor, merged: boolean
   const clear = shape().clear;
   if (bs.kind === "self") sh = selfArc(p, q, route, clear);
   else {
-    const boxes = { a: bs.a.pill ? undefined : bs.a.outer, b: bs.b.pill ? undefined : bs.b.outer };
-    sh = merged
-      ? connect(
-          p,
-          { ...q, x: q.x + q.nx * STUB, y: q.y + q.ny * STUB },
-          route,
-          { start: true, end: false },
-          boxes,
-          clear,
-        )
-      : connect(p, q, route, undefined, boxes, clear);
+    const boxesOf = (b: Base) => ({ a: b.a.pill ? undefined : b.a.outer, b: b.b.pill ? undefined : b.b.outer });
+    const stub = (q: Anchor) => (merged ? { ...q, x: q.x + q.nx * STUB, y: q.y + q.ny * STUB } : q);
+    const tilt = merged ? { start: true, end: false } : undefined;
+    let boxes: { a?: Box; b?: Box } = boxesOf(bs);
+    // 一端正在弹出：落定后不用绕开卡的线，弹出时也不绕（半路上的卡挡着、叠着时绕一下，等于一帧换一种走法）；只跟着端点动，
+    // 落定的那一帧正好就是落定后的线
+    if (bs.rest && rest) {
+      const [p0, q0] = [rest[0], stub(rest[1])];
+      if (connect(p0, q0, route, tilt, boxesOf(bs.rest), clear).d === connect(p0, q0, route, tilt, {}, clear).d)
+        boxes = {};
+    }
+    sh = connect(p, stub(q), route, tilt, boxes, clear);
   }
   return {
     d: sh.d,
@@ -323,6 +345,8 @@ export type Route = {
   base: Accessor<Base | null>;
   sides: Accessor<string>; // "right|left"；拿不到端点时 ""
   ends: Accessor<[Anchor, Anchor] | null>;
+  /** 一端的卡正在弹出时，两端落定后的端点（Base.rest）；别的时候 null */
+  rest: Accessor<[Anchor, Anchor] | null>;
   /** 汇合用的签名：同一个终点、同一侧、有没有箭头都一样的才合并；自连 / 对照线 = "" */
   sig: Accessor<string>;
   /** 画出来的几何（含合并、滑动）；trackLinks 给要画的线填上 */
@@ -358,7 +382,12 @@ export function makeRoute(L: Link): Route {
   const still = createMemo(() => !innerFold(L));
   const ea = createMemo(() => endOf(L.from, still())),
     eb = createMemo(() => endOf(L.to, still()));
-  const base = createMemo(() => baseFrom(ea(), eb()));
+  // 弹出中的那一端落定后的样子：只在弹出时算（弹出的每一帧这份不变）
+  const pa = createMemo(() => popping(L.from)),
+    pb = createMemo(() => popping(L.to));
+  const ra = createMemo(() => (pa() ? endOf(L.from, still(), true) : null)),
+    rb = createMemo(() => (pb() ? endOf(L.to, still(), true) : null));
+  const base = createMemo(() => baseFrom(ea(), eb(), pa() || pb() ? [pa() ? ra() : ea(), pb() ? rb() : eb()] : null));
   const sides = createMemo(() => {
     const bs = base();
     return bs ? sidesFor(L, bs, true).join("|") : "";
@@ -413,13 +442,18 @@ export function makeRoute(L: Link): Route {
     const was = anchorsFor(bs, m.from);
     return [slide(was[0], now[0], m.p), slide(was[1], now[1], m.p)];
   });
+  const rest = createMemo<[Anchor, Anchor] | null>(() => {
+    const bs = base(),
+      s = sides();
+    return bs?.rest && s ? anchorsFor(bs.rest, s.split("|") as [Side, Side]) : null;
+  });
   const sig = createMemo(() => {
     const bs = base(),
       s = sides();
     if (!bs || !s || bs.kind !== "normal" || handOf(L)) return ""; // 手绘线各画各的
     return `${s.split("|")[1]}|${headOf(L).end ? 1 : 0}`;
   });
-  return { L, base, sides, ends, sig };
+  return { L, base, sides, ends, rest, sig };
 }
 
 export const toKey = (L: Link) =>
@@ -431,8 +465,9 @@ function geoOf(L: Link): Geo | null {
   if (r?.L === L && r.geo) return r.geo();
   const bs = baseOf(L);
   if (!bs) return null;
-  const [p, q] = anchorsFor(bs, sidesFor(L, bs, false));
-  return geoFrom(L, bs, p, q, false);
+  const s = sidesFor(L, bs, false);
+  const [p, q] = anchorsFor(bs, s);
+  return geoFrom(L, bs, p, q, false, bs.rest ? anchorsFor(bs.rest, s) : null);
 }
 
 /** 线的三次贝塞尔控制点 [x1 y1 c1x c1y c2x c2y x2 y2]（贴纸、标签沿线走时用）；线没画出来时是 null */

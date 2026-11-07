@@ -89,8 +89,9 @@ export function deleteSel() {
   const links = new Set(sel.links);
   const secs = new Set(sel.sections);
   if (!ids.size && !links.size && !secs.size) return;
-  ghostOut(ids);
+  const unghost = ghostOut(ids);
   if (C.deleteItems(commandEnv, { cards: ids, links, sections: secs })) clearSel();
+  else unghost();
 }
 /**
  * 显示时在一张卡里选中了一段字再按 ⌫ / Delete：不删卡。Note / Text / Mark 和自由代码卡进入编辑，选上同一段，
