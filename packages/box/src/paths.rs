@@ -27,11 +27,10 @@ pub fn home() -> PathBuf {
 }
 
 pub fn paths(home: &Path) -> Paths {
-    let socket = if cfg!(windows) {
-        format!(r"\\.\pipe\{}", pipe_name(home))
-    } else {
-        home.join("box.sock").to_string_lossy().into_owned()
-    };
+    #[cfg(windows)]
+    let socket = format!(r"\\.\pipe\{}", pipe_name(home));
+    #[cfg(not(windows))]
+    let socket = home.join("box.sock").to_string_lossy().into_owned();
     Paths {
         home: home.to_path_buf(),
         db: home.join("index.db"),
@@ -42,8 +41,28 @@ pub fn paths(home: &Path) -> Paths {
     }
 }
 
-/// The named pipe of a data folder (Windows)
-pub fn pipe_name(home: &Path) -> String {
-    let h = blake3::hash(home.to_string_lossy().as_bytes()).to_hex();
-    format!("codeboard-box-{}", &h[..16])
+/// The named pipe of a data folder (Windows): a random name made once and kept in the data folder (only the user can read
+/// it), so another user of the machine can neither guess it nor take it first
+#[cfg(windows)]
+fn pipe_name(home: &Path) -> String {
+    use std::io::Write;
+    let file = home.join("pipe");
+    let read = || {
+        std::fs::read_to_string(&file)
+            .ok()
+            .map(|s| s.trim().to_string())
+            .filter(|s| s.len() >= 32)
+    };
+    if let Some(s) = read() {
+        return format!("codeboard-box-{s}");
+    }
+    let _ = std::fs::create_dir_all(home);
+    let mut b = [0u8; 16];
+    let _ = getrandom::fill(&mut b);
+    let made: String = b.iter().map(|x| format!("{x:02x}")).collect();
+    // two starting at once: the first one written wins
+    if let Ok(mut f) = std::fs::OpenOptions::new().write(true).create_new(true).open(&file) {
+        let _ = f.write_all(made.as_bytes());
+    }
+    format!("codeboard-box-{}", read().unwrap_or(made))
 }

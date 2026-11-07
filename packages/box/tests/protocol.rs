@@ -172,6 +172,14 @@ fn sync_search_and_switching_refs_over_the_socket() {
     assert!(v["error"].as_str().unwrap().contains("hello"));
     let mut bad = Client::connect(&p);
     assert!(bad.ask("hello", json!({ "token": "nope" }))["error"].is_string());
+    // before hello a line is at most 64 KB: a longer one is answered with an error and the connection ends
+    let mut big = Client::connect(&p);
+    big.r.get_mut().write_all(&vec![b'x'; 70 << 10]).unwrap();
+    let mut line = String::new();
+    big.r.read_line(&mut line).unwrap();
+    assert!(line.contains("request over 65536 bytes"), "{line}");
+    line.clear();
+    assert_eq!(big.r.read_line(&mut line).unwrap(), 0);
     let token = std::fs::read_to_string(&p.token).unwrap();
     #[cfg(unix)]
     {

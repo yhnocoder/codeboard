@@ -12,7 +12,7 @@ use interprocess::local_socket::{ListenerNonblockingMode, ListenerOptions, prelu
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, Instant};
@@ -28,6 +28,10 @@ const QUERY_CACHE: usize = 64;
 const TOUCH_EVERY: i64 = 3600;
 /// How often the listener looks for a new connection, and for being idle
 const ACCEPT_POLL: Duration = Duration::from_millis(25);
+/// The longest line read before hello (a connection that has not said the token yet)
+const HELLO_LINE_MAX: u64 = 64 << 10;
+/// The longest request (a sync of a large project with its images is the biggest)
+const LINE_MAX: u64 = 512 << 20;
 /// After a failed indexing run, the first pause before it runs again; it doubles up to RETRY_MAX
 const RETRY_FIRST: Duration = Duration::from_secs(1);
 const RETRY_MAX: Duration = Duration::from_secs(60);
@@ -202,6 +206,15 @@ pub fn serve(paths: Paths, idle: Duration) -> std::io::Result<Outcome> {
         use interprocess::os::unix::local_socket::ListenerOptionsExt;
         opts.mode(0o600)
     };
+    // Windows: only the user who started the service may open the pipe (the owner; no one else, not even other admins'
+    // default access)
+    #[cfg(windows)]
+    let opts = {
+        use interprocess::os::windows::{local_socket::ListenerOptionsExt, security_descriptor::SecurityDescriptor};
+        let sddl =
+            widestring::U16CString::from_str("D:P(A;;GA;;;OW)").map_err(|e| std::io::Error::other(e.to_string()))?;
+        opts.security_descriptor(SecurityDescriptor::deserialize(&sddl)?)
+    };
     let listener = opts.create_sync()?;
     let mut quiet_since = Instant::now();
     let mut gc_at = Instant::now();
@@ -243,7 +256,11 @@ pub fn socket_name(paths: &Paths) -> std::io::Result<interprocess::local_socket:
     #[cfg(windows)]
     {
         use interprocess::local_socket::{GenericNamespaced, ToNsName};
-        crate::paths::pipe_name(&paths.home).to_ns_name::<GenericNamespaced>()
+        paths
+            .socket
+            .trim_start_matches(r"\\.\pipe\")
+            .to_string()
+            .to_ns_name::<GenericNamespaced>()
     }
     #[cfg(not(windows))]
     {
@@ -365,8 +382,17 @@ impl Service {
         let mut hello = false;
         loop {
             line.clear();
-            match reader.read_line(&mut line) {
+            let cap = if hello { LINE_MAX } else { HELLO_LINE_MAX };
+            match (&mut reader).take(cap + 1).read_line(&mut line) {
                 Ok(0) | Err(_) => return,
+                Ok(n) if n as u64 > cap => {
+                    let _ = writeln!(
+                        writer,
+                        "{}",
+                        json!({ "id": null, "error": format!("request over {cap} bytes") })
+                    );
+                    return;
+                }
                 Ok(_) => {}
             }
             let req: Value = match serde_json::from_str(&line) {

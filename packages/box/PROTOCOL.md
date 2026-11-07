@@ -2,12 +2,14 @@
 
 One service per user and data folder (`BOX_HOME`, else the platform's local data folder + `codeboard-box/`; `box home` prints the paths
 as JSON). It listens on a local socket only: `<home>/box.sock` (mode 0600) on macOS and Linux, the named pipe
-`\\.\pipe\codeboard-box-<hash of home>` on Windows. No TCP port. `box serve [--idle <seconds>]` runs it; a second one for the same folder
+`\\.\pipe\codeboard-box-<random>` on Windows (the random part made once and kept in `<home>/pipe`; the pipe's DACL lets
+only its owner, the user who started the service, open it). No TCP port. `box serve [--idle <seconds>]` runs it; a second one for the same folder
 exits at once (lock file), and it exits after 10 minutes without connections.
 
 Requests and answers are lines of JSON. A request is `{"id": <any>, "op": "<op>", ...fields}`; its answer is
 `{"id": <same>, "result": {...}}` or `{"id": <same>, "error": "<message>"}`. The first request on a connection must be `hello`
-with the token from `<home>/token` (mode 0600); anything else, or a wrong token, ends the connection.
+with the token from `<home>/token` (mode 0600); anything else, or a wrong token, ends the connection. A line is at most
+64 KB before hello and 512 MB after it; a longer one is answered with an error and ends the connection.
 
 ## hello
 

@@ -26,6 +26,9 @@ serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1.0.154", features = ["raw_value"] }
 ureq = "3.5.1"
 
+[target.'cfg(windows)'.dependencies]
+widestring = "1"
+
 [profile.release]
 lto = "thin"
 codegen-units = 4
