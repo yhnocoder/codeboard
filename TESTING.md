@@ -31,6 +31,16 @@
 
 harness 场景是 Playwright Test 的测试（`packages/board/test/scenarios/*.spec.ts`，配置在 `packages/board/playwright.config.ts`）。`check(名字, 条件, 细节…)` 不成立、`expect` 不成立、抛异常、超时，都算失败，CI 会变红。`check` 不成立时场景接着跑完，最后一起算失败（`expect.soft`）。白板自检（`dangling references`）和宿主收到的每个版本过不了 schema 也是失败。每个场景结束时还查一次资源预算（`fixtures.ts` 的 `budgets`，`packages/board/test/probes.ts`）：屏幕上哪张图解码的像素超过它显示的设备像素 6 倍（`IMAGE_BUDGET`，按它在这个页面里被放大到过的最大倍数算，因为图只往大换），就是失败（`image-budget`）；节点、卡、KaTeX、解码的百万像素这些计数只写进场景的 annotations，不设预算。
 
+**动作探针**（`packages/board/test/watch.ts` 的 `watch(h, 名字, 选项, 动作)`，判定是 `probes.ts` 里的纯函数，单元测试在 `test/unit/probes.test.ts`）：把场景里的一个动作包起来逐帧录下来。页面时钟停住（`pauseClock`），文档时间线冻结（CDP `Animation.setPlaybackRate` 0），每一帧先让宿主的回复到达，再把所有 Web Animation 和 CSS 过渡往前推一帧（16 ms，到头的照常结束、发事件），再走页面时钟的一帧（requestAnimationFrame），然后截图、读一遍页面。帧和机器快慢无关，每次都一样。判四样，任一样有就是失败，检查名是「名字 + 哪一样」，所以 `known` 能点名一条：
+- `flash`：一块格子（8 px，再分四个 4 px 的小块比）本来静止，变了 1–3 帧又变回原样并停住——东西闪了一下（#151 那种 Ink Wash 纸面缺一帧）。动了的卡、箭头、正在动画移动的元素和 `ignore` 选择器盖住的地方不判；镜头在动的帧也不判（整个世界都在动，滑过的字看着像闪），这时靠下面的 jump 按世界坐标判。
+- `moved` / `jumped`：每帧读卡、Section、箭头（世界坐标）、`chrome` 和 `follow` 选择器的框。`moves` 里没写的必须一直在原地、原大小（差 0.5 px 以上就算，世界坐标按当帧的缩放换成屏幕像素：镜头动它不算动）；写了的可以动，但不能有一步比前后两步长 3 倍以上（跳一下再落定）；`free` 是跟着指针走的（拖着的卡），步子随指针。`handoff`：同样的字从一个元素交给一个新元素（飞出去的标题接过面包屑），新的那份大小差 0.5 px 以上（#169：副本比面包屑小 2 %）；只看动作后的头两帧（副本是在动作那一刻接过去的；后面落地是哪一帧，看真宿主的消息什么时候到，每次不一样）。
+- `vanish`：`keep` 里的选择器动作前看得见、某一帧看不见了。
+- `twice`：同样的字、差不多的字号，两份叠在一起，动作前和最后一帧都没有、只在中间出现（#169：离开子白板时面包屑和它的副本同时显示了几帧）。字号差很多的变形（标题滑成正文的大标题）不算。
+
+失败时帧写在 `test-out/harness/watch-<名字>/`。帧数按动作要多久给（默认 20 帧），每帧约 40 ms 场景时间。用在 `subboardEnterLeaveWatched`、`expandCallWatched`、`dragWatched`、`sectionFoldWatched`、`noteEditWatched`、`summaryCutWatched`、`highlightWatched`。headless Chromium 截图时会等图片解码完，所以 #151 那种「新图还没解码、缺一帧」在这里录不到，`noteEditWatched` 的 grow 只守其它的闪。
+
+**一致性矩阵**（`cardKindsConsistent`，`scenarios/card-kinds.spec.ts`，判定是 `probes.ts` 的 `styleHits`）：一块白板上每种卡各一张（代码、Free code、Note、Text、图片、Web、子白板卡）加一个 Section，在 Warm Ink 和 Ink Wash 的亮色、暗色下读共有部件的计算样式（圆角和 corner-shape、边框、边、阴影、纸、底色、卡头的线和底色、标题字体和颜色、选中时的环）。同一主题里，哪种卡和多数卡不一样就失败，除非写在文件里的 `ALLOW`，每条带一行理由（比如「Notes keep their header line: Linda 11-03」）；一条 `ALLOW` 什么都没放过也算失败，所以名单一直是现在的样子。真的不该有的差别不进 `ALLOW`，进 `tiers.json` 的 `known`，写清楚是什么。
+
 `tools/test/harness.mjs` 分两轮调 Playwright：先在几个 worker 上一起跑，再一个一个单独跑。一起跑时挂了的场景会在第二轮单独再跑一次，单独跑过了就算过（报告里标"alone"）。
 
 "alone" 可能藏着只在并行负载下才出的竞态，所以它看得见、有上限：
@@ -84,4 +94,5 @@ E2E_WS=/path/to/repo E2E_FLOW=my-flow.cjs npm run e2e    # 同上，打开的是
 - 只记录、不判对错的场景放进 `tiers.json` 的 `manual`，默认不跑。
 - 场景默认开在 `open()` 的 fixture 宿主上（`harness.ts`：nano-vllm 的固定数据，粗糙的高亮、按名字找定义、编出来的新版本），测的是白板自己。要测宿主对白板做的事（存储、子白板和面包屑、共享卡、调用解析、跨语言）就用 `hostBoards()`（`fixtures.ts`，`realhost.ts`）：真的宿主（`@codeboard/host` 的 `startHost`，Node 版 Workspace，存储在临时目录），它开的每个白板是一个页面，`run.open(id)` 打开、`run.card(文件, 符号)` 按 Add Function 的做法建卡、`run.ask(…)` 不经页面问宿主；页面选项的 `settings` 是编辑器里的设置（宿主读到的 `codeboard.*`），存储里的 `assets/` 像 webview 的资源地址那样由页面去取（`run.assetBase`）。场景自己要假的只有宿主外面的东西：语言服务、文件对话框、密钥这些改 `run.ws`（Workspace 的口子）；DeepSeek 用 `deepseek.ts` 的 `fakeDeepseek`：本地起一个 HTTP 服务，把设置里的地址指过去；要改宿主的回复用 `reply`。不要再手写模仿宿主行为的消息处理。
 - 量耗时的场景见上面"怎么算失败"：量 CPU 时间或用页面时钟，不量墙钟；不要新加 `solo`。
+- 测一个动作看起来对不对（会不会闪、跳、叠字）就用 `watch()` 包住它（见上面"动作探针"）：写清楚哪些会动（`moves`、`free`），按设计会淡入淡出、交叉渐变的放进 `ignore`；不要自己逐帧截图比像素。
 - 改了很基础的东西（store、渲染）又想在本地多跑一些：`npm run check -- --all`。
