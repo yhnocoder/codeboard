@@ -4562,14 +4562,47 @@ mark.wdiff {
   border-radius: 17px;
   background: var(--surface);
 }
+.palette .prow {
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+}
 .palette .pin {
+  flex: 1 1 auto;
+  min-width: 0;
   border: 0;
   outline: none;
   background: none;
   padding: 13px 16px;
   font-size: 14px;
-  border-bottom: 1px solid var(--line);
   color: var(--ink);
+}
+/* 搜哪里：所有白板 / 只这块白板（Tab 切换） */
+.pscope {
+  flex: none;
+  display: flex;
+  gap: 2px;
+  margin-right: 10px;
+  padding: 2px;
+  border-radius: 8px;
+  background: var(--wash, var(--line));
+}
+.pscope button {
+  border: 0;
+  background: none;
+  padding: 3px 9px;
+  border-radius: 6px;
+  font: 500 11.5px var(--sys);
+  color: var(--ink-3);
+  cursor: pointer;
+  transition:
+    background calc(var(--t) * 120ms),
+    color calc(var(--t) * 120ms);
+}
+.pscope button.on {
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 0 0 1px var(--line);
 }
 .plist {
   max-height: 52vh;
