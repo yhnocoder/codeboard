@@ -43,6 +43,7 @@ const DEFAULTS: Replies = {
     ),
   skeletons: () => ({}),
   permalinks: () => ({}),
+  images: () => ({}),
   stickerPacks: () => [],
   questions: () => [],
   search: () => [],
