@@ -46,6 +46,14 @@ const EXT = 512;
 /** 正在写的字在屏幕上至少这么大（px） */
 const READ_PX = 11;
 
+/** Shown below this share of the device scale, a layer with the will-change hint keeps the scale it was rastered at when the
+ *  hint is put back (Chromium: above it, between it and the device scale, it rasters at the device scale) */
+const HINT_KEEPS = 0.25;
+/** A flight drops the hint (or rasters again under it) a little before it is shown at half the scale it was rastered at: the
+ *  raster lags the camera by a frame or two at a flight's speed, and what is rastered under the hint then is drawn further out
+ *  (at half, up to a sixth of a Fit's raster on an Ink Wash board was at over 2× the scale it was drawn at, 2–3 % at 1.8) */
+const FLY_HALF = 1.8;
+
 export function Canvas() {
   const md = useMd();
   let el!: HTMLDivElement, world!: HTMLDivElement;
@@ -87,15 +95,24 @@ export function Canvas() {
   // still 2.5. Out and back without passing 100 % costs nothing. Past the cut, with the summaries shown, the detent is behind:
   // a stop there minified past 2× is rastered again like any other, at its own scale (Chromium's own raster there was at 1.0:
   // 5× the scale shown at 0.2, the whole card level once it was kept drawn).
-  // A camera flight that zooms out (Fit to Window, a reveal, the zoom keys) takes the hint off as soon as it is shown at half
-  // its raster scale, until it stops: under the hint every tile that comes into view on the way is rastered at the scale the
-  // flight started from (Fit from 100 % on a board of 40 dense Notes: 43–77 viewports, 31–73 of them at over 2× the scale
-  // shown, the links and cards layer at 1.0 while shown at 0.16–0.5), without it at the scale of its frame (35–40 viewports,
-  // 3–4 over 2×; the frames no longer than before). A wheel, a drag or a fling that takes over puts the hint back
+  // A camera flight that zooms out (Fit to Window, a reveal, the zoom keys) takes the hint off once it is shown at about half
+  // its raster scale (FLY_HALF): under the hint every tile that comes into view on the way is rastered at the scale the flight
+  // started from (Fit from 100 % on a board of 40 dense Notes: 43–77 viewports, 31–73 of them at over 2× the scale shown, the
+  // links and cards layer at 1.0 while shown at 0.16–0.5), without it at the scale of each frame (35–40 viewports, 3–4 over
+  // 2×). Chromium rasters a layer with the hint shown between a quarter of the device scale and the device scale at the device
+  // scale, so putting the hint back there would raster the world at 1.0 again; shown below a quarter (HINT_KEEPS) the layer
+  // keeps the scale it was rastered at. So from there on the flight takes the hint off for one frame each time the scale
+  // about halves and puts it back, rastering the world a few times instead of at every frame (Fit from 100 % to 0.13: every
+  // frame from 0.55 to 0.25, then at 0.25 and 0.14; on real study boards Fit to 0.22–0.24 rastered 14–47 viewports instead of
+  // 39–66). A wheel, a drag or a fling that takes over puts the hint back. Where a flight that put the hint back stops, the
+  // world is rastered once more at the scale it stopped at: what came into view under the hint (the summaries, laid out at
+  // 1 / K and shown above a quarter) was rastered at the device scale
   const [settle, setSettle] = createSignal(false);
   let rasterZ = cam.z,
     moving = false,
-    unhinted = false;
+    unhinted = false,
+    rehinted = false,
+    pulse = 0;
   createEffect(() => {
     const m = camMoving(),
       z = cam.z;
@@ -103,14 +120,21 @@ export function Canvas() {
       if (m) {
         if (!moving) {
           moving = true;
-          unhinted = false;
+          unhinted = rehinted = false;
+          pulse++;
           setSettle(false);
         }
         const out = flyingOut();
-        if (out && (unhinted || z < rasterZ / 2)) {
-          unhinted = true;
+        if (out && (unhinted || z < rasterZ / FLY_HALF)) {
           rasterZ = z;
           setSettle(true);
+          if (z > HINT_KEEPS) unhinted = true;
+          else {
+            unhinted = false;
+            rehinted = true;
+            const k = ++pulse;
+            requestAnimationFrame(() => k === pulse && setSettle(false));
+          }
         } else if (unhinted && !out) {
           unhinted = false;
           setSettle(false);
@@ -119,8 +143,9 @@ export function Canvas() {
       }
       if (!moving) return;
       moving = false;
+      pulse++;
       const near = z <= summaryCut() * 1.3 && !cardsGone();
-      if (z > rasterZ * 1.04 || (z < rasterZ / 2 && !near)) {
+      if (z > rasterZ * 1.04 || (z < rasterZ / 2 && !near) || rehinted) {
         rasterZ = z;
         setSettle(true);
       } else if (near) rasterZ = Math.min(rasterZ, Math.max(z, 1));
@@ -132,6 +157,8 @@ export function Canvas() {
   // sharp) until it is put down. Panning keeps stillZ
   const [relift, setRelift] = createSignal(false);
   const carrying = () => carried().cards.size + carried().sections.size > 0;
+  const guideX = createMemo(() => guides().find((g) => g.axis === "x")),
+    guideY = createMemo(() => guides().find((g) => g.axis === "y"));
   createEffect(
     on(
       stillZ,
@@ -250,32 +277,36 @@ export function Canvas() {
             <WalkSteps />
           </Show>
           <Show when={A.pasteChip()}>{(p) => <PasteChip chip={p()} />}</Show>
-          <div class="guides" data-export="strip">
-            <For each={guides()}>
-              {(g) =>
-                g.axis === "x" ? (
-                  <div
-                    class="guide v"
-                    style={{
-                      left: `${g.at}px`,
-                      top: `${g.from - 8}px`,
-                      height: `${g.to - g.from + 16}px`,
-                      "border-left-width": `${1 / cam.z}px`,
-                    }}
-                  />
-                ) : (
-                  <div
-                    class="guide h"
-                    style={{
-                      top: `${g.at}px`,
-                      left: `${g.from - 8}px`,
-                      width: `${g.to - g.from + 16}px`,
-                      "border-top-width": `${1 / cam.z}px`,
-                    }}
-                  />
-                )
-              }
-            </For>
+          {/* the alignment guides: a layer of their own while a card or Section is dragged (styles.css .guides.live), so a
+              guide that shows, moves or goes repaints only that layer, not the card level's; one element per axis (snapMove
+              and snapResize give at most one each), kept while its guide stays, so an unchanged guide is not painted again */}
+          <div class="guides" classList={{ live: dragging().size > 0 || carrying() }} data-export="strip">
+            <Show when={guideX()}>
+              {(g) => (
+                <div
+                  class="guide v"
+                  style={{
+                    left: `${g().at}px`,
+                    top: `${g().from - 8}px`,
+                    height: `${g().to - g().from + 16}px`,
+                    "border-left-width": `${1 / cam.z}px`,
+                  }}
+                />
+              )}
+            </Show>
+            <Show when={guideY()}>
+              {(g) => (
+                <div
+                  class="guide h"
+                  style={{
+                    top: `${g().at}px`,
+                    left: `${g().from - 8}px`,
+                    width: `${g().to - g().from + 16}px`,
+                    "border-top-width": `${1 / cam.z}px`,
+                  }}
+                />
+              )}
+            </Show>
             <Show when={sizeHint()}>
               {(h) => (
                 <div

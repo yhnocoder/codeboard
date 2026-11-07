@@ -115,6 +115,8 @@ type Transit = {
   back?: { board: string; frame: string };
   hidden: HTMLElement[];
   navOut: Animation | null;
+  /** entering with the breadcrumb already shown (from a sub-board deeper): it stays, only the new crumb comes in */
+  navKept?: boolean;
 };
 let transit: Transit | null = null;
 /** 框上名字在屏幕上的位置，进去时记下（白板|框）：回来时镜头和进去前一模一样，名字一开始就往这里飞 */
@@ -188,6 +190,7 @@ function morphIn(frame: string, name: string) {
     hidden: [],
     navOut: null,
     to,
+    navKept: !!document.querySelector(".crumbs"),
   };
   if (src && to) {
     const from = spotOf(src);
@@ -322,12 +325,12 @@ export function boardShown() {
       )
     : world?.animate([{ opacity: 0 }, { opacity: 1 }], { duration: left, easing: EASE_OUT });
   t.out?.cancel();
-  // 面包屑：新的一组淡入，「当前」那一格等名字飞到了再出来
+  // 面包屑：新的一组淡入（进去时本来就在的那一组不动，只多出一格），「当前」那一格等名字飞到了再出来
   t.navOut?.cancel();
   const nav = document.querySelector<HTMLElement>(".crumbs");
   if (nav) {
     setCrumbMorph(!!t.ghost && t.enter);
-    nav.animate([{ opacity: 0 }, { opacity: 1 }], { duration: left, easing: "ease-out" });
+    if (!t.navKept) nav.animate([{ opacity: 0 }, { opacity: 1 }], { duration: left, easing: "ease-out" });
   }
   if (!t.enter && t.ghost && t.back && t.to) {
     const el = titleEl(t.back.frame);

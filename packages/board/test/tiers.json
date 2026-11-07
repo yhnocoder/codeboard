@@ -26,13 +26,7 @@
   ],
   "manual": ["markdownRecord", "boardMarksScreenshots", "shelfScreenshots"],
   "solo": ["markdownLazyRender"],
-  "known": {
-    "cardKindsConsistent warm-ink light selRing image": "a selected Image card without a background has no selection ring in Warm Ink (.card.nobg sets --ring: none after .card.sel, and Warm Ink's .cface ring leaves out .nobg); only its floating header shows, which a card above can cover. Ink Wash stamps its seal",
-    "cardKindsConsistent warm-ink dark selRing image": "as in light",
-    "subboardEnterLeaveWatched warm-ink enter vanish": "entering a sub-board, the breadcrumbs blink out twice: gone at the board swap, faded back in, fully shown, then gone again for 2 frames and faded in once more (leaving fades them out and in once, by design, so leave keeps no .crumbs)",
-    "subboardEnterLeaveWatched ink-wash enter vanish": "as in Warm Ink",
-    "expandCallWatched ink-wash jumped link": "Ink Wash: while an expanded call's card slides in, its call arrow switches route in one frame (a flat line through the header to a loop over the cards, 52 px), then again into its curve"
-  },
+  "known": {},
   "limits": {
     "area": 30,
     "smoke": 90,

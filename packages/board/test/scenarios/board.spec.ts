@@ -561,7 +561,9 @@ test("childArrowAnchor", async () => {
     call: { name: "load_model", col: 8 },
   });
   b.cam = { x: 0, y: 0, z: 0.7 };
-  const h = await open({ board: structuredClone(b), light, w: 1400, h: 900 });
+  // Classic draws the dot where a line starts (Warm Ink and Ink Wash do not)
+  const classic = { theme: "classic" as const };
+  const h = await open({ board: structuredClone(b), light, w: 1400, h: 900, settings: classic });
   const port = (hh: Host) =>
     hh.page
       .locator("path.port")
@@ -571,7 +573,7 @@ test("childArrowAnchor", async () => {
   await shot(h, "board-side-1");
   await close(h);
   b.links[0].sides = { from: "left" };
-  const h2 = await open({ board: structuredClone(b), light, w: 1400, h: 900 });
+  const h2 = await open({ board: structuredClone(b), light, w: 1400, h: 900, settings: classic });
   const user = await port(h2);
   await shot(h2, "board-side-2");
   await close(h2);
