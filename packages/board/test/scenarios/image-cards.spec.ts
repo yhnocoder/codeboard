@@ -3,6 +3,7 @@ import * as path from "node:path";
 import { OUT, type Host } from "../harness";
 import { emptyBoard, migrateBoard, type Board } from "@codeboard/core";
 import { test, open, check, light, until, idle } from "../fixtures";
+import { watch } from "../watch";
 
 const svg = (w: number, hgt: number, fill: string) =>
   "data:image/svg+xml," +
@@ -96,3 +97,84 @@ test("imageFollowsAspectRatio", async () => {
     { during, after, p },
   );
 });
+
+/**
+ * Deleting an Image card, watched frame by frame (watch.ts), with and without a background, by the Delete key and from its
+ * context menu, light and dark, in Warm Ink (imageDeleteWatched) and Ink Wash (imageDeleteInkWashWatched): it goes as its theme's ghost goes (fades, or disperses), and nothing
+ * flashes on the way. The ghost (state/ghost.ts) has its picture loaded the moment it is put on the page: a copy of the <img>
+ * loaded it again, async, and the first frames showed the ghost without its picture, the image blinking out and back as it
+ * started to go (Linda 11-07). Headless Chromium waits for images to decode before it captures a frame, so the frames
+ * cannot show that blink (as with #151); the ghost's pictures are checked as they are inserted instead
+ */
+for (const [scenario, theme] of [
+  ["imageDeleteWatched", "warm-ink"],
+  ["imageDeleteInkWashWatched", "ink-wash"],
+])
+  test(scenario, async () => {
+    for (const lit of [true, false]) {
+      const b: Board = emptyBoard("b1", "images");
+      const ids = ["plain", "framed", "plainMenu", "framedMenu"];
+      ids.forEach((id, i) => {
+        b.cards.push({
+          id,
+          kind: "image",
+          src: svg(320, 200, ["#e8a33d", "#3d7be8", "#5aa96b", "#c4577a"][i]),
+          ...(id.startsWith("framed") ? { bg: true } : {}),
+        } as never);
+        b.place[id] = { x: 60 + (i % 2) * 420, y: 80 + Math.floor(i / 2) * 320, w: 320 };
+      });
+      b.cards.push({ id: "n1", kind: "note", look: "note", md: "## Stays\nwords" } as never);
+      b.place.n1 = { x: 900, y: 80, w: 240 };
+      b.cam = { x: 0, y: 0, z: 1 };
+      const h = await open({ board: b, light: lit, w: 1300, h: 760, settings: { theme } as never });
+      const pg = h.page;
+      await until(h, "the images are decoded", () =>
+        pg
+          .locator(".imgb img")
+          .evaluateAll((els) =>
+            els.every((e) => (e as HTMLImageElement).complete && (e as HTMLImageElement).naturalWidth > 0),
+          ),
+      );
+      await idle(h);
+      // each ghost as it is inserted: whether its pictures are there to paint in that frame
+      await pg.evaluate(() => {
+        const w = window as unknown as { __ghosts: boolean[] };
+        w.__ghosts = [];
+        new MutationObserver((ms) => {
+          for (const m of ms)
+            for (const n of m.addedNodes)
+              if (n instanceof HTMLElement && n.classList.contains("ghost-out"))
+                w.__ghosts.push([...n.querySelectorAll("img")].every((i) => i.complete && i.naturalWidth > 0));
+        }).observe(document.body, { childList: true, subtree: true });
+      });
+      const name = `${scenario} ${lit ? "light" : "dark"}`;
+      const gone = async (id: string, how: string) => {
+        await until(h, `${id} is deleted`, () => !h.board().cards.some((c) => c.id === id));
+        await idle(h);
+        const ghosts = await pg.evaluate(() => (window as unknown as { __ghosts: boolean[] }).__ghosts.splice(0));
+        check(
+          `${name} ${id} ${how}: the ghost has its picture from its first frame`,
+          ghosts.length === 1 && ghosts[0],
+          ghosts,
+        );
+      };
+      for (const id of ["plain", "framed"]) {
+        await pg.locator(`.card[data-id="${id}"] .imgb`).click();
+        await idle(h);
+        await watch(h, `${name} ${id} key`, { frames: 24 }, () => pg.keyboard.press("Delete"));
+        await gone(id, "key");
+      }
+      for (const id of ["plainMenu", "framedMenu"]) {
+        await pg.locator(`.card[data-id="${id}"] .imgb`).click({ button: "right" });
+        await idle(h);
+        await watch(h, `${name} ${id} menu`, { frames: 24, ignore: [".ctx"] }, () =>
+          pg
+            .locator(".ctx:not(.closing) button", { hasText: /^Delete/ })
+            .first()
+            .click(),
+        );
+        await gone(id, "menu");
+      }
+      await h.close();
+    }
+  });
