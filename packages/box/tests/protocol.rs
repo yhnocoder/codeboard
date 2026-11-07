@@ -130,13 +130,28 @@ fn watchdog(name: &'static str, p: &paths::Paths) -> Watchdog {
             }
             std::thread::sleep(Duration::from_millis(100));
         }
-        eprintln!(
-            "{name} still running after 90 s; the service's log:\n{}",
+        // straight to the process's stderr: the test harness captures eprintln! in threads a test spawns and would drop
+        // it on exit
+        let _ = writeln!(
+            std::io::stderr().lock(),
+            "{name} still running after 90 s; last requests: {:?}; the service's log:\n{}",
+            LAST.lock().unwrap(),
             std::fs::read_to_string(&log).unwrap_or_default()
         );
         std::process::exit(101);
     });
     Watchdog(done)
+}
+
+/// What each connection last asked or is waiting for, for the watchdog's report
+static LAST: Mutex<Vec<String>> = Mutex::new(Vec::new());
+fn note(what: String) {
+    let mut l = LAST.lock().unwrap();
+    l.push(what);
+    let n = l.len();
+    if n > 40 {
+        l.drain(..n - 40);
+    }
 }
 
 struct Client {
@@ -147,6 +162,7 @@ struct Client {
 impl Client {
     fn connect(p: &paths::Paths) -> Client {
         let name = service::socket_name(p).unwrap();
+        note(format!("connect {}", p.socket));
         let s = loop {
             match Stream::connect(name.clone()) {
                 Ok(s) => break s,
@@ -163,9 +179,11 @@ impl Client {
         self.n += 1;
         body["id"] = json!(self.n);
         body["op"] = json!(op);
+        note(format!("ask {op}"));
         writeln!(self.r.get_mut(), "{body}").unwrap();
         let mut line = String::new();
         self.r.read_line(&mut line).unwrap();
+        note(format!("answer {op}: {}", line.chars().take(160).collect::<String>()));
         let v: Value = serde_json::from_str(&line).unwrap();
         assert_eq!(v["id"], json!(self.n));
         v
