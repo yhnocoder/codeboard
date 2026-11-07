@@ -170,6 +170,13 @@ const KEYMAP: Bind[] = [
   { id: "editorNote", show: "⌥S", label: "Add as Sidenote to selected lines (editor)", group: "Create" },
   { id: "search", keys: ["mod+k"], label: "Search", group: "View", run: () => void setPaletteOpen({ mode: "all" }) },
   {
+    id: "searchBoard",
+    keys: ["mod+f"],
+    label: "Search This Board",
+    group: "View",
+    run: () => void setPaletteOpen({ mode: "all", here: true }),
+  },
+  {
     id: "fitWindow",
     keys: ["shift+Digit1", "!"],
     show: "⇧1",
