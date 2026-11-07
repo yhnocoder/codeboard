@@ -26,7 +26,11 @@
   ],
   "manual": ["markdownRecord", "boardMarksScreenshots", "shelfScreenshots"],
   "solo": ["markdownLazyRender"],
-  "known": {},
+  "known": {
+    "cardKindsConsistent warm-ink light selRing image": "a selected Image card without a background has no selection ring in Warm Ink (.card.nobg sets --ring: none after .card.sel, and Warm Ink's .cface ring leaves out .nobg); only its floating header shows, which a card above can cover. Ink Wash stamps its seal",
+    "cardKindsConsistent warm-ink dark selRing image": "as in light",
+    "expandCallWatched ink-wash jumped link": "Ink Wash: while an expanded call's card slides in, its call arrow switches route in one frame (a flat line through the header to a loop over the cards, 52 px), then again into its curve"
+  },
   "limits": {
     "area": 30,
     "smoke": 90,
@@ -55,7 +59,7 @@
       "packages/board/playwright.config.ts",
       "packages/board/src/{styles,fonts,fonts-yozai,fonts-zhimangxing}.css",
       "packages/board/src/fonts/**",
-      "packages/board/test/{harness,fixtures,coverage,subhost,realhost,deepseek,chromium,probes}.ts",
+      "packages/board/test/{harness,fixtures,coverage,subhost,realhost,deepseek,chromium,probes,watch}.ts",
       "packages/host/test/node-workspace.ts",
       "tools/test/**",
       "examples/nano-vllm"
@@ -352,7 +356,7 @@
         "packages/board/src/actions/settings.ts",
         "packages/host/src/settings.ts",
         "packages/core/src/settings.ts",
-        "packages/board/test/scenarios/{themes,tilt,ink-wash,warm-ink}.spec.ts"
+        "packages/board/test/scenarios/{themes,tilt,ink-wash,warm-ink,card-kinds}.spec.ts"
       ],
       "scenarios": [
         "settingsPage",
