@@ -41,10 +41,17 @@ const ALLOW: AllowEntry[] = [
   { part: "paper", kind: "text", in: "ink-wash", why: "a Text card has no paper: the board shows through" },
   { part: "fill", kind: "text", why: "a Text card has no fill: the board shows through" },
   { part: "ring", kind: "text", in: "warm-ink", why: "a Text card has no card edge" },
+  { part: "selEdge", kind: "text", in: "warm-ink", why: "a Text card has no card edge, selected too" },
   { part: "shadow", kind: "text", in: "warm-ink", why: "a Text card casts no card shadow" },
   // Image: without a background it is the picture on the board (.card.nobg): no fill, edge or shadow
   { part: "fill", kind: "image", why: "an Image card without a background is the picture on the board (.nobg)" },
   { part: "ring", kind: "image", in: "warm-ink", why: "an Image card without a background has no edge (.nobg)" },
+  {
+    part: "selEdge",
+    kind: "image",
+    in: "warm-ink",
+    why: "an Image card without a background has no edge (.nobg), selected too: the edge's white top line would sit on the picture",
+  },
   {
     part: "shadow",
     kind: "image",
@@ -201,9 +208,10 @@ function readParts(kinds: Record<string, string>) {
   return out;
 }
 
-/** Runs in the page with every card selected: each card's selection ring (Warm Ink: .cface::before) and its edge (::after) */
+/** Runs in the page with every card selected: each card's selection ring (Warm Ink: .cface::before, and the outline) and,
+ *  apart, its edge while selected (::after) */
 function readSelection(kinds: Record<string, string>) {
-  const out: Record<string, string> = {};
+  const out: Record<string, { ring: string; edge: string }> = {};
   for (const [kind, id] of Object.entries(kinds)) {
     const card = document.querySelector<HTMLElement>(`.card[data-id="${id}"]`);
     if (!card) continue;
@@ -211,7 +219,7 @@ function readSelection(kinds: Record<string, string>) {
     const ring = f ? getComputedStyle(f, "::before") : null;
     const on = ring && ring.content !== "none" && +ring.opacity > 0.5 ? ring.boxShadow : "none";
     const edge = getComputedStyle(card, "::after").boxShadow;
-    out[kind] = `${on} | ${edge} | ${getComputedStyle(card).outlineStyle}`;
+    out[kind] = { ring: `${on} | ${getComputedStyle(card).outlineStyle}`, edge };
   }
   return out;
 }
@@ -239,7 +247,10 @@ test("cardKindsConsistent", async () => {
       );
       await idle(h);
       const sel = await page.evaluate(readSelection, KINDS);
-      for (const l of looks) l.parts.selRing = sel[l.kind] ?? null;
+      for (const l of looks) {
+        l.parts.selRing = sel[l.kind]?.ring ?? null;
+        l.parts.selEdge = sel[l.kind]?.edge ?? null;
+      }
       const name = `${theme} ${light ? "light" : "dark"}`;
       await page.screenshot({ path: path.join(OUT, `card-kinds-${theme}-${light ? "light" : "dark"}.png`) });
       if (process.env.CARD_KINDS_SHOTS) {

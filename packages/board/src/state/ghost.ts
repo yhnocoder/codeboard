@@ -5,21 +5,33 @@ import { cardSel } from "../cardsel";
 import { animScale, reduceMotion } from "./motion";
 import { shape } from "./look";
 
-export function ghostOut(ids: Iterable<string>) {
-  if (reduceMotion()) return;
+/** Leaves a fading copy of each card in place; call the returned function when the delete did not happen after all: the
+ *  copies go and the card gets its pictures back */
+export function ghostOut(ids: Iterable<string>): () => void {
+  const undo: (() => void)[] = [];
+  const cancel = () => {
+    for (const u of undo.splice(0)) u();
+  };
+  if (reduceMotion()) return cancel;
   const ms = (shape().ghost ?? GHOST_OUT) * animScale() + 40; // 加两帧：动画在两次 requestAnimationFrame 之后才开始
   for (const id of ids) {
     const el = document.querySelector<HTMLElement>(`${cardSel(id)}`);
     if (!el?.parentElement) continue;
     const g = el.cloneNode(true) as HTMLElement;
-    keepPictures(el, g);
+    const back = keepPictures(el, g);
     g.removeAttribute("data-id");
     g.classList.add("ghost-out");
     g.classList.remove("sel");
     el.parentElement.appendChild(g);
     requestAnimationFrame(() => requestAnimationFrame(() => g.classList.add("go")));
-    setTimeout(() => g.remove(), ms);
+    const t = setTimeout(() => g.remove(), ms);
+    undo.push(() => {
+      clearTimeout(t);
+      back();
+      g.remove();
+    });
   }
+  return cancel;
 }
 
 /**
@@ -28,19 +40,28 @@ export function ghostOut(ids: Iterable<string>) {
  * images, loaded and decoded, go into the ghost instead (the card is removed this same task; its copies take their places);
  * a canvas's drawing is copied over
  */
-function keepPictures(el: HTMLElement, g: HTMLElement) {
+function keepPictures(el: HTMLElement, g: HTMLElement): () => void {
+  const swaps: [HTMLImageElement, HTMLImageElement][] = [];
+  const swap = (a: Element, b: Element) => {
+    const mark = document.createComment("");
+    a.replaceWith(mark);
+    b.replaceWith(a);
+    mark.replaceWith(b);
+  };
+  const back = () => {
+    for (const [a, b] of swaps.splice(0)) swap(a, b);
+  };
   const from = el.querySelectorAll("img, canvas"),
     to = g.querySelectorAll("img, canvas");
-  if (from.length !== to.length) return;
+  if (from.length !== to.length) return back;
   from.forEach((a, i) => {
     const b = to[i];
     if (a instanceof HTMLImageElement && b instanceof HTMLImageElement) {
       if (!a.complete || !a.naturalWidth) return;
-      const mark = document.createComment("");
-      a.replaceWith(mark);
-      b.replaceWith(a);
-      mark.replaceWith(b);
+      swap(a, b);
+      swaps.push([a, b]);
     } else if (a instanceof HTMLCanvasElement && b instanceof HTMLCanvasElement && a.width && a.height)
       b.getContext("2d")?.drawImage(a, 0, 0);
   });
+  return back;
 }
