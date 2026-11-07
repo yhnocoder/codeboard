@@ -3,6 +3,7 @@
 export * from "./refs";
 export * from "./check";
 export * from "./lines";
+export * from "./highlights";
 export * from "./ops";
 export * from "./twins";
 export * from "./merge";

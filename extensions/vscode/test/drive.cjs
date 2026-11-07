@@ -1830,7 +1830,7 @@ const finish = async (browser, errors) => {
   await sidenote(page, f, sch, 5, 6, "Prefill admits seqs until the token budget runs out.");
   check(
     (await soon(
-      () => sch.locator(".mk").count(),
+      () => sch.locator(".hxm").count(),
       (n) => n >= 1,
     )) >= 1,
     "Sidenote marker appears beside the lines",
@@ -2070,7 +2070,7 @@ const finish = async (browser, errors) => {
     await until("the cards show again after zooming in", async () => (await f.locator(".cardlay.gone").count()) === 0);
     await idle(f);
   }
-  const mk0 = await sch1.locator(".mk").count();
+  const mk0 = await sch1.locator(".hxm").count();
   await sch1.locator(".chead .ctitle").click();
   await until(
     "Scheduler.schedule is selected and the board has the keyboard",
@@ -2108,9 +2108,9 @@ const finish = async (browser, errors) => {
       5000,
     );
     check(/2 boards/.test(badge), "the pasted card is linked: both boards show ⧉ 2 boards", badge);
-    check((await sch2.locator(".mk").count()) === mk0, "sidenotes travel with the linked card", {
+    check((await sch2.locator(".hxm").count()) === mk0, "sidenotes travel with the linked card", {
       mk0,
-      now: await sch2.locator(".mk").count(),
+      now: await sch2.locator(".hxm").count(),
     });
     await idle(g);
     // 板 2 上给另外两行加一条 Sidenote
@@ -2118,14 +2118,14 @@ const finish = async (browser, errors) => {
     await page.keyboard.press("Escape");
     check(
       (await soon(
-        () => sch2.locator(".mk").count(),
+        () => sch2.locator(".hxm").count(),
         (n) => n === mk0 + 1,
       )) ===
         mk0 + 1,
       "sidenote added on board 2",
     );
     const mk1 = await soon(
-      () => sch1.locator(".mk").count(),
+      () => sch1.locator(".hxm").count(),
       (n) => n > mk0,
       5000,
     );

@@ -16,7 +16,7 @@ import {
   type VariantFrom,
 } from "./model";
 import { alignRows, mapLines, sameLines } from "./diff";
-import { lineMapOf, moveNoteLines, rebaseSegment, remapSegMarks, type LineMap } from "./edit";
+import { fixHighlights, lineMapOf, moveNoteLines, rebaseSegment, remapSegMarks, type LineMap } from "./edit";
 
 export function segsOf(c: Pick<CodeCard, "segments" | "variants" | "active">, vid: string): Segment[] | undefined {
   if (activeOf(c) === vid) return c.segments;
@@ -115,7 +115,7 @@ export function switchVariant(b: Board, cardId: string, vid: string): boolean {
     const t = target.find((x) => x.id === s.id);
     if (!t) continue;
     // 隐藏 / 高亮是这个 Variant 自己的：带着存回去，目标的原样换上
-    rebaseSegment(b, cardId, clone(t), lineMapOf(s, t), { notes: (n) => !n.variant });
+    rebaseSegment(b, cardId, clone(t), lineMapOf(s, t), { notes: (n) => !n.variant, fix: false });
     const i = c.segments.findIndex((x) => x.id === s.id);
     if (i >= 0) {
       c.segments[i].hidden = t.hidden;
@@ -130,6 +130,8 @@ export function switchVariant(b: Board, cardId: string, vid: string): boolean {
   delete to.segs;
   if (vid === UPSTREAM) delete c.active;
   else c.active = vid;
+  // the sidenotes on every Variant now count in the target's lines: their Highlights come along
+  fixHighlights(b, [cardId]);
   return true;
 }
 
@@ -150,6 +152,7 @@ export function setVariantSegs(b: Board, cardId: string, vid: string, segs: Segm
     moveNoteLines(b, cardId, s.id, map, (n) => n.variant === vid);
     return remapSegMarks(s, o, map);
   });
+  fixHighlights(b, [cardId]);
 }
 
 /** 上游的段换成新的（新版本 Update、只是挪了位置、Relocate）：上游在显示就是 rebaseSegment，不在显示就换掉存着的那份 */
@@ -173,6 +176,7 @@ export function rebaseUpstream(
   const m = map ?? lineMapOf(up.segs[i], ns);
   moveNoteLines(b, cardId, ns.id, m, (n) => n.variant === UPSTREAM);
   up.segs[i] = remapSegMarks(ns, up.segs[i], m);
+  fixHighlights(b, [cardId]);
 }
 
 /** 删掉一个 Variant（上游删不掉）。在显示的话先切回上游；只剩上游时卡变回普通卡 */
@@ -183,6 +187,7 @@ export function removeVariant(b: Board, cardId: string, vid: string): void {
   releaseNotes(b, c, vid);
   c.variants = c.variants.filter((v) => v.id !== vid);
   if (c.variants.length <= 1) dropVariants(b, cardId);
+  fixHighlights(b, [cardId]);
 }
 
 /**
@@ -197,6 +202,7 @@ export function dropVariants(b: Board, cardId: string, segs?: Segment[]): void {
   delete c.variants;
   delete c.active;
   for (const s of segs ?? []) if (c.segments.some((x) => x.id === s.id)) rebaseSegment(b, cardId, clone(s));
+  fixHighlights(b, [cardId]);
 }
 
 /** Variant 要没了：「只在它」的 Sidenote 变成跟着卡，行号从它的代码映射到卡上显示的代码（段对不上的改挂整卡） */

@@ -252,6 +252,7 @@ test("sidenoteTextEditSaves", async () => {
   const C = b.cards[0] as CodeCard,
     s = C.segments[0];
   b.place[C.id] = { x: 300, y: 60, w: 520 };
+  s.hl = [[s.start + 2, s.start + 2]];
   b.sidenotes.push({
     id: "sn1",
     kind: "text",
@@ -267,8 +268,8 @@ test("sidenoteTextEditSaves", async () => {
     await idle(h);
   };
   const openEdit = async () => {
-    await h.page.locator(".mk").first().click();
-    await h.page.locator("button.tbtn", { hasText: /^Edit$/ }).click();
+    await h.page.locator(".hxm").first().click();
+    await h.page.locator('.pop.k-highlight .slip button[aria-label="Edit"]').first().click();
     await h.page.locator(".sn-edit textarea:focus").waitFor();
     return JSON.stringify(texts());
   };
@@ -291,12 +292,11 @@ test("sidenoteTextEditSaves", async () => {
   await h.page.locator(".sn-edit button", { hasText: "Cancel" }).click();
   await idle(h);
   const afterCancel = texts();
-  // Add Sidenote → Text：写了字按 Esc
+  // Highlight 弹窗的 + Add Note → Add Sidenote 的 Text：写了字按 Esc
   await h.page.keyboard.press("Escape");
   await idle(h);
-  await h.page.locator(".mk").first().click();
-  await h.page.locator("button.tbtn", { hasText: "+ Add" }).click();
-  await h.page.locator(".addnote .tab", { hasText: "Text" }).click();
+  await h.page.locator(".hxm").first().click();
+  await h.page.locator(".pop.k-highlight button.add").click(); // opens Add Sidenote on its Text tab
   await h.page.locator(".addnote textarea:focus").waitFor();
   before = JSON.stringify(texts());
   await keys(h.page, "added by esc{Escape}");
@@ -381,6 +381,7 @@ test("undoIsOneStep", async () => {
   const C = b.cards[0] as CodeCard,
     s = C.segments[0];
   b.place[C.id] = { x: 700, y: 60, w: 520 };
+  s.hl = [[s.start + 2, s.start + 2]];
   b.sidenotes.push({
     id: "sn1",
     kind: "text",
@@ -408,8 +409,8 @@ test("undoIsOneStep", async () => {
     await changed("undo reaches the host", was);
   };
   const start = st();
-  await h.page.locator(".mk").first().click();
-  await h.page.locator("button.tbtn", { hasText: "Place on Board" }).click();
+  await h.page.locator(".hxm").first().click();
+  await h.page.locator('.pop.k-highlight .slip button[aria-label="Place on Board"]').click();
   await changed("the sidenote is placed on the board", start);
   const placed = st();
   await undo();

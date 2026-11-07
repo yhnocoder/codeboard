@@ -263,6 +263,7 @@ function Toast() {
             {(a) => (
               <button
                 class="tlink"
+                disabled={a.off?.()}
                 onClick={() => {
                   setToastMsg(null);
                   a.run();

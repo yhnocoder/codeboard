@@ -105,7 +105,8 @@
         "undoAddKeepsLaterWork",
         "nudgeHoldIsOneUndoStep",
         "farClicksNotDoubleClick",
-        "multiSelectToolbarTidyUp"
+        "multiSelectToolbarTidyUp",
+        "sectionEdgeWheelPans"
       ]
     },
     "code": {
@@ -205,6 +206,8 @@
         "packages/board/src/md/{lazy,load,refs,context}.ts",
         "packages/board/src/actions/notes.ts",
         "packages/core/src/commands/notes.ts",
+        "packages/core/src/commands/fit.ts",
+        "packages/board/src/actions/fit.ts",
         "packages/board/src/ui/vscodekeys.ts",
         "packages/markdown/src/{index,markdown,cache,render,schema,schema-nodes,schema-marks,schema-escape,tiptap-markdown-patch,gaps,selmap,view,annots,diagram,emoji,emoji-data,layout}.ts",
         "packages/markdown/src/markdown.css",
@@ -221,13 +224,14 @@
         "packages/board/src/actions/format.ts",
         "packages/board/src/ui/StaticFormat.tsx",
         "packages/board/test/scenarios/static-format.spec.ts",
-        "packages/board/test/scenarios/sidenotes.spec.ts"
+        "packages/board/test/scenarios/sidenotes.spec.ts",
+        "packages/board/test/scenarios/highlights.spec.ts"
       ],
       "scenarios": [
         "notes",
         "markdownRender",
         "markdownEdit",
-        "undoIsOneStep",
+        "highlightHoverGutter",
         "noteEditKeepsLayout",
         "headingMarkerTypedAtHeadingSize",
         "sidenoteTextEditSaves",

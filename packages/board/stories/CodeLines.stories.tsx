@@ -38,7 +38,10 @@ const CELLS: Record<State, Cell> = {
     make: (_, g, id, x, y, w) => {
       const c = fn(id, "schedule", {
         seg: (s) => {
-          s.hl = [30, 31, 32, 35];
+          s.hl = [
+            [30, 32],
+            [35, 35],
+          ];
         },
       });
       g.put(c, { x, y, w, h: 260 });

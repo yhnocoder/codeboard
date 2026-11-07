@@ -392,7 +392,7 @@ const gap = (a, b) => Math.hypot(Math.max(0, a.l - b.r, b.l - a.r), Math.max(0, 
     );
     check(
       (await soon(
-        () => st.locator(".mk").count(),
+        () => st.locator(".hxm").count(),
         (n) => n >= 1,
       )) >= 1,
       "sidenote marker appears beside the lines",
@@ -782,7 +782,7 @@ const gap = (a, b) => Math.hypot(Math.max(0, a.l - b.r, b.l - a.r), Math.max(0, 
     }
     check(!!(await waitJson((b) => (b.sidenotes?.length ?? 0) >= n00 + 2)), "two sidenotes added on the same lines");
     await blank(f, page);
-    const mk = st.locator('.mk:not(.inline)[data-notes*=","]').first();
+    const mk = st.locator('.hxm[data-notes*=","]').first();
     await mk.click({ force: true });
     const pop = f
       .locator(".pop")

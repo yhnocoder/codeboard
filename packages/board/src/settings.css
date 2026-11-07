@@ -586,3 +586,82 @@
 .st-tr .st-x[disabled] {
   opacity: 0.3;
 }
+
+/* Settings › Highlights: each look as a small code card, the middle two lines highlighted and a note under them */
+.st-hls {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+}
+.st-hlk {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 5px;
+  border-radius: 14px;
+  text-align: left;
+  transition: background 0.1s;
+}
+.st-hlk:hover {
+  background: var(--hlrow);
+}
+.st-hlk.on {
+  background: var(--surface);
+  box-shadow: 0 0 0 1.5px var(--accent);
+}
+.st-hlk.on .st-swn {
+  color: var(--ink);
+  font-weight: 600;
+}
+.st-hlp {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  height: 78px;
+  box-sizing: border-box;
+  padding: 9px 10px 9px 18px;
+  border-radius: 9px;
+  background: var(--card, var(--surface));
+  box-shadow: inset 0 0 0 1px var(--hair);
+  overflow: hidden;
+}
+.st-hlp .hp-l,
+.st-hlp .hp-t {
+  display: block;
+  height: 4px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--ink) 28%, transparent);
+}
+.st-hlp .hp-hl {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 3px 0;
+}
+.st-hlp .hp-m {
+  position: absolute;
+  inset: 0 -4px 0 -6px;
+}
+.st-hlp.band .hp-m {
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+.st-hlp:is(.bracket, .bracket-hand) .hp-m {
+  left: -9px;
+  width: 3px;
+  border: 1.2px solid color-mix(in srgb, var(--accent) 75%, transparent);
+  border-right: 0;
+  border-radius: 2px 0 0 2px;
+}
+.st-hlp .hp-n {
+  display: block;
+  font: 11px / 12px var(--hand);
+  color: color-mix(in srgb, var(--accent) 70%, var(--ink));
+  white-space: nowrap;
+}
+.st-hlp .hp-t {
+  width: 70%;
+  margin-top: 2px;
+  background: color-mix(in srgb, var(--accent) 45%, transparent);
+}

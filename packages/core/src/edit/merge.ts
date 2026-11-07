@@ -2,6 +2,7 @@
 // Pure functions that change the board passed in (the board calls them inside a mutate).
 import { replaceCards } from "./refs";
 import { unlinkCard } from "./twins";
+import { clipHighlights, fixHighlights } from "./highlights";
 import {
   clone,
   sameVersion,
@@ -76,7 +77,9 @@ export function mergeCodeCards(
   b.cards.push(M);
   b.place[mid] = { x: TP?.x ?? 0, y: TP?.y ?? 0, w, section: TP?.section };
   if (b.place[mid].section === undefined) delete b.place[mid].section;
-  return { id: mid, segments: clone(segs) };
+  // the sidenotes came over with their lines: Highlights that overlap now merge, and the sidenotes go with them
+  fixHighlights(b, [mid]);
+  return { id: mid, segments: clone(M.segments) };
 }
 
 /** 拆开：有合并记录就拆回原来的卡（放回原位、Link 回到各自的卡）；没有就按段拆。返回新卡和它们的段 */
@@ -108,7 +111,7 @@ export function unmergeCard(b: Board, id: string): { made: string[]; segments: S
       const src = m.segments.filter(
         (q) => q.path === s.path && sameVersion(q.version, s.version) && q.start <= s.end && q.end >= s.start,
       );
-      s.hl = [...new Set(src.flatMap((q) => q.hl ?? []).filter((l) => l >= s.start && l <= s.end))];
+      clipHighlights(s, src);
       s.hidden = src
         .flatMap((q) => q.hidden ?? [])
         .map(([a, c]) => [Math.max(a, s.start), Math.min(c, s.end)] as [number, number])
@@ -118,7 +121,6 @@ export function unmergeCard(b: Board, id: string): { made: string[]; segments: S
         .filter((a) => a.line >= s.start && a.line <= s.end)
         .map((a) => ({ ...a }));
       if (!s.annots.length) s.annots = undefined;
-      if (!s.hl.length) s.hl = undefined;
       if (!s.hidden.length) s.hidden = undefined;
     }
   const owner = (seg?: string, line?: number) => {
@@ -143,7 +145,9 @@ export function unmergeCard(b: Board, id: string): { made: string[]; segments: S
     if (q.section === undefined) delete q.section;
     b.place[p.id] = q;
     made.push(p.id);
-    segments.push(...clone(p.segments));
   });
+  // a sidenote went to the part with its first line: its lines are cut to that part's
+  fixHighlights(b, made);
+  for (const p of parts) segments.push(...clone(p.segments));
   return { made, segments };
 }

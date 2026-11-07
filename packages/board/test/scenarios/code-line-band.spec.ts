@@ -1,5 +1,5 @@
-// 代码卡一行的底色条（显示时的 .rowbg：hl、选中的行；编辑时 CodeMirror 的当前行）从卡的左边经过行号栏一直连到行尾，
-// 行号格和代码之间没有空白：缩进很深的续行、藏了公共缩进的卡、折行的长行都一样
+// 代码卡一行的底色条：显示时 Highlight 的底色（.hxb）从行号栏的边一直连到行尾、盖住整行（折行的也是）；
+// 编辑时 CodeMirror 的当前行从卡的左边经过行号栏连到行尾，行号格和代码之间没有空白：缩进很深的续行、藏了公共缩进的卡、折行的长行都一样
 import * as path from "node:path";
 import { emptyBoard, type Board } from "@codeboard/core";
 import type { Page } from "playwright-core";
@@ -30,7 +30,7 @@ const LONG = [
 
 function board(): Board {
   const b = emptyBoard("b1", "free");
-  const card = (id: string, text: string[], hl: number[], y: number, extra: object = {}) => {
+  const card = (id: string, text: string[], hl: [number, number][], y: number, extra: object = {}) => {
     b.cards.push({
       id,
       kind: "code",
@@ -52,9 +52,9 @@ function board(): Board {
     } as any);
     b.place[id] = { x: 60, y, w: 560 };
   };
-  card("kernel", KERNEL, [5], 40);
-  card("nested", NESTED, [3], 300);
-  card("long", LONG, [2], 480, { wrap: true });
+  card("kernel", KERNEL, [[5, 5]], 40);
+  card("nested", NESTED, [[3, 3]], 300);
+  card("long", LONG, [[2, 2]], 480, { wrap: true });
   b.cam = { x: 0, y: 0, z: 1 };
   return b;
 }
@@ -68,9 +68,9 @@ const box = (r: DOMRect): Box => ({
 });
 
 /** 显示时第 n 行的底色条和 .code 的左右边、这一行的字 */
-const shownBand = (pg: Page, card: string, row: number, cls: string) =>
+const shownBand = (pg: Page, card: string, row: number) =>
   pg.evaluate(
-    ([card, row, cls]) => {
+    ([card, row]) => {
       const bx = (r: DOMRect) => ({
         l: Math.round(r.left * 2) / 2,
         r: Math.round(r.right * 2) / 2,
@@ -78,7 +78,7 @@ const shownBand = (pg: Page, card: string, row: number, cls: string) =>
         b: Math.round(r.bottom * 2) / 2,
       });
       const root = document.querySelector(`.card[data-id="${card}"]`)!;
-      const bands = [...root.querySelectorAll(`.rowbg.${cls}`)].map((e) => bx(e.getBoundingClientRect()));
+      const bands = [...root.querySelectorAll(".rowbgs .hxb")].map((e) => bx(e.getBoundingClientRect()));
       const no = root.querySelectorAll(".gutter .no")[row];
       const line = root.querySelectorAll(".src .l")[row];
       return {
@@ -88,7 +88,7 @@ const shownBand = (pg: Page, card: string, row: number, cls: string) =>
         bands,
       };
     },
-    [card, row, cls] as const,
+    [card, row] as const,
   );
 
 /** 编辑时当前行：行号格的底色和行的底色（有颜色的才算） */
@@ -124,17 +124,12 @@ const covers = (parts: Box[], from: number, to: number) => {
 };
 
 async function shown(h: Host, card: string, row: number, what: string) {
-  const s = await shownBand(h.page, card, row, "hl");
-  const band = s.bands.find((b) => s.line && Math.abs(b.t - s.line.t) < 1);
-  const ok =
-    !!band &&
-    !!s.no &&
-    !!s.line &&
-    covers([band], s.code.l, s.line.r) &&
-    band.l <= s.no.l &&
-    band.b - band.t >= s.line.b - s.line.t - 0.5;
+  const s = await shownBand(h.page, card, row);
+  // a Highlight's band sits 2px inside its first and last rows (it adds no space: adjacent ones read apart by that)
+  const band = s.bands.find((b) => s.line && b.t <= s.line.t + 2.5 && b.b >= s.line.b - 2.5);
+  const ok = !!band && !!s.no && !!s.line && band.l >= s.no.r && band.l <= s.line.l && band.r >= s.line.r - 14.5;
   check(
-    `codeLineBandContinuous shown hl band, ${what}: one band from the card's left edge past the line number to the line's end`,
+    `codeLineBandContinuous shown Highlight band, ${what}: one band starting clear of the line numbers, over the whole line, top to bottom less its 2px insets`,
     ok,
     { band, no: s.no, line: s.line, code: s.code },
   );

@@ -1,5 +1,17 @@
 // The board's self-check: references to things that are not there (always empty after an edit)
-import { activeOf, twinContent, UPSTREAM, type Board, type CodeCard, type Sticker } from "../model";
+import {
+  activeOf,
+  localNote,
+  noteSegment,
+  within,
+  sameRange,
+  twinContent,
+  UPSTREAM,
+  type Board,
+  type CodeCard,
+  type Segment,
+  type Sticker,
+} from "../model";
 
 /**
  * 白板里指向不存在的东西的引用（应该永远是空的）：Link 两端、Sidenote、Sticker、问题的解答、Compare 的栏、Place、Section 父子，以及重复的 id。
@@ -44,7 +56,19 @@ export function danglingRefs(b: Board): string[] {
   for (const n of b.sidenotes) {
     if (!segOk(n.at.card, n.at.seg)) out.push(`sidenote ${n.id} on missing ${n.at.card}`);
     if (n.kind === "card" && !cards.has(n.card)) out.push(`sidenote ${n.id} points to missing ${n.card}`);
+    // a sidenote on lines lies in its segment; one that goes along with the card is on the segment's Highlight with exactly those
+    // lines, a local one is a Highlight of its own (edit/highlights.ts)
+    const s = n.at.lines && noteSegment(b, n);
+    const where = () => `sidenote ${n.id} on lines ${n.at.lines!.join("–")} of ${n.at.card}/${n.at.seg}`;
+    if (s && !(n.at.lines![0] <= n.at.lines![1] && within(n.at.lines!, [s.start, s.end])))
+      out.push(`${where()}, outside its segment ${s.start}–${s.end}`);
+    else if (s && !localNote(n) && !s.hl?.some((r) => sameRange(r, n.at.lines)))
+      out.push(`${where()}, which are no Highlight`);
   }
+  for (const c of b.cards)
+    if (c.kind === "code")
+      for (const s of [...c.segments, ...(c.variants ?? []).flatMap((v) => v.segs ?? [])])
+        out.push(...rangeProblems(c.id, s));
   const stickerRef = (k: Sticker, links: Set<string>): string | null => {
     const at = k.at;
     if (at.kind === "line") return segOk(at.card, at.seg) ? null : at.card;
@@ -108,6 +132,20 @@ export function danglingRefs(b: Board): string[] {
     if (p === undefined) twins.set(c.same, k);
     else if (p !== k) out.push(`card ${c.id} differs from the other places of the same card`);
   }
+  return out;
+}
+
+/** A segment's Highlights: each first ≤ last inside the segment, sorted, none overlapping another */
+function rangeProblems(card: string, s: Segment): string[] {
+  const out: string[] = [];
+  (s.hl ?? []).forEach(([a, z], i, rs) => {
+    if (!Number.isInteger(a) || !Number.isInteger(z) || a > z)
+      out.push(`card ${card}/${s.id}: bad Highlight ${a}–${z}`);
+    else if (a < s.start || z > s.end)
+      out.push(`card ${card}/${s.id}: Highlight ${a}–${z} outside the segment's lines ${s.start}–${s.end}`);
+    if (i && rs[i - 1][1] >= a)
+      out.push(`card ${card}/${s.id}: Highlight ${a}–${z} overlaps or precedes the one before`);
+  });
   return out;
 }
 

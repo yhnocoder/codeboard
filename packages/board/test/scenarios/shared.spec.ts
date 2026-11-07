@@ -1,8 +1,11 @@
 // Shared cards: two boards in two browsers on the real host (realhost.ts) relaying patches, shared updates, the card clipboard,
-// Delete Everywhere and the "⧉ N boards" / "← N" info
+// Delete Everywhere and the "⧉ N boards" / "← N" info.
+//  sharedHighlightBoardOnly  a board-only sidenote on a shared card is a Highlight on its own board only: made board-only it takes
+//                            its Highlight off the shared card (the other board no longer shows it), and when the other board
+//                            removes or grows the shared Highlight next to it, it stays, shown, with no dangling reference
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { emptyBoard, type Board } from "@codeboard/core";
+import { danglingRefs, emptyBoard, shownRanges, type Board, type CodeCard } from "@codeboard/core";
 import { shot, symCard, findSym, put, newerVersion, type Host } from "../harness";
 import { test, check, light, expect, until, idle, hostBoards } from "../fixtures";
 
@@ -75,6 +78,7 @@ test("sharedcards", async () => {
     to: { card: sch.id },
     call: { name: "schedule", col: 0 },
   });
+  s0.hl = [[s0.start + 3, s0.start + 3]];
   A.sidenotes.push({
     id: "sn1",
     kind: "text",
@@ -189,13 +193,13 @@ test("sharedcards", async () => {
     () => (t.store.peek("bA")!.cards.find((c) => c.id === sch.id) as any)?.segments[0].version.commit === "f64d8210",
   );
   await until(a, "Attention shows the review marker", () =>
-    cardEl(a, "Scheduler.schedule").locator(".mk.rv, .chead .rvdot").count(),
+    cardEl(a, "Scheduler.schedule").locator(".hxm.rv, .chead .rvdot").count(),
   );
   await both(a, m);
   const sa = (t.store.peek("bA")!.cards.find((c) => c.id === sch.id) as any).segments[0];
   res.updatedA = sa.version.commit === "f64d8210";
   res.reviewA = (await t.store.load("bA"))!.sidenotes.find((n) => n.id === "sn1")?.review;
-  res.amberA = await cardEl(a, "Scheduler.schedule").locator(".mk.rv, .chead .rvdot").count();
+  res.amberA = await cardEl(a, "Scheduler.schedule").locator(".hxm.rv, .chead .rvdot").count();
   await shot(a, "shared-4-review-marker");
 
   // 7. Card menu on a shared card: Remove from This Board / Delete Everywhere… / Unlink
@@ -289,5 +293,132 @@ test("sharedcards", async () => {
     res.everywhere &&
     res.pageA === 0;
   check("sharedcards", ok, JSON.stringify(res));
+  await t.close();
+});
+
+test("sharedHighlightBoardOnly", async () => {
+  const A = emptyBoard("bA", "Attention");
+  const sch = symCard(findSym("Scheduler.schedule").f, findSym("Scheduler.schedule").s);
+  put(A, sch, 60, 60, 620);
+  const s0 = sch.segments[0],
+    L = s0.start;
+  s0.hl = [[L + 3, L + 5]];
+  A.sidenotes.push({
+    id: "sn1",
+    kind: "text",
+    md: "Shared note.",
+    at: { card: sch.id, seg: s0.id, lines: [L + 3, L + 5] },
+  });
+  const M = emptyBoard("bM", "MoE");
+  const t = await sharedHost([A, M]);
+  const a = t.hosts.get("bA")!,
+    m = t.hosts.get("bM")!;
+  const res: Record<string, unknown> = {};
+  const segOn = (id: string) => (t.store.peek(id)!.cards.find((c) => c.id === sch.id) as CodeCard).segments[0];
+  const no = (h: Host, line: number) =>
+    cardEl(h, "Scheduler.schedule").locator(".gutter .no", { hasText: new RegExp(`^${line}$`) });
+  const marker = (h: Host, a0: number, z: number) =>
+    cardEl(h, "Scheduler.schedule").locator(`.hxm[data-hl$=":${s0.id}:${a0}-${z}"]`);
+
+  // the card on MoE, linked
+  await cardEl(a, "Scheduler.schedule")
+    .locator(".chead")
+    .click({ position: { x: 80, y: 10 } });
+  await a.page.keyboard.press("Meta+c");
+  await until(a, "⌘C puts the card on the host's clipboard", () => t.clip());
+  await m.page.mouse.move(600, 120);
+  await pasteText(m, t.clip()!.text);
+  await until(m, "the pasted card is linked on MoE", () => t.store.refsOf("bM").has(sch.id));
+  await cardEl(m, "Scheduler.schedule").locator(".chead .shb").waitFor();
+  await both(a, m);
+
+  // MoE: a note on lines L+6..L+9, made board-only from its Highlight's popup
+  await no(m, L + 6).click();
+  await no(m, L + 9).click({ modifiers: ["Shift"] });
+  await m.page.keyboard.press("s");
+  await m.page.locator(".pop button", { hasText: /^Text$/ }).click();
+  await m.page.locator(".pop :focus").waitFor();
+  await m.page.keyboard.type("Only on MoE.");
+  await m.page.locator(".pop button", { hasText: /^Add$/ }).click();
+  await until(m, "the note is saved on MoE", () =>
+    t.store.peek("bM")!.sidenotes.some((n) => n.kind === "text" && n.md === "Only on MoE."),
+  );
+  await m.page.keyboard.press("Escape");
+  await marker(m, L + 6, L + 9).click();
+  await m.page.locator('.pop.k-highlight .slip button[aria-label="Board-only"]').click();
+  await until(m, "the note is board-only", () =>
+    t.store.peek("bM")!.sidenotes.some((n) => n.kind === "text" && n.md === "Only on MoE." && n.boardOnly),
+  );
+  await m.page.keyboard.press("Escape");
+  await until(a, "Attention no longer has MoE's Highlight", () => segOn("bA").hl?.length === 1);
+  await both(a, m);
+  res.madeLocal = {
+    sharedA: segOn("bA").hl,
+    sharedM: segOn("bM").hl,
+    markersA: await cardEl(a, "Scheduler.schedule").locator(".hxm").count(),
+    markerM: await marker(m, L + 6, L + 9).textContent(),
+  };
+
+  // Attention removes the shared Highlight, with its note
+  await no(a, L + 4).hover();
+  await a.page.locator(".pop.k-highlight").waitFor();
+  await a.page.locator('.pop.k-highlight [aria-label="Remove Highlight"]').click();
+  await until(
+    m,
+    "MoE gets the removal",
+    () => !segOn("bM").hl && !t.store.peek("bM")!.sidenotes.some((n) => n.id === "sn1"),
+  );
+  await both(a, m);
+  const mine = () => t.store.peek("bM")!.sidenotes.find((n) => n.kind === "text" && n.md === "Only on MoE.");
+  res.removed = {
+    note: mine()?.at.lines,
+    marker: await marker(m, L + 6, L + 9).count(),
+    dangling: danglingRefs(t.store.peek("bM")!),
+  };
+
+  // Attention highlights lines L+5..L+7, across MoE's: MoE shows one Highlight of both, its note on it
+  await no(a, L + 5).click();
+  await no(a, L + 7).click({ modifiers: ["Shift"] });
+  await no(a, L + 7).click({ button: "right" });
+  await a.page.locator(".ctx:not(.closing) button", { hasText: "Highlight Lines" }).click();
+  await until(m, "MoE gets the new Highlight", () => segOn("bM").hl?.length === 1);
+  await both(a, m);
+  const bm = t.store.peek("bM")!;
+  res.grown = {
+    shared: segOn("bM").hl,
+    shown: shownRanges(bm, segOn("bM")),
+    note: mine()?.at.lines,
+    marker: await marker(m, L + 5, L + 9).textContent(),
+    dangling: danglingRefs(bm),
+  };
+  const r = res as {
+    madeLocal: { sharedA: unknown; sharedM: unknown; markersA: number; markerM: string | null };
+    removed: { note: unknown; marker: number; dangling: string[] };
+    grown: { shared: unknown; shown: unknown; note: unknown; marker: string | null; dangling: string[] };
+  };
+  check(
+    "sharedHighlightBoardOnly made board-only, the note takes its Highlight off the shared card",
+    JSON.stringify(r.madeLocal.sharedA) === JSON.stringify([[L + 3, L + 5]]) &&
+      JSON.stringify(r.madeLocal.sharedM) === JSON.stringify([[L + 3, L + 5]]) &&
+      r.madeLocal.markersA === 1 &&
+      r.madeLocal.markerM === "1",
+    r.madeLocal,
+  );
+  check(
+    "sharedHighlightBoardOnly the other board removing the shared Highlight leaves the board-only note and its Highlight",
+    JSON.stringify(r.removed.note) === JSON.stringify([L + 6, L + 9]) &&
+      r.removed.marker === 1 &&
+      !r.removed.dangling.length,
+    r.removed,
+  );
+  check(
+    "sharedHighlightBoardOnly a shared Highlight grown across it shows as one with the note on it",
+    JSON.stringify(r.grown.shared) === JSON.stringify([[L + 5, L + 7]]) &&
+      JSON.stringify(r.grown.shown) === JSON.stringify([[L + 5, L + 9]]) &&
+      JSON.stringify(r.grown.note) === JSON.stringify([L + 6, L + 9]) &&
+      r.grown.marker === "1" &&
+      !r.grown.dangling.length,
+    r.grown,
+  );
   await t.close();
 });

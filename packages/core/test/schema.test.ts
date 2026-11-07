@@ -25,7 +25,7 @@ function full() {
       {
         ...seg("s1"),
         hidden: [[2, 2]] as [number, number][],
-        hl: [1],
+        hl: [[1, 1]] as [number, number][],
         symbol: { qual: "f", kind: "function" as const },
       },
     ],
@@ -191,7 +191,7 @@ describe("loadBoardFile", () => {
       ],
       edges: [{ id: "e", from: { card: "c1", line: 2 }, to: { card: "c1" }, kind: "call" }],
     });
-    expect(v1.version).toBe(12);
+    expect(v1.version).toBe(13);
     const col = (id: string) => ({ id, kind: "code", x: 5, y: 6, w: 300, segments: [seg(`s${id}`)] });
     const v2 = loadBoardFile({
       version: 2,

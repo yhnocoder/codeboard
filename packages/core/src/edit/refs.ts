@@ -2,6 +2,7 @@
 // them.
 // Pure functions that change the board passed in (the board calls them inside a mutate).
 import { cornerOf, tidyShelf } from "./internal";
+import { fixHighlights } from "./highlights";
 import { withCols, type Board, type End, type Link, type Sticker } from "../model";
 
 /** Every arrow of the board: on the canvas and on the Shelf (the same objects) */
@@ -211,10 +212,12 @@ export function retargetCards(b: Board, ids: Iterable<string>, to: Retarget): vo
   const looped = (l: Link) => !(touched.has(l.id) && l.from.card === l.to.card);
   b.links = b.links.filter(looped);
   for (const e of b.shelf ?? []) e.links = e.links.filter(looped);
+  const hosts = new Set<string>();
   for (const n of b.sidenotes) {
     if (gone.has(n.at.card)) {
       const o = to({ card: n.at.card, seg: n.at.seg, line: n.at.lines?.[0] });
       n.at = { card: o.card, seg: o.seg, lines: o.seg ? n.at.lines : undefined };
+      hosts.add(o.card);
     }
     if (n.kind === "card" && gone.has(n.card)) n.card = to({ card: n.card }).card;
   }
@@ -227,6 +230,8 @@ export function retargetCards(b: Board, ids: Iterable<string>, to: Retarget): vo
       at.on = { card: to({ card: at.on.card }).card };
   }
   pruneStickers(b);
+  // sidenotes that came over with their lines bring their Highlights (cards that take them later bring them in themselves)
+  fixHighlights(b, hosts);
 }
 
 /** 换卡：引用按 to 搬走（retargetCards），再删掉旧卡和它们的摆放。只删这几张：拆 Compare 时它的栏留下 */

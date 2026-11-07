@@ -55,7 +55,7 @@ const Segment = obj({
   symbol: opt(obj({ qual: str, kind: v.picklist(["function", "class", "module"]) })),
   scope: opt(str),
   hidden: opt(v.array(v.tuple([num, num]))),
-  hl: opt(v.array(num)),
+  hl: opt(v.array(v.tuple([num, num]))),
   keep: opt(str),
   annots: opt(
     v.array(obj({ line: num, from: num, to: num, text: str, color: opt(v.picklist(HAND_COLORS)), below: opt(yes) })),

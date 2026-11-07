@@ -43,6 +43,8 @@ export const below = (el: Element) => {
 };
 export const openMenuAt = (items: Item[], el: Element) => openMenu(items, ...below(el));
 const closeMenu = () => setMenu(null);
+/** A context menu is open (a Highlight's hover popup waits until it closes) */
+export const menuOpen = () => !!menu();
 /** Runs fn once no menu is open and the click that closed it has been handled; at once when none is open */
 export function afterMenu(fn: () => void) {
   if (!menu()) return fn();

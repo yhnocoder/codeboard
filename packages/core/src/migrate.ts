@@ -1,4 +1,4 @@
-// 旧白板文件 → 当前版本（第 11 版）。项目里唯一的兼容代码：旧版本的结构、缺省的字段、手改出来的 null 都在这里补成
+// 旧白板文件 → 当前版本（第 13 版）。项目里唯一的兼容代码：旧版本的结构、缺省的字段、手改出来的 null 都在这里补成
 // 和 model.ts 的类型一模一样，读进来之后的代码只认当前结构。schema.ts 校验的是这里的结果。
 import {
   BOARD_VERSION,
@@ -20,8 +20,9 @@ import {
   cardTitle,
 } from "./model";
 import { eachMarkdown, mapRefs } from "./mdrefs";
+import { fixHighlights } from "./edit/highlights";
 
-/** 读进来的白板文件（第 1–12 版）→ 第 12 版白板文件（共享卡还是引用，由宿主的存储换成内容） */
+/** 读进来的白板文件（第 1–13 版）→ 第 13 版白板文件（共享卡还是引用，由宿主的存储换成内容） */
 export function migrateBoard(raw: any): BoardFile {
   // 更新的版本写的文件：读不懂就别碰（当第 1 版迁移会丢掉所有卡，下次自动保存把空白板写回去）
   if (typeof raw?.version === "number" && raw.version > BOARD_VERSION)
@@ -53,7 +54,46 @@ export function migrateBoard(raw: any): BoardFile {
   if (from < 11) v10to11(b);
   // 第 11 版 → 第 12 版：Free Text 有了级别，没有级别的是正文；从前的 Free Text 都是标题，记成 H1（样子、字号都不变）
   if (from < 12) for (const c of b.cards) if (c.kind !== "shared") v11to12Card(c);
+  // 第 12 版 → 第 13 版：Highlight 从一行行的行号变成几段行（能挂 Sidenote），见 v12to13
+  if (from < 13) v12to13(b);
   return b;
+}
+
+/** A segment's v12 highlighted lines (any order, repeats) → v13 Highlights: the maximal runs of consecutive lines */
+function lineRuns(hl: unknown): [number, number][] | undefined {
+  if (!Array.isArray(hl)) return undefined;
+  const ls = [...new Set(hl.filter((l): l is number => Number.isInteger(l)))].sort((a, b) => a - b);
+  const out: [number, number][] = [];
+  for (const l of ls) {
+    const p = out[out.length - 1];
+    if (p && l === p[1] + 1) p[1] = l;
+    else out.push([l, l]);
+  }
+  return out.length ? out : undefined;
+}
+/** Every segment a v12 card keeps (its own, its Variants', the cards merged into it) gets its runs */
+function runsInCard(c: any) {
+  if (c?.kind !== "code") return;
+  const seg = (s: any) => {
+    const r = lineRuns(s.hl);
+    if (r) s.hl = r;
+    else delete s.hl;
+  };
+  (c.segments ?? []).forEach(seg);
+  for (const v of c.variants ?? []) (v.segs ?? []).forEach(seg);
+  for (const m of c.mergedFrom ?? []) runsInCard(m.card);
+}
+/**
+ * 第 12 版 → 第 13 版：a Highlight is a range of lines that can carry notes. Highlighted lines become their consecutive runs; every
+ * sidenote on lines gets a Highlight of its lines; Highlights that then overlap or nest merge into their union, and the sidenotes on
+ * them take the merged lines (fixHighlights, the same upkeep a version update uses). Code sidenotes' segments only get the runs.
+ * A shared card's content is in its library file (migrateSharedCard). Board-only and Card sidenotes are Highlights of their own
+ * (localNote), so the ones a board keeps on a shared card need nothing from the card
+ */
+function v12to13(b: any) {
+  for (const c of b.cards) runsInCard(c);
+  for (const n of b.sidenotes) if (n.kind === "code") runsInCard({ kind: "code", segments: [n.code] });
+  fixHighlights(b, undefined, { review: false });
 }
 
 /** 第 11 版 → 第 12 版的一张卡：从前的 Free Text（主题的标题样式，默认 40px = H1 的预设字号）→ H1 */
@@ -126,6 +166,13 @@ export function migrateSharedCard(raw: any): SharedCardFile {
   if (sc?.version === 6 || sc?.version === 7) if (sc.card) v7to8Card(sc.card);
   // 第 9–11 版的卡文件和第 8 版一样（变的只是白板文件的镜头、摆放和白板上的引用）；第 12 版：Free Text 的级别
   if (sc?.version >= 6 && sc.version < 12 && sc.card) v11to12Card(sc.card);
+  // 第 13 版：Highlight 成了几段行，跟着卡的 Sidenote 挂在上面（v12to13）
+  if (sc?.version >= 6 && sc.version < 13 && sc.card) {
+    runsInCard(sc.card);
+    for (const n of sc.sidenotes ?? [])
+      if (n?.kind === "code" && n.code) runsInCard({ kind: "code", segments: [n.code] });
+    fixHighlights({ cards: [sc.card], sidenotes: sc.sidenotes ?? [] }, undefined, { review: false });
+  }
   if (sc?.version >= 6 && sc.version < BOARD_VERSION) sc.version = BOARD_VERSION;
   if (sc?.card) normCard(sc.card);
   for (const n of sc?.sidenotes ?? []) normNote(n);

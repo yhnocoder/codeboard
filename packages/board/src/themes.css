@@ -1925,19 +1925,21 @@
 /* 卡片高度和别的主题一样（切主题不挤卡）：行高 = 13.5px 正文的 1.6 倍；等宽字更宽，字号小一号才折出差不多的行数 */
 :root.look-drafting .card.note .nbody {
   --md-fs: calc(var(--note-fs, 13.5px) * 12.5 / 13.5);
+}
+:root.look-drafting :is(.card.note, .inote, .slip) .nbody {
   line-height: 1.728;
   font-family: var(--mono);
   color: var(--ink-2);
 }
-:root.look-drafting .card.note .nbody h1,
-:root.look-drafting .card.note .nbody h2,
-:root.look-drafting .card.note .nbody h3 {
+:root.look-drafting :is(.card.note, .inote, .slip) .nbody h1,
+:root.look-drafting :is(.card.note, .inote, .slip) .nbody h2,
+:root.look-drafting :is(.card.note, .inote, .slip) .nbody h3 {
   font-family: var(--head-font);
   color: var(--ink);
   letter-spacing: 0.06em;
 } /* 加粗只加粗：用正文的字（标题字体排进等宽正文里像换了一种字） */
-:root.look-drafting .card.note .nbody strong,
-:root.look-drafting .card.note .nbody b {
+:root.look-drafting :is(.card.note, .inote, .slip) .nbody strong,
+:root.look-drafting :is(.card.note, .inote, .slip) .nbody b {
   color: var(--ink);
 }
 :root.look-drafting .card.note .ctitle {
@@ -2374,9 +2376,9 @@
 :root.look-colorful .card.note .nbody {
   --md-fs: var(--note-fs, 13.5px);
 }
-:root.look-colorful .card.note .nbody h1,
-:root.look-colorful .card.note .nbody h2,
-:root.look-colorful .card.note .nbody h3 {
+:root.look-colorful :is(.card.note, .inote, .slip) .nbody h1,
+:root.look-colorful :is(.card.note, .inote, .slip) .nbody h2,
+:root.look-colorful :is(.card.note, .inote, .slip) .nbody h3 {
   font-weight: 600;
   letter-spacing: 0.02em;
 }
@@ -2738,15 +2740,17 @@
 }
 :root.look-newspaper .card.note .nbody {
   --md-fs: var(--note-fs, 13.5px);
-  line-height: 1.55;
-  font-family: var(--serif);
   --md-h1: var(--note-fs-h1, 19px);
   --md-h2: var(--note-fs-h2, 19px);
   --md-h3: var(--note-fs-h3, 19px);
 }
-:root.look-newspaper .card.note .nbody h1,
-:root.look-newspaper .card.note .nbody h2,
-:root.look-newspaper .card.note .nbody h3 {
+:root.look-newspaper :is(.card.note, .inote, .slip) .nbody {
+  line-height: 1.55;
+  font-family: var(--serif);
+}
+:root.look-newspaper :is(.card.note, .inote, .slip) .nbody h1,
+:root.look-newspaper :is(.card.note, .inote, .slip) .nbody h2,
+:root.look-newspaper :is(.card.note, .inote, .slip) .nbody h3 {
   font-weight: 700;
   line-height: 1.15;
   font-family: var(--serif);
@@ -3099,14 +3103,16 @@
 }
 :root.look-poster .card.note .nbody {
   --md-fs: var(--note-fs, 12px);
-  line-height: 1.7;
   --md-h1: var(--note-fs-h1, 17px);
   --md-h2: var(--note-fs-h2, 17px);
   --md-h3: var(--note-fs-h3, 17px);
 }
-:root.look-poster .card.note .nbody h1,
-:root.look-poster .card.note .nbody h2,
-:root.look-poster .card.note .nbody h3 {
+:root.look-poster :is(.card.note, .inote, .slip) .nbody {
+  line-height: 1.7;
+}
+:root.look-poster :is(.card.note, .inote, .slip) .nbody h1,
+:root.look-poster :is(.card.note, .inote, .slip) .nbody h2,
+:root.look-poster :is(.card.note, .inote, .slip) .nbody h3 {
   font-weight: 400;
   line-height: 1.3;
   font-family: var(--serif);
@@ -3552,10 +3558,6 @@
   font: 12.5px / 1.55 var(--serif);
   color: var(--ink-2);
 }
-:root.look-ink-wash .rowbg.hl {
-  background: linear-gradient(90deg, transparent, var(--wash) 8%, var(--wash) 70%, transparent);
-  box-shadow: none;
-}
 /* 跳到某行：一笔朱笔从左划到右，划在这一行的字下面（从第一个字到最后一个字，CodeBody.tsx flashSpan），整行淡淡洇一下墨，再慢慢淡掉。
    时长同 state/timing.ts 的 FLASH_BRUSH */
 :root.look-ink-wash .rowbg.flash {
@@ -3701,11 +3703,13 @@
 }
 :root.look-ink-wash .card.note .nbody {
   --md-fs: var(--note-fs, 13.5px);
+}
+:root.look-ink-wash :is(.card.note, .inote, .slip) .nbody {
   line-height: 1.6;
   font-family: var(--serif);
 } /* 行高、卡头和别的主题一样：切主题不改卡片高度 */
 /* 拓片（深色）上 Note 的正文用满墨：--ink-2 在黑底上发灰 */
-:root.look-ink-wash[data-theme="dark"] .card.note .nbody {
+:root.look-ink-wash[data-theme="dark"] :is(.card.note, .inote, .slip) .nbody {
   --ink-2: var(--ink);
   color: var(--ink);
 }
@@ -3716,16 +3720,25 @@
 /* Sections (#137): no border or tray; the frame is four dry brush strokes (state/inkframe.ts, an SVG in the frame,
    canvas/Sections.tsx), its colour the SVG's currentColor. The title is written in running script (Zhi Mang Xing,
    fonts-zhimangxing.css) in the gap the top stroke leaves for it, its middle on the stroke; it ellipsizes before the frame's
-   right corner. Collapsed: the title back inside the small frame, which has no gap. Selected: strokes and title vermilion */
+   right corner. Collapsed: the title back inside the small frame, which has no gap. Selected: what Warm Ink's border, ring and
+   wash are, in brush and vermilion: the strokes and title turn vermilion, a second, lighter vermilion stroke shows a little
+   inside the frame (the same strokes again, offset, as if the brush went round twice) and a faint vermilion wash covers it.
+   The second stroke and the wash only fade (opacity), so selecting a big Section paints nothing but the strokes' colour. The
+   drop target keeps the plain ink-grey wash (.sect.drop, styles.css) and no second stroke */
 :root.look-ink-wash .sect {
   --sect-fill: transparent;
   --sect-sh: none;
   border-color: transparent;
   border-radius: 2px;
 }
-/* its own selected look is the brush strokes in vermilion: no accent wash */
+/* the wash: vermilion and fainter than Warm Ink's accent wash, a little stronger on rubbing-black paper, timed with the strokes */
 :root.look-ink-wash .sect::after {
-  content: none;
+  border-radius: 0;
+  background: color-mix(in srgb, var(--zhu) 4.5%, transparent);
+  transition: opacity 0.18s var(--out);
+}
+:root.look-ink-wash[data-theme="dark"] .sect::after {
+  background: color-mix(in srgb, var(--zhu) 7%, transparent);
 }
 :root.look-ink-wash .sect.sel,
 :root.look-ink-wash .sect.drop {
@@ -3733,7 +3746,7 @@
   box-shadow: none;
 }
 /* the image reaches FRAME_M (12 px) outside the frame, measured from its border box: the frame's 1 px border is inside that */
-:root.look-ink-wash .sbrush {
+:root.look-ink-wash :is(.sbrush, .secho) {
   position: absolute;
   left: -13px;
   top: -13px;
@@ -3749,6 +3762,17 @@
 :root.look-ink-wash .sect.sel .sbrush {
   color: var(--zhu);
   fill-opacity: 0.85;
+}
+/* the second stroke: hidden until selected, then only its opacity changes */
+:root.look-ink-wash .secho {
+  translate: 5px 5px;
+  color: var(--zhu);
+  fill-opacity: 1;
+  opacity: 0;
+  transition: opacity 0.18s var(--out);
+}
+:root.look-ink-wash .sect.sel .secho {
+  opacity: 0.42;
 }
 :root.look-ink-wash .slabel {
   --ml: 24px;
@@ -4166,9 +4190,6 @@
 :root.look-city .cdesc {
   border-bottom: 0;
   padding-top: 8px;
-}
-:root.look-city .rowbg.hl {
-  background: color-mix(in srgb, var(--lane) 26%, transparent);
 }
 /* 马路：路肩 + 白边线 + 路面 + 双黄线。调用是大路，普通箭头是小街（白路沿、白中线） */
 :root.look-city .edge:not(.rubber) {

@@ -1,6 +1,7 @@
 // Shared cards and twins: a shared card unlinked on this board, the same card placed several times kept in step.
 // Pure functions that change the board passed in (the board calls them inside a mutate).
 import { renameCard, removeStickers } from "./refs";
+import { fixHighlights } from "./highlights";
 import { clone, copyTwinContent, twinContent, uid, type Board, type Card } from "../model";
 
 /**
@@ -31,6 +32,10 @@ export function makeTwin(b: Board, id: string, of: string): boolean {
   c.same = o.same;
   copyTwinContent(clone(o), c);
   resegCard(b, id, new Map(old.map((s, i) => [s, now[i]])));
+  // the copy's sidenotes on lines bring their Highlights into the content, which every place of the card shows
+  fixHighlights(b, [id]);
+  const k = clone(c);
+  for (const t of b.cards) if (t !== c && t.same === c.same) copyTwinContent(k, t);
   return true;
 }
 

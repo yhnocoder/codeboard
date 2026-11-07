@@ -73,11 +73,15 @@ export const DED_PAD = 16;
 /** 没存高度的代码卡（新卡、Fit Content 过的卡）代码区最高多少，更长的在里面滚（BoardView 挂到 body 上的 --code-max） */
 export const CODE_MAX = 460;
 let charW = 0;
-function monoWidth(el: Element) {
+/** One character of the code font (every code card's is the same), px: where a code column is without measuring the DOM */
+export function monoWidth(el: Element) {
   if (charW) return charW;
   const ctx = document.createElement("canvas").getContext("2d")!;
   ctx.font = getComputedStyle(el).font;
-  return (charW = ctx.measureText("0".repeat(100)).width / 100 || 7.2);
+  const w = ctx.measureText("0".repeat(100)).width / 100 || 7.2;
+  // kept once the fonts are in: measured before, it may be a fallback font's width
+  if (document.fonts.status === "loaded") charW = w;
+  return w;
 }
 
 /** 代码卡的卡头 / 色带 / 底栏一共多高：主题决定，直接量布局。代码卡的 Place.h 存的是中间内容区（.carea）的高度，不含这些 */

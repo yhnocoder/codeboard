@@ -68,6 +68,7 @@ async function variants(res: Record<string, unknown>) {
     to: { card: add.id },
     call: { name: "allocate", col: 0 },
   });
+  s0.hl = [[ret, ret]];
   b.sidenotes.push({
     id: "n1",
     at: { card: sch.id, seg: s0.id, lines: [ret, ret] },
@@ -239,18 +240,19 @@ async function variants(res: Record<string, unknown>) {
   await closeIfOpen(h, ".pop.k-three .ph .ib");
 
   // 6. 「只在这个 Variant」的 Sidenote
-  await card.locator(".mk").first().click();
-  await page.locator(".pop.k-notes .tbtn", { hasText: "Only in This Variant" }).click();
+  await card.locator(".hxm").first().click();
+  await page.locator('.pop.k-highlight .slip button[aria-label="Only in This Variant"]').click();
   await until(h, "the sidenote is kept to this variant", () => h.board().sidenotes.find((n) => n.id === "n1")?.variant);
   await idle(h);
   const vOnly = h.board().sidenotes.find((n) => n.id === "n1")?.variant === sc().active;
-  await closeIfOpen(h, ".pop.k-notes .ph .ib");
+  await page.keyboard.press("Escape");
+  await idle(h);
   await card.locator(".vtab.up").click();
   await idle(h);
-  const hidden = (await card.locator(".mk").count()) === 0;
+  const hidden = (await card.locator(".hxm").count()) === 0;
   await card.locator(".vtab", { hasText: "vllm-exp" }).click();
   await idle(h);
-  const shownAgain = (await card.locator(".mk").count()) === 1;
+  const shownAgain = (await card.locator(".hxm").count()) === 1;
   res.vOnly = { vOnly, hidden, shownAgain };
 
   // 7. 合进上游：提示转回普通卡，Convert
@@ -342,6 +344,7 @@ async function switchTime(res: Record<string, unknown>) {
     to: { card: add.id },
     call: { name: "allocate", col: 0 },
   });
+  s0.hl = [[ret, ret]];
   b.sidenotes.push({
     id: "n1",
     at: { card: sch.id, seg: s0.id, lines: [ret, ret] },

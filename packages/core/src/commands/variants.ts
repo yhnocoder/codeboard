@@ -2,6 +2,7 @@
 // What a variant's code looks like comes from the host (views); these change only the board
 import { activeOf, findCard, isCode, type Board, type CodeCard, type Segment } from "../model";
 import type { NewVariant } from "../protocol";
+import { fixHighlights } from "../edit";
 import {
   addVariant as addOne,
   dropVariants,
@@ -78,6 +79,7 @@ export function toggleVariantOnly(env: CommandEnv, noteId: string) {
     if (!n || !c?.variants?.length) return;
     if (n.variant) delete n.variant;
     else n.variant = activeOf(c);
+    fixHighlights(b, [c.id]);
   });
 }
 

@@ -104,13 +104,24 @@ describe("code card rules", () => {
     ]);
   });
 
-  it("highlighting turns lines off only when all of them are highlighted already", () => {
-    const { b, env } = setup([code("a", ["a", "b", "c"])]);
-    segOf(b, "a").hl = [1];
+  it("highlighting removes the Highlights only when all the lines are highlighted already, else grows one over them", () => {
+    const { b, env } = setup([code("a", ["a", "b", "c", "d"])]);
+    segOf(b, "a").hl = [[1, 1]];
+    b.sidenotes.push({ id: "n1", at: { card: "a", seg: "sa", lines: [1, 1] }, kind: "text", md: "x" });
     C.toggleHighlight(env, { card: "a", seg: "sa", start: 1, end: 2 });
-    expect(segOf(b, "a").hl).toEqual([1, 2]);
-    C.toggleHighlight(env, { card: "a", seg: "sa", start: 1, end: 2 });
-    expect(segOf(b, "a").hl).toEqual([]);
+    expect(segOf(b, "a").hl).toEqual([[1, 2]]);
+    expect(b.sidenotes[0].at.lines).toEqual([1, 2]); // the note moves with its Highlight
+    // lines next to a Highlight make one of their own
+    C.toggleHighlight(env, { card: "a", seg: "sa", start: 3, end: 3 });
+    expect(segOf(b, "a").hl).toEqual([
+      [1, 2],
+      [3, 3],
+    ]);
+    // one line of a Highlight: the whole Highlight goes, its notes with it
+    expect(C.toggleHighlight(env, { card: "a", seg: "sa", start: 2, end: 2 })).toBe(1);
+    expect(segOf(b, "a").hl).toEqual([[3, 3]]);
+    expect(b.sidenotes).toEqual([]);
+    expect(danglingRefs(b)).toEqual([]);
   });
 
   it("Free code's language follows its text until picked by hand, and again when set back to auto", () => {

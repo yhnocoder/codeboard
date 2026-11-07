@@ -107,7 +107,7 @@ const zoomToSelection = async (page, f) => {
 };
 // Turn on Always Show in the open Sidenote popover. The button toggles: leave it alone when it is already on (.on)
 const alwaysShowIn = async (f) => {
-  const btn = f.locator(".pop button", { hasText: /^Always Show$/ }).first();
+  const btn = f.locator('.pop button[aria-label="Always Show"]').first();
   await btn.waitFor({ timeout: 5000 });
   if (!(await btn.evaluate((b) => b.classList.contains("on")))) await btn.click();
   await until("Always Show is on", () => btn.evaluate((b) => b.classList.contains("on")), 3000);
@@ -245,7 +245,7 @@ const leaveNote = async (page, f) => {
   await until("the Sidenote's text field has the keyboard", () => typingIn(f, ".pop"));
   await page.keyboard.type("Prefill admits waiting sequences until the token budget runs out.");
   await f.locator(".pop button", { hasText: /^Add$/ }).click();
-  check(await soon(() => sch.locator(".mk").count(), Boolean, 5000), "Sidenote added");
+  check(await soon(() => sch.locator(".hxm").count(), Boolean, 5000), "Sidenote added");
   await page.keyboard.press("Escape");
   await blank(f);
   await idle(f);
@@ -352,7 +352,7 @@ const leaveNote = async (page, f) => {
     // the Note open for editing with the caret after its last sentence and the gray completion (from the mock) behind it
     await blank(f);
     await fitted(f);
-    await card(f, "Scheduler.schedule").locator(".mk").first().click();
+    await card(f, "Scheduler.schedule").locator(".hxm").first().click();
     await alwaysShowIn(f);
     await idle(f);
     await page.keyboard.press("Escape");
@@ -423,7 +423,7 @@ const leaveNote = async (page, f) => {
     // Everything else on the board is hidden while the shot is taken; in Warm Ink the card fills 80% of the shot's width
     await blank(f);
     await fitted(f);
-    await card(f, "Scheduler.schedule").locator(".mk").first().click();
+    await card(f, "Scheduler.schedule").locator(".hxm").first().click();
     await alwaysShowIn(f);
     await idle(f);
     await page.keyboard.press("Escape");

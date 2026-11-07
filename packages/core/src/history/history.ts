@@ -304,6 +304,8 @@ export function createHistory(doc: Doc, hooks: Hooks, ports: HistoryPorts) {
     createFresh,
     settleFresh,
     isFresh: (id: string) => fresh.has(id),
+    /** The latest undo step, as a token (the same object while it stays the latest: a step merged into it keeps it) */
+    undoTop: (): object | undefined => undoStack[undoStack.length - 1],
     /** Read and clear the undo / redo flag (see `undone`) */
     takeUndone() {
       const u = undone;

@@ -4,6 +4,8 @@
 import {
   DEFAULT_SETTINGS,
   EXPERIMENTAL_THEMES,
+  HIGHLIGHT_LOOKS,
+  HIGHLIGHT_LOOK_NAMES,
   NOTE_FONT_LEVELS,
   NOTE_FONT_RANGE,
   THEMES,
@@ -195,6 +197,27 @@ export const SETTINGS: { [K in keyof Settings]-?: SettingDecl } = {
       type: "boolean",
       description:
         "When a Note starts with a heading, the card's title bar shows it. Also show it at the top of the Note's text (it always shows while editing).",
+    },
+  },
+  highlightLook: {
+    key: "highlights.look",
+    valid: oneOf(...HIGHLIGHT_LOOKS),
+    schema: {
+      type: "string",
+      ...choices(
+        HIGHLIGHT_LOOKS.map((v): [string, string] => [
+          v,
+          `${HIGHLIGHT_LOOK_NAMES[v]}: ${
+            {
+              band: "the lines and their Always Show notes are one soft band",
+              bracket: "a pen bracket beside the lines, notes as margin notes in the Note font",
+              "bracket-hand": "the bracket, with the notes in handwriting",
+            }[v]
+          }`,
+        ]),
+      ),
+      description:
+        "Highlight look: how code cards draw Highlights (highlighted lines) and the notes on them. A Highlight never changes a card's size.",
     },
   },
   mathPreamble: {

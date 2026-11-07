@@ -56,7 +56,7 @@ function start(d: ViewerData) {
   let drag: { sx: number; sy: number; x: number; y: number } | null = null;
   board.addEventListener("pointerdown", (e) => {
     const t = e.target as HTMLElement;
-    if (e.button !== 0 || t.closest(".src, .md, a, button, .mk, .stk, pre, input")) return;
+    if (e.button !== 0 || t.closest(".src, .md, a, button, .mk, .hxm, .stk, pre, input")) return;
     drag = { sx: e.clientX, sy: e.clientY, x, y };
     board.classList.add("grab");
     board.setPointerCapture(e.pointerId);

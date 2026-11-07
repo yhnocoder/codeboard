@@ -23,7 +23,7 @@ import {
 import { state, rectOf, hostOf, flows } from "../state/store";
 import { sel, select, lineSel, setLineSel } from "../state/selection";
 import { toast } from "../state/toast";
-import { setExportOpen, exportBusy, setExportBusy, type ExportOpts } from "../state/export";
+import { setExportOpen, exportBusy, setExportBusy, setExportHidden, type ExportOpts } from "../state/export";
 import { ask, send } from "../host";
 import { flushMd } from "../md/lazy";
 import { resolveCardRef } from "./common";
@@ -155,20 +155,33 @@ const LIVE_CLASSES = [
 
 /** 导出用的画布克隆：完整细节、没有选中；范围外的卡、两端不都在范围里的箭头、范围外的 Section 去掉，
  *  标了 data-export="strip" 的部件和交互状态也去掉。HTML 快照、PNG 共用 */
-async function cloneForExport(b: Board, scope: ExportScope, order: string[]): Promise<HTMLElement> {
+/** hide = sidenotes the export leaves out: the code cards draw their Highlights without them while the board is cloned */
+async function cloneForExport(
+  b: Board,
+  scope: ExportScope,
+  order: string[],
+  hide: ReadonlySet<string> = new Set(),
+): Promise<HTMLElement> {
   const prevSel = { cards: [...sel.cards], links: [...sel.links], sections: [...sel.sections] },
     prevLine = lineSel();
   select({});
   setLineSel(null);
-  flushMd(); // 视野外还没渲染完的 Note 先补上
-  await frames(2);
-  flushMd();
-  await frames(1);
-  const world = (document.querySelector("#board .world") as HTMLElement).cloneNode(true) as HTMLElement;
+  let world: HTMLElement;
+  try {
+    setExportHidden(hide);
+    flushMd(); // 视野外还没渲染完的 Note 先补上
+    await frames(2);
+    flushMd();
+    await frames(1);
+    world = (document.querySelector("#board .world") as HTMLElement).cloneNode(true) as HTMLElement;
+  } finally {
+    // the live board shows every sidenote and its selection again, whatever went wrong
+    setExportHidden(new Set<string>());
+    select(prevSel);
+    setLineSel(prevLine);
+  }
   // Image cards and Note images show a smaller copy at the zoom they are seen at (md/copies.ts): the export carries the original
   world.querySelectorAll<HTMLImageElement>("img[data-full]").forEach((im) => im.setAttribute("src", im.dataset.full!));
-  select(prevSel);
-  setLineSel(prevLine);
   const keep = new Set(order);
   const linkOk = new Set(
     b.links.filter((l) => keep.has(hostOf(l.from.card)) && keep.has(hostOf(l.to.card))).map((l) => l.id),
@@ -392,7 +405,11 @@ async function snapshotHtml(
   const keep = new Set(order);
   const whole = o.scope === "board";
   // 放进一个不显示的文档里再改 <img> 的地址：这个页面里的克隆一改 src 就会去加载（cbres: 加载不了，控制台报错）
-  const world = document.implementation.createHTMLDocument("").adoptNode(await cloneForExport(b, scopeOf(o), order));
+  // Board-only 的 Sidenote 不带出去：克隆时代码卡就画成没有它们的样子（行号、底色条、标记跟着排好）
+  const hidden = new Set(o.boardOnly ? [] : b.sidenotes.filter((n) => n.boardOnly).map((n) => n.id));
+  const world = document.implementation
+    .createHTMLDocument("")
+    .adoptNode(await cloneForExport(b, scopeOf(o), order, hidden));
   // 贴纸：问题不带出去时删掉；画布上没绑东西的只在整块导出时留
   const qs = new Set(b.stickers.filter((s) => isQuestion(s)).map((s) => s.id));
   world.querySelectorAll<HTMLElement>("[data-sticker]").forEach((el) => {
@@ -402,8 +419,7 @@ async function snapshotHtml(
   });
   if (!o.questions) world.querySelectorAll(".qcount").forEach((el) => el.remove());
   world.querySelectorAll(".lstks:empty").forEach((el) => el.remove());
-  // Board-only 的 Sidenote：标记里去掉，全去掉了就删标记；一直显示的那种整条删
-  const hidden = new Set(o.boardOnly ? [] : b.sidenotes.filter((n) => n.boardOnly).map((n) => n.id));
+  // 卡头的标记（整张卡的 Sidenote）里去掉，全去掉了就删标记；还剩的一直显示的整条删，空了的那组也删
   world.querySelectorAll<HTMLElement>("[data-notes]").forEach((el) => {
     const ids = el.dataset.notes!.split(",").filter((id) => !hidden.has(id));
     if (!ids.length) {
@@ -416,6 +432,7 @@ async function snapshotHtml(
   world.querySelectorAll<HTMLElement>("[data-note]").forEach((el) => {
     if (hidden.has(el.dataset.note!)) el.remove();
   });
+  world.querySelectorAll(".inotes:not(:has(.inote))").forEach((el) => el.remove());
   // 停在第一帧的动图贴纸（屏幕外的）在快照里照样播
   world.querySelectorAll<HTMLImageElement>("img.glyph.anim").forEach((im) => {
     const ic = bitmapOf({ pack: im.dataset.pack!, name: im.dataset.name! });

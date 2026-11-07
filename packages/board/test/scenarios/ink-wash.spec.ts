@@ -20,7 +20,9 @@
 //                            and its anisotropic turbulence smeared them into text-like blots (#136); light and dark, screenshots
 //  inkWashTitleNoSeal      — the board's name in the top left has no seal after it (#138)
 //  inkWashSectionBrushFrame — a Section's frame is four dry brush strokes (one filled path, no border), the title written in
-//                            running script in the gap of the top stroke; selected = strokes and title vermilion; the frame is
+//                            running script in the gap of the top stroke; selected = strokes and title vermilion, a second
+//                            lighter vermilion stroke offset inside and a faint vermilion wash (both only fade), the drop
+//                            target keeps its ink wash without them; the frame is
 //                            the same path every time it is drawn and follows a resize by drag; nested Sections too; light and
 //                            dark, with screenshots; Warm Ink keeps its border and title (#137)
 import * as fs from "node:fs";
@@ -652,6 +654,9 @@ const sectionLooks = (h: Host) =>
         nm = l.querySelector<HTMLElement>(".sname")!,
         svg = e.querySelector<SVGSVGElement>("svg.sbrush"),
         path = svg?.querySelector<SVGPathElement>("path"),
+        echo = e.querySelector<SVGSVGElement>("svg.secho"),
+        es = echo && getComputedStyle(echo),
+        wash = getComputedStyle(e, "::after"),
         fr = e.getBoundingClientRect(),
         lr = l.getBoundingClientRect(),
         z = fr.width / e.offsetWidth,
@@ -686,6 +691,16 @@ const sectionLooks = (h: Host) =>
         fillOpacity: path ? getComputedStyle(path).fillOpacity : "",
         filter: svg ? getComputedStyle(svg).filter : "",
         transition: svg ? getComputedStyle(svg).transitionDuration : "",
+        // the selected look's second stroke: the same strokes, offset, its own image that only fades
+        echo: {
+          d: echo?.querySelector("path")?.getAttribute("d") === path?.getAttribute("d"),
+          opacity: es ? +es.opacity : -1,
+          fill: echo ? getComputedStyle(echo.querySelector("path")!).fill : "",
+          translate: es?.translate ?? "",
+          transition: es?.transitionProperty ?? "",
+        },
+        wash: { opacity: +wash.opacity, bg: wash.backgroundColor, transition: wash.transitionProperty },
+        bg: cs.backgroundColor,
         border: cs.borderTopColor,
         borderWidth: cs.borderTopWidth,
         across,
@@ -702,6 +717,8 @@ const sectionLooks = (h: Host) =>
       };
     }),
   );
+
+type Look = Awaited<ReturnType<typeof sectionLooks>>[number];
 
 test("inkWashSectionBrushFrame", async () => {
   const res: Record<string, unknown> = {};
@@ -727,8 +744,35 @@ test("inkWashSectionBrushFrame", async () => {
     await until(h, "deselected", async () => !(await h.page.locator(".sect.sel").count()));
     await idle(h);
     const again = await sectionLooks(h);
+    // the drop target (S2 marked as a card is dragged over it; the class set by hand, this checks the look): the plain ink
+    // wash, no second stroke and no vermilion wash, so it never reads as selected
+    await h.page.evaluate(() => {
+      document.querySelector('.sect[data-sect="S2"]')!.classList.add("drop");
+      document.getAnimations().forEach((a) => a.finish());
+    });
+    const dropLook = (await sectionLooks(h)).filter((x) => x.id === "S2");
+    await h.page.evaluate(() => document.querySelector('.sect[data-sect="S2"]')!.classList.remove("drop"));
     const ink0 = lt ? "rgb(29, 28, 26)" : "rgb(233, 229, 218)",
-      zhu = lt ? "rgb(184, 50, 31)" : "rgb(214, 83, 58)";
+      zhu = lt ? "rgb(184, 50, 31)" : "rgb(214, 83, 58)",
+      zhuRgb = zhu.replace("rgb(", "").replace(")", "").split(", ").map(Number),
+      // the wash: a faint vermilion, 4.5% on paper and 7% on the dark rubbing (color-mix keeps the colour, the alpha is the mix)
+      faintZhu = (bg: string) => {
+        const m = /^(?:rgba|color)\((?:srgb )?([\d.]+)[, ]+([\d.]+)[, ]+([\d.]+)(?:[, /]+([\d.]+))?\)$/.exec(bg);
+        if (!m) return false;
+        const v = [+m[1], +m[2], +m[3]],
+          a = +(m[4] ?? 1),
+          rgb = bg.startsWith("color(") ? v.map((c) => c * 255) : v;
+        return Math.abs(a - (lt ? 0.045 : 0.07)) < 0.004 && rgb.every((c, i) => Math.abs(c - zhuRgb[i]) < 2);
+      },
+      hidden = (x: Look) => x.echo.opacity === 0 && x.wash.opacity === 0,
+      shown = (x: Look) =>
+        x.echo.d &&
+        x.echo.opacity === 0.42 &&
+        x.echo.fill === zhu &&
+        x.echo.translate === "5px 5px" &&
+        x.echo.transition === "opacity" &&
+        x.wash.opacity === 1 &&
+        faintZhu(x.wash.bg);
     const one =
       before.length === 3 &&
       before.every(
@@ -750,15 +794,21 @@ test("inkWashSectionBrushFrame", async () => {
           x.font &&
           x.within,
       ) &&
+      before.every((x) => hidden(x)) &&
       sel.every((x) =>
-        x.id === "S1" ? x.sel && x.fill === zhu && x.color === zhu : !x.sel && x.fill === ink0 && x.color !== zhu,
+        x.id === "S1"
+          ? x.sel && x.fill === zhu && x.color === zhu && shown(x)
+          : !x.sel && x.fill === ink0 && x.color !== zhu && hidden(x),
       ) &&
+      dropLook.length === 1 &&
+      dropLook.every((x) => hidden(x) && x.bg !== "rgba(0, 0, 0, 0)" && !faintZhu(x.bg)) &&
       again.every((x, i) => x.d === before[i].d && x.fill === ink0);
     ok &&= one;
     res[lt ? "light" : "dark"] = {
       one,
       before: before.map(({ d, ...x }) => ({ ...x, d: d.length })),
-      sel: sel.map((x) => [x.id, x.fill, x.color]),
+      sel: sel.map((x) => [x.id, x.fill, x.color, x.echo, x.wash]),
+      drop: dropLook.map((x) => [x.bg, x.echo, x.wash]),
     };
     if (lt) {
       // resize S1 by its right edge: the frame follows the drag, and the left stroke (its texture keyed by distance) stays as it was

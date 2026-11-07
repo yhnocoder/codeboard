@@ -13,6 +13,8 @@ import {
   type HandWeight,
   type MarkSize,
   type FreeTextLevel,
+  type HlRange,
+  sameRange,
 } from "@codeboard/core";
 import * as C from "@codeboard/core/commands";
 import { commandEnv } from "./env";
@@ -21,9 +23,10 @@ import { sel, select, clearSel, lineSel } from "../state/selection";
 import { toast } from "../state/toast";
 import { IS_MAC } from "@yhnocoder/markdown/ui";
 import { editing, liveNoteMd, setEditing } from "../state/ui";
-import { cardsMeasured, naturalSize, chromeOf, CODE_MAX } from "../state/measure";
+import { cardsMeasured } from "../state/measure";
+import { fitMeasure } from "./fit";
 import { noteImageOf } from "./imagedata";
-import { promptText, type Item } from "../ui/Menu";
+import { menuOpen, promptText, type Item } from "../ui/Menu";
 import {
   imageCaption,
   setImageCaption,
@@ -36,18 +39,20 @@ import { noteImageAt, type ImgRef } from "./imageai";
 import { openPop, closePop, pops, updatePop, pinPop } from "../state/pop";
 import { ask } from "../host";
 import { addCards } from "./create";
+import { removedNotes } from "./edit";
 import { requestViews, putViews } from "../state/views";
 import { tune } from "../state/tune";
 import { hostRect, popCard, revealCard } from "./common";
 import { lastPointer } from "../state/measure";
 import { cardSel } from "../cardsel";
 import { boardTimer } from "../state/root";
+import { NOTE_HOVER } from "../state/timing";
 
 const hoverT = boardTimer(),
   leaveT = boardTimer();
 export function hoverMarker(el: Element, ids: string[]) {
   leaveT.stop();
-  hoverT.start(() => showNotes(el, ids, false), 120);
+  hoverT.start(() => showNotes(el, ids, false), NOTE_HOVER);
   el.addEventListener(
     "pointerleave",
     () => {
@@ -59,7 +64,7 @@ export function hoverMarker(el: Element, ids: string[]) {
 }
 export function scheduleHideNotes() {
   leaveT.start(() => {
-    const p = pops().find((q) => !q.pinned && q.pop.kind === "notes");
+    const p = pops().find((q) => !q.pinned && (q.pop.kind === "notes" || q.pop.kind === "highlight"));
     if (p && !document.querySelector(`.pop[data-pop="${p.id}"]:hover`)) closePop(p.id);
   }, 260);
 }
@@ -85,16 +90,60 @@ function showNotes(el: Element, ids: string[], pin: boolean) {
       : "card";
   const id = openPop(
     { kind: "notes", card: n0.at.card, ids, title: `Sidenotes · ${where}`, sel: ids[0] },
-    // 标着几行的（行号栏里的标记）：放在那几行下面，不盖住它们；整张卡的（卡头的标记）放在右边
-    { el, prefer: n0.at.lines && el instanceof HTMLElement && el.dataset.last ? "lines" : "right" },
+    // 整张卡的 Sidenote（卡头的标记）：放在右边；行上的在 Highlight 的弹窗里（showHighlight）
+    { el, prefer: "right" },
   );
   if (pin) pinPop(id);
+}
+
+/**
+ * The pointer came onto a Highlight's gutter area (its line numbers, its marker): after the hover delay its popup opens under its
+ * lines. It closes a while after the pointer leaves (leaveHighlight), unless the pointer went into the popup
+ */
+export function hoverHighlight(card: string, seg: string, lines: HlRange) {
+  leaveT.stop();
+  // a context menu open: the gutter under it opens nothing
+  if (menuOpen()) return hoverT.stop();
+  hoverT.start(() => showHighlight(card, seg, lines, false), NOTE_HOVER);
+}
+/** A context menu opens on a code card's lines: only the menu shows. A Highlight popup waiting to open does not, one open closes */
+export function menuOverHighlights() {
+  hoverT.stop();
+  for (const p of pops()) if (p.pop.kind === "highlight") closePop(p.id);
+}
+/** The pointer left a Highlight's gutter area, or the element it was on went (the Highlight changed under it) */
+export function leaveHighlight() {
+  hoverT.stop();
+  scheduleHideNotes();
+}
+/** A click on a Highlight's gutter area or marker: its popup opens and stays */
+export const pinHighlight = (card: string, seg: string, lines: HlRange) => showHighlight(card, seg, lines, true);
+/** The key a Highlight's gutter area (.hxhit) carries in data-hl: where its popup finds it */
+export const highlightKey = (card: string, seg: string, lines: HlRange) => `${card}:${seg}:${lines[0]}-${lines[1]}`;
+function showHighlight(card: string, seg: string, lines: HlRange, pin: boolean) {
+  if (!pin && menuOpen()) return;
+  const same = pops().find(
+    (p) => p.pop.kind === "highlight" && p.pop.card === card && p.pop.seg === seg && sameRange(p.pop.lines, lines),
+  );
+  if (same) {
+    if (pin && !same.pinned) pinPop(same.id);
+    return;
+  }
+  const el = document.querySelector(`.hxhit[data-hl="${highlightKey(card, seg, lines)}"]`);
+  if (!el) return;
+  const id = openPop({ kind: "highlight", card, seg, lines: [lines[0], lines[1]] }, { el, prefer: "range" });
+  if (pin) pinPop(id);
+}
+/** Remove Highlight (its popup): the lines and the sidenotes on them, one undo step */
+export function removeHighlight(card: string, seg: string, lines: HlRange) {
+  removedNotes(C.removeHighlight(commandEnv, card, seg, lines, fitMeasure));
 }
 
 export function openAddNote(at: Anchor, tab: "code" | "paste" | "text" | "link" | "card" = "code") {
   const host = hostOf(at.card);
   const el =
-    (at.lines && document.querySelector(`${cardSel(host)} .addn`)) || document.querySelector(`${cardSel(host)}`);
+    (at.lines && at.seg && document.querySelector(`.hxhit[data-hl="${highlightKey(at.card, at.seg, at.lines)}"]`)) ||
+    document.querySelector(`${cardSel(host)}`);
   openPop({ kind: "addNote", at, tab }, el ? { el, prefer: "right" } : lastPointer());
 }
 /** @public run from the key table (keymap.ts) */
@@ -107,19 +156,10 @@ export function addSidenoteUI() {
 export function addSidenote(n: Omit<Sidenote, "id">, view?: SegView) {
   const sn = n as Sidenote;
   if (sn.kind === "code" && view) putViews({ [sn.code.id]: view });
-  return C.addSidenotes(commandEnv, [n])[0];
+  return C.addSidenotes(commandEnv, [n], fitMeasure)[0];
 }
 /** 一次加好几条（一个撤销步骤），返回新 id */
-export const addSidenotes = (list: Omit<Sidenote, "id">[]) => C.addSidenotes(commandEnv, list);
-/** How a code card is measured for keeping it fitted when an Always Show sidenote changes (commands keepFitted): the code area's
- *  height that shows all its content at its width now */
-const fitMeasure: C.FitMeasure = {
-  measure: (id) => {
-    const n = naturalSize(id, "now");
-    return n?.body === undefined ? null : { h: n.h - chromeOf(id), body: n.body };
-  },
-  codeMax: CODE_MAX,
-};
+export const addSidenotes = (list: Omit<Sidenote, "id">[]) => C.addSidenotes(commandEnv, list, fitMeasure);
 /** A Text sidenote's Markdown; written empty it goes */
 export const writeSidenote = (id: string, md: string) => C.writeSidenote(commandEnv, id, md, fitMeasure);
 export const toggleAlwaysShow = (id: string) => C.toggleAlwaysShow(commandEnv, id, fitMeasure);

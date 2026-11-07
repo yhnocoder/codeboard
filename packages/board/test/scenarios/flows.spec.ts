@@ -179,10 +179,10 @@ test("notes", async () => {
       shown.bold === "bounded",
     { md: note?.md, shown },
   );
-  await h.page.locator(".card .mk").first().hover();
-  await h.page.locator(".pop.k-notes").waitFor(); // shows 120 ms after the hover
+  await h.page.locator(".card .hxm").first().hover();
+  await h.page.locator(".pop.k-highlight").waitFor(); // shows 120 ms after the hover
   await shot(h, "notes-05-hover");
-  const hover = await h.page.locator(".pop.k-notes").textContent();
+  const hover = await h.page.locator(".pop.k-highlight").textContent();
   check(
     "notes hovering the line mark shows the Sidenote",
     /Prefill admits waiting seqs until the token budget runs out\./.test(hover ?? ""),
@@ -572,6 +572,7 @@ test("rebase", async () => {
     from: { card: B.id, seg: sb.id, line: sb.start + 2 },
     to: { card: A.id, seg: sa.id, line: sa.start + 3 },
   } as any);
+  sb.hl = [[sb.start + 2, sb.start + 2]];
   b.sidenotes.push({
     id: "n1",
     kind: "text",
@@ -642,6 +643,7 @@ test("syncundo", async () => {
   const sa = A.segments[0],
     name0 = b.name;
   b.links.push({ id: "L", from: { card: B.id }, to: { card: A.id, seg: sa.id, line: sa.start + 3 } } as any);
+  sa.hl = [[sa.start + 2, sa.start + 2]];
   b.sidenotes.push({
     id: "n1",
     kind: "text",
@@ -873,7 +875,10 @@ test("follow", async () => {
   const b = boardWith("Scheduler.schedule");
   const c = b.cards[0] as any,
     s0 = c.segments[0];
-  s0.hl = [s0.start + 3, s0.start + 6];
+  s0.hl = [
+    [s0.start + 3, s0.start + 3],
+    [s0.start + 6, s0.start + 6],
+  ];
   s0.hidden = [[s0.start + 8, s0.start + 9]];
   b.sidenotes.push({
     id: "n1",
