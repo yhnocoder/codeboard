@@ -1032,7 +1032,9 @@ test("paletteThisBoard", async () => {
   await h.page.locator(".palette input:focus").waitFor();
   await h.page.keyboard.type("alloc");
   await until(h, "the symbols are listed", async () => (await h.page.locator(".palette .cand").count()) > 0);
-  // with results, an unset embedding server takes no room above them
+  // with results, an unset embedding server takes no room above them (once its "off" answer is in)
+  await until(h, "meaning asked", () => h.sent.some((m) => m.type === "searchMeaning"));
+  await idle(h);
   await expect(h.page.locator(".palette .poff")).toHaveCount(0);
   const scopes = (t: string) => h.sent.filter((m) => m.type === t).map((m: any) => m.scope ?? "all");
   await h.page.keyboard.press("Tab");
