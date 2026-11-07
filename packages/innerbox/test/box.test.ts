@@ -155,21 +155,6 @@ describe("innerbox", () => {
     expect(e.pics).toHaveLength(2);
   });
 
-  it("counts a text piece or a picture only from its own floor up", async () => {
-    const e = fake(),
-      box = new Box("fake");
-    const docs: Doc[] = [
-      { id: "img", title: "", text: "", images: [picture("p1", "a cuda graph replayed for decode")] },
-      { id: "c", title: "Model runner", text: "Captures a CUDA graph for decode." },
-    ];
-    await box.update(docs, e);
-    const v = await q(e, "cuda graph decode");
-    const [pic] = box.search(v, 2).filter((h) => h.picture);
-    // under its floor the picture does not count: the card is found by its text, if at all
-    expect(box.search(v, 2, { picture: pic.score + 0.01 }).find((h) => h.id === "img")?.picture).toBeUndefined();
-    expect(box.search(v, 2, { text: 2, picture: pic.score }).map((h) => h.id)).toEqual(["img"]);
-  });
-
   it("talks to an OpenAI-compatible endpoint, picking its embedding model", async () => {
     const seen: string[] = [];
     const fetchStub = (async (url: string, init?: RequestInit) => {

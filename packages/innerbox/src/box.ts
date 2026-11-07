@@ -161,10 +161,8 @@ export class Box {
     return this.packed;
   }
 
-  /** The k documents closest to the query vector (unit), best first. floor: the least score a text piece or a picture counts
-   *  with (a model scores pictures higher than text overall); a document with none that counts is left out */
-  search(q: Float32Array, k: number, floor: { text?: number; picture?: number } = {}): Hit[] {
-    const least = [floor.text ?? -1, floor.picture ?? -1];
+  /** The k documents closest to the query vector (unit), best first */
+  search(q: Float32Array, k: number): Hit[] {
     const { m, dim, ids, rows, starts } = this.pack();
     const n = Math.min(dim, q.length);
     const sims = new Float32Array(m.length / (dim || 1));
@@ -187,16 +185,13 @@ export class Box {
     const hits: Hit[] = [];
     for (let d = 0; d < ids.length; d++) {
       const fps = this.docs.get(ids[d])!;
-      let best = -1,
-        piece = -1;
-      for (let j = starts[d]; j < starts[d + 1]; j++) {
-        const v = sims[rows[j]];
-        if (v > best && v >= least[+fps[j - starts[d]].startsWith(PICTURE)]) {
-          best = v;
+      let best = -2,
+        piece = 0;
+      for (let j = starts[d]; j < starts[d + 1]; j++)
+        if (sims[rows[j]] > best) {
+          best = sims[rows[j]];
           piece = j - starts[d];
         }
-      }
-      if (piece < 0) continue;
       const f = fps[piece];
       hits.push(
         f.startsWith(PICTURE)
