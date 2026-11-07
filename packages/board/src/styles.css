@@ -6272,9 +6272,7 @@ mark.wdiff {
   padding: 3px 5px;
   color: var(--ink-2);
 }
-.crumbs.morph {
-  animation: none;
-}
+/* no animation: none here: taking .morph off again would start popin over (the breadcrumb blinking out a second time) */
 .crumbs.morph .cur {
   visibility: hidden;
 }

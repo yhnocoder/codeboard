@@ -26,10 +26,7 @@
   ],
   "manual": ["markdownRecord", "boardMarksScreenshots", "shelfScreenshots"],
   "solo": ["markdownLazyRender"],
-  "known": {
-    "subboardEnterLeaveWatched warm-ink enter vanish": "entering a sub-board, the breadcrumbs blink out twice: gone at the board swap, faded back in, fully shown, then gone again for 2 frames and faded in once more (leaving fades them out and in once, by design, so leave keeps no .crumbs)",
-    "subboardEnterLeaveWatched ink-wash enter vanish": "as in Warm Ink"
-  },
+  "known": {},
   "limits": {
     "area": 30,
     "smoke": 90,
