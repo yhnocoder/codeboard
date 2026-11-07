@@ -1,0 +1,59 @@
+name: box
+# box (packages/box) for every platform the one .vsix serves, each built on and smoke-tested on its own runner: cargo's tests
+# (the service over its Unix socket or named pipe) and the release binary through the TypeScript client (test/smoke.mjs).
+# release.yml calls this for the binaries it packs; a PR that changes box runs it as a check.
+on:
+  workflow_call:
+  pull_request:
+    paths: ["packages/box/**", ".github/workflows/box.yml"]
+permissions:
+  contents: read
+jobs:
+  box:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Linux is a static musl build, so it runs on any distribution
+          - { os: ubuntu-24.04, target: x86_64-unknown-linux-musl, platform: linux-x64, exe: box }
+          - { os: macos-15, target: aarch64-apple-darwin, platform: darwin-arm64, exe: box }
+          # cross-built on Apple silicon; it runs there under Rosetta 2
+          - { os: macos-15, target: x86_64-apple-darwin, platform: darwin-x64, exe: box }
+          - { os: windows-2025, target: x86_64-pc-windows-msvc, platform: win32-x64, exe: box.exe }
+    name: box (${{ matrix.platform }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    defaults:
+      run: { shell: bash, working-directory: packages/box }
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+        with: { targets: "${{ matrix.target }}" }
+      - uses: Swatinem/rust-cache@v2
+        with: { workspaces: packages/box, key: "${{ matrix.target }}" }
+      - uses: actions/setup-node@v6
+        with: { node-version: 22, package-manager-cache: false }
+      - if: runner.os == 'Linux'
+        run: sudo apt-get update -q && sudo apt-get install -qy musl-tools
+      - name: Build
+        run: |
+          cargo build --release --locked --bin box --target ${{ matrix.target }}
+          mkdir -p bin/${{ matrix.platform }}
+          cp target/${{ matrix.target }}/release/${{ matrix.exe }} bin/${{ matrix.platform }}/
+      - name: Can this runner run it?
+        id: runs
+        run: |
+          if [ "${{ matrix.platform }}" = darwin-x64 ] && ! arch -x86_64 /usr/bin/true 2>/dev/null; then
+            echo "::warning::Rosetta 2 is not installed on this runner: the darwin-x64 box is built but not run"
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Smoke test (cargo tests, release build, native)
+        if: steps.runs.outputs.ok == 'true'
+        run: cargo test --release --locked --target ${{ matrix.target }}
+      - name: Smoke test (the binary through the TypeScript client)
+        if: steps.runs.outputs.ok == 'true'
+        run: node test/smoke.mjs bin/${{ matrix.platform }}/${{ matrix.exe }}
+      - uses: actions/upload-artifact@v6
+        with: { name: "box-${{ matrix.platform }}", path: packages/box/bin, retention-days: 7 }
