@@ -1,0 +1,246 @@
+[
+ {
+  "name": "r01-first-card",
+  "title": "Alt+B inside a function, open the board",
+  "checks": [
+   {
+    "ok": false,
+    "what": "step ran without errors",
+    "extra": "locator.click: Error: strict mode violation: locator('.editor-group-container .tab.active').filter({ hasNotText: /\\.py\\b/ }) resolved to 2 elements:"
+   }
+  ]
+ },
+ {
+  "name": "r02-expand",
+  "title": "Expand schedule and postprocess, then can_allocate from schedule",
+  "checks": [
+   {
+    "ok": false,
+    "what": "step ran without errors",
+    "extra": "locator.click: Timeout 30000ms exceeded."
+   }
+  ]
+ },
+ {
+  "name": "r03-arrow-right",
+  "title": "Drag the schedule card to the right of its parent; the arrow now leaves from the line's right end",
+  "checks": [
+   {
+    "ok": false,
+    "what": "step ran without errors",
+    "extra": "locator.boundingBox: Timeout 30000ms exceeded."
+   }
+  ]
+ },
+ {
+  "name": "r05-section",
+  "title": "Put schedule and can_allocate in a new Section, name it, collapse and expand",
+  "checks": [
+   {
+    "ok": false,
+    "what": "step ran without errors",
+    "extra": "locator.click: Timeout 30000ms exceeded."
+   }
+  ]
+ },
+ {
+  "name": "r06-sidenote",
+  "title": "Select two lines and add a multi-line sidenote (with math)",
+  "checks": [
+   {
+    "ok": false,
+    "what": "step ran without errors",
+    "extra": "locator.click: Timeout 30000ms exceeded."
+   }
+  ]
+ },
+ {
+  "name": "r07-sticker",
+  "title": "Toolbar Sticker: one on a code line, one on the canvas",
+  "checks": [
+   {
+    "ok": false,
+    "what": "step ran without errors",
+    "extra": "locator.click: Timeout 30000ms exceeded."
+   }
+  ]
+ },
+ {
+  "name": "r08-new-cards",
+  "title": "New Note and Text, paste a GitHub link and a plain URL",
+  "checks": [
+   {
+    "ok": false,
+    "what": "step ran without errors",
+    "extra": "locator.click: Timeout 5000ms exceeded."
+   }
+  ]
+ },
+ {
+  "name": "r09-menu-edges",
+  "title": "Open context menus at the four corners and on the lowest card",
+  "checks": [
+   {
+    "ok": true,
+    "what": "menu at the top-left corner fully visible"
+   },
+   {
+    "ok": true,
+    "what": "menu at the top-right corner fully visible"
+   },
+   {
+    "ok": true,
+    "what": "menu at the bottom-left corner fully visible"
+   },
+   {
+    "ok": true,
+    "what": "menu at the bottom-right corner fully visible"
+   },
+   {
+    "ok": true,
+    "what": "menu on the lowest card fully visible"
+   }
+  ]
+ },
+ {
+  "name": "r10-version",
+  "title": "Edit one source line → card shows the local change → open the version picker",
+  "checks": [
+   {
+    "ok": false,
+    "what": "editing the file outside the editor shows + uncommitted",
+    "extra": {
+     "waitedMs": 10049
+    }
+   },
+   {
+    "ok": false,
+    "what": "step ran without errors",
+    "extra": "locator.click: Timeout 30000ms exceeded."
+   }
+  ]
+ },
+ {
+  "name": "r11a-zoom-min",
+  "title": "Zoom all the way out, hovering opens no popup",
+  "checks": [
+   {
+    "ok": false,
+    "what": "step ran without errors",
+    "extra": "locator.click: Timeout 5000ms exceeded."
+   }
+  ]
+ },
+ {
+  "name": "r11b-zoom-fit",
+  "title": "Back to fit-to-window",
+  "checks": [
+   {
+    "ok": false,
+    "what": "step ran without errors",
+    "extra": "locator.click: Timeout 5000ms exceeded."
+   }
+  ]
+ },
+ {
+  "name": "r11c-zoom-max",
+  "title": "Zoom all the way in",
+  "checks": [
+   {
+    "ok": false,
+    "what": "the board settles for the step's screenshot",
+    "extra": "idle: the board did not settle within 15000 ms (animations: opacity)"
+   }
+  ]
+ },
+ {
+  "name": "r12-undo-redo",
+  "title": "Undo to the start, redo to the end, same as before undo",
+  "checks": [
+   {
+    "ok": false,
+    "what": "step ran without errors",
+    "extra": "locator.click: Timeout 5000ms exceeded."
+   },
+   {
+    "ok": false,
+    "what": "the board settles for the step's screenshot",
+    "extra": "idle: the board did not settle within 15000 ms (animations: opacity)"
+   }
+  ]
+ },
+ {
+  "name": "r13-reopen",
+  "title": "Close and reopen the board, content is still there",
+  "checks": [
+   {
+    "ok": true,
+    "what": "same card count after reopening"
+   }
+  ]
+ },
+ {
+  "name": "r14-themes",
+  "title": "One screenshot per theme (8)",
+  "checks": [
+   {
+    "ok": false,
+    "what": "step ran without errors",
+    "extra": "locator.click: Timeout 5000ms exceeded."
+   }
+  ]
+ },
+ {
+  "name": "r15-paste-near",
+  "title": "Select a card, ⌘C ⌘V: the new card appears next to the original (C8)",
+  "checks": [
+   {
+    "ok": false,
+    "what": "step ran without errors",
+    "extra": "locator.click: Timeout 5000ms exceeded."
+   }
+  ]
+ },
+ {
+  "name": "r16-expand-in-view",
+  "title": "Expand a call in the middle of the tree: the new card is in view (C8)",
+  "checks": [
+   {
+    "ok": false,
+    "what": "step ran without errors",
+    "extra": "locator.click: Timeout 30000ms exceeded."
+   }
+  ]
+ },
+ {
+  "name": "r17-popup-anchor",
+  "title": "Two sidenotes on the same lines, delete one, the popup stays put (C4)",
+  "checks": [
+   {
+    "ok": false,
+    "what": "found a code card whose lines can be selected",
+    "extra": 0
+   },
+   {
+    "ok": false,
+    "what": "step ran without errors",
+    "extra": "Cannot read properties of undefined (reading 'click')"
+   }
+  ]
+ },
+ {
+  "name": "r18-drag-body",
+  "title": "Every non-code card can be dragged from the middle of its content (C2)",
+  "checks": [
+   {
+    "ok": false,
+    "what": "step ran without errors",
+    "extra": "locator.click: Timeout 5000ms exceeded."
+   },
+   {
+    "ok": true,
+    "what": "no webview errors"
+   }
+  ]
+ }
+]

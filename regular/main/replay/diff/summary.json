@@ -1,0 +1,152 @@
+[
+ {
+  "name": "r01-first-card.png",
+  "status": "changed",
+  "ratio": 0.6659
+ },
+ {
+  "name": "r02-expand.png",
+  "status": "changed",
+  "ratio": 0.6676
+ },
+ {
+  "name": "r03-arrow-right.png",
+  "status": "changed",
+  "ratio": 0.6676
+ },
+ {
+  "name": "r05-section.png",
+  "status": "changed",
+  "ratio": 0.6698
+ },
+ {
+  "name": "r06-sidenote.png",
+  "status": "changed",
+  "ratio": 0.6782
+ },
+ {
+  "name": "r07-sticker.png",
+  "status": "changed",
+  "ratio": 0.6792
+ },
+ {
+  "name": "r08-new-cards.png",
+  "status": "changed",
+  "ratio": 0.6715
+ },
+ {
+  "name": "r09-menu-edges.png",
+  "status": "changed",
+  "ratio": 0.6734
+ },
+ {
+  "name": "r10-version.png",
+  "status": "changed",
+  "ratio": 0.6942
+ },
+ {
+  "name": "r11a-zoom-min.png",
+  "status": "changed",
+  "ratio": 0.6712
+ },
+ {
+  "name": "r11b-zoom-fit.png",
+  "status": "changed",
+  "ratio": 0.6718
+ },
+ {
+  "name": "r13-reopen.png",
+  "status": "changed",
+  "ratio": 0.9817
+ },
+ {
+  "name": "r14-themes.png",
+  "status": "changed",
+  "ratio": 0.9818
+ },
+ {
+  "name": "r15-paste-near.png",
+  "status": "changed",
+  "ratio": 0.9817
+ },
+ {
+  "name": "r16-expand-in-view.png",
+  "status": "changed",
+  "ratio": 0.979
+ },
+ {
+  "name": "r17-popup-anchor.png",
+  "status": "changed",
+  "ratio": 0.9732
+ },
+ {
+  "name": "r18-drag-body.png",
+  "status": "changed",
+  "ratio": 0.9825
+ },
+ {
+  "name": "r19-menu-items.png",
+  "status": "same",
+  "ratio": 0.0001
+ },
+ {
+  "name": "r11c-zoom-max.png",
+  "status": "removed",
+  "ratio": 0.9937
+ },
+ {
+  "name": "r12-undo-redo.png",
+  "status": "removed",
+  "ratio": 0.9958
+ },
+ {
+  "name": "r14-theme-01-warm-ink.png",
+  "status": "removed",
+  "ratio": 0.9956
+ },
+ {
+  "name": "r14-theme-02-graphite.png",
+  "status": "removed",
+  "ratio": 0.9957
+ },
+ {
+  "name": "r14-theme-03-soft-light.png",
+  "status": "removed",
+  "ratio": 0.996
+ },
+ {
+  "name": "r14-theme-04-drafting.png",
+  "status": "removed",
+  "ratio": 0.9951
+ },
+ {
+  "name": "r14-theme-05-colorful.png",
+  "status": "removed",
+  "ratio": 0.9963
+ },
+ {
+  "name": "r14-theme-06-newspaper.png",
+  "status": "removed",
+  "ratio": 0.9939
+ },
+ {
+  "name": "r14-theme-07-poster.png",
+  "status": "removed",
+  "ratio": 0.9926
+ },
+ {
+  "name": "r14-theme-08-classic.png",
+  "status": "removed",
+  "ratio": 0.9954
+ },
+ {
+  "name": "r14-theme-09-ink-wash.png",
+  "status": "removed",
+  "ratio": 0.9949
+ },
+ {
+  "name": "r14-theme-10-city.png",
+  "status": "removed",
+  "ratio": 0.9963
+ }
+]

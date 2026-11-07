@@ -1,0 +1,158 @@
+[
+ {
+  "step": "r01-first-card",
+  "issues": []
+ },
+ {
+  "step": "r02-expand",
+  "issues": []
+ },
+ {
+  "step": "r03-arrow-right",
+  "issues": []
+ },
+ {
+  "step": "r05-section",
+  "issues": []
+ },
+ {
+  "step": "r06-sidenote",
+  "issues": []
+ },
+ {
+  "step": "r07-sticker",
+  "issues": []
+ },
+ {
+  "step": "r08-new-cards",
+  "issues": []
+ },
+ {
+  "step": "r09-menu-edges",
+  "issues": []
+ },
+ {
+  "step": "r10-version",
+  "issues": [
+   {
+    "rule": "L2 truncated text",
+    "what": "span.lb \"fix(scheduler): recalcul\""
+   },
+   {
+    "rule": "L2 truncated text",
+    "what": "span.lb \"support chunked prefill \""
+   },
+   {
+    "rule": "L2 truncated text",
+    "what": "span.lb \"Merge pull request #218 \""
+   }
+  ]
+ },
+ {
+  "step": "r11a-zoom-min",
+  "issues": [
+   {
+    "rule": "K1 overlapping hit targets",
+    "what": "button.ib.cpy \"Copy Code\" ↔ button.linkedin.fold \"← 1\""
+   },
+   {
+    "rule": "K1 overlapping hit targets",
+    "what": "button.ib.cpy \"Copy Code\" ↔ button.linkedin.fold \"← 1\""
+   },
+   {
+    "rule": "K1 overlapping hit targets",
+    "what": "button.ib.cpy \"Copy Code\" ↔ button.linkedin.fold \"← 1\""
+   },
+   {
+    "rule": "K1 overlapping hit targets",
+    "what": "button.ib.cpy \"Copy Code\" ↔ button.rev.fold \"bb823b3\""
+   }
+  ]
+ },
+ {
+  "step": "r11b-zoom-fit",
+  "issues": []
+ },
+ {
+  "step": "r11c-zoom-max",
+  "issues": []
+ },
+ {
+  "step": "r12-undo-redo",
+  "issues": []
+ },
+ {
+  "step": "r13-reopen",
+  "issues": []
+ },
+ {
+  "step": "r14-theme-01-warm-ink",
+  "issues": []
+ },
+ {
+  "step": "r14-theme-02-graphite",
+  "issues": []
+ },
+ {
+  "step": "r14-theme-03-soft-light",
+  "issues": []
+ },
+ {
+  "step": "r14-theme-04-drafting",
+  "issues": []
+ },
+ {
+  "step": "r14-theme-05-colorful",
+  "issues": []
+ },
+ {
+  "step": "r14-theme-06-newspaper",
+  "issues": []
+ },
+ {
+  "step": "r14-theme-07-poster",
+  "issues": []
+ },
+ {
+  "step": "r14-theme-08-classic",
+  "issues": []
+ },
+ {
+  "step": "r14-theme-09-ink-wash",
+  "issues": []
+ },
+ {
+  "step": "r14-theme-10-city",
+  "issues": []
+ },
+ {
+  "step": "r14-themes",
+  "issues": []
+ },
+ {
+  "step": "r15-paste-near",
+  "issues": []
+ },
+ {
+  "step": "r16-expand-in-view",
+  "issues": [
+   {
+    "rule": "L8 overlapping cards",
+    "what": "div.ctitle \"Scheduler.postprocess\" ↔ div.ctitle \"BlockManager.allocate\""
+   }
+  ]
+ },
+ {
+  "step": "r17-popup-anchor",
+  "issues": [
+   {
+    "rule": "L8 overlapping cards",
+    "what": "div.ctitle \"Scheduler.postprocess\" ↔ div.ctitle \"BlockManager.allocate\""
+   }
+  ]
+ },
+ {
+  "step": "r18-drag-body",
+  "issues": []
+ }
+]

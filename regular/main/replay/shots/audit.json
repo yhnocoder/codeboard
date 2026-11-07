@@ -1,0 +1,70 @@
+[
+ {
+  "step": "r01-first-card",
+  "issues": []
+ },
+ {
+  "step": "r02-expand",
+  "issues": []
+ },
+ {
+  "step": "r03-arrow-right",
+  "issues": []
+ },
+ {
+  "step": "r05-section",
+  "issues": []
+ },
+ {
+  "step": "r06-sidenote",
+  "issues": []
+ },
+ {
+  "step": "r07-sticker",
+  "issues": []
+ },
+ {
+  "step": "r08-new-cards",
+  "issues": []
+ },
+ {
+  "step": "r09-menu-edges",
+  "issues": []
+ },
+ {
+  "step": "r10-version",
+  "issues": []
+ },
+ {
+  "step": "r11a-zoom-min",
+  "issues": []
+ },
+ {
+  "step": "r11b-zoom-fit",
+  "issues": []
+ },
+ {
+  "step": "r13-reopen",
+  "issues": []
+ },
+ {
+  "step": "r14-themes",
+  "issues": []
+ },
+ {
+  "step": "r15-paste-near",
+  "issues": []
+ },
+ {
+  "step": "r16-expand-in-view",
+  "issues": []
+ },
+ {
+  "step": "r17-popup-anchor",
+  "issues": []
+ },
+ {
+  "step": "r18-drag-body",
+  "issues": []
+ }
+]
