@@ -12,7 +12,7 @@ export const look = () => state.host.settings.theme;
 /** band / foot：代码卡显示色带（大标题）/ 底栏（Card.tsx 只在这些主题里建这两块） */
 /** stroke：brush = 实线画成毛笔笔画（填充的轮廓，@codeboard/core/canvas 的 brushLine）；taper = 起点粗、往箭头均匀收细的
  *  填充线（taperLine）；虚线、点线照旧描边 */
-/** port：线起点卡边上的小记号；none = 平时不画（Ink Wash：毛笔线直接从卡边起笔），失联（lost）时、线被选中或指着时照样画出来（拖起点要看得见它） */
+/** port：线起点卡边上的小记号；none = 平时不画（Warm Ink、Ink Wash：线直接从卡边起笔），失联（lost）时、线被选中或指着时照样画出来（拖起点要看得见它） */
 /** paper：卡是一张毛边宣纸（每种卡的尺寸画一张图，state/ink.ts） */
 /** sect：brush = Section 的框是四笔枯笔（state/inkframe.ts），标题写在上边留的缺口里 */
 /** stamp：新出现的编号像印章落下（CodeHead.tsx 加 .stamp，动画在 themes.css） */
@@ -39,7 +39,15 @@ type Shape = {
 };
 const SHAPES: Partial<Record<ThemeId, Partial<Shape>>> = {
   // Warm Ink（默认）：收细的暖墨线和小实心箭头；跳到某行是一道暖色从左扫到右；菜单、工具栏的底会滑；新卡顺着箭头出来
-  "warm-ink": { head: "dart", stroke: "taper", flash: FLASH_SWEEP, glide: true, scrollLine: true, spawn: "arrow" },
+  "warm-ink": {
+    head: "dart",
+    port: "none",
+    stroke: "taper",
+    flash: FLASH_SWEEP,
+    glide: true,
+    scrollLine: true,
+    spawn: "arrow",
+  },
   classic: { head: "triangle" },
   drafting: { route: "elbow", head: "triangle", port: "square" },
   "soft-light": { head: "dot" },

@@ -8,7 +8,8 @@
 - **Inline completions are off by default.** Gray completions in Notes start only once you pick a model under **Inline completions in Notes** in Settings (or set `codeboard.ai.provider`).
 - **⌘F searches this board.** ⌘K searches every board; ⌘F only the cards and sidenotes on this board, word matches and Related by Meaning alike (while editing a Note or code, ⌘F still finds in it). `Tab` switches between the two in the search box.
 - **Tidy Up on Sections.** With several Sections selected, **Tidy Up** lays them out as blocks, each Section moving with its cards and inner Sections, around what is already on the board. ⇧-clicking a Section's empty area adds it to the selection, as on its title.
-- Ink Wash draws no dot where an arrow starts; it shows while the arrow is selected or hovered, to drag its start.
+- Warm Ink and Ink Wash draw no dot where an arrow starts; it shows while the arrow is selected or hovered, to drag its start.
+- Submenus stay open while the pointer heads for them across the items of the menu, instead of closing as it crosses a neighbouring item.
 - Cards on files git ignores (generated code in `build/`, a virtual environment inside the repository) no longer show **+ uncommitted**.
 - CodeBoard now needs VS Code 1.142 or later.
 - Opening Settings at a section (**Search…** in Keyboard Shortcuts, **AI Settings…**), a GitHub file at a line, or moving through a long menu with the arrow keys no longer shifts the whole board a few pixels inside VS Code, which could send a click made right then to VS Code instead of the board.

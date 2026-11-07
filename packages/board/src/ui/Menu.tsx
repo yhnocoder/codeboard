@@ -3,7 +3,7 @@ import { Icon } from "./icons";
 import { place, virtual, scrollIntoBox } from "@yhnocoder/markdown/ui";
 import { useOverlay } from "./overlay";
 import { useListNav } from "./hooks";
-import { TIP_DELAY } from "../state/timing";
+import { MENU_AIM, TIP_DELAY } from "../state/timing";
 import { tune } from "../state/tune";
 import { shape } from "../state/look";
 import { reduceMotion } from "../state/motion";
@@ -75,6 +75,8 @@ type Level = {
   activate: () => boolean;
   closeSub: () => void;
   kbSub: () => boolean;
+  /** where the menu is on screen */
+  box: () => DOMRect;
 };
 const levels: Level[] = [];
 
@@ -123,6 +125,50 @@ function MenuList(p: {
   const hot = () => kbAt() ?? hov() ?? subOf()?.i ?? null;
   let pill: HTMLSpanElement | undefined;
   const live = (it: Item) => !!it && !it.head && !it.disabled;
+  /** The safe triangle: while a submenu is open and the pointer heads for it (inside the triangle from where it just was to the
+   *  submenu's near edge), the items it crosses on the way do not take over; the last one does once it turns away or rests
+   *  MENU_AIM ms */
+  let prev: { x: number; y: number } | null = null,
+    now: { x: number; y: number } | null = null,
+    waiting: number | null = null,
+    aimT: number | undefined;
+  const aiming = () => {
+    const s = subOf(),
+      sub = levels[levels.indexOf(level) + 1];
+    if (!s || !sub || !prev || !now) return false;
+    const r = sub.box(),
+      right = r.left >= el.getBoundingClientRect().left,
+      ex = right ? r.left : r.right;
+    if (right ? now.x > ex : now.x < ex) return false;
+    // inside the triangle (prev, (ex, top), (ex, bottom)): the same side of each edge
+    const side = (a: { x: number; y: number }, b: { x: number; y: number }, c: { x: number; y: number }) =>
+      (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+    const t = { x: ex, y: r.top - 4 },
+      bo = { x: ex, y: r.bottom + 4 };
+    const d1 = side(prev, t, now),
+      d2 = side(t, bo, now),
+      d3 = side(bo, prev, now);
+    return !((d1 < 0 || d2 < 0 || d3 < 0) && (d1 > 0 || d2 > 0 || d3 > 0));
+  };
+  const hoverItem = (i: number) => {
+    waiting = null;
+    clearTimeout(aimT);
+    const it = p.items[i];
+    if (!it) return;
+    setHov(it.disabled ? null : i);
+    if (it.sub && !it.disabled) openSub(i, false);
+    else setSubOf(null);
+  };
+  const enterItem = (i: number) => {
+    if (subOf() && subOf()!.i !== i && aiming()) {
+      waiting = i;
+      clearTimeout(aimT);
+      aimT = window.setTimeout(() => waiting !== null && hoverItem(waiting), MENU_AIM);
+      return;
+    }
+    hoverItem(i);
+  };
+  onCleanup(() => clearTimeout(aimT));
   const openSub = (i: number, kb: boolean) => {
     const b = btns[i];
     if (!b || subOf()?.i === i) return;
@@ -155,6 +201,7 @@ function MenuList(p: {
       if (s) setKbAt(s.i);
     },
     kbSub: () => !!subOf()?.kb,
+    box: () => el.getBoundingClientRect(),
   };
   levels.push(level);
   let host: ParentNode | null = null;
@@ -209,8 +256,24 @@ function MenuList(p: {
         }}
         data-nodrag
         onContextMenu={(e) => e.preventDefault()}
-        onPointerMove={() => kbAt() !== null && setKbAt(null)}
-        onPointerLeave={() => setHov(null)}
+        onPointerMove={(e) => {
+          if (kbAt() !== null) setKbAt(null);
+          prev = now;
+          now = { x: e.clientX, y: e.clientY };
+          if (waiting !== null && !aiming()) hoverItem(waiting);
+          else if (waiting !== null) {
+            // still heading for the submenu: the rest timer starts again
+            const w = waiting;
+            clearTimeout(aimT);
+            aimT = window.setTimeout(() => waiting === w && hoverItem(w), MENU_AIM);
+          }
+        }}
+        onPointerLeave={() => {
+          // into the submenu (or out of the menu): what was crossed on the way does not take over
+          waiting = null;
+          clearTimeout(aimT);
+          setHov(null);
+        }}
       >
         <For each={p.items}>
           {(it, i) =>
@@ -227,11 +290,7 @@ function MenuList(p: {
                 title={typeof it.disabled === "string" ? it.disabled : it.hint}
                 aria-haspopup={it.sub ? "menu" : undefined}
                 aria-expanded={it.sub ? subOf()?.i === i() : undefined}
-                onPointerEnter={() => {
-                  setHov(it.disabled ? null : i());
-                  if (it.sub && !it.disabled) openSub(i(), false);
-                  else setSubOf(null);
-                }}
+                onPointerEnter={() => enterItem(i())}
                 onClick={() => {
                   if (it.disabled) return;
                   if (it.sub) return openSub(i(), kbAt() === i());
