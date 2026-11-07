@@ -4670,10 +4670,15 @@ mark.wdiff {
   font: 10.5px var(--mono);
   color: var(--ink-3);
 }
+/* the gap under where it sits is its own, not the scrolling pane's: text scrolled up is cut below it, never drawn under it */
+.palette .ppw {
+  padding-bottom: 8px;
+  flex: none;
+}
 .palette .ppmd {
   flex: 1;
   overflow: auto;
-  padding: 8px 20px 20px;
+  padding: 0 20px 20px;
   font-size: 13px;
 }
 .palette .cand.more .lb {
