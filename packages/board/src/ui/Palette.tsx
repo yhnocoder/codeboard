@@ -37,14 +37,23 @@ export function Palette() {
   const init: Exclude<ReturnType<typeof paletteOpen>, false> = paletteOpen() || { mode: "all" };
   const [q, setQ] = createSignal(init.q ?? "");
   const [res, setRes] = createSignal<SearchItem[]>([]);
+  /** This Board: only the cards and sidenotes on this board (opened with ⌘F; Tab switches); searching everything (not Add
+   *  Function) only */
+  const [here, setHere] = createSignal(!!init.here);
+  const scoped = () => init.mode !== "code" && here();
   let inp!: HTMLInputElement, list!: HTMLDivElement;
   onMount(() => {
     inp.focus();
     inp.select();
   });
   /** Related by Meaning's answer and the query it is for: one for an earlier query is not shown */
-  const [meaningOf, setMeaning] = createSignal<MeaningResult & { q: string }>({ items: [], q: "" });
-  const meaning = (): MeaningResult => (meaningOf().q === q().trim() ? meaningOf() : { items: [] });
+  const [meaningOf, setMeaning] = createSignal<MeaningResult & { q: string; here: boolean }>({
+    items: [],
+    q: "",
+    here: false,
+  });
+  const meaning = (): MeaningResult =>
+    meaningOf().q === q().trim() && meaningOf().here === scoped() ? meaningOf() : { items: [] };
   /** asked again while indexing: for which query, how many times */
   const [retry, setRetry] = createSignal({ s: "", n: 0 });
   /** Related by Meaning, without what the words already found */
@@ -72,26 +81,31 @@ export function Palette() {
   };
   const { i, setI, key } = useListNav(() => ordered().length);
   const busy = useDebouncedAsk(
-    () => q().trim(),
-    (s) =>
-      (s ? ask("search", { q: s, scope: init.mode === "code" ? "code" : "all" }) : ask("entryPoints", {})).catch(
-        (): SearchItem[] => [],
-      ),
+    () => ({ s: q().trim(), here: scoped() }),
+    ({ s, here }) =>
+      (s
+        ? ask("search", { q: s, scope: init.mode === "code" ? "code" : here ? "board" : "all" })
+        : here
+          ? Promise.resolve([])
+          : ask("entryPoints", {})
+      ).catch((): SearchItem[] => []),
     (r) => {
       setRes(r);
       setI(0);
     },
-    (s) => (s ? 90 : 0),
+    ({ s }) => (s ? 90 : 0),
   );
   useDebouncedAsk(
     () => {
       const s = init.mode === "code" ? "" : q().trim();
-      return { s, again: retry().s === s && retry().n > 0 };
+      return { s, here: scoped(), again: retry().s === s && retry().n > 0 };
     },
-    ({ s }) =>
-      s ? ask("searchMeaning", { q: s }).catch((): MeaningResult => ({ items: [] })) : Promise.resolve({ items: [] }),
-    (r, { s }) => {
-      setMeaning({ ...r, q: s });
+    ({ s, here }) =>
+      s
+        ? ask("searchMeaning", { q: s, scope: here ? "board" : "all" }).catch((): MeaningResult => ({ items: [] }))
+        : Promise.resolve({ items: [] }),
+    (r, { s, here }) => {
+      setMeaning({ ...r, q: s, here });
       if (r.left) setRetry((x) => ({ s, n: x.s === s ? x.n + 1 : 1 }));
     },
     ({ again }) => (again ? MEANING_RETRY : MEANING_PAUSE),
@@ -126,6 +140,11 @@ export function Palette() {
   };
   const onKey = (e: KeyboardEvent) => {
     keepKey(e);
+    if (e.key === "Tab" && wide() && !e.isComposing) {
+      e.preventDefault();
+      setHere((h) => !h);
+      return;
+    }
     if (key(e)) return;
     if (e.key === "Enter" && !e.isComposing) {
       e.preventDefault();
@@ -181,14 +200,38 @@ export function Palette() {
   return (
     <div class="scrim light">
       <div class="palette pill" classList={{ wide: wide() }} data-nodrag onKeyDown={onKey}>
-        <input
-          ref={inp}
-          class="pin"
-          placeholder="Search Functions, Files, Cards, Sidenotes"
-          value={q()}
-          onInput={(e) => setQ(e.currentTarget.value)}
-          spellcheck={false}
-        />
+        <div class="prow">
+          <input
+            ref={inp}
+            class="pin"
+            placeholder={
+              scoped() ? "Search Cards and Sidenotes on This Board" : "Search Functions, Files, Cards, Sidenotes"
+            }
+            value={q()}
+            onInput={(e) => setQ(e.currentTarget.value)}
+            spellcheck={false}
+          />
+          <Show when={wide()}>
+            <div class="pscope" role="radiogroup" aria-label="Search in" data-tip="Tab switches">
+              <For each={[false, true]}>
+                {(h) => (
+                  <button
+                    role="radio"
+                    aria-checked={here() === h}
+                    classList={{ on: here() === h }}
+                    onPointerDown={(e) => e.preventDefault()}
+                    onClick={() => {
+                      setHere(h);
+                      inp.focus();
+                    }}
+                  >
+                    {h ? "This Board" : "All Boards"}
+                  </button>
+                )}
+              </For>
+            </div>
+          </Show>
+        </div>
         <div class="pbody">
           <div ref={list} class="plist">
             <For each={GROUPS}>
@@ -204,14 +247,22 @@ export function Palette() {
                   </Show>
                 ) : (
                   <Show when={groupOf(k).length}>
-                    <div class="pgh">{title}</div>
+                    <div class="pgh">{k === "card" && scoped() ? "Cards on This Board" : title}</div>
                     <For each={groupOf(k)}>{(it) => item(it)}</For>
                   </Show>
                 )
               }
             </For>
             <Show when={!res().length && !related().length && !meaning().error && !busy()}>
-              <div class="empty">{q().trim() ? "No matches" : "No entry points found. Type to search."}</div>
+              <div class="empty">
+                {q().trim()
+                  ? scoped()
+                    ? "No matches on this board"
+                    : "No matches"
+                  : scoped()
+                    ? "Type to search this board."
+                    : "No entry points found. Type to search."}
+              </div>
             </Show>
           </div>
           <Show when={wide()}>
@@ -225,6 +276,11 @@ export function Palette() {
           <span>
             <kbd>{A.K.alt}↵</kbd> Open in Editor
           </span>
+          <Show when={wide()}>
+            <span>
+              <kbd>Tab</kbd> {here() ? "All Boards" : "This Board"}
+            </span>
+          </Show>
           <span>
             <kbd>Esc</kbd> Close
           </span>

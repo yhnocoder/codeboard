@@ -4572,14 +4572,47 @@ mark.wdiff {
   border-radius: 17px;
   background: var(--surface);
 }
+.palette .prow {
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+}
 .palette .pin {
+  flex: 1 1 auto;
+  min-width: 0;
   border: 0;
   outline: none;
   background: none;
   padding: 13px 16px;
   font-size: 14px;
-  border-bottom: 1px solid var(--line);
   color: var(--ink);
+}
+/* 搜哪里：所有白板 / 只这块白板（Tab 切换） */
+.pscope {
+  flex: none;
+  display: flex;
+  gap: 2px;
+  margin-right: 10px;
+  padding: 2px;
+  border-radius: 8px;
+  background: var(--wash, var(--line));
+}
+.pscope button {
+  border: 0;
+  background: none;
+  padding: 3px 9px;
+  border-radius: 6px;
+  font: 500 11.5px var(--sys);
+  color: var(--ink-3);
+  cursor: pointer;
+  transition:
+    background calc(var(--t) * 120ms),
+    color calc(var(--t) * 120ms);
+}
+.pscope button.on {
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 0 0 1px var(--line);
 }
 .plist {
   max-height: 52vh;
@@ -6152,7 +6185,7 @@ mark.wdiff {
   -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 34px), transparent);
   mask-image: linear-gradient(to bottom, #000 calc(100% - 34px), transparent);
 }
-.sbpv .pmd {
+:is(.sbpv, .spk-card) .pmd {
   --md-fs: 12.5px;
   --md-h1: 1.25em;
   --md-h2: 1.15em;
@@ -6167,13 +6200,13 @@ mark.wdiff {
 .sbpv.k-compare .pb {
   background: var(--head);
 }
-.sbpv .pcode {
+:is(.sbpv, .spk-card) .pcode {
   margin: 0;
   font: 11px / 1.55 var(--mono);
   color: var(--ink);
   white-space: pre;
 }
-.sbpv .pcol {
+:is(.sbpv, .spk-card) .pcol {
   font: 600 10.5px / 1.6 var(--sys);
   color: var(--ink-3);
 }
@@ -6182,31 +6215,31 @@ mark.wdiff {
   max-height: none;
   background: #fff;
 }
-.sbpv .pimg {
+:is(.sbpv, .spk-card) .pimg {
   display: block;
   width: 100%;
   height: 150px;
   object-fit: contain;
 }
-.sbpv .cap {
+:is(.sbpv, .spk-card) .cap {
   padding: 6px 11px 8px;
   font: 11.5px / 1.4 var(--sys);
   color: var(--ink-2);
   background: var(--surface);
   border-top: 0.5px solid var(--line);
 }
-.sbpv .pweb b {
+:is(.sbpv, .spk-card) .pweb b {
   display: block;
   color: var(--ink);
   font-weight: 600;
 }
-.sbpv .pweb p {
+:is(.sbpv, .spk-card) .pweb p {
   margin: 2px 0;
 }
-.sbpv .pweb small {
+:is(.sbpv, .spk-card) .pweb small {
   color: var(--ink-3);
 }
-.sbpv .plinks {
+:is(.sbpv, .spk-card) .plinks {
   margin: 0;
   padding-left: 16px;
 }
@@ -7215,6 +7248,80 @@ mark.wdiff {
   padding: 0 7px;
   font-size: 11px;
   box-shadow: inset 0 0 0 1px var(--hair);
+}
+/* Resting on a Shelf row: the entry as it was on the board, scaled down, beside the panel (ShelfPeek). The world inside is drawn at
+   board size and scaled, so cards keep their proportions */
+.shelf-peek {
+  position: absolute;
+  z-index: 22;
+  display: block;
+  box-sizing: content-box;
+  padding: 10px;
+  pointer-events: none;
+  overflow: hidden;
+  animation: popin calc(var(--t) * 120ms) var(--out);
+}
+.spk-world {
+  position: relative;
+  transform-origin: 0 0;
+}
+.spk-sec {
+  position: absolute;
+  box-sizing: border-box;
+  border-radius: 14px;
+  border: 1.5px solid var(--line);
+  background: color-mix(in srgb, var(--ink-3) 5%, transparent);
+}
+.spk-sec > span {
+  position: absolute;
+  left: 14px;
+  top: 8px;
+  font: 600 15px / 20px var(--sys);
+  color: var(--ink-2);
+}
+.spk-card {
+  position: absolute;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow:
+    0 0 0 1px var(--hair),
+    0 2px 6px rgb(0 0 0 / 0.06);
+}
+.spk-h {
+  flex: none;
+  padding: 8px 12px;
+  font: 600 13px / 18px var(--sys);
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-bottom: 0.5px solid var(--line);
+}
+.spk-b {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  padding: 8px 12px;
+  font: 13px / 1.6 var(--sys);
+  color: var(--ink-2);
+}
+.spk-card:is(.k-code, .k-compare) .spk-b {
+  background: var(--head);
+}
+.spk-card .pcode {
+  max-height: none;
+  overflow: hidden;
+  font-size: 12.5px;
+}
+.spk-card.k-image .spk-b {
+  padding: 0;
+}
+.spk-card.k-image .pimg {
+  height: 100%;
 }
 .cpanel.shelf .cpf {
   padding: 6px 10px 2px;
