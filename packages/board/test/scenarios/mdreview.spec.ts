@@ -1271,13 +1271,13 @@ async function runProbe(pr: Probe): Promise<Record<string, unknown>> {
   b.place.n2 = { x: 700, y: 60, w: 300 };
   b.cam = { x: 0, y: 0, z: 1 };
   let lastAsk: { before: string; after: string; answer?: unknown } | undefined;
-  // completions as the real host makes them (codeboard.ai.provider): off without pr.ai; DeepSeek answering pr.ai (a local fake,
+  // completions as the real host makes them (codeboard.ai.provider): off (the default) without pr.ai; DeepSeek answering pr.ai (a local fake,
   // deepseek.ts); or, for "real", DeepSeek itself with the key in DEEPSEEK_API_KEY (none: no completions)
   const run = await hostBoards([b], {
     page: {
       w: 1300,
       h: 800,
-      settings: pr.ai ? {} : { aiProvider: "off" },
+      settings: pr.ai ? { aiProvider: "auto" } : {},
       beforeLoad: async (p) => {
         await p
           .context()

@@ -149,7 +149,7 @@ export const DEFAULT_SETTINGS: Settings = {
   mathPreamble: "",
   svgNoBg: true,
   svgThink: false,
-  aiProvider: "auto",
+  aiProvider: "off",
   deepseekModel: "deepseek-flash",
   aiText: "auto",
   aiSvg: "auto",
