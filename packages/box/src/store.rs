@@ -73,8 +73,10 @@ pub fn f16_bytes(v: &[f32]) -> Vec<u8> {
     v.iter().flat_map(|x| f16::from_f32(*x).to_le_bytes()).collect()
 }
 pub fn f16_vec(b: &[u8]) -> Vec<f32> {
-    b.chunks_exact(2)
-        .map(|c| f16::from_le_bytes([c[0], c[1]]).to_f32())
+    b.as_chunks::<2>()
+        .0
+        .iter()
+        .map(|c| f16::from_le_bytes(*c).to_f32())
         .collect()
 }
 
@@ -284,9 +286,7 @@ impl Store {
                 let s: Vec<u8> = r.get(1)?;
                 Ok((
                     r.get::<_, f64>(0)? as f32,
-                    s.chunks_exact(4)
-                        .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
-                        .collect(),
+                    s.as_chunks::<4>().0.iter().map(|c| f32::from_le_bytes(*c)).collect(),
                 ))
             })
             .optional()
