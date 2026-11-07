@@ -1,12 +1,15 @@
 // The Shelf panel (the dock's Shelf button; actions/shelf.ts): one row per entry, newest first, with a small picture of it, what it
 // is and when it was shelved. A row is dragged out onto the board, or Put Back where it was; its menu removes it. Also the dashed
-// outline that follows the pointer while a row is dragged over the board (in the world layer, Canvas.tsx)
-import { For, Show, createMemo } from "solid-js";
-import type { ShelfEntry } from "@codeboard/core";
+// outline that follows the pointer while a row is dragged over the board (in the world layer, Canvas.tsx). Resting the pointer on a
+// row shows the entry beside the panel as it was on the board: its Sections and its cards with their content, scaled down
+import { For, Show, createEffect, createMemo, createSignal, onCleanup } from "solid-js";
+import { cardTitle, type ShelfEntry } from "@codeboard/core";
 import { shelfLabel } from "@codeboard/core/commands";
-import { state } from "../state/store";
+import { state, cardById } from "../state/store";
 import { shelfHot, shelfOut } from "../state/shelf";
 import { cam } from "../state/camera";
+import { TIP_DELAY } from "../state/timing";
+import { PvContent } from "../cards/SubPreviews";
 import { Icon } from "./icons";
 import * as A from "../actions";
 
@@ -69,63 +72,191 @@ function Thumb(p: { e: ShelfEntry }) {
   );
 }
 
+/** The largest the preview of an entry gets on screen, and the most it is scaled (a single card: about as the board shows it) */
+const PEEK_W = 560,
+  PEEK_H = 460,
+  PEEK_MAX = 0.8;
+/** Lines of a code card drawn, at most (its card clips what does not fit) */
+const PEEK_LINES = 80;
+/** How long after a preview went away the next one shows at once (as the tips) */
+const WARM = 800;
+
+/** Where the preview of the entry under the pointer goes: beside the panel (right = from the right of the panel's parent),
+ *  level with its row (top; room = the parent's height), measured once when it opens */
+type PeekAt = { id: string; right: number; top: number; room: number };
+
+/** An entry as it was on the board, scaled down: its Sections' frames with their titles, its cards with their content */
+function ShelfPeek(p: { at: PeekAt }) {
+  const e = createMemo(() => (state.board.shelf ?? []).find((x) => x.id === p.at.id));
+  const lay = createMemo(() => {
+    const en = e();
+    const box = en && A.entryBox(en);
+    if (!en || !box) return null;
+    const k = Math.min(PEEK_MAX, PEEK_W / box.w, PEEK_H / box.h);
+    const rel = (q: { x: number; y: number; w: number; h: number }) => ({
+      left: `${q.x - box.x}px`,
+      top: `${q.y - box.y}px`,
+      width: `${q.w}px`,
+      height: `${q.h}px`,
+    });
+    const r = A.entryRects(en);
+    return {
+      box,
+      k,
+      sections: en.sections.map((s) => ({ title: s.title, color: s.color, style: rel(s) })),
+      cards: r.cards.flatMap((q) => {
+        const c = cardById(q.id)?.card;
+        return c ? [{ c, style: rel(q) }] : [];
+      }),
+    };
+  });
+  return (
+    <Show when={lay()}>
+      {(l) => {
+        const h = () => l().box.h * l().k;
+        return (
+          <div
+            class="shelf-peek pill"
+            style={{
+              right: `${p.at.right}px`,
+              top: `${Math.max(8, Math.min(p.at.top, p.at.room - h() - 28))}px`,
+              width: `${l().box.w * l().k}px`,
+              height: `${h()}px`,
+            }}
+          >
+            <div
+              class="spk-world"
+              style={{ width: `${l().box.w}px`, height: `${l().box.h}px`, transform: `scale(${l().k})` }}
+            >
+              <For each={l().sections}>
+                {(s) => (
+                  <div class="spk-sec" data-color={s.color} style={s.style}>
+                    <span>{s.title}</span>
+                  </div>
+                )}
+              </For>
+              <For each={l().cards}>
+                {(q) => (
+                  <div class={`spk-card k-${q.c.kind}`} style={q.style}>
+                    <div class="spk-h">{cardTitle(q.c, state.board)}</div>
+                    <div class="spk-b">
+                      <PvContent
+                        data={{
+                          card: q.c,
+                          cols: q.c.kind === "compare" ? q.c.cols.flatMap((id) => cardById(id)?.card ?? []) : undefined,
+                          views: state.views,
+                        }}
+                        t={q.c.title ?? ""}
+                        lines={PEEK_LINES}
+                      />
+                    </div>
+                  </div>
+                )}
+              </For>
+            </div>
+          </div>
+        );
+      }}
+    </Show>
+  );
+}
+
 export function ShelfPanel() {
   const rows = createMemo(() => [...(state.board.shelf ?? [])].reverse());
+  let panel!: HTMLDivElement;
+  const [peek, setPeek] = createSignal<PeekAt | null>(null);
+  let t: ReturnType<typeof setTimeout> | undefined,
+    warmUntil = 0;
+  const hide = () => {
+    clearTimeout(t);
+    if (peek()) warmUntil = performance.now() + WARM;
+    setPeek(null);
+  };
+  const show = (id: string, row: HTMLElement) => {
+    clearTimeout(t);
+    const open = () => {
+      const par = (panel.offsetParent as HTMLElement | null) ?? document.body;
+      const pr = par.getBoundingClientRect(),
+        r = panel.getBoundingClientRect();
+      setPeek({ id, right: pr.right - r.left + 10, top: row.getBoundingClientRect().top - pr.top, room: pr.height });
+    };
+    if (peek() || performance.now() < warmUntil) open();
+    else t = setTimeout(open, TIP_DELAY);
+  };
+  // dragging a row out: no preview over the board
+  createEffect(() => {
+    if (shelfOut()) hide();
+  });
+  // put back or removed: its preview goes with it
+  createEffect(() => {
+    const at = peek();
+    if (at && !rows().some((e) => e.id === at.id)) hide();
+  });
+  onCleanup(() => clearTimeout(t));
   return (
-    <div
-      class="cpanel shelf pill"
-      classList={{ hot: shelfHot() === "panel" }}
-      data-nodrag
-      onWheel={(e) => e.stopPropagation()}
-    >
-      <div class="cph">
-        <b>Shelf</b>
-        <Show when={rows().length}>
-          <small>{rows().length}</small>
-        </Show>
-        <span class="grow" />
-        <button class="ib" aria-label="Close Shelf" onClick={() => A.toggleShelf(false)}>
-          <Icon name="close" size={13} />
-        </button>
-      </div>
-      <div class="srows">
-        <For
-          each={rows()}
-          fallback={
-            <div class="empty sm">
-              Nothing on the Shelf. Right-click a card or Section → Move to Shelf, or drag it onto the Shelf button.
-            </div>
-          }
-        >
-          {(e) => {
-            const label = createMemo(() => shelfLabel(state.board, e));
-            return (
-              <div
-                class="srow"
-                classList={{ lift: shelfOut()?.id === e.id && !!shelfOut()?.at }}
-                data-entry={e.id}
-                onPointerDown={(ev) => A.shelfRowDown(ev, e.id)}
-                onContextMenu={(ev) => A.shelfRowMenu(ev, e.id)}
-              >
-                <Thumb e={e} />
-                <div class="smeta">
-                  <div class="stt">{label().title}</div>
-                  <div class="skind">
-                    {label().kind} · {whenOf(e.at)}
-                  </div>
-                </div>
-                <button class="tbtn sback" onClick={() => A.putBack(e.id)}>
-                  Put Back
-                </button>
+    <>
+      <Show when={peek()}>{(at) => <ShelfPeek at={at()} />}</Show>
+      <div
+        ref={panel}
+        class="cpanel shelf pill"
+        classList={{ hot: shelfHot() === "panel" }}
+        data-nodrag
+        onWheel={(e) => e.stopPropagation()}
+      >
+        <div class="cph">
+          <b>Shelf</b>
+          <Show when={rows().length}>
+            <small>{rows().length}</small>
+          </Show>
+          <span class="grow" />
+          <button class="ib" aria-label="Close Shelf" onClick={() => A.toggleShelf(false)}>
+            <Icon name="close" size={13} />
+          </button>
+        </div>
+        <div class="srows">
+          <For
+            each={rows()}
+            fallback={
+              <div class="empty sm">
+                Nothing on the Shelf. Right-click a card or Section → Move to Shelf, or drag it onto the Shelf button.
               </div>
-            );
-          }}
-        </For>
+            }
+          >
+            {(e) => {
+              const label = createMemo(() => shelfLabel(state.board, e));
+              return (
+                <div
+                  class="srow"
+                  classList={{ lift: shelfOut()?.id === e.id && !!shelfOut()?.at }}
+                  data-entry={e.id}
+                  onPointerEnter={(ev) => show(e.id, ev.currentTarget)}
+                  onPointerLeave={hide}
+                  onPointerDown={(ev) => {
+                    hide();
+                    A.shelfRowDown(ev, e.id);
+                  }}
+                  onContextMenu={(ev) => A.shelfRowMenu(ev, e.id)}
+                >
+                  <Thumb e={e} />
+                  <div class="smeta">
+                    <div class="stt">{label().title}</div>
+                    <div class="skind">
+                      {label().kind} · {whenOf(e.at)}
+                    </div>
+                  </div>
+                  <button class="tbtn sback" onClick={() => A.putBack(e.id)}>
+                    Put Back
+                  </button>
+                </div>
+              );
+            }}
+          </For>
+        </div>
+        <Show when={rows().length}>
+          <div class="cpf">Drag onto the board, or Put Back where it was.</div>
+        </Show>
       </div>
-      <Show when={rows().length}>
-        <div class="cpf">Drag onto the board, or Put Back where it was.</div>
-      </Show>
-    </div>
+    </>
   );
 }
 
