@@ -3,7 +3,16 @@
 
 /** One thing to find: an id the caller knows, its title and its text. Where it sits is left out on purpose: renaming a board or
  *  a Section, or moving a card into another, would otherwise embed every card it holds again */
-export type Doc = { id: string; title: string; text: string };
+export type Doc = { id: string; title: string; text: string; images?: DocImage[] };
+
+/** A picture in a document, embedded on its own as one more piece (when the model takes pictures). key: what it is kept under,
+ *  the same for the same picture (its content hash); url: the picture as a data: URL, read only when it has to be embedded (undefined: it cannot be read now) */
+export type DocImage = { key: string; url: () => Promise<string | undefined> };
+
+/** What a picture's fingerprint starts with (a text piece's has no colon) */
+export const PICTURE = "img:";
+/** The fingerprint a picture's vector is kept under */
+export const imageFingerprint = (img: DocImage) => `${PICTURE}${img.key}`;
 
 /** About this many characters per piece: a few sentences, short enough that one idea is not diluted by the rest */
 const PIECE_CHARS = 280;

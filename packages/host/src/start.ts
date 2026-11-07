@@ -81,6 +81,8 @@ export function startHost(ws: Workspace, env: HostEnv, o: HostOptions): Host {
   on(ws.files.onDidChangeRoots(follow));
 
   on(store.onDidChange(() => void hub.pushBoards()));
+  // SVG pictures reach the embedding model as pixels an open board draws
+  cx.meaning.drawWith((u) => hub.draw(u));
   on(store.onDidChange(() => cx.meaning.soon(store)));
   cx.meaning.soon(store);
   on(hub.onDidChangeStale(() => void hub.pushBoards()));

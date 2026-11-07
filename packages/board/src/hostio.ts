@@ -25,6 +25,7 @@ import { putBoardRefs, refreshRefs } from "./md/refs";
 import { preloadCm } from "./cm/load";
 import { questionsOpen, setWelcome } from "./state/questions";
 import { toggleZoomLog } from "./state/zoomlog";
+import { drawnPng } from "./actions/imagedata";
 
 let preloaded = false;
 /** 进出子白板、旧白板还在淡出时收到的 init 和它后面的消息：淡出完再按顺序处理（actions/subboards.ts switchGate） */
@@ -198,6 +199,9 @@ function handle(m: HostToBoard, md: Markdown) {
       break;
     case "zoomLog":
       send({ type: "answer", id: m.id, value: toggleZoomLog() });
+      break;
+    case "draw":
+      void drawnPng(m.dataUrl).then((value) => send({ type: "answer", id: m.id, value }));
       break;
     case "ask": {
       const a = m.ask;

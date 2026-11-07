@@ -221,7 +221,8 @@ export type PeekDef = {
 
 /** ⌘K's preview of a card or sidenote: its content as Markdown (code in fenced blocks), where it sits (board › Section …), and
  *  for Related by Meaning the passage that matched (as it is written in md, give or take the Markdown marks) */
-export type SearchPreview = { md: string; where: string; hit?: string };
+/** hit: the passage that matched (Related by Meaning); picture: the picture that did, or an Image card's, as md writes it */
+export type SearchPreview = { md: string; where: string; hit?: string; picture?: string };
 
 export type SearchItem =
   | { kind: "symbol"; label: string; detail: string; path: string; line: number; sym: string; glyph: string }
@@ -324,6 +325,9 @@ export type HostToBoard =
   /** Record Zoom Log: start recording the zoom diagnostics log, or stop and hand it back. The board answers { type: "answer", id }
    *  with null when it started recording, or with the log's text */
   | { type: "zoomLog"; id: number }
+  /** Draw a picture (an SVG, as a data: URL) into a PNG, as the board shows it (its fonts): for Related by Meaning, which embeds
+   *  pictures only as pixels. The board answers { type: "answer", id, value: the PNG as a data: URL, or null } */
+  | { type: "draw"; id: number; dataUrl: string }
   /** 共享卡在别的白板上改了（或这块白板撤销时被跳过的项）：卡和跟着它走的 Sidenote 的新内容。白板用 sync 换上（不进撤销栈），不再发回来 */
   | { type: "shared"; cards: SharedUpdate[]; views?: Record<string, SegView> }
   /** 这块白板上的共享卡在几块白板上、别的白板上谁连到它（宿主在存盘后算，整个换掉） */

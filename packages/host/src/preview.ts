@@ -38,11 +38,8 @@ export function cardMarkdown(c: Card, b: Board): string {
               `\`${s.path ? `${s.path}:${s.start}` : (s.symbol?.qual ?? "code")}\`\n\n${fence(s.lang, s.text.join("\n"))}`,
           )
           .join("\n\n");
-      case "image": {
-        // as a Note writes it, so the preview shows the picture the way a Note does (its smaller copies included)
-        const src = /^(data:|https?:|assets\/)/.test(c.src) ? c.src : `assets/${c.src}`;
-        return `![${(c.alt ?? "").replace(/[[\]]/g, "")}](<${src}>)${c.alt ? `\n\n*${c.alt}*` : ""}`;
-      }
+      case "image":
+        return `![${(c.alt ?? "").replace(/[[\]]/g, "")}](<${imageSrc(c)}>)${c.alt ? `\n\n*${c.alt}*` : ""}`;
       case "web":
         return [c.meta?.title && `**${c.meta.title}**`, c.meta?.desc, c.url].filter(Boolean).join("\n\n");
       case "links":
@@ -53,6 +50,10 @@ export function cardMarkdown(c: Card, b: Board): string {
   })();
   return [c.desc, own].filter(Boolean).join("\n\n");
 }
+
+/** An Image card's picture as a Note writes it, so the preview shows it the way a Note does (its smaller copies included) */
+export const imageSrc = (c: Extract<Card, { kind: "image" }>) =>
+  /^(data:|https?:|assets\/)/.test(c.src) ? c.src : `assets/${c.src}`;
 
 export function sidenoteMarkdown(n: Sidenote): string {
   switch (n.kind) {
@@ -69,11 +70,13 @@ export function sidenoteMarkdown(n: Sidenote): string {
   }
 }
 
-export function preview(md: string, where: string, hit?: string): SearchPreview {
-  if (md.length <= PREVIEW_CHARS) return { md, where, ...(hit ? { hit } : {}) };
-  // a long card: the stretch around the passage that matched (from a line start), so its mark is in what is sent
-  const at = hit ? md.indexOf(hit.split(/\s+/).slice(0, 4).join(" ").slice(0, 40)) : -1;
+/** hit: the passage that matched; picture: the picture that did (its address as md writes it) */
+export function preview(md: string, where: string, hit?: string, picture?: string): SearchPreview {
+  const marks = { ...(hit ? { hit } : {}), ...(picture ? { picture } : {}) };
+  if (md.length <= PREVIEW_CHARS) return { md, where, ...marks };
+  // a long card: the stretch around what matched (from a line start), so its mark is in what is sent
+  const at = picture ? md.indexOf(picture) : hit ? md.indexOf(hit.split(/\s+/).slice(0, 4).join(" ").slice(0, 40)) : -1;
   const from = at > PREVIEW_CHARS / 4 ? md.lastIndexOf("\n", at - PREVIEW_CHARS / 4) + 1 : 0;
   const part = md.slice(from, from + PREVIEW_CHARS);
-  return { md: `${from ? "…\n\n" : ""}${part}\n\n…`, where, ...(hit ? { hit } : {}) };
+  return { md: `${from ? "…\n\n" : ""}${part}\n\n…`, where, ...marks };
 }
