@@ -108,7 +108,7 @@ export function paperSheet(dk: boolean, seed: number) {
     outline: `M${pts.join("L")}Z`,
     inner,
     fibres: fib.join(""),
-    paper: dk ? "#1e1d1a" : "#fbf8f1",
+    paper: dk ? "#1e1d1a" : "#fdfdfb",
     fiber: dk ? "#e9e5da" : "#6b5a3a",
     innerOpacity: dk ? 0.035 : 0.04,
     edgeOpacity: dk ? 0.12 : 0.1,
