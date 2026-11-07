@@ -11,20 +11,25 @@ import { useMd } from "../md/context";
 const HIGHLIGHT = "palette-hit";
 /** Characters from each end of a sentence looked for in the rendered text */
 const PROBE = 12;
+/** Letters between two sentences found that still make them one mark (a formula or a word the text renders otherwise) */
+const GAP = 24;
 
+/** Characters left out on both sides when a passage is looked for: all but letters and digits (white space, Markdown and
+ *  math marks, a code line's brackets and operators: the rendered text has some of them, not always where the source does) */
+const SKIP = /[^\p{L}\p{N}]/u;
 /** Markdown and math marks dropped, and all white space, so text written in Markdown can be found in its rendered text: images
- *  and list markers (drawn by CSS, not text) go, a link keeps its text */
+ *  and a list marker or heading mark starting the sentence (drawn by CSS, not text) go, a link keeps its text */
 const bare = (s: string) =>
   s
     .replace(/!\[[^\]]*\]\([^)]*\)/g, "")
     .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
-    .replace(/(^|\s)(\d+[.)]|[-*+]|#{1,6})\s+/g, "$1")
-    .replace(/[\s#*_=`$>~|\\[\]()-]+/g, "");
+    .replace(/^\s*(\d+[.)]|[-*+]|#{1,6})\s+/, "")
+    .replace(new RegExp(`${SKIP.source}+`, "gu"), "");
 /** Sentences, as innerbox cuts them */
 const sentences = (s: string) => s.split(/(?<=[。！？!?])|(?<=[.;:])\s+/u);
 const wordy = (c: string | undefined) => !!c && /[\p{L}\p{N}_]/u.test(c) && !/\p{Script=Han}/u.test(c);
 
-/** The element's text with white space dropped, and for each character the text node and offset it came from */
+/** The element's text without the SKIP characters, and for each character the text node and offset it came from */
 function textMap(el: HTMLElement) {
   let text = "";
   const at: [Text, number][] = [];
@@ -33,7 +38,7 @@ function textMap(el: HTMLElement) {
     if (n.parentElement?.closest(".katex-mathml")) continue;
     const v = n.data;
     for (let i = 0; i < v.length; i++)
-      if (!/\s/.test(v[i])) {
+      if (!SKIP.test(v[i])) {
         text += v[i];
         at.push([n, i]);
       }
@@ -45,35 +50,47 @@ function textMap(el: HTMLElement) {
 function hitRanges(el: HTMLElement, p: SearchPreview, q: string): Range[] {
   const { text, at } = textMap(el);
   const low = text.toLowerCase();
-  /** From character a to z, widened to whole words (a mark never stops inside TILE_WIDTH) */
-  const range = (a: number, z: number) => {
+  /** From character a to z, widened to whole words (a mark never stops inside TILE_WIDTH) and the marks closing it */
+  const range = (a: number, z: number, close = false) => {
     const [sn, so] = at[a],
       [en, eo] = at[z];
     let s0 = so,
       e0 = eo + 1;
     while (s0 > 0 && wordy(sn.data[s0 - 1]) && wordy(sn.data[s0])) s0--;
     while (e0 < en.data.length && wordy(en.data[e0]) && wordy(en.data[e0 - 1])) e0++;
+    // and, for a passage, the marks closing it (a full stop, a call's brackets)
+    while (close && e0 < en.data.length && /[^\s\p{L}\p{N}]/u.test(en.data[e0])) e0++;
     const r = document.createRange();
     r.setStart(sn, s0);
     r.setEnd(en, e0);
     return r;
   };
   if (p.hit) {
-    // sentence by sentence: one with a formula or an image the text cannot be matched in does not lose the rest
-    const out: Range[] = [];
+    // sentence by sentence: one with a formula or an image the text cannot be matched in does not lose the rest; sentences
+    // found next to each other are one mark, so the passage reads as one (a code line's closing brace not left out)
+    const spans: [number, number][] = [];
     let from = 0;
     for (const sen of sentences(p.hit)) {
       const h = bare(sen).toLowerCase();
       if (h.length < 4) continue; // a list number or a lone mark cut off as its own sentence
-      const a = low.indexOf(h.slice(0, PROBE), from);
+      // the whole sentence where the text has it as it is; else from its first few characters to its last few
+      const whole = low.indexOf(h, from);
+      const a = whole >= 0 ? whole : low.indexOf(h.slice(0, PROBE), from);
       if (a < 0) continue;
       const tail = h.slice(-PROBE);
       const t = low.indexOf(tail, a);
-      const z = t >= 0 && t - a < h.length + PROBE ? t + tail.length - 1 : Math.min(at.length - 1, a + PROBE - 1);
-      out.push(range(a, z));
+      const z =
+        whole >= 0
+          ? whole + h.length - 1
+          : t >= 0 && t - a < h.length + PROBE
+            ? t + tail.length - 1
+            : Math.min(at.length - 1, a + PROBE - 1);
+      const last = spans.at(-1);
+      if (last && a - last[1] <= GAP) last[1] = z;
+      else spans.push([a, z]);
       from = z + 1;
     }
-    return out;
+    return spans.map(([a, z]) => range(a, z, true));
   }
   const out: Range[] = [];
   for (const w of q.toLowerCase().split(/\s+/).map(bare).filter(Boolean))
@@ -139,10 +156,26 @@ export function Preview(props: { it?: SearchItem; q: string }) {
     return it && (it.kind === "card" || it.kind === "sidenote") ? it.preview : undefined;
   };
   let body!: HTMLDivElement;
-  onCleanup(() => mark([]));
+  /** Marks what matched and brings it into view */
+  const paint = (v: SearchPreview) => {
+    const rs = hitRanges(body, v, props.q);
+    mark(rs);
+    const first = rs[0]?.startContainer.parentElement;
+    if (first) scrollIntoBox(first, "center");
+  };
+  // code colored (or a diagram drawn) after the render replaces the text the marks were on: mark it again
+  const redo = new MutationObserver(() => {
+    const v = p();
+    if (v && body) paint(v);
+  });
+  onCleanup(() => {
+    redo.disconnect();
+    mark([]);
+  });
   createEffect(() => {
     const v = p();
     if (!body) return;
+    redo.disconnect();
     if (!v) {
       body.innerHTML = "";
       return mark([]);
@@ -151,10 +184,8 @@ export function Preview(props: { it?: SearchItem; q: string }) {
     body.innerHTML = h;
     md.hydrate(body, h);
     body.scrollTop = 0;
-    const rs = hitRanges(body, v, props.q);
-    mark(rs);
-    const first = rs[0]?.startContainer.parentElement;
-    if (first) scrollIntoBox(first, "center");
+    paint(v);
+    redo.observe(body, { childList: true, subtree: true });
   });
   return (
     <div class="pprev">

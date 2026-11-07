@@ -1043,9 +1043,10 @@ test("paletteMeaning", async () => {
             board: h.board().id,
             card: c.id,
             preview: {
-              md: "## Blocks\n\nAllocates blocks.\n\nFrees the **blocks** of a finished sequence.",
+              md: "## Blocks\n\nAllocates blocks.\n\nFrees the **blocks** of a finished sequence.\n\n```c\nfree(blocks[i]);\n```",
               where: "nano-vllm › Memory",
-              hit: "Frees the **blocks** of a finished sequence.",
+              // a passage runs on into a code block (whose brackets the rendered code has too): one mark over both
+              hit: "Frees the **blocks** of a finished sequence. free(blocks[i]);",
             },
           },
         ],
@@ -1086,7 +1087,7 @@ test("paletteMeaning", async () => {
       pane.heading === "Blocks" &&
       pane.label === "Frees" &&
       pane.list === 0 &&
-      pane.hit === "Frees the blocks of a finished sequence.",
+      pane.hit === "Frees the blocks of a finished sequence.free(blocks[i]);",
     pane,
   );
   await h.page.context().close();
