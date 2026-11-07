@@ -1809,12 +1809,14 @@ test("noteEditWatched", async () => {
     const h = await open({ board: board([doc, "Plain words in a Note."]), light, settings: { theme } as never });
     await idle(h);
     // the title's Note: the header folds away while the heading slides in, the card keeps its place and size
-    await watch(h, `noteEditWatched ${theme} enter`, { frames: 20 }, () =>
+    await watch(h, `noteEditWatched ${theme} enter`, { keep: ['.card[data-id="n0"]'], frames: 20 }, () =>
       h.page.locator('.card[data-id="n0"] .nbody p').last().dblclick(),
     );
     await until(h, "the Note is being edited", () => editing(h, "n0"));
     await idle(h);
-    await watch(h, `noteEditWatched ${theme} leave`, { frames: 20 }, () => h.page.keyboard.press("Escape"));
+    await watch(h, `noteEditWatched ${theme} leave`, { keep: ['.card[data-id="n0"]'], frames: 20 }, () =>
+      h.page.keyboard.press("Escape"),
+    );
     await until(h, "the editor is closed", async () => !(await editing(h, "n0")));
     await idle(h);
     // a Note growing by a line while it is edited
@@ -1822,8 +1824,11 @@ test("noteEditWatched", async () => {
     await until(h, "the second Note is being edited", () => editing(h, "n1"));
     await idle(h);
     await h.page.keyboard.press("End");
-    await watch(h, `noteEditWatched ${theme} grow`, { moves: ["card:n1"], frames: 8 }, () =>
-      h.page.keyboard.press("Enter"),
+    await watch(
+      h,
+      `noteEditWatched ${theme} grow`,
+      { moves: ["card:n1"], keep: ['.card[data-id="n1"]'], frames: 8 },
+      () => h.page.keyboard.press("Enter"),
     );
     await idle(h);
     await h.close();

@@ -1492,8 +1492,11 @@ test("expandCallWatched", async () => {
     const src = b.cards[0].id;
     const h = await open({ board: b, light, settings: { theme } as never });
     await idle(h);
-    await watch(h, `expandCallWatched ${theme}`, { moves: [new RegExp(`^(?!card:${src}$)`)], frames: 30 }, () =>
-      callEl(h, "schedule").click(),
+    await watch(
+      h,
+      `expandCallWatched ${theme}`,
+      { moves: [new RegExp(`^(?!card:${src}$)`)], keep: [`.card[data-id="${src}"]`], frames: 30 },
+      () => callEl(h, "schedule").click(),
     );
     await until(h, "schedule() expands into a card", () => h.board().cards.length > 1);
     await idle(h);
