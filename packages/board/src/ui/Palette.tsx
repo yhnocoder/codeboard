@@ -246,7 +246,7 @@ export function Palette() {
                   </Show>
                 ) : (
                   <Show when={groupOf(k).length}>
-                    <div class="pgh">{title}</div>
+                    <div class="pgh">{k === "card" && scoped() ? "Cards on This Board" : title}</div>
                     <For each={groupOf(k)}>{(it) => item(it)}</For>
                   </Show>
                 )
@@ -277,7 +277,7 @@ export function Palette() {
           </span>
           <Show when={wide()}>
             <span>
-              <kbd>Tab</kbd> {here() ? "All Boards" : "This Board Only"}
+              <kbd>Tab</kbd> {here() ? "All Boards" : "This Board"}
             </span>
           </Show>
           <span>
