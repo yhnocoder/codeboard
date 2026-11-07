@@ -311,12 +311,23 @@ test("clickSelectsWithoutLift", async () => {
   const pg = h.page;
   await idle(h);
   const card = '.card[data-id="c1"]';
-  // every class the card gets, as it gets it (a lift that came and went within a frame shows up too)
+  // every class the card gets, as it gets it (a lift that came and went within a frame shows up too), and the transitions of
+  // the card itself still running when it stops landing
   await pg.evaluate((sel) => {
     const el = document.querySelector(sel)!;
-    const w = window as unknown as { __cls: string[] };
+    const w = window as unknown as { __cls: string[]; __landEnd: string[][] };
     w.__cls = [];
-    new MutationObserver(() => w.__cls.push(el.className)).observe(el, {
+    w.__landEnd = [];
+    new MutationObserver(() => {
+      if (/\blanding\b/.test(w.__cls.at(-1) ?? "") && !el.classList.contains("landing"))
+        w.__landEnd.push(
+          el
+            .getAnimations()
+            .filter((a) => a.playState === "running")
+            .map((a) => (a as CSSTransition).transitionProperty),
+        );
+      w.__cls.push(el.className);
+    }).observe(el, {
       attributes: true,
       attributeFilter: ["class"],
     });
@@ -403,6 +414,11 @@ test("clickSelectsWithoutLift", async () => {
       !(await pg.locator(`${card}:is(.lift, .landing)`).count()) && flat((await look()).scale) === flat(rest.scale),
   ).catch(() => {}); // not settled: the check below says so
   const after = await look();
+  // .landing (its own layer) lasts until the card's transitions have ended: taken off while its scale still eased, the card was
+  // a running transform animation among the other cards, and Chromium gave every card painted after it a layer of its own and
+  // rastered them all, twice (4-21 viewports after a drop on real boards)
+  const landEnd = await pg.evaluate(() => (window as unknown as { __landEnd: string[][] }).__landEnd);
+  check("landingEndsWhenSettled", landEnd.length === 1 && landEnd[0].length === 0, { landEnd });
   check(
     "dragLiftsCardAndSettlesBack",
     lifted && landing && flat(after.scale) === flat(rest.scale) && after.layer === "auto",

@@ -3,7 +3,7 @@ import * as path from "node:path";
 import { DEFAULT_SETTINGS, emptyBoard, estSize, mapFit, skeletonOf, type Board, type NoteCard } from "@codeboard/core";
 import { put, symCard, findSym, shot, OUT, type Host } from "../harness";
 import { subHost } from "../subhost";
-import { test, until, idle, hold, verdict, check } from "../fixtures";
+import { test, until, idle, hold, verdict, check, hostBoards, pauseClock } from "../fixtures";
 import { DBL_CLICK, WHEEL_GESTURE } from "../../src/state/timing";
 
 const nv = (qual: string) => {
@@ -1387,4 +1387,103 @@ test("subboardPreviewNoteHeading", async () => {
     async () => (await read()).p2.h2 === "降低延迟 vs 提高吞吐",
   );
   await page.context().close();
+});
+
+type Rect = { x: number; y: number; w: number; h: number };
+type Leave = { titles: number; ghost: Rect | null; crumb: Rect; fonts: string[] | null };
+/**
+ * Leaving a sub-board by its breadcrumb: the title that flies back into the frame (.sbmorph) starts as a copy laid exactly over the
+ * breadcrumb's current crumb, so the crumb is hidden from the click on (the frame right after it shows the title once, not the
+ * copy and the fading crumb twice) and shows again once the morph is over. The copy matches the crumb (font, text place), so the
+ * handoff does not jump. On the page's clock, paused at the click; each theme's frame right after the click is a screenshot
+ * (device scale 2, frozen there)
+ */
+test("subboardLeaveOneTitle", async () => {
+  const { M, P, S, D } = boards();
+  // in the scheduler board, the deep board's frame is in view
+  S.cam = { x: 0, y: 0, z: 0.45 };
+  for (const [theme, lit] of [
+    ["warm-ink", true],
+    ["ink-wash", false],
+  ] as const) {
+    const run = await hostBoards([M, P, S, D], {
+      page: { light: lit, w: 1400, h: 900, scale: 2, settings: { theme } },
+    });
+    const h = await run.open(M.id),
+      page = h.page;
+    const shown = () => run.host.hub.all()[0].id;
+    const enter = async (frame: string, board: string) => {
+      const n = run.inits.length;
+      await page.locator(`.card[data-id="${frame}"] .sbname`).dblclick();
+      await until(h, `entering ${board}`, () => run.inits.length > n && shown() === board);
+      await idle(h);
+    };
+    await until(h, "Main shows its frames", () => page.locator('.card[data-id="fSch"] .sbname').count());
+    await idle(h);
+    await enter("fSch", "bSch");
+    await enter("fDeep", "bDeep");
+    // the frame right after the click: read and frozen in the click itself (the crumb's handler has run), so the screenshot is
+    // that frame whatever the machine's speed; the morph's Web Animations go on once resumed
+    await page.evaluate(() =>
+      addEventListener(
+        "click",
+        () => {
+          const g = document.querySelector<HTMLElement>(".sbmorph"),
+            cur = document.querySelector<HTMLElement>(".crumbs .cur")!;
+          const seen = (e: HTMLElement | null) => !!e && getComputedStyle(e).visibility === "visible";
+          const text = (e: HTMLElement) => {
+            const r = document.createRange();
+            r.selectNodeContents(e);
+            const b = r.getBoundingClientRect();
+            return { x: b.left, y: b.top, w: b.width, h: b.height };
+          };
+          const font = (e: HTMLElement) => {
+            const s = getComputedStyle(e);
+            return `${s.fontFamily} ${s.fontSize} ${s.fontWeight} ${s.letterSpacing}`;
+          };
+          (window as unknown as { __leave: Leave }).__leave = {
+            titles: [g, cur].filter(seen).length,
+            ghost: g && text(g),
+            crumb: text(cur),
+            fonts: g ? [font(g), font(cur)] : null,
+          };
+          for (const a of document.getAnimations()) a.pause();
+        },
+        { once: true },
+      ),
+    );
+    await page.clock.install();
+    await pauseClock(page);
+    const n = run.inits.length;
+    await page.locator(".crumbs .crumb:not(.cur):not(.back)").last().click();
+    const at = await until(h, "the click was read", () =>
+      page.evaluate(() => (window as unknown as { __leave?: Leave }).__leave),
+    );
+    await page.screenshot({ path: path.join(OUT, `crumb-exit-${theme}.png`) });
+    await page.evaluate(() => {
+      for (const a of document.getAnimations()) a.play();
+    });
+    await page.clock.resume();
+    check("subboardLeaveOneTitle the frame after the click shows the title once", at.titles === 1, { theme, ...at });
+    const g = at.ghost;
+    check(
+      "subboardLeaveOneTitle the flying copy starts exactly on the crumb's text",
+      !!g && Math.abs(g.x - at.crumb.x) < 0.5 && Math.abs(g.y - at.crumb.y) < 0.5 && Math.abs(g.w - at.crumb.w) < 0.5,
+      { theme, ...at },
+    );
+    check("subboardLeaveOneTitle the copy has the crumb's font", !!at.fonts && at.fonts[0] === at.fonts[1], at.fonts);
+    await until(h, "leaving opens the scheduler board", () => run.inits.length > n && shown() === "bSch");
+    await idle(h);
+    const after = await page.evaluate(() => ({
+      copies: document.querySelectorAll(".sbmorph").length,
+      cur: document.querySelector(".crumbs .cur")?.textContent,
+      shown: getComputedStyle(document.querySelector(".crumbs .cur")!).visibility,
+    }));
+    check(
+      "subboardLeaveOneTitle the crumb shows again after the morph",
+      after.copies === 0 && after.cur === "nano-vllm 调度器" && after.shown === "visible",
+      { theme, ...after },
+    );
+    await page.context().close();
+  }
 });

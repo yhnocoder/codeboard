@@ -1,4 +1,4 @@
-// Usage: node packages/board/test/run-perf.mjs [--cards 240] [--notes 200] (a board of Notes with realistic Markdown: open, pan, zoom, enter edit, type) [--runs 3] [--json out.json] [--quick] [--theme ink-wash] [--light] [--traffic] (City: green light, cars driving) [--profile <step>] [--trace <step>] [--steps <step>] [--long <step>] [--stop pinch] [--inval <step>] [--anim] [--persona] [--scale 2] (--persona: a board like a real study board, Chinese Notes dense with math and Image cards of big screenshots, through the real host: load, pan, zoom, pinch, zoomOutIn, dragImage / dragNote / dragCode; --anim: the line and corner stickers are animated GIFs from a sticker pack; --inval counts what invalidated style and layout; --stop pinch: end each run after the camera steps; --long breaks down each dropped frame, LONG_OVER=8.3 each frame over that many ms; --steps prints each step's time, the board's classes and camera, and the raster passes step by step) [--raster] (only the raster probes: rasterProbes) [--passes drag,pan,zoom,stops,cut,fit,zoomedOut] [--no-raster] (RASTER_OUT=<dir>: each raster pass's trace and a screenshot)
+// Usage: node packages/board/test/run-perf.mjs [--cards 240] [--notes 200] (a board of Notes with realistic Markdown: open, pan, zoom, enter edit, type) [--runs 3] [--json out.json] [--quick] [--theme ink-wash] [--light] [--traffic] (City: green light, cars driving) [--profile <step>] [--trace <step>] [--steps <step>] [--long <step>] [--stop pinch] [--inval <step>] [--anim] [--persona] [--scale 2] (--persona: a board like a real study board, Chinese Notes dense with math and Image cards of big screenshots, a Section with one inside it, through the real host: load, pan, zoom, pinch, zoomOutIn, dragImage / dragNote / dragCode; --anim: the line and corner stickers are animated GIFs from a sticker pack; --inval counts what invalidated style and layout; --stop pinch: end each run after the camera steps; --long breaks down each dropped frame, LONG_OVER=8.3 each frame over that many ms; --steps prints each step's time, the board's classes and camera, and the raster passes step by step) [--raster] (only the raster probes: rasterProbes) [--passes drag,dragSection,pan,zoom,stops,cut,fit,zoomedOut,inOutIn] (dragSection: persona only) [--no-raster] (RASTER_OUT=<dir>: each raster pass's trace and a screenshot)
 // Each scenario reports wall clock (action → next frame painted), main-thread busy time (CDP TaskDuration) and frame times
 // (frameP95 / frameMax / over16 / over8: main-thread task durations, frameMedian for steps that wait; the 60 fps budget is 16.7 ms, 120 fps 8.3 ms).
 import * as fs from "node:fs";
@@ -1312,17 +1312,22 @@ const emptySpot = (h: Host) =>
 /**
  * The raster probes on a board (probes.ts RASTER_BUDGET says which numbers are judged): drag a card (`drag`: its id), pan, zoom
  * out and in, six small zoom stops, a mouse-wheel zoom out across the summary cut (#155: the summary columns rastered at device
- * scale as they came in), Fit to Window, and from there in to 0.2 (zoomed out past the cut, out of the detent's reach)
+ * scale as they came in), Fit to Window from 100 %, from there in to 0.2 (zoomed out past the cut, out of the detent's reach),
+ * and in to 250 %, out past the cut and back to ~150 % (inOutIn)
  */
-async function rasterProbes(h: Host, cdp: CDPSession, drag: string) {
+async function rasterProbes(h: Host, cdp: CDPSession, drag: string, section?: { id: string; near: string }) {
   const out: Record<string, RasterResult> = {};
   const ran: string[] = [];
   // --passes drag,cut: only these; --quick (PR CI): only the passes with a budget at card level, the others run in the regular runs
   const passes = arg("passes", process.argv.includes("--quick") ? "drag,pan,stops" : "").split(",");
   const want = (p: string) => passes[0] === "" || passes.includes(p);
   // the passes asked for (zoom: zoomOut and zoomIn; zoomedOut after fit): rasterChecks fails one that ran and left no result
-  for (const p of ["drag", "pan", "stops", "zoomOut", "zoomIn", "cut", "fit", "zoomedOut"])
-    if (want(p) || (p.startsWith("zoom") && p !== "zoomedOut" && want("zoom")) || (p === "fit" && want("zoomedOut")))
+  for (const p of ["drag", "dragSection", "pan", "stops", "zoomOut", "zoomIn", "cut", "fit", "zoomedOut", "inOutIn"])
+    if (
+      p === "dragSection"
+        ? section && want(p)
+        : want(p) || (p.startsWith("zoom") && p !== "zoomedOut" && want("zoom")) || (p === "fit" && want("zoomedOut"))
+    )
       ran.push(p);
   // every pass from 100 % (the timed steps before leave the camera wherever they ended), where reveal keeps it
   const at100 = async () => {
@@ -1362,6 +1367,27 @@ async function rasterProbes(h: Host, cdp: CDPSession, drag: string) {
     );
     await h.page.keyboard.press("Meta+z");
   }
+  // a Section dragged by its title, with its cards and the Section inside it (#159 lifted dragged cards; a Section's frame,
+  // title and cards moved by its drag are lifted the same way)
+  if (section && want("dragSection")) {
+    await fresh();
+    await focusCard(h, section.near);
+    const at = await h.page.evaluate((id) => {
+      const r = document.querySelector(`.slabel[data-sect="${id}"] .dots`)!.getBoundingClientRect();
+      return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    }, section.id);
+    await h.page.mouse.move(at.x, at.y);
+    await h.page.mouse.down();
+    out.dragSection = await rasterPass(
+      h,
+      cdp,
+      "dragSection",
+      30,
+      (i) => h.page.mouse.move(at.x + 4 + i * 4, at.y + 2 + i * 2, { steps: 1 }),
+      () => h.page.mouse.up(),
+    );
+    await h.page.keyboard.press("Meta+z");
+  }
   await fresh();
   const spot = await emptySpot(h);
   await h.page.mouse.move(spot.x, spot.y);
@@ -1393,8 +1419,11 @@ async function rasterProbes(h: Host, cdp: CDPSession, drag: string) {
       await still(h);
     });
   }
-  if (want("fit") || want("zoomedOut"))
+  // Fit to Window from 100 %, the world rastered there: the camera flies out 8x (persona) to 19x (synthetic)
+  if (want("fit") || want("zoomedOut")) {
+    await fresh();
     out.fit = await rasterPass(h, cdp, "fit", 1, () => h.page.locator('button[aria-label="Fit to Window"]').click());
+  }
   if (want("zoomedOut")) {
     // zoomed in around the summaries (their first column), so they stay in view
     const s2 = await h.page.evaluate(() => {
@@ -1409,6 +1438,42 @@ async function rasterProbes(h: Host, cdp: CDPSession, drag: string) {
         await ctrlWheel(h, -5);
         await raf(h);
       }
+    });
+  }
+  // in, out past the summary cut and back: from Fit, mouse-wheel notches in to 250 % (the world rastered again there, magnified),
+  // then in one go out below the cut, where Chromium rasters the world again on its own; at rest there, a quick pinch back in to
+  // ~150 % (steps with no frame between them: the camera stops only there). Judged at rest there: the world rastered at the scale it is shown at, not at the one it had below the cut
+  if (want("inOutIn")) {
+    await fresh();
+    await h.page.locator('button[aria-label="Fit to Window"]').click();
+    await rest(h);
+    const fitSpot = await emptySpot(h);
+    await h.page.mouse.move(fitSpot.x, fitSpot.y);
+    for (let i = 0; i < 40 && (await zoomOf(h)) < 2.4; i++) {
+      await ctrlWheel(h, -30);
+      await raf(h);
+    }
+    await rest(h);
+    const zIn = await zoomOf(h);
+    const inSpot = await emptySpot(h);
+    await h.page.mouse.move(inSpot.x, inSpot.y);
+    // mouse-wheel notches with no frame between them (deltaY 100 each: one pushes through the detent), so the camera does not
+    // stop on the way, where the world would be rastered again at half its scale and the stop below the cut would not matter
+    for (let i = 0; i < 12 && (await zoomOf(h)) > 0.2; i++) await ctrlWheel(h, 100);
+    await rest(h);
+    if (process.argv.includes("--steps"))
+      console.log(`  inOutIn: in to ${zIn.toFixed(3)}, out to ${(await zoomOf(h)).toFixed(3)}`);
+    // back in around the card dragged above (swapped out, its box is still laid out), so the card level is in view at rest
+    const back = await h.page.evaluate((id) => {
+      const r = document.querySelector(`.card[data-id="${id}"]`)?.getBoundingClientRect();
+      return r && r.right > 0 && r.left < innerWidth && r.bottom > 0 && r.top < innerHeight
+        ? { x: r.left + r.width / 2, y: r.top + r.height / 2 }
+        : null;
+    }, drag);
+    if (back) await h.page.mouse.move(back.x, back.y);
+    let i = 0;
+    out.inOutIn = await rasterPass(h, cdp, "inOutIn", 1, async () => {
+      for (; i < 60 && (await zoomOf(h)) < 1.25; i++) await ctrlWheel(h, -20);
     });
   }
   return { passes: out, ran };
@@ -1610,6 +1675,14 @@ export function personaBoard(): { board: Board; assets: Record<string, Buffer> }
     }
     y += 1100;
   }
+  // Sections like Linda's: row 1 in one, with its first two Notes in a Section inside it (each frame grows to hold its cards)
+  b.sections.push(
+    { id: PERSONA_SECTION.id, title: "第二部分", x: -40, y: 1040, w: 400, h: 400 },
+    { id: "s1a", title: "两个 Note", x: -20, y: 1080, w: 300, h: 300, parent: PERSONA_SECTION.id },
+  );
+  b.place.n4.section = b.place.n5.section = "s1a";
+  for (const c of b.cards)
+    if (b.place[c.id].y === 1100 && !b.place[c.id].section) b.place[c.id].section = PERSONA_SECTION.id;
   // arrows from each row's first Note to its code and image cards, and down to the next row
   for (let r = 0; r < 5; r++) {
     const ids = b.cards.filter((c) => b.place[c.id].y === r * 1100).map((c) => c.id);
@@ -1645,6 +1718,9 @@ async function grabPoint(h: Host, id: string) {
 /** The card the raster probes drag on the persona board: a Note with no arrows, which the timed drags (i0, n1, a code card) leave
  *  where it was. Lifted onto a layer of its own, its moves raster nothing */
 const PERSONA_DRAG = "n2";
+/** The Section the raster probes drag on the persona board by its title (row 1, with a Section inside it), from the camera on
+ *  its first card */
+const PERSONA_SECTION = { id: "s1", near: "n4" };
 let personaFiles: ReturnType<typeof personaBoard> | undefined;
 async function personaOnce() {
   await ready();
@@ -1747,7 +1823,7 @@ async function personaOnce() {
   const imageCheck = { name: "images over the decode budget at open", value: hits.length, limit: 0, ok: !hits.length };
   res.idleBusy1s = +(await idle(h, cdp, 1000)).toFixed(1);
   if (RASTER_ONLY) {
-    const { passes: raster, ran } = await rasterProbes(h, cdp, PERSONA_DRAG);
+    const { passes: raster, ran } = await rasterProbes(h, cdp, PERSONA_DRAG, PERSONA_SECTION);
     res.raster = raster;
     res.rasterChecks = [...rasterChecks(raster, "persona", ran), imageCheck];
     await run.close().catch(() => {});
@@ -1796,7 +1872,7 @@ async function personaOnce() {
   if (!process.argv.includes("--no-raster")) {
     // the three drags put back, so the raster probes see the board as opened (as with --raster)
     for (let k = 0; k < 3; k++) await h.page.keyboard.press("Meta+z");
-    const { passes: raster, ran } = await rasterProbes(h, cdp, PERSONA_DRAG);
+    const { passes: raster, ran } = await rasterProbes(h, cdp, PERSONA_DRAG, PERSONA_SECTION);
     res.raster = raster;
     res.rasterChecks = [...rasterChecks(raster, "persona", ran), imageCheck];
   } else res.rasterChecks = [imageCheck];

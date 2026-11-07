@@ -120,9 +120,19 @@ let transit: Transit | null = null;
 /** 框上名字在屏幕上的位置，进去时记下（白板|框）：回来时镜头和进去前一模一样，名字一开始就往这里飞 */
 const titleAt = new Map<string, Spot>();
 
+/** An element's laid-out height before any transform, unrounded (offsetHeight is a whole number: 22.5 px read as 23 drew the
+ *  flying copy of a crumb 2 % smaller than the crumb, its text jumping at the handoff) */
+function boxHeight(el: HTMLElement, cs: CSSStyleDeclaration) {
+  const h = parseFloat(cs.height);
+  if (!(h > 0)) return el.offsetHeight;
+  if (cs.boxSizing === "border-box") return h;
+  const px = (v: string) => parseFloat(v) || 0;
+  return h + px(cs.paddingTop) + px(cs.paddingBottom) + px(cs.borderTopWidth) + px(cs.borderBottomWidth);
+}
 const spotOf = (el: HTMLElement): Spot => {
-  const r = el.getBoundingClientRect();
-  return { r, font: parseFloat(getComputedStyle(el).fontSize) * (r.height / (el.offsetHeight || r.height || 1)) };
+  const r = el.getBoundingClientRect(),
+    cs = getComputedStyle(el);
+  return { r, font: parseFloat(cs.fontSize) * (r.height / (boxHeight(el, cs) || r.height || 1)) };
 };
 const titleEl = (frame: string) => document.querySelector<HTMLElement>(`${cardSel(frame)} .sbname`);
 /** 替身放在框上名字的位置时的 transform（替身的盒子在面包屑那一格上，transform-origin 左上角） */
@@ -219,6 +229,9 @@ function morphOut(board: string, frame: string) {
     const from = spotOf(cur);
     t.to = from;
     t.ghost = ghostAt(state.board.name, from);
+    // the copy lies on the crumb, which fades with the breadcrumb: hidden from now on, or the title shows twice for the frames
+    // the fade takes (boardShown shows the next board's crumbs at once; giveUp and finish show it again)
+    setCrumbMorph(true);
     const at = titleAt.get(`${board}|${frame}`);
     if (at)
       t.fly = t.ghost.animate([{ transform: "none" }, { transform: onTitle(at, from) }], {

@@ -234,19 +234,26 @@ function Column(p: { col: SumCol }) {
     <>
       <Show when={c().image}>
         {(r) => (
+          // the source: picked as the Image card's is (md.showImage: a smaller copy of a big assets/ PNG or JPEG for the size
+          // it is seen at). Laid out at its board size and scaled down by K inside the layer, not laid out at 1 / K: the picker
+          // reads the laid-out width, which times the display scale is then the device pixels it shows at
           <img
             class="sumimg"
             alt=""
-            src={(() => {
-              const card = state.board.cards.find((x) => `card:${x.id}` === key);
-              const src = card?.kind === "image" ? card.src : "";
-              return /^(data:|https?:)/.test(src) ? src : `${state.host.assetBase}/${src}`;
-            })()}
+            ref={(img) =>
+              createEffect(() => {
+                const card = state.board.cards.find((x) => `card:${x.id}` === key);
+                const src = card?.kind === "image" ? card.src : "";
+                if (src) onCleanup(md.showImage(img, /^(data:|https?:)/.test(src) ? src : `assets/${src}`));
+              })
+            }
             style={{
               left: `${r().x / K()}px`,
               top: `${r().y / K()}px`,
-              width: `${r().w / K()}px`,
-              height: `${r().h / K()}px`,
+              width: `${r().w}px`,
+              height: `${r().h}px`,
+              transform: `scale(${1 / K()})`,
+              "transform-origin": "0 0",
             }}
           />
         )}

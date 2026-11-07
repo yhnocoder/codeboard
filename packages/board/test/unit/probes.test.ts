@@ -168,10 +168,29 @@ describe("rasterChecks", () => {
     expect(checks.find((c) => c.name === "stops stepVP")?.ok).toBe(true);
     expect(checks.some((c) => c.name.startsWith("cut"))).toBe(false);
   });
+  it("judges what a card drag rasters after the drop on the persona board", () => {
+    const checks = rasterChecks({ drag: pass({ restVP: 14.1 }) }, "persona");
+    expect(checks.find((c) => c.name === "drag restVP")).toMatchObject({ value: 14.1, limit: 12, ok: false });
+    const synthetic = rasterChecks({ drag: pass({ restVP: 14.1 }) }, "synthetic");
+    expect(synthetic.some((c) => c.name === "drag restVP")).toBe(false);
+  });
+  it("judges a Section drag on the persona board by the pixels a move rasters", () => {
+    const checks = rasterChecks({ dragSection: pass({ stepVP: 1.46 }) }, "persona");
+    expect(checks.find((c) => c.name === "dragSection stepVP")).toMatchObject({ value: 1.46, limit: 1, ok: false });
+    expect(rasterChecks({ dragSection: pass({ stepVP: 0.73 }) }, "persona").filter((c) => !c.ok)).toEqual([]);
+  });
   it("counts the blurry and wasted layers at rest of the passes judged for sharpness, not of the others", () => {
-    const checks = rasterChecks({ stops: pass({ blurry: ["x"] }), fit: pass({ wasted: ["y"] }) }, "synthetic");
+    const checks = rasterChecks({ stops: pass({ blurry: ["x"] }), cut: pass({ wasted: ["y"] }) }, "synthetic");
     expect(checks.find((c) => c.name === "stops blurry layers at rest")).toMatchObject({ value: 1, ok: false });
-    expect(checks.some((c) => c.name.startsWith("fit") && c.name.endsWith("at rest"))).toBe(false);
+    expect(checks.some((c) => c.name.startsWith("cut") && c.name.endsWith("at rest"))).toBe(false);
+  });
+  it("judges Fit to Window by what its flight rasters and by its sharpness at rest", () => {
+    const checks = rasterChecks({ fit: pass({ restVP: 77, wastedVP: 73, wasted: ["sumcol"] }) }, "persona");
+    expect(checks.find((c) => c.name === "fit restVP")).toMatchObject({ value: 77, ok: false });
+    expect(checks.find((c) => c.name === "fit wastedVP")).toMatchObject({ value: 73, ok: false });
+    expect(checks.find((c) => c.name === "fit wasted layers at rest")).toMatchObject({ value: 1, ok: false });
+    const fixed = rasterChecks({ fit: pass({ restVP: 36, wastedVP: 4 }) }, "persona");
+    expect(fixed.filter((c) => !c.ok)).toEqual([]);
   });
   it("passes a board whose passes all have their counts", () => {
     const checks = rasterChecks({ drag: pass(), pan: pass(), stops: pass() }, "persona");

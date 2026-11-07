@@ -27,7 +27,7 @@ import { live } from "./state/changes";
 import { sel, select, toggleSel, clearSel, setLineSel, isSel, type Sel } from "./state/selection";
 import { toast } from "./state/toast";
 import { tune } from "./state/tune";
-import { WHEEL_GESTURE, BLOCK_GLIDE, SNAP_SETTLE, LAND_MS } from "./state/timing";
+import { WHEEL_GESTURE, BLOCK_GLIDE, SNAP_SETTLE } from "./state/timing";
 import { cam, setCam, stopCam, camTo, fitRect, fling, toWorld, view, zMin, ZMAX } from "./state/camera";
 import { detentZoom } from "./state/summary";
 import { reduceMotion } from "./state/motion";
@@ -38,6 +38,8 @@ import {
   dropTarget,
   setDragging,
   setLanding,
+  landing,
+  setCarried,
   setMarquee,
   setRubber,
   setEditing,
@@ -47,6 +49,7 @@ import {
   type NoteSpot,
 } from "./state/ui";
 import { shelfHot } from "./state/shelf";
+import { farAway } from "./state/cull";
 import { staticTextRange, draggedImage, IMAGE_DRAG_TYPE, type DraggedImage, type Markdown } from "@yhnocoder/markdown";
 import {
   frames,
@@ -91,7 +94,7 @@ import * as A from "./actions";
 import { CALL_DRAG_SLOP, DRAG_SLOP, track, undoGesture } from "./gesture";
 import { togglePreview } from "./state/subboards";
 import { cardSel } from "./cardsel";
-import { boardRef, boardTimer } from "./state/root";
+import { boardRef } from "./state/root";
 import { playerAt, selectAnim } from "./md/anim";
 
 const pt = (e: { clientX: number; clientY: number }) => ({ x: e.clientX, y: e.clientY });
@@ -317,7 +320,30 @@ const hostPlace = (b: Board, id: string) => {
 /** 卡头上能点也能拖的东西（文件路径、版本号）：刚拖完松手时浏览器还会补一个 click，这时不算点 */
 const dragEndAt = boardRef(-1e9);
 export const justDragged = () => performance.now() - dragEndAt.v < 250;
-const landT = boardTimer();
+/**
+ * Put the dragged cards down: .landing keeps each one a layer of its own until the last of its own transitions (scale, lift
+ * shadow: .landing's and the theme's, e.g. Warm Ink's 420 ms spring) has ended, read from the transitions themselves. Taken off
+ * while the scale still moves, the card is a running transform animation in the middle of the cards, which Chromium takes as
+ * overlapping everything painted after it: every card after it in view got a layer of its own and was rastered, then squashed
+ * back and rastered again when the animation ended (4-21 viewports after a drop on real boards). A later drag, or a board
+ * switch, replaces the set, and then this one leaves it alone
+ */
+function land(ids: readonly string[]) {
+  const mine = new Set(ids);
+  batch(() => {
+    setDragging(new Set<string>());
+    setLanding(mine);
+  });
+  const ends: Promise<unknown>[] = [];
+  for (const id of ids) {
+    const el = document.querySelector(cardSel(id));
+    for (const a of el?.getAnimations({ subtree: true }) ?? [])
+      if (a instanceof CSSTransition && (a.effect as KeyframeEffect).target === el) ends.push(a.finished);
+  }
+  void Promise.allSettled(ends).then(() => {
+    if (landing() === mine) setLanding(new Set<string>());
+  });
+}
 function startCardDrag(e: PointerEvent, grabbed: string, onClick?: () => void) {
   // Sections selected too: they and the cards move together (no merging, no dropping into a Note or onto a line)
   if (sel.sections.some((i) => !A.sectionLocked(sec(i))))
@@ -472,7 +498,6 @@ function startCardDrag(e: PointerEvent, grabbed: string, onClick?: () => void) {
       moving();
       if (!lifted) {
         lifted = true;
-        landT.stop();
         batch(() => {
           setLanding(new Set<string>());
           setDragging(new Set(ids));
@@ -485,11 +510,7 @@ function startCardDrag(e: PointerEvent, grabbed: string, onClick?: () => void) {
       clearTimeout(mergeT);
       setGuides([]);
       if (lifted) {
-        batch(() => {
-          setDragging(new Set<string>());
-          setLanding(new Set(ids));
-        });
-        landT.start(() => setLanding(new Set<string>()), LAND_MS * (100 / tune("animSpeed")));
+        land(ids);
       }
       setMovingHome(null);
       const toShelf = shelfHot() === "dock" || shelfHot() === "panel";
@@ -1203,6 +1224,8 @@ export function sectionLabelDown(e: PointerEvent, id: string, fromBody = false) 
  * the pointer is), and each card dragged on its own in the Section it now sits in (homeFor, as when a card is dragged).
  * grabbed: the Section pressed (none: a card). onClick: released without moving
  */
+/** The most layers a Section drag lifts its frames, titles and cards onto (dragGroup) */
+const CARRY_MAX = 40;
 function dragGroup(e: PointerEvent, secIds: string[], cardIds: string[], grabbed?: string, onClick?: () => void) {
   const sel0 = secIds.map((i) => sec(i)).filter((q): q is Section => !!q && !A.sectionLocked(q));
   const subs = new Map<string, Section>();
@@ -1259,8 +1282,27 @@ function dragGroup(e: PointerEvent, secIds: string[], cardIds: string[], grabbed
   const sx = e.clientX,
     sy = e.clientY;
   let at = { dx: 0, dy: 0 };
+  // What the drag moves goes onto layers of its own (.carry) once it moves, so a move only moves those layers: the Section
+  // frames, their titles and the cards near the view (far-away ones draw nothing). Past CARRY_MAX layers only the frames and
+  // titles go: every layer costs the compositor on each frame, and a run of cards is cheaper repainted than layered one by one
+  let carrying = false;
+  const carry = () => {
+    if (carrying) return;
+    carrying = true;
+    const cards = items.filter((it) => it.kind === "c" && !farAway(it.id)).map((it) => it.id);
+    const sections = [...subs.keys()].filter((i) => !hiddenByAncestor(subs.get(i)!));
+    if (2 * sections.length <= CARRY_MAX)
+      setCarried({
+        cards: new Set(2 * sections.length + cards.length <= CARRY_MAX ? cards : []),
+        sections: new Set(sections),
+      });
+  };
+  const uncarry = () => {
+    if (carrying) setCarried({ cards: new Set(), sections: new Set() });
+  };
   const pace = snapPace(e, (ev, still) => onMove(ev, still));
   const onMove = (ev: PointerEvent, still = false) => {
+    carry();
     const z = cam.z;
     let dx = (ev.clientX - sx) / z,
       dy = (ev.clientY - sy) / z;
@@ -1290,6 +1332,7 @@ function dragGroup(e: PointerEvent, secIds: string[], cardIds: string[], grabbed
     (ev) => onMove(ev),
     (ev, moved) => {
       pace.stop();
+      uncarry();
       setGuides([]);
       setMovingHome(null);
       const toShelf = shelfHot() === "dock" || shelfHot() === "panel";
@@ -1351,6 +1394,7 @@ function dragGroup(e: PointerEvent, secIds: string[], cardIds: string[], grabbed
     DRAG_SLOP,
     () => {
       pace.stop();
+      uncarry();
       setMovingHome(null);
       A.shelfDragEnd();
       g.drop();
