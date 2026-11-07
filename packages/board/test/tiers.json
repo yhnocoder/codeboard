@@ -28,8 +28,7 @@
   "solo": ["markdownLazyRender"],
   "known": {
     "subboardEnterLeaveWatched warm-ink enter vanish": "entering a sub-board, the breadcrumbs blink out twice: gone at the board swap, faded back in, fully shown, then gone again for 2 frames and faded in once more (leaving fades them out and in once, by design, so leave keeps no .crumbs)",
-    "subboardEnterLeaveWatched ink-wash enter vanish": "as in Warm Ink",
-    "expandCallWatched ink-wash jumped link": "Ink Wash: while an expanded call's card slides in, its call arrow switches route in one frame (a flat line through the header to a loop over the cards, 52 px), then again into its curve"
+    "subboardEnterLeaveWatched ink-wash enter vanish": "as in Warm Ink"
   },
   "limits": {
     "area": 30,
