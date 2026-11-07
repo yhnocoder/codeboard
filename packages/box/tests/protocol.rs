@@ -379,8 +379,8 @@ fn indexing_recovers_by_itself_after_the_embedding_server_fails() {
     );
     assert_eq!(
         asked.lock().unwrap().len(),
-        3,
-        "two refused, then the batch and nothing more"
+        4,
+        "two refused, then the probe texts (the model's fingerprint), the batch and nothing more"
     );
     let s = c.ok(
         "search",

@@ -9,6 +9,7 @@
 use crate::chunk::{query_prompt, text_pieces};
 use crate::embed::{BATCH, Embedder, Endpoint, EndpointConfig, Input};
 use crate::keyword::{self, Doc, Keywords, hid};
+use crate::probe::Probed;
 use crate::store::{self, ItemRow, Key, PieceRow, Store, image_key, text_key};
 use crate::vectors::{ModelIndex, RESCORE, clipped, dot};
 use serde::Deserialize;
@@ -127,8 +128,9 @@ impl Index {
         let inner = Arc::new(Inner {
             files,
             _lock: lock,
-            store: Mutex::new(st),
+            store: Arc::new(Mutex::new(st)),
             keywords,
+            model_file: crate::model::Model::new(home),
             models: RwLock::new(HashMap::new()),
             manifests: RwLock::new(HashMap::new()),
             sources: Mutex::new(HashMap::new()),
@@ -158,6 +160,11 @@ impl Index {
             "search" => self.search(parse(req)?),
             "search_keyword" => self.search_keyword(parse(req)?),
             "status" => self.status(parse(req)?),
+            "model" => Ok(self.inner.model_file.status()),
+            "model_download" => {
+                let r: ModelDownloadReq = parse(req)?;
+                Ok(self.inner.model_file.download(r.url, r.sha256))
+            }
             "forget" => self.forget(parse(req)?),
             _ => Err(format!("unknown op {op:?}")),
         }
@@ -252,8 +259,10 @@ struct Inner {
     files: Files,
     /// Held while the index is open: one process per data folder
     _lock: std::fs::File,
-    store: Mutex<Store>,
+    store: Arc<Mutex<Store>>,
     keywords: Keywords,
+    /// The built-in model's file (model.rs)
+    model_file: crate::model::Model,
     models: RwLock<HashMap<String, Arc<RwLock<ModelIndex>>>>,
     manifests: RwLock<Manifests>,
     sources: Mutex<HashMap<String, Source>>,
@@ -396,7 +405,10 @@ impl Inner {
         let mut sources = self.sources.lock().unwrap();
         let s = sources.entry(r.source.clone()).or_insert_with(|| Source {
             conf: r.embedder.clone(),
-            embedder: Arc::new(Endpoint::new(r.embedder.clone())),
+            embedder: Arc::new(Probed::new(
+                Arc::new(Endpoint::new(r.embedder.clone())),
+                self.store.clone(),
+            )),
             pending: None,
             running: false,
             left: HashMap::new(),
@@ -405,7 +417,7 @@ impl Inner {
         });
         if s.conf != r.embedder {
             s.conf = r.embedder.clone();
-            s.embedder = Arc::new(Endpoint::new(r.embedder));
+            s.embedder = Arc::new(Probed::new(Arc::new(Endpoint::new(r.embedder)), self.store.clone()));
             s.error = None;
         }
         s.pending = Some(Job {
@@ -943,6 +955,14 @@ pub struct SearchReq {
     pub groups: Option<Vec<String>>,
     #[serde(default)]
     pub min_score: Option<f32>,
+}
+
+#[derive(Deserialize)]
+pub struct ModelDownloadReq {
+    #[serde(default)]
+    pub url: Option<String>,
+    #[serde(default)]
+    pub sha256: Option<String>,
 }
 
 #[derive(Deserialize)]

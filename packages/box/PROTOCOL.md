@@ -66,10 +66,26 @@ CJK text as single characters and pairs, with jieba's words to rank by; titles c
 
 `{source, ref}` → `{items, pieces, vectors, model, left, indexing, error, synced}`
 
+## model, model_download
+
+`{}` / `{url?, sha256?}` → `{file, present, downloading, bytes, total, error}`
+
+The built-in model's file: EmbeddingGemma 2, GGUF Q8_0 (310 MB, `<home>/models/embeddinggemma-2-Q8_0.gguf`). Nothing is
+downloaded until `model_download` asks; it runs in the background (ask `model` for progress) and the file is kept only when
+its SHA-256 is right. `url` and `sha256` default to the model's on Hugging Face (ggml-org/embeddinggemma-2-GGUF). Running it
+(llama.cpp behind the cargo feature `local`) is not in this build yet.
+
 ## forget
 
 `{source}` → `{}`: every manifest of the source goes; content no other manifest has goes at the next clean-up. Indexing
 under way for the source stops and writes nothing more.
+
+## Models
+
+An embedder's vectors are kept and compared under its fingerprint. Before its first vectors are kept, it embeds three fixed
+probe texts (`core/src/probe.rs`): when every probe's cosine with a known model's is at least 0.999, it shares that model's
+index, whatever it is called (the same weights served by another program); otherwise it gets one of its own, named after the
+model, or after the model and a hash of its probes when that name belongs to a model that does not agree.
 
 ## Storage
 

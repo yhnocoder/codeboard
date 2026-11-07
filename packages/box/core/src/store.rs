@@ -102,6 +102,7 @@ impl Store {
              CREATE TABLE IF NOT EXISTS content(key BLOB PRIMARY KEY, model TEXT NOT NULL, vec BLOB NOT NULL) WITHOUT ROWID;
              CREATE INDEX IF NOT EXISTS content_model ON content(model);
              CREATE TABLE IF NOT EXISTS models(model TEXT PRIMARY KEY, clip REAL NOT NULL, scales BLOB NOT NULL);
+             CREATE TABLE IF NOT EXISTS probes(model TEXT PRIMARY KEY, dim INTEGER NOT NULL, vecs BLOB NOT NULL);
              CREATE TABLE IF NOT EXISTS manifests(id INTEGER PRIMARY KEY, source TEXT NOT NULL, ref TEXT NOT NULL,
                model TEXT NOT NULL, used INTEGER NOT NULL, UNIQUE(source, ref));
              CREATE TABLE IF NOT EXISTS items(manifest INTEGER NOT NULL REFERENCES manifests(id) ON DELETE CASCADE,
@@ -323,6 +324,28 @@ impl Store {
         )?;
         tx.commit()?;
         Ok((m, c))
+    }
+
+    /// Every model's probe vectors (probe.rs)
+    pub fn probes(&self) -> R<Vec<(String, Vec<Vec<f32>>)>> {
+        let mut q = self.db.prepare("SELECT model, dim, vecs FROM probes")?;
+        q.query_map([], |r| {
+            let dim: i64 = r.get(1)?;
+            let b: Vec<u8> = r.get(2)?;
+            let xs: Vec<f32> = b.as_chunks::<4>().0.iter().map(|c| f32::from_le_bytes(*c)).collect();
+            Ok((r.get(0)?, xs.chunks(dim.max(1) as usize).map(<[f32]>::to_vec).collect()))
+        })?
+        .collect()
+    }
+
+    pub fn put_probes(&self, model: &str, vs: &[Vec<f32>]) -> R<()> {
+        let dim = vs.first().map_or(0, Vec::len) as i64;
+        let b: Vec<u8> = vs.iter().flatten().flat_map(|x| x.to_le_bytes()).collect();
+        self.db.execute(
+            "INSERT OR REPLACE INTO probes(model, dim, vecs) VALUES (?, ?, ?)",
+            params![model, dim, b],
+        )?;
+        Ok(())
     }
 
     /// The keyword documents some manifest has (keyword::hid of its items' hashes)
