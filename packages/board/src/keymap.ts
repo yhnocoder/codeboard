@@ -413,7 +413,7 @@ const KEYMAP: Bind[] = [
     keys: ["alt+KeyT"],
     label: "Tidy Up",
     group: "Cards",
-    when: () => sel.cards.length >= 2,
+    when: () => sel.cards.length + sel.sections.length >= 2,
     run: (a) => void a.tidyUp(),
   },
   // ⌥T 已经是 Tidy Up

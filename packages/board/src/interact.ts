@@ -1062,11 +1062,13 @@ export function canvasPointerDown(e: PointerEvent) {
     },
     (ev, moved) => {
       setMarquee(null);
-      // 在 Section 空白处点一下（没拖）选中它，最里层的那个；拖动照常是框选
-      if (moved || e.shiftKey) return;
+      // 在 Section 空白处点一下（没拖）选中它，最里层的那个；⇧ 点是加进、移出选择（和点标题一样）；拖动照常是框选
+      if (moved) return;
       const w = worldOf(ev);
       const s = deepestAt(frames(), w.x, w.y, new Set(state.board.sections.filter(hiddenByAncestor).map((x) => x.id)));
-      if (s) select({ sections: [s.id] });
+      if (!s) return;
+      if (e.shiftKey) toggleSel("sections", s.id);
+      else select({ sections: [s.id] });
     },
   );
 }
