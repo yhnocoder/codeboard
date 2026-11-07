@@ -14,7 +14,8 @@
 //                           another step came after it the Undo is off and does nothing
 //  highlightKeepsCardSize   a Highlight takes no room, in every look: adding, removing and switching the look leave the card's
 //                           width and height and every line's top as they were; lines 9, 10 and 11 highlighted one by one read
-//                           as three bands with a gap between them at the same line pitch
+//                           as three bands with a gap between them at the same line pitch; with Always Show notes (two on one
+//                           Highlight), switching the look leaves the card's size and every line's top as they were
 //  highlightSelectionBand   a Line Selection over Highlights is drawn with the band's geometry: the same left and right edges,
 //                           radius and insets, one run over the selected lines
 //  highlightExport          the HTML export leaves board-only notes out as if they were not there: no empty note row, no band
@@ -454,7 +455,46 @@ test("highlightKeepsCardSize", async () => {
     h.board().place.k1,
   );
   await h.close();
+  // Always Show notes take the same room in every look: switching it moves no line under them (they were 12px in the band, 11px
+  // in the bracket, whose margins also collapsed between two notes of one Highlight)
+  const n = await openBoard("band", withNotes());
+  await idle(n);
+  const nbase = await geometry(n.page);
+  for (const highlightLook of ["bracket", "bracket-hand", "band"] as HighlightLook[]) {
+    await n.post({
+      type: "host",
+      host: { settings: { ...DEFAULT_SETTINGS, theme: "warm-ink", highlightLook } } as never,
+    });
+    await idle(n);
+    const g = await geometry(n.page);
+    check(
+      `highlightKeepsCardSize switching to ${highlightLook} with Always Show notes leaves the card's size and its lines where they were`,
+      JSON.stringify(g.size) === JSON.stringify(nbase.size) && JSON.stringify(g.tops) === JSON.stringify(nbase.tops),
+      {
+        base: nbase.size,
+        size: g.size,
+        moved: g.tops.flatMap((t, i) => (t === nbase.tops[i] ? [] : [{ line: i + 1, from: nbase.tops[i], to: t }])),
+      },
+    );
+  }
+  await n.close();
 });
+
+/** The kernel alone with no stored height, Highlights 5–9 (two Always Show notes) and 13–15 (one), each note one short line */
+function withNotes(): Board {
+  const b = plain();
+  (b.cards[0] as CodeCard).segments[0].hl = [
+    [5, 9],
+    [13, 15],
+  ];
+  const at = (a: number, z: number) => ({ card: "k1", seg: "s1", lines: [a, z] as [number, number] });
+  b.sidenotes = [
+    { id: "n1", kind: "text", md: "读进 tile。", alwaysShow: true, at: at(5, 9) },
+    { id: "n2", kind: "text", md: "越界的补 0。", alwaysShow: true, at: at(5, 9) },
+    { id: "n3", kind: "text", md: "内层循环：一个输出点的卷积。", alwaysShow: true, at: at(13, 15) },
+  ];
+  return b;
+}
 
 test("highlightSelectionBand", async () => {
   const b = plain();
