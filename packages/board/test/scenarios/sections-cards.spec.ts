@@ -1,6 +1,7 @@
 import { shot, symCard, findSym, put, type Host } from "../harness";
 import { DEFAULT_SETTINGS, emptyBoard, sectionFrame, type Board, type NoteCard, type Rect } from "@codeboard/core";
 import { test, open, check, light, until, idle, hold } from "../fixtures";
+import { watch } from "../watch";
 import { WHEEL_GESTURE } from "../../src/state/timing";
 
 const close = (h: Host) => h.page.context().close();
@@ -1508,4 +1509,38 @@ test("sectionEdgeWheelPans", async () => {
     runs,
   );
   await close(h);
+});
+
+/**
+ * Folding a Section and opening it again, watched frame by frame (watch.ts): its cards and arrows move into the folded frame
+ * and back without a jump, the card outside it stays put, nothing flashes and no title shows twice over itself
+ */
+test("sectionFoldWatched", async () => {
+  const b = emptyBoard("b1", "fold watched");
+  for (let i = 0; i < 4; i++) {
+    put(
+      b,
+      { id: `n${i}`, kind: "note", look: "note", md: `# N${i}\n\nwords ${i}` } as NoteCard,
+      120 + (i % 2) * 300,
+      140 + Math.floor(i / 2) * 160,
+      260,
+    );
+    b.place[`n${i}`].section = "S";
+  }
+  put(b, { id: "out", kind: "note", look: "note", md: "# Out\n\nnot in it" } as NoteCard, 900, 140, 260);
+  b.sections.push({ id: "S", title: "Fold me", x: 80, y: 80, w: 700, h: 500 });
+  b.links.push({ id: "L1", from: { card: "n0" }, to: { card: "out" } } as never);
+  b.cam = { x: 0, y: 0, z: 1 };
+  const h = await open({ board: b, light, w: 1300, h: 760 });
+  await idle(h);
+  const label = '.slabel[data-sect="S"]';
+  await h.page.locator(label).hover();
+  await idle(h);
+  const o = { moves: [/^card:n/, /^sect:/, /^link:/, /^el:/], follow: [label], frames: 50 };
+  await watch(h, "sectionFoldWatched fold", o, () => h.page.locator(`${label} .chev2`).click());
+  await idle(h);
+  check("sectionFoldWatched the Section is folded", h.board().sections[0].collapsed === true, h.board().sections[0]);
+  await watch(h, "sectionFoldWatched open", o, () => h.page.locator(`${label} .chev2`).click());
+  await idle(h);
+  check("sectionFoldWatched the Section is open again", !h.board().sections[0].collapsed, h.board().sections[0]);
 });
