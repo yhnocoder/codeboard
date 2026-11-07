@@ -1026,7 +1026,7 @@ test("palette", async () => {
 });
 
 test("paletteThisBoard", async () => {
-  // Tab (or the switch beside the input) keeps both searches to this board, and back
+  // Tab (or the switch beside the input) keeps both searches to this board, and back; ⌘F opens it on this board
   const h = await open({ board: boardWith("LLMEngine.step"), light });
   await h.page.keyboard.press("ControlOrMeta+k");
   await h.page.locator(".palette input:focus").waitFor();
@@ -1044,12 +1044,26 @@ test("paletteThisBoard", async () => {
   await h.page.locator(".pscope button", { hasText: "All Boards" }).click();
   await until(h, "back to all boards", () => scopes("search").at(-1) === "all");
   await until(h, "the symbols are back", async () => (await h.page.locator(".palette .cand").count()) > 0);
+  // ⌘F opens it on this board straight away; ⌘K on every board
+  await h.page.keyboard.press("Escape");
+  await expect(h.page.locator(".palette")).toHaveCount(0);
+  await h.page.keyboard.press("ControlOrMeta+f");
+  await h.page.locator(".palette input:focus").waitFor();
+  const onF = await h.page.locator(".pscope button.on").textContent();
+  await h.page.keyboard.type("sched");
+  await until(h, "⌘F searched this board", () => scopes("search").at(-1) === "board");
+  await h.page.keyboard.press("Escape");
+  await h.page.keyboard.press("ControlOrMeta+k");
+  await h.page.locator(".palette input:focus").waitFor();
+  const onK = await h.page.locator(".pscope button.on").textContent();
   check(
-    "paletteThisBoard Tab searches only this board, the switch goes back to all boards",
-    on === "This Board" && !!focused,
+    "paletteThisBoard Tab searches only this board, the switch goes back to all boards; ⌘F opens on this board, ⌘K on all",
+    on === "This Board" && !!focused && onF === "This Board" && onK === "All Boards",
     {
       on,
       focused,
+      onF,
+      onK,
       search: scopes("search"),
       meaning: scopes("searchMeaning"),
     },

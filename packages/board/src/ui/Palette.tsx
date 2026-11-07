@@ -37,8 +37,9 @@ export function Palette() {
   const init: Exclude<ReturnType<typeof paletteOpen>, false> = paletteOpen() || { mode: "all" };
   const [q, setQ] = createSignal(init.q ?? "");
   const [res, setRes] = createSignal<SearchItem[]>([]);
-  /** This Board: only the cards and sidenotes on this board (Tab switches); searching everything (not Add Function) only */
-  const [here, setHere] = createSignal(false);
+  /** This Board: only the cards and sidenotes on this board (opened with ⌘F; Tab switches); searching everything (not Add
+   *  Function) only */
+  const [here, setHere] = createSignal(!!init.here);
   const scoped = () => init.mode !== "code" && here();
   let inp!: HTMLInputElement, list!: HTMLDivElement;
   onMount(() => {
