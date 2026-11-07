@@ -5,6 +5,7 @@
   "workspaces": ["packages/*", "extensions/*", "examples/markdown-demo"],
   "scripts": {
     "examples": "sh tools/examples.sh",
+    "try": "sh tools/try.sh",
     "build": "node tools/build.mjs codeboard-vscode",
     "package": "npm run build && npm run package -w codeboard-vscode",
     "test": "vitest run",
