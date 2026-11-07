@@ -27,6 +27,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { OUT } from "../harness";
 import { test, open, check, light, until, idle, hold, hostBoards } from "../fixtures";
+import { watch } from "../watch";
 
 // every line indented by at least 4: the card hides that much (its dedent)
 const KERNEL = [
@@ -693,4 +694,37 @@ test("highlightExport", async () => {
     r,
   );
   if (fs.existsSync(files.html)) fs.rmSync(files.html);
+});
+
+/**
+ * Highlighting, removing a Highlight and switching the look, watched frame by frame (watch.ts): the card does not change size
+ * and none of its lines moves in any frame (#171: Highlights never change a card's size or its lines' places), and nothing
+ * flashes. highlightKeepsCardSize checks the same at rest
+ */
+test("highlightWatched", async () => {
+  const h = await openBoard("band", plain());
+  const pg = h.page;
+  await idle(h);
+  const watched = { follow: ['.card[data-id="k1"] .src > .l'], ignore: [".ctx"], frames: 12 };
+  const fromMenu = async (a: number, z: number, item: RegExp, name: string) => {
+    await no(pg, a).click();
+    if (z !== a) await no(pg, z).click({ modifiers: ["Shift"] });
+    await no(pg, z).click({ button: "right" });
+    await idle(h);
+    await watch(h, `highlightWatched ${name}`, watched, () =>
+      pg.locator(".ctx:not(.closing) button", { hasText: item }).first().click(),
+    );
+    await pg.keyboard.press("Escape");
+    await idle(h);
+  };
+  await fromMenu(3, 4, /^Highlight Lines/, "highlight 3-4");
+  await fromMenu(9, 9, /^Highlight Lines/, "highlight 9");
+  for (const highlightLook of ["bracket-hand", "band"] as HighlightLook[])
+    await watch(h, `highlightWatched look ${highlightLook}`, watched, () =>
+      h.post({ type: "host", host: { settings: { ...DEFAULT_SETTINGS, theme: "warm-ink", highlightLook } } as never }),
+    );
+  await idle(h);
+  await fromMenu(3, 4, /^Remove Highlight/, "remove 3-4");
+  check("highlightWatched the Highlights are as asked", JSON.stringify(seg(h).hl ?? []) === "[[9,9]]", seg(h).hl);
+  await h.close();
 });
