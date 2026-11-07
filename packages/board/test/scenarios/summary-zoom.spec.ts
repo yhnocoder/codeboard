@@ -13,6 +13,7 @@ import { emptyBoard, type Board, type Section } from "@codeboard/core";
 import { png } from "@codeboard/host/testing";
 import { put, symCard, findSym, type Host } from "../harness";
 import { test, open, check, idle, until, hostBoards } from "../fixtures";
+import { watch } from "../watch";
 
 const nv = (qual: string) => {
   const s = findSym(qual);
@@ -165,5 +166,35 @@ test("summaryImageCopy", async () => {
   // picked by the size it is seen at (its board size times the zoom), not by the box it is laid out in inside the summary layer
   // (1 / K of that): the copy is at least as wide as it shows (1x screen)
   check("summaryImageCopy the copy is sharp at the size shown", seen.natural >= seen.w, { ...seen, z });
+  await idle(h);
+});
+
+/**
+ * Across the summary cut and back, watched frame by frame (watch.ts): Fit to Window from 100 % flies below the cut (the mist
+ * covers the switch to the summary level), double-clicking a card's summary title flies back to it at 100 %. Nothing flashes
+ * (shown, gone and back within a few frames), no card's place or size in the world changes while the camera moves, and no
+ * title shows twice over itself
+ */
+test("summaryCutWatched", async () => {
+  const b = emptyBoard("bSumCut", "summary cut");
+  const cards = [
+    "LLMEngine.step",
+    "Scheduler.schedule",
+    "ModelRunner.run",
+    "BlockManager.allocate",
+    "Sampler.forward",
+    "LLMEngine.add_request",
+  ].map(nv);
+  cards.forEach((c, i) => put(b, c, 80 + i * 1000, 80, 560));
+  const h = await open({ board: b, w: 1280, h: 800, light: true });
+  await idle(h);
+  await watch(h, "summaryCutWatched fit", { moves: [/^link:/], frames: 45 }, () =>
+    h.page.keyboard.press("Shift+Digit1"),
+  );
+  await until(h, "the summary level shows after Fit to Window", () => h.page.locator(".cardlay.gone").count());
+  await idle(h);
+  const title = h.page.locator(`.sumcol[data-sum="card:${cards[1].id}"] .sumhd code`);
+  await watch(h, "summaryCutWatched back", { moves: [/^link:/], frames: 45 }, () => title.dblclick());
+  await until(h, "the camera reaches 100 %", async () => (await zoomOf(h)) === 1);
   await idle(h);
 });

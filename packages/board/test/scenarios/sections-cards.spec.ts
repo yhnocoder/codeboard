@@ -1,6 +1,7 @@
 import { shot, symCard, findSym, put, type Host } from "../harness";
 import { DEFAULT_SETTINGS, emptyBoard, sectionFrame, type Board, type NoteCard, type Rect } from "@codeboard/core";
 import { test, open, check, light, until, idle, hold } from "../fixtures";
+import { watch } from "../watch";
 import { WHEEL_GESTURE } from "../../src/state/timing";
 
 const close = (h: Host) => h.page.context().close();
@@ -649,6 +650,7 @@ test("sectionDragSnapsToSection", async () => {
         return { v: g.classList.contains("v"), x: r.x, y: r.y, h: r.height };
       }),
     );
+  const guideLayer = () => h.page.evaluate(() => getComputedStyle(document.querySelector(".guides")!).willChange);
   const card0 = { ...h.board().place.c };
   // what the drag moves (S2's frame and title, its card) and what it leaves (S1, its card): compositor layer hint and look
   const layers = () =>
@@ -677,12 +679,17 @@ test("sectionDragSnapsToSection", async () => {
   await idle(h);
   const during = await guides(),
     s2d = await box("S2"),
-    held = await layers();
+    held = await layers(),
+    guidesHeld = await guideLayer();
   await shot(h, "sect-snap-01-guide");
   await h.page.mouse.up();
   await until(h, "the Section's move is saved", () => h.board().sections.find((q) => q.id === "S2")!.x !== 600);
   await idle(h);
-  const down = await layers();
+  const down = await layers(),
+    guidesDown = await guideLayer();
+  // While dragging, the guides are a layer of their own (styles.css .guides.live): a guide that shows or moves repaints only
+  // them, not the card level's layer; put down, they are back in it
+  check("section-drag-guides-layer", guidesHeld === "transform" && guidesDown === "auto", { guidesHeld, guidesDown });
   // Dragged, the Section's frame, its title and its card are each a layer of its own (styles.css .carry), so a move only moves
   // those layers instead of painting them again in the world's layer; nothing of them looks different, and put down they are
   // back in the world's layer
@@ -1508,4 +1515,38 @@ test("sectionEdgeWheelPans", async () => {
     runs,
   );
   await close(h);
+});
+
+/**
+ * Folding a Section and opening it again, watched frame by frame (watch.ts): its cards and arrows move into the folded frame
+ * and back without a jump, the card outside it stays put, nothing flashes and no title shows twice over itself
+ */
+test("sectionFoldWatched", async () => {
+  const b = emptyBoard("b1", "fold watched");
+  for (let i = 0; i < 4; i++) {
+    put(
+      b,
+      { id: `n${i}`, kind: "note", look: "note", md: `# N${i}\n\nwords ${i}` } as NoteCard,
+      120 + (i % 2) * 300,
+      140 + Math.floor(i / 2) * 160,
+      260,
+    );
+    b.place[`n${i}`].section = "S";
+  }
+  put(b, { id: "out", kind: "note", look: "note", md: "# Out\n\nnot in it" } as NoteCard, 900, 140, 260);
+  b.sections.push({ id: "S", title: "Fold me", x: 80, y: 80, w: 700, h: 500 });
+  b.links.push({ id: "L1", from: { card: "n0" }, to: { card: "out" } } as never);
+  b.cam = { x: 0, y: 0, z: 1 };
+  const h = await open({ board: b, light, w: 1300, h: 760 });
+  await idle(h);
+  const label = '.slabel[data-sect="S"]';
+  await h.page.locator(label).hover();
+  await idle(h);
+  const o = { moves: [/^card:n/, /^sect:/, /^link:/, /^el:/], follow: [label], keep: [label], frames: 50 };
+  await watch(h, "sectionFoldWatched fold", o, () => h.page.locator(`${label} .chev2`).click());
+  await idle(h);
+  check("sectionFoldWatched the Section is folded", h.board().sections[0].collapsed === true, h.board().sections[0]);
+  await watch(h, "sectionFoldWatched open", o, () => h.page.locator(`${label} .chev2`).click());
+  await idle(h);
+  check("sectionFoldWatched the Section is open again", !h.board().sections[0].collapsed, h.board().sections[0]);
 });

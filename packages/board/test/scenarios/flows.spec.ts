@@ -2,6 +2,7 @@ import { shot, symCard, findSym, viewOf, put, type Host } from "../harness";
 import { emptyBoard, putShared, type Board } from "@codeboard/core";
 import { RESEND_DELAY } from "../../src/state/timing";
 import { test, open, check, light, expect, until, idle } from "../fixtures";
+import { watch } from "../watch";
 
 function boardWith(...quals: string[]): Board {
   const b = emptyBoard("b1", "nano-vllm · generate main flow");
@@ -1480,3 +1481,25 @@ async function hoverWord(h: Host, card: string, line: string, word: string) {
   await h.page.mouse.move(pt.x - 3, pt.y);
   await h.page.mouse.move(pt.x, pt.y, { steps: 2 });
 }
+
+/**
+ * Expanding a call, watched frame by frame (watch.ts): the new card and its arrow come in, the card that was clicked does not
+ * move or change size, nothing flashes and no title shows twice over itself
+ */
+test("expandCallWatched", async () => {
+  for (const theme of ["warm-ink", "ink-wash"]) {
+    const b = boardWith("LLMEngine.step");
+    const src = b.cards[0].id;
+    const h = await open({ board: b, light, settings: { theme } as never });
+    await idle(h);
+    await watch(
+      h,
+      `expandCallWatched ${theme}`,
+      { moves: [new RegExp(`^(?!card:${src}$)`)], keep: [`.card[data-id="${src}"]`], frames: 30 },
+      () => callEl(h, "schedule").click(),
+    );
+    await until(h, "schedule() expands into a card", () => h.board().cards.length > 1);
+    await idle(h);
+    await h.page.context().close();
+  }
+});

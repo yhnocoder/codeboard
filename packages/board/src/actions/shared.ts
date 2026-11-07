@@ -164,8 +164,11 @@ export function cutCardsSel(): boolean {
   for (const x of cards)
     if (x.card.kind === "code") for (const sg of x.card.segments) if (all[sg.id]) views[sg.id] = all[sg.id];
   const text = copyCards(cs);
-  ghostOut(ids);
-  if (!C.deleteItems(commandEnv, { cards: ids })) return true;
+  const unghost = ghostOut(ids);
+  if (!C.deleteItems(commandEnv, { cards: ids })) {
+    unghost();
+    return true;
+  }
   cutClip = { board: state.board.id, text, cards, links, views };
   clearSel();
   toast(`Cut ${cs.length} card${cs.length > 1 ? "s" : ""}`);
@@ -338,8 +341,8 @@ export async function deleteEverywhere(ids = selShared()) {
     def: 1,
   });
   if (ok !== 0) return;
-  ghostOut(new Set([id]));
-  if (!C.deleteItems(commandEnv, { cards: [id] })) return;
+  const unghost = ghostOut(new Set([id]));
+  if (!C.deleteItems(commandEnv, { cards: [id] })) return unghost();
   select({});
   const done = await ask("deleteEverywhere", { card: id }).catch((e: Error) => {
     toast(`Couldn't delete everywhere: ${e.message}`);
