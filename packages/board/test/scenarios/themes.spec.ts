@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { shot, symCard, findSym, put, OUT } from "../harness";
 import { DEFAULT_SETTINGS, THEMES, emptyBoard, type Board, type CodeCard, type NoteCard } from "@codeboard/core";
-import { test, open, check, light, idle, until, hostBoards } from "../fixtures";
+import { test, open, check, light, idle, until, hostBoards, expect } from "../fixtures";
 
 const card = (q: string) => {
   const s = findSym(q);
@@ -439,6 +439,51 @@ test("themeMenuSwitchesTheme", async () => {
 
 /** Menus open from the click point with a short ease-out: scale .97 → 1 and a fade, never past 1 (no spring overshoot),
  *  settled within about 200 ms. Checked on the ··· More menu and on its Theme submenu, sampled every frame */
+/** The safe triangle: heading from a menu item for its submenu across the item below keeps the submenu open; moving straight
+ *  down to that item, or resting on it, switches to it */
+test("menuSubmenuSafeTriangle", async () => {
+  const h = await open({ board: board(), light: true, w: 1300, h: 820, settings: { theme: "warm-ink" } as never });
+  const pg = h.page;
+  await idle(h);
+  const subOpen = () => pg.locator(".ctx:not(.closing) button.subopen .lb").allTextContents();
+  const top = pg.locator(".ctx:not(.closing)").first();
+  const more = async () => {
+    await pg.locator('.bbar button[aria-label="More"]').click();
+    await top.waitFor();
+    await idle(h);
+  };
+  await more();
+  const theme = top.locator("button[role=menuitem]", { hasText: /^Theme$/ });
+  const t = (await theme.boundingBox())!;
+  const start = { x: t.x + t.width / 2, y: t.y + t.height / 2 };
+  await pg.mouse.move(start.x, start.y);
+  await until(h, "the Theme submenu opens", async () => (await subOpen()).join() === "Theme");
+  // the neighbouring item on the submenu's side (it may open upwards, near the bottom of the window)
+  const sb = (await pg.locator(".ctx:not(.closing)").nth(1).boundingBox())!;
+  const toRight = sb.x >= t.x,
+    up = sb.y + sb.height / 2 < start.y;
+  const n = (await theme.locator(`xpath=${up ? "preceding" : "following"}-sibling::button[1]`).boundingBox())!;
+  // towards the submenu: sideways and over that item, near its end on the submenu's side
+  await pg.mouse.move(toRight ? t.x + t.width - 6 : t.x + 6, n.y + n.height / 2, { steps: 4 });
+  const aimed = (await subOpen()).join();
+  // resting there hands over to the item under the pointer
+  await until(h, "resting switches to the neighbouring item", async () => (await subOpen()).join() !== "Theme");
+  // straight to that item, away from the submenu: switches at once
+  await pg.keyboard.press("Escape");
+  await expect(pg.locator(".ctx:not(.closing)")).toHaveCount(0);
+  await more();
+  await pg.mouse.move(start.x, start.y);
+  await until(h, "the Theme submenu opens again", async () => (await subOpen()).join() === "Theme");
+  await pg.mouse.move(toRight ? start.x - 40 : start.x + 40, n.y + n.height / 2, { steps: 2 });
+  const straight = (await subOpen()).join();
+  check(
+    "menuSubmenuSafeTriangle heading for the submenu keeps it open, moving away switches",
+    aimed === "Theme" && straight !== "Theme",
+    { aimed, straight, toRight, up },
+  );
+  await h.page.context().close();
+});
+
 test("menuOpensWithoutOvershoot", async () => {
   const h = await open({ board: board(), light: true, w: 1300, h: 820 });
   const pg = h.page;

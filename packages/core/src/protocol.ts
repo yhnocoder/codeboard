@@ -149,7 +149,7 @@ export const DEFAULT_SETTINGS: Settings = {
   mathPreamble: "",
   svgNoBg: true,
   svgThink: false,
-  aiProvider: "auto",
+  aiProvider: "off",
   deepseekModel: "deepseek-flash",
   aiText: "auto",
   aiSvg: "auto",
@@ -219,12 +219,28 @@ export type PeekDef = {
   dispatch?: { n: number; base: string; abstract?: boolean };
 };
 
+/** ⌘K's preview of a card or sidenote: its content as Markdown (code in fenced blocks), where it sits (board › Section …), and
+ *  for Related by Meaning the passage that matched (as it is written in md, give or take the Markdown marks) */
+export type SearchPreview = { md: string; where: string; hit?: string };
+
 export type SearchItem =
   | { kind: "symbol"; label: string; detail: string; path: string; line: number; sym: string; glyph: string }
   | { kind: "file"; label: string; detail: string; path: string }
-  | { kind: "card"; label: string; detail: string; board: string; card: string; num?: string }
-  | { kind: "sidenote"; label: string; detail: string; board: string; card: string; sidenote: string }
+  | { kind: "card"; label: string; detail: string; board: string; card: string; num?: string; preview?: SearchPreview }
+  | {
+      kind: "sidenote";
+      label: string;
+      detail: string;
+      board: string;
+      card: string;
+      sidenote: string;
+      preview?: SearchPreview;
+    }
   | { kind: "entry"; label: string; detail: string; path: string; line: number; sym?: string; end?: number };
+
+/** Related by Meaning: the closest cards and sidenotes; left = pieces still being indexed (ask again); off = no embedding
+ *  endpoint is set; error = the endpoint failed (what it said) */
+export type MeaningResult = { items: SearchItem[]; left?: number; off?: true; error?: string };
 
 export type Commit = { commit: string; msg: string; date: string; head?: boolean };
 
@@ -369,8 +385,10 @@ export type BoardToHost =
       word: string;
       at?: { path: string; line: number; col: number };
     } // 回 PeekResult
-  | { type: "search"; req: number; q: string; scope?: "all" | "code" | "symbols" }
+  | { type: "search"; req: number; q: string; scope?: "all" | "board" | "code" | "symbols" } // board = only the cards and sidenotes on the asking board
   | { type: "searchPick"; req: number; item: SearchItem; alt?: boolean }
+  /** ⌘K's Related by Meaning (host meaning.ts): cards and sidenotes of the project's boards closest in meaning to q */
+  | { type: "searchMeaning"; req: number; q: string; scope?: "all" | "board" } // board = only what is on the asking board
   | { type: "entryPoints"; req: number }
   | { type: "diff"; req: number; seg: Segment; against?: string } // against 缺省 = HEAD；"upstream" = 上游最新（有 Variant 的卡）
   | { type: "commits"; req: number; seg: Segment }
@@ -395,7 +413,14 @@ export type BoardToHost =
   /** 网页元信息：抓一次，图片存进 assets/ */
   | { type: "webMeta"; req: number; url: string } // 回 WebMeta
   | { type: "stickerPacks"; req: number } // 回 StickerPack[]
-  | { type: "tidy"; req: number; cards: (Rect & { id: string })[]; links: [string, string][]; fixed: Rect[] } // Tidy Up 的排版（ELK 只在宿主里）：回每张卡的新 x / y
+  | {
+      type: "tidy";
+      req: number;
+      cards: (Rect & { id: string })[];
+      links: [string, string][];
+      fixed: Rect[];
+      avoid?: Rect[];
+    } // Tidy Up 的排版（ELK 只在宿主里）：回每张卡的新 x / y
   | { type: "openStickerDir" }
   | { type: "copyDiagnostics"; board?: boolean }
   /** 白板里的错误 / 日志：写进 Output 面板的 CodeBoard 频道，Copy Diagnostics 会带上 */
@@ -629,6 +654,7 @@ type Replies = {
   peek: PeekResult;
   search: SearchItem[];
   searchPick: NewCard | null;
+  searchMeaning: MeaningResult;
   entryPoints: SearchItem[];
   diff: DiffData;
   commits: Commit[];

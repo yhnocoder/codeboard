@@ -18,24 +18,29 @@ import { initExports, moduleFiles, pyprojectScripts } from "@codeboard/analysis"
 import { analysisOf } from "./analysis";
 import { cardForFileSym, freeCard, newCodeCard, withViews } from "./cards";
 import type { Storage } from "./storage/boards";
+import { cardMarkdown, preview, sidenoteMarkdown, whereOf } from "./preview";
 import { makeSegment } from "./versions";
 import { CODE_EXCLUDE, exists, splitLines } from "./ws";
 import type { HostContext } from "./context";
 
 /**
- * ⌘K：所有白板上的卡和 Sidenote（here = 发起搜索的白板，排在前面），工作区的符号和文件。
+ * ⌘K：所有白板上的卡和 Sidenote（here = 发起搜索的白板，排在前面），工作区的符号和文件。scope board = 只搜 here 这块白板上的卡和
+ * Sidenote（共享卡在别处也有的照样算），不搜符号和文件。
  * 共享卡在几块白板上只列一次：在这块白板上就跳这里，否则跳第一块；detail 写出它在哪几块白板上。跟着共享卡走的 Sidenote 也只列一次
  */
 export async function search(
   cx: HostContext,
   store: Storage,
   q: string,
-  scope: "all" | "code" | "symbols" = "all",
+  scope: "all" | "board" | "code" | "symbols" = "all",
   here?: string,
 ): Promise<SearchItem[]> {
   const scored: { s: number; item: SearchItem }[] = [];
-  if (scope === "all") {
-    const boards = (await store.all()).map((x) => x.board).sort((a, b) => (a.id === here ? -1 : b.id === here ? 1 : 0));
+  if (scope === "all" || scope === "board") {
+    const boards = (await store.all())
+      .map((x) => x.board)
+      .filter((b) => scope === "all" || b.id === here)
+      .sort((a, b) => (a.id === here ? -1 : b.id === here ? 1 : 0));
     const seen = new Map<string, Extract<SearchItem, { kind: "card" }>>();
     const seenNotes = new Set<string>();
     for (const board of boards) {
@@ -69,6 +74,7 @@ export async function search(
           board: board.id,
           card: c.id,
           num,
+          preview: preview(cardMarkdown(c, board), whereOf(board, c.id)),
         };
         if (shared) seen.set(c.id, item);
         scored.push({ s: s + 30 + (board.id === here ? 5 : 0), item });
@@ -104,12 +110,13 @@ export async function search(
             board: board.id,
             card: n.at.card,
             sidenote: n.id,
+            preview: preview(sidenoteMarkdown(n), whereOf(board, n.at.card)),
           },
         });
       }
     }
   }
-  if (q.trim()) {
+  if (q.trim() && scope !== "board") {
     for (const ents of await cx.index.allNames())
       for (const e of ents) {
         // 子串（名字或带类名的全名里）排前面；子序列只配名字本身，而且要配得紧（fuzzy）

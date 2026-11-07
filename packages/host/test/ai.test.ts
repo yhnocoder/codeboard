@@ -44,7 +44,16 @@ afterEach(() => {
 const setKey = () => W.secrets.set("codeboard.deepseekApiKey", "sk-test");
 
 describe("Note completion: which model", () => {
+  it("Off by default: no model is asked until the user turns completions on", async () => {
+    expect(completionsOn(readSettings(cx))).toBe(false);
+    await setKey();
+    expect(await completeNote(cx, "a", "b", signal())).toBeUndefined();
+    expect(chats).toEqual([]);
+    expect(fetches).toEqual([]);
+  });
+
   it("Auto without a DeepSeek key asks the editor's quick model, and puts back the leading space the chat reply lacks", async () => {
+    conf.set("codeboard.ai.provider", "auto");
     expect(await completeNote(cx, "done.", "", signal())).toBe(" and more");
     expect(await completeNote(cx, "done. ", "", signal())).toBe("and more");
     expect(chats[0].model).toBeUndefined();
@@ -54,6 +63,7 @@ describe("Note completion: which model", () => {
   });
 
   it("Auto with a key asks DeepSeek only", async () => {
+    conf.set("codeboard.ai.provider", "auto");
     await setKey();
     expect(await completeNote(cx, "a", "b", signal())).toBe(" from deepseek");
     expect(fetches.length).toBe(1);
@@ -75,6 +85,7 @@ describe("Note completion: which model", () => {
   });
 
   it("no answer when the editor has no models, or the model fails", async () => {
+    conf.set("codeboard.ai.provider", "auto");
     reply = { fail: "noconsent" };
     expect(await completeNote(cx, "a", "b", signal())).toBeUndefined();
     W.ai = undefined;

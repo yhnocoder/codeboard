@@ -395,6 +395,8 @@ boot({ post: (m) => { window.__inflight++; window.__host(JSON.stringify(m)).fina
           Object.fromEntries(await Promise.all(m.segs.map(async (s) => [s.id, await langView(s)] as const))),
         );
       case "search": {
+        // this board only: the cards and sidenotes on it, which this host does not search
+        if (m.scope === "board") return reply(m.req, []);
         const q = m.q.toLowerCase();
         const syms = allSyms()
           .filter((x) => x.s.qual.toLowerCase().includes(q))
@@ -415,7 +417,7 @@ boot({ post: (m) => { window.__inflight++; window.__host(JSON.stringify(m)).fina
         return reply(m.req, [...syms, ...fl]);
       }
       case "tidy":
-        return reply(m.req, Object.fromEntries(await tidy(m.cards, m.links, m.fixed)));
+        return reply(m.req, Object.fromEntries(await tidy(m.cards, m.links, m.fixed, m.avoid)));
       case "entryPoints":
         return reply(m.req, [
           {
@@ -455,6 +457,8 @@ boot({ post: (m) => { window.__inflight++; window.__host(JSON.stringify(m)).fina
         return reply(m.req, null);
       case "searchName":
         return reply(m.req, []);
+      case "searchMeaning":
+        return reply(m.req, { items: [], off: true });
       case "images":
         // this host makes no copies of images: each shows its own file
         return reply(m.req, {});

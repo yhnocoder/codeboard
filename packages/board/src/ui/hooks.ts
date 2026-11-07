@@ -22,7 +22,7 @@ export function useListNav(count: () => number) {
 export function useDebouncedAsk<Q, R>(
   q: () => Q,
   fetch: (q: Q) => Promise<R>,
-  done: (r: R) => void,
+  done: (r: R, q: Q) => void,
   wait: (q: Q) => number = () => 90,
 ) {
   const [busy, setBusy] = createSignal(false);
@@ -37,7 +37,7 @@ export function useDebouncedAsk<Q, R>(
       const r = await fetch(v);
       if (my !== n) return;
       setBusy(false);
-      done(r);
+      done(r, v);
     }, wait(v));
   });
   onCleanup(() => {

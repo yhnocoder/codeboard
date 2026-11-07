@@ -624,7 +624,9 @@ function linkDom(
     <g data-lk={L.id}>
       <Show when={g()}>
         <Show when={g()!.port}>
-          <path class={portCls()} data-x={g()!.port!.x} d={portPath(g()!.port!.x, g()!.port!.y)} />
+          <Show when={shape().port !== "none" || L.lost?.from || on()}>
+            <path class={portCls()} data-x={g()!.port!.x} d={portPath(g()!.port!.x, g()!.port!.y)} />
+          </Show>
           <Show when={on() && subEnd(L.from) && r.base()?.kind === "normal"}>
             <circle
               class="porthit"
@@ -639,7 +641,7 @@ function linkDom(
             />
           </Show>
         </Show>
-        <Show when={g()!.port2}>
+        <Show when={g()!.port2 && (shape().port !== "none" || L.lost?.to || on())}>
           <path class={`port fc-${toHue()}`} d={portPath(g()!.port2!.x, g()!.port2!.y)} />
         </Show>
       </Show>

@@ -1025,6 +1025,134 @@ test("palette", async () => {
   await h.page.context().close();
 });
 
+test("paletteThisBoard", async () => {
+  // Tab (or the switch beside the input) keeps both searches to this board, and back; ⌘F opens it on this board
+  const h = await open({ board: boardWith("LLMEngine.step"), light });
+  await h.page.keyboard.press("ControlOrMeta+k");
+  await h.page.locator(".palette input:focus").waitFor();
+  await h.page.keyboard.type("alloc");
+  await until(h, "the symbols are listed", async () => (await h.page.locator(".palette .cand").count()) > 0);
+  const scopes = (t: string) => h.sent.filter((m) => m.type === t).map((m: any) => m.scope ?? "all");
+  await h.page.keyboard.press("Tab");
+  await until(h, "both searches asked for this board", () =>
+    ["search", "searchMeaning"].every((t) => scopes(t).at(-1) === "board"),
+  );
+  await expect(h.page.locator(".palette .empty")).toHaveText("No matches on this board");
+  const on = await h.page.locator(".pscope button.on").textContent();
+  const focused = await h.page.evaluate(() => document.activeElement?.classList.contains("pin"));
+  await shot(h, "pal-this-board");
+  await h.page.locator(".pscope button", { hasText: "All Boards" }).click();
+  await until(h, "back to all boards", () => scopes("search").at(-1) === "all");
+  await until(h, "the symbols are back", async () => (await h.page.locator(".palette .cand").count()) > 0);
+  // ⌘F opens it on this board straight away; ⌘K on every board
+  await h.page.keyboard.press("Escape");
+  await expect(h.page.locator(".palette")).toHaveCount(0);
+  await h.page.keyboard.press("ControlOrMeta+f");
+  await h.page.locator(".palette input:focus").waitFor();
+  const onF = await h.page.locator(".pscope button.on").textContent();
+  await h.page.keyboard.type("sched");
+  await until(h, "⌘F searched this board", () => scopes("search").at(-1) === "board");
+  await h.page.keyboard.press("Escape");
+  await h.page.keyboard.press("ControlOrMeta+k");
+  await h.page.locator(".palette input:focus").waitFor();
+  const onK = await h.page.locator(".pscope button.on").textContent();
+  check(
+    "paletteThisBoard Tab searches only this board, the switch goes back to all boards; ⌘F opens on this board, ⌘K on all",
+    on === "This Board" && !!focused && onF === "This Board" && onK === "All Boards",
+    {
+      on,
+      focused,
+      onF,
+      onK,
+      search: scopes("search"),
+      meaning: scopes("searchMeaning"),
+    },
+  );
+  await h.page.context().close();
+});
+
+test("paletteMeaning", async () => {
+  // the host's Related by Meaning (innerbox) played here: the first answer is still indexing, the next is done
+  let asked = 0;
+  const h = await open({
+    board: boardWith("BlockManager.deallocate"),
+    light,
+    on: async (m, reply) => {
+      if (m.type !== "searchMeaning") return false;
+      asked++;
+      const c = h.board().cards[0];
+      await reply(m.req!, {
+        items: [
+          {
+            kind: "card",
+            label: "1. ==Frees== blocks",
+            detail: "This board",
+            board: h.board().id,
+            card: c.id,
+            preview: {
+              md: "## Blocks\n\nAllocates blocks.\n\nFrees the **blocks** of a finished sequence.\n\n```c\nfree(blocks[i]);\n```",
+              where: "nano-vllm › Memory",
+              // a passage runs on into a code block (whose brackets the rendered code has too): one mark over both
+              hit: "Frees the **blocks** of a finished sequence. free(blocks[i]);",
+            },
+          },
+          // a sidenote's label is its first line: a heading there reads as a line too
+          {
+            kind: "sidenote",
+            label: "## Why free early",
+            detail: "This board",
+            board: h.board().id,
+            card: c.id,
+            sidenote: "sn",
+          },
+        ],
+        ...(asked === 1 ? { left: 3 } : {}),
+      });
+      return true;
+    },
+  });
+  await h.page.keyboard.press("ControlOrMeta+k");
+  await h.page.locator(".palette input:focus").waitFor();
+  await h.page.keyboard.type("显存回收");
+  const group = h.page.locator(".palette .pgh", { hasText: "Related by Meaning" });
+  await group.waitFor();
+  const indexing = (await group.textContent()) ?? "";
+  await until(h, "asked again once indexing is done", () => asked >= 2);
+  await expect(group).not.toContainText("indexing");
+  await shot(h, "pal-04-meaning");
+  await expect(h.page.locator(".palette .ppw")).toHaveText("nano-vllm › Memory");
+  const pane = await h.page.evaluate(() => ({
+    where: document.querySelector(".palette .ppw")?.textContent,
+    heading: document.querySelector(".palette .ppmd h2")?.textContent,
+    label: document.querySelector(".palette .cand .lb mark")?.textContent,
+    list: document.querySelectorAll(".palette .cand .lb :is(ol, li, h1, h2, h3, h4, h5, h6)").length,
+    note: [...document.querySelectorAll(".palette .cand .lb")]
+      .map((e) => e.textContent)
+      .find((t) => t?.includes("free early")),
+    hit: [...((CSS as any).highlights?.get("palette-hit") ?? [])].map((r: Range) => r.toString()).join("|"),
+  }));
+  const sent = h.sent.filter((m) => m.type === "searchMeaning").map((m: any) => m.q);
+  await h.page.keyboard.press("Enter");
+  await expect(h.page.locator(".palette")).toHaveCount(0);
+  const selected = await h.page.locator(`.card.sel[data-id="${h.board().cards[0].id}"]`).count();
+  check(
+    "paletteMeaning shows Related by Meaning while indexing, asks again until done, and Enter goes to the card",
+    /indexing, 3 left/.test(indexing) && sent.every((q) => q === "显存回收") && selected === 1,
+    { indexing, sent, selected },
+  );
+  check(
+    "paletteMeaning previews the card with where it sits, marks the passage that matched, and renders the label's Markdown on one line",
+    pane.where === "nano-vllm › Memory" &&
+      pane.heading === "Blocks" &&
+      pane.label === "Frees" &&
+      pane.list === 0 &&
+      pane.note === "Why free early" &&
+      pane.hit === "Frees the blocks of a finished sequence.free(blocks[i]);",
+    pane,
+  );
+  await h.page.context().close();
+});
+
 test("peek", async () => {
   const h = await open({ board: boardWith("Scheduler.schedule"), light });
   await h.page.locator(".card .src .call", { hasText: "can_allocate" }).first().hover();

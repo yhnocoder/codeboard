@@ -87,3 +87,12 @@ export const LIFT_FADE = 140;
 export const MENU_OPEN = 150;
 /** A GIF frame that asks for no delay, or 10 ms, shows this long, as browsers play them (md/anim.ts) */
 export const GIF_MIN_DELAY = 100;
+/** ⌘K's Related by Meaning: asked this long after typing stops (each keystroke would embed a query the user is still typing) */
+export const MEANING_PAUSE = 150;
+/** …and asked again this often while the project is still being indexed */
+export const MEANING_RETRY = 1500;
+/** ⌘K's preview follows the highlighted result once it rests this long (holding ↓ renders no Note on the way) */
+export const PREVIEW_PAUSE = 60;
+/** A menu's submenu stays open while the pointer heads for it across other items (the safe triangle, ui/Menu.tsx), at most
+ *  this long once the pointer rests: then the item under it takes over */
+export const MENU_AIM = 300;

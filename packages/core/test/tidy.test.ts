@@ -79,6 +79,14 @@ describe("tidy", () => {
     noOverlaps(m, rs);
   });
 
+  it("steps off a neighbour it should avoid the shorter way, not along a whole row of them", async () => {
+    // a row of short neighbours to the right: c lands on the first one; going down clears it, going right would slide past all
+    const row = [0, 1, 2, 3, 4].map((i) => ({ x: 230 + i * 240, y: 0, w: 220, h: 40 }));
+    const m = await tidy([card("a", 0, 0), card("c", 600, 30)], [], [], row);
+    for (const [, p] of m) for (const o of row) expect(overlaps({ ...p, w: 200, h: 100 }, o)).toBe(false);
+    expect(at(m, "c")).toEqual({ x: 200 + GAP, y: 40 + GAP });
+  });
+
   it("moves cards past locked cards in the way instead of overlapping them", async () => {
     const locked = { x: 230, y: -20, w: 200, h: 200 };
     const rows = [card("a", 0, 0), card("b", 0, 300), card("c", 600, 50)];
