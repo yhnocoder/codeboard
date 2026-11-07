@@ -28,6 +28,11 @@ const QUERY_CACHE: usize = 64;
 const TOUCH_EVERY: i64 = 3600;
 /// How often the listener looks for a new connection, and for being idle
 const ACCEPT_POLL: Duration = Duration::from_millis(25);
+/// After a failed indexing run, the first pause before it runs again; it doubles up to RETRY_MAX
+const RETRY_FIRST: Duration = Duration::from_secs(1);
+const RETRY_MAX: Duration = Duration::from_secs(60);
+/// How often a pause before trying again looks for a newer sync
+const RETRY_POLL: Duration = Duration::from_millis(50);
 
 #[derive(Deserialize)]
 pub struct ImageIn {
@@ -440,15 +445,26 @@ impl Service {
         Ok(json!({ "accepted": n }))
     }
 
-    /// One source's indexing: the latest sync, until none is waiting
+    /// One source's indexing: the latest sync, until none is waiting. A run that failed (the server restarted, timed out) is
+    /// tried again after RETRY_FIRST, then twice as long each time up to RETRY_MAX, unless a newer sync comes first
     fn worker(self: &Arc<Self>, source: &str) {
+        let mut wait = RETRY_FIRST;
+        let mut retry: Option<Job> = None;
         loop {
             let (job, emb) = {
                 let mut sources = self.sources.lock().unwrap();
                 let Some(s) = sources.get_mut(source) else {
                     return;
                 };
-                match s.pending.take() {
+                let next = match s.pending.take() {
+                    Some(j) => {
+                        retry = None;
+                        wait = RETRY_FIRST;
+                        Some(j)
+                    }
+                    None => retry.take(),
+                };
+                match next {
                     Some(j) if !self.stop.load(Ordering::SeqCst) => (j, s.embedder.clone()),
                     _ => {
                         s.running = false;
@@ -456,18 +472,33 @@ impl Service {
                     }
                 }
             };
-            let r = job.r#ref.clone();
-            let res = self.index(source, job, emb.as_ref());
-            let mut sources = self.sources.lock().unwrap();
-            if let Some(s) = sources.get_mut(source) {
+            let res = self.index(source, &job, emb.as_ref());
+            {
+                let mut sources = self.sources.lock().unwrap();
+                let Some(s) = sources.get_mut(source) else {
+                    return;
+                };
                 match res {
-                    Ok(()) => s.error = None,
+                    Ok(()) => {
+                        s.error = None;
+                        wait = RETRY_FIRST;
+                        continue;
+                    }
                     Err(e) => {
-                        log(&self.paths, &format!("index {source} @ {r}: {e}"));
+                        log(
+                            &self.paths,
+                            &format!("index {source} @ {}: {e} (again in {wait:?})", job.r#ref),
+                        );
                         s.error = Some(e);
                     }
                 }
             }
+            retry = Some(job);
+            let until = Instant::now() + wait;
+            while Instant::now() < until && !self.superseded(source) {
+                std::thread::sleep(RETRY_POLL);
+            }
+            wait = (wait * 2).min(RETRY_MAX);
         }
     }
 
@@ -491,7 +522,7 @@ impl Service {
                 .is_none_or(|s| s.pending.is_some())
     }
 
-    fn index(&self, source: &str, job: Job, emb: &dyn Embedder) -> Result<(), String> {
+    fn index(&self, source: &str, job: &Job, emb: &dyn Embedder) -> Result<(), String> {
         let fp = emb.fingerprint()?;
         let model = self.model(&fp)?;
         let key = (source.to_string(), job.r#ref.clone());

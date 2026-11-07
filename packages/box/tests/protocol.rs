@@ -21,15 +21,17 @@ fn vec_of(t: &str) -> Vec<f32> {
 }
 
 /// A tiny HTTP/1.1 server: GET /v1/models, POST /v1/embeddings (text, and images as {type: image_url})
-fn embedding_server() -> (String, Asked) {
+fn embedding_server(fail_first: usize) -> (String, Asked) {
     let l = TcpListener::bind("127.0.0.1:0").unwrap();
     let base = format!("http://{}/v1", l.local_addr().unwrap());
     let asked: Asked = Arc::default();
     let a = asked.clone();
+    let fails = Arc::new(std::sync::atomic::AtomicUsize::new(fail_first));
     std::thread::spawn(move || {
         for s in l.incoming() {
             let Ok(mut s) = s else { continue };
             let a = a.clone();
+            let fails = fails.clone();
             std::thread::spawn(move || {
                 let mut r = BufReader::new(s.try_clone().unwrap());
                 loop {
@@ -56,7 +58,16 @@ fn embedding_server() -> (String, Asked) {
                         let j: Value = serde_json::from_slice(&body).unwrap();
                         a.lock().unwrap().push(j["input"].clone());
                         let input = j["input"].as_array().unwrap();
-                        if input.iter().any(|x| x.get("image").is_some()) {
+                        let failing = fails
+                            .fetch_update(
+                                std::sync::atomic::Ordering::SeqCst,
+                                std::sync::atomic::Ordering::SeqCst,
+                                |n| n.checked_sub(1),
+                            )
+                            .is_ok();
+                        if failing {
+                            (503, json!({ "error": "restarting" }))
+                        } else if input.iter().any(|x| x.get("image").is_some()) {
                             (400, json!({ "error": "no such input" }))
                         } else {
                             let data: Vec<Value> = input
@@ -153,7 +164,7 @@ fn sync_search_and_switching_refs_over_the_socket() {
     let p = paths::paths(&home);
     let h2 = home.clone();
     let svc = std::thread::spawn(move || service::serve(paths::paths(&h2), Duration::from_millis(300)).unwrap());
-    let (base, asked) = embedding_server();
+    let (base, asked) = embedding_server(0);
     let mut c = Client::connect(&p);
 
     // nothing but hello with the token first; a wrong token ends the connection
@@ -265,6 +276,45 @@ fn sync_search_and_switching_refs_over_the_socket() {
     );
     drop((c, d, bad));
     // idle with no connections: the service exits
+    assert!(matches!(svc.join().unwrap(), service::Outcome::Stopped));
+    std::fs::remove_dir_all(&home).unwrap();
+}
+
+#[test]
+fn indexing_recovers_by_itself_after_the_embedding_server_fails() {
+    let home = std::env::temp_dir().join(format!("box-retry-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&home);
+    let p = paths::paths(&home);
+    let h2 = home.clone();
+    let svc = std::thread::spawn(move || service::serve(paths::paths(&h2), Duration::from_millis(300)).unwrap());
+    // the first two embedding requests fail, as while the server restarts
+    let (base, asked) = embedding_server(2);
+    let mut c = Client::connect(&p);
+    let token = std::fs::read_to_string(&p.token).unwrap();
+    c.ok("hello", json!({ "token": token.trim() }));
+    let items =
+        json!([{ "id": "a", "title": "t", "text": "kv cache" }, { "id": "b", "title": "u", "text": "cuda graph" }]);
+    c.ok(
+        "sync",
+        json!({ "source": "s", "ref": "main", "embedder": { "base": base }, "items": items }),
+    );
+    // no other sync: box tries again itself until everything is embedded
+    let st = c.settle("s", "main");
+    assert_eq!(
+        (st["left"].clone(), st["error"].clone(), st["vectors"].clone()),
+        (json!(0), Value::Null, json!(2))
+    );
+    assert_eq!(
+        asked.lock().unwrap().len(),
+        3,
+        "two refused, then the batch and nothing more"
+    );
+    let s = c.ok(
+        "search",
+        json!({ "source": "s", "ref": "main", "q": "cuda graph", "k": 1 }),
+    );
+    assert_eq!(s["hits"][0]["id"], json!("b"));
+    drop(c);
     assert!(matches!(svc.join().unwrap(), service::Outcome::Stopped));
     std::fs::remove_dir_all(&home).unwrap();
 }
