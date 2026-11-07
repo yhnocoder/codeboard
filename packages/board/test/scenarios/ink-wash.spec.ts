@@ -348,7 +348,7 @@ test("inkWashPaperFillsCard", async () => {
     const x = cv.getContext("2d", { willReadFrequently: true })!;
     x.drawImage(img, 0, 0);
     const at = (px: number, py: number) => [...x.getImageData(Math.round(px), Math.round(py), 1, 1).data.slice(0, 3)];
-    const paper = [0xfb, 0xf8, 0xf1];
+    const paper = [0xfd, 0xfd, 0xfb];
     const off = (c: number[]) => c.reduce((s, v, i) => s + Math.abs(v - paper[i]), 0);
     return [...document.querySelectorAll<HTMLElement>(".card[data-id]")].map((c) => {
       const r = c.getBoundingClientRect(),
