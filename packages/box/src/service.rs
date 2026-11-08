@@ -8,15 +8,14 @@ use box_core::index::{Index, OpenError, Reply};
 use interprocess::local_socket::{ListenerNonblockingMode, ListenerOptions, prelude::*};
 use serde_json::{Value, json};
 use std::io::{BufRead, BufReader, Read, Write};
-use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
 pub const VERSION: &str = box_core::VERSION;
 /// Without connections for this long, the service exits
 pub const IDLE: Duration = Duration::from_secs(600);
-/// How often the listener looks for a new connection, and for being idle
-const ACCEPT_POLL: Duration = Duration::from_millis(25);
+/// The pause after a failed accept before the next
+const ACCEPT_RETRY: Duration = Duration::from_millis(100);
 /// The longest line read before hello (a connection that has not said the token yet)
 const HELLO_LINE_MAX: u64 = 64 << 10;
 /// The longest request (a sync of a large project with its images is the biggest)
@@ -78,7 +77,12 @@ pub fn serve(paths: Paths, idle: Duration) -> std::io::Result<Outcome> {
     let svc = Arc::new(Service {
         token: token(&paths)?,
         index,
-        conns: AtomicUsize::new(0),
+        live: Mutex::new(Live {
+            conns: 0,
+            quiet_since: Instant::now(),
+            stop: false,
+        }),
+        quiet: Condvar::new(),
     });
 
     #[cfg(unix)]
@@ -86,7 +90,7 @@ pub fn serve(paths: Paths, idle: Duration) -> std::io::Result<Outcome> {
     let name = socket_name(&paths)?;
     let opts = ListenerOptions::new()
         .name(name)
-        .nonblocking(ListenerNonblockingMode::Accept);
+        .nonblocking(ListenerNonblockingMode::Neither);
     // Unix: the socket sits in the data folder, which only the user can enter (private_dir, 0700), so no one else can
     // reach it. Not ListenerOptions::mode: macOS refuses it, and the service would never listen
     // Windows: only the user who started the service may open the pipe (the owner; no one else, not even other admins'
@@ -101,34 +105,51 @@ pub fn serve(paths: Paths, idle: Duration) -> std::io::Result<Outcome> {
     let listener = opts
         .create_sync()
         .inspect_err(|e| svc.index.log(&format!("listen on {}: {e}", paths.socket)))?;
-    let mut quiet_since = Instant::now();
+    // The listener blocks in accept and nothing polls: an idle service sleeps until a client connects or `idle` is up
+    // (a watchdog waits for that on a condition variable, then connects once itself to wake accept)
+    let watchdog = {
+        let s = svc.clone();
+        let name = socket_name(&paths)?;
+        std::thread::spawn(move || {
+            s.wait_idle(idle);
+            if let Err(e) = interprocess::local_socket::Stream::connect(name) {
+                s.index.log(&format!("idle: waking the listener: {e}"));
+            }
+        })
+    };
     loop {
         match listener.accept() {
             Ok(conn) => {
-                // macOS (BSD) hands out accepted sockets non-blocking like the listener; Linux does not. Each
+                {
+                    let mut live = svc.live.lock().unwrap_or_else(|p| p.into_inner());
+                    if live.stop {
+                        break;
+                    }
+                    live.conns += 1;
+                }
+                // macOS (BSD) hands out accepted sockets non-blocking when the listener is; Linux does not. Each
                 // connection has its own thread and reads blocking
                 if let Err(e) = conn.set_nonblocking(false) {
                     svc.index.log(&format!("accept: {e}"));
+                    svc.closed();
                     continue;
                 }
-                svc.conns.fetch_add(1, Ordering::SeqCst);
                 let s = svc.clone();
                 std::thread::spawn(move || {
                     s.connection(conn);
-                    s.conns.fetch_sub(1, Ordering::SeqCst);
+                    s.closed();
                 });
-                continue;
             }
-            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
-            Err(e) => svc.index.log(&format!("accept: {e}")),
+            Err(e) => {
+                svc.index.log(&format!("accept: {e}"));
+                if svc.live.lock().unwrap_or_else(|p| p.into_inner()).stop {
+                    break;
+                }
+                std::thread::sleep(ACCEPT_RETRY); // a failing accept does not spin
+            }
         }
-        if svc.conns.load(Ordering::SeqCst) > 0 {
-            quiet_since = Instant::now();
-        } else if quiet_since.elapsed() >= idle {
-            break;
-        }
-        std::thread::sleep(ACCEPT_POLL);
     }
+    let _ = watchdog.join();
     drop(listener);
     #[cfg(unix)]
     let _ = std::fs::remove_file(&paths.socket);
@@ -156,10 +177,48 @@ pub fn socket_name(paths: &Paths) -> std::io::Result<interprocess::local_socket:
 pub struct Service {
     index: Index,
     token: String,
-    conns: AtomicUsize,
+    live: Mutex<Live>,
+    /// Signalled when the last connection closes
+    quiet: Condvar,
+}
+
+/// The connections the service has, and since when it has had none
+struct Live {
+    conns: usize,
+    quiet_since: Instant,
+    /// The watchdog found the service idle: the listener takes no more connections
+    stop: bool,
 }
 
 impl Service {
+    /// One connection closed
+    fn closed(&self) {
+        let mut live = self.live.lock().unwrap_or_else(|p| p.into_inner());
+        live.conns -= 1;
+        if live.conns == 0 {
+            live.quiet_since = Instant::now();
+            self.quiet.notify_all();
+        }
+    }
+
+    /// Returns once the service has had no connection for `idle`, having stopped the listener taking more. Sleeps
+    /// while there are connections and until the quiet time is up otherwise; wakes for nothing else
+    fn wait_idle(&self, idle: Duration) {
+        let mut live = self.live.lock().unwrap_or_else(|p| p.into_inner());
+        loop {
+            if live.conns > 0 {
+                live = self.quiet.wait(live).unwrap_or_else(|p| p.into_inner());
+                continue;
+            }
+            let left = idle.saturating_sub(live.quiet_since.elapsed());
+            if left.is_zero() {
+                live.stop = true;
+                return;
+            }
+            live = self.quiet.wait_timeout(live, left).unwrap_or_else(|p| p.into_inner()).0;
+        }
+    }
+
     fn connection(&self, conn: interprocess::local_socket::Stream) {
         let mut reader = BufReader::new(&conn);
         let mut writer = &conn;
