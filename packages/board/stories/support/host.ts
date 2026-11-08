@@ -47,6 +47,7 @@ const DEFAULTS: Replies = {
   stickerPacks: () => [],
   questions: () => [],
   search: () => [],
+  searchMeaning: () => ({ items: [] }),
   entryPoints: () => [],
   searchName: () => [],
   commits: () => COMMITS,
