@@ -547,7 +547,7 @@
         "packages/board/src/canvas/Summaries.tsx",
         "packages/board/src/actions/summaries.ts",
         "packages/host/src/summaries.ts",
-        "packages/board/test/scenarios/{summaries,summary-zoom}.spec.ts"
+        "packages/board/test/scenarios/{summaries,summary-zoom,in-view}.spec.ts"
       ],
       "scenarios": [
         "summaryDetentSwitch",

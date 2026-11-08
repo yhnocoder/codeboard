@@ -1,4 +1,5 @@
-// Nothing in view is hidden, and nothing hidden comes into view before it is shown (state/lead.ts, state/cull.ts).
+// Nothing in view is hidden, and nothing hidden comes into view before it is shown (state/lead.ts, state/cull.ts,
+// state/summary.ts; md/lazy.ts: markdownLazyRender, since the render queue keeps a time budget a paused clock never spends).
 // The page's clock is paused and moved one frame at a time, each frame read after its animation frame callbacks ran (what that
 // frame paints): a card in view must not be hidden in that frame, nor in the frame before (shown in the very frame it came into
 // view, its tiles are rastered for the frame that has to show them; on a GPU short of tile memory that frame was blank).
@@ -6,7 +7,11 @@
 //                                  wheel notches out and a flight back to 100 %, a pinch out to the summary cut, fast pans and a
 //                                  fling there, notches out and a fast pan: no card in view is culled in its frame or the one
 //                                  before
-import { emptyBoard, type Board } from "@codeboard/core";
+//   summarySwapShowsDrawnLevel     a pinch out through the summary cut, a stop there and a pinch back in, then out and in without
+//                                  a stop (state/summary.ts): each level is shown only once it was drawn in the frame before (the
+//                                  card level awake with the cards in view not culled, the summary level with every column),
+//                                  never asleep or half built then
+import { emptyBoard, putSummary, summarySig, type Board, type NoteCard, type Section } from "@codeboard/core";
 import type { Page } from "@playwright/test";
 import { files, put, symCard, type Host } from "../harness";
 import { test, open, check, idle, pauseClock } from "../fixtures";
@@ -140,6 +145,114 @@ test("culledCardsShownBeforeInView", async () => {
     !late.length,
     late.length,
     late.slice(0, 12),
+  );
+  await h.page.context().close();
+});
+
+/** Three Sections of three Notes in a row and a loose Note, each with its summary written */
+function summaryBoard(): Board {
+  const b = emptyBoard("bSwap", "swap");
+  ["异构并行计算", "内存层次", "线程调度"].forEach((t, i) => {
+    const s: Section = { id: `s${i}`, title: t, x: 80 + i * 2600, y: 80, w: 2400, h: 1400 };
+    b.sections.push(s);
+    for (let j = 0; j < 3; j++) {
+      const n: NoteCard = {
+        id: `n${i}${j}`,
+        kind: "note",
+        md: `# ${t} ${j + 1}\n\nGPU 用大量小算术单元换**吞吐**。`,
+        look: "note",
+      };
+      put(b, n, s.x + 60 + j * 760, s.y + 100, 680);
+      b.place[n.id].section = s.id;
+    }
+  });
+  put(
+    b,
+    { id: "loose", kind: "note", md: "# 本章导读\n\n从 CPU 和 GPU 的设计取舍讲起。", look: "note" },
+    80,
+    1800,
+    900,
+  );
+  for (const k of ["sec:s0", "sec:s1", "sec:s2", "card:loose"])
+    putSummary(b, k, { text: `众线程押**吞吐量**（${k}）。`, at: Date.now(), sig: summarySig(b, k)! });
+  b.cam = { x: 40, y: 40, z: 0.5 };
+  return b;
+}
+
+/** Both levels in a frame: the card level's opacity, whether it sleeps (clipped to nothing) and is swapped out, the summary
+ *  level's opacity and columns, the cards in view and the culled ones, and whether the switch's mist is up */
+type Levels = Cards & { co: number; asleep: boolean; gone: boolean; so: number; cols: number; mist: boolean };
+const levelsOf = async (pg: Page): Promise<Levels> => ({
+  ...(await cardsOf(pg)),
+  ...(await pg.evaluate(() => {
+    const lay = document.querySelector(".cardlay") as HTMLElement,
+      sum = document.querySelector(".sumlay") as HTMLElement | null;
+    return {
+      co: +lay.style.opacity,
+      asleep: lay.classList.contains("asleep"),
+      gone: lay.classList.contains("gone"),
+      so: sum ? +sum.style.opacity : 0,
+      cols: document.querySelectorAll(".sumcol").length,
+      mist: document.querySelector(".cutmist")!.classList.contains("on"),
+    };
+  })),
+});
+
+test("summarySwapShowsDrawnLevel", async () => {
+  const h = await open({ board: summaryBoard(), w: W, h: H, light: true });
+  await idle(h);
+  const pg = h.page;
+  await pg.mouse.move(W / 2, H / 2);
+  const fs = await stepped(h, levelsOf, async (frame) => {
+    let f = await levelsOf(pg);
+    /** Ctrl + wheel steps of dy, one a frame, until the switch has ended on the level wanted (gone: the summaries) */
+    const pinch = async (dy: number, gone: boolean) => {
+      await pg.keyboard.down("Control");
+      for (let i = 0; i < 160 && !(f.gone === gone && !f.mist); i++) {
+        await pg.mouse.wheel(0, dy);
+        f = await frame();
+      }
+      await pg.keyboard.up("Control");
+    };
+    // out through the cut, a stop at the summary level (its card level let go while the pinch back in moves), back in; then
+    // out and in again without a stop
+    await pinch(6, true);
+    for (let i = 0; i < 60; i++) f = await frame();
+    await pinch(-6, false);
+    for (let i = 0; i < 30; i++) f = await frame();
+    await pinch(6, true);
+    await pinch(-6, false);
+  });
+  const shows: { level: string; at: number; ok: boolean; before: unknown }[] = [];
+  fs.forEach((f, i) => {
+    if (!i) return;
+    const b = fs[i - 1];
+    if (f.co >= 0.5 && b.co < 0.5) {
+      const culled = f.view.filter((id) => b.culled.includes(id));
+      shows.push({
+        level: "cards",
+        at: i,
+        ok: !b.asleep && b.co > 0 && !culled.length,
+        before: { co: b.co, asleep: b.asleep, culled },
+      });
+    }
+    if (f.so >= 0.5 && b.so < 0.5)
+      shows.push({
+        level: "summaries",
+        at: i,
+        ok: b.so > 0 && b.cols === f.cols && f.cols === 4,
+        before: { so: b.so, cols: b.cols, now: f.cols },
+      });
+  });
+  check(
+    "summarySwapShowsDrawnLevel the pinches switch both ways twice",
+    shows.filter((s) => s.level === "cards").length === 2 && shows.filter((s) => s.level === "summaries").length === 2,
+    shows.map((s) => `${s.level}@${s.at}`),
+  );
+  check(
+    "summarySwapShowsDrawnLevel each level shows only once it was drawn in the frame before",
+    shows.every((s) => s.ok),
+    shows.filter((s) => !s.ok),
   );
   await h.page.context().close();
 });
