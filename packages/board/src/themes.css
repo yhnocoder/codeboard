@@ -4050,27 +4050,6 @@
 :root.look-ink-wash .tip {
   border-radius: 2px;
 }
-/* 白板名：左上角一行大字（后面不盖印，#138） */
-:root.look-ink-wash .mast {
-  display: flex;
-  position: absolute;
-  left: 20px;
-  top: 14px;
-  z-index: 3;
-  pointer-events: none;
-  align-items: center;
-  gap: 10px;
-  max-width: 46%;
-}
-:root.look-ink-wash .mast .mn {
-  font: 400 24px / 1.15 var(--serif);
-  color: var(--ink);
-  letter-spacing: 0.02em;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
 /* 界面字体只给浮在白板上的部件和卡头用（--ui），不换 --sys：白板里大量文字换成网页字体后，Chromium 在缩放分档切换时会把每张卡的行号栏提成合成层 */
 :root.look-city .app {
   font-family: var(--ui);
