@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <string name="app_name">CodeBoard</string>
-    <string name="back">Back</string>
-    <string name="boards">Boards</string>
-    <string name="fit">Fit to screen</string>
-</resources>

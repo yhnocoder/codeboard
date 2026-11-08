@@ -1,9 +1,0 @@
-# built by record.ts and copied from packages/board/dist
-out/
-site/board/
-site/data/
-tiles-out/
-android/CodeBoard.apk
-site/assets/
-.record.mjs
-android/.kotlin/

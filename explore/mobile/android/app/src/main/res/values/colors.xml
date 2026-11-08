@@ -1,8 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <color name="paper">#EFEBE4</color>
-    <color name="ink">#3A2F25</color>
-    <color name="secondary">#8A7B6B</color>
-    <color name="error">#A3402E</color>
-    <color name="hairline">#263A2F25</color>
-</resources>
