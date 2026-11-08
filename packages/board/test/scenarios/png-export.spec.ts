@@ -2,7 +2,8 @@
 //  pngExportLooksLikeBoard — a Note (Latin, Chinese, a formula, bold) and a Free code card, exported in Warm Ink and Ink Wash:
 //                            each card in the PNG matches its screenshot on the board (the export drew the theme's default
 //                            look, with serif text and no paper: the theme class sits on <html>, which the SVG picture does not
-//                            have, the fonts were not loaded inside it, and Ink Wash's unescaped `url("…")` on <html> broke it)
+//                            have, the fonts were not loaded inside it, and Ink Wash's unescaped `url("…")` on <html> broke it;
+//                            \bigg uses KaTeX_Size3, whose src is a data: URL with a ; in it, which cut its @font-face short)
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { OUT } from "../harness";
@@ -15,7 +16,7 @@ function board(): Board {
     id: "n1",
     kind: "note",
     look: "note",
-    md: "## Prefill 一步\n\n先 **schedule** 挑出这一批，再交给 ModelRunner 跑模型。复杂度 $O(n^2)$，每步 $b \\cdot t$ 个 token。\n\n- waiting → running\n- 按 hash 复用前缀块",
+    md: "## Prefill 一步\n\n先 **schedule** 挑出这一批，再交给 ModelRunner 跑模型。复杂度 $O(n^2)$，每步 $b \\cdot t$ 个 token，$\\bigg( \\sum_i x_i \\bigg)$。\n\n- waiting → running\n- 按 hash 复用前缀块",
   } as never);
   b.place.n1 = { x: 60, y: 60, w: 380 };
   b.cards.push({

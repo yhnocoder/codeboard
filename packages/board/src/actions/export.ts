@@ -354,7 +354,9 @@ function collectCss(): string {
           const src = st.getPropertyValue("src");
           const first = /url\(\s*(["']?)([^"')]+)\1\s*\)(\s*format\([^)]*\))?/.exec(src);
           if (!first) continue;
-          out.push(r.cssText.replace(/src:[^;]+;/, `src: url("${resRef(first[2], base)}")${first[3] ?? ""};`));
+          // the rule written again from its declarations: a src that is a data: URL has a ; in it (KaTeX_Size3 in board.css)
+          const decls = [...st].filter((p) => p !== "src").map((p) => `${p}: ${st.getPropertyValue(p)};`);
+          out.push(`@font-face { ${decls.join(" ")} src: url("${resRef(first[2], base)}")${first[3] ?? ""}; }`);
           continue;
         }
         out.push(cssRefs(r.cssText, base));
