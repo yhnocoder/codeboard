@@ -55,6 +55,9 @@ const HINT_KEEPS = 0.25;
  *  prose drawn as bars below it (.world.greek) keeps cheap: drawn as text, the first frames of a pinch at 0.3–0.5 took 30–50 ms
  *  each on a 2× Mac on a board of dense Chinese Notes */
 const HINT_MIN = 0.5;
+/** A zoom that took the hint off below HINT_MIN puts it back only this far above it (see settle): a pinch that wavers
+ *  around HINT_MIN would raster the whole world again at each crossing */
+const HINT_BAND = 1.1;
 /** A flight drops the hint (or rasters again under it) a little before it is shown at half the scale it was rastered at: the
  *  raster lags the camera by a frame or two at a flight's speed, and what is rastered under the hint then is drawn further out
  *  (at half, up to a sixth of a Fit's raster on an Ink Wash board was at over 2× the scale it was drawn at, 2–3 % at 1.8) */
@@ -101,7 +104,9 @@ export function Canvas() {
   // again like any other. A wheel or pinch that zooms below HINT_MIN under the hint takes it off there, in the middle of the
   // gesture: kept down to 0.3, the world stayed rastered at the device scale, and the stop's raster at its own scale needed
   // those tiles and the new ones at once, more than the GPU's tile memory holds (a Warm Ink board with pictures in view): the
-  // board showed blank for 1–3 frames about 0.2 s after the stop (Linda 11-08). Pushing into the detent is not a stop (summary.ts: the camera is held at the cut while the gesture
+  // board showed blank for 1–3 frames about 0.2 s after the stop (Linda 11-08). The same gesture puts it back only above
+  // HINT_MIN × HINT_BAND, and not when it crosses into the summary level (cardsGone), where it would raster the world at the
+  // device scale under the switch's mist. Pushing into the detent is not a stop (summary.ts: the camera is held at the cut while the gesture
   // goes on), so no re-raster lands under the switch's mist.
   // A camera flight that zooms out (Fit to Window, a reveal, the zoom keys) takes the hint off once it is shown at about half
   // its raster scale (FLY_HALF): under the hint every tile that comes into view on the way is rastered at the scale the flight
@@ -126,6 +131,7 @@ export function Canvas() {
     moving = false,
     unhinted = false,
     rehinted = false,
+    dropped = false,
     pulse = 0;
   createEffect(() => {
     const m = camMoving(),
@@ -134,7 +140,7 @@ export function Canvas() {
       if (m) {
         if (!moving) {
           moving = true;
-          unhinted = rehinted = false;
+          unhinted = rehinted = dropped = false;
           pulse++;
         }
         const out = flyingOut();
@@ -151,8 +157,11 @@ export function Canvas() {
         } else if (unhinted && !out) {
           unhinted = false;
           if (hintable(z)) hint();
-        } else if ((!out || !rehinted) && settle() && hintable(z)) hint();
-        else if (!out && !settle() && !hintable(z)) {
+        } else if ((!out || !rehinted) && settle() && (dropped ? z >= HINT_MIN * HINT_BAND : hintable(z))) {
+          dropped = false;
+          hint();
+        } else if (!out && !settle() && !hintable(z)) {
+          dropped = true;
           rasterZ = z;
           setSettle(true);
         }
