@@ -102,4 +102,33 @@ describe("snapshots on the board's store", () => {
     expect(JSON.parse(JSON.stringify(p?.patch))).toEqual({ place: { set: { c: { x: 42, y: 0, w: 320 } } } });
     expect(missed()).toEqual([]);
   });
+
+  it("stringifies only what an edit wrote to (the self-check off, as users run it)", () => {
+    const b = init();
+    if (b.type !== "init") throw new Error("init");
+    for (let i = 0; i < 200; i++) {
+      b.board.cards.push(note(`m${i}`, `# ${i}`));
+      b.board.place[`m${i}`] = { x: i, y: 0, w: 320 };
+    }
+    fromHost(b);
+    mutate((x) => {
+      x.place.a.x = 1; // numbers the host's cards (born)
+    });
+    flushSave();
+    checkEdits(false);
+    const str = vi.spyOn(JSON, "stringify");
+    try {
+      mutate((x) => {
+        x.place.m7.x = 9;
+        (x.cards[20] as { md: string }).md = "typed";
+      });
+      flushSave();
+      // the place, the card, and nothing else of the 204 cards and places
+      expect(str.mock.calls.length).toBeLessThan(6);
+    } finally {
+      str.mockRestore();
+      checkEdits(true);
+    }
+    expect(missed()).toEqual([]);
+  });
 });

@@ -67,7 +67,20 @@ export function createHistory(doc: Doc, hooks: Hooks, ports: HistoryPorts) {
   const track = tracker(doc.raw);
   const raw = track.raw;
   const write = (fn: (b: Board) => void) => doc.write((b) => fn(track.wrap(b)));
-  const upkeep = upkeeper(raw, ports.noteBlocks);
+  const upkeeper0 = upkeeper(raw, ports.noteBlocks);
+  // the twins and arrow ends on blocks follow cards and links: run again only after a write that may have changed one
+  let upkeptAt = -1;
+  const upkeep = {
+    run(b: Board) {
+      if (track.upkeepRev() === upkeptAt) return;
+      upkeeper0.run(b);
+      upkeptAt = track.upkeepRev();
+    },
+    reset() {
+      upkeeper0.reset();
+      upkeptAt = -1;
+    },
+  };
   // new cards get their creation order (stamp); checked again only after a write that may have added one
   let stampedAt = -1;
   function stampNew(b: Board) {

@@ -34,8 +34,14 @@ export function tracker(raw: Raw) {
   let all = false;
   /** Bumped by every write that may add a card: what a card collection or board field write, or a new board, could change */
   let cardsRev = 0;
-  /** target → its proxy and the owner it marks (an object reached under another item gets a new proxy) */
-  const proxies = new WeakMap<object, { owner: object; p: object }>();
+  /** Bumped by every write to a card or a link, or to their collections: what the twins and arrow ends on blocks follow */
+  let upkeepRev = 0;
+  /**
+   * target → its one proxy (the same object reads as the same value however it was reached, as with the shell's own draft) and the
+   * owners it was reached under: a write marks them all (an object kept under two items, which edits should not do, still marks the
+   * ones it was read through)
+   */
+  const proxies = new WeakMap<object, { owners: Set<object>; p: object }>();
   /** proxy → target */
   const targets = new WeakMap<object, object>();
   /** an item's raw object → where it was last read from */
@@ -49,17 +55,21 @@ export function tracker(raw: Raw) {
       cardsRev++;
     } else if (owner !== CAM && !items.has(owner)) {
       const w = where.get(owner);
-      if (w) items.set(owner, { k: w.k, at: w.at });
-      else setAll(); // can't happen: an item is reached only through its collection
+      if (w) {
+        items.set(owner, { k: w.k, at: w.at });
+        if (w.k === "cards" || w.k === "links") upkeepRev++;
+      } else setAll(); // can't happen: an item is reached only through its collection
     }
   };
   const addList = (k: Key) => {
     lists.add(k);
     if (k === "cards") cardsRev++;
+    if (k === "cards" || k === "links") upkeepRev++;
   };
   const setAll = () => {
     all = true;
     cardsRev++;
+    upkeepRev++;
   };
   const markRoot = (k: PropertyKey) => {
     if (COLLECTIONS.has(k)) addList(k as Key);
@@ -87,11 +97,15 @@ export function tracker(raw: Raw) {
   /** kind: the board, one of its collections (key = which), or anything under an item or a board field (owner = which) */
   function proxy(target: object, owner: object, kind: "root" | "list" | "item", key?: Key): object {
     const had = proxies.get(target);
-    if (had && had.owner === owner) return had.p;
+    if (had) {
+      had.owners.add(owner);
+      return had.p;
+    }
+    const owners = new Set([owner]);
     const onWrite = (k: PropertyKey) => {
       if (kind === "root") markRoot(k);
       else if (kind === "list") addList(key!);
-      else mark(owner);
+      else for (const o of owners) mark(o);
     };
     const p = new Proxy(target, {
       get(t, k) {
@@ -113,7 +127,10 @@ export function tracker(raw: Raw) {
           }
           return proxy(v, r, "item");
         }
-        return proxy(v, owner, "item");
+        // under every owner its parent was reached under
+        let c: object | undefined;
+        for (const o of owners) c = proxy(v, o, "item");
+        return c;
       },
       set(t, k, v) {
         onWrite(k);
@@ -129,7 +146,7 @@ export function tracker(raw: Raw) {
         return Reflect.defineProperty(t, k, "value" in d ? { ...d, value: strip(d.value, new Set()) } : d);
       },
     });
-    proxies.set(target, { owner, p });
+    proxies.set(target, { owners, p });
     targets.set(p, target);
     return p;
   }
@@ -148,6 +165,7 @@ export function tracker(raw: Raw) {
     /** Items the shell put back in place without a write (undo): where they are */
     touch(at: { k: Key; at: string; item: unknown }[]) {
       for (const x of at) if (isObj(x.item)) items.set(x.item, { k: x.k, at: x.at });
+      upkeepRev++;
     },
     /** The shell replaced the whole board (it may keep its objects and change them in place): the next snapshot reads it all */
     touchAll() {
@@ -155,6 +173,8 @@ export function tracker(raw: Raw) {
     },
     /** Changes when a card may have been added since (see cardsRev) */
     cardsRev: () => cardsRev,
+    /** Changes when a card or a link may have changed since (see upkeepRev) */
+    upkeepRev: () => upkeepRev,
     /** The marks so far, cleared for the next snapshot */
     take(): Marks {
       const m: Marks = { all, head: head || all, lists, items };

@@ -210,6 +210,8 @@ export type OpenOptions = {
   h?: number;
   /** The page's device scale factor (screenshots at 2×); 1 by default */
   scale?: number;
+  /** The board's self-check after every edit (dangling references, snapshots against whole ones); on by default, off to time edits as users get them */
+  selfCheck?: boolean;
   beforeLoad?: (p: Page) => Promise<void>;
   on?: OnMsg;
   host?: Record<string, unknown>;
@@ -270,7 +272,7 @@ export async function openBoard(
 <script>addEventListener("dragover", (e) => e.preventDefault()); addEventListener("drop", (e) => e.preventDefault());</script>
 <script>${ZOOM_MAX}</script>
 <script type="module">import { boot } from "file://${MEDIA}/boot.js"; window.__inflight = 0;
-boot({ post: (m) => { window.__inflight++; window.__host(JSON.stringify(m)).finally(() => window.__inflight--); }, listen: (fn) => addEventListener("message", (e) => fn(e.data)) }, { selfCheck: true });</script></body></html>`,
+boot({ post: (m) => { window.__inflight++; window.__host(JSON.stringify(m)).finally(() => window.__inflight--); }, listen: (fn) => addEventListener("message", (e) => fn(e.data)) }, { selfCheck: ${o.selfCheck !== false} });</script></body></html>`,
   );
   const context = await browser.newContext({
     viewport: { width: o.w ?? 1400, height: o.h ?? 900 },

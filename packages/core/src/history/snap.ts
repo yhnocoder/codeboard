@@ -24,13 +24,21 @@ export const NOT_UNDONE = "Changed on another board; not undone.";
  * an edit costs what it changed, not the board's size. Without them (or when a collection changed) every item is stringified
  */
 export function snapper() {
-  const last = new Map<string, string>();
+  /** each item's last string, and the object it was read from */
+  const last = new Map<string, { o: object; s: string }>();
   let prev: { b: Board; snap: Snap; lists: Record<Key, unknown> } | null = null;
-  function piece(k: string, o: unknown) {
-    const s = JSON.stringify(o);
+  let marks: Marks | undefined;
+  /** item = what is stringified (place: [id, the Place]), o = the item's object */
+  function piece(k: string, o: object, item: unknown = o) {
     const p = last.get(k);
-    if (p === s) return p; // same content: keep the old string, the new one can be collected right away
-    last.set(k, s);
+    // the same object, not written to since: in a collection that changed (a card added), the others are not read again
+    if (p && p.o === o && marks && !marks.all && !marks.items.has(o)) return p.s;
+    const s = JSON.stringify(item);
+    if (p?.s === s) {
+      p.o = o;
+      return p.s; // same content: keep the old string, the new one can be collected right away
+    }
+    last.set(k, { o, s });
     return s;
   }
   /** The last snapshot's pieces of collection k with the marked items read again; null when that is not enough */
@@ -41,9 +49,9 @@ export function snapper() {
       if (w.k !== k) continue;
       const ps = (out ??= prev.snap[k].slice());
       if (k === "place") {
-        const i = prev.snap.ids.place.indexOf(w.at);
+        const i = indexOf(prev.snap.ids.place, w.at);
         if (i < 0 || b.place[w.at] !== o) return null;
-        ps[i] = piece(`p${w.at}`, [w.at, o]);
+        ps[i] = piece(`p${w.at}`, o, [w.at, o]);
       } else {
         const i = +w.at,
           x = b[k][i];
@@ -56,6 +64,7 @@ export function snapper() {
   return {
     take(b: Board, epoch: number, m?: Marks): Snap {
       const { cards, place, links, sections, sidenotes, stickers, cam: _cam, ...head } = b;
+      marks = m;
       const p = prev?.snap;
       const s = { epoch, ids: {} as Ids } as Snap;
       for (const k of KEYS) {
@@ -68,7 +77,7 @@ export function snapper() {
         if (k === "place") {
           const ids = Object.keys(place);
           s.ids[k] = p && sameArr(ids, p.ids[k]) ? p.ids[k] : ids;
-          s[k] = ids.map((id) => piece(`p${id}`, [id, place[id]]));
+          s[k] = ids.map((id) => piece(`p${id}`, place[id], [id, place[id]]));
         } else {
           const xs = b[k];
           s.ids[k] = idsOf(xs, p?.ids[k]);
@@ -77,6 +86,7 @@ export function snapper() {
       }
       s.head = m && p && prev?.b === b && !m.head ? p.head : JSON.stringify(head);
       prev = { b, snap: s, lists: { cards, place, links, sections, sidenotes, stickers } };
+      marks = undefined;
       return s;
     },
     /** A new board: nothing to share with */
@@ -85,6 +95,13 @@ export function snapper() {
       prev = null;
     },
   };
+}
+/** id → index of an id array, built once per array (an id array is shared until the collection changes) */
+const indexes = new WeakMap<string[], Map<string, number>>();
+function indexOf(ids: string[], id: string): number {
+  let m = indexes.get(ids);
+  if (!m) indexes.set(ids, (m = new Map(ids.map((x, i) => [x, i]))));
+  return m.get(id) ?? -1;
 }
 const PREFIX: Record<Key, string> = {
   cards: "c",

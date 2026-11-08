@@ -1,16 +1,30 @@
 // The undo engine and saving on a plain board (no Solid, no DOM): snapshots, undo / redo, merged steps, syncs replayed after undo,
 // drags, fresh cards, per-board histories, and the patches sent to the host
 import { types } from "node:util";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { emptyBoard, type Board, type BoardPatch, type Card } from "../src";
 import { createHistory, createSave, NOT_UNDONE, type Doc } from "../src/history";
+
+// The self-check is on in every test (setup): a snapshot that missed a change fails the test
+let warned: unknown[][] = [];
+const realWarn = console.warn;
+beforeEach(() => {
+  warned = [];
+  console.warn = (...a: unknown[]) => {
+    warned.push(a);
+  };
+});
+afterEach(() => {
+  console.warn = realWarn;
+  expect(warned.filter((a) => String(a[0]).includes("snapshot missed"))).toEqual([]);
+});
 
 const note = (id: string, md = ""): Card => ({ id, kind: "note", md }) as Card;
 
 /**
  * inPlace: undo puts items back into the board's own objects, as the board's Solid store does (reconcile), instead of new ones
  */
-function setup(start = emptyBoard("b1", "B1"), selfCheck = false, inPlace = false) {
+function setup(start = emptyBoard("b1", "B1"), selfCheck = true, inPlace = false) {
   let board: Board = structuredClone(start);
   const doc: Doc = {
     read: () => board,
@@ -356,7 +370,7 @@ describe("self-check", () => {
   it("warns about references to items that are gone only when it is on", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
-      const off = setup();
+      const off = setup(undefined, false);
       off.add("a");
       off.h.mutate(dangle);
       expect(warn).not.toHaveBeenCalled();
@@ -462,6 +476,24 @@ describe("snapshots of the items an edit wrote to", () => {
       }
     });
 
+  it("gives an edit the same object however it reached it", () => {
+    const { h, add } = setup();
+    add("a");
+    add("b");
+    h.mutate((b) => {
+      b.links.push({ id: "l1", from: { card: "a" }, to: { card: "b" } });
+    });
+    let seen: unknown[] = [];
+    h.mutate((b) => {
+      const l = b.links[0];
+      b.shelf = [{ id: "sh", at: 1, place: {}, sections: [], links: [b.links[0]], stickers: [] }];
+      const via = b.shelf[0].links[0];
+      seen = [via === l, b.links.indexOf(via), b.links.includes(b.shelf[0].links[0])];
+      b.links.splice(0, 1); // shelved: under one item again
+    });
+    expect(seen).toEqual([true, 0, true]);
+  });
+
   it("warns when the board changed past the engine (the self-check of the snapshot)", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
@@ -479,44 +511,57 @@ describe("snapshots of the items an edit wrote to", () => {
   });
 
   it("costs what an edit changed, not the board's size (CPU time)", () => {
-    /** CPU time of moving one card, in µs: the mean of many edits, each saved the way the board saves (a patch) */
-    function perEdit(n: number) {
-      const start = emptyBoard("big", "big");
-      for (let i = 0; i < n; i++) {
-        start.cards.push(
-          note(`n${i}`, `## Note ${i}\n\n${"Some prose about the code, with $x^2$ and a list.\n- a\n- b\n".repeat(8)}`),
-        );
-        start.place[`n${i}`] = { x: (i % 20) * 400, y: Math.floor(i / 20) * 500, w: 320 };
-        if (i) start.links.push({ id: `l${i}`, from: { card: `n${i - 1}` }, to: { card: `n${i}` } });
+    const n = 1000;
+    const start = emptyBoard("big", "big");
+    for (let i = 0; i < n; i++) {
+      start.cards.push(
+        note(`n${i}`, `## Note ${i}\n\n${"Some prose about the code, with $x^2$ and a list.\n- a\n- b\n".repeat(8)}`),
+      );
+      start.place[`n${i}`] = { x: (i % 20) * 400, y: Math.floor(i / 20) * 500, w: 320 };
+      if (i) start.links.push({ id: `l${i}`, from: { card: `n${i - 1}` }, to: { card: `n${i}` } });
+    }
+    const { h, board } = setup(start, false);
+    const save = createSave({
+      loaded: () => true,
+      snap: h.snap,
+      cam: () => board().cam,
+      takeUndone: h.takeUndone,
+      post: async () => ({ skipped: 0 }),
+      toast: () => {},
+      liveDelay: 10,
+      resendDelay: 10,
+    });
+    save.flush();
+    /** Least CPU time per run of `fn` over a few rounds, in µs: a collection or a compile landing in one round does not count */
+    function cpu(fn: (i: number) => void, runs: number) {
+      for (let i = 0; i < 20; i++) fn(i); // warm up
+      let best = Number.POSITIVE_INFINITY;
+      for (let r = 0; r < 5; r++) {
+        const t0 = process.cpuUsage();
+        for (let i = 0; i < runs; i++) fn(i);
+        const t = process.cpuUsage(t0);
+        best = Math.min(best, (t.user + t.system) / runs);
       }
-      const { h, board } = setup(start);
-      const save = createSave({
-        loaded: () => true,
-        snap: h.snap,
-        cam: () => board().cam,
-        takeUndone: h.takeUndone,
-        post: async () => ({ skipped: 0 }),
-        toast: () => {},
-        liveDelay: 10,
-        resendDelay: 10,
+      return best;
+    }
+    // one card moved and its typing, each saved the way the board saves (a patch)
+    const move = cpu((i) => {
+      h.mutate((b) => {
+        b.place[`n${(i * 7) % n}`].x += 1;
       });
       save.flush();
-      const edit = (i: number) => {
-        h.mutate((b) => {
-          b.place[`n${(i * 7) % n}`].x += 1;
-        });
-        save.flush();
-      };
-      for (let i = 0; i < 50; i++) edit(i); // warm up
-      const N = 400;
-      const t0 = process.cpuUsage();
-      for (let i = 0; i < N; i++) edit(i);
-      const t = process.cpuUsage(t0);
-      return (t.user + t.system) / N;
-    }
-    const small = perEdit(100),
-      big = perEdit(1000);
-    // stringifying the whole board on every edit made this 10× (2.4 ms at 1000 cards); now about 1.2×
-    expect(big / small, `${small.toFixed(0)} µs at 100 cards, ${big.toFixed(0)} µs at 1000`).toBeLessThan(2);
+    }, 200);
+    const type = cpu((i) => {
+      h.mutate((b) => {
+        const c = b.cards[(i * 13) % n] as { md: string };
+        c.md += "x";
+      });
+      save.flush();
+    }, 200);
+    // against what every edit used to cost at least: stringifying the whole board once (an edit was about 1.3× that)
+    const whole = cpu(() => JSON.stringify(board()), 10);
+    const msg = `${n} cards: move ${move.toFixed(0)} µs, type ${type.toFixed(0)} µs, whole board ${whole.toFixed(0)} µs`;
+    expect(move / whole, msg).toBeLessThan(0.2);
+    expect(type / whole, msg).toBeLessThan(0.2);
   });
 });
