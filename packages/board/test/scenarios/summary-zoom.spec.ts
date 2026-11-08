@@ -237,13 +237,13 @@ test("zoomedOutSimplifiesCards", async () => {
       return {
         greek: !!document.querySelector(".world.greek"),
         fill: getComputedStyle(body).webkitTextFillColor,
-        bar: getComputedStyle(p).backgroundImage.startsWith("repeating-linear-gradient"),
+        bar: getComputedStyle(p).backgroundImage.includes("linear-gradient"),
         noteShield: getComputedStyle(body, "::after").content,
         // a paragraph that is only a picture gets no bars; a highlight and an annotation's tint go with the text
         picBar: [...body.querySelectorAll("p")]
           .filter((e) => e.querySelector(":scope > img, :scope > .md-fig"))
           .map((e) => getComputedStyle(e).backgroundImage),
-        li: getComputedStyle(body.querySelector("li")!).backgroundImage.startsWith("repeating-linear-gradient"),
+        li: getComputedStyle(body.querySelector("li")!).backgroundImage.includes("linear-gradient"),
         code: getComputedStyle(body.querySelector("li code")!).backgroundColor,
         mark: getComputedStyle(body.querySelector("mark")!).backgroundImage,
         annot: getComputedStyle(body.querySelector(".md-annot")!).backgroundColor,
@@ -304,8 +304,8 @@ test("zoomedOutSimplifiesCards", async () => {
   check("card bodies take no pointer", out.noteShield === '""' && out.codeShield === '""' && out.codeHit, out);
   check("the card edges' ports stay", out.eport !== "none", out);
   check(
-    "the switch dims the prose, swaps it, and brings it back",
-    JSON.stringify(await seen(h)) === JSON.stringify(["greekfade", "greekfade greek", "greek"]),
+    "the switch swaps the prose for its bars and fades them in",
+    JSON.stringify(await seen(h)) === JSON.stringify(["greekfade greek", "greek"]),
     await seen(h),
   );
   await h.page.close();
