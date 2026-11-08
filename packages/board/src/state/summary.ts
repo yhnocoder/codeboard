@@ -223,7 +223,7 @@ export function showSummaryLevel() {
  *  in (the card level woken from asleep, the summary columns built at the swap) has its tiles rastered for the frame that shows
  *  it, and on a GPU short of tile memory the mist cleared over a blank board. Drawn a frame before, its tiles are there:
  *  Chromium does not commit a frame while the one before it waits for its tiles */
-const READY_FRAMES = 2;
+const READY_FRAMES = 1;
 
 /**
  * The switch to a level: the mist covers the board (from where the push left it); under it the level to show is drawn (the
