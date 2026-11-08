@@ -52,11 +52,21 @@ Something new a window needs from core goes into `js/bridge.ts` as a method on t
 - `scene.ts` is what the canvas draws (plain JSON, mirrored by `Scene.swift`); `routes.ts` the arrows over core's
   `canvas/arrow.ts`; `highlight.ts` the host's `Highlighter`.
 
-## Drawing (`CanvasView.swift`, `Layers.swift`)
+## Drawing (`CanvasView.swift`, `Layers.swift`, `Base.swift`)
 
-The camera is the world layer's transform. Each card is a `CardLayer` rasterised into an sRGB-tagged IOSurface (its shadow baked
-in, `shadowPad` around) on a three-wide queue at a few zoom buckets, once the zoom has settled for `RASTER_SETTLE` (a card coming
-near mid-gesture draws at the current zoom's bucket), landed a few per frame nearest the view's centre first, culled when far
-from the viewport; Sections and arrows are shape layers rasterised by Core Animation at the bucket's scale (`shouldRasterize`),
-the arrows from core's numeric paths. Colours
-come from `themes.json`, generated from the board's stylesheets at build time.
+The camera is the world layer's transform. The screen is always complete: optimisations cost sharpness or a few frames, never
+presence. Each card is a `CardLayer` with two tiers of bitmaps (sRGB-tagged):
+
+- the base (`Base.swift`): the card's face and sheet at a quarter pixel per point, always resident, never evicted, kept on disk
+  by what it depends on (the card as drawn, the look; a Note's from its page render), so a board opened again has every base
+  before it is shown (the canvas shows a board once each card has one, a second at most). There are no placeholders.
+- the sharp tier: the face as tiles (rows of at most 1024 device pixels: a tall card draws only the rows near the view) and the
+  sheet (shadow baked in, `sheetMargin` around), as IOSurfaces at a few zoom buckets, drawn on a three-wide queue. A new raster's
+  tiles replace the old ones only once they have landed; every bitmap (tiles, sheets, Always Show notes, bases on a shown
+  board) lands through one queue, a few per frame nearest the view's centre first. During a zoom the bitmaps scale; the cards
+  are drawn at the new bucket once it has settled for `RASTER_SETTLE`. A card leaving the view keeps its sharp tier until the
+  hidden cards' total passes `SHARP_BUDGET` (least recently seen first), then shows its base.
+
+A Note render that did not settle (the page's time cap, the snapshot fallback) is never cached and never replaces a complete
+one; it is asked again. Sections are shape layers drawn by the compositor, arrows shape layers rasterised at the bucket's
+scale, from core's numeric paths. Colours come from `themes.json`, generated from the board's stylesheets at build time.
