@@ -402,6 +402,15 @@ export const HOST_SETTINGS = {
         "Read the best results of Search › Related by Meaning again with a reranking model on the embedding server (`POST /rerank`; e.g. hs-rerank-1 loaded in oMLX) and reorder them when it answers. Needs a reranking model on that server (see `#codeboard.search.rerankModel#`): without one the order stays by meaning, and after you turn this on CodeBoard says so (once, at the next search). Off: the order by meaning alone.",
     },
   },
+  searchRerankWait: {
+    key: "search.rerankWait",
+    schema: {
+      type: "boolean",
+      default: true,
+      markdownDescription:
+        "Show Search › Related by Meaning only once the reranker has answered, already in its order. Off: the order by meaning comes first and the rows slide to the reranker's order when it answers. Only while `#codeboard.search.rerank#` is on.",
+    },
+  },
   searchRerankModel: {
     key: "search.rerankModel",
     schema: {

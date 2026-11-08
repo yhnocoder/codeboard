@@ -76,7 +76,7 @@ export function Palette() {
     inp.select();
   });
   /** Related by Meaning's answer and the query it is for: one for an earlier query is not shown */
-  const [meaningOf, setMeaning] = createSignal<MeaningResult & { q: string; here: boolean; ranked?: true }>({
+  const [meaningOf, setMeaning] = createSignal<MeaningResult & { q: string; here: boolean }>({
     items: [],
     q: "",
     here: false,

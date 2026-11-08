@@ -249,6 +249,11 @@ export class MeaningSearch {
       if (!r || !this.latest) return { items: [], error: this.error || undefined };
       if (!r.left && !r.error && this.handed.size) await this.indexed(this.latest);
       const items = this.items(r.hits, here, onlyHere);
+      if (!r.left && !r.error && items.length && readHostSetting<boolean>(this.cx, "searchRerankWait")) {
+        // wait for the reranker and answer in its order (off, failed or superseded: the order by meaning)
+        const rr = await this.rerank(store, q, here, onlyHere);
+        if (rr.items.length) return { items: rr.items, model: rr.model, ranked: true };
+      }
       return { items, left: r.left || undefined, error: r.error || this.error || undefined, model: r.model };
     } catch (err) {
       return { items: [], error: (err as Error).message };
