@@ -950,12 +950,12 @@ final class CanvasView: NSView {
     selected = ids
     showPorts()
   }
-  private func selectLinks(_ ids: Set<String>) {
+  func selectLinks(_ ids: Set<String>) {
     for id in selectedLinks.subtracting(ids) { arrowLayers[id]?.selected = false }
     for id in ids.subtracting(selectedLinks) { arrowLayers[id]?.selected = true }
     selectedLinks = ids
   }
-  private func selectSections(_ ids: Set<String>) {
+  func selectSections(_ ids: Set<String>) {
     for id in selectedSections.subtracting(ids) { sectionLayers[id]?.selected = false }
     for id in ids.subtracting(selectedSections) { sectionLayers[id]?.selected = true }
     selectedSections = ids
