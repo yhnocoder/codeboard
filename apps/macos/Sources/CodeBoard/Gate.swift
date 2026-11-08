@@ -136,7 +136,7 @@ final class GateRun: NSObject, SCStreamOutput {
       let r = l.worldRect
       guard r.intersects(vis) else { continue }
       rects[id] = [r.minX, r.minY, r.width, r.height]
-      if l.contents == nil { blank.append(id) }
+      if !l.hasFace { blank.append(id) }
     }
     for (id, l) in c.sectionLayers where !l.isHidden && l.frame.intersects(vis) {
       rects["sect:\(id)"] = [l.frame.minX, l.frame.minY, l.frame.width, l.frame.height]

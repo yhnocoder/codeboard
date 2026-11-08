@@ -56,6 +56,8 @@ final class CardLayer: CALayer {
   private let ring2 = CAShapeLayer()
   /** The card's bitmap: a sublayer, above the paper sheet (a sublayer draws above its parent's own contents) */
   private let face = CALayer()
+  /** For the gate: a bitmap has landed (until then the card shows its placeholder's paper, or nothing) */
+  var hasFace: Bool { face.contents != nil }
   /** Ink Wash: the torn paper under the card (PAPER_M outside it) and the 选 seal of a selected card */
   private let sheet = CALayer()
   private let stamp = CALayer()
