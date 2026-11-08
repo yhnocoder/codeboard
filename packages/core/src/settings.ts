@@ -388,7 +388,7 @@ export const HOST_SETTINGS = {
       type: "boolean",
       default: false,
       markdownDescription:
-        "Read the best results of Search › Related by Meaning again with a reranker (hs-rerank-1, run by box on your machine) and reorder them when it answers. Turning it on downloads the model once (195 MB, into box's data folder). Off: the order by meaning alone.",
+        "Read the best results of Search › Related by Meaning again with a reranker (hs-rerank-1, run by box on your machine) and reorder them when it answers. The first search after turning it on downloads the model, once (195 MB, into box's data folder); until it is there, and if the download fails, the order stays by meaning. Not in the Linux and Intel Mac builds (no ONNX Runtime for them): there it has no effect, and CodeBoard says so when it is turned on. Off: the order by meaning alone.",
     },
   },
   storageDir: {

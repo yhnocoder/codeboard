@@ -9,7 +9,14 @@ import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { connect, type BoxClient, type BoxEmbedder, type BoxHit, type BoxImage, type BoxItem } from "@codeboard/box";
-import { cardTitle, shelvedCards, type Card, type MeaningResult, type SearchItem } from "@codeboard/core";
+import {
+  cardTitle,
+  shelvedCards,
+  type Card,
+  type MeaningResult,
+  type SearchItem,
+  type WorkspaceUi,
+} from "@codeboard/core";
 import type { Storage } from "./storage/boards";
 import type { HostContext } from "./context";
 import { git } from "./git";
@@ -69,6 +76,8 @@ export class MeaningSearch {
   private latest?: Docs & { source: string; ref: string };
   /** The endpoint's key, read once from the secret storage (Set Embedding API Key forgets it) */
   private key?: Promise<string | undefined>;
+  /** Whether box's reranker can answer, and what the user was told about it (since the setting last changed) */
+  private reranker = new RerankGate();
 
   /** Draws an SVG (data: URL) into a PNG (data: URL): an open board does it, with the fonts it shows the picture in */
   private draw?: (svg: string) => Promise<string | undefined>;
@@ -240,8 +249,8 @@ export class MeaningSearch {
   }
 
   /** search's list read again by the reranker (box's hs-rerank-1) and in its fused order, for the Palette to reorder to;
-   *  off while codeboard.search.rerank is off. Turned on, the first ask downloads the model (once, in box), and the order by
-   *  meaning stays until it is there */
+   *  off while codeboard.search.rerank is off, where this box cannot run it, and until the model is downloaded (the first
+   *  ask after the setting is turned on starts that, once) */
   async rerank(store: Storage, q: string, here?: string, onlyHere = false): Promise<MeaningResult> {
     if (!readHostSetting<boolean>(this.cx, "searchRerank")) return { items: [], off: true };
     if (!q.trim() || this.missing() || !(await this.embedder())) return { items: [], off: true };
@@ -249,24 +258,29 @@ export class MeaningSearch {
       if (this.stale || !this.latest) await this.update(store, here);
       const l = this.latest;
       if (!l) return { items: [], off: true };
-      const c = this.connection();
-      const m = await c.model(RERANKER);
-      if (!m.runs) return { items: [], off: true }; // this build of box has no reranker (it is not downloaded for nothing)
-      if (!m.present) {
-        if (m.error) this.cx.log("warn", `box: ${RERANKER}: ${m.error}`);
-        if (!m.downloading) {
-          await c.modelDownload(RERANKER);
-          void this.cx.ws.ui.info("Downloading the reranker for Related by Meaning (once, about 195 MB).");
-        }
-        return { items: [], off: true };
-      }
+      if (!(await this.reranker.ready(this.connection(), this.cx.ws.ui))) return { items: [], off: true };
       const groups = onlyHere && here ? [here] : undefined;
-      const r = await c.rerank({ source: l.source, ref: l.ref, q, k: TOP * 2, min_score: MIN_SCORE, groups });
+      const r = await this.connection().rerank({
+        source: l.source,
+        ref: l.ref,
+        q,
+        k: TOP * 2,
+        min_score: MIN_SCORE,
+        groups,
+      });
       return { items: this.items(r.hits, here, onlyHere), model: r.model };
     } catch (err) {
       this.cx.log("warn", `box: rerank: ${(err as Error).message}`);
       return { items: [], off: true };
     }
+  }
+
+  /** codeboard.search.rerank changed: a failed download may be tried again, and turned on where this box cannot run the
+   *  reranker, the user is told at once */
+  rerankChanged() {
+    this.reranker = new RerankGate();
+    if (!readHostSetting<boolean>(this.cx, "searchRerank") || this.missing()) return;
+    void this.reranker.check(this.connection(), this.cx.ws.ui).catch(() => undefined);
   }
 
   /** box's hits as the Palette's rows: the first TOP whose documents the host still has (onlyHere: those on the board here,
@@ -298,6 +312,54 @@ export class MeaningSearch {
       if (items.length >= TOP) break;
     }
     return items;
+  }
+}
+
+/** Whether box's reranker can be asked: this box can run it and its model is there. Asks box for the download once, and
+ *  tells the user once when this box cannot run it or the download failed; after either it answers false without asking
+ *  box again (a new gate, made when the setting changes, tries again) */
+export class RerankGate {
+  private gaveUp = false;
+  private downloadAsked = false;
+
+  /** The reranker's state in box; where this box cannot run it, says so (once) and gives up */
+  private async model(c: Pick<BoxClient, "model">, ui: Pick<WorkspaceUi, "info" | "error">) {
+    const m = await c.model(RERANKER);
+    if (!m.runs && !this.gaveUp) {
+      this.gaveUp = true;
+      void ui.info(
+        "This build of CodeBoard has no reranker (the Linux and Intel Mac builds do not include one), so codeboard.search.rerank has no effect here.",
+      );
+    }
+    return m;
+  }
+
+  /** The setting was turned on: tells at once where this box cannot run the reranker */
+  async check(c: Pick<BoxClient, "model">, ui: Pick<WorkspaceUi, "info" | "error">): Promise<void> {
+    if (!this.gaveUp) await this.model(c, ui);
+  }
+
+  async ready(
+    c: Pick<BoxClient, "model" | "modelDownload">,
+    ui: Pick<WorkspaceUi, "info" | "error">,
+  ): Promise<boolean> {
+    if (this.gaveUp) return false;
+    const m = await this.model(c, ui);
+    if (!m.runs) return false;
+    if (m.present) return true;
+    if (m.downloading) return false;
+    if (this.downloadAsked) {
+      // asked, no longer downloading and not there: it failed (offline, refused, a wrong checksum)
+      this.gaveUp = true;
+      void ui.error(
+        `The reranker for Related by Meaning could not be downloaded${m.error ? ` (${m.error})` : ""}. Turn codeboard.search.rerank off and on again to try again.`,
+      );
+      return false;
+    }
+    this.downloadAsked = true;
+    await c.modelDownload(RERANKER);
+    void ui.info("Downloading the reranker for Related by Meaning (once, about 195 MB).");
+    return false;
   }
 }
 
