@@ -519,11 +519,16 @@ final class CardLayer: CALayer {
     CardLayer.queue.addOperation(op)
     startTiles(.paint(paint), complete: true, g)
   }
-  /** The sheet's scale: the bucket's, but no more than 4M pixels (a shadow and a paper edge; a tall card's would be huge) */
+  /** The sheet's scale: the bucket's up to the screen's own (a shadow and a paper edge, soft by nature), and no more than 2M
+   *  pixels (a tall card's would be huge) */
   private func sheetScale(_ size: CGSize) -> CGFloat {
     let m = CardLayer.sheetMargin
-    return min(contentsScale, sqrt(4_000_000 / max(1, (size.width + 2 * m) * (size.height + 2 * m))))
+    return min(contentsScale, CardLayer.screenScale, sqrt(2_000_000 / max(1, (size.width + 2 * m) * (size.height + 2 * m))))
   }
+  /** The screen's backing scale (the canvas keeps it) */
+  static var screenScale: CGFloat = 2
+  /** Evicted while near the view but not in it: drawn again only once it is in view (no evict / redraw churn) */
+  var parked = false
 
   /** A new raster's tiles: the rows near the view (all of them for a card of one tile) */
   private func startTiles(_ src: Source, complete: Bool, _ g: Int) {

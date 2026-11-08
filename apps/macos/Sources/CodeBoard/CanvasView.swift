@@ -580,11 +580,17 @@ final class CanvasView: NSView {
     // A card leaving keeps its bitmap until the budget needs the room (then its base is what it has)
     let zooming = CACurrentMediaTime() - zoomedAt < CanvasView.RASTER_SETTLE
     let now = CACurrentMediaTime()
+    CardLayer.screenScale = backing
     for l in cardLayers.values where l.card.id != underEdit {
       let on = near.intersects(l.worldRect) && !folded.contains(l.card.id)
+      if on, l.parked {
+        if !vis.intersects(l.worldRect) { continue }
+        l.parked = false
+        l.drawn = false
+      }
       if l.isHidden != !on || (on && !l.drawn) {
         l.isHidden = !on
-        if !on { l.lastSeen = now; continue }
+        if !on { l.lastSeen = now; l.parked = false; continue }
         l.drawn = true
         if l.stale { l.recolor() }
         if l.hasSharp && !l.stale && l.faceScale == s { continue }
@@ -595,21 +601,31 @@ final class CanvasView: NSView {
         l.fillTiles()
       }
     }
-    evict()
+    evict(vis)
     // stickers out of view are hidden: an animated one then plays no frames
     for l in stickerLayers.values { l.isHidden = !near.intersects(l.frame) }
   }
-  /** The sharp tier's memory: above this the hidden cards' sharp bitmaps go, least recently seen first, down to 3/4 of it
-   *  (their bases stay). The cards near the view are never evicted */
-  static let SHARP_BUDGET = 192 << 20
-  private func evict() {
+  /** The sharp tier's memory: above this the hidden cards' sharp bitmaps go, least recently seen first, down to 3/4 of it,
+   *  then those near the view but not in it, farthest first (parked: drawn again once they are in view); their bases stay. The
+   *  cards in view are never evicted */
+  static let SHARP_BUDGET = 160 << 20
+  private func evict(_ vis: CGRect) {
     var total = 0
     for l in cardLayers.values { total += l.sharpBytes }
     guard total > CanvasView.SHARP_BUDGET else { return }
+    let goal = CanvasView.SHARP_BUDGET * 3 / 4
     for l in cardLayers.values.filter({ $0.isHidden && $0.sharpBytes > 0 }).sorted(by: { $0.lastSeen < $1.lastSeen }) {
-      if total <= CanvasView.SHARP_BUDGET * 3 / 4 { break }
+      if total <= goal { return }
       total -= l.sharpBytes
       l.drop()
+    }
+    let c = CGPoint(x: vis.midX, y: vis.midY)
+    for l in cardLayers.values.filter({ !$0.isHidden && $0.sharpBytes > 0 && !vis.intersects($0.worldRect) }).sorted(by: { hypot($0.worldRect.midX - c.x, $0.worldRect.midY - c.y) > hypot($1.worldRect.midX - c.x, $1.worldRect.midY - c.y) }) {
+      if total <= goal { return }
+      total -= l.sharpBytes
+      l.drop()
+      l.drawn = true
+      l.parked = true
     }
   }
   /** The sharp tier's bytes, for the checks */
@@ -626,7 +642,7 @@ final class CanvasView: NSView {
     rasterScale = s
     CATransaction.setDisableActions(true)
     for l in cardLayers.values where l.isHidden { l.contentsScale = s }
-    for l in cardLayers.values where !l.isHidden && l.contentsScale != s {
+    for l in cardLayers.values where !l.isHidden && !l.parked && l.contentsScale != s {
       l.contentsScale = s
       l.setNeedsDisplay()
     }
