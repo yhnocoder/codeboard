@@ -29,6 +29,8 @@ struct Paint {
 }
 final class Slots {
   var rects: [String: CGRect] = [:]
+  /** The head's sidenote count chip (.mk.inline), in card coordinates: a click on it opens the card's Sidenotes */
+  var chip: CGRect?
 }
 
 final class CardLayer: CALayer {
@@ -41,6 +43,8 @@ final class CardLayer: CALayer {
   var drawn = false
   /** The height is the board's own (Place.h): the page draws the card at it, however long the text */
   private var fixed = false
+  /** The head's sidenote chip as last drawn (card coordinates); nil when the card has no whole-card sidenotes */
+  var chipRect: CGRect?
   /** Off screen: the bitmap goes, and a raster in flight lands nowhere */
   func drop() {
     gen += 1
@@ -442,6 +446,7 @@ final class CardLayer: CALayer {
         }
         if let h = self.handover { h(self, surface, scale, g) } else { self.land(surface, scale, g) }
         if self.gen == g { self.placeInotes(paint.slots.rects, scale: scale, g) }
+        self.chipRect = paint.slots.chip
       }
     }
     pendingOp = op
@@ -791,6 +796,7 @@ final class CardLayer: CALayer {
     t.draw(with: CGRect(x: tx, y: (hh - t.size().height) / 2, width: r.width - tx - 10, height: t.size().height), options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
     if let n = p.card.notes, n > 0 {
       let chip = CGRect(x: min(tx + t.size().width + 7, r.width - 24), y: (hh - 14) / 2, width: 14, height: 14)
+      p.slots.chip = chip
       Theme.c("mark").setFill()
       NSBezierPath(roundedRect: chip, xRadius: 5, yRadius: 5).fill()
       let c = NSAttributedString(string: String(n), attributes: [.font: Theme.sys(9, weight: .semibold), .foregroundColor: Theme.c("mark-ink")])

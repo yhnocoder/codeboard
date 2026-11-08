@@ -60,6 +60,9 @@ struct SceneSticker: Decodable {
   var g: SceneGlyph
   /** A question: its text and whether it is answered */
   var q: SceneQuestion?
+  /** The colour the user chose; emoji stickers have none to choose */
+  var color: String?
+  var emoji: Bool?
 }
 struct SceneQuestion: Decodable {
   var md: String

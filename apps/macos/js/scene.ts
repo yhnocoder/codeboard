@@ -160,6 +160,9 @@ export type SceneSticker = {
   g: SceneGlyph;
   /** A question (the ? sticker, or one written): its text and whether it is answered */
   q?: { md: string; done: boolean };
+  /** The colour the user chose (the icon's own otherwise); emoji stickers have none to choose */
+  color?: string;
+  emoji?: boolean;
 };
 
 /** An answered question shows ✓ (the board's shownIcon) */
@@ -187,6 +190,8 @@ export function sceneSticker(b: Board, s: Sticker): SceneSticker | null {
   if (at.kind !== "canvas") return null; // a line sticker is in its card's gutter (SceneLine.stk)
   const out: SceneSticker = { id: s.id, x: at.x, y: at.y, size: at.size ?? 32, g: sceneGlyph(s) };
   if (isQuestion(s)) out.q = { md: s.q?.md ?? "", done: !!s.q?.done };
+  if (s.color) out.color = s.color;
+  if (s.icon.pack === "emoji") out.emoji = true;
   if (at.on && "card" in at.on) {
     const p = b.place[at.on.card];
     if (!p) return null;

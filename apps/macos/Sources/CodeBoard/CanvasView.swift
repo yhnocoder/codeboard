@@ -37,8 +37,19 @@ protocol CanvasDelegate: AnyObject {
   /** A question sticker double-clicked (or a new one made): its popover, by the sticker's rectangle in view coordinates */
   func canvas(_ c: CanvasView, editQuestion id: String, at: CGRect)
   func canvas(_ c: CanvasView, deleteStickers ids: [String])
-  /** A card's sidenotes, asked for (double-click on a code card, the menu) */
+  /** A card's sidenotes, asked for (the head's chip, the menu) */
   func canvas(_ c: CanvasView, showSidenotes card: String)
+  /** `s` on a selected card (the board's Add Sidenote): a new note on it, opened for writing */
+  func canvas(_ c: CanvasView, addSidenoteTo card: String)
+  /** A sticker's drag: live moves (inside a gesture), then its drop at a world point, on a card or free */
+  func canvasStickerDragBegan(_ c: CanvasView)
+  func canvas(_ c: CanvasView, dragSticker id: String, to p: CGPoint)
+  func canvas(_ c: CanvasView, dropSticker id: String, at p: CGPoint, on card: String?)
+  /** The sticker menu's items (the board's stickerMenu): colour (nil = default), size, detach, answered */
+  func canvas(_ c: CanvasView, sticker id: String, color: String?)
+  func canvas(_ c: CanvasView, sticker id: String, size: Double)
+  func canvas(_ c: CanvasView, detachSticker id: String, at p: CGPoint)
+  func canvas(_ c: CanvasView, sticker id: String, answered: Bool)
 }
 
 /** How many finished bitmaps land per frame: enough to fill a view in a few frames, few enough that the commit stays short */
@@ -644,6 +655,8 @@ final class CanvasView: NSView {
    *  behind the pointer, never apart */
   private var dragTargets: [Int: [String: CGPoint]] = [:]
   private var panStart: CGPoint?
+  /** A sticker pressed: the layer follows the pointer, core moves it live once the drag is under way (3 px), binds it on the drop */
+  private var stickerDrag: (id: String, start: CGPoint, origin: CGPoint, moved: Bool)?
   private var marqueeStart: CGPoint?
   private var resizing: (id: String, start: CGPoint, w: CGFloat, h: CGFloat, right: Bool, bottom: Bool)?
   private var linking: (from: String, port: CGPoint)?
@@ -711,7 +724,7 @@ final class CanvasView: NSView {
       if let k = stickerAt(w) {
         if k.sticker.q != nil { delegate?.canvas(self, editQuestion: k.sticker.id, at: toView(k.frame)) }
       } else if let l = cardAt(w) {
-        if editable(l.card) { select([l.card.id]); delegate?.canvas(self, editCard: l.card.id) } else if let b = l.card.board { delegate?.canvas(self, openBoard: b) } else if l.card.kind == "code" { select([l.card.id]); delegate?.canvas(self, showSidenotes: l.card.id) }
+        if editable(l.card) { select([l.card.id]); delegate?.canvas(self, editCard: l.card.id) } else if let b = l.card.board { delegate?.canvas(self, openBoard: b) }
       } else if let s = sectionAt(w), w.y - s.frame.minY < 30 {
         renameSection(s)
       } else {
@@ -724,15 +737,22 @@ final class CanvasView: NSView {
       rubber.isHidden = false
       return
     }
-    // stickers sit above the cards (styles.css .stk.canvas z-index 4)
+    // stickers sit above the cards (styles.css .stk.canvas z-index 4); a press starts a drag (the board's startStickerDrag)
     if let k = stickerAt(w) {
       select([])
       selectLinks([])
       selectSections([])
       selectStickers(e.modifierFlags.contains(.shift) ? selectedStickers.symmetricDifference([k.sticker.id]) : [k.sticker.id])
+      stickerDrag = (k.sticker.id, p, k.frame.origin, false)
       return
     }
     selectStickers([])
+    // the head's sidenote chip (the board's marker: hover shows, click pins): the card's Sidenotes
+    if let l = cardAt(w), let chip = l.chipRect, chip.insetBy(dx: -4, dy: -4).contains(CGPoint(x: w.x - l.card.x, y: w.y - l.card.y)) {
+      select([l.card.id])
+      delegate?.canvas(self, showSidenotes: l.card.id)
+      return
+    }
     // the Arrow tool: the next drag from a card to another makes a link
     if arrowMode, let l = cardAt(w) {
       arrowMode = false
@@ -797,6 +817,21 @@ final class CanvasView: NSView {
   override func mouseDragged(with e: NSEvent) {
     let p = convert(e.locationInWindow, from: nil)
     pointer = toWorld(p)
+    if var d = stickerDrag {
+      let dx = (p.x - d.start.x) / cam.z, dy = (p.y - d.start.y) / cam.z
+      if !d.moved, hypot(p.x - d.start.x, p.y - d.start.y) < 3 { return }
+      if !d.moved { delegate?.canvasStickerDragBegan(self) }
+      d.moved = true
+      stickerDrag = d
+      let to = CGPoint(x: d.origin.x + dx, y: d.origin.y + dy)
+      CATransaction.begin()
+      CATransaction.setDisableActions(true)
+      stickerLayers[d.id]?.frame.origin = to
+      CATransaction.commit()
+      showTether()
+      delegate?.canvas(self, dragSticker: d.id, to: to)
+      return
+    }
     if let s = panStart {
       pan(by: CGPoint(x: p.x - s.x, y: p.y - s.y))
       panStart = p
@@ -858,6 +893,16 @@ final class CanvasView: NSView {
   override func mouseUp(with e: NSEvent) {
     let p = convert(e.locationInWindow, from: nil)
     panStart = nil
+    if let d = stickerDrag {
+      stickerDrag = nil
+      guard d.moved else { return }
+      let to = CGPoint(x: d.origin.x + (p.x - d.start.x) / cam.z, y: d.origin.y + (p.y - d.start.y) / cam.z)
+      // dropped on a card (⌥ held: stays free, as the board) it rides that card
+      let w = toWorld(p)
+      let on = e.modifierFlags.contains(.option) ? nil : cardAt(w)?.card.id
+      delegate?.canvas(self, dropSticker: d.id, at: to, on: on)
+      return
+    }
     if let s = marqueeStart {
       marqueeStart = nil
       marquee.isHidden = true
@@ -926,6 +971,7 @@ final class CanvasView: NSView {
     case ("n", []): delegate?.canvas(self, newCard: "note", at: pointer)
     case ("t", []): delegate?.canvas(self, newCard: "text", at: pointer)
     case ("c", []): delegate?.canvas(self, newCard: "code", at: pointer)
+    case ("s", []): if selected.count == 1, let id = selected.first { delegate?.canvas(self, addSidenoteTo: id) }
     default: break  // not the board's: no beep
     }
   }
@@ -934,6 +980,61 @@ final class CanvasView: NSView {
     guard !selected.isEmpty || !selectedLinks.isEmpty || !selectedSections.isEmpty else { return }
     delegate?.canvas(self, deleteCards: Array(selected), links: Array(selectedLinks), sections: Array(selectedSections))
   }
+  // MARK: the sticker menu (the board's stickerMenu: question, Color, Size, Detach, Delete)
+  override func menu(for e: NSEvent) -> NSMenu? {
+    let w = toWorld(convert(e.locationInWindow, from: nil))
+    guard let k = stickerAt(w) else { return super.menu(for: e) }
+    selectStickers([k.sticker.id])
+    let s = k.sticker, id = s.id
+    let m = NSMenu()
+    func item(_ title: String, _ sel: Selector, _ value: Any? = nil, checked: Bool = false) -> NSMenuItem {
+      let it = NSMenuItem(title: title, action: sel, keyEquivalent: "")
+      it.target = self
+      it.representedObject = StickerRef(id: id, value: value)
+      it.state = checked ? .on : .off
+      return it
+    }
+    if let q = s.q {
+      m.addItem(item(q.md.isEmpty ? "Write Question" : "Edit Question", #selector(menuEditQuestion(_:))))
+      m.addItem(item(q.done ? "Reopen" : "Mark Answered", #selector(menuAnswered(_:)), !q.done))
+      m.addItem(.separator())
+    }
+    if s.emoji != true {
+      let colour = NSMenuItem(title: "Color", action: nil, keyEquivalent: "")
+      let sub = NSMenu()
+      sub.addItem(item("Default", #selector(menuColor(_:)), nil, checked: s.color == nil))
+      for (name, hex) in zip(CanvasView.stickerColorNames, CanvasView.stickerColors) { sub.addItem(item(name, #selector(menuColor(_:)), hex, checked: s.color == hex)) }
+      colour.submenu = sub
+      m.addItem(colour)
+    }
+    let size = NSMenuItem(title: "Size", action: nil, keyEquivalent: "")
+    let sizes = NSMenu()
+    for n in [24, 32, 48, 72] { sizes.addItem(item("\(n)px", #selector(menuSize(_:)), Double(n), checked: Int(s.size) == n)) }
+    size.submenu = sizes
+    m.addItem(size)
+    if s.card != nil || s.link != nil { m.addItem(item(s.card != nil ? "Detach from Card" : "Detach from Arrow", #selector(menuDetach(_:)))) }
+    m.addItem(.separator())
+    m.addItem(item("Delete", #selector(menuDelete(_:))))
+    return m
+  }
+  /** The board's STICKER_COLORS (packages/board/src/stickers/glyphs.tsx) and their menu names */
+  static let stickerColors = ["#E3A132", "#E8743B", "#D9534F", "#E25D8B", "#8B6FD6", "#4C8BF5", "#3FA36B", "#6B7280"]
+  static let stickerColorNames = ["Gold", "Orange", "Red", "Pink", "Purple", "Blue", "Green", "Grey"]
+  private final class StickerRef: NSObject {
+    let id: String
+    let value: Any?
+    init(id: String, value: Any?) {
+      self.id = id
+      self.value = value
+    }
+  }
+  private func ref(_ sender: Any?) -> StickerRef? { (sender as? NSMenuItem)?.representedObject as? StickerRef }
+  @objc private func menuEditQuestion(_ sender: Any?) { if let r = ref(sender), let k = stickerLayers[r.id] { delegate?.canvas(self, editQuestion: r.id, at: toView(k.frame)) } }
+  @objc private func menuAnswered(_ sender: Any?) { if let r = ref(sender) { delegate?.canvas(self, sticker: r.id, answered: r.value as? Bool ?? true) } }
+  @objc private func menuColor(_ sender: Any?) { if let r = ref(sender) { delegate?.canvas(self, sticker: r.id, color: r.value as? String) } }
+  @objc private func menuSize(_ sender: Any?) { if let r = ref(sender), let n = r.value as? Double { delegate?.canvas(self, sticker: r.id, size: n) } }
+  @objc private func menuDetach(_ sender: Any?) { if let r = ref(sender), let k = stickerLayers[r.id] { delegate?.canvas(self, detachSticker: r.id, at: k.frame.origin) } }
+  @objc private func menuDelete(_ sender: Any?) { if let r = ref(sender) { delegate?.canvas(self, deleteStickers: [r.id]) } }
   /** The selected card's sidenotes (the Insert menu) */
   @objc func showSidenotes(_ sender: Any?) {
     guard let id = selected.first, selected.count == 1 else { return }

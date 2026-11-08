@@ -336,6 +336,7 @@ final class JSBridge {
   fileprivate func titles(_ dir: String, _ id: String, _ cb: @escaping ([[String: String]]) -> Void) { callValue("titles", [dir, id], [[String: String]].self, cb) }
   struct CardText: Decodable { var kind: String; var text: String; var lang: String?; var look: String? }
   struct SidenoteText: Codable { var id: String; var md: String; var lines: [Int]? }
+  fileprivate func dragSticker(_ dir: String, _ id: String, _ k: String, x: Double, y: Double) { js.post { [self] in api.invokeMethod("dragSticker", withArguments: [dir, id, k, x, y]) } }
   fileprivate func sidenotes(_ dir: String, _ id: String, _ card: String, _ cb: @escaping ([SidenoteText]) -> Void) { callValue("sidenotesOf", [dir, id, card], [SidenoteText].self, cb) }
   /** nil when the card has no editable text (the reply is JSON null) */
   fileprivate func textOf(_ dir: String, _ id: String, _ card: String, _ cb: @escaping (CardText?) -> Void) {
@@ -459,6 +460,11 @@ struct Session {
   func setStickerColor(_ k: String, color: String, _ cb: @escaping (Result<SceneChange, Error>) -> Void) { bridge.edit("setStickerColor", dir, id, [k, color], cb) }
   func detachSticker(_ k: String, x: Double, y: Double, _ cb: @escaping (Result<SceneChange, Error>) -> Void) { bridge.edit("detachSticker", dir, id, [k, x, y], cb) }
   func setStickerSize(_ k: String, size: Double, _ cb: @escaping (Result<SceneChange, Error>) -> Void) { bridge.edit("setStickerSize", dir, id, [k, size], cb) }
+  /** A sticker dragged (inside beginDrag … dropSticker): live, then its drop at a world point, on a card or free */
+  func dragSticker(_ k: String, x: Double, y: Double) { bridge.dragSticker(dir, id, k, x: x, y: y) }
+  func dropSticker(_ k: String, x: Double, y: Double, on card: String?, _ cb: @escaping (Result<SceneChange, Error>) -> Void) {
+    bridge.edit("dropSticker", dir, id, [k, x, y, card ?? NSNull()], cb)
+  }
   /** The card's Text sidenotes (on the main thread) */
   func sidenotes(_ card: String, _ cb: @escaping ([JSBridge.SidenoteText]) -> Void) { bridge.sidenotes(dir, id, card, cb) }
   /** The board's card titles, for [[refs]] */

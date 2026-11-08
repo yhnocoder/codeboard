@@ -638,6 +638,14 @@ final class BoardWindowController: NSWindowController, NSToolbarDelegate, NSTabl
       self.canvas(self.canvas, editQuestion: id, at: rect)
     }
   }
+  func canvas(_ c: CanvasView, addSidenoteTo card: String) { panelAction(card, "sidenoteAdd", [:]) }
+  func canvasStickerDragBegan(_ c: CanvasView) { session?.beginDrag() }
+  func canvas(_ c: CanvasView, dragSticker id: String, to p: CGPoint) { session?.dragSticker(id, x: p.x, y: p.y) }
+  func canvas(_ c: CanvasView, dropSticker id: String, at p: CGPoint, on card: String?) { if let session { session.dropSticker(id, x: p.x, y: p.y, on: card, applyChange(session)) } }
+  func canvas(_ c: CanvasView, sticker id: String, color: String?) { if let session { session.setStickerColor(id, color: color ?? "", applyChange(session)) } }
+  func canvas(_ c: CanvasView, sticker id: String, size: Double) { if let session { session.setStickerSize(id, size: size, applyChange(session)) } }
+  func canvas(_ c: CanvasView, detachSticker id: String, at p: CGPoint) { if let session { session.detachSticker(id, x: p.x, y: p.y, applyChange(session)) } }
+  func canvas(_ c: CanvasView, sticker id: String, answered: Bool) { if let session { session.setAnswered(id, done: answered, applyChange(session)) } }
   /** The card's Text sidenotes in the page's panel beside it; `open` = the one to start editing */
   func canvas(_ c: CanvasView, showSidenotes card: String) { showSidenotes(card, open: nil) }
   private func showSidenotes(_ card: String, open: String?) {

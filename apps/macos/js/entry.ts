@@ -173,6 +173,9 @@ const asyncMade = async (dir: string, id: string, fn: (c: Session["cmd"]) => Pro
       req,
       did(session(dir, id), (c) => c.writeSidenote(sn, md)),
     ),
+  dragSticker: (dir: string, id: string, k: string, x: number, y: number) => session(dir, id).dragSticker(k, x, y),
+  dropSticker: (req: number, dir: string, id: string, k: string, x: number, y: number, card: string | null) =>
+    settle(req, session(dir, id).dropSticker(k, x, y, card)),
   newQuestion: (req: number, dir: string, id: string, x: number, y: number) => {
     const s = session(dir, id);
     settle(req, made(s, s.cmd.newQuestion(x, y)));

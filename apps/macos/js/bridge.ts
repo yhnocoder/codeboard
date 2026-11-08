@@ -96,6 +96,8 @@ export interface Session {
   cmd: ReturnType<typeof commands>;
   /** The board is gone from storage: this session writes nothing more */
   kill(): void;
+  dragSticker(id: string, x: number, y: number): void;
+  dropSticker(id: string, x: number, y: number, card: string | null): Promise<SceneChange>;
   flushSave(): void;
   /** Core's raw access, for the gate measurements and tests */
   mutate(fn: (b: Board) => void): boolean;
@@ -465,6 +467,27 @@ export function createBridge(native: Native, opts: { fs?: Fs; timers?: boolean; 
         );
         const fr = sectionFrames(board, rects);
         if (gesture) history.live((b) => dropCards(b, moves, fr));
+        gesture?.();
+        gesture = null;
+        return changes();
+      },
+      /** A sticker dragged: on the canvas at (x, y) meanwhile (unbound while it moves, as the board does) */
+      dragSticker(id: string, x: number, y: number) {
+        history.live((b) => {
+          const k = b.stickers.find((q) => q.id === id);
+          if (k?.at.kind === "canvas") k.at = { kind: "canvas", x: Math.round(x), y: Math.round(y), size: k.at.size };
+        });
+      },
+      /** The drag ends: bound to the card it landed on (its offset from the card's corner) or free on the canvas; the gesture ends */
+      dropSticker(id: string, x: number, y: number, card: string | null): Promise<SceneChange> {
+        history.live((b) => {
+          const k = b.stickers.find((q) => q.id === id);
+          if (k?.at.kind !== "canvas") return;
+          const p = card ? b.place[card] : undefined;
+          k.at = p
+            ? { kind: "canvas", x: Math.round(x - p.x), y: Math.round(y - p.y), size: k.at.size, on: { card: card as string } }
+            : { kind: "canvas", x: Math.round(x), y: Math.round(y), size: k.at.size };
+        });
         gesture?.();
         gesture = null;
         return changes();

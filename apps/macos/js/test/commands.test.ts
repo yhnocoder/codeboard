@@ -206,6 +206,12 @@ describe("the app's commands", () => {
     bridge.cmd.setAnswered(q, true);
     const ch = await bridge.changes();
     expect(ch.stickers.find((s) => s.id === q)?.q).toEqual({ md: "Why here?", done: true });
+    // dragged: one gesture, one undo step; dropped on a card it binds to it (offset from the card's corner)
+    bridge.beginDrag();
+    bridge.dragSticker(q, 10, 10);
+    bridge.dragSticker(q, 20, 20);
+    await bridge.dropSticker(q, 30, 30, "n1");
+    expect(bridge.board().stickers.find((s) => s.id === q)?.at).toMatchObject({ x: 30, y: 30, on: { card: "n1" } });
     bridge.cmd.detachSticker(q, 40, 50);
     bridge.cmd.setStickerSize(q, 40);
     expect(bridge.board().stickers.find((s) => s.id === q)?.at).toMatchObject({ kind: "canvas", x: 40, y: 50, size: 40 });
