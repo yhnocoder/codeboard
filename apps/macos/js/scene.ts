@@ -350,7 +350,7 @@ function codeHeight(c: CodeCard): number {
 
 /** Each Section's frame as the board shows it: its own rect grown around its members (core sectionFrames; the board's
  *  state/sections.ts frames does the same over measured cards; here a Note the app has not measured counts at its estimate) */
-function sectionRects(b: Board): Map<string, { x: number; y: number; w: number; h: number }> {
+export function sectionRects(b: Board): Map<string, { x: number; y: number; w: number; h: number }> {
   const rects = new Map<string, { x: number; y: number; w: number; h: number }>();
   for (const c of b.cards) {
     const p = b.place[c.id];

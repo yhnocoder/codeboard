@@ -8,6 +8,8 @@ const D = SUMMARY.detent;
  *  the vermilion line's fill, whether the seal shows and which level it announces */
 export type Detent = { mist: number; line: number; seal: boolean; to: 0 | 1 };
 export const DETENT_REST: Detent = { mist: 0, line: 0, seal: false, to: 1 };
+/** Let go before it is through, the push starts draining this long after the last step (ms) */
+export const DRAIN_AFTER = D.drainAfter;
 /** The level a zoom shows: 1 (summaries) below the cut */
 export const levelFor = (z: number, cut: number): 0 | 1 => (cut > 0 && z < cut ? 1 : 0);
 /** A zoom step from z0 to z is towards the cut from the level shown */

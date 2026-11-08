@@ -49,6 +49,19 @@ final class CanvasView: NSView {
   private let stickers = CALayer()
   private let top = CALayer()
   private let overlay = CALayer()
+  /** The zoomed-out summary level (Summaries.swift) and what the detent and the switch draw over the board: the mist in the
+   *  board's colour rising from the bottom (styles.css .cutmist), the vermilion line (.cutline) and the seal (.cutseal) */
+  let summaries = SummaryLevel()
+  private let mist = CAGradientLayer()
+  private let cutLine = CALayer()
+  private let cutFill = CALayer()
+  private let seal = CATextLayer()
+  /** The level shown (0 cards, 1 summaries), the push into the detent (0…1) and the switch running */
+  private(set) var level = 0
+  private var push = 0.0
+  private var pushedAt = 0.0
+  private var drainTimer: Timer?
+  private var switchTimer: Timer?
   private(set) var stickerLayers: [String: StickerLayer] = [:]
   /** Ink Wash's scene behind the board (packages/board/src/scenes): the whole view, bottom-anchored, cover */
   private let scene = CALayer()
@@ -100,10 +113,30 @@ final class CanvasView: NSView {
     layer!.backgroundColor = Theme.bg.cgColor
     layer!.masksToBounds = true
     world.anchorPoint = .zero
+    world.addSublayer(summaries.layer)
     for l in [sections, cards, stickers, arrows, top] {
       l.anchorPoint = .zero
       world.addSublayer(l)
     }
+    mist.anchorPoint = .zero
+    mist.startPoint = CGPoint(x: 0.5, y: 1)
+    mist.endPoint = CGPoint(x: 0.5, y: 0)
+    mist.locations = [0, 0.7, 1]
+    if let blur = CIFilter(name: "CIGaussianBlur", parameters: [kCIInputRadiusKey: 10]) { mist.filters = [blur] }
+    mist.isHidden = true
+    cutLine.anchorPoint = .zero
+    cutLine.cornerRadius = 1
+    cutLine.isHidden = true
+    cutFill.anchorPoint = CGPoint(x: 0.5, y: 0.5)
+    cutFill.cornerRadius = 1
+    cutLine.addSublayer(cutFill)
+    seal.anchorPoint = CGPoint(x: 0.5, y: 0.5)
+    seal.alignmentMode = .center
+    seal.borderWidth = 2
+    seal.cornerRadius = 4
+    seal.isHidden = true
+    seal.contentsScale = 2
+    for l in [mist, cutLine, seal] { overlay.addSublayer(l) }
     scene.anchorPoint = .zero
     scene.contentsGravity = .resize
     layer!.addSublayer(scene)
@@ -407,6 +440,7 @@ final class CanvasView: NSView {
     t = CATransform3DScale(t, c.z, c.z, 1)
     world.transform = t
     CATransaction.commit()
+    wantLevel()
     cull()
     if rasterScale == 0 { rasterIfNeeded() } else { settleRaster() }
     showPorts()
@@ -432,7 +466,7 @@ final class CanvasView: NSView {
   func toWorld(_ p: CGPoint) -> CGPoint { CGPoint(x: (p.x - cam.x) / cam.z, y: (p.y - cam.y) / cam.z) }
   func toView(_ r: CGRect) -> CGRect { CGRect(x: r.minX * cam.z + cam.x, y: r.minY * cam.z + cam.y, width: r.width * cam.z, height: r.height * cam.z) }
   func zoom(by f: CGFloat, at p: CGPoint, animated: Bool = false) {
-    let z = min(CanvasView.zMax, max(CanvasView.zMin, cam.z * f))
+    let z = detentZoom(cam.z, min(CanvasView.zMax, max(CanvasView.zMin, cam.z * f)), at: p)
     let k = z / cam.z
     setCamera(Camera(x: p.x - (p.x - cam.x) * k, y: p.y - (p.y - cam.y) * k, z: z), animated: animated)
   }
@@ -527,6 +561,10 @@ final class CanvasView: NSView {
     layoutScene()
     super.layout()
     overlay.frame = bounds
+    cutLine.frame = CGRect(x: bounds.width * 0.12, y: bounds.height - 20, width: bounds.width * 0.76, height: 2)
+    cutFill.bounds = CGRect(origin: .zero, size: cutLine.bounds.size)
+    cutFill.position = CGPoint(x: cutLine.bounds.midX, y: cutLine.bounds.midY)
+    seal.position = CGPoint(x: bounds.width - 28 - seal.bounds.width / 2, y: bounds.height - 68 - seal.bounds.height / 2)
     if !inLiveResize { cull() }
   }
   override func viewDidEndLiveResize() {
@@ -978,5 +1016,119 @@ final class CanvasView: NSView {
     guard let rep = bitmapImageRepForCachingDisplay(in: bounds) else { return nil }
     cacheDisplay(in: bounds, to: rep)
     return rep
+  }
+}
+
+// MARK: the summary level, the detent at its cut and the switch (Summaries.swift; the rules are core's canvas/detent.ts)
+extension CanvasView {
+  func setSummaries(_ s: SumScene) {
+    summaries.apply(s, backing: backing)
+    wantLevel()
+  }
+  /** The level the zoom asks for: a programmatic zoom crosses the cut freely and gets the covered switch too */
+  private func wantLevel() {
+    // the rule asked only when the zoom is on the other side of the cut from the level shown (not a thread hop every frame)
+    guard switchTimer == nil, summaries.cut > 0, (cam.z < summaries.cut) != (level == 1) else { return }
+    let want = DetentRules.levelFor(cam.z, summaries.cut)
+    if want != level { runSwitch(to: want, at: nil) }
+  }
+  /** A zoom step from z0 to z (core detentZoom): towards the cut it stops there and pushes into the detent; through, the switch
+   *  runs. While the switch runs, steps towards the cut are held at it */
+  private func detentZoom(_ z0: CGFloat, _ z: CGFloat, at p: CGPoint) -> CGFloat {
+    let cut = summaries.cut
+    guard cut > 0 else { return z }
+    if !DetentRules.towardCut(z0, z, cut, level) {
+      if push > 0, switchTimer == nil {
+        push = 0
+        show(.rest)
+      }
+      return z
+    }
+    if switchTimer != nil { return z0 == cut || (level == 0 ? z0 < cut : z0 > cut) ? z0 : cut }
+    let to = level == 0 ? 1 : 0
+    push = DetentRules.pushStep(push, z0, z)
+    pushedAt = CACurrentMediaTime()
+    if push >= 1 { runSwitch(to: to, at: p) } else {
+      show(DetentRules.pushed(push, to))
+      drain(to)
+    }
+    return cut
+  }
+  /** Let go before it is through, the push drains (a timer only while it does: nothing ticks at rest) */
+  private func drain(_ to: Int) {
+    guard drainTimer == nil else { return }
+    var last = CACurrentMediaTime()
+    let t = Timer(timeInterval: 1 / 60.0, repeats: true) { [weak self] t in
+      guard let self else { t.invalidate(); return }
+      let now = CACurrentMediaTime()
+      if self.switchTimer != nil || self.push <= 0 { t.invalidate(); self.drainTimer = nil; return }
+      if (now - self.pushedAt) * 1000 > DetentRules.times.drainAfter {
+        self.push = DetentRules.drainStep(self.push, now - last)
+        self.show(self.push <= 0 ? .rest : DetentRules.pushed(self.push, to))
+      }
+      last = now
+      if self.push <= 0 { t.invalidate(); self.drainTimer = nil }
+    }
+    RunLoop.main.add(t, forMode: .common)
+    drainTimer = t
+  }
+  /** The switch: the mist covers the board (from where the push left it), the levels swap under it in one frame, the camera
+   *  is set just across the cut around the push point, and the mist clears */
+  private func runSwitch(to: Int, at: CGPoint?) {
+    switchTimer?.invalidate()
+    push = 0
+    let mist0 = mist.isHidden ? 0 : Double(mist.bounds.height / max(1, bounds.height))
+    let t0 = CACurrentMediaTime()
+    var covered = false
+    let t = Timer(timeInterval: 1 / 60.0, repeats: true) { [weak self] t in
+      guard let self else { t.invalidate(); return }
+      let k = min(1, (CACurrentMediaTime() - t0) * 1000 / DetentRules.times.ms)
+      if k >= DetentRules.times.cover, !covered {
+        covered = true
+        self.level = to
+        logLine("[canvas] summary level %d at z%.3f (cut %.3f, %d columns)", to, self.cam.z, self.summaries.cut, self.summaries.scene?.cols.count ?? 0)
+        self.summaries.layer.isHidden = to == 0
+        for l in [self.sections, self.cards, self.stickers, self.arrows, self.top] { l.isHidden = to == 1 }
+        if let at {
+          let z = CGFloat(DetentRules.acrossCut(self.summaries.cut, to)), kz = z / self.cam.z
+          self.setCamera(Camera(x: at.x - (at.x - self.cam.x) * kz, y: at.y - (at.y - self.cam.y) * kz, z: z), animated: false)
+        }
+      }
+      self.show(DetentRules.switching(k, mist0, to))
+      if k >= 1 {
+        t.invalidate()
+        self.switchTimer = nil
+        self.show(.rest)
+        self.wantLevel()
+      }
+    }
+    RunLoop.main.add(t, forMode: .common)
+    switchTimer = t
+  }
+  private func show(_ d: Detent) {
+    CATransaction.begin()
+    CATransaction.setDisableActions(true)
+    let h = bounds.height * d.mist
+    mist.isHidden = d.mist <= 0
+    mist.colors = [Theme.bg.cgColor, Theme.bg.cgColor, Theme.bg.withAlphaComponent(0).cgColor]
+    mist.frame = CGRect(x: -bounds.width * 0.1, y: bounds.height - h, width: bounds.width * 1.2, height: h)
+    cutLine.isHidden = d.line <= 0
+    cutLine.backgroundColor = Theme.ink.withAlphaComponent(0.12).cgColor
+    cutFill.backgroundColor = Theme.accent.cgColor
+    cutFill.transform = CATransform3DMakeScale(max(0.0001, d.line), 1, 1)
+    seal.isHidden = !d.seal
+    if d.seal {
+      let f = Theme.isInk ? Theme.serif(14, weight: .bold) : Theme.sys(13, weight: .semibold)
+      seal.string = NSAttributedString(string: d.to == 1 ? "SUMMARY" : "DETAIL", attributes: [.font: f, .foregroundColor: Theme.accent, .kern: f.pointSize * (Theme.isInk ? 0.1 : 0.14)])
+      seal.borderColor = Theme.accent.cgColor
+      seal.borderWidth = Theme.isInk ? 2.5 : 2
+      seal.cornerRadius = Theme.isInk ? 5 : 4
+      seal.opacity = 0.92
+      let w = (seal.string as! NSAttributedString).size().width + 20
+      seal.bounds = CGRect(x: 0, y: 0, width: w, height: f.pointSize + 13)
+      seal.position = CGPoint(x: bounds.width - 28 - w / 2, y: bounds.height - 68 - seal.bounds.height / 2)
+      seal.transform = CATransform3DMakeRotation(-3 * .pi / 180, 0, 0, 1)
+    }
+    CATransaction.commit()
   }
 }

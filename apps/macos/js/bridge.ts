@@ -16,6 +16,9 @@ import {
   type Rect,
   sectionFrames,
   type SharedUpdate,
+  layoutSummaries,
+  summaryOf,
+  summarySources,
 } from "@codeboard/core";
 import { dropCards, dropGone, resizePlace } from "@codeboard/core/commands";
 import { createHistory, createSave, type Doc } from "@codeboard/core/history";
@@ -37,6 +40,7 @@ import {
   sceneLink,
   sceneSection,
   sceneSticker,
+  sectionRects,
 } from "./scene";
 
 /** The camera coming to rest is saved after this long (the board's LIVE_DELAY); a failed save is sent again after RESEND_DELAY */
@@ -46,6 +50,25 @@ const LIVE_DELAY = 800,
 type Snap = ReturnType<ReturnType<typeof createHistory>["snap"]>;
 
 /** One open board: what a window (a view onto it) can do; two windows on one board share the session */
+/** The summary level as the shell draws it (core SumLayout, each column with its text) */
+export type SumScene = {
+  S: number;
+  P: number;
+  cut: number;
+  cols: {
+    key: string;
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+    hd: number;
+    title: string;
+    text: string;
+    head?: 1 | 2;
+    kick?: string;
+    code?: { name: string; at: string };
+  }[];
+};
 export interface Session {
   readonly id: string;
   board(): Board;
@@ -53,6 +76,7 @@ export interface Session {
   scene(): Promise<Scene>;
   /** What changed since the shell last got the scene (or the whole scene): items to put in, ids gone */
   changes(): Promise<SceneChange>;
+  summaries(): SumScene;
   synced(fn: (b: Board) => void, keys?: string[]): void;
   syncShared(cards: SharedUpdate[]): void;
   route(rects: Record<string, DrawnRect>, only?: string[], modes?: Record<string, Mode>): RouteGeo[];
@@ -379,6 +403,33 @@ export function createBridge(native: Native, opts: { fs?: Fs; timers?: boolean; 
         return s;
       },
       changes,
+      /** The zoomed-out summary level (core summary.ts): the layout and each column's text, for the shell to draw */
+      summaries(): SumScene {
+        const rects = new Map<string, Rect>();
+        for (const c of board.cards) {
+          const p = board.place[c.id];
+          if (p) rects.set(c.id, { x: p.x, y: p.y, w: p.w, h: estSize(c, p).h });
+        }
+        const lay = layoutSummaries(summarySources(board, (id) => rects.get(id), sectionRects(board)));
+        return {
+          S: lay.S,
+          P: lay.P,
+          cut: lay.cut,
+          cols: lay.cols.map((c) => ({
+            key: c.key,
+            x: c.x,
+            y: c.y,
+            w: c.w,
+            h: c.h,
+            hd: c.hd,
+            title: c.title,
+            text: summaryOf(board, c.key)?.text ?? "",
+            ...(c.head ? { head: c.head.level } : {}),
+            ...(c.kick ? { kick: c.kick } : {}),
+            ...(c.code ? { code: c.code } : {}),
+          })),
+        };
+      },
       synced,
       syncShared,
       route: (rects, only, modes) => router.route(routeModel(board), rects, only, modes),

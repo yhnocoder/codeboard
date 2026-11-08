@@ -2,7 +2,20 @@
 // thread (RouteWorker.swift). During a drag the shell posts the moved cards' rectangles here every frame and draws the latest
 // finished routes; the main context never routes mid-drag. `setModel` gets the routing model from each Scene / SceneChange.
 // The same bundle, in a context of the shell's own (Ink.swift), draws Ink Wash's paper and brush frames with core's maths.
-import { framePath, paperSheet } from "@codeboard/core/canvas";
+import {
+  acrossCut,
+  drainStep,
+  framePath,
+  levelFor,
+  paperSheet,
+  pushed,
+  pushStep,
+  DRAIN_AFTER,
+  SWITCH_COVER,
+  SWITCH_MS,
+  switching,
+  towardCut,
+} from "@codeboard/core/canvas";
 import { type RouteModel, Router, setLook, shellGeo } from "./routes";
 
 const routers = new Map<string, { model: RouteModel; router: Router }>();
@@ -21,6 +34,15 @@ const str = (x: unknown) => JSON.stringify(x ?? null);
   // pattern, light or dark; a Section's brush frame for a size, seed and title gap
   paperSheet: (dark: boolean, seed: number) => str(paperSheet(dark, seed)),
   brushFrame: (w: number, h: number, seed: number, gap: number) => framePath(w, h, seed, gap),
+  // the summary cut's detent and switch (core canvas/detent.ts), the same rules the board's state/summary.ts runs
+  detent: () => str({ ms: SWITCH_MS, cover: SWITCH_COVER, drainAfter: DRAIN_AFTER }),
+  levelFor,
+  towardCut,
+  pushStep,
+  pushed: (q: number, to: number) => str(pushed(q, to as 0 | 1)),
+  drainStep,
+  switching: (t: number, mist0: number, to: number) => str(switching(t, mist0, to as 0 | 1)),
+  acrossCut,
   route: (key: string, rects: string, only?: string) => {
     const e = routers.get(key);
     return e

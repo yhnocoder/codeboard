@@ -72,6 +72,7 @@ const asyncMade = async (dir: string, id: string, fn: (c: Session["cmd"]) => Pro
         .then((s) => s?.scene() ?? null),
     ),
   changes: (req: number, dir: string, id: string) => settle(req, session(dir, id).changes()),
+  summaries: (dir: string, id: string) => str(session(dir, id).summaries()),
   undo: (req: number, dir: string, id: string) => settle(req, session(dir, id).undo()),
   redo: (req: number, dir: string, id: string) => settle(req, session(dir, id).redo()),
   endDrag: (req: number, dir: string, id: string, moves: string) =>

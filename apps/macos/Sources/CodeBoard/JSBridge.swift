@@ -315,6 +315,7 @@ final class JSBridge {
     let json = encodeJSON(moves)
     js.post { [self] in api.invokeMethod("drag", withArguments: [dir, id, json]) }
   }
+  fileprivate func summaries(_ dir: String, _ id: String, _ cb: @escaping (SumScene) -> Void) { callValue("summaries", [dir, id], SumScene.self, cb) }
   fileprivate func cam(_ dir: String, _ id: String, _ c: Camera) { js.post { [self] in api.invokeMethod("cam", withArguments: [dir, id, c.x, c.y, c.z]) } }
   fileprivate func route(_ dir: String, _ id: String, _ rects: [String: WorldRect], only: [String]?, modes: [String: String]?, _ cb: @escaping ([RouteGeo]) -> Void) {
     var args: [Any] = [dir, id, encodeJSON(rects), only.map(encodeJSON) ?? "null"]
@@ -402,6 +403,8 @@ struct Session {
   /** The drag ends with the cards at these rectangles: core puts them in the Section they land in */
   func endDrag(_ moves: [JSBridge.Move], _ cb: @escaping (Result<SceneChange, Error>) -> Void) { bridge.endDrag(dir, id, moves, cb) }
   func cam(_ c: Camera) { bridge.cam(dir, id, c) }
+  /** The zoomed-out summary level's layout (core layoutSummaries), each column with its text */
+  func summaries(_ cb: @escaping (SumScene) -> Void) { bridge.summaries(dir, id, cb) }
   /** The arrows' geometry for these card rectangles (all links, or only the ones named), on the main thread when routed; modes =
    *  the side choices the drag's live routes (RouteWorker) made, adopted so the final route does not jump */
   func route(_ rects: [String: WorldRect], only: [String]? = nil, modes: [String: String]? = nil, _ cb: @escaping ([RouteGeo]) -> Void) { bridge.route(dir, id, rects, only: only, modes: modes, cb) }

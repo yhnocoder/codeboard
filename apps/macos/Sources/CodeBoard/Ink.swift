@@ -41,6 +41,8 @@ enum Ink {
     done.wait()
     return out
   }
+  /** A core rule (router.js CodeRouter) called with plain arguments, its result as a string */
+  static func rule(_ name: String, _ args: [Any]) -> String? { onJS { art?.invokeMethod(name, withArguments: args)?.toString() } }
   private static var sheets: [String: NSImage] = [:]
   private static var frames: [String: CGPath] = [:]
   /** The seals and the scene, made and read on the main thread only */

@@ -401,6 +401,7 @@ final class BoardWindowController: NSWindowController, NSToolbarDelegate, NSTabl
         self.canvas.router?.setModel(self.canvas.routeKey, encodeJSON(s.routing))
         session.titles { [weak self] t in if self?.session?.id == session.id { self?.canvas.notes.setTitles(t) } }
         self.canvas.load(s)
+        self.summaries()
         self.selectCurrent()
         self.onOpened?(s)
         done?(s)
@@ -462,7 +463,17 @@ final class BoardWindowController: NSWindowController, NSToolbarDelegate, NSTabl
     if let r = ch.routing { canvas.router?.setModel(canvas.routeKey, encodeJSON(r)) }
     canvas.apply(ch)
     if let n = ch.name { setTitle(n) }
+    if !ch.cards.isEmpty || !ch.gone.cards.isEmpty || !ch.sections.isEmpty || !ch.moved.isEmpty { summaries() }
     if !ch.cards.isEmpty || !ch.gone.cards.isEmpty, let session { session.titles { [weak self] t in if self?.session?.id == session.id { self?.canvas.notes.setTitles(t) } } }
+  }
+
+  /** The summary level laid out again (after the scene, and after a change to the cards or Sections) */
+  private func summaries() {
+    guard let session else { return }
+    session.summaries { [weak self] s in
+      guard let self, self.session?.id == session.id else { return }
+      self.canvas.setSummaries(s)
+    }
   }
 
   // MARK: canvas → core
