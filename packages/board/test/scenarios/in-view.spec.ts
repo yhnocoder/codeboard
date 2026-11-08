@@ -6,7 +6,8 @@
 //   culledCardsShownBeforeInView   a board of 240 code cards in rows of 12, at rest with the far ones culled (.off, .far): mouse
 //                                  wheel notches out and a flight back to 100 %, a pinch out to the summary cut, fast pans and a
 //                                  fling there, notches out and a fast pan: no card in view is culled in its frame or the one
-//                                  before
+//                                  before; then a jump (a reveal with reduced motion), which is no motion to follow: no card
+//                                  past the culling's half a viewport is shown, and the rest a few a frame
 //   summarySwapShowsDrawnLevel     a pinch out through the summary cut, a stop there and a pinch back in, then out and in without
 //                                  a stop (state/summary.ts): each level is shown only once it was drawn in the frame before (the
 //                                  card level awake with the cards in view not culled, the summary level with every column),
@@ -40,19 +41,24 @@ async function stepped<T>(h: Host, read: (pg: Page) => Promise<T>, act: (frame: 
   return out;
 }
 
-/** A frame's cards: those in view and those culled (cull.ts .off: content hidden, .far: not drawn at all) */
-type Cards = { z: number; view: string[]; culled: string[] };
+/** A frame's cards: those in view, those culled (cull.ts .off: content hidden, .far: not drawn at all) and those more than half a
+ *  viewport outside it (where the culling alone shows none: only the lead view's band does) */
+type Cards = { z: number; view: string[]; culled: string[]; beyond: string[] };
 const cardsOf = (pg: Page) =>
   pg.evaluate((): Cards => {
     const view: string[] = [],
-      culled: string[] = [];
+      culled: string[] = [],
+      beyond: string[] = [];
+    const W = innerWidth,
+      H = innerHeight;
     for (const c of document.querySelectorAll<HTMLElement>(".world .card")) {
       const r = c.getBoundingClientRect();
-      if (r.right > 0 && r.left < innerWidth && r.bottom > 0 && r.top < innerHeight) view.push(c.dataset.id!);
+      if (r.right > 0 && r.left < W && r.bottom > 0 && r.top < H) view.push(c.dataset.id!);
+      if (r.right < -W / 2 || r.left > W * 1.5 || r.bottom < -H / 2 || r.top > H * 1.5) beyond.push(c.dataset.id!);
       if (c.matches(".off, .far")) culled.push(c.dataset.id!);
     }
     const world = document.querySelector(".world") as HTMLElement;
-    return { z: +(/scale\(([\d.e-]+)\)/.exec(world.style.transform)?.[1] ?? 1), view, culled };
+    return { z: +(/scale\(([\d.e-]+)\)/.exec(world.style.transform)?.[1] ?? 1), view, culled, beyond };
   });
 
 /** Code cards in rows of 12, as the perf board has them (perf.ts bigBoard) */
@@ -70,11 +76,19 @@ function codeGrid(): Board {
 }
 
 test("culledCardsShownBeforeInView", async () => {
-  const h = await open({ board: codeGrid(), w: W, h: H });
+  const board = codeGrid(),
+    target = board.cards.at(-1)!.id;
+  const h = await open({ board, w: W, h: H });
   await idle(h);
   const pg = h.page,
     m = pg.mouse;
-  const fs = await stepped(h, cardsOf, async (frame) => {
+  /** the frames read before the jump */
+  let jumpAt = 0;
+  const fs = await stepped(h, cardsOf, async (frame0) => {
+    const frame = async () => {
+      jumpAt++;
+      return frame0();
+    };
     const frames = async (n: number) => {
       for (let i = 0; i < n; i++) await frame();
     };
@@ -121,17 +135,32 @@ test("culledCardsShownBeforeInView", async () => {
     await to100();
     await zoomOut(2, 30);
     await pan(150, 40, 20);
+    // the far corner revealed with reduced motion: the camera jumps there in a frame
+    await pg.emulateMedia({ reducedMotion: "reduce" });
+    const at = jumpAt;
+    await h.post({ type: "reveal", card: target });
+    await frames(30);
+    jumpAt = at;
   });
   const blank: string[] = [],
     late: string[] = [];
+  // after the jump: the cards shown in a frame outside the view, past half a viewport (the lead band's) and in all
+  const band: string[] = [],
+    burst: string[] = [];
   fs.forEach((f, i) => {
     if (!i) return;
     const now = new Set(f.culled),
       before = new Set(fs[i - 1].culled);
     for (const id of f.view) {
       if (now.has(id)) blank.push(`${i}:${id}@${f.z.toFixed(3)}`);
-      else if (before.has(id)) late.push(`${i}:${id}@${f.z.toFixed(3)}`);
+      // a jump brings culled cards into view in the frame it lands: shown in that very frame (no blank), never before
+      else if (before.has(id) && i <= jumpAt) late.push(`${i}:${id}@${f.z.toFixed(3)}`);
     }
+    if (i <= jumpAt) return;
+    const shown = [...before].filter((id) => !now.has(id) && id !== target && !f.view.includes(id));
+    for (const id of shown) if (f.beyond.includes(id)) band.push(`${i}:${id}`);
+    // SHOW (cull.ts) code cards a frame
+    if (shown.length > 3) burst.push(`${i}:${shown.length}`);
   });
   const zMin = Math.min(...fs.map((f) => f.z));
   check(
@@ -146,6 +175,18 @@ test("culledCardsShownBeforeInView", async () => {
     late.length,
     late.slice(0, 12),
   );
+  check(
+    "culledCardsShownBeforeInView the jump brings culled cards into view",
+    fs.slice(jumpAt + 1).some((f, i) => f.view.some((id) => fs[jumpAt + i].culled.includes(id))),
+    { jumpAt, frames: fs.length },
+  );
+  check(
+    "culledCardsShownBeforeInView after a jump no card past half a viewport is shown (no lead band)",
+    !band.length,
+    band.length,
+    band.slice(0, 12),
+  );
+  check("culledCardsShownBeforeInView after a jump the cards off view are shown a few a frame", !burst.length, burst);
   await h.page.context().close();
 });
 
