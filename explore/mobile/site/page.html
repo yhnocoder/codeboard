@@ -1,0 +1,26 @@
+<title>CodeBoard Mobile</title>
+<meta name="theme-color" content="#f4efe6" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1d1a17" media="(prefers-color-scheme: dark)">
+<link rel="stylesheet" href="board/board.css">
+<link rel="stylesheet" href="mobile.css">
+<div id="root"></div>
+<div id="mb">
+  <header class="mb-top">
+    <button class="mb-btn" id="mb-list" aria-label="Boards">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+    </button>
+    <div class="mb-title" id="mb-title"></div>
+    <button class="mb-btn" id="mb-fit" aria-label="Fit">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+    </button>
+  </header>
+  <div class="mb-sheet" id="mb-sheet" hidden>
+    <div class="mb-scrim" id="mb-scrim"></div>
+    <nav class="mb-panel">
+      <div class="mb-grab"></div>
+      <div class="mb-head">Boards</div>
+      <ul id="mb-boards"></ul>
+    </nav>
+  </div>
+</div>
+<script type="module" src="mobile.js"></script>

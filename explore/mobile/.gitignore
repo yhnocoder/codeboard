@@ -1,0 +1,4 @@
+# built by record.ts and copied from packages/board/dist
+out/
+site/board/
+site/data/
