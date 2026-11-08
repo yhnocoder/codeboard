@@ -1,0 +1,4 @@
+# box supports macOS 15 and later (Linda, 2026-11): every build for macOS, local and CI, targets it, and so do the C++
+# libraries the build scripts compile (usearch) and link (ONNX Runtime)
+[env]
+MACOSX_DEPLOYMENT_TARGET = { value = "15.0", force = true }

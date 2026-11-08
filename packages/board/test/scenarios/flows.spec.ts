@@ -1183,6 +1183,103 @@ test("paletteMeaning", async () => {
   await h.page.context().close();
 });
 
+test("paletteRerank", async () => {
+  // Related by Meaning in the order by meaning first; the reranker (codeboard.search.rerank) answers later and the rows slide
+  // to its order: the same rows (nodes), moved by a transform animation, with the highlighted one still highlighted.
+  // Records Warm Ink before, halfway and after, light and dark: test-out/harness/rerank-*.png
+  const labels = [
+    "Block tables map a sequence to its KV blocks",
+    "Prefix caching shares blocks by hash",
+    "Freeing blocks when a sequence finishes",
+    "Preemption swaps a sequence out",
+    "Why the block size is 256",
+  ];
+  const reranked = [2, 0, 4, 1, 3];
+  for (const lit of [true, false]) {
+    let answer!: () => void;
+    const answered = new Promise<void>((r) => (answer = r));
+    const row = (n: number) => ({
+      kind: "sidenote",
+      label: labels[n],
+      detail: n % 2 ? "Memory" : "This board",
+      board: h.board().id,
+      card: h.board().cards[0].id,
+      sidenote: `sn${n}`,
+    });
+    const h = await open({
+      board: boardWith("BlockManager.deallocate"),
+      light: lit,
+      w: 1100,
+      h: 640,
+      scale: 2,
+      settings: { theme: "warm-ink" },
+      on: async (m, reply) => {
+        if (m.type === "searchMeaning") {
+          await reply(m.req!, { items: labels.map((_, n) => row(n)) });
+          return true;
+        }
+        if (m.type !== "rerankMeaning") return false;
+        await answered;
+        await reply(m.req!, { items: reranked.map(row) });
+        return true;
+      },
+    });
+    const tag = lit ? "light" : "dark";
+    await h.page.keyboard.press("ControlOrMeta+k");
+    await h.page.locator(".palette input:focus").waitFor();
+    await h.page.keyboard.type("when are kv blocks freed");
+    await expect(h.page.locator(".palette .cand[data-k]")).toHaveCount(5);
+    await until(h, "the rerank asked", () => h.sent.some((m) => m.type === "rerankMeaning"));
+    await h.page.keyboard.press("ArrowDown"); // the second row: it moves to the fourth
+    await shot(h, `rerank-${tag}-1-before`, "now"); // not idle: the rerank is still being held
+    await h.page.evaluate(() => {
+      for (const e of document.querySelectorAll<HTMLElement>(".palette .cand[data-k]")) (e as any).__was = e.dataset.k;
+    });
+    // halfway through the slide: the animations are paused there for the picture, then let go
+    const watch = h.page.evaluate(
+      () =>
+        new Promise<{ moving: number; from: string[] }>((done) => {
+          const rows = () => [...document.querySelectorAll<HTMLElement>(".palette .cand[data-k]")];
+          const seen = () => {
+            const a = rows().flatMap((e) => e.getAnimations() as Animation[]);
+            if (!a.length) return requestAnimationFrame(seen);
+            for (const x of a) x.pause();
+            for (const x of a) x.currentTime = Number(x.effect?.getTiming().duration) / 2;
+            done({
+              moving: a.length,
+              from: a.map((x) =>
+                String(((x.effect as KeyframeEffect).getKeyframes()[0] as { transform?: string }).transform ?? ""),
+              ),
+            });
+          };
+          seen();
+        }),
+    );
+    answer();
+    const mid = await watch;
+    await shot(h, `rerank-${tag}-2-halfway`, "now");
+    await h.page.evaluate(() => {
+      for (const e of document.querySelectorAll(".palette .cand[data-k]")) for (const a of e.getAnimations()) a.play();
+    });
+    await shot(h, `rerank-${tag}-3-after`);
+    const after = await h.page.evaluate(() => ({
+      keys: [...document.querySelectorAll<HTMLElement>(".palette .cand[data-k]")].map((e) => e.dataset.k),
+      kept: [...document.querySelectorAll<HTMLElement>(".palette .cand[data-k]")].every((e) => (e as any).__was),
+      on: (document.querySelector(".palette .cand.on") as HTMLElement | null)?.dataset.k,
+    }));
+    check(
+      `paletteRerank (${tag}) slides the rows to the reranker's order, keeps their nodes and the highlighted row`,
+      after.keys.join() === reranked.map((n) => `s:sn${n}`).join() &&
+        after.kept &&
+        after.on === "s:sn1" &&
+        mid.moving >= 4 &&
+        mid.from.every((t) => /^translateY\(-?\d/.test(t) && !/^translateY\(0px\)/.test(t)),
+      { after, mid },
+    );
+    await h.page.context().close();
+  }
+});
+
 // Records how faint Related by Meaning rows look (Warm Ink and Ink Wash, light and dark, at 2x): test-out/harness/faint-*.png
 test("paletteMeaningFaintLooks", async () => {
   const rows: [string, boolean][] = [

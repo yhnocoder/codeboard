@@ -79,7 +79,7 @@ fn utf16_len(s: &str) -> u32 {
     s.encode_utf16().count() as u32
 }
 
-fn utf16_at(s: &str, byte: usize) -> u32 {
+pub(crate) fn utf16_at(s: &str, byte: usize) -> u32 {
     utf16_len(&s[..byte])
 }
 

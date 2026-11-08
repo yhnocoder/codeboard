@@ -982,6 +982,11 @@
           "default": "",
           "description": "Embedding model name on that server. Empty: the first model whose name has \"embed\"."
         },
+        "codeboard.search.rerank": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Read the best results of Search › Related by Meaning again with a reranker (hs-rerank-1, run by box on your machine) and reorder them when it answers. The first search after turning it on downloads the model, once (195 MB, into box's data folder); until it is there, and if the download fails, the order stays by meaning. Not in the Linux and Intel Mac builds (no ONNX Runtime for them): there it has no effect, and CodeBoard says so when it is turned on. Off: the order by meaning alone."
+        },
         "codeboard.storageDir": {
           "type": "string",
           "default": "",

@@ -1,7 +1,9 @@
 name: box
 # box (packages/box) for every platform the one .vsix serves, each built on and smoke-tested on its own runner: cargo's tests
-# (the service over its Unix socket or named pipe) and the release binary through the TypeScript client (test/smoke.mjs).
-# release.yml calls this for the binaries it packs; a PR that changes box runs it as a check.
+# (the service over its Unix socket or named pipe, the C ABI), the release binary through the TypeScript client
+# (test/smoke.mjs), the Node addon in a Node process (test/smoke-addon.mjs) and, on macOS, the Swift package (swift test).
+# release.yml calls this for the binaries it packs; a PR that changes box runs it as a check. The Node addon of each
+# platform is uploaded on its own (node-addon-<platform>), not into the extension.
 on:
   workflow_call:
   pull_request:
@@ -14,12 +16,17 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Linux is a static musl build, so it runs on any distribution
-          - { os: ubuntu-24.04, target: x86_64-unknown-linux-musl, platform: linux-x64, exe: box }
-          - { os: macos-15, target: aarch64-apple-darwin, platform: darwin-arm64, exe: box }
-          # cross-built on Apple silicon; it runs there under Rosetta 2
-          - { os: macos-15, target: x86_64-apple-darwin, platform: darwin-x64, exe: box }
-          - { os: windows-2025, target: x86_64-pc-windows-msvc, platform: win32-x64, exe: box.exe }
+          # Linux is a static musl build, so it runs on any distribution: built with zig (cargo-zigbuild), whose libc++ for
+          # musl the C++ of usearch needs (musl-tools has no C++ compiler)
+          # rerank: built with the reranker (ONNX Runtime, prebuilt by ort for these targets only; the Linux binary is static
+          # musl, for which there is none, so only its tests, against glibc, have it)
+          - { os: ubuntu-24.04, target: x86_64-unknown-linux-musl, platform: linux-x64, exe: box, rerank: true }
+          - { os: macos-15, target: aarch64-apple-darwin, platform: darwin-arm64, exe: box, rerank: true }
+          # cross-built on Apple silicon; it runs there under Rosetta 2. ort has no ONNX Runtime for x86_64-apple-darwin
+          - { os: macos-15, target: x86_64-apple-darwin, platform: darwin-x64, exe: box, rerank: false }
+          - { os: windows-2025, target: x86_64-pc-windows-msvc, platform: win32-x64, exe: box.exe, rerank: true }
+          - { os: ubuntu-24.04-arm, target: aarch64-unknown-linux-musl, platform: linux-arm64, exe: box, rerank: true }
+          - { os: windows-11-arm, target: aarch64-pc-windows-msvc, platform: win32-arm64, exe: box.exe, rerank: true }
     name: box (${{ matrix.platform }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 25
@@ -34,12 +41,29 @@ jobs:
       - uses: actions/setup-node@v6
         with: { node-version: 22, package-manager-cache: false }
       - if: runner.os == 'Linux'
-        run: sudo apt-get update -q && sudo apt-get install -qy musl-tools
+        uses: taiki-e/install-action@v2
+        with: { tool: cargo-zigbuild }
+      - if: runner.os == 'Linux'
+        run: pip3 install --user ziglang
       - name: Build
         run: |
-          cargo build --release --locked --bin box --target ${{ matrix.target }}
+          # the reranker (ONNX Runtime) where ort has it, never in the static musl build
+          if [ "${{ runner.os }}" = Linux ]; then build="zigbuild"; elif ${{ matrix.rerank }}; then build="build --features rerank"; else build="build"; fi
+          cargo $build --release --locked --bin box --target ${{ matrix.target }}
           mkdir -p bin/${{ matrix.platform }}
           cp target/${{ matrix.target }}/release/${{ matrix.exe }} bin/${{ matrix.platform }}/
+          # box supports macOS 15 and later (.cargo/config.toml): the binary must say so, not the toolchain's default
+          if [ "${{ runner.os }}" = macOS ]; then otool -l bin/${{ matrix.platform }}/box | grep -A4 LC_BUILD_VERSION | grep -q "minos 15.0"; fi
+      - name: Build the Node addon and the C ABI library
+        run: |
+          # a musl cdylib must not be static: the addon is loaded by Node, which links the C library itself
+          if [ "${{ runner.os }}" = Linux ]; then target=${{ matrix.target }}; target=${target/musl/gnu}; else target=${{ matrix.target }}; fi
+          rustup target add $target
+          cargo build --release --locked -p box-node -p box-ffi --target $target
+          case "${{ runner.os }}" in Windows) lib=box_node.dll ;; macOS) lib=libbox_node.dylib ;; *) lib=libbox_node.so ;; esac
+          mkdir -p node/bin/${{ matrix.platform }}
+          cp target/$target/release/$lib node/bin/${{ matrix.platform }}/box.node
+          echo "FFI_LIB_DIR=$PWD/target/$target/release" >> "$GITHUB_ENV"
       - name: Can this runner run it?
         id: runs
         run: |
@@ -49,11 +73,43 @@ jobs:
           else
             echo "ok=true" >> "$GITHUB_OUTPUT"
           fi
+      # on Linux against glibc (the same code; the tests need a C++ toolchain for the host, which musl has none of)
+      # hs-rerank-1 (195 MB) for the reranker's tests, downloaded once and kept in the cache, never per run
+      - name: The reranker's model (cached)
+        if: matrix.platform == 'darwin-arm64'
+        id: rerank-model
+        uses: actions/cache@v4
+        with: { path: ~/hs-rerank-1, key: hs-rerank-1-c866580692c6 }
+      - name: Download the reranker's model (cache miss only)
+        if: matrix.platform == 'darwin-arm64' && steps.rerank-model.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ~/hs-rerank-1 && cd ~/hs-rerank-1
+          curl -sSLo model.onnx https://huggingface.co/hindsight-ai/hs-rerank-1/resolve/main/onnx/model.onnx
+          curl -sSLo tokenizer.json https://huggingface.co/hindsight-ai/hs-rerank-1/resolve/main/tokenizer.json
+          shasum -a 256 -c <<'SUMS'
+          c866580692c6bf274b11ca622db4329f4cbfd6f08f96af964badc31d748ef243  model.onnx
+          609d8f4c067cd3950f88594c5a802616cea245823836ef5848ee4fc40aab5b6f  tokenizer.json
+          SUMS
+      - if: matrix.platform == 'darwin-arm64'
+        run: echo "BOX_RERANKER=$HOME/hs-rerank-1" >> "$GITHUB_ENV"
       - name: Smoke test (cargo tests, release build, native)
         if: steps.runs.outputs.ok == 'true'
-        run: cargo test --release --locked --target ${{ matrix.target }}
+        run: |
+          target=${{ matrix.target }}; [ "${{ runner.os }}" = Linux ] && target=${target/musl/gnu} && rustup target add $target
+          features=; ${{ matrix.rerank }} && features="--features rerank"
+          cargo test --release --locked $features --target $target
       - name: Smoke test (the binary through the TypeScript client)
         if: steps.runs.outputs.ok == 'true'
         run: node test/smoke.mjs bin/${{ matrix.platform }}/${{ matrix.exe }}
+      # the runner's Node is arm64: an x64 addon cannot load in it
+      - name: Smoke test (the Node addon in this Node process)
+        if: steps.runs.outputs.ok == 'true' && matrix.platform != 'darwin-x64'
+        run: node test/smoke-addon.mjs node/bin/${{ matrix.platform }}/box.node
+      - name: Swift package (swift test over the C ABI)
+        if: matrix.platform == 'darwin-arm64'
+        working-directory: packages/box/swift
+        run: BOX_LIB_DIR="$FFI_LIB_DIR" swift test
       - uses: actions/upload-artifact@v6
         with: { name: "box-${{ matrix.platform }}", path: packages/box/bin, retention-days: 7 }
+      - uses: actions/upload-artifact@v6
+        with: { name: "node-addon-${{ matrix.platform }}", path: packages/box/node/bin, retention-days: 7 }

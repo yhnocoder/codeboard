@@ -10,6 +10,9 @@ use std::path::Path;
 
 pub type Key = [u8; 32];
 
+/// The layout of the manifests (PRAGMA user_version)
+const SCHEMA: i64 = 2;
+
 /// Days a manifest is kept without a sync or a search
 pub const MANIFEST_DAYS: i64 = 30;
 
@@ -41,7 +44,7 @@ pub struct PieceRow {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ItemRow {
     pub id: String,
-    /// What the item was made from (model, title, text, images): the same hash, the same pieces
+    /// What the item was made from (title, text, images): the same hash, the same pieces under the manifest's model
     pub hash: Key,
     pub groups: Vec<String>,
     /// JSON the client gave, handed back with hits
@@ -85,11 +88,21 @@ type R<T> = rusqlite::Result<T>;
 impl Store {
     pub fn open(file: &Path) -> R<Store> {
         let db = Connection::open(file)?;
+        // the manifests of an older layout go (an item's hash was the model's too); content stays, so a sync finds every
+        // vector it had and embeds nothing again
+        let v: i64 = db.query_row("PRAGMA user_version", [], |r| r.get(0))?;
+        if v != SCHEMA {
+            db.execute_batch(&format!(
+                "DROP TABLE IF EXISTS pieces; DROP TABLE IF EXISTS items; DROP TABLE IF EXISTS manifests;
+                 PRAGMA user_version = {SCHEMA};"
+            ))?;
+        }
         db.execute_batch(
             "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA foreign_keys=ON;
              CREATE TABLE IF NOT EXISTS content(key BLOB PRIMARY KEY, model TEXT NOT NULL, vec BLOB NOT NULL) WITHOUT ROWID;
              CREATE INDEX IF NOT EXISTS content_model ON content(model);
              CREATE TABLE IF NOT EXISTS models(model TEXT PRIMARY KEY, clip REAL NOT NULL, scales BLOB NOT NULL);
+             CREATE TABLE IF NOT EXISTS probes(model TEXT PRIMARY KEY, dim INTEGER NOT NULL, vecs BLOB NOT NULL);
              CREATE TABLE IF NOT EXISTS manifests(id INTEGER PRIMARY KEY, source TEXT NOT NULL, ref TEXT NOT NULL,
                model TEXT NOT NULL, used INTEGER NOT NULL, UNIQUE(source, ref));
              CREATE TABLE IF NOT EXISTS items(manifest INTEGER NOT NULL REFERENCES manifests(id) ON DELETE CASCADE,
@@ -311,6 +324,36 @@ impl Store {
         )?;
         tx.commit()?;
         Ok((m, c))
+    }
+
+    /// Every model's probe vectors (probe.rs)
+    pub fn probes(&self) -> R<Vec<(String, Vec<Vec<f32>>)>> {
+        let mut q = self.db.prepare("SELECT model, dim, vecs FROM probes")?;
+        q.query_map([], |r| {
+            let dim: i64 = r.get(1)?;
+            let b: Vec<u8> = r.get(2)?;
+            let xs: Vec<f32> = b.as_chunks::<4>().0.iter().map(|c| f32::from_le_bytes(*c)).collect();
+            Ok((r.get(0)?, xs.chunks(dim.max(1) as usize).map(<[f32]>::to_vec).collect()))
+        })?
+        .collect()
+    }
+
+    pub fn put_probes(&self, model: &str, vs: &[Vec<f32>]) -> R<()> {
+        let dim = vs.first().map_or(0, Vec::len) as i64;
+        let b: Vec<u8> = vs.iter().flatten().flat_map(|x| x.to_le_bytes()).collect();
+        self.db.execute(
+            "INSERT OR REPLACE INTO probes(model, dim, vecs) VALUES (?, ?, ?)",
+            params![model, dim, b],
+        )?;
+        Ok(())
+    }
+
+    /// The keyword documents some manifest has (keyword::hid of its items' hashes)
+    pub fn item_hids(&self) -> R<std::collections::HashSet<u64>> {
+        let mut q = self.db.prepare("SELECT DISTINCT hash FROM items")?;
+        q.query_map([], |r| r.get::<_, Key>(0))?
+            .map(|k| k.map(|k| crate::keyword::hid(&k)))
+            .collect()
     }
 
     pub fn content_count(&self) -> R<usize> {

@@ -26,7 +26,7 @@ jobs:
       - run: npm test # the box client and Related by Meaning tests use the binary the build made (packages/box/bin)
       - name: box (Rust) lint and tests
         working-directory: packages/box
-        run: cargo clippy --all-targets --locked -- -D warnings && cargo test --locked
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings && cargo test --locked
       - uses: ./.github/actions/chromium
       - name: Markdown demo (@yhnocoder/markdown on its own, built and driven in Chromium)
         run: npm test -w @codeboard/markdown-demo

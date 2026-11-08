@@ -1,0 +1,6 @@
+language = "C"
+include_guard = "BOX_H"
+header = "/* box's C ABI (packages/box/ffi). Made by cbindgen: BOX_WRITE_HEADER=1 cargo test -p box-ffi writes it again */"
+documentation_style = "c99"
+style = "type"
+cpp_compat = true

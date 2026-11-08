@@ -459,6 +459,9 @@ export type BoardToHost =
   | { type: "searchPick"; req: number; item: SearchItem; alt?: boolean }
   /** ⌘K's Related by Meaning (host meaning.ts): cards and sidenotes of the project's boards closest in meaning to q */
   | { type: "searchMeaning"; req: number; q: string; scope?: "all" | "board" } // board = only what is on the asking board
+  /** searchMeaning's list in the reranker's order (codeboard.search.rerank; off: { items: [], off: true }), for the Palette
+   *  to reorder to once it answers */
+  | { type: "rerankMeaning"; req: number; q: string; scope?: "all" | "board" }
   /** ⌘K closed: one session's trace, kept on this machine only (host searchtrace.ts) */
   | { type: "searchTrace"; trace: SearchTrace }
   | { type: "entryPoints"; req: number }
@@ -727,6 +730,7 @@ type Replies = {
   search: SearchItem[];
   searchPick: NewCard | null;
   searchMeaning: MeaningResult;
+  rerankMeaning: MeaningResult;
   entryPoints: SearchItem[];
   diff: DiffData;
   commits: Commit[];

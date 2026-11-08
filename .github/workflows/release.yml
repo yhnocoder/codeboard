@@ -54,7 +54,7 @@ jobs:
       - run: chmod +x packages/box/bin/*/box # artifacts lose the executable bit
       - uses: ./.github/actions/setup
       - name: Check every platform's box is in the extension
-        run: for p in linux-x64 darwin-arm64 darwin-x64; do test -x extensions/vscode/bin/$p/box; done && test -f extensions/vscode/bin/win32-x64/box.exe
+        run: for p in linux-x64 linux-arm64 darwin-arm64 darwin-x64; do test -x extensions/vscode/bin/$p/box; done && for p in win32-x64 win32-arm64; do test -f extensions/vscode/bin/$p/box.exe; done
       - name: Package the extension
         working-directory: extensions/vscode
         run: npm run package

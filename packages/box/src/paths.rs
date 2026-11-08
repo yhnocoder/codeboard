@@ -12,7 +12,7 @@ pub struct Paths {
     pub db: PathBuf,
     /// The token clients send first (only the user can read it)
     pub token: PathBuf,
-    /// Held by the running service: one per data folder
+    /// Held by the process that has the index open (the service): one per data folder
     pub lock: PathBuf,
     pub log: PathBuf,
     /// The local socket as Node's net.connect takes it: a file on macOS and Linux, a named pipe on Windows
@@ -31,12 +31,13 @@ pub fn paths(home: &Path) -> Paths {
     let socket = format!(r"\\.\pipe\{}", pipe_name(home));
     #[cfg(not(windows))]
     let socket = home.join("box.sock").to_string_lossy().into_owned();
+    let f = box_core::index::Files::of(home);
     Paths {
-        home: home.to_path_buf(),
-        db: home.join("index.db"),
+        home: f.home,
+        db: f.db,
         token: home.join("token"),
-        lock: home.join("box.lock"),
-        log: home.join("box.log"),
+        lock: f.lock,
+        log: f.log,
         socket,
     }
 }
