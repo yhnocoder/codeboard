@@ -1,12 +1,13 @@
 // 静态 Markdown 放进元素里。打开一大块白板时：视野附近的 Note 马上渲染；远处的、还没缓存的先占位（原文排版、但整块藏着，
 // 绝不让人看到没渲染的原文），之后：
-// - 每一帧：已经在屏幕里的、镜头照上一帧的动法再走几帧会看到的（state/lead.ts，和 cull.ts 一样）不限，这一帧全部渲染：
+// - 每一帧：已经在屏幕里的、镜头照上一帧的动法下一两帧会看到的（state/lead.ts SURE，和 cull.ts 一样）不限，这一帧全部渲染：
 //   藏着的 Note 绝不在屏幕里，也不在进到屏幕的那一帧才渲染（那一帧的瓦片要现画，GPU 显存紧时那一帧是空白的）；
-//   进到视野外一圈（和 cull.ts 显示卡片的范围一样，半屏）的，近的先，一帧最多 FRAME_MS，超了的下一帧接着（这一帧它还藏着，不会露出原文）
+//   再下一帧会看到的排最前，然后是进到视野外一圈（和 cull.ts 显示卡片的范围一样，半屏）的，近的先，一帧最多 FRAME_MS，
+//   超了的下一帧接着（这一帧它还藏着，不会露出原文）
 // - 空闲时：其余的由近到远补完（镜头在动时每段最多 3ms，免得挤进平移、缩放的帧）
 import { createEffect, createRoot, on, untrack } from "solid-js";
 import { cam, camMoving } from "../state/camera";
-import { leadView, meets, type ScreenBox } from "../state/lead";
+import { SURE, leadView, meets, type ScreenBox } from "../state/lead";
 import { applyMdLayout, type Markdown, type MdLayout } from "@yhnocoder/markdown";
 import { escHtml } from "@codeboard/core";
 
@@ -65,10 +66,13 @@ function paint(j: Job) {
   if (!j.inline) applyMdLayout(j.el, j.layout);
   j.painted?.(j.el);
 }
-// 已经在屏幕里、几帧以后会进来的排最前（-2），屏幕外一圈里的其次（-1），远处的按距离
+// 已经在屏幕里、下一两帧会进来的排最前（-3），再下一帧会进来的其次（-2），屏幕外一圈里的再次（-1），远处的按距离
 const byDist = () => {
-  const lead = leadView();
-  return [...pending.values()].map((j) => ({ j, d: soon(j.el, lead) ? -2 : offView(j.el) })).sort((a, b) => a.d - b.d);
+  const next = leadView(SURE),
+    lead = leadView();
+  return [...pending.values()]
+    .map((j) => ({ j, d: soon(j.el, next) ? -3 : soon(j.el, lead) ? -2 : offView(j.el) }))
+    .sort((a, b) => a.d - b.d);
 };
 function run(j: Job) {
   pending.delete(j.el);
@@ -88,8 +92,8 @@ function near() {
   }
   for (const { j, d } of byDist()) {
     if (d >= 0) break;
-    // 已经在屏幕里、几帧以后会进来的不看预算，这一帧一定画出来；只在屏幕外一圈里的守 FRAME_MS
-    if (d === -1 && spent > FRAME_MS) break;
+    // 已经在屏幕里、下一两帧会进来的不看预算，这一帧一定画出来；再下一帧会进来的、屏幕外一圈里的守 FRAME_MS
+    if (d > -3 && spent > FRAME_MS) break;
     const t = performance.now();
     run(j);
     spent += performance.now() - t;
@@ -166,7 +170,7 @@ export function mdInto(
   const j: Job = { md, el, src, inline, layout, painted };
   pending.delete(el);
   // 不跟踪镜头：镜头动了不该让每个 Note 的 effect 重跑
-  if (!inline && !md.isCached(src) && src.trim() && untrack(() => offView(el) >= 0 && !soon(el, leadView()))) {
+  if (!inline && !md.isCached(src) && src.trim() && untrack(() => offView(el) >= 0 && !soon(el, leadView(SURE)))) {
     // 占位：原文撑出差不多的高度，但藏着
     el.classList.add("md-pend");
     el.innerHTML = `<p>${escHtml(src)}</p>`;
