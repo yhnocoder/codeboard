@@ -4,7 +4,19 @@
 // steps, replayed after undo / redo); live = changes during a drag (the whole gesture becomes one undo step when it ends).
 import type { Board } from "../model";
 import { danglingRefs, removeCards, removeStickers } from "../edit";
-import { itemOps, NOT_UNDONE, parse, same, snapper, touched, type Effect, type ItemOp, type Snap } from "./snap";
+import {
+  itemOps,
+  NOT_UNDONE,
+  parse,
+  same,
+  sameContent,
+  snapper,
+  touched,
+  type Effect,
+  type ItemOp,
+  type Snap,
+} from "./snap";
+import { tracker } from "./track";
 import { stamp, upkeeper, type NoteBlocks, type Raw } from "./upkeep";
 import { trimLru } from "./lru";
 
@@ -51,7 +63,31 @@ export interface HistoryPorts {
 
 export function createHistory(doc: Doc, hooks: Hooks, ports: HistoryPorts) {
   const snaps = snapper();
-  const upkeep = upkeeper(doc.raw, ports.noteBlocks);
+  // every write goes through `write`: the snapshot after it stringifies only the items it wrote to (track.ts)
+  const track = tracker(doc.raw);
+  const raw = track.raw;
+  const write = (fn: (b: Board) => void) => doc.write((b) => fn(track.wrap(b)));
+  const upkeeper0 = upkeeper(raw, ports.noteBlocks);
+  // the twins and arrow ends on blocks follow cards and links: run again only after a write that may have changed one
+  let upkeptAt = -1;
+  const upkeep = {
+    run(b: Board) {
+      if (track.upkeepRev() === upkeptAt) return;
+      upkeeper0.run(b);
+      upkeptAt = track.upkeepRev();
+    },
+    reset() {
+      upkeeper0.reset();
+      upkeptAt = -1;
+    },
+  };
+  // new cards get their creation order (stamp); checked again only after a write that may have added one
+  let stampedAt = -1;
+  function stampNew(b: Board) {
+    if (track.cardsRev() === stampedAt) return;
+    stamp(b, raw);
+    stampedAt = track.cardsRev();
+  }
   const undoStack: Snap[] = [];
   const redoStack: Snap[] = [];
   // The current board's snapshot: the one a mutate took after its change is the next mutate's "before". Every write drops it,
@@ -61,12 +97,20 @@ export function createHistory(doc: Doc, hooks: Hooks, ports: HistoryPorts) {
   function snap(): Snap {
     return (cur ??= snapNow());
   }
-  const snapNow = () => snaps.take(doc.read(), syncN);
+  function snapNow(): Snap {
+    const b = doc.read();
+    const s = snaps.take(b, syncN, track.take());
+    if (ports.selfCheck) {
+      const miss = sameContent(snapper().take(b, syncN), s);
+      if (miss) console.warn("[codeboard] snapshot missed a change:", miss);
+    }
+    return s;
+  }
   const stacks = () => hooks.stacks(undoStack.length > 0, redoStack.length > 0);
 
   function reseeTwins() {
     upkeep.reset();
-    doc.write(upkeep.run);
+    write(upkeep.run);
   }
 
   /**
@@ -78,10 +122,10 @@ export function createHistory(doc: Doc, hooks: Hooks, ports: HistoryPorts) {
     const before = snap();
     cur = null;
     try {
-      doc.write((b) => {
+      write((b) => {
         fn(b);
         upkeep.run(b);
-        stamp(b, doc.raw);
+        stampNew(b);
       });
     } catch (e) {
       // the draft is half changed: put the whole board back, no half-changed board is left
@@ -145,7 +189,7 @@ export function createHistory(doc: Doc, hooks: Hooks, ports: HistoryPorts) {
     }
     live((b) => {
       fn?.(b);
-      stamp(b, doc.raw);
+      stampNew(b);
     });
     pushUndo(f.before, snap());
     hooks.changed();
@@ -169,7 +213,7 @@ export function createHistory(doc: Doc, hooks: Hooks, ports: HistoryPorts) {
   /** A change during a drag (no undo step) */
   function live(fn: (b: Board) => void) {
     cur = null;
-    doc.write((b) => {
+    write((b) => {
       fn(b);
       upkeep.run(b);
     });
@@ -194,10 +238,10 @@ export function createHistory(doc: Doc, hooks: Hooks, ports: HistoryPorts) {
    */
   function sync(fn: (b: Board) => void, shared?: string[]) {
     cur = null;
-    doc.write((b) => {
+    write((b) => {
       fn(b);
       upkeep.run(b);
-      stamp(b, doc.raw);
+      stampNew(b);
     });
     syncLog.push({ n: ++syncN, fn, shared });
     trimSync();
@@ -217,7 +261,7 @@ export function createHistory(doc: Doc, hooks: Hooks, ports: HistoryPorts) {
     const xs = syncLog.filter((x) => x.n > s.epoch);
     const shared = new Set(xs.flatMap((x) => x.shared ?? []));
     if (!xs.length) return { any: false, shared };
-    doc.write((b) => {
+    write((b) => {
       for (const x of xs) x.fn(b);
       upkeep.run(b);
     });
@@ -229,8 +273,17 @@ export function createHistory(doc: Doc, hooks: Hooks, ports: HistoryPorts) {
   function restore(s: Snap, now?: Snap) {
     cur = null;
     const ops = now && itemOps(now, s);
-    if (ops) doc.putItems(ops);
-    else doc.replace({ ...parse(s), cam: { ...doc.read().cam } });
+    if (ops) {
+      doc.putItems(ops);
+      // put back in place (the board's reconcile keeps the objects): the next snapshot reads them again
+      const b = doc.read();
+      track.touch(
+        ops.map(([k, at]) => ({ k, at: `${at}`, item: k === "place" ? b.place[at as string] : b[k][at as number] })),
+      );
+    } else {
+      doc.replace({ ...parse(s), cam: { ...doc.read().cam } });
+      track.touchAll();
+    }
     reseeTwins();
     // the host's syncs after the snapshot run again (or ⌘Z would move line numbers back); a replayed board is no longer the snapshot
     const r = replaySync(s);
@@ -273,6 +326,7 @@ export function createHistory(doc: Doc, hooks: Hooks, ports: HistoryPorts) {
     }
     loaded = true;
     doc.replace(b);
+    track.touchAll();
     reseeTwins();
     cur = null;
     topMerge = undefined;

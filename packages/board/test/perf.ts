@@ -551,6 +551,7 @@ async function once() {
   const h = await openBoard(await launch(), {
     until: "shown",
     board,
+    selfCheck: false, // timed as users get it (the self-check takes whole snapshots)
     light: process.argv.includes("--light"),
     settings: THEME ? ({ theme: THEME } as any) : undefined,
     on: (m, reply) =>
@@ -1792,7 +1793,7 @@ async function personaOnce() {
   const fail = (c: string, d: string) => void fails.push(`${c}: ${d.slice(0, 200)}`);
   const run = await realHost(
     [board],
-    { openPage: (o) => openBoard(browser, o, { fail }), afterTest: () => {}, fail },
+    { openPage: (o) => openBoard(browser, { ...o, selfCheck: false }, { fail }), afterTest: () => {}, fail },
     {
       thumbWorker: path.join(REPO, "test-out/harness/thumbs-worker.cjs"),
       storage: process.argv.includes("--cold") ? undefined : path.join(REPO, "test-out/perf-storage"),

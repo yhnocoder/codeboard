@@ -210,6 +210,8 @@ export type OpenOptions = {
   h?: number;
   /** The page's device scale factor (screenshots at 2×); 1 by default */
   scale?: number;
+  /** The board's self-check after every edit (dangling references, snapshots against whole ones); on by default, off to time edits as users get them */
+  selfCheck?: boolean;
   beforeLoad?: (p: Page) => Promise<void>;
   on?: OnMsg;
   host?: Record<string, unknown>;
@@ -270,7 +272,7 @@ export async function openBoard(
 <script>addEventListener("dragover", (e) => e.preventDefault()); addEventListener("drop", (e) => e.preventDefault());</script>
 <script>${ZOOM_MAX}</script>
 <script type="module">import { boot } from "file://${MEDIA}/boot.js"; window.__inflight = 0;
-boot({ post: (m) => { window.__inflight++; window.__host(JSON.stringify(m)).finally(() => window.__inflight--); }, listen: (fn) => addEventListener("message", (e) => fn(e.data)) }, { selfCheck: true });</script></body></html>`,
+boot({ post: (m) => { window.__inflight++; window.__host(JSON.stringify(m)).finally(() => window.__inflight--); }, listen: (fn) => addEventListener("message", (e) => fn(e.data)) }, { selfCheck: ${o.selfCheck !== false} });</script></body></html>`,
   );
   const context = await browser.newContext({
     viewport: { width: o.w ?? 1400, height: o.h ?? 900 },
@@ -300,8 +302,10 @@ boot({ post: (m) => { window.__inflight++; window.__host(JSON.stringify(m)).fina
   const reply = (req: number, data?: unknown, error?: string) => post({ type: "reply", req, data, error });
   page.on("console", async (m) => {
     const text = m.text();
-    // mutate's self-check (core danglingRefs, on in the harness through boot's selfCheck): any hit is a failure in every scenario
+    // mutate's self-check (core danglingRefs, on in the harness through boot's selfCheck): any hit is a failure in every scenario,
     if (text.includes("dangling references")) return watch.fail("dangling-refs", text);
+    // and its snapshot check (core history/track.ts): an edit's snapshot that missed a write the whole board's has
+    if (text.includes("snapshot missed a change")) return watch.fail("snapshot-missed", text);
     if (m.type() !== "error" && m.type() !== "warning") return;
     const url = m.location().url;
     if (OFFLINE.test(text) && /^https?:/.test(url)) return; // expected here, see OFFLINE

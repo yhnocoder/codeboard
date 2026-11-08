@@ -7,6 +7,7 @@
 // changed a shared card since). fx = what that step did outside the board (the host made a board): undone / redone with it
 import type { Board, Place } from "../model";
 import type { BoardPatch, ListPatch } from "../patch";
+import type { Marks } from "./track";
 
 export const KEYS = ["cards", "place", "links", "sections", "sidenotes", "stickers"] as const;
 export type Key = (typeof KEYS)[number];
@@ -17,54 +18,113 @@ export type Snap = { epoch: number; head: string } & Record<Key, string[]> & { i
 /** An undo step's shared item that another board changed since stays as that board left it (undo, and the host's save) */
 export const NOT_UNDONE = "Changed on another board; not undone.";
 
-/** Takes snapshots that share unchanged pieces (and id arrays) with the ones before */
+/**
+ * Takes snapshots that share unchanged pieces (and id arrays) with the ones before. With marks (track.ts), a collection whose order
+ * and members did not change keeps the last snapshot's pieces with only the items written to stringified again, and its id array:
+ * an edit costs what it changed, not the board's size. Without them (or when a collection changed) every item is stringified
+ */
 export function snapper() {
-  const last = new Map<string, string>();
-  let lastIds: Ids | null = null;
-  function piece(k: string, o: unknown) {
-    const s = JSON.stringify(o);
+  /** each item's last string, and the object it was read from */
+  const last = new Map<string, { o: object; s: string }>();
+  let prev: { b: Board; snap: Snap; lists: Record<Key, unknown> } | null = null;
+  let marks: Marks | undefined;
+  /** item = what is stringified (place: [id, the Place]), o = the item's object */
+  function piece(k: string, o: object, item: unknown = o) {
     const p = last.get(k);
-    if (p === s) return p; // same content: keep the old string, the new one can be collected right away
-    last.set(k, s);
+    // the same object, not written to since: in a collection that changed (a card added), the others are not read again
+    if (p && p.o === o && marks && !marks.all && !marks.items.has(o)) return p.s;
+    const s = JSON.stringify(item);
+    if (p?.s === s) {
+      p.o = o;
+      return p.s; // same content: keep the old string, the new one can be collected right away
+    }
+    last.set(k, { o, s });
     return s;
   }
+  /** The last snapshot's pieces of collection k with the marked items read again; null when that is not enough */
+  function patched(k: Key, b: Board, m: Marks): string[] | null {
+    if (!prev || m.all || m.lists.has(k) || prev.lists[k] !== b[k]) return null;
+    let out: string[] | null = null;
+    for (const [o, w] of m.items) {
+      if (w.k !== k) continue;
+      const ps = (out ??= prev.snap[k].slice());
+      if (k === "place") {
+        const i = indexOf(prev.snap.ids.place, w.at);
+        if (i < 0 || b.place[w.at] !== o) return null;
+        ps[i] = piece(`p${w.at}`, o, [w.at, o]);
+      } else {
+        const i = +w.at,
+          x = b[k][i];
+        if (x !== o || prev.snap.ids[k][i] !== x.id) return null;
+        ps[i] = piece(`${PREFIX[k]}${x.id}`, x);
+      }
+    }
+    return out ?? prev.snap[k];
+  }
   return {
-    take(b: Board, epoch: number): Snap {
+    take(b: Board, epoch: number, m?: Marks): Snap {
       const { cards, place, links, sections, sidenotes, stickers, cam: _cam, ...head } = b;
-      const placeIds = Object.keys(place);
-      const p = lastIds;
-      const ids: Ids = {
-        cards: idsOf(cards, p?.cards),
-        place: p && sameArr(placeIds, p.place) ? p.place : placeIds,
-        links: idsOf(links, p?.links),
-        sections: idsOf(sections, p?.sections),
-        sidenotes: idsOf(sidenotes, p?.sidenotes),
-        stickers: idsOf(stickers, p?.stickers),
-      };
-      lastIds = ids;
-      return {
-        epoch,
-        head: JSON.stringify(head),
-        cards: cards.map((x) => piece(`c${x.id}`, x)),
-        place: placeIds.map((id) => piece(`p${id}`, [id, place[id]])),
-        links: links.map((x) => piece(`l${x.id}`, x)),
-        sections: sections.map((x) => piece(`s${x.id}`, x)),
-        sidenotes: sidenotes.map((x) => piece(`n${x.id}`, x)),
-        stickers: stickers.map((x) => piece(`k${x.id}`, x)),
-        ids,
-      };
+      marks = m;
+      const p = prev?.snap;
+      const s = { epoch, ids: {} as Ids } as Snap;
+      for (const k of KEYS) {
+        const kept = m && patched(k, b, m);
+        if (kept && p) {
+          s[k] = kept;
+          s.ids[k] = p.ids[k];
+          continue;
+        }
+        if (k === "place") {
+          const ids = Object.keys(place);
+          s.ids[k] = p && sameArr(ids, p.ids[k]) ? p.ids[k] : ids;
+          s[k] = ids.map((id) => piece(`p${id}`, place[id], [id, place[id]]));
+        } else {
+          const xs = b[k];
+          s.ids[k] = idsOf(xs, p?.ids[k]);
+          s[k] = xs.map((x) => piece(`${PREFIX[k]}${x.id}`, x));
+        }
+      }
+      s.head = m && p && prev?.b === b && !m.head ? p.head : JSON.stringify(head);
+      prev = { b, snap: s, lists: { cards, place, links, sections, sidenotes, stickers } };
+      marks = undefined;
+      return s;
     },
     /** A new board: nothing to share with */
     reset() {
       last.clear();
-      lastIds = null;
+      prev = null;
     },
   };
+}
+/** id → index of an id array, built once per array (an id array is shared until the collection changes) */
+const indexes = new WeakMap<string[], Map<string, number>>();
+function indexOf(ids: string[], id: string): number {
+  let m = indexes.get(ids);
+  if (!m) indexes.set(ids, (m = new Map(ids.map((x, i) => [x, i]))));
+  return m.get(id) ?? -1;
+}
+const PREFIX: Record<Key, string> = {
+  cards: "c",
+  place: "p",
+  links: "l",
+  sections: "s",
+  sidenotes: "n",
+  stickers: "k",
+};
+
+/** Two snapshots hold the same board, piece by piece (the self-check of the marks: an incremental snapshot against a whole one) */
+export function sameContent(a: Snap, b: Snap): string | null {
+  if (a.head !== b.head) return "board fields";
+  for (const k of KEYS) {
+    if (a[k].length !== b[k].length) return k;
+    for (let i = 0; i < a[k].length; i++) if (a[k][i] !== b[k][i]) return `${k} ${b.ids[k][i]}`;
+  }
+  return null;
 }
 
 const idsOf = (xs: { id: string }[], prev?: string[]) =>
   prev && prev.length === xs.length && xs.every((x, i) => x.id === prev[i]) ? prev : xs.map((x) => x.id);
-const sameArr = (a: string[], b: string[]) => a.length === b.length && a.every((x, i) => x === b[i]);
+const sameArr = (a: string[], b: string[]) => a === b || (a.length === b.length && a.every((x, i) => x === b[i]));
 export const same = (a: Snap, b: Snap) => a.head === b.head && KEYS.every((k) => sameArr(a[k], b[k]));
 
 /** The board a snapshot holds (camera not included) */
@@ -91,6 +151,7 @@ export function touched(a: Snap, b: Snap): string[] {
     const ia = a.ids[k],
       ib = b.ids[k];
     if (ia === ib) {
+      if (a[k] === b[k]) continue; // the same pieces: nothing in it changed
       for (let i = 0; i < ib.length; i++) if (a[k][i] !== b[k][i]) out.push(p + ib[i]);
       continue;
     }
@@ -172,6 +233,7 @@ function diffList(ia: string[], pa: string[], ib: string[], pb: string[], ordere
   const set: unknown[] = [];
   if (ia === ib) {
     // same ids (a drag, an edit): piece by piece
+    if (pa === pb) return null;
     for (let i = 0; i < pb.length; i++) if (pa[i] !== pb[i]) set.push(JSON.parse(pb[i]));
     return set.length ? { set } : null;
   }
