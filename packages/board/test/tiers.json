@@ -454,9 +454,10 @@
         "packages/board/src/state/export.ts",
         "packages/board/src/ui/ExportDialog.tsx",
         "packages/core/src/export.ts",
-        "packages/host/src/exports.ts"
+        "packages/host/src/exports.ts",
+        "packages/board/test/scenarios/png-export.spec.ts"
       ],
-      "scenarios": ["export", "svgImagesInHtmlExport", "svgImageInPngExport"]
+      "scenarios": ["export", "svgImagesInHtmlExport", "svgImageInPngExport", "pngExportLooksLikeBoard"]
     },
     "images": {
       "about": "images: Image cards, images in Notes (paste, drop, resize), SVG, the asset store, the DeepSeek image tools (Extract Text, Convert to SVG, Modify SVG, Paste Image Text, Draw as SVG)",
