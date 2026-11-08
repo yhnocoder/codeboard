@@ -37,6 +37,7 @@ import { useMd } from "../md/context";
 import { Summaries } from "./Summaries";
 import { ShelfOutline } from "../ui/ShelfPanel";
 import { cardsAsleep, cardsGone, cardsOpacity, detent } from "../state/summary";
+import { still } from "../state/still";
 
 /** The world-extent boxes (.wext, .cshield) reach this far beyond the cards and Sections, aligned to it: enough that a card
  *  nudged outward does not move them, and no more, since every tile of the box within ~3000 px of the viewport is a raster task
@@ -179,11 +180,14 @@ export function Canvas() {
   // once (a GREEK_LAG after the stop did not help the blank frame Linda saw on a Mac, which was the hint's raster, and made
   // the bars come 1–2 s late). No fade: a compositor fade puts the Notes' bodies on layers of their own and back, which
   // flashed the board
-  const greek = createMemo(() => stillZ() < state.host.settings.simpleBelow && !cardsGone());
+  // a still picture is never redrawn mid-gesture: its prose stays text at every zoom
+  const greek = createMemo(() => !still() && stillZ() < state.host.settings.simpleBelow && !cardsGone());
   // Without the hint a move of the world by a fraction of a device pixel rasters it again (its tiles are drawn at the new
   // offset): a trackpad pan or a fling at 0.34, 1.4 viewports a step. Settled, it moves by whole device pixels
+  // A still picture has no gestures to keep cheap: the world is always rastered at the scale it is shown at
+  const crisp = () => settle() || still();
   const px = (v: number) => {
-    if (!settle()) return v;
+    if (!crisp()) return v;
     const d = window.devicePixelRatio || 1;
     return Math.round(v * d) / d;
   };
@@ -283,7 +287,7 @@ export function Canvas() {
         class="world"
         classList={{
           moving: camMoving(),
-          settle: settle(),
+          settle: crisp(),
           greek: greek(),
         }}
         style={{ transform: `translate(${px(cam.x)}px, ${px(cam.y)}px) scale(${cam.z})` }}
@@ -372,6 +376,18 @@ export function Canvas() {
         {/* a Shelf row dragged over the board: where it will land (ui/ShelfPanel.tsx) */}
         <ShelfOutline />
       </div>
+      <Show when={!still()}>
+        <Overlays />
+      </Show>
+    </div>
+  );
+}
+
+/** What is drawn over the world for editing: the detent at the summary cut, the pan shield, the marquee, the alignment bar and
+ *  the empty board's hint. None of it is in a still picture */
+function Overlays() {
+  return (
+    <>
       {/* the detent at the summary cut (state/summary.ts detent; styles.css .cutmist …): a mist in the board's colour rising from
           the bottom edge by the push (a viewport-tall layer scaled up from the bottom), past 1 covering the board for the
           switch; a vermilion line along the bottom filling with the push; the seal naming the level the push goes to. All in
@@ -407,7 +423,7 @@ export function Canvas() {
       <Show when={!placed().length && state.loaded}>
         <EmptyHint />
       </Show>
-    </div>
+    </>
   );
 }
 

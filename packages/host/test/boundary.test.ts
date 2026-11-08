@@ -1,7 +1,8 @@
 // Package boundaries: host code works with any editor (never imports vscode; editor access goes through Workspace and HostEnv),
 // neither host nor the board reaches into the VS Code extension's files, and analysis sits below core (core imports it, so it imports
 // no other CodeBoard package; core no UI framework and nothing but analysis), and everything outside packages/host goes through its entries: the VS Code extension's code only through
-// @codeboard/host, the board's tests, harness and stories and the extension's tests through @codeboard/host or @codeboard/host/testing,
+// @codeboard/host, the tile builder (packages/tiles) too, the board's tests, harness and stories and the extension's tests through
+// @codeboard/host or @codeboard/host/testing,
 // the board's own code not at all
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -61,6 +62,9 @@ describe("package boundaries", () => {
         ["@codeboard/host", "@codeboard/host/testing"],
       ),
     ).toEqual([]);
+  });
+  it("the tile builder imports the host only from @codeboard/host", () => {
+    expect(hostImports(["tiles/src", "tiles/test"], ["@codeboard/host"])).toEqual([]);
   });
   it("the board's own code doesn't import the host", () => {
     expect(hostImports(["board/src"], [])).toEqual([]);

@@ -1,5 +1,5 @@
 # The full test tier, every 6 hours: every harness scenario (with coverage, for the impact map), the whole e2e, full perf,
-# Storybook and the flake repeat. Reports to the results issue (#19) only when something changes.
+# Storybook, the flake repeat and the Android jobs (android.yml). Reports to the results issue (#19) only when something changes.
 name: Regular
 on:
   schedule:
@@ -90,6 +90,12 @@ jobs:
       - uses: actions/upload-artifact@v6
         if: ${{ !cancelled() }}
         with: { name: storybook, path: test-out/storybook/result.json, retention-days: 14, if-no-files-found: ignore }
+
+  # the phone viewer's instrumented tests on an emulator (too slow for every PR) and its other jobs (android.yml); not part of
+  # the report to the results issue: a failure shows on this run
+  android:
+    uses: ./.github/workflows/android.yml
+    with: { everything: true }
 
   repeat:
     needs: harness

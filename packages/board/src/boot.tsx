@@ -6,6 +6,7 @@ import { wireBoard, type BoardOptions, type Transport } from "./wire";
 import { reportFocus } from "./focus";
 import { send, forwardErrors } from "./host";
 import { MdContext } from "./md/context";
+import { stillBoard, type StillBoard } from "./still";
 import "@yhnocoder/markdown/katex.css";
 import "./fonts.css";
 import "./styles.css";
@@ -15,8 +16,10 @@ import "./themes.css";
 import "./settings.css";
 
 export type { BoardOptions, Transport };
+export type { StillBoard, StillCam, StillLayout } from "./still";
 
-export function boot(t: Transport, o: BoardOptions) {
+/** Starts the board; a still board (o.still) returns what its renderer drives it with */
+export function boot(t: Transport, o: BoardOptions): StillBoard | undefined {
   forwardErrors();
   const md = wireBoard(t, o);
   reportFocus();
@@ -29,4 +32,5 @@ export function boot(t: Transport, o: BoardOptions) {
     document.getElementById("root")!,
   );
   send({ type: "ready" });
+  return o.still ? stillBoard : undefined;
 }

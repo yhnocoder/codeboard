@@ -50,6 +50,8 @@ function inView(el: HTMLElement) {
     t = y * cam.z + cam.y;
   return l + w * cam.z > 0 && l < window.innerWidth && t + hh * cam.z > 0 && t < window.innerHeight;
 }
+/** A Note in view still waits for its Markdown (still.ts: a still picture is taken only once there is none) */
+export const mdPendingInView = () => [...pending.values()].some((j) => j.el.isConnected && inView(j.el));
 function paint(j: Job) {
   const h = j.inline ? j.md.renderInline(j.src) : j.md.render(j.src);
   j.el.classList.remove("md-pend");

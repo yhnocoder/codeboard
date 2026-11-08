@@ -5,6 +5,7 @@ import { tune } from "./tune";
 import { boardSignal, rooted } from "./root";
 import { CAM_STILL } from "./timing";
 import { reduceMotion } from "./motion";
+import { still as stillMode } from "./still";
 
 export class Spring {
   v: number;
@@ -74,7 +75,12 @@ export { camMoving };
 let still: number | undefined,
   stillGen = 0;
 // 「在动」和镜头本身同一批更新：先改镜头再标「在动」的话，第一帧会把按停下比例画的东西（stillZ）多重画一遍
+// A still picture's camera is always at rest: each view is drawn at its own scale at once, with no wait for a stop
 function setCamStore(p: Partial<{ x: number; y: number; z: number }>) {
+  if (stillMode()) {
+    setCamStore0(p);
+    return;
+  }
   batch(() => {
     if (!camMoving()) setCamMoving(true);
     setCamStore0(p);
@@ -108,7 +114,11 @@ export const ZMAX = 2.5;
 /** The board's minimum zoom: fit-all ÷ 1.3 (state/summary.ts sets it; core summaryMinZoom) */
 const [zFloor, setZoomFloor] = boardSignal(0.1);
 export { setZoomFloor };
-export const zMin = () => zFloor();
+/** A still picture is drawn at any zoom its renderer asks for (still.ts): the floor is for someone zooming */
+const STILL_MIN = 0.01;
+export const zMin = () => (stillMode() ? STILL_MIN : zFloor());
+/** The board's own minimum zoom, the one zooming out stops at */
+export const zoomFloor = zFloor;
 
 // 等镜头飞完的（camRest）：飞到了、被打断（拖动、别的镜头操作接手）都算停下
 const resting: (() => void)[] = [];

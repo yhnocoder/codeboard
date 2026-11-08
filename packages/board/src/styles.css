@@ -419,6 +419,11 @@ textarea {
 .world.settle {
   will-change: auto;
 }
+/* A still picture (BoardOptions.still, state/still.ts): the board as it reads, without what is there to edit it: the link dots
+   and ports, the resize grips, the card menus */
+.app.still :is(.eport, .port, .porthit, .lport, .bports, .grip, .sgrip, .mkgrip, .lgrip, .cmenu) {
+  display: none !important;
+}
 /* 缩到设置的比例以下（Simplify Below，默认 50%；卡片层还显示着，Canvas.tsx .greek）卡片简化：
    - Note 正文的字画成浅色字条：字的填充透明（Skia 不画透明的字），段落、标题、代码块的背景按行（lh）画横条，公式（.katex）透明。
      50% 以下世界层不带 will-change（Canvas.tsx HINT_MIN），缩放每帧按新比例重画，画字是最贵的部分（密排的中文 Note，

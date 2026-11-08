@@ -1,0 +1,24 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<link rel="stylesheet" href="board/board.css">
+<style>html, body { margin: 0; height: 100%; overflow: hidden; } #root { position: fixed; inset: 0; }</style>
+</head>
+<body class="vscode-light"><div id="root"></div>
+<script type="module">
+// The tile renderer's page (src/render.ts drives it): the built board as a still picture, given the host's recorded messages.
+// Requests get no answer the board needs (null): the picture is drawn from what was recorded
+import { boot } from "./board/boot.js";
+let listener = () => {};
+window.__deliver = (msgs) => {
+  for (const m of msgs) listener(m);
+};
+window.__board = boot(
+  {
+    listen: (fn) => (listener = fn),
+    post: (m) => {
+      if ("req" in m) queueMicrotask(() => listener({ type: "reply", req: m.req, data: null }));
+    },
+  },
+  { selfCheck: false, still: true },
+);
+</script></body></html>

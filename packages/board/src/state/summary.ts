@@ -25,6 +25,7 @@ import { animate, cam, camMoving, keepCamMoving, setCam, setZoomFloor, viewTrack
 import { boardRef, boardSignal, rooted } from "./root";
 import { dragging } from "./ui";
 import { zlog, zlogging } from "./zoomlog";
+import { still } from "./still";
 
 /** What the summary layer measured at the columns' widths (Summaries.tsx), by item */
 const [measured, setMeasured] = boardSignal<SumMeasured>(new Map());
@@ -87,6 +88,14 @@ export const summaryLayout = rooted(() =>
       : draft();
   }),
 );
+
+/** The summary level is shown as the zoom wants it, no switch running, and at the summary level every column measured */
+export function summarySettled(): boolean {
+  if (running.v || shown.v !== want()) return false;
+  if (level() === 0) return true;
+  const m = measured();
+  return (summaryLayout()?.cols ?? []).every((c) => m.has(c.key));
+}
 
 /** The board's content: its cards and its Sections with their title strips */
 function contentBounds(): Rect | null {
@@ -265,6 +274,11 @@ export function wireSummaries() {
     createEffect(() => setZoomFloor(summaryMinZoom(viewTracked(), contentBounds())));
     let idle: number | undefined;
     createEffect(() => {
+      // a still picture's summaries are part of what it covers (still.ts): built at once, at any zoom
+      if (still()) {
+        if (!built()) setBuilt(true);
+        return;
+      }
       if (inRange() && !built()) {
         if (idle !== undefined) return;
         const go = () => {
