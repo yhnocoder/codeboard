@@ -38,6 +38,7 @@ import { questionsOpen, welcome } from "./state/questions";
 import { exportOpen } from "./state/export";
 import { legendOpen, runState, treeOpen } from "./state/calls";
 import { useMd } from "./md/context";
+import { still } from "./state/still";
 
 /**
  * 白板本身：画布和卡、它自己的提示（面包屑、新版本横幅、讲解条、toast）、侧栏、浮层、菜单、对话框。
@@ -53,7 +54,9 @@ export function BoardView(p: { children?: JSX.Element }) {
   // 慢动作：CSS 里的时长都乘 --t（系统「减少动态效果」时 styles.css 的 media 规则仍然优先）
   createEffect(() => {
     const s = tune("animSpeed");
-    if (s === 100) document.documentElement.style.removeProperty("--t");
+    // a still picture shows where every transition ends
+    if (still()) document.documentElement.style.setProperty("--t", "0");
+    else if (s === 100) document.documentElement.style.removeProperty("--t");
     else document.documentElement.style.setProperty("--t", String(100 / s));
   });
   createEffect(
@@ -62,7 +65,7 @@ export function BoardView(p: { children?: JSX.Element }) {
       () => {
         clearTimeout(camT);
         camT = window.setTimeout(() => {
-          if (!state.loaded) return;
+          if (!state.loaded || still()) return;
           const t = camTarget();
           const c = state.board.cam;
           if (Math.abs(c.x - t.x) + Math.abs(c.y - t.y) + Math.abs(c.z - t.z) > 0.5) {
@@ -72,11 +75,17 @@ export function BoardView(p: { children?: JSX.Element }) {
       },
     ),
   );
+  const font = () => (state.host.fontFamily ? `${state.host.fontFamily}, var(--mono0)` : undefined);
+  // a still picture is the canvas alone: nothing over it, nothing to edit (styles.css .app.still hides the cards' affordances)
+  if (still())
+    return (
+      <div class="app chrome still" style={{ "--font": font() }}>
+        <style>{A.libCallCss()}</style>
+        <Canvas />
+      </div>
+    );
   return (
-    <div
-      class="app chrome"
-      style={{ "--font": state.host.fontFamily ? `${state.host.fontFamily}, var(--mono0)` : undefined }}
-    >
+    <div class="app chrome" style={{ "--font": font() }}>
       <style>{A.libCallCss()}</style>
       <Canvas />
       {/* 报头 / 海报标题：只有部分主题显示（themes.css），默认 display: none。子白板里面包屑已经写着白板名，又占着左上角，不再显示报头 */}

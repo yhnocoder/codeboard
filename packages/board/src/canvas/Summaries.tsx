@@ -17,6 +17,7 @@ import { stillZ } from "../state/camera";
 import { lastDown, observeResize, queueMeasure } from "../state/measure";
 import { summaryLevel, summaryLayout, summaryNear, setSummaryHeights, summaryCut } from "../state/summary";
 import { zlog, zlogging } from "../state/zoomlog";
+import { still } from "../state/still";
 import { SUMMARY, boardLang, summaryOf, summaryPending, type SumCol, type SumKey } from "@codeboard/core";
 import * as A from "../actions";
 import { useMd } from "../md/context";
@@ -71,7 +72,7 @@ export function Summaries() {
         // frame or three in the middle of a zoom); once the level shows (under the switch's mist), every column not built yet is
         // built in that frame
         const [n, setN] = createSignal(0);
-        const all = createMemo(() => summaryLevel() === 1);
+        const all = createMemo(() => summaryLevel() === 1 || still());
         const shown = createMemo(() => (all() || n() >= keys().length ? keys() : keys().slice(0, n())));
         let idle: number | undefined;
         const more = (d: IdleDeadline) => {

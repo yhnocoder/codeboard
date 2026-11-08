@@ -201,10 +201,14 @@ function drawnAround(hosts: Set<string> | null): Rect[] {
   return out;
 }
 
+/** What the board shows, in world px: its visible cards (a folded call subtree's are not; a folded Section counts as its title
+ *  strip), its Sections and what is drawn around the cards */
+export const boardExtent = () =>
+  bounds([...visibleCards().map((c) => rectOf(c)), ...frames().values(), ...drawnAround(null)]);
+
 /** 适应窗口：只框看得见的（折叠的调用子树里的卡不算，折叠的 Section 只算它的标题条） */
 export function fitAll() {
-  const rs = [...visibleCards().map((c) => rectOf(c)), ...frames().values(), ...drawnAround(null)];
-  const b = bounds(rs);
+  const b = boardExtent();
   if (!b) return camTo(80, 80, 1);
   const f = fitRect(b, 1);
   camTo(f.x, f.y, f.z);

@@ -22,15 +22,20 @@ import { wireRefTitles } from "./md/refs";
 import { makeCopy } from "./md/copies";
 import { stillZ } from "./state/camera";
 import { offscreen } from "./state/offscreen";
+import { setStill } from "./state/still";
 
 export type { Transport };
 export type BoardOptions = {
   /** Check every edit for dangling references (HistoryPorts.selfCheck): dev builds and the harness */
   selfCheck: boolean;
+  /** Draw the board as a still, read-only picture (the phone viewer's tiles; state/still.ts). boot then returns the board's
+   *  still API (still.ts) */
+  still?: boolean;
 };
 
 /** Wires the board to its host; returns the board's Markdown instance (Notes, captions, Sidenotes), for MdContext */
 export function wireBoard(t: Transport, o: BoardOptions): Markdown {
+  setStill(!!o.still);
   // [[refs]] to cards, code blocks highlighted by the host, clipboard and undo keys to VS Code, Mermaid in the board's
   // measuring round, completions held while a card moves; the host sets its preamble and asset address (hostio.ts)
   const md: Markdown = createMarkdown({

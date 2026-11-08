@@ -216,6 +216,8 @@ export type OpenOptions = {
   /** "shown": return as soon as the board is on the page, without waiting for idle() (a scenario about the board's first moments,
    *  e.g. acting while the lazy Markdown queue is still filling in idle time) */
   until?: "idle" | "shown";
+  /** Boot the board as a still picture (BoardOptions.still); its still API is window.__still */
+  still?: boolean;
 };
 /** What the caller does with the board's self-checks (a failed one is named by `check`) and, if given, with the page's coverage */
 export type Watch = { fail: (check: string, detail: string) => void; coverage?: (entries: PageCoverage) => void };
@@ -270,7 +272,7 @@ export async function openBoard(
 <script>addEventListener("dragover", (e) => e.preventDefault()); addEventListener("drop", (e) => e.preventDefault());</script>
 <script>${ZOOM_MAX}</script>
 <script type="module">import { boot } from "file://${MEDIA}/boot.js"; window.__inflight = 0;
-boot({ post: (m) => { window.__inflight++; window.__host(JSON.stringify(m)).finally(() => window.__inflight--); }, listen: (fn) => addEventListener("message", (e) => fn(e.data)) }, { selfCheck: true });</script></body></html>`,
+window.__still = boot({ post: (m) => { window.__inflight++; window.__host(JSON.stringify(m)).finally(() => window.__inflight--); }, listen: (fn) => addEventListener("message", (e) => fn(e.data)) }, { selfCheck: true, still: ${!!o.still} });</script></body></html>`,
   );
   const context = await browser.newContext({
     viewport: { width: o.w ?? 1400, height: o.h ?? 900 },
