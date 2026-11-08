@@ -427,6 +427,7 @@
         "packages/board/src/keymap.ts",
         "packages/host/src/prompts.ts",
         "packages/host/src/meaning.ts",
+        "packages/host/src/meaningdocs.ts",
         "packages/host/src/searchtrace.ts",
         "packages/host/src/preview.ts",
         "packages/board/test/scenarios/{dialogs,keyboard-focus,header,multi-select}.spec.ts"
