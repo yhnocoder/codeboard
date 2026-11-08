@@ -331,8 +331,8 @@ export class RerankGate {
       this.gaveUp = true;
       if (tell)
         void ui.info(
-        "This build of CodeBoard has no reranker (the Linux and Intel Mac builds do not include one), so codeboard.search.rerank has no effect here.",
-      );
+          "This build of CodeBoard has no reranker (the Linux and Intel Mac builds do not include one), so codeboard.search.rerank has no effect here.",
+        );
     }
     return m;
   }
