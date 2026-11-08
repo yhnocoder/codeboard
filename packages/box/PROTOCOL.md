@@ -66,29 +66,21 @@ CJK text as single characters and pairs, with jieba's words to rank by; titles c
 
 `{source, ref}` → `{items, pieces, vectors, model, left, indexing, error, synced}`
 
-## model, model_download
-
-`{name}` / `{name, url?, sha256?}` → `{name, files, present, downloading, bytes, total, error, runs}`
-
-The models box downloads itself, by `name`:
-- `hs-rerank-1`: the reranker (hindsight-ai/hs-rerank-1, an mmBERT-small cross-encoder, ONNX int8, MIT; `model.onnx` and
-  `tokenizer.json`, about 195 MB, under `<home>/models/hs-rerank-1/`). `runs` when box is built with the cargo feature
-  `rerank` (onnxruntime through `ort`).
-
-Nothing is downloaded until `model_download` asks; it runs in the background (ask `model` for progress) and each file is
-kept only when its SHA-256 is right. `url` and `sha256` replace the first file's (tests); the defaults are the model's on
-Hugging Face.
-
 ## rerank
 
-The same request as `search` → the same answer, with its first text hits (up to 10) read again by the reranker on the
-whole item text (title and text), those texts in the fused order `0.05 · minmax(vector) + 0.95 · minmax(rerank)` (over
-the texts read) in the places text hits hold (the weight from a plateau on the persona benchmark; the reranker's gain
-there is not proven). Picture hits keep their vector score and place; with fewer than two texts read the order stays.
-Each hit the reranker read has its raw score (a logit) as `rerank`; `reranked` is how many it read. A rerank still
-running when a newer one of the same source comes in stops at its next batch and answers `{hits: [], superseded: true,
-source, ref}`: only the latest query is worth the reranker's cores. An error while the reranker is not downloaded or box
-is built without it. Clients show `search`'s answer first and reorder when this one comes.
+`{source, ref, q, k?, groups?, min_score?, model?}` → `search`'s answer, with its first text hits (up to 10) read again
+by the reranking model of the source's embedding server: `POST {base}/rerank` with the sync's key, `{model, query,
+documents, top_n, return_documents: false}` → `{results: [{index, relevance_score}]}` (Cohere / Jina style; oMLX serves
+hs-rerank-1 this way). `model`: the reranking model; none: the first id with "rerank" in `GET {base}/models`. Each document
+is the item's title and text, cut to its first 800 characters (oMLX cuts nothing, and whole cards were slower and ranked
+worse). Those texts are put in the fused order `0.05 · minmax(vector) + 0.95 · minmax(rerank)` (over the texts read) in the
+places text hits hold (the weight from a plateau on the persona benchmark; the reranker's gain there is not proven).
+Picture hits keep their vector score and place; with fewer than two texts read the order stays. Each hit the reranker read
+has the server's relevance score as `rerank` (a sigmoid, 0..1, on oMLX); `reranked` is how many of the first hits it
+considered. A rerank whose server answer comes after a newer rerank of the same source began answers `{hits: [],
+superseded: true, source, ref}`: only the latest query's order is worth showing. When the server lists no reranking model,
+or answers 404 to `/rerank`, the error starts with `No reranking model on the embedding server`. Clients show `search`'s
+answer first and reorder when this one comes.
 
 ## forget
 

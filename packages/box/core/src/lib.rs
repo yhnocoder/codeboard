@@ -8,7 +8,6 @@ pub mod embed;
 pub mod graph;
 pub mod index;
 pub mod keyword;
-pub mod model;
 pub mod probe;
 pub mod rerank;
 pub mod store;

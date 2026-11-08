@@ -112,7 +112,10 @@ export function startHost(ws: Workspace, env: HostEnv, o: HostOptions): Host {
     ws.settings.onDidChange((e) => {
       if (e.affects(`codeboard.${HOST_SETTINGS.storageDir.key}`)) follow();
       if (e.affects("codeboard.search")) cx.meaning.soon(store);
-      if (e.affects("codeboard.search.rerank")) cx.meaning.rerankChanged();
+      if (e.affects("codeboard.search.rerank") || e.affects("codeboard.search.rerankModel"))
+        cx.meaning.rerankChanged(true);
+      else if (e.affects("codeboard.search.embeddingUrl") || e.affects("codeboard.search.embeddingModel"))
+        cx.meaning.rerankChanged(false);
       if (affectsSettings(e)) hub.broadcast({ type: "host", host: { settings: readSettings(cx) } });
       if (e.affects("editor.fontFamily"))
         hub.broadcast({ type: "host", host: { fontFamily: ws.settings.get<string>("editor.fontFamily") } });

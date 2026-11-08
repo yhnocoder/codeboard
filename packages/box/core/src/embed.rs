@@ -111,7 +111,14 @@ impl Endpoint {
         }
     }
 
-    fn call(&self, path: &str, body: Option<&Value>) -> Result<Result<Value, String>, String> {
+    /// e.g. http://127.0.0.1:11001/v1, without a trailing slash
+    pub(crate) fn base(&self) -> &str {
+        &self.base
+    }
+
+    /// A request to the server: Err when it cannot be reached or sent no JSON, Ok(Err(message)) when it refused (status_of
+    /// reads the status back)
+    pub(crate) fn call(&self, path: &str, body: Option<&Value>) -> Result<Result<Value, String>, String> {
         let url = format!("{}{path}", self.base);
         let auth = self
             .conf
@@ -160,11 +167,7 @@ impl Endpoint {
         if let Some(m) = picked.as_ref() {
             return Ok(m.clone());
         }
-        let j = self.call("/models", None)??;
-        let ids: Vec<String> = j["data"]
-            .as_array()
-            .map(|a| a.iter().filter_map(|m| m["id"].as_str().map(String::from)).collect())
-            .unwrap_or_default();
+        let ids = self.models()?;
         let id = ids
             .iter()
             .find(|x| x.to_lowercase().contains("embed"))
@@ -180,6 +183,15 @@ impl Endpoint {
             })?;
         *picked = Some(id.clone());
         Ok(id)
+    }
+
+    /// The ids of the models the server lists (GET /models)
+    pub(crate) fn models(&self) -> Result<Vec<String>, String> {
+        let j = self.call("/models", None)??;
+        Ok(j["data"]
+            .as_array()
+            .map(|a| a.iter().filter_map(|m| m["id"].as_str().map(String::from)).collect())
+            .unwrap_or_default())
     }
 
     /// POST /embeddings: Ok(Ok(vectors)) in input order, Ok(Err(message)) when the server refused
@@ -277,7 +289,7 @@ impl Endpoint {
 }
 
 /// The HTTP status of a refusal (call's message)
-fn status_of(e: &str) -> Option<u16> {
+pub(crate) fn status_of(e: &str) -> Option<u16> {
     e.strip_prefix("The embedding server answered ")?
         .split(':')
         .next()?
