@@ -19,6 +19,8 @@ import {
   layoutSummaries,
   summaryOf,
   summarySources,
+  SUMMARY,
+  bounds,
 } from "@codeboard/core";
 import { dropCards, dropGone, resizePlace } from "@codeboard/core/commands";
 import { createHistory, createSave, type Doc } from "@codeboard/core/history";
@@ -52,6 +54,7 @@ type Snap = ReturnType<ReturnType<typeof createHistory>["snap"]>;
 /** One open board: what a window (a view onto it) can do; two windows on one board share the session */
 /** The summary level as the shell draws it (core SumLayout, each column with its text) */
 export type SumScene = {
+  content: Rect | null;
   S: number;
   P: number;
   cut: number;
@@ -410,8 +413,12 @@ export function createBridge(native: Native, opts: { fs?: Fs; timers?: boolean; 
           const p = board.place[c.id];
           if (p) rects.set(c.id, { x: p.x, y: p.y, w: p.w, h: estSize(c, p).h });
         }
-        const lay = layoutSummaries(summarySources(board, (id) => rects.get(id), sectionRects(board)));
+        const frames = sectionRects(board);
+        const lay = layoutSummaries(summarySources(board, (id) => rects.get(id), frames));
+        const all = [...rects.values()];
+        for (const f of frames.values()) all.push({ x: f.x, y: f.y - SUMMARY.strip, w: f.w, h: f.h + SUMMARY.strip });
         return {
+          content: bounds(all),
           S: lay.S,
           P: lay.P,
           cut: lay.cut,

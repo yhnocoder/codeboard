@@ -225,6 +225,9 @@ const PICKS = {
     ["slabel-mt", ":root.look-ink-wash .slabel", null, "--mt"],
     ["brush-opacity", ":root.look-ink-wash .brush", null, "fill-opacity"],
     ["head-dot-opacity", ":root.look-ink-wash .ahead.dot", null, "opacity"],
+    ["sum-hd", ":root.look-ink-wash:not([data-theme=\"dark\"]) .sumlay", null, "--sum-hd"],
+    ["sum-grey", ":root.look-ink-wash:not([data-theme=\"dark\"]) .sumlay", null, "--sum-grey"],
+    ["sum-panel", ":root.look-ink-wash:not([data-theme=\"dark\"]) .sumlay", null, "--sum-panel"],
   ],
   "*": [
     ["card-sel-ring", ".card.sel", null, "--ring"],
@@ -236,6 +239,14 @@ const PICKS = {
     ["slabel-mt", ".slabel", null, "--mt"],
     ["sect-radius", ".sect", null, "border-radius"],
     ["card-soft-shadow", ".card::before", null, "box-shadow"],
+    // the summary level's type (styles.css .sumlay; the looks override under :root.look-*)
+    ["sum-hd", ".sumlay", ':root[data-theme="dark"] .sumlay', "--sum-hd"],
+    ["sum-grey", ".sumlay", ':root[data-theme="dark"] .sumlay', "--sum-grey"],
+    ["sum-panel", ".sumlay", ':root[data-theme="dark"] .sumlay', "--sum-panel"],
+  ],
+  "warm-ink": [
+    ["sum-hd", ":root.look-warm-ink:not([data-theme=\"dark\"]) .sumlay", null, "--sum-hd"],
+    ["sum-grey", ":root.look-warm-ink:not([data-theme=\"dark\"]) .sumlay", null, "--sum-grey"],
   ],
 };
 const propOf = (rs, sel, prop) => {

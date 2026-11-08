@@ -73,7 +73,9 @@ final class CanvasView: NSView {
     didSet { onCamera?(cam) }
   }
   var onCamera: ((Camera) -> Void)?
-  static let zMin: CGFloat = 0.05, zMax: CGFloat = 4
+  static let zMax: CGFloat = 4
+  /** The zoom floor: the board's own (core summaryMinZoom over its content and the view), set with the summaries and the view size */
+  private(set) var zMin: CGFloat = 0.05
   private var restTimer: Timer?
   /** A zoom re-rasters once it has settled this long: during the pinch the bitmaps scale */
   private var settleTimer: Timer?
@@ -432,7 +434,7 @@ final class CanvasView: NSView {
   var viewport: CGRect { bounds }
   func setCamera(_ c: Camera, animated: Bool) {
     var c = c
-    c.z = min(Double(CanvasView.zMax), max(Double(CanvasView.zMin), c.z))
+    c.z = min(Double(CanvasView.zMax), max(Double(zMin), c.z))
     cam = c
     CATransaction.begin()
     CATransaction.setDisableActions(!animated)
@@ -466,7 +468,7 @@ final class CanvasView: NSView {
   func toWorld(_ p: CGPoint) -> CGPoint { CGPoint(x: (p.x - cam.x) / cam.z, y: (p.y - cam.y) / cam.z) }
   func toView(_ r: CGRect) -> CGRect { CGRect(x: r.minX * cam.z + cam.x, y: r.minY * cam.z + cam.y, width: r.width * cam.z, height: r.height * cam.z) }
   func zoom(by f: CGFloat, at p: CGPoint, animated: Bool = false) {
-    let z = detentZoom(cam.z, min(CanvasView.zMax, max(CanvasView.zMin, cam.z * f)), at: p)
+    let z = detentZoom(cam.z, min(CanvasView.zMax, max(zMin, cam.z * f)), at: p)
     let k = z / cam.z
     setCamera(Camera(x: p.x - (p.x - cam.x) * k, y: p.y - (p.y - cam.y) * k, z: z), animated: animated)
   }
@@ -561,6 +563,7 @@ final class CanvasView: NSView {
     layoutScene()
     super.layout()
     overlay.frame = bounds
+    floorZoom()
     cutLine.frame = CGRect(x: bounds.width * 0.12, y: bounds.height - 20, width: bounds.width * 0.76, height: 2)
     cutFill.bounds = CGRect(origin: .zero, size: cutLine.bounds.size)
     cutFill.position = CGPoint(x: cutLine.bounds.midX, y: cutLine.bounds.midY)
@@ -1023,7 +1026,14 @@ final class CanvasView: NSView {
 extension CanvasView {
   func setSummaries(_ s: SumScene) {
     summaries.apply(s, backing: backing)
+    floorZoom()
     wantLevel()
+  }
+  /** The zoom floor follows the board's content and the view's size */
+  func floorZoom() {
+    guard bounds.width > 0, let s = summaries.scene else { return }
+    zMin = CGFloat(DetentRules.minZoom(view: bounds.size, content: s.content))
+    if cam.z < zMin { setCamera(cam, animated: false) }
   }
   /** The level the zoom asks for: a programmatic zoom crosses the cut freely and gets the covered switch too */
   private func wantLevel() {

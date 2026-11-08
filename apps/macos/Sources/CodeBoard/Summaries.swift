@@ -21,6 +21,11 @@ struct SumScene: Decodable {
   }
   var S, P, cut: Double
   var cols: [Col]
+  /** The board's content (cards and Sections with their title strips), for the zoom floor (core summaryMinZoom) */
+  var content: Rect?
+  struct Rect: Encodable, Decodable {
+    var x, y, w, h: Double
+  }
 }
 
 /** What the canvas draws for the detent and the switch (core Detent) */
@@ -78,8 +83,8 @@ final class SummaryLevel {
     CardLayer.queue.addOperation {
       let surface = CardLayer.surface(size, scale: scale) {
         appearance.performAsCurrentDrawingAppearance {
-          // ponytail: --sum-hd / --sum-grey are the stylesheet's defaults (ink-2; ink-3 at 80 % over the bg), not the looks' own
-          let hd = Theme.ink2, grey = Theme.ink3.blended(withFraction: 0.2, of: Theme.bg) ?? Theme.ink3
+          // the look's summary type (themes.mjs picks .sumlay's --sum-hd / --sum-grey per look)
+          let hd = Theme.c("sum-hd", or: "ink-2"), grey = Theme.c("sum-grey", or: "ink-3")
           let headFont = { (sz: CGFloat, w: NSFont.Weight) in ink ? Theme.serif(sz, weight: w) : Theme.sys(sz, weight: w) }
           let bodyFont = { (sz: CGFloat, bold: Bool) in ink ? Theme.serif(sz, weight: bold ? .bold : .regular) : Theme.sys(sz, weight: bold ? .bold : .regular) }
           var y = P
@@ -157,6 +162,10 @@ enum DetentRules {
   static func drainStep(_ push: Double, _ dt: Double) -> Double { Ink.rule("drainStep", [push, dt]).flatMap(Double.init) ?? 0 }
   static func switching(_ t: Double, _ mist0: Double, _ to: Int) -> Detent { Ink.rule("switching", [t, mist0, to]).flatMap { try? decodeJSON(Detent.self, $0) } ?? .rest }
   static func acrossCut(_ cut: Double, _ to: Int) -> Double { Ink.rule("acrossCut", [cut, to]).flatMap(Double.init) ?? cut }
+  /** The board's minimum zoom: the whole board fills about 77 % of the view at most (core summaryMinZoom) */
+  static func minZoom(view: CGSize, content: SumScene.Rect?) -> Double {
+    Ink.rule("summaryMinZoom", [Double(view.width), Double(view.height), content.map(encodeJSON) ?? "null"]).flatMap(Double.init) ?? 0.05
+  }
   struct Times: Decodable {
     var ms, cover, drainAfter: Double
   }

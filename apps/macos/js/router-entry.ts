@@ -16,6 +16,7 @@ import {
   switching,
   towardCut,
 } from "@codeboard/core/canvas";
+import { summaryMinZoom } from "@codeboard/core";
 import { type RouteModel, Router, setLook, shellGeo } from "./routes";
 
 const routers = new Map<string, { model: RouteModel; router: Router }>();
@@ -43,6 +44,7 @@ const str = (x: unknown) => JSON.stringify(x ?? null);
   drainStep,
   switching: (t: number, mist0: number, to: number) => str(switching(t, mist0, to as 0 | 1)),
   acrossCut,
+  summaryMinZoom: (w: number, h: number, content: string) => summaryMinZoom({ w, h }, JSON.parse(content)),
   route: (key: string, rects: string, only?: string) => {
     const e = routers.get(key);
     return e
