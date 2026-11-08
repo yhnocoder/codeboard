@@ -309,6 +309,7 @@ function judge(id, run, dir) {
     for (const h of hits.flash)
       fails.push(`flash ${h.box.w}×${h.box.h} at (${h.box.x}, ${h.box.y}) frames ${h.from}–${h.to}`);
     for (const h of hits.jump) fails.push(`${h.key} ${h.kind} by ${h.by} px at frame ${h.frame}`);
+    if (s.dropped_input) fails.push(`${s.dropped_input} inputs dropped (the app was not frontmost)`);
     if (hits.blank.length)
       fails.push(
         `blank cards in view in ${hits.blank.length} frames (${[...new Set(hits.blank.flatMap((b) => b.ids))].slice(0, 3).join(", ")})`,
