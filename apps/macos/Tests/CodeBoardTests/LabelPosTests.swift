@@ -8,7 +8,8 @@ final class LabelPosTests: XCTestCase {
   func testBezAtEndsAndMiddle() {
     XCTAssertEqual(LabelPos.bezAt(line, 0), CGPoint(x: 0, y: 0))
     XCTAssertEqual(LabelPos.bezAt(line, 1), CGPoint(x: 100, y: 0))
-    XCTAssertEqual(LabelPos.bezAt(line, 0.5).x, 49.5, accuracy: 1e-9)
+    // (0 + 3·33 + 3·66 + 100) / 8
+    XCTAssertEqual(LabelPos.bezAt(line, 0.5).x, 49.625, accuracy: 1e-9)
   }
 
   func testAStoredPlaceStaysWhenClear() {
