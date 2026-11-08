@@ -172,11 +172,11 @@ describe.skipIf(!built)("Related by Meaning", () => {
     W.ui = { ...ui, info: async (t: string) => (told.push(t), undefined) };
     let on = true;
     let model = "";
-    let wait = false;
+    let rerankWait = false;
     const set: Record<string, () => unknown> = {
       "codeboard.search.rerank": () => on,
       "codeboard.search.rerankModel": () => model,
-      "codeboard.search.rerankWait": () => wait,
+      "codeboard.search.rerankWait": () => rerankWait,
     };
     W.settings = { ...W.settings, get: <T>(k: string) => (k in set ? set[k]() : get<T>(k)) as T };
     // the vectors score both the same; the reranker reads the sidenote's words in the query
@@ -207,11 +207,11 @@ describe.skipIf(!built)("Related by Meaning", () => {
       const r = await cx.meaning.rerank(store, q, "a");
       expect(ids(r)).toEqual(["sn1", "n1"]);
       // codeboard.search.rerankWait: the search itself answers in the reranker's order, marked so the Palette asks no rerank
-      wait = true;
+      rerankWait = true;
       const w = await cx.meaning.search(store, q, "a");
       expect(ids(w)).toEqual(["sn1", "n1"]);
       expect(w.ranked).toBe(true);
-      wait = false;
+      rerankWait = false;
       const sent = reranker.asked.at(-1)!;
       expect(sent).toMatchObject({ model: "test-rerank", query: q, auth: "Bearer k1" });
       expect(sent.documents).toHaveLength(2);
