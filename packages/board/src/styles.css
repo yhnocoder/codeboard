@@ -435,6 +435,10 @@ textarea {
 .world.greek .card.note:not(.editing) .nbody {
   -webkit-text-fill-color: transparent;
 }
+/* 描了边的字（Ink Wash 的加粗，themes.css）填充透明还剩一圈轮廓：边也去掉 */
+.world.greek .card.note:not(.editing) .nbody :is(strong, b) {
+  -webkit-text-stroke-width: 0;
+}
 .world.greek .card.note:not(.editing) .nbody :is(p, h1, h2, h3, h4, h5, h6, pre) {
   background: repeating-linear-gradient(
     transparent 0 0.3lh,
