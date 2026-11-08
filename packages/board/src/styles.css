@@ -3989,13 +3989,15 @@ kbd {
   cursor: inherit;
 }
 .md pre.md-code .call:hover {
-  background: none;
+  background-color: transparent;
 }
 .cbcm .cm-content .call {
   cursor: text;
 }
+/* only the colour: the background shorthand would reset background-repeat too, and Ink Wash's cv1–cv4 rules, as specific and
+   later, put their stroke back without no-repeat, tiled down the whole line (cv0's was dropped) */
 .cbcm .cm-content .call:hover {
-  background: none;
+  background-color: transparent;
 }
 .lport {
   position: absolute;
