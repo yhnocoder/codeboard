@@ -7,11 +7,12 @@ import * as http from "node:http";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { binIn, connect } from "@codeboard/box";
+import { binIn, connect, type BoxClient } from "@codeboard/box";
 import { emptyBoard, type Board } from "@codeboard/core";
 import { Storage } from "../src/storage/boards";
 import { nodeFs } from "../src/storage/nodefs";
 import { HostContext } from "../src/context";
+import { RerankGate } from "../src/meaning";
 import { search } from "../src/search";
 import { nodeWorkspace } from "./node-workspace";
 
@@ -141,6 +142,23 @@ describe.skipIf(!built)("Related by Meaning", () => {
     other.dispose();
   });
 
+  it("reranks only when codeboard.search.rerank is on, and never downloads a reranker this box cannot run", async () => {
+    const get = W.settings.get;
+    const rerank = (on: boolean) =>
+      (W.settings = { ...W.settings, get: <T>(k: string) => (k === "codeboard.search.rerank" ? on : get<T>(k)) as T });
+    try {
+      rerank(false);
+      expect(await cx.meaning.rerank(store, "kv cache", "a")).toEqual({ items: [], off: true });
+      rerank(true);
+      const m = await probe.model("hs-rerank-1");
+      if (m.runs) return; // a box built with the reranker: box's own tests cover it (the model is not downloaded here)
+      expect(await cx.meaning.rerank(store, "kv cache", "a")).toEqual({ items: [], off: true });
+      expect(await probe.model("hs-rerank-1")).toMatchObject({ present: false, downloading: false });
+    } finally {
+      W.settings = { ...W.settings, get };
+    }
+  });
+
   it("finds an Image card by its picture, read from assets/", async () => {
     fs.mkdirSync(path.join(dir, "assets"), { recursive: true });
     fs.writeFileSync(path.join(dir, "assets", "f00d.png"), "a prefill scheduler diagram");
@@ -252,5 +270,74 @@ describe("Search this board only", () => {
     expect(here[0]).toMatchObject({ card: "n2", board: "a" });
     expect(await search(cx, store, "Scheduler", "board", "b")).toEqual([]);
     expect((await search(cx, store, "cuda graph", "board", "a")).map((r) => r.kind)).toEqual(["sidenote"]);
+  });
+});
+
+describe("the reranker's gate", () => {
+  type Status = Awaited<ReturnType<BoxClient["model"]>>;
+  const status = (s: Partial<Status>): Status => ({
+    name: "hs-rerank-1",
+    files: [],
+    present: false,
+    downloading: false,
+    bytes: 0,
+    runs: true,
+    ...s,
+  });
+  function fake(states: Partial<Status>[]) {
+    const told: string[] = [];
+    const calls: string[] = [];
+    let i = 0;
+    const c = {
+      model: async () => (calls.push("model"), status(states[Math.min(i++, states.length - 1)])),
+      modelDownload: async () => (calls.push("download"), status({ downloading: true })),
+    };
+    const ui = {
+      info: async (t: string) => (told.push(`info: ${t}`), undefined),
+      error: async (t: string) => (told.push(`error: ${t}`), undefined),
+    };
+    return { c, ui, told, calls };
+  }
+
+  it("says once that a box without the reranker cannot rerank, and asks it nothing more", async () => {
+    const f = fake([{ runs: false }]);
+    const g = new RerankGate();
+    await g.check(f.c, f.ui);
+    expect(await g.ready(f.c, f.ui)).toBe(false);
+    expect(await g.ready(f.c, f.ui)).toBe(false);
+    expect(f.calls).toEqual(["model"]);
+    expect(f.told).toHaveLength(1);
+    expect(f.told[0]).toMatch(/^info: .*no reranker.*no effect/);
+  });
+
+  it("stays quiet on a box without the reranker until the setting is turned on", async () => {
+    const f = fake([{ runs: false }]);
+    const g = new RerankGate();
+    expect(await g.ready(f.c, f.ui)).toBe(false);
+    expect(await g.ready(f.c, f.ui)).toBe(false);
+    expect(f.calls).toEqual(["model"]);
+    expect(f.told).toEqual([]);
+  });
+
+  it("asks for the download once, and after it failed says why once and stops asking", async () => {
+    const f = fake([{}, { downloading: true }, { error: "Cannot download the model (offline)" }]);
+    const g = new RerankGate();
+    expect(await g.ready(f.c, f.ui)).toBe(false); // starts the download
+    expect(await g.ready(f.c, f.ui)).toBe(false); // still downloading
+    expect(await g.ready(f.c, f.ui)).toBe(false); // failed
+    for (let n = 0; n < 3; n++) expect(await g.ready(f.c, f.ui)).toBe(false);
+    expect(f.calls).toEqual(["model", "download", "model", "model"]);
+    expect(f.told.map((t) => t.split(":")[0])).toEqual(["info", "error"]);
+    expect(f.told[1]).toContain("(Cannot download the model (offline))");
+    // the setting turned off and on: a new gate tries again
+    const again = new RerankGate();
+    expect(await again.ready(f.c, f.ui)).toBe(false);
+    expect(f.calls.at(-1)).toBe("download");
+  });
+
+  it("answers yes once the model is there", async () => {
+    const f = fake([{ present: true }]);
+    expect(await new RerankGate().ready(f.c, f.ui)).toBe(true);
+    expect(f.told).toEqual([]);
   });
 });

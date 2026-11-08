@@ -4,9 +4,11 @@
 //! Once calibrated, vectors are kept as int8 with one scale per dimension (lossless on persona); the best RESCORE rows are
 //! scored again from the f16 vectors in the store. Before that there are few vectors and they are kept as f32.
 
+use crate::graph::{BRUTE_VISIBLE, DEAD_SHARE, FRESH_MAX, FRESH_SHARE, GRAPH_AT, Graph, GraphKey, graph_key};
 use crate::store::Key;
 use rayon::prelude::*;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 pub const CALIBRATE_AT: usize = 200;
 pub const CLIP_TIMES: f32 = 6.0;
@@ -56,6 +58,34 @@ pub struct ModelIndex {
     raw: Vec<f32>,
     /// keys the model gave no vector for (never asked again)
     empty: std::collections::HashSet<Key>,
+    /// The approximate index once there are GRAPH_AT rows (graph.rs), and which rows it has; the rest are the exact tier
+    graph: Option<Arc<Graph>>,
+    by_graph_key: HashMap<GraphKey, u32>,
+    in_graph: Vec<bool>,
+    in_graph_count: usize,
+    /// A graph is being built (or failed to be: not tried again until the model is read again)
+    pub graph_pending: bool,
+}
+
+/// What a graph is built from: a copy of the int8 rows, so the index stays writable meanwhile
+pub struct GraphSource {
+    pub dim: usize,
+    keys: Vec<GraphKey>,
+    q: Vec<i8>,
+    scales: Vec<f32>,
+}
+
+impl GraphSource {
+    pub fn build(&self) -> Result<Graph, String> {
+        let d = self.dim;
+        Graph::build(d, &self.keys, |i| {
+            self.q[i * d..(i + 1) * d]
+                .iter()
+                .zip(&self.scales)
+                .map(|(x, s)| *x as f32 * s)
+                .collect()
+        })
+    }
 }
 
 /// One candidate of a search: which entry of the caller's list, and its score
@@ -105,7 +135,9 @@ impl ModelIndex {
                 continue;
             }
             self.rows.insert(k, self.keys.len() as u32);
+            self.by_graph_key.insert(graph_key(&k), self.keys.len() as u32);
             self.keys.push(k);
+            self.in_graph.push(false);
             match self.clip {
                 Some(c) => {
                     let w = clipped(&v, c);
@@ -184,6 +216,83 @@ impl ModelIndex {
     pub fn approximate(&self) -> bool {
         self.clip.is_some()
     }
+
+    /// Takes a graph built (or loaded) for this model: the rows it has are searched through it from now on
+    pub fn attach(&mut self, g: Arc<Graph>) {
+        self.in_graph = self.keys.iter().map(|k| g.contains(graph_key(k))).collect();
+        self.in_graph_count = self.in_graph.iter().filter(|x| **x).count();
+        self.graph = Some(g);
+        self.graph_pending = false;
+    }
+
+    pub fn graph(&self) -> Option<&Arc<Graph>> {
+        self.graph.as_ref()
+    }
+
+    /// Whether a graph should be built now: there are GRAPH_AT rows, and none is there, or its exact tier or its dead
+    /// share grew too large
+    pub fn wants_graph(&self) -> bool {
+        if self.graph_pending || self.len() < GRAPH_AT || self.clip.is_none() {
+            return false;
+        }
+        match &self.graph {
+            None => true,
+            Some(g) => {
+                let n = g.len().max(1) as f32;
+                let fresh = self.len() - self.in_graph_count;
+                let dead = g.len().saturating_sub(self.in_graph_count);
+                fresh > FRESH_MAX || fresh as f32 > FRESH_SHARE * n || dead as f32 > DEAD_SHARE * n
+            }
+        }
+    }
+
+    /// What to build a graph from (calibrated rows only)
+    pub fn graph_source(&self) -> GraphSource {
+        GraphSource {
+            dim: self.dim,
+            keys: self.keys.iter().map(graph_key).collect(),
+            q: self.q.clone(),
+            scales: self.scales.clone(),
+        }
+    }
+
+    /// The best `top` of `entries` (rows of this index) for q (prepared), as scan: through the graph when there is one and
+    /// enough rows are visible, with the exact tier compared one by one beside it; otherwise every entry one by one
+    pub fn candidates(&self, q: &[f32], entries: &[u32], top: usize) -> Vec<Scored> {
+        let Some(g) = self.graph.as_ref().filter(|_| entries.len() >= BRUTE_VISIBLE) else {
+            return self.scan(q, entries, top);
+        };
+        // each visible row's entry (most rows have one; the same content in two items has two)
+        const NONE: u32 = u32::MAX;
+        let mut entry_of = vec![NONE; self.len()];
+        let mut more: HashMap<u32, Vec<usize>> = HashMap::new();
+        let mut fresh: Vec<usize> = Vec::new();
+        for (e, &r) in entries.iter().enumerate() {
+            let slot = &mut entry_of[r as usize];
+            if *slot == NONE {
+                *slot = e as u32;
+            } else {
+                more.entry(r).or_default().push(e);
+            }
+            if !self.in_graph[r as usize] {
+                fresh.push(e);
+            }
+        }
+        let mut out: Vec<Scored> = Vec::new();
+        let row_of = |k: GraphKey| self.by_graph_key.get(&k).copied();
+        for (k, s) in g.search(q, top, |k| row_of(k).is_some_and(|r| entry_of[r as usize] != NONE)) {
+            let Some(r) = row_of(k) else { continue };
+            if entry_of[r as usize] == NONE {
+                continue;
+            }
+            out.push((entry_of[r as usize] as usize, s));
+            out.extend(more.get(&r).into_iter().flatten().map(|&e| (e, s)));
+        }
+        let fresh_rows: Vec<u32> = fresh.iter().map(|&e| entries[e]).collect();
+        out.extend(self.scan(q, &fresh_rows, top).into_iter().map(|(i, s)| (fresh[i], s)));
+        out.sort_by(|a, b| b.1.total_cmp(&a.1));
+        out
+    }
 }
 
 fn quantize(w: &[f32], scales: &[f32]) -> Vec<i8> {
@@ -257,5 +366,48 @@ mod tests {
         let full = m.scan(&vs[4], &(0..10).collect::<Vec<_>>(), 1);
         assert_eq!(full[0].0, 4);
         assert!((full[0].1 - 1.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn a_graph_finds_what_brute_force_finds_and_the_exact_tier_is_searched_beside_it() {
+        let dim = 32;
+        let n = crate::graph::BRUTE_VISIBLE + 2000;
+        let vs = vecs(n, dim, 11);
+        let mut m = ModelIndex::new(None);
+        m.add(vs.iter().enumerate().map(|(i, v)| (key(i), Some(v.clone()))).collect());
+        assert!(!m.wants_graph(), "below GRAPH_AT");
+        let g = Arc::new(m.graph_source().build().unwrap());
+        assert_eq!(g.len(), n);
+        let file = std::env::temp_dir().join(format!("box-graph-{}.usearch", std::process::id()));
+        g.save(&file).unwrap();
+        let g = Arc::new(crate::graph::Graph::load(&file, dim).unwrap());
+        std::fs::remove_file(&file).unwrap();
+        m.attach(g);
+        // written after the build: the exact tier
+        let extra = vecs(50, dim, 12);
+        m.add(
+            extra
+                .iter()
+                .enumerate()
+                .map(|(i, v)| (key(n + i), Some(v.clone())))
+                .collect(),
+        );
+        let all: Vec<u32> = (0..m.len() as u32).collect();
+        let mut overlap = 0;
+        for q in vecs(20, dim, 13) {
+            let qp = m.prepare(&q);
+            let exact: Vec<usize> = m.scan(&qp, &all, 10).into_iter().map(|x| x.0).collect();
+            // what matters: the true best 10 are among the candidates scored again exactly
+            let got: Vec<usize> = m.candidates(&qp, &all, RESCORE).into_iter().map(|x| x.0).collect();
+            overlap += exact.iter().filter(|e| got.contains(e)).count();
+        }
+        assert!(overlap >= 195, "graph recall@10 among the candidates {overlap}/200");
+        // a fresh row is found, and only visible rows come back
+        let qp = m.prepare(&extra[7]);
+        assert_eq!(m.candidates(&qp, &all, RESCORE)[0].0, n + 7);
+        let half: Vec<u32> = (0..m.len() as u32).filter(|r| r.is_multiple_of(2)).collect();
+        let got = m.candidates(&m.prepare(&vs[3]), &half, RESCORE);
+        assert!(!got.is_empty() && got.iter().all(|(e, _)| half[*e].is_multiple_of(2)));
+        assert!(got.iter().all(|(e, _)| half[*e] != 3));
     }
 }

@@ -1,0 +1,4 @@
+module CBox {
+  header "box.h"
+  export *
+}

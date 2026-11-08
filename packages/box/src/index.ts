@@ -34,6 +34,8 @@ export type BoxHit = {
   range?: [number, number];
   /** An image piece: its key */
   picture?: string;
+  /** rerank only: the reranker's raw score (a logit) of a text hit it read */
+  rerank?: number;
   meta?: unknown;
 };
 export type BoxSearch = {
@@ -55,9 +57,30 @@ export type BoxResult = {
   unsynced?: true;
   /** The model fingerprint the scores come from */
   model?: string;
+  /** rerank only: how many of the first hits the reranker read (they are in the fused order) */
+  reranked?: number;
+  /** rerank only: a newer rerank of the same source came in before this one was read, so it stopped (no hits) */
+  superseded?: true;
   source: string;
   ref: string;
 };
+/** A model box downloads and runs itself: hs-rerank-1 (the reranker) */
+export type BoxModelName = "hs-rerank-1";
+export type BoxModel = {
+  name: BoxModelName;
+  files: string[];
+  present: boolean;
+  downloading: boolean;
+  bytes: number;
+  total?: number | null;
+  error?: string | null;
+  /** Whether this build of box can run it (the reranker needs the cargo feature rerank) */
+  runs: boolean;
+};
+export type BoxKeywordSearch = Omit<BoxSearch, "min_score">;
+/** A hit of the keyword group: the item's id, its BM25 score, where in the text the first query word is */
+export type BoxKeywordHit = { id: string; score: number; range?: [number, number]; meta?: unknown };
+export type BoxKeywordResult = { hits: BoxKeywordHit[]; source: string; ref: string };
 export type BoxStatus = {
   items: number;
   pieces: number;
@@ -73,6 +96,14 @@ export type BoxClient = {
   /** The whole set of items of a source at a ref; answers at once, indexing goes on in the service */
   sync(source: string, ref: string, embedder: BoxEmbedder, items: BoxItem[]): Promise<{ accepted: number }>;
   search(q: BoxSearch): Promise<BoxResult>;
+  /** search, then its best text hits read again by the reranker, in the fused order (an error while it is not there) */
+  rerank(q: BoxSearch): Promise<BoxResult>;
+  /** A model box runs itself: whether it is downloaded */
+  model(name: BoxModelName): Promise<BoxModel>;
+  /** Starts downloading a model (in box, in the background) unless it is there */
+  modelDownload(name: BoxModelName): Promise<BoxModel>;
+  /** The keyword group (full text), its own list: never mixed with search's; needs no model */
+  searchKeyword(q: BoxKeywordSearch): Promise<BoxKeywordResult>;
   status(source: string, ref: string): Promise<BoxStatus>;
   forget(source: string): Promise<void>;
   /** The service's process id (one per data folder, whoever started it) */
@@ -212,6 +243,10 @@ export function connect(o: { bin: string; home?: string; idle?: number }): BoxCl
   return {
     sync: (source, ref, embedder, items) => ask("sync", { source, ref, embedder, items }),
     search: (q) => ask("search", q),
+    searchKeyword: (q) => ask("search_keyword", q),
+    rerank: (q) => ask("rerank", q),
+    model: (name) => ask("model", { name }),
+    modelDownload: (name) => ask("model_download", { name }),
     status: (source, ref) => ask("status", { source, ref }),
     forget: (source) => ask("forget", { source }),
     pid: async () => (await ready()).pid,

@@ -312,6 +312,13 @@ fn sync_search_and_switching_refs_over_the_socket() {
         json!({ "source": "s", "ref": "main", "q": "kv cache", "min_score": 1.01 }),
     );
     assert_eq!(none["hits"], json!([]));
+    // a rerank of the query just searched reads its vector again, never embedding the query a second time
+    let before = asked.lock().unwrap().len();
+    let _ = c.ask(
+        "rerank",
+        json!({ "source": "s", "ref": "main", "q": "kv cache", "k": 2 }),
+    );
+    assert_eq!(asked.lock().unwrap().len(), before);
 
     // another ref with one item changed: only that item's text is embedded; switching back embeds nothing
     let mut items2 = items.clone();
@@ -379,8 +386,8 @@ fn indexing_recovers_by_itself_after_the_embedding_server_fails() {
     );
     assert_eq!(
         asked.lock().unwrap().len(),
-        3,
-        "two refused, then the batch and nothing more"
+        4,
+        "two refused, then the probe texts (the model's fingerprint), the batch and nothing more"
     );
     let s = c.ok(
         "search",
@@ -502,5 +509,172 @@ fn forget_while_indexing_then_sync_leaves_one_right_index() {
     drop(c);
     assert!(matches!(svc.join().unwrap(), service::Outcome::Stopped));
     // cleanup only: on Windows the service that just exited may hold its files a moment longer
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+#[test]
+fn the_keyword_group_is_there_without_a_model_and_sees_only_its_ref() {
+    let home = std::env::temp_dir().join(format!("box-keyword-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&home);
+    let p = paths::paths(&home);
+    let _watch = watchdog("the_keyword_group_is_there_without_a_model_and_sees_only_its_ref", &p);
+    let h2 = home.clone();
+    let svc = std::thread::spawn(move || service::serve(paths::paths(&h2), Duration::from_millis(300)).unwrap());
+    let mut c = Client::connect(&p);
+    let token = std::fs::read_to_string(&p.token).unwrap();
+    c.ok("hello", json!({ "token": token.trim() }));
+    let items = json!([
+        { "id": "a", "title": "BlockManager", "text": "BlockManager.deallocate frees the kv cache blocks.", "groups": ["b1"],
+          "meta": { "n": 1 } },
+        { "id": "b", "title": "计算受限的判断", "text": "decode 阶段通常是访存受限，prefill 是计算受限。", "groups": ["b2"] },
+    ]);
+    // no embedding server at all: the keyword group is indexed anyway
+    let down = "http://127.0.0.1:9/v1";
+    c.ok(
+        "sync",
+        json!({ "source": "s", "ref": "main", "embedder": { "base": down }, "items": items }),
+    );
+    let kw = |c: &mut Client, r: &str, q: &str, groups: Value| {
+        let mut body = json!({ "source": "s", "ref": r, "q": q });
+        if !groups.is_null() {
+            body["groups"] = groups;
+        }
+        c.ok("search_keyword", body)
+    };
+    let hits = loop {
+        let h = kw(&mut c, "main", "deallocate", Value::Null)["hits"].clone();
+        if !h.as_array().unwrap().is_empty() {
+            break h;
+        }
+        std::thread::sleep(Duration::from_millis(5)); // a poll: the sync's job adds the documents
+    };
+    assert_eq!(
+        hits,
+        json!([{ "id": "a", "score": hits[0]["score"], "range": [13, 23], "meta": { "n": 1 } }])
+    );
+    let ids = |v: Value| -> Vec<String> {
+        v["hits"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|h| h["id"].as_str().unwrap().to_string())
+            .collect()
+    };
+    assert_eq!(ids(kw(&mut c, "main", "计算受限", Value::Null)), ["b"]);
+    assert_eq!(ids(kw(&mut c, "main", "block manager", Value::Null)), ["a"]);
+    assert!(ids(kw(&mut c, "main", "kv cache", json!(["b2"]))).is_empty());
+    let st = c.ok("status", json!({ "source": "s", "ref": "main" }));
+    assert_eq!((st["items"].clone(), st["model"].clone()), (json!(2), Value::Null));
+    assert!(st["error"].as_str().unwrap().contains("Cannot reach"), "{st}");
+    // another ref sees only its own items, though the content is shared
+    c.ok(
+        "sync",
+        json!({ "source": "s", "ref": "feature", "embedder": { "base": down }, "items": [items[1].clone()] }),
+    );
+    loop {
+        if ids(kw(&mut c, "feature", "计算受限", Value::Null)) == ["b"] {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert!(ids(kw(&mut c, "feature", "deallocate", Value::Null)).is_empty());
+    assert!(ids(kw(&mut c, "nowhere", "deallocate", Value::Null)).is_empty());
+    // the server comes: the same manifest gets its vectors, and both groups answer
+    let (base, _) = embedding_server(0);
+    c.ok(
+        "sync",
+        json!({ "source": "s", "ref": "main", "embedder": { "base": base }, "items": items }),
+    );
+    let st = c.settle("s", "main");
+    assert_eq!(
+        (st["left"].clone(), st["model"].clone()),
+        (json!(0), json!("test-embed"))
+    );
+    assert_eq!(
+        ids(c.ok(
+            "search",
+            json!({ "source": "s", "ref": "main", "q": "kv cache", "k": 1 })
+        )),
+        ["a"]
+    );
+    assert_eq!(ids(kw(&mut c, "main", "deallocate", Value::Null)), ["a"]);
+    // the reranker is opt-in: built without it, or not downloaded, a rerank says so
+    let rr = c.ask("rerank", json!({ "source": "s", "ref": "main", "q": "kv cache" }));
+    let why = if cfg!(feature = "rerank") {
+        "not downloaded"
+    } else {
+        "without the reranker"
+    };
+    assert!(rr["error"].as_str().unwrap().contains(why), "{rr}");
+    let m = c.ok("model", json!({ "name": "hs-rerank-1" }));
+    assert_eq!(
+        (m["present"].clone(), m["downloading"].clone()),
+        (json!(false), json!(false))
+    );
+    // forgotten: nothing found
+    c.ok("forget", json!({ "source": "s" }));
+    assert!(ids(kw(&mut c, "main", "deallocate", Value::Null)).is_empty());
+    drop(c);
+    assert!(matches!(svc.join().unwrap(), service::Outcome::Stopped));
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// The reranker end to end, when built with it and its files are there (BOX_RERANKER: a folder with hs-rerank-1's
+/// model.onnx and tokenizer.json, copied into the data folder as model_download would put them)
+#[cfg(feature = "rerank")]
+#[test]
+fn rerank_reorders_the_best_text_hits_and_hands_back_their_raw_scores() {
+    let Some(src) = std::env::var_os("BOX_RERANKER")
+        .map(std::path::PathBuf::from)
+        .filter(|d| d.join("model.onnx").is_file())
+    else {
+        let _ = writeln!(
+            std::io::stderr().lock(),
+            "rerank test skipped: set BOX_RERANKER to hs-rerank-1's folder"
+        );
+        return;
+    };
+    let home = std::env::temp_dir().join(format!("box-rerank-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&home);
+    let dir = home.join("models").join("hs-rerank-1");
+    std::fs::create_dir_all(&dir).unwrap();
+    for f in ["model.onnx", "tokenizer.json"] {
+        std::fs::copy(src.join(f), dir.join(f)).unwrap();
+    }
+    let p = paths::paths(&home);
+    let _watch = watchdog("rerank_reorders_the_best_text_hits_and_hands_back_their_raw_scores", &p);
+    let h2 = home.clone();
+    let svc = std::thread::spawn(move || service::serve(paths::paths(&h2), Duration::from_millis(300)).unwrap());
+    let (base, _) = embedding_server(0);
+    let mut c = Client::connect(&p);
+    let token = std::fs::read_to_string(&p.token).unwrap();
+    c.ok("hello", json!({ "token": token.trim() }));
+    // the stand-in vectors count words: they rank the cuda text first, the reranker knows better
+    let items = json!([
+        { "id": "noise", "title": "Graphs", "text": "Not about kv cache at all: the cuda graph is captured once per batch size." },
+        { "id": "right", "title": "Block manager", "text": "Frees the cache blocks of a finished sequence; prefill reuses them." },
+    ]);
+    c.ok(
+        "sync",
+        json!({ "source": "s", "ref": "main", "embedder": { "base": base }, "items": items }),
+    );
+    c.settle("s", "main");
+    let q = json!({ "source": "s", "ref": "main", "q": "how are kv cache blocks freed when a sequence ends" });
+    let v = c.ok("search", q.clone());
+    let r = c.ok("rerank", q);
+    let ids = |v: &Value| -> Vec<String> {
+        v["hits"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|h| h["id"].as_str().unwrap().into())
+            .collect()
+    };
+    assert_eq!(ids(&v)[0], "noise", "{v}");
+    assert_eq!(ids(&r), ["right", "noise"], "{r}");
+    assert!(r["hits"][0]["rerank"].as_f64().unwrap() > r["hits"][1]["rerank"].as_f64().unwrap());
+    assert_eq!(r["reranked"], json!(2));
+    drop(c);
+    assert!(matches!(svc.join().unwrap(), service::Outcome::Stopped));
     let _ = std::fs::remove_dir_all(&home);
 }

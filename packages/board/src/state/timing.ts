@@ -91,6 +91,8 @@ export const GIF_MIN_DELAY = 100;
 export const MEANING_PAUSE = 150;
 /** …and asked again this often while the project is still being indexed */
 export const MEANING_RETRY = 1500;
+/** …and how long its rows slide to the reranker's order when that answers (codeboard.search.rerank) */
+export const RERANK_SLIDE = 260;
 /** ⌘K's preview follows the highlighted result once it rests this long (holding ↓ renders no Note on the way) */
 export const PREVIEW_PAUSE = 60;
 /** A menu's submenu stays open while the pointer heads for it across other items (the safe triangle, ui/Menu.tsx), at most

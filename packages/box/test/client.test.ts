@@ -72,6 +72,13 @@ describe.skipIf(!built)("box client", () => {
     expect(r.hits).toEqual([{ id: "a", score: expect.any(Number), piece: 0, range: [0, 22], meta: { n: 1 } }]);
     const only = await c.search({ source: "src", ref: "main", q: "kv cache", groups: ["b2"] });
     expect(only.hits.map((h) => h.id)).toEqual(["b"]);
+    // the keyword group: its own list, only what has the words
+    const kw = await c.searchKeyword({ source: "src", ref: "main", q: "cuda graph" });
+    expect(kw).toEqual({
+      source: "src",
+      ref: "main",
+      hits: [{ id: "b", score: expect.any(Number), range: [4, 8], meta: null }],
+    });
   });
 
   it("shares one service between clients, and starts it again when it has gone", async () => {
