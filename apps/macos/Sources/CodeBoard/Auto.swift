@@ -94,7 +94,7 @@ final class AutoRun: NSObject {
       try FileManager.default.createDirectory(atPath: out, withIntermediateDirectories: true)
       wc.window?.displayIfNeeded()
       guard let rep = wc.canvas.snapshot() else { logLine("[auto] snapshot: no bitmap (canvas %@)", "\(wc.canvas.bounds)"); return }
-      guard let png = rep.representation(using: .png, properties: [:]) else { logLine("[auto] snapshot: no png"); return }
+      guard let png = rep.sRGBPNG else { logLine("[auto] snapshot: no png"); return }
       try png.write(to: URL(fileURLWithPath: "\(out)/\(name).png"))
       let st = wc.canvas.notes.stats()
       logLine("[auto] window occlusion state visible %d", wc.window?.occlusionState.contains(.visible) == true ? 1 : 0)
@@ -191,7 +191,7 @@ final class AutoRun: NSObject {
         if let img { img.draw(in: web.frame) }
         return true
       }
-      if let tiff = composed.tiffRepresentation, let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) {
+      if let tiff = composed.tiffRepresentation, let png = NSBitmapImageRep(data: tiff)?.sRGBPNG {
         try? FileManager.default.createDirectory(atPath: out, withIntermediateDirectories: true)
         try? png.write(to: URL(fileURLWithPath: "\(out)/\(name).png"))
         logLine("[auto] wrote %@/%@.png (with the editor)", out, name)
@@ -213,6 +213,10 @@ final class AutoRun: NSObject {
   func parity(_ ids: [String], _ finished: @escaping () -> Void) {
     let canvas = wc.canvas
     var rest = ids
+    // the canvas at the web capture's view size (parity.spec.ts W, H): Ink Wash's scene is pinned to the view
+    if let w = wc.window, let cv = w.contentView {
+      w.setContentSize(NSSize(width: 1200 + cv.bounds.width - canvas.bounds.width, height: 800 + cv.bounds.height - canvas.bounds.height))
+    }
     func next() {
       guard !rest.isEmpty else { return finished() }
       let id = rest.removeFirst()

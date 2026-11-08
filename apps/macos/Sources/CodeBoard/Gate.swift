@@ -239,6 +239,7 @@ final class GateRun: NSObject, SCStreamOutput {
       cfg.width = self.capW
       cfg.height = self.capH
       cfg.pixelFormat = kCVPixelFormatType_32BGRA
+      cfg.colorSpaceName = CGColorSpace.sRGB  // as the web board's captures, not the display's P3
       cfg.minimumFrameInterval = CMTime(value: 1, timescale: 240)
       cfg.queueDepth = 8
       cfg.showsCursor = false
@@ -326,7 +327,7 @@ final class GateRun: NSObject, SCStreamOutput {
     try? grids.write(to: URL(fileURLWithPath: "\(dir)/grids.bin"))
     let hw = capW / 2, hh = capH / 2
     fileQueue.async {
-      let cs = CGColorSpaceCreateDeviceRGB()
+      let cs = CGColorSpace(name: CGColorSpace.sRGB)!
       for (i, f) in frames.enumerated() {
         guard let prov = CGDataProvider(data: f.thumb as CFData),
           let img = CGImage(width: hw, height: hh, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: hw * 4, space: cs, bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.noneSkipLast.rawValue), provider: prov, decode: nil, shouldInterpolate: false, intent: .defaultIntent),

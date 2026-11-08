@@ -12,10 +12,12 @@ const DIR = process.env.PARITY_DIR ?? "",
   BOARD = process.env.PARITY_BOARD ?? "",
   CARDS = (process.env.PARITY_CARDS ?? "").split(",").filter(Boolean),
   OUT = process.env.PARITY_OUT ?? "";
-/** The air around a card in its picture (the app's focus puts a card 40 px in: Auto.swift parity) */
+/** The air around a card in its picture; the card is put this far in from the top left, as the app's focus does (Auto.swift parity) */
 const PAD = 40;
-const W = 1400,
-  H = 1000;
+/** The view's size, the app's canvas in its parity run too (Auto.swift parity): Ink Wash's scene is pinned to the view, so the
+ *  same card at the same place in the same view has the same hills behind it */
+const W = 1200,
+  H = 800;
 
 test("parityWeb", async () => {
   test.skip(!DIR || !BOARD || !OUT, "PARITY_DIR, PARITY_BOARD and PARITY_OUT name the board and the output");
@@ -58,6 +60,19 @@ test("parityWeb", async () => {
         // reveal selects the card: at rest first
         await page.keyboard.press("Escape");
         await idle(h);
+        // the card PAD in from the top left, as the app's focus puts it: panned there by wheel steps on the board (exact, 1:1)
+        for (let i = 0; i < 4; i++) {
+          const b = (await el.boundingBox())!;
+          if (Math.abs(b.x - PAD) < 0.5 && Math.abs(b.y - PAD) < 0.5) break;
+          await page.evaluate(
+            ([dx, dy]) =>
+              document
+                .querySelector(".board")!
+                .dispatchEvent(new WheelEvent("wheel", { deltaX: dx, deltaY: dy, bubbles: true, cancelable: true })),
+            [b.x - PAD, b.y - PAD],
+          );
+          await idle(h);
+        }
         const box = (await el.boundingBox())!;
         fs.writeFileSync(
           path.join(out, `${id}.json`),

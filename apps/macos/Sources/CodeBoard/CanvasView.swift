@@ -1191,8 +1191,14 @@ final class CanvasView: NSView {
   func snapshot() -> NSBitmapImageRep? {
     guard let rep = bitmapImageRepForCachingDisplay(in: bounds) else { return nil }
     cacheDisplay(in: bounds, to: rep)
-    return rep
+    return rep.converting(to: .sRGB, renderingIntent: .default) ?? rep
   }
+}
+
+extension NSBitmapImageRep {
+  /** A PNG in sRGB, as Chromium's screenshots are: the window's bitmaps are in the display's space (P3), whose values read as
+   *  other colours next to the web board's (#b5552d as #a95a37) */
+  var sRGBPNG: Data? { (converting(to: .sRGB, renderingIntent: .default) ?? self).representation(using: .png, properties: [:]) }
 }
 
 // MARK: the summary level, the detent at its cut and the switch (Summaries.swift; the rules are core's canvas/detent.ts)

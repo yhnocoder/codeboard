@@ -110,7 +110,7 @@ final class LibraryCheck {
     // the layer tree as composited (Liquid Glass sidebars live in layers cacheDisplay does not draw), on the window's paper
     let scale = w.backingScaleFactor
     guard let layer = v.layer,
-      let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(v.bounds.width * scale), pixelsHigh: Int(v.bounds.height * scale), bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0),
+      let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(v.bounds.width * scale), pixelsHigh: Int(v.bounds.height * scale), bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)?.retagging(with: .sRGB),
       let gc = NSGraphicsContext(bitmapImageRep: rep)
     else { return }
     let cx = gc.cgContext
@@ -165,12 +165,12 @@ final class LibraryCheck {
       func find(_ x: NSView) -> NSView? { "\(type(of: x))".contains("OutlineListView") ? x : x.subviews.lazy.compactMap(find).first }
       if let o = find(v), let r = o.bitmapImageRepForCachingDisplay(in: o.bounds) {
         o.cacheDisplay(in: o.bounds, to: r)
-        try? r.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: "\(out)/outline.png"))
+        try? r.sRGBPNG?.write(to: URL(fileURLWithPath: "\(out)/outline.png"))
         logLine("outline rows %d", (o as? NSTableView)?.numberOfRows ?? -1)
       }
     }
     let path = "\(out)/\(name)\(suffix).png"
-    try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
+    try? rep.sRGBPNG?.write(to: URL(fileURLWithPath: path))
     logLine("[check] wrote %@ (%dx%d)", path, rep.pixelsWide, rep.pixelsHigh)
   }
 
