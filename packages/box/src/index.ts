@@ -64,8 +64,8 @@ export type BoxResult = {
   source: string;
   ref: string;
 };
-/** A model box downloads and runs itself: embeddinggemma-2 (the built-in embedder), hs-rerank-1 (the reranker) */
-export type BoxModelName = "embeddinggemma-2" | "hs-rerank-1";
+/** A model box downloads and runs itself: hs-rerank-1 (the reranker) */
+export type BoxModelName = "hs-rerank-1";
 export type BoxModel = {
   name: BoxModelName;
   files: string[];

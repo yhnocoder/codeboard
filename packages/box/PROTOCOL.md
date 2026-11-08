@@ -68,11 +68,9 @@ CJK text as single characters and pairs, with jieba's words to rank by; titles c
 
 ## model, model_download
 
-`{name?}` / `{name?, url?, sha256?}` → `{name, files, present, downloading, bytes, total, error, runs}`
+`{name}` / `{name, url?, sha256?}` → `{name, files, present, downloading, bytes, total, error, runs}`
 
 The models box downloads itself, by `name`:
-- `embeddinggemma-2` (the default): EmbeddingGemma 2, GGUF Q8_0 (310 MB, `<home>/models/embeddinggemma-2-Q8_0.gguf`).
-  Running it (llama.cpp behind the cargo feature `local`) is not in this build yet (`runs` false).
 - `hs-rerank-1`: the reranker (hindsight-ai/hs-rerank-1, an mmBERT-small cross-encoder, ONNX int8, MIT; `model.onnx` and
   `tokenizer.json`, about 195 MB, under `<home>/models/hs-rerank-1/`). `runs` when box is built with the cargo feature
   `rerank` (onnxruntime through `ort`).

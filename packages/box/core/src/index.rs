@@ -131,10 +131,7 @@ impl Index {
             _lock: lock,
             store: Arc::new(Mutex::new(st)),
             keywords,
-            model_files: vec![
-                crate::model::Model::new(home, &crate::model::EMBEDDER),
-                crate::model::Model::new(home, &crate::model::RERANKER),
-            ],
+            model_files: vec![crate::model::Model::new(home, &crate::model::RERANKER)],
             #[cfg(feature = "rerank")]
             reranker: Mutex::new(None),
             reranks: Default::default(),
@@ -272,7 +269,7 @@ struct Inner {
     _lock: std::fs::File,
     store: Arc<Mutex<Store>>,
     keywords: Keywords,
-    /// The models box can download and run itself (model.rs): the embedder, the reranker
+    /// The models box can download and run itself (model.rs): the reranker
     model_files: Vec<crate::model::Model>,
     #[cfg(feature = "rerank")]
     reranker: Mutex<Option<Arc<crate::rerank::Reranker>>>,
@@ -1130,14 +1127,9 @@ pub struct SearchReq {
     pub min_score: Option<f32>,
 }
 
-fn default_model() -> String {
-    crate::model::EMBEDDER.name.into()
-}
-
 #[derive(Deserialize)]
 pub struct ModelDownloadReq {
-    /// embeddinggemma-2 (the default) or hs-rerank-1
-    #[serde(default = "default_model")]
+    /// hs-rerank-1
     pub name: String,
     #[serde(default)]
     pub url: Option<String>,

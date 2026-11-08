@@ -1,6 +1,6 @@
-//! Models box can run itself, downloaded into the data folder only when a client asks (model_download), each file checked
-//! against its SHA-256 before it is kept: the built-in embedder, EmbeddingGemma 2 as GGUF Q8_0 (never fp16: its activations
-//! overflow it), and the reranker, hs-rerank-1 as ONNX.
+//! Models box runs itself, downloaded into the data folder only when a client asks (model_download), each file checked
+//! against its SHA-256 before it is kept: the reranker, hs-rerank-1 as ONNX. (A built-in embedder comes with a runtime for
+//! it; until then embedding is the user's endpoint's.)
 
 use sha2::{Digest, Sha256};
 use std::io::{Read, Write};
@@ -12,16 +12,6 @@ pub struct Spec {
     pub name: &'static str,
     pub files: &'static [(&'static str, &'static str, &'static str)],
 }
-
-/// The built-in embedder: EmbeddingGemma 2, GGUF Q8_0 (310 MB)
-pub static EMBEDDER: Spec = Spec {
-    name: "embeddinggemma-2",
-    files: &[(
-        "embeddinggemma-2-Q8_0.gguf",
-        "https://huggingface.co/ggml-org/embeddinggemma-2-GGUF/resolve/main/embeddinggemma-2-Q8_0.gguf",
-        "2188ac1deca4b77dffefd603c2776a9d76d9d74ec01841392982ebb840b09135",
-    )],
-};
 
 /// The reranker: hindsight-ai/hs-rerank-1 (MIT, mmBERT-small cross-encoder), ONNX with an int8 vocabulary table (161 MB)
 /// and its tokenizer (34 MB)
@@ -42,7 +32,7 @@ pub static RERANKER: Spec = Spec {
 };
 
 pub fn spec(name: &str) -> Option<&'static Spec> {
-    [&EMBEDDER, &RERANKER].into_iter().find(|s| s.name == name)
+    [&RERANKER].into_iter().find(|s| s.name == name)
 }
 
 #[derive(Default, Clone)]
@@ -92,8 +82,8 @@ impl Model {
             "bytes": s.bytes,
             "total": s.total,
             "error": s.error,
-            // whether this build can run it: the reranker with the cargo feature rerank; the embedder not yet (llama.cpp)
-            "runs": self.spec.name == RERANKER.name && cfg!(feature = "rerank"),
+            // whether this build can run it: the reranker with the cargo feature rerank
+            "runs": cfg!(feature = "rerank"),
         })
     }
 
@@ -183,6 +173,12 @@ mod tests {
     use super::*;
     use std::net::TcpListener;
 
+    /// A one-file model for the download's tests
+    static TINY: Spec = Spec {
+        name: "tiny",
+        files: &[("tiny.bin", "http://127.0.0.1:9/tiny.bin", "00")],
+    };
+
     /// Serves `body` to every GET
     fn server(body: &'static [u8]) -> String {
         let l = TcpListener::bind("127.0.0.1:0").unwrap();
@@ -217,7 +213,7 @@ mod tests {
     fn a_download_is_kept_only_with_the_right_checksum() {
         let home = std::env::temp_dir().join(format!("box-model-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&home);
-        let m = Model::new(&home, &EMBEDDER);
+        let m = Model::new(&home, &TINY);
         let url = server(b"GGUF tiny model");
         assert_eq!(m.status()["present"], false);
         m.download(Some(url.clone()), Some("00".repeat(32)));
