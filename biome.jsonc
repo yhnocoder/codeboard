@@ -11,6 +11,8 @@
       "packages/board/stories/**",
       "extensions/vscode/src/**",
       "extensions/vscode/test/**",
+      "apps/macos/js/**",
+      "apps/macos/*.mjs",
       "tools/**",
       "examples/markdown-demo/**",
       "!**/fixtures/**",

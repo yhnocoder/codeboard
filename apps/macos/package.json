@@ -1,0 +1,23 @@
+{
+  "name": "@codeboard/macos",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "The JavaScript side of the macOS app: @codeboard/core and the host's storage bundled for JavaScriptCore",
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@codeboard/core": "^0.1.0",
+    "@codeboard/host": "^0.1.0",
+    "shiki": "^4.5.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.43",
+    "esbuild": "^0.28.2",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.4"
+  }
+}

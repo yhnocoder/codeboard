@@ -2,7 +2,7 @@
   "name": "codeboard",
   "private": true,
   "packageManager": "npm@12.2.1",
-  "workspaces": ["packages/*", "extensions/*", "examples/markdown-demo"],
+  "workspaces": ["packages/*", "extensions/*", "examples/markdown-demo", "apps/*"],
   "scripts": {
     "examples": "sh tools/examples.sh",
     "try": "sh tools/try.sh",
@@ -17,7 +17,9 @@
     "harness": "node tools/test/harness.mjs",
     "storybook": "node tools/build.mjs --deps @codeboard/board && npm run storybook -w @codeboard/board",
     "build-storybook": "node tools/build.mjs --deps @codeboard/board && npm run build-storybook -w @codeboard/board",
-    "storybook:check": "npm run build-storybook && node tools/test/storybook.mjs"
+    "storybook:check": "npm run build-storybook && node tools/test/storybook.mjs",
+    "mac": "sh apps/macos/build.sh",
+    "mac:run": "sh apps/macos/build.sh run"
   },
   "allowScripts": {
     "esbuild": true,
