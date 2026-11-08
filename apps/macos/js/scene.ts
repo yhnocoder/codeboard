@@ -1,0 +1,216 @@
+// The scene: what the native canvas draws, as plain JSON (Scene.swift decodes the same shapes). The bridge builds it from the
+// board; after a change only the items that changed go over (SceneChange). Geometry is in world units (the board's px at zoom 1).
+import {
+  cardTitle,
+  codeGlyph,
+  estSize,
+  type Board,
+  type Card,
+  type CodeCard,
+  type Link,
+  type Section,
+} from "@codeboard/core";
+import type { Highlight, SceneTok } from "./highlight";
+
+/** The code card's geometry the app draws with (styles.css .chead / .code): a 36px head, 6px above the first row, 20px rows, 8px below */
+export const CODE = { head: 36, top: 6, row: 20, bottom: 8, sep: 20 } as const;
+
+export type SceneLine = { n: number; toks: SceneTok[] };
+export type SceneSegment = { path: string; start: number; end: number; lang: string; lines: SceneLine[] };
+export type SceneCard = {
+  id: string;
+  kind: Card["kind"];
+  x: number;
+  y: number;
+  w: number;
+  /** A height the board decided (Place.h, with a code card's head) or measured on a board (Place.mh); none = the app measures */
+  h?: number;
+  title: string;
+  section?: string;
+  locked?: boolean;
+  tilt?: boolean;
+  /** Code: the kind glyph and the segments' coloured lines */
+  glyph?: string;
+  segments?: SceneSegment[];
+  /** Note / Text / Box / Mark / Free Text */
+  look?: string;
+  md?: string;
+  size?: string;
+  bold?: boolean;
+  fill?: string;
+  hand?: string;
+  weight?: string;
+  level?: number;
+  fs?: number;
+  /** Image: the file in assets/ (an absolute path), or a data: URL */
+  src?: string;
+  bg?: boolean;
+  /** Sub-board: the board it shows and its name, with the little map of its cards */
+  board?: string;
+  boardName?: string;
+  mini?: { x: number; y: number; w: number; h: number; kind: string }[];
+  /** Web */
+  url?: string;
+};
+export type SceneSection = Pick<
+  Section,
+  "id" | "title" | "x" | "y" | "w" | "h" | "parent" | "color" | "collapsed" | "locked"
+>;
+export type SceneLink = {
+  id: string;
+  from: Link["from"];
+  to: Link["to"];
+  label?: string;
+  dash?: boolean;
+  width: number;
+  color?: string;
+  head: { start: boolean; end: boolean };
+  call?: boolean;
+  back?: boolean;
+  /** From a Mark: drawn as a hand line in the Mark's colour */
+  hand?: string;
+};
+export type Scene = {
+  id: string;
+  name: string;
+  cam: Board["cam"];
+  cards: SceneCard[];
+  sections: SceneSection[];
+  links: SceneLink[];
+};
+/** What changed: items to put in (added or changed) and ids that are gone */
+export type SceneChange = {
+  cards: SceneCard[];
+  sections: SceneSection[];
+  links: SceneLink[];
+  gone: { cards: string[]; sections: string[]; links: string[] };
+  name?: string;
+};
+
+export type SceneEnv = {
+  assetsDir: string;
+  /** Another board's name and cards (for a sub-board card's map); null when it is not there */
+  peek(id: string): Board | null | undefined;
+  hl: Highlight;
+};
+
+const sepName = (p: string) => p.split("/").pop() ?? p;
+
+export async function sceneCard(b: Board, c: Card, env: SceneEnv): Promise<SceneCard | null> {
+  const p = b.place[c.id];
+  if (!p) return null;
+  const out: SceneCard = { id: c.id, kind: c.kind, x: p.x, y: p.y, w: p.w, title: cardTitle(c, b) };
+  if (p.section) out.section = p.section;
+  if (p.locked) out.locked = true;
+  if (c.tilt) out.tilt = true;
+  if (p.h) out.h = estSize(c, p).h;
+  else if (p.mh) out.h = p.mh;
+  switch (c.kind) {
+    case "code":
+      out.glyph = codeGlyph(c);
+      out.segments = await Promise.all(
+        c.segments.map(async (s) => {
+          const toks = await env.hl.tokens(s.lang, s.text);
+          return {
+            path: s.src.kind === "free" ? "" : sepName(s.path),
+            start: s.start,
+            end: s.end,
+            lang: s.lang,
+            lines: s.text.map((_, i) => ({ n: s.start + i, toks: toks[i] ?? [[s.text[i]]] })),
+          };
+        }),
+      );
+      if (!p.h && !p.mh) out.h = codeHeight(c);
+      break;
+    case "note":
+      out.look = c.look;
+      out.md = c.md;
+      if (c.size) out.size = c.size;
+      if (c.bold) out.bold = true;
+      if (c.fill) out.fill = c.fill;
+      if (c.hand) out.hand = c.hand;
+      if (c.weight) out.weight = c.weight;
+      if (c.level) out.level = c.level;
+      if (c.fs) out.fs = c.fs;
+      break;
+    case "image":
+      out.src = c.src.startsWith("data:") ? c.src : `${env.assetsDir}/${c.src}`;
+      if (c.bg) out.bg = true;
+      break;
+    case "board": {
+      out.board = c.board;
+      const sub = env.peek(c.board);
+      out.boardName = sub?.name ?? "Board";
+      if (sub)
+        out.mini = sub.cards
+          .filter((k) => sub.place[k.id])
+          .map((k) => {
+            const q = sub.place[k.id];
+            return { x: q.x, y: q.y, w: q.w, h: estSize(k, q).h, kind: k.kind };
+          });
+      break;
+    }
+    case "web":
+      out.url = c.url;
+      break;
+    default:
+      break;
+  }
+  return out;
+}
+
+/** A code card's whole height from its rows (no Place.h) */
+function codeHeight(c: CodeCard): number {
+  const rows = c.segments.reduce((n, s) => n + s.text.length, 0);
+  return CODE.head + CODE.top + rows * CODE.row + CODE.bottom + Math.max(0, c.segments.length - 1) * CODE.sep;
+}
+
+/** The y of a segment's line inside its card (the middle of the row), or null when the card has no such line */
+export function lineYIn(c: CodeCard, seg: string | undefined, line: number | undefined): number | null {
+  if (seg === undefined || line === undefined) return null;
+  let y = CODE.head + CODE.top;
+  for (const s of c.segments) {
+    if (s.id === seg) return line >= s.start && line <= s.end ? y + (line - s.start) * CODE.row + CODE.row / 2 : null;
+    y += s.text.length * CODE.row + CODE.sep;
+  }
+  return null;
+}
+
+export const sceneSection = (s: Section): SceneSection => {
+  const out: SceneSection = { id: s.id, title: s.title, x: s.x, y: s.y, w: s.w, h: s.h };
+  if (s.parent) out.parent = s.parent;
+  if (s.color) out.color = s.color;
+  if (s.collapsed) out.collapsed = true;
+  if (s.locked) out.locked = true;
+  return out;
+};
+
+export function sceneLink(b: Board, l: Link): SceneLink {
+  const out: SceneLink = {
+    id: l.id,
+    from: l.from,
+    to: l.to,
+    width: l.style?.width ?? 2,
+    head: { start: !!l.style?.head?.start, end: l.style?.head?.end !== false },
+  };
+  if (l.label) out.label = l.label;
+  if (l.style?.dash || l.gen || l.rpc || l.call?.ev?.kind === "manual") out.dash = true;
+  if (l.style?.color) out.color = l.style.color;
+  if (l.call) out.call = true;
+  if (l.back) out.back = true;
+  const from = b.cards.find((c) => c.id === l.from.card);
+  if (from?.kind === "note" && from.look === "mark") out.hand = from.hand ?? "blue";
+  return out;
+}
+
+export async function scene(b: Board, env: SceneEnv): Promise<Scene> {
+  const cards = (await Promise.all(b.cards.map((c) => sceneCard(b, c, env)))).filter((c): c is SceneCard => !!c);
+  return {
+    id: b.id,
+    name: b.name,
+    cam: b.cam,
+    cards,
+    sections: b.sections.map(sceneSection),
+    links: b.links.map((l) => sceneLink(b, l)),
+  };
+}
