@@ -326,7 +326,29 @@ final class GateRun: NSObject, SCStreamOutput {
       self.mouse(.leftMouseDown, at: spot)
       self.mouse(.leftMouseUp, at: spot)
     }
-    after(1.3) {
+    // the input goes to whatever is in front: other CodeBoards (a developer's, another check's) run on the same Mac, so the run
+    // starts only once this process is the frontmost one, and gives up when it is not after a few tries
+    var tries = 0
+    func front() -> Bool { NSWorkspace.shared.frontmostApplication?.processIdentifier == getpid() }
+    func ready() {
+      if front() { self.begin(finished); return }
+      tries += 1
+      let other = NSWorkspace.shared.frontmostApplication
+      logLine("[gate] not in front (frontmost: %@ pid %d), try %d", other?.localizedName ?? "?", other?.processIdentifier ?? 0, tries)
+      if tries >= 6 {
+        let r: [String: Any] = ["error": "another app stayed in front: \(other?.localizedName ?? "?") (pid \(other?.processIdentifier ?? 0))"]
+        if let d = try? JSONSerialization.data(withJSONObject: r) { try? d.write(to: URL(fileURLWithPath: "\(self.out)/run.json")) }
+        finished()
+        return
+      }
+      NSRunningApplication.current.activate(options: [.activateIgnoringOtherApps])
+      self.wc.window?.orderFrontRegardless()
+      after(0.7) { ready() }
+    }
+    after(1.3) { ready() }
+  }
+  private func begin(_ finished: @escaping () -> Void) {
+    do {
       self.startClock()
       self.startCapture { ok in
         logLine("[gate] capture %@", ok ? "on" : "off")

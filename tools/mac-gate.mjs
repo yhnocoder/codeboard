@@ -191,8 +191,10 @@ async function runBoard(id) {
       name: names[id],
       error: `the app exited with ${code} and wrote no run.json (see ${path.relative(root, dir)}/app.log)`,
     };
+  const run = JSON.parse(fs.readFileSync(runFile, "utf8"));
+  if (run.error) return { id, name: names[id], error: run.error };
   // the load before the run: other work on the Mac (builds, other apps) drops frames too, and the report says when there was some
-  return { ...judge(id, JSON.parse(fs.readFileSync(runFile, "utf8")), dir), hitches, loadBefore: +load.toFixed(1) };
+  return { ...judge(id, run, dir), hitches, loadBefore: +load.toFixed(1) };
 }
 
 /** The Animation Hitches instrument's hitches table: how many, and their total duration in ms (an error when the export fails) */

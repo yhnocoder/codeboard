@@ -28,7 +28,9 @@ double-click + typing + click-out on a Note and on a Free code card, N for a new
 window resized a frame at a time, fullscreen in and out, dark and light, the board opened again, and idle. Steps the app has no
 handler for pass through as no-ops and show as "(no effect)". Keys go through the window's and menu's key equivalents and the
 first responder, as a typed key does (posting them at the HID level needs Accessibility for the exact binary, which changes with
-every build). The pointer really moves; keep your hands off the Mac during a run. Screen Recording must be allowed for the
+every build). The pointer really moves; keep your hands off the Mac during a run. The run starts only once this process is the frontmost
+one (other CodeBoards may be running on the Mac) and is reported as an error when another app stays in front; the gate ends
+only the processes it started. Screen Recording must be allowed for the
 terminal that starts it, or the run has timings only (`capture: off`).
 
 Per frame the app records the display link's interval, the main thread's cost, the camera, the cards in view (world rects) and
