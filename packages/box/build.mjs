@@ -22,7 +22,11 @@ if (cargo.error || cargo.status) {
   process.exit(0);
 }
 const locked = process.env.CI ? ["--locked"] : []; // CI builds exactly Cargo.lock
-const r = spawnSync("cargo", ["build", "--release", "--quiet", "-p", "box", "-p", "box-node", ...locked], {
+// with the reranker where a release has it too (ort's prebuilt ONNX Runtime): Apple silicon and Windows. Linux and
+// Intel Macs build without it, as their releases do
+const rerank = ["darwin-arm64", "win32-x64", "win32-arm64"].includes(`${process.platform}-${process.arch}`);
+const features = rerank ? ["--features", "box/rerank"] : [];
+const r = spawnSync("cargo", ["build", "--release", "--quiet", "-p", "box", "-p", "box-node", ...features, ...locked], {
   cwd: DIR,
   stdio: "inherit",
 });
