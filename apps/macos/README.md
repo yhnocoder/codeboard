@@ -21,16 +21,16 @@ npm run mac:gate -- --xctrace                      # also record each run with t
 The data folder (default `~/Projects/persona/.codeboard`) is copied under the output folder first; the originals are never
 opened. The app runs from a copy of the bundle named `cbgate.app` (so a `pkill CodeBoard` elsewhere on the Mac does not end a run;
 signed with `tools/mac-gate.entitlements`, get-task-allow, so the instruments can attach), once per board with `--gate <dir>` (`Sources/CodeBoard/Gate.swift`): it brings its window to the front and
-drives it with input posted at the HID level, one input per display frame: a trackpad pan with scroll phases and a momentum
+drives it with synthetic input delivered to its own process only (`CGEvent.postToPid`; nothing reaches another app), one input per display frame: a trackpad pan with scroll phases and a momentum
 tail, a pinch from zoom 1 to 0.1 and back to 2 (every raster bucket; a pinch has no public event, so it calls what `magnify(with:)`
 calls), ⌘-scroll zoom, a card dragged by its head, several linked cards dragged together, ⌘Z / ⌘⇧Z, a marquee over empty space,
 double-click + typing + click-out on a Note and on a Free code card, N for a new card, ⌫ and its undo, ⌘K open and Escape, the
 window resized a frame at a time, fullscreen in and out, dark and light, the board opened again, and idle. Steps the app has no
 handler for pass through as no-ops and show as "(no effect)". Keys go through the window's and menu's key equivalents and the
 first responder, as a typed key does (posting them at the HID level needs Accessibility for the exact binary, which changes with
-every build). The pointer really moves; keep your hands off the Mac during a run. The run starts only once this process is the frontmost
-one (other CodeBoards may be running on the Mac) and is reported as an error when another app stays in front; the gate ends
-only the processes it started. Screen Recording must be allowed for the
+every build). Keep your hands off the Mac during a run. The run starts only once this process is the frontmost one (other CodeBoards may be
+running on the Mac), is reported as an error when another app stays in front, and every event is dropped (and the step failed)
+when the process is not frontmost at that moment; the gate ends only the processes it started. Screen Recording must be allowed for the
 terminal that starts it, or the run has timings only (`capture: off`).
 
 Per frame the app records the display link's interval, the main thread's cost, the camera, the cards in view (world rects) and
