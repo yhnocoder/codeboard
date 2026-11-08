@@ -234,6 +234,8 @@ final class BoardWindowController: NSWindowController, NSToolbarDelegate, NSTabl
   func canvas(_ c: CanvasView, cameraRested cam: Camera) { session?.cam(cam) }
   func canvasRoute(_ c: CanvasView, rects: [String: WorldRect], only: [String]?, modes: [String: String]?) -> [RouteGeo] { session?.route(rects, only: only, modes: modes) ?? [] }
 
+  func canvasUndo(_ c: CanvasView) { undo(nil) }
+  func canvasRedo(_ c: CanvasView) { redo(nil) }
   @objc func undo(_ sender: Any?) { session?.undo { [weak self] r in if case .success(let ch) = r { self?.canvas.apply(ch) } } }
   @objc func redo(_ sender: Any?) { session?.redo { [weak self] r in if case .success(let ch) = r { self?.canvas.apply(ch) } } }
   @objc func fit(_ sender: Any?) { canvas.fitAll() }

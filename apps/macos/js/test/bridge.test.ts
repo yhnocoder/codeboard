@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import { createRequire } from "node:module";
@@ -7,6 +7,7 @@ import { blockSig, type Board, type Card, emptyBoard } from "@codeboard/core";
 import { createBridge } from "../bridge";
 import { fromBase64 } from "../fs";
 import { installGlobals, type Native } from "../native";
+import type { SceneCard } from "../scene";
 import { nodeNative } from "./node-native";
 
 const tmps: string[] = [];
@@ -112,7 +113,9 @@ describe("bridge", () => {
     b.drag([{ id: "c1", x: 10, y: 20 }]);
     b.drag([{ id: "c1", x: 100, y: 200 }]);
     const ch = await b.endDrag([at("c1", 100, 200)]);
-    expect(ch.cards.map((c) => [c.id, c.x, c.y])).toEqual([["c1", 100, 200]]);
+    // only placed elsewhere: a move, not a card to rebuild
+    expect(ch.moved).toEqual([{ id: "c1", x: 100, y: 200 }]);
+    expect(ch.cards).toEqual([]);
     expect(ch.gone.cards).toEqual([]);
     expect(native.events.filter((e) => e.name === "stacks").at(-1)?.data).toMatchObject({
       id: "b1",
@@ -123,11 +126,11 @@ describe("bridge", () => {
     expect(readFile(dir).place.c1).toMatchObject({ x: 100, y: 200 });
     expect(readFile(dir).cam).toBeUndefined();
     const back = await b.undo();
-    expect(back.cards.map((c) => [c.id, c.x, c.y])).toEqual([["c1", 440, 0]]);
+    expect(back.moved).toEqual([{ id: "c1", x: 440, y: 0 }]);
     await flush();
     expect(readFile(dir).place.c1).toMatchObject({ x: 440, y: 0 });
     const again = await b.redo();
-    expect(again.cards[0]).toMatchObject({ id: "c1", x: 100, y: 200 });
+    expect(again.moved[0]).toMatchObject({ id: "c1", x: 100, y: 200 });
   });
 
   it("two shells editing the same board at once merge without losing either change", async () => {
@@ -161,10 +164,11 @@ describe("bridge", () => {
     await new Promise((r) => setTimeout(r, 50));
     const changed = a.native.events.filter((e) => e.name === "changed").at(-1)?.data as {
       id: string;
-      change: { cards: { id: string }[] };
+      change: { cards: { id: string }[]; moved: { id: string }[] };
     };
     expect(changed.id).toBe("b1");
-    expect(changed.change.cards.map((c) => c.id).sort()).toEqual(["c1", "c3"]);
+    expect(changed.change.cards.map((c) => c.id)).toEqual(["c1"]);
+    expect(changed.change.moved.map((c) => c.id)).toEqual(["c3"]);
     expect(sa.board().place.c3).toMatchObject({ x: 3, y: 4 });
     expect(sa.board().place.c0).toMatchObject({ x: 1, y: 2 });
   });
@@ -213,9 +217,14 @@ describe("bridge", () => {
     b.place.k = { x: 0, y: 0, w: 380 };
     const { cam: _cam, ...file } = b;
     fs.writeFileSync(path.join(dir, "b1.json"), JSON.stringify(file));
-    const { open } = shell(dir, wasmDir());
+    const { open, native } = shell(dir, wasmDir());
     const { scene: sc } = await open("b1");
-    const lines = sc.cards[0].segments![0].lines;
+    // the first scene does not wait for the grammar: the card is pending, and comes coloured as a change once it is loaded
+    expect(sc.cards[0].pending).toBe(true);
+    await vi.waitFor(() => expect(native.events.some((e) => e.name === "changed")).toBe(true));
+    const change = native.events.find((e) => e.name === "changed")!.data as { change: { cards: SceneCard[] } };
+    const lines = change.change.cards[0].segments![0].lines;
+    expect(change.change.cards[0].pending).toBeUndefined();
     expect(lines[0].toks.some(([t, cls]) => t === "void" && cls === "kw")).toBe(true);
     expect(lines[0].toks.some(([t, cls]) => t === "add" && cls === "fn")).toBe(true);
     expect(lines[1].toks.some(([t, cls]) => t.startsWith("//") && cls === "com")).toBe(true);
@@ -250,7 +259,7 @@ describe("bridge", () => {
     s.beginDrag();
     s.drag([{ id: "c0", x: 2100, y: 2100 }]);
     const ch = await s.endDrag([at("c0", 2100, 2100)]);
-    expect(ch.cards[0]).toMatchObject({ id: "c0", section: "S" });
+    expect(ch.moved[0]).toEqual({ id: "c0", x: 2100, y: 2100, section: "S" });
     s.beginDrag();
     s.drag([{ id: "c0", x: 0, y: 0 }]);
     await s.endDrag([at("c0", 0, 0)]);

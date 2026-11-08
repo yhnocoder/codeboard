@@ -47,6 +47,14 @@ final class CardLayer: CALayer {
   }()
   /** A bitmap no larger than this (a 2× Note 380 wide is about 1.8M): one is 4 bytes a pixel */
   static let maxPixels: CGFloat = 1_600_000
+  /** The space the bitmaps are drawn in and tagged with: sRGB, which the compositor converts to the display on the GPU. Untagged
+   *  surfaces, or ones tagged with the window's ICC profile, cost it a pinch across every zoom bucket (40–60 % late frames) */
+  static let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
+  /** The card's shadow is drawn into its bitmap (Core Animation's own shadow is re-rendered for every layer on every zoom frame):
+   *  the layer is this much bigger than the card on each side */
+  static let shadowPad: CGFloat = 20
+  /** Paper and corners until the first bitmap lands: a card is never a blank */
+  private let placeholder = CALayer()
   private var gen = 0
   private var pendingOp: Operation?
   /** A finished bitmap goes here (the canvas lands a few per frame, nearest first) instead of straight into the layer */
@@ -63,10 +71,13 @@ final class CardLayer: CALayer {
     super.init()
     needsDisplayOnBoundsChange = false
     anchorPoint = .zero
-    shadowOffset = CGSize(width: 0, height: 3)
-    shadowRadius = 7
-    shadowColor = NSColor.black.cgColor
     apply(card)
+    if framed {
+      placeholder.backgroundColor = Theme.surface.cgColor
+      placeholder.cornerRadius = Theme.cardRadius
+      placeholder.frame = bounds.insetBy(dx: CardLayer.shadowPad, dy: CardLayer.shadowPad)
+      addSublayer(placeholder)
+    }
   }
   override init(layer: Any) {
     let l = layer as! CardLayer
@@ -78,24 +89,26 @@ final class CardLayer: CALayer {
   var worldRect: CGRect { CGRect(x: card.x, y: card.y, width: card.w, height: height) }
   var framed: Bool { !(card.kind == "note" && card.look != "note") && !(card.kind == "image" && card.bg != true) }
 
-  /** A new version of the card: content, place, measured height */
+  /** A new version of the card: content, place, measured height. A Note's text is laid out on the raster queue, on the main
+   *  thread only when its height is not known (then the layout is what sizes the card) */
   func apply(_ c: SceneCard) {
     card = c
     noteText = nil
     imageSize = nil
-    if c.kind == "note", let md = c.md { noteText = CardLayer.noteString(c, md) }
     if c.kind == "image", let src = c.src { imageSize = CardLayer.imageSize(src) }
+    if c.h == nil, c.kind == "note", let md = c.md { noteText = CardLayer.noteString(c, md) }
     height = c.h.map { CGFloat($0) } ?? measure()
-    frame = CGRect(x: c.x, y: c.y, width: c.w, height: height)
-    shadowOpacity = framed ? 0.14 : 0
-    shadowPath = framed ? CGPath(roundedRect: bounds, cornerWidth: Theme.cardRadius, cornerHeight: Theme.cardRadius, transform: nil) : nil
+    let pad = CardLayer.shadowPad
+    frame = CGRect(x: c.x - pad, y: c.y - pad, width: c.w + 2 * pad, height: height + 2 * pad)
+    placeholder.frame = bounds.insetBy(dx: pad, dy: pad)
     setNeedsDisplay()
   }
 
-  func move(to p: CGPoint) {
+  func move(to p: CGPoint, section: String? = nil) {
     card.x = p.x
     card.y = p.y
-    frame.origin = p
+    if let section { card.section = section }
+    frame.origin = CGPoint(x: p.x - CardLayer.shadowPad, y: p.y - CardLayer.shadowPad)
   }
 
   /** The image's size from its header: cheap, for measuring the card */
@@ -131,15 +144,17 @@ final class CardLayer: CALayer {
   /** The layer needs a bitmap: drawn on the raster queue, put in when done (the old one stays until then, so no frame is blank) */
   override func display() {
     gen += 1
+    if card.pending == true { return }  // its placeholder, until the coloured card comes
     let g = gen
     let size = bounds.size
     let scale = min(contentsScale, sqrt(CardLayer.maxPixels / max(1, size.width * size.height)))
-    let paint = Paint(card: card, height: height, noteText: noteText, imageSrc: card.kind == "image" ? card.src : nil, imageMax: Int(card.w * scale), selected: selected, framed: framed)
+    var paint = Paint(card: card, height: height, noteText: noteText, imageSrc: card.kind == "image" ? card.src : nil, imageMax: Int(card.w * scale), selected: selected, framed: framed)
     let appearance = Theme.appearance
     pendingOp?.cancel()
     let op = BlockOperation()
     op.addExecutionBlock { [weak op] in
       if op?.isCancelled == true { return }
+      if paint.noteText == nil, paint.card.kind == "note", let md = paint.card.md { paint.noteText = CardLayer.noteString(paint.card, md) }
       let surface = CardLayer.render(paint, size: size, scale: scale, appearance: appearance)
       DispatchQueue.main.async { [weak self] in
         guard let self, let surface else { return }
@@ -155,6 +170,7 @@ final class CardLayer: CALayer {
     guard g == gen else { return }
     contents = surface
     contentsScale = scale
+    placeholder.isHidden = true
   }
 
   /** Drawn straight into an IOSurface: Core Animation shows the surface itself (no copy into its own backing when the contents
@@ -162,17 +178,20 @@ final class CardLayer: CALayer {
   static func render(_ p: Paint, size: CGSize, scale: CGFloat, appearance: NSAppearance) -> IOSurface? {
     let w = max(1, Int((size.width * scale).rounded())), h = max(1, Int((size.height * scale).rounded()))
     guard let surface = IOSurface(properties: [.width: w, .height: h, .bytesPerElement: 4, .pixelFormat: UInt32(0x42475241)]) else { return nil }  // 'BGRA'
+    let space = CardLayer.colorSpace
+    surface.setAttachment(space.copyPropertyList()!, forKey: "IOSurfaceColorSpace")
     surface.lock(options: [], seed: nil)
     defer { surface.unlock(options: [], seed: nil) }
     memset(surface.baseAddress, 0, surface.allocationSize)
-    guard let ctx = CGContext(data: surface.baseAddress, width: w, height: h, bitsPerComponent: 8, bytesPerRow: surface.bytesPerRow, space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue) else { return nil }
+    guard let ctx = CGContext(data: surface.baseAddress, width: w, height: h, bitsPerComponent: 8, bytesPerRow: surface.bytesPerRow, space: space, bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue) else { return nil }
     ctx.scaleBy(x: scale, y: scale)
     ctx.translateBy(x: 0, y: size.height)
     ctx.scaleBy(x: 1, y: -1)
     let gc = NSGraphicsContext(cgContext: ctx, flipped: true)
     NSGraphicsContext.saveGraphicsState()
     NSGraphicsContext.current = gc
-    appearance.performAsCurrentDrawingAppearance { drawCard(p, in: CGRect(origin: .zero, size: size), lod: scale < lodScale) }
+    let pad = CardLayer.shadowPad
+    appearance.performAsCurrentDrawingAppearance { drawCard(p, in: CGRect(origin: .zero, size: size).insetBy(dx: pad, dy: pad), lod: scale < lodScale) }
     NSGraphicsContext.restoreGraphicsState()
     ctx.flush()
     return surface
@@ -227,8 +246,12 @@ final class CardLayer: CALayer {
     let radius = Theme.cardRadius
     let paper = NSBezierPath(roundedRect: r.insetBy(dx: 0.5, dy: 0.5), xRadius: radius, yRadius: radius)
     if p.framed {
+      let cg = NSGraphicsContext.current!.cgContext
+      cg.saveGState()
+      cg.setShadow(offset: CGSize(width: 0, height: -3), blur: 14, color: CGColor(gray: 0, alpha: 0.14))
       Theme.surface.setFill()
       paper.fill()
+      cg.restoreGState()
     }
     switch p.card.kind {
     case "code": drawCode(p, r, lod: lod)
@@ -432,6 +455,7 @@ final class SectionLayer: CALayer {
   init(section: SceneSection) {
     self.section = section
     super.init()
+    shouldRasterize = true
     anchorPoint = .zero
     shape.lineWidth = 1
     title.font = Theme.sys(12.5, weight: .semibold)
@@ -460,6 +484,7 @@ final class SectionLayer: CALayer {
   func setScale(_ scale: CGFloat) {
     title.contentsScale = max(0.5, scale)
     title.isHidden = scale < 0.2
+    rasterizationScale = max(0.125, scale)
   }
   func recolor() {
     Theme.appearance.performAsCurrentDrawingAppearance {
@@ -480,9 +505,12 @@ final class ArrowLayer: CALayer {
     self.link = link
     super.init()
     anchorPoint = .zero
+    // a bitmap of the arrow at the zoom bucket's scale, like a card: a zoom frame scales it instead of filling the shapes again
+    shouldRasterize = true
     for l in [line, line2, head, tail] { addSublayer(l) }
     apply(link)
   }
+  func setScale(_ scale: CGFloat) { rasterizationScale = max(0.125, scale) }
   override init(layer: Any) {
     link = (layer as! ArrowLayer).link
     super.init(layer: layer)
@@ -523,9 +551,19 @@ final class ArrowLayer: CALayer {
   }
   func apply(geo: RouteGeo) {
     let stroked = link.dash == true || link.hand != nil
-    line.path = SVGPath.parse(stroked ? geo.d : (geo.taper ?? geo.d))
-    line2.path = geo.d2.map(SVGPath.parse)
-    head.path = geo.head.map(SVGPath.parse)
-    tail.path = geo.tail.map(SVGPath.parse)
+    let d = geo.path(geo.n.d, geo.s.d)
+    line.path = stroked ? d : (geo.path(geo.n.taper, geo.s.taper) ?? d)
+    line2.path = geo.path(geo.n.d2, geo.s.d2)
+    head.path = geo.path(geo.n.head, geo.s.head)
+    tail.path = geo.path(geo.n.tail, geo.s.tail)
+    // the layer's own box around its paths (the paths stay in world coordinates: bounds.origin shifts them in), so the raster
+    // is just the arrow
+    var box = CGRect.null
+    for l in [line, line2, head, tail] { if let p = l.path { box = box.union(p.boundingBoxOfPath) } }
+    if !box.isNull {
+      box = box.insetBy(dx: -8, dy: -8)
+      bounds = box
+      position = box.origin
+    }
   }
 }

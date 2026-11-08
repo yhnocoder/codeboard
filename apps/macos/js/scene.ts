@@ -28,9 +28,10 @@ export type SceneCard = {
   section?: string;
   locked?: boolean;
   tilt?: boolean;
-  /** Code: the kind glyph and the segments' coloured lines */
+  /** Code: the kind glyph and the segments' coloured lines; `pending` while its grammar loads (plain lines, not to be drawn) */
   glyph?: string;
   segments?: SceneSegment[];
+  pending?: true;
   /** Note / Text / Box / Mark / Free Text */
   look?: string;
   md?: string;
@@ -85,6 +86,8 @@ export type SceneChange = {
   sections: SceneSection[];
   links: SceneLink[];
   gone: { cards: string[]; sections: string[]; links: string[] };
+  /** Cards only placed elsewhere (a drag), nothing else of them changed: no card to rebuild */
+  moved: { id: string; x: number; y: number; section?: string }[];
   name?: string;
   /** When a card or link changed: the routing model as it is now */
   routing?: RouteModel;
@@ -99,7 +102,9 @@ export type SceneEnv = {
 
 const sepName = (p: string) => p.split("/").pop() ?? p;
 
-export async function sceneCard(b: Board, c: Card, env: SceneEnv): Promise<SceneCard | null> {
+/** `quick`: a Code card whose grammar is still loading comes back `pending` with plain lines (the shell shows its placeholder; the
+ *  finished card follows as a change) */
+export async function sceneCard(b: Board, c: Card, env: SceneEnv, quick = false): Promise<SceneCard | null> {
   const p = b.place[c.id];
   if (!p) return null;
   const out: SceneCard = { id: c.id, kind: c.kind, x: p.x, y: p.y, w: p.w, title: cardTitle(c, b) };
@@ -113,13 +118,14 @@ export async function sceneCard(b: Board, c: Card, env: SceneEnv): Promise<Scene
       out.glyph = codeGlyph(c);
       out.segments = await Promise.all(
         c.segments.map(async (s) => {
-          const toks = await env.hl.tokens(s.lang, s.text);
+          const toks = await env.hl.tokens(s.lang, s.text, !quick);
+          if (!toks) out.pending = true;
           return {
             path: s.src.kind === "free" ? "" : sepName(s.path),
             start: s.start,
             end: s.end,
             lang: s.lang,
-            lines: s.text.map((_, i) => ({ n: s.start + i, toks: toks[i] ?? [[s.text[i]]] })),
+            lines: s.text.map((_, i) => ({ n: s.start + i, toks: toks?.[i] ?? [[s.text[i]]] })),
           };
         }),
       );
@@ -195,8 +201,8 @@ export function sceneLink(b: Board, l: Link): SceneLink {
   return out;
 }
 
-export async function scene(b: Board, env: SceneEnv): Promise<Scene> {
-  const cards = (await Promise.all(b.cards.map((c) => sceneCard(b, c, env)))).filter((c): c is SceneCard => !!c);
+export async function scene(b: Board, env: SceneEnv, quick = false): Promise<Scene> {
+  const cards = (await Promise.all(b.cards.map((c) => sceneCard(b, c, env, quick)))).filter((c): c is SceneCard => !!c);
   return {
     id: b.id,
     name: b.name,

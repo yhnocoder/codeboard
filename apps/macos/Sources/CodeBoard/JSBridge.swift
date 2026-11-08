@@ -1,8 +1,10 @@
 // The JavaScript side (dist/bridge.js: @codeboard/core and the host's Storage, see js/bridge.ts) in JavaScriptCore: one context
 // for the whole process (the app delegate's), with one Storage per boards folder (`Folder`, shared by every window on it) and one
 // session per open board (`Session`, a window is a view onto it). This is the shell's `native` (js/native.ts: a synchronous file
-// system, timers on the main queue, FSEvents for the storage folder) and the typed calls into `CodeBoard`. Everything runs on the
-// main thread; async results come back through the "reply" event. apps/macos/ARCHITECTURE.md has the shape.
+// system, timers, FSEvents for the storage folder) and the typed calls into `CodeBoard`. All JavaScript runs on the bridge's own
+// serial queue (loading the bundle, opening a board: parse, migrate, highlight, build and decode the scene take hundreds of
+// milliseconds the main thread never waits on); async results come back through the "reply" event and reach their callbacks on
+// the main thread; the synchronous calls (a drag's frames, routing) wait on the queue. apps/macos/ARCHITECTURE.md has the shape.
 import AppKit
 import CoreServices
 import CryptoKit
@@ -10,10 +12,12 @@ import JavaScriptCore
 
 final class JSBridge {
   private let ctx: JSContext
+  /** Every use of `ctx` is on this queue */
+  private let queue = DispatchQueue(label: "codeboard.js", qos: .userInitiated)
   private var api: JSValue { ctx.objectForKeyedSubscript("CodeBoard") }
   private var pending: [Int: (Result<String, Error>) -> Void] = [:]
   private var nextReq = 1
-  private var timers: [Int: Timer] = [:]
+  private var timers: [Int: DispatchWorkItem] = [:]
   private var watches: [Int: FSEventStreamRef] = [:]
   private var nextWatch = 1
   /** Events not for a folder (none today; a folder's go to its Folder's listeners) */
@@ -83,19 +87,18 @@ final class JSBridge {
     } as @convention(block) (String) -> String)
     put("now", { () -> Double in CACurrentMediaTime() * 1000 } as @convention(block) () -> Double)
     put("emit", { [unowned self] (name: String, json: String) in self.event(name, json) } as @convention(block) (String, String) -> Void)
-    // run-loop timers, not dispatch blocks: they fire in nested run loops too (a sheet, the quit confirmation waiting on a flush)
+    // on the queue (so they fire whatever the main run loop is in: a sheet, the quit confirmation waiting on a flush)
     put("setTimer", { [unowned self] (id: Int, ms: Double) in
-      self.timers[id]?.invalidate()
-      let t = Timer(timeInterval: ms / 1000, repeats: false) { [weak self] _ in
+      self.timers[id]?.cancel()
+      let item = DispatchWorkItem { [weak self] in
         guard let self else { return }
         self.timers[id] = nil
         self.api.invokeMethod("timer", withArguments: [id])
       }
-      t.tolerance = ms > 100 ? ms / 10000 : 0
-      RunLoop.main.add(t, forMode: .common)
-      self.timers[id] = t
+      self.timers[id] = item
+      self.queue.asyncAfter(deadline: .now() + ms / 1000, execute: item)
     } as @convention(block) (Int, Double) -> Void)
-    put("cancelTimer", { [unowned self] (id: Int) in self.timers.removeValue(forKey: id)?.invalidate() } as @convention(block) (Int) -> Void)
+    put("cancelTimer", { [unowned self] (id: Int) in self.timers.removeValue(forKey: id)?.cancel() } as @convention(block) (Int) -> Void)
     put("watch", { [unowned self] (base: String) -> Int in self.watch(base) } as @convention(block) (String) -> Int)
     put("unwatch", { [unowned self] (id: Int) in
       if let s = self.watches.removeValue(forKey: id) {
@@ -113,8 +116,12 @@ final class JSBridge {
     }
     ctx.setObject(console, forKeyedSubscript: "console" as NSString)
     let src = try String(contentsOf: bundle, encoding: .utf8)
-    ctx.evaluateScript(src, withSourceURL: bundle)
-    if api.isUndefined { throw JSError(message: "bridge.js did not define CodeBoard") }
+    queue.async { [self] in
+      let t0 = CACurrentMediaTime()
+      ctx.evaluateScript(src, withSourceURL: bundle)
+      logLine("[codeboard] bridge.js evaluated in %.0f ms", (CACurrentMediaTime() - t0) * 1000)
+      if api.isUndefined { logLine("[codeboard] bridge.js did not define CodeBoard") }
+    }
   }
   /** The process is done: Storage's watchers (FSEvents), the timers and the JavaScript context go with it */
   deinit {
@@ -123,9 +130,10 @@ final class JSBridge {
       FSEventStreamInvalidate(s)
       FSEventStreamRelease(s)
     }
-    for (_, t) in timers { t.invalidate() }
+    for (_, t) in timers { t.cancel() }
   }
 
+  /** On the queue: a reply goes to its call's callback (still on the queue: `typed` decodes there), the rest to the main thread */
   private func event(_ name: String, _ json: String) {
     if name == "reply" {
       struct Reply: Decodable {
@@ -139,7 +147,10 @@ final class JSBridge {
       return
     }
     struct Where: Decodable { var dir: String; var id: String? }
-    if let w = try? decodeJSON(Where.self, json), let f = folders[w.dir] { f.event(name, w.id, json) } else { onEvent?(name, json) }
+    let w = try? decodeJSON(Where.self, json)
+    DispatchQueue.main.async { [self] in
+      if let w, let f = folders[w.dir] { f.event(name, w.id, json) } else { onEvent?(name, json) }
+    }
   }
 
   // FSEvents on the storage folder: changed files reach Storage through CodeBoard.fsChanged
@@ -170,31 +181,58 @@ final class JSBridge {
     // the stream reports the real path (/private/var…): give it that one so Storage's paths match
     let real = URL(fileURLWithPath: base).resolvingSymlinksInPath().path
     guard let s = FSEventStreamCreate(nil, cb, &cx, [real] as CFArray, FSEventStreamEventId(kFSEventStreamEventIdSinceNow), 0.2, flags) else { return id }
-    FSEventStreamSetDispatchQueue(s, .main)
+    FSEventStreamSetDispatchQueue(s, queue)
     FSEventStreamStart(s)
     watches[id] = s
     return id
   }
 
   /** A full garbage collection now (JavaScriptCore collects on its own schedule; the checks measure after one) */
-  func collect() { JSGarbageCollect(ctx.jsGlobalContextRef) }
+  func collect() { queue.sync { JSGarbageCollect(ctx.jsGlobalContextRef) } }
 
   // Calls into CodeBoard
+  /** Asynchronous: the reply reaches `cb` on the queue (`typed` or `onMain` bring it to the main thread) */
   private func call(_ name: String, _ args: [Any], _ cb: @escaping (Result<String, Error>) -> Void) {
-    let req = nextReq
-    nextReq += 1
-    pending[req] = cb
-    api.invokeMethod(name, withArguments: [req] + args)
-  }
-  private func typed<T: Decodable>(_ type: T.Type, _ cb: @escaping (Result<T, Error>) -> Void) -> (Result<String, Error>) -> Void {
-    { r in
-      switch r {
-      case .failure(let e): cb(.failure(e))
-      case .success(let json):
-        do { cb(.success(try decodeJSON(type, json))) } catch { cb(.failure(error)) }
-      }
+    queue.async { [self] in
+      let req = nextReq
+      nextReq += 1
+      pending[req] = cb
+      api.invokeMethod(name, withArguments: [req] + args)
     }
   }
+  /** An edit (undo, a drop, the changes after one): waits on the queue, and when JavaScript replied within the call (it does, unless
+   *  something awaits I/O) `cb` runs before this returns, in the same frame as the key or the drop; otherwise it comes on the main
+   *  thread later */
+  private func callNow(_ name: String, _ args: [Any], _ cb: @escaping (Result<String, Error>) -> Void) {
+    var out: Result<String, Error>?
+    queue.sync { [self] in
+      let req = nextReq
+      nextReq += 1
+      pending[req] = { out = $0 }
+      api.invokeMethod(name, withArguments: [req] + args)
+      if out == nil { pending[req] = { r in DispatchQueue.main.async { cb(r) } } }
+    }
+    if let out { cb(out) }
+  }
+  private func decode<T: Decodable>(_ type: T.Type, _ r: Result<String, Error>) -> Result<T, Error> {
+    switch r {
+    case .failure(let e): return .failure(e)
+    case .success(let json):
+      do { return .success(try decodeJSON(type, json)) } catch { return .failure(error) }
+    }
+  }
+  /** Decoded on the queue (a scene's JSON is big), delivered on the main thread */
+  private func typed<T: Decodable>(_ type: T.Type, _ cb: @escaping (Result<T, Error>) -> Void) -> (Result<String, Error>) -> Void {
+    { [self] r in
+      let out = decode(type, r)
+      DispatchQueue.main.async { cb(out) }
+    }
+  }
+  /** Decoded where the reply arrives (`callNow`: on the main thread, the payload is a change) */
+  private func typedNow<T: Decodable>(_ type: T.Type, _ cb: @escaping (Result<T, Error>) -> Void) -> (Result<String, Error>) -> Void {
+    { [self] r in cb(decode(type, r)) }
+  }
+  private func onMain(_ cb: @escaping (Result<String, Error>) -> Void) -> (Result<String, Error>) -> Void { { r in DispatchQueue.main.async { cb(r) } } }
 
   // MARK: folders and sessions
   /** A boards folder: its Storage, shared by every window on it (board windows, the library). `release` when a window is done */
@@ -209,26 +247,29 @@ final class JSBridge {
   /** The board's scene (its session is made on first open); the Session then drives it */
   func open(_ dir: String, _ id: String, _ cb: @escaping (Result<Scene, Error>) -> Void) { call("open", [dir, id], typed(Scene.self, cb)) }
   /** Unsaved changes written: a folder's, or every folder's */
-  func flush(_ dir: String? = nil, _ cb: @escaping (Result<String, Error>) -> Void) { call("flush", dir.map { [$0] } ?? [], cb) }
-  fileprivate func closeFolder(_ dir: String, _ cb: @escaping (Result<String, Error>) -> Void) { call("closeFolder", [dir], cb) }
+  func flush(_ dir: String? = nil, _ cb: @escaping (Result<String, Error>) -> Void) { call("flush", dir.map { [$0] } ?? [], onMain(cb)) }
+  fileprivate func closeFolder(_ dir: String, _ cb: @escaping (Result<String, Error>) -> Void) { call("closeFolder", [dir], onMain(cb)) }
   fileprivate func dropFolder(_ dir: String) { folders[dir] = nil }
-  fileprivate func changes(_ dir: String, _ id: String, _ cb: @escaping (Result<SceneChange, Error>) -> Void) { call("changes", [dir, id], typed(SceneChange.self, cb)) }
-  fileprivate func undo(_ dir: String, _ id: String, _ cb: @escaping (Result<SceneChange, Error>) -> Void) { call("undo", [dir, id], typed(SceneChange.self, cb)) }
-  fileprivate func redo(_ dir: String, _ id: String, _ cb: @escaping (Result<SceneChange, Error>) -> Void) { call("redo", [dir, id], typed(SceneChange.self, cb)) }
-  fileprivate func endDrag(_ dir: String, _ id: String, _ moves: [Move], _ cb: @escaping (Result<SceneChange, Error>) -> Void) { call("endDrag", [dir, id, encodeJSON(moves)], typed(SceneChange.self, cb)) }
-  fileprivate func beginDrag(_ dir: String, _ id: String) { api.invokeMethod("beginDrag", withArguments: [dir, id]) }
+  fileprivate func changes(_ dir: String, _ id: String, _ cb: @escaping (Result<SceneChange, Error>) -> Void) { callNow("changes", [dir, id], typedNow(SceneChange.self, cb)) }
+  fileprivate func undo(_ dir: String, _ id: String, _ cb: @escaping (Result<SceneChange, Error>) -> Void) { callNow("undo", [dir, id], typedNow(SceneChange.self, cb)) }
+  fileprivate func redo(_ dir: String, _ id: String, _ cb: @escaping (Result<SceneChange, Error>) -> Void) { callNow("redo", [dir, id], typedNow(SceneChange.self, cb)) }
+  fileprivate func endDrag(_ dir: String, _ id: String, _ moves: [Move], _ cb: @escaping (Result<SceneChange, Error>) -> Void) { callNow("endDrag", [dir, id, encodeJSON(moves)], typedNow(SceneChange.self, cb)) }
+  fileprivate func beginDrag(_ dir: String, _ id: String) { queue.sync { api.invokeMethod("beginDrag", withArguments: [dir, id]) } }
   /** A card as dragged: where it is and its size as drawn */
   struct Move: Encodable { var id: String; var x, y, w, h: Double }
-  fileprivate func drag(_ dir: String, _ id: String, _ moves: [Move]) { api.invokeMethod("drag", withArguments: [dir, id, encodeJSON(moves)]) }
-  fileprivate func cam(_ dir: String, _ id: String, _ c: Camera) { api.invokeMethod("cam", withArguments: [dir, id, c.x, c.y, c.z]) }
+  fileprivate func drag(_ dir: String, _ id: String, _ moves: [Move]) {
+    let json = encodeJSON(moves)
+    queue.async { [self] in api.invokeMethod("drag", withArguments: [dir, id, json]) }
+  }
+  fileprivate func cam(_ dir: String, _ id: String, _ c: Camera) { queue.async { [self] in api.invokeMethod("cam", withArguments: [dir, id, c.x, c.y, c.z]) } }
   fileprivate func route(_ dir: String, _ id: String, _ rects: [String: WorldRect], only: [String]?, modes: [String: String]?) -> [RouteGeo] {
     var args: [Any] = [dir, id, encodeJSON(rects), only.map(encodeJSON) ?? "null"]
     if let modes { args.append(encodeJSON(modes)) }
-    guard let r = api.invokeMethod("route", withArguments: args)?.toString() else { return [] }
+    guard let r = queue.sync(execute: { api.invokeMethod("route", withArguments: args)?.toString() }) else { return [] }
     return (try? decodeJSON([RouteGeo].self, r)) ?? []
   }
   fileprivate func benchEdit(_ dir: String, _ id: String, _ n: Int) -> [Double] {
-    guard let r = api.invokeMethod("benchEdit", withArguments: [dir, id, n])?.toString() else { return [] }
+    guard let r = queue.sync(execute: { api.invokeMethod("benchEdit", withArguments: [dir, id, n])?.toString() }) else { return [] }
     return (try? decodeJSON([Double].self, r)) ?? []
   }
 }

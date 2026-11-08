@@ -165,7 +165,7 @@ final class AutoRun: NSObject {
           let ids = canvas.cardLayers.keys.sorted { (linksOn[$0] ?? 0) != (linksOn[$1] ?? 0) ? (linksOn[$0] ?? 0) > (linksOn[$1] ?? 0) : $0 < $1 }
           guard let id = ids.first, let l = canvas.cardLayers[id] else { self.finish(finished); return }
           canvas.resetRouteStats()
-          let start = CGPoint(x: l.frame.midX * canvas.cam.z + canvas.cam.x, y: (l.frame.minY + 18) * canvas.cam.z + canvas.cam.y)
+          let start = CGPoint(x: l.worldRect.midX * canvas.cam.z + canvas.cam.x, y: (l.worldRect.minY + 18) * canvas.cam.z + canvas.cam.y)
           canvas.select([id])
           canvas.beginDrag([id], at: start)
           self.step("drag", frames: 180, { p in

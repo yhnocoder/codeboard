@@ -141,7 +141,15 @@ const names = Object.fromEntries([...boards, big].map((b) => [b.id, b.name]));
 async function runBoard(id) {
   const dir = path.join(out, id);
   fs.mkdirSync(dir, { recursive: true });
-  const a = ["--open", copy, "--board", id, "--gate", dir];
+  const a = [
+    "--open",
+    copy,
+    "--board",
+    id,
+    "--gate",
+    dir,
+    ...(opt("--app-args", "") ? opt("--app-args", "").split(" ") : []),
+  ];
   if (stepsOpt) a.push("--steps", stepsOpt);
   if (flag("--no-capture")) a.push("--no-capture");
   const load = os.loadavg()[0];

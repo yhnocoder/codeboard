@@ -8,6 +8,8 @@ protocol CanvasDelegate: AnyObject {
   func canvas(_ c: CanvasView, dragEnded moves: [JSBridge.Move])
   func canvas(_ c: CanvasView, cameraRested cam: Camera)
   func canvasRoute(_ c: CanvasView, rects: [String: WorldRect], only: [String]?, modes: [String: String]?) -> [RouteGeo]
+  func canvasUndo(_ c: CanvasView)
+  func canvasRedo(_ c: CanvasView)
 }
 
 /** How many finished bitmaps land per frame: enough to fill a view in a few frames, few enough that the commit stays short */
@@ -29,6 +31,9 @@ final class CanvasView: NSView {
   var onCamera: ((Camera) -> Void)?
   static let zMin: CGFloat = 0.05, zMax: CGFloat = 4
   private var restTimer: Timer?
+  /** A zoom re-rasters once it has settled this long: during the pinch the bitmaps scale */
+  private var settleTimer: Timer?
+  static let RASTER_SETTLE = 0.12
   private var rasterScale: CGFloat = 0
   private(set) var selected: Set<String> = []
   /** The routing off the main thread during a drag (RouteWorker), and this board's key in it */
@@ -66,18 +71,23 @@ final class CanvasView: NSView {
   var backing: CGFloat { window?.backingScaleFactor ?? 2 }
 
   // MARK: scene
+  /** A whole scene. Layers of cards still in it stay (their bitmaps too: opening the same board again shows no blank card), the
+   *  rest go */
   func load(_ s: Scene) {
     CATransaction.begin()
     CATransaction.setDisableActions(true)
-    for l in cardLayers.values { l.removeFromSuperlayer() }
+    let keep = Set(s.cards.map(\.id))
+    for (id, l) in cardLayers where !keep.contains(id) {
+      l.removeFromSuperlayer()
+      cardLayers[id] = nil
+    }
     for l in sectionLayers.values { l.removeFromSuperlayer() }
     for l in arrowLayers.values { l.removeFromSuperlayer() }
-    cardLayers = [:]
     sectionLayers = [:]
     arrowLayers = [:]
-    order = []
+    order = order.filter { keep.contains($0) }
     selected = []
-    rasterScale = 0
+    landing = []
     for sec in s.sections { putSection(sec) }
     for c in s.cards { putCard(c) }
     for l in s.links { putLink(l) }
@@ -98,6 +108,7 @@ final class CanvasView: NSView {
     for id in ch.gone.links { arrowLayers.removeValue(forKey: id)?.removeFromSuperlayer() }
     for sec in ch.sections { putSection(sec) }
     for c in ch.cards { putCard(c) }
+    for m in ch.moved { cardLayers[m.id]?.move(to: CGPoint(x: m.x, y: m.y), section: m.section) }
     for l in ch.links { putLink(l) }
     CATransaction.commit()
     routeAll()
@@ -127,6 +138,7 @@ final class CanvasView: NSView {
   private func putLink(_ k: SceneLink) {
     if let l = arrowLayers[k.id] { l.apply(k) } else {
       let l = ArrowLayer(link: k)
+      l.setScale(max(rasterScale, 0.125))
       arrowLayers[k.id] = l
       arrows.addSublayer(l)
     }
@@ -218,8 +230,15 @@ final class CanvasView: NSView {
     world.transform = t
     CATransaction.commit()
     cull()
-    rasterIfNeeded()
+    if rasterScale == 0 { rasterIfNeeded() } else { settleRaster() }
     rested()
+  }
+  private func settleRaster() {
+    if rasterBucket(zoom: cam.z, backing: backing) == rasterScale { settleTimer?.invalidate(); return }
+    settleTimer?.invalidate()
+    let t = Timer(timeInterval: CanvasView.RASTER_SETTLE, repeats: false) { [weak self] _ in self?.rasterIfNeeded() }
+    RunLoop.main.add(t, forMode: .common)
+    settleTimer = t
   }
   private func rested() {
     restTimer?.invalidate()
@@ -256,12 +275,16 @@ final class CanvasView: NSView {
   /** Cards far outside the view drop their bitmaps; ones coming near draw again before they are seen */
   private func cull() {
     let vis = CGRect(x: -cam.x / cam.z, y: -cam.y / cam.z, width: bounds.width / cam.z, height: bounds.height / cam.z)
-    let near = vis.insetBy(dx: -vis.width * 0.25, dy: -vis.height * 0.25)
+    // half a view around: a card is drawn well before a pan's momentum brings it in (a bitmap landing in view is a flash)
+    let near = vis.insetBy(dx: -vis.width * 0.5, dy: -vis.height * 0.5)
+    // a card coming near while a zoom is still going draws at this zoom's bucket, not the settled one (zooming out from 1 brought
+    // every card in at 2× backing: 40 full-size rasters and uploads inside the gesture)
+    let s = rasterBucket(zoom: cam.z, backing: backing)
     for l in cardLayers.values {
       let on = near.intersects(l.worldRect)
       if l.isHidden != !on || (on && l.contents == nil && !l.drawn) {
         l.isHidden = !on
-        if on { l.setNeedsDisplay(); l.drawn = true } else { l.contents = nil; l.drawn = false }
+        if on { l.contentsScale = s; l.setNeedsDisplay(); l.drawn = true } else { l.contents = nil; l.drawn = false }
       }
     }
   }
@@ -276,11 +299,12 @@ final class CanvasView: NSView {
     let near = cardLayers.values.filter { !$0.isHidden }.sorted { hypot($0.worldRect.midX - centre.x, $0.worldRect.midY - centre.y) < hypot($1.worldRect.midX - centre.x, $1.worldRect.midY - centre.y) }
     CATransaction.setDisableActions(true)
     for l in cardLayers.values where l.isHidden { l.contentsScale = s }
-    for l in near {
+    for l in near where l.contentsScale != s {
       l.contentsScale = s
       l.setNeedsDisplay()
     }
     for l in sectionLayers.values { l.setScale(s) }
+    for l in arrowLayers.values { l.setScale(s) }
   }
   func redrawAll() {
     Theme.appearance = effectiveAppearance
@@ -300,8 +324,17 @@ final class CanvasView: NSView {
   }
   override func layout() {
     super.layout()
+    if !inLiveResize { cull() }
+  }
+  override func viewDidEndLiveResize() {
+    super.viewDidEndLiveResize()
     cull()
   }
+  /** Undo / Redo from the menu reach the board, not the window's own (empty) undo manager; other keys are not the board's and
+   *  do not beep */
+  @objc func undo(_ sender: Any?) { delegate?.canvasUndo(self) }
+  @objc func redo(_ sender: Any?) { delegate?.canvasRedo(self) }
+  override func keyDown(with event: NSEvent) {}
 
   // MARK: input
   override func scrollWheel(with e: NSEvent) {
@@ -344,7 +377,7 @@ final class CanvasView: NSView {
   }
   func beginDrag(_ ids: [String], at p: CGPoint) {
     var origins: [String: CGPoint] = [:]
-    for id in ids { if let l = cardLayers[id] { origins[id] = l.frame.origin } }
+    for id in ids { if let l = cardLayers[id] { origins[id] = l.worldRect.origin } }
     drag = (ids, p, origins, linksOn(Set(ids)), false)
   }
   override func mouseDragged(with e: NSEvent) {
@@ -369,8 +402,10 @@ final class CanvasView: NSView {
       if !d.links.isEmpty { applyRoutes(delegate?.canvasRoute(self, rects: rects, only: d.links, modes: nil) ?? []) }
       return
     }
-    // the arrows are routed off the main thread for where the cards are going; cards and arrows then move in one frame
-    var rs = rects
+    // the arrows are routed off the main thread for where the cards are going; cards and arrows then move in one frame. Only
+    // the rectangles routing reads: the dragged cards' and those at the other ends of their arrows
+    var rs: [String: WorldRect] = [:]
+    for l in d.links { if let a = arrowLayers[l] { for id in [a.link.from.card, a.link.to.card] { if let c = cardLayers[id] { rs[id] = WorldRect(x: c.card.x, y: c.card.y, w: c.card.w, h: Double(c.height)) } } } }
     for (id, t) in targets { if let r = rs[id] { rs[id] = WorldRect(x: t.x, y: t.y, w: r.w, h: r.h) } }
     routeSeq += 1
     dragTargets[routeSeq] = targets
@@ -397,8 +432,8 @@ final class CanvasView: NSView {
     dragTargets = [:]
     let moves = d.ids.compactMap { id in
       cardLayers[id].map {
-        let at = last[id] ?? $0.frame.origin
-        return JSBridge.Move(id: id, x: Double(at.x), y: Double(at.y), w: Double($0.frame.width), h: Double($0.frame.height))
+        let at = last[id] ?? $0.worldRect.origin
+        return JSBridge.Move(id: id, x: Double(at.x), y: Double(at.y), w: Double($0.worldRect.width), h: Double($0.worldRect.height))
       }
     }
     delegate?.canvas(self, dragEnded: moves)

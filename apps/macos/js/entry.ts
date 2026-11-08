@@ -4,6 +4,7 @@
 import "./prelude";
 import { createBridge } from "./bridge";
 import type { Native } from "./native";
+import { shellGeo } from "./routes";
 
 declare const native: Native;
 declare const wasmDir: string;
@@ -43,11 +44,9 @@ const session = (dir: string, id: string) => {
   closeFolder: (req: number, dir: string) => settle(req, bridge.folder(dir).close()),
   route: (dir: string, id: string, rects: string, only?: string, modes?: string) =>
     str(
-      session(dir, id).route(
-        JSON.parse(rects),
-        only ? JSON.parse(only) : undefined,
-        modes ? JSON.parse(modes) : undefined,
-      ),
+      session(dir, id)
+        .route(JSON.parse(rects), only ? JSON.parse(only) : undefined, modes ? JSON.parse(modes) : undefined)
+        .map(shellGeo),
     ),
   beginDrag: (dir: string, id: string) => session(dir, id).beginDrag(),
   drag: (dir: string, id: string, moves: string) => session(dir, id).drag(JSON.parse(moves)),

@@ -18,8 +18,11 @@ final class RouteWorker {
     ctx = JSContext(virtualMachine: vm)!
     ctx.exceptionHandler = { _, e in logLine("[codeboard router] %@", e?.toString() ?? "?") }
     let src = try String(contentsOf: bundle, encoding: .utf8)
-    ctx.evaluateScript(src, withSourceURL: bundle)
-    if api.isUndefined { throw JSBridge.JSError(message: "router.js did not define CodeRouter") }
+    // loaded on its queue: the first route waits on it, the main thread does not
+    queue.async { [self] in
+      ctx.evaluateScript(src, withSourceURL: bundle)
+      if api.isUndefined { logLine("[codeboard] router.js did not define CodeRouter") }
+    }
   }
 
   /** The board's routing model (links, each card's kind and code rows); key = folder + board */

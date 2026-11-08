@@ -1,7 +1,7 @@
 // The acceptance gate's in-app side (`--gate <dir> [--steps a,b,…] [--no-capture]`, with --open and --board): drives the real window
-// on the live display through every interaction with input posted at the HID level (CGEvent: trackpad scroll phases, ⌘-scroll,
-// mouse drags; keys through the app's own event queue; a pinch has no public event, so it calls what magnify(with:) calls), one
-// input per display frame. Per frame
+// on the live display through every interaction with synthetic input delivered to this process only (CGEvent.postToPid: trackpad
+// scroll phases, ⌘-scroll, mouse drags; keys through the window and menu; a pinch has no public event, so it calls what
+// magnify(with:) calls), one input per display frame, and only while this process is frontmost. Per frame
 // (CVDisplayLink, handed to the main thread like Auto.swift) it records the interval, the main thread's cost, the camera, every
 // card in view (world rect) and the cards in view with no bitmap yet; the window is captured with ScreenCaptureKit at the display
 // rate (1 px per point), each frame reduced to the cell grid probes.ts judges (8 px cells, 4 px quarters) and a half-size JPEG.
@@ -57,7 +57,32 @@ final class GateRun: NSObject, SCStreamOutput {
     let s = wc.window!.convertPoint(toScreen: w)
     return CGPoint(x: s.x, y: screenH - s.y)
   }
-  private func post(_ e: CGEvent?) { e?.post(tap: .cghidEventTap) }
+  /** Every synthetic event goes to this process only (never to whatever is in front: a stray click or key must not reach another
+   *  app's boards), and only while this process is the frontmost one; otherwise the event is dropped and the run notes it */
+  private var dropped = 0
+  private func post(_ e: CGEvent?) {
+    guard let e else { return }
+    guard NSWorkspace.shared.frontmostApplication?.processIdentifier == getpid() else {
+      dropped += 1
+      if dropped == 1 { logLine("[gate] not frontmost: input dropped") }
+      return
+    }
+    e.postToPid(getpid())
+  }
+  /** An event delivered to the process carries its flags, but AppKit's modifier state comes from the modifier keys themselves:
+   *  ⌘ / ⇧ go down (flagsChanged) before the first event that needs them and up when no longer needed */
+  private var held: CGEventFlags = []
+  private func hold(_ flags: CGEventFlags) {
+    for (mask, code) in [(CGEventFlags.maskCommand, CGKeyCode(55)), (CGEventFlags.maskShift, CGKeyCode(56))] {
+      let want = flags.contains(mask), have = held.contains(mask)
+      if want == have { continue }
+      guard let e = CGEvent(keyboardEventSource: nil, virtualKey: code, keyDown: want) else { continue }
+      e.type = .flagsChanged
+      if want { held.insert(mask) } else { held.remove(mask) }
+      e.flags = held
+      post(e)
+    }
+  }
   private func scroll(dx: Double, dy: Double, phase: Int64, momentum: Int64 = 0, cmd: Bool = false, at p: CGPoint) {
     // wheel1 is vertical: a positive delta scrolls the content down in AppKit's scrollingDeltaY (natural scrolling applies, as to a finger)
     guard let e = CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 2, wheel1: Int32(dy.rounded()), wheel2: Int32(dx.rounded()), wheel3: 0) else { return }
@@ -67,12 +92,14 @@ final class GateRun: NSObject, SCStreamOutput {
     e.setDoubleValueField(.scrollWheelEventFixedPtDeltaAxis1, value: dy)
     e.setDoubleValueField(.scrollWheelEventFixedPtDeltaAxis2, value: dx)
     e.location = global(p)
+    hold(cmd ? .maskCommand : [])
     e.flags = cmd ? .maskCommand : []
     post(e)
   }
   private func mouse(_ type: CGEventType, at p: CGPoint, clicks: Int64 = 1, flags: CGEventFlags = []) {
     guard let e = CGEvent(mouseEventSource: nil, mouseType: type, mouseCursorPosition: global(p), mouseButton: .left) else { return }
     e.setIntegerValueField(.mouseEventClickState, value: clicks)
+    hold(flags)
     e.flags = flags
     post(e)
   }
@@ -384,6 +411,7 @@ final class GateRun: NSObject, SCStreamOutput {
   }
   private func runStep(_ s: GateStep, _ done: @escaping () -> Void) {
     current = s
+    dropped = 0
     samples = []
     lastT = 0
     frameIndex = 0
@@ -406,6 +434,7 @@ final class GateRun: NSObject, SCStreamOutput {
         self.tick = nil
         let r1 = Rusage.now(), wall = CACurrentMediaTime() - self.stepT0
         s.finish()
+        self.hold([])
         let samples = self.samples
         self.capQueue.async {
           self.capturing = false
@@ -414,7 +443,7 @@ final class GateRun: NSObject, SCStreamOutput {
           DispatchQueue.main.async {
             var o: [String: Any] = [
               "name": s.name, "continuous": s.continuous, "frames": n, "t0": self.stepT0, "free": self.free, "moves": self.moves, "samples": samples,
-              "cpu_pct": wall > 0 ? (r1.cpu - r0.cpu) / wall * 100 : 0, "wall_s": wall,
+              "cpu_pct": wall > 0 ? (r1.cpu - r0.cpu) / wall * 100 : 0, "wall_s": wall, "dropped_input": self.dropped,
             ]
             if !frames.isEmpty { o["capture"] = self.writeCapture(s.name, frames, cols: self.capW / 8, rows: self.capH / 8) }
             self.stepsOut.append(o)
@@ -453,7 +482,7 @@ final class GateRun: NSObject, SCStreamOutput {
     }
     func emptySpot() -> CGPoint {
       // a point in the canvas over no card
-      for y in stride(from: 40.0, to: c.bounds.height - 40, by: 60) {
+      for y in stride(from: 120.0, to: c.bounds.height - 40, by: 60) {
         for x in stride(from: 40.0, to: c.bounds.width - 40, by: 60) {
           let p = CGPoint(x: x, y: y)
           if c.cardAt(c.toWorld(p)) == nil { return p }

@@ -52,6 +52,101 @@ export type Rect = { x: number; y: number; w: number; h: number };
  *  after a drag routed off the main thread, adopts it so the arrow does not jump */
 export type RouteGeo = Geo & { id: string; taper?: string; mode?: Mode };
 
+/** A path as numbers for the shell: [op, x, y, …] with op 0 = M, 1 = L, 2 = C (x1 y1 x2 y2 x y), 3 = Q (x1 y1 x y), 4 = Z;
+ *  absolute. Parsing a string on every frame of a drag is what this saves. A form it does not know (an arc) → undefined, and the
+ *  shell parses the string */
+function pathNums(d: string): number[] | undefined {
+  const out: number[] = [];
+  const toks = d.match(/[A-Za-z]|-?(?:\d+\.?\d*|\.\d+)(?:e-?\d+)?/g);
+  if (!toks) return out;
+  let cmd = "M",
+    x = 0,
+    y = 0,
+    sx = 0,
+    sy = 0,
+    i = 0;
+  const num = () => Number(toks[i++]);
+  while (i < toks.length) {
+    const t = toks[i];
+    if (/[A-Za-z]/.test(t)) {
+      cmd = t;
+      i++;
+      if (cmd === "Z" || cmd === "z") {
+        out.push(4);
+        x = sx;
+        y = sy;
+      }
+      continue;
+    }
+    const rel = cmd === cmd.toLowerCase();
+    const bx = rel ? x : 0,
+      by = rel ? y : 0;
+    switch (cmd.toUpperCase()) {
+      case "M":
+        x = bx + num();
+        y = by + num();
+        out.push(0, x, y);
+        sx = x;
+        sy = y;
+        cmd = rel ? "l" : "L";
+        break;
+      case "L":
+        x = bx + num();
+        y = by + num();
+        out.push(1, x, y);
+        break;
+      case "H":
+        x = bx + num();
+        out.push(1, x, y);
+        break;
+      case "V":
+        y = by + num();
+        out.push(1, x, y);
+        break;
+      case "C": {
+        const a = bx + num(),
+          b = by + num(),
+          c = bx + num(),
+          e = by + num();
+        x = bx + num();
+        y = by + num();
+        out.push(2, a, b, c, e, x, y);
+        break;
+      }
+      case "Q": {
+        const a = bx + num(),
+          b = by + num();
+        x = bx + num();
+        y = by + num();
+        out.push(3, a, b, x, y);
+        break;
+      }
+      default:
+        return undefined;
+    }
+  }
+  return out;
+}
+/** What the shell draws an arrow from: the numbers of each path (the strings only where it could not read one) */
+export function shellGeo(g: RouteGeo) {
+  const n = (d: string | undefined) => (d === undefined ? undefined : pathNums(d));
+  return {
+    id: g.id,
+    mode: g.mode,
+    pts: g.pts,
+    mx: g.mx,
+    my: g.my,
+    n: { d: n(g.d), taper: n(g.taper), d2: n(g.d2), head: n(g.head), tail: n(g.tail) },
+    s: {
+      d: pathNums(g.d) ? undefined : g.d,
+      taper: g.taper && !pathNums(g.taper) ? g.taper : undefined,
+      d2: g.d2 && !pathNums(g.d2) ? g.d2 : undefined,
+      head: g.head && !pathNums(g.head) ? g.head : undefined,
+      tail: g.tail && !pathNums(g.tail) ? g.tail : undefined,
+    },
+  };
+}
+
 /** Distance a card moves before an end switches sides (board tune "sideBuffer") */
 const SIDE_BUFFER = 16;
 

@@ -24,7 +24,16 @@ import { makeHighlighter } from "./highlight";
 import { installGlobals, isErr, type Native } from "./native";
 import type { Mode } from "@codeboard/core/canvas";
 import { type Rect as DrawnRect, type RouteGeo, routeModel, Router } from "./routes";
-import { type Scene, type SceneChange, type SceneEnv, scene, sceneCard, sceneLink, sceneSection } from "./scene";
+import {
+  type Scene,
+  type SceneCard,
+  type SceneChange,
+  type SceneEnv,
+  scene,
+  sceneCard,
+  sceneLink,
+  sceneSection,
+} from "./scene";
 
 /** The camera coming to rest is saved after this long (the board's LIVE_DELAY); a failed save is sent again after RESEND_DELAY */
 const LIVE_DELAY = 800,
@@ -224,7 +233,13 @@ export function createBridge(native: Native, opts: { fs?: Fs; timers?: boolean; 
       const now = history.snap();
       const was = shown;
       shown = now;
-      const out: SceneChange = { cards: [], sections: [], links: [], gone: { cards: [], sections: [], links: [] } };
+      const out: SceneChange = {
+        cards: [],
+        sections: [],
+        links: [],
+        gone: { cards: [], sections: [], links: [] },
+        moved: [],
+      };
       const map = (ids: string[], xs: string[]) => new Map(ids.map((k, i) => [k, xs[i]]));
       const wc = map(was.ids.cards, was.cards),
         nc = map(now.ids.cards, now.cards);
@@ -232,6 +247,17 @@ export function createBridge(native: Native, opts: { fs?: Fs; timers?: boolean; 
         np = map(now.ids.place, now.place);
       for (const [k, s] of nc) {
         if (!np.has(k)) continue; // a Compare's column: not on the canvas
+        if (wc.get(k) === s && wp.get(k) !== np.get(k)) {
+          // only its position (and Section) changed: the shell moves the layer; anything else of the place rebuilds the card
+          const p = board.place[k];
+          const [, was] = JSON.parse(wp.get(k)!) as [string, typeof p];
+          const { x: _x, y: _y, section: _s, ...rest } = p;
+          const { x: _wx, y: _wy, section: _ws, ...wrest } = was;
+          if (JSON.stringify(rest) === JSON.stringify(wrest)) {
+            out.moved.push(p.section ? { id: k, x: p.x, y: p.y, section: p.section } : { id: k, x: p.x, y: p.y });
+            continue;
+          }
+        }
         if (wc.get(k) !== s || wp.get(k) !== np.get(k)) {
           const c = board.cards.find((x) => x.id === k);
           const sc = c && (await sceneCard(board, c, env));
@@ -266,9 +292,27 @@ export function createBridge(native: Native, opts: { fs?: Fs; timers?: boolean; 
     return {
       id,
       board: () => board,
-      scene(): Promise<Scene> {
+      /** Quick: Code cards whose grammar is still loading come back `pending`, and follow as a change once it is there */
+      async scene(): Promise<Scene> {
         shown = history.snap();
-        return scene(board, env);
+        const s = await scene(board, env, true);
+        const pending = s.cards.filter((c) => c.pending).map((c) => c.id);
+        if (pending.length) {
+          void env.hl.ready().then(async () => {
+            const cards: SceneCard[] = [];
+            for (const id of pending) {
+              const c = board.cards.find((x) => x.id === id);
+              const sc = c && (await sceneCard(board, c, env));
+              if (sc) cards.push(sc);
+            }
+            emit("changed", {
+              dir,
+              id,
+              change: { cards, sections: [], links: [], gone: { cards: [], sections: [], links: [] }, moved: [] },
+            });
+          });
+        }
+        return s;
       },
       changes,
       synced,

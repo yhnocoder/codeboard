@@ -7,6 +7,8 @@ final class CameraStore {
   static let shared = CameraStore()
   private var cams: [String: String] = [:]
   private var dirty = false
+  /** `get` and `set` come from the bridge's queue, `flush` from the main thread */
+  private let lock = NSLock()
   private var timer: Timer?
   let file: URL
 
@@ -25,21 +27,27 @@ final class CameraStore {
   }
 
   /** The camera as JSON, or nil */
-  func get(_ board: String) -> String? { cams[board] }
+  func get(_ board: String) -> String? { lock.withLock { cams[board] } }
   func set(_ board: String, _ json: String) {
-    cams[board] = json
-    dirty = true
-    timer?.invalidate()
-    timer = Timer(timeInterval: 0.5, repeats: false) { [weak self] _ in self?.flush() }
-    RunLoop.main.add(timer!, forMode: .common)
+    lock.withLock {
+      cams[board] = json
+      dirty = true
+    }
+    DispatchQueue.main.async { [self] in
+      timer?.invalidate()
+      timer = Timer(timeInterval: 0.5, repeats: false) { [weak self] _ in self?.flush() }
+      RunLoop.main.add(timer!, forMode: .common)
+    }
   }
   /** Written now (the app is quitting) */
   func flush() {
     timer?.invalidate()
     timer = nil
-    guard dirty else { return }
-    dirty = false
-    let body = cams.map { "\(encodeJSON($0.key)):\($0.value)" }.sorted().joined(separator: ",")
-    try? Data("{\(body)}".utf8).write(to: file, options: .atomic)
+    let body: String? = lock.withLock {
+      guard dirty else { return nil }
+      dirty = false
+      return cams.map { "\(encodeJSON($0.key)):\($0.value)" }.sorted().joined(separator: ",")
+    }
+    if let body { try? Data("{\(body)}".utf8).write(to: file, options: .atomic) }
   }
 }

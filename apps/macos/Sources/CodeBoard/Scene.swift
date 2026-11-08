@@ -1,4 +1,5 @@
 // The scene the bridge sends (js/scene.ts), decoded. World units = the board's px at zoom 1.
+import CoreGraphics
 import Foundation
 
 struct SceneTok: Decodable {
@@ -36,6 +37,8 @@ struct SceneCard: Decodable {
   var tilt: Bool?
   var glyph: String?
   var segments: [SceneSegment]?
+  /** A Code card whose grammar is still loading: its placeholder shows until the finished card comes as a change */
+  var pending: Bool?
   var look: String?
   var md: String?
   var size: String?
@@ -125,20 +128,45 @@ struct SceneChange: Decodable {
   var sections: [SceneSection]
   var links: [SceneLink]
   var gone: SceneGone
+  /** Cards only placed elsewhere: the layer moves, nothing is rebuilt */
+  var moved: [SceneMove]
   var name: String?
   var routing: AnyJSON?
 }
+struct SceneMove: Decodable {
+  var id: String
+  var x, y: Double
+  var section: String?
+}
+/** An arrow's drawn geometry: each path as numbers (n: [op, x, y…], op 0 M, 1 L, 2 C, 3 Q, 4 Z), or as the SVG string (s) for
+ *  a form the numbers do not carry */
 struct RouteGeo: Decodable {
   var id: String
-  var d: String
-  var taper: String?
   var mode: String?
-  var d2: String?
-  var head: String?
-  var tail: String?
   var pts: [Double]
   var mx: Double
   var my: Double
+  var n: Paths<[Double]>
+  var s: Paths<String>
+  struct Paths<T: Decodable>: Decodable { var d, taper, d2, head, tail: T? }
+  func path(_ nums: [Double]?, _ svg: String?) -> CGPath? {
+    if let nums { return RouteGeo.build(nums) }
+    return svg.map(SVGPath.parse)
+  }
+  static func build(_ v: [Double]) -> CGPath {
+    let p = CGMutablePath()
+    var i = 0
+    while i < v.count {
+      switch Int(v[i]) {
+      case 0: p.move(to: CGPoint(x: v[i + 1], y: v[i + 2])); i += 3
+      case 1: p.addLine(to: CGPoint(x: v[i + 1], y: v[i + 2])); i += 3
+      case 2: p.addCurve(to: CGPoint(x: v[i + 5], y: v[i + 6]), control1: CGPoint(x: v[i + 1], y: v[i + 2]), control2: CGPoint(x: v[i + 3], y: v[i + 4])); i += 7
+      case 3: p.addQuadCurve(to: CGPoint(x: v[i + 3], y: v[i + 4]), control: CGPoint(x: v[i + 1], y: v[i + 2])); i += 5
+      default: p.closeSubpath(); i += 1
+      }
+    }
+    return p
+  }
 }
 struct BoardMeta: Decodable {
   var id: String

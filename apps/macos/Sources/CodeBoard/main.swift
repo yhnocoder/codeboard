@@ -14,6 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   var windows: [BoardWindowController] = []
   /** The one JavaScript context of the process (core, storage), shared by every window */
   var bridge: JSBridge!
+  private var bridgeError: Error?
   /** The routing context on its background thread (nil when router.js is missing: the drag then routes on the main thread) */
   var router: RouteWorker?
   var auto: AutoRun?
@@ -27,18 +28,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     return URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("dist/bridge.js")
   }
 
-  func applicationDidFinishLaunching(_ n: Notification) {
-    logLine("[codeboard] launched %@", args.joined(separator: " "))
-    NSApp.setActivationPolicy(.regular)
+  /** Before AppKit launches: the two JavaScript bundles load on their queues while it does */
+  override init() {
+    super.init()
     Theme.load(bundleURL.deletingLastPathComponent().appendingPathComponent("themes.json"))
-    do { bridge = try JSBridge(bundle: bundleURL, resources: bundleURL.deletingLastPathComponent()) } catch {
-      NSAlert(error: error).runModal()
+    do { bridge = try JSBridge(bundle: bundleURL, resources: bundleURL.deletingLastPathComponent()) } catch { bridgeError = error }
+    router = try? RouteWorker(bundle: bundleURL.deletingLastPathComponent().appendingPathComponent("router.js"))
+    // the folder that opens first is listed now (its Storage reads every board once, ~100 ms): by the time its window is up,
+    // opening a board finds them read
+    if let f = arg("--open") ?? recents.first { bridge?.list(AppDelegate.boardsFolder(URL(fileURLWithPath: (f as NSString).standardizingPath).resolvingSymlinksInPath().path)) { _ in } }
+  }
+
+  func applicationDidFinishLaunching(_ n: Notification) {
+    logLine("[codeboard] launched %@ (AppKit up %.0f ms after main)", args.joined(separator: " "), (CACurrentMediaTime() - launchTime) * 1000)
+    NSApp.setActivationPolicy(.regular)
+    if let bridgeError {
+      NSAlert(error: bridgeError).runModal()
       NSApp.terminate(nil)
       return
     }
-    router = try? RouteWorker(bundle: bundleURL.deletingLastPathComponent().appendingPathComponent("router.js"))
     if router == nil { logLine("[codeboard] no router.js: drags route on the main thread") }
-    logLine("[codeboard] memory after the bridge loaded: %.0f MB footprint", AutoRun.residentMB())
     if args.contains("--dark") { NSApp.appearance = NSAppearance(named: .darkAqua) }
     if args.contains("--light") { NSApp.appearance = NSAppearance(named: .aqua) }
     makeMenu()

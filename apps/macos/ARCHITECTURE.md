@@ -11,8 +11,13 @@ BoardWindowController                    a view onto a Folder and the Session of
 
 ## Swift (`Sources/CodeBoard/JSBridge.swift`)
 
-- `JSBridge(bundle:resources:)` is made once, in `AppDelegate.applicationDidFinishLaunching`. Everything in it runs on the main
-  thread; async calls take a callback and resolve through the JavaScript side's `reply` event.
+- `JSBridge(bundle:resources:)` is made once, in `AppDelegate.init` (so its bundle loads while AppKit launches). All JavaScript
+  runs on the bridge's own serial queue: loading the bundle, listing a folder, opening a board (parse, migrate, highlight, the
+  scene and its JSON decode) never block the main thread. Async calls take a callback, resolve through the JavaScript side's
+  `reply` event and are delivered on the main thread; the synchronous ones (`beginDrag`, `route`, `benchEdit`) wait on the queue
+  (`drag` and `cam` are fire-and-forget). JavaScript timers and FSEvents run on the queue too. The first scene of a board is
+  quick: a Code card whose tree-sitter grammar is still loading (CUDA's compiles for ~130 ms) comes `pending`, shows its
+  placeholder, and follows as a `changed` event when the grammar is there.
 - `bridge.folder(dir)` returns the `Folder` for a boards folder (the same object for every window on it; it counts them). A window
   calls `folder.release()` when it closes; the last release closes the Storage (flushed, FSEvents stopped). `folder.list`,
   `folder.open(id)` (→ the `Scene` and a `Session`), `folder.flush`, `folder.listen(owner) { name, boardId, json in … }` for
@@ -41,6 +46,9 @@ Something new a window needs from core goes into `js/bridge.ts` as a method on t
 
 ## Drawing (`CanvasView.swift`, `Layers.swift`)
 
-The camera is the world layer's transform. Each card is a `CardLayer` rasterised into an IOSurface on a three-wide queue at a few
-zoom buckets, culled when far from the viewport; Sections are shape layers; arrows shape layers from core's path strings. Colours
+The camera is the world layer's transform. Each card is a `CardLayer` rasterised into an sRGB-tagged IOSurface (its shadow baked
+in, `shadowPad` around) on a three-wide queue at a few zoom buckets, once the zoom has settled for `RASTER_SETTLE` (a card coming
+near mid-gesture draws at the current zoom's bucket), landed a few per frame nearest the view's centre first, culled when far
+from the viewport; Sections and arrows are shape layers rasterised by Core Animation at the bucket's scale (`shouldRasterize`),
+the arrows from core's numeric paths. Colours
 come from `themes.json`, generated from the board's stylesheets at build time.
