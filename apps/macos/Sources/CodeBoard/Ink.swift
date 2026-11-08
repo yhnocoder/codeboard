@@ -68,12 +68,16 @@ enum Ink {
   static func paper(dark: Bool, seed: Int) -> NSImage? {
     let key = "\(seed):\(dark)"
     if let s = lock.withLock({ sheets[key] }) { return s }
+    // asked for once (every card and tile drawn before it is made asks): one `ready` when it is made, not one per ask, each of
+    // which redraws every card in view
+    guard lock.withLock({ asked.insert(key).inserted }) else { return nil }
     js.post {
-      _ = paperOnJS(dark: dark, seed: seed)
+      guard paperOnJS(dark: dark, seed: seed) != nil else { return }
       DispatchQueue.main.async { NotificationCenter.default.post(name: ready, object: nil) }
     }
     return nil
   }
+  private static var asked: Set<String> = []
   /** On the ink thread */
   private static func paperOnJS(dark: Bool, seed: Int) -> NSImage? {
     let key = "\(seed):\(dark)"
