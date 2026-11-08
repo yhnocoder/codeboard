@@ -163,16 +163,16 @@ final class CanvasView: NSView {
     }
   }
   /** The drag's arrows, routed off the main thread: the latest finished routes are drawn, a request behind at most */
-  private func routeLive(_ links: [String]) {
-    guard let router else { return applyRoutes(delegate?.canvasRoute(self, rects: rects, only: links, modes: nil) ?? []) }
-    routeSeq += 1
-    router.route(routeKey, rects: rects, only: links, seq: routeSeq) { [weak self] geos, seq in
-      guard let self, self.drag != nil || self.dropPending else { return }
+  private func routeLive(_ links: [String], rects: [String: WorldRect], seq: Int) {
+    router?.route(routeKey, rects: rects, only: links, seq: seq) { [weak self] geos, seq in
+      guard let self, let targets = self.dragTargets[seq] else { return }
+      for k in self.dragTargets.keys where k <= seq { self.dragTargets[k] = nil }
       self.routeLags.append(self.routeSeq - seq)
       for g in geos {
         self.liveGeos[g.id] = g.pts
         if let m = g.mode { self.liveModes[g.id] = m }
       }
+      self.moveCards(targets)
       self.applyRoutes(geos)
     }
   }
@@ -317,6 +317,9 @@ final class CanvasView: NSView {
   }
 
   private var drag: (ids: [String], start: CGPoint, origins: [String: CGPoint], links: [String], moved: Bool)?
+  /** Where the dragged cards go once their arrows are routed (by request number): card and arrows move together, one frame
+   *  behind the pointer, never apart */
+  private var dragTargets: [Int: [String: CGPoint]] = [:]
   private var panStart: CGPoint?
 
   func cardAt(_ world: CGPoint) -> CardLayer? {
@@ -359,11 +362,25 @@ final class CanvasView: NSView {
     if !d.moved && hypot(dx, dy) * cam.z < 3 { return }
     d.moved = true
     drag = d
+    var targets: [String: CGPoint] = [:]
+    for id in d.ids { if let o = d.origins[id] { targets[id] = CGPoint(x: o.x + dx, y: o.y + dy) } }
+    if d.links.isEmpty || router == nil {
+      moveCards(targets)
+      if !d.links.isEmpty { applyRoutes(delegate?.canvasRoute(self, rects: rects, only: d.links, modes: nil) ?? []) }
+      return
+    }
+    // the arrows are routed off the main thread for where the cards are going; cards and arrows then move in one frame
+    var rs = rects
+    for (id, t) in targets { if let r = rs[id] { rs[id] = WorldRect(x: t.x, y: t.y, w: r.w, h: r.h) } }
+    routeSeq += 1
+    dragTargets[routeSeq] = targets
+    routeLive(d.links, rects: rs, seq: routeSeq)
+  }
+  private func moveCards(_ targets: [String: CGPoint]) {
     CATransaction.begin()
     CATransaction.setDisableActions(true)
-    for id in d.ids { if let l = cardLayers[id], let o = d.origins[id] { l.move(to: CGPoint(x: o.x + dx, y: o.y + dy)) } }
+    for (id, t) in targets { cardLayers[id]?.move(to: t) }
     CATransaction.commit()
-    if !d.links.isEmpty { routeLive(d.links) }
   }
   override func mouseUp(with e: NSEvent) {
     panStart = nil
@@ -374,8 +391,15 @@ final class CanvasView: NSView {
     drag = nil
     if !d.moved { return }
     dropPending = !d.links.isEmpty
+    // a move still waiting for its routes is the drop's: core puts the card there and the final routes come with it (apply),
+    // in one frame
+    let last = dragTargets.keys.max().flatMap { dragTargets[$0] } ?? [:]
+    dragTargets = [:]
     let moves = d.ids.compactMap { id in
-      cardLayers[id].map { JSBridge.Move(id: id, x: Double($0.frame.minX), y: Double($0.frame.minY), w: Double($0.frame.width), h: Double($0.frame.height)) }
+      cardLayers[id].map {
+        let at = last[id] ?? $0.frame.origin
+        return JSBridge.Move(id: id, x: Double(at.x), y: Double(at.y), w: Double($0.frame.width), h: Double($0.frame.height))
+      }
     }
     delegate?.canvas(self, dragEnded: moves)
   }
