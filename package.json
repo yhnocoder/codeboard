@@ -19,7 +19,8 @@
     "build-storybook": "node tools/build.mjs --deps @codeboard/board && npm run build-storybook -w @codeboard/board",
     "storybook:check": "npm run build-storybook && node tools/test/storybook.mjs",
     "mac": "sh apps/macos/build.sh",
-    "mac:run": "sh apps/macos/build.sh run"
+    "mac:run": "sh apps/macos/build.sh run",
+    "mac:gate": "node tools/mac-gate.mjs"
   },
   "allowScripts": {
     "esbuild": true,
