@@ -18,6 +18,9 @@
 //                           Highlight), switching the look leaves the card's size and every line's top as they were
 //  highlightSelectionBand   a Line Selection over Highlights is drawn with the band's geometry: the same left and right edges,
 //                           radius and insets, one run over the selected lines
+//  highlightFollowsCodeEdit deleting a blank line of Free code in edit mode moves every Highlight below it up a line with its
+//                           code (#185 screenshot: they stayed on their old line numbers), their notes too: each bracket sits on
+//                           its own code lines, and the Always Show notes under their last line
 //  highlightExport          the HTML export leaves board-only notes out as if they were not there: no empty note row, no band
 //                           or marker for a Highlight only they made, bands no longer than their code, line numbers on their lines
 import { DEFAULT_SETTINGS, THEMES, emptyBoard, type Board, type CodeCard, type HighlightLook } from "@codeboard/core";
@@ -771,5 +774,126 @@ test("highlightWatched", async () => {
   await idle(h);
   await fromMenu(3, 4, /^Remove Highlight/, "remove 3-4");
   check("highlightWatched the Highlights are as asked", JSON.stringify(seg(h).hl ?? []) === "[[9,9]]", seg(h).hl);
+  await h.close();
+});
+
+const VECADD = [
+  "void vecAdd(float* A_h, float* B_h, float* C_h, int n) {",
+  "    int size = n * sizeof(float);",
+  "    float *A_d, *B_d, *C_d;",
+  "",
+  "    cudaMalloc((void **)&A_d, size);",
+  "    cudaMalloc((void **)&B_d, size);",
+  "    cudaMalloc((void **)&C_d, size);",
+  "",
+  "    cudaMemcpy(A_d, A_h, size, cudaMemcpyHostToDevice);",
+  "    cudaMemcpy(B_d, B_h, size, cudaMemcpyHostToDevice);",
+  "    // Part2: Call kernel - to launch a grid of kernel",
+  "    // to perform the actual vector addition",
+  "",
+  "    cudaMemcpy(C_h, C_d, size, cudaMemcpyDeviceToHost);",
+  "",
+  "    cudaFree(A_d);",
+  "    cudaFree(B_d);",
+  "    cudaFree(C_d);",
+  "}",
+];
+
+test("highlightFollowsCodeEdit", async () => {
+  const b = emptyBoard("b1", "vecadd");
+  b.cards.push({
+    id: "k1",
+    kind: "code",
+    title: "vecAdd - CUDA - stub",
+    segments: [
+      {
+        id: "s1",
+        src: { kind: "free" },
+        path: "",
+        lang: "cuda",
+        start: 1,
+        end: VECADD.length,
+        text: VECADD.slice(),
+        version: { kind: "none" },
+        hl: [
+          [5, 7],
+          [9, 10],
+          [14, 14],
+          [16, 18],
+        ],
+      },
+    ],
+  } as CodeCard);
+  b.place.k1 = { x: 40, y: 40, w: 640 };
+  const at = (a: number, z: number) => ({ card: "k1", seg: "s1", lines: [a, z] as [number, number] });
+  b.sidenotes.push(
+    { id: "n1", kind: "text", md: "注意 size 的单位是 bytes", alwaysShow: true, at: at(5, 7) },
+    { id: "n2", kind: "text", md: "Host -> Device", alwaysShow: true, at: at(9, 10) },
+  );
+  b.cam = { x: 0, y: 0, z: 1 };
+  const h = await open({
+    board: b,
+    light,
+    w: 900,
+    h: 1000,
+    scale: process.env.SHOTS_DIR ? 2 : 1,
+    settings: { theme: "warm-ink", highlightLook: "bracket" } as never,
+  });
+  const pg = h.page;
+  await idle(h);
+  // edit the code and delete blank line 8, as the user did
+  await pg.locator('.card[data-id="k1"] .src .l').nth(1).dblclick();
+  await pg.waitForSelector('.card[data-id="k1"] .cm-content');
+  await pg.keyboard.press("ControlOrMeta+Home");
+  for (let i = 0; i < 7; i++) await pg.keyboard.press("ArrowDown");
+  await pg.keyboard.press("Backspace");
+  await pg.keyboard.press("Escape");
+  await until(h, "the code is written without line 8", () => seg(h).text.length === VECADD.length - 1);
+  await idle(h);
+  const want = [
+    [5, 7],
+    [8, 9],
+    [13, 13],
+    [15, 17],
+  ];
+  check(
+    "highlightFollowsCodeEdit the Highlights moved up with their lines",
+    JSON.stringify(seg(h).hl) === JSON.stringify(want),
+    seg(h).hl,
+  );
+  const notes = h.board().sidenotes.map((n) => n.at.lines);
+  check("highlightFollowsCodeEdit the notes moved with them", JSON.stringify(notes) === "[[5,7],[8,9]]", notes);
+  // on screen: each Highlight's gutter area spans exactly the rows of its code lines
+  const drawn = await pg.evaluate(() => {
+    const card = document.querySelector('.card[data-id="k1"]')!;
+    const rows = new Map<number, DOMRect>();
+    for (const n of card.querySelectorAll(".gutter .no")) rows.set(Number(n.textContent), n.getBoundingClientRect());
+    return [...card.querySelectorAll<HTMLElement>(".hxhit")].map((e) => {
+      const r = e.getBoundingClientRect();
+      const on = [...rows].filter(([, n]) => n.top + n.height / 2 > r.top && n.top + n.height / 2 < r.bottom);
+      return on.map(([l]) => l);
+    });
+  });
+  const spans = drawn.map((ls) => [Math.min(...ls), Math.max(...ls)]);
+  check("highlightFollowsCodeEdit each bracket sits on its own lines", JSON.stringify(spans) === JSON.stringify(want), {
+    spans,
+  });
+  const noteRow = await pg.evaluate(() =>
+    [...document.querySelectorAll('.card[data-id="k1"] .gutter .no')]
+      .filter((n) => /^(9|10)$/.test(n.textContent ?? ""))
+      .map((n) => n.getBoundingClientRect().top),
+  );
+  const host = await pg.getByText("Host -> Device").first().boundingBox();
+  check(
+    "highlightFollowsCodeEdit the note on 8–9 is under line 9, above line 10",
+    !!host && host.y > noteRow[0] && host.y < noteRow[1],
+    { host, noteRow },
+  );
+  const shot = await pg.locator('.card[data-id="k1"]').screenshot();
+  fs.writeFileSync(path.join(OUT, "highlightFollowsCodeEdit.png"), shot);
+  if (process.env.SHOTS_DIR) {
+    fs.mkdirSync(process.env.SHOTS_DIR, { recursive: true });
+    fs.writeFileSync(path.join(process.env.SHOTS_DIR, "highlightFollowsCodeEdit.png"), shot);
+  }
   await h.close();
 });
