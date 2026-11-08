@@ -6,6 +6,7 @@ export {
   /** @public */
   serializeMd,
   mdBlockStarts,
+  noteBlocks,
   texBrackets,
 } from "./schema";
 export {

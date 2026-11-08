@@ -1,7 +1,7 @@
 // Sections and where cards sit: moving cards into a Section, folding and fitting Sections, unfolding what hides a card, locks,
 // moves the shell laid out (Tidy Up, Align), card sizes fitted to their content
 import { findCard, type Board, type Card, type Section } from "../model";
-import { align, type AlignOp, type Rect } from "../layout";
+import { align, homeFor, type AlignOp, type Rect } from "../layout";
 import type { CommandEnv } from "./env";
 
 /** A Section is locked when it or a Section it is in is */
@@ -19,6 +19,23 @@ function cardLocked(b: Pick<Board, "cards" | "place" | "sections">, id: string):
       b.sections.find((s) => s.id === p?.section),
     )
   );
+}
+
+/**
+ * Cards let go after a drag: each lands at its rect (x, y; w, h as drawn) and joins the Section its rect lies in (homeFor over the
+ * Section frames as drawn, fr), or none. Written into the drag's own change (the shell's live write or edit), so the whole drag
+ * stays one undo step; a Compare's column moves its Compare
+ */
+export function dropCards(b: Board, moves: readonly (Rect & { id: string })[], fr: ReadonlyMap<string, Rect>): void {
+  for (const m of moves) {
+    const p = b.place[findCard(b, m.id)?.host.id ?? m.id];
+    if (!p) continue;
+    p.x = m.x;
+    p.y = m.y;
+    const home = homeFor(b.sections, fr, m);
+    if (home) p.section = home.id;
+    else delete p.section;
+  }
 }
 
 /** Move to Section: these cards go into the Section, moved by (dx, dy) together (the free spot the shell found in its frame) */

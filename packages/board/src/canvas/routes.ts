@@ -11,7 +11,7 @@ import {
   type Accessor,
   type Signal,
 } from "solid-js";
-import { headOf, type Link, type LinkSide, type Rect } from "@codeboard/core";
+import { headOf, type Link, type Rect } from "@codeboard/core";
 import { state, rectOf, cardById, hostOf, placeOf } from "../state/store";
 import { geo, lineY, HEAD_H } from "../state/geo";
 import { blockY } from "../state/blocks";
@@ -23,21 +23,19 @@ import { reduceMotion } from "../state/motion";
 import { shape } from "../state/look";
 import { tune } from "../state/tune";
 import {
-  chooseMode,
-  sidesOf,
-  anchorOn,
-  turnAnchor,
-  slide,
-  connect,
-  selfArc,
-  gutterLine,
+  anchorsFor as anchorsOn,
+  baseFrom,
+  geoFrom as geoOf2,
   headPath,
+  sidesFor as sidesOf2,
+  slide,
+  turnAnchor,
   type Anchor,
-  type Box,
+  type Base,
+  type End,
+  type Geo,
   type Mode,
   type Side,
-  type Shape,
-  handLine,
 } from "@codeboard/core/canvas";
 import { carAt, type CarPose } from "./city";
 import { tiltOf } from "../state/tilt";
@@ -118,21 +116,6 @@ function headY(id: string, r: Rect) {
   return r.y + (g?.head ?? HEAD_H) / 2;
 }
 
-/** y：行的 y（看不到那一行时 = 卡头） */
-type End = {
-  box: Box /** 整张卡（Compare 栏 → 整张 Compare）：绕路时要避开的 */;
-  outer: Box;
-  line: boolean;
-  y: number;
-  col?: "left" | "right";
-  host: string;
-  card: string;
-  pill: boolean;
-};
-/** rest：一端的卡正在弹出（popCard / popAlong，不是 slideFrom 的滑动）时，两端都落定后的样子。摆法（哪一侧）和要不要绕开卡
- *  按它定，弹出的这几帧里线只跟着端点平滑地动，不会因为半路上的卡挡着、叠着而换一种走法（Ink Wash 展开调用时一帧跳 50px） */
-type Base = { a: End; b: End; kind: "normal" | "self" | "gutter"; gx?: number; rest?: Base };
-
 /** 连着一行 / Note 的一块（不是整张卡）：只从左右两边进出 */
 export const subEnd = (e: Link["from"]) => e.line !== undefined || !!e.block;
 
@@ -200,69 +183,18 @@ function baseOf(L: Link): Base | null {
     pb = popping(L.to);
   return baseFrom(a, b, pa || pb ? [pa ? endOf(L.from, still, true) : a, pb ? endOf(L.to, still, true) : b] : null);
 }
-function baseFrom(a: End | null, b: End | null, rest: [End | null, End | null] | null = null): Base | null {
-  const bs = baseOf2(a, b);
-  if (!bs || !rest) return bs;
-  const r = baseOf2(rest[0], rest[1]);
-  return r && r.kind === bs.kind ? { ...bs, rest: r } : bs;
-}
-function baseOf2(a: End | null, b: End | null): Base | null {
-  if (!a || !b) return null;
-  if (a.host === b.host && !a.pill) {
-    // 同一张 Compare 的两栏之间、行对行：中缝的对照线
-    if (a.card !== b.card && a.col && b.col && a.col !== b.col && a.line && b.line)
-      return { a, b, kind: "gutter", gx: a.col === "left" ? a.box.x + a.box.w : b.box.x + b.box.w };
-    return { a, b, kind: "self" };
-  }
-  return { a, b, kind: "normal" };
-}
-
-const okSide = (s: LinkSide | undefined, line: boolean): Side | undefined =>
-  s && (!line || s === "left" || s === "right") ? s : undefined;
-
 // 每条线上一次的摆法（换边缓冲要知道现在是哪种）。不是响应式的：只在这条线自己的 memo 里读写
 const modes = new Map<string, Mode>();
 
-/** 两端走哪一侧：用户指定 > Compare 栏（左栏只走左侧、右栏只走右侧）> 自动（带缓冲） */
-function sidesFor(L: Link, bs: Base, remember: boolean): [Side, Side] {
-  const { a, b } = bs;
-  const uf = okSide(L.sides?.from, a.line),
-    ut = okSide(L.sides?.to, b.line);
-  if (bs.kind !== "normal") {
-    const s: Side = uf ?? a.col ?? "right";
-    return [s, ut ?? (bs.kind === "self" ? s : (b.col ?? "left"))];
-  }
-  let auto: [Side, Side] = ["right", "left"];
-  if (!((uf ?? a.col) && (ut ?? b.col))) {
-    const r = bs.rest ?? bs;
-    const m = chooseMode(r.a.box, r.b.box, !a.line && !b.line, modes.get(L.id), tune("sideBuffer"));
-    if (remember) modes.set(L.id, m);
-    auto = sidesOf(m);
-  }
-  return [uf ?? a.col ?? auto[0], ut ?? b.col ?? auto[1]];
-}
-const anchorsFor = (bs: Base, s: [Side, Side]): [Anchor, Anchor] => [
-  tilted(bs.a, anchorOn(bs.a.box, s[0], bs.a.y)),
-  tilted(bs.b, anchorOn(bs.b.box, s[1], bs.b.y)),
-];
+/** 两端走哪一侧：用户指定 > Compare 栏（左栏只走左侧、右栏只走右侧）> 自动（带缓冲）；core 的 sidesFor */
+const sidesFor = (L: Link, bs: Base, remember: boolean): [Side, Side] =>
+  sidesOf2(L, bs, modes, tune("sideBuffer"), remember);
+const anchorsFor = (bs: Base, s: [Side, Side]): [Anchor, Anchor] => anchorsOn(bs, s, tilted);
 /** 斜贴的卡：端点落在转过去的边上（state/tilt.ts，转动中每一帧都跟着） */
 function tilted(e: End, a: Anchor): Anchor {
   const deg = e.pill ? 0 : tiltOf(e.host);
   return deg ? turnAnchor(a, e.outer, (deg * Math.PI) / 180) : a;
 }
-
-export type Geo = {
-  d: string;
-  mx: number;
-  my: number;
-  head?: string | CarPose;
-  tail?: string | CarPose;
-  port?: { x: number; y: number };
-  port2?: { x: number; y: number };
-  pts: number[];
-  /** 手绘线（从 Mark 出发）：第二笔；head / tail 是手绘的箭头 path */
-  d2?: string;
-};
 
 /** 从 Mark 出发的箭头画成手绘线：返回 Mark 的颜色，别的箭头 undefined */
 export function handOf(L: Pick<Link, "from">) {
@@ -274,70 +206,27 @@ export function handOf(L: Pick<Link, "from">) {
  *  手动补的 Call 箭头照旧描边 */
 export const solidLine = (L: Link) => !handOf(L) && !(L.style?.dash || L.gen || L.rpc || L.call?.ev?.kind === "manual");
 
-export const headScale = (L: Link) => (L.style?.width === 1 ? 0.85 : L.style?.width === 3 ? 1.25 : 1);
-/** 合并点离终点多远 */
-export const STUB = 28;
-
+type Shape0 = ReturnType<typeof shape>;
 /** 箭头的 d；City（head = "car"）是那辆车的位置（Car 把它烤进 path） */
 export const headOrCar = (k: Shape0["head"], tx: number, ty: number, ux: number, uy: number, s: number) =>
   k === "car" ? carAt(tx, ty, ux, uy, s) : headPath(k, tx, ty, ux, uy, s);
-type Shape0 = ReturnType<typeof shape>;
 
-/** rest：两端落定后的端点（Base.rest 在时，makeRoute 的 rest） */
-export function geoFrom(L: Link, bs: Base, p: Anchor, q: Anchor, merged: boolean, rest?: [Anchor, Anchor] | null): Geo {
-  const hd = headOf(L),
-    hk = shape().head,
-    s = headScale(L);
-  // 手绘线：照曲线走（制图、City 的直角折线也一样），画的时候再抖；线头不画圆点（Mark 没有框）
-  if (handOf(L) && bs.kind !== "gutter") {
-    const sh =
-      bs.kind === "self"
-        ? selfArc(p, q, "curve")
-        : connect(p, q, "curve", undefined, {
-            a: bs.a.pill ? undefined : bs.a.outer,
-            b: bs.b.pill ? undefined : bs.b.outer,
-          });
-    const h = handLine(L.id, sh.pts, hd.end, hd.start, s);
-    return { d: h.d, d2: h.d2, head: h.head, tail: h.tail, mx: sh.mx, my: sh.my, pts: sh.pts };
-  }
-  const route = shape().route;
-  let sh: Shape;
-  if (bs.kind === "gutter") {
-    sh = gutterLine(bs.gx!, p.y, q.y, bs.a.col === "left");
-    return {
-      d: sh.d,
-      mx: sh.mx,
-      my: sh.my,
-      pts: sh.pts,
-      port: { x: sh.pts[0], y: sh.pts[1] },
-      port2: { x: sh.pts[6], y: sh.pts[7] },
-    };
-  }
-  const clear = shape().clear;
-  if (bs.kind === "self") sh = selfArc(p, q, route, clear);
-  else {
-    const boxesOf = (b: Base) => ({ a: b.a.pill ? undefined : b.a.outer, b: b.b.pill ? undefined : b.b.outer });
-    const stub = (q: Anchor) => (merged ? { ...q, x: q.x + q.nx * STUB, y: q.y + q.ny * STUB } : q);
-    const tilt = merged ? { start: true, end: false } : undefined;
-    let boxes: { a?: Box; b?: Box } = boxesOf(bs);
-    // 一端正在弹出：落定后不用绕开卡的线，弹出时也不绕（半路上的卡挡着、叠着时绕一下，等于一帧换一种走法）；只跟着端点动，
-    // 落定的那一帧正好就是落定后的线
-    if (bs.rest && rest) {
-      const [p0, q0] = [rest[0], stub(rest[1])];
-      if (connect(p0, q0, route, tilt, boxesOf(bs.rest), clear).d === connect(p0, q0, route, tilt, {}, clear).d)
-        boxes = {};
-    }
-    sh = connect(p, stub(q), route, tilt, boxes, clear);
-  }
-  return {
-    d: sh.d,
-    mx: sh.mx,
-    my: sh.my,
-    pts: sh.pts,
-    head: hd.end && !merged ? headOrCar(hk, sh.pts[6], sh.pts[7], sh.inDir.x, sh.inDir.y, s) : undefined,
-    tail: hd.start ? headOrCar(hk, sh.pts[0], sh.pts[1], sh.outDir.x, sh.outDir.y, s) : undefined,
-    port: { x: p.x, y: p.y },
-  };
+/** rest：两端落定后的端点（Base.rest 在时，makeRoute 的 rest）。几何由 core 的 geoFrom 算，这里只给主题的形状和手绘与否 */
+export function geoFrom(
+  L: Link,
+  bs: Base,
+  p: Anchor,
+  q: Anchor,
+  merged: boolean,
+  rest?: [Anchor, Anchor] | null,
+): Geo<string | CarPose> {
+  const { route, clear, head: hk } = shape();
+  return geoOf2(L, bs, p, q, merged, rest, {
+    route,
+    clear,
+    hand: !!handOf(L),
+    head: (tx, ty, ux, uy, s) => headOrCar(hk, tx, ty, ux, uy, s),
+  });
 }
 
 export type Route = {
@@ -350,7 +239,7 @@ export type Route = {
   /** 汇合用的签名：同一个终点、同一侧、有没有箭头都一样的才合并；自连 / 对照线 = "" */
   sig: Accessor<string>;
   /** 画出来的几何（含合并、滑动）；trackLinks 给要画的线填上 */
-  geo?: Accessor<Geo | null>;
+  geo?: Accessor<Geo<string | CarPose> | null>;
   /** 画在哪张卡的那一层（两端里叠放次序高的那张，见下面的「图层」） */
   owner?: Accessor<string>;
   /** 这条线的节点：只建一次，换层时整块搬过去 */
@@ -460,7 +349,7 @@ export const toKey = (L: Link) =>
   `${L.to.card}|${L.to.seg ?? ""}|${L.to.line ?? (L.to.block ? `b${L.to.block.i}` : "")}`;
 
 /** 一条线的几何：画着的就用画着的那份（含合并、滑动）；没画的现算一份（不合并） */
-function geoOf(L: Link): Geo | null {
+function geoOf(L: Link): Geo<string | CarPose> | null {
   const r = drawn.get(L.id);
   if (r?.L === L && r.geo) return r.geo();
   const bs = baseOf(L);

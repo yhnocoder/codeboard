@@ -91,6 +91,7 @@ import { NODRAG, CARD_CONTROL, OWNS_POINTER, BOARD_CHROME } from "./ui/guard";
 import { dispatch, matches } from "./keymap";
 import { installShield, raiseShield } from "./ui/shield";
 import * as A from "./actions";
+import { dropCards } from "@codeboard/core/commands";
 import { CALL_DRAG_SLOP, DRAG_SLOP, track, undoGesture } from "./gesture";
 import { togglePreview } from "./state/subboards";
 import { cardSel } from "./cardsel";
@@ -559,14 +560,14 @@ function startCardDrag(e: PointerEvent, grabbed: string, onClick?: () => void) {
         end();
         return A.cardToSidenote(ids[0], { card: drop.card, seg: drop.seg, lines: [drop.line!, drop.line!] });
       }
-      live((b) => {
-        for (const it of items) {
-          const c = hostPlace(b, it.id);
-          if (!c) continue;
-          const best = homeFor(fr, rectOf(cardById(it.id)!.host));
-          c.section = best?.id;
-        }
-      });
+      // where they land and which Section they join: core's rule, the same in every shell
+      live((b) =>
+        dropCards(
+          b,
+          items.map((it) => ({ id: it.id, ...rectOf(cardById(it.id)!.host) })),
+          fr,
+        ),
+      );
       end();
     },
     DRAG_SLOP,

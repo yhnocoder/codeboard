@@ -3,7 +3,7 @@
 // 块和 Markdown 对不上（有脚注、HTML 注释、还没渲染完）时这张 Note 只能整张连
 import { createEffect, createMemo, onCleanup } from "solid-js";
 import { blockSig, blockAt, type BlockRef } from "@codeboard/core";
-import { noteBlocks } from "../md/blocks";
+import { noteBlocks } from "@yhnocoder/markdown";
 import { state, cardById, onBoard } from "./store";
 import { editing, liveNoteMd, dragging } from "./ui";
 import { look } from "./look";

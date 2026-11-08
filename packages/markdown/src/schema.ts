@@ -566,3 +566,18 @@ function dropEmpty(ns: JSONContent[], holder = true): JSONContent[] {
     n.content && n.type !== "paragraph" ? { ...n, content: dropEmpty(n.content, HOLDS.has(n.type!)) } : n,
   );
 }
+
+const blocksCache = new Map<string, string[] | null>();
+/**
+ * A Note's top-level blocks as written: each block's Markdown source (mdBlockStarts), what an arrow end on a block is matched
+ * against (core's BlockRef hashes it). null when the Note cannot be split (footnotes, \r)
+ */
+export function noteBlocks(md: string): string[] | null {
+  let v = blocksCache.get(md);
+  if (v !== undefined) return v;
+  const st = mdBlockStarts(md);
+  v = st ? st.map((s, i) => md.slice(s, st[i + 1] ?? md.length).trim()) : null;
+  if (blocksCache.size >= 400) blocksCache.delete(blocksCache.keys().next().value!);
+  blocksCache.set(md, v);
+  return v;
+}

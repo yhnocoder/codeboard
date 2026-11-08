@@ -29,6 +29,7 @@
     ".": "./src/index.ts",
     "./testing": "./test/testing.ts",
     "./thumbs-worker": "./src/thumbs/worker.ts",
-    "./storage": "./src/storage/index.ts"
+    "./storage": "./src/storage/index.ts",
+    "./highlight": "./src/highlight.ts"
   }
 }

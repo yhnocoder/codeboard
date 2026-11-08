@@ -14,13 +14,21 @@ let wasmDir: string | undefined;
  * 宿主启动时调用一次；dir = 放全部 wasm 的目录（插件的 dist/）。
  * Node 下不给：运行时和 Python / Rust 语法用 @vscode/tree-sitter-wasm 里的，C / C++ / CUDA 用 @yhnocoder/tree-sitter-cuda 里的
  */
-export function initAnalysis(dir?: string): Promise<void> {
-  if (dir) wasmDir = dir;
+export function initAnalysis(dir?: string | WasmReader): Promise<void> {
+  if (typeof dir === "string") wasmDir = dir;
+  const read = typeof dir === "function" ? dir : undefined;
   return (ready ??= (async () => {
-    await TS.Parser.init({ locateFile: (f: string) => wasmPath(f) });
-    for (const [g, f] of WASM) langs.set(g, await TS.Language.load(wasmPath(f)));
+    // the runtime's bytes: Emscripten's `wasmBinary`, which web-tree-sitter's init passes through but does not declare; locateFile
+    // keeps it from building a URL for the file it already has (JavaScriptCore has no URL)
+    if (read) {
+      const init = { wasmBinary: await read("tree-sitter.wasm"), locateFile: (f: string) => f };
+      await TS.Parser.init(init as Parameters<typeof TS.Parser.init>[0]);
+    } else await TS.Parser.init({ locateFile: (f: string) => wasmPath(f) });
+    for (const [g, f] of WASM) langs.set(g, await TS.Language.load(read ? await read(f) : wasmPath(f)));
   })());
 }
+/** A shell with no file paths it could hand to the wasm loader (JavaScriptCore): the bytes of each wasm file by name */
+export type WasmReader = (file: string) => Promise<Uint8Array>;
 
 // C / C++ / CUDA 都用 tree-sitter-cuda：C++ 语法加上 <<<>>>、__global__、__launch_bounds__ 等，节点名和 C++ 一样
 const WASM: [Grammar, string][] = [

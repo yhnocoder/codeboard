@@ -6,6 +6,8 @@ import {
   sectionFit,
   sectionPill,
   estSize,
+  homeFor as homeIn,
+  deepestAt as deepestIn,
   type Board,
   type Link,
   type Rect,
@@ -290,26 +292,8 @@ export const partlyIn = (r: Rect, f: Rect) => 3 * overlapArea(r, f) > r.w * r.h;
  * 卡（矩形 r）属于哪个 Section：盖住它三分之一以上面积的展开 Section；有几个时，嵌套的取最深的，一样深取盖得多的；都不到 = 不在 Section 里。
  * 所有决定卡在哪个 Section 的地方都用它（拖动的预演和松手、粘贴、新建）。跟卡不相交的框一比就跳过
  */
-export function homeFor(fr: Map<string, Rect>, r: Rect, skip?: Set<string>): Section | undefined {
-  const third = (r.w * r.h) / 3;
-  let best: Section | undefined,
-    bd = -1,
-    bo = 0;
-  for (const s of state.board.sections) {
-    if (s.collapsed || skip?.has(s.id)) continue;
-    const f = fr.get(s.id);
-    if (!f) continue;
-    const o = overlapArea(r, f);
-    if (o <= third) continue;
-    const d = depthOf(s);
-    if (d > bd || (d === bd && o > bo)) {
-      best = s;
-      bd = d;
-      bo = o;
-    }
-  }
-  return best;
-}
+export const homeFor = (fr: Map<string, Rect>, r: Rect, skip?: Set<string>): Section | undefined =>
+  homeIn(state.board.sections, fr, r, skip);
 /**
  * Section `id` resized to `r` (the frame as dragged, before its cards widen it): the cards whose Section changes, card id → its
  * Section after (undefined: none). `fr` = the frames when the drag began. A card `r` covers by more than a third (partlyIn, the
@@ -347,24 +331,8 @@ export function settleHome(b: Board, id: string) {
 }
 
 /** 世界坐标 (x, y) 落在哪个最深的展开 Section 里（Section 的父级：画框、拖标签） */
-export function deepestAt(fr: Map<string, Rect>, x: number, y: number, skip?: Set<string>): Section | undefined {
-  let best: Section | undefined,
-    bd = -1,
-    ba = Infinity;
-  for (const s of state.board.sections) {
-    if (s.collapsed || skip?.has(s.id)) continue;
-    const r = fr.get(s.id);
-    if (!r || x <= r.x || x >= r.x + r.w || y <= r.y || y >= r.y + r.h) continue;
-    const d = depthOf(s),
-      a = r.w * r.h;
-    if (d > bd || (d === bd && a < ba)) {
-      best = s;
-      bd = d;
-      ba = a;
-    }
-  }
-  return best;
-}
+export const deepestAt = (fr: Map<string, Rect>, x: number, y: number, skip?: Set<string>): Section | undefined =>
+  deepestIn(state.board.sections, fr, x, y, skip);
 
 /**
  * 这张卡（Compare 的栏按它的 Compare 算）现在藏着吗：在折叠的调用子树里，或在折叠的 Section 里。

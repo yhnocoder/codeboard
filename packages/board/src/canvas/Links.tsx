@@ -40,7 +40,11 @@ import {
   brushSeed,
   taperLine,
   headPath,
+  headScale,
+  STUB,
+  type Geo as Geo0,
 } from "@codeboard/core/canvas";
+type Geo = Geo0<string | CarPose>;
 import { type CarPose, type Road } from "./city";
 import { Car, Lane, trackTraffic } from "./Traffic";
 import { tiltOf } from "../state/tilt";
@@ -48,11 +52,8 @@ import {
   innerFold,
   endRect,
   subEnd,
-  type Geo,
   handOf,
-  headScale,
   solidLine,
-  STUB,
   headOrCar,
   geoFrom,
   type Route,

@@ -269,13 +269,12 @@
       "files": [
         "packages/board/src/canvas/{Links,Labels}.tsx",
         "packages/board/src/canvas/routes.ts",
-        "packages/core/src/canvas/{labelpos,route,hand,brush,taper}.ts",
+        "packages/core/src/canvas/{labelpos,route,hand,brush,taper,arrow}.ts",
         "packages/board/src/actions/{links,annots}.ts",
         "packages/core/src/commands/links.ts",
         "packages/core/src/linklabel.ts",
         "packages/host/src/marks.ts",
         "packages/board/src/state/blocks.ts",
-        "packages/board/src/md/blocks.ts",
         "packages/board/test/scenarios/{arrows,labels,layers,marks,note-block-arrows}.spec.ts"
       ],
       "scenarios": [

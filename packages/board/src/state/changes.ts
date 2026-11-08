@@ -16,7 +16,7 @@ import {
 import { ask } from "../host";
 import { createHistory, createSave, type Doc, type HistoryPorts } from "@codeboard/core/history";
 import { dropGone } from "@codeboard/core/commands";
-import { noteBlocks } from "../md/blocks";
+import { noteBlocks } from "@yhnocoder/markdown";
 import { setState, state } from "./store";
 import { keepOn, unselectCard } from "./selection";
 import { putViews, requestMissing } from "./views";

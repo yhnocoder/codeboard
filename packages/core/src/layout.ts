@@ -9,6 +9,9 @@ export const COL_GAP = 96; // 子卡放在父卡右边一列时和父卡之间�
 export const SIB_GAP = 24;
 /** 代码卡卡头的估计高度（Warm Ink：35 + 1px 下边线）。Place.h 只存内容区，量不到实测尺寸时按它加回去 */
 export const CODE_HEAD = 36;
+/** A code card's row geometry, the same in every theme (styles.css .code: 6px above the first row, 20px rows, 8px below; a gap
+ *  between segments): what a shell that lays code out itself (the macOS app) draws with and where a line's arrow end sits */
+export const CODE_GEO = { head: CODE_HEAD, top: 6, row: 20, bottom: 8, sep: 20 } as const;
 /** 新建的 Note / Text / Mark / Box / Free code 卡一样宽（Box 另有默认高度） */
 export const NEW_CARD_W = 381;
 
@@ -350,4 +353,68 @@ export function sectionFrames(b: Pick<Board, "sections" | "place">, rects: Map<s
     return r;
   };
   return new Map(b.sections.map((s) => [s.id, s.collapsed ? sectionPill(s) : frame(s, 0)]));
+}
+
+/** How deep a Section is nested (0 = on the board) */
+export function sectionDepth(sections: readonly Section[], s: Section): number {
+  let d = 0;
+  for (let q: Section | undefined = s; q?.parent && d < 50; d++) q = sections.find((k) => k.id === q!.parent);
+  return d;
+}
+const overlapArea = (a: Rect, b: Rect) =>
+  Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)) *
+  Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
+/**
+ * The Section a card dropped at rect `r` goes into: the deepest open Section whose frame (fr, as drawn) covers more than a third
+ * of the card; among equally deep ones the one covering most. skip = Sections not to consider (the ones being dragged)
+ */
+export function homeFor(
+  sections: readonly Section[],
+  fr: ReadonlyMap<string, Rect>,
+  r: Rect,
+  skip?: ReadonlySet<string>,
+): Section | undefined {
+  const third = (r.w * r.h) / 3;
+  let best: Section | undefined,
+    bd = -1,
+    bo = 0;
+  for (const s of sections) {
+    if (s.collapsed || skip?.has(s.id)) continue;
+    const f = fr.get(s.id);
+    if (!f) continue;
+    const o = overlapArea(r, f);
+    if (o <= third) continue;
+    const d = sectionDepth(sections, s);
+    if (d > bd || (d === bd && o > bo)) {
+      best = s;
+      bd = d;
+      bo = o;
+    }
+  }
+  return best;
+}
+/** The deepest open Section whose frame holds the point (the smallest among equally deep ones) */
+export function deepestAt(
+  sections: readonly Section[],
+  fr: ReadonlyMap<string, Rect>,
+  x: number,
+  y: number,
+  skip?: ReadonlySet<string>,
+): Section | undefined {
+  let best: Section | undefined,
+    bd = -1,
+    ba = Infinity;
+  for (const s of sections) {
+    if (s.collapsed || skip?.has(s.id)) continue;
+    const r = fr.get(s.id);
+    if (!r || x <= r.x || x >= r.x + r.w || y <= r.y || y >= r.y + r.h) continue;
+    const d = sectionDepth(sections, s),
+      a = r.w * r.h;
+    if (d > bd || (d === bd && a < ba)) {
+      best = s;
+      bd = d;
+      ba = a;
+    }
+  }
+  return best;
 }

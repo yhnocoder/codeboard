@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- New `noteBlocks(md)`: a Note's top-level blocks as their Markdown source (what `mdBlockStarts` splits), cached.
+
 ## 0.2.0
 
 Changes that need code or styles updated when upgrading from 0.1.1:

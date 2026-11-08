@@ -28,7 +28,7 @@ import { ask, send } from "../host";
 import { flushMd } from "../md/lazy";
 import { resolveCardRef } from "./common";
 import type { Markdown } from "@yhnocoder/markdown";
-import { noteBlocks } from "../md/blocks";
+import { noteBlocks } from "@yhnocoder/markdown";
 import type { ViewerData } from "../export/viewer";
 import VIEWER_JS from "../export/viewer.ts?script";
 import { bitmapOf } from "../stickers/glyphs";

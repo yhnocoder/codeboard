@@ -7,3 +7,4 @@ export * from "./labelpos";
 export * from "./hand";
 export * from "./brush";
 export * from "./taper";
+export * from "./arrow";
