@@ -209,14 +209,21 @@ struct NotePDF {
   var h: CGFloat
   /** The PDF's size in memory (the cache is bounded by it) */
   var bytes = 0
-  /** The PDF drawn into a bitmap, pixels = points × scale (off the main thread; the caller keeps the result) */
-  func raster(scale: CGFloat) -> CGImage? {
+  /** The render settled on its own (not cut at the page's time cap, nor a snapshot fallback): only a complete one is kept
+   *  and shown over another */
+  var complete = true
+  /** The PDF drawn into a bitmap, pixels = points × scale (off the main thread; the caller keeps the result); rect: only that
+   *  part of the card (points, top-left origin), for a tile */
+  func raster(scale: CGFloat, rect: CGRect? = nil) -> CGImage? {
     guard let page = doc.page(at: 1) else { return nil }
-    let pw = max(1, Int((w * scale).rounded())), ph = max(1, Int((h * scale).rounded()))
+    let r = rect ?? CGRect(x: 0, y: 0, width: w, height: h)
+    let pw = max(1, Int((r.width * scale).rounded())), ph = max(1, Int((r.height * scale).rounded()))
     guard let ctx = CGContext(data: nil, width: pw, height: ph, bitsPerComponent: 8, bytesPerRow: 0, space: CardLayer.colorSpace, bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue) else { return nil }
     let box = page.getBoxRect(.mediaBox)
-    ctx.scaleBy(x: CGFloat(pw) / box.width, y: CGFloat(ph) / box.height)
-    ctx.translateBy(x: -box.minX, y: -box.minY)
+    // the page's points per card point (the box is the card's size); PDF space is y-up: the tile's bottom edge is h - maxY
+    let kx = box.width / max(1, w), ky = box.height / max(1, h)
+    ctx.scaleBy(x: scale / kx, y: scale / ky)
+    ctx.translateBy(x: -box.minX - r.minX * kx, y: -box.minY - (h - r.maxY) * ky)
     ctx.setAllowsFontSmoothing(true)
     ctx.setShouldSmoothFonts(true)
     ctx.interpolationQuality = .high
@@ -435,8 +442,10 @@ final class NoteRenderer: NSObject {
       if self.debugLog { logLine("[codeboard web] %@ answered in %.1f ms", how, (CACurrentMediaTime() - ts) * 1000) }
       self.current = nil
       if let doc {
-        let pdf = NotePDF(doc: doc, w: w, h: h, bytes: size)
-        self.keep(r.key, pdf)
+        var pdf = NotePDF(doc: doc, w: w, h: h, bytes: size)
+        // an unsettled render is shown only where nothing complete is, and never cached: the card asks again
+        pdf.complete = clean && how == "createPDF"
+        if pdf.complete { self.keep(r.key, pdf) }
         r.done(pdf)
       } else { logLine("[codeboard web] pdf failed for %@", r.spec.id) }
       self.pump()
