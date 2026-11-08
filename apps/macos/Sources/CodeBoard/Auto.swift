@@ -148,7 +148,7 @@ final class AutoRun: NSObject {
     report["display_asleep"] = CGDisplayIsAsleep(CGMainDisplayID()) != 0
     report["refresh_hz"] = NSScreen.main?.maximumFramesPerSecond ?? 0
     logLine("[auto] memory after open %.0f MB, display asleep %d", AutoRun.residentMB(), CGDisplayIsAsleep(CGMainDisplayID()))
-    (NSApp.delegate as? AppDelegate)?.bridge.collect()
+    MainActor.assumeIsolated { (NSApp.delegate as? AppDelegate)?.bridge.collect() }
     logLine("[auto] memory after a JS garbage collection %.0f MB", AutoRun.residentMB())
     snapshot("01-open")
     step("pan", frames: 240, { p in

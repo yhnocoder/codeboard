@@ -24,8 +24,22 @@ enum Theme {
       alpha: CGFloat(n & 0xff) / 255)
   }
   /** A colour token, resolved for the appearance it is drawn in; an unknown token is loud (magenta), not quietly wrong */
-  static func c(_ name: String) -> NSColor {
-    NSColor(name: nil) { ap in parse(token(name, dark: ap.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua)) ?? .magenta }
+  static func c(_ name: String, or fallback: String? = nil) -> NSColor {
+    NSColor(name: nil) { ap in
+      let dark = ap.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+      return parse(token(name, dark: dark)) ?? fallback.flatMap { parse(token($0, dark: dark)) } ?? .magenta
+    }
+  }
+  /** A token of one look (the window chrome's, which names its board theme), mixed `t` of the way to another token, at an
+   *  alpha (light, dark) */
+  static func c(_ name: String, look: String, mix: (String, CGFloat)? = nil, alpha: (CGFloat, CGFloat) = (1, 1)) -> NSColor {
+    NSColor(name: nil) { ap in
+      let dark = ap.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+      func at(_ n: String) -> NSColor? { parse(tokens[look]?[dark ? "dark" : "light"]?[n]) }
+      guard var col = at(name) else { return .magenta }
+      if let (other, t) = mix, let o = at(other) { col = col.blended(withFraction: t, of: o) ?? col }
+      return col.withAlphaComponent(col.alphaComponent * (dark ? alpha.1 : alpha.0))
+    }
   }
   static func number(_ name: String, _ fallback: CGFloat) -> CGFloat { (token(name, dark: false) as? Double).map { CGFloat($0) } ?? fallback }
 
@@ -40,7 +54,7 @@ enum Theme {
   static let accent = c("accent")
   static let edge = c("edge")
   static let sectFill = c("sect-fill")
-  static let noteCode = c("nc-bg")
+  static let noteCode = c("nc-bg", or: "hlrow")  // var(--nc-bg, var(--hlrow)): looks other than Warm Ink leave --nc-* unset
   static let sticky = c("sticky")
   static let stickyInk = c("sticky-ink")
   static let selection = accent

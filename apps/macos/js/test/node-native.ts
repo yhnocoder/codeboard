@@ -47,6 +47,8 @@ export function nodeNative(): Native & {
     camGet: (id) => cams.get(id) ?? null,
     camSet: (id, json) => void cams.set(id, json),
     sha1: (b64) => createHash("sha1").update(Buffer.from(b64, "base64")).digest("hex"),
+    sha256: (text) => createHash("sha256").update(text).digest("hex"),
+    readBase64: (p) => wrap(() => fs.readFileSync(p).toString("base64")),
     watch: (base) => {
       const id = watchN++;
       watchers.set(id, base);

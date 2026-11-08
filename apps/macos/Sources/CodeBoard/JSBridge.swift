@@ -120,6 +120,12 @@ final class JSBridge {
     put("sha1", { (b64: String) -> String in
       Insecure.SHA1.hash(data: Data(base64Encoded: b64) ?? Data()).map { String(format: "%02x", $0) }.joined()
     } as @convention(block) (String) -> String)
+    put("sha256", { (text: String) -> String in
+      SHA256.hash(data: Data(text.utf8)).map { String(format: "%02x", $0) }.joined()
+    } as @convention(block) (String) -> String)
+    put("readBase64", { (p: String) -> Any in
+      do { return try Data(contentsOf: URL(fileURLWithPath: p)).base64EncodedString() } catch { return err(error) }
+    } as @convention(block) (String) -> Any)
     put("now", { () -> Double in CACurrentMediaTime() * 1000 } as @convention(block) () -> Double)
     put("emit", { [unowned self] (name: String, json: String) in self.event(name, json) } as @convention(block) (String, String) -> Void)
     // on this thread's run loop (so they fire whatever the main run loop is in: a sheet, the quit confirmation waiting on a flush)
@@ -290,6 +296,22 @@ final class JSBridge {
     callValue("route", args, [RouteGeo].self, cb)
   }
   fileprivate func benchEdit(_ dir: String, _ id: String, _ n: Int, _ cb: @escaping ([Double]) -> Void) { callValue("benchEdit", [dir, id, n], [Double].self, cb) }
+  /** The library's calls (js/library.ts, CodeBoardLibrary): boards across storage folders, and the documents ⌘K indexes */
+  func lib<T: Decodable>(_ name: String, _ args: [Any], _ type: T.Type, _ cb: @escaping (Result<T, Error>) -> Void) {
+    js.post { [self] in
+      let req = nextReq
+      nextReq += 1
+      pending[req] = typed(type, cb)
+      ctx.objectForKeyedSubscript("CodeBoardLibrary").invokeMethod(name, withArguments: [req] + args)
+    }
+  }
+  /** A library call that answers with its return value (a JSON string), on the main thread */
+  func libString(_ name: String, _ cb: @escaping (String?) -> Void) {
+    js.post { [self] in
+      let r = ctx.objectForKeyedSubscript("CodeBoardLibrary").invokeMethod(name, withArguments: [])?.toString()
+      DispatchQueue.main.async { cb(r) }
+    }
+  }
 }
 
 /** A boards folder as the windows see it: list and open its boards, its events (the folder's "boards", a board's "changed",

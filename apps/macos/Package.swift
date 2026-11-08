@@ -10,7 +10,7 @@ let package = Package(
       name: "CodeBoard",
       path: "Sources/CodeBoard",
       swiftSettings: [.unsafeFlags(["-Onone"], .when(configuration: .debug))],
-      linkerSettings: [.linkedFramework("JavaScriptCore"), .linkedFramework("AppKit"), .linkedFramework("QuartzCore")]
+      linkerSettings: [.linkedFramework("JavaScriptCore"), .linkedFramework("AppKit"), .linkedFramework("QuartzCore"), .linkedLibrary("sqlite3")]
     ),
     .testTarget(name: "CodeBoardTests", dependencies: ["CodeBoard"], path: "Tests/CodeBoardTests"),
   ],

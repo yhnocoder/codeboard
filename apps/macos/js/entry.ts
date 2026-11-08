@@ -2,7 +2,10 @@
 // JSON strings at the boundary. Every call names its boards folder (dir) and, for a board, its id; async methods take a request
 // number first and resolve through native.emit("reply", {req, ok, json}) so the shell never waits on a Promise.
 import "./prelude";
+import { settingsSchema } from "@codeboard/core/settings";
+import { FAINT_BELOW, MIN_SCORE, REINDEX_PAUSE, TOP } from "@codeboard/host/storage";
 import { createBridge } from "./bridge";
+import { createLibrary } from "./library";
 import type { Native } from "./native";
 import { shellGeo } from "./routes";
 
@@ -69,4 +72,17 @@ const session = (dir: string, id: string) => {
     }
     return str(times);
   },
+};
+
+// The library window and ⌘K (library.ts): boards across every project's storage folder
+const lib = createLibrary(native, (dir) => bridge.folder(dir).storage);
+(globalThis as unknown as { CodeBoardLibrary: unknown }).CodeBoardLibrary = {
+  list: (req: number, dir: string) => settle(req, lib.list(dir)),
+  create: (req: number, dir: string, name: string) => settle(req, lib.create(dir, name)),
+  rename: (req: number, dir: string, id: string, name: string) => settle(req, lib.rename(dir, id, name)),
+  remove: (req: number, dir: string, id: string) => settle(req, lib.remove(dir, id)),
+  docs: (req: number, dir: string, pictured: string) => settle(req, lib.docs(dir, JSON.parse(pictured))),
+  /** codeboard.* setting → its default (core's declarations), and Related by Meaning's tuning (host meaningdocs.ts) */
+  defaults: () => str(Object.fromEntries(Object.entries(settingsSchema()).map(([k, v]) => [k, v.default]))),
+  tuning: () => str({ minScore: MIN_SCORE, faintBelow: FAINT_BELOW, reindexPause: REINDEX_PAUSE, top: TOP }),
 };

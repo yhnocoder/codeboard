@@ -19,6 +19,10 @@ export interface Native {
   rmdir(p: string): null | NativeErr;
   mkdir(p: string): null | NativeErr;
   sha1(base64: string): string;
+  /** SHA-256 of a string's UTF-8, hex (a data: URL picture's key, as the host's meaning.ts makes it) */
+  sha256(text: string): string;
+  /** A file's bytes as base64 (a picture for the index) */
+  readBase64(p: string): string | NativeErr;
   /** The cameras of every board, kept by the shell (one store per process, every window's): the camera as JSON, or null */
   camGet(board: string): string | null;
   camSet(board: string, json: string): void;
