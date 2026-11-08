@@ -40,4 +40,5 @@ body.vscode-dark { --mb-ink: #ece3d6; --mb-sub: #a49582; --mb-paper: #24201c; --
 @keyframes mb-up { from { transform: translateY(100%) } }
 
 /* read-only: no link dots, resize grips or card menus (a tap on a phone also leaves :hover on, which shows them) */
-.app .eport, .app .grip, .app .sgrip, .app .mkgrip, .app .lgrip, .app [data-tip="More Actions"] { display: none !important; }
+.app .eport, .app .grip, .app .sgrip, .app .mkgrip, .app .lgrip, .app [data-tip="More Actions"],
+.app .port, .app .porthit { display: none !important; }
