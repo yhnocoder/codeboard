@@ -25,9 +25,9 @@ describe("the arrows' ends", () => {
     const [g] = new Router().route(model(), { ...rects, a: { ...rects.a, rows: { "s:5": 231.5 } } });
     expect(g.pts[1]).toBe(231.5);
   });
-  it("keep a drawn row inside the card", () => {
+  it("fall back to the row's default place for a drawn row past the card's bottom (stale rows, a card cut short)", () => {
     const [g] = new Router().route(model(), { ...rects, a: { ...rects.a, rows: { "s:5": 900 } } });
-    expect(g.pts[1]).toBe(500);
+    expect(g.pts[1]).toBeCloseTo(CODE_GEO.head + CODE_GEO.top + 4 * CODE_GEO.row + CODE_GEO.row / 2);
   });
   it("draw Ink Wash's dry streaks and Warm Ink's taper by the line's weight", () => {
     setLook("ink-wash");

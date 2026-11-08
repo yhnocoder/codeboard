@@ -307,25 +307,34 @@ final class CardLayer: CALayer {
    *  The paper shows at the new size at once (the placeholder under the face, the sheet stretched to it), the text is drawn again
    *  at the new size as fast as the raster queue returns it (one raster in flight at a time, never a queue of stale sizes), and
    *  the last size is drawn once more when the resize ends */
-  func resize(to s: CGSize) {
+  /** The editor over the card grew: the frame follows (the editor covers it; the bitmap is drawn when the edit ends) */
+  func grow(toHeight h: CGFloat) {
+    height = h
+    setSize(CGSize(width: frame.width, height: h))
+  }
+  func resize(width: CGFloat, height h: CGFloat?) {
     if !resizing {
       resizing = true
       sheet.contentsGravity = .resize
+      // the old bitmap is cut at the new edge while the card shrinks
+      face.masksToBounds = true
       if framed {
         placeholder.backgroundColor = Theme.surface.cgColor
         placeholder.cornerRadius = radius
         placeholder.isHidden = false
       }
     }
-    card.w = s.width
-    height = s.height
-    setSize(s)
+    card.w = width
+    // the bottom edge pulled sets the height; the width alone keeps the card's own (a Note's follows its text as it is drawn)
+    if let h { height = h }
+    setSize(CGSize(width: width, height: height))
     if resizeGen == landedGen { redrawForResize() }
   }
   func endResize() {
     guard resizing else { return }
     resizing = false
     sheet.contentsGravity = .topLeft
+    face.masksToBounds = false
     redrawForResize()
   }
   private var resizing = false
@@ -1070,7 +1079,7 @@ final class SectionLayer: CALayer {
   /** The caret's box (.chev2: 16 × 16) and its icon (10 px, --ico-w 2) */
   private static let chev: CGFloat = 16, chevIcon: CGFloat = 10, chevStroke: CGFloat = 2
   /** The flex gap between the title, the count and the caret; the count's margin-left (.scount) */
-  private static let gap: CGFloat = 2, countGap: CGFloat = 5
+  private static let gap: CGFloat = 2, countGap: CGFloat = 5 + 2
   /** The collapsed frame's room right of the label (state/sections.ts SHUT_PAD_R) */
   private static let shutPadRight: CGFloat = 8
 
@@ -1091,6 +1100,7 @@ final class SectionLayer: CALayer {
     label.anchorPoint = .zero
     label.contentsGravity = .topLeft
     apply(section)
+    drawLabel()
   }
   override init(layer: Any) {
     section = (layer as! SectionLayer).section
@@ -1109,7 +1119,9 @@ final class SectionLayer: CALayer {
   var shut: Bool { section.collapsed == true }
 
   func apply(_ s: SceneSection) {
+    // Ink Wash's open title ellipsizes at the frame's width: a narrower frame draws it again
     let relabel = s.title != section.title || s.count != section.count || s.collapsed != section.collapsed
+      || (Theme.isInk && s.collapsed != true && s.w != section.w)
     section = s
     layoutLook()
     recolor()
@@ -1250,8 +1262,12 @@ final class SectionLayer: CALayer {
     let room = max(60, frameWidth - 64) - p.left - p.right - gap - chev
     return max(20, min(w, room))
   }
+  /** The label drawn last: a bitmap finished out of order (the queue is three wide) is not put in */
+  private var labelGen = 0
   /** Draws the label on the raster queue and puts the bitmap in */
   private func drawLabel() {
+    labelGen += 1
+    let g = labelGen
     let s = section, ink = Theme.isInk, shut = shut, sel = selected, scale = labelScale, appearance = Theme.appearance
     let size = CGSize(width: labelSize.width + SectionLayer.dotsRoom, height: labelSize.height)
     let titleW = SectionLayer.titleWidth(s, ink: ink, shut: shut, frameWidth: CGFloat(s.w))
@@ -1306,7 +1322,7 @@ final class SectionLayer: CALayer {
         }
       }
       DispatchQueue.main.async { [weak self] in
-        guard let self, let surface else { return }
+        guard let self, let surface, self.labelGen == g else { return }
         self.label.contents = surface
         self.label.contentsScale = scale
       }
@@ -1348,6 +1364,7 @@ final class ArrowLayer: CALayer {
     label.isHidden = true
     addSublayer(label)
     apply(link)
+    drawLabel()
   }
   /** The arrow's raster and its label's bitmap follow the zoom like the cards' */
   func setScale(_ s: CGFloat) {
@@ -1359,7 +1376,10 @@ final class ArrowLayer: CALayer {
   /** .vcard: radius 8.5, --surface, 0 0 0 0.5px hair + 0 1px 2px 5 % shadow; .vhead min-height 22, padding 0 7 0 6; .vlabel
    *  500 11.5 px sys, padding 4px 0, ink. Ink Wash: a canvas-coloured halo (radial 62 %), no box, italic 12/16 serif ink-2,
    *  padding 2px 10px. Selected: a 1.5 px accent ring */
+  private var labelGen = 0
   func drawLabel() {
+    labelGen += 1
+    let g = labelGen
     guard let text = link.label, !text.isEmpty else { label.isHidden = true; label.contents = nil; return }
     let ink = Theme.isInk, sel = selected, scale = labelScale, appearance = Theme.appearance
     let font = ink ? Theme.serif(12, italic: true) : Theme.sys(11.5, weight: .medium)
@@ -1407,7 +1427,7 @@ final class ArrowLayer: CALayer {
         }
       }
       DispatchQueue.main.async { [weak self] in
-        guard let self else { return }
+        guard let self, self.labelGen == g else { return }
         self.label.contents = surface
         self.label.contentsScale = scale
       }

@@ -201,7 +201,7 @@ final class CanvasView: NSView {
       guard let self, let l = self.cardLayers[id] else { return }
       // the editor grew: the card grows with it (arrows follow); the stored height is the text's when the edit ends
       if h > l.height {
-        l.resize(to: CGSize(width: l.card.w, height: h))
+        l.grow(toHeight: h)
         self.routeAround([id])
       }
       self.followEdit()
@@ -287,6 +287,7 @@ final class CanvasView: NSView {
     refold()
     CATransaction.commit()
     showPorts()
+    relayer()
     setCamera(s.cam, animated: false)
     routeAll()
   }
@@ -366,9 +367,18 @@ final class CanvasView: NSView {
     for (id, l) in cardLayers { out[id] = rect(of: l) }
     return out
   }
-  /** A card's rectangle for routing, with its rows as drawn (a code card) */
+  /** A card's rectangle for routing, with the rows as drawn that its arrows end on (a code card): the few lines the arrows
+   *  name, not every row, so the rectangles stay small to send */
   private func rect(of l: CardLayer) -> WorldRect {
-    WorldRect(x: l.card.x, y: l.card.y, w: l.card.w, h: Double(l.height), rows: l.rowYs.isEmpty ? nil : l.rowYs)
+    var rows: [String: Double] = [:]
+    if !l.rowYs.isEmpty {
+      for a in arrowLayers.values {
+        for e in [a.link.from, a.link.to] where e.card == l.card.id {
+          if let seg = e.seg, let line = e.line, let y = l.rowYs["\(seg):\(line)"] { rows["\(seg):\(line)"] = y }
+        }
+      }
+    }
+    return WorldRect(x: l.card.x, y: l.card.y, w: l.card.w, h: Double(l.height), rows: rows.isEmpty ? nil : rows)
   }
   /** Every arrow routed by the board's session; the routes land when they come, unless the canvas shows another board by then */
   func routeAll() {
@@ -887,7 +897,7 @@ final class CanvasView: NSView {
       let dx = (p.x - r.start.x) / cam.z, dy = (p.y - r.start.y) / cam.z
       let w = r.right ? max(120, r.w + dx) : r.w
       let h = r.bottom ? max(40, r.h + dy) : r.h
-      l.resize(to: CGSize(width: w, height: h))
+      l.resize(width: w, height: r.bottom ? h : nil)
       delegate?.canvas(self, resizing: r.id, w: Double(w), h: r.bottom ? .fixed(Double(h)) : .keep)
       routeAround([r.id])
       showPorts()

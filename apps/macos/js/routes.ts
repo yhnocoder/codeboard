@@ -212,7 +212,7 @@ function endOf(b: RouteModel, e: Link["from"], rects: Record<string, Rect>): End
   let y = r.y + CODE_GEO.head / 2;
   // the row as the shell drew it; a card not drawn yet by its rows' default places
   const drawn = e.seg !== undefined && e.line !== undefined ? r.rows?.[`${e.seg}:${e.line}`] : undefined;
-  if (drawn !== undefined) y = r.y + Math.min(drawn, r.h);
+  if (drawn !== undefined && drawn < r.h) y = r.y + drawn;
   else if (c?.segments) {
     const ly = lineYIn(c.segments, e.seg, e.line);
     if (ly !== null && ly < r.h) y = r.y + ly;
