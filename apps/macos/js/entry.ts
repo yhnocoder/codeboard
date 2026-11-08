@@ -4,7 +4,7 @@
 import "./prelude";
 import { settingsSchema } from "@codeboard/core/settings";
 import { FAINT_BELOW, MIN_SCORE, REINDEX_PAUSE, TOP } from "@codeboard/host/storage";
-import { createBridge } from "./bridge";
+import { createBridge, type Session } from "./bridge";
 import { createLibrary } from "./library";
 import type { Native } from "./native";
 import { shellGeo } from "./routes";
@@ -24,6 +24,11 @@ const session = (dir: string, id: string) => {
   if (!s) throw new Error(`board ${id} is not open`);
   return s;
 };
+
+/** A new card: what changed, with its id */
+const made = (s: Session, id: string) => s.changes().then((ch) => ({ ...ch, id }));
+/** A command run, then what changed */
+const did = (s: Session, fn: (c: Session["cmd"]) => unknown) => (fn(s.cmd), s.changes());
 
 (globalThis as unknown as { CodeBoard: unknown }).CodeBoard = {
   list: (req: number, dir: string) => settle(req, bridge.folder(dir).list()),
@@ -54,6 +59,103 @@ const session = (dir: string, id: string) => {
   beginDrag: (dir: string, id: string) => session(dir, id).beginDrag(),
   drag: (dir: string, id: string, moves: string) => session(dir, id).drag(JSON.parse(moves)),
   cam: (dir: string, id: string, x: number, y: number, z: number) => session(dir, id).cam({ x, y, z }),
+  resize: (dir: string, id: string, card: string, w: number, h: number | null | "keep") =>
+    session(dir, id).resize(card, w, h),
+  // edits (js/commands.ts): each runs a command and resolves with what changed; a new card's reply carries its id
+  newWriting: (req: number, dir: string, id: string, look: string, x: number, y: number) =>
+    settle(req, made(session(dir, id), session(dir, id).cmd.newWriting(look as never, x, y))),
+  newCode: (req: number, dir: string, id: string, x: number, y: number) =>
+    settle(req, made(session(dir, id), session(dir, id).cmd.newCode(x, y))),
+  writeNote: (req: number, dir: string, id: string, card: string, md: string) =>
+    settle(
+      req,
+      did(session(dir, id), (c) => c.writeNote(card, md)),
+    ),
+  writeCode: (req: number, dir: string, id: string, card: string, text: string) =>
+    settle(
+      req,
+      did(session(dir, id), (c) => c.writeCode(card, text)),
+    ),
+  settleUnwritten: (req: number, dir: string, id: string, card: string) =>
+    settle(
+      req,
+      did(session(dir, id), (c) => c.settleUnwritten(card)),
+    ),
+  deleteItems: (req: number, dir: string, id: string, cards: string, links: string, sections: string) =>
+    settle(
+      req,
+      did(session(dir, id), (c) => c.delete(JSON.parse(cards), JSON.parse(links), JSON.parse(sections))),
+    ),
+  duplicate: (req: number, dir: string, id: string, ids: string) =>
+    settle(
+      req,
+      did(session(dir, id), (c) => c.duplicate(JSON.parse(ids))),
+    ),
+  copy: (dir: string, id: string, ids: string) => session(dir, id).cmd.copy(JSON.parse(ids)),
+  paste: (req: number, dir: string, id: string) =>
+    settle(
+      req,
+      did(session(dir, id), (c) => c.paste()),
+    ),
+  addLink: (req: number, dir: string, id: string, from: string, to: string) =>
+    settle(
+      req,
+      did(session(dir, id), (c) => c.addLink({ card: from }, { card: to })),
+    ),
+  newSection: (req: number, dir: string, id: string, ids: string, rects: string) =>
+    settle(
+      req,
+      did(session(dir, id), (c) => c.newSection(JSON.parse(ids), JSON.parse(rects))),
+    ),
+  renameSection: (req: number, dir: string, id: string, section: string, title: string) =>
+    settle(
+      req,
+      did(session(dir, id), (c) => c.renameSection(section, title)),
+    ),
+  newImage: (req: number, dir: string, id: string, name: string, dataUrl: string, w: number, x: number, y: number) => {
+    const s = session(dir, id);
+    void s.cmd.newImage(name, dataUrl, w, x, y).then((card) => settle(req, made(s, card)));
+  },
+  turnIntoBoard: (req: number, dir: string, id: string, ids: string, name: string, rects: string) => {
+    const s = session(dir, id);
+    void s.cmd
+      .turnIntoBoard(JSON.parse(ids), name, JSON.parse(rects))
+      .then((frame) => settle(req, frame ? made(s, frame) : Promise.resolve(null)));
+  },
+  newSubboard: (req: number, dir: string, id: string, name: string, x: number, y: number) => {
+    const s = session(dir, id);
+    void s.cmd.newSubboard(name, x, y).then((card) => settle(req, card ? made(s, card) : Promise.resolve(null)));
+  },
+  foldSection: (req: number, dir: string, id: string, section: string, shut: boolean, open: string) =>
+    settle(
+      req,
+      did(session(dir, id), (c) => c.foldSection(section, shut, JSON.parse(open))),
+    ),
+  addSticker: (req: number, dir: string, id: string, pack: string, name: string, x: number, y: number) => {
+    const s = session(dir, id);
+    settle(req, made(s, s.cmd.addSticker({ pack, name }, x, y).id));
+  },
+  deleteStickers: (req: number, dir: string, id: string, ids: string) =>
+    settle(
+      req,
+      did(session(dir, id), (c) => c.deleteStickers(JSON.parse(ids))),
+    ),
+  addSidenote: (req: number, dir: string, id: string, card: string, md: string) => {
+    const s = session(dir, id);
+    settle(req, made(s, s.cmd.addSidenote(card, md)));
+  },
+  writeSidenote: (req: number, dir: string, id: string, sn: string, md: string) =>
+    settle(
+      req,
+      did(session(dir, id), (c) => c.writeSidenote(sn, md)),
+    ),
+  deleteSidenote: (req: number, dir: string, id: string, sn: string) =>
+    settle(
+      req,
+      did(session(dir, id), (c) => c.deleteSidenote(sn)),
+    ),
+  titles: (dir: string, id: string) => str(session(dir, id).cmd.titles()),
+  textOf: (dir: string, id: string, card: string) => str(session(dir, id).cmd.textOf(card)),
   timer: (id: number) => bridge.timer(id),
   fsChanged: (id: number, abs: string) => bridge.fsChanged(id, abs),
   /** The gate: n edits on the board, each moving one card by a pixel (there and back, so the board ends as it was and nothing is

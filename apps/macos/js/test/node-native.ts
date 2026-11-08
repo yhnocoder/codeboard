@@ -55,6 +55,7 @@ export function nodeNative(): Native & {
       return id;
     },
     unwatch: (id) => void watchers.delete(id),
+    choose: (_t, _o, _x, done) => done(null),
     now: () => performance.now(),
     emit: (name, json) => void events.push({ name, data: JSON.parse(json) }),
     // the bridge runs on Node's own timers in the tests (createBridge timers: false)

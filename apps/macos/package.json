@@ -5,20 +5,22 @@
   "type": "module",
   "description": "The JavaScript side of the macOS app: @codeboard/core and the host's storage bundled for JavaScriptCore",
   "scripts": {
-    "build": "node build.mjs",
+    "build": "node build.mjs && vite build -c web/vite.config.ts",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit && tsc --noEmit -p web"
   },
   "dependencies": {
     "@codeboard/analysis": "^0.1.0",
     "@codeboard/core": "^0.1.0",
     "@codeboard/host": "^0.1.0",
-    "@yhnocoder/markdown": "^0.2.1"
+    "@yhnocoder/markdown": "^0.2.1",
+    "solid-js": "^1.9.17"
   },
   "devDependencies": {
     "@types/node": "^20.19.43",
     "esbuild": "^0.28.2",
     "typescript": "^7.0.2",
+    "vite": "^8.3.5",
     "vitest": "^5.0.4"
   }
 }

@@ -9,7 +9,11 @@
 //   --library <folder>               the library shows only that folder (the checks: a copy of real boards)
 //   --check <dir> [--query <q>]      the scripted library run (Checks.swift): library, ⌘K and a board window to PNGs, timings
 //   --show [--show-board <id>] [--query <q>]  open them and stay (screenshots of the real windows)
+//   --edit <card id | new | new:text | new:code>  with --open and --board: edit that card (or a new card), type a line, end the edit; PNGs with --snapshot
+//   --typing                         with --edit: 120 keystrokes one per frame instead; each one's JS cost and time to the next frame
+//   --inspect                        the card pages show in Safari's Develop menu
 //   --dark | --light                 force the appearance
+//   --theme <warm-ink | ink-wash>    the board theme for this run (otherwise the `theme` default: defaults write … theme ink-wash)
 import AppKit
 import QuartzCore
 import UniformTypeIdentifiers
@@ -68,6 +72,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     if let l = arg("--look") { Look.shared.set(l) } else { _ = Look.shared }
     if args.contains("--dark") { NSApp.appearance = NSAppearance(named: .darkAqua) }
     if args.contains("--light") { NSApp.appearance = NSAppearance(named: .aqua) }
+    if let t = arg("--theme") ?? UserDefaults.standard.string(forKey: "theme") { Theme.look = t }
     makeMenu()
     // `--also <folder>` opens more windows (the memory checks: several windows on one bridge); the scripted run drives the first
     if let f = arg("--open") {
@@ -149,6 +154,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
   private func openCanvasCheck(_ f: String) {
     let wc = canvasWindow(f)
     let auto = args.contains("--auto"), snap = arg("--snapshot")
+    // a scripted run's window stays in front: WebKit gives an occluded window's pages no animation frames (no editor, no Notes)
+    if auto || snap != nil || arg("--edit") != nil {
+      wc.window?.level = .floating
+      wc.window?.orderFrontRegardless()
+    }
     let go = { [self] in
       if auto {
         self.auto = AutoRun(wc, out: snap)
@@ -157,10 +167,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         let only = self.arg("--steps").map { Set($0.split(separator: ",").map(String.init)) }
         self.gate = GateRun(wc, out: g, only: only, capture: !self.args.contains("--no-capture"))
         self.gate!.run { self.quit() }
+      } else if let e = self.arg("--edit") {
+        self.auto = AutoRun(wc, out: snap)
+        self.auto!.edit(e) { self.quit() }
       } else if snap != nil {
         if self.args.contains("--fit") { wc.canvas.fitAll(animated: false) }
         if let id = self.arg("--focus") { wc.canvas.focus(id) }
-        after(0.8) {
+        after(Double(self.arg("--wait") ?? "0.8") ?? 0.8) {
           AutoRun(wc, out: snap).snapshot("board")
           self.quit()
         }
@@ -194,7 +207,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         NSApp.reply(toApplicationShouldTerminate: true)
       }
     }
-    bridge.flush { _ in reply() }
+    // an edit going on is written first (a posted message, so it reaches core before the flush)
+    var open = windows.count
+    let flush = { [self] in
+      open -= 1
+      if open <= 0 { bridge.flush { _ in reply() } }
+    }
+    if windows.isEmpty { flush() } else { for w in windows { w.canvas.endEdit(commit: true, done: flush) } }
     after(3) { reply() }
     return .terminateLater
   }
@@ -366,12 +385,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     _ = sub("Edit", [
       item("Undo", #selector(undo(_:)), "z"), item("Redo", #selector(redo(_:)), "z", [.command, .shift]), .separator(),
       item("Cut", #selector(NSText.cut(_:)), "x"), item("Copy", #selector(NSText.copy(_:)), "c"),
-      item("Paste", #selector(NSText.paste(_:)), "v"), item("Select All", #selector(NSText.selectAll(_:)), "a"), .separator(),
+      item("Paste", #selector(NSText.paste(_:)), "v"), item("Duplicate", #selector(CanvasView.duplicate(_:)), "d"),
+      item("Delete", #selector(NSText.delete(_:)), "\u{8}"), item("Select All", #selector(NSText.selectAll(_:)), "a"), .separator(),
       item("Search All Boards…", #selector(showSearch(_:)), "k"),
+    ])
+    // nil targets: the responder chain, so the edit card's web view gets Cut / Copy / Paste while it has focus, the canvas otherwise
+    _ = sub("Insert", [
+      item("New Note", #selector(BoardTools.addNote(_:)), "n"), item("New Text", #selector(BoardTools.addText(_:)), "t"),
+      item("New Free Code", #selector(BoardTools.addCode(_:)), "k", [.command, .shift]), .separator(),
+      item("New Section Around Selection", #selector(CanvasView.newSection(_:)), "g"),
+      item("Fold / Unfold Section", #selector(CanvasView.foldSection(_:)), "."), .separator(),
+      item("Image…", #selector(BoardTools.addImage(_:))), item("New Sub-board…", #selector(BoardTools.addSubboard(_:))),
+      item("Turn Selection into Board…", #selector(CanvasView.turnIntoBoard(_:)), "b", [.command, .shift]),
+      item("Arrow", #selector(BoardTools.addArrow(_:)), "l", [.command, .shift]),
     ])
     _ = sub("View", [
       item("Zoom In", #selector(zoomIn(_:)), "="), item("Zoom Out", #selector(zoomOut(_:)), "-"),
       item("Zoom to Fit", #selector(fit(_:)), "1"), item("Actual Size", #selector(actualSize(_:)), "0"), .separator(),
+      item("Back to Parent Board", #selector(BoardWindowController.backToParent(_:)), "\u{f700}"), .separator(),
       item("Toggle Sidebar", #selector(NSSplitViewController.toggleSidebar(_:)), "s", [.command, .control]),
       item("Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control]),
     ])

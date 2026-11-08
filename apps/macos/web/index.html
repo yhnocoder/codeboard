@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="en" data-theme="light" data-look="warm-ink" class="look-warm-ink">
+<head>
+  <meta charset="utf-8" />
+  <!-- what the VS Code webview allows its board (panel.ts), with the cb: scheme in place of the webview's -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src cb: data: blob: https: http:; style-src cb: 'unsafe-inline'; font-src cb: data:; script-src cb: 'wasm-unsafe-eval'; connect-src cb:" />
+  <title>CodeBoard cards</title>
+</head>
+<body>
+  <div id="stage"></div>
+  <script type="module" src="./main.ts"></script>
+</body>
+</html>

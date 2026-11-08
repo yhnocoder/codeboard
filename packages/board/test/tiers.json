@@ -344,7 +344,7 @@
         "packages/board/src/themes.css",
         "packages/board/src/settings.css",
         "packages/board/src/scenes/**",
-        "packages/board/src/state/{look,tilt,ink,inkframe}.ts",
+        "packages/board/src/state/{look,tilt,ink,inkart,inkframe}.ts",
         "packages/board/src/canvas/city.ts",
         "packages/board/src/canvas/Traffic.tsx",
         "packages/board/src/ui/Settings.tsx",

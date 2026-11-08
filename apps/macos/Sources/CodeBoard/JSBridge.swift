@@ -127,6 +127,19 @@ final class JSBridge {
       do { return try Data(contentsOf: URL(fileURLWithPath: p)).base64EncodedString() } catch { return err(error) }
     } as @convention(block) (String) -> Any)
     put("now", { () -> Double in CACurrentMediaTime() * 1000 } as @convention(block) () -> Double)
+    // a command asks the user (core's CommandEnv.choose): an alert once this JavaScript call has returned (never modal inside
+    // it), the option's index or null to the callback
+    put("choose", { (title: String, options: [String], text: String, done: JSValue) in
+      DispatchQueue.main.async {
+        let a = NSAlert()
+        a.messageText = title
+        a.informativeText = text
+        for o in options { a.addButton(withTitle: o) }
+        a.addButton(withTitle: "Cancel")
+        let r = a.runModal().rawValue - NSApplication.ModalResponse.alertFirstButtonReturn.rawValue
+        done.call(withArguments: [r >= 0 && r < options.count ? r : NSNull()])
+      }
+    } as @convention(block) (String, [String], String, JSValue) -> Void)
     put("emit", { [unowned self] (name: String, json: String) in self.event(name, json) } as @convention(block) (String, String) -> Void)
     // on this thread's run loop (so they fire whatever the main run loop is in: a sheet, the quit confirmation waiting on a flush)
     put("setTimer", { [unowned self] (id: Int, ms: Double) in
@@ -297,6 +310,25 @@ final class JSBridge {
   }
   fileprivate func benchEdit(_ dir: String, _ id: String, _ n: Int, _ cb: @escaping ([Double]) -> Void) { callValue("benchEdit", [dir, id, n], [Double].self, cb) }
   /** The library's calls (js/library.ts, CodeBoardLibrary): boards across storage folders, and the documents ⌘K indexes */
+  /** A card's height in a resize: as it is, back to its content's, or this */
+  enum Height {
+    case keep, auto, fixed(Double)
+    var arg: Any { switch self { case .keep: "keep"; case .auto: NSNull(); case .fixed(let h): h } }
+  }
+  fileprivate func resize(_ dir: String, _ id: String, _ card: String, w: Double, h: Height) { js.post { [self] in api.invokeMethod("resize", withArguments: [dir, id, card, w, h.arg]) } }
+  // MARK: edits (js/commands.ts through entry.ts): each resolves with what changed; a new card's reply carries its id
+  fileprivate func edit(_ name: String, _ dir: String, _ id: String, _ args: [Any], _ cb: @escaping (Result<SceneChange, Error>) -> Void) { call(name, [dir, id] + args, typed(SceneChange.self, cb)) }
+  fileprivate func copy(_ dir: String, _ id: String, _ ids: [String], _ cb: @escaping (Int) -> Void) { callValue("copy", [dir, id, encodeJSON(ids)], Int.self, cb) }
+  fileprivate func titles(_ dir: String, _ id: String, _ cb: @escaping ([[String: String]]) -> Void) { callValue("titles", [dir, id], [[String: String]].self, cb) }
+  struct CardText: Decodable { var kind: String; var text: String; var lang: String?; var look: String? }
+  /** nil when the card has no editable text (the reply is JSON null) */
+  fileprivate func textOf(_ dir: String, _ id: String, _ card: String, _ cb: @escaping (CardText?) -> Void) {
+    js.post { [self] in
+      let r = api.invokeMethod("textOf", withArguments: [dir, id, card])?.toString()
+      let out = r.flatMap { try? decodeJSON(CardText.self, $0) }
+      DispatchQueue.main.async { cb(out) }
+    }
+  }
   func lib<T: Decodable>(_ name: String, _ args: [Any], _ type: T.Type, _ cb: @escaping (Result<T, Error>) -> Void) {
     js.post { [self] in
       let req = nextReq
@@ -362,4 +394,48 @@ struct Session {
   func route(_ rects: [String: WorldRect], only: [String]? = nil, modes: [String: String]? = nil, _ cb: @escaping ([RouteGeo]) -> Void) { bridge.route(dir, id, rects, only: only, modes: modes, cb) }
   /** The M1 gate: n single-card edits through core's history; each one's time in ms */
   func benchEdit(_ n: Int, _ cb: @escaping ([Double]) -> Void) { bridge.benchEdit(dir, id, n, cb) }
+  /** A live resize inside a drag gesture (beginDrag … endDrag) */
+  func resize(_ card: String, w: Double, h: JSBridge.Height) { bridge.resize(dir, id, card, w: w, h: h) }
+  // MARK: edits (js/commands.ts): each resolves with what changed; a new card's reply carries its id
+  func newWriting(_ look: String, x: Double, y: Double, _ cb: @escaping (Result<SceneChange, Error>) -> Void) { bridge.edit("newWriting", dir, id, [look, x, y], cb) }
+  func newCode(x: Double, y: Double, _ cb: @escaping (Result<SceneChange, Error>) -> Void) { bridge.edit("newCode", dir, id, [x, y], cb) }
+  func writeNote(_ card: String, md: String, _ cb: @escaping (Result<SceneChange, Error>) -> Void) { bridge.edit("writeNote", dir, id, [card, md], cb) }
+  func writeCode(_ card: String, text: String, _ cb: @escaping (Result<SceneChange, Error>) -> Void) { bridge.edit("writeCode", dir, id, [card, text], cb) }
+  func settleUnwritten(_ card: String, _ cb: @escaping (Result<SceneChange, Error>) -> Void) { bridge.edit("settleUnwritten", dir, id, [card], cb) }
+  func deleteItems(cards: [String], links: [String], sections: [String], _ cb: @escaping (Result<SceneChange, Error>) -> Void) {
+    bridge.edit("deleteItems", dir, id, [encodeJSON(cards), encodeJSON(links), encodeJSON(sections)], cb)
+  }
+  func duplicate(_ ids: [String], _ cb: @escaping (Result<SceneChange, Error>) -> Void) { bridge.edit("duplicate", dir, id, [encodeJSON(ids)], cb) }
+  /** How many cards were copied (on the main thread) */
+  func copy(_ ids: [String], _ cb: @escaping (Int) -> Void) { bridge.copy(dir, id, ids, cb) }
+  func paste(_ cb: @escaping (Result<SceneChange, Error>) -> Void) { bridge.edit("paste", dir, id, [], cb) }
+  func addLink(from: String, to: String, _ cb: @escaping (Result<SceneChange, Error>) -> Void) { bridge.edit("addLink", dir, id, [from, to], cb) }
+  func newSection(_ ids: [String], rects: [String: WorldRect], _ cb: @escaping (Result<SceneChange, Error>) -> Void) {
+    bridge.edit("newSection", dir, id, [encodeJSON(ids), encodeJSON(rects)], cb)
+  }
+  func renameSection(_ section: String, title: String, _ cb: @escaping (Result<SceneChange, Error>) -> Void) { bridge.edit("renameSection", dir, id, [section, title], cb) }
+  /** An image (a data: URL) saved to assets/ as an Image card `w` wide at (x, y); the reply carries its id */
+  func newImage(_ name: String, dataUrl: String, w: Double, x: Double, y: Double, _ cb: @escaping (Result<SceneChange, Error>) -> Void) {
+    bridge.edit("newImage", dir, id, [name, dataUrl, w, x, y], cb)
+  }
+  /** The cards become a new board named `name`, a sub-board card in their place (its id in the reply) */
+  func turnIntoBoard(_ ids: [String], name: String, rects: [String: WorldRect], _ cb: @escaping (Result<SceneChange, Error>) -> Void) {
+    bridge.edit("turnIntoBoard", dir, id, [encodeJSON(ids), name, encodeJSON(rects)], cb)
+  }
+  /** A new empty board as a sub-board card at (x, y) */
+  func newSubboard(_ name: String, x: Double, y: Double, _ cb: @escaping (Result<SceneChange, Error>) -> Void) { bridge.edit("newSubboard", dir, id, [name, x, y], cb) }
+  /** A Section folded to its title bar (open = its frame as drawn, kept for unfolding) or opened again */
+  func foldSection(_ section: String, shut: Bool, open: WorldRect, _ cb: @escaping (Result<SceneChange, Error>) -> Void) {
+    bridge.edit("foldSection", dir, id, [section, shut, encodeJSON(open)], cb)
+  }
+  func addSticker(pack: String, name: String, x: Double, y: Double, _ cb: @escaping (Result<SceneChange, Error>) -> Void) { bridge.edit("addSticker", dir, id, [pack, name, x, y], cb) }
+  func deleteStickers(_ ids: [String], _ cb: @escaping (Result<SceneChange, Error>) -> Void) { bridge.edit("deleteStickers", dir, id, [encodeJSON(ids)], cb) }
+  /** A Text sidenote on a whole card; the reply carries its id */
+  func addSidenote(_ card: String, md: String, _ cb: @escaping (Result<SceneChange, Error>) -> Void) { bridge.edit("addSidenote", dir, id, [card, md], cb) }
+  func writeSidenote(_ sn: String, md: String, _ cb: @escaping (Result<SceneChange, Error>) -> Void) { bridge.edit("writeSidenote", dir, id, [sn, md], cb) }
+  func deleteSidenote(_ sn: String, _ cb: @escaping (Result<SceneChange, Error>) -> Void) { bridge.edit("deleteSidenote", dir, id, [sn], cb) }
+  /** The board's card titles, for [[refs]] */
+  func titles(_ cb: @escaping ([[String: String]]) -> Void) { bridge.titles(dir, id, cb) }
+  /** The editable text of a Note / Text / Free code card, or nil */
+  func textOf(_ card: String, _ cb: @escaping (JSBridge.CardText?) -> Void) { bridge.textOf(dir, id, card, cb) }
 }

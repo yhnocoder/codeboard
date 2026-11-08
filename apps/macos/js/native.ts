@@ -29,6 +29,8 @@ export interface Native {
   /** Watch a folder tree; changed paths arrive through `CodeBoard.fsChanged(id, abs)`. Returns the watch id */
   watch(base: string): number;
   unwatch(id: number): void;
+  /** Ask the user: the option's index, or null when dismissed, to `done` once the shell has asked (never inside this call) */
+  choose(title: string, options: string[], text: string, done: (i: number | null) => void): void;
   /** Milliseconds, monotonic, with sub-millisecond precision */
   now(): number;
   /** An event for the shell: a JSON string */

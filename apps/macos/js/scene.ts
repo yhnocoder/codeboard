@@ -15,7 +15,15 @@ import type { Highlight, SceneTok } from "./highlight";
 import { type RouteModel, routeModel } from "./routes";
 
 export type SceneLine = { n: number; toks: SceneTok[] };
-export type SceneSegment = { path: string; start: number; end: number; lang: string; lines: SceneLine[] };
+/** hl: the segment's Highlights (highlighted line ranges, a band under them) */
+export type SceneSegment = {
+  path: string;
+  start: number;
+  end: number;
+  lang: string;
+  lines: SceneLine[];
+  hl?: [number, number][];
+};
 export type SceneCard = {
   id: string;
   kind: Card["kind"];
@@ -24,7 +32,11 @@ export type SceneCard = {
   w: number;
   /** A height the board decided (Place.h, with a code card's head) or measured on a board (Place.mh); none = the app measures */
   h?: number;
+  /** The height is the board's own (Place.h: the card scrolls inside it), not measured */
+  fixed?: boolean;
   title: string;
+  /** A Note's own name (NoteCard.title; the head shows it, else the leading heading, else "Note") */
+  name?: string;
   section?: string;
   locked?: boolean;
   tilt?: boolean;
@@ -111,8 +123,10 @@ export async function sceneCard(b: Board, c: Card, env: SceneEnv, quick = false)
   if (p.section) out.section = p.section;
   if (p.locked) out.locked = true;
   if (c.tilt) out.tilt = true;
-  if (p.h) out.h = estSize(c, p).h;
-  else if (p.mh) out.h = p.mh;
+  if (p.h) {
+    out.h = estSize(c, p).h;
+    out.fixed = true;
+  } else if (p.mh) out.h = p.mh;
   switch (c.kind) {
     case "code":
       out.glyph = codeGlyph(c);
@@ -126,6 +140,7 @@ export async function sceneCard(b: Board, c: Card, env: SceneEnv, quick = false)
             end: s.end,
             lang: s.lang,
             lines: s.text.map((_, i) => ({ n: s.start + i, toks: toks?.[i] ?? [[s.text[i]]] })),
+            ...(s.hl?.length ? { hl: s.hl } : {}),
           };
         }),
       );
@@ -134,6 +149,7 @@ export async function sceneCard(b: Board, c: Card, env: SceneEnv, quick = false)
     case "note":
       out.look = c.look;
       out.md = c.md;
+      if (c.title) out.name = c.title;
       if (c.size) out.size = c.size;
       if (c.bold) out.bold = true;
       if (c.fill) out.fill = c.fill;

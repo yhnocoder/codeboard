@@ -12,7 +12,10 @@ import {
   type BoardMeta,
   type Camera,
   emptyBoard,
+  estSize,
+  findCard,
   type Rect,
+  sectionFrames,
   type SharedUpdate,
 } from "@codeboard/core";
 import { dropCards, dropGone } from "@codeboard/core/commands";
@@ -20,6 +23,7 @@ import { createHistory, createSave, type Doc } from "@codeboard/core/history";
 import { type Fs, Storage } from "@codeboard/host/storage";
 import { noteBlocks } from "@yhnocoder/markdown";
 import { nativeFs } from "./fs";
+import { commands, makeEnv } from "./commands";
 import { makeHighlighter } from "./highlight";
 import { installGlobals, isErr, type Native } from "./native";
 import type { Mode } from "@codeboard/core/canvas";
@@ -58,6 +62,11 @@ export interface Session {
   undo(): Promise<SceneChange>;
   redo(): Promise<SceneChange>;
   cam(c: Camera): void;
+  /** A card resized by its edge or corner (inside a drag gesture): width, and a height ("keep" = as it is, null = back to
+   *  following the content) */
+  resize(id: string, w: number, h: number | null | "keep"): void;
+  /** The edits (commands.ts), each followed by changes() for the shell */
+  cmd: ReturnType<typeof commands>;
   flushSave(): void;
   /** Core's raw access, for the gate measurements and tests */
   mutate(fn: (b: Board) => void): boolean;
@@ -334,7 +343,14 @@ export function createBridge(native: Native, opts: { fs?: Fs; timers?: boolean; 
         });
       },
       endDrag(moves: (DrawnRect & { id: string })[]): Promise<SceneChange> {
-        const fr: Map<string, Rect> = new Map(board.sections.map((s) => [s.id, { x: s.x, y: s.y, w: s.w, h: s.h }]));
+        // the Section frames as drawn around the cards that stay (a dragged card does not stretch the frame it is leaving)
+        const moved = new Set(moves.map((m) => m.id));
+        const rects = new Map<string, Rect>(
+          board.cards
+            .filter((c) => board.place[c.id] && !moved.has(c.id))
+            .map((c) => [c.id, { x: board.place[c.id].x, y: board.place[c.id].y, ...estSize(c, board.place[c.id]) }]),
+        );
+        const fr = sectionFrames(board, rects);
         if (gesture) history.live((b) => dropCards(b, moves, fr));
         gesture?.();
         gesture = null;
@@ -343,6 +359,24 @@ export function createBridge(native: Native, opts: { fs?: Fs; timers?: boolean; 
       undo: () => (history.undo(), changes()),
       redo: () => (history.redo(), changes()),
       cam: (c: Camera) => history.liveCam(c),
+      // a locked card stays; a Compare's column resizes its Compare (the board's hostPlace)
+      resize(card, w, h) {
+        history.live((b) => {
+          const p = b.place[findCard(b, card)?.host.id ?? card];
+          if (!p || p.locked) return;
+          p.w = Math.max(120, Math.round(w));
+          if (h === null) p.h = undefined;
+          else if (h !== "keep") p.h = Math.max(40, Math.round(h));
+        });
+      },
+      cmd: commands(
+        makeEnv(history, () => board, {
+          toast: (text) => emit("toast", { dir, id, text }),
+          choose: (title, options, text) => new Promise((res) => native.choose(title, options, text ?? "", res)),
+          storage,
+        }),
+        () => storage,
+      ),
       flushSave: () => save.flush(),
       mutate: (fn) => history.mutate(fn),
     };

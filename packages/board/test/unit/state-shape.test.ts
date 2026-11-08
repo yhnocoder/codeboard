@@ -105,7 +105,7 @@ const OUTLIVES_BOARD: Record<string, string> = {
   "md/load.ts:seq": "an id counter",
   "canvas/Labels.tsx:NONE": "a shared empty value, never written",
   // caches and loaders keyed by content
-  "state/ink.ts:papers": "Ink Wash's card paper images, by size",
+  "state/inkart.ts:papers": "Ink Wash's card paper images, by edge pattern and light / dark",
   "state/inkframe.ts:frames": "Ink Wash's Section frames, by size, title width and Section",
   "md/load.ts:mod": "the editor module",
   "cm/load.ts:mod": "the code editor module",

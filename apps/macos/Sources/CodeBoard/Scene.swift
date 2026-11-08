@@ -1,6 +1,7 @@
 // The scene the bridge sends (js/scene.ts), decoded. World units = the board's px at zoom 1.
 import CoreGraphics
 import Foundation
+import QuartzCore
 
 struct SceneTok: Decodable {
   var text: String
@@ -21,6 +22,8 @@ struct SceneSegment: Decodable {
   var end: Int
   var lang: String
   var lines: [SceneLine]
+  /** Highlighted line ranges (a band under them, the board's --band: the accent at 6.5 %) */
+  var hl: [[Int]]?
 }
 struct SceneMini: Decodable {
   var x, y, w, h: Double
@@ -31,7 +34,11 @@ struct SceneCard: Decodable {
   var kind: String
   var x, y, w: Double
   var h: Double?
+  /** h is the board's own height (the card scrolls inside it) */
+  var fixed: Bool?
   var title: String
+  /** A Note's own name (the head shows it, else its leading heading, else "Note") */
+  var name: String?
   var section: String?
   var locked: Bool?
   var tilt: Bool?
@@ -132,6 +139,8 @@ struct SceneChange: Decodable {
   var moved: [SceneMove]
   var name: String?
   var routing: AnyJSON?
+  /** A new card's id (newWriting / newCode) */
+  var id: String?
 }
 struct SceneMove: Decodable {
   var id: String
@@ -190,7 +199,7 @@ func encodeJSON<T: Encodable>(_ v: T) -> String {
 
 /** A line to stderr (NSLog goes to the unified log only for a signed app) */
 func logLine(_ format: String, _ args: CVarArg...) {
-  let s = String(format: format, arguments: args) + "\n"
+  let s = String(format: "%7.0f ", (CACurrentMediaTime() - launchTime) * 1000) + String(format: format, arguments: args) + "\n"
   FileHandle.standardError.write(Data(s.utf8))
 }
 

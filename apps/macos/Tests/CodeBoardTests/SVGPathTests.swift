@@ -14,9 +14,19 @@ final class SVGPathTests: XCTestCase {
     XCTAssertEqual(p.boundingBoxOfPath.minX, -1.5, accuracy: 0.01)
     XCTAssertEqual(p.boundingBoxOfPath.maxX, 10, accuracy: 0.01)
   }
-  func testMarkdownDropsLeadingHeading() {
-    XCTAssertEqual(Markdown.body("# Title\n\nbody", droppingHeading: "Title"), "\nbody")
-    XCTAssertEqual(Markdown.body("para", droppingHeading: "Other"), "para")
-    XCTAssertGreaterThan(Markdown.height(Markdown.render("# H\n\n- a\n- b\n\n```c\nint x;\n```"), width: 300), 60)
+  /** A rendered Note as a one-page PDF is drawn at any scale: the pixels follow the scale, the content the page */
+  func testNotePDFRasterFollowsScale() {
+    let data = NSMutableData()
+    var box = CGRect(x: 0, y: 0, width: 100, height: 40)
+    let ctx = CGContext(consumer: CGDataConsumer(data: data)!, mediaBox: &box, nil)!
+    ctx.beginPDFPage(nil)
+    ctx.setFillColor(CGColor(red: 1, green: 0, blue: 0, alpha: 1))
+    ctx.fill(CGRect(x: 0, y: 0, width: 50, height: 40))
+    ctx.endPDFPage()
+    ctx.closePDF()
+    let pdf = NotePDF(doc: CGPDFDocument(CGDataProvider(data: data)!)!, w: 100, h: 40)
+    let img = pdf.raster(scale: 2)!
+    XCTAssertEqual(img.width, 200)
+    XCTAssertEqual(img.height, 80)
   }
 }

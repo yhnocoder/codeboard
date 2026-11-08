@@ -3,6 +3,7 @@
 // wakeups; the canvas written to PNGs (`--snapshot <dir>`, no Screen Recording needed) and the M1 edit gate (benchEdit).
 import AppKit
 import QuartzCore
+import WebKit
 
 struct Rusage {
   var cpu: Double  // seconds
@@ -95,8 +96,107 @@ final class AutoRun: NSObject {
       guard let rep = wc.canvas.snapshot() else { logLine("[auto] snapshot: no bitmap (canvas %@)", "\(wc.canvas.bounds)"); return }
       guard let png = rep.representation(using: .png, properties: [:]) else { logLine("[auto] snapshot: no png"); return }
       try png.write(to: URL(fileURLWithPath: "\(out)/\(name).png"))
-      logLine("[auto] wrote %@/%@.png (%dx%d)", out, name, rep.pixelsWide, rep.pixelsHigh)
+      let st = wc.canvas.notes.stats()
+      logLine("[auto] window occlusion state visible %d", wc.window?.occlusionState.contains(.visible) == true ? 1 : 0)
+      logLine("[auto] wrote %@/%@.png (%dx%d); notes rendered %.0f (from disk %.0f): render p50 %.1f p95 %.1f ms, pdf p50 %.1f p95 %.1f ms, total %.0f ms, page ready %d", out, name, rep.pixelsWide, rep.pixelsHigh, st["count"]!, st["disk_hits"]!, st["render_p50_ms"]!, st["render_p95_ms"]!, st["pdf_p50_ms"]!, st["pdf_p95_ms"]!, st["total_ms"]!, wc.canvas.notes.page.ready ? 1 : 0)
+      report["notes"] = st
     } catch { logLine("[auto] snapshot failed: %@", error.localizedDescription) }
+  }
+
+  /**
+   * The edit check (`--edit <card id | new>`): open the editor over the card (or a new Note on empty space), picture it once it
+   * painted, type a line, end the edit and picture the card again once its bitmap shows the text; enter / exit times to the report
+   */
+  func edit(_ what: String, _ finished: @escaping () -> Void) {
+    let canvas = wc.canvas
+    let t0 = CACurrentMediaTime()
+    var step = 0
+    canvas.edit.onPainted = { [weak self] id in
+      guard let self, step == 0 else { return }
+      step = 1
+      let enter = (CACurrentMediaTime() - t0) * 1000
+      logLine("[auto] edit card painted after %.0f ms (page %.0f ms)", enter, canvas.edit.enterMs)
+      self.report["edit_enter_ms"] = enter
+      self.report["edit_enter_page_ms"] = canvas.edit.enterMs
+      after(0.3) {
+        self.snapshot("edit-open", withEditor: true) {
+          if CommandLine.arguments.contains("--typing") {
+            canvas.edit.onTyped = { [weak self] js, fr in
+              self?.report["type_js_p95_ms"] = js.sorted()[Int(Double(js.count) * 0.95)]
+              self?.report["type_frame_p95_ms"] = fr.sorted()[Int(Double(fr.count) * 0.95)]
+              self?.snapshot("typed", withEditor: true) { canvas.endEdit(commit: false); after(0.3) { finished() } }
+            }
+            canvas.edit.page.call("cb.typeBench(120)")
+            return
+          }
+          canvas.edit.page.call("cb.type(\(encodeJSON("\n\nTyped in the Mac app: $e^{i\\pi}+1=0$ and ==a highlight==.")))")
+          after(0.3) {
+            let t1 = CACurrentMediaTime()
+            canvas.onEditEnded = { [weak self] id, text in
+              self?.wc.editEndedForAuto(id, text)
+              let l = canvas.cardLayers[id]
+              l?.onRendered = { _ in
+                let exit = (CACurrentMediaTime() - t1) * 1000
+                logLine("[auto] edit exit: text back on the card in %.0f ms", exit)
+                self?.report["edit_exit_ms"] = exit
+                l?.onRendered = nil
+                after(0.3) {
+                  self?.snapshot("edit-done")
+                  // a second open of the same card: the editor is warm now
+                  let t2 = CACurrentMediaTime()
+                  canvas.edit.onPainted = { _ in
+                    let again = (CACurrentMediaTime() - t2) * 1000
+                    logLine("[auto] edit card painted again after %.0f ms", again)
+                    self?.report["edit_enter_again_ms"] = again
+                    canvas.endEdit(commit: false)
+                    after(0.3) { finished() }
+                  }
+                  self?.wc.canvas(canvas, editCard: id)
+                }
+              }
+            }
+            canvas.endEdit(commit: true)
+          }
+        }
+      }
+    }
+    logLine("[auto] edit asked")
+    if what == "new" || what.hasPrefix("new:") {
+      canvas.setCamera(Camera(x: 0, y: 0, z: 1), animated: false)  // the new card in view, as a user's would be
+      // new = a Note; new:text / new:code = that look
+      wc.canvas(canvas, newCard: what == "new" ? "note" : String(what.dropFirst(4)), at: CGPoint(x: 120, y: 120))
+    } else {
+      canvas.focus(what)
+      wc.canvas(canvas, editCard: what)
+    }
+    after(8) { if step == 0 { logLine("[auto] the editor never painted"); finished() } }
+  }
+
+  /** The canvas plus the editor's web view (an out-of-process layer, missing from the canvas's own bitmap) */
+  func snapshot(_ name: String, withEditor: Bool, _ done: @escaping () -> Void) {
+    guard withEditor, let out else { snapshot(name); return done() }
+    let web = wc.canvas.edit.view
+    let sc = WKSnapshotConfiguration()
+    sc.rect = web.bounds
+    sc.afterScreenUpdates = true
+    web.takeSnapshot(with: sc) { [weak self] img, err in
+      guard let self else { return }
+      if let err { logLine("[auto] editor snapshot: %@", err.localizedDescription) }
+      guard let rep = self.wc.canvas.snapshot() else { return done() }
+      let whole = NSImage(size: rep.size)
+      whole.addRepresentation(rep)
+      let composed = NSImage(size: rep.size, flipped: true) { r in
+        whole.draw(in: r)
+        if let img { img.draw(in: web.frame) }
+        return true
+      }
+      if let tiff = composed.tiffRepresentation, let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) {
+        try? FileManager.default.createDirectory(atPath: out, withIntermediateDirectories: true)
+        try? png.write(to: URL(fileURLWithPath: "\(out)/\(name).png"))
+        logLine("[auto] wrote %@/%@.png (with the editor)", out, name)
+      }
+      done()
+    }
   }
 
   func run(_ finished: @escaping () -> Void) {

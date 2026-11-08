@@ -1,5 +1,5 @@
 #!/bin/sh
-# Builds CodeBoard.app: the JavaScript bundle (esbuild), the Swift app (release), the bundle folder, an ad-hoc signature with the
+# Builds CodeBoard.app: the JavaScript bundle (esbuild), the card page (Vite, dist/web), the Swift app (release), the bundle folder, an ad-hoc signature with the
 # hardened runtime (JavaScriptCore needs the JIT entitlement). `build.sh run [args…]` then launches it.
 #   npm run mac          build
 #   npm run mac:run      build and launch (arguments after -- go to the app, e.g. -- --open ~/Projects/persona)
@@ -11,11 +11,13 @@ node build.mjs
 # box, the index service ⌘K shares with VS Code: the binary the box build makes for this Mac
 BOX=../../packages/box/bin/darwin-$(uname -m | sed 's/x86_64/x64/')/box
 [ -x "$BOX" ] || node ../../packages/box/build.mjs
+npx vite build -c web/vite.config.ts --logLevel warn
 swift build -c release
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp .build/release/CodeBoard "$APP/Contents/MacOS/CodeBoard"
 cp dist/bridge.js dist/router.js dist/themes.json dist/*.wasm "$APP/Contents/Resources/"
+cp -R dist/web "$APP/Contents/Resources/web"
 cp "$BOX" "$APP/Contents/MacOS/box"
 codesign --force --sign - --options runtime "$APP/Contents/MacOS/box"
 cp Info.plist "$APP/Contents/Info.plist"
