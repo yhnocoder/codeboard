@@ -16,6 +16,7 @@ import {
   rasterChecks,
   rasterWindows,
   scaleHits,
+  tileMemory,
   type AllowEntry,
   type Grid,
   type ImgSeen,
@@ -170,7 +171,38 @@ const pass = (o: Partial<RasterResult> = {}): RasterResult => ({
   unknown: 0,
   tasks: 40,
   snapshots: 12,
+  tileMBMax: 40,
+  tileVPMax: 3,
+  tileMBRest: 20,
+  tileLimitMB: 512,
+  oomSnapshots: 0,
   ...o,
+});
+
+describe("tileMemory", () => {
+  it("adds up the active tiles' resources and reads the tile manager's limit and running out of memory", () => {
+    const tile = (bytes: number) => ({
+      id: "t",
+      layer_id: 1,
+      content_rect: [0, 0, 256, 256],
+      contents_scale: 1,
+      gpu_memory_usage: bytes,
+    });
+    const s: Snapshot = {
+      active_tiles: [tile(262144), tile(262144), tile(0)],
+      device_viewport_size: { width: 512, height: 256 },
+      tile_manager_basic_state: {
+        did_oom_on_last_assign: true,
+        global_state: { hard_memory_limit_in_bytes: 536870912 },
+      },
+    };
+    expect(tileMemory(s)).toEqual({ mb: 0.5, vp: 1, limitMB: 512, oom: true });
+    expect(tileMemory({})).toEqual({ mb: 0, vp: 0, limitMB: 0, oom: false });
+  });
+  it("fails a pass that ran the tile manager out of memory", () => {
+    const checks = rasterChecks({ pan: pass({ oomSnapshots: 2 }) }, "persona");
+    expect(checks.find((c) => c.name === "pan snapshots out of tile memory")).toMatchObject({ value: 2, ok: false });
+  });
 });
 
 describe("rasterChecks", () => {

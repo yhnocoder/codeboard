@@ -32,6 +32,7 @@ import {
   rasterWindows,
   scaleHits,
   snapshotsOf,
+  tileMemory,
   type RasterResult,
   type TraceEvent,
 } from "./probes";
@@ -1259,6 +1260,7 @@ async function rasterPass(
   const tag = (l: (typeof hits)[number]) =>
     `${l.name.replace(/^Layout\w+ (\([^)]*\) )?/, "")} ${l.w}×${l.h} raster ${l.raster} shown ${l.ideal} (${l.ratio}x)`;
   const vps = (px: number) => +(px / vp).toFixed(2);
+  const mem = snaps.map(({ s }) => tileMemory(s));
   const r: RasterResult = {
     stepVP: vps(medianOf(st.map((x) => x.px))),
     stepVPMax: vps(Math.max(0, ...st.map((x) => x.px))),
@@ -1273,6 +1275,11 @@ async function rasterPass(
     unknown,
     tasks,
     snapshots: snaps.length,
+    tileMBMax: Math.max(0, ...mem.map((m) => m.mb)),
+    tileVPMax: Math.max(0, ...mem.map((m) => m.vp)),
+    tileMBRest: mem.at(-1)?.mb ?? 0,
+    tileLimitMB: mem.at(-1)?.limitMB ?? 0,
+    oomSnapshots: mem.filter((m) => m.oom).length,
   };
   if (process.argv.includes("--steps")) {
     console.log(`  raster ${name}: ${JSON.stringify(r)}`);
