@@ -1,7 +1,8 @@
 // The web side of the Mac app's parity check (apps/macos/parity.mjs runs it): the real board on a copy of a board (PARITY_DIR, the
-// storage folder; PARITY_BOARD), per theme (PARITY_THEMES) and appearance, each card in PARITY_CARDS revealed, pictured at rest
-// and selected, cropped PAD around the card, with the card's rect on the page beside it (<id>.json) so the tool crops the app's
-// picture the same way; the whole page around the first card too (scene). Output: PARITY_OUT/web-<theme>-<light|dark>/…
+// storage folder; PARITY_BOARD), per theme (PARITY_THEMES) and appearance, each card in PARITY_CARDS (a Section's or an
+// arrow's id too: a card in the Section / the arrow's source is revealed, and its frame / its path is pictured) revealed,
+// pictured at rest and selected, cropped PAD around it, with its rect on the page beside it (<id>.json) so the tool crops the
+// app's picture the same way; the whole page around the first one too (scene). Output: PARITY_OUT/web-<theme>-<light|dark>/…
 // Manual (tiers.json): it needs a board and runs for the app, not for the board.
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -53,9 +54,18 @@ test("parityWeb", async () => {
       // the sub-board frames' maps come from the host after the board is up
       await until(h, "skeletons", async () => !(await page.locator(".sbname").allTextContents()).includes("Loading…"));
       for (const id of CARDS) {
-        await h.post({ type: "reveal", card: id } as never);
+        const sect = file.sections.find((s) => s.id === id),
+          link = file.links.find((l) => l.id === id);
+        const card = sect
+          ? (file.cards.find((c) => file.place[c.id]?.section === id)?.id ?? id)
+          : link
+            ? link.from.card
+            : id;
+        await h.post({ type: "reveal", card } as never);
         await idle(h);
-        const el = page.locator(`.card[data-id="${id}"]`);
+        const el = page.locator(
+          sect ? `.sect[data-sect="${id}"]` : link ? `path.lhit[data-link="${id}"]` : `.card[data-id="${id}"]`,
+        );
         await until(h, `${id} drawn`, () => el.count().then((n) => n > 0));
         // reveal selects the card: at rest first
         await page.keyboard.press("Escape");
@@ -83,7 +93,10 @@ test("parityWeb", async () => {
         clip.height = Math.min(box.height + 2 * PAD, H - clip.y);
         if (id === CARDS[0]) await page.screenshot({ path: path.join(out, "scene.png") });
         await page.screenshot({ path: path.join(out, `${id}-show.png`), clip });
-        await el.click({ position: { x: 8, y: 8 }, force: true });
+        // a Section is selected by its label, an arrow on its line
+        if (sect) await page.locator(`.slabel[data-sect="${id}"]`).click({ position: { x: 8, y: 8 }, force: true });
+        else if (link) await el.click({ force: true });
+        else await el.click({ position: { x: 8, y: 8 }, force: true });
         // the pointer away: hover affordances (port dots, head buttons) are not the selected look
         await page.mouse.move(W - 4, H - 4);
         await idle(h);

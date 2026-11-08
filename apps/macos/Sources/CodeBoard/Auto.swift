@@ -217,22 +217,32 @@ final class AutoRun: NSObject {
     if let w = wc.window, let cv = w.contentView {
       w.setContentSize(NSSize(width: 1200 + cv.bounds.width - canvas.bounds.width, height: 800 + cv.bounds.height - canvas.bounds.height))
     }
+    /** A card's, a Section's or an arrow's rect in world units (an arrow: its line's path) */
+    func worldRect(_ id: String) -> CGRect? {
+      if let l = canvas.cardLayers[id] { return l.worldRect }
+      if let s = canvas.sectionLayers[id] { return s.frame }
+      if let a = canvas.arrowLayers[id] { return a.line.path?.boundingBox }
+      return nil
+    }
     func next() {
       guard !rest.isEmpty else { return finished() }
       let id = rest.removeFirst()
       canvas.select([])
-      canvas.focus(id)
+      canvas.selectSections([])
+      canvas.selectLinks([])
+      // the item at the top left at zoom 1 (what focus does for a card)
+      if let r = worldRect(id) { canvas.setCamera(Camera(x: 40 - r.minX, y: 40 - r.minY, z: 1), animated: false) }
       // Notes come from the web page a little later than the native cards
       after(1.6) {
-        guard let l = canvas.cardLayers[id] else { logLine("[parity] no card %@", id); return next() }
-        let r = canvas.toView(l.worldRect)
+        guard let r0 = worldRect(id) else { logLine("[parity] no card, Section or arrow %@", id); return next() }
+        let r = canvas.toView(r0)
         if let out = self.out, let d = try? JSONSerialization.data(withJSONObject: ["x": r.minX, "y": r.minY, "w": r.width, "h": r.height]) {
           try? FileManager.default.createDirectory(atPath: out, withIntermediateDirectories: true)
           try? d.write(to: URL(fileURLWithPath: "\(out)/\(id).json"))
         }
         if id == ids.first { self.snapshot("scene") }
         self.snapshot("\(id)-show")
-        canvas.select([id])
+        if canvas.cardLayers[id] != nil { canvas.select([id]) } else if canvas.sectionLayers[id] != nil { canvas.selectSections([id]) } else { canvas.selectLinks([id]) }
         after(0.4) {
           self.snapshot("\(id)-sel")
           next()
