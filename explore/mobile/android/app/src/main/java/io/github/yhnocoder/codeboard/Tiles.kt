@@ -1,13 +1,13 @@
 package io.github.yhnocoder.codeboard
 
-import android.content.res.AssetManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.os.Handler
 import android.os.Looper
 import io.github.yhnocoder.codeboard.core.BoardSpec
 import io.github.yhnocoder.codeboard.core.TileRange
-import java.io.FileNotFoundException
+import java.io.IOException
+import java.util.zip.ZipFile
 import java.util.concurrent.PriorityBlockingQueue
 import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
@@ -23,7 +23,7 @@ const val MISSING = 3
  * when it was last drawn. Bitmaps are written and read on the main thread only; the state is shared with
  * the decoder threads. Arrays rather than an LruCache keep drawing free of allocations (no boxed keys).
  */
-class TileStore(val spec: BoardSpec) {
+class TileStore(val spec: BoardSpec, val zip: ZipFile) {
     val coarsest = spec.levels.size - 1
     val bitmaps: Array<Array<Bitmap?>> = Array(spec.levels.size) { arrayOfNulls(spec.levels[it].cols * spec.levels[it].rows) }
     val used: Array<LongArray> = Array(spec.levels.size) { LongArray(spec.levels[it].cols * spec.levels[it].rows) }
@@ -70,11 +70,11 @@ private class Window(val store: TileStore, val level: Int, val c0: Int, val r0: 
 }
 
 /**
- * Decodes tiles from the APK's assets on background threads, newest requests first, and keeps them within
+ * Decodes tiles from the boards' zips (stored, so each tile is read in place) on background threads, newest requests first, and keeps them within
  * a byte budget, evicting the least recently drawn. The coarsest level of every open board stays, so there
  * is always something to draw under a tile that is not decoded yet.
  */
-class TileCache(private val assets: AssetManager, private val budget: Long, private val onTile: () -> Unit) {
+class TileCache(private val budget: Long, private val onTile: () -> Unit) {
     private val main = Handler(Looper.getMainLooper())
     private val threads = Runtime.getRuntime().availableProcessors().coerceIn(2, 4)
     private val executor = ThreadPoolExecutor(threads, threads, 30, TimeUnit.SECONDS, PriorityBlockingQueue()).apply {
@@ -89,8 +89,8 @@ class TileCache(private val assets: AssetManager, private val budget: Long, priv
 
     @Volatile private var window: Window? = null
 
-    fun open(spec: BoardSpec): TileStore {
-        val s = TileStore(spec)
+    fun open(spec: BoardSpec, zip: ZipFile): TileStore {
+        val s = TileStore(spec, zip)
         stores.add(s)
         val lv = spec.levels[s.coarsest]
         for (r in 0 until lv.rows) for (c in 0 until lv.cols) enqueue(s, s.coarsest, c, r, Long.MAX_VALUE)
@@ -100,6 +100,10 @@ class TileCache(private val assets: AssetManager, private val budget: Long, priv
     fun release(s: TileStore) {
         if (!stores.remove(s)) return
         s.released = true
+        try {
+            s.zip.close()
+        } catch (e: IOException) {
+        }
         for (l in s.bitmaps.indices) for (i in s.bitmaps[l].indices) {
             val b = s.bitmaps[l][i] ?: continue
             bytes -= size(b)
@@ -151,9 +155,13 @@ class TileCache(private val assets: AssetManager, private val budget: Long, priv
                 return
             }
             val bmp = try {
-                assets.open("boards/${s.spec.id}/$level/${c}_$r.webp").use { decode(it, level == s.coarsest) }
-            } catch (e: FileNotFoundException) {
-                null
+                // no entry: the tile is plain background
+                val entry = s.zip.getEntry("$level/${c}_$r.webp")
+                if (entry == null) null else s.zip.getInputStream(entry).use { decode(it, level == s.coarsest) }
+            } catch (e: Exception) {
+                // the zip was closed under us (board released) or could not be read: try again if still wanted
+                s.states[level].set(i, NONE)
+                return
             } catch (e: OutOfMemoryError) {
                 s.states[level].set(i, NONE)
                 return

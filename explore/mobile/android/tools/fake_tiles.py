@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Writes a fake 2-board tile set in the tiles-out format, for building and trying the app
-before the real renderer's output exists.
+"""Writes a fake 2-board tile set, for tests and trying things without the real data.
 
-    python3 tools/fake_tiles.py [out dir]   (default: fake-tiles next to this folder)
+    python3 tools/fake_tiles.py [out dir]             board folders (default: fake-tiles next to this folder)
+    python3 tools/fake_tiles.py --release <out dir>   a branch release's assets: index.json and one stored zip per board
 """
+import hashlib
 import json
 import math
 import os
@@ -105,8 +106,41 @@ def board(out, bid, name, world, cards, hits, seed, summary_label):
     return len(cards)
 
 
+def release(src, out):
+    """index.json and <id>-<hash>.zip per board (ZIP_STORED), as the board repo's Action publishes them."""
+    import zipfile
+    os.makedirs(out, exist_ok=True)
+    index = json.load(open(os.path.join(src, "index.json")))
+    boards = []
+    for e in index:
+        bdir = os.path.join(src, e["id"])
+        files = sorted(os.path.relpath(os.path.join(d, f), bdir) for d, _, fs in os.walk(bdir) for f in fs)
+        h = hashlib.sha256()
+        for f in files:
+            h.update(f.encode())
+            h.update(open(os.path.join(bdir, f), "rb").read())
+        digest = h.hexdigest()[:12]
+        asset = f"{e['id']}-{digest}.zip"
+        with zipfile.ZipFile(os.path.join(out, asset), "w", zipfile.ZIP_STORED) as z:
+            for f in files:
+                z.write(os.path.join(bdir, f), f)
+        boards.append({**e, "hash": digest, "asset": asset, "size": os.path.getsize(os.path.join(out, asset))})
+    with open(os.path.join(out, "index.json"), "w") as f:
+        json.dump({"branch": "main", "commit": "0" * 40, "codeboard": "0" * 40, "built": "2026-11-08T10:00:00Z", "boards": boards}, f, indent=1)
+    print("wrote", out)
+
+
 def main():
-    out = sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "fake-tiles")
+    if len(sys.argv) > 2 and sys.argv[1] == "--release":
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            build(tmp)
+            release(tmp, sys.argv[2])
+        return
+    build(sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "fake-tiles"))
+
+
+def build(out):
     os.makedirs(out, exist_ok=True)
     root_cards = [(-40 + (i % 3) * 760, -20 + (i // 3) * 620, 680, 520, f"Card {i + 1}") for i in range(9)]
     root_hits = [((1480, 1220, 680, 520), "fake-sub")]

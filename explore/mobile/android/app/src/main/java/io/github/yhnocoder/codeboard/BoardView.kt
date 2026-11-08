@@ -130,6 +130,18 @@ class BoardView(context: Context, private val cache: TileCache) : View(context) 
         invalidate()
     }
 
+    /** Shows no board (the paper only). */
+    fun clear() {
+        stopMotion()
+        fadeAnimator?.cancel()
+        fadeAnimator = null
+        removeCallbacks(fadeTimeout)
+        fadeWaiting = false
+        previous = null
+        current = null
+        invalidate()
+    }
+
     /** The camera of the board on screen, to keep on the back stack. */
     fun camera(): Camera? = current?.cam?.copy()
 
