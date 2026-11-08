@@ -3,13 +3,18 @@
 //                            flies to that card at 100 % with the card level back and its calls clickable, nothing new on the
 //                            board; double-clicking a Section's title fits the Section's frame, an outer Section's own
 //                            column (own:, the cards placed directly in it beside a child Section) fits those cards
+//  zoomedOutSimplifiesCards — zoomed out below Simplify Below (codeboard.zoom.simplifyBelow, 0.5) and above the summary cut,
+//                            stopped: a Note's prose is drawn as bars (its text's fill transparent, a bar per line behind
+//                            it), the bodies of Notes and code cards take no pointer (a shield over them: no line or block
+//                            ports, no hover on lines and calls), the card edges' ports stay; the switch is immediate, with
+//                            no fade; at 100 % none of it; with the setting at 0 none of it either
 //  summaryImageCopy        — an Image card's picture at the summary level is the smaller copy the card itself would show
 //                            (md.showImage, picked by the size the summary shows it at times the display scale), not the
 //                            full-size original: a 3200 × 1600 PNG shown 480 px wide at 20 % decodes a copy at least that
 //                            wide, and the end-of-scenario image budget (fixtures.ts budgets) holds
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { emptyBoard, type Board, type Section } from "@codeboard/core";
+import { emptyBoard, type Board, type NoteCard, type Section } from "@codeboard/core";
 import { png } from "@codeboard/host/testing";
 import { put, symCard, findSym, type Host } from "../harness";
 import { test, open, check, idle, until, hostBoards } from "../fixtures";
@@ -197,4 +202,117 @@ test("summaryCutWatched", async () => {
   await watch(h, "summaryCutWatched back", { moves: [/^link:/], frames: 45 }, () => title.dblclick());
   await until(h, "the camera reaches 100 %", async () => (await zoomOf(h)) === 1);
   await idle(h);
+});
+
+test("zoomedOutSimplifiesCards", async () => {
+  const mk = () => {
+    const b = emptyBoard("bSimple", "simplify");
+    put(
+      b,
+      {
+        id: "n1",
+        kind: "note",
+        md:
+          "# Grids\n\n每个 block 有 256 个 thread，==grid 按块排列==，{warp|32 个线程}。\n\n- 用 `<<<grid, block>>>` 启动\n- 返回 void\n\n" +
+          "![grid](data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='120'%20height='60'%3E%3Crect%20width='120'%20height='60'%20fill='%23cde'/%3E%3C/svg%3E)",
+        look: "note",
+      } as NoteCard,
+      80,
+      80,
+      460,
+    );
+    put(b, nv("LLMEngine.step"), 640, 80, 560);
+    // far away, so the board's minimum zoom (fit-all ÷ 1.3) lies below the summary cut
+    put(b, { id: "n2", kind: "note", md: "far", look: "note" } as NoteCard, 7000, 5000, 300);
+    return b;
+  };
+  const look = (h: Host) =>
+    h.page.evaluate(() => {
+      const p = document.querySelector<HTMLElement>('.card[data-id="n1"] .nbody p')!;
+      const body = p.closest<HTMLElement>(".nbody")!;
+      const code = document.querySelector<HTMLElement>(".card.ccard .cbody")!;
+      const line = code.querySelector<HTMLElement>(".src .l") ?? code;
+      const r = line.getBoundingClientRect();
+      const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      return {
+        greek: !!document.querySelector(".world.greek"),
+        fill: getComputedStyle(body).webkitTextFillColor,
+        bar: getComputedStyle(p).backgroundImage.includes("linear-gradient"),
+        noteShield: getComputedStyle(body, "::after").content,
+        // a paragraph that is only a picture gets no bars; a highlight and an annotation's tint go with the text
+        picBar: [...body.querySelectorAll("p")]
+          .filter((e) => e.querySelector(":scope > img, :scope > .md-fig"))
+          .map((e) => getComputedStyle(e).backgroundImage),
+        li: getComputedStyle(body.querySelector("li")!).backgroundImage.includes("linear-gradient"),
+        code: getComputedStyle(body.querySelector("li code")!).backgroundColor,
+        mark: getComputedStyle(body.querySelector("mark")!).backgroundImage,
+        annot: getComputedStyle(body.querySelector(".md-annot")!).backgroundColor,
+        codeShield: getComputedStyle(code, "::after").content,
+        // what the pointer lands on over a line of code: the body itself (its shield), not the line
+        codeHit: hit === code,
+        eport: getComputedStyle(document.querySelector(".card.ccard .eport")!).pointerEvents,
+      };
+    });
+  // the classes the world goes through: the switch is one class change, no fade (a compositor fade made the board flash)
+  const record = (h: Host) =>
+    h.page.evaluate(() => {
+      const w = document.querySelector<HTMLElement>(".world")!;
+      const seen: string[] = [];
+      (window as unknown as { greekSeen: string[] }).greekSeen = seen;
+      let last = "";
+      new MutationObserver(() => {
+        const now = ["greekfade", "greek"].filter((c) => w.classList.contains(c)).join(" ");
+        if (now !== last) seen.push((last = now));
+      }).observe(w, { attributes: true, attributeFilter: ["class"] });
+    });
+  const seen = (h: Host) => h.page.evaluate(() => (window as unknown as { greekSeen: string[] }).greekSeen);
+  const outTo = async (h: Host, z: number) => {
+    await h.page.mouse.move(640, 400);
+    for (let i = 0; i < 40 && (await zoomOf(h)) > z; i++) {
+      await h.page.keyboard.down("Control");
+      await h.page.mouse.wheel(0, 20);
+      await h.page.keyboard.up("Control");
+      await idle(h);
+    }
+  };
+  const h = await open({ board: mk(), w: 1280, h: 800, light: true });
+  const at100 = await look(h);
+  check(
+    "at 100 % the cards are drawn whole",
+    !at100.greek && !at100.bar && at100.fill !== "rgba(0, 0, 0, 0)" && at100.noteShield === "none" && !at100.codeHit,
+    at100,
+  );
+  await record(h);
+  await outTo(h, 0.45);
+  const z = await zoomOf(h);
+  check("stopped between the summary cut and 50 %", z < 0.5 && !(await h.page.locator(".cardlay.gone").count()), z);
+  await until(h, "the switch lands", () => h.page.evaluate(() => !!document.querySelector(".world.greek")));
+  const out = await look(h);
+  check("a Note's prose is drawn as bars", out.greek && out.fill === "rgba(0, 0, 0, 0)" && out.bar, out);
+  check(
+    "list items get bars, pictures none; highlights, inline code and annotations go with the text",
+    out.picBar.length === 1 &&
+      out.picBar[0] === "none" &&
+      out.li &&
+      out.code === "rgba(0, 0, 0, 0)" &&
+      out.mark === "none" &&
+      out.annot === "rgba(0, 0, 0, 0)",
+    out,
+  );
+  check("card bodies take no pointer", out.noteShield === '""' && out.codeShield === '""' && out.codeHit, out);
+  check("the card edges' ports stay", out.eport !== "none", out);
+  check(
+    "the switch swaps the prose for its bars at once, with no fade",
+    JSON.stringify(await seen(h)) === JSON.stringify(["greek"]),
+    await seen(h),
+  );
+  await h.page.close();
+  const off = await open({ board: mk(), w: 1280, h: 800, light: true, settings: { simpleBelow: 0 } });
+  await outTo(off, 0.45);
+  const never = await look(off);
+  check(
+    "Simplify Below 0 leaves the cards whole",
+    !never.greek && !never.bar && never.fill !== "rgba(0, 0, 0, 0)" && !never.codeHit,
+    never,
+  );
 });

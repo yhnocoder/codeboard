@@ -68,7 +68,7 @@ export function animate(fn: Anim) {
 
 const [cam, setCamStore0] = createStore({ x: 80, y: 80, z: 1 });
 export { cam };
-/** 镜头在动（最后一次变化后 180ms 内）。这时 .world.moving 让浏览器把世界层当位图缩放；停下后按新比例重新清晰绘制 */
+/** 镜头在动（最后一次变化后 180ms 内）。这时 .world.moving 让浏览器把世界层当位图缩放（卡片层显示着、缩放低于 50% 时除外，Canvas.tsx settle）；停下后按新比例重新清晰绘制 */
 const [camMoving, setCamMoving] = createSignal(false);
 export { camMoving };
 let still: number | undefined,

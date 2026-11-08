@@ -22,10 +22,12 @@ export const fitIfShown = (
 
 /**
  * A change to what code cards show under their lines (an Always Show sidenote shown, hidden, written, added or deleted, or removed
- * with its Highlight). A card whose stored height fitted its content (Fit Content, or dragged to it) fits it again after the change,
- * in the same undo step: the change is made, the shell lays it out and measures, and the new height is folded into the change's
- * step. As Fit Content, content no taller than codeMax keeps no height. A card without a stored height follows its content anyway;
- * one with a height set by hand that does not fit its content keeps it
+ * with its Highlight). A card that showed all its content fits it again after the change, in the same undo step: the change is
+ * made, the shell lays it out and measures, and the new height is folded into the change's step. That is a card whose stored
+ * height fitted its content (Fit Content, or dragged to it), and a card without a stored height whose content was no taller than
+ * codeMax: notes shown under its lines never push its code out of view, it grows past codeMax with them (its height stored) and
+ * back. As Fit Content, content no taller than codeMax keeps no height. A card without a stored height that already scrolled
+ * (its code alone taller than codeMax) keeps scrolling, and one with a height set by hand that does not fit its content keeps it
  */
 export function keepFitted(
   env: CommandEnv,
@@ -37,8 +39,10 @@ export function keepFitted(
   const fitted = fit
     ? [...new Set(typeof cardIds === "string" ? [cardIds] : cardIds)].filter((id) => {
         const p = b0.place[id];
-        if (p?.h === undefined || b0.cards.find((c) => c.id === id)?.kind !== "code") return false;
-        return Math.abs((fit.measure(id)?.h ?? Number.NaN) - p.h) <= 1;
+        if (!p || b0.cards.find((c) => c.id === id)?.kind !== "code") return false;
+        const m = fit.measure(id);
+        if (!m) return false;
+        return p.h === undefined ? m.body <= fit.codeMax : Math.abs(m.h - p.h) <= 1;
       })
     : [];
   const merge = uid("fit");

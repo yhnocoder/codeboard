@@ -133,6 +133,29 @@ function SettingsPage(p: { section?: string }) {
               )}
             </For>
           </div>
+          <div class="st-sub">Zoomed out, simplify cards: Notes' text as bars, links only from card edges</div>
+          <div class="st-chips">
+            <For
+              each={
+                [
+                  [0, "Never"],
+                  [0.4, "Below 40 %"],
+                  [0.5, "Below 50 %"],
+                  [0.6, "Below 60 %"],
+                ] as const
+              }
+            >
+              {([v, lb]) => (
+                <button
+                  class="st-chip pick"
+                  classList={{ on: cur().simpleBelow === v }}
+                  onClick={() => A.setSetting("simpleBelow", v)}
+                >
+                  {lb}
+                </button>
+              )}
+            </For>
+          </div>
         </Sec>
         <Sec
           id="numbers"

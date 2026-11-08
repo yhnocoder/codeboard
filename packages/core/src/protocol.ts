@@ -87,6 +87,7 @@ export type Settings = {
   dblClick: "text" | "note" | "code" | "none"; // 双击画布空白处新建什么
   hideNumbers: boolean; // 卡片上不显示调用图标记（A / B 或图标）；设置里叫 Hide Call Graph Marks
   themeReflow: "push" | "overlap"; // 换主题后卡变高压住下面的卡：往下推（默认）/ 允许重叠
+  simpleBelow: number; // 缩到这个比例以下（卡片层还显示着）Note 正文画成字条、卡里的行和块不响应指针，只能从卡边连线；0 = 不简化（默认 0.5）
   debug: boolean; // 打开后设置页多一节 Debug（调常量）
   tune: Record<string, number>; // Debug 里调过的常量，没有 = 默认值
   pasteOther: "linked" | "copy"; // 卡贴到另一块白板上：共享卡（默认）/ 独立副本；⌥ 粘贴是另一种
@@ -134,6 +135,7 @@ export const DEFAULT_SETTINGS: Settings = {
   dblClick: "text",
   hideNumbers: false,
   themeReflow: "push",
+  simpleBelow: 0.5,
   debug: false,
   tune: {},
   pasteOther: "linked",

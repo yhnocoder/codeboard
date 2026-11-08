@@ -5,6 +5,8 @@
 //  inkWashFlashBrush       — jumping to a line sweeps a brush under its text: from its first to its last character, half a
 //                            character more at each end, so a longer line gets a longer stroke
 //  inkWashCallStrokeStable — each call gets one of five strokes, picked by the called word: the same word, the same stroke
+//  inkWashCallStrokeHoverEditing — a call hovered while its Free code card is edited keeps its one stroke: the editor's hover
+//                            rule reset background-repeat, and cv1–cv4 drew their stroke tiled down the whole line (cv0 lost it)
 //  inkWashMotions          — the stamp, menu (opening and rolling back up), delete and toast motions run (transform / opacity / clip / mask only) and finish;
 //                            mid-animation frames as screenshots
 //  inkWashSelectSeal       — selecting a card stamps a small vermilion seal 选 on its top-right corner (it drops in) and lifts the
@@ -18,7 +20,7 @@
 //  inkWashBackgroundNoStreaks — the mountains behind the board are plain gradient shapes, no SVG filter: the filter was worked out at
 //                            the image's own 900×540 and scaled up, so its near-transparent gradients broke into horizontal streaks
 //                            and its anisotropic turbulence smeared them into text-like blots (#136); light and dark, screenshots
-//  inkWashTitleNoSeal      — the board's name in the top left has no seal after it (#138)
+//  inkWashNoBoardTitle     — no board name in the top left: the tab already shows it
 //  inkWashSectionBrushFrame — a Section's frame is four dry brush strokes (one filled path, no border), the title written in
 //                            running script in the gap of the top stroke; selected = strokes and title vermilion, a second
 //                            lighter vermilion stroke offset inside and a faint vermilion wash (both only fade), the drop
@@ -29,7 +31,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { shot, symCard, findSym, put, OUT } from "../harness";
 import { DEFAULT_SETTINGS, emptyBoard, type Board } from "@codeboard/core";
-import { test, open, check, idle, until, type Host } from "../fixtures";
+import { test, open, check, idle, until, hostBoards, type Host } from "../fixtures";
 
 const card = (q: string) => {
   const s = findSym(q);
@@ -473,6 +475,78 @@ test("inkWashCallStrokeStable", async () => {
   check("inkWashCallStrokeStable", r.length >= 4 && r.every(([, s]) => s.length === 1) && kinds.size >= 2, r);
 });
 
+// a Free code card (CUDA) whose calls between them get several of the five strokes
+const VEC_ADD = [
+  "void vecAdd(float* A_h, float* B_h, float* C_h, int n) {",
+  "    int size = n * sizeof(float);",
+  "    float *A_d, *B_d, *C_d;",
+  "    cudaMalloc((void **)&A_d, size);",
+  "    cudaMalloc((void **)&B_d, size);",
+  "    cudaMemcpy(A_d, A_h, size, cudaMemcpyHostToDevice);",
+  "    vecAddKernel<<<ceil(n / 256.0), 256>>>(A_d, B_d, C_d, n);",
+  "    cudaDeviceSynchronize();",
+  "    cudaFree(A_d);",
+  '    printf("%d\\n", n);',
+  "}",
+];
+
+test("inkWashCallStrokeHoverEditing", async () => {
+  const b = emptyBoard("b1", "free");
+  b.cards.push({
+    id: "c1",
+    kind: "code",
+    segments: [
+      {
+        id: "s1",
+        src: { kind: "free" },
+        path: "",
+        lang: "cuda",
+        start: 1,
+        end: VEC_ADD.length,
+        text: VEC_ADD.slice(),
+        version: { kind: "none" },
+      },
+    ],
+  } as never);
+  b.place.c1 = { x: 40, y: 40, w: 700 };
+  b.cam = { x: 0, y: 0, z: 1 };
+  const run = await hostBoards([b], { page: { light: true, w: 900, h: 600, settings: ink } });
+  const h = await run.open("b1"),
+    pg = h.page;
+  await idle(h);
+  await pg.locator('.card[data-id="c1"] .src .l').nth(4).dblclick();
+  await pg.locator('.card[data-id="c1"] .cm-content .call').first().waitFor();
+  await idle(h);
+  // what draws the stroke, on a call hovered while the code is edited and on the same call not hovered
+  const stroke = (i: number) =>
+    pg
+      .locator('.card[data-id="c1"] .cm-content .call')
+      .nth(i)
+      .evaluate((e) => {
+        const c = getComputedStyle(e);
+        const v = [...e.classList].find((k) => /^cv[0-4]$/.test(k)) ?? "none";
+        return [
+          `${e.textContent} ${v}`,
+          `${c.backgroundImage.slice(0, 60)} ${c.backgroundRepeat} ${c.backgroundPosition} ${c.backgroundSize}`,
+        ];
+      });
+  const n = await pg.locator('.card[data-id="c1"] .cm-content .call').count();
+  const bad: unknown[] = [],
+    kinds = new Set<string>();
+  for (let i = 0; i < n; i++) {
+    const [what, rest] = await stroke(i);
+    kinds.add(what.split(" ")[1]);
+    await pg.locator('.card[data-id="c1"] .cm-content .call').nth(i).hover();
+    const [, hovered] = await stroke(i);
+    if (hovered !== rest || !/^url\(.* no-repeat /.test(rest)) bad.push({ call: what, rest, hovered });
+  }
+  await pg.mouse.move(890, 590);
+  // the hover rule of the editor (styles.css .cbcm .cm-content .call:hover) reset background-repeat with the background
+  // shorthand: cv1–cv4 put their stroke back tiled down the whole line, cv0 lost it
+  check("inkWashCallStrokeHoverEditing", n >= 6 && kinds.size >= 3 && bad.length === 0, { n, kinds: [...kinds], bad });
+  await run.close();
+});
+
 test("inkWashMotions", async () => {
   const res: Record<string, unknown> = {};
   const h = await open({
@@ -611,19 +685,13 @@ test("inkWashBackgroundNoStreaks", async () => {
   }
 });
 
-test("inkWashTitleNoSeal", async () => {
+test("inkWashNoBoardTitle", async () => {
   const h = await open({ board: board(), light: true, w: 1300, h: 820, scale: 2, settings: ink });
   await idle(h);
-  const mast = await h.page.evaluate(() => {
-    const m = document.querySelector(".mast")!;
-    return { name: m.textContent, after: getComputedStyle(m, "::after").content };
-  });
-  check("inkWashTitleNoSeal", mast.name === "nano-vllm · 推理一步" && mast.after === "none", mast);
-  const box = (await h.page.locator(".mast").boundingBox())!;
-  await h.page.screenshot({
-    path: path.join(OUT, "ink-wash-title.png"),
-    clip: { x: 0, y: 0, width: Math.min(1300, box.x + box.width + 120), height: box.y + box.height + 30 },
-  });
+  // the tab already names the board; Ink Wash shows no masthead in the top left
+  const shown = await h.page.locator(".mast").isVisible();
+  check("inkWashNoBoardTitle", !shown, { shown });
+  await shot(h, "ink-wash-no-title");
   await h.page.context().close();
 });
 

@@ -873,6 +873,13 @@
           "default": false,
           "description": "Use the editor's background as the board background in every theme. Cards, text and accent colors stay the theme's; patterns such as grids stay on top."
         },
+        "codeboard.zoom.simplifyBelow": {
+          "type": "number",
+          "default": 0.5,
+          "minimum": 0,
+          "maximum": 0.9,
+          "description": "Zoomed out below this scale (0.5 = 50 %), with the cards still shown, Notes' text is drawn as light bars, and the lines and blocks inside cards do not react to the pointer: links start only from card edges. Zooming there stays smooth on boards of dense Notes. 0 turns it off."
+        },
         "codeboard.themeReflow": {
           "type": "string",
           "default": "push",
