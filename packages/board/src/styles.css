@@ -408,6 +408,7 @@ textarea {
 }
 /* 世界层一直单独成层，镜头一动就按位图缩放、不重画。停下时 Canvas 视情况给 .settle（放大了、或缩小过了 2 倍，Canvas.tsx）：去掉 will-change 的提示，
    让浏览器按新比例重新清晰栅格化；.settle 留到下次动为止，再次去掉又是一次等光栅的提交。
+   卡片层显示着、缩放低于 50% 时（摘要切点上面一点）动也不加回提示：加回去浏览器会按设备比例（1.0）栅格化，悬停、平移重画的瓦片多到显存放不下，卡和图上出现空洞。
    一直带着一个看不出来的 3D 变换（绕 x 轴转 0°），去掉 will-change 时它还是单独一层：退回普通层的话要把整层重画一遍（概览档 ~60ms）。
    这个 3D 变换不能只在 .settle 时加：加上、去掉都会让浏览器把整个世界层 3 万个节点的绘制属性重走一遍（每次 ~20ms，停下时连掉两帧）。
    只在动的时候才升层的话，每段手势的第一帧都要把整层重画一遍（~25ms，掉一帧） */
@@ -417,6 +418,88 @@ textarea {
 }
 .world.settle {
   will-change: auto;
+}
+/* 缩到设置的比例以下（Simplify Below，默认 50%；卡片层还显示着，Canvas.tsx .greek）卡片简化：
+   - Note 正文的字画成浅色字条：字的填充透明（Skia 不画透明的字），段落、标题、代码块的背景按行（lh）画横条，公式（.katex）透明。
+     50% 以下世界层不带 will-change（Canvas.tsx HINT_MIN），缩放每帧按新比例重画，画字是最贵的部分（密排的中文 Note，
+     2× 屏幕上捏合头几帧每帧 30–50 ms），画成字条几乎不花时间。
+   - 卡里的行和块不响应指针：正文上盖一层挡板（::after），没有行、块的连线圆点，悬停代码、高亮、调用不变样子，点不开调用
+     （太小，点不准）；拖卡、卡边的连线圆点照旧。
+   在写的卡照常。按停下时的比例切换（stillZ），缩放中途不变。
+   切换只改不往下传的属性，或者传下去在公式那儿停住：公式自己一直写着 -webkit-text-fill-color: currentcolor（和不写一样），
+   正文的填充变透明时公式那 2 万多个节点不用重算样式。颜色、下划线、pointer-events 都会传进每个公式节点：persona 上一次切换
+   要重算 2.8 万个节点（~250 ms），这样 ~15 ms */
+.card.note .nbody .katex {
+  -webkit-text-fill-color: currentcolor;
+}
+/* 字条的颜色和每块最后一行的长短（下面 .greek 的背景用）一直写着，不随 .greek 切换：自定义属性往下传，切换时改它会让公式节点重算 */
+.card.note .nbody {
+  --gbar: color-mix(in srgb, var(--ink) 16%, transparent);
+  --tail: 58%;
+}
+.card.note .nbody > :nth-child(3n + 2),
+.card.note .nbody :is(li, tr) > :nth-child(3n + 2) {
+  --tail: 81%;
+}
+.card.note .nbody > :nth-child(3n),
+.card.note .nbody :is(li, tr) > :nth-child(3n) {
+  --tail: 34%;
+}
+.world.greek .card.note:not(.editing) .nbody {
+  -webkit-text-fill-color: transparent;
+}
+/* 描了边的字（Ink Wash 的加粗，themes.css）填充透明还剩一圈轮廓：边也去掉 */
+.world.greek .card.note:not(.editing) .nbody :is(strong, b) {
+  -webkit-text-stroke-width: 0;
+}
+.world.greek
+  .card.note:not(.editing)
+  .nbody
+  :is(
+    p:not(:has(> img, > .md-fig, > a > img)),
+    :is(li, td, th):not(:has(> p, > ul, > ol)),
+    h1,
+    h2,
+    h3,
+    h4,
+    h5,
+    h6,
+    pre
+  ) {
+  background:
+    linear-gradient(to top, transparent 0.3lh, var(--gbar) 0.3lh 0.7lh, transparent 0.7lh) left 0 bottom 0 / var(--tail)
+    1lh no-repeat,
+    repeating-linear-gradient(to top, transparent 0 0.3lh, var(--gbar) 0.3lh 0.7lh, transparent 0.7lh 6lh) left 0 top 0
+    / 100% calc(100% - 1lh) no-repeat,
+    repeating-linear-gradient(to top, transparent 0 1.3lh, var(--gbar) 1.3lh 1.7lh, transparent 1.7lh 6lh) left 0 top 0
+    / 97% calc(100% - 1lh) no-repeat,
+    repeating-linear-gradient(to top, transparent 0 2.3lh, var(--gbar) 2.3lh 2.7lh, transparent 2.7lh 6lh) left 0 top 0
+    / 100% calc(100% - 1lh) no-repeat,
+    repeating-linear-gradient(to top, transparent 0 3.3lh, var(--gbar) 3.3lh 3.7lh, transparent 3.7lh 6lh) left 0 top 0
+    / 91% calc(100% - 1lh) no-repeat,
+    repeating-linear-gradient(to top, transparent 0 4.3lh, var(--gbar) 4.3lh 4.7lh, transparent 4.7lh 6lh) left 0 top 0
+    / 100% calc(100% - 1lh) no-repeat,
+    repeating-linear-gradient(to top, transparent 0 5.3lh, var(--gbar) 5.3lh 5.7lh, transparent 5.7lh 6lh) left 0 top 0
+    / 95% calc(100% - 1lh) no-repeat;
+}
+/* 字条画在段落、标题、代码块上，紧凑列表的项和表格的格子（字直接在里面，没有段落）也画；只有图的段落不画。
+   每行一条，长度错落但不量字：最后一行单独一层（长短随块轮换：--tail），上面的行按 6 行一组的长度模板从倒数第二行往上排
+   （每层只铺到最后一行上面，模板不会在段中间又排出一行短的）。
+   高亮、行内代码的底色，{字|批注} 的底色、标签和箭头跟着字一起藏起来 */
+.world.greek .card.note:not(.editing) .nbody :is(.katex, .md-annot > .md-annot-n, .md-annot::after) {
+  opacity: 0;
+}
+.world.greek .card.note:not(.editing) .nbody :is(mark, .md-annot, :not(pre) > code) {
+  background: none;
+}
+.world.greek .card:not(.editing) :is(.cbody, .nbody)::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+}
+.world.greek :is(.lport, .bports) {
+  display: none;
 }
 .pshield {
   position: absolute;
