@@ -19,7 +19,8 @@ npm run mac:gate -- --xctrace                      # also record each run with t
 ```
 
 The data folder (default `~/Projects/persona/.codeboard`) is copied under the output folder first; the originals are never
-opened. The app runs once per board with `--gate <dir>` (`Sources/CodeBoard/Gate.swift`): it brings its window to the front and
+opened. The app runs from a copy of the bundle named `cbgate.app` (so a `pkill CodeBoard` elsewhere on the Mac does not end a run;
+signed with `tools/mac-gate.entitlements`, get-task-allow, so the instruments can attach), once per board with `--gate <dir>` (`Sources/CodeBoard/Gate.swift`): it brings its window to the front and
 drives it with input posted at the HID level, one input per display frame: a trackpad pan with scroll phases and a momentum
 tail, a pinch from zoom 1 to 0.1 and back to 2 (every raster bucket; a pinch has no public event, so it calls what `magnify(with:)`
 calls), ⌘-scroll zoom, a card dragged by its head, several linked cards dragged together, ⌘Z / ⌘⇧Z, a marquee over empty space,
@@ -48,7 +49,6 @@ The console shows a table per board; `report.json` and `report.md` in the output
 number; a failing step's frames are under `<board>/fails/` (the rest of the capture is dropped unless `--keep-frames`). The
 exit code is 1 when any gate fails. The gate measures with the capture running; `--no-capture` gives the timings alone.
 
-Diagnosing a failure: `--xctrace` re-signs the built app with `tools/mac-gate.entitlements` (get-task-allow) and records the
-Animation Hitches template for each run; open `hitches.trace` in Instruments, or `xcrun xctrace export --input … --xpath
+Diagnosing a failure: `--xctrace` records the Animation Hitches template for each run; open `hitches.trace` in Instruments, or `xcrun xctrace export --input … --xpath
 '/trace-toc/run[@number="1"]/data/table[@schema="hitches"]'`. For where the main thread's time goes, `xcrun xctrace record
 --template 'Time Profiler' --attach <pid>` while the app runs one step (`--steps pinch_out`).

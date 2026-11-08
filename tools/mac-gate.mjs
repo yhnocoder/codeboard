@@ -41,24 +41,40 @@ const out = path.resolve(
   opt("--out", path.join(root, "test-out/mac-gate", new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19))),
 );
 const bigN = +opt("--big", "250");
+fs.rmSync(out, { recursive: true, force: true });
 fs.mkdirSync(out, { recursive: true });
 
 if (!flag("--no-build")) {
   console.log("building the app…");
   execFileSync("sh", [path.join(root, "apps/macos/build.sh")], { stdio: "inherit" });
 }
-// the instruments attach only to a process that allows it: the gate's build gets get-task-allow (the app's own signing is untouched)
-if (flag("--xctrace"))
-  execFileSync("codesign", [
-    "--force",
-    "--sign",
-    "-",
-    "--options",
-    "runtime",
-    "--entitlements",
-    path.join(root, "tools/mac-gate.entitlements"),
-    app,
-  ]);
+// the gate runs its own copy of the bundle, named cbgate: another CodeBoard on the Mac (a developer's, another check's) may be
+// killed by name while the gate runs, and the instruments attach only to a process that allows it (get-task-allow; the app's own
+// signing is untouched)
+const gateApp = path.join(out, "cbgate.app");
+fs.cpSync(app, gateApp, { recursive: true });
+fs.renameSync(path.join(gateApp, "Contents/MacOS/CodeBoard"), path.join(gateApp, "Contents/MacOS/cbgate"));
+const plist = path.join(gateApp, "Contents/Info.plist");
+fs.writeFileSync(
+  plist,
+  fs
+    .readFileSync(plist, "utf8")
+    .replace(
+      "<key>CFBundleExecutable</key><string>CodeBoard</string>",
+      "<key>CFBundleExecutable</key><string>cbgate</string>",
+    )
+    .replace("<key>CFBundleName</key><string>CodeBoard</string>", "<key>CFBundleName</key><string>cbgate</string>"),
+);
+execFileSync("codesign", [
+  "--force",
+  "--sign",
+  "-",
+  "--options",
+  "runtime",
+  "--entitlements",
+  path.join(root, "tools/mac-gate.entitlements"),
+  gateApp,
+]);
 
 // ---- the data: a copy, plus the big board
 const copy = path.join(out, "data");
@@ -67,7 +83,7 @@ const boards = fs
   .readdirSync(copy)
   .filter((f) => f.endsWith(".json"))
   .map((f) => ({ id: f.slice(0, -5), ...JSON.parse(fs.readFileSync(path.join(copy, f), "utf8")) }))
-  .filter((b) => Array.isArray(b.cards));
+  .filter((b) => Array.isArray(b.cards) && b.id !== "gate250");
 const biggest = boards.reduce((a, b) => (b.cards.length > a.cards.length ? b : a));
 const big = makeBig(biggest, bigN);
 fs.writeFileSync(path.join(copy, `${big.id}.json`), JSON.stringify(big));
@@ -128,8 +144,9 @@ async function runBoard(id) {
   const a = ["--open", copy, "--board", id, "--gate", dir];
   if (stepsOpt) a.push("--steps", stepsOpt);
   if (flag("--no-capture")) a.push("--no-capture");
+  const load = os.loadavg()[0];
   const log = fs.openSync(path.join(dir, "app.log"), "w");
-  const p = spawn(path.join(app, "Contents/MacOS/CodeBoard"), a, { stdio: ["ignore", log, log] });
+  const p = spawn(path.join(gateApp, "Contents/MacOS/cbgate"), a, { stdio: ["ignore", log, log] });
   let trace = null;
   if (flag("--xctrace")) {
     await new Promise((r) => setTimeout(r, 1500));
@@ -160,9 +177,11 @@ async function runBoard(id) {
       resolve(c);
     });
   });
+  let hitches = null;
   if (trace) {
-    trace.kill("SIGINT");
+    // xctrace ends the recording itself when the target exits
     await new Promise((r) => trace.on("exit", r));
+    hitches = exportHitches(path.join(dir, "hitches.trace"));
   }
   fs.closeSync(log);
   const runFile = path.join(dir, "run.json");
@@ -172,7 +191,32 @@ async function runBoard(id) {
       name: names[id],
       error: `the app exited with ${code} and wrote no run.json (see ${path.relative(root, dir)}/app.log)`,
     };
-  return judge(id, JSON.parse(fs.readFileSync(runFile, "utf8")), dir);
+  // the load before the run: other work on the Mac (builds, other apps) drops frames too, and the report says when there was some
+  return { ...judge(id, JSON.parse(fs.readFileSync(runFile, "utf8")), dir), hitches, loadBefore: +load.toFixed(1) };
+}
+
+/** The Animation Hitches instrument's hitches table: how many, and their total duration in ms (an error when the export fails) */
+function exportHitches(trace) {
+  try {
+    const xml = execFileSync(
+      "xcrun",
+      ["xctrace", "export", "--input", trace, "--xpath", '/trace-toc/run[@number="1"]/data/table[@schema="hitches"]'],
+      { encoding: "utf8", maxBuffer: 1 << 28 },
+    );
+    // a value repeated from an earlier row is a <duration ref="id"/>
+    const rows = xml.split("<row>").slice(1);
+    const byId = new Map();
+    let ms = 0;
+    for (const r of rows) {
+      const m = /<duration id="(\d+)"[^>]*>(\d+)<\/duration>|<duration ref="(\d+)"\/>/.exec(r);
+      if (!m) continue;
+      if (m[1]) byId.set(m[1], +m[2]);
+      ms += (m[1] ? +m[2] : (byId.get(m[3]) ?? 0)) / 1e6;
+    }
+    return { count: rows.length, ms: +ms.toFixed(1) };
+  } catch (e) {
+    return { error: String(e.message).split("\n")[0] };
+  }
 }
 
 // ---- judging
@@ -357,7 +401,7 @@ for (const id of pick) {
   if (r.error) console.log(`   ${r.error}`);
   else {
     console.log(
-      `   ${r.cards} cards, display ${r.refreshHz} Hz, period ${r.nominal} ms, capture ${r.capture ? "on" : "off"}`,
+      `   ${r.cards} cards, display ${r.refreshHz} Hz, period ${r.nominal} ms, capture ${r.capture ? "on" : "off"}, load before ${r.loadBefore}${r.hitches ? `, Animation Hitches instrument: ${r.hitches.count ?? "?"} hitches, ${r.hitches.ms ?? "?"} ms${r.hitches.error ? ` (${r.hitches.error})` : ""}` : ""}`,
     );
     console.log(table(r).replace(/^/gm, "   "));
   }
@@ -385,7 +429,7 @@ const md = [
       : [
           `## ${r.name} (${r.id}): ${r.pass ? "pass" : "FAIL"}`,
           "",
-          `${r.cards} cards, ${r.refreshHz} Hz, period ${r.nominal} ms`,
+          `${r.cards} cards, ${r.refreshHz} Hz, period ${r.nominal} ms, load average before the run ${r.loadBefore}${r.hitches ? `, Animation Hitches instrument: ${r.hitches.count ?? "?"} hitches, ${r.hitches.ms ?? "?"} ms` : ""}`,
           "",
           "```",
           table(r),
