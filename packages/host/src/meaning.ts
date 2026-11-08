@@ -32,18 +32,13 @@ const TOP = 8;
 /** Searching only the board here: how many times TOP nearest pieces to look through for TOP on this board */
 const HERE_WIDEN = 40;
 /**
- * Closeness (cosine, EmbeddingGemma 2 with its prompts) below which a card is not related at all. Measured on persona's 20
- * boards (85 queries, 2026-11): the first card a query should find scored 0.69 and up. Unrelated queries mostly stay under
- * it, but not all (code cards sit near anything, up to 0.71): no fixed value, nor one relative to the query's spread of
- * scores, separates the two, so this one only never hides a right card
+ * Closeness (cosine, EmbeddingGemma 2 with its prompts) below which a card or a picture is not related at all. Measured on
+ * persona's 20 boards (85 queries, 2026-11): the first card a query should find scored 0.69 and up, and a picture found by a
+ * short query ("anime girl", "动漫女孩") 0.68–0.70, far above the other pictures (0.55). Unrelated queries mostly stay under
+ * it, but not all (code cards sit near anything, up to 0.71, and pictures 0.67–0.70): no fixed value, nor one relative to the
+ * query's spread of scores, separates the two, so this one only never hides a right card
  */
 const MIN_SCORE = 0.66;
-/**
- * The same for a picture: the model scores pictures higher than text overall. Measured on persona (187 pictures, 17 queries
- * written from pictures, 10 unrelated queries, 2026-11): the right picture scored 0.70 and up in all but one, while pictures
- * reached 0.67–0.70 for unrelated queries (TCP handshake, CSS grid, git rebase)
- */
-const PICTURE_MIN = 0.7;
 /** Query vectors kept (typing a query again, or the Palette asking again while indexing) */
 const QUERY_CACHE = 64;
 
@@ -206,7 +201,8 @@ export class MeaningSearch {
       }
       const { docs, names } = this.latest ?? (await projectDocs(store, here, this.draw));
       const items: SearchItem[] = [];
-      for (const h of box.search(qv, TOP * (onlyHere ? HERE_WIDEN : 2), { text: MIN_SCORE, picture: PICTURE_MIN })) {
+      for (const h of box.search(qv, TOP * (onlyHere ? HERE_WIDEN : 2))) {
+        if (h.score < MIN_SCORE) break;
         const d = docs.get(h.id);
         if (!d) continue;
         const { boards, ...o } = d.origin;

@@ -99,6 +99,8 @@ export function Palette() {
     if (init.mode === "code" || k === "meaning" || open || all.length <= GROUP_SHOWN + 1) return all;
     return [...all.slice(0, GROUP_SHOWN), { kind: "more", group: k, n: all.length - GROUP_SHOWN }];
   };
+  /** Related by Meaning is off (no embedding server set) and a query is typed */
+  const off = () => !!meaning().off && !!q().trim() && wide();
   const ordered = createMemo(() => GROUPS.flatMap(([k]) => groupOf(k)));
   const expand = (k: Group) => {
     const at = i();
@@ -391,6 +393,13 @@ export function Palette() {
                     ? "Type to search this board."
                     : "No entry points found. Type to search."}
               </div>
+              {/* nothing found: say that meaning was not searched, or it reads as nothing is related */}
+              <Show when={off()}>
+                <div class="pnote poff">
+                  Related by Meaning is off: set codeboard.search.embeddingUrl to an embedding server to search by
+                  meaning
+                </div>
+              </Show>
             </Show>
           </div>
           <Show when={wide()}>
