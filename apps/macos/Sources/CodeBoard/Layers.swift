@@ -1343,10 +1343,31 @@ final class StickerLayer: CALayer {
     let f = Theme.sys(size * 0.5, weight: .bold)
     return (text as NSString).size(withAttributes: [.font: f, .kern: f.pointSize * 0.04]).width + 1.1 * f.pointSize
   }
+  /** A pack icon's frames play only while the layer shows (the canvas hides stickers out of view): a keyframe animation on
+   *  contents runs in the render server, no wakeup of the app; a hidden layer carries none */
+  override var isHidden: Bool {
+    didSet { if isHidden != oldValue { animate() } }
+  }
+  private func animate() {
+    removeAnimation(forKey: "frames")
+    guard !isHidden, let pack = sticker.g.pack, let name = sticker.g.name, let icon = Packs.icon(pack, name), icon.frames.count > 1 else { return }
+    let a = CAKeyframeAnimation(keyPath: "contents")
+    a.values = icon.frames
+    a.keyTimes = icon.keyTimes as [NSNumber]
+    a.duration = icon.duration
+    a.calculationMode = .discrete
+    a.repeatCount = .infinity
+    add(a, forKey: "frames")
+  }
   func draw(scale: CGFloat? = nil) {
     let scale = scale ?? max(drawnScale, 1)
     drawnScale = scale
     let s = sticker, size = CGSize(width: width, height: s.size), appearance = Theme.appearance
+    if let pack = s.g.pack, let name = s.g.name, let icon = Packs.icon(pack, name) {
+      contents = icon.frames[0]
+      animate()
+      return
+    }
     CardLayer.queue.addOperation {
       let surface = CardLayer.surface(size, scale: scale) {
         appearance.performAsCurrentDrawingAppearance { StickerLayer.drawGlyph(s.g, size: s.size, in: CGRect(origin: .zero, size: size)) }

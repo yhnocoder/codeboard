@@ -3,3 +3,4 @@ export { Storage } from "./boards";
 export { dropMadeBoard, restoreMadeBoard, storeNewBoard } from "./subboards";
 export type { Fs } from "./fs";
 export { FAINT_BELOW, MIN_SCORE, projectDocs, REINDEX_PAUSE, TOP, type Origin } from "../meaningdocs";
+export { packsIn } from "../stickerpacks";

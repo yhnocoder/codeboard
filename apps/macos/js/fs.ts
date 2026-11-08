@@ -4,7 +4,7 @@ import type { Fs } from "@codeboard/host/storage";
 import { isErr, type Native } from "./native";
 
 const fail = (what: string, r: { error: string }) => Promise.reject(new Error(`${what}: ${r.error}`));
-const bytesToBase64 = (b: Uint8Array) => {
+export const bytesToBase64 = (b: Uint8Array) => {
   let s = "";
   for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode(...b.subarray(i, i + 0x8000));
   return btoa(s);

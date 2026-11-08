@@ -4,9 +4,8 @@
 // 别的时候换成第一帧的静态图（第一次要用时解一帧画进 canvas，存成 PNG data: URL，每个图标一份）：屏幕外、缩小了的动图不再每帧重画。
 // 播不播由外面用 GlyphPlay 告诉（画布上的贴纸看自己在不在屏幕附近，选图标面板看指针在不在格子上），没人说就一直播
 import { createContext, createMemo, createSignal, Show, useContext, type Accessor, type JSX } from "solid-js";
-import { BUILTIN_STICKERS, type BuiltinSticker, type IconRef, type StickerIcon, type StickerPack } from "@codeboard/core";
+import { BUILTIN_STICKERS, type IconRef, type StickerIcon, type StickerPack } from "@codeboard/core";
 
-export type Builtin = BuiltinSticker;
 export const BUILTIN = BUILTIN_STICKERS;
 import DOMPurify from "dompurify";
 import { ask } from "../host";

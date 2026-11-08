@@ -136,7 +136,15 @@ export type SceneChange = {
  *  and what to draw: a built-in disc (its Lucide path or label), an emoji, or nothing known (a custom pack: a grey box) */
 /** What a sticker shows. Built-in: the disc colour and its line (d), filled shape (fill) or label (text); emoji: the
  *  character; neither: a custom pack's icon the app does not read (drawn as the board's missing box) */
-export type SceneGlyph = { color?: string; d?: string; fill?: string; text?: string; emoji?: string };
+export type SceneGlyph = {
+  color?: string;
+  d?: string;
+  fill?: string;
+  text?: string;
+  emoji?: string;
+  pack?: string;
+  name?: string;
+};
 export type SceneSticker = {
   id: string;
   /** On the canvas or relative to the card it is bound to; bound to an arrow: the offset from the point t along it */
@@ -152,7 +160,7 @@ export type SceneSticker = {
 };
 
 /** An answered question shows ✓ (the board's shownIcon) */
-export function sceneGlyph(s: Sticker): SceneGlyph {
+function sceneGlyph(s: Sticker): SceneGlyph {
   const icon = s.q?.done ? { pack: "builtin", name: "check" } : s.icon;
   const g: SceneGlyph = {};
   if (icon.pack === "builtin") {
@@ -164,6 +172,10 @@ export function sceneGlyph(s: Sticker): SceneGlyph {
       if (bi.text) g.text = bi.text;
     }
   } else if (icon.pack === "emoji") g.emoji = icon.name;
+  else {
+    g.pack = icon.pack;
+    g.name = icon.name;
+  }
   return g;
 }
 

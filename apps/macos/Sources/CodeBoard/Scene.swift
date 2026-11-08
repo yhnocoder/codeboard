@@ -25,6 +25,9 @@ struct SceneGlyph: Decodable, Equatable {
   var fill: String?
   var text: String?
   var emoji: String?
+  /** A custom pack's icon (Packs) */
+  var pack: String?
+  var name: String?
 }
 struct SceneSegment: Decodable {
   var path: String
@@ -213,6 +216,18 @@ struct RouteGeo: Decodable {
     }
     return p
   }
+}
+/** A custom sticker pack (core protocol StickerPack): SVG icons, or bitmaps as data: URLs (anim: a GIF / APNG / WebP that moves) */
+struct StickerPack: Decodable {
+  struct Icon: Decodable {
+    var name: String
+    var svg: String?
+    var img: String?
+    var anim: Bool?
+  }
+  var id: String
+  var name: String
+  var icons: [Icon]
 }
 struct BoardMeta: Decodable {
   var id: String

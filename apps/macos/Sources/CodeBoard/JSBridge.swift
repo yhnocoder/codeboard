@@ -296,6 +296,8 @@ final class JSBridge {
   }
   private var folders: [String: Folder] = [:]
   func list(_ dir: String, _ cb: @escaping (Result<[BoardMeta], Error>) -> Void) { call("list", [dir], typed([BoardMeta].self, cb)) }
+  /** The custom sticker packs in a folder (the host's reader, packsIn) */
+  func stickerPacks(_ dir: String, _ cb: @escaping (Result<[StickerPack], Error>) -> Void) { call("stickerPacks", [dir], typed([StickerPack].self, cb)) }
   /** The board's scene (its session is made on first open); the Session then drives it */
   func open(_ dir: String, _ id: String, _ cb: @escaping (Result<Scene, Error>) -> Void) { call("open", [dir, id], typed(Scene.self, cb)) }
   /** Unsaved changes written: a folder's, or every folder's */

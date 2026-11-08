@@ -70,6 +70,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
       return
     }
     Theme.registerFonts()
+    Packs.load(bridge)
     Ink.load(bundleURL.deletingLastPathComponent().appendingPathComponent("router.js"))
     if router == nil { logLine("[codeboard] no router.js: drags route on the main thread") }
     if let l = arg("--look") { Look.shared.set(l) } else { _ = Look.shared }

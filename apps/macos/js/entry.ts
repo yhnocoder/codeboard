@@ -3,8 +3,10 @@
 // number first and resolve through native.emit("reply", {req, ok, json}) so the shell never waits on a Promise.
 import "./prelude";
 import { settingsSchema } from "@codeboard/core/settings";
-import { FAINT_BELOW, MIN_SCORE, REINDEX_PAUSE, TOP } from "@codeboard/host/storage";
+import { FAINT_BELOW, MIN_SCORE, REINDEX_PAUSE, TOP, packsIn } from "@codeboard/host/storage";
 import { createBridge, type Session } from "./bridge";
+import { bytesToBase64, fromBase64 } from "./fs";
+import { isErr } from "./native";
 import { createLibrary } from "./library";
 import { setLook } from "./routes";
 import type { Native } from "./native";
@@ -39,6 +41,27 @@ const asyncMade = async (dir: string, id: string, fn: (c: Session["cmd"]) => Pro
 
 (globalThis as unknown as { CodeBoard: unknown }).CodeBoard = {
   list: (req: number, dir: string) => settle(req, bridge.folder(dir).list()),
+  /** The custom sticker packs in a folder (the host's reader over the shell's file system) */
+  stickerPacks: (req: number, dir: string) => {
+    const or = <T>(r: T | { error: string }, what: string): Promise<T> =>
+      isErr(r) ? Promise.reject(new Error(`${what}: ${r.error}`)) : Promise.resolve(r as T);
+    settle(
+      req,
+      packsIn(
+        dir,
+        {
+          readdir: (d) => or(native.readdir(d), d),
+          // ponytail: the size is the file read (the shell's stat has no size); packs are small
+          size: (p) => or(native.readBase64(p), p).then((b) => fromBase64(b).length),
+          text: (p) => or(native.readFile(p), p),
+          bytes: (p) => or(native.readBase64(p), p).then(fromBase64),
+          toBase64: bytesToBase64,
+          join: (...parts) => parts.join("/"),
+        },
+        (s) => console.warn(s),
+      ),
+    );
+  },
   /** The board's scene; opening it again gives the scene as it is now */
   open: (req: number, dir: string, id: string) =>
     settle(

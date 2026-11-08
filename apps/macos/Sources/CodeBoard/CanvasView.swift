@@ -468,6 +468,8 @@ final class CanvasView: NSView {
         if on { l.contentsScale = s; l.setNeedsDisplay(); l.drawn = true } else { l.contents = nil; l.drawn = false }
       }
     }
+    // stickers out of view are hidden: an animated one then plays no frames
+    for l in stickerLayers.values { l.isHidden = !near.intersects(l.frame) }
   }
   /** The bitmap scale follows the zoom in buckets: crossing one redraws the cards at the new scale (the old bitmap stays until
    *  then), nearest the middle of the view first, in the run loop's own transaction (an explicit commit here waited on the
