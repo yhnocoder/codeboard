@@ -1,12 +1,16 @@
 // The undo engine and saving on a plain board (no Solid, no DOM): snapshots, undo / redo, merged steps, syncs replayed after undo,
 // drags, fresh cards, per-board histories, and the patches sent to the host
+import { types } from "node:util";
 import { describe, expect, it, vi } from "vitest";
 import { emptyBoard, type Board, type BoardPatch, type Card } from "../src";
 import { createHistory, createSave, NOT_UNDONE, type Doc } from "../src/history";
 
 const note = (id: string, md = ""): Card => ({ id, kind: "note", md }) as Card;
 
-function setup(start = emptyBoard("b1", "B1"), selfCheck = false) {
+/**
+ * inPlace: undo puts items back into the board's own objects, as the board's Solid store does (reconcile), instead of new ones
+ */
+function setup(start = emptyBoard("b1", "B1"), selfCheck = false, inPlace = false) {
   let board: Board = structuredClone(start);
   const doc: Doc = {
     read: () => board,
@@ -16,6 +20,12 @@ function setup(start = emptyBoard("b1", "B1"), selfCheck = false) {
     },
     putItems: (ops) => {
       for (const [k, at, v] of ops) {
+        if (inPlace) {
+          const o = (k === "place" ? board.place[at as string] : (board[k] as unknown[])[at as number]) as object;
+          for (const key of Object.keys(o)) delete (o as Record<string, unknown>)[key];
+          Object.assign(o, v);
+          continue;
+        }
         if (k === "place") board.place[at as string] = v as Board["place"][string];
         else (board[k] as unknown[])[at as number] = v;
       }
@@ -357,5 +367,156 @@ describe("self-check", () => {
     } finally {
       warn.mockRestore();
     }
+  });
+});
+
+describe("snapshots of the items an edit wrote to", () => {
+  const code = (id: string): Card =>
+    ({
+      id,
+      kind: "code",
+      segments: [{ id: `${id}s`, path: "a.py", start: 1, end: 2, text: "x = 1\ny = 2", lang: "python" }],
+    }) as unknown as Card;
+  /** No proxy of the engine's left anywhere in the plain board */
+  function noProxies(x: unknown, path = "board"): void {
+    if (typeof x !== "object" || x === null) return;
+    expect(types.isProxy(x), path).toBe(false);
+    for (const [k, v] of Object.entries(x)) noProxies(v, `${path}.${k}`);
+  }
+
+  for (const inPlace of [false, true])
+    it(`stays the whole board's snapshot through every kind of write${inPlace ? " (undo writing in place)" : ""}`, () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      try {
+        const { h, add, board } = setup(emptyBoard("b1", "B1"), true, inPlace);
+        for (const id of ["a", "b", "c", "d"]) add(id, `# ${id}`);
+        const edits: ((b: Board) => void)[] = [
+          (b) => {
+            b.place.b.x = 7; // a field of a place
+          },
+          (b) => {
+            (b.cards[2] as { md: string }).md = "changed"; // a field of a card
+          },
+          (b) => {
+            b.cards.push(code("e"));
+            b.place.e = { x: 1, y: 2, w: 300 };
+          },
+          (b) => {
+            const c = b.cards.find((x) => x.id === "e") as unknown as { segments: { text: string }[] };
+            c.segments[0].text = "x = 2\ny = 3"; // deep in a card
+            c.segments.push({ ...c.segments[0] }); // a copy of something read through the board
+          },
+          (b) => {
+            b.cards.reverse(); // order only
+          },
+          (b) => {
+            const i = b.cards.findIndex((x) => x.id === "a");
+            b.cards[i] = { ...b.cards[i], md: "new object" } as Card; // an item replaced
+          },
+          (b) => {
+            b.cards = b.cards.filter((x) => x.id !== "c"); // a collection replaced
+            delete b.place.c;
+          },
+          (b) => {
+            b.place.d = { ...b.place.d, y: 99 };
+          },
+          (b) => {
+            Object.assign(b.place.b, { w: 400, x: 1 });
+          },
+          (b) => {
+            b.name = "renamed"; // a board field
+            b.shelf = [{ id: "sh", at: 1, place: { z: { ...b.place.b } }, sections: [], links: [], stickers: [] }];
+          },
+          (b) => {
+            b.shelf![0].place.z.x = 2; // deep in a board field
+          },
+          (b) => {
+            b.links.push({ id: "l1", from: { card: "a" }, to: { card: "b" } });
+            b.sections.push({ id: "x1", title: "S", x: 0, y: 0, w: 10, h: 10 });
+          },
+          (b) => {
+            b.links[0].to = { card: "d" };
+            b.sections[0].title = "T";
+          },
+        ];
+        for (const fn of edits) h.mutate(fn);
+        h.sync((b) => {
+          b.place.a.y = 5;
+        });
+        const live = h.beginGesture();
+        h.live((b) => {
+          b.place.a.x = 50;
+        });
+        live();
+        noProxies(board());
+        for (let i = 0; i < edits.length + 1; i++) h.undo();
+        for (let i = 0; i < 4; i++) h.redo();
+        h.mutate((b) => {
+          b.place.a.x = 3;
+        });
+        for (let i = 0; i < edits.length + 4; i++) h.redo() || h.undo();
+        noProxies(board());
+        expect(warn.mock.calls.filter((c) => String(c[0]).includes("snapshot missed"))).toEqual([]);
+      } finally {
+        warn.mockRestore();
+      }
+    });
+
+  it("warns when the board changed past the engine (the self-check of the snapshot)", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const { h, add, board } = setup(emptyBoard("b1", "B1"), true);
+      add("a");
+      add("b");
+      (board().cards[0] as { md: string }).md = "behind the engine's back";
+      h.mutate((b) => {
+        b.place.b.x = 1;
+      });
+      expect(warn.mock.calls.some((c) => String(c[0]).includes("snapshot missed a change"))).toBe(true);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("costs what an edit changed, not the board's size (CPU time)", () => {
+    /** CPU time of moving one card, in µs: the mean of many edits, each saved the way the board saves (a patch) */
+    function perEdit(n: number) {
+      const start = emptyBoard("big", "big");
+      for (let i = 0; i < n; i++) {
+        start.cards.push(
+          note(`n${i}`, `## Note ${i}\n\n${"Some prose about the code, with $x^2$ and a list.\n- a\n- b\n".repeat(8)}`),
+        );
+        start.place[`n${i}`] = { x: (i % 20) * 400, y: Math.floor(i / 20) * 500, w: 320 };
+        if (i) start.links.push({ id: `l${i}`, from: { card: `n${i - 1}` }, to: { card: `n${i}` } });
+      }
+      const { h, board } = setup(start);
+      const save = createSave({
+        loaded: () => true,
+        snap: h.snap,
+        cam: () => board().cam,
+        takeUndone: h.takeUndone,
+        post: async () => ({ skipped: 0 }),
+        toast: () => {},
+        liveDelay: 10,
+        resendDelay: 10,
+      });
+      save.flush();
+      const edit = (i: number) => {
+        h.mutate((b) => {
+          b.place[`n${(i * 7) % n}`].x += 1;
+        });
+        save.flush();
+      };
+      for (let i = 0; i < 50; i++) edit(i); // warm up
+      const N = 400;
+      const t0 = process.cpuUsage();
+      for (let i = 0; i < N; i++) edit(i);
+      const t = process.cpuUsage(t0);
+      return (t.user + t.system) / N;
+    }
+    const small = perEdit(100),
+      big = perEdit(1000);
+    // stringifying the whole board on every edit made this 10× (2.4 ms at 1000 cards); now about 1.2×
+    expect(big / small, `${small.toFixed(0)} µs at 100 cards, ${big.toFixed(0)} µs at 1000`).toBeLessThan(2);
   });
 });

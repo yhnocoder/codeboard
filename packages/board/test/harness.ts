@@ -300,8 +300,10 @@ boot({ post: (m) => { window.__inflight++; window.__host(JSON.stringify(m)).fina
   const reply = (req: number, data?: unknown, error?: string) => post({ type: "reply", req, data, error });
   page.on("console", async (m) => {
     const text = m.text();
-    // mutate's self-check (core danglingRefs, on in the harness through boot's selfCheck): any hit is a failure in every scenario
+    // mutate's self-check (core danglingRefs, on in the harness through boot's selfCheck): any hit is a failure in every scenario,
     if (text.includes("dangling references")) return watch.fail("dangling-refs", text);
+    // and its snapshot check (core history/track.ts): an edit's snapshot that missed a write the whole board's has
+    if (text.includes("snapshot missed a change")) return watch.fail("snapshot-missed", text);
     if (m.type() !== "error" && m.type() !== "warning") return;
     const url = m.location().url;
     if (OFFLINE.test(text) && /^https?:/.test(url)) return; // expected here, see OFFLINE
