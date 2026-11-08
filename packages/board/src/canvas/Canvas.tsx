@@ -169,25 +169,36 @@ export function Canvas() {
   const [greekFade, setGreekFade] = createSignal(false);
   let swapT: number | undefined;
   let fadeT: number | undefined;
+  let restartF = 0;
   createEffect(
     on(
       [simple, cardsGone],
       ([g, gone], prev) => {
+        cancelAnimationFrame(restartF);
         clearTimeout(swapT);
         clearTimeout(fadeT);
         if (gone || prev?.[1]) {
           setGreekFade(false);
           return void setGreek(g);
         }
-        setGreekFade(g !== greek());
+        // a switch back within GREEK_FADE: before the swap nothing changes but the fade (it ends now); after it the animation
+        // starts over, a frame later (the class taken off and put back), so the next swap lands while the prose is out again
+        const was = greekFade();
+        setGreekFade(false);
         if (g === greek()) return;
-        swapT = window.setTimeout(() => setGreek(g), GREEK_FADE / 2);
-        fadeT = window.setTimeout(() => setGreekFade(false), GREEK_FADE);
+        const go = () => {
+          setGreekFade(true);
+          swapT = window.setTimeout(() => setGreek(g), GREEK_FADE / 2);
+          fadeT = window.setTimeout(() => setGreekFade(false), GREEK_FADE);
+        };
+        if (was) restartF = requestAnimationFrame(go);
+        else go();
       },
       { defer: true },
     ),
   );
   onCleanup(() => {
+    cancelAnimationFrame(restartF);
     clearTimeout(swapT);
     clearTimeout(fadeT);
   });
