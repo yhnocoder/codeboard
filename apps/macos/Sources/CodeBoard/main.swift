@@ -3,6 +3,7 @@
 //   --open <folder> [--board <id>]   open that project (and board) at launch
 //   --auto [--snapshot <dir>]        the scripted run (Auto.swift): timings to stdout / report.json, PNGs of the canvas, then quit
 //   --snapshot <dir>                 with --open and --board: write the canvas to PNG once drawn, then quit
+//   --gate <dir> [--steps a,b] [--no-capture]  the acceptance gate's run (Gate.swift, driven by tools/mac-gate.mjs), then quit
 //   --fit                            with --snapshot: the whole board in view
 //   --focus <card id>                with --snapshot: that card at the top left at zoom 1
 //   --dark | --light                 force the appearance
@@ -16,6 +17,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   /** The routing context on its background thread (nil when router.js is missing: the drag then routes on the main thread) */
   var router: RouteWorker?
   var auto: AutoRun?
+  var gate: GateRun?
   let args = CommandLine.arguments
   func arg(_ k: String) -> String? { args.firstIndex(of: k).flatMap { $0 + 1 < args.count ? args[$0 + 1] : nil } }
 
@@ -50,6 +52,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if auto {
           self.auto = AutoRun(wc, out: snap)
           self.auto!.run { self.quit() }
+        } else if let g = self.arg("--gate") {
+          let only = self.arg("--steps").map { Set($0.split(separator: ",").map(String.init)) }
+          self.gate = GateRun(wc, out: g, only: only, capture: !self.args.contains("--no-capture"))
+          self.gate!.run { self.quit() }
         } else if snap != nil {
           if self.args.contains("--fit") { wc.canvas.fitAll(animated: false) }
           if let id = self.arg("--focus") { wc.canvas.focus(id) }
