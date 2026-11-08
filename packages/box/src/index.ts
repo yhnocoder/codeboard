@@ -34,7 +34,7 @@ export type BoxHit = {
   range?: [number, number];
   /** An image piece: its key */
   picture?: string;
-  /** rerank only: the reranker's raw score (a logit) of a text hit it read */
+  /** rerank only: the embedding server's relevance score of a text hit its reranker read (a sigmoid, 0..1, on oMLX) */
   rerank?: number;
   meta?: unknown;
 };
@@ -64,19 +64,12 @@ export type BoxResult = {
   source: string;
   ref: string;
 };
-/** A model box downloads and runs itself: hs-rerank-1 (the reranker) */
-export type BoxModelName = "hs-rerank-1";
-export type BoxModel = {
-  name: BoxModelName;
-  files: string[];
-  present: boolean;
-  downloading: boolean;
-  bytes: number;
-  total?: number | null;
-  error?: string | null;
-  /** Whether this build of box can run it (the reranker needs the cargo feature rerank) */
-  runs: boolean;
+export type BoxRerank = BoxSearch & {
+  /** The reranking model on the embedding server; none: the first it lists with "rerank" in its name */
+  model?: string;
 };
+/** How a rerank's error starts when the embedding server has no reranking model */
+export const BOX_NO_RERANKER = "No reranking model on the embedding server";
 export type BoxKeywordSearch = Omit<BoxSearch, "min_score">;
 /** A hit of the keyword group: the item's id, its BM25 score, where in the text the first query word is */
 export type BoxKeywordHit = { id: string; score: number; range?: [number, number]; meta?: unknown };
@@ -96,12 +89,9 @@ export type BoxClient = {
   /** The whole set of items of a source at a ref; answers at once, indexing goes on in the service */
   sync(source: string, ref: string, embedder: BoxEmbedder, items: BoxItem[]): Promise<{ accepted: number }>;
   search(q: BoxSearch): Promise<BoxResult>;
-  /** search, then its best text hits read again by the reranker, in the fused order (an error while it is not there) */
-  rerank(q: BoxSearch): Promise<BoxResult>;
-  /** A model box runs itself: whether it is downloaded */
-  model(name: BoxModelName): Promise<BoxModel>;
-  /** Starts downloading a model (in box, in the background) unless it is there */
-  modelDownload(name: BoxModelName): Promise<BoxModel>;
+  /** search, then its best text hits read again by the embedding server's reranker, in the fused order (an error starting
+   *  with BOX_NO_RERANKER when the server has no reranking model) */
+  rerank(q: BoxRerank): Promise<BoxResult>;
   /** The keyword group (full text), its own list: never mixed with search's; needs no model */
   searchKeyword(q: BoxKeywordSearch): Promise<BoxKeywordResult>;
   status(source: string, ref: string): Promise<BoxStatus>;
@@ -245,8 +235,6 @@ export function connect(o: { bin: string; home?: string; idle?: number }): BoxCl
     search: (q) => ask("search", q),
     searchKeyword: (q) => ask("search_keyword", q),
     rerank: (q) => ask("rerank", q),
-    model: (name) => ask("model", { name }),
-    modelDownload: (name) => ask("model_download", { name }),
     status: (source, ref) => ask("status", { source, ref }),
     forget: (source) => ask("forget", { source }),
     pid: async () => (await ready()).pid,

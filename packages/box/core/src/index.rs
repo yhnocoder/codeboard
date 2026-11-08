@@ -11,6 +11,7 @@ use crate::embed::{BATCH, Embedder, Endpoint, EndpointConfig, Input};
 use crate::graph::{self, Graph};
 use crate::keyword::{self, Doc, Keywords, hid};
 use crate::probe::Probed;
+use crate::rerank::Remote;
 use crate::store::{self, ItemRow, Key, PieceRow, Store, image_key, text_key};
 use crate::vectors::{ModelIndex, RESCORE, clipped, dot};
 use serde::Deserialize;
@@ -131,9 +132,6 @@ impl Index {
             _lock: lock,
             store: Arc::new(Mutex::new(st)),
             keywords,
-            model_files: vec![crate::model::Model::new(home, &crate::model::RERANKER)],
-            #[cfg(feature = "rerank")]
-            reranker: Mutex::new(None),
             reranks: Default::default(),
             models: RwLock::new(HashMap::new()),
             manifests: RwLock::new(HashMap::new()),
@@ -164,14 +162,6 @@ impl Index {
             "search" => self.search(parse(req)?),
             "search_keyword" => self.search_keyword(parse(req)?),
             "status" => self.status(parse(req)?),
-            "model" => {
-                let r: ModelDownloadReq = parse(req)?;
-                Ok(self.inner.model_file(&r.name)?.status())
-            }
-            "model_download" => {
-                let r: ModelDownloadReq = parse(req)?;
-                Ok(self.inner.model_file(&r.name)?.download(r.url, r.sha256))
-            }
             "rerank" => self.inner.rerank(parse(req)?),
             "forget" => self.forget(parse(req)?),
             _ => Err(format!("unknown op {op:?}")),
@@ -251,6 +241,8 @@ struct Manifest {
 struct Source {
     conf: EndpointConfig,
     embedder: Arc<dyn Embedder>,
+    /// The same server's reranker
+    reranker: Arc<Remote>,
     pending: Option<Job>,
     running: bool,
     /// Pieces not embedded yet, per ref
@@ -269,10 +261,6 @@ struct Inner {
     _lock: std::fs::File,
     store: Arc<Mutex<Store>>,
     keywords: Keywords,
-    /// The models box can download and run itself (model.rs): the reranker
-    model_files: Vec<crate::model::Model>,
-    #[cfg(feature = "rerank")]
-    reranker: Mutex<Option<Arc<crate::rerank::Reranker>>>,
     /// The latest rerank of each source (an older one stops)
     reranks: crate::rerank::Latest,
     models: RwLock<HashMap<String, Arc<RwLock<ModelIndex>>>>,
@@ -455,21 +443,24 @@ impl Inner {
         self.maybe_gc();
         let n = r.items.len();
         let mut sources = self.sources.lock().unwrap();
-        let s = sources.entry(r.source.clone()).or_insert_with(|| Source {
-            conf: r.embedder.clone(),
-            embedder: Arc::new(Probed::new(
-                Arc::new(Endpoint::new(r.embedder.clone())),
-                self.store.clone(),
-            )),
-            pending: None,
-            running: false,
-            left: HashMap::new(),
-            error: None,
-            generation: 0,
+        let s = sources.entry(r.source.clone()).or_insert_with(|| {
+            let endpoint = Arc::new(Endpoint::new(r.embedder.clone()));
+            Source {
+                conf: r.embedder.clone(),
+                embedder: Arc::new(Probed::new(endpoint.clone(), self.store.clone())),
+                reranker: Arc::new(Remote::new(endpoint)),
+                pending: None,
+                running: false,
+                left: HashMap::new(),
+                error: None,
+                generation: 0,
+            }
         });
         if s.conf != r.embedder {
             s.conf = r.embedder.clone();
-            s.embedder = Arc::new(Probed::new(Arc::new(Endpoint::new(r.embedder)), self.store.clone()));
+            let endpoint = Arc::new(Endpoint::new(r.embedder));
+            s.embedder = Arc::new(Probed::new(endpoint.clone(), self.store.clone()));
+            s.reranker = Arc::new(Remote::new(endpoint));
             s.error = None;
         }
         s.pending = Some(Job {
@@ -751,19 +742,11 @@ impl Inner {
         Ok(v)
     }
 
-    fn model_file(&self, name: &str) -> Result<&crate::model::Model, String> {
-        let spec = crate::model::spec(name).ok_or_else(|| format!("no model {name:?}"))?;
-        Ok(self
-            .model_files
-            .iter()
-            .find(|m| std::ptr::eq(m.spec(), spec))
-            .expect("every spec has its model"))
-    }
-
-    /// search, then its best text hits read again by the reranker and the list in the fused order (rerank.rs); each text
-    /// hit it read gets its raw score as `rerank`. The query's vector comes from the cache the search before it filled
-    /// (query_vector), so a rerank embeds nothing
-    fn rerank(&self, r: SearchReq) -> Reply {
+    /// search, then its best text hits read again by the embedding server's reranker and the list in the fused order
+    /// (rerank.rs); each text hit it read gets the server's score as `rerank`. The query's vector comes from the cache the
+    /// search before it filled (query_vector), so a rerank embeds nothing
+    fn rerank(&self, r: RerankReq) -> Reply {
+        let RerankReq { search: r, model } = r;
         let (source, rf, q) = (r.source.clone(), r.r#ref.clone(), r.q.clone());
         let ticket = self.reranks.begin(&source);
         let live = || self.reranks.live(&source, ticket);
@@ -803,10 +786,22 @@ impl Inner {
         if !live() {
             return superseded();
         }
-        let scores = match self.rerank_scores(&q, &texts, &live) {
-            Err(e) if e == crate::rerank::SUPERSEDED => return superseded(),
-            r => r?,
+        let reranker = match self.sources.lock().unwrap().get(&source) {
+            Some(s) => s.reranker.clone(),
+            None => return Ok(out),
         };
+        let want: Vec<String> = texts.iter().flatten().cloned().collect();
+        let got = if want.is_empty() {
+            Ok(vec![])
+        } else {
+            reranker.score(model.as_deref(), &q, &want)
+        };
+        // a newer rerank of this source came in while the server read this one: that one's order is the one to show
+        if !live() {
+            return superseded();
+        }
+        let mut got = got?.into_iter();
+        let scores: Vec<Option<f32>> = texts.iter().map(|t| t.as_ref().and_then(|_| got.next())).collect();
         let vector: Vec<f32> = hits[..n]
             .iter()
             .map(|h| h["score"].as_f64().unwrap_or(0.0) as f32)
@@ -826,45 +821,6 @@ impl Inner {
         out["hits"] = Value::Array(ordered);
         out["reranked"] = json!(n);
         Ok(out)
-    }
-
-    #[cfg(feature = "rerank")]
-    fn rerank_scores(
-        &self,
-        q: &str,
-        texts: &[Option<String>],
-        live: &dyn Fn() -> bool,
-    ) -> Result<Vec<Option<f32>>, String> {
-        let rr = {
-            let mut slot = self.reranker.lock().unwrap();
-            match slot.as_ref() {
-                Some(r) => r.clone(),
-                None => {
-                    let m = self.model_file(crate::model::RERANKER.name)?;
-                    if !m.present() {
-                        return Err("The reranker is not downloaded yet (model_download hs-rerank-1)".into());
-                    }
-                    let f = m.files();
-                    let r = Arc::new(crate::rerank::Reranker::open(&f[0], &f[1])?);
-                    *slot = Some(r.clone());
-                    r
-                }
-            }
-        };
-        let want: Vec<String> = texts.iter().flatten().cloned().collect();
-        let got = rr.score(q, &want, live)?;
-        let mut it = got.into_iter();
-        Ok(texts.iter().map(|t| t.as_ref().and_then(|_| it.next())).collect())
-    }
-
-    #[cfg(not(feature = "rerank"))]
-    fn rerank_scores(
-        &self,
-        _q: &str,
-        _texts: &[Option<String>],
-        _live: &dyn Fn() -> bool,
-    ) -> Result<Vec<Option<f32>>, String> {
-        Err("This box is built without the reranker (cargo feature rerank)".into())
     }
 
     fn search(&self, r: SearchReq) -> Reply {
@@ -1128,13 +1084,12 @@ pub struct SearchReq {
 }
 
 #[derive(Deserialize)]
-pub struct ModelDownloadReq {
-    /// hs-rerank-1
-    pub name: String,
+pub struct RerankReq {
+    #[serde(flatten)]
+    pub search: SearchReq,
+    /// The reranking model on the embedding server; none: the first it lists with "rerank" in its id
     #[serde(default)]
-    pub url: Option<String>,
-    #[serde(default)]
-    pub sha256: Option<String>,
+    pub model: Option<String>,
 }
 
 #[derive(Deserialize)]

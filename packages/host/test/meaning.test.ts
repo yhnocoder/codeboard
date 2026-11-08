@@ -7,8 +7,8 @@ import * as http from "node:http";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { binIn, connect, type BoxClient } from "@codeboard/box";
-import { emptyBoard, type Board } from "@codeboard/core";
+import { BOX_NO_RERANKER, binIn, connect } from "@codeboard/box";
+import { emptyBoard, type Board, type MeaningResult } from "@codeboard/core";
 import { Storage } from "../src/storage/boards";
 import { nodeFs } from "../src/storage/nodefs";
 import { HostContext } from "../src/context";
@@ -27,12 +27,35 @@ if (!built)
 const WORDS = ["kv", "cache", "scheduler", "prefill", "graph", "cuda", "显存"];
 /** What the server was asked to embed, and with which key */
 const asked: { texts: string[]; auth?: string }[] = [];
+/** Whether the server has a reranking model (test-rerank), and what its reranker was asked */
+const reranker = { on: false, asked: [] as { model: string; query: string; documents: string[]; auth?: string }[] };
+/** The stand-in reranker's score: the share of the query's words the document has */
+const overlap = (q: string, doc: string) => {
+  const words = (t: string) =>
+    t
+      .toLowerCase()
+      .split(/[^\p{L}\p{N}]+/u)
+      .filter(Boolean);
+  const d = new Set(words(doc));
+  return words(q).filter((w) => d.has(w)).length / Math.max(1, words(q).length);
+};
 const server = http.createServer((req, res) => {
   let body = "";
   req.on("data", (c) => (body += c));
   req.on("end", () => {
     res.setHeader("content-type", "application/json");
-    if (req.url?.endsWith("/models")) return res.end(JSON.stringify({ data: [{ id: "test-embed" }] }));
+    if (req.url?.endsWith("/models"))
+      return res.end(JSON.stringify({ data: [{ id: "test-embed" }, ...(reranker.on ? [{ id: "test-rerank" }] : [])] }));
+    if (req.url?.endsWith("/rerank")) {
+      const r = JSON.parse(body) as { model: string; query: string; documents: string[] };
+      reranker.asked.push({ ...r, auth: req.headers.authorization });
+      if (!reranker.on || r.model !== "test-rerank") {
+        res.statusCode = 404;
+        return res.end(JSON.stringify({ error: "model not found" }));
+      }
+      const results = r.documents.map((d, index) => ({ index, relevance_score: overlap(r.query, d) }));
+      return res.end(JSON.stringify({ results }));
+    }
     const { input } = JSON.parse(body) as { input: (string | { image_url: { url: string } })[] };
     // a "picture" here is a file whose bytes are the words it shows
     const text = (x: (typeof input)[number]) =>
@@ -142,20 +165,66 @@ describe.skipIf(!built)("Related by Meaning", () => {
     other.dispose();
   });
 
-  it("reranks only when codeboard.search.rerank is on, and never downloads a reranker this box cannot run", async () => {
+  it("reranks with the embedding server's reranking model while codeboard.search.rerank is on", async () => {
     const get = W.settings.get;
-    const rerank = (on: boolean) =>
-      (W.settings = { ...W.settings, get: <T>(k: string) => (k === "codeboard.search.rerank" ? on : get<T>(k)) as T });
+    const ui = W.ui;
+    const told: string[] = [];
+    W.ui = { ...ui, info: async (t: string) => (told.push(t), undefined) };
+    let on = true;
+    let model = "";
+    let rerankWait = false;
+    const set: Record<string, () => unknown> = {
+      "codeboard.search.rerank": () => on,
+      "codeboard.search.rerankModel": () => model,
+      "codeboard.search.rerankWait": () => rerankWait,
+    };
+    W.settings = { ...W.settings, get: <T>(k: string) => (k in set ? set[k]() : get<T>(k)) as T };
+    // the vectors score both the same; the reranker reads the sidenote's words in the query
+    const q = "the kv cache cuda graph is captured";
+    const ids = (r: MeaningResult) =>
+      r.items.map((i) => (i.kind === "sidenote" ? i.sidenote : i.kind === "card" ? i.card : i.kind));
     try {
-      rerank(false);
-      expect(await cx.meaning.rerank(store, "kv cache", "a")).toEqual({ items: [], off: true });
-      rerank(true);
-      const m = await probe.model("hs-rerank-1");
-      if (m.runs) return; // a box built with the reranker: box's own tests cover it (the model is not downloaded here)
-      expect(await cx.meaning.rerank(store, "kv cache", "a")).toEqual({ items: [], off: true });
-      expect(await probe.model("hs-rerank-1")).toMatchObject({ present: false, downloading: false });
+      on = false;
+      expect(await cx.meaning.rerank(store, q, "a")).toEqual({ items: [], off: true });
+      expect(reranker.asked).toEqual([]);
+      // on by default and the server has no reranking model: off, quietly, and box is not asked again
+      on = true;
+      expect(await cx.meaning.rerank(store, q, "a")).toEqual({ items: [], off: true });
+      expect(await cx.meaning.rerank(store, q, "a")).toEqual({ items: [], off: true });
+      expect(told).toEqual([]);
+      // turned on by the user: said once
+      cx.meaning.rerankChanged(true);
+      expect(await cx.meaning.rerank(store, q, "a")).toEqual({ items: [], off: true });
+      expect(await cx.meaning.rerank(store, q, "a")).toEqual({ items: [], off: true });
+      expect(told).toHaveLength(1);
+      expect(told[0]).toMatch(/no reranking model.*hs-rerank-1.*codeboard\.search\.rerankModel/);
+      // the server has one now: the settings changing asks again, and its order comes back
+      reranker.on = true;
+      cx.meaning.rerankChanged(true);
+      const v = await cx.meaning.search(store, q, "a");
+      expect(ids(v).sort()).toEqual(["n1", "sn1"]);
+      expect(v.ranked).toBeUndefined();
+      const r = await cx.meaning.rerank(store, q, "a");
+      expect(ids(r)).toEqual(["sn1", "n1"]);
+      // codeboard.search.rerankWait: the search itself answers in the reranker's order, marked so the Palette asks no rerank
+      rerankWait = true;
+      const w = await cx.meaning.search(store, q, "a");
+      expect(ids(w)).toEqual(["sn1", "n1"]);
+      expect(w.ranked).toBe(true);
+      rerankWait = false;
+      const sent = reranker.asked.at(-1)!;
+      expect(sent).toMatchObject({ model: "test-rerank", query: q, auth: "Bearer k1" });
+      expect(sent.documents).toHaveLength(2);
+      // a model named in the settings that the server does not have: off
+      model = "other-rerank";
+      cx.meaning.rerankChanged(true);
+      expect(await cx.meaning.rerank(store, q, "a")).toEqual({ items: [], off: true });
+      expect(reranker.asked.at(-1)?.model).toBe("other-rerank");
+      expect(told).toHaveLength(2);
     } finally {
       W.settings = { ...W.settings, get };
+      W.ui = ui;
+      reranker.on = false;
     }
   });
 
@@ -274,70 +343,39 @@ describe("Search this board only", () => {
 });
 
 describe("the reranker's gate", () => {
-  type Status = Awaited<ReturnType<BoxClient["model"]>>;
-  const status = (s: Partial<Status>): Status => ({
-    name: "hs-rerank-1",
-    files: [],
-    present: false,
-    downloading: false,
-    bytes: 0,
-    runs: true,
-    ...s,
-  });
-  function fake(states: Partial<Status>[]) {
+  function fake() {
     const told: string[] = [];
-    const calls: string[] = [];
-    let i = 0;
-    const c = {
-      model: async () => (calls.push("model"), status(states[Math.min(i++, states.length - 1)])),
-      modelDownload: async () => (calls.push("download"), status({ downloading: true })),
-    };
-    const ui = {
-      info: async (t: string) => (told.push(`info: ${t}`), undefined),
-      error: async (t: string) => (told.push(`error: ${t}`), undefined),
-    };
-    return { c, ui, told, calls };
+    const ui = { info: async (t: string) => (told.push(t), undefined) };
+    return { ui, told };
   }
+  const none = new Error(`${BOX_NO_RERANKER} at http://127.0.0.1:11001/v1 (it lists: embeddinggemma)`);
 
-  it("says once that a box without the reranker cannot rerank, and asks it nothing more", async () => {
-    const f = fake([{ runs: false }]);
+  it("stays quiet when the server has no reranking model and the setting is on by default, and stops asking", () => {
+    const f = fake();
     const g = new RerankGate();
-    await g.check(f.c, f.ui);
-    expect(await g.ready(f.c, f.ui)).toBe(false);
-    expect(await g.ready(f.c, f.ui)).toBe(false);
-    expect(f.calls).toEqual(["model"]);
-    expect(f.told).toHaveLength(1);
-    expect(f.told[0]).toMatch(/^info: .*no reranker.*no effect/);
-  });
-
-  it("stays quiet on a box without the reranker until the setting is turned on", async () => {
-    const f = fake([{ runs: false }]);
-    const g = new RerankGate();
-    expect(await g.ready(f.c, f.ui)).toBe(false);
-    expect(await g.ready(f.c, f.ui)).toBe(false);
-    expect(f.calls).toEqual(["model"]);
+    expect(g.open).toBe(true);
+    expect(g.answered(none, f.ui)).toBe(true);
+    expect(g.open).toBe(false);
     expect(f.told).toEqual([]);
   });
 
-  it("asks for the download once, and after it failed says why once and stops asking", async () => {
-    const f = fake([{}, { downloading: true }, { error: "Cannot download the model (offline)" }]);
-    const g = new RerankGate();
-    expect(await g.ready(f.c, f.ui)).toBe(false); // starts the download
-    expect(await g.ready(f.c, f.ui)).toBe(false); // still downloading
-    expect(await g.ready(f.c, f.ui)).toBe(false); // failed
-    for (let n = 0; n < 3; n++) expect(await g.ready(f.c, f.ui)).toBe(false);
-    expect(f.calls).toEqual(["model", "download", "model", "model"]);
-    expect(f.told.map((t) => t.split(":")[0])).toEqual(["info", "error"]);
-    expect(f.told[1]).toContain("(Cannot download the model (offline))");
-    // the setting turned off and on: a new gate tries again
-    const again = new RerankGate();
-    expect(await again.ready(f.c, f.ui)).toBe(false);
-    expect(f.calls.at(-1)).toBe("download");
+  it("says once that the server has no reranking model when the setting was just turned on", () => {
+    const f = fake();
+    const g = new RerankGate(true);
+    expect(g.answered(none, f.ui)).toBe(true);
+    expect(g.answered(none, f.ui)).toBe(true);
+    expect(f.told).toHaveLength(1);
+    expect(f.told[0]).toMatch(/^The embedding server has no reranking model/);
+    expect(g.open).toBe(false);
   });
 
-  it("answers yes once the model is there", async () => {
-    const f = fake([{ present: true }]);
-    expect(await new RerankGate().ready(f.c, f.ui)).toBe(true);
+  it("keeps asking after any other error, and is quiet after the server reranked", () => {
+    const f = fake();
+    const g = new RerankGate(true);
+    expect(g.answered(new Error("Cannot reach the embedding server at http://127.0.0.1:1/v1"), f.ui)).toBe(false);
+    expect(g.open).toBe(true);
+    g.answered(undefined, f.ui);
+    expect(g.answered(none, f.ui)).toBe(true);
     expect(f.told).toEqual([]);
   });
 });

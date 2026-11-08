@@ -7,7 +7,7 @@ manifests in SQLite, and searched by meaning. Developer notes; the requests are 
 
 | Folder | Crate | What |
 |---|---|---|
-| `core/` | `box-core` | The index in one process: `chunk`, `embed`, `store`, `vectors` (brute force) and `graph` (HNSW from 200 000 vectors), `keyword` (tantivy), `probe` (which index a model's vectors belong to), `model` (the built-in model's file), and `index::Index` tying them together (open, sync, search, status, forget, background indexing). Everything below is a thin layer over it |
+| `core/` | `box-core` | The index in one process: `chunk`, `embed`, `store`, `vectors` (brute force) and `graph` (HNSW from 200 000 vectors), `keyword` (tantivy), `probe` (which index a model's vectors belong to), `rerank` (the best text hits read again by the embedding server's reranking model), and `index::Index` tying them together (open, sync, search, rerank, status, forget, background indexing). Everything below is a thin layer over it |
 | `.` (`src/`) | `box` | The service: `box serve`, one per user and data folder, the index behind a local socket and a token file. CodeBoard uses this (every VS Code window is a process; only one may have a data folder open) |
 | `node/` | `box-node` | The index as a Node addon (napi-rs), for a tool that is one Node process |
 | `ffi/` | `box-ffi` | The index behind a C ABI, for Swift and anything else with a C FFI |

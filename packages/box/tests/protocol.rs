@@ -20,17 +20,41 @@ fn vec_of(t: &str) -> Vec<f32> {
     WORDS.iter().map(|w| body.matches(w).count() as f32 + 0.01).collect()
 }
 
+/// The stand-in reranker's score: the share of the query's words the document has (a sigmoid-like 0..1, as oMLX's)
+fn overlap(q: &str, doc: &str) -> f64 {
+    let words = |t: &str| -> Vec<String> {
+        t.to_lowercase()
+            .split(|c: char| !c.is_alphanumeric())
+            .filter(|w| !w.is_empty())
+            .map(String::from)
+            .collect()
+    };
+    let (q, d) = (words(q), words(doc));
+    q.iter().filter(|w| d.contains(w)).count() as f64 / q.len().max(1) as f64
+}
+
 /// A tiny HTTP/1.1 server: GET /v1/models, POST /v1/embeddings (text, and images as {type: image_url})
 fn embedding_server(fail_first: usize) -> (String, Asked) {
+    let (base, asked, _) = server(fail_first, false);
+    (base, asked)
+}
+
+/// The stand-in server, with a reranker (`test-rerank`, POST /v1/rerank, scoring by word overlap) when `rerank`; the rerank
+/// requests it was sent are kept in the third value. A query with "slow" in it is answered only once another rerank
+/// request came in after it
+fn server(fail_first: usize, rerank: bool) -> (String, Asked, Asked) {
     let l = TcpListener::bind("127.0.0.1:0").unwrap();
     let base = format!("http://{}/v1", l.local_addr().unwrap());
     let asked: Asked = Arc::default();
+    let reranks: Asked = Arc::default();
     let a = asked.clone();
+    let rr = reranks.clone();
     let fails = Arc::new(std::sync::atomic::AtomicUsize::new(fail_first));
     std::thread::spawn(move || {
         for s in l.incoming() {
             let Ok(mut s) = s else { continue };
             let a = a.clone();
+            let rr = rr.clone();
             let fails = fails.clone();
             std::thread::spawn(move || {
                 let mut r = BufReader::new(s.try_clone().unwrap());
@@ -53,7 +77,43 @@ fn embedding_server(fail_first: usize) -> (String, Asked) {
                     let mut body = vec![0; len];
                     r.read_exact(&mut body).unwrap();
                     let (status, out) = if head.starts_with("GET") {
-                        (200, json!({ "data": [{ "id": "test-embed" }] }))
+                        let mut models = vec![json!({ "id": "test-embed" })];
+                        if rerank {
+                            models.push(json!({ "id": "test-rerank" }));
+                        }
+                        (200, json!({ "data": models }))
+                    } else if head.starts_with("POST /v1/rerank") {
+                        let j: Value = serde_json::from_slice(&body).unwrap();
+                        let at = {
+                            let mut r = rr.lock().unwrap();
+                            r.push(j.clone());
+                            r.len()
+                        };
+                        let q = j["query"].as_str().unwrap();
+                        if q.contains("slow") {
+                            // a poll of the requests the server was sent, until a newer rerank came in
+                            while rr.lock().unwrap().len() == at {
+                                std::thread::sleep(Duration::from_millis(5));
+                            }
+                        }
+                        if !rerank || j["model"] != "test-rerank" {
+                            (404, json!({ "error": "model not found" }))
+                        } else {
+                            let mut results: Vec<Value> = j["documents"]
+                                .as_array()
+                                .unwrap()
+                                .iter()
+                                .enumerate()
+                                .map(|(i, d)| json!({ "index": i, "relevance_score": overlap(q, d.as_str().unwrap()) }))
+                                .collect();
+                            results.sort_by(|x, y| {
+                                y["relevance_score"]
+                                    .as_f64()
+                                    .unwrap()
+                                    .total_cmp(&x["relevance_score"].as_f64().unwrap())
+                            });
+                            (200, json!({ "results": results }))
+                        }
                     } else {
                         let j: Value = serde_json::from_slice(&body).unwrap();
                         a.lock().unwrap().push(j["input"].clone());
@@ -107,7 +167,7 @@ fn embedding_server(fail_first: usize) -> (String, Asked) {
             });
         }
     });
-    (base, asked)
+    (base, asked, reranks)
 }
 
 /// Ends the whole test run with the service's log when a test is still going after a minute and a half, so a hang shows
@@ -598,18 +658,14 @@ fn the_keyword_group_is_there_without_a_model_and_sees_only_its_ref() {
         ["a"]
     );
     assert_eq!(ids(kw(&mut c, "main", "deallocate", Value::Null)), ["a"]);
-    // the reranker is opt-in: built without it, or not downloaded, a rerank says so
+    // this server has no reranking model: a rerank says so
     let rr = c.ask("rerank", json!({ "source": "s", "ref": "main", "q": "kv cache" }));
-    let why = if cfg!(feature = "rerank") {
-        "not downloaded"
-    } else {
-        "without the reranker"
-    };
-    assert!(rr["error"].as_str().unwrap().contains(why), "{rr}");
-    let m = c.ok("model", json!({ "name": "hs-rerank-1" }));
-    assert_eq!(
-        (m["present"].clone(), m["downloading"].clone()),
-        (json!(false), json!(false))
+    assert!(
+        rr["error"]
+            .as_str()
+            .unwrap()
+            .starts_with("No reranking model on the embedding server"),
+        "{rr}"
     );
     // forgotten: nothing found
     c.ok("forget", json!({ "source": "s" }));
@@ -619,49 +675,33 @@ fn the_keyword_group_is_there_without_a_model_and_sees_only_its_ref() {
     let _ = std::fs::remove_dir_all(&home);
 }
 
-/// The reranker end to end, when built with it and its files are there (BOX_RERANKER: a folder with hs-rerank-1's
-/// model.onnx and tokenizer.json, copied into the data folder as model_download would put them)
-#[cfg(feature = "rerank")]
 #[test]
-fn rerank_reorders_the_best_text_hits_and_hands_back_their_raw_scores() {
-    let Some(src) = std::env::var_os("BOX_RERANKER")
-        .map(std::path::PathBuf::from)
-        .filter(|d| d.join("model.onnx").is_file())
-    else {
-        let _ = writeln!(
-            std::io::stderr().lock(),
-            "rerank test skipped: set BOX_RERANKER to hs-rerank-1's folder"
-        );
-        return;
-    };
+fn rerank_reorders_the_best_text_hits_with_the_servers_reranker() {
     let home = std::env::temp_dir().join(format!("box-rerank-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&home);
-    let dir = home.join("models").join("hs-rerank-1");
-    std::fs::create_dir_all(&dir).unwrap();
-    for f in ["model.onnx", "tokenizer.json"] {
-        std::fs::copy(src.join(f), dir.join(f)).unwrap();
-    }
     let p = paths::paths(&home);
-    let _watch = watchdog("rerank_reorders_the_best_text_hits_and_hands_back_their_raw_scores", &p);
+    let _watch = watchdog("rerank_reorders_the_best_text_hits_with_the_servers_reranker", &p);
     let h2 = home.clone();
     let svc = std::thread::spawn(move || service::serve(paths::paths(&h2), Duration::from_millis(300)).unwrap());
-    let (base, _) = embedding_server(0);
+    let (base, _, reranks) = server(0, true);
     let mut c = Client::connect(&p);
     let token = std::fs::read_to_string(&p.token).unwrap();
     c.ok("hello", json!({ "token": token.trim() }));
-    // the stand-in vectors count words: they rank the cuda text first, the reranker knows better
+    // the stand-in vectors count words: they rank `long` first, the picture second and `right` last; the stand-in reranker
+    // counts the query's words, which `right` has most of
+    let long = format!("kv cache {}", "é".repeat(1000));
     let items = json!([
         { "id": "noise", "title": "Graphs", "text": "Not about kv cache at all: the cuda graph is captured once per batch size." },
         { "id": "right", "title": "Block manager", "text": "Frees the cache blocks of a finished sequence; prefill reuses them." },
+        { "id": "long", "title": "Long", "text": long },
+        { "id": "pic", "title": "", "text": "", "images": [{ "key": "p1", "url": "data:image/png;base64,kv kv cache" }] },
     ]);
     c.ok(
         "sync",
-        json!({ "source": "s", "ref": "main", "embedder": { "base": base }, "items": items }),
+        json!({ "source": "s", "ref": "main", "embedder": { "base": base, "key": "k1" }, "items": items }),
     );
     c.settle("s", "main");
     let q = json!({ "source": "s", "ref": "main", "q": "how are kv cache blocks freed when a sequence ends" });
-    let v = c.ok("search", q.clone());
-    let r = c.ok("rerank", q);
     let ids = |v: &Value| -> Vec<String> {
         v["hits"]
             .as_array()
@@ -670,11 +710,79 @@ fn rerank_reorders_the_best_text_hits_and_hands_back_their_raw_scores() {
             .map(|h| h["id"].as_str().unwrap().into())
             .collect()
     };
-    assert_eq!(ids(&v)[0], "noise", "{v}");
-    assert_eq!(ids(&r), ["right", "noise"], "{r}");
-    assert!(r["hits"][0]["rerank"].as_f64().unwrap() > r["hits"][1]["rerank"].as_f64().unwrap());
-    assert_eq!(r["reranked"], json!(2));
-    drop(c);
+    let v = c.ok("search", q.clone());
+    assert_eq!(ids(&v), ["long", "pic", "noise", "right"], "{v}");
+    let r = c.ok("rerank", q.clone());
+    // the texts trade places around the picture, which keeps its place and has no reranker score
+    assert_eq!(ids(&r), ["right", "pic", "long", "noise"], "{r}");
+    assert_eq!(r["reranked"], json!(4));
+    assert_eq!(r["hits"][1]["rerank"], Value::Null);
+    let score = |i: usize| r["hits"][i]["rerank"].as_f64().unwrap();
+    assert!((score(0) - 0.4).abs() < 1e-6 && (score(2) - 0.2).abs() < 1e-6, "{r}");
+    // what the server was sent: the model it lists, the query, the texts (title and text) cut to 800 characters
+    let sent = reranks.lock().unwrap()[0].clone();
+    assert_eq!(
+        (
+            sent["model"].clone(),
+            sent["top_n"].clone(),
+            sent["return_documents"].clone()
+        ),
+        (json!("test-rerank"), json!(3), json!(false))
+    );
+    let docs: Vec<&str> = sent["documents"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|d| d.as_str().unwrap())
+        .collect();
+    assert_eq!(
+        docs[0],
+        format!("Long\n{}", &long[..long.char_indices().nth(795).unwrap().0])
+    );
+    assert_eq!(docs[0].chars().count(), 800);
+    assert_eq!(
+        docs[1..],
+        [
+            "Graphs\nNot about kv cache at all: the cuda graph is captured once per batch size.",
+            "Block manager\nFrees the cache blocks of a finished sequence; prefill reuses them."
+        ]
+    );
+
+    // a reranking model the server does not have: the error says there is none
+    let mut named = q.clone();
+    named["model"] = json!("other-rerank");
+    let e = c.ask("rerank", named);
+    assert!(
+        e["error"]
+            .as_str()
+            .unwrap()
+            .starts_with("No reranking model on the embedding server"),
+        "{e}"
+    );
+
+    // a rerank whose answer comes after a newer rerank of the same source began answers superseded, not its hits
+    let mut d = Client::connect(&p);
+    d.ok("hello", json!({ "token": token.trim() }));
+    let before = reranks.lock().unwrap().len();
+    let slow = std::thread::spawn(move || {
+        let r = d.ok(
+            "rerank",
+            json!({ "source": "s", "ref": "main", "q": "slow kv cache blocks" }),
+        );
+        (d, r)
+    });
+    while reranks.lock().unwrap().len() == before {
+        std::thread::sleep(Duration::from_millis(5)); // a poll: the slow rerank reaches the server
+    }
+    let newer = c.ok("rerank", q);
+    assert_eq!(ids(&newer)[0], "right", "{newer}");
+    let (d, old) = slow.join().unwrap();
+    assert_eq!(
+        (old["superseded"].clone(), old["hits"].clone()),
+        (json!(true), json!([])),
+        "{old}"
+    );
+    drop((c, d));
     assert!(matches!(svc.join().unwrap(), service::Outcome::Stopped));
     let _ = std::fs::remove_dir_all(&home);
 }

@@ -258,7 +258,15 @@ export type SearchItem =
 
 /** Related by Meaning: the closest cards and sidenotes; left = pieces still being indexed (ask again); off = no embedding
  *  endpoint is set; error = the endpoint failed (what it said) */
-export type MeaningResult = { items: SearchItem[]; left?: number; off?: true; error?: string; model?: string };
+/** ranked: the items are already in the reranker's order (codeboard.search.rerankWait), so the Palette asks no rerank */
+export type MeaningResult = {
+  items: SearchItem[];
+  left?: number;
+  off?: true;
+  error?: string;
+  model?: string;
+  ranked?: true;
+};
 
 /** ⌘K's groups: the word-match kinds and Related by Meaning */
 export type SearchGroup = SearchItem["kind"] | "meaning";

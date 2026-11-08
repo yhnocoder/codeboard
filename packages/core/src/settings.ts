@@ -399,7 +399,24 @@ export const HOST_SETTINGS = {
       type: "boolean",
       default: true,
       markdownDescription:
-        "Read the best results of Search › Related by Meaning again with a reranker (hs-rerank-1, run by box on your machine) and reorder them when it answers. The first search with it on downloads the model, once (195 MB, into box's data folder); until it is there, and if the download fails, the order stays by meaning. Not in the Linux and Intel Mac builds (no ONNX Runtime for them): there it has no effect, and CodeBoard says so when it is turned on. Off: the order by meaning alone, and nothing is downloaded.",
+        "Read the best results of Search › Related by Meaning again with a reranking model on the embedding server (`POST /rerank`; e.g. hs-rerank-1 loaded in oMLX) and reorder them when it answers. Needs a reranking model on that server (see `#codeboard.search.rerankModel#`): without one the order stays by meaning, and after you turn this on CodeBoard says so (once, at the next search). Off: the order by meaning alone.",
+    },
+  },
+  searchRerankWait: {
+    key: "search.rerankWait",
+    schema: {
+      type: "boolean",
+      default: true,
+      markdownDescription:
+        "Show Search › Related by Meaning only once the reranker has answered, already in its order. Off: the order by meaning comes first and the rows slide to the reranker's order when it answers. Only while `#codeboard.search.rerank#` is on.",
+    },
+  },
+  searchRerankModel: {
+    key: "search.rerankModel",
+    schema: {
+      type: "string",
+      default: "",
+      description: 'Reranking model name on the embedding server. Empty: the first model whose name has "rerank".',
     },
   },
   storageDir: {

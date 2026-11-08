@@ -1,29 +1,36 @@
 //! The reranker: after a search by meaning, its best RERANK_TOP text hits are read again together with the query by a
-//! cross-encoder (hindsight-ai/hs-rerank-1: MIT, mmBERT-small, 114M; ONNX with an int8 vocabulary table, run with ONNX
-//! Runtime behind the cargo feature `rerank`) on the item's WHOLE text (title and text: the best piece alone measured much
-//! worse), and those texts are ordered by w·minmax(vector) + (1−w)·minmax(rerank) among them, in the places text hits hold.
-//! Pictures keep their places (a text model cannot see them). Off unless a client asks (rerank), downloaded only on request
-//! (model.rs).
+//! cross-encoder the embedding server runs (POST {base}/rerank, Cohere / Jina style: on Linda's Mac oMLX serving
+//! hindsight-ai/hs-rerank-1, an mmBERT-small cross-encoder), on the start of the item's text (title and text, cut to
+//! RERANK_CHARS), and those texts are ordered by w·minmax(vector) + (1−w)·minmax(rerank) among them, in the places text hits
+//! hold. Pictures keep their places (a text model cannot see them). The model is the one the client names, else the first
+//! the server lists with "rerank" in its id; a server with none answers NO_RERANKER.
 //!
-//! Measured on persona (2026-11, search-index/impl/step2/rerank): top 10 reranked, top 30 slower and no better. FUSE_W is
-//! from a plateau on persona87 alone (tune_w_plateau.py: the best MRR averaged with the neighbouring weights ±0.05; 0.00–0.10
-//! all score 80.8–81.4, 0.15 drops to 78.8), so it is close to "reranker only": persona87 MRR 76.3 → 80.9; fresh2 (20
-//! queries) 68.9 → 73.7 with top-1 unchanged at 60. fresh2 is not cleanly held out: the model, whole text vs best piece and
-//! K were picked from a table that showed it. The gain is not proven, and the reranker is off unless a client asks. The raw
-//! score is handed back too: unrelated queries reach at most −6.0, and only 2% of right cards score that low, but no cutoff is
-//! set from that yet.
+//! Measured on persona (2026-11, search-index/impl/step2/rerank, with hs-rerank-1 run as ONNX int8): top 10 reranked, top
+//! 30 slower and no better. FUSE_W is from a plateau on persona87 alone (tune_w_plateau.py: the best MRR averaged with the
+//! neighbouring weights ±0.05; 0.00–0.10 all score 80.8–81.4, 0.15 drops to 78.8), so it is close to "reranker only":
+//! persona87 MRR 76.3 → 80.9; fresh2 (20 queries) 68.9 → 73.7 with top-1 unchanged at 60. fresh2 is not cleanly held out:
+//! the model, whole text vs best piece and K were picked from a table that showed it. The gain is not proven. The server's
+//! score is handed back too (its relevance score: a sigmoid, 0..1, on oMLX), but no cutoff is set from it yet.
+
+use crate::embed::Endpoint;
+use serde_json::{Value, json};
+use std::sync::{Arc, Mutex};
 
 /// Text hits read again by the reranker
 pub const RERANK_TOP: usize = 10;
 /// The vector score's weight in the fused order (a plateau on persona87, see above)
 pub const FUSE_W: f32 = 0.05;
-/// What a rerank answers when a newer one of the same source came in before it was read: only the latest query's is worth
-/// the cores (the reranker holds them all), so an older one stops at its next batch
-pub const SUPERSEDED: &str = "superseded by a newer rerank of this source";
+/// Characters of each text the reranker reads (title and text, cut at a character): oMLX does not cut what its model
+/// cannot read, and whole cards were slower and worse. Measured with hs-rerank-1 on oMLX against the ONNX reranker on the
+/// same 127 persona questions (search-index/impl/step2/rerank/omlx, omlx-rerank-check.py): whole cards 94 ms a question,
+/// cut to 800 characters 31 ms, with MRR 80.0 against ONNX's 79.2
+pub const RERANK_CHARS: usize = 800;
+/// How a rerank's error starts when the embedding server has no reranking model (none listed, or POST /rerank is not there)
+pub const NO_RERANKER: &str = "No reranking model on the embedding server";
 
 /// The latest rerank of each source: a new one makes the earlier ones of its source stale
 #[derive(Default)]
-pub struct Latest(std::sync::Mutex<std::collections::HashMap<String, u64>>);
+pub struct Latest(Mutex<std::collections::HashMap<String, u64>>);
 
 impl Latest {
     /// A new rerank of the source; it is live until the next one of the same source begins
@@ -39,12 +46,84 @@ impl Latest {
     }
 }
 
-/// Tokens of (query, text) the reranker reads; the text is cut to fit
-#[cfg(feature = "rerank")]
-const MAX_TOKENS: usize = 512;
-/// Pairs per forward pass (sorted by length, so short texts are not padded to the longest)
-#[cfg(feature = "rerank")]
-const BATCH: usize = 8;
+/// The embedding server's reranker (POST {base}/rerank), with the model it was found to have
+pub struct Remote {
+    endpoint: Arc<Endpoint>,
+    /// The model picked from the server's list (none named): looked up once it is found
+    picked: Mutex<Option<String>>,
+}
+
+impl Remote {
+    pub fn new(endpoint: Arc<Endpoint>) -> Remote {
+        Remote {
+            endpoint,
+            picked: Mutex::new(None),
+        }
+    }
+
+    /// The model named, else the first the server lists with "rerank" in its id (remembered once found)
+    fn model(&self, named: Option<&str>) -> Result<String, String> {
+        if let Some(m) = named.map(str::trim).filter(|m| !m.is_empty()) {
+            return Ok(m.to_string());
+        }
+        let mut picked = self.picked.lock().unwrap();
+        if let Some(m) = picked.as_ref() {
+            return Ok(m.clone());
+        }
+        let ids = self.endpoint.models()?;
+        let id = ids
+            .iter()
+            .find(|x| x.to_lowercase().contains("rerank"))
+            .cloned()
+            .ok_or_else(|| {
+                let list = if ids.is_empty() {
+                    "none".to_string()
+                } else {
+                    ids.join(", ")
+                };
+                format!("{NO_RERANKER} at {} (it lists: {list})", self.endpoint.base())
+            })?;
+        *picked = Some(id.clone());
+        Ok(id)
+    }
+
+    /// The server's relevance score of each text for the query, each text cut to RERANK_CHARS
+    pub fn score(&self, named: Option<&str>, q: &str, texts: &[String]) -> Result<Vec<f32>, String> {
+        let model = self.model(named)?;
+        let docs: Vec<&str> = texts.iter().map(|t| crate::chunk::cut(t, RERANK_CHARS)).collect();
+        let body = json!({
+            "model": model,
+            "query": q,
+            "documents": docs,
+            "top_n": docs.len(),
+            "return_documents": false,
+        });
+        let j = match self.endpoint.call("/rerank", Some(&body))? {
+            Ok(j) => j,
+            Err(e) if crate::embed::status_of(&e) == Some(404) => {
+                *self.picked.lock().unwrap() = None; // looked up again next time: a model may have been loaded since
+                return Err(format!("{NO_RERANKER} at {} ({model}: {e})", self.endpoint.base()));
+            }
+            Err(e) => return Err(e),
+        };
+        scores_of(&j, docs.len())
+    }
+}
+
+/// The scores of a /rerank answer ({results: [{index, relevance_score}]}), in document order
+fn scores_of(j: &Value, n: usize) -> Result<Vec<f32>, String> {
+    let mut out = vec![None; n];
+    for r in j["results"].as_array().ok_or("The reranker sent no results")? {
+        let i = r["index"].as_u64().map(|i| i as usize).filter(|&i| i < n);
+        let s = r["relevance_score"].as_f64().or(r["score"].as_f64());
+        if let (Some(i), Some(s)) = (i, s) {
+            out[i] = Some(s as f32);
+        }
+    }
+    out.into_iter()
+        .collect::<Option<Vec<f32>>>()
+        .ok_or_else(|| format!("The reranker scored fewer than the {n} texts it was sent"))
+}
 
 fn minmax(xs: &[f32]) -> Vec<f32> {
     let (lo, hi) = xs.iter().fold((f32::MAX, f32::MIN), |(a, b), &x| (a.min(x), b.max(x)));
@@ -72,102 +151,6 @@ pub fn fuse(vector: &[f32], rerank: &[Option<f32>], w: f32) -> Vec<usize> {
         order[*slot] = texts[k];
     }
     order
-}
-
-#[cfg(feature = "rerank")]
-pub use run::Reranker;
-
-#[cfg(feature = "rerank")]
-mod run {
-    use super::{BATCH, MAX_TOKENS, SUPERSEDED};
-    use ort::session::Session;
-    use ort::value::Tensor;
-    use std::path::Path;
-    use std::sync::Mutex;
-    use tokenizers::{Tokenizer, TruncationParams, TruncationStrategy};
-
-    pub struct Reranker {
-        session: Mutex<Session>,
-        tok: Tokenizer,
-        pad: u32,
-        types: bool,
-        _env: ort::environment::Environment,
-    }
-
-    fn err(e: impl std::fmt::Display) -> String {
-        format!("reranker: {e}")
-    }
-
-    impl Reranker {
-        pub fn open(model: &Path, tokenizer: &Path) -> Result<Reranker, String> {
-            let env = ort::init().with_name("box").build().map_err(err)?;
-            let threads = std::thread::available_parallelism().map_or(4, |n| n.get());
-            let session = Session::builder(&env)
-                .map_err(err)?
-                .with_intra_threads(threads)
-                .map_err(err)?
-                .commit_from_file(model)
-                .map_err(err)?;
-            let types = session.inputs().iter().any(|i| i.name() == "token_type_ids");
-            let mut tok = Tokenizer::from_file(tokenizer).map_err(err)?;
-            tok.with_padding(None);
-            tok.with_truncation(Some(TruncationParams {
-                max_length: MAX_TOKENS,
-                strategy: TruncationStrategy::OnlySecond,
-                ..Default::default()
-            }))
-            .map_err(err)?;
-            let pad = tok.token_to_id("<pad>").unwrap_or(1);
-            Ok(Reranker {
-                session: Mutex::new(session),
-                tok,
-                pad,
-                types,
-                _env: env,
-            })
-        }
-
-        /// The raw relevance score (a logit) of each text for the query; Err(SUPERSEDED) as soon as `live` says no (checked
-        /// before each batch)
-        pub fn score(&self, q: &str, texts: &[String], live: &dyn Fn() -> bool) -> Result<Vec<f32>, String> {
-            let pairs: Vec<(String, String)> = texts.iter().map(|t| (q.to_string(), t.clone())).collect();
-            let enc = self.tok.encode_batch(pairs, true).map_err(err)?;
-            let mut order: Vec<usize> = (0..enc.len()).collect();
-            order.sort_by_key(|&i| enc[i].get_ids().len());
-            let mut out = vec![0f32; enc.len()];
-            let mut session = self.session.lock().unwrap();
-            for group in order.chunks(BATCH) {
-                if !live() {
-                    return Err(SUPERSEDED.into());
-                }
-                let len = group.iter().map(|&i| enc[i].get_ids().len()).max().unwrap_or(1);
-                let mut ids = vec![self.pad as i64; group.len() * len];
-                let mut mask = vec![0i64; group.len() * len];
-                for (r, &i) in group.iter().enumerate() {
-                    for (c, &t) in enc[i].get_ids().iter().enumerate() {
-                        ids[r * len + c] = t as i64;
-                        mask[r * len + c] = 1;
-                    }
-                }
-                let shape = [group.len(), len];
-                let mut inputs = ort::inputs![
-                    "input_ids" => Tensor::from_array((shape, ids)).map_err(err)?,
-                    "attention_mask" => Tensor::from_array((shape, mask)).map_err(err)?,
-                ];
-                if self.types {
-                    let t = Tensor::from_array((shape, vec![0i64; group.len() * len])).map_err(err)?;
-                    inputs.push(("token_type_ids".into(), t.into()));
-                }
-                let res = session.run(inputs).map_err(err)?;
-                let (_, logits) = res[0].try_extract_tensor::<f32>().map_err(err)?;
-                let per = logits.len() / group.len().max(1);
-                for (r, &i) in group.iter().enumerate() {
-                    out[i] = logits[r * per];
-                }
-            }
-            Ok(out)
-        }
-    }
 }
 
 #[cfg(test)]
@@ -210,31 +193,11 @@ mod tests {
         assert!(l.live("s", b) && l.live("t", other));
     }
 
-    /// The real model, when its files are there (BOX_RERANKER: a folder with model.onnx and tokenizer.json)
-    #[cfg(feature = "rerank")]
     #[test]
-    fn the_reranker_scores_the_right_text_higher() {
-        let dir = std::env::var_os("BOX_RERANKER").map(std::path::PathBuf::from);
-        let Some(dir) = dir.filter(|d| d.join("model.onnx").is_file()) else {
-            let _ = writeln!(
-                std::io::stderr(),
-                "reranker test skipped: set BOX_RERANKER to a folder with hs-rerank-1's model.onnx and tokenizer.json"
-            );
-            return;
-        };
-        use std::io::Write;
-        let r = Reranker::open(&dir.join("model.onnx"), &dir.join("tokenizer.json")).unwrap();
-        let s = r
-            .score(
-                "how is the kv cache freed",
-                &[
-                    "CUDA graphs are captured once per batch size.".into(),
-                    "BlockManager.deallocate frees the kv cache blocks of a finished sequence.".into(),
-                    "显存：KV cache 随序列长度增长，块管理器按块回收。".into(),
-                ],
-                &|| true,
-            )
-            .unwrap();
-        assert!(s[1] > s[0] && s[2] > s[0], "{s:?}");
+    fn a_rerank_answer_is_read_in_document_order() {
+        let j = json!({ "results": [{ "index": 1, "relevance_score": 0.9 }, { "index": 0, "relevance_score": 0.2 }] });
+        assert_eq!(scores_of(&j, 2).unwrap(), [0.2, 0.9]);
+        assert!(scores_of(&j, 3).unwrap_err().contains("fewer"));
+        assert!(scores_of(&json!({}), 1).is_err());
     }
 }

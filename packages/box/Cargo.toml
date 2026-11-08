@@ -26,10 +26,6 @@ path = "src/lib.rs"
 name = "box"
 path = "src/main.rs"
 
-[features]
-# the reranker (box-core's rerank: ONNX Runtime and hs-rerank-1)
-rerank = ["box-core/rerank"]
-
 [dependencies]
 box-core = { path = "core" }
 dirs = "7.0.0"
