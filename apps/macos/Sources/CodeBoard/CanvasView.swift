@@ -118,6 +118,13 @@ final class CanvasView: NSView {
       if let id = self.underEdit { self.cardLayers[id]?.isHidden = on }
       if !on { self.underEdit = nil }
     }
+    edit.onCrashed = { [weak self] id in
+      guard let self else { return }
+      self.cardLayers[id]?.setNeedsDisplay()
+      self.hideEditorWhenRendered(id)
+      self.showPorts()
+      self.onEditCrashed?()
+    }
     edit.onHeight = { [weak self] id, h in
       guard let self, let l = self.cardLayers[id] else { return }
       // the editor grew: the card grows with it (arrows follow); the stored height is the text's when the edit ends
@@ -138,6 +145,12 @@ final class CanvasView: NSView {
     super.viewDidMoveToWindow()
     Theme.appearance = effectiveAppearance
     notes.setTheme(themeName)
+    // (sent again whenever the page starts over: a content process crash)
+    edit.page.onReady = { [weak self] in
+      guard let self else { return }
+      self.edit.page.call("cb.setup(\(encodeJSON(["theme": self.themeName, "look": Theme.look])))")
+      self.edit.warm()
+    }
     edit.page.call("cb.setup(\(encodeJSON(["theme": themeName, "look": Theme.look])))")
     edit.warm()
     // the renderer's page sits behind the window's content (WebKit paints and snapshots only views it counts as visible; one
@@ -817,21 +830,37 @@ final class CanvasView: NSView {
   }
   /** The card whose bitmap is hidden under the editor's view */
   private var underEdit: String?
-  var onEditEnded: ((String, String?) -> Void)?
+  /** An edit that ended: the card, the text as edited (nil: not committed, or the page did not answer: the last live write stands),
+   *  and what the edit was when it began (not the editor's state at reply time: another edit may have started by then) */
+  struct EditEnd {
+    var id: String
+    var text: String?
+    var kind: String
+    var original: String
+    var changed: Bool
+  }
+  var onEditEnded: ((EditEnd) -> Void)?
+  /** The editor's content process died: nothing is written (the last live write stands), the card shows itself again */
+  var onEditCrashed: (() -> Void)?
   /** End the edit: commit = the text goes to core (the delegate writes it); the editor stays on screen until the card shows it.
-   *  done: once the page answered (the text written) or, when it does not within a second, anyway */
-  func endEdit(commit: Bool, done: (() -> Void)? = nil) {
+   *  done: once the page answered (the text written) or, when it does not within `wait` seconds (longer before a close or quit:
+   *  the reply is the text), anyway */
+  func endEdit(commit: Bool, wait: Double = 1, done: (() -> Void)? = nil) {
     guard edit.active, let c = edit.card else { done?(); return }
     var over = false
+    let was = EditEnd(id: c.id, text: nil, kind: edit.kind, original: edit.original, changed: edit.changed)
     let finish = { [weak self] (v: String?) in
       guard !over, let self else { return }
       over = true
-      self.onEditEnded?(c.id, commit ? v : nil)
+      var e = was
+      e.text = commit ? v : nil
+      e.changed = e.changed || self.edit.changed
+      self.onEditEnded?(e)
       self.showPorts()
       done?()
     }
     edit.end(finish)
-    after(1) { finish(nil) }
+    after(wait) { finish(nil) }
   }
   /** The card's new bitmap landed after an edit (or 400 ms passed): the editor's view goes */
   private var awaitingRender: String?

@@ -64,7 +64,11 @@ final class JSBridge {
   }
   /** On the JavaScript thread: the shell's `native` */
   private func setUp(_ resources: URL) {
-    ctx.exceptionHandler = { _, e in logLine("[codeboard js] %@", e?.toString() ?? "?") }
+    ctx.exceptionHandler = { [weak self] _, e in
+      let text = e?.toString() ?? "?"
+      logLine("[codeboard js] %@", text)
+      self?.lastError = text
+    }
     let native = JSValue(newObjectIn: ctx)!
     func put(_ name: String, _ block: Any) { native.setObject(block, forKeyedSubscript: name as NSString) }
     let fm = FileManager.default
@@ -129,15 +133,15 @@ final class JSBridge {
     put("now", { () -> Double in CACurrentMediaTime() * 1000 } as @convention(block) () -> Double)
     // a command asks the user (core's CommandEnv.choose): an alert once this JavaScript call has returned (never modal inside
     // it), the option's index or null to the callback
-    put("choose", { (title: String, options: [String], text: String, done: JSValue) in
-      DispatchQueue.main.async {
+    put("choose", { [unowned self] (title: String, options: [String], text: String, done: JSValue) in
+      DispatchQueue.main.async { [self] in
         let a = NSAlert()
         a.messageText = title
         a.informativeText = text
-        for o in options { a.addButton(withTitle: o) }
-        a.addButton(withTitle: "Cancel")
+        for o in options { a.addButton(withTitle: o) }  // core's options carry their own Cancel
         let r = a.runModal().rawValue - NSApplication.ModalResponse.alertFirstButtonReturn.rawValue
-        done.call(withArguments: [r >= 0 && r < options.count ? r : NSNull()])
+        // the answer back on the JavaScript thread: a promise settles, and its jobs run, only there
+        js.post { done.call(withArguments: [r >= 0 && r < options.count ? r : NSNull()]) }
       }
     } as @convention(block) (String, [String], String, JSValue) -> Void)
     put("emit", { [unowned self] (name: String, json: String) in self.event(name, json) } as @convention(block) (String, String) -> Void)
@@ -245,12 +249,17 @@ final class JSBridge {
 
   // Calls into CodeBoard: all asynchronous; the reply reaches `cb` on the JavaScript thread (`typed` and `onMain` bring it to the
   // main thread, in the order replies and events were emitted)
+  /** The last JavaScript exception (the context's handler), on the JavaScript thread */
+  private var lastError: String?
   private func call(_ name: String, _ args: [Any], _ cb: @escaping (Result<String, Error>) -> Void) {
     js.post { [self] in
       let req = nextReq
       nextReq += 1
       pending[req] = cb
+      lastError = nil
       api.invokeMethod(name, withArguments: [req] + args)
+      // thrown before the entry could settle the request (a board not open, bad arguments): the request fails now
+      if let e = lastError, let cb = pending.removeValue(forKey: req) { cb(.failure(JSError(message: e))) }
     }
   }
   /** A call that answers with its return value */

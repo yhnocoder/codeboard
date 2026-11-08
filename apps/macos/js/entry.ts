@@ -29,6 +29,12 @@ const session = (dir: string, id: string) => {
 const made = (s: Session, id: string) => s.changes().then((ch) => ({ ...ch, id }));
 /** A command run, then what changed */
 const did = (s: Session, fn: (c: Session["cmd"]) => unknown) => (fn(s.cmd), s.changes());
+/** An asynchronous command that makes a card (or nothing: null), then what changed */
+const asyncMade = async (dir: string, id: string, fn: (c: Session["cmd"]) => Promise<string | null>) => {
+  const s = session(dir, id);
+  const card = await fn(s.cmd);
+  return card ? made(s, card) : null;
+};
 
 (globalThis as unknown as { CodeBoard: unknown }).CodeBoard = {
   list: (req: number, dir: string) => settle(req, bridge.folder(dir).list()),
@@ -112,20 +118,13 @@ const did = (s: Session, fn: (c: Session["cmd"]) => unknown) => (fn(s.cmd), s.ch
       req,
       did(session(dir, id), (c) => c.renameSection(section, title)),
     ),
-  newImage: (req: number, dir: string, id: string, name: string, dataUrl: string, w: number, x: number, y: number) => {
-    const s = session(dir, id);
-    void s.cmd.newImage(name, dataUrl, w, x, y).then((card) => settle(req, made(s, card)));
-  },
-  turnIntoBoard: (req: number, dir: string, id: string, ids: string, name: string, rects: string) => {
-    const s = session(dir, id);
-    void s.cmd
-      .turnIntoBoard(JSON.parse(ids), name, JSON.parse(rects))
-      .then((frame) => settle(req, frame ? made(s, frame) : Promise.resolve(null)));
-  },
-  newSubboard: (req: number, dir: string, id: string, name: string, x: number, y: number) => {
-    const s = session(dir, id);
-    void s.cmd.newSubboard(name, x, y).then((card) => settle(req, card ? made(s, card) : Promise.resolve(null)));
-  },
+  // the asynchronous commands: one promise each, so a failure anywhere in it settles the request as an error
+  newImage: (req: number, dir: string, id: string, name: string, dataUrl: string, w: number, x: number, y: number) =>
+    settle(req, asyncMade(dir, id, (c) => c.newImage(name, dataUrl, w, x, y))),
+  turnIntoBoard: (req: number, dir: string, id: string, ids: string, name: string, rects: string) =>
+    settle(req, asyncMade(dir, id, (c) => c.turnIntoBoard(JSON.parse(ids), name, JSON.parse(rects)))),
+  newSubboard: (req: number, dir: string, id: string, name: string, x: number, y: number) =>
+    settle(req, asyncMade(dir, id, (c) => c.newSubboard(name, x, y))),
   foldSection: (req: number, dir: string, id: string, section: string, shut: boolean, open: string) =>
     settle(
       req,

@@ -132,8 +132,9 @@ final class AutoRun: NSObject {
           canvas.edit.page.call("cb.type(\(encodeJSON("\n\nTyped in the Mac app: $e^{i\\pi}+1=0$ and ==a highlight==.")))")
           after(0.3) {
             let t1 = CACurrentMediaTime()
-            canvas.onEditEnded = { [weak self] id, text in
-              self?.wc.editEndedForAuto(id, text)
+            canvas.onEditEnded = { [weak self] e in
+              self?.wc.editEndedForAuto(e)
+              let id = e.id
               let l = canvas.cardLayers[id]
               l?.onRendered = { _ in
                 let exit = (CACurrentMediaTime() - t1) * 1000

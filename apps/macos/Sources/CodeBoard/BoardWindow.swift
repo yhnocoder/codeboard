@@ -76,10 +76,13 @@ final class BoardWindowController: NSWindowController, NSToolbarDelegate, NSTabl
     NotificationCenter.default.addObserver(forName: .codeboardSettings, object: nil, queue: .main) { [weak self] n in
       if ["look", "mac.toolbar"].contains(n.object as? String) { MainActor.assumeIsolated { self?.restyle() } }
     }
-    canvas.onEditEnded = { [weak self] id, text in self?.editEnded(id, text) }
+    canvas.onEditEnded = { [weak self] e in self?.editEnded(e) }
+    canvas.onEditCrashed = { [weak self] in self?.toast("The editor stopped; the text as of a second ago is kept") }
     canvas.edit.onDone = { [weak self] id, text in
-      // Esc / ⌘↵ inside the editor: unchanged (nil) leaves the text as it was
-      self?.editEnded(id, text ?? self?.canvas.edit.original)
+      // Esc / ⌘↵ inside the editor: unchanged (nil) leaves the text as it was (the edit is still this one: the page answered)
+      guard let self else { return }
+      let e = self.canvas.edit
+      self.editEnded(CanvasView.EditEnd(id: id, text: text ?? e.original, kind: e.kind, original: e.original, changed: e.changed))
     }
     // the text as edited, every second it changed: written through core (one undo step with the edit's end), so a crash
     // loses at most a second
@@ -382,7 +385,7 @@ final class BoardWindowController: NSWindowController, NSToolbarDelegate, NSTabl
     opening = id
     // an edit going on is written to the board it belongs to first (as the web board commits before a switch); the write is a
     // posted message, the open another: they reach core in order
-    canvas.endEdit(commit: true) { [weak self] in self?.openNow(id, done) }
+    canvas.endEdit(commit: true, wait: 2.5) { [weak self] in self?.openNow(id, done) }
   }
   private func openNow(_ id: String, _ done: ((Scene?) -> Void)?) {
     boards.open(id) { [weak self] r in
@@ -499,20 +502,20 @@ final class BoardWindowController: NSWindowController, NSToolbarDelegate, NSTabl
     }
   }
   /** The scripted edit check ends an edit itself (Auto.swift takes the canvas's onEditEnded) */
-  func editEndedForAuto(_ id: String, _ text: String?) { editEnded(id, text) }
+  func editEndedForAuto(_ e: CanvasView.EditEnd) { editEnded(e) }
   /** The edit ended: the text goes through core (a Note / Free code write, one undo step; a new card left empty goes) */
-  private func editEnded(_ id: String, _ text: String?) {
+  private func editEnded(_ e: CanvasView.EditEnd) {
     guard let session else { return }
     let t0 = CACurrentMediaTime()
     let apply = applyChange(session)
     let done: (Result<SceneChange, Error>) -> Void = { [weak self] r in
       apply(r)
-      self?.canvas.hideEditorWhenRendered(id)
+      self?.canvas.hideEditorWhenRendered(e.id)
       self?.editExitMs.append((CACurrentMediaTime() - t0) * 1000)
     }
     // nothing written, nothing handed over meanwhile: a fresh card goes; else the text (unchanged = left as it is by core)
-    guard let text, text != canvas.edit.original || canvas.edit.changed else { return session.settleUnwritten(id, done) }
-    if canvas.edit.kind == "code" { session.writeCode(id, text: text, done) } else { session.writeNote(id, md: text, done) }
+    guard let text = e.text, text != e.original || e.changed else { return session.settleUnwritten(e.id, done) }
+    if e.kind == "code" { session.writeCode(e.id, text: text, done) } else { session.writeNote(e.id, md: text, done) }
   }
   func canvas(_ c: CanvasView, newNoteAt p: CGPoint) { made("note", at: p) }
   func canvas(_ c: CanvasView, newCard look: String, at p: CGPoint) { made(look, at: p) }
@@ -605,20 +608,31 @@ final class BoardWindowController: NSWindowController, NSToolbarDelegate, NSTabl
     guard let session else { return }
     let ext = (name as NSString).pathExtension.lowercased()
     let mime = ["jpg": "image/jpeg", "jpeg": "image/jpeg", "gif": "image/gif", "webp": "image/webp", "svg": "image/svg+xml", "heic": "image/heic", "tiff": "image/tiff", "bmp": "image/bmp"][ext] ?? "image/png"
-    var w = 381.0
-    if let s = CGImageSourceCreateWithData(data as CFData, nil), let props = CGImageSourceCopyPropertiesAtIndex(s, 0, nil) as? [CFString: Any], let pw = props[kCGImagePropertyPixelWidth] as? Double { w = pw / 2 }
     let apply = applyChange(session)
-    session.newImage(name, dataUrl: "data:\(mime);base64,\(data.base64EncodedString())", w: w, x: p.x, y: p.y) { [weak self] r in
-      apply(r)
-      if case .success(let ch) = r, let id = ch.id, self?.session?.id == session.id { self?.canvas.select([id]) }
+    // the header read and the bytes encoded off the main thread (a screenshot is megabytes)
+    DispatchQueue.global(qos: .userInitiated).async {
+      var w = 381.0
+      if let s = CGImageSourceCreateWithData(data as CFData, nil), let props = CGImageSourceCopyPropertiesAtIndex(s, 0, nil) as? [CFString: Any], let pw = props[kCGImagePropertyPixelWidth] as? Double { w = pw / 2 }
+      let url = "data:\(mime);base64,\(data.base64EncodedString())"
+      DispatchQueue.main.async { [weak self] in
+        guard self?.session?.id == session.id else { return }
+        session.newImage(name, dataUrl: url, w: w, x: p.x, y: p.y) { [weak self] r in
+          apply(r)
+          if case .success(let ch) = r, let id = ch.id, self?.session?.id == session.id { self?.canvas.select([id]) }
+        }
+      }
     }
   }
   @objc func addImage(_ sender: Any?) {
     let p = NSOpenPanel()
     p.allowedContentTypes = [.image]
     p.allowsMultipleSelection = false
-    guard p.runModal() == .OK, let u = p.url, let d = try? Data(contentsOf: u) else { return }
-    newImage(d, name: u.lastPathComponent, at: centre)
+    guard p.runModal() == .OK, let u = p.url else { return }
+    let at = centre
+    DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+      guard let d = try? Data(contentsOf: u) else { return }
+      DispatchQueue.main.async { self?.newImage(d, name: u.lastPathComponent, at: at) }
+    }
   }
   @objc func addArrow(_ sender: Any?) {
     canvas.arrowMode = true
@@ -640,7 +654,7 @@ final class BoardWindowController: NSWindowController, NSToolbarDelegate, NSTabl
 
   /** Everything unsaved written: the edit going on first, then Storage's queue */
   func flush(_ done: @escaping () -> Void) {
-    canvas.endEdit(commit: true) { [weak self] in
+    canvas.endEdit(commit: true, wait: 2.5) { [weak self] in
       guard let self else { return done() }
       self.boards.flush(done)
     }
@@ -660,7 +674,7 @@ extension BoardWindowController: NSWindowDelegate {
   /** ⌘W while editing: the text is written first (the page answers asynchronously), then the window closes */
   func windowShouldClose(_ sender: NSWindow) -> Bool {
     guard canvas.edit.active else { return true }
-    canvas.endEdit(commit: true) { [weak self] in self?.window?.close() }
+    canvas.endEdit(commit: true, wait: 2.5) { [weak self] in self?.window?.close() }
     return false
   }
   func windowWillClose(_ notification: Notification) {

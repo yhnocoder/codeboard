@@ -213,7 +213,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
       open -= 1
       if open <= 0 { bridge.flush { _ in reply() } }
     }
-    if windows.isEmpty { flush() } else { for w in windows { w.canvas.endEdit(commit: true, done: flush) } }
+    if windows.isEmpty { flush() } else { for w in windows { w.canvas.endEdit(commit: true, wait: 2.5, done: flush) } }
     after(3) { reply() }
     return .terminateLater
   }

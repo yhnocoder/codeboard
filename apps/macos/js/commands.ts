@@ -10,7 +10,8 @@ import {
   type Board,
   type Card,
   type CardCopy,
-  checkBoard,
+  bounds,
+  findFree,
   type IconRef,
   NEW_CARD_W,
   type Sidenote,
@@ -47,7 +48,7 @@ import {
   writeSidenote,
   type CommandEnv,
 } from "@codeboard/core/commands";
-import type { Storage } from "@codeboard/host/storage";
+import { dropMadeBoard, restoreMadeBoard, type Storage, storeNewBoard } from "@codeboard/host/storage";
 
 export type History = ReturnType<typeof createHistory>;
 
@@ -85,25 +86,25 @@ export function makeEnv(
     choose: (title: string, options: string[], text?: string) => Promise<number | null>;
     /** The folder's Storage: what the host answers Turn into Board with (newBoard, dropBoard, restoreBoard) */
     storage?: Storage;
+    /** A board an undo dropped: whoever has it open lets go of it (the host closes its panel) */
+    dropped?: (id: string) => void;
   },
 ): Env {
-  // the few requests the app's commands make, answered as the host's handlers.ts answers them
+  // the few requests the app's commands make, answered with the host's own storage helpers (handlers.ts uses the same)
   const ask = async (type: string, m: Record<string, unknown>): Promise<unknown> => {
     const s = o.storage;
     if (!s) throw new Error("No host in the app");
     const here = board().id;
     switch (type) {
-      case "newBoard": {
-        const b = checkBoard(m.board);
-        if (await s.load(b.id)) throw new Error("Bad board id.");
-        await s.save(b, { group: s.groupOf(here) ?? null });
-        return true;
+      case "newBoard":
+        return storeNewBoard(s, here, m.board);
+      case "dropBoard": {
+        const gone = await dropMadeBoard(s, here, m.id as string, m.made);
+        if (gone) o.dropped?.(m.id as string);
+        return gone;
       }
-      case "dropBoard":
-        if ((await s.list()).some((x) => x.id !== here && x.subs?.includes(m.id as string))) return false;
-        return s.dropIfUnchanged(m.id as string, checkBoard(m.made));
       case "restoreBoard":
-        return s.restore(m.id as string, s.groupOf(here));
+        return restoreMadeBoard(s, here, m.id as string);
       default:
         throw new Error(`${type}: not in the app`);
     }
@@ -180,10 +181,15 @@ export function commands(env: Env, storage: () => Storage) {
     paste(): string[] {
       if (!clip || clip.board !== env.board().id) return [];
       const k = ++clip.n;
+      // as the board pastes: a step down and right of the originals, then the nearest free spot (core's findFree)
+      const tops = clip.items.filter((x) => x.place);
+      const box = bounds(tops.map((x) => ({ x: x.place!.x, y: x.place!.y, w: x.place!.w, h: (x.place!.h ?? 300) + 40 })));
+      if (!box) return [];
+      const free = findFree({ ...box, x: box.x + 36 * k, y: box.y + 36 * k }, Object.values(estRects(env.board())));
       const r = pasteCards(env, structuredClone(clip.items), structuredClone(clip.links), {
         copy: true,
-        dx: 36 * k,
-        dy: 36 * k,
+        dx: Math.round(free.x - box.x),
+        dy: Math.round(free.y - box.y),
         settle,
       });
       return r?.pairs.map(([id]) => id) ?? [];

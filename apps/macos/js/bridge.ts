@@ -13,12 +13,11 @@ import {
   type Camera,
   emptyBoard,
   estSize,
-  findCard,
   type Rect,
   sectionFrames,
   type SharedUpdate,
 } from "@codeboard/core";
-import { dropCards, dropGone } from "@codeboard/core/commands";
+import { dropCards, dropGone, resizePlace } from "@codeboard/core/commands";
 import { createHistory, createSave, type Doc } from "@codeboard/core/history";
 import { type Fs, Storage } from "@codeboard/host/storage";
 import { noteBlocks } from "@yhnocoder/markdown";
@@ -67,6 +66,8 @@ export interface Session {
   resize(id: string, w: number, h: number | null | "keep"): void;
   /** The edits (commands.ts), each followed by changes() for the shell */
   cmd: ReturnType<typeof commands>;
+  /** The board is gone from storage: this session writes nothing more */
+  kill(): void;
   flushSave(): void;
   /** Core's raw access, for the gate measurements and tests */
   mutate(fn: (b: Board) => void): boolean;
@@ -141,7 +142,11 @@ export function createBridge(native: Native, opts: { fs?: Fs; timers?: boolean; 
         if (s) return s;
         const b = await storage.load(id);
         if (!b) return null;
-        s = makeSession(dir, storage, b, env);
+        s = makeSession(dir, storage, b, env, (gone) => {
+          // a sub-board an undo took back: a session on it (a window had it open) must not write it again
+          sessions.get(gone)?.kill();
+          sessions.delete(gone);
+        });
         sessions.set(id, s);
         return s;
       },
@@ -165,7 +170,7 @@ export function createBridge(native: Native, opts: { fs?: Fs; timers?: boolean; 
   }
 
   // MARK: a session: one open board, with core's history and saving
-  function makeSession(dir: string, storage: Storage, loaded: Board, env: SceneEnv): Session {
+  function makeSession(dir: string, storage: Storage, loaded: Board, env: SceneEnv, dropped: (id: string) => void): Session {
     const id = loaded.id;
     let board: Board = emptyBoard("none", "");
     const doc: Doc = {
@@ -193,12 +198,15 @@ export function createBridge(native: Native, opts: { fs?: Fs; timers?: boolean; 
       },
       { noteBlocks, selfCheck: false },
     );
+    /** The board was dropped (an undone Turn into Board): nothing of it is written any more */
+    let dead = false;
     const save = createSave({
       loaded: () => true,
       snap: history.snap,
       cam: () => board.cam,
       takeUndone: history.takeUndone,
       post: async (patch, undo) => {
+        if (dead) return { skipped: 0 };
         const skipped = await storage.patch(id, patch, { undo });
         // shared items an undo skipped: Storage kept the other board's version, this board takes it back (host handlers.ts)
         if (skipped.length) syncShared(skipped);
@@ -361,23 +369,23 @@ export function createBridge(native: Native, opts: { fs?: Fs; timers?: boolean; 
       cam: (c: Camera) => history.liveCam(c),
       // a locked card stays; a Compare's column resizes its Compare (the board's hostPlace)
       resize(card, w, h) {
-        history.live((b) => {
-          const p = b.place[findCard(b, card)?.host.id ?? card];
-          if (!p || p.locked) return;
-          p.w = Math.max(120, Math.round(w));
-          if (h === null) p.h = undefined;
-          else if (h !== "keep") p.h = Math.max(40, Math.round(h));
-        });
+        history.live((b) => void resizePlace(b, card, w, h));
       },
       cmd: commands(
         makeEnv(history, () => board, {
           toast: (text) => emit("toast", { dir, id, text }),
           choose: (title, options, text) => new Promise((res) => native.choose(title, options, text ?? "", res)),
           storage,
+          dropped,
         }),
         () => storage,
       ),
-      flushSave: () => save.flush(),
+      flushSave: () => {
+        if (!dead) save.flush();
+      },
+      kill: () => {
+        dead = true;
+      },
       mutate: (fn) => history.mutate(fn),
     };
   }

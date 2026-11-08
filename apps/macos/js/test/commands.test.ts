@@ -84,6 +84,10 @@ describe("the app's commands", () => {
     bridge.resize("n1", 500, 200);
     // the width alone: the height stays (not dropped to the content's)
     bridge.resize("n1", 520, "keep");
+    // core's rule: a Note no narrower than 160, a height no lower than 64
+    bridge.resize("n1", 10, 10);
+    expect(bridge.board().place.n1).toMatchObject({ w: 160, h: 64 });
+    bridge.resize("n1", 520, 200);
     const ch = await bridge.endDrag([]);
     expect(ch.cards.map((c) => [c.id, c.w, c.h, c.fixed])).toEqual([["n1", 520, 200, true]]);
     // a locked card keeps its size

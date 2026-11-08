@@ -265,6 +265,26 @@ export function newSection(
  * before it in `b`); section = the Section they go in, otherwise settle(b, id) files each where it landed. also = more of the same
  * step (one undo)
  */
+/** The smallest a card can be dragged to (interact.ts's resize): a Box 60, other Text 80, a sub-board frame 200, else 160 */
+function minCardWidth(c: Card): number {
+  if (c.kind === "note" && c.look !== "note") return c.look === "box" ? 60 : 80;
+  return c.kind === "board" ? 200 : 160;
+}
+/**
+ * A live resize of a card (inside a gesture; the shell records the step when it ends): the width no smaller than the card's
+ * minimum, the height kept ("keep"), back to the content's (null) or set, no lower than 64; a locked card stays. Whether it changed
+ */
+export function resizePlace(b: Board, id: string, w: number, h: number | null | "keep"): boolean {
+  const found = findCard(b, id);
+  const c = found?.card ?? b.cards.find((k) => k.id === id);
+  const p = b.place[found?.host.id ?? id];
+  if (!c || !p || p.locked) return false;
+  p.w = Math.max(minCardWidth(c), Math.round(w));
+  if (h === null) p.h = undefined;
+  else if (h !== "keep") p.h = Math.max(64, Math.round(h));
+  return true;
+}
+
 export function addCards(
   env: CommandEnv,
   cards: Card[],

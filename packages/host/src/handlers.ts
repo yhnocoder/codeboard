@@ -7,7 +7,6 @@ import {
   sniffImage,
   sniffSvg,
   cleanCompletion,
-  checkBoard,
   isBoardSeal,
   subCardOf,
   wouldCycle,
@@ -39,6 +38,7 @@ import type { BoardHost, BoardPanel } from "./boards";
 import { callVars, dispatchAt, expand, peek } from "./resolve";
 import { search, searchPick, entryPoints, searchName, genSource } from "./search";
 import { SAFE_ID } from "./storage/names";
+import { dropMadeBoard, restoreMadeBoard, storeNewBoard } from "./storage/subboards";
 import { pasteClip } from "./storage/clip";
 import { pasteFar, recordClip } from "./transfer";
 import { applyFlow, captureFlow } from "./runs";
@@ -224,14 +224,8 @@ export function makeHandler(cx: HostContext, panels: BoardHost, mediaDir: string
       const segs = [r.card, ...(r.cols ?? [])].flatMap((c) => (isCode(c) ? c.segments : []));
       return { ...r, views: segs.length ? await viewsFor(cx, segs) : {} };
     },
-    newBoard: async (p, m) => {
-      // Turn into Board：白板拆好的新白板（schema 校验一遍；存的就是收到的这个对象，消息是宿主自己的一份）。共享卡在新白板上还是共享卡；放在父白板的组里
-      const b = checkBoard(m.board);
-      if (!SAFE_ID.test(b.id) || (await store.load(b.id))) throw new Error("Bad board id.");
-      const refs = [...store.refsOf(p.id)].filter((id) => b.cards.some((c) => c.id === id));
-      await store.save(b, { group: store.groupOf(p.id) ?? null, refs });
-      return true;
-    },
+    // Turn into Board：白板拆好的新白板（schema 校验一遍；存的就是收到的这个对象，消息是宿主自己的一份）。共享卡在新白板上还是共享卡；放在父白板的组里
+    newBoard: (p, m) => storeNewBoard(store, p.id, m.board),
     enterBoard: async (p, m) => {
       // 不能套成环：子白板里（一路往下）有这块白板
       const metas = await store.list();
@@ -266,14 +260,12 @@ export function makeHandler(cx: HostContext, panels: BoardHost, mediaDir: string
       return ok ? null : "That board is already open in another tab.";
     },
     dropBoard: async (p, m) => {
-      if ((await store.list()).some((x) => x.id !== p.id && x.subs?.includes(m.id))) return false;
-      // 和存下来时一样校验一遍再比（newBoard 存的是校验过的那份）
-      if (!(await store.dropIfUnchanged(m.id, checkBoard(m.made)))) return false;
+      if (!(await dropMadeBoard(store, p.id, m.id, m.made))) return false;
       closeOthers(p, m.id);
       return true;
     },
     restoreBoard: async (p, m) => {
-      const ok = await store.restore(m.id, store.groupOf(p.id));
+      const ok = await restoreMadeBoard(store, p.id, m.id);
       if (ok) await panels.pushBoards();
       return ok;
     },

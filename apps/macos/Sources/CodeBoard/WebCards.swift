@@ -51,9 +51,11 @@ struct CardSpec: Encodable {
 /** The configuration's handlers (retained by WebKit): they forward to the page without retaining it */
 private final class PageHandler: NSObject, WKScriptMessageHandler, WKURLSchemeHandler {
   weak var page: CardPage?
+  /** Tasks WebKit stopped (the page navigated, the view went) while their file was being read: calling into one throws */
+  var stopped: Set<ObjectIdentifier> = []
   func userContentController(_ c: WKUserContentController, didReceive m: WKScriptMessage) { page?.userContentController(c, didReceive: m) }
   func webView(_ w: WKWebView, start task: WKURLSchemeTask) { page?.webView(w, start: task) }
-  func webView(_ w: WKWebView, stop task: WKURLSchemeTask) {}
+  func webView(_ w: WKWebView, stop task: WKURLSchemeTask) { stopped.insert(ObjectIdentifier(task)) }
 }
 
 /** The card page in a WKWebView: cb.* calls in, messages out (web/main.ts), the page and the storage folder's assets under cb: */
@@ -62,6 +64,11 @@ final class CardPage: NSObject, WKScriptMessageHandler, WKURLSchemeHandler, WKNa
   private(set) var ready = false
   private var queued: [(String, ((Any?) -> Void)?)] = []
   var onMessage: (([String: Any]) -> Void)?
+  /** The page is ready (again): whoever set it up sends its setup again (after a WebContent crash the page starts over) */
+  var onReady: (() -> Void)?
+  /** WebKit's content process died under the page: it is loading again; the owner recovers what it was doing */
+  var onTerminated: (() -> Void)?
+  private weak var handler: PageHandler?
   var assetsDir = ""
   static var pageDir: URL {
     if let r = Bundle.main.url(forResource: "web", withExtension: nil) { return r }
@@ -98,6 +105,7 @@ final class CardPage: NSObject, WKScriptMessageHandler, WKURLSchemeHandler, WKNa
     web = CardWeb(frame: frame, configuration: cfg)
     super.init()
     handler.page = self
+    self.handler = handler
     web.setValue(false, forKey: "drawsBackground")
     // --inspect: the pages show in Safari's Develop menu (the editor's typing profile)
     if CommandLine.arguments.contains("--inspect") { web.isInspectable = true }
@@ -125,11 +133,18 @@ final class CardPage: NSObject, WKScriptMessageHandler, WKURLSchemeHandler, WKNa
     if d["type"] as? String == "ready" {
       ready = true
       logLine("[codeboard web] script ready (page %.0f ms since its start, fonts %@)", d["ms"] as? Double ?? -1, d["fonts"] as? Bool == true ? "loaded" : "loading")
+      onReady?()
       let q = queued
       queued = []
       for (js, done) in q { call(js, done) }
     }
     onMessage?(d)
+  }
+  func webViewWebContentProcessDidTerminate(_ w: WKWebView) {
+    logLine("[codeboard web] the page's content process died: loading it again")
+    ready = false
+    onTerminated?()
+    web.load(URLRequest(url: URL(string: "cb://app/index.html")!))
   }
   func webView(_ w: WKWebView, didFailProvisionalNavigation n: WKNavigation!, withError e: Error) { logLine("[codeboard web] load failed: %@", e.localizedDescription) }
   func webView(_ w: WKWebView, didFail n: WKNavigation!, withError e: Error) { logLine("[codeboard web] failed: %@", e.localizedDescription) }
@@ -154,13 +169,17 @@ final class CardPage: NSObject, WKScriptMessageHandler, WKURLSchemeHandler, WKNa
       root = URL(fileURLWithPath: assetsDir)
       rel = String(path.dropFirst(8))
     }
-    let base = root.standardizedFileURL.path
-    let file = root.appendingPathComponent(rel).standardizedFileURL.path
+    // symlinks resolved on both sides, so a link inside assets/ cannot lead out of it
+    let base = root.standardizedFileURL.resolvingSymlinksInPath().path
+    let file = root.appendingPathComponent(rel).standardizedFileURL.resolvingSymlinksInPath().path
     guard !rel.isEmpty, file.hasPrefix(base + "/") else { task.didFailWithError(URLError(.badURL)); return }
     let mime = CardPage.mime[(file as NSString).pathExtension.lowercased()] ?? "application/octet-stream"
+    let key = ObjectIdentifier(task)
     DispatchQueue.global(qos: .userInitiated).async {
       let data = FileManager.default.contents(atPath: file)
-      DispatchQueue.main.async {
+      DispatchQueue.main.async { [weak self] in
+        // stopped meanwhile (the page moved on): nothing may be called on the task
+        guard let h = self?.handler, !h.stopped.contains(key) else { self?.handler?.stopped.remove(key); return }
         guard let data else { task.didFailWithError(URLError(.fileDoesNotExist)); return }
         task.didReceive(URLResponse(url: url, mimeType: mime, expectedContentLength: data.count, textEncodingName: nil))
         task.didReceive(data)
@@ -199,17 +218,28 @@ final class NoteRenderer: NSObject {
   static let diskDir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("CodeBoard/notes", isDirectory: true)
   private static let disk = DispatchQueue(label: "codeboard.notes.disk", qos: .utility)
   private static func file(_ key: String) -> URL { diskDir.appendingPathComponent(SHA256.hash(data: Data(key.utf8)).map { String(format: "%02x", $0) }.joined()) }
-  /** At most this many files; the oldest go when there are more (checked once per launch) */
+  /** At most this many files and bytes; the oldest go when there are more (checked once per launch) */
   static let diskFiles = 4000
+  static let diskBytes = 256 << 20
   private static var pruned = false
   private static func prune() {
     guard !pruned else { return }
     pruned = true
     disk.async {
       try? FileManager.default.createDirectory(at: diskDir, withIntermediateDirectories: true)
-      guard let all = try? FileManager.default.contentsOfDirectory(at: diskDir, includingPropertiesForKeys: [.contentModificationDateKey]), all.count > diskFiles else { return }
-      let dated = all.map { ($0, (try? $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast) }.sorted { $0.1 < $1.1 }
-      for (u, _) in dated.prefix(all.count - diskFiles / 2) { try? FileManager.default.removeItem(at: u) }
+      guard let all = try? FileManager.default.contentsOfDirectory(at: diskDir, includingPropertiesForKeys: [.contentModificationDateKey, .fileSizeKey]) else { return }
+      let dated = all.map { u -> (URL, Date, Int) in
+        let v = try? u.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey])
+        return (u, v?.contentModificationDate ?? .distantPast, v?.fileSize ?? 0)
+      }.sorted { $0.1 < $1.1 }
+      var count = dated.count, bytes = dated.reduce(0) { $0 + $1.2 }
+      guard count > diskFiles || bytes > diskBytes else { return }
+      // down to half of either bound, oldest first
+      for (u, _, size) in dated where count > diskFiles / 2 || bytes > diskBytes / 2 {
+        try? FileManager.default.removeItem(at: u)
+        count -= 1
+        bytes -= size
+      }
     }
   }
   /** The PDF on disk for this key, read here (a few dozen KB; ~0.2 ms) */
@@ -230,8 +260,10 @@ final class NoteRenderer: NSObject {
     }
   }
   private var queue: [(key: String, spec: CardSpec, done: (NotePDF) -> Void)] = []
-  /** The request the page is rendering now (requests that come meanwhile go to the front of the queue) */
+  /** The request the page is rendering now (requests that come meanwhile go to the front of the queue), and its number: the
+   *  page answers with it, so a late answer to an earlier request for the same card is not taken for this one */
   private var current: (key: String, spec: CardSpec, done: (NotePDF) -> Void)?
+  private var req = 0
   private var busy: Bool { current != nil }
   /** The theme the page was told last ("" until the canvas tells it, with the look) */
   private var theme = ""
@@ -251,6 +283,18 @@ final class NoteRenderer: NSObject {
     page = CardPage(frame: CGRect(origin: .zero, size: NoteRenderer.pageSize))
     super.init()
     page.onMessage = { [weak self] m in self?.message(m) }
+    // the page starts over (first load, or after its process died): its theme and titles again, the render in flight re-asked
+    page.onReady = { [weak self] in
+      guard let self else { return }
+      if !self.theme.isEmpty { self.page.call("cb.setup(\(encodeJSON(["theme": self.theme, "look": Theme.look])))") }
+      if let t = self.titles { self.page.call("cb.setup(\(encodeJSON(["titles": t])))") }
+    }
+    page.onTerminated = { [weak self] in
+      guard let self else { return }
+      if let c = self.current { self.queue.insert(c, at: 0) }
+      self.current = nil
+      self.pump()
+    }
     NoteRenderer.prune()
     NotificationCenter.default.addObserver(self, selector: #selector(occlusionChanged(_:)), name: NSWindow.didChangeOcclusionStateNotification, object: nil)
   }
@@ -266,7 +310,9 @@ final class NoteRenderer: NSObject {
     clear()
     page.call("cb.setup(\(encodeJSON(["theme": t, "look": Theme.look])))")
   }
+  private var titles: [[String: String]]?
   func setTitles(_ titles: [[String: String]]) {
+    self.titles = titles
     titlesKey = SHA256.hash(data: Data(titles.map { "\($0["id"] ?? "")=\($0["title"] ?? "")" }.joined(separator: "|").utf8)).prefix(8).map { String(format: "%02x", $0) }.joined()
     page.call("cb.setup(\(encodeJSON(["titles": titles])))")
   }
@@ -275,7 +321,13 @@ final class NoteRenderer: NSObject {
     order = []
     bytes = 0
   }
-  private func key(_ spec: CardSpec) -> String { "\(theme)|\(spec.md.contains("[[") ? titlesKey : "")|\(spec.key)" }
+  /** The card page bundle's identity (Vite names its files by content): a rebuilt page never reads the old page's renders */
+  private static let bundleKey: String = {
+    let dir = CardPage.pageDir.appendingPathComponent("assets")
+    let names = ((try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? []).sorted().joined(separator: "\n")
+    return SHA256.hash(data: Data(names.utf8)).prefix(6).map { String(format: "%02x", $0) }.joined()
+  }()
+  private func key(_ spec: CardSpec) -> String { "\(NoteRenderer.bundleKey)|\(theme)|\(spec.md.contains("[[") ? titlesKey : "")|\(spec.key)" }
   private func hit(_ key: String) -> NotePDF? {
     guard let pdf = cache[key] else {
       guard let pdf = fromDisk(key) else { return nil }
@@ -320,10 +372,12 @@ final class NoteRenderer: NSObject {
       return
     }
     current = r
-    if debugLog { logLine("[codeboard web] render %@", r.spec.id) }
-    page.call("cb.render(\(encodeJSON(r.spec)), 1)")
+    req += 1
+    let mine = req
+    if debugLog { logLine("[codeboard web] render %@ (#%d)", r.spec.id, mine) }
+    page.call("cb.render(\(encodeJSON(r.spec)), 1, \(mine))")
     after(NoteRenderer.timeout) { [weak self] in
-      guard let self, let c = self.current, c.key == r.key else { return }
+      guard let self, let c = self.current, c.key == r.key, self.req == mine else { return }
       logLine("[codeboard web] render of %@ did not answer in %.0f s: dropped", r.spec.id, NoteRenderer.timeout)
       self.current = nil
       // occluded meanwhile: the page could not answer; asked again once the window shows
@@ -334,8 +388,10 @@ final class NoteRenderer: NSObject {
 
   private func message(_ m: [String: Any]) {
     if debugLog { logLine("[codeboard web] message %@ busy %d queue %d", m["type"] as? String ?? "?", busy ? 1 : 0, queue.count) }
-    guard m["type"] as? String == "rendered", let r = current, m["id"] as? String == r.spec.id else { return }
+    guard m["type"] as? String == "rendered", let r = current, m["id"] as? String == r.spec.id, (m["req"] as? Int) == req else { return }
     let w = (m["w"] as? Double) ?? r.spec.w, h = (m["h"] as? Double) ?? 60
+    // shown either way; kept on disk only when the render settled on its own and threw nothing
+    let clean = m["capped"] as? Bool != true && m["error"] as? Bool != true
     times.append(m["ms"] as? Double ?? 0)
     let ts = CACurrentMediaTime()
     let cfg = WKPDFConfiguration()
@@ -357,7 +413,7 @@ final class NoteRenderer: NSObject {
     page.web.createPDF(configuration: cfg) { res in
       switch res {
       case .success(let data):
-        self.toDisk(r.key, data, w: w, h: h)
+        if clean { self.toDisk(r.key, data, w: w, h: h) }
         finish(CGDataProvider(data: data as CFData).flatMap { CGPDFDocument($0) }, data.count, "createPDF")
       case .failure(let err): logLine("[codeboard web] createPDF failed: %@", err.localizedDescription); finish(nil, 0, "createPDF")
       }
@@ -420,7 +476,16 @@ final class EditCard {
     // never hidden (a hidden web view runs no animation frames, so the page could not tell when it painted): alpha 0 instead
     page.web.alphaValue = 0
     page.onMessage = { [weak self] m in self?.message(m) }
+    // the content process died under an edit: the text as of the last live write is what the card keeps (written through core
+    // already); the editor closes and the user is told
+    page.onTerminated = { [weak self] in
+      guard let self, let c = self.card else { return }
+      self.card = nil
+      self.shown = false
+      self.onCrashed?(c.id)
+    }
   }
+  var onCrashed: ((String) -> Void)?
   /** The air around the card the view keeps, in points at zoom 1: the selection ring and Ink Wash's paper reach outside the
    *  card (web/main.ts EDIT_EDGE) */
   static let edge: CGFloat = 16

@@ -126,13 +126,13 @@ function cardEl(c: CardSpec): { card: HTMLElement; body: HTMLElement; mdBody: bo
 }
 
 /** Everything async in a render has landed: no DOM changes for a frame and every image decoded (or failed); 400 ms at most */
-function settled(el: HTMLElement): Promise<void> {
+function settled(el: HTMLElement): Promise<boolean> {
   return new Promise((done) => {
     let t = 0;
-    const end = () => {
+    const end = (capped = false) => {
       mo.disconnect();
       clearTimeout(cap);
-      done();
+      done(capped);
     };
     const imagesDone = () => [...el.querySelectorAll("img")].every((i) => i.complete);
     const arm = () => {
@@ -146,7 +146,7 @@ function settled(el: HTMLElement): Promise<void> {
     mo.observe(el, { childList: true, subtree: true, attributes: true, characterData: true });
     el.querySelectorAll("img").forEach((i) => i.addEventListener("load", arm, { once: true }));
     el.querySelectorAll("img").forEach((i) => i.addEventListener("error", arm, { once: true }));
-    const cap = setTimeout(end, 400);
+    const cap = setTimeout(() => end(true), 400);
     arm();
   });
 }
@@ -201,7 +201,7 @@ const cb = {
    * Draw one card at the page's origin, `scale` times its size (CSS zoom: text is laid out at the card's width and rasterised
    * sharp), then tell the app its size and how long it took: {type: "rendered", id, w, h, ms}. The app snapshots the rect
    */
-  async render(c: CardSpec, scale: number) {
+  async render(c: CardSpec, scale: number, req = 0) {
     const t0 = performance.now();
     try {
       stage.style.zoom = String(scale);
@@ -214,12 +214,13 @@ const cb = {
         md.hydrate(body, html);
       } else body.textContent = c.md;
       stage.appendChild(card);
-      await settled(body);
+      // capped: something was still changing (an image not decoded) when the 400 ms ran out: shown, not kept on disk
+      const capped = await settled(body);
       const { w, h } = heightOf(card);
-      post({ type: "rendered", id: c.id, w, h, ms: performance.now() - t0 });
+      post({ type: "rendered", id: c.id, req, w, h, ms: performance.now() - t0, capped });
     } catch (e) {
       post({ type: "error", text: `render ${c.id}: ${(e as Error).stack ?? e}` });
-      post({ type: "rendered", id: c.id, w: c.w, h: 60, ms: performance.now() - t0 });
+      post({ type: "rendered", id: c.id, req, w: c.w, h: 60, ms: performance.now() - t0, error: true });
     }
   },
   /**
