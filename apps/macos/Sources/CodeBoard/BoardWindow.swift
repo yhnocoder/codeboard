@@ -1,13 +1,15 @@
 // A project's window: the unified toolbar and the sidebar of that project's boards (window chrome, Liquid Glass), the canvas, and
-// a glass pill over it with the zoom. Owns the bridge for its storage folder: scene in, changes out.
+// a glass pill over it with the zoom. A view onto the shared bridge's Folder (its boards) and the Session of the board it shows:
+// scene in, changes out.
 import AppKit
 
 final class BoardWindowController: NSWindowController, NSToolbarDelegate, NSTableViewDelegate, NSTableViewDataSource, CanvasDelegate {
-  let bridge: JSBridge
   let folder: String
+  let boards: Folder
+  private(set) var session: Session?
   let canvas = CanvasView(frame: .zero)
   private let table = NSTableView()
-  private var boards: [BoardMeta] = []
+  private var list: [BoardMeta] = []
   private(set) var current: String?
   private let zoomLabel = NSTextField(labelWithString: "100%")
   private var canUndo = false, canRedo = false
@@ -15,9 +17,9 @@ final class BoardWindowController: NSWindowController, NSToolbarDelegate, NSTabl
   /** The window closed: whoever keeps the controller lets go of it */
   var onClose: (() -> Void)?
 
-  init(folder: String, bundle: URL) throws {
+  init(folder: String, bridge: JSBridge) {
     self.folder = folder
-    bridge = try JSBridge(bundle: bundle, resources: bundle.deletingLastPathComponent())
+    boards = bridge.folder(folder)
     let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1280, height: 820), styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
     w.title = (folder as NSString).lastPathComponent
     w.subtitle = folder
@@ -48,9 +50,7 @@ final class BoardWindowController: NSWindowController, NSToolbarDelegate, NSTabl
     w.toolbar = tb
     canvas.delegate = self
     canvas.onCamera = { [weak self] c in self?.zoomLabel.stringValue = "\(Int((c.z * 100).rounded()))%" }
-    bridge.onEvent = { [weak self] name, json in self?.event(name, json) }
-    logLine("[codeboard] memory after the bridge loaded: %.0f MB footprint", AutoRun.residentMB())
-    bridge.initStorage(dir: folder)
+    boards.listen(self) { [weak self] name, id, json in self?.event(name, id, json) }
     refresh()
   }
   required init?(coder: NSCoder) { fatalError() }
@@ -133,22 +133,23 @@ final class BoardWindowController: NSWindowController, NSToolbarDelegate, NSTabl
 
   // MARK: boards
   func refresh() {
-    bridge.list { [weak self] r in
+    boards.list { [weak self] r in
       guard let self, case .success(let list) = r else { return }
-      self.boards = list.sorted { ($0.group ?? "", $0.name) < ($1.group ?? "", $1.name) }
+      self.list = list.sorted { ($0.group ?? "", $0.name) < ($1.group ?? "", $1.name) }
       self.table.reloadData()
-      if let cur = self.current, let i = self.boards.firstIndex(where: { $0.id == cur }) { self.table.selectRowIndexes([i], byExtendingSelection: false) }
+      if let cur = self.current, let i = self.list.firstIndex(where: { $0.id == cur }) { self.table.selectRowIndexes([i], byExtendingSelection: false) }
     }
   }
   func open(_ id: String, _ done: ((Scene?) -> Void)? = nil) {
-    bridge.open(id) { [weak self] r in
+    boards.open(id) { [weak self] r in
       guard let self else { return }
       switch r {
-      case .success(let s):
+      case .success(let (s, session)):
         self.current = id
+        self.session = session
         self.window?.title = s.name
         self.canvas.load(s)
-        if let i = self.boards.firstIndex(where: { $0.id == id }) { self.table.selectRowIndexes([i], byExtendingSelection: false) }
+        if let i = self.list.firstIndex(where: { $0.id == id }) { self.table.selectRowIndexes([i], byExtendingSelection: false) }
         self.onOpened?(s)
         done?(s)
       case .failure(let e):
@@ -159,10 +160,10 @@ final class BoardWindowController: NSWindowController, NSToolbarDelegate, NSTabl
   }
   @objc private func pick() {
     let i = table.selectedRow
-    guard i >= 0, i < boards.count, boards[i].id != current else { return }
-    open(boards[i].id)
+    guard i >= 0, i < list.count, list[i].id != current else { return }
+    open(list[i].id)
   }
-  func numberOfRows(in tableView: NSTableView) -> Int { boards.count }
+  func numberOfRows(in tableView: NSTableView) -> Int { list.count }
   func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
     let id = NSUserInterfaceItemIdentifier("cell")
     let cell = tableView.makeView(withIdentifier: id, owner: nil) as? NSTableCellView ?? {
@@ -176,19 +177,22 @@ final class BoardWindowController: NSWindowController, NSToolbarDelegate, NSTabl
       NSLayoutConstraint.activate([t.leadingAnchor.constraint(equalTo: c.leadingAnchor, constant: 4), t.trailingAnchor.constraint(equalTo: c.trailingAnchor, constant: -4), t.centerYAnchor.constraint(equalTo: c.centerYAnchor)])
       return c
     }()
-    let b = boards[row]
+    let b = list[row]
     cell.textField?.stringValue = (b.group.map { "\($0) / " } ?? "") + b.name
     cell.textField?.toolTip = "\(b.cards) cards"
     return cell
   }
 
   // MARK: events from the bridge
-  private func event(_ name: String, _ json: String) {
+  /** The folder's events; a board's only when it is the one shown */
+  private func event(_ name: String, _ id: String?, _ json: String) {
+    if let id, id != current { return }
     switch name {
     case "changed":
-      if let ch = try? decodeJSON(SceneChange.self, json) {
-        canvas.apply(ch)
-        if let n = ch.name { window?.title = n }
+      struct C: Decodable { var change: SceneChange }
+      if let c = try? decodeJSON(C.self, json) {
+        canvas.apply(c.change)
+        if let n = c.change.name { window?.title = n }
       }
     case "boards": refresh()
     case "stacks":
@@ -199,7 +203,8 @@ final class BoardWindowController: NSWindowController, NSToolbarDelegate, NSTabl
         window?.toolbar?.validateVisibleItems()
       }
     case "toast":
-      toast((try? decodeJSON(String.self, json)) ?? json)
+      struct T: Decodable { var text: String }
+      toast((try? decodeJSON(T.self, json))?.text ?? json)
     case "log":
       logLine("[codeboard storage] %@", json)
     default: break
@@ -213,26 +218,28 @@ final class BoardWindowController: NSWindowController, NSToolbarDelegate, NSTabl
 
   // MARK: canvas → core
   func canvas(_ c: CanvasView, dragEnded moves: [JSBridge.Move]) {
-    bridge.beginDrag()
-    bridge.drag(moves)
-    bridge.endDrag(moves) { [weak self] r in if case .success(let ch) = r { self?.canvas.apply(ch) } }
+    guard let session else { return }
+    session.beginDrag()
+    session.drag(moves)
+    session.endDrag(moves) { [weak self] r in if case .success(let ch) = r { self?.canvas.apply(ch) } }
   }
-  func canvas(_ c: CanvasView, cameraRested cam: Camera) { if current != nil { bridge.cam(cam) } }
-  func canvasRoute(_ c: CanvasView, rects: [String: WorldRect], only: [String]?) -> [RouteGeo] { bridge.route(rects, only: only) }
+  func canvas(_ c: CanvasView, cameraRested cam: Camera) { session?.cam(cam) }
+  func canvasRoute(_ c: CanvasView, rects: [String: WorldRect], only: [String]?) -> [RouteGeo] { session?.route(rects, only: only) ?? [] }
 
-  @objc func undo(_ sender: Any?) { bridge.undo { [weak self] r in if case .success(let ch) = r { self?.canvas.apply(ch) } } }
-  @objc func redo(_ sender: Any?) { bridge.redo { [weak self] r in if case .success(let ch) = r { self?.canvas.apply(ch) } } }
+  @objc func undo(_ sender: Any?) { session?.undo { [weak self] r in if case .success(let ch) = r { self?.canvas.apply(ch) } } }
+  @objc func redo(_ sender: Any?) { session?.redo { [weak self] r in if case .success(let ch) = r { self?.canvas.apply(ch) } } }
   @objc func fit(_ sender: Any?) { canvas.fitAll() }
   @objc func zoomIn(_ sender: Any?) { canvas.zoom(by: 1.25, at: CGPoint(x: canvas.bounds.midX, y: canvas.bounds.midY), animated: true) }
   @objc func zoomOut(_ sender: Any?) { canvas.zoom(by: 0.8, at: CGPoint(x: canvas.bounds.midX, y: canvas.bounds.midY), animated: true) }
   @objc func actualSize(_ sender: Any?) { canvas.setCamera(Camera(x: canvas.cam.x, y: canvas.cam.y, z: 1), animated: true) }
 
-  func flush(_ done: @escaping () -> Void) { bridge.flush { _ in done() } }
+  func flush(_ done: @escaping () -> Void) { boards.flush(done) }
 }
 
 extension BoardWindowController: NSWindowDelegate {
   func windowWillClose(_ notification: Notification) {
-    bridge.flush { [bridge] _ in bridge.dispose() }
+    boards.unlisten(self)
+    boards.release()
     onClose?()
   }
 }

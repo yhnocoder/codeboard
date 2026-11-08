@@ -11,6 +11,8 @@ import QuartzCore
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
   var windows: [BoardWindowController] = []
+  /** The one JavaScript context of the process (core, storage), shared by every window */
+  var bridge: JSBridge!
   var auto: AutoRun?
   let args = CommandLine.arguments
   func arg(_ k: String) -> String? { args.firstIndex(of: k).flatMap { $0 + 1 < args.count ? args[$0 + 1] : nil } }
@@ -25,9 +27,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     logLine("[codeboard] launched %@", args.joined(separator: " "))
     NSApp.setActivationPolicy(.regular)
     Theme.load(bundleURL.deletingLastPathComponent().appendingPathComponent("themes.json"))
+    do { bridge = try JSBridge(bundle: bundleURL, resources: bundleURL.deletingLastPathComponent()) } catch {
+      NSAlert(error: error).runModal()
+      NSApp.terminate(nil)
+      return
+    }
+    logLine("[codeboard] memory after the bridge loaded: %.0f MB footprint", AutoRun.residentMB())
     if args.contains("--dark") { NSApp.appearance = NSAppearance(named: .darkAqua) }
     if args.contains("--light") { NSApp.appearance = NSAppearance(named: .aqua) }
     makeMenu()
+    // `--also <folder>` opens more windows (the memory checks: several windows on one bridge); the scripted run drives the first
+    for i in args.indices where args[i] == "--also" && i + 1 < args.count { openFolder(args[i + 1]) }
     if let f = arg("--open") {
       guard let wc = openFolder(f) else { NSApp.terminate(nil); return }
       let auto = args.contains("--auto"), snap = arg("--snapshot")
@@ -45,7 +55,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
           }
         }
       }
-      wc.bridge.list { r in
+      wc.boards.list { r in
         guard case .success(let list) = r else { logLine("[codeboard] list failed: %@", "\(r)"); return }
         logLine("[codeboard] %d boards", list.count)
         let id = board ?? list.max { $0.cards < $1.cards }?.id
@@ -66,17 +76,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
   func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
     // every window's unsaved changes are written first (Storage's flush), with a bound so a stuck write cannot hold the quit
-    var left = windows.count
     var replied = false
     let reply = { if !replied { replied = true; NSApp.reply(toApplicationShouldTerminate: true) } }
     CameraStore.shared.flush()
-    if left == 0 { return .terminateNow }
-    for w in windows {
-      w.flush {
-        left -= 1
-        if left == 0 { reply() }
-      }
-    }
+    if windows.isEmpty { return .terminateNow }
+    bridge.flush { _ in reply() }
     after(3) { reply() }
     return .terminateLater
   }
@@ -101,19 +105,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       w.showWindow(nil)
       return w
     }
-    do {
-      let wc = try BoardWindowController(folder: folder, bundle: bundleURL)
-      windows.append(wc)
-      wc.onClose = { [weak self, weak wc] in self?.windows.removeAll { $0 === wc } }
-      wc.showWindow(nil)
-      recents = [folder] + recents.filter { $0 != folder }
-      makeMenu()
-      return wc
-    } catch {
-      let a = NSAlert(error: error)
-      a.runModal()
-      return nil
-    }
+    let wc = BoardWindowController(folder: folder, bridge: bridge)
+    windows.append(wc)
+    wc.onClose = { [weak self, weak wc] in self?.windows.removeAll { $0 === wc } }
+    wc.showWindow(nil)
+    recents = [folder] + recents.filter { $0 != folder }
+    makeMenu()
+    return wc
   }
   @objc func openPanel(_ sender: Any?) {
     let p = NSOpenPanel()
