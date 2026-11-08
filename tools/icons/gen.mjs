@@ -36,11 +36,12 @@ console.log(`markdown ui/icons.ts: ${Object.keys(MD_ICONS).length} icons`);
 const gfile = path.join(root, "packages/core/src/stickers.ts");
 let g = fs.readFileSync(gfile, "utf8");
 for (const [name, v] of Object.entries(STICKERS)) {
-  const re = new RegExp(`(\\{ name: "${name}", [^\\n]*?), (?:d|fill): "[^"]*"( \\})`);
+  // a row is one line or, formatted, one field per line
+  const re = new RegExp(`(\\{\\s*name: "${name}",[^}]*?)(?:d|fill): "[^"]*"`);
   if (!re.test(g)) throw new Error(`no BUILTIN row for ${name}`);
   const key = v.fill ? "fill" : "d",
     d = xform(v.fill ?? v.d, STICKER_BOX.s, STICKER_BOX.o, STICKER_BOX.o);
-  g = g.replace(re, (_, a, b) => `${a}, ${key}: "${d}"${b}`);
+  g = g.replace(re, (_, a) => `${a}${key}: "${d}"`);
 }
 write(gfile, g);
 console.log(`core stickers.ts: ${Object.keys(STICKERS).length} stickers`);
