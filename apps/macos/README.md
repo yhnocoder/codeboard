@@ -15,7 +15,7 @@ npm run mac:gate                                   # quick: the image-heavy boar
 npm run mac:gate -- --all                          # every board in the folder, plus the 250-card one (about a minute a board)
 npm run mac:gate -- --boards bmvstbxlqpve8 --steps pan,pinch_out,drag_card   # some boards, some steps
 npm run mac:gate -- --data ~/other/.codeboard --app path/to/CodeBoard.app --no-build --out test-out/mac-gate/x
-npm run mac:gate -- --no-xctrace                   # timings from the display link only (no Animation Hitches recording)
+npm run mac:gate -- --xctrace                      # also record each board with the Hitches instrument (opt-in; see below)
 npm run mac:gate -- --max-load 2 --wait-quiet 10   # wait up to 10 min per board for the 1-minute load to fall under 2 (the default)
 ```
 
@@ -39,11 +39,13 @@ the ones with no bitmap yet, and captures the window with ScreenCaptureKit at th
 cell grid the web harness's probes judge plus a half-size JPEG. `tools/mac-gate.mjs` judges, with the same pure functions as the
 web board's action probes (`packages/board/test/probes.ts`, see TESTING.md "动作探针"):
 
-- timing: the Animation Hitches instrument records each run (`xctrace record --attach`, `hitches.trace` next to the run) and
-  its hitches are assigned to steps by wall clock: the gate is under 1 % hitches of the step's frames and under 5 ms of hitch
-  time per second. The display link's intervals (the main thread's pacing: p95, late > 1.5 × the period) and the capture's
-  presented-frame intervals (SCK; it falls behind at 120 Hz on full-window change, so its late counts overstate) are reported
-  beside them; without the instrument (`--no-xctrace`) the display link's intervals are the gate.
+- timing: the display link's intervals (the main thread's pacing: p95, late > 1.5 × the period) are the gate, with the
+  capture's presented-frame intervals (SCK; it falls behind at 120 Hz on full-window change, so its late counts overstate)
+  beside them. With `--xctrace` the Hitches instrument records each board too (`xctrace record --instrument Hitches --attach`,
+  only that instrument: the Animation Hitches template's system trace once wrote 39 GB in one run), for at most
+  `--xctrace-limit` seconds (180 by default; steps that end after the recording are judged by the display link); its hitches
+  table is exported right after the board and the `.trace` deleted, and its hitches are assigned to steps by wall clock: the
+  gate is then under 1 % hitches of the step's frames and under 5 ms of hitch time per second.
 - `flash`: `flashHits` over the captured grids: a cell at rest that changes for 1–3 frames and reverts. Frames where the camera
   moved, the dragged / edited cards and their arrows (24 px around), the title bar and the zoom pill are masked.
 - `jump`: `jumpHits` over the cards' world rects: a card that should stay still moved (0.5 px), a moving one made a step 3 ×
@@ -56,9 +58,13 @@ web board's action probes (`packages/board/test/probes.ts`, see TESTING.md "动�
   recorded; a run that started under load is marked so in the report.
 
 The console shows a table per board; `report.json` and `report.md` in the output folder (`test-out/mac-gate/<time>/`) have every
-number; a failing step's frames are under `<board>/fails/` (the rest of the capture is dropped unless `--keep-frames`). The
-exit code is 1 when any gate fails. The gate measures with the capture running; `--no-capture` gives the timings alone.
+number; a failing step's frames are under `<board>/fails/`. Once the report is written the step capture folders and the
+copies of the app and the data are deleted (`--keep-frames` keeps them). The disk is checked before every board and every 2 s
+while one runs: the gate does not start or go on with under `--min-free` GB free (8) or once it has written more than
+`--max-out` GB (1, beyond its copies of the app and the data); a running board is then ended and the rest are reported as not
+run. The exit code is 1 when any gate fails. The gate measures with the capture running; `--no-capture` gives the timings alone.
 
-Diagnosing a failure: open the run's `hitches.trace` in Instruments, or `xcrun xctrace export --input … --xpath
-'/trace-toc/run[@number="1"]/data/table[@schema="hitches"]'`. For where the main thread's time goes, `xcrun xctrace record
---template 'Time Profiler' --attach <pid>` while the app runs one step (`--steps pinch_out`).
+Diagnosing a failure: record the failing step by hand and open the trace in Instruments (`xcrun xctrace record --instrument
+Hitches --time-limit 30s --attach <pid>`, or `xcrun xctrace export --input … --xpath
+'/trace-toc/run[@number="1"]/data/table[@schema="hitches"]'`); keep the time limit, a trace can grow by gigabytes a minute. For where the main thread's time goes, `xcrun xctrace record
+--template 'Time Profiler' --time-limit 30s --attach <pid>` while the app runs one step (`--steps pinch_out`).
