@@ -761,7 +761,8 @@ impl Inner {
     }
 
     /// search, then its best text hits read again by the reranker and the list in the fused order (rerank.rs); each text
-    /// hit it read gets its raw score as `rerank`
+    /// hit it read gets its raw score as `rerank`. The query's vector comes from the cache the search before it filled
+    /// (query_vector), so a rerank embeds nothing
     fn rerank(&self, r: SearchReq) -> Reply {
         let (source, rf, q) = (r.source.clone(), r.r#ref.clone(), r.q.clone());
         let mut out = self.search(r)?;

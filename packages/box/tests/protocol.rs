@@ -312,6 +312,13 @@ fn sync_search_and_switching_refs_over_the_socket() {
         json!({ "source": "s", "ref": "main", "q": "kv cache", "min_score": 1.01 }),
     );
     assert_eq!(none["hits"], json!([]));
+    // a rerank of the query just searched reads its vector again, never embedding the query a second time
+    let before = asked.lock().unwrap().len();
+    let _ = c.ask(
+        "rerank",
+        json!({ "source": "s", "ref": "main", "q": "kv cache", "k": 2 }),
+    );
+    assert_eq!(asked.lock().unwrap().len(), before);
 
     // another ref with one item changed: only that item's text is embedded; switching back embeds nothing
     let mut items2 = items.clone();
