@@ -6,26 +6,44 @@ import type { Parser as TSParser, Language as TSLanguage, Tree, Edit, Query } fr
 import type { Grammar } from "./langs";
 export type { Edit, Grammar };
 
-let ready: Promise<void> | undefined;
+let runtime: Promise<void> | undefined;
 const langs = new Map<Grammar, TSLanguage>();
+const loading = new Map<Grammar, Promise<void>>();
 let wasmDir: string | undefined;
+let reader: WasmReader | undefined;
 
 /**
  * 宿主启动时调用一次；dir = 放全部 wasm 的目录（插件的 dist/）。
- * Node 下不给：运行时和 Python / Rust 语法用 @vscode/tree-sitter-wasm 里的，C / C++ / CUDA 用 @yhnocoder/tree-sitter-cuda 里的
+ * Node 下不给：运行时和 Python / Rust 语法用 @vscode/tree-sitter-wasm 里的，C / C++ / CUDA 用 @yhnocoder/tree-sitter-cuda 里的。
+ * grammars = 只装这几种语法（没给就全部）；每种只装一次，再叫到时直接等它装好
  */
-export function initAnalysis(dir?: string | WasmReader): Promise<void> {
+export function initAnalysis(dir?: string | WasmReader, grammars?: readonly Grammar[]): Promise<void> {
   if (typeof dir === "string") wasmDir = dir;
-  const read = typeof dir === "function" ? dir : undefined;
-  return (ready ??= (async () => {
+  if (typeof dir === "function") reader = dir;
+  const read = reader;
+  runtime ??= (async () => {
     // the runtime's bytes: Emscripten's `wasmBinary`, which web-tree-sitter's init passes through but does not declare; locateFile
     // keeps it from building a URL for the file it already has (JavaScriptCore has no URL)
     if (read) {
       const init = { wasmBinary: await read("tree-sitter.wasm"), locateFile: (f: string) => f };
       await TS.Parser.init(init as Parameters<typeof TS.Parser.init>[0]);
     } else await TS.Parser.init({ locateFile: (f: string) => wasmPath(f) });
-    for (const [g, f] of WASM) langs.set(g, await TS.Language.load(read ? await read(f) : wasmPath(f)));
-  })());
+  })();
+  const want = grammars ?? WASM.map(([g]) => g);
+  return Promise.all(
+    want.map((g) => {
+      let p = loading.get(g);
+      if (!p) {
+        const f = WASM.find(([k]) => k === g)?.[1];
+        if (!f) throw new Error(`no grammar for ${g}`);
+        p = runtime!.then(async () => {
+          langs.set(g, await TS.Language.load(read ? await read(f) : wasmPath(f)));
+        });
+        loading.set(g, p);
+      }
+      return p;
+    }),
+  ).then(() => {});
 }
 /** A shell with no file paths it could hand to the wasm loader (JavaScriptCore): the bytes of each wasm file by name */
 export type WasmReader = (file: string) => Promise<Uint8Array>;

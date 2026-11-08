@@ -5,6 +5,7 @@ import { createRequire } from "node:module";
 import * as path from "node:path";
 import { blockSig, type Board, type Card, emptyBoard } from "@codeboard/core";
 import { createBridge } from "../bridge";
+import { fromBase64 } from "../fs";
 import { installGlobals, type Native } from "../native";
 import { nodeNative } from "./node-native";
 
@@ -65,11 +66,16 @@ function wasmDir() {
   return d;
 }
 
+/** One process on one folder: the bridge's folder, and `open` giving the board's session with its scene */
 function shell(dir: string, wasm?: string) {
   const native = nodeNative();
   const bridge = createBridge(native, { timers: false, wasmDir: wasm });
-  bridge.init(dir);
-  return { native, bridge };
+  const folder = bridge.folder(dir);
+  const open = async (id: string) => {
+    const s = (await folder.open(id))!;
+    return { ...s, scene: await s.scene() };
+  };
+  return { native, bridge, folder, open, flush: () => folder.flush() };
 }
 const at = (id: string, x: number, y: number) => ({ id, x, y, w: 380, h: 160 });
 
@@ -79,16 +85,16 @@ describe("bridge", () => {
   it("lists, opens and builds a scene with coloured code and routed arrows", async () => {
     const dir = tmpDir();
     writeBoard(dir, 4);
-    const { bridge } = shell(dir);
-    const list = await bridge.list();
+    const { folder, open } = shell(dir);
+    const list = await folder.list();
     expect(list.map((m) => [m.id, m.cards])).toEqual([["b1", 4]]);
-    const sc = await bridge.open("b1");
-    expect(sc?.cards.length).toBe(4);
-    const code = sc!.cards.find((c) => c.kind === "code")!;
+    const { scene: sc, route } = await open("b1");
+    expect(sc.cards.length).toBe(4);
+    const code = sc.cards.find((c) => c.kind === "code")!;
     expect(code.h).toBe(36 + 6 + 3 * 20 + 8);
     expect(code.segments![0].lines[0].toks.some(([t, cls]) => t.trim() === "def" && cls === "kw")).toBe(true);
-    const rects = Object.fromEntries(sc!.cards.map((c) => [c.id, { x: c.x, y: c.y, w: c.w, h: c.h ?? 160 }]));
-    const [g] = bridge.route(rects);
+    const rects = Object.fromEntries(sc.cards.map((c) => [c.id, { x: c.x, y: c.y, w: c.w, h: c.h ?? 160 }]));
+    const [g] = route(rects);
     expect(g.id).toBe("l1");
     expect(g.d.startsWith("M")).toBe(true);
     expect(g.taper?.length).toBeGreaterThan(10);
@@ -100,23 +106,27 @@ describe("bridge", () => {
   it("a drag is one undo step, saved to the same file the extension reads", async () => {
     const dir = tmpDir();
     writeBoard(dir, 3);
-    const { bridge, native } = shell(dir);
-    await bridge.open("b1");
-    bridge.beginDrag();
-    bridge.drag([{ id: "c1", x: 10, y: 20 }]);
-    bridge.drag([{ id: "c1", x: 100, y: 200 }]);
-    const ch = await bridge.endDrag([at("c1", 100, 200)]);
+    const { native, open, flush } = shell(dir);
+    const b = await open("b1");
+    b.beginDrag();
+    b.drag([{ id: "c1", x: 10, y: 20 }]);
+    b.drag([{ id: "c1", x: 100, y: 200 }]);
+    const ch = await b.endDrag([at("c1", 100, 200)]);
     expect(ch.cards.map((c) => [c.id, c.x, c.y])).toEqual([["c1", 100, 200]]);
     expect(ch.gone.cards).toEqual([]);
-    expect(native.events.filter((e) => e.name === "stacks").at(-1)?.data).toEqual({ undo: true, redo: false });
-    await bridge.flush();
+    expect(native.events.filter((e) => e.name === "stacks").at(-1)?.data).toMatchObject({
+      id: "b1",
+      undo: true,
+      redo: false,
+    });
+    await flush();
     expect(readFile(dir).place.c1).toMatchObject({ x: 100, y: 200 });
     expect(readFile(dir).cam).toBeUndefined();
-    const back = await bridge.undo();
+    const back = await b.undo();
     expect(back.cards.map((c) => [c.id, c.x, c.y])).toEqual([["c1", 440, 0]]);
-    await bridge.flush();
+    await flush();
     expect(readFile(dir).place.c1).toMatchObject({ x: 440, y: 0 });
-    const again = await bridge.redo();
+    const again = await b.redo();
     expect(again.cards[0]).toMatchObject({ id: "c1", x: 100, y: 200 });
   });
 
@@ -125,23 +135,23 @@ describe("bridge", () => {
     writeBoard(dir, 4);
     const a = shell(dir),
       b = shell(dir);
-    await a.bridge.open("b1");
-    await b.bridge.open("b1");
+    const sa = await a.open("b1"),
+      sb = await b.open("b1");
     // A (the Mac app) moves c0, B (VS Code) moves c3 and renames c1, before either writes
-    a.bridge.beginDrag();
-    a.bridge.drag([{ id: "c0", x: 1, y: 2 }]);
-    await a.bridge.endDrag([at("c0", 1, 2)]);
-    b.bridge.beginDrag();
-    b.bridge.drag([{ id: "c3", x: 3, y: 4 }]);
-    await b.bridge.endDrag([at("c3", 3, 4)]);
-    b.bridge.mutate((bb) => {
+    sa.beginDrag();
+    sa.drag([{ id: "c0", x: 1, y: 2 }]);
+    await sa.endDrag([at("c0", 1, 2)]);
+    sb.beginDrag();
+    sb.drag([{ id: "c3", x: 3, y: 4 }]);
+    await sb.endDrag([at("c3", 3, 4)]);
+    sb.mutate((bb) => {
       bb.cards[1].title = "Renamed";
     });
-    await a.bridge.flush();
+    await a.flush();
     // B learns of A's write the way the watcher tells it, then writes its own: a three-way merge
     const file = path.join(dir, "b1.json");
     for (const [id] of b.native.watchers) b.bridge.fsChanged(id, file);
-    await b.bridge.flush();
+    await b.flush();
     const disk = readFile(dir);
     expect(disk.place.c0).toMatchObject({ x: 1, y: 2 });
     expect(disk.place.c3).toMatchObject({ x: 3, y: 4 });
@@ -149,23 +159,27 @@ describe("bridge", () => {
     // and A, told of B's write, shows B's changes as a sync (no undo step of its own)
     for (const [id] of a.native.watchers) a.bridge.fsChanged(id, file);
     await new Promise((r) => setTimeout(r, 50));
-    const changed = a.native.events.filter((e) => e.name === "changed").at(-1)?.data as { cards: { id: string }[] };
-    expect(changed.cards.map((c) => c.id).sort()).toEqual(["c1", "c3"]);
-    expect(a.bridge.board().place.c3).toMatchObject({ x: 3, y: 4 });
-    expect(a.bridge.board().place.c0).toMatchObject({ x: 1, y: 2 });
+    const changed = a.native.events.filter((e) => e.name === "changed").at(-1)?.data as {
+      id: string;
+      change: { cards: { id: string }[] };
+    };
+    expect(changed.id).toBe("b1");
+    expect(changed.change.cards.map((c) => c.id).sort()).toEqual(["c1", "c3"]);
+    expect(sa.board().place.c3).toMatchObject({ x: 3, y: 4 });
+    expect(sa.board().place.c0).toMatchObject({ x: 1, y: 2 });
   });
 
   it("the M1 gate: one edit on a 250-card board in 2 ms (p95)", async () => {
     const dir = tmpDir();
     writeBoard(dir, 250);
-    const { bridge } = shell(dir);
-    await bridge.open("b1");
-    const ids = Object.keys(bridge.board().place);
+    const { open, flush } = shell(dir);
+    const b = await open("b1");
+    const ids = Object.keys(b.board().place);
     const times: number[] = [];
     for (let i = 0; i < 300; i++) {
       const id = ids[i % ids.length];
       const t0 = performance.now();
-      bridge.mutate((bb) => {
+      b.mutate((bb) => {
         bb.place[id].x += 1;
       });
       times.push(performance.now() - t0);
@@ -174,7 +188,7 @@ describe("bridge", () => {
     const p95 = times[Math.floor(times.length * 0.95)];
     console.log(`edit on 250 cards: p50 ${times[150].toFixed(2)} ms, p95 ${p95.toFixed(2)} ms`);
     expect(p95).toBeLessThan(2);
-    await bridge.flush();
+    await flush();
   });
 
   it("colours C and CUDA through tree-sitter, like VS Code", async () => {
@@ -199,9 +213,9 @@ describe("bridge", () => {
     b.place.k = { x: 0, y: 0, w: 380 };
     const { cam: _cam, ...file } = b;
     fs.writeFileSync(path.join(dir, "b1.json"), JSON.stringify(file));
-    const { bridge } = shell(dir, wasmDir());
-    const sc = await bridge.open("b1");
-    const lines = sc!.cards[0].segments![0].lines;
+    const { open } = shell(dir, wasmDir());
+    const { scene: sc } = await open("b1");
+    const lines = sc.cards[0].segments![0].lines;
     expect(lines[0].toks.some(([t, cls]) => t === "void" && cls === "kw")).toBe(true);
     expect(lines[0].toks.some(([t, cls]) => t === "add" && cls === "fn")).toBe(true);
     expect(lines[1].toks.some(([t, cls]) => t.startsWith("//") && cls === "com")).toBe(true);
@@ -215,13 +229,13 @@ describe("bridge", () => {
     b.links[0].to = { card: "c1", block: { i: 2, h: blockSig("para two") } };
     const { cam: _cam, ...file } = b;
     fs.writeFileSync(path.join(dir, "b1.json"), JSON.stringify(file));
-    const { bridge } = shell(dir);
-    await bridge.open("b1");
-    bridge.mutate((bb) => {
+    const { open, flush } = shell(dir);
+    const s = await open("b1");
+    s.mutate((bb) => {
       (bb.cards[1] as typeof note).md = "# T\n\nnew first\n\npara one\n\npara two";
     });
-    expect(bridge.board().links[0].to.block).toEqual({ i: 3, h: blockSig("para two") });
-    await bridge.flush();
+    expect(s.board().links[0].to.block).toEqual({ i: 3, h: blockSig("para two") });
+    await flush();
     expect(readFile(dir).links[0].to.block.i).toBe(3);
   });
 
@@ -231,29 +245,43 @@ describe("bridge", () => {
     b.sections.push({ id: "S", title: "S", x: 2000, y: 2000, w: 1000, h: 1000 });
     const { cam: _cam, ...file } = b;
     fs.writeFileSync(path.join(dir, "b1.json"), JSON.stringify(file));
-    const { bridge } = shell(dir);
-    await bridge.open("b1");
-    bridge.beginDrag();
-    bridge.drag([{ id: "c0", x: 2100, y: 2100 }]);
-    const ch = await bridge.endDrag([at("c0", 2100, 2100)]);
+    const { open } = shell(dir);
+    const s = await open("b1");
+    s.beginDrag();
+    s.drag([{ id: "c0", x: 2100, y: 2100 }]);
+    const ch = await s.endDrag([at("c0", 2100, 2100)]);
     expect(ch.cards[0]).toMatchObject({ id: "c0", section: "S" });
-    bridge.beginDrag();
-    bridge.drag([{ id: "c0", x: 0, y: 0 }]);
-    await bridge.endDrag([at("c0", 0, 0)]);
-    expect(bridge.board().place.c0.section).toBeUndefined();
-    bridge.undo();
-    expect(bridge.board().place.c0.section).toBe("S");
+    s.beginDrag();
+    s.drag([{ id: "c0", x: 0, y: 0 }]);
+    await s.endDrag([at("c0", 0, 0)]);
+    expect(s.board().place.c0.section).toBeUndefined();
+    s.undo();
+    expect(s.board().place.c0.section).toBe("S");
   });
 
   it("cameras go to the shell's store, not the board file", async () => {
     const dir = tmpDir();
     writeBoard(dir, 1);
-    const { bridge, native } = shell(dir);
-    await bridge.open("b1");
-    bridge.cam({ x: 5, y: 6, z: 2 });
-    await bridge.flush();
+    const { native, open, flush } = shell(dir);
+    const s = await open("b1");
+    s.cam({ x: 5, y: 6, z: 2 });
+    await flush();
     expect(JSON.parse(native.camGet("b1")!)).toEqual({ x: 5, y: 6, z: 2 });
     expect(readFile(dir).cam).toBeUndefined();
+  });
+
+  it("decodes base64 to bytes without a string in between", () => {
+    for (const bytes of [
+      [],
+      [0],
+      [255, 0, 1],
+      [1, 2, 3, 4, 5, 6, 7],
+      Array.from({ length: 1000 }, (_, i) => (i * 37) & 255),
+    ]) {
+      const b64 = Buffer.from(bytes).toString("base64");
+      expect(Array.from(fromBase64(b64))).toEqual(bytes);
+      expect(Array.from(fromBase64(`${b64}\n`))).toEqual(bytes);
+    }
   });
 
   it("setTimeout's extra arguments do not make it repeat", () => {

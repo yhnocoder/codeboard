@@ -148,6 +148,8 @@ final class AutoRun: NSObject {
     report["display_asleep"] = CGDisplayIsAsleep(CGMainDisplayID()) != 0
     report["refresh_hz"] = NSScreen.main?.maximumFramesPerSecond ?? 0
     logLine("[auto] memory after open %.0f MB, display asleep %d", AutoRun.residentMB(), CGDisplayIsAsleep(CGMainDisplayID()))
+    (NSApp.delegate as? AppDelegate)?.bridge.collect()
+    logLine("[auto] memory after a JS garbage collection %.0f MB", AutoRun.residentMB())
     snapshot("01-open")
     step("pan", frames: 240, { p in
       let a = p * 2 * Double.pi
@@ -185,12 +187,16 @@ final class AutoRun: NSObject {
     link = nil
     pacer?.invalidate()
     pacer = nil
+    // the rest / save timers after the last step (camera rest 0.4 s, cameras 0.5 s, live save 0.8 s) are not idle: they go first
+    after(4) { self.idleMeasure(finished) }
+  }
+  private func idleMeasure(_ finished: @escaping () -> Void) {
     let r0 = Rusage.now(), t0 = CACurrentMediaTime()
-    after(3) {
+    after(6) {
       let r1 = Rusage.now(), wall = CACurrentMediaTime() - t0
       self.report["idle"] = ["cpu_pct": (r1.cpu - r0.cpu) / wall * 100, "wakeups_per_s": Double(r1.wakeups - r0.wakeups) / wall]
       logLine("[auto] idle: cpu %.2f%%, wakeups/s %.1f", (r1.cpu - r0.cpu) / wall * 100, Double(r1.wakeups - r0.wakeups) / wall)
-      let times = self.wc.bridge.benchEdit(300).sorted()
+      let times = (self.wc.session?.benchEdit(300) ?? []).sorted()
       if !times.isEmpty {
         let p95 = times[min(times.count - 1, Int(Double(times.count) * 0.95))]
         self.report["edit"] = ["cards": self.wc.canvas.cardLayers.count, "p50_ms": times[times.count / 2], "p95_ms": p95]

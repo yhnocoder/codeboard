@@ -2,6 +2,7 @@
 // the zoom crosses a bucket), a SectionLayer per Section and an ArrowLayer per link (shape layers: a filled taper, a dart head).
 // Pan, zoom and drag move these layers; nothing here waits on JavaScript.
 import AppKit
+import IOSurface
 
 /** The bitmap scale a card is drawn at for a zoom: a few buckets, so zooming re-rasterises rarely and never below what is readable */
 func rasterBucket(zoom: CGFloat, backing: CGFloat) -> CGFloat {
@@ -35,9 +36,19 @@ final class CardLayer: CALayer {
   }
   /** Below this bitmap scale a card is drawn as blocks: its paper, head and a few bars, no text */
   static let lodScale: CGFloat = 0.3
-  /** Rasters run here, a few at a time; the main thread only hands over the finished bitmap */
-  private static let queue = DispatchQueue(label: "codeboard.raster", qos: .userInteractive, attributes: .concurrent)
+  /** Rasters run here, three at a time (each holds a bitmap of up to `maxPixels` while it draws); the main thread only hands over
+   *  the finished surface. A raster not started when the next one for the same layer is asked for is dropped */
+  private static let queue: OperationQueue = {
+    let q = OperationQueue()
+    q.name = "codeboard.raster"
+    q.qualityOfService = .userInteractive
+    q.maxConcurrentOperationCount = 3
+    return q
+  }()
+  /** A bitmap no larger than this (a 2× Note 380 wide is about 1.8M): one is 4 bytes a pixel */
+  static let maxPixels: CGFloat = 1_600_000
   private var gen = 0
+  private var pendingOp: Operation?
   /** Decoded images by file and size, no larger than a card needs (a 4000px screenshot is not decoded again for every raster); the
    *  oldest go when there are more than `imageCacheMax` */
   private static var imageCache: [String: CGImage] = [:]
@@ -120,22 +131,33 @@ final class CardLayer: CALayer {
     gen += 1
     let g = gen
     let size = bounds.size
-    let scale = min(contentsScale, sqrt(2_500_000 / max(1, size.width * size.height)))
+    let scale = min(contentsScale, sqrt(CardLayer.maxPixels / max(1, size.width * size.height)))
     let paint = Paint(card: card, height: height, noteText: noteText, imageSrc: card.kind == "image" ? card.src : nil, imageMax: Int(card.w * scale), selected: selected, framed: framed)
     let appearance = Theme.appearance
-    CardLayer.queue.async {
-      let img = CardLayer.render(paint, size: size, scale: scale, appearance: appearance)
+    pendingOp?.cancel()
+    let op = BlockOperation()
+    op.addExecutionBlock { [weak op] in
+      if op?.isCancelled == true { return }
+      let surface = CardLayer.render(paint, size: size, scale: scale, appearance: appearance)
       DispatchQueue.main.async { [weak self] in
         guard let self, self.gen == g else { return }
-        self.contents = img
+        self.contents = surface
         self.contentsScale = scale
       }
     }
+    pendingOp = op
+    CardLayer.queue.addOperation(op)
   }
 
-  static func render(_ p: Paint, size: CGSize, scale: CGFloat, appearance: NSAppearance) -> CGImage? {
+  /** Drawn straight into an IOSurface: Core Animation shows the surface itself (no copy into its own backing when the contents
+   *  are set), and the one buffer is the card's whole cost */
+  static func render(_ p: Paint, size: CGSize, scale: CGFloat, appearance: NSAppearance) -> IOSurface? {
     let w = max(1, Int((size.width * scale).rounded())), h = max(1, Int((size.height * scale).rounded()))
-    guard let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue) else { return nil }
+    guard let surface = IOSurface(properties: [.width: w, .height: h, .bytesPerElement: 4, .pixelFormat: UInt32(0x42475241)]) else { return nil }  // 'BGRA'
+    surface.lock(options: [], seed: nil)
+    defer { surface.unlock(options: [], seed: nil) }
+    memset(surface.baseAddress, 0, surface.allocationSize)
+    guard let ctx = CGContext(data: surface.baseAddress, width: w, height: h, bitsPerComponent: 8, bytesPerRow: surface.bytesPerRow, space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue) else { return nil }
     ctx.scaleBy(x: scale, y: scale)
     ctx.translateBy(x: 0, y: size.height)
     ctx.scaleBy(x: 1, y: -1)
@@ -144,7 +166,8 @@ final class CardLayer: CALayer {
     NSGraphicsContext.current = gc
     appearance.performAsCurrentDrawingAppearance { drawCard(p, in: CGRect(origin: .zero, size: size), lod: scale < lodScale) }
     NSGraphicsContext.restoreGraphicsState()
-    return ctx.makeImage()
+    ctx.flush()
+    return surface
   }
 
   private static let pad: CGFloat = 12

@@ -32,7 +32,30 @@ export function nativeFs(n: Native): Fs {
     rmdir: (p) => done(p, n.rmdir(p)),
     mkdir: (p) => done(p, n.mkdir(p)),
     join: (...parts) => parts.filter(Boolean).join("/").replace(/\/+/g, "/"),
-    fromBase64: (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0)),
+    fromBase64,
     sha1: (d) => n.sha1(bytesToBase64(d)),
   };
+}
+
+const B64 = new Uint8Array(128);
+for (let i = 0; i < 64; i++) B64["ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/".charCodeAt(i)] = i;
+/** Straight into the bytes, no string in between (the CUDA grammar is 9 MB: through atob it was hundreds of MB of garbage) */
+export function fromBase64(s: string): Uint8Array {
+  let n = s.length;
+  while (n > 0 && (s.charCodeAt(n - 1) === 61 || s.charCodeAt(n - 1) <= 32)) n--;
+  const out = new Uint8Array(Math.floor((n * 3) / 4));
+  let acc = 0,
+    bits = 0,
+    j = 0;
+  for (let i = 0; i < n; i++) {
+    const c = s.charCodeAt(i);
+    if (c > 127 || c <= 32) continue;
+    acc = (acc << 6) | B64[c];
+    bits += 6;
+    if (bits >= 8) {
+      bits -= 8;
+      out[j++] = (acc >> bits) & 255;
+    }
+  }
+  return out.subarray(0, j);
 }
