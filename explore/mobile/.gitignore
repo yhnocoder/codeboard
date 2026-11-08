@@ -4,3 +4,6 @@ site/board/
 site/data/
 tiles-out/
 android/CodeBoard.apk
+site/assets/
+.record.mjs
+android/.kotlin/

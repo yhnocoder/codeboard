@@ -1,28 +1,29 @@
-// Renders each recorded board (site/data) into map-style tile pyramids with the real board in headless Chromium:
-// tiles-out/<id>/manifest.json and <level>/<col>_<row>.jpg. Usage: node tiles.mjs [board id …]  (site/ served on :8765)
+// Renders recorded boards (a site/ folder: render.html, board/, data/, assets/) into map-style tile pyramids with the real
+// board in headless Chromium: <out>/<id>/manifest.json and <level>/<col>_<row>.jpg (build-tiles.mjs turns them into WebP).
+// CLI: node tiles.mjs [board id …]  (site/ served on :8765, into tiles-out/)
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 import { launch } from "../../tools/test/chromium.mjs";
 
-const OUT = path.resolve("tiles-out");
 const DPR = +(process.env.DPR ?? 2);
 const TILE = 512; // image px
 const CSS_TILE = TILE / DPR;
 const V = CSS_TILE * 4; // viewport edge in CSS px: one shot = 4×4 tiles
-const Q = +(process.env.Q ?? 80);
-const ids = process.argv.slice(2);
+const Q = +(process.env.Q ?? 90);
 
-const metas = JSON.parse(fs.readFileSync("site/data/index.json", "utf8"));
+export async function renderTiles({ base, siteDir, out, ids, log = console.log }) {
+const OUT = path.resolve(out);
+const metas = JSON.parse(fs.readFileSync(path.join(siteDir, "data/index.json"), "utf8"));
 fs.mkdirSync(OUT, { recursive: true });
-fs.writeFileSync(path.join(OUT, "index.json"), JSON.stringify(metas));
 const browser = await launch();
 const ctx = await browser.newContext({ viewport: { width: V, height: V }, deviceScaleFactor: DPR });
 const page = await ctx.newPage();
-page.on("pageerror", (e) => console.error("page:", e.message));
-await page.goto("http://localhost:8765/render.html");
+page.on("pageerror", (e) => log("page: " + e.message));
+await page.goto(`${base}/render.html`);
 await page.waitForFunction(() => window.__ready);
 
-const settle = async () => {
+  const settle = async () => {
   await page.evaluate(() => document.fonts.ready);
   await page.waitForTimeout(250);
   await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
@@ -138,6 +139,10 @@ for (const m of metas) {
   const [r, g, b] = (geo.bg.match(rgb) ?? [239, 235, 228]).map(Number);
   const bg = `#${[r, g, b].map((v) => v.toString(16).padStart(2, "0")).join("")}`;
   fs.writeFileSync(path.join(dir, "manifest.json"), JSON.stringify({ id: m.id, name: m.name, world, tile: TILE, dpr: DPR, levels, bg, hits }, null, 1));
-  console.log(m.id, m.name, `${n} tiles`, `${levels.length} levels`, `${((Date.now() - t0) / 1000).toFixed(0)} s`);
+  log(`${m.id} ${m.name}: ${n} tiles, ${levels.length} levels, ${((Date.now() - t0) / 1000).toFixed(0)} s`);
 }
 await browser.close();
+}
+
+if (process.argv[1] === fileURLToPath(import.meta.url))
+  await renderTiles({ base: "http://localhost:8765", siteDir: "site", out: "tiles-out", ids: process.argv.slice(2) });
