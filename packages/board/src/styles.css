@@ -439,15 +439,33 @@ textarea {
 .world.greek .card.note:not(.editing) .nbody :is(strong, b) {
   -webkit-text-stroke-width: 0;
 }
-.world.greek .card.note:not(.editing) .nbody :is(p, h1, h2, h3, h4, h5, h6, pre) {
+.world.greek
+  .card.note:not(.editing)
+  .nbody
+  :is(
+    p:not(:has(> img, > .md-fig, > a > img)),
+    :is(li, td, th):not(:has(> p, > ul, > ol)),
+    h1,
+    h2,
+    h3,
+    h4,
+    h5,
+    h6,
+    pre
+  ) {
   background: repeating-linear-gradient(
     transparent 0 0.3lh,
     color-mix(in srgb, var(--ink) 16%, transparent) 0.3lh 0.7lh,
     transparent 0.7lh 1lh
   );
 }
-.world.greek .card.note:not(.editing) .nbody .katex {
+/* 字条画在段落、标题、代码块上，紧凑列表的项和表格的格子（字直接在里面，没有段落）也画；只有图的段落不画。
+   高亮、行内代码的底色，{字|批注} 的底色、标签和箭头跟着字一起藏起来 */
+.world.greek .card.note:not(.editing) .nbody :is(.katex, .md-annot > .md-annot-n, .md-annot::after) {
   opacity: 0;
+}
+.world.greek .card.note:not(.editing) .nbody :is(mark, .md-annot, :not(pre) > code) {
+  background: none;
 }
 .world.greek .card:not(.editing) :is(.cbody, .nbody)::after {
   content: "";

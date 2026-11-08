@@ -212,7 +212,9 @@ test("zoomedOutSimplifiesCards", async () => {
       {
         id: "n1",
         kind: "note",
-        md: "# Grids\n\n每个 block 有 256 个 thread，grid 按块排列。",
+        md:
+          "# Grids\n\n每个 block 有 256 个 thread，==grid 按块排列==，{warp|32 个线程}。\n\n- 用 `<<<grid, block>>>` 启动\n- 返回 void\n\n" +
+          "![grid](data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='120'%20height='60'%3E%3Crect%20width='120'%20height='60'%20fill='%23cde'/%3E%3C/svg%3E)",
         look: "note",
       } as NoteCard,
       80,
@@ -237,6 +239,14 @@ test("zoomedOutSimplifiesCards", async () => {
         fill: getComputedStyle(body).webkitTextFillColor,
         bar: getComputedStyle(p).backgroundImage.startsWith("repeating-linear-gradient"),
         noteShield: getComputedStyle(body, "::after").content,
+        // a paragraph that is only a picture gets no bars; a highlight and an annotation's tint go with the text
+        picBar: [...body.querySelectorAll("p")]
+          .filter((e) => e.querySelector(":scope > img, :scope > .md-fig"))
+          .map((e) => getComputedStyle(e).backgroundImage),
+        li: getComputedStyle(body.querySelector("li")!).backgroundImage.startsWith("repeating-linear-gradient"),
+        code: getComputedStyle(body.querySelector("li code")!).backgroundColor,
+        mark: getComputedStyle(body.querySelector("mark")!).backgroundImage,
+        annot: getComputedStyle(body.querySelector(".md-annot")!).backgroundColor,
         codeShield: getComputedStyle(code, "::after").content,
         // what the pointer lands on over a line of code: the body itself (its shield), not the line
         codeHit: hit === code,
@@ -281,6 +291,16 @@ test("zoomedOutSimplifiesCards", async () => {
   );
   const out = await look(h);
   check("a Note's prose is drawn as bars", out.greek && out.fill === "rgba(0, 0, 0, 0)" && out.bar, out);
+  check(
+    "list items get bars, pictures none; highlights, inline code and annotations go with the text",
+    out.picBar.length === 1 &&
+      out.picBar[0] === "none" &&
+      out.li &&
+      out.code === "rgba(0, 0, 0, 0)" &&
+      out.mark === "none" &&
+      out.annot === "rgba(0, 0, 0, 0)",
+    out,
+  );
   check("card bodies take no pointer", out.noteShield === '""' && out.codeShield === '""' && out.codeHit, out);
   check("the card edges' ports stay", out.eport !== "none", out);
   check(
