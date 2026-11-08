@@ -204,13 +204,16 @@ final class AutoRun: NSObject {
       let r1 = Rusage.now(), wall = CACurrentMediaTime() - t0
       self.report["idle"] = ["cpu_pct": (r1.cpu - r0.cpu) / wall * 100, "wakeups_per_s": Double(r1.wakeups - r0.wakeups) / wall]
       logLine("[auto] idle: cpu %.2f%%, wakeups/s %.1f", (r1.cpu - r0.cpu) / wall * 100, Double(r1.wakeups - r0.wakeups) / wall)
-      let times = (self.wc.session?.benchEdit(300) ?? []).sorted()
-      if !times.isEmpty {
-        let p95 = times[min(times.count - 1, Int(Double(times.count) * 0.95))]
-        self.report["edit"] = ["cards": self.wc.canvas.cardLayers.count, "p50_ms": times[times.count / 2], "p95_ms": p95]
-        logLine("[auto] edit on %d cards: p50 %.2f ms, p95 %.2f ms", self.wc.canvas.cardLayers.count, times[times.count / 2], p95)
+      guard let session = self.wc.session else { self.finish(finished); return }
+      session.benchEdit(300) { times in
+        let times = times.sorted()
+        if !times.isEmpty {
+          let p95 = times[min(times.count - 1, Int(Double(times.count) * 0.95))]
+          self.report["edit"] = ["cards": self.wc.canvas.cardLayers.count, "p50_ms": times[times.count / 2], "p95_ms": p95]
+          logLine("[auto] edit on %d cards: p50 %.2f ms, p95 %.2f ms", self.wc.canvas.cardLayers.count, times[times.count / 2], p95)
+        }
+        self.finish(finished)
       }
-      self.finish(finished)
     }
   }
 

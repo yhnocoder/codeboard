@@ -11,11 +11,19 @@ BoardWindowController                    a view onto a Folder and the Session of
 
 ## Swift (`Sources/CodeBoard/JSBridge.swift`)
 
-- `JSBridge(bundle:resources:)` is made once, in `AppDelegate.init` (so its bundle loads while AppKit launches). All JavaScript
-  runs on the bridge's own serial queue: loading the bundle, listing a folder, opening a board (parse, migrate, highlight, the
-  scene and its JSON decode) never block the main thread. Async calls take a callback, resolve through the JavaScript side's
-  `reply` event and are delivered on the main thread; the synchronous ones (`beginDrag`, `route`, `benchEdit`) wait on the queue
-  (`drag` and `cam` are fire-and-forget). JavaScript timers and FSEvents run on the queue too. The first scene of a board is
+- `JSBridge(bundle:resources:)` is made once, in `AppDelegate.init` (so its bundle loads while AppKit launches). It is an actor:
+  the JavaScript context and virtual machine are created on, and only ever touched from, one dedicated thread with its own run loop
+  (`JSThread`), which is also where JavaScriptCore runs its deferred work (a WebAssembly compile's continuation, GC timers), the
+  shell's `native` callbacks, JavaScript timers (run-loop timers on that thread) and FSEvents (posted to it), and where the pending
+  replies live. The main thread never waits on it: every call is a posted message, and every reply and event comes back as a
+  `DispatchQueue.main.async` from that thread, so they reach the main thread in the order they were emitted (one FIFO), each tagged
+  with its folder and board (`{dir, id}` in events; a `Session`'s callbacks carry its id). A window applies a change only while that
+  board is the one it shows (`BoardWindowController.applyChange`), drops an `open` reply for a board it no longer waits for
+  (`opening`), and the canvas drops routes for a board it no longer draws (`routeKey`). Drag begin / drag / end, undo, redo and the
+  camera are asynchronous messages too: the canvas already shows the gesture's result, and the change that confirms it lands when it
+  comes. `RouteWorker` has a `JSThread` of its own. Quitting waits (3 s at most) for the flush reply of every folder, then writes the
+  cameras; a window closing lets its canvas go (`close()`: display link, timers, the router's model) and releases its folder, whose
+  last release flushes and disposes the Storage on the JavaScript thread, before any later flush. The first scene of a board is
   quick: a Code card whose tree-sitter grammar is still loading (CUDA's compiles for ~130 ms) comes `pending`, shows its
   placeholder, and follows as a `changed` event when the grammar is there.
 - `bridge.folder(dir)` returns the `Folder` for a boards folder (the same object for every window on it; it counts them). A window

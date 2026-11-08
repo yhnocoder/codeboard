@@ -141,11 +141,15 @@ final class BoardWindowController: NSWindowController, NSToolbarDelegate, NSTabl
       if let cur = self.current, let i = self.list.firstIndex(where: { $0.id == cur }) { self.table.selectRowIndexes([i], byExtendingSelection: false) }
     }
   }
+  /** The board picked last; an earlier open's scene arriving after it is dropped */
+  private var opening: String?
   func open(_ id: String, _ done: ((Scene?) -> Void)? = nil) {
+    opening = id
     boards.open(id) { [weak self] r in
-      guard let self else { return }
+      guard let self, self.opening == id else { return }
       switch r {
       case .success(let (s, session)):
+        if let was = self.current, was != id { self.canvas.router?.drop(self.canvas.routeKey) }
         self.current = id
         self.session = session
         self.window?.title = s.name
@@ -189,7 +193,7 @@ final class BoardWindowController: NSWindowController, NSToolbarDelegate, NSTabl
   // MARK: events from the bridge
   /** The folder's events; a board's only when it is the one shown */
   private func event(_ name: String, _ id: String?, _ json: String) {
-    if let id, id != current { return }
+    if let id, id != current || opening != current { return }
     switch name {
     case "changed":
       struct C: Decodable { var change: SceneChange }
@@ -221,23 +225,35 @@ final class BoardWindowController: NSWindowController, NSToolbarDelegate, NSTabl
   }
 
   // MARK: canvas → core
+  /** A change from the session, applied only while its board is the one shown */
+  private func applyChange(_ session: Session) -> (Result<SceneChange, Error>) -> Void {
+    { [weak self] r in
+      guard let self, self.session?.id == session.id, self.opening == session.id else { return }
+      switch r {
+      case .success(let ch):
+        if let r = ch.routing { canvas.router?.setModel(canvas.routeKey, encodeJSON(r)) }
+        canvas.apply(ch)
+      case .failure(let e):
+        toast("Couldn't change the board: \(e.localizedDescription)")
+        canvas.routeAll()
+      }
+    }
+  }
   func canvas(_ c: CanvasView, dragEnded moves: [JSBridge.Move]) {
     guard let session else { return }
     session.beginDrag()
     session.drag(moves)
-    session.endDrag(moves) { [weak self] r in
-      guard let self, case .success(let ch) = r else { return }
-      if let r = ch.routing { canvas.router?.setModel(canvas.routeKey, encodeJSON(r)) }
-      canvas.apply(ch)
-    }
+    session.endDrag(moves, applyChange(session))
   }
   func canvas(_ c: CanvasView, cameraRested cam: Camera) { session?.cam(cam) }
-  func canvasRoute(_ c: CanvasView, rects: [String: WorldRect], only: [String]?, modes: [String: String]?) -> [RouteGeo] { session?.route(rects, only: only, modes: modes) ?? [] }
+  func canvasRoute(_ c: CanvasView, rects: [String: WorldRect], only: [String]?, modes: [String: String]?, _ cb: @escaping ([RouteGeo]) -> Void) {
+    session?.route(rects, only: only, modes: modes, cb)
+  }
 
   func canvasUndo(_ c: CanvasView) { undo(nil) }
   func canvasRedo(_ c: CanvasView) { redo(nil) }
-  @objc func undo(_ sender: Any?) { session?.undo { [weak self] r in if case .success(let ch) = r { self?.canvas.apply(ch) } } }
-  @objc func redo(_ sender: Any?) { session?.redo { [weak self] r in if case .success(let ch) = r { self?.canvas.apply(ch) } } }
+  @objc func undo(_ sender: Any?) { if let session { session.undo(applyChange(session)) } }
+  @objc func redo(_ sender: Any?) { if let session { session.redo(applyChange(session)) } }
   @objc func fit(_ sender: Any?) { canvas.fitAll() }
   @objc func zoomIn(_ sender: Any?) { canvas.zoom(by: 1.25, at: CGPoint(x: canvas.bounds.midX, y: canvas.bounds.midY), animated: true) }
   @objc func zoomOut(_ sender: Any?) { canvas.zoom(by: 0.8, at: CGPoint(x: canvas.bounds.midX, y: canvas.bounds.midY), animated: true) }
@@ -248,6 +264,7 @@ final class BoardWindowController: NSWindowController, NSToolbarDelegate, NSTabl
 
 extension BoardWindowController: NSWindowDelegate {
   func windowWillClose(_ notification: Notification) {
+    canvas.close()
     boards.unlisten(self)
     boards.release()
     onClose?()

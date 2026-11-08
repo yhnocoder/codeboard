@@ -7,7 +7,7 @@ import AppKit
 protocol CanvasDelegate: AnyObject {
   func canvas(_ c: CanvasView, dragEnded moves: [JSBridge.Move])
   func canvas(_ c: CanvasView, cameraRested cam: Camera)
-  func canvasRoute(_ c: CanvasView, rects: [String: WorldRect], only: [String]?, modes: [String: String]?) -> [RouteGeo]
+  func canvasRoute(_ c: CanvasView, rects: [String: WorldRect], only: [String]?, modes: [String: String]?, _ cb: @escaping ([RouteGeo]) -> Void)
   func canvasUndo(_ c: CanvasView)
   func canvasRedo(_ c: CanvasView)
 }
@@ -149,10 +149,26 @@ final class CanvasView: NSView {
     for (id, l) in cardLayers { out[id] = WorldRect(x: l.card.x, y: l.card.y, w: l.card.w, h: Double(l.height)) }
     return out
   }
+  /** Every arrow routed by the board's session; the routes land when they come, unless the canvas shows another board by then */
   func routeAll() {
     let modes = liveModes.isEmpty ? nil : liveModes
     liveModes = [:]
-    applyRoutes(delegate?.canvasRoute(self, rects: rects, only: nil, modes: modes) ?? [], final: true)
+    route(rects, only: nil, modes: modes, final: true)
+  }
+  private func route(_ rects: [String: WorldRect], only: [String]?, modes: [String: String]?, final: Bool = false) {
+    let key = routeKey
+    delegate?.canvasRoute(self, rects: rects, only: only, modes: modes) { [weak self] geos in
+      guard let self, self.routeKey == key else { return }
+      self.applyRoutes(geos, final: final)
+    }
+  }
+  /** The window closed: nothing of the canvas keeps running */
+  func close() {
+    landingLink?.invalidate()
+    landingLink = nil
+    settleTimer?.invalidate()
+    restTimer?.invalidate()
+    router?.drop(routeKey)
   }
   private func applyRoutes(_ geos: [RouteGeo], final: Bool = false) {
     CATransaction.begin()
@@ -399,7 +415,7 @@ final class CanvasView: NSView {
     for id in d.ids { if let o = d.origins[id] { targets[id] = CGPoint(x: o.x + dx, y: o.y + dy) } }
     if d.links.isEmpty || router == nil {
       moveCards(targets)
-      if !d.links.isEmpty { applyRoutes(delegate?.canvasRoute(self, rects: rects, only: d.links, modes: nil) ?? []) }
+      if !d.links.isEmpty { route(rects, only: d.links, modes: nil) }
       return
     }
     // the arrows are routed off the main thread for where the cards are going; cards and arrows then move in one frame. Only

@@ -94,11 +94,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   }
   func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
   func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-    // every window's unsaved changes are written first (Storage's flush), with a bound so a stuck write cannot hold the quit
+    // every folder's unsaved changes are written first (Storage's flush; a folder whose last window closed was flushed by its
+    // closeFolder, which the JavaScript thread ran before this), then the cameras; with a bound so a stuck write cannot hold the quit
     var replied = false
-    let reply = { if !replied { replied = true; NSApp.reply(toApplicationShouldTerminate: true) } }
-    CameraStore.shared.flush()
-    if windows.isEmpty { return .terminateNow }
+    let reply = {
+      if !replied {
+        replied = true
+        CameraStore.shared.flush()
+        NSApp.reply(toApplicationShouldTerminate: true)
+      }
+    }
     bridge.flush { _ in reply() }
     after(3) { reply() }
     return .terminateLater

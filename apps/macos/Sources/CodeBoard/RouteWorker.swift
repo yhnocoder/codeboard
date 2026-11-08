@@ -1,5 +1,5 @@
 // Arrow routing off the main thread: a second JavaScript context (its own virtual machine) running only core's routing
-// (dist/router.js, js/router-entry.ts) on a serial queue. During a drag the canvas posts the moved cards' rectangles every frame;
+// (dist/router.js, js/router-entry.ts) on a thread of its own (a `JSThread`, where the context is made). During a drag the canvas posts the moved cards' rectangles every frame;
 // requests coalesce (a new one replaces the one not started yet, so the routes drawn are never older than one request behind),
 // and each finished set of routes comes back on the main thread with its request number. The drop's final route goes through the
 // main session as before; the models come from each Scene / SceneChange (`routing`).
@@ -7,27 +7,26 @@ import Foundation
 import JavaScriptCore
 
 final class RouteWorker {
-  private let vm = JSVirtualMachine()!
-  private let ctx: JSContext
-  private let queue = DispatchQueue(label: "codeboard.route", qos: .userInteractive)
+  private var ctx: JSContext!
+  private let js = JSThread("codeboard.route")
   private var api: JSValue { ctx.objectForKeyedSubscript("CodeRouter") }
   private var pending: (key: String, rects: String, only: String, seq: Int, cb: ([RouteGeo], Int) -> Void)?
   private var busy = false
 
   init(bundle: URL) throws {
-    ctx = JSContext(virtualMachine: vm)!
-    ctx.exceptionHandler = { _, e in logLine("[codeboard router] %@", e?.toString() ?? "?") }
     let src = try String(contentsOf: bundle, encoding: .utf8)
-    // loaded on its queue: the first route waits on it, the main thread does not
-    queue.async { [self] in
+    // made and loaded on its thread: the first route waits on it, the main thread does not
+    js.post { [self] in
+      ctx = JSContext(virtualMachine: JSVirtualMachine()!)!
+      ctx.exceptionHandler = { _, e in logLine("[codeboard router] %@", e?.toString() ?? "?") }
       ctx.evaluateScript(src, withSourceURL: bundle)
       if api.isUndefined { logLine("[codeboard] router.js did not define CodeRouter") }
     }
   }
 
   /** The board's routing model (links, each card's kind and code rows); key = folder + board */
-  func setModel(_ key: String, _ json: String) { queue.async { [self] in api.invokeMethod("setModel", withArguments: [key, json]) } }
-  func drop(_ key: String) { queue.async { [self] in api.invokeMethod("drop", withArguments: [key]) } }
+  func setModel(_ key: String, _ json: String) { js.post { [self] in api.invokeMethod("setModel", withArguments: [key, json]) } }
+  func drop(_ key: String) { js.post { [self] in api.invokeMethod("drop", withArguments: [key]) } }
 
   /** Routes for these rectangles (only the links named); cb on the main thread with `seq`. A request made while one runs waits,
    *  and a newer one replaces it: at most one finished and one waiting at any time */
@@ -39,7 +38,7 @@ final class RouteWorker {
     guard !busy, let p = pending else { return }
     pending = nil
     busy = true
-    queue.async { [self] in
+    js.post { [self] in
       let r = api.invokeMethod("route", withArguments: [p.key, p.rects, p.only])?.toString() ?? "[]"
       let geos = (try? decodeJSON([RouteGeo].self, r)) ?? []
       DispatchQueue.main.async {
