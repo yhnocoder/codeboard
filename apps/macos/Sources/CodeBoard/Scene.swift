@@ -15,6 +15,16 @@ struct SceneTok: Decodable {
 struct SceneLine: Decodable {
   var n: Int
   var toks: [SceneTok]
+  /** The stickers on this line: chips in the gutter */
+  var stk: [SceneGlyph]?
+}
+/** What a sticker shows (js/scene.ts SceneGlyph): a built-in disc (d / fill / text on color), an emoji, or a grey box */
+struct SceneGlyph: Decodable, Equatable {
+  var color: String?
+  var d: String?
+  var fill: String?
+  var text: String?
+  var emoji: String?
 }
 struct SceneSegment: Decodable {
   var path: String
@@ -39,13 +49,12 @@ struct SceneInote: Decodable {
 /** A sticker on the canvas (js/scene.ts SceneSticker): a built-in disc (d / fill / text on color), an emoji, or a grey box */
 struct SceneSticker: Decodable {
   var id: String
+  /** On the canvas or relative to its card; on an arrow: the offset from the point t along it */
   var x, y, size: Double
   var card: String?
-  var color: String?
-  var d: String?
-  var fill: String?
-  var text: String?
-  var emoji: String?
+  var link: String?
+  var t: Double?
+  var g: SceneGlyph
 }
 struct SceneCard: Decodable {
   var id: String

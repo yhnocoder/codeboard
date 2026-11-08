@@ -21,7 +21,8 @@ import { langLabel } from "@codeboard/analysis/langs";
 import type { Highlight, SceneTok } from "./highlight";
 import { type RouteModel, routeModel } from "./routes";
 
-export type SceneLine = { n: number; toks: SceneTok[] };
+/** stk: the stickers on this line, chips in the gutter (CodeBody .lstks) */
+export type SceneLine = { n: number; toks: SceneTok[]; stk?: SceneGlyph[] };
 /** hl: the segment's Highlights (highlighted line ranges, a band under them) */
 export type SceneSegment = {
   path: string;
@@ -133,25 +134,43 @@ export type SceneChange = {
 
 /** A sticker on the canvas (core Sticker at kind "canvas"): its world rect (one bound to a card is placed from the card's corner)
  *  and what to draw: a built-in disc (its Lucide path or label), an emoji, or nothing known (a custom pack: a grey box) */
+/** What a sticker shows. Built-in: the disc colour and its line (d), filled shape (fill) or label (text); emoji: the
+ *  character; neither: a custom pack's icon the app does not read (drawn as the board's missing box) */
+export type SceneGlyph = { color?: string; d?: string; fill?: string; text?: string; emoji?: string };
 export type SceneSticker = {
   id: string;
+  /** On the canvas or relative to the card it is bound to; bound to an arrow: the offset from the point t along it */
   x: number;
   y: number;
   size: number;
   /** The card it is bound to (it moves with it) */
   card?: string;
-  /** Built-in: the disc colour and its line (d), filled shape (fill) or label (text); emoji: the character */
-  color?: string;
-  d?: string;
-  fill?: string;
-  text?: string;
-  emoji?: string;
+  /** The arrow it rides, at t (0–1) along its curve */
+  link?: string;
+  t?: number;
+  g: SceneGlyph;
 };
+
+/** An answered question shows ✓ (the board's shownIcon) */
+export function sceneGlyph(s: Sticker): SceneGlyph {
+  const icon = s.q?.done ? { pack: "builtin", name: "check" } : s.icon;
+  const g: SceneGlyph = {};
+  if (icon.pack === "builtin") {
+    const bi = builtinSticker(icon.name);
+    if (bi) {
+      g.color = s.q?.done ? bi.color : (s.color ?? bi.color);
+      if (bi.d) g.d = bi.d;
+      if (bi.fill) g.fill = bi.fill;
+      if (bi.text) g.text = bi.text;
+    }
+  } else if (icon.pack === "emoji") g.emoji = icon.name;
+  return g;
+}
 
 export function sceneSticker(b: Board, s: Sticker): SceneSticker | null {
   const at = s.at;
-  if (at.kind !== "canvas") return null; // ponytail: line stickers (in the gutter) are not drawn yet
-  const out: SceneSticker = { id: s.id, x: at.x, y: at.y, size: at.size ?? 32 };
+  if (at.kind !== "canvas") return null; // a line sticker is in its card's gutter (SceneLine.stk)
+  const out: SceneSticker = { id: s.id, x: at.x, y: at.y, size: at.size ?? 32, g: sceneGlyph(s) };
   if (at.on && "card" in at.on) {
     const p = b.place[at.on.card];
     if (!p) return null;
@@ -159,25 +178,10 @@ export function sceneSticker(b: Board, s: Sticker): SceneSticker | null {
     out.x += p.x;
     out.y += p.y;
   } else if (at.on) {
-    // ponytail: one bound to an arrow sits by the arrow's start card until the app places it along the route
-    const link = at.on.link;
-    const l = b.links.find((x) => x.id === link);
-    const p = l && b.place[l.from.card];
-    if (!p) return null;
-    out.x += p.x + p.w / 2;
-    out.y += p.y;
+    if (!b.links.some((x) => x.id === (at.on as { link: string }).link)) return null;
+    out.link = at.on.link;
+    out.t = at.on.t;
   }
-  // an answered question shows ✓ (the board's shownIcon)
-  const icon = s.q?.done ? { pack: "builtin", name: "check" } : s.icon;
-  if (icon.pack === "builtin") {
-    const bi = builtinSticker(icon.name);
-    if (bi) {
-      out.color = s.q?.done ? bi.color : (s.color ?? bi.color);
-      if (bi.d) out.d = bi.d;
-      if (bi.fill) out.fill = bi.fill;
-      if (bi.text) out.text = bi.text;
-    }
-  } else if (icon.pack === "emoji") out.emoji = icon.name;
   return out;
 }
 
@@ -267,9 +271,14 @@ export async function sceneCard(b: Board, c: Card, env: SceneEnv, quick = false)
             start: s.start,
             end: s.end,
             lang: s.lang,
-            lines: s.text.flatMap((_, i) =>
-              shown.has(s.start + i) ? [{ n: s.start + i, toks: toks?.[i] ?? [[s.text[i]]] }] : [],
-            ),
+            lines: s.text.flatMap((_, i) => {
+              const n = s.start + i;
+              if (!shown.has(n)) return [];
+              const stk = b.stickers
+                .filter((k) => k.at.kind === "line" && k.at.card === c.id && k.at.seg === s.id && k.at.line === n)
+                .map(sceneGlyph);
+              return [{ n, toks: toks?.[i] ?? [[s.text[i]]], ...(stk.length ? { stk } : {}) }];
+            }),
             ...(gaps.length ? { gaps } : {}),
             ...(inotes.length ? { inotes } : {}),
             ...(s.hl?.length ? { hl: s.hl } : {}),

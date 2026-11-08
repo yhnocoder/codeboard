@@ -917,6 +917,14 @@ final class CardLayer: CALayer {
         NSBezierPath(roundedRect: CGRect(x: gutter - 4, y: y + a * row + 2, width: r.width - 14 - (gutter - 4), height: (b - a + 1) * row - 4), xRadius: 6, yRadius: 6).fill()
       }
       nums.draw(with: CGRect(x: 17, y: y, width: CGFloat(nd) * ch, height: h), options: [.usesLineFragmentOrigin])
+      for (k, l) in lines.enumerated() {
+        var x = gutter - 18
+        for g in l.stk ?? [] {
+          let w = StickerLayer.width(g, size: 14)
+          StickerLayer.drawGlyph(g, size: 14, in: CGRect(x: x, y: y + CGFloat(k) * row + (row - 14) / 2, width: w, height: 14))
+          x += w + 2
+        }
+      }
       NSGraphicsContext.current?.cgContext.saveGState()
       NSGraphicsContext.current?.cgContext.clip(to: CGRect(x: gutter, y: y, width: r.width - gutter - 6, height: h))
       code.draw(with: CGRect(x: gutter, y: y, width: 100000, height: h), options: [.usesLineFragmentOrigin])
@@ -1213,8 +1221,11 @@ final class ArrowLayer: CALayer {
       tail.lineWidth = 1.6
     }
   }
+  /** The curve's control points (core Geo.pts), for a sticker riding the arrow */
+  private(set) var pts: [Double] = []
   func apply(geo: RouteGeo) {
     let stroked = link.dash == true || link.hand != nil
+    pts = geo.pts
     let d = geo.path(geo.n.d, geo.s.d)
     route = d
     line.path = stroked ? d : (geo.path(geo.n.taper, geo.s.taper) ?? d)
@@ -1253,79 +1264,92 @@ final class StickerLayer: CALayer {
   }
   required init?(coder: NSCoder) { fatalError() }
   func apply(_ s: SceneSticker) {
-    let redraw = s.color != sticker.color || s.d != sticker.d || s.fill != sticker.fill || s.text != sticker.text || s.emoji != sticker.emoji || s.size != sticker.size
+    let redraw = s.g != sticker.g || s.size != sticker.size
     sticker = s
-    frame = CGRect(x: s.x, y: s.y, width: width, height: s.size)
+    frame = CGRect(x: s.x + anchor.x, y: s.y + anchor.y, width: width, height: s.size)
     if redraw || contents == nil { draw() }
   }
-  /** A label sticker (TODO) is as wide as its text plus 0.55em each side */
-  private var width: CGFloat {
-    guard let text = sticker.text else { return sticker.size }
-    let f = Theme.sys(sticker.size * 0.5, weight: .bold)
-    return (text as NSString).size(withAttributes: [.font: f, .kern: f.pointSize * 0.04]).width + 1.1 * f.pointSize
+  /** On an arrow: the point t along its curve (the sticker's x / y are the offset from it); set as the arrow's route lands */
+  private var anchor = CGPoint.zero
+  func place(along pts: [Double]) {
+    guard pts.count >= 8, let t = sticker.t else { return }
+    let u = 1 - t, a = u * u * u, b = 3 * u * u * t, c = 3 * u * t * t, d = t * t * t
+    anchor = CGPoint(x: a * pts[0] + b * pts[2] + c * pts[4] + d * pts[6], y: a * pts[1] + b * pts[3] + c * pts[5] + d * pts[7])
+    frame.origin = CGPoint(x: sticker.x + anchor.x, y: sticker.y + anchor.y)
   }
+  /** A label sticker (TODO) is as wide as its text plus 0.55em each side */
+  private var width: CGFloat { StickerLayer.width(sticker.g, size: sticker.size) }
   func setScale(_ s: CGFloat) {
     guard s != drawnScale else { return }
     draw(scale: s)
   }
+  /** The glyph at a size into r (its width is r's: a label capsule is wider than it is tall), in the current appearance */
+  static func drawGlyph(_ s: SceneGlyph, size: CGFloat, in r: CGRect) {
+    guard let cg = NSGraphicsContext.current?.cgContext else { return }
+    let ink = Theme.isInk
+    if let emoji = s.emoji {
+      let t = NSAttributedString(string: emoji, attributes: [.font: NSFont.systemFont(ofSize: size * 0.86)])
+      let ts = t.size()
+      t.draw(at: CGPoint(x: r.midX - ts.width / 2, y: r.midY - ts.height / 2))
+      return
+    }
+    guard let colour = s.color.map({ NSColor(cgColor: cssColor($0)) ?? Theme.accent }) else {
+      // a custom pack's icon the app has not read: the board's .glyph.missing box
+      Theme.ink3.withAlphaComponent(0.3).setFill()
+      NSBezierPath(roundedRect: r, xRadius: 5.5, yRadius: 5.5).fill()
+      return
+    }
+    // ponytail: the board mixes in oklab; sRGB is close for these hues
+    let bg = ink ? colour.blended(withFraction: 0.7, of: Theme.ink) ?? colour : colour.blended(withFraction: 0.14, of: NSColor(srgbRed: 0x5b / 255, green: 0x3d / 255, blue: 0x22 / 255, alpha: 1)) ?? colour
+    let fg = ink ? Theme.c("paper") : NSColor(srgbRed: 1, green: 0xfa / 255, blue: 0xf1 / 255, alpha: 1)
+    if let text = s.text {
+      bg.setFill()
+      NSBezierPath(roundedRect: r, xRadius: r.height / 2, yRadius: r.height / 2).fill()
+      let f = Theme.sys(size * 0.5, weight: .bold)
+      let t = NSAttributedString(string: text, attributes: [.font: f, .foregroundColor: fg, .kern: f.pointSize * 0.04])
+      let ts = t.size()
+      t.draw(at: CGPoint(x: r.midX - ts.width / 2, y: r.midY - ts.height / 2))
+      return
+    }
+    let k = size / 24
+    cg.saveGState()
+    cg.translateBy(x: r.minX, y: r.minY)
+    cg.scaleBy(x: k, y: k)
+    cg.setFillColor(bg.cgColor)
+    cg.fillEllipse(in: CGRect(x: 1, y: 1, width: 22, height: 22))
+    cg.setLineCap(.round)
+    cg.setLineJoin(.round)
+    if let d = s.d {
+      cg.addPath(SVGPath.parse(d))
+      cg.setLineWidth(2)
+      cg.setStrokeColor(fg.cgColor)
+      cg.strokePath()
+    }
+    if let fill = s.fill {
+      let path = SVGPath.parse(fill)
+      cg.addPath(path)
+      cg.setFillColor(fg.cgColor)
+      cg.fillPath()
+      cg.addPath(path)
+      cg.setLineWidth(1)
+      cg.setStrokeColor(fg.cgColor)
+      cg.strokePath()
+    }
+    cg.restoreGState()
+  }
+  /** The width of a label capsule for a glyph at a size (StickerLayer.width) */
+  static func width(_ g: SceneGlyph, size: CGFloat) -> CGFloat {
+    guard let text = g.text else { return size }
+    let f = Theme.sys(size * 0.5, weight: .bold)
+    return (text as NSString).size(withAttributes: [.font: f, .kern: f.pointSize * 0.04]).width + 1.1 * f.pointSize
+  }
   func draw(scale: CGFloat? = nil) {
     let scale = scale ?? max(drawnScale, 1)
     drawnScale = scale
-    let s = sticker, size = CGSize(width: width, height: s.size), appearance = Theme.appearance, ink = Theme.isInk
+    let s = sticker, size = CGSize(width: width, height: s.size), appearance = Theme.appearance
     CardLayer.queue.addOperation {
       let surface = CardLayer.surface(size, scale: scale) {
-        appearance.performAsCurrentDrawingAppearance {
-          guard let cg = NSGraphicsContext.current?.cgContext else { return }
-          let r = CGRect(origin: .zero, size: size)
-          if let emoji = s.emoji {
-            let t = NSAttributedString(string: emoji, attributes: [.font: NSFont.systemFont(ofSize: s.size * 0.86)])
-            let ts = t.size()
-            t.draw(at: CGPoint(x: r.midX - ts.width / 2, y: r.midY - ts.height / 2))
-            return
-          }
-          guard let colour = s.color.map({ NSColor(cgColor: cssColor($0)) ?? Theme.accent }) else {
-            // a custom pack's icon the app has not read: the board's .glyph.missing box
-            Theme.ink3.withAlphaComponent(0.3).setFill()
-            NSBezierPath(roundedRect: r, xRadius: 5.5, yRadius: 5.5).fill()
-            return
-          }
-          // ponytail: the board mixes in oklab; sRGB is close for these hues
-          let bg = ink ? colour.blended(withFraction: 0.7, of: Theme.ink) ?? colour : colour.blended(withFraction: 0.14, of: NSColor(srgbRed: 0x5b / 255, green: 0x3d / 255, blue: 0x22 / 255, alpha: 1)) ?? colour
-          let fg = ink ? Theme.c("paper") : NSColor(srgbRed: 1, green: 0xfa / 255, blue: 0xf1 / 255, alpha: 1)
-          if let text = s.text {
-            bg.setFill()
-            NSBezierPath(roundedRect: r, xRadius: r.height / 2, yRadius: r.height / 2).fill()
-            let f = Theme.sys(s.size * 0.5, weight: .bold)
-            let t = NSAttributedString(string: text, attributes: [.font: f, .foregroundColor: fg, .kern: f.pointSize * 0.04])
-            let ts = t.size()
-            t.draw(at: CGPoint(x: r.midX - ts.width / 2, y: r.midY - ts.height / 2))
-            return
-          }
-          let k = s.size / 24
-          cg.saveGState()
-          cg.scaleBy(x: k, y: k)
-          cg.setFillColor(bg.cgColor)
-          cg.fillEllipse(in: CGRect(x: 1, y: 1, width: 22, height: 22))
-          cg.setLineCap(.round)
-          cg.setLineJoin(.round)
-          if let d = s.d {
-            cg.addPath(SVGPath.parse(d))
-            cg.setLineWidth(2)
-            cg.setStrokeColor(fg.cgColor)
-            cg.strokePath()
-          }
-          if let fill = s.fill {
-            let path = SVGPath.parse(fill)
-            cg.addPath(path)
-            cg.setFillColor(fg.cgColor)
-            cg.fillPath()
-            cg.addPath(path)
-            cg.setLineWidth(1)
-            cg.setStrokeColor(fg.cgColor)
-            cg.strokePath()
-          }
-          cg.restoreGState()
-        }
+        appearance.performAsCurrentDrawingAppearance { StickerLayer.drawGlyph(s.g, size: s.size, in: CGRect(origin: .zero, size: size)) }
       }
       DispatchQueue.main.async { [weak self] in
         guard let self, let surface else { return }

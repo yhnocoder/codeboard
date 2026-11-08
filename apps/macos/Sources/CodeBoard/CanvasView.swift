@@ -286,12 +286,15 @@ final class CanvasView: NSView {
     }
   }
   private func putSticker(_ k: SceneSticker) {
-    if let l = stickerLayers[k.id] { l.apply(k) } else {
+    let l = stickerLayers[k.id] ?? {
       let l = StickerLayer(sticker: k)
       l.setScale(max(rasterScale, 1))
       stickerLayers[k.id] = l
       stickers.addSublayer(l)
-    }
+      return l
+    }()
+    l.apply(k)
+    if let link = k.link, let a = arrowLayers[link] { l.place(along: a.pts) }
   }
 
   var rects: [String: WorldRect] {
@@ -331,6 +334,7 @@ final class CanvasView: NSView {
     for g in geos {
       arrowLayers[g.id]?.transform = CATransform3DIdentity
       arrowLayers[g.id]?.apply(geo: g)
+      for l in stickerLayers.values where l.sticker.link == g.id { l.place(along: g.pts) }
     }
     CATransaction.commit()
     if final && dropPending {
