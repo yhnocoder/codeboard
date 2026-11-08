@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+Added (nothing to change when upgrading):
+
+- New `eagerImages` option on `createMarkdown`: every image is loaded at once and drawn only decoded (no `loading="lazy"`, `decoding="sync"`; by default images stay lazy and async). For a page whose images come into view by a transform, such as a canvas zoomed out, where a lazy image is not loaded yet and an async one is drawn as nothing for a few frames while it decodes.
+
+Fixed:
+
+- An image the page says is off screen (`imageVisible`) whose wanted smaller copy is not made yet no longer loads the original meanwhile: it shows the smallest copy there is, or no source at all, and takes its copy on `updateImages` whether on screen or not. With `eagerImages` it fetched the full size of every image off screen.
+
 ## 0.2.0
 
 Changes that need code or styles updated when upgrading from 0.1.1:
