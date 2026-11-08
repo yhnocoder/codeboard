@@ -18,7 +18,7 @@
 //  inkWashBackgroundNoStreaks — the mountains behind the board are plain gradient shapes, no SVG filter: the filter was worked out at
 //                            the image's own 900×540 and scaled up, so its near-transparent gradients broke into horizontal streaks
 //                            and its anisotropic turbulence smeared them into text-like blots (#136); light and dark, screenshots
-//  inkWashTitleNoSeal      — the board's name in the top left has no seal after it (#138)
+//  inkWashNoBoardTitle     — no board name in the top left: the tab already shows it
 //  inkWashSectionBrushFrame — a Section's frame is four dry brush strokes (one filled path, no border), the title written in
 //                            running script in the gap of the top stroke; selected = strokes and title vermilion, a second
 //                            lighter vermilion stroke offset inside and a faint vermilion wash (both only fade), the drop
@@ -611,19 +611,13 @@ test("inkWashBackgroundNoStreaks", async () => {
   }
 });
 
-test("inkWashTitleNoSeal", async () => {
+test("inkWashNoBoardTitle", async () => {
   const h = await open({ board: board(), light: true, w: 1300, h: 820, scale: 2, settings: ink });
   await idle(h);
-  const mast = await h.page.evaluate(() => {
-    const m = document.querySelector(".mast")!;
-    return { name: m.textContent, after: getComputedStyle(m, "::after").content };
-  });
-  check("inkWashTitleNoSeal", mast.name === "nano-vllm · 推理一步" && mast.after === "none", mast);
-  const box = (await h.page.locator(".mast").boundingBox())!;
-  await h.page.screenshot({
-    path: path.join(OUT, "ink-wash-title.png"),
-    clip: { x: 0, y: 0, width: Math.min(1300, box.x + box.width + 120), height: box.y + box.height + 30 },
-  });
+  // the tab already names the board; Ink Wash shows no masthead in the top left
+  const shown = await h.page.locator(".mast").isVisible();
+  check("inkWashNoBoardTitle", !shown, { shown });
+  await shot(h, "ink-wash-no-title");
   await h.page.context().close();
 });
 
