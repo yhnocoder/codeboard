@@ -1,14 +1,17 @@
 // Arrow routing for the native canvas: core's arrow geometry (@codeboard/core/canvas arrow.ts, the same the web board's
 // packages/board/src/canvas/routes.ts draws with) over the card rectangles the app measured, without the parts the app does not have
 // yet (Compare columns, Section folding, cards popping in). Warm Ink's look: curved routes, tapered lines, dart heads, hand lines
-// from Marks. It works on a RouteModel, the little of a board routing needs, so the shell can run it off the main thread
+// from Marks; Ink Wash's: brush strokes and dot heads (the board's state/look.ts SHAPES). It works on a RouteModel, the little of a board routing needs, so the shell can run it off the main thread
 // (router-entry.ts) during a drag with no board of its own.
 import type { Board, Link } from "@codeboard/core";
 import {
   anchorsFor,
   baseFrom,
+  brushLine,
+  brushSeed,
   dartHead,
   geoFrom,
+  headPath,
   sidesFor,
   taperLine,
   type End,
@@ -150,6 +153,13 @@ export function shellGeo(g: RouteGeo) {
 /** Distance a card moves before an end switches sides (board tune "sideBuffer") */
 const SIDE_BUFFER = 16;
 
+/** The look the arrows are drawn in: warm-ink (tapered lines, dart heads) or ink-wash (brush strokes, dot heads) */
+let look = "warm-ink";
+export const setLook = (l: string) => {
+  look = l;
+};
+const dotHead: typeof dartHead = (tx, ty, ux, uy, s) => headPath("dot", tx, ty, ux, uy, s);
+
 export class Router {
   /** Each link's last mode: the side buffer needs it */
   private modes = new Map<string, Mode>();
@@ -167,13 +177,18 @@ export class Router {
       const [p, q] = anchorsFor(bs, sidesFor(l, bs, this.modes, SIDE_BUFFER, true));
       const from = b.cards.find((c) => c.id === l.from.card);
       const hand = from?.kind === "note" && from.look === "mark";
-      const g = geoFrom(l, bs, p, q, false, null, { route: "curve", hand, head: dartHead });
+      const ink = look === "ink-wash";
+      const g = geoFrom(l, bs, p, q, false, null, { route: "curve", hand, head: ink ? dotHead : dartHead });
       const solid = !hand && !(l.style?.dash || l.gen || l.rpc || l.call?.ev?.kind === "manual");
       const s = l.style?.width === 1 ? 0.85 : l.style?.width === 3 ? 1.25 : 1;
       out.push({
         ...g,
         id: l.id,
-        taper: solid ? taperLine(g.d, 2.5 * s, 0.9 * s).d : undefined,
+        taper: !solid
+          ? undefined
+          : ink
+            ? brushLine(g.d, brushSeed(l.id), 1.5 * s).d
+            : taperLine(g.d, 2.5 * s, 0.9 * s).d,
         mode: this.modes.get(l.id),
       });
     }

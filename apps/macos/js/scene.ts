@@ -5,12 +5,19 @@ import {
   cardTitle,
   codeGlyph,
   estSize,
+  sectionFrames,
   type Board,
   type Card,
   type CodeCard,
   type Link,
   type Section,
+  type Sticker,
+  builtinSticker,
+  cardRows,
+  skeletonOf,
 } from "@codeboard/core";
+import { fnv, paperSeed } from "@codeboard/core/canvas";
+import { langLabel } from "@codeboard/analysis/langs";
 import type { Highlight, SceneTok } from "./highlight";
 import { type RouteModel, routeModel } from "./routes";
 
@@ -21,8 +28,15 @@ export type SceneSegment = {
   start: number;
   end: number;
   lang: string;
+  /** The shown lines (hidden ones are left out: core cardRows) */
   lines: SceneLine[];
+  /** Runs of hidden lines, drawn as a gap row before the line after them ("⋯ N lines hidden (a–b)") */
+  gaps?: [number, number][];
+  /** A Highlight's Always Show sidenotes, drawn under its last line (CodeBody .inotes), starting `lead` columns in */
+  inotes?: { after: number; lead: number; md: string[] }[];
   hl?: [number, number][];
+  /** Lines an arrow starts from (CodeBody fromLines: the row's --row tint, its number in --no-link) */
+  from?: number[];
 };
 export type SceneCard = {
   id: string;
@@ -40,8 +54,14 @@ export type SceneCard = {
   section?: string;
   locked?: boolean;
   tilt?: boolean;
-  /** Code: the kind glyph and the segments' coloured lines; `pending` while its grammar loads (plain lines, not to be drawn) */
+  /** Ink Wash: which of the paper's edge patterns this card gets (core paperSeed) */
+  seed: number;
+  /** Code: the kind glyph and the segments' coloured lines; a Free code card its language's label instead of a kind; `pending`
+   *  while its grammar loads (plain lines, not to be drawn) */
   glyph?: string;
+  /** Code: sidenotes on the whole card (no lines): the count chip in the head (CodeHead .mk.inline) */
+  notes?: number;
+  lang?: string;
   segments?: SceneSegment[];
   pending?: true;
   /** Note / Text / Box / Mark / Free Text */
@@ -57,17 +77,21 @@ export type SceneCard = {
   /** Image: the file in assets/ (an absolute path), or a data: URL */
   src?: string;
   bg?: boolean;
-  /** Sub-board: the board it shows and its name, with the little map of its cards */
+  /** Sub-board: the board it shows, its card count (the name is the title) and its skeleton as JSON (core skeletonOf): the
+   *  card page draws the map from it (core mapHtml, the board's BoardBody) */
   board?: string;
-  boardName?: string;
-  mini?: { x: number; y: number; w: number; h: number; kind: string }[];
+  count?: number;
+  skel?: string;
   /** Web */
   url?: string;
 };
 export type SceneSection = Pick<
   Section,
   "id" | "title" | "x" | "y" | "w" | "h" | "parent" | "color" | "collapsed" | "locked"
->;
+> & {
+  /** Ink Wash: the seed of its brush frame (the board's inkframe.ts: fnv of the id) */
+  seed: number;
+};
 export type SceneLink = {
   id: string;
   from: Link["from"];
@@ -83,6 +107,7 @@ export type SceneLink = {
   hand?: string;
 };
 export type Scene = {
+  stickers: SceneSticker[];
   id: string;
   name: string;
   cam: Board["cam"];
@@ -97,7 +122,8 @@ export type SceneChange = {
   cards: SceneCard[];
   sections: SceneSection[];
   links: SceneLink[];
-  gone: { cards: string[]; sections: string[]; links: string[] };
+  stickers: SceneSticker[];
+  gone: { cards: string[]; sections: string[]; links: string[]; stickers: string[] };
   /** Cards only placed elsewhere (a drag), nothing else of them changed: no card to rebuild */
   moved: { id: string; x: number; y: number; section?: string }[];
   name?: string;
@@ -105,12 +131,76 @@ export type SceneChange = {
   routing?: RouteModel;
 };
 
+/** A sticker on the canvas (core Sticker at kind "canvas"): its world rect (one bound to a card is placed from the card's corner)
+ *  and what to draw: a built-in disc (its Lucide path or label), an emoji, or nothing known (a custom pack: a grey box) */
+export type SceneSticker = {
+  id: string;
+  x: number;
+  y: number;
+  size: number;
+  /** The card it is bound to (it moves with it) */
+  card?: string;
+  /** Built-in: the disc colour and its line (d), filled shape (fill) or label (text); emoji: the character */
+  color?: string;
+  d?: string;
+  fill?: string;
+  text?: string;
+  emoji?: string;
+};
+
+export function sceneSticker(b: Board, s: Sticker): SceneSticker | null {
+  const at = s.at;
+  if (at.kind !== "canvas") return null; // ponytail: line stickers (in the gutter) are not drawn yet
+  const out: SceneSticker = { id: s.id, x: at.x, y: at.y, size: at.size ?? 32 };
+  if (at.on && "card" in at.on) {
+    const p = b.place[at.on.card];
+    if (!p) return null;
+    out.card = at.on.card;
+    out.x += p.x;
+    out.y += p.y;
+  } else if (at.on) {
+    // ponytail: one bound to an arrow sits by the arrow's start card until the app places it along the route
+    const link = at.on.link;
+    const l = b.links.find((x) => x.id === link);
+    const p = l && b.place[l.from.card];
+    if (!p) return null;
+    out.x += p.x + p.w / 2;
+    out.y += p.y;
+  }
+  // an answered question shows ✓ (the board's shownIcon)
+  const icon = s.q?.done ? { pack: "builtin", name: "check" } : s.icon;
+  if (icon.pack === "builtin") {
+    const bi = builtinSticker(icon.name);
+    if (bi) {
+      out.color = s.q?.done ? bi.color : (s.color ?? bi.color);
+      if (bi.d) out.d = bi.d;
+      if (bi.fill) out.fill = bi.fill;
+      if (bi.text) out.text = bi.text;
+    }
+  } else if (icon.pack === "emoji") out.emoji = icon.name;
+  return out;
+}
+
 export type SceneEnv = {
   assetsDir: string;
   /** Another board's name and cards (for a sub-board card's map); null when it is not there */
   peek(id: string): Board | null | undefined;
-  hl: Highlight;
+  hl: Pick<Highlight, "tokens">;
 };
+
+/** A sub-board frame's height when the board gave it none (the board's state/subboards.ts FRAME_H) */
+const FRAME_H = 320;
+
+/** Where a line's text starts, in columns (the board's highlights.ts leadCols: a tab goes on to the next stop of 4) */
+function leadCols(t: string): number {
+  let x = 0;
+  for (const ch of t) {
+    if (ch === " ") x++;
+    else if (ch === "\t") x = (Math.floor(x / 4) + 1) * 4;
+    else break;
+  }
+  return x;
+}
 
 const sepName = (p: string) => p.split("/").pop() ?? p;
 
@@ -119,7 +209,15 @@ const sepName = (p: string) => p.split("/").pop() ?? p;
 export async function sceneCard(b: Board, c: Card, env: SceneEnv, quick = false): Promise<SceneCard | null> {
   const p = b.place[c.id];
   if (!p) return null;
-  const out: SceneCard = { id: c.id, kind: c.kind, x: p.x, y: p.y, w: p.w, title: cardTitle(c, b) };
+  const out: SceneCard = {
+    id: c.id,
+    kind: c.kind,
+    x: p.x,
+    y: p.y,
+    w: p.w,
+    title: cardTitle(c, b),
+    seed: paperSeed(c.id),
+  };
   if (p.section) out.section = p.section;
   if (p.locked) out.locked = true;
   if (c.tilt) out.tilt = true;
@@ -129,21 +227,58 @@ export async function sceneCard(b: Board, c: Card, env: SceneEnv, quick = false)
   } else if (p.mh) out.h = p.mh;
   switch (c.kind) {
     case "code":
-      out.glyph = codeGlyph(c);
+      // a Free code card shows no kind (CodeHead: its language is a hover button)
+      if (c.segments[0]?.src.kind !== "free") out.glyph = codeGlyph(c);
+      else if (c.segments[0]) out.lang = langLabel(c.segments[0].lang);
+      // the rows the board shows (core cardRows): hidden lines become gaps
+      const rows = cardRows(c);
       out.segments = await Promise.all(
         c.segments.map(async (s) => {
           const toks = await env.hl.tokens(s.lang, s.text, !quick);
           if (!toks) out.pending = true;
+          const from = b.links
+            .filter((l) => l.from.card === c.id && l.from.seg === s.id && l.from.line !== undefined)
+            .map((l) => l.from.line as number);
+          const shown = new Set(rows.flatMap((r) => (r.t === "line" && r.seg === s.id ? [r.line] : [])));
+          const gaps = rows.flatMap((r): [number, number][] =>
+            r.t === "gap" && r.seg === s.id ? [[r.from, r.to]] : [],
+          );
+          // Always Show notes by the lines they sit on: under the last shown line, as far in as the least indented line
+          const byRange = new Map<string, { after: number; lead: number; md: string[] }>();
+          for (const n of b.sidenotes) {
+            if (n.kind !== "text" || !n.alwaysShow || n.at.card !== c.id || n.at.seg !== s.id || !n.at.lines) continue;
+            const [a, z] = n.at.lines;
+            const key = `${a}-${z}`;
+            let e = byRange.get(key);
+            if (!e) {
+              const inRange = s.text
+                .map((t, i) => [s.start + i, t] as const)
+                .filter(([k]) => k >= a && k <= z && shown.has(k));
+              const after = inRange.length ? inRange[inRange.length - 1][0] : -1;
+              const lead = Math.min(...inRange.filter(([, t]) => t.trim()).map(([, t]) => leadCols(t)), 1e9);
+              e = { after, lead: lead === 1e9 ? 0 : lead, md: [] };
+              byRange.set(key, e);
+            }
+            e.md.push(n.md);
+          }
+          const inotes = [...byRange.values()].filter((e) => e.after >= 0).sort((x, y) => x.after - y.after);
           return {
             path: s.src.kind === "free" ? "" : sepName(s.path),
             start: s.start,
             end: s.end,
             lang: s.lang,
-            lines: s.text.map((_, i) => ({ n: s.start + i, toks: toks?.[i] ?? [[s.text[i]]] })),
+            lines: s.text.flatMap((_, i) =>
+              shown.has(s.start + i) ? [{ n: s.start + i, toks: toks?.[i] ?? [[s.text[i]]] }] : [],
+            ),
+            ...(gaps.length ? { gaps } : {}),
+            ...(inotes.length ? { inotes } : {}),
             ...(s.hl?.length ? { hl: s.hl } : {}),
+            ...(from.length ? { from } : {}),
           };
         }),
       );
+      const notes = b.sidenotes.filter((n) => n.at.card === c.id && !n.at.lines).length;
+      if (notes) out.notes = notes;
       if (!p.h && !p.mh) out.h = codeHeight(c);
       break;
     case "note":
@@ -165,14 +300,16 @@ export async function sceneCard(b: Board, c: Card, env: SceneEnv, quick = false)
     case "board": {
       out.board = c.board;
       const sub = env.peek(c.board);
-      out.boardName = sub?.name ?? "Board";
-      if (sub)
-        out.mini = sub.cards
-          .filter((k) => sub.place[k.id])
-          .map((k) => {
-            const q = sub.place[k.id];
-            return { x: q.x, y: q.y, w: q.w, h: estSize(k, q).h, kind: k.kind };
-          });
+      if (sub) {
+        // the name above the frame: the card's own title, else the board's (BoardBody)
+        if (!c.title) out.title = sub.name;
+        const sk = skeletonOf(sub, (id) => env.peek(id) ?? undefined);
+        out.count = sk.n;
+        out.skel = JSON.stringify(sk);
+      }
+      // the frame's height is the board's own (Place.h, else FRAME_H), never measured
+      out.h = p.h ?? FRAME_H;
+      out.fixed = true;
       break;
     }
     case "web":
@@ -190,8 +327,20 @@ function codeHeight(c: CodeCard): number {
   return CODE.head + CODE.top + rows * CODE.row + CODE.bottom + Math.max(0, c.segments.length - 1) * CODE.sep;
 }
 
-export const sceneSection = (s: Section): SceneSection => {
-  const out: SceneSection = { id: s.id, title: s.title, x: s.x, y: s.y, w: s.w, h: s.h };
+/** Each Section's frame as the board shows it: its own rect grown around its members (core sectionFrames; the board's
+ *  state/sections.ts frames does the same over measured cards; here a Note the app has not measured counts at its estimate) */
+function sectionRects(b: Board): Map<string, { x: number; y: number; w: number; h: number }> {
+  const rects = new Map<string, { x: number; y: number; w: number; h: number }>();
+  for (const c of b.cards) {
+    const p = b.place[c.id];
+    if (p) rects.set(c.id, { x: p.x, y: p.y, w: p.w, h: estSize(c, p).h });
+  }
+  return sectionFrames(b, rects);
+}
+
+export const sceneSection = (b: Board, s: Section): SceneSection => {
+  const r = sectionRects(b).get(s.id) ?? s;
+  const out: SceneSection = { id: s.id, title: s.title, x: r.x, y: r.y, w: r.w, h: r.h, seed: fnv(s.id) & 0xffffff };
   if (s.parent) out.parent = s.parent;
   if (s.color) out.color = s.color;
   if (s.collapsed) out.collapsed = true;
@@ -224,7 +373,8 @@ export async function scene(b: Board, env: SceneEnv, quick = false): Promise<Sce
     name: b.name,
     cam: b.cam,
     cards,
-    sections: b.sections.map(sceneSection),
+    sections: b.sections.map((s) => sceneSection(b, s)),
+    stickers: b.stickers.flatMap((s) => sceneSticker(b, s) ?? []),
     links: b.links.map((l) => sceneLink(b, l)),
     routing: routeModel(b),
   };

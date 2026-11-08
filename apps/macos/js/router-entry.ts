@@ -1,7 +1,9 @@
 // The routing bundle (build.mjs → router.js): core's arrow routing alone, for the shell's second JavaScript context on a background
 // thread (RouteWorker.swift). During a drag the shell posts the moved cards' rectangles here every frame and draws the latest
 // finished routes; the main context never routes mid-drag. `setModel` gets the routing model from each Scene / SceneChange.
-import { type RouteModel, Router, shellGeo } from "./routes";
+// The same bundle, in a context of the shell's own (Ink.swift), draws Ink Wash's paper and brush frames with core's maths.
+import { framePath, paperSheet } from "@codeboard/core/canvas";
+import { type RouteModel, Router, setLook, shellGeo } from "./routes";
 
 const routers = new Map<string, { model: RouteModel; router: Router }>();
 const str = (x: unknown) => JSON.stringify(x ?? null);
@@ -14,6 +16,11 @@ const str = (x: unknown) => JSON.stringify(x ?? null);
     else routers.set(key, { model: JSON.parse(model), router: new Router() });
   },
   drop: (key: string) => void routers.delete(key),
+  setLook,
+  // Ink Wash's drawings, the same maths the board draws (core canvas inkpaper.ts, inkframe.ts): the torn paper sheet of an edge
+  // pattern, light or dark; a Section's brush frame for a size, seed and title gap
+  paperSheet: (dark: boolean, seed: number) => str(paperSheet(dark, seed)),
+  brushFrame: (w: number, h: number, seed: number, gap: number) => framePath(w, h, seed, gap),
   route: (key: string, rects: string, only?: string) => {
     const e = routers.get(key);
     return e

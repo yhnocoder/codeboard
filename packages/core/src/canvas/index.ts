@@ -8,3 +8,5 @@ export * from "./hand";
 export * from "./brush";
 export * from "./taper";
 export * from "./arrow";
+export * from "./inkpaper";
+export * from "./inkframe";

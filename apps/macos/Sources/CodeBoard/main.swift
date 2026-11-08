@@ -9,6 +9,7 @@
 //   --library <folder>               the library shows only that folder (the checks: a copy of real boards)
 //   --check <dir> [--query <q>]      the scripted library run (Checks.swift): library, ⌘K and a board window to PNGs, timings
 //   --show [--show-board <id>] [--query <q>]  open them and stay (screenshots of the real windows)
+//   --parity <card ids>              with --open, --board and --snapshot: each card pictured at rest and selected (apps/macos/parity.mjs)
 //   --edit <card id | new | new:text | new:code>  with --open and --board: edit that card (or a new card), type a line, end the edit; PNGs with --snapshot
 //   --typing                         with --edit: 120 keystrokes one per frame instead; each one's JS cost and time to the next frame
 //   --inspect                        the card pages show in Safari's Develop menu
@@ -68,6 +69,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
       NSApp.terminate(nil)
       return
     }
+    Theme.registerFonts()
+    Ink.load(bundleURL.deletingLastPathComponent().appendingPathComponent("router.js"))
     if router == nil { logLine("[codeboard] no router.js: drags route on the main thread") }
     if let l = arg("--look") { Look.shared.set(l) } else { _ = Look.shared }
     if args.contains("--dark") { NSApp.appearance = NSAppearance(named: .darkAqua) }
@@ -170,6 +173,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
       } else if let e = self.arg("--edit") {
         self.auto = AutoRun(wc, out: snap)
         self.auto!.edit(e) { self.quit() }
+      } else if let ids = self.arg("--parity") {
+        self.auto = AutoRun(wc, out: snap)
+        self.auto!.parity(ids.split(separator: ",").map(String.init)) { self.quit() }
       } else if snap != nil {
         if self.args.contains("--fit") { wc.canvas.fitAll(animated: false) }
         if let id = self.arg("--focus") { wc.canvas.focus(id) }

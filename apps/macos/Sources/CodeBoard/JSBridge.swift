@@ -39,6 +39,8 @@ final class JSBridge {
   private var ctx: JSContext!
   private let js = JSThread("codeboard.js")
   private var api: JSValue { ctx.objectForKeyedSubscript("CodeBoard") }
+  /** The look the arrows route for (routes.ts: Warm Ink's taper and dart, Ink Wash's brush and dot) */
+  func setLook(_ look: String) { js.post { [self] in api.invokeMethod("setLook", withArguments: [look]) } }
   private var pending: [Int: (Result<String, Error>) -> Void] = [:]
   private var nextReq = 1
   private var timers: [Int: Timer] = [:]

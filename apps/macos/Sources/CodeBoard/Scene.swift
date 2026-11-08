@@ -24,10 +24,28 @@ struct SceneSegment: Decodable {
   var lines: [SceneLine]
   /** Highlighted line ranges (a band under them, the board's --band: the accent at 6.5 %) */
   var hl: [[Int]]?
+  /** Lines an arrow starts from: the row tinted (--row), its number in --no-link */
+  var from: [Int]?
+  /** Runs of hidden lines: a gap row before the line after each */
+  var gaps: [[Int]]?
+  /** A Highlight's Always Show notes under its last line, `lead` columns in */
+  var inotes: [SceneInote]?
 }
-struct SceneMini: Decodable {
-  var x, y, w, h: Double
-  var kind: String
+struct SceneInote: Decodable {
+  var after: Int
+  var lead: Int
+  var md: [String]
+}
+/** A sticker on the canvas (js/scene.ts SceneSticker): a built-in disc (d / fill / text on color), an emoji, or a grey box */
+struct SceneSticker: Decodable {
+  var id: String
+  var x, y, size: Double
+  var card: String?
+  var color: String?
+  var d: String?
+  var fill: String?
+  var text: String?
+  var emoji: String?
 }
 struct SceneCard: Decodable {
   var id: String
@@ -42,7 +60,10 @@ struct SceneCard: Decodable {
   var section: String?
   var locked: Bool?
   var tilt: Bool?
+  /** Ink Wash: which paper edge pattern (core paperSeed) */
+  var seed: Int
   var glyph: String?
+  var lang: String?
   var segments: [SceneSegment]?
   /** A Code card whose grammar is still loading: its placeholder shows until the finished card comes as a change */
   var pending: Bool?
@@ -58,8 +79,10 @@ struct SceneCard: Decodable {
   var src: String?
   var bg: Bool?
   var board: String?
-  var boardName: String?
-  var mini: [SceneMini]?
+  var count: Int?
+  var skel: String?
+  /** Code: sidenotes on the whole card, the count chip in the head */
+  var notes: Int?
   var url: String?
 }
 struct SceneSection: Decodable {
@@ -70,6 +93,8 @@ struct SceneSection: Decodable {
   var color: String?
   var collapsed: Bool?
   var locked: Bool?
+  /** Ink Wash: the seed of its brush frame */
+  var seed: Int
 }
 struct SceneEnd: Decodable {
   var card: String
@@ -103,6 +128,7 @@ struct Scene: Decodable {
   var cards: [SceneCard]
   var sections: [SceneSection]
   var links: [SceneLink]
+  var stickers: [SceneSticker]
   /** The routing model for RouteWorker, passed through as it came */
   var routing: AnyJSON
 }
@@ -129,11 +155,13 @@ struct SceneGone: Decodable {
   var cards: [String]
   var sections: [String]
   var links: [String]
+  var stickers: [String]
 }
 struct SceneChange: Decodable {
   var cards: [SceneCard]
   var sections: [SceneSection]
   var links: [SceneLink]
+  var stickers: [SceneSticker]
   var gone: SceneGone
   /** Cards only placed elsewhere: the layer moves, nothing is rebuilt */
   var moved: [SceneMove]

@@ -1,5 +1,6 @@
 // 白板界面也会引入这里，所以不放 tree-sitter（分析在 @codeboard/analysis）
 export * from "./model";
+export * from "./stickers";
 export * from "./migrate";
 export * from "./mdrefs";
 export * from "./schema";

@@ -8,7 +8,36 @@ import { fileURLToPath } from "node:url";
 const here = dirname(fileURLToPath(import.meta.url));
 const BOARD = join(here, "../../packages/board/src");
 
-/** Every rule's selectors and its custom-property declarations, at any nesting depth */
+/** The declarations of a rule body: split at `;` outside parentheses and quotes (a data: URL has one inside) */
+function declarations(body) {
+  const out = [];
+  let depth = 0,
+    quote = "",
+    cur = "";
+  for (const ch of body) {
+    if (quote) {
+      if (ch === quote) quote = "";
+    } else if (ch === '"' || ch === "'") quote = ch;
+    else if (ch === "(") depth++;
+    else if (ch === ")") depth--;
+    if (ch === ";" && depth === 0 && !quote) {
+      out.push(cur);
+      cur = "";
+    } else cur += ch;
+  }
+  out.push(cur);
+  const decls = {},
+    props = {};
+  for (const d of out) {
+    const m = /^\s*(--)?([\w-]+)\s*:\s*([\s\S]+?)\s*$/.exec(d);
+    if (!m) continue;
+    (m[1] ? decls : props)[m[2]] = m[3].replace(/\s+/g, " ").trim();
+  }
+  return { decls, props };
+}
+
+/** Every rule's selectors and its declarations, at any nesting depth; media: inside an @media block (a reduced-motion or print
+ *  variant the app does not draw) */
 function rules(css) {
   const out = [];
   let i = 0;
@@ -20,15 +49,13 @@ function rules(css) {
     if (open === -1 && close === -1) break;
     if (open !== -1 && open < close) {
       const sel = css.slice(i, open).trim();
-      stack.push({ sel, body: "" });
+      stack.push({ sel, body: "", media: stack.some((r) => r.sel.startsWith("@media")) });
       i = open + 1;
     } else {
       const r = stack.pop();
       if (r) {
         r.body += css.slice(i, close);
-        const decls = {};
-        for (const m of r.body.matchAll(/--([\w-]+)\s*:\s*([^;]+);/g)) decls[m[1]] = m[2].replace(/\s+/g, " ").trim();
-        out.push({ sels: r.sel.split(",").map((s) => s.trim()), decls });
+        out.push({ sels: r.sel.split(",").map((s) => s.trim()), media: r.media, ...declarations(r.body) });
       }
       i = close + 1;
     }
@@ -47,7 +74,7 @@ function resolveVars(map) {
     if (v === undefined) return "";
     return v.replace(
       /var\(--([\w-]+)(?:,\s*([^()]*(?:\([^()]*\))?[^()]*))?\)/g,
-      (_, n, fb) => get(n, seen) || fb?.trim() || "",
+      (_, n, fb) => get(n, new Set(seen)) || fb?.trim() || "",
     );
   };
   for (const k of Object.keys(map)) out[k] = get(k);
@@ -95,15 +122,133 @@ function color(v) {
   return null;
 }
 
-/** The token's value for the app: a colour (a shadow list: its last colour), a number, or nothing */
+/** Top-level comma-separated parts of a value (commas inside parentheses stay) */
+function parts(v) {
+  const out = [];
+  let depth = 0,
+    cur = "";
+  for (const ch of v) {
+    if (ch === "(") depth++;
+    if (ch === ")") depth--;
+    if (ch === "," && depth === 0) {
+      out.push(cur.trim());
+      cur = "";
+    } else cur += ch;
+  }
+  if (cur.trim()) out.push(cur.trim());
+  return out;
+}
+/** A box-shadow list → [{x, y, blur, spread, color, inset}] (px), or null */
+function shadows(v) {
+  if (v === "none") return [];
+  const out = [];
+  for (const p of parts(v)) {
+    const inset = /\binset\b/.test(p);
+    const col = /color-mix\((?:[^()]|\([^()]*\))*\)|rgba?\([^)]*\)|#[0-9a-f]{3,8}\b|\btransparent\b/i.exec(p);
+    if (!col) return null;
+    const nums = p
+      .replace(col[0], "")
+      .replace("inset", "")
+      .trim()
+      .split(/\s+/)
+      .map((n) => Number.parseFloat(n));
+    if (nums.length < 2 || nums.some(Number.isNaN)) return null;
+    const c = color(col[0]);
+    if (!c) return null;
+    out.push({ x: nums[0], y: nums[1], blur: nums[2] ?? 0, spread: nums[3] ?? 0, color: hex(c), inset });
+  }
+  return out;
+}
+/** linear-gradient(<angle>deg, <color> <pos>, …) → {angle, stops: [{color, at}]} (at in 0–1), or null */
+function gradient(v) {
+  const m = /^linear-gradient\(\s*(-?[\d.]+)deg\s*,\s*(.*)\)$/s.exec(v);
+  if (!m) return null;
+  const stops = [];
+  for (const p of parts(m[2])) {
+    const pm = /^(.*?)\s+(-?[\d.]+)(%|px)?$/s.exec(p);
+    const c = color(pm ? pm[1] : p);
+    if (!c) return null;
+    stops.push({ color: hex(c), at: pm ? Number(pm[2]) / (pm[3] === "%" ? 100 : 1) : stops.length ? 1 : 0 });
+  }
+  return { angle: Number(m[1]), stops };
+}
+/** calc(<a>px + <b>px) and the like: the few forms the picks use */
+function calc(v) {
+  return v
+    .replace(
+      /calc\(\s*(-?[\d.]+)px\s*([+-])\s*(-?[\d.]+)px\s*\)/g,
+      (_, a, op, b) => `${op === "+" ? Number(a) + Number(b) : Number(a) - Number(b)}px`,
+    )
+    .replace(/calc\(\s*(-?[\d.]+)px\s*\*\s*(-?[\d.]+)\s*\)/g, (_, a, k) => `${Number(a) * Number(k)}px`);
+}
+/** The token's value for the app: a colour (a shadow list: its last colour), a number, a shadow list or a gradient, or nothing */
 function value(v) {
+  v = calc(v);
   const c = color(v);
   if (c) return hex(c);
-  const n = /^(-?[\d.]+)(px)?$/.exec(v);
+  const n = /^(-?[\d.]+)(px|deg)?$/.exec(v);
   if (n) return Number(n[1]);
-  const all = [...v.matchAll(/#[0-9a-f]{3,8}\b|rgba?\([^)]*\)/gi)].map((m) => color(m[0])).filter(Boolean);
-  return all.length ? hex(all[all.length - 1]) : undefined;
+  return shadows(v) ?? gradient(v) ?? undefined;
 }
+
+/**
+ * Plain declarations the app draws from, beside the tokens: the rule's selector in the look's light and dark stylesheets and
+ * the property, under a name of the app's. Values go through the look's tokens (var()) and `value` like a token
+ */
+const PICKS = {
+  "ink-wash": [
+    [
+      "card-shadow",
+      ":root.look-ink-wash .card:not(.text):not(.nobg)",
+      ':root.look-ink-wash[data-theme="dark"] .card:not(.text):not(.nobg)',
+      "box-shadow",
+    ],
+    [
+      "card-sel-shadow",
+      ":root.look-ink-wash .card.sel:not(.text):not(.nobg)",
+      ':root.look-ink-wash[data-theme="dark"] .card.sel:not(.text):not(.nobg)',
+      "box-shadow",
+    ],
+    ["head-bg", ":root.look-ink-wash .card:not(.nobg) > .cface > .chead", null, "background"],
+    ["head-pl", ":root.look-ink-wash .card:not(.nobg) > .cface > .chead", null, "padding", (v) => v.split(" ")[3]],
+    ["stamp-size", ":root.look-ink-wash .card:not(.text) > .cface::before", null, "width"],
+    ["stamp-top", ":root.look-ink-wash .card:not(.text) > .cface::before", null, "top"],
+    ["stamp-right", ":root.look-ink-wash .card:not(.text) > .cface::before", null, "right"],
+    ["stamp-bg", ":root.look-ink-wash .card:not(.text) > .cface::before", null, "background"],
+    ["stamp-ring", ":root.look-ink-wash .card:not(.text) > .cface::before", null, "box-shadow"],
+    ["stamp-rotate", ":root.look-ink-wash .card.sel:not(.text) > .cface::before", null, "rotate"],
+    ["stamp-opacity", ":root.look-ink-wash .card.sel:not(.text) > .cface::before", null, "opacity"],
+    ["sel-lift", ":root.look-ink-wash .card.sel:not(.text):not(.nobg)", null, "translate", (v) => v.split(" ")[1]],
+    ["step-ring", ":root.look-ink-wash .chead > .step", null, "box-shadow"],
+    ["sbrush-opacity", ":root.look-ink-wash :is(.sbrush, .secho)", null, "fill-opacity"],
+    ["slabel-ml", ":root.look-ink-wash .slabel", null, "--ml"],
+    ["slabel-mt", ":root.look-ink-wash .slabel", null, "--mt"],
+    ["brush-opacity", ":root.look-ink-wash .brush", null, "fill-opacity"],
+    ["head-dot-opacity", ":root.look-ink-wash .ahead.dot", null, "opacity"],
+  ],
+  "*": [
+    ["card-sel-ring", ".card.sel", null, "--ring"],
+    ["board-sel-ring", ".card.board.sel", null, "--ring"],
+    ["board-radius", ".card.board", null, "--cr"],
+    ["band", ".hx-band", ':root[data-theme="dark"] .hx-band', "--band"],
+    ["no-opacity", ".no", null, "opacity", (v) => v.replace(/^var\(--no-o,\s*([\d.]+)\)$/, "$1")],
+    ["slabel-ml", ".slabel", null, "--ml"],
+    ["slabel-mt", ".slabel", null, "--mt"],
+    ["sect-radius", ".sect", null, "border-radius"],
+    ["card-soft-shadow", ".card::before", null, "box-shadow"],
+  ],
+};
+const propOf = (rs, sel, prop) => {
+  let v;
+  for (const r of rs)
+    if (
+      !r.media &&
+      r.sels.includes(sel) &&
+      (prop.startsWith("--") ? r.decls[prop.slice(2)] : r.props[prop]) !== undefined
+    )
+      v = prop.startsWith("--") ? r.decls[prop.slice(2)] : r.props[prop];
+  return v;
+};
 
 /** { look: { light: { token: value }, dark: {…} } } for every look in the stylesheets */
 export function themes(root = BOARD) {
@@ -122,8 +267,12 @@ export function themes(root = BOARD) {
     }
   const out = {};
   for (const look of looks) {
-    const own = tokensOf(rs, `[data-look="${look}"]`),
-      ownDark = tokensOf(rs, `:root[data-theme="dark"] [data-look="${look}"]`);
+    // a look's tokens are declared for the whole page (:root.look-x) or a board inside one ([data-look="x"]): both
+    const own = { ...tokensOf(rs, `[data-look="${look}"]`), ...tokensOf(rs, `:root.look-${look}`) },
+      ownDark = {
+        ...tokensOf(rs, `:root[data-theme="dark"] [data-look="${look}"]`),
+        ...tokensOf(rs, `:root.look-${look}[data-theme="dark"]`),
+      };
     const pick = (map) => {
       // [data-look]:not([data-look="warm-ink"]) resets the Note code colours (--nc-*) unless the look sets them itself
       if (look !== "warm-ink")
@@ -134,9 +283,48 @@ export function themes(root = BOARD) {
         const x = value(v);
         if (x !== undefined) o[k] = x;
       }
-      return o;
+      return [o, map];
     };
-    out[look] = { light: pick({ ...base, ...own }), dark: pick({ ...base, ...baseDark, ...own, ...ownDark }) };
+    const [light, lightMap] = pick({ ...base, ...own }),
+      [dark, darkMap] = pick({ ...base, ...baseDark, ...own, ...ownDark });
+    for (const [name, selLight, selDark, prop, fix] of [...PICKS["*"], ...(PICKS[look] ?? [])]) {
+      const take = (sel, map) => {
+        if (!sel) return undefined;
+        let v = propOf(rs, sel, prop);
+        if (v === undefined) return undefined;
+        if (fix) v = fix(v);
+        return value(resolveVars({ ...map, [name]: v })[name]);
+      };
+      const l = take(selLight, lightMap),
+        d = take(selDark, darkMap) ?? take(selLight, darkMap);
+      if (l !== undefined) light[name] = l;
+      if (d !== undefined) dark[name] = d;
+      else if (l !== undefined) dark[name] = l;
+    }
+    out[look] = { light, dark };
   }
+  return out;
+}
+
+/** Ink Wash's two seal-mask images (themes.css --seal-mask: the grain tile and the rough edge), as PNG bytes */
+export function sealMasks(root = BOARD) {
+  const rs = rules(readFileSync(join(root, "themes.css"), "utf8"));
+  const v = tokensOf(rs, ":root.look-ink-wash")["seal-mask"] ?? "";
+  return [...v.matchAll(/url\("data:image\/png;base64,([^"]+)"\)/g)].map((m) => Buffer.from(m[1], "base64"));
+}
+
+/** The board's icons (packages/board/src/ui/icons.tsx): name → {stroke, fill} path data on a 16 grid */
+export function icons(root = BOARD) {
+  const src = readFileSync(join(root, "ui/icons.tsx"), "utf8");
+  const table = (name) => {
+    const m = new RegExp(`const ${name}: Record<string, string> = \\{([\\s\\S]*?)\\n\\};`).exec(src);
+    const out = {};
+    for (const e of (m?.[1] ?? "").matchAll(/^\s*(\w+):\s*"([^"]+)"/gm)) out[e[1]] = e[2];
+    return out;
+  };
+  const P = table("P"),
+    F = table("F"),
+    out = {};
+  for (const k of new Set([...Object.keys(P), ...Object.keys(F)])) out[k] = { stroke: P[k], fill: F[k] };
   return out;
 }

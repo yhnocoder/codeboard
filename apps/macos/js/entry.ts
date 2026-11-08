@@ -6,6 +6,7 @@ import { settingsSchema } from "@codeboard/core/settings";
 import { FAINT_BELOW, MIN_SCORE, REINDEX_PAUSE, TOP } from "@codeboard/host/storage";
 import { createBridge, type Session } from "./bridge";
 import { createLibrary } from "./library";
+import { setLook } from "./routes";
 import type { Native } from "./native";
 import { shellGeo } from "./routes";
 
@@ -156,6 +157,8 @@ const asyncMade = async (dir: string, id: string, fn: (c: Session["cmd"]) => Pro
   titles: (dir: string, id: string) => str(session(dir, id).cmd.titles()),
   textOf: (dir: string, id: string, card: string) => str(session(dir, id).cmd.textOf(card)),
   timer: (id: number) => bridge.timer(id),
+  /** The look the arrows route for (routes.ts): warm-ink or ink-wash */
+  setLook,
   fsChanged: (id: number, abs: string) => bridge.fsChanged(id, abs),
   /** The gate: n edits on the board, each moving one card by a pixel (there and back, so the board ends as it was and nothing is
    *  written); the time of each in ms */

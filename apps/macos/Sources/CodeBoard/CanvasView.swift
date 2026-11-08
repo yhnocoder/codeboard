@@ -45,7 +45,13 @@ final class CanvasView: NSView {
   private let sections = CALayer()
   private let arrows = CALayer()
   private let cards = CALayer()
+  /** Stickers (styles.css .stk.canvas: above the cards), and what rides over the arrows (a selected Mark's toolbar) */
+  private let stickers = CALayer()
+  private let top = CALayer()
   private let overlay = CALayer()
+  private(set) var stickerLayers: [String: StickerLayer] = [:]
+  /** Ink Wash's scene behind the board (packages/board/src/scenes): the whole view, bottom-anchored, cover */
+  private let scene = CALayer()
   private(set) var cardLayers: [String: CardLayer] = [:]
   private(set) var sectionLayers: [String: SectionLayer] = [:]
   private(set) var arrowLayers: [String: ArrowLayer] = [:]
@@ -94,10 +100,13 @@ final class CanvasView: NSView {
     layer!.backgroundColor = Theme.bg.cgColor
     layer!.masksToBounds = true
     world.anchorPoint = .zero
-    for l in [sections, cards, arrows] {
+    for l in [sections, cards, stickers, arrows, top] {
       l.anchorPoint = .zero
       world.addSublayer(l)
     }
+    scene.anchorPoint = .zero
+    scene.contentsGravity = .resize
+    layer!.addSublayer(scene)
     layer!.addSublayer(world)
     overlay.anchorPoint = .zero
     marquee.lineWidth = 1
@@ -162,21 +171,46 @@ final class CanvasView: NSView {
   }
 
   // MARK: scene
+  /** The look's arrows: both routers draw for it (core's taper and dart, or brush and dot) */
+  private func tellLook() {
+    MainActor.assumeIsolated { (NSApp.delegate as? AppDelegate)?.bridge.setLook(Theme.look) }
+    router?.setLook(Theme.look)
+  }
+  /** The scene behind the board, drawn at the view's size (center bottom / cover, as the board's CSS) */
+  private func layoutScene() {
+    guard Theme.isInk, bounds.width > 0, let img = Ink.scene(dark: Theme.isDark) else { scene.contents = nil; return }
+    let k = max(bounds.width / img.size.width, bounds.height / img.size.height)
+    let w = img.size.width * k, h = img.size.height * k
+    scene.frame = CGRect(x: (bounds.width - w) / 2, y: bounds.height - h, width: w, height: h)
+    let px = CGSize(width: w * backing, height: h * backing)
+    if let cached = sceneImage, cached.0 == px, cached.1 == Theme.isDark { scene.contents = cached.2; return }
+    let copy = img.copy() as! NSImage
+    copy.size = px
+    var rect = CGRect(origin: .zero, size: px)
+    guard let cg = copy.cgImage(forProposedRect: &rect, context: nil, hints: nil) else { return }
+    sceneImage = (px, Theme.isDark, cg)
+    scene.contents = cg
+  }
+  private var sceneImage: (CGSize, Bool, CGImage)?
+
   /** A whole scene. Layers of cards still in it stay (their bitmaps too: opening the same board again shows no blank card), the
    *  rest go */
   func load(_ s: Scene) {
+    tellLook()
     edit.end { _ in }  // committed by whoever switched the board (BoardWindow.open), before this
     CATransaction.begin()
     CATransaction.setDisableActions(true)
     let keep = Set(s.cards.map(\.id))
     for (id, l) in cardLayers where !keep.contains(id) {
-      l.removeFromSuperlayer()
+      l.detach()
       cardLayers[id] = nil
     }
     for l in sectionLayers.values { l.removeFromSuperlayer() }
     for l in arrowLayers.values { l.removeFromSuperlayer() }
+    for l in stickerLayers.values { l.removeFromSuperlayer() }
     sectionLayers = [:]
     arrowLayers = [:]
+    stickerLayers = [:]
     order = order.filter { keep.contains($0) }
     selected = []
     landing = []
@@ -186,6 +220,7 @@ final class CanvasView: NSView {
     for sec in s.sections { putSection(sec) }
     for c in s.cards { putCard(c) }
     for l in s.links { putLink(l) }
+    for k in s.stickers { putSticker(k) }
     refold()
     CATransaction.commit()
     showPorts()
@@ -197,16 +232,18 @@ final class CanvasView: NSView {
     CATransaction.begin()
     CATransaction.setDisableActions(true)
     for id in ch.gone.cards {
-      cardLayers.removeValue(forKey: id)?.removeFromSuperlayer()
+      cardLayers.removeValue(forKey: id)?.detach()
       order.removeAll { $0 == id }
       selected.remove(id)
     }
     for id in ch.gone.sections { sectionLayers.removeValue(forKey: id)?.removeFromSuperlayer(); selectedSections.remove(id) }
     for id in ch.gone.links { arrowLayers.removeValue(forKey: id)?.removeFromSuperlayer(); selectedLinks.remove(id) }
+    for id in ch.gone.stickers { stickerLayers.removeValue(forKey: id)?.removeFromSuperlayer() }
     for sec in ch.sections { putSection(sec) }
     for c in ch.cards { putCard(c) }
     for m in ch.moved { cardLayers[m.id]?.move(to: CGPoint(x: m.x, y: m.y), section: m.section) }
     for l in ch.links { putLink(l) }
+    for k in ch.stickers { putSticker(k) }
     refold()
     CATransaction.commit()
     showPorts()
@@ -226,6 +263,7 @@ final class CanvasView: NSView {
         self?.showPorts()
       }
       l.onRendered = { [weak self] l in self?.rendered(l.card.id) }
+      l.riser = top
       cardLayers[c.id] = l
       cards.addSublayer(l)
       order.append(c.id)
@@ -242,9 +280,17 @@ final class CanvasView: NSView {
   private func putLink(_ k: SceneLink) {
     if let l = arrowLayers[k.id] { l.apply(k) } else {
       let l = ArrowLayer(link: k)
-      l.setScale(max(rasterScale, 0.125))
+      l.setScale(max(rasterScale, 1))
       arrowLayers[k.id] = l
       arrows.addSublayer(l)
+    }
+  }
+  private func putSticker(_ k: SceneSticker) {
+    if let l = stickerLayers[k.id] { l.apply(k) } else {
+      let l = StickerLayer(sticker: k)
+      l.setScale(max(rasterScale, 1))
+      stickerLayers[k.id] = l
+      stickers.addSublayer(l)
     }
   }
 
@@ -435,17 +481,22 @@ final class CanvasView: NSView {
       l.setNeedsDisplay()
     }
     for l in sectionLayers.values { l.setScale(s) }
-    for l in arrowLayers.values { l.setScale(s) }
+    for l in arrowLayers.values { l.setScale(max(s, 1)) }
+    for l in stickerLayers.values { l.setScale(max(s, 1)) }
   }
   private var themeName: String { effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? "dark" : "light" }
   func redrawAll() {
     Theme.appearance = effectiveAppearance
     layer?.backgroundColor = Theme.bg.cgColor
+    layoutScene()
+    tellLook()
     notes.setTheme(themeName)
     edit.page.call("cb.setup(\(encodeJSON(["theme": themeName, "look": Theme.look])))")
     for l in cardLayers.values { l.recolor(); l.setNeedsDisplay() }
-    for l in sectionLayers.values { l.recolor() }
-    for l in arrowLayers.values { l.recolor() }
+    for l in sectionLayers.values { l.restyle() }
+    for l in arrowLayers.values { l.recolor(); l.drawLabel() }
+    for l in stickerLayers.values { l.draw() }
+    routeAll()
     recolorOverlay()
   }
   private func recolorOverlay() {
@@ -467,6 +518,7 @@ final class CanvasView: NSView {
     rasterIfNeeded()
   }
   override func layout() {
+    layoutScene()
     super.layout()
     overlay.frame = bounds
     if !inLiveResize { cull() }
@@ -523,8 +575,12 @@ final class CanvasView: NSView {
     let r = l.worldRect
     return [CGPoint(x: r.midX, y: r.minY), CGPoint(x: r.maxX, y: r.midY), CGPoint(x: r.midX, y: r.maxY), CGPoint(x: r.minX, y: r.midY)]
   }
+  /** The card under the pointer: its port dots show (styles.css .card:hover .eport; a Text card has none) */
+  private var hovered: String? {
+    didSet { if hovered != oldValue { showPorts() } }
+  }
   private func showPorts() {
-    guard selected.count == 1, let id = selected.first, let l = cardLayers[id], !edit.active, drag == nil else { ports.isHidden = true; return }
+    guard let id = hovered, let l = cardLayers[id], !(l.card.kind == "note" && l.card.look != "note"), !edit.active, drag == nil else { ports.isHidden = true; return }
     let path = CGMutablePath()
     for p in portPoints(l) {
       let v = toView(CGRect(origin: p, size: .zero)).origin
@@ -536,7 +592,7 @@ final class CanvasView: NSView {
   }
   /** A port dot under the point (view coordinates): the card and the dot's world point */
   private func portAt(_ p: CGPoint) -> (String, CGPoint)? {
-    guard selected.count == 1, let id = selected.first, let l = cardLayers[id] else { return nil }
+    guard let id = hovered, let l = cardLayers[id], !(l.card.kind == "note" && l.card.look != "note") else { return nil }
     for q in portPoints(l) {
       let v = toView(CGRect(origin: q, size: .zero)).origin
       if hypot(v.x - p.x, v.y - p.y) <= 7 { return (id, q) }
@@ -620,7 +676,19 @@ final class CanvasView: NSView {
     for id in ids { if let l = cardLayers[id] { origins[id] = l.worldRect.origin } }
     drag = (ids, p, origins, linksOn(Set(ids)), false)
   }
-  override func mouseMoved(with e: NSEvent) { pointer = toWorld(convert(e.locationInWindow, from: nil)) }
+  override func mouseMoved(with e: NSEvent) {
+    pointer = toWorld(convert(e.locationInWindow, from: nil))
+    hovered = cardAt(pointer)?.card.id
+  }
+  override func mouseExited(with e: NSEvent) { hovered = nil }
+  private var tracking: NSTrackingArea?
+  override func updateTrackingAreas() {
+    super.updateTrackingAreas()
+    if let tracking { removeTrackingArea(tracking) }
+    let t = NSTrackingArea(rect: bounds, options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self)
+    addTrackingArea(t)
+    tracking = t
+  }
   override func mouseDragged(with e: NSEvent) {
     let p = convert(e.locationInWindow, from: nil)
     pointer = toWorld(p)

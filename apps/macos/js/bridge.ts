@@ -36,6 +36,7 @@ import {
   sceneCard,
   sceneLink,
   sceneSection,
+  sceneSticker,
 } from "./scene";
 
 /** The camera coming to rest is saved after this long (the board's LIVE_DELAY); a failed save is sent again after RESEND_DELAY */
@@ -221,6 +222,8 @@ export function createBridge(native: Native, opts: { fs?: Fs; timers?: boolean; 
     save.markSaved();
     /** The snapshot the scene the shell has was built from: changes() diffs against it */
     let shown: Snap = history.snap();
+    /** Each link the shell has, by id → the card it starts from (a gone link's card is sent again for its row tints) */
+    const linkFrom = new Map(loaded.links.map((l) => [l.id, l.from.card]));
 
     // The host changed the board itself: what is not sent yet goes out first, then "sent" is aligned to now, so these are not
     // sent back. They are syncs: no undo step, replayed after undo (the web board's state/changes.ts syncShared / syncGone /
@@ -254,7 +257,8 @@ export function createBridge(native: Native, opts: { fs?: Fs; timers?: boolean; 
         cards: [],
         sections: [],
         links: [],
-        gone: { cards: [], sections: [], links: [] },
+        stickers: [],
+        gone: { cards: [], sections: [], links: [], stickers: [] },
         moved: [],
       };
       const map = (ids: string[], xs: string[]) => new Map(ids.map((k, i) => [k, xs[i]]));
@@ -282,20 +286,56 @@ export function createBridge(native: Native, opts: { fs?: Fs; timers?: boolean; 
         }
       }
       for (const k of wc.keys()) if (!nc.has(k) || !np.has(k)) out.gone.cards.push(k);
+      // a code card's head counts its sidenotes: when any changed, every code card with one goes again (few, rare)
+      if (was.sidenotes !== now.sidenotes && was.sidenotes.join() !== now.sidenotes.join())
+        for (const c of board.cards)
+          if (c.kind === "code" && !out.cards.some((x) => x.id === c.id) && np.has(c.id)) {
+            const sc = await sceneCard(board, c, env);
+            if (sc) out.cards.push(sc);
+          }
       const ws = map(was.ids.sections, was.sections),
         ns = map(now.ids.sections, now.sections);
+      // a Section's frame follows its members: when a card moved or changed, every Section is sent again (they are few)
+      const cardsMoved = out.cards.length > 0 || out.gone.cards.length > 0 || out.moved.length > 0;
+      // stickers: few; one bound to a card moves with it, so any card change sends them all again
+      const wk = map(was.ids.stickers, was.stickers),
+        nk = map(now.ids.stickers, now.stickers);
+      for (const [k, s] of nk)
+        if (cardsMoved || wk.get(k) !== s) {
+          const st = sceneSticker(board, board.stickers.find((x) => x.id === k)!);
+          if (st) out.stickers.push(st);
+          else if (wk.has(k)) out.gone.stickers.push(k);
+        }
+      for (const k of wk.keys()) if (!nk.has(k)) out.gone.stickers.push(k);
       for (const [k, s] of ns)
-        if (ws.get(k) !== s) out.sections.push(sceneSection(board.sections.find((x) => x.id === k)!));
+        if (cardsMoved || ws.get(k) !== s)
+          out.sections.push(sceneSection(board, board.sections.find((x) => x.id === k)!));
       for (const k of ws.keys()) if (!ns.has(k)) out.gone.sections.push(k);
       const wl = map(was.ids.links, was.links),
         nl = map(now.ids.links, now.links);
+      // a code card tints the rows its arrows start from (SceneSegment.from): a changed or gone link sends its card again too
+      const relinked = new Set<string>();
       for (const [k, s] of nl)
-        if (wl.get(k) !== s) out.links.push(sceneLink(board, board.links.find((x) => x.id === k)!));
+        if (wl.get(k) !== s) {
+          const l = board.links.find((x) => x.id === k)!;
+          out.links.push(sceneLink(board, l));
+          relinked.add(l.from.card);
+        }
       for (const k of wl.keys())
         if (!nl.has(k)) {
           out.gone.links.push(k);
           router.forget(k);
+          const from = linkFrom.get(k);
+          if (from) relinked.add(from);
         }
+      linkFrom.clear();
+      for (const l of board.links) linkFrom.set(l.id, l.from.card);
+      for (const id of relinked) {
+        if (out.cards.some((c) => c.id === id)) continue;
+        const c = board.cards.find((x) => x.id === id && x.kind === "code");
+        const sc = c && (await sceneCard(board, c, env));
+        if (sc) out.cards.push(sc);
+      }
       if (was.head !== now.head) out.name = board.name;
       if (out.cards.length || out.links.length || out.gone.cards.length || out.gone.links.length)
         out.routing = routeModel(board);
@@ -315,7 +355,7 @@ export function createBridge(native: Native, opts: { fs?: Fs; timers?: boolean; 
         const s = await scene(board, env, true);
         const pending = s.cards.filter((c) => c.pending).map((c) => c.id);
         if (pending.length) {
-          void env.hl.ready().then(async () => {
+          void hl.ready().then(async () => {
             const cards: SceneCard[] = [];
             for (const id of pending) {
               const c = board.cards.find((x) => x.id === id);
@@ -325,7 +365,14 @@ export function createBridge(native: Native, opts: { fs?: Fs; timers?: boolean; 
             emit("changed", {
               dir,
               id,
-              change: { cards, sections: [], links: [], gone: { cards: [], sections: [], links: [] }, moved: [] },
+              change: {
+                cards,
+                sections: [],
+                links: [],
+                stickers: [],
+                gone: { cards: [], sections: [], links: [], stickers: [] },
+                moved: [],
+              },
             });
           });
         }

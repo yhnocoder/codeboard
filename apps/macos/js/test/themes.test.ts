@@ -15,7 +15,14 @@ describe("themes.json from the board's stylesheets", () => {
     expect(w.light["sect-fill"]).toMatch(/^#211f1b0[56]$/);
     expect(w.light["bf-paper"]).toBe(w.light.surface);
     expect(w.dark["bf-yellow"]).not.toBe(w.light["bf-yellow"]);
-    expect(w.light["sh-lift"]).toMatch(/^#32230a/);
+    // a shadow list as its shadows (offset, blur, spread, colour); a picked declaration (the selection ring) and a gradient
+    expect(w.light["sh-lift"]).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ y: 30, blur: 60, spread: -18, color: expect.stringMatching(/^#32230a/) }),
+      ]),
+    );
+    expect(w.light["card-sel-ring"]).toHaveLength(4);
+    expect(t["ink-wash"].light["head-bg"]).toMatchObject({ angle: 90, stops: [{ at: 0 }, { at: 0.45 }, { at: 0.85 }] });
   });
   it("other looks override the base and lose Warm Ink's Note code colours", () => {
     expect(t.graphite.light.ink).not.toBe(t["warm-ink"].light.ink);

@@ -24,7 +24,7 @@
     "stickerBitmapsPicker",
     "notePastedImageSameSizeInBothModes"
   ],
-  "manual": ["markdownRecord", "boardMarksScreenshots", "shelfScreenshots", "paletteMeaningFaintLooks"],
+  "manual": ["markdownRecord", "boardMarksScreenshots", "shelfScreenshots", "paletteMeaningFaintLooks", "parityWeb"],
   "solo": ["markdownLazyRender"],
   "known": {},
   "limits": {
@@ -56,6 +56,7 @@
       "packages/board/src/{styles,fonts,fonts-yozai,fonts-zhimangxing}.css",
       "packages/board/src/fonts/**",
       "packages/board/test/{harness,fixtures,coverage,subhost,realhost,deepseek,chromium,probes,watch}.ts",
+      "packages/board/test/scenarios/parity.spec.ts",
       "packages/host/test/node-workspace.ts",
       "tools/test/**",
       "examples/nano-vllm"
@@ -322,6 +323,7 @@
         "packages/board/src/state/{stickers,questions}.ts",
         "packages/board/src/actions/{stickers,questions}.ts",
         "packages/core/src/commands/stickers.ts",
+        "packages/core/src/stickers.ts",
         "packages/board/src/ui/QuestionsPanel.tsx",
         "packages/core/src/questions.ts",
         "packages/host/src/stickers.ts",
@@ -345,6 +347,7 @@
         "packages/board/src/settings.css",
         "packages/board/src/scenes/**",
         "packages/board/src/state/{look,tilt,ink,inkart,inkframe}.ts",
+        "packages/core/src/canvas/{inkpaper,inkframe}.ts",
         "packages/board/src/canvas/city.ts",
         "packages/board/src/canvas/Traffic.tsx",
         "packages/board/src/ui/Settings.tsx",

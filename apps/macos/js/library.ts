@@ -1,19 +1,16 @@
 // The library: every project's boards in one place (the app's library window and ⌘K), on the bridge's Storage of each folder
 // (the same one the extension runs), so listing, New Board, rename and delete (to .trash) behave as there; and the documents ⌘K indexes
 // (projectDocs, as the host's Related by Meaning builds them).
-import { cardTitle, estSize, type Board, type BoardMeta } from "@codeboard/core";
+import type { Board, BoardMeta } from "@codeboard/core";
 import { projectDocs, type Origin, type Storage } from "@codeboard/host/storage";
 import { isErr, type Native } from "./native";
+import { type SceneCard, type SceneEnv, type SceneSection, sceneCard, sceneSection } from "./scene";
 
 /** A board as the library shows it: when its file last changed, and what its thumbnail draws */
-export type LibBoard = BoardMeta & { file?: string; mtime: number; map: MiniMap };
-/** A board in small (Thumbs.swift draws it): its cards with their titles and looks, its arrows (card index to card index)
- *  and its sections */
-export type MiniMap = {
-  cards: { x: number; y: number; w: number; h: number; kind: string; title: string; look?: string; fill?: string }[];
-  links: [number, number][];
-  sections: { x: number; y: number; w: number; h: number; title: string; color?: string }[];
-};
+export type LibBoard = BoardMeta & { file?: string; mtime: number; scene: MiniScene };
+/** A board in small (Thumbs.swift draws it with the canvas's own card drawing): its cards and Sections as the board's scene
+ *  has them (code without highlighting: a thumbnail draws it as blocks) and its arrows (card index to card index) */
+export type MiniScene = { cards: SceneCard[]; sections: SceneSection[]; links: [number, number][] };
 /** One document for box (an item of PROTOCOL.md's sync) and where it came from; its pictures by key (the same keys as the
  *  extension's, so both share one index), as data: URLs only when box has not taken them yet */
 export type LibDoc = {
@@ -28,24 +25,14 @@ export type LibDoc = {
 /** Cards per thumbnail at most: enough for a picture of the board */
 const CARDS = 400;
 
-function miniMap(b: Board): MiniMap {
-  const cards: MiniMap["cards"] = [];
+async function miniScene(b: Board, env: SceneEnv): Promise<MiniScene> {
+  const cards: SceneCard[] = [];
   const at = new Map<string, number>();
-  for (const c of b.cards) {
-    const p = b.place[c.id];
-    if (!p || cards.length >= CARDS) continue;
+  for (const c of b.cards.slice(0, CARDS)) {
+    const sc = await sceneCard(b, c, env);
+    if (!sc) continue;
     at.set(c.id, cards.length);
-    const h = !p.h && p.mh ? p.mh : estSize(c, p).h;
-    const title = cardTitle(c, b).split("\n")[0].slice(0, 80);
-    cards.push({
-      x: p.x,
-      y: p.y,
-      w: p.w,
-      h,
-      kind: c.kind,
-      title,
-      ...(c.kind === "note" ? { look: c.look, ...(c.fill ? { fill: c.fill } : {}) } : {}),
-    });
+    cards.push(sc);
   }
   const links: [number, number][] = [];
   for (const l of b.links) {
@@ -53,15 +40,7 @@ function miniMap(b: Board): MiniMap {
       z = at.get(l.to.card);
     if (a !== undefined && z !== undefined && a !== z) links.push([a, z]);
   }
-  const sections = b.sections.map((x) => ({
-    x: x.x,
-    y: x.y,
-    w: x.w,
-    h: x.h,
-    title: x.title,
-    ...(x.color ? { color: x.color } : {}),
-  }));
-  return { cards, links, sections };
+  return { cards, sections: b.sections.map((x) => sceneSection(b, x)), links };
 }
 
 /** at(dir): the folder's Storage, the bridge's (one per folder, shared with the board windows on it) */
@@ -74,11 +53,24 @@ export function createLibrary(native: Native, at: (dir: string) => Storage) {
   async function list(dir: string): Promise<LibBoard[]> {
     const s = at(dir);
     const metas = await s.list();
-    return metas.map((m) => {
+    // no highlighting: a thumbnail is too small for code to read, the canvas draws it as blocks
+    const env: SceneEnv = {
+      assetsDir: s.assetsDir(),
+      peek: (id) => s.peek(id) ?? null,
+      hl: { tokens: async (_l, lines) => lines.map((t) => [[t]]) },
+    };
+    const out: LibBoard[] = [];
+    for (const m of metas) {
       const b = s.peek(m.id);
       const file = s.fileOf(m.id);
-      return { ...m, file, mtime: mtime(file), map: b ? miniMap(b) : { cards: [], links: [], sections: [] } };
-    });
+      out.push({
+        ...m,
+        file,
+        mtime: mtime(file),
+        scene: b ? await miniScene(b, env) : { cards: [], links: [], sections: [] },
+      });
+    }
+    return out;
   }
 
   async function create(dir: string, name: string): Promise<string> {

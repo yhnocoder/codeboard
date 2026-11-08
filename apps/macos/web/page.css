@@ -32,7 +32,8 @@ body {
 }
 /* ==highlight==: the package draws the band as a gradient to transparent, which the PDF the app takes paints black (PDF shadings
    have no alpha); a flat inset shadow over the lower half is the same band */
-#stage .md mark {
+#stage :root:not(.look-ink-wash) .md mark,
+:root:not(.look-ink-wash) #stage .md mark {
   background: none;
   box-shadow: inset 0 -0.54em 0 var(--md-hl);
 }

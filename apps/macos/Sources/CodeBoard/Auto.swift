@@ -204,6 +204,39 @@ final class AutoRun: NSObject {
     // the cards' first bitmaps are drawn off the main thread: give them a moment before the first picture
     after(0.6) { self.start(finished) }
   }
+
+  /**
+   * The parity capture (`--parity <card ids>`, apps/macos/parity.mjs): each card at the top left at zoom 1 (focus: 40 px in, as
+   * the web capture's PAD), pictured at rest and selected, with the card's rect in view points beside each picture (`<id>.json`),
+   * so the tool crops both sides the same way. The scene around the first card too
+   */
+  func parity(_ ids: [String], _ finished: @escaping () -> Void) {
+    let canvas = wc.canvas
+    var rest = ids
+    func next() {
+      guard !rest.isEmpty else { return finished() }
+      let id = rest.removeFirst()
+      canvas.select([])
+      canvas.focus(id)
+      // Notes come from the web page a little later than the native cards
+      after(1.6) {
+        guard let l = canvas.cardLayers[id] else { logLine("[parity] no card %@", id); return next() }
+        let r = canvas.toView(l.worldRect)
+        if let out = self.out, let d = try? JSONSerialization.data(withJSONObject: ["x": r.minX, "y": r.minY, "w": r.width, "h": r.height]) {
+          try? FileManager.default.createDirectory(atPath: out, withIntermediateDirectories: true)
+          try? d.write(to: URL(fileURLWithPath: "\(out)/\(id).json"))
+        }
+        if id == ids.first { self.snapshot("scene") }
+        self.snapshot("\(id)-show")
+        canvas.select([id])
+        after(0.4) {
+          self.snapshot("\(id)-sel")
+          next()
+        }
+      }
+    }
+    after(0.8) { next() }
+  }
   private func start(_ finished: @escaping () -> Void) {
     let canvas = wc.canvas
     var dl: CVDisplayLink?

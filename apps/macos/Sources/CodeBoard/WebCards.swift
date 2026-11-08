@@ -25,6 +25,16 @@ struct CardSpec: Encodable {
   var lang: String?
   /** The board's own height (Place.h): the body scrolls inside it */
   var h: Double?
+  /** A sub-board card: its skeleton as JSON (the page draws the map) */
+  var skel: String?
+  /** A Highlight's Always Show notes: their Markdown as a JSON array, at the width they get */
+  init(inote id: String, mds: [String], width: Double) {
+    self.id = id
+    kind = "inote"
+    md = (try? String(data: JSONEncoder().encode(mds), encoding: .utf8)) ?? "[]"
+    title = ""
+    w = width
+  }
   init(_ c: SceneCard, text: String? = nil, lang: String? = nil) {
     id = c.id
     kind = c.kind
@@ -43,9 +53,10 @@ struct CardSpec: Encodable {
     locked = c.locked
     self.lang = lang
     if c.fixed == true { h = c.h }
+    skel = c.skel
   }
   /** What a rendering depends on, for the bitmap cache */
-  var key: String { "\(kind)|\(look ?? "")|\(w)|\(title)|\(name ?? "")|\(size ?? "")|\(bold ?? false)|\(fill ?? "")|\(hand ?? "")|\(weight ?? "")|\(level ?? 0)|\(fs ?? 0)|\(h ?? 0)|\(md)" }
+  var key: String { "\(kind)|\(look ?? "")|\(w)|\(title)|\(name ?? "")|\(size ?? "")|\(bold ?? false)|\(fill ?? "")|\(hand ?? "")|\(weight ?? "")|\(level ?? 0)|\(fs ?? 0)|\(h ?? 0)|\(skel ?? "")|\(md)" }
 }
 
 /** The configuration's handlers (retained by WebKit): they forward to the page without retaining it */
@@ -198,6 +209,20 @@ struct NotePDF {
   var h: CGFloat
   /** The PDF's size in memory (the cache is bounded by it) */
   var bytes = 0
+  /** The PDF drawn into a bitmap, pixels = points × scale (off the main thread; the caller keeps the result) */
+  func raster(scale: CGFloat) -> CGImage? {
+    guard let page = doc.page(at: 1) else { return nil }
+    let pw = max(1, Int((w * scale).rounded())), ph = max(1, Int((h * scale).rounded()))
+    guard let ctx = CGContext(data: nil, width: pw, height: ph, bitsPerComponent: 8, bytesPerRow: 0, space: CardLayer.colorSpace, bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue) else { return nil }
+    let box = page.getBoxRect(.mediaBox)
+    ctx.scaleBy(x: CGFloat(pw) / box.width, y: CGFloat(ph) / box.height)
+    ctx.translateBy(x: -box.minX, y: -box.minY)
+    ctx.setAllowsFontSmoothing(true)
+    ctx.setShouldSmoothFonts(true)
+    ctx.interpolationQuality = .high
+    ctx.drawPDFPage(page)
+    return ctx.makeImage()
+  }
 }
 
 /**

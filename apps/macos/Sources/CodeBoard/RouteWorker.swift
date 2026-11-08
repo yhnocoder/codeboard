@@ -27,6 +27,7 @@ final class RouteWorker {
   /** The board's routing model (links, each card's kind and code rows); key = folder + board */
   func setModel(_ key: String, _ json: String) { js.post { [self] in api.invokeMethod("setModel", withArguments: [key, json]) } }
   func drop(_ key: String) { js.post { [self] in api.invokeMethod("drop", withArguments: [key]) } }
+  func setLook(_ look: String) { js.post { [self] in api.invokeMethod("setLook", withArguments: [look]) } }
 
   /** Routes for these rectangles (only the links named); cb on the main thread with `seq`. A request made while one runs waits,
    *  and a newer one replaces it: at most one finished and one waiting at any time */

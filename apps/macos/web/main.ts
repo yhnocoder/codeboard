@@ -5,8 +5,9 @@
 import { createMarkdown, type Markdown } from "@yhnocoder/markdown";
 import { mountEditor, prepare, warmUp, type MdEditorHandle } from "@yhnocoder/markdown/editor";
 import { codeEditor, type CodeEditor } from "@yhnocoder/markdown/code-editor";
-import { HAND_WEIGHT_CSS, mdHeading, renderLine, textSizeOf, type NoteCard } from "@codeboard/core";
+import { HAND_WEIGHT_CSS, mapFit, mapHtml, mdHeading, renderLine, textSizeOf, type NoteCard, type Skeleton } from "@codeboard/core";
 import { makeHighlighter } from "../js/highlight";
+import { langId } from "@codeboard/analysis/langs";
 import "@yhnocoder/markdown/katex.css";
 import "../../../packages/board/src/fonts.css";
 import "../../../packages/board/src/styles.css";
@@ -18,7 +19,7 @@ import { paperOf } from "../../../packages/board/src/state/inkart";
 /** What the app sends for one card (js/scene.ts SceneCard's Note fields and a Free code card's text) */
 type CardSpec = {
   id: string;
-  kind: "note" | "code";
+  kind: "note" | "code" | "board" | "inote";
   look?: string;
   md: string;
   /** The title shown in the head (cardTitle); the body hides a leading heading that is this title */
@@ -38,6 +39,8 @@ type CardSpec = {
   lang?: string;
   /** The board's own height (Place.h): the body scrolls inside it when editing, is clipped in a bitmap */
   h?: number;
+  /** A sub-board card: core's Skeleton as JSON; the frame shows its map (BoardBody's mapHtml) */
+  skel?: string;
 };
 
 /** The air around the card while editing: the selection ring and Ink Wash's paper reach outside the card (EditCard.edge) */
@@ -51,12 +54,20 @@ const post = (m: Record<string, unknown>) =>
 // the host's highlighter, as in the bridge: tree-sitter's wasm comes from the app's Resources (cb://app/wasm/…)
 const hl = makeHighlighter(async (file) => new Uint8Array(await (await fetch(`cb://app/wasm/${file}`)).arrayBuffer()));
 let titles: { id: string; title: string }[] = [];
+/** Code blocks being highlighted: a render waits for them before its picture is taken (the first grammar takes a while) */
+const highlighting = new Set<Promise<unknown>>();
 const md: Markdown = createMarkdown({
-  highlight: async (text, lang) => {
-    const lines = text.split("\n");
-    const toks = (await hl.tokens(lang, lines)) ?? lines.map((l) => [[l]]);
-    return toks.map((l) => renderLine(l.map(([t, cls]) => (cls ? { text: t, cls } : { text: t })))).join("\n");
+  highlight: (text, lang) => {
+    const p = (async () => {
+      const lines = text.split("\n");
+      const toks = (await hl.tokens(lang, lines)) ?? lines.map((l) => [[l]]);
+      return toks.map((l) => renderLine(l.map(([t, cls]) => (cls ? { text: t, cls } : { text: t })))).join("\n");
+    })();
+    highlighting.add(p);
+    void p.finally(() => highlighting.delete(p));
+    return p;
   },
+  langId,
   refs: {
     resolve: (label, target) => {
       const l = label.trim().toLowerCase();
@@ -81,7 +92,34 @@ function cardEl(c: CardSpec): { card: HTMLElement; body: HTMLElement; mdBody: bo
   const body = document.createElement("div");
   let mdBody = true;
   const n = c as unknown as NoteCard;
-  if (c.kind === "code") {
+  if (c.kind === "inote") {
+    // a Highlight's Always Show notes (CodeBody .inotes > .inote > .nbody): md is their Markdown as a JSON array; the app
+    // places the picture under the Highlight's last line, so the wrapper is the picture
+    card.className = "inotes hx-band";
+    card.style.width = `${c.w}px`;
+    for (const text of JSON.parse(c.md) as string[]) {
+      const note = document.createElement("div");
+      note.className = "inote";
+      note.style.maxWidth = "none";
+      const nb = document.createElement("div");
+      nb.className = "nbody md";
+      const html = md.render(text);
+      nb.innerHTML = html;
+      md.hydrate(nb, html);
+      note.appendChild(nb);
+      card.appendChild(note);
+    }
+    card.removeChild(face);
+    mdBody = false;
+  } else if (c.kind === "board") {
+    // the frame of a sub-board (BoardBody.tsx): the map SVG fills it; the name above it is the app's
+    card.className = "card board";
+    card.style.height = `${c.h ?? 0}px`;
+    const sk = c.skel ? (JSON.parse(c.skel) as Skeleton) : null;
+    body.className = "sbmap";
+    if (sk) body.innerHTML = mapHtml(sk, mapFit(sk, c.w, c.h ?? 0), (img) => (img.startsWith("data:") ? img : `cb://a/assets/${img}`));
+    mdBody = false;
+  } else if (c.kind === "code") {
     card.className = "card ccard";
     card.style.setProperty("--fc", "var(--hd-blue)");
     face.innerHTML = `<div class="chead"><span class="kind">${esc(c.lang ?? "code")}</span><span class="ctitle">${esc(c.title)}</span></div>`;
@@ -119,7 +157,7 @@ function cardEl(c: CardSpec): { card: HTMLElement; body: HTMLElement; mdBody: bo
   }
   if (c.look !== "freetext") card.style.width = `${c.w}px`;
   // Ink Wash: the card is a torn sheet of rice paper (the board's Card.tsx paperOf, on the card's ::before)
-  if (document.documentElement.dataset.look === "ink-wash" && (c.kind === "code" || c.look === "note"))
+  if (document.documentElement.dataset.look === "ink-wash" && (c.kind === "code" || c.kind === "board" || c.look === "note"))
     card.style.setProperty("--deckle", paperOf(c.id, document.documentElement.dataset.theme === "dark"));
   face.appendChild(body);
   return { card, body, mdBody };
@@ -212,8 +250,9 @@ const cb = {
         const html = md.render(c.md);
         body.innerHTML = html;
         md.hydrate(body, html);
-      } else body.textContent = c.md;
+      } else if (c.kind !== "board" && c.kind !== "inote") body.textContent = c.md;
       stage.appendChild(card);
+      while (highlighting.size) await Promise.allSettled([...highlighting]);
       // capped: something was still changing (an image not decoded) when the 400 ms ran out: shown, not kept on disk
       const capped = await settled(body);
       const { w, h } = heightOf(card);
