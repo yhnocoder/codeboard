@@ -78,8 +78,8 @@ final class CanvasView: NSView {
   private(set) var level = 0
   private var push = 0.0
   private var pushedAt = 0.0
-  private var drainTimer: Timer?
-  private var switchTimer: Timer?
+  private var drainTimer: Ticker?
+  private var switchTimer: Ticker?
   private(set) var stickerLayers: [String: StickerLayer] = [:]
   /** Ink Wash's scene behind the board (packages/board/src/scenes): the whole view, bottom-anchored, cover */
   private let scene = CALayer()
@@ -559,6 +559,7 @@ final class CanvasView: NSView {
         l.isHidden = !on
         if !on { l.contents = nil; l.drawn = false; continue }
         l.drawn = true
+        if l.stale { l.recolor() }
         if l.hasFace && !l.stale && l.faceScale == s { continue }
         if zooming && l.hasFace { deferred.insert(l.card.id); continue }
         l.contentsScale = s
@@ -599,8 +600,7 @@ final class CanvasView: NSView {
     // the cards near the view draw again (each keeps its old bitmap until the new one lands, a few per frame, nearest first); the
     // rest when they come near
     for l in cardLayers.values {
-      l.recolor()
-      if l.isHidden { l.stale = true; l.drawn = false } else { l.setNeedsDisplay() }
+      if l.isHidden && l.card.id != underEdit { l.stale = true; l.drawn = false } else { l.recolor(); l.setNeedsDisplay() }
     }
     for l in sectionLayers.values { l.restyle() }
     for l in arrowLayers.values { l.recolor(); l.drawLabel() }
@@ -1115,7 +1115,7 @@ final class CanvasView: NSView {
     }
     let was = folded
     folded = Set(cardLayers.values.filter { c in c.card.section.map { shut.contains($0) } ?? false }.map { $0.card.id })
-    for id in was.subtracting(folded) { if let l = cardLayers[id] { l.isHidden = false; l.setNeedsDisplay(); l.drawn = true } }
+    for id in was.subtracting(folded) { if let l = cardLayers[id] { l.isHidden = false; if l.stale { l.recolor() }; l.setNeedsDisplay(); l.drawn = true } }
     for id in folded.subtracting(was) { if let l = cardLayers[id] { l.isHidden = true; l.drop() } }
     for s in sectionLayers.values { s.isHidden = s.section.parent.map { shut.contains($0) } ?? false }
     for a in arrowLayers.values { a.isHidden = folded.contains(a.link.from.card) || folded.contains(a.link.to.card) }
@@ -1286,7 +1286,7 @@ extension CanvasView {
   private func drain(_ to: Int) {
     guard drainTimer == nil else { return }
     var last = CACurrentMediaTime()
-    let t = Timer(timeInterval: 1 / 60.0, repeats: true) { [weak self] t in
+    let t = Ticker(self) { [weak self] t in
       guard let self else { t.invalidate(); return }
       let now = CACurrentMediaTime()
       if self.switchTimer != nil || self.push <= 0 { t.invalidate(); self.drainTimer = nil; return }
@@ -1297,7 +1297,6 @@ extension CanvasView {
       last = now
       if self.push <= 0 { t.invalidate(); self.drainTimer = nil }
     }
-    RunLoop.main.add(t, forMode: .common)
     drainTimer = t
   }
   /** The switch: the mist covers the board (from where the push left it), the levels swap under it in one frame, the camera
@@ -1308,7 +1307,7 @@ extension CanvasView {
     let mist0 = mist.isHidden ? 0 : Double(mist.bounds.height / max(1, bounds.height))
     let t0 = CACurrentMediaTime()
     var covered = false
-    let t = Timer(timeInterval: 1 / 60.0, repeats: true) { [weak self] t in
+    let t = Ticker(self) { [weak self] t in
       guard let self else { t.invalidate(); return }
       let k = min(1, (CACurrentMediaTime() - t0) * 1000 / DetentRules.times.ms)
       if k >= DetentRules.times.cover, !covered {
@@ -1330,7 +1329,6 @@ extension CanvasView {
         self.wantLevel()
       }
     }
-    RunLoop.main.add(t, forMode: .common)
     switchTimer = t
   }
   /** The mist as an image (styles.css .cutmist: the board's colour, solid to 70 % then clear, blurred 10 px), rendered once per
@@ -1375,5 +1373,23 @@ extension CanvasView {
       seal.transform = CATransform3DMakeRotation(-3 * .pi / 180, 0, 0, 1)
     }
     CATransaction.commit()
+  }
+}
+
+/** A closure run on every display frame (the view's display link: 120 Hz on ProMotion, where a 1/60 s timer moved the mist at
+ *  half the rate) until invalidated */
+final class Ticker: NSObject {
+  private let tick: (Ticker) -> Void
+  private var link: CADisplayLink?
+  init(_ view: NSView, _ tick: @escaping (Ticker) -> Void) {
+    self.tick = tick
+    super.init()
+    link = view.displayLink(target: self, selector: #selector(fire))
+    link?.add(to: .main, forMode: .common)
+  }
+  @objc private func fire() { tick(self) }
+  func invalidate() {
+    link?.invalidate()
+    link = nil
   }
 }
