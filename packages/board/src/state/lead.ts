@@ -13,8 +13,9 @@ import { cam, view } from "./camera";
 const LEAD = 3;
 
 /** The camera at the last animation frame after a call (null before the first) */
-let was: { x: number; y: number; z: number } | null = null,
-  armed = false;
+let was: { x: number; y: number; z: number } | null = null;
+/** A frame's snap is asked for */
+let armed = false;
 const snap = () => {
   armed = false;
   was = { x: cam.x, y: cam.y, z: cam.z };
