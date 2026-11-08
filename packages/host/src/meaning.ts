@@ -323,12 +323,14 @@ export class RerankGate {
   private gaveUp = false;
   private downloadAsked = false;
 
-  /** The reranker's state in box; where this box cannot run it, says so (once) and gives up */
-  private async model(c: Pick<BoxClient, "model">, ui: Pick<WorkspaceUi, "info" | "error">) {
+  /** The reranker's state in box; where this box cannot run it, gives up, and says so (once) when the user just turned
+   *  the setting on (it is on by default, which on such a box should stay quiet) */
+  private async model(c: Pick<BoxClient, "model">, ui: Pick<WorkspaceUi, "info" | "error">, tell = false) {
     const m = await c.model(RERANKER);
     if (!m.runs && !this.gaveUp) {
       this.gaveUp = true;
-      void ui.info(
+      if (tell)
+        void ui.info(
         "This build of CodeBoard has no reranker (the Linux and Intel Mac builds do not include one), so codeboard.search.rerank has no effect here.",
       );
     }
@@ -337,7 +339,7 @@ export class RerankGate {
 
   /** The setting was turned on: tells at once where this box cannot run the reranker */
   async check(c: Pick<BoxClient, "model">, ui: Pick<WorkspaceUi, "info" | "error">): Promise<void> {
-    if (!this.gaveUp) await this.model(c, ui);
+    if (!this.gaveUp) await this.model(c, ui, true);
   }
 
   async ready(

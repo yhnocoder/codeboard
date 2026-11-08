@@ -143,10 +143,13 @@ describe.skipIf(!built)("Related by Meaning", () => {
   });
 
   it("reranks only when codeboard.search.rerank is on, and never downloads a reranker this box cannot run", async () => {
-    expect(await cx.meaning.rerank(store, "kv cache", "a")).toEqual({ items: [], off: true });
     const get = W.settings.get;
-    W.settings = { ...W.settings, get: <T>(k: string) => (k === "codeboard.search.rerank" ? true : get<T>(k)) as T };
+    const rerank = (on: boolean) =>
+      (W.settings = { ...W.settings, get: <T>(k: string) => (k === "codeboard.search.rerank" ? on : get<T>(k)) as T });
     try {
+      rerank(false);
+      expect(await cx.meaning.rerank(store, "kv cache", "a")).toEqual({ items: [], off: true });
+      rerank(true);
       const m = await probe.model("hs-rerank-1");
       if (m.runs) return; // a box built with the reranker: box's own tests cover it (the model is not downloaded here)
       expect(await cx.meaning.rerank(store, "kv cache", "a")).toEqual({ items: [], off: true });
@@ -305,6 +308,15 @@ describe("the reranker's gate", () => {
     expect(f.calls).toEqual(["model"]);
     expect(f.told).toHaveLength(1);
     expect(f.told[0]).toMatch(/^info: .*no reranker.*no effect/);
+  });
+
+  it("stays quiet on a box without the reranker until the setting is turned on", async () => {
+    const f = fake([{ runs: false }]);
+    const g = new RerankGate();
+    expect(await g.ready(f.c, f.ui)).toBe(false);
+    expect(await g.ready(f.c, f.ui)).toBe(false);
+    expect(f.calls).toEqual(["model"]);
+    expect(f.told).toEqual([]);
   });
 
   it("asks for the download once, and after it failed says why once and stops asking", async () => {
