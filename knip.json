@@ -27,6 +27,7 @@
       "project": ["src/**/*.{ts,tsx}"],
       "ignore": ["dist/**"]
     },
+    "packages/tiles": { "includeEntryExports": true, "entry": ["src/cli.ts", "build.mjs", "test/**/*.{ts,mjs}"], "project": ["src/**/*.ts"] },
     "packages/analysis": { "includeEntryExports": true, "entry": ["test/**/*.{ts,mjs}"], "project": ["src/**/*.ts"] },
     "extensions/vscode": { "includeEntryExports": true, "entry": ["esbuild.mjs", "test/**/*.{ts,cjs}"], "project": ["src/**/*.ts"] }
   }

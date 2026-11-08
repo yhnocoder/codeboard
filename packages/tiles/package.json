@@ -1,0 +1,27 @@
+{
+  "name": "@codeboard/tiles",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "codeboard-tiles": "dist/cli.mjs"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@codeboard/core": "^0.1.0",
+    "@codeboard/host": "^0.1.0",
+    "fflate": "0.8.3",
+    "playwright-core": "^1.64.1",
+    "sharp": "0.35.5"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.43",
+    "esbuild": "^0.28.2",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.4"
+  }
+}
