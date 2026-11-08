@@ -10,6 +10,7 @@ export const COMMANDS = {
   "codeboard.setDeepseekKey": { title: "Set DeepSeek API Key" },
   "codeboard.clearDeepseekKey": { title: "Clear DeepSeek API Key" },
   "codeboard.setEmbeddingKey": { title: "Set Embedding API Key" },
+  "codeboard.exportSearchTraces": { title: "Export Search Traces…" },
   "codeboard.openBoardToSide": { title: "Open to the Side" },
   "codeboard.newBoard": { title: "New Board", icon: "add" },
   "codeboard.newGroup": { title: "New Group", icon: "newFolder" },

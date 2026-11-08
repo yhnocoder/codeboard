@@ -1,6 +1,7 @@
 // ⌘K's Related by Meaning against a stand-in embedding server and the real box binary (npm run build -w @codeboard/box): the
-// project's cards and sidenotes are handed to box (each with the boards it is on), only changed text is embedded again, and two
-// hosts (two windows) on one storage folder share one service and one index
+// project's cards and sidenotes are handed to box (each with the boards it is on) and Image cards with their picture, only
+// changed text is embedded again, two hosts (two windows) on one storage folder share one service and one index, and ⌘K's
+// This Board keeps both groups to the board asked from
 import * as fs from "node:fs";
 import * as http from "node:http";
 import * as os from "node:os";
@@ -11,6 +12,7 @@ import { emptyBoard, type Board } from "@codeboard/core";
 import { Storage } from "../src/storage/boards";
 import { nodeFs } from "../src/storage/nodefs";
 import { HostContext } from "../src/context";
+import { search } from "../src/search";
 import { nodeWorkspace } from "./node-workspace";
 
 const BIN = binIn(path.resolve(__dirname, "../../box/bin"));
@@ -30,12 +32,15 @@ const server = http.createServer((req, res) => {
   req.on("end", () => {
     res.setHeader("content-type", "application/json");
     if (req.url?.endsWith("/models")) return res.end(JSON.stringify({ data: [{ id: "test-embed" }] }));
-    const { input } = JSON.parse(body) as { input: string[] };
-    asked.push({ texts: input, auth: req.headers.authorization });
+    const { input } = JSON.parse(body) as { input: (string | { image_url: { url: string } })[] };
+    // a "picture" here is a file whose bytes are the words it shows
+    const text = (x: (typeof input)[number]) =>
+      typeof x === "string" ? x : Buffer.from(x.image_url.url.split(",")[1], "base64").toString("utf8");
+    asked.push({ texts: input.map(text), auth: req.headers.authorization });
     const vec = (t: string) => WORDS.map((w) => t.split(w).length - 1 + 0.01);
     res.end(
       JSON.stringify({
-        data: input.map((t, index) => ({ index, embedding: vec(t.replace(/^.*?\| (text|query): /, "")) })),
+        data: input.map((x, index) => ({ index, embedding: vec(text(x).replace(/^.*?\| (text|query): /, "")) })),
       }),
     );
   });
@@ -97,6 +102,11 @@ describe.skipIf(!built)("Related by Meaning", () => {
     expect(await indexed()).toMatchObject({ items: 3, model: "test-embed" });
     const r = await cx.meaning.search(store, "kv cache", "a");
     expect(r.items[0]).toMatchObject({ kind: "card", card: "n1", board: "a", detail: "This board" });
+    // for ⌘K's search traces: each row's score, best first, and the model the scores come from
+    const scores = r.items.map((i) => (i.kind === "card" || i.kind === "sidenote" ? i.score : undefined));
+    expect(scores.every((x) => typeof x === "number")).toBe(true);
+    expect(scores).toEqual([...scores].sort((x, y) => y! - x!));
+    expect(r.model).toBe("test-embed");
     const g = await cx.meaning.search(store, "cuda graph", "b");
     expect(g.items[0]).toMatchObject({ kind: "sidenote", sidenote: "sn1", card: "n2", detail: "Engine" });
     // each piece carries its card's own title, not where it sits; the key goes to the server
@@ -145,6 +155,65 @@ describe.skipIf(!built)("Related by Meaning", () => {
     }
   });
 
+  it("finds an Image card by its picture, read from assets/", async () => {
+    fs.mkdirSync(path.join(dir, "assets"), { recursive: true });
+    fs.writeFileSync(path.join(dir, "assets", "f00d.png"), "a prefill scheduler diagram");
+    const b = (await store.load("b"))!;
+    b.cards.push({ id: "pic", kind: "image", src: "f00d.png" });
+    b.place.pic = { x: 0, y: 0, w: 300 };
+    await store.save(b);
+    await cx.meaning.update(store);
+    await indexed();
+    const r = await cx.meaning.search(store, "prefill scheduler", "b");
+    const pic = r.items.find((i) => i.kind === "card" && i.card === "pic");
+    // its picture goes with it, for the row's thumbnail
+    expect(pic?.kind === "card" && pic.preview?.picture).toBe("assets/f00d.png");
+    expect(asked.flatMap((a) => a.texts)).toContain("a prefill scheduler diagram");
+  });
+
+  it("shows the picture in a long Note that matched, not its opening", async () => {
+    const b = (await store.load("b"))!;
+    const filler = Array.from({ length: 60 }, (_, i) => `Line ${i} about something else entirely.`).join("\n");
+    b.cards.push({ id: "long", kind: "note", look: "note", md: `${filler}\n\n![](assets/f00d.png)\n\nThe end.` });
+    b.place.long = { x: 400, y: 0, w: 300 };
+    await store.save(b);
+    await cx.meaning.update(store);
+    await indexed();
+    const r = await cx.meaning.search(store, "prefill scheduler", "b");
+    const long = r.items.find((i) => i.kind === "card" && i.card === "long");
+    expect(long?.kind === "card" && long.preview).toMatchObject({ picture: "assets/f00d.png" });
+    expect(long?.kind === "card" && long.preview?.hit).toBeUndefined();
+    expect(long?.kind === "card" && long.preview?.md).toContain("![](assets/f00d.png)");
+  });
+
+  it("finds an SVG by its words, and by the PNG an open board draws of it", async () => {
+    fs.writeFileSync(
+      path.join(dir, "assets", "beef.svg"),
+      '<svg xmlns="http://www.w3.org/2000/svg"><text x="0" y="9">cuda graph &amp; kv</text><rect/></svg>',
+    );
+    const drawn: string[] = [];
+    cx.meaning.drawWith(async (svg) => {
+      drawn.push(svg);
+      return `data:image/png;base64,${Buffer.from("a scheduler drawing").toString("base64")}`;
+    });
+    const b = (await store.load("b"))!;
+    b.cards.push({ id: "vec", kind: "image", src: "beef.svg" });
+    b.place.vec = { x: 0, y: 400, w: 300 };
+    await store.save(b);
+    await cx.meaning.update(store);
+    await indexed();
+    const texts = asked.flatMap((a) => a.texts);
+    expect(texts).toContain("title: Image | text: cuda graph & kv");
+    expect(texts).toContain("a scheduler drawing");
+    expect(drawn[0]).toMatch(/^data:image\/svg\+xml;base64,/);
+    expect((await cx.meaning.search(store, "cuda graph", "b")).items.map((i) => i.kind === "card" && i.card)).toContain(
+      "vec",
+    );
+    // box has its picture now: the next sync hands only its key, so it is not drawn again
+    await cx.meaning.update(store);
+    expect(drawn.length).toBe(1);
+  });
+
   it("is off while no endpoint is set or without the binary, and says what failed when the server does", async () => {
     const keep = url;
     url = "";
@@ -158,5 +227,44 @@ describe.skipIf(!built)("Related by Meaning", () => {
     expect(await none.meaning.search(store, "kv", "a")).toMatchObject({ items: [], off: true, error: /needs box/ });
     none.dispose();
     url = keep;
+  });
+
+  it("hides a picture below the same floor as text", async () => {
+    // the same words as a picture and as a Note, both scoring under MIN_SCORE: neither is shown
+    const words = "cache cuda graph scheduler";
+    fs.writeFileSync(path.join(dir, "assets", "ca5e.png"), words);
+    const c = emptyBoard("c", "Pictures");
+    c.cards.push({ id: "shot", kind: "image", src: "ca5e.png" });
+    c.place.shot = { x: 0, y: 0, w: 300 };
+    note(c, "words", words);
+    await store.save(c);
+    await cx.meaning.update(store);
+    await indexed();
+    const hits = (await probe.search({ source: dir, ref: "_", q: "cache", k: 40 })).hits;
+    const score = (id: string) => hits.find((h) => h.id === `card:${id}`)?.score ?? 0;
+    expect(score("shot")).toBeCloseTo(score("words"), 3);
+    expect(score("shot")).toBeGreaterThanOrEqual(0.5);
+    expect(score("shot")).toBeLessThan(0.55);
+    const r = await cx.meaning.search(store, "cache", "c");
+    expect(r.items.find((i) => i.kind === "card" && i.card === "shot")).toBeUndefined();
+    expect(r.items.find((i) => i.kind === "card" && i.card === "words")).toBeUndefined();
+  });
+});
+
+describe("Search this board only", () => {
+  it.skipIf(!built)("finds by meaning only what is on the board asked from", async () => {
+    await cx.meaning.update(store);
+    await indexed();
+    expect((await cx.meaning.search(store, "kv cache", "a", true)).items[0]).toMatchObject({ card: "n1", board: "a" });
+    const elsewhere = await cx.meaning.search(store, "kv cache", "b", true);
+    expect(elsewhere.items).toEqual([]);
+  });
+
+  it("finds by words only the cards and sidenotes on that board, and no functions or files", async () => {
+    const here = await search(cx, store, "Scheduler", "board", "a");
+    expect(here.map((r) => r.kind)).toEqual(["card"]);
+    expect(here[0]).toMatchObject({ card: "n2", board: "a" });
+    expect(await search(cx, store, "Scheduler", "board", "b")).toEqual([]);
+    expect((await search(cx, store, "cuda graph", "board", "a")).map((r) => r.kind)).toEqual(["sidenote"]);
   });
 });

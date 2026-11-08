@@ -4318,6 +4318,16 @@ mark.wdiff {
   pointer-events: none;
   z-index: 8;
 }
+/* While a card or Section is dragged the guides are a layer of their own (Canvas.tsx): a guide shown, moved or taken away at
+   a move then repaints only it, where in the card level's layer every move painted the guides' old and new places again in
+   that big layer (0.3-0.6 viewports a move on real boards, 0 without the guides). Only while dragging, so the layer is made at
+   the zoom it is drawn at; .board.relift takes the hint off for a frame after a zoom mid-drag, as for the lifted card */
+.guides.live {
+  will-change: transform;
+}
+.board.relift .guides.live {
+  will-change: auto;
+}
 
 .board[data-mode="draw"],
 .board[data-mode="draw"] * {
@@ -4562,14 +4572,47 @@ mark.wdiff {
   border-radius: 17px;
   background: var(--surface);
 }
+.palette .prow {
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+}
 .palette .pin {
+  flex: 1 1 auto;
+  min-width: 0;
   border: 0;
   outline: none;
   background: none;
   padding: 13px 16px;
   font-size: 14px;
-  border-bottom: 1px solid var(--line);
   color: var(--ink);
+}
+/* 搜哪里：所有白板 / 只这块白板（Tab 切换） */
+.pscope {
+  flex: none;
+  display: flex;
+  gap: 2px;
+  margin-right: 10px;
+  padding: 2px;
+  border-radius: 8px;
+  background: var(--wash, var(--line));
+}
+.pscope button {
+  border: 0;
+  background: none;
+  padding: 3px 9px;
+  border-radius: 6px;
+  font: 500 11.5px var(--sys);
+  color: var(--ink-3);
+  cursor: pointer;
+  transition:
+    background calc(var(--t) * 120ms),
+    color calc(var(--t) * 120ms);
+}
+.pscope button.on {
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 0 0 1px var(--line);
 }
 .plist {
   max-height: 52vh;
@@ -4637,10 +4680,15 @@ mark.wdiff {
   font: 10.5px var(--mono);
   color: var(--ink-3);
 }
+/* the gap under where it sits is its own, not the scrolling pane's: text scrolled up is cut below it, never drawn under it */
+.palette .ppw {
+  padding-bottom: 8px;
+  flex: none;
+}
 .palette .ppmd {
   flex: 1;
   overflow: auto;
-  padding: 8px 20px 20px;
+  padding: 0 20px 20px;
   font-size: 13px;
 }
 .palette .cand.more .lb {
@@ -4657,6 +4705,30 @@ mark.wdiff {
 .palette .ppmd table {
   display: block;
   overflow-x: auto;
+}
+.palette .poff {
+  padding: 0 12px 8px;
+  font-size: 11px;
+  color: var(--ink-3);
+}
+.palette .cand .kind.thumb {
+  width: 28px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.palette .cand .kind.thumb img {
+  max-width: 28px;
+  max-height: 20px;
+  object-fit: contain;
+  border-radius: 2px;
+  outline: 1px solid var(--line);
+}
+.palette .ppmd img.pphit {
+  outline: 2px solid color-mix(in srgb, var(--accent) 70%, transparent);
+  outline-offset: 3px;
+  border-radius: 2px;
 }
 .palette ::highlight(palette-hit) {
   background: color-mix(in srgb, var(--accent) 24%, transparent);
@@ -4704,6 +4776,142 @@ mark.wdiff {
 .pfoot kbd {
   color: var(--ink-2);
   margin-right: 3px;
+}
+/* ⌘K feedback: marks on rows (⌥↑ ⌥↓) and the strip that takes the footer's place (⌘.), same height, no shift */
+.pfoot {
+  align-items: center;
+  height: 32px;
+  box-sizing: border-box;
+}
+.pfoot .pfr {
+  margin-left: auto;
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+.pfoot .pfb {
+  cursor: pointer;
+}
+.pfoot .pfb:hover {
+  color: var(--ink-2);
+}
+.pfoot .psaved {
+  color: var(--accent);
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  animation: pfIn 140ms ease-out;
+}
+.pfeed {
+  gap: 12px;
+  animation: pfIn 140ms ease-out;
+}
+.pfeed .pfl {
+  color: var(--ink-2);
+}
+.pverdict {
+  display: flex;
+  gap: 2px;
+  outline: none;
+  border-radius: 6px;
+}
+.pverdict span {
+  padding: 1px 6px;
+  cursor: pointer;
+  color: var(--ink-3);
+  border-bottom: 1.5px solid transparent;
+  transition:
+    color 120ms,
+    border-color 120ms;
+}
+.pverdict span:hover {
+  color: var(--ink-2);
+}
+.pverdict span.on {
+  color: var(--ink);
+  border-bottom-color: var(--accent);
+}
+.pverdict:focus-visible {
+  box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+.pfeed .pnote-in {
+  flex: 1 1 auto;
+  min-width: 80px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: none;
+  outline: none;
+  height: 18px;
+  padding: 0;
+  font: inherit;
+  color: var(--ink);
+}
+.pfeed .pnote-in:focus {
+  border-bottom-color: color-mix(in srgb, var(--accent) 60%, var(--line));
+}
+.pfeed .pnote-in::placeholder {
+  color: var(--ink-3);
+}
+.palette .cand .pmk {
+  flex: none;
+  width: 34px;
+  margin-left: 4px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 2px;
+}
+.palette .cand .pm {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  display: grid;
+  place-items: center;
+  color: var(--ink-3);
+  opacity: 0.55;
+  cursor: pointer;
+}
+.palette .cand .pm .ico {
+  width: 11px;
+  height: 11px;
+}
+.palette .cand .pm.pmno .ico {
+  width: 10px;
+  height: 10px;
+}
+.palette .cand .pm:hover {
+  opacity: 1;
+  background: color-mix(in srgb, var(--ink) 7%, transparent);
+}
+.palette .cand .pm.set {
+  opacity: 1;
+  animation: mkIn 120ms ease-out;
+}
+.palette .cand .pm.pmno.set {
+  color: var(--ink);
+}
+.palette .cand .pm.set .ico {
+  --ico-w: 1.6;
+}
+.palette .cand .pm.pmok.set {
+  color: color-mix(in srgb, var(--accent) 75%, var(--ink-3));
+}
+@keyframes mkIn {
+  from {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+}
+@keyframes pfIn {
+  from {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .palette .cand .pm.set,
+  .pfeed,
+  .pfoot .psaved {
+    animation: none;
+  }
 }
 
 .pop {
@@ -6152,7 +6360,7 @@ mark.wdiff {
   -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 34px), transparent);
   mask-image: linear-gradient(to bottom, #000 calc(100% - 34px), transparent);
 }
-.sbpv .pmd {
+:is(.sbpv, .spk-card) .pmd {
   --md-fs: 12.5px;
   --md-h1: 1.25em;
   --md-h2: 1.15em;
@@ -6167,13 +6375,13 @@ mark.wdiff {
 .sbpv.k-compare .pb {
   background: var(--head);
 }
-.sbpv .pcode {
+:is(.sbpv, .spk-card) .pcode {
   margin: 0;
   font: 11px / 1.55 var(--mono);
   color: var(--ink);
   white-space: pre;
 }
-.sbpv .pcol {
+:is(.sbpv, .spk-card) .pcol {
   font: 600 10.5px / 1.6 var(--sys);
   color: var(--ink-3);
 }
@@ -6182,31 +6390,31 @@ mark.wdiff {
   max-height: none;
   background: #fff;
 }
-.sbpv .pimg {
+:is(.sbpv, .spk-card) .pimg {
   display: block;
   width: 100%;
   height: 150px;
   object-fit: contain;
 }
-.sbpv .cap {
+:is(.sbpv, .spk-card) .cap {
   padding: 6px 11px 8px;
   font: 11.5px / 1.4 var(--sys);
   color: var(--ink-2);
   background: var(--surface);
   border-top: 0.5px solid var(--line);
 }
-.sbpv .pweb b {
+:is(.sbpv, .spk-card) .pweb b {
   display: block;
   color: var(--ink);
   font-weight: 600;
 }
-.sbpv .pweb p {
+:is(.sbpv, .spk-card) .pweb p {
   margin: 2px 0;
 }
-.sbpv .pweb small {
+:is(.sbpv, .spk-card) .pweb small {
   color: var(--ink-3);
 }
-.sbpv .plinks {
+:is(.sbpv, .spk-card) .plinks {
   margin: 0;
   padding-left: 16px;
 }
@@ -6282,9 +6490,7 @@ mark.wdiff {
   padding: 3px 5px;
   color: var(--ink-2);
 }
-.crumbs.morph {
-  animation: none;
-}
+/* no animation: none here: taking .morph off again would start popin over (the breadcrumb blinking out a second time) */
 .crumbs.morph .cur {
   visibility: hidden;
 }
@@ -7217,6 +7423,80 @@ mark.wdiff {
   padding: 0 7px;
   font-size: 11px;
   box-shadow: inset 0 0 0 1px var(--hair);
+}
+/* Resting on a Shelf row: the entry as it was on the board, scaled down, beside the panel (ShelfPeek). The world inside is drawn at
+   board size and scaled, so cards keep their proportions */
+.shelf-peek {
+  position: absolute;
+  z-index: 22;
+  display: block;
+  box-sizing: content-box;
+  padding: 10px;
+  pointer-events: none;
+  overflow: hidden;
+  animation: popin calc(var(--t) * 120ms) var(--out);
+}
+.spk-world {
+  position: relative;
+  transform-origin: 0 0;
+}
+.spk-sec {
+  position: absolute;
+  box-sizing: border-box;
+  border-radius: 14px;
+  border: 1.5px solid var(--line);
+  background: color-mix(in srgb, var(--ink-3) 5%, transparent);
+}
+.spk-sec > span {
+  position: absolute;
+  left: 14px;
+  top: 8px;
+  font: 600 15px / 20px var(--sys);
+  color: var(--ink-2);
+}
+.spk-card {
+  position: absolute;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow:
+    0 0 0 1px var(--hair),
+    0 2px 6px rgb(0 0 0 / 0.06);
+}
+.spk-h {
+  flex: none;
+  padding: 8px 12px;
+  font: 600 13px / 18px var(--sys);
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-bottom: 0.5px solid var(--line);
+}
+.spk-b {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  padding: 8px 12px;
+  font: 13px / 1.6 var(--sys);
+  color: var(--ink-2);
+}
+.spk-card:is(.k-code, .k-compare) .spk-b {
+  background: var(--head);
+}
+.spk-card .pcode {
+  max-height: none;
+  overflow: hidden;
+  font-size: 12.5px;
+}
+.spk-card.k-image .spk-b {
+  padding: 0;
+}
+.spk-card.k-image .pimg {
+  height: 100%;
 }
 .cpanel.shelf .cpf {
   padding: 6px 10px 2px;
@@ -8436,6 +8716,7 @@ mark.wdiff {
 .hx-band .hxb.on {
   background: var(--band-on);
 }
+/* 12px of block room per note: .hx-bracket .inote takes the same */
 .hx-band .inote {
   margin: 0 20px 0 0;
   padding: 9px 12px 3px 1px;
@@ -8499,9 +8780,10 @@ mark.wdiff {
   text-decoration: underline;
   text-underline-offset: 2px;
 }
+/* the same block room as the band's notes (9px + 3px, no margin to collapse between two notes), so switching the look moves no line */
 .hx-bracket .inote {
-  margin: 3px 20px 8px 0;
-  padding: 0 0 0 1px;
+  margin: 0 20px 0 0;
+  padding: 3px 0 9px 1px;
 }
 /* a note that needs a look after a new version (Sidenote.review): its count in amber */
 .hxm.rv {

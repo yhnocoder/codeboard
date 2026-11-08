@@ -4,6 +4,7 @@ import { put, findSym, symCard, shot, OUT, type Host } from "../harness";
 import { emptyBoard, DEFAULT_SETTINGS, type Board, type CodeCard, type NoteCard } from "@codeboard/core";
 import type { Page } from "playwright-core";
 import { test, open, check, light, expect, until, idle, pmHasSelection, focusSettled } from "../fixtures";
+import { watch } from "../watch";
 
 const close = (h: Host) => h.page.context().close();
 
@@ -1793,4 +1794,43 @@ test("noteEmptyLineBetweenListsKept", async () => {
     );
   });
   await close(h);
+});
+
+/**
+ * Entering and leaving a Note's editor, and the Note growing while edited, watched frame by frame (watch.ts) in Warm Ink and Ink
+ * Wash: the card keeps its place and size while its editor opens and closes, nothing flashes (#151: Ink Wash's paper image
+ * was drawn again at every 4 px the Note grew, and the card showed the board through it for a frame; headless Chromium waits
+ * for the image in its frames, so this cannot show that one), and no words show twice over themselves at the same size. The
+ * title morphing into the heading is a slide of two sizes, not the same words doubled
+ */
+test("noteEditWatched", async () => {
+  const doc = "# KV cache budget\n\nPrefill first, then decode.\n\nOne block per sequence.";
+  for (const theme of ["warm-ink", "ink-wash"]) {
+    const h = await open({ board: board([doc, "Plain words in a Note."]), light, settings: { theme } as never });
+    await idle(h);
+    // the title's Note: the header folds away while the heading slides in, the card keeps its place and size
+    await watch(h, `noteEditWatched ${theme} enter`, { keep: ['.card[data-id="n0"]'], frames: 20 }, () =>
+      h.page.locator('.card[data-id="n0"] .nbody p').last().dblclick(),
+    );
+    await until(h, "the Note is being edited", () => editing(h, "n0"));
+    await idle(h);
+    await watch(h, `noteEditWatched ${theme} leave`, { keep: ['.card[data-id="n0"]'], frames: 20 }, () =>
+      h.page.keyboard.press("Escape"),
+    );
+    await until(h, "the editor is closed", async () => !(await editing(h, "n0")));
+    await idle(h);
+    // a Note growing by a line while it is edited
+    await h.page.locator('.card[data-id="n1"] .nbody p').last().dblclick();
+    await until(h, "the second Note is being edited", () => editing(h, "n1"));
+    await idle(h);
+    await h.page.keyboard.press("End");
+    await watch(
+      h,
+      `noteEditWatched ${theme} grow`,
+      { moves: ["card:n1"], keep: ['.card[data-id="n1"]'], frames: 8 },
+      () => h.page.keyboard.press("Enter"),
+    );
+    await idle(h);
+    await h.close();
+  }
 });

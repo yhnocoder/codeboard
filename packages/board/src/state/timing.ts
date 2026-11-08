@@ -95,3 +95,9 @@ export const MEANING_RETRY = 1500;
 export const RERANK_SLIDE = 260;
 /** ⌘K's preview follows the highlighted result once it rests this long (holding ↓ renders no Note on the way) */
 export const PREVIEW_PAUSE = 60;
+/** A menu's submenu stays open while the pointer heads for it across other items (the safe triangle, ui/Menu.tsx), at most
+ *  this long once the pointer rests: then the item under it takes over */
+export const MENU_AIM = 300;
+/** An SVG the host wants drawn for the embedding model waits while the camera moves or a card is dragged, looking again this
+ *  often: drawing a big one takes a frame or more */
+export const DRAW_QUIET_POLL = 100;

@@ -2,6 +2,7 @@ import { shot, symCard, findSym, viewOf, put, type Host } from "../harness";
 import { emptyBoard, putShared, type Board } from "@codeboard/core";
 import { RESEND_DELAY } from "../../src/state/timing";
 import { test, open, check, light, expect, until, idle } from "../fixtures";
+import { watch } from "../watch";
 
 function boardWith(...quals: string[]): Board {
   const b = emptyBoard("b1", "nano-vllm · generate main flow");
@@ -1024,6 +1025,58 @@ test("palette", async () => {
   await h.page.context().close();
 });
 
+test("paletteThisBoard", async () => {
+  // Tab (or the switch beside the input) keeps both searches to this board, and back; ⌘F opens it on this board
+  const h = await open({ board: boardWith("LLMEngine.step"), light });
+  await h.page.keyboard.press("ControlOrMeta+k");
+  await h.page.locator(".palette input:focus").waitFor();
+  await h.page.keyboard.type("alloc");
+  await until(h, "the symbols are listed", async () => (await h.page.locator(".palette .cand").count()) > 0);
+  // with results, an unset embedding server takes no room above them (once its "off" answer is in)
+  await until(h, "meaning asked", () => h.sent.some((m) => m.type === "searchMeaning"));
+  await idle(h);
+  await expect(h.page.locator(".palette .poff")).toHaveCount(0);
+  const scopes = (t: string) => h.sent.filter((m) => m.type === t).map((m: any) => m.scope ?? "all");
+  await h.page.keyboard.press("Tab");
+  await until(h, "both searches asked for this board", () =>
+    ["search", "searchMeaning"].every((t) => scopes(t).at(-1) === "board"),
+  );
+  await expect(h.page.locator(".palette .empty")).toHaveText("No matches on this board");
+  // this host has no embedding server: when nothing is found, the Palette says meaning was not searched
+  await expect(h.page.locator(".palette .poff")).toContainText("codeboard.search.embeddingUrl");
+  const on = await h.page.locator(".pscope button.on").textContent();
+  const focused = await h.page.evaluate(() => document.activeElement?.classList.contains("pin"));
+  await shot(h, "pal-this-board");
+  await h.page.locator(".pscope button", { hasText: "All Boards" }).click();
+  await until(h, "back to all boards", () => scopes("search").at(-1) === "all");
+  await until(h, "the symbols are back", async () => (await h.page.locator(".palette .cand").count()) > 0);
+  // ⌘F opens it on this board straight away; ⌘K on every board
+  await h.page.keyboard.press("Escape");
+  await expect(h.page.locator(".palette")).toHaveCount(0);
+  await h.page.keyboard.press("ControlOrMeta+f");
+  await h.page.locator(".palette input:focus").waitFor();
+  const onF = await h.page.locator(".pscope button.on").textContent();
+  await h.page.keyboard.type("sched");
+  await until(h, "⌘F searched this board", () => scopes("search").at(-1) === "board");
+  await h.page.keyboard.press("Escape");
+  await h.page.keyboard.press("ControlOrMeta+k");
+  await h.page.locator(".palette input:focus").waitFor();
+  const onK = await h.page.locator(".pscope button.on").textContent();
+  check(
+    "paletteThisBoard Tab searches only this board, the switch goes back to all boards; ⌘F opens on this board, ⌘K on all",
+    on === "This Board" && !!focused && onF === "This Board" && onK === "All Boards",
+    {
+      on,
+      focused,
+      onF,
+      onK,
+      search: scopes("search"),
+      meaning: scopes("searchMeaning"),
+    },
+  );
+  await h.page.context().close();
+});
+
 test("paletteMeaning", async () => {
   // the host's Related by Meaning (box) played here: the first answer is still indexing, the next is done
   let asked = 0;
@@ -1270,6 +1323,184 @@ test("paletteMeaningFaintLooks", async () => {
       await shot(h, `faint-${theme}-${lit ? "light" : "dark"}`);
       await h.page.context().close();
     }
+});
+
+// Related by Meaning embeds pictures as pixels: the host asks an open board to draw an SVG (with the fonts it shows it in)
+test("paletteMeaningPicture", async () => {
+  // Related by Meaning found a Note by a picture far down it: the row shows that picture small, the pane frames it in view
+  const svg = `data:image/svg+xml;base64,${btoa('<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100"><rect width="200" height="100" fill="#c33"/></svg>')}`;
+  const long = Array.from({ length: 40 }, (_, i) => `Line ${i} of a long Note about something else.`).join("\n\n");
+  const h = await open({
+    board: boardWith("BlockManager.deallocate"),
+    light,
+    on: async (m, reply) => {
+      if (m.type !== "searchMeaning") return false;
+      const c = h.board().cards[0];
+      await reply(m.req!, {
+        items: [
+          {
+            kind: "card",
+            label: "Image",
+            detail: "This board",
+            board: h.board().id,
+            card: c.id,
+            preview: { md: `${long}\n\n![](<${svg}>)\n\nThe end.`, where: "nano-vllm", picture: svg },
+          },
+        ],
+      });
+      return true;
+    },
+  });
+  await h.page.keyboard.press("ControlOrMeta+k");
+  await h.page.locator(".palette input:focus").waitFor();
+  await h.page.keyboard.type("red box");
+  await h.page.locator(".palette .cand .kind.thumb img").waitFor();
+  const framed = h.page.locator(".palette .ppmd img.pphit");
+  await framed.waitFor();
+  await until(h, "the framed picture is scrolled into the pane", () =>
+    h.page.evaluate(() => {
+      const pane = document.querySelector(".palette .ppmd")!.getBoundingClientRect();
+      const r = document.querySelector(".palette .ppmd img.pphit")!.getBoundingClientRect();
+      return r.height > 0 && r.top >= pane.top && r.bottom <= pane.bottom;
+    }),
+  );
+  await shot(h, "pal-05-meaning-picture");
+  const seen = await h.page.evaluate(() => ({
+    thumb: document.querySelectorAll(".palette .cand .kind.thumb img").length,
+    framed: document.querySelectorAll(".palette .ppmd img.pphit").length,
+    scrolled: document.querySelector(".palette .ppmd")!.scrollTop,
+    marks: [...((CSS as any).highlights?.get("palette-hit") ?? [])].length,
+  }));
+  check(
+    "paletteMeaningPicture shows the matched picture in the row and frames it in view in the pane, marking no words",
+    seen.thumb === 1 && seen.framed === 1 && seen.scrolled > 0 && seen.marks === 0,
+    seen,
+  );
+});
+
+test("meaningDrawsSvg", async () => {
+  const h = await open({ board: boardWith("BlockManager.deallocate"), light });
+  await idle(h);
+  const svg = `data:image/svg+xml;base64,${Buffer.from(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100"><rect width="100" height="100" fill="#d4472a"/></svg>',
+  ).toString("base64")}`;
+  const answer = async (id: number, dataUrl: string) => {
+    await h.post({ type: "draw", id, dataUrl });
+    return (
+      await until(h, `the board answers draw ${id}`, () =>
+        h.sent.find((m): m is Extract<typeof m, { type: "answer" }> => m.type === "answer" && m.id === id),
+      )
+    ).value;
+  };
+  const png = await answer(1, svg);
+  const look =
+    typeof png === "string"
+      ? await h.page.evaluate(async (u) => {
+          const img = new Image();
+          img.src = u;
+          await img.decode();
+          const cv = document.createElement("canvas");
+          cv.width = img.naturalWidth;
+          cv.height = img.naturalHeight;
+          const g = cv.getContext("2d")!;
+          g.drawImage(img, 0, 0);
+          const px = (x: number, y: number) => Array.from(g.getImageData(x, y, 1, 1).data.slice(0, 3));
+          return { w: img.naturalWidth, h: img.naturalHeight, left: px(10, 10), right: px(cv.width - 10, 10) };
+        }, png)
+      : null;
+  const broken = await answer(2, "data:image/svg+xml;base64,bm90IGFuIHN2Zw==");
+  check(
+    "meaningDrawsSvg the board draws an SVG into a PNG on white, its longer side 1024, and answers null for one that does not draw",
+    typeof png === "string" &&
+      png.startsWith("data:image/png;base64,") &&
+      look?.w === 1024 &&
+      look.h === 512 &&
+      look.left.join() === "212,71,42" &&
+      look.right.join() === "255,255,255" &&
+      broken === null,
+    { look, broken },
+  );
+  await h.page.context().close();
+});
+
+test("paletteFeedback", async () => {
+  // ⌘K reports its session to the host when it closes: what each query answered (Related by Meaning with its scores), the
+  // marks given with ⌥↑ / ⌥↓, and the verdict and note from the strip ⌘. puts in the footer's place
+  const h = await open({
+    board: boardWith("BlockManager.deallocate"),
+    light,
+    on: async (m, reply) => {
+      if (m.type !== "searchMeaning") return false;
+      const c = h.board().cards[0];
+      await reply(m.req!, {
+        items: ["Frees blocks", "Prefix cache", "Thread blocks"].map((label, n) => ({
+          kind: "card",
+          label,
+          detail: "Memory",
+          board: h.board().id,
+          card: n ? `x${n}` : c.id,
+          score: 0.8 - n / 20,
+        })),
+        model: "embed-test",
+      });
+      return true;
+    },
+  });
+  await h.page.keyboard.press("ControlOrMeta+k");
+  await h.page.locator(".palette input:focus").waitFor();
+  await h.page.keyboard.type("显存回收");
+  await h.page.locator(".palette .pgh", { hasText: "Related by Meaning" }).waitFor();
+  await idle(h);
+  const rows = h.page.locator(".palette .cand");
+  const first = await rows.count();
+  const meaningAt = (await rows.allTextContents()).findIndex((t) => t.includes("Frees blocks"));
+  for (let k = 0; k < meaningAt; k++) await h.page.keyboard.press("ArrowDown");
+  await h.page.keyboard.press("Alt+ArrowUp"); // Frees blocks: right
+  await h.page.keyboard.press("ArrowDown");
+  await h.page.keyboard.press("ArrowDown");
+  await h.page.keyboard.press("Alt+ArrowDown"); // Thread blocks: wrong
+  const set = await h.page.locator(".palette .cand .pm.set").count();
+  const query = await h.page.locator(".palette .pin").inputValue();
+  const footH = await h.page.locator(".palette .pfoot").evaluate((e) => e.getBoundingClientRect().height);
+  await h.page.keyboard.press("ControlOrMeta+Period");
+  await h.page.locator(".palette .pfeed").waitFor();
+  await h.page.keyboard.press("ArrowRight"); // Found
+  await h.page.keyboard.press("ArrowRight"); // Partly
+  await h.page.keyboard.press("Tab");
+  await h.page.keyboard.type("the deallocate card first");
+  const stripH = await h.page.locator(".palette .pfeed").evaluate((e) => e.getBoundingClientRect().height);
+  await shot(h, "pal-05-feedback");
+  await h.page.keyboard.press("Enter");
+  await h.page.locator(".palette .psaved").waitFor();
+  const back = await h.page.evaluate(() => document.activeElement?.classList.contains("pin"));
+  await h.page.keyboard.press("Escape");
+  await expect(h.page.locator(".palette")).toHaveCount(0);
+  await until(h, "the session's trace reached the host", () => h.sent.some((m) => m.type === "searchTrace"));
+  const t = (h.sent.find((m) => m.type === "searchTrace") as any).trace;
+  const last = t.queries.at(-1);
+  const meaning = last.hits.filter((x: any) => x.group === "meaning");
+  check(
+    "paletteFeedback marks rows with Alt+Up / Alt+Down without touching the query, and the strip keeps the footer's height",
+    set === 2 && query === "显存回收" && Math.abs(footH - stripH) < 1 && back === true && first >= 3,
+    { set, query, footH, stripH, back, first },
+  );
+  check(
+    "paletteFeedback sends the session's queries, Related by Meaning's scores, the marks, the verdict and the note, and no pick",
+    last.q === "显存回收" &&
+      meaning.map((x: any) => [x.label, x.rank, x.score]).join("|") ===
+        "Frees blocks,1,0.8|Prefix cache,2,0.75|Thread blocks,3,0.7" &&
+      last.meaning?.model === "embed-test" &&
+      t.marks?.map((x: any) => `${x.label}:${x.good}`).join("|") === "Frees blocks:true|Thread blocks:false" &&
+      t.feedback?.q === "显存回收" &&
+      t.feedback?.verdict === "partly" &&
+      t.feedback?.note === "the deallocate card first" &&
+      t.queries.every((x: any) => x.q === "显存回收") &&
+      t.pick === undefined &&
+      t.mode === "all" &&
+      t.scope === "all",
+    t,
+  );
+  await h.page.context().close();
 });
 
 test("peek", async () => {
@@ -1646,3 +1877,25 @@ async function hoverWord(h: Host, card: string, line: string, word: string) {
   await h.page.mouse.move(pt.x - 3, pt.y);
   await h.page.mouse.move(pt.x, pt.y, { steps: 2 });
 }
+
+/**
+ * Expanding a call, watched frame by frame (watch.ts): the new card and its arrow come in, the card that was clicked does not
+ * move or change size, nothing flashes and no title shows twice over itself
+ */
+test("expandCallWatched", async () => {
+  for (const theme of ["warm-ink", "ink-wash"]) {
+    const b = boardWith("LLMEngine.step");
+    const src = b.cards[0].id;
+    const h = await open({ board: b, light, settings: { theme } as never });
+    await idle(h);
+    await watch(
+      h,
+      `expandCallWatched ${theme}`,
+      { moves: [new RegExp(`^(?!card:${src}$)`)], keep: [`.card[data-id="${src}"]`], frames: 30 },
+      () => callEl(h, "schedule").click(),
+    );
+    await until(h, "schedule() expands into a card", () => h.board().cards.length > 1);
+    await idle(h);
+    await h.page.context().close();
+  }
+});

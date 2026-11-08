@@ -3,13 +3,25 @@
 import { describe, expect, it } from "vitest";
 import {
   IMAGE_BUDGET,
+  flashHits,
+  gridOf,
+  handoffHits,
   imageHits,
+  jumpHits,
+  styleHits,
+  twiceHits,
+  unusedAllows,
+  vanishHits,
   layerScales,
   rasterChecks,
   rasterWindows,
   scaleHits,
+  type AllowEntry,
+  type Grid,
   type ImgSeen,
+  type KindLook,
   type RasterResult,
+  type Sample,
   type Snapshot,
   type TraceEvent,
 } from "../probes";
@@ -179,6 +191,11 @@ describe("rasterChecks", () => {
     expect(checks.find((c) => c.name === "dragSection stepVP")).toMatchObject({ value: 1.46, limit: 1, ok: false });
     expect(rasterChecks({ dragSection: pass({ stepVP: 0.73 }) }, "persona").filter((c) => !c.ok)).toEqual([]);
   });
+  it("judges a card drag that snaps to its row on the persona board by the pixels a move rasters", () => {
+    const checks = rasterChecks({ dragSnap: pass({ stepVP: 0.47 }) }, "persona");
+    expect(checks.find((c) => c.name === "dragSnap stepVP")).toMatchObject({ value: 0.47, limit: 0.25, ok: false });
+    expect(rasterChecks({ dragSnap: pass({ stepVP: 0 }) }, "persona").filter((c) => !c.ok)).toEqual([]);
+  });
   it("counts the blurry and wasted layers at rest of the passes judged for sharpness, not of the others", () => {
     const checks = rasterChecks({ stops: pass({ blurry: ["x"] }), cut: pass({ wasted: ["y"] }) }, "synthetic");
     expect(checks.find((c) => c.name === "stops blurry layers at rest")).toMatchObject({ value: 1, ok: false });
@@ -189,7 +206,11 @@ describe("rasterChecks", () => {
     expect(checks.find((c) => c.name === "fit restVP")).toMatchObject({ value: 77, ok: false });
     expect(checks.find((c) => c.name === "fit wastedVP")).toMatchObject({ value: 73, ok: false });
     expect(checks.find((c) => c.name === "fit wasted layers at rest")).toMatchObject({ value: 1, ok: false });
-    const fixed = rasterChecks({ fit: pass({ restVP: 36, wastedVP: 4 }) }, "persona");
+    // the flight that kept the hint off from half its raster scale to the end rastered every frame (35-37 on the persona board)
+    expect(
+      rasterChecks({ fit: pass({ restVP: 36, wastedVP: 4 }) }, "persona").find((c) => c.name === "fit restVP")?.ok,
+    ).toBe(false);
+    const fixed = rasterChecks({ fit: pass({ restVP: 24, wastedVP: 5 }) }, "persona");
     expect(fixed.filter((c) => !c.ok)).toEqual([]);
   });
   it("passes a board whose passes all have their counts", () => {
@@ -231,5 +252,192 @@ describe("rasterChecks", () => {
       20,
     );
     expect([tasks, unknown]).toEqual([2, 1]);
+  });
+});
+
+// ---- the motion probes (watch.ts) and the consistency matrix (card-kinds.spec.ts)
+
+/** A grid of 8 px cells, every quarter of every cell one grey; `paint` sets some cells to another grey */
+const grid = (cols: number, rows: number, grey: number, paint: Record<number, number> = {}): Grid => {
+  const q = new Uint8Array(cols * rows * 12).fill(grey);
+  for (const [i, v] of Object.entries(paint)) q.fill(v, +i * 12, +i * 12 + 12);
+  return { cols, rows, cell: 8, q };
+};
+
+describe("gridOf", () => {
+  it("averages each quarter of each cell", () => {
+    const w = 16,
+      h = 8,
+      rgba = new Uint8Array(w * h * 4);
+    for (let y = 0; y < h; y++)
+      for (let x = 0; x < w; x++) {
+        const i = (y * w + x) * 4;
+        rgba[i] = x < 4 && y < 4 ? 200 : 0; // the first cell's top-left quarter red
+        rgba[i + 3] = 255;
+      }
+    const g = gridOf(rgba, w, h);
+    expect([g.cols, g.rows]).toEqual([2, 1]);
+    expect([...g.q.slice(0, 12)]).toEqual([200, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+    expect(g.q.slice(12).every((v) => v === 0)).toBe(true);
+  });
+});
+
+describe("flashHits", () => {
+  const still = (n: number) => Array.from({ length: n }, () => grid(4, 4, 240));
+  it("flags cells that go away for a frame and come back (#151: the paper missing for a frame)", () => {
+    const gs = still(6);
+    gs[3] = grid(4, 4, 240, { 5: 60, 6: 60 });
+    const hits = flashHits(
+      gs,
+      gs.map(() => []),
+    );
+    expect(hits).toHaveLength(1);
+    expect(hits[0]).toMatchObject({ from: 2, to: 4, cells: 2, box: { x: 8, y: 8, w: 16, h: 8 } });
+  });
+  it("passes a change that stays, and one that takes longer than a few frames to come back", () => {
+    const stays = still(6).map((g, i) => (i >= 3 ? grid(4, 4, 240, { 5: 60, 6: 60 }) : g));
+    expect(
+      flashHits(
+        stays,
+        stays.map(() => []),
+      ),
+    ).toEqual([]);
+    const slow = still(8).map((g, i) => (i >= 2 && i <= 5 ? grid(4, 4, 240, { 5: 60, 6: 60 }) : g));
+    expect(
+      flashHits(
+        slow,
+        slow.map(() => []),
+      ),
+    ).toEqual([]);
+  });
+  it("leaves out masked cells (what moved) and single cells", () => {
+    const gs = still(6);
+    gs[3] = grid(4, 4, 240, { 5: 60, 6: 60, 15: 60 });
+    expect(
+      flashHits(
+        gs,
+        gs.map((_, f) => (f === 3 ? [{ x: 8, y: 8, w: 16, h: 8 }] : [])),
+      ),
+    ).toEqual([]);
+  });
+  it("needs the cell at rest before: a cell that was changing anyway is not a flash", () => {
+    const p = (v: number) => grid(4, 4, 240, { 5: v, 6: v });
+    const gs = [p(120), p(240), p(60), p(240), p(240)];
+    expect(
+      flashHits(
+        gs,
+        gs.map(() => []),
+      ),
+    ).toEqual([]);
+  });
+});
+
+const sample = (rects: Sample["rects"], z = 1, o: [number, number] = [0, 0]) => ({ rects, z, o });
+
+describe("jumpHits", () => {
+  it("flags a card that should stay and moved or changed size, at the first frame it did", () => {
+    const s = [
+      sample({ "card:a": [0, 0, 100, 50] }),
+      sample({ "card:a": [0, 0, 100, 50] }),
+      sample({ "card:a": [0, 0, 100, 54] }),
+    ];
+    expect(jumpHits(s, () => "still")).toMatchObject([{ key: "card:a", kind: "moved", frame: 2, by: 4 }]);
+  });
+  it("judges the world at the camera's zoom: a quarter of a world unit at 4x is a pixel", () => {
+    const s = [sample({ "card:a": [0, 0, 100, 50] }, 4), sample({ "card:a": [0.25, 0, 100, 50] }, 4)];
+    expect(jumpHits(s, () => "still")).toHaveLength(1);
+    expect(
+      jumpHits(
+        s.map((x) => ({ ...x, z: 1 })),
+        () => "still",
+      ),
+    ).toEqual([]);
+  });
+  it("flags a step far longer than the ones around it, not a smooth move or a pointer's steps", () => {
+    const at = (ys: number[]) => ys.map((y) => sample({ "card:a": [0, y, 100, 50] }));
+    expect(jumpHits(at([0, 2, 4, 30, 31, 32]), () => "moves")).toMatchObject([{ kind: "jumped", frame: 3, by: 26 }]);
+    expect(jumpHits(at([0, 4, 12, 20, 26, 29, 30]), () => "moves")).toEqual([]);
+    expect(jumpHits(at([0, 2, 4, 30, 31, 32]), () => "free")).toEqual([]);
+  });
+  it("lets a moving card grow at once (a line added) and skips frames it is not seen in", () => {
+    const s = [
+      sample({ "card:a": [0, 0, 100, 50] }),
+      sample({ "card:a": [0, 0, 100, 80] }),
+      sample({}),
+      sample({ "card:a": [0, 0, 100, 80] }),
+    ];
+    expect(jumpHits(s, () => "moves")).toEqual([]);
+  });
+});
+
+describe("vanishHits", () => {
+  it("flags a kept element gone in some frames", () => {
+    const s = [{ shown: { ".crumbs": 1 } }, { shown: { ".crumbs": 0 } }, { shown: { ".crumbs": 1 } }];
+    expect(vanishHits(s)).toEqual([{ sel: ".crumbs", frames: [1] }]);
+    expect(vanishHits([{ shown: { ".crumbs": 0 } }, { shown: { ".crumbs": 0 } }])).toEqual([]);
+  });
+});
+
+const word = (t: string, x: number, y: number, w: number, h: number, el: number) => ({ t, b: { x, y, w, h }, el });
+
+describe("twiceHits", () => {
+  it("flags the same words shown twice over each other for a moment (#169: the crumb and its copy)", () => {
+    const crumb = word("Deep", 226.5, 17.75, 31.6, 15, 1),
+      copy = word("Deep", 226.5, 17.9, 30.8, 15, 2);
+    const s = [{ texts: [crumb] }, { texts: [crumb, copy] }, { texts: [copy] }, { texts: [] }];
+    expect(twiceHits(s)).toMatchObject([{ frame: 1, t: "Deep" }]);
+  });
+  it("passes words over each other before and after too (cards that overlap), and a morph to another size", () => {
+    const a = word("self", 36, 263, 59, 6, 1),
+      b = word("self", 36, 263, 47, 6, 2);
+    expect(twiceHits([{ texts: [a, b] }, { texts: [a, b] }, { texts: [a, b] }])).toEqual([]);
+    const title = word("KV cache budget", 87, 68, 97, 15, 1),
+      h1 = word("KV cache budget", 74, 67, 177, 33, 2);
+    expect(twiceHits([{ texts: [title] }, { texts: [title, h1] }, { texts: [h1] }])).toEqual([]);
+  });
+});
+
+describe("handoffHits", () => {
+  const f = (texts: ReturnType<typeof word>[], z = 1) => ({ texts, z, o: [0, 0] as [number, number] });
+  it("flags a copy that takes over at another size (#169: 12.20 px against the crumb's 12.5)", () => {
+    const s = [f([word("Deep", 226.5, 17.75, 31.625, 15, 1)]), f([word("Deep", 233.2, 19.7, 30.8, 15, 2)])];
+    expect(handoffHits(s)).toMatchObject([{ frame: 1, t: "Deep", by: 0.82 }]);
+  });
+  it("passes a copy at the original's size, already on its way, and frames where the camera moved", () => {
+    const s = [f([word("Deep", 226.5, 17.75, 31.625, 15, 1)]), f([word("Deep", 233.2, 19.5, 31.6, 15, 2)])];
+    expect(handoffHits(s)).toEqual([]);
+    const moved = [f([word("seq", 480, 795, 77.8, 8.7, 1)]), f([word("seq", 466, 798, 75.9, 8.5, 2)], 1.1)];
+    expect(handoffHits(moved)).toEqual([]);
+    // a copy landing later, frames after the action: when it lands depends on the host's timing
+    const late = [...Array(5)].map(() => f([word("Deep", 920, 203, 28.46, 13.5, 1)]));
+    late.push(f([word("Deep", 920, 204, 27.95, 13.5, 2)]));
+    expect(handoffHits(late)).toEqual([]);
+  });
+});
+
+describe("styleHits", () => {
+  const looks = (note: string): KindLook[] => [
+    { kind: "code", parts: { headLine: "none", corners: "12px" } },
+    { kind: "free", parts: { headLine: "none", corners: "12px" } },
+    { kind: "note", parts: { headLine: note, corners: "12px" } },
+    { kind: "image", parts: { headLine: null, corners: "12px" } },
+  ];
+  it("flags a kind whose shared part looks unlike most kinds' (#158: Warm Ink's header line)", () => {
+    expect(styleHits("warm-ink light", looks("1px solid"), [])).toMatchObject([
+      { part: "headLine", kind: "note", value: "1px solid", most: "none", others: ["code", "free"] },
+    ]);
+    expect(styleHits("warm-ink light", looks("none"), [])).toEqual([]);
+  });
+  it("lets through what ALLOW names, in the themes it names", () => {
+    const allow: AllowEntry[] = [{ part: "headLine", kind: "note", in: "warm-ink", why: "Notes keep their line" }];
+    expect(styleHits("warm-ink dark", looks("1px solid"), allow)).toEqual([]);
+    expect(styleHits("ink-wash dark", looks("1px solid"), allow)).toHaveLength(1);
+  });
+  it("names the entries that let nothing through", () => {
+    const allow: AllowEntry[] = [
+      { part: "headLine", kind: "note", why: "used" },
+      { part: "corners", kind: "image", why: "stale" },
+    ];
+    expect(unusedAllows([{ theme: "warm-ink light", looks: looks("1px solid") }], allow)).toEqual([allow[1]]);
   });
 });

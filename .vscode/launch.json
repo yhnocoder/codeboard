@@ -2,6 +2,14 @@
   "version": "0.2.0",
   "configurations": [
     {
+      "name": "CodeBoard：在 persona 上调试插件",
+      "type": "extensionHost",
+      "request": "launch",
+      "args": ["--extensionDevelopmentPath=${workspaceFolder}/extensions/vscode", "${userHome}/Projects/persona/"],
+      "outFiles": ["${workspaceFolder}/extensions/vscode/dist/**/*.js"],
+      "preLaunchTask": "codeboard: build"
+    },
+    {
       "name": "CodeBoard：在 nano-vllm 上调试插件",
       "type": "extensionHost",
       "request": "launch",
