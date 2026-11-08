@@ -217,11 +217,11 @@ final class AutoRun: NSObject {
     if let w = wc.window, let cv = w.contentView {
       w.setContentSize(NSSize(width: 1200 + cv.bounds.width - canvas.bounds.width, height: 800 + cv.bounds.height - canvas.bounds.height))
     }
-    /** A card's, a Section's or an arrow's rect in world units (an arrow: its line's path) */
+    /** A card's, a Section's or an arrow's rect in world units (an arrow: its route's centre line, as parity.spec.ts takes it) */
     func worldRect(_ id: String) -> CGRect? {
       if let l = canvas.cardLayers[id] { return l.worldRect }
       if let s = canvas.sectionLayers[id] { return s.frame }
-      if let a = canvas.arrowLayers[id] { return a.line.path?.boundingBox }
+      if let a = canvas.arrowLayers[id] { return a.route?.boundingBoxOfPath }
       return nil
     }
     func next() {

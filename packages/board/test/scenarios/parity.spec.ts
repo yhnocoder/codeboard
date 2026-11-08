@@ -70,9 +70,21 @@ test("parityWeb", async () => {
         // reveal selects the card: at rest first
         await page.keyboard.press("Escape");
         await idle(h);
-        // the card PAD in from the top left, as the app's focus puts it: panned there by wheel steps on the board (exact, 1:1)
+        // the box an item is placed and cropped by: an arrow's is its route's centre line (the path's geometry, not the hit
+        // stroke's), as the app reports it (Auto.swift parity); PAD around it holds the stroke, heads and port dots alike
+        const boxOf = async () =>
+          link
+            ? await el.evaluate((p: SVGPathElement) => {
+                const b = p.getBBox(),
+                  m = p.getScreenCTM()!;
+                const a = new DOMPoint(b.x, b.y).matrixTransform(m),
+                  c = new DOMPoint(b.x + b.width, b.y + b.height).matrixTransform(m);
+                return { x: a.x, y: a.y, width: c.x - a.x, height: c.y - a.y };
+              })
+            : (await el.boundingBox())!;
+        // the item PAD in from the top left, as the app's focus puts it: panned there by wheel steps on the board (exact, 1:1)
         for (let i = 0; i < 4; i++) {
-          const b = (await el.boundingBox())!;
+          const b = await boxOf();
           if (Math.abs(b.x - PAD) < 0.5 && Math.abs(b.y - PAD) < 0.5) break;
           await page.evaluate(
             ([dx, dy]) =>
@@ -83,7 +95,7 @@ test("parityWeb", async () => {
           );
           await idle(h);
         }
-        const box = (await el.boundingBox())!;
+        const box = await boxOf();
         fs.writeFileSync(
           path.join(out, `${id}.json`),
           JSON.stringify({ x: box.x, y: box.y, w: box.width, h: box.height }),
