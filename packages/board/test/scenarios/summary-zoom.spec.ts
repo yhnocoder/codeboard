@@ -4,9 +4,10 @@
 //                            board; double-clicking a Section's title fits the Section's frame, an outer Section's own
 //                            column (own:, the cards placed directly in it beside a child Section) fits those cards
 //  zoomedOutSimplifiesCards — zoomed out below Simplify Below (codeboard.zoom.simplifyBelow, 0.5) and above the summary cut,
-//                            stopped: a Note's prose is drawn as bars (its text transparent, the underline bar shown), the
-//                            bodies of Notes and code cards take no pointer (no line or block ports, no hover on lines and
-//                            calls), the card edges' ports stay; at 100 % none of it; with the setting at 0 none of it either
+//                            stopped: a Note's prose is drawn as bars (its text's fill transparent, a bar per line behind
+//                            it), the bodies of Notes and code cards take no pointer (a shield over them: no line or block
+//                            ports, no hover on lines and calls), the card edges' ports stay; the switch fades the prose
+//                            out, swaps it and fades it in; at 100 % none of it; with the setting at 0 none of it either
 //  summaryImageCopy        — an Image card's picture at the summary level is the smaller copy the card itself would show
 //                            (md.showImage, picked by the size the summary shows it at times the display scale), not the
 //                            full-size original: a 3200 × 1600 PNG shown 480 px wide at 20 % decodes a copy at least that
@@ -226,17 +227,35 @@ test("zoomedOutSimplifiesCards", async () => {
   const look = (h: Host) =>
     h.page.evaluate(() => {
       const p = document.querySelector<HTMLElement>('.card[data-id="n1"] .nbody p')!;
-      const cs = getComputedStyle(p);
+      const body = p.closest<HTMLElement>(".nbody")!;
       const code = document.querySelector<HTMLElement>(".card.ccard .cbody")!;
+      const line = code.querySelector<HTMLElement>(".src .l") ?? code;
+      const r = line.getBoundingClientRect();
+      const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
       return {
         greek: !!document.querySelector(".world.greek"),
-        color: cs.color,
-        bar: cs.textDecorationLine,
-        noteBody: getComputedStyle(p.closest(".nbody")!).pointerEvents,
-        codeBody: getComputedStyle(code).pointerEvents,
+        fill: getComputedStyle(body).webkitTextFillColor,
+        bar: getComputedStyle(p).backgroundImage.startsWith("repeating-linear-gradient"),
+        noteShield: getComputedStyle(body, "::after").content,
+        codeShield: getComputedStyle(code, "::after").content,
+        // what the pointer lands on over a line of code: the body itself (its shield), not the line
+        codeHit: hit === code,
         eport: getComputedStyle(document.querySelector(".card.ccard .eport")!).pointerEvents,
       };
     });
+  // the classes the world goes through: the switch fades the prose out, swaps it while it is out, and fades it in again
+  const record = (h: Host) =>
+    h.page.evaluate(() => {
+      const w = document.querySelector<HTMLElement>(".world")!;
+      const seen: string[] = [];
+      (window as unknown as { greekSeen: string[] }).greekSeen = seen;
+      let last = "";
+      new MutationObserver(() => {
+        const now = ["greekfade", "greek"].filter((c) => w.classList.contains(c)).join(" ");
+        if (now !== last) seen.push((last = now));
+      }).observe(w, { attributes: true, attributeFilter: ["class"] });
+    });
+  const seen = (h: Host) => h.page.evaluate(() => (window as unknown as { greekSeen: string[] }).greekSeen);
   const outTo = async (h: Host, z: number) => {
     await h.page.mouse.move(640, 400);
     for (let i = 0; i < 40 && (await zoomOf(h)) > z; i++) {
@@ -250,27 +269,32 @@ test("zoomedOutSimplifiesCards", async () => {
   const at100 = await look(h);
   check(
     "at 100 % the cards are drawn whole",
-    !at100.greek && at100.color !== "rgba(0, 0, 0, 0)" && at100.codeBody !== "none",
+    !at100.greek && !at100.bar && at100.fill !== "rgba(0, 0, 0, 0)" && at100.noteShield === "none" && !at100.codeHit,
     at100,
   );
+  await record(h);
   await outTo(h, 0.45);
   const z = await zoomOf(h);
   check("stopped between the summary cut and 50 %", z < 0.5 && !(await h.page.locator(".cardlay.gone").count()), z);
-  const out = await look(h);
-  check(
-    "a Note's prose is drawn as bars",
-    out.greek && out.color === "rgba(0, 0, 0, 0)" && out.bar === "underline",
-    out,
+  await until(h, "the switch's fade ends", () =>
+    h.page.evaluate(() => !!document.querySelector(".world.greek:not(.greekfade)")),
   );
-  check("card bodies take no pointer", out.noteBody === "none" && out.codeBody === "none", out);
+  const out = await look(h);
+  check("a Note's prose is drawn as bars", out.greek && out.fill === "rgba(0, 0, 0, 0)" && out.bar, out);
+  check("card bodies take no pointer", out.noteShield === '""' && out.codeShield === '""' && out.codeHit, out);
   check("the card edges' ports stay", out.eport !== "none", out);
+  check(
+    "the switch fades the prose out, swaps it, and fades it in",
+    JSON.stringify(await seen(h)) === JSON.stringify(["greekfade", "greekfade greek", "greek"]),
+    await seen(h),
+  );
   await h.page.close();
   const off = await open({ board: mk(), w: 1280, h: 800, light: true, settings: { simpleBelow: 0 } });
   await outTo(off, 0.45);
   const never = await look(off);
   check(
     "Simplify Below 0 leaves the cards whole",
-    !never.greek && never.color !== "rgba(0, 0, 0, 0)" && never.codeBody !== "none",
+    !never.greek && !never.bar && never.fill !== "rgba(0, 0, 0, 0)" && !never.codeHit,
     never,
   );
 });

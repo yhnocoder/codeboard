@@ -54,6 +54,8 @@ const HINT_KEEPS = 0.25;
  *  prose drawn as bars below it (.world.greek) keeps cheap: drawn as text, the first frames of a pinch at 0.3–0.5 took 30–50 ms
  *  each on a 2× Mac on a board of dense Chinese Notes */
 const HINT_MIN = 0.5;
+/** How long the switch between the prose and its bars takes: out, swapped, in (styles.css .world.greekfade: 240 ms there too) */
+const GREEK_FADE = 240;
 /** A flight drops the hint (or rasters again under it) a little before it is shown at half the scale it was rastered at: the
  *  raster lags the camera by a frame or two at a flight's speed, and what is rastered under the hint then is drawn further out
  *  (at half, up to a sixth of a Fit's raster on an Ink Wash board was at over 2× the scale it was drawn at, 2–3 % at 1.8) */
@@ -159,6 +161,36 @@ export function Canvas() {
       }
     });
   });
+  // Zoomed out past Simplify Below (styles.css .world.greek): taken at a stop (stillZ), never in the middle of a zoom. A switch
+  // with the cards shown fades: .greekfade fades the Notes' prose out and in again over GREEK_FADE, and .greek changes halfway,
+  // while it is out. Into and out of the summary level it changes at once (the cards are gone, or come back, anyway)
+  const simple = createMemo(() => stillZ() < state.host.settings.simpleBelow && !cardsGone());
+  const [greek, setGreek] = createSignal(simple());
+  const [greekFade, setGreekFade] = createSignal(false);
+  let swapT: number | undefined;
+  let fadeT: number | undefined;
+  createEffect(
+    on(
+      [simple, cardsGone],
+      ([g, gone], prev) => {
+        clearTimeout(swapT);
+        clearTimeout(fadeT);
+        if (gone || prev?.[1]) {
+          setGreekFade(false);
+          return void setGreek(g);
+        }
+        setGreekFade(g !== greek());
+        if (g === greek()) return;
+        swapT = window.setTimeout(() => setGreek(g), GREEK_FADE / 2);
+        fadeT = window.setTimeout(() => setGreekFade(false), GREEK_FADE);
+      },
+      { defer: true },
+    ),
+  );
+  onCleanup(() => {
+    clearTimeout(swapT);
+    clearTimeout(fadeT);
+  });
   // Without the hint a move of the world by a fraction of a device pixel rasters it again (its tiles are drawn at the new
   // offset): a trackpad pan or a fling at 0.34, 1.4 viewports a step. Settled, it moves by whole device pixels
   const px = (v: number) => {
@@ -263,7 +295,8 @@ export function Canvas() {
         classList={{
           moving: camMoving(),
           settle: settle(),
-          greek: stillZ() < state.host.settings.simpleBelow && !cardsGone(),
+          greek: greek(),
+          greekfade: greekFade(),
         }}
         style={{ transform: `translate(${px(cam.x)}px, ${px(cam.y)}px) scale(${cam.z})` }}
       >

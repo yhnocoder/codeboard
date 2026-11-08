@@ -420,29 +420,52 @@ textarea {
   will-change: auto;
 }
 /* 缩到设置的比例以下（Simplify Below，默认 50%；卡片层还显示着，Canvas.tsx .greek）卡片简化：
-   - Note 正文的字画成浅色字条：字本身透明（Skia 不画透明的字），每行字的下划线加粗、上移盖住字的位置，长短跟着字走。50% 以下世界层
-     不带 will-change（Canvas.tsx HINT_MIN），缩放每帧按新比例重画，画字是最贵的部分（密排的中文 Note，2× 屏幕上捏合头几帧每帧 30–50 ms），
-     画成字条几乎不花时间。
-   - 卡里的行和块不响应指针：没有行、块的连线圆点，悬停代码、高亮、调用不变样子，点不开调用（太小，点不准）；拖卡、卡边的连线圆点照旧。
-   在写的卡照常。按停下时的比例切换（stillZ），缩放中途不变 */
-.world.greek .card.note:not(.editing) .nbody :is(p, li, h1, h2, h3, h4, h5, h6, td, th, blockquote) {
-  text-decoration: underline;
-  text-decoration-color: color-mix(in srgb, var(--ink) 16%, transparent);
-  text-decoration-thickness: 0.62em;
-  text-underline-offset: -0.48em;
-  text-decoration-skip-ink: none;
+   - Note 正文的字画成浅色字条：字的填充透明（Skia 不画透明的字），段落、标题、代码块的背景按行（lh）画横条，公式（.katex）透明。
+     50% 以下世界层不带 will-change（Canvas.tsx HINT_MIN），缩放每帧按新比例重画，画字是最贵的部分（密排的中文 Note，
+     2× 屏幕上捏合头几帧每帧 30–50 ms），画成字条几乎不花时间。
+   - 卡里的行和块不响应指针：正文上盖一层挡板（::after），没有行、块的连线圆点，悬停代码、高亮、调用不变样子，点不开调用
+     （太小，点不准）；拖卡、卡边的连线圆点照旧。
+   在写的卡照常。按停下时的比例切换（stillZ），缩放中途不变。
+   切换只改不往下传的属性，或者传下去在公式那儿停住：公式自己一直写着 -webkit-text-fill-color: currentcolor（和不写一样），
+   正文的填充变透明时公式那 2 万多个节点不用重算样式。颜色、下划线、pointer-events 都会传进每个公式节点：persona 上一次切换
+   要重算 2.8 万个节点（~250 ms），这样 ~15 ms */
+.card.note .nbody .katex {
+  -webkit-text-fill-color: currentcolor;
 }
-.world.greek .card.note:not(.editing) .nbody,
-.world.greek .card.note:not(.editing) .nbody * {
-  color: transparent !important;
+.world.greek .card.note:not(.editing) .nbody {
   -webkit-text-fill-color: transparent;
-  text-shadow: none !important;
 }
-.world.greek .card:not(.editing) :is(.cbody, .nbody) {
-  pointer-events: none;
+.world.greek .card.note:not(.editing) .nbody :is(p, h1, h2, h3, h4, h5, h6, pre) {
+  background: repeating-linear-gradient(
+    transparent 0 0.3lh,
+    color-mix(in srgb, var(--ink) 16%, transparent) 0.3lh 0.7lh,
+    transparent 0.7lh 1lh
+  );
+}
+.world.greek .card.note:not(.editing) .nbody .katex {
+  opacity: 0;
+}
+.world.greek .card:not(.editing) :is(.cbody, .nbody)::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 3;
 }
 .world.greek :is(.lport, .bports) {
   display: none;
+}
+/* 切换时（Canvas.tsx GREEK_FADE）正文淡出、换成字条（或字）、再淡入：只动正文的透明度，在合成器上跑，不每帧重画 */
+.world.greekfade .card.note:not(.editing) .nbody {
+  animation: greek-swap calc(var(--t) * 240ms) ease-in-out;
+}
+@keyframes greek-swap {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
 }
 .pshield {
   position: absolute;
