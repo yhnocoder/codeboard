@@ -49,6 +49,8 @@ final class CardLayer: CALayer {
   static let maxPixels: CGFloat = 1_600_000
   private var gen = 0
   private var pendingOp: Operation?
+  /** A finished bitmap goes here (the canvas lands a few per frame, nearest first) instead of straight into the layer */
+  var handover: ((CardLayer, IOSurface, CGFloat, Int) -> Void)?
   /** Decoded images by file and size, no larger than a card needs (a 4000px screenshot is not decoded again for every raster); the
    *  oldest go when there are more than `imageCacheMax` */
   private static var imageCache: [String: CGImage] = [:]
@@ -140,13 +142,19 @@ final class CardLayer: CALayer {
       if op?.isCancelled == true { return }
       let surface = CardLayer.render(paint, size: size, scale: scale, appearance: appearance)
       DispatchQueue.main.async { [weak self] in
-        guard let self, self.gen == g else { return }
-        self.contents = surface
-        self.contentsScale = scale
+        guard let self, let surface else { return }
+        if let h = self.handover { h(self, surface, scale, g) } else { self.land(surface, scale, g) }
       }
     }
     pendingOp = op
     CardLayer.queue.addOperation(op)
+  }
+
+  /** The bitmap is shown, unless a newer raster was asked for since (then it is dropped; the old bitmap stays until that one lands) */
+  func land(_ surface: IOSurface, _ scale: CGFloat, _ g: Int) {
+    guard g == gen else { return }
+    contents = surface
+    contentsScale = scale
   }
 
   /** Drawn straight into an IOSurface: Core Animation shows the surface itself (no copy into its own backing when the contents

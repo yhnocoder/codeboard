@@ -7,8 +7,11 @@ import AppKit
 protocol CanvasDelegate: AnyObject {
   func canvas(_ c: CanvasView, dragEnded moves: [JSBridge.Move])
   func canvas(_ c: CanvasView, cameraRested cam: Camera)
-  func canvasRoute(_ c: CanvasView, rects: [String: WorldRect], only: [String]?) -> [RouteGeo]
+  func canvasRoute(_ c: CanvasView, rects: [String: WorldRect], only: [String]?, modes: [String: String]?) -> [RouteGeo]
 }
+
+/** How many finished bitmaps land per frame: enough to fill a view in a few frames, few enough that the commit stays short */
+let HANDOVERS_PER_FRAME = 6
 
 final class CanvasView: NSView {
   weak var delegate: CanvasDelegate?
@@ -28,6 +31,20 @@ final class CanvasView: NSView {
   private var restTimer: Timer?
   private var rasterScale: CGFloat = 0
   private(set) var selected: Set<String> = []
+  /** The routing off the main thread during a drag (RouteWorker), and this board's key in it */
+  var router: RouteWorker?
+  var routeKey = ""
+  private var routeSeq = 0
+  /** For the checks: how many requests behind each applied live route was, and how far the drop's final route moved the arrows */
+  private(set) var routeLags: [Int] = []
+  private(set) var dropJump: Double = 0
+  private var liveGeos: [String: [Double]] = [:]
+  /** The side choices of the last live routes, for the main router to adopt at the drop */
+  private var liveModes: [String: String] = [:]
+  private var dropPending = false
+  /** Finished bitmaps waiting to be shown, a few per frame */
+  private var landing: [(CardLayer, IOSurface, CGFloat, Int)] = []
+  private var landingLink: CADisplayLink?
 
   override init(frame: CGRect) {
     super.init(frame: frame)
@@ -93,6 +110,7 @@ final class CanvasView: NSView {
       let l = CardLayer(card: c)
       l.contentsScale = max(rasterScale, 0.125)
       l.isHidden = true  // drawn once the camera says it is near (cull)
+      l.handover = { [weak self] layer, surface, scale, gen in self?.enqueue(layer, surface, scale, gen) }
       cardLayers[c.id] = l
       cards.addSublayer(l)
       order.append(c.id)
@@ -119,12 +137,69 @@ final class CanvasView: NSView {
     for (id, l) in cardLayers { out[id] = WorldRect(x: l.card.x, y: l.card.y, w: l.card.w, h: Double(l.height)) }
     return out
   }
-  func routeAll() { applyRoutes(delegate?.canvasRoute(self, rects: rects, only: nil) ?? []) }
-  private func applyRoutes(_ geos: [RouteGeo]) {
+  func routeAll() {
+    let modes = liveModes.isEmpty ? nil : liveModes
+    liveModes = [:]
+    applyRoutes(delegate?.canvasRoute(self, rects: rects, only: nil, modes: modes) ?? [], final: true)
+  }
+  private func applyRoutes(_ geos: [RouteGeo], final: Bool = false) {
     CATransaction.begin()
     CATransaction.setDisableActions(true)
     for g in geos { arrowLayers[g.id]?.apply(geo: g) }
     CATransaction.commit()
+    if final && dropPending {
+      // the drop's final route against the last live one: a jump here is what the user would see as the arrow settling
+      dropPending = false
+      var jump = 0.0
+      for g in geos {
+        guard let was = liveGeos[g.id], was.count == g.pts.count else { continue }
+        var d = 0.0
+        for (a, b) in zip(was, g.pts) { d = max(d, abs(a - b)) }
+        if d > 0.5 { logLine("[canvas] drop moved arrow %@ by %.2f px: live %@ final %@ (mode %@)", g.id, d, "\(was.map { Int($0) })", "\(g.pts.map { Int($0) })", g.mode ?? "-") }
+        jump = max(jump, d)
+      }
+      dropJump = jump
+      liveGeos = [:]
+    }
+  }
+  /** The drag's arrows, routed off the main thread: the latest finished routes are drawn, a request behind at most */
+  private func routeLive(_ links: [String]) {
+    guard let router else { return applyRoutes(delegate?.canvasRoute(self, rects: rects, only: links, modes: nil) ?? []) }
+    routeSeq += 1
+    router.route(routeKey, rects: rects, only: links, seq: routeSeq) { [weak self] geos, seq in
+      guard let self, self.drag != nil || self.dropPending else { return }
+      self.routeLags.append(self.routeSeq - seq)
+      for g in geos {
+        self.liveGeos[g.id] = g.pts
+        if let m = g.mode { self.liveModes[g.id] = m }
+      }
+      self.applyRoutes(geos)
+    }
+  }
+  func resetRouteStats() {
+    routeLags = []
+    dropJump = 0
+  }
+
+  // Finished bitmaps land a few per frame, nearest the middle of the view first; a card keeps its old bitmap until its new one
+  // lands, so a bucket crossing never shows a blank card and never puts every new surface into one commit
+  private func enqueue(_ layer: CardLayer, _ surface: IOSurface, _ scale: CGFloat, _ gen: Int) {
+    landing.append((layer, surface, scale, gen))
+    if landingLink == nil {
+      let link = displayLink(target: self, selector: #selector(landSome))
+      link.add(to: .main, forMode: .common)
+      landingLink = link
+    }
+    landingLink?.isPaused = false
+  }
+  @objc private func landSome() {
+    guard !landing.isEmpty else { landingLink?.isPaused = true; return }
+    let centre = CGPoint(x: (bounds.midX - cam.x) / cam.z, y: (bounds.midY - cam.y) / cam.z)
+    landing.sort { hypot($0.0.worldRect.midX - centre.x, $0.0.worldRect.midY - centre.y) < hypot($1.0.worldRect.midX - centre.x, $1.0.worldRect.midY - centre.y) }
+    CATransaction.setDisableActions(true)
+    for (l, surface, scale, gen) in landing.prefix(HANDOVERS_PER_FRAME) { l.land(surface, scale, gen) }
+    landing.removeFirst(min(HANDOVERS_PER_FRAME, landing.count))
+    if landing.isEmpty { landingLink?.isPaused = true }
   }
   private func linksOn(_ ids: Set<String>) -> [String] {
     arrowLayers.values.filter { ids.contains($0.link.from.card) || ids.contains($0.link.to.card) }.map(\.link.id)
@@ -190,19 +265,22 @@ final class CanvasView: NSView {
       }
     }
   }
-  /** The bitmap scale follows the zoom in buckets: crossing one redraws the cards at the new scale (the old bitmap stays until then) */
+  /** The bitmap scale follows the zoom in buckets: crossing one redraws the cards at the new scale (the old bitmap stays until
+   *  then), nearest the middle of the view first, in the run loop's own transaction (an explicit commit here waited on the
+   *  render server) */
   private func rasterIfNeeded() {
     let s = rasterBucket(zoom: cam.z, backing: backing)
     if s == rasterScale { return }
     rasterScale = s
-    CATransaction.begin()
+    let centre = CGPoint(x: (bounds.midX - cam.x) / cam.z, y: (bounds.midY - cam.y) / cam.z)
+    let near = cardLayers.values.filter { !$0.isHidden }.sorted { hypot($0.worldRect.midX - centre.x, $0.worldRect.midY - centre.y) < hypot($1.worldRect.midX - centre.x, $1.worldRect.midY - centre.y) }
     CATransaction.setDisableActions(true)
-    for l in cardLayers.values {
+    for l in cardLayers.values where l.isHidden { l.contentsScale = s }
+    for l in near {
       l.contentsScale = s
-      if !l.isHidden { l.setNeedsDisplay() }
+      l.setNeedsDisplay()
     }
     for l in sectionLayers.values { l.setScale(s) }
-    CATransaction.commit()
   }
   func redrawAll() {
     Theme.appearance = effectiveAppearance
@@ -285,7 +363,7 @@ final class CanvasView: NSView {
     CATransaction.setDisableActions(true)
     for id in d.ids { if let l = cardLayers[id], let o = d.origins[id] { l.move(to: CGPoint(x: o.x + dx, y: o.y + dy)) } }
     CATransaction.commit()
-    if !d.links.isEmpty { applyRoutes(delegate?.canvasRoute(self, rects: rects, only: d.links) ?? []) }
+    if !d.links.isEmpty { routeLive(d.links) }
   }
   override func mouseUp(with e: NSEvent) {
     panStart = nil
@@ -295,6 +373,7 @@ final class CanvasView: NSView {
     guard let d = drag else { return }
     drag = nil
     if !d.moved { return }
+    dropPending = !d.links.isEmpty
     let moves = d.ids.compactMap { id in
       cardLayers[id].map { JSBridge.Move(id: id, x: Double($0.frame.minX), y: Double($0.frame.minY), w: Double($0.frame.width), h: Double($0.frame.height)) }
     }

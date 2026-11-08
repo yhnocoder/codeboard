@@ -17,10 +17,7 @@ for (const w of [
   "@yhnocoder/tree-sitter-cuda/tree-sitter-cuda.wasm",
 ])
   copyFileSync(req.resolve(w), `dist/${basename(w)}`);
-await build({
-  entryPoints: ["js/entry.ts"],
-  bundle: true,
-  outfile: "dist/bridge.js",
+const common = {
   format: "iife",
   platform: "neutral",
   mainFields: ["module", "main"],
@@ -33,4 +30,7 @@ await build({
   // the tree-sitter runtime's Node branches (never taken in JavaScriptCore: no `process`) name Node's modules
   external: ["url", "fs", "fs/promises", "path", "module", "vm", "worker_threads"],
   logOverride: { "empty-import-meta": "silent" },
-});
+};
+await build({ ...common, entryPoints: ["js/entry.ts"], outfile: "dist/bridge.js", bundle: true });
+// the routing alone, for the shell's background context (RouteWorker.swift)
+await build({ ...common, entryPoints: ["js/router-entry.ts"], outfile: "dist/router.js", bundle: true });

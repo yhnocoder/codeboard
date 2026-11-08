@@ -12,7 +12,7 @@ swift build -c release
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp .build/release/CodeBoard "$APP/Contents/MacOS/CodeBoard"
-cp dist/bridge.js dist/themes.json dist/*.wasm "$APP/Contents/Resources/"
+cp dist/bridge.js dist/router.js dist/themes.json dist/*.wasm "$APP/Contents/Resources/"
 cp Info.plist "$APP/Contents/Info.plist"
 codesign --force --sign - --options runtime --entitlements CodeBoard.entitlements "$APP"
 echo "built $APP"

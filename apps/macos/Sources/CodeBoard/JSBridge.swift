@@ -221,9 +221,9 @@ final class JSBridge {
   struct Move: Encodable { var id: String; var x, y, w, h: Double }
   fileprivate func drag(_ dir: String, _ id: String, _ moves: [Move]) { api.invokeMethod("drag", withArguments: [dir, id, encodeJSON(moves)]) }
   fileprivate func cam(_ dir: String, _ id: String, _ c: Camera) { api.invokeMethod("cam", withArguments: [dir, id, c.x, c.y, c.z]) }
-  fileprivate func route(_ dir: String, _ id: String, _ rects: [String: WorldRect], only: [String]?) -> [RouteGeo] {
-    var args: [Any] = [dir, id, encodeJSON(rects)]
-    if let only { args.append(encodeJSON(only)) }
+  fileprivate func route(_ dir: String, _ id: String, _ rects: [String: WorldRect], only: [String]?, modes: [String: String]?) -> [RouteGeo] {
+    var args: [Any] = [dir, id, encodeJSON(rects), only.map(encodeJSON) ?? "null"]
+    if let modes { args.append(encodeJSON(modes)) }
     guard let r = api.invokeMethod("route", withArguments: args)?.toString() else { return [] }
     return (try? decodeJSON([RouteGeo].self, r)) ?? []
   }
@@ -277,7 +277,8 @@ struct Session {
   func endDrag(_ moves: [JSBridge.Move], _ cb: @escaping (Result<SceneChange, Error>) -> Void) { bridge.endDrag(dir, id, moves, cb) }
   func cam(_ c: Camera) { bridge.cam(dir, id, c) }
   /** Synchronous: the arrows' geometry for these card rectangles (all links, or only the ones named) */
-  func route(_ rects: [String: WorldRect], only: [String]? = nil) -> [RouteGeo] { bridge.route(dir, id, rects, only: only) }
+  /** modes = the side choices the drag's live routes (RouteWorker) made, adopted so the final route does not jump */
+  func route(_ rects: [String: WorldRect], only: [String]? = nil, modes: [String: String]? = nil) -> [RouteGeo] { bridge.route(dir, id, rects, only: only, modes: modes) }
   /** The M1 gate: n single-card edits through core's history; each one's time in ms */
   func benchEdit(_ n: Int) -> [Double] { bridge.benchEdit(dir, id, n) }
 }

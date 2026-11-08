@@ -93,6 +93,27 @@ struct Scene: Decodable {
   var cards: [SceneCard]
   var sections: [SceneSection]
   var links: [SceneLink]
+  /** The routing model for RouteWorker, passed through as it came */
+  var routing: AnyJSON
+}
+/** A JSON value kept as it is (decoded and encoded back without a Swift shape) */
+enum AnyJSON: Codable {
+  case null, bool(Bool), number(Double), string(String), array([AnyJSON]), object([String: AnyJSON])
+  init(from d: Decoder) throws {
+    let c = try d.singleValueContainer()
+    if c.decodeNil() { self = .null } else if let b = try? c.decode(Bool.self) { self = .bool(b) } else if let n = try? c.decode(Double.self) { self = .number(n) } else if let s = try? c.decode(String.self) { self = .string(s) } else if let a = try? c.decode([AnyJSON].self) { self = .array(a) } else { self = .object(try c.decode([String: AnyJSON].self)) }
+  }
+  func encode(to e: Encoder) throws {
+    var c = e.singleValueContainer()
+    switch self {
+    case .null: try c.encodeNil()
+    case .bool(let b): try c.encode(b)
+    case .number(let n): try c.encode(n)
+    case .string(let s): try c.encode(s)
+    case .array(let a): try c.encode(a)
+    case .object(let o): try c.encode(o)
+    }
+  }
 }
 struct SceneGone: Decodable {
   var cards: [String]
@@ -105,11 +126,13 @@ struct SceneChange: Decodable {
   var links: [SceneLink]
   var gone: SceneGone
   var name: String?
+  var routing: AnyJSON?
 }
 struct RouteGeo: Decodable {
   var id: String
   var d: String
   var taper: String?
+  var mode: String?
   var d2: String?
   var head: String?
   var tail: String?

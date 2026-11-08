@@ -13,6 +13,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   var windows: [BoardWindowController] = []
   /** The one JavaScript context of the process (core, storage), shared by every window */
   var bridge: JSBridge!
+  /** The routing context on its background thread (nil when router.js is missing: the drag then routes on the main thread) */
+  var router: RouteWorker?
   var auto: AutoRun?
   let args = CommandLine.arguments
   func arg(_ k: String) -> String? { args.firstIndex(of: k).flatMap { $0 + 1 < args.count ? args[$0 + 1] : nil } }
@@ -32,6 +34,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       NSApp.terminate(nil)
       return
     }
+    router = try? RouteWorker(bundle: bundleURL.deletingLastPathComponent().appendingPathComponent("router.js"))
+    if router == nil { logLine("[codeboard] no router.js: drags route on the main thread") }
     logLine("[codeboard] memory after the bridge loaded: %.0f MB footprint", AutoRun.residentMB())
     if args.contains("--dark") { NSApp.appearance = NSAppearance(named: .darkAqua) }
     if args.contains("--light") { NSApp.appearance = NSAppearance(named: .aqua) }
@@ -105,7 +109,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       w.showWindow(nil)
       return w
     }
-    let wc = BoardWindowController(folder: folder, bridge: bridge)
+    let wc = BoardWindowController(folder: folder, bridge: bridge, router: router)
     windows.append(wc)
     wc.onClose = { [weak self, weak wc] in self?.windows.removeAll { $0 === wc } }
     wc.showWindow(nil)

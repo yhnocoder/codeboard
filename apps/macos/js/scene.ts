@@ -12,6 +12,7 @@ import {
   type Section,
 } from "@codeboard/core";
 import type { Highlight, SceneTok } from "./highlight";
+import { type RouteModel, routeModel } from "./routes";
 
 export type SceneLine = { n: number; toks: SceneTok[] };
 export type SceneSegment = { path: string; start: number; end: number; lang: string; lines: SceneLine[] };
@@ -75,6 +76,8 @@ export type Scene = {
   cards: SceneCard[];
   sections: SceneSection[];
   links: SceneLink[];
+  /** What the shell's own router (off the main thread, during a drag) routes with */
+  routing: RouteModel;
 };
 /** What changed: items to put in (added or changed) and ids that are gone */
 export type SceneChange = {
@@ -83,6 +86,8 @@ export type SceneChange = {
   links: SceneLink[];
   gone: { cards: string[]; sections: string[]; links: string[] };
   name?: string;
+  /** When a card or link changed: the routing model as it is now */
+  routing?: RouteModel;
 };
 
 export type SceneEnv = {
@@ -163,17 +168,6 @@ function codeHeight(c: CodeCard): number {
   return CODE.head + CODE.top + rows * CODE.row + CODE.bottom + Math.max(0, c.segments.length - 1) * CODE.sep;
 }
 
-/** The y of a segment's line inside its card (the middle of the row), or null when the card has no such line */
-export function lineYIn(c: CodeCard, seg: string | undefined, line: number | undefined): number | null {
-  if (seg === undefined || line === undefined) return null;
-  let y = CODE.head + CODE.top;
-  for (const s of c.segments) {
-    if (s.id === seg) return line >= s.start && line <= s.end ? y + (line - s.start) * CODE.row + CODE.row / 2 : null;
-    y += s.text.length * CODE.row + CODE.sep;
-  }
-  return null;
-}
-
 export const sceneSection = (s: Section): SceneSection => {
   const out: SceneSection = { id: s.id, title: s.title, x: s.x, y: s.y, w: s.w, h: s.h };
   if (s.parent) out.parent = s.parent;
@@ -210,5 +204,6 @@ export async function scene(b: Board, env: SceneEnv): Promise<Scene> {
     cards,
     sections: b.sections.map(sceneSection),
     links: b.links.map((l) => sceneLink(b, l)),
+    routing: routeModel(b),
   };
 }

@@ -159,8 +159,12 @@ final class AutoRun: NSObject {
         self.snapshot("02-zoomed-out")
         self.step("zoom_in", frames: 180, { p in zoomTo(cam0.z * pow(0.1, 1 - p), p) }) {
           canvas.setCamera(cam0, animated: false)
-          let ids = canvas.cardLayers.keys.sorted()
+          // the card with the most arrows on it: the drag re-routes them off the main thread, and the lag is measured
+          var linksOn: [String: Int] = [:]
+          for a in canvas.arrowLayers.values { linksOn[a.link.from.card, default: 0] += 1; linksOn[a.link.to.card, default: 0] += 1 }
+          let ids = canvas.cardLayers.keys.sorted { (linksOn[$0] ?? 0) != (linksOn[$1] ?? 0) ? (linksOn[$0] ?? 0) > (linksOn[$1] ?? 0) : $0 < $1 }
           guard let id = ids.first, let l = canvas.cardLayers[id] else { self.finish(finished); return }
+          canvas.resetRouteStats()
           let start = CGPoint(x: l.frame.midX * canvas.cam.z + canvas.cam.x, y: (l.frame.minY + 18) * canvas.cam.z + canvas.cam.y)
           canvas.select([id])
           canvas.beginDrag([id], at: start)
@@ -170,6 +174,10 @@ final class AutoRun: NSObject {
             canvas.endDrag()
             self.snapshot("03-dragged")
             after(0.6) {
+              let lags = canvas.routeLags
+              let maxLag = lags.max() ?? 0
+              self.report["drag_routing"] = ["arrows": linksOn[id] ?? 0, "routes": lags.count, "max_lag_frames": maxLag, "lag_over_1": lags.filter { $0 > 1 }.count, "drop_jump_px": canvas.dropJump]
+              logLine("[auto] drag routing: %d arrows, %d routes applied, max lag %d requests, %d over 1, drop jump %.2f px", linksOn[id] ?? 0, lags.count, maxLag, lags.filter { $0 > 1 }.count, canvas.dropJump)
               self.wc.undo(nil)
               after(0.4) {
                 self.snapshot("04-undone")

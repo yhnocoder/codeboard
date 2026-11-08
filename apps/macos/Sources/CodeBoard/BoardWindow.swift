@@ -17,9 +17,10 @@ final class BoardWindowController: NSWindowController, NSToolbarDelegate, NSTabl
   /** The window closed: whoever keeps the controller lets go of it */
   var onClose: (() -> Void)?
 
-  init(folder: String, bridge: JSBridge) {
+  init(folder: String, bridge: JSBridge, router: RouteWorker?) {
     self.folder = folder
     boards = bridge.folder(folder)
+    canvas.router = router
     let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1280, height: 820), styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
     w.title = (folder as NSString).lastPathComponent
     w.subtitle = folder
@@ -148,6 +149,8 @@ final class BoardWindowController: NSWindowController, NSToolbarDelegate, NSTabl
         self.current = id
         self.session = session
         self.window?.title = s.name
+        self.canvas.routeKey = "\(self.folder)\n\(id)"
+        self.canvas.router?.setModel(self.canvas.routeKey, encodeJSON(s.routing))
         self.canvas.load(s)
         if let i = self.list.firstIndex(where: { $0.id == id }) { self.table.selectRowIndexes([i], byExtendingSelection: false) }
         self.onOpened?(s)
@@ -191,6 +194,7 @@ final class BoardWindowController: NSWindowController, NSToolbarDelegate, NSTabl
     case "changed":
       struct C: Decodable { var change: SceneChange }
       if let c = try? decodeJSON(C.self, json) {
+        if let r = c.change.routing { canvas.router?.setModel(canvas.routeKey, encodeJSON(r)) }
         canvas.apply(c.change)
         if let n = c.change.name { window?.title = n }
       }
@@ -221,10 +225,14 @@ final class BoardWindowController: NSWindowController, NSToolbarDelegate, NSTabl
     guard let session else { return }
     session.beginDrag()
     session.drag(moves)
-    session.endDrag(moves) { [weak self] r in if case .success(let ch) = r { self?.canvas.apply(ch) } }
+    session.endDrag(moves) { [weak self] r in
+      guard let self, case .success(let ch) = r else { return }
+      if let r = ch.routing { canvas.router?.setModel(canvas.routeKey, encodeJSON(r)) }
+      canvas.apply(ch)
+    }
   }
   func canvas(_ c: CanvasView, cameraRested cam: Camera) { session?.cam(cam) }
-  func canvasRoute(_ c: CanvasView, rects: [String: WorldRect], only: [String]?) -> [RouteGeo] { session?.route(rects, only: only) ?? [] }
+  func canvasRoute(_ c: CanvasView, rects: [String: WorldRect], only: [String]?, modes: [String: String]?) -> [RouteGeo] { session?.route(rects, only: only, modes: modes) ?? [] }
 
   @objc func undo(_ sender: Any?) { session?.undo { [weak self] r in if case .success(let ch) = r { self?.canvas.apply(ch) } } }
   @objc func redo(_ sender: Any?) { session?.redo { [weak self] r in if case .success(let ch) = r { self?.canvas.apply(ch) } } }

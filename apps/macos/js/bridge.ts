@@ -22,7 +22,8 @@ import { noteBlocks } from "@yhnocoder/markdown";
 import { nativeFs } from "./fs";
 import { makeHighlighter } from "./highlight";
 import { installGlobals, isErr, type Native } from "./native";
-import { type Rect as DrawnRect, type RouteGeo, Router } from "./routes";
+import type { Mode } from "@codeboard/core/canvas";
+import { type Rect as DrawnRect, type RouteGeo, routeModel, Router } from "./routes";
 import { type Scene, type SceneChange, type SceneEnv, scene, sceneCard, sceneLink, sceneSection } from "./scene";
 
 /** The camera coming to rest is saved after this long (the board's LIVE_DELAY); a failed save is sent again after RESEND_DELAY */
@@ -41,7 +42,7 @@ export interface Session {
   changes(): Promise<SceneChange>;
   synced(fn: (b: Board) => void, keys?: string[]): void;
   syncShared(cards: SharedUpdate[]): void;
-  route(rects: Record<string, DrawnRect>, only?: string[]): RouteGeo[];
+  route(rects: Record<string, DrawnRect>, only?: string[], modes?: Record<string, Mode>): RouteGeo[];
   beginDrag(): void;
   drag(moves: { id: string; x: number; y: number }[]): void;
   endDrag(moves: (DrawnRect & { id: string })[]): Promise<SceneChange>;
@@ -253,6 +254,8 @@ export function createBridge(native: Native, opts: { fs?: Fs; timers?: boolean; 
           router.forget(k);
         }
       if (was.head !== now.head) out.name = board.name;
+      if (out.cards.length || out.links.length || out.gone.cards.length || out.gone.links.length)
+        out.routing = routeModel(board);
       return out;
     }
 
@@ -270,7 +273,7 @@ export function createBridge(native: Native, opts: { fs?: Fs; timers?: boolean; 
       changes,
       synced,
       syncShared,
-      route: (rects: Record<string, DrawnRect>, only?: string[]): RouteGeo[] => router.route(board, rects, only),
+      route: (rects, only, modes) => router.route(routeModel(board), rects, only, modes),
       beginDrag() {
         gesture?.();
         gesture = history.beginGesture();

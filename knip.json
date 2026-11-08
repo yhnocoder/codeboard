@@ -30,6 +30,6 @@
     "packages/analysis": { "includeEntryExports": true, "entry": ["test/**/*.{ts,mjs}"], "project": ["src/**/*.ts"] },
     "extensions/vscode": { "includeEntryExports": true, "entry": ["esbuild.mjs", "test/**/*.{ts,cjs}"], "project": ["src/**/*.ts"] },
     // the macOS app's JavaScript side: the bundle's entry and its tests
-    "apps/macos": { "entry": ["js/entry.ts", "js/test/**/*.ts", "build.mjs"], "project": ["js/**/*.ts"] }
+    "apps/macos": { "entry": ["js/entry.ts", "js/router-entry.ts", "js/test/**/*.ts", "build.mjs"], "project": ["js/**/*.ts"] }
   }
 }

@@ -41,8 +41,14 @@ const session = (dir: string, id: string) => {
   flush: (req: number, dir?: string) => settle(req, dir ? bridge.folder(dir).flush() : bridge.flushAll()),
   /** The last window on the folder closed */
   closeFolder: (req: number, dir: string) => settle(req, bridge.folder(dir).close()),
-  route: (dir: string, id: string, rects: string, only?: string) =>
-    str(session(dir, id).route(JSON.parse(rects), only ? JSON.parse(only) : undefined)),
+  route: (dir: string, id: string, rects: string, only?: string, modes?: string) =>
+    str(
+      session(dir, id).route(
+        JSON.parse(rects),
+        only ? JSON.parse(only) : undefined,
+        modes ? JSON.parse(modes) : undefined,
+      ),
+    ),
   beginDrag: (dir: string, id: string) => session(dir, id).beginDrag(),
   drag: (dir: string, id: string, moves: string) => session(dir, id).drag(JSON.parse(moves)),
   cam: (dir: string, id: string, x: number, y: number, z: number) => session(dir, id).cam({ x, y, z }),
