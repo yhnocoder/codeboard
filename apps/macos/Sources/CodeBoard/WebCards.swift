@@ -285,6 +285,9 @@ final class NoteRenderer: NSObject {
     }
   }
   private var queue: [(key: String, spec: CardSpec, done: (NotePDF) -> Void)] = []
+  /** Set by the canvas: whether a card is in view now. The page renders one card at a time, so the next one it takes is one in
+   *  view (where the camera has landed), the rest after (a board's first open: every near card asked at once, in no order) */
+  var inView: ((String) -> Bool)?
   /** The request the page is rendering now (requests that come meanwhile go to the front of the queue), and its number: the
    *  page answers with it, so a late answer to an earlier request for the same card is not taken for this one */
   private var current: (key: String, spec: CardSpec, done: (NotePDF) -> Void)?
@@ -313,6 +316,7 @@ final class NoteRenderer: NSObject {
       guard let self else { return }
       if !self.theme.isEmpty { self.page.call("cb.setup(\(encodeJSON(["theme": self.theme, "look": Theme.look])))") }
       if let t = self.titles { self.page.call("cb.setup(\(encodeJSON(["titles": t])))") }
+      self.pump()
     }
     page.onTerminated = { [weak self] in
       guard let self else { return }
@@ -389,8 +393,10 @@ final class NoteRenderer: NSObject {
   }
 
   private func pump() {
-    guard !busy, !paused, !queue.isEmpty else { return }
-    let r = queue.removeFirst()
+    // nothing is picked before the page can render it: a board's first open asks for every near card while the page still loads,
+    // and the pick waits for the camera to be where it lands
+    guard !busy, !paused, page.ready, !queue.isEmpty else { return }
+    let r = queue.remove(at: queue.firstIndex { inView?($0.spec.id) ?? true } ?? 0)
     if let pdf = hit(r.key) {
       r.done(pdf)
       pump()

@@ -159,6 +159,10 @@ final class CanvasView: NSView {
     seal.contentsScale = 2
     for l in [mist, cutLine, seal] { overlay.addSublayer(l) }
     still(world, sections, arrows, cards, stickers, top, overlay, mist, cutLine, cutFill, seal, scene, tether, tetherDot, marquee, ports, rubber, summaries.layer)
+    notes.inView = { [weak self] id in
+      guard let self, let l = self.cardLayers[id] else { return false }
+      return CGRect(x: -self.cam.x / self.cam.z, y: -self.cam.y / self.cam.z, width: self.bounds.width / self.cam.z, height: self.bounds.height / self.cam.z).intersects(l.worldRect)
+    }
     // Ink Wash's paper sheets and Section frames come off the ink thread: a card or Section drawn before its was there draws again
     NotificationCenter.default.addObserver(forName: Ink.ready, object: nil, queue: .main) { [weak self] _ in
       guard let self, Theme.isInk else { return }
