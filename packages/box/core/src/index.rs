@@ -20,7 +20,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, Condvar, Mutex, RwLock};
 use std::time::{Duration, Instant};
 
 /// How often old manifests and unused content are deleted while open (and once at open)
@@ -32,8 +32,6 @@ const TOUCH_EVERY: i64 = 3600;
 /// After a failed indexing run, the first pause before it runs again; it doubles up to RETRY_MAX
 const RETRY_FIRST: Duration = Duration::from_secs(1);
 const RETRY_MAX: Duration = Duration::from_secs(60);
-/// How often a pause before trying again looks for a newer sync
-const RETRY_POLL: Duration = Duration::from_millis(50);
 
 /// The files of a data folder the index keeps
 pub struct Files {
@@ -136,6 +134,7 @@ impl Index {
             models: RwLock::new(HashMap::new()),
             manifests: RwLock::new(HashMap::new()),
             sources: Mutex::new(HashMap::new()),
+            wake: Condvar::new(),
             queries: Mutex::new(VecDeque::new()),
             stop: AtomicBool::new(false),
             gc_at: Mutex::new(Instant::now()),
@@ -196,6 +195,9 @@ impl Index {
 impl Drop for Index {
     fn drop(&mut self) {
         self.inner.stop.store(true, Ordering::SeqCst);
+        // under the lock a waiting worker checks it with: it cannot miss the signal
+        let _sources = self.inner.sources.lock().unwrap();
+        self.inner.wake.notify_all();
     }
 }
 
@@ -266,6 +268,9 @@ struct Inner {
     models: RwLock<HashMap<String, Arc<RwLock<ModelIndex>>>>,
     manifests: RwLock<Manifests>,
     sources: Mutex<HashMap<String, Source>>,
+    /// Signalled with `sources` when a source's job changes (a sync, a forget) or the index stops: a worker waiting to retry
+    /// wakes then, and sleeps otherwise (no polling)
+    wake: Condvar,
     queries: Mutex<VecDeque<(String, String, Vec<f32>)>>,
     stop: AtomicBool,
     gc_at: Mutex<Instant>,
@@ -468,6 +473,7 @@ impl Inner {
             items: r.items,
             generation: s.generation,
         });
+        self.wake.notify_all();
         if !s.running {
             s.running = true;
             let me = self.clone();
@@ -523,9 +529,15 @@ impl Inner {
                 }
             }
             let until = Instant::now() + wait;
-            while Instant::now() < until && !self.superseded(source, &job) {
-                std::thread::sleep(RETRY_POLL);
+            let mut sources = self.sources.lock().unwrap();
+            loop {
+                let now = Instant::now();
+                if now >= until || self.superseded_in(&sources, source, &job) {
+                    break;
+                }
+                sources = self.wake.wait_timeout(sources, until - now).unwrap().0;
             }
+            drop(sources);
             retry = Some(job); // a stale one (forgotten since) writes nothing: index checks its generation
             wait = (wait * 2).min(RETRY_MAX);
         }
@@ -546,13 +558,11 @@ impl Inner {
 
     /// Whether a job should stop: the service stops, a newer sync waits, or the source was forgotten since
     fn superseded(&self, source: &str, job: &Job) -> bool {
+        self.superseded_in(&self.sources.lock().unwrap(), source, job)
+    }
+    fn superseded_in(&self, sources: &HashMap<String, Source>, source: &str, job: &Job) -> bool {
         self.stop.load(Ordering::SeqCst)
-            || self
-                .sources
-                .lock()
-                .unwrap()
-                .get(source)
-                .is_none_or(|s| s.pending.is_some() || s.generation != job.generation)
+            || sources.get(source).is_none_or(|s| s.pending.is_some() || s.generation != job.generation)
     }
 
     fn index(&self, source: &str, job: &Job, emb: &dyn Embedder) -> Result<(), String> {
@@ -977,6 +987,7 @@ impl Inner {
                 s.pending = None;
                 s.left.clear();
                 s.error = None;
+                self.wake.notify_all();
             } else {
                 sources.remove(&r.source);
             }
