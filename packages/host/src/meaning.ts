@@ -31,6 +31,13 @@ const TOP = 8;
  */
 const MIN_SCORE = 0.55;
 /**
+ * The same for a picture, whose scores against a short query sit lower in box (its clipping lowers them). Measured on
+ * persona's anime board (2026-11, oMLX, clip 0.1165): for "girl" its 7 anime pictures scored 0.528–0.545 (0.678–0.685
+ * unclipped) and their captions 0.47–0.485, for "anime girl" 0.570–0.585, so MIN_SCORE would hide right pictures. Not
+ * measured for unrelated queries; a picture under FAINT_BELOW is shown faint, as text is
+ */
+const PICTURE_MIN = 0.5;
+/**
  * Closeness below which a result is shown faint, as a "maybe": the highest any unrelated query reached. Measured on persona
  * through this host and box (2026-11, clip 0.119) with the 75 + 12 queries of the bench and the review's 20 + 4 fresh ones,
  * on what the Palette shows (the best 8 at MIN_SCORE or above): the closest row any of the 16 unrelated queries showed scored
@@ -211,7 +218,14 @@ export class MeaningSearch {
         const l = this.latest;
         if (!l) return undefined;
         const groups = onlyHere && here ? [here] : undefined;
-        return this.connection().search({ source: l.source, ref: l.ref, q, k: TOP * 2, min_score: MIN_SCORE, groups });
+        return this.connection().search({
+          source: l.source,
+          ref: l.ref,
+          q,
+          k: TOP * 2,
+          min_score: PICTURE_MIN,
+          groups,
+        });
       };
       let r = await ask();
       if (r?.unsynced) {
@@ -225,6 +239,8 @@ export class MeaningSearch {
       const { docs, names } = this.latest;
       const items: SearchItem[] = [];
       for (const h of r.hits) {
+        // box counts both from PICTURE_MIN: text only from its own floor
+        if (!h.picture && h.score < MIN_SCORE) continue;
         const d = docs.get(h.id);
         if (!d) continue;
         const { boards, ...o } = d.origin;
@@ -238,10 +254,16 @@ export class MeaningSearch {
         // the picture that matched (an Image card's own, found by its words too), as the Markdown writes it
         const pic = d.pictures?.find((x) => x.key === h.picture)?.src ?? d.picture;
         const faint = h.score < FAINT_BELOW ? { faint: true } : {};
-        items.push({ ...o, ...faint, detail: where, preview: preview(d.md, d.where, hit, pic) } as SearchItem);
+        items.push({
+          ...o,
+          ...faint,
+          detail: where,
+          preview: preview(d.md, d.where, hit, pic),
+          score: h.score,
+        } as SearchItem);
         if (items.length >= TOP) break;
       }
-      return { items, left: r.left || undefined, error: r.error || this.error || undefined };
+      return { items, left: r.left || undefined, error: r.error || this.error || undefined, model: r.model };
     } catch (err) {
       return { items: [], error: (err as Error).message };
     }

@@ -237,6 +237,8 @@ export type SearchItem =
       preview?: SearchPreview;
       /** Related by Meaning: closer than its floor but no closer than unrelated queries come (shown faint, "maybe") */
       faint?: true;
+      /** Related by Meaning: how close (cosine) */
+      score?: number;
     }
   | {
       kind: "sidenote";
@@ -247,12 +249,65 @@ export type SearchItem =
       sidenote: string;
       preview?: SearchPreview;
       faint?: true;
+      /** Related by Meaning: how close (cosine) */
+      score?: number;
     }
   | { kind: "entry"; label: string; detail: string; path: string; line: number; sym?: string; end?: number };
 
 /** Related by Meaning: the closest cards and sidenotes; left = pieces still being indexed (ask again); off = no embedding
  *  endpoint is set; error = the endpoint failed (what it said) */
-export type MeaningResult = { items: SearchItem[]; left?: number; off?: true; error?: string };
+export type MeaningResult = { items: SearchItem[]; left?: number; off?: true; error?: string; model?: string };
+
+/** ⌘K's groups: the word-match kinds and Related by Meaning */
+export type SearchGroup = SearchItem["kind"] | "meaning";
+
+/** One result as a search trace keeps it: which group, where in it, what it points to (board:card, board:card:sidenote,
+ *  path:line), and for Related by Meaning its score and the passage that matched */
+export type TraceHit = {
+  group: SearchGroup;
+  rank: number;
+  kind: SearchItem["kind"];
+  ref: string;
+  label: string;
+  detail: string;
+  score?: number;
+  hit?: string;
+};
+
+/** Feedback on one result (⌥↑ right, ⌥↓ wrong) and the query it was given under */
+export type TraceMark = { ref: string; label: string; q: string; good: boolean };
+
+/**
+ * One ⌘K session as the board saw it (host searchtrace.ts adds the project, commit and uncommitted changes and keeps it in the
+ * storage folder's .trace/, never sent anywhere): every query it settled on with what each group answered, what was picked
+ * (or nothing), and the feedback given. Sent once, when ⌘K closes
+ */
+export type SearchTrace = {
+  id: string;
+  /** ISO time ⌘K opened */
+  at: string;
+  /** how long it was open */
+  ms: number;
+  board: string;
+  boardName: string;
+  mode: "all" | "code";
+  /** searching this board only, or all of them */
+  scope?: "board" | "all";
+  /** the queries answered, without those typed on the way to a later one (its start), unless something was picked, marked
+   *  or judged under them */
+  queries: {
+    q: string;
+    /** ms after opening the answer came */
+    t: number;
+    hits: TraceHit[];
+    meaning?: { left?: number; error?: string; off?: true; model?: string };
+  }[];
+  /** what Enter / a click opened; none = closed with nothing picked */
+  pick?: TraceHit & { q: string; alt?: boolean };
+  marks?: TraceMark[];
+  /** the search as a whole (⌘.), under the query shown then: how it went, and what was expected in a line */
+  feedback?: { q: string; verdict?: "found" | "partly" | "missed"; note?: string };
+};
 
 export type Commit = { commit: string; msg: string; date: string; head?: boolean };
 
@@ -404,6 +459,8 @@ export type BoardToHost =
   | { type: "searchPick"; req: number; item: SearchItem; alt?: boolean }
   /** ⌘K's Related by Meaning (host meaning.ts): cards and sidenotes of the project's boards closest in meaning to q */
   | { type: "searchMeaning"; req: number; q: string; scope?: "all" | "board" } // board = only what is on the asking board
+  /** ⌘K closed: one session's trace, kept on this machine only (host searchtrace.ts) */
+  | { type: "searchTrace"; trace: SearchTrace }
   | { type: "entryPoints"; req: number }
   | { type: "diff"; req: number; seg: Segment; against?: string } // against 缺省 = HEAD；"upstream" = 上游最新（有 Variant 的卡）
   | { type: "commits"; req: number; seg: Segment }

@@ -106,7 +106,7 @@ Set a DeepSeek API key in the board's Settings › AI, or with **CodeBoard: Set 
 
 ## Privacy
 
-CodeBoard runs locally and collects no telemetry. Boards are stored on your machine, in VS Code's workspace storage or in `codeboard.storageDir`, and nothing is written into the repository you are reading unless you move the boards into it (a `.codeboard` folder). Only these features reach the network:
+CodeBoard runs locally and collects no telemetry. Boards are stored on your machine, in VS Code's workspace storage or in `codeboard.storageDir`, and nothing is written into the repository you are reading unless you move the boards into it (a `.codeboard` folder). ⌘K keeps a log of your searches next to the boards, in `.trace/` (which git ignores): what you typed, what it found, what you picked and any feedback you gave with ⌥↑ ⌥↓ or ⌘., with the commit you were on. It never leaves your machine; **CodeBoard: Export Search Traces…** saves it as one JSON file when you want to share it. Only these features reach the network:
 
 - **Gray inline completions** (in Notes and Free code cards): the text around the caret (up to a few thousand characters) goes to a VS Code language model such as GitHub Copilot or, only if you set a DeepSeek API key, to DeepSeek. They are off until you turn them on in the board's Settings or with `codeboard.ai.provider`.
 - **AI tools** (Extract Text, Paste Image Text, Convert to SVG, Modify SVG, Draw as SVG, Auto Focus): only when you run one, the image, the SVG source, the card's Markdown or the text you draw from goes to the model chosen in Settings › AI (DeepSeek, or a VS Code language model such as GitHub Copilot).

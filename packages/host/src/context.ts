@@ -19,6 +19,7 @@ import { GitCache } from "./git";
 import { OpenedGithubFiles } from "./github";
 import { Lsp } from "./lsp";
 import { MeaningSearch, type BoxOptions } from "./meaning";
+import { SearchTraces } from "./searchtrace";
 import { NameIndex } from "./nameindex";
 import { Prefetch } from "./prefetch";
 import { ScratchFiles } from "./scratchfiles";
@@ -55,6 +56,7 @@ export class HostContext implements Disposable {
   readonly codeEdit = new CodeEdit(this);
   /** ⌘K's Related by Meaning: the project's semantic index */
   readonly meaning: MeaningSearch;
+  readonly searchTraces = new SearchTraces(this);
   /** The hidden files behind code being edited on a board */
   readonly scratch = new ScratchFiles(this);
   /** Smaller copies of the board's big images */

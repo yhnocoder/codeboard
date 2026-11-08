@@ -102,6 +102,11 @@ describe.skipIf(!built)("Related by Meaning", () => {
     expect(await indexed()).toMatchObject({ items: 3, model: "test-embed" });
     const r = await cx.meaning.search(store, "kv cache", "a");
     expect(r.items[0]).toMatchObject({ kind: "card", card: "n1", board: "a", detail: "This board" });
+    // for ⌘K's search traces: each row's score, best first, and the model the scores come from
+    const scores = r.items.map((i) => (i.kind === "card" || i.kind === "sidenote" ? i.score : undefined));
+    expect(scores.every((x) => typeof x === "number")).toBe(true);
+    expect(scores).toEqual([...scores].sort((x, y) => y! - x!));
+    expect(r.model).toBe("test-embed");
     const g = await cx.meaning.search(store, "cuda graph", "b");
     expect(g.items[0]).toMatchObject({ kind: "sidenote", sidenote: "sn1", card: "n2", detail: "Engine" });
     // each piece carries its card's own title, not where it sits; the key goes to the server
@@ -208,6 +213,27 @@ describe.skipIf(!built)("Related by Meaning", () => {
     expect(await none.meaning.search(store, "kv", "a")).toMatchObject({ items: [], off: true, error: /needs box/ });
     none.dispose();
     url = keep;
+  });
+
+  it("counts a picture from its own floor, below text's", async () => {
+    // the same words as a picture and as a Note: alike, the picture is shown (faint) and the Note is not
+    const words = "cache cuda graph scheduler";
+    fs.writeFileSync(path.join(dir, "assets", "ca5e.png"), words);
+    const c = emptyBoard("c", "Pictures");
+    c.cards.push({ id: "shot", kind: "image", src: "ca5e.png" });
+    c.place.shot = { x: 0, y: 0, w: 300 };
+    note(c, "words", words);
+    await store.save(c);
+    await cx.meaning.update(store);
+    await indexed();
+    const hits = (await probe.search({ source: dir, ref: "_", q: "cache", k: 40 })).hits;
+    const score = (id: string) => hits.find((h) => h.id === `card:${id}`)?.score ?? 0;
+    expect(score("shot")).toBeCloseTo(score("words"), 3);
+    expect(score("shot")).toBeGreaterThanOrEqual(0.5);
+    expect(score("shot")).toBeLessThan(0.55);
+    const r = await cx.meaning.search(store, "cache", "c");
+    expect(r.items.find((i) => i.kind === "card" && i.card === "shot")).toMatchObject({ faint: true });
+    expect(r.items.find((i) => i.kind === "card" && i.card === "words")).toBeUndefined();
   });
 });
 

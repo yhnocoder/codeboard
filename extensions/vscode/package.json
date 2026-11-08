@@ -61,6 +61,11 @@
         "category": "CodeBoard"
       },
       {
+        "command": "codeboard.exportSearchTraces",
+        "title": "Export Search Traces…",
+        "category": "CodeBoard"
+      },
+      {
         "command": "codeboard.openBoardToSide",
         "title": "Open to the Side",
         "category": "CodeBoard"
