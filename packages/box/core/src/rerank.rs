@@ -5,15 +5,18 @@
 //! Pictures keep their places (a text model cannot see them). Off unless a client asks (rerank), downloaded only on request
 //! (model.rs).
 //!
-//! Measured on persona (2026-11, search-index/impl/step2/rerank): top 10 reranked, top 30 slower and no better; FUSE_W was
-//! chosen on persona87 only (MRR 76.3 → 81.4) and checked on fresh2, which no setting was tuned on (68.9 → 74.8). The raw
+//! Measured on persona (2026-11, search-index/impl/step2/rerank): top 10 reranked, top 30 slower and no better. FUSE_W is
+//! from a plateau on persona87 alone (tune_w_plateau.py: the best MRR averaged with the neighbouring weights ±0.05; 0.00–0.10
+//! all score 80.8–81.4, 0.15 drops to 78.8), so it is close to "reranker only": persona87 MRR 76.3 → 80.9; fresh2 (20
+//! queries) 68.9 → 73.7 with top-1 unchanged at 60. fresh2 is not cleanly held out: the model, whole text vs best piece and
+//! K were picked from a table that showed it. The gain is not proven, and the reranker is off unless a client asks. The raw
 //! score is handed back too: unrelated queries reach at most −6.0, and only 2% of right cards score that low, but no cutoff is
 //! set from that yet.
 
 /// Text hits read again by the reranker
 pub const RERANK_TOP: usize = 10;
-/// The vector score's weight in the fused order (tuned on persona87 only, see above)
-pub const FUSE_W: f32 = 0.1;
+/// The vector score's weight in the fused order (a plateau on persona87, see above)
+pub const FUSE_W: f32 = 0.05;
 /// What a rerank answers when a newer one of the same source came in before it was read: only the latest query's is worth
 /// the cores (the reranker holds them all), so an older one stops at its next batch
 pub const SUPERSEDED: &str = "superseded by a newer rerank of this source";
