@@ -20,7 +20,7 @@ fn main() {
             .map(|x| x["whole"].as_str().unwrap_or("").to_string())
             .collect();
         let t = Instant::now();
-        let s = r.score(c["q"].as_str().unwrap(), &docs).unwrap();
+        let s = r.score(c["q"].as_str().unwrap(), &docs, &|| true).unwrap();
         let ms = t.elapsed().as_secs_f64() * 1000.0;
         out.push(json!({ "q": c["q"], "set": c["set"], "ms": ms, "cpu": null, "ntokIn": 0, "idx": (0..docs.len()).collect::<Vec<_>>(), "scores": s }));
     }

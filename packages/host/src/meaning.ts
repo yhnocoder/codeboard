@@ -268,6 +268,7 @@ export class MeaningSearch {
         min_score: MIN_SCORE,
         groups,
       });
+      if (r.superseded) return { items: [] }; // a newer query's rerank came in: the Palette waits for that one
       return { items: this.items(r.hits, here, onlyHere), model: r.model };
     } catch (err) {
       this.cx.log("warn", `box: rerank: ${(err as Error).message}`);

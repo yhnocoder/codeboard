@@ -137,6 +137,7 @@ impl Index {
             ],
             #[cfg(feature = "rerank")]
             reranker: Mutex::new(None),
+            reranks: Default::default(),
             models: RwLock::new(HashMap::new()),
             manifests: RwLock::new(HashMap::new()),
             sources: Mutex::new(HashMap::new()),
@@ -275,6 +276,8 @@ struct Inner {
     model_files: Vec<crate::model::Model>,
     #[cfg(feature = "rerank")]
     reranker: Mutex<Option<Arc<crate::rerank::Reranker>>>,
+    /// The latest rerank of each source (an older one stops)
+    reranks: crate::rerank::Latest,
     models: RwLock<HashMap<String, Arc<RwLock<ModelIndex>>>>,
     manifests: RwLock<Manifests>,
     sources: Mutex<HashMap<String, Source>>,
@@ -765,6 +768,9 @@ impl Inner {
     /// (query_vector), so a rerank embeds nothing
     fn rerank(&self, r: SearchReq) -> Reply {
         let (source, rf, q) = (r.source.clone(), r.r#ref.clone(), r.q.clone());
+        let ticket = self.reranks.begin(&source);
+        let live = || self.reranks.live(&source, ticket);
+        let superseded = || Ok(json!({ "hits": [], "superseded": true, "source": source, "ref": rf }));
         let mut out = self.search(r)?;
         let hits: Vec<Value> = out["hits"].as_array().cloned().unwrap_or_default();
         if hits.is_empty() || out.get("error").is_some_and(|e| !e.is_null()) {
@@ -772,7 +778,12 @@ impl Inner {
         }
         let n = hits.len().min(crate::rerank::RERANK_TOP);
         let texts: Vec<Option<String>> = {
-            let man = self.manifests.read().unwrap().get(&(source, rf)).cloned();
+            let man = self
+                .manifests
+                .read()
+                .unwrap()
+                .get(&(source.clone(), rf.clone()))
+                .cloned();
             let Some(man) = man else { return Ok(out) };
             let man = man.read().unwrap();
             let by_id: HashMap<&str, &ItemRow> = man.items.iter().map(|x| (x.id.as_str(), x)).collect();
@@ -792,7 +803,13 @@ impl Inner {
                 })
                 .collect()
         };
-        let scores = self.rerank_scores(&q, &texts)?;
+        if !live() {
+            return superseded();
+        }
+        let scores = match self.rerank_scores(&q, &texts, &live) {
+            Err(e) if e == crate::rerank::SUPERSEDED => return superseded(),
+            r => r?,
+        };
         let vector: Vec<f32> = hits[..n]
             .iter()
             .map(|h| h["score"].as_f64().unwrap_or(0.0) as f32)
@@ -815,7 +832,12 @@ impl Inner {
     }
 
     #[cfg(feature = "rerank")]
-    fn rerank_scores(&self, q: &str, texts: &[Option<String>]) -> Result<Vec<Option<f32>>, String> {
+    fn rerank_scores(
+        &self,
+        q: &str,
+        texts: &[Option<String>],
+        live: &dyn Fn() -> bool,
+    ) -> Result<Vec<Option<f32>>, String> {
         let rr = {
             let mut slot = self.reranker.lock().unwrap();
             match slot.as_ref() {
@@ -833,13 +855,18 @@ impl Inner {
             }
         };
         let want: Vec<String> = texts.iter().flatten().cloned().collect();
-        let got = rr.score(q, &want)?;
+        let got = rr.score(q, &want, live)?;
         let mut it = got.into_iter();
         Ok(texts.iter().map(|t| t.as_ref().and_then(|_| it.next())).collect())
     }
 
     #[cfg(not(feature = "rerank"))]
-    fn rerank_scores(&self, _q: &str, _texts: &[Option<String>]) -> Result<Vec<Option<f32>>, String> {
+    fn rerank_scores(
+        &self,
+        _q: &str,
+        _texts: &[Option<String>],
+        _live: &dyn Fn() -> bool,
+    ) -> Result<Vec<Option<f32>>, String> {
         Err("This box is built without the reranker (cargo feature rerank)".into())
     }
 

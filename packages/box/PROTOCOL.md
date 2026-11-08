@@ -87,7 +87,9 @@ The same request as `search` → the same answer, with its first text hits (up t
 whole item text (title and text), those texts in the fused order `0.1 · minmax(vector) + 0.9 · minmax(rerank)` (over the
 texts read) in the places text hits hold (the weight tuned on the persona benchmark only). Picture hits keep their vector
 score and place; with fewer than two texts read the order stays. Each hit the reranker read has its raw score (a logit) as
-`rerank`; `reranked` is how many it read. An error while the reranker is not
+`rerank`; `reranked` is how many it read. A rerank still running when a newer one of the same source comes in stops at
+its next batch and answers `{hits: [], superseded: true, source, ref}`: only the latest query is worth the reranker's
+cores. An error while the reranker is not
 downloaded or box is built without it. Clients show `search`'s answer first and reorder when this one comes.
 
 ## forget

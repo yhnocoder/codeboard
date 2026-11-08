@@ -59,6 +59,8 @@ export type BoxResult = {
   model?: string;
   /** rerank only: how many of the first hits the reranker read (they are in the fused order) */
   reranked?: number;
+  /** rerank only: a newer rerank of the same source came in before this one was read, so it stopped (no hits) */
+  superseded?: true;
   source: string;
   ref: string;
 };

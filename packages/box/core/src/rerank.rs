@@ -14,6 +14,28 @@
 pub const RERANK_TOP: usize = 10;
 /// The vector score's weight in the fused order (tuned on persona87 only, see above)
 pub const FUSE_W: f32 = 0.1;
+/// What a rerank answers when a newer one of the same source came in before it was read: only the latest query's is worth
+/// the cores (the reranker holds them all), so an older one stops at its next batch
+pub const SUPERSEDED: &str = "superseded by a newer rerank of this source";
+
+/// The latest rerank of each source: a new one makes the earlier ones of its source stale
+#[derive(Default)]
+pub struct Latest(std::sync::Mutex<std::collections::HashMap<String, u64>>);
+
+impl Latest {
+    /// A new rerank of the source; it is live until the next one of the same source begins
+    pub fn begin(&self, source: &str) -> u64 {
+        let mut m = self.0.lock().unwrap();
+        let n = m.get(source).map_or(1, |g| g + 1);
+        m.insert(source.to_string(), n);
+        n
+    }
+
+    pub fn live(&self, source: &str, ticket: u64) -> bool {
+        self.0.lock().unwrap().get(source) == Some(&ticket)
+    }
+}
+
 /// Tokens of (query, text) the reranker reads; the text is cut to fit
 #[cfg(feature = "rerank")]
 const MAX_TOKENS: usize = 512;
@@ -54,7 +76,7 @@ pub use run::Reranker;
 
 #[cfg(feature = "rerank")]
 mod run {
-    use super::{BATCH, MAX_TOKENS};
+    use super::{BATCH, MAX_TOKENS, SUPERSEDED};
     use ort::session::Session;
     use ort::value::Tensor;
     use std::path::Path;
@@ -102,8 +124,9 @@ mod run {
             })
         }
 
-        /// The raw relevance score (a logit) of each text for the query
-        pub fn score(&self, q: &str, texts: &[String]) -> Result<Vec<f32>, String> {
+        /// The raw relevance score (a logit) of each text for the query; Err(SUPERSEDED) as soon as `live` says no (checked
+        /// before each batch)
+        pub fn score(&self, q: &str, texts: &[String], live: &dyn Fn() -> bool) -> Result<Vec<f32>, String> {
             let pairs: Vec<(String, String)> = texts.iter().map(|t| (q.to_string(), t.clone())).collect();
             let enc = self.tok.encode_batch(pairs, true).map_err(err)?;
             let mut order: Vec<usize> = (0..enc.len()).collect();
@@ -111,6 +134,9 @@ mod run {
             let mut out = vec![0f32; enc.len()];
             let mut session = self.session.lock().unwrap();
             for group in order.chunks(BATCH) {
+                if !live() {
+                    return Err(SUPERSEDED.into());
+                }
                 let len = group.iter().map(|&i| enc[i].get_ids().len()).max().unwrap_or(1);
                 let mut ids = vec![self.pad as i64; group.len() * len];
                 let mut mask = vec![0i64; group.len() * len];
@@ -170,6 +196,17 @@ mod tests {
         assert_eq!(fuse(&[], &[], 0.1), Vec::<usize>::new());
     }
 
+    #[test]
+    fn a_new_rerank_makes_the_earlier_one_of_its_source_stale() {
+        let l = Latest::default();
+        let a = l.begin("s");
+        let other = l.begin("t");
+        assert!(l.live("s", a));
+        let b = l.begin("s");
+        assert!(!l.live("s", a));
+        assert!(l.live("s", b) && l.live("t", other));
+    }
+
     /// The real model, when its files are there (BOX_RERANKER: a folder with model.onnx and tokenizer.json)
     #[cfg(feature = "rerank")]
     #[test]
@@ -192,6 +229,7 @@ mod tests {
                     "BlockManager.deallocate frees the kv cache blocks of a finished sequence.".into(),
                     "显存：KV cache 随序列长度增长，块管理器按块回收。".into(),
                 ],
+                &|| true,
             )
             .unwrap();
         assert!(s[1] > s[0] && s[2] > s[0], "{s:?}");
