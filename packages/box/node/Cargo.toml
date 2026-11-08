@@ -10,6 +10,9 @@ publish = false
 name = "box_node"
 crate-type = ["cdylib"]
 
+[features]
+rerank = ["box-core/rerank"]
+
 [dependencies]
 box-core = { path = "../core" }
 napi = { version = "3", default-features = false, features = ["napi6"] }

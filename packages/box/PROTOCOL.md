@@ -68,12 +68,26 @@ CJK text as single characters and pairs, with jieba's words to rank by; titles c
 
 ## model, model_download
 
-`{}` / `{url?, sha256?}` → `{file, present, downloading, bytes, total, error}`
+`{name?}` / `{name?, url?, sha256?}` → `{name, files, present, downloading, bytes, total, error, runs}`
 
-The built-in model's file: EmbeddingGemma 2, GGUF Q8_0 (310 MB, `<home>/models/embeddinggemma-2-Q8_0.gguf`). Nothing is
-downloaded until `model_download` asks; it runs in the background (ask `model` for progress) and the file is kept only when
-its SHA-256 is right. `url` and `sha256` default to the model's on Hugging Face (ggml-org/embeddinggemma-2-GGUF). Running it
-(llama.cpp behind the cargo feature `local`) is not in this build yet.
+The models box downloads itself, by `name`:
+- `embeddinggemma-2` (the default): EmbeddingGemma 2, GGUF Q8_0 (310 MB, `<home>/models/embeddinggemma-2-Q8_0.gguf`).
+  Running it (llama.cpp behind the cargo feature `local`) is not in this build yet (`runs` false).
+- `hs-rerank-1`: the reranker (hindsight-ai/hs-rerank-1, an mmBERT-small cross-encoder, ONNX int8, MIT; `model.onnx` and
+  `tokenizer.json`, about 195 MB, under `<home>/models/hs-rerank-1/`). `runs` when box is built with the cargo feature
+  `rerank` (onnxruntime through `ort`).
+
+Nothing is downloaded until `model_download` asks; it runs in the background (ask `model` for progress) and each file is
+kept only when its SHA-256 is right. `url` and `sha256` replace the first file's (tests); the defaults are the model's on
+Hugging Face.
+
+## rerank
+
+The same request as `search` → the same answer, with its first text hits (up to 10) read again by the reranker on the
+whole item text (title and text), the list in the fused order: `0.1 · minmax(vector) + 0.9 · minmax(rerank)` within those
+hits (the weight tuned on the persona benchmark only). Each hit the reranker read has its raw score (a logit) as `rerank`;
+`reranked` is how many it read. Picture hits keep their vector score and place. An error while the reranker is not
+downloaded or box is built without it. Clients show `search`'s answer first and reorder when this one comes.
 
 ## forget
 

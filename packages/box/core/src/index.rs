@@ -131,7 +131,12 @@ impl Index {
             _lock: lock,
             store: Arc::new(Mutex::new(st)),
             keywords,
-            model_file: crate::model::Model::new(home),
+            model_files: vec![
+                crate::model::Model::new(home, &crate::model::EMBEDDER),
+                crate::model::Model::new(home, &crate::model::RERANKER),
+            ],
+            #[cfg(feature = "rerank")]
+            reranker: Mutex::new(None),
             models: RwLock::new(HashMap::new()),
             manifests: RwLock::new(HashMap::new()),
             sources: Mutex::new(HashMap::new()),
@@ -161,11 +166,15 @@ impl Index {
             "search" => self.search(parse(req)?),
             "search_keyword" => self.search_keyword(parse(req)?),
             "status" => self.status(parse(req)?),
-            "model" => Ok(self.inner.model_file.status()),
+            "model" => {
+                let r: ModelDownloadReq = parse(req)?;
+                Ok(self.inner.model_file(&r.name)?.status())
+            }
             "model_download" => {
                 let r: ModelDownloadReq = parse(req)?;
-                Ok(self.inner.model_file.download(r.url, r.sha256))
+                Ok(self.inner.model_file(&r.name)?.download(r.url, r.sha256))
             }
+            "rerank" => self.inner.rerank(parse(req)?),
             "forget" => self.forget(parse(req)?),
             _ => Err(format!("unknown op {op:?}")),
         }
@@ -262,8 +271,10 @@ struct Inner {
     _lock: std::fs::File,
     store: Arc<Mutex<Store>>,
     keywords: Keywords,
-    /// The built-in model's file (model.rs)
-    model_file: crate::model::Model,
+    /// The models box can download and run itself (model.rs): the embedder, the reranker
+    model_files: Vec<crate::model::Model>,
+    #[cfg(feature = "rerank")]
+    reranker: Mutex<Option<Arc<crate::rerank::Reranker>>>,
     models: RwLock<HashMap<String, Arc<RwLock<ModelIndex>>>>,
     manifests: RwLock<Manifests>,
     sources: Mutex<HashMap<String, Source>>,
@@ -740,6 +751,97 @@ impl Inner {
         Ok(v)
     }
 
+    fn model_file(&self, name: &str) -> Result<&crate::model::Model, String> {
+        let spec = crate::model::spec(name).ok_or_else(|| format!("no model {name:?}"))?;
+        Ok(self
+            .model_files
+            .iter()
+            .find(|m| std::ptr::eq(m.spec(), spec))
+            .expect("every spec has its model"))
+    }
+
+    /// search, then its best text hits read again by the reranker and the list in the fused order (rerank.rs); each text
+    /// hit it read gets its raw score as `rerank`
+    fn rerank(&self, r: SearchReq) -> Reply {
+        let (source, rf, q) = (r.source.clone(), r.r#ref.clone(), r.q.clone());
+        let mut out = self.search(r)?;
+        let hits: Vec<Value> = out["hits"].as_array().cloned().unwrap_or_default();
+        if hits.is_empty() || out.get("error").is_some_and(|e| !e.is_null()) {
+            return Ok(out);
+        }
+        let n = hits.len().min(crate::rerank::RERANK_TOP);
+        let texts: Vec<Option<String>> = {
+            let man = self.manifests.read().unwrap().get(&(source, rf)).cloned();
+            let Some(man) = man else { return Ok(out) };
+            let man = man.read().unwrap();
+            let by_id: HashMap<&str, &ItemRow> = man.items.iter().map(|x| (x.id.as_str(), x)).collect();
+            hits[..n]
+                .iter()
+                .map(|h| {
+                    if h.get("picture").is_some() {
+                        return None;
+                    }
+                    let it = by_id.get(h["id"].as_str()?)?;
+                    let (title, text) = self.keywords.doc_text(hid(&it.hash))?;
+                    Some(if title.trim().is_empty() {
+                        text
+                    } else {
+                        format!("{title}\n{text}")
+                    })
+                })
+                .collect()
+        };
+        let scores = self.rerank_scores(&q, &texts)?;
+        let vector: Vec<f32> = hits[..n]
+            .iter()
+            .map(|h| h["score"].as_f64().unwrap_or(0.0) as f32)
+            .collect();
+        let order = crate::rerank::fuse(&vector, &scores, crate::rerank::FUSE_W);
+        let mut ordered: Vec<Value> = order
+            .into_iter()
+            .map(|i| {
+                let mut h = hits[i].clone();
+                if let Some(s) = scores[i] {
+                    h["rerank"] = json!(s);
+                }
+                h
+            })
+            .collect();
+        ordered.extend(hits[n..].iter().cloned());
+        out["hits"] = Value::Array(ordered);
+        out["reranked"] = json!(n);
+        Ok(out)
+    }
+
+    #[cfg(feature = "rerank")]
+    fn rerank_scores(&self, q: &str, texts: &[Option<String>]) -> Result<Vec<Option<f32>>, String> {
+        let rr = {
+            let mut slot = self.reranker.lock().unwrap();
+            match slot.as_ref() {
+                Some(r) => r.clone(),
+                None => {
+                    let m = self.model_file(crate::model::RERANKER.name)?;
+                    if !m.present() {
+                        return Err("The reranker is not downloaded yet (model_download hs-rerank-1)".into());
+                    }
+                    let f = m.files();
+                    let r = Arc::new(crate::rerank::Reranker::open(&f[0], &f[1])?);
+                    *slot = Some(r.clone());
+                    r
+                }
+            }
+        };
+        let want: Vec<String> = texts.iter().flatten().cloned().collect();
+        let got = rr.score(q, &want)?;
+        let mut it = got.into_iter();
+        Ok(texts.iter().map(|t| t.as_ref().and_then(|_| it.next())).collect())
+    }
+
+    #[cfg(not(feature = "rerank"))]
+    fn rerank_scores(&self, _q: &str, _texts: &[Option<String>]) -> Result<Vec<Option<f32>>, String> {
+        Err("This box is built without the reranker (cargo feature rerank)".into())
+    }
+
     fn search(&self, r: SearchReq) -> Reply {
         let (emb, error, left) = {
             let sources = self.sources.lock().unwrap();
@@ -1000,8 +1102,15 @@ pub struct SearchReq {
     pub min_score: Option<f32>,
 }
 
+fn default_model() -> String {
+    crate::model::EMBEDDER.name.into()
+}
+
 #[derive(Deserialize)]
 pub struct ModelDownloadReq {
+    /// embeddinggemma-2 (the default) or hs-rerank-1
+    #[serde(default = "default_model")]
+    pub name: String,
     #[serde(default)]
     pub url: Option<String>,
     #[serde(default)]

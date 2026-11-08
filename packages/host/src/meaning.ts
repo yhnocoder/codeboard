@@ -4,7 +4,7 @@
 // sidenote of the storage folder (the source) at its git branch (the ref); box embeds in the background only what it has not
 // seen, and a search answers with what is indexed so far. Off while no endpoint is set, or without the box binary.
 import * as fs from "node:fs";
-import { connect, type BoxClient, type BoxEmbedder, type BoxItem } from "@codeboard/box";
+import { connect, type BoxClient, type BoxEmbedder, type BoxHit, type BoxItem } from "@codeboard/box";
 import { cardTitle, shelvedCards, type Card, type MeaningResult, type SearchItem } from "@codeboard/core";
 import type { Storage } from "./storage/boards";
 import type { HostContext } from "./context";
@@ -37,6 +37,8 @@ const MIN_SCORE = 0.55;
  * not a line that reliably separates related from unrelated. Keep those queries out of any re-calibration
  */
 const FAINT_BELOW = 0.635;
+/** The reranker box runs (codeboard.search.rerank) */
+const RERANKER = "hs-rerank-1";
 
 /** The box binary and, for tests, its data folder (HostOptions.box) */
 export type BoxOptions = { bin: string; home?: string };
@@ -176,24 +178,59 @@ export class MeaningSearch {
         r = await ask();
       }
       if (!r || !this.latest) return { items: [], error: this.error || undefined };
-      const { docs, names } = this.latest;
-      const items: SearchItem[] = [];
-      for (const h of r.hits) {
-        const d = docs.get(h.id);
-        if (!d) continue;
-        const { boards, ...o } = d.origin;
-        const where = boards.map((b) => (b === here ? "This board" : (names.get(b) ?? b))).join(" · ");
-        // a paragraph matched: it is the passage to show; the whole card matched: no passage
-        const hit = h.piece > 0 && h.range ? d.text.slice(h.range[0], h.range[1]) : undefined;
-        const at = onlyHere && here ? { board: here } : {};
-        const faint = h.score < FAINT_BELOW ? { faint: true } : {};
-        items.push({ ...o, ...at, ...faint, detail: where, preview: preview(d.md, d.where, hit) } as SearchItem);
-        if (items.length >= TOP) break;
-      }
+      const items = this.items(r.hits, here, onlyHere);
       return { items, left: r.left || undefined, error: r.error || this.error || undefined };
     } catch (err) {
       return { items: [], error: (err as Error).message };
     }
+  }
+
+  /** search's list read again by the reranker (box's hs-rerank-1) and in its fused order, for the Palette to reorder to;
+   *  off while codeboard.search.rerank is off. Turned on, the first ask downloads the model (once, in box), and the order by
+   *  meaning stays until it is there */
+  async rerank(store: Storage, q: string, here?: string): Promise<MeaningResult> {
+    if (!readHostSetting<boolean>(this.cx, "searchRerank")) return { items: [], off: true };
+    if (!q.trim() || this.missing() || !(await this.embedder())) return { items: [], off: true };
+    try {
+      if (this.stale || !this.latest) await this.update(store, here);
+      const l = this.latest;
+      if (!l) return { items: [], off: true };
+      const c = this.connection();
+      const m = await c.model(RERANKER);
+      if (!m.runs) return { items: [], off: true }; // this build of box has no reranker (it is not downloaded for nothing)
+      if (!m.present) {
+        if (m.error) this.cx.log("warn", `box: ${RERANKER}: ${m.error}`);
+        if (!m.downloading) {
+          await c.modelDownload(RERANKER);
+          void this.cx.ws.ui.info("Downloading the reranker for Related by Meaning (once, about 195 MB).");
+        }
+        return { items: [], off: true };
+      }
+      const r = await c.rerank({ source: l.source, ref: l.ref, q, k: TOP * 2, min_score: MIN_SCORE });
+      return { items: this.items(r.hits, here, false) };
+    } catch (err) {
+      this.cx.log("warn", `box: rerank: ${(err as Error).message}`);
+      return { items: [], off: true };
+    }
+  }
+
+  /** box's hits as the Palette's rows: the first TOP whose documents the host still has */
+  private items(hits: BoxHit[], here: string | undefined, onlyHere: boolean): SearchItem[] {
+    const { docs, names } = this.latest!;
+    const items: SearchItem[] = [];
+    for (const h of hits) {
+      const d = docs.get(h.id);
+      if (!d) continue;
+      const { boards, ...o } = d.origin;
+      const where = boards.map((b) => (b === here ? "This board" : (names.get(b) ?? b))).join(" · ");
+      // a paragraph matched: it is the passage to show; the whole card matched: no passage
+      const hit = h.piece > 0 && h.range ? d.text.slice(h.range[0], h.range[1]) : undefined;
+      const at = onlyHere && here ? { board: here } : {};
+      const faint = h.score < FAINT_BELOW ? { faint: true } : {};
+      items.push({ ...o, ...at, ...faint, detail: where, preview: preview(d.md, d.where, hit) } as SearchItem);
+      if (items.length >= TOP) break;
+    }
+    return items;
   }
 }
 

@@ -131,6 +131,20 @@ describe.skipIf(!built)("Related by Meaning", () => {
     other.dispose();
   });
 
+  it("reranks only when codeboard.search.rerank is on, and never downloads a reranker this box cannot run", async () => {
+    expect(await cx.meaning.rerank(store, "kv cache", "a")).toEqual({ items: [], off: true });
+    const get = W.settings.get;
+    W.settings = { ...W.settings, get: <T>(k: string) => (k === "codeboard.search.rerank" ? true : get<T>(k)) as T };
+    try {
+      const m = await probe.model("hs-rerank-1");
+      if (m.runs) return; // a box built with the reranker: box's own tests cover it (the model is not downloaded here)
+      expect(await cx.meaning.rerank(store, "kv cache", "a")).toEqual({ items: [], off: true });
+      expect(await probe.model("hs-rerank-1")).toMatchObject({ present: false, downloading: false });
+    } finally {
+      W.settings = { ...W.settings, get };
+    }
+  });
+
   it("is off while no endpoint is set or without the binary, and says what failed when the server does", async () => {
     const keep = url;
     url = "";

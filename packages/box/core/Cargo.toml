@@ -9,16 +9,22 @@ publish = false
 [lib]
 name = "box_core"
 
+[features]
+# the reranker (hs-rerank-1, ONNX int8, run with ONNX Runtime): off unless built with it, used only when a client asks
+rerank = ["dep:ort", "dep:tokenizers"]
+
 [dependencies]
 blake3 = "1.8.7"
 half = "2.7.1"
 jieba-rs = "0.11.0"
+ort = { version = "2.0.0-rc.15", optional = true }
 rayon = "1.12.0"
 rusqlite = { version = "0.41.1", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1.0.154", features = ["raw_value"] }
 sha2 = "0.11"
 tantivy = { version = "0.27.0", default-features = false, features = ["mmap"] }
+tokenizers = { version = "0.23.2", default-features = false, features = ["onig"], optional = true }
 ureq = "3.5.1"
 usearch = { version = "2.26.6", default-features = false }
 
@@ -26,3 +32,7 @@ usearch = { version = "2.26.6", default-features = false }
 # usearch's SIMD kernels (numkong), except for the static musl build: zig's clang, which box.yml builds it with, refuses them
 [target.'cfg(not(target_env = "musl"))'.dependencies]
 usearch = { version = "2.26.6", features = ["numkong"] }
+
+[[example]]
+name = "rerank_eval"
+required-features = ["rerank"]

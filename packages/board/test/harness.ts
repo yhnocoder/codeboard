@@ -457,6 +457,8 @@ boot({ post: (m) => { window.__inflight++; window.__host(JSON.stringify(m)).fina
         return reply(m.req, []);
       case "searchMeaning":
         return reply(m.req, { items: [], off: true });
+      case "rerankMeaning":
+        return reply(m.req, { items: [], off: true });
       case "images":
         // this host makes no copies of images: each shows its own file
         return reply(m.req, {});

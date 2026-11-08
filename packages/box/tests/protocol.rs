@@ -591,9 +591,82 @@ fn the_keyword_group_is_there_without_a_model_and_sees_only_its_ref() {
         ["a"]
     );
     assert_eq!(ids(kw(&mut c, "main", "deallocate", Value::Null)), ["a"]);
+    // the reranker is opt-in: built without it, or not downloaded, a rerank says so
+    let rr = c.ask("rerank", json!({ "source": "s", "ref": "main", "q": "kv cache" }));
+    let why = if cfg!(feature = "rerank") {
+        "not downloaded"
+    } else {
+        "without the reranker"
+    };
+    assert!(rr["error"].as_str().unwrap().contains(why), "{rr}");
+    let m = c.ok("model", json!({ "name": "hs-rerank-1" }));
+    assert_eq!(
+        (m["present"].clone(), m["downloading"].clone()),
+        (json!(false), json!(false))
+    );
     // forgotten: nothing found
     c.ok("forget", json!({ "source": "s" }));
     assert!(ids(kw(&mut c, "main", "deallocate", Value::Null)).is_empty());
+    drop(c);
+    assert!(matches!(svc.join().unwrap(), service::Outcome::Stopped));
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// The reranker end to end, when built with it and its files are there (BOX_RERANKER: a folder with hs-rerank-1's
+/// model.onnx and tokenizer.json, copied into the data folder as model_download would put them)
+#[cfg(feature = "rerank")]
+#[test]
+fn rerank_reorders_the_best_text_hits_and_hands_back_their_raw_scores() {
+    let Some(src) = std::env::var_os("BOX_RERANKER")
+        .map(std::path::PathBuf::from)
+        .filter(|d| d.join("model.onnx").is_file())
+    else {
+        let _ = writeln!(
+            std::io::stderr().lock(),
+            "rerank test skipped: set BOX_RERANKER to hs-rerank-1's folder"
+        );
+        return;
+    };
+    let home = std::env::temp_dir().join(format!("box-rerank-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&home);
+    let dir = home.join("models").join("hs-rerank-1");
+    std::fs::create_dir_all(&dir).unwrap();
+    for f in ["model.onnx", "tokenizer.json"] {
+        std::fs::copy(src.join(f), dir.join(f)).unwrap();
+    }
+    let p = paths::paths(&home);
+    let _watch = watchdog("rerank_reorders_the_best_text_hits_and_hands_back_their_raw_scores", &p);
+    let h2 = home.clone();
+    let svc = std::thread::spawn(move || service::serve(paths::paths(&h2), Duration::from_millis(300)).unwrap());
+    let (base, _) = embedding_server(0);
+    let mut c = Client::connect(&p);
+    let token = std::fs::read_to_string(&p.token).unwrap();
+    c.ok("hello", json!({ "token": token.trim() }));
+    // the stand-in vectors count words: they rank the cuda text first, the reranker knows better
+    let items = json!([
+        { "id": "noise", "title": "Graphs", "text": "Not about kv cache at all: the cuda graph is captured once per batch size." },
+        { "id": "right", "title": "Block manager", "text": "Frees the cache blocks of a finished sequence; prefill reuses them." },
+    ]);
+    c.ok(
+        "sync",
+        json!({ "source": "s", "ref": "main", "embedder": { "base": base }, "items": items }),
+    );
+    c.settle("s", "main");
+    let q = json!({ "source": "s", "ref": "main", "q": "how are kv cache blocks freed when a sequence ends" });
+    let v = c.ok("search", q.clone());
+    let r = c.ok("rerank", q);
+    let ids = |v: &Value| -> Vec<String> {
+        v["hits"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|h| h["id"].as_str().unwrap().into())
+            .collect()
+    };
+    assert_eq!(ids(&v)[0], "noise", "{v}");
+    assert_eq!(ids(&r), ["right", "noise"], "{r}");
+    assert!(r["hits"][0]["rerank"].as_f64().unwrap() > r["hits"][1]["rerank"].as_f64().unwrap());
+    assert_eq!(r["reranked"], json!(2));
     drop(c);
     assert!(matches!(svc.join().unwrap(), service::Outcome::Stopped));
     let _ = std::fs::remove_dir_all(&home);

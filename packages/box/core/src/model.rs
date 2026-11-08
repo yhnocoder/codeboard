@@ -1,14 +1,49 @@
-//! The built-in model's file: EmbeddingGemma 2 as GGUF Q8_0 (310 MB), downloaded into the data folder only when a client asks
-//! (model_download), checked against its SHA-256 before it is kept. Never fp16: EmbeddingGemma's activations overflow it.
+//! Models box can run itself, downloaded into the data folder only when a client asks (model_download), each file checked
+//! against its SHA-256 before it is kept: the built-in embedder, EmbeddingGemma 2 as GGUF Q8_0 (never fp16: its activations
+//! overflow it), and the reranker, hs-rerank-1 as ONNX.
 
 use sha2::{Digest, Sha256};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-pub const FILE: &str = "embeddinggemma-2-Q8_0.gguf";
-pub const URL: &str = "https://huggingface.co/ggml-org/embeddinggemma-2-GGUF/resolve/main/embeddinggemma-2-Q8_0.gguf";
-pub const SHA256: &str = "2188ac1deca4b77dffefd603c2776a9d76d9d74ec01841392982ebb840b09135";
+/// A model box can download: its files under `<home>/models/`, each with where it comes from and its SHA-256
+pub struct Spec {
+    pub name: &'static str,
+    pub files: &'static [(&'static str, &'static str, &'static str)],
+}
+
+/// The built-in embedder: EmbeddingGemma 2, GGUF Q8_0 (310 MB)
+pub static EMBEDDER: Spec = Spec {
+    name: "embeddinggemma-2",
+    files: &[(
+        "embeddinggemma-2-Q8_0.gguf",
+        "https://huggingface.co/ggml-org/embeddinggemma-2-GGUF/resolve/main/embeddinggemma-2-Q8_0.gguf",
+        "2188ac1deca4b77dffefd603c2776a9d76d9d74ec01841392982ebb840b09135",
+    )],
+};
+
+/// The reranker: hindsight-ai/hs-rerank-1 (MIT, mmBERT-small cross-encoder), ONNX with an int8 vocabulary table (161 MB)
+/// and its tokenizer (34 MB)
+pub static RERANKER: Spec = Spec {
+    name: "hs-rerank-1",
+    files: &[
+        (
+            "hs-rerank-1/model.onnx",
+            "https://huggingface.co/hindsight-ai/hs-rerank-1/resolve/main/onnx/model.onnx",
+            "c866580692c6bf274b11ca622db4329f4cbfd6f08f96af964badc31d748ef243",
+        ),
+        (
+            "hs-rerank-1/tokenizer.json",
+            "https://huggingface.co/hindsight-ai/hs-rerank-1/resolve/main/tokenizer.json",
+            "609d8f4c067cd3950f88594c5a802616cea245823836ef5848ee4fc40aab5b6f",
+        ),
+    ],
+};
+
+pub fn spec(name: &str) -> Option<&'static Spec> {
+    [&EMBEDDER, &RERANKER].into_iter().find(|s| s.name == name)
+}
 
 #[derive(Default, Clone)]
 struct State {
@@ -18,52 +53,78 @@ struct State {
     error: Option<String>,
 }
 
-/// The model file of a data folder and its download
+/// A downloadable model's files in a data folder, and their download
 pub struct Model {
+    spec: &'static Spec,
     dir: PathBuf,
     state: Arc<Mutex<State>>,
 }
 
 impl Model {
-    pub fn new(home: &Path) -> Model {
+    pub fn new(home: &Path, spec: &'static Spec) -> Model {
         Model {
+            spec,
             dir: home.join("models"),
             state: Arc::default(),
         }
     }
 
-    pub fn file(&self) -> PathBuf {
-        self.dir.join(FILE)
+    pub fn spec(&self) -> &'static Spec {
+        self.spec
+    }
+
+    /// The model's files, in the order of its spec
+    pub fn files(&self) -> Vec<PathBuf> {
+        self.spec.files.iter().map(|f| self.dir.join(f.0)).collect()
+    }
+
+    pub fn present(&self) -> bool {
+        self.files().iter().all(|f| f.is_file())
     }
 
     pub fn status(&self) -> serde_json::Value {
         let s = self.state.lock().unwrap().clone();
-        let file = self.file();
         serde_json::json!({
-            "file": file,
-            "present": file.is_file(),
+            "name": self.spec.name,
+            "files": self.files(),
+            "present": self.present(),
             "downloading": s.running,
             "bytes": s.bytes,
             "total": s.total,
             "error": s.error,
+            // whether this build can run it: the reranker with the cargo feature rerank; the embedder not yet (llama.cpp)
+            "runs": self.spec.name == RERANKER.name && cfg!(feature = "rerank"),
         })
     }
 
-    /// Starts the download in the background unless the file is there or a download runs. `url` and `sha256` default to
-    /// the model's
+    /// Starts the download in the background unless the files are there or a download runs. `url` and `sha256` replace
+    /// the first file's (tests)
     pub fn download(&self, url: Option<String>, sha256: Option<String>) -> serde_json::Value {
         {
             let mut s = self.state.lock().unwrap();
-            if !s.running && !self.file().is_file() {
+            if !s.running && !self.present() {
                 *s = State {
                     running: true,
                     ..State::default()
                 };
-                let (dir, file, state) = (self.dir.clone(), self.file(), self.state.clone());
-                let url = url.unwrap_or_else(|| URL.into());
-                let sha = sha256.unwrap_or_else(|| SHA256.into()).to_lowercase();
+                let mut files: Vec<(PathBuf, String, String)> = self
+                    .spec
+                    .files
+                    .iter()
+                    .map(|f| (self.dir.join(f.0), f.1.to_string(), f.2.to_string()))
+                    .collect();
+                if let Some(u) = url {
+                    files[0].1 = u;
+                }
+                if let Some(h) = sha256 {
+                    files[0].2 = h.to_lowercase();
+                }
+                let state = self.state.clone();
                 std::thread::spawn(move || {
-                    let r = fetch(&url, &sha, &dir, &file, &state);
+                    let r = files
+                        .iter()
+                        .filter(|(f, _, _)| !f.is_file())
+                        .try_for_each(|(f, u, h)| fetch(u, h, f, &state));
                     let mut s = state.lock().unwrap();
                     s.running = false;
                     s.error = r.err();
@@ -74,8 +135,10 @@ impl Model {
     }
 }
 
-fn fetch(url: &str, sha: &str, dir: &Path, file: &Path, state: &Mutex<State>) -> Result<(), String> {
-    std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+fn fetch(url: &str, sha: &str, file: &Path, state: &Mutex<State>) -> Result<(), String> {
+    if let Some(dir) = file.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    }
     let part = file.with_extension("part");
     let res = ureq::get(url)
         .call()
@@ -85,7 +148,10 @@ fn fetch(url: &str, sha: &str, dir: &Path, file: &Path, state: &Mutex<State>) ->
         .get("content-length")
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.parse().ok());
-    state.lock().unwrap().total = total;
+    {
+        let mut s = state.lock().unwrap();
+        s.total = total.map(|t: u64| t + s.bytes);
+    }
     let mut body = res.into_body();
     let mut r = body.with_config().limit(u64::MAX).reader();
     let mut out = std::fs::File::create(&part).map_err(|e| e.to_string())?;
@@ -151,14 +217,14 @@ mod tests {
     fn a_download_is_kept_only_with_the_right_checksum() {
         let home = std::env::temp_dir().join(format!("box-model-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&home);
-        let m = Model::new(&home);
+        let m = Model::new(&home, &EMBEDDER);
         let url = server(b"GGUF tiny model");
         assert_eq!(m.status()["present"], false);
         m.download(Some(url.clone()), Some("00".repeat(32)));
         let s = wait(&m);
         assert_eq!(s["present"], false);
         assert!(s["error"].as_str().unwrap().contains("not kept"), "{s}");
-        assert!(!m.file().with_extension("part").exists());
+        assert!(!m.files()[0].with_extension("part").exists());
         let sha: String = Sha256::digest(b"GGUF tiny model")
             .iter()
             .map(|b| format!("{b:02x}"))
@@ -169,7 +235,7 @@ mod tests {
             (s["present"].clone(), s["bytes"].clone(), s["error"].clone()),
             (true.into(), 15.into(), serde_json::Value::Null)
         );
-        assert_eq!(std::fs::read(m.file()).unwrap(), b"GGUF tiny model");
+        assert_eq!(std::fs::read(&m.files()[0]).unwrap(), b"GGUF tiny model");
         std::fs::remove_dir_all(&home).unwrap();
     }
 }

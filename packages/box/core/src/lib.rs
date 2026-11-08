@@ -10,6 +10,7 @@ pub mod index;
 pub mod keyword;
 pub mod model;
 pub mod probe;
+pub mod rerank;
 pub mod store;
 pub mod vectors;
 

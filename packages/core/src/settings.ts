@@ -382,6 +382,15 @@ export const HOST_SETTINGS = {
       description: 'Embedding model name on that server. Empty: the first model whose name has "embed".',
     },
   },
+  searchRerank: {
+    key: "search.rerank",
+    schema: {
+      type: "boolean",
+      default: false,
+      markdownDescription:
+        "Read the best results of Search › Related by Meaning again with a reranker (hs-rerank-1, run by box on your machine) and reorder them when it answers. Turning it on downloads the model once (195 MB, into box's data folder). Off: the order by meaning alone.",
+    },
+  },
   storageDir: {
     key: "storageDir",
     schema: {

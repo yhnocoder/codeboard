@@ -288,7 +288,7 @@ fn schema() -> (Schema, Fields) {
     let mut s = Schema::builder();
     let f = Fields {
         hid: s.add_u64_field("hid", INDEXED | FAST | STORED),
-        title: s.add_text_field("title", text_field("box", true, false)),
+        title: s.add_text_field("title", text_field("box", true, true)),
         text: s.add_text_field("text", text_field("box", true, true)),
         words: s.add_text_field("words", text_field("box_words", false, false)),
         grams: s.add_text_field("grams", text_field("box_grams", false, false)),
@@ -343,6 +343,16 @@ impl Keywords {
             return Err(tantivy::TantivyError::SchemaError("another schema".into()));
         }
         Ok(index)
+    }
+
+    /// A document's title and text (what the reranker reads)
+    pub fn doc_text(&self, h: Hid) -> Option<(String, String)> {
+        let searcher = self.reader.searcher();
+        let q = TermQuery::new(Term::from_field_u64(self.f.hid, h), IndexRecordOption::Basic);
+        let top: Vec<(f32, DocAddress)> = searcher.search(&q, &TopDocs::with_limit(1).order_by_score()).ok()?;
+        let d: TantivyDocument = searcher.doc(top.first()?.1).ok()?;
+        let get = |f| d.get_first(f).and_then(|v| v.as_str()).unwrap_or("").to_string();
+        Some((get(self.f.title), get(self.f.text)))
     }
 
     pub fn has(&self, h: Hid) -> bool {

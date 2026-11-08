@@ -400,6 +400,9 @@ export type BoardToHost =
   | { type: "searchPick"; req: number; item: SearchItem; alt?: boolean }
   /** ⌘K's Related by Meaning (host meaning.ts): cards and sidenotes of the project's boards closest in meaning to q */
   | { type: "searchMeaning"; req: number; q: string }
+  /** searchMeaning's list in the reranker's order (codeboard.search.rerank; off: { items: [], off: true }), for the Palette
+   *  to reorder to once it answers */
+  | { type: "rerankMeaning"; req: number; q: string }
   | { type: "entryPoints"; req: number }
   | { type: "diff"; req: number; seg: Segment; against?: string } // against 缺省 = HEAD；"upstream" = 上游最新（有 Variant 的卡）
   | { type: "commits"; req: number; seg: Segment }
@@ -659,6 +662,7 @@ type Replies = {
   search: SearchItem[];
   searchPick: NewCard | null;
   searchMeaning: MeaningResult;
+  rerankMeaning: MeaningResult;
   entryPoints: SearchItem[];
   diff: DiffData;
   commits: Commit[];
