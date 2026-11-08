@@ -58,5 +58,8 @@ The camera is the world layer's transform. Each card is a `CardLayer` rasterised
 in, `shadowPad` around) on a three-wide queue at a few zoom buckets, once the zoom has settled for `RASTER_SETTLE` (a card coming
 near mid-gesture draws at the current zoom's bucket), landed a few per frame nearest the view's centre first, culled when far
 from the viewport; Sections and arrows are shape layers rasterised by Core Animation at the bucket's scale (`shouldRasterize`),
-the arrows from core's numeric paths. Colours
-come from `themes.json`, generated from the board's stylesheets at build time.
+the arrows from core's numeric paths. The world's layers are the board's, bottom up: Section frames, the arrows (under every
+card), the cards, the Section titles, the stickers, and `top`, where an arrow rides while it is selected, dragged or on the
+card under the pointer (`relayer`). An arrow's end sits on a code line as the card drew it: a drawn card hands routing its
+rows (`WorldRect.rows`). Colours and sizes come from `themes.json`, generated from the board's stylesheets at build time
+(`themes.mjs`: tokens, and picked declarations such as Warm Ink's arrow colour or a Section's border).

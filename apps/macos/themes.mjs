@@ -179,16 +179,30 @@ function calc(v) {
       /calc\(\s*(-?[\d.]+)px\s*([+-])\s*(-?[\d.]+)px\s*\)/g,
       (_, a, op, b) => `${op === "+" ? Number(a) + Number(b) : Number(a) - Number(b)}px`,
     )
-    .replace(/calc\(\s*(-?[\d.]+)px\s*\*\s*(-?[\d.]+)\s*\)/g, (_, a, k) => `${Number(a) * Number(k)}px`);
+    .replace(/calc\(\s*(-?[\d.]+)px\s*\*\s*(-?[\d.]+)\s*\)/g, (_, a, k) => `${Number(a) * Number(k)}px`)
+    .replace(/min\(\s*(-?[\d.]+)px\s*,\s*(-?[\d.]+)px\s*\)/g, (_, a, b) => `${Math.min(Number(a), Number(b))}px`);
 }
-/** The token's value for the app: a colour (a shadow list: its last colour), a number, a shadow list or a gradient, or nothing */
+/** A border shorthand (<width> <style> <color>, e.g. --sect-border: 0.5px solid var(--hair)) → {w, style, color}, or null */
+function border(v) {
+  const m = /^(-?[\d.]+)px\s+(solid|dashed|dotted)\s+(.+)$/s.exec(v);
+  if (!m) return null;
+  const c = color(m[3]);
+  return c ? { w: Number(m[1]), style: m[2], color: hex(c) } : null;
+}
+/** A translate (themes.css .secho translate: 5px 5px) → {x, y}, or null */
+function translate(v) {
+  const m = /^(-?[\d.]+)px(?:\s+(-?[\d.]+)px)?$/.exec(v);
+  return m ? { x: Number(m[1]), y: Number(m[2] ?? m[1]) } : null;
+}
+/** The token's value for the app: a colour (a shadow list: its last colour), a number, a shadow list, a gradient or a border, or
+ *  nothing */
 function value(v) {
   v = calc(v);
   const c = color(v);
   if (c) return hex(c);
   const n = /^(-?[\d.]+)(px|deg)?$/.exec(v);
   if (n) return Number(n[1]);
-  return shadows(v) ?? gradient(v) ?? undefined;
+  return shadows(v) ?? gradient(v) ?? border(v) ?? translate(v) ?? undefined;
 }
 
 /**
@@ -221,13 +235,25 @@ const PICKS = {
     ["sel-lift", ":root.look-ink-wash .card.sel:not(.text):not(.nobg)", null, "translate", (v) => v.split(" ")[1]],
     ["step-ring", ":root.look-ink-wash .chead > .step", null, "box-shadow"],
     ["sbrush-opacity", ":root.look-ink-wash :is(.sbrush, .secho)", null, "fill-opacity"],
+    // selected: the strokes' vermilion opacity, the second stroke (its offset and opacity) and the wash (themes.css .sect.sel)
+    ["sbrush-sel-opacity", ":root.look-ink-wash .sect.sel .sbrush", null, "fill-opacity"],
+    ["secho-offset", ":root.look-ink-wash .secho", null, "translate"],
+    ["secho-opacity", ":root.look-ink-wash .sect.sel .secho", null, "opacity"],
+    [
+      "sect-wash",
+      ":root.look-ink-wash .sect::after",
+      ':root.look-ink-wash[data-theme="dark"] .sect::after',
+      "background",
+    ],
     ["slabel-ml", ":root.look-ink-wash .slabel", null, "--ml"],
     ["slabel-mt", ":root.look-ink-wash .slabel", null, "--mt"],
+    ["slabel-shut-ml", ":root.look-ink-wash .slabel.collapsed", null, "--ml"],
+    ["slabel-shut-mt", ":root.look-ink-wash .slabel.collapsed", null, "--mt"],
     ["brush-opacity", ":root.look-ink-wash .brush", null, "fill-opacity"],
     ["head-dot-opacity", ":root.look-ink-wash .ahead.dot", null, "opacity"],
-    ["sum-hd", ":root.look-ink-wash:not([data-theme=\"dark\"]) .sumlay", null, "--sum-hd"],
-    ["sum-grey", ":root.look-ink-wash:not([data-theme=\"dark\"]) .sumlay", null, "--sum-grey"],
-    ["sum-panel", ":root.look-ink-wash:not([data-theme=\"dark\"]) .sumlay", null, "--sum-panel"],
+    ["sum-hd", ':root.look-ink-wash:not([data-theme="dark"]) .sumlay', null, "--sum-hd"],
+    ["sum-grey", ':root.look-ink-wash:not([data-theme="dark"]) .sumlay', null, "--sum-grey"],
+    ["sum-panel", ':root.look-ink-wash:not([data-theme="dark"]) .sumlay', null, "--sum-panel"],
   ],
   "*": [
     ["card-sel-ring", ".card.sel", null, "--ring"],
@@ -237,7 +263,23 @@ const PICKS = {
     ["no-opacity", ".no", null, "opacity", (v) => v.replace(/^var\(--no-o,\s*([\d.]+)\)$/, "$1")],
     ["slabel-ml", ".slabel", null, "--ml"],
     ["slabel-mt", ".slabel", null, "--mt"],
+    ["slabel-shut-ml", ".slabel", null, "--ml"],
+    ["slabel-shut-mt", ".slabel", null, "--mt"],
     ["sect-radius", ".sect", null, "border-radius"],
+    // a collapsed Section's corners (styles.css .sect.shut: min(r-card + 1, 10))
+    ["sect-shut-radius", ".sect.shut", null, "border-radius"],
+    // selected: the ring outside the border and the wash over the fill (styles.css .sect.sel, .sect::after)
+    [
+      "sect-sel-ring",
+      ".sect.sel",
+      null,
+      "box-shadow",
+      (v) =>
+        parts(v)
+          .filter((p) => !/\binset\b/.test(p) && !p.startsWith("var("))
+          .join(", "),
+    ],
+    ["sect-wash", ".sect::after", null, "background"],
     ["card-soft-shadow", ".card::before", null, "box-shadow"],
     // the summary level's type (styles.css .sumlay; the looks override under :root.look-*)
     ["sum-hd", ".sumlay", ':root[data-theme="dark"] .sumlay', "--sum-hd"],
@@ -245,8 +287,10 @@ const PICKS = {
     ["sum-panel", ".sumlay", ':root[data-theme="dark"] .sumlay', "--sum-panel"],
   ],
   "warm-ink": [
-    ["sum-hd", ":root.look-warm-ink:not([data-theme=\"dark\"]) .sumlay", null, "--sum-hd"],
-    ["sum-grey", ":root.look-warm-ink:not([data-theme=\"dark\"]) .sumlay", null, "--sum-grey"],
+    // the arrows' colour is set on the links layer, not the root (themes.css .lyr --edge: var(--wi-edge))
+    ["edge", ":root.look-warm-ink .lyr", null, "--edge"],
+    ["sum-hd", ':root.look-warm-ink:not([data-theme="dark"]) .sumlay', null, "--sum-hd"],
+    ["sum-grey", ':root.look-warm-ink:not([data-theme="dark"]) .sumlay', null, "--sum-grey"],
   ],
 };
 const propOf = (rs, sel, prop) => {

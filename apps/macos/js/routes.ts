@@ -47,13 +47,16 @@ export function routeModel(b: Board): RouteModel {
   };
 }
 
-/** The rectangle of a card as drawn, in world units */
-export type Rect = { x: number; y: number; w: number; h: number };
+/** The rectangle of a card as drawn, in world units, and, once the shell has drawn a code card, where its lines are: "<segment
+ *  id>:<line>" → the middle of the row, from the card's top (hidden runs, Always Show notes and the separators between segments
+ *  move the rows the same way the board's measured rows do, state/geo.ts lineY) */
+export type Rect = { x: number; y: number; w: number; h: number; rows?: Record<string, number> };
 
-/** core's Geo plus the tapered outline a solid line fills (Warm Ink); hand lines (d2) and dashed ones stroke d. mode = the side
- *  choice this route was made with (the buffer against flapping remembers it): a router that takes over, such as the main one
- *  after a drag routed off the main thread, adopts it so the arrow does not jump */
-export type RouteGeo = Geo & { id: string; taper?: string; mode?: Mode };
+/** core's Geo plus the tapered outline a solid line fills (Warm Ink) or the brush stroke's outline and its dry streaks (Ink Wash,
+ *  fb); hand lines (d2) and dashed ones stroke d. mode = the side choice this route was made with (the buffer against flapping
+ *  remembers it): a router that takes over, such as the main one after a drag routed off the main thread, adopts it so the arrow
+ *  does not jump */
+export type RouteGeo = Geo & { id: string; taper?: string; fb?: string; mode?: Mode };
 
 /** A path as numbers for the shell: [op, x, y, …] with op 0 = M, 1 = L, 2 = C (x1 y1 x2 y2 x y), 3 = Q (x1 y1 x y), 4 = Z;
  *  absolute. Parsing a string on every frame of a drag is what this saves. A form it does not know (an arc) → undefined, and the
@@ -139,10 +142,13 @@ export function shellGeo(g: RouteGeo) {
     pts: g.pts,
     mx: g.mx,
     my: g.my,
-    n: { d: n(g.d), taper: n(g.taper), d2: n(g.d2), head: n(g.head), tail: n(g.tail) },
+    port: g.port,
+    port2: g.port2,
+    n: { d: n(g.d), taper: n(g.taper), fb: n(g.fb), d2: n(g.d2), head: n(g.head), tail: n(g.tail) },
     s: {
       d: pathNums(g.d) ? undefined : g.d,
       taper: g.taper && !pathNums(g.taper) ? g.taper : undefined,
+      fb: g.fb && !pathNums(g.fb) ? g.fb : undefined,
       d2: g.d2 && !pathNums(g.d2) ? g.d2 : undefined,
       head: g.head && !pathNums(g.head) ? g.head : undefined,
       tail: g.tail && !pathNums(g.tail) ? g.tail : undefined,
@@ -180,15 +186,14 @@ export class Router {
       const ink = look === "ink-wash";
       const g = geoFrom(l, bs, p, q, false, null, { route: "curve", hand, head: ink ? dotHead : dartHead });
       const solid = !hand && !(l.style?.dash || l.gen || l.rpc || l.call?.ev?.kind === "manual");
-      const s = l.style?.width === 1 ? 0.85 : l.style?.width === 3 ? 1.25 : 1;
+      // the stroke's weight (the board's Links.tsx: 0.6 / 1 / 1.6 for widths 1 / 2 / 3)
+      const k = l.style?.width === 1 ? 0.6 : l.style?.width === 3 ? 1.6 : 1;
+      const brush = solid && ink ? brushLine(g.d, brushSeed(l.id), 1.5 * k) : null;
       out.push({
         ...g,
         id: l.id,
-        taper: !solid
-          ? undefined
-          : ink
-            ? brushLine(g.d, brushSeed(l.id), 1.5 * s).d
-            : taperLine(g.d, 2.5 * s, 0.9 * s).d,
+        taper: !solid ? undefined : brush ? brush.d : taperLine(g.d, 2.5 * k, 0.9 * k).d,
+        fb: brush?.fb || undefined,
         mode: this.modes.get(l.id),
       });
     }
@@ -205,7 +210,10 @@ function endOf(b: RouteModel, e: Link["from"], rects: Record<string, Rect>): End
   if (!r) return null;
   const c = b.cards.find((k) => k.id === e.card);
   let y = r.y + CODE_GEO.head / 2;
-  if (c?.segments) {
+  // the row as the shell drew it; a card not drawn yet by its rows' default places
+  const drawn = e.seg !== undefined && e.line !== undefined ? r.rows?.[`${e.seg}:${e.line}`] : undefined;
+  if (drawn !== undefined) y = r.y + Math.min(drawn, r.h);
+  else if (c?.segments) {
     const ly = lineYIn(c.segments, e.seg, e.line);
     if (ly !== null && ly < r.h) y = r.y + ly;
   }

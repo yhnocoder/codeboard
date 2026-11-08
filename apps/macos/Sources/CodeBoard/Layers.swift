@@ -31,6 +31,8 @@ final class Slots {
   var rects: [String: CGRect] = [:]
   /** The head's sidenote count chip (.mk.inline), in card coordinates: a click on it opens the card's Sidenotes */
   var chip: CGRect?
+  /** A code card's rows as drawn: "<segment id>:<line>" → the middle of the row from the card's top (arrows end on them) */
+  var lines: [String: Double] = [:]
 }
 
 final class CardLayer: CALayer {
@@ -45,6 +47,9 @@ final class CardLayer: CALayer {
   private var fixed = false
   /** The head's sidenote chip as last drawn (card coordinates); nil when the card has no whole-card sidenotes */
   var chipRect: CGRect?
+  /** A code card's rows as last drawn in full ("<segment>:<line>" → the row's middle from the top): routing puts an arrow's end
+   *  on the line as drawn, hidden runs, notes and separators included; empty until the first full raster */
+  private(set) var rowYs: [String: Double] = [:]
   /** Off screen: the bitmap goes, and a raster in flight lands nowhere */
   func drop() {
     gen += 1
@@ -298,11 +303,41 @@ final class CardLayer: CALayer {
       showSelection()
     }
   }
-  /** A live resize (the pointer on an edge): the frame follows, the bitmap is drawn again when it ends */
+  /** A live resize (the pointer on an edge): the frame follows every frame, as the board lays the card out again each frame.
+   *  The paper shows at the new size at once (the placeholder under the face, the sheet stretched to it), the text is drawn again
+   *  at the new size as fast as the raster queue returns it (one raster in flight at a time, never a queue of stale sizes), and
+   *  the last size is drawn once more when the resize ends */
   func resize(to s: CGSize) {
+    if !resizing {
+      resizing = true
+      sheet.contentsGravity = .resize
+      if framed {
+        placeholder.backgroundColor = Theme.surface.cgColor
+        placeholder.cornerRadius = radius
+        placeholder.isHidden = false
+      }
+    }
+    card.w = s.width
     height = s.height
     setSize(s)
+    if resizeGen == landedGen { redrawForResize() }
   }
+  func endResize() {
+    guard resizing else { return }
+    resizing = false
+    sheet.contentsGravity = .topLeft
+    redrawForResize()
+  }
+  private var resizing = false
+  /** The raster asked for by the resize and the one that landed: equal when none is in flight */
+  private var resizeGen = 0, landedGen = 0
+  private func redrawForResize() {
+    resizeGen += 1
+    let mine = resizeGen
+    resizeLanded = { [weak self] in self?.landedGen = mine }
+    setNeedsDisplay()
+  }
+  private var resizeLanded: (() -> Void)?
 
   func move(to p: CGPoint, section: String? = nil) {
     card.x = p.x
@@ -366,6 +401,8 @@ final class CardLayer: CALayer {
             self.face.contents = img
             self.face.contentsScale = scale
             self.placeholder.isHidden = true
+            self.resizeLanded?()
+            self.resizeLanded = nil
             self.onRendered?(self)
           }
         }
@@ -447,6 +484,10 @@ final class CardLayer: CALayer {
         if let h = self.handover { h(self, surface, scale, g) } else { self.land(surface, scale, g) }
         if self.gen == g { self.placeInotes(paint.slots.rects, scale: scale, g) }
         self.chipRect = paint.slots.chip
+        if !paint.slots.lines.isEmpty, self.rowYs != paint.slots.lines {
+          self.rowYs = paint.slots.lines
+          self.onMeasured?(self)
+        }
       }
     }
     pendingOp = op
@@ -459,6 +500,8 @@ final class CardLayer: CALayer {
     face.contents = surface
     face.contentsScale = scale
     placeholder.isHidden = true
+    resizeLanded?()
+    resizeLanded = nil
   }
 
   /** A Note with no bitmap yet: its paper and head, grey bars for text (drawn at once, off the main thread like the rest) */
@@ -908,6 +951,7 @@ final class CardLayer: CALayer {
       }
       let h = CGFloat(lines.count) * row
       let rowOf = { (n: Int) -> CGFloat? in lines.firstIndex { $0.n == n }.map { CGFloat($0) } }
+      for (k, l) in lines.enumerated() { p.slots.lines["\(s.id):\(l.n)"] = y + CGFloat(k) * row + row / 2 }
       // the rows arrows start from (.rowbg.origin): a tint across the card
       for n in s.from ?? [] {
         guard let k = rowOf(n) else { continue }
@@ -996,24 +1040,56 @@ final class CardLayer: CALayer {
 
 /** A Section: a shape layer (no bitmap: a Section can be the size of the board) and its title; in Ink Wash four brush strokes
  *  (core's inkframe, through Ink.frame) with the title written in the top stroke's gap (themes.css .sbrush, .slabel) */
+/** A Section: its frame under the cards (styles.css .sect; Ink Wash: four brush strokes, themes.css .sbrush) and its title above
+ *  them (.slabel, z-index 4: the canvas's labels layer, `riser`). Collapsed, the frame wraps the title, "· N cards" and the caret
+ *  (state/sections.ts measureShut). Selected: Warm Ink's border turns accent with a 3 px ring outside and an accent wash over the
+ *  fill; Ink Wash's strokes turn vermilion, a second lighter stroke shows offset inside and a faint vermilion wash covers it.
+ *  Colours and sizes are the stylesheets' (themes.json) */
 final class SectionLayer: CALayer {
-  static let foldedHeight: CGFloat = 30
   private(set) var section: SceneSection
+  /** Warm Ink: the frame (fill, border), the inset highlight along its top (--sect-sh), the selected ring and wash */
   private let shape = CAShapeLayer()
+  private let hilite = CAShapeLayer()
+  private let ring = CAShapeLayer()
+  private let wash = CAShapeLayer()
+  /** Ink Wash: the strokes, and under them the selected look's second stroke (.secho) */
   private let brush = CAShapeLayer()
-  private let title = CATextLayer()
+  private let echo = CAShapeLayer()
+  /** The title, a bitmap in the canvas's labels layer (above the cards, as the board's .slabel) */
+  private let label = CALayer()
+  weak var riser: CALayer? {
+    didSet { riser?.addSublayer(label); placeLabel() }
+  }
+  private var labelScale: CGFloat = 2
+  /** The label's box as the board lays it out (world px): padding, title, "· N cards" when collapsed, the caret */
+  private var labelSize = CGSize.zero
+  /** How far left of the label's box its bitmap reaches: the drag dots sit outside it (.slabel .dots: right: 100%) */
+  private static let dotsRoom: CGFloat = 16
+  /** The slabel's padding (styles.css: 1px 2px 1px 6px; Ink Wash 0 2px 0 0) */
+  private static func padding(ink: Bool) -> (top: CGFloat, right: CGFloat, left: CGFloat) { ink ? (0, 2, 0) : (1, 2, 6) }
+  /** The caret's box (.chev2: 16 × 16) and its icon (10 px, --ico-w 2) */
+  private static let chev: CGFloat = 16, chevIcon: CGFloat = 10, chevStroke: CGFloat = 2
+  /** The flex gap between the title, the count and the caret; the count's margin-left (.scount) */
+  private static let gap: CGFloat = 2, countGap: CGFloat = 5
+  /** The collapsed frame's room right of the label (state/sections.ts SHUT_PAD_R) */
+  private static let shutPadRight: CGFloat = 8
+
   init(section: SceneSection) {
     self.section = section
     super.init()
     shouldRasterize = true
     anchorPoint = .zero
-    shape.lineWidth = 1
-    brush.anchorPoint = .zero
-    title.truncationMode = .end
-    title.anchorPoint = .zero
-    addSublayer(shape)
-    addSublayer(brush)
-    addSublayer(title)
+    for l in [shape, hilite, wash, ring, echo, brush] {
+      l.anchorPoint = .zero
+      addSublayer(l)
+    }
+    hilite.fillRule = .evenOdd
+    ring.fillColor = nil
+    wash.isHidden = true
+    ring.isHidden = true
+    echo.isHidden = true
+    label.anchorPoint = .zero
+    label.contentsGravity = .topLeft
     apply(section)
   }
   override init(layer: Any) {
@@ -1021,89 +1097,252 @@ final class SectionLayer: CALayer {
     super.init(layer: layer)
   }
   required init?(coder: NSCoder) { fatalError() }
+  /** Off the canvas, the label too */
+  func detach() {
+    label.removeFromSuperlayer()
+    removeFromSuperlayer()
+  }
+  /** Hidden inside a folded Section: its label too */
+  override var isHidden: Bool {
+    didSet { label.isHidden = isHidden }
+  }
+  var shut: Bool { section.collapsed == true }
+
   func apply(_ s: SceneSection) {
+    let relabel = s.title != section.title || s.count != section.count || s.collapsed != section.collapsed
     section = s
-    // folded: the title bar alone (core keeps the open frame in x, y, w, h)
-    frame = CGRect(x: s.x, y: s.y, width: s.w, height: s.collapsed == true ? SectionLayer.foldedHeight : s.h)
-    shape.frame = bounds
-    title.string = s.title
     layoutLook()
     recolor()
+    if relabel { drawLabel() }
   }
-  /** The frame and the title's place and font, by look (styles.css .sect / .slabel; themes.css for Ink Wash) */
-  private func layoutLook() {
-    let s = section
-    let ml = Theme.number("slabel-ml", 16), mt = Theme.number("slabel-mt", 6)
-    if Theme.isInk {
-      let font = Theme.brushHand(25)
-      title.font = font
-      title.fontSize = 25
-      // the title's width makes the gap in the top stroke (the board: max(40, measured width); the label pads 2 px right)
-      let w = (s.title as NSString).size(withAttributes: [.font: font]).width + 2
-      title.frame = CGRect(x: ml, y: mt, width: min(w, max(60, s.w - 64)), height: 32)
-      shape.path = nil
-      shape.isHidden = true
-      let m = Ink.frameMargin
-      brush.isHidden = false
-      brush.frame = CGRect(x: -m - 1, y: -m - 1, width: s.w + 2 * m, height: s.h + 2 * m)
-      brush.path = Ink.frame(w: s.w, h: s.h, seed: s.seed, gap: s.collapsed == true ? 0 : max(40, w))
-    } else {
-      title.font = Theme.sys(12.5, weight: .semibold)
-      title.fontSize = 12.5
-      // .slabel: margin mt / ml, padding 1px 2px 1px 6px, a 20 px line
-      title.frame = CGRect(x: ml + 6, y: mt + 1, width: max(0, s.w - ml - 6 - 8), height: 20)
-      shape.isHidden = false
-      brush.isHidden = true
-      brush.path = nil
-      let rad = Theme.number("sect-radius", Theme.cardRadius + 1)
-      shape.path = CGPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), cornerWidth: rad, cornerHeight: rad, transform: nil)
-    }
-  }
-  /** The title's bitmap scale follows the zoom like the cards' */
-  func setScale(_ scale: CGFloat) {
-    title.contentsScale = max(0.5, scale)
-    title.isHidden = scale < 0.2
-    rasterizationScale = max(0.125, scale)
-  }
-  var selected = false {
-    didSet { if selected != oldValue { recolor() } }
-  }
-  func recolor() {
-    Theme.appearance.performAsCurrentDrawingAppearance {
-      if Theme.isInk {
-        brush.fillColor = Theme.ink.withAlphaComponent(Theme.number("sbrush-opacity", 0.72)).cgColor
-        title.foregroundColor = (selected ? Theme.zhu : Theme.ink).cgColor
-      } else {
-        shape.fillColor = (section.color.flatMap { Theme.sect[$0] } ?? Theme.sectFill).cgColor
-        shape.strokeColor = (selected ? Theme.accent : Theme.hair).cgColor
-        shape.lineWidth = selected ? 1.5 : 0.5
-        title.foregroundColor = Theme.ink2.cgColor
-      }
-    }
-  }
-  /** The look changed: the frame is drawn the other way */
+  /** The look changed: the frame is drawn the other way, the title set in the other type */
   func restyle() {
     layoutLook()
     recolor()
+    drawLabel()
+  }
+  /** The title's margins from the frame's corner (.slabel --ml / --mt; collapsed Ink Wash has its own) */
+  private var margins: CGPoint {
+    shut
+      ? CGPoint(x: Theme.number("slabel-shut-ml", 16), y: Theme.number("slabel-shut-mt", 6))
+      : CGPoint(x: Theme.number("slabel-ml", 16), y: Theme.number("slabel-mt", 6))
+  }
+  /** The frame and the strokes for the look; the collapsed frame from the label's size */
+  private func layoutLook() {
+    let s = section, ink = Theme.isInk, m = margins
+    labelSize = SectionLayer.measure(s, ink: ink, shut: shut, frameWidth: CGFloat(s.w))
+    let shutSize = CGSize(width: m.x + labelSize.width + SectionLayer.shutPadRight, height: 2 * m.y + labelSize.height)
+    frame = CGRect(x: s.x, y: s.y, width: shut ? shutSize.width : s.w, height: shut ? shutSize.height : s.h)
+    let r = bounds
+    for l in [shape, hilite, wash, ring] { l.frame = r }
+    if ink {
+      shape.path = nil
+      hilite.path = nil
+      ring.path = nil
+      shape.isHidden = true
+      hilite.isHidden = true
+      ring.isHidden = true
+      let fm = Ink.frameMargin
+      brush.isHidden = false
+      brush.frame = CGRect(x: -fm - 1, y: -fm - 1, width: r.width + 2 * fm, height: r.height + 2 * fm)
+      // the title's width makes the gap in the top stroke (the board: max(40, the label's width)); none when collapsed
+      brush.path = Ink.frame(w: r.width, h: r.height, seed: s.seed, gap: shut ? 0 : max(40, labelSize.width))
+      let off = Theme.point("secho-offset")
+      echo.frame = brush.frame.offsetBy(dx: off.x, dy: off.y)
+      echo.path = brush.path
+      wash.path = CGPath(rect: r, transform: nil)
+    } else {
+      brush.isHidden = true
+      brush.path = nil
+      echo.path = nil
+      shape.isHidden = false
+      hilite.isHidden = false
+      let rad = shut ? Theme.number("sect-shut-radius", 10) : Theme.number("sect-radius", Theme.cardRadius + 1)
+      let bw = Theme.border("sect-border")?.w ?? 0.5
+      let round = { (q: CGRect, k: CGFloat) in CGPath(roundedRect: q, cornerWidth: max(0, k), cornerHeight: max(0, k), transform: nil) }
+      // the border lies inside the box (its centre bw / 2 in); the wash fills the box; the ring is a band outside it
+      shape.lineWidth = bw
+      shape.path = round(r.insetBy(dx: bw / 2, dy: bw / 2), rad - bw / 2)
+      wash.path = round(r, rad)
+      let spread = Theme.shadows("sect-sel-ring").first?.spread ?? 3
+      ring.lineWidth = spread
+      ring.path = round(r.insetBy(dx: -spread / 2, dy: -spread / 2), rad + spread / 2)
+      // the inset highlight (--sect-sh: inset 0 1px 0): the box less the box shifted by the offset, kept inside the box
+      if let sh = Theme.shadows("sect-sh").first(where: { $0.inset && $0.blur == 0 }) {
+        let path = CGMutablePath()
+        path.addPath(round(r, rad))
+        path.addPath(round(r.offsetBy(dx: sh.x, dy: sh.y), rad))
+        hilite.path = path
+        let mask = CAShapeLayer()
+        mask.path = round(r, rad)
+        hilite.mask = mask
+      } else {
+        hilite.path = nil
+        hilite.mask = nil
+      }
+    }
+    placeLabel()
+  }
+  /** The label's bitmap at the title's place: the margins in from the frame's corner, the dots' room to the left */
+  private func placeLabel() {
+    let m = margins
+    label.bounds = CGRect(x: 0, y: 0, width: labelSize.width + SectionLayer.dotsRoom, height: labelSize.height)
+    label.position = CGPoint(x: frame.minX + m.x - SectionLayer.dotsRoom, y: frame.minY + m.y)
+  }
+  /** The label's bitmap scale follows the zoom like the cards' */
+  func setScale(_ scale: CGFloat) {
+    rasterizationScale = max(0.125, scale)
+    let s = max(0.5, scale)
+    guard s != labelScale else { return }
+    labelScale = s
+    drawLabel()
+  }
+  var selected = false {
+    didSet {
+      if selected != oldValue {
+        recolor()
+        drawLabel()
+      }
+    }
+  }
+  func recolor() {
+    let sel = selected
+    Theme.appearance.performAsCurrentDrawingAppearance {
+      if Theme.isInk {
+        brush.fillColor = (sel ? Theme.zhu : Theme.ink).withAlphaComponent(Theme.number(sel ? "sbrush-sel-opacity" : "sbrush-opacity", 0.72)).cgColor
+        echo.fillColor = Theme.zhu.cgColor
+        echo.opacity = Float(Theme.number("secho-opacity", 0.42))
+        echo.isHidden = !sel
+      } else {
+        shape.fillColor = (section.color.flatMap { Theme.sect[$0] } ?? Theme.sectFill).cgColor
+        shape.strokeColor = (sel ? Theme.accent : Theme.border("sect-border")?.color ?? Theme.hair).cgColor
+        hilite.fillColor = Theme.shadows("sect-sh").first(where: { $0.inset }).flatMap { Theme.parse($0.color) }?.cgColor
+        ring.strokeColor = Theme.shadows("sect-sel-ring").first.flatMap { Theme.parse($0.color) }?.cgColor
+        ring.isHidden = !sel
+      }
+      wash.fillColor = Theme.c("sect-wash").cgColor
+      wash.isHidden = !sel
+    }
+  }
+
+  // MARK: the label
+  /** The fonts of the label's parts for the look (.slabel: 600 12.5 px / 20 px sys; Ink Wash 25 px / 32 px running script; the
+   *  count 400, Ink Wash italic 13 px serif) */
+  private static func fonts(ink: Bool) -> (title: NSFont, count: NSFont, line: CGFloat, kern: CGFloat) {
+    ink
+      ? (Theme.brushHand(25), Theme.serif(13, italic: true), 32, 25 * 0.01)
+      : (NSFont.systemFont(ofSize: 12.5, weight: .semibold), NSFont.systemFont(ofSize: 12.5), 20, -12.5 * 0.005)
+  }
+  private static func countText(_ n: Int) -> String { "· \(n) card\(n == 1 ? "" : "s")" }
+  /** The label's box as the board lays it out: padding, the title (Ink Wash open: at most max(60, frame − 64) wide, ellipsized),
+   *  the count when collapsed, the gap and the caret (always in the flow, shown or not) */
+  static func measure(_ s: SceneSection, ink: Bool, shut: Bool, frameWidth: CGFloat) -> CGSize {
+    let f = fonts(ink: ink), p = padding(ink: ink)
+    var w = p.left + titleWidth(s, ink: ink, shut: shut, frameWidth: frameWidth)
+    if shut { w += countGap + (countText(s.count) as NSString).size(withAttributes: [.font: f.count]).width }
+    w += gap + chev + p.right
+    return CGSize(width: w.rounded(.up), height: f.line + 2 * p.top)
+  }
+  private static func titleWidth(_ s: SceneSection, ink: Bool, shut: Bool, frameWidth: CGFloat) -> CGFloat {
+    let f = fonts(ink: ink), p = padding(ink: ink)
+    let w = (s.title as NSString).size(withAttributes: [.font: f.title, .kern: f.kern]).width
+    guard ink, !shut else { return max(20, w) }
+    let room = max(60, frameWidth - 64) - p.left - p.right - gap - chev
+    return max(20, min(w, room))
+  }
+  /** Draws the label on the raster queue and puts the bitmap in */
+  private func drawLabel() {
+    let s = section, ink = Theme.isInk, shut = shut, sel = selected, scale = labelScale, appearance = Theme.appearance
+    let size = CGSize(width: labelSize.width + SectionLayer.dotsRoom, height: labelSize.height)
+    let titleW = SectionLayer.titleWidth(s, ink: ink, shut: shut, frameWidth: CGFloat(s.w))
+    CardLayer.queue.addOperation {
+      let surface = CardLayer.surface(size, scale: scale) {
+        appearance.performAsCurrentDrawingAppearance {
+          guard let cg = NSGraphicsContext.current?.cgContext else { return }
+          let f = SectionLayer.fonts(ink: ink), p = SectionLayer.padding(ink: ink)
+          let ink3 = Theme.ink3
+          let colour = sel ? (ink ? Theme.zhu : Theme.accent) : (ink ? Theme.ink : Theme.ink2)
+          // a line box's text sits with the font's content area centred in the line (CSS line-height)
+          let lineTop = p.top
+          func draw(_ t: NSAttributedString, font: NSFont, x: CGFloat, width: CGFloat? = nil) {
+            let lh = font.ascender - font.descender
+            let y = lineTop + (f.line - lh) / 2
+            if let width {
+              let para = NSMutableParagraphStyle()
+              para.lineBreakMode = .byTruncatingTail
+              let m = NSMutableAttributedString(attributedString: t)
+              m.addAttribute(.paragraphStyle, value: para, range: NSRange(location: 0, length: m.length))
+              m.draw(with: CGRect(x: x, y: y, width: width, height: lh + 2), options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
+            } else {
+              t.draw(at: CGPoint(x: x, y: y))
+            }
+          }
+          var x = SectionLayer.dotsRoom + p.left
+          // the drag dots left of the box (.slabel .dots: 11 px, letter-spacing −2, 1 px right of them), while selected
+          if sel && !shut {
+            let dots = NSAttributedString(string: "⋮⋮", attributes: [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: ink3, .kern: -2])
+            dots.draw(at: CGPoint(x: SectionLayer.dotsRoom - 1 - dots.size().width, y: lineTop + 1))
+          }
+          let title = NSAttributedString(string: s.title, attributes: [.font: f.title, .foregroundColor: colour, .kern: f.kern])
+          draw(title, font: f.title, x: x, width: ink && !shut ? titleW : nil)
+          x += titleW
+          if shut {
+            x += SectionLayer.countGap
+            let count = NSAttributedString(string: SectionLayer.countText(s.count), attributes: [.font: f.count, .foregroundColor: ink3])
+            draw(count, font: f.count, x: x)
+            x += count.size().width
+          }
+          x += SectionLayer.gap
+          // the caret: right when collapsed, down while open (shown then only while selected)
+          if shut || sel {
+            let box = CGRect(x: x, y: lineTop + (f.line - SectionLayer.chev) / 2, width: SectionLayer.chev, height: SectionLayer.chev)
+            cg.saveGState()
+            cg.translateBy(x: box.midX, y: box.midY)
+            if !shut { cg.rotate(by: .pi / 2) }
+            cg.translateBy(x: -SectionLayer.chevIcon / 2, y: -SectionLayer.chevIcon / 2)
+            Theme.drawIcon("chevR", at: .zero, color: ink3, size: SectionLayer.chevIcon, stroke: SectionLayer.chevStroke)
+            cg.restoreGState()
+          }
+        }
+      }
+      DispatchQueue.main.async { [weak self] in
+        guard let self, let surface else { return }
+        self.label.contents = surface
+        self.label.contentsScale = scale
+      }
+    }
   }
 }
 
+/** An arrow (styles.css .edge / .ahead / .port, themes.css for the look): the line (Warm Ink: a tapered fill; Ink Wash: a brush
+ *  stroke with dry streaks; dashed, hand and coloured lines stroked), its heads, the port dot where it leaves its card while
+ *  selected, and its label. Widths follow the look's --edge-w and the line's weight (w1 / w3: 0.6 / 1.6); selected (.on): the
+ *  accent, 0.45 px wider */
 final class ArrowLayer: CALayer {
   let line = CAShapeLayer()
   let line2 = CAShapeLayer()
+  /** Ink Wash: the dry streaks over the stroke (.feibai) */
+  let streaks = CAShapeLayer()
   let head = CAShapeLayer()
   let tail = CAShapeLayer()
+  /** The port dots (.port): shown while the arrow is selected (Warm Ink and Ink Wash draw none otherwise) */
+  let port = CAShapeLayer()
+  let port2 = CAShapeLayer()
   private(set) var link: SceneLink
-  /** The user's words on the line (styles.css .vchips > .vcard > .vhead > .vlabel), a bitmap centred on the route's middle */
+  /** The user's words on the line (styles.css .vchips > .vcard > .vhead > .vlabel), a bitmap centred on its place */
   private let label = CALayer()
   private var labelScale: CGFloat = 2
+  /** The label's padding around its box in the bitmap */
+  private var labelMargin: CGFloat = 4
+  /** The rectangles of the cards at its ends (the canvas sets them with each route): a dragged label keeps clear of them */
+  var ends: [CGRect] = []
   init(link: SceneLink) {
     self.link = link
     super.init()
     anchorPoint = .zero
     // a bitmap of the arrow at the zoom bucket's scale, like a card: a zoom frame scales it instead of filling the shapes again
     shouldRasterize = true
-    for l in [line, line2, head, tail] { addSublayer(l) }
+    for l in [line, streaks, line2, head, tail, port, port2] { addSublayer(l) }
     label.anchorPoint = CGPoint(x: 0.5, y: 0.5)
     label.contentsGravity = .resizeAspect
     label.isHidden = true
@@ -1128,8 +1367,10 @@ final class ArrowLayer: CALayer {
     let ts = t.size()
     let padX: CGFloat = ink ? 10 : 7, w = ts.width + padX + (ink ? 10 : 6), h = ink ? max(20, ts.height + 4) : max(22, ts.height + 8)
     let m: CGFloat = ink ? 10 : 4
+    labelMargin = m
     label.bounds = CGRect(x: 0, y: 0, width: w + 2 * m, height: h + 2 * m)
     label.isHidden = false
+    placeLabel()
     CardLayer.queue.addOperation {
       let surface = CardLayer.surface(CGSize(width: w + 2 * m, height: h + 2 * m), scale: scale) {
         appearance.performAsCurrentDrawingAppearance {
@@ -1190,41 +1431,61 @@ final class ArrowLayer: CALayer {
   }
   func apply(_ l: SceneLink) {
     let relabel = l.label != link.label
+    let replace = l.at != link.at
     link = l
     recolor()
-    if relabel { drawLabel() }
+    if relabel { drawLabel() } else if replace { placeLabel() }
   }
   /** Is the world point within `tolerance` of the line */
   func hit(_ p: CGPoint, tolerance: CGFloat) -> Bool {
     guard let route else { return false }
     return route.copy(strokingWithWidth: tolerance * 2, lineCap: .round, lineJoin: .round, miterLimit: 10).contains(p)
   }
+  /** The line's weight (.edge.w1 / .w3: --lw 0.6 / 1.6) */
+  private var weight: CGFloat { link.width == 1 ? 0.6 : link.width == 3 ? 1.6 : 1 }
   func recolor() {
     var c = color.cgColor
     Theme.appearance.performAsCurrentDrawingAppearance { c = color.cgColor }
-    let stroked = link.dash == true || link.hand != nil
+    let ink = Theme.isInk, sel = selected, lw = weight, hand = link.hand != nil
+    let stroked = link.dash == true || hand
+    // .edge: --edge-w × lw, round caps; hand lines 1.6 × lw (2.4 selected); selected lines 0.45 wider; dashed 4 4
+    let edgeW = Theme.number("edge-w", 1.25) * lw
     line.fillColor = stroked ? nil : c
-    line.strokeColor = stroked ? c : nil
-    line.lineWidth = link.hand != nil ? 1.6 : 1.5 * CGFloat(link.width) / 2
-    line.lineDashPattern = link.dash == true ? [5, 4] : nil
+    line.strokeColor = stroked || sel ? c : nil
+    line.lineWidth = hand ? (sel ? 2.4 : 1.6) * lw : sel ? (stroked ? edgeW + 0.45 : 0.45) : edgeW
+    line.lineDashPattern = link.dash == true ? [4, 4] : nil
     line.lineCap = .round
+    line.lineJoin = .round
+    // the hand line's second stroke: thinner and half seen
     line2.strokeColor = c
     line2.fillColor = nil
-    line2.lineWidth = 1.2
+    line2.lineWidth = 1.1 * lw
     line2.lineCap = .round
-    head.fillColor = c
-    tail.fillColor = c
-    // Ink Wash: the brush stroke at .brush's fill-opacity, the dot heads at .ahead.dot's opacity
-    line.opacity = Theme.isInk && !stroked ? Float(Theme.number("brush-opacity", 1)) : 1
-    head.opacity = Theme.isInk ? Float(Theme.number("head-dot-opacity", 1)) : 1
-    tail.opacity = head.opacity
-    if link.hand != nil {
-      head.fillColor = nil
-      head.strokeColor = c
-      head.lineWidth = 1.6
-      tail.fillColor = nil
-      tail.strokeColor = c
-      tail.lineWidth = 1.6
+    line2.opacity = 0.5
+    // Ink Wash: the brush stroke at .brush's fill-opacity, its dry streaks in the paper's colour, the dot heads at .ahead.dot's
+    // opacity; Warm Ink: a ↩ back line at 0.7
+    line.opacity = ink && !stroked ? Float(Theme.number("brush-opacity", 1)) : !ink && link.back == true && !stroked ? 0.7 : 1
+    streaks.fillColor = nil
+    streaks.strokeColor = Theme.paper.withAlphaComponent(0.75).cgColor
+    streaks.lineWidth = 0.6
+    streaks.lineCap = .round
+    streaks.isHidden = !ink || stroked
+    // .ahead: filled in the line's colour, stroked --edge-w × lw (a dart 0.35 × lw: the fill is the shape); hand heads are two
+    // strokes 1.6 × lw; selected: + 0.45 (a dart 0.45 × lw)
+    for h in [head, tail] {
+      h.fillColor = hand ? nil : c
+      h.strokeColor = c
+      h.lineWidth = hand ? (sel ? 2.4 : 1.6) * lw : ink ? edgeW + (sel ? 0.45 : 0) : (sel ? 0.45 : 0.35) * lw
+      h.lineCap = .round
+      h.lineJoin = .round
+      h.opacity = ink ? Float(Theme.number("head-dot-opacity", 1)) : 1
+    }
+    // .port: the surface with the edge's stroke; Ink Wash: filled in the ink, no stroke
+    for p in [port, port2] {
+      p.fillColor = (ink ? Theme.ink : Theme.surface).cgColor
+      p.strokeColor = ink ? nil : Theme.edge.cgColor
+      p.lineWidth = Theme.number("edge-w", 1.25)
+      p.isHidden = !sel
     }
   }
   /** The curve's control points (core Geo.pts), for a sticker riding the arrow */
@@ -1235,19 +1496,33 @@ final class ArrowLayer: CALayer {
     let d = geo.path(geo.n.d, geo.s.d)
     route = d
     line.path = stroked ? d : (geo.path(geo.n.taper, geo.s.taper) ?? d)
+    streaks.path = geo.path(geo.n.fb, geo.s.fb)
     line2.path = geo.path(geo.n.d2, geo.s.d2)
     head.path = geo.path(geo.n.head, geo.s.head)
     tail.path = geo.path(geo.n.tail, geo.s.tail)
+    let dot = { (p: ScenePoint?) -> CGPath? in p.map { CGPath(ellipseIn: CGRect(x: $0.x - 3, y: $0.y - 3, width: 6, height: 6), transform: nil) } }
+    port.path = dot(geo.port)
+    port2.path = dot(geo.port2)
     // the layer's own box around its paths (the paths stay in world coordinates: bounds.origin shifts them in), so the raster
     // is just the arrow
     var box = CGRect.null
-    for l in [line, line2, head, tail] { if let p = l.path { box = box.union(p.boundingBoxOfPath) } }
+    for l in [line, line2, head, tail, port, port2] { if let p = l.path { box = box.union(p.boundingBoxOfPath) } }
     if !box.isNull {
       box = box.insetBy(dx: -8, dy: -8)
       bounds = box
       position = box.origin
     }
-    label.position = CGPoint(x: geo.mx, y: geo.my)
+    middle = CGPoint(x: geo.mx, y: geo.my)
+    placeLabel()
+  }
+  private var middle = CGPoint.zero
+  /** The label at the route's middle, or where the user dragged it (Link.at), moved towards the middle while its box would
+   *  lie on an end card (core labelpos.ts placeT) */
+  private func placeLabel() {
+    guard !label.isHidden else { return }
+    guard let at = link.at, pts.count >= 8 else { label.position = middle; return }
+    let box = CGSize(width: label.bounds.width - 2 * labelMargin, height: label.bounds.height - 2 * labelMargin)
+    label.position = LabelPos.bezAt(pts, LabelPos.placeT(pts, CGFloat(at), box: box, rects: ends))
   }
 }
 

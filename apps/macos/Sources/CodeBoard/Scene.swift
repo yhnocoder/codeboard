@@ -30,6 +30,8 @@ struct SceneGlyph: Decodable, Equatable {
   var name: String?
 }
 struct SceneSegment: Decodable {
+  /** The segment's id (an arrow's end names its line by it) */
+  var id: String
   var path: String
   var start: Int
   var end: Int
@@ -116,6 +118,8 @@ struct SceneSection: Decodable {
   var locked: Bool?
   /** Ink Wash: the seed of its brush frame */
   var seed: Int
+  /** The cards in it, nested Sections' included ("· N cards" on the collapsed frame) */
+  var count: Int
 }
 struct SceneEnd: Decodable {
   var card: String
@@ -131,6 +135,8 @@ struct SceneLink: Decodable {
   var from: SceneEnd
   var to: SceneEnd
   var label: String?
+  /** Where the label sits along the curve (0–1) once the user dragged it; nil = the middle */
+  var at: Double?
   var dash: Bool?
   var width: Double
   var color: String?
@@ -204,9 +210,13 @@ struct RouteGeo: Decodable {
   var pts: [Double]
   var mx: Double
   var my: Double
+  /** The dot where the line leaves its card (and reaches the other, port2), drawn while the arrow is selected */
+  var port: ScenePoint?
+  var port2: ScenePoint?
   var n: Paths<[Double]>
   var s: Paths<String>
-  struct Paths<T: Decodable>: Decodable { var d, taper, d2, head, tail: T? }
+  /** fb: Ink Wash's dry streaks over the brush stroke (core brushLine) */
+  struct Paths<T: Decodable>: Decodable { var d, taper, fb, d2, head, tail: T? }
   func path(_ nums: [Double]?, _ svg: String?) -> CGPath? {
     if let nums { return RouteGeo.build(nums) }
     return svg.map(SVGPath.parse)
@@ -246,9 +256,15 @@ struct BoardMeta: Decodable {
   var subs: [String]?
 }
 
-/** A rectangle the bridge routes arrows around (js/routes.ts Rect) */
+struct ScenePoint: Decodable {
+  var x, y: Double
+}
+
+/** A rectangle the bridge routes arrows around (js/routes.ts Rect), and a drawn code card's rows ("<segment>:<line>" → the
+ *  middle of the row from the card's top), so an arrow's end sits on the line as drawn */
 struct WorldRect: Encodable {
   var x, y, w, h: Double
+  var rows: [String: Double]?
 }
 
 func decodeJSON<T: Decodable>(_ type: T.Type, _ json: String) throws -> T {

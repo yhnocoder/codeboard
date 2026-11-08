@@ -56,9 +56,9 @@ enum Theme {
   private static var icons: [String: Icon] = [:]
   static func icon(_ name: String) -> Icon? { icons[name] }
   /** An icon drawn at a point, 16 px, in a colour (styles.css .ico: stroke --ico-w, the strokes shifted by ico-w × 0.5 − 1) */
-  static func drawIcon(_ name: String, at p: CGPoint, color: NSColor, size: CGFloat = 16) {
+  static func drawIcon(_ name: String, at p: CGPoint, color: NSColor, size: CGFloat = 16, stroke: CGFloat? = nil) {
     guard let i = icon(name), let cg = NSGraphicsContext.current?.cgContext else { return }
-    let w = number("ico-w", 1)
+    let w = stroke ?? number("ico-w", 1)
     cg.saveGState()
     cg.translateBy(x: p.x, y: p.y)
     cg.scaleBy(x: size / 16, y: size / 16)
@@ -130,9 +130,24 @@ enum Theme {
     guard let v = token(name, dark: isDark), let d = try? JSONSerialization.data(withJSONObject: v) else { return nil }
     return try? JSONDecoder().decode(type, from: d)
   }
+  /** A CSS border shorthand (themes.mjs border): width, style and colour */
+  struct Border: Decodable {
+    var w: CGFloat
+    var style: String
+    var color: String
+  }
+  /** A CSS translate (themes.mjs translate) */
+  struct Point: Decodable {
+    var x, y: CGFloat
+  }
   /** A shadow list token, for the appearance the canvas draws in (empty when the token is not a shadow list) */
   static func shadows(_ name: String) -> [Shadow] { structured([Shadow].self, name) ?? [] }
   static func gradient(_ name: String) -> Gradient? { structured(Gradient.self, name) }
+  static func border(_ name: String) -> (w: CGFloat, color: NSColor)? {
+    guard let b = structured(Border.self, name), let c = parse(b.color) else { return nil }
+    return (b.w, c)
+  }
+  static func point(_ name: String) -> CGPoint { structured(Point.self, name).map { CGPoint(x: $0.x, y: $0.y) } ?? .zero }
 
   static let bg = c("bg")
   static let surface = c("surface")

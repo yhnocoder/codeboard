@@ -58,10 +58,13 @@ let HANDOVERS_PER_FRAME = 6
 final class CanvasView: NSView {
   weak var delegate: CanvasDelegate?
   let world = CALayer()
+  /** The board's layers, bottom up (canvas/Links.tsx 「图层」): Section frames, the arrows under every card, the cards, the Section
+   *  titles (.slabel, z-index 4), stickers (.stk.canvas) and `top`: the arrows lifted while selected, dragged or on the card under
+   *  the pointer (.lyr.top), and what rides over them (a selected Mark's toolbar) */
   private let sections = CALayer()
   private let arrows = CALayer()
   private let cards = CALayer()
-  /** Stickers (styles.css .stk.canvas: above the cards), and what rides over the arrows (a selected Mark's toolbar) */
+  private let slabels = CALayer()
   private let stickers = CALayer()
   private let top = CALayer()
   private let overlay = CALayer()
@@ -136,7 +139,7 @@ final class CanvasView: NSView {
     layer!.masksToBounds = true
     world.anchorPoint = .zero
     world.addSublayer(summaries.layer)
-    for l in [sections, cards, stickers, arrows, top] {
+    for l in [sections, arrows, cards, slabels, stickers, top] {
       l.anchorPoint = .zero
       world.addSublayer(l)
     }
@@ -265,7 +268,7 @@ final class CanvasView: NSView {
       l.detach()
       cardLayers[id] = nil
     }
-    for l in sectionLayers.values { l.removeFromSuperlayer() }
+    for l in sectionLayers.values { l.detach() }
     for l in arrowLayers.values { l.removeFromSuperlayer() }
     for l in stickerLayers.values { l.removeFromSuperlayer() }
     sectionLayers = [:]
@@ -296,7 +299,7 @@ final class CanvasView: NSView {
       order.removeAll { $0 == id }
       selected.remove(id)
     }
-    for id in ch.gone.sections { sectionLayers.removeValue(forKey: id)?.removeFromSuperlayer(); selectedSections.remove(id) }
+    for id in ch.gone.sections { sectionLayers.removeValue(forKey: id)?.detach(); selectedSections.remove(id) }
     for id in ch.gone.links { arrowLayers.removeValue(forKey: id)?.removeFromSuperlayer(); selectedLinks.remove(id) }
     for id in ch.gone.stickers { stickerLayers.removeValue(forKey: id)?.removeFromSuperlayer(); selectedStickers.remove(id) }
     for sec in ch.sections { putSection(sec) }
@@ -333,6 +336,7 @@ final class CanvasView: NSView {
     if let l = sectionLayers[s.id] { l.apply(s) } else {
       let l = SectionLayer(section: s)
       l.setScale(max(rasterScale, 0.125))
+      l.riser = slabels
       sectionLayers[s.id] = l
       sections.addSublayer(l)
     }
@@ -359,8 +363,12 @@ final class CanvasView: NSView {
 
   var rects: [String: WorldRect] {
     var out: [String: WorldRect] = [:]
-    for (id, l) in cardLayers { out[id] = WorldRect(x: l.card.x, y: l.card.y, w: l.card.w, h: Double(l.height)) }
+    for (id, l) in cardLayers { out[id] = rect(of: l) }
     return out
+  }
+  /** A card's rectangle for routing, with its rows as drawn (a code card) */
+  private func rect(of l: CardLayer) -> WorldRect {
+    WorldRect(x: l.card.x, y: l.card.y, w: l.card.w, h: Double(l.height), rows: l.rowYs.isEmpty ? nil : l.rowYs)
   }
   /** Every arrow routed by the board's session; the routes land when they come, unless the canvas shows another board by then */
   func routeAll() {
@@ -392,8 +400,10 @@ final class CanvasView: NSView {
     CATransaction.begin()
     CATransaction.setDisableActions(true)
     for g in geos {
-      arrowLayers[g.id]?.transform = CATransform3DIdentity
-      arrowLayers[g.id]?.apply(geo: g)
+      guard let a = arrowLayers[g.id] else { continue }
+      a.transform = CATransform3DIdentity
+      a.ends = [a.link.from.card, a.link.to.card].compactMap { cardLayers[$0]?.worldRect }
+      a.apply(geo: g)
       for l in stickerLayers.values where l.sticker.link == g.id { l.place(along: g.pts) }
     }
     CATransaction.commit()
@@ -684,7 +694,29 @@ final class CanvasView: NSView {
   }
   /** The card under the pointer: its port dots show (styles.css .card:hover .eport; a Text card has none) */
   private var hovered: String? {
-    didSet { if hovered != oldValue { showPorts() } }
+    didSet {
+      if hovered != oldValue {
+        showPorts()
+        relayer()
+      }
+    }
+  }
+  /** The arrows that ride above the cards (the board's lifted set): the selected ones, the dragged cards' and the ones on the
+   *  card under the pointer; the rest go back under. A layer is moved only when its place changed */
+  private func relayer() {
+    var up = selectedLinks
+    if let d = drag { up.formUnion(d.links) }
+    if let hc = hovered { for a in arrowLayers.values where a.link.from.card == hc || a.link.to.card == hc { up.insert(a.link.id) } }
+    CATransaction.begin()
+    CATransaction.setDisableActions(true)
+    for (id, a) in arrowLayers {
+      let want = up.contains(id) ? top : arrows
+      if a.superlayer !== want {
+        a.removeFromSuperlayer()
+        want.addSublayer(a)
+      }
+    }
+    CATransaction.commit()
   }
   private func showPorts() {
     guard let id = hovered, let l = cardLayers[id], !(l.card.kind == "note" && l.card.look != "note"), !edit.active, drag == nil else { ports.isHidden = true; return }
@@ -800,6 +832,7 @@ final class CanvasView: NSView {
     var origins: [String: CGPoint] = [:]
     for id in ids { if let l = cardLayers[id] { origins[id] = l.worldRect.origin } }
     drag = (ids, p, origins, linksOn(Set(ids)), false)
+    relayer()
   }
   override func mouseMoved(with e: NSEvent) {
     pointer = toWorld(convert(e.locationInWindow, from: nil))
@@ -878,8 +911,8 @@ final class CanvasView: NSView {
     // the arrows are routed off the main thread for where the cards are going; cards and arrows then move in one frame. Only
     // the rectangles routing reads: the dragged cards' and those at the other ends of their arrows
     var rs: [String: WorldRect] = [:]
-    for l in d.links { if let a = arrowLayers[l] { for id in [a.link.from.card, a.link.to.card] { if let c = cardLayers[id] { rs[id] = WorldRect(x: c.card.x, y: c.card.y, w: c.card.w, h: Double(c.height)) } } } }
-    for (id, t) in targets { if let r = rs[id] { rs[id] = WorldRect(x: t.x, y: t.y, w: r.w, h: r.h) } }
+    for l in d.links { if let a = arrowLayers[l] { for id in [a.link.from.card, a.link.to.card] { if let c = cardLayers[id] { rs[id] = rect(of: c) } } } }
+    for (id, t) in targets { if let r = rs[id] { rs[id] = WorldRect(x: t.x, y: t.y, w: r.w, h: r.h, rows: r.rows) } }
     routeSeq += 1
     dragTargets[routeSeq] = targets
     routeLive(d.links, rects: rs, seq: routeSeq)
@@ -919,8 +952,9 @@ final class CanvasView: NSView {
       if let to = cardAt(toWorld(p)), to.card.id != from { delegate?.canvas(self, linkFrom: from, to: to.card.id) }
       return
     }
-    if resizing != nil {
+    if let r = resizing {
       resizing = nil
+      cardLayers[r.id]?.endResize()
       delegate?.canvasResizeEnded(self)
       return
     }
@@ -930,6 +964,7 @@ final class CanvasView: NSView {
   func endDrag() {
     guard let d = drag else { return }
     drag = nil
+    relayer()
     if !d.moved { return }
     dropPending = !d.links.isEmpty
     // a move still waiting for its routes is the drop's: core puts the card there and the final routes come with it (apply),
@@ -950,12 +985,13 @@ final class CanvasView: NSView {
     selected = ids
     showPorts()
   }
-  private func selectLinks(_ ids: Set<String>) {
+  func selectLinks(_ ids: Set<String>) {
     for id in selectedLinks.subtracting(ids) { arrowLayers[id]?.selected = false }
     for id in ids.subtracting(selectedLinks) { arrowLayers[id]?.selected = true }
     selectedLinks = ids
+    relayer()
   }
-  private func selectSections(_ ids: Set<String>) {
+  func selectSections(_ ids: Set<String>) {
     for id in selectedSections.subtracting(ids) { sectionLayers[id]?.selected = false }
     for id in ids.subtracting(selectedSections) { sectionLayers[id]?.selected = true }
     selectedSections = ids
@@ -1271,7 +1307,7 @@ extension CanvasView {
         self.level = to
         logLine("[canvas] summary level %d at z%.3f (cut %.3f, %d columns)", to, self.cam.z, self.summaries.cut, self.summaries.scene?.cols.count ?? 0)
         self.summaries.layer.isHidden = to == 0
-        for l in [self.sections, self.cards, self.stickers, self.arrows, self.top] { l.isHidden = to == 1 }
+        for l in [self.sections, self.arrows, self.cards, self.slabels, self.stickers, self.top] { l.isHidden = to == 1 }
         if let at {
           let z = CGFloat(DetentRules.acrossCut(self.summaries.cut, to)), kz = z / self.cam.z
           self.setCamera(Camera(x: at.x - (at.x - self.cam.x) * kz, y: at.y - (at.y - self.cam.y) * kz, z: z), animated: false)

@@ -26,6 +26,8 @@ import { type RouteModel, routeModel } from "./routes";
 export type SceneLine = { n: number; toks: SceneTok[]; stk?: SceneGlyph[] };
 /** hl: the segment's Highlights (highlighted line ranges, a band under them) */
 export type SceneSegment = {
+  /** The segment's id (arrows name their line by it: SceneEnd.seg) */
+  id: string;
   path: string;
   start: number;
   end: number;
@@ -93,12 +95,16 @@ export type SceneSection = Pick<
 > & {
   /** Ink Wash: the seed of its brush frame (the board's inkframe.ts: fnv of the id) */
   seed: number;
+  /** The cards in it, nested Sections' included (the collapsed frame says "· N cards": the board's allMembers) */
+  count: number;
 };
 export type SceneLink = {
   id: string;
   from: Link["from"];
   to: Link["to"];
   label?: string;
+  /** Where the label sits along the curve (0–1) once the user dragged it; none = the middle (Link.at) */
+  at?: number;
   dash?: boolean;
   width: number;
   color?: string;
@@ -288,6 +294,7 @@ export async function sceneCard(b: Board, c: Card, env: SceneEnv, quick = false)
           }
           const inotes = [...byRange.values()].filter((e) => e.after >= 0).sort((x, y) => x.after - y.after);
           return {
+            id: s.id,
             path: s.src.kind === "free" ? "" : sepName(s.path),
             start: s.start,
             end: s.end,
@@ -368,9 +375,35 @@ export function sectionRects(b: Board): Map<string, { x: number; y: number; w: n
   return sectionFrames(b, rects);
 }
 
+/** The cards in a Section and in the Sections inside it */
+function memberCount(b: Board, id: string): number {
+  const inside = new Set([id]);
+  for (let grew = true; grew; ) {
+    grew = false;
+    for (const s of b.sections)
+      if (s.parent && inside.has(s.parent) && !inside.has(s.id)) {
+        inside.add(s.id);
+        grew = true;
+      }
+  }
+  return b.cards.filter((c) => {
+    const sec = b.place[c.id]?.section;
+    return !!sec && inside.has(sec);
+  }).length;
+}
+
 export const sceneSection = (b: Board, s: Section): SceneSection => {
   const r = sectionRects(b).get(s.id) ?? s;
-  const out: SceneSection = { id: s.id, title: s.title, x: r.x, y: r.y, w: r.w, h: r.h, seed: fnv(s.id) & 0xffffff };
+  const out: SceneSection = {
+    id: s.id,
+    title: s.title,
+    x: r.x,
+    y: r.y,
+    w: r.w,
+    h: r.h,
+    seed: fnv(s.id) & 0xffffff,
+    count: memberCount(b, s.id),
+  };
   if (s.parent) out.parent = s.parent;
   if (s.color) out.color = s.color;
   if (s.collapsed) out.collapsed = true;
@@ -387,6 +420,7 @@ export function sceneLink(b: Board, l: Link): SceneLink {
     head: { start: !!l.style?.head?.start, end: l.style?.head?.end !== false },
   };
   if (l.label) out.label = l.label;
+  if (l.at !== undefined) out.at = l.at;
   if (l.style?.dash || l.gen || l.rpc || l.call?.ev?.kind === "manual") out.dash = true;
   if (l.style?.color) out.color = l.style.color;
   if (l.call) out.call = true;
