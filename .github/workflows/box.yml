@@ -18,13 +18,15 @@ jobs:
         include:
           # Linux is a static musl build, so it runs on any distribution: built with zig (cargo-zigbuild), whose libc++ for
           # musl the C++ of usearch needs (musl-tools has no C++ compiler)
-          - { os: ubuntu-24.04, target: x86_64-unknown-linux-musl, platform: linux-x64, exe: box }
-          - { os: macos-15, target: aarch64-apple-darwin, platform: darwin-arm64, exe: box }
-          # cross-built on Apple silicon; it runs there under Rosetta 2
-          - { os: macos-15, target: x86_64-apple-darwin, platform: darwin-x64, exe: box }
-          - { os: windows-2025, target: x86_64-pc-windows-msvc, platform: win32-x64, exe: box.exe }
-          - { os: ubuntu-24.04-arm, target: aarch64-unknown-linux-musl, platform: linux-arm64, exe: box }
-          - { os: windows-11-arm, target: aarch64-pc-windows-msvc, platform: win32-arm64, exe: box.exe }
+          # rerank: built with the reranker (ONNX Runtime, prebuilt by ort for these targets only; the Linux binary is static
+          # musl, for which there is none, so only its tests, against glibc, have it)
+          - { os: ubuntu-24.04, target: x86_64-unknown-linux-musl, platform: linux-x64, exe: box, rerank: true }
+          - { os: macos-15, target: aarch64-apple-darwin, platform: darwin-arm64, exe: box, rerank: true }
+          # cross-built on Apple silicon; it runs there under Rosetta 2. ort has no ONNX Runtime for x86_64-apple-darwin
+          - { os: macos-15, target: x86_64-apple-darwin, platform: darwin-x64, exe: box, rerank: false }
+          - { os: windows-2025, target: x86_64-pc-windows-msvc, platform: win32-x64, exe: box.exe, rerank: true }
+          - { os: ubuntu-24.04-arm, target: aarch64-unknown-linux-musl, platform: linux-arm64, exe: box, rerank: true }
+          - { os: windows-11-arm, target: aarch64-pc-windows-msvc, platform: win32-arm64, exe: box.exe, rerank: true }
     name: box (${{ matrix.platform }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 25
@@ -45,8 +47,8 @@ jobs:
         run: pip3 install --user ziglang
       - name: Build
         run: |
-          # the reranker (ONNX Runtime) everywhere but the static musl build, for which ONNX Runtime has no build
-          if [ "${{ runner.os }}" = Linux ]; then build="zigbuild"; else build="build --features rerank"; fi
+          # the reranker (ONNX Runtime) where ort has it, never in the static musl build
+          if [ "${{ runner.os }}" = Linux ]; then build="zigbuild"; elif ${{ matrix.rerank }}; then build="build --features rerank"; else build="build"; fi
           cargo $build --release --locked --bin box --target ${{ matrix.target }}
           mkdir -p bin/${{ matrix.platform }}
           cp target/${{ matrix.target }}/release/${{ matrix.exe }} bin/${{ matrix.platform }}/
@@ -92,7 +94,8 @@ jobs:
         if: steps.runs.outputs.ok == 'true'
         run: |
           target=${{ matrix.target }}; [ "${{ runner.os }}" = Linux ] && target=${target/musl/gnu} && rustup target add $target
-          cargo test --release --locked --features rerank --target $target
+          features=; ${{ matrix.rerank }} && features="--features rerank"
+          cargo test --release --locked $features --target $target
       - name: Smoke test (the binary through the TypeScript client)
         if: steps.runs.outputs.ok == 'true'
         run: node test/smoke.mjs bin/${{ matrix.platform }}/${{ matrix.exe }}

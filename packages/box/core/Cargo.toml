@@ -29,8 +29,9 @@ ureq = "3.5.1"
 usearch = { version = "2.26.6", default-features = false }
 
 
-# usearch's SIMD kernels (numkong), except for the static musl build: zig's clang, which box.yml builds it with, refuses them
-[target.'cfg(not(target_env = "musl"))'.dependencies]
+# usearch's SIMD kernels (numkong), except for the static musl build (zig's clang, which box.yml builds it with, refuses
+# them) and Windows on Arm (numkong's C includes immintrin.h, which MSVC for ARM64 refuses)
+[target.'cfg(not(any(target_env = "musl", all(windows, target_arch = "aarch64"))))'.dependencies]
 usearch = { version = "2.26.6", features = ["numkong"] }
 
 [[example]]
