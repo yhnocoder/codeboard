@@ -19,6 +19,19 @@ import {
   type SumLayout,
   type SumMeasured,
 } from "@codeboard/core";
+import {
+  acrossCut,
+  DETENT_REST as REST,
+  drainStep,
+  levelFor,
+  pushed,
+  pushStep,
+  SWITCH_COVER,
+  SWITCH_MS,
+  switching,
+  towardCut,
+  type Detent,
+} from "@codeboard/core/canvas";
 import { state, placed, rectOf } from "./store";
 import { frames } from "./sections";
 import { animate, cam, camMoving, keepCamMoving, setCam, setZoomFloor, viewTracked } from "./camera";
@@ -98,12 +111,10 @@ function contentBounds(): Rect | null {
 /** The level shown (null: none yet on this board) and the switch running (its token; a board switch drops it) */
 const shown = boardRef<0 | 1 | null>(null);
 const running = boardRef<object | null>(null);
-const easeInOut = (t: number) => (t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2);
-const easeOut = (t: number) => 1 - (1 - t) ** 3;
 /** The board's cut: the zoom below which the summary level shows (0 before the board is laid out) */
 export const summaryCut = () => draft()?.cut ?? 0;
 /** Every board switches at its cut, one with nothing to summarize too (frames and Free Text stay, Marks and the rest fade) */
-const want = rooted(() => createMemo(() => (state.loaded && cam.z < (draft()?.cut ?? 0) ? 1 : 0)));
+const want = rooted(() => createMemo(() => (state.loaded ? levelFor(cam.z, draft()?.cut ?? 0) : 0)));
 
 /** Below the cut the card level stays in the tree. Once the camera rests it is kept drawn (awake): painted at an opacity too
  *  low to show, on a layer of its own, and cull.ts prepares the cards in view under it, so the switch back to the cards opens
@@ -124,10 +135,8 @@ export const cardsAsleep = rooted(() => createMemo(() => level() === 1 && (!awak
 /** The card level's opacity: swapped out, 0 asleep and too low to show while it is kept drawn */
 export const cardsOpacity = () => (level() === 0 ? 1 : cardsAsleep() ? 0 : 0.003);
 
-/** What Canvas.tsx draws for the detent and the switch: the mist's height (of the viewport; D.cover covers the board whole),
- *  the vermilion line's fill, whether the seal shows and which level it announces */
-export type Detent = { mist: number; line: number; seal: boolean; to: 0 | 1 };
-const REST: Detent = { mist: 0, line: 0, seal: false, to: 1 };
+/** What Canvas.tsx draws for the detent and the switch (core canvas/detent.ts Detent) */
+export type { Detent };
 const [detent, setDetent] = boardSignal<Detent>(REST);
 export { detent };
 /** The push into the detent (0…1: through) and when it was last pushed */
@@ -135,8 +144,6 @@ const push = boardRef(0);
 const pushedAt = boardRef(0);
 const draining = boardRef(false);
 const D = SUMMARY.detent;
-
-const pushed = (q: number, to: 0 | 1) => setDetent({ mist: q * D.mist, line: q, seal: q >= D.seal, to });
 
 /**
  * A zoom gesture's step from z0 to z (around the viewport point p; interact.ts canvasWheel): the zoom it gets. A step towards
@@ -148,8 +155,7 @@ export function detentZoom(z0: number, z: number, p: { x: number; y: number }): 
   const cut = draft()?.cut ?? 0;
   const lv = shown.v;
   if (!cut || lv === null || !state.loaded) return z;
-  const towardCut = lv === 0 ? z < z0 && z <= cut : z > z0 && z >= cut;
-  if (!towardCut) {
+  if (!towardCut(z0, z, cut, lv)) {
     if (push.v && !running.v) {
       push.v = 0;
       setDetent(REST);
@@ -160,11 +166,11 @@ export function detentZoom(z0: number, z: number, p: { x: number; y: number }): 
   const to: 0 | 1 = lv === 0 ? 1 : 0;
   // held at the cut, the camera does not change: the gesture still goes on (no stop, no re-raster of the world under the mist)
   keepCamMoving();
-  push.v = Math.min(1, push.v + Math.min(1, Math.abs(Math.log(z / z0)) / D.notch));
+  push.v = pushStep(push.v, z0, z);
   pushedAt.v = performance.now();
   if (push.v >= 1) run(to, p);
   else {
-    pushed(push.v, to);
+    setDetent(pushed(push.v, to));
     drain();
   }
   return cut;
@@ -181,9 +187,9 @@ function drain() {
       return true;
     }
     if (instant || performance.now() - pushedAt.v > D.drainAfter) {
-      push.v = instant ? 0 : Math.max(0, push.v - dt * D.drain);
+      push.v = instant ? 0 : drainStep(push.v, dt);
       if (push.v <= 0) setDetent(REST);
-      else pushed(push.v, to);
+      else setDetent(pushed(push.v, to));
     }
     if (push.v > 0) return false;
     draining.v = false;
@@ -225,7 +231,7 @@ function run(to: 0 | 1, at?: { x: number; y: number }) {
     shown.v = to;
     setLevel(to);
     if (at) {
-      const z = to === 1 ? (draft()?.cut ?? cam.z) * 0.9 : (draft()?.cut ?? cam.z) * 1.1;
+      const z = acrossCut(draft()?.cut ?? cam.z, to);
       setCam(at.x - ((at.x - cam.x) * z) / cam.z, at.y - ((at.y - cam.y) * z) / cam.z, z);
     }
     // the zoom log: the script of the swap's frame (the frame's updates run together after this, camera.ts tick), where
@@ -237,15 +243,9 @@ function run(to: 0 | 1, at?: { x: number; y: number }) {
   };
   animate((dt, instant) => {
     if (running.v !== me) return true;
-    const total = D.coverMs + D.clearMs;
-    t = instant ? 1 : Math.min(1, t + (dt * 1000) / total);
-    const cover = D.coverMs / total;
-    if (t < cover) setDetent({ mist: mist0 + (D.cover - mist0) * easeOut(t / cover), line: 1, seal: true, to });
-    else {
-      if (!covered) swap();
-      const k = (t - cover) / (1 - cover);
-      setDetent({ mist: D.cover * (1 - easeInOut(k)), line: 1 - k, seal: k < 0.15, to });
-    }
+    t = instant ? 1 : Math.min(1, t + (dt * 1000) / SWITCH_MS);
+    if (t >= SWITCH_COVER && !covered) swap();
+    setDetent(switching(t, mist0, to));
     if (t < 1) return false;
     setDetent(REST);
     running.v = null;

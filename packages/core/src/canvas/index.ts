@@ -10,3 +10,4 @@ export * from "./taper";
 export * from "./arrow";
 export * from "./inkpaper";
 export * from "./inkframe";
+export * from "./detent";
