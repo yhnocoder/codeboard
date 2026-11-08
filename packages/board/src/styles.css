@@ -476,7 +476,8 @@ textarea {
 .world.greek :is(.lport, .bports) {
   display: none;
 }
-/* 切换时（Canvas.tsx GREEK_FADE）正文淡出、换成字条（或字）、再淡入：只动正文的透明度，在合成器上跑，不每帧重画 */
+/* 切换时（Canvas.tsx GREEK_FADE）正文淡到 40%、换成字条（或字）、再回来：只动正文的透明度，在合成器上跑，不每帧重画。
+   不淡到 0：中间一段空白太突兀（Linda 11-08） */
 .world.greekfade .card.note:not(.editing) .nbody {
   animation: greek-swap calc(var(--t) * 240ms) ease-in-out;
 }
@@ -486,7 +487,7 @@ textarea {
     opacity: 1;
   }
   50% {
-    opacity: 0;
+    opacity: 0.4;
   }
 }
 .pshield {

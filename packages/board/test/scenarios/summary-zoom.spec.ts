@@ -304,7 +304,7 @@ test("zoomedOutSimplifiesCards", async () => {
   check("card bodies take no pointer", out.noteShield === '""' && out.codeShield === '""' && out.codeHit, out);
   check("the card edges' ports stay", out.eport !== "none", out);
   check(
-    "the switch fades the prose out, swaps it, and fades it in",
+    "the switch dims the prose, swaps it, and brings it back",
     JSON.stringify(await seen(h)) === JSON.stringify(["greekfade", "greekfade greek", "greek"]),
     await seen(h),
   );
