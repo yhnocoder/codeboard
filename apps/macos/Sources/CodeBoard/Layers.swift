@@ -51,6 +51,16 @@ final class CardLayer: CALayer {
   private var imageSize: CGSize?
   /** Has a bitmap now (the canvas drops the bitmaps of cards far off screen) */
   var drawn = false
+  /** The face shows a bitmap (whatever its scale or age) */
+  var hasFace: Bool { face.contents != nil }
+  /** The raster scale (contentsScale) the face was drawn for, and whether it predates a look / theme change */
+  private(set) var faceScale: CGFloat = 0
+  var stale = false
+  private var askedScale: CGFloat = 0
+  /** The newest raster's paper sheet and head buttons wait for its face, so the three change in one frame (by gen) */
+  private var waitingSheet: (Int, IOSurface?, CGFloat)?
+  private var waitingTools: (Int, IOSurface, CGFloat, CGRect)?
+  private var landedGen = -1
   /** The height is the board's own (Place.h): the page draws the card at it, however long the text */
   private var fixed = false
   /** The head's sidenote chip as last drawn (card coordinates); nil when the card has no whole-card sidenotes */
@@ -148,7 +158,7 @@ final class CardLayer: CALayer {
   private var gen = 0
   private var pendingOp: Operation?
   /** A finished bitmap goes here (the canvas lands a few per frame, nearest first) instead of straight into the layer */
-  var handover: ((CardLayer, IOSurface, CGFloat, Int) -> Void)?
+  var handover: ((CardLayer, Any, CGFloat, Int) -> Void)?
   /** Decoded images by file and size, no larger than a card needs (a 4000px screenshot is not decoded again for every raster); the
    *  oldest go when there are more than `imageCacheMax` */
   private static var imageCache: [String: CGImage] = [:]
@@ -357,6 +367,8 @@ final class CardLayer: CALayer {
   /** The layer needs a bitmap: drawn on the raster queue, put in when done (the old one stays until then, so no frame is blank) */
   override func display() {
     gen += 1
+    stale = false
+    askedScale = contentsScale
     if card.pending == true { return }  // its placeholder, until the coloured card comes
     let g = gen
     if card.kind == "board" { showName() }
@@ -374,11 +386,8 @@ final class CardLayer: CALayer {
         CardLayer.queue.addOperation {
           let img = pdf.raster(scale: scale)
           DispatchQueue.main.async { [weak self] in
-            guard let self, self.gen == g else { return }
-            self.face.contents = img
-            self.face.contentsScale = scale
-            self.placeholder.isHidden = true
-            self.onRendered?(self)
+            guard let self, self.gen == g, let img else { return }
+            if let h = self.handover { h(self, img, scale, g) } else { self.land(img, scale, g) }
           }
         }
       }
@@ -448,13 +457,8 @@ final class CardLayer: CALayer {
       DispatchQueue.main.async { [weak self] in
         guard let self, let surface else { return }
         if self.gen == g {
-          self.sheet.contents = paper
-          self.sheet.contentsScale = scale
-        }
-        if let (tools, w) = tools, self.gen == g {
-          self.tools.frame = CGRect(x: size.width - w, y: 0, width: w, height: Theme.headHeight)
-          self.tools.contents = tools
-          self.tools.contentsScale = scale
+          self.waitingSheet = (g, paper, scale)
+          if let (tools, w) = tools { self.waitingTools = (g, tools, scale, CGRect(x: size.width - w, y: 0, width: w, height: Theme.headHeight)) }
         }
         if let h = self.handover { h(self, surface, scale, g) } else { self.land(surface, scale, g) }
         if self.gen == g { self.placeInotes(paint.slots.rects, scale: scale, g) }
@@ -466,11 +470,26 @@ final class CardLayer: CALayer {
   }
 
   /** The bitmap is shown, unless a newer raster was asked for since (then it is dropped; the old bitmap stays until that one lands) */
-  func land(_ surface: IOSurface, _ scale: CGFloat, _ g: Int) {
+  func land(_ contents: Any, _ scale: CGFloat, _ g: Int) {
     guard g == gen else { return }
-    face.contents = surface
+    face.contents = contents
     face.contentsScale = scale
+    faceScale = askedScale
+    landedGen = g
+    if let (sg, paper, s) = waitingSheet, sg == g { putSheet(paper, s) }
+    if let (tg, t, s, r) = waitingTools, tg == g {
+      tools.frame = r
+      tools.contents = t
+      tools.contentsScale = s
+    }
+    waitingSheet = nil
+    waitingTools = nil
     placeholder.isHidden = true
+    if card.kind == "note" || card.kind == "board" { onRendered?(self) }
+  }
+  private func putSheet(_ paper: IOSurface?, _ scale: CGFloat) {
+    sheet.contents = paper
+    sheet.contentsScale = scale
   }
 
   /** A Note with no bitmap yet: its paper and head, grey bars for text (drawn at once, off the main thread like the rest) */
@@ -628,8 +647,8 @@ final class CardLayer: CALayer {
       let paper = CardLayer.renderSheet(paint, selected: sel, radius: radius, size: size, scale: scale, appearance: appearance)
       DispatchQueue.main.async { [weak self] in
         guard let self, self.gen == g else { return }
-        self.sheet.contents = paper
-        self.sheet.contentsScale = scale
+        // with the face of this raster: at once when that has landed, else when it lands
+        if self.landedGen == g { self.putSheet(paper, scale) } else { self.waitingSheet = (g, paper, scale) }
       }
     }
   }

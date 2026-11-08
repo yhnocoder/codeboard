@@ -99,6 +99,10 @@ final class CanvasView: NSView {
   private var settleTimer: Timer?
   static let RASTER_SETTLE = 0.12
   private var rasterScale: CGFloat = 0
+  /** When the zoom last changed: until it has settled, a card coming near shows the bitmap it has, scaled */
+  private var zoomedAt: CFTimeInterval = 0
+  /** Cards shown mid-zoom with a bitmap of another bucket (or look): drawn again once the zoom settles */
+  private var deferred: Set<String> = []
   private(set) var selected: Set<String> = []
   /** The routing off the main thread during a drag (RouteWorker), and this board's key in it */
   var router: RouteWorker?
@@ -112,7 +116,7 @@ final class CanvasView: NSView {
   private var liveModes: [String: String] = [:]
   private var dropPending = false
   /** Finished bitmaps waiting to be shown, a few per frame */
-  private var landing: [(CardLayer, IOSurface, CGFloat, Int)] = []
+  private var landing: [(CardLayer, Any, CGFloat, Int)] = []
   private var landingLink: CADisplayLink?
   private(set) var selectedLinks: Set<String> = []
   private(set) var selectedSections: Set<String> = []
@@ -252,10 +256,18 @@ final class CanvasView: NSView {
     let k = max(bounds.width / img.size.width, bounds.height / img.size.height)
     let w = img.size.width * k, h = img.size.height * k
     scene.frame = CGRect(x: (bounds.width - w) / 2, y: bounds.height - h, width: w, height: h)
-    // a live resize stretches the image it has (contentsGravity resize); it is drawn at the new size once the resize ends
+    // a resize stretches the image it has (contentsGravity resize); it is drawn at the new size once the size rests (a live
+    // resize's end, or 0.2 s after a programmatic one: redrawn every frame it cost ~80 ms a frame)
     if inLiveResize { return }
     let px = CGSize(width: w * backing, height: h * backing)
     if let cached = sceneImage, cached.0 == px, cached.1 == Theme.isDark { scene.contents = cached.2; return }
+    if sceneImage?.1 == Theme.isDark, scene.contents != nil {
+      sceneTimer?.invalidate()
+      let t = Timer(timeInterval: 0.2, repeats: false) { [weak self] _ in self?.sceneImage = nil; self?.layoutScene() }
+      RunLoop.main.add(t, forMode: .common)
+      sceneTimer = t
+      return
+    }
     let copy = img.copy() as! NSImage
     copy.size = px
     var rect = CGRect(origin: .zero, size: px)
@@ -264,6 +276,7 @@ final class CanvasView: NSView {
     scene.contents = cg
   }
   private var sceneImage: (CGSize, Bool, CGImage)?
+  private var sceneTimer: Timer?
 
   /** A whole scene. Layers of cards still in it stay (their bitmaps too: opening the same board again shows no blank card), the
    *  rest go */
@@ -445,7 +458,7 @@ final class CanvasView: NSView {
 
   // Finished bitmaps land a few per frame, nearest the middle of the view first; a card keeps its old bitmap until its new one
   // lands, so a bucket crossing never shows a blank card and never puts every new surface into one commit
-  private func enqueue(_ layer: CardLayer, _ surface: IOSurface, _ scale: CGFloat, _ gen: Int) {
+  private func enqueue(_ layer: CardLayer, _ surface: Any, _ scale: CGFloat, _ gen: Int) {
     landing.append((layer, surface, scale, gen))
     if landingLink == nil {
       let link = displayLink(target: self, selector: #selector(landSome))
@@ -472,6 +485,8 @@ final class CanvasView: NSView {
   func setCamera(_ c: Camera, animated: Bool) {
     var c = c
     c.z = min(Double(CanvasView.zMax), max(Double(zMin), c.z))
+    let zoomed = c.z != cam.z
+    if zoomed { zoomedAt = CACurrentMediaTime() }
     cam = c
     CATransaction.begin()
     CATransaction.setDisableActions(!animated)
@@ -481,14 +496,14 @@ final class CanvasView: NSView {
     CATransaction.commit()
     wantLevel()
     cull()
-    if rasterScale == 0 { rasterIfNeeded() } else { settleRaster() }
+    if rasterScale == 0 { rasterIfNeeded() } else if zoomed { settleRaster() }
     showPorts()
     showTether()
     followEdit()
     rested()
   }
   private func settleRaster() {
-    if rasterBucket(zoom: cam.z, backing: backing) == rasterScale { settleTimer?.invalidate(); return }
+    if rasterBucket(zoom: cam.z, backing: backing) == rasterScale && deferred.isEmpty { settleTimer?.invalidate(); return }
     settleTimer?.invalidate()
     let t = Timer(timeInterval: CanvasView.RASTER_SETTLE, repeats: false) { [weak self] _ in self?.rasterIfNeeded() }
     RunLoop.main.add(t, forMode: .common)
@@ -535,11 +550,19 @@ final class CanvasView: NSView {
     // a card coming near while a zoom is still going draws at this zoom's bucket, not the settled one (zooming out from 1 brought
     // every card in at 2× backing: 40 full-size rasters and uploads inside the gesture)
     let s = rasterBucket(zoom: cam.z, backing: backing)
+    // mid-zoom (pinch, ⌘-scroll) a card with a bitmap shows it scaled, and is drawn at the settled bucket afterwards; a card with
+    // none draws now. A card whose bitmap is current (a pan back to it) shows it as it is
+    let zooming = CACurrentMediaTime() - zoomedAt < CanvasView.RASTER_SETTLE
     for l in cardLayers.values where l.card.id != underEdit {
       let on = near.intersects(l.worldRect) && !folded.contains(l.card.id)
       if l.isHidden != !on || (on && l.contents == nil && !l.drawn) {
         l.isHidden = !on
-        if on { l.contentsScale = s; l.setNeedsDisplay(); l.drawn = true } else { l.contents = nil; l.drawn = false }
+        if !on { l.contents = nil; l.drawn = false; continue }
+        l.drawn = true
+        if l.hasFace && !l.stale && l.faceScale == s { continue }
+        if zooming && l.hasFace { deferred.insert(l.card.id); continue }
+        l.contentsScale = s
+        l.setNeedsDisplay()
       }
     }
     // stickers out of view are hidden: an animated one then plays no frames
@@ -550,13 +573,14 @@ final class CanvasView: NSView {
    *  render server) */
   private func rasterIfNeeded() {
     let s = rasterBucket(zoom: cam.z, backing: backing)
+    let ids = deferred
+    deferred = []
+    for id in ids { if let l = cardLayers[id], !l.isHidden, l.stale || l.faceScale != s { l.contentsScale = s; l.setNeedsDisplay() } }
     if s == rasterScale { return }
     rasterScale = s
-    let centre = CGPoint(x: (bounds.midX - cam.x) / cam.z, y: (bounds.midY - cam.y) / cam.z)
-    let near = cardLayers.values.filter { !$0.isHidden }.sorted { hypot($0.worldRect.midX - centre.x, $0.worldRect.midY - centre.y) < hypot($1.worldRect.midX - centre.x, $1.worldRect.midY - centre.y) }
     CATransaction.setDisableActions(true)
     for l in cardLayers.values where l.isHidden { l.contentsScale = s }
-    for l in near where l.contentsScale != s {
+    for l in cardLayers.values where !l.isHidden && l.contentsScale != s {
       l.contentsScale = s
       l.setNeedsDisplay()
     }
@@ -572,7 +596,12 @@ final class CanvasView: NSView {
     tellLook()
     notes.setTheme(themeName)
     edit.page.call("cb.setup(\(encodeJSON(["theme": themeName, "look": Theme.look])))")
-    for l in cardLayers.values { l.recolor(); l.setNeedsDisplay() }
+    // the cards near the view draw again (each keeps its old bitmap until the new one lands, a few per frame, nearest first); the
+    // rest when they come near
+    for l in cardLayers.values {
+      l.recolor()
+      if l.isHidden { l.stale = true; l.drawn = false } else { l.setNeedsDisplay() }
+    }
     for l in sectionLayers.values { l.restyle() }
     for l in arrowLayers.values { l.recolor(); l.drawLabel() }
     for l in stickerLayers.values { l.draw() }
@@ -643,6 +672,7 @@ final class CanvasView: NSView {
   }
   override func viewDidEndLiveResize() {
     super.viewDidEndLiveResize()
+    sceneImage = nil
     layoutScene()
     floorZoom()
     cull()
