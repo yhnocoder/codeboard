@@ -13,6 +13,9 @@
 //                               its sidenote as Always Show is turned off and on in the popover, and as the shown sidenote's text is
 //                               edited: it still ends right under its last line, no scrollbar; each is one undo step. A card with a
 //                               height set by hand keeps it
+//  sidenoteAlwaysShowGrowsAutoCard a card with no stored height that shows all its code (under the cap) grows with the Always Show
+//                               notes turned on in the popover, past the cap: every line stays in view, no scrollbar; turned off
+//                               again it shrinks back to following its content (no stored height), each one undo step
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { DEFAULT_SETTINGS, emptyBoard, type Board, type CodeCard } from "@codeboard/core";
@@ -405,4 +408,127 @@ test("sidenoteAlwaysShowRefits", async () => {
     h2.board().place.k1.h === 300,
     h2.board().place.k1,
   );
+});
+
+const VECADD = [
+  "void vecAdd(float* A_h, float* B_h, float* C_h, int n) {",
+  "    int size = n * sizeof(float);",
+  "    float *A_d, *B_d, *C_d;",
+  "",
+  "    cudaMalloc((void **)&A_d, size);",
+  "    cudaMalloc((void **)&B_d, size);",
+  "    cudaMalloc((void **)&C_d, size);",
+  "",
+  "    cudaMemcpy(A_d, A_h, size, cudaMemcpyHostToDevice);",
+  "    cudaMemcpy(B_d, B_h, size, cudaMemcpyHostToDevice);",
+  "    // Part2: Call kernel - to launch a grid of kernel",
+  "    // to perform the actual vector addition",
+  "",
+  "    cudaMemcpy(C_h, C_d, size, cudaMemcpyDeviceToHost);",
+  "",
+  "    cudaFree(A_d);",
+  "    cudaFree(B_d);",
+  "    cudaFree(C_d);",
+  "}",
+];
+
+test("sidenoteAlwaysShowGrowsAutoCard", async () => {
+  const b = emptyBoard("b1", "vecadd");
+  put(
+    b,
+    {
+      id: "k1",
+      kind: "code",
+      title: "vecAdd - CUDA - stub",
+      segments: [
+        {
+          id: "s1",
+          src: { kind: "free" },
+          path: "",
+          lang: "cuda",
+          start: 1,
+          end: VECADD.length,
+          text: VECADD.slice(),
+          version: { kind: "none" },
+          hl: [
+            [5, 7],
+            [9, 10],
+            [14, 14],
+            [16, 18],
+          ],
+        },
+      ],
+    } as CodeCard,
+    60,
+    40,
+    640,
+  );
+  const at = (a: number, z: number) => ({ card: "k1", seg: "s1", lines: [a, z] as [number, number] });
+  b.sidenotes.push(
+    {
+      id: "n1",
+      kind: "text",
+      md: "注意 size 的单位是 bytes，且需要“指针的指针”，因为这里要让 CUDA 帮忙分配内存，且把内存块的起始地址赋值给 `A_d`",
+      at: at(5, 7),
+    },
+    { id: "n2", kind: "text", md: "Host -> Device", at: at(9, 10) },
+  );
+  b.cam = { x: 0, y: 0, z: 1 };
+  const h = await open({
+    board: b,
+    light,
+    w: 1000,
+    h: 1000,
+    scale: process.env.SHOTS_DIR ? 2 : 1,
+    settings: { theme: "warm-ink" } as never,
+  });
+  // the user's look: the margin bracket
+  await h.post({
+    type: "host",
+    host: { settings: { ...DEFAULT_SETTINGS, theme: "warm-ink", highlightLook: "bracket" } } as never,
+  });
+  await idle(h);
+  const pg = h.page;
+  const shown = (id: string) => !!(h.board().sidenotes.find((n) => n.id === id) as { alwaysShow?: boolean }).alwaysShow;
+  const snap = async () => ({ ...(await layout(h)), ph: h.board().place.k1.h ?? null });
+  /** every line in view: ends right under its last line (the code area's bottom padding), no scrollbar */
+  const all = (s: Awaited<ReturnType<typeof snap>>) =>
+    !s.vscroll && s.lastBottom <= s.visBottom && s.visBottom - s.lastBottom <= 9;
+  const toggle = async (id: string, hl: string) => {
+    const was = shown(id);
+    await pg.locator(`.card[data-id="k1"] .hxm[data-hl="k1:s1:${hl}"]`).click();
+    await until(h, "the Highlight popover is open", () => pg.locator(".pop.k-highlight").count());
+    await pg.locator('.pop.k-highlight .slip button[aria-label="Always Show"]').click();
+    await until(h, `Always Show of ${id} is toggled`, () => shown(id) !== was);
+    await pg.keyboard.press("Escape");
+    await idle(h);
+  };
+  const plain = await snap();
+  await toggle("n1", "5-7");
+  await toggle("n2", "9-10");
+  const on = await snap();
+  await save(h, "sidenotes-autogrow-on");
+  check(
+    "sidenoteAlwaysShowGrowsAutoCard a card that showed all its code grows with its Always Show notes, past the cap",
+    all(plain) && plain.ph === null && all(on) && on.h > plain.h + 40 && on.ph !== null,
+    { plain, on },
+  );
+  // one undo step each: the second note and the height together
+  await pg.mouse.click(950, 950);
+  await pg.keyboard.press("ControlOrMeta+z");
+  await until(h, "the toggle is undone", () => !shown("n2"));
+  await idle(h);
+  const undone = await snap();
+  await pg.keyboard.press("ControlOrMeta+Shift+z");
+  await until(h, "the toggle is redone", () => shown("n2"));
+  await idle(h);
+  await toggle("n2", "9-10");
+  await toggle("n1", "5-7");
+  const off = await snap();
+  check(
+    "sidenoteAlwaysShowGrowsAutoCard turned off again it follows its content, with no stored height",
+    all(undone) && undone.h < on.h && all(off) && off.ph === null && Math.abs(off.h - plain.h) <= 1,
+    { undone, off },
+  );
+  await h.close();
 });
