@@ -34,6 +34,11 @@ protocol CanvasDelegate: AnyObject {
   func canvas(_ c: CanvasView, dropImage data: Data, name: String, at p: CGPoint)
   func canvas(_ c: CanvasView, foldSection id: String, shut: Bool, open: WorldRect)
   func canvasTurnIntoBoard(_ c: CanvasView)
+  /** A question sticker double-clicked (or a new one made): its popover, by the sticker's rectangle in view coordinates */
+  func canvas(_ c: CanvasView, editQuestion id: String, at: CGRect)
+  func canvas(_ c: CanvasView, deleteStickers ids: [String])
+  /** A card's sidenotes, asked for (double-click on a code card, the menu) */
+  func canvas(_ c: CanvasView, showSidenotes card: String)
 }
 
 /** How many finished bitmaps land per frame: enough to fill a view in a few frames, few enough that the commit stays short */
@@ -98,6 +103,10 @@ final class CanvasView: NSView {
   private var landingLink: CADisplayLink?
   private(set) var selectedLinks: Set<String> = []
   private(set) var selectedSections: Set<String> = []
+  private(set) var selectedStickers: Set<String> = []
+  /** The selected sticker's tether to what it rides (styles.css .tether: a dashed accent line to the anchor, a dot there) */
+  private let tether = CAShapeLayer()
+  private let tetherDot = CAShapeLayer()
   /** Notes are rendered by the web page, offscreen (its view sits behind the window's content) */
   let notes = NoteRenderer()
   /** The card being edited: a web view over it */
@@ -152,7 +161,12 @@ final class CanvasView: NSView {
     rubber.lineWidth = 1.5
     rubber.lineCap = .round
     rubber.isHidden = true
-    for l in [marquee, ports, rubber] { overlay.addSublayer(l) }
+    tether.fillColor = nil
+    tether.lineWidth = 1
+    tether.lineDashPattern = [3, 3]
+    tether.isHidden = true
+    tetherDot.isHidden = true
+    for l in [marquee, ports, rubber, tether, tetherDot] { overlay.addSublayer(l) }
     layer!.addSublayer(overlay)
     addSubview(edit.view)
     // the editor paints the card itself (paper, ring, text): the card's own bitmap hides under it, so nothing shows twice
@@ -273,7 +287,7 @@ final class CanvasView: NSView {
     }
     for id in ch.gone.sections { sectionLayers.removeValue(forKey: id)?.removeFromSuperlayer(); selectedSections.remove(id) }
     for id in ch.gone.links { arrowLayers.removeValue(forKey: id)?.removeFromSuperlayer(); selectedLinks.remove(id) }
-    for id in ch.gone.stickers { stickerLayers.removeValue(forKey: id)?.removeFromSuperlayer() }
+    for id in ch.gone.stickers { stickerLayers.removeValue(forKey: id)?.removeFromSuperlayer(); selectedStickers.remove(id) }
     for sec in ch.sections { putSection(sec) }
     for c in ch.cards { putCard(c) }
     for m in ch.moved { cardLayers[m.id]?.move(to: CGPoint(x: m.x, y: m.y), section: m.section) }
@@ -446,6 +460,7 @@ final class CanvasView: NSView {
     cull()
     if rasterScale == 0 { rasterIfNeeded() } else { settleRaster() }
     showPorts()
+    showTether()
     followEdit()
     rested()
   }
@@ -548,8 +563,40 @@ final class CanvasView: NSView {
       ports.fillColor = Theme.surface.cgColor
       ports.strokeColor = Theme.accent.cgColor
       rubber.strokeColor = Theme.accent.cgColor
+      tether.strokeColor = Theme.accent.cgColor
+      tetherDot.fillColor = Theme.accent.cgColor
     }
   }
+  /** The tether of the one selected sticker bound to a card (its corner) or an arrow (the point along it), in view coordinates */
+  private func showTether() {
+    guard selectedStickers.count == 1, let id = selectedStickers.first, let l = stickerLayers[id], l.sticker.card != nil || l.sticker.link != nil else {
+      tether.isHidden = true
+      tetherDot.isHidden = true
+      return
+    }
+    let from: CGPoint
+    if let card = l.sticker.card, let c = cardLayers[card] { from = c.worldRect.origin } else if l.sticker.link != nil { from = l.anchor } else { tether.isHidden = true; tetherDot.isHidden = true; return }
+    let a = toView(CGRect(origin: from, size: .zero)).origin
+    let b = toView(CGRect(origin: CGPoint(x: l.frame.midX, y: l.frame.midY), size: .zero)).origin
+    let path = CGMutablePath()
+    path.move(to: a)
+    path.addLine(to: b)
+    tether.path = path
+    tetherDot.path = CGPath(ellipseIn: CGRect(x: a.x - 2.5, y: a.y - 2.5, width: 5, height: 5), transform: nil)
+    tether.isHidden = false
+    tetherDot.isHidden = false
+  }
+  func selectStickers(_ ids: Set<String>) {
+    for id in selectedStickers.subtracting(ids) { stickerLayers[id]?.selected = false }
+    for id in ids.subtracting(selectedStickers) { stickerLayers[id]?.selected = true }
+    selectedStickers = ids
+    showTether()
+  }
+  private func stickerAt(_ world: CGPoint) -> StickerLayer? {
+    stickerLayers.values.filter { !$0.isHidden && $0.frame.contains(world) }.min { $0.frame.width < $1.frame.width }
+  }
+  /** The sticker's rectangle in view coordinates (the question popover's anchor) */
+  func stickerRect(_ id: String) -> CGRect? { stickerLayers[id].map { toView($0.frame) } }
   override func viewDidChangeEffectiveAppearance() {
     super.viewDidChangeEffectiveAppearance()
     redrawAll()
@@ -661,8 +708,10 @@ final class CanvasView: NSView {
     let w = toWorld(p)
     if edit.active { endEdit(commit: true) }
     if e.clickCount == 2 {
-      if let l = cardAt(w) {
-        if editable(l.card) { select([l.card.id]); delegate?.canvas(self, editCard: l.card.id) } else if let b = l.card.board { delegate?.canvas(self, openBoard: b) }
+      if let k = stickerAt(w) {
+        if k.sticker.q != nil { delegate?.canvas(self, editQuestion: k.sticker.id, at: toView(k.frame)) }
+      } else if let l = cardAt(w) {
+        if editable(l.card) { select([l.card.id]); delegate?.canvas(self, editCard: l.card.id) } else if let b = l.card.board { delegate?.canvas(self, openBoard: b) } else if l.card.kind == "code" { select([l.card.id]); delegate?.canvas(self, showSidenotes: l.card.id) }
       } else if let s = sectionAt(w), w.y - s.frame.minY < 30 {
         renameSection(s)
       } else {
@@ -675,6 +724,15 @@ final class CanvasView: NSView {
       rubber.isHidden = false
       return
     }
+    // stickers sit above the cards (styles.css .stk.canvas z-index 4)
+    if let k = stickerAt(w) {
+      select([])
+      selectLinks([])
+      selectSections([])
+      selectStickers(e.modifierFlags.contains(.shift) ? selectedStickers.symmetricDifference([k.sticker.id]) : [k.sticker.id])
+      return
+    }
+    selectStickers([])
     // the Arrow tool: the next drag from a card to another makes a link
     if arrowMode, let l = cardAt(w) {
       arrowMode = false
@@ -864,7 +922,7 @@ final class CanvasView: NSView {
     let mods = e.modifierFlags.intersection([.command, .option, .control, .shift])
     switch (e.charactersIgnoringModifiers ?? "", mods) {
     case ("\u{7f}", []), ("\u{f728}", []): delete(nil)
-    case ("\u{1b}", []): select([]); selectLinks([]); selectSections([])
+    case ("\u{1b}", []): select([]); selectLinks([]); selectSections([]); selectStickers([])
     case ("n", []): delegate?.canvas(self, newCard: "note", at: pointer)
     case ("t", []): delegate?.canvas(self, newCard: "text", at: pointer)
     case ("c", []): delegate?.canvas(self, newCard: "code", at: pointer)
@@ -872,8 +930,14 @@ final class CanvasView: NSView {
     }
   }
   @objc func delete(_ sender: Any?) {
+    if !selectedStickers.isEmpty { delegate?.canvas(self, deleteStickers: Array(selectedStickers)) }
     guard !selected.isEmpty || !selectedLinks.isEmpty || !selectedSections.isEmpty else { return }
     delegate?.canvas(self, deleteCards: Array(selected), links: Array(selectedLinks), sections: Array(selectedSections))
+  }
+  /** The selected card's sidenotes (the Insert menu) */
+  @objc func showSidenotes(_ sender: Any?) {
+    guard let id = selected.first, selected.count == 1 else { return }
+    delegate?.canvas(self, showSidenotes: id)
   }
   @objc func copy(_ sender: Any?) { delegate?.canvasCopy(self) }
   @objc func paste(_ sender: Any?) { delegate?.canvasPaste(self) }
@@ -938,6 +1002,14 @@ final class CanvasView: NSView {
     select([id])
     ports.isHidden = true
     edit.begin(l.card, text: text, kind: kind, lang: lang, frame: toView(l.worldRect), zoom: cam.z)
+  }
+  /** The card's sidenotes panel beside it (the page's cb.sidenotes); open = the note to start editing */
+  func beginSidenotes(_ c: SceneCard, items: [JSBridge.SidenoteText], open: String?) {
+    guard let l = cardLayers[c.id] else { return }
+    if edit.active { endEdit(commit: true) }
+    select([c.id])
+    ports.isHidden = true
+    edit.beginSidenotes(c, items: items, open: open, frame: toView(l.worldRect), zoom: cam.z)
   }
   private func followEdit() {
     guard edit.active, let c = edit.card, let l = cardLayers[c.id] else { return }

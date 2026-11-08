@@ -197,9 +197,23 @@ describe("the app's commands", () => {
     expect(bridge.board().stickers.find((s) => s.id === k.id)?.at).toMatchObject({ kind: "canvas", x: 5, y: 6 });
     bridge.cmd.deleteStickers([k.id]);
     expect(bridge.board().stickers).toEqual([]);
+    // a question: fresh until written (written empty it was never asked); answered shows as done in the scene
+    const q0 = bridge.cmd.newQuestion(1, 2);
+    bridge.cmd.writeQuestion(q0, "  ");
+    expect(bridge.board().stickers.find((s) => s.id === q0)).toBeUndefined();
+    const q = bridge.cmd.newQuestion(1, 2);
+    bridge.cmd.writeQuestion(q, "Why here?");
+    bridge.cmd.setAnswered(q, true);
+    const ch = await bridge.changes();
+    expect(ch.stickers.find((s) => s.id === q)?.q).toEqual({ md: "Why here?", done: true });
+    bridge.cmd.detachSticker(q, 40, 50);
+    bridge.cmd.setStickerSize(q, 40);
+    expect(bridge.board().stickers.find((s) => s.id === q)?.at).toMatchObject({ kind: "canvas", x: 40, y: 50, size: 40 });
+    bridge.cmd.deleteStickers([q]);
     const n = bridge.cmd.addSidenote("n1", "why");
     bridge.cmd.writeSidenote(n, "because");
     expect(bridge.board().sidenotes.find((s) => s.id === n)).toMatchObject({ at: { card: "n1" }, md: "because" });
+    expect(bridge.cmd.sidenotesOf("n1")).toEqual([{ id: n, md: "because" }]);
     bridge.cmd.deleteSidenote(n);
     expect(bridge.board().sidenotes).toEqual([]);
   });

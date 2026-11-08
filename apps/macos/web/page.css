@@ -26,6 +26,18 @@ body {
 :root.look-ink-wash #stage .card:not(.nobg) > .cface > .chead {
   background: color-mix(in srgb, var(--ink) 4%, transparent);
 }
+/* the sidenotes panel: the board's popover paper (ui/pops/notes.tsx), as wide as the board's */
+#stage .snpop {
+  width: 320px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: var(--sh-float);
+  overflow: hidden;
+}
+#stage .snpop .sn-text.editing {
+  outline: none;
+}
 /* the board's hover affordances mean nothing in a bitmap */
 #stage .card:hover {
   outline: none;

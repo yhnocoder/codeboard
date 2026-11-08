@@ -404,7 +404,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
       item("Fold / Unfold Section", #selector(CanvasView.foldSection(_:)), "."), .separator(),
       item("Image…", #selector(BoardTools.addImage(_:))), item("New Sub-board…", #selector(BoardTools.addSubboard(_:))),
       item("Turn Selection into Board…", #selector(CanvasView.turnIntoBoard(_:)), "b", [.command, .shift]),
-      item("Arrow", #selector(BoardTools.addArrow(_:)), "l", [.command, .shift]),
+      item("Arrow", #selector(BoardTools.addArrow(_:)), "l", [.command, .shift]), .separator(),
+      item("New Question", #selector(BoardTools.addQuestion(_:)), "/", [.command, .shift]),
+      item("Sidenotes…", #selector(CanvasView.showSidenotes(_:)), "'", [.command, .shift]),
     ])
     _ = sub("View", [
       item("Zoom In", #selector(zoomIn(_:)), "="), item("Zoom Out", #selector(zoomOut(_:)), "-"),

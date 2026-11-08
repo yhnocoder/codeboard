@@ -173,6 +173,36 @@ const asyncMade = async (dir: string, id: string, fn: (c: Session["cmd"]) => Pro
       req,
       did(session(dir, id), (c) => c.writeSidenote(sn, md)),
     ),
+  newQuestion: (req: number, dir: string, id: string, x: number, y: number) => {
+    const s = session(dir, id);
+    settle(req, made(s, s.cmd.newQuestion(x, y)));
+  },
+  writeQuestion: (req: number, dir: string, id: string, k: string, md: string) =>
+    settle(
+      req,
+      did(session(dir, id), (c) => c.writeQuestion(k, md)),
+    ),
+  setAnswered: (req: number, dir: string, id: string, k: string, done: boolean) =>
+    settle(
+      req,
+      did(session(dir, id), (c) => c.setAnswered(k, done)),
+    ),
+  setStickerColor: (req: number, dir: string, id: string, k: string, color: string) =>
+    settle(
+      req,
+      did(session(dir, id), (c) => c.setStickerColor(k, color)),
+    ),
+  detachSticker: (req: number, dir: string, id: string, k: string, x: number, y: number) =>
+    settle(
+      req,
+      did(session(dir, id), (c) => c.detachSticker(k, x, y)),
+    ),
+  setStickerSize: (req: number, dir: string, id: string, k: string, size: number) =>
+    settle(
+      req,
+      did(session(dir, id), (c) => c.setStickerSize(k, size)),
+    ),
+  sidenotesOf: (dir: string, id: string, card: string) => str(session(dir, id).cmd.sidenotesOf(card)),
   deleteSidenote: (req: number, dir: string, id: string, sn: string) =>
     settle(
       req,

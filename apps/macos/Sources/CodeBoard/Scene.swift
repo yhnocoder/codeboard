@@ -58,6 +58,12 @@ struct SceneSticker: Decodable {
   var link: String?
   var t: Double?
   var g: SceneGlyph
+  /** A question: its text and whether it is answered */
+  var q: SceneQuestion?
+}
+struct SceneQuestion: Decodable {
+  var md: String
+  var done: Bool
 }
 struct SceneCard: Decodable {
   var id: String

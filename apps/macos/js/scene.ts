@@ -1,6 +1,7 @@
 // The scene: what the native canvas draws, as plain JSON (Scene.swift decodes the same shapes). The bridge builds it from the
 // board; after a change only the items that changed go over (SceneChange). Geometry is in world units (the board's px at zoom 1).
 import {
+  isQuestion,
   CODE_GEO as CODE,
   cardTitle,
   codeGlyph,
@@ -157,6 +158,8 @@ export type SceneSticker = {
   link?: string;
   t?: number;
   g: SceneGlyph;
+  /** A question (the ? sticker, or one written): its text and whether it is answered */
+  q?: { md: string; done: boolean };
 };
 
 /** An answered question shows ✓ (the board's shownIcon) */
@@ -183,6 +186,7 @@ export function sceneSticker(b: Board, s: Sticker): SceneSticker | null {
   const at = s.at;
   if (at.kind !== "canvas") return null; // a line sticker is in its card's gutter (SceneLine.stk)
   const out: SceneSticker = { id: s.id, x: at.x, y: at.y, size: at.size ?? 32, g: sceneGlyph(s) };
+  if (isQuestion(s)) out.q = { md: s.q?.md ?? "", done: !!s.q?.done };
   if (at.on && "card" in at.on) {
     const p = b.place[at.on.card];
     if (!p) return null;

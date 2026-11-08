@@ -16,6 +16,7 @@ import AppKit
   @objc optional func addWeb(_ sender: Any?)
   @objc optional func addSubboard(_ sender: Any?)
   @objc optional func addArrow(_ sender: Any?)
+  @objc optional func addQuestion(_ sender: Any?)
 }
 
 final class BoardWindowController: NSWindowController, NSToolbarDelegate, NSTableViewDelegate, NSTableViewDataSource, CanvasDelegate {
@@ -78,6 +79,7 @@ final class BoardWindowController: NSWindowController, NSToolbarDelegate, NSTabl
     }
     canvas.onEditEnded = { [weak self] e in self?.editEnded(e) }
     canvas.onEditCrashed = { [weak self] in self?.toast("The editor stopped; the text as of a second ago is kept") }
+    canvas.edit.onPanel = { [weak self] card, type, m in self?.panelAction(card, type, m) }
     canvas.edit.onDone = { [weak self] id, text in
       // Esc / ⌘↵ inside the editor: unchanged (nil) leaves the text as it was (the edit is still this one: the page answered)
       guard let self else { return }
@@ -517,6 +519,7 @@ final class BoardWindowController: NSWindowController, NSToolbarDelegate, NSTabl
   /** The edit ended: the text goes through core (a Note / Free code write, one undo step; a new card left empty goes) */
   private func editEnded(_ e: CanvasView.EditEnd) {
     guard let session else { return }
+    if e.kind == "sidenotes" { return canvas.hideEditorWhenRendered(e.id) }  // the panel wrote through its own messages
     let t0 = CACurrentMediaTime()
     let apply = applyChange(session)
     let done: (Result<SceneChange, Error>) -> Void = { [weak self] r in
@@ -609,6 +612,61 @@ final class BoardWindowController: NSWindowController, NSToolbarDelegate, NSTabl
     guard a.runModal() == .alertFirstButtonReturn else { return nil }
     let t = f.stringValue.trimmingCharacters(in: .whitespaces)
     return t.isEmpty ? nil : t
+  }
+
+  // MARK: stickers, questions and sidenotes
+  func canvas(_ c: CanvasView, deleteStickers ids: [String]) { if let session { session.deleteStickers(ids, applyChange(session)) } }
+  func canvas(_ c: CanvasView, editQuestion id: String, at: CGRect) {
+    guard let session, let k = canvas.stickerLayers[id]?.sticker, let q = k.q else { return }
+    let pop = QuestionPopover(md: q.md, done: q.done)
+    pop.onClose = { [weak self] md, done in
+      guard let self, self.session?.id == session.id else { return }
+      let apply = self.applyChange(session)
+      // written first (a fresh question written empty goes), then its state
+      if md != q.md || k.q?.md.isEmpty == true { session.writeQuestion(id, md: md, apply) }
+      if done != q.done { session.setAnswered(id, done: done, apply) }
+    }
+    pop.show(relativeTo: at, of: canvas)
+  }
+  @objc func addQuestion(_ sender: Any?) {
+    guard let session else { return }
+    let apply = applyChange(session)
+    session.newQuestion(x: centre.x + 160, y: centre.y) { [weak self] r in
+      apply(r)
+      guard let self, case .success(let ch) = r, let id = ch.id, self.session?.id == session.id, let rect = self.canvas.stickerRect(id) else { return }
+      self.canvas.selectStickers([id])
+      self.canvas(self.canvas, editQuestion: id, at: rect)
+    }
+  }
+  /** The card's Text sidenotes in the page's panel beside it; `open` = the one to start editing */
+  func canvas(_ c: CanvasView, showSidenotes card: String) { showSidenotes(card, open: nil) }
+  private func showSidenotes(_ card: String, open: String?) {
+    guard let session else { return }
+    session.sidenotes(card) { [weak self] items in
+      guard let self, self.session?.id == session.id, let l = self.canvas.cardLayers[card] else { return }
+      self.canvas.beginSidenotes(l.card, items: items, open: open)
+    }
+  }
+  /** The panel's actions: a note written, deleted, or asked for (empty, opened for writing; left empty it is deleted) */
+  private func panelAction(_ card: String, _ type: String, _ m: [String: Any]) {
+    guard let session else { return }
+    let again = { [weak self] (open: String?) in { (r: Result<SceneChange, Error>) in
+      self?.applyChange(session)(r)
+      self?.showSidenotes(card, open: open)
+    } }
+    switch type {
+    case "sidenote":
+      guard let sn = m["sn"] as? String, let v = m["value"] as? String else { return }
+      if v.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { session.deleteSidenote(sn, again(nil)) } else { session.writeSidenote(sn, md: v, again(nil)) }
+    case "sidenoteDelete":
+      if let sn = m["sn"] as? String { session.deleteSidenote(sn, again(nil)) }
+    case "sidenoteAdd":
+      session.addSidenote(card, md: "") { [weak self] r in
+        self?.applyChange(session)(r)
+        if case .success(let ch) = r { self?.showSidenotes(card, open: ch.id) }
+      }
+    default: break
+    }
   }
 
   // MARK: Sections and images

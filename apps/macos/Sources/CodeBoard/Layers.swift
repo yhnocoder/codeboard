@@ -1251,11 +1251,24 @@ final class ArrowLayer: CALayer {
 final class StickerLayer: CALayer {
   private(set) var sticker: SceneSticker
   private var drawnScale: CGFloat = 0
+  /** The selection ring (styles.css .stk.sel: 1.5 px of accent, 2 px out), a sublayer so selecting redraws nothing */
+  private let ring = CAShapeLayer()
+  var selected = false {
+    didSet {
+      guard selected != oldValue else { return }
+      ring.isHidden = !selected
+      if selected { Theme.appearance.performAsCurrentDrawingAppearance { ring.strokeColor = Theme.accent.cgColor } }
+    }
+  }
   init(sticker: SceneSticker) {
     self.sticker = sticker
     super.init()
     anchorPoint = .zero
     contentsGravity = .resizeAspect
+    ring.fillColor = nil
+    ring.lineWidth = 1.5
+    ring.isHidden = true
+    addSublayer(ring)
     apply(sticker)
   }
   override init(layer: Any) {
@@ -1267,10 +1280,13 @@ final class StickerLayer: CALayer {
     let redraw = s.g != sticker.g || s.size != sticker.size
     sticker = s
     frame = CGRect(x: s.x + anchor.x, y: s.y + anchor.y, width: width, height: s.size)
+    let r = bounds.insetBy(dx: -2.75, dy: -2.75)
+    ring.frame = bounds
+    ring.path = CGPath(roundedRect: r, cornerWidth: 4, cornerHeight: 4, transform: nil)
     if redraw || contents == nil { draw() }
   }
   /** On an arrow: the point t along its curve (the sticker's x / y are the offset from it); set as the arrow's route lands */
-  private var anchor = CGPoint.zero
+  private(set) var anchor = CGPoint.zero
   func place(along pts: [Double]) {
     guard pts.count >= 8, let t = sticker.t else { return }
     let u = 1 - t, a = u * u * u, b = 3 * u * u * t, c = 3 * u * t * t, d = t * t * t

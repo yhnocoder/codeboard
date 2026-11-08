@@ -32,6 +32,12 @@ import {
   addSticker,
   deleteItems,
   deleteSidenote,
+  detachSticker,
+  newQuestion,
+  setAnswered,
+  setStickerColor,
+  setStickerSize,
+  writeQuestion,
   duplicateCards,
   insertBoard,
   newBlankCode,
@@ -240,6 +246,22 @@ export function commands(env: Env, storage: () => Storage) {
     /** A sticker on the canvas at (x, y); a "?" one is a question (q) */
     addSticker: (icon: IconRef, x: number, y: number) => addSticker(env, icon, { kind: "canvas", x, y }, {}),
     deleteStickers: (ids: string[]) => deleteItems(env, { stickers: ids }),
+    /** A question on the canvas at (x, y): fresh until written (closed empty, it was never asked); its id */
+    newQuestion: (x: number, y: number) => newQuestion(env, { pack: "builtin", name: "question" }, { kind: "canvas", x, y }),
+    writeQuestion: (id: string, md: string) => writeQuestion(env, id, md),
+    setAnswered: (id: string, done: boolean) => setAnswered(env, id, done),
+    /** A sticker's colour; "" = the icon's own */
+    setStickerColor: (id: string, color: string) => setStickerColor(env, id, color || undefined, undefined),
+    /** A sticker bound to a card or arrow set free on the canvas at (x, y) */
+    detachSticker: (id: string, x: number, y: number) => detachSticker(env, id, { x, y }),
+    setStickerSize: (id: string, size: number) => setStickerSize(env, id, size),
+    /** The Text sidenotes on a card (on all of it, or on lines of a segment), for the shell's panel */
+    sidenotesOf(card: string): { id: string; md: string; lines?: [number, number] }[] {
+      return env
+        .board()
+        .sidenotes.filter((n) => n.at.card === card && n.kind === "text")
+        .map((n) => ({ id: n.id, md: (n as { md: string }).md, ...(n.at.lines ? { lines: n.at.lines } : {}) }));
+    },
     /** A Text sidenote on a card (on these lines of a segment, or the whole card); its id */
     addSidenote: (card: string, md: string, seg?: string, lines?: [number, number]) =>
       addSidenotes(env, [{ kind: "text", at: seg ? { card, seg, lines } : { card }, md } as Omit<Sidenote, "id">])[0],

@@ -530,6 +530,7 @@ final class EditCard {
   static let slack: CGFloat = 240
   private var lastZoom: CGFloat = 0
   private func place(frame: CGRect, zoom: CGFloat) {
+    let frame = panel ? CGRect(x: frame.minX + panelOffset * zoom, y: frame.minY, width: 320 * zoom, height: frame.height) : frame
     let e = EditCard.edge * zoom
     let want = max(frame.height, contentHeight * zoom) + 2 * e
     let h = ceil(want / (EditCard.slack * zoom)) * EditCard.slack * zoom
@@ -548,11 +549,30 @@ final class EditCard {
     t0 = CACurrentMediaTime()
     contentHeight = frame.height / zoom
     lastZoom = zoom
+    panelOffset = 0
     place(frame: frame, zoom: zoom)
     var spec = CardSpec(c, text: text, lang: lang)
     spec.kind = kind
     page.call("cb.edit(\(encodeJSON(spec)), \(zoom))")
   }
+  /** The card's sidenotes panel (the page's cb.sidenotes), to the right of the card: frame = the card's, in view coordinates */
+  func beginSidenotes(_ c: SceneCard, items: [JSBridge.SidenoteText], open: String?, frame: CGRect, zoom: CGFloat) {
+    card = c
+    kind = "sidenotes"
+    original = ""
+    changed = false
+    t0 = CACurrentMediaTime()
+    contentHeight = 80
+    lastZoom = zoom
+    panelOffset = frame.width / zoom + 12
+    place(frame: frame, zoom: zoom)
+    page.call("cb.sidenotes(\(encodeJSON(["id": c.id, "title": c.title])), \(encodeJSON(items)), \(zoom), \(open.map { encodeJSON($0) } ?? "undefined"))")
+  }
+  /** A sidenotes panel sits this far right of its card's left edge (world units); 0 for an editor over the card */
+  private var panelOffset: CGFloat = 0
+  var panel: Bool { kind == "sidenotes" }
+  /** The panel's own messages: sidenote (sn, value), sidenoteDelete (sn), sidenoteAdd */
+  var onPanel: ((String, String, [String: Any]) -> Void)?
   /** The camera moved: the view follows the card */
   func follow(frame: CGRect, zoom: CGFloat) {
     guard active else { return }
@@ -589,6 +609,8 @@ final class EditCard {
         contentHeight = h
         onHeight?(c.id, h)
       }
+    case "sidenote", "sidenoteDelete", "sidenoteAdd":
+      onPanel?(c.id, type, m)
     case "typed":
       if let js = m["js"] as? [Double], let fr = m["frame"] as? [Double] {
         let p95 = { (a: [Double]) -> Double in let s = a.sorted(); return s.isEmpty ? 0 : s[min(s.count - 1, Int(Double(s.count) * 0.95))] }

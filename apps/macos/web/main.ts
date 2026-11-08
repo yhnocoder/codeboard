@@ -342,10 +342,95 @@ const cb = {
       requestAnimationFrame(() => post({ type: "painted", id: c.id, h: heightOf(card).h }));
     });
   },
+  /**
+   * A card's Text sidenotes as the board's popover lists them (ui/pops/notes.tsx): each with its lines and text; click one to
+   * edit it in place (the TipTap editor; Esc / ⌘↵ / clicking elsewhere ends), × deletes it, + Add asks the app for a new one.
+   * Messages carry the card's id: {type: "sidenote", sn, value}, {type: "sidenoteDelete", sn}, {type: "sidenoteAdd"},
+   * {type: "done"} when the panel is left; {type: "painted", h} / {type: "height", h} as a card's editor
+   */
+  sidenotes(c: { id: string; title: string }, items: { id: string; md: string; lines?: [number, number] }[], scale: number, open?: string) {
+    cb.endEdit();
+    editing = { id: c.id, kind: "note", look: "note", md: "", w: 320, title: c.title } as CardSpec;
+    stage.style.zoom = String(scale);
+    stage.style.padding = `${EDIT_EDGE}px`;
+    stage.textContent = "";
+    const panel = document.createElement("div");
+    panel.className = "pop snpop";
+    const list = document.createElement("div");
+    list.className = "sn-list";
+    panel.appendChild(list);
+    let field: MdEditorHandle | null = null;
+    let current: string | null = null;
+    const endField = () => {
+      if (!field || !current) return;
+      const v = field.value();
+      const sn = current;
+      field.destroy();
+      field = null;
+      current = null;
+      post({ type: "sidenote", id: c.id, sn, value: v });
+    };
+    for (const n of items) {
+      const item = document.createElement("div");
+      item.className = "sn-item";
+      const head = document.createElement("div");
+      head.className = "sn-head";
+      head.innerHTML = `<b>${n.lines ? (n.lines[0] === n.lines[1] ? `line ${n.lines[0]}` : `lines ${n.lines[0]}–${n.lines[1]}`) : "Card"}</b><span class="grow"></span>`;
+      const del = document.createElement("button");
+      del.className = "ib";
+      del.textContent = "×";
+      del.title = "Delete";
+      del.onclick = (e) => {
+        e.stopPropagation();
+        post({ type: "sidenoteDelete", id: c.id, sn: n.id });
+      };
+      head.appendChild(del);
+      const text = document.createElement("div");
+      text.className = "sn-text md";
+      const html = md.render(n.md);
+      text.innerHTML = html;
+      md.hydrate(text, html);
+      item.append(head, text);
+      list.appendChild(item);
+      const startField = () => {
+        if (current === n.id) return;
+        endField();
+        current = n.id;
+        text.textContent = "";
+        text.classList.add("editing");
+        field = mountEditor(md, text, { value: n.md, placeholder: "A note on this…", scrollOwnBox: true, onDone: () => endField() }) as MdEditorHandle;
+        field.placeCaret("end");
+        report();
+      };
+      text.onclick = startField;
+      if (open === n.id) requestAnimationFrame(startField);
+    }
+    const acts = document.createElement("div");
+    acts.className = "sn-acts";
+    const add = document.createElement("button");
+    add.className = "tbtn";
+    add.textContent = "+ Add";
+    add.onclick = () => {
+      endField();
+      post({ type: "sidenoteAdd", id: c.id });
+    };
+    acts.appendChild(add);
+    panel.appendChild(acts);
+    stage.appendChild(panel);
+    editor = panel;
+    const report = () => post({ type: "height", id: c.id, h: heightOf(panel).h });
+    heightWatch = new ResizeObserver(report);
+    heightWatch.observe(panel);
+    panel.addEventListener("focusout", (e) => {
+      // leaving the field for anywhere outside it ends the edit
+      if (field && !(e.relatedTarget instanceof Node && panel.contains(e.relatedTarget))) endField();
+    });
+    requestAnimationFrame(() => requestAnimationFrame(() => post({ type: "painted", id: c.id, h: heightOf(panel).h })));
+  },
   /** The text as edited so far (null when nothing is being edited) */
   value(): string | null {
     if (!editor) return null;
-    if (editor instanceof HTMLElement) return editor.textContent ?? "";
+    if (editor instanceof HTMLElement) return editor.classList.contains("snpop") ? null : (editor.textContent ?? "");
     if ("value" in editor && typeof editor.value === "function") return (editor as MdEditorHandle).value();
     return (editor as CodeEditor).text();
   },
