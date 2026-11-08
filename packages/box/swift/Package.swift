@@ -10,7 +10,7 @@ let lib = ProcessInfo.processInfo.environment["BOX_LIB_DIR"]
 
 let package = Package(
   name: "Box",
-  platforms: [.macOS(.v13)],
+  platforms: [.macOS("15.0")],
   products: [.library(name: "Box", targets: ["Box"])],
   targets: [
     .target(

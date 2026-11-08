@@ -52,6 +52,8 @@ jobs:
           cargo $build --release --locked --bin box --target ${{ matrix.target }}
           mkdir -p bin/${{ matrix.platform }}
           cp target/${{ matrix.target }}/release/${{ matrix.exe }} bin/${{ matrix.platform }}/
+          # box supports macOS 15 and later (.cargo/config.toml): the binary must say so, not the toolchain's default
+          if [ "${{ runner.os }}" = macOS ]; then otool -l bin/${{ matrix.platform }}/box | grep -A4 LC_BUILD_VERSION | grep -q "minos 15.0"; fi
       - name: Build the Node addon and the C ABI library
         run: |
           # a musl cdylib must not be static: the addon is loaded by Node, which links the C library itself

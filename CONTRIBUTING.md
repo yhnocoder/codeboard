@@ -14,7 +14,7 @@ npm run e2e        # main flows in a real VS Code, with screenshots (needs VS Co
 npm run storybook  # Storybook for the board UI at http://localhost:6006 (cards and toolbar, every theme, light / dark, zoom); not part of check or the per-push CI. `npm run storybook:check` builds it and opens every story in Chromium; that runs in the regular full test run, every 6 hours (`.github/workflows/regular.yml`)
 ```
 
-`npm run package` builds everything and packs an installable `.vsix` into `extensions/vscode/`. Releases do the same in CI (`.github/workflows/release.yml`), with box built for linux-x64 (static, musl), darwin-arm64, darwin-x64 and win32-x64 first and all four bundled in the one `.vsix` (`bin/<platform>-<arch>/`). To release:
+`npm run package` builds everything and packs an installable `.vsix` into `extensions/vscode/`. Releases do the same in CI (`.github/workflows/release.yml`), with box built for linux-x64 and linux-arm64 (static, musl), darwin-arm64 and darwin-x64 (macOS 15 and later, set in `packages/box/.cargo/config.toml`), win32-x64 and win32-arm64 first and all six bundled in the one `.vsix` (`bin/<platform>-<arch>/`). To release:
 
 1. Bump `version` in `extensions/vscode/package.json` in a PR and merge it (add a `CHANGELOG.md` entry in the same PR).
 2. Push the tag `v<that version>`; a tag that does not match fails the release. CI builds the `.vsix` and screenshots into a draft GitHub Release.
