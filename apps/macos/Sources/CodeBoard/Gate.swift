@@ -5,7 +5,7 @@
 // (CVDisplayLink, handed to the main thread like Auto.swift) it records the interval, the main thread's cost, the camera, every
 // card in view (world rect) and the cards in view with no bitmap yet; the window is captured with ScreenCaptureKit at the display
 // rate at half its points (what the capture keeps up with), each frame reduced to the cell grid probes.ts judges (cells of 8
-// points, quarters of 4) and a JPEG; the timing that counts is the Animation Hitches instrument tools/mac-gate.mjs records.
+// points, quarters of 4) and a JPEG; the timing is the display link's (and the Hitches instrument's with tools/mac-gate.mjs --xctrace).
 // Everything is written to <dir>/<board id>/ for tools/mac-gate.mjs, which judges and reports; nothing is judged here.
 import AppKit
 import ScreenCaptureKit
