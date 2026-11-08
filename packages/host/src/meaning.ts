@@ -27,16 +27,10 @@ const TOP = 8;
  * Closeness (cosine of box's clipped vectors, EmbeddingGemma 2 with its prompts) below which a card is not related at all.
  * Measured on persona's 20 boards through this host and box (75 labelled queries and 12 unrelated ones, 2026-11, clip 0.119):
  * the first right card of every query scored 0.583 and up, while unrelated queries reach 0.618. No fixed value separates the
- * two, so this one only never hides a right card
+ * two, so this one only never hides a right card. Pictures count from it too: with persona's 187 pictures embedded (review of
+ * 2026-11, 141 queries, 26 unrelated) every right picture scored 0.55 or more, and 0.50–0.55 added only wrong rows
  */
 const MIN_SCORE = 0.55;
-/**
- * The same for a picture, whose scores against a short query sit lower in box (its clipping lowers them). Measured on
- * persona's anime board (2026-11, oMLX, clip 0.1165): for "girl" its 7 anime pictures scored 0.528–0.545 (0.678–0.685
- * unclipped) and their captions 0.47–0.485, for "anime girl" 0.570–0.585, so MIN_SCORE would hide right pictures. Not
- * measured for unrelated queries; a picture under FAINT_BELOW is shown faint, as text is
- */
-const PICTURE_MIN = 0.5;
 /**
  * Closeness below which a result is shown faint, as a "maybe": the highest any unrelated query reached. Measured on persona
  * through this host and box (2026-11, clip 0.119) with the 75 + 12 queries of the bench and the review's 20 + 4 fresh ones,
@@ -223,7 +217,7 @@ export class MeaningSearch {
           ref: l.ref,
           q,
           k: TOP * 2,
-          min_score: PICTURE_MIN,
+          min_score: MIN_SCORE,
           groups,
         });
       };
@@ -239,8 +233,6 @@ export class MeaningSearch {
       const { docs, names } = this.latest;
       const items: SearchItem[] = [];
       for (const h of r.hits) {
-        // box counts both from PICTURE_MIN: text only from its own floor
-        if (!h.picture && h.score < MIN_SCORE) continue;
         const d = docs.get(h.id);
         if (!d) continue;
         const { boards, ...o } = d.origin;

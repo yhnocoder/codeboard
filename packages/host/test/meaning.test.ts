@@ -215,8 +215,8 @@ describe.skipIf(!built)("Related by Meaning", () => {
     url = keep;
   });
 
-  it("counts a picture from its own floor, below text's", async () => {
-    // the same words as a picture and as a Note: alike, the picture is shown (faint) and the Note is not
+  it("hides a picture below the same floor as text", async () => {
+    // the same words as a picture and as a Note, both scoring under MIN_SCORE: neither is shown
     const words = "cache cuda graph scheduler";
     fs.writeFileSync(path.join(dir, "assets", "ca5e.png"), words);
     const c = emptyBoard("c", "Pictures");
@@ -232,7 +232,7 @@ describe.skipIf(!built)("Related by Meaning", () => {
     expect(score("shot")).toBeGreaterThanOrEqual(0.5);
     expect(score("shot")).toBeLessThan(0.55);
     const r = await cx.meaning.search(store, "cache", "c");
-    expect(r.items.find((i) => i.kind === "card" && i.card === "shot")).toMatchObject({ faint: true });
+    expect(r.items.find((i) => i.kind === "card" && i.card === "shot")).toBeUndefined();
     expect(r.items.find((i) => i.kind === "card" && i.card === "words")).toBeUndefined();
   });
 });
