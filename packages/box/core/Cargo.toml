@@ -20,3 +20,9 @@ serde_json = { version = "1.0.154", features = ["raw_value"] }
 sha2 = "0.11"
 tantivy = { version = "0.27.0", default-features = false, features = ["mmap"] }
 ureq = "3.5.1"
+usearch = { version = "2.26.6", default-features = false }
+
+
+# usearch's SIMD kernels (numkong), except for the static musl build: zig's clang, which box.yml builds it with, refuses them
+[target.'cfg(not(target_env = "musl"))'.dependencies]
+usearch = { version = "2.26.6", features = ["numkong"] }

@@ -101,3 +101,10 @@ Vectors are kept in memory per model. EmbeddingGemma 2 has a few dimensions far 
 clipped to ±c and the vector renormalized (queries too), c = 6 × the median over dimensions of mean |x|, computed once 200
 vectors exist (about 0.12 for EmbeddingGemma 2); from then on vectors are int8 with one scale per dimension. A search compares
 every visible piece (brute force, all cores), scores the best 100 again from the stored f16 vectors, and keeps each item's best.
+
+From 200 000 vectors of a model on, an approximate index (HNSW, usearch, int8) is built in the background and kept as a
+cache next to the store (`<home>/graphs/<model hash>.usearch`, rebuilt whenever it is missing or broken). A search with at
+least 50 000 visible pieces then takes its 100 candidates from the graph (filtered to the visible ones) plus the vectors
+written since the build, compared one by one (the exact tier), and scores those again as above; a search that sees fewer
+compares them one by one, which is faster there. The graph is built again once the exact tier holds a tenth of it or 20 000
+vectors, or a fifth of its vectors are gone.

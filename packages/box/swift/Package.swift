@@ -20,6 +20,9 @@ let package = Package(
         .linkedFramework("Security", .when(platforms: [.macOS])),
         .linkedFramework("CoreFoundation", .when(platforms: [.macOS])),
         .linkedLibrary("m", .when(platforms: [.linux])),
+        // the C++ inside (usearch)
+        .linkedLibrary("c++", .when(platforms: [.macOS])),
+        .linkedLibrary("stdc++", .when(platforms: [.linux])),
       ]
     ),
     .target(name: "Box", dependencies: ["CBox"]),

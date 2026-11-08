@@ -16,7 +16,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Linux is a static musl build, so it runs on any distribution
+          # Linux is a static musl build, so it runs on any distribution: built with zig (cargo-zigbuild), whose libc++ for
+          # musl the C++ of usearch needs (musl-tools has no C++ compiler)
           - { os: ubuntu-24.04, target: x86_64-unknown-linux-musl, platform: linux-x64, exe: box }
           - { os: macos-15, target: aarch64-apple-darwin, platform: darwin-arm64, exe: box }
           # cross-built on Apple silicon; it runs there under Rosetta 2
@@ -38,10 +39,14 @@ jobs:
       - uses: actions/setup-node@v6
         with: { node-version: 22, package-manager-cache: false }
       - if: runner.os == 'Linux'
-        run: sudo apt-get update -q && sudo apt-get install -qy musl-tools
+        uses: taiki-e/install-action@v2
+        with: { tool: cargo-zigbuild }
+      - if: runner.os == 'Linux'
+        run: pip3 install --user ziglang
       - name: Build
         run: |
-          cargo build --release --locked --bin box --target ${{ matrix.target }}
+          build=build; [ "${{ runner.os }}" = Linux ] && build=zigbuild
+          cargo $build --release --locked --bin box --target ${{ matrix.target }}
           mkdir -p bin/${{ matrix.platform }}
           cp target/${{ matrix.target }}/release/${{ matrix.exe }} bin/${{ matrix.platform }}/
       - name: Build the Node addon and the C ABI library
@@ -63,9 +68,12 @@ jobs:
           else
             echo "ok=true" >> "$GITHUB_OUTPUT"
           fi
+      # on Linux against glibc (the same code; the tests need a C++ toolchain for the host, which musl has none of)
       - name: Smoke test (cargo tests, release build, native)
         if: steps.runs.outputs.ok == 'true'
-        run: cargo test --release --locked --target ${{ matrix.target }}
+        run: |
+          target=${{ matrix.target }}; [ "${{ runner.os }}" = Linux ] && target=${target/musl/gnu} && rustup target add $target
+          cargo test --release --locked --target $target
       - name: Smoke test (the binary through the TypeScript client)
         if: steps.runs.outputs.ok == 'true'
         run: node test/smoke.mjs bin/${{ matrix.platform }}/${{ matrix.exe }}

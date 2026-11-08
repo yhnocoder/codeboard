@@ -8,6 +8,7 @@
 
 use crate::chunk::{query_prompt, text_pieces};
 use crate::embed::{BATCH, Embedder, Endpoint, EndpointConfig, Input};
+use crate::graph::{self, Graph};
 use crate::keyword::{self, Doc, Keywords, hid};
 use crate::probe::Probed;
 use crate::store::{self, ItemRow, Key, PieceRow, Store, image_key, text_key};
@@ -378,13 +379,53 @@ impl Inner {
         if let Some((c, s)) = idx.add(rows) {
             st.set_calibration(fp, c, &s).map_err(|e| e.to_string())?;
         }
+        drop(st);
+        if idx.len() >= crate::graph::GRAPH_AT
+            && let Ok(g) = Graph::load(&graph::file(&self.files.home, fp), idx.dim)
+        {
+            idx.attach(Arc::new(g));
+        }
         let m = Arc::new(RwLock::new(idx));
         models.insert(fp.to_string(), m.clone());
+        self.maybe_graph(fp, &m);
         Ok(m)
     }
 
     fn log(&self, line: &str) {
         log(&self.files.log, line);
+    }
+
+    /// Builds the model's graph in the background when it wants one (vectors::wants_graph), then saves it next to the store
+    fn maybe_graph(&self, fp: &str, m: &Arc<RwLock<ModelIndex>>) {
+        let src = {
+            let mut w = m.write().unwrap();
+            if !w.wants_graph() {
+                return;
+            }
+            w.graph_pending = true;
+            w.graph_source()
+        };
+        let (m, file, logf, fp) = (
+            m.clone(),
+            graph::file(&self.files.home, fp),
+            self.files.log.clone(),
+            fp.to_string(),
+        );
+        std::thread::spawn(move || {
+            let t = Instant::now();
+            match src.build() {
+                Ok(g) => {
+                    let n = g.len();
+                    if let Err(e) = g.save(&file) {
+                        log(&logf, &format!("{fp}: {e}"));
+                    }
+                    m.write().unwrap().attach(Arc::new(g));
+                    log(&logf, &format!("{fp}: graph of {n} vectors built in {:?}", t.elapsed()));
+                }
+                // left pending: not tried again until the model is read again
+                Err(e) => log(&logf, &format!("{fp}: {e}")),
+            }
+        });
     }
 
     /// Old manifests and unused content go once a day (and at open)
@@ -658,7 +699,9 @@ impl Inner {
                 .unwrap()
                 .put_content(&fp, &got)
                 .map_err(|e| e.to_string())?;
-            if let Some((c, s)) = model.write().unwrap().add(got) {
+            let calibrated = model.write().unwrap().add(got);
+            self.maybe_graph(&fp, &model);
+            if let Some((c, s)) = calibrated {
                 self.store
                     .lock()
                     .unwrap()
@@ -895,7 +938,7 @@ fn search_in(
     let scored: Vec<(usize, f32)> = if m.approximate() {
         let clip = m.clip.unwrap_or(0.0);
         let mut exact: HashMap<u32, f32> = HashMap::new();
-        m.scan(&qp, &rows, RESCORE)
+        m.candidates(&qp, &rows, RESCORE)
             .into_iter()
             .map(|(e, s)| {
                 let row = rows[e];

@@ -40,3 +40,9 @@ widestring = "1"
 lto = "thin"
 codegen-units = 4
 strip = true
+
+# the C++ of the approximate index and the full-text index are slow unoptimized, also in tests
+[profile.dev.package.usearch]
+opt-level = 3
+[profile.dev.package.tantivy]
+opt-level = 3
