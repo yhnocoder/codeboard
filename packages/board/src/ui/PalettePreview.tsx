@@ -25,7 +25,7 @@ const bare = (s: string) =>
     .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
     .replace(/^\s*(\d+[.)]|[-*+]|#{1,6})\s+/, "")
     .replace(new RegExp(`${SKIP.source}+`, "gu"), "");
-/** Sentences, as innerbox cuts them */
+/** Sentences, as box cuts a long paragraph */
 const sentences = (s: string) => s.split(/(?<=[。！？!?])|(?<=[.;:])\s+/u);
 const wordy = (c: string | undefined) => !!c && /[\p{L}\p{N}_]/u.test(c) && !/\p{Script=Han}/u.test(c);
 

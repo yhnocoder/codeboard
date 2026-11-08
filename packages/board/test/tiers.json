@@ -24,7 +24,7 @@
     "stickerBitmapsPicker",
     "notePastedImageSameSizeInBothModes"
   ],
-  "manual": ["markdownRecord", "boardMarksScreenshots", "shelfScreenshots"],
+  "manual": ["markdownRecord", "boardMarksScreenshots", "shelfScreenshots", "paletteMeaningFaintLooks"],
   "solo": ["markdownLazyRender"],
   "known": {},
   "limits": {

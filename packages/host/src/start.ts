@@ -17,6 +17,7 @@ import { recordProject } from "./transfer";
 import { watchVersions } from "./watch";
 import { HostContext } from "./context";
 import { BoardMarks } from "./marks";
+import type { BoxOptions } from "./meaning";
 
 export type HostOptions = {
   /** 放 tree-sitter wasm 的目录；不给 = 从 npm 包里找（Node 下） */
@@ -26,6 +27,9 @@ export type HostOptions = {
   /** The built thumbnail worker (src/thumbs/worker.ts): the smaller copies of big images are made in it. None: in the host's
    *  own thread (tests and the harness, which run the TypeScript sources) */
   thumbWorker?: string;
+  /** The box binary behind Related by Meaning (packages/box; the extension bundles one per platform). None, or no file
+   *  there: Related by Meaning is off and says why */
+  box?: BoxOptions;
 };
 
 export type Host = Disposable & {
@@ -52,7 +56,7 @@ export type Host = Disposable & {
 };
 
 export function startHost(ws: Workspace, env: HostEnv, o: HostOptions): Host {
-  const cx = new HostContext(ws, o.thumbWorker);
+  const cx = new HostContext(ws, { thumbWorker: o.thumbWorker, box: o.box });
   const subs: Disposable[] = [cx];
   const on = (d: Disposable) => void subs.push(d);
   const analysis = startAnalysis(o.wasmDir);

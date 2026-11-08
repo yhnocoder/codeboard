@@ -1078,7 +1078,7 @@ test("paletteThisBoard", async () => {
 });
 
 test("paletteMeaning", async () => {
-  // the host's Related by Meaning (innerbox) played here: the first answer is still indexing, the next is done
+  // the host's Related by Meaning (box) played here: the first answer is still indexing, the next is done
   let asked = 0;
   const h = await open({
     board: boardWith("BlockManager.deallocate"),
@@ -1111,6 +1111,16 @@ test("paletteMeaning", async () => {
             card: c.id,
             sidenote: "sn",
           },
+          // no closer than unrelated queries come: shown faint, as a maybe
+          {
+            kind: "sidenote",
+            label: "Swap space on the host",
+            detail: "This board",
+            board: h.board().id,
+            card: c.id,
+            sidenote: "sn2",
+            faint: true,
+          },
         ],
         ...(asked === 1 ? { left: 3 } : {}),
       });
@@ -1136,6 +1146,11 @@ test("paletteMeaning", async () => {
       .map((e) => e.textContent)
       .find((t) => t?.includes("free early")),
     hit: [...((CSS as any).highlights?.get("palette-hit") ?? [])].map((r: Range) => r.toString()).join("|"),
+    faint: [...document.querySelectorAll(".palette .cand")].map((e) => ({
+      faint: e.classList.contains("faint"),
+      maybe: e.querySelector(".maybe")?.textContent ?? "",
+      fade: Number(getComputedStyle(e.querySelector(".lb")!).opacity),
+    })),
   }));
   const sent = h.sent.filter((m) => m.type === "searchMeaning").map((m: any) => m.q);
   await h.page.keyboard.press("Enter");
@@ -1156,7 +1171,61 @@ test("paletteMeaning", async () => {
       pane.hit === "Frees the blocks of a finished sequence.free(blocks[i]);",
     pane,
   );
+  check(
+    "paletteMeaning shows a result no closer than unrelated queries faint, with a quiet maybe, and the others as they are",
+    pane.faint.length === 3 &&
+      pane.faint.map((r) => r.faint).join() === "false,false,true" &&
+      pane.faint[2].maybe === "maybe" &&
+      pane.faint[2].fade < 0.7 &&
+      pane.faint.slice(0, 2).every((r) => r.fade === 1 && !r.maybe),
+    pane.faint,
+  );
   await h.page.context().close();
+});
+
+// Records how faint Related by Meaning rows look (Warm Ink and Ink Wash, light and dark, at 2x): test-out/harness/faint-*.png
+test("paletteMeaningFaintLooks", async () => {
+  const rows: [string, boolean][] = [
+    ["Occupancy is limited by registers per thread", false],
+    ["## Register spilling", false],
+    ["Launch bounds tell the compiler the block size", false],
+    ["Memory coalescing in a warp", true],
+    ["Why tiles are square", true],
+    ["Streams and events", true],
+  ];
+  for (const theme of ["warm-ink", "ink-wash"])
+    for (const lit of [true, false]) {
+      const h = await open({
+        board: boardWith("BlockManager.deallocate"),
+        light: lit,
+        w: 1100,
+        h: 640,
+        scale: 2,
+        settings: { theme },
+        on: async (m, reply) => {
+          if (m.type !== "searchMeaning") return false;
+          const c = h.board().cards[0];
+          await reply(m.req!, {
+            items: rows.map(([label, faint], n) => ({
+              kind: "sidenote",
+              label,
+              detail: faint ? "Performance" : "This board",
+              board: h.board().id,
+              card: c.id,
+              sidenote: `sn${n}`,
+              ...(faint ? { faint: true } : {}),
+            })),
+          });
+          return true;
+        },
+      });
+      await h.page.keyboard.press("ControlOrMeta+k");
+      await h.page.locator(".palette input:focus").waitFor();
+      await h.page.keyboard.type("register pressure");
+      await expect(h.page.locator(".palette .cand.faint")).toHaveCount(3);
+      await shot(h, `faint-${theme}-${lit ? "light" : "dark"}`);
+      await h.page.context().close();
+    }
 });
 
 // Related by Meaning embeds pictures as pixels: the host asks an open board to draw an SVG (with the fonts it shows it in)

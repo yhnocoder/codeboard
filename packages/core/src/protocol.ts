@@ -237,6 +237,8 @@ export type SearchItem =
       card: string;
       num?: string;
       preview?: SearchPreview;
+      /** Related by Meaning: closer than its floor but no closer than unrelated queries come (shown faint, "maybe") */
+      faint?: true;
       /** Related by Meaning: how close (cosine) */
       score?: number;
     }
@@ -248,6 +250,7 @@ export type SearchItem =
       card: string;
       sidenote: string;
       preview?: SearchPreview;
+      faint?: true;
       /** Related by Meaning: how close (cosine) */
       score?: number;
     }

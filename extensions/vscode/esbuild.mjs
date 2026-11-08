@@ -26,6 +26,12 @@ for (const f of ["board.js", "boot.js"])
   if (!existsSync(join(boardDist, f))) throw new Error(`${boardDist}/${f} is missing: build @codeboard/board first`);
 rmSync("media/board", { recursive: true, force: true });
 cpSync(boardDist, "media/board", { recursive: true });
+// box, the index service behind Related by Meaning, from packages/box/bin/<platform>-<arch>/: this machine's (npm run build builds
+// it with cargo), and in a release every platform's (release.yml builds them first). None for a platform: Related by Meaning is
+// off there and says why
+const boxBin = join(dirname(require.resolve("@codeboard/box/package.json")), "bin");
+rmSync("bin", { recursive: true, force: true });
+if (existsSync(boxBin)) cpSync(boxBin, "bin", { recursive: true });
 const elkApart = { name: "elk-apart", setup: (b) => b.onResolve({ filter: /^elkjs\// }, () => ({ path: "./elk.js", external: true })) };
 
 // 构建自哪个提交（Copy Diagnostics 里显示）：正好在发版 tag v<version> 上是正式版，什么都不加；否则写 "dev <短 commit>"，有没提交的改动再加 "dirty"

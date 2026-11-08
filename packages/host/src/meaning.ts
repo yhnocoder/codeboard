@@ -1,22 +1,18 @@
-// ⌘K's "Related by Meaning": the project's cards and sidenotes found by what they mean, through innerbox and an embedding
-// model the user runs themselves (an OpenAI-compatible endpoint, e.g. oMLX serving EmbeddingGemma: codeboard.search.*).
-// The index is one file in the storage folder (.innerbox/, kept out of git), brought up to date in the background a little
-// after boards change; only text not seen before is embedded. Off while no endpoint is set.
-import * as fs from "node:fs/promises";
+// ⌘K's "Related by Meaning": the project's cards and sidenotes found by what they mean, through box (packages/box: one index
+// service per user, shared by every window) and an embedding model the user runs themselves (an OpenAI-compatible endpoint,
+// e.g. oMLX serving EmbeddingGemma: codeboard.search.*). A little after boards change, the host hands box every card and
+// sidenote of the storage folder (the source) at its git branch (the ref), with the pictures of Image cards and Notes (read
+// from assets/ as data: URLs; an SVG drawn into a PNG by an open board, HostToBoard draw, and its <text> indexed as the
+// card's text); box embeds in the background only what it has not seen, and a search answers with what is indexed so far.
+// Off while no endpoint is set, or without the box binary.
+import { createHash } from "node:crypto";
+import * as fs from "node:fs";
 import * as path from "node:path";
-import {
-  Box,
-  endpointEmbedder,
-  fingerprint,
-  pieceBodies,
-  queryText,
-  type Doc,
-  type DocImage,
-  type Embedder,
-} from "@codeboard/innerbox";
+import { connect, type BoxClient, type BoxEmbedder, type BoxImage, type BoxItem } from "@codeboard/box";
 import { cardTitle, shelvedCards, type Card, type MeaningResult, type SearchItem } from "@codeboard/core";
 import type { Storage } from "./storage/boards";
 import type { HostContext } from "./context";
+import { git } from "./git";
 import type { Prompts } from "./prompts";
 import { cardMarkdown, imageSrc, preview, sidenoteMarkdown, whereOf } from "./preview";
 import { readHostSetting } from "./settings";
@@ -25,22 +21,30 @@ import { readHostSetting } from "./settings";
 const KEY_SECRET = "codeboard.embeddingApiKey";
 /** How long after the last board change the index catches up */
 const REINDEX_PAUSE = 3000;
-/** How often a long first indexing writes what it has so far */
-const SAVE_EVERY = 10_000;
 /** Results in the group */
 const TOP = 8;
-/** Searching only the board here: how many times TOP nearest pieces to look through for TOP on this board */
-const HERE_WIDEN = 40;
 /**
- * Closeness (cosine, EmbeddingGemma 2 with its prompts) below which a card or a picture is not related at all. Measured on
- * persona's 20 boards (85 queries, 2026-11): the first card a query should find scored 0.69 and up, and a picture found by a
- * short query ("anime girl", "动漫女孩") 0.68–0.70, far above the other pictures (0.55). Unrelated queries mostly stay under
- * it, but not all (code cards sit near anything, up to 0.71, and pictures 0.67–0.70): no fixed value, nor one relative to the
- * query's spread of scores, separates the two, so this one only never hides a right card
+ * Closeness (cosine of box's clipped vectors, EmbeddingGemma 2 with its prompts) below which a card is not related at all.
+ * Measured on persona's 20 boards through this host and box (75 labelled queries and 12 unrelated ones, 2026-11, clip 0.119):
+ * the first right card of every query scored 0.583 and up, while unrelated queries reach 0.618. No fixed value separates the
+ * two, so this one only never hides a right card. Pictures count from it too: with persona's 187 pictures embedded (review of
+ * 2026-11, 141 queries, 26 unrelated) every right picture scored 0.55 or more, and 0.50–0.55 added only wrong rows
  */
-const MIN_SCORE = 0.66;
-/** Query vectors kept (typing a query again, or the Palette asking again while indexing) */
-const QUERY_CACHE = 64;
+const MIN_SCORE = 0.55;
+/**
+ * Closeness below which a result is shown faint, as a "maybe": the highest any unrelated query reached. Measured on persona
+ * through this host and box (2026-11, clip 0.119) with the 75 + 12 queries of the bench and the review's 20 + 4 fresh ones,
+ * on what the Palette shows (the best 8 at MIN_SCORE or above): the closest row any of the 16 unrelated queries showed scored
+ * 0.632 (MPI_Allreduce across nodes), so at 0.635 all 46 rows they showed are faint, while 6 of the 93 first right cards are.
+ * Of the labelled queries' rows, 7% below the line are a wanted card and 24% above it (the labels name only the best cards).
+ * Checked on queries not used to set it (review-176 fresh2: 20 labelled, 10 unrelated, 6 of them near GPU / ML topics): all 24
+ * rows of the unrelated ones faint, 1 of 18 first right cards faint; the closest unrelated row scored 0.633, so this is a hint,
+ * not a line that reliably separates related from unrelated. Keep those queries out of any re-calibration
+ */
+const FAINT_BELOW = 0.635;
+
+/** The box binary and, for tests, its data folder (HostOptions.box) */
+export type BoxOptions = { bin: string; home?: string };
 
 /** Where a document came from: what the Palette shows and opens */
 type Origin = (
@@ -48,28 +52,36 @@ type Origin = (
   | Omit<Extract<SearchItem, { kind: "sidenote" }>, "detail">
 ) & { boards: string[] };
 
+type Docs = Awaited<ReturnType<typeof projectDocs>>;
+
 export class MeaningSearch {
-  private box?: Box;
-  private boxFile = "";
-  private conf = "";
-  private embedder?: Embedder;
+  private client?: BoxClient;
   private running?: Promise<void>;
   private again = false;
   private timer?: ReturnType<typeof setTimeout>;
   private disposed = false;
-  private queries = new Map<string, Float32Array>();
   private error = "";
-  private left = 0;
-  /** The boards changed since the documents were last read */
+  /** The boards changed since they were last handed to box */
   private stale = true;
-  private latest?: Awaited<ReturnType<typeof projectDocs>>;
+  /** What was last handed to box: the documents, and the source and ref they went under */
+  private latest?: Docs & { source: string; ref: string };
   /** The endpoint's key, read once from the secret storage (Set Embedding API Key forgets it) */
   private key?: Promise<string | undefined>;
 
   /** Draws an SVG (data: URL) into a PNG (data: URL): an open board does it, with the fonts it shows the picture in */
   private draw?: (svg: string) => Promise<string | undefined>;
+  /** Picture keys box has indexed for this endpoint (embedded, or refused and skipped): later syncs hand them without their
+   *  data. Only a sync that carried the data and was indexed through (status: idle, no error) adds to it */
+  private pictured = new Set<string>();
+  /** The endpoint pictured is for */
+  private picturedFor = "";
+  /** The keys the last sync handed with their data */
+  private handed = new Set<string>();
 
-  constructor(private cx: HostContext) {}
+  constructor(
+    private cx: HostContext,
+    private box?: BoxOptions,
+  ) {}
 
   /** How SVG pictures become pixels for the model (startHost: through an open board); without it they are left out */
   drawWith(draw: (svg: string) => Promise<string | undefined>) {
@@ -79,19 +91,21 @@ export class MeaningSearch {
   dispose() {
     this.disposed = true;
     clearTimeout(this.timer);
+    this.client?.close();
   }
 
-  /** The key changed: read it again on the next request */
+  /** The key changed: read it again on the next request (and hand it to box with the next sync) */
   forgetKey() {
     this.key = undefined;
+    this.stale = true;
   }
 
   private base(): string {
     return (readHostSetting<string>(this.cx, "searchEmbeddingUrl") ?? "").trim();
   }
 
-  /** The embedder for the current settings and key; undefined while no endpoint is set */
-  private async current(): Promise<Embedder | undefined> {
+  /** The endpoint for the current settings and key; undefined while no endpoint is set */
+  private async embedder(): Promise<BoxEmbedder | undefined> {
     const base = this.base();
     if (!base) return undefined;
     const model = (readHostSetting<string>(this.cx, "searchEmbeddingModel") ?? "").trim() || undefined;
@@ -100,48 +114,39 @@ export class MeaningSearch {
       () => undefined,
     );
     const key = await this.key;
-    const conf = JSON.stringify([base, model, key]);
-    if (conf !== this.conf) {
-      this.conf = conf;
-      this.embedder = endpointEmbedder({ base, model, key });
-      this.box = undefined;
-      this.queries.clear();
-      this.stale = true;
-    }
-    return this.embedder;
+    return { base, ...(model ? { model } : {}), ...(key ? { key } : {}) };
   }
 
-  /** The index for this storage folder and model, read from its file the first time */
-  private async boxFor(store: Storage, e: Embedder): Promise<Box> {
-    const model = await e.model();
-    const dir = path.join(store.dir(), ".innerbox");
-    const file = path.join(dir, `${model.replace(/[^\w.-]+/g, "_")}.ibx`);
-    if (this.box && this.boxFile === file) return this.box;
-    const bytes = await fs.readFile(file).catch(() => undefined);
-    this.box = (bytes && Box.fromBytes(new Uint8Array(bytes), model)) || new Box(model);
-    this.boxFile = file;
-    return this.box;
+  /** A search found nothing left to embed: once box is idle without an error, the pictures the last sync carried are in */
+  private async indexed(l: { source: string; ref: string }) {
+    const handed = this.handed;
+    const st = await this.connection().status(l.source, l.ref);
+    if (st.indexing || st.error || st.left || this.handed !== handed) return;
+    for (const k of handed) this.pictured.add(k);
+    this.handed = new Set();
   }
 
-  private async save(box: Box) {
-    const dir = path.dirname(this.boxFile);
-    await fs.mkdir(dir, { recursive: true });
-    await fs.writeFile(path.join(dir, ".gitignore"), "*\n");
-    const tmp = `${this.boxFile}.tmp`;
-    await fs.writeFile(tmp, box.toBytes());
-    await fs.rename(tmp, this.boxFile);
+  /** Why there is no box to ask; "" when there is one */
+  private missing(): string {
+    if (this.box && fs.existsSync(this.box.bin)) return "";
+    return `Related by Meaning needs box, the index service, which this build of CodeBoard does not include for ${process.platform}-${process.arch}.`;
+  }
+
+  private connection(): BoxClient {
+    return (this.client ??= connect({ bin: this.box!.bin, home: this.box!.home }));
   }
 
   /** Boards changed: catch up a little later (nothing while no endpoint is set) */
   soon(store: Storage) {
     this.stale = true;
-    if (this.disposed || !this.base()) return;
+    if (this.disposed || !this.base() || this.missing()) return;
     clearTimeout(this.timer);
     this.timer = setTimeout(() => void this.update(store), REINDEX_PAUSE);
     (this.timer as { unref?: () => void }).unref?.();
   }
 
-  /** Brings the index up to date with the boards (one run at a time; a change during a run makes another) */
+  /** Hands box the boards as they are now (one run at a time; a change during a run makes another). Box answers at once and
+   *  embeds in the background */
   update(store: Storage, here?: string): Promise<void> {
     if (this.running) {
       this.again = true;
@@ -150,33 +155,43 @@ export class MeaningSearch {
     this.running = (async () => {
       do {
         this.again = false;
-        const e = await this.current();
-        if (!e) return;
+        const e = await this.embedder();
+        if (!e || this.missing() || this.disposed) return;
         try {
-          const box = await this.boxFor(store, e);
           this.stale = false;
-          this.latest = await projectDocs(store, here, this.draw);
-          const docs = [...this.latest.docs.values()].map((d) => d.doc);
-          const total = box.missing(docs);
-          let saved = Date.now();
-          this.left = total;
-          const changed = await box.update(docs, e, {
-            stop: () => this.disposed,
-            // what is embedded so far is kept every little while: a window closed halfway loses at most that much
-            batch: async (done) => {
-              this.left = Math.max(0, total - done);
-              if (Date.now() - saved < SAVE_EVERY || this.disposed) return;
-              await this.save(box);
-              saved = Date.now();
-            },
-          });
-          this.left = this.disposed ? this.left : 0;
+          const docs = await projectDocs(store, here, this.draw);
+          const source = store.dir();
+          const ref = await refOf(source);
+          const conf = JSON.stringify([e.base, e.model, e.key]);
+          if (conf !== this.picturedFor) {
+            this.picturedFor = conf;
+            this.pictured.clear();
+          }
+          const handed = new Set<string>();
+          const items: BoxItem[] = [];
+          for (const [id, d] of docs.docs) {
+            const images: BoxImage[] = [];
+            for (const p of d.pictures ?? []) {
+              const url = this.pictured.has(p.key) ? undefined : await p.url().catch(() => undefined);
+              if (url) handed.add(p.key);
+              images.push({ key: p.key, ...(url ? { url } : {}) });
+            }
+            items.push({
+              id,
+              title: d.title,
+              text: d.text,
+              groups: d.origin.boards,
+              ...(images.length ? { images } : {}),
+            });
+          }
+          await this.connection().sync(source, ref, e, items);
+          this.handed = handed;
+          this.latest = { ...docs, source, ref };
           this.error = "";
-          if (changed && !this.disposed) await this.save(box);
         } catch (err) {
           this.error = (err as Error).message;
           this.stale = true; // the next search tries again
-          this.cx.log("warn", `innerbox: ${this.error}`);
+          this.cx.log("warn", `box: ${this.error}`);
           return;
         }
       } while (this.again && !this.disposed);
@@ -187,22 +202,37 @@ export class MeaningSearch {
   /** The cards and sidenotes closest in meaning to q; while indexing, what is indexed so far and how much is left. onlyHere:
    *  only what is on the board here (a shared card counts there too), and a hit opens there */
   async search(store: Storage, q: string, here?: string, onlyHere = false): Promise<MeaningResult> {
-    const e = await this.current();
-    if (!e) return { items: [], off: true };
+    if (!(await this.embedder())) return { items: [], off: true };
+    const missing = this.missing();
+    if (missing) return { items: [], off: true, error: missing };
     if (!q.trim()) return { items: [] };
-    if (this.stale || !this.latest) void this.update(store, here);
     try {
-      const box = await this.boxFor(store, e);
-      let qv = this.queries.get(q);
-      if (!qv) {
-        qv = (await e.embed([queryText(q)]))[0];
-        if (this.queries.size >= QUERY_CACHE) this.queries.delete(this.queries.keys().next().value!);
-        this.queries.set(q, qv);
+      if (this.stale || !this.latest) await this.update(store, here);
+      const ask = () => {
+        const l = this.latest;
+        if (!l) return undefined;
+        const groups = onlyHere && here ? [here] : undefined;
+        return this.connection().search({
+          source: l.source,
+          ref: l.ref,
+          q,
+          k: TOP * 2,
+          min_score: MIN_SCORE,
+          groups,
+        });
+      };
+      let r = await ask();
+      if (r?.unsynced) {
+        // the service started again since the last sync: it has the index, but not the endpoint
+        this.stale = true;
+        await this.update(store, here);
+        r = await ask();
       }
-      const { docs, names } = this.latest ?? (await projectDocs(store, here, this.draw));
+      if (!r || !this.latest) return { items: [], error: this.error || undefined };
+      if (!r.left && !r.error && this.handed.size) await this.indexed(this.latest);
+      const { docs, names } = this.latest;
       const items: SearchItem[] = [];
-      for (const h of box.search(qv, TOP * (onlyHere ? HERE_WIDEN : 2))) {
-        if (h.score < MIN_SCORE) break;
+      for (const h of r.hits) {
         const d = docs.get(h.id);
         if (!d) continue;
         const { boards, ...o } = d.origin;
@@ -211,17 +241,34 @@ export class MeaningSearch {
           o.board = here;
         }
         const where = boards.map((b) => (b === here ? "This board" : (names.get(b) ?? b))).join(" · ");
-        const hit = h.picture ? undefined : pieceBodies(d.doc)[h.piece];
+        // a paragraph matched: it is the passage to show; the whole card or a picture matched: no passage
+        const hit = h.piece > 0 && h.range ? d.text.slice(h.range[0], h.range[1]) : undefined;
         // the picture that matched (an Image card's own, found by its words too), as the Markdown writes it
-        const pic = d.doc.images?.find((x) => x.key === h.picture)?.src ?? d.picture;
-        items.push({ ...o, detail: where, preview: preview(d.md, d.where, hit, pic), score: h.score } as SearchItem);
+        const pic = d.pictures?.find((x) => x.key === h.picture)?.src ?? d.picture;
+        const faint = h.score < FAINT_BELOW ? { faint: true } : {};
+        items.push({
+          ...o,
+          ...faint,
+          detail: where,
+          preview: preview(d.md, d.where, hit, pic),
+          score: h.score,
+        } as SearchItem);
         if (items.length >= TOP) break;
       }
-      return { items, left: this.left || undefined, error: this.error || undefined, model: await e.model() };
+      return { items, left: r.left || undefined, error: r.error || this.error || undefined, model: r.model };
     } catch (err) {
       return { items: [], error: (err as Error).message };
     }
   }
+}
+
+/** The manifest box keeps the storage folder's items under: its git branch (detached: the commit), "_" outside git */
+async function refOf(dir: string): Promise<string> {
+  const b = (await git(dir, ["rev-parse", "--abbrev-ref", "HEAD"]))?.trim();
+  if (!b) return "_";
+  if (b !== "HEAD") return b;
+  const sha = (await git(dir, ["rev-parse", "HEAD"]))?.trim();
+  return sha ? `detached:${sha}` : "_";
 }
 
 /** Every card and sidenote on the project's boards as a document (here's board first, so it is indexed first) */
@@ -229,7 +276,7 @@ async function projectDocs(store: Storage, here?: string, draw?: (svg: string) =
   const boards = (await store.all()).map((x) => x.board).sort((a, b) => (a.id === here ? -1 : b.id === here ? 1 : 0));
   const docs = new Map<
     string,
-    { doc: Omit<Doc, "images"> & { images?: Picture[] }; origin: Origin; md: string; where: string; picture?: string }
+    { title: string; text: string; pictures?: Picture[]; origin: Origin; md: string; where: string; picture?: string }
   >();
   const pictures = picturesIn(store, draw);
   const names = new Map(boards.map((b) => [b.id, b.name]));
@@ -251,12 +298,9 @@ async function projectDocs(store: Storage, here?: string, draw?: (svg: string) =
       }
       const title = cardTitle(c, board);
       docs.set(id, {
-        doc: {
-          id,
-          title,
-          text: cardText(c, board.place[c.id]?.summary?.text, c.kind === "image" ? await svgWords(store, c.src) : ""),
-          images: pictures(c),
-        },
+        title,
+        text: cardText(c, board.place[c.id]?.summary?.text, c.kind === "image" ? await svgWords(store, c.src) : ""),
+        pictures: pictures(c),
         where: whereOf(board, c.id),
         origin: { kind: "card", label: title, board: board.id, card: c.id, boards: [board.id] },
         md: cardMarkdown(c, board),
@@ -285,7 +329,8 @@ async function projectDocs(store: Storage, here?: string, draw?: (svg: string) =
       const host = board.cards.find((c) => c.id === n.at.card);
       const title = host ? cardTitle(host, board) : "";
       docs.set(id, {
-        doc: { id, title, text },
+        title,
+        text,
         where: whereOf(board, n.at.card),
         md: sidenoteMarkdown(n),
         origin: {
@@ -313,14 +358,17 @@ const RASTER: Record<string, string> = {
 /** Pictures embedded per card, at most (a Note full of screenshots still costs a bounded number) */
 const MAX_PICTURES = 4;
 
-/** A picture to embed, and its address as the card's Markdown writes it (for the preview) */
-type Picture = DocImage & { src: string };
+/** A picture to embed: its key (its content's), its data: URL when box needs it (undefined when it cannot be read or drawn
+ *  now), and its address as the card's Markdown writes it (for the preview) */
+type Picture = { key: string; url: () => Promise<string | undefined>; src: string };
+
+const fingerprint = (s: string) => createHash("sha256").update(s).digest("hex");
 
 /** A card's pictures, for embedding on their own: an Image card's, and the local images in a Note (files in assets/, named by
  *  their content, so the name is the key; a data: URL is its own). An SVG goes as the PNG draw makes of it, left out without
  *  one; one that cannot be read or drawn now is tried again on the next update */
 function picturesIn(store: Storage, draw?: (svg: string) => Promise<string | undefined>) {
-  const read = (file: string) => fs.readFile(path.join(store.assetsDir(), file)).catch(() => undefined);
+  const read = (file: string) => fs.promises.readFile(path.join(store.assetsDir(), file)).catch(() => undefined);
   const asset = (src: string): Omit<Picture, "src"> | undefined => {
     if (src.startsWith("data:")) {
       if (/^data:image\/(png|jpeg|gif|webp)[;,]/.test(src)) return { key: fingerprint(src), url: async () => src };
@@ -370,7 +418,7 @@ function picturesIn(store: Storage, draw?: (svg: string) => Promise<string | und
 async function svgWords(store: Storage, src: string): Promise<string> {
   const file = src.replace(/^assets\//, "");
   if (!/^[^\\/:]+\.svg$/i.test(file)) return "";
-  const svg = await fs.readFile(path.join(store.assetsDir(), file), "utf8").catch(() => "");
+  const svg = await fs.promises.readFile(path.join(store.assetsDir(), file), "utf8").catch(() => "");
   const ENT: Record<string, string> = { lt: "<", gt: ">", amp: "&", quot: '"', apos: "'", nbsp: " " };
   return [...svg.matchAll(/<text\b[^>]*>([\s\S]*?)<\/text>/g)]
     .map((m) =>

@@ -22,9 +22,17 @@ concurrency:
   group: release-${{ (github.event_name == 'release' || inputs.publish_tag) && format('publish-{0}', github.event.release.tag_name || inputs.publish_tag) || github.event.pull_request.number || github.ref }}
   cancel-in-progress: false
 jobs:
+  # box, the index service behind Related by Meaning, built and smoke-tested on each platform's own runner (box.yml)
+  box:
+    if: github.event_name != 'release' && !inputs.publish_tag
+    uses: ./.github/workflows/box.yml
+
   package:
+    needs: box
     if: github.event_name != 'release' && !inputs.publish_tag
     runs-on: ubuntu-24.04
+    env:
+      BOX_PREBUILT: "1" # the build would make this machine's box again: the downloaded ones are the ones released
     timeout-minutes: 15
     outputs:
       version: ${{ steps.v.outputs.version }}
@@ -40,7 +48,13 @@ jobs:
             echo "::error::Tag $TAG does not match extensions/vscode/package.json version $V. Bump the version there first, or tag v$V."; exit 1
           fi
           echo "version=$V" >> $GITHUB_OUTPUT
+      # every platform's box binary into packages/box/bin, where the extension's build copies them from
+      - uses: actions/download-artifact@v7
+        with: { pattern: "box-*", path: packages/box/bin, merge-multiple: true }
+      - run: chmod +x packages/box/bin/*/box # artifacts lose the executable bit
       - uses: ./.github/actions/setup
+      - name: Check every platform's box is in the extension
+        run: for p in linux-x64 darwin-arm64 darwin-x64; do test -x extensions/vscode/bin/$p/box; done && test -f extensions/vscode/bin/win32-x64/box.exe
       - name: Package the extension
         working-directory: extensions/vscode
         run: npm run package
