@@ -98,7 +98,10 @@ export function Canvas() {
   // tile a pan uncovers and every card a hover paints again with it, more than the GPU's tile memory holds: the tiles it cannot
   // keep were drawn as holes in the cards and images while the pointer moved. There a pan moves the world as it was last
   // rastered, a zoom rasters it at each frame's scale (at most the viewport's pixels), and a stop minified past 2× is rastered
-  // again like any other. Pushing into the detent is not a stop (summary.ts: the camera is held at the cut while the gesture
+  // again like any other. A wheel or pinch that zooms below HINT_MIN under the hint takes it off there, in the middle of the
+  // gesture: kept down to 0.3, the world stayed rastered at the device scale, and the stop's raster at its own scale needed
+  // those tiles and the new ones at once, more than the GPU's tile memory holds (a Warm Ink board with pictures in view): the
+  // board showed blank for 1–3 frames about 0.2 s after the stop (Linda 11-08). Pushing into the detent is not a stop (summary.ts: the camera is held at the cut while the gesture
   // goes on), so no re-raster lands under the switch's mist.
   // A camera flight that zooms out (Fit to Window, a reveal, the zoom keys) takes the hint off once it is shown at about half
   // its raster scale (FLY_HALF): under the hint every tile that comes into view on the way is rastered at the scale the flight
@@ -149,6 +152,10 @@ export function Canvas() {
           unhinted = false;
           if (hintable(z)) hint();
         } else if ((!out || !rehinted) && settle() && hintable(z)) hint();
+        else if (!out && !settle() && !hintable(z)) {
+          rasterZ = z;
+          setSettle(true);
+        }
         return;
       }
       if (!moving) return;
