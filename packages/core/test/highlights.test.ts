@@ -31,6 +31,7 @@ import {
   splitSegment,
   toggleBoardOnly,
   toggleVariantOnly,
+  writeFreeCode,
   type CommandEnv,
   type FitMeasure,
 } from "../src/commands";
@@ -499,6 +500,30 @@ describe("keeping fitted code cards fitted when sidenotes go on lines", () => {
     addSidenotes(envOf(b), [text("l", [2, 3], true)], fit);
     expect([b.place.a.h, b.place.l.h]).toEqual([110, undefined]);
     deleteSidenote(envOf(b), na, fit);
+    expect(b.place.a.h).toBeUndefined();
+  });
+  it("a card grown by its Always Show notes fits its Free code after an edit, and follows its content once they are hidden", () => {
+    const b = emptyBoard("b", "b");
+    b.cards.push(code("a"), code("p"));
+    b.place.a = { x: 0, y: 0, w: 300 };
+    b.place.p = { x: 400, y: 0, w: 300 }; // no Always Show note: a code edit leaves its size to its content
+    // 2px a line, 30px an Always Show note
+    const fit: FitMeasure = {
+      measure: (id) => {
+        const lines = (b.cards.find((c) => c.id === id) as CodeCard).segments[0].text.length;
+        const n = b.sidenotes.filter((x) => x.at.card === id && x.kind === "text" && x.alwaysShow).length;
+        return { h: 2 * lines + 30 * n, body: 2 * lines + 30 * n };
+      },
+      codeMax: 100,
+    };
+    const [na, nb] = addSidenotes(envOf(b), [text("a", [2, 3], true), text("a", [5, 6], true)], fit);
+    expect(b.place.a.h).toBe(120); // 30 lines and two notes: past the cap, stored
+    const lines = Array.from({ length: 40 }, (_, i) => `x${i + 1} = ${i + 1}`).join("\n");
+    writeFreeCode(envOf(b), "a", lines, fit);
+    writeFreeCode(envOf(b), "p", lines, fit);
+    expect([b.place.a.h, b.place.p.h]).toEqual([140, undefined]);
+    deleteSidenote(envOf(b), na, fit);
+    deleteSidenote(envOf(b), nb, fit);
     expect(b.place.a.h).toBeUndefined();
   });
 });

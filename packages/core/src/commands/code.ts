@@ -91,9 +91,11 @@ const firstSeg = (env: CommandEnv, id: string): Segment | undefined => {
 
 /**
  * Write a Free code card's text. Its language follows the text unless it was picked by hand (unchanged when the text looks like
- * no language). A new card written empty goes as if it never was (env.fresh). The segment as written, or none when it went
+ * no language). A new card written empty goes as if it never was (env.fresh). Always Show notes on it move with their lines, so
+ * a card that showed all its content fits it again (keepFitted; fit: measured with the card showing its code and notes as they
+ * were before the edit, not the editor). The segment as written, or none when it went
  */
-export function writeFreeCode(env: CommandEnv, id: string, text: string): Segment | undefined {
+export function writeFreeCode(env: CommandEnv, id: string, text: string, fit?: FitMeasure): Segment | undefined {
   const set = (b: Board) => {
     const c = findCard(b, id)?.card;
     if (!isCode(c)) return;
@@ -105,7 +107,7 @@ export function writeFreeCode(env: CommandEnv, id: string, text: string): Segmen
     rebaseSegment(b, id, ns);
   };
   if (env.fresh.is(id)) env.fresh.settle(id, !!text.trim(), set);
-  else env.edit(set);
+  else keepFitted(env, id, fitIfShown(env.board(), id, fit), set);
   return firstSeg(env, id);
 }
 

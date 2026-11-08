@@ -16,6 +16,8 @@
 //  sidenoteAlwaysShowGrowsAutoCard a card with no stored height that shows all its code (under the cap) grows with the Always Show
 //                               notes turned on in the popover, past the cap: every line stays in view, no scrollbar; turned off
 //                               again it shrinks back to following its content (no stored height), each one undo step
+//  sidenoteAlwaysShowGrowsAutoCardCodeEdit the same card grown by its notes, then two lines added to its Free code: it fits the new
+//                               code (every line in view); the notes turned off, it follows its content again (no stored height)
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { DEFAULT_SETTINGS, emptyBoard, type Board, type CodeCard } from "@codeboard/core";
@@ -432,7 +434,9 @@ const VECADD = [
   "}",
 ];
 
-test("sidenoteAlwaysShowGrowsAutoCard", async () => {
+/** The vecAdd Free code card at w=640 with no stored height (all its code shown, under the cap), notes on 5–7 and 9–10 not
+ *  shown yet; toggle flips one's Always Show in its Highlight's popover */
+async function vecAddCard() {
   const b = emptyBoard("b1", "vecadd");
   put(
     b,
@@ -503,6 +507,11 @@ test("sidenoteAlwaysShowGrowsAutoCard", async () => {
     await pg.keyboard.press("Escape");
     await idle(h);
   };
+  return { h, pg, shown, snap, all, toggle };
+}
+
+test("sidenoteAlwaysShowGrowsAutoCard", async () => {
+  const { h, pg, shown, snap, all, toggle } = await vecAddCard();
   const plain = await snap();
   await toggle("n1", "5-7");
   await toggle("n2", "9-10");
@@ -529,6 +538,40 @@ test("sidenoteAlwaysShowGrowsAutoCard", async () => {
     "sidenoteAlwaysShowGrowsAutoCard turned off again it follows its content, with no stored height",
     all(undone) && undone.h < on.h && all(off) && off.ph === null && Math.abs(off.h - plain.h) <= 1,
     { undone, off },
+  );
+  await h.close();
+});
+
+test("sidenoteAlwaysShowGrowsAutoCardCodeEdit", async () => {
+  const { h, pg, snap, all, toggle } = await vecAddCard();
+  const plain = await snap();
+  await toggle("n1", "5-7");
+  await toggle("n2", "9-10");
+  // the card grew with its notes (its height stored): add two lines at the end of the code
+  await pg.locator('.card[data-id="k1"] .src .l').nth(1).dblclick();
+  await pg.waitForSelector('.card[data-id="k1"] .cm-content');
+  await pg.keyboard.press("ControlOrMeta+End");
+  await pg.keyboard.press("Enter");
+  await pg.keyboard.type("// one");
+  await pg.keyboard.press("Enter");
+  await pg.keyboard.type("// two");
+  await pg.keyboard.press("Escape");
+  const text = () => (h.board().cards.find((c) => c.id === "k1") as CodeCard).segments[0].text;
+  await until(h, "the code is written with two more lines", () => text().length === VECADD.length + 2);
+  await idle(h);
+  const edited = await snap();
+  check(
+    "sidenoteAlwaysShowGrowsAutoCardCodeEdit the grown card fits its new code: every line in view",
+    all(edited) && edited.ph !== null,
+    { edited },
+  );
+  await toggle("n2", "9-10");
+  await toggle("n1", "5-7");
+  const off = await snap();
+  check(
+    "sidenoteAlwaysShowGrowsAutoCardCodeEdit notes turned off again it follows its content, with no stored height",
+    all(off) && off.ph === null && off.h > plain.h,
+    { plain, off },
   );
   await h.close();
 });

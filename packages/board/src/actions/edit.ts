@@ -27,7 +27,7 @@ import { lastStep, stepIsLatest, undoStep } from "../state/changes";
 import { fitMeasure } from "./fit";
 import { animate, Spring } from "../state/camera";
 import { reduceMotion } from "../state/motion";
-import { setEditing, setEditEntry, codeTextRange, staged, setStaged } from "../state/ui";
+import { editing, setEditing, setEditEntry, codeTextRange, staged, setStaged } from "../state/ui";
 import { foldOf, setFold, setFoldV, setFoldHome, setSkel, unskel, type Fold } from "../state/fold";
 import { farAway } from "../state/cull";
 import { SKEL_OUT, SECTION_FIT } from "../state/timing";
@@ -301,8 +301,11 @@ export const setDesc = (id: string, v: string) => C.setCardDesc(commandEnv, id, 
  *  heights or code wrap (null = all automatic again); left out = unchanged */
 export const setNoteText = (id: string, v: string, layout?: NoteLayout | null) =>
   C.writeNote(commandEnv, id, v, layout);
+/** Ends a Free code edit: the card shows its code and Always Show notes again before the text is written, so that a card that
+ *  showed all its content is measured as it was and fits its new content (keepFitted) */
 export function setFreeCode(id: string, text: string) {
-  const seg = C.writeFreeCode(commandEnv, id, text);
+  if (editing()?.id === id) setEditing(null);
+  const seg = C.writeFreeCode(commandEnv, id, text, fitMeasure);
   if (seg) requestViews([seg]);
 }
 /** lang = null：回到按内容自动识别 */
