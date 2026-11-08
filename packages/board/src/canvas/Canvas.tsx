@@ -37,6 +37,7 @@ import { useMd } from "../md/context";
 import { Summaries } from "./Summaries";
 import { ShelfOutline } from "../ui/ShelfPanel";
 import { cardsAsleep, cardsGone, cardsOpacity, detent } from "../state/summary";
+import { GREEK_LAG } from "../state/timing";
 
 /** The world-extent boxes (.wext, .cshield) reach this far beyond the cards and Sections, aligned to it: enough that a card
  *  nudged outward does not move them, and no more, since every tile of the box within ~3000 px of the viewport is a raster task
@@ -54,8 +55,6 @@ const HINT_KEEPS = 0.25;
  *  prose drawn as bars below it (.world.greek) keeps cheap: drawn as text, the first frames of a pinch at 0.3–0.5 took 30–50 ms
  *  each on a 2× Mac on a board of dense Chinese Notes */
 const HINT_MIN = 0.5;
-/** How long after a stop the Notes' prose and its bars swap (Simplify Below; see greek): the stop's raster first */
-const GREEK_LAG = 300;
 /** A flight drops the hint (or rasters again under it) a little before it is shown at half the scale it was rastered at: the
  *  raster lags the camera by a frame or two at a flight's speed, and what is rastered under the hint then is drawn further out
  *  (at half, up to a sixth of a Fit's raster on an Ink Wash board was at over 2× the scale it was drawn at, 2–3 % at 1.8) */
@@ -169,16 +168,14 @@ export function Canvas() {
   const simple = createMemo(() => stillZ() < state.host.settings.simpleBelow && !cardsGone());
   const [greek, setGreek] = createSignal(simple());
   let lagT: number | undefined;
-  const swapWhenStill = (g: boolean) => {
-    lagT = window.setTimeout(() => (camMoving() ? swapWhenStill(g) : setGreek(g)), GREEK_LAG);
-  };
+  // every stop (camMoving false again) starts the full GREEK_LAG over; while the camera moves nothing swaps
   createEffect(
     on(
-      [simple, cardsGone],
-      ([g, gone], prev) => {
+      [simple, cardsGone, camMoving],
+      ([g, gone, m], prev) => {
         clearTimeout(lagT);
         if (gone || prev?.[1]) setGreek(g);
-        else if (g !== greek()) swapWhenStill(g);
+        else if (!m && g !== greek()) lagT = window.setTimeout(() => setGreek(g), GREEK_LAG);
       },
       { defer: true },
     ),
