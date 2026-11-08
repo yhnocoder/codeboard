@@ -348,12 +348,16 @@ final class CardLayer: CALayer {
   }
   private var resizeLanded: (() -> Void)?
 
-  func move(to p: CGPoint, section: String? = nil) {
+  func move(to p: CGPoint) {
     card.x = p.x
     card.y = p.y
-    if let section { card.section = section }
     frame.origin = p
     placeBar()
+  }
+  /** Placed elsewhere by a change: in the Section it landed in, or none */
+  func move(to p: CGPoint, section: String?) {
+    card.section = section
+    move(to: p)
   }
 
   /** The image's size from its header: cheap, for measuring the card */
@@ -1123,6 +1127,7 @@ final class SectionLayer: CALayer {
     let relabel = s.title != section.title || s.count != section.count || s.collapsed != section.collapsed
       || (Theme.isInk && s.collapsed != true && s.w != section.w)
     section = s
+    grown = nil  // the canvas grows it again around the cards as drawn (CanvasView.reframeSections)
     layoutLook()
     recolor()
     if relabel { drawLabel() }
@@ -1133,6 +1138,18 @@ final class SectionLayer: CALayer {
     recolor()
     drawLabel()
   }
+  /** The open frame grown around the cards as drawn (CanvasView.reframeSections); nil = the scene's, around their estimates */
+  private var grown: CGRect?
+  /** The frame while open: the board's sectionFrame over the cards as drawn, or the scene's until the canvas grew it */
+  var openFrame: CGRect { grown ?? CGRect(x: section.x, y: section.y, width: section.w, height: section.h) }
+  /** A card in it was drawn another height than estimated (a Note's page): the frame follows, as the board's does */
+  func grow(to r: CGRect) {
+    guard r != openFrame else { return }
+    let wider = r.width != openFrame.width
+    grown = r
+    layoutLook()
+    if Theme.isInk && !shut && wider { drawLabel() }
+  }
   /** The title's margins from the frame's corner (.slabel --ml / --mt; collapsed Ink Wash has its own) */
   private var margins: CGPoint {
     shut
@@ -1142,9 +1159,10 @@ final class SectionLayer: CALayer {
   /** The frame and the strokes for the look; the collapsed frame from the label's size */
   private func layoutLook() {
     let s = section, ink = Theme.isInk, m = margins
-    labelSize = SectionLayer.measure(s, ink: ink, shut: shut, frameWidth: CGFloat(s.w))
+    let open = openFrame
+    labelSize = SectionLayer.measure(s, ink: ink, shut: shut, frameWidth: open.width)
     let shutSize = CGSize(width: m.x + labelSize.width + SectionLayer.shutPadRight, height: 2 * m.y + labelSize.height)
-    frame = CGRect(x: s.x, y: s.y, width: shut ? shutSize.width : s.w, height: shut ? shutSize.height : s.h)
+    frame = shut ? CGRect(origin: CGPoint(x: s.x, y: s.y), size: shutSize) : open
     let r = bounds
     for l in [shape, hilite, wash, ring] { l.frame = r }
     if ink {
@@ -1270,7 +1288,7 @@ final class SectionLayer: CALayer {
     let g = labelGen
     let s = section, ink = Theme.isInk, shut = shut, sel = selected, scale = labelScale, appearance = Theme.appearance
     let size = CGSize(width: labelSize.width + SectionLayer.dotsRoom, height: labelSize.height)
-    let titleW = SectionLayer.titleWidth(s, ink: ink, shut: shut, frameWidth: CGFloat(s.w))
+    let titleW = SectionLayer.titleWidth(s, ink: ink, shut: shut, frameWidth: openFrame.width)
     CardLayer.queue.addOperation {
       let surface = CardLayer.surface(size, scale: scale) {
         appearance.performAsCurrentDrawingAppearance {
@@ -1294,10 +1312,12 @@ final class SectionLayer: CALayer {
             }
           }
           var x = SectionLayer.dotsRoom + p.left
-          // the drag dots left of the box (.slabel .dots: 11 px, letter-spacing −2, 1 px right of them), while selected
+          // the drag dots left of the box while selected (.slabel .dots: absolute, top 1 px of the label's box, 11 px in the
+          // label's line height, letter-spacing −2, 1 px right of them)
           if sel && !shut {
-            let dots = NSAttributedString(string: "⋮⋮", attributes: [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: ink3, .kern: -2])
-            dots.draw(at: CGPoint(x: SectionLayer.dotsRoom - 1 - dots.size().width, y: lineTop + 1))
+            let df = NSFont.systemFont(ofSize: 11)
+            let dots = NSAttributedString(string: "⋮⋮", attributes: [.font: df, .foregroundColor: ink3, .kern: -2])
+            dots.draw(at: CGPoint(x: SectionLayer.dotsRoom - 1 - dots.size().width, y: 1 + (f.line - (df.ascender - df.descender)) / 2))
           }
           let title = NSAttributedString(string: s.title, attributes: [.font: f.title, .foregroundColor: colour, .kern: f.kern])
           draw(title, font: f.title, x: x, width: ink && !shut ? titleW : nil)

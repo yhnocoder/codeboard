@@ -284,7 +284,9 @@ final class CanvasView: NSView {
     for c in s.cards { putCard(c) }
     for l in s.links { putLink(l) }
     for k in s.stickers { putSticker(k) }
+    sectionPad = s.sectionPad
     refold()
+    reframeSections()
     CATransaction.commit()
     showPorts()
     relayer()
@@ -309,6 +311,7 @@ final class CanvasView: NSView {
     for l in ch.links { putLink(l) }
     for k in ch.stickers { putSticker(k) }
     refold()
+    reframeSections()
     CATransaction.commit()
     showPorts()
     routeAll()
@@ -323,6 +326,10 @@ final class CanvasView: NSView {
       l.isHidden = true  // drawn once the camera says it is near (cull)
       l.handover = { [weak self] layer, surface, scale, gen in self?.enqueue(layer, surface, scale, gen) }
       l.onMeasured = { [weak self] l in
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        self?.reframeSections()
+        CATransaction.commit()
         self?.routeAround([l.card.id])
         self?.showPorts()
       }
@@ -1096,13 +1103,47 @@ final class CanvasView: NSView {
     for id in selectedSections { if let s = sectionLayers[id] { fold(s, shut: s.section.collapsed != true) } }
   }
   private func fold(_ s: SectionLayer, shut: Bool) {
-    let k = s.section
-    delegate?.canvas(self, foldSection: k.id, shut: shut, open: WorldRect(x: k.x, y: k.y, w: k.w, h: k.h))
+    let o = s.openFrame
+    delegate?.canvas(self, foldSection: s.section.id, shut: shut, open: WorldRect(x: o.minX, y: o.minY, w: o.width, h: o.height))
   }
   /** The Arrow tool is armed: the next drag from a card links it to the card it ends on */
   var arrowMode = false
   /** Cards inside folded Sections: not drawn, not hit */
   private var folded: Set<String> = []
+  private var sectionPad: SectionPad?
+  /** Each open Section's frame as the board draws it (core layout.ts sectionFrame, the board's state/sections.ts frames): its
+   *  own rect grown around each card in it as drawn and each nested Section's frame (a folded one's pill), each padded by
+   *  SECTION_PAD. The scene's frames count a Note at its estimate; a Note's page that lands taller stretches the frame here */
+  func reframeSections() {
+    guard let pad = sectionPad, !sectionLayers.isEmpty else { return }
+    let padded = { (r: CGRect) in
+      CGRect(x: r.minX - pad.l, y: r.minY - pad.t, width: r.width + pad.l + pad.r, height: r.height + pad.t + pad.b)
+    }
+    var members: [String: [CGRect]] = [:]
+    // a dragged card does not stretch the frame it is leaving (the board's frames skip it too)
+    let dragged = Set(drag?.ids ?? [])
+    for l in cardLayers.values where !dragged.contains(l.card.id) {
+      if let s = l.card.section { members[s, default: []].append(l.worldRect) }
+    }
+    var kids: [String: [SectionLayer]] = [:]
+    for l in sectionLayers.values { if let p = l.section.parent { kids[p, default: []].append(l) } }
+    var done: [String: CGRect] = [:]
+    func frame(_ l: SectionLayer, _ depth: Int) -> CGRect {
+      let id = l.section.id
+      if l.shut { return l.frame }
+      if let f = done[id] { return f }
+      var r = l.section.own.cg
+      done[id] = r  // a cycle (which should not be) stops at the stored rect
+      if depth < 50 {
+        for k in members[id] ?? [] { r = r.union(padded(k)) }
+        for k in kids[id] ?? [] { r = r.union(padded(frame(k, depth + 1))) }
+      }
+      done[id] = r
+      l.grow(to: r)
+      return r
+    }
+    for l in sectionLayers.values { _ = frame(l, 0) }
+  }
   /** After a scene change: which cards folded Sections hide, and the arrows between them */
   private func refold() {
     var shut = Set(sectionLayers.values.filter { $0.section.collapsed == true }.map { $0.section.id })

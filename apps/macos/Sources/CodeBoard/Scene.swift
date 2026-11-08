@@ -120,6 +120,16 @@ struct SceneSection: Decodable {
   var seed: Int
   /** The cards in it, nested Sections' included ("· N cards" on the collapsed frame) */
   var count: Int
+  /** Its own rect as stored; the canvas grows it around its cards as drawn (x / y / w / h: around their estimates) */
+  var own: SceneRect
+}
+struct SceneRect: Decodable, Equatable {
+  var x, y, w, h: Double
+  var cg: CGRect { CGRect(x: x, y: y, width: w, height: h) }
+}
+/** The room a Section's frame leaves around each card and nested Section in it (core layout.ts SECTION_PAD) */
+struct SectionPad: Decodable {
+  var l, r, t, b: Double
 }
 struct SceneEnd: Decodable {
   var card: String
@@ -158,6 +168,7 @@ struct Scene: Decodable {
   var stickers: [SceneSticker]
   /** The routing model for RouteWorker, passed through as it came */
   var routing: AnyJSON
+  var sectionPad: SectionPad
 }
 /** A JSON value kept as it is (decoded and encoded back without a Swift shape) */
 enum AnyJSON: Codable {

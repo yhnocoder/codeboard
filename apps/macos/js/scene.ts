@@ -6,6 +6,7 @@ import {
   cardTitle,
   codeGlyph,
   estSize,
+  SECTION_PAD,
   sectionFrames,
   type Board,
   type Card,
@@ -97,6 +98,8 @@ export type SceneSection = Pick<
   seed: number;
   /** The cards in it, nested Sections' included (the collapsed frame says "· N cards": the board's allMembers) */
   count: number;
+  /** Its own rect as stored: the shell grows it around its cards as drawn (x / y / w / h are the frame around their estimates) */
+  own: { x: number; y: number; w: number; h: number };
 };
 export type SceneLink = {
   id: string;
@@ -124,6 +127,8 @@ export type Scene = {
   links: SceneLink[];
   /** What the shell's own router (off the main thread, during a drag) routes with */
   routing: RouteModel;
+  /** The room a Section's frame leaves around each card and nested Section in it (core SECTION_PAD) */
+  sectionPad: typeof SECTION_PAD;
 };
 /** What changed: items to put in (added or changed) and ids that are gone */
 export type SceneChange = {
@@ -403,6 +408,7 @@ export const sceneSection = (b: Board, s: Section): SceneSection => {
     h: r.h,
     seed: fnv(s.id) & 0xffffff,
     count: memberCount(b, s.id),
+    own: { x: s.x, y: s.y, w: s.w, h: s.h },
   };
   if (s.parent) out.parent = s.parent;
   if (s.color) out.color = s.color;
@@ -441,5 +447,6 @@ export async function scene(b: Board, env: SceneEnv, quick = false): Promise<Sce
     stickers: b.stickers.flatMap((s) => sceneSticker(b, s) ?? []),
     links: b.links.map((l) => sceneLink(b, l)),
     routing: routeModel(b),
+    sectionPad: SECTION_PAD,
   };
 }

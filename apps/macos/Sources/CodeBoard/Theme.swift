@@ -47,6 +47,33 @@ enum Theme {
     let urls = files.filter { $0.pathExtension == "ttf" }
     if urls.isEmpty { return }
     CTFontManagerRegisterFontURLs(urls as CFArray, .process, true) { _, _ in true }
+    // a family the stylesheets split into unicode-range files: every file carries the same names, so a font asked for by name
+    // is whichever one Core Text kept, and the characters it lacks fall to the next family. Kept here by file instead
+    for (family, stem) in splitFamilies {
+      let parts = urls.filter { $0.lastPathComponent.hasPrefix(stem) }.sorted { a, b in
+        let la = a.lastPathComponent.contains("latin"), lb = b.lastPathComponent.contains("latin")
+        return la != lb ? la : a.lastPathComponent < b.lastPathComponent
+      }
+      let ds = parts.compactMap { (CTFontManagerCreateFontDescriptorsFromURL($0 as CFURL) as? [CTFontDescriptor])?.first }
+      if !ds.isEmpty { subsets[family] = ds }
+    }
+  }
+  /** The board's fonts split into unicode-range files (fonts-zhimangxing.css): family → its files' stem */
+  private static let splitFamilies = ["Zhi Mang Xing": "ZhiMangXing-"]
+  /** Each split family's files (the Latin one first), registered once at launch and read-only after */
+  private static var subsets: [String: [CTFontDescriptor]] = [:]
+  /** A split family as the browser sets it: its first file, then each other file, then the `cascade` families */
+  static func split(_ family: String, _ size: CGFloat, cascade: [String] = []) -> NSFont? {
+    guard let ds = subsets[family], let first = ds.first else { return nil }
+    let key = "split|\(family)|\(size)|\(cascade.joined(separator: ","))"
+    fontLock.lock()
+    defer { fontLock.unlock() }
+    if let f = fontCache[key] { return f }
+    let list = Array(ds.dropFirst()) + cascade.map { CTFontDescriptorCreateWithAttributes([kCTFontFamilyNameAttribute: $0] as CFDictionary) }
+    let d = CTFontDescriptorCreateCopyWithAttributes(first, [kCTFontCascadeListAttribute: list] as CFDictionary)
+    let f = CTFontCreateWithFontDescriptor(d, size, nil) as NSFont
+    fontCache[key] = f
+    return f
   }
   /** The board's icons (icons.json, from ui/icons.tsx): stroked and filled paths on a 16 grid, parsed by load and read-only after */
   struct Icon {
@@ -225,6 +252,6 @@ enum Theme {
   }
   /** Ink Wash's Section titles: Zhi Mang Xing, the serif after it (themes.css .slabel) */
   static func brushHand(_ size: CGFloat) -> NSFont {
-    family("Zhi Mang Xing", size, cascade: ["Xingkai SC", "Source Serif 4", "Songti SC"]) ?? serif(size)
+    split("Zhi Mang Xing", size, cascade: ["Xingkai SC", "Source Serif 4", "Songti SC"]) ?? serif(size)
   }
 }

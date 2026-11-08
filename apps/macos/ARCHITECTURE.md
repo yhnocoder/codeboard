@@ -61,5 +61,6 @@ from the viewport; Sections and arrows are shape layers rasterised by Core Anima
 the arrows from core's numeric paths. The world's layers are the board's, bottom up: Section frames, the arrows (under every
 card), the cards, the Section titles, the stickers, and `top`, where an arrow rides while it is selected, dragged or on the
 card under the pointer (`relayer`). An arrow's end sits on a code line as the card drew it: a drawn card hands routing its
-rows (`WorldRect.rows`). Colours and sizes come from `themes.json`, generated from the board's stylesheets at build time
+rows (`WorldRect.rows`). A Section's frame is the board's: its stored rect grown around its cards as drawn (a Note's page
+often lands taller than the scene's estimate) and its nested Sections, padded by core's `SECTION_PAD` (`reframeSections`). Colours and sizes come from `themes.json`, generated from the board's stylesheets at build time
 (`themes.mjs`: tokens, and picked declarations such as Warm Ink's arrow colour or a Section's border).
