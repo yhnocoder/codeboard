@@ -84,9 +84,10 @@ Hugging Face.
 ## rerank
 
 The same request as `search` → the same answer, with its first text hits (up to 10) read again by the reranker on the
-whole item text (title and text), the list in the fused order: `0.1 · minmax(vector) + 0.9 · minmax(rerank)` within those
-hits (the weight tuned on the persona benchmark only). Each hit the reranker read has its raw score (a logit) as `rerank`;
-`reranked` is how many it read. Picture hits keep their vector score and place. An error while the reranker is not
+whole item text (title and text), those texts in the fused order `0.1 · minmax(vector) + 0.9 · minmax(rerank)` (over the
+texts read) in the places text hits hold (the weight tuned on the persona benchmark only). Picture hits keep their vector
+score and place; with fewer than two texts read the order stays. Each hit the reranker read has its raw score (a logit) as
+`rerank`; `reranked` is how many it read. An error while the reranker is not
 downloaded or box is built without it. Clients show `search`'s answer first and reorder when this one comes.
 
 ## forget

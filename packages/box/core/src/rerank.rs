@@ -1,8 +1,9 @@
 //! The reranker: after a search by meaning, its best RERANK_TOP text hits are read again together with the query by a
 //! cross-encoder (hindsight-ai/hs-rerank-1: MIT, mmBERT-small, 114M; ONNX with an int8 vocabulary table, run with ONNX
 //! Runtime behind the cargo feature `rerank`) on the item's WHOLE text (title and text: the best piece alone measured much
-//! worse), and the list is ordered by w·minmax(vector) + (1−w)·minmax(rerank) within those hits. Pictures keep their vector
-//! score (a text model cannot see them). Off unless a client asks (rerank), downloaded only on request (model.rs).
+//! worse), and those texts are ordered by w·minmax(vector) + (1−w)·minmax(rerank) among them, in the places text hits hold.
+//! Pictures keep their places (a text model cannot see them). Off unless a client asks (rerank), downloaded only on request
+//! (model.rs).
 //!
 //! Measured on persona (2026-11, search-index/impl/step2/rerank): top 10 reranked, top 30 slower and no better; FUSE_W was
 //! chosen on persona87 only (MRR 76.3 → 81.4) and checked on fresh2, which no setting was tuned on (68.9 → 74.8). The raw
@@ -27,29 +28,24 @@ fn minmax(xs: &[f32]) -> Vec<f32> {
         .collect()
 }
 
-/// The fused order of hits by their vector scores and reranker scores (None: a picture, which keeps its vector score):
-/// indexes into the hits, best first; ties keep the vector order
+/// The fused order of hits by their vector scores and reranker scores (None: a picture, which the reranker cannot read):
+/// indexes into the hits, best first. Only the text hits move, among the places text hits hold, by w·minmax(vector) +
+/// (1−w)·minmax(rerank) over the texts alone; pictures keep their places (their scores are on another scale). With fewer
+/// than two texts read there is nothing to compare (minmax of one is 0) and the order stays; ties keep the vector order
 pub fn fuse(vector: &[f32], rerank: &[Option<f32>], w: f32) -> Vec<usize> {
-    let v = minmax(vector);
-    let got: Vec<f32> = rerank.iter().flatten().copied().collect();
-    let r = minmax(&got);
-    let mut k = 0;
-    let fused: Vec<f32> = rerank
-        .iter()
-        .zip(&v)
-        .map(|(x, &vn)| {
-            let rn = match x {
-                Some(_) => {
-                    k += 1;
-                    r[k - 1]
-                }
-                None => vn,
-            };
-            w * vn + (1.0 - w) * rn
-        })
-        .collect();
     let mut order: Vec<usize> = (0..vector.len()).collect();
-    order.sort_by(|a, b| fused[*b].total_cmp(&fused[*a]));
+    let texts: Vec<usize> = (0..vector.len()).filter(|&i| rerank[i].is_some()).collect();
+    if texts.len() < 2 {
+        return order;
+    }
+    let v = minmax(&texts.iter().map(|&i| vector[i]).collect::<Vec<_>>());
+    let r = minmax(&texts.iter().filter_map(|&i| rerank[i]).collect::<Vec<_>>());
+    let fused: Vec<f32> = v.iter().zip(&r).map(|(vn, rn)| w * vn + (1.0 - w) * rn).collect();
+    let mut by: Vec<usize> = (0..texts.len()).collect();
+    by.sort_by(|a, b| fused[*b].total_cmp(&fused[*a]));
+    for (slot, k) in texts.iter().zip(by) {
+        order[*slot] = texts[k];
+    }
     order
 }
 
@@ -150,16 +146,28 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_fused_order_weighs_both_scores_and_pictures_keep_their_vector_score() {
+    fn the_fused_order_weighs_both_scores_and_pictures_keep_their_places() {
         // the reranker likes the third hit most; with w small its order wins
         let v = [0.80, 0.75, 0.70, 0.65];
         let r = [Some(-3.0), Some(-1.0), Some(4.0), None];
         assert_eq!(fuse(&v, &r, 0.1), [2, 1, 0, 3]);
         // all vector: the vector order
         assert_eq!(fuse(&v, &r, 1.0), [0, 1, 2, 3]);
-        // a picture with the best vector score stays first when the reranker does not separate the texts
+        // texts the reranker does not separate keep the vector order
         let r = [None, Some(1.0), Some(1.0), Some(1.0)];
         assert_eq!(fuse(&v, &r, 0.1), [0, 1, 2, 3]);
+        // the texts trade places around a picture, which stays where it was
+        let r = [Some(-3.0), None, Some(4.0), Some(0.0)];
+        assert_eq!(fuse(&v, &r, 0.1), [2, 1, 3, 0]);
+    }
+
+    #[test]
+    fn one_text_read_keeps_its_place_ahead_of_pictures_it_beat() {
+        // minmax of a single reranker score is 0: fusing would drop the best hit behind a picture
+        let v = [0.70, 0.65, 0.60];
+        assert_eq!(fuse(&v, &[Some(2.0), None, None], 0.1), [0, 1, 2]);
+        assert_eq!(fuse(&v, &[None, Some(-5.0), None], 0.1), [0, 1, 2]);
+        assert_eq!(fuse(&[], &[], 0.1), Vec::<usize>::new());
     }
 
     /// The real model, when its files are there (BOX_RERANKER: a folder with model.onnx and tokenizer.json)
