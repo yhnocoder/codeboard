@@ -66,10 +66,12 @@ export class Images {
   /** The sources shown: the original or a smaller copy, for the size each image is seen at */
   readonly pictures: Pictures;
 
-  /** changed: the resolver changed (everything redraws), or an image learned its size (raw: the address it is written as) */
+  /** changed: the resolver changed (everything redraws), or an image learned its size (raw: the address it is written as);
+   *  eager: loaded at once and drawn only decoded (MarkdownOptions.eagerImages) */
   constructor(
     private changed: (raw?: string) => void,
     o: PictureOptions = {},
+    private eager = false,
   ) {
     this.pictures = new Pictures((raw) => this.resolver?.(raw), o);
   }
@@ -134,8 +136,8 @@ export class Images {
       // an animated image's still frame and always-play ({frame=N loop=true}), for a page that plays animated images itself
       "data-frame": a.frame ? String(a.frame) : null,
       "data-loop": a.loop ? "" : null,
-      loading: "lazy",
-      decoding: "async",
+      loading: this.eager ? null : "lazy",
+      decoding: this.eager ? "sync" : "async",
     };
   }
 

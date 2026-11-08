@@ -101,7 +101,8 @@ async function imgBox(h: Host, id: string, sel: string) {
       h: Math.round(r.height * 10) / 10,
       sized: el.hasAttribute("width") && el.hasAttribute("height"),
       src: el.getAttribute("src"),
-      lazy: el.getAttribute("loading") === "lazy",
+      // loaded at once and drawn only decoded (the board's eagerImages)
+      eager: !el.hasAttribute("loading") && el.getAttribute("decoding") === "sync",
     };
   });
 }
@@ -137,7 +138,7 @@ test("notePastedImageSameSizeInBothModes", async () => {
   );
   check(
     "notePastedImageSrcResolved",
-    edit.src === `${base}/${files[0]}` && disp.src === edit.src && disp.sized && edit.sized && disp.lazy,
+    edit.src === `${base}/${files[0]}` && disp.src === edit.src && disp.sized && edit.sized && disp.eager,
     { edit, disp },
   );
   // the Note body is 520 wide minus padding: the 800-pixel screenshot is scaled to it, keeping 16:9

@@ -55,6 +55,9 @@ export function wireBoard(t: Transport, o: BoardOptions): Markdown {
       return !id || !offscreen(id);
     },
     makeImageCopy: (src, width) => makeCopy(md, src, width),
+    // a zoom or a pan brings images into view by the camera's transform: loaded at once and drawn only decoded, never drawn as
+    // nothing until a lazy load or an async decode lands (cards/Card.tsx draws Image cards the same way)
+    eagerImages: true,
   });
   connectHost(t, (m) => onHost(m, md));
   checkEdits(o.selfCheck);

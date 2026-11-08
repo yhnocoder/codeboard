@@ -846,15 +846,15 @@ function ImageView(p: { card: ImageCard }) {
     <>
       {/* 跟 Note 一样没有标题栏：整张图都能拖，菜单用右键 */}
       <div class="imgb" data-drag ref={box}>
-        {/* src, data-full (the original, for export): md.showImage; data-w: its width, a copy's naturalWidth is not (measure.ts) */}
+        {/* src, data-full (the original, for export): md.showImage; data-w: its width, a copy's naturalWidth is not (measure.ts).
+            Loaded at once and drawn only decoded, as a Note's images (wire.ts eagerImages): never blank while it comes into view */}
         <img
           ref={img}
           data-w={natural()?.width}
           style={natural() ? { "aspect-ratio": `${natural()!.width} / ${natural()!.height}` } : undefined}
           alt={p.card.alt ?? ""}
           draggable={false}
-          decoding="async"
-          loading="lazy"
+          decoding="sync"
           data-frame={p.card.frame}
           data-loop={p.card.loop ? "" : undefined}
         />
