@@ -140,6 +140,68 @@ describe("code card rules", () => {
     expect(segOf(b, "a").lang).toBe("python");
   });
 
+  it("editing Free code moves its Highlights and the sidenotes on them with their lines", () => {
+    // the user's vecAdd card: Highlights on 5-7 and 9-10 (with notes), 14 and 16-18; blank line 8 deleted
+    const text = [
+      "void vecAdd(float* A_h, float* B_h, float* C_h, int n) {",
+      "    int size = n * sizeof(float);",
+      "    float *A_d, *B_d, *C_d;",
+      "",
+      "    cudaMalloc((void **)&A_d, size);",
+      "    cudaMalloc((void **)&B_d, size);",
+      "    cudaMalloc((void **)&C_d, size);",
+      "",
+      "    cudaMemcpy(A_d, A_h, size, cudaMemcpyHostToDevice);",
+      "    cudaMemcpy(B_d, B_h, size, cudaMemcpyHostToDevice);",
+      "    // Part2: Call kernel - to launch a grid of kernel",
+      "    // to perform the actual vector addition",
+      "",
+      "    cudaMemcpy(C_h, C_d, size, cudaMemcpyDeviceToHost);",
+      "",
+      "    cudaFree(A_d);",
+      "    cudaFree(B_d);",
+      "    cudaFree(C_d);",
+      "}",
+    ];
+    const { b, env } = setup([{ ...code("a"), segments: [{ ...seg("sa", text, { kind: "free" }), lang: "cuda" }] }]);
+    segOf(b, "a").hl = [
+      [5, 7],
+      [9, 10],
+      [14, 14],
+      [16, 18],
+    ];
+    segOf(b, "a").hidden = [[19, 19]];
+    b.sidenotes.push(
+      { id: "n1", at: { card: "a", seg: "sa", lines: [5, 7] }, kind: "text", md: "size" },
+      { id: "n2", at: { card: "a", seg: "sa", lines: [9, 10] }, kind: "text", md: "Host -> Device" },
+    );
+    C.writeFreeCode(env, "a", text.filter((_, i) => i !== 7).join("\n"));
+    expect(segOf(b, "a").hl).toEqual([
+      [5, 7],
+      [8, 9],
+      [13, 13],
+      [15, 17],
+    ]);
+    expect(segOf(b, "a").hidden).toEqual([[18, 18]]);
+    expect(b.sidenotes.map((n) => n.at.lines)).toEqual([
+      [5, 7],
+      [8, 9],
+    ]);
+    // a line added above them moves them all down; lines added inside a Highlight widen it
+    C.writeFreeCode(env, "a", ["// vecAdd", ...text.filter((_, i) => i !== 7)].join("\n"));
+    expect(segOf(b, "a").hl).toEqual([
+      [6, 8],
+      [9, 10],
+      [14, 14],
+      [16, 18],
+    ]);
+    const now = segOf(b, "a").text;
+    C.writeFreeCode(env, "a", [...now.slice(0, 9), "    // B too", ...now.slice(9)].join("\n"));
+    expect(segOf(b, "a").hl?.slice(1, 2)).toEqual([[9, 11]]);
+    expect(b.sidenotes[1].at.lines).toEqual([9, 11]);
+    expect(danglingRefs(b)).toEqual([]);
+  });
+
   it("the card frame is off by default on images and on by default on code, and the default is not stored", () => {
     const img: Card = { id: "i", kind: "image", src: "x.png" };
     const { b, env } = setup([code("a"), img]);

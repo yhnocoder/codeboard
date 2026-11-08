@@ -10,7 +10,7 @@ import {
   type HlRange,
   type Segment,
 } from "../model";
-import { addHighlight, removeHighlights } from "../edit";
+import { addHighlight, rebaseSegment, removeHighlights } from "../edit";
 import { guessLang, pythonDialect } from "../paste";
 import type { CommandEnv } from "./env";
 import { fitIfShown, keepFitted, type FitMeasure } from "./fit";
@@ -97,10 +97,12 @@ export function writeFreeCode(env: CommandEnv, id: string, text: string): Segmen
   const set = (b: Board) => {
     const c = findCard(b, id)?.card;
     if (!isCode(c)) return;
-    const s = c.segments[0];
-    s.text = text.split("\n");
-    s.end = s.start + s.text.length - 1;
-    if (s.src.kind === "free" && !s.src.langPicked) s.lang = freeLang(text) ?? s.lang;
+    const old = c.segments[0];
+    const lines = text.split("\n");
+    const ns: Segment = { ...old, text: lines, end: old.start + lines.length - 1 };
+    if (ns.src.kind === "free" && !ns.src.langPicked) ns.lang = freeLang(text) ?? ns.lang;
+    // Highlights, hidden lines, annotations and everything on its lines (sidenotes, arrow ends, stickers) follow the edit
+    rebaseSegment(b, id, ns);
   };
   if (env.fresh.is(id)) env.fresh.settle(id, !!text.trim(), set);
   else env.edit(set);
