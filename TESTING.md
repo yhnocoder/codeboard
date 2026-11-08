@@ -4,13 +4,15 @@
 
 | 层 | 什么时候 | 时间上限 | 跑什么 |
 |---|---|---|---|
-| 1 本地 | 每次改完：`npm run check` | 90 秒 | 先构建 `@yhnocoder/markdown`（几秒）和 box 的程序（`packages/box`，cargo 增量构建，没改时不到一秒；没装 Rust 时提示后跳过，用到它的测试也跳过）；typecheck、lint（Biome 和 knip，几秒）、单元测试（analysis、core、box、markdown、board、host、插件，一次 vitest 并行跑完）、box 的 `cargo test`、Markdown 示例；这次改动需要的 harness 场景（白板构建完就开始，和前面这些同时跑） |
+| 1 本地 | 每次改完：`npm run check` | 90 秒 | 先构建 `@yhnocoder/markdown`（几秒）和 box 的程序（`packages/box`，cargo 增量构建，没改时不到一秒；没装 Rust 时提示后跳过，用到它的测试也跳过）；typecheck、lint（Biome 和 knip，几秒）、单元测试（analysis、core、box、markdown、board、host、tiles、插件，一次 vitest 并行跑完）、box 的 `cargo test`、Markdown 示例；这次改动需要的 harness 场景（白板构建完就开始，和前面这些同时跑） |
 | 2 CI | 每次 push、每个 PR（`ci.yml`） | 5 分钟 | 第 1 层的全部，加上所有改过的场景；harness 先由一个小 job 挑场景、按估计用时定要几个 job（每个约 3 分钟，2–6 个），再并行跑；e2e 拆两段并行；perf（只在改了 benchmark 跑的代码时跑：`tiers.json` 的 `perf`，`tools/test/perf-need.mjs` 判断；除了 base 对 head 的毫秒比，还有不看机器的光栅计数，按绝对预算判：拖动、平移、缩放停下时每步光栅了几个视口的设备像素，停稳后有没有层糊了或者光栅到显示的 2 倍以上，`probes.ts` 的 `RASTER_BUDGET`） |
 | 3 定时全量 | 每 6 小时：北京时间 02:30、08:30、14:30、20:30（`regular.yml`）；replay 每天一次，北京时间 03:00（`replay.yml`） | 不限 | 全部 harness 场景、整套 e2e（包括平时不跑的 export / variants / noteimage / stickerfolder / notesettings / codeedit）、完整 perf（另加一轮白板上 100 个动图贴纸的，`run-perf.mjs --anim`）、Storybook（构建后每个 story 都打开一遍）、study-task replay；harness 全量跑完后再做一轮 flaky 重复（见下） |
 
+**Android viewer and tile builder** (`.github/workflows/android.yml`, only on PRs that change `apps/android`, `packages/tiles` or the workflow): the app's JVM tests, Android lint and release build (about 3–4 minutes), and the tile builder's unit tests plus its CLI end to end on a synthetic board folder (`packages/tiles/test/smoke.mjs`, about 3 minutes). The instrumented tests (`apps/android/app/src/androidTest`, on an x86_64 emulator) do not fit a PR job's 5 minutes, since booting the emulator takes most of them: they run only on PRs that change `apps/android`, and in every regular full run (`regular.yml` calls `android.yml` with everything on). They are not part of `npm run check`; locally, `cd apps/android && ./gradlew :app:test :app:lintDebug :app:assembleDebugAndroidTest`, and `:app:connectedDebugAndroidTest` with a device or emulator attached.
+
 ## 一定会测到的
 
-**大问题**：typecheck、lint（`npm run lint`：Biome 查格式（行宽 120）、没用的 import 和 `any`，knip 查死代码，查出任何一条都算失败）、单元测试（analysis、core、box、markdown、board、host、插件，都是 vitest；markdown 的包括 npm 包里装了什么的检查；box 的客户端和 host 的 Related by Meaning 跑真的 box 程序）、box 的 `cargo test` 和 `cargo clippy -D warnings`（CI 的 unit job；本地只跑 `cargo test`）、Markdown 示例（`examples/markdown-demo`：只用 `@yhnocoder/markdown` 的页面，构建后在 Chromium 里显示、编辑、保存走一遍，几秒）、e2e 主流程每次都跑。`packages/board/test/tiers.json` 里的 `smoke` 列表也每次都跑，每个主要功能一个跑得快的场景。
+**大问题**：typecheck、lint（`npm run lint`：Biome 查格式（行宽 120）、没用的 import 和 `any`，knip 查死代码，查出任何一条都算失败）、单元测试（analysis、core、box、markdown、board、host、tiles、插件，都是 vitest；markdown 的包括 npm 包里装了什么的检查；box 的客户端和 host 的 Related by Meaning 跑真的 box 程序）、box 的 `cargo test` 和 `cargo clippy -D warnings`（CI 的 unit job；本地只跑 `cargo test`）、Markdown 示例（`examples/markdown-demo`：只用 `@yhnocoder/markdown` 的页面，构建后在 Chromium 里显示、编辑、保存走一遍，几秒）、e2e 主流程每次都跑。`packages/board/test/tiers.json` 里的 `smoke` 列表也每次都跑，每个主要功能一个跑得快的场景。
 
 **正在修的问题**：下面这几类场景本地和 CI 每次都跑：
 - 这次改动新增的场景：基准版本的文件里没有、上一次定时全量也没跑过的（只是挪到别的文件、或者文件改了名的不算新增，算改过）

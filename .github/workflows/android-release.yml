@@ -1,0 +1,61 @@
+name: Android release
+# On the tag android-v<versionName> (apps/android/app/build.gradle.kts), the phone viewer's release APK into a draft GitHub
+# Release named after the tag. Signed when the repository has the signing secrets (CONTRIBUTING.md: the one-time keystore
+# setup); without them the APK is unsigned, which Android will not install, and the run says so.
+on:
+  push:
+    tags: ["android-v*"]
+permissions:
+  contents: read
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    defaults:
+      run: { working-directory: apps/android }
+    steps:
+      - uses: actions/checkout@v6
+      - id: v
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          V=$(sed -n 's/^ *versionName = "\(.*\)"/\1/p' app/build.gradle.kts)
+          if [ "$TAG" != "android-v$V" ]; then
+            echo "::error::Tag $TAG does not match versionName $V in apps/android/app/build.gradle.kts. Bump it there first, or tag android-v$V."; exit 1
+          fi
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-java@v5
+        with: { distribution: temurin, java-version: 17 }
+      - uses: gradle/actions/setup-gradle@v5
+      - name: Build the release APK
+        env:
+          ANDROID_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "$ANDROID_KEYSTORE" ]; then
+            echo "::notice::ANDROID_KEYSTORE is not set: the APK is unsigned and will not install. See CONTRIBUTING.md for the signing secrets."
+          fi
+          ./gradlew --no-daemon :app:testDebugUnitTest :app:assembleRelease
+          mkdir -p out
+          if [ -f app/build/outputs/apk/release/app-release.apk ]; then
+            cp app/build/outputs/apk/release/app-release.apk "out/CodeBoard-${{ steps.v.outputs.version }}.apk"
+          else
+            cp app/build/outputs/apk/release/app-release-unsigned.apk "out/CodeBoard-${{ steps.v.outputs.version }}-unsigned.apk"
+          fi
+      - name: Create the draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          V: ${{ steps.v.outputs.version }}
+        run: |
+          # re-running for the same tag refreshes the files of the existing draft
+          if [ "$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft -q .isDraft 2>/dev/null)" = true ]; then
+            gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber out/*.apk
+          else
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --draft --title "CodeBoard for Android $V" \
+              --notes "The read-only board viewer for Android, $V. Install the APK on the phone (allow installs from this source)." out/*.apk
+          fi
