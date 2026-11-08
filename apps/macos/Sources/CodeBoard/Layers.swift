@@ -33,7 +33,17 @@ final class Slots {
   var chip: CGRect?
 }
 
+/** No implicit animations on the canvas's layers: a bitmap landing, a layer shown or hidden, a path or a colour set changes at
+ *  once (Core Animation would fade each over 0.25 s: a soft flash across the board at a bucket switch). The layer classes here
+ *  return no action; plain sublayers get this delegate. The animations the canvas means run as explicit CAAnimations */
+final class Still: NSObject, CALayerDelegate {
+  static let shared = Still()
+  func action(for layer: CALayer, forKey event: String) -> CAAction? { NSNull() }
+}
+func still(_ layers: CALayer...) { for l in layers { l.delegate = Still.shared } }
+
 final class CardLayer: CALayer {
+  override func action(forKey event: String) -> CAAction? { NSNull() }
   private(set) var card: SceneCard
   /** The card's drawn height (its Place's, or measured from its content) */
   private(set) var height: CGFloat = 0
@@ -153,6 +163,7 @@ final class CardLayer: CALayer {
     needsDisplayOnBoundsChange = false
     anchorPoint = .zero
     contentsGravity = .topLeft
+    still(sheet, placeholder, face, ring, ring2, tools, bar, nameHead, stamp)
     sheet.anchorPoint = .zero
     sheet.contentsGravity = .topLeft
     addSublayer(sheet)
@@ -249,6 +260,7 @@ final class CardLayer: CALayer {
     ring.path = CGPath(roundedRect: r.insetBy(dx: -off - ring.lineWidth / 2, dy: -off - ring.lineWidth / 2), cornerWidth: corner + off, cornerHeight: corner + off, transform: nil)
     while handles.count < 3 {
       let h = CAShapeLayer()
+      still(h)
       h.isHidden = true
       addSublayer(h)
       handles.append(h)
@@ -629,6 +641,7 @@ final class CardLayer: CALayer {
       guard let pdf = inotePdfs[key] else { continue }
       let l = inoteLayers[key] ?? {
         let l = CALayer()
+        still(l)
         l.anchorPoint = .zero
         l.contentsGravity = .topLeft
         inoteLayers[key] = l
@@ -994,20 +1007,21 @@ final class CardLayer: CALayer {
 
 }
 
-/** A Section: a shape layer (no bitmap: a Section can be the size of the board) and its title; in Ink Wash four brush strokes
- *  (core's inkframe, through Ink.frame) with the title written in the top stroke's gap (themes.css .sbrush, .slabel) */
+/** A Section: its frame the compositor draws itself (a Section can be the size of the board, so no bitmap: fill, border and
+ *  corners of a plain layer) and its title; in Ink Wash four brush strokes (core's inkframe, through Ink.frame, made off the main
+ *  thread) with the title written in the top stroke's gap (themes.css .sbrush, .slabel) */
 final class SectionLayer: CALayer {
+  override func action(forKey event: String) -> CAAction? { NSNull() }
   static let foldedHeight: CGFloat = 30
   private(set) var section: SceneSection
-  private let shape = CAShapeLayer()
+  private let shape = CALayer()
   private let brush = CAShapeLayer()
   private let title = CATextLayer()
   init(section: SceneSection) {
     self.section = section
     super.init()
-    shouldRasterize = true
     anchorPoint = .zero
-    shape.lineWidth = 1
+    still(shape, brush, title)
     brush.anchorPoint = .zero
     title.truncationMode = .end
     title.anchorPoint = .zero
@@ -1041,12 +1055,16 @@ final class SectionLayer: CALayer {
       // the title's width makes the gap in the top stroke (the board: max(40, measured width); the label pads 2 px right)
       let w = (s.title as NSString).size(withAttributes: [.font: font]).width + 2
       title.frame = CGRect(x: ml, y: mt, width: min(w, max(60, s.w - 64)), height: 32)
-      shape.path = nil
       shape.isHidden = true
       let m = Ink.frameMargin
       brush.isHidden = false
       brush.frame = CGRect(x: -m - 1, y: -m - 1, width: s.w + 2 * m, height: s.h + 2 * m)
-      brush.path = Ink.frame(w: s.w, h: s.h, seed: s.seed, gap: s.collapsed == true ? 0 : max(40, w))
+      // the path now when it is made, else when the ink thread has it (and this is still the Section's size)
+      let gap = s.collapsed == true ? 0 : max(40, w)
+      brush.path = Ink.frame(w: s.w, h: s.h, seed: s.seed, gap: gap) { [weak self] p in
+        guard let self, Theme.isInk, self.section.w == s.w, self.section.h == s.h, self.section.seed == s.seed else { return }
+        self.brush.path = p
+      }
     } else {
       title.font = Theme.sys(12.5, weight: .semibold)
       title.fontSize = 12.5
@@ -1055,15 +1073,13 @@ final class SectionLayer: CALayer {
       shape.isHidden = false
       brush.isHidden = true
       brush.path = nil
-      let rad = Theme.number("sect-radius", Theme.cardRadius + 1)
-      shape.path = CGPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), cornerWidth: rad, cornerHeight: rad, transform: nil)
+      shape.cornerRadius = Theme.number("sect-radius", Theme.cardRadius + 1)
     }
   }
   /** The title's bitmap scale follows the zoom like the cards' */
   func setScale(_ scale: CGFloat) {
     title.contentsScale = max(0.5, scale)
     title.isHidden = scale < 0.2
-    rasterizationScale = max(0.125, scale)
   }
   var selected = false {
     didSet { if selected != oldValue { recolor() } }
@@ -1074,9 +1090,9 @@ final class SectionLayer: CALayer {
         brush.fillColor = Theme.ink.withAlphaComponent(Theme.number("sbrush-opacity", 0.72)).cgColor
         title.foregroundColor = (selected ? Theme.zhu : Theme.ink).cgColor
       } else {
-        shape.fillColor = (section.color.flatMap { Theme.sect[$0] } ?? Theme.sectFill).cgColor
-        shape.strokeColor = (selected ? Theme.accent : Theme.hair).cgColor
-        shape.lineWidth = selected ? 1.5 : 0.5
+        shape.backgroundColor = (section.color.flatMap { Theme.sect[$0] } ?? Theme.sectFill).cgColor
+        shape.borderColor = (selected ? Theme.accent : Theme.hair).cgColor
+        shape.borderWidth = selected ? 1.5 : 0.5
         title.foregroundColor = Theme.ink2.cgColor
       }
     }
@@ -1089,6 +1105,7 @@ final class SectionLayer: CALayer {
 }
 
 final class ArrowLayer: CALayer {
+  override func action(forKey event: String) -> CAAction? { NSNull() }
   let line = CAShapeLayer()
   let line2 = CAShapeLayer()
   let head = CAShapeLayer()
@@ -1103,6 +1120,7 @@ final class ArrowLayer: CALayer {
     anchorPoint = .zero
     // a bitmap of the arrow at the zoom bucket's scale, like a card: a zoom frame scales it instead of filling the shapes again
     shouldRasterize = true
+    still(line, line2, head, tail, label)
     for l in [line, line2, head, tail] { addSublayer(l) }
     label.anchorPoint = CGPoint(x: 0.5, y: 0.5)
     label.contentsGravity = .resizeAspect
@@ -1255,6 +1273,7 @@ final class ArrowLayer: CALayer {
  *  the colour mixed 86 % with #5b3d22 (Ink Wash: 30 % with the ink), the line in #fffaf1 (Ink Wash: the paper) 2 px wide in a
  *  24-unit box; a label sticker is a capsule; an emoji is the character at 0.86 of the size) */
 final class StickerLayer: CALayer {
+  override func action(forKey event: String) -> CAAction? { NSNull() }
   private(set) var sticker: SceneSticker
   private var drawnScale: CGFloat = 0
   /** The selection ring (styles.css .stk.sel: 1.5 px of accent, 2 px out), a sublayer so selecting redraws nothing */
@@ -1274,6 +1293,7 @@ final class StickerLayer: CALayer {
     ring.fillColor = nil
     ring.lineWidth = 1.5
     ring.isHidden = true
+    still(ring)
     addSublayer(ring)
     apply(sticker)
   }

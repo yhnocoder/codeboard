@@ -105,7 +105,7 @@ enum Thumbs {
       if Theme.isInk {
         let font = Theme.brushHand(25)
         let tw = (s.title as NSString).size(withAttributes: [.font: font]).width + 2
-        if let path = Ink.frame(w: s.w, h: s.h, seed: s.seed, gap: max(40, tw)) {
+        if let path = Ink.frameNow(w: s.w, h: s.h, seed: s.seed, gap: max(40, tw)) {
           cg.saveGState()
           cg.translateBy(x: sr.minX - Ink.frameMargin - 1, y: sr.minY - Ink.frameMargin - 1)
           cg.addPath(path)

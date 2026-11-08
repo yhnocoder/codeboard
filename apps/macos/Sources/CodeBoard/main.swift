@@ -72,6 +72,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     Theme.registerFonts()
     Packs.load(bridge)
     Ink.load(bundleURL.deletingLastPathComponent().appendingPathComponent("router.js"))
+    Ink.prewarm()
     if router == nil { logLine("[codeboard] no router.js: drags route on the main thread") }
     if let l = arg("--look") { Look.shared.set(l) } else { _ = Look.shared }
     if args.contains("--dark") { NSApp.appearance = NSAppearance(named: .darkAqua) }

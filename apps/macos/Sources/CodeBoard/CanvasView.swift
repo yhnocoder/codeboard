@@ -68,7 +68,9 @@ final class CanvasView: NSView {
   /** The zoomed-out summary level (Summaries.swift) and what the detent and the switch draw over the board: the mist in the
    *  board's colour rising from the bottom (styles.css .cutmist), the vermilion line (.cutline) and the seal (.cutseal) */
   let summaries = SummaryLevel()
-  private let mist = CAGradientLayer()
+  private let mist = CALayer()
+  /** The mist's image: the gradient blurred once, for a view size and board colour (a live blur filter cost every frame) */
+  private var mistImage: (CGSize, CGColor, CGImage)?
   private let cutLine = CALayer()
   private let cutFill = CALayer()
   private let seal = CATextLayer()
@@ -141,10 +143,7 @@ final class CanvasView: NSView {
       world.addSublayer(l)
     }
     mist.anchorPoint = .zero
-    mist.startPoint = CGPoint(x: 0.5, y: 1)
-    mist.endPoint = CGPoint(x: 0.5, y: 0)
-    mist.locations = [0, 0.7, 1]
-    if let blur = CIFilter(name: "CIGaussianBlur", parameters: [kCIInputRadiusKey: 10]) { mist.filters = [blur] }
+    mist.contentsGravity = .resize
     mist.isHidden = true
     cutLine.anchorPoint = .zero
     cutLine.cornerRadius = 1
@@ -159,6 +158,13 @@ final class CanvasView: NSView {
     seal.isHidden = true
     seal.contentsScale = 2
     for l in [mist, cutLine, seal] { overlay.addSublayer(l) }
+    still(world, sections, arrows, cards, stickers, top, overlay, mist, cutLine, cutFill, seal, scene, tether, tetherDot, marquee, ports, rubber, summaries.layer)
+    // Ink Wash's paper sheets and Section frames come off the ink thread: a card or Section drawn before its was there draws again
+    NotificationCenter.default.addObserver(forName: Ink.ready, object: nil, queue: .main) { [weak self] _ in
+      guard let self, Theme.isInk else { return }
+      for l in self.cardLayers.values where !l.isHidden { l.setNeedsDisplay() }
+      for l in self.sectionLayers.values { l.restyle() }
+    }
     scene.anchorPoint = .zero
     scene.contentsGravity = .resize
     layer!.addSublayer(scene)
@@ -242,6 +248,8 @@ final class CanvasView: NSView {
     let k = max(bounds.width / img.size.width, bounds.height / img.size.height)
     let w = img.size.width * k, h = img.size.height * k
     scene.frame = CGRect(x: (bounds.width - w) / 2, y: bounds.height - h, width: w, height: h)
+    // a live resize stretches the image it has (contentsGravity resize); it is drawn at the new size once the resize ends
+    if inLiveResize { return }
     let px = CGSize(width: w * backing, height: h * backing)
     if let cached = sceneImage, cached.0 == px, cached.1 == Theme.isDark { scene.contents = cached.2; return }
     let copy = img.copy() as! NSImage
@@ -621,7 +629,8 @@ final class CanvasView: NSView {
     layoutScene()
     super.layout()
     overlay.frame = bounds
-    floorZoom()
+    // the zoom floor and the cull once the resize ends (viewDidEndLiveResize): not per frame of it
+    if !inLiveResize { floorZoom() }
     cutLine.frame = CGRect(x: bounds.width * 0.12, y: bounds.height - 20, width: bounds.width * 0.76, height: 2)
     cutFill.bounds = CGRect(origin: .zero, size: cutLine.bounds.size)
     cutFill.position = CGPoint(x: cutLine.bounds.midX, y: cutLine.bounds.midY)
@@ -630,6 +639,8 @@ final class CanvasView: NSView {
   }
   override func viewDidEndLiveResize() {
     super.viewDidEndLiveResize()
+    layoutScene()
+    floorZoom()
     cull()
   }
   /** Undo / Redo from the menu reach the board, not the window's own (empty) undo manager; other keys are not the board's and
@@ -1288,12 +1299,29 @@ extension CanvasView {
     RunLoop.main.add(t, forMode: .common)
     switchTimer = t
   }
+  /** The mist as an image (styles.css .cutmist: the board's colour, solid to 70 % then clear, blurred 10 px), rendered once per
+   *  view size and colour; the layer only moves and stretches it */
+  private func mistContents() -> CGImage? {
+    let size = CGSize(width: bounds.width * 1.2, height: bounds.height), bg = Theme.bg.cgColor
+    if let m = mistImage, m.0 == size, m.1 == bg { return m.2 }
+    let w = Int(size.width * backing), h = Int(size.height * backing)
+    guard w > 0, h > 0, let cg = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue),
+      let grad = CGGradient(colorsSpace: nil, colors: [bg, bg, bg.copy(alpha: 0)!] as CFArray, locations: [0, 0.7, 1])
+    else { return nil }
+    // CG's y is up: the solid end is the bottom of the view (the layer is anchored at its top left and stretched)
+    cg.drawLinearGradient(grad, start: CGPoint(x: 0, y: 0), end: CGPoint(x: 0, y: CGFloat(h)), options: [])
+    guard let sharp = cg.makeImage() else { return nil }
+    let blurred = CIImage(cgImage: sharp).applyingGaussianBlur(sigma: 10 * backing)
+    let out = CIContext(options: [.useSoftwareRenderer: false]).createCGImage(blurred, from: CGRect(x: 0, y: 0, width: w, height: h))
+    if let out { mistImage = (size, bg, out) }
+    return out
+  }
   private func show(_ d: Detent) {
     CATransaction.begin()
     CATransaction.setDisableActions(true)
     let h = bounds.height * d.mist
     mist.isHidden = d.mist <= 0
-    mist.colors = [Theme.bg.cgColor, Theme.bg.cgColor, Theme.bg.withAlphaComponent(0).cgColor]
+    if !mist.isHidden { mist.contents = mistContents() }
     mist.frame = CGRect(x: -bounds.width * 0.1, y: bounds.height - h, width: bounds.width * 1.2, height: h)
     cutLine.isHidden = d.line <= 0
     cutLine.backgroundColor = Theme.ink.withAlphaComponent(0.12).cgColor

@@ -60,6 +60,7 @@ final class SummaryLevel {
     for c in s.cols {
       let l = cols[c.key] ?? {
         let l = CALayer()
+        still(l)
         l.anchorPoint = .zero
         l.contentsGravity = .topLeft
         cols[c.key] = l
@@ -153,21 +154,36 @@ final class SummaryLevel {
   }
 }
 
-/** The detent's and the switch's rules, from core through Ink's context */
+/** The detent's and the switch's rules: core's canvas/detent.ts and summaryMinZoom (summary.ts) in Swift, with the constants of
+ *  core's SUMMARY (keep them equal: the web board runs the TypeScript, this runs these); nothing here waits on a thread */
 enum DetentRules {
-  static func levelFor(_ z: Double, _ cut: Double) -> Int { Int(Ink.rule("levelFor", [z, cut]).flatMap(Double.init) ?? 0) }
-  static func towardCut(_ z0: Double, _ z: Double, _ cut: Double, _ shown: Int) -> Bool { Ink.rule("towardCut", [z0, z, cut, shown]) == "true" }
-  static func pushStep(_ push: Double, _ z0: Double, _ z: Double) -> Double { Ink.rule("pushStep", [push, z0, z]).flatMap(Double.init) ?? push }
-  static func pushed(_ q: Double, _ to: Int) -> Detent { Ink.rule("pushed", [q, to]).flatMap { try? decodeJSON(Detent.self, $0) } ?? .rest }
-  static func drainStep(_ push: Double, _ dt: Double) -> Double { Ink.rule("drainStep", [push, dt]).flatMap(Double.init) ?? 0 }
-  static func switching(_ t: Double, _ mist0: Double, _ to: Int) -> Detent { Ink.rule("switching", [t, mist0, to]).flatMap { try? decodeJSON(Detent.self, $0) } ?? .rest }
-  static func acrossCut(_ cut: Double, _ to: Int) -> Double { Ink.rule("acrossCut", [cut, to]).flatMap(Double.init) ?? cut }
+  // SUMMARY.detent
+  static let notch = 0.6, mistMax = 0.55, cover = 1.4, drain = 1.2, drainAfter = 80.0, coverMs = 220.0, clearMs = 300.0, sealAt = 0.6
+  // SUMMARY
+  static let fitShrink = 1.3, zoomFloor = 0.02, zoomCeil = 0.5, emptyZoom = 0.1
+  static func levelFor(_ z: Double, _ cut: Double) -> Int { cut > 0 && z < cut ? 1 : 0 }
+  static func towardCut(_ z0: Double, _ z: Double, _ cut: Double, _ shown: Int) -> Bool { shown == 0 ? z < z0 && z <= cut : z > z0 && z >= cut }
+  static func pushStep(_ push: Double, _ z0: Double, _ z: Double) -> Double { min(1, push + min(1, abs(log(z / z0)) / notch)) }
+  static func pushed(_ q: Double, _ to: Int) -> Detent { Detent(mist: q * mistMax, line: q, seal: q >= sealAt, to: to) }
+  static func drainStep(_ push: Double, _ dt: Double) -> Double { max(0, push - dt * drain) }
+  private static func easeInOut(_ t: Double) -> Double { t < 0.5 ? 2 * t * t : 1 - pow(-2 * t + 2, 2) / 2 }
+  private static func easeOut(_ t: Double) -> Double { 1 - pow(1 - t, 3) }
+  static func switching(_ t: Double, _ mist0: Double, _ to: Int) -> Detent {
+    let sc = times.cover
+    if t < sc { return Detent(mist: mist0 + (cover - mist0) * easeOut(t / sc), line: 1, seal: true, to: to) }
+    let k = (t - sc) / (1 - sc)
+    return Detent(mist: cover * (1 - easeInOut(k)), line: 1 - k, seal: k < 0.15, to: to)
+  }
+  static func acrossCut(_ cut: Double, _ to: Int) -> Double { to == 1 ? cut * 0.9 : cut * 1.1 }
   /** The board's minimum zoom: the whole board fills about 77 % of the view at most (core summaryMinZoom) */
   static func minZoom(view: CGSize, content: SumScene.Rect?) -> Double {
-    Ink.rule("summaryMinZoom", [Double(view.width), Double(view.height), content.map(encodeJSON) ?? "null"]).flatMap(Double.init) ?? 0.05
+    guard let c = content, c.w > 0, c.h > 0 else { return emptyZoom }
+    let fit = min(Double(view.width) / c.w, Double(view.height) / c.h) * 0.96
+    return min(zoomCeil, max(zoomFloor, fit / fitShrink))
   }
-  struct Times: Decodable {
+  struct Times {
     var ms, cover, drainAfter: Double
   }
-  static let times: Times = Ink.rule("detent", []).flatMap { try? decodeJSON(Times.self, $0) } ?? Times(ms: 520, cover: 0.42, drainAfter: 80)
+  static let times = Times(ms: coverMs + clearMs, cover: coverMs / (coverMs + clearMs), drainAfter: drainAfter)
 }
+

@@ -1,7 +1,8 @@
 // Ink Wash's drawings for the native canvas, from the same maths the web board draws them with (core's canvas inkpaper.ts and
 // inkframe.ts, called through the bridge): the torn paper sheet behind a card (a nine-slice image, one per edge pattern, light /
 // dark), a Section's four brush strokes (a path), the 选 seal a selected card wears and the ink scene behind the board.
-// Images are made once on the main thread and kept; the raster queue only draws them.
+// Images are made once on the ink thread and kept; nobody on the main thread waits for one: the paper sheets are made ahead
+// (`prewarm`, at load), a Section's frame comes back through a callback, and until then the plain paper / no frame shows.
 import AppKit
 import JavaScriptCore
 
@@ -19,9 +20,8 @@ struct PaperSheet: Decodable {
 
 enum Ink {
   /** The JavaScript with core's drawings: a small context of its own over router.js on a thread of its own (like the router's;
-   *  the bridge's context is its thread's alone). A caller (the main thread for a Section's frame, the raster or thumbnail queue
-   *  for a card's paper) posts its call and waits for the answer: each is well under a millisecond, and `sheets` and `frames`
-   *  are touched on that thread only, so they need no lock */
+   *  the bridge's context is its thread's alone). Only the thumbnail queue waits on it (`frameNow`); the main thread and the
+   *  raster queue read the caches, under `lock`, and get what is there */
   private static let js = JSThread("codeboard.ink")
   private static var art: JSValue?
   static func load(_ bundle: URL) {
@@ -33,18 +33,27 @@ enum Ink {
       art = ctx.objectForKeyedSubscript("CodeRouter")
     }
   }
-  /** Runs on the ink thread and hands back its result */
+  /** Runs on the ink thread and hands back its result; never from the main thread */
   private static func onJS<T>(_ f: @escaping () -> T) -> T {
+    dispatchPrecondition(condition: .notOnQueue(.main))
     let done = DispatchSemaphore(value: 0)
     var out: T!
     js.post { out = f(); done.signal() }
     done.wait()
     return out
   }
-  /** A core rule (router.js CodeRouter) called with plain arguments, its result as a string */
-  static func rule(_ name: String, _ args: [Any]) -> String? { onJS { art?.invokeMethod(name, withArguments: args)?.toString() } }
+  private static let lock = NSLock()
   private static var sheets: [String: NSImage] = [:]
   private static var frames: [String: CGPath] = [:]
+  /** Posted on the main thread when a sheet or a frame is there that someone asked for and missed */
+  static let ready = Notification.Name("codeboard.ink.ready")
+  /** The paper for every edge pattern (core PAPER_SEEDS), light and dark, made ahead on the ink thread */
+  static func prewarm() {
+    js.post {
+      for dark in [false, true] { for seed in 0..<4 { _ = paperOnJS(dark: dark, seed: seed) } }
+      DispatchQueue.main.async { NotificationCenter.default.post(name: ready, object: nil) }
+    }
+  }
   /** The seals and the scene, made and read on the main thread only */
   private static var stamps: [String: NSImage] = [:]
   private static var scenes: [String: NSImage] = [:]
@@ -55,11 +64,20 @@ enum Ink {
   /** The sheet is drawn this many times its size (the board's PAPER_SCALE: crisp on a 2× screen zoomed in) */
   private static let paperScale: CGFloat = 3
 
-  /** The paper of a card with this edge pattern: a nine-slice image, drawn once */
-  static func paper(dark: Bool, seed: Int) -> NSImage? { onJS { paperOnJS(dark: dark, seed: seed) } }
+  /** The paper of a card with this edge pattern: a nine-slice image, made ahead (prewarm); nil until it is, and then `ready` */
+  static func paper(dark: Bool, seed: Int) -> NSImage? {
+    let key = "\(seed):\(dark)"
+    if let s = lock.withLock({ sheets[key] }) { return s }
+    js.post {
+      _ = paperOnJS(dark: dark, seed: seed)
+      DispatchQueue.main.async { NotificationCenter.default.post(name: ready, object: nil) }
+    }
+    return nil
+  }
+  /** On the ink thread */
   private static func paperOnJS(dark: Bool, seed: Int) -> NSImage? {
     let key = "\(seed):\(dark)"
-    if let s = sheets[key] { return s }
+    if let s = lock.withLock({ sheets[key] }) { return s }
     guard let art, let json = art.invokeMethod("paperSheet", withArguments: [dark, seed])?.toString(), let p = try? decodeJSON(PaperSheet.self, json) else { return nil }
     let s = CGFloat(p.size), k = paperScale
     let img = NSImage(size: NSSize(width: s, height: s), flipped: true) { _ in
@@ -98,28 +116,50 @@ enum Ink {
     out.addRepresentation(rep)
     out.capInsets = NSEdgeInsets(top: slice, left: slice, bottom: slice, right: slice)
     out.resizingMode = .tile
-    sheets[key] = out
+    lock.withLock { sheets[key] = out }
     return out
   }
 
-  /** The paper drawn under a card of this rect (the sheet reaches paperMargin outside it); called on the raster queue */
+  /** The paper drawn under a card of this rect (the sheet reaches paperMargin outside it); called on the raster queue. Before the
+   *  sheet is made the card shows its plain paper (the face), and is drawn again on `ready` */
   static func drawPaper(_ r: CGRect, dark: Bool, seed: Int) {
     guard let img = paper(dark: dark, seed: seed) else { return }
     img.draw(in: r.insetBy(dx: -paperMargin, dy: -paperMargin), from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: [.interpolation: NSImageInterpolation.high])
   }
 
-  /** A Section's brush frame for a size (rounded to 2 as the board does), seed and title gap: the path, FRAME_M bigger on each side */
-  static func frame(w: CGFloat, h: CGFloat, seed: Int, gap: CGFloat) -> CGPath? {
-    let W = max(2, (w / 2).rounded() * 2), H = max(2, (h / 2).rounded() * 2), g = (gap / 2).rounded() * 2
-    let key = "\(W)x\(H):\(g):\(seed)"
-    return onJS {
-      if let p = frames[key] { return p }
-      guard let art, let d = art.invokeMethod("brushFrame", withArguments: [W, H, seed, g])?.toString() else { return nil }
-      if frames.count > 400 { frames.removeAll() }
-      let p = SVGPath.parse(d)
-      frames[key] = p
-      return p
+  /** A Section's brush frame for a size (rounded to 2 as the board does), seed and title gap: the path, FRAME_M bigger on each
+   *  side. From the main thread: the cached path now, or nil and `then` on the main thread once it is made */
+  @discardableResult
+  static func frame(w: CGFloat, h: CGFloat, seed: Int, gap: CGFloat, _ then: ((CGPath) -> Void)? = nil) -> CGPath? {
+    let key = frameKey(w, h, seed, gap)
+    if let p = lock.withLock({ frames[key] }) { return p }
+    js.post {
+      guard let p = frameOnJS(key) else { return }
+      if let then { DispatchQueue.main.async { then(p) } }
     }
+    return nil
+  }
+  /** The frame, waited for: the thumbnail queue, never the main thread */
+  static func frameNow(w: CGFloat, h: CGFloat, seed: Int, gap: CGFloat) -> CGPath? {
+    let key = frameKey(w, h, seed, gap)
+    if let p = lock.withLock({ frames[key] }) { return p }
+    return onJS { frameOnJS(key) }
+  }
+  private static func frameKey(_ w: CGFloat, _ h: CGFloat, _ seed: Int, _ gap: CGFloat) -> String {
+    let W = max(2, (w / 2).rounded() * 2), H = max(2, (h / 2).rounded() * 2), g = (gap / 2).rounded() * 2
+    return "\(W)x\(H):\(g):\(seed)"
+  }
+  /** On the ink thread; key = frameKey's */
+  private static func frameOnJS(_ key: String) -> CGPath? {
+    if let p = lock.withLock({ frames[key] }) { return p }
+    let parts = key.split(whereSeparator: { "x:".contains($0) }).map { Double($0) ?? 0 }
+    guard parts.count == 4, let art, let d = art.invokeMethod("brushFrame", withArguments: [parts[0], parts[1], Int(parts[3]), parts[2]])?.toString() else { return nil }
+    let p = SVGPath.parse(d)
+    lock.withLock {
+      if frames.count > 400 { frames.removeAll() }
+      frames[key] = p
+    }
+    return p
   }
   /** How far the frame's image reaches outside the Section (core FRAME_M) */
   static let frameMargin: CGFloat = 12
