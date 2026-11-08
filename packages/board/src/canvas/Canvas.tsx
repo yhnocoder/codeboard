@@ -37,7 +37,6 @@ import { useMd } from "../md/context";
 import { Summaries } from "./Summaries";
 import { ShelfOutline } from "../ui/ShelfPanel";
 import { cardsAsleep, cardsGone, cardsOpacity, detent } from "../state/summary";
-import { GREEK_LAG } from "../state/timing";
 
 /** The world-extent boxes (.wext, .cshield) reach this far beyond the cards and Sections, aligned to it: enough that a card
  *  nudged outward does not move them, and no more, since every tile of the box within ~3000 px of the viewport is a raster task
@@ -176,27 +175,11 @@ export function Canvas() {
       }
     });
   });
-  // Zoomed out past Simplify Below (styles.css .world.greek): taken at a stop (stillZ), never in the middle of a zoom, and
-  // GREEK_LAG after it, so the stop's own raster at the new scale (settle) is done first: swapped in the same commit, the
-  // world's every tile changed at once, and a Mac showed the board blank for a frame (Linda 11-08). No fade: a compositor
-  // fade puts the Notes' bodies on layers of their own and back, which flashed the board too. Into and out of the summary
-  // level it changes at once (the cards are gone, or come back, anyway)
-  const simple = createMemo(() => stillZ() < state.host.settings.simpleBelow && !cardsGone());
-  const [greek, setGreek] = createSignal(simple());
-  let lagT: number | undefined;
-  // every stop (camMoving false again) starts the full GREEK_LAG over; while the camera moves nothing swaps
-  createEffect(
-    on(
-      [simple, cardsGone, camMoving],
-      ([g, gone, m], prev) => {
-        clearTimeout(lagT);
-        if (gone || prev?.[1]) setGreek(g);
-        else if (!m && g !== greek()) lagT = window.setTimeout(() => setGreek(g), GREEK_LAG);
-      },
-      { defer: true },
-    ),
-  );
-  onCleanup(() => clearTimeout(lagT));
+  // Zoomed out past Simplify Below (styles.css .world.greek): taken at a stop (stillZ), never in the middle of a zoom, at
+  // once (a GREEK_LAG after the stop did not help the blank frame Linda saw on a Mac, which was the hint's raster, and made
+  // the bars come 1–2 s late). No fade: a compositor fade puts the Notes' bodies on layers of their own and back, which
+  // flashed the board
+  const greek = createMemo(() => stillZ() < state.host.settings.simpleBelow && !cardsGone());
   // Without the hint a move of the world by a fraction of a device pixel rasters it again (its tiles are drawn at the new
   // offset): a trackpad pan or a fling at 0.34, 1.4 viewports a step. Settled, it moves by whole device pixels
   const px = (v: number) => {

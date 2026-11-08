@@ -3,9 +3,6 @@
 
 /** The camera counts as moving until this long after its last change (`.world.moving`, camera.ts) */
 export const CAM_STILL = 180;
-/** Zoomed out past Simplify Below, a Note's prose swaps for bars (and back) this long after the camera stops, so that stop's
- *  raster at the new scale is done first (Canvas.tsx greek) */
-export const GREEK_LAG = 300;
 /** The camera position is saved once it has not changed for this long (BoardView.tsx), then sent after LIVE_DELAY */
 export const CAM_SETTLE = 600;
 /** Live changes (drag in progress, a settled camera) go to the host this long after the last one (save.ts) */
