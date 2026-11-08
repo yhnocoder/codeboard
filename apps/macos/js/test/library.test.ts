@@ -40,7 +40,8 @@ describe("library", () => {
     const [b] = await lib.list(dir);
     expect(b).toMatchObject({ id: "b1", name: "Scheduler", cards: 1 });
     expect(b.mtime).toBeGreaterThan(0);
-    expect(b.scene.cards[0]).toMatchObject({ x: 10, y: 20, w: 300, kind: "note", title: "Prefill", look: "note" });
+    const scene = await lib.thumb(dir, b.id);
+    expect(scene.cards[0]).toMatchObject({ x: 10, y: 20, w: 300, kind: "note", title: "Prefill", look: "note" });
   });
 
   it("makes, renames and deletes boards the way the extension does (deleted ones go to .trash)", async () => {

@@ -18,19 +18,34 @@ struct PaperSheet: Decodable {
 }
 
 enum Ink {
-  /** The JavaScript with core's drawings: a small context of its own over router.js (the bridge's context is its thread's alone),
-   *  called under `lock` from whichever thread draws (the main thread for a card's paper, a thumbnail's queue for a frame) */
+  /** The JavaScript with core's drawings: a small context of its own over router.js on a thread of its own (like the router's;
+   *  the bridge's context is its thread's alone). A caller (the main thread for a Section's frame, the raster or thumbnail queue
+   *  for a card's paper) posts its call and waits for the answer: each is well under a millisecond, and `sheets` and `frames`
+   *  are touched on that thread only, so they need no lock */
+  private static let js = JSThread("codeboard.ink")
   private static var art: JSValue?
   static func load(_ bundle: URL) {
-    guard let src = try? String(contentsOf: bundle, encoding: .utf8), let ctx = JSContext(virtualMachine: JSVirtualMachine()!) else { return }
-    ctx.exceptionHandler = { _, e in logLine("[codeboard ink] %@", e?.toString() ?? "?") }
-    ctx.evaluateScript(src, withSourceURL: bundle)
-    art = ctx.objectForKeyedSubscript("CodeRouter")
+    guard let src = try? String(contentsOf: bundle, encoding: .utf8) else { return }
+    js.post {
+      guard let ctx = JSContext(virtualMachine: JSVirtualMachine()!) else { return }
+      ctx.exceptionHandler = { _, e in logLine("[codeboard ink] %@", e?.toString() ?? "?") }
+      ctx.evaluateScript(src, withSourceURL: bundle)
+      art = ctx.objectForKeyedSubscript("CodeRouter")
+    }
+  }
+  /** Runs on the ink thread and hands back its result */
+  private static func onJS<T>(_ f: @escaping () -> T) -> T {
+    let done = DispatchSemaphore(value: 0)
+    var out: T!
+    js.post { out = f(); done.signal() }
+    done.wait()
+    return out
   }
   private static var sheets: [String: NSImage] = [:]
   private static var frames: [String: CGPath] = [:]
+  /** The seals and the scene, made and read on the main thread only */
   private static var stamps: [String: NSImage] = [:]
-  private static let lock = NSLock()
+  private static var scenes: [String: NSImage] = [:]
   /** How far the paper reaches outside the card (core PAPER_M, themes.css inset: -14px) */
   static let paperMargin: CGFloat = 14
   /** The nine-slice's corner (core PAPER_SLICE) */
@@ -39,10 +54,9 @@ enum Ink {
   private static let paperScale: CGFloat = 3
 
   /** The paper of a card with this edge pattern: a nine-slice image, drawn once */
-  static func paper(dark: Bool, seed: Int) -> NSImage? {
+  static func paper(dark: Bool, seed: Int) -> NSImage? { onJS { paperOnJS(dark: dark, seed: seed) } }
+  private static func paperOnJS(dark: Bool, seed: Int) -> NSImage? {
     let key = "\(seed):\(dark)"
-    lock.lock()
-    defer { lock.unlock() }
     if let s = sheets[key] { return s }
     guard let art, let json = art.invokeMethod("paperSheet", withArguments: [dark, seed])?.toString(), let p = try? decodeJSON(PaperSheet.self, json) else { return nil }
     let s = CGFloat(p.size), k = paperScale
@@ -96,14 +110,14 @@ enum Ink {
   static func frame(w: CGFloat, h: CGFloat, seed: Int, gap: CGFloat) -> CGPath? {
     let W = max(2, (w / 2).rounded() * 2), H = max(2, (h / 2).rounded() * 2), g = (gap / 2).rounded() * 2
     let key = "\(W)x\(H):\(g):\(seed)"
-    lock.lock()
-    defer { lock.unlock() }
-    if let p = frames[key] { return p }
-    guard let art, let d = art.invokeMethod("brushFrame", withArguments: [W, H, seed, g])?.toString() else { return nil }
-    if frames.count > 400 { frames.removeAll() }
-    let p = SVGPath.parse(d)
-    frames[key] = p
-    return p
+    return onJS {
+      if let p = frames[key] { return p }
+      guard let art, let d = art.invokeMethod("brushFrame", withArguments: [W, H, seed, g])?.toString() else { return nil }
+      if frames.count > 400 { frames.removeAll() }
+      let p = SVGPath.parse(d)
+      frames[key] = p
+      return p
+    }
   }
   /** How far the frame's image reaches outside the Section (core FRAME_M) */
   static let frameMargin: CGFloat = 12
@@ -111,6 +125,7 @@ enum Ink {
   /** The 选 seal of a selected card (themes.css .cface::before): paper at 60 % with a vermilion ring and the character, the
    *  印泥 grain and rough edge masked in (--seal-mask) */
   static func stamp(dark: Bool) -> NSImage? {
+    dispatchPrecondition(condition: .onQueue(.main))
     let key = dark ? "dark" : "light"
     if let s = stamps[key] { return s }
     let size = Theme.number("stamp-size", 24)
@@ -154,8 +169,16 @@ enum Ink {
     return ctx.makeImage()!
   }
 
-  /** The ink scene behind the board (packages/board/src/scenes/ink-*.svg): center bottom / cover, as the board's CSS */
-  static func scene(dark: Bool) -> NSImage? { Theme.resource(dark ? "ink-dark.svg" : "ink-light.svg").flatMap { NSImage(contentsOf: $0) } }
+  /** The ink scene behind the board (packages/board/src/scenes/ink-*.svg): center bottom / cover, as the board's CSS; decoded
+   *  once. Main thread only: a thumbnail asks for it on the main thread before it draws (Thumbs.make) */
+  static func scene(dark: Bool) -> NSImage? {
+    dispatchPrecondition(condition: .onQueue(.main))
+    let key = dark ? "dark" : "light"
+    if let s = scenes[key] { return s }
+    let img = Theme.resource(dark ? "ink-dark.svg" : "ink-light.svg").flatMap { NSImage(contentsOf: $0) }
+    scenes[key] = img
+    return img
+  }
 }
 
 /** "#rrggbbaa" or "#rrggbb" → a colour */

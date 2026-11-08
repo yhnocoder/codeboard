@@ -22,16 +22,17 @@ enum Thumbs {
 
   static func cached(_ key: String) -> CGImage? { cache.object(forKey: key as NSString) }
 
-  /** Draws off the main thread; done on the main thread */
+  /** Draws off the main thread (the ink scene taken on the main thread first); done on the main thread */
   static func make(_ m: MiniScene, key: String, dark: Bool, _ done: @escaping (CGImage?) -> Void) {
+    let ink = Theme.isInk ? Ink.scene(dark: dark) : nil
     queue.async {
-      let img = render(m, dark: dark)
+      let img = render(m, dark: dark, ink: ink)
       if let img { cache.setObject(img, forKey: key as NSString) }
       DispatchQueue.main.async { done(img) }
     }
   }
 
-  static func render(_ m: MiniScene, dark: Bool) -> CGImage? {
+  static func render(_ m: MiniScene, dark: Bool, ink: NSImage?) -> CGImage? {
     let scale: CGFloat = 2, W = size.width, H = size.height
     guard let cx = CGContext(data: nil, width: Int(W * scale), height: Int(H * scale), bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue) else { return nil }
     // flipped, in points, like the board
@@ -43,7 +44,7 @@ enum Thumbs {
     ap.performAsCurrentDrawingAppearance {
       NSGraphicsContext.saveGraphicsState()
       NSGraphicsContext.current = NSGraphicsContext(cgContext: cx, flipped: true)
-      draw(m, in: CGRect(x: 0, y: 0, width: W, height: H), dark: dark)
+      draw(m, in: CGRect(x: 0, y: 0, width: W, height: H), dark: dark, ink: ink)
       NSGraphicsContext.restoreGraphicsState()
       out = cx.makeImage()
     }
@@ -79,10 +80,10 @@ enum Thumbs {
     return (k, CGPoint(x: -best.x * k, y: -best.y * k))
   }
 
-  private static func draw(_ m: MiniScene, in r: CGRect, dark: Bool) {
+  private static func draw(_ m: MiniScene, in r: CGRect, dark: Bool, ink: NSImage?) {
     Theme.bg.setFill()
     r.fill()
-    if Theme.isInk, let scene = Ink.scene(dark: dark) {
+    if let scene = ink {
       // the ink scene behind the board, bottom-anchored cover (themes.css .board)
       let k = max(r.width / scene.size.width, r.height / scene.size.height)
       let sz = CGSize(width: scene.size.width * k, height: scene.size.height * k)
@@ -164,9 +165,11 @@ enum Thumbs {
   }
 }
 
-/** A board's thumbnail: drawn off the main thread the first time, then from the cache */
+/** A board's thumbnail: its small scene asked of the bridge when the tile shows (kept there while the file is unchanged),
+ *  drawn off the main thread the first time, then from the cache */
 struct BoardThumb: View {
-  var scene: MiniScene
+  var ref: BoardRef
+  var lib: JSBridge
   var key: String
   @Environment(\.colorScheme) private var scheme
   @ObservedObject private var look = Look.shared
@@ -181,7 +184,11 @@ struct BoardThumb: View {
     }
     .task(id: k) {
       if Thumbs.cached(k) != nil { return }
-      Thumbs.make(scene, key: k, dark: scheme == .dark) { image = $0.map { (k, $0) } }
+      let dark = scheme == .dark
+      lib.lib("thumb", [ref.dir, ref.id], MiniScene.self) { r in
+        guard case .success(let scene) = r else { return }
+        Thumbs.make(scene, key: k, dark: dark) { image = $0.map { (k, $0) } }
+      }
     }
   }
 }

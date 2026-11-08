@@ -205,6 +205,7 @@ const asyncMade = async (dir: string, id: string, fn: (c: Session["cmd"]) => Pro
 const lib = createLibrary(native, (dir) => bridge.folder(dir).storage);
 (globalThis as unknown as { CodeBoardLibrary: unknown }).CodeBoardLibrary = {
   list: (req: number, dir: string) => settle(req, lib.list(dir)),
+  thumb: (req: number, dir: string, id: string) => settle(req, lib.thumb(dir, id)),
   create: (req: number, dir: string, name: string) => settle(req, lib.create(dir, name)),
   rename: (req: number, dir: string, id: string, name: string) => settle(req, lib.rename(dir, id, name)),
   remove: (req: number, dir: string, id: string) => settle(req, lib.remove(dir, id)),

@@ -12,13 +12,6 @@ struct LibBoard: Decodable, Identifiable, Hashable {
   var cards: Int
   var file: String?
   var mtime: Double
-  var scene: MiniScene
-  // the scene is what the file at mtime holds: the rest identifies the board
-  static func == (a: LibBoard, b: LibBoard) -> Bool { a.id == b.id && a.name == b.name && a.group == b.group && a.cards == b.cards && a.file == b.file && a.mtime == b.mtime }
-  func hash(into h: inout Hasher) {
-    h.combine(id)
-    h.combine(mtime)
-  }
 }
 
 /** A board somewhere in the library */
@@ -332,7 +325,7 @@ struct BoardTile: View {
     let ch = look.chrome
     let selected = m.picked == ref
     VStack(alignment: .leading, spacing: Design.tileTextGap) {
-      BoardThumb(scene: board.scene, key: "\(ref.dir)|\(ref.id)|\(board.mtime)")
+      BoardThumb(ref: ref, lib: m.lib, key: "\(ref.dir)|\(ref.id)|\(board.mtime)")
         .aspectRatio(Design.thumbAspect, contentMode: .fit)
         .clipShape(RoundedRectangle(cornerRadius: Design.thumbRadius))
         .overlay(RoundedRectangle(cornerRadius: Design.thumbRadius).strokeBorder(ch.hair.color, lineWidth: 0.5))

@@ -7,7 +7,7 @@ import { isErr, type Native } from "./native";
 import { type SceneCard, type SceneEnv, type SceneSection, sceneCard, sceneSection } from "./scene";
 
 /** A board as the library shows it: when its file last changed, and what its thumbnail draws */
-export type LibBoard = BoardMeta & { file?: string; mtime: number; scene: MiniScene };
+export type LibBoard = BoardMeta & { file?: string; mtime: number };
 /** A board in small (Thumbs.swift draws it with the canvas's own card drawing): its cards and Sections as the board's scene
  *  has them (code without highlighting: a thumbnail draws it as blocks) and its arrows (card index to card index) */
 export type MiniScene = { cards: SceneCard[]; sections: SceneSection[]; links: [number, number][] };
@@ -53,24 +53,31 @@ export function createLibrary(native: Native, at: (dir: string) => Storage) {
   async function list(dir: string): Promise<LibBoard[]> {
     const s = at(dir);
     const metas = await s.list();
+    return metas.map((m) => {
+      const file = s.fileOf(m.id);
+      return { ...m, file, mtime: mtime(file) };
+    });
+  }
+  /** A board's small scene for its thumbnail, asked for by the tile that shows it and kept while its file is unchanged */
+  const thumbs = new Map<string, { mtime: number; scene: Promise<MiniScene> }>();
+  async function thumb(dir: string, id: string): Promise<MiniScene> {
+    const s = at(dir);
+    await s.list();
+    const b = s.peek(id);
+    const t = mtime(s.fileOf(id)),
+      key = `${dir}/${id}`;
+    const hit = thumbs.get(key);
+    if (hit && hit.mtime === t) return hit.scene;
+    if (!b) return { cards: [], links: [], sections: [] };
     // no highlighting: a thumbnail is too small for code to read, the canvas draws it as blocks
     const env: SceneEnv = {
       assetsDir: s.assetsDir(),
-      peek: (id) => s.peek(id) ?? null,
-      hl: { tokens: async (_l, lines) => lines.map((t) => [[t]]) },
+      peek: (x) => s.peek(x) ?? null,
+      hl: { tokens: async (_l, lines) => lines.map((l) => [[l]]) },
     };
-    const out: LibBoard[] = [];
-    for (const m of metas) {
-      const b = s.peek(m.id);
-      const file = s.fileOf(m.id);
-      out.push({
-        ...m,
-        file,
-        mtime: mtime(file),
-        scene: b ? await miniScene(b, env) : { cards: [], links: [], sections: [] },
-      });
-    }
-    return out;
+    const scene = miniScene(b, env);
+    thumbs.set(key, { mtime: t, scene });
+    return scene;
   }
 
   async function create(dir: string, name: string): Promise<string> {
@@ -126,5 +133,5 @@ export function createLibrary(native: Native, at: (dir: string) => Storage) {
     return out;
   }
 
-  return { list, create, rename, remove, docs };
+  return { list, thumb, create, rename, remove, docs };
 }

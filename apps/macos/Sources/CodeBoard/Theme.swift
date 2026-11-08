@@ -4,9 +4,19 @@
 import AppKit
 
 enum Theme {
-  /** The appearance the layers draw in (the canvas sets it: dynamic colours resolve against it off the view hierarchy) */
-  static var appearance: NSAppearance = NSAppearance(named: .aqua)!
-  static var look = "warm-ink"
+  /** The appearance the layers draw in (the canvas sets it: dynamic colours resolve against it off the view hierarchy) and the
+   *  look: set on the main thread, read on the raster queue too, so both go through one lock */
+  private static let state = NSLock()
+  private static var _appearance: NSAppearance = NSAppearance(named: .aqua)!
+  private static var _look = "warm-ink"
+  static var appearance: NSAppearance {
+    get { state.withLock { _appearance } }
+    set { state.withLock { _appearance = newValue } }
+  }
+  static var look: String {
+    get { state.withLock { _look } }
+    set { state.withLock { _look = newValue } }
+  }
   /** look → "light" / "dark" → token → "#rrggbbaa" or a number */
   private static var tokens: [String: [String: [String: Any]]] = [:]
   static func load(_ file: URL) {
@@ -16,6 +26,10 @@ enum Theme {
       return
     }
     tokens = t
+    // the icons parsed here, once, so the raster queue only reads them
+    if let u = resource("icons.json"), let d = try? Data(contentsOf: u), let t = try? JSONSerialization.jsonObject(with: d) as? [String: [String: String]] {
+      icons = t.mapValues { Icon(stroke: $0["stroke"].map(SVGPath.parse), fill: $0["fill"].map(SVGPath.parse)) }
+    }
   }
   /** Where the app's resources are (themes.json, the fonts, the seal masks, the scenes): set with load */
   private static var resources: URL?
@@ -34,21 +48,13 @@ enum Theme {
     if urls.isEmpty { return }
     CTFontManagerRegisterFontURLs(urls as CFArray, .process, true) { _, _ in true }
   }
-  /** The board's icons (icons.json, from ui/icons.tsx): stroked and filled path data on a 16 grid */
-  private static var iconTable: [String: [String: String]] = [:]
+  /** The board's icons (icons.json, from ui/icons.tsx): stroked and filled paths on a 16 grid, parsed by load and read-only after */
   struct Icon {
     var stroke: CGPath?
     var fill: CGPath?
   }
-  private static var iconCache: [String: Icon] = [:]
-  static func icon(_ name: String) -> Icon? {
-    if let i = iconCache[name] { return i }
-    if iconTable.isEmpty, let u = resource("icons.json"), let d = try? Data(contentsOf: u), let t = try? JSONSerialization.jsonObject(with: d) as? [String: [String: String]] { iconTable = t }
-    guard let e = iconTable[name] else { return nil }
-    let i = Icon(stroke: e["stroke"].map(SVGPath.parse), fill: e["fill"].map(SVGPath.parse))
-    iconCache[name] = i
-    return i
-  }
+  private static var icons: [String: Icon] = [:]
+  static func icon(_ name: String) -> Icon? { icons[name] }
   /** An icon drawn at a point, 16 px, in a colour (styles.css .ico: stroke --ico-w, the strokes shifted by ico-w × 0.5 − 1) */
   static func drawIcon(_ name: String, at p: CGPoint, color: NSColor, size: CGFloat = 16) {
     guard let i = icon(name), let cg = NSGraphicsContext.current?.cgContext else { return }
