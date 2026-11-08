@@ -136,6 +136,8 @@ export class Images {
       // an animated image's still frame and always-play ({frame=N loop=true}), for a page that plays animated images itself
       "data-frame": a.frame ? String(a.frame) : null,
       "data-loop": a.loop ? "" : null,
+      // eager: "sync" trades a long frame (the decode on the main thread, the first time the image is drawn) for no blank frame;
+      // a swap to another copy is decoded ahead off screen (picture.ts: next.decode()) and costs no such frame
       loading: this.eager ? null : "lazy",
       decoding: this.eager ? "sync" : "async",
     };

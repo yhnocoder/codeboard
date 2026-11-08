@@ -847,7 +847,9 @@ function ImageView(p: { card: ImageCard }) {
       {/* 跟 Note 一样没有标题栏：整张图都能拖，菜单用右键 */}
       <div class="imgb" data-drag ref={box}>
         {/* src, data-full (the original, for export): md.showImage; data-w: its width, a copy's naturalWidth is not (measure.ts).
-            Loaded at once and drawn only decoded, as a Note's images (wire.ts eagerImages): never blank while it comes into view */}
+            Loaded at once and drawn only decoded, as a Note's images (wire.ts eagerImages): never blank while it comes into view.
+            decoding="sync" trades a long frame (the decode on the main thread, the first time it is drawn) for no blank frame; a
+            later swap to a larger copy is decoded ahead (md.showImage: next.decode() in @yhnocoder/markdown's picture.ts) */}
         <img
           ref={img}
           data-w={natural()?.width}
