@@ -1,10 +1,11 @@
 // The acceptance gate's in-app side (`--gate <dir> [--steps a,b,…] [--no-capture]`, with --open and --board): drives the real window
-// on the live display through every interaction with synthetic input delivered to this process only (CGEvent.postToPid: trackpad
-// scroll phases, ⌘-scroll, mouse drags; keys through the window and menu; a pinch has no public event, so it calls what
-// magnify(with:) calls), one input per display frame, and only while this process is frontmost. Per frame
+// on the live display through every interaction with synthetic input handed to its own window only (NSWindow.sendEvent of
+// CGEvents: trackpad scroll phases, ⌘-scroll, mouse drags; keys through the window and menu; a pinch has no public event, so it
+// calls what magnify(with:) calls), one input per display frame, and only while this process is frontmost. Per frame
 // (CVDisplayLink, handed to the main thread like Auto.swift) it records the interval, the main thread's cost, the camera, every
 // card in view (world rect) and the cards in view with no bitmap yet; the window is captured with ScreenCaptureKit at the display
-// rate (1 px per point), each frame reduced to the cell grid probes.ts judges (8 px cells, 4 px quarters) and a half-size JPEG.
+// rate at half its points (what the capture keeps up with), each frame reduced to the cell grid probes.ts judges (cells of 8
+// points, quarters of 4) and a JPEG; the timing that counts is the Animation Hitches instrument tools/mac-gate.mjs records.
 // Everything is written to <dir>/<board id>/ for tools/mac-gate.mjs, which judges and reports; nothing is judged here.
 import AppKit
 import ScreenCaptureKit
@@ -57,31 +58,21 @@ final class GateRun: NSObject, SCStreamOutput {
     let s = wc.window!.convertPoint(toScreen: w)
     return CGPoint(x: s.x, y: screenH - s.y)
   }
-  /** Every synthetic event goes to this process only (never to whatever is in front: a stray click or key must not reach another
-   *  app's boards), and only while this process is the frontmost one; otherwise the event is dropped and the run notes it */
+  /** Every synthetic event goes to this window only, handed to it directly (NSWindow.sendEvent: no WindowServer routing, so a
+   *  window of another app lying over this one neither takes it nor loses it), and only while this process is the frontmost
+   *  one; otherwise the event is dropped and the step fails */
   private var dropped = 0
   private func post(_ e: CGEvent?) {
-    guard let e else { return }
+    guard let e, let w = wc.window else { return }
     guard NSWorkspace.shared.frontmostApplication?.processIdentifier == getpid() else {
       dropped += 1
       if dropped == 1 { logLine("[gate] not frontmost: input dropped") }
       return
     }
-    e.postToPid(getpid())
-  }
-  /** An event delivered to the process carries its flags, but AppKit's modifier state comes from the modifier keys themselves:
-   *  ⌘ / ⇧ go down (flagsChanged) before the first event that needs them and up when no longer needed */
-  private var held: CGEventFlags = []
-  private func hold(_ flags: CGEventFlags) {
-    for (mask, code) in [(CGEventFlags.maskCommand, CGKeyCode(55)), (CGEventFlags.maskShift, CGKeyCode(56))] {
-      let want = flags.contains(mask), have = held.contains(mask)
-      if want == have { continue }
-      guard let e = CGEvent(keyboardEventSource: nil, virtualKey: code, keyDown: want) else { continue }
-      e.type = .flagsChanged
-      if want { held.insert(mask) } else { held.remove(mask) }
-      e.flags = held
-      post(e)
-    }
+    e.setIntegerValueField(.mouseEventWindowUnderMousePointer, value: Int64(w.windowNumber))
+    e.setIntegerValueField(.mouseEventWindowUnderMousePointerThatCanHandleThisEvent, value: Int64(w.windowNumber))
+    guard let ns = NSEvent(cgEvent: e) else { return }
+    w.sendEvent(ns)
   }
   private func scroll(dx: Double, dy: Double, phase: Int64, momentum: Int64 = 0, cmd: Bool = false, at p: CGPoint) {
     // wheel1 is vertical: a positive delta scrolls the content down in AppKit's scrollingDeltaY (natural scrolling applies, as to a finger)
@@ -92,14 +83,12 @@ final class GateRun: NSObject, SCStreamOutput {
     e.setDoubleValueField(.scrollWheelEventFixedPtDeltaAxis1, value: dy)
     e.setDoubleValueField(.scrollWheelEventFixedPtDeltaAxis2, value: dx)
     e.location = global(p)
-    hold(cmd ? .maskCommand : [])
     e.flags = cmd ? .maskCommand : []
     post(e)
   }
   private func mouse(_ type: CGEventType, at p: CGPoint, clicks: Int64 = 1, flags: CGEventFlags = []) {
     guard let e = CGEvent(mouseEventSource: nil, mouseType: type, mouseCursorPosition: global(p), mouseButton: .left) else { return }
     e.setIntegerValueField(.mouseEventClickState, value: clicks)
-    hold(flags)
     e.flags = flags
     post(e)
   }
@@ -130,6 +119,7 @@ final class GateRun: NSObject, SCStreamOutput {
   // MARK: sampling
   private var samples: [[String: Any]] = []
   private var stepT0: CFTimeInterval = 0
+  private var stepWall: TimeInterval = 0
   private var lastT: CFTimeInterval = 0
   private var frameIndex = 0
   private var current: GateStep?
@@ -236,8 +226,8 @@ final class GateRun: NSObject, SCStreamOutput {
       }
       let filter = SCContentFilter(desktopIndependentWindow: scw)
       let cfg = SCStreamConfiguration()
-      cfg.width = self.capW
-      cfg.height = self.capH
+      cfg.width = self.capW / 2
+      cfg.height = self.capH / 2
       cfg.pixelFormat = kCVPixelFormatType_32BGRA
       cfg.colorSpaceName = CGColorSpace.sRGB  // as the web board's captures, not the display's P3
       cfg.minimumFrameInterval = CMTime(value: 1, timescale: 240)
@@ -273,7 +263,7 @@ final class GateRun: NSObject, SCStreamOutput {
     guard let base = CVPixelBufferGetBaseAddress(pb) else { return }
     let w = CVPixelBufferGetWidth(pb), h = CVPixelBufferGetHeight(pb), stride = CVPixelBufferGetBytesPerRow(pb)
     let p = base.assumingMemoryBound(to: UInt8.self)
-    capFrames.append((t, GateRun.grid(p, w: w, h: h, stride: stride), GateRun.half(p, w: w, h: h, stride: stride)))
+    capFrames.append((t, GateRun.grid(p, w: w, h: h, stride: stride, cell: 4), GateRun.rgba(p, w: w, h: h, stride: stride)))
     capLast = t
   }
   /** probes.ts gridOf: each 8 × 8 cell as 2 × 2 quarters, the mean RGB of each (12 bytes a cell), BGRA in */
@@ -303,17 +293,16 @@ final class GateRun: NSObject, SCStreamOutput {
     }
     return Data(q)
   }
-  /** the frame at half size, RGBA (every other pixel: a picture to look at, not to judge) */
-  static func half(_ p: UnsafeMutablePointer<UInt8>, w: Int, h: Int, stride: Int) -> Data {
-    let hw = w / 2, hh = h / 2
-    var o = [UInt8](repeating: 255, count: hw * hh * 4)
-    for y in 0..<hh {
-      var i = y * 2 * stride, j = y * hw * 4
-      for _ in 0..<hw {
+  /** the frame as RGBA bytes (a picture to look at, not to judge) */
+  static func rgba(_ p: UnsafeMutablePointer<UInt8>, w: Int, h: Int, stride: Int) -> Data {
+    var o = [UInt8](repeating: 255, count: w * h * 4)
+    for y in 0..<h {
+      var i = y * stride, j = y * w * 4
+      for _ in 0..<w {
         o[j] = p[i + 2]
         o[j + 1] = p[i + 1]
         o[j + 2] = p[i]
-        i += 8
+        i += 4
         j += 4
       }
     }
@@ -337,7 +326,8 @@ final class GateRun: NSObject, SCStreamOutput {
         CGImageDestinationFinalize(dest)
       }
     }
-    return ["w": capW, "h": capH, "cols": cols, "rows": rows, "cell": 8, "grids": "\(name)/grids.bin", "t": frames.map(\.t), "thumbs": frames.count]
+    // w, h: the capture's pixels (half the window's points; masks are in points: scale by w / window width); cell: 4 px = 8 points
+    return ["w": capW / 2, "h": capH / 2, "cols": cols, "rows": rows, "cell": 4, "grids": "\(name)/grids.bin", "t": frames.map(\.t), "thumbs": frames.count]
   }
 
   // MARK: running the steps
@@ -420,6 +410,7 @@ final class GateRun: NSObject, SCStreamOutput {
     lastWin = wc.window?.frame ?? .zero
     let r0 = Rusage.now()
     stepT0 = CACurrentMediaTime()
+    stepWall = Date().timeIntervalSince1970
     capQueue.async { self.capFrames = []; self.capturing = true }
     var i = 0
     let n = s.frames
@@ -435,7 +426,6 @@ final class GateRun: NSObject, SCStreamOutput {
         self.tick = nil
         let r1 = Rusage.now(), wall = CACurrentMediaTime() - self.stepT0
         s.finish()
-        self.hold([])
         let samples = self.samples
         self.capQueue.async {
           self.capturing = false
@@ -443,10 +433,10 @@ final class GateRun: NSObject, SCStreamOutput {
           self.capFrames = []
           DispatchQueue.main.async {
             var o: [String: Any] = [
-              "name": s.name, "continuous": s.continuous, "frames": n, "t0": self.stepT0, "free": self.free, "moves": self.moves, "samples": samples,
+              "name": s.name, "continuous": s.continuous, "frames": n, "t0": self.stepT0, "t0_wall": self.stepWall, "free": self.free, "moves": self.moves, "samples": samples,
               "cpu_pct": wall > 0 ? (r1.cpu - r0.cpu) / wall * 100 : 0, "wall_s": wall, "dropped_input": self.dropped,
             ]
-            if !frames.isEmpty { o["capture"] = self.writeCapture(s.name, frames, cols: self.capW / 8, rows: self.capH / 8) }
+            if !frames.isEmpty { o["capture"] = self.writeCapture(s.name, frames, cols: self.capW / 2 / 4, rows: self.capH / 2 / 4) }
             self.stepsOut.append(o)
             let dts = samples.compactMap { $0["dt"] as? Double }.filter { $0 > 0 }.sorted()
             let p95 = dts.isEmpty ? 0 : dts[min(dts.count - 1, Int(Double(dts.count) * 0.95))]
