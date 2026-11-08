@@ -370,6 +370,7 @@ final class CanvasView: NSView {
       }
       l.onRendered = { [weak self] l in self?.rendered(l.card.id) }
       l.onBase = { [weak self] l in self?.baseCame(l) }
+      l.showsBoard = { [weak self] in self.map { !$0.world.isHidden } ?? false }
       l.riser = top
       cardLayers[c.id] = l
       cards.addSublayer(l)

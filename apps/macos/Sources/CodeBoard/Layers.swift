@@ -91,6 +91,8 @@ final class CardLayer: CALayer {
   /** What a tile raster hands over (the canvas lands a few per frame) */
   struct Tile { var row: Int; var y: CGFloat; var h: CGFloat; var image: Any; var slots: Slots? }
   struct Inote { var key: String; var image: CGImage }
+  /** A new base: landed like the sharp tiles (a look switch makes every card's at once), unless the board is not shown yet */
+  struct BaseLand { var put: () -> Void }
   /** The sharp tier's bytes (the canvas evicts the least recently seen hidden cards' when the total is over its budget) */
   private(set) var sharpBytes = 0
   var lastSeen: CFTimeInterval = 0
@@ -431,8 +433,8 @@ final class CardLayer: CALayer {
           if self.retries < 3 {
             self.retries += 1
             after(1.5) { [weak self] in if let self, self.gen == g { self.setNeedsDisplay() } }
+            if self.completeShown { return }
           }
-          if self.completeShown { return }
         }
         if !self.fixed, abs(pdf.h - self.height) > 0.5 || abs(pdf.w - self.frame.width) > 0.5 {
           self.height = pdf.h
@@ -529,7 +531,7 @@ final class CardLayer: CALayer {
     tiles = [:]
     asked = []
     source = src
-    let scale = contentsScale
+    let scale = askedScale
     tileH = CardLayer.tilePx / max(scale, 0.01)
     tileRows = max(1, Int(ceil(bounds.height / tileH)))
     if !complete { completeShown = false }
@@ -576,6 +578,7 @@ final class CardLayer: CALayer {
   /** A finished tile (or an Always Show note's picture) is shown, unless a newer raster was asked for since (then it is dropped;
    *  the old tiles stay until that one's land) */
   func land(_ contents: Any, _ scale: CGFloat, _ g: Int) {
+    if let b = contents as? BaseLand { b.put(); return }
     guard g == gen else { return }
     if let n = contents as? Inote {
       inoteLayers[n.key]?.contents = n.image
@@ -688,14 +691,22 @@ final class CardLayer: CALayer {
       DispatchQueue.main.async { [weak self] in
         guard let self else { return }
         if paperless { self.paperless = true }
-        if wantSheet, self.sheetKey == sk { self.baseSheet.contents = sheet }
-        if wantFace, self.baseKey == fk, !(self.baseReal && !real) {
-          self.baseFace.contents = face
-          self.baseReal = real
-          self.onBase?(self)
+        self.putBase {
+          if wantSheet, self.sheetKey == sk { self.baseSheet.contents = sheet }
+          if wantFace, self.baseKey == fk, !(self.baseReal && !real) {
+            self.baseFace.contents = face
+            self.baseReal = real
+            self.onBase?(self)
+          }
         }
       }
     }
+  }
+  /** Through the canvas's landing (a few per frame) when the card is on a shown board; at once for a card that has no base yet
+   *  or is out of view */
+  var showsBoard: () -> Bool = { false }
+  private func putBase(_ f: @escaping () -> Void) {
+    if let hand = handover, showsBoard(), !isHidden, baseFace.contents != nil { hand(self, BaseLand(put: f), 0, gen) } else { f() }
   }
   /** A Note's base from its rendered PDF (kept on disk when the render was complete) */
   private func baseFrom(_ pdf: NotePDF) {
@@ -706,10 +717,13 @@ final class CardLayer: CALayer {
       let img = pdf.raster(scale: Base.scale)
       if complete, let img { Base.write(fk, img) }
       DispatchQueue.main.async { [weak self] in
-        guard let self, self.baseKey == fk, let img, !(self.baseReal && !complete) else { return }
-        self.baseFace.contents = img
-        self.baseReal = complete
-        self.onBase?(self)
+        guard let self, let img else { return }
+        self.putBase {
+          guard self.baseKey == fk, !(self.baseReal && !complete) else { return }
+          self.baseFace.contents = img
+          self.baseReal = complete
+          self.onBase?(self)
+        }
       }
     }
   }
