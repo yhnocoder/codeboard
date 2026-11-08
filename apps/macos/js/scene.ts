@@ -1,6 +1,7 @@
 // The scene: what the native canvas draws, as plain JSON (Scene.swift decodes the same shapes). The bridge builds it from the
 // board; after a change only the items that changed go over (SceneChange). Geometry is in world units (the board's px at zoom 1).
 import {
+  CODE_GEO as CODE,
   cardTitle,
   codeGlyph,
   estSize,
@@ -11,9 +12,6 @@ import {
   type Section,
 } from "@codeboard/core";
 import type { Highlight, SceneTok } from "./highlight";
-
-/** The code card's geometry the app draws with (styles.css .chead / .code): a 36px head, 6px above the first row, 20px rows, 8px below */
-export const CODE = { head: 36, top: 6, row: 20, bottom: 8, sep: 20 } as const;
 
 export type SceneLine = { n: number; toks: SceneTok[] };
 export type SceneSegment = { path: string; start: number; end: number; lang: string; lines: SceneLine[] };

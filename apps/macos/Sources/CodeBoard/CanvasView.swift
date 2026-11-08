@@ -5,7 +5,7 @@
 import AppKit
 
 protocol CanvasDelegate: AnyObject {
-  func canvas(_ c: CanvasView, dragEnded moves: [(id: String, x: Double, y: Double)])
+  func canvas(_ c: CanvasView, dragEnded moves: [JSBridge.Move])
   func canvas(_ c: CanvasView, cameraRested cam: Camera)
   func canvasRoute(_ c: CanvasView, rects: [String: WorldRect], only: [String]?) -> [RouteGeo]
 }
@@ -257,8 +257,9 @@ final class CanvasView: NSView {
     }
     if l.card.locked == true { select([l.card.id]); return }
     select(e.modifierFlags.contains(.shift) ? selected.union([l.card.id]) : [l.card.id])
-    let ids = Array(selected)
-    beginDrag(ids, at: p)
+    // a locked card in the selection stays where it is
+    let ids = selected.filter { cardLayers[$0]?.card.locked != true }
+    if !ids.isEmpty { beginDrag(Array(ids), at: p) }
   }
   func beginDrag(_ ids: [String], at p: CGPoint) {
     var origins: [String: CGPoint] = [:]
@@ -294,7 +295,9 @@ final class CanvasView: NSView {
     guard let d = drag else { return }
     drag = nil
     if !d.moved { return }
-    let moves = d.ids.compactMap { id in cardLayers[id].map { (id: id, x: Double($0.frame.minX), y: Double($0.frame.minY)) } }
+    let moves = d.ids.compactMap { id in
+      cardLayers[id].map { JSBridge.Move(id: id, x: Double($0.frame.minX), y: Double($0.frame.minY), w: Double($0.frame.width), h: Double($0.frame.height)) }
+    }
     delegate?.canvas(self, dragEnded: moves)
   }
   func select(_ ids: Set<String>) {

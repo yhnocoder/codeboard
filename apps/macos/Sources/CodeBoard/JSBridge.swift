@@ -21,7 +21,7 @@ final class JSBridge {
     var errorDescription: String? { message }
   }
 
-  init(bundle: URL) throws {
+  init(bundle: URL, resources: URL) throws {
     ctx = JSContext()!
     ctx.exceptionHandler = { _, e in logLine("[codeboard js] %@", e?.toString() ?? "?") }
     let native = JSValue(newObjectIn: ctx)!
@@ -47,20 +47,22 @@ final class JSBridge {
     put("readFile", { (p: String) -> Any in
       do { return try String(contentsOfFile: p, encoding: .utf8) } catch { return err(error) }
     } as @convention(block) (String) -> Any)
+    put("readBinary", { (p: String) -> Any in
+      do { return try Data(contentsOf: URL(fileURLWithPath: p)).base64EncodedString() } catch { return err(error) }
+    } as @convention(block) (String) -> Any)
+    // whole or not at all (Storage writes the file another window may be reading); bytes that are not base64 are an error, not an
+    // empty file
     put("writeFile", { (p: String, data: String, base64: Bool) -> Any? in
-      do {
-        let bytes = base64 ? (Data(base64Encoded: data) ?? Data()) : Data(data.utf8)
-        try bytes.write(to: URL(fileURLWithPath: p))
-        return nil
-      } catch { return err(error) }
+      guard let bytes = base64 ? Data(base64Encoded: data) : Data(data.utf8) else { return ["error": "EBADBASE64: not base64"] }
+      do { try bytes.write(to: URL(fileURLWithPath: p), options: .atomic); return nil } catch { return err(error) }
     } as @convention(block) (String, String, Bool) -> Any?)
+    // rename(2), as Node's fs.rename: atomic, replaces a file, a folder only when empty (ENOTEMPTY otherwise), and a change of case
+    // only is a rename in place, never a delete
     put("rename", { (a: String, b: String) -> Any? in
-      do {
-        if fm.fileExists(atPath: b) { try fm.removeItem(atPath: b) }
-        try fm.moveItem(atPath: a, toPath: b)
-        return nil
-      } catch { return err(error) }
+      Darwin.rename(a, b) == 0 ? nil : ["error": String(cString: strerror(errno))]
     } as @convention(block) (String, String) -> Any?)
+    put("camGet", { (id: String) -> Any? in CameraStore.shared.get(id) } as @convention(block) (String) -> Any?)
+    put("camSet", { (id: String, json: String) in CameraStore.shared.set(id, json) } as @convention(block) (String, String) -> Void)
     put("rm", { (p: String) -> Any? in
       do { if fm.fileExists(atPath: p) { try fm.removeItem(atPath: p) }; return nil } catch { return err(error) }
     } as @convention(block) (String) -> Any?)
@@ -102,6 +104,7 @@ final class JSBridge {
       self.watchBoxes[id] = nil
     } as @convention(block) (Int) -> Void)
     ctx.setObject(native, forKeyedSubscript: "native" as NSString)
+    ctx.setObject(resources.path, forKeyedSubscript: "wasmDir" as NSString)
     let console = JSValue(newObjectIn: ctx)!
     for level in ["log", "warn", "error", "info", "debug"] {
       console.setObject({ (a: JSValue) in logLine("[codeboard js] %@", a.toString()) } as @convention(block) (JSValue) -> Void, forKeyedSubscript: level as NSString)
@@ -110,6 +113,15 @@ final class JSBridge {
     let src = try String(contentsOf: bundle, encoding: .utf8)
     ctx.evaluateScript(src, withSourceURL: bundle)
     if api.isUndefined { throw JSError(message: "bridge.js did not define CodeBoard") }
+  }
+  /** The window is gone: Storage's watchers (FSEvents), the timers and the JavaScript context go with it */
+  deinit {
+    for (_, s) in watches {
+      FSEventStreamStop(s)
+      FSEventStreamInvalidate(s)
+      FSEventStreamRelease(s)
+    }
+    for (_, t) in timers { t.invalidate() }
   }
 
   private func event(_ name: String, _ json: String) {
@@ -130,7 +142,7 @@ final class JSBridge {
   // FSEvents on the storage folder: changed files reach Storage through CodeBoard.fsChanged
   private final class WatchBox {
     let id: Int
-    unowned let bridge: JSBridge
+    weak var bridge: JSBridge?
     init(id: Int, bridge: JSBridge) { self.id = id; self.bridge = bridge }
   }
   private var watchBoxes: [Int: WatchBox] = [:]
@@ -148,7 +160,7 @@ final class JSBridge {
       for i in 0..<n {
         guard let p = arr[i] as? String else { continue }
         if flags[i] & FSEventStreamEventFlags(kFSEventStreamEventFlagItemIsFile) == 0 { continue }
-        box.bridge.api.invokeMethod("fsChanged", withArguments: [box.id, p])
+        box.bridge?.api.invokeMethod("fsChanged", withArguments: [box.id, p])
       }
     }
     let flags = UInt32(kFSEventStreamCreateFlagUseCFTypes | kFSEventStreamCreateFlagFileEvents | kFSEventStreamCreateFlagNoDefer)
@@ -178,19 +190,21 @@ final class JSBridge {
     }
   }
 
-  func initStorage(dir: String, stateFile: String) { api.invokeMethod("init", withArguments: [dir, stateFile]) }
+  func initStorage(dir: String) { api.invokeMethod("init", withArguments: [dir]) }
+  /** Before the window lets go of the bridge: Storage stops watching and writing */
+  func dispose() { api.invokeMethod("dispose", withArguments: []) }
   func list(_ cb: @escaping (Result<[BoardMeta], Error>) -> Void) { call("list", [], typed([BoardMeta].self, cb)) }
   func open(_ id: String, _ cb: @escaping (Result<Scene, Error>) -> Void) { call("open", [id], typed(Scene.self, cb)) }
   func changes(_ cb: @escaping (Result<SceneChange, Error>) -> Void) { call("changes", [], typed(SceneChange.self, cb)) }
   func undo(_ cb: @escaping (Result<SceneChange, Error>) -> Void) { call("undo", [], typed(SceneChange.self, cb)) }
   func redo(_ cb: @escaping (Result<SceneChange, Error>) -> Void) { call("redo", [], typed(SceneChange.self, cb)) }
-  func endDrag(_ cb: @escaping (Result<SceneChange, Error>) -> Void) { call("endDrag", [], typed(SceneChange.self, cb)) }
+  /** The drag ends with the cards at these rectangles: core puts them in the Section they land in */
+  func endDrag(_ moves: [Move], _ cb: @escaping (Result<SceneChange, Error>) -> Void) { call("endDrag", [encodeJSON(moves)], typed(SceneChange.self, cb)) }
   func flush(_ cb: @escaping (Result<String, Error>) -> Void) { call("flush", [], cb) }
   func beginDrag() { api.invokeMethod("beginDrag", withArguments: []) }
-  func drag(_ moves: [(id: String, x: Double, y: Double)]) {
-    struct M: Encodable { var id: String; var x, y: Double }
-    api.invokeMethod("drag", withArguments: [encodeJSON(moves.map { M(id: $0.id, x: $0.x, y: $0.y) })])
-  }
+  /** A card as dragged: where it is and its size as drawn */
+  struct Move: Encodable { var id: String; var x, y, w, h: Double }
+  func drag(_ moves: [Move]) { api.invokeMethod("drag", withArguments: [encodeJSON(moves)]) }
   func cam(_ c: Camera) { api.invokeMethod("cam", withArguments: [c.x, c.y, c.z]) }
   /** Synchronous: the arrows' geometry for these card rectangles (all links, or only the ones named) */
   func route(_ rects: [String: WorldRect], only: [String]? = nil) -> [RouteGeo] {

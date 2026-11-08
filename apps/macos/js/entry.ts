@@ -1,11 +1,14 @@
 // The bundle's entry (build.mjs → bridge.js): the bridge on the shell's `native`, published as `CodeBoard` with JSON strings at
 // the boundary. Async methods resolve through native.emit("reply", {req, ok, json}) so the shell never waits on a Promise.
+import "./prelude";
 import { createBridge } from "./bridge";
 import type { Native } from "./native";
 
 declare const native: Native;
 
-const bridge = createBridge(native);
+declare const wasmDir: string;
+
+const bridge = createBridge(native, { wasmDir });
 const str = (x: unknown) => JSON.stringify(x ?? null);
 const settle = (req: number, p: Promise<unknown>) =>
   p.then(
@@ -14,13 +17,14 @@ const settle = (req: number, p: Promise<unknown>) =>
   );
 
 (globalThis as unknown as { CodeBoard: unknown }).CodeBoard = {
-  init: (dir: string, stateFile: string) => bridge.init(dir, stateFile),
+  init: (dir: string) => bridge.init(dir),
+  dispose: () => bridge.dispose(),
   list: (req: number) => settle(req, bridge.list()),
   open: (req: number, id: string) => settle(req, bridge.open(id)),
   changes: (req: number) => settle(req, bridge.changes()),
   undo: (req: number) => settle(req, bridge.undo()),
   redo: (req: number) => settle(req, bridge.redo()),
-  endDrag: (req: number) => settle(req, bridge.endDrag()),
+  endDrag: (req: number, moves: string) => settle(req, bridge.endDrag(JSON.parse(moves))),
   flush: (req: number) => settle(req, bridge.flush()),
   route: (rects: string, only?: string) => str(bridge.route(JSON.parse(rects), only ? JSON.parse(only) : undefined)),
   beginDrag: () => bridge.beginDrag(),

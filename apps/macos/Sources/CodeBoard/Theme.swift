@@ -1,59 +1,64 @@
-// Warm Ink, the board's default look (packages/board/src/styles.css :root and :root[data-theme="dark"]), as colours that follow
-// the window's appearance, and the fonts the cards are set in.
+// The board's looks as colours that follow the window's appearance, and the fonts the cards are set in. The colours are the
+// stylesheets' tokens (packages/board/src/styles.css, themes.css), written to themes.json at build time (themes.mjs): every look,
+// light and dark, `#rrggbbaa`; nothing here is copied by hand. The app draws Warm Ink, the board's default look.
 import AppKit
 
 enum Theme {
   /** The appearance the layers draw in (the canvas sets it: dynamic colours resolve against it off the view hierarchy) */
   static var appearance: NSAppearance = NSAppearance(named: .aqua)!
-  static func hex(_ light: UInt32, _ dark: UInt32, alpha: (CGFloat, CGFloat) = (1, 1)) -> NSColor {
-    NSColor(name: nil) { ap in
-      let dk = ap.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-      let v = dk ? dark : light
-      let a = dk ? alpha.1 : alpha.0
-      return NSColor(
-        srgbRed: CGFloat((v >> 16) & 0xff) / 255, green: CGFloat((v >> 8) & 0xff) / 255, blue: CGFloat(v & 0xff) / 255,
-        alpha: a)
+  static var look = "warm-ink"
+  /** look → "light" / "dark" → token → "#rrggbbaa" or a number */
+  private static var tokens: [String: [String: [String: Any]]] = [:]
+  static func load(_ file: URL) {
+    guard let d = try? Data(contentsOf: file), let t = try? JSONSerialization.jsonObject(with: d) as? [String: [String: [String: Any]]] else {
+      logLine("[codeboard] no themes.json at %@: the board draws in placeholder colours", file.path)
+      return
     }
+    tokens = t
   }
-  static let bg = hex(0xeeece6, 0x191816)
-  static let surface = hex(0xfdfcfa, 0x252422)
-  static let head = hex(0xf8f6f1, 0x2a2926)
-  static let ink = hex(0x211f1b, 0xece8e0)
-  static let ink2 = hex(0x625e56, 0xaca79d)
-  static let ink3 = hex(0x9a958b, 0x78746c)
-  static let line = hex(0x3c2d14, 0xfff0dc, alpha: (0.09, 0.07))
-  static let hair = hex(0x3c2d14, 0xfff0dc, alpha: (0.16, 0.11))
-  static let accent = hex(0xb5552d, 0xe3895f)
-  static let edge = hex(0x9a958b, 0x78746c)
-  static let sectFill = hex(0x211f1b, 0xece8e0, alpha: (0.022, 0.025))
-  static let shadow = hex(0x32230a, 0x000000, alpha: (0.16, 0.5))
-  static let noteCode = hex(0xf5f3ef, 0x2b2a27)
-  static let sticky = hex(0xfbefb6, 0x4a4127)
-  static let stickyInk = hex(0x4a3c12, 0xf1e6c2)
+  private static func token(_ name: String, dark: Bool) -> Any? { tokens[look]?[dark ? "dark" : "light"]?[name] }
+  private static func parse(_ v: Any?) -> NSColor? {
+    guard let s = v as? String, s.hasPrefix("#"), s.count == 9, let n = UInt32(s.dropFirst(), radix: 16) else { return nil }
+    return NSColor(
+      srgbRed: CGFloat((n >> 24) & 0xff) / 255, green: CGFloat((n >> 16) & 0xff) / 255, blue: CGFloat((n >> 8) & 0xff) / 255,
+      alpha: CGFloat(n & 0xff) / 255)
+  }
+  /** A colour token, resolved for the appearance it is drawn in; an unknown token is loud (magenta), not quietly wrong */
+  static func c(_ name: String) -> NSColor {
+    NSColor(name: nil) { ap in parse(token(name, dark: ap.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua)) ?? .magenta }
+  }
+  static func number(_ name: String, _ fallback: CGFloat) -> CGFloat { (token(name, dark: false) as? Double).map { CGFloat($0) } ?? fallback }
+
+  static let bg = c("bg")
+  static let surface = c("surface")
+  static let head = c("head")
+  static let ink = c("ink")
+  static let ink2 = c("ink-2")
+  static let ink3 = c("ink-3")
+  static let line = c("line")
+  static let hair = c("hair")
+  static let accent = c("accent")
+  static let edge = c("edge")
+  static let sectFill = c("sect-fill")
+  static let noteCode = c("nc-bg")
+  static let sticky = c("sticky")
+  static let stickyInk = c("sticky-ink")
   static let selection = accent
 
-  /** Token colour classes (core tokenClass) */
+  /** Token colour classes (core tokenClass; the host's "dec" is drawn like a number, styles.css .dec) */
   static let tok: [String: NSColor] = [
-    "kw": hex(0x9a3f22, 0xe59572), "fn": hex(0x2e5d86, 0x86b4de), "str": hex(0x4a7536, 0xa3c98c),
-    "com": hex(0x9a958a, 0x7d786e), "num": hex(0x8a6416, 0xd9b36a), "self": hex(0x7a4f9a, 0xc8a3e6),
-    "p": hex(0x6f6a62, 0xa39e93), "dec": hex(0x8a6416, 0xd9b36a),
+    "kw": c("k-kw"), "fn": c("k-fn"), "str": c("k-str"), "com": c("k-com"), "num": c("k-num"), "self": c("k-self"),
+    "p": c("k-p"), "dec": c("k-num"),
   ]
-  /** Section colours (styles.css --s-*) and Box fills */
-  static let sect: [String: NSColor] = [
-    "sand": hex(0xceaa6e, 0xd6b478, alpha: (0.16, 0.1)), "blue": hex(0x6091cd, 0x78a5e1, alpha: (0.12, 0.09)),
-    "green": hex(0x6ea55f, 0x8cc378, alpha: (0.13, 0.09)), "pink": hex(0xd77891, 0xe68ca5, alpha: (0.12, 0.09)),
-  ]
+  /** Section colours (--s-*), Box fills (--bf-*), Mark colours (--hd-*) and arrow colours (--lk-*) */
+  static let sect: [String: NSColor] = ["sand": c("s-sand"), "blue": c("s-blue"), "green": c("s-green"), "pink": c("s-pink")]
   static let box: [String: NSColor] = [
-    "yellow": hex(0xfbefb6, 0x4a4127), "paper": hex(0xfdfcfa, 0x252422), "blue": hex(0xdfe9f6, 0x2a3442),
-    "green": hex(0xe3efdc, 0x2d3a2a), "pink": hex(0xf8e2e8, 0x44303a),
+    "yellow": c("bf-yellow"), "paper": c("bf-paper"), "blue": c("bf-blue"), "green": c("bf-green"), "pink": c("bf-pink"),
   ]
-  static let hand: [String: NSColor] = [
-    "blue": hex(0x3a72aa, 0x7fb0e0), "purple": hex(0x7d55b0, 0xb89be6), "orange": hex(0xc46a2a, 0xe3955a),
-    "green": hex(0x4c8a3a, 0x96c47e),
-  ]
-  static let link: [String: NSColor] = ["orange": hand["orange"]!, "blue": hand["blue"]!, "green": hand["green"]!]
+  static let hand: [String: NSColor] = ["blue": c("hd-blue"), "purple": c("hd-purple"), "orange": c("hd-orange"), "green": c("hd-green")]
+  static let link: [String: NSColor] = ["orange": c("lk-orange"), "blue": c("lk-blue"), "green": c("lk-green")]
 
-  static let cardRadius: CGFloat = 12.5
+  static var cardRadius: CGFloat { number("r-card", 12.5) }
   static let headHeight: CGFloat = 36
   static let codeRow: CGFloat = 20
 

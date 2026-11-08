@@ -1,9 +1,11 @@
 import { afterEach, describe, expect, it } from "vitest";
 import * as fs from "node:fs";
 import * as os from "node:os";
+import { createRequire } from "node:module";
 import * as path from "node:path";
-import { emptyBoard, uid, type Board, type Card } from "@codeboard/core";
-import { createBridge, noteBlocks } from "../bridge";
+import { blockSig, type Board, type Card, emptyBoard } from "@codeboard/core";
+import { createBridge } from "../bridge";
+import { installGlobals, type Native } from "../native";
 import { nodeNative } from "./node-native";
 
 const tmps: string[] = [];
@@ -50,12 +52,26 @@ function writeBoard(dir: string, n: number, id = "b1"): Board {
   return b;
 }
 
-function shell(dir: string) {
+/** The tree-sitter grammars in one folder, as the app's Resources has them */
+function wasmDir() {
+  const d = tmpDir();
+  const req = createRequire(import.meta.url);
+  for (const f of ["tree-sitter.wasm", "tree-sitter-python.wasm", "tree-sitter-rust.wasm"])
+    fs.copyFileSync(req.resolve(`@vscode/tree-sitter-wasm/wasm/${f}`), path.join(d, f));
+  fs.copyFileSync(
+    req.resolve("@yhnocoder/tree-sitter-cuda/tree-sitter-cuda.wasm"),
+    path.join(d, "tree-sitter-cuda.wasm"),
+  );
+  return d;
+}
+
+function shell(dir: string, wasm?: string) {
   const native = nodeNative();
-  const bridge = createBridge(native, { timers: false });
-  bridge.init(dir, path.join(dir, "..", `state-${uid("")}.json`));
+  const bridge = createBridge(native, { timers: false, wasmDir: wasm });
+  bridge.init(dir);
   return { native, bridge };
 }
+const at = (id: string, x: number, y: number) => ({ id, x, y, w: 380, h: 160 });
 
 const readFile = (dir: string, id = "b1") => JSON.parse(fs.readFileSync(path.join(dir, `${id}.json`), "utf8"));
 
@@ -89,7 +105,7 @@ describe("bridge", () => {
     bridge.beginDrag();
     bridge.drag([{ id: "c1", x: 10, y: 20 }]);
     bridge.drag([{ id: "c1", x: 100, y: 200 }]);
-    const ch = await bridge.endDrag();
+    const ch = await bridge.endDrag([at("c1", 100, 200)]);
     expect(ch.cards.map((c) => [c.id, c.x, c.y])).toEqual([["c1", 100, 200]]);
     expect(ch.gone.cards).toEqual([]);
     expect(native.events.filter((e) => e.name === "stacks").at(-1)?.data).toEqual({ undo: true, redo: false });
@@ -114,10 +130,10 @@ describe("bridge", () => {
     // A (the Mac app) moves c0, B (VS Code) moves c3 and renames c1, before either writes
     a.bridge.beginDrag();
     a.bridge.drag([{ id: "c0", x: 1, y: 2 }]);
-    await a.bridge.endDrag();
+    await a.bridge.endDrag([at("c0", 1, 2)]);
     b.bridge.beginDrag();
     b.bridge.drag([{ id: "c3", x: 3, y: 4 }]);
-    await b.bridge.endDrag();
+    await b.bridge.endDrag([at("c3", 3, 4)]);
     b.bridge.mutate((bb) => {
       bb.cards[1].title = "Renamed";
     });
@@ -161,7 +177,98 @@ describe("bridge", () => {
     await bridge.flush();
   });
 
-  it("splits a Note into blocks for arrow ends", () => {
-    expect(noteBlocks("# T\n\npara\n\n```\na\n\nb\n```\n\nlast")?.length).toBe(4);
+  it("colours C and CUDA through tree-sitter, like VS Code", async () => {
+    const dir = tmpDir();
+    const b = writeBoard(dir, 0);
+    b.cards.push({
+      id: "k",
+      kind: "code",
+      segments: [
+        {
+          id: "sk",
+          src: { kind: "free" },
+          path: "",
+          lang: "cuda-cpp",
+          start: 1,
+          end: 2,
+          text: ["__global__ void add(int *a) {", "  return; // done"],
+          version: { kind: "none" },
+        },
+      ],
+    });
+    b.place.k = { x: 0, y: 0, w: 380 };
+    const { cam: _cam, ...file } = b;
+    fs.writeFileSync(path.join(dir, "b1.json"), JSON.stringify(file));
+    const { bridge } = shell(dir, wasmDir());
+    const sc = await bridge.open("b1");
+    const lines = sc!.cards[0].segments![0].lines;
+    expect(lines[0].toks.some(([t, cls]) => t === "void" && cls === "kw")).toBe(true);
+    expect(lines[0].toks.some(([t, cls]) => t === "add" && cls === "fn")).toBe(true);
+    expect(lines[1].toks.some(([t, cls]) => t.startsWith("//") && cls === "com")).toBe(true);
+  });
+
+  it("an arrow on a Note's block follows the block when the Note is edited", async () => {
+    const dir = tmpDir();
+    const b = writeBoard(dir, 2);
+    const note = b.cards[1] as Extract<Card, { kind: "note" }>;
+    note.md = "# T\n\npara one\n\npara two";
+    b.links[0].to = { card: "c1", block: { i: 2, h: blockSig("para two") } };
+    const { cam: _cam, ...file } = b;
+    fs.writeFileSync(path.join(dir, "b1.json"), JSON.stringify(file));
+    const { bridge } = shell(dir);
+    await bridge.open("b1");
+    bridge.mutate((bb) => {
+      (bb.cards[1] as typeof note).md = "# T\n\nnew first\n\npara one\n\npara two";
+    });
+    expect(bridge.board().links[0].to.block).toEqual({ i: 3, h: blockSig("para two") });
+    await bridge.flush();
+    expect(readFile(dir).links[0].to.block.i).toBe(3);
+  });
+
+  it("a dropped card joins the Section it lands in, and leaves it when dropped outside", async () => {
+    const dir = tmpDir();
+    const b = writeBoard(dir, 2);
+    b.sections.push({ id: "S", title: "S", x: 2000, y: 2000, w: 1000, h: 1000 });
+    const { cam: _cam, ...file } = b;
+    fs.writeFileSync(path.join(dir, "b1.json"), JSON.stringify(file));
+    const { bridge } = shell(dir);
+    await bridge.open("b1");
+    bridge.beginDrag();
+    bridge.drag([{ id: "c0", x: 2100, y: 2100 }]);
+    const ch = await bridge.endDrag([at("c0", 2100, 2100)]);
+    expect(ch.cards[0]).toMatchObject({ id: "c0", section: "S" });
+    bridge.beginDrag();
+    bridge.drag([{ id: "c0", x: 0, y: 0 }]);
+    await bridge.endDrag([at("c0", 0, 0)]);
+    expect(bridge.board().place.c0.section).toBeUndefined();
+    bridge.undo();
+    expect(bridge.board().place.c0.section).toBe("S");
+  });
+
+  it("cameras go to the shell's store, not the board file", async () => {
+    const dir = tmpDir();
+    writeBoard(dir, 1);
+    const { bridge, native } = shell(dir);
+    await bridge.open("b1");
+    bridge.cam({ x: 5, y: 6, z: 2 });
+    await bridge.flush();
+    expect(JSON.parse(native.camGet("b1")!)).toEqual({ x: 5, y: 6, z: 2 });
+    expect(readFile(dir).cam).toBeUndefined();
+  });
+
+  it("setTimeout's extra arguments do not make it repeat", () => {
+    const set: [number, number][] = [];
+    const g: Record<string, unknown> = {};
+    const native = {
+      setTimer: (id: number, ms: number) => set.push([id, ms]),
+      cancelTimer: () => {},
+    } as unknown as Native;
+    const { fire } = installGlobals(native, g);
+    let n = 0;
+    const id = (g.setTimeout as (fn: () => void, ms: number, extra: string) => number)(() => n++, 5, "extra");
+    fire(id);
+    fire(id);
+    expect(n).toBe(1);
+    expect(set).toEqual([[id, 5]]);
   });
 });

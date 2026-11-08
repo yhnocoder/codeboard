@@ -13,6 +13,7 @@ export function nodeNative(): Native & {
   const events: Event[] = [];
   const watchers = new Map<number, string>();
   let watchN = 1;
+  const cams = new Map<string, string>();
   const wrap = <T>(fn: () => T) => {
     try {
       return fn();
@@ -36,12 +37,15 @@ export function nodeNative(): Native & {
         return { mtimeMs: s.mtimeMs, birthtimeMs: s.birthtimeMs, ctimeMs: s.ctimeMs };
       }),
     readFile: (p) => wrap(() => fs.readFileSync(p, "utf8")),
+    readBinary: (p) => wrap(() => fs.readFileSync(p).toString("base64")),
     writeFile: (p, data, base64) =>
       wrap(() => (fs.writeFileSync(p, base64 ? Buffer.from(data, "base64") : data), null)),
     rename: (a, b) => wrap(() => (fs.renameSync(a, b), null)),
     rm: (p) => wrap(() => (fs.rmSync(p, { force: true }), null)),
     rmdir: (p) => wrap(() => (fs.rmdirSync(p), null)),
     mkdir: (p) => wrap(() => (fs.mkdirSync(p, { recursive: true }), null)),
+    camGet: (id) => cams.get(id) ?? null,
+    camSet: (id, json) => void cams.set(id, json),
     sha1: (b64) => createHash("sha1").update(Buffer.from(b64, "base64")).digest("hex"),
     watch: (base) => {
       const id = watchN++;

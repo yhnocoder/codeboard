@@ -5,52 +5,39 @@
 import {
   applyPatch,
   applySharedUpdate,
-  blockSig,
   type Board,
   type BoardMeta,
   type Camera,
   emptyBoard,
+  type Rect,
+  type SharedUpdate,
 } from "@codeboard/core";
+import { dropCards, dropGone } from "@codeboard/core/commands";
 import { createHistory, createSave, type Doc } from "@codeboard/core/history";
-import { dropGone } from "@codeboard/core/commands";
-import { Storage, type Fs } from "@codeboard/host/storage";
+import { type Fs, Storage } from "@codeboard/host/storage";
+import { noteBlocks } from "@yhnocoder/markdown";
 import { nativeFs } from "./fs";
-import { Highlight } from "./highlight";
-import { installGlobals, type Native } from "./native";
-import { Router, type Rect, type RouteGeo } from "./routes";
-import { scene, sceneCard, sceneLink, sceneSection, type Scene, type SceneChange } from "./scene";
+import { makeHighlighter } from "./highlight";
+import { installGlobals, isErr, type Native } from "./native";
+import { type Rect as DrawnRect, type RouteGeo, Router } from "./routes";
+import { type Scene, type SceneChange, scene, sceneCard, sceneLink, sceneSection } from "./scene";
 
 /** The camera coming to rest is saved after this long (the board's LIVE_DELAY); a failed save is sent again after RESEND_DELAY */
 const LIVE_DELAY = 800,
   RESEND_DELAY = 2000;
-const CAMS_DELAY = 500;
 
 type Snap = ReturnType<ReturnType<typeof createHistory>["snap"]>;
 
-/** A Note's top-level blocks, the way arrow ends on blocks are matched (blank lines apart; a fenced code block is one block) */
-export function noteBlocks(md: string): string[] | null {
-  const out: string[] = [];
-  let cur: string[] = [],
-    fence = false;
-  const flush = () => {
-    if (cur.length) out.push(blockSig(cur.join("\n")));
-    cur = [];
-  };
-  for (const line of md.split("\n")) {
-    if (/^\s*(```|~~~)/.test(line)) fence = !fence;
-    if (!fence && !line.trim()) flush();
-    else cur.push(line);
-  }
-  flush();
-  return out;
-}
-
-/** timers: false = the shell's timers are not installed as the globals (the tests run on Node's own) */
-export function createBridge(native: Native, opts: { fs?: Fs; timers?: boolean } = {}) {
+/** timers: false = the shell's timers are not installed as the globals (the tests run on Node's own); wasmDir = the tree-sitter
+ *  grammars (the app's Resources); none = C / C++ / CUDA stay plain */
+export function createBridge(native: Native, opts: { fs?: Fs; timers?: boolean; wasmDir?: string } = {}) {
   const fs = opts.fs ?? nativeFs(native);
   const globals = opts.timers === false ? { fire: (_id: number) => {} } : installGlobals(native);
   const emit = (name: string, data: unknown) => native.emit(name, JSON.stringify(data ?? null));
-  const hl = new Highlight();
+  const hl = makeHighlighter((file) => {
+    const r = native.readBinary(`${opts.wasmDir ?? ""}/${file}`);
+    return isErr(r) ? Promise.reject(new Error(r.error)) : Promise.resolve(fs.fromBase64(r));
+  });
   const router = new Router();
 
   let board: Board = emptyBoard("none", "");
@@ -85,38 +72,49 @@ export function createBridge(native: Native, opts: { fs?: Fs; timers?: boolean }
     snap: history.snap,
     cam: () => board.cam,
     takeUndone: history.takeUndone,
-    post: (patch, undo) => storage!.patch(board.id, patch, { undo }).then((r) => ({ skipped: r.length })),
+    post: async (patch, undo) => {
+      const skipped = await storage!.patch(board.id, patch, { undo });
+      // shared items an undo skipped: Storage kept the other board's version, this board takes it back (host handlers.ts "shared")
+      if (skipped.length) syncShared(skipped);
+      return { skipped: skipped.length };
+    },
     toast: (text) => emit("toast", text),
     liveDelay: LIVE_DELAY,
     resendDelay: RESEND_DELAY,
   });
 
-  // Storage, on the shell's file system, watching the folder the way the extension does
+  // The host changed the board itself: what is not sent yet goes out first, then "sent" is aligned to now, so these are not sent
+  // back. They are syncs: no undo step, replayed after undo (the web board's state/changes.ts syncShared / syncGone / syncMerged)
+  function synced(fn: (b: Board) => void, keys?: string[]) {
+    save.flush();
+    history.sync(fn, keys);
+    save.alignSent();
+    void changes().then((c) => emit("changed", c));
+  }
+  function syncShared(cards: SharedUpdate[]) {
+    const keys = cards.flatMap((sc) => sc.items.map((id) => (id === sc.card.id ? `c${id}` : `n${id}`)));
+    synced((b) => {
+      for (const sc of cards) applySharedUpdate(b, sc);
+    }, keys);
+  }
+
+  // Storage, on the shell's file system, watching the folder the way the extension does; cameras in the shell's store (one per
+  // process, every window's)
   let storage: Storage | null = null;
   let dir = "";
-  let camsFile = "";
-  let cams: Record<string, Camera> = {};
-  let camsTimer: ReturnType<typeof setTimeout> | undefined;
   const watches = new Map<number, (abs: string) => void>();
-  function init(storageDir: string, stateFile: string) {
+  function init(storageDir: string) {
     storage?.dispose();
     dir = storageDir;
-    camsFile = stateFile;
-    try {
-      cams = JSON.parse(native.readFile(camsFile) as string) ?? {};
-    } catch {
-      cams = {};
-    }
     storage = new Storage(fs, {
       dir: () => dir,
       log: (level, text) => emit("log", { level, text }),
       cams: {
-        get: (id) => cams[id],
-        set: (id, cam) => {
-          cams[id] = cam;
-          clearTimeout(camsTimer);
-          camsTimer = setTimeout(() => native.writeFile(camsFile, JSON.stringify(cams), false), CAMS_DELAY);
+        get: (id) => {
+          const s = native.camGet(id);
+          return s ? (JSON.parse(s) as Camera) : undefined;
         },
+        set: (id, cam) => native.camSet(id, JSON.stringify(cam)),
       },
       watch: (base, _glob, fn) => {
         const id = native.watch(base);
@@ -131,27 +129,18 @@ export function createBridge(native: Native, opts: { fs?: Fs; timers?: boolean }
     });
     storage.onDidChange(() => void list().then((l) => emit("boards", l)));
     storage.onDidMerge(({ id, patch }) => {
-      if (id !== board.id) return;
-      save.flush();
-      history.sync((b) => applyPatch(b, structuredClone(patch)));
-      save.alignSent();
-      void changes().then((c) => emit("changed", c));
+      if (id === board.id) synced((b) => applyPatch(b, structuredClone(patch)));
     });
-    storage.onDidShare(({ from, cards }) => {
-      if (from === board.id || !cards.some((sc) => board.cards.some((c) => c.id === sc.card.id))) return;
-      save.flush();
-      history.sync((b) => {
-        for (const sc of cards) applySharedUpdate(b, sc);
-      });
-      save.alignSent();
-      void changes().then((c) => emit("changed", c));
+    // the board that wrote takes only `back` (its card file was changed by another window, those items merged in); the others
+    // the cards they have (host hub.ts)
+    storage.onDidShare(({ from, cards, back }) => {
+      const mine = (from === board.id ? (back ?? []) : cards).filter((sc) =>
+        board.cards.some((c) => c.id === sc.card.id),
+      );
+      if (mine.length) syncShared(mine);
     });
     storage.onDidRemoveShared(({ card }) => {
-      if (!board.cards.some((c) => c.id === card)) return;
-      save.flush();
-      history.sync((b) => dropGone(b, [card]));
-      save.alignSent();
-      void changes().then((c) => emit("changed", c));
+      if (board.cards.some((c) => c.id === card)) synced((b) => dropGone(b, [card]));
     });
     storage.onDidFailSave(({ error }) => emit("toast", `Couldn't save the board: ${error}`));
   }
@@ -178,8 +167,15 @@ export function createBridge(native: Native, opts: { fs?: Fs; timers?: boolean }
     return scene(board, env());
   }
 
-  /** What changed since the shell last got the scene: the items to put in and the ids gone */
-  async function changes(): Promise<SceneChange> {
+  /** What changed since the shell last got the scene: the items to put in and the ids gone. One at a time: each diff starts from
+   *  the snapshot the previous one ended at */
+  let chain: Promise<unknown> = Promise.resolve();
+  function changes(): Promise<SceneChange> {
+    const p = chain.then(changesNow, changesNow);
+    chain = p;
+    return p;
+  }
+  async function changesNow(): Promise<SceneChange> {
     const now = history.snap();
     const was = shown;
     shown = now;
@@ -218,7 +214,8 @@ export function createBridge(native: Native, opts: { fs?: Fs; timers?: boolean }
     return out;
   }
 
-  // A drag: live changes, one undo step when it ends
+  // A drag: live changes, one undo step when it ends; the drop joins the Section the card lies in (core's dropCards, what the web
+  // board's drop does too)
   let gesture: ((record?: boolean) => void) | null = null;
   function beginDrag() {
     gesture?.();
@@ -235,7 +232,9 @@ export function createBridge(native: Native, opts: { fs?: Fs; timers?: boolean }
       }
     });
   }
-  function endDrag(): Promise<SceneChange> {
+  function endDrag(moves: (DrawnRect & { id: string })[]): Promise<SceneChange> {
+    const fr: Map<string, Rect> = new Map(board.sections.map((s) => [s.id, { x: s.x, y: s.y, w: s.w, h: s.h }]));
+    if (gesture) history.live((b) => dropCards(b, moves, fr));
     gesture?.();
     gesture = null;
     return changes();
@@ -246,7 +245,7 @@ export function createBridge(native: Native, opts: { fs?: Fs; timers?: boolean }
     list,
     open,
     changes,
-    route: (rects: Record<string, Rect>, only?: string[]): RouteGeo[] => router.route(board, rects, only),
+    route: (rects: Record<string, DrawnRect>, only?: string[]): RouteGeo[] => router.route(board, rects, only),
     beginDrag,
     drag,
     endDrag,
@@ -261,6 +260,11 @@ export function createBridge(native: Native, opts: { fs?: Fs; timers?: boolean }
     timer: (id: number) => globals.fire(id),
     fsChanged: (id: number, abs: string) => {
       if (abs.endsWith(".json")) watches.get(id)?.(abs);
+    },
+    /** The shell is done with this board: Storage's watchers go, nothing more is written */
+    dispose: () => {
+      storage?.dispose();
+      storage = null;
     },
   };
 }

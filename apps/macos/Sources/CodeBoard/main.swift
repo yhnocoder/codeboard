@@ -24,6 +24,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   func applicationDidFinishLaunching(_ n: Notification) {
     logLine("[codeboard] launched %@", args.joined(separator: " "))
     NSApp.setActivationPolicy(.regular)
+    Theme.load(bundleURL.deletingLastPathComponent().appendingPathComponent("themes.json"))
     if args.contains("--dark") { NSApp.appearance = NSAppearance(named: .darkAqua) }
     if args.contains("--light") { NSApp.appearance = NSAppearance(named: .aqua) }
     makeMenu()
@@ -68,6 +69,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var left = windows.count
     var replied = false
     let reply = { if !replied { replied = true; NSApp.reply(toApplicationShouldTerminate: true) } }
+    CameraStore.shared.flush()
     if left == 0 { return .terminateNow }
     for w in windows {
       w.flush {
@@ -93,7 +95,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   }
   @discardableResult
   func openFolder(_ f: String) -> BoardWindowController? {
-    let folder = AppDelegate.boardsFolder((f as NSString).standardizingPath)
+    // the real path: FSEvents reports it, so Storage must watch and compare the same one
+    let folder = AppDelegate.boardsFolder(URL(fileURLWithPath: (f as NSString).standardizingPath).resolvingSymlinksInPath().path)
     if let w = windows.first(where: { $0.folder == folder }) {
       w.showWindow(nil)
       return w
@@ -101,6 +104,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     do {
       let wc = try BoardWindowController(folder: folder, bundle: bundleURL)
       windows.append(wc)
+      wc.onClose = { [weak self, weak wc] in self?.windows.removeAll { $0 === wc } }
       wc.showWindow(nil)
       recents = [folder] + recents.filter { $0 != folder }
       makeMenu()

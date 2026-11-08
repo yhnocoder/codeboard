@@ -10,6 +10,8 @@ export interface Native {
   readdir(dir: string): NativeEnt[] | NativeErr;
   stat(p: string): NativeStat | NativeErr;
   readFile(p: string): string | NativeErr;
+  /** The file's bytes as base64 (the tree-sitter wasm) */
+  readBinary(p: string): string | NativeErr;
   /** text, or bytes as base64 when `base64` is set */
   writeFile(p: string, data: string, base64: boolean): null | NativeErr;
   rename(from: string, to: string): null | NativeErr;
@@ -17,6 +19,9 @@ export interface Native {
   rmdir(p: string): null | NativeErr;
   mkdir(p: string): null | NativeErr;
   sha1(base64: string): string;
+  /** The cameras of every board, kept by the shell (one store per process, every window's): the camera as JSON, or null */
+  camGet(board: string): string | null;
+  camSet(board: string, json: string): void;
   /** Watch a folder tree; changed paths arrive through `CodeBoard.fsChanged(id, abs)`. Returns the watch id */
   watch(base: string): number;
   unwatch(id: number): void;
@@ -54,7 +59,7 @@ export function installGlobals(
     timers.delete(id);
     native.cancelTimer(id);
   };
-  g.setTimeout = setT;
+  g.setTimeout = (fn: () => void, ms = 0) => setT(fn, ms, false);
   g.setInterval = (fn: () => void, ms = 0) => setT(fn, ms, true);
   g.clearTimeout = clearT;
   g.clearInterval = clearT;

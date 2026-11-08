@@ -14,7 +14,9 @@ struct Paint {
   var card: SceneCard
   var height: CGFloat
   var noteText: NSAttributedString?
-  var image: CGImage?
+  /** An Image card: the file, decoded on the raster queue no larger than this many pixels across */
+  var imageSrc: String?
+  var imageMax: Int
   var selected: Bool
   var framed: Bool
 }
@@ -24,7 +26,8 @@ final class CardLayer: CALayer {
   /** The card's drawn height (its Place's, or measured from its content) */
   private(set) var height: CGFloat = 0
   private var noteText: NSAttributedString?
-  private var image: CGImage?
+  /** An Image card's pixel size, from the file's header (no decode on the main thread) */
+  private var imageSize: CGSize?
   /** Has a bitmap now (the canvas drops the bitmaps of cards far off screen) */
   var drawn = false
   var selected = false {
@@ -35,8 +38,11 @@ final class CardLayer: CALayer {
   /** Rasters run here, a few at a time; the main thread only hands over the finished bitmap */
   private static let queue = DispatchQueue(label: "codeboard.raster", qos: .userInteractive, attributes: .concurrent)
   private var gen = 0
-  /** Decoded images by file, no larger than a card needs (a 4000px screenshot is not decoded again for every raster) */
+  /** Decoded images by file and size, no larger than a card needs (a 4000px screenshot is not decoded again for every raster); the
+   *  oldest go when there are more than `imageCacheMax` */
   private static var imageCache: [String: CGImage] = [:]
+  private static var imageOrder: [String] = []
+  private static let imageCacheMax = 64
   private static let imageLock = NSLock()
 
   init(card: SceneCard) {
@@ -63,9 +69,9 @@ final class CardLayer: CALayer {
   func apply(_ c: SceneCard) {
     card = c
     noteText = nil
-    image = nil
+    imageSize = nil
     if c.kind == "note", let md = c.md { noteText = CardLayer.noteString(c, md) }
-    if c.kind == "image", let src = c.src { image = CardLayer.loadImage(src, maxPixels: Int(c.w * 2)) }
+    if c.kind == "image", let src = c.src { imageSize = CardLayer.imageSize(src) }
     height = c.h.map { CGFloat($0) } ?? measure()
     frame = CGRect(x: c.x, y: c.y, width: c.w, height: height)
     shadowOpacity = framed ? 0.14 : 0
@@ -79,14 +85,33 @@ final class CardLayer: CALayer {
     frame.origin = p
   }
 
+  /** The image's size from its header: cheap, for measuring the card */
+  static func imageSize(_ src: String) -> CGSize? {
+    guard let s = CGImageSourceCreateWithURL(URL(fileURLWithPath: src) as CFURL, nil),
+      let p = CGImageSourceCopyPropertiesAtIndex(s, 0, nil) as? [CFString: Any],
+      let w = p[kCGImagePropertyPixelWidth] as? CGFloat, let h = p[kCGImagePropertyPixelHeight] as? CGFloat
+    else { return nil }
+    let turned = ((p[kCGImagePropertyOrientation] as? UInt32) ?? 1) >= 5
+    return turned ? CGSize(width: h, height: w) : CGSize(width: w, height: h)
+  }
+  /** Decoded no larger than maxPixels across; called on the raster queue */
   static func loadImage(_ src: String, maxPixels: Int) -> CGImage? {
+    let px = max(256, maxPixels)
+    let key = "\(src)@\(px)"
     imageLock.lock()
-    defer { imageLock.unlock() }
-    if let i = imageCache[src] { return i }
+    let hit = imageCache[key]
+    imageLock.unlock()
+    if let hit { return hit }
     guard let s = CGImageSourceCreateWithURL(URL(fileURLWithPath: src) as CFURL, nil) else { return nil }
-    let opts: [CFString: Any] = [kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceThumbnailMaxPixelSize: max(256, maxPixels), kCGImageSourceCreateThumbnailWithTransform: true, kCGImageSourceShouldCacheImmediately: true]
+    let opts: [CFString: Any] = [kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceThumbnailMaxPixelSize: px, kCGImageSourceCreateThumbnailWithTransform: true, kCGImageSourceShouldCacheImmediately: true]
     guard let img = CGImageSourceCreateThumbnailAtIndex(s, 0, opts as CFDictionary) else { return nil }
-    imageCache[src] = img
+    imageLock.lock()
+    if imageCache[key] == nil {
+      imageCache[key] = img
+      imageOrder.append(key)
+      while imageOrder.count > imageCacheMax { imageCache[imageOrder.removeFirst()] = nil }
+    }
+    imageLock.unlock()
     return img
   }
 
@@ -96,7 +121,7 @@ final class CardLayer: CALayer {
     let g = gen
     let size = bounds.size
     let scale = min(contentsScale, sqrt(2_500_000 / max(1, size.width * size.height)))
-    let paint = Paint(card: card, height: height, noteText: noteText, image: image, selected: selected, framed: framed)
+    let paint = Paint(card: card, height: height, noteText: noteText, imageSrc: card.kind == "image" ? card.src : nil, imageMax: Int(card.w * scale), selected: selected, framed: framed)
     let appearance = Theme.appearance
     CardLayer.queue.async {
       let img = CardLayer.render(paint, size: size, scale: scale, appearance: appearance)
@@ -157,9 +182,9 @@ final class CardLayer: CALayer {
       if look == "box" { return 20 + Markdown.height(t, width: w - 20) }
       return 4 + Markdown.height(t, width: w - 8)
     case "image":
-      guard let image, image.width > 0 else { return 160 }
+      guard let imageSize, imageSize.width > 0 else { return 160 }
       let inner = card.bg == true ? w - 16 : w
-      let h = inner * CGFloat(image.height) / CGFloat(image.width)
+      let h = inner * imageSize.height / imageSize.width
       return card.bg == true ? h + 16 : h
     case "board": return 240
     case "web": return 112
@@ -332,7 +357,7 @@ final class CardLayer: CALayer {
     let inset: CGFloat = p.card.bg == true ? 8 : 0
     let box = r.insetBy(dx: inset, dy: inset)
     let clip = NSBezierPath(roundedRect: box, xRadius: p.card.bg == true ? 6 : Theme.cardRadius, yRadius: p.card.bg == true ? 6 : Theme.cardRadius)
-    guard let image = p.image else {
+    guard let src = p.imageSrc, let image = CardLayer.loadImage(src, maxPixels: p.imageMax) else {
       Theme.head.setFill()
       clip.fill()
       return

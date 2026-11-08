@@ -12,10 +12,12 @@ final class BoardWindowController: NSWindowController, NSToolbarDelegate, NSTabl
   private let zoomLabel = NSTextField(labelWithString: "100%")
   private var canUndo = false, canRedo = false
   var onOpened: ((Scene) -> Void)?
+  /** The window closed: whoever keeps the controller lets go of it */
+  var onClose: (() -> Void)?
 
   init(folder: String, bundle: URL) throws {
     self.folder = folder
-    bridge = try JSBridge(bundle: bundle)
+    bridge = try JSBridge(bundle: bundle, resources: bundle.deletingLastPathComponent())
     let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1280, height: 820), styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
     w.title = (folder as NSString).lastPathComponent
     w.subtitle = folder
@@ -47,10 +49,8 @@ final class BoardWindowController: NSWindowController, NSToolbarDelegate, NSTabl
     canvas.delegate = self
     canvas.onCamera = { [weak self] c in self?.zoomLabel.stringValue = "\(Int((c.z * 100).rounded()))%" }
     bridge.onEvent = { [weak self] name, json in self?.event(name, json) }
-    let state = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("CodeBoard", isDirectory: true)
-    try? FileManager.default.createDirectory(at: state, withIntermediateDirectories: true)
     logLine("[codeboard] memory after the bridge loaded: %.0f MB footprint", AutoRun.residentMB())
-    bridge.initStorage(dir: folder, stateFile: state.appendingPathComponent("cams.json").path)
+    bridge.initStorage(dir: folder)
     refresh()
   }
   required init?(coder: NSCoder) { fatalError() }
@@ -212,10 +212,10 @@ final class BoardWindowController: NSWindowController, NSToolbarDelegate, NSTabl
   }
 
   // MARK: canvas → core
-  func canvas(_ c: CanvasView, dragEnded moves: [(id: String, x: Double, y: Double)]) {
+  func canvas(_ c: CanvasView, dragEnded moves: [JSBridge.Move]) {
     bridge.beginDrag()
     bridge.drag(moves)
-    bridge.endDrag { [weak self] r in if case .success(let ch) = r { self?.canvas.apply(ch) } }
+    bridge.endDrag(moves) { [weak self] r in if case .success(let ch) = r { self?.canvas.apply(ch) } }
   }
   func canvas(_ c: CanvasView, cameraRested cam: Camera) { if current != nil { bridge.cam(cam) } }
   func canvasRoute(_ c: CanvasView, rects: [String: WorldRect], only: [String]?) -> [RouteGeo] { bridge.route(rects, only: only) }
@@ -231,5 +231,8 @@ final class BoardWindowController: NSWindowController, NSToolbarDelegate, NSTabl
 }
 
 extension BoardWindowController: NSWindowDelegate {
-  func windowWillClose(_ notification: Notification) { bridge.flush { _ in } }
+  func windowWillClose(_ notification: Notification) {
+    bridge.flush { [bridge] _ in bridge.dispose() }
+    onClose?()
+  }
 }
