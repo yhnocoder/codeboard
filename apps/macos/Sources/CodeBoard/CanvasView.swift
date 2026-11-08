@@ -1,7 +1,8 @@
 // The canvas: a flipped, layer-backed view whose `world` layer holds every card, Section and arrow at board coordinates. The camera
 // is the world layer's transform, so panning, pinching and ⌘-scrolling never redraw a card; a card being dragged moves its own
 // layer and only the arrows on it are re-routed (a sub-millisecond call into core's routing). Cards are rasterised at a few zoom
-// buckets (rasterBucket) and far off-screen ones drop their bitmaps; a change is committed to core when the drag ends.
+// buckets (rasterBucket) over the base each always keeps (Base.swift); past a budget hidden cards fall back to their base; a
+// change is committed to core when the drag ends.
 // Gestures: drag a card (or the selection), marquee on empty space (⌥-drag pans), resize by a selected card's right edge / bottom
 // corner, an arrow from a selected card's port dots to another card, double-click to edit a Note / Text / Free code or to make a
 // Note on empty space, a Section's title to rename it. The card being edited is the EditCard's WKWebView over it (WebCards.swift).
