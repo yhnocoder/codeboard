@@ -317,7 +317,7 @@ export type RasterResult = {
  * - stops stepVP: the pixels one small zoom stop rasters, the move and the rest after it: persona 0.47; 2.2 when the world was
  *   rastered again at every stop (#155). Synthetic: 11-12, about 16 before #155.
  * - nearCut wastedVP (persona): at rest at 0.34 (just above the summary cut, the card level shown), 20 steps of pans and the
- *   pointer moved over the cards, the pixels rastered at over 2x the scale shown: 0.1-0.2. 12 when the hint came back on at each
+ *   pointer moved over the cards, the pixels rastered at over 2x the scale shown: 0.1-0.2 (CI's 1x screen; 1.25 at 2x). 12 when the hint came back on at each
  *   pan and Chromium rastered the world at 1.0 there (2.9x; 5.9x on a 2x screen), and every card a hover painted again with it:
  *   more tiles than the GPU kept, drawn as holes in the cards and images while the pointer moved.
  * - fit restVP and wastedVP: Fit to Window from 100 % (the flight is in the rest after the click), all of it and the part at

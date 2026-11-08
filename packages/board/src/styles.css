@@ -419,6 +419,31 @@ textarea {
 .world.settle {
   will-change: auto;
 }
+/* 缩到设置的比例以下（Simplify Below，默认 50%；卡片层还显示着，Canvas.tsx .greek）卡片简化：
+   - Note 正文的字画成浅色字条：字本身透明（Skia 不画透明的字），每行字的下划线加粗、上移盖住字的位置，长短跟着字走。50% 以下世界层
+     不带 will-change（Canvas.tsx HINT_MIN），缩放每帧按新比例重画，画字是最贵的部分（密排的中文 Note，2× 屏幕上捏合头几帧每帧 30–50 ms），
+     画成字条几乎不花时间。
+   - 卡里的行和块不响应指针：没有行、块的连线圆点，悬停代码、高亮、调用不变样子，点不开调用（太小，点不准）；拖卡、卡边的连线圆点照旧。
+   在写的卡照常。按停下时的比例切换（stillZ），缩放中途不变 */
+.world.greek .card.note:not(.editing) .nbody :is(p, li, h1, h2, h3, h4, h5, h6, td, th, blockquote) {
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--ink) 16%, transparent);
+  text-decoration-thickness: 0.62em;
+  text-underline-offset: -0.48em;
+  text-decoration-skip-ink: none;
+}
+.world.greek .card.note:not(.editing) .nbody,
+.world.greek .card.note:not(.editing) .nbody * {
+  color: transparent !important;
+  -webkit-text-fill-color: transparent;
+  text-shadow: none !important;
+}
+.world.greek .card:not(.editing) :is(.cbody, .nbody) {
+  pointer-events: none;
+}
+.world.greek :is(.lport, .bports) {
+  display: none;
+}
 .pshield {
   position: absolute;
   inset: 0;

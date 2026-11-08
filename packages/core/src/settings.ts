@@ -267,6 +267,17 @@ export const SETTINGS: { [K in keyof Settings]-?: SettingDecl } = {
         "Use the editor's background as the board background in every theme. Cards, text and accent colors stay the theme's; patterns such as grids stay on top.",
     },
   },
+  simpleBelow: {
+    key: "zoom.simplifyBelow",
+    valid: (v) => num(v) && (v as number) >= 0 && (v as number) <= 0.9,
+    schema: {
+      type: "number",
+      minimum: 0,
+      maximum: 0.9,
+      description:
+        "Zoomed out below this scale (0.5 = 50 %), with the cards still shown, Notes' text is drawn as light bars, and the lines and blocks inside cards do not react to the pointer: links start only from card edges. Zooming there stays smooth on boards of dense Notes. 0 turns it off.",
+    },
+  },
   // not "theme.reflow": codeboard.theme is a string, so VS Code ignores keys under it
   themeReflow: {
     key: "themeReflow",
