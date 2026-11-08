@@ -6,8 +6,8 @@
 //  zoomedOutSimplifiesCards — zoomed out below Simplify Below (codeboard.zoom.simplifyBelow, 0.5) and above the summary cut,
 //                            stopped: a Note's prose is drawn as bars (its text's fill transparent, a bar per line behind
 //                            it), the bodies of Notes and code cards take no pointer (a shield over them: no line or block
-//                            ports, no hover on lines and calls), the card edges' ports stay; the switch fades the prose
-//                            out, swaps it and fades it in; at 100 % none of it; with the setting at 0 none of it either
+//                            ports, no hover on lines and calls), the card edges' ports stay; the switch is immediate, with
+//                            no fade; at 100 % none of it; with the setting at 0 none of it either
 //  summaryImageCopy        — an Image card's picture at the summary level is the smaller copy the card itself would show
 //                            (md.showImage, picked by the size the summary shows it at times the display scale), not the
 //                            full-size original: a 3200 × 1600 PNG shown 480 px wide at 20 % decodes a copy at least that
@@ -253,7 +253,7 @@ test("zoomedOutSimplifiesCards", async () => {
         eport: getComputedStyle(document.querySelector(".card.ccard .eport")!).pointerEvents,
       };
     });
-  // the classes the world goes through: the switch fades the prose out, swaps it while it is out, and fades it in again
+  // the classes the world goes through: the switch is one class change, no fade (a compositor fade made the board flash)
   const record = (h: Host) =>
     h.page.evaluate(() => {
       const w = document.querySelector<HTMLElement>(".world")!;
@@ -286,9 +286,7 @@ test("zoomedOutSimplifiesCards", async () => {
   await outTo(h, 0.45);
   const z = await zoomOf(h);
   check("stopped between the summary cut and 50 %", z < 0.5 && !(await h.page.locator(".cardlay.gone").count()), z);
-  await until(h, "the switch's fade ends", () =>
-    h.page.evaluate(() => !!document.querySelector(".world.greek:not(.greekfade)")),
-  );
+  await until(h, "the switch lands", () => h.page.evaluate(() => !!document.querySelector(".world.greek")));
   const out = await look(h);
   check("a Note's prose is drawn as bars", out.greek && out.fill === "rgba(0, 0, 0, 0)" && out.bar, out);
   check(
@@ -304,8 +302,8 @@ test("zoomedOutSimplifiesCards", async () => {
   check("card bodies take no pointer", out.noteShield === '""' && out.codeShield === '""' && out.codeHit, out);
   check("the card edges' ports stay", out.eport !== "none", out);
   check(
-    "the switch swaps the prose for its bars and fades them in",
-    JSON.stringify(await seen(h)) === JSON.stringify(["greekfade greek", "greek"]),
+    "the switch swaps the prose for its bars at once, with no fade",
+    JSON.stringify(await seen(h)) === JSON.stringify(["greek"]),
     await seen(h),
   );
   await h.page.close();

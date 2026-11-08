@@ -467,13 +467,20 @@ textarea {
     pre
   ) {
   background:
-    linear-gradient(to top, transparent 0.3lh, var(--gbar) 0.3lh 0.7lh, transparent 0.7lh) left 0 bottom 0 / var(--tail) 1lh no-repeat,
-    repeating-linear-gradient(to top, transparent 0 0.3lh, var(--gbar) 0.3lh 0.7lh, transparent 0.7lh 6lh) left 0 top 0 / 100% calc(100% - 1lh) no-repeat,
-    repeating-linear-gradient(to top, transparent 0 1.3lh, var(--gbar) 1.3lh 1.7lh, transparent 1.7lh 6lh) left 0 top 0 / 97% calc(100% - 1lh) no-repeat,
-    repeating-linear-gradient(to top, transparent 0 2.3lh, var(--gbar) 2.3lh 2.7lh, transparent 2.7lh 6lh) left 0 top 0 / 100% calc(100% - 1lh) no-repeat,
-    repeating-linear-gradient(to top, transparent 0 3.3lh, var(--gbar) 3.3lh 3.7lh, transparent 3.7lh 6lh) left 0 top 0 / 91% calc(100% - 1lh) no-repeat,
-    repeating-linear-gradient(to top, transparent 0 4.3lh, var(--gbar) 4.3lh 4.7lh, transparent 4.7lh 6lh) left 0 top 0 / 100% calc(100% - 1lh) no-repeat,
-    repeating-linear-gradient(to top, transparent 0 5.3lh, var(--gbar) 5.3lh 5.7lh, transparent 5.7lh 6lh) left 0 top 0 / 95% calc(100% - 1lh) no-repeat;
+    linear-gradient(to top, transparent 0.3lh, var(--gbar) 0.3lh 0.7lh, transparent 0.7lh) left 0 bottom 0 / var(--tail)
+    1lh no-repeat,
+    repeating-linear-gradient(to top, transparent 0 0.3lh, var(--gbar) 0.3lh 0.7lh, transparent 0.7lh 6lh) left 0 top 0
+    / 100% calc(100% - 1lh) no-repeat,
+    repeating-linear-gradient(to top, transparent 0 1.3lh, var(--gbar) 1.3lh 1.7lh, transparent 1.7lh 6lh) left 0 top 0
+    / 97% calc(100% - 1lh) no-repeat,
+    repeating-linear-gradient(to top, transparent 0 2.3lh, var(--gbar) 2.3lh 2.7lh, transparent 2.7lh 6lh) left 0 top 0
+    / 100% calc(100% - 1lh) no-repeat,
+    repeating-linear-gradient(to top, transparent 0 3.3lh, var(--gbar) 3.3lh 3.7lh, transparent 3.7lh 6lh) left 0 top 0
+    / 91% calc(100% - 1lh) no-repeat,
+    repeating-linear-gradient(to top, transparent 0 4.3lh, var(--gbar) 4.3lh 4.7lh, transparent 4.7lh 6lh) left 0 top 0
+    / 100% calc(100% - 1lh) no-repeat,
+    repeating-linear-gradient(to top, transparent 0 5.3lh, var(--gbar) 5.3lh 5.7lh, transparent 5.7lh 6lh) left 0 top 0
+    / 95% calc(100% - 1lh) no-repeat;
 }
 /* 字条画在段落、标题、代码块上，紧凑列表的项和表格的格子（字直接在里面，没有段落）也画；只有图的段落不画。
    每行一条，长度错落但不量字：最后一行单独一层（长短随块轮换：--tail），上面的行按 6 行一组的长度模板从倒数第二行往上排
@@ -493,17 +500,6 @@ textarea {
 }
 .world.greek :is(.lport, .bports) {
   display: none;
-}
-/* 切换时（Canvas.tsx GREEK_FADE）换上的字条（或字）从 40% 淡入，只动正文的透明度，在合成器上跑，不每帧重画。和换的那一下在同一次提交里：
-   浏览器等新内容光栅完才开始播（大字量的正文要画快一秒），旧的那份一直照常显示，不会先暗下去、字再跳出来（Linda 11-08 录屏）；
-   不从 0 开始：中间一段空白太突兀 */
-.world.greekfade .card.note:not(.editing) .nbody {
-  animation: greek-in calc(var(--t) * 220ms) ease-out;
-}
-@keyframes greek-in {
-  from {
-    opacity: 0.4;
-  }
 }
 .pshield {
   position: absolute;

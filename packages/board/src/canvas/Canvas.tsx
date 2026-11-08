@@ -1,4 +1,4 @@
-import { For, Show, onMount, onCleanup, createMemo, createEffect, createSignal, on, untrack, batch } from "solid-js";
+import { For, Show, onMount, onCleanup, createMemo, createEffect, createSignal, on, untrack } from "solid-js";
 import { bounds, keepsLook, twinContent, type AlignOp } from "@codeboard/core";
 import { state, rectOf, cardById, hostOf, placed, placeOf } from "../state/store";
 import { sel } from "../state/selection";
@@ -54,9 +54,6 @@ const HINT_KEEPS = 0.25;
  *  prose drawn as bars below it (.world.greek) keeps cheap: drawn as text, the first frames of a pinch at 0.3–0.5 took 30–50 ms
  *  each on a 2× Mac on a board of dense Chinese Notes */
 const HINT_MIN = 0.5;
-/** The fade-in of the Notes' prose or bars after a switch (styles.css .world.greekfade, 220 ms) ends at its animationend; this
- *  takes the class off if that never comes (it starts only once what it shows is rastered, up to a second for dense prose) */
-const GREEK_FADE_MAX = 2500;
 /** A flight drops the hint (or rasters again under it) a little before it is shown at half the scale it was rastered at: the
  *  raster lags the camera by a frame or two at a flight's speed, and what is rastered under the hint then is drawn further out
  *  (at half, up to a sixth of a Fit's raster on an Ink Wash board was at over 2× the scale it was drawn at, 2–3 % at 1.8) */
@@ -162,47 +159,10 @@ export function Canvas() {
       }
     });
   });
-  // Zoomed out past Simplify Below (styles.css .world.greek): taken at a stop (stillZ), never in the middle of a zoom. A switch
-  // with the cards shown fades what is swapped in (.greekfade). Into and out of the summary level it changes at once (the
-  // cards are gone, or come back, anyway)
-  const simple = createMemo(() => stillZ() < state.host.settings.simpleBelow && !cardsGone());
-  const [greek, setGreek] = createSignal(simple());
-  const [greekFade, setGreekFade] = createSignal(false);
-  let fadeT: number | undefined;
-  let restartF = 0;
-  createEffect(
-    on(
-      [simple, cardsGone],
-      ([g, gone], prev) => {
-        cancelAnimationFrame(restartF);
-        clearTimeout(fadeT);
-        if (gone || prev?.[1]) {
-          setGreekFade(false);
-          return void setGreek(g);
-        }
-        // the swap and the fade-in go in one commit, so the fade starts when what is swapped in is rastered (the compositor
-        // starts an animation when it first draws it); .greekfade comes off at its animationend (the timer only if that never
-        // comes). A switch back during it: the class off now, and the swap with the fade a frame later, so it starts over
-        const was = greekFade();
-        setGreekFade(false);
-        if (g === greek()) return;
-        const go = () => {
-          batch(() => {
-            setGreek(g);
-            setGreekFade(true);
-          });
-          fadeT = window.setTimeout(() => setGreekFade(false), GREEK_FADE_MAX);
-        };
-        if (was) restartF = requestAnimationFrame(go);
-        else go();
-      },
-      { defer: true },
-    ),
-  );
-  onCleanup(() => {
-    cancelAnimationFrame(restartF);
-    clearTimeout(fadeT);
-  });
+  // Zoomed out past Simplify Below (styles.css .world.greek): taken at a stop (stillZ), never in the middle of a zoom. It
+  // changes at once, no fade: a compositor fade puts the Notes' bodies on layers of their own and back, and the board
+  // flashed both times on a Mac (Linda 11-08); the swap shows when what it swaps in is rastered, the old look until then
+  const greek = createMemo(() => stillZ() < state.host.settings.simpleBelow && !cardsGone());
   // Without the hint a move of the world by a fraction of a device pixel rasters it again (its tiles are drawn at the new
   // offset): a trackpad pan or a fling at 0.34, 1.4 viewports a step. Settled, it moves by whole device pixels
   const px = (v: number) => {
@@ -308,9 +268,7 @@ export function Canvas() {
           moving: camMoving(),
           settle: settle(),
           greek: greek(),
-          greekfade: greekFade(),
         }}
-        onAnimationEnd={(e) => e.animationName === "greek-in" && setGreekFade(false)}
         style={{ transform: `translate(${px(cam.x)}px, ${px(cam.y)}px) scale(${cam.z})` }}
       >
         {/* the card level (zoomed out it is swapped out as one layer and stays under the summaries: state/summary.ts) */}
