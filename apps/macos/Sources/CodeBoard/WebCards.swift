@@ -649,10 +649,12 @@ final class EditCard {
   }
 }
 
-/** The card pages' web view: the editor's lets clicks below `hitHeight` through to the canvas (its frame has air below the card) */
+/** The card pages' web view: the editor's lets clicks below `hitHeight` through to the canvas (its frame has air below the card),
+ *  and every click while it is not shown (alpha 0 after an edit: it stayed over the card and took the press that should drag it) */
 final class CardWeb: WKWebView {
   var hitHeight: CGFloat?
   override func hitTest(_ point: NSPoint) -> NSView? {
+    if alphaValue == 0 { return nil }
     if let h = hitHeight, let sv = superview, convert(point, from: sv).y > h { return nil }
     return super.hitTest(point)
   }

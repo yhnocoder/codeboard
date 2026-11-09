@@ -420,7 +420,11 @@ private let relative: RelativeDateTimeFormatter = {
   f.locale = Locale(identifier: Bundle.main.preferredLocalizations.first ?? "en")
   return f
 }()
-@MainActor func relativeDate(_ ms: Double) -> String { relative.localizedString(for: Date(timeIntervalSince1970: ms / 1000), relativeTo: Date()) }
+/** A time within the last minute, or a little ahead of this clock (a file written a moment ago): "just now", never "in 0 seconds" */
+@MainActor func relativeDate(_ ms: Double) -> String {
+  let now = Date(), t = Date(timeIntervalSince1970: ms / 1000)
+  return now.timeIntervalSince(t) < 60 ? "just now" : relative.localizedString(for: t, relativeTo: now)
+}
 
 /** The path with symlinks resolved (/tmp and /private/tmp are one folder) */
 func real(_ p: String) -> String { URL(fileURLWithPath: p).resolvingSymlinksInPath().path }

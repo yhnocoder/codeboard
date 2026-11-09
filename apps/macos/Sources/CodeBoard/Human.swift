@@ -34,6 +34,10 @@ final class HumanRun {
   // MARK: input: events posted to this process, at points on screen
 
   private func post(_ e: NSEvent?) { if let e { NSApp.postEvent(e, atStart: false) } }
+  /** The camera moved by itself since t0 (a new card brought into view, animated): that stretch is a moving one */
+  private func camMoved(_ c: CanvasView, since cam: Camera, at t0: Double) {
+    if c.cam.x != cam.x || c.cam.y != cam.y || c.cam.z != cam.z { moves.append([t0, rec.now + 0.5]) }
+  }
   private var evn = 0
   private func mouse(_ t: NSEvent.EventType, _ w: NSWindow, _ screen: NSPoint, clicks: Int = 1, mods: NSEvent.ModifierFlags = []) {
     evn += 1
@@ -64,6 +68,8 @@ final class HumanRun {
   }
   /** A trackpad scroll (two fingers) over a point: began, changed, ended, as the trackpad sends them */
   private func scroll(_ w: NSWindow, at p: NSPoint, dx: Double, dy: Double, steps: Int = 30, cmd: Bool = false) async {
+    let t0 = rec.now
+    defer { moves.append([t0, rec.now + 0.3]) }
     let h = NSScreen.screens[0].frame.height
     for i in 0...(steps + 1) {
       let phase: Int64 = i == 0 ? 1 : i == steps + 1 ? 4 : 2
@@ -90,10 +96,21 @@ final class HumanRun {
   private var keyTarget: NSWindow?
   private func key(_ code: UInt16, _ chars: String, _ mods: NSEvent.ModifierFlags = [], to win: NSWindow? = nil) async {
     guard let w = win ?? NSApp.keyWindow ?? keyTarget else { return }
+    // made as the keyboard makes it (a CGEvent of the key code and flags, read back as an NSEvent): the menus match key
+    // equivalents through the key code and layout, which a hand-made NSEvent's characters do not stand in for (⌘⇧Z missed Redo)
+    var flags: CGEventFlags = []
+    if mods.contains(.command) { flags.insert(.maskCommand) }
+    if mods.contains(.shift) { flags.insert(.maskShift) }
+    if mods.contains(.option) { flags.insert(.maskAlternate) }
+    if mods.contains(.control) { flags.insert(.maskControl) }
     for t in [NSEvent.EventType.keyDown, .keyUp] {
-      guard let e = NSEvent.keyEvent(with: t, location: .zero, modifierFlags: mods, timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: w.windowNumber,
-                                     context: nil, characters: chars, charactersIgnoringModifiers: mods.contains(.shift) ? chars : chars.lowercased(), isARepeat: false, keyCode: code)
-      else { continue }
+      guard let cg = CGEvent(keyboardEventSource: CGEventSource(stateID: .hidSystemState), virtualKey: code, keyDown: t == .keyDown) else { continue }
+      cg.flags = flags
+      if !mods.contains(.command) {
+        let u = Array(chars.utf16)
+        cg.keyboardSetUnicodeString(stringLength: u.count, unicodeString: u)
+      }
+      guard let e = NSEvent(cgEvent: cg) else { continue }
       if t == .keyDown, mods.contains(.command) {
         if !w.performKeyEquivalent(with: e) { _ = NSApp.mainMenu?.performKeyEquivalent(with: e) }
       } else if !(t == .keyUp && mods.contains(.command)) {
@@ -101,6 +118,11 @@ final class HumanRun {
       }
     }
     await frames(2)
+  }
+  /** A key pressed and let go, posted to this process only (CGEvent.postToPid) */
+  private func pidKey(_ code: UInt16) async {
+    for down in [true, false] { CGEvent(keyboardEventSource: nil, virtualKey: code, keyDown: down)?.postToPid(getpid()) }
+    await frames(3)
   }
   private static let codes: [Character: UInt16] = [
     "a": 0, "s": 1, "d": 2, "f": 3, "h": 4, "g": 5, "z": 6, "x": 7, "c": 8, "v": 9, "b": 11, "q": 12, "w": 13, "e": 14, "r": 15, "y": 16, "t": 17,
@@ -184,12 +206,17 @@ final class HumanRun {
   private func unsharp(_ c: CanvasView) -> [String] {
     c.softInView
   }
+  /** Where a person takes a card by its head: a little in from its left, clear of the arrow port at the head's middle */
+  private func head(_ l: CardLayer) -> CGPoint { CGPoint(x: l.worldRect.minX + min(70, l.worldRect.width / 4), y: l.worldRect.minY + 14) }
   private func emptySpot(_ c: CanvasView) -> CGPoint? {
-    for y in stride(from: 140.0, to: c.bounds.height - 120, by: 40) {
-      for x in stride(from: 60.0, to: c.bounds.width - 60, by: 40) {
+    // the canvas between the title row and the docks; a gap a person can hit (24 pt), as between two cards
+    for y in stride(from: 140.0, to: c.bounds.height - 120, by: 20) {
+      for x in stride(from: 60.0, to: c.bounds.width - 60, by: 20) {
         let p = CGPoint(x: x, y: y), w = c.toWorld(p)
-        let r = CGRect(x: w.x - 30 / c.cam.z, y: w.y - 30 / c.cam.z, width: 60 / c.cam.z, height: 60 / c.cam.z)
-        if !c.cardLayers.values.contains(where: { !$0.isHidden && $0.worldRect.intersects(r) }) && !c.sectionLayers.values.contains(where: { $0.frame.intersects(r) }) { return p }
+        let r = CGRect(x: w.x - 12 / c.cam.z, y: w.y - 12 / c.cam.z, width: 24 / c.cam.z, height: 24 / c.cam.z)
+        // a Section's inside is canvas a person clicks on; its name row is not
+        let heads = c.sectionLayers.values.map { CGRect(x: $0.frame.minX, y: $0.frame.minY - 40, width: $0.frame.width, height: 80) }
+        if !c.cardLayers.values.contains(where: { !$0.isHidden && $0.worldRect.intersects(r) }) && !heads.contains(where: { $0.intersects(r) }) { return p }
       }
     }
     return nil
@@ -257,19 +284,32 @@ final class HumanRun {
   // MARK: steps
 
   private var stepT0 = 0.0
-  private func begin(_ name: String) {
+  /** When the camera moved in this step (a two-finger scroll and its glide), in the recording's seconds */
+  private var moves: [[Double]] = []
+  /** The end of the last step's mark: its second to settle, which the recording's check judges against */
+  private var lastEnd = 0.0
+  private func settle() async { while rec.now < lastEnd { await wait(0.05) } }
+  private func begin(_ name: String) async {
+    await settle()
+    moves = []
     stepT0 = rec.now
     logLine("[human] %@", name)
   }
   /** One step's result: what a person sees, checked; the screenshot of the window it happened in; the cards on screen */
   private func done(_ name: String, _ ok: Bool, sees: String, shot: String, camera: Bool = false, notes: [String] = [], canvas: CanvasView? = nil) {
     results.append(["step": name, "pass": ok, "sees": sees, "shot": shot, "notes": notes, "active": NSApp.isActive])
-    marks.append(["name": name, "start": max(0, stepT0), "end": rec.now + 1.0, "camera": camera, "pass": ok])
+    lastEnd = rec.now + 1.0
+    marks.append(["name": name, "start": max(0, stepT0), "end": lastEnd, "camera": camera ? true as Any : moves as Any, "pass": ok])
     if let c = canvas, let scr = c.window?.screen ?? NSScreen.main {
       let v = visibleWorld(c)
-      regions[name] = c.cardLayers.values.filter { !$0.isHidden && $0.worldRect.intersects(v) }.map { l -> [String: Any] in
+      // each card's part a person sees: inside the canvas, below the title row (not the desktop past the window's edge)
+      let shown = CGRect(x: 0, y: c.safeAreaInsets.top, width: c.bounds.width, height: c.bounds.height - c.safeAreaInsets.top)  // flipped
+      let view = c.window!.convertToScreen(c.convert(shown, to: nil))
+      regions[name] = c.cardLayers.values.filter { !$0.isHidden && $0.worldRect.intersects(v) }.compactMap { l -> [String: Any]? in
         let a = screen(c, world: l.worldRect.origin), b = screen(c, world: CGPoint(x: l.worldRect.maxX, y: l.worldRect.maxY))
-        return ["id": l.card.id, "kind": l.card.kind, "x": a.x - scr.frame.minX, "y": scr.frame.maxY - a.y, "w": b.x - a.x, "h": a.y - b.y]
+        let r = NSRect(x: a.x, y: b.y, width: b.x - a.x, height: a.y - b.y).intersection(view)
+        guard r.width >= 24, r.height >= 24 else { return nil }
+        return ["id": l.card.id, "kind": l.card.kind, "x": r.minX - scr.frame.minX, "y": scr.frame.maxY - r.maxY, "w": r.width, "h": r.height]
       }
     }
     logLine("[human] %@: %@ — %@", name, ok ? "pass" : "FAIL", sees)
@@ -297,7 +337,7 @@ final class HumanRun {
     await comeForward(libraryWindow)
     logLine("[human] active %d, key window %@", NSApp.isActive ? 1 : 0, NSApp.keyWindow?.title ?? "none")
     // 1. a plain launch: the library window
-    begin("launch")
+    await begin("launch")
     let up = await until(15) { libraryWindow?.isVisible == true && app.library?.projects.isEmpty == false && !(app.library?.boards.isEmpty ?? true) }
     await wait(1.0)
     guard let lw = libraryWindow else { return done("launch", false, sees: "no library window", shot: "") }
@@ -311,7 +351,7 @@ final class HumanRun {
     guard let project else { return }
 
     // 2. the project in the sidebar
-    begin("pick_project")
+    await begin("pick_project")
     var notes: [String] = []
     var picked = false
     if let r = await findText(lw, project.name) {
@@ -332,7 +372,7 @@ final class HumanRun {
     }
 
     // 3. a board double-clicked in the grid: its window, drawn sharp
-    begin("open_board")
+    await begin("open_board")
     dumpAX(lw, "grid")
     let boards = (app.library.boards[project.dir] ?? []).filter { $0.cards >= 4 }.sorted { $0.cards > $1.cards }
     let grid = await ocr(lw, nil)
@@ -344,7 +384,7 @@ final class HumanRun {
       // the thumbnail, above its name
       t0 = CACurrentMediaTime()
       await click(lw, NSPoint(x: r.minX + 60, y: r.maxY + 50), count: 2)
-      opened = await until(5) { board(target.id)?.window?.isVisible == true }
+      opened = await until(5) { board(target.id)?.window.map { $0.isVisible && $0.alphaValue > 0 } == true }
       openS = CACurrentMediaTime() - t0
     } else { notes = ["no tile labelled \(target.name)"] }
     if !opened {
@@ -366,7 +406,7 @@ final class HumanRun {
     state["boardName"] = target.name
 
     // 4. pan with two fingers, zoom with the toolbar's + and with ⌘-scroll
-    begin("pan")
+    await begin("pan")
     let cam0 = c.cam
     await scroll(bw, at: screen(c, CGPoint(x: c.bounds.midX, y: c.bounds.midY)), dx: -240, dy: -160)
     await wait(0.6)
@@ -375,7 +415,7 @@ final class HumanRun {
     let s4 = await shot(bw, "pan")
     done("pan", moved > 50 && unsharp(c).isEmpty, sees: moved > 50 ? "the board slid by \(Int(moved)) pt, \(unsharp(c).isEmpty ? "sharp" : "\(unsharp(c).count) cards not sharp")" : "the two-finger scroll did not move the board (\(Int(moved)) pt)", shot: s4.path, camera: true, canvas: c)
 
-    begin("zoom")
+    await begin("zoom")
     let z0 = c.cam.z
     var zoomNotes: [String] = []
     if let r = find(bw, "Zoom In (⌘+)") ?? find(bw, "plus") {
@@ -392,15 +432,18 @@ final class HumanRun {
     let zoomOk = zIn > z0 * 1.2 && abs(zOut - zIn) > 0.05 && zSharp
     done("zoom", zoomOk, sees: "zoom \(Int(z0 * 100))% → \(Int(zIn * 100))% with + → \(Int(zOut * 100))% with ⌘-scroll; \(zSharp ? "sharp once settled" : "\(unsharp(c).count) cards still soft 4 s later")", shot: s5.path, camera: true, notes: zoomNotes, canvas: c)
     // back to where a person reads: Actual Size from the menu key
+    await settle()
     await key(29, "0", .command)
     await wait(0.6)
 
     // 5. a new Note from the toolbar, typed, clicked out of
-    begin("add_note")
+    await begin("add_note")
     let word = "zebrafinch\(Int(Date().timeIntervalSince1970) % 10000)"
     let before = Set(c.cardLayers.keys)
+    let noteT0 = rec.now, noteCam = c.cam
     if let r = find(bw, "Note", roles: ["AXButton"]) { await click(bw, NSPoint(x: r.midX, y: r.midY)) } else { notes = ["no Note button"] }
     let editing = await until(4) { c.edit.active && c.edit.shown }
+    camMoved(c, since: noteCam, at: noteT0)
     let noteId = c.cardLayers.keys.first { !before.contains($0) } ?? ""
     await type("Human pass \(word)")
     await wait(0.3)
@@ -416,11 +459,11 @@ final class HumanRun {
     state["word"] = word
 
     // 6. the Note dragged by its head
-    begin("drag_note")
+    await begin("drag_note")
     var dragOk = false, dragSees = "no Note to drag"
     if let l = c.cardLayers[noteId] {
       let o = l.worldRect.origin
-      let a = screen(c, world: CGPoint(x: l.worldRect.midX, y: l.worldRect.minY + 12))
+      let a = screen(c, world: head(l))
       await drag(bw, from: a, to: NSPoint(x: a.x + 140, y: a.y - 90))
       await wait(0.8)
       let n = c.cardLayers[noteId]?.worldRect.origin ?? o
@@ -432,15 +475,20 @@ final class HumanRun {
     done("drag_note", dragOk, sees: dragSees, shot: s7.path, canvas: c)
 
     // 7. an existing Note edited: double-click, the end of its text, a word, click out
-    begin("edit_note")
-    await key(18, "1", .command)  // Zoom to Fit, as a person looks for one
-    await wait(1.0)
-    let others = c.cardLayers.values.filter { $0.card.kind == "note" && $0.card.id != noteId && $0.card.look == nil && !$0.isHidden && visibleWorld(c).contains($0.worldRect) }
-    var editOk = false, editSees = "no other Note in view"
-    if let l = others.max(by: { $0.worldRect.width * $0.worldRect.height < $1.worldRect.width * $1.worldRect.height }) {
+    await begin("edit_note")
+    // the nearest other Note, scrolled to with two fingers when its head is not in view
+    let others = c.cardLayers.values.filter { $0.card.kind == "note" && $0.card.id != noteId && ($0.card.look ?? "note") == "note" }
+    let mid = c.toWorld(CGPoint(x: c.bounds.midX, y: c.bounds.midY))
+    var editOk = false, editSees = "no other Note on the board"
+    if let l = others.min(by: { hypot($0.worldRect.midX - mid.x, $0.worldRect.minY - mid.y) < hypot($1.worldRect.midX - mid.x, $1.worldRect.minY - mid.y) }) {
       let id = l.card.id, md0 = l.card.md ?? ""
-      // close enough to read it
-      let a = screen(c, world: CGPoint(x: l.worldRect.midX, y: l.worldRect.minY + min(60, l.worldRect.height / 2)))
+      let head = CGPoint(x: l.worldRect.midX, y: l.worldRect.minY + min(60, l.worldRect.height / 2))
+      if !visibleWorld(c).insetBy(dx: 80 / c.cam.z, dy: 100 / c.cam.z).contains(head) {
+        let m = screen(c, world: head), centre = screen(c, CGPoint(x: c.bounds.midX, y: c.bounds.midY))
+        await scroll(bw, at: centre, dx: centre.x - m.x, dy: m.y - centre.y)
+        await wait(0.6)
+      }
+      let a = screen(c, world: head)
       await click(bw, a, count: 2)
       let on = await until(4) { c.edit.active && c.edit.card?.id == id && c.edit.shown }
       await key(125, "\u{F701}", .command)
@@ -455,8 +503,7 @@ final class HumanRun {
     }
     let s8 = await shot(bw, "edit")
     done("edit_note", editOk, sees: editSees, shot: s8.path, canvas: c)
-    await key(29, "0", .command)
-    await wait(0.4)
+    await settle()
     // the new Note back in view, as a person scrolls to it
     if let l = c.cardLayers[noteId] {
       let m = screen(c, world: CGPoint(x: l.worldRect.midX, y: l.worldRect.midY)), mid = screen(c, CGPoint(x: c.bounds.midX - 200, y: c.bounds.midY))
@@ -465,10 +512,12 @@ final class HumanRun {
     }
 
     // 8. a code card from the toolbar's Code tool
-    begin("add_code")
+    await begin("add_code")
     let before2 = Set(c.cardLayers.keys)
+    let codeT0 = rec.now, codeCam = c.cam
     if let r = find(bw, "Code", roles: ["AXButton"]) { await click(bw, NSPoint(x: r.midX, y: r.midY)) }
     let codeOn = await until(4) { c.edit.active && c.edit.shown }
+    camMoved(c, since: codeCam, at: codeT0)
     let codeId = c.cardLayers.keys.first { !before2.contains($0) } ?? ""
     await type("def human(): return 42")
     await wait(0.3)
@@ -482,7 +531,7 @@ final class HumanRun {
          sees: !codeOn ? "the Code button opened no editor" : "a code card \(codeSaved ? "showing “\(codeText().prefix(40))”" : "without the typed line")\(codeOff ? "" : "; its editor stayed open")", shot: s9.path, canvas: c)
 
     // 9. an arrow from the Note to the code card with the Arrow tool
-    begin("arrow")
+    await begin("arrow")
     let links0 = c.arrowLayers.count
     if let r = find(bw, "Arrow", roles: ["AXButton"]), let a = c.cardLayers[noteId], let b = c.cardLayers[codeId] {
       await click(bw, NSPoint(x: r.midX, y: r.midY))
@@ -494,11 +543,11 @@ final class HumanRun {
     done("arrow", linked, sees: linked ? "an arrow joins the Note and the code card (\(links0) → \(c.arrowLayers.count) arrows)" : "no arrow between them after the drag", shot: s10.path, canvas: c)
 
     // 10. a Section around the two: click, shift-click, ⌘G
-    begin("section")
+    await begin("section")
     let secs0 = c.sectionLayers.count
     if let a = c.cardLayers[noteId], let b = c.cardLayers[codeId] {
-      await click(bw, screen(c, world: CGPoint(x: a.worldRect.midX, y: a.worldRect.minY + 12)))
-      await click(bw, screen(c, world: CGPoint(x: b.worldRect.midX, y: b.worldRect.minY + 12)), mods: .shift)
+      await click(bw, screen(c, world: head(a)))
+      await click(bw, screen(c, world: head(b)), mods: .shift)
       await key(5, "g", .command)
     }
     let sectioned = await until(3) { c.sectionLayers.count > secs0 }
@@ -509,7 +558,7 @@ final class HumanRun {
     state["sections"] = "\(c.sectionLayers.count)"
 
     // 11. ⌘K, the Note's word typed, Return
-    begin("search")
+    await begin("search")
     await key(53, "\u{1b}")
     await key(40, "k", .command)
     let panelUp = await until(2) { app.panel?.isVisible == true }
@@ -518,9 +567,11 @@ final class HumanRun {
     let hits = await until(8) { (app.panel?.model.rows.count ?? 0) > 0 }
     let s12 = await shot(app.panel, "search")
     let first = app.panel?.model.rows.first
+    let flyT0 = rec.now
     await key(36, "\r")
     keyTarget = bw
     let landed = await until(4) { app.panel?.isVisible != true && c.selected.contains(noteId) }
+    moves.append([flyT0, rec.now + 0.5])  // the camera flies to the card (an implicit animation)
     await wait(0.8)
     let s12b = await shot(bw, "search-open")
     done("search", panelUp && hits && landed,
@@ -528,7 +579,7 @@ final class HumanRun {
          shot: s12.path.isEmpty ? s12b.path : "\(s12.path) \(s12b.path)", canvas: c)
 
     // 12. another board from the window's sidebar, then back
-    begin("switch_board")
+    await begin("switch_board")
     let other = (app.library.boards[project.dir] ?? []).first { $0.id != target.id && $0.cards > 0 }
     var switched = false, back = false
     if let other, let r = find(bw, other.group.map { "\($0) / \(other.name)" } ?? other.name) {
@@ -548,7 +599,7 @@ final class HumanRun {
          shot: s13.path, canvas: c)
 
     // 13. ⌘Z takes the Section away, ⌘⇧Z brings it back
-    begin("undo_redo")
+    await begin("undo_redo")
     let n0 = c.sectionLayers.count
     await click(bw, screen(c, emptySpot(c) ?? CGPoint(x: 40, y: c.bounds.height - 40)))
     await key(6, "z", .command)
@@ -559,16 +610,21 @@ final class HumanRun {
     done("undo_redo", undone && redone, sees: "⌘Z: \(undone ? "the Section went" : "nothing visible changed") (\(n0) → \(undone ? n0 - 1 : n0)); ⌘⇧Z: \(redone ? "it came back" : "it did not come back")", shot: s14.path, canvas: c)
 
     // 14. Settings › Look › an Ink Wash look
-    begin("theme")
+    await begin("theme")
     let look0 = Look.current.id
     notes = []
+    let settingsT0 = rec.now
     await key(43, ",", .command)
     let sOpen = await until(3) { settingsWindow != nil }
     var lookOk = false
     if let sw = settingsWindow {
       keyTarget = sw
       dumpAX(sw, "settings")
-      if let r = find(sw, Look.current.name, roles: ["AXPopUpButton"]) ?? find(sw, "Look") {
+      // the form is laid out a moment after the window shows: the picker where a person sees it (its current value)
+      var pick: NSRect?
+      _ = await until(3) { (pick = self.find(sw, Look.current.name, roles: ["AXPopUpButton"])) != nil }
+      if pick == nil { pick = await findText(sw, Look.current.name) }
+      if let r = pick {
         await click(sw, NSPoint(x: r.midX, y: r.midY))
         await wait(0.6)
         // the menu's item, where the menu shows it
@@ -576,17 +632,12 @@ final class HumanRun {
         let menu = NSApp.windows.filter { $0.isVisible && $0.level.rawValue > NSWindow.Level.normal.rawValue && $0 !== app.panel }
         var item: (NSWindow, NSRect)?
         for mw in menu { if let ir = await findText(mw, want) { item = (mw, ir); break } }
-        if let (mw, ir) = item {
-          await click(mw, NSPoint(x: ir.midX, y: ir.midY))
-        } else {
-          // the keyboard, as a person does in an open menu: the keys through the app's queue, where the menu's tracking reads them
-          for ch in want.prefix(4) {
-            post(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: 0, context: nil,
-                                  characters: String(ch), charactersIgnoringModifiers: String(ch), isARepeat: false, keyCode: Self.codes[Character(ch.lowercased())] ?? 0))
-            await frames(3)
-          }
-          post(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: 0, context: nil,
-                                characters: "\r", charactersIgnoringModifiers: "\r", isARepeat: false, keyCode: 36))
+        if let (mw, ir) = item { await click(mw, NSPoint(x: ir.midX, y: ir.midY)) }
+        if !(await until(1) { Look.current.id != look0 }) {
+          // the keyboard, as a person does in an open menu: keys to this process through the window server (an open menu's
+          // tracking reads its events there, not from the app's queue)
+          for ch in want.prefix(4) { await pidKey(Self.codes[Character(ch.lowercased())] ?? 0) }
+          await pidKey(36)
         }
         lookOk = await until(3) { Look.current.id != look0 }
         if !lookOk {
@@ -601,6 +652,9 @@ final class HumanRun {
         }
       }
       await key(13, "w", .command)
+      _ = await until(2) { settingsWindow == nil }
+      // the Settings window stood over the board meanwhile: judged frame by frame as a whole, as a camera move is
+      moves.append([settingsT0, rec.now + 0.1])
     }
     keyTarget = bw
     bw.makeKeyAndOrderFront(nil)
@@ -611,7 +665,7 @@ final class HumanRun {
     state["look"] = Look.current.id
 
     // 15a. ⌘Q (the relaunch checks the rest)
-    begin("quit")
+    await begin("quit")
     marks.append(["name": "quit", "start": rec.now, "end": rec.now, "camera": false, "pass": true])
     save()
     await rec.stop()
@@ -625,7 +679,7 @@ final class HumanRun {
 
   private func second() async {
     await comeForward(libraryWindow)
-    begin("relaunch")
+    await begin("relaunch")
     let up = await until(15) { libraryWindow?.isVisible == true && !(app.library?.boards.isEmpty ?? true) }
     await wait(1.0)
     guard let lw = libraryWindow, let dir = state["dir"], let id = state["board"], let name = state["boardName"] else {
@@ -639,7 +693,9 @@ final class HumanRun {
     keyTarget = lw
     if let r = await findText(lw, name) {
       await click(lw, NSPoint(x: r.minX + 60, y: r.maxY + 50), count: 2)
-      opened = await until(5) { board(id)?.window?.isVisible == true }
+      opened = await until(5) { board(id)?.window.map { $0.isVisible && $0.alphaValue > 0 } == true }
+      // judged from the board window's first frame on (before it, the library: another picture under the cards' places)
+      stepT0 = max(stepT0, rec.now)
     } else { notes.append("no Recent tile labelled \(name)") }
     if !opened { app.openBoard(BoardRef(dir: dir, id: id)); notes.append("opened by hand to go on") }
     guard let wc = board(id), let bw = wc.window else { return done("relaunch", false, sees: "no board window", shot: s1.path) }

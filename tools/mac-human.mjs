@@ -17,7 +17,9 @@ const KEEP_CLIPS = ["open_board", "pan", "zoom", "add_note", "edit_note", "relau
 export async function runHuman({ root, gateApp, out, opt }) {
   // a locked screen draws nothing a person would see: no frames land, nothing can be recorded or pictured, no app comes forward
   if (screenLocked()) {
-    console.log("the screen is locked: the human pass needs it unlocked (nothing is drawn, recorded or brought forward while locked)");
+    console.log(
+      "the screen is locked: the human pass needs it unlocked (nothing is drawn, recorded or brought forward while locked)",
+    );
     return false;
   }
   const src = path.resolve(opt("--project", path.join(os.homedir(), "Projects/persona")).replace(/^~/, os.homedir()));
@@ -35,11 +37,13 @@ export async function runHuman({ root, gateApp, out, opt }) {
   fs.mkdirSync(path.join(user, "globalStorage"), { recursive: true });
   const db = new DatabaseSync(path.join(user, "globalStorage/state.vscdb"));
   db.exec("CREATE TABLE ItemTable (key TEXT UNIQUE ON CONFLICT REPLACE, value BLOB)");
-  const reg = { "codeboard.projects": { [real]: { dir: path.join(real, ".codeboard"), folders: [real], name, seen: Date.now() } } };
+  const reg = {
+    "codeboard.projects": { [real]: { dir: path.join(real, ".codeboard"), folders: [real], name, seen: Date.now() } },
+  };
   db.prepare("INSERT INTO ItemTable VALUES (?, ?)").run("yhnocoder.codeboard-vscode", JSON.stringify(reg));
   db.close();
   fs.writeFileSync(path.join(user, "settings.json"), "{}\n");
-  fs.mkdirSync(path.join(home, "Library/Preferences"), { recursive: true });
+  fs.mkdirSync(path.join(home, "Preferences"), { recursive: true });
 
   const env = { ...process.env, CODEBOARD_HOME: home, BOX_HOME: path.join(home, "box") };
   const exe = path.join(gateApp, "Contents/MacOS/cbgate");
@@ -67,10 +71,13 @@ export async function runHuman({ root, gateApp, out, opt }) {
     execFileSync("pkill", ["-f", `${env.BOX_HOME}`]);
   } catch {}
 
-  const read = (f, d) => (fs.existsSync(path.join(run, f)) ? JSON.parse(fs.readFileSync(path.join(run, f), "utf8")) : d);
+  const read = (f, d) =>
+    fs.existsSync(path.join(run, f)) ? JSON.parse(fs.readFileSync(path.join(run, f), "utf8")) : d;
   const steps = [...read("first.json", []), ...read("relaunch.json", [])];
-  if (c1 !== 0) steps.push({ step: "first launch", pass: false, sees: `the app exited with ${c1} (see run/first.log)`, shot: "" });
-  if (c2 !== 0) steps.push({ step: "relaunch", pass: false, sees: `the app exited with ${c2} (see run/relaunch.log)`, shot: "" });
+  if (c1 !== 0)
+    steps.push({ step: "first launch", pass: false, sees: `the app exited with ${c1} (see run/first.log)`, shot: "" });
+  if (c2 !== 0)
+    steps.push({ step: "relaunch", pass: false, sees: `the app exited with ${c2} (see run/relaunch.log)`, shot: "" });
 
   // one video: the two launches back to back, the second's marks shifted by the first's length
   const parts = ["first", "relaunch"].filter((p) => fs.existsSync(path.join(run, `${p}.mp4`)));
@@ -80,7 +87,15 @@ export async function runHuman({ root, gateApp, out, opt }) {
   let offset = 0;
   for (const p of parts) {
     for (const m of read(`${p}-marks.json`, []))
-      marks.push({ name: m.name, start: +(m.start + offset).toFixed(3), end: +(m.end + offset).toFixed(3), moving: m.camera });
+      marks.push({
+        name: m.name,
+        start: +(m.start + offset).toFixed(3),
+        end: +(m.end + offset).toFixed(3),
+        // true: the camera moves all through the step; else the spans it moved in (a scroll to a card)
+        moving: Array.isArray(m.camera)
+          ? m.camera.map(([a, b]) => [+(a + offset).toFixed(3), +(b + offset).toFixed(3)])
+          : m.camera,
+      });
     Object.assign(regions, read(`${p}-regions.json`, {}));
     offset += duration(path.join(run, `${p}.mp4`));
   }
@@ -94,7 +109,14 @@ export async function runHuman({ root, gateApp, out, opt }) {
   fs.writeFileSync(path.join(out, "marks.json"), JSON.stringify(marks, null, 1));
   // rec-check's regions: each card's box on screen at the end of a step, for that step
   const boxes = Object.entries(regions).flatMap(([step, rs]) =>
-    rs.map((r) => ({ name: `${r.kind}:${r.id}`, step, x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.w), h: Math.round(r.h) })),
+    rs.map((r) => ({
+      name: `${r.kind}:${r.id}`,
+      step,
+      x: Math.round(r.x),
+      y: Math.round(r.y),
+      w: Math.round(r.w),
+      h: Math.round(r.h),
+    })),
   );
   fs.writeFileSync(path.join(out, "regions.json"), JSON.stringify(boxes));
 
@@ -102,7 +124,15 @@ export async function runHuman({ root, gateApp, out, opt }) {
   const checker = path.join(root, "tools/rec-check.mjs");
   let rec = null;
   if (fs.existsSync(video) && fs.existsSync(checker)) {
-    const r = spawnSyncNode(checker, [video, "--marks", path.join(out, "marks.json"), "--regions", path.join(out, "regions.json"), "--out", path.join(out, "rec-check")]);
+    const r = spawnSyncNode(checker, [
+      video,
+      "--marks",
+      path.join(out, "marks.json"),
+      "--regions",
+      path.join(out, "regions.json"),
+      "--out",
+      path.join(out, "rec-check"),
+    ]);
     rec = { code: r.status, out: r.stdout };
     console.log(r.stdout);
     const res = path.join(out, "rec-check", "report.json");
@@ -113,12 +143,23 @@ export async function runHuman({ root, gateApp, out, opt }) {
         if (step && s.pass === false) {
           step.pass = false;
           const f = s.flags.filter((x) => x.fail);
-          step.sees += `; the recording: ${f.map((x) => `${x.kind} on ${x.region} at ${x.time} s (${x.frames} frames)`).slice(0, 4).join(", ")}`;
+          step.sees += `; the recording: ${f
+            .map((x) => `${x.kind} on ${x.region} at ${x.time} s (${x.frames} frames)`)
+            .slice(0, 4)
+            .join(", ")}`;
         }
       }
-    } else if (r.status !== 0) steps.push({ step: "rec-check", pass: false, sees: "the recording check failed to run", shot: "" });
-  } else if (!fs.existsSync(checker)) console.log("tools/rec-check.mjs not on this branch: the recording is not judged");
-  else steps.push({ step: "recording", pass: false, sees: "no recording (ScreenCaptureKit gave none: is the screen locked?), so nothing was judged frame by frame", shot: "" });
+    } else if (r.status !== 0)
+      steps.push({ step: "rec-check", pass: false, sees: "the recording check failed to run", shot: "" });
+  } else if (!fs.existsSync(checker))
+    console.log("tools/rec-check.mjs not on this branch: the recording is not judged");
+  else
+    steps.push({
+      step: "recording",
+      pass: false,
+      sees: "no recording (ScreenCaptureKit gave none: is the screen locked?), so nothing was judged frame by frame",
+      shot: "",
+    });
 
   // clips: the steps Linda watches, and every failing one
   const clips = [];
@@ -128,7 +169,25 @@ export async function runHuman({ root, gateApp, out, opt }) {
       const step = steps.find((s) => s.step === m.name);
       if (!KEEP_CLIPS.includes(m.name) && step?.pass !== false) continue;
       const f = path.join(out, "clips", `${m.name}.mp4`);
-      execFileSync("ffmpeg", ["-v", "error", "-y", "-ss", String(Math.max(0, m.start - 0.5)), "-to", String(m.end + 1), "-i", video, "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "26", f]);
+      execFileSync("ffmpeg", [
+        "-v",
+        "error",
+        "-y",
+        "-ss",
+        String(Math.max(0, m.start - 0.5)),
+        "-to",
+        String(m.end + 1),
+        "-i",
+        video,
+        "-an",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "veryfast",
+        "-crf",
+        "26",
+        f,
+      ]);
       clips.push(f);
       if (step) step.clip = f;
     }
@@ -148,7 +207,17 @@ export async function runHuman({ root, gateApp, out, opt }) {
     const t = marks.find((x) => x.name === m)?.start;
     return t == null ? "" : `${Math.floor(t / 60)}:${(t % 60).toFixed(1).padStart(4, "0")}`;
   };
-  const rows = steps.map((s) => `| ${s.step} | ${at(s.step)} | ${s.pass ? "pass" : "FAIL"} | ${s.sees} | ${s.shot ? s.shot.split(" ").map((p) => path.relative(root, p)).join(", ") : ""} |`);
+  const rows = steps.map(
+    (s) =>
+      `| ${s.step} | ${at(s.step)} | ${s.pass ? "pass" : "FAIL"} | ${s.sees} | ${
+        s.shot
+          ? s.shot
+              .split(" ")
+              .map((p) => path.relative(root, p))
+              .join(", ")
+          : ""
+      } |`,
+  );
   const md = [
     `# macOS human-use pass ${new Date().toISOString()}`,
     "",
@@ -164,12 +233,16 @@ export async function runHuman({ root, gateApp, out, opt }) {
   fs.writeFileSync(path.join(out, "report.json"), JSON.stringify({ steps, marks, video, clips, rec }, null, 1));
   console.log(md);
   const pass = steps.length > 0 && steps.every((s) => s.pass);
-  console.log(`\n${pass ? "PASS" : "FAIL"}: ${steps.filter((s) => s.pass).length}/${steps.length} steps; report ${path.relative(root, path.join(out, "report.md"))}`);
+  console.log(
+    `\n${pass ? "PASS" : "FAIL"}: ${steps.filter((s) => s.pass).length}/${steps.length} steps; report ${path.relative(root, path.join(out, "report.md"))}`,
+  );
   return pass;
 }
 
 function duration(f) {
-  return +execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", f], { encoding: "utf8" }).trim();
+  return +execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", f], {
+    encoding: "utf8",
+  }).trim();
 }
 function spawnSyncNode(script, a) {
   return spawnSync(process.execPath, [script, ...a], { encoding: "utf8" });
@@ -177,7 +250,9 @@ function spawnSyncNode(script, a) {
 
 function screenLocked() {
   try {
-    return /<key>CGSSessionScreenIsLocked<\/key>\s*<true\/>/.test(execFileSync("ioreg", ["-n", "Root", "-d1", "-a"], { encoding: "utf8" }));
+    return /<key>CGSSessionScreenIsLocked<\/key>\s*<true\/>/.test(
+      execFileSync("ioreg", ["-n", "Root", "-d1", "-a"], { encoding: "utf8" }),
+    );
   } catch {
     return false;
   }

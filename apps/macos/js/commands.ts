@@ -10,7 +10,6 @@ import {
   type Board,
   type Card,
   type CardCopy,
-  bounds,
   findFree,
   type IconRef,
   NEW_CARD_W,
@@ -142,13 +141,21 @@ export type Clip = { board: string; items: CardCopy[]; links: Link[]; n: number 
 
 export function commands(env: Env, storage: () => Storage) {
   let clip: Clip | null = null;
+  const near = (x: number, y: number, w: number, h: number) =>
+    findFree({ x, y, w, h }, [...estRects(env.board()).values()]);
   return {
-    /** A new Note / Text / Box / Mark / Free Text at (x, y); empty ones are fresh (gone again if nothing is written). Its id */
-    newWriting(look: NoteLook, x: number, y: number, text = ""): string {
-      return newWriting(env, look, text, { at: () => ({ x, y }), settle });
+    /** A new Note / Text / Box / Mark / Free Text at (x, y); empty ones are fresh (gone again if nothing is written). Its id.
+     *  free: (x, y) is only where it would like to be (a toolbar button: the middle of the view), and it goes to the nearest
+     *  spot no card covers, as the board's toolbar puts it (core's findFree) */
+    newWriting(look: NoteLook, x: number, y: number, text = "", free = false): string {
+      return newWriting(env, look, text, {
+        at: (size) => (free ? near(x, y, size.w, size.h ?? 120) : { x, y }),
+        settle,
+      });
     },
-    /** A new, empty Free code card (fresh) */
-    newCode(x: number, y: number): string {
+    /** A new, empty Free code card (fresh); free as for newWriting */
+    newCode(x: number, y: number, free = false): string {
+      if (free) ({ x, y } = near(x, y, 381, 80));
       const id = uid("c");
       const seg: Segment = {
         id: uid("s"),
@@ -187,17 +194,13 @@ export function commands(env: Env, storage: () => Storage) {
     paste(): string[] {
       if (!clip || clip.board !== env.board().id) return [];
       const k = ++clip.n;
-      // as the board pastes: a step down and right of the originals, then the nearest free spot (core's findFree)
-      const tops = clip.items.filter((x) => x.place);
-      const box = bounds(
-        tops.map((x) => ({ x: x.place!.x, y: x.place!.y, w: x.place!.w, h: (x.place!.h ?? 300) + 40 })),
-      );
-      if (!box) return [];
-      const free = findFree({ ...box, x: box.x + 36 * k, y: box.y + 36 * k }, Object.values(estRects(env.board())));
+      // as the board pastes (pasteCopied: putCards exact): a step down and right of the originals for each paste, over
+      // whatever is there
+      if (!clip.items.some((x) => x.place)) return [];
       const r = pasteCards(env, structuredClone(clip.items), structuredClone(clip.links), {
         copy: true,
-        dx: Math.round(free.x - box.x),
-        dy: Math.round(free.y - box.y),
+        dx: 36 * k,
+        dy: 36 * k,
         settle,
       });
       return r?.pairs.map(([id]) => id) ?? [];

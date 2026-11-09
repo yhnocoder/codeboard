@@ -93,10 +93,10 @@ const asyncMade = async (dir: string, id: string, fn: (c: Session["cmd"]) => Pro
   resize: (dir: string, id: string, card: string, w: number, h: number | null | "keep") =>
     session(dir, id).resize(card, w, h),
   // edits (js/commands.ts): each runs a command and resolves with what changed; a new card's reply carries its id
-  newWriting: (req: number, dir: string, id: string, look: string, x: number, y: number) =>
-    settle(req, made(session(dir, id), session(dir, id).cmd.newWriting(look as never, x, y))),
-  newCode: (req: number, dir: string, id: string, x: number, y: number) =>
-    settle(req, made(session(dir, id), session(dir, id).cmd.newCode(x, y))),
+  newWriting: (req: number, dir: string, id: string, look: string, x: number, y: number, free = false) =>
+    settle(req, made(session(dir, id), session(dir, id).cmd.newWriting(look as never, x, y, "", free))),
+  newCode: (req: number, dir: string, id: string, x: number, y: number, free = false) =>
+    settle(req, made(session(dir, id), session(dir, id).cmd.newCode(x, y, free))),
   writeNote: (req: number, dir: string, id: string, card: string, md: string) =>
     settle(
       req,

@@ -416,8 +416,9 @@ struct Session {
   /** A live resize inside a drag gesture (beginDrag … endDrag) */
   func resize(_ card: String, w: Double, h: JSBridge.Height) { bridge.resize(dir, id, card, w: w, h: h) }
   // MARK: edits (js/commands.ts): each resolves with what changed; a new card's reply carries its id
-  func newWriting(_ look: String, x: Double, y: Double, _ cb: @escaping (Result<SceneChange, Error>) -> Void) { bridge.edit("newWriting", dir, id, [look, x, y], cb) }
-  func newCode(x: Double, y: Double, _ cb: @escaping (Result<SceneChange, Error>) -> Void) { bridge.edit("newCode", dir, id, [x, y], cb) }
+  /** free: (x, y) is a wish (the toolbar's middle of the view): the card goes to the nearest spot no card covers */
+  func newWriting(_ look: String, x: Double, y: Double, free: Bool = false, _ cb: @escaping (Result<SceneChange, Error>) -> Void) { bridge.edit("newWriting", dir, id, [look, x, y, free], cb) }
+  func newCode(x: Double, y: Double, free: Bool = false, _ cb: @escaping (Result<SceneChange, Error>) -> Void) { bridge.edit("newCode", dir, id, [x, y, free], cb) }
   func writeNote(_ card: String, md: String, _ cb: @escaping (Result<SceneChange, Error>) -> Void) { bridge.edit("writeNote", dir, id, [card, md], cb) }
   func writeCode(_ card: String, text: String, _ cb: @escaping (Result<SceneChange, Error>) -> Void) { bridge.edit("writeCode", dir, id, [card, text], cb) }
   func settleUnwritten(_ card: String, _ cb: @escaping (Result<SceneChange, Error>) -> Void) { bridge.edit("settleUnwritten", dir, id, [card], cb) }

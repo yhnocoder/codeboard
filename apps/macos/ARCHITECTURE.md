@@ -70,6 +70,10 @@ presence. Each card is a `CardLayer` with two tiers of bitmaps (sRGB-tagged):
   `contentsScale`: at rest every card in view is sharp at the zoom's bucket over every tile row in view (the gate checks it from
   the layers' state, `CanvasView.softInView`).
 
+A board window appears once its board is ready (every base, the cards in view sharp; at most a second), invisible until
+then. Switching boards in a window keeps the board shown still (a ghost of its layers) until the next one is ready, and keeps
+the last two boards' card layers whole, bitmaps included, so switching back shows them sharp at once.
+
 A Note render that did not settle (the page's time cap, the snapshot fallback) is never cached and never replaces a complete
 one; it is asked again. Sections are shape layers drawn by the compositor, arrows shape layers rasterised at the bucket's
 scale, from core's numeric paths. Colours come from `themes.json`, generated from the board's stylesheets at build time.

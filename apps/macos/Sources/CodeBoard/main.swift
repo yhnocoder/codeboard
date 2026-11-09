@@ -288,10 +288,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
       self.library.refresh(r.dir)
     }
     let t0 = CACurrentMediaTime()
+    // the window is there (laid out, drawing) but unseen until its board is ready: it appears whole and sharp, not as a soft
+    // or empty board that sharpens a few frames later
+    wc.window?.alphaValue = 0
     wc.open(r.id) { s in
       logLine("[codeboard] board %@ open in %.0f ms (%d cards)", r.id, (CACurrentMediaTime() - t0) * 1000, s?.cards.count ?? 0)
+      guard s != nil else { wc.window?.alphaValue = 1; return }
       // the cards have their places once the scene is in; the camera moves after the first layout
-      after(0.05) { fly(wc) }
+      after(0.05) {
+        fly(wc)
+        wc.canvas.whenReady(cap: 1) {
+          wc.window?.alphaValue = 1
+          logLine("[codeboard] board %@ shown %.0f ms after asked", r.id, (CACurrentMediaTime() - t0) * 1000)
+        }
+      }
     }
     // a frame of its own for each board, else the next one along from the front window
     if wc.window?.setFrameUsingName("CodeBoard.board.\(r.dir)/\(r.id)") != true, let front = windows.dropLast().last?.window {

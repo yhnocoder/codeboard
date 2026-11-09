@@ -289,14 +289,27 @@ final class CanvasView: NSView {
     edit.end { _ in }  // committed by whoever switched the board (BoardWindow.open), before this
     CATransaction.begin()
     CATransaction.setDisableActions(true)
+    // another board: the one shown stays on screen (its layers in a still copy of the world) until the new one is ready
+    var ghost = self.ghost
+    if shownKey != routeKey, !shownKey.isEmpty, !world.isHidden, ghost == nil {
+      let g = CALayer()
+      g.anchorPoint = .zero
+      g.bounds = world.bounds
+      g.position = world.position
+      g.transform = world.transform
+      layer!.insertSublayer(g, above: scene)
+      ghost = g
+    }
+    let keepOld = ghost != nil && self.ghost == nil
+    if shownKey != routeKey { swapShelf(into: keepOld ? ghost : nil) }
     let keep = Set(s.cards.map(\.id))
     for (id, l) in cardLayers where !keep.contains(id) {
       l.detach()
       cardLayers[id] = nil
     }
-    for l in sectionLayers.values { l.removeFromSuperlayer() }
-    for l in arrowLayers.values { l.removeFromSuperlayer() }
-    for l in stickerLayers.values { l.removeFromSuperlayer() }
+    for l in Array(sectionLayers.values) as [CALayer] + Array(arrowLayers.values) + Array(stickerLayers.values) {
+      if keepOld { ghost?.addSublayer(l) } else { l.removeFromSuperlayer() }
+    }
     sectionLayers = [:]
     arrowLayers = [:]
     stickerLayers = [:]
@@ -313,11 +326,13 @@ final class CanvasView: NSView {
     refold()
     // the board shows once every card has its base (a second open: read from disk, a few ms), so no card is ever missing
     basesWaiting = Set(cardLayers.values.filter { !$0.hasFace }.map(\.card.id))
-    world.isHidden = !basesWaiting.isEmpty
-    if world.isHidden {
+    self.ghost = ghost
+    world.isHidden = !basesWaiting.isEmpty || ghost != nil
+    if let ghost { after(0) { [weak self] in self?.dropGhost(ghost, key: self?.routeKey ?? "", until: CACurrentMediaTime() + 1) } }
+    if world.isHidden, ghost == nil {
       let key = routeKey
       after(1) { [weak self] in
-        guard let self, self.routeKey == key, self.world.isHidden else { return }
+        guard let self, self.routeKey == key, self.world.isHidden, self.ghost == nil else { return }
         logLine("[canvas] shown with %d cards still without a base", self.basesWaiting.count)
         self.basesWaiting = []
         self.world.isHidden = false
@@ -328,9 +343,63 @@ final class CanvasView: NSView {
     setCamera(s.cam, animated: false)
     routeAll()
   }
+  /** The card layers of the boards this window showed last, bitmaps and all: switching back to one shows it sharp at once
+   *  (as the same board opened again does) instead of from its bases while the sharp tier is drawn again */
+  private var shelf: [(key: String, layers: [String: CardLayer], order: [String])] = []
+  // ponytail: two boards kept whole; their sharp tiers are outside SHARP_BUDGET (each at most its own budget's worth)
+  private static let SHELF = 2
+  private var shownKey = ""
+  /** The board shown before a switch, still (its layers moved here), until the new one has every base and is sharp in view */
+  private var ghost: CALayer?
+  private func dropGhost(_ g: CALayer, key: String, until end: Double) {
+    guard ghost === g, routeKey == key else { return }
+    guard (basesWaiting.isEmpty && softInView.isEmpty) || CACurrentMediaTime() > end else {
+      return after(1.0 / 120) { [weak self] in self?.dropGhost(g, key: key, until: end) }
+    }
+    if !basesWaiting.isEmpty { logLine("[canvas] shown with %d cards still without a base", basesWaiting.count) }
+    basesWaiting = []
+    CATransaction.begin()
+    CATransaction.setDisableActions(true)
+    world.isHidden = false
+    g.removeFromSuperlayer()
+    CATransaction.commit()
+    ghost = nil
+  }
+  /** The layers shown go on the shelf (into the ghost meanwhile, when given), the new board's come off it */
+  private func swapShelf(into ghost: CALayer?) {
+    if !shownKey.isEmpty, !cardLayers.isEmpty {
+      for l in cardLayers.values {
+        l.selected = false
+        l.detach()
+        ghost?.addSublayer(l)
+      }
+      shelf.removeAll { $0.key == shownKey }
+      shelf.append((shownKey, cardLayers, order))
+    }
+    let back = shelf.firstIndex { $0.key == routeKey }.map { shelf.remove(at: $0) }
+    cardLayers = back?.layers ?? [:]
+    order = back?.order ?? []
+    for id in order {
+      guard let l = cardLayers[id] else { continue }
+      cards.addSublayer(l)
+      l.riser = top
+    }
+    while shelf.count > CanvasView.SHELF { shelf.removeFirst() }
+    shownKey = routeKey
+  }
+  /** Calls back once the board is fit to be seen: shown (every card has its base) and every card in view sharp, or after
+   *  `cap` seconds whatever has landed (a new window stays invisible until then, so it never shows a soft or empty board) */
+  func whenReady(cap: Double, _ cb: @escaping () -> Void) {
+    let end = CACurrentMediaTime() + cap
+    func poll() {
+      if (!world.isHidden && softInView.isEmpty) || CACurrentMediaTime() > end { return cb() }
+      after(1.0 / 120) { poll() }
+    }
+    poll()
+  }
   private var basesWaiting: Set<String> = []
   private func baseCame(_ l: CardLayer) {
-    guard !basesWaiting.isEmpty, basesWaiting.remove(l.card.id) != nil, basesWaiting.isEmpty else { return }
+    guard !basesWaiting.isEmpty, basesWaiting.remove(l.card.id) != nil, basesWaiting.isEmpty, ghost == nil else { return }
     CATransaction.setDisableActions(true)
     world.isHidden = false
   }
@@ -564,6 +633,20 @@ final class CanvasView: NSView {
   func zoomAbout(_ z: Double) {
     let m = CGPoint(x: bounds.midX, y: bounds.midY), k = z / cam.z
     setCamera(Camera(x: m.x - (m.x - cam.x) * k, y: m.y - (m.y - cam.y) * k, z: z), animated: false)
+  }
+  /** A card brought into view when it is not (a new card put at the nearest free spot, off the middle): the camera moves as
+   *  little as it must, the zoom kept; a card taller than the view shows its top */
+  func reveal(_ id: String) {
+    guard let l = cardLayers[id], bounds.width > 0 else { return }
+    // the view a person reads: below the title row (the canvas runs under it), above the docks, with some air
+    let r = l.worldRect, z = cam.z, top = safeAreaInsets.top + 24, bottom: CGFloat = 80, side: CGFloat = 40
+    let vis = CGRect(x: (side - cam.x) / z, y: (top - cam.y) / z, width: (bounds.width - 2 * side) / z, height: (bounds.height - top - bottom) / z)
+    if vis.contains(r) { return }
+    func shift(_ lo: CGFloat, _ hi: CGFloat, _ vlo: CGFloat, _ vhi: CGFloat) -> CGFloat {
+      hi - lo > vhi - vlo || lo < vlo ? vlo - lo : hi > vhi ? vhi - hi : 0
+    }
+    let dx = shift(r.minX, r.maxX, vis.minX, vis.maxX), dy = shift(r.minY, r.maxY, vis.minY, vis.maxY)
+    setCamera(Camera(x: cam.x + dx * z, y: cam.y + dy * z, z: z), animated: true)
   }
   /** A card at the top left, zoom 1 */
   func focus(_ id: String) {
