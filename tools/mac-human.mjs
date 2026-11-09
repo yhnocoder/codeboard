@@ -12,7 +12,7 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
 /** The steps whose clips are kept even when they pass (Linda watches them); failing steps' clips are kept too */
-const KEEP_CLIPS = ["open_board", "pan", "zoom", "add_note", "edit_note", "relaunch"];
+const KEEP_CLIPS = ["open_board", "pan", "zoom", "add_note", "edit_note", "switch_board", "relaunch"];
 
 export async function runHuman({ root, gateApp, out, opt }) {
   // a locked screen draws nothing a person would see: no frames land, nothing can be recorded or pictured, no app comes forward
