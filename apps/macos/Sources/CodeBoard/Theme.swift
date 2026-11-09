@@ -170,9 +170,17 @@ enum Theme {
   /** A shadow list token, for the appearance the canvas draws in (empty when the token is not a shadow list) */
   static func shadows(_ name: String) -> [Shadow] { structured([Shadow].self, name) ?? [] }
   static func gradient(_ name: String) -> Gradient? { structured(Gradient.self, name) }
-  static func border(_ name: String) -> (w: CGFloat, color: NSColor)? {
+  static func border(_ name: String) -> (w: CGFloat, color: NSColor, dash: [NSNumber]?)? {
     guard let b = structured(Border.self, name), let c = parse(b.color) else { return nil }
-    return (b.w, c)
+    return (b.w, c, dash(b.style, b.w))
+  }
+  /** A CSS border style's dashes at width w, as WebKit draws them: dashed 3w on, 3w off; dotted w, w; solid none */
+  static func dash(_ style: String?, _ w: CGFloat) -> [NSNumber]? {
+    switch style {
+    case "dashed": return [NSNumber(value: Double(3 * w)), NSNumber(value: Double(3 * w))]
+    case "dotted": return [NSNumber(value: Double(w)), NSNumber(value: Double(w))]
+    default: return nil
+    }
   }
   static func point(_ name: String) -> CGPoint { structured(Point.self, name).map { CGPoint(x: $0.x, y: $0.y) } ?? .zero }
 

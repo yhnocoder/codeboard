@@ -168,7 +168,7 @@ final class CanvasView: NSView {
     seal.isHidden = true
     seal.contentsScale = 2
     for l in [mist, cutLine, seal] { overlay.addSublayer(l) }
-    still(world, sections, arrows, cards, stickers, top, overlay, mist, cutLine, cutFill, seal, scene, tether, tetherDot, marquee, ports, rubber, summaries.layer)
+    still(world, sections, arrows, cards, slabels, stickers, top, overlay, mist, cutLine, cutFill, seal, scene, tether, tetherDot, marquee, ports, rubber, summaries.layer)
     notes.inView = { [weak self] id in
       guard let self, let l = self.cardLayers[id] else { return false }
       return CGRect(x: -self.cam.x / self.cam.z, y: -self.cam.y / self.cam.z, width: self.bounds.width / self.cam.z, height: self.bounds.height / self.cam.z).intersects(l.worldRect)
@@ -223,6 +223,7 @@ final class CanvasView: NSView {
       if h > l.height {
         l.resize(to: CGSize(width: l.card.w, height: h))
         self.routeAround([id])
+        self.reframeLive()
       }
       self.followEdit()
     }
@@ -491,21 +492,24 @@ final class CanvasView: NSView {
   }
 
   var rects: [String: WorldRect] {
+    let ends = rowEnds()
     var out: [String: WorldRect] = [:]
-    for (id, l) in cardLayers { out[id] = rect(of: l) }
+    for (id, l) in cardLayers { out[id] = rect(of: l, ends: ends) }
+    return out
+  }
+  /** The rows the arrows end on, by card ("seg:line"): one pass over the arrows for all the rectangles a routing sends */
+  private func rowEnds() -> [String: [String]] {
+    var out: [String: [String]] = [:]
+    for a in arrowLayers.values {
+      for e in [a.link.from, a.link.to] { if let seg = e.seg, let line = e.line { out[e.card, default: []].append("\(seg):\(line)") } }
+    }
     return out
   }
   /** A card's rectangle for routing, with the rows as drawn that its arrows end on (a code card): the few lines the arrows
    *  name, not every row, so the rectangles stay small to send */
-  private func rect(of l: CardLayer) -> WorldRect {
+  private func rect(of l: CardLayer, ends: [String: [String]]) -> WorldRect {
     var rows: [String: Double] = [:]
-    if !l.rowYs.isEmpty {
-      for a in arrowLayers.values {
-        for e in [a.link.from, a.link.to] where e.card == l.card.id {
-          if let seg = e.seg, let line = e.line, let y = l.rowYs["\(seg):\(line)"] { rows["\(seg):\(line)"] = y }
-        }
-      }
-    }
+    if !l.rowYs.isEmpty { for k in ends[l.card.id] ?? [] { if let y = l.rowYs[k] { rows[k] = y } } }
     // a drawn card sends its rows even when none of its arrows' lines is shown: routing then ends those at the head
     return WorldRect(x: l.card.x, y: l.card.y, w: l.card.w, h: Double(l.height), rows: l.rowYs.isEmpty ? nil : rows)
   }
@@ -1125,6 +1129,7 @@ final class CanvasView: NSView {
       l.resize(to: CGSize(width: w, height: h))
       delegate?.canvas(self, resizing: r.id, w: Double(w), h: r.bottom ? .fixed(Double(h)) : .keep)
       routeAround([r.id])
+      reframeLive()
       showPorts()
       return
     }
@@ -1146,7 +1151,8 @@ final class CanvasView: NSView {
     // the arrows are routed off the main thread for where the cards are going; cards and arrows then move in one frame. Only
     // the rectangles routing reads: the dragged cards' and those at the other ends of their arrows
     var rs: [String: WorldRect] = [:]
-    for l in d.links { if let a = arrowLayers[l] { for id in [a.link.from.card, a.link.to.card] { if let c = cardLayers[id] { rs[id] = rect(of: c) } } } }
+    let ends = rowEnds()
+    for l in d.links { if let a = arrowLayers[l] { for id in [a.link.from.card, a.link.to.card] { if let c = cardLayers[id] { rs[id] = rect(of: c, ends: ends) } } } }
     for (id, t) in targets { if let r = rs[id] { rs[id] = WorldRect(x: t.x, y: t.y, w: r.w, h: r.h, rows: r.rows) } }
     routeSeq += 1
     dragTargets[routeSeq] = targets
@@ -1331,15 +1337,22 @@ final class CanvasView: NSView {
   /** Each open Section's frame as the board draws it (core layout.ts sectionFrame, the board's state/sections.ts frames): its
    *  own rect grown around each card in it as drawn and each nested Section's frame (a folded one's pill), each padded by
    *  SECTION_PAD. The scene's frames count a Note at its estimate; a Note's page that lands taller stretches the frame here */
+  /** The Section frames following a card that grows as the user types or resizes it, in the same frame, without easing */
+  private func reframeLive() {
+    CATransaction.begin()
+    CATransaction.setDisableActions(true)
+    reframeSections()
+    CATransaction.commit()
+  }
   func reframeSections() {
     guard let pad = sectionPad, !sectionLayers.isEmpty else { return }
     let padded = { (r: CGRect) in
       CGRect(x: r.minX - pad.l, y: r.minY - pad.t, width: r.width + pad.l + pad.r, height: r.height + pad.t + pad.b)
     }
     var members: [String: [CGRect]] = [:]
-    // a dragged card does not stretch the frame it is leaving (the board's frames skip it too)
-    let dragged = Set(drag?.ids ?? [])
-    for l in cardLayers.values where !dragged.contains(l.card.id) {
+    // a dragged card counts in its Section where it is (the board's frames count it at its drop Section's; the app has no drop
+    // preview yet, so that is its own)
+    for l in cardLayers.values {
       if let s = l.card.section { members[s, default: []].append(l.worldRect) }
     }
     var kids: [String: [SectionLayer]] = [:]

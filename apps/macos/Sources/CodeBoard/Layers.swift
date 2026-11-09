@@ -1426,7 +1426,11 @@ final class SectionLayer: CALayer {
       shape.isHidden = false
       hilite.isHidden = false
       let rad = shut ? Theme.number("sect-shut-radius", 10) : Theme.number("sect-radius", Theme.cardRadius + 1)
-      let bw = Theme.border("sect-border")?.w ?? 0.5
+      let border = Theme.border("sect-border")
+      let bw = border?.w ?? 0.5
+      // Graphite and Drafting draw a dashed border (the dashes butt-ended, as a CSS border's)
+      shape.lineDashPattern = border?.dash
+      shape.lineCap = .butt
       let round = { (q: CGRect, k: CGFloat) in CGPath(roundedRect: q, cornerWidth: max(0, k), cornerHeight: max(0, k), transform: nil) }
       // the border lies inside the box (its centre bw / 2 in); the wash fills the box; the ring is a band outside it
       shape.lineWidth = bw
@@ -1723,9 +1727,16 @@ final class ArrowLayer: CALayer {
   /** The line's weight (.edge.w1 / .w3: --lw 0.6 / 1.6) */
   private var weight: CGFloat { link.width == 1 ? 0.6 : link.width == 3 ? 1.6 : 1 }
   func recolor() {
-    var c = color.cgColor
-    Theme.appearance.performAsCurrentDrawingAppearance { c = color.cgColor }
-    let ink = Theme.isInk, sel = selected, lw = weight, hand = link.hand != nil
+    let ink = Theme.isInk
+    // the dynamic colours resolved in the canvas's appearance, not whatever is current
+    var c = color.cgColor, paper = c, portFill = c, portEdge = c
+    Theme.appearance.performAsCurrentDrawingAppearance {
+      c = color.cgColor
+      paper = Theme.paper.withAlphaComponent(0.75).cgColor
+      portFill = (ink ? Theme.ink : Theme.surface).cgColor
+      portEdge = Theme.edge.cgColor
+    }
+    let sel = selected, lw = weight, hand = link.hand != nil
     let stroked = link.dash == true || hand
     // .edge: --edge-w × lw, round caps; hand lines 1.6 × lw (2.4 selected); selected lines 0.45 wider; dashed 4 4
     let edgeW = Theme.number("edge-w", 1.25) * lw
@@ -1742,10 +1753,10 @@ final class ArrowLayer: CALayer {
     line2.lineCap = .round
     line2.opacity = 0.5
     // Ink Wash: the brush stroke at .brush's fill-opacity, its dry streaks in the paper's colour, the dot heads at .ahead.dot's
-    // opacity; Warm Ink: a ↩ back line at 0.7
-    line.opacity = ink && !stroked ? Float(Theme.number("brush-opacity", 1)) : !ink && link.back == true && !stroked ? 0.7 : 1
+    // opacity; a ↩ back line at 0.7 in both (.taper.back / .brush.back: in place of the brush's own)
+    line.opacity = stroked ? 1 : link.back == true ? 0.7 : ink ? Float(Theme.number("brush-opacity", 1)) : 1
     streaks.fillColor = nil
-    streaks.strokeColor = Theme.paper.withAlphaComponent(0.75).cgColor
+    streaks.strokeColor = paper
     streaks.lineWidth = 0.6
     streaks.lineCap = .round
     streaks.isHidden = !ink || stroked
@@ -1759,10 +1770,11 @@ final class ArrowLayer: CALayer {
       h.lineJoin = .round
       h.opacity = ink ? Float(Theme.number("head-dot-opacity", 1)) : 1
     }
-    // .port: the surface with the edge's stroke; Ink Wash: filled in the ink, no stroke
+    // .port: the surface with the edge's stroke; Ink Wash: filled in the ink, no stroke. Shown only while selected: Warm Ink's
+    // and Ink Wash's port is none (state/look.ts), the looks the app draws arrows for
     for p in [port, port2] {
-      p.fillColor = (ink ? Theme.ink : Theme.surface).cgColor
-      p.strokeColor = ink ? nil : Theme.edge.cgColor
+      p.fillColor = portFill
+      p.strokeColor = ink ? nil : portEdge
       p.lineWidth = Theme.number("edge-w", 1.25)
       p.isHidden = !sel
     }
