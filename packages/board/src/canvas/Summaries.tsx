@@ -91,7 +91,9 @@ export function Summaries() {
           while (k < keys().length && (k === from || d.timeRemaining() > 4)) setN(++k);
           // the zoom log (state/zoomlog.ts): each batch of columns built, and how long it took
           if (zlogging()) zlog("B", `${(performance.now() - t0).toFixed(1)} cols ${from}→${k}/${keys().length}`);
-          if (k < keys().length) idle = requestIdleCallback(more);
+          // the effect below asked for the next idle moment already (setN ran it): asked twice, each moment asked for two more, and
+          // the build ran as fast as the page let it
+          if (k < keys().length && idle === undefined) idle = requestIdleCallback(more);
         };
         createEffect(() => {
           if (!all() && n() < keys().length && idle === undefined) idle = requestIdleCallback(more);
