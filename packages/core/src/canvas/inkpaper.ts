@@ -6,13 +6,13 @@ import { fnv } from "./brush";
 const f = (n: number) => String(Math.round(n * 10) / 10);
 
 /** How far the paper reaches outside the card (themes.css: the card's ::before is inset by −PAPER_M) */
-export const PAPER_M = 14;
+const PAPER_M = 14;
 /** The sheet is drawn as a nine-slice border image (themes.css): corners PAPER_SLICE square, edges and middle tiled. Inside the
  *  card the slice reaches PAPER_SLICE − PAPER_M (16 px), past the torn edge's jitter and its outward fibres. themes.css uses the same number */
-export const PAPER_SLICE = 30;
+const PAPER_SLICE = 30;
 /** The tiled middle of each edge and of the sheet: long enough that the repeat does not show */
 const PAPER_TILE = 240;
-export const PAPER_SEEDS = 4;
+const PAPER_SEEDS = 4;
 /** Points along the torn edge are this far apart; PAPER_SLICE − PAPER_M and PAPER_TILE are multiples of it, so the edge passes
  *  through a point at each slice line */
 const EDGE_STEP = 4;

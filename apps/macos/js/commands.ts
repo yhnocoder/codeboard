@@ -189,7 +189,9 @@ export function commands(env: Env, storage: () => Storage) {
       const k = ++clip.n;
       // as the board pastes: a step down and right of the originals, then the nearest free spot (core's findFree)
       const tops = clip.items.filter((x) => x.place);
-      const box = bounds(tops.map((x) => ({ x: x.place!.x, y: x.place!.y, w: x.place!.w, h: (x.place!.h ?? 300) + 40 })));
+      const box = bounds(
+        tops.map((x) => ({ x: x.place!.x, y: x.place!.y, w: x.place!.w, h: (x.place!.h ?? 300) + 40 })),
+      );
       if (!box) return [];
       const free = findFree({ ...box, x: box.x + 36 * k, y: box.y + 36 * k }, Object.values(estRects(env.board())));
       const r = pasteCards(env, structuredClone(clip.items), structuredClone(clip.links), {
@@ -247,7 +249,8 @@ export function commands(env: Env, storage: () => Storage) {
     addSticker: (icon: IconRef, x: number, y: number) => addSticker(env, icon, { kind: "canvas", x, y }, {}),
     deleteStickers: (ids: string[]) => deleteItems(env, { stickers: ids }),
     /** A question on the canvas at (x, y): fresh until written (closed empty, it was never asked); its id */
-    newQuestion: (x: number, y: number) => newQuestion(env, { pack: "builtin", name: "question" }, { kind: "canvas", x, y }),
+    newQuestion: (x: number, y: number) =>
+      newQuestion(env, { pack: "builtin", name: "question" }, { kind: "canvas", x, y }),
     writeQuestion: (id: string, md: string) => writeQuestion(env, id, md),
     setAnswered: (id: string, done: boolean) => setAnswered(env, id, done),
     /** A sticker's colour; "" = the icon's own */
