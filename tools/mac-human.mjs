@@ -14,7 +14,7 @@ import { DatabaseSync } from "node:sqlite";
 /** The steps whose clips are kept even when they pass (Linda watches them); failing steps' clips are kept too */
 const KEEP_CLIPS = ["open_board", "pan", "zoom", "add_note", "edit_note", "switch_board", "relaunch"];
 
-export async function runHuman({ root, gateApp, out, opt }) {
+export async function runHuman({ root, gateApp, out, opt, diskWhy, writeSizes }) {
   // a locked screen draws nothing a person would see: no frames land, nothing can be recorded or pictured, no app comes forward
   if (screenLocked()) {
     console.log(
@@ -64,8 +64,18 @@ export async function runHuman({ root, gateApp, out, opt }) {
     return code;
   };
   console.log(`human pass on a copy of ${src}`);
+  // the disk guard (mac-gate.mjs): the recordings and clips count, the sandbox (home/, projects/) does not
+  const stops = [];
+  const guard = () => {
+    const why = diskWhy();
+    if (why) {
+      writeSizes(why);
+      stops.push({ step: "disk", pass: false, sees: `stopped: ${why} (see sizes.txt)`, shot: "" });
+    }
+    return !why;
+  };
   const c1 = await launch([]);
-  const c2 = await launch(["--relaunch"]);
+  const c2 = guard() ? await launch(["--relaunch"]) : 0;
   // box serve, started for the sandbox, goes when idle; it is ours, so it goes now
   try {
     execFileSync("pkill", ["-f", `${env.BOX_HOME}`]);
@@ -73,7 +83,7 @@ export async function runHuman({ root, gateApp, out, opt }) {
 
   const read = (f, d) =>
     fs.existsSync(path.join(run, f)) ? JSON.parse(fs.readFileSync(path.join(run, f), "utf8")) : d;
-  const steps = [...read("first.json", []), ...read("relaunch.json", [])];
+  const steps = [...read("first.json", []), ...read("relaunch.json", []), ...stops];
   if (c1 !== 0)
     steps.push({ step: "first launch", pass: false, sees: `the app exited with ${c1} (see run/first.log)`, shot: "" });
   if (c2 !== 0)
@@ -192,6 +202,7 @@ export async function runHuman({ root, gateApp, out, opt }) {
       if (step) step.clip = f;
     }
   }
+  if (!stops.length && !guard()) steps.push(...stops);
   // the copies go (the screenshots, the video, its clips and marks stay); older runs' videos go
   fs.rmSync(path.join(out, "projects"), { recursive: true, force: true });
   fs.rmSync(path.join(out, "data"), { recursive: true, force: true });

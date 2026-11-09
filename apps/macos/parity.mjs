@@ -4,6 +4,7 @@
 // and over the head band, so progress is a number. Works on a COPY of the boards folder it is given, never the folder itself.
 //
 //   node apps/macos/parity.mjs --boards ~/Projects/persona/.codeboard --board <id> --cards a,b,c [--themes warm-ink,ink-wash]
+//        (--cards takes a Section's or an arrow's id too: its frame / its line's box is pictured and compared the same way)
 //        [--out test-out/parity] [--app apps/macos/build/CodeBoard.app] [--web-only | --app-only]
 //
 // Output: <out>/<theme>-<light|dark>.html (the sheet), <out>/parity.json (the numbers), the crops and heat maps beside them.

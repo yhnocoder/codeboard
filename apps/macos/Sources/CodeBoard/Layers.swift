@@ -1454,7 +1454,7 @@ final class ArrowLayer: CALayer {
   }
   required init?(coder: NSCoder) { fatalError() }
   /** The route itself (geo.d), for hit testing */
-  private var route: CGPath?
+  private(set) var route: CGPath?
   var selected = false {
     didSet { if selected != oldValue { recolor(); drawLabel() } }
   }
