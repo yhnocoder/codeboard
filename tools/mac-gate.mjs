@@ -2,7 +2,7 @@
 // The macOS app's acceptance gate: every interaction at a full 120 Hz with no visual glitch, on copies of real boards.
 //   node tools/mac-gate.mjs [--quick | --all | --boards id,id] [--data ~/Projects/persona/.codeboard] [--app <CodeBoard.app>]
 //                           [--out test-out/mac-gate/<time>] [--steps pan,drag_card] [--no-capture] [--no-build] [--xctrace]
-//                           [--xctrace-limit 180] [--big 250] [--keep-frames] [--max-load 2] [--wait-quiet 10] [--min-free 8] [--max-out 1]
+//                           [--xctrace-limit 180] [--big 250] [--keep-frames] [--max-load 4] [--wait-quiet 10] [--min-free 8] [--max-out 1]
 // Builds the app (apps/macos/build.sh), copies the data folder (the originals are never opened), adds a board of --big cards made
 // from the biggest one, then runs the app once per board with --gate (Gate.swift drives the window and records; nothing is judged
 // there), and judges here. Timing: the display link's intervals (the main thread's pacing) are the gate, with the window
@@ -14,15 +14,17 @@
 // with no bitmap (blank), and a step whose input changed nothing (no_effect). Failing frames are kept under <out>/<board>/fails/,
 // the rest of the capture, the app's and the data's copies are dropped once the report is written (--keep-frames keeps them).
 // The run refuses to start or go on with under --min-free GB free on the disk or once it has written more than --max-out GB
-// (mac-gate-disk.mjs). Each board waits (up to --wait-quiet minutes) for the Mac's 1-minute
-// load to fall under --max-load first; a run taken under load is marked. Writes <out>/report.json and report.md, prints the
+// (mac-gate-disk.mjs; only its own output counts: the captures, traces and reports, not its copies of the app and the data; the
+// app's caches go to a temporary folder deleted at the end), and writes <out>/sizes.txt when it stops. Each board waits (up to
+// --wait-quiet minutes) for the Mac's 1-minute load to fall under --max-load first; a board started with the load above 2 is
+// marked under load. Writes <out>/report.json and report.md, prints the
 // table, exits 1 when any gate fails.
 import { execFileSync, spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { diskStop, dropCaptures, freeGB, hitchesRecord, sizeGB } from "./mac-gate-disk.mjs";
+import { diskStop, dropCaptures, freeGB, hitchesRecord, outputGB, sizes } from "./mac-gate-disk.mjs";
 import { flashHits, jumpHits } from "../packages/board/test/probes.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -34,8 +36,9 @@ const opt = (k, d) => (args.includes(k) ? args[args.indexOf(k) + 1] : d);
  *  5 ms of hitch time per second (Apple's "good"); without the instrument, the display link's intervals: under 1 % late (later
  *  than 1.5 periods) and p95 within a quarter of the period (the hand-over to the main thread jitters by about 1 ms) */
 const GATE = { hitchPct: 1, hitchMsPerS: 5, p95Ratio: 1.25, lateRatio: 1.5, latePct: 1 };
-/** Each board waits for the Mac's 1-minute load average to fall under maxLoad, up to waitQuiet minutes */
-const QUIET = { maxLoad: +opt("--max-load", "2"), waitQuiet: +opt("--wait-quiet", "10") };
+/** Each board waits for the Mac's 1-minute load average to fall under maxLoad, up to waitQuiet minutes; one started with the
+ *  load above busy is marked under load */
+const QUIET = { maxLoad: +opt("--max-load", "4"), waitQuiet: +opt("--wait-quiet", "10"), busy: 2 };
 /** A continuous step's presented frames are judged when the capture saw at least this share of the driven frames change; fewer
  *  means the content stood still most of the time (an input the app has no handler for), and the display link's pacing is judged */
 const PRESENTED_MIN_SHARE = 0.5;
@@ -50,14 +53,27 @@ const out = path.resolve(
   opt("--out", path.join(root, "test-out/mac-gate", new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19))),
 );
 const bigN = +opt("--big", "250");
-/** Disk guards: the free space (GB) the run needs, and what it may write (GB, beyond its copies of the app and the data) */
+/** Disk guards: the free space (GB) the run needs, and what it may write (GB; its copies of the app and the data don't count) */
 const DISK = { minFree: +opt("--min-free", "8"), maxOut: +opt("--max-out", "1") };
 const xctrace = flag("--xctrace");
 const traceLimit = +opt("--xctrace-limit", "180");
 fs.rmSync(out, { recursive: true, force: true });
 fs.mkdirSync(out, { recursive: true });
-let base = 0;
-const diskWhy = () => diskStop({ free: freeGB(out), used: sizeGB(out) - base }, DISK);
+const diskWhy = () => diskStop({ free: freeGB(out), used: outputGB(out, ["cbgate.app", "data"]) }, DISK);
+// the app's caches (the Notes' rendered PDFs) for this run only, out of the user's ~/Library/Caches and out of <out>
+const caches = fs.mkdtempSync(path.join(os.tmpdir(), "cbgate-caches-"));
+process.on("exit", () => fs.rmSync(caches, { recursive: true, force: true }));
+process.on("SIGINT", () => process.exit(130));
+/** On a stop: <out>/sizes.txt, the biggest contributors to the output (and the copies and caches, marked as not counted) */
+function writeSizes(why) {
+  const mb = (b) => `${(b / 2 ** 20).toFixed(1).padStart(9)} MB`;
+  const rows = sizes(out).map(([f, b]) => `${mb(b)}  ${f}${/^(cbgate\.app|data)\//.test(f) ? " (not counted)" : ""}`);
+  const c = sizes(caches).reduce((n, [, b]) => n + b, 0);
+  fs.writeFileSync(
+    path.join(out, "sizes.txt"),
+    [why, "", ...rows.slice(0, 40), `${mb(c)}  ${caches} (app caches, not counted)`, ""].join("\n"),
+  );
+}
 if (diskWhy()) {
   console.error(`not starting: ${diskWhy()}`);
   process.exit(1);
@@ -106,7 +122,6 @@ const boards = fs
 const biggest = boards.reduce((a, b) => (b.cards.length > a.cards.length ? b : a));
 const big = makeBig(biggest, bigN);
 fs.writeFileSync(path.join(copy, `${big.id}.json`), JSON.stringify(big));
-base = sizeGB(out);
 
 /** A board of n cards: the given one tiled with copies of its cards and links (new ids), placed in columns to its right */
 function makeBig(b, n) {
@@ -180,9 +195,12 @@ async function runBoard(id) {
     await new Promise((r) => setTimeout(r, 10_000));
     load = os.loadavg()[0];
   }
-  const underLoad = load >= QUIET.maxLoad;
+  const underLoad = load > QUIET.busy;
   const log = fs.openSync(path.join(dir, "app.log"), "w");
-  const p = spawn(path.join(gateApp, "Contents/MacOS/cbgate"), a, { stdio: ["ignore", log, log] });
+  const p = spawn(path.join(gateApp, "Contents/MacOS/cbgate"), a, {
+    stdio: ["ignore", log, log],
+    env: { ...process.env, CODEBOARD_CACHES: caches },
+  });
   let trace = null;
   const traceFile = path.join(dir, "hitches.trace");
   if (xctrace) {
@@ -195,6 +213,7 @@ async function runBoard(id) {
     stopped = diskWhy();
     if (!stopped) return;
     clearInterval(watch);
+    writeSizes(stopped);
     trace?.kill("SIGKILL");
     p.kill("SIGKILL");
   }, 2000);
@@ -486,6 +505,7 @@ const results = [];
 for (const id of pick) {
   console.log(`\n== ${names[id] ?? id} (${id})`);
   const why = diskWhy();
+  if (why) writeSizes(why);
   const r = why ? { id, name: names[id], error: `not run: ${why}` } : await runBoard(id);
   results.push(r);
   if (r.error) console.log(`   ${r.error}`);

@@ -29,6 +29,26 @@ export function sizeGB(dir) {
   return n / GB;
 }
 
+/** The run's output folder by contributor: each file at the top, and each entry one level into each folder, in bytes, biggest
+ *  first ([rel, bytes]) */
+export function sizes(dir) {
+  const rows = [];
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    const p = path.join(dir, e.name);
+    if (!e.isDirectory()) rows.push([e.name, sizeGB(p) * GB]);
+    else for (const f of fs.readdirSync(p)) rows.push([`${e.name}/${f}`, sizeGB(path.join(p, f)) * GB]);
+  }
+  return rows.sort((a, b) => b[1] - a[1]);
+}
+
+/** What the gate itself wrote under dir, in GB: everything but the top-level entries in skip (its copies of the app and the
+ *  data, which the app writes to as it runs) */
+export function outputGB(dir, skip) {
+  let n = 0;
+  for (const f of fs.readdirSync(dir)) if (!skip.includes(f)) n += sizeGB(path.join(dir, f));
+  return n;
+}
+
 /** Why the run must stop now (free space under minFree GB, or more than maxOut GB written), or null */
 export function diskStop({ free, used }, { minFree, maxOut }) {
   if (free < minFree) return `only ${free.toFixed(1)} GB free on the disk (the gate needs ${minFree} GB)`;

@@ -2,7 +2,15 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { diskStop, dropCaptures, freeGB, hitchesRecord, sizeGB } from "../../../../tools/mac-gate-disk.mjs";
+import {
+  diskStop,
+  dropCaptures,
+  freeGB,
+  hitchesRecord,
+  outputGB,
+  sizeGB,
+  sizes,
+} from "../../../../tools/mac-gate-disk.mjs";
 
 describe("the macOS gate's disk guards", () => {
   const lim = { minFree: 8, maxOut: 1 };
@@ -19,6 +27,21 @@ describe("the macOS gate's disk guards", () => {
     expect(a).not.toContain("--template");
     expect(a[a.indexOf("--time-limit") + 1]).toBe("180s");
     expect(a[a.indexOf("--attach") + 1]).toBe("42");
+  });
+
+  it("counts only the gate's own output, not its copies of the app and the data, and lists the biggest contributors", () => {
+    const d = fs.mkdtempSync(path.join(os.tmpdir(), "gate-out-"));
+    try {
+      for (const s of ["cbgate.app", "data", "b1/pan"]) fs.mkdirSync(path.join(d, s), { recursive: true });
+      fs.writeFileSync(path.join(d, "cbgate.app", "bin"), Buffer.alloc(4 << 20));
+      fs.writeFileSync(path.join(d, "data", "board.json"), Buffer.alloc(2 << 20));
+      fs.writeFileSync(path.join(d, "b1", "pan", "grids.bin"), Buffer.alloc(1 << 20));
+      fs.writeFileSync(path.join(d, "report.md"), "xy");
+      expect(outputGB(d, ["cbgate.app", "data"]) * 2 ** 30).toBe((1 << 20) + 2);
+      expect(sizes(d).map(([f]) => f)).toEqual(["cbgate.app/bin", "data/board.json", "b1/pan", "report.md"]);
+    } finally {
+      fs.rmSync(d, { recursive: true, force: true });
+    }
   });
 
   it("measures a folder, reads free space, and drops capture folders but keeps fails/ and the files", () => {
