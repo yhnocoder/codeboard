@@ -204,7 +204,18 @@ final class BoardWindowController: NSWindowController, NSToolbarDelegate, NSTabl
       let g = NSGlassEffectView()
       g.style = Look.current.glassStyle
       g.cornerRadius = height / 2
-      g.contentView = content
+      if g.style == .clear {
+        // clear glass dims what is under it (Apple's guidance for clear glass over bright or busy content): a veil of the
+        // board's paper inside the capsule only, so a card's text or a formula under it never collides with the icons
+        let scrim = NSView()
+        scrim.wantsLayer = true
+        scrim.layer?.backgroundColor = Look.current.surface.withAlphaComponent(0.6).cgColor
+        scrim.layer?.cornerRadius = height / 2
+        scrim.addSubview(content)
+        g.contentView = scrim
+      } else {
+        g.contentView = content
+      }
       v = g
     } else {
       let ch = Look.current
