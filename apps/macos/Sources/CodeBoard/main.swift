@@ -4,8 +4,11 @@
 //   --auto [--snapshot <dir>]        the scripted canvas run (Auto.swift): timings to stdout / report.json, PNGs, then quit
 //   --snapshot <dir>                 with --open and --board: write the canvas to PNG once drawn, then quit
 //   --gate <dir> [--steps a,b] [--no-capture]  the acceptance gate's run (Gate.swift, driven by tools/mac-gate.mjs), then quit
+//   --human <dir> [--relaunch]       the human-use pass (Human.swift, driven by tools/mac-gate.mjs --human): a plain launch used by
+//                                    clicks and keys at the controls' places, screenshots and a recording, then quit
 //   --fit                            with --snapshot: the whole board in view
 //   --focus <card id>                with --snapshot: that card at the top left at zoom 1
+//   --zoom <z>                       with --snapshot (after --fit): zoom to z about the view's centre, as the gate's pan starts
 //   --library <folder>               the library shows only that folder (the checks: a copy of real boards)
 //   --check <dir> [--query <q>]      the scripted library run (Checks.swift): library, ⌘K and a board window to PNGs, timings
 //   --show [--show-board <id>] [--query <q>]  open them and stay (screenshots of the real windows)
@@ -29,6 +32,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
   var router: RouteWorker?
   var auto: AutoRun?
   var gate: GateRun?
+  var human: HumanRun?
   let args = CommandLine.arguments
   func arg(_ k: String) -> String? { args.firstIndex(of: k).flatMap { $0 + 1 < args.count ? args[$0 + 1] : nil } }
   /** The library's calls go to the same context (js/library.ts on each folder's Storage) */
@@ -72,12 +76,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     Theme.registerFonts()
     Packs.load(bridge)
     Ink.load(bundleURL.deletingLastPathComponent().appendingPathComponent("router.js"))
+    Ink.prewarm()
     if router == nil { logLine("[codeboard] no router.js: drags route on the main thread") }
     if let l = arg("--look") { Look.shared.set(l) } else { _ = Look.shared }
     if args.contains("--dark") { NSApp.appearance = NSAppearance(named: .darkAqua) }
     if args.contains("--light") { NSApp.appearance = NSAppearance(named: .aqua) }
-    if let t = arg("--theme") ?? UserDefaults.standard.string(forKey: "theme") { Theme.look = t }
+    if let t = arg("--theme") ?? Home.defaults.string(forKey: "theme") { Theme.look = t }
     makeMenu()
+    if let h = arg("--human") { human = HumanRun(app: self, out: h, relaunch: args.contains("--relaunch")) }
     // `--also <folder>` opens more windows (the memory checks: several windows on one bridge); the scripted run drives the first
     if let f = arg("--open") {
       // `--also <folder>` opens more windows (the memory checks: several windows on one bridge); the scripted run drives the first
@@ -143,6 +149,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     pendingOpen = []
     open(urls)
     NSApp.activate()
+    human?.run()
   }
 
   /** A board window on a folder, for the canvas checks (no library) */
@@ -180,6 +187,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
       } else if snap != nil {
         if self.args.contains("--fit") { wc.canvas.fitAll(animated: false) }
         if let id = self.arg("--focus") { wc.canvas.focus(id) }
+        if let z = self.arg("--zoom").flatMap(Double.init) { wc.canvas.zoomAbout(z) }
         after(Double(self.arg("--wait") ?? "0.8") ?? 0.8) {
           AutoRun(wc, out: snap).snapshot("board")
           self.quit()
@@ -280,10 +288,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
       self.library.refresh(r.dir)
     }
     let t0 = CACurrentMediaTime()
+    // the window is there (laid out, drawing) but unseen until its board is ready: it appears whole and sharp, not as a soft
+    // or empty board that sharpens a few frames later
+    wc.window?.alphaValue = 0
     wc.open(r.id) { s in
       logLine("[codeboard] board %@ open in %.0f ms (%d cards)", r.id, (CACurrentMediaTime() - t0) * 1000, s?.cards.count ?? 0)
+      guard s != nil else { wc.window?.alphaValue = 1; return }
       // the cards have their places once the scene is in; the camera moves after the first layout
-      after(0.05) { fly(wc) }
+      after(0.05) {
+        fly(wc)
+        wc.canvas.whenReady(cap: 1) {
+          wc.window?.alphaValue = 1
+          logLine("[codeboard] board %@ shown %.0f ms after asked", r.id, (CACurrentMediaTime() - t0) * 1000)
+        }
+      }
     }
     // a frame of its own for each board, else the next one along from the front window
     if wc.window?.setFrameUsingName("CodeBoard.board.\(r.dir)/\(r.id)") != true, let front = windows.dropLast().last?.window {

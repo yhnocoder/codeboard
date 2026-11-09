@@ -35,7 +35,17 @@ final class Slots {
   var lines: [String: Double] = [:]
 }
 
+/** No implicit animations on the canvas's layers: a bitmap landing, a layer shown or hidden, a path or a colour set changes at
+ *  once (Core Animation would fade each over 0.25 s: a soft flash across the board at a bucket switch). The layer classes here
+ *  return no action; plain sublayers get this delegate. The animations the canvas means run as explicit CAAnimations */
+final class Still: NSObject, CALayerDelegate {
+  static let shared = Still()
+  func action(for layer: CALayer, forKey event: String) -> CAAction? { NSNull() }
+}
+func still(_ layers: CALayer...) { for l in layers { l.delegate = Still.shared } }
+
 final class CardLayer: CALayer {
+  override func action(forKey event: String) -> CAAction? { NSNull() }
   private(set) var card: SceneCard
   /** The card's drawn height (its Place's, or measured from its content) */
   private(set) var height: CGFloat = 0
@@ -43,6 +53,68 @@ final class CardLayer: CALayer {
   private var imageSize: CGSize?
   /** Has a bitmap now (the canvas drops the bitmaps of cards far off screen) */
   var drawn = false
+  /** The card shows a picture: its base, or a sharp bitmap (never neither once its base has come) */
+  var hasFace: Bool { baseFace.contents != nil || hasSharp }
+  /** What is missing for the card to be sharp over `vis` (world rect) at `scale`: nil when every tile row of it in view has
+   *  landed at that scale; else why not (the checks: the screen at rest is all sharp) */
+  func sharpMissing(in vis: CGRect, scale: CGFloat) -> String? {
+    if tiles.isEmpty { return "base only" + (source == nil ? "" : " (raster asked)") }
+    if faceScale != scale { return "at scale \(faceScale), not \(scale) (asked \(askedScale), \(retries) retries)" }
+    let local = vis.offsetBy(dx: -frame.minX, dy: -frame.minY)
+    let missing = (0..<tileRows).filter { r in
+      let y = CGFloat(r) * tileH
+      return local.intersects(CGRect(x: 0, y: y, width: bounds.width, height: min(tileH, bounds.height - y))) && tiles[r] == nil
+    }
+    return missing.isEmpty ? nil : "rows \(missing) of \(tileRows) missing (asked \(asked.sorted()))"
+  }
+  /** Finished bitmaps thrown away because a newer raster of the card was asked for meanwhile (the checks report it) */
+  static var superseded = 0
+  /** A sharp bitmap (some tile of one) is shown */
+  var hasSharp: Bool { !tiles.isEmpty || !oldTiles.isEmpty }
+  /** The raster scale (contentsScale) the sharp tier was drawn for, and whether it predates a look / theme change */
+  private(set) var faceScale: CGFloat = 0
+  var stale = false
+  private(set) var askedScale: CGFloat = 0
+  /** The newest raster's paper sheet, head buttons and Always Show notes' slots wait for its first tile, so they change in one
+   *  frame (by gen) */
+  private var waitingSheet: (Int, IOSurface?, CGFloat)?
+  private var waitingTools: (Int, IOSurface, CGFloat, CGRect)?
+  private var waitingSlots: (Int, Slots)?
+  private var landedGen = -1
+  /** The base tier (Base.swift): the card's low-resolution face and sheet, under everything, never dropped */
+  private let baseSheet = CALayer()
+  private let baseFace = CALayer()
+  private var baseKey = ""
+  private var sheetKey = ""
+  /** The base came from the card's real content (not only a Note's paper and head while the page has not rendered it) */
+  private var baseReal = false
+  private var paperless = false
+  /** The base face is set (the canvas shows a board once every card has one) */
+  var onBase: ((CardLayer) -> Void)?
+  /** The sharp tier: tiles (rows of at most tilePx device pixels) in the face, at the zoom bucket's scale. A card that fits in
+   *  one is one tile; a taller one draws only the rows near the view (CardLayer.near), the rest when the view gets there */
+  static let tilePx: CGFloat = 1024
+  static var near = CGRect.infinite
+  private var tiles: [Int: CALayer] = [:]
+  /** The previous raster's tiles: shown until this one's have landed */
+  private var oldTiles: [CALayer] = []
+  private var asked: Set<Int> = []
+  private var tileRows = 1
+  private var tileH: CGFloat = 0
+  private var source: Source?
+  /** What the sharp tier is drawn from: the card's own drawing, or the page's PDF of a Note */
+  private enum Source { case paint(Paint), pdf(NotePDF) }
+  /** What a tile raster hands over (the canvas lands a few per frame) */
+  struct Tile { var row: Int; var y: CGFloat; var h: CGFloat; var image: Any; var slots: Slots? }
+  struct Inote { var key: String; var image: CGImage }
+  /** A new base: landed like the sharp tiles (a look switch makes every card's at once), unless the board is not shown yet */
+  struct BaseLand { var put: () -> Void }
+  /** The sharp tier's bytes (the canvas evicts the least recently seen hidden cards' when the total is over its budget) */
+  private(set) var sharpBytes = 0
+  var lastSeen: CFTimeInterval = 0
+  /** A Note's render that did not settle (capped, or a snapshot): asked again a few times, never shown over a complete one */
+  private var completeShown = false
+  private var retries = 0
   /** The height is the board's own (Place.h): the page draws the card at it, however long the text */
   private var fixed = false
   /** The head's sidenote chip as last drawn (card coordinates); nil when the card has no whole-card sidenotes */
@@ -50,10 +122,28 @@ final class CardLayer: CALayer {
   /** A code card's rows as last drawn in full ("<segment>:<line>" → the row's middle from the top): routing puts an arrow's end
    *  on the line as drawn, hidden runs, notes and separators included; empty until the first full raster */
   private(set) var rowYs: [String: Double] = [:]
-  /** Off screen: the bitmap goes, and a raster in flight lands nowhere */
+  /** Evicted (or folded away): the sharp tier goes and the base shows; a raster in flight lands nowhere */
   func drop() {
     gen += 1
-    face.contents = nil
+    pendingOp?.cancel()
+    for l in tiles.values { l.removeFromSuperlayer() }
+    for l in oldTiles { l.removeFromSuperlayer() }
+    for l in inoteLayers.values { l.removeFromSuperlayer() }
+    tiles = [:]
+    oldTiles = []
+    inoteLayers = [:]
+    asked = []
+    source = nil
+    sheet.contents = nil
+    tools.contents = nil
+    waitingSheet = nil
+    waitingTools = nil
+    waitingSlots = nil
+    baseSheet.isHidden = false
+    baseFace.isHidden = false
+    faceScale = 0
+    sharpBytes = 0
+    completeShown = false
     drawn = false
   }
   /** The selection ring (Warm Ink: styles.css .card.sel --ring, two rings), sublayers, so selecting never re-rasterises the card */
@@ -138,12 +228,10 @@ final class CardLayer: CALayer {
   /** The card's shadow is drawn into its sheet bitmap (Core Animation's own shadow is re-rendered for every layer on every zoom
    *  frame): the sheet reaches this far outside the card (Ink Wash's paper, paperMargin, fits inside it) */
   static let sheetMargin: CGFloat = 24
-  /** Paper and corners until the first bitmap lands: a card is never a blank */
-  private let placeholder = CALayer()
   private var gen = 0
   private var pendingOp: Operation?
   /** A finished bitmap goes here (the canvas lands a few per frame, nearest first) instead of straight into the layer */
-  var handover: ((CardLayer, IOSurface, CGFloat, Int) -> Void)?
+  var handover: ((CardLayer, Any, CGFloat, Int) -> Void)?
   /** Decoded images by file and size, no larger than a card needs (a 4000px screenshot is not decoded again for every raster); the
    *  oldest go when there are more than `imageCacheMax` */
   private static var imageCache: [String: CGImage] = [:]
@@ -158,12 +246,12 @@ final class CardLayer: CALayer {
     needsDisplayOnBoundsChange = false
     anchorPoint = .zero
     contentsGravity = .topLeft
-    sheet.anchorPoint = .zero
-    sheet.contentsGravity = .topLeft
-    addSublayer(sheet)
-    placeholder.anchorPoint = .zero
-    placeholder.isHidden = true
-    addSublayer(placeholder)
+    still(baseSheet, baseFace, sheet, face, ring, ring2, tools, bar, nameHead, stamp)
+    for l in [baseSheet, baseFace, sheet] {
+      l.anchorPoint = .zero
+      l.contentsGravity = .resize
+      addSublayer(l)
+    }
     face.anchorPoint = .zero
     face.contentsGravity = .topLeft
     addSublayer(face)
@@ -189,11 +277,6 @@ final class CardLayer: CALayer {
     nameHead.contentsGravity = .topLeft
     addSublayer(nameHead)
     apply(card)
-    if framed {
-      placeholder.backgroundColor = Theme.surface.cgColor
-      placeholder.cornerRadius = radius
-      placeholder.isHidden = false
-    }
   }
   override init(layer: Any) {
     let l = layer as! CardLayer
@@ -220,7 +303,9 @@ final class CardLayer: CALayer {
     fixed = c.fixed == true
     setSize(CGSize(width: c.w, height: height))
     frame.origin = CGPoint(x: c.x, y: c.y)
+    retries = 0
     setNeedsDisplay()
+    needBase()
   }
   /** The card's size (the sheet reaches sheetMargin outside it) */
   private func setSize(_ s: CGSize) {
@@ -228,8 +313,9 @@ final class CardLayer: CALayer {
     let r = CGRect(origin: .zero, size: s)
     let m = CardLayer.sheetMargin
     sheet.frame = r.insetBy(dx: -m, dy: -m)
+    baseSheet.frame = sheet.frame
+    baseFace.frame = r
     face.frame = r
-    placeholder.frame = r
     let size = Theme.number("stamp-size", 24)
     stamp.bounds = CGRect(x: 0, y: 0, width: size, height: size)
     stamp.position = CGPoint(x: s.width + Theme.number("stamp-right", -19) * -1 - size / 2, y: Theme.number("stamp-top", -17) + size / 2)
@@ -254,6 +340,7 @@ final class CardLayer: CALayer {
     ring.path = CGPath(roundedRect: r.insetBy(dx: -off - ring.lineWidth / 2, dy: -off - ring.lineWidth / 2), cornerWidth: corner + off, cornerHeight: corner + off, transform: nil)
     while handles.count < 3 {
       let h = CAShapeLayer()
+      still(h)
       h.isHidden = true
       addSublayer(h)
       handles.append(h)
@@ -303,50 +390,11 @@ final class CardLayer: CALayer {
       showSelection()
     }
   }
-  /** A live resize (the pointer on an edge): the frame follows every frame, as the board lays the card out again each frame.
-   *  The paper shows at the new size at once (the placeholder under the face, the sheet stretched to it), the text is drawn again
-   *  at the new size as fast as the raster queue returns it (one raster in flight at a time, never a queue of stale sizes), and
-   *  the last size is drawn once more when the resize ends */
-  /** The editor over the card grew: the frame follows (the editor covers it; the bitmap is drawn when the edit ends) */
-  func grow(toHeight h: CGFloat) {
-    height = h
-    setSize(CGSize(width: frame.width, height: h))
+  /** A live resize (the pointer on an edge): the frame follows, the bitmap is drawn again when it ends */
+  func resize(to s: CGSize) {
+    height = s.height
+    setSize(s)
   }
-  func resize(width: CGFloat, height h: CGFloat?) {
-    if !resizing {
-      resizing = true
-      sheet.contentsGravity = .resize
-      // the old bitmap is cut at the new edge while the card shrinks
-      face.masksToBounds = true
-      if framed {
-        placeholder.backgroundColor = Theme.surface.cgColor
-        placeholder.cornerRadius = radius
-        placeholder.isHidden = false
-      }
-    }
-    card.w = width
-    // the bottom edge pulled sets the height; the width alone keeps the card's own (a Note's follows its text as it is drawn)
-    if let h { height = h }
-    setSize(CGSize(width: width, height: height))
-    if resizeGen == landedGen { redrawForResize() }
-  }
-  func endResize() {
-    guard resizing else { return }
-    resizing = false
-    sheet.contentsGravity = .topLeft
-    face.masksToBounds = false
-    redrawForResize()
-  }
-  private var resizing = false
-  /** The raster asked for by the resize and the one that landed: equal when none is in flight */
-  private var resizeGen = 0, landedGen = 0
-  private func redrawForResize() {
-    resizeGen += 1
-    let mine = resizeGen
-    resizeLanded = { [weak self] in self?.landedGen = mine }
-    setNeedsDisplay()
-  }
-  private var resizeLanded: (() -> Void)?
 
   func move(to p: CGPoint) {
     card.x = p.x
@@ -390,43 +438,42 @@ final class CardLayer: CALayer {
     return img
   }
 
-  /** The layer needs a bitmap: drawn on the raster queue, put in when done (the old one stays until then, so no frame is blank) */
+  /** The layer needs a bitmap: drawn on the raster queue, landed by the canvas (the old one stays until then, and the base
+   *  under it, so no frame is ever blank) */
   override func display() {
     gen += 1
-    if card.pending == true { return }  // its placeholder, until the coloured card comes
+    stale = false
+    drewPaperless = Theme.isInk && framed && Ink.paper(dark: Theme.isDark, seed: card.seed) == nil
+    askedScale = contentsScale
+    if card.pending == true { return }  // its base (the uncoloured code), until the coloured card comes
     let g = gen
     if card.kind == "board" { showName() }
     if card.kind == "note" || card.kind == "board", let notes {
-      // the web page renders Notes (and a sub-board's map) as PDFs; until one lands the old bitmap stays (or the placeholder for a brand new card)
-      let scale = min(contentsScale, sqrt(CardLayer.maxPixels / max(1, card.w * max(height, 1))))
+      // the web page renders Notes (and a sub-board's map) as PDFs; until one lands the old bitmap stays (and the base)
       let put = { [weak self] (pdf: NotePDF) in
         guard let self, self.gen == g else { return }
+        // a render that did not settle never replaces a complete one: asked again in a moment (a few times)
+        if !pdf.complete {
+          if self.retries < 3 {
+            self.retries += 1
+            after(1.5) { [weak self] in if let self, self.gen == g { self.setNeedsDisplay() } }
+            if self.completeShown { return }
+          }
+        }
         if !self.fixed, abs(pdf.h - self.height) > 0.5 || abs(pdf.w - self.frame.width) > 0.5 {
           self.height = pdf.h
           self.setSize(CGSize(width: self.card.look == "freetext" ? pdf.w : self.card.w, height: pdf.h))
           self.onMeasured?(self)
         }
+        if !self.baseReal { self.baseFrom(pdf) }
         self.drawSheet(g)
-        CardLayer.queue.addOperation {
-          let img = pdf.raster(scale: scale)
-          DispatchQueue.main.async { [weak self] in
-            guard let self, self.gen == g else { return }
-            self.face.contents = img
-            self.face.contentsScale = scale
-            self.placeholder.isHidden = true
-            self.resizeLanded?()
-            self.resizeLanded = nil
-            self.onRendered?(self)
-          }
-        }
+        self.startTiles(.pdf(pdf), complete: pdf.complete, g)
       }
-      if let hit = notes.render(CardSpec(card), done: put) { put(hit); return }
-      if face.contents == nil { drawPlaceholder() }
+      if let hit = notes.render(CardSpec(card), done: put) { put(hit) }
       return
     }
     let size = bounds.size
-    let scale = min(contentsScale, sqrt(CardLayer.maxPixels / max(1, size.width * size.height)))
-    var paint = Paint(card: card, height: height, imageSrc: card.kind == "image" ? card.src : nil, imageMax: Int(card.w * scale), framed: framed, paper: Theme.isInk && framed, dark: Theme.isDark)
+    var paint = Paint(card: card, height: height, imageSrc: card.kind == "image" ? card.src : nil, imageMax: Int(card.w * contentsScale), framed: framed, paper: Theme.isInk && framed, dark: Theme.isDark)
     // a code card's Always Show notes come from the page first (their heights make room between the rows); the rest of the
     // card waits for the last of them, then draws once
     if card.kind == "code", let notes {
@@ -437,7 +484,7 @@ final class CardLayer: CALayer {
         guard let self, self.gen == g else { return }
         for (key, pdf) in pdfs { paint.inoteHeights[key] = pdf.h }
         self.inotePdfs = pdfs
-        self.raster(paint, size: size, scale: scale, g)
+        self.raster(paint, size: size, g)
       }
       for (key, spec) in specs {
         let put = { (pdf: NotePDF) in
@@ -450,7 +497,7 @@ final class CardLayer: CALayer {
       if specs.isEmpty { go() }
       return
     }
-    raster(paint, size: size, scale: scale, g)
+    raster(paint, size: size, g)
   }
   /** The page's pictures of the Always Show notes, placed after the raster (placeInotes) */
   private var inotePdfs: [String: NotePDF] = [:]
@@ -471,62 +518,248 @@ final class CardLayer: CALayer {
     }
     return out
   }
-  private func raster(_ paint: Paint, size: CGSize, scale: CGFloat, _ g: Int) {
+  /** A code / image / web / text card: its sheet and head buttons, then its tiles */
+  private func raster(_ paint: Paint, size: CGSize, _ g: Int) {
     let appearance = Theme.appearance
     if paint.paper { _ = Ink.paper(dark: paint.dark, seed: card.seed) }
-    let sel = selected, radius = radius
+    let sel = selected, radius = radius, scale = contentsScale, sheetScale = sheetScale(size)
     sheetSelected = sel
     pendingOp?.cancel()
     let op = BlockOperation()
     op.addExecutionBlock { [weak op] in
       if op?.isCancelled == true { return }
-      let surface = CardLayer.render(paint, size: size, scale: scale, appearance: appearance)
-      let paper = paint.framed ? CardLayer.renderSheet(paint, selected: sel, radius: radius, size: size, scale: scale, appearance: appearance) : nil
+      let paper = paint.framed ? CardLayer.renderSheet(paint, selected: sel, radius: radius, size: size, scale: sheetScale, appearance: appearance) : nil
       let tools = paint.card.kind == "code" ? CardLayer.renderTools(paint, scale: scale, appearance: appearance) : nil
       DispatchQueue.main.async { [weak self] in
-        guard let self, let surface else { return }
-        if self.gen == g {
-          self.sheet.contents = paper
-          self.sheet.contentsScale = scale
-        }
-        if let (tools, w) = tools, self.gen == g {
-          self.tools.frame = CGRect(x: size.width - w, y: 0, width: w, height: Theme.headHeight)
-          self.tools.contents = tools
-          self.tools.contentsScale = scale
-        }
-        if let h = self.handover { h(self, surface, scale, g) } else { self.land(surface, scale, g) }
-        if self.gen == g { self.placeInotes(paint.slots.rects, scale: scale, g) }
-        self.chipRect = paint.slots.chip
-        if !paint.slots.lines.isEmpty, self.rowYs != paint.slots.lines {
-          self.rowYs = paint.slots.lines
-          self.onMeasured?(self)
+        guard let self, self.gen == g else { return }
+        if self.landedGen == g { self.putSheet(paper, sheetScale) } else { self.waitingSheet = (g, paper, sheetScale) }
+        if let (tools, w) = tools {
+          let r = CGRect(x: size.width - w, y: 0, width: w, height: Theme.headHeight)
+          if self.landedGen == g { self.putTools(tools, scale, r) } else { self.waitingTools = (g, tools, scale, r) }
         }
       }
     }
     pendingOp = op
     CardLayer.queue.addOperation(op)
+    startTiles(.paint(paint), complete: true, g)
+  }
+  /** The sheet's scale: the bucket's up to the screen's own (a shadow and a paper edge, soft by nature), and no more than 2M
+   *  pixels (a tall card's would be huge) */
+  private func sheetScale(_ size: CGSize) -> CGFloat {
+    let m = CardLayer.sheetMargin
+    return min(contentsScale, CardLayer.screenScale, sqrt(2_000_000 / max(1, (size.width + 2 * m) * (size.height + 2 * m))))
+  }
+  /** The screen's backing scale (the canvas keeps it) */
+  static var screenScale: CGFloat = 2
+  /** Drawn (asked) before Ink Wash's paper for its edge pattern was made: drawn again when it is (Ink.ready); the rest are not,
+   *  since every redraw throws away the rasters in flight, and a storm of them keeps a loaded machine on the bases */
+  var drewPaperless = false
+  /** Evicted while near the view but not in it: drawn again only once it is in view (no evict / redraw churn) */
+  var parked = false
+
+  /** A new raster's tiles: the rows near the view (all of them for a card of one tile) */
+  private func startTiles(_ src: Source, complete: Bool, _ g: Int) {
+    oldTiles += tiles.values
+    tiles = [:]
+    asked = []
+    source = src
+    let scale = askedScale
+    tileH = CardLayer.tilePx / max(scale, 0.01)
+    tileRows = max(1, Int(ceil(bounds.height / tileH)))
+    if !complete { completeShown = false }
+    pendingComplete = complete
+    fillTiles()
+  }
+  private var pendingComplete = true
+  /** The rows of the current raster near the view that are not asked for yet (the canvas calls it as the view moves) */
+  func fillTiles() {
+    guard let src = source else { return }
+    let g = gen, scale = askedScale, w = bounds.width, full = bounds.size, appearance = Theme.appearance
+    let rows = tileRows, th = tileH
+    let local = CardLayer.near.offsetBy(dx: -frame.minX, dy: -frame.minY)
+    for row in 0..<rows where !asked.contains(row) {
+      let y = CGFloat(row) * th, h = min(th, full.height - y)
+      if rows > 1, !local.intersects(CGRect(x: 0, y: y, width: w, height: h)) { continue }
+      asked.insert(row)
+      CardLayer.queue.addOperation {
+        let image: Any?
+        var slots: Slots?
+        switch src {
+        case .pdf(let pdf):
+          image = pdf.raster(scale: scale, rect: CGRect(x: 0, y: y, width: w, height: h))
+        case .paint(var p):
+          p.slots = Slots()
+          slots = p.slots
+          image = CardLayer.surface(CGSize(width: w, height: h), scale: scale, dy: y) {
+            appearance.performAsCurrentDrawingAppearance {
+              // a card of several tiles: each tile carries the paper under it (Ink Wash), so the base never shows through
+              if rows > 1, p.paper { Ink.drawPaper(CGRect(origin: .zero, size: full), dark: p.dark, seed: p.card.seed) }
+              CardLayer.drawCard(p, in: CGRect(origin: .zero, size: full), lod: scale < CardLayer.lodScale)
+            }
+          }
+        }
+        DispatchQueue.main.async { [weak self] in
+          guard let self, self.gen == g, let image else { return }
+          let t = Tile(row: row, y: y, h: h, image: image, slots: slots)
+          if let hand = self.handover { hand(self, t, scale, g) } else { self.land(t, scale, g) }
+        }
+      }
+    }
   }
 
-  /** The bitmap is shown, unless a newer raster was asked for since (then it is dropped; the old bitmap stays until that one lands) */
-  func land(_ surface: IOSurface, _ scale: CGFloat, _ g: Int) {
-    guard g == gen else { return }
-    face.contents = surface
-    face.contentsScale = scale
-    placeholder.isHidden = true
-    resizeLanded?()
-    resizeLanded = nil
+  /** A finished tile (or an Always Show note's picture) is shown, unless a newer raster was asked for since (then it is dropped;
+   *  the old tiles stay until that one's land) */
+  func land(_ contents: Any, _ scale: CGFloat, _ g: Int) {
+    if let b = contents as? BaseLand { b.put(); return }
+    guard g == gen else { CardLayer.superseded += 1; return }
+    if let n = contents as? Inote {
+      inoteLayers[n.key]?.contents = n.image
+      inoteLayers[n.key]?.contentsScale = scale
+      return
+    }
+    guard let t = contents as? Tile else { return }
+    let l = tiles[t.row] ?? {
+      let l = CALayer()
+      still(l)
+      l.anchorPoint = .zero
+      l.contentsGravity = .resize
+      face.addSublayer(l)
+      return l
+    }()
+    l.frame = CGRect(x: 0, y: t.y, width: bounds.width, height: t.h)
+    l.contents = t.image
+    l.contentsScale = scale
+    tiles[t.row] = l
+    let first = landedGen != g
+    landedGen = g
+    if first {
+      faceScale = askedScale
+      if let (sg, paper, s) = waitingSheet, sg == g { putSheet(paper, s) }
+      if let (tg, tl, s, r) = waitingTools, tg == g { putTools(tl, s, r) }
+      waitingSheet = nil
+      waitingTools = nil
+      if let sl = t.slots {
+        placeInotes(sl.rects, scale: scale, g)
+        chipRect = sl.chip
+        if !sl.lines.isEmpty, rowYs != sl.lines {
+          rowYs = sl.lines
+          onMeasured?(self)
+        }
+      }
+      if card.kind == "note" || card.kind == "board" { onRendered?(self) }
+    }
+    // every row asked has landed: the previous raster's tiles go; all of the card's rows there, the base is covered
+    if asked.isSubset(of: Set(tiles.keys)) {
+      for o in oldTiles { o.removeFromSuperlayer() }
+      oldTiles = []
+      if pendingComplete { completeShown = true }
+    }
+    baseFace.isHidden = tiles.count == tileRows
+    sharpBytes = tiles.values.reduce(0) { $0 + CardLayer.bytes($1.contents) } + CardLayer.bytes(sheet.contents) + CardLayer.bytes(tools.contents)
+  }
+  static func bytes(_ c: Any?) -> Int {
+    guard let c else { return 0 }
+    if let s = c as? IOSurface { return s.allocationSize }
+    if CFGetTypeID(c as CFTypeRef) == CGImage.typeID { let i = c as! CGImage; return i.bytesPerRow * i.height }
+    return 0
+  }
+  private func putSheet(_ paper: IOSurface?, _ scale: CGFloat) {
+    sheet.contents = paper
+    sheet.contentsScale = scale
+    baseSheet.isHidden = paper != nil
+  }
+  private func putTools(_ t: IOSurface, _ scale: CGFloat, _ r: CGRect) {
+    tools.frame = r
+    tools.contents = t
+    tools.contentsScale = scale
   }
 
-  /** A Note with no bitmap yet: its paper and head, grey bars for text (drawn at once, off the main thread like the rest) */
-  private func drawPlaceholder() {
-    let paint = Paint(card: card, height: height, imageSrc: nil, imageMax: 0, framed: framed, paper: false, dark: Theme.isDark)
-    let size = bounds.size, g = gen, appearance = Theme.appearance
-    CardLayer.queue.addOperation {
-      let surface = CardLayer.render(paint, size: size, scale: 1, appearance: appearance)
+  // MARK: the base tier
+  /** What the base face depends on: the card as drawn (not where it is), its height, the look */
+  private var faceParts: String {
+    var c = card
+    c.x = 0
+    c.y = 0
+    c.section = nil
+    var mtime = ""
+    if c.kind == "image", let src = c.src, let d = try? FileManager.default.attributesOfItem(atPath: src)[.modificationDate] as? Date { mtime = "\(d.timeIntervalSince1970)" }
+    // a Note's height comes from its render (the content and width decide it); before that it is a guess
+    let h = c.kind == "note" || c.kind == "board" ? "" : "\(height)"
+    return "face|\(c)|\(h)|\(Theme.look)|\(Theme.isDark)|\(mtime)"
+  }
+  /** The base for the card as it is now: from disk when it is there, else drawn (a Note's from its PDF: until the page has
+   *  rendered it, its paper and head, and the base follows the first render). Called on every new version and look */
+  func needBase() {
+    // drawn before Ink Wash's paper was made: drawn again now that it may be
+    if paperless { baseKey = ""; sheetKey = ""; paperless = false }
+    let fk = Base.key(faceParts)
+    let sk = framed ? Base.key("sheet|\(card.w)|\(height)|\(card.seed)|\(card.kind)|\(Theme.look)|\(Theme.isDark)") : ""
+    let wantFace = fk != baseKey, wantSheet = sk != sheetKey
+    guard wantFace || wantSheet else { return }
+    baseKey = fk
+    sheetKey = sk
+    if wantFace { baseReal = false }
+    let paint = Paint(card: card, height: height, imageSrc: card.kind == "image" ? card.src : nil, imageMax: Int(card.w * Base.scale), framed: framed, paper: Theme.isInk && framed, dark: Theme.isDark)
+    let size = bounds.size, appearance = Theme.appearance, radius = radius, web = card.kind == "note" || card.kind == "board"
+    let cacheable = card.pending != true
+    if paint.paper { _ = Ink.paper(dark: paint.dark, seed: card.seed) }
+    Base.queue.addOperation {
+      var face: CGImage?, sheet: CGImage?, real = false
+      if wantFace {
+        if let hit = Base.read(fk) { face = hit; real = true } else {
+          face = Base.bitmap(size, scale: Base.scale) { appearance.performAsCurrentDrawingAppearance { CardLayer.drawCard(paint, in: CGRect(origin: .zero, size: size), lod: true) } }
+          real = !web
+          let paperReady = !paint.paper || Ink.paper(dark: paint.dark, seed: paint.card.seed) != nil
+          if real, cacheable, paperReady, let face { Base.write(fk, face) }
+        }
+      }
+      if wantSheet, !sk.isEmpty {
+        if let hit = Base.read(sk) { sheet = hit } else {
+          let m = CardLayer.sheetMargin
+          sheet = Base.bitmap(CGSize(width: size.width + 2 * m, height: size.height + 2 * m), scale: Base.scale) {
+            appearance.performAsCurrentDrawingAppearance { CardLayer.drawSheetBody(paint, selected: false, radius: radius, size: size) }
+          }
+          let paperReady = !paint.paper || Ink.paper(dark: paint.dark, seed: paint.card.seed) != nil
+          if paperReady, let sheet { Base.write(sk, sheet) }
+        }
+      }
+      let paperless = paint.paper && Ink.paper(dark: paint.dark, seed: paint.card.seed) == nil
       DispatchQueue.main.async { [weak self] in
-        guard let self, self.gen == g, self.face.contents == nil, let surface else { return }
-        self.face.contents = surface
-        self.face.contentsScale = 1
+        guard let self else { return }
+        if paperless { self.paperless = true }
+        self.putBase {
+          if wantSheet, self.sheetKey == sk { self.baseSheet.contents = sheet }
+          if wantFace, self.baseKey == fk, !(self.baseReal && !real) {
+            self.baseFace.contents = face
+            self.baseReal = real
+            self.onBase?(self)
+          }
+        }
+      }
+    }
+  }
+  /** Through the canvas's landing (a few per frame) when the card is on a shown board; at once for a card that has no base yet
+   *  or is out of view */
+  var showsBoard: () -> Bool = { false }
+  private func putBase(_ f: @escaping () -> Void) {
+    if let hand = handover, showsBoard(), !isHidden, baseFace.contents != nil { hand(self, BaseLand(put: f), 0, gen) } else { f() }
+  }
+  /** A Note's base from its rendered PDF (kept on disk when the render was complete) */
+  private func baseFrom(_ pdf: NotePDF) {
+    let fk = Base.key(faceParts)
+    baseKey = fk
+    let complete = pdf.complete
+    Base.queue.addOperation {
+      let img = pdf.raster(scale: Base.scale)
+      if complete, let img { Base.write(fk, img) }
+      DispatchQueue.main.async { [weak self] in
+        guard let self, let img else { return }
+        self.putBase {
+          guard self.baseKey == fk, !(self.baseReal && !complete) else { return }
+          self.baseFace.contents = img
+          self.baseReal = complete
+          self.onBase?(self)
+        }
       }
     }
   }
@@ -665,15 +898,15 @@ final class CardLayer: CALayer {
   private func drawSheet(_ g: Int) {
     guard framed else { sheet.contents = nil; return }
     let paint = Paint(card: card, height: height, imageSrc: nil, imageMax: 0, framed: true, paper: Theme.isInk, dark: Theme.isDark)
-    let size = bounds.size, scale = contentsScale, appearance = Theme.appearance, sel = selected, radius = radius
+    let size = bounds.size, scale = sheetScale(size), appearance = Theme.appearance, sel = selected, radius = radius
     sheetSelected = sel
     if paint.paper { _ = Ink.paper(dark: paint.dark, seed: card.seed) }
     CardLayer.queue.addOperation {
       let paper = CardLayer.renderSheet(paint, selected: sel, radius: radius, size: size, scale: scale, appearance: appearance)
       DispatchQueue.main.async { [weak self] in
         guard let self, self.gen == g else { return }
-        self.sheet.contents = paper
-        self.sheet.contentsScale = scale
+        // with the face of this raster: at once when that has landed, else when it lands
+        if self.landedGen == g { self.putSheet(paper, scale) } else { self.waitingSheet = (g, paper, scale) }
       }
     }
   }
@@ -685,6 +918,7 @@ final class CardLayer: CALayer {
       guard let pdf = inotePdfs[key] else { continue }
       let l = inoteLayers[key] ?? {
         let l = CALayer()
+        still(l)
         l.anchorPoint = .zero
         l.contentsGravity = .topLeft
         inoteLayers[key] = l
@@ -692,12 +926,13 @@ final class CardLayer: CALayer {
         return l
       }()
       l.frame = r
+      l.zPosition = 1
       CardLayer.queue.addOperation {
         let img = pdf.raster(scale: scale)
         DispatchQueue.main.async { [weak self] in
-          guard let self, self.gen == g else { return }
-          l.contents = img
-          l.contentsScale = scale
+          guard let self, self.gen == g, let img else { return }
+          let n = Inote(key: key, image: img)
+          if let hand = self.handover { hand(self, n, scale, g) } else { self.land(n, scale, g) }
         }
       }
     }
@@ -709,26 +944,27 @@ final class CardLayer: CALayer {
   static func renderSheet(_ p: Paint, selected: Bool, radius: CGFloat, size: CGSize, scale: CGFloat, appearance: NSAppearance) -> IOSurface? {
     let m = sheetMargin
     let full = CGSize(width: size.width + 2 * m, height: size.height + 2 * m)
+    return surface(full, scale: scale) { appearance.performAsCurrentDrawingAppearance { drawSheetBody(p, selected: selected, radius: radius, size: size) } }
+  }
+  /** The sheet's drawing, into the current context (sheetMargin outside the card) */
+  static func drawSheetBody(_ p: Paint, selected: Bool, radius: CGFloat, size: CGSize) {
+    let m = sheetMargin
     let r = CGRect(x: m, y: m, width: size.width, height: size.height)
     let list = p.paper ? Theme.shadows(selected ? "card-sel-shadow" : "card-shadow") : Theme.shadows("card-soft-shadow")
-    return surface(full, scale: scale) {
-      appearance.performAsCurrentDrawingAppearance {
-        guard let cg = NSGraphicsContext.current?.cgContext else { return }
-        for sh in list.filter({ !$0.inset }).reversed() {
-          guard let c = Theme.parse(sh.color) else { continue }
-          cg.saveGState()
-          cg.setShadow(offset: CGSize(width: sh.x, height: -sh.y), blur: sh.blur, color: c.cgColor)
-          // the fill itself is under the card's own paint; only its shadow shows
-          Theme.surface.setFill()
-          NSBezierPath(roundedRect: r.insetBy(dx: -sh.spread, dy: -sh.spread), xRadius: radius + sh.spread, yRadius: radius + sh.spread).fill()
-          cg.restoreGState()
-        }
-        if p.paper { Ink.drawPaper(r, dark: p.dark, seed: p.card.seed) }
-      }
+    guard let cg = NSGraphicsContext.current?.cgContext else { return }
+    for sh in list.filter({ !$0.inset }).reversed() {
+      guard let c = Theme.parse(sh.color) else { continue }
+      cg.saveGState()
+      cg.setShadow(offset: CGSize(width: sh.x, height: -sh.y), blur: sh.blur, color: c.cgColor)
+      // the fill itself is under the card's own paint; only its shadow shows
+      Theme.surface.setFill()
+      NSBezierPath(roundedRect: r.insetBy(dx: -sh.spread, dy: -sh.spread), xRadius: radius + sh.spread, yRadius: radius + sh.spread).fill()
+      cg.restoreGState()
     }
+    if p.paper { Ink.drawPaper(r, dark: p.dark, seed: p.card.seed) }
   }
   /** An IOSurface of a size at a scale, drawn into with AppKit (flipped) */
-  static func surface(_ size: CGSize, scale: CGFloat, _ draw: () -> Void) -> IOSurface? {
+  static func surface(_ size: CGSize, scale: CGFloat, dy: CGFloat = 0, _ draw: () -> Void) -> IOSurface? {
     let w = max(1, Int((size.width * scale).rounded())), h = max(1, Int((size.height * scale).rounded()))
     guard let surface = IOSurface(properties: [.width: w, .height: h, .bytesPerElement: 4, .pixelFormat: UInt32(0x42475241)]) else { return nil }  // 'BGRA'
     let space = CardLayer.colorSpace
@@ -740,6 +976,7 @@ final class CardLayer: CALayer {
     ctx.scaleBy(x: scale, y: scale)
     ctx.translateBy(x: 0, y: size.height)
     ctx.scaleBy(x: 1, y: -1)
+    ctx.translateBy(x: 0, y: -dy)
     let gc = NSGraphicsContext(cgContext: ctx, flipped: true)
     NSGraphicsContext.saveGraphicsState()
     NSGraphicsContext.current = gc
@@ -1004,27 +1241,18 @@ final class CardLayer: CALayer {
     }
   }
 
-  /** The placeholder for a Note the page has not rendered yet: head and bars (the look of the lod blocks) */
+  /** A Note the page has not rendered yet, for its first base: its paper and head (a Box its fill; Text has no paper) */
   private static func drawNote(_ p: Paint, _ r: CGRect, lod: Bool) {
     let look = p.card.look ?? "note"
-    let pad = pad
     switch look {
     case "note":
       drawHead(p, r, glyph: "¶", title: p.card.title, lod: true, note: true)
-      Theme.ink3.withAlphaComponent(0.35).setFill()
-      var y = Theme.headHeight + pad
-      while y + 8 < r.height - pad {
-        CGRect(x: pad, y: y, width: r.width - pad * 2 - (y.truncatingRemainder(dividingBy: 3 * 18) == 0 ? 60 : 0), height: 8).fill()
-        y += 18
-      }
     case "box":
       let fill = Theme.box[p.card.fill ?? "yellow"] ?? Theme.sticky
       let bp = NSBezierPath(roundedRect: r.insetBy(dx: 0.5, dy: 0.5), xRadius: 8, yRadius: 8)
       fill.setFill()
       bp.fill()
-    default:
-      Theme.ink3.withAlphaComponent(0.35).setFill()
-      CGRect(x: 4, y: 6, width: r.width * 0.8, height: max(8, r.height * 0.5)).fill()
+    default: break
     }
   }
 
@@ -1051,14 +1279,13 @@ final class CardLayer: CALayer {
 
 }
 
-/** A Section: a shape layer (no bitmap: a Section can be the size of the board) and its title; in Ink Wash four brush strokes
- *  (core's inkframe, through Ink.frame) with the title written in the top stroke's gap (themes.css .sbrush, .slabel) */
 /** A Section: its frame under the cards (styles.css .sect; Ink Wash: four brush strokes, themes.css .sbrush) and its title above
  *  them (.slabel, z-index 4: the canvas's labels layer, `riser`). Collapsed, the frame wraps the title, "· N cards" and the caret
  *  (state/sections.ts measureShut). Selected: Warm Ink's border turns accent with a 3 px ring outside and an accent wash over the
  *  fill; Ink Wash's strokes turn vermilion, a second lighter stroke shows offset inside and a faint vermilion wash covers it.
  *  Colours and sizes are the stylesheets' (themes.json) */
 final class SectionLayer: CALayer {
+  override func action(forKey event: String) -> CAAction? { NSNull() }
   private(set) var section: SceneSection
   /** Warm Ink: the frame (fill, border), the inset highlight along its top (--sect-sh), the selected ring and wash */
   private let shape = CAShapeLayer()
@@ -1090,8 +1317,8 @@ final class SectionLayer: CALayer {
   init(section: SceneSection) {
     self.section = section
     super.init()
-    shouldRasterize = true
     anchorPoint = .zero
+    still(shape, hilite, wash, ring, echo, brush, label)
     for l in [shape, hilite, wash, ring, echo, brush] {
       l.anchorPoint = .zero
       addSublayer(l)
@@ -1111,10 +1338,15 @@ final class SectionLayer: CALayer {
     super.init(layer: layer)
   }
   required init?(coder: NSCoder) { fatalError() }
-  /** Off the canvas, the label too */
-  func detach() {
-    label.removeFromSuperlayer()
-    removeFromSuperlayer()
+  /** Off the canvas, the label too; into the board switch's still copy (`ghost`) meanwhile, when given */
+  func detach(into ghost: CALayer? = nil) {
+    if let ghost {
+      ghost.addSublayer(self)
+      ghost.addSublayer(label)
+    } else {
+      label.removeFromSuperlayer()
+      removeFromSuperlayer()
+    }
   }
   /** Hidden inside a folded Section: its label too */
   override var isHidden: Bool {
@@ -1176,7 +1408,13 @@ final class SectionLayer: CALayer {
       brush.isHidden = false
       brush.frame = CGRect(x: -fm - 1, y: -fm - 1, width: r.width + 2 * fm, height: r.height + 2 * fm)
       // the title's width makes the gap in the top stroke (the board: max(40, the label's width)); none when collapsed
-      brush.path = Ink.frame(w: r.width, h: r.height, seed: s.seed, gap: shut ? 0 : max(40, labelSize.width))
+      // the path now when it is made, else when the ink thread has it (and the frame is still this size)
+      let gap = shut ? 0 : max(40, labelSize.width), size = r.size, seed = s.seed
+      brush.path = Ink.frame(w: size.width, h: size.height, seed: seed, gap: gap) { [weak self] p in
+        guard let self, Theme.isInk, self.bounds.size == size, self.section.seed == seed else { return }
+        self.brush.path = p
+        self.echo.path = p
+      }
       let off = Theme.point("secho-offset")
       echo.frame = brush.frame.offsetBy(dx: off.x, dy: off.y)
       echo.path = brush.path
@@ -1221,7 +1459,6 @@ final class SectionLayer: CALayer {
   }
   /** The label's bitmap scale follows the zoom like the cards' */
   func setScale(_ scale: CGFloat) {
-    rasterizationScale = max(0.125, scale)
     let s = max(0.5, scale)
     guard s != labelScale else { return }
     labelScale = s
@@ -1355,6 +1592,7 @@ final class SectionLayer: CALayer {
  *  selected, and its label. Widths follow the look's --edge-w and the line's weight (w1 / w3: 0.6 / 1.6); selected (.on): the
  *  accent, 0.45 px wider */
 final class ArrowLayer: CALayer {
+  override func action(forKey event: String) -> CAAction? { NSNull() }
   let line = CAShapeLayer()
   let line2 = CAShapeLayer()
   /** Ink Wash: the dry streaks over the stroke (.feibai) */
@@ -1378,6 +1616,7 @@ final class ArrowLayer: CALayer {
     anchorPoint = .zero
     // a bitmap of the arrow at the zoom bucket's scale, like a card: a zoom frame scales it instead of filling the shapes again
     shouldRasterize = true
+    still(line, streaks, line2, head, tail, port, port2, label)
     for l in [line, streaks, line2, head, tail, port, port2] { addSublayer(l) }
     label.anchorPoint = CGPoint(x: 0.5, y: 0.5)
     label.contentsGravity = .resizeAspect
@@ -1570,6 +1809,7 @@ final class ArrowLayer: CALayer {
  *  the colour mixed 86 % with #5b3d22 (Ink Wash: 30 % with the ink), the line in #fffaf1 (Ink Wash: the paper) 2 px wide in a
  *  24-unit box; a label sticker is a capsule; an emoji is the character at 0.86 of the size) */
 final class StickerLayer: CALayer {
+  override func action(forKey event: String) -> CAAction? { NSNull() }
   private(set) var sticker: SceneSticker
   private var drawnScale: CGFloat = 0
   /** The selection ring (styles.css .stk.sel: 1.5 px of accent, 2 px out), a sublayer so selecting redraws nothing */
@@ -1589,6 +1829,7 @@ final class StickerLayer: CALayer {
     ring.fillColor = nil
     ring.lineWidth = 1.5
     ring.isHidden = true
+    still(ring)
     addSublayer(ring)
     apply(sticker)
   }

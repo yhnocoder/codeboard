@@ -22,14 +22,14 @@ enum AppSettings {
     return o
   }()
   static func value(_ key: String) -> Any? {
-    UserDefaults.standard.object(forKey: "codeboard.\(key)") ?? vscode["codeboard.\(key)"] ?? defaults["codeboard.\(key)"]
+    Home.defaults.object(forKey: "codeboard.\(key)") ?? vscode["codeboard.\(key)"] ?? defaults["codeboard.\(key)"]
   }
   static func string(_ key: String) -> String { ((value(key) as? String) ?? "").trimmingCharacters(in: .whitespaces) }
   static func bool(_ key: String) -> Bool { value(key) as? Bool ?? false }
   private static var posts: [String: Timer] = [:]
   /** Kept at once; who follows the setting hears of it once typing in its field pauses */
   static func set(_ key: String, _ v: Any) {
-    UserDefaults.standard.set(v, forKey: "codeboard.\(key)")
+    Home.defaults.set(v, forKey: "codeboard.\(key)")
     posts[key]?.invalidate()
     let t = Timer(timeInterval: 0.6, repeats: false) { _ in NotificationCenter.default.post(name: .codeboardSettings, object: key) }
     RunLoop.main.add(t, forMode: .common)

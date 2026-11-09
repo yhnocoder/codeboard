@@ -371,7 +371,9 @@ final class SearchModel: ObservableObject {
     guard !q.isEmpty else { boards = []; cards = []; related = []; busy = false; return }
     let t0 = CACurrentMediaTime()
     let all = allBoards()
-    boards = Array(all.filter { $0.name.localizedCaseInsensitiveContains(q) }.prefix(5)).map {
+    // the boards by name land with the cards (a keystroke later, after the pause): a list put up for one letter and taken
+    // down at the next flashed while typing
+    let boardHits = Array(all.filter { $0.name.localizedCaseInsensitiveContains(q) }.prefix(5)).map {
       SearchHit(kind: .board, dir: $0.dir, board: $0.id, title: $0.name, detail: $0.project)
     }
     let nameMap = Dictionary(all.map { ("\($0.dir)|\($0.id)", "\($0.name) — \($0.project)") }, uniquingKeysWith: { a, _ in a })
@@ -384,6 +386,7 @@ final class SearchModel: ObservableObject {
       if Task.isCancelled { return }
       let kw = await index.keyword(q, names: names)
       if Task.isCancelled { return }
+      boards = boardHits
       cards = kw
       keywordMs = (CACurrentMediaTime() - t0) * 1000
       guard index.semantic else { related = []; busy = false; return }

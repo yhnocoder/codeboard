@@ -105,7 +105,7 @@ enum Thumbs {
       if Theme.isInk {
         let font = Theme.brushHand(25)
         let tw = (s.title as NSString).size(withAttributes: [.font: font]).width + 2
-        if let path = Ink.frame(w: s.w, h: s.h, seed: s.seed, gap: max(40, tw)) {
+        if let path = Ink.frameNow(w: s.w, h: s.h, seed: s.seed, gap: max(40, tw)) {
           cg.saveGState()
           cg.translateBy(x: sr.minX - Ink.frameMargin - 1, y: sr.minY - Ink.frameMargin - 1)
           cg.addPath(path)
@@ -159,9 +159,39 @@ enum Thumbs {
         }
       }
       CardLayer.drawCard(p, in: local, lod: lod)
+      // a Note's text comes from its page render on the canvas, which a thumbnail has not: its lines as bars, as code's at a distance
+      if c.kind == "note", let md = c.md { noteLines(md, in: local, top: c.look == "note" ? Theme.headHeight + 12 : 14) }
       cg.restoreGState()
     }
     cg.restoreGState()
+  }
+}
+
+extension Thumbs {
+  /** A Note's Markdown as a page of bars: headings darker and taller, paragraphs wrapped to the card, an image a grey block */
+  fileprivate static func noteLines(_ md: String, in r: CGRect, top: CGFloat) {
+    let ch: CGFloat = 7.5, row: CGFloat = 20, w = r.width - 32
+    var y = top
+    for raw in md.split(separator: "\n", omittingEmptySubsequences: false) {
+      guard y < r.height - 14 else { break }
+      let line = raw.trimmingCharacters(in: .whitespaces)
+      if line.isEmpty { y += row / 2; continue }
+      if line.hasPrefix("![") {
+        Theme.head.setFill()
+        CGRect(x: 16, y: y, width: w * 0.7, height: min(80, r.height - 14 - y)).fill()
+        y += 88
+        continue
+      }
+      let heading = line.hasPrefix("#")
+      let text = line.drop { "#>-*+ ".contains($0) }
+      (heading ? Theme.ink2.withAlphaComponent(0.55) : Theme.ink3.withAlphaComponent(0.35)).setFill()
+      var left = CGFloat(text.count) * (heading ? ch * 1.3 : ch)
+      while left > 0, y < r.height - 14 {
+        CGRect(x: 16, y: y + 6, width: min(w, left), height: heading ? 11 : 8).fill()
+        left -= w
+        y += heading ? row * 1.3 : row
+      }
+    }
   }
 }
 

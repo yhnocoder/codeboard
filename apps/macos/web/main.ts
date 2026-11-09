@@ -173,12 +173,14 @@ function settled(el: HTMLElement): Promise<boolean> {
       done(capped);
     };
     const imagesDone = () => [...el.querySelectorAll("img")].every((i) => i.complete);
+    // a timer, not requestAnimationFrame: the page is never on screen (an occluded window, a locked screen) and a frame may
+    // never come, which capped every render at 400 ms and kept none on disk
     const arm = () => {
-      cancelAnimationFrame(t);
-      t = requestAnimationFrame(() => {
+      clearTimeout(t);
+      t = window.setTimeout(() => {
         if (imagesDone()) end();
         else arm();
-      });
+      }, 16);
     };
     const mo = new MutationObserver(arm);
     mo.observe(el, { childList: true, subtree: true, attributes: true, characterData: true });

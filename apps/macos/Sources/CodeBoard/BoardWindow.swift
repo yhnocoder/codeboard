@@ -158,13 +158,12 @@ final class BoardWindowController: NSWindowController, NSToolbarDelegate, NSTabl
     return main
   }
 
-  /** A borderless symbol button; chain: sent down the responder chain, enabled once something there implements it */
+  /** A borderless symbol button; chain: sent down the key window's responder chain (the split view's sidebar toggle) */
   private func button(_ symbol: String, _ label: String, _ sel: Selector, chain: Bool = false) -> NSButton {
     let b = NSButton(image: NSImage(systemSymbolName: symbol, accessibilityDescription: label)!, target: chain ? nil : self, action: sel)
     b.isBordered = false
     b.toolTip = label
     b.contentTintColor = .labelColor
-    if chain { b.isEnabled = NSApp.target(forAction: sel, to: nil, from: b) != nil }
     return b
   }
   private func separator() -> NSView {
@@ -179,15 +178,22 @@ final class BoardWindowController: NSWindowController, NSToolbarDelegate, NSTabl
     r.edgeInsets = NSEdgeInsets(top: 0, left: Design.dock.padding, bottom: 0, right: Design.dock.padding)
     return r
   }
-  /** The tools, as the board's dock has them */
-  private func toolButtons() -> [NSView] { Self.tools.map { button($0.1, $0.0, $0.2, chain: true) } }
+  /** The tools, as the board's dock has them: sent to this window's controller, which does them (down the responder chain they
+   *  were enabled only when the window was key as they were made, so a board opened from the library got them all greyed out) */
+  private func toolButtons() -> [NSView] {
+    Self.tools.map { t in
+      let b = button(t.1, t.0, t.2)
+      b.isEnabled = responds(to: t.2)
+      return b
+    }
+  }
   /** The view dock: (sidebar |) − 100% + | Fit */
   private func viewButtons(sidebar: Bool) -> [NSView] {
     zoomLabel.font = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .medium)
     zoomLabel.alignment = .center
     if zoomLabel.constraints.isEmpty { zoomLabel.widthAnchor.constraint(equalToConstant: 40).isActive = true }
     let zoom: [NSView] = [button("minus", "Zoom Out (⌘−)", #selector(zoomOut(_:))), zoomLabel, button("plus", "Zoom In (⌘+)", #selector(zoomIn(_:))), separator(),
-                          button("arrow.up.left.and.arrow.down.right", "Zoom to Fit (⌘9)", #selector(fit(_:)))]
+                          button("arrow.up.left.and.arrow.down.right", "Zoom to Fit (⌘1)", #selector(fit(_:)))]
     return sidebar ? [button("sidebar.left", "Toggle Sidebar (⌃⌘S)", #selector(NSSplitViewController.toggleSidebar(_:)), chain: true), separator()] + zoom : zoom
   }
   /** A dock's backdrop: system glass in a glass look, the board's own (its surface, a hairline, a soft shadow) otherwise */
@@ -198,7 +204,18 @@ final class BoardWindowController: NSWindowController, NSToolbarDelegate, NSTabl
       let g = NSGlassEffectView()
       g.style = Look.current.glassStyle
       g.cornerRadius = height / 2
-      g.contentView = content
+      if g.style == .clear {
+        // clear glass dims what is under it (Apple's guidance for clear glass over bright or busy content): a veil of the
+        // board's paper inside the capsule only, so a card's text or a formula under it never collides with the icons
+        let scrim = NSView()
+        scrim.wantsLayer = true
+        scrim.layer?.backgroundColor = Look.current.surface.withAlphaComponent(0.6).cgColor
+        scrim.layer?.cornerRadius = height / 2
+        scrim.addSubview(content)
+        g.contentView = scrim
+      } else {
+        g.contentView = content
+      }
       v = g
     } else {
       let ch = Look.current
@@ -303,12 +320,13 @@ final class BoardWindowController: NSWindowController, NSToolbarDelegate, NSTabl
     switch id.rawValue {
     case "title":
       let it = NSToolbarItem(itemIdentifier: id)
-      it.view = titleButton
+      titleButton.removeFromSuperview()
+      it.view = glass ? titleCapsule() : titleButton
       it.isBordered = false
       return it
     case "tools" where glass:
       let g = NSToolbarItemGroup(itemIdentifier: id)
-      g.subitems = Self.tools.map { item("tool.\($0.0)", $0.0, $0.1, $0.2, chain: true) }
+      g.subitems = Self.tools.map { item("tool.\($0.0)", $0.0, $0.1, $0.2) }
       g.label = "Tools"
       return g
     case "tools":
@@ -344,6 +362,22 @@ final class BoardWindowController: NSWindowController, NSToolbarDelegate, NSTabl
     b.lineBreakMode = .byTruncatingTail
     return b
   }()
+  /** In a glass look the canvas runs under the title row: the name sits on regular (frosted) glass, as undo and search do, so
+   *  a card scrolled under it neither shows through nor collides with it */
+  private func titleCapsule() -> NSView {
+    let pad = NSView()
+    titleButton.translatesAutoresizingMaskIntoConstraints = false
+    pad.addSubview(titleButton)
+    NSLayoutConstraint.activate([
+      titleButton.leadingAnchor.constraint(equalTo: pad.leadingAnchor, constant: 14), titleButton.trailingAnchor.constraint(equalTo: pad.trailingAnchor, constant: -14),
+      titleButton.centerYAnchor.constraint(equalTo: pad.centerYAnchor), pad.heightAnchor.constraint(equalToConstant: Design.zoomPill.height),
+    ])
+    let g = NSGlassEffectView()
+    g.style = .regular
+    g.cornerRadius = Design.zoomPill.height / 2
+    g.contentView = pad
+    return g
+  }
   /** The toolbar measures an item's view once: the title's width follows the name (up to a third of a wide window) */
   private lazy var titleWidth = titleButton.widthAnchor.constraint(equalToConstant: 100)
   private func setTitle(_ name: String) {
@@ -533,16 +567,19 @@ final class BoardWindowController: NSWindowController, NSToolbarDelegate, NSTabl
   }
   func canvas(_ c: CanvasView, newNoteAt p: CGPoint) { made("note", at: p) }
   func canvas(_ c: CanvasView, newCard look: String, at p: CGPoint) { made(look, at: p) }
-  /** A new card at a world point, its editor opened at once (it is fresh: nothing written → it goes) */
-  private func made(_ look: String, at p: CGPoint) {
+  /** A new card at a world point (free: the nearest spot no card covers, kept in view), its editor opened at once (it is fresh:
+   *  nothing written → it goes) */
+  private func made(_ look: String, at p: CGPoint, free: Bool = false) {
     guard let session else { return }
     let apply = applyChange(session)
     let open: (Result<SceneChange, Error>) -> Void = { [weak self] r in
       guard let self else { return }
       apply(r)
-      if case .success(let ch) = r, let id = ch.id, self.session?.id == session.id { self.canvas(self.canvas, editCard: id) }
+      guard case .success(let ch) = r, let id = ch.id, self.session?.id == session.id else { return }
+      if free { self.canvas.reveal(id) }
+      self.canvas(self.canvas, editCard: id)
     }
-    if look == "code" { session.newCode(x: p.x, y: p.y, open) } else { session.newWriting(look, x: p.x, y: p.y, open) }
+    if look == "code" { session.newCode(x: p.x, y: p.y, free: free, open) } else { session.newWriting(look, x: p.x, y: p.y, free: free, open) }
   }
   func canvas(_ c: CanvasView, linkFrom: String, to: String) { if let session { session.addLink(from: linkFrom, to: to, applyChange(session)) } }
   func canvas(_ c: CanvasView, deleteCards: [String], links: [String], sections: [String]) {
@@ -718,16 +755,20 @@ final class BoardWindowController: NSWindowController, NSToolbarDelegate, NSTabl
   /** The middle of the view in world units: where a toolbar button puts a new card */
   private var centre: CGPoint { canvas.toWorld(CGPoint(x: canvas.bounds.midX - 190, y: canvas.bounds.midY - 60)) }
   // MARK: BoardTools (the toolbar's tools, Design.swift): the ones the commands cover
-  @objc func addNote(_ sender: Any?) { made("note", at: centre) }
-  @objc func addText(_ sender: Any?) { made("text", at: centre) }
-  @objc func addCode(_ sender: Any?) { made("code", at: centre) }
+  @objc func addNote(_ sender: Any?) { made("note", at: centre, free: true) }
+  @objc func addText(_ sender: Any?) { made("text", at: centre, free: true) }
+  @objc func addCode(_ sender: Any?) { made("code", at: centre, free: true) }
 
   @objc func undo(_ sender: Any?) { if let session { session.undo(applyChange(session)) } }
   @objc func redo(_ sender: Any?) { if let session { session.redo(applyChange(session)) } }
   @objc func fit(_ sender: Any?) { canvas.fitAll() }
   @objc func zoomIn(_ sender: Any?) { canvas.zoom(by: 1.25, at: CGPoint(x: canvas.bounds.midX, y: canvas.bounds.midY), animated: true) }
   @objc func zoomOut(_ sender: Any?) { canvas.zoom(by: 0.8, at: CGPoint(x: canvas.bounds.midX, y: canvas.bounds.midY), animated: true) }
-  @objc func actualSize(_ sender: Any?) { canvas.setCamera(Camera(x: canvas.cam.x, y: canvas.cam.y, z: 1), animated: true) }
+  /** 100 %, about the middle of the view (as + and − zoom): what is in the middle stays there */
+  @objc func actualSize(_ sender: Any?) {
+    let p = CGPoint(x: canvas.bounds.midX, y: canvas.bounds.midY), k = 1 / canvas.cam.z
+    canvas.setCamera(Camera(x: p.x - (p.x - canvas.cam.x) * k, y: p.y - (p.y - canvas.cam.y) * k, z: 1), animated: true)
+  }
 
   /** Everything unsaved written: the edit going on first, then Storage's queue */
   func flush(_ done: @escaping () -> Void) {
@@ -805,7 +846,7 @@ private final class SideCell: NSTableCellView {
     name.stringValue = (b.group.map { "\($0) / " } ?? "") + b.name
     name.font = serif ? Theme.serif(12.5, weight: .semibold) : .systemFont(ofSize: 12.5, weight: .semibold)
     meta.font = serif ? Theme.serif(10.5) : .systemFont(ofSize: 10.5)
-    let when = lib.flatMap { $0.mtime > 0 ? RelativeDateTimeFormatter().localizedString(for: Date(timeIntervalSince1970: $0.mtime / 1000), relativeTo: Date()) : nil }
+    let when = lib.flatMap { $0.mtime > 0 ? relativeDate($0.mtime) : nil }
     meta.stringValue = "\(b.cards) card\(b.cards == 1 ? "" : "s")" + (when.map { " · \($0)" } ?? "")
   }
 }

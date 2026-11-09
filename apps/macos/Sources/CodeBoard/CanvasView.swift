@@ -1,7 +1,8 @@
 // The canvas: a flipped, layer-backed view whose `world` layer holds every card, Section and arrow at board coordinates. The camera
 // is the world layer's transform, so panning, pinching and ⌘-scrolling never redraw a card; a card being dragged moves its own
 // layer and only the arrows on it are re-routed (a sub-millisecond call into core's routing). Cards are rasterised at a few zoom
-// buckets (rasterBucket) and far off-screen ones drop their bitmaps; a change is committed to core when the drag ends.
+// buckets (rasterBucket) over the base each always keeps (Base.swift); past a budget hidden cards fall back to their base; a
+// change is committed to core when the drag ends.
 // Gestures: drag a card (or the selection), marquee on empty space (⌥-drag pans), resize by a selected card's right edge / bottom
 // corner, an arrow from a selected card's port dots to another card, double-click to edit a Note / Text / Free code or to make a
 // Note on empty space, a Section's title to rename it. The card being edited is the EditCard's WKWebView over it (WebCards.swift).
@@ -71,7 +72,9 @@ final class CanvasView: NSView {
   /** The zoomed-out summary level (Summaries.swift) and what the detent and the switch draw over the board: the mist in the
    *  board's colour rising from the bottom (styles.css .cutmist), the vermilion line (.cutline) and the seal (.cutseal) */
   let summaries = SummaryLevel()
-  private let mist = CAGradientLayer()
+  private let mist = CALayer()
+  /** The mist's image: the gradient blurred once, for a view size and board colour (a live blur filter cost every frame) */
+  private var mistImage: (CGSize, CGColor, CGImage)?
   private let cutLine = CALayer()
   private let cutFill = CALayer()
   private let seal = CATextLayer()
@@ -79,8 +82,8 @@ final class CanvasView: NSView {
   private(set) var level = 0
   private var push = 0.0
   private var pushedAt = 0.0
-  private var drainTimer: Timer?
-  private var switchTimer: Timer?
+  private var drainTimer: Ticker?
+  private var switchTimer: Ticker?
   private(set) var stickerLayers: [String: StickerLayer] = [:]
   /** Ink Wash's scene behind the board (packages/board/src/scenes): the whole view, bottom-anchored, cover */
   private let scene = CALayer()
@@ -100,6 +103,10 @@ final class CanvasView: NSView {
   private var settleTimer: Timer?
   static let RASTER_SETTLE = 0.12
   private var rasterScale: CGFloat = 0
+  /** When the zoom last changed: until it has settled, a card coming near shows the bitmap it has, scaled */
+  private var zoomedAt: CFTimeInterval = 0
+  /** Cards shown mid-zoom with a bitmap of another bucket (or look): drawn again once the zoom settles */
+  private var deferred: Set<String> = []
   private(set) var selected: Set<String> = []
   /** The routing off the main thread during a drag (RouteWorker), and this board's key in it */
   var router: RouteWorker?
@@ -113,7 +120,7 @@ final class CanvasView: NSView {
   private var liveModes: [String: String] = [:]
   private var dropPending = false
   /** Finished bitmaps waiting to be shown, a few per frame */
-  private var landing: [(CardLayer, IOSurface, CGFloat, Int)] = []
+  private var landing: [(CardLayer, Any, CGFloat, Int)] = []
   private var landingLink: CADisplayLink?
   private(set) var selectedLinks: Set<String> = []
   private(set) var selectedSections: Set<String> = []
@@ -144,10 +151,7 @@ final class CanvasView: NSView {
       world.addSublayer(l)
     }
     mist.anchorPoint = .zero
-    mist.startPoint = CGPoint(x: 0.5, y: 1)
-    mist.endPoint = CGPoint(x: 0.5, y: 0)
-    mist.locations = [0, 0.7, 1]
-    if let blur = CIFilter(name: "CIGaussianBlur", parameters: [kCIInputRadiusKey: 10]) { mist.filters = [blur] }
+    mist.contentsGravity = .resize
     mist.isHidden = true
     cutLine.anchorPoint = .zero
     cutLine.cornerRadius = 1
@@ -162,6 +166,20 @@ final class CanvasView: NSView {
     seal.isHidden = true
     seal.contentsScale = 2
     for l in [mist, cutLine, seal] { overlay.addSublayer(l) }
+    still(world, sections, arrows, cards, stickers, top, overlay, mist, cutLine, cutFill, seal, scene, tether, tetherDot, marquee, ports, rubber, summaries.layer)
+    notes.inView = { [weak self] id in
+      guard let self, let l = self.cardLayers[id] else { return false }
+      return CGRect(x: -self.cam.x / self.cam.z, y: -self.cam.y / self.cam.z, width: self.bounds.width / self.cam.z, height: self.bounds.height / self.cam.z).intersects(l.worldRect)
+    }
+    // Ink Wash's paper sheets and Section frames come off the ink thread: a card or Section drawn before its was there draws again
+    NotificationCenter.default.addObserver(forName: Ink.ready, object: nil, queue: .main) { [weak self] _ in
+      guard let self, Theme.isInk else { return }
+      for l in self.cardLayers.values {
+        l.needBase()
+        if !l.isHidden, l.drewPaperless { l.setNeedsDisplay() }
+      }
+      for l in self.sectionLayers.values { l.restyle() }
+    }
     scene.anchorPoint = .zero
     scene.contentsGravity = .resize
     layer!.addSublayer(scene)
@@ -201,7 +219,7 @@ final class CanvasView: NSView {
       guard let self, let l = self.cardLayers[id] else { return }
       // the editor grew: the card grows with it (arrows follow); the stored height is the text's when the edit ends
       if h > l.height {
-        l.grow(toHeight: h)
+        l.resize(to: CGSize(width: l.card.w, height: h))
         self.routeAround([id])
       }
       self.followEdit()
@@ -245,8 +263,18 @@ final class CanvasView: NSView {
     let k = max(bounds.width / img.size.width, bounds.height / img.size.height)
     let w = img.size.width * k, h = img.size.height * k
     scene.frame = CGRect(x: (bounds.width - w) / 2, y: bounds.height - h, width: w, height: h)
+    // a resize stretches the image it has (contentsGravity resize); it is drawn at the new size once the size rests (a live
+    // resize's end, or 0.2 s after a programmatic one: redrawn every frame it cost ~80 ms a frame)
+    if inLiveResize { return }
     let px = CGSize(width: w * backing, height: h * backing)
     if let cached = sceneImage, cached.0 == px, cached.1 == Theme.isDark { scene.contents = cached.2; return }
+    if sceneImage?.1 == Theme.isDark, scene.contents != nil {
+      sceneTimer?.invalidate()
+      let t = Timer(timeInterval: 0.2, repeats: false) { [weak self] _ in self?.sceneImage = nil; self?.layoutScene() }
+      RunLoop.main.add(t, forMode: .common)
+      sceneTimer = t
+      return
+    }
     let copy = img.copy() as! NSImage
     copy.size = px
     var rect = CGRect(origin: .zero, size: px)
@@ -255,6 +283,7 @@ final class CanvasView: NSView {
     scene.contents = cg
   }
   private var sceneImage: (CGSize, Bool, CGImage)?
+  private var sceneTimer: Timer?
 
   /** A whole scene. Layers of cards still in it stay (their bitmaps too: opening the same board again shows no blank card), the
    *  rest go */
@@ -263,14 +292,28 @@ final class CanvasView: NSView {
     edit.end { _ in }  // committed by whoever switched the board (BoardWindow.open), before this
     CATransaction.begin()
     CATransaction.setDisableActions(true)
+    // another board: the one shown stays on screen (its layers in a still copy of the world) until the new one is ready
+    var ghost = self.ghost
+    if shownKey != routeKey, !shownKey.isEmpty, !world.isHidden, ghost == nil {
+      let g = CALayer()
+      g.anchorPoint = .zero
+      g.bounds = world.bounds
+      g.position = world.position
+      g.transform = world.transform
+      layer!.insertSublayer(g, above: scene)
+      ghost = g
+    }
+    let keepOld = ghost != nil && self.ghost == nil
+    if shownKey != routeKey { swapShelf(into: keepOld ? ghost : nil) }
     let keep = Set(s.cards.map(\.id))
     for (id, l) in cardLayers where !keep.contains(id) {
       l.detach()
       cardLayers[id] = nil
     }
-    for l in sectionLayers.values { l.detach() }
-    for l in arrowLayers.values { l.removeFromSuperlayer() }
-    for l in stickerLayers.values { l.removeFromSuperlayer() }
+    for l in sectionLayers.values { l.detach(into: keepOld ? ghost : nil) }
+    for l in Array(arrowLayers.values) as [CALayer] + Array(stickerLayers.values) {
+      if keepOld { ghost?.addSublayer(l) } else { l.removeFromSuperlayer() }
+    }
     sectionLayers = [:]
     arrowLayers = [:]
     stickerLayers = [:]
@@ -287,11 +330,85 @@ final class CanvasView: NSView {
     sectionPad = s.sectionPad
     refold()
     reframeSections()
+    // the board shows once every card has its base (a second open: read from disk, a few ms), so no card is ever missing
+    basesWaiting = Set(cardLayers.values.filter { !$0.hasFace }.map(\.card.id))
+    self.ghost = ghost
+    world.isHidden = !basesWaiting.isEmpty || ghost != nil
+    if let ghost { after(0) { [weak self] in self?.dropGhost(ghost, key: self?.routeKey ?? "", until: CACurrentMediaTime() + 1) } }
+    if world.isHidden, ghost == nil {
+      let key = routeKey
+      after(1) { [weak self] in
+        guard let self, self.routeKey == key, self.world.isHidden, self.ghost == nil else { return }
+        logLine("[canvas] shown with %d cards still without a base", self.basesWaiting.count)
+        self.basesWaiting = []
+        self.world.isHidden = false
+      }
+    }
     CATransaction.commit()
     showPorts()
     relayer()
     setCamera(s.cam, animated: false)
     routeAll()
+  }
+  /** The card layers of the boards this window showed last, bitmaps and all: switching back to one shows it sharp at once
+   *  (as the same board opened again does) instead of from its bases while the sharp tier is drawn again */
+  private var shelf: [(key: String, layers: [String: CardLayer], order: [String])] = []
+  // ponytail: two boards kept whole; their sharp tiers are outside SHARP_BUDGET (each at most its own budget's worth)
+  private static let SHELF = 2
+  private var shownKey = ""
+  /** The board shown before a switch, still (its layers moved here), until the new one has every base and is sharp in view */
+  private var ghost: CALayer?
+  private func dropGhost(_ g: CALayer, key: String, until end: Double) {
+    guard ghost === g, routeKey == key else { return }
+    guard (basesWaiting.isEmpty && softInView.isEmpty) || CACurrentMediaTime() > end else {
+      return after(1.0 / 120) { [weak self] in self?.dropGhost(g, key: key, until: end) }
+    }
+    if !basesWaiting.isEmpty { logLine("[canvas] shown with %d cards still without a base", basesWaiting.count) }
+    basesWaiting = []
+    CATransaction.begin()
+    CATransaction.setDisableActions(true)
+    world.isHidden = false
+    g.removeFromSuperlayer()
+    CATransaction.commit()
+    ghost = nil
+  }
+  /** The layers shown go on the shelf (into the ghost meanwhile, when given), the new board's come off it */
+  private func swapShelf(into ghost: CALayer?) {
+    if !shownKey.isEmpty, !cardLayers.isEmpty {
+      for l in cardLayers.values {
+        l.selected = false
+        l.detach()
+        ghost?.addSublayer(l)
+      }
+      shelf.removeAll { $0.key == shownKey }
+      shelf.append((shownKey, cardLayers, order))
+    }
+    let back = shelf.firstIndex { $0.key == routeKey }.map { shelf.remove(at: $0) }
+    cardLayers = back?.layers ?? [:]
+    order = back?.order ?? []
+    for id in order {
+      guard let l = cardLayers[id] else { continue }
+      cards.addSublayer(l)
+      l.riser = top
+    }
+    while shelf.count > CanvasView.SHELF { shelf.removeFirst() }
+    shownKey = routeKey
+  }
+  /** Calls back once the board is fit to be seen: shown (every card has its base) and every card in view sharp, or after
+   *  `cap` seconds whatever has landed (a new window stays invisible until then, so it never shows a soft or empty board) */
+  func whenReady(cap: Double, _ cb: @escaping () -> Void) {
+    let end = CACurrentMediaTime() + cap
+    func poll() {
+      if (!world.isHidden && softInView.isEmpty) || CACurrentMediaTime() > end { return cb() }
+      after(1.0 / 120) { poll() }
+    }
+    poll()
+  }
+  private var basesWaiting: Set<String> = []
+  private func baseCame(_ l: CardLayer) {
+    guard !basesWaiting.isEmpty, basesWaiting.remove(l.card.id) != nil, basesWaiting.isEmpty, ghost == nil else { return }
+    CATransaction.setDisableActions(true)
+    world.isHidden = false
   }
 
   func apply(_ ch: SceneChange) {
@@ -334,6 +451,8 @@ final class CanvasView: NSView {
         self?.showPorts()
       }
       l.onRendered = { [weak self] l in self?.rendered(l.card.id) }
+      l.onBase = { [weak self] l in self?.baseCame(l) }
+      l.showsBoard = { [weak self] in self.map { !$0.world.isHidden } ?? false }
       l.riser = top
       cardLayers[c.id] = l
       cards.addSublayer(l)
@@ -461,7 +580,7 @@ final class CanvasView: NSView {
 
   // Finished bitmaps land a few per frame, nearest the middle of the view first; a card keeps its old bitmap until its new one
   // lands, so a bucket crossing never shows a blank card and never puts every new surface into one commit
-  private func enqueue(_ layer: CardLayer, _ surface: IOSurface, _ scale: CGFloat, _ gen: Int) {
+  private func enqueue(_ layer: CardLayer, _ surface: Any, _ scale: CGFloat, _ gen: Int) {
     landing.append((layer, surface, scale, gen))
     if landingLink == nil {
       let link = displayLink(target: self, selector: #selector(landSome))
@@ -488,6 +607,8 @@ final class CanvasView: NSView {
   func setCamera(_ c: Camera, animated: Bool) {
     var c = c
     c.z = min(Double(CanvasView.zMax), max(Double(zMin), c.z))
+    let zoomed = c.z != cam.z
+    if zoomed { zoomedAt = CACurrentMediaTime() }
     cam = c
     CATransaction.begin()
     CATransaction.setDisableActions(!animated)
@@ -497,14 +618,14 @@ final class CanvasView: NSView {
     CATransaction.commit()
     wantLevel()
     cull()
-    if rasterScale == 0 { rasterIfNeeded() } else { settleRaster() }
+    if rasterScale == 0 { rasterIfNeeded() } else if zoomed { settleRaster() }
     showPorts()
     showTether()
     followEdit()
     rested()
   }
   private func settleRaster() {
-    if rasterBucket(zoom: cam.z, backing: backing) == rasterScale { settleTimer?.invalidate(); return }
+    if rasterBucket(zoom: cam.z, backing: backing) == rasterScale && deferred.isEmpty { settleTimer?.invalidate(); return }
     settleTimer?.invalidate()
     let t = Timer(timeInterval: CanvasView.RASTER_SETTLE, repeats: false) { [weak self] _ in self?.rasterIfNeeded() }
     RunLoop.main.add(t, forMode: .common)
@@ -537,6 +658,25 @@ final class CanvasView: NSView {
     setCamera(Camera(x: (bounds.width - r.width * z) / 2 - r.minX * z, y: (bounds.height - r.height * z) / 2 - r.minY * z, z: z), animated: animated)
   }
 
+  /** Zoom to z about the view's centre */
+  func zoomAbout(_ z: Double) {
+    let m = CGPoint(x: bounds.midX, y: bounds.midY), k = z / cam.z
+    setCamera(Camera(x: m.x - (m.x - cam.x) * k, y: m.y - (m.y - cam.y) * k, z: z), animated: false)
+  }
+  /** A card brought into view when it is not (a new card put at the nearest free spot, off the middle): the camera moves as
+   *  little as it must, the zoom kept; a card taller than the view shows its top */
+  func reveal(_ id: String) {
+    guard let l = cardLayers[id], bounds.width > 0 else { return }
+    // the view a person reads: below the title row (the canvas runs under it), above the docks, with some air
+    let r = l.worldRect, z = cam.z, top = safeAreaInsets.top + 24, bottom: CGFloat = 80, side: CGFloat = 40
+    let vis = CGRect(x: (side - cam.x) / z, y: (top - cam.y) / z, width: (bounds.width - 2 * side) / z, height: (bounds.height - top - bottom) / z)
+    if vis.contains(r) { return }
+    func shift(_ lo: CGFloat, _ hi: CGFloat, _ vlo: CGFloat, _ vhi: CGFloat) -> CGFloat {
+      hi - lo > vhi - vlo || lo < vlo ? vlo - lo : hi > vhi ? vhi - hi : 0
+    }
+    let dx = shift(r.minX, r.maxX, vis.minX, vis.maxX), dy = shift(r.minY, r.maxY, vis.minY, vis.maxY)
+    setCamera(Camera(x: cam.x + dx * z, y: cam.y + dy * z, z: z), animated: true)
+  }
   /** A card at the top left, zoom 1 */
   func focus(_ id: String) {
     guard let l = cardLayers[id] else { return }
@@ -551,31 +691,98 @@ final class CanvasView: NSView {
     // a card coming near while a zoom is still going draws at this zoom's bucket, not the settled one (zooming out from 1 brought
     // every card in at 2× backing: 40 full-size rasters and uploads inside the gesture)
     let s = rasterBucket(zoom: cam.z, backing: backing)
+    CardLayer.near = near
+    // mid-zoom (pinch, ⌘-scroll) a card with a sharp bitmap shows it scaled, and is drawn at the settled bucket afterwards; a
+    // card with none draws now (its base shows until then). A card whose bitmap is current (a pan back to it) shows it as it is.
+    // A card leaving keeps its bitmap until the budget needs the room (then its base is what it has)
+    let zooming = CACurrentMediaTime() - zoomedAt < CanvasView.RASTER_SETTLE
+    let now = CACurrentMediaTime()
+    CardLayer.screenScale = backing
     for l in cardLayers.values where l.card.id != underEdit {
       let on = near.intersects(l.worldRect) && !folded.contains(l.card.id)
-      if l.isHidden != !on || (on && l.contents == nil && !l.drawn) {
+      if on, l.parked {
+        if !vis.intersects(l.worldRect) { continue }
+        l.parked = false
+        l.drawn = false
+      }
+      if l.isHidden != !on || (on && !l.drawn) {
         l.isHidden = !on
-        if on { l.contentsScale = s; l.setNeedsDisplay(); l.drawn = true } else { l.contents = nil; l.drawn = false }
+        if !on { l.lastSeen = now; l.parked = false; continue }
+        l.drawn = true
+        if l.stale { l.recolor() }
+        if l.hasSharp && !l.stale && l.faceScale == s { continue }
+        if zooming && l.hasSharp { deferred.insert(l.card.id); continue }
+        l.contentsScale = s
+        l.setNeedsDisplay()
+      } else if on {
+        // drawn (or asked) at another bucket than this zoom's: drawn again, now or once the zoom settles (a camera restored
+        // at open, then moved, left cards asked at the first one's bucket for good)
+        if l.card.id != underEdit, l.askedScale != s, l.faceScale != s {
+          if zooming { deferred.insert(l.card.id) } else { l.contentsScale = s; l.setNeedsDisplay() }
+        } else if !zooming { l.fillTiles() }
       }
     }
+    evict(vis)
+    // cards put off to the settled bucket: a settle is due however this cull came (a resize, a scene change, a summary switch)
+    if !deferred.isEmpty { settleRaster() }
     // stickers out of view are hidden: an animated one then plays no frames
     for l in stickerLayers.values { l.isHidden = !near.intersects(l.frame) }
   }
+  /** The sharp tier's memory: above this the hidden cards' sharp bitmaps go, least recently seen first, down to 3/4 of it,
+   *  then those near the view but not in it, farthest first (parked: drawn again once they are in view); their bases stay. The
+   *  cards in view are never evicted */
+  static let SHARP_BUDGET = 160 << 20
+  private func evict(_ vis: CGRect) {
+    var total = 0
+    for l in cardLayers.values { total += l.sharpBytes }
+    guard total > CanvasView.SHARP_BUDGET else { return }
+    let goal = CanvasView.SHARP_BUDGET * 3 / 4
+    for l in cardLayers.values.filter({ $0.isHidden && $0.sharpBytes > 0 }).sorted(by: { $0.lastSeen < $1.lastSeen }) {
+      if total <= goal { return }
+      total -= l.sharpBytes
+      l.drop()
+    }
+    let c = CGPoint(x: vis.midX, y: vis.midY)
+    for l in cardLayers.values.filter({ !$0.isHidden && $0.sharpBytes > 0 && !vis.intersects($0.worldRect) }).sorted(by: { hypot($0.worldRect.midX - c.x, $0.worldRect.midY - c.y) > hypot($1.worldRect.midX - c.x, $1.worldRect.midY - c.y) }) {
+      if total <= goal { return }
+      total -= l.sharpBytes
+      l.drop()
+      l.drawn = true
+      l.parked = true
+    }
+  }
+  /** The cards in view not sharp over the view at the zoom's bucket (a base shows, or a tile row in view has not landed), with
+   *  why, for the checks; none at the summary level (the cards are not shown there) */
+  var softInView: [String] {
+    guard level == 0 else { return [] }
+    let vis = CGRect(x: -cam.x / cam.z, y: -cam.y / cam.z, width: bounds.width / cam.z, height: bounds.height / cam.z)
+    let s = rasterBucket(zoom: cam.z, backing: backing)
+    return cardLayers.values.filter { !$0.isHidden && $0.card.id != underEdit && vis.intersects($0.worldRect) }.compactMap { l in
+      l.sharpMissing(in: vis, scale: s).map { "\(l.card.id): \($0)" }
+    }
+  }
+  /** The sharp tier's bytes, for the checks */
+  var sharpBytes: Int { cardLayers.values.reduce(0) { $0 + $1.sharpBytes } }
   /** The bitmap scale follows the zoom in buckets: crossing one redraws the cards at the new scale (the old bitmap stays until
    *  then), nearest the middle of the view first, in the run loop's own transaction (an explicit commit here waited on the
    *  render server) */
   private func rasterIfNeeded() {
     let s = rasterBucket(zoom: cam.z, backing: backing)
-    if s == rasterScale { return }
+    deferred = []
+    let changed = s != rasterScale
     rasterScale = s
-    let centre = CGPoint(x: (bounds.midX - cam.x) / cam.z, y: (bounds.midY - cam.y) / cam.z)
-    let near = cardLayers.values.filter { !$0.isHidden }.sorted { hypot($0.worldRect.midX - centre.x, $0.worldRect.midY - centre.y) < hypot($1.worldRect.midX - centre.x, $1.worldRect.midY - centre.y) }
     CATransaction.setDisableActions(true)
-    for l in cardLayers.values where l.isHidden { l.contentsScale = s }
-    for l in near where l.contentsScale != s {
-      l.contentsScale = s
-      l.setNeedsDisplay()
+    // every shown card whose sharp tier is not at this bucket (nor asked at it) draws again: by what it shows, not by its
+    // contentsScale (a card that was hidden when the bucket changed got the scale without a raster, and kept the old bitmap)
+    for l in cardLayers.values {
+      if l.isHidden { l.contentsScale = s; continue }
+      if l.parked || l.card.id == underEdit { continue }
+      if l.stale || (l.faceScale != s && l.askedScale != s) {
+        l.contentsScale = s
+        l.setNeedsDisplay()
+      }
     }
+    guard changed else { return }
     for l in sectionLayers.values { l.setScale(s) }
     for l in arrowLayers.values { l.setScale(max(s, 1)) }
     for l in stickerLayers.values { l.setScale(max(s, 1)) }
@@ -588,7 +795,12 @@ final class CanvasView: NSView {
     tellLook()
     notes.setTheme(themeName)
     edit.page.call("cb.setup(\(encodeJSON(["theme": themeName, "look": Theme.look])))")
-    for l in cardLayers.values { l.recolor(); l.setNeedsDisplay() }
+    // the cards near the view draw again (each keeps its old bitmap until the new one lands, a few per frame, nearest first); the
+    // rest when they come near
+    for l in cardLayers.values {
+      l.needBase()
+      if l.isHidden && l.card.id != underEdit { l.stale = true; l.drawn = false } else { l.recolor(); l.setNeedsDisplay() }
+    }
     for l in sectionLayers.values { l.restyle() }
     for l in arrowLayers.values { l.recolor(); l.drawLabel() }
     for l in stickerLayers.values { l.draw() }
@@ -649,7 +861,8 @@ final class CanvasView: NSView {
     layoutScene()
     super.layout()
     overlay.frame = bounds
-    floorZoom()
+    // the zoom floor and the cull once the resize ends (viewDidEndLiveResize): not per frame of it
+    if !inLiveResize { floorZoom() }
     cutLine.frame = CGRect(x: bounds.width * 0.12, y: bounds.height - 20, width: bounds.width * 0.76, height: 2)
     cutFill.bounds = CGRect(origin: .zero, size: cutLine.bounds.size)
     cutFill.position = CGPoint(x: cutLine.bounds.midX, y: cutLine.bounds.midY)
@@ -658,6 +871,9 @@ final class CanvasView: NSView {
   }
   override func viewDidEndLiveResize() {
     super.viewDidEndLiveResize()
+    sceneImage = nil
+    layoutScene()
+    floorZoom()
     cull()
   }
   /** Undo / Redo from the menu reach the board, not the window's own (empty) undo manager; other keys are not the board's and
@@ -905,7 +1121,7 @@ final class CanvasView: NSView {
       let dx = (p.x - r.start.x) / cam.z, dy = (p.y - r.start.y) / cam.z
       let w = r.right ? max(120, r.w + dx) : r.w
       let h = r.bottom ? max(40, r.h + dy) : r.h
-      l.resize(width: w, height: r.bottom ? h : nil)
+      l.resize(to: CGSize(width: w, height: h))
       delegate?.canvas(self, resizing: r.id, w: Double(w), h: r.bottom ? .fixed(Double(h)) : .keep)
       routeAround([r.id])
       showPorts()
@@ -970,9 +1186,8 @@ final class CanvasView: NSView {
       if let to = cardAt(toWorld(p)), to.card.id != from { delegate?.canvas(self, linkFrom: from, to: to.card.id) }
       return
     }
-    if let r = resizing {
+    if resizing != nil {
       resizing = nil
-      cardLayers[r.id]?.endResize()
       delegate?.canvasResizeEnded(self)
       return
     }
@@ -1158,7 +1373,7 @@ final class CanvasView: NSView {
     }
     let was = folded
     folded = Set(cardLayers.values.filter { c in c.card.section.map { shut.contains($0) } ?? false }.map { $0.card.id })
-    for id in was.subtracting(folded) { if let l = cardLayers[id] { l.isHidden = false; l.setNeedsDisplay(); l.drawn = true } }
+    for id in was.subtracting(folded) { if let l = cardLayers[id] { l.isHidden = false; if l.stale { l.recolor() }; l.setNeedsDisplay(); l.drawn = true } }
     for id in folded.subtracting(was) { if let l = cardLayers[id] { l.isHidden = true; l.drop() } }
     for s in sectionLayers.values { s.isHidden = s.section.parent.map { shut.contains($0) } ?? false }
     for a in arrowLayers.values { a.isHidden = folded.contains(a.link.from.card) || folded.contains(a.link.to.card) }
@@ -1329,7 +1544,7 @@ extension CanvasView {
   private func drain(_ to: Int) {
     guard drainTimer == nil else { return }
     var last = CACurrentMediaTime()
-    let t = Timer(timeInterval: 1 / 60.0, repeats: true) { [weak self] t in
+    let t = Ticker(self) { [weak self] t in
       guard let self else { t.invalidate(); return }
       let now = CACurrentMediaTime()
       if self.switchTimer != nil || self.push <= 0 { t.invalidate(); self.drainTimer = nil; return }
@@ -1340,7 +1555,6 @@ extension CanvasView {
       last = now
       if self.push <= 0 { t.invalidate(); self.drainTimer = nil }
     }
-    RunLoop.main.add(t, forMode: .common)
     drainTimer = t
   }
   /** The switch: the mist covers the board (from where the push left it), the levels swap under it in one frame, the camera
@@ -1351,7 +1565,7 @@ extension CanvasView {
     let mist0 = mist.isHidden ? 0 : Double(mist.bounds.height / max(1, bounds.height))
     let t0 = CACurrentMediaTime()
     var covered = false
-    let t = Timer(timeInterval: 1 / 60.0, repeats: true) { [weak self] t in
+    let t = Ticker(self) { [weak self] t in
       guard let self else { t.invalidate(); return }
       let k = min(1, (CACurrentMediaTime() - t0) * 1000 / DetentRules.times.ms)
       if k >= DetentRules.times.cover, !covered {
@@ -1373,15 +1587,31 @@ extension CanvasView {
         self.wantLevel()
       }
     }
-    RunLoop.main.add(t, forMode: .common)
     switchTimer = t
+  }
+  /** The mist as an image (styles.css .cutmist: the board's colour, solid to 70 % then clear, blurred 10 px), rendered once per
+   *  view size and colour; the layer only moves and stretches it */
+  private func mistContents() -> CGImage? {
+    let size = CGSize(width: bounds.width * 1.2, height: bounds.height), bg = Theme.bg.cgColor
+    if let m = mistImage, m.0 == size, m.1 == bg { return m.2 }
+    let w = Int(size.width * backing), h = Int(size.height * backing)
+    guard w > 0, h > 0, let cg = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue),
+      let grad = CGGradient(colorsSpace: nil, colors: [bg, bg, bg.copy(alpha: 0)!] as CFArray, locations: [0, 0.7, 1])
+    else { return nil }
+    // CG's y is up: the solid end is the bottom of the view (the layer is anchored at its top left and stretched)
+    cg.drawLinearGradient(grad, start: CGPoint(x: 0, y: 0), end: CGPoint(x: 0, y: CGFloat(h)), options: [])
+    guard let sharp = cg.makeImage() else { return nil }
+    let blurred = CIImage(cgImage: sharp).applyingGaussianBlur(sigma: 10 * backing)
+    let out = CIContext(options: [.useSoftwareRenderer: false]).createCGImage(blurred, from: CGRect(x: 0, y: 0, width: w, height: h))
+    if let out { mistImage = (size, bg, out) }
+    return out
   }
   private func show(_ d: Detent) {
     CATransaction.begin()
     CATransaction.setDisableActions(true)
     let h = bounds.height * d.mist
     mist.isHidden = d.mist <= 0
-    mist.colors = [Theme.bg.cgColor, Theme.bg.cgColor, Theme.bg.withAlphaComponent(0).cgColor]
+    if !mist.isHidden { mist.contents = mistContents() }
     mist.frame = CGRect(x: -bounds.width * 0.1, y: bounds.height - h, width: bounds.width * 1.2, height: h)
     cutLine.isHidden = d.line <= 0
     cutLine.backgroundColor = Theme.ink.withAlphaComponent(0.12).cgColor
@@ -1401,5 +1631,23 @@ extension CanvasView {
       seal.transform = CATransform3DMakeRotation(-3 * .pi / 180, 0, 0, 1)
     }
     CATransaction.commit()
+  }
+}
+
+/** A closure run on every display frame (the view's display link: 120 Hz on ProMotion, where a 1/60 s timer moved the mist at
+ *  half the rate) until invalidated */
+final class Ticker: NSObject {
+  private let tick: (Ticker) -> Void
+  private var link: CADisplayLink?
+  init(_ view: NSView, _ tick: @escaping (Ticker) -> Void) {
+    self.tick = tick
+    super.init()
+    link = view.displayLink(target: self, selector: #selector(fire))
+    link?.add(to: .main, forMode: .common)
+  }
+  @objc private func fire() { tick(self) }
+  func invalidate() {
+    link?.invalidate()
+    link = nil
   }
 }

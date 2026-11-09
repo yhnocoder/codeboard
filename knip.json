@@ -1,7 +1,8 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
   "ignoreWorkspaces": ["examples/markdown-demo"],
-  "ignoreBinaries": ["mkfifo"],
+  // rec-check decodes with ffmpeg, or compiles its AVFoundation decoder with swiftc
+  "ignoreBinaries": ["mkfifo", "ffmpeg", "swiftc"],
   // a type named in an exported signature stays exported
   "ignoreExportsUsedInFile": { "interface": true, "type": true },
   "ignoreDependencies": [

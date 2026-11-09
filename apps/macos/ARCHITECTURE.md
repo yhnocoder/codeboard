@@ -52,15 +52,34 @@ Something new a window needs from core goes into `js/bridge.ts` as a method on t
 - `scene.ts` is what the canvas draws (plain JSON, mirrored by `Scene.swift`); `routes.ts` the arrows over core's
   `canvas/arrow.ts`; `highlight.ts` the host's `Highlighter`.
 
-## Drawing (`CanvasView.swift`, `Layers.swift`)
+## Drawing (`CanvasView.swift`, `Layers.swift`, `Base.swift`)
 
-The camera is the world layer's transform. Each card is a `CardLayer` rasterised into an sRGB-tagged IOSurface (its shadow baked
-in, `shadowPad` around) on a three-wide queue at a few zoom buckets, once the zoom has settled for `RASTER_SETTLE` (a card coming
-near mid-gesture draws at the current zoom's bucket), landed a few per frame nearest the view's centre first, culled when far
-from the viewport; Sections and arrows are shape layers rasterised by Core Animation at the bucket's scale (`shouldRasterize`),
-the arrows from core's numeric paths. The world's layers are the board's, bottom up: Section frames, the arrows (under every
+The camera is the world layer's transform. The screen is always complete: optimisations cost sharpness or a few frames, never
+presence. Each card is a `CardLayer` with two tiers of bitmaps (sRGB-tagged):
+
+- the base (`Base.swift`): the card's face and sheet at a quarter pixel per point, always resident, never evicted, kept on disk
+  by what it depends on (the card as drawn, the look; a Note's from its page render), so a board opened again has every base
+  before it is shown (the canvas shows a board once each card has one, a second at most). There are no placeholders.
+- the sharp tier: the face as tiles (rows of at most 1024 device pixels: a tall card draws only the rows near the view) and the
+  sheet (shadow baked in, `sheetMargin` around), as IOSurfaces at a few zoom buckets, drawn on a three-wide queue. A new raster's
+  tiles replace the old ones only once they have landed; every bitmap (tiles, sheets, Always Show notes, bases on a shown
+  board) lands through one queue, a few per frame nearest the view's centre first. During a zoom the bitmaps scale; the cards
+  are drawn at the new bucket once it has settled for `RASTER_SETTLE`. A card leaving the view keeps its sharp tier until the
+  hidden cards' total passes `SHARP_BUDGET` (least recently seen first), then shows its base.  Cards in view are never evicted, and
+  one whose sharp tier is at (or was asked at) another bucket than the zoom's is drawn again, by what it shows, not by its
+  `contentsScale`: at rest every card in view is sharp at the zoom's bucket over every tile row in view (the gate checks it from
+  the layers' state, `CanvasView.softInView`).
+
+A board window appears once its board is ready (every base, the cards in view sharp; at most a second), invisible until
+then. Switching boards in a window keeps the board shown still (a ghost of its layers) until the next one is ready, and keeps
+the last two boards' card layers whole, bitmaps included, so switching back shows them sharp at once.
+
+A Note render that did not settle (the page's time cap, the snapshot fallback) is never cached and never replaces a complete
+one; it is asked again. Sections are shape layers drawn by the compositor, arrows shape layers rasterised at the bucket's
+scale, from core's numeric paths. The world's layers are the board's, bottom up: Section frames, the arrows (under every
 card), the cards, the Section titles, the stickers, and `top`, where an arrow rides while it is selected, dragged or on the
 card under the pointer (`relayer`). An arrow's end sits on a code line as the card drew it: a drawn card hands routing its
 rows (`WorldRect.rows`). A Section's frame is the board's: its stored rect grown around its cards as drawn (a Note's page
-often lands taller than the scene's estimate) and its nested Sections, padded by core's `SECTION_PAD` (`reframeSections`). Colours and sizes come from `themes.json`, generated from the board's stylesheets at build time
-(`themes.mjs`: tokens, and picked declarations such as Warm Ink's arrow colour or a Section's border).
+often lands taller than the scene's estimate) and its nested Sections, padded by core's `SECTION_PAD` (`reframeSections`).
+Colours and sizes come from `themes.json`, generated from the board's stylesheets at build time (`themes.mjs`: tokens, and
+picked declarations such as Warm Ink's arrow colour or a Section's border).

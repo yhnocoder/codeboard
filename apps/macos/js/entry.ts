@@ -93,10 +93,10 @@ const asyncMade = async (dir: string, id: string, fn: (c: Session["cmd"]) => Pro
   resize: (dir: string, id: string, card: string, w: number, h: number | null | "keep") =>
     session(dir, id).resize(card, w, h),
   // edits (js/commands.ts): each runs a command and resolves with what changed; a new card's reply carries its id
-  newWriting: (req: number, dir: string, id: string, look: string, x: number, y: number) =>
-    settle(req, made(session(dir, id), session(dir, id).cmd.newWriting(look as never, x, y))),
-  newCode: (req: number, dir: string, id: string, x: number, y: number) =>
-    settle(req, made(session(dir, id), session(dir, id).cmd.newCode(x, y))),
+  newWriting: (req: number, dir: string, id: string, look: string, x: number, y: number, free = false) =>
+    settle(req, made(session(dir, id), session(dir, id).cmd.newWriting(look as never, x, y, "", free))),
+  newCode: (req: number, dir: string, id: string, x: number, y: number, free = false) =>
+    settle(req, made(session(dir, id), session(dir, id).cmd.newCode(x, y, free))),
   writeNote: (req: number, dir: string, id: string, card: string, md: string) =>
     settle(
       req,
@@ -145,11 +145,20 @@ const asyncMade = async (dir: string, id: string, fn: (c: Session["cmd"]) => Pro
     ),
   // the asynchronous commands: one promise each, so a failure anywhere in it settles the request as an error
   newImage: (req: number, dir: string, id: string, name: string, dataUrl: string, w: number, x: number, y: number) =>
-    settle(req, asyncMade(dir, id, (c) => c.newImage(name, dataUrl, w, x, y))),
+    settle(
+      req,
+      asyncMade(dir, id, (c) => c.newImage(name, dataUrl, w, x, y)),
+    ),
   turnIntoBoard: (req: number, dir: string, id: string, ids: string, name: string, rects: string) =>
-    settle(req, asyncMade(dir, id, (c) => c.turnIntoBoard(JSON.parse(ids), name, JSON.parse(rects)))),
+    settle(
+      req,
+      asyncMade(dir, id, (c) => c.turnIntoBoard(JSON.parse(ids), name, JSON.parse(rects))),
+    ),
   newSubboard: (req: number, dir: string, id: string, name: string, x: number, y: number) =>
-    settle(req, asyncMade(dir, id, (c) => c.newSubboard(name, x, y))),
+    settle(
+      req,
+      asyncMade(dir, id, (c) => c.newSubboard(name, x, y)),
+    ),
   foldSection: (req: number, dir: string, id: string, section: string, shut: boolean, open: string) =>
     settle(
       req,
