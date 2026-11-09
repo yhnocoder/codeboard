@@ -3,6 +3,7 @@
 //   node tools/mac-gate.mjs [--quick | --all | --boards id,id] [--data ~/Projects/persona/.codeboard] [--app <CodeBoard.app>]
 //                           [--out test-out/mac-gate/<time>] [--steps pan,drag_card] [--no-capture] [--no-build] [--xctrace]
 //                           [--big 250] [--keep-frames]
+//   node tools/mac-gate.mjs --human [--project ~/Projects/persona] [--no-build]   the human-use pass (tools/mac-human.mjs)
 // Builds the app (apps/macos/build.sh), copies the data folder (the originals are never opened), adds a board of --big cards made
 // from the biggest one, then runs the app once per board with --gate (Gate.swift drives the window and records; nothing is judged
 // there) and judges here: frame intervals from the display link (the main thread's pacing) and the presented frames the window
@@ -38,7 +39,7 @@ const data = path.resolve(
 );
 const app = path.resolve(opt("--app", path.join(root, "apps/macos/build/CodeBoard.app")));
 const out = path.resolve(
-  opt("--out", path.join(root, "test-out/mac-gate", new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19))),
+  opt("--out", path.join(root, flag("--human") ? "test-out/mac-human" : "test-out/mac-gate", new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19))),
 );
 const bigN = +opt("--big", "250");
 fs.rmSync(out, { recursive: true, force: true });
@@ -63,7 +64,9 @@ fs.writeFileSync(
       "<key>CFBundleExecutable</key><string>CodeBoard</string>",
       "<key>CFBundleExecutable</key><string>cbgate</string>",
     )
-    .replace("<key>CFBundleName</key><string>CodeBoard</string>", "<key>CFBundleName</key><string>cbgate</string>"),
+    .replace("<key>CFBundleName</key><string>CodeBoard</string>", "<key>CFBundleName</key><string>cbgate</string>")
+    // a domain of its own: AppKit's window frames and the web views' data never reach the real app's
+    .replace("<string>com.yhnocoder.codeboard</string>", "<string>com.yhnocoder.codeboard.gate</string>"),
 );
 execFileSync("codesign", [
   "--force",
@@ -75,6 +78,12 @@ execFileSync("codesign", [
   path.join(root, "tools/mac-gate.entitlements"),
   gateApp,
 ]);
+
+// ---- --human: the human-use pass (tools/mac-human.mjs) instead of the boards' runs
+if (flag("--human")) {
+  const { runHuman } = await import("./mac-human.mjs");
+  process.exit((await runHuman({ root, gateApp, out, opt })) ? 0 : 1);
+}
 
 // ---- the data: a copy, plus the big board
 const copy = path.join(out, "data");

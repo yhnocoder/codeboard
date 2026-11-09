@@ -47,7 +47,7 @@ final class LibraryModel: ObservableObject {
     self.lib = lib
     self.search = search
     self.only = only
-    recents = (try? JSONDecoder().decode([BoardRef].self, from: UserDefaults.standard.data(forKey: "recentBoards") ?? Data())) ?? []
+    recents = (try? JSONDecoder().decode([BoardRef].self, from: Home.defaults.data(forKey: "recentBoards") ?? Data())) ?? []
     if only != nil { recents = [] }
     NotificationCenter.default.addObserver(forName: .codeboardSettings, object: nil, queue: .main) { [weak self] n in
       if n.object as? String == "libraryFolders" { self?.reload() }
@@ -114,7 +114,7 @@ final class LibraryModel: ObservableObject {
   func opened(_ r: BoardRef) {
     guard only == nil else { return }
     recents = [r] + recents.filter { $0 != r }.prefix(23)
-    UserDefaults.standard.set(try? JSONEncoder().encode(recents), forKey: "recentBoards")
+    Home.defaults.set(try? JSONEncoder().encode(recents), forKey: "recentBoards")
   }
 
   // MARK: board actions

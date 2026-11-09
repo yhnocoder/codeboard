@@ -18,7 +18,7 @@ enum Base {
     q.maxConcurrentOperationCount = 4
     return q
   }()
-  static let dir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("CodeBoard/base", isDirectory: true)
+  static let dir = Home.caches.appendingPathComponent("CodeBoard/base", isDirectory: true)
   private static let disk = DispatchQueue(label: "codeboard.base.disk", qos: .utility)
   /** What every base depends on beyond its own key: this build's drawing (a rebuilt app never reads an older one's bases) */
   private static let build: String = {

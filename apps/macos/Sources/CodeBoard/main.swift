@@ -4,6 +4,8 @@
 //   --auto [--snapshot <dir>]        the scripted canvas run (Auto.swift): timings to stdout / report.json, PNGs, then quit
 //   --snapshot <dir>                 with --open and --board: write the canvas to PNG once drawn, then quit
 //   --gate <dir> [--steps a,b] [--no-capture]  the acceptance gate's run (Gate.swift, driven by tools/mac-gate.mjs), then quit
+//   --human <dir> [--relaunch]       the human-use pass (Human.swift, driven by tools/mac-gate.mjs --human): a plain launch used by
+//                                    clicks and keys at the controls' places, screenshots and a recording, then quit
 //   --fit                            with --snapshot: the whole board in view
 //   --focus <card id>                with --snapshot: that card at the top left at zoom 1
 //   --library <folder>               the library shows only that folder (the checks: a copy of real boards)
@@ -29,6 +31,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
   var router: RouteWorker?
   var auto: AutoRun?
   var gate: GateRun?
+  var human: HumanRun?
   let args = CommandLine.arguments
   func arg(_ k: String) -> String? { args.firstIndex(of: k).flatMap { $0 + 1 < args.count ? args[$0 + 1] : nil } }
   /** The library's calls go to the same context (js/library.ts on each folder's Storage) */
@@ -77,8 +80,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     if let l = arg("--look") { Look.shared.set(l) } else { _ = Look.shared }
     if args.contains("--dark") { NSApp.appearance = NSAppearance(named: .darkAqua) }
     if args.contains("--light") { NSApp.appearance = NSAppearance(named: .aqua) }
-    if let t = arg("--theme") ?? UserDefaults.standard.string(forKey: "theme") { Theme.look = t }
+    if let t = arg("--theme") ?? Home.defaults.string(forKey: "theme") { Theme.look = t }
     makeMenu()
+    if let h = arg("--human") { human = HumanRun(app: self, out: h, relaunch: args.contains("--relaunch")) }
     // `--also <folder>` opens more windows (the memory checks: several windows on one bridge); the scripted run drives the first
     if let f = arg("--open") {
       // `--also <folder>` opens more windows (the memory checks: several windows on one bridge); the scripted run drives the first
@@ -144,6 +148,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     pendingOpen = []
     open(urls)
     NSApp.activate()
+    human?.run()
   }
 
   /** A board window on a folder, for the canvas checks (no library) */

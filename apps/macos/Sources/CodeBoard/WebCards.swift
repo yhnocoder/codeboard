@@ -247,7 +247,7 @@ final class NoteRenderer: NSObject {
   static let cacheBytes = 48 << 20
   /** Rendered PDFs kept on disk too (keyed by content, width, look and theme), so a board opened again shows its Notes' final
    *  pixels at once instead of a blank card while the page renders them */
-  static let diskDir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("CodeBoard/notes", isDirectory: true)
+  static let diskDir = Home.caches.appendingPathComponent("CodeBoard/notes", isDirectory: true)
   private static let disk = DispatchQueue(label: "codeboard.notes.disk", qos: .utility)
   private static func file(_ key: String) -> URL { diskDir.appendingPathComponent(SHA256.hash(data: Data(key.utf8)).map { String(format: "%02x", $0) }.joined()) }
   /** At most this many files and bytes; the oldest go when there are more (checked once per launch) */

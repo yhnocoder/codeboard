@@ -20,13 +20,13 @@ struct Project: Hashable, Identifiable {
 enum Projects {
   static let extensionId = "yhnocoder.codeboard-vscode"
   static var vscodeUser: URL {
-    FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/Code/User")
+    Home.dir.appendingPathComponent("Library/Application Support/Code/User")
   }
 
   /** The user's own folders (Settings › Library folders, File › Open…): project folders or storage folders */
   static var added: [String] {
-    get { UserDefaults.standard.stringArray(forKey: "libraryFolders") ?? [] }
-    set { UserDefaults.standard.set(newValue, forKey: "libraryFolders") }
+    get { Home.defaults.stringArray(forKey: "libraryFolders") ?? [] }
+    set { Home.defaults.set(newValue, forKey: "libraryFolders") }
   }
 
   /** The storage folder for a folder the user picked, by the host's rule (packages/host/src/storage/place.ts): its

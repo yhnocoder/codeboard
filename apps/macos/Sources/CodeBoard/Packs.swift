@@ -13,7 +13,7 @@ enum Packs {
   private static var packs: [String: StickerPack.Icon] = [:]
   private static var decoded: [String: Icon?] = [:]
   /** Reads the packs once; a sticker drawn before they come shows the missing box until the next draw */
-  static func load(_ bridge: JSBridge, dir: String = NSHomeDirectory() + "/.codeboard/stickers") {
+  static func load(_ bridge: JSBridge, dir: String = Home.dir.path + "/.codeboard/stickers") {
     bridge.stickerPacks(dir) { r in
       guard case .success(let ps) = r else { return }
       for p in ps { for ic in p.icons { packs["\(p.id):\(ic.name)"] = ic } }

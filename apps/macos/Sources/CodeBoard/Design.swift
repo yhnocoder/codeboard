@@ -95,12 +95,12 @@ final class Look: ObservableObject {
   static var current: Chrome { shared.chrome }
   @Published private(set) var chrome: Chrome
   private init() {
-    chrome = Chrome.all.first { $0.id == UserDefaults.standard.string(forKey: "codeboard.mac.look") } ?? .warmInkGlass
+    chrome = Chrome.all.first { $0.id == Home.defaults.string(forKey: "codeboard.mac.look") } ?? .warmInkGlass
     Theme.look = chrome.board
   }
   func set(_ id: String) {
     guard let c = Chrome.all.first(where: { $0.id == id }), c.id != chrome.id else { return }
-    UserDefaults.standard.set(id, forKey: "codeboard.mac.look")
+    Home.defaults.set(id, forKey: "codeboard.mac.look")
     chrome = c
     Theme.look = c.board
     NotificationCenter.default.post(name: .codeboardSettings, object: "look")

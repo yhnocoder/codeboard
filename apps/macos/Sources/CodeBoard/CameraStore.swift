@@ -13,7 +13,7 @@ final class CameraStore {
   let file: URL
 
   init(file: URL? = nil) {
-    let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("CodeBoard", isDirectory: true)
+    let dir = Home.support.appendingPathComponent("CodeBoard", isDirectory: true)
     self.file = file ?? dir.appendingPathComponent("cams.json")
     try? FileManager.default.createDirectory(at: self.file.deletingLastPathComponent(), withIntermediateDirectories: true)
     guard let data = try? Data(contentsOf: self.file) else { return }
