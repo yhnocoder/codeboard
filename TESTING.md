@@ -58,6 +58,22 @@ harness 场景是 Playwright Test 的测试（`packages/board/test/scenarios/*.s
 
 `tiers.json` 的 `known` 里登记的是已知、另有地方跟进的失败，按检查名（`check` 的名字开头）对上。它们照样会跑、出现在报告里，但不让 CI 变红。修好时把那一条删掉。
 
+## 录屏检查（rec-check）
+
+截图抓不到闪一下、糊、白屏，录屏能。`tools/rec-check.mjs` 逐帧看一段录屏（macOS app 或 VS Code 里的白板都行，H.264 / HEVC 的 .mov、.mp4），不进 check 和 CI，录了就手动跑：
+
+```bash
+node tools/rec-check.mjs rec.mov [--marks marks.json] [--regions regions.json] [--out test-out/rec-check] [--moving 1.2-3.4,…]
+```
+
+- 解码：装了 ffmpeg 就用 ffmpeg（软解，比 VideoToolbox 快），没有就编译一次 `tools/rec-check/decode.swift`（AVFoundation）。默认按录屏原分辨率分析（糊要看原像素，缩小了 2 倍的低清就看不出来），`--width` 可以缩小换速度。
+- `marks.json`：`[{name, start, end, moving?}]`，秒，从视频开头算；每一步对照它的稳定帧（结束后 1 秒那帧，下一步那时已经开始就用这一步的最后一帧）。没有 marks 时整段是一步，稳定帧是最后一帧。`moving`（`true`、`[s, e]` 或几段）和 `--moving` 标镜头在动的时间：这时不逐块对照，而是整帧的清晰度和稳定帧比、平的面积是不是突然变大。
+- `regions.json`：`[{name, x, y, w, h, step?, from?, to?}]`，视频像素，比如每张卡的框；没有就切成 128 px 的格子（`--tile`）。
+- 判四样：**blank**（稳定帧里有内容的块变平了，而这一步里它有过内容或换了底色；或者一下子大片变平）、**blur**（同样的内容，Laplacian 方差不到稳定帧的一半，连续超过 `--blur-frames`（默认 2）帧才算失败）、**flash**（静止的块变了 1–3 帧又回到原样）、**white**（九成画面接近白，稳定帧不是）。
+- 输出在 `--out`：`report.json`、`report.md`（每个标记的时间、帧号、区域、种类，每步过没过）、每段失败前后 0.3 秒的小片段、每个失败步骤最糟几帧的对照图（左边那帧，右边拿来比的那帧，红框是区域）。不存整帧。有失败就退出码 1。
+- 速度（M1 Pro）：1080p60 约 7 倍实时，2.5K 120 fps 约 2 倍实时。
+- 测试：`tools/rec-check/rec-check.test.mjs`（`npm test` 的 tools 项目，没装 ffmpeg 时跳过）现场合成小视频：白屏一帧、卡糊 5 帧、卡空 4 帧都要抓到，干净的（静止和平移）一个标记都不能有。
+
 ## 常用命令
 
 ```bash
