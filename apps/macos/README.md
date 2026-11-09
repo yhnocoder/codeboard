@@ -16,7 +16,7 @@ npm run mac:gate -- --all                          # every board in the folder, 
 npm run mac:gate -- --boards bmvstbxlqpve8 --steps pan,pinch_out,drag_card   # some boards, some steps
 npm run mac:gate -- --data ~/other/.codeboard --app path/to/CodeBoard.app --no-build --out test-out/mac-gate/x
 npm run mac:gate -- --xctrace                      # also record each board with the Hitches instrument (opt-in; see below)
-npm run mac:gate -- --max-load 2 --wait-quiet 10   # wait up to 10 min per board for the 1-minute load to fall under 2 (the default)
+npm run mac:gate -- --max-load 4 --wait-quiet 10   # wait up to 10 min per board for the 1-minute load to fall under 4 (the default)
 ```
 
 The data folder (default `~/Projects/persona/.codeboard`) is copied under the output folder first; the originals are never
@@ -55,14 +55,15 @@ web board's action probes (`packages/board/test/probes.ts`, see TESTING.md "动�
   one that did not arrive; never a silent pass. Inputs dropped because the app was not frontmost at that moment fail the step
   too.
 - the Mac's 1-minute load average is waited out (under `--max-load`, up to `--wait-quiet` minutes) before each board and
-  recorded; a run that started under load is marked so in the report.
+  recorded; a board started with the load above 2 is marked under load in the report.
 
 The console shows a table per board; `report.json` and `report.md` in the output folder (`test-out/mac-gate/<time>/`) have every
 number; a failing step's frames are under `<board>/fails/`. Once the report is written the step capture folders and the
 copies of the app and the data are deleted (`--keep-frames` keeps them). The disk is checked before every board and every 2 s
 while one runs: the gate does not start or go on with under `--min-free` GB free (8) or once it has written more than
-`--max-out` GB (1, beyond its copies of the app and the data); a running board is then ended and the rest are reported as not
-run. The exit code is 1 when any gate fails. The gate measures with the capture running; `--no-capture` gives the timings alone.
+`--max-out` GB (1; only its own output counts: captures, traces and reports, not its copies of the app and the data, and the
+app's caches go to a temporary folder deleted at the end); a running board is then ended, the biggest contributors are listed
+in `sizes.txt` and the rest are reported as not run. The exit code is 1 when any gate fails. The gate measures with the capture running; `--no-capture` gives the timings alone.
 
 Diagnosing a failure: record the failing step by hand and open the trace in Instruments (`xcrun xctrace record --instrument
 Hitches --time-limit 30s --attach <pid>`, or `xcrun xctrace export --input … --xpath
