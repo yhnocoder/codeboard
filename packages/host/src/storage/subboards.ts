@@ -24,4 +24,3 @@ export async function dropMadeBoard(store: Storage, parent: string, id: string, 
 export function restoreMadeBoard(store: Storage, parent: string, id: string): Promise<boolean> {
   return store.restore(id, store.groupOf(parent));
 }
-

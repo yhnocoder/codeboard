@@ -5,7 +5,7 @@ import { shape } from "./look";
 import { rooted } from "./root";
 import { barSvg, callSvg, CALL_STROKES } from "./inkart";
 
-export { paperOf, paperSheet, rng } from "./inkart";
+export { paperOf, paperSheet } from "./inkart";
 
 // ---------- light / dark ----------
 // html[data-theme] follows VS Code (host.ts followHostTheme); wireInk watches it, so the paper images can follow it

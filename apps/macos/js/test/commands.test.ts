@@ -214,7 +214,12 @@ describe("the app's commands", () => {
     expect(bridge.board().stickers.find((s) => s.id === q)?.at).toMatchObject({ x: 30, y: 30, on: { card: "n1" } });
     bridge.cmd.detachSticker(q, 40, 50);
     bridge.cmd.setStickerSize(q, 40);
-    expect(bridge.board().stickers.find((s) => s.id === q)?.at).toMatchObject({ kind: "canvas", x: 40, y: 50, size: 40 });
+    expect(bridge.board().stickers.find((s) => s.id === q)?.at).toMatchObject({
+      kind: "canvas",
+      x: 40,
+      y: 50,
+      size: 40,
+    });
     bridge.cmd.deleteStickers([q]);
     const n = bridge.cmd.addSidenote("n1", "why");
     bridge.cmd.writeSidenote(n, "because");

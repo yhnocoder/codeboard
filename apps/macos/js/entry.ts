@@ -145,11 +145,20 @@ const asyncMade = async (dir: string, id: string, fn: (c: Session["cmd"]) => Pro
     ),
   // the asynchronous commands: one promise each, so a failure anywhere in it settles the request as an error
   newImage: (req: number, dir: string, id: string, name: string, dataUrl: string, w: number, x: number, y: number) =>
-    settle(req, asyncMade(dir, id, (c) => c.newImage(name, dataUrl, w, x, y))),
+    settle(
+      req,
+      asyncMade(dir, id, (c) => c.newImage(name, dataUrl, w, x, y)),
+    ),
   turnIntoBoard: (req: number, dir: string, id: string, ids: string, name: string, rects: string) =>
-    settle(req, asyncMade(dir, id, (c) => c.turnIntoBoard(JSON.parse(ids), name, JSON.parse(rects)))),
+    settle(
+      req,
+      asyncMade(dir, id, (c) => c.turnIntoBoard(JSON.parse(ids), name, JSON.parse(rects))),
+    ),
   newSubboard: (req: number, dir: string, id: string, name: string, x: number, y: number) =>
-    settle(req, asyncMade(dir, id, (c) => c.newSubboard(name, x, y))),
+    settle(
+      req,
+      asyncMade(dir, id, (c) => c.newSubboard(name, x, y)),
+    ),
   foldSection: (req: number, dir: string, id: string, section: string, shut: boolean, open: string) =>
     settle(
       req,

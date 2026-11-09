@@ -327,6 +327,7 @@
         "packages/board/src/ui/QuestionsPanel.tsx",
         "packages/core/src/questions.ts",
         "packages/host/src/stickers.ts",
+        "packages/host/src/stickerpacks.ts",
         "packages/board/test/scenarios/{bitmap-stickers,questions,sticker-drag}.spec.ts"
       ],
       "scenarios": [
@@ -545,6 +546,7 @@
       "about": "zoomed-out AI summaries (#130): the summary level, the detent at the cut and the covered switch, the board's minimum zoom, columns, editing and ↻, the host writing summaries with DeepSeek",
       "files": [
         "packages/core/src/summary.ts",
+        "packages/core/src/canvas/detent.ts",
         "packages/core/src/commands/summaries.ts",
         "packages/board/src/state/summary.ts",
         "packages/board/src/canvas/Summaries.tsx",
