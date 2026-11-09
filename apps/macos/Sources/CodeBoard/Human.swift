@@ -182,8 +182,7 @@ final class HumanRun {
   }
   /** Cards in view: each drawn sharp (its tiles at the current bucket), or what is missing */
   private func unsharp(_ c: CanvasView) -> [String] {
-    let v = visibleWorld(c)
-    return c.cardLayers.values.filter { !$0.isHidden && $0.worldRect.intersects(v) && !$0.hasSharp && $0.card.id != c.edit.card?.id }.map(\.card.id)
+    c.softInView
   }
   private func emptySpot(_ c: CanvasView) -> CGPoint? {
     for y in stride(from: 140.0, to: c.bounds.height - 120, by: 40) {
@@ -202,13 +201,14 @@ final class HumanRun {
     let o = await ocr(w, path)
     return (FileManager.default.fileExists(atPath: path) ? path : "", o.map(\.text))
   }
+  private var noPictures = false
   /** screencapture -l of the window (to `path`, else a scratch file), and OCR's lines with their boxes on screen */
   private func ocr(_ w: NSWindow, _ path: String?) async -> [(text: String, box: NSRect)] {
     let file = path ?? "\(NSTemporaryDirectory())human-\(getpid()).png"
     let n = w.windowNumber, frame = w.frame
     // the window alone (screencapture -l's picture: no shadow, no other window), from ScreenCaptureKit in this process: the
     // screencapture tool's own CGWindowList path gives "could not create image from window" on this macOS
-    let wrote: Bool = await withCheckedContinuation { (k: CheckedContinuation<Bool, Never>) in
+    let wrote: Bool = noPictures ? false : await withCheckedContinuation { (k: CheckedContinuation<Bool, Never>) in
       SCShareableContent.getExcludingDesktopWindows(false, onScreenWindowsOnly: true) { content, err in
         guard let scw = content?.windows.first(where: { $0.windowID == CGWindowID(n) }) else {
           logLine("[human] window %d not shareable: %@ (%d windows)", n, err?.localizedDescription ?? "-", content?.windows.count ?? -1)
@@ -227,7 +227,15 @@ final class HumanRun {
         }
       }
     }
-    if !wrote { logLine("[human] no picture of window %d", n) }
+    if !wrote {
+      noPictures = true
+      // no screen to picture (locked, asleep): the window as it draws itself, the canvas's layers included (AutoRun's snapshot)
+      logLine("[human] window %d drawn instead of pictured", n)
+      if let v = w.contentView?.superview ?? w.contentView, let r = v.bitmapImageRepForCachingDisplay(in: v.bounds) {
+        v.cacheDisplay(in: v.bounds, to: r)
+        try? r.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: file))
+      }
+    }
     return await Task.detached { () -> [(text: String, box: NSRect)] in
       guard let img = NSImage(contentsOfFile: file)?.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return [] }
       let r = VNRecognizeTextRequest()
@@ -275,7 +283,18 @@ final class HumanRun {
     }
   }
 
+  /** In front, as after a double-click in Finder (a launch from a terminal is not brought forward by itself: macOS 14's
+   *  cooperative activation); the menus' commands follow the key window, which an app in the background has none of */
+  private func comeForward(_ w: NSWindow?) async {
+    if NSApp.isActive { return }
+    NSApp.activate(ignoringOtherApps: true)
+    NSRunningApplication.current.activate(options: [.activateIgnoringOtherApps])
+    w?.makeKeyAndOrderFront(nil)
+    _ = await until(2) { NSApp.isActive }
+    if !NSApp.isActive { logLine("[human] not in front: %@ is", NSWorkspace.shared.frontmostApplication?.localizedName ?? "?") }
+  }
   private func first() async {
+    await comeForward(libraryWindow)
     logLine("[human] active %d, key window %@", NSApp.isActive ? 1 : 0, NSApp.keyWindow?.title ?? "none")
     // 1. a plain launch: the library window
     begin("launch")
@@ -589,6 +608,7 @@ final class HumanRun {
   }
 
   private func second() async {
+    await comeForward(libraryWindow)
     begin("relaunch")
     let up = await until(15) { libraryWindow?.isVisible == true && !(app.library?.boards.isEmpty ?? true) }
     await wait(1.0)

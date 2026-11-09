@@ -15,6 +15,11 @@ import { DatabaseSync } from "node:sqlite";
 const KEEP_CLIPS = ["open_board", "pan", "zoom", "add_note", "edit_note", "relaunch"];
 
 export async function runHuman({ root, gateApp, out, opt }) {
+  // a locked screen draws nothing a person would see: no frames land, nothing can be recorded or pictured, no app comes forward
+  if (screenLocked()) {
+    console.log("the screen is locked: the human pass needs it unlocked (nothing is drawn, recorded or brought forward while locked)");
+    return false;
+  }
   const src = path.resolve(opt("--project", path.join(os.homedir(), "Projects/persona")).replace(/^~/, os.homedir()));
   const name = path.basename(src);
   const home = path.join(out, "home");
@@ -74,7 +79,8 @@ export async function runHuman({ root, gateApp, out, opt }) {
   const regions = {};
   let offset = 0;
   for (const p of parts) {
-    for (const m of read(`${p}-marks.json`, [])) marks.push({ ...m, start: +(m.start + offset).toFixed(3), end: +(m.end + offset).toFixed(3) });
+    for (const m of read(`${p}-marks.json`, []))
+      marks.push({ name: m.name, start: +(m.start + offset).toFixed(3), end: +(m.end + offset).toFixed(3), moving: m.camera });
     Object.assign(regions, read(`${p}-regions.json`, {}));
     offset += duration(path.join(run, `${p}.mp4`));
   }
@@ -86,7 +92,11 @@ export async function runHuman({ root, gateApp, out, opt }) {
     fs.rmSync(list);
   }
   fs.writeFileSync(path.join(out, "marks.json"), JSON.stringify(marks, null, 1));
-  fs.writeFileSync(path.join(out, "regions.json"), JSON.stringify(regions));
+  // rec-check's regions: each card's box on screen at the end of a step, for that step
+  const boxes = Object.entries(regions).flatMap(([step, rs]) =>
+    rs.map((r) => ({ name: `${r.kind}:${r.id}`, step, x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.w), h: Math.round(r.h) })),
+  );
+  fs.writeFileSync(path.join(out, "regions.json"), JSON.stringify(boxes));
 
   // the recording judged frame by frame (blank, low-res, flash), by tools/rec-check.mjs when this branch has it
   const checker = path.join(root, "tools/rec-check.mjs");
@@ -102,11 +112,13 @@ export async function runHuman({ root, gateApp, out, opt }) {
         const step = steps.find((x) => x.step === s.name);
         if (step && s.pass === false) {
           step.pass = false;
-          step.sees += `; the recording: ${(s.fails ?? []).join(", ") || "failed"}`;
+          const f = s.flags.filter((x) => x.fail);
+          step.sees += `; the recording: ${f.map((x) => `${x.kind} on ${x.region} at ${x.time} s (${x.frames} frames)`).slice(0, 4).join(", ")}`;
         }
       }
     } else if (r.status !== 0) steps.push({ step: "rec-check", pass: false, sees: "the recording check failed to run", shot: "" });
   } else if (!fs.existsSync(checker)) console.log("tools/rec-check.mjs not on this branch: the recording is not judged");
+  else steps.push({ step: "recording", pass: false, sees: "no recording (ScreenCaptureKit gave none: is the screen locked?), so nothing was judged frame by frame", shot: "" });
 
   // clips: the steps Linda watches, and every failing one
   const clips = [];
@@ -161,4 +173,12 @@ function duration(f) {
 }
 function spawnSyncNode(script, a) {
   return spawnSync(process.execPath, [script, ...a], { encoding: "utf8" });
+}
+
+function screenLocked() {
+  try {
+    return /<key>CGSSessionScreenIsLocked<\/key>\s*<true\/>/.test(execFileSync("ioreg", ["-n", "Root", "-d1", "-a"], { encoding: "utf8" }));
+  } catch {
+    return false;
+  }
 }
