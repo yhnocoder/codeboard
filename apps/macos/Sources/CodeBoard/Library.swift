@@ -32,6 +32,8 @@ final class LibraryModel: ObservableObject {
   @Published var selection: Sel? = .recent
   @Published var picked: BoardRef?
   @Published var recents: [BoardRef] = []
+  /** Boards opened in this app ("dir\nid" → ms); Recent adds the ones VS Code opened (Projects.opened) */
+  private var openedHere = UserDefaults.standard.dictionary(forKey: "openedBoards") as? [String: Double] ?? [:]
   let lib: JSBridge
   let search: SearchIndex
   var open: (BoardRef) -> Void = { _ in }
@@ -47,8 +49,6 @@ final class LibraryModel: ObservableObject {
     self.lib = lib
     self.search = search
     self.only = only
-    recents = (try? JSONDecoder().decode([BoardRef].self, from: UserDefaults.standard.data(forKey: "recentBoards") ?? Data())) ?? []
-    if only != nil { recents = [] }
     NotificationCenter.default.addObserver(forName: .codeboardSettings, object: nil, queue: .main) { [weak self] n in
       if n.object as? String == "libraryFolders" { self?.reload() }
     }
@@ -85,7 +85,6 @@ final class LibraryModel: ObservableObject {
   private func listedAll() {
     guard !listed else { return }
     listed = true
-    recents = recents.filter { r in boards[r.dir]?.contains { $0.id == r.id } == true }
     onListed?()
   }
 
@@ -93,6 +92,7 @@ final class LibraryModel: ObservableObject {
     lib.lib("list", [dir], [LibBoard].self) { [weak self] r in
       guard let self else { return }
       if case .success(let list) = r { self.boards[dir] = list.sorted { $0.mtime > $1.mtime } } else { logLine("[codeboard library] list %@: %@", dir, "\(r)") }
+      self.updateRecents()
       done?()
     }
   }
@@ -100,11 +100,13 @@ final class LibraryModel: ObservableObject {
   func project(_ dir: String) -> Project? {
     projects.first { $0.dir == dir } ?? projects.first { real($0.dir) == real(dir) }
   }
-  /** Where a project is, for the subtitle: ~/… , or only the folder's name for a temporary folder */
+  /** Where a project is, for the subtitle: ~/… , or only the folder's name for a temporary folder; a multi-root workspace's
+   *  other folders by name (two VS Code workspaces on one folder are told apart by them) */
   func place(_ p: Project) -> String {
     let f = p.folders.first ?? p.dir
     let tmp = [NSTemporaryDirectory(), "/tmp/", "/private/tmp/", "/private/var/folders/", "/var/folders/"]
-    return tmp.contains { f.hasPrefix($0) } ? (f as NSString).lastPathComponent : f.abbreviatingWithTilde
+    let s = tmp.contains { f.hasPrefix($0) } ? (f as NSString).lastPathComponent : f.abbreviatingWithTilde
+    return ([s] + p.folders.dropFirst().map(Projects.nameOf)).joined(separator: " + ")
   }
   func board(_ r: BoardRef) -> LibBoard? { boards[r.dir]?.first { $0.id == r.id } }
   var all: [(dir: String, project: String, id: String, name: String)] {
@@ -113,8 +115,24 @@ final class LibraryModel: ObservableObject {
 
   func opened(_ r: BoardRef) {
     guard only == nil else { return }
-    recents = [r] + recents.filter { $0 != r }.prefix(23)
-    UserDefaults.standard.set(try? JSONEncoder().encode(recents), forKey: "recentBoards")
+    openedHere["\(r.dir)\n\(r.id)"] = Date().timeIntervalSince1970 * 1000
+    UserDefaults.standard.set(openedHere, forKey: "openedBoards")
+    updateRecents()
+  }
+  /** The 24 boards last opened here or in VS Code (whose record is by board id alone), of those listed */
+  private func updateRecents() {
+    guard only == nil else { return }
+    let vscode = Projects.opened()
+    var at: [BoardRef: Double] = [:]
+    for (d, list) in boards {
+      for b in list {
+        let r = BoardRef(dir: d, id: b.id)
+        let t = max(vscode[b.id] ?? 0, openedHere["\(d)\n\(b.id)"] ?? 0)
+        if t > 0 { at[r] = t }
+      }
+    }
+    let rs = at.sorted { $0.value > $1.value }.prefix(24).map(\.key)
+    if rs != recents { recents = rs }
   }
 
   // MARK: board actions
@@ -183,17 +201,19 @@ struct LibraryView: View {
     NavigationSplitView {
       List(selection: $m.selection) {
         Section("Library") {
-          row("Recent", "clock", .recent)
+          row("Recent", "clock", .recent).tag(Sel.recent)
         }
         Section("Projects") {
           ForEach(m.projects) { p in
-            row(p.name, p.dir.hasSuffix("/.codeboard") ? "folder" : "tray.full", .project(p.dir))
+            row(p.name, p.dir.hasSuffix("/.codeboard") ? "folder" : "tray.full", .project(p.dir),
+                sub: m.projects.contains { $0.name == p.name && $0.dir != p.dir } ? m.place(p) : nil)
               .badge(m.boards[p.dir]?.count ?? 0)
               .help(m.place(p))
               .contextMenu {
                 Button("New Board") { m.newBoard(in: p.dir) }
                 Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: p.dir)]) }
               }
+              .tag(Sel.project(p.dir))
           }
         }
       }
@@ -236,8 +256,16 @@ struct LibraryView: View {
     }
   }
 
-  private func row(_ name: String, _ symbol: String, _ tag: Sel) -> some View {
-    Label(name, systemImage: symbol).fontWeight(m.selection == tag ? .semibold : .regular).tag(tag)
+  /** A sidebar row; the caller tags it last: a tag under the row's .badge / .help / .contextMenu does not reach List, which then sets the selection to nil on a click */
+  private func row(_ name: String, _ symbol: String, _ tag: Sel, sub: String? = nil) -> some View {
+    Label {
+      VStack(alignment: .leading, spacing: 0) {
+        Text(name).fontWeight(m.selection == tag ? .semibold : .regular)
+        if let sub { Text(sub).font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle) }
+      }
+    } icon: {
+      Image(systemName: symbol)
+    }
   }
 
   private var refs: [BoardRef] {
@@ -273,7 +301,7 @@ struct LibraryView: View {
   @ViewBuilder private var detail: some View {
     if refs.isEmpty {
       ContentUnavailableView(m.selection == .recent ? "No Recent Boards" : "No Boards", systemImage: "rectangle.on.rectangle",
-                             description: Text(m.selection == .recent ? "Boards you open show up here." : "Make one with New Board (⌘N)."))
+                             description: Text(m.selection == .recent ? "Boards you open here or in VS Code show up here." : "Make one with New Board (⌘N)."))
     } else {
       ScrollView {
         VStack(alignment: .leading, spacing: Design.groupGap) {

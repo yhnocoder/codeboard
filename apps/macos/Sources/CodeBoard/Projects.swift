@@ -70,11 +70,7 @@ enum Projects {
 
   /** The extension's registry: VS Code's global state for the extension, key codeboard.projects (most recent first) */
   static func registered() -> [Project] {
-    let db = vscodeUser.appendingPathComponent("globalStorage/state.vscdb").path
-    guard let json = readState(db: db, key: extensionId),
-      let obj = try? JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any],
-      let all = obj["codeboard.projects"] as? [String: [String: Any]]
-    else { return [] }
+    guard let all = globalState()["codeboard.projects"] as? [String: [String: Any]] else { return [] }
     return all.values
       .compactMap { p -> (Project, Double)? in
         guard let dir = p["dir"] as? String else { return nil }
@@ -84,6 +80,18 @@ enum Projects {
       }
       .sorted { $0.1 > $1.1 }
       .map(\.0)
+  }
+
+  /** When VS Code last opened each board (board id → ms; packages/host/src/hub.ts `opened`) */
+  static func opened() -> [String: Double] {
+    globalState()["codeboard.opened"] as? [String: Double] ?? [:]
+  }
+
+  /** The extension's global state in VS Code's state database */
+  static func globalState() -> [String: Any] {
+    let db = vscodeUser.appendingPathComponent("globalStorage/state.vscdb").path
+    guard let json = readState(db: db, key: extensionId) else { return [:] }
+    return (try? JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any]) ?? [:]
   }
 
   /** One value of VS Code's state database (SQLite, ItemTable), opened read-only */
