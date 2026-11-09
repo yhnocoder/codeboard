@@ -146,7 +146,8 @@ final class GateRun: NSObject, SCStreamOutput {
       let r = l.worldRect
       guard r.intersects(vis) else { continue }
       rects[id] = [r.minX, r.minY, r.width, r.height]
-      if l.contents == nil { blank.append(id) }
+      // the card's picture is in its base and tile sublayers (the CardLayer itself never has contents)
+      if !l.hasFace { blank.append(id) }
     }
     for (id, l) in c.sectionLayers where !l.isHidden && l.frame.intersects(vis) {
       rects["sect:\(id)"] = [l.frame.minX, l.frame.minY, l.frame.width, l.frame.height]
@@ -418,6 +419,9 @@ final class GateRun: NSObject, SCStreamOutput {
     lastCam = wc.canvas.cam
     lastWin = wc.window?.frame ?? .zero
     let r0 = Rusage.now()
+    // the screen at rest (a second after the step's prepare, so the previous step and the prepare's camera have settled): every
+    // card in view sharp over the view at the zoom's bucket, every tile row in view there, from the layers' state
+    let soft = wc.canvas.softInView
     stepT0 = CACurrentMediaTime()
     capQueue.async { self.capFrames = []; self.capturing = true }
     var i = 0
@@ -444,6 +448,7 @@ final class GateRun: NSObject, SCStreamOutput {
             var o: [String: Any] = [
               "name": s.name, "continuous": s.continuous, "frames": n, "t0": self.stepT0, "free": self.free, "moves": self.moves, "samples": samples,
               "cpu_pct": wall > 0 ? (r1.cpu - r0.cpu) / wall * 100 : 0, "wall_s": wall, "dropped_input": self.dropped,
+              "soft_at_rest": soft,
             ]
             if !frames.isEmpty { o["capture"] = self.writeCapture(s.name, frames, cols: self.capW / 8, rows: self.capH / 8) }
             self.stepsOut.append(o)

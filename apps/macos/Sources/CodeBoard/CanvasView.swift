@@ -173,7 +173,7 @@ final class CanvasView: NSView {
       guard let self, Theme.isInk else { return }
       for l in self.cardLayers.values {
         l.needBase()
-        if !l.isHidden { l.setNeedsDisplay() }
+        if !l.isHidden, l.drewPaperless { l.setNeedsDisplay() }
       }
       for l in self.sectionLayers.values { l.restyle() }
     }
@@ -560,6 +560,11 @@ final class CanvasView: NSView {
     setCamera(Camera(x: (bounds.width - r.width * z) / 2 - r.minX * z, y: (bounds.height - r.height * z) / 2 - r.minY * z, z: z), animated: animated)
   }
 
+  /** Zoom to z about the view's centre */
+  func zoomAbout(_ z: Double) {
+    let m = CGPoint(x: bounds.midX, y: bounds.midY), k = z / cam.z
+    setCamera(Camera(x: m.x - (m.x - cam.x) * k, y: m.y - (m.y - cam.y) * k, z: z), animated: false)
+  }
   /** A card at the top left, zoom 1 */
   func focus(_ id: String) {
     guard let l = cardLayers[id] else { return }
@@ -597,11 +602,17 @@ final class CanvasView: NSView {
         if zooming && l.hasSharp { deferred.insert(l.card.id); continue }
         l.contentsScale = s
         l.setNeedsDisplay()
-      } else if on, !zooming {
-        l.fillTiles()
+      } else if on {
+        // drawn (or asked) at another bucket than this zoom's: drawn again, now or once the zoom settles (a camera restored
+        // at open, then moved, left cards asked at the first one's bucket for good)
+        if l.card.id != underEdit, l.askedScale != s, l.faceScale != s {
+          if zooming { deferred.insert(l.card.id) } else { l.contentsScale = s; l.setNeedsDisplay() }
+        } else if !zooming { l.fillTiles() }
       }
     }
     evict(vis)
+    // cards put off to the settled bucket: a settle is due however this cull came (a resize, a scene change, a summary switch)
+    if !deferred.isEmpty { settleRaster() }
     // stickers out of view are hidden: an animated one then plays no frames
     for l in stickerLayers.values { l.isHidden = !near.intersects(l.frame) }
   }
@@ -628,6 +639,16 @@ final class CanvasView: NSView {
       l.parked = true
     }
   }
+  /** The cards in view not sharp over the view at the zoom's bucket (a base shows, or a tile row in view has not landed), with
+   *  why, for the checks; none at the summary level (the cards are not shown there) */
+  var softInView: [String] {
+    guard level == 0 else { return [] }
+    let vis = CGRect(x: -cam.x / cam.z, y: -cam.y / cam.z, width: bounds.width / cam.z, height: bounds.height / cam.z)
+    let s = rasterBucket(zoom: cam.z, backing: backing)
+    return cardLayers.values.filter { !$0.isHidden && $0.card.id != underEdit && vis.intersects($0.worldRect) }.compactMap { l in
+      l.sharpMissing(in: vis, scale: s).map { "\(l.card.id): \($0)" }
+    }
+  }
   /** The sharp tier's bytes, for the checks */
   var sharpBytes: Int { cardLayers.values.reduce(0) { $0 + $1.sharpBytes } }
   /** The bitmap scale follows the zoom in buckets: crossing one redraws the cards at the new scale (the old bitmap stays until
@@ -635,17 +656,21 @@ final class CanvasView: NSView {
    *  render server) */
   private func rasterIfNeeded() {
     let s = rasterBucket(zoom: cam.z, backing: backing)
-    let ids = deferred
     deferred = []
-    for id in ids { if let l = cardLayers[id], !l.isHidden, l.stale || l.faceScale != s { l.contentsScale = s; l.setNeedsDisplay() } }
-    if s == rasterScale { return }
+    let changed = s != rasterScale
     rasterScale = s
     CATransaction.setDisableActions(true)
-    for l in cardLayers.values where l.isHidden { l.contentsScale = s }
-    for l in cardLayers.values where !l.isHidden && !l.parked && l.contentsScale != s {
-      l.contentsScale = s
-      l.setNeedsDisplay()
+    // every shown card whose sharp tier is not at this bucket (nor asked at it) draws again: by what it shows, not by its
+    // contentsScale (a card that was hidden when the bucket changed got the scale without a raster, and kept the old bitmap)
+    for l in cardLayers.values {
+      if l.isHidden { l.contentsScale = s; continue }
+      if l.parked || l.card.id == underEdit { continue }
+      if l.stale || (l.faceScale != s && l.askedScale != s) {
+        l.contentsScale = s
+        l.setNeedsDisplay()
+      }
     }
+    guard changed else { return }
     for l in sectionLayers.values { l.setScale(s) }
     for l in arrowLayers.values { l.setScale(max(s, 1)) }
     for l in stickerLayers.values { l.setScale(max(s, 1)) }

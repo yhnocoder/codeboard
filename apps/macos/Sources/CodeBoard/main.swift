@@ -8,6 +8,7 @@
 //                                    clicks and keys at the controls' places, screenshots and a recording, then quit
 //   --fit                            with --snapshot: the whole board in view
 //   --focus <card id>                with --snapshot: that card at the top left at zoom 1
+//   --zoom <z>                       with --snapshot (after --fit): zoom to z about the view's centre, as the gate's pan starts
 //   --library <folder>               the library shows only that folder (the checks: a copy of real boards)
 //   --check <dir> [--query <q>]      the scripted library run (Checks.swift): library, ⌘K and a board window to PNGs, timings
 //   --show [--show-board <id>] [--query <q>]  open them and stay (screenshots of the real windows)
@@ -186,6 +187,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
       } else if snap != nil {
         if self.args.contains("--fit") { wc.canvas.fitAll(animated: false) }
         if let id = self.arg("--focus") { wc.canvas.focus(id) }
+        if let z = self.arg("--zoom").flatMap(Double.init) { wc.canvas.zoomAbout(z) }
         after(Double(self.arg("--wait") ?? "0.8") ?? 0.8) {
           AutoRun(wc, out: snap).snapshot("board")
           self.quit()
