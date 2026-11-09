@@ -146,7 +146,9 @@ final class CanvasView: NSView {
     layer!.masksToBounds = true
     world.anchorPoint = .zero
     world.addSublayer(summaries.layer)
-    for l in [sections, arrows, cards, slabels, stickers, top] {
+    // the hovered card's edge ports sit on the card (styles.css .eport, inside .card): above the cards, under the lifted arrows,
+    // so an arrow coming in is drawn over them as on the board
+    for l in [sections, arrows, cards, ports, slabels, stickers, top] {
       l.anchorPoint = .zero
       world.addSublayer(l)
     }
@@ -198,7 +200,7 @@ final class CanvasView: NSView {
     tether.lineDashPattern = [3, 3]
     tether.isHidden = true
     tetherDot.isHidden = true
-    for l in [marquee, ports, rubber, tether, tetherDot] { overlay.addSublayer(l) }
+    for l in [marquee, rubber, tether, tetherDot] { overlay.addSublayer(l) }
     layer!.addSublayer(overlay)
     addSubview(edit.view)
     // the editor paints the card itself (paper, ring, text): the card's own bitmap hides under it, so nothing shows twice
@@ -955,12 +957,11 @@ final class CanvasView: NSView {
   private func showPorts() {
     guard let id = hovered, let l = cardLayers[id], !(l.card.kind == "note" && l.card.look != "note"), !edit.active, drag == nil else { ports.isHidden = true; return }
     let path = CGMutablePath()
-    for p in portPoints(l) {
-      let v = toView(CGRect(origin: p, size: .zero)).origin
-      path.addEllipse(in: CGRect(x: v.x - 4, y: v.y - 4, width: 8, height: 8))
-    }
+    // in the world, at the same size on screen at any zoom (4 px across a 1.5 px ring)
+    let k = 1 / max(cam.z, 0.01)
+    for p in portPoints(l) { path.addEllipse(in: CGRect(x: p.x - 4 * k, y: p.y - 4 * k, width: 8 * k, height: 8 * k)) }
     ports.path = path
-    ports.lineWidth = 1.5
+    ports.lineWidth = 1.5 * k
     ports.isHidden = false
   }
   /** A port dot under the point (view coordinates): the card and the dot's world point */
