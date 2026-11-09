@@ -84,12 +84,21 @@ final class HumanRun {
       await frames(1)
     }
   }
-  /** A key as typed: the app's key window gets it (key equivalents, the menu, then the first responder) */
-  private func key(_ code: UInt16, _ chars: String, _ mods: NSEvent.ModifierFlags = []) async {
-    let w = NSApp.keyWindow ?? NSApp.mainWindow
+  /** A key as typed, to the window being used: its key equivalents, then the menu's, else its first responder. Not through the
+   *  app's queue: a pass started from a terminal stays behind the app the person at the Mac is using (macOS 14's cooperative
+   *  activation), so this app has no key window to route a queued key to */
+  private var keyTarget: NSWindow?
+  private func key(_ code: UInt16, _ chars: String, _ mods: NSEvent.ModifierFlags = [], to win: NSWindow? = nil) async {
+    guard let w = win ?? NSApp.keyWindow ?? keyTarget else { return }
     for t in [NSEvent.EventType.keyDown, .keyUp] {
-      post(NSEvent.keyEvent(with: t, location: .zero, modifierFlags: mods, timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: w?.windowNumber ?? 0,
-                            context: nil, characters: chars, charactersIgnoringModifiers: mods.contains(.shift) ? chars : chars.lowercased(), isARepeat: false, keyCode: code))
+      guard let e = NSEvent.keyEvent(with: t, location: .zero, modifierFlags: mods, timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: w.windowNumber,
+                                     context: nil, characters: chars, charactersIgnoringModifiers: mods.contains(.shift) ? chars : chars.lowercased(), isARepeat: false, keyCode: code)
+      else { continue }
+      if t == .keyDown, mods.contains(.command) {
+        if !w.performKeyEquivalent(with: e) { _ = NSApp.mainMenu?.performKeyEquivalent(with: e) }
+      } else if !(t == .keyUp && mods.contains(.command)) {
+        w.sendEvent(e)
+      }
     }
     await frames(2)
   }
@@ -135,10 +144,28 @@ final class HumanRun {
     walk(w, 0)
     return out
   }
-  /** The frame on screen of the element labelled so, the smallest one inside the window's visible part */
+  /** The frame on screen of a control labelled so: an AppKit view (a button's tooltip or image description, a label, a table
+   *  cell's text), else the accessibility tree; the smallest one inside the window */
   private func find(_ w: NSWindow, _ label: String, roles: Set<String>? = nil) -> NSRect? {
-    elements(w).filter { $0.label == label && (roles?.contains($0.role) ?? true) && w.frame.contains(NSPoint(x: $0.frame.midX, y: $0.frame.midY)) }
-      .min { $0.frame.width * $0.frame.height < $1.frame.width * $1.frame.height }?.frame
+    var hits: [NSRect] = []
+    func walk(_ v: NSView) {
+      if v.isHiddenOrHasHiddenAncestor || v.alphaValue == 0 { return }
+      var names: [String] = []
+      if let b = v as? NSButton { names += [b.toolTip, b.title, b.image?.accessibilityDescription].compactMap { $0 } }
+      if let t = v as? NSTextField { names.append(t.stringValue) }
+      if names.contains(label), let win = v.window { hits.append(win.convertToScreen(v.convert(v.bounds, to: nil))) }
+      for s in v.subviews { walk(s) }
+    }
+    if let root = w.contentView?.superview ?? w.contentView { walk(root) }
+    hits += elements(w).filter { $0.label == label && (roles?.contains($0.role) ?? true) }.map(\.frame)
+    return hits.filter { w.frame.contains(NSPoint(x: $0.midX, y: $0.midY)) }.min { $0.width * $0.height < $1.width * $1.height }
+  }
+  /** Where a person sees a text in the window: OCR of its screenshot, the box of that text (exact line first) */
+  private func findText(_ w: NSWindow, _ s: String) async -> NSRect? {
+    let o = await ocr(w, nil)
+    let k = s.lowercased()
+    let exact = o.filter { $0.text.lowercased() == k }.min { $0.box.minX < $1.box.minX }
+    return (exact ?? o.first { $0.text.lowercased().contains(k) })?.box
   }
   private func dumpAX(_ w: NSWindow, _ name: String) {
     let lines = elements(w).map { "\($0.role)\t\($0.label)\t\(Int($0.frame.minX)),\(Int($0.frame.minY)) \(Int($0.frame.width))×\(Int($0.frame.height))" }
@@ -172,26 +199,47 @@ final class HumanRun {
   private func shot(_ w: NSWindow?, _ name: String) async -> (path: String, text: [String]) {
     guard let w else { return ("", []) }
     let path = "\(out)/\(phase)-\(String(format: "%02d", results.count + 1))-\(name).png"
-    let n = w.windowNumber
-    await withCheckedContinuation { (k: CheckedContinuation<Void, Never>) in
-      DispatchQueue.global().async {
-        let p = Process()
-        p.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
-        p.arguments = ["-l", "\(n)", "-o", "-x", path]
-        try? p.run()
-        p.waitUntilExit()
-        k.resume()
+    let o = await ocr(w, path)
+    return (FileManager.default.fileExists(atPath: path) ? path : "", o.map(\.text))
+  }
+  /** screencapture -l of the window (to `path`, else a scratch file), and OCR's lines with their boxes on screen */
+  private func ocr(_ w: NSWindow, _ path: String?) async -> [(text: String, box: NSRect)] {
+    let file = path ?? "\(NSTemporaryDirectory())human-\(getpid()).png"
+    let n = w.windowNumber, frame = w.frame
+    // the window alone (screencapture -l's picture: no shadow, no other window), from ScreenCaptureKit in this process: the
+    // screencapture tool's own CGWindowList path gives "could not create image from window" on this macOS
+    let wrote: Bool = await withCheckedContinuation { (k: CheckedContinuation<Bool, Never>) in
+      SCShareableContent.getExcludingDesktopWindows(false, onScreenWindowsOnly: true) { content, err in
+        guard let scw = content?.windows.first(where: { $0.windowID == CGWindowID(n) }) else {
+          logLine("[human] window %d not shareable: %@ (%d windows)", n, err?.localizedDescription ?? "-", content?.windows.count ?? -1)
+          return k.resume(returning: false)
+        }
+        let cfg = SCStreamConfiguration()
+        cfg.width = Int(frame.width * 2)
+        cfg.height = Int(frame.height * 2)
+        cfg.showsCursor = false
+        cfg.ignoreShadowsSingleWindow = true
+        SCScreenshotManager.captureImage(contentFilter: SCContentFilter(desktopIndependentWindow: scw), configuration: cfg) { img, e in
+          if let e { logLine("[human] picture: %@", e.localizedDescription) }
+          guard let img, let d = CGImageDestinationCreateWithURL(URL(fileURLWithPath: file) as CFURL, "public.png" as CFString, 1, nil) else { return k.resume(returning: false) }
+          CGImageDestinationAddImage(d, img, nil)
+          k.resume(returning: CGImageDestinationFinalize(d))
+        }
       }
     }
-    let text = await Task.detached { () -> [String] in
-      guard let img = NSImage(contentsOfFile: path)?.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return [] }
+    if !wrote { logLine("[human] no picture of window %d", n) }
+    return await Task.detached { () -> [(text: String, box: NSRect)] in
+      guard let img = NSImage(contentsOfFile: file)?.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return [] }
       let r = VNRecognizeTextRequest()
       r.recognitionLevel = .accurate
       r.recognitionLanguages = ["en-US", "zh-Hans"]
       try? VNImageRequestHandler(cgImage: img).perform([r])
-      return (r.results ?? []).compactMap { $0.topCandidates(1).first?.string }
+      return (r.results ?? []).compactMap { o in
+        guard let t = o.topCandidates(1).first else { return nil }
+        let b = o.boundingBox
+        return (t.string, NSRect(x: frame.minX + b.minX * frame.width, y: frame.minY + b.minY * frame.height, width: b.width * frame.width, height: b.height * frame.height))
+      }
     }.value
-    return (FileManager.default.fileExists(atPath: path) ? path : "", text)
   }
   private func sees(_ text: [String], _ s: String) -> Bool {
     let k = s.lowercased().filter { !$0.isWhitespace }
@@ -228,11 +276,13 @@ final class HumanRun {
   }
 
   private func first() async {
+    logLine("[human] active %d, key window %@", NSApp.isActive ? 1 : 0, NSApp.keyWindow?.title ?? "none")
     // 1. a plain launch: the library window
     begin("launch")
     let up = await until(15) { libraryWindow?.isVisible == true && app.library?.projects.isEmpty == false && !(app.library?.boards.isEmpty ?? true) }
     await wait(1.0)
     guard let lw = libraryWindow else { return done("launch", false, sees: "no library window", shot: "") }
+    keyTarget = lw
     dumpAX(lw, "library")
     let s1 = await shot(lw, "library")
     let project = app.library.projects.first { $0.name == "persona" } ?? app.library.projects.first
@@ -245,7 +295,7 @@ final class HumanRun {
     begin("pick_project")
     var notes: [String] = []
     var picked = false
-    if let r = find(lw, project.name, roles: ["AXCell", "AXRow", "AXStaticText", "AXOutlineRow"]) ?? find(lw, project.name) {
+    if let r = await findText(lw, project.name) {
       await click(lw, NSPoint(x: r.midX, y: r.midY))
       picked = await until(3) { app.library.selection == .project(project.dir) }
     } else { notes.append("no element labelled \(project.name) in the sidebar") }
@@ -266,14 +316,15 @@ final class HumanRun {
     begin("open_board")
     dumpAX(lw, "grid")
     let boards = (app.library.boards[project.dir] ?? []).filter { $0.cards >= 4 }.sorted { $0.cards > $1.cards }
-    let target = boards.first { b in find(lw, b.name) != nil } ?? boards.first
+    let grid = await ocr(lw, nil)
+    let target = boards.first { b in grid.contains { $0.text == b.name } } ?? boards.first
     guard let target else { return done("open_board", false, sees: "no board with cards in the grid", shot: s2.path) }
     var opened = false, sharp = false
     var t0 = CACurrentMediaTime(), openS = 0.0, sharpS = 0.0
-    if let r = elements(lw).filter({ $0.label == target.name && lw.frame.contains(NSPoint(x: $0.frame.midX, y: $0.frame.midY)) }).max(by: { $0.frame.height < $1.frame.height })?.frame {
-      // the thumbnail: the upper part of the tile
+    if let r = grid.first(where: { $0.text == target.name })?.box {
+      // the thumbnail, above its name
       t0 = CACurrentMediaTime()
-      await click(lw, NSPoint(x: r.midX, y: r.maxY - r.height * 0.3), count: 2)
+      await click(lw, NSPoint(x: r.minX + 60, y: r.maxY + 50), count: 2)
       opened = await until(5) { board(target.id)?.window?.isVisible == true }
       openS = CACurrentMediaTime() - t0
     } else { notes = ["no tile labelled \(target.name)"] }
@@ -283,6 +334,7 @@ final class HumanRun {
     }
     guard let wc = board(target.id), let bw = wc.window else { return done("open_board", false, sees: "no board window", shot: "") }
     let c = wc.canvas
+    keyTarget = bw
     _ = await until(5) { !c.cardLayers.isEmpty }
     sharp = await until(8) { self.unsharp(c).isEmpty }
     sharpS = CACurrentMediaTime() - t0
@@ -442,11 +494,13 @@ final class HumanRun {
     await key(53, "\u{1b}")
     await key(40, "k", .command)
     let panelUp = await until(2) { app.panel?.isVisible == true }
+    keyTarget = app.panel
     await type(word)
     let hits = await until(8) { (app.panel?.model.rows.count ?? 0) > 0 }
     let s12 = await shot(app.panel, "search")
     let first = app.panel?.model.rows.first
     await key(36, "\r")
+    keyTarget = bw
     let landed = await until(4) { app.panel?.isVisible != true && c.selected.contains(noteId) }
     await wait(0.8)
     let s12b = await shot(bw, "search-open")
@@ -492,6 +546,7 @@ final class HumanRun {
     let sOpen = await until(3) { settingsWindow != nil }
     var lookOk = false
     if let sw = settingsWindow {
+      keyTarget = sw
       dumpAX(sw, "settings")
       if let r = find(sw, Look.current.name, roles: ["AXPopUpButton"]) ?? find(sw, "Look") {
         await click(sw, NSPoint(x: r.midX, y: r.midY))
@@ -499,7 +554,9 @@ final class HumanRun {
         // the menu's item, where the menu shows it
         let want = Chrome.all.first { $0.board != Theme.look }?.name ?? "Ink Wash"
         let menu = NSApp.windows.filter { $0.isVisible && $0.level.rawValue > NSWindow.Level.normal.rawValue && $0 !== app.panel }
-        if let mw = menu.first(where: { find($0, want) != nil }), let ir = find(mw, want) {
+        var item: (NSWindow, NSRect)?
+        for mw in menu { if let ir = await findText(mw, want) { item = (mw, ir); break } }
+        if let (mw, ir) = item {
           await click(mw, NSPoint(x: ir.midX, y: ir.midY))
         } else {
           // the keyboard, as a person does in an open menu
@@ -510,6 +567,7 @@ final class HumanRun {
       }
       await key(13, "w", .command)
     }
+    keyTarget = bw
     bw.makeKeyAndOrderFront(nil)
     let themeSharp = await until(6) { self.unsharp(c).isEmpty }
     let s15 = await shot(bw, "theme")
@@ -542,13 +600,15 @@ final class HumanRun {
     let recentHas = app.library.selection == .recent && app.library.recents.first == BoardRef(dir: dir, id: id)
     var notes: [String] = []
     var opened = false
-    if let r = elements(lw).filter({ $0.label == name && lw.frame.contains(NSPoint(x: $0.frame.midX, y: $0.frame.midY)) }).max(by: { $0.frame.height < $1.frame.height })?.frame {
-      await click(lw, NSPoint(x: r.midX, y: r.maxY - r.height * 0.3), count: 2)
+    keyTarget = lw
+    if let r = await findText(lw, name) {
+      await click(lw, NSPoint(x: r.minX + 60, y: r.maxY + 50), count: 2)
       opened = await until(5) { board(id)?.window?.isVisible == true }
     } else { notes.append("no Recent tile labelled \(name)") }
     if !opened { app.openBoard(BoardRef(dir: dir, id: id)); notes.append("opened by hand to go on") }
     guard let wc = board(id), let bw = wc.window else { return done("relaunch", false, sees: "no board window", shot: s1.path) }
     let c = wc.canvas
+    keyTarget = bw
     _ = await until(5) { !c.cardLayers.isEmpty }
     let noteMd = c.cardLayers[state["note"] ?? ""]?.card.md ?? ""
     let edited = (c.cardLayers[state["edited"] ?? ""]?.card.md ?? "").contains("edited")
@@ -609,11 +669,11 @@ final class Recorder: NSObject, SCStreamOutput, @unchecked Sendable {
   /** Seconds into the video (0 before the first frame) */
   var now: Double { q.sync { t0 < 0 ? 0 : CACurrentMediaTime() - t0 } }
 
-  func start(to path: String) {
-    try? FileManager.default.removeItem(atPath: path)
+  func start(to path: String, tries: Int = 0) {
+    if tries == 0 { try? FileManager.default.removeItem(atPath: path) }
     SCShareableContent.getExcludingDesktopWindows(false, onScreenWindowsOnly: false) { [self] content, err in
-      guard let content, let me = content.applications.first(where: { $0.processID == getpid() }), let d = content.displays.first(where: { $0.displayID == CGMainDisplayID() }) ?? content.displays.first else {
-        logLine("[human] recording off: %@", err?.localizedDescription ?? "this app not shareable")
+      guard let content, let d = content.displays.first(where: { $0.displayID == CGMainDisplayID() }) ?? content.displays.first else {
+        logLine("[human] recording off: %@", err?.localizedDescription ?? "no display")
         return
       }
       let cfg = SCStreamConfiguration()
@@ -630,7 +690,7 @@ final class Recorder: NSObject, SCStreamOutput, @unchecked Sendable {
       ])
       i.expectsMediaDataInRealTime = true
       w.add(i)
-      let s = SCStream(filter: SCContentFilter(display: d, including: [me], exceptingWindows: []), configuration: cfg, delegate: nil)
+      let s = SCStream(filter: Self.filter(content, d), configuration: cfg, delegate: nil)
       do { try s.addStreamOutput(self, type: .screen, sampleHandlerQueue: q) } catch { return }
       q.sync {
         writer = w
@@ -638,6 +698,21 @@ final class Recorder: NSObject, SCStreamOutput, @unchecked Sendable {
         stream = s
       }
       s.startCapture { e in logLine("[human] recording %@", e?.localizedDescription ?? "on") }
+      self.refresh(d)
+    }
+  }
+  /** Every other app's windows left out (this app may not be listed as one until it has a window, and its new windows must
+   *  show): the list again every second, so an app the person opens meanwhile stays out too */
+  private static func filter(_ c: SCShareableContent, _ d: SCDisplay) -> SCContentFilter {
+    SCContentFilter(display: d, excludingApplications: c.applications.filter { $0.processID != getpid() }, exceptingWindows: [])
+  }
+  private func refresh(_ d: SCDisplay) {
+    q.asyncAfter(deadline: .now() + 1) { [weak self] in
+      guard let self, !self.stopped, let s = self.stream else { return }
+      SCShareableContent.getExcludingDesktopWindows(false, onScreenWindowsOnly: false) { c, _ in
+        if let c { s.updateContentFilter(Self.filter(c, d)) { _ in } }
+        self.refresh(d)
+      }
     }
   }
   func stream(_ stream: SCStream, didOutputSampleBuffer sb: CMSampleBuffer, of type: SCStreamOutputType) {
