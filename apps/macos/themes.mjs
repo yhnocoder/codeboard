@@ -225,9 +225,9 @@ const PICKS = {
     ["slabel-mt", ":root.look-ink-wash .slabel", null, "--mt"],
     ["brush-opacity", ":root.look-ink-wash .brush", null, "fill-opacity"],
     ["head-dot-opacity", ":root.look-ink-wash .ahead.dot", null, "opacity"],
-    ["sum-hd", ":root.look-ink-wash:not([data-theme=\"dark\"]) .sumlay", null, "--sum-hd"],
-    ["sum-grey", ":root.look-ink-wash:not([data-theme=\"dark\"]) .sumlay", null, "--sum-grey"],
-    ["sum-panel", ":root.look-ink-wash:not([data-theme=\"dark\"]) .sumlay", null, "--sum-panel"],
+    ["sum-hd", ':root.look-ink-wash:not([data-theme="dark"]) .sumlay', null, "--sum-hd"],
+    ["sum-grey", ':root.look-ink-wash:not([data-theme="dark"]) .sumlay', null, "--sum-grey"],
+    ["sum-panel", ':root.look-ink-wash:not([data-theme="dark"]) .sumlay', null, "--sum-panel"],
   ],
   "*": [
     ["card-sel-ring", ".card.sel", null, "--ring"],
@@ -245,8 +245,8 @@ const PICKS = {
     ["sum-panel", ".sumlay", ':root[data-theme="dark"] .sumlay', "--sum-panel"],
   ],
   "warm-ink": [
-    ["sum-hd", ":root.look-warm-ink:not([data-theme=\"dark\"]) .sumlay", null, "--sum-hd"],
-    ["sum-grey", ":root.look-warm-ink:not([data-theme=\"dark\"]) .sumlay", null, "--sum-grey"],
+    ["sum-hd", ':root.look-warm-ink:not([data-theme="dark"]) .sumlay', null, "--sum-hd"],
+    ["sum-grey", ':root.look-warm-ink:not([data-theme="dark"]) .sumlay', null, "--sum-grey"],
   ],
 };
 const propOf = (rs, sel, prop) => {

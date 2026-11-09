@@ -491,7 +491,13 @@ export function createBridge(native: Native, opts: { fs?: Fs; timers?: boolean; 
           if (k?.at.kind !== "canvas") return;
           const p = card ? b.place[card] : undefined;
           k.at = p
-            ? { kind: "canvas", x: Math.round(x - p.x), y: Math.round(y - p.y), size: k.at.size, on: { card: card as string } }
+            ? {
+                kind: "canvas",
+                x: Math.round(x - p.x),
+                y: Math.round(y - p.y),
+                size: k.at.size,
+                on: { card: card as string },
+              }
             : { kind: "canvas", x: Math.round(x), y: Math.round(y), size: k.at.size };
         });
         gesture?.();
