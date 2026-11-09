@@ -135,8 +135,6 @@ export const cardsAsleep = rooted(() => createMemo(() => level() === 1 && (!awak
 /** The card level's opacity: swapped out, 0 asleep and too low to show while it is kept drawn */
 export const cardsOpacity = () => (level() === 0 ? 1 : cardsAsleep() ? 0 : 0.003);
 
-/** What Canvas.tsx draws for the detent and the switch (core canvas/detent.ts Detent) */
-export type { Detent };
 const [detent, setDetent] = boardSignal<Detent>(REST);
 export { detent };
 /** The push into the detent (0…1: through) and when it was last pushed */

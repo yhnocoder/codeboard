@@ -3,8 +3,8 @@
 // card's ::before in themes.css; a PNG drawn on a canvas once), the five brush strokes under calls and the toolbar's pale ink
 // stroke. Pure drawing, no board state: the Mac app's card page draws the same paper with it (apps/macos/web). The shapes
 // follow the approved mock (versions/v0.2.1/ink-wash/demo.html: deckleImg, callImg, barImg). ink.ts wires them to the board
-import { brushLine, paperSeed, paperSheet, rng } from "@codeboard/core/canvas";
-export { paperSheet, rng };
+import { brushLine, paperSeed, paperSheet } from "@codeboard/core/canvas";
+export { paperSheet };
 
 const f = (n: number) => String(Math.round(n * 10) / 10);
 /** An SVG as a CSS url(): only the characters a data URI needs escaped (the markup uses single quotes only) */
