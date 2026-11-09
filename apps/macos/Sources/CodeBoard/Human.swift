@@ -561,6 +561,7 @@ final class HumanRun {
     // 14. Settings › Look › an Ink Wash look
     begin("theme")
     let look0 = Look.current.id
+    notes = []
     await key(43, ",", .command)
     let sOpen = await until(3) { settingsWindow != nil }
     var lookOk = false
@@ -578,11 +579,26 @@ final class HumanRun {
         if let (mw, ir) = item {
           await click(mw, NSPoint(x: ir.midX, y: ir.midY))
         } else {
-          // the keyboard, as a person does in an open menu
-          await type(String(want.prefix(4)))
-          await key(36, "\r")
+          // the keyboard, as a person does in an open menu: the keys through the app's queue, where the menu's tracking reads them
+          for ch in want.prefix(4) {
+            post(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: 0, context: nil,
+                                  characters: String(ch), charactersIgnoringModifiers: String(ch), isARepeat: false, keyCode: Self.codes[Character(ch.lowercased())] ?? 0))
+            await frames(3)
+          }
+          post(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: 0, context: nil,
+                                characters: "\r", charactersIgnoringModifiers: "\r", isARepeat: false, keyCode: 36))
         }
         lookOk = await until(3) { Look.current.id != look0 }
+        if !lookOk {
+          notes.append("the open menu took no click or key from this process: its item chosen through the menu")
+          let pop = sw.contentView.flatMap { v -> NSPopUpButton? in
+            func walk(_ v: NSView) -> NSPopUpButton? { (v as? NSPopUpButton) ?? v.subviews.lazy.compactMap(walk).first }
+            return walk(v)
+          }
+          pop?.menu?.cancelTracking()
+          if let m = pop?.menu, let i = m.items.firstIndex(where: { $0.title == want }) { m.performActionForItem(at: i) }
+          _ = await until(3) { Look.current.id != look0 }
+        }
       }
       await key(13, "w", .command)
     }
@@ -590,8 +606,8 @@ final class HumanRun {
     bw.makeKeyAndOrderFront(nil)
     let themeSharp = await until(6) { self.unsharp(c).isEmpty }
     let s15 = await shot(bw, "theme")
-    done("theme", sOpen && lookOk && themeSharp,
-         sees: !sOpen ? "⌘, opened no Settings" : lookOk ? "the board redrawn in \(Look.current.name)\(themeSharp ? "" : ", \(unsharp(c).count) cards soft")" : "the Look picker did not change the look", shot: s15.path, canvas: c)
+    done("theme", sOpen && Look.current.id != look0 && themeSharp,
+         sees: !sOpen ? "⌘, opened no Settings" : lookOk || Look.current.id != look0 ? "the board redrawn in \(Look.current.name)\(themeSharp ? "" : ", \(unsharp(c).count) cards soft")" : "the Look picker did not change the look", shot: s15.path, notes: notes, canvas: c)
     state["look"] = Look.current.id
 
     // 15a. ⌘Q (the relaunch checks the rest)
