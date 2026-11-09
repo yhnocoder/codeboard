@@ -1,8 +1,9 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
   "ignoreWorkspaces": ["examples/markdown-demo"],
-  // rec-check decodes with ffmpeg, or compiles its AVFoundation decoder with swiftc
-  "ignoreBinaries": ["mkfifo", "ffmpeg", "swiftc"],
+  // rec-check decodes with ffmpeg, or compiles its AVFoundation decoder with swiftc; the macOS human pass
+  // (tools/mac-human.mjs) reads the recording with ffprobe, the idle time with ioreg and ends the app with pkill
+  "ignoreBinaries": ["mkfifo", "ffmpeg", "swiftc", "ffprobe", "ioreg", "pkill"],
   // a type named in an exported signature stays exported
   "ignoreExportsUsedInFile": { "interface": true, "type": true },
   "ignoreDependencies": [
