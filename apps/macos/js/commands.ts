@@ -189,7 +189,9 @@ export function commands(env: Env, storage: () => Storage) {
       const k = ++clip.n;
       // as the board pastes: a step down and right of the originals, then the nearest free spot (core's findFree)
       const tops = clip.items.filter((x) => x.place);
-      const box = bounds(tops.map((x) => ({ x: x.place!.x, y: x.place!.y, w: x.place!.w, h: (x.place!.h ?? 300) + 40 })));
+      const box = bounds(
+        tops.map((x) => ({ x: x.place!.x, y: x.place!.y, w: x.place!.w, h: (x.place!.h ?? 300) + 40 })),
+      );
       if (!box) return [];
       const free = findFree({ ...box, x: box.x + 36 * k, y: box.y + 36 * k }, Object.values(estRects(env.board())));
       const r = pasteCards(env, structuredClone(clip.items), structuredClone(clip.links), {
