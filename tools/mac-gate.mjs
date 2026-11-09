@@ -7,7 +7,9 @@
 // from the biggest one, then runs the app once per board with --gate (Gate.swift drives the window and records; nothing is judged
 // there) and judges here: frame intervals from the display link (the main thread's pacing) and the presented frames the window
 // capture saw; probes.ts's flashHits over the captured frames (a static region changing for 1–3 frames and reverting), jumpHits
-// over the cards' rects (a still card that moved, a moving one that jumped), cards in view with no bitmap (blank). Failing frames
+// over the cards' rects (a still card that moved, a moving one that jumped), cards in view with no bitmap (blank), and, at rest
+// before each step, cards in view not sharp (a base only, or a tile row in view missing at the zoom's scale; the layers' state).
+// Failing frames
 // are kept under <out>/<board>/fails/, the rest of the capture is dropped (--keep-frames keeps it). Writes <out>/report.json and
 // report.md, prints the table, exits 1 when any gate fails. With --xctrace the Animation Hitches instrument records each run too
 // (its trace is kept next to the run; it is slow to export, so it is the ground truth to open by hand, not a gate).
@@ -309,6 +311,9 @@ function judge(id, run, dir) {
     for (const h of hits.flash)
       fails.push(`flash ${h.box.w}×${h.box.h} at (${h.box.x}, ${h.box.y}) frames ${h.from}–${h.to}`);
     for (const h of hits.jump) fails.push(`${h.key} ${h.kind} by ${h.by} px at frame ${h.frame}`);
+    // at rest before the step (a second after its prepare): every card in view sharp, every tile row in view at the zoom's scale
+    const soft = s.soft_at_rest ?? [];
+    if (soft.length) fails.push(`not sharp at rest: ${soft.length} cards (${soft.slice(0, 3).join("; ")})`);
     if (hits.blank.length)
       fails.push(
         `blank cards in view in ${hits.blank.length} frames (${[...new Set(hits.blank.flatMap((b) => b.ids))].slice(0, 3).join(", ")})`,
@@ -357,7 +362,7 @@ function judge(id, run, dir) {
       hz120: nominal < 8.6 && (presented ? presented.p50 < 8.6 : true),
       effect: changed,
       sparse: !!sparse,
-      hits: { flash: hits.flash.length, jump: hits.jump.length, blank: hits.blank.length },
+      hits: { flash: hits.flash.length, jump: hits.jump.length, blank: hits.blank.length, soft: soft.length },
       detail: hits,
       fails,
       frames_kept: kept,

@@ -100,6 +100,8 @@ final class AutoRun: NSObject {
       logLine("[auto] window occlusion state visible %d", wc.window?.occlusionState.contains(.visible) == true ? 1 : 0)
       logLine("[auto] wrote %@/%@.png (%dx%d); notes rendered %.0f (from disk %.0f): render p50 %.1f p95 %.1f ms, pdf p50 %.1f p95 %.1f ms, total %.0f ms, page ready %d", out, name, rep.pixelsWide, rep.pixelsHigh, st["count"]!, st["disk_hits"]!, st["render_p50_ms"]!, st["render_p95_ms"]!, st["pdf_p50_ms"]!, st["pdf_p95_ms"]!, st["total_ms"]!, wc.canvas.notes.page.ready ? 1 : 0)
       report["notes"] = st
+      let soft = wc.canvas.softInView
+      logLine("[auto] sharp: %d cards in view not sharp at the zoom's bucket (%@); %d rasters superseded", soft.count, soft.prefix(6).joined(separator: ", "), CardLayer.superseded)
     } catch { logLine("[auto] snapshot failed: %@", error.localizedDescription) }
   }
 

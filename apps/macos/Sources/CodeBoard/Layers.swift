@@ -53,12 +53,26 @@ final class CardLayer: CALayer {
   var drawn = false
   /** The card shows a picture: its base, or a sharp bitmap (never neither once its base has come) */
   var hasFace: Bool { baseFace.contents != nil || hasSharp }
+  /** What is missing for the card to be sharp over `vis` (world rect) at `scale`: nil when every tile row of it in view has
+   *  landed at that scale; else why not (the checks: the screen at rest is all sharp) */
+  func sharpMissing(in vis: CGRect, scale: CGFloat) -> String? {
+    if tiles.isEmpty { return "base only" + (source == nil ? "" : " (raster asked)") }
+    if faceScale != scale { return "at scale \(faceScale), not \(scale) (asked \(askedScale), \(retries) retries)" }
+    let local = vis.offsetBy(dx: -frame.minX, dy: -frame.minY)
+    let missing = (0..<tileRows).filter { r in
+      let y = CGFloat(r) * tileH
+      return local.intersects(CGRect(x: 0, y: y, width: bounds.width, height: min(tileH, bounds.height - y))) && tiles[r] == nil
+    }
+    return missing.isEmpty ? nil : "rows \(missing) of \(tileRows) missing (asked \(asked.sorted()))"
+  }
+  /** Finished bitmaps thrown away because a newer raster of the card was asked for meanwhile (the checks report it) */
+  static var superseded = 0
   /** A sharp bitmap (some tile of one) is shown */
   var hasSharp: Bool { !tiles.isEmpty || !oldTiles.isEmpty }
   /** The raster scale (contentsScale) the sharp tier was drawn for, and whether it predates a look / theme change */
   private(set) var faceScale: CGFloat = 0
   var stale = false
-  private var askedScale: CGFloat = 0
+  private(set) var askedScale: CGFloat = 0
   /** The newest raster's paper sheet, head buttons and Always Show notes' slots wait for its first tile, so they change in one
    *  frame (by gen) */
   private var waitingSheet: (Int, IOSurface?, CGFloat)?
@@ -420,6 +434,7 @@ final class CardLayer: CALayer {
   override func display() {
     gen += 1
     stale = false
+    drewPaperless = Theme.isInk && framed && Ink.paper(dark: Theme.isDark, seed: card.seed) == nil
     askedScale = contentsScale
     if card.pending == true { return }  // its base (the uncoloured code), until the coloured card comes
     let g = gen
@@ -527,6 +542,9 @@ final class CardLayer: CALayer {
   }
   /** The screen's backing scale (the canvas keeps it) */
   static var screenScale: CGFloat = 2
+  /** Drawn (asked) before Ink Wash's paper for its edge pattern was made: drawn again when it is (Ink.ready); the rest are not,
+   *  since every redraw throws away the rasters in flight, and a storm of them keeps a loaded machine on the bases */
+  var drewPaperless = false
   /** Evicted while near the view but not in it: drawn again only once it is in view (no evict / redraw churn) */
   var parked = false
 
@@ -584,7 +602,7 @@ final class CardLayer: CALayer {
    *  the old tiles stay until that one's land) */
   func land(_ contents: Any, _ scale: CGFloat, _ g: Int) {
     if let b = contents as? BaseLand { b.put(); return }
-    guard g == gen else { return }
+    guard g == gen else { CardLayer.superseded += 1; return }
     if let n = contents as? Inote {
       inoteLayers[n.key]?.contents = n.image
       inoteLayers[n.key]?.contentsScale = scale

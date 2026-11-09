@@ -65,7 +65,10 @@ presence. Each card is a `CardLayer` with two tiers of bitmaps (sRGB-tagged):
   tiles replace the old ones only once they have landed; every bitmap (tiles, sheets, Always Show notes, bases on a shown
   board) lands through one queue, a few per frame nearest the view's centre first. During a zoom the bitmaps scale; the cards
   are drawn at the new bucket once it has settled for `RASTER_SETTLE`. A card leaving the view keeps its sharp tier until the
-  hidden cards' total passes `SHARP_BUDGET` (least recently seen first), then shows its base.
+  hidden cards' total passes `SHARP_BUDGET` (least recently seen first), then shows its base.  Cards in view are never evicted, and
+  one whose sharp tier is at (or was asked at) another bucket than the zoom's is drawn again, by what it shows, not by its
+  `contentsScale`: at rest every card in view is sharp at the zoom's bucket over every tile row in view (the gate checks it from
+  the layers' state, `CanvasView.softInView`).
 
 A Note render that did not settle (the page's time cap, the snapshot fallback) is never cached and never replaces a complete
 one; it is asked again. Sections are shape layers drawn by the compositor, arrows shape layers rasterised at the bucket's
