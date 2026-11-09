@@ -22,7 +22,7 @@ if (!dir) {
 const LIMITS = {
   busy: { ratio: 1.35, abs: 2 }, // ms of main-thread work per step
   frame: { ratio: 1.5, abs: 4 }, // ms, 95th percentile frame time (median step frame for steps that wait)
-  scalar: { ratio: 1.75, abs: 20 }, // ms, one-off timings (dragEnd)
+  scalar: { ratio: 1.75, abs: 20 }, // ms, timings that are not per step (dragEnd: the median of the drag pass's drops)
   host: { ratio: 1.5, abs: 30 }, // ms, host-side board open / version check (warm runs)
 };
 const FRAME_BUDGET = 16.7;
@@ -117,7 +117,7 @@ for (const k of ["dragEnd", ...(H[0].animStickers ? ["idleBusy1s"] : [])]) {
     h = median(H.map((r) => r[k]));
   if (Number.isFinite(h))
     lines.push(
-      `| ${k} (${k === "dragEnd" ? "one-off" : "ms per idle second"}) | ${cell(b, h, LIMITS.scalar, k, FRAME_BUDGET)} | | |`,
+      `| ${k} (${k === "dragEnd" ? "median drop" : "ms per idle second"}) | ${cell(b, h, LIMITS.scalar, k, FRAME_BUDGET)} | | |`,
     );
 }
 const HB = hostRuns("base"),
