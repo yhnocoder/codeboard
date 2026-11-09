@@ -489,6 +489,7 @@ export type BoardToHost =
   | { type: "thumb"; req: number; file: string; width: number } // a board image (assets/ file) width wide (THUMB_WIDTHS)
   | { type: "images"; req: number; files: string[] } // what init.images says, for images added since (assets/ file names)
   | { type: "exportPng"; dataUrl: string; name: string }
+  | { type: "inlineRefs"; req: number; text: string } // a PNG export's SVG: its cbres: references (fonts, assets/ images) as data: URLs
   | { type: "views"; req: number; segs: Segment[] } // 白板生成的新段（合并、拆开）要展示数据
   | { type: "checkVersions" }
   | { type: "relocate"; card: string } // 符号找不到：在编辑器里选新位置
@@ -752,6 +753,7 @@ type Replies = {
   saveAsset: string; // assets/ 里的文件名
   saveImage: string; // Markdown 里写的地址（assets/…）
   readAsset: string; // data: URL
+  inlineRefs: string;
   /** file: the copy in thumbBase (null: show the original, no smaller copy is worth it); width / height: the image's own size;
    *  null: not an image the host makes copies of (GIF, WebP, SVG, APNG) */
   thumb: { file: string | null; width: number; height: number } | null;

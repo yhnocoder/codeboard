@@ -221,7 +221,13 @@ async function cloneForExport(
   return world;
 }
 
-/** 导出 PNG：整块白板的克隆用 SVG foreignObject 画到 canvas 上 */
+/** XML 里的文字：SVG 当图片画的时候按 XML 解析，一个没转义的 & 或 <（属性值里还有 "）整张图就画不出来 */
+const xmlText = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+const xmlAttr = (t: string) => xmlText(t).replace(/"/g, "&quot;");
+
+/** 导出 PNG：整块白板的克隆用 SVG foreignObject 画到 canvas 上。SVG 当图片画的时候不加载外面的东西，也不在这个页面的文档里：
+ *  字体和图片跟 HTML 导出一样写成 cbres: 引用，宿主换成 data: URL；<html> 的 class 和 style（主题 look-…、Ink Wash 的纸）放到
+ *  <svg> 上（:root 的规则在图里对的是它），<body> 的字体（样式表写在 body 上）写到外面那层上 */
 async function exportPng() {
   const b = structuredClone(unwrap(state.board)) as Board;
   const box = bounds([
@@ -233,25 +239,33 @@ async function exportPng() {
     scale = 2;
   const W = Math.ceil(box.w + pad * 2),
     H = Math.ceil(box.h + pad * 2);
-  const world = await cloneForExport(b, { kind: "board" }, exportOrder(b, { kind: "board" }));
+  const world = document.implementation
+    .createHTMLDocument("")
+    .adoptNode(await cloneForExport(b, { kind: "board" }, exportOrder(b, { kind: "board" })));
   world.style.transform = `translate(${-box.x + pad}px, ${-box.y + pad}px)`;
-  await inlineAssets(world);
-  const css = [...document.styleSheets]
-    .map((s) => {
-      try {
-        return [...s.cssRules].map((r) => r.cssText).join("\n");
-      } catch {
-        return "";
-      }
-    })
-    .join("\n");
-  const bg =
-    getComputedStyle(document.body).getPropertyValue("--canvas") || getComputedStyle(document.body).backgroundColor;
-  const rootStyle = document.body.getAttribute("style") ?? "";
+  world.querySelectorAll<HTMLImageElement>("img[src]").forEach((im) => {
+    im.removeAttribute("loading");
+    im.setAttribute("src", resRef(im.getAttribute("src")!, location.href));
+  });
+  world
+    .querySelectorAll<HTMLElement>("[style*='url(']")
+    .forEach((el) => el.setAttribute("style", cssRefs(el.getAttribute("style")!, location.href)));
+  const root = document.documentElement,
+    body = document.body,
+    bs = getComputedStyle(body);
+  const bg = bs.getPropertyValue("--canvas") || bs.backgroundColor;
+  const font = `font-family:${bs.fontFamily};font-size:${bs.fontSize};font-weight:${bs.fontWeight};line-height:${bs.lineHeight};color:${bs.color}`;
   const xml = new XMLSerializer().serializeToString(world);
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W * scale}" height="${H * scale}" viewBox="0 0 ${W} ${H}"><foreignObject width="${W}" height="${H}"><div xmlns="http://www.w3.org/1999/xhtml" class="${document.body.className}" style="${rootStyle};position:relative;width:${W}px;height:${H}px;overflow:hidden;background:${bg}"><style>${css.replace(/</g, "\\3c ")}</style>${xml}</div></foreignObject></svg>`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" class="${xmlAttr(root.className)}" style="${xmlAttr(cssRefs(root.getAttribute("style") ?? "", location.href))}" width="${W * scale}" height="${H * scale}" viewBox="0 0 ${W} ${H}"><foreignObject width="${W}" height="${H}"><div xmlns="http://www.w3.org/1999/xhtml" class="${xmlAttr(body.className)}" style="${xmlAttr(`${body.getAttribute("style") ?? ""};${font};position:relative;width:${W}px;height:${H}px;overflow:hidden;background:${bg}`)}"><style>${xmlText(collectCss())}</style>${xml}</div></foreignObject></svg>`;
+  let inlined: string;
+  try {
+    inlined = await ask("inlineRefs", { text: svg });
+  } catch {
+    return toast("Export failed");
+  }
+  // a data: URL, not a blob: an SVG with a foreignObject drawn from a blob: URL taints the canvas
   const img = new Image();
-  img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+  img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(inlined)}`;
   try {
     await img.decode();
   } catch {
@@ -271,30 +285,6 @@ async function exportPng() {
   }
 }
 
-/** SVG 当图片画的时候不加载外面的东西：assets/ 里的图（Image 卡、Note 里的图）先换成宿主读出来的 data: URL，同一个文件只读一次 */
-async function inlineAssets(world: HTMLElement) {
-  const assets = state.host.assetBase ? new URL(state.host.assetBase + "/", location.href).href : "";
-  if (!assets) return;
-  const read = new Map<string, Promise<string | null>>();
-  await Promise.all(
-    [...world.querySelectorAll<HTMLImageElement>("img[src]")]
-      .filter((im) => im.src.startsWith(assets))
-      .map(async (im) => {
-        const file = decodeURIComponent(im.src.slice(assets.length).split(/[?#]/)[0]);
-        if (!read.has(file))
-          read.set(
-            file,
-            ask("readAsset", { file }).catch(() => null),
-          );
-        const url = await read.get(file);
-        if (url) {
-          im.removeAttribute("loading");
-          im.setAttribute("src", url);
-        }
-      }),
-  );
-}
-
 /** 页面上的地址 → cbres: 引用（插件的 media/board、存储目录的 assets/），宿主换成 data: URL */
 function resRef(u: string, base: string): string {
   if (/^(data:|#)/.test(u)) return u;
@@ -310,6 +300,13 @@ function resRef(u: string, base: string): string {
   if (assets && abs.startsWith(assets)) return `cbres:asset/${abs.slice(assets.length).split(/[?#]/)[0]}`;
   return abs;
 }
+/** CSS 里的 url(…) → cbres: 引用。引号里的地址整个取出来：data: URL 里有 ' ( ) 的（样式表里内联的 SVG），只认到引号前的写法会在中间断开，
+ *  把后面的样式改坏 */
+const cssRefs = (css: string, base: string) =>
+  css.replace(
+    /url\(\s*(?:"([^"]*)"|'([^']*)'|([^"')\s]+))\s*\)/g,
+    (_m, a, b, c) => `url("${resRef(a ?? b ?? c, base)}")`,
+  );
 /** 悬停内容（HTML 字符串）里的图（Markdown 里的 assets/ 图）也换成 cbres: 引用 */
 const imgRefs = (html: string) =>
   html.replace(
@@ -357,10 +354,12 @@ function collectCss(): string {
           const src = st.getPropertyValue("src");
           const first = /url\(\s*(["']?)([^"')]+)\1\s*\)(\s*format\([^)]*\))?/.exec(src);
           if (!first) continue;
-          out.push(r.cssText.replace(/src:[^;]+;/, `src: url("${resRef(first[2], base)}")${first[3] ?? ""};`));
+          // the rule written again from its declarations: a src that is a data: URL has a ; in it (KaTeX_Size3 in board.css)
+          const decls = [...st].filter((p) => p !== "src").map((p) => `${p}: ${st.getPropertyValue(p)};`);
+          out.push(`@font-face { ${decls.join(" ")} src: url("${resRef(first[2], base)}")${first[3] ?? ""}; }`);
           continue;
         }
-        out.push(r.cssText.replace(/url\(\s*(["']?)([^"')]+)\1\s*\)/g, (_m, _q, u) => `url("${resRef(u, base)}")`));
+        out.push(cssRefs(r.cssText, base));
       }
     };
     walk(rules);
@@ -441,14 +440,9 @@ async function snapshotHtml(
   world.querySelectorAll<HTMLImageElement>("img[src]").forEach((im) => {
     im.setAttribute("src", resRef(im.getAttribute("src")!, location.href));
   });
-  world.querySelectorAll<HTMLElement>("[style*='url(']").forEach((el) =>
-    el.setAttribute(
-      "style",
-      el
-        .getAttribute("style")!
-        .replace(/url\(\s*(["']?)([^"')]+)\1\s*\)/g, (_m, _q, u) => `url("${resRef(u, location.href)}")`),
-    ),
-  );
+  world
+    .querySelectorAll<HTMLElement>("[style*='url(']")
+    .forEach((el) => el.setAttribute("style", cssRefs(el.getAttribute("style")!, location.href)));
 
   // 查看脚本要的数据：范围、讲解顺序、悬停的 Sidenote 和问题、永久链接
   const rs = order.map((id) => ({ id, ...rectOf(id) }));
