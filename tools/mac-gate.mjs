@@ -2,23 +2,33 @@
 // The macOS app's acceptance gate: every interaction at a full 120 Hz with no visual glitch, on copies of real boards.
 //   node tools/mac-gate.mjs [--quick | --all | --boards id,id] [--data ~/Projects/persona/.codeboard] [--app <CodeBoard.app>]
 //                           [--out test-out/mac-gate/<time>] [--steps pan,drag_card] [--no-capture] [--no-build] [--xctrace]
-//                           [--big 250] [--keep-frames]
-//   node tools/mac-gate.mjs --human [--project ~/Projects/persona] [--no-build]   the human-use pass (tools/mac-human.mjs)
+//                           [--xctrace-limit 180] [--big 250] [--keep-frames] [--max-load 4] [--wait-quiet 10] [--min-free 8] [--max-out 1]
+//   node tools/mac-gate.mjs --human [--project ~/Projects/persona] [--no-build] [--min-free 8] [--max-out 1]   the human-use pass
+//                           (tools/mac-human.mjs)
 // Builds the app (apps/macos/build.sh), copies the data folder (the originals are never opened), adds a board of --big cards made
 // from the biggest one, then runs the app once per board with --gate (Gate.swift drives the window and records; nothing is judged
-// there) and judges here: frame intervals from the display link (the main thread's pacing) and the presented frames the window
-// capture saw; probes.ts's flashHits over the captured frames (a static region changing for 1–3 frames and reverting), jumpHits
-// over the cards' rects (a still card that moved, a moving one that jumped), cards in view with no bitmap (blank), and, at rest
-// before each step, cards in view not sharp (a base only, or a tile row in view missing at the zoom's scale; the layers' state).
-// Failing frames
-// are kept under <out>/<board>/fails/, the rest of the capture is dropped (--keep-frames keeps it). Writes <out>/report.json and
-// report.md, prints the table, exits 1 when any gate fails. With --xctrace the Animation Hitches instrument records each run too
-// (its trace is kept next to the run; it is slow to export, so it is the ground truth to open by hand, not a gate).
+// there), and judges here. Timing: the display link's intervals (the main thread's pacing) are the gate, with the window
+// capture's presented frames beside them; with --xctrace the Hitches instrument records each board too (at most --xctrace-limit
+// seconds; the trace is deleted once its table is exported) and its hitches that fall in each step (count against the step's
+// frames, hitch time in ms per second) are the gate instead (the capture falls behind at 120 Hz on full-window
+// change, so its late counts overstate). Glitches: probes.ts's flashHits over the captured frames (a static region changing for
+// 1–3 frames and reverting), jumpHits over the cards' rects (a still card that moved, a moving one that jumped), cards in view
+// with no bitmap (blank), a step whose input changed nothing (no_effect), and, at rest before each step, cards in view not
+// sharp (a base only, or a tile row in view missing at the zoom's scale; the layers' state). Failing frames are kept under <out>/<board>/fails/,
+// the rest of the capture, the app's and the data's copies are dropped once the report is written (--keep-frames keeps them).
+// The run refuses to start or go on with under --min-free GB free on the disk or once it has written more than --max-out GB
+// (mac-gate-disk.mjs; only its own output counts: the captures, traces, recordings, clips and reports, not its copies of the app,
+// the data and --human's sandbox (home/, projects/); the app's caches go to a temporary folder deleted at the end, or into the
+// sandbox's Library/Caches under --human, since CODEBOARD_HOME wins over CODEBOARD_CACHES: Home.swift), and writes <out>/sizes.txt when it stops. Each board waits (up to
+// --wait-quiet minutes) for the Mac's 1-minute load to fall under --max-load first; a board started with the load above 2 is
+// marked under load. Writes <out>/report.json and report.md, prints the
+// table, exits 1 when any gate fails.
 import { execFileSync, spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { diskStop, dropCaptures, freeGB, hitchesRecord, outputGB, sizes } from "./mac-gate-disk.mjs";
 import { flashHits, jumpHits } from "../packages/board/test/probes.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -26,10 +36,13 @@ const args = process.argv.slice(2);
 const flag = (k) => args.includes(k);
 const opt = (k, d) => (args.includes(k) ? args[args.indexOf(k) + 1] : d);
 
-/** The gate: under 1 % late frames (later than 1.5 periods: a dropped frame reads a whole period more), and p95 within a quarter
- *  of the period (the display link's hand-over to the main thread and the capture's time stamps jitter by about 1 ms; a 120 Hz
- *  run that drops no frame sits at 8.3–9.5 ms, one that drops frames at 16.7) */
-const GATE = { p95Ratio: 1.25, lateRatio: 1.5, latePct: 1 };
+/** The gate: hitches (the instrument: a frame presented later than its deadline) under 1 % of the step's frames and under
+ *  5 ms of hitch time per second (Apple's "good"); without the instrument, the display link's intervals: under 1 % late (later
+ *  than 1.5 periods) and p95 within a quarter of the period (the hand-over to the main thread jitters by about 1 ms) */
+const GATE = { hitchPct: 1, hitchMsPerS: 5, p95Ratio: 1.25, lateRatio: 1.5, latePct: 1 };
+/** Each board waits for the Mac's 1-minute load average to fall under maxLoad, up to waitQuiet minutes; one started with the
+ *  load above busy is marked under load */
+const QUIET = { maxLoad: +opt("--max-load", "4"), waitQuiet: +opt("--wait-quiet", "10"), busy: 2 };
 /** A continuous step's presented frames are judged when the capture saw at least this share of the driven frames change; fewer
  *  means the content stood still most of the time (an input the app has no handler for), and the display link's pacing is judged */
 const PRESENTED_MIN_SHARE = 0.5;
@@ -41,11 +54,45 @@ const data = path.resolve(
 );
 const app = path.resolve(opt("--app", path.join(root, "apps/macos/build/CodeBoard.app")));
 const out = path.resolve(
-  opt("--out", path.join(root, flag("--human") ? "test-out/mac-human" : "test-out/mac-gate", new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19))),
+  opt(
+    "--out",
+    path.join(
+      root,
+      flag("--human") ? "test-out/mac-human" : "test-out/mac-gate",
+      new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19),
+    ),
+  ),
 );
 const bigN = +opt("--big", "250");
+/** Disk guards: the free space (GB) the run needs, and what it may write (GB; its copies of the app and the data don't count) */
+const DISK = { minFree: +opt("--min-free", "8"), maxOut: +opt("--max-out", "1") };
+const xctrace = flag("--xctrace");
+const traceLimit = +opt("--xctrace-limit", "180");
 fs.rmSync(out, { recursive: true, force: true });
 fs.mkdirSync(out, { recursive: true });
+/** What the disk cap does not count: the copies of the app and the data, and --human's sandbox (its home and project copy) */
+const NOT_OUTPUT = ["cbgate.app", "data", ...(flag("--human") ? ["home", "projects"] : [])];
+const diskWhy = () => diskStop({ free: freeGB(out), used: outputGB(out, NOT_OUTPUT) }, DISK);
+// the app's caches (the Notes' rendered PDFs) for this run only, out of the user's ~/Library/Caches and out of <out>
+const caches = fs.mkdtempSync(path.join(os.tmpdir(), "cbgate-caches-"));
+process.on("exit", () => fs.rmSync(caches, { recursive: true, force: true }));
+process.on("SIGINT", () => process.exit(130));
+/** On a stop: <out>/sizes.txt, the biggest contributors to the output (and the copies and caches, marked as not counted) */
+function writeSizes(why) {
+  const mb = (b) => `${(b / 2 ** 20).toFixed(1).padStart(9)} MB`;
+  const rows = sizes(out).map(
+    ([f, b]) => `${mb(b)}  ${f}${NOT_OUTPUT.includes(f.split("/")[0]) ? " (not counted)" : ""}`,
+  );
+  const c = sizes(caches).reduce((n, [, b]) => n + b, 0);
+  fs.writeFileSync(
+    path.join(out, "sizes.txt"),
+    [why, "", ...rows.slice(0, 40), `${mb(c)}  ${caches} (app caches, not counted)`, ""].join("\n"),
+  );
+}
+if (diskWhy()) {
+  console.error(`not starting: ${diskWhy()}`);
+  process.exit(1);
+}
 
 if (!flag("--no-build")) {
   console.log("building the app…");
@@ -84,7 +131,7 @@ execFileSync("codesign", [
 // ---- --human: the human-use pass (tools/mac-human.mjs) instead of the boards' runs
 if (flag("--human")) {
   const { runHuman } = await import("./mac-human.mjs");
-  process.exit((await runHuman({ root, gateApp, out, opt })) ? 0 : 1);
+  process.exit((await runHuman({ root, gateApp, out, opt, diskWhy, writeSizes })) ? 0 : 1);
 }
 
 // ---- the data: a copy, plus the big board
@@ -163,29 +210,36 @@ async function runBoard(id) {
   ];
   if (stepsOpt) a.push("--steps", stepsOpt);
   if (flag("--no-capture")) a.push("--no-capture");
-  const load = os.loadavg()[0];
-  const log = fs.openSync(path.join(dir, "app.log"), "w");
-  const p = spawn(path.join(gateApp, "Contents/MacOS/cbgate"), a, { stdio: ["ignore", log, log] });
-  let trace = null;
-  if (flag("--xctrace")) {
-    await new Promise((r) => setTimeout(r, 1500));
-    trace = spawn(
-      "xcrun",
-      [
-        "xctrace",
-        "record",
-        "--template",
-        "Animation Hitches",
-        "--attach",
-        String(p.pid),
-        "--output",
-        path.join(dir, "hitches.trace"),
-        "--time-limit",
-        "600s",
-      ],
-      { stdio: "ignore" },
-    );
+  // a quiet machine: other work (builds, other apps) drops frames too
+  const t0 = Date.now();
+  let load = os.loadavg()[0];
+  while (load >= QUIET.maxLoad && Date.now() - t0 < QUIET.waitQuiet * 60_000) {
+    console.log(`   load ${load.toFixed(1)}: waiting for it to fall under ${QUIET.maxLoad}`);
+    await new Promise((r) => setTimeout(r, 10_000));
+    load = os.loadavg()[0];
   }
+  const underLoad = load > QUIET.busy;
+  const log = fs.openSync(path.join(dir, "app.log"), "w");
+  const p = spawn(path.join(gateApp, "Contents/MacOS/cbgate"), a, {
+    stdio: ["ignore", log, log],
+    env: { ...process.env, CODEBOARD_CACHES: caches },
+  });
+  let trace = null;
+  const traceFile = path.join(dir, "hitches.trace");
+  if (xctrace) {
+    await new Promise((r) => setTimeout(r, 1500));
+    trace = spawn("xcrun", hitchesRecord(p.pid, traceFile, traceLimit), { stdio: "ignore" });
+  }
+  // the disk while it runs: the trace and the capture grow, and both are ended before the disk fills
+  let stopped = null;
+  const watch = setInterval(() => {
+    stopped = diskWhy();
+    if (!stopped) return;
+    clearInterval(watch);
+    writeSizes(stopped);
+    trace?.kill("SIGKILL");
+    p.kill("SIGKILL");
+  }, 2000);
   const code = await new Promise((resolve) => {
     const t = setTimeout(() => {
       p.kill("SIGKILL");
@@ -198,11 +252,14 @@ async function runBoard(id) {
   });
   let hitches = null;
   if (trace) {
-    // xctrace ends the recording itself when the target exits
-    await new Promise((r) => trace.on("exit", r));
-    hitches = exportHitches(path.join(dir, "hitches.trace"));
+    // xctrace ends the recording itself when the target exits or at its time limit
+    if (trace.exitCode == null && trace.signalCode == null) await new Promise((r) => trace.on("exit", r));
+    if (!stopped) hitches = exportHitches(traceFile, traceLimit);
+    fs.rmSync(traceFile, { recursive: true, force: true });
   }
+  clearInterval(watch);
   fs.closeSync(log);
+  if (stopped) return { id, name: names[id], error: `stopped: ${stopped}` };
   const runFile = path.join(dir, "run.json");
   if (!fs.existsSync(runFile))
     return {
@@ -213,28 +270,39 @@ async function runBoard(id) {
   const run = JSON.parse(fs.readFileSync(runFile, "utf8"));
   if (run.error) return { id, name: names[id], error: run.error };
   // the load before the run: other work on the Mac (builds, other apps) drops frames too, and the report says when there was some
-  return { ...judge(id, run, dir), hitches, loadBefore: +load.toFixed(1) };
+  return { ...judge(id, run, dir, hitches), loadBefore: +load.toFixed(1), underLoad };
 }
 
-/** The Animation Hitches instrument's hitches table: how many, and their total duration in ms (an error when the export fails) */
-function exportHitches(trace) {
+/** The Hitches instrument's hitches table: each hitch's wall-clock start (s) and duration (ms), from the trace's start
+ *  date and the rows' trace-relative start; null when the export fails */
+function exportHitches(trace, limitS) {
   try {
-    const xml = execFileSync(
-      "xcrun",
-      ["xctrace", "export", "--input", trace, "--xpath", '/trace-toc/run[@number="1"]/data/table[@schema="hitches"]'],
-      { encoding: "utf8", maxBuffer: 1 << 28 },
-    );
-    // a value repeated from an earlier row is a <duration ref="id"/>
-    const rows = xml.split("<row>").slice(1);
+    const x = (xpath) =>
+      execFileSync("xcrun", ["xctrace", "export", "--input", trace, ...xpath], {
+        encoding: "utf8",
+        maxBuffer: 1 << 28,
+      });
+    const toc = x(["--toc"]);
+    const startDate = /<start-date>([^<]+)<\/start-date>/.exec(toc)?.[1];
+    if (!startDate) return { error: "no start date in the trace" };
+    const t0 = new Date(startDate).getTime() / 1000;
+    const xml = x(["--xpath", '/trace-toc/run[@number="1"]/data/table[@schema="hitches"]']);
+    // a value repeated from an earlier row is a <… ref="id"/>
     const byId = new Map();
-    let ms = 0;
-    for (const r of rows) {
-      const m = /<duration id="(\d+)"[^>]*>(\d+)<\/duration>|<duration ref="(\d+)"\/>/.exec(r);
-      if (!m) continue;
-      if (m[1]) byId.set(m[1], +m[2]);
-      ms += (m[1] ? +m[2] : (byId.get(m[3]) ?? 0)) / 1e6;
+    const val = (r, tag) => {
+      const m = new RegExp(`<${tag} id="(\\d+)"[^>]*>(\\d+)</${tag}>|<${tag} ref="(\\d+)"/>`).exec(r);
+      if (!m) return null;
+      if (m[1]) byId.set(`${tag}${m[1]}`, +m[2]);
+      return m[1] ? +m[2] : (byId.get(`${tag}${m[3]}`) ?? null);
+    };
+    const rows = [];
+    for (const r of xml.split("<row>").slice(1)) {
+      const start = val(r, "start-time");
+      const dur = val(r, "duration");
+      if (start != null) rows.push({ at: t0 + start / 1e9, ms: (dur ?? 0) / 1e6 });
     }
-    return { count: rows.length, ms: +ms.toFixed(1) };
+    // a step that ends after the recording did is not judged by it
+    return { rows, from: t0, until: t0 + limitS };
   } catch (e) {
     return { error: String(e.message).split("\n")[0] };
   }
@@ -259,10 +327,19 @@ const stats = (dts, nominal) => {
   };
 };
 
-function judge(id, run, dir) {
+function judge(id, run, dir, hitchesAll) {
   const nominal = run.nominal_ms;
   const steps = [];
   for (const s of run.steps) {
+    // the instrument's hitches that fell in this step (its wall clock, from the app)
+    const covered = hitchesAll?.rows && s.t0_wall + s.wall_s <= hitchesAll.until;
+    const inStep = covered ? hitchesAll.rows.filter((h) => h.at >= s.t0_wall && h.at < s.t0_wall + s.wall_s) : null;
+    const hitches = inStep && {
+      count: inStep.length,
+      ms: +inStep.reduce((a, h) => a + h.ms, 0).toFixed(1),
+      pct: +((inStep.length / Math.max(1, s.wall_s * (1000 / nominal))) * 100).toFixed(1),
+      msPerS: +(inStep.reduce((a, h) => a + h.ms, 0) / s.wall_s).toFixed(1),
+    };
     const samples = s.samples;
     const link = stats(
       samples.map((x) => x.dt).filter((d) => d > 0),
@@ -276,12 +353,16 @@ function judge(id, run, dir) {
       for (let i = 1; i < cap.t.length; i++) d.push((cap.t[i] - cap.t[i - 1]) * 1000);
       presented = stats(d, nominal);
     }
-    // the gate: the presented frames where the content changes every frame, else the main thread's pacing
+    // the gate: the instrument's hitches; without it, the main thread's pacing
     const sparse = presented && presented.n < samples.length * PRESENTED_MIN_SHARE;
-    const judged = s.continuous && presented && !sparse ? presented : link;
     const fails = [];
-    if (judged.p95 > nominal * GATE.p95Ratio) fails.push(`p95 ${judged.p95} ms`);
-    if (judged.latePct >= GATE.latePct) fails.push(`${judged.late} late frames (${judged.latePct} %)`);
+    if (hitches) {
+      if (hitches.pct >= GATE.hitchPct) fails.push(`${hitches.count} hitches (${hitches.pct} % of frames)`);
+      if (hitches.msPerS > GATE.hitchMsPerS) fails.push(`hitch time ${hitches.msPerS} ms/s`);
+    } else {
+      if (link.p95 > nominal * GATE.p95Ratio) fails.push(`link p95 ${link.p95} ms`);
+      if (link.latePct >= GATE.latePct) fails.push(`${link.late} late link frames (${link.latePct} %)`);
+    }
 
     // glitches
     const hits = { flash: [], jump: [], blank: [] };
@@ -303,11 +384,13 @@ function judge(id, run, dir) {
         cell: cap.cell,
         q: new Uint8Array(buf.buffer, buf.byteOffset + i * bytes, bytes),
       }));
-      // the masks of a captured frame: the sample taken last before it was presented (its input is what the frame shows)
+      // the masks of a captured frame: the sample taken last before it was presented (its input is what the frame shows); they
+      // are in window points, the capture is smaller
+      const k = cap.w / run.window[0];
       const masks = cap.t.map((t) => {
         let m = samples[0];
         for (const x of samples) if (s.t0 + x.t <= t) m = x;
-        return m.masks.map(([x, y, w, h]) => ({ x, y, w, h }));
+        return m.masks.map(([x, y, w, h]) => ({ x: x * k, y: y * k, w: w * k, h: h * k }));
       });
       hits.flash = flashHits(grids, masks);
       frameAt = (t) => {
@@ -323,6 +406,7 @@ function judge(id, run, dir) {
     // at rest before the step (a second after its prepare): every card in view sharp, every tile row in view at the zoom's scale
     const soft = s.soft_at_rest ?? [];
     if (soft.length) fails.push(`not sharp at rest: ${soft.length} cards (${soft.slice(0, 3).join("; ")})`);
+    if (s.dropped_input) fails.push(`${s.dropped_input} inputs dropped (the app was not frontmost)`);
     if (hits.blank.length)
       fails.push(
         `blank cards in view in ${hits.blank.length} frames (${[...new Set(hits.blank.flatMap((b) => b.ids))].slice(0, 3).join(", ")})`,
@@ -356,14 +440,24 @@ function judge(id, run, dir) {
         fs.rmSync(path.join(dir, cap.grids), { force: true });
       }
     }
-    // did the action do anything: a key the app has no handler for changes nothing (reported, not failed)
+    // did the action do anything: the camera or a card changed, or the window's content changed in a fifth of the frames; an
+    // input that reached nothing (no handler, not delivered) is a failure of its own, never a silent pass
+    const s0 = samples[0];
     const changed =
-      samples.some((x, i) => i && JSON.stringify(x.rects) !== JSON.stringify(samples[0].rects)) ||
-      (presented?.n ?? 0) > 2;
+      samples.some(
+        (x, i) =>
+          i &&
+          (x.z !== s0.z ||
+            x.o[0] !== s0.o[0] ||
+            x.o[1] !== s0.o[1] ||
+            JSON.stringify(x.rects) !== JSON.stringify(s0.rects)),
+      ) || (presented?.n ?? 0) > samples.length * 0.2;
+    if (!changed) fails.push("no_effect: the input changed nothing");
     steps.push({
       name: s.name,
       continuous: s.continuous,
       frames: s.frames,
+      hitches,
       link,
       presented,
       main: { p95: +pct(main, 0.95).toFixed(2), max: +(main.at(-1) ?? 0).toFixed(2) },
@@ -385,6 +479,7 @@ function judge(id, run, dir) {
     refreshHz: run.refresh_hz,
     nominal: +nominal.toFixed(2),
     capture: run.capture,
+    instrument: hitchesAll ? (hitchesAll.error ?? "the Hitches instrument") : "off",
     steps,
     pass: steps.every((s) => s.pass),
   };
@@ -394,18 +489,33 @@ function judge(id, run, dir) {
 const f1 = (x) => (x == null ? "-" : x.toFixed(1));
 function table(r) {
   const rows = [
-    ["step", "p50", "p95", "max", "late%", "hitch", "link p95", "main p95", "flash", "jump", "blank", "result"],
+    [
+      "step",
+      "hitches",
+      "hitch%",
+      "ms/s",
+      "link p95",
+      "link late%",
+      "SCK p95",
+      "SCK late%",
+      "main p95",
+      "flash",
+      "jump",
+      "blank",
+      "result",
+    ],
   ];
   for (const s of r.steps) {
-    const j = s.continuous && s.presented && !s.sparse ? s.presented : s.link;
+    const h = s.hitches;
     rows.push([
-      s.name + (s.effect ? "" : " (no effect)"),
-      f1(j.p50),
-      f1(j.p95),
-      f1(j.max),
-      f1(j.latePct),
-      f1(j.hitchMsPerS),
+      s.name,
+      h ? String(h.count) : "-",
+      h ? f1(h.pct) : "-",
+      h ? f1(h.msPerS) : "-",
       f1(s.link.p95),
+      f1(s.link.latePct),
+      s.presented ? f1(s.presented.p95) : "-",
+      s.presented ? f1(s.presented.latePct) : "-",
       f1(s.main.p95),
       String(s.hits.flash),
       String(s.hits.jump),
@@ -420,12 +530,14 @@ function table(r) {
 const results = [];
 for (const id of pick) {
   console.log(`\n== ${names[id] ?? id} (${id})`);
-  const r = await runBoard(id);
+  const why = diskWhy();
+  if (why) writeSizes(why);
+  const r = why ? { id, name: names[id], error: `not run: ${why}` } : await runBoard(id);
   results.push(r);
   if (r.error) console.log(`   ${r.error}`);
   else {
     console.log(
-      `   ${r.cards} cards, display ${r.refreshHz} Hz, period ${r.nominal} ms, capture ${r.capture ? "on" : "off"}, load before ${r.loadBefore}${r.hitches ? `, Animation Hitches instrument: ${r.hitches.count ?? "?"} hitches, ${r.hitches.ms ?? "?"} ms${r.hitches.error ? ` (${r.hitches.error})` : ""}` : ""}`,
+      `   ${r.cards} cards, display ${r.refreshHz} Hz, period ${r.nominal} ms, capture ${r.capture ? "on" : "off"}, timing by ${r.instrument}, load before ${r.loadBefore}${r.underLoad ? " (UNDER LOAD: taken while the Mac was busy)" : ""}`,
     );
     console.log(table(r).replace(/^/gm, "   "));
   }
@@ -436,7 +548,7 @@ const report = {
   data,
   gate: GATE,
   columns:
-    "p50/p95/max/late%/hitch: presented frame intervals (ms, from the window capture) for continuous steps, the display link's for discrete ones; hitch: ms of lateness per second; link p95: the display link's interval; main p95: the main thread's cost per frame of the gate's own input",
+    "hitches / hitch% / ms/s (--xctrace): the Hitches instrument's hitches in the step, as a share of the step's frames, and hitch time per second (the gate); link: the display link's intervals (ms); SCK: the window capture's presented-frame intervals (it falls behind on full-window change); main p95: the main thread's cost per frame of the gate's own input",
   boards: results,
   pass: results.every((r) => r.pass),
 };
@@ -451,9 +563,9 @@ const md = [
     r.error
       ? [`## ${r.name} (${r.id})`, "", r.error, ""]
       : [
-          `## ${r.name} (${r.id}): ${r.pass ? "pass" : "FAIL"}`,
+          `## ${r.name} (${r.id}): ${r.pass ? "pass" : "FAIL"}${r.underLoad ? " (under load)" : ""}`,
           "",
-          `${r.cards} cards, ${r.refreshHz} Hz, period ${r.nominal} ms, load average before the run ${r.loadBefore}${r.hitches ? `, Animation Hitches instrument: ${r.hitches.count ?? "?"} hitches, ${r.hitches.ms ?? "?"} ms` : ""}`,
+          `${r.cards} cards, ${r.refreshHz} Hz, period ${r.nominal} ms, timing by ${r.instrument}, load average before the run ${r.loadBefore}${r.underLoad ? " (under load)" : ""}`,
           "",
           "```",
           table(r),
@@ -465,6 +577,11 @@ const md = [
   ),
 ].join("\n");
 fs.writeFileSync(path.join(out, "report.md"), md);
+if (!flag("--keep-frames")) {
+  for (const id of pick) if (fs.existsSync(path.join(out, id))) dropCaptures(path.join(out, id));
+  fs.rmSync(gateApp, { recursive: true, force: true });
+  fs.rmSync(copy, { recursive: true, force: true });
+}
 console.log(
   `\n${report.pass ? "PASS" : "FAIL"}: ${results.filter((r) => r.pass).length}/${results.length} boards; report ${path.relative(root, path.join(out, "report.md"))}`,
 );
