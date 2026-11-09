@@ -13,6 +13,9 @@ BOX=../../packages/box/bin/darwin-$(uname -m | sed 's/x86_64/x64/')/box
 [ -x "$BOX" ] || node ../../packages/box/build.mjs
 npx vite build -c web/vite.config.ts --logLevel warn
 swift build -c release
+# builds stay out of Spotlight and Launchpad (it skips folders named *.noindex): build/ is a link to build.noindex/, and the one to open is
+# the installed copy (`build.sh install`)
+[ -L build ] || { rm -rf build; mkdir -p build.noindex; ln -s build.noindex build; }
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp .build/release/CodeBoard "$APP/Contents/MacOS/CodeBoard"
@@ -36,4 +39,8 @@ echo "built $APP"
 if [ "$1" = "run" ]; then
   shift
   "$APP/Contents/MacOS/CodeBoard" "$@"
+fi
+# `build.sh install`: the copy to open, in ~/Applications (the one Spotlight and Launchpad show)
+if [ "$1" = "install" ]; then
+  mkdir -p "$HOME/Applications" && ditto "$APP" "$HOME/Applications/CodeBoard.app" && echo "installed ~/Applications/CodeBoard.app"
 fi

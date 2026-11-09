@@ -206,7 +206,7 @@ export async function runHuman({ root, gateApp, out, opt, diskWhy, writeSizes })
   // the copies go (the screenshots, the video, its clips and marks stay); older runs' videos go
   fs.rmSync(path.join(out, "projects"), { recursive: true, force: true });
   fs.rmSync(path.join(out, "data"), { recursive: true, force: true });
-  fs.rmSync(path.join(out, "cbgate.app"), { recursive: true, force: true });
+  fs.rmSync(path.join(out, "app.noindex"), { recursive: true, force: true });
   const runs = path.dirname(out);
   for (const d of fs.readdirSync(runs)) {
     const o = path.join(runs, d);

@@ -71,7 +71,7 @@ const traceLimit = +opt("--xctrace-limit", "180");
 fs.rmSync(out, { recursive: true, force: true });
 fs.mkdirSync(out, { recursive: true });
 /** What the disk cap does not count: the copies of the app and the data, and --human's sandbox (its home and project copy) */
-const NOT_OUTPUT = ["cbgate.app", "data", ...(flag("--human") ? ["home", "projects"] : [])];
+const NOT_OUTPUT = ["app.noindex", "data", ...(flag("--human") ? ["home", "projects"] : [])];
 const diskWhy = () => diskStop({ free: freeGB(out), used: outputGB(out, NOT_OUTPUT) }, DISK);
 // the app's caches (the Notes' rendered PDFs) for this run only, out of the user's ~/Library/Caches and out of <out>
 const caches = fs.mkdtempSync(path.join(os.tmpdir(), "cbgate-caches-"));
@@ -101,7 +101,7 @@ if (!flag("--no-build")) {
 // the gate runs its own copy of the bundle, named cbgate: another CodeBoard on the Mac (a developer's, another check's) may be
 // killed by name while the gate runs, and the instruments attach only to a process that allows it (get-task-allow; the app's own
 // signing is untouched)
-const gateApp = path.join(out, "cbgate.app");
+const gateApp = path.join(out, "app.noindex", "cbgate.app"); // *.noindex: Spotlight and Launchpad skip it
 fs.cpSync(app, gateApp, { recursive: true });
 fs.renameSync(path.join(gateApp, "Contents/MacOS/CodeBoard"), path.join(gateApp, "Contents/MacOS/cbgate"));
 const plist = path.join(gateApp, "Contents/Info.plist");
