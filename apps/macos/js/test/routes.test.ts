@@ -29,6 +29,10 @@ describe("the arrows' ends", () => {
     const [g] = new Router().route(model(), { ...rects, a: { ...rects.a, rows: { "s:5": 900 } } });
     expect(g.pts[1]).toBeCloseTo(CODE_GEO.head + CODE_GEO.top + 4 * CODE_GEO.row + CODE_GEO.row / 2);
   });
+  it("end at the card's head on a line the drawn card does not show (hidden in a gap), as the board does", () => {
+    const [g] = new Router().route(model(), { ...rects, a: { ...rects.a, rows: {} } });
+    expect(g.pts[1]).toBe(CODE_GEO.head / 2);
+  });
   it("draw Ink Wash's dry streaks and Warm Ink's taper by the line's weight", () => {
     setLook("ink-wash");
     const [ink] = new Router().route(model(), rects);

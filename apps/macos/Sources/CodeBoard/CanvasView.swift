@@ -385,7 +385,8 @@ final class CanvasView: NSView {
         }
       }
     }
-    return WorldRect(x: l.card.x, y: l.card.y, w: l.card.w, h: Double(l.height), rows: rows.isEmpty ? nil : rows)
+    // a drawn card sends its rows even when none of its arrows' lines is shown: routing then ends those at the head
+    return WorldRect(x: l.card.x, y: l.card.y, w: l.card.w, h: Double(l.height), rows: l.rowYs.isEmpty ? nil : rows)
   }
   /** Every arrow routed by the board's session; the routes land when they come, unless the canvas shows another board by then */
   func routeAll() {

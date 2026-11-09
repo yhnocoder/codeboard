@@ -49,7 +49,8 @@ export function routeModel(b: Board): RouteModel {
 
 /** The rectangle of a card as drawn, in world units, and, once the shell has drawn a code card, where its lines are: "<segment
  *  id>:<line>" → the middle of the row, from the card's top (hidden runs, Always Show notes and the separators between segments
- *  move the rows the same way the board's measured rows do, state/geo.ts lineY) */
+ *  move the rows the same way the board's measured rows do, state/geo.ts lineY). Only the lines arrows end on; there, even
+ *  empty, once the card is drawn: a line missing from it is not shown */
 export type Rect = { x: number; y: number; w: number; h: number; rows?: Record<string, number> };
 
 /** core's Geo plus the tapered outline a solid line fills (Warm Ink) or the brush stroke's outline and its dry streaks (Ink Wash,
@@ -210,9 +211,12 @@ function endOf(b: RouteModel, e: Link["from"], rects: Record<string, Rect>): End
   if (!r) return null;
   const c = b.cards.find((k) => k.id === e.card);
   let y = r.y + CODE_GEO.head / 2;
-  // the row as the shell drew it; a card not drawn yet by its rows' default places
-  const drawn = e.seg !== undefined && e.line !== undefined ? r.rows?.[`${e.seg}:${e.line}`] : undefined;
+  // the row as the shell drew it; a line the drawn card does not show (hidden in a gap, folded) ends at the head, as on the
+  // board (canvas/routes.ts); a card not drawn yet by its rows' default places
+  const key = e.seg !== undefined && e.line !== undefined ? `${e.seg}:${e.line}` : undefined;
+  const drawn = key !== undefined ? r.rows?.[key] : undefined;
   if (drawn !== undefined && drawn < r.h) y = r.y + drawn;
+  else if (key !== undefined && r.rows && drawn === undefined) y = r.y + CODE_GEO.head / 2;
   else if (c?.segments) {
     const ly = lineYIn(c.segments, e.seg, e.line);
     if (ly !== null && ly < r.h) y = r.y + ly;
